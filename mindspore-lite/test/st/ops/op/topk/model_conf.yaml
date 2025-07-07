@@ -1,0 +1,112 @@
+op_name: TopK
+genonnx:
+  - model_name: topk_fp32_dyn.onnx
+    node_param:
+      inputs: ['X','K']
+      outputs: ['Y','indices']
+      attributes:
+        axis: -1
+        largest: 1
+        sorted: 1
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [None,None]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [None,None]
+        - name: indices
+          data_type: 7
+          dims: [None,None]
+      initializer:
+        - name: K
+          data_type: 7
+          dims: [1]
+          value: [2]
+  - model_name: topk_fp32_fix.onnx
+    node_param:
+      inputs: ['X','K']
+      outputs: ['Y','indices']
+      attributes:
+        axis: -1
+        largest: 1
+        sorted: 1
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [256,256]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [256,2]
+        - name: indices
+          data_type: 7
+          dims: [-1,-1]
+      initializer:
+        - name: K
+          data_type: 7
+          dims: [1]
+          value: [2]
+gengold:
+  - gold_name: topk_fp32_dyn_gold_1
+    in_model: topk_fp32_dyn.onnx
+    input_dtypes: [1]
+    input_shapes: [[128,128]]
+  - gold_name: topk_fp32_fix_gold_1
+    in_model: topk_fp32_fix.onnx
+    input_dtypes: [1]
+    input_shapes: [[256,256]]
+convert:
+  - out_model: topk_fp32_dyn_2_dyn.ms
+    in_model: topk_fp32_dyn.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: topk_fp32_dyn_2_fix.ms
+    in_model: topk_fp32_dyn.onnx
+    input_shapes: X:128,128
+    fp16: off
+  - out_model: topk_fp32_fix_2_fix.ms
+    in_model: topk_fp32_fix.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: topk_fp16_dyn_2_dyn.ms
+    in_model: topk_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+  - out_model: topk_fp16_dyn_2_fix.ms
+    in_model: topk_fp32_dyn.onnx
+    input_shapes: X:128,128
+    fp16: on
+  - out_model: topk_fp16_fix_2_fix.ms
+    in_model: topk_fp32_fix.onnx
+    input_shapes: None
+    fp16: on
+run:
+  - in_model: topk_fp32_dyn_2_dyn.ms
+    gold_in: topk_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: X:128,128
+  - in_model: topk_fp32_dyn_2_fix.ms
+    gold_in: topk_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: topk_fp32_fix_2_fix.ms
+    gold_in: topk_fp32_fix_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: topk_fp16_dyn_2_dyn.ms
+    gold_in: topk_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: X:128,128
+  - in_model: topk_fp16_dyn_2_fix.ms
+    gold_in: topk_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: topk_fp16_fix_2_fix.ms
+    gold_in: topk_fp32_fix_gold_1
+    dtypes: 1
+    input_shapes: None
+    

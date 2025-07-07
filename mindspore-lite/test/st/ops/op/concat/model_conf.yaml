@@ -1,0 +1,116 @@
+op_name: Concat
+genonnx:
+  - model_name: concat_fp32_dyn.onnx
+    node_param:
+      inputs: ["A", "B", "C"]
+      outputs: ["Z"]
+      attributes:
+        axis: 1
+    graph_param:
+      inputs:
+        - name: A
+          data_type: 1
+          dims: [None, None]
+        - name: B
+          data_type: 1
+          dims: [None, None]
+        - name: C
+          data_type: 1
+          dims: [None, None]
+      outputs:
+        - name: Z
+          data_type: 1
+          dims: [None, None]
+      initializer: None
+  - model_name: concat_fp32_fix.onnx
+    node_param:
+      inputs: ["A", "B", "C"]
+      outputs: ["Z"]
+      attributes:
+        axis: 1
+    graph_param:
+      inputs:
+        - name: A
+          data_type: 1
+          dims: [3, 3]
+        - name: B
+          data_type: 1
+          dims: [3, 3]
+        - name: C
+          data_type: 1
+          dims: [3, 3]
+      outputs:
+        - name: Z
+          data_type: 1
+          dims: [3, 9]
+      initializer: None
+  - model_name: concat_bool_fix.onnx
+    node_param:
+      inputs: ["A", "B", "C"]
+      outputs: ["Z"]
+      attributes:
+        axis: 1
+    graph_param:
+      inputs:
+        - name: A
+          data_type: 9
+          dims: [3, 3]
+        - name: B
+          data_type: 9
+          dims: [3, 3]
+        - name: C
+          data_type: 9
+          dims: [3, 3]
+      outputs:
+        - name: Z
+          data_type: 9
+          dims: [3, 9]
+      initializer: None
+gengold:
+  - gold_name: concat_fp32_dyn_gold_1
+    in_model: concat_fp32_dyn.onnx
+    input_dtypes: [1, 1, 1]
+    input_shapes: [[2, 2], [2, 2], [2, 2]]
+  - gold_name: concat_fp32_fix_gold_1
+    in_model: concat_fp32_fix.onnx
+    input_dtypes: [1, 1, 1]
+    input_shapes: [[3, 3], [3, 3], [3, 3]]
+  - gold_name: concat_bool_fix
+    in_model: concat_bool_fix.onnx
+    input_dtypes: [9, 9, 9]
+    input_shapes: [[3, 3], [3, 3], [3, 3]]
+
+convert:
+  - out_model: concat_fp32_dyn_2_dyn.ms
+    in_model: concat_fp32_dyn.onnx
+    input_shapes: None
+
+  - out_model: concat_fp32_dyn_2_fix.ms
+    in_model: concat_fp32_dyn.onnx
+    input_shapes: A:2,2;B:2,2;C:2,2
+
+  - out_model: concat_fp32_fix_2_fix.ms
+    in_model: concat_fp32_fix.onnx
+    input_shapes: None
+
+  - out_model: concat_bool_fix.ms
+    in_model: concat_bool_fix.onnx
+    input_shapes: None
+
+run:
+  - in_model: concat_fp32_dyn_2_dyn.ms
+    gold_in: concat_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: concat_fp32_dyn_2_fix.ms
+    gold_in: concat_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: concat_fp32_fix_2_fix.ms
+    gold_in: concat_fp32_fix_gold_1
+    dtypes: 1
+
+  - in_model: concat_bool_fix.ms
+    gold_in: concat_bool_fix
+    dtypes: 1
+    disabled: on

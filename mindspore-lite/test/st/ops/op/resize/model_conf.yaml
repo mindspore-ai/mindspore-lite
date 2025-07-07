@@ -1,0 +1,96 @@
+op_name: Resize
+genonnx:
+  - model_name: resize_fp32_dyn.onnx
+    node_param:
+      inputs: ["X", "roi", "scales", "sizes"]
+      outputs: ["Y"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: input
+          data_type: 1
+          dims: [None, None, None]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [None, None, None]
+      initializer:
+        - name: sequence_lens
+          data_type: 7
+          dims: [3]
+          value: [3, 2, 1]
+    disabled: on
+  - model_name: resize_fp32_fix.onnx
+    node_param:
+      inputs: ["input", "sequence_lens"]
+      outputs: ["Y"]
+      attributes:
+        batch_axis: 0
+        time_axis: 1
+    graph_param:
+      inputs:
+        - name: input
+          data_type: 1
+          dims: [4, 4]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [4, 4]
+      initializer:
+        - name: sequence_lens
+          data_type: 7
+          dims: [4]
+          value: [1, 2, 3, 4]
+    disabled: on
+
+gengold:
+  - gold_name: resize_fp32_dyn_gold_1
+    in_model: resize_fp32_dyn.onnx
+    input_dtypes: [1]
+    input_shapes: [[4, 3, 2]]
+    disabled: on
+  - gold_name: resize_fp32_fix_gold_1
+    in_model: resize_fp32_fix.onnx
+    input_dtypes: [1]
+    input_shapes: [[4, 4]]
+    disabled: on
+
+convert:
+  - out_model: resize_fp32_dyn_2_dyn
+    in_model: resize_fp32_dyn.onnx
+    input_shapes: None
+    disabled: on
+  - out_model: resize_fp32_dyn_2_fix
+    in_model: resize_fp32_dyn.onnx
+    input_shapes: input:4,3,2
+    disabled: on
+  - out_model: resize_fp32_fix_2_fix
+    in_model: resize_fp32_fix.onnx
+    input_shapes: None
+    disabled: on
+  - out_model: resize_fp16_dyn_2_dyn
+    in_model: resize_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+    disabled: on
+
+run:
+  - in_model: resize_fp32_dyn_2_dyn.ms
+    gold_in: resize_fp32_dyn_gold_1
+    dtypes: 1
+    disabled: on
+
+  - in_model: resize_fp32_dyn_2_fix.ms
+    gold_in: resize_fp32_dyn_gold_1
+    dtypes: 1
+    disabled: on
+
+  - in_model: resize_fp32_fix_2_fix.ms
+    gold_in: resize_fp32_fix_gold_1
+    dtypes: 1
+    disabled: on
+
+  - in_model: resize_fp16_dyn_2_dyn.ms
+    gold_in: resize_fp32_dyn_gold_1
+    dtypes: 1
+    disabled: on

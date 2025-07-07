@@ -1,0 +1,76 @@
+op_name: SpaceToDepth
+genonnx:
+  - model_name: spacetodepth_fp32_dyn.onnx
+    node_param:
+      inputs: ["input"]
+      outputs: ["output"]
+      attributes:
+        blocksize: 2
+    graph_param:
+      inputs:
+        - name: input
+          data_type: 1
+          dims: [None, None, None, None]
+      outputs:
+        - name: output
+          data_type: 1
+          dims: [None, None, None, None]
+      initializer: None
+  - model_name: spacetodepth_fp32_fix.onnx
+    node_param:
+      inputs: ["input"]
+      outputs: ["output"]
+      attributes:
+        blocksize: 3
+    graph_param:
+      inputs:
+        - name: input
+          data_type: 1
+          dims: [32, 1, 9, 9]
+      outputs:
+        - name: output
+          data_type: 1
+          dims: [32, 9, 3, 3]
+      initializer: None
+
+gengold:
+  - gold_name: spacetodepth_fp32_dyn_gold_1
+    in_model: spacetodepth_fp32_dyn.onnx
+    input_dtypes: [1]
+    input_shapes: [[1, 1, 4, 4]]
+  - gold_name: spacetodepth_fp32_fix_gold_1
+    in_model: spacetodepth_fp32_fix.onnx
+    input_dtypes: [1]
+    input_shapes: [[32, 1, 9, 9]]
+
+convert:
+  - out_model: spacetodepth_fp32_dyn_2_dyn.ms
+    in_model: spacetodepth_fp32_dyn.onnx
+    input_shapes: None
+  - out_model: spacetodepth_fp32_dyn_2_fix.ms
+    in_model: spacetodepth_fp32_dyn.onnx
+    input_shapes: input:1,1,4,4
+  - out_model: spacetodepth_fp32_fix_2_fix.ms
+    in_model: spacetodepth_fp32_fix.onnx
+    input_shapes: None
+  - out_model: spacetodepth_fp16_dyn_2_dyn
+    in_model: spacetodepth_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+
+run:
+  - in_model: spacetodepth_fp32_dyn_2_dyn.ms
+    gold_in: spacetodepth_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: spacetodepth_fp32_dyn_2_fix.ms
+    gold_in: spacetodepth_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: spacetodepth_fp32_fix_2_fix.ms
+    gold_in: spacetodepth_fp32_fix_gold_1
+    dtypes: 1
+
+  - in_model: spacetodepth_fp16_dyn_2_dyn.ms
+    gold_in: spacetodepth_fp32_dyn_gold_1
+    dtypes: 1

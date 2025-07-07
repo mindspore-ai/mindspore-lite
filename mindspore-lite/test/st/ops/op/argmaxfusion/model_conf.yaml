@@ -1,0 +1,79 @@
+op_name: ArgMax
+genonnx:
+  - model_name: argmax_fp32_dyn.onnx
+    node_param:
+      inputs: ["data"]
+      outputs: ["reduced"]
+      attributes:
+        axis: 0
+        keepdims: 0
+        select_last_index: 1
+    graph_param:
+      inputs:
+        - name: data
+          data_type: 1
+          dims: [None, None]
+      outputs:
+        - name: reduced
+          data_type: 7
+          dims: [None, None]
+      initializer: None
+  - model_name: argmax_fp32_fix.onnx
+    node_param:
+      inputs: ["data"]
+      outputs: ["reduced"]
+      attributes:
+        axis: 1
+        keepdims: 0
+        select_last_index: 1
+    graph_param:
+      inputs:
+        - name: data
+          data_type: 1
+          dims: [2, 3, 6]
+      outputs:
+        - name: reduced
+          data_type: 7
+          dims: [2, 6]
+      initializer: None
+
+gengold:
+  - gold_name: argmax_fp32_dyn_gold_1
+    in_model: argmax_fp32_dyn.onnx
+    input_dtypes: [1]
+    input_shapes: [[128, 128]]
+  - gold_name: argmax_fp32_fix_gold_1
+    in_model: argmax_fp32_fix.onnx
+    input_dtypes: [1]
+    input_shapes: [[2, 3, 6]]
+convert:
+  - out_model: argmax_fp32_dyn_2_dyn.ms
+    in_model: argmax_fp32_dyn.onnx
+    input_shapes: None
+  - out_model: argmax_fp32_dyn_2_fix.ms
+    in_model: argmax_fp32_dyn.onnx
+    input_shapes: data:128,128
+  - out_model: argmax_fp32_fix_2_fix.ms
+    in_model: argmax_fp32_fix.onnx
+    input_shapes: None
+  - out_model: argmax_fp16_dyn_2_dyn.ms
+    in_model: argmax_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+
+run:
+  - in_model: argmax_fp32_dyn_2_dyn.ms
+    gold_in: argmax_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: argmax_fp32_dyn_2_fix.ms
+    gold_in: argmax_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: argmax_fp32_fix_2_fix.ms
+    gold_in: argmax_fp32_fix_gold_1
+    dtypes: 1
+
+  - in_model: argmax_fp16_dyn_2_dyn.ms
+    gold_in: argmax_fp32_dyn_gold_1
+    dtypes: 1

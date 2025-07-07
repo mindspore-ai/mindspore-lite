@@ -1,0 +1,23 @@
+approvers:
+- baochong
+- guoqi1024
+- zhaizhiqiang
+- jjfeing
+- YeFeng_24
+- fatmouse007fatmouse007
+- xu_anyue
+
+files:
+  "version.txt":
+    approvers:
+    - jjfeing
+    - YeFeng_24
+    - fatmouse007fatmouse007
+    - xu_anyue
+
+  ".*\\.md$":
+    approvers:
+    - jjfeing
+    - YeFeng_24
+    - fatmouse007fatmouse007
+    - xu_anyue

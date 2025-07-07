@@ -1,0 +1,156 @@
+/**
+ * Copyright 2022-2023 Huawei Technologies Co., Ltd
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "mindspore-lite/minddata/dataset/engine/opt/pre/add_skip_pass.h"
+
+#include <algorithm>
+#include <string>
+
+#include "mindspore-lite/minddata/dataset/engine/ir/datasetops/data_queue_node.h"
+#include "mindspore-lite/minddata/dataset/engine/ir/datasetops/root_node.h"
+#include "mindspore-lite/minddata/dataset/engine/ir/datasetops/skip_node.h"
+#ifdef ENABLE_PYTHON
+#include "mindspore-lite/minddata/dataset/engine/ir/datasetops/source/generator_node.h"
+#endif
+#include "mindspore-lite/minddata/dataset/util/status.h"
+
+namespace mindspore {
+namespace dataset {
+// constructor
+AddSkipPass::InjectionFinder::InjectionFinder(const std::shared_ptr<DatasetNode> &node)
+    : injection_point_(nullptr), has_shuffle_node_(false), has_batch_sampler_(false) {}
+
+// Performs finder work for BuildVocabOp that has special rules about skip injection
+Status AddSkipPass::InjectionFinder::Visit(std::shared_ptr<RootNode> node, bool *const modified) {
+  RETURN_UNEXPECTED_IF_NULL(node);
+  RETURN_UNEXPECTED_IF_NULL(modified);
+  CHECK_FAIL_RETURN_UNEXPECTED(node->Children().size() > 0,
+                               "Invalid data, the number of children should be greater than zero.");
+  // The injection is at the child of the root node
+  injection_point_ = node->Children()[0];
+  num_epochs_ = node->NumEpochs();
+  step_ = node->Step();
+  dataset_size_ = node->DatasetSize();
+  return Status::OK();
+}
+
+// Performs finder work for BuildVocabOp that has special rules about skip injection
+Status AddSkipPass::InjectionFinder::Visit(std::shared_ptr<BuildVocabNode> node, bool *const modified) {
+  RETURN_UNEXPECTED_IF_NULL(node);
+  RETURN_UNEXPECTED_IF_NULL(modified);
+  injection_point_ = nullptr;
+  return Status::OK();
+}
+
+#ifndef ENABLE_ANDROID
+// Performs finder work for BuildSentencePieceVocabNode that has special rules about skip injection
+Status AddSkipPass::InjectionFinder::Visit(std::shared_ptr<BuildSentenceVocabNode> node, bool *const modified) {
+  RETURN_UNEXPECTED_IF_NULL(node);
+  RETURN_UNEXPECTED_IF_NULL(modified);
+  injection_point_ = nullptr;
+  return Status::OK();
+}
+#endif
+
+// Detect shuffle node
+Status AddSkipPass::InjectionFinder::Visit(std::shared_ptr<ShuffleNode> node, bool *const modified) {
+  RETURN_UNEXPECTED_IF_NULL(node);
+  RETURN_UNEXPECTED_IF_NULL(modified);
+  has_shuffle_node_ = true;
+  return Status::OK();
+}
+
+#ifdef ENABLE_PYTHON
+// Detect batch sampler
+Status AddSkipPass::InjectionFinder::Visit(std::shared_ptr<GeneratorNode> node, bool *const modified) {
+  RETURN_UNEXPECTED_IF_NULL(node);
+  RETURN_UNEXPECTED_IF_NULL(modified);
+  if (node->HasBatchSampler()) {
+    has_batch_sampler_ = true;
+  }
+  return Status::OK();
+}
+#endif
+
+Status AddSkipPass::InjectionFinder::VisitAfter(std::shared_ptr<DataQueueNode> node, bool *const modified) {
+  RETURN_UNEXPECTED_IF_NULL(node);
+  RETURN_UNEXPECTED_IF_NULL(modified);
+  CHECK_FAIL_RETURN_UNEXPECTED(node->Children().size() > 0,
+                               "Invalid data, the number of children should be greater than zero.");
+  // Assumption: There is only one DataQueueNode in a pipeline. This assumption is not validated here.
+  // Move the injection point to the child of this node.
+  injection_point_ = node->Children()[0];
+  return Status::OK();
+}
+
+// Runs an injection pass to inject in operators needed at the pre pass stage
+Status AddSkipPass::RunOnTree(std::shared_ptr<DatasetNode> root_ir, bool *const modified) {
+  RETURN_UNEXPECTED_IF_NULL(root_ir);
+  RETURN_UNEXPECTED_IF_NULL(modified);
+  MS_LOG(INFO) << "Pre pass: AddSkipPass started.";
+
+  // First, run the finder to perform any injection info before we can go ahead to drive the op injection work.
+  // The finder can make updates to the AddSkipPass object.
+  AddSkipPass::InjectionFinder finder(root_ir);
+  RETURN_IF_NOT_OK(finder.Run(root_ir, modified));
+  // If we detect a shuffle node in the pipeline, we disable fast-recovery
+  if (GlobalContext::config_manager()->fast_recovery()) {
+    if (finder.HasShuffleNode()) {
+      GlobalContext::config_manager()->set_fast_recovery(false);
+      MS_LOG(WARNING) << "Disabling fast recovery of Dataset pipeline since shuffle node is detected.";
+    }
+    if (finder.HasBatchSampler()) {
+      GlobalContext::config_manager()->set_fast_recovery(false);
+      MS_LOG(WARNING) << "Disabling fast recovery of Dataset pipeline since batch_sampler is detected.";
+    }
+  }
+  // The first injection logic is to check if we should inject the skip op as the root node.
+  std::shared_ptr<DatasetNode> node = finder.injection_point();
+  CHECK_FAIL_RETURN_UNEXPECTED(node != nullptr, "Failed to inject SkipOp.");
+
+  int32_t num_epochs = finder.GetNumEpochs();
+  int64_t step = finder.GetStep();
+  int64_t dataset_size = finder.GetDatasetSize();
+  CHECK_FAIL_RETURN_UNEXPECTED(dataset_size > 0, "Cannot reset the pipeline, dataset size is undefined");
+  CHECK_FAIL_RETURN_UNEXPECTED(step >= 0,
+                               "Cannot reset the pipeline, reset step must be >= 0. step: " + std::to_string(step));
+  if (step >= dataset_size * num_epochs) {
+    std::string err_msg = "Cannot reset the pipeline, reset step must be less than dataset_size * num_epochs. step: " +
+                          std::to_string(step) + ", dataset_size: " + std::to_string(dataset_size) +
+                          ", num_epochs: " + std::to_string(num_epochs);
+    MS_LOG(ERROR) << err_msg;
+    RETURN_STATUS_UNEXPECTED(err_msg);
+  }
+  if (step == 0) {
+    return Status::OK();
+  }
+  // in fast recovery, we start from current epoch and skip remaining steps (skip node will also be pushed down)
+  if (GlobalContext::config_manager()->fast_recovery()) {
+    int64_t skip_num = step % dataset_size;
+    auto skip_node = std::make_shared<SkipNode>(skip_num);
+    skip_node->SetOnceOnly(true);
+    RETURN_IF_NOT_OK(node->InsertAbove(skip_node));
+  } else {  // in non-fast we only add a skip node on top of the tree (to get same augmentations)
+    auto skip_node = std::make_shared<SkipNode>(step);
+    skip_node->SetOnceOnly(true);
+    RETURN_IF_NOT_OK(node->InsertAbove(skip_node));
+  }
+
+  MS_LOG(INFO) << "Pre pass: AddSkipPass complete.";
+  return Status::OK();
+}
+}  // namespace dataset
+}  // namespace mindspore

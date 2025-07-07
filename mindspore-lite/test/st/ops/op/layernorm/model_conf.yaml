@@ -1,0 +1,122 @@
+op_name: LayerNormalization
+genonnx:
+  - model_name: layernormalization_fp32_dyn.onnx
+    node_param:
+      inputs: ["X", "Scale", "B"]
+      outputs: ["Y", "Mean", "InvStdDev"]
+      attributes:
+        axis: -1
+        epsilon: 0.00005
+        stash_type: 1
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [None, None]
+        - name: Scale
+          data_type: 1
+          dims: [None]
+        - name: B
+          data_type: 1
+          dims: [None]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [None, None]
+        - name: Mean
+          data_type: 1
+          dims: [None, None]
+        - name: InvStdDev
+          data_type: 1
+          dims: [None, None]
+      initializer: None
+  - model_name: layernormalization_fp32_fix.onnx
+    node_param:
+      inputs: ["X", "Scale", "B"]
+      outputs: ["Y", "Mean", "InvStdDev"]
+      attributes:
+        axis: 1
+        epsilon: 0.00005
+        stash_type: 1
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [2, 2]
+        - name: Scale
+          data_type: 1
+          dims: [2]
+        - name: B
+          data_type: 1
+          dims: [2]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [2, 2]
+        - name: Mean
+          data_type: 1
+          dims: [2, 1]
+        - name: InvStdDev
+          data_type: 1
+          dims: [2, 1]
+      initializer: None
+gengold:
+  - gold_name: layernormalization_fp32_dyn_gold_1
+    in_model: layernormalization_fp32_dyn.onnx
+    input_dtypes: [1, 1, 1]
+    input_shapes: [[32, 32], [32], [32]]
+  - gold_name: layernormalization_fp32_fix_gold_1
+    in_model: layernormalization_fp32_fix.onnx
+    input_dtypes: [1, 1, 1]
+    input_shapes: [[2, 2], [2], [2]]
+convert:
+  - out_model: layernormalization_fp32_dyn_2_dyn.ms
+    in_model: layernormalization_fp32_dyn.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: layernormalization_fp32_dyn_2_fix.ms
+    in_model: layernormalization_fp32_dyn.onnx
+    input_shapes: X:32,32;Scale:32;B:32
+    fp16: off
+  - out_model: layernormalization_fp32_fix_2_fix.ms
+    in_model: layernormalization_fp32_fix.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: layernormalization_fp16_dyn_2_dyn.ms
+    in_model: layernormalization_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+  - out_model: layernormalization_fp16_dyn_2_fix.ms
+    in_model: layernormalization_fp32_dyn.onnx
+    input_shapes: X:32,32;Scale:32;B:32
+    fp16: on
+  - out_model: layernormalization_fp16_fix_2_fix.ms
+    in_model: layernormalization_fp32_fix.onnx
+    input_shapes: None
+    fp16: on
+run:
+  - in_model: layernormalization_fp32_dyn_2_dyn.ms
+    gold_in: layernormalization_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: X:32,32;Scale:32;B:32
+  - in_model: layernormalization_fp32_dyn_2_fix.ms
+    gold_in: layernormalization_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: layernormalization_fp32_fix_2_fix.ms
+    gold_in: layernormalization_fp32_fix_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: layernormalization_fp16_dyn_2_dyn.ms
+    gold_in: layernormalization_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: X:32,32;Scale:32;B:32
+  - in_model: layernormalization_fp16_dyn_2_fix.ms
+    gold_in: layernormalization_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: layernormalization_fp16_fix_2_fix.ms
+    gold_in: layernormalization_fp32_fix_gold_1
+    dtypes: 1
+    input_shapes: None
+disabled: on

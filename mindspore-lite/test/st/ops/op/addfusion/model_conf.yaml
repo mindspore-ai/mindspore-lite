@@ -1,0 +1,72 @@
+op_name: Add
+genonnx:
+  - model_name: add_fp32_dyn.onnx
+    node_param:
+      inputs: ["A", "B"]
+      outputs: ["C"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: A
+          data_type: 1
+          dims: [None, None]
+        - name: B
+          data_type: 1
+          dims: [None, None]
+      outputs:
+        - name: C
+          data_type: 1
+          dims: [None, None]
+      initializer: None
+  - model_name: add_fp32_fix.onnx
+    node_param:
+      inputs: ["A", "B"]
+      outputs: ["C"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: A
+          data_type: 1
+          dims: [256, 256]
+        - name: B
+          data_type: 1
+          dims: [256, 256]
+      outputs:
+        - name: C
+          data_type: 1
+          dims: [256, 256]
+      initializer: None
+gengold:
+  - gold_name: add_fp32_dyn_gold_1
+    in_model: add_fp32_dyn.onnx
+    input_dtypes: [1, 1]
+    input_shapes: [[128, 128], [128, 128]]
+  - gold_name: add_fp32_fix_gold_1
+    in_model: add_fp32_fix.onnx
+    input_dtypes: [1, 1]
+    input_shapes: [[256, 256], [256, 256]]
+convert:
+  - out_model: add_fp32_dyn_2_dyn.ms
+    in_model: add_fp32_dyn.onnx
+    input_shapes: None
+
+  - out_model: add_fp32_dyn_2_fix.ms
+    in_model: add_fp32_dyn.onnx
+    input_shapes: A:128,128;B:128,128
+
+  - out_model: add_fp32_fix_2_fix.ms
+    in_model: add_fp32_fix.onnx
+    input_shapes: None
+
+run:
+  - in_model: add_fp32_dyn_2_dyn.ms
+    gold_in: add_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: add_fp32_dyn_2_fix.ms
+    gold_in: add_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: add_fp32_fix_2_fix.ms
+    gold_in: add_fp32_fix_gold_1
+    dtypes: 1

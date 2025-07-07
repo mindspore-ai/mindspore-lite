@@ -1,0 +1,123 @@
+op_name: Conv
+genonnx:
+  - model_name: conv1_fp32_dyn.onnx
+    node_param:
+      inputs: ["X", "W", "B"]
+      outputs: ["Y"]
+      attributes:
+        strides: [1, 1]
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [None, None, None, None]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [None, None, None, None]
+      initializer:
+        - name: W
+          data_type: 1
+          dims: [1, 3, 2, 2]
+        - name: B
+          data_type: 1
+          dims: [1]
+  - model_name: conv1_fp32_fix.onnx
+    node_param:
+      inputs: ["X", "W", "B"]
+      outputs: ["Y"]
+      attributes:
+        auto_pad: SAME_LOWER
+        group: 1
+        strides: [1, 1]
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [128, 3, 256, 256]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [128, 1, 256, 256]
+      initializer:
+        - name: W
+          data_type: 1
+          dims: [1, 3, 3, 3]
+        - name: B
+          data_type: 1
+          dims: [1]
+  - model_name: test_conv_1d_input_w.onnx
+    node_param:
+      inputs: ["X", "W", "B"]
+      outputs: ["Y"]
+      attributes:
+        dilations: [1]
+        kernel_shape: [1]
+        pads: [5, 5]
+        group: 2
+        strides: [4]
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [10, 2, 1]
+        - name: W
+          data_type: 1
+          dims: [2, 1, 1]
+        - name: B
+          data_type: 1
+          dims: [2]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [10, 2, 3]
+      initializer: None
+
+gengold:
+  - gold_name: conv1_fp32_dyn_gold_1
+    in_model: conv1_fp32_dyn.onnx
+    input_dtypes: [1]
+    input_shapes: [[1, 3, 4, 4]]
+  - gold_name: conv1_fp32_fix_gold_1
+    in_model: conv1_fp32_fix.onnx
+    input_dtypes: [1]
+    input_shapes: [[128, 3, 256, 256]]
+  - gold_name: test_conv_1d_input_w_gold_1
+    in_model: test_conv_1d_input_w.onnx
+    input_dtypes: [1, 1, 1]
+    input_shapes: [[10, 2, 1], [2, 1, 1], [2]]
+
+convert:
+  - out_model: conv1_fp32_dyn_2_dyn.ms
+    in_model: conv1_fp32_dyn.onnx
+    input_shapes: None
+
+  - out_model: conv1_fp32_dyn_2_fix.ms
+    in_model: conv1_fp32_dyn.onnx
+    input_shapes: X:1,3,4,4
+
+  - out_model: conv1_fp32_fix_2_fix.ms
+    in_model: conv1_fp32_fix.onnx
+    input_shapes: None
+
+  - out_model: test_conv_1d_input_w_gold_1.ms
+    in_model: test_conv_1d_input_w.onnx
+    input_shapes: None
+
+run:
+  - in_model: conv1_fp32_dyn_2_dyn.ms
+    gold_in: conv1_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: conv1_fp32_dyn_2_fix.ms
+    gold_in: conv1_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: conv1_fp32_fix_2_fix.ms
+    gold_in: conv1_fp32_fix_gold_1
+    dtypes: 1
+
+  - in_model: test_conv_1d_input_w_gold_1.ms
+    gold_in: test_conv_1d_input_w_gold_1
+    dtypes: 1
+    disabled: on

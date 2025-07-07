@@ -1,0 +1,91 @@
+op_name: AffineGrid
+genonnx:
+  - model_name: affinegrid_fp32_dyn.onnx
+    node_param:
+      inputs: ["theta", "size"]
+      outputs: ["grid"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: theta
+          data_type: 1
+          dims: [None, 2, 3]
+      outputs:
+        - name: grid
+          data_type: 1
+          dims: [None, None, None, 2]
+      initializer:
+        - name: size
+          data_type: 7
+          dims:
+    disabled: on
+  - model_name: affinegrid _fp32_fix.onnx
+    node_param:
+      inputs: ["X"]
+      outputs: ["Y"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [256]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [256]
+      initializer: None
+    disabled: on
+gengold:
+  - gold_name: affinegrid _fp32_dyn_gold_1
+    in_model: affinegrid _fp32_dyn.onnx
+    input_dtypes: [1]
+    input_shapes: [[128, 128]]
+    disabled: on
+  - gold_name: affinegrid _fp32_fix_gold_1
+    in_model: affinegrid _fp32_fix.onnx
+    input_dtypes: [1]
+    input_shapes: [[256]]
+    disabled: on
+
+convert:
+  - out_model: affinegrid _fp32_dyn_2_dyn.ms
+    in_model: affinegrid _fp32_dyn.onnx
+    input_shapes: None
+    disabled: on
+
+  - out_model: affinegrid _fp32_dyn_2_fix.ms
+    in_model: affinegrid _fp32_dyn.onnx
+    input_shapes: X:128,128
+    disabled: on
+
+  - out_model: affinegrid _fp32_fix_2_fix.ms
+    in_model: affinegrid _fp32_fix.onnx
+    input_shapes: None
+    disabled: on
+
+  - out_model: affinegrid _fp16_dyn_2_dyn.ms
+    in_model: affinegrid _fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+    disabled: on
+
+run:
+  - in_model: affinegrid _fp32_dyn_2_dyn.ms
+    gold_in: affinegrid _fp32_dyn_gold_1
+    dtypes: 1
+    disabled: on
+
+  - in_model: affinegrid _fp32_dyn_2_fix.ms
+    gold_in: affinegrid _fp32_dyn_gold_1
+    dtypes: 1
+    disabled: on
+
+  - in_model: affinegrid _fp32_fix_2_fix.ms
+    gold_in: affinegrid _fp32_fix_gold_1
+    dtypes: 1
+    disabled: on
+
+  - in_model: affinegrid _fp16_dyn_2_dyn.ms
+    gold_in: affinegrid _fp32_dyn_gold_1
+    dtypes: 1
+    disabled: on

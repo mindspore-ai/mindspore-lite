@@ -1,0 +1,84 @@
+op_name: CumSum
+genonnx:
+  - model_name: cumsum_fp32_dyn.onnx
+    node_param:
+      inputs: ["X", "axis"]
+      outputs: ["Y"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [None, None]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [None, None]
+      initializer:
+        - name: axis
+          data_type: 7
+          dims: [1]
+          value: [1]
+
+  - model_name: cumsum_fp32_fix.onnx
+    node_param:
+      inputs: ["X", "axis"]
+      outputs: ["Y"]
+      attributes:
+        exclusive: 1
+        reverse: 1
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [2, 3]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [2, 3]
+      initializer:
+        - name: axis
+          data_type: 7
+          dims: [1]
+          value: [1]
+gengold:
+  - gold_name: cumsum_fp32_dyn_gold_1
+    in_model: cumsum_fp32_dyn.onnx
+    input_dtypes: [1]
+    input_shapes: [[5, 5]]
+  - gold_name: cumsum_fp32_fix_gold_1
+    in_model: cumsum_fp32_fix.onnx
+    input_dtypes: [1]
+    input_shapes: [[2, 3]]
+
+convert:
+  - out_model: cumsum_fp32_dyn_2_dyn.ms
+    in_model: cumsum_fp32_dyn.onnx
+    input_shapes: None
+  - out_model: cumsum_fp32_dyn_2_fix.ms
+    in_model: cumsum_fp32_dyn.onnx
+    input_shapes: input:5,5
+  - out_model: cumsum_fp32_fix_2_fix.ms
+    in_model: cumsum_fp32_fix.onnx
+    input_shapes: None
+  - out_model: cumsum_fp16_dyn_2_dyn.ms
+    in_model: cumsum_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+
+run:
+  - in_model: cumsum_fp32_dyn_2_dyn.ms
+    gold_in: cumsum_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: cumsum_fp32_dyn_2_fix.ms
+    gold_in: cumsum_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: cumsum_fp32_fix_2_fix.ms
+    gold_in: cumsum_fp32_fix_gold_1
+    dtypes: 1
+
+  - in_model: cumsum_fp16_dyn_2_dyn.ms
+    gold_in: cumsum_fp32_dyn_gold_1
+    dtypes: 1

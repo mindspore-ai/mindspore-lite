@@ -1,0 +1,138 @@
+op_name: NonMaxSuppression
+genonnx:
+  - model_name: nonmaxsuppression_fp32_dyn.onnx
+    node_param:
+      inputs:
+        [
+          "boxes",
+          "scores",
+          "max_output_boxes_per_class",
+          "iou_threshold",
+          "score_threshold",
+        ]
+      outputs: ["selected_indices"]
+      attributes:
+        center_point_box: 0
+    graph_param:
+      inputs:
+        - name: boxes
+          data_type: 1
+          dims: [None, None, 4]
+        - name: scores
+          data_type: 1
+          dims: [None, None, None]
+      outputs:
+        - name: selected_indices
+          data_type: 7
+          dims: [None, 3]
+      initializer:
+        - name: max_output_boxes_per_class
+          data_type: 7
+          dims: [1]
+          value: 0
+        - name: iou_threshold
+          data_type: 1
+          dims: [1]
+          value: 0.5
+        - name: score_threshold
+          data_type: 1
+          dims: [1]
+          value: 0.6
+  - model_name: nonmaxsuppression_fp32_fix.onnx
+    node_param:
+      inputs:
+        [
+          "boxes",
+          "scores",
+          "max_output_boxes_per_class",
+          "iou_threshold",
+          "score_threshold",
+        ]
+      outputs: ["selected_indices"]
+      attributes:
+        center_point_box: 0
+    graph_param:
+      inputs:
+        - name: boxes
+          data_type: 1
+          dims: [3, 2, 4]
+        - name: scores
+          data_type: 1
+          dims: [3, 2, 2]
+      outputs:
+        - name: selected_indices
+          data_type: 7
+          dims: [-1, 3]
+      initializer:
+        - name: max_output_boxes_per_class
+          data_type: 7
+          dims: [1]
+          value: 0
+        - name: iou_threshold
+          data_type: 1
+          dims: [1]
+          value: 0.5
+        - name: score_threshold
+          data_type: 1
+          dims: [1]
+          value: 0.6
+gengold:
+  - gold_name: nonmaxsuppression_fp32_dyn_gold_1
+    in_model: nonmaxsuppression_fp32_dyn.onnx
+    input_dtypes: [1, 1]
+    input_shapes: [[128, 128, 4], [128, 128, 128]]
+  - gold_name: nonmaxsuppression_fp32_fix_gold_1
+    in_model: nonmaxsuppression_fp32_fix.onnx
+    input_dtypes: [1, 1]
+    input_shapes: [[3, 2, 4], [3, 2, 2]]
+convert:
+  - out_model: nonmaxsuppression_fp32_dyn_2_dyn.ms
+    in_model: nonmaxsuppression_fp32_dyn.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: nonmaxsuppression_fp32_dyn_2_fix.ms
+    in_model: nonmaxsuppression_fp32_dyn.onnx
+    input_shapes: boxes:128,128,4;scores:128,128,128
+    fp16: off
+  - out_model: nonmaxsuppression_fp32_fix_2_fix.ms
+    in_model: nonmaxsuppression_fp32_fix.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: nonmaxsuppression_fp16_dyn_2_dyn.ms
+    in_model: nonmaxsuppression_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+  - out_model: nonmaxsuppression_fp16_dyn_2_fix.ms
+    in_model: nonmaxsuppression_fp32_dyn.onnx
+    input_shapes: boxes:128,128,4;scores:128,128,128
+    fp16: on
+  - out_model: nonmaxsuppression_fp16_fix_2_fix.ms
+    in_model: nonmaxsuppression_fp32_fix.onnx
+    input_shapes: None
+    fp16: on
+run:
+  - in_model: nonmaxsuppression_fp32_dyn_2_dyn.ms
+    gold_in: nonmaxsuppression_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: boxes:128,128,4;scores:128,128,128
+  - in_model: nonmaxsuppression_fp32_dyn_2_fix.ms
+    gold_in: nonmaxsuppression_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: nonmaxsuppression_fp32_fix_2_fix.ms
+    gold_in: nonmaxsuppression_fp32_fix_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: nonmaxsuppression_fp16_dyn_2_dyn.ms
+    gold_in: nonmaxsuppression_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: boxes:128,128,4;scores:128,128,128
+  - in_model: nonmaxsuppression_fp16_dyn_2_fix.ms
+    gold_in: nonmaxsuppression_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: nonmaxsuppression_fp16_fix_2_fix.ms
+    gold_in: nonmaxsuppression_fp32_fix_gold_1
+    dtypes: 1
+    input_shapes: None
+disabled: on

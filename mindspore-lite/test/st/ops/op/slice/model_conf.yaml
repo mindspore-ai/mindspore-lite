@@ -1,0 +1,124 @@
+op_name: Slice
+genonnx:
+  - model_name: slice_fp32_dyn.onnx
+    node_param:
+      inputs: ['X','starts','ends','axes','steps']
+      outputs: ['Y']
+      attributes: None
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [None,None]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [None,None]
+      initializer: 
+        - name: starts
+          data_type: 7
+          dims: [2]
+          value: [1,0]
+        - name: ends
+          data_type: 7
+          dims: [2]
+          value: [2,3]
+        - name: axes
+          data_type: 7
+          dims: [2]
+          value: [0,1]
+        - name: steps
+          data_type: 7
+          dims: [2]
+          value: [1,2]
+  - model_name: slice_fp32_fix.onnx
+    node_param:
+      inputs: ['X','starts','ends','axes','steps']
+      outputs: ['Y']
+      attributes: None
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [2,4]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [1,2]
+      initializer: 
+        - name: starts
+          data_type: 7
+          dims: [2]
+          value: [1,0]
+        - name: ends
+          data_type: 7
+          dims: [2]
+          value: [2,3]
+        - name: axes
+          data_type: 7
+          dims: [2]
+          value: [0,1]
+        - name: steps
+          data_type: 7
+          dims: [2]
+          value: [1,2]
+gengold:
+  - gold_name: slice_fp32_dyn_gold_1
+    in_model: slice_fp32_dyn.onnx
+    input_dtypes: [1]
+    input_shapes: [[2,4]]
+  - gold_name: slice_fp32_fix_gold_1
+    in_model: slice_fp32_fix.onnx
+    input_dtypes: [1]
+    input_shapes: [[2,4]]
+convert:
+  - out_model: slice_fp32_dyn_2_dyn.ms
+    in_model: slice_fp32_dyn.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: slice_fp32_dyn_2_fix.ms
+    in_model: slice_fp32_dyn.onnx
+    input_shapes: X:2,4
+    fp16: off
+  - out_model: slice_fp32_fix_2_fix.ms
+    in_model: slice_fp32_fix.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: slice_fp16_dyn_2_dyn.ms
+    in_model: slice_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+  - out_model: slice_fp16_dyn_2_fix.ms
+    in_model: slice_fp32_dyn.onnx
+    input_shapes: X:2,4
+    fp16: on
+  - out_model: slice_fp16_fix_2_fix.ms
+    in_model: slice_fp32_fix.onnx
+    input_shapes: None
+    fp16: on
+run:
+  - in_model: slice_fp32_dyn_2_dyn.ms
+    gold_in: slice_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: X:128,128
+  - in_model: slice_fp32_dyn_2_fix.ms
+    gold_in: slice_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: slice_fp32_fix_2_fix.ms
+    gold_in: slice_fp32_fix_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: slice_fp16_dyn_2_dyn.ms
+    gold_in: slice_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: X:128,128
+  - in_model: slice_fp16_dyn_2_fix.ms
+    gold_in: slice_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: slice_fp16_fix_2_fix.ms
+    gold_in: slice_fp32_fix_gold_1
+    dtypes: 1
+    input_shapes: None
+    

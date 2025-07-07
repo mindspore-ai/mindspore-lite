@@ -1,0 +1,13 @@
+diff --git a/src/google/protobuf/generated_message_util.cc b/src/google/protobuf/generated_message_util.cc
+index c742fe870..4130bc532 100645
+--- a/src/google/protobuf/generated_message_util.cc
++++ b/src/google/protobuf/generated_message_util.cc
+@@ -68,7 +68,7 @@ void DestroyString(const void* s) {
+   static_cast<const std::string*>(s)->~string();
+ }
+ 
+-ExplicitlyConstructed<std::string> fixed_address_empty_string;
++__attribute__((visibility ("default"))) ExplicitlyConstructed<std::string> fixed_address_empty_string;
+ 
+ 
+ static bool InitProtobufDefaultsImpl() {

@@ -1,0 +1,138 @@
+op_name: BatchNormalization
+genonnx:
+  - model_name: batchnormalization_fp32_dyn.onnx
+    node_param:
+      inputs: ['X','scale','B','input_mean','input_var']
+      # outputs: ['Y','running_mean','running_var']
+      outputs: ['Y']
+      attributes:
+        epsilon: 0.00005
+        momentum: 0.9
+        training_mode: 0
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [None,3,None,None]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [None,3,None,None]
+      initializer:
+        - name: scale
+          data_type: 1
+          dims: [3]
+          value: [1,1,1]
+        - name: B
+          data_type: 1
+          dims: [3]
+          value: [0,0,0]
+        - name: input_mean
+          data_type: 1
+          dims: [3]
+          value: [0,0,0]
+        - name: input_var
+          data_type: 1
+          dims: [3]
+          value: [1,1,1]
+  - model_name: batchnormalization_fp32_fix.onnx
+    node_param:
+      inputs: ['X','scale','B','input_mean','input_var']
+      # outputs: ['Y','running_mean','running_var']
+      outputs: ['Y']
+      attributes:
+        epsilon: 0.00005
+        momentum: 0.9
+        training_mode: 0 #outputs should be 1 when Training_mode = False
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [128, 3, 32, 32]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [128, 3, 32, 32]
+        # - name: running_mean
+        #   data_type: 10
+        #   dims: [2,1]
+        # - name: running_var
+        #   data_type: 10
+        #   dims: [2,1]
+      initializer:
+        - name: scale
+          data_type: 1
+          dims: [3]
+          value: [1,1,1]
+        - name: B
+          data_type: 1
+          dims: [3]
+          value: [0,0,0]
+        - name: input_mean
+          data_type: 1
+          dims: [3]
+          value: [0,0,0]
+        - name: input_var
+          data_type: 1
+          dims: [3]
+          value: [1,1,1]
+gengold:
+  - gold_name: batchnormalization_fp32_dyn_gold_1
+    in_model: batchnormalization_fp32_dyn.onnx
+    input_dtypes: [1]
+    input_shapes: [[64,3,32,32]]
+  - gold_name: batchnormalization_fp32_fix_gold_1
+    in_model: batchnormalization_fp32_fix.onnx
+    input_dtypes: [1]
+    input_shapes: [[128, 3, 32, 32]]
+convert:
+  - out_model: batchnormalization_fp32_dyn_2_dyn.ms
+    in_model: batchnormalization_fp32_dyn.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: batchnormalization_fp32_dyn_2_fix.ms
+    in_model: batchnormalization_fp32_dyn.onnx
+    input_shapes: X:64,3,32,32
+    fp16: off
+  - out_model: batchnormalization_fp32_fix_2_fix.ms
+    in_model: batchnormalization_fp32_fix.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: batchnormalization_fp16_dyn_2_dyn.ms
+    in_model: batchnormalization_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+  - out_model: batchnormalization_fp16_dyn_2_fix.ms
+    in_model: batchnormalization_fp32_dyn.onnx
+    input_shapes: X:64,3,32,32
+    fp16: on
+  - out_model: batchnormalization_fp16_fix_2_fix.ms
+    in_model: batchnormalization_fp32_fix.onnx
+    input_shapes: None
+    fp16: on
+run:
+  - in_model: batchnormalization_fp32_dyn_2_dyn.ms
+    gold_in: batchnormalization_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: X:64,3,32,32
+  - in_model: batchnormalization_fp32_dyn_2_fix.ms
+    gold_in: batchnormalization_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: batchnormalization_fp32_fix_2_fix.ms
+    gold_in: batchnormalization_fp32_fix_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: batchnormalization_fp16_dyn_2_dyn.ms
+    gold_in: batchnormalization_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: X:64,3,32,32
+  - in_model: batchnormalization_fp16_dyn_2_fix.ms
+    gold_in: batchnormalization_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: batchnormalization_fp16_fix_2_fix.ms
+    gold_in: batchnormalization_fp32_fix_gold_1
+    dtypes: 1
+    input_shapes: None
+    

@@ -1,0 +1,13 @@
+diff --git a/src/include/robin_hood.h b/src/include/robin_hood.h
+--- a/src/include/robin_hood.h
++++ b/src/include/robin_hood.h
+@@ -2519,7 +2519,8 @@
+ using unordered_map =
+     detail::Table<sizeof(robin_hood::pair<Key, T>) <= sizeof(size_t) * 6 &&
+                       std::is_nothrow_move_constructible<robin_hood::pair<Key, T>>::value &&
+-                      std::is_nothrow_move_assignable<robin_hood::pair<Key, T>>::value,
++                      std::is_nothrow_move_assignable<robin_hood::pair<Key, T>>::value &&
++                      !std::is_same<Key, std::string>::value,
+                   MaxLoadFactor100, Key, T, Hash, KeyEqual>;
+ 
+ // set

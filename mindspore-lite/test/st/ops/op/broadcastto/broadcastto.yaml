@@ -1,0 +1,84 @@
+op_name: Expand
+genonnx:
+  - model_name: expand_fp32_dyn.onnx
+    node_param:
+      inputs: ["input", "shape"]
+      outputs: ["output"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: input
+          data_type: 1
+          dims: [None, None, None]
+      outputs:
+        - name: output
+          data_type: 1
+          dims: [None, None, None]
+      initializer:
+        - name: shape
+          data_type: 7
+          dims: [3]
+          value: [3, 3, 3]
+
+  - model_name: expand_fp32_fix.onnx
+    node_param:
+      inputs: ["input", "shape"]
+      outputs: ["output"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: input
+          data_type: 1
+          dims: [1, 2, 1]
+      outputs:
+        - name: output
+          data_type: 1
+          dims: [1, 2, 1]
+      initializer:
+        - name: shape
+          data_type: 7
+          dims: [3]
+          value: [2, 2, 2]
+gengold:
+  - gold_name: expand_fp32_dyn_gold_1
+    in_model: expand_fp32_dyn.onnx
+    input_dtypes: [1]
+    input_shapes: [[1, 3, 1]]
+  - gold_name: expand_fp32_fix_gold_1
+    in_model: expand_fp32_fix.onnx
+    input_dtypes: [1]
+    input_shapes: [[1, 2, 1]]
+
+convert:
+  - out_model: expand_fp32_dyn_2_dyn.ms
+    in_model: expand_fp32_dyn.onnx
+    input_shapes: None
+
+  - out_model: expand_fp32_dyn_2_fix.ms
+    in_model: expand_fp32_dyn.onnx
+    input_shapes: input:1,3,1
+
+  - out_model: expand_fp32_fix_2_fix.ms
+    in_model: expand_fp32_fix.onnx
+    input_shapes: None
+  - out_model: expand_fp16_dyn_2_dyn.ms
+    in_model: expand_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+
+run:
+  - in_model: expand_fp32_dyn_2_dyn.ms
+    gold_in: expand_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: expand_fp32_dyn_2_fix.ms
+    gold_in: expand_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: expand_fp32_fix_2_fix.ms
+    gold_in: expand_fp32_fix_gold_1
+    dtypes: 1
+
+  - in_model: expand_fp16_dyn_2_dyn.ms
+    gold_in: expand_fp32_dyn_gold_1
+    dtypes: 1

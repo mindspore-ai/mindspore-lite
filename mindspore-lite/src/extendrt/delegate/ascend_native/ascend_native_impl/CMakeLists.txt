@@ -1,0 +1,25 @@
+## cross compile
+set(CMAKE_CROSSCOMPILING ON)
+set(CMAKE_C_COMPILER clang)
+set(CMAKE_CXX_COMPILER clang++)
+if(DEFINED ENV{MSLITE_ASCEND_TARGET})
+    set(MSLITE_ASCEND_TARGET $ENV{MSLITE_ASCEND_TARGET})
+endif()
+# find ascend native compiler
+find_file(ASCEND_NATIVE clang++ REQUIRED)
+get_filename_component(ASCEND_NATIVE_DIR ${ASCEND_NATIVE} DIRECTORY)
+set(HMMI_LIB_DIR ${ASCEND_NATIVE_DIR}/../lib)
+get_filename_component(HMMI_LIB ${HMMI_LIB_DIR} ABSOLUTE)
+set(CMAKE_CXX_FLAGS "-fPIC -fsycl -fsycl-targets=${MSLITE_ASCEND_TARGET} \
+    -fplugin=${HMMI_LIB}/HmmiTiling.so -D_GLIBCXX_USE_CXX11_ABI=1")
+if(ENABLE_FAST_HASH_TABLE)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DENABLE_FAST_HASH_TABLE=1")
+endif()
+if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+endif()
+
+set(CMAKE_CXX_LINK clang++)
+if(DEFINED SRC_LIST)
+    add_library(ascend_native_kernels_impl SHARED ${SRC_LIST})
+endif()

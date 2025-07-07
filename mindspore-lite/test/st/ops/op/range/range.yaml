@@ -1,0 +1,106 @@
+op_name: Range
+genonnx:
+  - model_name: range_fp32_dyn.onnx
+    node_param:
+      inputs: ["start", "limit", "delta"]
+      outputs: ["output"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: start
+          data_type: 1
+          dims: [1]
+      outputs:
+        - name: output
+          data_type: 1
+          dims: [1]
+      initializer:
+        - name: limit
+          data_type: 1
+          dims: [1]
+          value: [100.0]
+        - name: delta
+          data_type: 1
+          dims: [1]
+          value: [1.0]
+  - model_name: range_fp32_fix.onnx
+    node_param:
+      inputs: ["start", "limit", "delta"]
+      outputs: ["output"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: start
+          data_type: 1
+          dims: [1]
+      outputs:
+        - name: output
+          data_type: 1
+          dims: [1]
+      initializer:
+        - name: limit
+          data_type: 1
+          dims: [1]
+          value: [300.0]
+        - name: delta
+          data_type: 1
+          dims: [1]
+          value: [1.0]
+gengold:
+  - gold_name: range_fp32_dyn_gold_1
+    in_model: range_fp32_dyn.onnx
+    input_dtypes: [1]
+    input_shapes: [[1]]
+  - gold_name: range_fp32_fix_gold_1
+    in_model: range_fp32_fix.onnx
+    input_dtypes: [1]
+    input_shapes: [[1]]
+convert:
+  - out_model: range_fp32_dyn_2_dyn
+    in_model: range_fp32_dyn.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: range_fp32_dyn_2_fix
+    in_model: range_fp32_dyn.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: range_fp32_fix_2_fix
+    in_model: range_fp32_fix.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: range_fp16_dyn_2_dyn
+    in_model: range_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+  - out_model: range_fp16_dyn_2_fix
+    in_model: range_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+  - out_model: range_fp16_fix_2_fix
+    in_model: range_fp32_fix.onnx
+    input_shapes: None
+    fp16: on
+run:
+  - in_model: range_fp32_dyn_2_dyn.ms
+    gold_in: range_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: range_fp32_dyn_2_fix.ms
+    gold_in: range_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: range_fp32_fix_2_fix.ms
+    gold_in: range_fp32_fix_gold_1
+    dtypes: 1
+
+  - in_model: range_fp16_dyn_2_dyn.ms
+    gold_in: range_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: range_fp16_dyn_2_fix.ms
+    gold_in: range_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: range_fp16_fix_2_fix.ms
+    gold_in: range_fp32_fix_gold_1
+    dtypes: 1

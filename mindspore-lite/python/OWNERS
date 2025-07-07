@@ -1,0 +1,12 @@
+approvers:
+- jjfeing
+- YeFeng_24
+- fatmouse007fatmouse007
+- xu_anyue
+- jianghui58
+
+reviewers:
+- ZhangZGC
+
+options:
+  no_parent_owners: true

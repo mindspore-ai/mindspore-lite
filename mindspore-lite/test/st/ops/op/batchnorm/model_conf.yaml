@@ -1,0 +1,102 @@
+op_name: BatchNormalization #infer batchnorm
+genonnx:
+  - model_name: batchNormalization_fp32_dyn.onnx
+    node_param:
+      inputs: ["X", "scale", "B", "input_mean", "input_var"]
+      outputs: ["Y"]
+      attributes:
+        momentum: 0.5
+        training_mode: 0
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [None, 3, 32, 32]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [None, 3, 32, 32]
+      initializer:
+        - name: scale
+          data_type: 1
+          dims: [3]
+          value: [1, 1, 1]
+        - name: B
+          data_type: 1
+          dims: [3]
+          value: [0, 0, 0]
+        - name: input_mean
+          data_type: 1
+          dims: [3]
+          value: [0, 0, 0]
+        - name: input_var
+          data_type: 1
+          dims: [3]
+          value: [1, 1, 1]
+
+  - model_name: batchNormalization_fp32_fix.onnx
+    node_param:
+      inputs: ["X", "scale", "B", "input_mean", "input_var"]
+      outputs: ["Y"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [128, 3, 32, 32]
+      outputs:
+        - name: Y
+          data_type: 1
+          dims: [128, 3, 32, 32]
+      initializer:
+        - name: scale
+          data_type: 1
+          dims: [3]
+          value: [1, 1, 1]
+        - name: B
+          data_type: 1
+          dims: [3]
+          value: [0, 0, 0]
+        - name: input_mean
+          data_type: 1
+          dims: [3]
+          value: [0, 0, 0]
+        - name: input_var
+          data_type: 1
+          dims: [3]
+          value: [1, 1, 1]
+
+gengold:
+  - gold_name: batchNormalization_fp32_dyn_gold_1
+    in_model: batchNormalization_fp32_dyn.onnx
+    input_dtypes: [1]
+    input_shapes: [[64, 3, 32, 32]]
+  - gold_name: batchNormalization_fp32_fix_gold_1
+    in_model: batchNormalization_fp32_fix.onnx
+    input_dtypes: [1]
+    input_shapes: [[128, 3, 32, 32]]
+
+convert:
+  - out_model: batchNormalization_fp32_dyn_2_dyn.ms
+    in_model: batchNormalization_fp32_dyn.onnx
+    input_shapes: None
+  - out_model: batchNormalization_fp32_dyn_2_fix.ms
+    in_model: batchNormalization_fp32_dyn.onnx
+    input_shapes: X:64,3,32,32
+  - out_model: batchNormalization_fp32_fix_2_fix.ms
+    in_model: batchNormalization_fp32_fix.onnx
+    input_shapes: None
+
+run:
+  - in_model: batchNormalization_fp32_dyn_2_dyn.ms
+    gold_in: batchNormalization_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: X:64,3,32,32
+  - in_model: batchNormalization_fp32_dyn_2_fix.ms
+    gold_in: batchNormalization_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: batchNormalization_fp32_fix_2_fix.ms
+    gold_in: batchNormalization_fp32_fix_gold_1
+    dtypes: 1
+    input_shapes: None

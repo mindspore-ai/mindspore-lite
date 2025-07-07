@@ -1,0 +1,98 @@
+op_name: GreaterOrEqual
+genonnx:
+  - model_name: greaterorequal_fp32_dyn.onnx
+    node_param:
+      inputs: ["X", "Y"]
+      outputs: ["Z"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [None, None]
+        - name: Y
+          data_type: 1
+          dims: [None, None]
+      outputs:
+        - name: Z
+          data_type: 9
+          dims: [None, None]
+      initializer: None
+  - model_name: greaterorequal_fp32_fix.onnx
+    node_param:
+      inputs: ["X", "Y"]
+      outputs: ["Z"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: X
+          data_type: 1
+          dims: [256, 256]
+        - name: Y
+          data_type: 1
+          dims: [256, 256]
+      outputs:
+        - name: Z
+          data_type: 9
+          dims: [256, 256]
+      initializer: None
+gengold:
+  - gold_name: greaterorequal_fp32_dyn_gold_1
+    in_model: greaterorequal_fp32_dyn.onnx
+    input_dtypes: [1, 1]
+    input_shapes: [[128, 128], [128, 128]]
+  - gold_name: greaterorequal_fp32_fix_gold_1
+    in_model: greaterorequal_fp32_fix.onnx
+    input_dtypes: [1, 1]
+    input_shapes: [[256, 256], [256, 256]]
+convert:
+  - out_model: greaterorequal_fp32_dyn_2_dyn.ms
+    in_model: greaterorequal_fp32_dyn.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: greaterorequal_fp32_dyn_2_fix.ms
+    in_model: greaterorequal_fp32_dyn.onnx
+    input_shapes: X:128,128;Y:128,128
+    fp16: off
+  - out_model: greaterorequal_fp32_fix_2_fix.ms
+    in_model: greaterorequal_fp32_fix.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: greaterorequal_fp16_dyn_2_dyn.ms
+    in_model: greaterorequal_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+  - out_model: greaterorequal_fp16_dyn_2_fix.ms
+    in_model: greaterorequal_fp32_dyn.onnx
+    input_shapes: X:128,128;Y:128,128
+    fp16: on
+  - out_model: greaterorequal_fp16_fix_2_fix.ms
+    in_model: greaterorequal_fp32_fix.onnx
+    input_shapes: None
+    fp16: on
+run:
+  - in_model: greaterorequal_fp32_dyn_2_dyn.ms
+    gold_in: greaterorequal_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: X:128,128;Y:128,128
+  - in_model: greaterorequal_fp32_dyn_2_fix.ms
+    gold_in: greaterorequal_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: greaterorequal_fp32_fix_2_fix.ms
+    gold_in: greaterorequal_fp32_fix_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: greaterorequal_fp16_dyn_2_dyn.ms
+    gold_in: greaterorequal_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: X:128,128;Y:128,128
+  - in_model: greaterorequal_fp16_dyn_2_fix.ms
+    gold_in: greaterorequal_fp32_dyn_gold_1
+    dtypes: 1
+    input_shapes: None
+  - in_model: greaterorequal_fp16_fix_2_fix.ms
+    gold_in: greaterorequal_fp32_fix_gold_1
+    dtypes: 1
+    input_shapes: None
+disabled: on

@@ -1,0 +1,107 @@
+op_name: Where
+genonnx:
+  - model_name: where_fp32_dyn.onnx
+    node_param:
+      inputs: ["condition", "X", "Y"]
+      outputs: ["output"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: condition
+          data_type: 9
+          dims: [None, None]
+        - name: X
+          data_type: 10
+          dims: [None, None]
+        - name: Y
+          data_type: 10
+          dims: [None, None]
+      outputs:
+        - name: output
+          data_type: 10
+          dims: [None, None]
+      initializer: None
+  - model_name: where_fp32_fix.onnx
+    node_param:
+      inputs: ["condition", "X", "Y"]
+      outputs: ["output"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: condition
+          data_type: 9
+          dims: [256, 256]
+        - name: X
+          data_type: 10
+          dims: [1, 256]
+        - name: Y
+          data_type: 10
+          dims: [256, 256]
+      outputs:
+        - name: output
+          data_type: 10
+          dims: [256, 256]
+      initializer: None
+
+gengold:
+  - gold_name: where_fp32_dyn_gold_1
+    in_model: where_fp32_dyn.onnx
+    input_dtypes: [9, 10, 10]
+    input_shapes: [[256, 256], [256, 256], [256, 256]]
+  - gold_name: where_fp32_fix_gold_1
+    in_model: where_fp32_fix.onnx
+    input_dtypes: [9, 10, 10]
+    input_shapes: [[256, 256], [1, 256], [256, 256]]
+
+convert:
+  - out_model: where_fp32_dyn_2_dyn.ms
+    in_model: where_fp32_dyn.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: where_fp32_dyn_2_fix.ms
+    in_model: where_fp32_dyn.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: where_fp32_fix_2_fix.ms
+    in_model: where_fp32_fix.onnx
+    input_shapes: None
+    fp16: off
+  - out_model: where_fp16_dyn_2_dyn.ms
+    in_model: where_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+  - out_model: where_fp16_dyn_2_fix.ms
+    in_model: where_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+  - out_model: where_fp16_fix_2_fix.ms
+    in_model: where_fp32_fix.onnx
+    input_shapes: None
+    fp16: on
+
+run:
+  - in_model: where_fp32_dyn_2_dyn.ms
+    gold_in: where_fp32_dyn_gold_1
+    dtypes: 10
+
+  - in_model: where_fp32_dyn_2_fix.ms
+    gold_in: where_fp32_dyn_gold_1
+    dtypes: 10
+
+  - in_model: where_fp32_fix_2_fix.ms
+    gold_in: where_fp32_fix_gold_1
+    dtypes: 10
+    disabled: on
+
+  - in_model: where_fp16_dyn_2_dyn.ms
+    gold_in: where_fp32_dyn_gold_1
+    dtypes: 10
+
+  - in_model: where_fp16_dyn_2_fix.ms
+    gold_in: where_fp32_dyn_gold_1
+    dtypes: 10
+
+  - in_model: where_fp16_fix_2_fix.ms
+    gold_in: where_fp32_fix_gold_1
+    dtypes: 10
+    disabled: on

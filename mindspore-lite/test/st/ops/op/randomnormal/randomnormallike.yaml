@@ -1,0 +1,78 @@
+op_name: RandomNormalLike
+genonnx:
+  - model_name: randomnromallike_fp32_dyn.onnx
+    node_param:
+      inputs: ["input"]
+      outputs: ["output"]
+      attributes:
+        mean: 0.0
+        scale: 1.0
+        seed: 42.0
+    graph_param:
+      inputs:
+        - name: input
+          data_type: 1
+          dims: [None, None, None]
+      outputs:
+        - name: output
+          data_type: 1
+          dims: [None, None, None]
+      initializer: None
+  - model_name: randomnromallike_fp32_fix.onnx
+    node_param:
+      inputs: ["input"]
+      outputs: ["output"]
+      attributes: None
+    graph_param:
+      inputs:
+        - name: input
+          data_type: 1
+          dims: [3, 3]
+      outputs:
+        - name: output
+          data_type: 1
+          dims: [3, 3]
+      initializer: None
+
+gengold:
+  - gold_name: randomnromallike_fp32_dyn_gold_1
+    in_model: randomnromallike_fp32_dyn.onnx
+    input_dtypes: [1]
+    input_shapes: [[9, 9, 9]]
+  - gold_name: randomnromallike_fp32_fix_gold_1
+    in_model: randomnromallike_fp32_fix.onnx
+    input_dtypes: [1]
+    input_shapes: [[3, 3]]
+
+convert:
+  - out_model: randomnromallike_fp32_dyn_2_dyn
+    in_model: randomnromallike_fp32_dyn.onnx
+    input_shapes: None
+  - out_model: randomnromallike_fp32_dyn_2_fix
+    in_model: randomnromallike_fp32_dyn.onnx
+    input_shapes: input:9,9,9
+  - out_model: randomnromallike_fp32_fix_2_fix
+    in_model: randomnromallike_fp32_fix.onnx
+    input_shapes: None
+  - out_model: randomnromallike_fp16_dyn_2_dyn
+    in_model: randomnromallike_fp32_dyn.onnx
+    input_shapes: None
+    fp16: on
+
+run:
+  - in_model: randomnromallike_fp32_dyn_2_dyn.ms
+    gold_in: randomnromallike_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: randomnromallike_fp32_dyn_2_fix.ms
+    gold_in: randomnromallike_fp32_dyn_gold_1
+    dtypes: 1
+
+  - in_model: randomnromallike_fp32_fix_2_fix.ms
+    gold_in: randomnromallike_fp32_fix_gold_1
+    dtypes: 1
+    disabled: on
+
+  - in_model: randomnromallike_fp16_dyn_2_dyn.ms
+    gold_in: randomnromallike_fp32_dyn_gold_1
+    dtypes: 1

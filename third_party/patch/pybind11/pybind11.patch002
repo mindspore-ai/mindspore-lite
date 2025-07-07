@@ -1,0 +1,34 @@
+diff --git a/include/pybind11/pytypes.h b/include/pybind11/pytypes.h
+index f26c307a..bdea54ff 100644
+--- a/include/pybind11/pytypes.h
++++ b/include/pybind11/pytypes.h
+@@ -1423,9 +1423,9 @@ public:
+     PYBIND11_OBJECT_CVT(Name, Parent, CheckFun, ConvertFun)                                       \
+     Name() = default;
+ 
+-#define PYBIND11_OBJECT_CHECK_FAILED(Name, o_ptr)                                                 \
++#define PYBIND11_OBJECT_CHECK_FAILED(Name, o)                                                     \
+     ::pybind11::type_error("Object of type '"                                                     \
+-                           + ::pybind11::detail::get_fully_qualified_tp_name(Py_TYPE(o_ptr))      \
++                           + ::pybind11::detail::get_fully_qualified_tp_name(Py_TYPE(o.ptr()))    \
+                            + "' is not an instance of '" #Name "'")
+ 
+ #define PYBIND11_OBJECT(Name, Parent, CheckFun)                                                   \
+@@ -1433,13 +1433,13 @@ public:
+     /* This is deliberately not 'explicit' to allow implicit conversion from object: */           \
+     /* NOLINTNEXTLINE(google-explicit-constructor) */                                             \
+     Name(const object &o) : Parent(o) {                                                           \
+-        if (m_ptr && !check_(m_ptr))                                                              \
+-            throw PYBIND11_OBJECT_CHECK_FAILED(Name, m_ptr);                                      \
++        if (o && !check_(o))                                                                      \
++            throw PYBIND11_OBJECT_CHECK_FAILED(Name, o);                                          \
+     }                                                                                             \
+     /* NOLINTNEXTLINE(google-explicit-constructor) */                                             \
+     Name(object &&o) : Parent(std::move(o)) {                                                     \
+-        if (m_ptr && !check_(m_ptr))                                                              \
+-            throw PYBIND11_OBJECT_CHECK_FAILED(Name, m_ptr);                                      \
++        if (o && !check_(o))                                                                      \
++            throw PYBIND11_OBJECT_CHECK_FAILED(Name, o);                                          \
+     }
+ 
+ #define PYBIND11_OBJECT_DEFAULT(Name, Parent, CheckFun)                                           \

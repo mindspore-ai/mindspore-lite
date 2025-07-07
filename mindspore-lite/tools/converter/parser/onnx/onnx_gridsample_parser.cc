@@ -1,0 +1,53 @@
+/**
+ * Copyright 2023 Huawei Technologies Co., Ltd
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "tools/converter/parser/onnx/onnx_gridsample_parser.h"
+#include <memory>
+#include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
+#include "nnacl/op_base.h"
+#include "mindspore/ops/op_def/op_enum.h"
+
+namespace mindspore {
+namespace lite {
+PrimitiveCPtr OnnxGridSampleParser::Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) {
+  auto prim = std::make_unique<ops::GridSampler2D>();
+  MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
+  int64_t interpolation_mode = 0;
+  int64_t padding_mode = 0;
+  bool align_corners = false;
+  for (const auto &onnx_node_attr : onnx_node.attribute()) {
+    if (onnx_node_attr.name() == "mode") {
+      if (onnx_node_attr.s() == "bicubic") {
+        interpolation_mode = ops::StringToEnumImpl(prim->name(), "interpolation_mode", "bicubic2d");
+      } else {
+        interpolation_mode = ops::StringToEnumImpl(prim->name(), "interpolation_mode", onnx_node_attr.s());
+      }
+    } else if (onnx_node_attr.name() == "padding_mode") {
+      padding_mode = ops::StringToEnumImpl(prim->name(), "padding_mode", onnx_node_attr.s());
+    } else if (onnx_node_attr.name() == "align_corners") {
+      align_corners = static_cast<bool>(onnx_node_attr.i());
+    }
+  }
+
+  prim->set_interpolation_mode(interpolation_mode);
+  prim->set_padding_mode(padding_mode);
+  prim->set_align_corners(align_corners);
+  return prim->GetPrim();
+}
+
+OnnxNodeRegistrar g_onnxGridSampleParser("GridSample", new OnnxGridSampleParser());
+}  // namespace lite
+}  // namespace mindspore
