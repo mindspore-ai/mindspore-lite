@@ -227,7 +227,7 @@ void ModelPyBind(const py::module &m) {
          [](Model &model, const std::string &tensor_name) { return model.GetOutputByTensorName(tensor_name); });
 }
 
-#ifdef PARALLEL_INFERENCE
+#ifdef ENABLE_CLOUD_INFERENCE
 std::vector<MSTensorPtr> PyModelParallelRunnerPredict(ModelParallelRunner *runner,
                                                       const std::vector<MSTensorPtr> &inputs_ptr,
                                                       const std::vector<MSTensorPtr> &outputs_ptr,
@@ -266,7 +266,7 @@ std::vector<MSTensorPtr> PyModelParallelRunnerGetOutputs(ModelParallelRunner *ru
 #endif
 
 void ModelParallelRunnerPyBind(const py::module &m) {
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
   (void)py::class_<RunnerConfig, std::shared_ptr<RunnerConfig>>(m, "RunnerConfigBind")
     .def(py::init<>())
     .def("set_config_info", py::overload_cast<const std::string &, const std::map<std::string, std::string> &>(

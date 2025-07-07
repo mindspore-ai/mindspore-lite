@@ -759,7 +759,7 @@ int InsertQuantNodeManager::CalculateScaleZPNode(const FuncGraphPtr &func_graph,
       scales.push_back(static_cast<float16>(input_quant_params.at(i).scale * input_quant_params.at(i).varCorr));
       zps.push_back(static_cast<float16>(-input_quant_params.at(i).zeroPoint +
                                          input_quant_params.at(i).meanCorr /
-                                           (input_quant_params.at(i).scale * input_quant_params.at(i).varCorr)));
+                                         (input_quant_params.at(i).scale * input_quant_params.at(i).varCorr)));
     }
     *scales_node = opt::BuildFloat16VecParameterNode(func_graph, scales, input_node->fullname_with_scope() + "-scales");
     *zps_node = opt::BuildFloat16VecParameterNode(func_graph, zps, input_node->fullname_with_scope() + "-zps");
@@ -770,7 +770,7 @@ int InsertQuantNodeManager::CalculateScaleZPNode(const FuncGraphPtr &func_graph,
       scales.push_back(static_cast<float>(input_quant_params.at(i).scale * input_quant_params.at(i).varCorr));
       zps.push_back(static_cast<float>(-input_quant_params.at(i).zeroPoint +
                                        input_quant_params.at(i).meanCorr /
-                                         (input_quant_params.at(i).scale * input_quant_params.at(i).varCorr)));
+                                       (input_quant_params.at(i).scale * input_quant_params.at(i).varCorr)));
     }
     *scales_node = opt::BuildFloatVecParameterNode(func_graph, scales, input_node->fullname_with_scope() + "-scales");
     *zps_node = opt::BuildFloatVecParameterNode(func_graph, zps, input_node->fullname_with_scope() + "-zps");

@@ -21,7 +21,7 @@ endif()
 
 if(CMAKE_BUILD_TYPE)
     if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
-    message("build release")
+        message("build release")
         set(CMAKE_CXX_VISIBILITY_PRESET hidden)
         set(CMAKE_C_VISIBILITY_PRESET hidden)
     endif()
@@ -181,9 +181,9 @@ else()
     target_link_libraries(mindspore-lite-jni ${LITE_SO_NAME})
     if(USE_GLOG)
         find_library(GLOG_LIB
-        NAMES mindspore_glog libmindspore_glog.so.0
-        PATHS ${PLATFORM_DIR}
-        )
+                NAMES mindspore_glog libmindspore_glog.so.0
+                PATHS ${PLATFORM_DIR}
+                )
         if(GLOG_LIB)
             message("Found glog lib :${GLOG_LIB}")
         else()
@@ -200,7 +200,6 @@ if(SUPPORT_TRAIN)
             )
 
     if(USE_GLOG)
-
         set_property(SOURCE ${CCSRC_SRC} PROPERTY COMPILE_DEFINITIONS
                 LOG_HDR_FILE_REL_PATH="mindspore-lite/../mindspore/mindspore/core/include/utils/log_adapter.h"
                 SUBMODULE_ID=mindspore::SubModuleId::SM_LITE)

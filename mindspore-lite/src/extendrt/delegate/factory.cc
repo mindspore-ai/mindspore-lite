@@ -15,10 +15,8 @@
  */
 
 #include "src/extendrt/delegate/factory.h"
-#include "src/extendrt/delegate/type.h"
 
 namespace mindspore {
-using mindspore::ExtendDelegate;
 
 template <typename T>
 DelegateRegistry<T> &DelegateRegistry<T>::GetInstance() {
@@ -64,7 +62,6 @@ T DelegateRegistry<T>::GetDelegate(const mindspore::DeviceType &device_type, con
   return (*(creator_it->second))(ctx, config_infos);
 }
 
-template class DelegateRegistry<ExtendDelegate *>;
 template class DelegateRegistry<std::shared_ptr<LiteGraphExecutor>>;
 
 }  // namespace mindspore

@@ -20,7 +20,7 @@
 #include "nnacl/kernel/matmul_base.h"
 #include "nnacl/cxx_utils.h"
 #include "src/litert/pack_weight_manager.h"
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
 #include "thread/parallel_thread_pool_manager.h"
 #endif
 
@@ -60,7 +60,7 @@ int MatmulKernel::ReSize() {
   MatmulStruct *matmul = reinterpret_cast<MatmulStruct *>(kernel_);
 
   matmul->model_thread_nr_ = kernel_->thread_nr_;
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
   auto num = ParallelThreadPoolManager::GetInstance()->GetThreadPoolSize(ms_context_->thread_pool_);
   matmul->model_thread_nr_ = (num != -1) ? (num) : (kernel_->thread_nr_);
 #endif

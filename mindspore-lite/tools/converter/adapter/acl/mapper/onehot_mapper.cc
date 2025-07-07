@@ -29,8 +29,7 @@ namespace lite {
 namespace {
 STATUS GetAttrAxis(const AnfNodePtr &cnode, int64_t *result_axis) {
   MS_CHECK_TRUE_RET(cnode != nullptr, RET_NULL_PTR);
-  MS_CHECK_TRUE_RET(cnode->cast<CNodePtr>() != nullptr, RET_NULL_PTR);
-  MS_CHECK_TRUE_RET(cnode->cast<CNodePtr>()->inputs().size() > 0, RET_NULL_PTR);
+
   auto onehot_node = ops::GetOperator<ops::OneHot>(cnode->cast<CNodePtr>()->input(0));
   MS_CHECK_TRUE_RET(onehot_node != nullptr, RET_ERROR);
 

@@ -64,6 +64,7 @@ class InferSession : public std::enable_shared_from_this<InferSession> {
   ///
   /// \param[in] model_data Define the buffer read from a model file.
   /// \param[in] data_size Define bytes number of model buffer.
+  ///
   /// \return Status.
   virtual Status CompileGraph(const void *model_data, size_t data_size, uint32_t *graph_id) {
     (void)model_data;
@@ -78,8 +79,8 @@ class InferSession : public std::enable_shared_from_this<InferSession> {
   /// \param[out] outputs Which is a pointer to a vector. The model outputs are filled in the container in sequence.
   ///
   /// \return Status.
-  virtual Status RunGraph(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
-                          std::vector<tensor::Tensor> *outputs) = 0;
+  virtual Status RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                          std::vector<mindspore::MSTensor> *outputs) = 0;
 
   /// \brief Run Model Graph to inference.
   ///
@@ -89,8 +90,8 @@ class InferSession : public std::enable_shared_from_this<InferSession> {
   /// \param[in] after CallBack after predict.
   ///
   /// \return Status.
-  virtual Status RunGraph(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
-                          std::vector<tensor::Tensor> *outputs, const MSKernelCallBack &before,
+  virtual Status RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                          std::vector<mindspore::MSTensor> *outputs, const MSKernelCallBack &before,
                           const MSKernelCallBack &after) = 0;
 
   /// \brief Resize model inputs shape and memory from specified dims.
@@ -99,7 +100,7 @@ class InferSession : public std::enable_shared_from_this<InferSession> {
   /// \param[in] dims Define dst resize shapes.
   ///
   /// \return Status.
-  virtual Status Resize(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
+  virtual Status Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                         const std::vector<std::vector<int64_t>> &dims) {
     (void)graph_id;
     (void)inputs;
@@ -137,7 +138,7 @@ class InferSession : public std::enable_shared_from_this<InferSession> {
   /// \return The input tensor with the given name, if the name is not found, an invalid tensor is returned.
   virtual MutableTensorImplPtr GetInputByTensorName(uint32_t graph_id, const std::string &name) = 0;
 
-  virtual Status UpdateWeights(const std::vector<std::vector<std::shared_ptr<tensor::Tensor>>> &weights) {
+  virtual Status UpdateWeights(const std::vector<std::vector<std::shared_ptr<mindspore::MSTensor>>> &weights) {
     return kLiteError;
   }
 

@@ -57,10 +57,6 @@ else()
     endif()
 endif()
 
-if(MSLITE_EXPORT_COMPUTE_IR)
-    set(BENCHMARK_LINK_LIB ${BENCHMARK_LINK_LIB} mindspore_lite_drawer)
-endif()
-
 include_directories(${OPS_DIR}/kernel/cpu)
 set(COMMON_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/../common/flag_parser.cc
@@ -69,13 +65,13 @@ set(COMMON_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/../../src/common/file_utils.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../../src/common/utils.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../../src/common/config_file.cc
-        ${OPS_DIR}/kernel/cpu/nnacl/nnacl_common.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../ops/kernel/cpu/nnacl/nnacl_common.c
         )
 
-include_directories(${TOP_DIR}/mindspore-lite)
-include_directories(${TOP_DIR}/mindspore-lite/mindspore/mindspore/core/include)
-include_directories(${TOP_DIR}/mindspore-lite/mindspore/mindspore/core/mindrt)
-include_directories(${TOP_DIR}/mindspore-lite/mindspore/mindspore/core/mindrt/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../lite)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../core/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../core/mindrt)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../core/mindrt/include)
 
 if(MSLITE_GPU_BACKEND STREQUAL opencl)
     if(ANDROID_NDK_TOOLCHAIN_INCLUDED)
@@ -99,9 +95,11 @@ set(BENCHMARK_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_base.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_unified_api.cc)
 
-set_property(SOURCE ${BENCHMARK_SRC} PROPERTY COMPILE_DEFINITIONS
-        LOG_HDR_FILE_REL_PATH="mindspore-lite/../mindspore/mindspore/core/include/utils/log_adapter.h"
-        SUBMODULE_ID=mindspore::SubModuleId::SM_LITE)
+if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
+    set_property(SOURCE ${BENCHMARK_SRC} PROPERTY COMPILE_DEFINITIONS
+            LOG_HDR_FILE_REL_PATH="mindspore-lite/../mindspore/mindspore/core/include/utils/log_adapter.h"
+            SUBMODULE_ID=mindspore::SubModuleId::SM_LITE)
+endif()
 
 add_executable(benchmark
         ${BENCHMARK_SRC}

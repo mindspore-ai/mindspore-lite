@@ -21,11 +21,12 @@
 #include <memory>
 #include "include/api/graph.h"
 #include "include/api/types.h"
-#include "include/dataset/execute.h"
 #include "ir/func_graph.h"
 
 namespace mindspore {
-
+namespace dataset {
+class Execute;
+}
 class Graph::GraphData {
  public:
   GraphData();

@@ -40,7 +40,6 @@ int PadInt8TestInit1(std::vector<Tensor *> *inputs_, std::vector<Tensor *> *outp
   LiteQuantParam *in_quant_arg = new LiteQuantParam();
   in_quant_arg->zeroPoint = 10, in_quant_arg->scale = 0.31228156;
   in_t->AddQuantParam(*in_quant_arg);
-  delete in_quant_arg;
   inputs_->push_back(in_t);
 
   Tensor *in_t_pad = new Tensor(kNumberTypeInt8, {1}, mindspore::NHWC, lite::Category::VAR);
@@ -52,7 +51,6 @@ int PadInt8TestInit1(std::vector<Tensor *> *inputs_, std::vector<Tensor *> *outp
   LiteQuantParam *out_quant_arg = new LiteQuantParam();
   out_quant_arg->zeroPoint = 10, out_quant_arg->scale = 0.31228156;
   out_t->AddQuantParam(*out_quant_arg);
-  delete out_quant_arg;
   outputs_->push_back(out_t);
 
   *correct = reinterpret_cast<int8_t *>(malloc(out_t->ElementsNum() * sizeof(int8_t)));
@@ -70,9 +68,7 @@ int PadInt8TestInit1(std::vector<Tensor *> *inputs_, std::vector<Tensor *> *outp
 TEST_F(TestPadInt8, PadInt8Test1) {
   std::vector<lite::Tensor *> inputs_;
   std::vector<lite::Tensor *> outputs_;
-  PadParameter *pad_param = reinterpret_cast<PadParameter *>(malloc(sizeof(PadParameter)));
-  ASSERT_NE(pad_param, nullptr);
-  memset(pad_param, 0, sizeof(PadParameter));
+  auto pad_param = new PadParameter();
   lite::InnerContext *ctx = new lite::InnerContext;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   int8_t *correct;
@@ -84,14 +80,8 @@ TEST_F(TestPadInt8, PadInt8Test1) {
 
   int8_t *output_data = reinterpret_cast<int8_t *>(outputs_[0]->MutableData());
   ASSERT_EQ(0, CompareOutputData(output_data, correct, total_size, 0));
-  for (auto &in_t : inputs_) {
-    delete in_t;
-  }
-  for (auto &out_t : outputs_) {
-    delete out_t;
-  }
+
   delete pad;
-  delete ctx;
   free(correct);
 }
 
@@ -104,7 +94,6 @@ int PadInt8TestInit2(std::vector<Tensor *> *inputs_, std::vector<Tensor *> *outp
   LiteQuantParam *in_quant_arg = new LiteQuantParam();
   in_quant_arg->zeroPoint = 10, in_quant_arg->scale = 0.31228156;
   in_t->AddQuantParam(*in_quant_arg);
-  delete in_quant_arg;
   inputs_->push_back(in_t);
 
   Tensor *in_t_pad = new Tensor(kNumberTypeInt8, {1}, mindspore::NHWC, lite::Category::VAR);
@@ -116,7 +105,6 @@ int PadInt8TestInit2(std::vector<Tensor *> *inputs_, std::vector<Tensor *> *outp
   LiteQuantParam *out_quant_arg = new LiteQuantParam();
   out_quant_arg->zeroPoint = 10, out_quant_arg->scale = 0.31228156;
   out_t->AddQuantParam(*out_quant_arg);
-  delete out_quant_arg;
   outputs_->push_back(out_t);
 
   *correct = reinterpret_cast<int8_t *>(malloc(out_t->ElementsNum() * sizeof(int8_t)));
@@ -136,9 +124,7 @@ int PadInt8TestInit2(std::vector<Tensor *> *inputs_, std::vector<Tensor *> *outp
 TEST_F(TestPadInt8, PadInt8Test2) {
   std::vector<lite::Tensor *> inputs_;
   std::vector<lite::Tensor *> outputs_;
-  PadParameter *pad_param = reinterpret_cast<PadParameter *>(malloc(sizeof(PadParameter)));
-  ASSERT_NE(pad_param, nullptr);
-  memset(pad_param, 0, sizeof(PadParameter));
+  auto pad_param = new PadParameter();
   lite::InnerContext *ctx = new lite::InnerContext;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   int8_t *correct;
@@ -151,14 +137,7 @@ TEST_F(TestPadInt8, PadInt8Test2) {
   int8_t *output_data = reinterpret_cast<int8_t *>(outputs_[0]->MutableData());
   ASSERT_EQ(0, CompareOutputData(output_data, correct, total_size, 0));
 
-  for (auto &in_t : inputs_) {
-    delete in_t;
-  }
-  for (auto &out_t : outputs_) {
-    delete out_t;
-  }
   delete pad;
-  delete ctx;
   free(correct);
 }
 
@@ -171,7 +150,6 @@ int PadInt8TestInit4(std::vector<Tensor *> *inputs_, std::vector<Tensor *> *outp
   LiteQuantParam *in_quant_arg = new LiteQuantParam();
   in_quant_arg->zeroPoint = 10, in_quant_arg->scale = 0.31228156;
   in_t->AddQuantParam(*in_quant_arg);
-  delete in_quant_arg;
   inputs_->push_back(in_t);
 
   Tensor *in_t_pad = new Tensor(kNumberTypeInt8, {1}, mindspore::NHWC, lite::Category::VAR);
@@ -183,7 +161,6 @@ int PadInt8TestInit4(std::vector<Tensor *> *inputs_, std::vector<Tensor *> *outp
   LiteQuantParam *out_quant_arg = new LiteQuantParam();
   out_quant_arg->zeroPoint = 10, out_quant_arg->scale = 0.31228156;
   out_t->AddQuantParam(*out_quant_arg);
-  delete out_quant_arg;
   outputs_->push_back(out_t);
 
   *correct = reinterpret_cast<int8_t *>(malloc(out_t->ElementsNum() * sizeof(int8_t)));
@@ -217,9 +194,7 @@ int PadInt8TestInit4(std::vector<Tensor *> *inputs_, std::vector<Tensor *> *outp
 TEST_F(TestPadInt8, PadInt8TestInit4) {
   std::vector<lite::Tensor *> inputs_;
   std::vector<lite::Tensor *> outputs_;
-  PadParameter *pad_param = reinterpret_cast<PadParameter *>(malloc(sizeof(PadParameter)));
-  ASSERT_NE(pad_param, nullptr);
-  memset(pad_param, 0, sizeof(PadParameter));
+  auto pad_param = new PadParameter();
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
@@ -233,14 +208,7 @@ TEST_F(TestPadInt8, PadInt8TestInit4) {
   int8_t *output_data = reinterpret_cast<int8_t *>(outputs_[0]->MutableData());
   ASSERT_EQ(0, CompareOutputData(output_data, correct, total_size, 0));
 
-  for (auto &in_t : inputs_) {
-    delete in_t;
-  }
-  for (auto &out_t : outputs_) {
-    delete out_t;
-  }
   delete pad;
-  delete ctx;
   free(correct);
 }
 }  // namespace mindspore

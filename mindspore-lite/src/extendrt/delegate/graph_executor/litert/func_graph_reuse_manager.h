@@ -46,10 +46,10 @@ class FuncGraphReuseManager {
                          std::map<std::string, std::map<std::string, std::string>> config_info);
 
   Status GetInOut(std::map<std::string, std::map<std::string, std::string>> config_info,
-                  std::vector<tensor::TensorPtr> *in_tensor, std::vector<tensor::TensorPtr> *out_tensor,
+                  std::vector<MSTensorPtr> *in_tensor, std::vector<MSTensorPtr> *out_tensor,
                   std::vector<std::string> *in_name, std::vector<std::string> *out_name);
   Status StoreInOut(std::map<std::string, std::map<std::string, std::string>> config_info,
-                    std::vector<tensor::TensorPtr> in_tensor, std::vector<tensor::TensorPtr> out_tensor,
+                    std::vector<MSTensorPtr> in_tensor, std::vector<MSTensorPtr> out_tensor,
                     std::vector<std::string> in_name, std::vector<std::string> out_name);
 
   void ReleaseSharedFuncGraph(std::map<std::string, std::map<std::string, std::string>> config_info);
@@ -63,8 +63,8 @@ class FuncGraphReuseManager {
   std::unordered_map<std::string, FuncGraphPtr> all_func_graphs_;
   std::unordered_map<std::string, ModelBufPair> all_fb_model_buf_;
   std::unordered_map<std::string, std::shared_ptr<mindspore::infer::helper::InferHelpers>> all_infer_helpers_;
-  std::unordered_map<std::string, std::vector<tensor::TensorPtr>> all_in_tensors_;
-  std::unordered_map<std::string, std::vector<tensor::TensorPtr>> all_out_tensors_;
+  std::unordered_map<std::string, std::vector<MSTensorPtr>> all_in_tensors_;
+  std::unordered_map<std::string, std::vector<MSTensorPtr>> all_out_tensors_;
   std::unordered_map<std::string, std::vector<std::string>> all_in_names_;
   std::unordered_map<std::string, std::vector<std::string>> all_out_names_;
 };

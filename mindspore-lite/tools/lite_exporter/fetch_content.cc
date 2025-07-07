@@ -325,8 +325,8 @@ int FetchFromDefaultParam(const ParameterPtr &param_node, const converter::FmkTy
   // the const tensor format from onnx/caffe should be nchw in general
   auto const_format = (fmk_type == converter::kFmkTypeMsLite || fmk_type == converter::kFmkTypeTf ||
                        fmk_type == converter::kFmkTypeTflite)
-                        ? NHWC
-                        : NCHW;
+                      ? NHWC
+                      : NCHW;
   data_info->format_ = param_node->has_default() ? const_format : NHWC;
   return RET_OK;
 }

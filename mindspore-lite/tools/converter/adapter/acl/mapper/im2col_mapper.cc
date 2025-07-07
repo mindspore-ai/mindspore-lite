@@ -38,7 +38,6 @@ STATUS Im2ColMapper::Mapper(const CNodePtr &cnode) {
 
   // make dst prim
   auto dst_prim = std::make_shared<acl::Im2col>();
-  CHECK_NULL_RETURN(dst_prim);
   dst_prim->SetAttrs(src_prim->attrs());
   value_node->set_value(dst_prim);
 

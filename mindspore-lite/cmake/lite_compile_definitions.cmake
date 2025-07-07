@@ -27,10 +27,6 @@ if(MSLITE_ENABLE_BFC_MEMORY)
     add_compile_definitions(BFC_MEMORY)
 endif()
 
-if(MSLITE_ENABLE_PARALLEL_INFERENCE)
-    add_compile_definitions(PARALLEL_INFERENCE)
-endif()
-
 if(MSLITE_ENABLE_SHARING_MODEL_WEIGHT)
     add_compile_definitions(SHARING_MODEL_WEIGHT)
 endif()

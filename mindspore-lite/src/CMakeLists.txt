@@ -97,7 +97,8 @@ set(API_SRC ${CXX_API_SRCS} ${C_API_SRCS})
 if(NOT MSLITE_ENABLE_RUNTIME_CONVERT)
     set(API_SRC ${API_SRC} ${CORE_DIR}/utils/status.cc)
 endif()
-if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full")
+if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full" AND NOT
+    (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
     file(GLOB CXX_API_TRAIN_SRCS
             ${CMAKE_CURRENT_SOURCE_DIR}/litert/cxx_api/train/model.cc
             ${CMAKE_CURRENT_SOURCE_DIR}/litert/cxx_api/train/model_impl.cc
@@ -150,13 +151,6 @@ set(LITE_SRC
 
 file(GLOB FORMAT_PASS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/litert/pass/format_pass/*.cc")
 set(LITE_SRC ${LITE_SRC} ${FORMAT_PASS_SRC})
-
-if(NOT ANDROID_NDK_TOOLCHAIN_INCLUDED)
-    set(LITE_SRC
-            ${LITE_SRC}
-            ${CMAKE_CURRENT_SOURCE_DIR}/litert/kernel/ascend/plugin/ascend_kernel_plugin.cc
-            )
-endif()
 
 set(MODEL_LOADER_FRAMEWORK_SRC
         ${MODEL_LOADER_FRAMEWORK_SRC}
@@ -212,7 +206,7 @@ if(MSLITE_ENABLE_RUNTIME_GLOG)
     string(REPLACE "-fno-rtti" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
     if(NOT MSLITE_ENABLE_RUNTIME_CONVERT AND NOT MSLITE_ENABLE_KERNEL_EXECUTOR)
         set(LITE_SRC ${LITE_SRC}
-            ${CORE_DIR}/utils/log_adapter.cc)
+                ${CORE_DIR}/utils/log_adapter.cc)
     endif()
 endif()
 
@@ -274,10 +268,11 @@ if(MSLITE_GPU_BACKEND STREQUAL cuda)
             ${CUDA_RUNTIME_SRC}
             )
 endif()
-if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full")
-  set(TRAIN_SRC_WITH_MD
-          ${CMAKE_CURRENT_SOURCE_DIR}/train/train_loop.cc
-          )
+if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full" AND NOT
+    (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
+    set(TRAIN_SRC_WITH_MD
+            ${CMAKE_CURRENT_SOURCE_DIR}/train/train_loop.cc
+            )
 endif()
 
 set(TRAIN_SRC
@@ -351,18 +346,9 @@ elseif(TARGET_AOS_ARM)
             )
 else()
     set(LITE_SRC ${LITE_SRC}
-        ${CORE_DIR}/mindrt/src/thread/core_affinity.cc
-        ${CORE_DIR}/mindrt/src/thread/threadpool.cc
-        )
-endif()
-
-if(MSLITE_ENABLE_GRAPH_KERNEL)
-    file(GLOB_RECURSE GRAPH_KERNEL_SRC
-        ${TOOLS_DIR}/graph_kernel/common/*.cc
-        ${TOOLS_DIR}/graph_kernel/runtime/*.cc
-        ${OPS_DIR}/kernel/cpu/akg/akg_kernle_loader.cc
-        )
-    set(LITE_SRC ${LITE_SRC} ${GRAPH_KERNEL_SRC})
+            ${CORE_DIR}/mindrt/src/thread/core_affinity.cc
+            ${CORE_DIR}/mindrt/src/thread/threadpool.cc
+            )
 endif()
 
 if(NOT MSLITE_ENABLE_COREML)
@@ -373,9 +359,6 @@ endif()
 add_subdirectory(litert/kernel/cpu)
 add_subdirectory(common)
 
-if(MSLITE_EXPORT_COMPUTE_IR)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/common/draw)
-endif()
 add_library(lite_src_mid OBJECT ${LITE_SRC})
 add_dependencies(lite_src_mid lite_src_common_mid fbs_src fbs_inner_src)
 
@@ -443,16 +426,8 @@ if(MSVC)
     set_target_properties(mindspore-lite_static PROPERTIES PREFIX lib)
 endif()
 
-# if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE)
-# target_link_libraries(mindspore-lite cpu_kernel_mid nnacl_mid cpu_ops_mid mindspore_core mindspore::protobuf)
-# target_link_libraries(mindspore-lite_static cpu_kernel_mid nnacl_mid cpu_ops_mid mindspore_core mindspore::protobuf)
-# else()
 target_link_libraries(mindspore-lite cpu_kernel_mid nnacl_mid cpu_ops_mid)
 target_link_libraries(mindspore-lite_static cpu_kernel_mid nnacl_mid cpu_ops_mid)
-# endif()
-
-# target_link_libraries(mindspore-lite mindspore-extendrt)
-# target_link_libraries(mindspore-lite_static mindspore-extendrt)
 
 if(SUPPORT_TRAIN)
     target_link_libraries(mindspore-lite train_cpu_kernel_mid)
@@ -489,7 +464,8 @@ if(TARGET_OHOS)
     target_link_libraries(mindspore-lite_static hilog_ndk.z.so)
 endif()
 
-if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite")
+if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite" AND NOT
+    (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
     target_link_libraries(mindspore-lite minddata_eager_mid minddata-lite)
     target_link_libraries(mindspore-lite_static minddata_eager_mid)
 endif()
@@ -502,20 +478,22 @@ if(SUPPORT_TRAIN)
   target_link_libraries(mindspore-lite-train lite_src_train_common_mid securec)
   set_target_properties(mindspore-lite-train PROPERTIES OUTPUT_NAME "mindspore-lite-train")
   set_target_properties(mindspore-lite-train PROPERTIES CLEAN_DIRECT_OUTPUT 1)
-  if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full")
-      target_link_libraries(mindspore-lite-train minddata-lite mindspore-lite)
+  if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full" AND NOT
+    (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
+    target_link_libraries(mindspore-lite-train minddata-lite mindspore-lite)
   else()
-      target_link_libraries(mindspore-lite-train mindspore-lite)
+    target_link_libraries(mindspore-lite-train mindspore-lite)
   endif()
 
   add_library(mindspore-lite-train_static STATIC $<TARGET_OBJECTS:lite_train_src_mid>)
   target_link_libraries(mindspore-lite-train_static lite_src_train_common_mid)
   set_target_properties(mindspore-lite-train_static PROPERTIES OUTPUT_NAME "mindspore-lite-train")
   set_target_properties(mindspore-lite-train_static PROPERTIES CLEAN_DIRECT_OUTPUT 1)
-  if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full")
-      target_link_libraries(mindspore-lite-train_static minddata-lite mindspore-lite)
+  if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full" AND NOT
+    (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
+    target_link_libraries(mindspore-lite-train_static minddata-lite mindspore-lite)
   else()
-      target_link_libraries(mindspore-lite-train_static mindspore-lite)
+    target_link_libraries(mindspore-lite-train_static mindspore-lite)
   endif()
 endif()
 
@@ -543,12 +521,12 @@ endif()
 if(MSLITE_ENABLE_RUNTIME_CONVERT)
     target_link_libraries(mindspore-lite
             quantizer_mid fusion_mid proto_mid graph_pass_mid preprocess_mid
-            cpu_kernel_mid ccsrc_src_mid converter_src_mid lite_exporter_mid
+            cpu_kernel_mid converter_src_mid lite_exporter_mid
             config_parser_mid mslite_converter_plugin mindspore_core mindspore_ops coder_mid
             mindir_serializer_mid mindspore::protobuf ${SECUREC_LIBRARY})
     target_link_libraries(mindspore-lite_static
             quantizer_mid fusion_mid proto_mid graph_pass_mid preprocess_mid
-            cpu_kernel_mid ccsrc_src_mid converter_src_mid lite_exporter_mid
+            cpu_kernel_mid converter_src_mid lite_exporter_mid
             config_parser_mid mslite_converter_plugin mindspore_core mindspore_ops coder_mid
             mindir_serializer_mid mindspore::protobuf ${SECUREC_LIBRARY})
     target_link_libraries(mindspore-lite

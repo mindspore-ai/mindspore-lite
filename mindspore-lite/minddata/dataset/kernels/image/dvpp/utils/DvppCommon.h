@@ -94,7 +94,7 @@ const uint32_t MIN_CROP_WIDTH = 10;       // Min width of crop area
 const uint32_t MIN_CROP_HEIGHT = 6;       // Min height of crop area
 const uint8_t YUV_GREYER_VALUE = 128;     // Filling value of the resized YUV image
 
-#define CONVERT_TO_ODD(NUM) (((NUM) % MODULUS_NUM_2 != 0) ? (NUM) : ((NUM)-1))   // Convert the input to odd num
+#define CONVERT_TO_ODD(NUM) (((NUM) % MODULUS_NUM_2 != 0) ? (NUM) : ((NUM)-1))  // Convert the input to odd num
 #define CONVERT_TO_EVEN(NUM) (((NUM) % MODULUS_NUM_2 == 0) ? (NUM) : ((NUM)-1))  // Convert the input to even num
 #define CHECK_ODD(num) ((num) % MODULUS_NUM_2 != 0)
 #define CHECK_EVEN(num) ((num) % MODULUS_NUM_2 == 0)

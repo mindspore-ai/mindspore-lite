@@ -27,7 +27,7 @@
 #include "src/litert/pack_weight_manager.h"
 #include "src/extendrt/numa_adapter.h"
 #include "src/common/common.h"
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
 #include "thread/parallel_thread_pool_manager.h"
 #endif
 #include "src/common/config_file.h"
@@ -53,8 +53,8 @@ int ModelPool::GetDefaultThreadNum(int worker_num) {
   int default_thread_num = -1;
   if (can_use_core_num_ <= kNumPhysicalCoreThreshold) {
     default_thread_num = can_use_core_num_ >= kDefaultWorkerNumPerPhysicalCpu
-                           ? can_use_core_num_ / kDefaultWorkerNumPerPhysicalCpu
-                           : can_use_core_num_;
+                         ? can_use_core_num_ / kDefaultWorkerNumPerPhysicalCpu
+                         : can_use_core_num_;
   } else {
     default_thread_num = kDefaultThreadsNum;
   }
@@ -807,13 +807,9 @@ Status ModelPool::CanUseAllPhysicalResources() {
   size_t percentage;
   auto can_use_cores = ResourceManager::GetInstance()->ParseCpuCoreList(&percentage);
   if (can_use_cores.empty()) {
-    MS_LOG(WARNING) << "parse cpu files failed, | can use core list: " << can_use_cores
-                    << " | percentage: " << percentage;
-    can_use_all_physical_core_ = false;
-    bind_core_available_ = false;
-    all_core_num_ = lite::GetCoreNum();
-    can_use_core_num_ = all_core_num_;
-    return kSuccess;
+    MS_LOG(ERROR) << "parse cpu files failed, | can use core list: " << can_use_cores
+                  << " | percentage: " << percentage;
+    return kLiteError;
   }
   if (percentage == can_use_cores.size()) {
     MS_LOG(INFO) << "percentage: " << percentage << "can_use_cores size: " << can_use_cores.size();

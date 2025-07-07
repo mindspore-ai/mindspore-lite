@@ -41,14 +41,6 @@ else()
             )
 endif()
 
-if(MSLITE_ENABLE_SERVER_INFERENCE)
-    list(APPEND TEST_UT_SRC ${TEST_DIR}/ut/src/api/model_parallel_runner_test.cc)
-endif()
-
-if(MSLITE_ENABLE_SERVER_INFERENCE)
-    list(REMOVE_ITEM TEST_UT_SRC ${TEST_DIR}/st/mindrt_parallel_runtime_test.cc)
-endif()
-
 if(MSLITE_ENABLE_RUNTIME_CONVERT)
     list(APPEND TEST_UT_SRC ${TEST_DIR}/ut/src/runtime/runtime_convert_tests.cc)
 endif()
@@ -146,7 +138,7 @@ if(MSLITE_ENABLE_CONVERTER)
             ${TEST_DIR}/ut/tools/optimizer/graph/*.cc
             )
     endif()
-    if(MSLITE_ENABLE_SERVER_INFERENCE AND NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
+    if(NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
         list(REMOVE_ITEM TEST_CONVERTER_UT_SRC ${TEST_DIR}/st/mindrt_parallel_test.cc)
         list(REMOVE_ITEM TEST_UT_SRC ${TEST_DIR}/st/benchmark_test.cc)
         list(REMOVE_ITEM TEST_CONVERTER_UT_SRC ${TEST_DIR}/st/sub_graph_test.cc)
@@ -191,7 +183,8 @@ target_link_libraries(lite-test gmock_tests)
 
 if(MSLITE_ENABLE_TRAIN)
     target_link_libraries(lite-test mindspore-lite-train)
-    if(NOT MSLITE_MINDDATA_IMPLEMENT STREQUAL "off")
+    if(NOT MSLITE_MINDDATA_IMPLEMENT STREQUAL "off"
+    AND NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
         target_link_libraries(lite-test minddata-lite)
     endif()
 endif()
@@ -238,7 +231,8 @@ if(MSLITE_ENABLE_CONVERTER AND (NOT MSLITE_ENABLE_RUNTIME_CONVERT))
                 quantizer_mid
                 decomposer_mid
                 proto_mid
-                ccsrc_src_mid
+                # ccsrc_src_mid
+                ccsrc_src_new_mid
                 converter_src_mid
                 mindspore::protobuf
                 mindspore::json

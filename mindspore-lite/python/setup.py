@@ -30,12 +30,12 @@ def _read_file(filename):
         return f.read()
 
 
-def is_enable_akg():
-    """check if enable akg"""
-    enable_akg = os.getenv('ENABLE_AKG')
-    if enable_akg is not None and re.match('[Oo][Nn]', enable_akg) is not None:
-        return True
-    return False
+# def is_enable_akg():
+#     """check if enable akg"""
+#     enable_akg = os.getenv('ENABLE_AKG')
+#     if enable_akg is not None and re.match('[Oo][Nn]', enable_akg) is not None:
+#         return True
+#     return False
 
 
 def _get_package_data():
@@ -55,10 +55,10 @@ def _get_package_data():
     pkg_data.extend(custom_ops_data)
     if os.getenv('MSLITE_ENABLE_CLOUD_INFERENCE') == "on":
         pkg_data.append('lite_infer.py')
-    if is_enable_akg():
-        akg_data = ['akg/*.so*', 'akg/*.cuh', 'akg/config/*', 'akg/composite/*', 'akg/include/*', 'akg/include/*/*',
-                    'akg/include/*/*/*', 'akg/include/*/*/*/*']
-        pkg_data.extend(akg_data)
+    # if is_enable_akg():
+    #     akg_data = ['akg/*.so*', 'akg/*.cuh', 'akg/config/*', 'akg/composite/*', 'akg/include/*', 'akg/include/*/*',
+    #                 'akg/include/*/*/*', 'akg/include/*/*/*/*']
+    #     pkg_data.extend(akg_data)
     return pkg_data
 
 

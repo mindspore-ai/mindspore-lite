@@ -30,7 +30,7 @@ STATUS GetParameterDim(const AnfNodePtr &cnode, int64_t *result_dim) {
     MS_LOG(WARNING) << "result dim is nullptr.";
     return RET_NULL_PTR;
   }
-  MS_CHECK_TRUE_RET(cnode->cast<CNodePtr>()->inputs().size() > THIRD_INPUT, RET_NULL_PTR);
+
   auto dim_param = cnode->cast<CNodePtr>()->input(THIRD_INPUT)->cast<ParameterPtr>()->default_param();
   if (dim_param == nullptr) {
     MS_LOG(WARNING) << "dim_param is nullptr.";

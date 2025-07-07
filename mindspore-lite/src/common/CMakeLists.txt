@@ -14,20 +14,13 @@ set(LITE_SRC_COMMON_MID_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/config_infos.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/helper/external_tensor/file_helper.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/helper/external_tensor/memory_helper.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/crypto.cc
         )
 
 if(NOT MSLITE_ENABLE_RUNTIME_CONVERT OR MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
     set(LITE_SRC_COMMON_MID_SRC
             ${LITE_SRC_COMMON_MID_SRC}
-            ${CMAKE_CURRENT_SOURCE_DIR}/config_file.cc
-            )
-endif()
-
-if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
-    set(LITE_SRC_COMMON_MID_SRC
-            ${LITE_SRC_COMMON_MID_SRC}
-            ${CMAKE_CURRENT_SOURCE_DIR}/crypto.cc
-            )
+            ${CMAKE_CURRENT_SOURCE_DIR}/config_file.cc)
 endif()
 
 if(NOT ANDROID_NDK_TOOLCHAIN_INCLUDED)
@@ -60,12 +53,12 @@ if(MSLITE_ENABLE_STRING_KERNEL)
             )
 endif()
 
-if(MSLITE_ENABLE_GRAPH_KERNEL)
-    set(LITE_SRC_COMMON_MID_SRC
-            ${LITE_SRC_COMMON_MID_SRC}
-            ${CMAKE_CURRENT_SOURCE_DIR}/dynamic_library_loader.cc
-            )
-endif()
+#if(MSLITE_ENABLE_GRAPH_KERNEL)
+#    set(LITE_SRC_COMMON_MID_SRC
+#            ${LITE_SRC_COMMON_MID_SRC}
+#            ${CMAKE_CURRENT_SOURCE_DIR}/dynamic_library_loader.cc
+#            )
+#endif()
 
 if(MSVC)
     set(LITE_SRC_COMMON_MID_SRC

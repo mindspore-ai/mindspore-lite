@@ -70,7 +70,7 @@ int InnerContext::CreateThreadPool(bool is_control_flow) {
       actor_thread_num_, inter_op_parallel_num_, thread_num_, bind_mode_, affinity_core_list_, runner_id_);
     if (thread_pool_ == nullptr) {
 #ifdef ENABLE_MINDRT
-#ifndef MS_COMPILE_IOS
+      #ifndef MS_COMPILE_IOS
       if (inter_op_parallel_num_ > 1) {
         thread_pool_ = ParallelThreadPool::CreateThreadPool(this->inter_op_parallel_num_, this->thread_num_,
                                                             this->affinity_core_list_, bind_mode_, runner_id_);

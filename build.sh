@@ -39,6 +39,8 @@ check_on_off()
 update_submodule()
 {
   git submodule update --init --remote mindspore
+#  cd "${BASEPATH}/mindspore"
+#  TODO(compile so used in mindspore-lite)
 }
 
 build_exit()
@@ -48,8 +50,14 @@ build_exit()
     exit 1
 }
 
+make_clean()
+{
+  echo "enable make clean"
+  cd "${BUILD_PATH}/mindspore"
+  cmake --build . --target clean
+}
 update_submodule
-echo "---------------- MindSpore-Lite: build start ----------------"
+echo "---------------- MindSpore: build start ----------------"
 init_default_options
 process_options "$@"
 
@@ -57,6 +65,5 @@ export COMPILE_MINDDATA_LITE
 export ENABLE_VERBOSE
 export LITE_PLATFORM
 export LITE_ENABLE_AAR
-source ./scripts/build/build_lite.sh
-
-echo "---------------- MindSpore-Lite: build end   ----------------"
+source mindspore-lite/build_lite.sh
+echo "---------------- MindSpore: build end   ----------------"

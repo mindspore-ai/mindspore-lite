@@ -26,12 +26,46 @@
 #include "include/common/debug/common.h"
 #include "utils/file_utils.h"
 namespace mindspore::lite {
+std::optional<std::string> CommGroupInfo::CreatePrefixPath(const std::string &input_path, bool support_relative_path) {
+    std::optional<std::string> prefix_path;
+    std::optional<std::string> file_name;
+    FileUtils::SplitDirAndFileName(input_path, &prefix_path, &file_name);
+    if (!file_name.has_value()) {
+        MS_LOG(ERROR) << "Cannot get file_name from: " << input_path;
+        return std::nullopt;
+    }
+    auto file_name_str = file_name.value();
+#if defined(SYSTEM_ENV_POSIX)
+    if (file_name_str.length() > NAME_MAX) {
+MS_LOG(ERROR) << "The length of file name: " << file_name_str.length() << " exceeds limit: " << NAME_MAX;
+return std::nullopt;
+}
+#endif
+
+    std::string prefix_path_str;
+    if (prefix_path.has_value()) {
+        auto create_prefix_path = FileUtils::CreateNotExistDirs(prefix_path.value(), support_relative_path);
+        if (!create_prefix_path.has_value()) {
+            return std::nullopt;
+        }
+        prefix_path_str = create_prefix_path.value();
+    } else {
+        auto pwd_path = FileUtils::GetRealPath("./");
+        if (!pwd_path.has_value()) {
+            MS_LOG(ERROR) << "Cannot get pwd path";
+            return std::nullopt;
+        }
+        prefix_path_str = pwd_path.value();
+    }
+    return std::string(prefix_path_str + "/" + file_name_str);
+}
+
 bool CommGroupInfo::CheckPath(const std::string path) const {
   if (path.size() > PATH_MAX) {
     MS_LOG(ERROR) << "The checkpoit path " << path << " is too long";
     return false;
   }
-  auto realpath = Common::CreatePrefixPath(path, true);
+  auto realpath = CreatePrefixPath(path, true);
   if (!realpath.has_value()) {
     MS_LOG(ERROR) << "Get real path failed, path=" << path;
     return false;

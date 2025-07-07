@@ -41,7 +41,7 @@
 #include "include/api/model.h"
 #include "include/api/context.h"
 #include "tools/common/opengl_util.h"
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
 #include "include/api/model_parallel_runner.h"
 #endif
 
@@ -97,7 +97,7 @@ class MS_API BenchmarkUnifiedApi : public BenchmarkBase {
   int InitPrintTensorDataCallbackParameter() override;
 
   int PrintInputData();
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
   int RunParallelBenchmark(std::shared_ptr<mindspore::Context> context);
   int CompareOutputForModelPool(std::vector<mindspore::MSTensor> *outputs);
   void ModelParallelRunnerWarmUp(int index);
@@ -137,7 +137,7 @@ class MS_API BenchmarkUnifiedApi : public BenchmarkBase {
 
   MSKernelCallBack ms_before_call_back_ = nullptr;
   MSKernelCallBack ms_after_call_back_ = nullptr;
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
   std::vector<std::vector<int64_t>> resize_dims_;
   std::vector<std::vector<void *>> all_inputs_data_;
   std::vector<std::vector<mindspore::MSTensor>> all_outputs_;

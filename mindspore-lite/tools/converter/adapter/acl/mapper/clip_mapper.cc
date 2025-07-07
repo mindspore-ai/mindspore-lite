@@ -34,7 +34,7 @@ const size_t kNumInputIndex3 = 3;
 const size_t kNumInputSize3 = 3;
 }  // namespace
 STATUS ClipMapper::Mapper(const CNodePtr &cnode) {
-  CHECK_NULL_RETURN(cnode);
+  MS_ASSERT(cnode != nullptr);
   auto func_graph = cnode->func_graph();
   CHECK_NULL_RETURN(func_graph);
   auto prim = ops::GetOperator<ops::Clip>(cnode->input(0));

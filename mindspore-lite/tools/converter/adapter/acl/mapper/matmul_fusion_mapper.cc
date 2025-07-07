@@ -271,7 +271,6 @@ void MatMulFusionMapper::SetMatMulTransposeAttr(const PrimitivePtr &src_prim, co
 }
 
 STATUS MatMulFusionMapper::Mapper(const CNodePtr &cnode) {
-  CHECK_NULL_RETURN(cnode);
   auto quant_holder = GetCNodeQuantHolder(cnode);
   MS_CHECK_TRUE_MSG(quant_holder != nullptr, RET_NULL_PTR, "quant holder is nullptr.");
   auto cnode_primitive = GetValueNode<PrimitivePtr>(cnode->input(0));
@@ -280,7 +279,6 @@ STATUS MatMulFusionMapper::Mapper(const CNodePtr &cnode) {
     return QuantMapper(cnode);
   } else if (cnode_primitive->HasAttr(quant::kQuantType)) {
     auto quant_type_attr = cnode_primitive->GetAttr(quant::kQuantType);
-    CHECK_NULL_RETURN(quant_type_attr);
     auto quant_type = static_cast<quant::QuantType>(GetValue<int32_t>(quant_type_attr));
     if (quant_type != quant::QUANT_NONE) {
       return QuantMapper(cnode);
@@ -297,8 +295,6 @@ STATUS MatMulFusionMapper::Mapper(const CNodePtr &cnode) {
       MS_LOG(ERROR) << "Get primitive from cnode failed.";
       return lite::RET_ERROR;
     }
-    CHECK_NULL_RETURN(value_node);
-    CHECK_NULL_RETURN(src_prim);
     SetMatMulTransposeAttr(src_prim, src_prim);
     return RET_OK;
   }
@@ -312,8 +308,6 @@ STATUS MatMulFusionMapper::Mapper(const CNodePtr &cnode) {
     MS_LOG(ERROR) << "Get primitive from cnode failed.";
     return lite::RET_ERROR;
   }
-  CHECK_NULL_RETURN(value_node);
-  CHECK_NULL_RETURN(src_prim);
   std::vector<int64_t> shape_vector;
   if (acl::GetShapeVectorFromCNode(cnode, &shape_vector) != RET_OK) {
     MS_LOG(ERROR) << "Get cnode shape failed, cnode " << cnode->fullname_with_scope();

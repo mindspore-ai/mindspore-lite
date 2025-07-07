@@ -29,7 +29,7 @@
 #include "common/device_address.h"
 #include "common/utils.h"
 #include "common/mutable_tensor_impl.h"
-#include "src/extendrt/kernel/ascend/plugin/ascend_allocator_plugin.h"
+#include "src/extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"
 
 namespace mindspore {
 class TensorDefaultImpl : public MutableTensorImpl {
@@ -48,7 +48,7 @@ class TensorDefaultImpl : public MutableTensorImpl {
       for (auto s : shape) {
         data_buf_size *= static_cast<size_t>(s);
       }
-      void *data_buf_ptr = kernel::AscendAllocatorPlugin::GetInstance().MallocHost(data_buf_size);
+      void *data_buf_ptr = AscendAllocatorPlugin::GetInstance().MallocHost(data_buf_size);
       data_ = data_buf_ptr;
       own_data_ = false;
     }
@@ -74,11 +74,11 @@ class TensorDefaultImpl : public MutableTensorImpl {
     }
     if (device_data_ != nullptr && own_data_) {
       MS_LOG(INFO) << "free device data in tensor default impl.";
-      kernel::AscendAllocatorPlugin::GetInstance().Free(device_data_, device_id_);
+      AscendAllocatorPlugin::GetInstance().Free(device_data_, device_id_);
       device_data_ = nullptr;
     }
     if (is_acl_host_ && data_ != nullptr) {
-      kernel::AscendAllocatorPlugin::GetInstance().FreeHost(const_cast<void *>(data_));
+      AscendAllocatorPlugin::GetInstance().FreeHost(const_cast<void *>(data_));
     }
   }
   void SetShape(const std::vector<int64_t> &shape) override { shape_ = shape; }
@@ -111,7 +111,7 @@ class TensorDefaultImpl : public MutableTensorImpl {
   void SetDeviceData(void *data) override {
     if (own_data_ && device_data_ != nullptr) {
       MS_LOG(INFO) << "tensor has own device data, now release device data and set new device data.";
-      kernel::AscendAllocatorPlugin::GetInstance().Free(device_data_, device_id_);
+      AscendAllocatorPlugin::GetInstance().Free(device_data_, device_id_);
     }
     device_data_ = data;
     own_data_ = false;
@@ -133,7 +133,7 @@ class TensorDefaultImpl : public MutableTensorImpl {
       free(const_cast<void *>(data_));
     }
     if (is_acl_host_ && data_ != nullptr) {
-      kernel::AscendAllocatorPlugin::GetInstance().FreeHost(const_cast<void *>(data_));
+      AscendAllocatorPlugin::GetInstance().FreeHost(const_cast<void *>(data_));
       is_acl_host_ = false;
     }
     data_ = data;
@@ -146,7 +146,7 @@ class TensorDefaultImpl : public MutableTensorImpl {
       free(const_cast<void *>(data_));
     }
     if (is_acl_host_ && data_ != nullptr) {
-      kernel::AscendAllocatorPlugin::GetInstance().FreeHost(const_cast<void *>(data_));
+      AscendAllocatorPlugin::GetInstance().FreeHost(const_cast<void *>(data_));
       is_acl_host_ = false;
     }
     data_ = data;

@@ -1,5 +1,5 @@
 include_directories(${TOP_DIR})
-include_directories(${TOP_DIR}/mindspore-lite)
+include_directories(${TOP_DIR}/mindspor-lite)
 
 file(GLOB RUNTIME_CONVERT_SRC ${CMAKE_CURRENT_SOURCE_DIR}/*.cc)
 

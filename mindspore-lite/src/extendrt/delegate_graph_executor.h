@@ -23,17 +23,19 @@
 #include "runtime/hardware/device_context.h"
 #include "tools/common/func_graph_subgraph.h"
 #include "common/kernel.h"
-#include "extendrt/session/lite_graph_executor.h"
+
+#include "src/extendrt/session/lite_graph_executor.h"
+#include "src/extendrt/subgraph_kernel.h"
+
 namespace mindspore {
 // Graph sink delegate, the whole FuncGraph as a node to execute.
-class GraphSinkDelegate : public IDelegate<FuncGraph, CNode, kernel::KernelMod> {
+class GraphSinkDelegate {
  public:
-  GraphSinkDelegate(const std::vector<mindspore::MSTensor> &inputs, const std::vector<mindspore::MSTensor> &outputs)
-      : IDelegate<FuncGraph, CNode, kernel::KernelMod>(inputs, outputs) {}
+  GraphSinkDelegate(const std::vector<mindspore::MSTensor> &inputs, const std::vector<mindspore::MSTensor> &outputs) {}
   virtual ~GraphSinkDelegate() = default;
-  void ReplaceNodes(const std::shared_ptr<FuncGraph> &graph) override;
+  void ReplaceNodes(const std::shared_ptr<FuncGraph> &graph);
 
-  bool IsDelegateNode(const std::shared_ptr<CNode> &node) override;
+  bool IsDelegateNode(const std::shared_ptr<CNode> &node);
 
  protected:
   FuncGraphPtr sink_graph_;
@@ -47,7 +49,7 @@ class GraphExecutorDelegate : public GraphSinkDelegate {
                                  std::shared_ptr<LiteGraphExecutor> executor)
       : GraphSinkDelegate(inputs, outputs), executor_(executor) {}
   virtual ~GraphExecutorDelegate() = default;
-  std::shared_ptr<kernel::KernelMod> CreateKernel(const std::shared_ptr<CNode> &node) override;
+  std::shared_ptr<kernel::SubgraphKernel> CreateKernel(const std::shared_ptr<CNode> &node);
 
  private:
   const std::shared_ptr<LiteGraphExecutor> executor_;

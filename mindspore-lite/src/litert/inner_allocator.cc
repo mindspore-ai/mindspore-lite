@@ -50,7 +50,6 @@ bool DefaultAllocator::ReuseMemory(size_t free_size, size_t size) const {
 }
 
 void *DefaultAllocator::Malloc(size_t size) {
-  Lock();
   if (size > max_malloc_size_) {
     MS_LOG(ERROR) << "MallocData out of max_size, size: " << size;
     return nullptr;
@@ -59,6 +58,7 @@ void *DefaultAllocator::Malloc(size_t size) {
     MS_LOG(ERROR) << "Memory pool is exhausted";
     return nullptr;
   }
+  Lock();
   auto iter = freeList_.lower_bound(size);
   if (iter != freeList_.end() && ReuseMemory(iter->second->size, size)) {
     auto membuf = iter->second;

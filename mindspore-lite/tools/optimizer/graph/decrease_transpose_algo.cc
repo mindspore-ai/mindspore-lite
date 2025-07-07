@@ -510,29 +510,29 @@ int DecreaseTransposeAlgo::InsertPreTransForNonTransInOut(const FuncGraphPtr &fu
                                                           TransTypePair trans_info) {
   std::function<bool(const AnfNodePtr &, size_t, FormatTransNodeType)> insert_pre_trans =
     [&](const AnfNodePtr &node, size_t index, FormatTransNodeType format_trans_type) -> bool {
-    MS_CHECK_TRUE_RET(node != nullptr, false);
-    auto cnode = node->cast<CNodePtr>();
-    MS_CHECK_TRUE_RET(cnode != nullptr, false);
-    if (CheckPrimitiveType(node, prim::kPrimTupleGetItem)) {
-      auto node_users = func_graph->manager()->node_users()[node];
-      return std::all_of(node_users.begin(), node_users.end(),
-                         [&insert_pre_trans, &format_trans_type](const std::pair<AnfNodePtr, int> &pair) {
-                           return insert_pre_trans(pair.first, pair.second, format_trans_type);
-                         });
-    } else if (CheckPrimitiveType(cnode->input(1), prim::kPrimMakeTuple) ||
-               CheckPrimitiveType(cnode->input(1), prim::kPrimMakeTupleV2)) {
-      auto make_tuple_cnode = cnode->input(1)->cast<CNodePtr>();
-      MS_CHECK_TRUE_RET(make_tuple_cnode != nullptr, false);
-      for (size_t i = 0; i < make_tuple_cnode->size(); i++) {
-        if (!insert_pre_trans(make_tuple_cnode->input(i), i, format_trans_type)) {
-          return false;
+      MS_CHECK_TRUE_RET(node != nullptr, false);
+      auto cnode = node->cast<CNodePtr>();
+      MS_CHECK_TRUE_RET(cnode != nullptr, false);
+      if (CheckPrimitiveType(node, prim::kPrimTupleGetItem)) {
+        auto node_users = func_graph->manager()->node_users()[node];
+        return std::all_of(node_users.begin(), node_users.end(),
+                           [&insert_pre_trans, &format_trans_type](const std::pair<AnfNodePtr, int> &pair) {
+                             return insert_pre_trans(pair.first, pair.second, format_trans_type);
+                           });
+      } else if (CheckPrimitiveType(cnode->input(1), prim::kPrimMakeTuple) ||
+                 CheckPrimitiveType(cnode->input(1), prim::kPrimMakeTupleV2)) {
+        auto make_tuple_cnode = cnode->input(1)->cast<CNodePtr>();
+        MS_CHECK_TRUE_RET(make_tuple_cnode != nullptr, false);
+        for (size_t i = 0; i < make_tuple_cnode->size(); i++) {
+          if (!insert_pre_trans(make_tuple_cnode->input(i), i, format_trans_type)) {
+            return false;
+          }
         }
+        return true;
       }
-      return true;
-    }
-    auto perm = format_trans_type == kNHWC2NCHW ? kNC2NH : kNH2NC;
-    return GenNewInput(func_graph, cnode, perm, true, index) == lite::RET_OK;
-  };
+      auto perm = format_trans_type == kNHWC2NCHW ? kNC2NH : kNH2NC;
+      return GenNewInput(func_graph, cnode, perm, true, index) == lite::RET_OK;
+    };
   bool deal_inputs = std::all_of(not_trans_in_nodes.begin(), not_trans_in_nodes.end(),
                                  [&insert_pre_trans, &trans_info](const std::pair<AnfNodePtr, int> &pair) {
                                    return insert_pre_trans(pair.first, pair.second, trans_info.pre_);

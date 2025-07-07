@@ -91,7 +91,7 @@ std::vector<int> ResourceManager::ParseCpuCoreList(size_t *can_use_core_num) {
   period_file.close();
   auto period = std::atoi(period_line.c_str());
   if (period == 0) {
-    MS_LOG(WARNING) << "parse cpu.cfs_period_us file failed, can not use all core!";
+    MS_LOG(ERROR) << "read cpu.cfs_period_us file failed.";
     *can_use_core_num = 0;
     return {};
   }

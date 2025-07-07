@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 #include "mindspore-lite/minddata/dataset/core/data_type.h"
-#ifdef ENABLE_MINDDATA_PYTHON
+#ifdef ENABLE_CLOUD_FUSION_INFERENCE
 #include "mindspore-lite/minddata/dataset/core/pybind_support.h"
 #endif
-
 #include "mindspore-lite/minddata/dataset/util/log_adapter.h"
 
 namespace mindspore {
@@ -30,7 +29,7 @@ uint8_t DataType::SizeInBytes() const {
   }
 }
 
-#ifdef ENABLE_MINDDATA_PYTHON
+#ifdef ENABLE_CLOUD_FUSION_INFERENCE
 py::dtype DataType::AsNumpyType() const {
   if (type_ < DataType::NUM_OF_TYPES) {
     return py::dtype(kTypeInfo[type_].pybindType_);
@@ -40,7 +39,7 @@ py::dtype DataType::AsNumpyType() const {
 }
 #endif
 
-#if !defined(ENABLE_ANDROID) || defined(ENABLE_MINDDATA_PYTHON)
+#if !defined(ENABLE_ANDROID) || defined(ENABLE_CLOUD_FUSION_INFERENCE)
 uint8_t DataType::AsCVType() const {
   uint8_t res = kCVInvalidType;
   if (type_ < DataType::NUM_OF_TYPES) {
@@ -117,7 +116,7 @@ DataType::DataType(const std::string &type_str) {
     type_ = DE_STRING;
   } else if (type_str == "bytes") {
     type_ = DE_BYTES;
-#ifdef ENABLE_MINDDATA_PYTHON
+#ifdef ENABLE_CLOUD_FUSION_INFERENCE
   } else if (type_str == "python") {
     type_ = DE_PYTHON;
 #endif
@@ -134,7 +133,7 @@ std::string DataType::ToString() const {
   }
 }
 
-#ifdef ENABLE_MINDDATA_PYTHON
+#ifdef ENABLE_CLOUD_FUSION_INFERENCE
 DataType DataType::FromNpArray(const py::array &arr) {
   if (py::isinstance<py::array_t<bool>>(arr)) {
     return DataType(DataType::DE_BOOL);

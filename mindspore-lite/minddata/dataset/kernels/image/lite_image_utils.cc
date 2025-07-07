@@ -20,13 +20,13 @@
 #include <utility>
 #include <vector>
 
-#if defined(ENABLE_MINDDATA_PYTHON)
+#if defined(ENABLE_CLOUD_FUSION_INFERENCE)
 #include <opencv2/imgproc/types_c.h>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #endif
 
-#if defined(ENABLE_MINDDATA_PYTHON)
+#if defined(ENABLE_CLOUD_FUSION_INFERENCE)
 #include "mindspore-lite/minddata/dataset/core/cv_tensor.h"
 #endif
 #include "mindspore-lite/minddata/dataset/core/tensor.h"
@@ -35,7 +35,7 @@
 #include "mindspore-lite/minddata/dataset/kernels/image/lite_cv/image_process.h"
 #include "mindspore-lite/minddata/dataset/kernels/image/lite_cv/lite_mat.h"
 #include "mindspore-lite/minddata/dataset/kernels/image/math_utils.h"
-#if defined(ENABLE_MINDDATA_PYTHON)
+#if defined(ENABLE_CLOUD_FUSION_INFERENCE)
 #include "mindspore-lite/minddata/dataset/kernels/image/resize_cubic_op.h"
 #endif
 #include "mindspore-lite/minddata/dataset/util/random.h"
@@ -46,7 +46,7 @@ constexpr int64_t hwc_rank = 3;
 #define MAX_INT_PRECISION 16777216  // float int precision is 16777216
 namespace mindspore {
 namespace dataset {
-#if defined(ENABLE_MINDDATA_PYTHON)
+#if defined(ENABLE_CLOUD_FUSION_INFERENCE)
 bool IsNonEmptyPNG(const std::shared_ptr<Tensor> &input) {
   const unsigned char kPngMagic[] = "\x89\x50\x4E\x47";
   constexpr dsize_t kPngMagicLen = 4;
@@ -305,7 +305,7 @@ static LDataType GetLiteCVDataType(const DataType &data_type) {
   }
 }
 
-#if defined(ENABLE_MINDDATA_PYTHON)
+#if defined(ENABLE_CLOUD_FUSION_INFERENCE)
 Status DecodeCv(const std::shared_ptr<Tensor> &input, std::shared_ptr<Tensor> *output) {
   std::shared_ptr<CVTensor> input_cv = CVTensor::AsCVTensor(input);
   if (!input_cv->mat().data) {
@@ -333,7 +333,7 @@ Status Decode(const std::shared_ptr<Tensor> &input, std::shared_ptr<Tensor> *out
   if (IsNonEmptyJPEG(input)) {
     return JpegCropAndDecode(input, output);
   } else {
-#if defined(ENABLE_MINDDATA_PYTHON)
+#if defined(ENABLE_CLOUD_FUSION_INFERENCE)
     return DecodeCv(input, output);
 #else
     RETURN_STATUS_UNEXPECTED("Decode: Decode only supports jpeg for android");
@@ -465,7 +465,7 @@ Status Normalize(const std::shared_ptr<Tensor> &input, std::shared_ptr<Tensor> *
   return Status::OK();
 }
 
-#if defined(ENABLE_MINDDATA_PYTHON)
+#if defined(ENABLE_CLOUD_FUSION_INFERENCE)
 int GetCVInterpolationMode(InterpolationMode mode) {
   switch (mode) {
     case InterpolationMode::kLinear:

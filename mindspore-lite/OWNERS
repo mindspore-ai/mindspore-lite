@@ -1,8 +1,12 @@
 approvers:
-- jjfeing
+- zhaizhiqiang
+- zhang_xue_tong #
+- jpc_chenjianping
+- wang_shaocong
 - YeFeng_24
-- fatmouse007fatmouse007
+reviewers:
 - xu_anyue
+- fatmouse007fatmouse007 # zhuguodong
 
 options:
   no_parent_owners: true

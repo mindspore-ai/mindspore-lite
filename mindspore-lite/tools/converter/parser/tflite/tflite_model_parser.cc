@@ -81,14 +81,14 @@ STATUS TfliteModelParser::TfliteOpVerify(const std::unique_ptr<tflite::SubGraphT
       return RET_ERROR;
     }
     if (std::any_of(op->inputs.begin(), op->inputs.end(), [&all_tensor_num](int32_t index) {
-          return index >= all_tensor_num || index + all_tensor_num < 0;
-        })) {
+      return index >= all_tensor_num || index + all_tensor_num < 0;
+    })) {
       MS_LOG(ERROR) << "op input illegal.";
       return RET_ERROR;
     }
     if (std::any_of(op->outputs.begin(), op->outputs.end(), [&all_tensor_num](int32_t index) {
-          return index >= all_tensor_num || index + all_tensor_num < 0;
-        })) {
+      return index >= all_tensor_num || index + all_tensor_num < 0;
+    })) {
       MS_LOG(ERROR) << "op output illegal.";
       return RET_ERROR;
     }
@@ -141,14 +141,14 @@ STATUS TfliteModelParser::TfliteModelVerify() {
       return RET_ERROR;
     }
     if (std::any_of(subgraph->inputs.begin(), subgraph->inputs.end(), [&all_subgraph_tensor_size](int32_t index) {
-          return index >= static_cast<int32_t>(all_subgraph_tensor_size) || index < 0;
-        })) {
+      return index >= static_cast<int32_t>(all_subgraph_tensor_size) || index < 0;
+    })) {
       MS_LOG(ERROR) << "tflite input illegal.";
       return RET_ERROR;
     }
     if (std::any_of(subgraph->outputs.begin(), subgraph->outputs.end(), [&all_subgraph_tensor_size](int32_t index) {
-          return index >= static_cast<int32_t>(all_subgraph_tensor_size) || index < 0;
-        })) {
+      return index >= static_cast<int32_t>(all_subgraph_tensor_size) || index < 0;
+    })) {
       MS_LOG(ERROR) << "tflite output illegal.";
       return RET_ERROR;
     }
@@ -594,8 +594,8 @@ STATUS TfliteModelParser::ConvertGraphOutputs(const std::unique_ptr<tflite::SubG
       return RET_NULL_PTR;
     }
     int output_idx = tflite_subgraph->outputs.front() < 0
-                       ? static_cast<int>(tflite_subgraph->outputs.front() + tflite_subgraph->tensors.size())
-                       : static_cast<int>(tflite_subgraph->outputs.front());
+                     ? static_cast<int>(tflite_subgraph->outputs.front() + tflite_subgraph->tensors.size())
+                     : static_cast<int>(tflite_subgraph->outputs.front());
     auto return_prim_c = returnPrim->GetPrim();
     MSLITE_CHECK_PTR(return_prim_c);
     auto value_node = NewValueNode(return_prim_c);

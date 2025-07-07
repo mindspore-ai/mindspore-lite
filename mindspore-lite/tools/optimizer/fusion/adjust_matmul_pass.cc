@@ -57,6 +57,35 @@ void SetMatMulTransposeAttr(const PrimitivePtr &src_prim, const PrimitivePtr &ds
   }
 }
 
+CNodePtr CreateSqueezeCnode(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
+  MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
+  MS_CHECK_TRUE_RET(cnode != nullptr, nullptr);
+  auto squeeze_op = std::make_unique<ops::Squeeze>();
+  if (squeeze_op == nullptr) {
+    MS_LOG(ERROR) << "New Squeeze op failed, squeeze_op is nullptr!";
+    return nullptr;
+  }
+  squeeze_op->set_axis({0});
+
+  auto squeeze_prim_c = squeeze_op->GetPrim();
+  if (squeeze_prim_c == nullptr) {
+    MS_LOG(ERROR) << "squeeze_prim_c is nullptr!";
+    return nullptr;
+  }
+  std::vector<AnfNodePtr> inputs = {cnode};
+  auto squeeze_node = func_graph->NewCNode(squeeze_prim_c, inputs);
+  if (squeeze_node == nullptr) {
+    MS_LOG(ERROR) << "new squeeze cnode failed, squeeze_node is nullptr!";
+    return nullptr;
+  }
+  squeeze_node->set_fullname_with_scope(cnode->fullname_with_scope() + "_data_squeeze");
+  if (cnode->abstract() != nullptr) {
+    squeeze_node->set_abstract(cnode->abstract()->Clone());
+  }
+  MS_LOG(INFO) << "Create squeeze node end.";
+  return squeeze_node;
+}
+
 CNodePtr CreateShapeCNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
   MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
   MS_CHECK_TRUE_RET(cnode != nullptr, nullptr);
@@ -69,14 +98,103 @@ CNodePtr CreateShapeCNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode)
     return nullptr;
   }
   shape_cnode->set_fullname_with_scope(cnode->fullname_with_scope() + "_shape");
-  auto abstract = lite::CreateTensorAbstract({kShapeMinus_1}, kNumberTypeInt32);
-  if (abstract == nullptr) {
-    MS_LOG(ERROR) << "Create tensor abstract failed!";
-    return nullptr;
+  if (cnode->abstract() != nullptr) {
+    shape_cnode->set_abstract(cnode->abstract()->Clone());
   }
-  shape_cnode->set_abstract(abstract);
   MS_LOG(INFO) << "Create shape node end.";
   return shape_cnode;
+}
+
+CNodePtr CreateRangeV2Cnode(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
+  MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
+  MS_CHECK_TRUE_RET(cnode != nullptr, nullptr);
+  auto range_op = std::make_unique<ops::RangeV2>();
+  if (range_op == nullptr) {
+    MS_LOG(ERROR) << "New RangeV2 op failed, range_op is nullptr!";
+    return nullptr;
+  }
+
+  auto range_prim_c = range_op->GetPrim();
+  if (range_prim_c == nullptr) {
+    MS_LOG(ERROR) << "range_prim_c is nullptr!";
+    return nullptr;
+  }
+
+  auto start_num = opt::BuildIntValueParameterNode(func_graph, 0, cnode->fullname_with_scope() + "_start", false);
+  MS_CHECK_TRUE_RET(start_num != nullptr, nullptr);
+  auto delta_num = opt::BuildIntValueParameterNode(func_graph, 1, cnode->fullname_with_scope() + "_delta", false);
+  MS_CHECK_TRUE_RET(delta_num != nullptr, nullptr);
+  std::vector<AnfNodePtr> inputs = {start_num, cnode, delta_num};
+  auto range_node = func_graph->NewCNode(range_prim_c, inputs);
+  if (range_node == nullptr) {
+    MS_LOG(ERROR) << "New range cnode failed, range_node is nullptr!";
+    return nullptr;
+  }
+  range_node->set_fullname_with_scope(cnode->fullname_with_scope() + "_range");
+  if (cnode->abstract() != nullptr) {
+    range_node->set_abstract(cnode->abstract()->Clone());
+  }
+  MS_LOG(INFO) << "Create squeeze node end.";
+  return range_node;
+}
+
+CNodePtr CreateSubCnode(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
+  MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
+  MS_CHECK_TRUE_RET(cnode != nullptr, nullptr);
+  auto sub_op = std::make_unique<ops::Sub>();
+  if (sub_op == nullptr) {
+    MS_LOG(ERROR) << "New Sub op failed, sub_op is nullptr!";
+    return nullptr;
+  }
+
+  auto sub_prim_c = sub_op->GetPrim();
+  if (sub_prim_c == nullptr) {
+    MS_LOG(ERROR) << "sub_prim_c is nullptr!";
+    return nullptr;
+  }
+
+  auto sub_vale_parameter =
+    opt::BuildIntValueParameterNode(func_graph, 1, cnode->fullname_with_scope() + "_sub_param", false);
+  MS_CHECK_TRUE_RET(sub_vale_parameter != nullptr, nullptr);
+  std::vector<AnfNodePtr> inputs = {cnode, sub_vale_parameter};
+  auto sub_node = func_graph->NewCNode(sub_prim_c, inputs);
+  if (sub_node == nullptr) {
+    MS_LOG(ERROR) << "New sub cnode failed, sub_node is nullptr!";
+    return nullptr;
+  }
+  sub_node->set_fullname_with_scope(cnode->fullname_with_scope() + "_sub");
+  if (cnode->abstract() != nullptr) {
+    sub_node->set_abstract(cnode->abstract()->Clone());
+  }
+  MS_LOG(INFO) << "Create Sub node end.";
+  return sub_node;
+}
+
+CNodePtr CreateAfterReshapeNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode, const CNodePtr &shape_node) {
+  MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
+  MS_CHECK_TRUE_RET(cnode != nullptr, nullptr);
+  if (shape_node == nullptr) {
+    MS_LOG(ERROR) << "Input shape cnode is nullptr!";
+    return nullptr;
+  }
+
+  auto reshape_prim_c = mindspore::prim::kPrimReshape;
+  if (reshape_prim_c == nullptr) {
+    MS_LOG(ERROR) << "New Reshape prim failed, reshape_prim_c is nullptr!";
+    return nullptr;
+  }
+  std::vector<AnfNodePtr> inputs = {cnode, shape_node};
+  auto reshape_node = func_graph->NewCNode(reshape_prim_c, inputs);
+  if (reshape_node == nullptr) {
+    MS_LOG(ERROR) << "New reshape cnode failed, reshape_node is nullptr!";
+    return nullptr;
+  }
+  reshape_node->set_fullname_with_scope(cnode->fullname_with_scope() + "_reshape_after");
+  if (cnode->abstract() != nullptr) {
+    reshape_node->set_abstract(cnode->abstract()->Clone());
+  }
+  MS_LOG(INFO) << "Create reshape node end.";
+  return reshape_node;
 }
 
 std::vector<int64_t> GetTensorShape(CNodePtr cnode, size_t input_index) {
@@ -144,128 +262,6 @@ CNodePtr CreateMatmulCNode(const FuncGraphPtr &func_graph, const std::vector<Anf
   return mm_node;
 }
 
-CNodePtr CreateStridedSliceCNode(const FuncGraphPtr &func_graph, const AnfNodePtr &input, bool left) {
-  MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
-  MS_CHECK_TRUE_RET(input != nullptr, nullptr);
-  auto strided_slice_prim = std::make_shared<ops::StridedSlice>();
-  MS_CHECK_TRUE_MSG(strided_slice_prim != nullptr, nullptr, "create strided_slice_prim return nullptr");
-  auto strided_slice_prim_c = strided_slice_prim->GetPrim();
-  MS_CHECK_TRUE_MSG(strided_slice_prim_c != nullptr, nullptr, "create strided_slice_prim_c return nullptr");
-  int64_t fmk_type = converter::FmkType::kFmkTypeOnnx;
-  strided_slice_prim_c->AddAttr(ops::kFmkType, MakeValue(fmk_type));
-  std::vector<int32_t> starts = {0};
-  std::vector<int32_t> ends = {-1};
-  std::vector<int32_t> axes = {0};
-  std::vector<int32_t> steps = {1};
-  std::string suffix = left ? "_left" : "_right";
-  if (!left) {
-    starts = {-1};
-    ends = {INT32_MAX};
-  }
-  auto starts_parm_node =
-    opt::BuildIntVecParameterNode(func_graph, starts, input->fullname_with_scope() + suffix + "_slice_starts");
-  MS_CHECK_TRUE_MSG(starts_parm_node != nullptr, nullptr, "create starts_parm_node return nullptr!");
-
-  auto ends_parm_node =
-    opt::BuildIntVecParameterNode(func_graph, ends, input->fullname_with_scope() + suffix + "_slice_ends");
-  MS_CHECK_TRUE_MSG(ends_parm_node != nullptr, nullptr, "create ends_parm_node return nullptr!");
-
-  auto axes_parm_node =
-    opt::BuildIntVecParameterNode(func_graph, axes, input->fullname_with_scope() + suffix + "_slice_axes");
-  MS_CHECK_TRUE_MSG(axes_parm_node != nullptr, nullptr, "create axes_parm_node return nullptr!");
-
-  auto steps_parm_node =
-    opt::BuildIntVecParameterNode(func_graph, steps, input->fullname_with_scope() + suffix + "_slice_steps");
-  MS_CHECK_TRUE_MSG(steps_parm_node != nullptr, nullptr, "create steps_parm_node return nullptr!");
-
-  auto strided_slice_node = func_graph->NewCNode(
-    strided_slice_prim->GetPrim(), {input, starts_parm_node, ends_parm_node, axes_parm_node, steps_parm_node});
-  MS_CHECK_TRUE_MSG(strided_slice_node != nullptr, nullptr, "create strided_slice node return nullptr");
-  strided_slice_node->set_fullname_with_scope(input->fullname_with_scope() + suffix + "_slice");
-  auto abstract = lite::CreateTensorAbstract({kShapeMinus_1}, kNumberTypeInt32);
-  if (abstract == nullptr) {
-    MS_LOG(ERROR) << "Create tensor abstract failed!";
-    return nullptr;
-  }
-  strided_slice_node->set_abstract(abstract);
-  return strided_slice_node;
-}
-
-CNodePtr CreateConcatCNode(const FuncGraphPtr &func_graph, const AnfNodePtr &input, bool left) {
-  MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
-  MS_CHECK_TRUE_RET(input != nullptr, nullptr);
-  std::string suffix = left ? "_left" : "_right";
-  auto second_input = opt::BuildIntVecParameterNode(func_graph, {-1}, input->fullname_with_scope() + suffix + "_const");
-  MS_CHECK_TRUE_MSG(second_input != nullptr, nullptr, "create concat const input return nullptr!");
-  std::vector<AnfNodePtr> inputs;
-  if (left) {
-    inputs = {input, second_input};
-  } else {
-    inputs = {second_input, input};
-  }
-  auto concat_cnode = opt::GenConcatNode(func_graph, inputs, input->fullname_with_scope() + suffix + "_concat", 0);
-  MS_CHECK_TRUE_RET(concat_cnode != nullptr, nullptr);
-  auto abstract = lite::CreateTensorAbstract({kShapeMinus_1}, kNumberTypeInt32);
-  if (abstract == nullptr) {
-    MS_LOG(ERROR) << "Create tensor abstract failed!";
-    return nullptr;
-  }
-  concat_cnode->set_abstract(abstract);
-  return concat_cnode;
-}
-
-CNodePtr CreateReshapeCNode(const FuncGraphPtr &func_graph, const std::vector<AnfNodePtr> &inputs,
-                            const AnfNodePtr origin_matmul) {
-  MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
-  MS_CHECK_TRUE_RET(inputs.size() == kInputIndex_2, nullptr);
-  auto reshape_prim = std::make_shared<ops::Reshape>();
-  MS_CHECK_TRUE_MSG(reshape_prim != nullptr, nullptr, "create reshape_prim return nullptr!");
-  auto reshape_prim_c = reshape_prim->GetPrim();
-  MS_CHECK_TRUE_MSG(reshape_prim_c != nullptr, nullptr, "create prim_c return nullptr!");
-  auto reshape_node = func_graph->NewCNode(reshape_prim_c, inputs);
-  MS_CHECK_TRUE_MSG(reshape_node != nullptr, nullptr, "create reshape_node return nullptr!");
-  reshape_node->set_fullname_with_scope(inputs[0]->fullname_with_scope() + "_reshape");
-  if (origin_matmul != nullptr) {
-    if (origin_matmul->abstract() == nullptr) {
-      MS_LOG(ERROR) << "Original matmul doesn't have abstract!";
-      return nullptr;
-    }
-    reshape_node->set_abstract(origin_matmul->abstract()->Clone());
-  } else {
-    auto abstract = lite::CreateTensorAbstract({kShapeMinus_1, kShapeMinus_1}, kNumberTypeFloat32);
-    if (abstract == nullptr) {
-      MS_LOG(ERROR) << "Create tensor abstract failed!";
-      return nullptr;
-    }
-    reshape_node->set_abstract(abstract);
-  }
-  return reshape_node;
-}
-
-CNodePtr CreateMatmulCNode(const FuncGraphPtr &func_graph, const std::vector<AnfNodePtr> &inputs,
-                           const PrimitivePtr &bmm_prim, const std::string &name) {
-  MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
-  MS_CHECK_TRUE_RET(bmm_prim != nullptr, nullptr);
-  auto matmul = std::make_shared<ops::MatMul>();
-  MS_CHECK_TRUE_MSG(matmul != nullptr, nullptr, "create matmul_prim return nullptr");
-  auto dst_prim = matmul->GetPrim();
-  MS_CHECK_TRUE_RET(dst_prim != nullptr, nullptr);
-  auto matmul_cnode = func_graph->NewCNode(dst_prim, inputs);
-  if (matmul_cnode == nullptr) {
-    MS_LOG(ERROR) << "New matmul_cnode is nullptr!";
-    return nullptr;
-  }
-  auto abstract = lite::CreateTensorAbstract({kShapeMinus_1, kShapeMinus_1}, kNumberTypeFloat32);
-  if (abstract == nullptr) {
-    MS_LOG(ERROR) << "Create tensor abstract failed!";
-    return nullptr;
-  }
-  matmul_cnode->set_abstract(abstract);
-  matmul_cnode->set_fullname_with_scope(name);
-  SetMatMulTransposeAttr(bmm_prim, dst_prim);
-  return matmul_cnode;
-}
-
 bool BMMToMMForStatic(const FuncGraphPtr &func_graph, const CNodePtr &batch_matmul_cnode) {
   auto x1_input = batch_matmul_cnode->input(kInputIndex_1);
   MS_CHECK_TRUE_RET(x1_input != nullptr, false);
@@ -306,17 +302,6 @@ bool BMMToMMForStatic(const FuncGraphPtr &func_graph, const CNodePtr &batch_matm
 }
 
 bool BMMToMMForDynamic(const FuncGraphPtr &func_graph, const CNodePtr &batch_matmul_cnode) {
-  auto bmm_prim = GetCNodePrimitive(batch_matmul_cnode);
-  MS_CHECK_TRUE_RET(bmm_prim != nullptr, false);
-  auto trans_a = bmm_prim->GetAttr(mindspore::ops::kTransposeA);
-  auto trans_b = bmm_prim->GetAttr(mindspore::ops::kTransposeB);
-  auto trans_a_value = trans_a != nullptr && GetValue<bool>(trans_a);
-  auto trans_b_value = trans_b != nullptr && GetValue<bool>(trans_b);
-  if (trans_a_value || trans_b_value) {
-    MS_LOG(INFO) << "BMMToMM doesn't support trans_a == true or trans_b == true currently.";
-    return true;
-  }
-
   auto batch_matmul_input_1 = batch_matmul_cnode->input(kInputIndex_1)->cast<CNodePtr>();
   MS_CHECK_TRUE_RET(batch_matmul_input_1 != nullptr, false);
   auto matmul_weight_input = batch_matmul_cnode->input(kInputIndex_2);
@@ -324,31 +309,81 @@ bool BMMToMMForDynamic(const FuncGraphPtr &func_graph, const CNodePtr &batch_mat
 
   auto data_shape_cnode = CreateShapeCNode(func_graph, batch_matmul_input_1);
   MS_CHECK_TRUE_RET(data_shape_cnode != nullptr, false);
-  auto left_strided_slice = CreateStridedSliceCNode(func_graph, data_shape_cnode, true);
-  MS_CHECK_TRUE_RET(left_strided_slice != nullptr, false);
-  auto right_strided_slice = CreateStridedSliceCNode(func_graph, data_shape_cnode, false);
-  MS_CHECK_TRUE_RET(right_strided_slice != nullptr, false);
-  auto left_concat = CreateConcatCNode(func_graph, left_strided_slice, true);
-  MS_CHECK_TRUE_RET(left_concat != nullptr, false);
-  auto right_concat = CreateConcatCNode(func_graph, right_strided_slice, false);
-  MS_CHECK_TRUE_RET(right_concat != nullptr, false);
-  auto up_reshape = CreateReshapeCNode(func_graph, {batch_matmul_input_1, right_concat}, nullptr);
-  MS_CHECK_TRUE_RET(up_reshape != nullptr, false);
+  auto data_shape_gather_node =
+    opt::GenGatherNode(func_graph, data_shape_cnode, {kShapeMinus_1},
+                       data_shape_cnode->fullname_with_scope() + "_data_shape_gather", {kAxis_0});
+  MS_CHECK_TRUE_RET(data_shape_gather_node != nullptr, false);
+  data_shape_gather_node->set_abstract(batch_matmul_cnode->abstract()->Clone());
 
-  std::vector<AnfNodePtr> matmul_inputs = {up_reshape};
-  for (size_t i = kInputIndex_2; i < batch_matmul_cnode->size(); ++i) {
-    matmul_inputs.push_back(batch_matmul_cnode->input(i));
+  auto data_concat_parm = opt::BuildIntVecParameterNode(func_graph, {kShape_1, kShapeMinus_1},
+                                                        batch_matmul_cnode->fullname_with_scope() + "_const_minus_2");
+  MS_CHECK_TRUE_RET(data_concat_parm != nullptr, false);
+  data_concat_parm->set_abstract(batch_matmul_cnode->abstract()->Clone());
+
+  auto data_concat_cnode = opt::GenConcatNode(func_graph, {data_concat_parm, data_shape_gather_node},
+                                              batch_matmul_cnode->fullname_with_scope() + "_concat", 0);
+  MS_CHECK_TRUE_RET(data_concat_cnode != nullptr, false);
+  data_concat_cnode->set_abstract(batch_matmul_cnode->abstract()->Clone());
+
+  // create reshape node, Data reshape to (1,ab,c), weight shape is (c,d)
+  auto reshape_data_node = CreateAfterReshapeNode(func_graph, batch_matmul_input_1, data_concat_cnode);
+  MS_CHECK_TRUE_RET(reshape_data_node != nullptr, false);
+  reshape_data_node->set_abstract(batch_matmul_cnode->abstract()->Clone());
+
+  auto squeeze_cnode = CreateSqueezeCnode(func_graph, reshape_data_node);
+  MS_CHECK_TRUE_RET(squeeze_cnode != nullptr, false);
+
+  ops::MatMul matmul;
+  auto dst_prim = matmul.GetPrim();
+  MS_CHECK_TRUE_RET(dst_prim != nullptr, false);
+  auto matmul_cnode = func_graph->NewCNode(dst_prim, {squeeze_cnode, matmul_weight_input});
+  if (matmul_cnode == nullptr) {
+    MS_LOG(ERROR) << "New matmul_cnode is nullptr!";
+    return false;
   }
-  auto matmul_cnode =
-    CreateMatmulCNode(func_graph, matmul_inputs, bmm_prim, batch_matmul_cnode->fullname_with_scope() + "_bmm2mm");
-  MS_CHECK_TRUE_RET(matmul_cnode != nullptr, false);
+  auto abstract = lite::CreateTensorAbstract({kShapeMinus_1, kShapeMinus_1}, kNumberTypeFloat32);
+  if (abstract == nullptr) {
+    MS_LOG(ERROR) << "Create tensor abstract failed!";
+    return false;
+  }
+  matmul_cnode->set_abstract(abstract);
+  matmul_cnode->set_fullname_with_scope(batch_matmul_cnode->fullname_with_scope() + "_bmm2mm");
 
-  auto down_reshape = CreateReshapeCNode(func_graph, {matmul_cnode, left_concat}, batch_matmul_cnode);
-  MS_CHECK_TRUE_RET(down_reshape != nullptr, false);
+  auto prim = GetValueNode<PrimitivePtr>(batch_matmul_cnode->input(kInputIndex_0));
+  MS_CHECK_TRUE_RET(prim != nullptr, false);
+  SetMatMulTransposeAttr(prim, dst_prim);
+
+  auto data_shape_dim_cnode = CreateShapeCNode(func_graph, data_shape_cnode);
+  MS_CHECK_TRUE_RET(data_shape_dim_cnode != nullptr, false);
+
+  auto range_limit_cnode = CreateSubCnode(func_graph, data_shape_dim_cnode);
+  MS_CHECK_TRUE_RET(range_limit_cnode != nullptr, false);
+
+  auto range_cnode = CreateRangeV2Cnode(func_graph, range_limit_cnode);
+  MS_CHECK_TRUE_RET(range_cnode != nullptr, false);
+
+  auto shape_gather_node = opt::GenGatherNodeDynamicIndex(
+    func_graph, data_shape_cnode, range_cnode, data_shape_cnode->fullname_with_scope() + "_gather", {kAxis_0});
+  MS_CHECK_TRUE_RET(shape_gather_node != nullptr, false);
+
+  auto concat_parm = opt::BuildIntValueParameterNode(
+    func_graph, kShapeMinus_1, batch_matmul_cnode->fullname_with_scope() + "_const_minus_1", false);
+  MS_CHECK_TRUE_RET(concat_parm != nullptr, false);
+  concat_parm->set_abstract(batch_matmul_cnode->abstract()->Clone());
+
+  auto concat_cnode = opt::GenConcatNode(func_graph, {shape_gather_node, concat_parm},
+                                         batch_matmul_cnode->fullname_with_scope() + "_concat", 0);
+  MS_CHECK_TRUE_RET(concat_cnode != nullptr, false);
+  concat_cnode->set_abstract(batch_matmul_cnode->abstract()->Clone());
+
+  // reshape(MM, (a,b,d))
+  auto reshape_output_cnode = CreateAfterReshapeNode(func_graph, matmul_cnode, concat_cnode);
+  MS_CHECK_TRUE_RET(reshape_output_cnode != nullptr, false);
 
   auto graph_manager = func_graph->manager();
   MS_CHECK_TRUE_RET(graph_manager != nullptr, false);
-  if (!graph_manager->Replace(batch_matmul_cnode, down_reshape)) {
+
+  if (!graph_manager->Replace(batch_matmul_cnode, reshape_output_cnode)) {
     MS_LOG(ERROR) << "Failed to replace MatMul with BatchMatMul! cnode " << batch_matmul_cnode->fullname_with_scope()
                   << ", input size " << batch_matmul_cnode->size();
     return false;

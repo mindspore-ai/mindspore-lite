@@ -27,7 +27,6 @@ STATUS PReluFusionMapper::Mapper(const CNodePtr &cnode) {
   CHECK_NULL_RETURN(cnode);
   ops::PReLU prelu_op;
   auto dst_prim = prelu_op.GetPrim();
-  CHECK_NULL_RETURN(dst_prim);
   if (MoveAttrMap(cnode, dst_prim) != RET_OK) {
     MS_LOG(ERROR) << "PReluFusion mapper failed.";
     return RET_ERROR;

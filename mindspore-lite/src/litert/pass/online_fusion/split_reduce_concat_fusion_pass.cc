@@ -235,7 +235,6 @@ int SplitReduceConcatOnlineFusionPass::CreateCustomNode(LiteGraph::Node *node, S
   if (online_fusion_prim == nullptr) {
     MS_LOG(ERROR) << "GetRoot SplitReduceConcatFusion primitive failed.";
     free(prim);
-    fbb.Clear();
     return RET_ERROR;
   }
   fbb.Clear();
