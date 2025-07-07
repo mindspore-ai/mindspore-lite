@@ -1,0 +1,38 @@
+# Scene1:
+#    function_name1, function_name2
+# Scene2:
+#    file_path:function_name1, function_name2
+#
+
+# tools
+mindspore-lite/mindspore-lite/tools/converter/adapter/acl/mapper/matmul_fusion_mapper.cc:mindspore::lite::MatMulFusionMapper::Mapper
+mindspore-lite/mindspore-lite/tools/converter/config_parser/config_file_parser.cc:mindspore::lite::ConfigFileParser::SetParamByConfigfile
+mindspore-lite/mindspore-lite/tools/converter/graphdef_transform.cc:mindspore::lite::GraphDefTransform::Transform
+mindspore-lite/mindspore-lite/tools/converter/parser/onnx/onnx_inputs_adjust.cc:mindspore::lite::OnnxInputAdjust::Adjust
+mindspore-lite/mindspore-lite/tools/converter/quantizer/weight_quantizer.cc:mindspore::lite::quant::WeightQuantizer::LinearQuant
+mindspore-lite/mindspore-lite/tools/optimizer/fusion/flash_attention_fusion.cc:mindspore::opt::FlashAttentionFusion::Process
+
+# src
+mindspore-lite/mindspore-lite/src/common/ops/primitive_c.cc:mindspore::lite::PrimitiveC::Create
+mindspore-lite/mindspore-lite/src/extendrt/convert/runtime_convert.cc:RuntimeConvert
+mindspore-lite/mindspore-lite/src/litert/ios_reg_kernels.h:mindspore::kernel::IosRegisterKernels
+mindspore-lite/mindspore-lite/src/litert/ios_reg_ops.cc:mindspore::lite::IosRegisterOps
+mindspore-lite/mindspore-lite/src/litert/kernel/cpu/base/quant_dtype_cast.cc:mindspore::kernel::QuantDTypeCastCPUKernel::QuantDTypeCast
+mindspore-lite/mindspore-lite/src/litert/kernel/cpu/base/quant_dtype_cast.cc:mindspore::kernel::QuantDTypeCastCPUKernel::Run
+mindspore-lite/mindspore-lite/src/litert/kernel/cpu/control/tensorlist_setitem.cc:mindspore::kernel::TensorListSetItemCPUKernel::Run
+mindspore-lite/mindspore-lite/src/litert/kernel/cpu/fp32/matmul_fp32_base.cc:mindspore::kernel::MatmulFp32BaseCPUKernel::init_global_variable
+mindspore-lite/mindspore-lite/src/litert/kernel/cpu/fp32/matmul_fp32_base.cc:mindspore::kernel::MatmulFp32BaseCPUKernel::Run
+mindspore-lite/mindspore-lite/src/litert/kernel/opencl/kernel/conv2d.cc:mindspore::kernel::UseWinograd4x4To6x6
+mindspore-lite/mindspore-lite/src/litert/kernel/opencl/kernel/fullconnection.cc:mindspore::kernel::FullConnectionOpenCLKernel::CheckSpecs
+mindspore-lite/mindspore-lite/src/litert/scheduler.cc:mindspore::lite::Scheduler::FindBackendKernel
+mindspore-lite/mindspore-lite/src/litert/thread_pool.c:GetArch
+mindspore-lite/mindspore-lite/src/train/train_loop.cc:mindspore::lite::TrainLoop::Train
+
+# minddata
+mindspore-lite/mindspore-lite/minddata/dataset/engine/datasetops/data_queue_op.cc:mindspore::dataset::DataQueueOp::SendDataToAscend
+mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_image_utils.cc:mindspore::dataset::DvppConvertColor, mindspore::dataset::DvppErase, mindspore::dataset::DvppNormalize, mindspore::dataset::DvppPerspective, mindspore::dataset::DvppResizedCrop, mindspore::dataset::DvppRotate, mindspore::dataset::CreateAclTensor
+mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_video.cc:DvppVideo::SaveYuvFile
+
+# other
+mindspore-lite/mindspore-lite/providers/nnie_proposal/src/proposal.cc:mindspore::proposal::Rpn
+mindspore-lite/mindspore-lite/providers/nnie/src/custom_infer.cc:mindspore::nnie::CustomInterface::Infer
