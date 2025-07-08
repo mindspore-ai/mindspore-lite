@@ -376,10 +376,6 @@ int MatmulBaseInt8CPUKernel::TransferB() {
                          quant_param_->filter_zp_, bias_ptr_, current_sums, RowMajor, filter_per_channel_);
     }
   }
-  if (save_b_const_ != nullptr) {
-    free(save_b_const_);
-    save_b_const_ = nullptr;
-  }
   return RET_OK;
 }
 
@@ -453,14 +449,18 @@ int MatmulBaseInt8CPUKernel::Prepare() {
     FreeQuantParam();
     return ret;
   }
-  if (!InferShapeDone()) {
-    if (param_->b_const_) {
-      auto weight_tensor = in_tensors_.at(1);
-      CHECK_NULL_RETURN(weight_tensor);
-      CHECK_NULL_RETURN(weight_tensor->data());
-      save_b_const_ = reinterpret_cast<int8_t *>(malloc(weight_tensor->ElementsNum() * sizeof(int8_t)));
-      (void)memcpy(save_b_const_, weight_tensor->data(), weight_tensor->ElementsNum() * sizeof(int8_t));
+  if (param_->b_const_) {
+    auto weight_tensor = in_tensors_.at(1);
+    CHECK_NULL_RETURN(weight_tensor);
+    CHECK_NULL_RETURN(weight_tensor->data());
+    if (save_b_const_ != nullptr) {
+      MS_LOG(WARNING) << "save_b_const_ should not be non-nullptr in Prepare().";
+      free(save_b_const_);
+      save_b_const_ = nullptr;
     }
+    save_b_const_ = reinterpret_cast<int8_t *>(malloc(weight_tensor->ElementsNum() * sizeof(int8_t)));
+    CHECK_NULL_RETURN(save_b_const_);
+    (void)memcpy(save_b_const_, weight_tensor->data(), weight_tensor->ElementsNum() * sizeof(int8_t));
   }
   return RET_OK;
 }
