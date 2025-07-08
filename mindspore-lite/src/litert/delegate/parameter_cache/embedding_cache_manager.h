@@ -34,6 +34,8 @@ class EmbeddingCacheManager {
   EmbeddingCacheManager() {
     rank_id_ = lite::GetRankID();
     rank_group_size_ = lite::GetGPUGroupSize();
+    vocab_size_ = 0;
+    device_cache_size_ = 0;
   }
   Status Init(const std::string &cache_model_path, size_t vocab_size, size_t device_cache_size);
   Status Init(DelegateModel<schema::Primitive> *model, size_t vocab_size, size_t device_cache_size);

@@ -28,7 +28,7 @@ def gen_tiling(tiling_header_file: str, tiling_file_out: str):
     tiling_source += '#include "kernel_tiling/kernel_tiling.h"\n\n'
     end_source = ""
     pattern = re.compile(r'[(](.*)[)]', re.S)
-    with open(tiling_header_file, 'r') as fd:
+    with open(os.path.realpath(tiling_header_file), 'r') as fd:
         lines = fd.readlines()
         for line in lines:
             line = line.strip()
@@ -80,7 +80,7 @@ Init{stru}(tiling_arg, &tiling_data)\n
 '''.format(stru=struct_def)
     tiling_source += end_source
     tiling_source += '#endif'
-    with os.fdopen(os.open(tiling_file_out, const_var.WFLAGS, const_var.WMODES), 'w') as ofd:
+    with os.fdopen(os.open(os.path.realpath(tiling_file_out), const_var.WFLAGS, const_var.WMODES), 'w') as ofd:
         ofd.write(tiling_source)
 
 

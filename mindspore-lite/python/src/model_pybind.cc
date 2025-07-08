@@ -117,13 +117,6 @@ Status PyModelUpdateWeights(Model *model, const std::vector<std::vector<MSTensor
   return kSuccess;
 }
 
-void CleanKey(char *key, size_t key_len) {
-  auto sec_ret = memset_s(key, key_len, 0, key_len);
-  if (sec_ret != EOK) {
-    MS_LOG(WARNING) << "memcpy_s failed, src_len = " << key_len << ", dst_len = " << key_len << ", ret = " << sec_ret;
-  }
-}
-
 Status PyModelBuild(Model *model, const std::string &model_path, ModelType model_type,
                     const std::shared_ptr<Context> &model_context, char *key, size_t key_len,
                     const std::string &dec_mode, size_t num_parallel) {
@@ -131,16 +124,17 @@ Status PyModelBuild(Model *model, const std::string &model_path, ModelType model
   auto decrypt_data = Decrypt(&decrypt_len, model_path, reinterpret_cast<unsigned char *>(key), key_len, dec_mode);
   if (decrypt_data == nullptr) {
     MS_LOG(ERROR) << "Decrypt failed!";
-    CleanKey(key, key_len);
+    (void)memset_s(key, key_len, 0, key_len);
     return kLiteFileError;
   }
   CryptoInfo cryptoInfo{Key(key, key_len), dec_mode, num_parallel};
   Status ret = model->impl()->Build(decrypt_data.get(), decrypt_len, model_type, model_context, model_path, cryptoInfo);
+  (void)memset_s(cryptoInfo.key.key, cryptoInfo.key.max_key_len, 0, cryptoInfo.key.max_key_len);
   if (ret != kSuccess) {
-    CleanKey(key, key_len);
+    (void)memset_s(key, key_len, 0, key_len);
     return ret;
   }
-  CleanKey(key, key_len);
+  (void)memset_s(key, key_len, 0, key_len);
   return kSuccess;
 }
 

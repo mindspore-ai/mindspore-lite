@@ -68,6 +68,7 @@ int FixedBitWeightQuantizationWithHolder::QuantBias(const ParameterPtr &bias, co
   CHECK_NULL_RETURN(primitive);
   auto bias_default_param = bias->default_param();
   auto bias_param = bias_default_param->cast<tensor::TensorPtr>();
+  MS_CHECK_TRUE_MSG(bias_param != nullptr, RET_NULL_PTR, "bias_param is nullptr.");
   MS_ASSERT(bias_parameter != nullptr);
   auto quant_param_holder = GetCNodeQuantHolder(primitive);
   MS_CHECK_TRUE_MSG(quant_param_holder != nullptr, RET_NULL_PTR, "quant_param_holder is nullptr.");

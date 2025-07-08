@@ -369,38 +369,6 @@ def test_model_build_from_file_config_path_not_exist_error():
                               config_path="test.cfg")
     assert "config_path does not exist" in str(raise_info.value)
 
-def test_model_build_from_file_with_decryption():
-    class Network(nn.Cell):
-        def __init__(self):
-            super().__init__()
-            self.flatten = nn.Flatten()
-            self.dense_relu_sequential = nn.SequentialCell(
-                nn.Dense(28*28, 512),
-                nn.ReLU(),
-                nn.Dense(512, 512),
-                nn.ReLU(),
-                nn.Dense(512, 10)
-            )
-
-        def construct(self, x):
-            x = self.flatten(x)
-            logits = self.dense_relu_sequential(x)
-            return logits
-
-    key = b'0123456789ABCDEF'
-    model = Network()
-    input_tensor = Tensor(shape=(1, 28, 28), dtype=mindspore.float32, init=One())
-    output1 = np.array(model(input_tensor))
-    mindspore.export(model, input_tensor, file_name="test_net", file_format="MINDIR", enc_key=key, enc_mode='AES-GCM')
-    context = mslite.Context()
-    context.target = ["cpu"]
-    model_dec = mslite.Model()
-    model_dec.build_from_file("test_net.mindir", mslite.ModelType.MINDIR, context, dec_key=key, dec_mode='AES-GCM',
-                              dec_num_parallel=2)
-    inputs = model_dec.get_inputs()
-    output2 = model_dec.predict(inputs)[0].get_data_to_numpy()
-    assert np.all((output1 - output2) < 1e-6)
-
 
 def get_model():
     context = mslite.Context()

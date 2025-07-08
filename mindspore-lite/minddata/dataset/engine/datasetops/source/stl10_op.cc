@@ -180,8 +180,16 @@ Status STL10Op::ParseSTLData() {
   for (size_t i = 0; i < image_names_.size(); ++i) {
     std::ifstream image_reader, label_reader;
     if (image_names_[i].find("unlabeled") == std::string::npos) {
-      image_reader.open(image_names_[i], std::ios::binary | std::ios::ate);
-      label_reader.open(label_names_[i], std::ios::binary | std::ios::ate);
+      auto image_realpath = FileUtils::GetRealPath(image_names_[i].c_str());
+      if (!image_realpath.has_value()) {
+        RETURN_STATUS_UNEXPECTED("Invalid file path, " + image_names_[i] + " does not exist.");
+      }
+      auto label_realpath = FileUtils::GetRealPath(label_names_[i].c_str());
+      if (!label_realpath.has_value()) {
+        RETURN_STATUS_UNEXPECTED("Invalid file path, " + label_names_[i] + " does not exist.");
+      }
+      image_reader.open(image_realpath.value(), std::ios::binary | std::ios::ate);
+      label_reader.open(label_realpath.value(), std::ios::binary | std::ios::ate);
 
       Status s = ReadImageAndLabel(&image_reader, &label_reader, i);
       // Close the readers.
@@ -190,7 +198,11 @@ Status STL10Op::ParseSTLData() {
 
       RETURN_IF_NOT_OK(s);
     } else {  // unlabeled data -> no labels.
-      image_reader.open(image_names_[i], std::ios::binary | std::ios::ate);
+      auto image_realpath = FileUtils::GetRealPath(image_names_[i].c_str());
+      if (!image_realpath.has_value()) {
+        RETURN_STATUS_UNEXPECTED("Invalid file path, " + image_names_[i] + " does not exist.");
+      }
+      image_reader.open(image_realpath.value(), std::ios::binary | std::ios::ate);
 
       Status s = ReadImageAndLabel(&image_reader, nullptr, i);
       // Close the readers.

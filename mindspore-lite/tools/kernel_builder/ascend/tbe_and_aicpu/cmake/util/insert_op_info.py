@@ -2,6 +2,7 @@
 """
 Created on Feb  28 20:56:45 2020
 Copyright (c) Huawei Technologies Co., Ltd. 2020-2021. All rights reserved.
+copy from https://gitee.com/ascend/samples/blob/master/best_practices/contrib/blast-code/blast_tik/cmake/util/insert_op_info.py
 """
 import json
 import os
@@ -14,13 +15,13 @@ if __name__ == '__main__':
         print('argv error, inert_op_info.py your_op_file lib_op_file')
         sys.exit(2)
 
-    with open(sys.argv[1], 'r') as load_f:
+    with open(os.path.realpath(sys.argv[1]), 'r') as load_f:
         insert_operator = json.load(load_f)
 
     all_operators = {}
     if os.path.exists(sys.argv[2]):
         if os.path.getsize(sys.argv[2]) != 0:
-            with open(sys.argv[2], 'r') as load_f:
+            with open(os.path.realpath(sys.argv[2]), 'r') as load_f:
                 all_operators = json.load(load_f)
 
     for k in insert_operator.keys():
@@ -34,5 +35,5 @@ if __name__ == '__main__':
     if os.path.exists(sys.argv[2]):
         flag = os.O_WRONLY | os.O_EXCL
     mode = stat.S_IWUSR | stat.S_IRUSR
-    with os.fdopen(os.open(sys.argv[2], flag, mode), 'w') as json_file:
+    with os.fdopen(os.open(os.path.realpath(sys.argv[2]), flag, mode), 'w') as json_file:
         json_file.write(json.dumps(all_operators, indent=4))

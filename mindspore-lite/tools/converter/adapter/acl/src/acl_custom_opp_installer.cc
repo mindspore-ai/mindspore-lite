@@ -20,7 +20,7 @@
 #include <cstdio>
 #include <iostream>
 #include <algorithm>
-
+#include "src/common/file_utils.h"
 #include "src/common/log_util.h"
 
 namespace mindspore {
@@ -44,7 +44,12 @@ bool AclCustomOppInstaller::InstallCustomOpp(const std::string &custom_opp_path,
     // call the install.sh script to install custom opp
     FILE *fp;
     std::string install_path = custom_opp_path + "/install.sh";
-    std::string cmd = "bash " + install_path;
+    std::string install_path_real_path = lite::RealPath(install_path.c_str());
+    if (install_path_real_path.empty()) {
+      MS_LOG(ERROR) << "Invalid realpath!";
+      return false;
+    }
+    std::string cmd = "bash " + install_path_real_path;
     if ((fp = popen(cmd.c_str(), "r")) == NULL) {
       MS_LOG(ERROR) << "AclCustomOppInstaller::InstallCustomOpp: Install Custom Opp failed";
       return false;

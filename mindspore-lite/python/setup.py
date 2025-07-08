@@ -17,7 +17,6 @@
 """setup package."""
 import os
 import sys
-import re
 
 from setuptools import setup, find_packages
 
@@ -26,7 +25,8 @@ sys.argv = sys.argv[: -1]
 
 
 def _read_file(filename):
-    with open(filename, encoding='UTF-8') as f:
+    file_realpath = os.path.realpath(filename)
+    with open(file_realpath, encoding='UTF-8') as f:
         return f.read()
 
 
@@ -42,7 +42,7 @@ def _get_package_data():
     """ get package data"""
     pkg_data = [
         '__init__.py', '_checkparam.py', 'base_model.py', 'context.py', 'converter.py', 'model.py', 'tensor.py',
-        'lite_split.py', '_check_ascend.py', 'lib/*.so*', '.commit_id', 'include/api/*', 'include/api/callback/*',
+        '_check_ascend.py', 'lib/*.so*', '.commit_id', 'include/api/*', 'include/api/callback/*',
         'include/api/metrics/*', 'include/mindapi/base/*', 'include/registry/converter_context.h',
         'include/converter.h', 'custom_kernels/**'
     ]

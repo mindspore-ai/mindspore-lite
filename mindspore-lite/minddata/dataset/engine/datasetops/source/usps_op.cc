@@ -105,8 +105,13 @@ Status USPSOp::CountTotalRows(const std::string &dir, const std::string &usage, 
 }
 
 int64_t USPSOp::CountRows(const std::string &data_file) const {
+  auto data_file_realpath = FileUtils::GetRealPath(data_file.c_str());
+  if (!data_file_realpath.has_value()) {
+    MS_LOG(ERROR) << "Invalid file path, " << data_file << " does not exist.";
+    return 0;
+  }
   std::ifstream data_file_reader;
-  data_file_reader.open(data_file, std::ios::in);
+  data_file_reader.open(data_file_realpath.value(), std::ios::in);
   if (!data_file_reader.is_open()) {
     MS_LOG(ERROR) << "Invalid file, failed to open " << data_file << ": the file is permission denied.";
     return 0;

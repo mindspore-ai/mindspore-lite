@@ -1044,7 +1044,7 @@ int Scheduler::FindCpuKernel(const std::vector<Tensor *> &in_tensors, const std:
     MS_LOG(DEBUG) << "Get TypeId(expect = " << kernel_data_type << ", real = " << cpu_desc.data_type
                   << ") op success: " << PrimitiveCurVersionTypeName(op_type);
     if (is_train_session_) {
-      (*kernel)->Prepare();
+      ret = (*kernel)->Prepare();
       RestoreTensorData(&restored_origin_tensors);
     }
   }

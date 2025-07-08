@@ -39,7 +39,7 @@ class DatasetCacheImpl : public DatasetCache {
   /// \param mem_sz Size of the memory set aside for the row caching (default=0 which means unlimited,
   ///     note that it might bring in the risk of running out of memory on the machine).
   /// \param spill Spill to disk if out of memory (default=False).
-  /// \param hostname optional host name (default="127.0.0.1").
+  /// \param hostname optional host name.
   /// \param port optional port (default=50052).
   /// \param num_connections optional number of connections (default=12).
   /// \param prefetch_sz optional prefetch size (default=20).

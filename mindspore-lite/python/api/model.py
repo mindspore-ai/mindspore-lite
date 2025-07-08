@@ -202,7 +202,7 @@ class Model(BaseModel):
                     config_dict = {"ascend_context" : {"rank_table_file" : "path_b"}}
 
                 The the path_b from the config_dict will be used to compile the model.
-            dec_key (Bytes, optional) - key for decrypting model file, for example ``b'1234567890ABCDEF'``.
+            dec_key (Bytes, optional) - key for decrypting model file.
                 Default: ``None``.
             dec_mode (str, optional) - decryption mode, currently support ``"AES-GCM"``, ``"AES-CBC"``, ``"SM4-CBC"``.
                 Default: ``"AES-GCM"``.

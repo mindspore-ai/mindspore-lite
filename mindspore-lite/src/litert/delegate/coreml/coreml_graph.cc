@@ -16,6 +16,8 @@
 
 #include "src/litert/delegate/coreml/coreml_graph.h"
 #include <fstream>
+#include "src/common/file_utils.h"
+
 namespace mindspore::lite {
 CoreMLGraph::~CoreMLGraph() {
   for (auto *kernel : all_kernels_) {
@@ -156,7 +158,11 @@ int CoreMLGraph::SetMLModelInOut(CoreML::Specification::Model *model) {
 std::string CoreMLGraph::SaveMLModel() {
   MS_ASSERT(ml_model_ != nullptr);
   std::string model_name = this->name() + ".mlmodel";
-  auto model_path = std::string(getenv("HOME")) + "/tmp/" + model_name;
+  auto model_path = RealPath(model_name.c_str());
+  if (model_path.empty()) {
+    MS_LOG(ERROR) << "Invalid coreml model path";
+    return model_path;
+  }
   std::ofstream file_stream(model_path, std::ios::out | std::ios::binary);
   ml_model_->SerializeToOstream(&file_stream);
   MS_LOG(INFO) << "Build CoreML model success!";

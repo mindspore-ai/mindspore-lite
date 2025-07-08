@@ -69,6 +69,7 @@ def gen_custom_op_files(config_dir, dsl_dir):
         if not os.path.isdir(sub_dir):
             os.makedirs(sub_dir)
         ops_info_path = os.path.join(sub_dir, "aic-{}-ops-info.json".format(device_arch))
+        ops_info_path = os.path.realpath(ops_info_path)
         if os.path.isfile(ops_info_path):
             with open(ops_info_path, 'r') as f:
                 info_des = json.loads(f.read())

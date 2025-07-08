@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-// #define USE_DEPRECATED_API
 #include "tools/optimizer/graph/add_variable_node_pass.h"
 #include <memory>
 #include <vector>

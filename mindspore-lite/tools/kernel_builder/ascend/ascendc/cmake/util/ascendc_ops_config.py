@@ -16,7 +16,7 @@ def load_json(json_file: str):
     """
     load json
     """
-    with open(json_file, encoding='utf-8') as file:
+    with open(os.path.realpath(json_file), encoding='utf-8') as file:
         json_content = json.load(file)
     return json_content
 
@@ -104,7 +104,7 @@ def gen_all_config(root_dir, soc):
         gen_ops_config(_json, soc, config)
     for cfg_key, _ in config:
         cfg_file = os.path.join(root_dir, cfg_key)
-        with os.fdopen(os.open(cfg_file, const_var.WFLAGS, const_var.WMODES), 'w') as fd:
+        with os.fdopen(os.open(os.path.realpath(cfg_file), const_var.WFLAGS, const_var.WMODES), 'w') as fd:
             json.dump(config.get(cfg_key), fd, indent='  ')
 
 

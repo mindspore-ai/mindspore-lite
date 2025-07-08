@@ -74,6 +74,7 @@ bool QuantDtypeCastFusion::CheckPattern(const EquivPtr &equiv, const AnfNodePtr 
 
   // first cast node
   auto first_cast_primitive = GetValueNode<PrimitivePtr>(first_cast_cnode->input(0));
+  MS_CHECK_TRUE_RET(first_cast_primitive != nullptr, false);
   auto src_dtype_value = first_cast_primitive->GetAttr("src_t");
   MS_CHECK_TRUE_RET(src_dtype_value != nullptr, false);
   auto dst_dtype_value = first_cast_primitive->GetAttr("dst_t");
@@ -83,6 +84,7 @@ bool QuantDtypeCastFusion::CheckPattern(const EquivPtr &equiv, const AnfNodePtr 
 
   // second cast node
   auto second_cast_primitive = GetValueNode<PrimitivePtr>(cnode->input(0));
+  MS_CHECK_TRUE_RET(second_cast_primitive != nullptr, false);
   dst_dtype_value = second_cast_primitive->GetAttr("dst_t");
   MS_CHECK_TRUE_RET(dst_dtype_value != nullptr, false);
   second_dst_dtype = GetValue<int64_t>(dst_dtype_value);

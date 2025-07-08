@@ -29,6 +29,7 @@
 #endif
 #include "src/common/log_adapter.h"
 #include "src/common/log_util.h"
+#include "include/securec.h"
 
 #ifndef SECUREC_MEM_MAX_LEN
 #define SECUREC_MEM_MAX_LEN 0x7fffffffUL
@@ -72,7 +73,7 @@ void IntToByte(std::vector<Byte> *byteArray, int32_t n) {
   auto ptr = reinterpret_cast<const Byte *>(&n);
   (*byteArray).assign(ptr, ptr + sizeof(int32_t));
 }
-}  // namespace
+
 bool ParseEncryptData(const Byte *encrypt_data, size_t encrypt_len, std::vector<Byte> *iv,
                       std::vector<Byte> *cipher_data) {
   // encrypt_data is organized in order to iv_len, iv, cipher_len, cipher_data
@@ -111,6 +112,7 @@ bool ParseMode(const std::string &mode, std::string *alg_mode, std::string *work
   *work_mode = results[2];
   return true;
 }
+}  // namespace
 
 int InitCipherCtxAES(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *(*funcPtr)(), const std::string &work_mode, const Byte *key,
                      const Byte *iv, int iv_len, bool is_encrypt) {
@@ -272,6 +274,7 @@ EVP_CIPHER_CTX *GetEvpCipherCtx(const std::string &alg_mode, const std::string &
   return ctx;
 }
 
+namespace {
 bool BlockEncrypt(Byte *encrypt_data, size_t *encrypt_data_len, const std::vector<Byte> &plain_data, const Byte *key,
                   int32_t key_len, const std::string &enc_mode, unsigned char *tag) {
   size_t encrypt_data_buf_len = *encrypt_data_len;
@@ -330,40 +333,47 @@ bool BlockEncrypt(Byte *encrypt_data, size_t *encrypt_data_len, const std::vecto
   IntToByte(&int_buf, static_cast<int32_t>(*encrypt_data_len));
   ret = memcpy_s(encrypt_data, encrypt_data_buf_len, int_buf.data(), int_buf.size());
   if (ret != EOK) {
-    MS_LOG(INTERNAL_EXCEPTION) << "memcpy_s error, errorno " << ret;
+    MS_LOG(ERROR) << "memcpy_s error, errorno " << ret;
+    return false;
   }
   offset += int_buf.size();
 
   IntToByte(&int_buf, iv_len);
   ret = memcpy_s(encrypt_data + offset, encrypt_data_buf_len - offset, int_buf.data(), int_buf.size());
   if (ret != EOK) {
-    MS_LOG(INTERNAL_EXCEPTION) << "memcpy_s error, errorno " << ret;
+    MS_LOG(ERROR) << "memcpy_s error, errorno " << ret;
+    return false;
   }
   offset += int_buf.size();
 
   ret = memcpy_s(encrypt_data + offset, encrypt_data_buf_len - offset, iv_cpy.data(), iv_cpy.size());
   if (ret != EOK) {
-    MS_LOG(INTERNAL_EXCEPTION) << "memcpy_s error, errorno " << ret;
+    MS_LOG(ERROR) << "memcpy_s error, errorno " << ret;
+    return false;
   }
   offset += iv_cpy.size();
 
   IntToByte(&int_buf, cipher_len);
   ret = memcpy_s(encrypt_data + offset, encrypt_data_buf_len - offset, int_buf.data(), int_buf.size());
   if (ret != EOK) {
-    MS_LOG(INTERNAL_EXCEPTION) << "memcpy_s error, errorno " << ret;
+    MS_LOG(ERROR) << "memcpy_s error, errorno " << ret;
+    return false;
   }
   offset += int_buf.size();
 
   ret = memcpy_s(encrypt_data + offset, encrypt_data_buf_len - offset, cipher_data_buf.data(),
                  static_cast<size_t>(cipher_len));
   if (ret != EOK) {
-    MS_LOG(INTERNAL_EXCEPTION) << "memcpy_s error, errorno " << ret;
+    MS_LOG(ERROR) << "memcpy_s error, errorno " << ret;
+    return false;
   }
 
   *encrypt_data_len += sizeof(int32_t);
   return true;
 }
+}  // namespace
 
+namespace {
 bool BlockDecrypt(Byte *plain_data, int32_t *plain_len, const Byte *encrypt_data, size_t encrypt_len, const Byte *key,
                   int32_t key_len, const std::string &dec_mode, unsigned char *tag) {
   std::string alg_mode;
@@ -409,11 +419,14 @@ bool BlockDecrypt(Byte *plain_data, int32_t *plain_len, const Byte *encrypt_data
   EVP_CIPHER_CTX_free(ctx);
   return true;
 }
+}  // namespace
 
 std::unique_ptr<Byte[]> Encrypt(size_t *encrypt_len, const Byte *plain_data, size_t plain_len, const Byte *key,
                                 size_t key_len, const std::string &enc_mode) {
-  MS_EXCEPTION_IF_NULL(plain_data);
-  MS_EXCEPTION_IF_NULL(key);
+  if (plain_data == nullptr || key == nullptr) {
+    MS_LOG(ERROR) << "plain_data or key is nullptr!";
+    return nullptr;
+  }
   if (enc_mode != "AES-GCM" && enc_mode != "AES-CBC" && enc_mode != "SM4-CBC") {
     MS_LOG(ERROR) << "Mode only support AES-GCM|AES-CBC|SM4-CBC.";
     return nullptr;
@@ -447,7 +460,8 @@ std::unique_ptr<Byte[]> Encrypt(size_t *encrypt_len, const Byte *plain_data, siz
     size_t capacity = std::min(encrypt_buf_len - *encrypt_len, SECUREC_MEM_MAX_LEN);  // avoid dest size over 2gb
     errno_t ret = memcpy_s(encrypt_data.get() + *encrypt_len, capacity, int_buf.data(), sizeof(int32_t));
     if (ret != EOK) {
-      MS_LOG(INTERNAL_EXCEPTION) << "memcpy_s error, errorno " << ret;
+      MS_LOG(ERROR) << "memcpy_s error, errorno " << ret;
+      return nullptr;
     }
     *encrypt_len += sizeof(int32_t);
 
@@ -455,7 +469,8 @@ std::unique_ptr<Byte[]> Encrypt(size_t *encrypt_len, const Byte *plain_data, siz
       capacity = std::min(encrypt_buf_len - *encrypt_len, SECUREC_MEM_MAX_LEN);  // avoid dest size over 2gb
       ret = memcpy_s(encrypt_data.get() + *encrypt_len, capacity, tag, Byte16);
       if (ret != EOK) {
-        MS_LOG(INTERNAL_EXCEPTION) << "memcpy_s error, errorno " << ret;
+        MS_LOG(ERROR) << "memcpy_s error, errorno " << ret;
+        return nullptr;
       }
       *encrypt_len += Byte16;
     }
@@ -463,7 +478,8 @@ std::unique_ptr<Byte[]> Encrypt(size_t *encrypt_len, const Byte *plain_data, siz
     capacity = std::min(encrypt_buf_len - *encrypt_len, SECUREC_MEM_MAX_LEN);
     ret = memcpy_s(encrypt_data.get() + *encrypt_len, capacity, block_enc_buf.data(), block_enc_buf_len);
     if (ret != EOK) {
-      MS_LOG(INTERNAL_EXCEPTION) << "memcpy_s error, errorno " << ret;
+      MS_LOG(ERROR) << "memcpy_s error, errorno " << ret;
+      return nullptr;
     }
     *encrypt_len += block_enc_buf_len;
     offset += cur_block_size;
@@ -473,7 +489,10 @@ std::unique_ptr<Byte[]> Encrypt(size_t *encrypt_len, const Byte *plain_data, siz
 
 std::unique_ptr<Byte[]> Decrypt(size_t *decrypt_len, const std::string &encrypt_data_path, const Byte *key,
                                 size_t key_len, const std::string &dec_mode) {
-  MS_EXCEPTION_IF_NULL(key);
+  if (key == nullptr || decrypt_len == nullptr) {
+    MS_LOG(ERROR) << "key or decrypt_len is nullptr!";
+    return nullptr;
+  }
   if (dec_mode != "AES-GCM" && dec_mode != "AES-CBC" && dec_mode != "SM4-CBC") {
     MS_LOG(ERROR) << "Mode only support AES-GCM|AES-CBC|SM4-CBC.";
     return nullptr;
@@ -529,7 +548,8 @@ std::unique_ptr<Byte[]> Decrypt(size_t *decrypt_len, const std::string &encrypt_
     errno_t ret = memcpy_s(decrypt_data.get() + *decrypt_len, capacity, decrypt_block_buf.data(),
                            static_cast<int32_t>(decrypt_block_len));
     if (ret != EOK) {
-      MS_LOG(INTERNAL_EXCEPTION) << "memcpy_s error, errorno " << ret;
+      MS_LOG(ERROR) << "memcpy_s error, errorno " << ret;
+      return nullptr;
     }
     *decrypt_len += static_cast<size_t>(decrypt_block_len);
   }
@@ -539,8 +559,7 @@ std::unique_ptr<Byte[]> Decrypt(size_t *decrypt_len, const std::string &encrypt_
 
 std::unique_ptr<Byte[]> Decrypt(size_t *decrypt_len, const Byte *model_data, size_t data_size, const Byte *key,
                                 size_t key_len, const std::string &dec_mode) {
-  MS_EXCEPTION_IF_NULL(model_data);
-  MS_EXCEPTION_IF_NULL(key);
+  MS_CHECK_TRUE_MSG(model_data != nullptr && key != nullptr, nullptr, "mode_data or key is nullptr!");
   std::unordered_set<std::string> dic = {"AES-GCM", "AES-CBC", "SM4-CBC"};
   if (dic.find(dec_mode) == dic.cend()) {
     MS_LOG(ERROR) << "Mode only support AES-GCM|AES-CBC|SM4-CBC.";
@@ -580,7 +599,8 @@ std::unique_ptr<Byte[]> Decrypt(size_t *decrypt_len, const Byte *model_data, siz
       }
       auto ret = memcpy_s(tag, Byte16, model_data + offset, Byte16);
       if (ret != EOK) {
-        MS_LOG(INTERNAL_EXCEPTION) << "memcpy_s failed " << ret;
+        MS_LOG(ERROR) << "memcpy_s failed " << ret;
+        return nullptr;
       }
       offset += Byte16;
     }
@@ -610,7 +630,8 @@ std::unique_ptr<Byte[]> Decrypt(size_t *decrypt_len, const Byte *model_data, siz
     errno_t ret = memcpy_s(decrypt_data.get() + *decrypt_len, capacity, decrypt_block_buf.data(),
                            static_cast<size_t>(decrypt_block_len));
     if (ret != EOK) {
-      MS_LOG(INTERNAL_EXCEPTION) << "memcpy_s failed " << ret;
+      MS_LOG(ERROR) << "memcpy_s failed " << ret;
+      return nullptr;
     }
 
     *decrypt_len += static_cast<size_t>(decrypt_block_len);

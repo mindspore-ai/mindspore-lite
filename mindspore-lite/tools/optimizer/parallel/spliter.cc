@@ -71,8 +71,9 @@ void Spliter::RecordGraphInfo(const FuncGraphPtr &func_graph) {
       continue;
     }
     auto cnode = node->cast<CNodePtr>();
+    MS_CHECK_PTR_IF_NULL(cnode);
     auto prim = GetValueNode<PrimitivePtr>(cnode->input(kAnfPrimitiveIndex));
-    MS_ASSERT(prim != nullptr);
+    MS_CHECK_PTR_IF_NULL(prim);
     auto device_type =
       prim->GetAttr(ops::kDeviceType) != nullptr ? GetValue<int>(prim->GetAttr(ops::kDeviceType)) : kDeviceTypeNone;
     // has been searched

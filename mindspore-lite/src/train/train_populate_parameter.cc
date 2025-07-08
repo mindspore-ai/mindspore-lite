@@ -518,7 +518,7 @@ OpParameter *PopulateResizeGradParameter(const void *prim) {
   auto primitive = static_cast<const schema::Primitive *>(prim);
   resize_grad_param->op_parameter_.type_ = primitive->value_type();
   auto param = primitive->value_as_ResizeGrad();
-  MS_ASSERT(param != nullptr);
+  MS_CHECK_TRUE_RET(param != nullptr, nullptr);
   resize_grad_param->method = static_cast<int>(param->method());
   resize_grad_param->align_corners_ = param->align_corners();
 

@@ -210,7 +210,7 @@ def _get_variable_weights_name(name_list_file):
     name_map = {}
     new_name_str = ""
     new_names = []
-    with open(name_list_file, 'r') as f:
+    with open(os.path.realpath(name_list_file), 'r') as f:
         lines = f.readlines()
         for line in lines:
             if line[-1] == "\n":
@@ -231,7 +231,7 @@ def _get_variable_weights_name(name_list_file):
 
 def _parse_update_weight_config_name(name_list_file):
     """Parse update weight config name"""
-    with open(name_list_file, 'r') as f:
+    with open(os.path.realpath(name_list_file), 'r') as f:
         lines = f.readlines()
         for line in lines:
             if line[-1] == '\n':

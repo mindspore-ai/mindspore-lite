@@ -22,6 +22,7 @@
 #include <vector>
 #include <iostream>
 #include "src/common/log_adapter.h"
+#include "src/common/file_utils.h"
 
 #ifdef _WIN32
 // Override dlopen with LoadLibrary on Windows.

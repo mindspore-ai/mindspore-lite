@@ -374,14 +374,8 @@ void ModelImpl::UpdateProvider() {
 
 Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, ModelType model_type,
                                     const std::shared_ptr<Context> &model_context, const std::string &model_path) {
-  if (model_buff == nullptr) {
-    MS_LOG(ERROR) << "The input model buffer is nullptr!";
-    return kLiteError;
-  }
-  if (model_size == 0) {
-    MS_LOG(ERROR) << "The input model buffer size is 0!";
-    return kLiteError;
-  }
+  MS_CHECK_TRUE_MSG(model_buff != nullptr, kLiteError, "The input model buffer is nullptr!");
+  MS_CHECK_TRUE_MSG(model_size != 0, kLiteError, "The input model buffer size is 0!");
   if (model_context == nullptr) {
     MS_LOG(ERROR) << "Invalid context pointers!";
     return kLiteError;
@@ -474,6 +468,12 @@ Status ModelImpl::BuildByBufferImpl(const void *model_data, size_t model_size, M
     MS_LOG(ERROR) << "Invalid context pointers!";
     return kLiteError;
   }
+  for (auto &device_info : model_context->MutableDeviceInfo()) {
+    if (device_info == nullptr) {
+      MS_LOG(ERROR) << "There is nullptr device info in context!";
+      return kLiteError;
+    }
+  }
   SetMsContext();
   auto thread_num = model_context->GetThreadNum();
   if (thread_num < 0) {
@@ -542,6 +542,12 @@ Status ModelImpl::Build(const FuncGraphPtr &func_graph, const std::shared_ptr<Co
   if (model_context == nullptr) {
     MS_LOG(ERROR) << "Invalid context pointers!";
     return kLiteError;
+  }
+  for (auto &device_info : model_context->MutableDeviceInfo()) {
+    if (device_info == nullptr) {
+      MS_LOG(ERROR) << "There is nullptr device info in context!";
+      return kLiteError;
+    }
   }
   SetMsContext();
   auto thread_num = model_context->GetThreadNum();

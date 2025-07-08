@@ -752,7 +752,7 @@ endif()
 include(${TOP_DIR}/cmake/utils.cmake)
 include(${TOP_DIR}/cmake/dependency_utils.cmake)
 include(${TOP_DIR}/cmake/external_libs/securec.cmake)
-include(${TOP_DIR}/cmake/graphengine_variables.cmake)
+include(${TOP_DIR}/cmake/metadef_variables.cmake)
 
 find_and_use_mold()
 

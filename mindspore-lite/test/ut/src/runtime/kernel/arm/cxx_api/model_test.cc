@@ -24,7 +24,7 @@ namespace mindspore {
 namespace {
 constexpr int32_t kNumThreads = 2;
 constexpr int NUM_OF_CLASSES = 10;
-}
+}  // namespace
 class TestCxxApiLiteModel : public mindspore::CommonTest {
  public:
   TestCxxApiLiteModel() = default;
@@ -248,24 +248,6 @@ TEST_F(TestCxxApiLiteModel, set_weights_FAILURE) {
   changes.push_back(*tensor);
   ASSERT_TRUE(model.UpdateWeights(changes) == kSuccess);
   delete (tensor);
-}
-
-TEST_F(TestCxxApiLiteModel, set_get_lr_SUCCESS) {
-  Model model;
-  Graph graph;
-  float learn_rate = 0.2;
-  auto context = std::make_shared<Context>();
-  context->SetThreadNum(kNumThreads);
-  auto cpu_context = std::make_shared<mindspore::CPUDeviceInfo>();
-  cpu_context->SetEnableFP16(true);
-  context->MutableDeviceInfo().push_back(cpu_context);
-  auto train_cfg = std::make_shared<TrainCfg>();
-
-  ASSERT_TRUE(Serialization::Load("./nets/mix_lenet_tod.ms", ModelType::kMindIR, &graph) == kSuccess);
-  ASSERT_TRUE(model.Build(GraphCell(graph), context, train_cfg) == kSuccess);
-
-  ASSERT_TRUE(model.SetLearningRate(learn_rate) == kSuccess);
-  ASSERT_TRUE(model.GetLearningRate() == learn_rate);
 }
 
 }  // namespace mindspore

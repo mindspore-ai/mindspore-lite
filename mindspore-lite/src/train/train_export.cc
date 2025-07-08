@@ -680,7 +680,7 @@ int TrainExport::SaveWeightsToFile(bool enable_fp16, const std::vector<std::stri
       auto shape = tensor->dims;
       weights.write(reinterpret_cast<const char *>(shape.data()), shape.size() * sizeof(uint32_t));
       if (weights.fail()) {
-        MS_LOG(ERROR) << "Write weights failed, weight file: " << file_name_;
+        MS_LOG(ERROR) << "Write tensor " << tensor->name << " shape failed";
         weights.close();
         return RET_ERROR;
       }
@@ -688,7 +688,7 @@ int TrainExport::SaveWeightsToFile(bool enable_fp16, const std::vector<std::stri
     if (!enable_fp16 || tensor->dataType != kNumberTypeFloat32) {
       weights.write(reinterpret_cast<const char *>(tensor->data.data()), tensor->data.size());
       if (weights.fail()) {
-        MS_LOG(ERROR) << "Write weights failed, weight file: " << file_name_;
+        MS_LOG(ERROR) << "Write tensor " << tensor->name << " data failed";
         weights.close();
         return RET_ERROR;
       }
@@ -707,7 +707,7 @@ int TrainExport::SaveWeightsToFile(bool enable_fp16, const std::vector<std::stri
 #endif
       weights.write(reinterpret_cast<const char *>(data_fp16.data()), data_fp16.size() * sizeof(uint16_t));
       if (weights.fail()) {
-        MS_LOG(ERROR) << "Write weights failed, weight file: " << file_name_;
+        MS_LOG(ERROR) << "Write tensor " << tensor->name << " data failed";
         weights.close();
         return RET_ERROR;
       }

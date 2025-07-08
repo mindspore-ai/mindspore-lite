@@ -18,9 +18,9 @@
 #include <vector>
 #include <memory>
 #include "include/train/accuracy_metrics.h"
+#include "include/api/metrics/accuracy.h"
 #include "src/litert/cxx_api/metrics/metrics_impl.h"
 #include "src/common/log_adapter.h"
-#include "include/api/metrics/accuracy.h"
 
 namespace mindspore {
 AccuracyMetrics::AccuracyMetrics(int accuracy_metrics, const std::vector<int> &input_indexes,

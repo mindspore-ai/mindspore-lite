@@ -2,6 +2,7 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2020-2021. All rights reserved.
 # Description: Generate npu_supported_ops.json
 # ==============================================================================
+# copy from https://gitee.com/ascend/samples/blob/master/best_practices/contrib/blast-code/blast_tik/cmake/util/gen_ops_filter.sh
 
 if [[ -z "$1" ]]; then
     echo -e "[ERROR] No source dir provided"

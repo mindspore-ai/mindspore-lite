@@ -33,6 +33,9 @@ class PadInt8CPUKernel : public LiteKernel {
       : LiteKernel(parameter, inputs, outputs, ctx) {
     op_parameter_->thread_num_ = ctx->thread_num_;
     pad_param_ = reinterpret_cast<PadParameter *>(op_parameter_);
+    pad_quant_arg_.in_quant_args_ = nullptr;
+    pad_quant_arg_.out_quanr_args_ = nullptr;
+    pad_quant_arg_.constant_value_ = nullptr;
   }
   ~PadInt8CPUKernel() override { FreeQuantParam(); };
 
@@ -59,9 +62,9 @@ class PadInt8CPUKernel : public LiteKernel {
   int8_t *out_data_ = nullptr;
   int in_dims_[COMM_SHAPE_SIZE] = {0};
   int out_dims_[COMM_SHAPE_SIZE] = {0};
-  int in_strides[DEFAULT_PAD_NDIMS];
-  int out_strides[DEFAULT_PAD_NDIMS];
-  int mirror_offset_;
+  int in_strides[DEFAULT_PAD_NDIMS] = {0};
+  int out_strides[DEFAULT_PAD_NDIMS] = {0};
+  int mirror_offset_ = 0;
   PadQuantArg pad_quant_arg_;
 };
 }  // namespace mindspore::kernel

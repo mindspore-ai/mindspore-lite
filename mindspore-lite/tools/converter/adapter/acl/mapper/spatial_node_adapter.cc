@@ -160,6 +160,7 @@ static STATUS AdapteNodeWithMultiOutputs(const FuncGraphPtr &func_graph, const C
     // When the cnode name is custom, and output_num attr is greater than 1, this var will be set to true
     if (input_func_name == kCustomTypeCustom) {
       auto prim = GetCNodePrimitive(input_cnode);
+      MS_CHECK_TRUE_MSG(prim != nullptr, lite::RET_ERROR, "prim is nullptr.");
       if (prim->HasAttr(kAttrOutputNum) && GetValue<int64_t>(prim->GetAttr(kAttrOutputNum)) > 1) {
         custom_node_has_muilt_output = true;
       }

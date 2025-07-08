@@ -1295,9 +1295,11 @@ int BenchmarkUnifiedApi::CompileGraph(mindspore::ModelType model_type, const std
   if (!flags_->decrypt_key_str_.empty()) {
     dec_key.len = lite::Hex2ByteArray(flags_->decrypt_key_str_, dec_key.key, kEncMaxLen);
     if (dec_key.len == 0) {
+      memset(dec_key.key, 0, kEncMaxLen);
       MS_LOG(ERROR) << "dec_key.len == 0";
       return RET_INPUT_PARAM_INVALID;
     }
+    memset(&flags_->decrypt_key_str_[0], 0, flags_->decrypt_key_str_.size());
     flags_->decrypt_key_str_.clear();
   }
   Status ret;

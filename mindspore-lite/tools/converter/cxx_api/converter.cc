@@ -15,6 +15,7 @@
  */
 #include "include/converter.h"
 #include "include/api/data_type.h"
+#include "include/securec.h"
 #include "tools/converter/cxx_api/converter_para.h"
 #include "tools/converter/converter_context.h"
 #include "tools/converter/converter.h"
@@ -352,7 +353,9 @@ std::vector<char> Converter::GetChipNameChar() {
 Status Converter::Convert() {
   if (data_ != nullptr) {
     Status ret = Status(static_cast<StatusCode>(lite::RunConverter(data_, nullptr, nullptr, false)));
+    (void)memset_s(&data_->decrypt_key[0], data_->decrypt_key.size(), 0, data_->decrypt_key.size());
     data_->decrypt_key.clear();  // clear key
+    (void)memset_s(&data_->encrypt_key[0], data_->encrypt_key.size(), 0, data_->encrypt_key.size());
     data_->encrypt_key.clear();  // clear key
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "Convert model failed, ret=" << ret;
@@ -367,7 +370,9 @@ void *Converter::Convert(size_t *data_size) {
   void *model_data = nullptr;
   if (data_ != nullptr) {
     Status ret = Status(static_cast<StatusCode>(lite::RunConverter(data_, &model_data, data_size, true)));
+    (void)memset_s(&data_->decrypt_key[0], data_->decrypt_key.size(), 0, data_->decrypt_key.size());
     data_->decrypt_key.clear();  // clear key
+    (void)memset_s(&data_->encrypt_key[0], data_->encrypt_key.size(), 0, data_->encrypt_key.size());
     data_->encrypt_key.clear();  // clear key
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "Convert model failed, ret=" << ret;

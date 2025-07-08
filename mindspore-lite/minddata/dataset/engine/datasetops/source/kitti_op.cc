@@ -178,8 +178,12 @@ Status KITTIOp::ParseAnnotationIds() {
 Status KITTIOp::ParseAnnotationBbox(const std::string &path) {
   CHECK_FAIL_RETURN_UNEXPECTED(Path(path).Exists(), "Invalid path, " + path + " does not exist.");
   Annotation annotation;
+  auto file_realpath = FileUtils::GetRealPath(path.c_str());
+  if (!file_realpath.has_value()) {
+    RETURN_STATUS_UNEXPECTED("Invalid file path, " + path + " does not exist.");
+  }
   std::ifstream in_file;
-  in_file.open(path, std::ifstream::in);
+  in_file.open(file_realpath.value(), std::ifstream::in);
   if (in_file.fail()) {
     RETURN_STATUS_UNEXPECTED("Invalid file, failed to open file: " + path);
   }
