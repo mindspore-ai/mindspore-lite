@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 project(MindSpore_Lite_Python_API)
 
-# set(CMAKE_VERBOSE_MAKEFILE on)
 set(PYBIND11_CPP_STANDARD -std=c++17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-function -Wl,-rpath,$ORIGIN/")
 
@@ -36,7 +35,7 @@ if(Python3_FOUND)
     pybind11_add_module(_c_lite_wrapper NO_EXTRAS ${PY_SRC_LIST})
 
     if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
-      target_link_libraries(_c_lite_wrapper PRIVATE -Wl,--whole-archive mindspore-extendrt
+      target_link_libraries(_c_lite_wrapper PRIVATE -Wl,--whole-archive mindspore-extendrt lite_src_common_mid
               -Wl,--no-whole-archive -Wl,-z,relro,-z,now,-z,noexecstack -fstack-protector-all -s)
     endif()
     if(MSLITE_ENABLE_CONVERTER OR MSLITE_ENABLE_RUNTIME_GLOG)

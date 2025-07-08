@@ -29,7 +29,6 @@
 #include "src/litert/lite_session.h"
 #include "src/common/helper/infer_helpers.h"
 #include "src/common/config_infos.h"
-#include "src/extendrt/session/lite_graph_executor.h"
 
 namespace mindspore {
 class LiteRTGraphExecutor : public LiteGraphExecutor {
@@ -47,13 +46,13 @@ class LiteRTGraphExecutor : public LiteGraphExecutor {
                     uint32_t *graph_id) override;
   bool CompileGraph(const void *model_data, size_t data_size, const std::map<string, string> &compile_options,
                     uint32_t *graph_id) override;
-  bool RunGraph(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs, std::vector<tensor::Tensor> *outputs,
+  bool RunGraph(uint32_t graph_id, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
                 const std::map<string, string> &compile_options) override;
 
-  bool Resize(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
+  bool Resize(uint32_t graph_id, const std::vector<MSTensor> &inputs,
               const std::vector<ShapeVector> &dims) override;
-  std::vector<tensor::Tensor> GetInputInfos(uint32_t graph_id) override;
-  std::vector<tensor::Tensor> GetOutputInfos(uint32_t graph_id) override;
+  std::vector<MSTensor> GetInputInfos(uint32_t graph_id) override;
+  std::vector<MSTensor> GetOutputInfos(uint32_t graph_id) override;
 
   std::shared_ptr<lite::LiteSession> CreateLiteSession(const std::shared_ptr<lite::InnerContext> &context,
                                                        const ConfigInfos &config_infos);

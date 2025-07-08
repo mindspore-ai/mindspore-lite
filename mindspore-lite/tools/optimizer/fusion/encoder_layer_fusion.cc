@@ -639,8 +639,8 @@ VectorRef EncoderLayerFusion::DefinePatternEncoderLayer(bool post_layernorm = tr
   }
   auto is_add = std::make_shared<CondVar>(std::bind(IsOpType, p1, prim::kPrimAddFusion), "is_add");
   auto add = (is_position_bias && post_layernorm)
-               ? VectorRef({is_add, getTuple(post_layernorm, layernorm_fusion, is_position_bias), tuple})
-               : VectorRef({is_add, reshape1, tuple});
+             ? VectorRef({is_add, getTuple(post_layernorm, layernorm_fusion, is_position_bias), tuple})
+             : VectorRef({is_add, reshape1, tuple});
   auto is_reshape2 = std::make_shared<CondVar>(std::bind(IsOpType, p1, prim::kPrimReshape), "reshape-encoder2");
   MS_CHECK_TRUE_RET(is_reshape2 != nullptr, {});
   auto var2 = std::make_shared<Var>("var2");
@@ -1087,11 +1087,8 @@ CNodePtr EncoderLayerFusion::CreateMaskedEncoderLayerFusionNode(const FuncGraphP
                                    &expert_num, &expert_offset, &capacity_factor) == RET_OK,
                     nullptr, "Init Attributes failed!");
   auto encoder_layer_prim = CreatePrim(func_graph, equiv, ffn_hidden_size, expert_num, expert_offset, capacity_factor);
-  MS_CHECK_TRUE_RET(encoder_layer_prim != nullptr, nullptr);
   auto encoder_layer_prim_c = encoder_layer_prim->GetPrim();
-  MS_CHECK_TRUE_RET(encoder_layer_prim_c != nullptr, nullptr);
   auto value_node = NewValueNode(encoder_layer_prim_c);
-  MS_CHECK_TRUE_RET(value_node != nullptr, nullptr);
   std::vector<AnfNodePtr> new_node_inputs = {value_node, input};
   if (is_position_bias_) {
     auto position_bias = utils::cast<AnfNodePtr>((*equiv)[position_bias_]);

@@ -36,6 +36,7 @@
 #include "tools/converter/quantizer/quantize_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_o.h"
 #include "src/common/decrypt.h"
+#include "src/extendrt/delegate/comm_group_info.h"
 
 namespace mindspore::lite {
 namespace {
@@ -663,7 +664,7 @@ int MindIRSerializer::SaveProtoToFile(mind_ir::ModelProto *model_proto, const st
     MS_LOG(INFO) << "No need to save proto to file";
     return RET_OK;
   }
-  auto realpath = Common::CreatePrefixPath(output_file, true);
+  auto realpath = CommGroupInfo::CreatePrefixPath(output_file, true);
   if (!realpath.has_value()) {
     MS_LOG(ERROR) << "Get real path of file " << output_file << " failed.";
     return RET_ERROR;

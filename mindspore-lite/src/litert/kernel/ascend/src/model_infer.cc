@@ -30,16 +30,16 @@ constexpr auto kModelSharingKey = "multi_model_sharing_mem";
 
 ModelInfer::ModelInfer(const Buffer &om_data, const AclModelOptions &options,
                        const std::map<std::string, std::string> &config_info)
-    : init_flag_(false),
-      load_flag_(false),
-      device_type_("AscendCL"),
-      context_(nullptr),
-      om_data_(om_data),
-      options_(options),
-      model_process_(options),
-      config_info_(config_info),
-      acl_env_(nullptr),
-      device_id_(0) {}
+  : init_flag_(false),
+    load_flag_(false),
+    device_type_("AscendCL"),
+    context_(nullptr),
+    om_data_(om_data),
+    options_(options),
+    model_process_(options),
+    config_info_(config_info),
+    acl_env_(nullptr),
+    device_id_(0) {}
 
 STATUS ModelInfer::Init() {
   if (init_flag_) {

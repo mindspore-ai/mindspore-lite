@@ -509,7 +509,7 @@ int64_t SlicePreposePass::GetReshapeAbnormalAxeIn(const std::vector<int64_t> &sh
       }
     }
     if (j == shape_out.size() && abnormal_axe_in == -1) {
-      abnormal_axe_in = static_cast<int64_t>(i);
+      abnormal_axe_in = i;
     }
   }
   return abnormal_axe_in;

@@ -39,8 +39,7 @@
 #include "mindapi/base/base.h"
 #include "src/extendrt/delegate/graph_executor/litert/func_graph_reuse_manager.h"
 #include "load_mindir/load_model.h"
-#include "src/extendrt/delegate/plugin/tensorrt_executor_plugin.h"
-#include "src/extendrt/kernel/ascend/plugin/ascend_kernel_plugin.h"
+#include "src/extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"
 #include "utils/ms_utils_secure.h"
 #include "infer/custom.h"
 #include "infer/return.h"
@@ -51,64 +50,10 @@
 namespace mindspore {
 namespace {
 const char *const kExecutionPlan = "execution_plan";
-const char *const kDataFlowGraphType = "data_flow";
-const char *const kDataFlowGraphName = "data_flow_graph";
 constexpr size_t kMaxSectionNum = 100;
 constexpr size_t kMaxConfigNumPerSection = 1000;
 std::shared_mutex g_model_converter_lock;
 std::mutex g_load_mindir_lock;
-
-FuncGraphPtr CreateFuncGraphFromDataFlow(const void *model_data, size_t data_size) {
-  auto func_graph = std::make_shared<FuncGraph>();
-  if (func_graph == nullptr) {
-    MS_LOG(ERROR) << "The func_graph is nullptr.";
-    return nullptr;
-  }
-  func_graph->set_attr(kAttrFuncType, MakeValue(kDataFlowGraphType));
-
-  // Create custom node with the dataFlow graph.
-  auto param = func_graph->add_parameter();
-  MS_CHECK_TRUE_RET(param != nullptr, nullptr);
-  param->set_name(kDataFlowGraphName);
-  auto type_ptr = TypeIdToType(kNumberTypeUInt8);
-  MS_CHECK_TRUE_RET(type_ptr != nullptr, nullptr);
-  ShapeVector shape = {static_cast<int64_t>(data_size)};
-  auto param_tensor = std::make_shared<tensor::Tensor>(kNumberTypeUInt8, shape);
-  MS_CHECK_TRUE_RET(param_tensor != nullptr, nullptr);
-  if (param_tensor->Size() != data_size) {
-    MS_LOG(ERROR) << "The data size of param value is not equal to the data size: " << data_size;
-    return nullptr;
-  }
-  auto tensor_data = param_tensor->data_c();
-  MS_CHECK_TRUE_RET(tensor_data != nullptr, nullptr);
-  if (common::huge_memcpy(reinterpret_cast<uint8_t *>(tensor_data), param_tensor->Size(),
-                          reinterpret_cast<uint8_t *>(const_cast<void *>(model_data)), data_size) != EOK) {
-    MS_LOG(ERROR) << "Memcpy dataflow graph data failed.";
-    return nullptr;
-  }
-  param->set_default_param(param_tensor);
-  auto abstract_tensor = std::make_shared<abstract::AbstractTensor>(type_ptr, shape);
-  MS_CHECK_TRUE_RET(abstract_tensor != nullptr, nullptr);
-  param->set_abstract(abstract_tensor);
-
-  auto custom_prim = std::make_shared<ops::Custom>();
-  MS_CHECK_TRUE_RET(custom_prim != nullptr, nullptr);
-  custom_prim->set_type(kDataFlowGraphType);
-  auto custom_prim_c = custom_prim->GetPrim();
-  MS_CHECK_TRUE_RET(custom_prim_c != nullptr, nullptr);
-  CNodePtr custom_cnode = func_graph->NewCNode(custom_prim_c, {param});
-  MS_CHECK_TRUE_RET(custom_cnode != nullptr, nullptr);
-  custom_cnode->set_fullname_with_scope("Custom_" + std::string(kDataFlowGraphName));
-  auto return_prim = std::make_shared<ops::Return>();
-  MS_CHECK_TRUE_RET(return_prim != nullptr, nullptr);
-  auto return_prim_c = return_prim->GetPrim();
-  MS_CHECK_TRUE_RET(return_prim_c != nullptr, nullptr);
-  auto return_cnode = func_graph->NewCNode(return_prim_c, {custom_cnode});
-  MS_CHECK_TRUE_RET(return_cnode != nullptr, nullptr);
-  return_cnode->set_fullname_with_scope("Return");
-  func_graph->set_return(return_cnode);
-  return func_graph;
-}
 
 std::unordered_map<std::string, mindspore::Format> kStr2FormatMap{{"DEFAULT_FORMAT", mindspore::Format::DEFAULT_FORMAT},
                                                                   {"NCHW", mindspore::Format::NCHW},
@@ -489,25 +434,16 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, M
     return session_->CompileGraph(func_graph, nullptr, 0, &graph_id_);
   }
 
-  if (model_type != ModelType::kDataFlow) {
-    func_graph = LoadGraphByBufferImpl(model_buff, model_size, model_type, model_context, model_path);
-    if (func_graph == nullptr) {
-      MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model: " << model_path;
-      return kLiteError;
-    }
-    // convert and optimize func graph to infer
-    ret = ConvertGraphOnline(func_graph, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "convert graph failed!ret = " << ret;
-      return ret;
-    }
-  } else {
-    // new a func graph contains a custom node, which is the data-flow graph.
-    func_graph = CreateFuncGraphFromDataFlow(model_buff, model_size);
-    if (func_graph == nullptr) {
-      MS_LOG(ERROR) << "Create func graph failed from data flow graph!";
-      return kLiteError;
-    }
+  func_graph = LoadGraphByBufferImpl(model_buff, model_size, model_type, model_context, model_path);
+  if (func_graph == nullptr) {
+    MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model: " << model_path;
+    return kLiteError;
+  }
+  // convert and optimize func graph to infer
+  ret = ConvertGraphOnline(func_graph, model_context);
+  if (ret != kSuccess) {
+    MS_LOG(ERROR) << "convert graph failed!ret = " << ret;
+    return ret;
   }
   ret = session_->CompileGraph(func_graph, nullptr, 0, &graph_id_);
   if (ret != kSuccess) {
@@ -577,25 +513,16 @@ Status ModelImpl::BuildByBufferImpl(const void *model_data, size_t model_size, M
     return session_->CompileGraph(func_graph, nullptr, 0, &graph_id_);
   }
 
-  if (model_type != ModelType::kDataFlow) {
-    func_graph = LoadGraphByBufferImpl(model_data, model_size, model_type, model_context, model_path, cryptoInfo);
-    if (func_graph == nullptr) {
-      MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model: " << model_path;
-      return kLiteError;
-    }
-    // convert and optimize func graph to infer
-    ret = ConvertGraphOnline(func_graph, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "convert graph failed!";
-      return ret;
-    }
-  } else {
-    // new a func graph contains a custom node, which is the data-flow graph.
-    func_graph = CreateFuncGraphFromDataFlow(model_data, model_size);
-    if (func_graph == nullptr) {
-      MS_LOG(ERROR) << "Create func graph failed from data flow graph!";
-      return kLiteError;
-    }
+  func_graph = LoadGraphByBufferImpl(model_data, model_size, model_type, model_context, model_path, cryptoInfo);
+  if (func_graph == nullptr) {
+    MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model: " << model_path;
+    return kLiteError;
+  }
+  // convert and optimize func graph to infer
+  ret = ConvertGraphOnline(func_graph, model_context);
+  if (ret != kSuccess) {
+    MS_LOG(ERROR) << "convert graph failed!";
+    return ret;
   }
   ret = session_->CompileGraph(func_graph, nullptr, 0, &graph_id_);
   if (ret != kSuccess) {
@@ -755,8 +682,8 @@ Status ModelImpl::Resize(const std::vector<MSTensor> &inputs, const std::vector<
     MS_LOG(ERROR) << "The size of inputs is incorrect.";
     return kLiteInputParamInvalid;
   }
-  std::vector<mindspore::tensor::Tensor> resize_inputs = TensorUtils::MSTensorToTensor(inputs);
-  return session_->Resize(graph_id_, resize_inputs, dims);
+  // std::vector<mindspore::tensor::Tensor> resize_inputs = TensorUtils::MSTensorToTensor(inputs);
+  return session_->Resize(graph_id_, inputs, dims);
 }
 
 std::vector<MSTensor> ModelImpl::GetInputs() {
@@ -823,13 +750,14 @@ MSTensor ModelImpl::GetOutputByTensorName(const std::string &name) {
 }
 
 Status ModelImpl::UpdateWeights(const std::vector<std::vector<MSTensor>> &weights) {
-  MS_CHECK_TRUE_MSG(session_ != nullptr, kLiteError, "Session is null, please build model first!");
-  size_t weights_size = weights.size();
-  std::vector<std::vector<mindspore::tensor::TensorPtr>> new_weights(weights_size);
-  for (size_t i = 0; i < weights_size; ++i) {
-    new_weights[i] = TensorUtils::MSTensorToTensorPtr(weights[i]);
-  }
-  return session_->UpdateWeights(new_weights);
+  // MS_CHECK_TRUE_MSG(session_ != nullptr, kLiteError, "Session is null, please build model first!");
+  // size_t weights_size = weights.size();
+  // std::vector<std::vector<mindspore::tensor::TensorPtr>> new_weights(weights_size);
+  // for (size_t i = 0; i < weights_size; ++i) {
+  //   new_weights[i] = TensorUtils::MSTensorToTensorPtr(weights[i]);
+  // }
+  // return session_->UpdateWeights(weights);
+  return kSuccess;
 }
 
 Status ModelImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
@@ -840,41 +768,15 @@ Status ModelImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTen
     return kLiteError;
   }
   MS_EXCEPTION_IF_NULL(outputs);
-  std::vector<mindspore::tensor::Tensor> graph_inputs = TensorUtils::MSTensorToTensor(inputs);
-  std::vector<mindspore::tensor::Tensor> graph_outputs;
-  std::vector<mindspore::tensor::Tensor> org_graph_outputs;
-  if (!outputs->empty()) {
-    graph_outputs = TensorUtils::MSTensorToTensor(*outputs);
-    org_graph_outputs = graph_outputs;
-  }
-  auto ret = session_->RunGraph(graph_id_, graph_inputs, &graph_outputs, before, after);
+  auto ret = session_->RunGraph(graph_id_, inputs, outputs, before, after);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "ModelImpl::Predict RunGraph failed!ret = " << ret;
     return ret;
   }
-  bool output_remain = false;
-  if (!org_graph_outputs.empty() && org_graph_outputs.size() == graph_outputs.size()) {
-    output_remain = true;
-    for (size_t i = 0; i < org_graph_outputs.size(); i++) {
-      if (org_graph_outputs[i].data_ptr() != graph_outputs[i].data_ptr() ||
-          org_graph_outputs[i].device_address() != graph_outputs[i].device_address()) {
-        output_remain = false;
-        break;
-      }
-    }
-  }
-  if (!output_remain) {
-    auto session_outputs = session_->GetOutputNames(graph_id_);
-    if (session_outputs.empty() || session_outputs.size() != graph_outputs.size()) {
-      MS_LOG(ERROR) << "output name is wrong.";
-      return kLiteError;
-    }
-    *outputs = TensorUtils::TensorToMSTensor(graph_outputs, session_outputs);
-  }
   auto session_outputs = session_->GetOutputs(graph_id_);
-  if (graph_outputs.size() != session_outputs.size()) {
+  if (outputs->size() != session_outputs.size()) {
     MS_LOG(ERROR) << "Outputs count get from session " << session_outputs.size() << " != outputs count of RunGraph "
-                  << graph_outputs.size();
+                  << outputs->size();
     return kCoreFailed;
   }
   for (size_t i = 0; i < session_outputs.size(); i++) {
@@ -1075,13 +977,6 @@ bool ModelImpl::CheckModelSupport(DeviceType device_type, ModelType model_type) 
   }
   if (model_type != kMindIR) {
     return false;
-  }
-
-  if (device_type == kGPU) {
-    return lite::TensorRTExecutorPlugin::GetInstance().TryRegister().IsOk();
-  }
-  if (device_type == kAscend) {
-    return kernel::AscendKernelPlugin::TryRegister().IsOk();
   }
   return false;
 }

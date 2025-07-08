@@ -21,27 +21,20 @@ if(NOT MSLITE_ENABLE_ACL)
     )
 endif()
 
-if(NOT BUILD_LITE AND ENABLE_D)
-set(DVPP_UTILS_SRC
-    ${DVPP_UTILS_SRC}
-    # Ascend910B
-    dvpp_image_utils.cc
-    )
-endif()
-
 add_library(dvpp_utils SHARED ${DVPP_UTILS_SRC})
 enable_target_when_only_build_plugins(dvpp_utils)
 
-if(MSLITE_ENABLE_ACL)
-    find_library(acl_dvpp libacl_dvpp.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
-    find_library(acl libascendcl.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
-    find_library(nnopbase libnnopbase.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
-    find_library(acl_dvpp_op libacl_dvpp_op.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
-    find_library(acl_dvpp_mpi libacl_dvpp_mpi.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
-    # find acl_env_guard in ascend_kernel_plugin
-    target_link_libraries(dvpp_utils PRIVATE ascend_kernel_plugin minddata-lite ${acl} ${acl_dvpp}
-        mindspore_core ${nnopbase} ${acl_dvpp_op} ${acl_dvpp_mpi})
-else()
+if(NOT MSLITE_ENABLE_ACL)
+# if(MSLITE_ENABLE_ACL)
+#     find_library(acl_dvpp libacl_dvpp.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
+#     find_library(acl libascendcl.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
+#     find_library(nnopbase libnnopbase.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
+#     find_library(acl_dvpp_op libacl_dvpp_op.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
+#     find_library(acl_dvpp_mpi libacl_dvpp_mpi.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
+#     # find acl_env_guard in ascend_kernel_plugin
+#     target_link_libraries(dvpp_utils PRIVATE ascend_kernel_plugin minddata-lite ${acl} ${acl_dvpp}
+#         mindspore_core ${nnopbase} ${acl_dvpp_op} ${acl_dvpp_mpi})
+# else()
     find_library(acl_dvpp libacl_dvpp.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
     find_library(acl libascendcl.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
     find_library(nnopbase libnnopbase.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})

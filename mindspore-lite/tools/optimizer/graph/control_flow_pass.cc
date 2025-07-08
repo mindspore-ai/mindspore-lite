@@ -414,8 +414,8 @@ int ControlFlowPass::CreateWhileAfterPartialNode(
     MS_ASSERT(value_node != nullptr);
 
     auto input_index = value_node->value()->type()->number_type() == kNumberTypeInt64
-                         ? GetValue<int64_t>(value_node->value())
-                         : GetValue<int>(value_node->value());
+                       ? GetValue<int64_t>(value_node->value())
+                       : GetValue<int>(value_node->value());
 
     after_partial_cnode_inputs.push_back(cond_fg_inputs.at(input_index));
     auto new_parameter = after_fg->add_parameter();

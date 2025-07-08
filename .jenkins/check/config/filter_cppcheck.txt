@@ -1,0 +1,42 @@
+# tools
+"mindspore-lite/mindspore-lite/tools/common/flag_parser.cc"                                                "useStlAlgorithm"
+"mindspore-lite/mindspore-lite/tools/common/tensor_util.cc"                                                "useStlAlgorithm"
+"mindspore-lite/mindspore-lite/tools/converter/parser/onnx/onnx_relu_parser.cc"                            "useStlAlgorithm"
+"mindspore-lite/mindspore-lite/tools/converter/parser/pytorch/pytorch_model_parser.cc"                     "variableScope"
+"mindspore-lite/mindspore-lite/tools/converter/quantizer/quantize_util.cc"                                 "useStlAlgorithm"
+"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_and_aicpu/op_proto/"                        "syntaxError"
+"mindspore-lite/mindspore-lite/tools/optimizer/fusion/batchnorm_to_scale_fusion.cc"                        "nullPointerRedundantCheck"
+
+# src
+"mindspore-lite/mindspore-lite/src/common/draw/drawer.cc"                                                  "duplicateCondition"
+"mindspore-lite/mindspore-lite/src/common/ops/unsqueeze.cc"                                                "useStlAlgorithm"
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/fp16/lstm_fp16_base.cc"                               "knownConditionTrueFalse"
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/fp32/convolution_im2col_fp32.cc"                      "knownConditionTrueFalse"
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/fp32/convolution_im2col_fp32.cc"                      "shadowVariable"
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/fp32/convolution_winograd_fp32.cc"                    "knownConditionTrueFalse"
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/fp32/convolution_winograd_fp32.cc"                    "shadowVariable"
+"mindspore-lite/mindspore-lite/src/litert/kernel/opencl/cl/"                                               "unreadVariable"
+"mindspore-lite/mindspore-lite/src/litert/kernel/opencl/kernel/"                                           "unreadVariable"
+"mindspore-lite/mindspore-lite/src/train/optimizer/fusion/gru_fusion_pass.cc"                              "stlFindInsert"
+
+# test
+"mindspore-lite/mindspore-lite/test/"                                                                      "syntaxError"
+"mindspore-lite/mindspore-lite/test/ut/tools/converter/registry/pass_registry_test.cc"                     "unknownMacro"
+
+# MindData
+"mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_image_utils.cc"              "nullPointerRedundantCheck"
+"mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_image_utils.cc"              "unsignedLessThanZero"
+"mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_image_utils.cc"              "constParameter"
+"mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_image_utils.cc"              "constParameter"
+"mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_image_utils.cc"              "useStlAlgorithm"
+"mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/ResourceManager.cc"               "unreadVariable"
+"mindspore-lite/mindspore-lite/minddata/dataset/util/arena.cc"                                             "useStlAlgorithm"
+
+# other
+"mindspore-lite/mindspore-lite/examples/quick_start_micro/"                                                "syntaxError"
+"mindspore-lite/mindspore-lite/python/src/pybind_module.cc"                                                "syntaxError"
+
+# nnacl
+"mindspore-lite/mindspore-lite/ops/kernel/cpu/nnacl/experimental/"                                          "unreadVariable"
+"mindspore-lite/mindspore-lite/ops/kernel/cpu/nnacl/fp32/conv_sw_avx_fp32.c"                                "unknownMacro"
+

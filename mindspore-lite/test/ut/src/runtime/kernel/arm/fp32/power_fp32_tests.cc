@@ -40,9 +40,7 @@ TEST_F(TestPowerFp32, Simple) {
   output.MallocData();
   std::vector<lite::Tensor *> outputs = {&output};
 
-  PowParameter *param = reinterpret_cast<PowParameter *>(malloc(sizeof(PowParameter)));
-  ASSERT_NE(param, nullptr);
-  memset(param, 0, sizeof(PowParameter));
+  auto param = new PowParameter();
   param->scale_ = 1;
   param->shift_ = 0;
   param->op_parameter_.type_ = schema::PrimitiveType_PowFusion;
@@ -79,9 +77,7 @@ TEST_F(TestPowerFp32, Broadcast) {
   output.MallocData();
   std::vector<lite::Tensor *> outputs = {&output};
 
-  PowParameter *param = reinterpret_cast<PowParameter *>(malloc(sizeof(PowParameter)));
-  ASSERT_NE(param, nullptr);
-  memset(param, 0, sizeof(PowParameter));
+  auto param = new PowParameter();
   param->power_ = 2;
   param->scale_ = 1;
   param->shift_ = 0;

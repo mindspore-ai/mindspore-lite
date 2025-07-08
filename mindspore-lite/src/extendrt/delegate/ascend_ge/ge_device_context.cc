@@ -28,7 +28,6 @@
 #include "common/config_infos.h"
 #include "common/common.h"
 #include "extendrt/delegate/comm_group_info.h"
-#include "extendrt/delegate/ascend_ge/ge_utils.h"
 #include "backend/common/session/executor.h"
 #include "plugin/res_manager/ascend/symbol_interface/acl_rt_symbol.h"
 #include "plugin/res_manager/ascend/symbol_interface/symbol_utils.h"
@@ -215,15 +214,10 @@ Status GeDeviceContext::Initialize(const std::shared_ptr<Context> &context, cons
     MS_LOG(ERROR) << "Failed to Init GE";
     return status;
   }
-  auto ascend_soc_version = GetSocVersion();
-  if (ascend_soc_version != "Ascend310") {
-    status = InitHccl(context, config_info);
-    if (status != kSuccess) {
-      MS_LOG(ERROR) << "Failed to Init HCCL";
-      return status;
-    }
-  } else {
-    MS_LOG(INFO) << "Ascend310 does not support hccl now, no need to init.";
+  status = InitHccl(context, config_info);
+  if (status != kSuccess) {
+    MS_LOG(ERROR) << "Failed to Init HCCL";
+    return status;
   }
   return kSuccess;
 }

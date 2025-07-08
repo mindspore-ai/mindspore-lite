@@ -150,10 +150,10 @@ CNodePtr NewCNode(const std::vector<AnfNodePtr> &inputs, const FuncGraphPtr &fg,
 }
 
 // not implement for lite, just for api compatible
-CNodePtr NewCNode(const CNodePtr &cnode, const KernelGraphPtr &fg, const std::vector<AnfNodePtr> &orig_nodes) {
-  MS_LOG(DEBUG) << "Not implement for lite, just for api compatible.";
-  return nullptr;
-}
+// CNodePtr NewCNode(const CNodePtr &cnode, const KernelGraphPtr &fg, const std::vector<AnfNodePtr> &orig_nodes) {
+//   MS_LOG(DEBUG) << "Not implement for lite, just for api compatible.";
+//   return nullptr;
+// }
 
 // not implement for lite, just for api compatible
 AbstractBasePtr CppInferShapeAndType(const PrimitivePtr &prim, const AbstractBasePtrList &args_spec_list) {

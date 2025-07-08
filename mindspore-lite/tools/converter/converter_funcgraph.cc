@@ -25,7 +25,6 @@
 #include "src/common/log_adapter.h"
 #include "tools/common/meta_graph_serializer.h"
 #include "tools/lite_exporter/anf_exporter.h"
-#include "tools/graph_kernel/converter/graph_kernel_optimization.h"
 #ifdef SUPPORT_TRAIN
 #include "src/train/train_populate_parameter.h"
 #endif

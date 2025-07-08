@@ -1,0 +1,4 @@
+[submodule "mindspore"]
+	path = mindspore
+	url = https://gitee.com/mindspore/mindspore.git
+	shallow = true

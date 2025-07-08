@@ -6,7 +6,6 @@ set(API_HEADER
         ${TOP_DIR}/mindspore/include/api/types.h
         ${TOP_DIR}/mindspore/include/api/visible.h
         )
-
 set(ABSTRACT_HEADER
         ${CORE_INC_DIR}/abstract/abstract_value.h
         ${CORE_INC_DIR}/abstract/dshape.h

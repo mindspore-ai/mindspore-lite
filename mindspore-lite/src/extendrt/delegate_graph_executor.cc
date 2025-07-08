@@ -40,7 +40,7 @@ bool GraphSinkDelegate::IsDelegateNode(const std::shared_ptr<CNode> &node) {
   return false;
 }
 
-std::shared_ptr<kernel::KernelMod> GraphExecutorDelegate::CreateKernel(const std::shared_ptr<CNode> &node) {
+std::shared_ptr<kernel::SubgraphKernel> GraphExecutorDelegate::CreateKernel(const std::shared_ptr<CNode> &node) {
   if (!IsDelegateNode(node)) {
     return nullptr;
   }

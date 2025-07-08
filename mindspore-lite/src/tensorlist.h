@@ -207,9 +207,7 @@ class TensorList : public Tensor {
 };
 
 #else
-
 using TensorList = void;
-
 #endif
 }  // namespace mindspore::lite
 #endif  // MINDSPORE_LITE_SRC_TENSORLIST_H_

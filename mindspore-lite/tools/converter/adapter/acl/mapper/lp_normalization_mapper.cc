@@ -30,7 +30,6 @@ namespace {
 constexpr size_t kNameLpNormInputNum = 1;
 }  // namespace
 STATUS LpNormalizationMapper::Mapper(const CNodePtr &cnode) {
-  CHECK_NULL_RETURN(cnode);
   /*
    * input1                   input
    *   |                       |
@@ -48,12 +47,6 @@ STATUS LpNormalizationMapper::Mapper(const CNodePtr &cnode) {
   if (GetValueNodeAndPrimFromCnode(cnode, &value_node, &src_prim) != lite::RET_OK) {
     MS_LOG(ERROR) << "Get primitive from cnode failed.";
     return lite::RET_ERROR;
-  }
-  CHECK_NULL_RETURN(value_node);
-  CHECK_NULL_RETURN(src_prim);
-  if (cnode->inputs().size() < kNameLpNormInputNum) {
-    MS_LOG(ERROR) << "input size is less than " << kNameLpNormInputNum << ", input size is " << cnode->inputs().size();
-    return RET_ERROR;
   }
   auto origin_input = cnode->inputs()[kNameLpNormInputNum];
   auto func_graph = cnode->func_graph();
@@ -81,7 +74,6 @@ STATUS LpNormalizationMapper::Mapper(const CNodePtr &cnode) {
     MS_LOG(ERROR) << "Failed to get func graph manager from cnode " << cnode->fullname_with_scope();
     return RET_ERROR;
   }
-  CHECK_NULL_RETURN(cnode->abstract());
   auto new_lpnorm_node =
     NewCNode(cnode, dst_prim, {origin_input}, cnode->abstract()->Clone(), cnode->fullname_with_scope() + "_LpNorm");
   if (new_lpnorm_node == nullptr) {

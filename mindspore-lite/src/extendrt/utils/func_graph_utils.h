@@ -23,11 +23,12 @@
 #include <string>
 #include <vector>
 #include <tuple>
-
+#include <memory>
 #include "ir/anf.h"
 #include "ir/dtype/type.h"
 #include "ir/func_graph.h"
 #include "include/api/data_type.h"
+#include "include/api/types.h"
 #include "include/api/status.h"
 #include "common/kernel.h"
 #include "include/common/utils/anfalgo.h"
@@ -53,9 +54,9 @@ class FuncGraphUtils {
   static std::string GetTensorName(const AnfWithOutIndex &tensor);
   static AbstractBasePtr GetAbstract(const AnfWithOutIndex &tensor);
 
-  static void GetFuncGraphInputsInfo(const FuncGraphPtr &graph, std::vector<tensor::TensorPtr> *inputs,
+  static void GetFuncGraphInputsInfo(const FuncGraphPtr &graph, std::vector<std::shared_ptr<MSTensor>> *inputs,
                                      std::vector<std::string> *inputs_name);
-  static void GetFuncGraphOutputsInfo(const FuncGraphPtr &graph, std::vector<tensor::TensorPtr> *outputs,
+  static void GetFuncGraphOutputsInfo(const FuncGraphPtr &graph, std::vector<std::shared_ptr<MSTensor>> *outputs,
                                       std::vector<std::string> *output_names);
   static Status UnifyGraphToNHWCFormat(const FuncGraphPtr &graph);
 
@@ -65,6 +66,12 @@ class FuncGraphUtils {
                                   const mindspore::HashSet<AnfNodePtr> &seen);
   static AnfNodePtr RefSubGraphNode(const FuncGraphPtr &fg, const AnfNodePtr &node, AnfNodePtrList *inputs_ptr,
                                     mindspore::HashMap<AnfNodePtr, AnfNodePtr> *eqv_ptr);
+
+  static tensor::TensorPtr CreateEmptyTupleTensor(const ValueTuplePtr &value_tuple);
+  template <typename T>
+  static tensor::TensorPtr CreateTensorWithValueTuple(const ValueTuplePtr &value_tuple_ptr, const TypePtr &type_ptr,
+                                                      size_t data_length);
+  static tensor::TensorPtr CreateTupleTensor(const ValueTuplePtr &value_tuple);
 
  private:
   static ValuePtr GetNodeValuePtr(AnfNodePtr input_node);

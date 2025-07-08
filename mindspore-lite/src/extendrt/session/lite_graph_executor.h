@@ -23,6 +23,7 @@
 
 #include "include/api/types.h"
 #include "runtime/hardware/device_context.h"
+#include "include/api/status.h"
 
 namespace mindspore {
 /// \brief Adaptive Graph Executor for cloud Graph Executor to solve interface conflicts.
@@ -31,28 +32,38 @@ class LiteGraphExecutor {
   LiteGraphExecutor() = default;
   virtual ~LiteGraphExecutor() = default;
 
-  virtual bool CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options) {
+  virtual void Initialize() { return; }
+  virtual void Finalize() { return; }
+
+  virtual bool CompileGraph(const std::shared_ptr<FuncGraph> &graph,
+                            const std::map<std::string, std::string> &compile_options, uint32_t *graph_id) {
     return false;
   }
 
-
-  virtual bool CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
-                            uint32_t *graph_id) {
+  virtual bool CompileGraph(const void *model_data, size_t data_size,
+                            const std::map<std::string, std::string> &compile_options, uint32_t *graph_id) {
     return false;
   }
 
-  virtual bool CompileGraph(const void *model_data, size_t data_size, const std::map<string, string> &compile_options,
-                            uint32_t *graph_id) {
-    return false;
+  // form base class
+  virtual bool RunGraph(const std::shared_ptr<FuncGraph> &graph, const std::vector<MSTensor> &inputs,
+                        std::vector<MSTensor> *outputs, const std::map<std::string, std::string> &compile_options) {
+    MS_LOG(EXCEPTION) << "Unimplemented interface.";
   }
 
-  virtual bool UpdateWeights(const std::vector<std::vector<std::shared_ptr<tensor::Tensor>>> &weights) {
+  virtual bool CompileGraph(const std::shared_ptr<FuncGraph> &graph,
+                            const std::map<std::string, std::string> &compile_options) {
+    return true;
+  }
+
+  virtual bool UpdateWeights(const std::vector<std::vector<std::shared_ptr<mindspore::MSTensor>>> &weights) {
     MS_LOG(ERROR) << "UpdateWeights failed.";
     return false;
   }
 
-  virtual bool RunGraph(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
-                        std::vector<tensor::Tensor> *outputs, const std::map<string, string> &compile_options) {
+  virtual bool RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                        std::vector<mindspore::MSTensor> *outputs,
+                        const std::map<std::string, std::string> &compile_options) {
     (void)graph_id;
     (void)inputs;
     (void)outputs;
@@ -60,24 +71,18 @@ class LiteGraphExecutor {
     return false;
   }
 
-  virtual bool RunGraph(const FuncGraphPtr &graph, const std::vector<tensor::Tensor> &inputs,
-                        std::vector<tensor::Tensor> *outputs, const std::map<string, string> &compile_options) {
-    return false;
-  }
-
-
-  virtual bool Resize(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
+  virtual bool Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                       const std::vector<std::vector<int64_t>> &new_shapes) {
     (void)graph_id;
     (void)inputs;
     (void)new_shapes;
     return true;
   }
-  virtual std::vector<tensor::Tensor> GetInputInfos(uint32_t graph_id) {
+  virtual std::vector<mindspore::MSTensor> GetInputInfos(uint32_t graph_id) {
     (void)graph_id;
     return {};
   }
-  virtual std::vector<tensor::Tensor> GetOutputInfos(uint32_t graph_id) {
+  virtual std::vector<mindspore::MSTensor> GetOutputInfos(uint32_t graph_id) {
     (void)graph_id;
     return {};
   }

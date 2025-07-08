@@ -203,15 +203,15 @@ STATUS AddIterNumsUpdateEdge(const FuncGraphPtr &anf_graph, std::vector<AnfNodeP
 CNodePtr GetCNodeFromControlFlowNodesMap(
   const std::string &loop_node_name,
   const std::unordered_map<std::string, std::unordered_map<std::string, AnfNodePtr> *> &control_nodes_map) {
-  auto iter1 = control_nodes_map.find(loop_node_name);
-  if (iter1 == control_nodes_map.end()) {
-    return nullptr;
-  }  // namespace
-  auto iter2 = iter1->second->find(loop_node_name);
-  if (iter2 == iter1->second->end()) {
-    return nullptr;
-  }
-  return iter2->second->cast<CNodePtr>();
+auto iter1 = control_nodes_map.find(loop_node_name);
+if (iter1 == control_nodes_map.end()) {
+return nullptr;
+}  // namespace
+auto iter2 = iter1->second->find(loop_node_name);
+if (iter2 == iter1->second->end()) {
+return nullptr;
+}
+return iter2->second->cast<CNodePtr>();
 }
 
 STATUS BuildReturnNode(const FuncGraphPtr &anf_graph, const std::vector<AnfNodePtr> &return_inputs) {

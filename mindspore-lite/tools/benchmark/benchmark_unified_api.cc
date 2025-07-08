@@ -39,7 +39,7 @@
 #include "include/mpi_sys.h"
 #include "include/mpi_vb.h"
 #endif
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
 #include <thread>
 #include "src/common/config_file.h"
 #endif
@@ -51,7 +51,7 @@ constexpr int kFrequencyDefault = 3;
 constexpr int kPercentageDivisor = 100;
 constexpr int kDumpInputsAndOutputs = 0;
 constexpr int kDumpOutputs = 2;
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
 constexpr int kMaxRequestNum = 200;
 #endif
 namespace lite {
@@ -219,7 +219,7 @@ int BenchmarkUnifiedApi::LoadInput() {
 }
 
 int BenchmarkUnifiedApi::GenerateInputData() {
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
   if (flags_->enable_parallel_predict_) {
     std::vector<void *> inputs;
     for (size_t i = 0; i < ms_inputs_for_api_.size(); i++) {
@@ -306,7 +306,7 @@ void BenchmarkUnifiedApi::UpdateConfigInfo() {
 }
 
 int BenchmarkUnifiedApi::ReadInputFile() {
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
   if (flags_->enable_parallel_predict_) {
     std::vector<void *> inputs;
     for (size_t i = 0; i < ms_inputs_for_api_.size(); i++) {
@@ -377,7 +377,7 @@ int BenchmarkUnifiedApi::ReadInputFile() {
 }
 
 int BenchmarkUnifiedApi::GetDataTypeByTensorName(const std::string &tensor_name) {
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
   for (auto tensor : ms_outputs_for_api_) {
     auto name = tensor.Name();
     if (name == tensor_name) {
@@ -532,7 +532,7 @@ int BenchmarkUnifiedApi::InitMSContext(const std::shared_ptr<mindspore::Context>
 
   return RET_OK;
 }
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
 int BenchmarkUnifiedApi::CompareOutputForModelPool(std::vector<mindspore::MSTensor> *outputs) {
   if (outputs->empty()) {
     MS_LOG(ERROR) << "outputs is empty.";
@@ -1069,7 +1069,7 @@ int BenchmarkUnifiedApi::PrintInputData() {
   }
   return RET_OK;
 }
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
 void BenchmarkUnifiedApi::ModelParallelRunnerWarmUp(int index) {
   auto in = model_runner_.GetInputs();
   for (size_t i = 0; i < in.size(); i++) {
@@ -1345,7 +1345,7 @@ std::vector<std::vector<int64_t>> BenchmarkUnifiedApi::ParseGraphInputShapeMap(c
   return resize_dims;
 }
 
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
 int BenchmarkUnifiedApi::RunParallelBenchmark(std::shared_ptr<mindspore::Context> context) {
   if (flags_->resize_dims_.empty() && flags_->graph_input_shape_map_.empty()) {
     MS_LOG(ERROR) << "model input shapes should be provided when using parallel predict, please specify --inputShape";
@@ -1408,7 +1408,7 @@ int BenchmarkUnifiedApi::RunBenchmark() {
   }
 
   UpdateConfigInfo();
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
   if (flags_->enable_parallel_predict_) {
     MS_CHECK_FALSE_MSG(RunParallelBenchmark(context) != RET_OK, RET_ERROR, "run model pool failed.");
     return RET_OK;
@@ -1837,7 +1837,7 @@ int BenchmarkUnifiedApi::InitDumpTensorDataCallbackParameter() {
 }
 
 BenchmarkUnifiedApi::~BenchmarkUnifiedApi() {
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
   if (!flags_->enable_parallel_predict_) {
     return;
   }

@@ -60,10 +60,10 @@
 #endif
 #include "src/litert/runtime_convert.h"
 #include "extendrt/mindir_loader/model_loader.h"
-#ifndef __ANDROID__
-#include "kernel/ascend/plugin/ascend_kernel_plugin.h"
-#endif
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+// #ifndef __ANDROID__
+// #include "kernel/ascend/plugin/ascend_kernel_plugin.h"
+// #endif
+#if defined(ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
 #include "thread/parallel_thread_pool_manager.h"
 #endif
 #include "src/litert/runtime_packed_node_pass.h"
@@ -806,15 +806,6 @@ int LiteSession::PrepareKernels(const Model *model) {
         }
       }
     }
-
-#if (defined DEBUG) && (defined MSLITE_EXPORT_COMPUTE_IR)
-    auto subgraph_kernel = static_cast<kernel::SubGraphKernel *>(kernel);
-    ret = DrawGraph(subgraph_kernel);
-    if (ret != RET_OK) {
-      MS_LOG(ERROR) << "graph: " << kernel->name() << " draw failed.";
-    }
-#endif
-
     ret = kernel->Prepare();
     if (ret != RET_OK) {
       MS_LOG(ERROR) << "Prepare kernel " << kernel->name() << " failed: " << ret;
@@ -871,7 +862,7 @@ int LiteSession::RunGraph(const KernelCallBack &before, const KernelCallBack &af
     MS_LOG(ERROR) << "Not support multi-threading";
     return RET_ERROR;
   }
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
   ParallelThreadPoolManager::GetInstance()->ActivatePool(runner_id_, worker_id_);
 #endif
   STATUS ret = CheckTensorsInvalid(inputs_);
@@ -897,7 +888,7 @@ int LiteSession::RunGraph(const KernelCallBack &before, const KernelCallBack &af
       input->set_shape_changed(false);
     }
   }
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
   ParallelThreadPoolManager::GetInstance()->SetFreePool(runner_id_, worker_id_);
 #endif
   is_running_.store(false);
@@ -930,7 +921,7 @@ int LiteSession::InitSharedThreadPool() {
   MS_LOG(INFO) << "runner id: " << runner_id_ << "  enable_shared_pool: " << enable_shared_pool
                << "  workers_num: " << workers_num << "  thread_num_limit: " << thread_num_limit
                << "  remaining_thread_num: " << remaining_thread_num;
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
   ParallelThreadPoolManager::GetInstance()->Init(enable_shared_pool, runner_id_, workers_num, remaining_thread_num,
                                                  thread_num_limit);
 #endif
@@ -961,7 +952,7 @@ int LiteSession::InitContext(const std::shared_ptr<InnerContext> &context) {
   context_->thread_pool_->SetMinSpinCount(kDefaulLiteIosSpinCount);
 #endif
 
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
   if (context_->inter_op_parallel_num_ > 1 && !runner_id_.empty() &&
       ParallelThreadPoolManager::GetInstance()->GetEnableSharedThreadPool(runner_id_)) {
     MS_LOG(INFO) << "Enable subgraph parallelism and enable thread pool sharing";
@@ -972,17 +963,17 @@ int LiteSession::InitContext(const std::shared_ptr<InnerContext> &context) {
   return RET_OK;
 }
 
-int LiteSession::InitAscend(const std::shared_ptr<InnerContext> &context) {
-#ifndef __ANDROID__
-  if (!context->IsDeviceTypeEnabled(DT_ASCEND)) {
-    MS_LOG(INFO) << "There is no Ascend device type.";
-    return RET_OK;
-  }
-  return mindspore::AscendKernelPlugin::GetInstance().Register();
-#else
-  return RET_OK;
-#endif
-}
+// int LiteSession::InitAscend(const std::shared_ptr<InnerContext> &context) {
+// #ifndef __ANDROID__
+//   if (!context->IsDeviceTypeEnabled(DT_ASCEND)) {
+//     MS_LOG(INFO) << "There is no Ascend device type.";
+//     return RET_OK;
+//   }
+//   return mindspore::AscendKernelPlugin::GetInstance().Register();
+// #else
+//   return RET_OK;
+// #endif
+// }
 
 int LiteSession::CreateTensorRTDelegate() {
 #ifdef GPU_TENSORRT
@@ -1163,12 +1154,12 @@ int LiteSession::Init(const std::shared_ptr<InnerContext> &context) {
     return ret;
   }
 
-  ret = InitAscend(context);
-  if (ret != RET_OK) {
-    MS_LOG(ERROR) << "Open Ascend kernel plugin failed";
-    is_running_.store(false);
-    return ret;
-  }
+  // ret = InitAscend(context);
+  // if (ret != RET_OK) {
+  //   MS_LOG(ERROR) << "Open Ascend kernel plugin failed";
+  //   is_running_.store(false);
+  //   return ret;
+  // }
 
   ret = InitDelegate();
   if (ret != RET_OK) {
@@ -1252,7 +1243,7 @@ LiteSession::~LiteSession() {
 #endif
   delete ms_context_;
   ms_context_ = nullptr;
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
   ParallelThreadPoolManager::GetInstance()->ResetParallelThreadPoolManager(runner_id_);
 #endif
   lite::PackWeightManager::GetInstance()->FreePackWeight(runner_id_, model_id_);

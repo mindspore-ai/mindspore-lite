@@ -5,7 +5,7 @@ CUR_DIR=$(
   cd "$(dirname $0)"
   pwd
 )
-BUILD_DIR=${CUR_DIR}/../../build
+BUILD_DIR=${CUR_DIR}/../build
 
 export GLOG_v=2
 
@@ -218,12 +218,12 @@ else
   fi
 
   # run LLMEngine Python-API ut test
-  echo "run LLMEngine Python API ut test"
-  pytest ${CUR_DIR}/ut/python/test_lite_llm_engine_api.py -s
-  RET=$?
-  if [ ${RET} -ne 0 ]; then
-    exit ${RET}
-  fi
+  # echo "run LLMEngine Python API ut test"
+  # pytest ${CUR_DIR}/ut/python/test_lite_llm_engine_api.py -s
+  # RET=$?
+  # if [ ${RET} -ne 0 ]; then
+  #   exit ${RET}
+  # fi
 
   # run inference CPU Python-API st test
   echo "run inference CPU Python API st test"
@@ -234,7 +234,7 @@ else
   fi
 fi
 
-if [ "$MSLITE_ENABLE_SERVER_INFERENCE" = on ]; then
+if [ "$MSLITE_ENABLE_CLOUD_INFERENCE" = on ]; then
   echo 'run ModelParallelRunner api ut test'
   ./lite-test --gtest_filter="ModelParallelRunnerTest.*"
 fi

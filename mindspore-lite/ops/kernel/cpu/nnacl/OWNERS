@@ -1,0 +1,8 @@
+approvers:
+- zhang_xue_tong #
+- jpc_chenjianping
+- xu_anyue
+- fatmouse007fatmouse007 # zhuguodong
+
+options:
+  no_parent_owners: true

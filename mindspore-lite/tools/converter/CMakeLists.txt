@@ -12,9 +12,7 @@ if(ENABLE_GPU)
     add_compile_definitions(ENABLE_GPU)
 endif()
 
-include(${LITE_DIR}/cmake/ccsrc_converter.cmake)
-
-include_directories(${TOP_DIR}/mindspore/mindspore/ops/kernel/cpu)
+include_directories(${NNACL_DIR}/..)
 
 file(GLOB_RECURSE CONVERTER_SRC RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/ops/*.cc
@@ -92,7 +90,6 @@ add_subdirectory(${OPS_DIR} mindspore_ops)
 
 if(MSLITE_ENABLE_ACL)
     set(MODE_ASCEND_ACL ON)
-    #include(${TOP_DIR}/cmake/dependency_graphengine.cmake)
     add_subdirectory(adapter/acl)
     link_directories(${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
 endif()
@@ -108,7 +105,6 @@ if(MSLITE_ENABLE_RUNTIME_PASS)
 endif()
 
 file(GLOB FORMAT_PASS_SRCS ${SRC_DIR}/litert/pass/format_pass/*.cc)
-
 set(LITE_SRC ${API_SRC}
         ${CXX_API_SRCS}
         ${FORMAT_PASS_SRCS}
@@ -155,26 +151,16 @@ set(LITE_SRC ${API_SRC}
         ${SRC_DIR}/litert/weight_decoder.cc
         ${SRC_DIR}/litert/pack_weight_manager.cc
         ${SRC_DIR}/litert/huffman_decode.cc
-        ${SRC_DIR}/extendrt/delegate/tensorrt/distribution/distribution_base.cc
-        ${SRC_DIR}/extendrt/delegate/plugin/tensorrt_executor_plugin.cc
         ${SRC_DIR}/infer/primitive_type.cc
         ${LITE_DIR}/src/extendrt/mock/lite_runtime/populate/base_operator_populate_register.cc
         ${SRC_DIR}/control_flow/control_flow_scheduler.cc
         ${SRC_DIR}/control_flow/control_subgraph_creator.cc
-        ${SRC_DIR}/litert/kernel/ascend/plugin/ascend_kernel_plugin.cc
-        ${SRC_DIR}/extendrt/kernel/ascend/plugin/ascend_allocator_plugin.cc
+        ${SRC_DIR}/extendrt/delegate/ascend_acl/ascend_allocator_plugin.cc
 )
 
 if(MSLITE_ENABLE_CUSTOM_KERNEL)
     file(GLOB KERNEL_REG_SRC ${SRC_DIR}/registry/*.cc)
     set(LITE_SRC ${LITE_SRC} ${KERNEL_REG_SRC})
-endif()
-
-if(NOT ANDROID_NDK_TOOLCHAIN_INCLUDED)
-    set(LITE_SRC
-            ${LITE_SRC}
-            ${SRC_DIR}/litert/kernel/ascend/plugin/ascend_kernel_plugin.cc
-            )
 endif()
 
 if(MSLITE_ENABLE_MODEL_PRE_INFERENCE)
@@ -207,7 +193,9 @@ if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
 
     set(MINDIR_KERNEL_SRC
             ${MINDIR_KERNEL_SRC}
-            ${SRC_DIR}/extendrt/mindir_loader/mindir_model/inner_kernel.cc)
+            ${SRC_DIR}/extendrt/mindir_loader/mindir_model/inner_kernel.cc
+            ${SRC_DIR}/extendrt/utils/tensor_utils.cc
+            )
 endif()
 
 set(LITE_SRC
@@ -309,16 +297,6 @@ set(TFLITE_FBS_FILES
 ms_build_flatbuffers_lite(TFLITE_FBS_FILES ${CMAKE_CURRENT_SOURCE_DIR}/parser/tflite/ tflite_fbs_src
         ${CMAKE_BINARY_DIR}/schema "inner")
 
-set(LITE_SRC
-        ${LITE_SRC}
-        ${CORE_DIR}/abstract/abstract_value.cc
-        ${CORE_DIR}/ir/anf.cc
-        ${CORE_DIR}/base/base.cc
-        ${OPS_DIR}/op_def/auto_generate/gen_lite_ops.cc
-        ${OPS_DIR}/kernel/common/device_address.cc
-        ${OPS_DIR}/kernel/common/device_type.cc
-        )
-
 set_property(SOURCE ${CONVERTER_SRC} PROPERTY COMPILE_DEFINITIONS
         LOG_HDR_FILE_REL_PATH="mindspore-lite/../mindspore/mindspore/core/include/utils/log_adapter.h"
         SUBMODULE_ID=mindspore::SubModuleId::SM_LITE)
@@ -328,7 +306,6 @@ set_property(SOURCE ${LITE_SRC} PROPERTY COMPILE_DEFINITIONS
 
 add_library(converter_runtime_mid OBJECT ${LITE_SRC})
 add_dependencies(converter_runtime_mid fbs_src fbs_inner_src)
-add_dependencies(converter_runtime_mid ccsrc_src_mid)
 target_compile_options(converter_runtime_mid PRIVATE "-Wno-stringop-overflow")
 add_library(mindspore_converter SHARED $<TARGET_OBJECTS:converter_runtime_mid>)
 
@@ -358,7 +335,6 @@ if(MSLITE_ENABLE_FP16)
 endif()
 
 target_link_libraries(mindspore_converter
-        ccsrc_src_mid
         converter_src_mid
         cpu_ops_mid
         nnacl_mid
@@ -394,10 +370,6 @@ if(NOT MSLITE_SIMPLEST_CLOUD_INFERENCE)
     target_link_libraries(mindspore_converter decomposer_mid)
 endif()
 
-if(MSLITE_EXPORT_COMPUTE_IR)
-    target_link_libraries(mindspore_converter mindspore_lite_drawer)
-endif()
-
 if(SUPPORT_TRAIN)
     target_link_libraries(mindspore_converter train_cpu_kernel_mid)
 endif()
@@ -419,4 +391,33 @@ if(NOT WIN32)
     target_link_libraries(mindspore_converter dl)
 endif()
 
+file(STRINGS "${TOP_DIR}/version.txt" VERSION)
+add_definitions(-DVERSION=\"${VERSION}\")
+set(CCSRC_SRC_NEW ${CCSRC_DIR}/backend/common/optimizer/graph_optimizer.cc
+    ${CCSRC_DIR}/backend/common/optimizer/pattern_engine.cc
+    ${CCSRC_DIR}/utils/convert_utils.cc
+    ${CCSRC_DIR}/common/debug/mindir_exporter.cc
+    ${CCSRC_DIR}/backend/common/optimizer/visitor.cc
+    ${CCSRC_DIR}/common/debug/common.cc
+    ${CCSRC_DIR}/utils/compile_cache_context.cc
+    )
+if(NOT WIN32)
+    set(CCSRC_SRC_NEW ${CCSRC_SRC_NEW}
+        ${CCSRC_DIR}/utils/anfalgo.cc
+        ${CCSRC_DIR}/utils/parallel_context.cc
+        ${CCSRC_DIR}/utils/utils.cc)
+endif()
+if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
+    set(CCSRC_SRC_NEW ${CCSRC_SRC_NEW}
+    ${OPS_DIR}/kernel/common/kernel_factory.cc
+    ${OPS_DIR}/kernel/common/kernel_tensor.cc
+    ${OPS_DIR}/kernel/common/device_address.cc
+    ${OPS_DIR}/kernel/common/format_utils.cc
+    ${OPS_DIR}/kernel/common/kernel.cc)
+endif()
+add_library(ccsrc_src_new_mid OBJECT ${CCSRC_SRC_NEW})
+target_compile_definitions(ccsrc_src_new_mid PRIVATE BACKEND_DLL)
+target_compile_definitions(ccsrc_src_new_mid PRIVATE COMMON_DLL)
+target_compile_definitions(ccsrc_src_new_mid PRIVATE OPS_KERNEL_COMMON_DLL)
+target_link_libraries(mindspore_converter ccsrc_src_new_mid)
 add_subdirectory(converter_lite)

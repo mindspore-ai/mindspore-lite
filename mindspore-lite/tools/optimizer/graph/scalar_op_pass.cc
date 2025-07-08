@@ -387,7 +387,6 @@ STATUS ScalarOpPass::ReplaceMakeTuple(const FuncGraphPtr &func_graph, const AnfN
   std::vector<AnfNodePtr> concat_input_vec({anf_node});
   auto concat_node = GenConcatNode(func_graph, concat_input_vec,
                                    anf_node->cast<CNodePtr>()->fullname_with_scope() + "_concat_make_tuple");
-  MS_CHECK_TRUE_RET(concat_node != nullptr, lite::RET_ERROR);
   auto primitive = GetCNodePrimitive(concat_node);
   MS_CHECK_TRUE_RET(primitive != nullptr, lite::RET_ERROR);
   int64_t num_of_inputs = SizeToInt(anf_node->cast<CNodePtr>()->size() - kSizeOne);
@@ -402,7 +401,6 @@ STATUS ScalarOpPass::ReplaceMakeTuple(const FuncGraphPtr &func_graph, const AnfN
   }
   auto concat_abstract = abstract::MakeAbstract(std::make_shared<abstract::Shape>(ShapeVector({num_of_inputs})),
                                                 TypeIdToType(make_tuple_type));
-  MS_CHECK_TRUE_RET(concat_abstract != nullptr, lite::RET_ERROR);
   concat_node->set_abstract(concat_abstract);
 
   // set MakeTuple users' input to concat
@@ -621,7 +619,6 @@ STATUS ScalarOpPass::RunArithmeticCheckPass(const FuncGraphPtr &func_graph, cons
       auto new_cast_node =
         GenCastNode(func_graph, second_input, second_input->fullname_with_scope() + "cast_after_second_in",
                     cast_data_type, new_cast_abstract);
-      MS_CHECK_TRUE_RET(new_cast_node != nullptr, lite::RET_ERROR);
       new_cast_node->set_abstract(new_cast_abstract);
       manager->SetEdge(node, kIndexTwo, new_cast_node);
     }

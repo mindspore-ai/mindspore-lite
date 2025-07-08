@@ -129,7 +129,6 @@ int CastGatherReduceOnlineFusionPass::CreateCastGatherReduceCustomNode(LiteGraph
   if (online_fusion_prim == nullptr) {
     MS_LOG(ERROR) << "GetRoot CastGatherReduceFusion primitive failed.";
     free(prim);
-    fbb.Clear();
     return RET_ERROR;
   }
   fbb.Clear();

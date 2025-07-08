@@ -158,8 +158,7 @@ bool LiteRTGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map
   return true;
 }
 
-bool LiteRTGraphExecutor::RunGraph(uint32_t, const std::vector<tensor::Tensor> &inputs,
-                                   std::vector<tensor::Tensor> *outputs,
+bool LiteRTGraphExecutor::RunGraph(uint32_t, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
                                    const std::map<string, string> &compile_options) {
   MS_LOG(INFO) << "LiteRTGraphExecutor::RunGraph with input and outputs";
   MS_EXCEPTION_IF_NULL(outputs);
@@ -177,44 +176,36 @@ bool LiteRTGraphExecutor::RunGraph(uint32_t, const std::vector<tensor::Tensor> &
   for (size_t i = 0; i < inputs.size(); i++) {
     auto input = input_tensors.at(i);
     auto &user_input = inputs.at(i);
-    if (user_input.data_type() != input->data_type()) {
+    if (static_cast<TypeId>(user_input.DataType()) != input->data_type()) {
       ResetTensorData(old_data, input_tensors);
-      MS_LOG(EXCEPTION) << "Tensor " << user_input.id() << " has a different data type from input"
-                        << input->tensor_name() << ".";
     }
-    if (user_input.data_c() == nullptr) {
+    if (user_input.Data().get() == nullptr) {
       ResetTensorData(old_data, input_tensors);
-      MS_LOG(EXCEPTION) << "Tensor " << user_input.id() << " has no data.";
     }
     old_data.push_back(input->data());
     if (input->data_type() == kObjectTypeString) {
 #ifndef STRING_KERNEL_CLIP
-      std::vector<int32_t> shape =
-        TruncateShape(user_input.shape_c(), input->data_type(), user_input.DataSize(), false);
-      if (shape.empty() && !(user_input.shape_c().empty())) {
+      std::vector<int32_t> shape = TruncateShape(user_input.Shape(), input->data_type(), user_input.DataSize(), false);
+      if (shape.empty() && !(user_input.Shape().empty())) {
         ResetTensorData(old_data, input_tensors);
-        MS_LOG(EXCEPTION) << "Input dims of tensor " << user_input.id() << " is invalid.";
       }
       input->set_shape(shape);
-      input->set_data(user_input.data_c(), false);
+      input->set_data(const_cast<void *>(user_input.Data().get()), false);
 #else
       MS_LOG(ERROR) << unsupport_string_tensor_log;
       return kLiteError;
 #endif
     } else {
-      if (user_input.data_c() != input->data()) {
-        if (input->Size() != user_input.Size()) {
+      if (user_input.Data().get() != input->data()) {
+        if (input->Size() != user_input.DataSize()) {
           ResetTensorData(old_data, input_tensors);
 #ifndef ENABLE_LITE_ACL
-          MS_LOG(EXCEPTION) << "Tensor " << user_input.id() << " has wrong data size.";
 #else
-          MS_LOG(WARNING) << "Please check tensor " << user_input.id()
-                          << " has been modified data size by DVPP method.";
           std::vector<int> truncate_shape = {static_cast<int>(user_input.DataSize())};
           input->set_shape(truncate_shape);
 #endif
         }
-        input->set_data(user_input.data_c(), false);
+        input->set_data(const_cast<void *>(user_input.Data().get()), false);
       }
     }
   }
@@ -250,12 +241,11 @@ bool LiteRTGraphExecutor::RunGraph(uint32_t, const std::vector<tensor::Tensor> &
     MS_LOG(DEBUG) << "Empty outputs.";
     return false;
   }
-  outputs->clear();
-  *outputs = TensorUtils::MSTensorToTensor(res);
+  *outputs = res;
   return true;
 }
 
-bool LiteRTGraphExecutor::Resize(uint32_t, const std::vector<tensor::Tensor> &inputs,
+bool LiteRTGraphExecutor::Resize(uint32_t, const std::vector<MSTensor> &inputs,
                                  const std::vector<std::vector<int64_t>> &dims) {
   auto input_tensors = lite_session_->GetInputs();
   if (input_tensors.empty()) {
@@ -278,36 +268,33 @@ bool LiteRTGraphExecutor::Resize(uint32_t, const std::vector<tensor::Tensor> &in
   return true;
 }
 
-std::vector<tensor::Tensor> LiteRTGraphExecutor::GetInputInfos(uint32_t) {
+std::vector<MSTensor> LiteRTGraphExecutor::GetInputInfos(uint32_t) {
   if (lite_session_ == nullptr) {
     MS_LOG(ERROR) << "Session is null.";
     return {};
   }
   auto inputs = lite_session_->GetInputs();
-  std::vector<tensor::Tensor> input_tensors;
+  std::vector<MSTensor> res;
+  res.resize(inputs.size());
   for (size_t i = 0; i < inputs.size(); ++i) {
-    auto type_id = inputs[i]->data_type();
-    auto shape = inputs[i]->shape();
-    std::vector<int64_t> lite_shape;
-    std::transform(shape.begin(), shape.end(), std::back_inserter(lite_shape),
-                   [](int c) { return static_cast<int64_t>(c); });
-    auto tmp = tensor::Tensor(type_id, lite_shape);
-    tmp.set_name(inputs[i]->tensor_name());
-    input_tensors.push_back(tmp);
+    auto impl = std::make_shared<LiteTensorImpl>(inputs[i]);
+    if (impl == nullptr || impl->lite_tensor() == nullptr) {
+      MS_LOG(ERROR) << "impl is nullptr.";
+      return {};
+    }
+    auto tensor = MSTensor(impl);
+    if (tensor == nullptr) {
+      MS_LOG(ERROR) << "create tensor failed.";
+      return {};
+    }
+    res[i] = tensor;
   }
-  return input_tensors;
+  return res;
 }
 
-std::vector<tensor::Tensor> LiteRTGraphExecutor::GetOutputInfos(uint32_t) {
+std::vector<MSTensor> LiteRTGraphExecutor::GetOutputInfos(uint32_t) {
   auto outputs = GetLiteSessionOutputs();
-  std::vector<tensor::Tensor> output_tensors;
-  for (size_t i = 0; i < outputs.size(); ++i) {
-    auto type_id = static_cast<enum TypeId>(outputs[i].DataType());
-    auto tmp = tensor::Tensor(type_id, outputs[i].Shape());
-    tmp.set_name(outputs[i].Name());
-    output_tensors.push_back(tmp);
-  }
-  return output_tensors;
+  return outputs;
 }
 
 void LiteRTGraphExecutor::ResetTensorData(std::vector<void *> old_data, const std::vector<lite::Tensor *> &tensors) {

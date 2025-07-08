@@ -6,7 +6,7 @@ MINDSPORE_LITE_HOME=${PROJECT_ROOT_HOME}/mindspore-lite
 MINDSPORE_HOME=${PROJECT_ROOT_HOME}/mindspore
 echo "PROJECT_ROOT_HOME path is ${PROJECT_ROOT_HOME}"
 cd "${PROJECT_ROOT_HOME}" || exit 1
-CROPPER_OUTPUT_DIR=build/tools/cropper
+CROPPER_OUTPUT_DIR=mindspore-lite/build/tools/cropper
 mkdir -p ${CROPPER_OUTPUT_DIR}
 MAPPING_OUTPUT_FILE_NAME_TMP=${CROPPER_OUTPUT_DIR}/cropper_mapping_tmp.cfg
 MAPPING_OUTPUT_FILE_NAME_TRAIN_TMP=${CROPPER_OUTPUT_DIR}/cropper_mapping_train_tmp.cfg
@@ -64,14 +64,14 @@ HEADER_LOCATION="-I${MINDSPORE_HOME}
 -I${MINDSPORE_LITE_HOME}/src
 -I${MINDSPORE_LITE_HOME}/src/litert/kernel/cpu
 -I${PROJECT_ROOT_HOME}/third_party
--I${PROJECT_ROOT_HOME}/build
+-I${MINDSPORE_LITE_HOME}/build
 -I${PROJECT_ROOT_HOME}/third_party/securec/include
 -I${FLATBUFFERS}
 -I${NLOHMANN}
 -I${GLOG}
--I${PROJECT_ROOT_HOME}/build/schema
--I${PROJECT_ROOT_HOME}/build/schema/inner
--I${PROJECT_ROOT_HOME}/build/src
+-I${MINDSPORE_LITE_HOME}/build/schema
+-I${MINDSPORE_LITE_HOME}/build/schema/inner
+-I${MINDSPORE_LITE_HOME}/build/src
 -I${MINDSPORE_HOME}/mindspore/ops/kernel/cpu
 -I${MINDSPORE_HOME}/mindspore/ccsrc/minddata/dataset"
 

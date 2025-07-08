@@ -20,7 +20,6 @@ set(LITE_SRC
         ${LITE_DIR}/src/litert/infer_manager.cc
         ${LITE_DIR}/src/litert/runtime_shape_fusion_pass.cc
         ${LITE_DIR}/src/litert/runtime_pass.cc
-        # ${LITE_DIR}/src/litert/pass/runtime_ncx_pass.cc
         ${LITE_DIR}/src/litert/schema_tensor_wrapper.cc
         ${LITE_DIR}/src/tensor.cc
         ${LITE_DIR}/src/tensorlist.cc
@@ -95,14 +94,6 @@ if(MSLITE_ENABLE_CONTROLFLOW)
             ${LITE_DIR}/src/control_flow/kernel/*.cc
             )
     set(LITE_SRC ${LITE_SRC} ${CONTROL_FLOW_KERNEL_SRC})
-endif()
-
-if(MSLITE_ENABLE_RUNTIME_GLOG)
-    if(NOT MSLITE_ENABLE_RUNTIME_CONVERT AND NOT MSLITE_ENABLE_KERNEL_EXECUTOR
-            AND NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-        set(LITE_SRC ${LITE_SRC}
-            ${CORE_DIR}/utils/log_adapter.cc)
-    endif()
 endif()
 
 if(MSLITE_ENABLE_RUNTIME_CONVERT)
@@ -196,21 +187,16 @@ if(MSLITE_ENABLE_MINDRT)
                 )
         set(LITE_SRC ${LITE_SRC} ${CONTROL_FLOW_ACTOR_SRC})
     endif()
-else()
-    set(LITE_SRC ${LITE_SRC}
-        ${CORE_DIR}/mindrt/src/thread/core_affinity.cc
-        ${CORE_DIR}/mindrt/src/thread/threadpool.cc
-        )
 endif()
 
-if(MSLITE_ENABLE_GRAPH_KERNEL)
-    file(GLOB_RECURSE GRAPH_KERNEL_SRC
-        ${TOOLS_DIR}/graph_kernel/common/*.cc
-        ${TOOLS_DIR}/graph_kernel/runtime/*.cc
-        ${OPS_DIR}/kernel/cpu/akg/akg_kernel_loader.cc
-        )
-    set(LITE_SRC ${LITE_SRC} ${GRAPH_KERNEL_SRC})
-endif()
+#if(MSLITE_ENABLE_GRAPH_KERNEL)
+#    file(GLOB_RECURSE GRAPH_KERNEL_SRC
+#        ${TOOLS_DIR}/graph_kernel/common/*.cc
+#        ${TOOLS_DIR}/graph_kernel/runtime/*.cc
+#        ${OPS_DIR}/kernel/cpu/akg/akg_kernel_loader.cc
+#        )
+#    set(LITE_SRC ${LITE_SRC} ${GRAPH_KERNEL_SRC})
+#endif()
 
 if(NOT MSLITE_ENABLE_COREML)
     set(LITE_SRC ${LITE_SRC}
@@ -223,16 +209,15 @@ set(MSLITE_GE_LITERT_SRC
     ${LITE_DIR}/src/extendrt/delegate/graph_executor/litert/litert_plugin_impl.cc
     )
 
-#set(LITE_SRC ${LITE_SRC} ${MSLITE_GE_LITERT_SRC})
-
 if(NOT MSLITE_SIMPLEST_CLOUD_INFERENCE)
     add_library(unified_runtime_lite_src_mid OBJECT ${LITE_SRC})
     add_dependencies(unified_runtime_lite_src_mid fbs_src fbs_inner_src)
     add_dependencies(unified_runtime_lite_src_mid lite_src_common_mid)
+    target_link_libraries(unified_runtime_lite_src_mid mindspore_core)
 
     add_library(lite-unified-executor SHARED $<TARGET_OBJECTS:unified_runtime_lite_src_mid>)
 
-    target_link_libraries(lite-unified-executor lite_src_common_mid)
+    target_link_libraries(lite-unified-executor lite_src_common_mid mindspore_core)
     add_dependencies(lite-unified-executor mindspore_converter)
     target_link_libraries(lite-unified-executor mindspore_converter)
 
@@ -256,7 +241,8 @@ if(NOT MSLITE_SIMPLEST_CLOUD_INFERENCE)
             AND NOT TARGET_MIX210 AND NOT TARGET_OHOS_LITE AND NOT MACHINE_LINUX_ARM64)
         target_link_libraries(lite-unified-executor log)
     endif()
-    if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite")
+    if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite" AND NOT
+        (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
         target_link_libraries(lite-unified-executor minddata_eager_mid minddata-lite)
     endif()
 
@@ -273,7 +259,7 @@ if(NOT MSLITE_SIMPLEST_CLOUD_INFERENCE)
     if(MSLITE_ENABLE_RUNTIME_CONVERT)
         target_link_libraries(lite-unified-executor
                 quantizer_mid fusion_mid proto_mid graph_pass_mid preprocess_mid
-                cpu_kernel_mid ccsrc_src_mid converter_src_mid lite_exporter_mid
+                cpu_kernel_mid converter_src_mid lite_exporter_mid
                 config_parser_mid mslite_converter_plugin mindspore_core mindspore_ops coder_mid
                 mindir_serializer_mid mindspore::protobuf ${SECUREC_LIBRARY})
         target_link_libraries(lite-unified-executor

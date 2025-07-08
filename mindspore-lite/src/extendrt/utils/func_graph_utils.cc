@@ -25,8 +25,6 @@
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
-#include "include/common/utils/convert_utils.h"
-#include "mindspore/ccsrc/include/backend/optimizer/helper.h"
 
 #include "mindspore/ops/op_def/op_name.h"
 #include "tools/optimizer/format/to_nhwc_format.h"
@@ -60,6 +58,78 @@ ValuePtr FuncGraphUtils::GetNodeValuePtr(AnfNodePtr input_node) {
   return value;
 }
 
+tensor::TensorPtr FuncGraphUtils::CreateEmptyTupleTensor(const ValueTuplePtr &value_tuple) {
+  std::vector<int64_t> tensor_shape = {0};
+  tensor::TensorPtr tensor = std::make_shared<tensor::Tensor>(kInt64->type_id(), tensor_shape);
+  MS_EXCEPTION_IF_NULL(tensor);
+  tensor::DeviceInfo device_info{kOpFormat_DEFAULT, kInt64};
+  tensor->set_device_info(device_info);
+  tensor->set_user_data(kTensorValueIsEmpty, value_tuple);
+  return tensor;
+}
+
+template <typename T>
+tensor::TensorPtr FuncGraphUtils::CreateTensorWithValueTuple(const ValueTuplePtr &value_tuple_ptr,
+                                                             const TypePtr &type_ptr, size_t data_length) {
+  MS_EXCEPTION_IF_NULL(value_tuple_ptr);
+  MS_EXCEPTION_IF_NULL(type_ptr);
+  std::vector<T> values;
+  for (const auto &v : value_tuple_ptr->value()) {
+    MS_EXCEPTION_IF_NULL(v);
+    if (v->isa<Scalar>()) {
+      auto scalar = v->cast<ScalarPtr>();
+      values.push_back(GetValue<T>(scalar));
+    } else {
+      MS_LOG(WARNING) << "The value " << v << "of tuple is not a scalar";
+      return nullptr;
+    }
+  }
+  std::vector<int64_t> tensor_shape = {SizeToLong(values.size())};
+  tensor::TensorPtr tensor = std::make_shared<tensor::Tensor>(type_ptr->type_id(), tensor_shape);
+  MS_EXCEPTION_IF_NULL(tensor);
+  tensor::DeviceInfo device_info{kOpFormat_DEFAULT, type_ptr};
+  tensor->set_device_info(device_info);
+  auto data_ptr = tensor->data_c();
+  MS_EXCEPTION_IF_NULL(data_ptr);
+  auto elem_num = values.size() * data_length;
+  auto ret_code = memcpy_s(data_ptr, static_cast<size_t>(tensor->data().nbytes()), values.data(), elem_num);
+  if (ret_code != EOK) {
+    MS_LOG(EXCEPTION) << "Failed to copy data into tensor, memcpy_s errorno: " << ret_code;
+  }
+  return tensor;
+}
+
+tensor::TensorPtr FuncGraphUtils::CreateTupleTensor(const ValueTuplePtr &value_tuple) {
+  MS_EXCEPTION_IF_NULL(value_tuple);
+  tensor::TensorPtr tensor = nullptr;
+  if (value_tuple->value().empty()) {
+    tensor = CreateEmptyTupleTensor(value_tuple);
+    return tensor;
+  }
+  ValuePtr v = *(value_tuple->value().begin());
+  MS_EXCEPTION_IF_NULL(v);
+  // Currently we only deal with the scalar tuple
+  if (!v->isa<Scalar>()) {
+    MS_LOG(DEBUG) << "The value " << v << "of tuple is not a scalar";
+    return nullptr;
+  }
+  auto scalar = v->cast<ScalarPtr>();
+  MS_EXCEPTION_IF_NULL(scalar);
+  if (scalar->isa<Int32Imm>()) {
+    tensor = CreateTensorWithValueTuple<int32_t>(value_tuple, kInt32, sizeof(int32_t));
+  } else if (scalar->isa<Int64Imm>()) {
+    tensor = CreateTensorWithValueTuple<int64_t>(value_tuple, kInt64, sizeof(int64_t));
+  } else if (scalar->isa<FloatImm>()) {
+    tensor = CreateTensorWithValueTuple<float>(value_tuple, kFloat32, sizeof(float));
+  } else {
+    auto type = scalar->type();
+    auto type_str = (type == nullptr) ? "nullptr" : type->ToString();
+    MS_LOG(ERROR) << "Invalid scalar type: " << type_str;
+    return nullptr;
+  }
+  return tensor;
+}
+
 tensor::TensorPtr FuncGraphUtils::GetConstNodeValue(AnfNodePtr input_node) {
   ValuePtr value = GetNodeValuePtr(input_node);
   if (value == nullptr) {
@@ -76,7 +146,7 @@ tensor::TensorPtr FuncGraphUtils::GetConstNodeValue(AnfNodePtr input_node) {
     return ScalarToTensor(value->cast<ScalarPtr>());
   }
   if (value->isa<ValueTuple>()) {
-    return opt::CreateTupleTensor(value->cast<ValueTuplePtr>());
+    return CreateTupleTensor(value->cast<ValueTuplePtr>());
   }
   if (value->isa<Type>()) {
     auto type_ptr = value->cast<TypePtr>();
@@ -203,7 +273,7 @@ bool FuncGraphUtils::GetFuncGraphInputs(const FuncGraphPtr &func_graph, std::vec
       MS_LOG(ERROR) << "Input " << input->fullname_with_scope() << " of FuncGraph is not type of Parameter.";
       return false;
     }
-    if (common::AnfAlgo::IsParameterWeight(parameter)) {
+    if (parameter->has_default()) {
       continue;
     }
     inputs->push_back(std::make_pair(input, 0));
@@ -310,7 +380,8 @@ AbstractBasePtr FuncGraphUtils::GetAbstract(const AnfWithOutIndex &tensor) {
   return common::AnfAlgo::FetchAbstractByIndex(node->abstract(), idx);
 }
 
-void FuncGraphUtils::GetFuncGraphInputsInfo(const FuncGraphPtr &func_graph, std::vector<tensor::TensorPtr> *inputs,
+void FuncGraphUtils::GetFuncGraphInputsInfo(const FuncGraphPtr &func_graph,
+                                            std::vector<std::shared_ptr<MSTensor>> *inputs,
                                             std::vector<std::string> *inputs_name) {
   MS_EXCEPTION_IF_NULL(func_graph);
   MS_EXCEPTION_IF_NULL(inputs);
@@ -326,14 +397,16 @@ void FuncGraphUtils::GetFuncGraphInputsInfo(const FuncGraphPtr &func_graph, std:
     auto name = FuncGraphUtils::GetTensorName(tensor);
     auto data_type = FuncGraphUtils::GetTensorDataType(tensor);
     auto shape = FuncGraphUtils::GetTensorShape(tensor);
-    auto ms_tensor = std::make_shared<tensor::Tensor>(static_cast<TypeId>(data_type), shape);
-    ms_tensor->set_name(name);
+    auto ms_tensor = std::shared_ptr<MSTensor>(MSTensor::CreateTensor(name, data_type, {}, nullptr, 0));
+    MS_EXCEPTION_IF_NULL(ms_tensor);
+    ms_tensor->SetShape(shape);
     inputs->push_back(ms_tensor);
     inputs_name->push_back(name);
   }
 }
 
-void FuncGraphUtils::GetFuncGraphOutputsInfo(const FuncGraphPtr &func_graph, std::vector<tensor::TensorPtr> *outputs,
+void FuncGraphUtils::GetFuncGraphOutputsInfo(const FuncGraphPtr &func_graph,
+                                             std::vector<std::shared_ptr<MSTensor>> *outputs,
                                              std::vector<std::string> *output_names) {
   MS_EXCEPTION_IF_NULL(func_graph);
   MS_EXCEPTION_IF_NULL(outputs);
@@ -349,8 +422,9 @@ void FuncGraphUtils::GetFuncGraphOutputsInfo(const FuncGraphPtr &func_graph, std
     auto name = FuncGraphUtils::GetTensorName(tensor);
     auto data_type = FuncGraphUtils::GetTensorDataType(tensor);
     auto shape = FuncGraphUtils::GetTensorShape(tensor);
-    auto ms_tensor = std::make_shared<tensor::Tensor>(static_cast<TypeId>(data_type), shape);
-    ms_tensor->set_name(name);
+    auto ms_tensor = std::shared_ptr<MSTensor>(MSTensor::CreateTensor(name, data_type, {}, nullptr, 0));
+    MS_EXCEPTION_IF_NULL(ms_tensor);
+    ms_tensor->SetShape(shape);
     outputs->push_back(ms_tensor);
     output_names->push_back(name);
   }

@@ -32,7 +32,7 @@
 #include "ir/api_tensor_impl.h"
 #include "common/mutable_tensor_impl.h"
 #if defined(ENABLE_CLOUD_FUSION_INFERENCE) || defined(ENABLE_CLOUD_INFERENCE)
-#include "src/extendrt/kernel/ascend/plugin/ascend_allocator_plugin.h"
+#include "src/extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"
 #endif
 
 namespace mindspore {
@@ -49,7 +49,7 @@ class LiteTensorImpl : public MutableTensorImpl {
 #if defined(ENABLE_CLOUD_FUSION_INFERENCE) || defined(ENABLE_CLOUD_INFERENCE)
     if (GetDeviceData() != nullptr && own_data_) {
       MS_LOG(INFO) << "free device data in tensor impl.";
-      kernel::AscendAllocatorPlugin::GetInstance().Free(GetDeviceData(), GetDeviceId());
+      AscendAllocatorPlugin::GetInstance().Free(GetDeviceData(), GetDeviceId());
       lite_tensor_->set_device_data(nullptr);
     }
 #endif
@@ -143,7 +143,7 @@ class LiteTensorImpl : public MutableTensorImpl {
     void *device_data = GetDeviceData();
     if (device_data != nullptr && own_data_) {
       MS_LOG(INFO) << "free device data in tensor impl.";
-      kernel::AscendAllocatorPlugin::GetInstance().Free(device_data, GetDeviceId());
+      AscendAllocatorPlugin::GetInstance().Free(device_data, GetDeviceId());
     }
 #endif
     lite_tensor_->set_device(device);

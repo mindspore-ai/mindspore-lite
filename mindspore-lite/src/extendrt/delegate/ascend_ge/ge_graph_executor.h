@@ -32,7 +32,6 @@
 #include "extendrt/delegate/ascend_ge/ge_device_context.h"
 #include "extendrt/delegate/ascend_ge/ge_memory_manager.h"
 #include "extendrt/delegate/ascend_ge/ge_context_manager.h"
-#include "extendrt/delegate/ascend_ge/update_weight.h"
 #include "src/common/common.h"
 
 namespace mindspore {
@@ -90,24 +89,21 @@ class GeGraphExecutor : public LiteGraphExecutor {
   bool CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
                     uint32_t *graph_id) override;
 
-  bool RunGraph(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs, std::vector<tensor::Tensor> *outputs,
+  bool RunGraph(uint32_t graph_id, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
                 const std::map<string, string> &compile_options) override;
 
-  bool Resize(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
+  bool Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
               const std::vector<ShapeVector> &dims) override {
     return true;
   }
 
-  std::vector<tensor::Tensor> GetInputInfos(uint32_t graph_id) override;
-  std::vector<tensor::Tensor> GetOutputInfos(uint32_t graph_id) override;
+  std::vector<mindspore::MSTensor> GetInputInfos(uint32_t graph_id) override;
+  std::vector<mindspore::MSTensor> GetOutputInfos(uint32_t graph_id) override;
   bool Init();
   bool AoeTuning(const FuncGraphPtr &graph);
   bool OfflineBuildGraph(const FuncGraphPtr &graph);
-  bool UpdateWeights(const std::vector<std::vector<std::shared_ptr<tensor::Tensor>>> &weights) override;
 
  private:
-  std::shared_ptr<UpdateWeight> update_weight_ptr_ = nullptr;
-  bool enable_update_weight_ = false;
   const std::shared_ptr<mindspore::Context> context_;
   ConfigInfos config_infos_;
   std::shared_ptr<ge::Session> ge_session_ = nullptr;
@@ -129,10 +125,9 @@ class GeGraphExecutor : public LiteGraphExecutor {
   std::string build_cache_dir_;
   std::string build_cache_relative_dir_;
 
-  std::map<uint32_t, std::vector<tensor::Tensor>> graph_inputs_;
-  std::map<uint32_t, std::vector<tensor::Tensor>> graph_outputs_;
-  std::map<uint32_t, std::vector<tensor::TensorPtr>> original_graph_outputs_;
-  bool is_data_flow_graph_ = false;
+  std::map<uint32_t, std::vector<mindspore::MSTensor>> graph_inputs_;
+  std::map<uint32_t, std::vector<mindspore::MSTensor>> graph_outputs_;
+  std::map<uint32_t, std::vector<MSTensorPtr>> original_graph_outputs_;
   DynKVCacheInfo dyn_kv_cache_info_;
 
   std::shared_ptr<AscendDeviceInfo> GetAscendDeviceInfo();
@@ -150,7 +145,7 @@ class GeGraphExecutor : public LiteGraphExecutor {
                 uint32_t *graph_id);
   bool RunGeInitGraph(uint32_t init_graph_id, const std::vector<std::string> &init_data_names,
                       const backend::ge_backend::TensorOrderMap &params_vals);
-  tensor::TensorPtr ConvertGeTensorNoCopy(::ge::Tensor *ge_tensor_ptr, uint32_t graph_id, size_t idx);
+  MSTensorPtr ConvertGeTensorNoCopy(::ge::Tensor *ge_tensor_ptr, uint32_t graph_id, size_t idx);
 
   bool RunGraphWithStreamAsync(uint32_t graph_id, void *stream, const std::vector<GeTensor> &inputs,
                                std::vector<GeTensor> *outputs);
@@ -162,14 +157,14 @@ class GeGraphExecutor : public LiteGraphExecutor {
   bool InitConstantFeatureDeviceMemory(uint32_t graph_id);
   bool InitInOutDeviceBuffer(const std::string &name, const ShapeVector &shape, TypeId dtype,
                              InOutBufferInfo *buffer_info);
-  bool InitInputDataTensor(const std::vector<tensor::Tensor> &inputs, std::vector<::ge::Tensor> *ge_inputs,
+  bool InitInputDataTensor(const std::vector<mindspore::MSTensor> &inputs, std::vector<::ge::Tensor> *ge_inputs,
                            std::vector<::ge::Tensor> *ge_outputs);
   bool InitMemoryContextManager();
 
   bool BuildGraphRefMode(const FuncGraphPtr &anf_graph, uint32_t graph_id);
-  bool RunGraphRefMode(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
-                       std::vector<tensor::Tensor> *outputs);
-  bool SyncDeviceOutputsToHost(std::vector<tensor::Tensor> *outputs, std::vector<::ge::Tensor> *ge_outputs);
+  bool RunGraphRefMode(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                       std::vector<mindspore::MSTensor> *outputs);
+  bool SyncDeviceOutputsToHost(std::vector<mindspore::MSTensor> *outputs, std::vector<::ge::Tensor> *ge_outputs);
 
   bool UpdateInputShapeOption(const FuncGraphPtr &func_graph,
                               const std::vector<std::pair<std::string, tensor::TensorPtr>> &ref_data_tensors,
@@ -179,8 +174,6 @@ class GeGraphExecutor : public LiteGraphExecutor {
   static uint32_t GetNextGraphIdx();
 
   bool RunGeGraphAsync(uint32_t graph_id, const std::vector<::ge::Tensor> &inputs, std::vector<::ge::Tensor> *outputs);
-  bool RunDataFlowGraphAsync(uint32_t graph_id, const std::vector<::ge::Tensor> &inputs,
-                             std::vector<::ge::Tensor> *outputs);
 
   backend::ge_backend::DfGraphPtr CompileGraphCommon(const FuncGraphPtr &graph,
                                                      std::map<std::string, std::string> *ge_options_ptr);
@@ -204,7 +197,7 @@ class GeGraphExecutor : public LiteGraphExecutor {
   bool SetGeTensorShape(GeTensor *ge_tensor, ShapeVector shape);
   void UpdateOutputShapeInfo(std::vector<::ge::Tensor> *ge_outputs);
   bool InitRefModeConfig();
-  bool InitRealShapeParam(const std::vector<tensor::Tensor> &inputs);
+  bool InitRealShapeParam(const std::vector<mindspore::MSTensor> &inputs);
   bool CheckRefDataInfo();
   bool InitMaxShapeParam();
   void SetRefShape(std::vector<int64_t> *ref_shape, bool dyn, std::string tensor_name);

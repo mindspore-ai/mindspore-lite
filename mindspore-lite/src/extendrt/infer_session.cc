@@ -18,11 +18,9 @@
 #include "common/ms_factory.h"
 #include "extendrt/delegate/factory.h"
 #include "extendrt/session/factory.h"
-#include "extendrt/delegate/plugin/tensorrt_executor_plugin.h"
 #include "extendrt/delegate/plugin/litert_executor_plugin.h"
 #include "extendrt/delegate/plugin/ascend_ge_executor_plugin.h"
-#include "extendrt/delegate/plugin/ascend_native_executor_plugin.h"
-#include "extendrt/kernel/ascend/plugin/ascend_kernel_plugin.h"
+#include "extendrt/delegate/plugin/ascend_acl_executor_plugin.h"
 #include "nnacl/op_base.h"
 
 namespace mindspore {
@@ -36,18 +34,9 @@ void AscendPluginRegistration(const std::shared_ptr<AscendDeviceInfo> &ascend_de
       return;
     }
   }
-  if (use_experimental_rts) {
-    constexpr auto default_acl_provider = "acl";
-    constexpr auto default_ascend_native_provider = "ascend_native";
-    if (provider == default_ascend_native_provider) {
-      if (!lite::AscendNativeExecutorPlugin::GetInstance().Register()) {
-        MS_LOG(WARNING) << "Failed to register Ascend Native plugin";
-        return;
-      }
-    }
-
-    if (provider == default_acl_provider) {
-      if (!kernel::AscendKernelPlugin::Register()) {
+  if (!use_experimental_rts) {
+    if (provider == "litert") {
+      if (!lite::AscendAclExecutorPlugin::GetInstance().Register()) {
         MS_LOG(WARNING) << "Failed to register Ascend ACL plugin";
         return;
       }
@@ -61,7 +50,6 @@ std::shared_ptr<InferSession> InferSession::CreateSession(const std::shared_ptr<
   bool use_experimental_rts = env != nullptr && strcmp(env, "on") == 0;
   HandleContext(context, use_experimental_rts);
   auto session_type = SelectSession(context, use_experimental_rts);
-  MS_LOG(DEBUG) << "Session type " << static_cast<int64_t>(session_type);
   return SessionRegistry::GetInstance().GetSession(session_type, context, config_info);
 }
 
@@ -69,32 +57,18 @@ void InferSession::HandleContext(const std::shared_ptr<Context> &context, bool u
   if (!context) {
     return;
   }
-  constexpr auto default_gpu_provider = "tensorrt";
   constexpr auto default_cpu_provider = "litert";
 
   auto device_infos = context->MutableDeviceInfo();
   for (auto &device_info : device_infos) {
     if (!device_info) {
-      continue;
-    }
-    if (device_info->GetDeviceType() == kGPU) {
-      auto gpu_device = device_info->Cast<GPUDeviceInfo>();
-      if (!gpu_device) {
-        continue;
-      }
-      auto provider = gpu_device->GetProvider();
-      if (provider.empty() || provider == default_gpu_provider) {
-        if (!lite::TensorRTExecutorPlugin::GetInstance().Register()) {
-          MS_LOG(WARNING) << "Failed to register TensorRT plugin";
-          return;
-        }
-        gpu_device->SetProvider(default_gpu_provider);
-      }
+      MS_LOG(WARNING) << "device info is nullptr.";
       continue;
     }
     if (device_info->GetDeviceType() == kAscend) {
       auto ascend_device = device_info->Cast<AscendDeviceInfo>();
       if (!ascend_device) {
+        MS_LOG(WARNING) << "not ascend device.";
         continue;
       }
       AscendPluginRegistration(ascend_device, use_experimental_rts);
@@ -103,6 +77,7 @@ void InferSession::HandleContext(const std::shared_ptr<Context> &context, bool u
     if (device_info->GetDeviceType() == kCPU) {
       auto cpu_device = device_info->Cast<CPUDeviceInfo>();
       if (!cpu_device) {
+        MS_LOG(WARNING) << "cpu_device";
         continue;
       }
       auto provider = cpu_device->GetProvider();
@@ -132,7 +107,7 @@ SessionType InferSession::SelectSession(const std::shared_ptr<Context> &context,
           if (device_context->GetProvider() == "ge") {
             return kDelegateSession;
           }
-          return kSingleOpSession;
+          return kDelegateSession;
         }
         return kDelegateSession;
       }
@@ -147,5 +122,4 @@ Status InferSession::Finalize() {
   MS_LOG(INFO) << "Finalize is only implemented in single_op_session now.";
   return kLiteError;
 }
-
 }  // namespace mindspore

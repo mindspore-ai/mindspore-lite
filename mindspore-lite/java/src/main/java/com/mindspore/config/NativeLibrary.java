@@ -54,7 +54,7 @@ public class NativeLibrary {
     private static final String ASCEND_GE_PLUGIN_LIBNAME = "ascend_ge_plugin";
     private static final String ASCEND_PASS_PLUGIN_LIBNAME = "ascend_pass_plugin";
     private static final String TENSORRT_PLUGIN_LIBNAME = "tensorrt_plugin";
-    private static final String MSLITE_SHARED_LIB_LIBNAME = "mslite_shared_lib";
+//     private static final String MSLITE_SHARED_LIB_LIBNAME = "mslite_shared_lib";
     private static final String TRANSFORMER_SHARED_LIB_LIBNAME = "transformer-shared";
     private static final String MINDSPORE_GRAPH_IR_LIBNAME = "mindspore_graph_ir";
     private static Long timestamp = null;
@@ -162,7 +162,7 @@ public class NativeLibrary {
                 extractLib(makeResourceName("lib" + TRANSFORMER_SHARED_LIB_LIBNAME + ".so"), tmpDir);
                 extractLib(makeResourceName("lib" + TENSORRT_PLUGIN_LIBNAME + ".so"), tmpDir);
             } else if (("lib" + MINDSPORE_CONVERTER_LIBNAME + ".so").equals(libName)) {
-                extractLib(makeResourceName("lib" + MSLITE_SHARED_LIB_LIBNAME + ".so"), tmpDir);
+//                 extractLib(makeResourceName("lib" + MSLITE_SHARED_LIB_LIBNAME + ".so"), tmpDir);
                 extractLib(makeResourceName("lib" + ASCEND_PASS_PLUGIN_LIBNAME + ".so"), tmpDir);
                 extractLib(makeResourceName("lib" + MINDSPORE_GRAPH_IR_LIBNAME + ".so"), tmpDir);
             }

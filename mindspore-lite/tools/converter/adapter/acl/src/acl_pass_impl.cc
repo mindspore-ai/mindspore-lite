@@ -63,7 +63,6 @@
 #include "tools/converter/quantizer/insert_quant_node_manager.h"
 #include "tools/converter/parser/unify_format.h"
 #include "tools/converter/adapter/acl/src/acl_custom_opp_installer.h"
-#include "tools/graph_kernel/converter/graph_kernel_optimization.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "tools/converter/quantizer/quant_helper/ascend_distribute_fake_quant_transform.h"
 #include "tools/converter/quantizer/quant_helper/ffn_full_quant.h"
@@ -1304,15 +1303,6 @@ bool AclPassImpl::Run(const FuncGraphPtr &func_graph) {
     MS_LOG(ERROR) << "Set acl model options error!";
     return false;
   }
-#ifdef MSLITE_ENABLE_GRAPH_KERNEL
-  auto soc_version = this->options_->GetSocVersion();
-  param_->device = soc_version;
-  if (GraphKernelOptimize(func_graph, param_) != lite::RET_OK) {
-    MS_LOG(ERROR) << "Run graphkernel optimization failed.";
-    return false;
-  }
-#endif
-
   if (PostProcCustomOp(func_graph) != lite::RET_OK) {
     MS_LOG(ERROR) << "Post proc CustomOp failed.";
     return false;

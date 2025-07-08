@@ -151,7 +151,7 @@ ParameterPtr BuildFloatVec2DParameterNode(const FuncGraphPtr &func_graph, const 
 
 ParameterPtr BuildFloatVec3DParameterNode(const FuncGraphPtr &func_graph,
                                           const std::vector<std::vector<std::vector<float>>> &data,
-                                          const std::string &node_name);
+const std::string &node_name);
 
 CNodePtr GenTransposeNode(const FuncGraphPtr &func_graph, const AnfNodePtr &input_node, const std::vector<int> &perm,
                           const std::string &cnode_name);

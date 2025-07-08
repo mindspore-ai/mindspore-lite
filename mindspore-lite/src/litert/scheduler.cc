@@ -55,7 +55,7 @@
 #include "include/registry/register_kernel_interface.h"
 #include "extendrt/mindir_loader/abstract_base_model.h"
 #include "src/litert/pack_weight_manager.h"
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
 #include "thread/parallel_thread_pool_manager.h"
 #endif
 
@@ -1030,7 +1030,7 @@ int Scheduler::FindCpuKernel(const std::vector<Tensor *> &in_tensors, const std:
     }
   }
 
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
   // reset op task num, The number of operator segmentation tasks is not necessarily equal to the number of threads
   int thread_num_limit = ParallelThreadPoolManager::GetInstance()->GetTaskNum(config_info_);
   if (thread_num_limit != -1 && IsSharedThreadPoolOp(op_type)) {

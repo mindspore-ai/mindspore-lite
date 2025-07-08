@@ -20,7 +20,6 @@
 #include <mutex>
 #include <memory>
 #include "extendrt/utils/tensor_utils.h"
-#include "src/extendrt/utils/kernel_build_utils.h"
 #include "extendrt/delegate/factory.h"
 #include "extendrt/session/factory.h"
 #include "extendrt/utils/tensor_default_impl.h"
@@ -28,10 +27,9 @@
 #include "src/extendrt/delegate/plugin/ascend_ge_executor_plugin.h"
 #include "extendrt/utils/func_graph_utils.h"
 #include "common/common.h"
-
+#include "src/extendrt/session/lite_graph_executor.h"
 namespace mindspore {
 namespace {
-constexpr auto kDataFlowGraphType = "data_flow";
 constexpr auto kIsAdapted = "is_adapted";
 
 std::mutex kernel_graph_mutex;
@@ -41,7 +39,6 @@ std::mutex g_build_graph_mutex;
 GraphSinkSession::~GraphSinkSession() = default;
 
 Status GraphSinkSession::Init(const std::shared_ptr<Context> &context, const ConfigInfos &config_info) {
-  MS_LOG(INFO) << "GraphSinkSession::Init";
   if (graph_executor_ == nullptr) {
     MS_LOG(ERROR) << "GraphSinkSession::Init failed, graph executor is nullptr.";
     return kLiteUninitializedObj;
@@ -52,7 +49,6 @@ Status GraphSinkSession::Init(const std::shared_ptr<Context> &context, const Con
 }
 
 Status GraphSinkSession::CompileGraph(const void *model_data, size_t data_size, uint32_t *graph_id) {
-  MS_LOG(INFO) << "GraphSinkSession::CompileGraph";
   // This lock can be removed when LiteRT supports concurrent multithreading compilation.
   std::lock_guard<std::mutex> lock(g_build_graph_mutex);
   auto ret = graph_executor_->CompileGraph(model_data, data_size, options_, graph_id);
@@ -75,21 +71,19 @@ Status GraphSinkSession::CompileGraph(FuncGraphPtr graph, const void *data, size
   // This lock can be removed when LiteRT supports concurrent multithreading compilation.
   std::lock_guard<std::mutex> lock(g_build_graph_mutex);
   // kernel graph will be removed from GraphSinkSession, and this code will be moved to TensorRT plugin
-  auto func_type = graph->get_attr(kAttrFuncType);
-  is_data_flow_graph_ = func_type != nullptr && GetValue<std::string>(func_type) == kDataFlowGraphType;
   if (context_ && !context_->MutableDeviceInfo().empty()) {
     auto device_info = context_->MutableDeviceInfo()[0];
     bool is_ge_backend = device_info && device_info->GetDeviceType() == DeviceType::kAscend &&
                          device_info->GetProvider() == lite::kAscendProviderGe;
     bool is_adapted = graph->has_attr(kIsAdapted);  // The funcgraph will only adapted once while running parallel.
-    if (is_ge_backend && !is_adapted && !is_data_flow_graph_) {
+    if (is_ge_backend && !is_adapted) {
       lite::AscendGeExecutorPlugin::GetInstance().AdaptGraph(graph);
       graph->set_attr(kIsAdapted, MakeValue(true));
     }
   }
   DelegateGraphInfo graph_info;
   // the funcgraph constructed by flowgraph has no inputs and outputs.
-  auto status = !is_data_flow_graph_ ? InitGraphInputsOutputs(graph, &graph_info) : kSuccess;
+  auto status = InitGraphInputsOutputs(graph, &graph_info);
   if (!status.IsOk()) {
     MS_LOG(ERROR) << "Failed to get inputs and outputs info from graph";
     return status;
@@ -99,7 +93,7 @@ Status GraphSinkSession::CompileGraph(FuncGraphPtr graph, const void *data, size
     MS_LOG(ERROR) << "GraphSinkSession::CompileGraph compile graph failed";
     return kCoreFailed;
   }
-  status = !is_data_flow_graph_ ? UpdateGraphInputsOutputs(*graph_id, &graph_info) : kSuccess;
+  status = UpdateGraphInputsOutputs(*graph_id, &graph_info);
   if (!status.IsOk()) {
     MS_LOG(ERROR) << "Failed to update inputs and outputs info from graph executor";
     return status;
@@ -120,9 +114,9 @@ Status GraphSinkSession::InitGraphInfo(DelegateGraphInfo *graph_info_ptr, uint32
   info.input_names.clear();
   for (size_t i = 0; i < new_inputs.size(); i++) {
     auto &input = new_inputs[i];
-    info.input_names.push_back(input.name());
-    auto data_type = static_cast<enum DataType>(input.data_type());
-    auto impl = std::make_shared<TensorDefaultImpl>(info.input_names[i], data_type, input.shape_c());
+    info.input_names.push_back(input.Name());
+    auto data_type = static_cast<enum DataType>(input.DataType());
+    auto impl = std::make_shared<TensorDefaultImpl>(info.input_names[i], data_type, input.Shape());
     info.inputs.push_back(impl);
   }
 
@@ -136,9 +130,9 @@ Status GraphSinkSession::InitGraphInfo(DelegateGraphInfo *graph_info_ptr, uint32
   info.output_names.clear();
   for (size_t i = 0; i < new_outputs.size(); i++) {
     auto &output = new_outputs[i];
-    info.output_names.push_back(output.name());
-    auto data_type = static_cast<enum DataType>(output.data_type());
-    auto impl = std::make_shared<TensorDefaultImpl>(info.output_names[i], data_type, output.shape_c());
+    info.output_names.push_back(output.Name());
+    auto data_type = static_cast<enum DataType>(output.DataType());
+    auto impl = std::make_shared<TensorDefaultImpl>(info.output_names[i], data_type, output.Shape());
     info.outputs.push_back(impl);
   }
   return kSuccess;
@@ -146,7 +140,7 @@ Status GraphSinkSession::InitGraphInfo(DelegateGraphInfo *graph_info_ptr, uint32
 
 Status GraphSinkSession::InitGraphInputsOutputs(const FuncGraphPtr &graph, DelegateGraphInfo *graph_info_ptr) {
   auto &info = *graph_info_ptr;
-  std::vector<tensor::TensorPtr> graph_inputs, graph_outputs;
+  std::vector<MSTensorPtr> graph_inputs, graph_outputs;
   {
     std::unique_lock<std::mutex> l(kernel_graph_mutex);
     FuncGraphReuseManager::GetInstance()->GetInOut(config_infos_, &graph_inputs, &graph_outputs, &info.input_names,
@@ -173,15 +167,15 @@ Status GraphSinkSession::InitGraphInputsOutputs(const FuncGraphPtr &graph, Deleg
   info.inputs.clear();
   for (size_t i = 0; i < info.input_names.size(); i++) {
     auto &input = graph_inputs[i];
-    auto data_type = static_cast<enum DataType>(input->data_type());
-    auto impl = std::make_shared<TensorDefaultImpl>(info.input_names[i], data_type, input->shape_c());
+    auto data_type = static_cast<enum DataType>(input->DataType());
+    auto impl = std::make_shared<TensorDefaultImpl>(info.input_names[i], data_type, input->Shape());
     info.inputs.push_back(impl);
   }
   info.outputs.clear();
   for (size_t i = 0; i < info.output_names.size(); i++) {
     auto &output = graph_outputs[i];
-    auto data_type = static_cast<enum DataType>(output->data_type());
-    auto impl = std::make_shared<TensorDefaultImpl>(info.output_names[i], data_type, output->shape_c());
+    auto data_type = static_cast<enum DataType>(output->DataType());
+    auto impl = std::make_shared<TensorDefaultImpl>(info.output_names[i], data_type, output->Shape());
     info.outputs.push_back(impl);
   }
   return kSuccess;
@@ -208,8 +202,8 @@ Status GraphSinkSession::UpdateGraphInputsOutputs(uint32_t graph_id, DelegateGra
     info.inputs.clear();
     for (size_t i = 0; i < new_inputs.size(); i++) {
       auto &input = new_inputs[i];
-      auto data_type = static_cast<enum DataType>(input.data_type());
-      auto impl = std::make_shared<TensorDefaultImpl>(info.input_names[i], data_type, input.shape_c());
+      auto data_type = static_cast<enum DataType>(input.DataType());
+      auto impl = std::make_shared<TensorDefaultImpl>(info.input_names[i], data_type, input.Shape());
       info.inputs.push_back(impl);
     }
   }
@@ -225,18 +219,17 @@ Status GraphSinkSession::UpdateGraphInputsOutputs(uint32_t graph_id, DelegateGra
     info.outputs.clear();
     for (size_t i = 0; i < new_outputs.size(); i++) {
       auto &output = new_outputs[i];
-      auto data_type = static_cast<enum DataType>(output.data_type());
-      auto impl = std::make_shared<TensorDefaultImpl>(info.output_names[i], data_type, output.shape_c());
+      auto data_type = static_cast<enum DataType>(output.DataType());
+      auto impl = std::make_shared<TensorDefaultImpl>(info.output_names[i], data_type, output.Shape());
       info.outputs.push_back(impl);
     }
   }
   return kSuccess;
 }
 
-Status GraphSinkSession::RunGraph(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
-                                  std::vector<tensor::Tensor> *outputs, const MSKernelCallBack &before,
+Status GraphSinkSession::RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                                  std::vector<mindspore::MSTensor> *outputs, const MSKernelCallBack &before,
                                   const MSKernelCallBack &after) {
-  MS_LOG(INFO) << "GraphSinkSession::RunGraph";
   MS_EXCEPTION_IF_NULL(outputs);
   graph_executor_->SetBefore(before);
   graph_executor_->SetAfter(after);
@@ -251,34 +244,21 @@ Status GraphSinkSession::RunGraph(uint32_t graph_id, const std::vector<tensor::T
       MS_LOG(ERROR) << "Input " << i << " info is nullptr";
       return kCoreFailed;
     }
-    if (inputs[i].data_type() != static_cast<TypeId>(input_infos[i]->DataType())) {
-      MS_LOG(ERROR) << "Input " << i << " data type not match, graph input type " << input_infos[i]->DataType()
-                    << ", given input type " << inputs[i].data_type();
-      return kCoreFailed;
-    }
   }
   bool ret = graph_executor_->RunGraph(graph_id, inputs, outputs, options_);
   if (!ret) {
     MS_LOG(ERROR) << "GraphSinkSession::RunGraph run graph failed";
     return kCoreFailed;
   }
-  if (is_data_flow_graph_) {
-    DelegateGraphInfo graph_info;
-    if (UpdateGraphInputsOutputs(graph_id, &graph_info) != kSuccess) {
-      MS_LOG(ERROR) << "Update graph inputs and outputs failed for data flow graph.";
-      return kCoreFailed;
-    }
-    graph_infos_[graph_id] = graph_info;
-  }
   return kSuccess;
 }
 
-Status GraphSinkSession::RunGraph(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
-                                  std::vector<tensor::Tensor> *outputs) {
+Status GraphSinkSession::RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                                  std::vector<mindspore::MSTensor> *outputs) {
   return RunGraph(graph_id, inputs, outputs, nullptr, nullptr);
 }
 
-Status GraphSinkSession::Resize(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
+Status GraphSinkSession::Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                                 const std::vector<std::vector<int64_t>> &new_shapes) {
   MS_LOG(INFO) << "GraphSinkSession::Resize";
   MS_EXCEPTION_IF_NULL(graph_executor_);
@@ -290,26 +270,13 @@ Status GraphSinkSession::Resize(uint32_t graph_id, const std::vector<tensor::Ten
   auto &info = info_it->second;
   auto ret = graph_executor_->Resize(graph_id, inputs, new_shapes);
   if (!ret) {
-    return kCoreFailed;
-  }
-  auto new_outputs = graph_executor_->GetOutputInfos(graph_id);
-  if (new_outputs.empty()) {
-    return kSuccess;
-  }
-  if (new_outputs.size() != info.outputs.size()) {
-    MS_LOG(ERROR) << "Output count " << new_outputs.size() << " get from executor != last output count "
-                  << info.outputs.size();
+    MS_LOG(ERROR) << "model resize failed.";
     return kCoreFailed;
   }
   for (size_t i = 0; i < new_shapes.size(); i++) {
     auto &input_shape = new_shapes[i];
     info.inputs[i]->SetShape(input_shape);
     info.inputs[i]->SetData(nullptr, false);  // reset data
-  }
-  for (size_t i = 0; i < info.outputs.size(); i++) {
-    auto &output = new_outputs[i];
-    info.outputs[i]->SetShape(output.shape_c());
-    info.outputs[i]->SetData(nullptr, false);  // reset data
   }
   return kSuccess;
 }
@@ -329,7 +296,8 @@ std::vector<MutableTensorImplPtr> GraphSinkSession::GetInputs(uint32_t graph_id)
     return {};
   }
   auto &info = info_it->second;
-  return info.inputs;
+  auto input_info = info.inputs;
+  return input_info;
 }
 std::vector<std::string> GraphSinkSession::GetOutputNames(uint32_t graph_id) {
   auto info_it = graph_infos_.find(graph_id);
@@ -350,7 +318,7 @@ std::vector<std::string> GraphSinkSession::GetInputNames(uint32_t graph_id) {
   return info.input_names;
 }
 
-Status GraphSinkSession::UpdateWeights(const std::vector<std::vector<std::shared_ptr<tensor::Tensor>>> &weights) {
+Status GraphSinkSession::UpdateWeights(const std::vector<std::vector<std::shared_ptr<mindspore::MSTensor>>> &weights) {
   MS_LOG(INFO) << "UpdateWeights..";
   bool ret = graph_executor_->UpdateWeights(weights);
   if (!ret) {
@@ -401,7 +369,6 @@ static std::shared_ptr<InferSession> DelegateSessionCreator(const std::shared_pt
   }
   auto device_type = device_contexts.at(0)->GetDeviceType();
   auto provider = device_contexts.at(0)->GetProvider();
-
   auto delegate = DelegateRegistry<std::shared_ptr<LiteGraphExecutor>>::GetInstance().GetDelegate(device_type, provider,
                                                                                                   ctx, config_infos);
   if (delegate == nullptr) {
