@@ -87,6 +87,7 @@ class LiteGraphExecutor {
     return {};
   }
 
+  virtual const std::vector<TypeId> GetOutputDataType() { return {}; }
   void SetBefore(const MSKernelCallBack &before) { before_ = before; }
 
   void SetAfter(const MSKernelCallBack &after) { after_ = after; }

@@ -47,6 +47,8 @@ class AclGraphExecutor : public LiteGraphExecutor {
 
   std::vector<mindspore::MSTensor> GetOutputInfos(uint32_t graph_id) override;
 
+  const std::vector<TypeId> GetOutputDataType() { return model_infer_->GetOutputDataType(); }
+
   Status Init();
 
   void Finalize() override {

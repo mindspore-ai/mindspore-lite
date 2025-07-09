@@ -71,7 +71,7 @@ function Run_python_ST() {
     done < ${cfg_file}
   done
   echo "-----------------------------------------------------------------------------------------"
-
+  # This case need adjust finalize interface
   # elapsed_time=$(date +%s.%N)
   # python test_inference_cloud_nocofig.py ${model_hiai_path} ${target} >> ${run_python_log}
   # Run_python_st_status=$?
