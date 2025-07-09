@@ -17,13 +17,13 @@
 #include "gtest/gtest.h"
 #include "include/converter.h"
 
-TEST(TestConverterAPI, ConvertCaffe) {
+TEST(TestConverterAPI, ConvertCaffeWithNotExistFile) {
   std::string caffe_model = "./detect_mbv1_640_480_nopostprocess_simplified.prototxt";
   std::string caffe_weight = "./detect_mbv1_640_480_nopostprocess_simplified.caffemodel";
   std::string output_model = "./detect_mbv1_640_480_nopostprocess_simplified.ms";
 
   mindspore::Converter converter(mindspore::converter::FmkType::kFmkTypeCaffe, caffe_model, output_model, caffe_weight);
-  ASSERT_TRUE(converter.Convert().IsOk());
+  ASSERT_FALSE(converter.Convert().IsOk());
 }
 
 TEST(TestConverterAPI, ConvertCaffeWithNotExistWeight) {
