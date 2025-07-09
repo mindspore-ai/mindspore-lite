@@ -144,6 +144,8 @@ class InferSession : public std::enable_shared_from_this<InferSession> {
   // release inference resource, only used for mindspore_lite's ascend backend now.
   virtual Status Finalize();
 
+  uint64_t GetSharableHandle() { return sharable_handle_; }
+
  protected:
   /// \brief Handle session according to context.
   ///
@@ -156,6 +158,7 @@ class InferSession : public std::enable_shared_from_this<InferSession> {
   ///
   /// \return The Session type, eg kSingleOpSession for Ascend, etc.
   static SessionType SelectSession(const std::shared_ptr<Context> &context, bool use_experimental_rts = false);
+  uint64_t sharable_handle_ = 0;
 };  // namespace mindspore
 }  // namespace mindspore
 #endif

@@ -168,6 +168,7 @@ bool ModelInfer::Load(const void *om_data, size_t om_data_size) {
     MS_LOG(ERROR) << "Load model model failed.";
     return false;
   }
+  sharable_handle_ = model_process_.GetSharableHandle();
   return true;
 }
 

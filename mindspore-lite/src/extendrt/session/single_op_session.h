@@ -71,6 +71,7 @@ class SingleOpInferSession : public InferSession {
   Status InitVariableWeights(const std::vector<std::shared_ptr<tensor::Tensor>> &weights,
                              std::vector<kernel::KernelTensor *> *kernel_weights);
   void DestoryKernelTensor(LiteKernelArgs args);
+  void GetShareMemInfo(const std::map<std::string, std::string> &share_mem, const PrimitivePtr &dst_prim);
 
   std::vector<MutableTensorImplPtr> inputs_;
   std::vector<std::string> input_names_;

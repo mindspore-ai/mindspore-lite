@@ -22,6 +22,7 @@
 #include "src/common/decrypt.h"
 #include "src/common/file_utils.h"
 #endif
+#include "src/extendrt/kernel/ascend/plugin/ascend_allocator_plugin.h"
 
 namespace mindspore {
 namespace {
@@ -45,6 +46,14 @@ Model::Model() {
   impl_ = std::make_shared<ModelImpl>();
   if (impl_ == nullptr) {
     MS_LOG(ERROR) << "Failed to create ModelImpl";
+  }
+  int32_t pid;
+  kernel::AscendAllocatorPlugin::GetInstance().Register();
+  if (!kernel::AscendAllocatorPlugin::GetInstance().GetPid(&pid)) {
+    MS_LOG(WARNING) << "GetPid failed!";
+  } else {
+    MS_LOG(INFO) << "pid:" << pid;
+    impl_->SetModelInfo("current_pid", std::to_string(pid));
   }
 }
 
@@ -475,9 +484,10 @@ Status Evaluate(std::shared_ptr<dataset::Dataset> ds, std::vector<TrainCallBack 
 std::vector<char> Model::GetModelInfo(const std::vector<char> &key) {
   std::vector<char> ret;
   auto string_key = CharToString(key);
-  if (string_key != lite::KModelUserInfo && string_key != lite::KModelInputShape &&
-      string_key != lite::kDynamicDimsKey) {
-    MS_LOG(WARNING) << "Unsupported key, only user info, input_shape and dynamicDims are supported.";
+  std::vector<std::string> supported_key = {lite::KModelUserInfo, lite::KModelInputShape, lite::kDynamicDimsKey,
+                                            lite::KCurrentPid, lite::kSharableWeightMemHandle};
+  if (std::find(supported_key.begin(), supported_key.end(), string_key) == supported_key.end()) {
+    MS_LOG(WARNING) << "Unsupported key, current supported key:" << supported_key << ", input key:" << string_key;
     return ret;
   }
   if (impl_ == nullptr) {

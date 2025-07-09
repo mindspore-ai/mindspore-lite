@@ -24,6 +24,7 @@ namespace mindspore::kernel {
 namespace {
 constexpr auto kAscendkernelPluginSoNmae = "libascend_kernel_plugin.so";
 constexpr auto kFunCreateAscendAllocatorPluginImpl = "CreateAclAllocator";
+constexpr auto kFunGetPidPluginImpl = "GetPid";
 #if !defined(_WIN32)
 std::mutex mutex_;
 #endif
@@ -81,9 +82,26 @@ bool AscendAllocatorPlugin::Register() {
     MS_LOG(ERROR) << "create ascend allocator plugin impl failed.";
     return false;
   }
+  ret = DLSoOpen(plugin_path_, kFunGetPidPluginImpl, &handle_, &get_pid_func_);
+  if (ret != kSuccess) {
+    MS_LOG(ERROR) << "DLSoOpen failed, so path: " << plugin_path_ << " , func name: " << kFunGetPidPluginImpl
+                  << ", err: " << ret.ToString();
+    return false;
+  }
   is_registered_ = true;
   MS_LOG(INFO) << "register ascend allocator success.";
 #endif
+  return true;
+}
+
+bool AscendAllocatorPlugin::GetPid(int32_t *pid) {
+  if (get_pid_func_ == nullptr) {
+    return false;
+  }
+  auto get_pid = (bool (*)(int32_t *))(get_pid_func_);
+  if (!get_pid(pid)) {
+    return false;
+  }
   return true;
 }
 

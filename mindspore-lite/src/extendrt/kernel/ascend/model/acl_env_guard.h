@@ -21,6 +21,7 @@
 #include <mutex>
 #include <vector>
 #include "acl/acl_base.h"
+#include "include/api/visible.h"
 
 namespace mindspore::kernel {
 namespace acl {
@@ -30,6 +31,7 @@ class AclInitAdapter {
   aclError AclInit(const char *config_file);
   aclError AclFinalize();
   aclError ForceFinalize();
+  aclError GetPid(int32_t *pid);
 
  private:
   AclInitAdapter() : init_flag_(false) {}
@@ -53,6 +55,7 @@ class AclEnvGuard {
   static void DeleteModel(const std::shared_ptr<ModelInfer> &model_infer);
   static int32_t GetModelNum();
   static bool Finalize();
+  static bool GetPid(int32_t *pid);
 
  private:
   static std::shared_ptr<AclEnvGuard> global_acl_env_;
@@ -61,6 +64,7 @@ class AclEnvGuard {
 
   aclError errno_;
 };
+extern "C" MS_API bool GetPid(int32_t *pid);
 }  // namespace acl
 }  // namespace mindspore::kernel
 

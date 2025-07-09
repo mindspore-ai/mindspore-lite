@@ -49,6 +49,7 @@ class ModelInfer {
   const std::vector<TypeId> GetInputDataType();
   const std::vector<TypeId> GetOutputDataType();
   std::vector<Format> GetOutputFormat();
+  uint64_t GetSharableHandle() { return sharable_handle_; }
 
   bool Resize(const std::vector<ShapeVector> &new_shapes);
 
@@ -61,6 +62,7 @@ class ModelInfer {
   ModelProcess model_process_;
   Profiling profiling_;
   std::shared_ptr<AclEnvGuard> acl_env_;
+  uint64_t sharable_handle_ = 0;
 };
 
 using ModelInferPtr = std::shared_ptr<ModelInfer>;

@@ -51,6 +51,7 @@ class MS_API AscendAllocatorPlugin {
   Status CopyHostDataToDevice(void *host_data, void *device_data, size_t data_size);
   Status CopyDeviceDataToDevice(void *src_device, void *dst_device, size_t src_data_size, size_t dst_data_size,
                                 int src_device_id, int dst_device_id);
+  bool GetPid(int32_t *pid);
 
  private:
   AscendAllocatorPlugin();
@@ -60,6 +61,7 @@ class MS_API AscendAllocatorPlugin {
   void *handle_ = nullptr;
   bool is_registered_ = false;
   std::shared_ptr<AscendAllocatorPluginImpl> ascend_allocator_plugin_impl_ = nullptr;
+  void *get_pid_func_ = nullptr;
 };
 }  // namespace mindspore::kernel
 #endif

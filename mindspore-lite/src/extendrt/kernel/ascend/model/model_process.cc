@@ -19,6 +19,7 @@
 #include <utility>
 #include <algorithm>
 #include <map>
+#include <regex>
 #include <thread>
 #include "common/log_adapter.h"
 #include "src/common/utils.h"
@@ -36,6 +37,7 @@ namespace acl {
 namespace {
 constexpr size_t kBatchSizeNum = 1;
 constexpr size_t kImageSizeHwNum = 2;
+constexpr size_t kGranularitySize = 2097152;  // The physical memory size must be 2M aligned
 constexpr char kINFOLogLevel = '1';
 constexpr char kDEBUGLogLevel = '0';
 bool GetSizeByDtype(aclDataType data_type, size_t *size) {
@@ -53,6 +55,21 @@ bool GetSizeByDtype(aclDataType data_type, size_t *size) {
       break;
     default:
       return false;
+  }
+  return true;
+}
+
+bool ConvertStringToIntVector(const std::string &input, std::vector<int> *res) {
+  MS_CHECK_TRUE_MSG(res != nullptr, false, "res is nullptr!");
+  std::regex pattern(R"(^(?!,$)(\d+(,\s*\d+)*,?)?$)");  // "num1, num2, num3"
+  if (!std::regex_match(input, pattern)) {
+    MS_LOG(ERROR) << "Format of pids should like '123, 456, 789'! input pids:" << input;
+    return false;
+  }
+  std::stringstream ss(input);
+  std::string token;
+  while (std::getline(ss, token, ',')) {
+    res->push_back(std::stoi(token));
   }
   return true;
 }
@@ -634,6 +651,154 @@ bool ModelProcess::ShareWorkspaceAndWeightspaceProcess(const size_t &work_size) 
   return true;
 }
 
+bool ModelProcess::MainProcess(const void *om_data, size_t om_data_size) {
+  size_t work_size = 0;
+  size_t weight_size = 0;
+  auto acl_ret = CALL_ASCEND_API(aclmdlQuerySizeFromMem, om_data, om_data_size, &work_size, &weight_size);
+  if (acl_ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Call aclmdlQuerySizeFromMem failed, ret = " << acl_ret;
+    return false;
+  }
+  size_t alloc_size = ((weight_size / kGranularitySize) + 1) * kGranularitySize;
+  aclrtMemLocation location = {static_cast<uint32_t>(options_->device_id), ACL_MEM_LOCATION_TYPE_DEVICE};
+  aclrtPhysicalMemProp prop = {ACL_MEM_HANDLE_TYPE_NONE, ACL_MEM_ALLOCATION_TYPE_PINNED, ACL_HBM_MEM_HUGE, location};
+  auto ret = CALL_ASCEND_API(aclrtMallocPhysical, &shareable_phy_addr_, alloc_size, &prop, 0);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "aclrtMallocPhysical failed! ret:" << ret;
+    return lite::RET_ERROR;
+  }
+  ret = CALL_ASCEND_API(aclrtMemExportToShareableHandle, shareable_phy_addr_, ACL_MEM_HANDLE_TYPE_NONE, 0,
+                        &sharable_handle_);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "aclrtMemExportToShareableHandle failed! ret:" << ret;
+    return lite::RET_ERROR;
+  }
+  std::vector<int> pids;
+  if (!ConvertStringToIntVector(options_->pids, &pids)) {
+    MS_LOG(ERROR) << "ConvertStringToIntVector failed!";
+    return false;
+  }
+  ret = CALL_ASCEND_API(aclrtMemSetPidToShareableHandle, sharable_handle_, pids.data(), pids.size());
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Set pid to shareable_handle failed! ret:" << ret;
+    return lite::RET_ERROR;
+  }
+  size_t alignment = 0;
+  ret = CALL_ASCEND_API(aclrtReserveMemAddress, &multiprocess_weight_ptr_, alloc_size, alignment, nullptr, 1);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "aclrtReserveMemAddress failed! ret:" << ret;
+    return lite::RET_ERROR;
+  }
+  size_t offset = 0;
+  ret = CALL_ASCEND_API(aclrtMapMem, multiprocess_weight_ptr_, alloc_size, offset, shareable_phy_addr_, 0);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "aclrtmapmem failed! ret:" << ret;
+    return lite::RET_ERROR;
+  }
+  if (work_size == 0) {
+    work_ptr_ = nullptr;
+  } else {
+    acl_ret = CALL_ASCEND_API(aclrtMalloc, &(work_ptr_), work_size, ACL_MEM_MALLOC_HUGE_FIRST);
+    if (acl_ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Call aclrtMalloc failed, err_code = " << acl_ret;
+      return false;
+    }
+  }
+  options_->share_weightspace = true;
+  acl_ret = CALL_ASCEND_API(aclmdlLoadFromMemWithMem, om_data, om_data_size, &model_id_, work_ptr_, work_size,
+                            multiprocess_weight_ptr_, weight_size);
+  if (acl_ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Call aclmdlLoadFromMemWithMem failed, ret = " << acl_ret;
+    return false;
+  }
+  infer_id_ = model_id_;
+  return true;
+}
+
+bool ModelProcess::SubProcess(const void *om_data, size_t om_data_size) {
+  size_t work_size = 0;
+  size_t weight_size = 0;
+  auto acl_ret = CALL_ASCEND_API(aclmdlQuerySizeFromMem, om_data, om_data_size, &work_size, &weight_size);
+  if (acl_ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Call aclmdlQuerySizeFromMem failed, ret = " << acl_ret;
+    return false;
+  }
+  size_t alloc_size = ((weight_size / kGranularitySize) + 1) * kGranularitySize;
+  auto ret = CALL_ASCEND_API(aclrtMemImportFromShareableHandle, options_->sharable_handle, options_->device_id,
+                             &shareable_phy_addr_);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "acl rt mem import from shareable handle failed! ret:" << ret
+                  << " please Keep the main process running, otherwise the shared memory will become invalid!";
+    return lite::RET_ERROR;
+  }
+  size_t alignment = 0;
+  CALL_ASCEND_API(aclrtReserveMemAddress, &(multiprocess_weight_ptr_), alloc_size, alignment, nullptr, ACL_HBM_MEM);
+  size_t offset = 0;
+  ret = CALL_ASCEND_API(aclrtMapMem, multiprocess_weight_ptr_, alloc_size, offset, shareable_phy_addr_, 0);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "aclrtmapmem failed! weight size:" << alloc_size;
+    return lite::RET_ERROR;
+  }
+  if (work_size == 0) {
+    work_ptr_ = nullptr;
+  } else {
+    acl_ret = CALL_ASCEND_API(aclrtMalloc, &(work_ptr_), work_size, ACL_MEM_MALLOC_HUGE_FIRST);
+    if (acl_ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Call aclrtMalloc failed, err_code = " << acl_ret;
+      return false;
+    }
+  }
+  options_->share_weightspace = true;
+  acl_ret = CALL_ASCEND_API(aclmdlLoadFromMemWithMem, om_data, om_data_size, &model_id_, work_ptr_, work_size,
+                            multiprocess_weight_ptr_, weight_size);
+  if (acl_ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Call aclmdlLoadFromMemWithMem failed, ret = " << acl_ret;
+    return false;
+  }
+  infer_id_ = model_id_;
+  return true;
+}
+
+bool ModelProcess::ShareMemProcess(const void *om_data, size_t om_data_size) {
+  MS_CHECK_TRUE_MSG(options_->is_bundle_model == false, false, "Update weight model don't support mem share!");
+  MS_CHECK_TRUE_MSG(om_data != nullptr, false, "om_data is nullptr!");
+  MS_LOG(INFO) << "using sharing mem by model group.";
+  size_t work_size = 0;
+  size_t weight_size = 0;
+  auto acl_ret = CALL_ASCEND_API(aclmdlQuerySizeFromMem, om_data, om_data_size, &work_size, &weight_size);
+  if (acl_ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Call aclmdlQuerySizeFromMem failed, ret = " << acl_ret;
+    return false;
+  }
+  if (options_->share_workspace) {
+    if (!ShareWorkspaceProcess(work_size, weight_size)) {
+      MS_LOG(ERROR) << "ShareWorkspaceProcess failed! work_size:" << work_size;
+      return false;
+    }
+  } else if (options_->share_weightspace) {
+    if (!ShareWeightspaceProcess(work_size)) {
+      MS_LOG(ERROR) << "ShareWeightspaceProcess failed! work_size:" << work_size;
+      return false;
+    }
+  } else if (options_->share_weightspace_workspace) {
+    if (!ShareWorkspaceAndWeightspaceProcess(work_size)) {
+      MS_LOG(ERROR) << "ShareWorkspaceAndWeightspaceProcess failed! work_size:" << work_size;
+      return false;
+    }
+  } else {
+    MS_LOG(ERROR) << "Please specify the sharing type!";
+    return false;
+  }
+  acl_ret = CALL_ASCEND_API(aclmdlLoadFromMemWithMem, om_data, om_data_size, &model_id_, work_ptr_, work_size,
+                            weight_ptr_, weight_size);
+  if (acl_ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Call aclmdlLoadFromMemWithMem failed, ret = " << acl_ret;
+    return false;
+  }
+  infer_id_ = model_id_;
+  return true;
+}
+
 bool ModelProcess::Load(const void *om_data, size_t om_data_size) {
   if (loaded_) {
     MS_LOG(INFO) << "Model has been loaded";
@@ -648,42 +813,12 @@ bool ModelProcess::Load(const void *om_data, size_t om_data_size) {
     auto ret = PrepareMutiModelShare(om_data, om_data_size);
     return ret;
   } else if (options_->multi_model_sharing_mem) {
-    MS_CHECK_TRUE_MSG(options_->is_bundle_model == false, false, "Update weight model don't support mem share!");
-    MS_LOG(INFO) << "using sharing mem by model group.";
-    size_t work_size = 0;
-    size_t weight_size = 0;
-    auto acl_ret = CALL_ASCEND_API(aclmdlQuerySizeFromMem, om_data, om_data_size, &work_size, &weight_size);
-    if (acl_ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "Call aclmdlQuerySizeFromMem failed, ret = " << acl_ret;
+    if (!ShareMemProcess(om_data, om_data_size)) {
+      MS_LOG(ERROR) << "ShareMemProcess failed!";
       return false;
     }
-    if (options_->share_workspace) {
-      if (!ShareWorkspaceProcess(work_size, weight_size)) {
-        MS_LOG(ERROR) << "ShareWorkspaceProcess failed! work_size:" << work_size;
-        return false;
-      }
-    } else if (options_->share_weightspace) {
-      if (!ShareWeightspaceProcess(work_size)) {
-        MS_LOG(ERROR) << "ShareWeightspaceProcess failed! work_size:" << work_size;
-        return false;
-      }
-    } else if (options_->share_weightspace_workspace) {
-      if (!ShareWorkspaceAndWeightspaceProcess(work_size)) {
-        MS_LOG(ERROR) << "ShareWorkspaceAndWeightspaceProcess failed! work_size:" << work_size;
-        return false;
-      }
-    } else {
-      MS_LOG(ERROR) << "Please specify the sharing type!";
-      return false;
-    }
-    acl_ret = CALL_ASCEND_API(aclmdlLoadFromMemWithMem, om_data, om_data_size, &model_id_, work_ptr_, work_size,
-                              weight_ptr_, weight_size);
-    if (acl_ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "Call aclmdlLoadFromMemWithMem failed, ret = " << acl_ret;
-      return false;
-    }
-    infer_id_ = model_id_;
   } else {
+    MS_LOG(INFO) << "options->pids:" << options_->pids << ",options_->sharable_handle:" << options_->sharable_handle;
     if (options_->is_bundle_model) {
       auto acl_ret = CALL_ASCEND_API(aclmdlBundleLoadFromMem, om_data, om_data_size, &model_id_);
       if (acl_ret != ACL_SUCCESS) {
@@ -698,6 +833,16 @@ bool ModelProcess::Load(const void *om_data, size_t om_data_size) {
       acl_ret = CALL_ASCEND_API(aclmdlBundleGetModelId, model_id_, 1, &update_id_);
       if (acl_ret != ACL_SUCCESS) {
         MS_LOG(ERROR) << "Call aclmdlBundleGetModelId failed, ret = " << acl_ret << "!";
+        return false;
+      }
+    } else if (options_->pids != "") {
+      if (!MainProcess(om_data, om_data_size)) {
+        MS_LOG(ERROR) << "Main process failed!";
+        return false;
+      }
+    } else if (options_->sharable_handle != 0) {
+      if (!SubProcess(om_data, om_data_size)) {
+        MS_LOG(ERROR) << "Sub process failed!";
         return false;
       }
     } else {
@@ -754,6 +899,15 @@ bool ModelProcess::UnLoad() {
   if (options_->share_weightspace && work_ptr_ != nullptr) {
     CALL_ASCEND_API(aclrtFree, work_ptr_);
     work_ptr_ = nullptr;
+  }
+  if (multiprocess_weight_ptr_ != nullptr) {
+    CALL_ASCEND_API(aclrtUnmapMem, multiprocess_weight_ptr_);
+    CALL_ASCEND_API(aclrtReleaseMemAddress, multiprocess_weight_ptr_);
+    multiprocess_weight_ptr_ = nullptr;
+  }
+  if (shareable_phy_addr_ != nullptr) {
+    CALL_ASCEND_API(aclrtFreePhysical, shareable_phy_addr_);
+    shareable_phy_addr_ = nullptr;
   }
   MS_LOG(INFO) << "End unload model " << model_id_;
   return true;
