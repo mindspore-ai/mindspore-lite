@@ -76,7 +76,7 @@ TEST_F(GruInferTest, GruInferTest0) {
 
 // bidirectional_ is false and inputs_size is 6
 TEST_F(GruInferTest, GruInferTest1) {
-  size_t inputs_size = 5;
+  size_t inputs_size = 6;
   std::vector<TensorC *> inputs(inputs_size, NULL);
   inputs[0] = new TensorC;
   inputs[0]->shape_size_ = 3;

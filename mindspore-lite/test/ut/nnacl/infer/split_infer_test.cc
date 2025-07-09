@@ -136,7 +136,6 @@ TEST_F(SplitInferTest, SplitInferTest2) {
   ASSERT_EQ(outputs[2]->shape_[1], 5);
   ASSERT_EQ(outputs[2]->shape_[2], 6);
   ASSERT_EQ(outputs[2]->shape_[3], 2);
-  delete parameter;
   for (size_t i = 0; i < inputs_size; i++) {
     delete inputs[i];
   }
@@ -144,6 +143,7 @@ TEST_F(SplitInferTest, SplitInferTest2) {
     delete outputs[i];
   }
   free(parameter->split_sizes_);
+  delete parameter;
 }
 
 TEST_F(SplitInferTest, SplitInferTest3) {
