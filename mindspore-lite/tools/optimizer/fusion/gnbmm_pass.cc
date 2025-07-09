@@ -228,6 +228,10 @@ CNodePtr GNBMMPass::CreateGNBMMNodeForSDXL(const std::string &pattern_name, cons
   MS_CHECK_TRUE_RET(bias != nullptr, nullptr);
 
   auto instance_norm_prim = GetCNodePrimitive(instance_norm);
+  if (instance_norm_prim == nullptr) {
+    MS_LOG(ERROR) << "instance_norm_prim is nullptr!";
+    return nullptr;
+  }
   auto num_groups = GetInstanceNormGroups(instance_norm);
   auto gnbmm_prim = std::make_shared<ops::Custom>();
   if (gnbmm_prim == nullptr) {

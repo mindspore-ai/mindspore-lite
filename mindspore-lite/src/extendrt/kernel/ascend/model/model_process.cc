@@ -1159,8 +1159,13 @@ void ModelProcess::CheckAndInitDynOutputDeviceBuf(const KernelTensor *output, co
   auto host_data = output->GetHostData();
   if ((host_data == nullptr) || (dyn_out_sys_buf_addr_.find(host_data->addr) != dyn_out_sys_buf_addr_.end()) ||
       (host_data->size == 0)) {
-    MS_LOG(DEBUG) << "host_data->addr: " << host_data->addr
-                  << ", user not defined dynamic output buffer on host, using system defined buffer";
+    if (host_data == nullptr) {
+      MS_LOG(DEBUG) << "host_data: " << host_data
+                    << ", user not defined dynamic output buffer on host, using system defined buffer";
+    } else {
+      MS_LOG(DEBUG) << "host_data->addr: " << host_data->addr
+                    << ", user not defined dynamic output buffer on host, using system defined buffer";
+    }
     user_defined_output_buf_[output_idx] = false;
   }
   if (user_defined_output_buf_[output_idx]) {

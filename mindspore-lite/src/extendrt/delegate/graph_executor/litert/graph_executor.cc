@@ -250,6 +250,7 @@ bool LiteRTGraphExecutor::RunGraph(uint32_t, const std::vector<tensor::Tensor> &
     MS_LOG(DEBUG) << "Empty outputs.";
     return false;
   }
+  MS_EXCEPTION_IF_NULL(outputs);
   outputs->clear();
   *outputs = TensorUtils::MSTensorToTensor(res);
   return true;

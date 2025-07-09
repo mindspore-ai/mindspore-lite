@@ -38,8 +38,8 @@ class DataSet:
     @staticmethod
     def normalize(img_array):
         """Normalize the current image data"""
-        assert isinstance(img_array, np.ndarray) and img_array.shape == (
-            3, 224, 224), "please check img_array's type and shape "
+        if not (isinstance(img_array, np.ndarray) and img_array.shape == (3, 224, 224)):
+            raise RuntimeError("please check img_array's type and shape ")
         mean_vec = np.array([0.485, 0.456, 0.406])
         stddev_vec = np.array([0.229, 0.224, 0.225])
         norm_img = np.zeros(img_array.shape).astype('float32')
@@ -69,7 +69,8 @@ class DataSet:
 
 
 def create_model(model_path):
-    assert path.isfile(model_path), "Please make sure your model file exists"
+    if not path.isfile(model_path):
+        raise RuntimeError("Please make sure your model file exists")
     cpu_device_info = mslite.CPUDeviceInfo(enable_fp16=False)
     print("cpu_device_info: ", cpu_device_info)
     context = mslite.Context(thread_num=1, thread_affinity_mode=2)

@@ -99,9 +99,9 @@ class ControlFlowScheduler {
   std::unordered_map<size_t, std::set<kernel::KernelExec *>> more_than_once_called_partial_nodes_{};
   // record partial nodes which corresponding subgraph need build boundary, key is subgraph, value is corresponding
   // partial nodes
-  std::unordered_map<kernel::SubGraphKernel *, std::set<kernel::KernelExec *>> subgraphs_need_boundary_{};
-  std::unordered_map<size_t, kernel::KernelExec *> *subgraph_index_subgraph_kernel_map_{};
-  std::unordered_map<kernel::KernelExec *, size_t> *partial_kernel_subgraph_index_map_{};
+  std::unordered_map<kernel::SubGraphKernel *, std::set<kernel::KernelExec *>> subgraphs_need_boundary_ = {};
+  std::unordered_map<size_t, kernel::KernelExec *> *subgraph_index_subgraph_kernel_map_ = nullptr;
+  std::unordered_map<kernel::KernelExec *, size_t> *partial_kernel_subgraph_index_map_ = nullptr;
 };
 
 #else

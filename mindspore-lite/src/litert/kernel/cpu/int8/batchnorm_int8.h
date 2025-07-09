@@ -45,8 +45,8 @@ class BatchnormInt8CPUKernel : public LiteKernel {
   float *alpha_addr_ = nullptr;
   float *beta_addr_ = nullptr;
   int channel_;
-  int unit_;
-  int units_;
+  int unit_ = 0;
+  int units_ = 0;
 };
 }  // namespace mindspore::kernel
 

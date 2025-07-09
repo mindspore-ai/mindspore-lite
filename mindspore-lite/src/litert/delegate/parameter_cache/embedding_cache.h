@@ -41,6 +41,9 @@ class EmbeddingCache {
     min_host_index_ = local_shard_size * rank_id_;
     max_host_index_ = std::min(min_host_index_ + local_shard_size, static_cast<int>(vocab_size_));
     host_cache_size_ = max_host_index_ - min_host_index_;
+    hash_swap_index_addr_ = nullptr;
+    hash_swap_value_addr_ = nullptr;
+    hash_swap_value_device_addr_ = nullptr;
 
     MS_LOG(INFO) << "rank_group_size_ num:" << rank_group_size_ << ", rank id:" << rank_id_
                  << ", vocab_size_:" << vocab_size_ << ", host_cache_size_:" << host_cache_size_

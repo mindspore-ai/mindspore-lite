@@ -59,6 +59,7 @@ TensorRTSubGraph::TensorRTSubGraph(std::vector<TensorRTOp *> ops, const std::vec
   if (!support_hw_resize) {
     input_hw_index_ = -1;
   }
+  ctx_ = nullptr;
 }
 
 TensorRTSubGraph::~TensorRTSubGraph() {

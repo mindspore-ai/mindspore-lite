@@ -42,10 +42,8 @@ class TransferNet(nn.Cell):
 
 CHECKPOINT_WEIGHT_FILE = "efficient_net_b0.ckpt"
 if not path.exists(CHECKPOINT_WEIGHT_FILE):
-    import subprocess
-    print("weight file is missing, downloading from hub")
-    url = "https://download.mindspore.cn/model_zoo/official/lite/efficient_net/" + CHECKPOINT_WEIGHT_FILE
-    subprocess.run(["wget", url], check=True)
+    raise RuntimeError("""Weight file doesn't exist, please donload from
+                       https://download.mindspore.cn/model_zoo/official/lite/efficient_net/efficient_net_b0.ckpt !""")
 
 BACKBONE = effnet(num_classes=1000)
 load_checkpoint(CHECKPOINT_WEIGHT_FILE, BACKBONE)

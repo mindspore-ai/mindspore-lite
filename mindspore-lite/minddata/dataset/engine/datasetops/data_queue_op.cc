@@ -430,6 +430,8 @@ Status DataQueueOp::WaitForAscendQueue(size_t batch_data_len) {
   //     know if the device will out of memory. If not oom, send next row, otherwise device returns error.
 
   // Calculate the memory of next row before sending
+  RETURN_UNEXPECTED_IF_NULL(ascend_data_queue_);
+
   size_t queue_size = ascend_data_queue_->QueryQueueSize();
   double row_memory = batch_data_len / 1024. / 1024. / 1024.;
   memory_per_batch_.push_back(row_memory);
@@ -492,6 +494,7 @@ Status DataQueueOp::SendDataToAscend() {
   first_fetch_flag_ = true;
 
   MS_LOG(INFO) << "Begin to send data to device, channel name: " << channel_name_;
+  RETURN_UNEXPECTED_IF_NULL(ascend_data_queue_);
 
   while (!curr_row.eof() && !is_break_loop) {
     SendInfo send_info_per_epoch;
@@ -626,6 +629,7 @@ Status DataQueueOp::SendEpochEndToAscend(const TensorRow &curr_row, const bool &
                                          bool *is_break_loop) {
   RETURN_UNEXPECTED_IF_NULL(tdt_cost);
   RETURN_UNEXPECTED_IF_NULL(is_break_loop);
+  RETURN_UNEXPECTED_IF_NULL(ascend_data_queue_);
   if (curr_row.eoe() && send_epoch_end_ && ascend_data_queue_->IsOpen()) {
     TensorRow dummy_row;
     if (!enable_prefetch_cache_pipeline_) {

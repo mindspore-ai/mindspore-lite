@@ -426,13 +426,11 @@ bool ConfigFileParser::SetParamByConfigfile(const std::shared_ptr<mindspore::Con
   auto custom_fusion_pattern_str = FindInAscendMap("custom_fusion_pattern", ascend_map);
   if (!custom_fusion_pattern_str.empty()) {
     auto status = ParseCustomPattern(param, custom_fusion_pattern_str);
-    if (status != RET_OK) {
-      MS_LOG(ERROR) << "custom fusion pattern wrong, eg:\n"
-                       "custom_fusion_pattern=Fusion_op_type:node_name_1,node_name_2:enable\n"
-                       "or: "
-                       "custom_fusion_pattern=Fusion_op_type:node_name_1,node_name_2:disable";
-      return false;
-    }
+    MS_CHECK_TRUE_MSG(status == RET_OK, false,
+                      "custom fusion pattern wrong, eg:\n"
+                      "custom_fusion_pattern=Fusion_op_type:node_name_1,node_name_2:enable\n"
+                      "or: "
+                      "custom_fusion_pattern=Fusion_op_type:node_name_1,node_name_2:disable");
   }
 
   auto op_attrs_str = FindInAscendMap(kOpAttrs, ascend_map);

@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# copy from https://gitee.com/ascend/samples/blob/master/best_practices/contrib/blast-code/blast_tik/cmake/util/parse_ini_to_json.py
 
 """
 parser ini to json

@@ -67,6 +67,11 @@ if [ -z "${DOCKER}" ]; then
     echo "MindSpore docker was not provided, attempting to run locally"
 fi
 
+if [ ! -f "models/efficient_net_b0.ckpt" ]; then
+  echo "Pretrained model weights are missing, downloading efficient_net_b0.ckpt"
+  wget https://download.mindspore.cn/model_zoo/official/lite/efficient_net/efficient_net_b0.ckpt
+fi
+
 mkdir -p mindir
 if [ ! -z "${TRAIN_IO}" ]; then
   mkdir -p ${TRAIN_IO}

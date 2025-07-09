@@ -30,7 +30,11 @@ class StrideSliceTensorRT : public TensorRTOp {
  public:
   StrideSliceTensorRT(const BaseOperatorPtr &base_operator, const std::vector<TensorInfo> &in_tensors,
                       const std::vector<TensorInfo> &out_tensors, std::string name)
-      : TensorRTOp(base_operator, in_tensors, out_tensors, name) {}
+      : TensorRTOp(base_operator, in_tensors, out_tensors, name) {
+    shrink_axis_ = 0;
+    start_axis_ = 0;
+    end_axis_ = 0;
+  }
 
   ~StrideSliceTensorRT() override = default;
 

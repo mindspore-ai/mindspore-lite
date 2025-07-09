@@ -18,9 +18,9 @@
 #include <vector>
 #include <memory>
 #include "include/train/loss_monitor.h"
+#include "include/api/callback/loss_monitor.h"
 #include "src/litert/cxx_api/callback/callback_impl.h"
 #include "src/common/log_adapter.h"
-#include "include/api/callback/loss_monitor.h"
 
 namespace mindspore {
 LossMonitor::LossMonitor(int print_every_n_steps) {

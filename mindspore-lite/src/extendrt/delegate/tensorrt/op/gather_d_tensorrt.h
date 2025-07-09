@@ -41,17 +41,21 @@ class GatherDTensorRT : public TensorRTOp {
 class GatherDPlugin : public TensorRTPlugin {
  public:
   GatherDPlugin(const std::string name, size_t dim, uint32_t device_id)
-      : TensorRTPlugin(name, std::string(GATHER_D_PLUGIN_NAME), device_id), axis_(dim) {}
+      : TensorRTPlugin(name, std::string(GATHER_D_PLUGIN_NAME), device_id), axis_(dim) {
+    num_ = 0;
+  }
 
   GatherDPlugin(const char *name, const nvinfer1::PluginFieldCollection *fc)
       : TensorRTPlugin(std::string(name), std::string(GATHER_D_PLUGIN_NAME)) {
     const nvinfer1::PluginField *fields = fc->fields;
     axis_ = static_cast<const int *>(fields[0].data)[0];
+    num_ = 0;
   }
 
   GatherDPlugin(const char *name, const void *serialData, size_t serialLength)
       : TensorRTPlugin(std::string(name), std::string(GATHER_D_PLUGIN_NAME)) {
     DeserializeValue(&serialData, &serialLength, &axis_, sizeof(int));
+    num_ = 0;
   }
 
   GatherDPlugin() = delete;

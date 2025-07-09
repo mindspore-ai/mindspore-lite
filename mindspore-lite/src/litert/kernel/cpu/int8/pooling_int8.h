@@ -42,7 +42,7 @@ class PoolingInt8CPUKernel : public LiteKernel {
   int SetQuantParam();
   void FreeQuantParam();
 
-  bool quantize_;
+  bool quantize_ = false;
   PoolingComputeParam compute_;
   PoolingParameter *pooling_param_ = nullptr;
   QuantArg **pooling_quant_arg_ = nullptr;

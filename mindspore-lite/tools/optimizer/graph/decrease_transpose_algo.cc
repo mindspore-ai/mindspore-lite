@@ -382,6 +382,7 @@ STATUS DecreaseTransposeAlgo::DoPreInsert(const FuncGraphPtr &func_graph, const 
   MS_CHECK_TRUE_RET(abstract != nullptr, lite::RET_NULL_PTR);
   if (utils::isa<abstract::AbstractTuplePtr>(abstract)) {
     auto abstract_tuple = abstract->cast<abstract::AbstractTuplePtr>();
+    MS_CHECK_TRUE_RET(abstract_tuple != nullptr, lite::RET_NULL_PTR);
     auto abstract_list = abstract_tuple->elements();
     MS_CHECK_TRUE_RET(!abstract_list.empty(), lite::RET_OUT_OF_TENSOR_RANGE);
     abstract = abstract_list.front();
@@ -412,7 +413,7 @@ STATUS DecreaseTransposeAlgo::DoPreInsert(const FuncGraphPtr &func_graph, const 
     if (CheckPrimitiveType(cnode->input(i), prim::kPrimMakeTuple) ||
         CheckPrimitiveType(cnode->input(i), prim::kPrimMakeTupleV2)) {
       auto input_make_tuple = cnode->input(i)->cast<CNodePtr>();
-      MS_ASSERT(input_make_tuple != nullptr);
+      MS_CHECK_TRUE_RET(input_make_tuple != nullptr, lite::RET_NULL_PTR);
       for (size_t j = 1; j < input_make_tuple->size(); ++j) {
         MS_CHECK_TRUE_RET(input_make_tuple->input(j) != nullptr, lite::RET_NULL_PTR);
         if (HandleFunc(func_graph, input_make_tuple, j, trans_type) != lite::RET_OK) {

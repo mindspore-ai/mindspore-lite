@@ -388,7 +388,7 @@ void Executor::RunGraphAsync(const SessionPtr &session, const GraphId &graph_id,
   }
 
   // sync run graph without output tensor(int dataset graph)
-  if ((!TensorInVector(outputs) && !graph->HasPostGraph())) {
+  if ((!TensorInVector(outputs) && graph != nullptr && !graph->HasPostGraph())) {
     task->sync_run_ = true;
     RunTask(task, true, true);
     return;

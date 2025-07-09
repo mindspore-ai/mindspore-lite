@@ -52,6 +52,10 @@ int32_t AdjustControlflowPass::AdjustBranchs(const FuncGraphPtr &branch, const F
 }
 
 int32_t AdjustControlflowPass::AdjustControlflow(const CNodePtr &cnode, const FuncGraphPtr &func_graph) {
+  if (cnode == nullptr) {
+    MS_LOG(ERROR) << "cnode is nullptr!";
+    return lite::RET_ERROR;
+  }
   if (cnode->size() < ops::kSize3) {
     MS_LOG(ERROR) << "If node size should larger than 3! current size:" << cnode->size();
     return lite::RET_ERROR;

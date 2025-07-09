@@ -56,6 +56,10 @@ int L2NormalizationTensorRT::AddInnerOp(TensorRTContext *ctx) {
   auto sum = ctx->network()->addReduce(*pow, nvinfer1::ReduceOperation::kSUM, 1 << axis, true)->getOutput(0);
 
   auto ep = ctx->ConvertTo1DTensor(epsilon);
+  if (ep == nullptr) {
+    MS_LOG(ERROR) << "ep is nullptr!";
+    return RET_ERROR;
+  }
   while (ep->getDimensions().nbDims < nbdims) {
     ep = ExpandDim(ctx, ep, 0);
   }

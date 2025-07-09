@@ -1717,6 +1717,7 @@ bool GeGraphExecutor::RunGraphWithStreamAsync(uint32_t graph_id, void *stream, c
   struct timeval start_time;
   (void)gettimeofday(&start_time, nullptr);
 
+  MS_EXCEPTION_IF_NULL(ge_session_);
   ge::Status ret = ge_session_->RunGraphWithStreamAsync(graph_id, stream, inputs, *outputs);
   if (ret != ge::GRAPH_SUCCESS) {
     MS_LOG(ERROR) << "Call GE RunGraphWithStreamAsync Failed, ret is: " << ret;

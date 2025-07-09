@@ -1,6 +1,8 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2020. All rights reserved.
  * Description: implement of sample
+ * copy from
+ * https://gitee.com/ascend/samples/blob/master/cplusplus/level1_single_api/4_op_dev/1_custom_op/cpukernel/impl/reshape_cust_kernels.cc
  */
 
 #include "./reshape_cust_kernels.h"
