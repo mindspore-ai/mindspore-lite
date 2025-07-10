@@ -268,6 +268,58 @@ if(MSLITE_GPU_BACKEND STREQUAL opencl)
             )
 endif()
 
+include(${TOP_DIR}/cmake/utils.cmake)
+__download_pkg(onnx https://gitee.com/mirrors/ONNX/repository/archive/v1.6.0
+    8470ee37fa44510c0ffca591bd17a0b4160ae23f5989014030456778fcb740a1)
+__download_pkg(tensorflow https://gitee.com/mirrors/tensorflow/repository/archive/v2.4.1
+    bc32b7046e1ad83158d99d890aafe384ef94b1d03a2c0a86859c72e264a9d885)
+__download_pkg(caffe https://gitee.com/mirrors/caffe/repository/archive/1.0
+    17ae8ce8f1b4ba426e500c30efa93bc279209bea99c6ceafde49d2746bf3ef93)
+
+message("tf package path:${tensorflow_SOURCE_DIR}")
+message("onnx package path:${onnx_SOURCE_DIR}")
+message("caffe package path:${caffe_SOURCE_DIR}")
+
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/attr_value.proto
+    DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/function.proto
+    DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/graph.proto
+    DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/node_def.proto
+    DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/op_def.proto
+    DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/resource_handle.proto
+    DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/tensor.proto
+    DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/tensor_shape.proto
+    DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/types.proto
+    DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/versions.proto
+    DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/lite/schema/schema.fbs
+    DESTINATION ${TOP_DIR}/third_party/proto/tensorflow/lite)
+file(COPY ${onnx_SOURCE_DIR}/onnx/onnx.proto DESTINATION ${TOP_DIR}/third_party/proto/onnx)
+file(COPY ${caffe_SOURCE_DIR}/src/caffe/proto/caffe.proto DESTINATION ${TOP_DIR}/third_party/proto/caffe)
+
+set(TENSORFLOW_PATCH_FILE ${TOP_DIR}/third_party/patch/tensorflow/tensorflow.patch)
+set(CAFFE_PATCH_FILE ${TOP_DIR}/third_party/patch/caffe/caffe.patch)
+
+execute_process(COMMAND ${Patch_EXECUTABLE} -Np1 -i ${TENSORFLOW_PATCH_FILE} -d ${TOP_DIR}
+        RESULT_VARIABLE Result)
+if(NOT Result EQUAL "0")
+    message(FATAL_ERROR "Failed patch: ${_LF_PATCH_FILE}")
+endif()
+
+execute_process(COMMAND ${Patch_EXECUTABLE} -Np1 -i ${CAFFE_PATCH_FILE} -d ${TOP_DIR}
+        RESULT_VARIABLE Result)
+if(NOT Result EQUAL "0")
+    message(FATAL_ERROR "Failed patch: ${_LF_PATCH_FILE}")
+endif()
+
 file(GLOB PROTO_FILE ""
         ${TOP_DIR}/third_party/proto/tensorflow/*.proto
         ${TOP_DIR}/third_party/proto/onnx/onnx.proto)

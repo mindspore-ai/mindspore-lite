@@ -4,6 +4,7 @@
 
 diff --git a/third_party/proto/caffe/caffe.proto b/third_party/proto/caffe/caffe.proto
 index 163734ba6c..1a2287b8a2 100755
+# modified from https://github.com/BVLC/caffe/blob/1.0/src/caffe/proto/caffe.proto
 --- a/third_party/proto/caffe/caffe.proto
 +++ b/third_party/proto/caffe/caffe.proto
 @@ -13,6 +13,9 @@ message BlobProto {
