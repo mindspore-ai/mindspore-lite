@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "mindspore-lite/minddata/dataset/callback/callback_manager.h"
 #include "mindspore-lite/minddata/dataset/callback/py_ds_callback.h"
+#include "mindspore-lite/minddata/dataset/callback/callback_manager.h"
 #include "mindspore-lite/minddata/dataset/util/status.h"
 
 namespace mindspore {

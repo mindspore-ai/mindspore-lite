@@ -32,7 +32,7 @@ class MatMulActivationFusionInoutTest : public FusionInoutTest {
 
   void InitGraph() override {
     this->graph_ = std::make_shared<FuncGraph>();
-    MS_CHECK_TRUE_MSG(graph_ != nullptr, , "Create FuncGraph failed");
+    MS_CHECK_TRUE_RET_VOID(graph_ != nullptr);
     auto matmul_node = AddMatmul(graph_, "matmul_node");
     if (matmul_node == nullptr) {
       this->graph_ = nullptr;

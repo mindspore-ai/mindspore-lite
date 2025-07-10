@@ -36,7 +36,6 @@ TEST_F(SplitInferTest, SplitInferTest0) {
   outputs[2] = new TensorC;
   SplitParameter *parameter = new SplitParameter;
   parameter->num_split_ = 3;
-  // parameter->split_count_ = 3;
   std::vector<int> split_sizes = {4, 15, 11};
   parameter->split_sizes_ = split_sizes.data();
   parameter->split_dim_ = 1;
@@ -74,8 +73,6 @@ TEST_F(SplitInferTest, SplitInferTest1) {
   outputs[1] = new TensorC;
   SplitParameter *parameter = new SplitParameter;
   parameter->num_split_ = 0;
-  // parameter->num_split_ = 2;
-  // parameter->split_count_ = 0;
   parameter->split_dim_ = 0;
   int ret = SplitInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));
@@ -160,8 +157,6 @@ TEST_F(SplitInferTest, SplitInferTest3) {
   outputs[1] = new TensorC;
   SplitParameter *parameter = new SplitParameter;
   parameter->num_split_ = 0;
-  // parameter->num_split_ = 2;
-  // parameter->split_count_ = 0;
   parameter->split_dim_ = 0;
   int ret = SplitInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));
@@ -200,8 +195,6 @@ TEST_F(SplitInferTest, SplitInferTest4) {
   }
   SplitParameter *parameter = new SplitParameter;
   parameter->num_split_ = 0;
-  // parameter->num_split_ = 2;
-  // parameter->split_count_ = 0;
   parameter->split_dim_ = 0;
   int ret = SplitInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));

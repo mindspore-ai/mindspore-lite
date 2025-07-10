@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "tools/converter/adapter/acl/mapper/argmin_fusion_mapper.h"
 #include <memory>
+#include "tools/converter/adapter/acl/mapper/argmin_fusion_mapper.h"
 #include "tools/converter/adapter/acl/mapper/primitive_mapper_register.h"
 #include "src/common/log_util.h"
 #include "ops_utils/op_utils.h"

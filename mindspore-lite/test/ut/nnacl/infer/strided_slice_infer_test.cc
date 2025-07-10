@@ -220,9 +220,6 @@ TEST_F(StridedSliceInferTest, StridedSliceInferTest5) {
   inputs[0] = new TensorC;
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 5;
-  // std::vector<int> begin_vector = {1};
-  // std::vector<int> end_vector = {-2};
-  // std::vector<int> stride_vector = {1};
   int *begin_vector = reinterpret_cast<int *>(malloc(sizeof(int)));
   begin_vector[0] = 1;
   int *end_vector = reinterpret_cast<int *>(malloc(sizeof(int)));
@@ -230,7 +227,6 @@ TEST_F(StridedSliceInferTest, StridedSliceInferTest5) {
   int *stride_vector = reinterpret_cast<int *>(malloc(sizeof(int)));
   stride_vector[0] = 1;
   inputs[1] = new TensorC;
-  // inputs[1]->data_ = begin_vector.data();
   inputs[1]->data_ = begin_vector;
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 1;
