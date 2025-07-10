@@ -307,7 +307,10 @@ Status SingleOpInferSession::InitInputOutputInfos(const FuncGraphPtr &graph) {
       dyn_outshape_[i] = true;
       MS_LOG(INFO) << "output " << i << " shape is dynamic: " << shape;
     }
-    outputs_.push_back(std::make_shared<TensorDefaultImpl>(tensor_name, data_type, shape));
+    auto out_tensor = std::make_shared<TensorDefaultImpl>(tensor_name, data_type, shape);
+    MS_CHECK_TRUE_RET(out_tensor != nullptr, kLiteNullptr);
+    out_tensor->SetDeviceId(device_id_);
+    outputs_.push_back(out_tensor);
     output_names_.push_back(FuncGraphUtils::GetTensorName(tensor));
   }
   return kSuccess;
