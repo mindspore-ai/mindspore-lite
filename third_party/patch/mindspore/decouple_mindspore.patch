@@ -763,170 +763,6 @@ index d6bffe7c817..a61973fd4f1 100644
    // Check whether graph_kernel is enabled
    bool IsEnableGraphKernel() const { return opt_level > OptLevel_0; }
  #else
-diff --git a/mindspore/ccsrc/backend/common/optimizer/helper.cc b/mindspore/ccsrc/backend/common/optimizer/helper.cc
-index bf64279f85c..2828e2fb79d 100644
---- a/mindspore/ccsrc/backend/common/optimizer/helper.cc
-+++ b/mindspore/ccsrc/backend/common/optimizer/helper.cc
-@@ -765,65 +765,6 @@ AnfNodePtr CreateNodeBase(const FuncGraphPtr &graph, const std::vector<AnfNodePt
-   return new_node;
- }
- 
--bool AnfEqual(const BaseRef &a, const BaseRef &b) {
--  if (utils::isa<AnfNodePtr>(a) && utils::isa<AnfNodePtr>(b)) {
--    auto a_node = utils::cast<AnfNodePtr>(a);
--    auto b_node = utils::cast<AnfNodePtr>(b);
--    MS_EXCEPTION_IF_NULL(a_node);
--    MS_EXCEPTION_IF_NULL(b_node);
--    if (IsValueNode<Primitive>(a_node) && IsValueNode<Primitive>(b_node)) {
--      auto a_value_node = a_node->cast<ValueNodePtr>();
--      MS_EXCEPTION_IF_NULL(a_value_node);
--      auto a_value = a_value_node->value();
--      MS_EXCEPTION_IF_NULL(a_value);
--      auto a_prim = a_value->cast<PrimitivePtr>();
--      MS_EXCEPTION_IF_NULL(a_prim);
--
--      auto b_value_node = b_node->cast<ValueNodePtr>();
--      MS_EXCEPTION_IF_NULL(b_value_node);
--      auto b_value = b_value_node->value();
--      MS_EXCEPTION_IF_NULL(b_value);
--      auto b_prim = b_value->cast<PrimitivePtr>();
--      MS_EXCEPTION_IF_NULL(b_prim);
--
--      return a_prim->name() == b_prim->name();
--    } else if (a_node->isa<ValueNode>() && b_node->isa<ValueNode>()) {
--      auto a_value_node_ptr = a_node->cast<ValueNodePtr>();
--      if (a_value_node_ptr == nullptr) {
--        MS_LOG(INTERNAL_EXCEPTION) << "Cast value node ptr fail, node: " << a_node->DebugString();
--      }
--      auto a_value_ptr = a_value_node_ptr->value();
--      if (a_value_ptr == nullptr) {
--        MS_LOG(INTERNAL_EXCEPTION) << "Value ptr is nullptr, node: " << a_node->DebugString();
--      }
--
--      auto b_value_node_ptr = b_node->cast<ValueNodePtr>();
--      if (b_value_node_ptr == nullptr) {
--        MS_LOG(INTERNAL_EXCEPTION) << "Cast value node ptr fail, node: " << b_node->DebugString();
--      }
--      auto b_value_ptr = b_value_node_ptr->value();
--      if (b_value_ptr == nullptr) {
--        MS_LOG(INTERNAL_EXCEPTION) << "Value ptr is nullptr, node: " << b_node->DebugString();
--      }
--      if (a_value_ptr->isa<tensor::Tensor>() && b_value_ptr->isa<tensor::Tensor>()) {
--        auto a_tensor_ptr = a_value_ptr->cast<tensor::TensorPtr>();
--        auto b_tensor_ptr = b_value_ptr->cast<tensor::TensorPtr>();
--        if (a_tensor_ptr == nullptr || b_tensor_ptr == nullptr) {
--          MS_LOG(INTERNAL_EXCEPTION) << "Cast value node ptr fail.";
--        }
--        return a_tensor_ptr->ValueEqual(*b_tensor_ptr);
--      } else {
--        return (*a_value_ptr) == (*b_value_ptr);
--      }
--    }
--    MS_LOG(DEBUG) << "check AnfNodePtr equal";
--  }
--  if (utils::isa<FuncGraphPtr>(a) && utils::isa<FuncGraphPtr>(b)) {
--    MS_LOG(DEBUG) << "check GraphPtr equal";
--  }
--  return a == b;
--}
--
- bool CNodeTypeEqual(const BaseRef &a, const BaseRef &b) {
-   // To matchCNode and Kernel's type
-   if (utils::isa<CNode>(a) && utils::isa<CNode>(b)) {
-diff --git a/mindspore/ccsrc/backend/common/optimizer/inplace_node_pass.cc b/mindspore/ccsrc/backend/common/optimizer/inplace_node_pass.cc
-index d5d52bad5e7..66e25d37e15 100644
---- a/mindspore/ccsrc/backend/common/optimizer/inplace_node_pass.cc
-+++ b/mindspore/ccsrc/backend/common/optimizer/inplace_node_pass.cc
-@@ -15,7 +15,7 @@
-  */
- 
- #include "include/backend/optimizer/inplace_node_pass.h"
--#include "include/backend/optimizer/helper.h"
-+#include "utils/anf_utils.h"
- 
- namespace mindspore {
- namespace opt {
-@@ -40,7 +40,7 @@ AnfNodePtr InplaceNodePass::Run(const FuncGraphPtr &, const AnfNodePtr &node) {
-     for (size_t i = 0; i < inputs.size(); i++) {
-       MS_EXCEPTION_IF_NULL(inputs[i]);
-       MS_EXCEPTION_IF_NULL(pre_inputs[i]);
--      if (!opt::AnfEqual(inputs[i], pre_inputs[i])) {
-+      if (!AnfUtils::AnfEqual(inputs[i], pre_inputs[i])) {
-         MS_LOG_WITH_NODE(EXCEPTION, node)
-           << "InplaceNodePass ERROR, the pass modify node: " << node->DebugString() << ", pass name: " << name()
-           << ", before node " << i << ":" << inputs[i]->DebugString() << ", after node " << i << ":"
-diff --git a/mindspore/ccsrc/backend/common/optimizer/pattern_engine.cc b/mindspore/ccsrc/backend/common/optimizer/pattern_engine.cc
-index 3e0ab70388a..ffe9d19c6a5 100644
---- a/mindspore/ccsrc/backend/common/optimizer/pattern_engine.cc
-+++ b/mindspore/ccsrc/backend/common/optimizer/pattern_engine.cc
-@@ -18,6 +18,7 @@
- #include "ir/anf.h"
- #include "utils/convert_utils_base.h"
- #include "include/backend/optimizer/helper.h"
-+#include "utils/anf_utils.h"
- 
- namespace mindspore {
- static int GetNextTag() {
-@@ -270,7 +271,7 @@ EquivPtr PatternEngine::Match(const BaseRef &pattern, const BaseRef &expr, const
-   }
- 
-   // 2. check equal
--  if (opt::AnfEqual(pattern_ref, expr_ref)) {
-+  if (AnfUtils::AnfEqual(pattern_ref, expr_ref)) {
-     return equiv;
-   }
- 
-diff --git a/mindspore/ccsrc/backend/common/optimizer/pattern_to_pattern.cc b/mindspore/ccsrc/backend/common/optimizer/pattern_to_pattern.cc
-index 8fb8b66e61c..0ee3bbb32f8 100644
---- a/mindspore/ccsrc/backend/common/optimizer/pattern_to_pattern.cc
-+++ b/mindspore/ccsrc/backend/common/optimizer/pattern_to_pattern.cc
-@@ -75,7 +75,7 @@ bool PatternMap::Emplace(const std::string &name, const AnfNodePtr &node) {
-   auto iter = node_map_.find(name);
-   if (iter == node_map_.end()) {
-     node_map_.emplace(name, node);
--  } else if (!opt::AnfEqual(node, iter->second)) {
-+  } else if (!AnfUtils::AnfEqual(node, iter->second)) {
-     MS_EXCEPTION_IF_NULL(iter->second);
-     MS_LOG(INFO) << "The value of key: " << name
-                  << " is not equal to origin value, value: " + node->fullname_with_scope()
-@@ -110,7 +110,7 @@ bool PatternMap::Emplace(const std::string &name, const std::vector<AnfNodePtr>
-     for (size_t i = 0; i < v.size(); i++) {
-       MS_EXCEPTION_IF_NULL(v[i]);
-       MS_EXCEPTION_IF_NULL(origin_v[i]);
--      if (!opt::AnfEqual(v[i], origin_v[i])) {
-+      if (!AnfUtils::AnfEqual(v[i], origin_v[i])) {
-         MS_LOG(INFO) << "The value of key: " << name
-                      << " is not equal to origin value, value: " + v[i]->fullname_with_scope()
-                      << " origin value: " << origin_v[i]->fullname_with_scope();
-@@ -127,7 +127,9 @@ void PatternMap::Clear() {
-   seq_map_.clear();
- }
- 
--bool PatternMap::Check(const std::string &name, const AnfNodePtr &node) const { return opt::AnfEqual(node, Get(name)); }
-+bool PatternMap::Check(const std::string &name, const AnfNodePtr &node) const {
-+  return AnfUtils::AnfEqual(node, Get(name));
-+}
- 
- SrcPattern &SrcPattern::AddVar(const std::string &name, const PatternConditionFunc &f) {
-   if (ref_map_.find(name) != ref_map_.end()) {
-@@ -256,7 +258,7 @@ bool SrcPattern::match(const std::string &name, const AnfNodePtr &node, const Eq
-       // prim
-       MS_EXCEPTION_IF_NULL(pattern_node.p_);
-       MS_EXCEPTION_IF_NULL(match_node);
--      if (!opt::AnfEqual(pattern_node.p_, match_node)) {
-+      if (!AnfUtils::AnfEqual(pattern_node.p_, match_node)) {
-         MS_LOG(EXCEPTION) << "The value of Primitive is not equal to matched value, pattern value: " +
-                                pattern_node.p_->ToString()
-                           << " matched value: " + match_node->ToString() + ", node name: " + name;
-@@ -367,7 +369,7 @@ DstPattern &DstPattern::AddCNode(const string &name, const std::initializer_list
-     for (size_t i = 0; i < anf_inputs.size(); i++) {
-       MS_EXCEPTION_IF_NULL(anf_inputs[i]);
-       MS_EXCEPTION_IF_NULL(cnode->input(i));
--      if (!opt::AnfEqual(anf_inputs[i], cnode->input(i))) {
-+      if (!AnfUtils::AnfEqual(anf_inputs[i], cnode->input(i))) {
-         MS_LOG(INTERNAL_EXCEPTION)
-           << "The actual input does not correspond to the input of the pattern, the input index: " << i
-           << ", actual input: " << anf_inputs[i]->DebugString()
 diff --git a/mindspore/ccsrc/backend/common/pass/custom_defined_depend.cc b/mindspore/ccsrc/backend/common/pass/custom_defined_depend.cc
 index 1e26f3dfe5f..a5a312b2a55 100644
 --- a/mindspore/ccsrc/backend/common/pass/custom_defined_depend.cc
@@ -968,7 +804,7 @@ index afe0eeac9bf..a617e5d073c 100644
    return cnode;
  }
 diff --git a/mindspore/ccsrc/backend/ge_backend/CMakeLists.txt b/mindspore/ccsrc/backend/ge_backend/CMakeLists.txt
-index d88d0073397..341fe5d59c2 100644
+index 694c9ce5dc5..4180a29e699 100644
 --- a/mindspore/ccsrc/backend/ge_backend/CMakeLists.txt
 +++ b/mindspore/ccsrc/backend/ge_backend/CMakeLists.txt
 @@ -7,7 +7,7 @@ if(ENABLE_D OR ENABLE_ACL)
@@ -980,74 +816,6 @@ index d88d0073397..341fe5d59c2 100644
  
      set_property(SOURCE ${_GE_BACKEND_SRC_LIST}
            PROPERTY COMPILE_DEFINITIONS SUBMODULE_ID=mindspore::SubModuleId::SM_RUNTIME_FRAMEWORK)
-diff --git a/mindspore/ccsrc/backend/ge_backend/graph_ir/CMakeLists.txt b/mindspore/ccsrc/backend/ge_backend/graph_ir/CMakeLists.txt
-index 9ab80751d81..006c794587e 100644
---- a/mindspore/ccsrc/backend/ge_backend/graph_ir/CMakeLists.txt
-+++ b/mindspore/ccsrc/backend/ge_backend/graph_ir/CMakeLists.txt
-@@ -1,27 +1,54 @@
- if(ENABLE_D OR ENABLE_ACL)
-     file(GLOB_RECURSE _TRANSFORM_SRC_LIST RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cc")
--    if(BUILD_LITE)
--        list(REMOVE_ITEM _TRANSFORM_SRC_LIST "callbacks_ge.cc")
--    endif()
-     set_property(SOURCE ${_TRANSFORM_SRC_LIST} PROPERTY COMPILE_DEFINITIONS
-       SUBMODULE_ID=mindspore::SubModuleId::SM_GE_ADPT)
- 
--      # mindspore_graph_ir is used by GE and lite.
--    if(BUILD_LITE)
-+    # mindspore_graph_ir is used by GE and lite.
-+    if(TARGET mindspore_ascend_res_manager)
-+        add_library(mindspore_graph_ir SHARED ${_TRANSFORM_SRC_LIST})
-+        target_link_libraries(mindspore_graph_ir PRIVATE mindspore_ascend_res_manager)
-+    else()
-+        file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../version.txt" VERSION)
-+        add_definitions(-DVERSION="${VERSION}")
-+        list(REMOVE_ITEM _TRANSFORM_SRC_LIST "callbacks_ge.cc")
-         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../plugin/res_manager/ascend/op_adapter/
-             _mindspore_ascend_op_adapter_obj)
-         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../plugin/res_manager/ascend/symbol_interface
-             _mindspore_ascend_symbol_obj)
-         list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/config_manager.cc")
-         list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../common/debug/common.cc")
-+
-+        list(APPEND _TRANSFORM_SRC_LIST
-+            "${CMAKE_CURRENT_SOURCE_DIR}/../../../backend/common/optimizer/graph_optimizer.cc")
-+        list(APPEND _TRANSFORM_SRC_LIST
-+            "${CMAKE_CURRENT_SOURCE_DIR}/../../../backend/common/optimizer/pattern_engine.cc")
-+        list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../backend/common/optimizer/visitor.cc")
-+
-+        if(NOT WIN32)
-+            list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/anfalgo.cc")
-+            list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/utils.cc")
-+            list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/parallel_context.cc")
-+        endif()
-+        list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/convert_utils.cc")
-+
-+        list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../kernel/kernel_info.cc")
-+        list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/comm_manager.cc")
-+        list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/compile_cache_context.cc")
-+        list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../common/debug/mindir_exporter.cc")
-+
-+        list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../../ops/kernel/common/format_utils.cc")
-+        list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../../ops/kernel/common/kernel_factory.cc")
-+        list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../../ops/kernel/common/kernel_tensor.cc")
-+        list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../../ops/kernel/common/device_address.cc")
-+        list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../../ops/kernel/common/kernel.cc")
-+        list(APPEND _TRANSFORM_SRC_LIST
-+            "${CMAKE_CURRENT_SOURCE_DIR}/../../../../ops/kernel/common/kernel_build_info.cc")
-+        list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../../../minddata/dataset/core/types.cc")
-         add_library(mindspore_graph_ir SHARED ${_TRANSFORM_SRC_LIST} $<TARGET_OBJECTS:_mindspore_ascend_symbol_obj>
-             $<TARGET_OBJECTS:_mindspore_ascend_op_adapter_obj>)
--    else()
--        add_library(mindspore_graph_ir SHARED ${_TRANSFORM_SRC_LIST})
--        target_link_libraries(mindspore_graph_ir PRIVATE mindspore_ascend_res_manager)
-     endif()
- 
--    target_link_libraries(mindspore_graph_ir PRIVATE mindspore_core mindspore_ops)
-+    target_link_libraries(mindspore_graph_ir PRIVATE mindspore_core mindspore_ops mindspore::protobuf)
-     find_library(ACL ascendcl ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
-     find_library(GE_RUNNER ge_runner ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
-     find_library(GRAPH graph ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
 diff --git a/mindspore/ccsrc/backend/ge_backend/runtime/actor/actor_common.cc b/mindspore/ccsrc/backend/ge_backend/runtime/actor/actor_common.cc
 index b77d1e04574..e693f4c8cc6 100644
 --- a/mindspore/ccsrc/backend/ge_backend/runtime/actor/actor_common.cc
@@ -1063,21 +831,6 @@ index b77d1e04574..e693f4c8cc6 100644
  #include "runtime/device/res_manager/hal_res_manager.h"
  
  namespace mindspore {
-diff --git a/mindspore/ccsrc/cmake/ascend_compile_config.cmake b/mindspore/ccsrc/cmake/ascend_compile_config.cmake
-index d72efcde036..cfb774ee751 100644
---- a/mindspore/ccsrc/cmake/ascend_compile_config.cmake
-+++ b/mindspore/ccsrc/cmake/ascend_compile_config.cmake
-@@ -1,9 +1,9 @@
- include(${CMAKE_SOURCE_DIR}/cmake/graphengine_variables.cmake)
- include_directories(${CMAKE_CURRENT_SOURCE_DIR}/plugin/device/ascend)
--add_subdirectory(backend/ge_backend)
- add_subdirectory(plugin/res_manager/ascend)
- add_subdirectory(plugin/res_manager/ascend/collective)
- add_subdirectory(plugin/device/ascend)
-+add_subdirectory(backend/ge_backend)
- enable_directory_when_only_build_plugins(plugin/device/ascend)
- enable_directory_when_only_build_plugins(plugin/res_manager/ascend/collective)
- enable_directory_when_only_build_plugins(plugin/res_manager/ascend/hccl_adapter/plugin)
 diff --git a/mindspore/ccsrc/debug/execute_order_tracker/execute_order_tracker.cc b/mindspore/ccsrc/debug/execute_order_tracker/execute_order_tracker.cc
 index 40487dbd566..89a298f7c1c 100644
 --- a/mindspore/ccsrc/debug/execute_order_tracker/execute_order_tracker.cc
@@ -1132,19 +885,6 @@ index 3f3f1055983..1ca2cc21296 100644
  #define REGISTER_DATA_QUEUE_CREATOR(device_name, creator)                         \
    struct device_name##DataQueueCreatorClass {                                     \
      device_name##DataQueueCreatorClass() {                                        \
-diff --git a/mindspore/ccsrc/include/backend/optimizer/helper.h b/mindspore/ccsrc/include/backend/optimizer/helper.h
-index 554d2c655bc..39f03561237 100644
---- a/mindspore/ccsrc/include/backend/optimizer/helper.h
-+++ b/mindspore/ccsrc/include/backend/optimizer/helper.h
-@@ -218,8 +218,6 @@ BACKEND_COMMON_EXPORT std::shared_ptr<std::vector<std::pair<AnfNodePtr, int>>> G
-   const FuncGraphPtr &graph, const AnfNodePtr &node, size_t output_index);
- bool IsNotRealUsedByOthers(const FuncGraphPtr &graph, const AnfNodePtr &node);
- 
--bool AnfEqual(const BaseRef &a, const BaseRef &b);
--
- bool CNodeTypeEqual(const BaseRef &a, const BaseRef &b);
- 
- AnfNodePtr SexpToNode(const BaseRef &sexp, const BaseRef &graph, PrimitiveVarMap *primitive_vars,
 diff --git a/mindspore/ccsrc/include/common/thread_pool.h b/mindspore/ccsrc/include/common/thread_pool.h
 index 86d96e6d620..f9fb681e74c 100644
 --- a/mindspore/ccsrc/include/common/thread_pool.h
@@ -1357,7 +1097,7 @@ index 435128d3eeb..034bc9422c0 100644
  
  // ToTensor Transform Operation.
 diff --git a/mindspore/ccsrc/minddata/dataset/core/CMakeLists.txt b/mindspore/ccsrc/minddata/dataset/core/CMakeLists.txt
-index d4de59f7a63..7c54cdb769e 100644
+index d10239344b1..21c389ac99f 100644
 --- a/mindspore/ccsrc/minddata/dataset/core/CMakeLists.txt
 +++ b/mindspore/ccsrc/minddata/dataset/core/CMakeLists.txt
 @@ -33,12 +33,12 @@ if(ENABLE_D)
@@ -1673,7 +1413,7 @@ index 1bf9f5dafd5..b2ed8f9a257 100644
    int_allocator_ = std::make_unique<IntAlloc>(mem_pool_);
    profiler_manager_ = std::make_shared<ProfilingManager>();
 diff --git a/mindspore/ccsrc/minddata/dataset/kernels/image/dvpp/CMakeLists.txt b/mindspore/ccsrc/minddata/dataset/kernels/image/dvpp/CMakeLists.txt
-index e388521b19b..daa4fc5447d 100644
+index 4c34c966dad..c034636aea9 100644
 --- a/mindspore/ccsrc/minddata/dataset/kernels/image/dvpp/CMakeLists.txt
 +++ b/mindspore/ccsrc/minddata/dataset/kernels/image/dvpp/CMakeLists.txt
 @@ -48,6 +48,6 @@ set(DVPP_IMAGE_SOURCE
@@ -3061,7 +2801,7 @@ index 6847efecb3e..fb7bb08db67 100644
  #define ACL_ERROR_RT_HBM_MULTI_BIT_ECC_ERROR 507054
  #endif
 diff --git a/mindspore/ccsrc/runtime/data_queue/data_queue_mgr.cc b/mindspore/ccsrc/runtime/data_queue/data_queue_mgr.cc
-index 763f69654f8..320ac09206f 100644
+index a127e6a0de0..3e018c9f716 100644
 --- a/mindspore/ccsrc/runtime/data_queue/data_queue_mgr.cc
 +++ b/mindspore/ccsrc/runtime/data_queue/data_queue_mgr.cc
 @@ -250,7 +250,6 @@ DataQueueStatus DataQueueMgr::SetThreadDevice(const std::string &channel_name) c
@@ -3072,7 +2812,7 @@ index 763f69654f8..320ac09206f 100644
  void UpdateGetNextWithDataQueueItems(const AnfNodePtr &data_kernel, const std::vector<device::DataQueueItem> &data) {
    auto kernel_info = dynamic_cast<device::KernelInfo *>(data_kernel->kernel_info());
    std::vector<std::shared_ptr<device::DeviceAddress>> device_tensors;
-@@ -333,6 +332,5 @@ void UpdateGetNextNode(const PrimitivePtr &primitive, const std::vector<kernel::
+@@ -334,6 +333,5 @@ void UpdateGetNextNode(const PrimitivePtr &primitive, const std::vector<kernel::
    UpdateGetNextWithDataQueueItems(inputs, outputs, data, output_size_list);
  }
  
@@ -3130,7 +2870,7 @@ index 062a0e04048..29d839fe84e 100644
  
  bool Copy(const DeviceTensor *dst_device_tensor, const DeviceTensor *src_device_tensor) {
 diff --git a/mindspore/ccsrc/runtime/graph_scheduler/actor/kernel_actor.cc b/mindspore/ccsrc/runtime/graph_scheduler/actor/kernel_actor.cc
-index a4eb6297b02..6163ce7fab0 100644
+index d1c9d20a8e8..00bed4bfa40 100644
 --- a/mindspore/ccsrc/runtime/graph_scheduler/actor/kernel_actor.cc
 +++ b/mindspore/ccsrc/runtime/graph_scheduler/actor/kernel_actor.cc
 @@ -128,17 +128,11 @@ void AddNodeToGraphTracker(const CNodePtr cnode, const std::string &actor_name)
@@ -3152,7 +2892,7 @@ index a4eb6297b02..6163ce7fab0 100644
    std::string comm_ranks_str = std::accumulate(
      comm_ranks.begin(), comm_ranks.end(), std::string(),
 diff --git a/mindspore/ccsrc/runtime/graph_scheduler/actor/kernel_runner.cc b/mindspore/ccsrc/runtime/graph_scheduler/actor/kernel_runner.cc
-index c74c57f3cd4..f323861ab2c 100644
+index 8d67326d340..25beaddafaf 100644
 --- a/mindspore/ccsrc/runtime/graph_scheduler/actor/kernel_runner.cc
 +++ b/mindspore/ccsrc/runtime/graph_scheduler/actor/kernel_runner.cc
 @@ -126,17 +126,11 @@ void AddNodeToGraphTracker(const CNodePtr cnode, const std::string &actor_name)
@@ -3211,19 +2951,6 @@ index eda99129c4f..6b8d918fcbe 100644
    }
    comm_rank_cache_[group_name] = comm_ranks;
  }
-diff --git a/mindspore/core/include/utils/anf_utils.h b/mindspore/core/include/utils/anf_utils.h
-index 8dbb05ad482..d17cf0f1012 100644
---- a/mindspore/core/include/utils/anf_utils.h
-+++ b/mindspore/core/include/utils/anf_utils.h
-@@ -94,6 +94,8 @@ class MS_CORE_API AnfUtils {
-   static bool IsNodeInGraphKernel(const AnfNodePtr &node);
-   // check whether the node is a KernelPacket node.
-   static bool IsKernelPacket(const AnfNodePtr &node);
-+  // check whether two node is same
-+  static bool AnfEqual(const BaseRef &a, const BaseRef &b);
-   // Set dump flag to CNode's primitive.
-   static void SetDumpFlag(const AnfNodePtr &node);
-   // Get dump flag from CNode's primitive.
 diff --git a/mindspore/core/mindrt/CMakeLists.txt b/mindspore/core/mindrt/CMakeLists.txt
 index 171401d4e30..c6c1b9b45cf 100644
 --- a/mindspore/core/mindrt/CMakeLists.txt
@@ -3968,76 +3695,6 @@ index 00000000000..137a87e5c61
 +  MS_LOG(INFO) << "Start to bind core for actor thread for [" << thread_num << "] threads.";
 +}
 +}  // namespace mindspore
-diff --git a/mindspore/core/utils/anf_utils.cc b/mindspore/core/utils/anf_utils.cc
-index c1e5aaae4d2..b11dddff168 100644
---- a/mindspore/core/utils/anf_utils.cc
-+++ b/mindspore/core/utils/anf_utils.cc
-@@ -480,6 +480,65 @@ bool AnfUtils::IsKernelPacket(const AnfNodePtr &node) {
-   return func_graph != nullptr && func_graph->has_attr(FUNC_GRAPH_ATTR_KERNEL_PACKET);
- }
- 
-+bool AnfUtils::AnfEqual(const BaseRef &a, const BaseRef &b) {
-+  if (utils::isa<AnfNodePtr>(a) && utils::isa<AnfNodePtr>(b)) {
-+    auto a_node = utils::cast<AnfNodePtr>(a);
-+    auto b_node = utils::cast<AnfNodePtr>(b);
-+    MS_EXCEPTION_IF_NULL(a_node);
-+    MS_EXCEPTION_IF_NULL(b_node);
-+    if (IsValueNode<Primitive>(a_node) && IsValueNode<Primitive>(b_node)) {
-+      auto a_value_node = a_node->cast<ValueNodePtr>();
-+      MS_EXCEPTION_IF_NULL(a_value_node);
-+      auto a_value = a_value_node->value();
-+      MS_EXCEPTION_IF_NULL(a_value);
-+      auto a_prim = a_value->cast<PrimitivePtr>();
-+      MS_EXCEPTION_IF_NULL(a_prim);
-+
-+      auto b_value_node = b_node->cast<ValueNodePtr>();
-+      MS_EXCEPTION_IF_NULL(b_value_node);
-+      auto b_value = b_value_node->value();
-+      MS_EXCEPTION_IF_NULL(b_value);
-+      auto b_prim = b_value->cast<PrimitivePtr>();
-+      MS_EXCEPTION_IF_NULL(b_prim);
-+
-+      return a_prim->name() == b_prim->name();
-+    } else if (a_node->isa<ValueNode>() && b_node->isa<ValueNode>()) {
-+      auto a_value_node_ptr = a_node->cast<ValueNodePtr>();
-+      if (a_value_node_ptr == nullptr) {
-+        MS_LOG(INTERNAL_EXCEPTION) << "Cast value node ptr fail, node: " << a_node->DebugString();
-+      }
-+      auto a_value_ptr = a_value_node_ptr->value();
-+      if (a_value_ptr == nullptr) {
-+        MS_LOG(INTERNAL_EXCEPTION) << "Value ptr is nullptr, node: " << a_node->DebugString();
-+      }
-+
-+      auto b_value_node_ptr = b_node->cast<ValueNodePtr>();
-+      if (b_value_node_ptr == nullptr) {
-+        MS_LOG(INTERNAL_EXCEPTION) << "Cast value node ptr fail, node: " << b_node->DebugString();
-+      }
-+      auto b_value_ptr = b_value_node_ptr->value();
-+      if (b_value_ptr == nullptr) {
-+        MS_LOG(INTERNAL_EXCEPTION) << "Value ptr is nullptr, node: " << b_node->DebugString();
-+      }
-+      if (a_value_ptr->isa<tensor::Tensor>() && b_value_ptr->isa<tensor::Tensor>()) {
-+        auto a_tensor_ptr = a_value_ptr->cast<tensor::TensorPtr>();
-+        auto b_tensor_ptr = b_value_ptr->cast<tensor::TensorPtr>();
-+        if (a_tensor_ptr == nullptr || b_tensor_ptr == nullptr) {
-+          MS_LOG(INTERNAL_EXCEPTION) << "Cast value node ptr fail.";
-+        }
-+        return a_tensor_ptr->ValueEqual(*b_tensor_ptr);
-+      } else {
-+        return (*a_value_ptr) == (*b_value_ptr);
-+      }
-+    }
-+    MS_LOG(DEBUG) << "check AnfNodePtr equal";
-+  }
-+  if (utils::isa<FuncGraphPtr>(a) && utils::isa<FuncGraphPtr>(b)) {
-+    MS_LOG(DEBUG) << "check GraphPtr equal";
-+  }
-+  return a == b;
-+}
-+
- bool AnfUtils::IsNodeInGraphKernel(const AnfNodePtr &node) {
-   MS_EXCEPTION_IF_NULL(node);
-   return node->func_graph() != nullptr && node->func_graph()->has_attr(FUNC_GRAPH_ATTR_GRAPH_KERNEL);
 diff --git a/mindspore/ops/kernel/cpu/nnacl/CMakeLists.txt b/mindspore/ops/kernel/cpu/nnacl/CMakeLists.txt
 index a43057a612f..a43577439cd 100644
 --- a/mindspore/ops/kernel/cpu/nnacl/CMakeLists.txt
@@ -4064,343 +3721,3 @@ index 8bf95cf2b04..d63d484ba29 100644
    bool prefer_explicit_broadcast = false;
  #else
    bool prefer_explicit_broadcast = arithmetic->ndim_ != 1;
-diff --git a/tests/ut/cpp/pre_activate/common/fast_pattern_to_pattern_pass_test.cc b/tests/ut/cpp/pre_activate/common/fast_pattern_to_pattern_pass_test.cc
-index bf617d7f116..3684b107b62 100644
---- a/tests/ut/cpp/pre_activate/common/fast_pattern_to_pattern_pass_test.cc
-+++ b/tests/ut/cpp/pre_activate/common/fast_pattern_to_pattern_pass_test.cc
-@@ -198,19 +198,19 @@ TEST_F(TestFastPatternToPatternPass, Mul0) {
-   ASSERT_TRUE(check.build_pattern_map(new_node));
- 
-   // check
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("a"), a));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("b"), b));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("c"), c));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("a"), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("b"), b));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("c"), c));
-   ASSERT_EQ(check.m_->Get("bc")->cast<CNodePtr>()->size(), 3);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(0),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(0),
-                             NewValueNode(std::make_shared<Primitive>(kAddOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(1), b));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(2), c));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(1), b));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(2), c));
-   ASSERT_EQ(check.m_->Get("mul")->cast<CNodePtr>()->size(), 3);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(0),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(0),
-                             NewValueNode(std::make_shared<Primitive>(kMulOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(1), a));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(2), check.m_->Get("bc")));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(1), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(2), check.m_->Get("bc")));
- }
- 
- /// Feature: Fast PatternToPattern Pass
-@@ -313,28 +313,28 @@ TEST_F(TestFastPatternToPatternPass, Mul0NotRoot) {
-   ASSERT_TRUE(check.build_pattern_map(add1));
- 
-   // check
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("a"), a));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("b"), b));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("c"), c));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("d"), d));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("a"), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("b"), b));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("c"), c));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("d"), d));
- 
-   ASSERT_EQ(check.m_->Get("bc")->cast<CNodePtr>()->size(), 3);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(0),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(0),
-                             NewValueNode(std::make_shared<Primitive>(kAddOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(1), b));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(2), c));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(1), b));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(2), c));
- 
-   ASSERT_EQ(check.m_->Get("mul")->cast<CNodePtr>()->size(), 3);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(0),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(0),
-                             NewValueNode(std::make_shared<Primitive>(kMulOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(1), a));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(2), check.m_->Get("bc")));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(1), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(2), check.m_->Get("bc")));
- 
-   ASSERT_EQ(check.m_->Get("add1")->cast<CNodePtr>()->size(), 3);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("add1")->cast<CNodePtr>()->input(0),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("add1")->cast<CNodePtr>()->input(0),
-                             NewValueNode(std::make_shared<Primitive>(kAddOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("add1")->cast<CNodePtr>()->input(1), check.m_->Get("mul")));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("add1")->cast<CNodePtr>()->input(2), d));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("add1")->cast<CNodePtr>()->input(1), check.m_->Get("mul")));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("add1")->cast<CNodePtr>()->input(2), d));
- }
- 
- /// Feature: Fast PatternToPattern Pass
-@@ -452,21 +452,21 @@ TEST_F(TestFastPatternToPatternPass, Mul1) {
-   ASSERT_TRUE(check.build_pattern_map(add1));
- 
-   // check
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("a"), a));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("d"), d));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("e"), e));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("a"), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("d"), d));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("e"), e));
- 
-   ASSERT_EQ(check.m_->Get("ad")->cast<CNodePtr>()->size(), 3);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("ad")->cast<CNodePtr>()->input(0),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("ad")->cast<CNodePtr>()->input(0),
-                             NewValueNode(std::make_shared<Primitive>(kMulOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("ad")->cast<CNodePtr>()->input(1), a));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("ad")->cast<CNodePtr>()->input(2), d));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("ad")->cast<CNodePtr>()->input(1), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("ad")->cast<CNodePtr>()->input(2), d));
- 
-   ASSERT_EQ(check.m_->Get("add1")->cast<CNodePtr>()->size(), 3);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("add1")->cast<CNodePtr>()->input(0),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("add1")->cast<CNodePtr>()->input(0),
-                             NewValueNode(std::make_shared<Primitive>(kAddOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("add1")->cast<CNodePtr>()->input(1), check.m_->Get("ad")));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("add1")->cast<CNodePtr>()->input(2), e));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("add1")->cast<CNodePtr>()->input(1), check.m_->Get("ad")));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("add1")->cast<CNodePtr>()->input(2), e));
- }
- 
- namespace {
-@@ -524,35 +524,35 @@ void Check1(const TestFastMul2 &pass, const FuncGraphIndexPtr &fg, const std::ma
- }
- 
- void Check2(const CheckPattern &check, const std::map<std::string, AnfNodePtr> &node_map) {
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kA), node_map.at(kA)));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kB), node_map.at(kB)));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kC), node_map.at(kC)));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kD), node_map.at(kD)));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kE), node_map.at(kE)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kA), node_map.at(kA)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kB), node_map.at(kB)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kC), node_map.at(kC)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kD), node_map.at(kD)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kE), node_map.at(kE)));
- 
-   ASSERT_EQ(check.m_->Get(kAAddB)->cast<CNodePtr>()->size(), kThree);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kAAddB)->cast<CNodePtr>()->input(kZero),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kAAddB)->cast<CNodePtr>()->input(kZero),
-                             NewValueNode(std::make_shared<Primitive>(kAddOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kAAddB)->cast<CNodePtr>()->input(kOne), node_map.at(kA)));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kAAddB)->cast<CNodePtr>()->input(kTwo), node_map.at(kB)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kAAddB)->cast<CNodePtr>()->input(kOne), node_map.at(kA)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kAAddB)->cast<CNodePtr>()->input(kTwo), node_map.at(kB)));
- 
-   ASSERT_EQ(check.m_->Get(kCAddD)->cast<CNodePtr>()->size(), kThree);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kCAddD)->cast<CNodePtr>()->input(kZero),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kCAddD)->cast<CNodePtr>()->input(kZero),
-                             NewValueNode(std::make_shared<Primitive>(kAddOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kCAddD)->cast<CNodePtr>()->input(kOne), node_map.at(kC)));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kCAddD)->cast<CNodePtr>()->input(kTwo), node_map.at(kD)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kCAddD)->cast<CNodePtr>()->input(kOne), node_map.at(kC)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kCAddD)->cast<CNodePtr>()->input(kTwo), node_map.at(kD)));
- 
-   ASSERT_EQ(check.m_->Get(kMul)->cast<CNodePtr>()->size(), kThree);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kMul)->cast<CNodePtr>()->input(kZero),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kMul)->cast<CNodePtr>()->input(kZero),
-                             NewValueNode(std::make_shared<Primitive>(kMulOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kMul)->cast<CNodePtr>()->input(kOne), node_map.at(kCAddD)));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kMul)->cast<CNodePtr>()->input(kTwo), node_map.at(kAAddB)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kMul)->cast<CNodePtr>()->input(kOne), node_map.at(kCAddD)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kMul)->cast<CNodePtr>()->input(kTwo), node_map.at(kAAddB)));
- 
-   ASSERT_EQ(check.m_->Get(kAdd)->cast<CNodePtr>()->size(), kThree);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kAdd)->cast<CNodePtr>()->input(kZero),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kAdd)->cast<CNodePtr>()->input(kZero),
-                             NewValueNode(std::make_shared<Primitive>(kAddOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kAdd)->cast<CNodePtr>()->input(kOne), check.m_->Get(kMul)));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get(kAdd)->cast<CNodePtr>()->input(kTwo), node_map.at(kE)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kAdd)->cast<CNodePtr>()->input(kOne), check.m_->Get(kMul)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get(kAdd)->cast<CNodePtr>()->input(kTwo), node_map.at(kE)));
- }
- }  // namespace
- 
-diff --git a/tests/ut/cpp/pre_activate/common/pattern_to_pattern_pass_test.cc b/tests/ut/cpp/pre_activate/common/pattern_to_pattern_pass_test.cc
-index 0d1c651e24d..9a3cfc2c946 100644
---- a/tests/ut/cpp/pre_activate/common/pattern_to_pattern_pass_test.cc
-+++ b/tests/ut/cpp/pre_activate/common/pattern_to_pattern_pass_test.cc
-@@ -223,19 +223,19 @@ TEST_F(TestPatternToPatternPass, Mul0) {
-   ASSERT_TRUE(check.build_pattern_map(new_node));
- 
-   // check
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("a"), a));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("b"), b));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("c"), c));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("a"), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("b"), b));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("c"), c));
-   ASSERT_EQ(check.m_->Get("bc")->cast<CNodePtr>()->size(), 3);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(0),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(0),
-                             NewValueNode(std::make_shared<Primitive>(kAddOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(1), b));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(2), c));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(1), b));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("bc")->cast<CNodePtr>()->input(2), c));
-   ASSERT_EQ(check.m_->Get("mul")->cast<CNodePtr>()->size(), 3);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(0),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(0),
-                             NewValueNode(std::make_shared<Primitive>(kMulOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(1), a));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(2), check.m_->Get("bc")));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(1), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(2), check.m_->Get("bc")));
- }
- 
- /// Feature: PatternToPattern Pass
-@@ -263,13 +263,13 @@ TEST_F(TestPatternToPatternPass, Mul1) {
-   ASSERT_TRUE(check.build_pattern_map(new_node));
- 
-   // check
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("a"), a));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("b"), NewValueNode(1)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("a"), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("b"), NewValueNode(1)));
-   ASSERT_EQ(check.m_->Get("mul")->cast<CNodePtr>()->size(), 3);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(0),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(0),
-                             NewValueNode(std::make_shared<Primitive>(kMulOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(1), a));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(2), NewValueNode(1)));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(1), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(2), NewValueNode(1)));
- }
- 
- /// Feature: PatternToPattern Pass
-@@ -297,13 +297,13 @@ TEST_F(TestPatternToPatternPass, Mul2) {
-   ASSERT_TRUE(check.build_pattern_map(new_node));
- 
-   // check
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("a"), a));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("b"), b));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("a"), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("b"), b));
-   ASSERT_EQ(check.m_->Get("mul")->cast<CNodePtr>()->size(), 3);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(0),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(0),
-                             NewValueNode(std::make_shared<Primitive>(kMulOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(1), b));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(2), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(1), b));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("mul")->cast<CNodePtr>()->input(2), a));
- }
- 
- /// Feature: PatternToPattern Pass
-@@ -331,13 +331,13 @@ TEST_F(TestPatternToPatternPass, Mul3) {
-   ASSERT_TRUE(check.build_pattern_map(new_node));
- 
-   // check
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("a"), a));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("b"), b));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("a"), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("b"), b));
-   ASSERT_EQ(check.m_->Get("add")->cast<CNodePtr>()->size(), 3);
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("add")->cast<CNodePtr>()->input(0),
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("add")->cast<CNodePtr>()->input(0),
-                             NewValueNode(std::make_shared<Primitive>(kAddOpName))));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("add")->cast<CNodePtr>()->input(1), a));
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("add")->cast<CNodePtr>()->input(2), b));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("add")->cast<CNodePtr>()->input(1), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("add")->cast<CNodePtr>()->input(2), b));
- }
- 
- /// Feature: PatternToPattern Pass
-@@ -361,7 +361,7 @@ TEST_F(TestPatternToPatternPass, EmptySeq) {
-   ASSERT_TRUE(check.build_pattern_map(new_node));
- 
-   // check
--  ASSERT_TRUE(opt::AnfEqual(check.m_->Get("c_a"), a));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(check.m_->Get("c_a"), a));
- }
- 
- /// Feature: PatternToPattern Pass
-diff --git a/tests/ut/cpp/pre_activate/common/source_pattern_test.cc b/tests/ut/cpp/pre_activate/common/source_pattern_test.cc
-index 09043f46f60..67200c0c54f 100644
---- a/tests/ut/cpp/pre_activate/common/source_pattern_test.cc
-+++ b/tests/ut/cpp/pre_activate/common/source_pattern_test.cc
-@@ -88,11 +88,11 @@ TEST_F(TestSrcPattern, Var) {
-   ASSERT_TRUE(build_pattern_map(mul1_cnode));
- 
-   // check
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("anode1"), anode1));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("anode2"), anode2));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("anode3"), anode3));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("mul1_cnode"), mul1_cnode));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("mul2_cnode"), mul2_cnode));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("anode1"), anode1));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("anode2"), anode2));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("anode3"), anode3));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("mul1_cnode"), mul1_cnode));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("mul2_cnode"), mul2_cnode));
- }
- 
- /// Feature: PatternToPattern Pass
-@@ -118,13 +118,13 @@ TEST_F(TestSrcPattern, SeqVar) {
-   ASSERT_TRUE(build_pattern_map(mul1_cnode));
- 
-   // check
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("anode1"), anode1));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("mul1_cnode"), mul1_cnode));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("mul2_cnode"), mul2_cnode));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("anode1"), anode1));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("mul1_cnode"), mul1_cnode));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("mul2_cnode"), mul2_cnode));
-   auto &v = m_->GetSeq("Sv");
-   ASSERT_EQ(v.size(), std::size_t(2));
--  ASSERT_TRUE(opt::AnfEqual(v[0], anode2));
--  ASSERT_TRUE(opt::AnfEqual(v[1], anode3));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(v[0], anode2));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(v[1], anode3));
- }
- 
- /// Feature: PatternToPattern Pass
-@@ -159,12 +159,12 @@ TEST_F(TestSrcPattern, RepeatedVar) {
-   ASSERT_TRUE(build_pattern_map(mul3_cnode));
- 
-   // check
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("anode1"), anode1));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("anode2"), anode2));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("anode3"), anode3));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("mul1_cnode"), mul1_cnode));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("mul2_cnode"), mul2_cnode));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("mul3_cnode"), mul3_cnode));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("anode1"), anode1));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("anode2"), anode2));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("anode3"), anode3));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("mul1_cnode"), mul1_cnode));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("mul2_cnode"), mul2_cnode));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("mul3_cnode"), mul3_cnode));
- }
- 
- /// Feature: PatternToPattern Pass
-@@ -202,15 +202,15 @@ TEST_F(TestSrcPattern, RepeatedSeqVar) {
-   ASSERT_TRUE(build_pattern_map(mul4_cnode));
- 
-   // check
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("anode1"), anode1));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("mul1_cnode"), mul1_cnode));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("mul2_cnode"), mul2_cnode));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("mul3_cnode"), mul3_cnode));
--  ASSERT_TRUE(opt::AnfEqual(m_->Get("mul4_cnode"), mul4_cnode));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("anode1"), anode1));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("mul1_cnode"), mul1_cnode));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("mul2_cnode"), mul2_cnode));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("mul3_cnode"), mul3_cnode));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(m_->Get("mul4_cnode"), mul4_cnode));
-   auto &v = m_->GetSeq("Sv");
-   ASSERT_EQ(v.size(), std::size_t(2));
--  ASSERT_TRUE(opt::AnfEqual(v[0], anode2));
--  ASSERT_TRUE(opt::AnfEqual(v[1], anode3));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(v[0], anode2));
-+  ASSERT_TRUE(AnfUtils::AnfEqual(v[1], anode3));
- }
- 
- /// Feature: PatternToPattern Pass
