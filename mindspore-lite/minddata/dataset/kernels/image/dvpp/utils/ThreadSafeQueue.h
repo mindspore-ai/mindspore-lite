@@ -1,4 +1,6 @@
 /**
+* Adapted from
+ * https://gitee.com/ascend/samples/blob/master/cplusplus/common/acllite/include/ThreadSafeQueue.h
  * ============================================================================
  *
  * Copyright (C) 2018, Hisilicon Technologies Co., Ltd. All Rights Reserved.
