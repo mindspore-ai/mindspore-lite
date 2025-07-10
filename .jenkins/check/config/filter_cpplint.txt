@@ -31,6 +31,7 @@
 "mindspore-lite/mindspore-lite/src/litert/thread_pool.c"                                                "readability/casting"
 "mindspore-lite/mindspore-lite/src/litert/thread_pool.c"                                                "runtime/arrays"
 "mindspore-lite/mindspore-lite/src/litert/thread_pool.c"                                                "runtime/int"
+"mindspore/mindspore/lite/src/litert/delegate/coreml/coreml_executor.h"                                 "whitespace/parens"
 
 # MindData
 "mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/cutmix_batch_op.cc"                       "build/include_what_you_use"

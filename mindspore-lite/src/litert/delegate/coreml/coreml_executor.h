@@ -22,27 +22,25 @@
 #include <vector>
 #include "include/api/types.h"
 
-API_AVAILABLE(ios(11))
-@interface InputFeatureProvider : NSObject <MLFeatureProvider> {
-  const std::vector<mindspore::MSTensor>* _inputs;
+API_AVAILABLE(ios(12))
+@interface MSFeatureProvider : NSObject <MLFeatureProvider> {
+  const std::vector<mindspore::MSTensor>* _ms_tensors;
   NSSet* _featureNames;
 }
 
-- (instancetype)initWithInputs:(const std::vector<mindspore::MSTensor>*)inputs
+- (instancetype)initWithMSTensor:(const std::vector<mindspore::MSTensor>*)inputs
                  coreMLVersion:(int)coreMLVersion;
-- (NSSet<NSString*>*)featureNames;
 - (MLFeatureValue *)featureValueForName:(NSString *)featureName;
-
-@property(nonatomic, readonly) int coreMLVersion;
+@property(nonatomic, readonly) NSSet<NSString *> *featureNames;
 @end
 
-API_AVAILABLE(ios(11))
+API_AVAILABLE(ios(12))
 @interface CoreMLExecutor : NSObject
 
-- (bool)ExecuteWithInputs:(const std::vector<mindspore::MSTensor>&)inputs
+- (bool)run:(const std::vector<mindspore::MSTensor>&)inputs
                   outputs:(const std::vector<mindspore::MSTensor>&)outputs;
 
-- (bool)loadModelC:(NSURL*)compileUrl;
+- (bool)load:(NSURL*)compileUrl;
 
 @property MLModel* model;
 @property(nonatomic, readonly) int coreMLVersion;
