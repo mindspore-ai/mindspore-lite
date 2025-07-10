@@ -66,7 +66,9 @@ class LSTMTensorRT : public TensorRTOp {
  public:
   LSTMTensorRT(const BaseOperatorPtr &base_operator, const std::vector<TensorInfo> &in_tensors,
                const std::vector<TensorInfo> &out_tensors, std::string name)
-      : TensorRTOp(base_operator, in_tensors, out_tensors, name) {}
+      : TensorRTOp(base_operator, in_tensors, out_tensors, name) {
+    params_ = {};
+  }
 
   ~LSTMTensorRT() override = default;
 

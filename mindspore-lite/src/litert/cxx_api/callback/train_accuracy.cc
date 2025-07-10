@@ -18,9 +18,9 @@
 #include <vector>
 #include <memory>
 #include "include/train/classification_train_accuracy_monitor.h"
+#include "include/api/callback/train_accuracy.h"
 #include "src/litert/cxx_api/callback/callback_impl.h"
 #include "src/common/log_adapter.h"
-#include "include/api/callback/train_accuracy.h"
 
 namespace mindspore {
 TrainAccuracy::TrainAccuracy(int print_every_n, int accuracy_metrics, const std::vector<int> &input_indexes,

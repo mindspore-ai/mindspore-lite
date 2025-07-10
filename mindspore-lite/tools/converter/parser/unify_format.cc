@@ -269,6 +269,10 @@ int SetShapeTensorInfo(const tensor::Tensor *shape_tensor, tensor::TensorPtr ten
 STATUS UnifyFormatToNHWC::ConvertOnnxResizeForConstShape(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
   MS_ASSERT(func_graph != nullptr && cnode != nullptr);
   auto resize_shape_node = cnode->input(kNumResizeInputShape)->cast<ParameterPtr>();
+  if (resize_shape_node == nullptr) {
+    MS_LOG(ERROR) << "resize_shape_node is nullptr.";
+    return RET_ERROR;
+  }
   auto shape_tensor = std::dynamic_pointer_cast<tensor::Tensor>(resize_shape_node->default_param());
   if (shape_tensor == nullptr) {
     MS_LOG(ERROR) << " shape tensor is nullptr.";

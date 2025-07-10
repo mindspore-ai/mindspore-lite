@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
+# copy from https://gitee.com/ascend/samples/blob/master/best_practices/contrib/blast-code/blast_tik/cmake/util/merge_aicpu_info_json.sh
 
 project_path=$1
 build_path=$2

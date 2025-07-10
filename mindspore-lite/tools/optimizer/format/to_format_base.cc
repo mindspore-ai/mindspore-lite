@@ -217,6 +217,10 @@ bool ToFormatBase::DecideWhetherHandleGraphInput(const FuncGraphPtr &func_graph,
       continue;
     }
     auto post_cnode = post_node->cast<CNodePtr>();
+    if (post_cnode == nullptr) {
+      MS_LOG(ERROR) << "post_cnode is nullptr.";
+      return false;
+    }
     auto prim = GetValueNode<PrimitivePtr>(post_cnode->input(0));
     MS_ERROR_IF_NULL_W_RET_VAL(prim, false);
     if (prim->GetAttr(ops::kFormat) != nullptr) {

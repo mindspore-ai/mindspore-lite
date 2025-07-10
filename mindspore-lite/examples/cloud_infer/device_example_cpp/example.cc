@@ -374,11 +374,12 @@ int QuickStart(int argc, const char **argv) {
   }
   auto &device_list = context->MutableDeviceInfo();
   auto device_info = std::make_shared<mindspore::GPUDeviceInfo>();
-  device_info->SetDeviceID(0);
   if (device_info == nullptr) {
     std::cerr << "New CPUDeviceInfo failed." << std::endl;
     return -1;
   }
+  device_info->SetDeviceID(0);
+
   device_list.push_back(device_info);
 
   mindspore::Model model;

@@ -18,4 +18,4 @@
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_dsl/sample/"                              "bad-whitespace"
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"                              "bad-whitespace"
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_dsl/sample/"                              "bad-continuation"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"
+"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_and_aicpu/"                               "invalid-name"

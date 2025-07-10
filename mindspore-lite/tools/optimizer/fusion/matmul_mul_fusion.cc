@@ -77,7 +77,6 @@ int CalNewCnodeScale(const CNodePtr &mul_cnode, const CNodePtr &matmul_cnode) {
   }
   return RET_OK;
 }
-
 int CalNewCnodeBias(const CNodePtr &mul_cnode, const CNodePtr &matmul_cnode) {
   auto mul_weight_node = mul_cnode->input(kInputIndexTwo);
   std::shared_ptr<tensor::Tensor> mul_weight_tensor = GetTensorInfo(mul_weight_node);
@@ -89,9 +88,10 @@ int CalNewCnodeBias(const CNodePtr &mul_cnode, const CNodePtr &matmul_cnode) {
   std::vector<int64_t> mul_weight_shape = mul_weight_tensor->shape();
   auto mul_weight_data = reinterpret_cast<float *>(mul_weight_tensor->data_c());
   MS_CHECK_TRUE_RET(mul_weight_data != nullptr, RET_ERROR);
-
   auto mutmul_bias_node = matmul_cnode->input(kInputIndexThree);
+  MS_CHECK_TRUE_RET(mutmul_bias_node != nullptr, RET_ERROR);
   auto mutmul_bias_tensor = GetTensorInfo(mutmul_bias_node);
+  MS_CHECK_TRUE_RET(mutmul_bias_tensor != nullptr, RET_ERROR);
   if (mutmul_bias_tensor->data_type() != kNumberTypeFloat32) {
     MS_LOG(ERROR) << "only support float32 data type";
     return RET_ERROR;

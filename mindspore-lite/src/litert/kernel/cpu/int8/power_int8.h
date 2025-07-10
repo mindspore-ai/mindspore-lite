@@ -43,7 +43,7 @@ class PowerInt8CPUKernel : public LiteKernel {
   int8_t *output_data_ = nullptr;
   int8_t *exp_ptr_ = nullptr;
   PowQuantArg quant_arg_;
-  bool broadcast_;
+  bool broadcast_ = false;
 };
 }  // namespace mindspore::kernel
 

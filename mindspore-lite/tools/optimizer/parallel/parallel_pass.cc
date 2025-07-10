@@ -53,6 +53,7 @@ bool ParallelPass::SetParallelOpName(const AnfNodePtr &node, std::string *parall
     return false;
   }
   auto cnode = node->cast<CNodePtr>();
+  MS_CHECK_TRUE_RET(cnode != nullptr, false);
   std::string cnode_name = cnode->fullname_with_scope();
   if (cnode_name.find(PARALLEL_NAME_SUFFIX) != std::string::npos) {
     MS_LOG(DEBUG) << " : Skip splited cnode " << cnode_name;

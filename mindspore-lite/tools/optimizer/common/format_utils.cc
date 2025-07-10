@@ -277,6 +277,10 @@ bool IsMonadNode(const AnfNodePtr &node) {
     return false;
   }
   auto value_node = node->cast<ValueNodePtr>();
+  if (value_node == nullptr) {
+    MS_LOG(ERROR) << "value_node is nullptr.";
+    return false;
+  }
   auto value = value_node->value();
   if (value->isa<Monad>()) {
     return true;

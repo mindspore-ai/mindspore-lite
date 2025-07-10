@@ -441,6 +441,7 @@ STATUS FunctionalizeWhile::BodySubgraphAddNodes() {
     if (FunctionalizeControlOpPass::IsNextIteration(node)) {
       CHECK_NULL_RETURN(node);
       auto next_iteration_cnode = node->cast<CNodePtr>();
+      MS_EXCEPTION_IF_NULL(next_iteration_cnode);
       for (size_t i = 1; i < next_iteration_cnode->size(); i++) {
         todo.push_back(next_iteration_cnode->input(i));
       }

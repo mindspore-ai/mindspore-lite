@@ -195,6 +195,10 @@ int32_t GetReshapeParam(const AnfNodePtr &reshape_node, size_t index) {
 }
 
 int64_t GetNumHeadForSD(const AnfNodePtr &q_trans_reshape) {
+  if (q_trans_reshape == nullptr) {
+    MS_LOG(WARNING) << "q_trans_reshape is nullptr.";
+    return -1;
+  }
   auto concat_cnode = q_trans_reshape->cast<CNodePtr>()->input(kNumIndex2)->cast<CNodePtr>();
   if (concat_cnode == nullptr) {
     MS_LOG(WARNING) << "concat_cnode is nullptr.";
@@ -1500,6 +1504,7 @@ CNodePtr FlashAttentionFusion::PreMulInBNSDOutBSND(const FuncGraphPtr &func_grap
   auto manager = Manage(func_graph);
   MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
   std::vector<int32_t> new_perm = {kNumIndex0, kNumIndex2, kNumIndex1, kNumIndex3};
+  MS_CHECK_TRUE_RET(k_trans_BNDS != nullptr, nullptr);
   auto perm_node = BuildIntVecParameterNode(func_graph, new_perm, k_trans_BNDS->fullname_with_scope() + "_new_perm");
   MS_CHECK_TRUE_RET(perm_node != nullptr, nullptr);
   k_trans_BNDS->cast<CNodePtr>()->set_input(kNumIndex2, perm_node);

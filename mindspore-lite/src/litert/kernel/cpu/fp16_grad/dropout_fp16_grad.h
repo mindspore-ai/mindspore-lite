@@ -34,7 +34,7 @@ class DropoutGradCPUKernelFp16 : public LiteKernel {
   int DoExecute(int task_id);
 
  private:
-  float scale_;
+  float scale_ = 1.0f;
   int thread_count_ = 1;
 };
 
