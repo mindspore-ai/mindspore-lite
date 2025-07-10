@@ -359,6 +359,10 @@ std::shared_ptr<Context> ModelPool::GetUserDefineContext(const std::shared_ptr<R
 std::shared_ptr<Context> ModelPool::GetInitContext(const std::shared_ptr<RunnerConfig> &runner_config) {
   std::shared_ptr<mindspore::Context> context = nullptr;
   if (runner_config != nullptr && runner_config->GetContext() != nullptr) {
+    if (runner_config->GetContext()->GetThreadAffinityMode() == lite::MID_CPU) {
+      MS_LOG(ERROR) << "Currently only HIGH_CPU and NO_BIND are supported, MID_CPU is not supported!";
+      return nullptr;
+    }
     use_numa_bind_mode_ = numa_available_ && runner_config->GetContext()->GetThreadAffinityMode() == lite::HIGHER_CPU;
     context = GetUserDefineContext(runner_config);
   } else {
