@@ -1,0 +1,355 @@
+diff --git a/third_party/proto/caffe/caffe.proto b/third_party/proto/caffe/caffe.proto
+index c96966b589d..163734ba6cb 100755
+# copy from https://github.com/BVLC/caffe/blob/1.0/src/caffe/proto/caffe.proto
+--- a/third_party/proto/caffe/caffe.proto
++++ b/third_party/proto/caffe/caffe.proto
+@@ -128,7 +128,8 @@ message SolverParameter {
+   // The states for the train/test nets. Must be unspecified or
+   // specified once per net.
+   //
+-  // By default, train_state will have phase = TRAIN,
++  // By default, all states will have solver = true;
++  // train_state will have phase = TRAIN,
+   // and all test_state's will have phase = TEST.
+   // Other defaults are set according to the NetState defaults.
+   optional NetState train_state = 26;
+@@ -308,7 +309,7 @@ message ParamSpec {
+ // NOTE
+ // Update the next available ID when you add a new LayerParameter field.
+ //
+-// LayerParameter next available layer-specific ID: 147 (last added: recurrent_param)
++// LayerParameter next available layer-specific ID: 151 (last added: smooth_l1_loss_param)
+ message LayerParameter {
+   optional string name = 1; // the layer name
+   optional string type = 2; // the layer type
+@@ -369,6 +370,7 @@ message LayerParameter {
+   optional ConvolutionParameter convolution_param = 106;
+   optional CropParameter crop_param = 144;
+   optional DataParameter data_param = 107;
++  optional DetectionOutputParameter detection_output_param = 150;
+   optional DropoutParameter dropout_param = 108;
+   optional DummyDataParameter dummy_data_param = 109;
+   optional EltwiseParameter eltwise_param = 110;
+@@ -391,13 +393,16 @@ message LayerParameter {
+   optional PoolingParameter pooling_param = 121;
+   optional PowerParameter power_param = 122;
+   optional PReLUParameter prelu_param = 131;
++  optional ProposalParameter proposal_param = 900;
+   optional PythonParameter python_param = 130;
+   optional RecurrentParameter recurrent_param = 146;
+   optional ReductionParameter reduction_param = 136;
+   optional ReLUParameter relu_param = 123;
+   optional ReshapeParameter reshape_param = 133;
++  optional ROIPoolingParameter roi_pooling_param = 147;
+   optional ScaleParameter scale_param = 142;
+   optional SigmoidParameter sigmoid_param = 124;
++  optional SmoothL1LossParameter smooth_l1_loss_param = 148;
+   optional SoftmaxParameter softmax_param = 125;
+   optional SPPParameter spp_param = 132;
+   optional SliceParameter slice_param = 126;
+@@ -405,6 +410,20 @@ message LayerParameter {
+   optional ThresholdParameter threshold_param = 128;
+   optional TileParameter tile_param = 138;
+   optional WindowDataParameter window_data_param = 129;
++  optional PermuteParameter permute_param = 202;
++  optional PriorBoxParameter prior_box_param = 203;
++  optional NormalizeParameter norm_param = 206;
++  optional PSROIPoolingParameter psroi_pooling_param = 207;
++  optional FreespaceExtractParameter freespace_extract_param = 151;
++  optional PostprocessParameter postprocess_param = 152;
++  optional SpatialTransformParameter spatial_transform_param = 153;
++  optional ROIAlignParameter  roi_align_param = 154;
++  optional ReorgParameter reorg_param = 155;
++  optional RegionParameter region_param = 156;
++  optional ReverseParameter reverse_param = 157;
++  optional InterpParameter interp_param = 158;
++  optional ShuffleChannelParameter shuffle_channel_param = 159;
++  optional UpsampleParameter upsample_param = 160;
+ }
+ 
+ // Message that stores parameters used to apply transformation
+@@ -674,6 +693,7 @@ message DataParameter {
+ 
+ message DropoutParameter {
+   optional float dropout_ratio = 1 [default = 0.5]; // dropout ratio
++  optional bool scale_train = 2 [default = true];  // scale train or test phase
+ }
+ 
+ // DummyDataLayer fills any number of arbitrarily shaped blobs with random
+@@ -921,6 +941,13 @@ message PoolingParameter {
+   // If global_pooling then it will pool over the size of the bottom by doing
+   // kernel_h = bottom->height and kernel_w = bottom->width
+   optional bool global_pooling = 12 [default = false];
++  optional bool ceil_mode = 13 [default = true];
++  // How to calculate the output size - using ceil (default) or floor rounding.
++  enum RoundMode {
++    CEIL = 0;
++    FLOOR = 1;
++  }
++  optional RoundMode round_mode = 14 [default = CEIL];
+ }
+ 
+ message PowerParameter {
+@@ -938,7 +965,9 @@ message PythonParameter {
+   // string, dictionary in Python dict format, JSON, etc. You may parse this
+   // string in `setup` method and use it in `forward` and `backward`.
+   optional string param_str = 3 [default = ''];
+-  // DEPRECATED
++  // Whether this PythonLayer is shared among worker solvers during data parallelism.
++  // If true, each worker solver sequentially run forward from this layer.
++  // This value should be set true if you are using it as a data layer.
+   optional bool share_in_parallel = 4 [default = false];
+ }
+ 
+@@ -1070,6 +1099,17 @@ message ReshapeParameter {
+   optional int32 num_axes = 3 [default = -1];
+ }
+ 
++// Message that stores parameters used by ROIPoolingLayer
++message ROIPoolingParameter {
++  // Pad, kernel size, and stride are all given as a single value for equal
++  // dimensions in height and width or as Y, X pairs.
++  optional uint32 pooled_h = 1 [default = 0]; // The pooled output height
++  optional uint32 pooled_w = 2 [default = 0]; // The pooled output width
++  // Multiplicative spatial scale factor to translate ROI coords from their
++  // input scale to the scale used when pooling
++  optional float spatial_scale = 3 [default = 1];
++}
++
+ message ScaleParameter {
+   // The first axis of bottom[0] (the first input Blob) along which to apply
+   // bottom[1] (the second input Blob).  May be negative to index from the end
+@@ -1127,6 +1167,13 @@ message SliceParameter {
+   optional uint32 slice_dim = 1 [default = 1];
+ }
+ 
++message SmoothL1LossParameter {
++  // SmoothL1Loss(x) =
++  //   0.5 * (sigma * x) ** 2    -- if x < 1.0 / sigma / sigma
++  //   |x| - 0.5 / sigma / sigma -- otherwise
++  optional float sigma = 1 [default = 1];
++}
++
+ // Message that stores parameters used by SoftmaxLayer, SoftmaxWithLossLayer
+ message SoftmaxParameter {
+   enum Engine {
+@@ -1410,3 +1457,219 @@ message PReLUParameter {
+   // Whether or not slope parameters are shared across channels.
+   optional bool channel_shared = 2 [default = false];
+ }
++
++// Message that stores parameters used by ProposalLayer
++message ProposalParameter {
++  optional float feat_stride = 1;
++  optional float base_size = 2;
++  optional float min_size = 3;
++  repeated float ratio = 4;
++  repeated float scale = 5;
++  optional int32 pre_nms_topn = 6;
++  optional int32 post_nms_topn = 7;
++  optional float nms_thresh = 8;
++}
++
++// Message that stores parameters used by DetectionOutputLayer
++//message DetectionOutputParameter {
++//  optional int32 num_classes = 1 [default = 21];
++//  optional float nms_threshold = 2 [default = 0.3];
++//  optional int32 top_k = 3;
++//  optional float confidence_threshold = 4 [default = 0.8];
++//}
++
++// Message that store parameters used by PriorBoxLayer
++message PriorBoxParameter {
++  // Encode/decode type.
++  enum CodeType {
++    CORNER = 1;
++    CENTER_SIZE = 2;
++    CORNER_SIZE = 3;
++  }
++  // Minimum box size (in pixels). Required!
++  repeated float min_size = 1;
++  // Maximum box size (in pixels). Required!
++  repeated float max_size = 2;
++  // Various of aspect ratios. Duplicate ratios will be ignored.
++  // If none is provided, we use default ratio 1.
++  repeated float aspect_ratio = 3;
++  // If true, will flip each aspect ratio.
++  // For example, if there is aspect ratio "r",
++  // we will generate aspect ratio "1.0/r" as well.
++  optional bool flip = 4 [default = true];
++  // If true, will clip the prior so that it is within [0, 1]
++  optional bool clip = 5 [default = false];
++  // Variance for adjusting the prior boxes.
++  repeated float variance = 6;
++  // By default, we calculate img_height, img_width, step_x, step_y based on
++  // bottom[0] (feat) and bottom[1] (img). Unless these values are explicitly
++  // provided.
++  // Explicitly provide the img_size.
++  optional uint32 img_size = 7;
++  // Either img_size or img_h/img_w should be specified; not both.
++  optional uint32 img_h = 8;
++  optional uint32 img_w = 9;
++
++  // Explicitly provide the step size.
++  optional float step = 10;
++  // Either step or step_h/step_w should be specified; not both.
++  optional float step_h = 11;
++  optional float step_w = 12;
++
++  // Offset to the top left corner of each cell.
++  optional float offset = 13 [default = 0.5];
++}
++
++// Message that stores parameters used by PermutetLayer
++message PermuteParameter {
++  // The new orders of the axes of data. Notice it should be with
++  // in the same range as the input data, and it starts from 0.
++  // Do not provide repeated order.
++  repeated uint32 order = 1;
++}
++
++message NormalizeParameter {
++  optional bool across_spatial = 1 [default = true];
++  // Initial value of scale. Default is 1.0 for all
++  optional FillerParameter scale_filler = 2;
++  // Whether or not scale parameters are shared across channels.
++  optional bool channel_shared = 3 [default = true];
++  // Epsilon for not dividing by zero while normalizing variance
++  optional float eps = 4 [default = 1e-10];
++}
++
++// needed by ssd
++message SaveOutputParameter {
++  // Output directory. If not empty, we will save the results.
++  optional string output_directory = 1;
++  // Output name prefix.
++  optional string output_name_prefix = 2;
++  // Output format.
++  //    VOC - PASCAL VOC output format.
++  //    COCO - MS COCO output format.
++  optional string output_format = 3;
++  // If you want to output results, must also provide the following two files.
++  // Otherwise, we will ignore saving results.
++  // label map file.
++  optional string label_map_file = 4;
++  // A file which contains a list of names and sizes with same order
++  // of the input DB. The file is in the following format:
++  //    name height width
++  //    ...
++  optional string name_size_file = 5;
++  // Number of test images. It can be less than the lines specified in
++  // name_size_file. For example, when we only want to evaluate on part
++  // of the test images.
++  optional uint32 num_test_image = 6;
++  // The resize parameter used in saving the data.
++  // optional ResizeParameter resize_param = 7;
++}
++
++message NonMaximumSuppressionParameter {
++  // Threshold to be used in nms.
++  optional float nms_threshold = 1 [default = 0.3];
++  // Maximum number of results to be kept.
++  optional int32 top_k = 2;
++  // Parameter for adaptive nms.
++  optional float eta = 3 [default = 1.0];
++}
++
++message GeneralNmsParameter {
++    optional int32 post_top_k = 1 ;
++    optional float nms_threshold = 2 [default = 0];
++    optional float iou_threshold_decay = 3 [default = 1.0];
++    optional float coor_scale_factor = 4 [default = 1.0];
++}
++
++// Message that store parameters used by DetectionOutputLayer, ssd/fasterRcnn
++message DetectionOutputParameter {
++  optional int32 num_classes = 1;
++  optional bool share_location = 2 [default = true];
++  optional int32 background_label_id = 3 [default = 0];
++  optional NonMaximumSuppressionParameter nms_param = 4;
++  optional SaveOutputParameter save_output_param = 5;
++  optional PriorBoxParameter.CodeType code_type = 6 [default = CENTER_SIZE];
++  optional bool variance_encoded_in_target = 8 [default = true];
++  optional int32 keep_top_k = 7;
++  optional float confidence_threshold = 9;
++  optional float nms_threshold = 13;
++  optional int32 top_k = 14;
++  optional int32 boxes = 15 [default = 1];
++  optional bool relative = 17 [default = true];
++  optional float objectness_threshold = 18 [default = 0.5];
++  optional float class_threshold = 19 [default = 0.5];
++  repeated float biases = 20;
++  optional GeneralNmsParameter general_nms_param = 21;
++}
++message PSROIPoolingParameter {
++   required float spatial_scale = 1;
++   required int32 output_dim = 2; // output channel number
++   required int32 group_size = 3; // number of groups to encode position-sensitive score maps
++}
++// Message that stores parameters used by FreespaceExtractLayer
++message FreespaceExtractParameter {
++  optional float org_height = 1;
++}
++
++// Message that stores parameters used by DetectpostprocessLayer
++message PostprocessParameter {
++  optional float nms_thresh = 1 [default = 0.3];
++  optional float conf_thresh = 2 [default = 0.5];
++  optional uint32 post_nms_topn = 3 [default = 100];
++  optional uint32 cls_num = 4 [default = 12];
++  repeated float bbox_reg_weights = 5;
++}
++
++// Message that stores parameters used by SpatialTransformLayer
++message SpatialTransformParameter {
++  optional uint32 output_h = 1 [default = 0];
++  optional uint32 output_w = 2 [default = 0];
++  optional float border_value = 3 [default = 0];
++  repeated float affine_transform = 4;
++  enum Engine {
++    DEFAULT = 0;
++    CAFFE = 1;
++    CUDNN = 2;
++  }
++  optional Engine engine = 15 [default = DEFAULT];
++}
++message ROIAlignParameter {
++  // Pad, kernel size, and stride are all given as a single value for equal
++  // dimensions in height and width or as Y, X pairs.
++  optional uint32 pooled_h = 1 [default = 0]; // The pooled output height
++  optional uint32 pooled_w = 2 [default = 0]; // The pooled output width
++  // Multiplicative spatial scale factor to translate ROI coords from their
++  // input scale to the scale used when pooling
++  optional float spatial_scale = 3 [default = 1];
++  optional int32 sampling_ratio = 4 [default = -1];
++}
++
++message RegionParameter {
++  optional uint32 classes = 1 [default = 20]; //分类的种类
++  optional uint32 coords = 2 [default = 4]; //box的坐标数
++  optional uint32 boxes = 3 [default = 1]; //每个grid预测的boxes数
++  optional uint32 softmax = 4 [default = 0];
++  optional string softmax_tree = 5 [default = ""];
++  optional uint32 background = 6 [default = 0];
++}
++message ReorgParameter{
++    optional uint32 stride = 2 [default = 2];
++    optional bool reverse = 1 [default = false];
++}
++message ReverseParameter{
++    optional int32 axis = 1 [default = 1];
++}
++message InterpParameter{
++    optional int32 height = 1 [default = 0];//Height of output
++    optional int32 width = 2 [default = 0];//Width of output
++    optional int32 zoom_factor = 3 [default = 1];//zoom factor
++    optional int32 shrink_factor = 4 [default = 1];//shrink factor
++    optional int32 pad_beg = 5 [default = 0];//padding at begin of input
++    optional int32 pad_end = 6 [default = 0];//padding at end of input
++}
++message ShuffleChannelParameter{
++    optional uint32 group = 1[default = 1]; // The number of group
++}
++message UpsampleParameter{
++    optional int32 scale = 1[default = 1];
++}

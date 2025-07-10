@@ -1,0 +1,270 @@
+diff --git a/third_party/proto/tensorflow/attr_value.proto b/third_party/proto/tensorflow/attr_value.proto
+index 2e913130dfd..ddf134b239c 100644
+# copy from https://github.com/tensorflow/tensorflow/blob/v2.4.1/tensorflow/core/framework/attr_value.proto
+--- a/third_party/proto/tensorflow/attr_value.proto
++++ b/third_party/proto/tensorflow/attr_value.proto
+@@ -2,9 +2,9 @@ syntax = "proto3";
+
+ package tensorflow;
+
+-import "tensorflow/core/framework/tensor.proto";
+-import "tensorflow/core/framework/tensor_shape.proto";
+-import "tensorflow/core/framework/types.proto";
++import "tensor.proto";
++import "tensor_shape.proto";
++import "types.proto";
+
+ option cc_enable_arenas = true;
+ option java_outer_classname = "AttrValueProtos";
+diff --git a/third_party/proto/tensorflow/function.proto b/third_party/proto/tensorflow/function.proto
+index 6d43c05f52c..8502ae5c494 100644
+# copy from https://github.com/tensorflow/tensorflow/blob/v2.4.1/tensorflow/core/framework/function.proto
+--- a/third_party/proto/tensorflow/function.proto
++++ b/third_party/proto/tensorflow/function.proto
+@@ -2,9 +2,9 @@ syntax = "proto3";
+
+ package tensorflow;
+
+-import "tensorflow/core/framework/attr_value.proto";
+-import "tensorflow/core/framework/node_def.proto";
+-import "tensorflow/core/framework/op_def.proto";
++import "attr_value.proto";
++import "node_def.proto";
++import "op_def.proto";
+
+ option cc_enable_arenas = true;
+ option java_outer_classname = "FunctionProtos";
+diff --git a/third_party/proto/tensorflow/graph.proto b/third_party/proto/tensorflow/graph.proto
+index f49e41aa0b0..13a05d89ea5 100644
+# copy from https://github.com/tensorflow/tensorflow/blob/v2.4.1/tensorflow/core/framework/graph.proto
+--- a/third_party/proto/tensorflow/graph.proto
++++ b/third_party/proto/tensorflow/graph.proto
+@@ -2,9 +2,9 @@ syntax = "proto3";
+
+ package tensorflow;
+
+-import "tensorflow/core/framework/function.proto";
+-import "tensorflow/core/framework/node_def.proto";
+-import "tensorflow/core/framework/versions.proto";
++import "function.proto";
++import "node_def.proto";
++import "versions.proto";
+
+ option cc_enable_arenas = true;
+ option java_outer_classname = "GraphProtos";
+diff --git a/third_party/proto/tensorflow/node_def.proto b/third_party/proto/tensorflow/node_def.proto
+index c0dc6836977..17d8ecf684b 100644
+# copy from https://github.com/tensorflow/tensorflow/blob/v2.4.1/tensorflow/core/framework/node_def.proto
+--- a/third_party/proto/tensorflow/node_def.proto
++++ b/third_party/proto/tensorflow/node_def.proto
+@@ -2,7 +2,7 @@ syntax = "proto3";
+
+ package tensorflow;
+
+-import "tensorflow/core/framework/attr_value.proto";
++import "attr_value.proto";
+
+ option cc_enable_arenas = true;
+ option java_outer_classname = "NodeProto";
+diff --git a/third_party/proto/tensorflow/op_def.proto b/third_party/proto/tensorflow/op_def.proto
+index ad109a3b814..3b2396cbe21 100644
+# copy from https://github.com/tensorflow/tensorflow/blob/v2.4.1/tensorflow/core/framework/op_def.proto
+--- a/third_party/proto/tensorflow/op_def.proto
++++ b/third_party/proto/tensorflow/op_def.proto
+@@ -6,8 +6,8 @@ option java_outer_classname = "OpDefProtos";
+ option java_multiple_files = true;
+ option java_package = "org.tensorflow.framework";
+ option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/op_def_go_proto";
+-import "tensorflow/core/framework/attr_value.proto";
+-import "tensorflow/core/framework/types.proto";
++import "attr_value.proto";
++import "types.proto";
+
+ // Defines an operation. A NodeDef in a GraphDef specifies an Op by
+ // using the "op" field which should match the name of a OpDef.
+diff --git a/third_party/proto/tensorflow/resource_handle.proto b/third_party/proto/tensorflow/resource_handle.proto
+index 5a41750475d..e2bce956547 100644
+# copy from https://github.com/tensorflow/tensorflow/blob/v2.4.1/tensorflow/core/framework/resource_handle.proto
+--- a/third_party/proto/tensorflow/resource_handle.proto
++++ b/third_party/proto/tensorflow/resource_handle.proto
+@@ -2,8 +2,8 @@ syntax = "proto3";
+
+ package tensorflow;
+
+-import "tensorflow/core/framework/tensor_shape.proto";
+-import "tensorflow/core/framework/types.proto";
++import "tensor_shape.proto";
++import "types.proto";
+
+ option cc_enable_arenas = true;
+ option java_outer_classname = "ResourceHandle";
+diff --git a/third_party/proto/tensorflow/lite/schema.fbs b/third_party/proto/tensorflow/lite/schema.fbs
+index 62045344755..a8bdf5e067a 100644
+# copy from https://github.com/tensorflow/tensorflow/blob/v2.4.1/tensorflow/lite/schema/schema.fbs
+--- a/third_party/proto/tensorflow/lite/schema.fbs
++++ b/third_party/proto/tensorflow/lite/schema.fbs
+@@ -17,8 +17,6 @@
+ // Version 1: Add subgraphs to schema.
+ // Version 2: Rename operators to conform to NN API.
+ // Version 3: Move buffer data from Model.Subgraph.Tensors to Model.Buffers.
+-// Version 3a: Add new builtin op code field. Has backward compatibility with
+-//             version 3.
+
+ namespace tflite;
+
+@@ -43,7 +41,6 @@ enum TensorType : byte {
+   COMPLEX64 = 8,
+   INT8 = 9,
+   FLOAT64 = 10,
+-  COMPLEX128 = 11,
+ }
+
+ // Custom quantization parameters for experimenting with new quantization
+@@ -217,7 +214,7 @@ table Tensor {
+ // object containing configuration parameters, builtins have a predetermined
+ // set of acceptable options.
+
+-enum BuiltinOperator : int32 {
++enum BuiltinOperator : byte {
+   ADD = 0,
+   AVERAGE_POOL_2D = 1,
+   CONCATENATION = 2,
+@@ -250,6 +247,7 @@ enum BuiltinOperator : int32 {
+   SPACE_TO_DEPTH = 26,
+   SVDF = 27,
+   TANH = 28,
++  // Consider rename to CONCATENATE_EMBEDDINGS
+   CONCAT_EMBEDDINGS = 29,
+   SKIP_GRAM = 30,
+   CALL = 31,
+@@ -350,9 +348,7 @@ enum BuiltinOperator : int32 {
+   SELECT_V2 = 123,
+   DENSIFY = 124,
+   SEGMENT_SUM = 125,
+-  BATCH_MATMUL = 126,
+-  PLACEHOLDER_FOR_GREATER_OP_CODES = 127,
+-  CUMSUM = 128
++  BATCH_MATMUL = 126
+ }
+
+
+@@ -458,8 +454,7 @@ union BuiltinOptions {
+   SelectV2Options,
+   DensifyOptions,
+   SegmentSumOptions,
+-  BatchMatMulOptions,
+-  CumsumOptions,
++  BatchMatMulOptions
+ }
+
+ enum Padding : byte { SAME, VALID }
+@@ -587,8 +582,6 @@ table ConcatenationOptions {
+
+ table AddOptions {
+   fused_activation_function:ActivationFunctionType;
+-  // Parameters supported by version 4.
+-  pot_scale_int16:bool = true;
+ }
+
+ table MulOptions {
+@@ -710,8 +703,6 @@ table DepthToSpaceOptions {
+
+ table SubOptions {
+   fused_activation_function:ActivationFunctionType;
+-  // Parameters supported by version 5
+-  pot_scale_int16:bool = true;
+ }
+
+ table DivOptions {
+@@ -983,29 +974,15 @@ table BatchMatMulOptions {
+   adj_y:bool;
+ }
+
+-table CumsumOptions {
+-  exclusive:bool;
+-  reverse:bool;
+-}
+-
+ // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
+ // builtin, or a string if the operator is custom.
+ table OperatorCode {
+-  // This field is for backward compatibility. This field will be used when
+-  // the value of the extended builtin_code field has less than
+-  // BulitinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES.
+-  deprecated_builtin_code:byte;
++  builtin_code:BuiltinOperator;
+   custom_code:string;
+
+   // The version of the operator. The version need to be bumped whenever new
+   // parameters are introduced into an op.
+   version:int = 1;
+-
+-  // This field is introduced for resolving op builtin code shortage problem
+-  // (the original BuiltinOperator enum field was represented as a byte).
+-  // This field will be used when the value of the extended builtin_code field
+-  // has greater than BulitinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES.
+-  builtin_code:BuiltinOperator;
+ }
+
+ enum CustomOptionsFormat : byte {
+@@ -1084,32 +1061,6 @@ table Metadata {
+   buffer:uint;
+ }
+
+-// Map from an alias name of tensor to tensor index in the graph.
+-// This is used in Signature def.
+-table TensorMap {
+-  // Represents the alias to use for this tensor.
+-  name:string;
+-
+-  // The actual tensor index in the primary graph, that 'name' corresponds to.
+-  tensor_index:uint;
+-}
+-
+-// This corresponds to SignatureDef in Tensorflow SavedModel.
+-// The SignatureDef will be part of the SavedModel provided for conversion.
+-table SignatureDef {
+-  // Named inputs for this signature.
+-  inputs:[TensorMap];
+-
+-  // Named outputs for this signature.
+-  outputs:[TensorMap];
+-
+-  // Exported method name for this signature.
+-  method_name:string;
+-
+-  // Key value which was in the Tensorflow SavedModel SignatureDef map.
+-  key:string;
+-}
+-
+ table Model {
+   // Version of the schema.
+   version:uint;
+@@ -1138,9 +1089,6 @@ table Model {
+
+   // Metadata about the model.
+   metadata:[Metadata];
+-
+-  // Optional SignatureDefs for the model.
+-  signature_defs:[SignatureDef];
+ }
+
+ root_type Model;
+diff --git a/third_party/proto/tensorflow/tensor.proto b/third_party/proto/tensorflow/tensor.proto
+index 47b694f4361..7a25c446e68 100644
+# copy from https://github.com/tensorflow/tensorflow/blob/v2.4.1/tensorflow/core/framework/tensor.proto
+--- a/third_party/proto/tensorflow/tensor.proto
++++ b/third_party/proto/tensorflow/tensor.proto
+@@ -2,9 +2,9 @@ syntax = "proto3";
+
+ package tensorflow;
+
+-import "tensorflow/core/framework/resource_handle.proto";
+-import "tensorflow/core/framework/tensor_shape.proto";
+-import "tensorflow/core/framework/types.proto";
++import "resource_handle.proto";
++import "tensor_shape.proto";
++import "types.proto";
+
+ option cc_enable_arenas = true;
+ option java_outer_classname = "TensorProtos";
