@@ -92,7 +92,7 @@ add_subdirectory(${OPS_DIR} mindspore_ops)
 
 if(MSLITE_ENABLE_ACL)
     set(MODE_ASCEND_ACL ON)
-    #include(${TOP_DIR}/cmake/dependency_graphengine.cmake)
+    #include(${TOP_DIR}/cmake/dependency_metadef.cmake)
     add_subdirectory(adapter/acl)
     link_directories(${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
 endif()
