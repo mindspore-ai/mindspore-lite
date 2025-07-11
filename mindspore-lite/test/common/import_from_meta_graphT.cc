@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "test/common/import_from_meta_graphT.h"
 #include <vector>
 #include <algorithm>
 #include "schema/inner/model_generated.h"
@@ -21,7 +22,6 @@
 #include "src/common/log_adapter.h"
 #include "tools/converter/converter_context.h"
 #include "include/errorcode.h"
-#include "test/common/import_from_meta_graphT.h"
 #include "src/common/utils.h"
 #include "tools/common/tensor_util.h"
 

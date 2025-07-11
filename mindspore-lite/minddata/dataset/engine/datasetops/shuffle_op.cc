@@ -16,6 +16,7 @@
 #if defined(_WIN32) || defined(_WIN64)
 #include <stdlib.h>
 #endif
+#include "mindspore-lite/minddata/dataset/engine/datasetops/shuffle_op.h"
 #include <chrono>
 #include <iomanip>
 #include <iostream>
@@ -23,7 +24,6 @@
 #include <utility>
 
 #include "mindspore-lite/minddata/dataset/core/config_manager.h"
-#include "mindspore-lite/minddata/dataset/engine/datasetops/shuffle_op.h"
 #include "mindspore-lite/minddata/dataset/engine/dataset_iterator.h"
 
 #include "mindspore-lite/minddata/dataset/util/log_adapter.h"

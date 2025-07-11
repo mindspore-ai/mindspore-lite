@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "include/api/model_parallel_runner.h"
 #include <memory>
+#include "include/api/model_parallel_runner.h"
 #include "common/common_test.h"
 #include "src/common/file_utils.h"
 

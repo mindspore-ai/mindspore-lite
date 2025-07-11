@@ -15,10 +15,10 @@
  */
 
 #define USE_DEPRECATED_API
-#include "include/registry/pass_registry.h"
 #include <map>
 #include <string>
 #include <vector>
+#include "include/registry/pass_registry.h"
 #include "common/common_test.h"
 #include "include/registry/model_parser_registry.h"
 #include "include/registry/pass_base.h"

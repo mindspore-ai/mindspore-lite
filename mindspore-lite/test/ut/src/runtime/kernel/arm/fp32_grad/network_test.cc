@@ -107,7 +107,6 @@ TEST_F(NetworkTest, mobileface_net) {
   ASSERT_NE(session, nullptr);
   auto ret = session->CompileGraph(model);
   ASSERT_EQ(lite::RET_OK, ret);
-  // session->Eval();
 
   std::string in = "./nets/facenet_input.f32";
   std::string out = "./nets/facenet_output.f32";

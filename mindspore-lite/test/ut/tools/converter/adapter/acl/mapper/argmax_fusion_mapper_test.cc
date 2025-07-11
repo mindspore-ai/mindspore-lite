@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "tools/converter/adapter/acl/mapper/argmax_fusion_mapper.h"
 #include <memory>
+#include "tools/converter/adapter/acl/mapper/argmax_fusion_mapper.h"
 #include "tools/converter/adapter/acl/mapper/primitive_mapper_register.h"
 #include "src/common/log_util.h"
 #include "ops_utils/op_utils.h"
@@ -240,7 +240,6 @@ CNodePtr InitArgmaxFusionNodeWithoutKeepDims(const FuncGraphPtr &func_graph, con
     return nullptr;
   }
   prim->set_axis(1);
-  // prim->set_keep_dims(true);
   auto prim_c = prim->GetPrim();
   if (prim_c == nullptr) {
     MS_LOG(ERROR) << "get prim_c failed, argmax fusion node prim_c is nullptr!";
