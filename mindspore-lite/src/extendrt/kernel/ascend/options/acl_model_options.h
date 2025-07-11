@@ -38,6 +38,8 @@ struct AclModelOptions {
   bool share_workspace = false;
   bool share_weightspace_workspace = false;
   bool is_bundle_model = false;
+  std::string pids = "";
+  uint64_t sharable_handle = 0;
   AclModelOptions() : device_id(0) {}
 };
 

@@ -39,6 +39,10 @@
 #include "extendrt/utils/func_graph_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "extendrt/utils/tensor_utils.h"
+#include "extendrt/kernel/ascend/model/model_infer.h"
+#include "extendrt/kernel/ascend/src/custom_ascend_kernel.h"
+#include "src/common/dynamic_library_loader.h"
+#include "extendrt/cxx_api/dlutils.h"
 
 namespace mindspore {
 const size_t tensor_max_size = 0x1000000;
@@ -87,6 +91,57 @@ Status SingleOpInferSession::Init(const std::shared_ptr<Context> &context, const
   return kSuccess;
 }
 
+
+void SingleOpInferSession::GetShareMemInfo(const std::map<std::string, std::string> &share_mem,
+                                           const PrimitivePtr &dst_prim) {
+  CHECK_NULL_RETURN_VOID(dst_prim);
+  if (share_mem.find(lite::kInnerCalcWorkspaceSize) != share_mem.end()) {
+    auto value = share_mem.at(lite::kInnerCalcWorkspaceSize);
+    is_multi_model_sharing_mem_prepare_ = value == "true" ? true : false;
+    dst_prim->AddAttr(lite::kInnerCalcWorkspaceSize, MakeValue(is_multi_model_sharing_mem_prepare_));
+    MS_LOG(INFO) << "inner_calc_workspace_size: " << is_multi_model_sharing_mem_prepare_;
+  }
+  if (share_mem.find(lite::kInnerSharingWorkspace) != share_mem.end()) {
+    auto value = share_mem.at(lite::kInnerSharingWorkspace);
+    bool is_inner_sharing_workspace = value == "true" ? true : false;
+    dst_prim->AddAttr(lite::kInnerSharingWorkspace, MakeValue(is_inner_sharing_workspace));
+    MS_LOG(INFO) << "is_inner_sharing_workspace: " << is_inner_sharing_workspace;
+  }
+  if (share_mem.find(lite::kInnerModelPath) != share_mem.end()) {
+    auto model_path = share_mem.at(lite::kInnerModelPath);
+    dst_prim->AddAttr(lite::kInnerModelPath, MakeValue(model_path));
+    MS_LOG(INFO) << "inner_model_path: " << model_path;
+  }
+  if (share_mem.find(lite::kInnerWorkspace) != share_mem.end()) {
+    auto workspace = share_mem.at(lite::kInnerWorkspace);
+    bool is_workspace = workspace == "true" ? true : false;
+    dst_prim->AddAttr(lite::kInnerWorkspace, MakeValue(is_workspace));
+  }
+  if (share_mem.find(lite::kInnerWeightspace) != share_mem.end()) {
+    auto weightspace = share_mem.at(lite::kInnerWeightspace);
+    bool is_weightspace = weightspace == "true" ? true : false;
+    dst_prim->AddAttr(lite::kInnerWeightspace, MakeValue(is_weightspace));
+  }
+  if (share_mem.find(lite::kInnerWeightspaceWorkspace) != share_mem.end()) {
+    auto weightspace_workspace = share_mem.at(lite::kInnerWeightspaceWorkspace);
+    bool is_weightspace_workspace = weightspace_workspace == "true" ? true : false;
+    dst_prim->AddAttr(lite::kInnerWeightspaceWorkspace, MakeValue(is_weightspace_workspace));
+  }
+  if (share_mem.find(lite::kInnerPids) != share_mem.end()) {
+    auto pids = share_mem.at(lite::kInnerPids);
+    dst_prim->AddAttr(lite::kInnerPids, MakeValue(pids));
+  }
+  if (share_mem.find(lite::kInnerSharableHandle) != share_mem.end()) {
+    auto shareable_handle = share_mem.at(lite::kInnerSharableHandle);
+    dst_prim->AddAttr(lite::kInnerSharableHandle, MakeValue<uint64_t>(std::stoull(shareable_handle.c_str())));
+  }
+  if (share_mem.find(lite::kBundleModel) != share_mem.end()) {
+    auto bundle_model = share_mem.at(lite::kBundleModel);
+    bool is_bundle_model = bundle_model == "true" ? true : false;
+    dst_prim->AddAttr(lite::kBundleModel, MakeValue(is_bundle_model));
+  }
+}
+
 void SingleOpInferSession::SetCustomAscendOpAttrs(const kernel::BaseOperatorPtr &op) {
   if (config_infos_.find(lite::kAscendContextSection) == config_infos_.end() &&
       config_infos_.find("inner_common") == config_infos_.end()) {
@@ -99,43 +154,7 @@ void SingleOpInferSession::SetCustomAscendOpAttrs(const kernel::BaseOperatorPtr 
   auto dst_prim = custom_op->GetPrim();
   CHECK_NULL_RETURN_VOID(dst_prim);
   auto share_mem = config_infos_[lite::kInnerCommon];
-  if (share_mem.find(lite::kInnerCalcWorkspaceSize) != share_mem.end()) {
-    auto value = share_mem[lite::kInnerCalcWorkspaceSize];
-    is_multi_model_sharing_mem_prepare_ = value == "true" ? true : false;
-    dst_prim->AddAttr(lite::kInnerCalcWorkspaceSize, MakeValue(is_multi_model_sharing_mem_prepare_));
-    MS_LOG(INFO) << "inner_calc_workspace_size: " << is_multi_model_sharing_mem_prepare_;
-  }
-  if (share_mem.find(lite::kInnerSharingWorkspace) != share_mem.end()) {
-    auto value = share_mem[lite::kInnerSharingWorkspace];
-    bool is_inner_sharing_workspace = value == "true" ? true : false;
-    dst_prim->AddAttr(lite::kInnerSharingWorkspace, MakeValue(is_inner_sharing_workspace));
-    MS_LOG(INFO) << "is_inner_sharing_workspace: " << is_inner_sharing_workspace;
-  }
-  if (share_mem.find(lite::kInnerModelPath) != share_mem.end()) {
-    auto model_path = share_mem[lite::kInnerModelPath];
-    dst_prim->AddAttr(lite::kInnerModelPath, MakeValue(model_path));
-    MS_LOG(INFO) << "inner_model_path: " << model_path;
-  }
-  if (share_mem.find(lite::kInnerWorkspace) != share_mem.end()) {
-    auto workspace = share_mem[lite::kInnerWorkspace];
-    bool is_workspace = workspace == "true" ? true : false;
-    dst_prim->AddAttr(lite::kInnerWorkspace, MakeValue(is_workspace));
-  }
-  if (share_mem.find(lite::kInnerWeightspace) != share_mem.end()) {
-    auto weightspace = share_mem[lite::kInnerWeightspace];
-    bool is_weightspace = weightspace == "true" ? true : false;
-    dst_prim->AddAttr(lite::kInnerWeightspace, MakeValue(is_weightspace));
-  }
-  if (share_mem.find(lite::kInnerWeightspaceWorkspace) != share_mem.end()) {
-    auto weightspace_workspace = share_mem[lite::kInnerWeightspaceWorkspace];
-    bool is_weightspace_workspace = weightspace_workspace == "true" ? true : false;
-    dst_prim->AddAttr(lite::kInnerWeightspaceWorkspace, MakeValue(is_weightspace_workspace));
-  }
-  if (share_mem.find(lite::kBundleModel) != share_mem.end()) {
-    auto bundle_model = share_mem[lite::kBundleModel];
-    bool is_bundle_model = bundle_model == "true" ? true : false;
-    dst_prim->AddAttr(lite::kBundleModel, MakeValue(is_bundle_model));
-  }
+  GetShareMemInfo(share_mem, dst_prim);
   auto ascend_context = config_infos_[lite::kAscendContextSection];
   std::string profiling_path;
   if (ascend_context.find(lite::kProfilingPathKey) != ascend_context.end()) {
@@ -235,6 +254,8 @@ std::tuple<kernel::KernelModPtr, LiteKernelArgs> SingleOpInferSession::BuildCust
     MS_LOG(ERROR) << "kernel init failed " << kernel_name;
     return std::make_tuple(nullptr, LiteKernelArgs{});
   }
+  auto prim = kernel_mod->primitive();
+  sharable_handle_ = GetValue<uint64_t>(prim->GetAttr(lite::kInnerSharableHandle));
   if (is_multi_model_sharing_mem_prepare_) {
     DestoryKernelTensor(args);
     MS_LOG(INFO) << "is multi model sharing mem prepare";
