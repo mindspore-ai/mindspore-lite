@@ -74,7 +74,7 @@ TEST_F(SelectInferTest, SelectInferTest0) {
  * outputs[1].shape: [8, 9, 10, 11]
  */
 TEST_F(SelectInferTest, SelectInferTest1) {
-  size_t inputs_size = 5;
+  size_t inputs_size = 6;
   std::vector<TensorC *> inputs(inputs_size, NULL);
   inputs[0] = new TensorC;
   inputs[1] = new TensorC;

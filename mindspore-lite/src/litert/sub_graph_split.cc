@@ -935,11 +935,11 @@ void SearchSubGraph::InsertParallelNode(uint32_t index, Subgraph *subgraph) {
   if (subgraph == nullptr) {
     return;
   }
+  Subgraph new_graph;
   if (subgraph->search_terminate_) {
     if (!subgraph->nodes_.empty()) {
       sub_graphs_.push_back(std::move(*subgraph));
     }
-    Subgraph new_graph;
     subgraph = &new_graph;
   }
   LiteGraph::Node *node = node_list_[index];
