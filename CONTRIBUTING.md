@@ -23,14 +23,14 @@ For individual contributor, please refer to [ICLA online document](https://www.m
 
 ## Getting Started
 
-- Fork the repository on [Github](https://github.com/mindspore-ai/mindspore) or [Gitee](https://gitee.com/mindspore/mindspore).
-- Read the [README.md](README.md) and [install page](https://www.mindspore.cn/install/en) for project information and build instructions.
+- Fork the repository on [Gitee](https://gitee.com/mindspore/mindspore).
+- Read the [README.md](README.md) and [install page](https://www.mindspore.cn/lite/docs/en/master/use/downloads.html) for installation package and usage instructions.
 
 ## Contribution Workflow
 
 ### Code style
 
-Please follow this style to make MindSpore easy to review, maintain and develop.
+Please follow this style to make MindSpore Lite easy to review, maintain and develop.
 
 - Coding guidelines
 
@@ -64,12 +64,9 @@ Please follow this style to make MindSpore easy to review, maintain and develop.
     If you want to download the code to the local machine, `git` is the best way:
 
     ```shell
-    # For GitHub
-    git clone https://github.com/{insert_your_forked_repo}/mindspore.git
-    git remote add upstream https://github.com/mindspore-ai/mindspore.git
     # For Gitee
-    git clone https://gitee.com/{insert_your_forked_repo}/mindspore.git
-    git remote add upstream https://gitee.com/mindspore/mindspore.git
+    git clone https://gitee.com/{insert_your_forked_repo}/mindspore-lite.git
+    git remote add upstream https://gitee.com/mindspore/mindspore-lite.git
     ```
 
 - Develop code locally
@@ -95,9 +92,9 @@ Please follow this style to make MindSpore easy to review, maintain and develop.
     git push origin {new_branch_name}
     ```
 
-- Pull a request to MindSpore repository
+- Pull a request to MindSpore Lite repository
 
-    In the last step, your need to pull a compare request between your new branch and MindSpore `master` branch. After finishing the pull request, the Jenkins CI will be automatically set up for building test. Your pull request should be merged into the upstream master branch as soon as possible to reduce the risk of merging.
+    In the last step, your need to pull a compare request between your new branch and MindSpore Lite `master` branch. After finishing the pull request, the Jenkins CI will be automatically set up for building test. Your pull request should be merged into the upstream master branch as soon as possible to reduce the risk of merging.
 
 ### Report issues
 
@@ -105,7 +102,7 @@ A great way to contribute to the project is to send a detailed report when you e
 
 When reporting issues, refer to this format:
 
-- What version of env (mindspore, os, python etc) are you using?
+- What version of env (MindSpore Lite, os, python etc) are you using?
 - Is this a BUG REPORT or FEATURE REQUEST?
 - What kind of issue is, add the labels to highlight it on the issue dashboard.
 - What happened?
@@ -122,7 +119,7 @@ When reporting issues, refer to this format:
 
 ### Propose PRs
 
-- Raise your idea as an *issue* on [GitHub](https://github.com/mindspore-ai/mindspore/issues) or [Gitee](https://gitee.com/mindspore/mindspore/issues)
+- Raise your idea as an *issue* on [Gitee](https://gitee.com/mindspore/mindspore-lite/issues)
 - If it is a new feature that needs lots of design details, a design proposal should also be submitted.
 - After reaching consensus in the issue discussions and design proposal reviews, complete the development on the forked repo and submit a PR.
 - None of PRs is not permitted until it receives **2+ LGTM** from approvers. Please NOTICE that approver is NOT allowed to add *LGTM* on his own PR.
