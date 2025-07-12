@@ -35,6 +35,18 @@
 #include "src/common/common.h"
 
 namespace mindspore {
+using MSTensorPtr = std::shared_ptr<MSTensor>;
+
+class MSTensorRel {
+ public:
+  explicit MSTensorRel(const MSTensorPtr &tensor) : tensor_(tensor) {}
+  ~MSTensorRel() = default;
+  void Rel() const { tensor_ = nullptr; }
+
+ private:
+  mutable MSTensorPtr tensor_;
+};
+
 struct RefDataInfo {
   std::string name;
   ShapeVector shape;
@@ -203,6 +215,8 @@ class GeGraphExecutor : public LiteGraphExecutor {
   void SetRefShape(std::vector<int64_t> *ref_shape, bool dyn, std::string tensor_name);
   bool InitInputDeviceTensor(const FuncGraphPtr &anf_graph);
   bool InitOutputDeviceTensor(const FuncGraphPtr &anf_graph, uint32_t graph_id);
+  std::shared_ptr<GeTensor> ConvertMSTensor(const std::shared_ptr<MSTensor> &tensor, const std::string &format,
+                                            bool copy = true);
 };
 
 struct GeSessionContext {

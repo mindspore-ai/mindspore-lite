@@ -992,7 +992,7 @@ if [[ "X$ENABLE_FAST_HASH_TABLE" == "Xon" ]]; then
 else
     CMAKE_ARGS="${CMAKE_ARGS} -DENABLE_FAST_HASH_TABLE=OFF"
 fi
-cd ${BASEPATH}/mindspore && git apply ${BASEPATH}/third_party/patch/mindspore/decouple_mindspore.patch
+
 get_version
 CMAKE_ARGS="${CMAKE_ARGS} -DVERSION_STR=${VERSION_STR}"
 

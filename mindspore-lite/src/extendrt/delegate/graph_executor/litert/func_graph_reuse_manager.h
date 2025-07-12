@@ -27,6 +27,8 @@
 #include "src/common/helper/infer_helpers.h"
 #include "src/extendrt/session/lite_graph_executor.h"
 namespace mindspore {
+using MSTensorPtr = std::shared_ptr<MSTensor>;
+
 struct ModelBufPair {
   void *buf = nullptr;
   size_t buf_size = 0;
