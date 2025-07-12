@@ -46,7 +46,9 @@ int32_t fileIterator(mindspore::lite::LiteSession *session, const std::string &p
   int32_t res = 0;
   if (auto dir = opendir(path.c_str())) {
     while (auto f = readdir(dir)) {
-      if (f->d_name[0] == '.') continue;
+      if (f->d_name[0] == '.') {
+        continue;
+      }
       if (f->d_type == DT_DIR) fileIterator(session, path + f->d_name + "/", cb);
 
       if (f->d_type == DT_REG) res |= cb(session, path + f->d_name);

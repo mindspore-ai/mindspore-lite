@@ -94,19 +94,25 @@ TEST_F(TestBNGradFp32, BNGradFp32) {
   EXPECT_EQ(0, ret);
   std::cout << "==========dx==========\n";
   auto dx = reinterpret_cast<float *>(outputs[0]->MutableData());
-  for (int i = 0; i < 7; i++) std::cout << dx[i] << " ";
+  for (int i = 0; i < 7; i++) {
+    std::cout << dx[i] << " ";
+  }
   std::cout << "\n";
   auto res = CompareRelativeOutput(dx, "./bngrad/output_dx_2_4_5_3.bin");
   EXPECT_EQ(res, 0);
   std::cout << "\n=======dscale=======\n";
   auto dscale = reinterpret_cast<float *>(outputs[1]->MutableData());
-  for (int i = 0; i < channels; i++) std::cout << dscale[i] << " ";
+  for (int i = 0; i < channels; i++) {
+    std::cout << dscale[i] << " ";
+  }
   std::cout << "\n";
   res = CompareRelativeOutput(dscale, "./bngrad/output_dscale_3.bin");
   EXPECT_EQ(res, 0);
   std::cout << "==========dbias==========\n";
   auto dbias = reinterpret_cast<float *>(outputs[2]->MutableData());
-  for (int i = 0; i < 3; i++) std::cout << dbias[i] << " ";
+  for (int i = 0; i < 3; i++) {
+    std::cout << dbias[i] << " ";
+  }
   std::cout << "\n";
   res = CompareRelativeOutput(dbias, "./bngrad/output_dbias_3.bin");
   for (auto v : inputs) {
@@ -198,10 +204,14 @@ TEST_F(TestBNGradFp32, BNTtrainFp32) {
   kernel_obj->Run();
 
   std::cout << "================save_mean==============================\n";
-  for (int i = 0; i < channels; i++) std::cout << curr_mean[i] << " ";
+  for (int i = 0; i < channels; i++) {
+    std::cout << curr_mean[i] << " ";
+  }
   std::cout << "\n";
   std::cout << "===============save_var==============================\n";
-  for (int i = 0; i < channels; i++) std::cout << curr_var[i] << " ";
+  for (int i = 0; i < channels; i++) {
+    std::cout << curr_var[i] << " ";
+  }
   std::cout << "\n";
   delete[] reinterpret_cast<float *>(x_tensor->MutableData());
   auto res = CompareRelativeOutput(curr_mean, "./bngrad/running_mean_3.bin");

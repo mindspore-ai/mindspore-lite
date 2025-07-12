@@ -28,7 +28,7 @@
 #include "include/train/train_session.h"
 #include "src/utils.h"
 
-static unsigned int seed = time(NULL);
+static unsigned int seed = time(nullptr);
 constexpr int kBatchNum = 20;
 constexpr int kPrintNum = 10;
 constexpr float kThreshold = 0.9f;

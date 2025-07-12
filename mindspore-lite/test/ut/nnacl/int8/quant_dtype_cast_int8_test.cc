@@ -29,7 +29,7 @@ class QuantCastInt8Test : public mindspore::CommonTest {
 };
 
 void Int8ToFp32Util(const int8_t *quant_values, float *real_values, float scale, int32_t zp, int size) {
-  if (quant_values == NULL || real_values == NULL) {
+  if (quant_values == nullptr || real_values == nullptr) {
     return;
   }
 
@@ -41,7 +41,7 @@ void Int8ToFp32Util(const int8_t *quant_values, float *real_values, float scale,
 
 void Fp32ToInt8Util(const float *real_values, int8_t *quant_values, float scale, int32_t zp, int size,
                     int32_t min_value, int32_t max_value) {
-  if (quant_values == NULL || real_values == NULL) {
+  if (quant_values == nullptr || real_values == nullptr) {
     return;
   }
   const float inverse_scale = 1.0f / scale;
@@ -62,7 +62,7 @@ void Fp32ToInt8Util(const float *real_values, int8_t *quant_values, float scale,
 
 #ifdef ENABLE_ARM64
 void Fp16ToInt8Util(const float16_t *real_values, int8_t *quant_values, float scale, int32_t zp, int size) {
-  if (quant_values == NULL || real_values == NULL) {
+  if (quant_values == nullptr || real_values == nullptr) {
     return;
   }
   for (int i = 0; i < size; ++i) {
@@ -143,7 +143,7 @@ TEST_F(QuantCastInt8Test, Fp16Int8Size33) {
 }
 
 void Int8ToFp16Util(const int8_t *quant_values, float16_t *real_values, float scale, int32_t zp, int size) {
-  if (quant_values == NULL || real_values == NULL) {
+  if (quant_values == nullptr || real_values == nullptr) {
     return;
   }
   for (int i = 0; i < size; ++i) {
