@@ -51,6 +51,7 @@ constexpr auto kRefModeNone = "none";
 constexpr auto kRefModeVariable = "variable";
 constexpr auto kRefModeAll = "all";
 constexpr size_t kAlignRefData = 32;
+constexpr size_t kErrorSize = 0;
 
 size_t ALIGN_UP_REF_DATA(size_t size) {
   return ((size + kMemAlignSize + kAlignRefData - 1) / kMemAlignSize) * kMemAlignSize;
@@ -1230,7 +1231,7 @@ bool GeGraphExecutor::GetOneRealInputs(const FuncGraphPtr &anf_graph, std::vecto
       return false;
     }
     MS_LOG(INFO) << "Input " << i << " shape " << input->Shape() << ", datatype " << input->DataType();
-    auto ge_tensor = device::ascend::TransformUtil::ConvertTensor(input, kOpFormat_NCHW);
+    auto ge_tensor = ConvertMSTensor(input, kOpFormat_NCHW);
     if (ge_tensor == nullptr) {
       MS_LOG(ERROR) << "Failed to converter input " << i << " ME Tensor to GE Tensor";
       return false;
@@ -1556,8 +1557,7 @@ bool GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &i
   std::vector<::ge::Tensor> ge_inputs;
   for (size_t i = 0; i < inputs.size(); i++) {
     auto &ms_tensor_input = inputs[i];
-    auto ge_tensor =
-      device::ascend::TransformUtil::ConvertTensor(std::make_shared<MSTensor>(ms_tensor_input), kOpFormat_NCHW, false);
+    auto ge_tensor = ConvertMSTensor(std::make_shared<MSTensor>(ms_tensor_input), kOpFormat_NCHW, false);
     if (ge_tensor == nullptr) {
       MS_LOG(ERROR) << "Failed to converter input " << i << " ME Tensor to GE Tensor";
       return false;
@@ -1754,6 +1754,56 @@ bool GeGraphExecutor::OfflineBuildGraph(const FuncGraphPtr &graph) {
     return false;
   }
   return true;
+}
+
+std::shared_ptr<GeTensor> GeGraphExecutor::ConvertMSTensor(const std::shared_ptr<MSTensor> &tensor,
+                                                           const std::string &format, bool copy) {
+  // get tensor data type size
+  MS_EXCEPTION_IF_NULL(tensor);
+  auto data_type = tensor->DataType();
+  if (data_type == DataType::kObjectTypeString) {
+    MS_LOG(ERROR) << "The MSTensor data type \'string\' is unsupported.";
+  }
+  size_t type_size = GetDataTypeSize(static_cast<const TypeId>(data_type));
+  if (type_size == kErrorSize) {
+    MS_LOG(ERROR) << "The MSTensor data type size is wrong, type size is: " << type_size;
+    return nullptr;
+  }
+
+  // get tensor buff size
+  size_t data_buff_size = tensor->DataSize();
+  if (data_buff_size == 0) {
+    MS_LOG(INFO) << "The MSTensor data buff size is 0.";
+  }
+  // create ge tensor
+  auto desc = device::ascend::TransformUtil::GetGeTensorDesc(tensor->Shape(),
+                                                             static_cast<const TypeId>(tensor->DataType()), format);
+  if (desc == nullptr) {
+    MS_LOG(ERROR) << "Failed to get Tensor Desc";
+    return nullptr;
+  }
+  std::shared_ptr<GeTensor> tensor_ptr = std::make_shared<GeTensor>(*desc);
+  if (tensor_ptr == nullptr) {
+    MS_LOG(ERROR) << "Failed to convert MSTensor to Ge Tensor!";
+    return nullptr;
+  }
+  if (copy) {
+    auto ret = tensor_ptr->SetData(std::static_pointer_cast<const uint8_t>(tensor->Data()).get(), data_buff_size);
+    if (ret != ge::GRAPH_SUCCESS) {
+      MS_LOG(ERROR) << "Failed to call ge::Tensor SetData(const uint8_t*, size), data size " << data_buff_size;
+      return nullptr;
+    }
+  } else {
+    MSTensorRel rel(tensor);
+    auto ret = tensor_ptr->SetData(static_cast<uint8_t *>(tensor->MutableData()), data_buff_size,
+                                   [rel](uint8_t *) -> void { rel.Rel(); });
+    if (ret != ge::GRAPH_SUCCESS) {
+      MS_LOG(ERROR) << "Failed to call ge::Tensor SetData(uint8_t*, size, DeleteFunc), data size " << data_buff_size;
+      return nullptr;
+    }
+  }
+  MS_LOG(DEBUG) << "Convert MSTensor to Ge Tensor success!";
+  return tensor_ptr;
 }
 
 std::map<int64_t, std::shared_ptr<GeSessionContext>> GeSessionManager::ge_session_map_;
