@@ -22,7 +22,7 @@
 #include <utility>
 #include <memory>
 #include <deque>
-#include "./securec.h"
+#include "include/securec.h"
 #include "mindspore-lite/minddata/dataset/util/allocator.h"
 #include "mindspore-lite/minddata/dataset/util/list.h"
 #include "mindspore-lite/minddata/dataset/util/lock.h"

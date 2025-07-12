@@ -390,7 +390,7 @@ if(MSLITE_ENABLE_ACL)
 endif()
 
 add_library(mindspore-lite SHARED $<TARGET_OBJECTS:lite_src_mid>)
-target_link_libraries(mindspore-lite lite_src_common_mid securec)
+target_link_libraries(mindspore-lite lite_src_common_mid mindspore::securec)
 set_target_properties(mindspore-lite PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 
 if(APPLE)
@@ -499,7 +499,7 @@ if(SUPPORT_TRAIN)
   add_dependencies(lite_train_src_mid lite_src_train_common_mid fbs_src fbs_inner_src)
 
   add_library(mindspore-lite-train SHARED $<TARGET_OBJECTS:lite_train_src_mid>)
-  target_link_libraries(mindspore-lite-train lite_src_train_common_mid securec)
+  target_link_libraries(mindspore-lite-train lite_src_train_common_mid mindspore::securec)
   set_target_properties(mindspore-lite-train PROPERTIES OUTPUT_NAME "mindspore-lite-train")
   set_target_properties(mindspore-lite-train PROPERTIES CLEAN_DIRECT_OUTPUT 1)
   if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full")
@@ -545,12 +545,12 @@ if(MSLITE_ENABLE_RUNTIME_CONVERT)
             quantizer_mid fusion_mid proto_mid graph_pass_mid preprocess_mid
             cpu_kernel_mid ccsrc_src_mid converter_src_mid lite_exporter_mid
             config_parser_mid mslite_converter_plugin mindspore_core mindspore_ops coder_mid
-            mindir_serializer_mid mindspore::protobuf ${SECUREC_LIBRARY})
+            mindir_serializer_mid mindspore::protobuf mindspore::securec)
     target_link_libraries(mindspore-lite_static
             quantizer_mid fusion_mid proto_mid graph_pass_mid preprocess_mid
             cpu_kernel_mid ccsrc_src_mid converter_src_mid lite_exporter_mid
             config_parser_mid mslite_converter_plugin mindspore_core mindspore_ops coder_mid
-            mindir_serializer_mid mindspore::protobuf ${SECUREC_LIBRARY})
+            mindir_serializer_mid mindspore::protobuf mindspore::securec)
     target_link_libraries(mindspore-lite
             ccsrc_debug_common_mid_ mindir_proto_mid _mindspore_transform_express_ir_obj)
     target_link_libraries(mindspore-lite_static

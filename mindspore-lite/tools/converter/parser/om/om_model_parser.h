@@ -22,7 +22,7 @@
 #include <vector>
 #include "ir/anf.h"
 #include "ir/func_graph.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "include/registry/model_parser.h"
 #include "include/registry/model_parser_registry.h"
 #include "infer/custom.h"

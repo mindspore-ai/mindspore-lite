@@ -18,7 +18,7 @@
 #include <limits>
 #include <utility>
 
-#include "./securec.h"
+#include "include/securec.h"
 #include "mindspore-lite/minddata/dataset/util/log_adapter.h"
 
 namespace mindspore {

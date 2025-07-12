@@ -16,7 +16,7 @@
 
 #include "tools/converter/parser/pytorch/pytorch_activation_parser.h"
 #include <memory>
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "infer/cxx_api/activation.h"
 #include "nnacl/op_base.h"
 

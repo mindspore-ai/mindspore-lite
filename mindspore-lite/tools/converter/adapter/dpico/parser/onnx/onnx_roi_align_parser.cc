@@ -24,7 +24,7 @@
 #include "./onnx.pb.h"
 #include "include/registry/node_parser_registry.h"
 #include "mindapi/base/logging.h"
-#include "third_party/securec/include/securec.h"
+#include "include/securec.h"
 #include "mindspore/ops/op_def/op_name.h"
 
 namespace mindspore {

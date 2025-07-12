@@ -413,14 +413,14 @@ if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full")
     if(TARGET_AOS_ARM)
         set(THREADS_PREFER_PTHREAD_FLAG ON)
         target_link_libraries(minddata-lite
-                securec
+                mindspore::securec
                 mindspore::jpeg_turbo
                 mindspore::turbojpeg
                 mindspore::json
                 pthread
                 )
         target_link_libraries(minddata-lite_static
-                securec
+                mindspore::securec
                 mindspore::jpeg_turbo
                 mindspore::turbojpeg
                 mindspore::json
@@ -429,14 +429,14 @@ if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full")
     else()
         find_package(Threads REQUIRED)
         target_link_libraries(minddata-lite
-            securec
+            mindspore::securec
             mindspore::jpeg_turbo
             mindspore::turbojpeg
             mindspore::json
             Threads::Threads
             )
         target_link_libraries(minddata-lite_static
-            securec
+            mindspore::securec
             mindspore::jpeg_turbo
             mindspore::turbojpeg
             mindspore::json
@@ -643,7 +643,7 @@ elseif(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite")
         ${CORE_DIR}/utils/ms_utils.cc)
 
     target_link_libraries(minddata-lite
-        securec
+        mindspore::securec
         jpeg-turbo
         jpeg
         mindspore::json)

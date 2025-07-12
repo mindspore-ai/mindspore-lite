@@ -25,7 +25,7 @@
 #include "src/tensor.h"
 #include "src/common/log_adapter.h"
 #include "tools/common/tensor_util.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "nnacl/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"

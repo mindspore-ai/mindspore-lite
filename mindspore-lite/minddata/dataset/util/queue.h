@@ -22,7 +22,7 @@
 #include <utility>
 #include <vector>
 
-#include "./securec.h"
+#include "include/securec.h"
 #include "mindspore-lite/minddata/dataset/util/allocator.h"
 #include "mindspore-lite/minddata/dataset/util/log_adapter.h"
 #include "mindspore-lite/minddata/dataset/util/services.h"

@@ -26,7 +26,7 @@
 #endif
 
 #include <cstdlib>
-#include "securec/include/securec.h"
+#include "include/securec.h"
 
 #ifdef _MSC_VER
 #define PATH_MAX 1024
