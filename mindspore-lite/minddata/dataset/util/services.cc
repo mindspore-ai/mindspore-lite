@@ -21,7 +21,7 @@
 #else
 #include <stdlib.h>
 #endif
-#include "./securec.h"
+#include "include/securec.h"
 #include "mindspore-lite/minddata/dataset/util/circular_pool.h"
 #include "mindspore-lite/minddata/dataset/util/random.h"
 #include "mindspore-lite/minddata/dataset/util/task_manager.h"

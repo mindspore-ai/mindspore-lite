@@ -25,7 +25,7 @@
 #include "include/errorcode.h"
 #include "src/executor/kernel_exec.h"
 #include "src/common/version_manager.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "tools/converter/micro/coder/opcoders/op_coder_register.h"
 #include "tools/converter/micro/coder/log.h"
 #include "tools/converter/micro/coder/shape_info_container.h"

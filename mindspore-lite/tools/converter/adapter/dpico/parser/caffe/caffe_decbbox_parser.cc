@@ -21,7 +21,7 @@
 #include <string>
 #include "common/op_attr.h"
 #include "infer/custom.h"
-#include "third_party/securec/include/securec.h"
+#include "include/securec.h"
 #include "parser/detection_output_param_helper.h"
 
 namespace mindspore {

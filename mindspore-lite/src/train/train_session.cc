@@ -25,7 +25,7 @@
 #include <queue>
 #include <map>
 #include <set>
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "include/errorcode.h"
 #include "src/litert/lite_model.h"
 #include "src/litert/kernel_exec_util.h"

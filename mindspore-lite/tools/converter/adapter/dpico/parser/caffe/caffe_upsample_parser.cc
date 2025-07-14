@@ -21,7 +21,7 @@
 #include "common/op_attr.h"
 #include "infer/custom.h"
 #include "mindspore/ops/op_def/op_name.h"
-#include "third_party/securec/include/securec.h"
+#include "include/securec.h"
 
 namespace mindspore {
 namespace lite {

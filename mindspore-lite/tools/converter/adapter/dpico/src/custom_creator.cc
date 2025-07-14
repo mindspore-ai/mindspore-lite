@@ -31,7 +31,7 @@
 #include "src/om_generator.h"
 #include "src/graph_split_api.h"
 #include "infer/tuple_get_item.h"
-#include "third_party/securec/include/securec.h"
+#include "include/securec.h"
 #include "include/registry/converter_context.h"
 
 using mindspore::lite::RET_ERROR;

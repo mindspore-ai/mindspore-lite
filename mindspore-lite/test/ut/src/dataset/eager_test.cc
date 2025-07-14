@@ -16,7 +16,7 @@
 #include <chrono>
 #include "common/common_test.h"
 #include "gtest/gtest.h"
-#include "./securec.h"
+#include "include/securec.h"
 #include "minddata/dataset/include/dataset/tensor.h"
 #include "minddata/dataset/include/dataset/datasets.h"
 #include "minddata/dataset/include/dataset/transforms.h"

@@ -27,7 +27,7 @@
 #include "ir/func_graph.h"
 #include "ir/primitive.h"
 #include "schema/inner/model_generated.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "src/common/log_adapter.h"
 
 namespace mindspore {

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/train/train_populate_parameter.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "src/common/ops/populate/populate_register.h"
 #include "src/common/ops/populate/default_populate.h"
 #include "nnacl/strided_slice_parameter.h"

@@ -25,7 +25,7 @@
 #include <map>
 #include <memory>
 #include <utility>
-#include "third_party/securec/include/securec.h"
+#include "include/securec.h"
 #include "include/registry/converter_context.h"
 #include "common/data_transpose_utils.h"
 #include "mindapi/ir/anf.h"

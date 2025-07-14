@@ -23,7 +23,7 @@
 #include "common/anf_util.h"
 #include "common/string_util.h"
 #include "common/graph_output_name_keeper.h"
-#include "third_party/securec/include/securec.h"
+#include "include/securec.h"
 
 namespace mindspore {
 namespace dpico {

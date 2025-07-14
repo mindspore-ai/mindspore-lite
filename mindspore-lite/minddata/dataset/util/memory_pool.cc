@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "mindspore-lite/minddata/dataset/util/memory_pool.h"
-#include "./securec.h"
+#include "include/securec.h"
 
 namespace mindspore {
 namespace dataset {

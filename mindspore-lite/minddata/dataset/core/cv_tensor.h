@@ -22,7 +22,7 @@
 
 #include <opencv2/core/mat.hpp>
 
-#include "./securec.h"
+#include "include/securec.h"
 
 #include "mindspore-lite/minddata/dataset/include/dataset/constants.h"
 #include "mindspore-lite/minddata/dataset/core/data_type.h"

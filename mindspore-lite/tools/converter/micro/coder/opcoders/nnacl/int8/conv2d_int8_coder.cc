@@ -18,7 +18,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "coder/opcoders/nnacl/int8/conv2d_1x1_int8_coder.h"
 #include "coder/opcoders/nnacl/int8/conv2d_3x3_int8_coder.h"
 #include "coder/opcoders/nnacl/int8/convolution_depthwise_int8_coder.h"

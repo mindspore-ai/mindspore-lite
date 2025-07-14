@@ -18,7 +18,7 @@ if(TARGET_HIMIX)
     add_subdirectory(${PROVIDERS_DIR}/nnie_proposal nnie_proposal)
     set(CMAKE_SKIP_BUILD_RPATH on)
     set(BENCHMARK_LINK_LIB ${BENCHMARK_LINK_LIB} pthread
-            mslite_proposal mslite_nnie dl nnie mpi  VoiceEngine upvqe dnvqe securec)
+            mslite_proposal mslite_nnie dl nnie mpi  VoiceEngine upvqe dnvqe mindspore::securec)
     if(${MSLITE_REGISTRY_DEVICE}  STREQUAL "Hi3516D")
         include_directories(${PROVIDERS_DIR}/nnie/third_patry/hi3516_sdk)
         link_directories(${PROVIDERS_DIR}/nnie/third_patry/hi3516_sdk/lib)

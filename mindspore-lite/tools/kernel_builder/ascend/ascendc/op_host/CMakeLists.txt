@@ -6,7 +6,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR} ops_srcs)
 opbuild(OPS_SRC ${ops_srcs} OUT_DIR ${ASCEND_AUTOGEN_PATH} INC_DIR ${BUILD_INC_910A_DIR}
-        SEC_INC ${SECUREC_INC_DIR})
+        SEC_INC ${securec_INC})
 
 add_library(cust_ascendc_op_proto SHARED ${ops_srcs} ${ASCEND_AUTOGEN_PATH}/op_proto.cc)
 target_compile_definitions(cust_ascendc_op_proto PRIVATE OP_PROTO_LIB)

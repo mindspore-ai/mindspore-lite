@@ -22,7 +22,7 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "nnacl/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindapi/base/types.h"
