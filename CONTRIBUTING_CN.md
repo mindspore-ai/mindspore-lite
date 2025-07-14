@@ -24,14 +24,14 @@
 
 ## 快速入门
 
-- 在[Github](https://github.com/mindspore-ai/mindspore)或[Gitee](https://gitee.com/mindspore/mindspore)上fork代码仓。
-- 参见[README_CN.md](README_CN.md)和[安装页面](https://www.mindspore.cn/install)了解项目信息和构建说明。
+- 在[Gitee](https://gitee.com/mindspore/mindspore-lite)上fork代码仓。
+- 参见[README_CN.md](README_CN.md)和[下载页面](https://www.mindspore.cn/lite/docs/zh-CN/master/use/downloads.html)了解安装包与使用说明。
 
 ## 贡献流程
 
 ### 代码风格
 
-请遵循此风格，以便MindSpore审查、维护和开发。
+请遵循此风格，以便MindSpore Lite审查、维护和开发。
 
 - 编码指南
 
@@ -65,12 +65,9 @@
     如果您想将代码下载到本地计算机，最好使用git方法：
 
     ```shell
-    # 在GitHub上：
-    git clone https://github.com/{insert_your_forked_repo}/mindspore.git
-    git remote add upstream https://github.com/mindspore-ai/mindspore.git
     # 在Gitee上：
-    git clone https://gitee.com/{insert_your_forked_repo}/mindspore.git
-    git remote add upstream https://gitee.com/mindspore/mindspore.git
+    git clone https://gitee.com/{insert_your_forked_repo}/mindspore-lite.git
+    git remote add upstream https://gitee.com/mindspore/mindspore-lite.git
     ```
 
 - 本地开发代码。
@@ -96,9 +93,9 @@
     git push origin {新分支名称}
     ```
 
-- 将请求拉取到MindSpore代码仓。
+- 将请求拉取到MindSpore Lite代码仓。
 
-    在最后一步中，您需要在新分支和MindSpore主分支之间拉取比较请求。完成拉取请求后，Jenkins CI将自动设置，进行构建测试。拉取请求应该尽快合并到上游master分支中，以降低合并的风险。
+    在最后一步中，您需要在新分支和MindSpore Lite主分支之间拉取比较请求。完成拉取请求后，Jenkins CI将自动设置，进行构建测试。拉取请求应该尽快合并到上游master分支中，以降低合并的风险。
 
 ### 报告Issue
 
@@ -106,7 +103,7 @@
 
 报告issue时，请参考以下格式：
 
-- 说明您使用的环境版本（MindSpore、OS、Python等）。
+- 说明您使用的环境版本（MindSpore Lite、OS、Python等）。
 - 说明是错误报告还是功能需求。
 - 说明issue类型，添加标签可以在issue板上突出显示该issue。
 - 问题是什么？
@@ -123,7 +120,7 @@
 
 ### 提交PR
 
-- 在[GitHub](https://github.com/mindspore-ai/mindspore/issues)或[Gitee](https://gitee.com/mindspore/mindspore/issues)上通过issue提出您的想法。
+- 在[Gitee](https://gitee.com/mindspore/mindspore-lite/issues)上通过issue提出您的想法。
 - 如果是需要大量设计细节的新功能，还应提交设计方案。
 - 经issue讨论和设计方案评审达成共识后，在已fork的代码仓开发，并提交PR。
 - 任何PR至少需要位2位审批人的LGTM标签。请注意，审批人不允许在自己的PR上添加LGTM标签。
