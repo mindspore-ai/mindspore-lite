@@ -26,7 +26,7 @@
 #undef HAVE_STDLIB_H
 #endif
 
-#include "./securec.h"
+#include "include/securec.h"
 #ifndef ENABLE_ANDROID
 #include "proto/example.pb.h"
 #endif

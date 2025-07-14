@@ -26,7 +26,7 @@
 #endif
 #include "src/common/common.h"
 #include "include/api/serialization.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 
 namespace mindspore {
 namespace lite {

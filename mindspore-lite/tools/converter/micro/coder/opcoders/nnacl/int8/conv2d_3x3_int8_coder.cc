@@ -16,7 +16,7 @@
 
 #include "coder/opcoders/nnacl/int8/conv2d_3x3_int8_coder.h"
 #include <vector>
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "nnacl/int8/conv3x3_int8.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/log.h"

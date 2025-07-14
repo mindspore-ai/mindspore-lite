@@ -21,7 +21,7 @@
 #include <string>
 #include <map>
 #include <algorithm>
-#include "third_party/securec/include/securec.h"
+#include "include/securec.h"
 #include "common/op_enum.h"
 #include "common/op_attr.h"
 #include "common/string_util.h"

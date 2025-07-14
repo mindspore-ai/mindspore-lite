@@ -424,7 +424,7 @@ target_link_libraries(mindspore_converter
         fusion_mid
         quantizer_mid
         proto_mid
-        ${SECUREC_LIBRARY}
+        mindspore::securec
         mindspore::json
         mindspore_core
         mindspore_ops

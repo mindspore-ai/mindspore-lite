@@ -26,7 +26,7 @@
 #include <memory>
 #include <set>
 #include <unordered_map>
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "include/registry/model_parser.h"
 #include "include/registry/model_parser_registry.h"
 #include "tools/converter/parser/onnx/onnx_node_parser_registry.h"

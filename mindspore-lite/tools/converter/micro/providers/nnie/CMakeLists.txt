@@ -32,4 +32,4 @@ set(SRC
   ${LITE_DIR}/providers/nnie_proposal/src/proposal.cc)
 
 add_library(micro_nnie SHARED ${SRC})
-target_link_libraries(micro_nnie nnie mpi VoiceEngine upvqe dnvqe securec)
+target_link_libraries(micro_nnie nnie mpi VoiceEngine upvqe dnvqe mindspore::securec)

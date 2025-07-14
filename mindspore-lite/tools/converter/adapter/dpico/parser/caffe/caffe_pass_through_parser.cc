@@ -20,7 +20,7 @@
 #include <string>
 #include "infer/custom.h"
 #include "common/op_attr.h"
-#include "third_party/securec/include/securec.h"
+#include "include/securec.h"
 
 namespace mindspore {
 namespace lite {

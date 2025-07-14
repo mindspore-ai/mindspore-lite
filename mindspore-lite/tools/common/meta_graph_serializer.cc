@@ -25,7 +25,7 @@
 #include "ir/dtype/type_id.h"
 #include "src/common/utils.h"
 #include "include/errorcode.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "src/common/file_utils.h"
 #include "src/common/decrypt.h"
 

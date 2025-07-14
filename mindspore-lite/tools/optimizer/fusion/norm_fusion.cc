@@ -26,7 +26,7 @@
 #include "mindspore/ops/infer/instance_norm.h"
 #include "include/common/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "nnacl/op_base.h"
 #include "src/common/ops/anf_utils.h"
 #include "ops_utils/op_utils.h"

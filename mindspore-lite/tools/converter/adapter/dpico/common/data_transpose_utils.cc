@@ -19,7 +19,7 @@
 #include <unordered_map>
 #include <vector>
 #include <numeric>
-#include "third_party/securec/include/securec.h"
+#include "include/securec.h"
 #include "common/check_base.h"
 #include "common/float16.h"
 #include "mindapi/base/logging.h"

@@ -55,6 +55,17 @@ else
   echo "GLOG path is ${GLOG}"
 fi
 
+# get securec path
+if [ ${MSLIBS_CACHE_PATH} ]; then
+  SECUREC_LIST=()
+  while IFS='' read -r line; do SECUREC_LIST+=("$line"); done < <(ls -d ${MSLIBS_CACHE_PATH}/securec_*/include)
+  SECUREC=${SECUREC_LIST[0]}
+  echo "SECUREC path is ${SECUREC}"
+else
+  SECUREC=$(ls -d mindspore/lite/build/.mslib/securec_*/include)
+  echo "SECUREC path is ${SECUREC}"
+fi
+
 HEADER_LOCATION="-I${MINDSPORE_HOME}
 -I${MINDSPORE_HOME}/mindspore/core/include
 -I${MINDSPORE_HOME}/mindspore/core/mindrt
@@ -65,7 +76,7 @@ HEADER_LOCATION="-I${MINDSPORE_HOME}
 -I${MINDSPORE_LITE_HOME}/src/litert/kernel/cpu
 -I${PROJECT_ROOT_HOME}/third_party
 -I${PROJECT_ROOT_HOME}/build
--I${PROJECT_ROOT_HOME}/third_party/securec/include
+-I${SECUREC}
 -I${FLATBUFFERS}
 -I${NLOHMANN}
 -I${GLOG}

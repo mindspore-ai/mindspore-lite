@@ -25,7 +25,7 @@
 #include "common/infer_util.h"
 #include "include/errorcode.h"
 #include "include/registry/register_kernel_interface.h"
-#include "third_party/securec/include/securec.h"
+#include "include/securec.h"
 
 using mindspore::kernel::KernelInterface;
 using mindspore::lite::RET_ERROR;

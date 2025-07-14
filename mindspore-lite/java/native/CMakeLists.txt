@@ -149,7 +149,6 @@ if(MSLITE_ENABLE_PARALLEL_INFERENCE)
 endif()
 
 if(USE_GLOG)
-    include_directories(${TOP_DIR}/third_party/securec/include)
     include_directories(${CMAKE_BINARY_DIR}/jni_include)
     add_definitions(-DUSE_GLOG)
     set_property(SOURCE ${JNI_SRC} PROPERTY COMPILE_DEFINITIONS
@@ -201,7 +200,6 @@ if(SUPPORT_TRAIN)
         set_property(SOURCE ${CCSRC_SRC} PROPERTY COMPILE_DEFINITIONS
                 LOG_HDR_FILE_REL_PATH="mindspore-lite/../mindspore/mindspore/core/include/utils/log_adapter.h"
                 SUBMODULE_ID=mindspore::SubModuleId::SM_LITE)
-        include_directories(${TOP_DIR}/third_party/securec/include)
         include_directories(${CMAKE_BINARY_DIR}/jni_include)
         add_definitions(-DUSE_GLOG)
         set(JNI_TRAIN_SRC

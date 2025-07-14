@@ -16,7 +16,7 @@
 
 #include "tools/converter/parser/caffe/caffe_node_parser.h"
 #include <memory>
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "ir/dtype/type_id.h"
 #include "src/common/utils.h"
 #include "nnacl/op_base.h"

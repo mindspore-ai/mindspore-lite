@@ -15,7 +15,7 @@
  */
 
 #include "tools/benchmark_train/net_train_c_api.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 
 namespace mindspore {
 namespace lite {

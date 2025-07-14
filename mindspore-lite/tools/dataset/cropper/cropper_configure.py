@@ -49,7 +49,6 @@ MANUAL_HEADERS = [
 # (not all of them may be used now in MindData lite)
 EXTERNAL_DEPS = [
     "third_party",
-    "third_party/securec/include",
     "build/_deps/sqlite-src",
     "build/_deps/pybind11-src/include",
     "build/_deps/tinyxml2-src",
@@ -61,6 +60,7 @@ EXTERNAL_DEPS = [
     "build/_deps/jpeg_turbo-src",
     "build/_deps/jpeg_turbo-src/_build",
     "build/_deps/nlohmann_json-src",
+    "build/_deps/securec-src/include",
 ]
 
 # API files which the corresponding objects and all objects for their dependencies must always be included.

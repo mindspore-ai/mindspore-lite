@@ -24,7 +24,7 @@
 #include "infer/cxx_api/scale_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/common/tensor_util.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "nnacl/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "src/common/utils.h"

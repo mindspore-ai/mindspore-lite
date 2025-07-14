@@ -10,4 +10,4 @@ add_library(fusion_mid OBJECT ${FUSION_SRC})
 
 add_dependencies(fusion_mid fbs_src)
 add_dependencies(fusion_mid fbs_inner_src)
-target_link_libraries(fusion_mid securec)
+target_link_libraries(fusion_mid mindspore::securec)
