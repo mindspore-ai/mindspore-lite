@@ -43,7 +43,7 @@ int CoreMLExecutorWrapper::CompileMLModel(const std::string &modelPath) {
     return RET_ERROR;
   }
   mlmodelc_path_ = [[MLModelCURL path] UTF8String];
-  bool success = [(__bridge id)coreml_executor_ loadModelC:MLModelCURL];
+  bool success = [(__bridge id)coreml_executor_ load:MLModelCURL];
   if (!success) {
     NSLog(@"Load MLModelC failed!");
     (void)CleanTmpFile();
@@ -58,7 +58,7 @@ int CoreMLExecutorWrapper::CompileMLModel(const std::string &modelPath) {
 
 int CoreMLExecutorWrapper::Run(const std::vector<mindspore::MSTensor> &in_tensors,
                                const std::vector<mindspore::MSTensor> &out_tensors){
-  auto success = [(__bridge id)coreml_executor_ ExecuteWithInputs:in_tensors outputs:out_tensors];
+  auto success = [(__bridge id)coreml_executor_ run:in_tensors outputs:out_tensors];
   if (!success) {
     NSLog(@"coreML model execute failed!");
     return RET_ERROR;
