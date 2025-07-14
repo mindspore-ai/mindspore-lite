@@ -1,3 +1,3 @@
-# MindSpore Documentation
+# MindSpore Lite Documentation
 
-The MindSpore documentation is in the [MindSpore Docs](https://gitee.com/mindspore/docs) repository.
+The MindSpore Lite documentation is in the [MindSpore Lite Docs](https://gitee.com/mindspore/docs) repository.
