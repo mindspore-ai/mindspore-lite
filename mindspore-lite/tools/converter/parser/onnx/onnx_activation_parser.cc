@@ -17,7 +17,7 @@
 #include "tools/converter/parser/onnx/onnx_activation_parser.h"
 #include <memory>
 #include <vector>
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "infer/cxx_api/prelu_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/cxx_api/activation.h"

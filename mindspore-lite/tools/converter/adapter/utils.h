@@ -21,7 +21,7 @@
 #include <vector>
 #include <fstream>
 #include <iomanip>
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "mindapi/base/base.h"
 #include "include/errorcode.h"
 

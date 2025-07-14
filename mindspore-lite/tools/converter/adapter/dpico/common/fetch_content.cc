@@ -19,7 +19,7 @@
 #include <vector>
 #include "common/anf_util.h"
 #include "common/check_base.h"
-#include "third_party/securec/include/securec.h"
+#include "include/securec.h"
 
 namespace mindspore {
 namespace dpico {

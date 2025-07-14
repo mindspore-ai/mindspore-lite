@@ -25,7 +25,7 @@
 #include "infer/cxx_api/groupnorm_fusion.h"
 #include "include/common/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "nnacl/op_base.h"
 #include "src/common/ops/ops_utils.h"
 #include "ops_utils/op_utils.h"

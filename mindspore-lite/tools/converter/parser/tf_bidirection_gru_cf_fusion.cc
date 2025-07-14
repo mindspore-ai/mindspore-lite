@@ -29,7 +29,7 @@
 #include "src/common/utils.h"
 #include "include/common/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "tools/converter/ops/ops_def.h"
 #include "nnacl/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"

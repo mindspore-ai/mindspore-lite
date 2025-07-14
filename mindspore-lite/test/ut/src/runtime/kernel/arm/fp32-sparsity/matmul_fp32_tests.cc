@@ -21,7 +21,7 @@
 #include "src/common/file_utils.h"
 #include "nnacl/matmul_parameter.h"
 #include "src/tensor.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "src/litert/infer_manager.h"
 #include "src/litert/inner_context.h"
 #include "src/litert/kernel/cpu/fp32/matmul_fp32.h"

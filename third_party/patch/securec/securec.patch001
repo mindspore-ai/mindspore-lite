@@ -1,0 +1,108 @@
+diff -uprN securec_original/CMakeLists.txt securec_modified/CMakeLists.txt
+--- securec_original/CMakeLists.txt	1970-01-01 08:00:00.000000000 +0800
++++ securec_modified/CMakeLists.txt	2022-12-17 19:32:50.338347300 +0800
+@@ -0,0 +1,43 @@
++cmake_minimum_required(VERSION 3.14.0)
++project(securec)
++include(CMakePackageConfigHelpers)
++include(GNUInstallDirs)
++
++set(CMAKE_VERBOSE_MAKEFILE on)
++if(NOT MSVC)
++    if(CMAKE_SYSTEM_NAME MATCHES "Windows")
++        add_compile_definitions(SECUREC_ONLY_DECLARE_MEMSET)
++        SET(CMAKE_C_FLAGS "$ENV{CFLAGS} -fno-inline-functions -fno-omit-frame-pointer \
++            -fstack-protector-all -fPIC -D_FORTIFY_SOURCE=2 -O2")
++    elseif(NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU") # mac and lite packages using clang
++        SET(CMAKE_C_FLAGS "$ENV{CFLAGS} -fno-inline-functions -fno-omit-frame-pointer \
++            -fstack-protector-all -fPIC -D_FORTIFY_SOURCE=2 -O2")
++    else()
++        SET(CMAKE_C_FLAGS "$ENV{CFLAGS} -fPIC -Wl,-z,relro,-z,now,-z,noexecstack \
++            -Wno-nullability-completeness -fno-inline-functions -fno-omit-frame-pointer \
++            -fstack-protector-all -fPIC -D_FORTIFY_SOURCE=2 -O2 -D_LIBCPP_INLINE_VISIBILITY='' \
++            -D'_LIBCPP_EXTERN_TEMPLATE(...)='")
++    endif()
++    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
++    #add flags
++    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I/usr/local/include -Werror")
++endif()
++
++include_directories(./include)
++add_subdirectory(src)
++
++set(csec_INSTALL_LIB_DIR "lib")
++set(csec_INSTALL_INCLUDE_DIR "include")
++install(
++        TARGETS securec
++        DESTINATION ${csec_INSTALL_LIB_DIR}
++        COMPONENT securec
++)
++file(GLOB_RECURSE csec_HEADERS
++        ${CMAKE_SOURCE_DIR}/include/*
++)
++install(
++        FILES ${csec_HEADERS}
++        DESTINATION ${csec_INSTALL_INCLUDE_DIR}
++        COMPONENT securec
++)
+diff -uprN securec_original/Makefile securec_modified/Makefile
+--- securec_original/Makefile	2021-05-08 09:50:50.000000000 +0800
++++ securec_modified/Makefile	1970-01-01 08:00:00.000000000 +0800
+@@ -1,44 +0,0 @@
+-PROJECT=libboundscheck.so
+-
+-CC?=gcc
+-
+-OPTION  = -fPIC
+-OPTION += -fstack-protector-all
+-OPTION += -D_FORTIFY_SOURCE=2 -O2
+-OPTION += -Wformat=2 -Wfloat-equal -Wshadow
+-OPTION += -Wconversion
+-OPTION += -Wformat-security
+-OPTION += -Wextra
+-OPTION += --param ssp-buffer-size=4
+-OPTION += -Warray-bounds
+-OPTION += -Wpointer-arith
+-OPTION += -Wcast-qual
+-OPTION += -Wstrict-prototypes
+-OPTION += -Wmissing-prototypes
+-OPTION += -Wstrict-overflow=1
+-OPTION += -Wstrict-aliasing=2
+-OPTION += -Wswitch -Wswitch-default
+-
+-CFLAG   =  -Wall -DNDEBUG -O2 $(OPTION)
+-
+-SOURCES=$(wildcard src/*.c)
+-
+-OBJECTS=$(patsubst %.c,%.o,$(SOURCES))
+-
+-.PHONY:clean
+-
+-CFLAG += -Iinclude
+-LD_FLAG = -fPIC -s -Wl,-z,relro,-z,now,-z,noexecstack -fstack-protector-all
+-
+-$(PROJECT): $(OBJECTS)
+-	mkdir -p lib
+-	$(CC)  -shared -o lib/$@ $(patsubst %.o,obj/%.o,$(notdir $(OBJECTS))) $(LD_FLAG)
+-	@echo "finish $(PROJECT)"
+-
+-.c.o:
+-	@mkdir -p obj
+-	$(CC) -c $< $(CFLAG) -o obj/$(patsubst %.c,%.o,$(notdir $<))
+-
+-clean:
+-	-rm -rf obj lib
+-	@echo "clean up"
+diff -uprN securec_original/src/CMakeLists.txt securec_modified/src/CMakeLists.txt
+--- securec_original/src/CMakeLists.txt	1970-01-01 08:00:00.000000000 +0800
++++ securec_modified/src/CMakeLists.txt	2022-12-17 19:15:47.358347300 +0800
+@@ -0,0 +1,9 @@
++if(CMAKE_SYSTEM_NAME MATCHES "Windows")
++    list(APPEND SECUREC_SRCS "memset_s.c")
++else()
++    aux_source_directory(. SECUREC_SRCS)
++endif()
++add_library(securec STATIC ${SECUREC_SRCS})
++if(CMAKE_SYSTEM_NAME MATCHES "Windows")
++    target_compile_definitions(securec PRIVATE -DSECUREC_DLL_IMPORT)
++endif()

@@ -16,7 +16,7 @@
 #include <algorithm>
 #include <functional>
 #include <set>
-#include "./securec.h"
+#include "include/securec.h"
 #include "mindspore-lite/minddata/dataset/util/task_manager.h"
 #include "utils/ms_utils.h"
 

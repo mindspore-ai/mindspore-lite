@@ -18,7 +18,7 @@
 #include "include/api/format.h"
 #include "src/common/log_adapter.h"
 #include "src/litert/cxx_api/tensor_utils.h"
-#include "third_party/securec/include/securec.h"
+#include "include/securec.h"
 #include "src/common/mutable_tensor_impl.h"
 #include "python/src/tensor_numpy_impl.h"
 #include "ir/api_tensor_impl.h"

@@ -26,7 +26,7 @@
 #include "tools/converter/quantizer/quant_param_holder.h"
 #include "tools/converter/quantizer/quantize_util.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "nnacl/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"

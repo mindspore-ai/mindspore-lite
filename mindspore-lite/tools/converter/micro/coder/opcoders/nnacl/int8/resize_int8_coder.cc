@@ -18,7 +18,7 @@
 #include "coder/log.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_int8_serializer.h"
 #include "coder/opcoders/file_collector.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "nnacl/int8/quantize.h"
 #include "coder/opcoders/parallel.h"
 

@@ -18,7 +18,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
-#include "./securec.h"
+#include "include/securec.h"
 
 #ifndef ENABLE_ANDROID
 #include "mindspore-lite/minddata/dataset/util/task_manager.h"

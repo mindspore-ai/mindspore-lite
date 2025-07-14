@@ -246,16 +246,14 @@ if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full"
         install(FILES ${BUILD_DIR}/minddata/libminddata-lite.a DESTINATION
                 ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${JPEGTURBO_LIB_LIST} DESTINATION ${TURBO_DIR}/lib COMPONENT ${RUNTIME_COMPONENT_NAME})
-        install(FILES ${BUILD_DIR}/securec/src/libsecurec.a
-                DESTINATION ${SECUREC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+        install(FILES ${securec_LIBPATH}/libsecurec.a DESTINATION ${SECUREC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
     elseif(PLATFORM_ARM32)
         install(FILES ${BUILD_DIR}/minddata/libminddata-lite.so DESTINATION
                 ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${BUILD_DIR}/minddata/libminddata-lite.a DESTINATION
                 ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${JPEGTURBO_LIB_LIST} DESTINATION ${TURBO_DIR}/lib COMPONENT ${RUNTIME_COMPONENT_NAME})
-        install(FILES ${BUILD_DIR}/securec/src/libsecurec.a
-                DESTINATION ${SECUREC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+        install(FILES ${securec_LIBPATH}/libsecurec.a DESTINATION ${SECUREC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
     else()
         if((MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE) AND MSLITE_ENABLE_ACL)
             install(FILES ${TOP_DIR}/mindspore-lite/minddata/dataset/include/dataset/vision_ascend.h
@@ -271,8 +269,7 @@ if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full"
                 RENAME libjpeg.so.62 COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${jpeg_turbo_LIBPATH}/libturbojpeg.so.0.3.0 DESTINATION ${TURBO_DIR}/lib
                 RENAME libturbojpeg.so.0 COMPONENT ${RUNTIME_COMPONENT_NAME})
-        install(FILES ${BUILD_DIR}/securec/src/libsecurec.a
-                DESTINATION ${SECUREC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+        install(FILES ${securec_LIBPATH}/libsecurec.a DESTINATION ${SECUREC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
     endif()
 
     # lite_cv header files
@@ -510,7 +507,7 @@ if(PLATFORM_ARM64)
             install(DIRECTORY ${glog_LIBPATH}/../include/glog/
                     DESTINATION ${CONVERTER_ROOT_DIR}/include/third_party/glog
                     COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
-            install(DIRECTORY ${TOP_DIR}/third_party/securec/include/
+            install(DIRECTORY ${securec_INC}
                     DESTINATION ${CONVERTER_ROOT_DIR}/include/third_party/securec
                     COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
             install(TARGETS converter_lite RUNTIME DESTINATION ${CONVERTER_ROOT_DIR}/converter
@@ -950,7 +947,7 @@ else()
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(DIRECTORY ${glog_LIBPATH}/../include/glog/ DESTINATION ${CONVERTER_ROOT_DIR}/include/third_party/glog
                 COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
-        install(DIRECTORY ${TOP_DIR}/third_party/securec/include/
+        install(DIRECTORY ${securec_INC}
                 DESTINATION ${CONVERTER_ROOT_DIR}/include/third_party/securec
                 COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
         install(TARGETS converter_lite RUNTIME DESTINATION ${CONVERTER_ROOT_DIR}/converter

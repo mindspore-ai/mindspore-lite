@@ -22,7 +22,7 @@
 #include <memory>
 #include <string>
 #include "include/errorcode.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "src/tensor.h"
 #include "tools/converter/micro/coder/opcoders/op_coder.h"
 #include "tools/converter/micro/coder/utils/common.h"

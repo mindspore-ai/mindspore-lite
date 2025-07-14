@@ -27,7 +27,7 @@
 #include "proto/graph.pb.h"
 #include "proto/node_def.pb.h"
 #include "schema/inner/model_generated.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "tools/common/tensor_util.h"
 #include "include/registry/model_parser.h"
 #include "include/registry/model_parser_registry.h"

@@ -261,7 +261,7 @@ if(NOT MSLITE_SIMPLEST_CLOUD_INFERENCE)
                 quantizer_mid fusion_mid proto_mid graph_pass_mid preprocess_mid
                 cpu_kernel_mid converter_src_mid lite_exporter_mid
                 config_parser_mid mslite_converter_plugin mindspore_core mindspore_ops coder_mid
-                mindir_serializer_mid mindspore::protobuf ${SECUREC_LIBRARY})
+                mindir_serializer_mid mindspore::protobuf mindspore::securec)
         target_link_libraries(lite-unified-executor
                 ccsrc_debug_common_mid_ mindir_proto_mid _mindspore_transform_express_ir_obj)
     endif()

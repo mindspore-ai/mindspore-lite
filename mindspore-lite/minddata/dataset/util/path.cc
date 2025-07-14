@@ -26,7 +26,7 @@
 #define stat _stat64  //  for file size exceeds (1<<31)-1 bytes
 #endif
 
-#include "./securec.h"
+#include "include/securec.h"
 #ifndef BUILD_LITE
 #include "utils/file_utils.h"
 #else

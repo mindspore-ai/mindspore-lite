@@ -21,7 +21,7 @@
 #include <string>
 #include <algorithm>
 #include <utility>
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "mindspore/ops/op_def/conv_pool_ops.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "nnacl/op_base.h"

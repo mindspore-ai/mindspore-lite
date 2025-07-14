@@ -22,7 +22,7 @@
 #include <vector>
 #include <unordered_map>
 #include "torch/script.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "include/registry/model_parser.h"
 #include "include/registry/model_parser_registry.h"
 #include "tools/converter/parser/pytorch/pytorch_node_parser_registry.h"

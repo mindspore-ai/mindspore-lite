@@ -21,7 +21,7 @@
 #include "include/registry/register_kernel.h"
 #include "compatible/hiai_base_types_cpt.h"
 #include "util/base_types.h"
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "src/common/log_adapter.h"
 
 namespace mindspore {

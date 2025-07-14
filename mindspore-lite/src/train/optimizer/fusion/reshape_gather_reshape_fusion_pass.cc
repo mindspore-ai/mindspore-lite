@@ -19,7 +19,7 @@
 #include <unordered_map>
 #include <vector>
 #include <memory>
-#include "securec/include/securec.h"
+#include "include/securec.h"
 #include "schema/inner/model_generated.h"
 #include "tools/common/meta_graph_utils.h"
 #include "src/train/optimizer/common/fusion_utils.h"
