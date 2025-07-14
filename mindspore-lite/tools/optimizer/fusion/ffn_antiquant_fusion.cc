@@ -114,7 +114,7 @@ ParameterPtr FFNAntiquantFusion::RepeatParameter(const FuncGraphPtr &func_graph,
     repeat_parameter = opt::BuildFloatVecParameterNode(
       func_graph, repeat_data, param_node->fullname_with_scope() + "_repeat_" + std::to_string(repeat_times));
   }
-
+  MS_EXCEPTION_IF_NULL(repeat_parameter);
   auto abstract = repeat_parameter->abstract();
   MS_EXCEPTION_IF_NULL(abstract);
   ShapeVector shape_vector = {repeat_times, static_cast<int64_t>(tensor->DataSize())};
