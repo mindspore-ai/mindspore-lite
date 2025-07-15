@@ -8,7 +8,7 @@
 
 - 编译构建
 
-  > 根据系统环境，请手动下载x86_64或aarch64平台的的[MindSpore Lite 云侧推理包](https://www.mindspore.cn/lite/docs/zh-CN/master/use/downloads.html)
+  > 根据系统环境，请手动下载x86_64或aarch64平台的[MindSpore Lite 云侧推理包](https://www.mindspore.cn/lite/docs/zh-CN/master/use/downloads.html)
   ，并解压。
   >
   > 请手动下载相关模型文件[mobilenetv2](https://download.mindspore.cn/model_zoo/official/lite/quick_start/mobilenetv2.mindir)

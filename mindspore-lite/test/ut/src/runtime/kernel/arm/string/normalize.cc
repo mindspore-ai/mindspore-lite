@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
+#include "src/litert/kernel/cpu/string/normalize.h"
 #include <iostream>
 #include "src/litert/kernel/cpu/string/skip_gram.h"
-#include "src/litert/kernel/cpu/string/normalize.h"
 #include "src/litert/kernel_registry.h"
 #include "nnacl/skip_gram_parameter.h"
 #include "src/common/file_utils.h"

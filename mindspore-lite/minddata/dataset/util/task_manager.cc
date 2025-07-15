@@ -13,11 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "mindspore-lite/minddata/dataset/util/task_manager.h"
 #include <algorithm>
 #include <functional>
 #include <set>
 #include "include/securec.h"
-#include "mindspore-lite/minddata/dataset/util/task_manager.h"
 #include "utils/ms_utils.h"
 
 namespace mindspore {

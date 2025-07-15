@@ -152,7 +152,6 @@ TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest4) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
   inputs[0] = new TensorC;
-  // inputs[0]->format_ = Format_NHWC;
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 7;

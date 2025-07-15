@@ -38,7 +38,7 @@ void CreateMultyModel1(mindspore::schema::MetaGraphT *meta_graph) {
   meta_graph->name = "graph";
   meta_graph->version = mindspore::Version();
 
-  /* CPU GPU NPU support*/
+  /* CPU GPU NPU support */
   auto cos = std::make_unique<mindspore::schema::CNodeT>();
   cos->inputIndex = {0};
   cos->outputIndex = {1};
@@ -162,7 +162,7 @@ void CreateMultyModel1(mindspore::schema::MetaGraphT *meta_graph) {
 void CreateMultyModel2(mindspore::schema::MetaGraphT *meta_graph) {
   meta_graph->name = "graph";
 
-  /* CPU GPU NPU support*/
+  /* CPU GPU NPU support */
   auto cos = std::make_unique<mindspore::schema::CNodeT>();
   cos->inputIndex = {0};
   cos->outputIndex = {1};

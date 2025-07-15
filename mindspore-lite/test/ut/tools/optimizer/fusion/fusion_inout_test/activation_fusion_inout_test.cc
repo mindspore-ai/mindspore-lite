@@ -35,7 +35,7 @@ class ActivationFusionInoutTest : public FusionInoutTest {
 
   void InitGraph() override {
     this->graph_ = std::make_shared<FuncGraph>();
-    MS_CHECK_TRUE_MSG(graph_ != nullptr, , "Create FuncGraph failed");
+    MS_CHECK_TRUE_RET_VOID(graph_ != nullptr);
     auto input = AddParameter(graph_, 0, {1, C16NUM, C16NUM, C3NUM}, kNumberTypeFloat32, "graph_input");
     if (input == nullptr) {
       this->graph_ = nullptr;

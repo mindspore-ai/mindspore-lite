@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "mindspore-lite/minddata/dataset/core/global_context.h"
 #include "mindspore-lite/minddata/dataset/core/device_tensor.h"
+#include "mindspore-lite/minddata/dataset/core/global_context.h"
 #include "mindspore-lite/minddata/dataset/kernels/image/dvpp/acl_adapter.h"
 #include "mindspore-lite/minddata/dataset/util/status.h"
 

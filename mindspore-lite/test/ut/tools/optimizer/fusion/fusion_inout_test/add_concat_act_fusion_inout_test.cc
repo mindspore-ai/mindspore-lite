@@ -41,7 +41,7 @@ class ConcatActFusionInoutTest : public FusionInoutTest {
 
   void InitGraph() override {
     this->graph_ = std::make_shared<FuncGraph>();
-    MS_CHECK_TRUE_MSG(graph_ != nullptr, , "Create FuncGraph failed");
+    MS_CHECK_TRUE_RET_VOID(graph_ != nullptr);
     auto left_add_node = AddAdd(graph_, "left_add_node");
     if (left_add_node == nullptr) {
       this->graph_ = nullptr;

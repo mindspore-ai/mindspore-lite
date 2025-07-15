@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "mindspore-lite/minddata/dataset/engine/consumers/tree_consumer.h"
 #include <algorithm>
 #include <map>
 #include <memory>
@@ -21,7 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "mindspore-lite/minddata/dataset/engine/consumers/tree_consumer.h"
 #include "mindspore-lite/minddata/dataset/engine/datasetops/data_queue_op.h"
 #include "mindspore-lite/minddata/dataset/engine/opt/pre/getter_pass.h"
 #include "mindspore-lite/minddata/dataset/engine/perf/auto_tune.h"

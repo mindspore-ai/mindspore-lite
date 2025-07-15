@@ -158,6 +158,35 @@ void PrintBuffer(const void *buffer, size_t elem_count) {
   std::cout << std::endl;
 }
 
+void PrintInfosByDataType(mindspore::DataType data_type, const void *print_data, size_t elem_num) {
+  if (data_type == mindspore::DataType::kNumberTypeFloat32) {
+    PrintBuffer<float>(print_data, elem_num);
+  } else if (data_type == mindspore::DataType::kNumberTypeFloat64) {
+    PrintBuffer<double>(print_data, elem_num);
+  } else if (data_type == mindspore::DataType::kNumberTypeInt64) {
+    PrintBuffer<int64_t>(print_data, elem_num);
+  } else if (data_type == mindspore::DataType::kNumberTypeInt32) {
+    PrintBuffer<int32_t>(print_data, elem_num);
+  } else if (data_type == mindspore::DataType::kNumberTypeInt16) {
+    PrintBuffer<int16_t>(print_data, elem_num);
+  } else if (data_type == mindspore::DataType::kNumberTypeInt8) {
+    PrintBuffer<int8_t>(print_data, elem_num);
+  } else if (data_type == mindspore::DataType::kNumberTypeUInt64) {
+    PrintBuffer<uint64_t>(print_data, elem_num);
+  } else if (data_type == mindspore::DataType::kNumberTypeUInt32) {
+    PrintBuffer<uint32_t>(print_data, elem_num);
+  } else if (data_type == mindspore::DataType::kNumberTypeUInt16) {
+    PrintBuffer<uint16_t>(print_data, elem_num);
+  } else if (data_type == mindspore::DataType::kNumberTypeUInt8) {
+    PrintBuffer<uint8_t>(print_data, elem_num);
+  } else if (data_type == mindspore::DataType::kNumberTypeBool) {
+    PrintBuffer<bool>(print_data, elem_num);
+  } else {
+    std::cout << "Unsupported data type " << static_cast<int>(data_type) << std::endl;
+  }
+}
+
+
 bool PrintOutputsTensor(std::vector<mindspore::MSTensor> outputs) {
   if (g_set_data) {
     g_cmp_data.clear();
@@ -189,31 +218,7 @@ bool PrintOutputsTensor(std::vector<mindspore::MSTensor> outputs) {
       return false;
     }
     auto data_type = tensor.DataType();
-    if (data_type == mindspore::DataType::kNumberTypeFloat32) {
-      PrintBuffer<float>(print_data, elem_num);
-    } else if (data_type == mindspore::DataType::kNumberTypeFloat64) {
-      PrintBuffer<double>(print_data, elem_num);
-    } else if (data_type == mindspore::DataType::kNumberTypeInt64) {
-      PrintBuffer<int64_t>(print_data, elem_num);
-    } else if (data_type == mindspore::DataType::kNumberTypeInt32) {
-      PrintBuffer<int32_t>(print_data, elem_num);
-    } else if (data_type == mindspore::DataType::kNumberTypeInt16) {
-      PrintBuffer<int16_t>(print_data, elem_num);
-    } else if (data_type == mindspore::DataType::kNumberTypeInt8) {
-      PrintBuffer<int8_t>(print_data, elem_num);
-    } else if (data_type == mindspore::DataType::kNumberTypeUInt64) {
-      PrintBuffer<uint64_t>(print_data, elem_num);
-    } else if (data_type == mindspore::DataType::kNumberTypeUInt32) {
-      PrintBuffer<uint32_t>(print_data, elem_num);
-    } else if (data_type == mindspore::DataType::kNumberTypeUInt16) {
-      PrintBuffer<uint16_t>(print_data, elem_num);
-    } else if (data_type == mindspore::DataType::kNumberTypeUInt8) {
-      PrintBuffer<uint8_t>(print_data, elem_num);
-    } else if (data_type == mindspore::DataType::kNumberTypeBool) {
-      PrintBuffer<bool>(print_data, elem_num);
-    } else {
-      std::cout << "Unsupported data type " << static_cast<int>(tensor.DataType()) << std::endl;
-    }
+    PrintInfosByDataType(data_type, print_data, elem_num);
     if (g_set_data) {
       if (host_data.empty()) {
         host_data.resize(data_size);
