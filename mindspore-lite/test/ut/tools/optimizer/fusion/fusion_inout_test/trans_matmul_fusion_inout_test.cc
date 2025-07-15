@@ -38,7 +38,7 @@ class TransMatMulFusionInoutTest : public MatMulFusionInoutTest {
 
   void InitGraph() override {
     this->graph_ = std::make_shared<FuncGraph>();
-    MS_CHECK_TRUE_MSG(graph_ != nullptr, , "Create FuncGraph failed");
+    MS_CHECK_TRUE_RET_VOID(graph_ != nullptr);
     auto input_1 = AddParameter(graph_, 0, {1, kHeight, kChannel}, kNumberTypeFloat32, "graph_input_1");
     if (input_1 == nullptr) {
       this->graph_ = nullptr;

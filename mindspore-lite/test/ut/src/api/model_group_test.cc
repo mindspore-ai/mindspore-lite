@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "include/api/model_group.h"
 #include <memory>
 #include <string>
 #include <vector>
+#include "include/api/model_group.h"
 #include "src/common/file_utils.h"
 
 namespace mindspore {

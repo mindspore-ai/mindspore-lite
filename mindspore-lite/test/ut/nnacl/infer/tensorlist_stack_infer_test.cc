@@ -50,7 +50,6 @@ TEST_F(TensorlistStackInferTest, TensorlistStackInferTest0) {
   in_tensors_c[2].shape_[0] = 2;
   in_tensors_c[2].shape_[1] = 4;
   in_tensors_c[2].data_type_ = kNumberTypeInt32;
-  // input0->tensors_[2]->format_ = Format_NHWC;
   inputs[0] = reinterpret_cast<TensorC *>(input0);
   inputs[0]->data_type_ = kObjectTypeTensorType;
 
@@ -71,7 +70,6 @@ TEST_F(TensorlistStackInferTest, TensorlistStackInferTest0) {
   ASSERT_EQ(outputs[0]->shape_[1], 2);
   ASSERT_EQ(outputs[0]->shape_[2], 4);
   ASSERT_EQ(outputs[0]->data_type_, kNumberTypeInt32);
-  // ASSERT_EQ(outputs[0]->format_, Format_NHWC);
 
   delete parameter;
   for (size_t i = 0; i < inputs_size; i++) {

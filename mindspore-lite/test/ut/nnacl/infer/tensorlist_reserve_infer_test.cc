@@ -33,7 +33,6 @@ TEST_F(TensorlistReserveInferTest, TensorlistReserveInferTest0) {
   std::vector<int> inputs0 = {2, 3, 4};
   inputs[0]->data_ = inputs0.data();
   inputs[0]->data_type_ = kNumberTypeInt32;
-  // inputs[0]->format_ = Format_NHWC;
   inputs[1] = new TensorC;
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 1;
@@ -56,7 +55,6 @@ TEST_F(TensorlistReserveInferTest, TensorlistReserveInferTest0) {
   ASSERT_EQ(out->element_shape_[1], 3);
   ASSERT_EQ(out->element_shape_[2], 4);
   ASSERT_EQ(out->tensors_data_type_, kTypeUnknown);
-  // ASSERT_EQ(outputs[0]->format_, Format_NHWC);
   for (size_t i = 0; i < out->element_num_; i++) {
     ASSERT_EQ(out->tensors_[i]->shape_size_, 0);
   }

@@ -60,7 +60,6 @@ TEST_F(InferManagerTest, InferManagerTest0) {
   ASSERT_EQ(out->element_shape()[0], -1);
   ASSERT_EQ(out->element_shape()[1], 5);
   ASSERT_EQ(out->tensors_data_type(), kNumberTypeInt32);
-  // ASSERT_EQ(outputs[0]->format_, Format_NHWC);
   for (int i = 0; i < out->shape()[0]; i++) {
     ASSERT_EQ(out->tensors()[i]->shape().size(), 2);
     ASSERT_EQ(out->tensors()[i]->shape()[0], 6);

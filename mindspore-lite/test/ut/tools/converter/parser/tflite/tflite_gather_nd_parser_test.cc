@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ut/tools/converter/parser/tflite/tflite_parsers_test_utils.h"
 #include <iostream>
+#include "ut/tools/converter/parser/tflite/tflite_parsers_test_utils.h"
 #include "common/common_test.h"
 
 namespace mindspore {
