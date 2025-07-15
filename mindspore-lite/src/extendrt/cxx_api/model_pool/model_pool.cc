@@ -18,7 +18,7 @@
 #include <unistd.h>
 #include <future>
 #include <algorithm>
-#include "mindspore/ops/kernel/cpu/nnacl/op_base.h"
+#include "nnacl/op_base.h"
 #include "src/extendrt/cxx_api/model_pool/resource_manager.h"
 #include "src/common/log_adapter.h"
 #include "include/lite_types.h"

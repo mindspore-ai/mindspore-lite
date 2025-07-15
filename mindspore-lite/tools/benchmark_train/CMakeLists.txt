@@ -5,6 +5,7 @@ set(COMMON_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/../../src/common/utils.cc
         )
 
+include_directories(${NNACL_DIR}/../)
 set(TEST_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/main.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/net_train.cc

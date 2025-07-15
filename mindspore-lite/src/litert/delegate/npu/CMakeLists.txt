@@ -1,5 +1,5 @@
 include_directories(${DDK_PATH})
-include_directories(${OPS_DIR}/kernel/cpu)
+include_directories(${NNACL_DIR}/../)
 file(GLOB_RECURSE NPU_RUNTIME_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/*.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/op/*.cc
