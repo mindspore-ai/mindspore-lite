@@ -20,7 +20,7 @@
 
 namespace {
 // The subgraph split can cause the change of tensor name. This function is used to get the original name.
-std::string GetOrgFeatureName(const std::string &input_name) {
+std::string GetOrginalFeatureName(const std::string &input_name) {
   auto org_name = input_name;
   std::string pattern_1 = "_duplicate_";
   auto pos_1 = input_name.find(pattern_1);
@@ -38,17 +38,17 @@ std::string GetOrgFeatureName(const std::string &input_name) {
 }
 }  // namespace
 
-@implementation InputFeatureProvider
+// Ref to: "https://developer.apple.com/documentation/coreml/mlfeatureprovider?language=objc"
+@implementation MSFeatureProvider
 
-- (instancetype)initWithInputs:(const std::vector<mindspore::MSTensor>*)inputs
+- (instancetype)initWithMSTensor:(const std::vector<mindspore::MSTensor>*)ms_tensors
                  coreMLVersion:(int)coreMLVersion {
   self = [super init];
-  _inputs = inputs;
-  _coreMLVersion = coreMLVersion;
+  _ms_tensors = ms_tensors;
   NSMutableArray* names = [[NSMutableArray alloc] init];
-  for (auto& input : *_inputs) {
-    auto input_name = GetOrgFeatureName(input.Name());
-    [names addObject:[NSString stringWithCString:input_name.c_str()
+  for (auto& tensor : *_ms_tensors) {
+    auto name = GetOrginalFeatureName(tensor.Name());
+    [names addObject:[NSString stringWithCString:name.c_str()
                                         encoding:[NSString defaultCStringEncoding]]];
   }
   _featureNames = [NSSet setWithArray:names];
@@ -58,16 +58,16 @@ std::string GetOrgFeatureName(const std::string &input_name) {
 - (NSSet<NSString*>*)featureNames{ return _featureNames; }
 
 - (MLFeatureValue*)featureValueForName:(NSString*)featureName {
-  for (auto input : *_inputs) {
-    auto input_name = GetOrgFeatureName(input.Name());
-    if ([featureName cStringUsingEncoding:NSUTF8StringEncoding] == input_name) {
+  for (auto tensor : *_ms_tensors) {
+    auto tensor_name = GetOrginalFeatureName(tensor.Name());
+    if ([featureName cStringUsingEncoding:NSUTF8StringEncoding] == tensor_name) {
       NSArray* shape;
       NSArray* strides;
-      int tensorRank = input.Shape().size();
+      int tensorRank = tensor.Shape().size();
       switch(tensorRank) {
         case 1:
           shape = @[
-            @(input.Shape()[0])
+            @(tensor.Shape()[0])
           ];
           strides = @[
             @1
@@ -75,46 +75,51 @@ std::string GetOrgFeatureName(const std::string &input_name) {
           break;
         case 2:
           shape = @[
-            @(input.Shape()[0]),
-            @(input.Shape()[1])
+            @(tensor.Shape()[0]),
+            @(tensor.Shape()[1])
           ];
           strides = @[
-            @(input.Shape()[1]),
+            @(tensor.Shape()[1]),
             @1
           ];
           break;
         case 3:
           shape = @[
-            @(input.Shape()[0]),
-            @(input.Shape()[1]),
-            @(input.Shape()[2])
+            @(tensor.Shape()[0]),
+            @(tensor.Shape()[1]),
+            @(tensor.Shape()[2])
           ];
           strides = @[
-            @(input.Shape()[2] * input.Shape()[1]),
-            @(input.Shape()[2]),
+            @(tensor.Shape()[2] * tensor.Shape()[1]),
+            @(tensor.Shape()[2]),
             @1
           ];
           break;
         case 4:
           shape = @[
-            @(input.Shape()[0]),
-            @(input.Shape()[1]),
-            @(input.Shape()[2]),
-            @(input.Shape()[3])
+            @(tensor.Shape()[0]),
+            @(tensor.Shape()[1]),
+            @(tensor.Shape()[2]),
+            @(tensor.Shape()[3])
           ];
           strides = @[
-            @(input.Shape()[3] * input.Shape()[2] * input.Shape()[1]),
-            @(input.Shape()[3] * input.Shape()[2]),
-            @(input.Shape()[3]),
+            @(tensor.Shape()[3] * tensor.Shape()[2] * tensor.Shape()[1]),
+            @(tensor.Shape()[3] * tensor.Shape()[2]),
+            @(tensor.Shape()[3]),
             @1
           ];
           break;
         default:
-          NSLog(@"The rank of input tensor:%@ is unsupported!", featureName);
+          NSLog(@"The rank of tensor tensor:%@ is unsupported!", featureName);
+      }
+
+      if (tensor.DataType() != mindspore::DataType::kNumberTypeFloat32) {
+        NSLog(@"Only support tensor of datatype float32, but %@ is not!", featureName);
+        return nil;
       }
 
       NSError* error = nil;
-      MLMultiArray* mlArray = [[MLMultiArray alloc] initWithDataPointer:(float*)input.MutableData()
+      MLMultiArray* mlArray = [[MLMultiArray alloc] initWithDataPointer:(float*)tensor.MutableData()
                                                                   shape:shape
                                                                dataType:MLMultiArrayDataTypeFloat32
                                                                 strides:strides
@@ -137,18 +142,18 @@ std::string GetOrgFeatureName(const std::string &input_name) {
 
 @implementation CoreMLExecutor
 
-- (bool)ExecuteWithInputs:(const std::vector<mindspore::MSTensor>&)inputs
+- (bool)run:(const std::vector<mindspore::MSTensor>&)inputs
                  outputs:(const std::vector<mindspore::MSTensor>&)outputs {
   if (_model == nil) {
     return NO;
   }
-  _coreMLVersion = 3;
+  _coreMLVersion = 4;
   NSError* error = nil;
   //Initialize the CoreML feature provider with input MSTensor
-  InputFeatureProvider* inputFeature =
-      [[InputFeatureProvider alloc] initWithInputs:&inputs coreMLVersion:[self coreMLVersion]];
+  MSFeatureProvider* inputFeature =
+      [[MSFeatureProvider alloc] initWithMSTensor:&inputs coreMLVersion:[self coreMLVersion]];
   if (inputFeature == nil) {
-    NSLog(@"inputFeature initialization failed.");
+    NSLog(@"init inputFeature from MSTensor failed.");
     return NO;
   }
   //Inference configuration, auto use GPU by default
@@ -171,7 +176,7 @@ std::string GetOrgFeatureName(const std::string &input_name) {
         [outputFeature featureValueForName:[outputFeatureNames member:outputName]];
     auto* data = [outputValue multiArrayValue];
     float* outputData = (float*)data.dataPointer;
-    if (outputData == nullptr) {
+    if (outputData == nil) {
       NSLog(@"Output data is null!");
       return NO;
     }
@@ -182,14 +187,11 @@ std::string GetOrgFeatureName(const std::string &input_name) {
 
 - (bool)loadModelC:(NSURL*)compileUrl {
   NSError* error = nil;
-  if (@available(iOS 12.0, *)) {
-    MLModelConfiguration* config = [MLModelConfiguration alloc];
-    config.computeUnits = MLComputeUnitsAll;
-    _model = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
-  } else {
-    _model = [MLModel modelWithContentsOfURL:compileUrl error:&error];
-  }
-  if (error != NULL) {
+  MLModelConfiguration* config = [[MLModelConfiguration alloc] init];
+  config.computeUnits = MLComputeUnitsAll;
+
+  _model = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
+  if (error != nil) {
     NSLog(@"Create MLModel failed, error code: %@", [error localizedDescription]);
     return NO;
   }
