@@ -5,7 +5,7 @@ CUR_DIR=$(
   cd "$(dirname $0)"
   pwd
 )
-BUILD_DIR=${CUR_DIR}/../build
+BUILD_DIR=${CUR_DIR}/../../build
 
 export GLOG_v=2
 
