@@ -22,42 +22,51 @@ typedef union float32_bits {
   float f;
 } float32_bits;
 
-uint16_t Float32ToFloat16_(float f) {
+uint16_t Float32ToFloat16_(float input) {
   float32_bits hbit;
-  hbit.f = f;
-  uint16_t hbits = 0;
-  // Extract the sign bit
-  uint16_t sign = (hbit.u >> FP16_BIT_SIZE) & 0x8000;  // Get the sign (1 bit) ox8000
-  // Extract the exponent
-  uint32_t exponent = (hbit.u >> FP32_SIGNIFICAND) & 0xFF;  // Extract the exponent (8 bits) 0xFF
-  // Handle special cases (NaN, Inf, 0)
-  if (exponent == 0xFF) {    // NaN or Infinity 0xFF
-    hbits |= sign | 0x7FFF;  // Set to max float16 value (Infinity)
-    return hbits;
-  } else if (exponent == 0) {  // Zero or denormalized number
-    // In float16, we treat zero the same way
-    hbits |= sign;  // Preserve sign for zero
-    return hbits;
+  hbit.f = input;
+  uint16_t output = 0;
+  // Extract the sign bit, exponent, and mantissa
+  uint32_t sign = (hbit.u >> BITS_SHIFT_SIZE_31) & 0x1;
+  int32_t exponent = ((hbit.u >> BITS_SHIFT_SIZE_23) & 0xFF) - FP32_EXPONENT_BIAS;  // The exponent bias of float32
+  uint32_t mantissa = hbit.u & 0x007FFFFF;                                          // 23-digit tail number
+
+  // Handle special cases (Inf/NaN/Zero)
+  if (exponent == EXPONENT_BIAS_VALUE_128) {
+    output = (sign << BITS_SHIFT_SIZE_15) | 0x7C00;  // float16's Inf/NaN
+    if (mantissa != 0) {
+      output |= 0x0200;  // Retain some NaN information
+    }
+    return output;
+  } else if (exponent < (-1 * EXPONENT_BIAS_VALUE_14)) {  // Too small, change to 0
+    output = (sign << BITS_SHIFT_SIZE_15) | 0x0000;
+    return output;
+  } else if (exponent > EXPONENT_BIAS_VALUE_15) {  // Too large, convert to Inf
+    output = (sign << BITS_SHIFT_SIZE_15) | 0x7C00;
+    return output;
   }
-  // Adjust the exponent to fit float16
-  exponent -= FP32_EXPONENT_BIAS;  // Remove float32 bias
-  exponent += FP16_EXPONENT_BIAS;  // Add float16 bias
-  // Check for overflow
-  if (exponent >= 0x1F) {    // 0X1F
-    hbits |= sign | 0x7FFF;  // Set to max float16 value (Infinity) 0x7FFF
-    return hbits;
+
+  // Adjust the index (the offset for float16 is 15)
+  int32_t new_exponent = exponent + EXPONENT_BIAS_VALUE_15;
+
+  // Trailing digit rounding (23 digits -> 10 digits)
+  uint32_t new_mantissa = mantissa >> BITS_SHIFT_SIZE_13;          // Retain the top 10 bits
+  uint32_t rounding_bit = (mantissa >> BITS_SHIFT_SIZE_12) & 0x1;  // The 11th digit (rounding position)
+  uint32_t sticky_bits = mantissa & 0x0FFF;  // The lower 12 bits (to determine if a carry is needed)
+
+  if (rounding_bit && ((new_mantissa & 0x01) || sticky_bits)) {
+    new_mantissa++;                // Rounding
+    if (new_mantissa == 0x0400) {  // Carry in the mantissa causes exponent overflow
+      new_mantissa = 0;
+      new_exponent++;
+      if (new_exponent > EXPONENT_BIAS_VALUE_30) {  // Index overflow converts to Inf
+        output = (sign << BITS_SHIFT_SIZE_15) | 0x7C00;
+        return output;
+      }
+    }
   }
-  if (exponent == 0) {
-    // Handle underflow (too small to represent)
-    return sign;  // Return zero with the correct sign
-  }
-  // Shift the mantissa:
-  // Extract the mantissa (23 bits), shift right by 13 (10-exp)
-  uint32_t mantissa = (hbit.u & 0x7FFFFF) >> FP16_SHIFT;  // 0x7FFFFF
-  // Combine sign, exponent, and mantissa into hbits
-  hbits |=
-    sign | ((uint16_t)exponent << FP16_SIGNIFICAND) | (mantissa & 0x3FF);  // combine sign exponent and mantissa 0x3FF
-  return hbits;
+  output = (sign << BITS_SHIFT_SIZE_15) | (new_exponent << BITS_SHIFT_SIZE_10) | new_mantissa;
+  return output;
 }
 
 void Int32ToFloat32(const int32_t *input, float *output, int number) {
