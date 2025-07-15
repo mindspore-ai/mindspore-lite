@@ -85,7 +85,7 @@ class Converter:
 
         The encryption and decryption function is only valid when it is set to `MSLITE_ENABLE_MODEL_ENCRYPTION=on` at
         compile time, and only supports Linux x86 platforms. `decrypt_key` and `encrypt_key` are string expressed in
-        hexadecimal. For example, if `encrypt_key` is set as ``"30313233343637383939414243444546"``, the corresponding
+        hexadecimal. For example, if `encrypt_key` is set as ``"******"``, the corresponding
         hexadecimal expression is ``(b)0123456789ABCDEF`` . Linux platform users can use the' xxd 'tool to convert the
         key expressed in bytes into hexadecimal expressions. It should be noted that the encryption and decryption
         algorithm has been updated in version 1.7, resulting in the new Python interface does not support the conversion
@@ -102,10 +102,10 @@ class Converter:
         >>> converter.input_data_type = mslite.DataType.FLOAT32
         >>> converter.output_data_type = mslite.DataType.FLOAT32
         >>> converter.save_type = mslite.ModelType.MINDIR
-        >>> converter.decrypt_key = "30313233343637383939414243444546"
+        >>> converter.decrypt_key = "******"
         >>> converter.decrypt_mode = "AES-GCM"
         >>> converter.enable_encryption = True
-        >>> converter.encrypt_key = "30313233343637383939414243444546"
+        >>> converter.encrypt_key = "******"
         >>> converter.infer = True
         >>> converter.optimize = "general"
         >>> converter.device = "Ascend"
@@ -122,10 +122,10 @@ class Converter:
         input_data_type: DataType.FLOAT32,
         output_data_type: DataType.FLOAT32,
         save_type: ModelType.MINDIR,
-        decrypt_key: 30313233343637383939414243444546,
+        decrypt_key: ******,
         decrypt_mode: AES-GCM,
         enable_encryption: True,
-        encrypt_key: 30313233343637383939414243444546,
+        encrypt_key: ******,
         infer: True,
         optimize: general,
         device: Ascend.
