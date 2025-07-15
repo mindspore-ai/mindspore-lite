@@ -148,7 +148,7 @@ int ElementSqrtGrad(const float *in1, const float *in2, float *out, const int el
 
 int ElementRsqrtGrad(const float *in1, const float *in2, float *out, const int element_size) {
   for (int i = 0; i < element_size; i++) {
-    out[i] = -0.5f * in2[i] * in1[i] * in1[1] * in1[i];
+    out[i] = -0.5f * in2[i] * in1[i] * in1[i] * in1[i];
   }
   return NNACL_OK;
 }

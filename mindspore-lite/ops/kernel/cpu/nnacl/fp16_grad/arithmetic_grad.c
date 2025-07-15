@@ -152,7 +152,7 @@ int ElementSqrtGradFp16(const float16_t *in1, const float16_t *in2, float16_t *o
 
 int ElementRsqrtGradFp16(const float16_t *in1, const float16_t *in2, float16_t *out, const int element_size) {
   for (int i = 0; i < element_size; i++) {
-    out[i] = -0.5f * in2[i] * in1[i] * in1[1] * in1[i];
+    out[i] = -0.5f * in2[i] * in1[i] * in1[i] * in1[i];
   }
   return NNACL_OK;
 }
