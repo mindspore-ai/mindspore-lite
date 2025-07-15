@@ -1,4 +1,6 @@
 /**
+* Adapted from
+* https://gitee.com/ascend/samples/blob/master/cplusplus/common/acllite/include/AclLiteUtils.h
 * Copyright 2022-2023 Huawei Technologies Co., Ltd
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
