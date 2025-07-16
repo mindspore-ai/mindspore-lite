@@ -122,10 +122,7 @@ class Converter:
         input_data_type: DataType.FLOAT32,
         output_data_type: DataType.FLOAT32,
         save_type: ModelType.MINDIR,
-        decrypt_key: ******,
-        decrypt_mode: AES-GCM,
         enable_encryption: True,
-        encrypt_key: ******,
         infer: True,
         optimize: general,
         device: Ascend.
@@ -143,10 +140,7 @@ class Converter:
               f"input_data_type: {self.input_data_type},\n" \
               f"output_data_type: {self.output_data_type},\n" \
               f"save_type: {self.save_type},\n" \
-              f"decrypt_key: {self.decrypt_key},\n" \
-              f"decrypt_mode: {self.decrypt_mode},\n" \
               f"enable_encryption: {self.enable_encryption},\n" \
-              f"encrypt_key: {self.encrypt_key},\n" \
               f"infer: {self.infer},\n" \
               f"optimize: {self.optimize},\n" \
               f"device: {self.device}."
@@ -155,13 +149,13 @@ class Converter:
     @property
     def decrypt_key(self):
         """
-        Get the key used to decrypt the encrypted MindIR file.
+        .. warning::
+            This function is not supported in the current version.
 
         Returns:
-            str, the key used to decrypt the encrypted MindIR file, expressed in hexadecimal characters. Only valid when
-            `fmk_type` is ``FmkType.MINDIR``.
+            None.
         """
-        return self._converter.get_decrypt_key()
+        raise TypeError("decrypt_key is write-only.")
 
     @decrypt_key.setter
     def decrypt_key(self, decrypt_key):
@@ -269,13 +263,13 @@ class Converter:
     @property
     def encrypt_key(self):
         """
-        Get the key used to encrypt the model when exporting.
+        .. warning::
+            This function is not supported in the current version.
 
         Returns:
-            str, the key used to encrypt the model when exporting, expressed in hexadecimal characters. Only support to
-            use it when `decrypt_mode` is ``"AES-GCM"``, the key length is 16.
+            None.
         """
-        return self._converter.get_encrypt_key()
+        raise TypeError("encrypt_key is write-only.")
 
     @encrypt_key.setter
     def encrypt_key(self, encrypt_key):

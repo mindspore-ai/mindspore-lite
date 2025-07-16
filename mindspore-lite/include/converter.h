@@ -66,7 +66,6 @@ class MS_API Converter {
   ModelType GetSaveType() const;
 
   inline void SetDecryptKey(const std::string &key);
-  inline std::string GetDecryptKey() const;
 
   inline void SetDecryptMode(const std::string &mode);
   inline std::string GetDecryptMode() const;
@@ -75,7 +74,6 @@ class MS_API Converter {
   bool GetEnableEncryption() const;
 
   inline void SetEncryptKey(const std::string &key);
-  inline std::string GetEncryptKey() const;
 
   void SetInfer(bool infer);
   bool GetInfer() const;
@@ -126,11 +124,9 @@ class MS_API Converter {
   void SetInputShape(const std::map<std::vector<char>, std::vector<int64_t>> &input_shape);
   std::map<std::vector<char>, std::vector<int64_t>> GetInputShapeChar() const;
   void SetDecryptKey(const std::vector<char> &key);
-  std::vector<char> GetDecryptKeyChar() const;
   void SetDecryptMode(const std::vector<char> &mode);
   std::vector<char> GetDecryptModeChar() const;
   void SetEncryptKey(const std::vector<char> &key);
-  std::vector<char> GetEncryptKeyChar() const;
   void SetDevice(const std::vector<char> &device);
   std::vector<char> GetDeviceChar();
   void SetProvider(const std::vector<char> &provider);
@@ -168,15 +164,11 @@ std::map<std::string, std::vector<int64_t>> Converter::GetInputShape() const {
 
 void Converter::SetDecryptKey(const std::string &key) { SetDecryptKey(StringToChar(key)); }
 
-std::string Converter::GetDecryptKey() const { return CharToString(GetDecryptKeyChar()); }
-
 void Converter::SetDecryptMode(const std::string &mode) { SetDecryptMode(StringToChar(mode)); }
 
 std::string Converter::GetDecryptMode() const { return CharToString(GetDecryptModeChar()); }
 
 void Converter::SetEncryptKey(const std::string &key) { SetEncryptKey(StringToChar(key)); }
-
-std::string Converter::GetEncryptKey() const { return CharToString(GetEncryptKeyChar()); }
 
 void Converter::SetDevice(const std::string &device) { SetDevice(StringToChar(device)); }
 
