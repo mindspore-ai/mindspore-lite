@@ -16,7 +16,7 @@ mindspore_lite.Converter
     .. note::
         请先构造Converter类，再通过执行Converter.convert()方法生成模型。
 
-        加解密功能仅在编译时设置为 `MSLITE_ENABLE_MODEL_ENCRYPTION=on` 时生效，并且仅支持Linux x86平台。其中密钥为十六进制表示的字符串，如 `encrypt_key` 设置为 ``"30313233343536373839414243444546"`` ，对应的十六进制表示为 ``(b)0123456789ABCDEF`` ，Linux平台用户可以使用 `xxd` 工具对字节表示的密钥进行十六进制表达转换。需要注意的是，加解密算法在1.7版本进行了更新，导致新版的Python接口不支持对1.6及其之前版本的MindSpore Lite加密导出的模型进行转换。
+        加解密功能仅在编译时设置为 `MSLITE_ENABLE_MODEL_ENCRYPTION=on` 时生效，并且仅支持Linux x86平台。其中密钥为十六进制表示的字符串，如 `encrypt_key` 设置为 ``"******"`` ，对应的十六进制表示为 ``(b)0123456789ABCDEF`` ，Linux平台用户可以使用 `xxd` 工具对字节表示的密钥进行十六进制表达转换。需要注意的是，加解密算法在1.7版本进行了更新，导致新版的Python接口不支持对1.6及其之前版本的MindSpore Lite加密导出的模型进行转换。
 
     .. py:method:: convert(fmk_type, model_file, output_file, weight_file="", config_file="")
 
@@ -43,10 +43,11 @@ mindspore_lite.Converter
     .. py:method:: decrypt_key
         :property:
 
-        获取用于加载密文MindIR时的密钥。
+        .. warning::
+            此功能在当前版本中不支持。
 
         返回：
-            str，用于加载密文MindIR时的密钥，以十六进制字符表示。仅当 `fmk_type` 为 ``FmkType.MINDIR`` 时有效。
+            None
 
     .. py:method:: decrypt_mode
         :property:
@@ -83,10 +84,11 @@ mindspore_lite.Converter
     .. py:method:: encrypt_key
         :property:
 
-        获取用于加密文件的密钥。
+        .. warning::
+            此功能在当前版本中不支持。
 
         返回：
-            str，用于加密文件的密钥，以十六进制字符表示。仅在当 `decrypt_mode` 是 ``"AES-GCM"`` 时支持使用该属性，密钥长度为16。
+            None
 
     .. py:method:: get_config_info()
 
