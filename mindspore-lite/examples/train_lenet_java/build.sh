@@ -40,7 +40,7 @@ checkopts "$@"
 
 BASEPATH=$(cd "$(dirname $0)" || exit; pwd)
 get_version() {
-    VERSION_STR=$(cat ${BASEPATH}/../../../../version.txt)
+    VERSION_STR=$(cat ${BASEPATH}/../../../version.txt)
 }
 get_version
 MINDSPORE_FILE_NAME="mindspore-lite-${VERSION_STR}-linux-x64"
