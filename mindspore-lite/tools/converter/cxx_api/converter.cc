@@ -191,14 +191,6 @@ void Converter::SetDecryptKey(const std::vector<char> &key) {
   }
 }
 
-std::vector<char> Converter::GetDecryptKeyChar() const {
-  std::string decrypt_key = "";
-  if (data_ != nullptr) {
-    decrypt_key = data_->decrypt_key;
-  }
-  return StringToChar(decrypt_key);
-}
-
 void Converter::SetDecryptMode(const std::vector<char> &mode) {
   if (data_ != nullptr) {
     data_->decrypt_mode = CharToString(mode);
@@ -231,14 +223,6 @@ void Converter::SetEncryptKey(const std::vector<char> &key) {
   if (data_ != nullptr) {
     data_->encrypt_key = CharToString(key);
   }
-}
-
-std::vector<char> Converter::GetEncryptKeyChar() const {
-  std::string encrypt_key = "";
-  if (data_ != nullptr) {
-    encrypt_key = data_->encrypt_key;
-  }
-  return StringToChar(encrypt_key);
 }
 
 void Converter::SetInfer(bool infer) {
