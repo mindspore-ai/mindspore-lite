@@ -28,7 +28,7 @@ BASEPATH=$(
   pwd
 )
 get_version() {
-  VERSION_STR=$(cat ${BASEPATH}/../../../../version.txt)
+  VERSION_STR=$(cat ${BASEPATH}/../../../version.txt)
 }
 
 # check and set options
