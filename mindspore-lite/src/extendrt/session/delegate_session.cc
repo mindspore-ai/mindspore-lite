@@ -28,6 +28,7 @@
 #include "extendrt/utils/func_graph_utils.h"
 #include "common/common.h"
 #include "src/extendrt/session/lite_graph_executor.h"
+#include "extendrt/delegate/plugin/ascend_acl_executor_plugin.h"
 namespace mindspore {
 namespace {
 constexpr auto kIsAdapted = "is_adapted";
@@ -224,6 +225,12 @@ Status GraphSinkSession::UpdateGraphInputsOutputs(uint32_t graph_id, DelegateGra
       info.outputs.push_back(impl);
     }
   }
+  std::vector<TypeId> data_types = graph_executor_->GetOutputDataType();
+  if (data_types.size() == info.outputs.size()) {
+    for (size_t i = 0; i < info.outputs.size(); i++) {
+      info.outputs[i]->SetDataType(static_cast<enum DataType>(data_types[i]));
+    }
+  }
   return kSuccess;
 }
 
@@ -369,6 +376,21 @@ static std::shared_ptr<InferSession> DelegateSessionCreator(const std::shared_pt
   }
   auto device_type = device_contexts.at(0)->GetDeviceType();
   auto provider = device_contexts.at(0)->GetProvider();
+  if (device_type == DeviceType::kAscend) {
+    if (provider == "ge") {
+      if (!lite::AscendGeExecutorPlugin::GetInstance().Register()) {
+        MS_LOG(WARNING) << "Failed to register AscendGe plugin";
+        return nullptr;
+      }
+    } else {
+      if (!lite::AscendAclExecutorPlugin::GetInstance().Register()) {
+        MS_LOG(WARNING) << "Failed to register Ascend ACL plugin";
+        return nullptr;
+      }
+      provider = "litert";
+    }
+  }
+
   auto delegate = DelegateRegistry<std::shared_ptr<LiteGraphExecutor>>::GetInstance().GetDelegate(device_type, provider,
                                                                                                   ctx, config_infos);
   if (delegate == nullptr) {

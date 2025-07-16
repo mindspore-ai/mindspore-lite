@@ -14,13 +14,19 @@ set(LITE_SRC_COMMON_MID_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/config_infos.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/helper/external_tensor/file_helper.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/helper/external_tensor/memory_helper.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/crypto.cc
         )
 
 if(NOT MSLITE_ENABLE_RUNTIME_CONVERT OR MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
     set(LITE_SRC_COMMON_MID_SRC
             ${LITE_SRC_COMMON_MID_SRC}
             ${CMAKE_CURRENT_SOURCE_DIR}/config_file.cc)
+endif()
+
+if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
+    set(LITE_SRC_COMMON_MID_SRC
+            ${LITE_SRC_COMMON_MID_SRC}
+            ${CMAKE_CURRENT_SOURCE_DIR}/crypto.cc
+            )
 endif()
 
 if(NOT ANDROID_NDK_TOOLCHAIN_INCLUDED)
