@@ -39,10 +39,6 @@
 #include "extendrt/utils/func_graph_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "extendrt/utils/tensor_utils.h"
-#include "extendrt/kernel/ascend/model/model_infer.h"
-#include "extendrt/kernel/ascend/src/custom_ascend_kernel.h"
-#include "src/common/dynamic_library_loader.h"
-#include "extendrt/cxx_api/dlutils.h"
 
 namespace mindspore {
 const size_t tensor_max_size = 0x1000000;
