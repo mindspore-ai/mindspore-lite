@@ -61,7 +61,7 @@ output_path=$2
 version=$(ls ${input_path}/android_aarch64/npu/mindspore-lite-*-*.tar.gz | awk -F'/' '{print $NF}' | cut -d"-" -f3)
 
 android_release_package aarch64 npu
-# android_release_package aarch64 gpu
+android_release_package aarch64 gpu
 
 linux_release_package
 windows_release_package
