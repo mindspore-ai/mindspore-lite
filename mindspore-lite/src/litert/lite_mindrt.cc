@@ -122,6 +122,10 @@ int LiteOpActor::IsolateInputData(std::vector<std::shared_ptr<LiteOpActor>> *act
         old_tensor->set_data_type(kernel_->desc().data_type);
       }
       SetTensorListTensorDataType(kernel_->desc().data_type, old_tensor);
+      if (kernel_->Context() == nullptr) {
+        MS_LOG(ERROR) << "Kernel_->Context() is nullptr.";
+        return RET_NULL_PTR;
+      }
       old_tensor->set_allocator(kernel_->Context()->allocator);
       continue;
     }

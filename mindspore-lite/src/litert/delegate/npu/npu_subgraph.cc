@@ -170,6 +170,10 @@ int NPUSubGraph::BuildNPUInputOp() {
       if (IsSubGraphInputTensor(in_tensor)) {
         auto tensor_name = "Input_" + std::to_string(count++) + '_' + op->name();
         hiai::op::Data *data = ConverterToNPUData(in_tensor, tensor_name);
+        if (data == nullptr) {
+          MS_LOG(ERROR) << "data is nullptr.";
+          return RET_ERROR;
+        }
         subgraph_input_ops_.push_back(*data);
         input_ops.push_back(data);
         op_buffer_.push_back(data);

@@ -162,6 +162,12 @@ Status Model::Build(const void *model_data, size_t data_size, ModelType model_ty
 Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
                     const std::shared_ptr<Context> &model_context, const Key &dec_key,
                     const std::vector<char> &dec_mode, const std::vector<char> &cropto_lib_path) {
+  std::stringstream err_msg;
+  if (model_context == nullptr) {
+    err_msg << "Invalid null context.";
+    MS_LOG(ERROR) << err_msg.str();
+    return Status(kLiteNullptr, err_msg.str());
+  }
 #ifdef ENABLE_OPENSSL
   if (impl_ == nullptr) {
     MS_LOG(ERROR) << "Model implement is null.";
@@ -230,6 +236,12 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
 
 Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
                     const std::shared_ptr<Context> &model_context) {
+  std::stringstream err_msg;
+  if (model_context == nullptr) {
+    err_msg << "Invalid null context.";
+    MS_LOG(ERROR) << err_msg.str();
+    return Status(kLiteNullptr, err_msg.str());
+  }
   if (impl_ == nullptr) {
     MS_LOG(ERROR) << "Model implement is null.";
     return kLiteNullptr;
