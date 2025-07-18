@@ -57,7 +57,7 @@ else()
     endif()
 endif()
 
-include_directories(${OPS_DIR}/kernel/cpu)
+include_directories(${NNACL_DIR}/../)
 set(COMMON_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/../common/flag_parser.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../common/string_util.cc
@@ -65,7 +65,7 @@ set(COMMON_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/../../src/common/file_utils.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../../src/common/utils.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../../src/common/config_file.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../ops/kernel/cpu/nnacl/nnacl_common.c
+        ${NNACL_DIR}/nnacl_common.c
         )
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../lite)

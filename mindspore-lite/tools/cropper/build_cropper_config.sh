@@ -252,23 +252,23 @@ getCommonFile() {
   while IFS='' read -r line; do mindrt_files_h+=("$line"); done < <(ls ${MINDSPORE_HOME}/mindspore/core/mindrt/include/thread/*.h)
   others_files_h=(
     "${MINDSPORE_LITE_HOME}"/src/litert/infer_manager.h
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/infer/infer_register.h
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/nnacl_utils.h
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/infer/infer_register.h
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/nnacl_utils.h
     "${MINDSPORE_LITE_HOME}"/src/common/ops/populate/populate_register.h
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/op_base.h
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/op_base.h
     "${MINDSPORE_HOME}"/mindspore/core/include/ir/dtype/type_id.h
     "${MINDSPORE_HOME}"/mindspore/core/include/utils/overload.h
     "${MINDSPORE_LITE_HOME}"/tools/common/option.h
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/intrinsics/ms_simd_instructions.h
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/intrinsics/ms_simd_instructions_fp16.h
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/infer/infer.h
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/infer/common_infer.h
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/tensor_c.h
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/errorcode.h
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/common_func.h
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/tensor_c_utils.h
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/tensorlist_c.h
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/tensorlist_c_utils.h
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/intrinsics/ms_simd_instructions.h
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/intrinsics/ms_simd_instructions_fp16.h
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/infer/infer.h
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/infer/common_infer.h
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/tensor_c.h
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/errorcode.h
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/common_func.h
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/tensor_c_utils.h
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/tensorlist_c.h
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/tensorlist_c_utils.h
     "${MINDSPORE_HOME}"/mindspore/core/include/utils/log_adapter.h
     "${MINDSPORE_HOME}"/mindspore/core/include/ir/api_tensor_impl.h
     "${MINDSPORE_LITE_HOME}"/src/litert/cxx_api/tensor/tensor_impl.h
@@ -312,29 +312,29 @@ getCommonFile() {
   )
   # sava all assembly files
   assembly_files=()
-  while IFS='' read -r line; do assembly_files+=("$line"); done < <(ls ${MINDSPORE_HOME}/mindspore/ops/kernel/cpu/nnacl/assembly/*/*.S)
+  while IFS='' read -r line; do assembly_files+=("$line"); done < <(ls ${MINDSPORE_LITE_HOME}/ops/kernel/cpu/nnacl/assembly/*/*.S)
   others_files_c=(
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/nnacl_utils.c
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/errorcode.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/nnacl_utils.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/errorcode.c
     "${MINDSPORE_LITE_HOME}"/src/litert/infer_manager.cc
     "${MINDSPORE_LITE_HOME}"/src/common/ops/populate/populate_register.cc
     "${MINDSPORE_LITE_HOME}"/src/common/ops/populate/custom_populate.cc
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/infer/infer_register.c
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/infer/shape_fusion_infer.c
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/infer/common_infer.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/infer/infer_register.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/infer/shape_fusion_infer.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/infer/common_infer.c
     "${MINDSPORE_LITE_HOME}"/src/litert/kernel/cpu/fp32/shape_fusion_fp32.cc
     "${MINDSPORE_HOME}"/mindspore/core/utils/status.cc
     "${MINDSPORE_HOME}"/mindspore/core/utils/log_adapter.cc
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/kernel.c
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/tensor_c_utils.c
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/tensorlist_c_utils.c
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/base/format_transpose.c
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/base/cast_base.c
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/fp32/transpose_fp32.c
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/fp32/pack_fp32.c
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/fp16/pack_fp16.c
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/fp32/pack_fp32_opt.c
-    "${MINDSPORE_HOME}"/mindspore/ops/kernel/cpu/nnacl/nnacl_common.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/kernel.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/tensor_c_utils.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/tensorlist_c_utils.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/base/format_transpose.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/base/cast_base.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/fp32/transpose_fp32.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/fp32/pack_fp32.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/fp16/pack_fp16.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/fp32/pack_fp32_opt.c
+    "${MINDSPORE_LITE_HOME}"/ops/kernel/cpu/nnacl/nnacl_common.c
   )
   all_files=("${src_files[@]}" "${regist_files[@]}" "${common_files[@]}" "${runtime_files_cc[@]}"
     "${others_files_c[@]}" "${assembly_files[@]}" "${nnacl_files_cc[@]}" "${mindrt_files[@]}"
@@ -428,7 +428,7 @@ getCommonFile
 getTrainCommonFile
 # get src/common/ops
 getOpsFile "REG_POPULATE\(PrimitiveType_" "${MINDSPORE_LITE_HOME}/src/common/ops/populate" "prototype" &
-getOpsFile "REG_INFER\(.*?, PrimType_" "${MINDSPORE_HOME}/mindspore/ops/kernel/cpu/nnacl/infer" "prototype" &
+getOpsFile "REG_INFER\(.*?, PrimType_" "${MINDSPORE_LITE_HOME}/ops/kernel/cpu/nnacl/infer" "prototype" &
 # support for cpu
 getOpsFile "REG_KERNEL\(.*?, kNumberTypeFloat32, PrimitiveType_" "${MINDSPORE_LITE_HOME}/src/litert/kernel/cpu" "kNumberTypeFloat32" &
 getOpsFile "REG_KERNEL\(.*?, kNumberTypeFloat16, PrimitiveType_" "${MINDSPORE_LITE_HOME}/src/litert/kernel/cpu" "kNumberTypeFloat16" &
@@ -436,11 +436,11 @@ getOpsFile "REG_KERNEL\(.*?, kNumberTypeInt8, PrimitiveType_" "${MINDSPORE_LITE_
 getOpsFile "REG_KERNEL\(.*?, kNumberTypeInt32, PrimitiveType_" "${MINDSPORE_LITE_HOME}/src/litert/kernel/cpu" "kNumberTypeInt32" &
 getOpsFile "REG_KERNEL\(.*?, kNumberTypeBool, PrimitiveType_" "${MINDSPORE_LITE_HOME}/src/litert/kernel/cpu" "kNumberTypeInt32" &
 #support for nnacl kernel
-getNnaclKernelFile "REG_KERNEL_CREATOR\(PrimType_" "${MINDSPORE_HOME}/mindspore/ops/kernel/cpu/nnacl/kernel" "kNumberTypeFloat32" "kNumberTypeFloat32" &
-getNnaclKernelFile "REG_KERNEL_CREATOR\(PrimType_" "${MINDSPORE_HOME}/mindspore/ops/kernel/cpu/nnacl/kernel" "kNumberTypeFloat16" "kNumberTypeFloat16" &
-getNnaclKernelFile "REG_KERNEL_CREATOR\(PrimType_" "${MINDSPORE_HOME}/mindspore/ops/kernel/cpu/nnacl/kernel" "kNumberTypeInt8" "kNumberTypeInt8" &
-getNnaclKernelFile "REG_KERNEL_CREATOR\(PrimType_" "${MINDSPORE_HOME}/mindspore/ops/kernel/cpu/nnacl/kernel" "kNumberTypeInt32" "kNumberTypeInt32" &
-getNnaclKernelFile "REG_KERNEL_CREATOR\(PrimType_" "${MINDSPORE_HOME}/mindspore/ops/kernel/cpu/nnacl/kernel" "kNumberTypeInt32" "kNumberTypeBool" &
+getNnaclKernelFile "REG_KERNEL_CREATOR\(PrimType_" "${MINDSPORE_LITE_HOME}/ops/kernel/cpu/nnacl/kernel" "kNumberTypeFloat32" "kNumberTypeFloat32" &
+getNnaclKernelFile "REG_KERNEL_CREATOR\(PrimType_" "${MINDSPORE_LITE_HOME}/ops/kernel/cpu/nnacl/kernel" "kNumberTypeFloat16" "kNumberTypeFloat16" &
+getNnaclKernelFile "REG_KERNEL_CREATOR\(PrimType_" "${MINDSPORE_LITE_HOME}/ops/kernel/cpu/nnacl/kernel" "kNumberTypeInt8" "kNumberTypeInt8" &
+getNnaclKernelFile "REG_KERNEL_CREATOR\(PrimType_" "${MINDSPORE_LITE_HOME}/ops/kernel/cpu/nnacl/kernel" "kNumberTypeInt32" "kNumberTypeInt32" &
+getNnaclKernelFile "REG_KERNEL_CREATOR\(PrimType_" "${MINDSPORE_LITE_HOME}/ops/kernel/cpu/nnacl/kernel" "kNumberTypeInt32" "kNumberTypeBool" &
 getNnaclKernelFile "NNACL_KERNEL\(PrimitiveType_" "${MINDSPORE_LITE_HOME}/src/litert/kernel/cpu/nnacl" "kNumberTypeFloat32" "kNumberTypeFloat32" &
 getNnaclKernelFile "NNACL_KERNEL\(PrimitiveType_" "${MINDSPORE_LITE_HOME}/src/litert/kernel/cpu/nnacl" "kNumberTypeFloat16" "kNumberTypeFloat16" &
 getNnaclKernelFile "NNACL_KERNEL\(PrimitiveType_" "${MINDSPORE_LITE_HOME}/src/litert/kernel/cpu/nnacl" "kNumberTypeInt8" "kNumberTypeInt8" &

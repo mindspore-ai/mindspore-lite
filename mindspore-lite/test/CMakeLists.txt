@@ -4,7 +4,7 @@ set(LITE_DIR ${TOP_DIR}/mindspore-lite)
 
 include_directories(${TOP_DIR})
 include_directories(${TEST_DIR})
-include_directories(${TOP_DIR}/mindspore/mindspore/ops/kernel/cpu)
+include_directories(${NNACL_DIR}/../)
 
 include(${TOP_DIR}/cmake/external_libs/gtest.cmake)
 include(${TOP_DIR}/cmake/external_libs/mockcpp.cmake)

@@ -15,7 +15,7 @@
  */
 
 #include "coder/opcoders/base/detection_post_process_base_coder.h"
-#include "mindspore/ops/kernel/cpu/nnacl/op_base.h"
+#include "nnacl/op_base.h"
 #include "nnacl/int8/quant_dtype_cast_int8.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/log.h"

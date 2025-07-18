@@ -16,7 +16,7 @@ if(Python3_FOUND)
     include_directories(${TOP_DIR}/mindspore/mindspore/core/include)
     include_directories(${TOP_DIR}/mindspore/mindspore/core/mindrt)
     include_directories(${TOP_DIR}/mindspore/mindspore/core/mindrt/include)
-    include_directories(${TOP_DIR}/mindspore/mindspore/ops/kernel/cpu/)
+    include_directories(${NNACL_DIR}/../)
 
     if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
       add_compile_definitions(MSLITE_ENABLE_CLOUD_INFERENCE)

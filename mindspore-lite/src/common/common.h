@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_COMMON_COMMON_H_
 
 #include <string>
-#include "mindspore/ops/kernel/cpu/nnacl/op_base.h"
+#include "nnacl/op_base.h"
 
 /*
 Naming a key of path must be consistent with existing naming styles and follow the following rules:
