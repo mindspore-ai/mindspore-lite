@@ -27,6 +27,7 @@
 #include "src/tensor.h"
 #include "tools/common/string_util.h"
 #include "nnacl/nnacl_common.h"
+#include "include/securec.h"
 #ifdef ENABLE_ARM64
 #include <linux/perf_event.h>
 #include <sys/ioctl.h>
@@ -1307,7 +1308,7 @@ int BenchmarkUnifiedApi::CompileGraph(mindspore::ModelType model_type, const std
     ret =
       ms_model_.Build(flags_->model_file_, model_type, context, dec_key, flags_->dec_mode_, flags_->crypto_lib_path_);
   }
-  memset(dec_key.key, 0, kEncMaxLen);
+  memset_s(dec_key.key, kEncMaxLen, 0, kEncMaxLen);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "ms_model_.Build failed while running ", model_name.c_str();
     std::cout << "ms_model_.Build failed while running ", model_name.c_str();

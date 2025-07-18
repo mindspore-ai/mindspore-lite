@@ -51,7 +51,7 @@ mindspore_lite.Model
 
               那么配置参数字典中路径b的rank table将覆盖配置文件中的路径a的rank table。
             
-            - **dec_key** (Bytes, 可选) - 当导入密文模型时，使用该参数传入解密密钥，例如 ``b'1234567890ABCDEF'``。默认值：``None``。
+            - **dec_key** (Bytes, 可选) - 当导入密文模型时，使用该参数传入解密密钥。默认值：``None``。
             - **dec_mode** (str, 可选) - 当导入密文模型时，使用该参数指定解密模式。当前支持的解密模式包括："AES-GCM"，"AES-CBC"与"SM4-CBC"。默认值： ``"AES-GCM"`` 。
             - **dec_num_parallel** (int, 可选) - 当导入密文模型时，使用该参数开启并行解密，并指定并行线程数，取值范围0~64。默认为：``0``。
 
