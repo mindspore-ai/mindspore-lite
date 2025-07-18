@@ -264,6 +264,9 @@ void PackWeightManager::FreePackWeight(std::string runner_id, std::string model_
       MS_LOG(INFO) << "free pack weight of runner id: " << runner_id;
       pack_weight_->FreePackWeight(runner_id);
     }
+  } else {
+    MS_LOG(INFO) << "pack_weight_ is nullptr.";
+    return;
   }
   if (model_id.empty()) {
     MS_LOG(INFO) << "model id is empty.";

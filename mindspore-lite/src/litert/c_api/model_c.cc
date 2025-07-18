@@ -371,6 +371,13 @@ char **MSTrainCfgGetLossName(MSTrainCfgHandle train_cfg, size_t *num) {
   }
   for (size_t i = 0; i < loss_name.size(); i++) {
     name[i] = static_cast<char *>(malloc(loss_name[i].size() + 1));
+    if (name[i] == nullptr) {
+      for (size_t j = 0; j < i; j++) {
+        free(name[j]);
+      }
+      MS_LOG(ERROR) << "Failed to malloc name.";
+      return nullptr;
+    }
     memcpy(name[i], loss_name[i].c_str(), loss_name[i].size() + 1);
   }
   return name;

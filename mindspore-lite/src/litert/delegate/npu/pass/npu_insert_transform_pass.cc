@@ -162,9 +162,17 @@ int NPUInsertTransformPass::InsertTransNode(NPUOp *op, NPUOp *post_op, const min
   all_tensors_->push_back(nc2nh_tensor);
 
   auto *nh2nc_op = NPUPassUtils::CreateNhwc2NchwOp({trans_in_tensor}, nh2nc_tensors, nh2nc_name);
+  if (nh2nc_op == nullptr) {
+    MS_LOG(ERROR) << "nh2nc_op is nullptr.";
+    return RET_ERROR;
+  }
   trans_ops->push_back(nh2nc_op);
 
   auto *nc2nh_op = NPUPassUtils::CreateNchw2NhwcOp(nh2nc_tensors, nc2nh_tensors, nc2nh_name);
+  if (nc2nh_op == nullptr) {
+    MS_LOG(ERROR) << "nc2nh_op is nullptr.";
+    return RET_ERROR;
+  }
   trans_ops->push_back(nc2nh_op);
 
   NPUPassUtils::UpdateOp(nh2nc_op, in_ops, {nc2nh_op}, {trans_in_tensor}, nh2nc_tensors);
