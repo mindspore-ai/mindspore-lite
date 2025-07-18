@@ -352,8 +352,8 @@ class LLMClusterInfo:
         >>> import mindspore_lite as mslite
         >>> remote_cluster_id = 1
         >>> cluster = mslite.LLMClusterInfo(mslite.LLMRole.Prompt, remote_cluster_id)
-        >>> cluster.append_local_ip_info(("192.168.1.1", 2222))
-        >>> cluster.append_remote_ip_info(("192.168.2.1", 2222))
+        >>> cluster.append_local_ip_info(("*.*.*.*", *))
+        >>> cluster.append_remote_ip_info(("*.*.*.*", *))
         >>> local_cluster_id = 0
         >>> llm_engine = mslite.LLMEngine(mslite.LLMRole.Decoder, local_cluster_id)
         >>> # ... llm_engine.init
@@ -406,7 +406,7 @@ class LLMClusterInfo:
             >>> import mindspore_lite as mslite
             >>> cluster_id = 1
             >>> cluster = mslite.LLMClusterInfo(mslite.LLMRole.Prompt, 0)
-            >>> cluster.append_local_ip_info(("192.168.1.1", 2222))
+            >>> cluster.append_local_ip_info(("*.*.*.*", *))
         """
         ip, port = LLMClusterInfo._trans_address(address)
         self.llm_cluster_.append_local_ip_info(ip, port)
@@ -431,7 +431,7 @@ class LLMClusterInfo:
             >>> import mindspore_lite as mslite
             >>> cluster_id = 1
             >>> cluster = mslite.LLMClusterInfo(mslite.LLMRole.Prompt, 0)
-            >>> cluster.append_remote_ip_info(("192.168.1.1", 2222))
+            >>> cluster.append_remote_ip_info(("*.*.*.*", *))
         """
         ip, port = LLMClusterInfo._trans_address(address)
         self.llm_cluster_.append_remote_ip_info(ip, port)
@@ -952,11 +952,11 @@ class LLMEngine:
             >>> options = {}
             >>> llm_engine.init(model_paths, options)
             >>> cluster = mslite.LLMClusterInfo(mslite.LLMRole.Prompt, 0)
-            >>> cluster.append_local_ip_info(("192.168.1.1", 2222))
-            >>> cluster.append_remote_ip_info(("192.168.2.1", 2222))
+            >>> cluster.append_local_ip_info(("*.*.*.*", *))
+            >>> cluster.append_remote_ip_info(("*.*.*.*", *))
             >>> cluster2 = mslite.LLMClusterInfo(mslite.LLMRole.Prompt, 1)
-            >>> cluster2.append_local_ip_info(("192.168.3.1", 2222))
-            >>> cluster2.append_remote_ip_info(("192.168.4.2", 2222))
+            >>> cluster2.append_local_ip_info(("*.*.*.*", *))
+            >>> cluster2.append_remote_ip_info(("*.*.*.*", *))
             >>> ret, rets = llm_engine.link_clusters((cluster, cluster2))
             >>> if not ret.IsOk():
             >>>    for ret_item in rets:
@@ -1000,11 +1000,11 @@ class LLMEngine:
             >>> options = {}
             >>> llm_engine.init(model_paths, options)
             >>> cluster = mslite.LLMClusterInfo(mslite.LLMRole.Prompt, 0)
-            >>> cluster.append_local_ip_info(("192.168.1.1", 2222))
-            >>> cluster.append_remote_ip_info(("192.168.2.1", 2222))
+            >>> cluster.append_local_ip_info(("*.*.*.*", *))
+            >>> cluster.append_remote_ip_info(("*.*.*.*", *))
             >>> cluster2 = mslite.LLMClusterInfo(mslite.LLMRole.Prompt, 1)
-            >>> cluster2.append_local_ip_info(("192.168.3.1", 2222))
-            >>> cluster2.append_remote_ip_info(("192.168.4.2", 2222))
+            >>> cluster2.append_local_ip_info(("*.*.*.*", *))
+            >>> cluster2.append_remote_ip_info(("*.*.*.*", *))
             >>> ret, rets = llm_engine.unlink_clusters((cluster, cluster2))
             >>> if not ret.IsOk():
             >>>    for ret_item in rets:

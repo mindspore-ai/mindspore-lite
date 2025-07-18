@@ -29,9 +29,6 @@ __all__ = ['TensorMeta', 'DataType', 'Format', 'Tensor']
 class TensorMeta:
     """
     The `TensorMeta` class defines a TensorInfo in MindSpore Lite.
-
-    Args:
-        tensor(): The info to be stored in a new TensorMeta.
     """
 
     def __init__(self):
