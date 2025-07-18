@@ -474,6 +474,10 @@ Status Evaluate(std::shared_ptr<dataset::Dataset> ds, std::vector<TrainCallBack 
 }
 
 std::vector<char> Model::GetModelInfo(const std::vector<char> &key) {
+  if (impl_ == nullptr) {
+    MS_LOG(ERROR) << "Model implement is null.";
+    return {};
+  }
   std::vector<char> ret;
   auto string_key = CharToString(key);
   if (string_key == lite::KCurrentPid) {
@@ -494,10 +498,6 @@ std::vector<char> Model::GetModelInfo(const std::vector<char> &key) {
                                             lite::KCurrentPid, lite::kSharableWeightMemHandle};
   if (std::find(supported_key.begin(), supported_key.end(), string_key) == supported_key.end()) {
     MS_LOG(WARNING) << "Unsupported key, current supported key:" << supported_key << ", input key:" << string_key;
-    return ret;
-  }
-  if (impl_ == nullptr) {
-    MS_LOG(ERROR) << "Model implement is null.";
     return ret;
   }
   auto model_info = impl_->GetModelInfo();
