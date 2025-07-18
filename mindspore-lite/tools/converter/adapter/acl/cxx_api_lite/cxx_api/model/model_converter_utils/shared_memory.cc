@@ -27,7 +27,7 @@ Status SharedMemory::Create(uint64_t memory_size) {
     MS_LOG(ERROR) << "Shared memory creation failed. Errno " + std::to_string(errno);
     return kMCFailed;
   }
-  MS_LOG(INFO) << "shmget success, shm id " << shm_id_;
+  MS_LOG(INFO) << "shmget success.";
   return kSuccess;
 }
 
