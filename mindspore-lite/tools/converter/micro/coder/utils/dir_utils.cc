@@ -24,6 +24,7 @@
 #include <array>
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
+#include "src/common/file_utils.h"
 
 namespace mindspore::lite::micro {
 #if defined(_WIN32) || defined(_WIN64)
@@ -86,11 +87,12 @@ bool DirectoryGenerator::CreateStaticDir(const std::string &work_dir, const std:
     MS_LOG(INFO) << "Work directory has been created";
     return true;
   }
-  if (work_dir.empty() || proj_name.empty() || !DirExists(work_dir)) {
-    MS_LOG(ERROR) << "Work directory or project name is empty";
+  auto real_work_dir = lite::RealPath(work_dir.c_str());
+  if (real_work_dir.empty() || proj_name.empty() || !DirExists(real_work_dir)) {
+    MS_LOG(ERROR) << "Work directory or project name is invalid";
     return false;
   }
-  work_dir_ = work_dir;
+  work_dir_ = real_work_dir;
   project_name_ = proj_name;
 #if defined(_WIN32) || defined(_WIN64)
   std::ofstream pro_file;

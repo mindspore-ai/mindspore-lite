@@ -362,15 +362,18 @@ def main():
     dependencies.update(other_dependencies)
     errors += err
 
-    with os.fdopen(os.open(os.path.join(OUTPUT_LOCATION, DEPENDENCIES_FILENAME), os.O_WRONLY | os.O_CREAT, 0o600),
+    deps_file_name = os.path.realpath(os.path.join(OUTPUT_LOCATION, DEPENDENCIES_FILENAME))
+    with os.fdopen(os.open(deps_file_name, os.O_WRONLY | os.O_CREAT, 0o600),
                    "w+") as f:
         json.dump(dependencies, f)
 
-    with os.fdopen(os.open(os.path.join(OUTPUT_LOCATION, ASSOCIATIONS_FILENAME), os.O_WRONLY | os.O_CREAT, 0o600),
+    ass_file_name = os.path.realpath(os.path.join(OUTPUT_LOCATION, ASSOCIATIONS_FILENAME))
+    with os.fdopen(os.open(ass_file_name, os.O_WRONLY | os.O_CREAT, 0o600),
                    "w+") as f:
         json.dump(all_associations, f)
 
-    with os.fdopen(os.open(os.path.join(OUTPUT_LOCATION, ERRORS_FILENAME), os.O_WRONLY | os.O_CREAT, 0o600), "w+") as f:
+    err_file_name = os.path.realpath(os.path.join(OUTPUT_LOCATION, ERRORS_FILENAME))
+    with os.fdopen(os.open(err_file_name, os.O_WRONLY | os.O_CREAT, 0o600), "w+") as f:
         f.write(errors)
 
 
