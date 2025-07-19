@@ -93,4 +93,19 @@ mindspore_lite.LLMEngine
             - **RuntimeError** - LLMEngine对象未初始化或者初始化失败。
         
         返回：
-            LLMEngine状态，类型为LLMEngineStatus。
+            (Status, tuple[Status])，分别表示所有集群的连接状态，和每个集群的连接状态。
+    
+    .. py:method:: unlink_clusters(clusters, timeout=-1)
+
+        断连集群。
+
+        参数：
+            - **clusters** (Union[List[LLMClusterInfo], Tuple[LLMClusterInfo]]) - 集群。
+            - **timeout** (int，可选) - 超时秒数。默认值：``-1``。
+        
+        异常：
+            - **TypeError** - `clusters` 不是list或者tuple，或者其中的内容不是LLMClusterInfo类型。
+            - **RuntimeError** - 断连失败。
+        
+        返回：
+            (Status, tuple[Status])，分别表示所有集群的断连状态，和每个集群的断连状态。

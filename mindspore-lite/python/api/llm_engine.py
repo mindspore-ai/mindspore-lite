@@ -983,7 +983,7 @@ class LLMEngine:
 
         Args:
             clusters (Union[List[LLMClusterInfo], Tuple[LLMClusterInfo]]): clusters.
-            timeout (int): LLMEngine is not inited or init failed.
+            timeout (int): timeout in seconds.
 
         Raises:
             TypeError: `clusters` is not list/tuple of LLMClusterInfo.
