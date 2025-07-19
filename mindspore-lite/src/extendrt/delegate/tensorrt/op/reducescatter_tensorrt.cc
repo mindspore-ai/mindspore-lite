@@ -81,7 +81,7 @@ int ReduceScatterTensorRT::AddInnerOp(TensorRTContext *ctx) {
 int ReduceScatterPlugin::enqueue(const nvinfer1::PluginTensorDesc *inputDesc,
                                  const nvinfer1::PluginTensorDesc *outputDesc, const void *const *inputs,
                                  void *const *outputs, void *workspace, cudaStream_t stream) noexcept {
-  MS_LOG(INFO) << "ReduceScatter run at rank id: " << GetRankID() << " stream: " << stream;
+  MS_LOG(INFO) << "ReduceScatter run at rank id: " << GetRankID();
   nvinfer1::Dims output_dims = outputDesc[0].dims;
   int recieve_element_cnt =
     std::accumulate(output_dims.d, output_dims.d + output_dims.nbDims, 1, std::multiplies<int64_t>());

@@ -261,7 +261,7 @@ Status DefaultGraphCompiler::CreateExecPlanInputs(const FuncGraphPtr &func_graph
   }
   for (const auto &input : func_graph->get_inputs()) {
     if (!utils::isa<ParameterPtr>(input)) {
-      MS_LOG(ERROR) << "Not supported graph input: " << input;
+      MS_LOG(ERROR) << "Not supported graph input.";
       return kLiteError;
     }
     auto parameter = utils::cast<ParameterPtr>(input);

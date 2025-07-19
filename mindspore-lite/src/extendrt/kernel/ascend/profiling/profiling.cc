@@ -49,7 +49,7 @@ std::string RealPath(const char *path) {
   }
   auto real_path = realpath(path, resolved_path.get());
   if (real_path == nullptr || strlen(real_path) == 0) {
-    MS_LOG(ERROR) << "file path not exists: " << path;
+    MS_LOG(ERROR) << "file path not exists.";
     return "";
   }
   std::string res = resolved_path.get();

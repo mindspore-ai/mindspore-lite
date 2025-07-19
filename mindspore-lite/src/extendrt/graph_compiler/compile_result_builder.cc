@@ -79,7 +79,7 @@ StatusCode CompileResultBuilder::BuildNodes(const std::vector<AnfNodePtr> &nodes
     }
     auto ret = CreateAndAppendNode(utils::cast<CNodePtr>(node));
     if (ret != kSuccess) {
-      MS_LOG(ERROR) << "Create compile node from cnode failed : " << node;
+      MS_LOG(ERROR) << "Create compile node from cnode failed.";
       return ret;
     }
   }
@@ -381,8 +381,7 @@ StatusCode CompileResultBuilder::CreateAndAppendNode(const CNodePtr &cnode) {
     } else if (utils::isa<ValueNode>(input)) {
       ret = this->AppendInputValueNodeToInputs(utils::cast<ValueNodePtr>(input), compile_node);
     } else {
-      MS_LOG(ERROR) << "Unsupported input node of cnode: " << input
-                    << ", current cnode: " << cnode->fullname_with_scope();
+      MS_LOG(ERROR) << "Unsupported input node of cnode , current cnode: " << cnode->fullname_with_scope();
       ret = kLiteNotSupport;
     }
     if (ret != kSuccess) {
@@ -393,7 +392,7 @@ StatusCode CompileResultBuilder::CreateAndAppendNode(const CNodePtr &cnode) {
   // outputs
   ret = BuildNodeOutputTensor(cnode, compile_node);
   if (ret != kSuccess) {
-    MS_LOG(ERROR) << "Create output tensors of cnode failed, cnode: " << cnode;
+    MS_LOG(ERROR) << "Create output tensors of cnode failed.";
     return ret;
   }
   return kSuccess;

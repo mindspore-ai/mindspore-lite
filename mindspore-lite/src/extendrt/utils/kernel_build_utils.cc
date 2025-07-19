@@ -413,7 +413,7 @@ void CopyInputWeights(const CNodePtr &kernel_node, const std::vector<kernel::Ker
     }
     ParameterPtr weight_param = weight_input->cast<ParameterPtr>();
     if (weight_param == nullptr || !weight_param->has_default()) {
-      MS_LOG(ERROR) << "Om param is invalid, val= " << weight_param;
+      MS_LOG(ERROR) << "Om param is invalid.";
       return;
     }
     auto tensor = std::static_pointer_cast<tensor::Tensor>(weight_param->default_param());

@@ -1863,8 +1863,7 @@ tensor::TensorPtr GeGraphExecutor::ConvertGeTensorNoCopy(::ge::Tensor *ge_tensor
   }
   constexpr int64_t kTensorAlignBytes = 64;
   if (reinterpret_cast<uintptr_t>(ge_data) % kTensorAlignBytes != 0) {
-    MS_LOG(ERROR) << "Skip zero-copy ge tensor " << reinterpret_cast<uintptr_t>(ge_data)
-                  << ", bytes not aligned with expected.";
+    MS_LOG(ERROR) << "Skip zero-copy ge tensor , because of bytes not aligned with expected.";
     return nullptr;
   }
   int64_t elem_num = 1;
@@ -1940,7 +1939,7 @@ bool GeGraphExecutor::OfflineBuildGraph(const FuncGraphPtr &graph) {
     return false;
   }
   if (!AddGraph(df_graph, ge_options, &graph_id)) {
-    MS_LOG(ERROR) << "Failed to add compute graph, graph name " << graph->ToString();
+    MS_LOG(ERROR) << "Failed to add compute graph.";
     return false;
   }
   compute_graph_id_list_.push_back(graph_id);

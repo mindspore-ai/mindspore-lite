@@ -957,8 +957,7 @@ MSTensor LLMEnginePlugin::ConvertGeTensorNoCopy(::ge::Tensor *ge_tensor_ptr) {
   }
   constexpr int64_t kTensorAlignBytes = 64;
   if (reinterpret_cast<uintptr_t>(ge_data) % kTensorAlignBytes != 0) {
-    MS_LOG(ERROR) << "Skip zero-copy ge tensor " << reinterpret_cast<uintptr_t>(ge_data)
-                  << ", bytes not aligned with expected.";
+    MS_LOG(ERROR) << "Skip zero-copy ge tensor , because of bytes not aligned with expected.";
     return MSTensor(nullptr);
   }
   int64_t elem_num = 1;

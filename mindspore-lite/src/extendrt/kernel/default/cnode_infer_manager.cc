@@ -23,7 +23,7 @@ namespace mindspore {
 namespace kernel {
 bool SetDTAndShapeFromAbTensorToLiteTensor(const AbstractBasePtr &abstract, lite::Tensor *tensor) {
   if (!utils::isa<mindspore::abstract::AbstractTensorPtr>(abstract)) {
-    MS_LOG(ERROR) << "The abstract should be tensor, but got abstract : " << abstract;
+    MS_LOG(ERROR) << "The abstract should be tensor.";
     return false;
   }
   ShapeVector shape_vector;
@@ -31,7 +31,7 @@ bool SetDTAndShapeFromAbTensorToLiteTensor(const AbstractBasePtr &abstract, lite
   auto ret = lite::TensorAdapter::GetDTAndShapeFromAbTensor(
     utils::cast<mindspore::abstract::AbstractTensorPtr>(abstract), &data_type, &shape_vector);
   if (ret != kSuccess) {
-    MS_LOG(ERROR) << "Get dtype and shape from abstract failed, abstract : " << abstract;
+    MS_LOG(ERROR) << "Get dtype and shape from abstract failed.";
     return false;
   }
   std::vector<int32_t> int32_shape;
@@ -56,7 +56,7 @@ int CNodeInferShape(const CNodePtr &cnode, const std::vector<lite::Tensor *> &ou
     }
     for (size_t i = 0; i < elements.size(); i++) {
       if (!SetDTAndShapeFromAbTensorToLiteTensor(elements[i], outputs[i])) {
-        MS_LOG(ERROR) << "Set tensor info from abstract failed, abstract : " << elements[i];
+        MS_LOG(ERROR) << "Set tensor info from abstract failed.";
         return lite::RET_ERROR;
       }
     }
@@ -64,12 +64,12 @@ int CNodeInferShape(const CNodePtr &cnode, const std::vector<lite::Tensor *> &ou
   }
   if (utils::isa<mindspore::abstract::AbstractTensorPtr>(abstract)) {
     if (!SetDTAndShapeFromAbTensorToLiteTensor(abstract, outputs[0])) {
-      MS_LOG(ERROR) << "Set tensor info from abstract failed, abstract : " << abstract;
+      MS_LOG(ERROR) << "Set tensor info from abstract failed.";
       return lite::RET_ERROR;
     }
     return lite::RET_OK;
   }
-  MS_LOG(ERROR) << "Unsupported abstract: " << abstract;
+  MS_LOG(ERROR) << "Unsupported abstract.";
   return lite::RET_ERROR;
 }
 }  // namespace kernel

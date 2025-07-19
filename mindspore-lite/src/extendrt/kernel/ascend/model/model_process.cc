@@ -1314,21 +1314,16 @@ void ModelProcess::CheckAndInitDynOutputDeviceBuf(const KernelTensor *output, co
   if ((host_data == nullptr) || (dyn_out_sys_buf_addr_.find(host_data->addr) != dyn_out_sys_buf_addr_.end()) ||
       (host_data->size == 0)) {
     if (host_data == nullptr) {
-      MS_LOG(DEBUG) << "host_data: " << host_data
-                    << ", user not defined dynamic output buffer on host, using system defined buffer";
-    } else {
-      MS_LOG(DEBUG) << "host_data->addr: " << host_data->addr
-                    << ", user not defined dynamic output buffer on host, using system defined buffer";
+      MS_LOG(DEBUG)
+        << "host_data is nullptr, user not defined dynamic output buffer on host, using system defined buffer";
     }
     user_defined_output_buf_[output_idx] = false;
   }
   if (user_defined_output_buf_[output_idx]) {
     *output_device_buffer = output_info.device_data;
-    auto addr = (host_data != nullptr) ? host_data->addr : device_data->addr;
     auto size = (host_data != nullptr) ? host_data->size : device_data->size;
     *output_buf_size = size;
-    MS_LOG(DEBUG) << "found user buffer with addr: " << addr << " with size: " << size
-                  << ". init output device addr: " << output_info.device_data;
+    MS_LOG(DEBUG) << "found user buffer data size: " << size;
   }
 }
 
@@ -1354,8 +1349,6 @@ bool ModelProcess::CheckAndInitOutput(const std::vector<KernelTensor *> &outputs
       if (is_dynamic) {
         output_device_buffer_size = device_data->size;  // device data buffer size is needed for memory alloc
       }
-      MS_LOG(DEBUG) << "user defined output device data addr: " << output_device_buffer
-                    << ", with size: " << output_device_buffer_size;
     } else if (host_data && host_data->addr && is_run_on_device_) {
       output_device_buffer = host_data->addr;
     } else {
@@ -1406,8 +1399,8 @@ bool ModelProcess::ResetDynamicOutputTensor(const std::vector<KernelTensor *> &o
       output->SetHostData(nullptr);
       output->SetData(std::make_shared<kernel::Address>(acl_device_data, output_desc_size));
       if (output_device_id != IntToUint(device_id_)) {
-        MS_LOG(DEBUG) << "output across device, tensor on device " << output_device_id << " with addr "
-                      << device_data->addr << ", infer on device " << device_id_ << " with addr " << acl_device_data;
+        MS_LOG(DEBUG) << "output across device, tensor on device : " << output_device_id
+                      << " , infer on device : " << device_id_;
         output->SetData(std::make_shared<kernel::Address>(device_data->addr, output_desc_size));
         output_info.cur_device_data = acl_device_data;
       }
@@ -1418,15 +1411,15 @@ bool ModelProcess::ResetDynamicOutputTensor(const std::vector<KernelTensor *> &o
         output->SetHostData(std::make_shared<kernel::Address>(data_buf_ptr, output_desc_size));
         output->SetData(nullptr);
         (void)dyn_out_sys_buf_addr_.insert(output->GetHostData()->addr);
-        MS_LOG(DEBUG) << "no user provided output buffer, memory alloc by system with addr: "
-                      << output->GetHostData()->addr << ", size: " << output_desc_size;
+        MS_LOG(DEBUG) << "no user provided output buffer, memory alloc by system with buffer size : "
+                      << output_desc_size;
       } else {
         if (host_data == nullptr) {
           MS_LOG(ERROR) << "critical error! found user defined buffer nullptr";
           return false;
         }
-        MS_LOG(DEBUG) << "found user provided buffer addr: " << host_data->addr << ", size: " << host_data->size
-                      << " no need to update system allocated buffer";
+        MS_LOG(DEBUG) << "found user provided buffer, size: " << host_data->size
+                      << ", no need to update system allocated buffer";
       }
     }
 
@@ -1740,7 +1733,7 @@ void ModelProcess::FreeResourceOutput(std::vector<AclTensorInfo> *acl_tensor_inf
       continue;
     }
     if (item.device_data != nullptr) {
-      MS_LOG(DEBUG) << "freeing device buffer at addr: " << item.device_data;
+      MS_LOG(DEBUG) << "freeing device buffer.";
       if (!is_run_on_device_) {
         CALL_ASCEND_API(aclrtFree, item.device_data);
       } else {
@@ -1774,7 +1767,7 @@ bool ModelProcess::GetOutputs(const std::vector<KernelTensor *> &outputs) {
                       << output_info.buffer_size << ", output shape: " << output_info.dims;
         return false;
       }
-      MS_LOG(DEBUG) << "copying to host with addr: " << host_data->addr << " with size: " << output_info.buffer_size;
+      MS_LOG(DEBUG) << "copying to host buffer with size: " << output_info.buffer_size;
       auto ret =
         AclrtMemcpy(host_data->addr, host_data->size, output_info.cur_device_data, output_info.buffer_size, kind);
       if (ret != ACL_SUCCESS) {
