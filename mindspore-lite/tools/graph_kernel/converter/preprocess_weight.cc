@@ -63,8 +63,13 @@ class IndexCalc {
 };
 
 AnfNodePtr SubstituteConv2D::InferWeightValue(const AnfNodePtr &node) {
+  MS_EXCEPTION_IF_NULL(node);
   auto cnode = QuickCloneCNode(node);
-  auto prim = GetCNodePrimitive(cnode)->Clone();
+  MS_EXCEPTION_IF_NULL(cnode);
+  auto prim_tmp = GetCNodePrimitive(cnode);
+  MS_EXCEPTION_IF_NULL(prim_tmp);
+  auto prim = prim_tmp->Clone();
+  MS_EXCEPTION_IF_NULL(prim);
   cnode->set_input(0, NewValueNode(prim));
   auto cb = Callback::Instance();
   // the weight should be a 4D tensor of format OHWI
@@ -174,6 +179,7 @@ AnfNodePtr MatmulPackB::InferValue(const AnfNodePtr &node) {
     return node;
   }
   auto prim = GetCNodePrimitive(cnode);
+  MS_EXCEPTION_IF_NULL(prim);
   auto weight_node = cnode->input(kMatMulWeightIndex)->cast<ValueNodePtr>();
   if (weight_node == nullptr) {
     return node;

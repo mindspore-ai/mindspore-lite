@@ -169,18 +169,18 @@ int MulReduceFusion::PostProcess(const FuncGraphPtr &func_graph) {
 }
 
 int MulReduceFusion::PostProcessSqueezeWithConcat(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
-  MS_ASSERT(func_graph != nullptr);
-  MS_ASSERT(cnode != nullptr);
+  MS_CHECK_TRUE_MSG(func_graph != nullptr, lite::RET_ERROR, "func_graph is nullptr.");
+  MS_CHECK_TRUE_MSG(cnode != nullptr, lite::RET_ERROR, "cnode is nullptr.");
   if (!CheckConcatOp(func_graph, cnode)) {
     return lite::RET_OK;
   }
   auto manager = func_graph->manager();
-  MS_ASSERT(manager != nullptr);
+  MS_CHECK_TRUE_MSG(manager != nullptr, lite::RET_ERROR, "manager is nullptr.");
   for (int i = 1; i < static_cast<int>(cnode->size()); ++i) {
     manager->SetEdge(cnode, i, cnode->input(i)->cast<CNodePtr>()->input(1));
   }
   auto concat_prim = GetCNodePrimitive(cnode);
-  MS_ASSERT(concat_prim != nullptr);
+  MS_CHECK_TRUE_MSG(concat_prim != nullptr, lite::RET_ERROR, "concat_prim is nullptr.");
   (void)concat_prim->AddAttr(ops::kAxis, MakeValue<int64_t>(concat_axis_));
   auto &node_users = manager->node_users();
   auto concat_users = node_users[cnode];
@@ -281,7 +281,7 @@ int MulReduceFusion::GenerateMul(const FuncGraphPtr &func_graph, const CNodePtr 
 }
 
 bool MulReduceFusion::CheckBasicCond(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
-  MS_ASSERT(cnode != nullptr);
+  MS_CHECK_TRUE_MSG(cnode != nullptr, false, "cnode is nullptr.");
   if (cnode->size() < kInputSizeThree) {
     return false;
   }
@@ -289,7 +289,7 @@ bool MulReduceFusion::CheckBasicCond(const FuncGraphPtr &func_graph, const CNode
     return false;
   }
   auto prim = GetCNodePrimitive(cnode);
-  MS_ASSERT(prim != nullptr);
+  MS_CHECK_TRUE_MSG(prim != nullptr, false, "prim is nullptr.");
   bool is_to_end = prim->GetAttr(ops::kReduceToEnd) != nullptr && GetValue<bool>(prim->GetAttr(ops::kReduceToEnd));
   if (is_to_end) {
     return false;
@@ -314,7 +314,7 @@ bool MulReduceFusion::CheckBasicCond(const FuncGraphPtr &func_graph, const CNode
     return false;
   }
   auto mul_prim = GetCNodePrimitive(first_input);
-  MS_ASSERT(mul_prim != nullptr);
+  MS_CHECK_TRUE_MSG(mul_prim != nullptr, false, "mul_prim is nullptr.");
   auto act_type = mul_prim->GetAttr(ops::kActivationType) == nullptr
                     ? ActivationType::NO_ACTIVATION
                     : GetValue<int64_t>(mul_prim->GetAttr(ops::kActivationType));
@@ -454,7 +454,7 @@ bool MulReduceFusion::CheckGatherOp(const FuncGraphPtr &func_graph, const CNodeP
 }
 
 bool MulReduceFusion::CheckConcatOp(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
-  MS_ASSERT(cnode != nullptr);
+  MS_CHECK_TRUE_RET(cnode != nullptr, false);
   int axis{0};
   int out_dims{0};
   for (size_t i = 1; i < cnode->size(); ++i) {

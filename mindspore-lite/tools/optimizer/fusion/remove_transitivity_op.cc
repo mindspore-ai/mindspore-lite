@@ -67,7 +67,8 @@ bool RemoveTransitivityOp::Run(const FuncGraphPtr &func_graph) {
 }
 
 int RemoveTransitivityOp::HandleStridedSlice(const FuncGraphPtr &func_graph, const CNodePtr &strided_slice) {
-  MS_ASSERT(func_graph != nullptr && strided_slice != nullptr);
+  MS_CHECK_TRUE_MSG(func_graph != nullptr && strided_slice != nullptr, lite::RET_NULL_PTR,
+                    "func_graph or strided_slice is nullptr.");
   if (!StridedSliceChecker::CheckCommonInfo(strided_slice)) {
     return lite::RET_OK;
   }
@@ -104,7 +105,7 @@ int RemoveTransitivityOp::HandleStridedSlice(const FuncGraphPtr &func_graph, con
 }
 
 int RemoveTransitivityOp::HandleConcat(const FuncGraphPtr &func_graph, const CNodePtr &concat) {
-  MS_ASSERT(func_graph != nullptr && concat != nullptr);
+  MS_CHECK_TRUE_MSG(func_graph != nullptr && concat != nullptr, lite::RET_NULL_PTR, "func_graph or concat is nullptr.");
   auto prim = GetCNodePrimitive(concat);
   MS_CHECK_TRUE_MSG(prim != nullptr, lite::RET_NULL_PTR, "Concat's prim is a nullptr.");
   if (IsQuantParameterNode(prim)) {
@@ -119,7 +120,7 @@ int RemoveTransitivityOp::HandleConcat(const FuncGraphPtr &func_graph, const CNo
 }
 
 int RemoveTransitivityOp::HandleReduce(const FuncGraphPtr &func_graph, const CNodePtr &reduce) {
-  MS_ASSERT(func_graph != nullptr && reduce != nullptr);
+  MS_CHECK_TRUE_MSG(func_graph != nullptr && reduce != nullptr, lite::RET_NULL_PTR, "func_graph or reduce is nullptr.");
   auto &shape_container = preprocessor_.GetShapeContainer();
   if (shape_container.find(reduce) == shape_container.end()) {
     return lite::RET_OK;

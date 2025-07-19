@@ -153,6 +153,7 @@ void AscendNativeDelegate::ReplaceNodes(const std::shared_ptr<FuncGraph> &graph)
     if (!IsSupport(cnode)) continue;
     // consider tuple only if parent is supported.
     auto prim = GetCNodePrimitive(cnode);
+    MS_EXCEPTION_IF_NULL(prim);
     if (prim->name() == ops::kNameTupleGetItem) {
       auto parent = cnode->input(1);
       if (parent->isa<CNode>() && !IsSupport(parent->cast<CNodePtr>())) continue;

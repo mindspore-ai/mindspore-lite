@@ -1159,9 +1159,10 @@ bool IsAntiQuantModeNodes(const AnfNodePtr &node) {
     return false;
   }
   auto ascend_antiquant_node = add_node->cast<CNodePtr>()->input(kIndexOne);
+  auto prim = GetCNodePrimitive(ascend_antiquant_node);
+  CHECK_NULL_RETURN(prim);
   if (!utils::isa<CNodePtr>(ascend_antiquant_node) ||
-      !(opt::CheckPrimitiveType(ascend_antiquant_node, prim::kPrimAntiQuant) ||
-        GetCNodePrimitive(ascend_antiquant_node)->name() == "AscendAntiQuant")) {
+      !(opt::CheckPrimitiveType(ascend_antiquant_node, prim::kPrimAntiQuant) || prim->name() == "AscendAntiQuant")) {
     MS_LOG(INFO) << "The node is not AscendAntiquant node";
     return false;
   }
@@ -1228,8 +1229,10 @@ STATUS RemoveAntiQuantModeNodes(const FuncGraphPtr &func_graph, const AnfNodePtr
     return RET_OK;
   }
   auto ascend_antiquant_node = add_node->cast<CNodePtr>()->input(kIndexOne);
-  if (!(opt::CheckPrimitiveType(ascend_antiquant_node, prim::kPrimAntiQuant) ||
-        GetCNodePrimitive(ascend_antiquant_node)->name() == "AscendAntiQuant")) {
+  CHECK_NULL_RETURN(ascend_antiquant_node);
+  auto prim = GetCNodePrimitive(ascend_antiquant_node);
+  CHECK_NULL_RETURN(prim);
+  if (!(opt::CheckPrimitiveType(ascend_antiquant_node, prim::kPrimAntiQuant) || prim->name() == "AscendAntiQuant")) {
     MS_LOG(WARNING) << "In AntiQuant mode, the node : " << ascend_antiquant_node->fullname_with_scope()
                     << " is not antiquant node";
     return RET_OK;

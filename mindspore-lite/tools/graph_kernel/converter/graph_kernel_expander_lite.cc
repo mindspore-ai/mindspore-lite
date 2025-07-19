@@ -169,7 +169,9 @@ AnfNodePtr PoolLayoutDeco::Run(const AnfNodePtr &node) {
       auto sub_nodes = TopoSort(sub_graph->get_return());
       for (auto sub_node : sub_nodes) {
         if (IsPrimitiveCNode(sub_node, prim::kPrimConv2D)) {
-          AnfUtils::SetNodeAttr("layout_axis", GetCNodePrimitive(sub_node)->GetAttr("weight_coi"), cnode);
+          auto prim = GetCNodePrimitive(sub_node);
+          MS_CHECK_TRUE_MSG(prim != nullptr, nullptr, "prim is a nullptr.");
+          AnfUtils::SetNodeAttr("layout_axis", prim->GetAttr("weight_coi"), cnode);
           break;
         }
       }
@@ -273,7 +275,9 @@ ExpanderPtr GraphKernelExpanderLite::InitExpander(const AnfNodePtr &node) {
     {prim::kPrimMatMulFusion->name(), {MatmulPackB::Creator}},
     {prim::kPrimTile->name(), {{DependValueDeco::GetCreator({1})}, UseInputFormatDeco::Creator}},
   };
-  auto iter = creators.find(GetCNodePrimitive(node)->name());
+  auto prim = GetCNodePrimitive(node);
+  MS_CHECK_TRUE_MSG(prim != nullptr, nullptr, "prim is a nullptr.");
+  auto iter = creators.find(prim->name());
   if (iter != creators.end()) {
     (void)decos.insert(decos.end(), iter->second.begin(), iter->second.end());
   }
