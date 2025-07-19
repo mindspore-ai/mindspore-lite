@@ -917,7 +917,7 @@ bool EncoderLayerFusion::IsActGELU(const FuncGraphPtr &func_graph, const EquivPt
 
 STATUS EncoderLayerFusion::GetEps(const EquivPtr &equiv, VarPtr node_name, float *eps) const {
   if ((*equiv)[node_name] == nullptr || !utils::isa<AnfNodePtr>((*equiv)[node_name])) {
-    MS_LOG(ERROR) << node_name << " is not anfnodeptr";
+    MS_LOG(ERROR) << node_name->ToString() << " is not anfnodeptr";
     return RET_ERROR;
   }
   AnfNodePtr node = utils::cast<AnfNodePtr>((*equiv)[node_name]);
@@ -938,7 +938,7 @@ STATUS EncoderLayerFusion::GetEps(const EquivPtr &equiv, VarPtr node_name, float
 AnfNodePtr EncoderLayerFusion::GetAttribute(const FuncGraphPtr &func_graph, const EquivPtr &equiv,
                                             VarPtr node_name) const {
   if ((*equiv)[node_name] == nullptr || !utils::isa<AnfNodePtr>((*equiv)[node_name])) {
-    MS_LOG(ERROR) << node_name << "is not AnfNodePtr";
+    MS_LOG(ERROR) << node_name->ToString() << "is not AnfNodePtr";
     return nullptr;
   }
   AnfNodePtr node = utils::cast<AnfNodePtr>((*equiv)[node_name]);
