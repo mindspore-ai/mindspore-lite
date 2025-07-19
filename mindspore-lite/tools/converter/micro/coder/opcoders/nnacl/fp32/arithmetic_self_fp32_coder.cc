@@ -54,7 +54,7 @@ int ArithmeticSelfFP32Coder::Prepare(CoderContext *const context) {
   if (iter != type_setters.end()) {
     iter->second();
   } else {
-    MS_LOG(ERROR) << "Error Operator type " << parameter_;
+    MS_LOG(ERROR) << "Error Operator type " << parameter_->type_;
     return RET_ERROR;
   }
   MS_CHECK_RET_CODE(ReSize(), "ReSize failed");
