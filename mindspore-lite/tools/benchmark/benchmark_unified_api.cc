@@ -1296,9 +1296,11 @@ int BenchmarkUnifiedApi::CompileGraph(mindspore::ModelType model_type, const std
   if (!flags_->decrypt_key_str_.empty()) {
     dec_key.len = lite::Hex2ByteArray(flags_->decrypt_key_str_, dec_key.key, kEncMaxLen);
     if (dec_key.len == 0) {
+      (void)memset_s(dec_key.key, kEncMaxLen, 0, kEncMaxLen);
       MS_LOG(ERROR) << "dec_key.len == 0";
       return RET_INPUT_PARAM_INVALID;
     }
+    (void)memset_s(&flags_->decrypt_key_str_[0], flags_->decrypt_key_str_.size(), 0, flags_->decrypt_key_str_.size());
     flags_->decrypt_key_str_.clear();
   }
   Status ret;
@@ -1308,7 +1310,7 @@ int BenchmarkUnifiedApi::CompileGraph(mindspore::ModelType model_type, const std
     ret =
       ms_model_.Build(flags_->model_file_, model_type, context, dec_key, flags_->dec_mode_, flags_->crypto_lib_path_);
   }
-  memset_s(dec_key.key, kEncMaxLen, 0, kEncMaxLen);
+  (void)memset_s(dec_key.key, kEncMaxLen, 0, kEncMaxLen);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "ms_model_.Build failed while running ", model_name.c_str();
     std::cout << "ms_model_.Build failed while running ", model_name.c_str();
