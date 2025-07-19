@@ -10,4 +10,4 @@ add_executable(converter_lite main.cc converter_flags.cc
               ${CMAKE_CURRENT_SOURCE_DIR}/../../common/string_util.cc
               ${TOP_DIR}/mindspore-lite/src/common/file_utils.cc)
 
-target_link_libraries(converter_lite mindspore_converter)
+target_link_libraries(converter_lite mindspore_converter mindspore::securec)

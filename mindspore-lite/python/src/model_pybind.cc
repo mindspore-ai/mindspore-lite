@@ -129,6 +129,7 @@ Status PyModelBuild(Model *model, const std::string &model_path, ModelType model
   }
   CryptoInfo cryptoInfo{Key(key, key_len), dec_mode, num_parallel};
   Status ret = model->impl()->Build(decrypt_data.get(), decrypt_len, model_type, model_context, model_path, cryptoInfo);
+  (void)memset_s(cryptoInfo.key.key, cryptoInfo.key.max_key_len, 0, cryptoInfo.key.max_key_len);
   if (ret != kSuccess) {
     (void)memset_s(key, key_len, 0, key_len);
     return ret;

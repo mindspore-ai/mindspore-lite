@@ -22,6 +22,7 @@
 #include "include/converter.h"
 #include "include/api/status.h"
 #include "tools/converter/converter_lite/converter_flags.h"
+#include "include/securec.h"
 
 #if defined(__linux__) && !defined(Debug)
 void SignalHandler(int sig) {
@@ -87,10 +88,12 @@ int main(int argc, const char **argv) {
       converter.SetOutputDataType(flags.outputDataType);
       converter.SetSaveType(flags.save_type);
       converter.SetDecryptKey(flags.dec_key);
+      (void)memset_s(&flags.dec_key[0], flags.dec_key.size(), 0, flags.dec_key.size());
       flags.dec_key.clear();
       converter.SetDecryptMode(flags.dec_mode);
       converter.SetEnableEncryption(flags.encryption);
       converter.SetEncryptKey(flags.encKeyStr);
+      (void)memset_s(&flags.encKeyStr[0], flags.encKeyStr.size(), 0, flags.encKeyStr.size());
       flags.encKeyStr.clear();
       converter.SetInfer(flags.infer);
       converter.SetTrainModel(flags.trainModel);
