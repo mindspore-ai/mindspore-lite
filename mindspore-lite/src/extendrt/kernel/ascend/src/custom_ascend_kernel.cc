@@ -231,8 +231,7 @@ static bool CheckInputNums(const std::vector<T> &update_info, const std::vector<
   }
   if (update_info.size() + input_weight != inputs.size()) {
     MS_LOG(ERROR) << "update info size and inputs size check failed. update info size: " << update_info.size()
-                  << ". inputs' size: " << inputs.size() << ". input weight: " << input_weight
-                  << "update_info:" << update_info;
+                  << ". inputs' size: " << inputs.size() << ". input weight: " << input_weight;
     return false;
   }
   return true;

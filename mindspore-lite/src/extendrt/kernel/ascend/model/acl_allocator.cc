@@ -95,7 +95,7 @@ void *AclAllocator::Malloc(size_t size, int device_id) {
     MS_LOG(ERROR) << "Call aclrtMalloc failed, err_code = " << acl_ret;
     return nullptr;
   }
-  MS_LOG(DEBUG) << "aclrtMalloc device data addr: " << device_data << ", device id: " << device_id;
+  MS_LOG(DEBUG) << "aclrtMalloc device data, device id: " << device_id;
   return device_data;
 }
 
@@ -106,7 +106,7 @@ void AclAllocator::Free(void *device_data, int device_id) {
       MS_LOG(ERROR) << "aclrtSetDevice failed.";
       return;
     }
-    MS_LOG(DEBUG) << "aclrtFree device data addr: " << device_data << ", device id: " << device_id;
+    MS_LOG(DEBUG) << "aclrtFree device data, device id: " << device_id;
     CALL_ASCEND_API(aclrtFree, device_data);
     device_data = nullptr;
   }
@@ -189,8 +189,7 @@ Status AclAllocator::CopyDeviceDataToHost(void *device_data, void *host_data, si
   }
   ret = CALL_ASCEND_API(aclrtMemcpy, host_data, data_size, device_data, data_size, ACL_MEMCPY_DEVICE_TO_HOST);
   if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "copy device data: " << device_data << " to host: " << host_data
-                  << " failed, data size: " << data_size;
+    MS_LOG(ERROR) << "copy device data to host data failed, data size: " << data_size;
     return kLiteMemoryFailed;
   }
   return kSuccess;
@@ -203,8 +202,7 @@ Status AclAllocator::CopyHostDataToDevice(void *host_data, void *device_data, si
   }
   auto ret = CALL_ASCEND_API(aclrtMemcpy, device_data, data_size, host_data, data_size, ACL_MEMCPY_HOST_TO_DEVICE);
   if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "copy host data: " << host_data << " to device: " << device_data
-                  << " failed, data size: " << data_size;
+    MS_LOG(ERROR) << "copy host data to device data failed, data size: " << data_size;
     return kLiteMemoryFailed;
   }
   return kSuccess;
@@ -213,8 +211,7 @@ Status AclAllocator::CopyHostDataToDevice(void *host_data, void *device_data, si
 Status AclAllocator::CopyDeviceDataToDevice(void *src_device_data, void *dst_device_data, size_t src_data_size,
                                             size_t dst_data_size, int src_device_id, int dst_device_id) {
   MS_LOG(INFO) << "src device id: " << src_device_id << ", dst device id: " << dst_device_id;
-  MS_LOG(DEBUG) << "src device addr: " << src_device_data << ", dst device addr: " << dst_device_data
-                << ", with src size: " << src_data_size << ", and dst size: " << dst_data_size;
+  MS_LOG(DEBUG) << "src device data size : " << src_data_size << ", dst device data size : " << dst_data_size;
   if (dst_device_id == -1 || src_device_id == -1) {
     MS_LOG(ERROR) << "device data copy device data, need set src device id and dst device id, now src device id: "
                   << src_device_id << ", dst device id: " << dst_device_id;

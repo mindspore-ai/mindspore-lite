@@ -80,8 +80,7 @@ CompileNodePtr CompileNode::Create(CNodePtr cnode) {
   }
   auto primitive = GetValueNode<std::shared_ptr<Primitive>>(cnode->input(0));
   if (primitive == nullptr) {
-    MS_LOG(ERROR) << "Node has no primitive, first input of cnode(" << cnode->fullname_with_scope()
-                  << ") is : " << cnode->input(0);
+    MS_LOG(ERROR) << "Node has no primitive, cnode : " << cnode->fullname_with_scope();
     return nullptr;
   }
   auto node = std::make_shared<CompileNode>(cnode->fullname_with_scope(), kernel::PrimitiveType(primitive->name()));
@@ -141,8 +140,7 @@ std::string CompileNode::Dump(int indent) const {
 }
 
 void CompileNode::ReplaceInputTensor(InferTensor *dst, const InferTensor *src) {
-  std::replace_if(
-    inputs_.begin(), inputs_.end(), [&src](InferTensor *ele) { return ele == src; }, dst);
+  std::replace_if(inputs_.begin(), inputs_.end(), [&src](InferTensor *ele) { return ele == src; }, dst);
 }
 
 CompileNodePtr CompileResult::GetNode(const std::string &name) {

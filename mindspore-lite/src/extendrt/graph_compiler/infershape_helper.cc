@@ -166,7 +166,7 @@ int SyncInferRetToLiteTensor(const CompileNode &node, const int &infer_ret) {
     }
     return RET_OK;
   }
-  MS_LOG(INFO) << "Unsupported abstract type: " << abstract;
+  MS_LOG(INFO) << "Unsupported abstract type.";
   return RET_ERROR;
 }
 
@@ -210,7 +210,7 @@ int SyncInferRetToCNodeNative(const CompileNode &node) {
     cnode->set_abstract(abs_tensor);
     return RET_OK;
   }
-  MS_LOG(INFO) << "Unsupported abstract type: " << abstract;
+  MS_LOG(INFO) << "Unsupported abstract type.";
   return RET_ERROR;
 }
 
