@@ -835,8 +835,17 @@ int main(int argc, const char **argv) {
       return -1;
     }
     auto dec_key_str = argv[3];
-    auto crypto_lib_path = argv[4];
-    return RunEncryptedInfer(model_path.c_str(), dec_key_str, crypto_lib_path);
+    std::regex r("[0-9a-fA-F]+");
+    if (!std::regex_match(dec_key_str, r)) {
+      std::cerr << "Some characters of dec_key not in [0-9a-fA-F]";
+      return 0;
+    }
+    auto crypto_lib_path = RealPath(argv[4]);
+    if (crypto_lib_path.empty()) {
+      std::cerr << "crypto lib path " << argv[4] << " is invalid.";
+      return -1;
+    }
+    return RunEncryptedInfer(model_path.c_str(), dec_key_str, crypto_lib_path.c_str());
   } else {
     std::cerr << "Unsupported Flag " << flag << std::endl;
     return -1;
