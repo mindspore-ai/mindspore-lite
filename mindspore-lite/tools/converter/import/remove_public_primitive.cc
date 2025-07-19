@@ -63,8 +63,9 @@ bool RemovePublicPrimitiveInterference::Run(const FuncGraphPtr &func_graph) {
 }
 
 bool RemovePublicPrimitiveInterference::CreateIndividualPrim(const CNodePtr &cnode) {
+  MS_CHECK_TRUE_MSG(cnode != nullptr, false, "cnode is nullptr.");
   auto public_prim = GetCNodePrimitive(cnode);
-  MS_ASSERT(public_prim != nullptr);
+  MS_CHECK_TRUE_MSG(public_prim != nullptr, false, "public_prim is nullptr.");
   // Operator is  primitive.
   PrimitivePtr prim;
   std::string node_type = public_prim->name();

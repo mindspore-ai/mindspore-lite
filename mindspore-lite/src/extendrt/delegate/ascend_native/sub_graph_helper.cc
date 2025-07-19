@@ -83,6 +83,7 @@ void AnSubGraph::FixGroup(SubGraphHelperPtr helper) {
     } else {
       CNodePtr cin;
       auto prim = GetCNodePrimitive(input);
+      MS_EXCEPTION_IF_NULL(prim);
       bool is_copy = (prim != nullptr) && (prim->name() == ops::kNameCopy);
       if ((input->isa<CNode>() && !is_copy) || is_ginput) {
         auto connect_node = helper->CreateGetItemAndCopyUnique(input, 0, cin, ops::Copy::CopyFormatType::HOST_DEVICE);
@@ -473,6 +474,7 @@ void SubGraphHelper::DrawGraph(const FuncGraphPtr &graph, std::ostream &out, boo
   auto is_composite = [](const AnfNodePtr &node, int *idx) {
     if (node->isa<CNode>()) {
       auto prim = GetCNodePrimitive(node);
+      MS_ERROR_IF_NULL(prim);
       if (prim->name() == ops::kNameAscendNativeComposite) {
         *idx = static_cast<int>(GetValue<int64_t>(prim->GetAttr(ops::kGroup)));
         return true;
@@ -484,6 +486,7 @@ void SubGraphHelper::DrawGraph(const FuncGraphPtr &graph, std::ostream &out, boo
   for (const auto &node : nodes) {
     if (node->isa<CNode>()) {
       auto prim = GetCNodePrimitive(node);
+      MS_EXCEPTION_IF_NULL(prim);
       std::string node_name = prim->name();
       int idx;
       std::string color;

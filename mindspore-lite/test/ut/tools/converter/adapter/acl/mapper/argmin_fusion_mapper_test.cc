@@ -273,6 +273,7 @@ TEST_F(ArgminFusionMapperTest, ArgminFusionNodeMapperWithInputSize2) {
   auto input_param = utils::isa<ParameterPtr>(cnode_input_1);
   ASSERT_EQ(input_param, true);
   const auto &origin_prim = GetCNodePrimitive(cnode);
+  ASSERT_NE(origin_prim, nullptr);
   auto prim_name = origin_prim->name();
   ASSERT_EQ(prim_name, "ArgMin");
   auto value_node = cnode->input(kNumInputIndex0)->cast<ValueNodePtr>();

@@ -43,8 +43,9 @@ class SpecifyGraphOutputFormatTest : public mindspore::CommonTest {
     return conv;
   }
   static void SetOutputFormat(const CNodePtr &cnode, const std::vector<Format> &formats) {
-    MS_ASSERT(cnode != nullptr);
+    MS_EXCEPTION_IF_NULL(cnode);
     auto prim = GetCNodePrimitive(cnode);
+    MS_EXCEPTION_IF_NULL(prim);
     std::vector<int64_t> int_formats;
     for (const auto &format : formats) {
       int_formats.emplace_back(format);

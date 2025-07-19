@@ -94,19 +94,19 @@ const AnfNodePtr SqueezeFusion::Process(const FuncGraphPtr &func_graph, const An
 
   auto unsqueeze_primitive = GetCNodePrimitive(unsqueeze_node);
   auto squeeze_primitive = GetCNodePrimitive(squeeze_node);
-  MS_ASSERT(unsqueeze_primitive != nullptr);
-  MS_ASSERT(squeeze_primitive != nullptr);
+  MS_CHECK_TRUE_RET(unsqueeze_primitive != nullptr, nullptr);
+  MS_CHECK_TRUE_RET(squeeze_primitive != nullptr, nullptr);
   if (unsqueeze_primitive->GetAttr(ops::kAxis) == nullptr || squeeze_primitive->GetAttr(ops::kAxis) == nullptr) {
     MS_LOG(ERROR) << "The squeeze or unsqueeze node has no axis value.";
     return nullptr;
   }
   auto unsqueeze_prim = api::MakeShared<mindspore::ops::Unsqueeze>(unsqueeze_primitive);
   auto squeeze_prim = api::MakeShared<mindspore::ops::Squeeze>(squeeze_primitive);
-  MS_ASSERT(unsqueeze_prim != nullptr);
-  MS_ASSERT(squeeze_prim != nullptr);
+  MS_CHECK_TRUE_RET(unsqueeze_prim != nullptr, nullptr);
+  MS_CHECK_TRUE_RET(squeeze_prim != nullptr, nullptr);
   if (squeeze_prim->get_axis() == unsqueeze_prim->get_axis()) {
     auto manager = func_graph->manager();
-    MS_ASSERT(manager != nullptr);
+    MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
     (void)manager->Replace(unsqueeze_node, act_node);
     (void)manager->Replace(squeeze_node, pre_node);
     return pre_node;

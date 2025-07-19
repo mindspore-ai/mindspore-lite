@@ -453,6 +453,7 @@ int SplitInferShape(const CNodePtr &cnode, const std::vector<ShapeVector> &in_sh
     return lite::RET_ERROR;
   }
   auto prim = GetCNodePrimitive(cnode);
+  MS_CHECK_TRUE_MSG(prim != nullptr, lite::RET_ERROR, "prim is nullptr.");
   auto out_num = prim->GetAttr(ops::kOutputNum) == nullptr ? 0 : GetValue<int64_t>(prim->GetAttr(ops::kOutputNum));
   auto size_splits = prim->GetAttr(ops::kSizeSplits) == nullptr
                        ? std::vector<int64_t>{}
@@ -595,7 +596,7 @@ int StackInferShape(const CNodePtr &cnode, const std::vector<ShapeVector> &in_sh
 }
 
 int CheckStridedSlice(const CNodePtr &cnode, int64_t in_rank, lite::DataInfo *begins, lite::DataInfo *ends) {
-  MS_ASSERT(cnode != nullptr);
+  MS_CHECK_TRUE_MSG(cnode != nullptr, lite::RET_ERROR, "cnode is nullptr.");
   auto prim = GetCNodePrimitive(cnode);
   MS_CHECK_TRUE_MSG(prim != nullptr, lite::RET_ERROR, "StridedSlice's primitive is a nullptr.");
   int64_t ellipsis_mask = prim->GetAttr(ops::kEllipsisMask) ? GetValue<int64_t>(prim->GetAttr(ops::kEllipsisMask)) : 0;
@@ -652,6 +653,7 @@ int StridedSliceInferShape(const CNodePtr &cnode, const std::vector<ShapeVector>
   }
 
   auto prim = GetCNodePrimitive(cnode);
+  MS_CHECK_TRUE_MSG(prim != nullptr, lite::RET_ERROR, "StridedSlice's primitive is a nullptr.");
   int64_t begin_mask = prim->GetAttr(ops::kBeginMask) ? GetValue<int64_t>(prim->GetAttr(ops::kBeginMask)) : 0;
   int64_t end_mask = prim->GetAttr(ops::kEndMask) ? GetValue<int64_t>(prim->GetAttr(ops::kEndMask)) : 0;
   int64_t shrink_mask =

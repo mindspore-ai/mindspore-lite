@@ -1396,6 +1396,7 @@ int InsertQuantNodeManager::AdjustTransposeNodeForSingleMatMulNode(const FuncGra
       CHECK_NULL_RETURN(manager);
       auto weight_input = cnode->input(kWeightIndex + 1);
       auto dst_prim = GetCNodePrimitive(cnode);
+      MS_CHECK_TRUE_MSG(dst_prim != nullptr, RET_ERROR, "dst_prim is nullptr.");
       MS_LOG(INFO) << cnode->fullname_with_scope() << " transpose_b is true.";
       dst_prim->AddAttr(mindspore::ops::kTransposeB, MakeValue(false));
       ParameterPtr param_node;

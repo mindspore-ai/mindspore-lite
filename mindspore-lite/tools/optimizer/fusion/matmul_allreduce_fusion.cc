@@ -160,17 +160,19 @@ PrimitivePtr MatMulAllReduceFusion::CreateMatMulAllReducePrim(const PrimitivePtr
 CNodePtr MatMulAllReduceFusion::CreateMatMulAllReduceNode(const FuncGraphPtr &func_graph,
                                                           const AnfNodePtr &node) const {
   MS_LOG(DEBUG) << "start create MatMulAllReduce";
-  MS_ASSERT(func_graph != nullptr && node != nullptr);
+  MS_CHECK_TRUE_MSG(func_graph != nullptr && node != nullptr, nullptr, "func_graph or node is nullptr.");
   auto allreduce_cnode = node->cast<CNodePtr>();
-  MS_ASSERT(allreduce_cnode != nullptr);
+  MS_CHECK_TRUE_MSG(allreduce_cnode != nullptr, nullptr, "allreduce_cnode is nullptr.");
   auto allreduce_prim = GetCNodePrimitive(allreduce_cnode);
+  MS_CHECK_TRUE_MSG(allreduce_prim != nullptr, nullptr, "allreduce_prim is nullptr.");
   auto matmul_cnode = allreduce_cnode->input(kInputIndexOne)->cast<CNodePtr>();
-  MS_ASSERT(matmul_cnode != nullptr);
+  MS_CHECK_TRUE_MSG(matmul_cnode != nullptr, nullptr, "matmul_cnode is nullptr.");
   auto matmul_prim = GetCNodePrimitive(matmul_cnode);
+  MS_CHECK_TRUE_MSG(matmul_prim != nullptr, nullptr, "matmul_prim is nullptr.");
   auto input_x_node = matmul_cnode->input(kInputIndexOne);
-  MS_ASSERT(input_x_node != nullptr);
+  MS_CHECK_TRUE_MSG(input_x_node != nullptr, nullptr, "input_x_node is nullptr.");
   auto input_y_node = matmul_cnode->input(kInputIndexTwo);
-  MS_ASSERT(input_y_node != nullptr);
+  MS_CHECK_TRUE_MSG(input_y_node != nullptr, nullptr, "input_y_node is nullptr.");
 
   if (IsMarkedTrainOp(allreduce_cnode) || IsMarkedTrainOp(matmul_cnode)) {
     return nullptr;
@@ -202,21 +204,23 @@ CNodePtr MatMulAllReduceFusion::CreateMatMulAllReduceNode(const FuncGraphPtr &fu
 CNodePtr MatMulAllReduceFusion::CreateMatMulBiasAddAllReduceNode(const FuncGraphPtr &func_graph,
                                                                  const AnfNodePtr &node) const {
   MS_LOG(DEBUG) << "start create MatMulAllBiasReduce";
-  MS_ASSERT(func_graph != nullptr && node != nullptr);
+  MS_CHECK_TRUE_MSG(func_graph != nullptr && node != nullptr, nullptr, "func_graph is nullptr.");
   auto allreduce_cnode = node->cast<CNodePtr>();
-  MS_ASSERT(allreduce_cnode != nullptr);
+  MS_CHECK_TRUE_MSG(allreduce_cnode != nullptr, nullptr, "allreduce_cnode is nullptr.");
   auto allreduce_prim = GetCNodePrimitive(allreduce_cnode);
+  MS_CHECK_TRUE_MSG(allreduce_prim != nullptr, nullptr, "allreduce_prim is nullptr.");
   auto biasAdd_cnode = allreduce_cnode->input(kInputIndexOne)->cast<CNodePtr>();
-  MS_ASSERT(biasAdd_cnode != nullptr);
+  MS_CHECK_TRUE_MSG(biasAdd_cnode != nullptr, nullptr, "biasAdd_cnode is nullptr.");
   auto matmul_cnode = biasAdd_cnode->input(kInputIndexOne)->cast<CNodePtr>();
-  MS_ASSERT(matmul_cnode != nullptr);
+  MS_CHECK_TRUE_MSG(matmul_cnode != nullptr, nullptr, "matmul_cnode is nullptr.");
   auto matmul_prim = GetCNodePrimitive(matmul_cnode);
+  MS_CHECK_TRUE_MSG(matmul_prim != nullptr, nullptr, "matmul_prim is nullptr.");
   auto input_x_node = matmul_cnode->input(kInputIndexOne);
-  MS_ASSERT(input_x_node != nullptr);
+  MS_CHECK_TRUE_MSG(input_x_node != nullptr, nullptr, "input_x_node is nullptr.");
   auto input_y_node = matmul_cnode->input(kInputIndexTwo);
-  MS_ASSERT(input_y_node != nullptr);
+  MS_CHECK_TRUE_MSG(input_y_node != nullptr, nullptr, "input_y_node is nullptr.");
   auto input_bias_node = biasAdd_cnode->input(kInputIndexTwo);
-  MS_ASSERT(input_bias_node != nullptr);
+  MS_CHECK_TRUE_MSG(input_bias_node != nullptr, nullptr, "input_bias_node is nullptr.");
 
   if (IsMarkedTrainOp(allreduce_cnode) || IsMarkedTrainOp(matmul_cnode) || IsMarkedTrainOp(biasAdd_cnode)) {
     return nullptr;
@@ -253,11 +257,13 @@ CNodePtr MatMulAllReduceFusion::CreateMatMulDequantAllReduceNode(const FuncGraph
   auto allreduce_cnode = node->cast<CNodePtr>();
   MS_EXCEPTION_IF_NULL(allreduce_cnode);
   auto allreduce_prim = GetCNodePrimitive(allreduce_cnode);
+  MS_EXCEPTION_IF_NULL(allreduce_prim);
   auto dequant_cnode = allreduce_cnode->input(kInputIndexOne)->cast<CNodePtr>();
   MS_EXCEPTION_IF_NULL(dequant_cnode);
   auto matmul_cnode = dequant_cnode->input(kInputIndexOne)->cast<CNodePtr>();
   MS_EXCEPTION_IF_NULL(matmul_cnode);
   auto matmul_prim = GetCNodePrimitive(matmul_cnode);
+  MS_EXCEPTION_IF_NULL(matmul_prim);
   auto input_x_node = matmul_cnode->input(kInputIndexOne);
   MS_EXCEPTION_IF_NULL(input_x_node);
   auto input_y_node = matmul_cnode->input(kInputIndexTwo);

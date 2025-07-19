@@ -155,10 +155,13 @@ TEST_F(FusedBatchNormMapperTest, InitFusedBatchNormNodeWithInput) {
   auto input_value_node = utils::isa<ValueNodePtr>(cnode_input_0);
   ASSERT_EQ(input_value_node, true);
   const auto &origin_prim = GetCNodePrimitive(cnode);
+  ASSERT_NE(origin_prim, nullptr);
   auto prim_name = origin_prim->name();
   ASSERT_EQ(prim_name, "FusedBatchNorm");
   auto value_node = cnode->input(kInputIndex0)->cast<ValueNodePtr>();
+  ASSERT_NE(value_node, nullptr);
   auto new_prim = GetValueNode<PrimitivePtr>(value_node);
+  ASSERT_NE(new_prim, nullptr);
   auto attr_size = new_prim->attrs().size();
   ASSERT_EQ(attr_size, kFusedBatchNormAttrSize5);
   MS_LOG(INFO) << "PASS";
