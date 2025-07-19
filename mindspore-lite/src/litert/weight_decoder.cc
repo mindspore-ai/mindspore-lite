@@ -178,6 +178,8 @@ int WeightDecoder::UnPackToInt(const SchemaTensorWrapper &src_tensor, lite::Tens
 int WeightDecoder::UnPack(const SchemaTensorWrapper &src_tensor, lite::Tensor *dst_tensor) {
   MS_ASSERT(src_tensor.handler() != nullptr);
   MS_ASSERT(src_tensor.data() != nullptr);
+  MS_CHECK_TRUE_MSG(src_tensor.handler()->dims() != nullptr, RET_ERROR, "dims is nullptr");
+  MS_CHECK_TRUE_MSG(src_tensor.handler()->name() != nullptr, RET_ERROR, "name is nullptr");
   STATUS ret = RET_OK;
   if (src_tensor.handler()->enableHuffmanCode()) {
     ret = WeightDecoder::DecodeHuffmanCode(src_tensor, dst_tensor);

@@ -99,8 +99,13 @@ KernelExec *IdentityKernel::Create(std::vector<lite::Tensor *> in_tensors, std::
   auto lite_kernel = new IdentityKernel(param, in_tensors, out_tensors, ctx);
   MS_CHECK_TRUE_MSG(lite_kernel != nullptr, nullptr, "new inner kernel failed.");
   std::shared_ptr<kernel::Kernel> shared_kernel(lite_kernel);
-  auto *kernel_exec = new KernelExec(shared_kernel);
-  kernel_exec->set_context(ctx);
-  return kernel_exec;
+  if (shared_kernel != nullptr) {
+    auto *kernel_exec = new KernelExec(shared_kernel);
+    kernel_exec->set_context(ctx);
+    return kernel_exec;
+  } else {
+    MS_LOG(ERROR) << "malloc shared_kernel failed.";
+    return nullptr;
+  }
 }
 }  // namespace mindspore::kernel

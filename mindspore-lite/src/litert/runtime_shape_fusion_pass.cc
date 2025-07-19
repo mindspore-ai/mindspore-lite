@@ -52,12 +52,24 @@ int ShapeFusionPass::ConvertToShapeFusion(LiteGraph::Node *node) {
   fbb.Clear();
 
   auto shape_fusion_prim = flatbuffers::GetRoot<schema::Primitive>(prim);
-  MS_CHECK_TRUE_RET(shape_fusion_prim != nullptr, RET_ERROR);
+  if (shape_fusion_prim == nullptr) {
+    free(prim);
+    MS_LOG(ERROR) << "shape_fusion_prim is nullptr";
+    return RET_ERROR;
+  }
   ShapeFusionMatrix shape_fusion_matrix(shape.size());
-  MS_CHECK_TRUE_RET(!node->output_indices_.empty(), RET_ERROR);
+  if (node->output_indices_.empty()) {
+    free(prim);
+    MS_LOG(ERROR) << "node->output_indices_ is empty";
+    return RET_ERROR;
+  }
   shape_fusion_matrices_[node->output_indices_.front()] = shape_fusion_matrix;
   auto shape_fusion_matrix_tensor = BuildTensorFromShapeFusionMatrix(shape_fusion_matrix);
-  MS_CHECK_TRUE_RET(shape_fusion_matrix_tensor != nullptr, RET_ERROR);
+  if (shape_fusion_matrix_tensor == nullptr) {
+    free(prim);
+    MS_LOG(ERROR) << "shape_fusion_matrix_tensor is nullptr";
+    return RET_ERROR;
+  }
 
   node->name_ += "_fusion";
   node->primitive_ = shape_fusion_prim;

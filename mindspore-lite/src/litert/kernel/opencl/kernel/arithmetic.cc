@@ -121,6 +121,10 @@ int ArithmeticOpenCLKernel::InitWeights() {
   for (size_t i = 0; i < in_tensors_.size(); ++i) {
     const auto &in_tensor = in_tensors_.at(i);
     auto in_shape = GpuTensorInfo::CreateGpuTensorInfo(in_tensor);
+    if (in_shape == nullptr) {
+      MS_LOG(ERROR) << "in_shape is nullptr.";
+      return RET_ERROR;
+    }
     if (in1_shape_switch_flag_ && i == 1) {
       SwitchGpuTensorInfoNWDim(in_shape.get());
     }
