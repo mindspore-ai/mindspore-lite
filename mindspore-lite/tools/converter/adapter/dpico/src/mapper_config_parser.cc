@@ -284,9 +284,13 @@ int MapperConfigParser::ParserFile(const std::string &cfg_file) {
     MS_LOG(ERROR) << "read file to ifstream failed.";
     return RET_ERROR;
   }
-  origin_config_file_path_ = cfg_file;
-  auto dir_pos = cfg_file.find_last_of('/');
-  tmp_generated_file_dir_ = cfg_file.substr(0, dir_pos + 1) + "tmp/";
+  origin_config_file_path_ = RealPath(cfg_file.c_str());
+  if (origin_config_file_path_.empty()) {
+    MS_LOG(ERROR) << "cfg_file: " << file << " is invalid";
+    return RET_ERROR;
+  }
+  auto dir_pos = origin_config_file_path_.find_last_of('/');
+  tmp_generated_file_dir_ = origin_config_file_path_.substr(0, dir_pos + 1) + "tmp/";
   if (AccessFile(tmp_generated_file_dir_, F_OK) == 0 && RemoveDir(tmp_generated_file_dir_) != RET_OK) {
     MS_LOG(ERROR) << "rm dir failed. " << tmp_generated_file_dir_;
     return RET_ERROR;

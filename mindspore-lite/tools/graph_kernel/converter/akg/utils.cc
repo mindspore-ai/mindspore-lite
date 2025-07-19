@@ -166,13 +166,15 @@ ParameterPtr CreateAkgKernelParameter(const FuncGraphPtr &func_graph, const std:
   auto param_node = func_graph->add_parameter();
   MS_CHECK_TRUE_RET(param_node != nullptr, nullptr);
   param_node->set_name(kernel_name);
-  if (path.empty()) {
+  auto real_path_optional = FileUtils::GetRealPath(path.c_str());
+  if (!real_path_optional.has_value()) {
     return nullptr;
   }
-  if (!Common::FileExists(path)) {
+  auto real_path = real_path_optional.value();
+  if (!Common::FileExists(real_path)) {
     return nullptr;
   }
-  auto akg_fd = open(path.c_str(), O_RDONLY);
+  auto akg_fd = open(real_path.c_str(), O_RDONLY);
   struct stat sb;
   if (akg_fd < 0) {
     MS_LOG(ERROR) << "open " << path << " failed.";

@@ -44,10 +44,11 @@ def load_dependencies():
 
     :return: a dict containing list of dependencies for almost any file in MindData lite
     """
-    if not os.path.isfile(DEPENDENCY_FILENAME):
+    depend_file_name = os.path.realpath(DEPENDENCY_FILENAME)
+    if not os.path.isfile(depend_file_name):
         raise FileNotFoundError("dependency file ({}) does not exist.\n"
                                 "Please run cropper_configure.py first.".format(DEPENDENCY_FILENAME))
-    with open(DEPENDENCY_FILENAME) as f:
+    with open(depend_file_name) as f:
         dep_dict = json.load(f)
     return dep_dict
 
@@ -58,12 +59,13 @@ def load_associations():
 
     :return: a dict containing entry point (a filename) for each op
     """
-    if not os.path.isfile(ASSOCIATION_FILENAME):
+    ass_file_name = os.path.realpath(ASSOCIATION_FILENAME)
+    if not os.path.isfile(ass_file_name):
         raise FileNotFoundError("association file ({}) does not exist.\n"
                                 "Please run cropper_configure.py first.".format(ASSOCIATION_FILENAME))
-    with open(ASSOCIATION_FILENAME) as f:
-        _dict = json.load(f)
-    return _dict
+    with open(ass_file_name) as f:
+        dict_ = json.load(f)
+    return dict_
 
 
 def get_unique_dependencies(dependencies_dict, associations_dict, user_ops):
@@ -124,7 +126,8 @@ def main():
     if not user_ops:
         warnings.warn('No MindData Ops detected in your code...')
         remove_unused_objects([], [], all_object_files)
-        with os.fdopen(os.open(os.path.join(OBJECTS_DIR, ALL_DEPS_FILENAME), os.O_WRONLY | os.O_CREAT, 0o660),
+        deps_path = os.path.realpath(os.path.join(OBJECTS_DIR, ALL_DEPS_FILENAME))
+        with os.fdopen(os.open(deps_path, os.O_WRONLY | os.O_CREAT, 0o660),
                        "w+") as _:
             pass
         exit(0)
@@ -142,7 +145,8 @@ def main():
     remove_unused_objects(final_deps, ESSENTIAL_OBJECTS, all_object_files)
 
     # write all dependencies to the file (for extracting external ones)
-    with os.fdopen(os.open(os.path.join(OBJECTS_DIR, ALL_DEPS_FILENAME), os.O_WRONLY | os.O_CREAT, 0o660),
+    deps_path = os.path.realpath(os.path.join(OBJECTS_DIR, ALL_DEPS_FILENAME))
+    with os.fdopen(os.open(deps_path, os.O_WRONLY | os.O_CREAT, 0o660),
                    "w+") as fout:
         fout.write("\n".join(unique_deps) + '\n')
 
