@@ -545,7 +545,11 @@ Tensor *Tensor::CreateTensor(const std::string &name, TypeId type, const std::ve
     MS_LOG(ERROR) << "shape, data type and data len not match.";
     return nullptr;
   }
-  tensor->set_data(const_cast<void *>(data));
+  if (shape.size() > MAX_SHAPE_SIZE) {
+    MS_LOG(ERROR) << "The shape-size has exceeded the limit 8, now is " << shape.size();
+    return nullptr;
+  }
+  tensor->set_data(const_cast<void *>(data), false);
   tensor->set_shape(shape);
   tensor->set_tensor_name(name);
   tensor->set_data_type(type);
