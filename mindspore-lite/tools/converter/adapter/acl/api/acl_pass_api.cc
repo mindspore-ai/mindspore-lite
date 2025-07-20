@@ -17,6 +17,7 @@
 #include "tools/converter/adapter/acl/api/acl_pass_api.h"
 
 mindspore::opt::Pass *CreateAclPass(const std::shared_ptr<mindspore::ConverterPara> &param) {
+  MS_CHECK_TRUE_MSG(param != nullptr, nullptr, "param is nullptr.");
   auto acl_pass_ptr = new (std::nothrow) mindspore::opt::AclPass(param);
   if (acl_pass_ptr == nullptr) {
     MS_LOG(ERROR) << "New acl pass failed.";
