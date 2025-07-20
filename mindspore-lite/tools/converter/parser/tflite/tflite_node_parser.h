@@ -140,6 +140,19 @@ class TfliteNodeParser {
     return RET_OK;
   }
 
+  size_t TfTypeSize(tflite::TensorType tensor_type) {
+    std::map<tflite::TensorType, size_t> type_size_map = {
+      {tflite::TensorType_UINT8, sizeof(uint8_t)}, {tflite::TensorType_INT8, sizeof(int8_t)},
+      {tflite::TensorType_INT16, sizeof(int16_t)}, {tflite::TensorType_INT32, sizeof(int32_t)},
+      {tflite::TensorType_INT32, sizeof(int64_t)}, {tflite::TensorType_FLOAT32, sizeof(float)},
+    };
+    auto it = type_size_map.find(tensor_type);
+    if (it == type_size_map.end()) {
+      return 0;
+    }
+    return it->second;
+  }
+
   template <typename T>
   STATUS TransTfliteDataToVec2D(const int32_t tensor_index,
                                 const std::vector<std::unique_ptr<tflite::TensorT>> &tflite_tensors,
@@ -148,10 +161,7 @@ class TfliteNodeParser {
     MS_CHECK_TRUE_MSG(vec != nullptr, RET_NULL_PTR, "vec is nullptr!");
     CHECK_LESS_RETURN(tflite_tensors.size(), static_cast<size_t>(tensor_index + 1));
     const auto &tensor = tflite_tensors[tensor_index];
-    if (tensor == nullptr) {
-      MS_LOG(ERROR) << "tensor is null";
-      return RET_NULL_PTR;
-    }
+    MSLITE_CHECK_PTR_RETURN(tensor, RET_NULL_PTR);
 
     size_t count = 1;
     std::for_each(tensor->shape.begin(), tensor->shape.end(), [&](int32_t sha) {
@@ -160,16 +170,22 @@ class TfliteNodeParser {
     });
     CHECK_LESS_RETURN(tflite_model_buffer.size(), static_cast<size_t>(tensor->buffer + 1));
     auto &buf_data = tflite_model_buffer[tensor->buffer];
-    if (buf_data == nullptr) {
-      MS_LOG(ERROR) << "buf_data is null";
-      return RET_NULL_PTR;
-    }
+    MSLITE_CHECK_PTR_RETURN(buf_data, RET_NULL_PTR);
     auto data_ptr = buf_data->data.data();
     if (data_ptr == nullptr) {
       MS_LOG(DEBUG) << "data is not a constant";
       return RET_NO_CHANGE;
     }
-
+    auto type_size = TfTypeSize(tensor->type);
+    if (type_size == 0) {
+      MS_LOG(ERROR) << "Wrong tensor type:" << tensor->type;
+      return RET_ERROR;
+    }
+    if (buf_data->data.size() != count * type_size) {
+      MS_LOG(ERROR) << "Invalid data size " << buf_data->data.size() << ", shape" << tensor->shape
+                    << ", size of element " << type_size;
+      return RET_ERROR;
+    }
     constexpr size_t k2DMultipler = 2;
     MS_CHECK_TRUE_MSG(count % k2DMultipler == 0 && count > 1, RET_ERROR,
                       "Element count is invalid! element count " << count << ", shape " << tensor->shape);

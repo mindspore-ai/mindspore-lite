@@ -221,7 +221,7 @@ class AdpBuilder(opdesc_parser.OpDesc):
             os.makedirs(out_path, exist_ok=True)
         adpfile = os.path.join(out_path, self.op_file + '.py')
         self._gen_op_compile_option(op_compile_option_all)
-        with os.fdopen(os.open(adpfile, const_var.WFLAGS, const_var.WMODES), 'w') as fd:
+        with os.fdopen(os.open(os.path.realpath(adpfile), const_var.WFLAGS, const_var.WMODES), 'w') as fd:
             self._write_head(fd)
             self._write_argparse(fd)
             self._write_impl(fd)

@@ -342,14 +342,35 @@ std::vector<std::vector<int>> CastToVec2DInt(const ValuePtr &value) {
 
   std::vector<std::vector<int>> result_value;
   if (utils::isa<ValueSequencePtr>(value)) {
-    auto data_type = value->cast<ValueSequencePtr>()
-                       ->value()
-                       .front()
-                       ->cast<ValueSequencePtr>()
-                       ->value()
-                       .front()
-                       ->type()
-                       ->number_type();
+    auto layer0_seq_val = value->cast<ValueSequencePtr>()->value();
+    if (layer0_seq_val.empty()) {
+      MS_LOG(ERROR) << "Layer0 sequence length is 0";
+      return {};
+    }
+    auto layer0_elem0 = layer0_seq_val.front();
+    if (layer0_elem0 == nullptr) {
+      MS_LOG(ERROR) << "Layer0 elememt0 is nullptr";
+      return {};
+    }
+    if (!utils::isa<ValueSequencePtr>(layer0_elem0)) {
+      MS_LOG(ERROR) << "Layer0 element 0 is not a ValueSequence, got type " << layer0_elem0->type_name();
+      return {};
+    }
+    auto layer1_seq_val = layer0_elem0->cast<ValueSequencePtr>()->value();
+    if (layer1_seq_val.empty()) {
+      MS_LOG(ERROR) << "Layer1 sequence length is 0";
+      return {};
+    }
+    auto layer1_elem0 = layer1_seq_val.front();
+    if (layer1_elem0 == nullptr) {
+      MS_LOG(ERROR) << "Layer1 element 0 is nullptr";
+      return {};
+    }
+    if (layer1_elem0->type() == nullptr) {
+      MS_LOG(ERROR) << "Layer1 element 0 type is nullptr!";
+      return {};
+    }
+    auto data_type = layer1_elem0->type()->number_type();
     if (data_type == kNumberTypeInt64) {
       auto origin_value = GetValue<std::vector<std::vector<int64_t>>>(value);
       for (auto &i : origin_value) {

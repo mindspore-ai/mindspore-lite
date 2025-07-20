@@ -20,7 +20,7 @@ class TestManager:
     @classmethod
     def parse(cls, yaml_file):
         test_manager = cls()
-        with open(os.path.join(yaml_file), 'r') as yf:
+        with open(os.path.realpath(os.path.join(yaml_file)), 'r') as yf:
             try:
                 cfgs = yaml.safe_load_all(yf)
                 for cfg in cfgs:

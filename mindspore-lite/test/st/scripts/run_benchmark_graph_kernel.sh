@@ -257,8 +257,6 @@ function ConfigAscend() {
     fi
 }
 
-# Example:sh run_benchmark_graph_kernel.sh -r /home/temp_test -m /home/temp_test/models -e x86_gpu -d 192.168.1.1:0
-# backend can be: x86_gpu,x86_cpu,arm64_cpu,arm64_android_cpu,x86_ascend,arm64_ascend
 while getopts "r:m:d:e:l:" opt; do
     case ${opt} in
     r)

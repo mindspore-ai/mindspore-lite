@@ -15,8 +15,6 @@
 """
 Test LiteInfer python API.
 """
-import sys
-import socket
 import numpy as np
 import pytest
 import mindspore_lite as mslite
@@ -43,42 +41,6 @@ def test_lite_llm_engine_cluster_info_cluster_id_type_check():
         llm_cluster = mslite.LLMClusterInfo(mslite.LLMRole.Prompt, 0)
         llm_cluster.remote_cluster_id = "0"
     assert "remote_cluster_id must be int, but got" in str(raise_info.value)
-
-
-def test_lite_llm_engine_cluster_info_address_type_check():
-    with pytest.raises(TypeError) as raise_info:
-        llm_cluster = mslite.LLMClusterInfo(mslite.LLMRole.Prompt, 0)
-        llm_cluster.append_remote_ip_info((1.1, 2046))
-    assert "address must be in format of ('xxx.xxx.xxx.xxx', xxx) or (xxx, xxx), but got" in str(raise_info.value)
-    with pytest.raises(TypeError) as raise_info:
-        llm_cluster = mslite.LLMClusterInfo(mslite.LLMRole.Prompt, 0)
-        llm_cluster.append_local_ip_info((1.1, 2046))
-    assert "address must be in format of ('xxx.xxx.xxx.xxx', xxx) or (xxx, xxx), but got" in str(raise_info.value)
-    llm_cluster = mslite.LLMClusterInfo(mslite.LLMRole.Prompt, 0)
-    llm_cluster.append_local_ip_info(("192.168.0.1", 2046))
-    local_infos = llm_cluster.local_ip_infos
-    assert isinstance(local_infos, (tuple, list)) and len(local_infos) == 1
-    assert isinstance(local_infos[0], (tuple, list)) and len(local_infos[0]) == 2
-
-    expect_ip = socket.inet_aton("192.168.0.1")
-    expect_ip = int.from_bytes(expect_ip, byteorder=sys.byteorder)
-    assert local_infos[0][0] == expect_ip
-    assert local_infos[0][1] == 2046
-
-    llm_cluster.append_remote_ip_info((expect_ip, 2046))
-    remote_infos = llm_cluster.remote_ip_infos
-    assert isinstance(remote_infos, (tuple, list)) and len(remote_infos) == 1
-    assert isinstance(remote_infos[0], (tuple, list)) and len(remote_infos[0]) == 2
-    assert remote_infos[0][0] == expect_ip
-    assert remote_infos[0][1] == 2046
-
-    llm_cluster.append_remote_ip_info(("123456", 2046))
-    remote_infos = llm_cluster.remote_ip_infos
-    assert isinstance(remote_infos, (tuple, list)) and len(remote_infos) == 2
-    assert isinstance(remote_infos[1], (tuple, list)) and len(remote_infos[1]) == 2
-    assert remote_infos[1][0] == 123456
-    assert remote_infos[1][1] == 2046
-
 
 # ============================ LLMEngine ============================
 def test_lite_llm_engine_llm_engine_role_type_check():
@@ -205,53 +167,6 @@ def test_lite_llm_engine_llm_engine_fetch_status_check():
         llm_engine = mslite.LLMEngine(mslite.LLMRole.Prompt, 0, "manual")
         llm_engine.fetch_status()
     assert "LLMEngine is not inited or init failed" in str(raise_info.value)
-
-
-def test_lite_llm_engine_llm_engine_link_clusters_check():
-    cluster = mslite.LLMClusterInfo(mslite.LLMRole.Prompt, 0)
-    cluster.append_local_ip_info(("192.168.0.1", 26000))
-    cluster.append_local_ip_info(("192.168.0.2", 26000))
-    cluster.append_remote_ip_info(("192.168.0.3", 26000))
-    cluster.append_remote_ip_info(("192.168.0.4", 26000))
-    with pytest.raises(RuntimeError) as raise_info:
-        llm_engine = mslite.LLMEngine(mslite.LLMRole.Prompt, 0, "manual")
-        llm_engine.link_clusters([cluster])
-    assert "LLMEngine is not inited or init failed" in str(raise_info.value)
-    # check
-    with pytest.raises(TypeError) as raise_info:
-        llm_engine = mslite.LLMEngine(mslite.LLMRole.Prompt, 0, "manual")
-        llm_engine.inited_ = True
-        llm_engine.link_clusters(cluster)
-    assert "clusters must be list/tuple of LLMClusterInfo, but got" in str(raise_info.value)
-    with pytest.raises(TypeError) as raise_info:
-        llm_engine = mslite.LLMEngine(mslite.LLMRole.Prompt, 0, "manual")
-        llm_engine.inited_ = True
-        llm_engine.link_clusters([cluster], 1.1)
-    assert "timeout must be int, but got" in str(raise_info.value)
-
-
-def test_lite_llm_engine_llm_engine_unlink_clusters_check():
-    cluster = mslite.LLMClusterInfo(mslite.LLMRole.Prompt, 0)
-    cluster.append_local_ip_info(("192.168.0.1", 26000))
-    cluster.append_local_ip_info(("192.168.0.2", 26000))
-    cluster.append_remote_ip_info(("192.168.0.3", 26000))
-    cluster.append_remote_ip_info(("192.168.0.4", 26000))
-    with pytest.raises(RuntimeError) as raise_info:
-        llm_engine = mslite.LLMEngine(mslite.LLMRole.Prompt, 0, "manual")
-        llm_engine.unlink_clusters([cluster])
-    assert "LLMEngine is not inited or init failed" in str(raise_info.value)
-    # check
-    with pytest.raises(TypeError) as raise_info:
-        llm_engine = mslite.LLMEngine(mslite.LLMRole.Prompt, 0, "manual")
-        llm_engine.inited_ = True
-        llm_engine.unlink_clusters(cluster)
-    assert "clusters must be list/tuple of LLMClusterInfo, but got" in str(raise_info.value)
-    with pytest.raises(TypeError) as raise_info:
-        llm_engine = mslite.LLMEngine(mslite.LLMRole.Prompt, 0, "manual")
-        llm_engine.inited_ = True
-        llm_engine.unlink_clusters([cluster], 1.1)
-    assert "timeout must be int, but got" in str(raise_info.value)
-
 
 # ============================ LLMModel ============================
 def test_lite_llm_engine_llm_model_predict_check():

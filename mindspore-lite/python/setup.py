@@ -26,7 +26,8 @@ sys.argv = sys.argv[: -1]
 
 
 def _read_file(filename):
-    with open(filename, encoding='UTF-8') as f:
+    file_realpath = os.path.realpath(filename)
+    with open(file_realpath, encoding='UTF-8') as f:
         return f.read()
 
 

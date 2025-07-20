@@ -134,7 +134,7 @@ class OnnxModelConfig:
     def __init__(self, config_file):
         self.disable_all = False
         self.config_file = config_file
-        with open(self.config_file, "r") as file:
+        with open(os.path.realpath(self.config_file), "r") as file:
             self.configs = yaml.safe_load(file)
         self.disable_all = has_key(self.configs, "disabled")
         self.op_configs_ = {}
@@ -163,7 +163,7 @@ class GenGoldConfig:
 
     def __init__(self, config_file):
         self.config_file = config_file
-        with open(self.config_file, "r") as file:
+        with open(os.path.realpath(self.config_file), "r") as file:
             self.configs = yaml.safe_load(file)
         # 确保输入数据维度的长度和模型设置的inputs长度相同
         self.gold_configs_ = self.configs["gengold"]
@@ -189,7 +189,7 @@ class ConvertConfig:
 
     def __init__(self, config_file):
         self.config_file = config_file
-        with open(self.config_file, "r") as file:
+        with open(os.path.realpath(self.config_file), "r") as file:
             self.configs = yaml.safe_load(file)
         self.convert_configs_ = self.configs["convert"]
 
@@ -204,7 +204,7 @@ class RunConfigs:
 
     def __init__(self, config_file):
         self.config_file = config_file
-        with open(self.config_file, "r") as file:
+        with open(os.path.realpath(self.config_file), "r") as file:
             self.configs = yaml.safe_load(file)
         self.run_configs_ = self.configs["run"]
 

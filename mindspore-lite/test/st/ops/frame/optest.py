@@ -10,7 +10,7 @@ from onnx import helper
 import numpy as np
 
 class OpTest:
-    def __init__(self, config_file, output_path):
+    def __init__(self, config_file, output_path, package_path):
         self.config_file = config_file
         self.model_configs = conf.OnnxModelConfig(self.config_file)
         self.golden_confis = conf.GenGoldConfig(self.config_file)
@@ -21,11 +21,11 @@ class OpTest:
         self.failed_test_name = []
         self.failed_gold_in = []
         self.ms_onnx_convert_reverse_dict = {}
-        mslite_package_path = os.getenv("MSLITE_PACKAGE_PATH")
+        mslite_package_path = package_path
 
         if mslite_package_path is None:
             raise Exception(
-                "Please set envion \"MSLITE_PACKAGE_PATH\" to specify the MSLite"+
+                "Please specify the MSLite"+
                 "package root path, which is necessary for MSLITE-OP-ST!"
             )
 
@@ -212,7 +212,7 @@ class OpTest:
                 gold_root, output_onnx_name
             )  # benchmark output data path
 
-            with open(output_file, "w") as text_file:
+            with open(os.path.realpath(output_file), "w") as text_file:
                 for i in range(len(ort_outputs)):
                     gold_output = ort_outputs[i]
                     if gold_output.dtype == np.int64:
