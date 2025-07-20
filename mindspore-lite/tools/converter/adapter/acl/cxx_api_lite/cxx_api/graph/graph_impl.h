@@ -46,7 +46,10 @@ class GraphCell::GraphImpl {
         load_flag_(false) {}
   virtual ~GraphImpl() = default;
 
-  std::shared_ptr<Graph::GraphData> &MutableGraphData() const { return graph_->graph_data_; }
+  std::shared_ptr<Graph::GraphData> &MutableGraphData() const {
+    MS_EXCEPTION_IF_NULL(graph_);
+    return graph_->graph_data_;
+  }
   void SetGraph(const std::shared_ptr<Graph> &graph) { graph_ = graph; }
   void SetContext(const std::shared_ptr<Context> &context) { graph_context_ = context; }
   VectorRef GenerateInputsRef(const std::vector<tensor::TensorPtr> &inputs, const FuncGraphPtr &func_graph) {

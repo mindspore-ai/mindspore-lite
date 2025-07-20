@@ -44,7 +44,11 @@ Status ModelImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTen
   return kSuccess;
 }
 
-bool ModelImpl::HasPreprocess() { return graph_->graph_data_->GetPreprocess().empty() ? false : true; }
+bool ModelImpl::HasPreprocess() {
+  MS_EXCEPTION_IF_NULL(graph_);
+  MS_EXCEPTION_IF_NULL(graph_->graph_data_);
+  return graph_->graph_data_->GetPreprocess().empty() ? false : true;
+}
 
 Status ModelImpl::Preprocess(const std::vector<std::vector<MSTensor>> &inputs, std::vector<MSTensor> *outputs) {
 #if !defined(_WIN32) && !defined(_WIN64)
@@ -68,6 +72,8 @@ Status ModelImpl::Preprocess(const std::vector<std::vector<MSTensor>> &inputs, s
               std::vector<mindspore::MSTensor> *, Status *))(function);
 
   // perform preprocess on each tensor separately
+  MS_EXCEPTION_IF_NULL(graph_);
+  MS_EXCEPTION_IF_NULL(graph_->graph_data_);
   std::vector<std::shared_ptr<dataset::Execute>> preprocessor = graph_->graph_data_->GetPreprocess();
   std::vector<std::vector<MSTensor>> output_unbatch;
   std::vector<MSTensor> output_batched;
@@ -101,6 +107,7 @@ Status ModelImpl::Preprocess(const std::vector<std::vector<MSTensor>> &inputs, s
       offset += output_unbatch[j][i].DataSize();
     }
   }
+  MS_EXCEPTION_IF_NULL(outputs);
   *outputs = output_batched;
   DLSoClose(handle);
   return kSuccess;

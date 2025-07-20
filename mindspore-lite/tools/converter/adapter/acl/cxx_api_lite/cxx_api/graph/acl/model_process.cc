@@ -453,6 +453,10 @@ Status ModelProcess::ResetOutputSize() {
   aclDataType output_type;
   aclError ret;
   size_t output_size = CALL_ASCEND_API(aclmdlGetNumOutputs, model_desc_);
+  if (output_size > output_infos_.size()) {
+    MS_LOG(ERROR) << "output_size must be greater than length of output_infos_.";
+    return kLiteOutOfTensorRange;
+  }
   for (size_t index = 0; index < output_size; index++) {
     int64_t dims = 1;
     struct aclmdlIODims output_dims;
