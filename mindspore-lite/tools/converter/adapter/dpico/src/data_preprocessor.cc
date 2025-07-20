@@ -163,7 +163,12 @@ int DataPreprocessor::WriteCvMatToBin(const cv::Mat &image, const std::string &o
     MS_LOG(ERROR) << "mkdir failed. " << generated_bin_dir;
     return RET_ERROR;
   }
-  std::string output_bin_path = generated_bin_dir + "/input.bin";
+  std::string generated_bin_dir_realpath = lite::RealPath(generated_bin_dir.c_str());
+  if (generated_bin_dir_realpath.empty()) {
+    MS_LOG(ERROR) << "Invalid realpath!";
+    return RET_ERROR;
+  }
+  std::string output_bin_path = generated_bin_dir_realpath + "/input.bin";
   std::ofstream ofs;
   ofs.open(output_bin_path, std::ios::binary);
   if (!ofs.good() || !ofs.is_open()) {

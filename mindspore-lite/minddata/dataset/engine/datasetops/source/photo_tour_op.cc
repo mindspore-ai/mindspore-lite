@@ -138,8 +138,12 @@ bool PhotoTourOp::EndsWith(const std::string &s, const std::string &sub) {
 
 Status PhotoTourOp::GetFileContent(const std::string &info_file, std::string *ans) {
   RETURN_UNEXPECTED_IF_NULL(ans);
+  auto info_file_realpath = FileUtils::GetRealPath(info_file.c_str());
+  if (!info_file_realpath.has_value()) {
+    RETURN_STATUS_UNEXPECTED("Invalid file path, " + info_file + " does not exist.");
+  }
   std::ifstream reader;
-  reader.open(info_file, std::ios::in);
+  reader.open(info_file_realpath.value(), std::ios::in);
   CHECK_FAIL_RETURN_UNEXPECTED(!reader.fail(), "Invalid file, failed to open " + info_file +
                                                  ": PhotoTour info file is damaged or permission denied.");
   (void)reader.seekg(0, std::ios::end);

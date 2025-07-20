@@ -69,7 +69,12 @@ inline Status DLSoPath(std::string *so_path) {
 
 inline Status DLSoOpen(const std::string &dl_path, const std::string &func_name, void **handle, void **function) {
   // do dlopen and export functions from c_dataengine
-  *handle = dlopen(dl_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+  std::string real_path = RealPath(dl_path.c_str());
+  if (real_path.empty()) {
+    MS_LOG(ERROR) << "real_path is invalid.";
+    return RET_ERROR;
+  }
+  *handle = dlopen(real_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
 
   if (*handle == nullptr) {
     return Status(kMEFailed, "dlopen failed, the pointer[handle] is null.");
