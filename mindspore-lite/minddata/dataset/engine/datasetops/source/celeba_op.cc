@@ -140,7 +140,12 @@ Status CelebAOp::ParseAttrFile() {
 
 bool CelebAOp::CheckDatasetTypeValid() {
   if (!partition_file_.is_open()) {
-    Path folder_path(folder_path_);
+    auto realpath = FileUtils::GetRealPath(folder_path_.c_str());
+    if (!realpath.has_value()) {
+      MS_LOG(ERROR) << "Invalid file path, " << folder_path_ << " does not exist.";
+      return false;
+    }
+    Path folder_path(realpath.str());
     partition_file_.open((folder_path / "list_eval_partition.txt").ToString());
     if (!partition_file_.is_open()) {
       MS_LOG(ERROR) << "Invalid eval partition file, failed to open eval partition file: "

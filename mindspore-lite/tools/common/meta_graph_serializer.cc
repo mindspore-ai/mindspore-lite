@@ -51,7 +51,12 @@ std::fstream *ReopenFile(const std::string &file_path, std::ios_base::openmode o
     return OpenFile(file_path, open_mode);
   } else {
     fs->close();
-    fs->open(file_path, open_mode);
+    std::string real_path = lite::RealPath(file_path.c_str());
+    if (real_path.empty()) {
+      MS_LOG(DEBUG) << "Realpath invalid!";
+      return nullptr;
+    }
+    fs->open(real_path, open_mode);
     if (!fs->good()) {
       MS_LOG(DEBUG) << "File is not exist: " << file_path;
       return nullptr;

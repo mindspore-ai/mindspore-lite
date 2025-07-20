@@ -21,6 +21,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include "src/common/file_utils.h"
 
 namespace mindspore {
 namespace {
@@ -92,9 +93,14 @@ static Status ExecuteAoe(const std::shared_ptr<AclModelOptions> &options, const 
     input_shape = " --input_shape=\"" + build_options[ge::ir_option::INPUT_SHAPE] + "\"";
   }
   try {
+    std::string real_path = lite::RealPath(air_path.c_str());
+    if (real_path.empty()) {
+      MS_LOG(ERROR) << "real_path is invalid.";
+      return kMCFailed;
+    }
     for (auto &mode : aoe_modes) {
       std::cout << "Start to " << kTuneModeMap.at(mode) << std::endl;
-      std::string cmd = aoe_path + " --framework=1" + " --model=" + air_path + " --job_type=" + mode + dynamic_option +
+      std::string cmd = aoe_path + " --framework=1" + " --model=" + real_path + " --job_type=" + mode + dynamic_option +
                         input_shape + aoe_options;
       MS_LOG(DEBUG) << "Aoe cmd is " << cmd;
       auto fp = popen(cmd.c_str(), "r");

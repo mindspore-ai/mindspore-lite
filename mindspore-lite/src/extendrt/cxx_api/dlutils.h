@@ -113,7 +113,12 @@ inline Status DLSoOpen(const std::string &dl_path, const std::string &func_name,
     return Status(kMEFailed, "Input parameter handle cannot be nullptr");
   }
   int mode = runtime_convert ? RTLD_GLOBAL : RTLD_LOCAL;
-  *handle = dlopen(dl_path.c_str(), RTLD_LAZY | mode);
+  std::string real_path = lite::RealPath(dl_path.c_str());
+  if (real_path.empty()) {
+    MS_LOG(WARNING) << "real_path is invalid.";
+    return Status(kMEFailed, "real_path is invalid.");
+  }
+  *handle = dlopen(real_path.c_str(), RTLD_LAZY | mode);
 
   auto get_dl_error = []() -> std::string {
     auto error = dlerror();
