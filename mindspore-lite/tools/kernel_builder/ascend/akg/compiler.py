@@ -14,6 +14,7 @@
 
 """Compile akg info"""
 import sys
+import os
 
 def clean_env():
     """clear akg python env"""
@@ -42,7 +43,7 @@ def run_compiler(info_path):
         from mindspore_lite.akg.ms import compilewithjson
     except ImportError:
         from akg.ms import compilewithjson
-    with open(info_path, 'r') as f:
+    with open(os.path.realpath(info_path), 'r') as f:
         info_str = f.read()
         compilewithjson(info_str)
     clean_env()

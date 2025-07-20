@@ -100,7 +100,7 @@ FORMAT_DICT = {
 
 def load_json(json_file: str):
     """load json"""
-    with open(json_file, encoding='utf-8') as file:
+    with open(os.path.realpath(json_file), encoding='utf-8') as file:
         json_content = json.load(file)
     return json_content
 
@@ -189,7 +189,7 @@ def get_all_input_parameters(support_info):
 
 def insert_content_into_file(input_file, content):
     """insert_content_into_file"""
-    with open(input_file, 'r+') as file:
+    with open(os.path.realpath(input_file), 'r+') as file:
         lines = file.readlines()
         for index, line in enumerate(lines):
             match_result = re.search(r'"staticKey":', line)

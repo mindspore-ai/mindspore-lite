@@ -189,7 +189,6 @@ function Run_TensorRT() {
     done
 }
 
-# Example:sh run_benchmark_tensorrt.sh -r /home/temp_test -m /home/temp_test/models -e x86_gpu -d 192.168.1.1:0
 while getopts "r:m:d:e:l:" opt; do
     case ${opt} in
         r)

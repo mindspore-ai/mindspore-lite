@@ -105,7 +105,6 @@ function Run_Ascend() {
   fi
 }
 
-# Example:sh run_benchmark_nets.sh -r /home/temp_test -m /home/temp_test/models -e Ascend310 -d 10.92.9.100:2
 while getopts "r:m:d:e:l:p:" opt; do
     case ${opt} in
         r)

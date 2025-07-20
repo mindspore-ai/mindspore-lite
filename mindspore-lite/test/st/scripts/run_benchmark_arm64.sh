@@ -249,7 +249,7 @@ adb -s ${device_id} shell "rm -rf /data/local/tmp/benchmark_test/*"
 echo "Run_arm64_fp32 and Run_arm64_fp16 single op st"
 cd ${MSLITE_OPST_PATH} || exit 1
 cur_path=$(pwd)
-PYTHONPATH=$cur_path/ops/frame python3 $cur_path/ops/op/run.py -o $cur_path/ops/output -a
+PYTHONPATH=$cur_path/ops/frame python3 $cur_path/ops/op/run.py -o $cur_path/ops/output -p ${x86_path}/mindspore-lite-${version}-linux-x64/ -a
 op_st_output=$cur_path/ops/failed_tmp.txt
 line=$(cat "$op_st_output")
 echo $line

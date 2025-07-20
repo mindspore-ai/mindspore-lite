@@ -1,6 +1,7 @@
 import argparse
 import time
 import json
+import os
 import numpy as np
 import mindspore_lite as mslite
 
@@ -31,7 +32,7 @@ def create_context(args):
 
 
 def parse_configs(config_path):
-    with open(config_path, 'r') as file:
+    with open(os.path.realpath(config_path), 'r') as file:
         configs = json.load(file)
     return configs
 

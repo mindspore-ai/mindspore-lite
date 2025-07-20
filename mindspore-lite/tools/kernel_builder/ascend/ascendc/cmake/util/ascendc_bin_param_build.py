@@ -100,7 +100,8 @@ class BinParamBuilder(opdesc_parser.OpDesc):
             op_node['bin_filename'] = bin_file
             param_file = os.path.join(self.out_path, bin_file + '_param.json')
             param_file = os.path.realpath(param_file)
-            with os.fdopen(os.open(param_file, const_var.WFLAGS, const_var.WMODES), 'w') as fd:
+            param_file_realpath = os.path.realpath(param_file)
+            with os.fdopen(os.open(param_file_realpath, const_var.WFLAGS, const_var.WMODES), 'w') as fd:
                 json.dump(param, fd, indent='  ')
             self._write_buld_cmd(param_file, bin_file, i)
 

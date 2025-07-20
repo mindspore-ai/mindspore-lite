@@ -330,7 +330,7 @@ def get_deps_non_essential(headers_flag):
             header_filename = src_filename.replace('.cc', '.h')
             if not os.path.isfile(header_filename):
                 raise ValueError("Header file doesn't exist!")
-            with open(header_filename, 'r') as f:
+            with open(os.path.realpath(header_filename), 'r') as f:
                 content = f.read().strip()
             # extract ops from header file
             ops = extract_classname(content)

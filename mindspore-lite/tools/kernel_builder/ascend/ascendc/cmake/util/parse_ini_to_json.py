@@ -80,7 +80,7 @@ def parse_ini_to_obj(ini_file, tbe_ops_info):
     tbe_ops_info:ops_info
     ----------------
     """
-    with open(ini_file) as ini_file_f:
+    with open(os.path.realpath(ini_file)) as ini_file_f:
         lines = ini_file_f.readlines()
         op_dict = {}
         op_name = ""
@@ -305,8 +305,7 @@ def write_json_file(tbe_ops_info, json_file_path):
     wr_mode = stat.S_IWUSR | stat.S_IRUSR
     with os.fdopen(os.open(json_file_real_path, wr_flag, wr_mode), 'w') as file_path:
         # Only the owner and group have rights
-        os.chmod(json_file_real_path, stat.S_IWGRP + stat.S_IWUSR + stat.S_IRGRP
-                 + stat.S_IRUSR)
+        os.chmod(json_file_real_path, stat.S_IWUSR + stat.S_IRGRP + stat.S_IRUSR)
         json.dump(tbe_ops_info, file_path, sort_keys=True, indent=4,
                   separators=(',', ':'))
     print("Compile op info cfg successfully.")

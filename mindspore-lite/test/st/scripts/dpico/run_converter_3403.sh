@@ -158,7 +158,6 @@ mkdir -p ${arm64_path}
 #set -e
 st_dir=${mindspore_top_dir}/mindspore-lite/test/st
 
-# Example:sh run_dpico_nets.sh r /home/temp_test -m /home/temp_test/models -e arm32_3403D -d 192.168.1.1
 while getopts "m:d:e:l:" opt; do
     case ${opt} in
         m)
