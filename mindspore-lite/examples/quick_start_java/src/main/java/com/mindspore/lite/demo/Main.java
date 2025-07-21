@@ -24,6 +24,9 @@ import com.mindspore.config.MSContext;
 import com.mindspore.config.ModelType;
 import com.mindspore.config.Version;
 
+import java.io.File;
+import java.nio.Path;
+import java.nio.Paths;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -53,6 +56,7 @@ public class Main {
     }
 
     private static boolean compile(String modelPath) {
+        String absolutePath = new File(modelPath).getCanonicalFile();
         MSContext context = new MSContext();
         // use default param init context
         context.init();
@@ -65,7 +69,7 @@ public class Main {
         // Create the MindSpore lite session.
         model = new Model();
         // Compile graph.
-        ret = model.build(modelPath, ModelType.MT_MINDIR, context);
+        ret = model.build(absolutePath, ModelType.MT_MINDIR, context);
         if (!ret) {
             System.err.println("Compile graph failed");
             model.free();
