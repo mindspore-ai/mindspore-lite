@@ -100,6 +100,16 @@ static const unsigned int FP16_SIGNIFICAND = 10;
 static const int FP16_EXPONENT_MAX = 30;
 static const int FP16_EXPONENT_MIN = -10;
 static const int FP16_SHIFT = 13;
+static const int EXPONENT_BIAS_VALUE_14 = 14;
+static const int EXPONENT_BIAS_VALUE_15 = 15;
+static const int EXPONENT_BIAS_VALUE_30 = 30;
+static const int EXPONENT_BIAS_VALUE_128 = 128;
+static const int BITS_SHIFT_SIZE_10 = 10;
+static const int BITS_SHIFT_SIZE_12 = 12;
+static const int BITS_SHIFT_SIZE_13 = 13;
+static const int BITS_SHIFT_SIZE_15 = 15;
+static const int BITS_SHIFT_SIZE_23 = 23;
+static const int BITS_SHIFT_SIZE_31 = 31;
 float ShortToFloat32(uint16_t src_value);
 uint16_t Float32ToShort(float src_value);
 
