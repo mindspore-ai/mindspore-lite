@@ -57,7 +57,7 @@ void nnacl_gemm_avx512_2x48_kernel_nhwc_fp32(float *dst, const float *src, const
     "2:\n"
     :
     : [ dst_0 ] "r"(dst), [ bias ] "r"(bias), [ dst_stride ] "r"(dst_stride_t), [ inc_flag ] "r"(inc_flag)
-    : "%zmm0", "%zmm1", "%zmm2", "%zmm3", "%zmm4", "%zmm5");
+    : "%rax", "%zmm0", "%zmm1", "%zmm2", "%zmm3", "%zmm4", "%zmm5");
   size_t src_stride_t = src_stride << 2;
   asm volatile(
     "cmp $16, %[depth]\n"

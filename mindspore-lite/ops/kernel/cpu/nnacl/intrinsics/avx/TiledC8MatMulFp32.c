@@ -25,6 +25,20 @@ void TiledC8MatmulFp32(float *dst, const float *src, const float *weight, size_t
   const float *src_tmp = src;
   for (int i = 0; i < oc8; ++i) {
     src = src_tmp;
+#ifndef ENABLE_DEBUG
+    asm volatile(
+      "vxorps %%xmm0, %%xmm0, %%xmm0\n"
+      "vmovaps %%ymm0, %%ymm1\n"
+      "vmovaps %%ymm0, %%ymm2\n"
+      "vmovaps %%ymm0, %%ymm3\n"
+      "vmovaps %%ymm0, %%ymm4\n"
+      "vmovaps %%ymm0, %%ymm5\n"
+      "vmovaps %%ymm0, %%ymm6\n"
+      "vmovaps %%ymm0, %%ymm7\n"
+      : /* no input */
+      : /* no input */
+      : "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5", "ymm6", "ymm7");
+#else
     register __m256 dst1 asm("ymm0") = _mm256_setzero_ps();
     register __m256 dst2 asm("ymm1") = _mm256_setzero_ps();
     register __m256 dst3 asm("ymm2") = _mm256_setzero_ps();
@@ -33,6 +47,7 @@ void TiledC8MatmulFp32(float *dst, const float *src, const float *weight, size_t
     register __m256 dst6 asm("ymm5") = _mm256_setzero_ps();
     register __m256 dst7 asm("ymm6") = _mm256_setzero_ps();
     register __m256 dst8 asm("ymm7") = _mm256_setzero_ps();
+#endif
     for (size_t ic8_tmp = 0; ic8_tmp < ic8; ++ic8_tmp) {
 #ifndef ENABLE_DEBUG
       asm volatile(
@@ -230,6 +245,20 @@ void TiledC8MatmulFp32(float *dst, const float *src, const float *weight, size_t
       src += C64NUM;
       weight += C64NUM;
     }
+#ifndef ENABLE_DEBUG
+    asm volatile(
+      "vmovups %%ymm0, (%[dst])\n\t"
+      "vmovups %%ymm1, 32(%[dst])\n\t"
+      "vmovups %%ymm2, 64(%[dst])\n\t"
+      "vmovups %%ymm3, 96(%[dst])\n\t"
+      "vmovups %%ymm4, 128(%[dst])\n\t"
+      "vmovups %%ymm5, 160(%[dst])\n\t"
+      "vmovups %%ymm6, 192(%[dst])\n\t"
+      "vmovups %%ymm7, 224(%[dst])\n\t"
+      :
+      : [ dst ] "r"(dst)
+      : "memory", "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5", "ymm6", "ymm7");
+#else
     _mm256_storeu_ps(dst, dst1);
     _mm256_storeu_ps(dst + C8NUM, dst2);
     _mm256_storeu_ps(dst + C16NUM, dst3);
@@ -238,6 +267,7 @@ void TiledC8MatmulFp32(float *dst, const float *src, const float *weight, size_t
     _mm256_storeu_ps(dst + C40NUM, dst6);
     _mm256_storeu_ps(dst + C48NUM, dst7);
     _mm256_storeu_ps(dst + C56NUM, dst8);
+#endif
     dst += cal_num;
   }
 }
