@@ -57,6 +57,10 @@ Status CompileAndRun(int argc, const char **argv) {
   }
   auto &device_list = context->MutableDeviceInfo();
   std::shared_ptr<CPUDeviceInfo> device_info = std::make_shared<CPUDeviceInfo>();
+  if (device_info == nullptr) {
+    std::cerr << "New CPUDeviceInfo failed." << std::endl;
+    return kLiteError;
+  }
   device_info->SetProvider("Tutorial");
   device_info->SetProviderDevice("Tutorial");
   device_list.push_back(device_info);
