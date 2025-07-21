@@ -14,6 +14,7 @@
 # ============================================================================
 """quick_start_python."""
 
+import os
 import numpy as np
 import mindspore_lite as mslite
 
@@ -24,8 +25,8 @@ context.target = ["cpu"]
 context.cpu.thread_num = 1
 context.cpu.thread_affinity_mode = 2
 # build model from file
-MODEL_PATH = "./model/mobilenetv2.ms"
-IN_DATA_PATH = "./model/input.bin"
+MODEL_PATH = os.path.realpath("./model/mobilenetv2.ms")
+IN_DATA_PATH = os.path.realpath("./model/input.bin")
 model = mslite.Model()
 model.build_from_file(MODEL_PATH, mslite.ModelType.MINDIR_LITE, context)
 # set model input
