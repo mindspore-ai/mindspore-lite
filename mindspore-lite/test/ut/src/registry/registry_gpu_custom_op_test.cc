@@ -327,8 +327,7 @@ class CustomAddKernel : public kernel::Kernel {
   registry::opencl::OpenCLRuntimeWrapper opencl_runtime_;
 
   int PreProcess() {
-    int ret;
-    ret = ReSize();
+    int ret = ReSize();
     if (ret != kSuccess) {
       return ret;
     }
