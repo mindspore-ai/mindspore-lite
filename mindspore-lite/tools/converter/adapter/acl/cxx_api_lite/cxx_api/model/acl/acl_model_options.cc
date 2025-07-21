@@ -190,6 +190,7 @@ std::tuple<std::map<std::string, std::string>, std::map<std::string, std::string
 }
 
 std::string AclModelOptions::GenAoeOptions(std::vector<std::string> *aoe_modes) {
+  MS_EXCEPTION_IF_NULL(aoe_modes);
   std::string res;
   std::map<std::string, std::string> aoe_options = aoe_global_options_map_;
   aoe_options.insert(aoe_tuning_options_map_.begin(), aoe_tuning_options_map_.end());

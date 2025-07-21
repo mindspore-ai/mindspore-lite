@@ -137,7 +137,7 @@ Status GPUGraphImpl::Load(uint32_t device_id) {
 }
 
 Status GPUGraphImpl::CompileGraph(const std::shared_ptr<FuncGraph> &func_graph) {
-  MS_ASSERT(backend_ != nullptr);
+  MS_EXCEPTION_IF_NULL(backend_);
   try {
     MS_EXCEPTION_IF_NULL(func_graph);
     // prepare func graph
@@ -156,6 +156,7 @@ Status GPUGraphImpl::CompileGraph(const std::shared_ptr<FuncGraph> &func_graph) 
 }
 
 std::vector<tensor::TensorPtr> GPUGraphImpl::RunGraph(const std::vector<tensor::TensorPtr> &inputs) {
+  MS_EXCEPTION_IF_NULL(backend_);
   try {
     VectorRef outputs;
     backend_->Run(graph_id_, GraphImpl::GenerateInputsRef(inputs, func_graph_.lock()), &outputs);

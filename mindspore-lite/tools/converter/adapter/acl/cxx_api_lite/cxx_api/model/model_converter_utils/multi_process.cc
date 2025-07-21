@@ -106,6 +106,7 @@ Status MultiProcess::MainProcess(const ProcessFuncCall &parent_process, const Pr
 }
 
 Status MultiProcess::ParentProcess(const ProcessFuncCall &parent_process) {
+  MS_EXCEPTION_IF_NULL(shmat_addr_);
   auto parent_msg = reinterpret_cast<MessageFlag *>(shmat_addr_);
   auto child_msg = reinterpret_cast<MessageFlag *>(shmat_addr_ + sizeof(MessageFlag));
   send_msg_ = parent_msg;
@@ -149,6 +150,7 @@ void MultiProcess::ChildProcess(const ProcessFuncCall &child_process) {
 
 Status MultiProcess::SendMsg(const void *buffer, uint64_t msg_len) {
   MS_EXCEPTION_IF_NULL(buffer);
+  MS_EXCEPTION_IF_NULL(send_msg_);
   MS_LOG(INFO) << "Start to send message to peer process, msg len " << msg_len;
   send_msg_->msg_total_len = msg_len;
   uint64_t cur_offset = 0;
@@ -186,6 +188,7 @@ Status MultiProcess::SendMsg(const void *buffer, uint64_t msg_len) {
 }
 
 Status MultiProcess::ReceiveMsg(const CreateBufferCall &create_buffer_call) const {
+  MS_EXCEPTION_IF_NULL(receive_msg_);
   uint64_t cur_offset = 0;
   uint8_t *msg_buffer = nullptr;
   uint64_t msg_len = 0;

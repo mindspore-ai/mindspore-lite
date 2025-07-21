@@ -114,9 +114,12 @@ bool RemoveDir(const std::string &path) {
 }
 
 int ReadInputFile(const std::vector<std::string> &in_data_files, std::vector<MSTensor> *input_tensors) {
+  MS_CHECK_TRUE_MSG(input_tensors != nullptr, RET_ERROR, "input_tensors is nullptr.");
+  MS_CHECK_TRUE_MSG(in_data_files.size() == input_tensors->size(), RET_ERROR,
+                    "length of in_data_files and input_tensors must be equal.");
   for (size_t i = 0; i < in_data_files.size(); i++) {
     auto &cur_tensor = (*input_tensors).at(i);
-    MS_ASSERT(cur_tensor != nullptr);
+    MS_CHECK_TRUE_MSG(cur_tensor != nullptr, RET_ERROR, "cur_tensor is nullptr.");
     size_t size;
     char *bin_buf = lite::ReadFile(in_data_files[i].c_str(), &size);
     if (bin_buf == nullptr) {
