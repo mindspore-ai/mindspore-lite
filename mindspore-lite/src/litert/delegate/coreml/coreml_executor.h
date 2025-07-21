@@ -22,7 +22,9 @@
 #include <vector>
 #include "include/api/types.h"
 
-API_AVAILABLE(ios(12))
+constexpr int kNum12 = 12;
+
+API_AVAILABLE(ios(kNum12))
 @interface MSFeatureProvider : NSObject <MLFeatureProvider> {
   const std::vector<mindspore::MSTensor>* _ms_tensors;
   NSSet* _featureNames;
@@ -34,7 +36,7 @@ API_AVAILABLE(ios(12))
 @property(nonatomic, readonly) NSSet<NSString *> *featureNames;
 @end
 
-API_AVAILABLE(ios(12))
+API_AVAILABLE(ios(kNum12))
 @interface CoreMLExecutor : NSObject
 
 - (bool)run:(const std::vector<mindspore::MSTensor>&)inputs

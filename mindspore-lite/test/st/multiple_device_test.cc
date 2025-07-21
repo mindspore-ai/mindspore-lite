@@ -234,7 +234,6 @@ void CheckResult(std::vector<mindspore::kernel::KernelExec *> kernels, int mode)
     auto subgraph1 = reinterpret_cast<mindspore::kernel::SubGraphKernel *>(kernels.at(0));
     ASSERT_EQ(4, subgraph1->nodes().size());
     ASSERT_EQ(mindspore::kernel::KERNEL_ARCH::kCPU, subgraph1->desc().arch);
-
   } else if (mode == NPU_CPU) {
     ASSERT_EQ(3, kernels.size());
     /* NPU : cos exp */
@@ -247,7 +246,6 @@ void CheckResult(std::vector<mindspore::kernel::KernelExec *> kernels, int mode)
     /* NPU : sin */
     auto subgraph2 = kernels.at(2);
     ASSERT_EQ(mindspore::kernel::KERNEL_ARCH::kDelegate, subgraph2->desc().arch);
-
   } else if (mode == GPU_CPU) {
     /* GPU >  CPU */
     ASSERT_EQ(3, kernels.size());
@@ -263,7 +261,6 @@ void CheckResult(std::vector<mindspore::kernel::KernelExec *> kernels, int mode)
     auto subgraph2 = reinterpret_cast<mindspore::kernel::SubGraphKernel *>(kernels.at(2));
     ASSERT_EQ(3, subgraph2->nodes().size());
     ASSERT_EQ(mindspore::kernel::KERNEL_ARCH::kGPU, subgraph2->desc().arch);
-
   } else if (mode == NPU_GPU_CPU) {
     /* NPU > GPU >  CPU */
     ASSERT_EQ(3, kernels.size());
@@ -305,7 +302,7 @@ TEST_F(MultipleDeviceTest, NewApi1) {
 
   const char *content = reinterpret_cast<char *>(builder.GetBufferPointer());
 
-  auto context = std::shared_ptr<mindspore::Context>(new mindspore::Context());
+  auto context = std::make_shared<mindspore::Context>();
   context->MutableDeviceInfo().push_back(std::make_shared<mindspore::KirinNPUDeviceInfo>());
   context->MutableDeviceInfo().push_back(std::make_shared<mindspore::GPUDeviceInfo>());
 

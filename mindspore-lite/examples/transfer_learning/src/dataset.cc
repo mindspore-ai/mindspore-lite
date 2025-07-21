@@ -25,7 +25,7 @@
 
 #pragma pack(push, 1)
 
-typedef struct {  // Total: 54 bytes
+using bmp_header = struct {  // Total: 54 bytes
   uint16_t type;  // Magic identifier: 0x4d42
   uint32_t size;
   uint16_t reserved1;
@@ -42,7 +42,7 @@ typedef struct {  // Total: 54 bytes
   int32_t y_resolution_ppm;
   uint32_t num_colors;
   uint32_t important_colors;
-} bmp_header;
+};
 
 #pragma pack(pop)
 

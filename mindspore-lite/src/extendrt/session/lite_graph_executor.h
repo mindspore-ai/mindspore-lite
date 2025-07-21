@@ -35,7 +35,6 @@ class LiteGraphExecutor {
     return false;
   }
 
-
   virtual bool CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
                             uint32_t *graph_id) {
     return false;
@@ -64,7 +63,6 @@ class LiteGraphExecutor {
                         std::vector<tensor::Tensor> *outputs, const std::map<string, string> &compile_options) {
     return false;
   }
-
 
   virtual bool Resize(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
                       const std::vector<std::vector<int64_t>> &new_shapes) {
