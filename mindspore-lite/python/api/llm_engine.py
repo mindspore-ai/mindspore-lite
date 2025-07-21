@@ -445,16 +445,16 @@ class LLMClusterInfo:
     def _trans_address(address):
         """Transfer address from str format 'xxx.xxx.xxx.xxx' to int"""
         if not isinstance(address, tuple):
-            raise TypeError(f"address must be in format of ('xxx.xxx.xxx.xxx', xxx) or (xxx, xxx), but got {address}")
+            raise TypeError(f"address must be in format of ('xxx.xxx.xxx.xxx', xxx) or (xxx, xxx)")
         if len(address) != 2:
-            raise TypeError(f"address must be in format of ('xxx.xxx.xxx.xxx', xxx) or (xxx, xxx), but got {address}")
+            raise TypeError(f"address must be in format of ('xxx.xxx.xxx.xxx', xxx) or (xxx, xxx)")
         ip, port = address
         if not isinstance(ip, (str, int)) or not isinstance(port, int):
-            raise TypeError(f"address must be in format of ('xxx.xxx.xxx.xxx', xxx) or (xxx, xxx), but got {address}")
+            raise TypeError(f"address must be in format of ('xxx.xxx.xxx.xxx', xxx) or (xxx, xxx)")
         if isinstance(ip, int) and (ip < 0 or ip > pow(2, 32) - 1):
-            raise ValueError(f"address ip should in range [0,{pow(2, 32) - 1}], but got {ip}")
+            raise ValueError(f"address ip should in range [0,{pow(2, 32) - 1}]")
         if port < 0 or port > 65535:
-            raise ValueError(f"address port should in range [0,65535], but got {port}")
+            raise ValueError(f"address port should in range [0,65535]")
         if isinstance(ip, str):
             try:
                 if "." not in ip:  # format ("[0-9]+", xxx)
@@ -462,14 +462,14 @@ class LLMClusterInfo:
                     return ip, port
             except ValueError:
                 raise ValueError(
-                    f"address must be in format of ('xxx.xxx.xxx.xxx', xxx) or (xxx, xxx), but got {address}")
+                    f"address must be in format of ('xxx.xxx.xxx.xxx', xxx) or (xxx, xxx)")
             try:
                 import socket
                 ip = socket.inet_aton(ip)
                 ip = int.from_bytes(ip, byteorder=sys.byteorder)
             except OSError:
                 raise ValueError(
-                    f"address must be in format of ('xxx.xxx.xxx.xxx', xxx) or (xxx, xxx), but got {address}")
+                    f"address must be in format of ('xxx.xxx.xxx.xxx', xxx) or (xxx, xxx)")
         return ip, port
 
 
@@ -823,7 +823,7 @@ class LLMEngine:
             if not isinstance(model_path, str):
                 raise TypeError(f"model_paths element must be str, but got {type(model_path)} at index {i}.")
             if not os.path.exists(model_path):
-                raise RuntimeError(f"model_paths {model_path} at index {i} does not exist!")
+                raise RuntimeError(f"model_paths at index {i} does not exist!")
         check_isinstance("options", options, dict)
         for key, value in options.items():
             if not isinstance(key, str):
@@ -835,8 +835,7 @@ class LLMEngine:
                 raise TypeError(
                     f"postprocess_model_path must be None or str, but got {type(postprocess_model_path)}.")
             if not os.path.exists(postprocess_model_path):
-                raise RuntimeError(f"postprocess_model_path {postprocess_model_path} does not"
-                                   f" exist!")
+                raise RuntimeError(f"postprocess_model_path does not exist!")
         else:
             postprocess_model_path = ""
 
@@ -847,8 +846,8 @@ class LLMEngine:
         if not ret.IsOk():
             role_str = 'Prompt' if self.role == LLMRole.Prompt else 'Decoder'
             raise RuntimeError(
-                f"Failed to add_model, model paths {model_paths}, options {options}, postprocess path"
-                f" {postprocess_model_path}, role {role_str}, cluster id {self.cluster_id}")
+                f"Failed to add_model, please check your model paths, options {options}, postprocess path,"
+                f" role {role_str}, cluster id {self.cluster_id}")
         llm_model = LLMModel(llm_model_inner, self.batch_mode_)
         self.models_.append(llm_model)
         return llm_model

@@ -76,7 +76,7 @@ def test_lite_llm_engine_llm_engine_add_model_model_paths_type_check():
     with pytest.raises(RuntimeError) as raise_info:
         llm_engine = mslite.LLMEngine(mslite.LLMRole.Prompt, 0, "manual")
         llm_engine.add_model(["123.mindir"], {}, None)
-    assert "model_paths 123.mindir at index 0 does not exist!" in str(raise_info.value)
+    assert "model_paths at index 0 does not exist!" in str(raise_info.value)
 
     with open("llm_tmp.mindir", "w") as fp:
         fp.write("test mindir")
@@ -118,7 +118,7 @@ def test_lite_llm_engine_llm_engine_add_model_postprocess_model_type_check():
     with pytest.raises(RuntimeError) as raise_info:
         llm_engine = mslite.LLMEngine(mslite.LLMRole.Prompt, 0, "manual")
         llm_engine.add_model(["llm_tmp.mindir"], {"123": "456"}, "123.mindir")
-    assert "postprocess_model_path 123.mindir does not exist" in str(raise_info.value)
+    assert "postprocess_model_path does not exist!" in str(raise_info.value)
 
 
 def test_lite_llm_engine_llm_engine_init_options_type_check():
