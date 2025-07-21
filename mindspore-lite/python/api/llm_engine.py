@@ -47,6 +47,7 @@ class LLMReq:
 
     @staticmethod
     def next_req_id():
+        """Get next request id of this inference task"""
         with LLMReq._llm_req_id_lock:
             new_req_id = LLMReq._llm_req_id
             LLMReq._llm_req_id += 1
@@ -935,14 +936,14 @@ class LLMEngine:
 
         Args:
             clusters (Union[List[LLMClusterInfo], Tuple[LLMClusterInfo]]): clusters.
-            timeout (int): timeout in seconds.
+            timeout (int, optional): timeout in seconds. Default: ``-1``.
 
         Raises:
             TypeError: `clusters` is not list/tuple of LLMClusterInfo.
             RuntimeError: LLMEngine is not inited or init failed.
 
         Returns:
-            Status, tuple[Status], Whether all clusters link normally, and the link status of each cluster.
+            (Status, tuple[Status]), Whether all clusters link normally, and the link status of each cluster.
 
         Examples:
             >>> import mindspore_lite as mslite
@@ -983,7 +984,7 @@ class LLMEngine:
 
         Args:
             clusters (Union[List[LLMClusterInfo], Tuple[LLMClusterInfo]]): clusters.
-            timeout (int): timeout in seconds.
+            timeout (int, optional): timeout in seconds. Default: ``-1``.
 
         Raises:
             TypeError: `clusters` is not list/tuple of LLMClusterInfo.
