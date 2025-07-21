@@ -17,6 +17,7 @@
 "mindspore-lite/mindspore-lite/test/st/ops/frame/optest.py"                                                   "invalid-name"
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/akg/custom.py"                                     "consider-using-in"
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/akg/custom.py"                                     "unused-argument"
+"mindspore-lite/mindspore-lite/python/api/lite_infer.py"                                                      "arguments-differ"
 
 # ascend samples
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_dsl/sample/"                              "wrong-import-order"
