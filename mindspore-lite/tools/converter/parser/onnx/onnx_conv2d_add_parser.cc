@@ -19,7 +19,7 @@
 #include <memory>
 #include <utility>
 #include <vector>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "infer/custom.h"
 #include "tools/optimizer/common/gllo_utils.h"
 

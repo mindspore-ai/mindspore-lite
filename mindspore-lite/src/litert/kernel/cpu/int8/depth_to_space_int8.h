@@ -19,10 +19,10 @@
 #include <vector>
 #include "include/errorcode.h"
 #include "src/litert/lite_kernel.h"
-#include "nnacl/base/depth_to_space_base.h"
-#include "nnacl/int8/depth_to_space_int8.h"
-#include "nnacl/int8/quantize.h"
-#include "nnacl/kernel/depth_to_space.h"
+#include "nnacl_c/base/depth_to_space_base.h"
+#include "nnacl_c/int8/depth_to_space_int8.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/kernel/depth_to_space.h"
 
 namespace mindspore::kernel {
 class DepthToSpaceInt8CPUKernel : public LiteKernel {

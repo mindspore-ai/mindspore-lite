@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/kernel/pooling.h"
+#include "nnacl_c/kernel/pooling.h"
 
 namespace mindspore::lite::micro::nnacl {
 class PoolingFP32Coder : public OperatorCoder {

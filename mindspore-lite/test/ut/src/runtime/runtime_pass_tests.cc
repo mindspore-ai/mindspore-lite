@@ -17,10 +17,10 @@
 #include "src/executor/kernel_exec.h"
 #include "src/litert/kernel_registry.h"
 #include "src/litert/runtime_pass.h"
-#include "nnacl/conv_parameter.h"
-#include "nnacl/instance_norm_parameter.h"
-#include "nnacl/fp32/activation_fp32.h"
-#include "nnacl/transpose_parameter.h"
+#include "nnacl_c/conv_parameter.h"
+#include "nnacl_c/instance_norm_parameter.h"
+#include "nnacl_c/fp32/activation_fp32.h"
+#include "nnacl_c/transpose_parameter.h"
 
 namespace mindspore {
 namespace lite {

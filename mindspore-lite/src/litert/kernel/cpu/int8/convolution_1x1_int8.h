@@ -22,10 +22,10 @@
 #include "include/errorcode.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel/cpu/base/convolution_base.h"
-#include "nnacl/int8/conv1x1_int8.h"
-#include "nnacl/base/conv1x1_base.h"
-#include "nnacl/int8/matmul_int8.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/int8/conv1x1_int8.h"
+#include "nnacl_c/base/conv1x1_base.h"
+#include "nnacl_c/int8/matmul_int8.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "src/common/utils.h"
 
 namespace mindspore::kernel {

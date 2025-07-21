@@ -16,7 +16,7 @@
 
 #include "schema/ops_generated.h"
 #include "schema/model_generated.h"
-#include "nnacl/reduce_scatter_parameter.h"
+#include "nnacl_c/reduce_scatter_parameter.h"
 #include "src/common/ops/populate/populate_register.h"
 
 using mindspore::schema::PrimitiveType_ReduceScatter;

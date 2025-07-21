@@ -18,8 +18,8 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CPU_INT8_MATMUL_INT8_H_
 
 #include <vector>
-#include "nnacl/matmul_parameter.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/matmul_parameter.h"
+#include "nnacl_c/int8/quantize.h"
 #include "src/litert/lite_kernel.h"
 #include "src/litert/kernel/cpu/int8/matmul_base_int8.h"
 

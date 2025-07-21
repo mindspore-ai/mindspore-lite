@@ -25,8 +25,8 @@
 #include "src/litert/kernel/cpu/base/group_convolution_creator.h"
 #include "src/litert/kernel/cpu/fp32/group_convolution_fp32.h"
 #include "src/litert/kernel/cpu/fp32/convolution_sw_1x1_fp32.h"
-#include "nnacl/base/conv_common_base.h"
-#include "nnacl/fp32/conv_sw_arm64_fp32.h"
+#include "nnacl_c/base/conv_common_base.h"
+#include "nnacl_c/fp32/conv_sw_arm64_fp32.h"
 #include "schema/model_generated.h"
 #include "include/errorcode.h"
 #if defined(ENABLE_ARM) || (defined(ENABLE_SSE) && !defined(ENABLE_AVX))

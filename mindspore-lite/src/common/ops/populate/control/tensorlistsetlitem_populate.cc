@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/tensorlist_parameter.h"
+#include "nnacl_c/tensorlist_parameter.h"
 using mindspore::schema::PrimitiveType_TensorListSetItem;
 
 namespace mindspore {

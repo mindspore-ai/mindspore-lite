@@ -214,8 +214,8 @@ int Conv2DINT8Coder::DoCode(CoderContext *const context) {
   }
   Collect(context,
           {
-            "nnacl/int8/conv_int8.h",
-            "nnacl/common_func.h",
+            "nnacl_c/int8/conv_int8.h",
+            "nnacl_c/common_func.h",
             "wrapper/int8/convolution_int8_wrapper.h",
             "wrapper/base/common_wrapper.h",
             "wrapper/base/optimize_handler_wrapper.h",

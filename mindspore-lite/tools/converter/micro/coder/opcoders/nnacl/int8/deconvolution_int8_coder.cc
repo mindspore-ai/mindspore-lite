@@ -16,7 +16,7 @@
 
 #include "coder/opcoders/nnacl/int8/deconvolution_int8_coder.h"
 #include <vector>
-#include "nnacl/int8/deconv_int8.h"
+#include "nnacl_c/int8/deconv_int8.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_int8_serializer.h"
 
@@ -125,7 +125,7 @@ int DeconvolutionInt8Coder::InitRunBuf(CoderContext *const context) {
 int DeconvolutionInt8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/int8/deconv_int8.h",
+            "nnacl_c/int8/deconv_int8.h",
           },
           {
             "deconv_int8.c",

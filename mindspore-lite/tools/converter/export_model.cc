@@ -34,7 +34,7 @@
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/optimizer/graph/control_flow_pass.h"
 #include "tools/optimizer/graph/clip_convert_activation_pass.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"

@@ -15,8 +15,8 @@
  */
 
 #include "wrapper/int8/conv1x1_init_int8_wrapper.h"
-#include "nnacl/int8/matmul_int8.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/int8/matmul_int8.h"
+#include "nnacl_c/errorcode.h"
 
 size_t Conv1x1PackWeightSize(int32_t input_channel, int32_t output_channel, bool support_optimize) {
   size_t size = 0;

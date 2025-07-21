@@ -53,7 +53,7 @@ int DivInt8Coder::Prepare(CoderContext *context) {
 int DivInt8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/int8/div_int8.h",
+            "nnacl_c/int8/div_int8.h",
           },
           {
             "div_int8.c",

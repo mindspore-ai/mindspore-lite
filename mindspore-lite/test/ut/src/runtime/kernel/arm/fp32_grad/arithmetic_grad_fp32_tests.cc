@@ -21,7 +21,7 @@
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
 #include "src/common/file_utils.h"
-#include "nnacl/fp32/reduce_fp32.h"
+#include "nnacl_c/fp32/reduce_fp32.h"
 #include "src/litert/kernel/cpu/fp32_grad/arithmetic_grad.h"
 #include "src/litert/kernel_registry.h"
 

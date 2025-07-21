@@ -23,7 +23,7 @@
 #include "src/common/log_adapter.h"
 #include "infer/splice.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/math_ops.h"

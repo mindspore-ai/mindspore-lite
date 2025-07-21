@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/arithmetic_parameter.h"
+#include "nnacl_c/arithmetic_parameter.h"
 
 namespace mindspore::kernel {
 class ArithmeticBaseCPUKernel : public LiteKernel {

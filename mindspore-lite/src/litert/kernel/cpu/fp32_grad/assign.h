@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/fp32_grad/optimizer.h"
+#include "nnacl_c/fp32_grad/optimizer.h"
 
 namespace mindspore::kernel {
 class AssignCPUKernel : public LiteKernel {

@@ -26,7 +26,7 @@
 #include "infer/tensor_array.h"
 #include "infer/tensor_array_read.h"
 #include "infer/tensor_array_write.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "infer/make_tuple.h"
 #include "infer/return.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"

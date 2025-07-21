@@ -42,9 +42,9 @@ int TransposeDynamicFp32Coder::Prepare(CoderContext *const context) {
 int TransposeDynamicFp32Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/transpose_parameter.h",
-            "nnacl/errorcode.h",
-            "nnacl/fp32/transpose_fp32.h",
+            "nnacl_c/transpose_parameter.h",
+            "nnacl_c/errorcode.h",
+            "nnacl_c/fp32/transpose_fp32.h",
           },
           {
             "transpose_fp32.c",

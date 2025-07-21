@@ -20,7 +20,7 @@
 #include <vector>
 #include <string>
 #include "infer/cxx_api/conv2d_fusion.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore::lite {
 PrimitiveCPtr PytorchConvParser::Parse(const torch::jit::Node *torch_node, std::vector<size_t> *input_indices) {

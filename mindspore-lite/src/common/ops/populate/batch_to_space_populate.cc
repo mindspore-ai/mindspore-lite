@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/batch_to_space_parameter.h"
+#include "nnacl_c/batch_to_space_parameter.h"
 using mindspore::schema::PrimitiveType_BatchToSpace;
 using mindspore::schema::PrimitiveType_BatchToSpaceND;
 

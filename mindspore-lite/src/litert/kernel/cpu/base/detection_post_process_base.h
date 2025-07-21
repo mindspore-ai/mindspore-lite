@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/fp32/detection_post_process_fp32.h"
+#include "nnacl_c/fp32/detection_post_process_fp32.h"
 
 using mindspore::lite::InnerContext;
 

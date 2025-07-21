@@ -36,7 +36,7 @@ int FillFP32Coder::Prepare(CoderContext *context) {
 int FillFP32Coder::DoCode(CoderContext *ctx) {
   Collect(ctx,
           {
-            "nnacl/kernel/fill.h",
+            "nnacl_c/kernel/fill.h",
           },
           {
             "fill.c",

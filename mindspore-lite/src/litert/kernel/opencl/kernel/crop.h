@@ -20,7 +20,7 @@
 #include <vector>
 #include <string>
 #include "src/litert/kernel/opencl/opencl_kernel.h"
-#include "nnacl/crop_parameter.h"
+#include "nnacl_c/crop_parameter.h"
 
 namespace mindspore::kernel {
 class CropOpenCLKernel : public OpenCLKernel {

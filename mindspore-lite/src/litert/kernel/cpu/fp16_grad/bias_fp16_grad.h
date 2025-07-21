@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/executor/kernel_exec.h"
-#include "nnacl/fp16/arithmetic_fp16.h"
+#include "nnacl_c/fp16/arithmetic_fp16.h"
 
 namespace mindspore::kernel {
 class BiasGradCPUKernelFp16 : public LiteKernel {

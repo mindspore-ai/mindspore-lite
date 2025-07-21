@@ -25,7 +25,7 @@
 #include <utility>
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindapi/base/type_id.h"
 
 namespace mindspore::lite {

@@ -15,7 +15,7 @@
  */
 
 #include "src/litert/kernel/cpu/fp32/online_fusion/split_reduce_concat_fp32.h"
-#include "nnacl/fp32/online_fusion/split_reduce_concat_fp32.h"
+#include "nnacl_c/fp32/online_fusion/split_reduce_concat_fp32.h"
 #include <algorithm>
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"

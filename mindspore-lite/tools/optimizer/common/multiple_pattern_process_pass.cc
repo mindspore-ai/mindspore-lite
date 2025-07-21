@@ -16,7 +16,7 @@
 
 #include "tools/optimizer/common/multiple_pattern_process_pass.h"
 #include "tools/optimizer/common/helper.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore::opt {
 AnfNodePtr MultiplePatternProcessPass::Run(const FuncGraphPtr &func_graph, const AnfNodePtr &node) {

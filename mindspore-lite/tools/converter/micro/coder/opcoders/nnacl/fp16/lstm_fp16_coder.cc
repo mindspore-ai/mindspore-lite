@@ -198,8 +198,8 @@ int LstmFP16Coder::Prepare(CoderContext *const context) {
 int LstmFP16Coder::DoCode(CoderContext *context) {
   Collect(context,
           {
-            "nnacl/lstm_parameter.h",
-            "nnacl/fp16/lstm_fp16.h",
+            "nnacl_c/lstm_parameter.h",
+            "nnacl_c/fp16/lstm_fp16.h",
           },
           {
             "lstm_fp16.c",

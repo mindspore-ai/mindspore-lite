@@ -16,7 +16,7 @@
 #include <iostream>
 #include <memory>
 #include "common/common_test.h"
-#include "nnacl/softmax_parameter.h"
+#include "nnacl_c/softmax_parameter.h"
 #include "src/litert/kernel/cpu/nnacl/nnacl_manager.h"
 
 namespace mindspore {

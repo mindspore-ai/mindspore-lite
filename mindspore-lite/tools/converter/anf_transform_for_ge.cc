@@ -22,7 +22,7 @@
 #include <deque>
 #include <map>
 #include <tuple>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_adapter.h"
 #include "tools/converter/optimizer_manager.h"
 #include "tools/optimizer/common/gllo_utils.h"

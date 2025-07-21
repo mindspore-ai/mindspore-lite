@@ -17,9 +17,9 @@
 #ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_INT8_CONVOLUTION_DEPTHWISE_INT8_WRAPPER_H_
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_INT8_CONVOLUTION_DEPTHWISE_INT8_WRAPPER_H_
 
-#include "nnacl/errorcode.h"
-#include "nnacl/conv_parameter.h"
-#include "nnacl/int8/conv_depthwise_int8.h"
+#include "nnacl_c/errorcode.h"
+#include "nnacl_c/conv_parameter.h"
+#include "nnacl_c/int8/conv_depthwise_int8.h"
 
 typedef struct {
   int8_t *output_data_;

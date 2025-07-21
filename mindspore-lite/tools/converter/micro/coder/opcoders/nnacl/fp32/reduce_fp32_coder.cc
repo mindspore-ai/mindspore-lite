@@ -50,7 +50,7 @@ int ReduceFP32Coder::ReSize() {
 int ReduceFP32Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/fp32/reduce_fp32.h",
+            "nnacl_c/fp32/reduce_fp32.h",
           },
           {
             "reduce_fp32.c",

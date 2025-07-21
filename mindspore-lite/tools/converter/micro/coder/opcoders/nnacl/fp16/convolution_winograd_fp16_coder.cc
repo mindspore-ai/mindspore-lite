@@ -15,7 +15,7 @@
  */
 #include "coder/opcoders/nnacl/fp16/convolution_winograd_fp16_coder.h"
 #include <array>
-#include "nnacl/base/minimal_filtering_generator.h"
+#include "nnacl_c/base/minimal_filtering_generator.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
@@ -205,10 +205,10 @@ std::string ConvolutionWinogradFP16Coder::GetOutputTransFunc(int input_unit, int
 
 void ConvolutionWinogradFP16Coder::CollectFilesForFunc(CoderContext *const context) {
   Collect(context,
-          {"nnacl/fp16/conv_fp16.h", "nnacl/fp16/winograd_utils_fp16.h",
-           "nnacl/fp16/winograd_transform_fp16.h"
-           "nnacl/base/minimal_filtering_generator.h"
-           "nnacl/base/conv_common_base.h"},
+          {"nnacl_c/fp16/conv_fp16.h", "nnacl_c/fp16/winograd_utils_fp16.h",
+           "nnacl_c/fp16/winograd_transform_fp16.h"
+           "nnacl_c/base/minimal_filtering_generator.h"
+           "nnacl_c/base/conv_common_base.h"},
           {
             "conv_fp16.c",
             "winograd_utils_fp16.c",

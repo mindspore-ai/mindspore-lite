@@ -17,7 +17,7 @@
 #include <memory>
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
-#include "nnacl/fp32/space_to_batch_fp32.h"
+#include "nnacl_c/fp32/space_to_batch_fp32.h"
 #include "src/litert/kernel_registry.h"
 #include "src/executor/kernel_exec.h"
 

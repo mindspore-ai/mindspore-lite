@@ -37,7 +37,7 @@
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/format/to_format_base.h"
 #include "tools/optimizer/common/pass_manager_extends.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "src/common/common.h"
 #include "tools/converter/parser/conv2d_transpose_input_adjust.h"

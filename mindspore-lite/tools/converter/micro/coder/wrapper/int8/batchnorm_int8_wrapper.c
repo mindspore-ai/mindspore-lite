@@ -15,8 +15,8 @@
  */
 
 #include "wrapper/int8/batchnorm_int8_wrapper.h"
-#include "nnacl/int8/batchnorm_int8.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/int8/batchnorm_int8.h"
+#include "nnacl_c/errorcode.h"
 
 int BatchNormInt8Run(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   BatchNormArgs *args = (BatchNormArgs *)(cdata);

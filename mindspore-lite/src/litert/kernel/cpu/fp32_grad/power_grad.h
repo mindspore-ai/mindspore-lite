@@ -19,8 +19,8 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/pow_parameter.h"
-#include "nnacl/fp32/power_fp32.h"
+#include "nnacl_c/pow_parameter.h"
+#include "nnacl_c/fp32/power_fp32.h"
 
 namespace mindspore::kernel {
 class PowerGradCPUKernel : public LiteKernel {

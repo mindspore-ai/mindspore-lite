@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/instance_norm_parameter.h"
+#include "nnacl_c/instance_norm_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class InstanceNormFP32Coder final : public OperatorCoder {

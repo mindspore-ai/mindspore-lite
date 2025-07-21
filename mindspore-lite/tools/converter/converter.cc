@@ -35,7 +35,7 @@
 #include "src/common/log_util.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/converter/import/mindspore_importer.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/converter/micro/coder/coder.h"
 #include "src/common/prim_util.h"
 #include "src/common/version_manager.h"

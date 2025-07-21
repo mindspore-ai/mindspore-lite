@@ -16,7 +16,7 @@
 #include "coder/opcoders/nnacl/fp16/arithmetic_fp16_coder.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/log.h"
-#include "nnacl/broadcast_to_parameter.h"
+#include "nnacl_c/broadcast_to_parameter.h"
 #include "base/float16.h"
 
 namespace mindspore::lite::micro::nnacl {
@@ -105,8 +105,8 @@ int ArithmeticFP16Coder::DoCode(CoderContext *const context) {
   NNaclFp32Serializer code;
   Collect(context,
           {
-            "nnacl/fp16/arithmetic_fp16.h",
-            "nnacl/base/broadcast_to.h",
+            "nnacl_c/fp16/arithmetic_fp16.h",
+            "nnacl_c/base/broadcast_to.h",
           },
           {
             "arithmetic_fp16.c",

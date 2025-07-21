@@ -19,7 +19,7 @@
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 #include "coder/opcoders/file_collector.h"
 #include "src/common/log_adapter.h"
-#include "nnacl/splice_parameter.h"
+#include "nnacl_c/splice_parameter.h"
 using mindspore::schema::PrimitiveType_Splice;
 namespace mindspore::lite::micro::nnacl {
 int SpliceFP32Coder::DoCode(CoderContext *const context) {
@@ -42,8 +42,8 @@ int SpliceFP32Coder::DoCode(CoderContext *const context) {
   }
   Collect(context,
           {
-            "nnacl/splice_parameter.h",
-            "nnacl/fp32/splice_fp32.h",
+            "nnacl_c/splice_parameter.h",
+            "nnacl_c/fp32/splice_fp32.h",
           },
           {
             "splice_fp32.c",

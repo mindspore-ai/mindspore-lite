@@ -15,8 +15,8 @@
  */
 
 #include "common/common_test.h"
-#include "nnacl/scatter_nd_parameter.h"
-#include "nnacl/infer/scatter_nd_update_infer.h"
+#include "nnacl_c/scatter_nd_parameter.h"
+#include "nnacl_c/infer/scatter_nd_update_infer.h"
 
 namespace mindspore {
 class TestScatterNdAddInfer : public mindspore::CommonTest {

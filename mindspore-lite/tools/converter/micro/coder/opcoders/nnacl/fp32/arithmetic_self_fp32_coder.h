@@ -20,8 +20,8 @@
 #include <string>
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/fp32/arithmetic_self_fp32.h"
-#include "nnacl/arithmetic_self_parameter.h"
+#include "nnacl_c/fp32/arithmetic_self_fp32.h"
+#include "nnacl_c/arithmetic_self_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 using mindspore::schema::PrimitiveType_Abs;

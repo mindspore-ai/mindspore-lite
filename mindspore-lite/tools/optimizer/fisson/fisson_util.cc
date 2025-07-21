@@ -26,7 +26,7 @@
 #include "infer/make_tuple.h"
 #include "tools/optimizer/parallel/spliter.h"
 #include "tools/optimizer/parallel/split_strategy.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "ops_utils/op_utils.h"
 #include "include/registry/converter_context.h"

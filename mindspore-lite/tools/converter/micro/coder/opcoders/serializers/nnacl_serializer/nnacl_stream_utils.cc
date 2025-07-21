@@ -16,11 +16,11 @@
 
 #include <sstream>
 #include <string>
-#include "nnacl/pooling_parameter.h"
-#include "nnacl/slice_parameter.h"
-#include "nnacl/softmax_parameter.h"
-#include "nnacl/int8/add_int8.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/pooling_parameter.h"
+#include "nnacl_c/slice_parameter.h"
+#include "nnacl_c/softmax_parameter.h"
+#include "nnacl_c/int8/add_int8.h"
+#include "nnacl_c/int8/quantize.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_stream_utils.h"
 

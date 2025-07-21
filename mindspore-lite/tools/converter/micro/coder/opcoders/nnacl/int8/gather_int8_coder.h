@@ -20,9 +20,9 @@
 #include <memory>
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/int8/quantize.h"
-#include "nnacl/int8/gather_int8.h"
-#include "nnacl/gather_parameter.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/int8/gather_int8.h"
+#include "nnacl_c/gather_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class GatherInt8Coder final : public OperatorCoder {

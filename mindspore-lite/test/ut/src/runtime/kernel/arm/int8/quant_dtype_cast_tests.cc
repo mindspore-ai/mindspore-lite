@@ -19,7 +19,7 @@
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
 #include "src/litert/kernel/cpu/base/quant_dtype_cast.h"
-#include "nnacl/int8/quant_dtype_cast_int8.h"
+#include "nnacl_c/int8/quant_dtype_cast_int8.h"
 #include "src/litert/kernel_registry.h"
 #include "src/executor/kernel_exec.h"
 

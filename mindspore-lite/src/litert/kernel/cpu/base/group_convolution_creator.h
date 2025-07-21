@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 #include "src/litert/tensor_category.h"
 #include "include/api/allocator.h"
 

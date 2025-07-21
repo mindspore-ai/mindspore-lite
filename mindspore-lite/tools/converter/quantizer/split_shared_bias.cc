@@ -18,7 +18,7 @@
 #include <set>
 #include <string>
 #include "tools/optimizer/common/gllo_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/converter/quantizer/quant_params.h"
 #include "tools/converter/quantizer/quantize_util.h"
 #include "tools/lite_exporter/fetch_content.h"

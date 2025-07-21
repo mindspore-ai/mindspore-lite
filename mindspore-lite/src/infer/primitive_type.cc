@@ -15,7 +15,7 @@
  */
 
 #include "src/infer/primitive_type.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore::kernel {
 #ifdef ENABLE_CLOUD_INFERENCE

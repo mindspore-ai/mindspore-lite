@@ -17,12 +17,12 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CPU_INT8_ARGMINMAX_INT8_H_
 
 #include <vector>
-#include "nnacl/int8/quantize.h"
-#include "nnacl/int8/arg_min_max_int8.h"
-#include "nnacl/common_func.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/int8/arg_min_max_int8.h"
+#include "nnacl_c/common_func.h"
 #include "include/errorcode.h"
 #include "src/litert/lite_kernel.h"
-#include "nnacl/kernel/arg_min_max.h"
+#include "nnacl_c/kernel/arg_min_max.h"
 
 namespace mindspore::kernel {
 class ArgMinMaxInt8CPUKernel : public LiteKernel {

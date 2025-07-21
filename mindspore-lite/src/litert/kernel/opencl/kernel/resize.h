@@ -20,7 +20,7 @@
 #include <vector>
 #include "src/litert/lite_kernel.h"
 #include "src/litert/kernel/opencl/opencl_kernel.h"
-#include "nnacl/resize_parameter.h"
+#include "nnacl_c/resize_parameter.h"
 
 namespace mindspore::kernel {
 class ResizeOpenCLKernel : public OpenCLKernel {

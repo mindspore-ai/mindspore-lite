@@ -16,8 +16,8 @@
 
 #include "bolt/convolution_bolt.h"
 #include "bolt/bolt_kernel_manager.h"
-#include "nnacl/conv_parameter.h"
-#include "nnacl/pack.h"
+#include "nnacl_c/conv_parameter.h"
+#include "nnacl_c/pack.h"
 #include "bolt/compute/tensor/include/tensor_computing.h"
 #include "bolt/common/memory/include/tensor_desc.h"
 #include "bolt/bolt_tensor_utils.h"

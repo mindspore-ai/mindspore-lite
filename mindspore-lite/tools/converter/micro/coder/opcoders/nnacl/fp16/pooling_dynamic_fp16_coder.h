@@ -20,8 +20,8 @@
 #include <vector>
 #include "coder/opcoders/op_coder.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/pooling_dynamic_parameter.h"
-#include "nnacl/pooling_parameter.h"
-#include "nnacl/kernel/pooling.h"
+#include "nnacl_c/pooling_parameter.h"
+#include "nnacl_c/kernel/pooling.h"
 
 namespace mindspore::lite::micro::nnacl {
 class PoolingDynamicFP16Coder final : public OperatorCoder {

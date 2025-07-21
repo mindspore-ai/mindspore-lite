@@ -18,7 +18,7 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/transpose_parameter.h"
+#include "nnacl_c/transpose_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class TransposeInt8Coder final : public OperatorCoder {

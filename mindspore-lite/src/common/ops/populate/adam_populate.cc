@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 using mindspore::schema::PrimitiveType_Adam;
 
 namespace mindspore {

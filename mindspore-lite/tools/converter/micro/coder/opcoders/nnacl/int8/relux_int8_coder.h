@@ -21,7 +21,7 @@
 #include <vector>
 #include "coder/opcoders/op_coder.h"
 #include "coder/utils/common.h"
-#include "nnacl/int8/relux_int8.h"
+#include "nnacl_c/int8/relux_int8.h"
 #include "coder/log.h"
 #include "include/errorcode.h"
 

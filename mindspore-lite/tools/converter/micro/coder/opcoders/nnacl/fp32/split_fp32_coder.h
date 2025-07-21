@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/split_parameter.h"
+#include "nnacl_c/split_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class SplitFP32Coder : public OperatorCoder {

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/op_base.h"
-#include "nnacl/affine_parameter.h"
+#include "nnacl_c/op_base.h"
+#include "nnacl_c/affine_parameter.h"
 
 using mindspore::schema::PrimitiveType_Affine;
 

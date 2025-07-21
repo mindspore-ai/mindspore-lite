@@ -27,13 +27,13 @@
 #include "include/errorcode.h"
 #include "schema/ops_generated.h"
 #include "src/common/utils.h"
-#include "nnacl/conv_parameter.h"
-#include "nnacl/pad_parameter.h"
-#include "nnacl/pooling_parameter.h"
-#include "nnacl/fp32/activation_fp32.h"
-#include "nnacl/matmul_parameter.h"
-#include "nnacl/scale_parameter.h"
-#include "nnacl/arithmetic_parameter.h"
+#include "nnacl_c/conv_parameter.h"
+#include "nnacl_c/pad_parameter.h"
+#include "nnacl_c/pooling_parameter.h"
+#include "nnacl_c/fp32/activation_fp32.h"
+#include "nnacl_c/matmul_parameter.h"
+#include "nnacl_c/scale_parameter.h"
+#include "nnacl_c/arithmetic_parameter.h"
 
 using mindspore::schema::ActivationType;
 using mindspore::schema::ActivationType_LEAKY_RELU;

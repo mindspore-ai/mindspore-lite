@@ -21,7 +21,7 @@
 #include "src/litert/lite_kernel.h"
 #include "src/tensorlist.h"
 #include "schema/model_generated.h"
-#include "nnacl/tensorlist_parameter.h"
+#include "nnacl_c/tensorlist_parameter.h"
 
 namespace mindspore::kernel {
 class TensorListSetItemCPUKernel : public LiteKernel {

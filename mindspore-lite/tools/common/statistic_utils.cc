@@ -16,7 +16,7 @@
 
 #include "tools/common/statistic_utils.h"
 #if defined(ENABLE_AVX) && defined(__linux__)
-#include "nnacl/intrinsics/ms_simd_cpu_info.h"
+#include "nnacl_c/intrinsics/ms_simd_cpu_info.h"
 #ifdef _MSC_VER
 #include <immintrin.h>
 #else

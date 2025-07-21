@@ -17,8 +17,8 @@
 #include "common/common_test.h"
 #include "src/executor/kernel_exec.h"
 #include "src/common/file_utils.h"
-#include "nnacl/int8/quantize.h"
-#include "nnacl/common_func.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/common_func.h"
 #include "src/litert/kernel/cpu/int8/convolution_1x1_int8.h"
 #include "src/litert/tensor_category.h"
 

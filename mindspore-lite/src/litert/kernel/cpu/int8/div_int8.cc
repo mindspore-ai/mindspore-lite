@@ -17,7 +17,7 @@
 #include "src/litert/kernel/cpu/int8/div_int8.h"
 #include <limits>
 #include <algorithm>
-#include "nnacl/int8/arithmetic_int8.h"
+#include "nnacl_c/int8/arithmetic_int8.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
 

@@ -23,9 +23,9 @@
 #ifdef ENABLE_ARM64
 #include <arm_neon.h>
 #endif
-#include "nnacl/fp32/matmul_fp32.h"
-#include "nnacl/fp32_sparse/matmul_sparse_x1_fp32.h"
-#include "nnacl/fp32/pack_fp32.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32_sparse/matmul_sparse_x1_fp32.h"
+#include "nnacl_c/fp32/pack_fp32.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;

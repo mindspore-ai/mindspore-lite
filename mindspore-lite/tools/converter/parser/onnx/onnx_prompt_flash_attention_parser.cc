@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 #include "infer/custom.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/op_enum.h"
 #include "op_def/auto_generate/gen_lite_ops.h"
 namespace mindspore {

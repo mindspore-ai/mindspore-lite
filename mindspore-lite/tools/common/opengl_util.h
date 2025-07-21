@@ -21,7 +21,7 @@
 #include <vector>
 #include <utility>
 #include "src/common/log_adapter.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 #if defined(GPU_OPENCL) && defined(__ANDROID__) && defined(ENABLE_ARM64)
 #include "EGL/egl.h"

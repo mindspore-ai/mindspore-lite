@@ -20,7 +20,7 @@
 #include "tools/converter/parser/tf/functionalize_while.h"
 #include "tools/converter/parser/tf/functionalize_cond.h"
 #include "include/errorcode.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 
 namespace mindspore::opt {

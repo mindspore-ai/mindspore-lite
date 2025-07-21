@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/tensor_array_parameter.h"
+#include "nnacl_c/tensor_array_parameter.h"
 #include "infer/tensor_array.h"
 #include "infer/tensor_array_read.h"
 #include "infer/tensor_array_write.h"

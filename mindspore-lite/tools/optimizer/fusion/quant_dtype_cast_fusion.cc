@@ -16,7 +16,7 @@
 
 #include "tools/optimizer/fusion/quant_dtype_cast_fusion.h"
 #include "mindspore/ops/op_def/framework_ops.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_q.h"
 
 namespace mindspore {

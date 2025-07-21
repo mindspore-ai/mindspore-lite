@@ -15,7 +15,7 @@
  */
 
 #include "common/common_test.h"
-#include "nnacl/infer/adam_weight_decay_infer.h"
+#include "nnacl_c/infer/adam_weight_decay_infer.h"
 
 namespace mindspore {
 class AdamWeightDecayInfer : public mindspore::CommonTest {

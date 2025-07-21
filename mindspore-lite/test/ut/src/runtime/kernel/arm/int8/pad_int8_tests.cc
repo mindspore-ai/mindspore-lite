@@ -20,7 +20,7 @@
 #include "src/litert/tensor_category.h"
 #include "common/common_test.h"
 #include "src/common/file_utils.h"
-#include "nnacl/pad_parameter.h"
+#include "nnacl_c/pad_parameter.h"
 #include "src/litert/kernel/cpu/int8/pad_int8.h"
 
 namespace mindspore {

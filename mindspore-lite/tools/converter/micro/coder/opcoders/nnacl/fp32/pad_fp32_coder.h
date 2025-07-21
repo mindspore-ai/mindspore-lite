@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/fp32/pad_fp32.h"
+#include "nnacl_c/fp32/pad_fp32.h"
 
 namespace mindspore::lite::micro::nnacl {
 class PadFP32Coder final : public OperatorCoder {

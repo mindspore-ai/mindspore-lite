@@ -19,8 +19,8 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/affine_parameter.h"
-#include "nnacl/splice_parameter.h"
+#include "nnacl_c/affine_parameter.h"
+#include "nnacl_c/splice_parameter.h"
 
 namespace mindspore::kernel {
 constexpr auto kAffineMinInputNum = 2;

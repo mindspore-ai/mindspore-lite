@@ -20,8 +20,8 @@
 #include <vector>
 #include "include/errorcode.h"
 #include "src/executor/kernel_exec.h"
-#include "nnacl/split_parameter.h"
-#include "nnacl/base/split_with_over_lap_base.h"
+#include "nnacl_c/split_parameter.h"
+#include "nnacl_c/base/split_with_over_lap_base.h"
 
 namespace mindspore::kernel {
 class SplitWithOverlapBaseCPUKernel : public LiteKernel {

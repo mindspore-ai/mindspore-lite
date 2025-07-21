@@ -21,8 +21,8 @@
 #include <string>
 #include "tools/converter/micro/coder/opcoders/op_coder.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/slice_dynamic_parameter.h"
-#include "nnacl/kernel/slice.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/kernel/slice.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore::lite::micro::nnacl {
 class SliceDynamicFP16Coder final : public OperatorCoder {

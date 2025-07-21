@@ -29,7 +29,7 @@
 #include "src/litert/kernel/gpu/opencl/opencl_runtime.h"
 #include "src/litert/tensor_category.h"
 #include "src/litert/kernel/opencl/utils.h"
-#include "nnacl/resize_parameter.h"
+#include "nnacl_c/resize_parameter.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;

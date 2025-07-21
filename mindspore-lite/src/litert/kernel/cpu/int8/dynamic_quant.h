@@ -21,7 +21,7 @@
 #include <cfloat>
 #include <map>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/dynamic_quant_parameter.h"
+#include "nnacl_c/dynamic_quant_parameter.h"
 
 namespace mindspore::kernel {
 class DynamicQuantCPUKernel : public LiteKernel {

@@ -44,7 +44,7 @@ int ExpFP32Coder::Prepare(CoderContext *context) {
 int ExpFP32Coder::DoCode(CoderContext *ctx) {
   Collect(ctx,
           {
-            "nnacl/fp32/exp_fp32.h",
+            "nnacl_c/fp32/exp_fp32.h",
           },
           {
             "exp_fp32.c",

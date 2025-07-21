@@ -22,8 +22,8 @@
 #include <utility>
 #include "src/litert/kernel_registry.h"
 #include "src/litert/kernel/opencl/utils.h"
-#include "nnacl/fp32/common_func_fp32.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/fp32/common_func_fp32.h"
+#include "nnacl_c/op_base.h"
 #include "include/errorcode.h"
 #include "src/litert/kernel/opencl/cl/depthwise_conv2d.cl.inc"
 

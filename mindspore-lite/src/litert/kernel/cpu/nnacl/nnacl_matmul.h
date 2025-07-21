@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "nnacl/nnacl_kernel.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 
 namespace mindspore::nnacl {
 class MatmulKernel : public NNACLKernel {

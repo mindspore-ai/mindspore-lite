@@ -19,7 +19,7 @@
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
-#include "nnacl/base/scatter_nd_binary.h"
+#include "nnacl_c/base/scatter_nd_binary.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

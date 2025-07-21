@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/infer/audio_spectrogram_infer.h"
+#include "nnacl_c/infer/audio_spectrogram_infer.h"
 using mindspore::schema::PrimitiveType_AudioSpectrogram;
 
 namespace mindspore {

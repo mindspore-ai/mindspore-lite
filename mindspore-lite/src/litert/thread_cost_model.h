@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_THREAD_COST_MODEL_H_
 
 #include <stdint.h>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "include/api/context.h"
 #include "schema/ops_generated.h"
 

@@ -571,8 +571,8 @@ int Generator::CodeRegKernelHFile() {
   MS_CHECK_TRUE(!cofs.bad(), "filed to open file");
   MS_LOG(INFO) << "write " << reg_kernel_header;
   cofs << g_hwLicense;
-  cofs << "#include \"nnacl/tensor_c.h\"\n";
-  cofs << "#include \"nnacl/custom_parameter.h\"\n\n";
+  cofs << "#include \"nnacl_c/tensor_c.h\"\n";
+  cofs << "#include \"nnacl_c/custom_parameter.h\"\n\n";
   cofs << KernelRegistry::GetInstance()->GenKernelInterface(kCustomKernelName, kCustomKernelParam) << "\n";
   return RET_OK;
 }

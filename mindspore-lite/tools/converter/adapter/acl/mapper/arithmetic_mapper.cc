@@ -24,7 +24,7 @@
 #include "src/common/log_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "ops_utils/op_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

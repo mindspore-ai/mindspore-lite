@@ -16,8 +16,8 @@
 
 #include "wrapper/fp32/transpose_fp32_wrapper.h"
 #include <string.h>
-#include "nnacl/fp32/pack_fp32.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/fp32/pack_fp32.h"
+#include "nnacl_c/errorcode.h"
 
 int DoTransposeNCHWToNHWC(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   TransposeFp32Args *args = (TransposeFp32Args *)cdata;

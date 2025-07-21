@@ -19,7 +19,7 @@
 #include <vector>
 #include <string>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/transpose_parameter.h"
+#include "nnacl_c/transpose_parameter.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/transpose_dynamic_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {

@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_INT8_BATCHNORM_INT8_WRAPPER_H_
 
 #include <stdint.h>
-#include "nnacl/batchnorm_parameter.h"
+#include "nnacl_c/batchnorm_parameter.h"
 typedef struct BatchNormArgs {
   int8_t *in_addr_;
   int8_t *out_addr_;

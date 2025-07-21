@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/fp32_grad/softmax_grad.h"
+#include "nnacl_c/fp32_grad/softmax_grad.h"
 #include "infer/sparse_softmax_cross_entropy_with_logits.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 using mindspore::ops::kNameSparseSoftmaxCrossEntropyWithLogits;

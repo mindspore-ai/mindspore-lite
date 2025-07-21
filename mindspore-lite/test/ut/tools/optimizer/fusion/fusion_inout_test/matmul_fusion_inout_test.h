@@ -20,7 +20,7 @@
 #include <string>
 #include "test/ut/tools/optimizer/fusion/fusion_inout_test/fusion_inout_test.h"
 #include "ir/anf.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "include/backend/optimizer/pass.h"
 #include "include/backend/optimizer/optimizer.h"
 #include "include/backend/optimizer/pass_manager.h"

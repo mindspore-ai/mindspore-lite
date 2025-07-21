@@ -23,7 +23,7 @@
 #include "mindspore/ops/op_def/op_name.h"
 #include "src/litert/kernel/cpu/fp32/matmul_fp32.h"
 #include "src/litert/kernel/cpu/nnacl/nnacl_kernel.h"
-#include "nnacl/kernel/matmul_struct.h"
+#include "nnacl_c/kernel/matmul_struct.h"
 
 namespace mindspore {
 namespace {

@@ -27,8 +27,8 @@
 #include "src/litert/inner_allocator.h"
 #endif
 #include "thread/threadpool.h"
-#include "nnacl/op_base.h"
-#include "nnacl/kernel.h"
+#include "nnacl_c/op_base.h"
+#include "nnacl_c/kernel.h"
 #ifdef ENABLE_ARM
 #include "src/litert/cpu_info.h"
 #endif

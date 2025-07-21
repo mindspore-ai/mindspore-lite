@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CPU_FP32_GRAD_STRIDED_SLICE_GRAD_H_
 
 #include <vector>
-#include "nnacl/fp32_grad/strided_slice_grad.h"
+#include "nnacl_c/fp32_grad/strided_slice_grad.h"
 #include "src/litert/lite_kernel.h"
 
 namespace mindspore::kernel {

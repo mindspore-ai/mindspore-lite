@@ -25,7 +25,7 @@
 #include "ir/dtype/type_id.h"
 #include "include/api/format.h"
 #include "src/common/log_adapter.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/converter/micro/coder/config.h"
 #include "base/float16.h"
 

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/arithmetic_compare_infer.h"
+#include "nnacl_c/infer/arithmetic_compare_infer.h"
 
 namespace mindspore {
 

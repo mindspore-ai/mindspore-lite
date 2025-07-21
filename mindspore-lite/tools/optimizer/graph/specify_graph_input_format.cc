@@ -25,7 +25,7 @@
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/optimizer/common/format_utils.h"
 #include "src/common/log_adapter.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"

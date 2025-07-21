@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/batchnorm_parameter.h"
+#include "nnacl_c/batchnorm_parameter.h"
 #include "infer/fused_batch_norm.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_f.h"
 using mindspore::ops::kNameFusedBatchNorm;

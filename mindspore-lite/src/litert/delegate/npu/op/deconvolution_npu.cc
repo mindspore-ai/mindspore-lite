@@ -16,7 +16,7 @@
 
 #include "src/litert/delegate/npu/op/deconvolution_npu.h"
 #include "src/litert/delegate/npu/npu_converter_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 
 namespace mindspore::lite {

@@ -16,7 +16,7 @@
 
 #include "src/common/ops/populate/populate_register.h"
 
-#include "nnacl/nllloss_parameter.h"
+#include "nnacl_c/nllloss_parameter.h"
 
 using mindspore::schema::PrimitiveType_NLLLoss;
 using mindspore::schema::PrimitiveType_NLLLossGrad;

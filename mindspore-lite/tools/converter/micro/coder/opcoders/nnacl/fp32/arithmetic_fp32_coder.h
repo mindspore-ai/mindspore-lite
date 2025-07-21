@@ -20,7 +20,7 @@
 #include <vector>
 #include <string>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/fp32/arithmetic_fp32.h"
+#include "nnacl_c/fp32/arithmetic_fp32.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 #include "wrapper/fp32/arithmetic_fp32_wrapper.h"
 namespace mindspore::lite::micro::nnacl {

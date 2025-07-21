@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "ut/src/runtime/kernel/opencl/common.h"
-#include "nnacl/reduce_parameter.h"
+#include "nnacl_c/reduce_parameter.h"
 
 namespace mindspore::lite::opencl::test {
 

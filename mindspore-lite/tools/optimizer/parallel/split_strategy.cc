@@ -19,7 +19,7 @@
 #include <vector>
 #include <unordered_map>
 #include <string>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 
 namespace mindspore {

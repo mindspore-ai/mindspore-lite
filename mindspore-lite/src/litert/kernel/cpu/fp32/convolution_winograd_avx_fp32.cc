@@ -15,8 +15,8 @@
  */
 
 #include "src/litert/kernel/cpu/fp32/convolution_winograd_avx_fp32.h"
-#include "nnacl/fp32/conv_winograd_fp32.h"
-#include "nnacl/pack.h"
+#include "nnacl_c/fp32/conv_winograd_fp32.h"
+#include "nnacl_c/pack.h"
 #include "include/errorcode.h"
 
 using mindspore::lite::RET_ERROR;

@@ -15,7 +15,7 @@
  */
 
 #include "src/litert/runtime_pass.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 
 namespace mindspore::lite {
 #ifndef RUNTIME_PASS_CLIP

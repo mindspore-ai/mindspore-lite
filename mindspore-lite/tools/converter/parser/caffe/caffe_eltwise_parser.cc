@@ -18,7 +18,7 @@
 #include <cmath>
 #include <memory>
 #include "infer/eltwise.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

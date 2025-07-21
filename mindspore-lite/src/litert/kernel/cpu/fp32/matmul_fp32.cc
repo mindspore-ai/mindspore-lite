@@ -17,9 +17,9 @@
 #include "src/litert/kernel/cpu/fp32/matmul_fp32.h"
 #include <algorithm>
 #include "include/errorcode.h"
-#include "nnacl/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/intrinsics/ms_simd_cpu_info.h"
+#include "nnacl_c/intrinsics/ms_simd_cpu_info.h"
 #if defined(ENABLE_AVX512)
 #include "src/litert/kernel/cpu/fp32/matmul_fp32_avx512.h"
 #endif

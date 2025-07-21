@@ -19,7 +19,7 @@
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
-#include "nnacl/kernel/strided_slice.h"
+#include "nnacl_c/kernel/strided_slice.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;

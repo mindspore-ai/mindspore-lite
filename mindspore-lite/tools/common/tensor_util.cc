@@ -19,7 +19,7 @@
 #include "src/common/utils.h"
 #include "tools/common/graph_util.h"
 #include "abstract/utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore::lite {
 namespace {

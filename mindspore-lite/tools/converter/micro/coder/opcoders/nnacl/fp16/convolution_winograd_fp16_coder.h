@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 #include "coder/opcoders/nnacl/fp32/convolution_winograd_fp32_coder.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 typedef struct TransFuncFp16Str {

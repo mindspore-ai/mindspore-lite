@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/cumsum_parameter.h"
+#include "nnacl_c/cumsum_parameter.h"
 using mindspore::schema::PrimitiveType_CumSum;
 
 namespace mindspore {

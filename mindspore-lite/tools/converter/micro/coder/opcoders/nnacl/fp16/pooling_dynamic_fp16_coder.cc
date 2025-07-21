@@ -65,7 +65,7 @@ int PoolingDynamicFP16Coder::Prepare(CoderContext *const context) {
 int PoolingDynamicFP16Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/fp16/pooling_fp16.h",
+            "nnacl_c/fp16/pooling_fp16.h",
           },
           {
             "pooling_fp16.c",

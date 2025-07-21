@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/custom_gru_parameter.h"
+#include "nnacl_c/custom_gru_parameter.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 
 namespace mindspore::lite::micro::nnacl {

@@ -15,11 +15,11 @@
  */
 
 #include "wrapper/int8/conv1x1_run_int8_wrapper.h"
-#include "nnacl/base/conv1x1_base.h"
-#include "nnacl/int8/matmul_int8.h"
-#include "nnacl/int8/pack_int8.h"
-#include "nnacl/int8/conv1x1_int8.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/base/conv1x1_base.h"
+#include "nnacl_c/int8/matmul_int8.h"
+#include "nnacl_c/int8/pack_int8.h"
+#include "nnacl_c/int8/conv1x1_int8.h"
+#include "nnacl_c/errorcode.h"
 
 void Pre1x1Trans(Conv1x1Args *args, int8_t *src_input, int8_t *src_output) {
   args->output_ptr_ = src_output;

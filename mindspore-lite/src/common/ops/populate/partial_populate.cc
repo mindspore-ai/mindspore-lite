@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/partial_fusion_parameter.h"
+#include "nnacl_c/partial_fusion_parameter.h"
 using mindspore::schema::PrimitiveType_PartialFusion;
 
 namespace mindspore {

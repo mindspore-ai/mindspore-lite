@@ -19,10 +19,10 @@
 #include "common/common_test.h"
 #include "src/common/file_utils.h"
 #include "src/litert/kernel/cpu/fp32_grad/bn_grad.h"
-#include "nnacl/fp32_grad/batch_norm_grad.h"
-#include "nnacl/fp32/batchnorm_fp32.h"
+#include "nnacl_c/fp32_grad/batch_norm_grad.h"
+#include "nnacl_c/fp32/batchnorm_fp32.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/batchnorm_parameter.h"
+#include "nnacl_c/batchnorm_parameter.h"
 
 namespace mindspore {
 

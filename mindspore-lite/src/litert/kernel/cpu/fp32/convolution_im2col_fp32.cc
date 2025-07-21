@@ -34,7 +34,7 @@
 #if defined(ENABLE_ARM64)
 #include "src/litert/kernel/cpu/fp32/convolution_im2col_arm64_fp32.h"
 #endif
-#include "nnacl/intrinsics/ms_simd_cpu_info.h"
+#include "nnacl_c/intrinsics/ms_simd_cpu_info.h"
 
 namespace mindspore::kernel {
 LiteKernel *CreateConvolutionIm2ColCPUKernel(OpParameter *parameter, const std::vector<lite::Tensor *> &inputs,

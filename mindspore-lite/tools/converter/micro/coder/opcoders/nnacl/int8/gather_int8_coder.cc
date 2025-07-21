@@ -50,7 +50,7 @@ int GatherInt8Coder::Prepare(CoderContext *context) {
 int GatherInt8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/int8/gather_int8.h",
+            "nnacl_c/int8/gather_int8.h",
           },
           {
             "gather_int8.c",

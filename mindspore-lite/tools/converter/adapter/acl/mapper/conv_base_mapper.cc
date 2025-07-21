@@ -18,7 +18,7 @@
 #include <vector>
 #include <map>
 #include "ops_utils/op_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "utils/check_convert_utils.h"
 
 namespace mindspore {

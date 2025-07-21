@@ -17,8 +17,8 @@
 #include "src/litert/pass/format_pass/pass_utils.h"
 #include <string>
 #include <vector>
-#include "nnacl/format_transpose_parameter.h"
-#include "nnacl/arg_min_max_parameter.h"
+#include "nnacl_c/format_transpose_parameter.h"
+#include "nnacl_c/arg_min_max_parameter.h"
 
 namespace mindspore::lite::pass {
 bool IsNoneTranspose(const TransInfoPair &trans) {

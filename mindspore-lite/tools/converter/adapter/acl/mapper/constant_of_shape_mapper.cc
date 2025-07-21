@@ -24,7 +24,7 @@
 #include "ops_utils/op_utils.h"
 #include "src/common/log_util.h"
 #include "tools/common/tensor_util.h"
-#include "nnacl/base/cast_base.h"
+#include "nnacl_c/base/cast_base.h"
 
 namespace mindspore {
 namespace lite {

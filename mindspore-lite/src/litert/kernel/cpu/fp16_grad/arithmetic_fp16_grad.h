@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/fp16/arithmetic_fp16.h"
+#include "nnacl_c/fp16/arithmetic_fp16.h"
 #include "schema/model_generated.h"
 
 using mindspore::schema::PrimitiveType_AddGrad;

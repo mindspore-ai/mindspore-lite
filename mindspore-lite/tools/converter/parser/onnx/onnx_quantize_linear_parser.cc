@@ -22,7 +22,7 @@
 #include <cmath>
 #include <utility>
 #include <cstdint>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "op_def/auto_generate/gen_lite_ops.h"
 

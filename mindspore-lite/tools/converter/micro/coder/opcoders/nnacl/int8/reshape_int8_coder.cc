@@ -35,7 +35,7 @@ int ReshapeInt8Coder::DoCode(CoderContext *const context) {
 
   Collect(context,
           {
-            "nnacl/int8/reshape_int8.h",
+            "nnacl_c/int8/reshape_int8.h",
           },
           {
             "reshape_int8.c",

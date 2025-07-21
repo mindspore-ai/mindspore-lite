@@ -22,7 +22,7 @@
 #include <vector>
 #include <algorithm>
 #include "src/tensorlist.h"
-#include "nnacl/partial_fusion_parameter.h"
+#include "nnacl_c/partial_fusion_parameter.h"
 #include "include/errorcode.h"
 #include "src/common/graph_util.h"
 #include "src/common/utils.h"
@@ -47,7 +47,7 @@
 #endif
 #include "src/litert/weight_decoder.h"
 #include "src/litert/kernel/cpu/fp16/fp16_op_handler.h"
-#include "nnacl/nnacl_common.h"
+#include "nnacl_c/nnacl_common.h"
 #if GPU_OPENCL
 #include "src/litert/kernel/opencl/opencl_subgraph.h"
 #include "src/litert/kernel/gpu/opencl/opencl_runtime.h"

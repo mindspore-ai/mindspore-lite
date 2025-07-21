@@ -17,8 +17,8 @@
 #ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_PROVIDERS_NNIE_NNIE_MICRO_H_
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_PROVIDERS_NNIE_NNIE_MICRO_H_
 
-#include "nnacl/custom_parameter.h"
-#include "nnacl/tensor_c.h"
+#include "nnacl_c/custom_parameter.h"
+#include "nnacl_c/tensor_c.h"
 
 #ifdef __cplusplus
 extern "C" {

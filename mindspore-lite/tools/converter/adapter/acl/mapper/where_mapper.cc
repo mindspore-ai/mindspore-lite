@@ -19,7 +19,7 @@
 #include "tools/converter/adapter/acl/common/utils.h"
 #include "tools/converter/adapter/acl/mapper/primitive_mapper_register.h"
 #include "tools/converter/adapter/acl/mapper/tbe_op_def.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 

@@ -25,7 +25,7 @@
 #include "include/registry/node_parser_registry.h"
 #include "ir/func_graph.h"
 #include "mindspore/ops/op_def/nn_ops.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/make_tuple.h"
 #include "infer/return.h"

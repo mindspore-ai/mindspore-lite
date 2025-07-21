@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 #include "coder/opcoders/nnacl/fp32/convolution_winograd_fp32_coder.h"
-#include "nnacl/fp32/winograd_utils.h"
+#include "nnacl_c/fp32/winograd_utils.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/log.h"
 #include "coder/opcoders/parallel.h"
@@ -101,10 +101,10 @@ void ConvolutionFP16Coder::CollectFilesForFunc(CoderContext *const context) {
           });
   Collect(context,
           {
-            "nnacl/fp16/matmul_fp16.h",
-            "nnacl/conv_parameter.h",
-            "nnacl/op_base.h",
-            "nnacl/fp16/conv_fp16.h",
+            "nnacl_c/fp16/matmul_fp16.h",
+            "nnacl_c/conv_parameter.h",
+            "nnacl_c/op_base.h",
+            "nnacl_c/fp16/conv_fp16.h",
           },
           {
             "common_func.c",

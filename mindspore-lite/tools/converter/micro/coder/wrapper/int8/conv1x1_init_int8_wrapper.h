@@ -19,7 +19,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 
 #ifdef __cplusplus
 extern "C" {

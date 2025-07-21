@@ -35,7 +35,7 @@
 #include "src/common/graph_util.h"
 #include "ir/anf.h"
 #include "ir/func_graph.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/common/node_util.h"
 #include "tools/converter/cxx_api/converter_para.h"
 

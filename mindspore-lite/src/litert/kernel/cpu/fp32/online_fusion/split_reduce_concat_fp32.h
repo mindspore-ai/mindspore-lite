@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/split_parameter.h"
+#include "nnacl_c/split_parameter.h"
 
 namespace mindspore::kernel {
 class SplitReduceConcatFusionCPUKernel : public LiteKernel {

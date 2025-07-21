@@ -18,9 +18,9 @@
 
 #include <vector>
 #include "include/errorcode.h"
-#include "nnacl/batch_to_space_parameter.h"
-#include "nnacl/base/batch_to_space_base.h"
-#include "nnacl/int8/batch_to_space_int8.h"
+#include "nnacl_c/batch_to_space_parameter.h"
+#include "nnacl_c/base/batch_to_space_base.h"
+#include "nnacl_c/int8/batch_to_space_int8.h"
 #include "src/litert/lite_kernel.h"
 
 namespace mindspore::kernel {

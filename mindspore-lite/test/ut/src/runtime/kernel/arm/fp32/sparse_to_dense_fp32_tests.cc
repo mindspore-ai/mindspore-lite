@@ -18,7 +18,7 @@
 #include "schema/inner/model_generated.h"
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
-#include "nnacl/fp32/sparse_to_dense_fp32.h"
+#include "nnacl_c/fp32/sparse_to_dense_fp32.h"
 #include "src/litert/kernel_registry.h"
 #include "src/executor/kernel_exec.h"
 #include "src/tensor.h"

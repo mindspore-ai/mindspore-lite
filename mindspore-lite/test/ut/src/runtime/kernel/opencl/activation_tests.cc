@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "ut/src/runtime/kernel/opencl/common.h"
-#include "nnacl/fp32/activation_fp32.h"
+#include "nnacl_c/fp32/activation_fp32.h"
 
 namespace mindspore::lite::opencl::test {
 

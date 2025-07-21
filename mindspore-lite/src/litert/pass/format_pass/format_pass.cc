@@ -19,7 +19,7 @@
 #include "src/litert/pass/format_pass/eliminate_transpose.h"
 #ifdef ENABLE_MULTI_LAYOUT
 #include "src/litert/kernel_registry.h"
-#include "nnacl/format_transpose_parameter.h"
+#include "nnacl_c/format_transpose_parameter.h"
 #endif
 namespace mindspore::lite::pass {
 #ifdef ENABLE_MULTI_LAYOUT

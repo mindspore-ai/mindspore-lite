@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/fp32/crop_fp32.h"
+#include "nnacl_c/fp32/crop_fp32.h"
 #include "src/litert/tensor_category.h"
 #include "src/litert/lite_kernel.h"
 #include "nnacl/nnacl_manager.h"

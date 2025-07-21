@@ -54,8 +54,8 @@ int BatchNormInt8Coder::DoCode(CoderContext *context) {
 
   Collect(context,
           {
-            "nnacl/slice_parameter.h",
-            "nnacl/kernel/batch_norm.h",
+            "nnacl_c/slice_parameter.h",
+            "nnacl_c/kernel/batch_norm.h",
           },
           {
             "batchnorm_int8.c",

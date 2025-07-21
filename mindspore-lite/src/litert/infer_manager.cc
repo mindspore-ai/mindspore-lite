@@ -23,7 +23,7 @@
 #include "src/litert/cxx_api/tensor/tensor_impl.h"
 #include "schema/model_generated.h"
 #include "include/errorcode.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/errorcode.h"
 #include "src/tensorlist.h"
 #include "include/registry/register_kernel_interface.h"
 #include "src/litert/kernel_registry.h"

@@ -15,8 +15,8 @@
  */
 #include "src/litert/kernel/cpu/int8/space_to_batch_int8.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/fp32/space_to_batch_fp32.h"
-#include "nnacl/int8/space_to_batch_int8.h"
+#include "nnacl_c/fp32/space_to_batch_fp32.h"
+#include "nnacl_c/int8/space_to_batch_int8.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;

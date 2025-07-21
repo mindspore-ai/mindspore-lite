@@ -16,7 +16,7 @@
 
 #include "src/litert/kernel/cpu/fp32/convolution_depthwise_3x3_fp32.h"
 #include "include/errorcode.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 #if defined(ENABLE_ARM) || (defined(ENABLE_SSE) && !defined(ENABLE_AVX))
 using mindspore::lite::RET_ERROR;

@@ -16,7 +16,7 @@
 
 #include "bolt/bolt_parameter_manager.h"
 #include "bolt/bolt_utils.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 #include "schema/ops_generated.h"
 
 namespace mindspore::kernel::bolt {

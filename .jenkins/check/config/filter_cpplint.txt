@@ -93,4 +93,4 @@
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"                             "build/include"
 
 # nnacl
-"mindspore-lite/mindspore-lite/ops/kernel/cpu/nnacl/"                                                   "readability/casting"
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/"                                                   "readability/casting"

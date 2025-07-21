@@ -18,7 +18,7 @@
 #include <memory>
 #include "tools/optimizer/fusion/matmul_activation_fusion.h"
 #include "test/ut/tools/optimizer/fusion/fusion_inout_test/fusion_inout_test.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "infer/cxx_api/mat_mul_fusion.h"
 #include "infer/cxx_api/activation.h"
 

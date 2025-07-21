@@ -25,7 +25,7 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
 #include "tools/optimizer/common/format_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_g.h"

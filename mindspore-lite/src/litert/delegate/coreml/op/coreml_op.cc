@@ -15,7 +15,7 @@
  */
 
 #include "src/litert/delegate/coreml/op/coreml_op.h"
-#include "nnacl/base/cast_base.h"
+#include "nnacl_c/base/cast_base.h"
 namespace mindspore::lite {
 int CoreMLOp::Init() {
   auto ret = InitParams();

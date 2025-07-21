@@ -18,7 +18,7 @@
 #include <set>
 #include <fstream>
 #include "src/common/log_adapter.h"
-#include "nnacl/nnacl_utils.h"
+#include "nnacl_c/nnacl_utils.h"
 #if defined(ENABLE_ARM64) && !defined(SUPPORT_NNIE) && !defined(MS_COMPILE_IOS)
 #include <sys/auxv.h>
 #include <asm/hwcap.h>

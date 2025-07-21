@@ -20,7 +20,7 @@
 #include <set>
 #include "src/litert/kernel_exec_util.h"
 #include "src/litert/kernel/cpu/base/partial_fusion.h"
-#include "nnacl/call_parameter.h"
+#include "nnacl_c/call_parameter.h"
 #include "src/control_flow/kernel/exit_subgraph_kernel.h"
 #include "src/control_flow/kernel/identity_kernel.h"
 #include "src/tensorlist.h"

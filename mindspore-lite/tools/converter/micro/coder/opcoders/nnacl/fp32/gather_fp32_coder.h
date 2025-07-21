@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/base/tile_base.h"
+#include "nnacl_c/base/tile_base.h"
 
 namespace mindspore::lite::micro::nnacl {
 class GatherFP32Coder final : public OperatorCoder {

@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/int8/sigmoid_int8.h"
+#include "nnacl_c/int8/sigmoid_int8.h"
 
 namespace mindspore::kernel {
 class SigmoidInt8CPUKernel : public LiteKernel {

@@ -20,8 +20,8 @@
 #include <vector>
 #include "include/errorcode.h"
 #include "src/litert/lite_kernel.h"
-#include "nnacl/int8/squeeze_int8.h"
-#include "nnacl/squeeze_parameter.h"
+#include "nnacl_c/int8/squeeze_int8.h"
+#include "nnacl_c/squeeze_parameter.h"
 
 using mindspore::lite::InnerContext;
 namespace mindspore::kernel {

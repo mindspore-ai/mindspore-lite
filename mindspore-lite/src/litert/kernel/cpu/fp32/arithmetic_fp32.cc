@@ -16,7 +16,7 @@
 
 #include "src/litert/kernel/cpu/fp32/arithmetic_fp32.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/fp32/arithmetic_fp32.h"
+#include "nnacl_c/fp32/arithmetic_fp32.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

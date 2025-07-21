@@ -16,9 +16,9 @@
 #include <iostream>
 #include <cmath>
 #include "common/common_test.h"
-#include "nnacl/op_base.h"
-#include "nnacl/base/cast_base.h"
-#include "nnacl/kernel/cast.h"
+#include "nnacl_c/op_base.h"
+#include "nnacl_c/base/cast_base.h"
+#include "nnacl_c/kernel/cast.h"
 
 namespace mindspore {
 class CastTest : public mindspore::CommonTest {

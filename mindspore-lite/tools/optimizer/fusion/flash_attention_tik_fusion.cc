@@ -19,7 +19,7 @@
 #include "op_def/auto_generate/gen_lite_ops.h"
 #include "mindspore/ops/op_def/nn_ops.h"
 #include "infer/custom.h"
-#include "nnacl/base/cast_base.h"
+#include "nnacl_c/base/cast_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_p.h"
 
 namespace mindspore {

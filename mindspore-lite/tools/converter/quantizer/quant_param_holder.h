@@ -22,7 +22,7 @@
 #include <map>
 #include "ir/anf.h"
 #include "schema/inner/model_generated.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "tools/converter/quantizer/quant_params.h"
 

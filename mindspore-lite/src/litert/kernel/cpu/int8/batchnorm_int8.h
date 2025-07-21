@@ -19,8 +19,8 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/int8/batchnorm_int8.h"
-#include "nnacl/batchnorm_parameter.h"
+#include "nnacl_c/int8/batchnorm_int8.h"
+#include "nnacl_c/batchnorm_parameter.h"
 
 using mindspore::lite::InnerContext;
 

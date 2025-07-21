@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_OPCODERS_NNACL_FP32_FILL_FP32_CODER_H_
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/kernel/fill.h"
+#include "nnacl_c/kernel/fill.h"
 namespace mindspore::lite::micro::nnacl {
 class FillFP32Coder final : public OperatorCoder {
  public:

@@ -20,7 +20,7 @@
 #include <algorithm>
 #include "tools/optimizer/common/helper.h"
 #include "mindspore/ops/op_def/sequence_ops.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 
 namespace mindspore {

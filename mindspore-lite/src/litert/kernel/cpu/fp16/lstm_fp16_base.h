@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/lstm_parameter.h"
+#include "nnacl_c/lstm_parameter.h"
 
 namespace mindspore::kernel {
 class LstmFp16BaseCPUKernel : public LiteKernel {

@@ -15,7 +15,7 @@
  */
 
 #include "coder/opcoders/nnacl/int8/relux_int8_coder.h"
-#include "nnacl/fp32/activation_fp32.h"
+#include "nnacl_c/fp32/activation_fp32.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_int8_serializer.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/log.h"
@@ -41,7 +41,7 @@ int ReluxInt8Coder::Prepare(CoderContext *const context) {
 int ReluxInt8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/int8/relux_int8.h",
+            "nnacl_c/int8/relux_int8.h",
           },
           {
             "relux_int8.c",

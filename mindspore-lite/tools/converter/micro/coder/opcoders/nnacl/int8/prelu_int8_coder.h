@@ -20,7 +20,7 @@
 #include <memory>
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/int8/quantize.h"
 #include "coder/opcoders/nnacl/int8/leaky_relu_int8_coder.h"
 
 namespace mindspore::lite::micro::nnacl {

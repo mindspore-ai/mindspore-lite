@@ -17,7 +17,7 @@
 #include <iostream>
 #include <memory>
 #include "common/common_test.h"
-#include "nnacl/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
 #include "src/common/file_utils.h"
 #include "src/litert/tensor_category.h"
 #include "src/common/log_adapter.h"

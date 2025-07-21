@@ -81,7 +81,7 @@ int StridedSliceDynamicBaseCoder::Prepare(CoderContext *context) {
 int StridedSliceDynamicBaseCoder::DoCode(CoderContext *ctx) {
   Collect(ctx,
           {
-            "nnacl/fp32/strided_slice_fp32.h",
+            "nnacl_c/fp32/strided_slice_fp32.h",
           },
           {
             "strided_slice_fp32.c",

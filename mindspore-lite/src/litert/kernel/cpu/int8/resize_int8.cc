@@ -18,7 +18,7 @@
 #include <vector>
 #include <algorithm>
 #include "include/errorcode.h"
-#include "nnacl/int8/resize_int8.h"
+#include "nnacl_c/int8/resize_int8.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 

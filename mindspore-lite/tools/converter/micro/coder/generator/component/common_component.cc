@@ -21,7 +21,7 @@
 #include "coder/utils/coder_utils.h"
 #include "coder/log.h"
 #include "include/errorcode.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "include/c_api/model_c.h"
 #include "coder/generator/component/const_blocks/license.h"
 #include "tools/common/string_util.h"

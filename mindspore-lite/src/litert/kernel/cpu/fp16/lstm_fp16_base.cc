@@ -16,8 +16,8 @@
 
 #include "src/litert/kernel/cpu/fp16/lstm_fp16_base.h"
 #include <cfloat>
-#include "nnacl/fp16/lstm_fp16.h"
-#include "nnacl/fp16/cast_fp16.h"
+#include "nnacl_c/fp16/lstm_fp16.h"
+#include "nnacl_c/fp16/cast_fp16.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;

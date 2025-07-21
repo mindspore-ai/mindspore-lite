@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/l2_norm_parameter.h"
+#include "nnacl_c/l2_norm_parameter.h"
 #include "infer/l2_normalize.h"
 #include "infer/cxx_api/l2_normalize_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"

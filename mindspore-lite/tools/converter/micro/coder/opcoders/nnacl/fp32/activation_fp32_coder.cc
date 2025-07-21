@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "coder/opcoders/nnacl/fp32/activation_fp32_coder.h"
-#include "nnacl/fp32/activation_fp32.h"
+#include "nnacl_c/fp32/activation_fp32.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/parallel.h"
@@ -29,7 +29,7 @@ int ActivationFP32Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
             "wrapper/fp32/activation_fp32_wrapper.h",
-            "nnacl/fp32/activation_fp32.h",
+            "nnacl_c/fp32/activation_fp32.h",
           },
           {
             "activation_fp32_wrapper.c",

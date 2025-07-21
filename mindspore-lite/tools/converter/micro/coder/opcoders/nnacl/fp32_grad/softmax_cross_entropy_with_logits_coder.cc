@@ -16,7 +16,7 @@
 
 #include "coder/opcoders/nnacl/fp32_grad/softmax_cross_entropy_with_logits_coder.h"
 #include <string>
-#include "nnacl/fp32_grad/softmax_crossentropy_parameter.h"
+#include "nnacl_c/fp32_grad/softmax_crossentropy_parameter.h"
 #include "coder/opcoders/file_collector.h"
 #include "schema/inner/ops_generated.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
@@ -49,8 +49,8 @@ int SoftmaxCrossEntropyWithLogitsCoder::DoCode(CoderContext *const context) {
   MS_CHECK_TRUE(input_tensors_.size() == DIMENSION_2D, "inputs size is not equal to two");
   Collect(context,
           {
-            "nnacl/fp32/softmax_fp32.h",
-            "nnacl/fp32_grad/softmax_cross_entropy_with_logits.h",
+            "nnacl_c/fp32/softmax_fp32.h",
+            "nnacl_c/fp32_grad/softmax_cross_entropy_with_logits.h",
           },
           {
             "softmax_fp32.c",

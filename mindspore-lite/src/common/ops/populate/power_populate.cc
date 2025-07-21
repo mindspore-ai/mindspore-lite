@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/pow_parameter.h"
+#include "nnacl_c/pow_parameter.h"
 using mindspore::schema::PrimitiveType_PowFusion;
 
 namespace mindspore {

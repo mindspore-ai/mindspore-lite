@@ -24,7 +24,7 @@
 #include "ops/primitive_c.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "src/common/utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "extendrt/cxx_api/model/model_impl.h"
 #include "extendrt/cxx_api/dlutils.h"

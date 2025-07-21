@@ -19,9 +19,9 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/int8/quantize.h"
-#include "nnacl/kernel/slice.h"
-#include "nnacl/slice_parameter.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/kernel/slice.h"
+#include "nnacl_c/slice_parameter.h"
 
 namespace mindspore::kernel {
 class SliceInt8CPUKernel : public LiteKernel {

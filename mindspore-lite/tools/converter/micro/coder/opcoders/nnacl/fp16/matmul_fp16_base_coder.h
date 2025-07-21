@@ -21,7 +21,7 @@
 #include <string>
 #include "coder/opcoders/nnacl/fp32/matmul_fp32_base_coder.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class MatMulFP16BaseCoder : public MatMulFP32BaseCoder {

@@ -19,7 +19,7 @@
 
 #include <vector>
 #include <string>
-#include "nnacl/lstm_parameter.h"
+#include "nnacl_c/lstm_parameter.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/dynamic_lstm_parameter.h"
 #include "coder/opcoders/op_coder.h"
 

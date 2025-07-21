@@ -17,7 +17,7 @@
 #include <iostream>
 #include <memory>
 #include "common/common_test.h"
-#include "nnacl/fp32/topk_fp32.h"
+#include "nnacl_c/fp32/topk_fp32.h"
 #include "src/litert/kernel_registry.h"
 
 namespace mindspore {

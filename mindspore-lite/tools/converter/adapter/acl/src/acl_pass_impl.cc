@@ -38,7 +38,7 @@
 #include "infer/standard_normal.h"
 #include "infer/tuple_get_item.h"
 #include "cxx_api/model/acl/model_converter.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/utils.h"
 #include "src/common/log_util.h"
 #include "src/common/file_utils.h"

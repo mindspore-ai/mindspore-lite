@@ -18,7 +18,7 @@
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
-#include "nnacl/fp16/arithmetic_self_fp16.h"
+#include "nnacl_c/fp16/arithmetic_self_fp16.h"
 
 using mindspore::kernel::KERNEL_ARCH::kCPU;
 using mindspore::lite::KernelRegistrar;

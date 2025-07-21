@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CPU_FP32_MATMUL_FP32_H_
 
 #include <vector>
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "src/litert/kernel/cpu/fp32/matmul_fp32_base.h"
 
 namespace mindspore::kernel {

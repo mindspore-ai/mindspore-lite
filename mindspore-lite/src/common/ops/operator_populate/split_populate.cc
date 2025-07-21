@@ -15,8 +15,8 @@
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
 #include "src/common/ops/operator_populate/utils.h"
-#include "nnacl/split_parameter.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/split_parameter.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 using mindspore::ops::kAxis;

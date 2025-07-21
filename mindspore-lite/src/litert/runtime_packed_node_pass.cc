@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 #include "src/litert/runtime_packed_node_pass.h"
-#include "nnacl/op_base.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/op_base.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "nnacl/nnacl_kernel.h"
-#include "nnacl/kernel/matmul_struct.h"
+#include "nnacl_c/kernel/matmul_struct.h"
 #include "common/string_utils.h"
 
 using RecoveryWeightFunc = void (*)(void *, void *, int, int, bool);

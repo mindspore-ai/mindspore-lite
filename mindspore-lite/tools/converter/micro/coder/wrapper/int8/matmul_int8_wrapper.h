@@ -17,7 +17,7 @@
 #ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_INT8_MATMUL_INT8_WRAPPER_H_
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_INT8_MATMUL_INT8_WRAPPER_H_
 #include <string.h>
-#include "nnacl/int8/matmul_int8.h"
+#include "nnacl_c/int8/matmul_int8.h"
 #ifdef __cplusplus
 extern "C" {
 #endif

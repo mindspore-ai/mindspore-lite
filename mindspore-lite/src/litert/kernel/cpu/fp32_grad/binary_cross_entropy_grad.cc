@@ -17,7 +17,7 @@
 #include "src/litert/kernel/cpu/fp32_grad/binary_cross_entropy_grad.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
-#include "nnacl/fp32_grad/binary_cross_entropy_grad.h"
+#include "nnacl_c/fp32_grad/binary_cross_entropy_grad.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;

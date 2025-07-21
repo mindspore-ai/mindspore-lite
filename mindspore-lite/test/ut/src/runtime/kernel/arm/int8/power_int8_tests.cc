@@ -19,7 +19,7 @@
 #include "schema/inner/model_generated.h"
 #include "common/common_test.h"
 #include "src/litert/kernel/cpu/int8/power_int8.h"
-#include "nnacl/pow_parameter.h"
+#include "nnacl_c/pow_parameter.h"
 #include "src/litert/kernel_registry.h"
 
 namespace mindspore {

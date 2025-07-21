@@ -16,8 +16,8 @@
 
 #include <vector>
 #include "src/litert/kernel/cpu/fp16_grad/resize_fp16_grad.h"
-#include "nnacl/fp16_grad/resize_grad.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/fp16_grad/resize_grad.h"
+#include "nnacl_c/errorcode.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"

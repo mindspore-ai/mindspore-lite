@@ -16,7 +16,7 @@
 #include "coder/opcoders/nnacl/fp32/custom_gru_fp32_coder.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 #include "coder/opcoders/file_collector.h"
-#include "nnacl/custom_gru_parameter.h"
+#include "nnacl_c/custom_gru_parameter.h"
 
 using mindspore::schema::PrimitiveType_Custom;
 
@@ -127,7 +127,7 @@ int CustomGruFP32Coder::InitWeightAndBias() {
 }
 
 void CustomGruFP32Coder::InitNnaclFile(CoderContext *const context) {
-  Collect(context, {"nnacl/fp32/custom_gru_fp32.h"},
+  Collect(context, {"nnacl_c/fp32/custom_gru_fp32.h"},
           {"custom_gru_fp32.c", "pack_fp32.c", "matmul_fp32.c", "arithmetic_fp32.c", "activation_fp32.c"});
 }
 

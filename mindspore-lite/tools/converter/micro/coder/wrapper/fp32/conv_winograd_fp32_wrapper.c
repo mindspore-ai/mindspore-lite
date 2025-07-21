@@ -15,7 +15,7 @@
  */
 
 #include "wrapper/fp32/conv_winograd_fp32_wrapper.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/errorcode.h"
 
 int ConvWinogradFp32Run(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   ConvWinogradFp32Args *args = (ConvWinogradFp32Args *)cdata;

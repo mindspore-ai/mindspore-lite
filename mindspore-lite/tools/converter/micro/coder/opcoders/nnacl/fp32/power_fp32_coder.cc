@@ -51,8 +51,8 @@ int PowerFP32Coder::DoCode(CoderContext *const context) {
   // generate code .h .c
   Collect(context,
           {
-            "nnacl/pow_parameter.h",
-            "nnacl/fp32/power_fp32.h",
+            "nnacl_c/pow_parameter.h",
+            "nnacl_c/fp32/power_fp32.h",
           },
           {
             "power_fp32.c",

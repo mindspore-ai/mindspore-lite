@@ -20,7 +20,7 @@
 #include <unordered_map>
 #include <set>
 #include "src/executor/sub_graph_kernel.h"
-#include "nnacl/call_parameter.h"
+#include "nnacl_c/call_parameter.h"
 #if GPU_OPENCL
 #include "src/litert/kernel/opencl/opencl_subgraph.h"
 #include "src/litert/kernel/gpu/opencl/opencl_runtime.h"

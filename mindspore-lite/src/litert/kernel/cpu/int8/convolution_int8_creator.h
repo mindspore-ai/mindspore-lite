@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CPU_INT8_CONVOLUTION_INT8_CREATOR_H_
 
 #include <vector>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/litert/lite_kernel.h"
 
 namespace mindspore::kernel {

@@ -15,7 +15,7 @@
  */
 
 #include "coder/opcoders/nnacl/fp32_grad/adam_coder.h"
-#include "nnacl/fp32_grad/optimizer.h"
+#include "nnacl_c/fp32_grad/optimizer.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 #include "coder/opcoders/file_collector.h"
 
@@ -53,7 +53,7 @@ int AdamCoder::DoCode(CoderContext *const context) {
   auto *adam_param = reinterpret_cast<AdamParameter *>(parameter_);
   Collect(context,
           {
-            "nnacl/fp32/adam_fp32.h",
+            "nnacl_c/fp32/adam_fp32.h",
           },
           {
             "adam_fp32.c",

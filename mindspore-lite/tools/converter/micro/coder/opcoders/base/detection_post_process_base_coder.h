@@ -22,7 +22,7 @@
 #include <utility>
 #include <memory>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/detection_post_process_parameter.h"
+#include "nnacl_c/detection_post_process_parameter.h"
 #include "coder/opcoders/serializers/serializer.h"
 
 namespace mindspore::lite::micro {

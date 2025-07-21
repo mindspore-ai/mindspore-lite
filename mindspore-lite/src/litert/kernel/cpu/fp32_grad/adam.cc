@@ -20,8 +20,8 @@
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
-#include "nnacl/fp32/adam_fp32.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/fp32/adam_fp32.h"
+#include "nnacl_c/op_base.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

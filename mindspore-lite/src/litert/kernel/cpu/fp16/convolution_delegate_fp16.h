@@ -19,8 +19,8 @@
 #include <arm_neon.h>
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/conv_parameter.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/conv_parameter.h"
+#include "nnacl_c/op_base.h"
 
 #define WEIGHT_NEED_FREE 0001
 #define BIAS_NEED_FREE 0010

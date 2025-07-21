@@ -22,7 +22,7 @@
 #include "tools/converter/optimizer.h"
 #include "tools/common/graph_util.h"
 #include "tools/common/tensor_util.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

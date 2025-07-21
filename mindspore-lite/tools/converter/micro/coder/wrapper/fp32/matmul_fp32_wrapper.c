@@ -15,7 +15,7 @@
  */
 
 #include "wrapper/fp32/matmul_fp32_wrapper.h"
-#include "nnacl/fp32/pack_fp32.h"
+#include "nnacl_c/fp32/pack_fp32.h"
 
 void InitMatrixA(const float *src_ptr, float *dst_ptr, const MicroMatmulParameter *params_, bool is_vector_a) {
   if (is_vector_a) {

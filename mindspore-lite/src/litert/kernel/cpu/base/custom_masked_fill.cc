@@ -17,7 +17,7 @@
 #include "include/errorcode.h"
 #include "src/litert/kernel/cpu/base/custom_masked_fill.h"
 #include "src/common/tensor_util.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;

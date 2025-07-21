@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CPU_NNACL_KERNEL_H_
 
 #include <vector>
-#include "nnacl/kernel.h"
+#include "nnacl_c/kernel.h"
 #include "src/executor/kernel_exec.h"
 #include "src/litert/lite_kernel.h"
 

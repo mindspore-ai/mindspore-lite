@@ -15,7 +15,7 @@
  */
 
 #include "coder/opcoders/nnacl/int8/fullconnection_int8_coder.h"
-#include "nnacl/int8/matmul_int8.h"
+#include "nnacl_c/int8/matmul_int8.h"
 #include "coder/log.h"
 
 using mindspore::schema::PrimitiveType_FullConnection;

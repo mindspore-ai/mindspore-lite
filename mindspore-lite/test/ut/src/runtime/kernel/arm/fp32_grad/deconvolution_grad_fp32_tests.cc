@@ -20,7 +20,7 @@
 #include "common/common_test.h"
 #include "src/common/file_utils.h"
 #include "src/litert/kernel/cpu/fp32_grad/deconvolution_grad_filter.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 #include "src/litert/kernel_registry.h"
 
 namespace mindspore {

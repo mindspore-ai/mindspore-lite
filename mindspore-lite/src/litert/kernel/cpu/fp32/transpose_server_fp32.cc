@@ -16,7 +16,7 @@
  */
 #include "src/litert/kernel/cpu/fp32/transpose_server_fp32.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/fp32/pack_fp32.h"
+#include "nnacl_c/fp32/pack_fp32.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_OK;

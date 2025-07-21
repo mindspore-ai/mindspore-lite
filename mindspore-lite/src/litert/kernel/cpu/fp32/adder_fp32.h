@@ -20,7 +20,7 @@
 #ifdef ENABLE_NNACL_KERNEL_LIB
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/litert/kernel/cpu/fp32/convolution_fp32.h"
 
 namespace mindspore::kernel {

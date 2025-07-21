@@ -15,7 +15,7 @@
  */
 #include <array>
 #include "ut/src/runtime/kernel/opencl/common.h"
-#include "nnacl/batch_to_space_parameter.h"
+#include "nnacl_c/batch_to_space_parameter.h"
 
 namespace mindspore::lite::opencl::test {
 

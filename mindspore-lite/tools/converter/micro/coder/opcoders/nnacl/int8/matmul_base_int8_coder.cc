@@ -274,11 +274,11 @@ void MatMulBaseInt8Coder::DoBatchCode(NNaclInt8Serializer *code_ptr) {
 int MatMulBaseInt8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/common_func.h",
-            "nnacl/int8/common_func_int8.h",
-            "nnacl/int8/matmul_int8.h",
-            "nnacl/int8/fixed_point.h",
-            "nnacl/int8/relux_int8.h",
+            "nnacl_c/common_func.h",
+            "nnacl_c/int8/common_func_int8.h",
+            "nnacl_c/int8/matmul_int8.h",
+            "nnacl_c/int8/fixed_point.h",
+            "nnacl_c/int8/relux_int8.h",
             "wrapper/int8/matmul_int8_wrapper.h",
           },
           {

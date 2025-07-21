@@ -15,7 +15,7 @@
  */
 
 #include "wrapper/int8/resize_int8_wrapper.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/errorcode.h"
 
 int ResizeInt8Run(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   ResizeInt8Args *args = (ResizeInt8Args *)cdata;

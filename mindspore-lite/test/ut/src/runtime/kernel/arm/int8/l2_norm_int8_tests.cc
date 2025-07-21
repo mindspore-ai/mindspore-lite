@@ -18,7 +18,7 @@
 #include "schema/inner/model_generated.h"
 #include "common/common_test.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/l2_norm_parameter.h"
+#include "nnacl_c/l2_norm_parameter.h"
 
 namespace mindspore {
 class TestL2NormInt8 : public mindspore::CommonTest {

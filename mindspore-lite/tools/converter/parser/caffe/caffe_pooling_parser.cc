@@ -20,7 +20,7 @@
 #include "infer/cxx_api/max_pool_fusion.h"
 #include "ops_utils/op_utils.h"
 #include "include/registry/converter_context.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 
 namespace mindspore {

@@ -20,7 +20,7 @@
 #include <memory>
 #include <vector>
 #include "mindspore/ops/op_def/lite_ops.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "infer/cxx_api/add_fusion.h"
 #include "infer/cxx_api/mul_fusion.h"
 #include "infer/cxx_api/scale_fusion.h"

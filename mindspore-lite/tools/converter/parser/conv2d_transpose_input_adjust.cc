@@ -17,7 +17,7 @@
 #include "tools/converter/parser/conv2d_transpose_input_adjust.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/converter/parser/parser_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "infer/cxx_api/conv2d_transpose_fusion.h"
 #include "mindspore/ops/op_def/op_name.h"

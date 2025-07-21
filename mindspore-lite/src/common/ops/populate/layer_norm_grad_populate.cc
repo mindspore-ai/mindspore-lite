@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "nnacl/fp32_grad/layernormgrad_parameter.h"
+#include "nnacl_c/fp32_grad/layernormgrad_parameter.h"
 #include "src/common/ops/populate/populate_register.h"
 using mindspore::schema::PrimitiveType_LayerNormGrad;
 

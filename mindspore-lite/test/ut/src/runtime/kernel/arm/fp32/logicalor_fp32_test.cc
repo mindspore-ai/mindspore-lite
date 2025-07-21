@@ -16,7 +16,7 @@
 #include <iostream>
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
-#include "nnacl/fp32/arithmetic_fp32.h"
+#include "nnacl_c/fp32/arithmetic_fp32.h"
 #include "src/litert/kernel_registry.h"
 #include "src/executor/kernel_exec.h"
 

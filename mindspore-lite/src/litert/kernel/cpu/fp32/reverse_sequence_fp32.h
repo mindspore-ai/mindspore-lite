@@ -18,7 +18,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/fp32/reverse_sequence_fp32.h"
+#include "nnacl_c/fp32/reverse_sequence_fp32.h"
 
 namespace mindspore::kernel {
 class ReverseSequenceCPUKernel : public LiteKernel {

@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/kernel/opencl/opencl_kernel.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 
 using mindspore::lite::opencl::MemType;
 

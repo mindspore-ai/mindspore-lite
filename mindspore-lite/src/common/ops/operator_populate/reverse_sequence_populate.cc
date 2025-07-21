@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/reverse_sequence_parameter.h"
+#include "nnacl_c/reverse_sequence_parameter.h"
 #include "infer/reverse_sequence.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 using mindspore::ops::kNameReverseSequence;

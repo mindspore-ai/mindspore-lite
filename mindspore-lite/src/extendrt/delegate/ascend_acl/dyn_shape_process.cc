@@ -16,7 +16,7 @@
 
 #include "extendrt/delegate/ascend_acl/dyn_shape_process.h"
 #include <utility>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "include/errorcode.h"
 #include "src/common/log.h"
 

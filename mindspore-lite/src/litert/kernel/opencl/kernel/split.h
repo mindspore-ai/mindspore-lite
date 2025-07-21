@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/kernel/opencl/opencl_kernel.h"
-#include "nnacl/split_parameter.h"
+#include "nnacl_c/split_parameter.h"
 
 namespace mindspore::kernel {
 class SplitOpenCLKernel : public OpenCLKernel {

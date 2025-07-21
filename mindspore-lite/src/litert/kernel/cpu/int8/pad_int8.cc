@@ -18,7 +18,7 @@
 #include <cfloat>
 #include <cmath>
 #include "src/litert/kernel_registry.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_MEMORY_FAILED;

@@ -20,11 +20,11 @@
 #include <vector>
 #include "include/errorcode.h"
 #include "src/litert/lite_kernel.h"
-#include "nnacl/matmul_parameter.h"
-#include "nnacl/common_func.h"
-#include "nnacl/int8/quantize.h"
-#include "nnacl/int8/common_func_int8.h"
-#include "nnacl/int8/matmul_int8.h"
+#include "nnacl_c/matmul_parameter.h"
+#include "nnacl_c/common_func.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/int8/common_func_int8.h"
+#include "nnacl_c/int8/matmul_int8.h"
 
 namespace mindspore::kernel {
 class MatmulBaseInt8CPUKernel : public LiteKernel {

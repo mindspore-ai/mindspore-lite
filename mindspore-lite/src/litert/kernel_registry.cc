@@ -22,7 +22,7 @@
 #endif
 #include "src/common/ops/populate/populate_register.h"
 #include "src/common/version_manager.h"
-#include "nnacl/pooling_parameter.h"
+#include "nnacl_c/pooling_parameter.h"
 #if defined(ENABLE_FP16) && defined(ENABLE_ARM)
 #if defined(__ANDROID__)
 #include <asm/hwcap.h>

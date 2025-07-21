@@ -16,7 +16,7 @@
 #include <iostream>
 #include <memory>
 #include "common/common_test.h"
-#include "nnacl/fp32/ragged_range_fp32.h"
+#include "nnacl_c/fp32/ragged_range_fp32.h"
 #include "src/tensor.h"
 #include "src/executor/kernel_exec.h"
 #include "nnacl/nnacl_manager.h"

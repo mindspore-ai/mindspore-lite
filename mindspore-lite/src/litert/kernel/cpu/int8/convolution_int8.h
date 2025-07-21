@@ -21,7 +21,7 @@
 #include "src/litert/lite_kernel.h"
 #include "src/litert/kernel/cpu/base/convolution_base.h"
 #include "src/common/utils.h"
-#include "nnacl/int8/conv_int8.h"
+#include "nnacl_c/int8/conv_int8.h"
 
 namespace mindspore::kernel {
 class ConvolutionInt8CPUKernel : public ConvolutionBaseCPUKernel {

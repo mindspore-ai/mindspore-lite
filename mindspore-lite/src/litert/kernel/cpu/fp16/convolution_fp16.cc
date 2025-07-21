@@ -17,11 +17,11 @@
 #include "src/litert/kernel/cpu/fp16/convolution_fp16.h"
 #include <vector>
 #include "include/errorcode.h"
-#include "nnacl/fp16/conv_fp16.h"
-#include "nnacl/fp16/matmul_fp16.h"
-#include "nnacl/fp16/cast_fp16.h"
-#include "nnacl/fp16/pack_fp16.h"
-#include "nnacl/fp16/winograd_utils_fp16.h"
+#include "nnacl_c/fp16/conv_fp16.h"
+#include "nnacl_c/fp16/matmul_fp16.h"
+#include "nnacl_c/fp16/cast_fp16.h"
+#include "nnacl_c/fp16/pack_fp16.h"
+#include "nnacl_c/fp16/winograd_utils_fp16.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;

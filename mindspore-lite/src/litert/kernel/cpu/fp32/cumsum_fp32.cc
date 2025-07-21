@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/litert/kernel/cpu/fp32/cumsum_fp32.h"
-#include "nnacl/fp32/cumsum_fp32.h"
+#include "nnacl_c/fp32/cumsum_fp32.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 

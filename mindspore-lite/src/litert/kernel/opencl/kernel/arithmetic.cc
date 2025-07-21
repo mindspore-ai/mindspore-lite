@@ -21,7 +21,7 @@
 #include "src/litert/kernel_registry.h"
 #include "src/litert/kernel/opencl/utils.h"
 #include "src/litert/kernel/opencl/cl/arithmetic.cl.inc"
-#include "nnacl/arithmetic_parameter.h"
+#include "nnacl_c/arithmetic_parameter.h"
 
 using mindspore::kernel::KERNEL_ARCH::kGPU;
 using mindspore::lite::KernelRegistrar;

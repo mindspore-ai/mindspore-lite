@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/predict_parameter.h"
+#include "nnacl_c/predict_parameter.h"
 #include "infer/custom_predict.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 using mindspore::ops::kNameCustomPredict;

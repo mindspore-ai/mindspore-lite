@@ -15,9 +15,9 @@
  */
 #include "src/litert/kernel/cpu/int8/dynamic_gather_int8.h"
 #include <limits>
-#include "nnacl/gather_parameter.h"
-#include "nnacl/int8/dynamic_gather_int8.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/gather_parameter.h"
+#include "nnacl_c/int8/dynamic_gather_int8.h"
+#include "nnacl_c/int8/quantize.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
 

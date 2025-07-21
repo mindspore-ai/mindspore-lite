@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/kernel/batch_norm.h"
+#include "nnacl_c/kernel/batch_norm.h"
 
 namespace mindspore::lite::micro::nnacl {
 class BatchnormFP32Coder final : public OperatorCoder {

@@ -19,9 +19,9 @@
 
 #include <vector>
 #include "include/errorcode.h"
-#include "nnacl/fp16/common_func_fp16.h"
-#include "nnacl/fp16/deconv_winograd_fp16.h"
-#include "nnacl/fp16/pack_fp16.h"
+#include "nnacl_c/fp16/common_func_fp16.h"
+#include "nnacl_c/fp16/deconv_winograd_fp16.h"
+#include "nnacl_c/fp16/pack_fp16.h"
 #include "src/litert/kernel/cpu/base/convolution_base.h"
 
 namespace mindspore::kernel {

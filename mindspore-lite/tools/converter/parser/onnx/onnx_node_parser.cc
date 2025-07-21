@@ -20,7 +20,7 @@
 #include <memory>
 #include <unordered_map>
 #include "tools/converter/parser/onnx/onnx_model_parser.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/file_utils.h"
 #include "utils/ms_utils_secure.h"
 

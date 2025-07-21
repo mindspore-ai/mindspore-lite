@@ -19,10 +19,10 @@
 #include <vector>
 #include <limits>
 #include <algorithm>
-#include "nnacl/int8/arithmetic_int8.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/int8/arithmetic_int8.h"
+#include "nnacl_c/int8/quantize.h"
 #include "src/litert/lite_kernel.h"
-#include "nnacl/int8/sub_int8.h"
+#include "nnacl_c/int8/sub_int8.h"
 
 namespace mindspore::kernel {
 class SubInt8CPUKernel : public LiteKernel {

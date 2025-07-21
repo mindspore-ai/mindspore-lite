@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/op_base.h"
-#include "nnacl/splice_parameter.h"
+#include "nnacl_c/op_base.h"
+#include "nnacl_c/splice_parameter.h"
 #include "infer/splice.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 using mindspore::ops::kNameSplice;

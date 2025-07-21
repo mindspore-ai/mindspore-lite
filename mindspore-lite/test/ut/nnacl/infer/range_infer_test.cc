@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/range_infer.h"
-#include "nnacl/range_parameter.h"
+#include "nnacl_c/infer/range_infer.h"
+#include "nnacl_c/range_parameter.h"
 
 namespace mindspore {
 

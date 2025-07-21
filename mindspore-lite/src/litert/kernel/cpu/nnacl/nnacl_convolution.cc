@@ -18,8 +18,8 @@
 #include "nnacl/cxx_utils.h"
 #include "src/litert/pack_weight_manager.h"
 #include "nnacl/nnacl_manager.h"
-#include "nnacl/kernel/convolution_base.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/kernel/convolution_base.h"
+#include "nnacl_c/conv_parameter.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;

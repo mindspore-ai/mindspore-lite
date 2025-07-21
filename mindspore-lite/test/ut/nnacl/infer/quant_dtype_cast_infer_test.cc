@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/quant_dtype_cast_infer.h"
+#include "nnacl_c/infer/quant_dtype_cast_infer.h"
 
 namespace mindspore {
 

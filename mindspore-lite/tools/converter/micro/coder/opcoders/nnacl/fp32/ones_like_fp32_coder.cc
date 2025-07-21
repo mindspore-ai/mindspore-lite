@@ -29,7 +29,7 @@ int OnesLikeFP32Coder::Prepare(CoderContext *const context) { return RET_OK; }
 int OnesLikeFP32Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/kernel/ones_like.h",
+            "nnacl_c/kernel/ones_like.h",
           },
           {
             "ones_like.c",

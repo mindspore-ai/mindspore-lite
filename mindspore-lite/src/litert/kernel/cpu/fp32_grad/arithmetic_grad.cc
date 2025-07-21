@@ -17,10 +17,10 @@
 #include "src/litert/kernel/cpu/fp32_grad/arithmetic_grad.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/fp32_grad/reduce_grad.h"
-#include "nnacl/fp32_grad/arithmetic_grad.h"
+#include "nnacl_c/fp32_grad/reduce_grad.h"
+#include "nnacl_c/fp32_grad/arithmetic_grad.h"
 #include "include/errorcode.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

@@ -19,7 +19,7 @@
 #include "include/api/delegate.h"
 #include "src/common/log_adapter.h"
 #include "include/errorcode.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore::lite {
 bool IsSubGraphInputTensor(const std::vector<mindspore::MSTensor> &inputs, mindspore::MSTensor input);
