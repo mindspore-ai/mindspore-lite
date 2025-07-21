@@ -109,8 +109,7 @@ class LiteInfer(BaseModel):
                         check_isinstance("config_value_value", v_v, str)
                         ret = self._model.update_config(k, v)
                         if not ret.IsOk():
-                            raise RuntimeError(f"update configuration failed! Error is {ret.ToString()}."
-                                               f"Setcion is {k}, config is {v}")
+                            raise RuntimeError(f"update configuration failed!")
 
     def _get_func_graph(self, pyobj, *net_inputs):
         """
