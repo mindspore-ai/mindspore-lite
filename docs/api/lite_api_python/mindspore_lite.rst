@@ -55,3 +55,11 @@ Python接口仅支持云侧推理。
     mindspore_lite.LLMEngine
     mindspore_lite.LLMStatusCode
     mindspore_lite.LLMException
+
+Lite推理
+---------
+
+.. mscnautosummary::
+    :toctree: mindspore_lite
+
+    mindspore_lite.LiteInfer
