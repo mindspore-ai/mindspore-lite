@@ -65,3 +65,11 @@ LLMEngine
     mindspore_lite.LLMEngine
     mindspore_lite.LLMStatusCode
     mindspore_lite.LLMException
+
+LiteInfer
+----------
+
+.. mscnautosummary::
+    :toctree: mindspore_lite
+
+    mindspore_lite.LiteInfer
