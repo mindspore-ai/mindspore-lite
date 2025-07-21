@@ -111,7 +111,8 @@ int QuickStart() {
   std::vector<std::string> model_path_list = {model_path1, model_path2};
   std::vector<mindspore::MSTensor> outputs;
   std::vector<std::thread> threads;
-  ThreadArgs args1, args2;
+  ThreadArgs args1;
+  ThreadArgs args2;
   args1.model_paths = model_path_list;
   args1.outputs = outputs;
   args1.index = 1;

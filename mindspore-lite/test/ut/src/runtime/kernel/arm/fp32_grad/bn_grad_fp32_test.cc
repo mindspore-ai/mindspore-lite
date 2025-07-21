@@ -25,7 +25,8 @@
 #include "nnacl/batchnorm_parameter.h"
 
 namespace mindspore {
-
+constexpr int kSize3 = 3;
+constexpr int kSize7 = 7;
 class TestBNGradFp32 : public mindspore::CommonTest {
  public:
   TestBNGradFp32() {}
@@ -94,7 +95,7 @@ TEST_F(TestBNGradFp32, BNGradFp32) {
   EXPECT_EQ(0, ret);
   std::cout << "==========dx==========\n";
   auto dx = reinterpret_cast<float *>(outputs[0]->MutableData());
-  for (int i = 0; i < 7; i++) {
+  for (int i = 0; i < kSize7; i++) {
     std::cout << dx[i] << " ";
   }
   std::cout << "\n";
@@ -110,7 +111,7 @@ TEST_F(TestBNGradFp32, BNGradFp32) {
   EXPECT_EQ(res, 0);
   std::cout << "==========dbias==========\n";
   auto dbias = reinterpret_cast<float *>(outputs[2]->MutableData());
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < kSize3; i++) {
     std::cout << dbias[i] << " ";
   }
   std::cout << "\n";
