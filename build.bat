@@ -34,9 +34,6 @@ set ENABLE_FFMPEG=ON
 set ENABLE_FFMPEG_DOWNLOAD=OFF
 for /f "tokens=1" %%a in (version.txt) do (set VERSION_STR=%%a)
 git submodule update --init --remote mindspore
-cd "%BASEPATH%\mindspore" && (
-    git apply "%BASEPATH%\third_party\patch\mindspore\decouple_mindspore.patch" "%BASEPATH%\third_party\patch\mindspore\move-ccsrc-ops-dependencies.patch"
-)
 ECHO %2%|FINDSTR "^[0-9][0-9]*$"
 IF %errorlevel% == 0 (
     SET threads=%2%
@@ -68,46 +65,18 @@ IF NOT EXIST "%BUILD_PATH%/mindspore" (
 )
 
 cd %BUILD_PATH%/mindspore
-IF "%1%" == "lite" (
-    echo "======Start building MindSpore Lite %VERSION_STR%======"
-    rd /s /q "%BASE_PATH%\output"
-    (git log -1 | findstr "^commit") > %BUILD_PATH%\.commit_id
-    IF defined VisualStudioVersion (
-        cmake -DMSLITE_MINDDATA_IMPLEMENT=off -DMSLITE_ENABLE_TRAIN=off -DVERSION_STR=%VERSION_STR% ^
-            -DCMAKE_BUILD_TYPE=Release -G "Ninja" "%BASE_PATH%/mindspore-lite"
-    ) ELSE (
-        cmake -DMSLITE_MINDDATA_IMPLEMENT=off -DMSLITE_ENABLE_TRAIN=off -DVERSION_STR=%VERSION_STR% ^
-            -DCMAKE_BUILD_TYPE=Release -G "CodeBlocks - MinGW Makefiles" "%BASE_PATH%/mindspore-lite"
-    )
+
+echo "======Start building MindSpore Lite %VERSION_STR%======"
+rd /s /q "%BASE_PATH%\output"
+(git log -1 | findstr "^commit") > %BUILD_PATH%\.commit_id
+IF defined VisualStudioVersion (
+    cmake -DMSLITE_MINDDATA_IMPLEMENT=off -DMSLITE_ENABLE_TRAIN=off -DVERSION_STR=%VERSION_STR% ^
+        -DCMAKE_BUILD_TYPE=Release -G "Ninja" "%BASE_PATH%/mindspore-lite"
 ) ELSE (
-    for /f "delims=" %%i in ('powershell.exe -ExecutionPolicy Bypass -Command "Get-ChildItem HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall | foreach { Get-ItemProperty $_.PsPath } | where { $_.DisplayName -like '*Visual Studio*' -and $_.InstallLocation.Length -gt 0 } | sort InstallDate -Descending | foreach { Join-Path $_.InstallLocation 'VC\Auxiliary\Build'}"') do (call "%%i\vcvars64.bat")
-    SET CMAKE_ARGS=-DENABLE_CPU=ON -DENABLE_MINDDATA=ON -DUSE_GLOG=ON -DENABLE_GITEE=%ENABLE_GITEE% -DCMAKE_EXE_LINKER_FLAGS="/manifest:no" -DCMAKE_MODULE_LINKER_FLAGS="/manifest:no" -DCMAKE_SHARED_LINKER_FLAGS="/manifest:no"
-    where ccache
-    IF !errorlevel! == 0 (
-        echo "use ccache to speed up compile"
-        SET CMAKE_ARGS=!CMAKE_ARGS! -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache 
-    )
-    IF "%1%" == "ms_vs_gpu" (
-        echo "======Start gen VS2019 Project for MS gpu ======"
-        SET CMAKE_ARGS=!CMAKE_ARGS! -DCMAKE_BUILD_TYPE=Release  -DENABLE_GPU=ON -DGPU_BACKEND_CUDA=ON -DMS_REQUIRE_CUDA_VERSION=11.1 
-    ) ELSE IF "%1%" == "ms_vs_cpu" (
-        echo "======Start gen VS2019 Project for MS cpu ======"
-        SET CMAKE_ARGS=!CMAKE_ARGS! -DCMAKE_BUILD_TYPE=Release
-    ) ELSE IF "%1%" == "ms_vs_cpu_debug" (
-        echo "======Start gen VS2019 Project for MS cpu debug======"
-        SET CMAKE_ARGS=!CMAKE_ARGS! -DCMAKE_BUILD_TYPE=Debug -DDEBUG_MODE=ON
-        set BUILD_TYPE=Debug
-    )
-    IF ON == %ENABLE_FFMPEG% (
-        call %BASE_PATH%\cmake\external_libs\ffmpeg.bat
-        IF errorlevel 1 (
-            echo "cmake fail."
-            call :clean
-            EXIT /b 1
-        )
-    )
-    cmake !CMAKE_ARGS! -G Ninja ../..
+    cmake -DMSLITE_MINDDATA_IMPLEMENT=off -DMSLITE_ENABLE_TRAIN=off -DVERSION_STR=%VERSION_STR% ^
+        -DCMAKE_BUILD_TYPE=Release -G "CodeBlocks - MinGW Makefiles" "%BASE_PATH%/mindspore-lite"
 )
+
 
 IF NOT %errorlevel% == 0 (
     echo "cmake fail."

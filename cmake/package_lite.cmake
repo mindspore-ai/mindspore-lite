@@ -5,7 +5,7 @@ set(RUNTIME_PKG_NAME ${PKG_NAME_PREFIX}-${RUNTIME_COMPONENT_NAME})
 set(CONVERTER_ROOT_DIR ${RUNTIME_PKG_NAME}/tools/converter)
 set(OBFUSCATOR_ROOT_DIR ${RUNTIME_PKG_NAME}/tools/obfuscator)
 set(CROPPER_ROOT_DIR ${RUNTIME_PKG_NAME}/tools/cropper)
-set(BUILD_DIR ${TOP_DIR}/mindspore-lite/build)
+set(BUILD_DIR ${TOP_DIR}/build)
 set(TEST_CASE_DIR ${TOP_DIR}/mindspore-lite/test/build)
 set(EXTENDRT_BUILD_DIR ${BUILD_DIR}/src/extendrt)
 set(EXECUTOR_BUILD_DIR ${BUILD_DIR}/src/extendrt/unified_executor)
@@ -232,7 +232,7 @@ if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full"
             ${TOP_DIR}/mindspore-lite/minddata/dataset/include/dataset/transforms.h
             ${TOP_DIR}/mindspore-lite/minddata/dataset/include/dataset/vision_lite.h
             ${TOP_DIR}/mindspore-lite/minddata/dataset/liteapi/include/datasets.h
-        DESTINATION ${MIND_DATA_INC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+            DESTINATION ${MIND_DATA_INC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
 
     if(PLATFORM_ARM64)
         if((MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE) AND MSLITE_ENABLE_ACL)
@@ -416,8 +416,6 @@ if(PLATFORM_ARM64)
                 install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_ge/libascend_ge_plugin.so
                         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
-        #     install(FILES ${TOP_DIR}/mindspore-lite/build/src/extendrt/cxx_api/llm_engine/libllm_engine_plugin.so
-        #         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             __install_ascend_tbe_and_aicpu()
             __install_ascend_ascendc()
         endif()
@@ -535,11 +533,7 @@ if(PLATFORM_ARM64)
             endif()
             if(MSLITE_ENABLE_ACL)
                 set(LITE_ACL_DIR ${BUILD_DIR}/tools/converter/adapter/acl)
-#                install(FILES ${LITE_ACL_DIR}/mslite_shared_lib/libmslite_shared_lib.so
-#                        DESTINATION ${CONVERTER_ROOT_DIR}/lib COMPONENT ${RUNTIME_COMPONENT_NAME})
                 if(MSLITE_ENABLE_RUNTIME_CONVERT)
-                #     install(FILES ${LITE_ACL_DIR}/mslite_shared_lib/libmslite_shared_lib.so
-                #             DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
                     install(FILES ${glog_LIBPATH}/${glog_name} DESTINATION ${RUNTIME_LIB_DIR}
                             RENAME libmindspore_glog.so.0 COMPONENT ${RUNTIME_COMPONENT_NAME})
                     install(TARGETS mindspore_core mindspore_ops DESTINATION ${CONVERTER_ROOT_DIR}/lib
@@ -676,8 +670,6 @@ elseif(PLATFORM_ARM32)
                 install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_ge/libascend_ge_plugin.so
                         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
-#            install(FILES ${BUILD_DIR}/src/extendrt/cxx_api/llm_engine/libllm_engine_plugin.so
-#                    DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             __install_ascend_tbe_and_aicpu()
             __install_ascend_ascendc()
         endif()
@@ -885,8 +877,6 @@ else()
                 install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_ge/libascend_ge_plugin.so
                         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
-        #     install(FILES ${TOP_DIR}/mindspore-lite/build/src/extendrt/cxx_api/llm_engine/libllm_engine_plugin.so
-        #         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             __install_ascend_tbe_and_aicpu()
             __install_ascend_ascendc()
             if(MSLITE_ASCEND_TARGET)
@@ -974,11 +964,7 @@ else()
 
         if(MSLITE_ENABLE_ACL)
             set(LITE_ACL_DIR ${BUILD_DIR}/tools/converter/adapter/acl)
-#            install(FILES ${LITE_ACL_DIR}/mslite_shared_lib/libmslite_shared_lib.so
-#                    DESTINATION ${CONVERTER_ROOT_DIR}/lib COMPONENT ${RUNTIME_COMPONENT_NAME})
             if(MSLITE_ENABLE_RUNTIME_CONVERT)
-#                install(FILES ${LITE_ACL_DIR}/mslite_shared_lib/libmslite_shared_lib.so
-#                        DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
                 install(FILES ${glog_LIBPATH}/${glog_name} DESTINATION ${RUNTIME_LIB_DIR}
                         RENAME libmindspore_glog.so.0 COMPONENT ${RUNTIME_COMPONENT_NAME})
                 install(TARGETS mindspore_core mindspore_ops DESTINATION ${RUNTIME_LIB_DIR}
