@@ -43,7 +43,7 @@ option(MSLITE_ENABLE_BFC_MEMORY "enable distribute BFC memory" off)
 
 option(MSLITE_ENABLE_RUNTIME_GLOG "enable runtime glog" off)
 option(MSLITE_EXPORT_COMPUTE_IR "export graph structure dotfile when debug mode" off)
-option(MSLITE_ENABLE_MODEL_PRE_INFERENCE "enable model do pre-inference when Build interface is called" off)
+option(MSLITE_ENABLE_MODEL_PRE_INFERENCE "enable model do pre-inference when Build interface is called" on)
 
 # tools
 option(MSLITE_ENABLE_CONVERTER "enable converter" on)
