@@ -98,7 +98,7 @@ static int32x4_t MaxIndex(float16x4_t in, float16x4_t *max, uint32x4_t index, ui
   uint16x4_t res = vcgt_f16(in, *max);
   int16x4_t tmp = vreinterpret_s16_u16(res);
   uint32x4_t res_tmp = vreinterpretq_u32_s32(vmovl_s16(tmp));
-  int32x4_t m_index = vbslq_s32(res_tmp, index, prev_index);
+  int32x4_t m_index = vbslq_s32(res_tmp, (int32x4_t)index, (int32x4_t)prev_index);
   *max = vbsl_f16(res, in, *max);
   return m_index;
 }
@@ -150,7 +150,7 @@ void MaxPoolingFp16Grad(const float16_t *input_ptr, const float16_t *dy_ptr, flo
 #ifdef ENABLE_NEON
               uint32x4_t index = {val_idx, val_idx + 1, val_idx + 2, val_idx + 3};
               float16x4_t in = vld1_f16(inPtr + val_idx);
-              max_idx = MaxIndex(in, &max_val, index, max_idx);
+              max_idx = (uint32x4_t)MaxIndex(in, &max_val, index, max_idx);
 #else
               float16_t val[C4NUM] = {inPtr[val_idx], inPtr[val_idx + C1NUM], inPtr[val_idx + C2NUM],
                                       inPtr[val_idx + C3NUM]};
