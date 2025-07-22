@@ -23,6 +23,7 @@
 namespace mindspore {
 namespace {
 constexpr int32_t kNumThreads = 2;
+constexpr int NUM_OF_CLASSES = 10;
 }
 class TestCxxApiLiteModel : public mindspore::CommonTest {
  public:
@@ -223,8 +224,6 @@ TEST_F(TestCxxApiLiteModel, test_fp16_SUCCESS) {
   ASSERT_TRUE(model.Build(GraphCell(graph), context, train_cfg) == kSuccess);
 }
 
-#define NUM_OF_CLASSES 10
-#define FEATURE_SIZE 10
 TEST_F(TestCxxApiLiteModel, set_weights_FAILURE) {
   Model model;
   Graph graph;

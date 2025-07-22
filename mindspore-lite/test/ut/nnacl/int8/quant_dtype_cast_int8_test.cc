@@ -54,7 +54,7 @@ void Fp32ToInt8Util(const float *real_values, int8_t *quant_values, float scale,
       int temp = round(real_values[i] * inverse_scale + zp);
       temp = temp < max_value ? temp : max_value;
       temp = temp > min_value ? temp : min_value;
-      quant_values[i] = (int8_t)temp;
+      quant_values[i] = static_cast<int8_t>(temp);
     }
   }
   return;
