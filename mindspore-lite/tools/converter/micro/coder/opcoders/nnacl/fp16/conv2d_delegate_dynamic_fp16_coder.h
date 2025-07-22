@@ -20,7 +20,7 @@
 #include <memory>
 #include "coder/opcoders/op_coder.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/conv_dynamic_parameter.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class ConvDelegateDynamicFP16Coder : public OperatorCoder {

@@ -20,7 +20,7 @@
 #include "tools/common/string_util.h"
 #include "src/common/log_adapter.h"
 #include "src/common/log_util.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

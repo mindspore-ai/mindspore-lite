@@ -17,13 +17,13 @@
  */
 
 #include "src/litert/kernel/opencl/kernel/prelu.h"
-#include <nnacl/prelu_parameter.h>
+#include "nnacl_c/prelu_parameter.h"
 #include <set>
 #include <vector>
 #include "src/litert/kernel/opencl/cl/prelu.cl.inc"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
-#include "nnacl/fp32/common_func_fp32.h"
+#include "nnacl_c/fp32/common_func_fp32.h"
 
 using mindspore::kernel::KERNEL_ARCH::kGPU;
 using mindspore::lite::KernelRegistrar;

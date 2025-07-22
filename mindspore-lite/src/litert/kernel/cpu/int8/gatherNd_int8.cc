@@ -21,7 +21,7 @@
 #include "schema/model_generated.h"
 #include "include/errorcode.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/int8/gatherNd_int8.h"
+#include "nnacl_c/int8/gatherNd_int8.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

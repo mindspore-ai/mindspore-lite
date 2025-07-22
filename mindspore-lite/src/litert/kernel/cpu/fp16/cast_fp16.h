@@ -18,9 +18,9 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/op_base.h"
-#include "nnacl/fp16/cast_fp16.h"
-#include "nnacl/base/cast_base.h"
+#include "nnacl_c/op_base.h"
+#include "nnacl_c/fp16/cast_fp16.h"
+#include "nnacl_c/base/cast_base.h"
 
 namespace mindspore::kernel {
 class CastFp16CPUKernel : public LiteKernel {

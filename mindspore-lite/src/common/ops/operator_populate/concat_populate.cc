@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/concat_parameter.h"
+#include "nnacl_c/concat_parameter.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 using mindspore::ops::kNameConcat;

@@ -23,7 +23,7 @@
 #include "tools/converter/micro/coder/opcoders/op_coder_register.h"
 #include "tools/converter/micro/coder/opcoders/kernel_registry.h"
 #include "src/common/prim_util.h"
-#include "nnacl/custom_parameter.h"
+#include "nnacl_c/custom_parameter.h"
 
 using mindspore::schema::PrimitiveType_Custom;
 
@@ -151,7 +151,7 @@ void CustomCoder::FreeTensors(Serializer *code, std::string array_name, size_t t
 }
 
 int CustomCoder::DoCode(CoderContext *const context) {
-  Collect(context, {"nnacl/custom_parameter.h", "nnacl/tensor_c.h", "src/registered_kernel.h"}, {});
+  Collect(context, {"nnacl_c/custom_parameter.h", "nnacl_c/tensor_c.h", "src/registered_kernel.h"}, {});
   Serializer code;
   MS_CHECK_RET_CODE(TransformTensors(&code, "inputs", input_tensors_), "Transform input tensors error!");
   MS_CHECK_RET_CODE(TransformTensors(&code, "outputs", output_tensors_), "Transform output tensors error!");

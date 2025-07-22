@@ -16,7 +16,7 @@
 
 #include <memory>
 #include "common/common_test.h"
-#include "nnacl/tile_parameter.h"
+#include "nnacl_c/tile_parameter.h"
 #include "src/litert/kernel_registry.h"
 #include "src/litert/kernel/cpu/nnacl/nnacl_manager.h"
 

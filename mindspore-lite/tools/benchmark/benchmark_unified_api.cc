@@ -26,7 +26,7 @@
 #include "src/common/common.h"
 #include "src/tensor.h"
 #include "tools/common/string_util.h"
-#include "nnacl/nnacl_common.h"
+#include "nnacl_c/nnacl_common.h"
 #ifdef ENABLE_ARM64
 #include <linux/perf_event.h>
 #include <sys/ioctl.h>

@@ -17,9 +17,9 @@
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
-#include "nnacl/fp16/cast_fp16.h"
-#include "nnacl/fp16/instance_norm_fp16.h"
-#include "nnacl/fp16/pack_fp16.h"
+#include "nnacl_c/fp16/cast_fp16.h"
+#include "nnacl_c/fp16/instance_norm_fp16.h"
+#include "nnacl_c/fp16/pack_fp16.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

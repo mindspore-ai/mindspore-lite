@@ -27,7 +27,7 @@
 #include "src/common/primitive_t_utils.h"
 #include "src/common/ops/anf_utils.h"
 #include "src/common/file_utils.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "src/litert/kernel/cpu/int8/matmul_dynamic_base_int8.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_i.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"

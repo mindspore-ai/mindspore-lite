@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/litert/kernel/cpu/fp32/convolution_slidewindow_arm64_fp32.h"
-#include "nnacl/fp32/conv_sw_arm64_fp32.h"
+#include "nnacl_c/fp32/conv_sw_arm64_fp32.h"
 
 namespace mindspore::kernel {
 void ConvolutionSWARM64CPUKernel::InitGlobalVariable() {

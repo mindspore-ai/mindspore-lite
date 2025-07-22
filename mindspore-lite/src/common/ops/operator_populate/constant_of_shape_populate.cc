@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/constant_of_shape_parameter.h"
+#include "nnacl_c/constant_of_shape_parameter.h"
 #include "infer/constant_of_shape.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 using mindspore::ops::kNameConstantOfShape;

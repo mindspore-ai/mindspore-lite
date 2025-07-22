@@ -17,7 +17,7 @@
 #define USE_DEPRECATED_API
 #include "tools/optimizer/graph/mul_constant_pass.h"
 #include "mindspore/ops/op_def/lite_ops.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "infer/cxx_api/mul_fusion.h"
 #include "src/common/utils.h"

@@ -17,8 +17,8 @@
 #include "src/litert/kernel/opencl/kernel/winograd.h"
 #include <memory>
 #include "src/litert/kernel/opencl/cl/winograd.cl.inc"
-#include "nnacl/base/minimal_filtering_generator.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/base/minimal_filtering_generator.h"
+#include "nnacl_c/errorcode.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;

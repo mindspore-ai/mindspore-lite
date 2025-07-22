@@ -19,7 +19,7 @@
 
 #include <vector>
 #include <memory>
-#include "nnacl/tensor_array_parameter.h"
+#include "nnacl_c/tensor_array_parameter.h"
 #include "src/litert/lite_kernel.h"
 #include "src/tensorlist.h"
 

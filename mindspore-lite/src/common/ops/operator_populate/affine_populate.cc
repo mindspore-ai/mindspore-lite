@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/affine_parameter.h"
+#include "nnacl_c/affine_parameter.h"
 #include "infer/affine.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 using mindspore::ops::kNameAffine;

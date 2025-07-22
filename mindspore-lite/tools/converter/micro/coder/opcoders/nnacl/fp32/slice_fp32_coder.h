@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "tools/converter/micro/coder/opcoders/op_coder.h"
-#include "nnacl/kernel/slice.h"
+#include "nnacl_c/kernel/slice.h"
 
 namespace mindspore::lite::micro::nnacl {
 class SliceFP32Coder : public OperatorCoder {

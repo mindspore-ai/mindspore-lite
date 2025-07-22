@@ -18,7 +18,7 @@
 #include <algorithm>
 #include "src/litert/kernel_registry.h"
 #include "src/litert/kernel/opencl/opencl_subgraph.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 
 using mindspore::kernel::KernelExec;
 using mindspore::kernel::OpenCLSubGraph;

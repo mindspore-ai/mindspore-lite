@@ -19,7 +19,7 @@
 #include <vector>
 #include <algorithm>
 #include "src/litert/kernel/cpu/fp32/resize_fp32.h"
-#include "nnacl/fp16/resize_fp16.h"
+#include "nnacl_c/fp16/resize_fp16.h"
 
 namespace mindspore::kernel {
 class ResizeFp16CPUKernel : public ResizeCPUKernel {

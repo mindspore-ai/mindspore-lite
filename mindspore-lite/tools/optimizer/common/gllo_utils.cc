@@ -36,7 +36,7 @@
 #include "frontend/operator/ops.h"
 #include "include/backend/optimizer/helper.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/optimizer/common/helper.h"

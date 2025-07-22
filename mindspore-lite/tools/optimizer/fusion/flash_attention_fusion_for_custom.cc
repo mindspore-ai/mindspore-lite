@@ -18,7 +18,7 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/cxx_api/flash_attention.h"

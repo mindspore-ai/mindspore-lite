@@ -24,7 +24,7 @@
 #include "src/common/log_util.h"
 #include "mindspore/ops/op_def/op_name.h"
 #include "infer/quant_dtype_cast.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

@@ -29,7 +29,7 @@
 #include "infer/unsqueeze.h"
 #include "ops/primitive_c.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"

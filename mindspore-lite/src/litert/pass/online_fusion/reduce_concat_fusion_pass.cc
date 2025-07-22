@@ -18,8 +18,8 @@
 #include <vector>
 #include "src/litert/pass/online_fusion/online_fusion_utils.h"
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/reduce_parameter.h"
-#include "nnacl/concat_parameter.h"
+#include "nnacl_c/reduce_parameter.h"
+#include "nnacl_c/concat_parameter.h"
 #include "include/model.h"
 
 namespace {

@@ -15,7 +15,7 @@
  */
 
 #include "src/litert/kernel/cpu/int8/matmul_dynamic_base_int8.h"
-#include "nnacl/int8/dynamic_matmul_int8.h"
+#include "nnacl_c/int8/dynamic_matmul_int8.h"
 
 using mindspore::lite::kCHWDimNumber;
 using mindspore::lite::kHWDimNumber;

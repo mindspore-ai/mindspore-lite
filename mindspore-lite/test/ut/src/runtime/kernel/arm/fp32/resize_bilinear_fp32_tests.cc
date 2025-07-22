@@ -18,7 +18,7 @@
 #include "src/litert/kernel_registry.h"
 #include "src/executor/kernel_exec.h"
 #include "src/tensor.h"
-#include "nnacl/resize_parameter.h"
+#include "nnacl_c/resize_parameter.h"
 #include "schema/ops_generated.h"
 
 namespace mindspore {

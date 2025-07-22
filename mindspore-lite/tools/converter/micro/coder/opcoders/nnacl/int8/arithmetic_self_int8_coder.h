@@ -20,9 +20,9 @@
 #include <memory>
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/int8/quantize.h"
-#include "nnacl/int8/arithmetic_self_int8.h"
-#include "nnacl/arithmetic_self_parameter.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/int8/arithmetic_self_int8.h"
+#include "nnacl_c/arithmetic_self_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class ArithmeticSelfInt8Coder final : public OperatorCoder {

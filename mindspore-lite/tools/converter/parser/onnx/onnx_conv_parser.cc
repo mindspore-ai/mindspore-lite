@@ -20,7 +20,7 @@
 #include <vector>
 #include <string>
 #include "infer/cxx_api/conv2d_fusion.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/infer/conv3d.h"
 

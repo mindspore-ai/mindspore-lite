@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/reshape_parameter.h"
+#include "nnacl_c/reshape_parameter.h"
 using mindspore::schema::PrimitiveType_Reshape;
 
 namespace mindspore {

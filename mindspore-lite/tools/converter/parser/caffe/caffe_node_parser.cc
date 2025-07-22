@@ -19,7 +19,7 @@
 #include "include/securec.h"
 #include "ir/dtype/type_id.h"
 #include "src/common/utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 
 namespace mindspore {

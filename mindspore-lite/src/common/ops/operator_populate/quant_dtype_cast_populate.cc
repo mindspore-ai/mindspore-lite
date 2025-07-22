@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/int8/quant_dtype_cast_int8.h"
+#include "nnacl_c/int8/quant_dtype_cast_int8.h"
 #include "infer/quant_dtype_cast.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_q.h"
 using mindspore::ops::kNameQuantDTypeCast;

@@ -17,10 +17,10 @@
 #include "src/executor/kernel_exec.h"
 #include "src/tensor.h"
 #include "common/common_test.h"
-#include "nnacl/pad_parameter.h"
+#include "nnacl_c/pad_parameter.h"
 #include "schema/ops_generated.h"
-#include "nnacl/fp32/scale_fp32.h"
-#include "nnacl/scale_parameter.h"
+#include "nnacl_c/fp32/scale_fp32.h"
+#include "nnacl_c/scale_parameter.h"
 #include "nnacl/nnacl_manager.h"
 
 using mindspore::schema::ActivationType;

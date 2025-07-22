@@ -20,8 +20,8 @@
 #include <vector>
 #include "include/errorcode.h"
 #include "src/litert/lite_kernel.h"
-#include "nnacl/split_parameter.h"
-#include "nnacl/base/split_base.h"
+#include "nnacl_c/split_parameter.h"
+#include "nnacl_c/base/split_base.h"
 
 namespace mindspore::kernel {
 class SplitBaseCPUKernel : public LiteKernel {

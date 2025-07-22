@@ -19,10 +19,10 @@
 
 #include <vector>
 #include <limits>
-#include "nnacl/int8/concat_int8.h"
+#include "nnacl_c/int8/concat_int8.h"
 #include "include/errorcode.h"
 #include "src/litert/lite_kernel.h"
-#include "nnacl/kernel/concat.h"
+#include "nnacl_c/kernel/concat.h"
 
 namespace mindspore::kernel {
 class ConcatInt8CPUKernel : public LiteKernel {

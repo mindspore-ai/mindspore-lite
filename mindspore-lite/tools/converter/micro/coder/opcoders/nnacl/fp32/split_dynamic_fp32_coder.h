@@ -20,7 +20,7 @@
 #include <vector>
 #include "coder/opcoders/op_coder.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/split_dynamic_parameter.h"
-#include "nnacl/split_parameter.h"
+#include "nnacl_c/split_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class SplitDynamicFP32Coder : public OperatorCoder {

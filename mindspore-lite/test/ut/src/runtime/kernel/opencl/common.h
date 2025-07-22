@@ -23,7 +23,7 @@
 #include <tuple>
 #include <map>
 #include <memory>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ir/dtype/type_id.h"
 #include "src/tensor.h"
 #include "src/litert/tensor_category.h"

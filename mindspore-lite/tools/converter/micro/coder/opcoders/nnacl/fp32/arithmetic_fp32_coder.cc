@@ -16,7 +16,7 @@
 #include "coder/opcoders/nnacl/fp32/arithmetic_fp32_coder.h"
 #include <string>
 #include "coder/opcoders/file_collector.h"
-#include "nnacl/fp32/arithmetic_fp32.h"
+#include "nnacl_c/fp32/arithmetic_fp32.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/log.h"
 
@@ -208,7 +208,7 @@ int ArithmeticFP32Coder::ConstTensorBroadCast(CoderContext *const context) {
   }
   FreeConstTileBuff();
   NNaclFp32Serializer init_code;
-  Collect(context, {"wrapper/fp32/arithmetic_fp32_wrapper.h", "nnacl/fp32/arithmetic_fp32.h"},
+  Collect(context, {"wrapper/fp32/arithmetic_fp32_wrapper.h", "nnacl_c/fp32/arithmetic_fp32.h"},
           {"arithmetic_fp32_wrapper.c", "arithmetic_fp32.c"});
   if (input_tensor_->IsConst() &&
       arithmetic_parameter_->in_elements_num0_ != arithmetic_parameter_->out_elements_num_) {
@@ -286,7 +286,7 @@ void ArithmeticFP32Coder::CollectFilesForFunc(CoderContext *const context) {
   if (arithmetic_opt_run_ == "ElementOptSub" || arithmetic_run_ == "ElementSub") {
     Collect(context,
             {
-              "nnacl/fp32/sub_fp32.h",
+            "nnacl_c/fp32/sub_fp32.h",
             },
             {
               "sub_fp32.c",
@@ -294,7 +294,7 @@ void ArithmeticFP32Coder::CollectFilesForFunc(CoderContext *const context) {
   } else if (arithmetic_opt_run_ == "ElementOptAdd" || arithmetic_run_ == "ElementAdd") {
     Collect(context,
             {
-              "nnacl/fp32/add_fp32.h",
+            "nnacl_c/fp32/add_fp32.h",
             },
             {
               "add_fp32.c",
@@ -304,7 +304,7 @@ void ArithmeticFP32Coder::CollectFilesForFunc(CoderContext *const context) {
   } else if (arithmetic_opt_run_ == "ElementOptMul" || arithmetic_run_ == "ElementMul") {
     Collect(context,
             {
-              "nnacl/fp32/mul_fp32.h",
+              "nnacl_c/fp32/mul_fp32.h",
             },
             {
               "mul_fp32.c",
@@ -312,7 +312,7 @@ void ArithmeticFP32Coder::CollectFilesForFunc(CoderContext *const context) {
   } else if (arithmetic_run_ == "ElementAddRelu") {
     Collect(context,
             {
-              "nnacl/fp32/add_fp32.h",
+              "nnacl_c/fp32/add_fp32.h",
             },
             {
               "add_fp32.c",
@@ -321,7 +321,7 @@ void ArithmeticFP32Coder::CollectFilesForFunc(CoderContext *const context) {
              arithmetic_run_ == "ElementDiv") {
     Collect(context,
             {
-              "nnacl/fp32/div_fp32.h",
+              "nnacl_c/fp32/div_fp32.h",
             },
             {
               "div_fp32.c",
@@ -329,7 +329,7 @@ void ArithmeticFP32Coder::CollectFilesForFunc(CoderContext *const context) {
   } else {
     Collect(context,
             {
-              "nnacl/fp32/arithmetic_fp32.h",
+              "nnacl_c/fp32/arithmetic_fp32.h",
             },
             {
               "arithmetic_fp32.c",

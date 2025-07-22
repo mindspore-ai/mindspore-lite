@@ -16,12 +16,12 @@
 
 #include "src/litert/kernel/opencl/kernel/int8/arithmetic_int8.h"
 #include <vector>
-#include "nnacl/fp32/common_func_fp32.h"
+#include "nnacl_c/fp32/common_func_fp32.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "src/litert/kernel/opencl/utils.h"
 #include "src/litert/kernel/opencl/cl/int8/arithmetic.cl.inc"
-#include "nnacl/arithmetic_parameter.h"
+#include "nnacl_c/arithmetic_parameter.h"
 
 using mindspore::kernel::KERNEL_ARCH::kGPU;
 using mindspore::lite::KernelRegistrar;

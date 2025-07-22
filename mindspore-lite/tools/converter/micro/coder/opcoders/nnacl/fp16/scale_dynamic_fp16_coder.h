@@ -20,8 +20,8 @@
 #include <vector>
 #include "coder/opcoders/op_coder.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/scale_dynamic_parameter.h"
-#include "nnacl/kernel/scale.h"
-#include "nnacl/scale_parameter.h"
+#include "nnacl_c/kernel/scale.h"
+#include "nnacl_c/scale_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class ScaleDynamicFP16Coder final : public OperatorCoder {

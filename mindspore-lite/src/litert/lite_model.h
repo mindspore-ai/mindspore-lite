@@ -27,7 +27,7 @@
 #include "src/common/log_adapter.h"
 #include "src/common/version_manager.h"
 #include "src/litert/schema_tensor_wrapper.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/prim_util.h"
 #ifdef ENABLE_MODEL_OBF
 #include "tools/obfuscator/include/deobfuscator.h"

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/pooling_parameter.h"
+#include "nnacl_c/pooling_parameter.h"
 using mindspore::schema::PrimitiveType_AvgPoolFusion;
 using mindspore::schema::PrimitiveType_MaxPoolFusion;
 

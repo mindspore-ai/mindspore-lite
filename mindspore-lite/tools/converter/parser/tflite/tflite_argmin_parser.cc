@@ -19,7 +19,7 @@
 #include <vector>
 #include <map>
 #include "infer/cxx_api/arg_min_fusion.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

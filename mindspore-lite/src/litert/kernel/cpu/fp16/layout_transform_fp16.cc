@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/litert/kernel/cpu/fp16/layout_transform_fp16.h"
-#include "nnacl/fp16/pack_fp16.h"
+#include "nnacl_c/fp16/pack_fp16.h"
 #include "src/common/log_adapter.h"
 #include "schema/ops_types_generated.h"
 

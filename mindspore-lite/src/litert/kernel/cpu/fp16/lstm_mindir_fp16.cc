@@ -15,7 +15,7 @@
  */
 
 #include "src/litert/kernel/cpu/fp16/lstm_mindir_fp16.h"
-#include "nnacl/fp16/lstm_fp16.h"
+#include "nnacl_c/fp16/lstm_fp16.h"
 
 namespace mindspore::kernel {
 namespace {

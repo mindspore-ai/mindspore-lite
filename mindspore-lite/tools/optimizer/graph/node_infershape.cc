@@ -35,7 +35,7 @@
 #include "src/tensorlist.h"
 #include "src/registry/kernel_interface_registry.h"
 #include "tools/optimizer/graph/lite_tensor_extractor.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "tools/optimizer/format/to_nchw_format.h"
 #include "tools/optimizer/format/to_nhwc_format.h"
@@ -108,7 +108,7 @@ static const std::unordered_set<PrimitivePtr> kNNACLToOpsInfer = {
   prim::kPrimTupleGetItem,
   prim::kPrimMakeTuple,
   prim::kPrimMakeTupleV2,
-  // nnacl/infer/common_infer.c
+  // nnacl_c/infer/common_infer.c
   prim::kPrimClip,
   prim::kPrimElu,
   prim::kPrimLeakyRelu,

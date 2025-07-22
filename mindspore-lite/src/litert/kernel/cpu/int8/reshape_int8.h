@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/reshape_parameter.h"
+#include "nnacl_c/reshape_parameter.h"
 
 using mindspore::lite::InnerContext;
 

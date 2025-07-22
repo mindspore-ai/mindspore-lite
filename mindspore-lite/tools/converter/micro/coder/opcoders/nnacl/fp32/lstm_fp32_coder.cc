@@ -182,8 +182,8 @@ int LstmFP32Coder::Prepare(CoderContext *const context) {
 int LstmFP32Coder::DoCode(CoderContext *context) {
   Collect(context,
           {
-            "nnacl/lstm_parameter.h",
-            "nnacl/fp32/lstm_fp32.h",
+            "nnacl_c/lstm_parameter.h",
+            "nnacl_c/fp32/lstm_fp32.h",
           },
           {
             "lstm_fp32.c",

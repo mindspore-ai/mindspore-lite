@@ -16,7 +16,7 @@
 
 #include "coder/opcoders/nnacl/fp16/convolution_1x1_dynamic_fp16_coder.h"
 #include <algorithm>
-#include "nnacl/fp32/winograd_utils.h"
+#include "nnacl_c/fp32/winograd_utils.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/utils/coder_utils.h"
@@ -231,11 +231,11 @@ void Convolution1x1DynamicFP16Coder::CollectFilesForFunc(CoderContext *const con
   }
   Collect(context,
           {
-            "nnacl/fp16/matmul_fp16.h",
-            "nnacl/conv_parameter.h",
-            "nnacl/op_base.h",
-            "nnacl/fp16/conv_fp16.h",
-            "nnacl/base/conv1x1_base.h",
+            "nnacl_c/fp16/matmul_fp16.h",
+            "nnacl_c/conv_parameter.h",
+            "nnacl_c/op_base.h",
+            "nnacl_c/fp16/conv_fp16.h",
+            "nnacl_c/base/conv1x1_base.h",
           },
           {
             "common_func.c",

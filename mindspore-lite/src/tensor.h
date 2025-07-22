@@ -26,8 +26,8 @@
 #include <atomic>
 #include "include/api/format.h"
 #include "include/lite_types.h"
-#include "nnacl/tensor_c.h"
-#include "nnacl/tensor_c_utils.h"
+#include "nnacl_c/tensor_c.h"
+#include "nnacl_c/tensor_c_utils.h"
 #include "src/litert/inner_allocator.h"
 #include "src/common/log_adapter.h"
 #include "src/common/utils.h"

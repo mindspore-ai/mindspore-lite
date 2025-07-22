@@ -16,8 +16,8 @@
 
 #include "src/litert/kernel/cpu/fp16/matmul_base_fp16.h"
 #include <algorithm>
-#include "nnacl/fp16/matmul_fp16.h"
-#include "nnacl/fp16/cast_fp16.h"
+#include "nnacl_c/fp16/matmul_fp16.h"
+#include "nnacl_c/fp16/cast_fp16.h"
 #include "include/errorcode.h"
 
 using mindspore::lite::kCHWDimNumber;

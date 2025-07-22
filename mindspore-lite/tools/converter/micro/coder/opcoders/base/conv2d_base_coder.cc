@@ -17,8 +17,8 @@
 #include "coder/opcoders/base/conv2d_base_coder.h"
 #include <string>
 #include <vector>
-#include "nnacl/fp32/winograd_utils.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/fp32/winograd_utils.h"
+#include "nnacl_c/int8/quantize.h"
 #include "coder/log.h"
 #include "src/litert/tensor_category.h"
 namespace mindspore::lite::micro {

@@ -19,8 +19,8 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/softmax_parameter.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/softmax_parameter.h"
+#include "nnacl_c/int8/quantize.h"
 
 namespace mindspore::kernel {
 class SoftmaxInt8CPUKernel : public LiteKernel {

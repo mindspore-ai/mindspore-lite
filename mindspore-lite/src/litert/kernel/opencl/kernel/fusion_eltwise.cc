@@ -17,9 +17,9 @@
 #include <algorithm>
 #include "src/litert/kernel/opencl/utils.h"
 #include "include/errorcode.h"
-#include "nnacl/arithmetic_parameter.h"
-#include "nnacl/fp32/activation_fp32.h"
-#include "nnacl/scale_parameter.h"
+#include "nnacl_c/arithmetic_parameter.h"
+#include "nnacl_c/fp32/activation_fp32.h"
+#include "nnacl_c/scale_parameter.h"
 #include "src/litert/infer_manager.h"
 
 using mindspore::lite::RET_ERROR;

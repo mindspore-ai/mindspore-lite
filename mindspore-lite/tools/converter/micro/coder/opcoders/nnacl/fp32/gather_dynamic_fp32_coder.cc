@@ -16,7 +16,7 @@
 
 #include "coder/opcoders/nnacl/fp32/gather_dynamic_fp32_coder.h"
 #include <string>
-#include "nnacl/gather_parameter.h"
+#include "nnacl_c/gather_parameter.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/utils/coder_utils.h"
@@ -44,7 +44,7 @@ int GatherDynamicFP32Coder::Prepare(CoderContext *const context) {
 int GatherDynamicFP32Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/base/gather_base.h",
+            "nnacl_c/base/gather_base.h",
           },
           {
             "gather_base.c",

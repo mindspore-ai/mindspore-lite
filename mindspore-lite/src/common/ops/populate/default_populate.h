@@ -16,7 +16,7 @@
 #ifndef MINDSPORE_LITE_SRC_COMMON_OPS_POPULATE_DEFAULT_POPULATE_H_
 #define MINDSPORE_LITE_SRC_COMMON_OPS_POPULATE_DEFAULT_POPULATE_H_
 
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

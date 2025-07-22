@@ -21,7 +21,7 @@
 #endif
 #include "flatbuffers/flatbuffers.h"
 #include "src/common/log_adapter.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ir/dtype/type_id.h"
 #include "src/common/utils.h"
 #include "include/errorcode.h"

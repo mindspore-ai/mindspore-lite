@@ -20,7 +20,7 @@
 #include "ir/tensor.h"
 #include "tools/optimizer/parallel/operator_info_register.h"
 #include "infer/cxx_api/conv2d_fusion.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 
 namespace mindspore {

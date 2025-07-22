@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CPU_INT8_GATHERND_INT8_H_
 
 #include <vector>
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/int8/quantize.h"
 #include "src/litert/lite_kernel.h"
 
 namespace mindspore::kernel {

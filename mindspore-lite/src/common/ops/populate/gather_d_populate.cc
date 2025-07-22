@@ -15,7 +15,7 @@
  */
 
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/gather_parameter.h"
+#include "nnacl_c/gather_parameter.h"
 using mindspore::schema::PrimitiveType_GatherD;
 
 namespace mindspore {

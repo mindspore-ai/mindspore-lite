@@ -18,7 +18,7 @@
 #include <vector>
 #include <string>
 #include "infer/deformable_conv2d.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore::lite {
 namespace {

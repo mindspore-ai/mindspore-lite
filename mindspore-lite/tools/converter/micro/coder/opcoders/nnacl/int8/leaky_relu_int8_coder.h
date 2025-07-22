@@ -20,9 +20,9 @@
 #include <memory>
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/int8/quantize.h"
-#include "nnacl/int8/leaky_relu_int8.h"
-#include "nnacl/activation_parameter.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/int8/leaky_relu_int8.h"
+#include "nnacl_c/activation_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class LeakyReluInt8Coder : public OperatorCoder {

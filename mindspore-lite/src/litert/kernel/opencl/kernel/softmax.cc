@@ -19,7 +19,7 @@
 #include "include/errorcode.h"
 #include "src/litert/kernel_registry.h"
 #include "src/litert/kernel/opencl/utils.h"
-#include "nnacl/softmax_parameter.h"
+#include "nnacl_c/softmax_parameter.h"
 #include "src/litert/kernel/opencl/cl/softmax.cl.inc"
 
 using mindspore::kernel::KERNEL_ARCH::kGPU;

@@ -18,7 +18,7 @@
 #include <memory>
 #include "infer/quant_dtype_cast.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

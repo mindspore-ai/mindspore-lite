@@ -17,8 +17,8 @@
 #ifdef ENABLE_ARM
 #include "src/litert/kernel/cpu/fp16/convolution_depthwise_3x3_fp16.h"
 #include "include/errorcode.h"
-#include "nnacl/fp16/pack_fp16.h"
-#include "nnacl/fp16/conv_depthwise_fp16.h"
+#include "nnacl_c/fp16/pack_fp16.h"
+#include "nnacl_c/fp16/conv_depthwise_fp16.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_INFER_INVALID;

@@ -16,7 +16,7 @@
 
 #include "src/litert/kernel/cpu/int8/deconvolution_depthwise_int8.h"
 #include "include/errorcode.h"
-#include "nnacl/int8/conv_depthwise_int8.h"
+#include "nnacl_c/int8/conv_depthwise_int8.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;

@@ -18,7 +18,7 @@
 #include "schema/inner/model_generated.h"
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
-#include "nnacl/concat_parameter.h"
+#include "nnacl_c/concat_parameter.h"
 #include "src/litert/kernel_registry.h"
 #include "src/executor/kernel_exec.h"
 #include "src/tensor.h"

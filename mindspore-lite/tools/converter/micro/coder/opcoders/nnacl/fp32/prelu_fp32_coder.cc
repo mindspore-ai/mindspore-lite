@@ -15,8 +15,8 @@
  */
 #include "coder/opcoders/nnacl/fp32/prelu_fp32_coder.h"
 #include <string>
-#include "nnacl/fp32/prelu_fp32.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/fp32/prelu_fp32.h"
+#include "nnacl_c/op_base.h"
 #include "coder/allocator/allocator.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 #include "coder/opcoders/file_collector.h"
@@ -29,7 +29,7 @@ int PReluFP32Coder::DoCode(CoderContext *const context) {
   int count = input_tensor_->ElementsNum();
   Collect(context,
           {
-            "nnacl/fp32/prelu_fp32.h",
+            "nnacl_c/fp32/prelu_fp32.h",
           },
           {
             "prelu_fp32.c",

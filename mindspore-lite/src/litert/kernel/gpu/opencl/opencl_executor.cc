@@ -16,7 +16,7 @@
 
 #include "src/litert/kernel/gpu/opencl/opencl_executor.h"
 #include "src/litert/kernel/opencl/utils.h"
-#include "nnacl/pack.h"
+#include "nnacl_c/pack.h"
 #include "include/errorcode.h"
 
 namespace mindspore::lite::opencl {

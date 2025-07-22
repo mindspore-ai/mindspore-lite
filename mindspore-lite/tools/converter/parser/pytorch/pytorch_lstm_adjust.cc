@@ -20,7 +20,7 @@
 #include "tools/lite_exporter/fetch_content.h"
 #include "tools/common/tensor_util.h"
 #include "utils/check_convert_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/nn_ops.h"
 #include "mindspore/ops/op_def/sequence_ops.h"

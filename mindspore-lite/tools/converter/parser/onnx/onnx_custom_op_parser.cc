@@ -20,7 +20,7 @@
 #include "tools/converter/parser/onnx/onnx_model_parser.h"
 #include "tools/converter/ops/ops_def.h"
 #include "mindspore/ops/op_def/op_name.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "infer/affine_grid.h"
 #include "infer/histogram.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"

@@ -16,9 +16,9 @@
 
 #include <cmath>
 #include "src/litert/kernel_registry.h"
-#include "nnacl/softmax_parameter.h"
-#include "nnacl/fp32/softmax_fp32.h"
-#include "nnacl/fp32_grad/softmax_grad_utils.h"
+#include "nnacl_c/softmax_parameter.h"
+#include "nnacl_c/fp32/softmax_fp32.h"
+#include "nnacl_c/fp32_grad/softmax_grad_utils.h"
 #include "src/litert/kernel/cpu/fp32_grad/sparse_softmax_cross_entropy_with_logits.h"
 #include "include/errorcode.h"
 

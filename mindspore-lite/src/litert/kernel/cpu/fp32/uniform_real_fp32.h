@@ -18,7 +18,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/random_parameter.h"
+#include "nnacl_c/random_parameter.h"
 
 namespace mindspore::kernel {
 class UniformRealCPUKernel : public LiteKernel {

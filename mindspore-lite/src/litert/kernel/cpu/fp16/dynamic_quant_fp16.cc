@@ -19,9 +19,9 @@
 #include "src/litert/kernel_registry.h"
 #include "schema/model_generated.h"
 #include "include/errorcode.h"
-#include "nnacl/dynamic_quant_parameter.h"
-#include "nnacl/fp16/dynamic_quant_fp16.h"
-#include "nnacl/fp16/quant_dtype_cast_fp16.h"
+#include "nnacl_c/dynamic_quant_parameter.h"
+#include "nnacl_c/fp16/dynamic_quant_fp16.h"
+#include "nnacl_c/fp16/quant_dtype_cast_fp16.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

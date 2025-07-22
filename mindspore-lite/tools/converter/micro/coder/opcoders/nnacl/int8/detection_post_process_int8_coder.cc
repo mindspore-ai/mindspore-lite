@@ -45,7 +45,7 @@ int DetectionPostProcessInt8Coder::GetInputData(CoderContext *const context, Ser
 
   Collect(context,
           {
-            "nnacl/int8/quant_dtype_cast_int8.h",
+            "nnacl_c/int8/quant_dtype_cast_int8.h",
           },
           {
             "quant_dtype_cast_int8.c",

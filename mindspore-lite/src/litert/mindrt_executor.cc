@@ -23,9 +23,9 @@
 #include "src/common/common.h"
 #include "src/common/tensor_util.h"
 #ifdef ENABLE_FP16
-#include "nnacl/base/cast_base.h"
+#include "nnacl_c/base/cast_base.h"
 #endif
-#include "nnacl/nnacl_common.h"
+#include "nnacl_c/nnacl_common.h"
 #include "src/litert/kernel_exec_util.h"
 
 namespace mindspore::lite {

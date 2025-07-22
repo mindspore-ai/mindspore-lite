@@ -29,7 +29,7 @@
 #include "tools/common/meta_graph_utils.h"
 #include "include/errorcode.h"
 #include "schema/inner/model_generated.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

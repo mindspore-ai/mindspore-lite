@@ -235,8 +235,8 @@ int ReduceInt8Coder::DoCode(CoderContext *const context) {
   if (axes_hw_pattern_) {
     Collect(context,
             {
-              "nnacl/int8/pack_int8.h",
-              "nnacl/int8/reduce_int8.h",
+              "nnacl_c/int8/pack_int8.h",
+              "nnacl_c/int8/reduce_int8.h",
             },
             {
               "pack_int8.c",
@@ -256,7 +256,7 @@ int ReduceInt8Coder::DoCode(CoderContext *const context) {
   } else {
     Collect(context,
             {
-              "nnacl/int8/reduce_int8.h",
+              "nnacl_c/int8/reduce_int8.h",
             },
             {
               "reduce_int8.c",

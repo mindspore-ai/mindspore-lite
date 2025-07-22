@@ -33,7 +33,7 @@ int SplitFP32Coder::Prepare(CoderContext *const context) {
 }
 
 int SplitFP32Coder::DoCode(CoderContext *const context) {
-  Collect(context, {"nnacl/base/split_base.h"}, {"split_base.c"});
+  Collect(context, {"nnacl_c/base/split_base.h"}, {"split_base.c"});
   if (support_parallel_) {
     Collect(context, {"wrapper/fp32/split_fp32_wrapper.h"}, {"split_fp32_wrapper.c"});
   }

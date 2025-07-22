@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_COMMON_OPS_POPULATE_STRIDED_SLICE_POPULATE_H_
 
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/strided_slice_parameter.h"
+#include "nnacl_c/strided_slice_parameter.h"
 
 namespace mindspore {
 namespace lite {

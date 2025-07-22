@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "infer/cxx_api/full_connection.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_f.h"
 using mindspore::ops::kNameFullConnection;

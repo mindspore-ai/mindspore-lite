@@ -24,7 +24,7 @@
 #include <memory>
 #include "src/common/log_adapter.h"
 #include "schema/inner/model_generated.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

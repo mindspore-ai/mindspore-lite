@@ -24,7 +24,7 @@
 #include "infer/cxx_api/mat_mul_fusion.h"
 #include "tools/converter/ops/ops_def.h"
 #include "src/common/utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/converter/quantizer/quantize_util.h"
 #include "tools/common/node_util.h"
 #include "tools/common/tensor_util.h"

@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 #include "coder/opcoders/nnacl/fp32/convolution_winograd_fp32_coder.h"
-#include "nnacl/fp32/winograd_utils.h"
+#include "nnacl_c/fp32/winograd_utils.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/log.h"
 #include "coder/opcoders/parallel.h"
@@ -148,15 +148,15 @@ void DeConvolutionFP32Coder::CollectFilesForFunc(CoderContext *const context) {
   Collect(context,
           {
             "wrapper/fp32/deconvolution_fp32_wrapper.h",
-            "nnacl/fp32/conv_common_fp32.h",
-            "nnacl/pack.h",
-            "nnacl/fp32/common_func_fp32.h",
-            "nnacl/base/minimal_filtering_generator.h",
-            "nnacl/fp32/matmul_fp32.h",
-            "nnacl/conv_parameter.h",
-            "nnacl/matmul_parameter.h",
+            "nnacl_c/fp32/conv_common_fp32.h",
+            "nnacl_c/pack.h",
+            "nnacl_c/fp32/common_func_fp32.h",
+            "nnacl_c/base/minimal_filtering_generator.h",
+            "nnacl_c/fp32/matmul_fp32.h",
+            "nnacl_c/conv_parameter.h",
+            "nnacl_c/matmul_parameter.h",
             "wrapper/base/micro_parameter.h",
-            "nnacl/op_base.h",
+            "nnacl_c/op_base.h",
           },
           {
             "deconvolution_fp32_wrapper.c",

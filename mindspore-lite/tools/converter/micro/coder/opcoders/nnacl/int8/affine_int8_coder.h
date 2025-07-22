@@ -20,7 +20,7 @@
 #include <string>
 #include <memory>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/affine_parameter.h"
+#include "nnacl_c/affine_parameter.h"
 #include "tools/converter/micro/coder/wrapper/base/affine_wrapper.h"
 
 namespace mindspore::lite::micro::nnacl {

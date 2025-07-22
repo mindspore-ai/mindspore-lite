@@ -18,7 +18,7 @@
 #include "nnacl/cxx_utils.h"
 #include "src/tensor.h"
 #include "include/errorcode.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/errorcode.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;

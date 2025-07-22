@@ -20,11 +20,11 @@
 #include <unordered_map>
 #include <memory>
 #include "src/tensor.h"
-#include "nnacl/tensor_c.h"
-#include "nnacl/tensor_c_utils.h"
+#include "nnacl_c/tensor_c.h"
+#include "nnacl_c/tensor_c_utils.h"
 #include "src/tensorlist.h"
-#include "nnacl/infer/common_infer.h"
-#include "nnacl/tensorlist_c_utils.h"
+#include "nnacl_c/infer/common_infer.h"
+#include "nnacl_c/tensorlist_c_utils.h"
 #include "src/litert/cxx_api/tensor/tensor_impl.h"
 #include "include/api/visible.h"
 

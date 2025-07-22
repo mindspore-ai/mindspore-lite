@@ -17,11 +17,11 @@
 #include "src/litert/kernel/cpu/fp32/convolution_im2col_base_fp32.h"
 #include "src/litert/pack_weight_manager.h"
 #include "include/errorcode.h"
-#include "nnacl/common_func.h"
+#include "nnacl_c/common_func.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/fp32/conv_common_fp32.h"
-#include "nnacl/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32/conv_common_fp32.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_INFER_INVALID;

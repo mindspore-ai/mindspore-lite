@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/fp32/topk_fp32.h"
+#include "nnacl_c/fp32/topk_fp32.h"
 #include "infer/cxx_api/topk_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 

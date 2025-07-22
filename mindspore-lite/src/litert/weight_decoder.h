@@ -24,8 +24,8 @@
 #include <limits>
 #include <string>
 #include <cmath>
-#include "nnacl/matmul_parameter.h"
-#include "nnacl/gather_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
+#include "nnacl_c/gather_parameter.h"
 #include "src/executor/kernel_exec.h"
 #include "src/common/utils.h"
 #include "src/tensor.h"

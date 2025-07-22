@@ -24,7 +24,7 @@
 #include "tools/converter/ops/ops_def.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "src/common/utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "infer/unsqueeze.h"
 
 namespace mindspore::lite {

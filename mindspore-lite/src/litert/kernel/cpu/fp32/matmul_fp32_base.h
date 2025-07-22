@@ -20,7 +20,7 @@
 #include <vector>
 #include "src/litert/lite_kernel.h"
 #include "src/litert/pack_weight_manager.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "include/errorcode.h"
 #include "src/common/common.h"
 

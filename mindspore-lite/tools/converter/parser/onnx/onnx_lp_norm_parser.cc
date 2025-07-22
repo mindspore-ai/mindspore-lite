@@ -17,7 +17,7 @@
 #include "tools/converter/parser/onnx/onnx_lp_norm_parser.h"
 #include <memory>
 #include "infer/lp_normalization.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

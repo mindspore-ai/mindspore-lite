@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/fp32/lstm_fp32.h"
+#include "nnacl_c/fp32/lstm_fp32.h"
 
 namespace mindspore::kernel {
 class LstmFp32BaseCPUKernel : public LiteKernel {

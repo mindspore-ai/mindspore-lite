@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/clip_parameter.h"
+#include "nnacl_c/clip_parameter.h"
 using mindspore::schema::PrimitiveType_Clip;
 
 namespace mindspore {

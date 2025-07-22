@@ -20,7 +20,7 @@
 #include <string>
 #include "infer/cxx_api/avg_pool_fusion.h"
 #include "infer/cxx_api/max_pool_fusion.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

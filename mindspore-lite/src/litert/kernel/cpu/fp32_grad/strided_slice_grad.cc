@@ -21,7 +21,7 @@
 #include <utility>
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/fp32_grad/strided_slice_grad.h"
+#include "nnacl_c/fp32_grad/strided_slice_grad.h"
 #include "src/common/ops/populate/strided_slice_populate.h"
 #include "include/errorcode.h"
 

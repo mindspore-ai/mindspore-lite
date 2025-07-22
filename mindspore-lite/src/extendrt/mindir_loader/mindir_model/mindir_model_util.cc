@@ -22,7 +22,7 @@
 #include "ir/tensor.h"
 #include "ir/value.h"
 #include "include/errorcode.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/common.h"
 #include "src/common/log_util.h"
 

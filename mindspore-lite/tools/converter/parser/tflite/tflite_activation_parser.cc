@@ -20,7 +20,7 @@
 #include "tools/converter/parser/tflite/tflite_util.h"
 #include "infer/cxx_api/prelu_fusion.h"
 #include "infer/cxx_api/activation.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

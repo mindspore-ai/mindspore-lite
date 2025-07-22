@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/nnacl/fp32/layernorm_fp32_coder.h"
-#include "nnacl/layer_norm_parameter.h"
+#include "nnacl_c/layer_norm_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class LayerNormFP16Coder final : public LayerNormFP32Coder {

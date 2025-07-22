@@ -98,8 +98,8 @@ int ArithmeticDynamicFP16Coder::DoCode(CoderContext *const context) {
   NNaclFp32Serializer code;
   Collect(context,
           {
-            "nnacl/fp16/arithmetic_fp16.h",
-            "nnacl/base/broadcast_to.h",
+            "nnacl_c/fp16/arithmetic_fp16.h",
+            "nnacl_c/base/broadcast_to.h",
           },
           {
             "arithmetic_fp16.c",

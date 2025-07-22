@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/squeeze_parameter.h"
+#include "nnacl_c/squeeze_parameter.h"
 using mindspore::schema::PrimitiveType_Squeeze;
 
 namespace mindspore {

@@ -16,11 +16,11 @@
 
 #include "src/litert/kernel/cpu/fp16_grad/convolution_fp16_grad_filter.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/pack.h"
-#include "nnacl/fp16_grad/convolution_grad_filter.h"
-#include "nnacl/fp16_grad/pack_fp16_ext.h"
-#include "nnacl/fp16_grad/gemm_fp16.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/pack.h"
+#include "nnacl_c/fp16_grad/convolution_grad_filter.h"
+#include "nnacl_c/fp16_grad/pack_fp16_ext.h"
+#include "nnacl_c/fp16_grad/gemm_fp16.h"
+#include "nnacl_c/errorcode.h"
 #include "include/errorcode.h"
 
 using mindspore::kernel::KERNEL_ARCH::kCPU;

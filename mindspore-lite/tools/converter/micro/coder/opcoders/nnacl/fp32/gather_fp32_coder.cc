@@ -16,7 +16,7 @@
 
 #include "coder/opcoders/nnacl/fp32/gather_fp32_coder.h"
 #include <string>
-#include "nnacl/gather_parameter.h"
+#include "nnacl_c/gather_parameter.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/opcoders/file_collector.h"
@@ -55,7 +55,7 @@ int GatherFP32Coder::DoCode(CoderContext *context) {
   // generate code .h .c
   Collect(context,
           {
-            "nnacl/base/gather_base.h",
+            "nnacl_c/base/gather_base.h",
           },
           {
             "gather_base.c",

@@ -18,8 +18,8 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_FP32_SLICE_FP32_WRAPPER_H_
 
 #include <stdint.h>
-#include "nnacl/slice_parameter.h"
-#include "nnacl/kernel/slice.h"
+#include "nnacl_c/slice_parameter.h"
+#include "nnacl_c/kernel/slice.h"
 
 typedef struct {
   float *input_data_;

@@ -15,7 +15,7 @@
  */
 
 #include "wrapper/int8/slice_int8_wrapper.h"
-#include "nnacl/int8/slice_int8.h"
+#include "nnacl_c/int8/slice_int8.h"
 
 int SliceInt8Run(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   SliceArgs *args = (SliceArgs *)(cdata);

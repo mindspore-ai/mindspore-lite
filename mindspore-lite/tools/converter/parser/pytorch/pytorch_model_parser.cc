@@ -30,7 +30,7 @@
 #include "tools/converter/parser/pytorch/torch_graph_transfrom.h"
 #include "src/common/file_utils.h"
 #include "src/common/log_util.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "infer/make_tuple.h"
 #include "infer/return.h"

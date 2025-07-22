@@ -20,7 +20,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 #include "wrapper/base/micro_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {

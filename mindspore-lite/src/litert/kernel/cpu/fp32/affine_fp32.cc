@@ -19,8 +19,8 @@
 #include <set>
 #include "src/litert/kernel/cpu/fp32/matmul_fp32.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/fp32/activation_fp32.h"
-#include "nnacl/fp32/splice_fp32.h"
+#include "nnacl_c/fp32/activation_fp32.h"
+#include "nnacl_c/fp32/splice_fp32.h"
 #include "src/common/utils.h"
 
 using mindspore::lite::KernelRegistrar;

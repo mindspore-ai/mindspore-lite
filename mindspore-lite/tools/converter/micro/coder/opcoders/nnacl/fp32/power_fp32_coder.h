@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/pow_parameter.h"
+#include "nnacl_c/pow_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class PowerFP32Coder final : public OperatorCoder {

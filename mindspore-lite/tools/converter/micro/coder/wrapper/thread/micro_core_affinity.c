@@ -25,7 +25,7 @@
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 int GetCpuCoreNum() {
   int core_num = 1;

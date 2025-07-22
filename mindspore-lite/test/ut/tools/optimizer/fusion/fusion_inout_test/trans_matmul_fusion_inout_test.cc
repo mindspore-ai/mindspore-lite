@@ -19,7 +19,7 @@
 #include "tools/optimizer/fusion/transpose_matmul_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "test/ut/tools/optimizer/fusion/fusion_inout_test/matmul_fusion_inout_test.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 
 namespace mindspore {

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "nnacl/slice_parameter.h"
+#include "nnacl_c/slice_parameter.h"
 #include "ut/src/runtime/kernel/opencl/common.h"
 
 namespace mindspore::lite::opencl::test {

@@ -37,6 +37,6 @@
 "mindspore-lite/mindspore-lite/python/src/pybind_module.cc"                                                "syntaxError"
 
 # nnacl
-"mindspore-lite/mindspore-lite/ops/kernel/cpu/nnacl/experimental/"                                          "unreadVariable"
-"mindspore-lite/mindspore-lite/ops/kernel/cpu/nnacl/fp32/conv_sw_avx_fp32.c"                                "unknownMacro"
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/experimental/"                                          "unreadVariable"
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/fp32/conv_sw_avx_fp32.c"                                "unknownMacro"
 

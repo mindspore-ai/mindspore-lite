@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/prelu_parameter.h"
+#include "nnacl_c/prelu_parameter.h"
 using mindspore::schema::PrimitiveType_PReLUFusion;
 
 namespace mindspore {

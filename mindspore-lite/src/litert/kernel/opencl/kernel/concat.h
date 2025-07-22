@@ -20,7 +20,7 @@
 #include <vector>
 #include <string>
 #include "src/litert/kernel/opencl/opencl_kernel.h"
-#include "nnacl/concat_parameter.h"
+#include "nnacl_c/concat_parameter.h"
 
 namespace mindspore {
 namespace kernel {

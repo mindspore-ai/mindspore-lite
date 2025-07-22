@@ -19,8 +19,8 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/scale_parameter.h"
-#include "nnacl/kernel/scale.h"
+#include "nnacl_c/scale_parameter.h"
+#include "nnacl_c/kernel/scale.h"
 
 namespace mindspore::lite::micro::nnacl {
 class ScaleFP32Coder : public OperatorCoder {

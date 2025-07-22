@@ -15,7 +15,7 @@
  */
 #ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_FP32_ARITHMETIC_FP32_WRAPPER_H_
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_FP32_ARITHMETIC_FP32_WRAPPER_H_
-#include "nnacl/fp32/arithmetic_fp32.h"
+#include "nnacl_c/fp32/arithmetic_fp32.h"
 #include <string.h>
 #ifdef __cplusplus
 extern "C" {

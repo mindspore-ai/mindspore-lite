@@ -56,8 +56,8 @@ int PoolingFP16Coder::DoCode(CoderContext *const context) {
   float maxf = FLT16_MAX;
   Collect(context,
           {
-            "nnacl/fp16/pooling_fp16.h",
-            "nnacl/kernel/pooling.h",
+            "nnacl_c/fp16/pooling_fp16.h",
+            "nnacl_c/kernel/pooling.h",
           },
           {
             "pooling_fp16.c",

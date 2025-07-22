@@ -19,8 +19,8 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/int8/quantize.h"
-#include "nnacl/pow_parameter.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/pow_parameter.h"
 
 namespace mindspore::kernel {
 class PowerInt8CPUKernel : public LiteKernel {

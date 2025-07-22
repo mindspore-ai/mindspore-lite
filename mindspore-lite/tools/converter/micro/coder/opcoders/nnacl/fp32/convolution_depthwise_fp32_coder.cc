@@ -84,7 +84,7 @@ void ConvolutionDepthwiseFP32Coder::InitCodeOnline(CoderContext *const context) 
   }
   Collect(context,
           {
-            "nnacl/fp32/pack_fp32.h",
+            "nnacl_c/fp32/pack_fp32.h",
           },
           {"pack_fp32.c"});
   NNaclFp32Serializer init_code;
@@ -117,7 +117,7 @@ void ConvolutionDepthwiseFP32Coder::CollectFilesForFunc(CoderContext *const cont
   }
   Collect(context,
           {
-            "nnacl/fp32/conv_depthwise_fp32.h",
+            "nnacl_c/fp32/conv_depthwise_fp32.h",
           },
           {
             "conv_depthwise_fp32.c",

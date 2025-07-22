@@ -16,8 +16,8 @@
 #include <iostream>
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
-#include "nnacl/fp32/pack_fp32.h"
-#include "nnacl/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32/pack_fp32.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
 #include "src/litert/kernel_registry.h"
 #include "src/executor/kernel_exec.h"
 #include "src/litert/tensor_category.h"

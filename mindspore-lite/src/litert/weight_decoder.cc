@@ -18,7 +18,7 @@
 #include "src/litert/weight_decoder.h"
 #include "src/litert/huffman_decode.h"
 #include "tools/converter/quantizer/fse_decoder.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 
 namespace mindspore::lite {
 #ifndef WEIGHT_DECODE_CLIP

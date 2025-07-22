@@ -21,7 +21,7 @@
 #include <vector>
 #include <algorithm>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/non_max_suppression_parameter.h"
+#include "nnacl_c/non_max_suppression_parameter.h"
 
 using mindspore::lite::RET_OK;
 

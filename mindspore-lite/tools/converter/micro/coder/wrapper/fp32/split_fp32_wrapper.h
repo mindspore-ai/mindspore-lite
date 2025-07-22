@@ -17,7 +17,7 @@
 #ifndef MINDSPORE_LITE_MICRO_CODER_OPERATOR_LIBRARY_WRAPPER_FP32_SPLIT_FP32_WRAPPER_H_
 #define MINDSPORE_LITE_MICRO_CODER_OPERATOR_LIBRARY_WRAPPER_FP32_SPLIT_FP32_WRAPPER_H_
 #include <string.h>
-#include "nnacl/base/split_base.h"
+#include "nnacl_c/base/split_base.h"
 
 typedef struct {
   const void *input_ptr_;

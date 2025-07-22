@@ -68,7 +68,7 @@ int LayerNormFP32Coder::Prepare(CoderContext *const context) {
 int LayerNormFP32Coder::DoCode(CoderContext *const context) {
   NNaclFp32Serializer code;
   code.CodeStruct("layer_norm_compute_parm", compute_);
-  Collect(context, {"nnacl/fp32/layer_norm_fp32.h"}, {"layer_norm_fp32.c"});
+  Collect(context, {"nnacl_c/fp32/layer_norm_fp32.h"}, {"layer_norm_fp32.c"});
   if (output_tensors_.size() == kOutputNum) {
     code.CodeFunction("LayerNorm", input_tensor_, input_tensors_.at(SECOND_INPUT), input_tensors_.at(THIRD_INPUT),
                       output_tensor_, output_tensors_.at(SECOND_INPUT), output_tensors_.at(THIRD_INPUT),

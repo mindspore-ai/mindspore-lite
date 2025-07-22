@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/reduce_scatter_parameter.h"
+#include "nnacl_c/reduce_scatter_parameter.h"
 #include "infer/reduce_scatter.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 using mindspore::ops::kNameReduceScatter;

@@ -44,8 +44,8 @@ int SoftmaxDynamicFP16Coder::Prepare(CoderContext *const context) {
 int SoftmaxDynamicFP16Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/fp16/softmax_fp16.h",
-            "nnacl/fp16/log_softmax_fp16.h",
+            "nnacl_c/fp16/softmax_fp16.h",
+            "nnacl_c/fp16/log_softmax_fp16.h",
           },
           {
             "softmax_fp16.c",

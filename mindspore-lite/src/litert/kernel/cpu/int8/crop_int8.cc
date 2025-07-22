@@ -16,7 +16,7 @@
 
 #include "src/litert/kernel/cpu/int8/crop_int8.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/base/crop_base.h"
+#include "nnacl_c/base/crop_base.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

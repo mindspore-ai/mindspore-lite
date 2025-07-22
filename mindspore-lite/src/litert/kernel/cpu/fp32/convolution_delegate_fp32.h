@@ -18,9 +18,9 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/conv_parameter.h"
-#include "nnacl/matmul_parameter.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/conv_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
+#include "nnacl_c/op_base.h"
 
 using mindspore::lite::InnerContext;
 namespace mindspore::kernel {

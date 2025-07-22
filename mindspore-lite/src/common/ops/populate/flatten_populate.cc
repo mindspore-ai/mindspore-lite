@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/flatten_parameter.h"
+#include "nnacl_c/flatten_parameter.h"
 using mindspore::schema::PrimitiveType_Flatten;
 
 namespace mindspore {

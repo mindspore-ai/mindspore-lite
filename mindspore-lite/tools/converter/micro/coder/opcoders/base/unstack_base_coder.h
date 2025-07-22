@@ -17,8 +17,8 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_OPCODERS_BASE_UNSTACK_BASE_CODER_H_
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/base/unstack_base.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/base/unstack_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore::lite::micro {
 class UnstackBaseCoder final : public OperatorCoder {

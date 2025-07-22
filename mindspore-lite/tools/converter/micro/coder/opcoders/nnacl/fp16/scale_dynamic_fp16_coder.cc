@@ -50,8 +50,8 @@ int ScaleDynamicFP16Coder::DoCode(CoderContext *const context) {
   // init struct ScaleParameters
   Collect(context,
           {
-            "nnacl/kernel/scale.h",
-            "nnacl/fp16/scale_fp16.h",
+            "nnacl_c/kernel/scale.h",
+            "nnacl_c/fp16/scale_fp16.h",
           },
           {
             "scale_fp16.c",

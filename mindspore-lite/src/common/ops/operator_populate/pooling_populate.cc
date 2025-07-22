@@ -15,7 +15,7 @@
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
 #include "src/common/ops/operator_populate/utils.h"
-#include "nnacl/pooling_parameter.h"
+#include "nnacl_c/pooling_parameter.h"
 #include "infer/cxx_api/avg_pool_fusion.h"
 #include "infer/cxx_api/max_pool_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/group_norm_parameter.h"
+#include "nnacl_c/group_norm_parameter.h"
 #include "infer/cxx_api/groupnorm_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_g.h"
 using mindspore::ops::kNameGroupNormFusion;

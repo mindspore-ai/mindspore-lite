@@ -41,7 +41,7 @@ const char debug_utils_h[] = R"RAW(
 #include <sys/time.h>
 #include <time.h>
 #include <stdint.h>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 #define MICRO_INFO(content, args...) \
   { printf("[INFO] %s|%d: " #content "\r\n", __func__, __LINE__, ##args); }

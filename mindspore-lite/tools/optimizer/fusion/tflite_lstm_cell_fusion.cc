@@ -32,7 +32,7 @@
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/common/helper.h"
 #include "include/securec.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"

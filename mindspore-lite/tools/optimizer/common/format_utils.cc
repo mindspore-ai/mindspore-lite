@@ -64,7 +64,7 @@
 #include "infer/deformable_conv2d.h"
 #include "infer/roi_align.h"
 #include "tools/lite_exporter/fetch_content.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/common/graph_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_d.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"

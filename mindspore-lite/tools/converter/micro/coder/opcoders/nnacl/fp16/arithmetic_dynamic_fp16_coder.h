@@ -20,11 +20,11 @@
 #include <vector>
 #include <string>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/base/cast_base.h"
-#include "nnacl/arithmetic_parameter.h"
+#include "nnacl_c/base/cast_base.h"
+#include "nnacl_c/arithmetic_parameter.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/arithmetic_dynamic_parameter.h"
-#include "nnacl/broadcast_to_parameter.h"
+#include "nnacl_c/broadcast_to_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 using mindspore::schema::PrimitiveType_AddFusion;

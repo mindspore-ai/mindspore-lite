@@ -15,8 +15,8 @@
  */
 
 #include "wrapper/fp32/concat_fp32_wrapper.h"
-#include "nnacl/errorcode.h"
-#include "nnacl/base/concat_base.h"
+#include "nnacl_c/errorcode.h"
+#include "nnacl_c/base/concat_base.h"
 
 int DoConcatRun(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   ConcatFp32Args *args = (ConcatFp32Args *)cdata;

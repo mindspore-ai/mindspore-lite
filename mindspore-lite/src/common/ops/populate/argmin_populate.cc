@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/arg_min_max_parameter.h"
+#include "nnacl_c/arg_min_max_parameter.h"
 using mindspore::schema::PrimitiveType_ArgMinFusion;
 
 namespace mindspore {

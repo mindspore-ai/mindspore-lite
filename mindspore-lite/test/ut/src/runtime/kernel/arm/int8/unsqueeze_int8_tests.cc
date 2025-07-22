@@ -17,7 +17,7 @@
 #include <iostream>
 #include "schema/inner/model_generated.h"
 #include "common/common_test.h"
-#include "nnacl/unsqueeze_parameter.h"
+#include "nnacl_c/unsqueeze_parameter.h"
 #include "src/litert/kernel_registry.h"
 #include "src/executor/kernel_exec.h"
 #include "src/tensor.h"

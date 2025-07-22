@@ -18,7 +18,7 @@
 #include <memory>
 #include "tools/converter/parser/onnx/onnx_model_parser.h"
 #include "infer/where.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

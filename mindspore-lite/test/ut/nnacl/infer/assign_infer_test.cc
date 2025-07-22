@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/assign_infer.h"
+#include "nnacl_c/infer/assign_infer.h"
 
 namespace mindspore {
 

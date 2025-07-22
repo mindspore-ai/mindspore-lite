@@ -17,7 +17,7 @@
 #include "src/litert/kernel/cpu/fp16_grad/arithmetic_fp16_grad.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/fp16_grad/arithmetic_grad.h"
+#include "nnacl_c/fp16_grad/arithmetic_grad.h"
 #include "include/errorcode.h"
 
 using mindspore::kernel::KERNEL_ARCH::kCPU;

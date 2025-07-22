@@ -19,11 +19,11 @@
 
 #include <vector>
 #include <string>
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 #include "coder/opcoders/base/conv2d_base_coder.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
-#include "nnacl/fp32/deconv_fp32.h"
-#include "nnacl/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32/deconv_fp32.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
 
 namespace mindspore::lite::micro::nnacl {
 class DeConvolutionFP32Coder : public Conv2DBaseCoder {

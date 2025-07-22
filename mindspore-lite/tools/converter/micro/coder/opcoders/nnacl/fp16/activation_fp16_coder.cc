@@ -35,7 +35,7 @@ int ActivationFP16Coder::DoCode(CoderContext *const context) {
   int count = input_tensor_->ElementsNum();
   Collect(context,
           {
-            "nnacl/fp16/activation_fp16.h",
+            "nnacl_c/fp16/activation_fp16.h",
           },
           {
             "activation_fp16.c",

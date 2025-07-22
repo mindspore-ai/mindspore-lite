@@ -20,9 +20,9 @@
 #include <utility>
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/litert/kernel/cpu/base/convolution_base.h"
-#include "nnacl/fp32/conv_common_fp32.h"
+#include "nnacl_c/fp32/conv_common_fp32.h"
 #include "src/litert/kernel/cpu/base/group_convolution_creator.h"
 
 namespace mindspore::kernel {

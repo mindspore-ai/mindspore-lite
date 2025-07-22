@@ -16,7 +16,7 @@
 
 #include <iostream>
 #include "src/litert/kernel/cpu/fp32/embedding_lookup_fp32.h"
-#include "nnacl/fp32/embedding_lookup_fp32.h"
+#include "nnacl_c/fp32/embedding_lookup_fp32.h"
 #include "src/common/file_utils.h"
 #include "common/common_test.h"
 #include "src/common/log_adapter.h"

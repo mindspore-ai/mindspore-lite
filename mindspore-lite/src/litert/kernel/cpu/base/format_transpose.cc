@@ -15,7 +15,7 @@
  */
 
 #include "src/litert/kernel/cpu/base/format_transpose.h"
-#include "nnacl/base/format_transpose.h"
+#include "nnacl_c/base/format_transpose.h"
 #include "src/litert/kernel_registry.h"
 
 using mindspore::kernel::KERNEL_ARCH;

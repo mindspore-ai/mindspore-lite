@@ -19,7 +19,7 @@
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/utils/coder_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 using mindspore::schema::PrimitiveType_Split;
 
@@ -64,7 +64,7 @@ int SplitDynamicFP32Coder::Prepare(CoderContext *const context) {
 }
 
 int SplitDynamicFP32Coder::DoCode(CoderContext *const context) {
-  Collect(context, {"nnacl/base/split_base.h"}, {"split_base.c"});
+  Collect(context, {"nnacl_c/base/split_base.h"}, {"split_base.c"});
   NNaclFp32Serializer code;
   code << "    void *output_ptrs[" << output_tensors_.size() << "] = {";
   for (int i = 0; i < param_->num_split_; i++) {

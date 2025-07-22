@@ -15,7 +15,7 @@
  */
 #include <iostream>
 #include "common/common_test.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "src/litert/kernel/cpu/fp32/convolution_1x1_fp32.h"
 
 namespace mindspore {

@@ -22,7 +22,7 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/infer/custom.h"
 #include "infer/f_f_n.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_d.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_e.h"

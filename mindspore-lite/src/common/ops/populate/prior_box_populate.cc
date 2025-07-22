@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/prior_box_parameter.h"
+#include "nnacl_c/prior_box_parameter.h"
 using mindspore::schema::PrimitiveType_PriorBox;
 
 namespace mindspore {

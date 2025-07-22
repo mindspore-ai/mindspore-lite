@@ -17,9 +17,9 @@
 #ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_FP32_DECONVOLUTION_FP32_WRAPPER_H_
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_FP32_DECONVOLUTION_FP32_WRAPPER_H_
 
-#include "nnacl/errorcode.h"
-#include "nnacl/conv_parameter.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/errorcode.h"
+#include "nnacl_c/conv_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "wrapper/base/micro_parameter.h"
 
 typedef struct {

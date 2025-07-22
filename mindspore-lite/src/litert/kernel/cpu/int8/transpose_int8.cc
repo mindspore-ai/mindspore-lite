@@ -16,8 +16,8 @@
 
 #include "src/litert/kernel/cpu/int8/transpose_int8.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/int8/transpose_int8.h"
-#include "nnacl/int8/pack_int8.h"
+#include "nnacl_c/int8/transpose_int8.h"
+#include "nnacl_c/int8/pack_int8.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_OK;

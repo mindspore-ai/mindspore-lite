@@ -21,7 +21,7 @@
 #include <memory>
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/int8/pooling_int8.h"
+#include "nnacl_c/int8/pooling_int8.h"
 
 namespace mindspore::lite::micro::cmsis {
 class PoolingInt8Coder final : public OperatorCoder {

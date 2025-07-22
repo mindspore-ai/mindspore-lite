@@ -20,7 +20,7 @@
 #include <vector>
 #include <atomic>
 #include "src/train/optimizer_kernel.h"
-#include "nnacl/fp32_grad/optimizer.h"
+#include "nnacl_c/fp32_grad/optimizer.h"
 
 namespace mindspore::kernel {
 constexpr int kSgdLrIndex = 2;

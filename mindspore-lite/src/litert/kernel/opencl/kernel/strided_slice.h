@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/kernel/opencl/opencl_kernel.h"
-#include "nnacl/base/slice_base.h"
+#include "nnacl_c/base/slice_base.h"
 
 namespace mindspore::kernel {
 class StridedSliceOpenCLKernel : public OpenCLKernel {

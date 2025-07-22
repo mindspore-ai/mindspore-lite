@@ -22,7 +22,7 @@
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/utils/common.h"
-#include "nnacl/fp32/resize_fp32.h"
+#include "nnacl_c/fp32/resize_fp32.h"
 #include "base/float16.h"
 
 using mindspore::schema::PrimitiveType_Resize;
@@ -33,8 +33,8 @@ int ResizeFP16Coder::DataTypeLen() { return sizeof(uint16_t); }
 int ResizeFP16Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/fp16/resize_fp16.h",
-            "nnacl/fp32/resize_fp32.h",
+            "nnacl_c/fp16/resize_fp16.h",
+            "nnacl_c/fp32/resize_fp32.h",
           },
           {
             "resize_fp16.c",

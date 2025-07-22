@@ -23,7 +23,7 @@
 #include <vector>
 #include "src/litert/lite_kernel.h"
 #include "src/common/common.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 
 namespace mindspore::kernel {
 class MatmulBaseFP16CPUKernel : public LiteKernel {

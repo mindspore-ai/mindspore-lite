@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/max_min_grad_infer.h"
-#include "nnacl/arithmetic_parameter.h"
+#include "nnacl_c/infer/max_min_grad_infer.h"
+#include "nnacl_c/arithmetic_parameter.h"
 
 namespace mindspore {
 

@@ -19,7 +19,7 @@
 #include <vector>
 #include "src/litert/lite_kernel.h"
 
-#include "nnacl/base/broadcast_to.h"
+#include "nnacl_c/base/broadcast_to.h"
 
 namespace mindspore::kernel {
 class BroadcastToCPUKernel : public LiteKernel {

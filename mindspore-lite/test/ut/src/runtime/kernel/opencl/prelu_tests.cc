@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "ut/src/runtime/kernel/opencl/common.h"
-#include "nnacl/prelu_parameter.h"
+#include "nnacl_c/prelu_parameter.h"
 
 namespace mindspore::lite::opencl::test {
 

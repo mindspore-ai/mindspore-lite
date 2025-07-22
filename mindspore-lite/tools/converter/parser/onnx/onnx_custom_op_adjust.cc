@@ -28,7 +28,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/uniform_real.h"
 #include "include/errorcode.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/common/tensor_util.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/common/node_util.h"

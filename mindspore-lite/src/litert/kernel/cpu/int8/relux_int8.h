@@ -19,8 +19,8 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/fp32/activation_fp32.h"
-#include "nnacl/int8/relux_int8.h"
+#include "nnacl_c/fp32/activation_fp32.h"
+#include "nnacl_c/int8/relux_int8.h"
 
 namespace mindspore::kernel {
 constexpr size_t kRelu6Min = 0;

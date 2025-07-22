@@ -15,8 +15,8 @@
  */
 
 #include "coder/opcoders/base/detection_post_process_base_coder.h"
-#include "nnacl/op_base.h"
-#include "nnacl/int8/quant_dtype_cast_int8.h"
+#include "nnacl_c/op_base.h"
+#include "nnacl_c/int8/quant_dtype_cast_int8.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/log.h"
 #include "coder/opcoders/parallel.h"
@@ -125,8 +125,8 @@ int DetectionPostProcessBaseCoder::AllocateBuffer() {
 int DetectionPostProcessBaseCoder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/detection_post_process_parameter.h",
-            "nnacl/fp32/detection_post_process_fp32.h",
+            "nnacl_c/detection_post_process_parameter.h",
+            "nnacl_c/fp32/detection_post_process_fp32.h",
             "wrapper/base/detection_post_process_base_wrapper.h",
           },
           {

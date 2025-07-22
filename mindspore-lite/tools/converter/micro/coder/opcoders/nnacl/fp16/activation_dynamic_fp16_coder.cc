@@ -33,7 +33,7 @@ int ActivationDynamicFP16Coder::Prepare(CoderContext *const context) {
 int ActivationDynamicFP16Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/fp16/activation_fp16.h",
+            "nnacl_c/fp16/activation_fp16.h",
           },
           {
             "activation_fp16.c",

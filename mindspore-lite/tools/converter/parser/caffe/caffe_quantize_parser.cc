@@ -18,7 +18,7 @@
 #include "tools/converter/parser/caffe/caffe_quantize_parser.h"
 #include <memory>
 #include "infer/quant_dtype_cast.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

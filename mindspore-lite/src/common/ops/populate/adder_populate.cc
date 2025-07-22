@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/log_adapter.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 #include "src/common/ops/populate/populate_register.h"
 using mindspore::schema::PrimitiveType_AdderFusion;
 

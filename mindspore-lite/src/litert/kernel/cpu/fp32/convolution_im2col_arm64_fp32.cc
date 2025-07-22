@@ -15,7 +15,7 @@
  */
 
 #include "src/litert/kernel/cpu/fp32/convolution_im2col_arm64_fp32.h"
-#include "nnacl/fp32/conv_common_fp32.h"
+#include "nnacl_c/fp32/conv_common_fp32.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_INFER_INVALID;

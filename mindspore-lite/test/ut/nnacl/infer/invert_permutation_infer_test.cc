@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/invert_permutation_infer.h"
+#include "nnacl_c/infer/invert_permutation_infer.h"
 
 namespace mindspore {
 

@@ -20,7 +20,7 @@
 #include <vector>
 #include <string>
 #include "src/litert/kernel/opencl/opencl_kernel.h"
-#include "nnacl/arithmetic_self_parameter.h"
+#include "nnacl_c/arithmetic_self_parameter.h"
 
 using mindspore::schema::PrimitiveType_Abs;
 using mindspore::schema::PrimitiveType_Ceil;

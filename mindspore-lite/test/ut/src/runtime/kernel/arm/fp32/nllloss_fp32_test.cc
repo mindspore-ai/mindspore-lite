@@ -18,7 +18,7 @@
 #include "common/common_test.h"
 #include "src/executor/kernel_exec.h"
 #include "src/litert/tensor_category.h"
-#include "nnacl/nllloss_parameter.h"
+#include "nnacl_c/nllloss_parameter.h"
 #include "nnacl/nnacl_manager.h"
 
 namespace mindspore {

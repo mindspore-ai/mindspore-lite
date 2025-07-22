@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/litert/kernel/cpu/base/group_convolution_base.h"
 
 namespace mindspore::kernel {

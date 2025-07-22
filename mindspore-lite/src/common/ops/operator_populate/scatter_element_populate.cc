@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/scatter_elements_parameter.h"
+#include "nnacl_c/scatter_elements_parameter.h"
 #include "infer/scatter_elements.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 using mindspore::ops::kNameScatterElements;

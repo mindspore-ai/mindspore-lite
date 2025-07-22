@@ -18,7 +18,7 @@
 #include <map>
 #include <utility>
 #include <vector>
-#include "nnacl/base/arithmetic_base.h"
+#include "nnacl_c/base/arithmetic_base.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;

@@ -15,8 +15,8 @@
  */
 
 #include "wrapper/fp32/deconvolution_fp32_wrapper.h"
-#include "nnacl/fp32/deconv_fp32.h"
-#include "nnacl/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32/deconv_fp32.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
 
 int DoDeconvFp32(const float *packed_input, const float *packed_weight, const float *packed_bias, float *packed_output,
                  float *output, float *tmp_ori_buffer, const MicroMatmulParameter *matmul_param,

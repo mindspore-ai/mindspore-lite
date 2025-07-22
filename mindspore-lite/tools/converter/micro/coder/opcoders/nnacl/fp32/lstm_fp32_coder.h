@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/lstm_parameter.h"
+#include "nnacl_c/lstm_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class LstmFP32Coder : public OperatorCoder {

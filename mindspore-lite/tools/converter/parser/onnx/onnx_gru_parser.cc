@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 #include "infer/gru.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "include/registry/converter_context.h"
 #include "mindspore/ops/infer/grad/gru_v2_grad.h"
 

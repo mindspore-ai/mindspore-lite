@@ -18,8 +18,8 @@
 #include <memory>
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
-#include "nnacl/space_to_depth_parameter.h"
-#include "nnacl/base/space_to_depth_base.h"
+#include "nnacl_c/space_to_depth_parameter.h"
+#include "nnacl_c/base/space_to_depth_base.h"
 #include "src/litert/kernel_registry.h"
 #include "src/executor/kernel_exec.h"
 

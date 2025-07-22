@@ -19,7 +19,7 @@
 #ifdef BFC_MEMORY
 #include <vector>
 #include "src/litert/kernel/cpu/base/transpose_base.h"
-#include "nnacl/fp32/transpose_server_fp32.h"
+#include "nnacl_c/fp32/transpose_server_fp32.h"
 
 namespace mindspore::kernel {
 class TransposeServerCPUKernel : public TransposeBaseCPUKernel {

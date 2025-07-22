@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 #include "coder/opcoders/nnacl/fp32/custom_gru_fp32_coder.h"
-#include "nnacl/custom_gru_parameter.h"
+#include "nnacl_c/custom_gru_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class CustomGruFP16Coder : public CustomGruFP32Coder {

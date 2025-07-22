@@ -19,7 +19,7 @@
 #include "include/errorcode.h"
 #include "include/registry/register_kernel_interface.h"
 #include "common/log_adapter.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore::kernel {
 namespace acl {

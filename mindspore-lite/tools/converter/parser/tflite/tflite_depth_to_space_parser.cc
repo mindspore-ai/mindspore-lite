@@ -19,7 +19,7 @@
 #include <vector>
 #include <memory>
 #include "infer/depth_to_space.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

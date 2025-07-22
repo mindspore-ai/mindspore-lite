@@ -21,8 +21,8 @@
 #include <memory>
 #include <vector>
 #include "coder/opcoders/nnacl/int8/matmul_base_int8_coder.h"
-#include "nnacl/int8/quantize.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/matmul_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class FullConnectionInt8Coder final : public MatMulBaseInt8Coder {

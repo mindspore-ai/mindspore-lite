@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/l2_norm_parameter.h"
+#include "nnacl_c/l2_norm_parameter.h"
 using mindspore::schema::PrimitiveType_L2NormalizeFusion;
 
 namespace mindspore {

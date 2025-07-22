@@ -15,7 +15,7 @@
  */
 #include "src/train/opt_allocator.h"
 #include <limits>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 size_t OptAllocator::FindFree(size_t size) {

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "ut/src/runtime/kernel/opencl/common.h"
-#include "nnacl/softmax_parameter.h"
+#include "nnacl_c/softmax_parameter.h"
 
 namespace mindspore::lite::opencl::test {
 

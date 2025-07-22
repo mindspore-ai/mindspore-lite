@@ -20,8 +20,8 @@
 #include <vector>
 #include <string>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/softmax_parameter.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/softmax_parameter.h"
+#include "nnacl_c/int8/quantize.h"
 
 namespace mindspore::lite::micro {
 class SoftmaxBaseCoder : public OperatorCoder {

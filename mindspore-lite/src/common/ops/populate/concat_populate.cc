@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/concat_parameter.h"
+#include "nnacl_c/concat_parameter.h"
 using mindspore::schema::PrimitiveType_Concat;
 
 namespace mindspore {

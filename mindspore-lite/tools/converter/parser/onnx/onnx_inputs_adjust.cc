@@ -30,7 +30,7 @@
 #include "infer/multinomial.h"
 #include "infer/affine_grid.h"
 #include "include/errorcode.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/common/tensor_util.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/common/node_util.h"

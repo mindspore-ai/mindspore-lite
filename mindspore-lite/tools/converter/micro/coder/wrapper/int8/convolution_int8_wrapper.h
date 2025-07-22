@@ -17,10 +17,10 @@
 #ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_INT8_CONVOLUTION_INT8_WRAPPER_H_
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_INT8_CONVOLUTION_INT8_WRAPPER_H_
 
-#include "nnacl/errorcode.h"
-#include "nnacl/conv_parameter.h"
-#include "nnacl/matmul_parameter.h"
-#include "nnacl/int8/conv_int8.h"
+#include "nnacl_c/errorcode.h"
+#include "nnacl_c/conv_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
+#include "nnacl_c/int8/conv_int8.h"
 
 typedef struct {
   int8_t *input_data_;

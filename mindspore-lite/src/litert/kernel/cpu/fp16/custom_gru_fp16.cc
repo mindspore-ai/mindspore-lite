@@ -20,10 +20,10 @@
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 #include "src/litert/pack_weight_manager.h"
-#include "nnacl/fp16/pack_fp16.h"
-#include "nnacl/custom_gru_parameter.h"
-#include "nnacl/fp16/custom_gru_fp16.h"
-#include "nnacl/fp16/matmul_fp16.h"
+#include "nnacl_c/fp16/pack_fp16.h"
+#include "nnacl_c/custom_gru_parameter.h"
+#include "nnacl_c/fp16/custom_gru_fp16.h"
+#include "nnacl_c/fp16/matmul_fp16.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;

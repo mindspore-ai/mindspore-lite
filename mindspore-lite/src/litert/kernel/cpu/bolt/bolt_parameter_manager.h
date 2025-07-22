@@ -19,7 +19,7 @@
 
 #include <map>
 #include "bolt/common/uni/include/parameter_spec.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_adapter.h"
 
 namespace mindspore::kernel::bolt {

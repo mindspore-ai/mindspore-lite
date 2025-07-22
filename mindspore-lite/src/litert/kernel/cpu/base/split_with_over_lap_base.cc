@@ -17,7 +17,7 @@
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "src/tensor.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/errorcode.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

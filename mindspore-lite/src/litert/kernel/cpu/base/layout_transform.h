@@ -20,7 +20,7 @@
 #ifdef ENABLE_FP16
 #include <arm_neon.h>
 #endif
-#include "nnacl/pack.h"
+#include "nnacl_c/pack.h"
 #include "src/tensor.h"
 
 namespace mindspore::kernel {

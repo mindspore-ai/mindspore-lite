@@ -15,9 +15,9 @@
  */
 
 #include "wrapper/int8/conv_init_int8_wrapper.h"
-#include "nnacl/op_base.h"
-#include "nnacl/int8/matmul_int8.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/op_base.h"
+#include "nnacl_c/int8/matmul_int8.h"
+#include "nnacl_c/errorcode.h"
 
 size_t ConvPackWeightSize(int input_channel, int output_channel, int kernel_plane, bool support_optimize) {
   size_t up_round_deep;

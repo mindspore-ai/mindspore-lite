@@ -17,9 +17,9 @@
 #include "src/litert/pass/online_fusion/online_fusion_pass.h"
 #include <vector>
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/split_parameter.h"
-#include "nnacl/reduce_parameter.h"
-#include "nnacl/concat_parameter.h"
+#include "nnacl_c/split_parameter.h"
+#include "nnacl_c/reduce_parameter.h"
+#include "nnacl_c/concat_parameter.h"
 #include "include/model.h"
 
 namespace mindspore::lite {

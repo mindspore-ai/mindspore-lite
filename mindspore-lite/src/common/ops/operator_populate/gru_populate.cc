@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/fp32/gru_fp32.h"
+#include "nnacl_c/fp32/gru_fp32.h"
 #include "infer/gru.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_g.h"
 using mindspore::ops::kBidirectional;

@@ -15,8 +15,8 @@
  */
 
 #include "wrapper/fp32/fill_fp32_wrapper.h"
-#include "nnacl/errorcode.h"
-#include "nnacl/base/fill_base.h"
+#include "nnacl_c/errorcode.h"
+#include "nnacl_c/base/fill_base.h"
 
 int DoFillFp32(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   FillFp32Args *args = (FillFp32Args *)cdata;

@@ -15,18 +15,18 @@
  */
 
 #include "src/litert/pass/format_pass/transpose_strategy.h"
-#include "nnacl/op_base.h"
-#include "nnacl/arg_min_max_parameter.h"
-#include "nnacl/concat_parameter.h"
-#include "nnacl/crop_parameter.h"
-#include "nnacl/softmax_parameter.h"
-#include "nnacl/split_parameter.h"
-#include "nnacl/squeeze_parameter.h"
-#include "nnacl/stack_parameter.h"
-#include "nnacl/unsqueeze_parameter.h"
-#include "nnacl/unstack_parameter.h"
-#include "nnacl/slice_parameter.h"
-#include "nnacl/strided_slice_parameter.h"
+#include "nnacl_c/op_base.h"
+#include "nnacl_c/arg_min_max_parameter.h"
+#include "nnacl_c/concat_parameter.h"
+#include "nnacl_c/crop_parameter.h"
+#include "nnacl_c/softmax_parameter.h"
+#include "nnacl_c/split_parameter.h"
+#include "nnacl_c/squeeze_parameter.h"
+#include "nnacl_c/stack_parameter.h"
+#include "nnacl_c/unsqueeze_parameter.h"
+#include "nnacl_c/unstack_parameter.h"
+#include "nnacl_c/slice_parameter.h"
+#include "nnacl_c/strided_slice_parameter.h"
 
 namespace mindspore::lite::pass {
 static const std::set<schema::PrimitiveType> arithmetic_kernel_lists = {

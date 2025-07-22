@@ -22,7 +22,7 @@
 #include "src/tensor.h"
 #include "src/litert/kernel/opencl/opencl_kernel.h"
 #include "schema/model_generated.h"
-#include "nnacl/pad_parameter.h"
+#include "nnacl_c/pad_parameter.h"
 
 namespace mindspore::kernel {
 class PadOpenCLKernel : public OpenCLKernel {

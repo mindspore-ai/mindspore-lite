@@ -17,7 +17,7 @@
 #include "nnacl/nnacl_matmul.h"
 #include "nnacl/nnacl_manager.h"
 #include "include/errorcode.h"
-#include "nnacl/kernel/matmul_base.h"
+#include "nnacl_c/kernel/matmul_base.h"
 #include "nnacl/cxx_utils.h"
 #include "src/litert/pack_weight_manager.h"
 #if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)

@@ -26,7 +26,7 @@
 #ifdef ENABLE_ARM
 #include <arm_neon.h>
 #endif
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/litert/inner_context.h"
 #include "src/tensor.h"
 #include "include/errorcode.h"
