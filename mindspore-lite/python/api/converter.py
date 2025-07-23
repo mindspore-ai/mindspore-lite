@@ -773,7 +773,7 @@ class Converter:
         }
         ret = self._converter.convert(fmk_type_py_cxx_map.get(fmk_type), model_file, output_file, weight_file)
         if not ret.IsOk():
-            raise RuntimeError(f"Converter model failed! model_file is {model_file}, error is {ret.ToString()}")
+            raise RuntimeError(f"Converter model failed! error is {ret.ToString()}")
 
     def get_config_info(self):
         r"""
