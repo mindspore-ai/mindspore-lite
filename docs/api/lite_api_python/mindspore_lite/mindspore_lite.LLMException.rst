@@ -1,7 +1,7 @@
 mindspore_lite.LLMException
 ============================
 
-.. py:class:: mindspore_lite.LLMException(*args)
+.. py:class:: mindspore_lite.LLMException(*args: object)
 
     LLMEngine的错误类型基类。
 

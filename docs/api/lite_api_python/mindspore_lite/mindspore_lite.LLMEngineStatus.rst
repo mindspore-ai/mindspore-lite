@@ -9,17 +9,17 @@ mindspore_lite.LLMEngineStatus
         :property:
 
         获取该LLMEngine的prompt KV cache空计数。
-    
+
     .. py:method:: num_free_blocks
         :property:
 
         获取PagedAttention空闲块数量。
-    
+
     .. py:method:: num_total_blocks
         :property:
 
         获取PagedAttention块总数。
-    
+
     .. py:method:: block_size
         :property:
 
