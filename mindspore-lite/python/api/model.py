@@ -280,8 +280,7 @@ class Model(BaseModel):
             for key, value in config_dict.items():
                 ret = self._model.update_config(key, value)
                 if not ret.IsOk():
-                    raise RuntimeError(f"update configuration failed! Error is {ret.ToString()}."
-                                       f"Setcion is {key}, config is {value}")
+                    raise RuntimeError(f"update configuration failed! Error is {ret.ToString()}.")
 
         if dec_key:
             check_isinstance("dec_key", dec_key, bytes)
