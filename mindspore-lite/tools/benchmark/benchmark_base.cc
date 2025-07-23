@@ -125,9 +125,13 @@ int BenchmarkBase::GenerateRandomData(size_t size, void *data, int data_type) {
 
 // calibData is FP32
 int BenchmarkBase::ReadCalibData() {
-  const char *calib_data_path = flags_->benchmark_data_file_.c_str();
+  auto calib_data_path = RealPath(flags_->benchmark_data_file_.c_str());
+  if (calib_data_path.empty()) {
+    MS_LOG(ERROR) << "calib_data_path: " << flags_->benchmark_data_file_ << " is invalid.";
+    return RET_ERROR;
+  }
   // read calib data
-  std::ifstream in_file(calib_data_path);
+  std::ifstream in_file(calib_data_path.c_str());
   if (!in_file.good()) {
     std::cerr << "file: " << calib_data_path << " is not exist" << std::endl;
     MS_LOG(ERROR) << "file: " << calib_data_path << " is not exist";

@@ -136,7 +136,11 @@ STATUS MicroParamParser::ParseGraphInputsShapeTemplate(
     std::vector<std::string> inputs_name;
     for (const auto &graph_input_shape : graph_inputs_shape_vec) {
       auto input_shape_info = SplitStringToVector(graph_input_shape, ':');
+      MS_CHECK_TRUE_MSG(input_shape_info.size() == C2NUM, RET_INPUT_PARAM_INVALID,
+                        "input_shapes for micro is invalid, which must be name:shape.");
       std::string input_name = input_shape_info[0];
+      MS_CHECK_TRUE_MSG(input_shape_info[1].size() >= C2NUM, RET_INPUT_PARAM_INVALID,
+                        "input_shapes for micro is invalid, the shape's length must be greater than 1.");
       std::string input_shape = input_shape_info[1].substr(1, input_shape_info[1].size() - C2NUM);
       auto input_shape_vec = SplitStringToVector(input_shape, ',');
       graph_inputs_info[input_name] = input_shape_vec;
