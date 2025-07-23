@@ -36,6 +36,7 @@
 #include "tools/converter/quantizer/quantize_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_o.h"
 #include "src/common/decrypt.h"
+#include "include/securec.h"
 
 namespace mindspore::lite {
 namespace {
