@@ -105,13 +105,13 @@ std::string CombineDynamicImageString(const struct mindspore::ProfileConfigs &pr
   ShapeVector shape = profile.input_infos[dynamic_input].input_shape;
   std::string ret = "";
   size_t first_dim = kIndex0, second_dim = kIndex0;
-  if (shape[kIndex1] == kdynDim && shape[kIndex2] == kdynDim) {
+  if (shape.size() > kIndex2 && shape[kIndex1] == kdynDim && shape[kIndex2] == kdynDim) {
     first_dim = kIndex1;
     second_dim = kIndex2;
-  } else if (shape[kIndex1] == kdynDim && shape[kIndex3] == kdynDim) {
+  } else if (shape.size() > kIndex3 && shape[kIndex1] == kdynDim && shape[kIndex3] == kdynDim) {
     first_dim = kIndex1;
     second_dim = kIndex3;
-  } else if (shape[kIndex2] == kdynDim && shape[kIndex3] == kdynDim) {
+  } else if (shape.size() > kIndex3 && shape[kIndex2] == kdynDim && shape[kIndex3] == kdynDim) {
     first_dim = kIndex2;
     second_dim = kIndex3;
   }
@@ -222,7 +222,7 @@ int ParseInputShapeTemplate(const std::string &shape_template, std::set<std::str
     auto graph_input_shape_info = SplitStringToVector(graph_input_shape, ':');
     MS_CHECK_TRUE_MSG(graph_input_shape_info.size() == kIndex2, RET_INPUT_PARAM_INVALID, "the inputs_shape is invalid");
     auto input_shape = graph_input_shape_info[1];
-    if (input_shape[0] != '[' || input_shape[input_shape.size() - 1] != ']') {
+    if (input_shape.size() < kIndex2 || input_shape[0] != '[' || input_shape[input_shape.size() - 1] != ']') {
       MS_LOG(ERROR) << "the inputs_shape is invalid";
       return RET_INPUT_PARAM_INVALID;
     }

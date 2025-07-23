@@ -26,6 +26,7 @@
 #include "infer/return.h"
 #include "infer/depend.h"
 #include "common/format_utils.h"
+#include "common/file_util.h"
 #include "common/anf_util.h"
 #include "common/string_util.h"
 #include "common/op_attr.h"
@@ -239,6 +240,11 @@ STATUS DpicoPass::InitDpicoConfigInfo() {
   if (use_default_config) {
     MS_LOG(WARNING)
       << R"(there is no "dpico_config_path" in the converter config file, will use the default value: "./dpico.cfg")";
+  }
+  dpico_config_path_ = RealPath(dpico_config_path_.c_str());
+  if (dpico_config_path_.empty()) {
+    MS_LOG(ERROR) << "dpico_config_path: " << dpico_config_path_ << " is invalid";
+    return RET_ERROR;
   }
   if (AccessFile(dpico_config_path_, F_OK) != 0) {
     MS_LOG(ERROR) << "File not exist: " << dpico_config_path_;
