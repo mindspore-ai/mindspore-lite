@@ -28,6 +28,7 @@
 #endif
 #include "src/common/log_adapter.h"
 #include "src/common/log_util.h"
+#include "include/securec.h"
 
 #ifndef SECUREC_MEM_MAX_LEN
 #define SECUREC_MEM_MAX_LEN 0x7fffffffUL
