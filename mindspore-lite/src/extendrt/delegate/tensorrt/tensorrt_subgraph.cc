@@ -553,7 +553,7 @@ int TensorRTSubGraph::Prepare() {
     auto tensor_name = tensor.Name();
     trt_in_tensor_name_.push_back(tensor_name);
     int index = GetProfileBindingIndex(tensor_name, profile_index_);
-    MS_LOG(INFO) << "device index " << index << " for tensor : " << tensor_name << " attr: " << device_ptr;
+    MS_LOG(INFO) << "device index " << index << " for tensor : " << tensor_name;
     tensor_bindings_[index] = device_ptr;
     nvinfer1::Dims input_dims = ConvertCudaDims(profile.inputs[i].max_dims);
     if (!this->trt_context_->setBindingDimensions(index, input_dims)) {
