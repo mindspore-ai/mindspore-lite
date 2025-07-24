@@ -17,7 +17,7 @@
 #ifdef __linux__
 #include "src/common/thread_utils.h"
 #include <sys/stat.h>
-#include <wait.h>
+#include <sys/wait.h>
 #include "src/common/log_adapter.h"
 
 namespace mindspore {
