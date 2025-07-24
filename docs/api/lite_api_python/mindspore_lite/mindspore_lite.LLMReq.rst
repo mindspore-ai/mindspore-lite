@@ -1,7 +1,7 @@
 mindspore_lite.LLMReq
 ======================
 
-.. py:class:: mindspore_lite.LLMReq(prompt_cluster_id, req_id, prompt_length)
+.. py:class:: mindspore_lite.LLMReq(prompt_cluster_id: int, req_id: int, prompt_length: int)
 
     LLMEngine的请求类，用于表示多轮推理任务。
 
@@ -28,12 +28,12 @@ mindspore_lite.LLMReq
         :property:
 
         LLMEngine中该推理任务的解码器集群id。
-    
+
     .. py:method:: prefix_id
         :property:
 
         LLMEngine中该推理任务的解码器集群id前缀。
-    
+
     .. py:method:: sequence_length
         :property:
 

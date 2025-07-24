@@ -748,8 +748,8 @@ class LLMEngine:
     Args:
         role (LLMRole): Role of this LLMEngine object.
         cluster_id (int): Cluster id of this LLMEngine object.
-        batch_mode (str): Controls whether the request batching is "auto" formed by the framework or "manual"ly
-            by the user. Option is "auto" or "manual", default "auto".
+        batch_mode (str, optional): Controls whether the request batching is "auto" formed by
+            the framework or "manual"ly by the user. Option is "auto" or "manual", default "auto".
 
     Raises:
         TypeError: `role` is not a LLMRole.
@@ -808,7 +808,7 @@ class LLMEngine:
         Args:
             model_paths (Union[Tuple[str], List[str]]): List or tuple of model path.
             options (Dict[str, str]): Other init options of this LLMEngine object.
-            postprocess_model_path (Union[str, None]): Postprocess model path, default None.
+            postprocess_model_path (Union[str, None], optional): Postprocess model path, default None.
 
         Raises:
             TypeError: `model_paths` is not a list and tuple.
@@ -937,12 +937,12 @@ class LLMEngine:
             clusters (Union[List[LLMClusterInfo], Tuple[LLMClusterInfo]]): clusters.
             timeout (int, optional): timeout in seconds. Default: ``-1``.
 
+        Returns:
+            (Status, tuple[Status]), Whether all clusters link normally, and the link status of each cluster.
+
         Raises:
             TypeError: `clusters` is not list/tuple of LLMClusterInfo.
             RuntimeError: LLMEngine is not inited or init failed.
-
-        Returns:
-            (Status, tuple[Status]), Whether all clusters link normally, and the link status of each cluster.
 
         Examples:
             >>> import mindspore_lite as mslite
@@ -985,12 +985,12 @@ class LLMEngine:
             clusters (Union[List[LLMClusterInfo], Tuple[LLMClusterInfo]]): clusters.
             timeout (int, optional): timeout in seconds. Default: ``-1``.
 
+        Returns:
+            Status, tuple[Status], Whether all clusters unlink normally, and the unlink status of each cluster.
+
         Raises:
             TypeError: `clusters` is not list/tuple of LLMClusterInfo.
             RuntimeError: Some error occurred.
-
-        Returns:
-            Status, tuple[Status], Whether all clusters unlink normally, and the unlink status of each cluster.
 
         Examples:
             >>> import mindspore_lite as mslite

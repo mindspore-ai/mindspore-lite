@@ -50,7 +50,7 @@ mindspore_lite.Model
                   config_dict = {"ascend_context" : {"rank_table_file" : "path_b"}}
 
               那么配置参数字典中路径b的rank table将覆盖配置文件中的路径a的rank table。
-            
+
             - **dec_key** (Bytes, 可选) - 当导入密文模型时，使用该参数传入解密密钥。默认值：``None``。
             - **dec_mode** (str, 可选) - 当导入密文模型时，使用该参数指定解密模式。当前支持的解密模式包括："AES-GCM"，"AES-CBC"与"SM4-CBC"。默认值： ``"AES-GCM"`` 。
             - **dec_num_parallel** (int, 可选) - 当导入密文模型时，使用该参数开启并行解密，并指定并行线程数，取值范围0~64。默认为：``0``。
@@ -82,7 +82,7 @@ mindspore_lite.Model
 
         参数：
             - **key** (str) - 获取模型信息关键字，当前支持user_info、input_shape、dynamic_dims、user_info为用户信息，input_shape为模型输入shape，dynamic_dims为动态分档模型支持的尺寸。
-        
+
         异常：
             - **TypeError** - key不是str类型。
 
