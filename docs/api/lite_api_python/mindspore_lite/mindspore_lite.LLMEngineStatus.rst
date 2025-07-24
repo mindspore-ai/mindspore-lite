@@ -5,6 +5,14 @@ mindspore_lite.LLMEngineStatus
 
     LLMEngine的状态类，用于表示推理任务状态。
 
+    参数：
+        - **status** (object) - LLMEngine的状态。
+
+    .. py:method:: block_size
+        :property:
+
+        获取PagedAttention块大小。
+
     .. py:method:: empty_max_prompt_kv
         :property:
 
@@ -19,8 +27,3 @@ mindspore_lite.LLMEngineStatus
         :property:
 
         获取PagedAttention块总数。
-
-    .. py:method:: block_size
-        :property:
-
-        获取PagedAttention块大小。
