@@ -86,6 +86,7 @@ static TypeId TransToDataType(aclDataType data_type) {
   };
   auto it = data_type_map.find(data_type);
   if (it == data_type_map.end()) {
+    MS_LOG(ERROR) << "ModelProcess TransToDataType ERROR" << data_type;
     return TypeId::kNumberTypeEnd;
   } else {
     return it->second;
@@ -299,6 +300,10 @@ const std::vector<TypeId> ModelProcess::GetOutputDataType() {
   std::vector<TypeId> data_types;
   for (size_t i = 0; i < output_infos_.size(); ++i) {
     TypeId data_type = TransToDataType(output_infos_[i].data_type);
+    if (data_type == TypeId::kNumberTypeEnd) {
+      MS_LOG(ERROR) << "ModelProcess GetOutputDataType ERROR" << data_type;
+      return {};
+    }
     data_types.emplace_back(data_type);
   }
   return data_types;
@@ -405,6 +410,10 @@ bool ModelProcess::InitInputsBuffer() {
       return false;
     }
     aclDataType data_type = CALL_ASCEND_API(aclmdlGetInputDataType, model_desc_, i);
+    if (data_type == aclDataType::ACL_DT_UNDEFINED) {
+      MS_LOG(ERROR) << "ModelProcess InitInputsBuffer ERROR" << data_type;
+      return false;
+    }
     std::vector<int64_t> shape(dims.dims, dims.dims + dims.dimCount);
     std::string input_name = CALL_ASCEND_API(aclmdlGetInputNameByIndex, model_desc_, i);
     if (!is_dynamic_input_) {
@@ -460,6 +469,10 @@ bool ModelProcess::InitOutputsBuffer() {
     aclFormat format = CALL_ASCEND_API(aclmdlGetOutputFormat, model_desc_, i);
     MS_LOG(DEBUG) << "The output format of om is " << format;
     aclDataType data_type = CALL_ASCEND_API(aclmdlGetOutputDataType, model_desc_, i);
+    if (data_type == aclDataType::ACL_DT_UNDEFINED) {
+      MS_LOG(ERROR) << "ModelProcess InitOutputsBuffer ERROR" << data_type;
+      return false;
+    }
     std::vector<int64_t> shape(dims.dims, dims.dims + dims.dimCount);
     if (is_dynamic_output) {
       shape = std::vector<int64_t>({-1});
@@ -934,6 +947,10 @@ bool ModelProcess::ResetInputSize(const std::vector<ShapeVector> &new_shapes) {
     }
     input_infos_[index].dims = shape;
     auto data_type = CALL_ASCEND_API(aclmdlGetInputDataType, model_desc_, index);
+    if (data_type == aclDataType::ACL_DT_UNDEFINED) {
+      MS_LOG(ERROR) << "ModelProcess ResetInputSize ERROR" << data_type;
+      return false;
+    }
     auto new_buffer_size = elem_count * CALL_ASCEND_API(aclDataTypeSize, data_type);
     if (!is_dynamic_input_) {
       input_infos_[index].buffer_size = new_buffer_size;
@@ -970,6 +987,10 @@ bool ModelProcess::ResetOutputSize() {
       elem_count *= dims.dims[i];
     }
     data_type = CALL_ASCEND_API(aclmdlGetOutputDataType, model_desc_, index);
+    if (data_type == aclDataType::ACL_DT_UNDEFINED) {
+      MS_LOG(ERROR) << "ModelProcess ResetOutputSize ERROR" << data_type;
+      return false;
+    }
     output_infos_[index].dims = shape;
     output_infos_[index].buffer_size = elem_count * CALL_ASCEND_API(aclDataTypeSize, data_type);
   }
@@ -1038,6 +1059,10 @@ bool ModelProcess::ResizeDynamicInputShape(const std::vector<ShapeVector> &new_s
         return false;
       }
       auto data_type = CALL_ASCEND_API(aclmdlGetInputDataType, model_desc_, i);
+      if (data_type == aclDataType::ACL_DT_UNDEFINED) {
+        MS_LOG(ERROR) << "ModelProcess ResizeDynamicInputShape ERROR" << data_type;
+        return false;
+      }
       std::string input_name = CALL_ASCEND_API(aclmdlGetInputNameByIndex, model_desc_, i);
       if (input_name.empty()) {
         MS_LOG(ERROR) << "Get name of input " << i << " failed.";
@@ -1072,6 +1097,10 @@ bool ModelProcess::ResizeDynamicInputShapeRange(const std::vector<ShapeVector> &
     std::vector<int64_t> shape = new_shapes[i];
     auto buffer_size = CALL_ASCEND_API(aclmdlGetInputSizeByIndex, model_desc_, i);
     auto data_type = CALL_ASCEND_API(aclmdlGetInputDataType, model_desc_, i);
+    if (data_type == aclDataType::ACL_DT_UNDEFINED) {
+      MS_LOG(ERROR) << "ModelProcess ResizeDynamicInputShapeRange ERROR" << data_type;
+      return false;
+    }
     size_t elem_count = 1;
     for (size_t j = 0; j < shape.size(); ++j) {
       if (shape[j] < 0) {
