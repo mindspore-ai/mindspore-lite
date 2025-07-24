@@ -29,6 +29,7 @@ from mindspore_lite.tensor import DataType, Format, Tensor, TensorMeta
 from mindspore_lite.llm_engine import LLMReq, LLMEngineStatus, LLMRole, LLMEngine, LLMClusterInfo, LLMStatusCode
 from mindspore_lite.llm_engine import LLMException, LLMKVCacheNotExist, LLMWaitProcessTimeOut, LLMRepeatRequest
 from mindspore_lite.llm_engine import LLMRequestAlreadyCompleted, LLMEngineFinalized, LLMParamInvalid, LLMNotYetLink
+from mindspore_lite.lite_infer import LiteInfer
 from mindspore_lite import lite_infer
 
 
