@@ -5,11 +5,11 @@ mindspore_lite.LLMException
 
     LLMEngine的错误类型基类。
 
+    .. py:method:: StatusCode
+
+        获取LLMException状态码。
+
     .. py:method:: statusCode
         :property:
 
         LLMException状态码属性。
-
-    .. py:method:: StatusCode
-
-        获取LLMException状态码。

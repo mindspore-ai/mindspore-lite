@@ -25,7 +25,7 @@ from mindspore_lite.version import __version__
 from mindspore_lite.context import Context
 from mindspore_lite.converter import FmkType, Converter
 from mindspore_lite.model import ModelType, Model, ModelParallelRunner, ModelGroup, ModelGroupFlag
-from mindspore_lite.tensor import DataType, Format, Tensor
+from mindspore_lite.tensor import DataType, Format, Tensor, TensorMeta
 from mindspore_lite.llm_engine import LLMReq, LLMEngineStatus, LLMRole, LLMEngine, LLMClusterInfo, LLMStatusCode
 from mindspore_lite.llm_engine import LLMException, LLMKVCacheNotExist, LLMWaitProcessTimeOut, LLMRepeatRequest
 from mindspore_lite.llm_engine import LLMRequestAlreadyCompleted, LLMEngineFinalized, LLMParamInvalid, LLMNotYetLink

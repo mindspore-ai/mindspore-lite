@@ -14,32 +14,6 @@ mindspore_lite.LLMEngine
         - **TypeError** - `role` 不是LLMRole类型。
         - **TypeError** - `cluster_id` 不是int类型。
 
-    .. py:method:: init(options)
-
-        初始化LLMEngine。
-
-        参数：
-            - **options** (Dict[str, str]) - LLMEngine对象的初始化选项。
-
-        异常：
-            - **TypeError** - `options` 不是dict。
-            - **RuntimeError** - 初始化LLMEngine失败。
-
-    .. py:method:: cluster_id
-        :property:
-
-        获取LLMEngine对象的集群id。
-
-    .. py:method:: role
-        :property:
-
-        获取LLMEngine对象的角色。
-
-    .. py:method:: batch_mode
-        :property:
-
-        获取LLMEngine对象的批处理模式。
-
     .. py:method:: add_model(self, model_paths: Union[Tuple[str], List[str]], options: Dict[str, str], postprocess_model_path=None)
 
         在LLMEngine中添加一个模型。
@@ -54,6 +28,16 @@ mindspore_lite.LLMEngine
             - **TypeError** - `model_paths` 是list或者tuple，但其中的元素不是str类型。
             - **TypeError** - `options` 不是dict。
             - **RuntimeError** - 添加模型失败。
+        
+    .. py:method:: batch_mode
+        :property:
+
+        获取LLMEngine对象的批处理模式。
+
+    .. py:method:: cluster_id
+        :property:
+
+        获取LLMEngine对象的集群id。
 
     .. py:method:: complete_request(llm_req: LLMReq)
 
@@ -66,10 +50,6 @@ mindspore_lite.LLMEngine
             - **TypeError** - `llm_req` 不是LLMReq类型。
             - **RuntimeError** - LLMEngine对象未初始化。
 
-    .. py:method:: finalize()
-
-        析构LLMEngine。
-
     .. py:method:: fetch_status()
 
         获取LLMEngine状态。
@@ -80,6 +60,21 @@ mindspore_lite.LLMEngine
         异常：
             - **RuntimeError** - LLMEngine对象未初始化。
 
+    .. py:method:: finalize()
+
+        析构LLMEngine。
+
+    .. py:method:: init(options: Dict[str, str])
+
+        初始化LLMEngine。
+
+        参数：
+            - **options** (Dict[str, str]) - LLMEngine对象的初始化选项。
+
+        异常：
+            - **TypeError** - `options` 不是dict。
+            - **RuntimeError** - 初始化LLMEngine失败。
+    
     .. py:method:: link_clusters(clusters: Union[List[LLMClusterInfo], Tuple[LLMClusterInfo]], timeout=-1)
 
         连接集群。
@@ -94,6 +89,11 @@ mindspore_lite.LLMEngine
         异常：
             - **TypeError** - `clusters` 不是list或者tuple，或者其中的内容不是LLMClusterInfo类型。
             - **RuntimeError** - LLMEngine对象未初始化或者初始化失败。
+
+    .. py:method:: role
+        :property:
+
+        获取LLMEngine对象的角色。
 
     .. py:method:: unlink_clusters(clusters: Union[List[LLMClusterInfo], Tuple[LLMClusterInfo]], timeout=-1)
 

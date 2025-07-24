@@ -31,6 +31,11 @@ from mindspore_lite.model import set_env
 class LLMReq:
     """
     LLMEngine request, used to represent a multi round inference task.
+
+    Args:
+        prompt_cluster_id (int): prompt cluster id of this inference task.
+        req_id (int): request id of this inference task.
+        prompt_length (int): prompt length of this inference task.
     """
 
     def __init__(self, prompt_cluster_id: int, req_id: int, prompt_length: int):
@@ -123,6 +128,9 @@ class LLMReq:
 class LLMEngineStatus:
     """
     LLMEngine Status, which can be got from LLEngine.fetch_status.
+
+    Args:
+        status (object): LLEngine status.
     """
 
     def __init__(self, status):
@@ -986,7 +994,7 @@ class LLMEngine:
             timeout (int, optional): timeout in seconds. Default: ``-1``.
 
         Returns:
-            Status, tuple[Status], Whether all clusters unlink normally, and the unlink status of each cluster.
+            (Status, tuple[Status]), Whether all clusters unlink normally, and the unlink status of each cluster.
 
         Raises:
             TypeError: `clusters` is not list/tuple of LLMClusterInfo.
