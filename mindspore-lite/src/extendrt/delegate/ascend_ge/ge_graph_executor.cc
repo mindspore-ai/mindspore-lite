@@ -455,7 +455,6 @@ void GeGraphExecutor::GetGeSessionOptions(std::map<std::string, std::string> *ge
   if (config_it != config_infos_.end()) {
     for (auto &item : config_it->second) {
       ge_options[item.first] = item.second;
-      MS_LOG(INFO) << "Set ge session option " << item.first << " to " << item.second;
     }
   }
   config_it = config_infos_.find(lite::kAscendContextSection);
@@ -598,7 +597,6 @@ void GeGraphExecutor::GetGeGraphOptions(const FuncGraphPtr &anf_graph,
   if (config_it != config_infos_.end()) {
     for (auto &item : config_it->second) {
       ge_options[item.first] = item.second;
-      MS_LOG(INFO) << "Set ge graph option " << item.first << " to " << item.second;
     }
   }
 
@@ -659,9 +657,6 @@ bool GeGraphExecutor::AddGraph(const backend::ge_backend::DfGraphPtr &graph,
     return false;
   }
   auto graph_id = GetNextGraphIdx();
-  for (auto &option : options) {
-    MS_LOG(INFO) << "GE Graph " << graph_id << " option " << option.first << " = " << option.second;
-  }
   auto ge_status = ge_session_->AddGraph(static_cast<uint32_t>(graph_id), *(graph), options);
   if (ge_status != ge::GRAPH_SUCCESS) {
     MS_LOG(ERROR) << "Call GE AddGraph Failed: " << ge::GEGetErrorMsg();
@@ -1827,10 +1822,6 @@ std::shared_ptr<ge::Session> GeSessionManager::CreateGeSession(
     ge_session = s_it->second->ge_session.lock();
   }
   if (ge_session == nullptr) {
-    for (auto &option : session_options) {
-      MS_LOG(INFO) << "GE Session (lite session id " << session_id << ") option " << option.first << " = "
-                   << option.second;
-    }
     ge_session = std::make_shared<ge::Session>(session_options);
     if (ge_session == nullptr) {
       MS_LOG(ERROR) << "Failed to create ge session";

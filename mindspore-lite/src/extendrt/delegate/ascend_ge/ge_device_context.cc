@@ -296,9 +296,6 @@ Status GeDeviceContext::InitGe(const std::shared_ptr<MsContext> &inst_context, c
 
   std::map<std::string, std::string> ge_options;
   GetGeOptions(inst_context, context, &ge_options, config_info);
-  for (auto &option : ge_options) {
-    MS_LOG(INFO) << "GE Global option " << option.first << " = " << option.second;
-  }
   if (ge::GEInitialize(ge_options) != ge::GRAPH_SUCCESS) {
     MS_LOG(ERROR) << "Initialize GE failed: " << ge::GEGetErrorMsg();
     return kLiteError;
@@ -347,7 +344,6 @@ void GeDeviceContext::GetGeOptions(const std::shared_ptr<MsContext> &ms_context_
   if (config_it != config_info.end()) {
     for (auto &item : config_it->second) {
       (*ge_options)[item.first] = item.second;
-      MS_LOG(INFO) << "Set ge global option " << item.first << " to " << item.second;
     }
   }
 }

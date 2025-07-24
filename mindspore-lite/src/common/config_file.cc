@@ -128,7 +128,7 @@ void ParserExecutionPlan(const std::map<std::string, std::string> *config_infos,
     }
     auto index = value.find(':');
     if (index == std::string::npos) {
-      MS_LOG(WARNING) << "Invalid info in execution_plan: " << value;
+      MS_LOG(WARNING) << "Invalid info in execution_plan.";
       continue;
     }
     auto data_type_key = value.substr(0, index);
@@ -137,7 +137,7 @@ void ParserExecutionPlan(const std::map<std::string, std::string> *config_infos,
     }
     auto data_type_value = value.substr(index + 1);
     if (data_type_key != "data_type") {
-      MS_LOG(WARNING) << "Invalid key in execution_plan: " << value;
+      MS_LOG(WARNING) << "Invalid key in execution_plan.";
       continue;
     }
     TypeId type_id = kTypeUnknown;
@@ -146,7 +146,7 @@ void ParserExecutionPlan(const std::map<std::string, std::string> *config_infos,
     } else if (data_type_value == "float16") {
       type_id = kNumberTypeFloat16;
     } else {
-      MS_LOG(WARNING) << "Invalid value in execution_plan: " << value;
+      MS_LOG(WARNING) << "Invalid value in execution_plan.";
       continue;
     }
     (void)data_type_plan->insert(std::make_pair(op_name, type_id));
