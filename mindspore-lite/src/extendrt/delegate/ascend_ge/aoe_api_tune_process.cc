@@ -90,7 +90,6 @@ class AoePlugin {
     }
     std::map<ge::AscendString, ge::AscendString> options;
     for (auto &item : global_options) {
-      MS_LOG(INFO) << "Aoe global option " << item.first << " = " << item.second;
       options[ge::AscendString(item.first.c_str())] = ge::AscendString(item.second.c_str());
     }
     auto aoe_status = aoe_initialize_func_(options);
@@ -177,7 +176,6 @@ class AoePlugin {
     }
     std::map<ge::AscendString, ge::AscendString> options;
     for (auto &item : tuning_options) {
-      MS_LOG(INFO) << "Aoe tuning option " << item.first << " = " << item.second;
       options[ge::AscendString(item.first.c_str())] = ge::AscendString(item.second.c_str());
     }
     auto aoe_status = aoe_tuning_graph_func_(session_id, options);
@@ -343,7 +341,6 @@ std::map<std::string, std::string> AoeApiTuning::GetAoeGlobalOptions(const std::
   if (section_it != config_infos.end()) {
     for (auto &option_item : section_it->second) {
       aoe_options[option_item.first] = option_item.second;
-      MS_LOG(INFO) << "Update global option " << option_item.first << " to " << option_item.second;
     }
   }
   return aoe_options;
@@ -386,7 +383,6 @@ std::map<std::string, std::string> AoeApiTuning::GetAoeTuningOptions(const std::
   if (section_it != config_infos.end()) {
     for (auto &option_item : section_it->second) {
       aoe_options[option_item.first] = option_item.second;
-      MS_LOG(INFO) << "Update tuning option " << option_item.first << " to " << option_item.second;
     }
   }
   if ((aoe_options.find("dynamic_batch_size") != aoe_options.end() ||
