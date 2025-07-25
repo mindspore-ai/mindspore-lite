@@ -499,7 +499,7 @@ std::unique_ptr<Byte[]> Decrypt(size_t *decrypt_len, const std::string &encrypt_
   }
   std::ifstream fid(encrypt_data_path, std::ios::in | std::ios::binary);
   if (!fid) {
-    MS_LOG(ERROR) << "Open file '" << encrypt_data_path << "' failed, please check the correct of the file.";
+    MS_LOG(ERROR) << "Open file failed, please check the correct of the file.";
     return nullptr;
   }
   fid.seekg(0, std::ios_base::end);
@@ -518,13 +518,13 @@ std::unique_ptr<Byte[]> Decrypt(size_t *decrypt_len, const std::string &encrypt_
     fid.read(int_buf.data(), static_cast<int32_t>(sizeof(int32_t)));
     auto cipher_flag = static_cast<unsigned int>(ByteToInt(reinterpret_cast<Byte *>(int_buf.data()), int_buf.size()));
     if (dec_mode == "AES-GCM" && cipher_flag != GCM_MAGIC_NUM) {
-      MS_LOG(ERROR) << "File \"" << encrypt_data_path << "\" is not an encrypted AES-GCM file and cannot be decrypted";
+      MS_LOG(ERROR) << "File is not an encrypted AES-GCM file and cannot be decrypted";
       return nullptr;
     } else if (dec_mode == "AES-CBC" && cipher_flag != CBC_MAGIC_NUM) {
-      MS_LOG(ERROR) << "File \"" << encrypt_data_path << "\" is not an encrypted AES-CBC file and cannot be decrypted";
+      MS_LOG(ERROR) << "File is not an encrypted AES-CBC file and cannot be decrypted";
       return nullptr;
     } else if (dec_mode == "SM4-CBC" && cipher_flag != SM4_CBC_MAGIC_NUM) {
-      MS_LOG(ERROR) << "File \"" << encrypt_data_path << "\" is not an encrypted SM4-CBC file and cannot be decrypted";
+      MS_LOG(ERROR) << "File is not an encrypted SM4-CBC file and cannot be decrypted";
       return nullptr;
     }
 

@@ -981,17 +981,6 @@ ModelPoolConfig ModelPool::Init(const std::shared_ptr<RunnerConfig> &runner_conf
     MS_LOG(ERROR) << "CreateModelPoolConfig failed, context is empty.";
     return model_pool_config;
   }
-  if (!model_pool_config[0]->config_info.empty()) {
-    for (auto &item : model_pool_config[0]->config_info) {
-      auto section = item.first;
-      MS_LOG(INFO) << "Model Parallel Runner config info:";
-      MS_LOG(INFO) << "section: " << section;
-      auto configs = item.second;
-      for (auto &config : configs) {
-        MS_LOG(INFO) << "\t key: " << config.first << " | value: " << config.second;
-      }
-    }
-  }
   // update context device id
   auto ret = ParseDeviceIds(runner_config, &model_pool_config);
   if (ret != kSuccess) {

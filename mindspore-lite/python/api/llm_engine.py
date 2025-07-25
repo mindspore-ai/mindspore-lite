@@ -855,7 +855,7 @@ class LLMEngine:
         if not ret.IsOk():
             role_str = 'Prompt' if self.role == LLMRole.Prompt else 'Decoder'
             raise RuntimeError(
-                f"Failed to add_model, please check your model paths, options {options}, postprocess path,"
+                f"Failed to add_model, please check your model paths, options, postprocess path,"
                 f" role {role_str}, cluster id {self.cluster_id}")
         llm_model = LLMModel(llm_model_inner, self.batch_mode_)
         self.models_.append(llm_model)
@@ -890,8 +890,8 @@ class LLMEngine:
             raise LLMParamInvalid("Parameters invalid")
         if not ret.IsOk():
             role_str = 'Prompt' if self.role == LLMRole.Prompt else 'Decoder'
-            raise RuntimeError(f"Failed to init LLMEngine, role {role_str}, cluster id {self.cluster_id},"
-                               f" options {options}")
+            raise RuntimeError(f"Failed to init LLMEngine, please check your role {role_str}, "
+                               f"cluster id {self.cluster_id} and options.")
         self.inited_ = True
         for model in self.models_:
             model.inited_ = True

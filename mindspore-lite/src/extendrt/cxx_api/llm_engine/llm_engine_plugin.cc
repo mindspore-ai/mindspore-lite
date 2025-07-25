@@ -303,10 +303,10 @@ void LLMEnginePlugin::SetPagedAttentionOptions(std::map<std::string, std::string
   if (it != options.end()) {
     int64_t option_num_total_blocks = 0;
     lite::ConvertStrToInt(it->second, &option_num_total_blocks);
-    MS_LOG(INFO) << "Found llm.PagedAttentionBlocksNum in model config, value: " << it->second;
+    MS_LOG(INFO) << "Found llm.PagedAttentionBlocksNum in model config.";
     if (num_total_blocks_ != option_num_total_blocks) {
-      MS_LOG(WARNING) << "llm.PagedAttentionBlocksNum got from option " << it->second << " != KVCache dim 0 value "
-                      << num_total_blocks_ << ", KVCache shape " << kv_shape;
+      MS_LOG(WARNING) << "llm.PagedAttentionBlocksNum got from option != KVCache dim 0 value " << num_total_blocks_
+                      << ", KVCache shape " << kv_shape;
       num_total_blocks_ = option_num_total_blocks;
     }
   } else {
@@ -319,10 +319,10 @@ void LLMEnginePlugin::SetPagedAttentionOptions(std::map<std::string, std::string
   if (it != options.end()) {
     int64_t option_block_size = 0;
     lite::ConvertStrToInt(it->second, &option_block_size);
-    MS_LOG(INFO) << "Found llm.PagedAttentionBlockSize in model config, value: " << it->second;
+    MS_LOG(INFO) << "Found llm.PagedAttentionBlockSize in model config.";
     if (block_size_ != option_block_size) {
-      MS_LOG(WARNING) << "llm.PagedAttentionBlockSize got from option " << it->second << " != KVCache dim 1 value "
-                      << block_size_ << ", KVCache shape " << kv_shape;
+      MS_LOG(WARNING) << "llm.PagedAttentionBlockSize got from option != KVCache dim 1 value " << block_size_
+                      << ", KVCache shape " << kv_shape;
       block_size_ = option_block_size;
     }
   } else {
@@ -345,9 +345,9 @@ void LLMEnginePlugin::SetPagedAttentionOptions(std::map<std::string, std::string
   if (it != options.end()) {
     int64_t option_max_seq_len = 0;
     lite::ConvertStrToInt(it->second, &option_max_seq_len);
-    MS_LOG(INFO) << "Found llm.PagedAttentionMaxSeqLen in model config, value: " << it->second;
+    MS_LOG(INFO) << "Found llm.PagedAttentionMaxSeqLen in model config.";
     if (max_seq_len_ != option_max_seq_len) {
-      MS_LOG(WARNING) << "llm.PagedAttentionMaxSeqLen got from option " << it->second << " != " << max_seq_len_
+      MS_LOG(WARNING) << "llm.PagedAttentionMaxSeqLen got from option != " << max_seq_len_
                       << " calculated from block_table(last input) shape " << block_table_shape << " and block_size "
                       << block_size_;
       max_seq_len_ = option_max_seq_len;
@@ -424,7 +424,7 @@ Status LLMEnginePlugin::AddModel(const std::vector<LLMEngineModelInfo> &model_in
   std::map<ge::AscendString, ge::AscendString> model_options;
   for (auto &option : options) {
     model_options[ge::AscendString(option.first.c_str())] = ge::AscendString(option.second.c_str());
-    MS_LOG(INFO) << "AddLLMModel option " << option.first << " = " << option.second;
+    MS_LOG(INFO) << "AddLLMModel option ok.";
   }
   MS_LOG(INFO) << "Start to call llm::LLMEngine::LLMEngineInitializeV2";
   auto ge_status = llm_engine_->AddLLMModel(model_buffers_map, model_options, *model_id);
@@ -461,7 +461,7 @@ Status LLMEnginePlugin::Init(const std::map<std::string, std::string> &options_i
   std::map<ge::AscendString, ge::AscendString> init_options;
   for (auto &option : options) {
     init_options[ge::AscendString(option.first.c_str())] = ge::AscendString(option.second.c_str());
-    MS_LOG(INFO) << "LLMEngineInitializeV2 option " << option.first << " = " << option.second;
+    MS_LOG(INFO) << "Add LLMEngineInitializeV2 option ok.";
   }
   MS_LOG(INFO) << "Start to call llm::LLMEngine::LLMEngineInitialize";
   auto ge_status = llm_engine_->LLMEngineInitializeV2({}, init_options);
@@ -859,8 +859,6 @@ Status LLMEnginePlugin::LinkClusters(const std::vector<LLMClusterInfo> &clusters
     auto &cluster = clusters[i];
     MS_LOG(INFO) << "Cluster " << i << ", remote_cluster_id " << cluster.remote_cluster_id << ", remote_role_type "
                  << cluster.remote_role_type;
-    MS_LOG(INFO) << "local ip infos: " << lite::VectorToStr(cluster.local_ip_infos, ip_info_as_str);
-    MS_LOG(INFO) << "remote ip infos: " << lite::VectorToStr(cluster.remote_ip_infos, ip_info_as_str);
   }
   TransLLMClusterInfos(clusters, &llm_clusters);
   std::vector<ge::Status> ge_rets;
@@ -876,9 +874,7 @@ Status LLMEnginePlugin::LinkClusters(const std::vector<LLMClusterInfo> &clusters
       rets->push_back(OnGeStatus(ge_ret, "LinkClusters", "return"));
       auto &cluster = clusters[i];
       MS_LOG(ERROR) << "Cluster " << i << " error occur, ge error code " << ge_ret << ", remote_cluster_id "
-                    << cluster.remote_cluster_id << ", remote_role_type " << cluster.remote_role_type
-                    << ", local ip infos: " << lite::VectorToStr(cluster.local_ip_infos, ip_info_as_str)
-                    << "remote ip infos: " << lite::VectorToStr(cluster.remote_ip_infos, ip_info_as_str);
+                    << cluster.remote_cluster_id << ", remote_role_type " << cluster.remote_role_type;
     } else {
       rets->push_back(kSuccess);
     }
@@ -913,8 +909,6 @@ Status LLMEnginePlugin::UnlinkClusters(const std::vector<LLMClusterInfo> &cluste
     auto &cluster = clusters[i];
     MS_LOG(INFO) << "Cluster " << i << ", remote_cluster_id " << cluster.remote_cluster_id << ", remote_role_type "
                  << cluster.remote_role_type;
-    MS_LOG(INFO) << "local ip infos: " << lite::VectorToStr(cluster.local_ip_infos, ip_info_as_str);
-    MS_LOG(INFO) << "remote ip infos: " << lite::VectorToStr(cluster.remote_ip_infos, ip_info_as_str);
   }
   TransLLMClusterInfos(clusters, &llm_clusters);
   std::vector<ge::Status> ge_rets;
@@ -930,9 +924,7 @@ Status LLMEnginePlugin::UnlinkClusters(const std::vector<LLMClusterInfo> &cluste
       rets->push_back(OnGeStatus(ge_ret, "UnlinkClusters", "return"));
       auto &cluster = clusters[i];
       MS_LOG(ERROR) << "Cluster " << i << " error occur, ge error code " << ge_ret << ", remote_cluster_id "
-                    << cluster.remote_cluster_id << ", remote_role_type " << cluster.remote_role_type
-                    << ", local ip infos: " << lite::VectorToStr(cluster.local_ip_infos, ip_info_as_str)
-                    << "remote ip infos: " << lite::VectorToStr(cluster.remote_ip_infos, ip_info_as_str);
+                    << cluster.remote_cluster_id << ", remote_role_type " << cluster.remote_role_type;
     } else {
       rets->push_back(kSuccess);
     }
