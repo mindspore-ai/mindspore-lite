@@ -453,10 +453,11 @@ int SplitInferShape(const CNodePtr &cnode, const std::vector<ShapeVector> &in_sh
     return lite::RET_ERROR;
   }
   auto prim = GetCNodePrimitive(cnode);
+  MS_CHECK_TRUE_MSG(prim != nullptr, lite::RET_ERROR, "prim is nullptr.");
   auto out_num = prim->GetAttr(ops::kOutputNum) == nullptr ? 0 : GetValue<int64_t>(prim->GetAttr(ops::kOutputNum));
   auto size_splits = prim->GetAttr(ops::kSizeSplits) == nullptr
-                     ? std::vector<int64_t>{}
-                     : GetValue<std::vector<int64_t>>(prim->GetAttr(ops::kSizeSplits));
+                       ? std::vector<int64_t>{}
+                       : GetValue<std::vector<int64_t>>(prim->GetAttr(ops::kSizeSplits));
   out_num = (out_num == 0 ? static_cast<int64_t>(size_splits.size()) : out_num);
   if (out_num <= 0) {
     return lite::RET_NOT_SUPPORT;
@@ -543,8 +544,8 @@ int StackInferShape(const CNodePtr &cnode, const std::vector<ShapeVector> &in_sh
     return lite::RET_INPUT_TENSOR_ERROR;
   }
   if (std::any_of(in_shapes.begin(), in_shapes.end(), [](const ShapeVector &in_shape) {
-    return std::any_of(in_shape.begin(), in_shape.end(), [](int64_t val) { return val == 0; });
-  })) {
+        return std::any_of(in_shape.begin(), in_shape.end(), [](int64_t val) { return val == 0; });
+      })) {
     return lite::RET_NOT_SUPPORT;
   }
   auto prim = GetCNodePrimitive(cnode);
@@ -595,7 +596,7 @@ int StackInferShape(const CNodePtr &cnode, const std::vector<ShapeVector> &in_sh
 }
 
 int CheckStridedSlice(const CNodePtr &cnode, int64_t in_rank, lite::DataInfo *begins, lite::DataInfo *ends) {
-  MS_ASSERT(cnode != nullptr);
+  MS_CHECK_TRUE_MSG(cnode != nullptr, lite::RET_ERROR, "cnode is nullptr.");
   auto prim = GetCNodePrimitive(cnode);
   MS_CHECK_TRUE_MSG(prim != nullptr, lite::RET_ERROR, "StridedSlice's primitive is a nullptr.");
   int64_t ellipsis_mask = prim->GetAttr(ops::kEllipsisMask) ? GetValue<int64_t>(prim->GetAttr(ops::kEllipsisMask)) : 0;
@@ -652,6 +653,7 @@ int StridedSliceInferShape(const CNodePtr &cnode, const std::vector<ShapeVector>
   }
 
   auto prim = GetCNodePrimitive(cnode);
+  MS_CHECK_TRUE_MSG(prim != nullptr, lite::RET_ERROR, "StridedSlice's primitive is a nullptr.");
   int64_t begin_mask = prim->GetAttr(ops::kBeginMask) ? GetValue<int64_t>(prim->GetAttr(ops::kBeginMask)) : 0;
   int64_t end_mask = prim->GetAttr(ops::kEndMask) ? GetValue<int64_t>(prim->GetAttr(ops::kEndMask)) : 0;
   int64_t shrink_mask =
@@ -833,15 +835,15 @@ int DynamicShapePreprocessor::DoInfer(const CNodePtr &cnode, const std::string &
   std::map<std::string, std::function<int(const CNodePtr &cnode, const std::vector<ShapeVector> &in_shapes,
                                           std::vector<ShapeVector> *out_shapes)>>
     infer_func = {
-    {prim::kPrimAddFusion->name(), ArithmeticInferShape},  {prim::kPrimActivation->name(), CommonInferShape},
-    {prim::kPrimCast->name(), CommonInferShape},           {prim::kPrimConcat->name(), ConcatInferShape},
-    {prim::kPrimExpandDims->name(), ExpandDimsInferShape}, {prim::kPrimGather->name(), GatherInferShape},
-    {prim::kPrimMatMulFusion->name(), MatMulInferShape},   {prim::kPrimMulFusion->name(), ArithmeticInferShape},
-    {prim::kPrimNotEqual->name(), CommonInferShape},       {prim::kPrimReduceFusion->name(), ReduceInferShape},
-    {prim::kPrimReshape->name(), ReshapeInferShape},       {prim::kPrimShape->name(), ShapeInferShape},
-    {prim::kPrimSplit->name(), SplitInferShape},           {prim::kPrimSqueeze->name(), SqueezeInferShape},
-    {prim::kPrimStack->name(), StackInferShape},           {prim::kPrimStridedSlice->name(), StridedSliceInferShape},
-    {prim::kPrimTranspose->name(), TransposeInferShape}};
+      {prim::kPrimAddFusion->name(), ArithmeticInferShape},  {prim::kPrimActivation->name(), CommonInferShape},
+      {prim::kPrimCast->name(), CommonInferShape},           {prim::kPrimConcat->name(), ConcatInferShape},
+      {prim::kPrimExpandDims->name(), ExpandDimsInferShape}, {prim::kPrimGather->name(), GatherInferShape},
+      {prim::kPrimMatMulFusion->name(), MatMulInferShape},   {prim::kPrimMulFusion->name(), ArithmeticInferShape},
+      {prim::kPrimNotEqual->name(), CommonInferShape},       {prim::kPrimReduceFusion->name(), ReduceInferShape},
+      {prim::kPrimReshape->name(), ReshapeInferShape},       {prim::kPrimShape->name(), ShapeInferShape},
+      {prim::kPrimSplit->name(), SplitInferShape},           {prim::kPrimSqueeze->name(), SqueezeInferShape},
+      {prim::kPrimStack->name(), StackInferShape},           {prim::kPrimStridedSlice->name(), StridedSliceInferShape},
+      {prim::kPrimTranspose->name(), TransposeInferShape}};
   if (infer_func.find(op_type) == infer_func.end()) {
     MS_LOG(ERROR) << "Current op: " << op_type << " doesn't support infer.";
     return lite::RET_ERROR;

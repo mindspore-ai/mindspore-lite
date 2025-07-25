@@ -35,6 +35,7 @@
 # other
 "mindspore-lite/mindspore-lite/examples/quick_start_micro/"                                                "syntaxError"
 "mindspore-lite/mindspore-lite/python/src/pybind_module.cc"                                                "syntaxError"
+"mindspore-lite/mindspore-lite/java/src/main/native/model.cpp"                                             "unreadVariable"
 
 # nnacl
 "mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/experimental/"                                          "unreadVariable"

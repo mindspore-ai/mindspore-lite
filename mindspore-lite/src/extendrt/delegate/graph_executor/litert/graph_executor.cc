@@ -241,6 +241,10 @@ bool LiteRTGraphExecutor::RunGraph(uint32_t, const std::vector<MSTensor> &inputs
     MS_LOG(DEBUG) << "Empty outputs.";
     return false;
   }
+  if (outputs == nullptr) {
+    MS_LOG(ERROR) << "Output tensor is null.";
+    return false;
+  }
   *outputs = res;
   return true;
 }

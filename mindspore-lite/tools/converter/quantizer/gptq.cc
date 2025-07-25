@@ -61,6 +61,9 @@ int Gptq::FindQuantParams(const float *weight_data, std::vector<int> dims, int e
   if (prefer_dim == 0) {
     auto bucket_size = element_count / dims[prefer_dim];
     for (int i = 0; i < dims[prefer_dim]; ++i) {
+      if (weight_data == nullptr) {
+        return RET_ERROR;
+      }
       auto mim_max = GetFloatMinMaxValue(weight_data + i * bucket_size, bucket_size);
       auto iter = perchannel_min_max.find(i);
       MS_CHECK_TRUE_RET(iter != perchannel_min_max.end(), RET_ERROR);

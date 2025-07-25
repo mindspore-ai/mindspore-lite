@@ -759,7 +759,7 @@ int InsertQuantNodeManager::CalculateScaleZPNode(const FuncGraphPtr &func_graph,
       scales.push_back(static_cast<float16>(input_quant_params.at(i).scale * input_quant_params.at(i).varCorr));
       zps.push_back(static_cast<float16>(-input_quant_params.at(i).zeroPoint +
                                          input_quant_params.at(i).meanCorr /
-                                         (input_quant_params.at(i).scale * input_quant_params.at(i).varCorr)));
+                                           (input_quant_params.at(i).scale * input_quant_params.at(i).varCorr)));
     }
     *scales_node = opt::BuildFloat16VecParameterNode(func_graph, scales, input_node->fullname_with_scope() + "-scales");
     *zps_node = opt::BuildFloat16VecParameterNode(func_graph, zps, input_node->fullname_with_scope() + "-zps");
@@ -770,7 +770,7 @@ int InsertQuantNodeManager::CalculateScaleZPNode(const FuncGraphPtr &func_graph,
       scales.push_back(static_cast<float>(input_quant_params.at(i).scale * input_quant_params.at(i).varCorr));
       zps.push_back(static_cast<float>(-input_quant_params.at(i).zeroPoint +
                                        input_quant_params.at(i).meanCorr /
-                                       (input_quant_params.at(i).scale * input_quant_params.at(i).varCorr)));
+                                         (input_quant_params.at(i).scale * input_quant_params.at(i).varCorr)));
     }
     *scales_node = opt::BuildFloatVecParameterNode(func_graph, scales, input_node->fullname_with_scope() + "-scales");
     *zps_node = opt::BuildFloatVecParameterNode(func_graph, zps, input_node->fullname_with_scope() + "-zps");
@@ -1396,6 +1396,7 @@ int InsertQuantNodeManager::AdjustTransposeNodeForSingleMatMulNode(const FuncGra
       CHECK_NULL_RETURN(manager);
       auto weight_input = cnode->input(kWeightIndex + 1);
       auto dst_prim = GetCNodePrimitive(cnode);
+      MS_CHECK_TRUE_MSG(dst_prim != nullptr, RET_ERROR, "dst_prim is nullptr.");
       MS_LOG(INFO) << cnode->fullname_with_scope() << " transpose_b is true.";
       dst_prim->AddAttr(mindspore::ops::kTransposeB, MakeValue(false));
       ParameterPtr param_node;

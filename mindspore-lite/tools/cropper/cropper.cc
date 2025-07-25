@@ -30,7 +30,12 @@ int Cropper::ReadPackage() {
     in_file.close();
 
     char buf[kBufSize];
-    std::string cmd = "ar -t " + this->flags_->package_file_;
+    std::string real_path = RealPath(this->flags_->package_file_.c_str());
+    if (real_path.empty()) {
+      MS_LOG(ERROR) << "real_path is invalid.";
+      return RET_ERROR;
+    }
+    std::string cmd = "ar -t " + real_path;
     MS_LOG(DEBUG) << cmd;
 
     FILE *p_file = popen(cmd.c_str(), "r");

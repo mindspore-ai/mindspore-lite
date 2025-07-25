@@ -210,7 +210,6 @@ bool ReshapeReduceFusion::CheckReduce(const CNodePtr &reduce) {
 }
 
 bool ReshapeReduceFusion::CheckReshape(const CNodePtr &reshape) {
-  MS_ASSERT(reshape != nullptr);
   MS_CHECK_TRUE_RET(reshape != nullptr, false);
   if (IsMarkedTrainOp(reshape)) {
     return false;

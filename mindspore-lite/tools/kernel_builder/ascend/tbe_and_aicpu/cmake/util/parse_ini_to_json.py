@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# copy from https://gitee.com/ascend/samples/blob/master/best_practices/contrib/blast-code/blast_tik/cmake/util/parse_ini_to_json.py
 
 """
 parser ini to json
@@ -75,7 +76,7 @@ def parse_ini_to_obj(ini_file_path, tbe_ops_info):
     tbe_ops_info:ops_info
     ----------------
     """
-    with open(ini_file_path) as ini_file:
+    with open(os.path.relpath(ini_file_path)) as ini_file:
         lines = ini_file.readlines()
         op_dict = {}
         op_name = ""
@@ -302,8 +303,7 @@ def write_json_file(tbe_ops_info, json_file_path):
         os.remove(json_file_real_path)
     with os.fdopen(os.open(json_file_real_path, flags, modes), "w") as file_path:
         # Only the owner and group have rights
-        os.chmod(json_file_real_path, stat.S_IWGRP + stat.S_IWUSR + stat.S_IRGRP
-                 + stat.S_IRUSR)
+        os.chmod(json_file_real_path, stat.S_IWUSR + stat.S_IRGRP + stat.S_IRUSR)
         json.dump(tbe_ops_info, file_path, sort_keys=True, indent=4,
                   separators=(',', ':'))
     print("Compile op info cfg successfully.")

@@ -135,8 +135,9 @@ int FFNAntiquantFusion::GetExpertNumFromAntiQuantModeNodes(const AnfNodePtr &nod
     return -1;
   }
   auto ascend_antiquant_node = add_node->cast<CNodePtr>()->input(kInputIndexOne);
-  if (!(opt::CheckPrimitiveType(ascend_antiquant_node, prim::kPrimAntiQuant) ||
-        GetCNodePrimitive(ascend_antiquant_node)->name() == "AscendAntiQuant")) {
+  auto prim = GetCNodePrimitive(ascend_antiquant_node);
+  CHECK_NULL_RETURN(prim);
+  if (!(opt::CheckPrimitiveType(ascend_antiquant_node, prim::kPrimAntiQuant) || prim->name() == "AscendAntiQuant")) {
     MS_LOG(ERROR) << ascend_antiquant_node->fullname_with_scope()
                   << " The node is not AscendAntiquant node, fail to get expert num";
     return -1;

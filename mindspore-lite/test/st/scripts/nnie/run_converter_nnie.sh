@@ -113,7 +113,6 @@ basepath=$(pwd)
 echo ${basepath}
 #set -e
 
-# Example:sh run_nnie_nets.sh r /home/temp_test -m /home/temp_test/models -e arm32_3516D -d 192.168.1.1
 while getopts "r:m:d:e:l:" opt; do
     case ${opt} in
         r)

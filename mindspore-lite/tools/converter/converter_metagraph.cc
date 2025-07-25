@@ -137,6 +137,9 @@ STATUS ConverterToMetaGraph::Save(schema::MetaGraphT *meta_graph, const std::sha
     size_t keyLen = 0;
     auto status = InitEncryptKey(param, encKey, &keyLen);
     if (status != RET_OK) {
+      if (memset_s(encKey, kEncMaxLen, 0, kEncMaxLen) != EOK) {
+        MS_LOG(ERROR) << "memset_s failed!";
+      }
       MS_LOG(ERROR) << "check encryption failed!ret = " << status;
       return status;
     }

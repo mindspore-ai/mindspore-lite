@@ -407,9 +407,12 @@ class ParallelOp : public DatasetOp {
   std::vector<Task *> worker_tasks_;
 
   int32_t NextWorkerID() {
-    int32_t next_worker = next_worker_id_;
-    next_worker_id_ = (next_worker_id_ + 1) % num_workers_;
-    return next_worker;
+    {
+      std::unique_lock<std::mutex> _lock(mux_);
+      int32_t next_worker = next_worker_id_;
+      next_worker_id_ = (next_worker_id_ + 1) % num_workers_;
+      return next_worker;
+    }
   }
 
  public:

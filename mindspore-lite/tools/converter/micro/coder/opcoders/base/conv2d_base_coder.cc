@@ -204,6 +204,7 @@ int Conv2DBaseCoder::SetInputTensorQuantParam() {
 int Conv2DBaseCoder::SetFilterTensorQuantParam() {
   MS_CHECK_TRUE_MSG(conv_quant_arg_ != nullptr, RET_ERROR, "conv_quant_arg_ is nullptr");
   size_t weight_arg_num = conv_quant_arg_->filter_arg_num_;
+  MS_CHECK_TRUE_RET(conv_quant_arg_->filter_quant_args_ != nullptr, RET_NULL_PTR);
   if (weight_arg_num == kPerTensor) {
     LiteQuantParam weight_quant_arg = filter_tensor_->quant_params().at(0);
     conv_quant_arg_->filter_quant_args_[0].zp_ = weight_quant_arg.zeroPoint;

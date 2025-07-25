@@ -36,7 +36,11 @@ def train_wrap(net, loss_fn=None, optimizer=None, weights=None):
 
 def save_t(t, file):
     x = t.asnumpy()
-    x.tofile(file)
+    real_path = os.path.realpath(file)
+    if not os.path.exists(real_path):
+        x.tofile(file)
+    else:
+        print("tensor not saved: already exists")
 
 
 def train_and_save(name, net, net_train, x, l, epoch):
@@ -50,9 +54,13 @@ def train_and_save(name, net, net_train, x, l, epoch):
     if isinstance(y, tuple):
         i = 1
         for t in y:
-            with os.fdopen(name + "_output" + str(i) + ".bin", 'w') as f:
-                for j in t.asnumpy().flatten():
-                    f.write(str(j)+' ')
+            real_path = os.path.realpath(name + "_output" + str(i) + ".bin")
+            if not os.path.exists(real_path):
+                with os.fdopen(real_path, 'w') as f:
+                    for j in t.asnumpy().flatten():
+                        f.write(str(j)+' ')
+            else:
+                print("file not saved: already exists")
             i = i + 1
     else:
         y_name = name + "_output1.bin"

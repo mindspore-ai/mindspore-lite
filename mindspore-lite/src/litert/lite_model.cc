@@ -666,7 +666,7 @@ int Model::Export(Model *model, const char *filename) {
 
   std::ofstream ofs(filename);
   if (!ofs.good() || !ofs.is_open()) {
-    MS_LOG(ERROR) << "Could not open file \"" << filename << "\" for writing";
+    MS_LOG(ERROR) << "Could not open file for writing";
     return RET_ERROR;
   }
 

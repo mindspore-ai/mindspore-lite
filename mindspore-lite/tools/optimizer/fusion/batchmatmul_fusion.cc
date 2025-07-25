@@ -118,7 +118,7 @@ std::shared_ptr<ops::MatMulFusion> BuildMatMulPrim(const CNodePtr &stack_cnode) 
   auto fullconnect_cnode = fullconnect_node->cast<CNodePtr>();
   MS_CHECK_TRUE_RET(fullconnect_cnode != nullptr, nullptr);
   auto fc_prim = GetValueNode<PrimitiveCPtr>(fullconnect_cnode->input(0));
-  MS_ASSERT(fc_prim != nullptr);
+  MS_CHECK_TRUE_RET(fc_prim != nullptr, nullptr);
 
   // quant param in QuantParamHolder
   lite::QuantParamsVector rmatmul_quant_params;

@@ -90,7 +90,12 @@ class CalibDataGenerator {
   template <typename T>
   int ReadBinToOfstream(const std::string &file_path, const struct OpAttr &op_attr, std::ofstream &ofs) {
     std::ifstream ifs;
-    ifs.open(file_path, std::ifstream::in | std::ios::binary);
+    std::string real_path = lite::RealPath(file_path.c_str());
+    if (real_path.empty()) {
+      MS_LOG(ERROR) << "Invalid realpath!";
+      return RET_ERROR;
+    }
+    ifs.open(real_path, std::ifstream::in | std::ios::binary);
     if (!ifs.is_open() || !ifs.good()) {
       MS_LOG(ERROR) << "open file failed. " << file_path;
       return RET_ERROR;

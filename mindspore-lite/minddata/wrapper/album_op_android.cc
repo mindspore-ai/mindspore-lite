@@ -147,7 +147,12 @@ bool AlbumOp::CheckImageType(const std::string &file_name, bool *valid) {
   std::ifstream file_handle;
   constexpr int read_num = 3;
   *valid = false;
-  file_handle.open(file_name, std::ios::binary | std::ios::in);
+  auto file_name_realpath = FileUtils::GetRealPath(file_name.c_str());
+  if (!file_name_realpath.has_value()) {
+    MS_LOG(ERROR) << "Invalid file path, " << file_name << " does not exist.";
+    return false;
+  }
+  file_handle.open(file_name_realpath.value(), std::ios::binary | std::ios::in);
   if (!file_handle.is_open()) {
     return false;
   }
@@ -181,7 +186,11 @@ Status AlbumOp::LoadImageTensor(const std::string &image_file_path, int32_t col_
   TensorPtr image;
   TensorPtr rotate_tensor;
   std::ifstream fs;
-  fs.open(image_file_path, std::ios::binary | std::ios::in);
+  auto image_realpath = FileUtils::GetRealPath(image_file_path.c_str());
+  if (!image_realpath.has_value()) {
+    RETURN_STATUS_UNEXPECTED("Invalid file path, " + image_file_path + " does not exist.");
+  }
+  fs.open(image_realpath.value(), std::ios::binary | std::ios::in);
   if (fs.fail()) {
     MS_LOG(WARNING) << "File not found:" << image_file_path << ".";
     // If file doesn't exist, we don't flag this as error in input check, simply push back empty tensor
@@ -228,7 +237,12 @@ Status AlbumOp::LoadImageTensor(const std::string &image_file_path, int32_t col_
 
 // get orientation from EXIF file
 int AlbumOp::GetOrientation(const std::string &file) {
-  FILE *fp = fopen(file.c_str(), "rb");
+  auto file_realpath = FileUtils::GetRealPath(file.c_str());
+  if (!file_realpath.has_value()) {
+    MS_LOG(ERROR) << "Invalid file path, " << file << " does not exist.";
+    return 0;
+  }
+  FILE *fp = fopen(file_realpath.value().c_str(), "rb");
   if (fp == nullptr) {
     MS_LOG(ERROR) << "Can't read file for EXIF:  file = " << file;
     return 0;

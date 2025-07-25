@@ -30,11 +30,13 @@ MSContextHandle MSContextCreate() {
 }
 
 void MSContextDestroy(MSContextHandle *context) {
-  if (context != nullptr && *context != nullptr) {
-    auto impl = static_cast<mindspore::Context *>(*context);
-    delete impl;
-    *context = nullptr;
+  if (context == nullptr || *context == nullptr) {
+    MS_LOG(ERROR) << "context is nullptr.";
+    return;
   }
+  auto impl = static_cast<mindspore::Context *>(*context);
+  delete impl;
+  *context = nullptr;
 }
 
 void MSContextSetThreadNum(MSContextHandle context, int32_t thread_num) {
@@ -153,16 +155,22 @@ MSDeviceInfoHandle MSDeviceInfoCreate(MSDeviceType device_type) {
 }
 
 void MSDeviceInfoDestroy(MSDeviceInfoHandle *device_info) {
-  if (device_info != nullptr && *device_info != nullptr) {
-    auto impl = static_cast<mindspore::DeviceInfoContext *>(*device_info);
-    delete impl;
-    *device_info = nullptr;
+  if (device_info == nullptr || *device_info == nullptr) {
+    MS_LOG(ERROR) << "device_info is nullptr.";
+    return;
   }
+  auto impl = static_cast<mindspore::DeviceInfoContext *>(*device_info);
+  delete impl;
+  *device_info = nullptr;
 }
 
 void MSDeviceInfoSetProvider(MSDeviceInfoHandle device_info, const char *provider) {
   if (device_info == nullptr) {
     MS_LOG(ERROR) << "device_info is nullptr.";
+    return;
+  }
+  if (provider == nullptr) {
+    MS_LOG(ERROR) << "provider is nullptr.";
     return;
   }
   auto impl = static_cast<mindspore::DeviceInfoContext *>(device_info);
@@ -190,6 +198,10 @@ const char *MSDeviceInfoGetProvider(const MSDeviceInfoHandle device_info) {
 void MSDeviceInfoSetProviderDevice(MSDeviceInfoHandle device_info, const char *device) {
   if (device_info == nullptr) {
     MS_LOG(ERROR) << "device_info is nullptr.";
+    return;
+  }
+  if (device == nullptr) {
+    MS_LOG(ERROR) << "device is nullptr.";
     return;
   }
   auto impl = static_cast<mindspore::DeviceInfoContext *>(device_info);

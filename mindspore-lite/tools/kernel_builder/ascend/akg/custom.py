@@ -818,13 +818,13 @@ def cache_output_tensors(tensor_desc, output_desc):
 
 def save(filename, contents):
     """Save to file"""
-    with os.fdopen(os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o660), 'w') as f:
+    with os.fdopen(os.open(os.path.realpath(filename), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o660), 'w') as f:
         f.write(contents)
 
 
 def update_akg_info(args, info_path, kernel_name=None):
     """Update akg info base on the current inputs provided by GE"""
-    with open(info_path, 'r') as f:
+    with open(os.path.realpath(info_path), 'r') as f:
         info_str = f.read()
         desc = json.loads(info_str)
         desc["op_ori"] = desc[OP]
@@ -1061,10 +1061,10 @@ def custom_train(*args, **kwags):
         file_path = os.path.join(composite_graph_dir, kernel_name + ".info")
         if not os.path.isfile(file_path):
             return real_info_path
-        with open(real_info_path, 'r') as f:
+        with open(os.path.realpath(real_info_path), 'r') as f:
             desc = json.loads(f.read())
             if target_info in desc:
-                with open(file_path, 'r') as fo:
+                with open(os.path.realpath(file_path), 'r') as fo:
                     info_desc = json.loads(fo.read())
                     info_desc[target_info] = desc[target_info]
                 save(file_path, json.dumps(info_desc))

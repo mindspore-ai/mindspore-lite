@@ -17,6 +17,7 @@
 import sys
 import os
 import io
+import stat
 import argparse
 from itertools import chain
 
@@ -155,6 +156,7 @@ if __name__ == "__main__":
 
     saveDir = os.path.dirname(parameters.Output_File[0])
     if not os.path.exists(saveDir):
-        os.mkdir(saveDir)
+        os.mkdir(saveDir, 0o700)
     with open(parameters.Output_File[0], "w", encoding='utf-8') as output_file:
         output_file.write(generate_code_str)
+    os.chmod(parameters.Output_File[0], stat.S_IWUSR, stat.S_IRUSR)

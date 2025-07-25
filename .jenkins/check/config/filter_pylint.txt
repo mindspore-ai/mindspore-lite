@@ -12,6 +12,10 @@
 "mindspore-lite/mindspore-lite/test/st/python/test_large_model_inference.py"                                  "redefined-outer-name"
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/ascendc/cmake/util/insert_simplified_keys.py"      "duplicate-key"
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/ascendc/cmake/util/replay_codegen.py"              "bad-continuation"
+"mindspore-lite/mindspore-lite/test/st/ops/frame/optest.py"                                                   "invalid-name"
+"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/akg/custom.py"                                     "consider-using-in"
+"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/akg/custom.py"                                     "unused-argument"
+"mindspore-lite/mindspore-lite/python/api/lite_infer.py"                                                      "arguments-differ"
 
 # ascend samples
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_dsl/sample/"                              "wrong-import-order"
@@ -19,4 +23,11 @@
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_dsl/sample/"                              "bad-whitespace"
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"                              "bad-whitespace"
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_dsl/sample/"                              "bad-continuation"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"
+"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_and_aicpu/"                               "invalid-name"
+"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/ascendc/"                                     "invalid-name"
+"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/ascendc/"                                     "unused-argument"
+
+# nnacl
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/experimental/HPC-generator/generator.py"         "redefined-builtin"
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/experimental/HPC-generator/generator.py"         "exec-used"
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/experimental/HPC-generator/generator.py"         "invalid-name"

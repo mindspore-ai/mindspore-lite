@@ -49,5 +49,12 @@ Tensor
     mindspore_lite.DataType
     mindspore_lite.Format
     mindspore_lite.Tensor
+    mindspore_lite.TensorMeta
 
+LiteInfer
+----------
 
+.. mscnautosummary::
+    :toctree: mindspore_lite
+
+    mindspore_lite.LiteInfer

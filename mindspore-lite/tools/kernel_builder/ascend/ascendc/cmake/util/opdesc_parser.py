@@ -4,7 +4,7 @@
 Created on Feb  28 20:56:45 2020
 Copyright (c) Huawei Technologies Co., Ltd. 2020-2021. All rights reserved.
 """
-
+import os
 
 class OpDesc:
     """
@@ -143,7 +143,7 @@ def get_op_desc(file: str, batch_list: list, iterator_list: list, builder: any, 
     """get_op_desc"""
     op_descs = []
     op_match = False
-    with open(file, 'r') as fd:
+    with open(os.path.realpath(file), 'r') as fd:
         lines = fd.readlines()
         for line in lines:
             line = line.strip()

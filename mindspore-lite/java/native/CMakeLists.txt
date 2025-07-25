@@ -150,8 +150,6 @@ if(MSLITE_ENABLE_PARALLEL_INFERENCE)
 endif()
 
 if(USE_GLOG)
-    set_property(SOURCE ${JNI_SRC} PROPERTY COMPILE_DEFINITIONS
-            LOG_HDR_FILE_REL_PATH="mindspore/mindspore/core/include/utils/log_adapter.h")
     include_directories(${CMAKE_BINARY_DIR}/jni_include)
     add_definitions(-DUSE_GLOG)
     set_property(SOURCE ${JNI_SRC} PROPERTY COMPILE_DEFINITIONS

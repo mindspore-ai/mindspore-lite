@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# copy from https://gitee.com/ascend/samples/blob/master/best_practices/contrib/blast-code/blast_tik/cmake/util/aicpu_parser_ini.py
 
 """
 aicpu ini parser
@@ -57,7 +58,7 @@ def parse_ini_to_obj(ini_file, aicpu_ops_info):
     '''
     parse all ini files to object
     '''
-    with open(ini_file) as ini_read_file:
+    with open(os.path.realpath(ini_file)) as ini_read_file:
         lines = ini_read_file.readlines()
         ops = {}
         find_op_type = False
@@ -225,8 +226,7 @@ def write_json_file(aicpu_ops_info, json_file_path):
     json_file_real_path = os.path.realpath(json_file_path)
     with os.fdopen(os.open(json_file_real_path, flags, modes), "w") as json_file:
         # Only the owner and group have rights
-        os.chmod(json_file_real_path, stat.S_IWGRP + stat.S_IWUSR + stat.S_IRGRP
-                 + stat.S_IRUSR)
+        os.chmod(json_file_real_path, stat.S_IWUSR + stat.S_IRGRP + stat.S_IRUSR)
         json.dump(aicpu_ops_info, json_file, sort_keys=True,
                   indent=4, separators=(',', ':'))
     print("Compile aicpu op info cfg successfully.")

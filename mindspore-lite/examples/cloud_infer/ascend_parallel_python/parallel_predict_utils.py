@@ -90,7 +90,8 @@ class ParallelPredictUtils:
             msg_type, msg = self.pipe_parent_end[i].recv()
             if msg_type == ERROR:
                 raise RuntimeError(f"Failed to build model {i}, exception occur: {msg}")
-            assert msg_type == BUILD_FINISH
+            if msg_type != BUILD_FINISH:
+                raise RuntimeError(f"Failed to build model {i}, exception occur: {msg}")
             print(f"Success to build model {i}")
 
     def run_predict(self, inputs):
@@ -105,7 +106,8 @@ class ParallelPredictUtils:
             msg_type, msg = self.pipe_parent_end[i].recv()
             if msg_type == ERROR:
                 raise RuntimeError(f"Failed to call predict, exception occur: {msg}")
-            assert msg_type == REPLY
+            if msg_type != REPLY:
+                raise RuntimeError(f"Failed to call predict, exception occur: {msg}")
             result.append(msg)
         return result
 

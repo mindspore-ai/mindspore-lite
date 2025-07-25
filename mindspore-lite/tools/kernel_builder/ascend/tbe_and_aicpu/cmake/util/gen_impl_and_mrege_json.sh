@@ -1,4 +1,5 @@
 #!/usr/bin/bash
+#Modified from https://gitee.com/ascend/samples/blob/master/best_practices/contrib/blast-code/blast_tik/cmake/util/gen_impl_and_mrege_json.sh
 
 project_path=$1
 build_path=$2

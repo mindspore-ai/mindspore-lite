@@ -60,9 +60,13 @@ class ReplayCodeGen:
             reptmp = os.path.join(PYF_PATH, 'replay_impl.temp')
         kertmp = os.path.join(PYF_PATH, 'kernel_impl.temp')
         self._gen_kentry(kerentry)
-        self._gen_kimpl_code(kerimpl, kertmp)
+        kerimpl_realpath = os.path.realpath(kerimpl)
+        kertmp_realpath = os.path.realpath(kertmp)
+        self._gen_kimpl_code(kerimpl_realpath, kertmp_realpath)
         self._gen_tiling_data_header()
-        self._gen_replay_code(replayimpl, reptmp, ops_product)
+        replayimpl_realpath = os.path.realpath(replayimpl)
+        reptmp_realpath = os.path.realpath(reptmp)
+        self._gen_replay_code(replayimpl_realpath, reptmp_realpath, ops_product)
 
     def _gen_tiling_data_header(self):
         """_gen_tiling_data_header"""
@@ -103,7 +107,7 @@ class ReplayCodeGen:
             # register function
             temp = temp.replace('__OPS_PRODUCT__', ops_product)
             temp = temp.replace('__OPTYPE__', self.op_type)
-        with os.fdopen(os.open(src, const_var.WFLAGS, const_var.WMODES), 'w') as ofd:
+        with os.fdopen(os.open(os.path.realpath(src), const_var.WFLAGS, const_var.WMODES), 'w') as ofd:
             ofd.write(temp)
 
     def _gen_kentry(self, src):
@@ -116,5 +120,5 @@ class ReplayCodeGen:
         else:
             kf += keb.mc_code_gen("K{:02d}_{}{}".format(0, self.entry, pre_alloc_str),
                                   self.argn, self.data_type, self.blknum)
-        with os.fdopen(os.open(src, const_var.WFLAGS, const_var.WMODES), 'w') as ofd:
+        with os.fdopen(os.open(os.path.realpath(src), const_var.WFLAGS, const_var.WMODES), 'w') as ofd:
             ofd.write(kf)

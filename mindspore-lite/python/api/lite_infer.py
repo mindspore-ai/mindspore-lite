@@ -39,7 +39,7 @@ class LiteInfer(BaseModel):
              the batch size of 'net' input. Only supports parse "image" column from dataset currently.
         context (Context, optional): Define the context used to transfer options during execution. Default: ``None``.
                 None means the Context with cpu target.
-        model_group_id (int, optional) :  model_group_id is used to bind model to model group
+        model_group_id (int, optional) :  model_group_id is used to bind model to model group. Default: ``None``.
         config (dict, optional): Enabled when the backend is 'lite'. config includes two parts,
                 config_path ('configPath', str) and config_item (str, dict). When config_item is set,
                 its priority is higher than config_path. Set rank table file for inference. The content
@@ -50,10 +50,10 @@ class LiteInfer(BaseModel):
                 When set
                 .. code-block::
                     config = {"ascend_context" : {"rank_table_file" : "path_b"}}
-                The path_b from the config will be used to compile the model.
+                The path_b from the config will be used to compile the model. Default: ``None``.
 
     Raises:
-        ValueError: `train_model` is not a MindSpore Model.
+        ValueError: `model_or_net` is not a MindSpore Model or MindSpore nn.Cell.
     """
 
     def __init__(self, model_or_net, *net_inputs, context=None, model_group_id=None, config: dict = None):
@@ -109,8 +109,7 @@ class LiteInfer(BaseModel):
                         check_isinstance("config_value_value", v_v, str)
                         ret = self._model.update_config(k, v)
                         if not ret.IsOk():
-                            raise RuntimeError(f"update configuration failed! Error is {ret.ToString()}."
-                                               f"Setcion is {k}, config is {v}")
+                            raise RuntimeError(f"update configuration failed!")
 
     def _get_func_graph(self, pyobj, *net_inputs):
         """

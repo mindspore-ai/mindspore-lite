@@ -189,8 +189,8 @@ MSTensorPtr create_tensor_by_numpy(const py::array &input, const std::string &de
       MS_LOG(ERROR) << "Malloc device data for numpy tensor failed.";
       return nullptr;
     }
-    auto status = AscendAllocatorPlugin::GetInstance().CopyHostDataToDevice(numpy_tensor->MutableData(),
-                                                                                    device_data, data_size);
+    auto status =
+      AscendAllocatorPlugin::GetInstance().CopyHostDataToDevice(numpy_tensor->MutableData(), device_data, data_size);
     if (status != kSuccess) {
       MS_LOG(ERROR) << "tensor has device data, then copy host data to device failed.";
       return nullptr;
@@ -238,6 +238,7 @@ std::string GetPyTypeFormat(DataType data_type) {
 }
 
 bool SetTensorNumpyData(const MSTensorPtr &tensor_ptr, const py::array &input) {
+  MS_CHECK_TRUE_RET(tensor_ptr != nullptr, false);
   auto &tensor = *tensor_ptr;
   // Check format.
   if (!IsCContiguous(input)) {
@@ -260,8 +261,8 @@ bool SetTensorNumpyData(const MSTensorPtr &tensor_ptr, const py::array &input) {
 #ifdef ENABLE_CLOUD_INFERENCE
   if (tensor.GetDeviceData() != nullptr) {
     MS_LOG(INFO) << "device tensor data ptr is not nullptr, need copy host data to device data.";
-    auto status = AscendAllocatorPlugin::GetInstance().CopyHostDataToDevice(
-      py_buffer_info.ptr, tensor.GetDeviceData(), tensor.DataSize());
+    auto status = AscendAllocatorPlugin::GetInstance().CopyHostDataToDevice(py_buffer_info.ptr, tensor.GetDeviceData(),
+                                                                            tensor.DataSize());
     if (status != kSuccess) {
       MS_LOG(ERROR) << "tensor has device data, then copy host data to device failed.";
       return false;
@@ -292,8 +293,8 @@ py::buffer_info GetPyBufferInfo(const MSTensorPtr &tensor) {
   if (device_data != nullptr) {
     MS_LOG(INFO) << "need copy host data to device.";
     // device data is not nullptr, data in device, need copy device data to host.
-    auto status = AscendAllocatorPlugin::GetInstance().CopyDeviceDataToHost(
-      device_data, tensor->MutableData(), tensor->DataSize(), tensor->GetDeviceId());
+    auto status = AscendAllocatorPlugin::GetInstance().CopyDeviceDataToHost(device_data, tensor->MutableData(),
+                                                                            tensor->DataSize(), tensor->GetDeviceId());
     if (status != kSuccess) {
       MS_LOG(ERROR) << "tensor has device data, then copy device data to host failed.";
       return py::buffer_info{nullptr, 0, format, 0, {}, {}};

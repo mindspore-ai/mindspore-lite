@@ -105,8 +105,12 @@ Status Places365Op::GetClassIds(std::map<int32_t, std::vector<int64_t>> *cls_ids
 
 Status Places365Op::GetFileContent(const std::string &info_file, std::string *ans) {
   RETURN_UNEXPECTED_IF_NULL(ans);
+  auto info_file_realpath = FileUtils::GetRealPath(info_file.c_str());
+  if (!info_file_realpath.has_value()) {
+    RETURN_STATUS_UNEXPECTED("Invalid file path, " + info_file + " does not exist.");
+  }
   std::ifstream reader;
-  reader.open(info_file, std::ios::in);
+  reader.open(info_file_realpath.value(), std::ios::in);
   CHECK_FAIL_RETURN_UNEXPECTED(
     !reader.fail(), "Invalid file, failed to open " + info_file + ": Places365 file is damaged or permission denied.");
   reader.seekg(0, std::ios::end);

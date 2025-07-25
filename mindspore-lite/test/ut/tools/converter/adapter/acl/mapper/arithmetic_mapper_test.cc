@@ -366,6 +366,7 @@ TEST_F(ArithmeticMapperTest, TestAddFusion) {
   ASSERT_EQ(status, lite::RET_OK);
   ASSERT_EQ(cnode->inputs().size(), kNumInputSize);
   const auto &new_prim = GetCNodePrimitive(cnode);
+  ASSERT_NE(new_prim, nullptr);
   auto prim_name = new_prim->name();
   ASSERT_EQ(prim_name, "Add");
 }
@@ -391,6 +392,7 @@ TEST_F(ArithmeticMapperTest, TestDivFusion) {
   ASSERT_EQ(status, lite::RET_OK);
   ASSERT_EQ(cnode->inputs().size(), kNumInputSize);
   const auto &new_prim = GetCNodePrimitive(cnode);
+  ASSERT_NE(new_prim, nullptr);
   auto prim_name = new_prim->name();
   ASSERT_EQ(prim_name, "RealDiv");
 }
@@ -416,6 +418,7 @@ TEST_F(ArithmeticMapperTest, TestMulFusion) {
   ASSERT_EQ(status, lite::RET_OK);
   ASSERT_EQ(cnode->inputs().size(), kNumInputSize);
   const auto &new_prim = GetCNodePrimitive(cnode);
+  ASSERT_NE(new_prim, nullptr);
   auto prim_name = new_prim->name();
   ASSERT_EQ(prim_name, "Mul");
 }
@@ -441,6 +444,7 @@ TEST_F(ArithmeticMapperTest, TestPowFusion) {
   ASSERT_EQ(status, lite::RET_OK);
   ASSERT_EQ(cnode->inputs().size(), kNumInputSize);
   const auto &new_prim = GetCNodePrimitive(cnode);
+  ASSERT_NE(new_prim, nullptr);
   auto prim_name = new_prim->name();
   ASSERT_EQ(prim_name, "Pow");
 }
@@ -466,6 +470,7 @@ TEST_F(ArithmeticMapperTest, TestSubFusion) {
   ASSERT_EQ(status, lite::RET_OK);
   ASSERT_EQ(cnode->inputs().size(), kNumInputSize);
   const auto &new_prim = GetCNodePrimitive(cnode);
+  ASSERT_NE(new_prim, nullptr);
   auto prim_name = new_prim->name();
   ASSERT_EQ(prim_name, "Sub");
 }
@@ -491,6 +496,7 @@ TEST_F(ArithmeticMapperTest, TestExpFusion) {
   ASSERT_EQ(status, lite::RET_OK);
   ASSERT_EQ(cnode->inputs().size(), kNumInputSize);
   const auto &new_prim = GetCNodePrimitive(cnode);
+  ASSERT_NE(new_prim, nullptr);
   auto prim_name = new_prim->name();
   ASSERT_EQ(prim_name, "Exp");
 }

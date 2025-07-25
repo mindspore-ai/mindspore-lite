@@ -91,6 +91,7 @@ STATUS QuantFusionXOffsetToBias::RunQuantFusionXOffsetToBias(const FuncGraphPtr 
       continue;
     }
     auto prim = GetCNodePrimitive(cnode);
+    CHECK_NULL_RETURN(prim);
     if (!prim->HasAttr(kAttrNameNeedFusedXoffsetToBias)) {
       continue;
     }
@@ -104,6 +105,7 @@ STATUS QuantFusionXOffsetToBias::RunQuantFusionXOffsetToBias(const FuncGraphPtr 
       return RET_ERROR;
     }
     auto quant_primitive = GetValueNode<PrimitivePtr>(quant_cnode->input(0));
+    CHECK_NULL_RETURN(quant_primitive);
     auto x_offset = GetValue<float>(quant_primitive->GetAttr(kAttrNameOffset));
     auto weight_node = cnode->input(weight_index);
     ParameterPtr parameter;

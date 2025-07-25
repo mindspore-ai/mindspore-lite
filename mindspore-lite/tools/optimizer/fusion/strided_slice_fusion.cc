@@ -114,13 +114,13 @@ bool StridedSliceFusion::Run(const FuncGraphPtr &func_graph) {
 }
 
 int StridedSliceFusion::Process(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
-  MS_ASSERT(func_graph != nullptr && cnode != nullptr);
+  MS_CHECK_TRUE_MSG(func_graph != nullptr && cnode != nullptr, lite::RET_ERROR, "func_graph or cnode is nullptr.");
   FindStridedSliceOp(func_graph, cnode);
   if (!CheckCanFusion()) {
     return lite::RET_OK;
   }
   auto manager = func_graph->manager();
-  MS_ASSERT(manager != nullptr);
+  MS_CHECK_TRUE_MSG(manager != nullptr, lite::RET_ERROR, "manager is nullptr.");
   for (const auto &nodes : strided_slice_ops_) {
     auto first_node = nodes.front();
     auto end_node = nodes.back();
@@ -132,9 +132,9 @@ int StridedSliceFusion::Process(const FuncGraphPtr &func_graph, const CNodePtr &
       }
     }
     auto first_prim = GetCNodePrimitive(first_node);
-    MS_ASSERT(first_prim != nullptr);
+    MS_CHECK_TRUE_MSG(first_prim != nullptr, lite::RET_ERROR, "first_prim is nullptr.");
     auto end_prim = GetCNodePrimitive(end_node);
-    MS_ASSERT(end_prim != nullptr);
+    MS_CHECK_TRUE_MSG(end_prim != nullptr, lite::RET_ERROR, "end_prim is nullptr.");
     first_prim->set_attr(ops::kEndMask, end_prim->GetAttr(ops::kEndMask));
   }
   auto inputs = cnode->inputs();

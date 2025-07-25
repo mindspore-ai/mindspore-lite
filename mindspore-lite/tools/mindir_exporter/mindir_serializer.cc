@@ -37,6 +37,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_o.h"
 #include "src/common/decrypt.h"
 #include "src/extendrt/delegate/comm_group_info.h"
+#include "include/securec.h"
 
 namespace mindspore::lite {
 namespace {
@@ -690,6 +691,8 @@ int MindIRSerializer::SaveProtoToFile(mind_ir::ModelProto *model_proto, const st
     ret = GetBuffAndSize(&buffer, &size);
     if (ret != RET_OK) {
       MS_LOG(ERROR) << "Get buffer and size failed";
+      (void)memset_s(enc_key, kEncMaxLen, 0, kEncMaxLen);
+      key_len = 0;
       fout.close();
       return ret;
     }
@@ -699,6 +702,9 @@ int MindIRSerializer::SaveProtoToFile(mind_ir::ModelProto *model_proto, const st
     if (encrypt_content == nullptr || encrypt_len == 0) {
       MS_LOG(ERROR) << "Encrypt failed.";
       free(buffer);
+      buffer = nullptr;
+      (void)memset_s(enc_key, kEncMaxLen, 0, kEncMaxLen);
+      key_len = 0;
       fout.close();
       return RET_ERROR;
     }
@@ -706,11 +712,19 @@ int MindIRSerializer::SaveProtoToFile(mind_ir::ModelProto *model_proto, const st
     if (fout.bad()) {
       MS_LOG(ERROR) << "Write model file failed: " << save_model_path_;
       free(buffer);
+      buffer = nullptr;
+      (void)memset_s(enc_key, kEncMaxLen, 0, kEncMaxLen);
+      key_len = 0;
       fout.close();
       return RET_ERROR;
     }
     free(buffer);
+    buffer = nullptr;
+    (void)memset_s(enc_key, kEncMaxLen, 0, kEncMaxLen);
+    key_len = 0;
   } else {
+    (void)memset_s(enc_key, kEncMaxLen, 0, kEncMaxLen);
+    key_len = 0;
     if (!model_proto->SerializeToOstream(&fout)) {
       MS_LOG(ERROR) << "Failed to write the mindir proto to file " << realpath.value();
       fout.close();

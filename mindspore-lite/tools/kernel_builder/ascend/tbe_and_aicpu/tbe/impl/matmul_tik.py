@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 matmul_tik
+copy from https://gitee.com/ascend/samples/blob/master/cplusplus/level1_single_api/4_op_dev/1_custom_op/tbe/impl/matmul_tik.py
 """
 
 from tbe import tik

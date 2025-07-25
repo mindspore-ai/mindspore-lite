@@ -206,6 +206,7 @@ class Context:
         if not self.work_dir:
             self.work_dir = os.path.join(self.data_dir, "test_workspace")
         self.package_path = os.path.join(args.pkg_dir)
+        self.package_path = os.path.realpath(self.package_path)
         self.config_file = os.path.join(args.config_file)
         self.mode = TestMode.from_str(args.test_mode)
         self.exit_on_failed = args.exit_on_failed

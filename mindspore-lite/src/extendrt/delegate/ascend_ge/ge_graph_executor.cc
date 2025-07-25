@@ -1501,7 +1501,7 @@ bool GeGraphExecutor::SyncDeviceOutputsToHost(std::vector<mindspore::MSTensor> *
 
 bool GeGraphExecutor::RunGraphWithStreamAsync(uint32_t graph_id, void *stream, const std::vector<GeTensor> &inputs,
                                               std::vector<GeTensor> *outputs) {
-  MS_EXCEPTION_IF_NULL(outputs);
+  MS_CHECK_TRUE_RET(outputs != nullptr, false);
   for (auto ge_input : inputs) {
     MS_LOG(INFO) << "In ge graph " << graph_id << ", input for RunGraphWithStreamAsync : "
                  << tensor::ShapeToString(
@@ -1511,6 +1511,7 @@ bool GeGraphExecutor::RunGraphWithStreamAsync(uint32_t graph_id, void *stream, c
   struct timeval start_time;
   (void)gettimeofday(&start_time, nullptr);
 
+  MS_CHECK_TRUE_RET(ge_session_ != nullptr, false);
   ge::Status ret = ge_session_->RunGraphWithStreamAsync(graph_id, stream, inputs, *outputs);
   if (ret != ge::GRAPH_SUCCESS) {
     MS_LOG(ERROR) << "Call GE RunGraphWithStreamAsync Failed, ret is: " << ret;
@@ -1656,8 +1657,7 @@ MSTensorPtr GeGraphExecutor::ConvertGeTensorNoCopy(::ge::Tensor *ge_tensor_ptr, 
   }
   constexpr int64_t kTensorAlignBytes = 64;
   if (reinterpret_cast<uintptr_t>(ge_data) % kTensorAlignBytes != 0) {
-    MS_LOG(ERROR) << "Skip zero-copy ge tensor " << reinterpret_cast<uintptr_t>(ge_data)
-                  << ", bytes not aligned with expected.";
+    MS_LOG(ERROR) << "Skip zero-copy ge tensor , because of bytes not aligned with expected.";
     return nullptr;
   }
   int64_t elem_num = 1;
@@ -1733,7 +1733,7 @@ bool GeGraphExecutor::OfflineBuildGraph(const FuncGraphPtr &graph) {
     return false;
   }
   if (!AddGraph(df_graph, ge_options, &graph_id)) {
-    MS_LOG(ERROR) << "Failed to add compute graph, graph name " << graph->ToString();
+    MS_LOG(ERROR) << "Failed to add compute graph.";
     return false;
   }
   compute_graph_id_list_.push_back(graph_id);

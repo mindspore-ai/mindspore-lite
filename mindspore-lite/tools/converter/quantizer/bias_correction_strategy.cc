@@ -528,6 +528,10 @@ int BiasCorrectionStrategy::DoCNodeBiasCorrection(const FuncGraphPtr &quant_func
     auto bias_default_param = bias_parameter_ptr->default_param();
     auto bias_tensor = bias_default_param->cast<tensor::TensorPtr>();
     if (int32_bias) {
+      if (bias_tensor == nullptr) {
+        MS_LOG(ERROR) << " bias_tensor is nullptr";
+        return RET_ERROR;
+      }
       if (bias_tensor->quant_params().empty()) {
         MS_LOG(ERROR) << bias->fullname_with_scope() << " bias tesnor quant param Not exist.";
         return RET_ERROR;

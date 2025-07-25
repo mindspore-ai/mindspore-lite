@@ -642,7 +642,6 @@ bool ScalarOpPass::Run(const FuncGraphPtr &func_graph) {
     status = RunArithmeticCheckPass(func_graph, manager);
     MS_CHECK_TRUE_RET(status != lite::RET_ERROR, false);
   }
-
   return true;
 }
 }  // namespace mindspore::opt
