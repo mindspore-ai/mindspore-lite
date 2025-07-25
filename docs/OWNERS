@@ -1,0 +1,12 @@
+approvers:
+- jjfeing
+- YeFeng_24
+- xu_anyue
+- gemini524
+- xuzhenyoumi
+
+reviewers:
+- ZhangZGC
+
+options:
+  no_parent_owners: true
