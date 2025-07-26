@@ -1,0 +1,19 @@
+# MindSpore Lite
+build/
+output/
+
+## third_party
+third_party/proto/caffe/caffe.proto
+third_party/proto/onnx/onnx.proto
+third_party/proto/tensorflow/attr_value.proto
+third_party/proto/tensorflow/function.proto
+third_party/proto/tensorflow/graph.proto
+third_party/proto/tensorflow/lite/
+third_party/proto/tensorflow/node_def.proto
+third_party/proto/tensorflow/op_def.proto
+third_party/proto/tensorflow/resource_handle.proto
+third_party/proto/tensorflow/tensor.proto
+third_party/proto/tensorflow/tensor_shape.proto
+third_party/proto/tensorflow/types.proto
+third_party/proto/tensorflow/versions.proto
+
