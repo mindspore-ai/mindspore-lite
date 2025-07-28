@@ -130,7 +130,7 @@ class LiteInfer(BaseModel):
         """
         Obtains all input Tensors of the model.
 
-        See `mindspore_lite.model.get_inputs` for more details.
+        See `mindspore_lite.Model.get_inputs` for more details.
         """
         # pylint: disable=useless-super-delegation
         return super(LiteInfer, self).get_inputs()
@@ -139,7 +139,7 @@ class LiteInfer(BaseModel):
         """
         Inference model.
 
-        See `mindspore_lite.model.predict` for more details.
+        See `mindspore_lite.Model.predict` for more details.
         """
         # pylint: disable=useless-super-delegation
         return super(LiteInfer, self).predict(inputs)
@@ -148,7 +148,7 @@ class LiteInfer(BaseModel):
         """
         Resizes the shapes of inputs.
 
-        See `mindspore_lite.model.resize` for more details.
+        See `mindspore_lite.Model.resize` for more details.
         """
         # pylint: disable=useless-super-delegation
         super(LiteInfer, self).resize(inputs, dims)
