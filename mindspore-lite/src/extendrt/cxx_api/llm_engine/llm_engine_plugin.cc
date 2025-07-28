@@ -397,7 +397,7 @@ Status LLMEnginePlugin::AddModel(const std::vector<LLMEngineModelInfo> &model_in
         cache_path += ";";
       }
     }
-    MS_LOG(INFO) << "Add option llm.OmCachePath to " << cache_path;
+    MS_LOG(INFO) << "Add option llm.OmCachePath.";
     options["llm.OmCachePath"] = cache_path;
   }
   std::vector<ge::ModelBufferData> model_buffers;

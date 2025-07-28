@@ -35,7 +35,6 @@ Status ModelGroup::AddModel(const std::vector<std::vector<char>> &model_path_lis
     MS_LOG(ERROR) << "Model group implement is null.";
     return kLiteUninitializedObj;
   }
-  MS_LOG(INFO) << "model_path_list: " << model_path_list;
   return impl_->AddModel(model_path_list);
 }
 

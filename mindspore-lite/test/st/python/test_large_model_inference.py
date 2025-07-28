@@ -45,8 +45,7 @@ def build_model(args):
     device = args.device
     model_type = args.model_type
     parallel_num = args.parallel_num
-    print(
-        f"Loading llama2, prompt model: {prompt_model_path}, decoder model: {decoder_model_path}")
+    print(f"Loading llama2, prompt model and decoder model.")
     configs = parse_configs(config_path)
     config_ctx = configs[model_type + "_" + device + "_" +
                          context + "_" + str(parallel_num) + "p" + "_full"]

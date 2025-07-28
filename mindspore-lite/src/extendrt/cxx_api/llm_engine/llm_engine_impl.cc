@@ -128,7 +128,7 @@ Status LLMEngineImpl::AddModel(const std::vector<std::string> &model_paths,
   for (auto &model_path : model_paths) {
     LLMEngineModelInfo model_info;
     if (LoadAndGetModelInfo(model_path, &model_info) != kSuccess) {
-      MS_LOG(ERROR) << "Failed to ge graph info, mindir " << model_path;
+      MS_LOG(ERROR) << "Failed to ge graph info, please check your model.";
       return kLiteError;
     }
     infos.push_back(model_info);
@@ -142,7 +142,7 @@ Status LLMEngineImpl::AddModel(const std::vector<std::string> &model_paths,
   LLMEngineModelInfo postprocess_model_info;
   if (!postprocess_model_path.empty()) {
     if (LoadAndGetModelInfo(postprocess_model_path, &postprocess_model_info) != kSuccess) {
-      MS_LOG(ERROR) << "Failed to ge graph info, mindir " << postprocess_model_path;
+      MS_LOG(ERROR) << "Failed to ge graph info, please check your model.";
       return kLiteError;
     }
   }
@@ -328,7 +328,7 @@ FuncGraphPtr LLMEngineImpl::LoadMindIR(const std::string &model_path) {
   }
   auto buffer = ReadFile(model_path);
   if (buffer.Data() == nullptr || buffer.DataSize() == 0) {
-    MS_LOG(ERROR) << "Failed to read buffer from model file: " << model_path;
+    MS_LOG(ERROR) << "Failed to read buffer from model file.";
     return nullptr;
   }
   std::string weight_path = "./";
@@ -338,7 +338,7 @@ FuncGraphPtr LLMEngineImpl::LoadMindIR(const std::string &model_path) {
   MindIRLoader mindir_loader(true, nullptr, 0, kDecModeAesGcm, false);
   auto func_graph = mindir_loader.LoadMindIR(buffer.Data(), buffer.DataSize(), weight_path);
   if (func_graph == nullptr) {
-    MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model: " << model_path;
+    MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
     return nullptr;
   }
   return func_graph;
@@ -347,19 +347,19 @@ FuncGraphPtr LLMEngineImpl::LoadMindIR(const std::string &model_path) {
 Status LLMEngineImpl::LoadAndGetModelInfo(const std::string &model_path, LLMEngineModelInfo *model_info_ptr) {
   auto func_graph = LoadMindIR(model_path);
   if (func_graph == nullptr) {
-    MS_LOG(ERROR) << "Failed to load mindir " << model_path;
+    MS_LOG(ERROR) << "Failed to load mindir, please check your model.";
     return kLiteError;
   }
   LLMEngineModelInfo &model_info = *model_info_ptr;
   if (GetModelInfo(func_graph, &model_info) != kSuccess) {
-    MS_LOG(ERROR) << "Failed to ge graph info, mindir " << model_path;
+    MS_LOG(ERROR) << "Failed to ge graph info, please check your model.";
     return kLiteError;
   }
   // relative weight path
   if (!model_info.weight_dir.empty() && model_info.weight_dir[0] != '/') {
     if (model_path.find("/") != std::string::npos) {
       model_info.weight_dir = model_path.substr(0, model_path.rfind("/") + 1) + model_info.weight_dir;
-      MS_LOG(INFO) << "Update " << model_path << " weight dir to " << model_info.weight_dir;
+      MS_LOG(INFO) << "Update model_path weight dir to " << model_info.weight_dir;
     }
   }
   return kSuccess;

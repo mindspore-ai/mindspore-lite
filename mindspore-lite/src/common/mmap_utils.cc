@@ -30,7 +30,7 @@ void *ReadFileByMmap(const std::string &file, size_t *size) {
   MS_CHECK_TRUE_RET(!real_path.empty(), nullptr);
   auto fd = open(real_path.c_str(), O_RDONLY);
   if (fd == -1) {
-    MS_LOG(ERROR) << "Could not open " << file;
+    MS_LOG(ERROR) << "Could not open file.";
     return nullptr;
   }
   struct stat fd_stat;

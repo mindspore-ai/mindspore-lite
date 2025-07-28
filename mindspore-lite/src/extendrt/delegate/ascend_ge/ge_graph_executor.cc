@@ -511,7 +511,7 @@ bool GeGraphExecutor::InitRefModeConfig() {
     ref_mode = lite::StringTolower(ref_mode);
     if (ref_mode != kRefModeNone && ref_mode != kRefModeVariable && ref_mode != kRefModeAll) {
       MS_LOG(ERROR) << "Only " << kRefModeNone << ", " << kRefModeVariable << " or " << kRefModeAll
-                    << " is supported for " << lite::kParameterAsRefData << ", but got " << ref_mode;
+                    << " is supported for " << lite::kParameterAsRefData;
       return false;
     }
     if (ref_mode == kRefModeAll) {
@@ -521,7 +521,7 @@ bool GeGraphExecutor::InitRefModeConfig() {
     } else {
       ref_mode_flag_ = backend::ge_backend::RefModeFlag::kRefModeNone;
     }
-    MS_LOG(INFO) << "Set parameter ref mode " << ref_mode;
+    MS_LOG(INFO) << "Set parameter ref mode ok.";
   } else {
     ref_mode_flag_ = backend::ge_backend::RefModeFlag::kRefModeNone;
   }
@@ -617,13 +617,13 @@ void GeGraphExecutor::GetGeSessionOptionsFromAscendContext(const std::map<std::s
     auto real_path = lite::RealPath(dump_path.c_str());
     std::ifstream ifs(real_path);
     if (!ifs.good() || !ifs.is_open()) {
-      MS_LOG(EXCEPTION) << "The dump config file: " << real_path << " is not exit or open failed.";
+      MS_LOG(EXCEPTION) << "The dump config file is not exit or open failed.";
     }
     nlohmann::json dump_cfg_json;
     try {
       dump_cfg_json = nlohmann::json::parse(ifs);
     } catch (const nlohmann::json::parse_error &error) {
-      MS_LOG(EXCEPTION) << "parse json failed, please check the file: " << real_path;
+      MS_LOG(EXCEPTION) << "parse json failed, please check the file.";
     }
     if (dump_cfg_json[kDump] != nullptr && dump_cfg_json[kDump][kDumpMode] != nullptr) {
       ge_options["ge.exec.enableDump"] = "1";
@@ -636,13 +636,13 @@ void GeGraphExecutor::GetGeSessionOptionsFromAscendContext(const std::map<std::s
     auto real_path = lite::RealPath(profiling_path.c_str());
     std::ifstream ifs(real_path);
     if (!ifs.good() || !ifs.is_open()) {
-      MS_LOG(EXCEPTION) << "The profiling_path config file: " << real_path << " is not exit or open failed.";
+      MS_LOG(EXCEPTION) << "The profiling_path config file is not exit or open failed.";
     }
     nlohmann::json profiling_cfg_json;
     try {
       profiling_cfg_json = nlohmann::json::parse(ifs);
     } catch (const nlohmann::json::parse_error &error) {
-      MS_LOG(EXCEPTION) << "parse json failed, please check the file: " << real_path;
+      MS_LOG(EXCEPTION) << "parse json failed, please check the file.";
     }
     if (profiling_cfg_json[kProfiling] != nullptr) {
       ge_options["ge.exec.profilingMode"] = "1";
@@ -710,7 +710,7 @@ int64_t GeGraphExecutor::GetSessionId() {
   }
   int64_t session_id = kUnkonwnSessionId;
   if (!lite::ConvertStrToInt(inner_group_id, &session_id)) {
-    MS_LOG(WARNING) << "Failed to parse session_id " << inner_group_id << " to int64_t";
+    MS_LOG(WARNING) << "Failed to parse session_id to int64_t";
     return kUnkonwnSessionId;
   }
   return session_id;
@@ -1988,20 +1988,10 @@ std::shared_ptr<ge::Session> GeSessionManager::CreateGeSession(
     ge_session_map_[session_id] = session_context;
     MS_LOG(INFO) << "Create ge session successfully, lite session id: " << session_id;
   } else {
-    auto map_as_string = [](const std::map<std::string, std::string> &options) {
-      std::stringstream ss;
-      ss << "{";
-      for (auto &item : options) {
-        ss << "" << item.first << ":" << item.second << ",";
-      }
-      ss << "}";
-      return ss.str();
-    };
     auto old_options = s_it->second->session_options;
     if (old_options != session_options) {
-      MS_LOG(ERROR)
-        << "Session options is not equal in diff config infos when models' weights are shared, last session options: "
-        << map_as_string(old_options) << ", current session options: " << map_as_string(session_options);
+      MS_LOG(ERROR) << "Session options is not equal in diff config infos when models' weights are shared, last "
+                       "session options != current session options, please check your session options.";
       return nullptr;
     }
     MS_LOG(INFO) << "Get ge session from session map, lite session id: " << session_id;

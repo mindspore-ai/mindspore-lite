@@ -77,16 +77,16 @@ int GetAllSectionInfoFromConfigFile(const std::string &file, ConfigInfos *config
   char *real_path = realpath(file.c_str(), resolved_path.get());
 #endif
   if (real_path == nullptr || strlen(real_path) == 0) {
-    MS_LOG(ERROR) << "file path is not valid : " << file;
+    MS_LOG(ERROR) << "file path is not valid.";
     return RET_ERROR;
   }
   std::ifstream ifs(resolved_path.get());
   if (!ifs.good()) {
-    MS_LOG(ERROR) << "file: " << real_path << " is not exist";
+    MS_LOG(ERROR) << "file is not exist";
     return RET_ERROR;
   }
   if (!ifs.is_open()) {
-    MS_LOG(ERROR) << "file: " << real_path << "open failed";
+    MS_LOG(ERROR) << "file open failed";
     return RET_ERROR;
   }
   std::string line;

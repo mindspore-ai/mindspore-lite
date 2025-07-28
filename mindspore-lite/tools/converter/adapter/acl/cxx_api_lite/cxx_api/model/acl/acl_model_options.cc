@@ -131,7 +131,6 @@ std::tuple<std::map<std::string, std::string>, std::map<std::string, std::string
     if (ms_option == nullptr || ms_option->empty()) {
       continue;
     }
-    MS_LOG(INFO) << "Option " << acl_option_key << " : " << *ms_option;
     (void)init_options.emplace(acl_option_key, *ms_option);
   }
 
@@ -139,18 +138,15 @@ std::tuple<std::map<std::string, std::string>, std::map<std::string, std::string
     if (ms_option == nullptr || ms_option->empty()) {
       continue;
     }
-    MS_LOG(INFO) << "Option " << acl_option_key << " : " << *ms_option;
     (void)build_options.emplace(acl_option_key, *ms_option);
   }
 
   // init by config file param
   for (auto item : init_options_map_) {
-    MS_LOG(INFO) << "Option " << item.first << " : " << item.second;
     if (item.first == ge::ir_option::SOC_VERSION) {
       auto soc_version = item.second;
       if (soc_version != soc_version_) {
-        MS_LOG(WARNING) << "ge.socVersion: " << soc_version
-                        << " is different with this machine core type: " << soc_version_;
+        MS_LOG(WARNING) << "ge.socVersion'value is different with this machine core type: " << soc_version_;
       }
       init_options[item.first] = item.second;
       continue;
@@ -164,7 +160,6 @@ std::tuple<std::map<std::string, std::string>, std::map<std::string, std::string
   }
 
   for (auto item : build_options_map_) {
-    MS_LOG(INFO) << "Option " << item.first << " : " << item.second;
     if (build_options.find(item.first) != build_options.end()) {
       MS_LOG(WARNING) << "the parameters[" << item.first
                       << "] have been set through the API and do not need to be repeated.";
@@ -214,7 +209,6 @@ std::string AclModelOptions::GenAoeOptions(std::vector<std::string> *aoe_modes) 
     }
   }
 
-  MS_LOG(INFO) << "aoe_options: " << res;
   return res;
 }
 

@@ -84,7 +84,7 @@ inline std::string WriteStrToFile(const std::string &file_path, const std::strin
   auto full_path = real_path + "/" + file_name;
   fs.open(full_path, std::ios::out);
   if (!fs.good() || !fs.is_open()) {
-    MS_LOG(ERROR) << "Open dot file failed: " << full_path;
+    MS_LOG(ERROR) << "Open dot file failed.";
     return "";
   }
   fs.write(content.c_str(), content.size());
@@ -102,7 +102,7 @@ static inline void ChangeFileMode(const std::string &file_name, mode_t mode) {
     return;
   }
   if (chmod(file_name.c_str(), mode) != 0) {
-    MS_LOG(WARNING) << "Change file `" << file_name << "` to mode " << std::oct << mode << " fail.";
+    MS_LOG(WARNING) << "Change file to mode " << std::oct << mode << " fail.";
   }
 }
 

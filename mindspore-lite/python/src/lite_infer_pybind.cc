@@ -42,8 +42,7 @@ void PyBindModelToModelGroupImpl(ModelImpl *model, int model_group_id) {
     return;
   }
   model->UpdateConfig(lite::kLiteInnerGroupSection, {lite::kLiteInnerGroupId, std::to_string(model_group_id)});
-  MS_LOG(INFO) << "Update config " << lite::kLiteInnerGroupId << " to " << model_group_id << ", section "
-               << lite::kLiteInnerGroupSection;
+  MS_LOG(INFO) << "Update config " << lite::kLiteInnerGroupId << ", section " << lite::kLiteInnerGroupSection;
   return;
 }
 

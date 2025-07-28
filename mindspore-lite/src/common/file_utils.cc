@@ -82,12 +82,12 @@ std::fstream *OpenFile(const std::string &file_path, std::ios_base::openmode ope
   }
   fs->open(file_path, open_mode);
   if (!fs->good()) {
-    MS_LOG(DEBUG) << "File is not exist: " << file_path;
+    MS_LOG(DEBUG) << "File is not exist.";
     delete fs;
     return nullptr;
   }
   if (!fs->is_open()) {
-    MS_LOG(DEBUG) << "Can not open file: " << file_path;
+    MS_LOG(DEBUG) << "Can not open file.";
     delete fs;
     return nullptr;
   }
@@ -107,17 +107,17 @@ char *ReadFileSegment(const std::string &file, int64_t offset, int64_t len) {
   auto offset_pos = static_cast<size_t>(offset);
   std::string real_path = lite::RealPath(file.c_str());
   if (lite::AccessFile(real_path, R_OK) != 0) {
-    MS_LOG(DEBUG) << "cannot access file:" << real_path << ".please check file if exists and file mod";
+    MS_LOG(DEBUG) << "cannot access file, please check file if exists and file mod";
     return nullptr;
   }
   std::ifstream ifs(real_path, std::ifstream::in | std::ifstream::binary);
   if (!ifs.good()) {
-    MS_LOG(DEBUG) << "file: " << real_path << " is not exist";
+    MS_LOG(DEBUG) << "file is not exist";
     return nullptr;
   }
 
   if (!ifs.is_open()) {
-    MS_LOG(DEBUG) << "file: " << real_path << " open failed";
+    MS_LOG(DEBUG) << "file open failed";
     return nullptr;
   }
 
@@ -137,7 +137,7 @@ char *ReadFileSegment(const std::string &file, int64_t offset, int64_t len) {
 
   auto buf = reinterpret_cast<char *>(malloc(len));
   if (buf == nullptr) {
-    MS_LOG(ERROR) << "malloc buf failed, file: " << real_path;
+    MS_LOG(ERROR) << "malloc buf failed.";
     ifs.close();
     return nullptr;
   }
@@ -157,16 +157,16 @@ char *ReadFile(const char *file, size_t *size, std::shared_ptr<Allocator> alloca
   MS_ASSERT(size != nullptr);
   std::string real_path = RealPath(file);
   if (real_path.empty()) {
-    MS_LOG(DEBUG) << "File path not regular: " << file;
+    MS_LOG(DEBUG) << "File path not regular.";
     return nullptr;
   }
 #ifndef _MSC_VER
   if (access(real_path.c_str(), F_OK) != 0) {
-    MS_LOG(ERROR) << "File is not exist: " << real_path;
+    MS_LOG(ERROR) << "File is not exist.";
     return nullptr;
   }
   if (access(real_path.c_str(), R_OK) != 0) {
-    MS_LOG(ERROR) << "File " << real_path << " can't be read. Please change the file permission.";
+    MS_LOG(ERROR) << "File can't be read. Please change the file permission.";
     return nullptr;
   }
 #endif
@@ -194,7 +194,7 @@ char *ReadFile(const char *file, size_t *size, std::shared_ptr<Allocator> alloca
     model_buf = new (std::nothrow) char[*size];
   }
   if (model_buf == nullptr) {
-    MS_LOG(ERROR) << "malloc buf failed, file: " << file;
+    MS_LOG(ERROR) << "malloc buf failed.";
     ifs->close();
     delete ifs;
     return nullptr;
@@ -227,7 +227,7 @@ std::string RealPath(const char *path) {
   char *real_path = realpath(path, resolved_path.get());
 #endif
   if (real_path == nullptr || strlen(real_path) == 0) {
-    MS_LOG(ERROR) << "file path not exists: " << path;
+    MS_LOG(ERROR) << "file path not exists.";
     return "";
   }
   std::string res = resolved_path.get();
@@ -248,7 +248,7 @@ int CreateDir(const std::string &file_path) {
       if (AccessFile(file_path.substr(0, i + 1), F_OK) != 0) {
         int ret = Mkdir(file_path.substr(0, i + 1));
         if (ret != RET_OK) {
-          MS_LOG(ERROR) << "mkdir failed. " << file_path.substr(0, i + 1);
+          MS_LOG(ERROR) << "mkdir failed. ";
           return RET_ERROR;
         }
       }
@@ -259,7 +259,7 @@ int CreateDir(const std::string &file_path) {
     if (AccessFile(file_path, F_OK) != 0) {
       int ret = Mkdir(file_path);
       if (ret != RET_OK) {
-        MS_LOG(ERROR) << "mkdir failed. " << file_path;
+        MS_LOG(ERROR) << "mkdir failed. ";
         return RET_ERROR;
       }
     }
@@ -289,7 +289,7 @@ int CreateOutputDir(std::string *file_path) {
 #endif
   int ret = Mkdir(*file_path);
   if (ret != RET_OK) {
-    MS_LOG(ERROR) << "mkdir failed. " << file_path->c_str();
+    MS_LOG(ERROR) << "mkdir failed. ";
     return RET_ERROR;
   }
   return RET_OK;
@@ -326,7 +326,7 @@ bool ParserPathAndModelName(const std::string &output_path, std::string *save_pa
   }
   *save_path = RealPath(save_path->c_str());
   if (save_path->empty()) {
-    MS_LOG(DEBUG) << "File path not regular: " << save_path;
+    MS_LOG(DEBUG) << "File path not regular.";
     return false;
   }
   auto suffix_pos = tmp_model_name.find_last_of('.');

@@ -59,12 +59,12 @@ mindspore::Buffer ReadFile(const std::string &file) {
 
   std::ifstream ifs(real_path);
   if (!ifs.good()) {
-    MS_LOG(ERROR) << "File: " << real_path << " does not exist";
+    MS_LOG(ERROR) << "File does not exist.";
     return buffer;
   }
 
   if (!ifs.is_open()) {
-    MS_LOG(ERROR) << "File: " << real_path << " open failed";
+    MS_LOG(ERROR) << "File open failed.";
     return buffer;
   }
 
@@ -72,7 +72,7 @@ mindspore::Buffer ReadFile(const std::string &file) {
   size_t size = static_cast<size_t>(ifs.tellg());
   buffer.ResizeData(size);
   if (buffer.DataSize() != size) {
-    MS_LOG(ERROR) << "Malloc buf failed, file: " << real_path;
+    MS_LOG(ERROR) << "Malloc buf failed.";
     ifs.close();
     return buffer;
   }

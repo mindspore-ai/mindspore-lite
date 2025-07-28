@@ -250,7 +250,7 @@ public class NetRunner {
     public void trainModel(String modelPath, String datasetPath, int virtualBatch) {
         int index = modelPath.lastIndexOf(".ms");
         if (index == -1) {
-            System.err.println("The model " + modelPath + " should be named *.ms");
+            System.err.println("The modelPath should be named *.ms");
             return;
         }
         System.out.println("==========Loading Model, Create Train Session=============");
@@ -284,7 +284,7 @@ public class NetRunner {
             // arg 3: use default output tensor names
             String trainedFilePath = modelPath.substring(0, index) + "_trained.ms";
             if (model.export(trainedFilePath, 0, false, new ArrayList<>())) {
-                System.out.println("Trained model successfully saved: " + trainedFilePath);
+                System.out.println("Trained model successfully saved.");
             } else {
                 System.err.println("Save model error.");
             }

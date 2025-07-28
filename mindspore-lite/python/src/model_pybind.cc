@@ -68,8 +68,7 @@ Status PyModelUpdateConfig(Model *model, const std::string &key, const std::map<
   }
   for (auto &item : value) {
     if (model->UpdateConfig(key, item).IsError()) {
-      MS_LOG(ERROR) << "Update config failed, section: " << key << ", config name: " << item.first
-                    << ", config value: " << item.second;
+      MS_LOG(ERROR) << "Update config failed, please check your key and value.";
       return kLiteError;
     }
   }

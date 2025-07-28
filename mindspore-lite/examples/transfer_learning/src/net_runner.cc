@@ -168,7 +168,7 @@ int NetRunner::InitDB() {
   }
 
   if (ds_.test_data().size() == 0) {
-    std::cout << "No relevant data was found in " << data_dir_ << std::endl;
+    std::cout << "No relevant data was found in data dir." << std::endl;
     MS_ASSERT(ds_.test_data().size() != 0);
   }
 

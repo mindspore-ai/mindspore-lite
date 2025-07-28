@@ -129,7 +129,7 @@ void NetRunner::InitAndFigureInputs() {
 
   auto status = mindspore::Serialization::Load(ms_file_, mindspore::kMindIR, graph_);
   if (status != mindspore::kSuccess) {
-    std::cout << "Error " << status << " during serialization of graph " << ms_file_;
+    std::cout << "Error " << status << " during serialization of graph.";
     MS_ASSERT(status != mindspore::kSuccess);
   }
 
@@ -143,7 +143,7 @@ void NetRunner::InitAndFigureInputs() {
 
   status = model_->Build(mindspore::GraphCell(*graph_), context, cfg);
   if (status != mindspore::kSuccess) {
-    std::cout << "Error " << status << " during build of model " << ms_file_;
+    std::cout << "Error " << status << " during build of model.";
     MS_ASSERT(status != mindspore::kSuccess);
   }
 
@@ -192,7 +192,7 @@ int NetRunner::InitDB() {
     std::cout << "DatasetSize is " << train_ds_->GetDatasetSize() << std::endl;
   }
   if (train_ds_->GetDatasetSize() == 0) {
-    std::cout << "No relevant data was found in " << data_dir_ << std::endl;
+    std::cout << "No relevant data was found in data dir." << std::endl;
     MS_ASSERT(train_ds_->GetDatasetSize() != 0);
   }
   return 0;

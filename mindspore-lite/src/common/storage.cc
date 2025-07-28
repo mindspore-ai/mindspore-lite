@@ -54,13 +54,13 @@ int Storage::Save(const schema::MetaGraphT &graph, const std::string &outputPath
 #endif
   std::ofstream output(filename, std::ofstream::binary);
   if (!output.is_open()) {
-    MS_LOG(ERROR) << "Can not open output file: " << filename;
+    MS_LOG(ERROR) << "Can not open output file.";
     return RET_ERROR;
   }
   output.write((const char *)content, size);
   if (output.bad()) {
     output.close();
-    MS_LOG(ERROR) << "Write output file : " << filename << " failed";
+    MS_LOG(ERROR) << "Write output file failed";
     return RET_ERROR;
   }
   output.close();

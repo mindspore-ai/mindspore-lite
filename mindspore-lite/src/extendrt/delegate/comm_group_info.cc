@@ -33,7 +33,7 @@ bool CommGroupInfo::CheckPath(const std::string path) const {
   }
   auto realpath = Common::CreatePrefixPath(path, true);
   if (!realpath.has_value()) {
-    MS_LOG(ERROR) << "Get real path failed, path=" << path;
+    MS_LOG(ERROR) << "Get real path failed.";
     return false;
   }
   return true;

@@ -55,10 +55,10 @@ inline bool Drawer::SaveDotFile(const std::string &dot_name, const std::string &
   auto fname = GetNextFileName(dot_name);
   auto write_path = lite::WriteStrToFile(this->base_dir_, fname, dot_content);
   if (write_path.empty()) {
-    MS_LOG(ERROR) << "Save dot-file failed, path: " << this->base_dir_ << ", fname: " << fname;
+    MS_LOG(ERROR) << "Save dot-file failed.";
     return false;
   } else {
-    MS_LOG(INFO) << "Save dot-file successfully, path: " << write_path;
+    MS_LOG(INFO) << "Save dot-file successfully.";
     return true;
   }
 }

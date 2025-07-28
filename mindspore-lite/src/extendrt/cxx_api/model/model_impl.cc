@@ -283,7 +283,7 @@ FuncGraphPtr ModelImpl::LoadGraphByBufferImpl(const void *model_buff, size_t mod
     MindIRLoader mindir_loader(true, nullptr, 0, kDecModeAesGcm, false);
     auto ret = mindir_loader.LoadMindIR(model_buff, model_size, weight_path, &func_graph, &user_info_string);
     if (!ret || func_graph == nullptr) {
-      MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model: " << weight_path;
+      MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
       return nullptr;
     }
     if (!user_info_string.empty()) {
@@ -343,7 +343,7 @@ FuncGraphPtr ModelImpl::LoadGraphByBufferImpl(const void *model_data, size_t mod
     auto ret =
       mindir_loader.LoadMindIR(model_data, model_size, weight_path, cryptoInfo, &func_graph, &user_info_string);
     if (!ret || func_graph == nullptr) {
-      MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model: " << weight_path;
+      MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
       return nullptr;
     }
     if (!user_info_string.empty()) {
@@ -512,7 +512,7 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, M
   if (model_type != ModelType::kDataFlow) {
     func_graph = LoadGraphByBufferImpl(model_buff, model_size, model_type, model_context, model_path);
     if (func_graph == nullptr) {
-      MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model: " << model_path;
+      MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
       return kLiteError;
     }
     // convert and optimize func graph to infer
@@ -604,7 +604,7 @@ Status ModelImpl::BuildByBufferImpl(const void *model_data, size_t model_size, M
   if (model_type != ModelType::kDataFlow) {
     func_graph = LoadGraphByBufferImpl(model_data, model_size, model_type, model_context, model_path, cryptoInfo);
     if (func_graph == nullptr) {
-      MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model: " << model_path;
+      MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
       return kLiteError;
     }
     // convert and optimize func graph to infer
@@ -703,7 +703,7 @@ Status ModelImpl::Build(const std::string &model_path, ModelType model_type,
   }
   auto buffer = ReadFile(model_path);
   if (buffer.DataSize() == 0) {
-    MS_LOG(ERROR) << "Failed to read buffer from model file: " << model_path;
+    MS_LOG(ERROR) << "Failed to read buffer from model file.";
     return kLiteError;
   }
   return BuildByBufferImpl(buffer.Data(), buffer.DataSize(), model_type, model_context, model_path);
