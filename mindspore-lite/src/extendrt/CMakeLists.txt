@@ -236,6 +236,21 @@ if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
         target_link_libraries(mindspore-extendrt mindspore_lite_drawer)
         target_link_libraries(mindspore-extendrt_static mindspore_lite_drawer)
     endif()
+    set_target_properties(mindspore_core PROPERTIES
+        OUTPUT_NAME "libmindspore_core_lite"
+        PREFIX ""
+        SUFFIX ".so"
+    )
+    set_target_properties(mindspore_ops PROPERTIES
+        OUTPUT_NAME "libmindspore_ops_lite"
+        PREFIX ""
+        SUFFIX ".so"
+    )
+    set_target_properties(mindspore_graph_ir PROPERTIES
+        OUTPUT_NAME "libmindspore_graph_ir_lite"
+        PREFIX ""
+        SUFFIX ".so"
+    )
 else()
     set(MSLITE_EXTEND_RUNTIME_SRC ${MODEL_LOADER_FRAMEWORK_SRC})
     add_library(mindspore-extendrt OBJECT ${MSLITE_EXTEND_RUNTIME_SRC})
