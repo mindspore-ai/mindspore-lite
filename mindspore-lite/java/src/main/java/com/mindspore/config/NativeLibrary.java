@@ -36,8 +36,8 @@ public class NativeLibrary {
     private static final Logger LOGGER = Logger.getLogger(NativeLibrary.class.toString());
 
     private static final String GLOG_LIBNAME = "mindspore_glog";
-    private static final String MINDSPORE_CORE_LIBNAME = "mindspore_core";
-    private static final String MINDSPORE_OPS_LIBNAME = "mindspore_ops";
+    private static final String MINDSPORE_CORE_LIBNAME = "mindspore_core_lite";
+    private static final String MINDSPORE_OPS_LIBNAME = "mindspore_ops_lite";
     private static final String OPENCV_CORE_LIBNAME = "opencv_core";
     private static final String OPENCV_IMGCODECS_LIBNAME = "opencv_imgcodecs";
     private static final String OPENCV_IMGPROC_LIBNAME = "opencv_imgproc";
@@ -56,7 +56,7 @@ public class NativeLibrary {
     private static final String TENSORRT_PLUGIN_LIBNAME = "tensorrt_plugin";
     private static final String MSLITE_SHARED_LIB_LIBNAME = "mslite_shared_lib";
     private static final String TRANSFORMER_SHARED_LIB_LIBNAME = "transformer-shared";
-    private static final String MINDSPORE_GRAPH_IR_LIBNAME = "mindspore_graph_ir";
+    private static final String MINDSPORE_GRAPH_IR_LIBNAME = "mindspore_graph_ir_lite";
     private static Long timestamp = null;
 
     /**
@@ -79,10 +79,11 @@ public class NativeLibrary {
      * libopencv_imgproc.so
      * libopencv_imgcodecs.so
      * libmslite_converter_plugin.so
-     * libmindspore_core.so
-     * libmindspore_ops.so
+     * libmindspore_core_lite.so
+     * libmindspore_ops_lite.so
      * libmindspore_converter.so
      * libmindspore-lite.so
+     * mindspore_graph_ir_lite.so
      * mindspore-lite-jni
      *
      * For cloud inference, dlopen library as follows:

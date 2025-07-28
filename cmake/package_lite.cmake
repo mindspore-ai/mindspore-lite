@@ -543,9 +543,9 @@ if(PLATFORM_ARM64)
                 endif()
                 install(FILES ${LITE_ACL_DIR}/libascend_pass_plugin.so DESTINATION ${CONVERTER_ROOT_DIR}/lib
                         COMPONENT ${RUNTIME_COMPONENT_NAME})
-                install(FILES ${LITE_ACL_DIR}/_mindspore_transform_graph_ir/libmindspore_graph_ir.so DESTINATION
+                install(FILES ${LITE_ACL_DIR}/_mindspore_transform_graph_ir/libmindspore_graph_ir_lite.so DESTINATION
                         ${CONVERTER_ROOT_DIR}/lib COMPONENT ${RUNTIME_COMPONENT_NAME})
-                install(FILES ${LITE_ACL_DIR}/_mindspore_transform_graph_ir/libmindspore_graph_ir.so DESTINATION
+                install(FILES ${LITE_ACL_DIR}/_mindspore_transform_graph_ir/libmindspore_graph_ir_lite.so DESTINATION
                         ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
 
@@ -982,9 +982,9 @@ else()
             endif()
             install(FILES ${LITE_ACL_DIR}/libascend_pass_plugin.so DESTINATION ${CONVERTER_ROOT_DIR}/lib
                     COMPONENT ${RUNTIME_COMPONENT_NAME})
-            install(FILES ${LITE_ACL_DIR}/_mindspore_transform_graph_ir/libmindspore_graph_ir.so DESTINATION
+            install(FILES ${LITE_ACL_DIR}/_mindspore_transform_graph_ir/libmindspore_graph_ir_lite.so DESTINATION
                     ${CONVERTER_ROOT_DIR}/lib COMPONENT ${RUNTIME_COMPONENT_NAME})
-            install(FILES ${LITE_ACL_DIR}/_mindspore_transform_graph_ir/libmindspore_graph_ir.so DESTINATION
+            install(FILES ${LITE_ACL_DIR}/_mindspore_transform_graph_ir/libmindspore_graph_ir_lite.so DESTINATION
                     ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
 
