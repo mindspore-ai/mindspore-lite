@@ -197,7 +197,7 @@ public class Benchmark {
         model = new Model();
         boolean ret = model.build(modelPath, ModelType.MT_MINDIR, context);
         if (!ret) {
-            System.err.println("Compile graph failed, model path is " + modelPath);
+            System.err.println("Compile graph failed.");
             model.free();
             System.exit(1);
         }
@@ -211,7 +211,7 @@ public class Benchmark {
             // Set Input Data.
             byte[] data = readBinFile(inDataFile[index], (int) msTensor.size());
             if (data == null) {
-                System.err.println("read bin file failed: " + inDataFile[index]);
+                System.err.println("read bin file failed.");
                 model.free();
                 System.exit(1);
             }
@@ -230,7 +230,7 @@ public class Benchmark {
         boolean benchmarkResult = compareData(benchmarkDataFile, accuracy);
         model.free();
         if (!benchmarkResult) {
-            System.err.println(modelPath + " accuracy error is too large.");
+            System.err.println("The model accuracy error is too large.");
             System.exit(1);
         }
     }

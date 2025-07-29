@@ -56,14 +56,14 @@ int main(int argc, char **argv) {
   mindspore::Graph graph;
   auto status = mindspore::Serialization::Load(infer_model_fn, mindspore::kMindIR, &graph);
   if (status != mindspore::kSuccess) {
-    std::cout << "Error " << status << " during serialization of graph " << infer_model_fn;
+    std::cout << "Error " << status << " during serialization of graph.";
     MS_ASSERT(status != mindspore::kSuccess);
   }
 
   mindspore::Model model;
   status = model.Build(mindspore::GraphCell(graph), context);
   if (status != mindspore::kSuccess) {
-    std::cout << "Error " << status << " during build of model " << infer_model_fn;
+    std::cout << "Error " << status << " during build of model.";
     MS_ASSERT(status != mindspore::kSuccess);
   }
 
@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
   std::vector<mindspore::MSTensor> outputs;
   status = model.Predict({*input_tensor}, &outputs);
   if (status != mindspore::kSuccess) {
-    std::cout << "Error " << status << " during running predict of model " << infer_model_fn;
+    std::cout << "Error " << status << " during running predict of model.";
     MS_ASSERT(status != mindspore::kSuccess);
   }
 

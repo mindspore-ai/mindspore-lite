@@ -459,7 +459,7 @@ STATUS ConverterFuncGraph::RunGeOfflineConvert(const std::shared_ptr<ConverterPa
     }
     return RET_OK;
   } else {
-    MS_LOG(ERROR) << "AOE tuning begin";
+    MS_LOG(INFO) << "AOE tuning begin";
     if (!AscendGeExecutorPlugin::GetInstance().AoeTuning(func_graph, context, param->config_infos)) {
       MS_LOG(ERROR) << "Failed to call AOE Tuning";
       return RET_ERROR;

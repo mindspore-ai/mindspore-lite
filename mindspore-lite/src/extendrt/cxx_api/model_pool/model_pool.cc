@@ -866,7 +866,7 @@ Status ModelPool::InitByPath(const std::string &model_path, const std::shared_pt
   }
   graph_buf_ = lite::ReadFile(model_path.c_str(), &size, allocator_);
   if (graph_buf_ == nullptr) {
-    MS_LOG(ERROR) << "read model failed, model path: " << model_path;
+    MS_LOG(ERROR) << "read model failed, please check your model file.";
     return kLiteNullptr;
   }
   auto dir_pos = model_path.find_last_of('/');

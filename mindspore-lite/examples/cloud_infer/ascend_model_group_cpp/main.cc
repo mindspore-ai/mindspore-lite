@@ -60,8 +60,6 @@ int GenerateInputDataWithRandom(std::vector<mindspore::MSTensor> inputs) {
 void ThreadFunc(ThreadArgs threadArg) {
   mindspore::Model model1;
   mindspore::Model model2;
-  std::cout << threadArg.model_paths[0] << std::endl;
-  std::cout << threadArg.model_paths[1] << std::endl;
   threadArg.model_group->AddModel(threadArg.model_paths);
   std::cout << "add model finished!" << std::endl;
   threadArg.model_group->CalMaxSizeOfWorkspace(mindspore::kMindIR, threadArg.context);

@@ -72,7 +72,6 @@ def create_model(model_path):
     if not path.isfile(model_path):
         raise RuntimeError("Please make sure your model file exists")
     cpu_device_info = mslite.CPUDeviceInfo(enable_fp16=False)
-    print("cpu_device_info: ", cpu_device_info)
     context = mslite.Context(thread_num=1, thread_affinity_mode=2)
     context.append_device_info(cpu_device_info)
     model = mslite.Model()

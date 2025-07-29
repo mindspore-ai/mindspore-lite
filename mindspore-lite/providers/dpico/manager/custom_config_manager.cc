@@ -53,7 +53,7 @@ std::string CustomConfigManager::RealPath(const char *path) {
   }
   char *real_path = realpath(path, resolved_path.get());
   if (real_path == nullptr || strlen(real_path) == 0) {
-    MS_LOG(ERROR) << "file path is not valid : " << path;
+    MS_LOG(ERROR) << "file path is not valid";
     return "";
   }
   std::string res = resolved_path.get();
@@ -70,11 +70,10 @@ int CustomConfigManager::UpdateConfig(const std::map<std::string, std::string> &
       if (IsValidDoubleNum(dpico_config.at(param.first))) {
         *param.second = std::stof(dpico_config.at(param.first));
       } else {
-        MS_LOG(WARNING) << param.first
-                        << " param in config is invalid, will use default or last value:" << *param.second;
+        MS_LOG(WARNING) << param.first << " param in config is invalid, will use default or last value.";
       }
     } else {
-      MS_LOG(INFO) << param.first << " param isn't configured, will use default or last value:" << *param.second;
+      MS_LOG(INFO) << param.first << " param isn't configured, will use default or last value.";
     }
   }
 
@@ -102,7 +101,7 @@ int CustomConfigManager::UpdateConfig(const std::map<std::string, std::string> &
     }
     auto acl_config_file = RealPath(acl_config_file_.c_str());
     if (acl_config_file.empty()) {
-      MS_LOG(ERROR) << "Get realpath failed, AclConfigPath is " << acl_config_file;
+      MS_LOG(ERROR) << "Get realpath failed, please check your acl config file.";
       return RET_ERROR;
     }
   }

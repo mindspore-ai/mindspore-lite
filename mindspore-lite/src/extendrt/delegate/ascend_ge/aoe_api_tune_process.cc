@@ -90,6 +90,7 @@ class AoePlugin {
     }
     std::map<ge::AscendString, ge::AscendString> options;
     for (auto &item : global_options) {
+      MS_LOG(INFO) << "Aoe global option " << item.first;
       options[ge::AscendString(item.first.c_str())] = ge::AscendString(item.second.c_str());
     }
     auto aoe_status = aoe_initialize_func_(options);
@@ -176,6 +177,7 @@ class AoePlugin {
     }
     std::map<ge::AscendString, ge::AscendString> options;
     for (auto &item : tuning_options) {
+      MS_LOG(INFO) << "Aoe tuning option " << item.first;
       options[ge::AscendString(item.first.c_str())] = ge::AscendString(item.second.c_str());
     }
     auto aoe_status = aoe_tuning_graph_func_(session_id, options);

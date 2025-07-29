@@ -149,7 +149,7 @@ int MindirModel::LoadTensorData(mindspore::lite::Tensor *lite_tensor, const mind
     // Read file
     std::basic_ifstream<char> fid(file, std::ios::in | std::ios::binary);
     if (!fid) {
-      MS_LOG(ERROR) << "Open file '" << file << "' failed, please check the correct of the file.";
+      MS_LOG(ERROR) << "Open file failed, please check the correct of the file.";
       return RET_OK;
     }
     fid.seekg(0, std::ios_base::end);

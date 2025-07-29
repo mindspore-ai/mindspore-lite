@@ -35,7 +35,7 @@ inline std::string FindFileWithRecursion(const std::string &parent_dir, const st
   }
   DIR *dir = opendir(parent_dir.c_str());
   if (dir == nullptr) {
-    MS_LOG(ERROR) << "Can't open dir " << parent_dir;
+    MS_LOG(ERROR) << "Can't open dir.";
     return "";
   }
   dirent *ent = readdir(dir);
