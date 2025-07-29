@@ -127,7 +127,7 @@ const CNodePtr PadV3GePass::CreateConcatNode(const FuncGraphPtr &func_graph,
   MS_CHECK_TRUE_RET(concat_prim_c != nullptr, nullptr);
 
   auto concat_cnode = func_graph->NewCNode(concat_prim_c, {make_tuple_cnode});
-  MS_CHECK_TRUE_RET(concat_prim_c != nullptr, nullptr);
+  MS_CHECK_TRUE_RET(concat_cnode != nullptr, nullptr);
   auto concat_abstract =
     abstract::MakeAbstract(std::make_shared<abstract::Shape>(ShapeVector({input_num})), TypeIdToType(kNumberTypeInt32));
   concat_cnode->set_abstract(concat_abstract);
@@ -139,15 +139,19 @@ const CNodePtr PadV3GePass::CreateConcatNode(const FuncGraphPtr &func_graph,
 const CNodePtr PadV3GePass::ProcessSliceNConcat(const FuncGraphPtr &func_graph, const AnfNodePtr &pad_node,
                                                 const AnfNodePtr &input_node, int64_t padding_length,
                                                 std::string concat_node_name) {
+  MS_CHECK_TRUE_MSG(func_graph != nullptr, nullptr, "func_graph is nullptr.");
+  MS_CHECK_TRUE_MSG(pad_node != nullptr, nullptr, "pad_node is nullptr.");
+  MS_CHECK_TRUE_MSG(input_node != nullptr, nullptr, "input_node is nullptr.");
   std::vector<AnfNodePtr> concat_input_vec;
   for (int64_t i = 0; i < padding_length; i += static_cast<int64_t>(kSizeTwo)) {
     // slice and insert to concat in reverse order
     auto slice_node_2 = CreateStridedSlice(func_graph, input_node, i + kSizeOne);
+    MS_CHECK_TRUE_MSG(slice_node_2 != nullptr, nullptr, "slice_node_2 is nullptr.");
     slice_node_2->set_fullname_with_scope(pad_node->fullname_with_scope() + "_strided_slice_" +
                                           std::to_string(i + kSizeOne));
     concat_input_vec.insert(concat_input_vec.begin(), slice_node_2);
-
     auto slice_node_1 = CreateStridedSlice(func_graph, input_node, i);
+    MS_CHECK_TRUE_MSG(slice_node_1 != nullptr, nullptr, "slice_node_1 is nullptr.");
     slice_node_1->set_fullname_with_scope(pad_node->fullname_with_scope() + "_strided_slice_" + std::to_string(i));
     concat_input_vec.insert(concat_input_vec.begin(), slice_node_1);
   }
