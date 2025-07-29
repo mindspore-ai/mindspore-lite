@@ -246,11 +246,13 @@ if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
         PREFIX ""
         SUFFIX ".so"
     )
-    set_target_properties(mindspore_graph_ir PROPERTIES
-        OUTPUT_NAME "libmindspore_graph_ir_lite"
-        PREFIX ""
-        SUFFIX ".so"
-    )
+    if(MSLITE_ENABLE_ACL)
+        set_target_properties(mindspore_graph_ir PROPERTIES
+            OUTPUT_NAME "libmindspore_graph_ir_lite"
+            PREFIX ""
+            SUFFIX ".so"
+        )
+    endif()
 else()
     set(MSLITE_EXTEND_RUNTIME_SRC ${MODEL_LOADER_FRAMEWORK_SRC})
     add_library(mindspore-extendrt OBJECT ${MSLITE_EXTEND_RUNTIME_SRC})
