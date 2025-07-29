@@ -55,7 +55,7 @@ class LiteGraphExecutor {
     return true;
   }
 
-  virtual bool UpdateWeights(const std::vector<std::vector<std::shared_ptr<mindspore::MSTensor>>> &weights) {
+  virtual bool UpdateWeights(const std::vector<std::vector<mindspore::MSTensor>> &weights) {
     MS_LOG(ERROR) << "UpdateWeights failed.";
     return false;
   }

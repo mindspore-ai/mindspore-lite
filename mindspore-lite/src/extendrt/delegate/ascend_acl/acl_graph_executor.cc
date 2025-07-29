@@ -28,6 +28,7 @@
 namespace mindspore {
 namespace {
 constexpr auto kProviderAcl = "litert";
+constexpr size_t kSupportedWeightNum = 1;
 }  // namespace
 
 std::string AclGraphExecutor::GetConfigOption(const std::string &section_name, const std::string &option_name) {
@@ -105,6 +106,12 @@ std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
   }
   acl_options_ptr->device_id = static_cast<int32_t>(device_id);
   return acl_options_ptr;
+}
+
+bool AclGraphExecutor::UpdateWeights(const std::vector<std::vector<MSTensor>> &inputs) {
+  MS_CHECK_TRUE_MSG(model_infer_ != nullptr, false, "model_infer_ is nullptr!");
+  MS_CHECK_TRUE_MSG(inputs.size() == kSupportedWeightNum, false, "Only support single weight now!");
+  return model_infer_->UpdateWeights(inputs[0]);
 }
 
 bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,

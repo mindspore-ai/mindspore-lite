@@ -49,6 +49,8 @@ class AclGraphExecutor : public LiteGraphExecutor {
 
   const std::vector<TypeId> GetOutputDataType() { return model_infer_->GetOutputDataType(); }
 
+  bool UpdateWeights(const std::vector<std::vector<MSTensor>> &inputs);
+
   Status Init();
   std::string GetConfigOption(const std::string &section_name, const std::string &option_name);
 

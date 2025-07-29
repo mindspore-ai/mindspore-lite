@@ -32,6 +32,7 @@
 namespace mindspore {
 namespace {
 constexpr auto kIsAdapted = "is_adapted";
+constexpr size_t kSupportedWeightNum = 1;
 
 std::mutex kernel_graph_mutex;
 std::mutex g_build_graph_mutex;
@@ -325,8 +326,16 @@ std::vector<std::string> GraphSinkSession::GetInputNames(uint32_t graph_id) {
   return info.input_names;
 }
 
-Status GraphSinkSession::UpdateWeights(const std::vector<std::vector<std::shared_ptr<mindspore::MSTensor>>> &weights) {
-  MS_LOG(INFO) << "UpdateWeights..";
+Status GraphSinkSession::UpdateWeights(const std::vector<std::vector<mindspore::MSTensor>> &weights) {
+  MS_LOG(INFO) << "UpdateWeights.";
+  if (weights.size() != kSupportedWeightNum) {
+    MS_LOG(ERROR) << "only support single weight, current weight num:" << weights.size();
+    return kLiteError;
+  }
+  if (weights[0].empty()) {
+    MS_LOG(ERROR) << "weight is empty!";
+    return kLiteError;
+  }
   bool ret = graph_executor_->UpdateWeights(weights);
   if (!ret) {
     MS_LOG(ERROR) << "UpdateWeights failed.";
