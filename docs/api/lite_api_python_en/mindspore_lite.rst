@@ -69,7 +69,7 @@ LLMEngine
 LiteInfer
 ----------
 
-.. mscnautosummary::
+.. autosummary::
     :toctree: mindspore_lite
 
     mindspore_lite.LiteInfer

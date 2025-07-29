@@ -14,7 +14,7 @@ mindspore_lite.LLMEngine
         - **TypeError** - `role` 不是LLMRole类型。
         - **TypeError** - `cluster_id` 不是int类型。
 
-    .. py:method:: add_model(self, model_paths: Union[Tuple[str], List[str]], options: Dict[str, str], postprocess_model_path=None)
+    .. py:method:: add_model(model_paths: Union[Tuple[str], List[str]], options: Dict[str, str], postprocess_model_path=None)
 
         在LLMEngine中添加一个模型。
 
@@ -28,7 +28,7 @@ mindspore_lite.LLMEngine
             - **TypeError** - `model_paths` 是list或者tuple，但其中的元素不是str类型。
             - **TypeError** - `options` 不是dict。
             - **RuntimeError** - 添加模型失败。
-        
+
     .. py:method:: batch_mode
         :property:
 
@@ -74,7 +74,7 @@ mindspore_lite.LLMEngine
         异常：
             - **TypeError** - `options` 不是dict。
             - **RuntimeError** - 初始化LLMEngine失败。
-    
+
     .. py:method:: link_clusters(clusters: Union[List[LLMClusterInfo], Tuple[LLMClusterInfo]], timeout=-1)
 
         连接集群。
