@@ -6,6 +6,21 @@
 
 ### Major Features and Improvements
 
+- [STABLE] Mindspore Lite supports sharing model weights between processes to reduce video memory usage. Users can enable this feature by passing the config_dict parameter in the mindspore_lite.build_from_file API and setting the shared_mem_handle and pids keywords in config_dict.
+
+### API Change
+
+- [STABLE] The config_dict parameter of the mindspore_lite.Model.build_from_file interface now supports the configuration keywords shared_mem_handle and pids.
+- [STABLE] The mindspore_lite.Model.get_model_info() interface now supports the keywords current_pid and shareable_weight_mem_handle.
+
+### Contributors
+
+熊攀
+
+## MindSpore Lite 2.6.0 Release Notes
+
+### Major Features and Improvements
+
 - [STABLE] MindSpore Lite supports configuring operator parallel inference acceleration during model conversion. You only need to configure the stream_label_file option during model conversion to specify the operators that need parallel inference.
 - [STABLE] MindSpore Lite supports the conversion of onnx if operators in the Ascend backend.
 
