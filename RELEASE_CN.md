@@ -2,6 +2,21 @@
 
 [View English](./RELEASE.md)
 
+## MindSpore Lite 2.7.0 Release Notes
+
+### 主要特性及增强
+
+- [STABLE]MindsporeLite支持进程间模型共享权重，以减少显存占用。用户可以通过在mindspore_lite.build_from_file接口中传入config_dict参数，并在config_dict中设置shared_mem_handle以及pids关键字使能该功能。
+
+### API 变更
+
+- [STABLE] mindspore_lite.Model.build_from_file接口的config_dict参数新增支持配置关键字shared_mem_handle以及pids。
+- [STABLE] mindspore_lite.Model.get_model_info()接口新增支持关键字 current_pid以及 shareable_weight_mem_handle。
+
+### 贡献者
+
+熊攀
+
 ## MindSpore Lite 2.6.0 Release Notes
 
 ### 主要特性及增强
