@@ -40,11 +40,13 @@ class ConcatOpPassNet(nn.Cell):
         key_paddings = self.concat((Tensor([0, 0, 0, 0, 0], mstype.int64), pad_length, Tensor([0, 0], mstype.int64)))
         return key_paddings
 
+
 def dummy_tensor(shape, dtype):
     """create dummy tensor"""
     if None in shape:
         return Tensor(shape=shape, dtype=dtype)
     return Tensor(np.ones(shape=tuple(shape)), dtype=dtype)
+
 
 def export_model():
     """

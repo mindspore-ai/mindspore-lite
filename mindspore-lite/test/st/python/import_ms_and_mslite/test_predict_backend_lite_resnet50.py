@@ -23,10 +23,10 @@ import os
 
 import numpy as np
 
-import mindspore as ms
-from mindspore import context
 from lite_infer_predict_utils import predict_backend_lite, _get_max_index_from_res
 from resnet import resnet50
+import mindspore as ms
+from mindspore import context
 
 
 # pylint: disable=I1101

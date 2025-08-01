@@ -35,8 +35,8 @@ public class DataSet {
         numOfClasses = 10;
         trainData = new Vector<DataLabelTuple>();
         testData = new Vector<DataLabelTuple>();
-        readMNISTFile(dpath + "/train/train-images-idx3-ubyte", dpath+"/train/train-labels-idx1-ubyte", trainData);
-        readMNISTFile(dpath + "/test/t10k-images-idx3-ubyte", dpath+"/test/t10k-labels-idx1-ubyte", testData);
+        readMNISTFile(dpath + "/train/train-images-idx3-ubyte", dpath + "/train/train-labels-idx1-ubyte", trainData);
+        readMNISTFile(dpath + "/test/t10k-images-idx3-ubyte", dpath + "/test/t10k-labels-idx1-ubyte", testData);
 
         System.out.println("train data cnt: " + trainData.size());
         System.out.println("test data cnt: " + testData.size());
@@ -112,7 +112,7 @@ public class DataSet {
                         if (r < 2 || r > 29 || c < 2 || c > 29) {
                             hwc_bin_image[index] = 0;
                         } else {
-                            hwc_bin_image[index] = image_data[(r-2)*28 + (c-2)];
+                            hwc_bin_image[index] = image_data[(r - 2) * 28 + (c - 2)];
                         }
                     }
                 }

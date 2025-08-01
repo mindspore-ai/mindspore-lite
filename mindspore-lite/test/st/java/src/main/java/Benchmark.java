@@ -88,8 +88,8 @@ public class Benchmark {
                             } else {
                                 meanError += absoluteError / (Math.abs(benchmarkData[i]) + Float.MIN_VALUE);
                                 errorCount++;
-                            }                            
-                        } 
+                            }
+                        }
                     }
 
                     if (meanError > 0.0f) {
@@ -109,7 +109,7 @@ public class Benchmark {
         }
         return meanError < accuracy;
     }
-    
+
     public static void main(String[] args) {
         if (args.length < 4) {
             System.err.println("We must pass parameters such as modelPath, inDataFile, benchmarkDataFile and accuracy.");
@@ -123,7 +123,7 @@ public class Benchmark {
         if (args.length == 5 && args[4].equals("Runner")) {
             // use default param init context
             MSContext context = new MSContext();
-            context.init(1,0);
+            context.init(1, 0);
             boolean ret = context.addDeviceInfo(DeviceType.DT_CPU, false, 0);
             if (!ret) {
                 System.err.println("init context failed");
@@ -158,7 +158,7 @@ public class Benchmark {
             List<MSTensor> outputs = new ArrayList<>();
 
             // runner do predict
-            ret = runner.predict(inputs,outputs);
+            ret = runner.predict(inputs, outputs);
             if (!ret) {
                 System.err.println("MindSpore Lite predict failed.");
                 runner.free();

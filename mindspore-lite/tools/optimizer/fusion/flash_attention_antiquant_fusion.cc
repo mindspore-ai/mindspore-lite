@@ -154,9 +154,9 @@ ParameterPtr FlashAttentionAntiquantFusion::ConcatParameter(const FuncGraphPtr &
     MS_LOG(INFO) << "concat_data size is" << concat_data.size();
     concat_parameter = opt::BuildFloatVecParameterNode(func_graph, concat_data, name);
   }
-
+  MS_CHECK_TRUE_RET(concat_parameter != nullptr, nullptr);
   auto abstract = concat_parameter->abstract();
-  MS_EXCEPTION_IF_NULL(abstract);
+  MS_CHECK_TRUE_RET(abstract != nullptr, nullptr);
   ShapeVector shape_vector = {2};
   shape_vector.insert(shape_vector.end(), ori_shape.begin() + 1, ori_shape.end());
   abstract->set_shape(std::make_shared<abstract::Shape>(shape_vector));

@@ -21,8 +21,6 @@ import com.mindspore.config.MSContext;
 import com.mindspore.config.RunnerConfig;
 import com.mindspore.ModelParallelRunner;
 import com.mindspore.MSTensor;
-import com.mindspore.Model;
-import com.mindspore.config.ModelType;
 import com.mindspore.config.Version;
 
 import java.nio.ByteBuffer;
@@ -32,9 +30,7 @@ import java.util.Random;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class Main {
@@ -62,7 +58,7 @@ public class Main {
         return buffer;
     }
 
-    private static void freeTensor(){
+    private static void freeTensor() {
         for (int i = 0; i < inputs.size(); i++) {
             inputs.get(i).free();
         }
@@ -81,7 +77,7 @@ public class Main {
 
         // use default param init context
         MSContext context = new MSContext();
-        context.init(1,0);
+        context.init(1, 0);
         boolean ret = context.addDeviceInfo(DeviceType.DT_CPU, false, 0);
         if (!ret) {
             System.err.println("init context failed");
@@ -129,7 +125,7 @@ public class Main {
         List<MSTensor> outputs = new ArrayList<>();
 
         // runner do predict
-        ret = runner.predict(inputs,outputs);
+        ret = runner.predict(inputs, outputs);
         if (!ret) {
             System.err.println("MindSpore Lite predict failed.");
             freeTensor();

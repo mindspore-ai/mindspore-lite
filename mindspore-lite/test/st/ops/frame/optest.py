@@ -51,8 +51,9 @@ class OpTest:
             os.mkdir(self.output_path)
         conf.logger.info("use mslite benchmark: %s", self.mslite_benchmark_path)
 
-## 因为ms默认输入格式为NHWC，将onnx模型的NCHW格式输入转为NHWC格式
-# 将所有标杆数据 gold_name:shapes 转换为 X1:dim1, dim2;X2:dim1, dim2...的格式
+
+# Because the default input format of MS is NHWC, convert the NCHW format input of the ONNX model to NHWC format
+# Convert all benchmark data gold_name:shapes to the format of X1:dim1, dim2;X2:dim1, dim2...
     def get_run_input_shapes(self, run_config):
         run_input_shapes_ = {}
         input_shapes = self.golden_confis.gold_input_name_dict[run_config["gold_in"]]
@@ -124,8 +125,6 @@ class OpTest:
                 initializer=initializers,
             )
             model = helper.make_model(graph, producer_name="test", opset_imports=[helper.make_opsetid("", 18)])
-            # for opset in model.opset_import:
-            #     print(f"Domain: {opset.domain}, Version: {opset.version}")
             onnx.checker.check_model(model)
             model.ir_version = 8
 
@@ -148,7 +147,6 @@ class OpTest:
             )
             onnx.checker.check_model(model)
 
-            # conf.logger.debug(onnx.helper.printable_graph(model.graph))
             # dtypes默认fp32
             input_tensors = []
             input_feeds = {}
@@ -290,8 +288,6 @@ class OpTest:
     def run_models(self):
         run_configs = self.run_configs.run_configs_
 
-        # run_input_shapes = self.get_run_input_shapes()
-
         for run_config in run_configs:
             in_model_path = self.output_path + "/ms_models/" + run_config["in_model"]
 
@@ -304,7 +300,6 @@ class OpTest:
                 )
                 continue
 
-            # dtypes = type_map[run_config["dtypes"]]
             run_input_shapes = self.get_run_input_shapes(run_config)
 
             input_shapes = run_input_shapes[run_config["gold_in"]]
@@ -326,10 +321,6 @@ class OpTest:
                 f"--benchmarkDataFile={gold_out_param}",
                 f"--inputShape={input_shapes}",
             ]
-            # if input_shapes != "None":
-            #     args.append(
-            #         f"--inputShape={input_shapes}",
-            #     )
             run_command = ""
             for arg in args:
                 run_command += arg + " "

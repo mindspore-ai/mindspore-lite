@@ -42,6 +42,7 @@ def test_lite_llm_engine_cluster_info_cluster_id_type_check():
         llm_cluster.remote_cluster_id = "0"
     assert "remote_cluster_id must be int, but got" in str(raise_info.value)
 
+
 # ============================ LLMEngine ============================
 def test_lite_llm_engine_llm_engine_role_type_check():
     with pytest.raises(TypeError) as raise_info:
@@ -167,6 +168,7 @@ def test_lite_llm_engine_llm_engine_fetch_status_check():
         llm_engine = mslite.LLMEngine(mslite.LLMRole.Prompt, 0, "manual")
         llm_engine.fetch_status()
     assert "LLMEngine is not inited or init failed" in str(raise_info.value)
+
 
 # ============================ LLMModel ============================
 def test_lite_llm_engine_llm_model_predict_check():
