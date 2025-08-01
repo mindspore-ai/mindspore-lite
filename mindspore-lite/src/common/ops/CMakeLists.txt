@@ -43,6 +43,10 @@ if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
             )
 endif()
 
+set_property(SOURCE ${OPS_SRC} PROPERTY COMPILE_DEFINITIONS
+        LOG_HDR_FILE_REL_PATH="mindspore-lite/../mindspore/mindspore/core/include/utils/log_adapter.h"
+        SUBMODULE_ID=mindspore::SubModuleId::SM_LITE)
+
 add_library(cpu_ops_mid OBJECT ${OPS_SRC})
 add_dependencies(cpu_ops_mid fbs_src fbs_inner_src)
 

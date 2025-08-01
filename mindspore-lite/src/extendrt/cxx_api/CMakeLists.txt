@@ -57,5 +57,10 @@ set(MSLIB_INFER_SRC
     ${API_ACL_SRC}
     ${API_OPS_SRC}
     )
+
+set_property(SOURCE ${MSLIB_INFER_SRC} PROPERTY COMPILE_DEFINITIONS
+        LOG_HDR_FILE_REL_PATH="mindspore-lite/../mindspore/mindspore/core/include/utils/log_adapter.h"
+        SUBMODULE_ID=mindspore::SubModuleId::SM_LITE)
+
 add_library(mindspore_infer_shared_lib_obj OBJECT ${MSLIB_INFER_SRC})
 add_dependencies(mindspore_infer_shared_lib_obj fbs_inner_src)
