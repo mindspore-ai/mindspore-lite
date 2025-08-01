@@ -25,8 +25,8 @@ import com.mindspore.config.ModelType;
 import com.mindspore.config.Version;
 
 import java.io.File;
-import java.nio.Path;
-import java.nio.Paths;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -56,7 +56,7 @@ public class Main {
     }
 
     private static boolean compile(String modelPath) {
-        String absolutePath = new File(modelPath).getCanonicalFile();
+        String absolutePath = new File(modelPath).getAbsolutePath();
         MSContext context = new MSContext();
         // use default param init context
         context.init();
