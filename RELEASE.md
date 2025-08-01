@@ -4,6 +4,27 @@
 
 ## MindSpore Lite 2.7.0 Release Notes
 
+MindSpore Lite​​ delivers lightweight AI inference acceleration capabilities for diverse hardware devices, empowering smart applications. It provides developers with an ​​end-to-end solution​​ and offers algorithm engineers and data scientists a ​​user-friendly development experience​​ characterized by efficient execution and flexible deployment.
+
+To better foster the thriving development of the AI software and hardware application ecosystem, ​​MindSpore Lite has established an independent code repository to drive ecosystem growth​​. Going forward, MindSpore Lite will collaborate with the ​​MindSpore AI Community​​ to dedicate efforts toward enriching the AI software and hardware application ecosystem.
+
+For further details, please visit the [MindSpore Lite Code Repository](https://gitee.com/mindspore/mindspore-lite).
+
+### Major Features and Improvements
+
+- [STABLE] Support sharing model weights between processes to reduce video memory usage. Users can enable this feature by passing the config_dict parameter in the mindspore_lite.build_from_file API and setting the shared_mem_handle and pids keywords in config_dict.
+
+### API Change
+
+- [STABLE] The config_dict parameter of the mindspore_lite.Model.build_from_file interface now supports the configuration keywords shared_mem_handle and pids.
+- [STABLE] The mindspore_lite.Model.get_model_info() interface now supports the keywords current_pid and shareable_weight_mem_handle.
+
+### Contributors
+
+YeFeng_24,xiong-pan,jjfeing,liuf9,zhangzhugucheng,xu_anyue,yiguangzheng,zxx_xxz,jianghui58,hbhu_bin,chenyihang5,qll1998,yangyingchun1999,liuchengji3,cheng-chao23,gemini524,yangly,yanghui00
+
+## MindSpore Lite 2.6.0 Release Notes
+
 ### Major Features and Improvements
 
 - [STABLE] MindSpore Lite supports configuring operator parallel inference acceleration during model conversion. You only need to configure the stream_label_file option during model conversion to specify the operators that need parallel inference.

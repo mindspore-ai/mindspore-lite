@@ -2,6 +2,27 @@
 
 [View English](./RELEASE.md)
 
+## MindSpore Lite 2.7.0 Release Notes
+
+MindSpore Lite面向不同硬件设备提供轻量化AI推理加速能力，使能智能应用，为开发者提供端到端的解决方案，为算法工程师和数据科学家提供开发友好、运行高效、部署灵活的体验。
+
+为了更好地促进人工智能软硬件应用生态繁荣发展，MindSpore Lite独立建仓促进生态发展。未来MindSpore Lite将与MindSpore AI社区一起，致力于丰富AI软硬件应用生态。
+
+更多详情请参阅[MindSpore Lite代码仓](https://gitee.com/mindspore/mindspore-lite)。
+
+### 主要特性及增强
+
+- [STABLE] 支持进程间模型共享权重，以减少显存占用。用户可以通过在mindspore_lite.build_from_file接口中传入config_dict参数，并在config_dict中设置shared_mem_handle以及pids关键字使能该功能。
+
+### API 变更
+
+- [STABLE] mindspore_lite.Model.build_from_file接口的config_dict参数新增支持配置关键字shared_mem_handle以及pids。
+- [STABLE] mindspore_lite.Model.get_model_info()接口新增支持关键字current_pid以及shareable_weight_mem_handle。
+
+### 贡献者
+
+YeFeng_24,xiong-pan,jjfeing,liuf9,zhangzhugucheng,xu_anyue,yiguangzheng,zxx_xxz,jianghui58,hbhu_bin,chenyihang5,qll1998,yangyingchun1999,liuchengji3,cheng-chao23,gemini524,yangly,yanghui00
+
 ## MindSpore Lite 2.6.0 Release Notes
 
 ### 主要特性及增强
