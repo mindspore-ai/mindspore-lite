@@ -19,7 +19,6 @@ package com.mindspore.lite.demo;
 import com.mindspore.MSTensor;
 import com.mindspore.Model;
 import com.mindspore.config.DataType;
-import com.mindspore.config.DeviceType;
 import com.mindspore.config.MSContext;
 import com.mindspore.config.ModelType;
 import com.mindspore.config.Version;
@@ -27,7 +26,6 @@ import com.mindspore.config.AscendDeviceInfo;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.sql.DataTruncation;
 import java.util.*;
 
 public class Main {
@@ -46,7 +44,7 @@ public class Main {
         Random rand = new Random();
         byte[] arr = new byte[len];
         for (int i = 0; i < arr.length; i++) {
-            arr[i] = (byte)0;
+            arr[i] = (byte) 0;
         }
         return arr;
     }

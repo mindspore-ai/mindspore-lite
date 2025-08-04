@@ -17,11 +17,11 @@
 import sys
 import os
 import numpy as np
+from lenet import LeNet5
+from train_utils import train_wrap
 from mindspore import context, Tensor
 import mindspore.common.dtype as mstype
 from mindspore.train.serialization import export
-from lenet import LeNet5
-from train_utils import train_wrap
 
 
 n = LeNet5()

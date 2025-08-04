@@ -146,8 +146,6 @@ class OnnxModelConfig:
             for graph_input in each_model["graph_param"]["inputs"]:
                 each_input_name.append(graph_input["name"])
             self.graph_input_names[each_model["model_name"]] = each_input_name
-        # for graph_input in self.op_configs_["op_configs"][0]["graph_param"]["inputs"]:
-        #     self.graph_input_names.append(graph_input["name"])
 
     def modelconfigs(self):
         return self.op_configs_

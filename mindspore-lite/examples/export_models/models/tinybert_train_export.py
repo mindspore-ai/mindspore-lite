@@ -18,6 +18,9 @@
 import os
 import sys
 import numpy as np
+from official.nlp.tinybert.src.tinybert_model import TinyBertModel  # noqa: 402
+from official.nlp.tinybert.src.model_utils.config import bert_student_net_cfg  # noqa: 402
+from train_utils import save_t  # noqa: 402
 import mindspore as M
 from mindspore.ops import operations as P
 from mindspore.ops import composite as C
@@ -32,9 +35,6 @@ else:
     path = ''
 sys.path.append(os.environ['CLOUD_MODEL_ZOO'] + 'official/nlp/tinybert')
 
-from official.nlp.tinybert.src.tinybert_model import TinyBertModel  # noqa: 402
-from official.nlp.tinybert.src.model_utils.config import bert_student_net_cfg  # noqa: 402
-from train_utils import save_t  # noqa: 402
 
 
 class BertNetworkWithLossGenDistill(M.nn.Cell):

@@ -16,11 +16,11 @@
 
 import os
 import numpy as np
+from effnet import effnet
+from train_utils import train_wrap
 import mindspore as M
 from mindspore.nn import Cell
 from mindspore.train.serialization import load_checkpoint, export
-from effnet import effnet
-from train_utils import train_wrap
 
 
 class TransferNet(Cell):

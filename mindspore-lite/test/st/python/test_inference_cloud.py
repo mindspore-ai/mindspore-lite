@@ -168,6 +168,7 @@ def test_model_group_for_ascend(model_path, in_data_path, input_shapes):
     # use model two for inference
     test_model_inference_ascend(model_file, in_data_file_list, shapes)
 
+
 def test_input_shape_for_ascend(model_path, input_shape_str):
     context = mslite.Context()
     context.target = ["ascend"]
@@ -178,6 +179,7 @@ def test_input_shape_for_ascend(model_path, input_shape_str):
     model = mslite.Model()
     model.build_from_file(model_path, mslite.ModelType.MINDIR, context)
     input_shape_config = model.get_model_info("input_shape")
+
 
 def test_model_group_weight_workspace_for_ascend(model_path, in_data_path, input_shapes):
     # init model group context
