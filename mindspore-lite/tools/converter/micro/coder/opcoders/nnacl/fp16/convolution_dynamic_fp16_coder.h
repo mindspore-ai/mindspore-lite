@@ -19,7 +19,7 @@
 
 #include <vector>
 #include <string>
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 #include "coder/opcoders/op_coder.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/conv_dynamic_parameter.h"

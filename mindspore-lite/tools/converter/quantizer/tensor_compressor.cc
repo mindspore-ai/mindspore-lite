@@ -104,7 +104,7 @@ int TensorCompressor::SetNewCompressionTensor(const ParameterPtr &weight, const 
   // set quant param
   compression_tensor->set_quant_param(tensor_info->quant_params());
   // update tensor data
-  WriteBufferWithAlignByte(bits, static_cast<int8_t *>(compression_tensor->data().data()));
+  WriteBufferWithAlignByte(bits, static_cast<int8_t *>(compression_tensor->device_address()->GetMutablePtr()));
   weight->set_default_param(compression_tensor);
   weight->set_abstract(compression_tensor->ToAbstract());
   return RET_OK;
@@ -116,7 +116,7 @@ int TensorCompressor::DoBitPack(const ParameterPtr &weight, size_t bit_num) {
   auto elements_num = tensor_info->ElementsNum();
   std::shared_ptr<mindspore::tensor::Tensor> compression_tensor = nullptr;
   if (bit_num > 0 && bit_num < k8Bit) {
-    auto quant_data = static_cast<int8_t *>(tensor_info->data().data());
+    auto quant_data = static_cast<int8_t *>(tensor_info->device_address()->GetMutablePtr());
     std::vector<int8_t> origin_data(quant_data, quant_data + elements_num);
     std::vector<uint8_t> pack_data{};
     BitPack::BitPacking<int8_t, uint8_t>(bit_num, origin_data, &pack_data);
@@ -130,7 +130,7 @@ int TensorCompressor::DoBitPack(const ParameterPtr &weight, size_t bit_num) {
       return RET_ERROR;
     }
   } else if (bit_num > k8Bit && bit_num < k16Bit) {
-    auto quant_data = static_cast<int16_t *>(tensor_info->data().data());
+    auto quant_data = static_cast<int16_t *>(tensor_info->device_address()->GetMutablePtr());
     std::vector<int16_t> origin_data(quant_data, quant_data + elements_num);
     std::vector<uint16_t> pack_data{};
     BitPack::BitPacking<int16_t, uint16_t>(bit_num, origin_data, &pack_data);

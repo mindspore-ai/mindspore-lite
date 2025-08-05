@@ -15,11 +15,11 @@
  */
 
 #include "src/litert/kernel/cpu/fp32_grad/power_grad.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
-#include "nnacl/fp32/arithmetic_fp32.h"
+#include "nnacl_c/fp32/arithmetic_fp32.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;

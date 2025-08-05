@@ -91,3 +91,6 @@
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"                             "legal/copyright"
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"                             "whitespace/ending_newline"
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"                             "build/include"
+
+# nnacl
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/"                                                   "readability/casting"

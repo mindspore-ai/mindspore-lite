@@ -16,8 +16,8 @@
 
 #include "src/litert/kernel/cpu/int8/matmul_dynamic_int8.h"
 #include "src/litert/kernel/cpu/int8/opt_op_handler.h"
-#include "nnacl/int8/matmul_int8.h"
-#include "nnacl/int8/dynamic_matmul_int8.h"
+#include "nnacl_c/int8/matmul_int8.h"
+#include "nnacl_c/int8/dynamic_matmul_int8.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_MEMORY_FAILED;

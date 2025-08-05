@@ -25,6 +25,8 @@ import com.mindspore.config.ModelType;
 import com.mindspore.config.Version;
 
 import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;

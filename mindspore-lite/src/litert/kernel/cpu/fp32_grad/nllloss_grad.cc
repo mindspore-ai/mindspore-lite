@@ -21,7 +21,7 @@
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
-#include "nnacl/fp32_grad/nllloss_grad_fp32.h"
+#include "nnacl_c/fp32_grad/nllloss_grad_fp32.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

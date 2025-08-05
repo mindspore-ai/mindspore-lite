@@ -24,7 +24,7 @@ namespace mindspore {
 namespace {
 constexpr int32_t kNumThreads = 2;
 constexpr int NUM_OF_CLASSES = 10;
-}
+}  // namespace
 class TestCxxApiLiteModel : public mindspore::CommonTest {
  public:
   TestCxxApiLiteModel() = default;

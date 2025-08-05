@@ -17,7 +17,7 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_OPCODERS_BASE_STRIDED_SLICE_BASE_CODER_H_
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/fp32/strided_slice_fp32.h"
+#include "nnacl_c/fp32/strided_slice_fp32.h"
 namespace mindspore::lite::micro {
 class StridedSliceBaseCoder final : public OperatorCoder {
  public:

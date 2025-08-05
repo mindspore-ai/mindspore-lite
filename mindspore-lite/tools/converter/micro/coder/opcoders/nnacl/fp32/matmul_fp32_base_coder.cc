@@ -21,7 +21,7 @@
 #include "coder/opcoders/parallel.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 #include "coder/opcoders/file_collector.h"
-#include "nnacl/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
 #include "wrapper/fp32/matmul_fp32_wrapper.h"
 #include "coder/opcoders/nnacl/dequant/de_quant.h"
 
@@ -160,8 +160,8 @@ int MatMulFP32BaseCoder::Prepare(CoderContext *const context) { return RET_OK; }
 int MatMulFP32BaseCoder::CollectFilesForTarget(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/fp32/pack_fp32.h",
-            "nnacl/fp32/matmul_fp32.h",
+            "nnacl_c/fp32/pack_fp32.h",
+            "nnacl_c/fp32/matmul_fp32.h",
             "wrapper/fp32/matmul_fp32_wrapper.h",
           },
           {

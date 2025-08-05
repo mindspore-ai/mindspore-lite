@@ -18,7 +18,7 @@
 #include <cmath>
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/nnacl_common.h"
+#include "nnacl_c/nnacl_common.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;

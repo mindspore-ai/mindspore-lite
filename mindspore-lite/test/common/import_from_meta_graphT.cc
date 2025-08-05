@@ -24,6 +24,7 @@
 #include "include/errorcode.h"
 #include "src/common/utils.h"
 #include "tools/common/tensor_util.h"
+#include "ir/tensor_new.h"
 
 namespace mindspore::lite {
 AnfNodePtr AnfImporterFromMetaGraphT::GetNode(int tensor_id) {
@@ -56,7 +57,7 @@ int AnfImporterFromMetaGraphT::ConverterConstTensor() {
     } else {
       parameter->set_name("const-" + std::to_string(i));
     }
-    tensor::TensorPtr tensor_info = std::make_shared<tensor::Tensor>(type_id, shape_vector);
+    tensor::TensorPtr tensor_info = tensor::from_spec(type_id, shape_vector, device::DeviceType::kCPU);
     if (tensor_info == nullptr) {
       MS_LOG(ERROR) << "create tensor info failed.";
       return RET_ERROR;

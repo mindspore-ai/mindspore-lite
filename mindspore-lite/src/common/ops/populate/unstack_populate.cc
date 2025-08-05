@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/unstack_parameter.h"
+#include "nnacl_c/unstack_parameter.h"
 using mindspore::schema::PrimitiveType_Unstack;
 
 namespace mindspore {

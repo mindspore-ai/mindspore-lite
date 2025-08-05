@@ -16,8 +16,8 @@
 #include <iostream>
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
-#include "nnacl/gather_parameter.h"
-#include "nnacl/int8/gather_int8.h"
+#include "nnacl_c/gather_parameter.h"
+#include "nnacl_c/int8/gather_int8.h"
 #include "src/litert/kernel_registry.h"
 #include "src/executor/kernel_exec.h"
 

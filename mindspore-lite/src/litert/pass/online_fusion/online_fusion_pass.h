@@ -29,8 +29,8 @@
 #include "src/litert/sub_graph_split.h"
 #include "src/litert/pass/online_fusion/online_fusion_pass_registry.h"
 #include "src/common/prim_util.h"
-#include "nnacl/conv_parameter.h"
-#include "nnacl/split_parameter.h"
+#include "nnacl_c/conv_parameter.h"
+#include "nnacl_c/split_parameter.h"
 
 namespace mindspore::lite {
 class OnlineFusionPass {

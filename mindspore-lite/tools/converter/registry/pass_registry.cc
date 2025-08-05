@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 #include "src/common/log_adapter.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace registry {

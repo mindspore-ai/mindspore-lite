@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/strided_slice_infer.h"
+#include "nnacl_c/infer/strided_slice_infer.h"
 
 namespace mindspore {
 

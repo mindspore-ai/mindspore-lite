@@ -36,8 +36,8 @@ int SoftMaxFP32Coder::Prepare(CoderContext *const context) {
 int SoftMaxFP32Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/fp32/softmax_fp32.h",
-            "nnacl/fp32/log_softmax_fp32.h",
+            "nnacl_c/fp32/softmax_fp32.h",
+            "nnacl_c/fp32/log_softmax_fp32.h",
           },
           {
             "softmax_fp32.c",

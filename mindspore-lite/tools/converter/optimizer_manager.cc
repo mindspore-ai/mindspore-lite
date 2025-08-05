@@ -24,7 +24,7 @@
 #include "src/common/log_util.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "include/registry/pass_base.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

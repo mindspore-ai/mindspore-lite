@@ -17,7 +17,7 @@
 #include "coder/opcoders/nnacl/fp32/arithmetic_self_fp32_coder.h"
 #include <string>
 #include <map>
-#include "nnacl/fp32/arithmetic_fp32.h"
+#include "nnacl_c/fp32/arithmetic_fp32.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/parallel.h"
@@ -68,7 +68,7 @@ int ArithmeticSelfFP32Coder::DoCode(CoderContext *const context) {
 
   Collect(context,
           {
-            "nnacl/fp32/arithmetic_self_fp32.h",
+            "nnacl_c/fp32/arithmetic_self_fp32.h",
           },
           {
             "arithmetic_self_fp32.c",

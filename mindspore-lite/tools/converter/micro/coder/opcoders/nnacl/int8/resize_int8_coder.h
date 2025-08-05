@@ -20,7 +20,7 @@
 #include <memory>
 #include <vector>
 #include "coder/opcoders/base/resize_base_coder.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore::lite::micro::nnacl {
 class ResizeInt8Coder final : public ResizeBaseCoder {

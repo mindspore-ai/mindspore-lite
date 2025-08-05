@@ -18,7 +18,7 @@
 #include <memory>
 #include "schema/inner/model_generated.h"
 #include "common/common_test.h"
-#include "nnacl/fp32/activation_fp32.h"
+#include "nnacl_c/fp32/activation_fp32.h"
 #include "src/litert/kernel/cpu/int8/hswish_int8.h"
 #include "src/litert/kernel_registry.h"
 

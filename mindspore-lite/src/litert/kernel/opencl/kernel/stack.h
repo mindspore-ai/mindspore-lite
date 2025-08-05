@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/kernel/opencl/opencl_kernel.h"
-#include "nnacl/stack_parameter.h"
+#include "nnacl_c/stack_parameter.h"
 
 namespace mindspore::kernel {
 class StackOpenCLKernel : public OpenCLKernel {

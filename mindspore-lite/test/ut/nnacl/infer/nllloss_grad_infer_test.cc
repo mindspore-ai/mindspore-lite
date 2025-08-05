@@ -15,7 +15,7 @@
  */
 
 #include "common/common_test.h"
-#include "nnacl/infer/nllloss_grad_infer.h"
+#include "nnacl_c/infer/nllloss_grad_infer.h"
 
 namespace mindspore {
 class TestNLLLossGradInfer : public mindspore::CommonTest {

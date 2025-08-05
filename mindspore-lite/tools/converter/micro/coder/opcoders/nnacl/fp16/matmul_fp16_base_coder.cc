@@ -227,8 +227,8 @@ int MatMulFP16BaseCoder::Prepare(CoderContext *const context) {
 int MatMulFP16BaseCoder::CollectFilesForTarget(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/fp16/pack_fp16.h",
-            "nnacl/fp16/matmul_fp16.h",
+            "nnacl_c/fp16/pack_fp16.h",
+            "nnacl_c/fp16/matmul_fp16.h",
           },
           {
             "pack_fp16.c",

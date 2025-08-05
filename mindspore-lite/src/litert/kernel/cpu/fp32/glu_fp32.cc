@@ -18,8 +18,8 @@
 #include <vector>
 #include "src/litert/kernel_registry.h"
 #include "src/litert/kernel/cpu/base/split_base.h"
-#include "nnacl/fp32/activation_fp32.h"
-#include "nnacl/fp32/arithmetic_fp32.h"
+#include "nnacl_c/fp32/activation_fp32.h"
+#include "nnacl_c/fp32/arithmetic_fp32.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

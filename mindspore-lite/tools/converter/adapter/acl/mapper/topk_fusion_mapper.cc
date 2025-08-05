@@ -23,7 +23,7 @@
 #include "src/common/log_util.h"
 #include "infer/topk.h"
 #include "ops_utils/op_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

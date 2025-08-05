@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/tensorlist_parameter.h"
+#include "nnacl_c/tensorlist_parameter.h"
 #include "infer/tensor_list_from_tensor.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 using mindspore::ops::kNameTensorListFromTensor;

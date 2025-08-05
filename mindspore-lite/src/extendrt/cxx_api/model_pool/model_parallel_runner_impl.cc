@@ -17,7 +17,7 @@
 #include "src/extendrt/cxx_api/model_pool/runner_config.h"
 #include "src/common/log_adapter.h"
 #include "src/litert/cpu_info.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #ifdef CAPTURE_SIGNALS
 #include "src/extendrt/signal_handler.h"
 #endif

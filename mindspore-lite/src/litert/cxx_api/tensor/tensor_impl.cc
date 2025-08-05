@@ -26,7 +26,7 @@
 #include "src/tensor.h"
 #include "src/common/string_utils.h"
 #ifdef ENABLE_CLOUD_INFERENCE
-#include "src/extendrt/kernel/ascend/plugin/ascend_allocator_plugin.h"
+#include "src/extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"
 #endif
 namespace mindspore {
 using mindspore::lite::RET_OK;
@@ -87,7 +87,7 @@ void LiteTensorImpl::SetDeviceData(void *data) {
 #ifdef ENABLE_CLOUD_INFERENCE
   if (GetDeviceData() != nullptr && own_data_) {
     MS_LOG(INFO) << "free device data in tensor impl.";
-    kernel::AscendAllocatorPlugin::GetInstance().Free(GetDeviceData(), GetDeviceId());
+    AscendAllocatorPlugin::GetInstance().Free(GetDeviceData(), GetDeviceId());
   }
 #endif
   lite_tensor_->set_device_data(data);

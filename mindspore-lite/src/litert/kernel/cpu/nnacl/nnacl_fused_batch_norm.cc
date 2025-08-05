@@ -17,8 +17,8 @@
 #include "nnacl/nnacl_fused_batch_norm.h"
 #include "nnacl/nnacl_manager.h"
 #include "include/errorcode.h"
-#include "nnacl/fp32/batchnorm_fp32.h"
-#include "nnacl/kernel/fused_batch_norm.h"
+#include "nnacl_c/fp32/batchnorm_fp32.h"
+#include "nnacl_c/kernel/fused_batch_norm.h"
 
 using mindspore::schema::PrimitiveType_FusedBatchNorm;
 

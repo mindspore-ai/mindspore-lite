@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include <memory>
 #include "tools/converter/adapter/acl/mapper/argmax_fusion_mapper.h"
+#include <memory>
 #include "tools/converter/adapter/acl/mapper/primitive_mapper_register.h"
 #include "src/common/log_util.h"
 #include "ops_utils/op_utils.h"
@@ -37,12 +37,9 @@ namespace {
 constexpr int kNumInputNum1 = 1;
 constexpr int kNumInputNum2 = 2;
 constexpr int kNumInputNum3 = 3;
-constexpr int kNumInputNum4 = 4;
 constexpr int kNumInputIndex0 = 0;
 constexpr int kNumInputIndex1 = 1;
-constexpr int kArgMinFusionAttrSize4 = 4;
 constexpr int kArgMinFusionAttrSize5 = 5;
-constexpr int kArgmaxFusionAxisValue = 1;
 }  // namespace
 class ArgmaxFusionMapperTest : public mindspore::CommonTest {
  public:
@@ -111,7 +108,7 @@ CNodePtr InitArgmaxFusionNodeWithInputSize1(const FuncGraphPtr &func_graph) {
     MS_LOG(ERROR) << "argmax fusion prim is nullptr!";
     return nullptr;
   }
-  prim->set_axis(kArgmaxFusionAxisValue);
+  prim->set_axis(1);
   prim->set_keep_dims(true);
   auto prim_c = prim->GetPrim();
   if (prim_c == nullptr) {
@@ -243,6 +240,7 @@ CNodePtr InitArgmaxFusionNodeWithoutKeepDims(const FuncGraphPtr &func_graph, con
     return nullptr;
   }
   prim->set_axis(1);
+  // prim->set_keep_dims(true);
   auto prim_c = prim->GetPrim();
   if (prim_c == nullptr) {
     MS_LOG(ERROR) << "get prim_c failed, argmax fusion node prim_c is nullptr!";
@@ -309,7 +307,7 @@ TEST_F(ArgmaxFusionMapperTest, ArgmaxFusionNodeMapperWithInputSize2) {
   ASSERT_NE(mapper, nullptr);
   auto status = mapper->Mapper(cnode);
   ASSERT_EQ(status, lite::RET_OK);
-  ASSERT_EQ(cnode->inputs().size(), kNumInputNum4);
+  ASSERT_EQ(cnode->inputs().size(), 4);
   auto cnode_input_0 = cnode->input(kNumInputIndex0);
   auto input_value_node = utils::isa<ValueNodePtr>(cnode_input_0);
   ASSERT_EQ(input_value_node, true);
@@ -323,7 +321,7 @@ TEST_F(ArgmaxFusionMapperTest, ArgmaxFusionNodeMapperWithInputSize2) {
   auto value_node = cnode->input(kNumInputIndex0)->cast<ValueNodePtr>();
   auto new_prim = GetValueNode<PrimitivePtr>(value_node);
   auto attr_size = new_prim->attrs().size();
-  ASSERT_EQ(attr_size, kArgMinFusionAttrSize4);
+  ASSERT_EQ(attr_size, 4);
   auto output_type = new_prim->GetAttr("output_type");
   ASSERT_EQ(output_type, nullptr);
   MS_LOG(INFO) << "PASS";
@@ -362,12 +360,12 @@ TEST_F(ArgmaxFusionMapperTest, InitArgmaxFusionNodeWithoutKeepDims) {
   ASSERT_NE(data_param, nullptr);
   auto cnode = InitArgmaxFusionNodeWithoutKeepDims(func_graph, data_param);
   ASSERT_NE(cnode, nullptr);
-  ASSERT_EQ(cnode->inputs().size(), kNumInputNum2);
+  ASSERT_EQ(cnode->inputs().size(), 2);
   auto mapper = lite::PrimitiveMapperRegister::GetInstance().GetPrimitiveMapper(ops::kNameArgMaxFusion);
   ASSERT_NE(mapper, nullptr);
   auto status = mapper->Mapper(cnode);
   ASSERT_EQ(status, lite::RET_OK);
-  ASSERT_EQ(cnode->inputs().size(), kNumInputNum2);
+  ASSERT_EQ(cnode->inputs().size(), 2);
   auto cnode_input_0 = cnode->input(kNumInputIndex0);
   auto input_value_node = utils::isa<ValueNodePtr>(cnode_input_0);
   ASSERT_EQ(input_value_node, true);
@@ -381,7 +379,7 @@ TEST_F(ArgmaxFusionMapperTest, InitArgmaxFusionNodeWithoutKeepDims) {
   auto value_node = cnode->input(kNumInputIndex0)->cast<ValueNodePtr>();
   auto new_prim = GetValueNode<PrimitivePtr>(value_node);
   auto attr_size = new_prim->attrs().size();
-  ASSERT_EQ(attr_size, kArgMinFusionAttrSize4);
+  ASSERT_EQ(attr_size, 4);
   auto output_type = new_prim->GetAttr("output_type");
   ASSERT_NE(output_type, nullptr);
   MS_LOG(INFO) << "PASS";

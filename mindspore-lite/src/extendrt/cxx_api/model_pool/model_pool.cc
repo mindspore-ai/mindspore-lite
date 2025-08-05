@@ -18,7 +18,7 @@
 #include <unistd.h>
 #include <future>
 #include <algorithm>
-#include "mindspore/ops/kernel/cpu/nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/extendrt/cxx_api/model_pool/resource_manager.h"
 #include "src/common/log_adapter.h"
 #include "include/lite_types.h"
@@ -27,7 +27,7 @@
 #include "src/litert/pack_weight_manager.h"
 #include "src/extendrt/numa_adapter.h"
 #include "src/common/common.h"
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
 #include "thread/parallel_thread_pool_manager.h"
 #endif
 #include "src/common/config_file.h"
@@ -980,6 +980,17 @@ ModelPoolConfig ModelPool::Init(const std::shared_ptr<RunnerConfig> &runner_conf
   if (model_pool_config.empty()) {
     MS_LOG(ERROR) << "CreateModelPoolConfig failed, context is empty.";
     return model_pool_config;
+  }
+  if (!model_pool_config[0]->config_info.empty()) {
+    for (auto &item : model_pool_config[0]->config_info) {
+      auto section = item.first;
+      MS_LOG(INFO) << "Model Parallel Runner config info:";
+      MS_LOG(INFO) << "section: " << section;
+      auto configs = item.second;
+      for (auto &config : configs) {
+        MS_LOG(INFO) << "\t key: " << config.first << " | value: " << config.second;
+      }
+    }
   }
   // update context device id
   auto ret = ParseDeviceIds(runner_config, &model_pool_config);

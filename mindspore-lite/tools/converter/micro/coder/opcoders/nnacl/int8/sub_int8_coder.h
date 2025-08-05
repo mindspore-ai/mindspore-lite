@@ -20,7 +20,7 @@
 #include <memory>
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/int8/quantize.h"
 
 namespace mindspore::lite::micro::nnacl {
 class SubInt8Coder final : public OperatorCoder {

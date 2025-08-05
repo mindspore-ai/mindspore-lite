@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "ut/src/runtime/kernel/opencl/common.h"
-#include "nnacl/gather_parameter.h"
+#include "nnacl_c/gather_parameter.h"
 
 namespace mindspore::lite::opencl::test {
 

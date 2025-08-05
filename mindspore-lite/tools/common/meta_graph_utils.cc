@@ -19,7 +19,7 @@
 #include <set>
 #include "inner/model_generated.h"
 #include "src/common/utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 namespace mindspore::lite {
 namespace {
 size_t GetRefCount(schema::MetaGraphT *graphT, uint32_t tensorIdx) {

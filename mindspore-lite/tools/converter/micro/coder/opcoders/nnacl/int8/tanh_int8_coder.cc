@@ -21,7 +21,7 @@
 #include "include/errorcode.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_int8_serializer.h"
-#include "nnacl/int8/tanh_int8.h"
+#include "nnacl_c/int8/tanh_int8.h"
 
 namespace mindspore::lite::micro::nnacl {
 int TanhInt8Coder::Prepare(CoderContext *const context) { return RET_OK; }
@@ -29,7 +29,7 @@ int TanhInt8Coder::Prepare(CoderContext *const context) { return RET_OK; }
 int TanhInt8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/int8/tanh_int8.h",
+            "nnacl_c/int8/tanh_int8.h",
           },
           {"tanh_int8.c", "activation_fp32.c"});
 

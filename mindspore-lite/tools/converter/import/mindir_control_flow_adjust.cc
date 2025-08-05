@@ -27,7 +27,7 @@
 #include "tools/common/node_util.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 namespace {
 constexpr const int kSwitchTruePartialIndex = 2;

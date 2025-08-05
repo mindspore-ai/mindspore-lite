@@ -21,7 +21,7 @@
 #include <vector>
 #include "tools/common/tensor_util.h"
 #include "tools/converter/ops/ops_def.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

@@ -28,7 +28,7 @@
 #include "src/common/common.h"
 #include "src/common/utils.h"
 #include "tools/common/tensor_util.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/optimizer/graph/specify_graph_input_format.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_i.h"
@@ -36,6 +36,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_w.h"
+#include "ir/tensor_new.h"
 
 namespace mindspore {
 namespace opt {
@@ -241,8 +242,8 @@ int ConvertTensorToNCOrNH(const FuncGraphPtr &func_graph, const CNodePtr &cnode,
     ShapeVector tmp_shape(DIMENSION_4D - expand_shape.size(), 1);
     (void)expand_shape.insert(expand_shape.begin(), tmp_shape.begin(), tmp_shape.end());
   }
-  auto tensor = std::make_shared<tensor::Tensor>(static_cast<TypeId>(data_info.data_type_), expand_shape,
-                                                 data_info.data_.data(), data_info.data_.size());
+  auto tensor = tensor::from_buffer(static_cast<TypeId>(data_info.data_type_), expand_shape, data_info.data_.data(),
+                                    data_info.data_.size());
   MS_CHECK_TRUE_MSG(tensor != nullptr, lite::RET_ERROR, "tensor is nullptr");
   if (trans_type == kNHWC2NCHW) {
     (void)TransFilterFormat(tensor, schema::Format_KHWC, schema::Format_KCHW);

@@ -81,8 +81,8 @@ int PadFP32Coder::ExtendPaddings(int *paddings, int length, const int *ori_paddi
 int PadFP32Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/fp32/pad_fp32.h",
-            "nnacl/pad_parameter.h",
+            "nnacl_c/fp32/pad_fp32.h",
+            "nnacl_c/pad_parameter.h",
           },
           {
             "pad_fp32.c",

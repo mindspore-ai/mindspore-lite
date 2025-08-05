@@ -95,9 +95,9 @@ void ConvolutionDepthwiseSWFP16Coder::CollectFilesForFunc(CoderContext *const co
   }
   Collect(context,
           {
-            "nnacl/fp32/conv_depthwise_fp32.h",
-            "nnacl/fp16/conv_depthwise_fp16.h",
-            "nnacl/fp16/pack_fp16.h",
+            "nnacl_c/fp32/conv_depthwise_fp32.h",
+            "nnacl_c/fp16/conv_depthwise_fp16.h",
+            "nnacl_c/fp16/pack_fp16.h",
           },
           {
             "conv_depthwise_fp32.c",

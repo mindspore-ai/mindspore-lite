@@ -20,7 +20,7 @@
 #include <vector>
 #include <string>
 #include "coder/opcoders/base/conv2d_base_coder.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class DeconvolutionInt8Coder final : public Conv2DBaseCoder {

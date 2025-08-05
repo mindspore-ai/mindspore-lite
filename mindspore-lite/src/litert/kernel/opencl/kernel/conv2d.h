@@ -22,7 +22,7 @@
 #include "src/tensor.h"
 #include "src/litert/kernel/opencl/opencl_kernel.h"
 #include "schema/model_generated.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 #include "schema/ops_generated.h"
 
 namespace mindspore::kernel {

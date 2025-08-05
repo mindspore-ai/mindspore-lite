@@ -18,7 +18,7 @@
 
 #include <algorithm>
 
-#if !defined(ENABLE_ANDROID) || defined(ENABLE_MINDDATA_PYTHON)
+#if !defined(ENABLE_ANDROID)
 #include "mindspore-lite/minddata/dataset/kernels/image/pad_op.h"
 #endif
 #if !defined(BUILD_LITE) && defined(ENABLE_D)
@@ -30,7 +30,7 @@
 namespace mindspore {
 namespace dataset {
 namespace vision {
-#if !defined(ENABLE_ANDROID) || defined(ENABLE_MINDDATA_PYTHON)
+#if !defined(ENABLE_ANDROID)
 // PadOperation
 PadOperation::PadOperation(const std::vector<int32_t> &padding, const std::vector<uint8_t> &fill_value,
                            BorderType padding_mode, const std::string &device_target)

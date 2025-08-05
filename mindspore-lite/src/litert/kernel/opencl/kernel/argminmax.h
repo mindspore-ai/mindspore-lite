@@ -19,8 +19,8 @@
 
 #include <vector>
 #include "src/litert/kernel/opencl/opencl_kernel.h"
-#include "nnacl/arg_min_max_parameter.h"
-#include "nnacl/kernel/arg_min_max.h"
+#include "nnacl_c/arg_min_max_parameter.h"
+#include "nnacl_c/kernel/arg_min_max.h"
 
 namespace mindspore::kernel {
 class ArgMinMaxOpenCLKernel : public OpenCLKernel {

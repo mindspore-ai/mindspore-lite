@@ -18,8 +18,8 @@
 #include <memory>
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
-#include "nnacl/fp32/transpose_fp32.h"
-#include "nnacl/transpose_parameter.h"
+#include "nnacl_c/fp32/transpose_fp32.h"
+#include "nnacl_c/transpose_parameter.h"
 #include "nnacl/nnacl_manager.h"
 #include "src/executor/kernel_exec.h"
 

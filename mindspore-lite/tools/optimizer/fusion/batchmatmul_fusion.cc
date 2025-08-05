@@ -27,13 +27,14 @@
 #include "tools/converter/quantizer/quantize_util.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "include/securec.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_f.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
+#include "ir/tensor_new.h"
 
 namespace mindspore::opt {
 namespace {
@@ -240,7 +241,7 @@ int ResetReshapeParameters(const AnfNodePtr &reshape_node) {
     shape[0] = rmatmul_input_shape[0] + 1;
   }
 
-  auto tensor_info = std::make_shared<tensor::Tensor>(shape_tensor->data_type(), shape);
+  auto tensor_info = tensor::from_spec(shape_tensor->data_type(), shape, device::DeviceType::kCPU);
   if (tensor_info == nullptr) {
     MS_LOG(ERROR) << "Create tensor info failed";
     return RET_ERROR;

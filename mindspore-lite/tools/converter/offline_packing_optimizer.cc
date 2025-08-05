@@ -27,7 +27,7 @@
 #include "src/common/primitive_t_utils.h"
 #include "src/common/ops/anf_utils.h"
 #include "src/common/file_utils.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "src/litert/kernel/cpu/int8/matmul_dynamic_base_int8.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_i.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
@@ -155,7 +155,7 @@ STATUS CreateLiteTensor(const CNodePtr &cnode, std::vector<Tensor *> *in_tensors
       auto param_node = cnode->input(i)->cast<ParameterPtr>();
       if (param_node->has_default()) {
         auto tensor_info = std::static_pointer_cast<tensor::Tensor>(param_node->default_param());
-        tensor_data = tensor_info->data().data();
+        tensor_data = tensor_info->device_address()->GetMutablePtr();
         auto quantization_params = tensor_info->quant_params();
         if (!quantization_params.empty()) {
           auto quantization_param = quantization_params.front();

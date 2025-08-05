@@ -23,7 +23,7 @@
 #include "src/common/log_adapter.h"
 #include "src/litert/pack_weight_manager.h"
 #include "src/litert/kernel/cpu/fp16/fp16_op_handler.h"
-#include "nnacl/base/cast_base.h"
+#include "nnacl_c/base/cast_base.h"
 namespace mindspore {
 namespace lite {
 void FreeInTensorC(std::vector<TensorC *> *tensors_in, const std::shared_ptr<Allocator> &allocator) {

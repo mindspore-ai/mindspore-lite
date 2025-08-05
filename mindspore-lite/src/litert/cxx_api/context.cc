@@ -21,7 +21,6 @@
 #include "include/lite_types.h"
 #include "src/litert/inner_allocator.h"
 #include "src/common/log_adapter.h"
-#include "src/extendrt/delegate/tensorrt/distribution/distribution_base.h"
 
 namespace mindspore {
 constexpr auto kModelOptionCpuEnableFP16 = "mindspore.option.cpu.enable_fp16";

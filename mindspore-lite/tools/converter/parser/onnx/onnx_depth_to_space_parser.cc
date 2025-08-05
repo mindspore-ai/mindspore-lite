@@ -17,7 +17,7 @@
 #include "tools/converter/parser/onnx/onnx_depth_to_space_parser.h"
 #include <memory>
 #include "infer/depth_to_space.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "include/registry/converter_context.h"
 
 namespace mindspore {

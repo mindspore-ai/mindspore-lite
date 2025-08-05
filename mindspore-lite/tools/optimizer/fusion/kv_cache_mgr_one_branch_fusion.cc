@@ -23,7 +23,7 @@
 #include "src/common/log_adapter.h"
 #include "infer/splice.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/math_ops.h"
@@ -37,6 +37,8 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_e.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
+#include "ir/tensor_new.h"
+
 namespace mindspore::opt {
 const BaseRef KVCacheMgrOneBranchFusion::DefinePattern() const {
   if (!InitVar()) {
@@ -73,7 +75,7 @@ const BaseRef KVCacheMgrOneBranchFusion::DefinePattern() const {
 
 tensor::TensorPtr KVCacheMgrOneBranchFusion::ConstData(int32_t padding_length) const {
   std::vector<int64_t> shp = {padding_length};
-  tensor::TensorPtr const_data = std::make_shared<tensor::Tensor>(kInt32->type_id(), shp);
+  tensor::TensorPtr const_data = tensor::from_spec(kInt32->type_id(), shp, device::DeviceType::kCPU);
   MS_CHECK_TRUE_RET(const_data != nullptr && const_data->data_c() != nullptr, nullptr);
   auto *val = static_cast<int32_t *>(const_data->data_c());
   for (int i = 0; i < padding_length; ++i) {

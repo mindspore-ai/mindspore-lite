@@ -39,10 +39,7 @@ bool CheckValueIsEqual(const ValuePtr &left, const ValuePtr &right) {
     auto left_tensor = left->cast<tensor::TensorPtr>();
     auto right_tensor = right->cast<tensor::TensorPtr>();
     MS_CHECK_TRUE_RET(left_tensor != nullptr && right_tensor != nullptr, false);
-    auto left_data = left_tensor->data_ptr();
-    auto right_data = right_tensor->data_ptr();
-    MS_CHECK_TRUE_RET(left_data != nullptr && right_data != nullptr, false);
-    return left_tensor->tensor::MetaTensor::operator==(*right_tensor) && left_data->equals(*right_data);
+    return left_tensor->ValueEqual(*right_tensor);
   }
   return *left == *right;
 }

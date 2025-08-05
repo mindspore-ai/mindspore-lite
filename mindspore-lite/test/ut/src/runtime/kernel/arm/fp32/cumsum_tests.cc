@@ -16,7 +16,7 @@
 
 #include <iostream>
 #include "common/common_test.h"
-#include "nnacl/cumsum_parameter.h"
+#include "nnacl_c/cumsum_parameter.h"
 #include "src/litert/kernel_registry.h"
 
 namespace mindspore {

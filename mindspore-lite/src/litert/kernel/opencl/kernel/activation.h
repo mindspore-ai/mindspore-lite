@@ -21,7 +21,7 @@
 #include <vector>
 #include <string>
 #include "src/litert/kernel/opencl/opencl_kernel.h"
-#include "nnacl/fp32/activation_fp32.h"
+#include "nnacl_c/fp32/activation_fp32.h"
 
 namespace mindspore::kernel {
 class ActivationOpenCLKernel : public OpenCLKernel {

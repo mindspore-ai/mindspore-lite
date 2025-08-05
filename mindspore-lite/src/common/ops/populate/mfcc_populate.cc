@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/infer/mfcc_infer.h"
+#include "nnacl_c/infer/mfcc_infer.h"
 using mindspore::schema::PrimitiveType_Mfcc;
 
 namespace mindspore {

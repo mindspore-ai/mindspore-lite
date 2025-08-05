@@ -22,7 +22,7 @@
 #include "infer/cxx_api/conv2d_fusion.h"
 #include "infer/make_tuple.h"
 #include "infer/return.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_adapter.h"
 #include "tools/common/tensor_util.h"
 #include "tools/optimizer/common/gllo_utils.h"

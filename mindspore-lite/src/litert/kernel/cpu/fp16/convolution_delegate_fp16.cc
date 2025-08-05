@@ -24,7 +24,7 @@
 #include "src/litert/kernel/cpu/fp16/convolution_depthwise_slidewindow_fp16.h"
 #include "src/litert/kernel/cpu/fp16/convolution_depthwise_3x3_fp16.h"
 #include "src/litert/kernel/cpu/base/group_convolution_creator.h"
-#include "nnacl/base/conv_common_base.h"
+#include "nnacl_c/base/conv_common_base.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"

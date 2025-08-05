@@ -17,10 +17,10 @@
 
 #include "src/litert/kernel/cpu/fp32/matmul_fp32_avx512.h"
 #include "src/litert/kernel/cpu/fp32/matmul_fp32_base.h"
-#include "nnacl/fp32/matmul_avx512_fp32.h"
-#include "nnacl/fp32/matmul_avx512_mask_fp32.h"
-#include "nnacl/fp32/matmul_fp32.h"
-#include "nnacl/fp32/pack_fp32.h"
+#include "nnacl_c/fp32/matmul_avx512_fp32.h"
+#include "nnacl_c/fp32/matmul_avx512_mask_fp32.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32/pack_fp32.h"
 
 namespace mindspore::kernel {
 namespace {

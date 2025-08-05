@@ -20,7 +20,7 @@
 #include <algorithm>
 #include "tools/optimizer/common/helper.h"
 #include "mindspore/ops/op_def/sequence_ops.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 
 namespace mindspore {
@@ -147,12 +147,6 @@ bool AnfEqualValueNode(const AnfNodePtr &a_node, const AnfNodePtr &b_node) {
 CNodePtr NewCNode(const std::vector<AnfNodePtr> &inputs, const FuncGraphPtr &fg,
                   const std::vector<AnfNodePtr> &orig_nodes) {
   return fg->NewCNode(inputs);
-}
-
-// not implement for lite, just for api compatible
-CNodePtr NewCNode(const CNodePtr &cnode, const KernelGraphPtr &fg, const std::vector<AnfNodePtr> &orig_nodes) {
-  MS_LOG(DEBUG) << "Not implement for lite, just for api compatible.";
-  return nullptr;
 }
 
 // not implement for lite, just for api compatible

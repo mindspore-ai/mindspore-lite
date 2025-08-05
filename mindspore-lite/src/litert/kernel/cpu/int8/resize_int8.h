@@ -19,7 +19,7 @@
 #include <vector>
 #include "src/litert/lite_kernel.h"
 #include "src/litert/kernel/cpu/base/resize_base.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/int8/quantize.h"
 
 using mindspore::schema::PrimitiveType_Resize;
 using mindspore::schema::ResizeMethod;

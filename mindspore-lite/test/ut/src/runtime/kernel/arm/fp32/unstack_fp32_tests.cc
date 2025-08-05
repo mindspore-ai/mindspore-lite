@@ -17,7 +17,7 @@
 #include <iostream>
 #include <memory>
 #include "common/common_test.h"
-#include "nnacl/base/unstack_base.h"
+#include "nnacl_c/base/unstack_base.h"
 #include "src/litert/kernel_registry.h"
 
 namespace mindspore {

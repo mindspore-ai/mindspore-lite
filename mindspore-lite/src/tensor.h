@@ -26,8 +26,8 @@
 #include <atomic>
 #include "include/api/format.h"
 #include "include/lite_types.h"
-#include "nnacl/tensor_c.h"
-#include "nnacl/tensor_c_utils.h"
+#include "nnacl_c/tensor_c.h"
+#include "nnacl_c/tensor_c_utils.h"
 #include "src/litert/inner_allocator.h"
 #include "src/common/log_adapter.h"
 #include "src/common/utils.h"
@@ -224,7 +224,9 @@ class Tensor {
 
   void set_quant_clusters(const std::vector<float> &clusters);
 
-  virtual bool IsConst() const { return ::NNACLIsConst(&tensor_c_); }
+  virtual bool IsConst() const {
+    return (tensor_c_.category_ == ConstTensor || tensor_c_.category_ == ConstScalar) && tensor_c_.data_ != NULL;
+  }
 
   bool IsScalar() const { return this->tensor_c_.category_ == CONST_SCALAR && this->tensor_c_.data_ != nullptr; }
 

@@ -17,7 +17,7 @@
 #ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_FP32_MATMUL_FP32_WRAPPER_H_
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_FP32_MATMUL_FP32_WRAPPER_H_
 #include <string.h>
-#include "nnacl/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
 #include "wrapper/base/micro_parameter.h"
 #ifdef __cplusplus
 extern "C" {

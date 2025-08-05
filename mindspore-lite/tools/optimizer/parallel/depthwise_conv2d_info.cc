@@ -24,7 +24,7 @@
 #include "include/securec.h"
 #include "mindspore/ops/op_def/conv_pool_ops.h"
 #include "mindspore/ops/op_def/lite_ops.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "infer/cxx_api/conv2d_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "include/common/utils/utils.h"
@@ -38,6 +38,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 
 using mindspore::schema::PrimitiveType_Conv2DFusion;
+#include "ir/tensor_new.h"
 namespace mindspore {
 namespace opt {
 namespace {
@@ -83,7 +84,7 @@ void CreateSplitConstantTensors(const tensor::TensorPtr &constant_tensor, const 
     }
     auto cur_shape = UP_DIV(split_dim_size * visited_block, total_block_count);
     split_constant_shapes.at(i).at(split_dim) = cur_shape;
-    auto tensor = std::make_shared<tensor::Tensor>(weight_type_id, split_constant_shapes.at(i));
+    auto tensor = tensor::from_spec(weight_type_id, split_constant_shapes.at(i), device::DeviceType::kCPU);
     if (tensor == nullptr) {
       MS_LOG(ERROR) << "make shared failed.";
       split_constant_tensors->clear();

@@ -503,7 +503,7 @@ class ModelParallelRunner:
 
     Examples:
         >>> # Use case: serving inference.
-        >>> # precondition 1: Building MindSpore Lite serving package by export MSLITE_ENABLE_SERVER_INFERENCE=on.
+        >>> # precondition 1: Building MindSpore Lite serving package by export MSLITE_ENABLE_CLOUD_INFERENCE=on.
         >>> # precondition 2: install wheel package of MindSpore Lite built by precondition 1.
         >>> import mindspore_lite as mslite
         >>> model_parallel_runner = mslite.ModelParallelRunner()
@@ -516,7 +516,7 @@ class ModelParallelRunner:
             self._model = _c_lite_wrapper.ModelParallelRunnerBind()
         else:
             raise RuntimeError(f"ModelParallelRunner init failed, If you want to use it, you need to build"
-                               f"MindSpore Lite serving package by export MSLITE_ENABLE_SERVER_INFERENCE=on.")
+                               f"MindSpore Lite serving package by export MSLITE_ENABLE_CLOUD_INFERENCE=on.")
         self.model_path_ = ""
 
     def __str__(self):
@@ -540,7 +540,7 @@ class ModelParallelRunner:
 
         Examples:
             >>> # Use case: serving inference.
-            >>> # precondition 1: Building MindSpore Lite serving package by export MSLITE_ENABLE_SERVER_INFERENCE=on.
+            >>> # precondition 1: Building MindSpore Lite serving package by export MSLITE_ENABLE_CLOUD_INFERENCE=on.
             >>> # precondition 2: install wheel package of MindSpore Lite built by precondition 1.
             >>> import mindspore_lite as mslite
             >>> context = mslite.Context()
@@ -575,7 +575,7 @@ class ModelParallelRunner:
 
         Examples:
             >>> # Use case: serving inference.
-            >>> # precondition 1: Building MindSpore Lite serving package by export MSLITE_ENABLE_SERVER_INFERENCE=on.
+            >>> # precondition 1: Building MindSpore Lite serving package by export MSLITE_ENABLE_CLOUD_INFERENCE=on.
             >>> # precondition 2: install wheel package of MindSpore Lite built by precondition 1.
             >>> import mindspore_lite as mslite
             >>> context = mslite.Context()
@@ -610,7 +610,7 @@ class ModelParallelRunner:
         Examples:
             >>> # Use case: serving inference.
             >>> # Precondition 1: Download MindSpore Lite serving package or building MindSpore Lite serving package by
-            >>> #                 export MSLITE_ENABLE_SERVER_INFERENCE=on.
+            >>> #                 export MSLITE_ENABLE_CLOUD_INFERENCE=on.
             >>> # Precondition 2: Install wheel package of MindSpore Lite built by precondition 1.
             >>> # The result can be find in the tutorial of runtime_parallel_python.
             >>> import time

@@ -19,7 +19,7 @@
 #include "src/tensor.h"
 #include "common/common_test.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/int8/resize_int8.h"
+#include "nnacl_c/int8/resize_int8.h"
 
 namespace mindspore {
 using mindspore::lite::LiteQuantParam;

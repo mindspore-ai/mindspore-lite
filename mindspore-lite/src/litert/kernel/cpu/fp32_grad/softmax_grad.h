@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/softmax_parameter.h"
+#include "nnacl_c/softmax_parameter.h"
 
 namespace mindspore::kernel {
 class SoftmaxGradCPUKernel : public LiteKernel {

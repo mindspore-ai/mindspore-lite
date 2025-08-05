@@ -21,8 +21,9 @@
 #include "extendrt/mindir_loader/mindir_model/mindir_model_util.h"
 #include "ir/tensor.h"
 #include "ir/value.h"
+#include "ir/tensor_new.h"
 #include "include/errorcode.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/common.h"
 #include "src/common/log_util.h"
 
@@ -85,13 +86,14 @@ mindspore::ValuePtr MindirModelUtil::MakeValueFromTensorAttribute(const mind_ir:
   for (int i = 0; i < tensor_proto.dims_size(); i++) {
     shape.push_back(tensor_proto.dims(i));
   }
-  tensor::TensorPtr tensor = std::make_shared<tensor::Tensor>(kDefaultValueSwitchMap[attr_tensor_type], shape);
+  tensor::TensorPtr tensor =
+    tensor::from_spec(kDefaultValueSwitchMap[attr_tensor_type], shape, device::DeviceType::kCPU);
 
   MS_EXCEPTION_IF_NULL(tensor);
   const std::string &tensor_buf = tensor_proto.raw_data();
   if (tensor_proto.has_raw_data()) {
     auto *tensor_data_buf = reinterpret_cast<uint8_t *>(tensor->data_c());
-    auto ret = memcpy_s(tensor_data_buf, tensor->data().nbytes(), tensor_buf.data(), tensor_buf.size());
+    auto ret = memcpy_s(tensor_data_buf, tensor->DataNBytes(), tensor_buf.data(), tensor_buf.size());
     MS_CHECK_TRUE_MSG(
       ret != mindspore::lite::RET_OK, nullptr,
       "MindirModelUtil: Generate tensor ptr from tensor proto failed, failed to get tensor from tensor proto.");

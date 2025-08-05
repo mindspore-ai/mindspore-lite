@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/nnacl/fp32/matmul_fp32_base_coder.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class MatMulFP32Coder final : public MatMulFP32BaseCoder {

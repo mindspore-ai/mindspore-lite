@@ -18,7 +18,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/space_to_depth_parameter.h"
+#include "nnacl_c/space_to_depth_parameter.h"
 
 namespace mindspore::kernel {
 class SpaceToDepthCPUKernel : public LiteKernel {

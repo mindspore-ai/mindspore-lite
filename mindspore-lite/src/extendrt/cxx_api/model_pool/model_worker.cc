@@ -18,7 +18,7 @@
 #include "src/common/log_adapter.h"
 #include "src/extendrt/numa_adapter.h"
 #include "src/common/common.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 namespace mindspore {
 void ModelWorker::PrintWorkerInfo() {
   MS_LOG(ERROR) << "worker id: " << worker_config_->worker_id

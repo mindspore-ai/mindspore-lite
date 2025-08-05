@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/unsqueeze_infer.h"
-#include "nnacl/unsqueeze_parameter.h"
+#include "nnacl_c/infer/unsqueeze_infer.h"
+#include "nnacl_c/unsqueeze_parameter.h"
 
 namespace mindspore {
 

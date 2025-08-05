@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/base/scatter_nd_binary.h"
+#include "nnacl_c/base/scatter_nd_binary.h"
 
 namespace mindspore::kernel {
 constexpr int kScatterUpdateInputIndex = 0;

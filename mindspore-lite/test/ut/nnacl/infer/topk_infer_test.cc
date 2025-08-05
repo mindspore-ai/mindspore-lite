@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/topk_infer.h"
+#include "nnacl_c/infer/topk_infer.h"
 
 namespace mindspore {
 

@@ -20,10 +20,10 @@
 #include <string.h>
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/scale_parameter.h"
-#include "nnacl/int8/quantize.h"
-#include "nnacl/int8/arithmetic_int8.h"
-#include "nnacl/int8/scale_int8.h"
+#include "nnacl_c/scale_parameter.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/int8/arithmetic_int8.h"
+#include "nnacl_c/int8/scale_int8.h"
 
 namespace mindspore::kernel {
 class ScaleInt8CPUKernel : public LiteKernel {

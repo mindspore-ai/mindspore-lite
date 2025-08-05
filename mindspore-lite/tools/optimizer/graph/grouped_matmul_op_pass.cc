@@ -34,6 +34,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_g.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
+#include "ir/tensor_new.h"
 
 namespace mindspore::opt {
 #if !defined(_WIN32) && !defined(_WIN64)
@@ -104,7 +105,7 @@ void GroupedMatmulOpPass::UseEmptyNodeReplaceNone(const FuncGraphPtr &graph, con
     // create empty tensor
     auto tensor_type = OpInputDtypeMap.at(cnode_name).at(input_idx);
     std::vector<int64_t> tensor_shape = {0};
-    auto empty_tensor = std::make_shared<tensor::Tensor>(tensor_type, tensor_shape);
+    auto empty_tensor = tensor::from_spec(tensor_type, tensor_shape, device::DeviceType::kCPU);
     // create node
     auto empty_node = std::make_shared<ValueNode>(empty_tensor);
     ValueNodePtr empty_value_node = empty_node->cast<ValueNodePtr>();

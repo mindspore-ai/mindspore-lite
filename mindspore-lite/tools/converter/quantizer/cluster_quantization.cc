@@ -189,7 +189,7 @@ int ClusterQuantization::KMeansQuantization(const CNodePtr &cnode, const std::ve
       MS_LOG(INFO) << "This op " << parameter->fullname_with_scope() << " is bias";
       continue;
     }
-    auto data = static_cast<float *>(tensor_info->data().data());
+    auto data = static_cast<float *>(tensor_info->device_address()->GetMutablePtr());
     std::vector<float> cluster_centroid;
     std::vector<int8_t> clusters;
     auto ret = KMeans(data, tensor_info->DataSize(), k_, max_epochs_, tol_error_, &clusters, &cluster_centroid);

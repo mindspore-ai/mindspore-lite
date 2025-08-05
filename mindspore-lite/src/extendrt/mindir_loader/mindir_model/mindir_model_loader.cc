@@ -72,7 +72,7 @@ bool MindirModelLoader::ConvertModel(const mind_ir::ModelProto &model_proto) {
     } else {
       // no subgraph, add graph to subgraph
       auto *sub_graph = new (std::nothrow) LiteGraph::SubGraph();
-      if (sub_graph ==nullptr) {
+      if (sub_graph == nullptr) {
         MS_LOG(ERROR) << "new subgraph failed.";
         return false;
       }

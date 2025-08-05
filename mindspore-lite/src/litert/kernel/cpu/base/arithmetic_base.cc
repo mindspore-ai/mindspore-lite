@@ -18,7 +18,7 @@
 #include <map>
 #include <utility>
 #include <vector>
-#include "nnacl/base/arithmetic_base.h"
+#include "nnacl_c/base/arithmetic_base.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;
@@ -226,7 +226,7 @@ int ArithmeticBaseCPUKernel::UpdateParameter() {
 
 int ArithmeticBaseCPUKernel::BroadCastConstTensor() {
   CalcMultiplesAndStrides(param_);
-#ifdef PARALLEL_INFERENCE
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
   bool prefer_explicit_broadcast = false;
 #else
   bool prefer_explicit_broadcast = param_->ndim_ != 1;

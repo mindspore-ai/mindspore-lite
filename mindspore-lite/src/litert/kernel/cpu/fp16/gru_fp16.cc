@@ -18,10 +18,10 @@
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
-#include "nnacl/fp16/gru_fp16.h"
-#include "nnacl/fp16/cast_fp16.h"
-#include "nnacl/fp16/lstm_fp16.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/fp16/gru_fp16.h"
+#include "nnacl_c/fp16/cast_fp16.h"
+#include "nnacl_c/fp16/lstm_fp16.h"
+#include "nnacl_c/errorcode.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

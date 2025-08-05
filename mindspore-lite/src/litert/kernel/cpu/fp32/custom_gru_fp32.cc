@@ -20,9 +20,9 @@
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 #include "src/litert/pack_weight_manager.h"
-#include "nnacl/fp32/pack_fp32.h"
-#include "nnacl/custom_gru_parameter.h"
-#include "nnacl/fp32/custom_gru_fp32.h"
+#include "nnacl_c/fp32/pack_fp32.h"
+#include "nnacl_c/custom_gru_parameter.h"
+#include "nnacl_c/fp32/custom_gru_fp32.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;

@@ -15,7 +15,7 @@
  */
 
 #include "src/litert/kernel/cpu/fp32/convolution_winograd_arm64_fp32.h"
-#include "nnacl/fp32/winograd_utils.h"
+#include "nnacl_c/fp32/winograd_utils.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_MEMORY_FAILED;

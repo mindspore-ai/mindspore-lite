@@ -26,7 +26,7 @@
 #include "ops_utils/op_utils.h"
 #include "infer/cxx_api/avg_pool_fusion.h"
 #include "infer/cxx_api/max_pool_fusion.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"

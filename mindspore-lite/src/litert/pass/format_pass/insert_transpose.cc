@@ -17,7 +17,7 @@
 #include "src/litert/pass/format_pass/insert_transpose.h"
 #include "src/litert/pass/format_pass/format_utils.h"
 #include "src/litert/kernel_exec_util.h"
-#include "nnacl/base/format_transpose.h"
+#include "nnacl_c/base/format_transpose.h"
 
 namespace mindspore::lite::pass {
 int InsertTranspose::TransposeConstData(kernel::KernelExec *kernel, size_t index) {

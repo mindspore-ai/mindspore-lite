@@ -46,7 +46,7 @@ int LstmMindirDynamicFP16Coder::Prepare(CoderContext *const context) {
 }
 
 int LstmMindirDynamicFP16Coder::DoCode(CoderContext *const context) {
-  Collect(context, {"nnacl/lstm_parameter.h", "nnacl/fp16/lstm_fp16.h"},
+  Collect(context, {"nnacl_c/lstm_parameter.h", "nnacl_c/fp16/lstm_fp16.h"},
           {"lstm_fp16.c", "activation_fp16.c", "arithmetic_fp16.c", "matmul_fp16.c", "pack_fp16.c"},
           {"MatmulBaseFp16Neon.S"});
   auto ret = InitInputWeightBias(context);

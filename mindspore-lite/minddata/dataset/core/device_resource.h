@@ -52,4 +52,4 @@ class DeviceResource {
 
 }  // namespace dataset
 }  // namespace mindspore
-#endif  // MINDSPORE_CCSRC_MINDDATA_DATASET_CORE_DEVICE_RESOURCE_H_
+#endif  // MINDSPORE_DEVICE_RESOURCE_H

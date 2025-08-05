@@ -19,8 +19,8 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/int8/hswish_int8.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/int8/hswish_int8.h"
+#include "nnacl_c/int8/quantize.h"
 
 namespace mindspore::kernel {
 class HswishInt8CPUKernel : public LiteKernel {

@@ -15,8 +15,8 @@
  */
 
 #include "wrapper/fp32/pooling_fp32_wrapper.h"
-#include "nnacl/fp32/pooling_fp32.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/fp32/pooling_fp32.h"
+#include "nnacl_c/errorcode.h"
 
 int DoMaxPooling(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   PoolingFp32Args *args = (PoolingFp32Args *)cdata;

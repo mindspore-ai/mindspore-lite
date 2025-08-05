@@ -5,7 +5,7 @@ set(COMMON_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/../../src/common/utils.cc
         )
 
-
+include_directories(${NNACL_DIR}/../)
 set(TEST_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/main.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/net_train.cc
@@ -37,8 +37,4 @@ else()
     else()
         target_link_libraries(benchmark_train mindspore-lite mindspore-lite-train pthread mindspore::securec)
     endif()
-endif()
-
-if(MSLITE_EXPORT_COMPUTE_IR)
-    target_link_libraries(benchmark_train mindspore_lite_drawer)
 endif()

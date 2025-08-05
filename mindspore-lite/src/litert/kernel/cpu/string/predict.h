@@ -18,7 +18,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/predict_parameter.h"
+#include "nnacl_c/predict_parameter.h"
 
 namespace mindspore::kernel {
 class PredictCPUKernel : public LiteKernel {

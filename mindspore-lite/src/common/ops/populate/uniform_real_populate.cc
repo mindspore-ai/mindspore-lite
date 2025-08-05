@@ -15,7 +15,7 @@
  */
 #include "src/common/ops/populate/populate_register.h"
 #include "src/common/ops/populate/default_populate.h"
-#include "nnacl/random_parameter.h"
+#include "nnacl_c/random_parameter.h"
 using mindspore::schema::PrimitiveType_UniformReal;
 
 namespace mindspore {

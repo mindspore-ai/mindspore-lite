@@ -19,9 +19,9 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/fp32/winograd_transform.h"
-#include "nnacl/base/minimal_filtering_generator.h"
-#include "nnacl/fp32/conv_winograd_fp32.h"
+#include "nnacl_c/fp32/winograd_transform.h"
+#include "nnacl_c/base/minimal_filtering_generator.h"
+#include "nnacl_c/fp32/conv_winograd_fp32.h"
 #include "src/litert/kernel/cpu/base/convolution_base.h"
 
 #define CONV_INPUT_UNIT_SIZE 8

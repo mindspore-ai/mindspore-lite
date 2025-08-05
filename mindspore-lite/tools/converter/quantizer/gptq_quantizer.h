@@ -29,7 +29,7 @@
 #include "tools/converter/cxx_api/converter_para.h"
 #include "ir/func_graph.h"
 #include "ir/anf.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 
 namespace mindspore {
 namespace lite::quant {

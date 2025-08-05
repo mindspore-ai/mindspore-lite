@@ -25,7 +25,7 @@
 #include "infer/cxx_api/pad_fusion.h"
 #include "infer/cxx_api/conv2d_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops/primitive_c.h"
 #include "ops_utils/op_utils.h"
 #include "src/common/utils.h"

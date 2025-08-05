@@ -15,7 +15,7 @@
  */
 #include "common/common_test.h"
 #include "src/common/tensor_util.h"
-#include "nnacl/infer/control/tensorlist_setitem_infer.h"
+#include "nnacl_c/infer/control/tensorlist_setitem_infer.h"
 
 namespace mindspore {
 
@@ -93,6 +93,7 @@ TEST_F(TensorlistSetItemInferTest, TensorlistSetItemInferTest0) {
   ASSERT_EQ(res->tensors_[2]->shape_size_, 2);
   ASSERT_EQ(res->tensors_[2]->shape_[0], 5);
   ASSERT_EQ(res->tensors_[2]->shape_[1], 6);
+
   delete parameter;
   for (size_t i = 0; i < inputs_size; i++) {
     if (inputs[i]->data_type_ == kObjectTypeTensorType) {

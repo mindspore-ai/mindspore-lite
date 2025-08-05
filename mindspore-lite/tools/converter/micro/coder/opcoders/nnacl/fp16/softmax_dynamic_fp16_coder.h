@@ -21,8 +21,8 @@
 #include <string>
 #include "coder/opcoders/op_coder.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/softmax_dynamic_parameter.h"
-#include "nnacl/softmax_parameter.h"
-#include "nnacl/kernel/softmax.h"
+#include "nnacl_c/softmax_parameter.h"
+#include "nnacl_c/kernel/softmax.h"
 
 namespace mindspore::lite::micro::nnacl {
 class SoftmaxDynamicFP16Coder final : public OperatorCoder {

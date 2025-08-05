@@ -17,7 +17,7 @@
 #include "nnacl/nnacl_batchnorm.h"
 #include "nnacl/nnacl_manager.h"
 #include "include/errorcode.h"
-#include "nnacl/fp32/batchnorm_fp32.h"
+#include "nnacl_c/fp32/batchnorm_fp32.h"
 
 using mindspore::schema::PrimitiveType_BatchNorm;
 

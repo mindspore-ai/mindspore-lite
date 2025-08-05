@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/int8/quant_dtype_cast_int8.h"
+#include "nnacl_c/int8/quant_dtype_cast_int8.h"
 using mindspore::schema::PrimitiveType_QuantDTypeCast;
 
 namespace mindspore {

@@ -17,7 +17,7 @@
 #define MINDSPORE_LITE_SRC_LITERT_KERNEL_CPU_BOLT_BOLT_UTILS_H_
 
 #include "bolt/common/memory/include/tensor.hpp"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "bolt/common/uni/include/parameter_spec.h"
 
 typedef Tensor BoltTensor;

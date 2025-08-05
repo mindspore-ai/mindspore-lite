@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 #include "src/litert/kernel/cpu/fp32/space_to_depth_fp32.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/errorcode.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/base/space_to_depth_base.h"
+#include "nnacl_c/base/space_to_depth_base.h"
 #include "include/errorcode.h"
 
 using mindspore::lite::KernelRegistrar;

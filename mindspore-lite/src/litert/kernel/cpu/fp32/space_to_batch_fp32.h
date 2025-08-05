@@ -18,8 +18,8 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/fp32/space_to_batch_fp32.h"
-#include "nnacl/common_func.h"
+#include "nnacl_c/fp32/space_to_batch_fp32.h"
+#include "nnacl_c/common_func.h"
 
 namespace mindspore::kernel {
 class SpaceToBatchCPUKernel : public LiteKernel {

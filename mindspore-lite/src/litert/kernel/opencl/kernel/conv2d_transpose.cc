@@ -17,7 +17,7 @@
 #include "src/litert/kernel/opencl/kernel/conv2d_transpose.h"
 #include <string>
 #include <set>
-#include "nnacl/fp32/common_func_fp32.h"
+#include "nnacl_c/fp32/common_func_fp32.h"
 #include "src/litert/kernel_registry.h"
 #include "src/litert/kernel/opencl/cl/conv2d_transpose.cl.inc"
 #include "src/litert/kernel/opencl/utils.h"

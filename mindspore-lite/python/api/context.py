@@ -95,7 +95,6 @@ class Context:
         >>> print(context)
         target: ['cpu'].
         >>> # testcase 2 about context's attribute parallel based on server inference package
-        >>> # (export MSLITE_ENABLE_SERVER_INFERENCE=on before compile lite or use cloud inference package)
         >>> import mindspore_lite as mslite
         >>> context = mslite.Context()
         >>> context.target = ["cpu"]
@@ -774,7 +773,7 @@ class _Parallel:
             self._runner_config = _c_lite_wrapper.RunnerConfigBind()
         else:
             raise RuntimeError(f"parallel init failed, If you want to set parallel, you need to build"
-                               f"MindSpore Lite serving package by export MSLITE_ENABLE_SERVER_INFERENCE=on.")
+                               f"MindSpore Lite serving package by export MSLITE_ENABLE_CLOUD_INFERENCE=on.")
         if context is not None:
             self._runner_config.set_context(context._inner_context)
 

@@ -28,7 +28,7 @@
 #include "tools/common/tensor_util.h"
 #include "src/common/log_adapter.h"
 #include "src/common/utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "infer/make_tuple.h"
 #include "tools/converter/converter_context.h"
 #include "tools/optimizer/common/gllo_utils.h"

@@ -15,7 +15,7 @@
  */
 #include "ir/dtype/type_id.h"
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/constant_of_shape_parameter.h"
+#include "nnacl_c/constant_of_shape_parameter.h"
 using mindspore::schema::PrimitiveType_ConstantOfShape;
 
 namespace mindspore {

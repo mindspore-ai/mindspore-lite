@@ -18,7 +18,7 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #ifdef __cplusplus
 extern "C" {
 #endif

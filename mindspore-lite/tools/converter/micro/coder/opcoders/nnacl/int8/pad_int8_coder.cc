@@ -205,7 +205,7 @@ int PadInt8Coder::HandleMirrorPad() {
 int PadInt8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/int8/pad_int8.h",
+            "nnacl_c/int8/pad_int8.h",
           },
           {
             "pad_int8.c",

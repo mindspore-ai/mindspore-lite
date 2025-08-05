@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/custom_parameter.h"
-#include "nnacl/split_parameter.h"
+#include "nnacl_c/custom_parameter.h"
+#include "nnacl_c/split_parameter.h"
 #include "infer/custom.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 using mindspore::ops::kNameCustom;

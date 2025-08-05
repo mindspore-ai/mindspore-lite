@@ -17,9 +17,9 @@
 #include <vector>
 #include <limits>
 #include "include/errorcode.h"
-#include "nnacl/fp32/sparse_to_dense_fp32.h"
+#include "nnacl_c/fp32/sparse_to_dense_fp32.h"
 #ifdef ENABLE_FP16
-#include "nnacl/fp16/sparse_to_dense_fp16.h"
+#include "nnacl_c/fp16/sparse_to_dense_fp16.h"
 #endif
 #include "schema/ops_generated.h"
 #include "src/litert/kernel_registry.h"

@@ -30,7 +30,7 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "infer/tuple_get_item.h"
 #include "tools/common/tensor_util.h"
 #include "ops_utils/op_utils.h"
@@ -928,7 +928,7 @@ STATUS EncoderLayerFusion::GetEps(const EquivPtr &equiv, VarPtr node_name, float
     if (value_node->isa<tensor::Tensor>()) {
       auto tensor = value_node->cast<tensor::TensorPtr>();
       MS_EXCEPTION_IF_NULL(tensor);
-      *eps = *reinterpret_cast<float *>(tensor->data().data());
+      *eps = *reinterpret_cast<float *>(tensor->device_address()->GetMutablePtr());
       return RET_OK;
     }
   }
@@ -1045,7 +1045,7 @@ STATUS EncoderLayerFusion::InitAttributes(AnfNodePtr k_past, AnfNodePtr begin_ex
     auto expert_capacity_value_node = utils::cast<ValuePtr>(utils::cast<ValueNodePtr>(expert_capacity_node)->value());
     if (expert_capacity_value_node->isa<tensor::Tensor>()) {
       auto tensor = expert_capacity_value_node->cast<tensor::TensorPtr>();
-      auto expert_capacity = *(reinterpret_cast<float16 *>(tensor->data().data()));
+      auto expert_capacity = *(reinterpret_cast<float16 *>(tensor->device_address()->GetMutablePtr()));
       float cast_expert_capacity = Float16::ToFloat32(expert_capacity);
       *capacity_factor = (cast_expert_capacity) * (*expert_num) / seq;
     }

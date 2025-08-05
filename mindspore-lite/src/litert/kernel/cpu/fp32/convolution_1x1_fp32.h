@@ -21,13 +21,13 @@
 #include <vector>
 #include "src/litert/lite_kernel.h"
 #include "include/errorcode.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/litert/kernel/cpu/base/convolution_base.h"
 #include "src/litert/kernel/cpu/base/layout_transform.h"
-#include "nnacl/base/conv1x1_base.h"
-#include "nnacl/fp32/common_func_fp32.h"
-#include "nnacl/matmul_parameter.h"
-#include "nnacl/fp32/matmul_fp32.h"
+#include "nnacl_c/base/conv1x1_base.h"
+#include "nnacl_c/fp32/common_func_fp32.h"
+#include "nnacl_c/matmul_parameter.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
 
 namespace mindspore::kernel {
 class Convolution1x1CPUKernel : public ConvolutionBaseCPUKernel {

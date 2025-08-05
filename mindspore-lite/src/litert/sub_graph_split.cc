@@ -27,9 +27,9 @@
 #include "src/common/ops/populate/populate_register.h"
 #include "src/litert/scheduler.h"
 #include "src/litert/tensor_category.h"
-#include "nnacl/pooling_parameter.h"
+#include "nnacl_c/pooling_parameter.h"
 #include "include/model.h"
-#include "nnacl/base/conv_common_base.h"
+#include "nnacl_c/base/conv_common_base.h"
 
 namespace {
 constexpr const int kMaxDepth = 2048;

@@ -19,7 +19,7 @@
 #include "src/executor/kernel_exec.h"
 #include "src/litert/tensor_category.h"
 #include "nnacl/nnacl_manager.h"
-#include "nnacl/pow_parameter.h"
+#include "nnacl_c/pow_parameter.h"
 
 namespace mindspore {
 class TestPowerFp32 : public mindspore::CommonTest {

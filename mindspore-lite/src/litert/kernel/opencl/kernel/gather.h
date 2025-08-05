@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/kernel/opencl/opencl_kernel.h"
-#include "nnacl/gather_parameter.h"
+#include "nnacl_c/gather_parameter.h"
 
 namespace mindspore::kernel {
 class GatherOpenCLKernel : public OpenCLKernel {

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/scatter_nd_parameter.h"
+#include "nnacl_c/scatter_nd_parameter.h"
 
 using mindspore::schema::PrimitiveType_ScatterNd;
 

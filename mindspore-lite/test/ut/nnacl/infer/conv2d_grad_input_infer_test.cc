@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/conv2d_grad_input_infer.h"
+#include "nnacl_c/infer/conv2d_grad_input_infer.h"
 
 namespace mindspore {
 

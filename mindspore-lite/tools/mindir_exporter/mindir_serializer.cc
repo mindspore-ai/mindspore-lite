@@ -36,6 +36,7 @@
 #include "tools/converter/quantizer/quantize_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_o.h"
 #include "src/common/decrypt.h"
+#include "src/extendrt/delegate/comm_group_info.h"
 #include "include/securec.h"
 
 namespace mindspore::lite {
@@ -411,7 +412,7 @@ int MindIRSerializer::SaveMindIRTogether(const std::shared_ptr<ConverterPara> &p
     }
     auto data = para->default_param()->cast<tensor::TensorPtr>();
     param_proto.clear_raw_data();
-    param_proto.set_raw_data(data->data_c(), static_cast<size_t>(data->data().nbytes()));
+    param_proto.set_raw_data(data->data_c(), static_cast<size_t>(data->DataNBytes()));
   }
 
   return SaveProtoToFile(&model_proto_, save_model_path_, param);
@@ -562,7 +563,7 @@ int MindIRSerializer::SplitSave(const std::shared_ptr<ConverterPara> &param) {
       continue;
     }
     auto data = para->default_param()->cast<tensor::TensorPtr>();
-    int64_t data_length = static_cast<int64_t>(data->data().nbytes());
+    int64_t data_length = static_cast<int64_t>(data->DataNBytes());
     int64_t append_size = 0;
     if (data_length % OFFSET != 0) {
       append_size = OFFSET - (data_length % OFFSET);
@@ -664,7 +665,7 @@ int MindIRSerializer::SaveProtoToFile(mind_ir::ModelProto *model_proto, const st
     MS_LOG(INFO) << "No need to save proto to file";
     return RET_OK;
   }
-  auto realpath = Common::CreatePrefixPath(output_file, true);
+  auto realpath = CommGroupInfo::CreatePrefixPath(output_file, true);
   if (!realpath.has_value()) {
     MS_LOG(ERROR) << "Get real path of file " << output_file << " failed.";
     return RET_ERROR;

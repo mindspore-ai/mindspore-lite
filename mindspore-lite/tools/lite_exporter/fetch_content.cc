@@ -25,7 +25,7 @@
 #include "mindapi/base/format.h"
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "mindspore/ops/op_def/sequence_ops.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "src/common/ops/anf_utils.h"
 #include "src/common/ops/populate/populate_register.h"
@@ -62,7 +62,10 @@ STATUS GetShapeVectorFromStringTensor(const tensor::TensorPtr &tensor_info, Shap
   std::string shape_size_str;
   *offset = 0;
   size_t cnt = 0;
-  for (; *offset < tensor_info->Size(); (*offset)++) {
+  MS_EXCEPTION_IF_NULL(tensor_info->device_address());
+  MS_EXCEPTION_IF_NULL(tensor_info->device_address()->data());
+  auto tensor_info_nbytes = static_cast<size_t>(tensor_info->device_address()->data()->nbytes());
+  for (; *offset < tensor_info_nbytes; (*offset)++) {
     if (tensor_data[*offset] == ',') {
       (*offset)++;
       break;
@@ -76,7 +79,7 @@ STATUS GetShapeVectorFromStringTensor(const tensor::TensorPtr &tensor_info, Shap
   constexpr int kBase = 10;
   size_t shape_size = static_cast<size_t>(std::strtol(shape_size_str.c_str(), nullptr, kBase));
   MS_CHECK_TRUE_RET(shape_size != 0, RET_ERROR);
-  for (; *offset < tensor_info->Size(); (*offset)++) {
+  for (; *offset < tensor_info_nbytes; (*offset)++) {
     if (tensor_data[*offset] == ',') {
       cnt++;
       int64_t shape = 0;
@@ -159,8 +162,11 @@ int FetchFromTensorValue(const ValueNodePtr &value_node, converter::FmkType fmk_
 
   // process weight tensor
   if (copy_data) {
-    data_info->data_.resize(data->Size());
-    if (data->Size() > 0 && memcpy_s(data_info->data_.data(), data->Size(), data->data_c(), data->Size()) != EOK) {
+    MS_EXCEPTION_IF_NULL(data->device_address());
+    MS_EXCEPTION_IF_NULL(data->device_address()->data());
+    auto data_nbytes = static_cast<size_t>(data->device_address()->data()->nbytes());
+    data_info->data_.resize(data_nbytes);
+    if (data_nbytes > 0 && memcpy_s(data_info->data_.data(), data_nbytes, data->data_c(), data_nbytes) != EOK) {
       MS_LOG(ERROR) << "memcpy_s error.";
       return RET_ERROR;
     }
@@ -260,11 +266,14 @@ int SetTensorData(const tensor::TensorPtr &tensor_info, DataInfo *data_info, Typ
                   bool copy_data) {
   MS_CHECK_TRUE_RET(data_info != nullptr, RET_NULL_PTR);
   MS_CHECK_TRUE_RET(tensor_info != nullptr, RET_NULL_PTR);
-  if (data_type == kObjectTypeTensorType && tensor_info->Size() >= kTensorListMinSize) {
-    data_info->data_.resize(tensor_info->Size() - offset);
+  MS_EXCEPTION_IF_NULL(tensor_info->device_address());
+  MS_EXCEPTION_IF_NULL(tensor_info->device_address()->data());
+  auto tensor_info_nbytes = static_cast<size_t>(tensor_info->device_address()->data()->nbytes());
+  if (data_type == kObjectTypeTensorType && tensor_info_nbytes >= kTensorListMinSize) {
+    data_info->data_.resize(tensor_info_nbytes - offset);
     if (EOK != common::huge_memcpy(data_info->data_.data(), data_info->data_.size(),
                                    static_cast<uint8_t *>(tensor_info->data_c()) + offset,
-                                   tensor_info->Size() - offset)) {
+                                   tensor_info_nbytes - offset)) {
       MS_LOG(ERROR) << "memcpy_s failed.";
       return RET_ERROR;
     }
@@ -272,10 +281,10 @@ int SetTensorData(const tensor::TensorPtr &tensor_info, DataInfo *data_info, Typ
   // common node with const data
   if (data_type != kObjectTypeTensorType) {
     if (copy_data) {
-      data_info->data_.resize(tensor_info->Size() - offset);
+      data_info->data_.resize(tensor_info_nbytes - offset);
       if (EOK != common::huge_memcpy(data_info->data_.data(), data_info->data_.size(),
                                      static_cast<uint8_t *>(tensor_info->data_c()) + offset,
-                                     tensor_info->Size() - offset)) {
+                                     tensor_info_nbytes - offset)) {
         MS_LOG(ERROR) << "memcpy_s failed.";
         return RET_ERROR;
       }
@@ -309,12 +318,17 @@ int FetchFromDefaultParam(const ParameterPtr &param_node, const converter::FmkTy
   }
   std::vector<int32_t> dims(shape_vector.begin(), shape_vector.end());
   data_info->shape_ = dims;
-  if (tensor_info != nullptr && tensor_info->Size() != 0) {
-    // tensor_list tensor
-    status = SetTensorData(tensor_info, data_info, data_type, offset, copy_data);
-    if (status != RET_OK) {
-      MS_LOG(ERROR) << "set tensor data failed.";
-      return RET_ERROR;
+  if (tensor_info != nullptr) {
+    MS_EXCEPTION_IF_NULL(tensor_info->device_address());
+    MS_EXCEPTION_IF_NULL(tensor_info->device_address()->data());
+    auto tensor_info_nbytes = static_cast<size_t>(tensor_info->device_address()->data()->nbytes());
+    if (tensor_info_nbytes != 0) {
+      // tensor_list tensor
+      status = SetTensorData(tensor_info, data_info, data_type, offset, copy_data);
+      if (status != RET_OK) {
+        MS_LOG(ERROR) << "set tensor data failed.";
+        return RET_ERROR;
+      }
     }
   }
   if (tensor_info != nullptr) {
@@ -444,10 +458,12 @@ int FetchDataFromCNode(const CNodePtr &cnode, size_t index, DataInfo *data_info)
     }
     auto tensor_value = tensor_info->cast<tensor::TensorPtr>();
     MS_CHECK_TRUE_MSG(tensor_value != nullptr, RET_ERROR, "cast ptr failed");
-    if (tensor_value->Size() >= kTensorListMinSize) {
-      data_info->data_.resize(tensor_value->Size());
-      if (memcpy_s(data_info->data_.data(), tensor_value->Size(), tensor_value->data_c(), tensor_value->Size()) !=
-          EOK) {
+    MS_EXCEPTION_IF_NULL(tensor_value->device_address());
+    MS_EXCEPTION_IF_NULL(tensor_value->device_address()->data());
+    auto tensor_value_nbytes = static_cast<size_t>(tensor_value->device_address()->data()->nbytes());
+    if (tensor_value_nbytes >= kTensorListMinSize) {
+      data_info->data_.resize(tensor_value_nbytes);
+      if (memcpy_s(data_info->data_.data(), tensor_value_nbytes, tensor_value->data_c(), tensor_value_nbytes) != EOK) {
         MS_LOG(ERROR) << "memcpy data failed.";
         return RET_ERROR;
       }
@@ -509,10 +525,12 @@ int FetchDataFromAbstract(const AbstractBasePtr &abstract, DataInfo *data_info) 
     }
     auto tensor_value = tensor_info->cast<tensor::TensorPtr>();
     MS_CHECK_TRUE_MSG(tensor_value != nullptr, RET_ERROR, "cast ptr failed");
-    if (tensor_value->Size() >= kTensorListMinSize) {
-      data_info->data_.resize(tensor_value->Size());
-      if (memcpy_s(data_info->data_.data(), tensor_value->Size(), tensor_value->data_c(), tensor_value->Size()) !=
-          EOK) {
+    MS_EXCEPTION_IF_NULL(tensor_value->device_address());
+    MS_EXCEPTION_IF_NULL(tensor_value->device_address()->data());
+    auto tensor_value_nbytes = static_cast<size_t>(tensor_value->device_address()->data()->nbytes());
+    if (tensor_value_nbytes >= kTensorListMinSize) {
+      data_info->data_.resize(tensor_value_nbytes);
+      if (memcpy_s(data_info->data_.data(), tensor_value_nbytes, tensor_value->data_c(), tensor_value_nbytes) != EOK) {
         MS_LOG(ERROR) << "memcpy data failed.";
         return RET_ERROR;
       }

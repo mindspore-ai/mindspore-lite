@@ -20,6 +20,7 @@
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "include/common/utils/anfalgo.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
+#include "ir/tensor_new.h"
 
 namespace mindspore {
 namespace opt {
@@ -52,7 +53,7 @@ const AnfNodePtr SendOpAddControlDepend::Process(const FuncGraphPtr &func_graph,
   MS_LOG(DEBUG) << "Process node: " << node->fullname_with_scope()
                 << ", input node: " << cnode->input(1)->fullname_with_scope();
 
-  auto tensor = std::make_shared<tensor::Tensor>(0.0);
+  auto tensor = tensor::from_scalar(0.0);
 
   MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
   auto value = MakeValue(tensor);

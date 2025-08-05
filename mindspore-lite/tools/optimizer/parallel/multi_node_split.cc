@@ -17,7 +17,7 @@
 #define USE_DEPRECATED_API
 #include "tools/optimizer/parallel/multi_node_split.h"
 #include "tools/optimizer/parallel/multi_conv_info.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 namespace mindspore {
 namespace opt {
 

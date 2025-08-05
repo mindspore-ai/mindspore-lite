@@ -51,21 +51,6 @@ Tensor
     mindspore_lite.Tensor
     mindspore_lite.TensorMeta
 
-LLMEngine
----------
-
-.. autosummary::
-    :toctree: mindspore_lite
-    :nosignatures:
-    :template: classtemplate.rst
-
-    mindspore_lite.LLMReq
-    mindspore_lite.LLMEngineStatus
-    mindspore_lite.LLMRole
-    mindspore_lite.LLMEngine
-    mindspore_lite.LLMStatusCode
-    mindspore_lite.LLMException
-
 LiteInfer
 ----------
 

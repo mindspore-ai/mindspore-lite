@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_OPCODERS_NNACL_FP32_GRAD_SOFTMAX_CROSS_ENTROPY_WITH_LOGITS_CODER_H_
 
 #include <vector>
-#include "nnacl/softmax_parameter.h"
+#include "nnacl_c/softmax_parameter.h"
 #include "coder/opcoders/op_coder.h"
 
 namespace mindspore::lite::micro::nnacl {

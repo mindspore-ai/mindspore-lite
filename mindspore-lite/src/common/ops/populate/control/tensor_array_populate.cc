@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/op_base.h"
-#include "nnacl/tensor_array_parameter.h"
+#include "nnacl_c/op_base.h"
+#include "nnacl_c/tensor_array_parameter.h"
 
 using mindspore::schema::PrimitiveType_TensorArray;
 using mindspore::schema::PrimitiveType_TensorArrayRead;

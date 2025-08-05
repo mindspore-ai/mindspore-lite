@@ -50,11 +50,11 @@ int HuffmanEncode::DoHuffmanEncode(const tensor::TensorPtr &weight, const Primit
   }
   size_t ch_size = huffman_encoded_str_.length();
   if (ch_size < packed_size) {
-    if (ch_size != static_cast<size_t>(weight->data().nbytes())) {
+    if (ch_size != static_cast<size_t>(weight->DataNBytes())) {
       MS_LOG(ERROR) << "Data size of weight is error.";
       return RET_ERROR;
     }
-    if (memcpy_s(weight->data_c(), weight->data().nbytes(), huffman_encoded_str_.c_str(), ch_size) != EOK) {
+    if (memcpy_s(weight->data_c(), weight->DataNBytes(), huffman_encoded_str_.c_str(), ch_size) != EOK) {
       MS_LOG(ERROR) << "memcpy_s failed.";
       return RET_MEMORY_FAILED;
     }

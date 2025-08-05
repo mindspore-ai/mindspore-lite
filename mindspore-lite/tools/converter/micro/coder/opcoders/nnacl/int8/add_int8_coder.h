@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/int8/add_int8.h"
+#include "nnacl_c/int8/add_int8.h"
 
 namespace mindspore::lite::micro::nnacl {
 class AddInt8Coder final : public OperatorCoder {

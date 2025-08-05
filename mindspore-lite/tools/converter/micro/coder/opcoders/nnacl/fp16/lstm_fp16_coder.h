@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/nnacl/fp32/lstm_fp32_coder.h"
-#include "nnacl/lstm_parameter.h"
+#include "nnacl_c/lstm_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class LstmFP16Coder final : public LstmFP32Coder {

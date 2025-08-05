@@ -29,7 +29,7 @@
 #include "src/common/log_adapter.h"
 #include "tools/common/tensor_util.h"
 #include "tools/converter/parser/parser_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

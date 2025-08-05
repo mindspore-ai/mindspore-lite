@@ -27,7 +27,7 @@
 #include "src/litert/lite_model.h"
 #include "src/litert/inner_context.h"
 #include "src/common/prim_util.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 
 namespace mindspore::lite {
 constexpr int kDefaultSubGraphSize = 2;

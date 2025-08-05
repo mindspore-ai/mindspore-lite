@@ -18,7 +18,7 @@
 #include <iostream>
 #include "src/litert/kernel/cpu/string/skip_gram.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/skip_gram_parameter.h"
+#include "nnacl_c/skip_gram_parameter.h"
 #include "src/common/file_utils.h"
 #include "common/common_test.h"
 #include "src/common/log_adapter.h"

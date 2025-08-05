@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 #include "infer/custom.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/fft_imag_infer.h"
+#include "nnacl_c/infer/fft_imag_infer.h"
 
 namespace mindspore {
 

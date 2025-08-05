@@ -29,6 +29,7 @@
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "tools/common/func_graph_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
+#include "ir/tensor_new.h"
 
 namespace mindspore::opt {
 namespace {
@@ -78,7 +79,7 @@ bool OutputVariablePass::Run(const FuncGraphPtr &graph) {
     }
     abstract::ShapePtr shape = dyn_cast<abstract::Shape>(make_tuple_input->Shape());
     MS_CHECK_TRUE_MSG(shape != nullptr, false, "shape is nullptr!");
-    tensor::TensorPtr tensor_data = std::make_shared<tensor::Tensor>(type_ptr->type_id(), shape->shape());
+    tensor::TensorPtr tensor_data = tensor::from_spec(type_ptr->type_id(), shape->shape(), device::DeviceType::kCPU);
 
     float *data_addr = static_cast<float *>(tensor_data->data_c());
     for (size_t j = 0; i < tensor_data->DataSize(); ++j) {

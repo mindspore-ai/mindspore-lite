@@ -9,6 +9,7 @@ set(BUILD_LITE "on")
 set(TOP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
 set(MINDSPORE_DIR ${TOP_DIR}/mindspore)
 set(LITE_DIR ${TOP_DIR}/mindspore-lite)
+set(NNACL_DIR ${LITE_DIR}/src/litert/kernel/cpu/nnacl_c)
 set(NEW_NATIVE_DIR ${LITE_DIR}/java/src/main/native)
 
 include(${LITE_DIR}/cmake/secure_option.cmake)
@@ -21,7 +22,7 @@ endif()
 
 if(CMAKE_BUILD_TYPE)
     if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
-    message("build release")
+        message("build release")
         set(CMAKE_CXX_VISIBILITY_PRESET hidden)
         set(CMAKE_C_VISIBILITY_PRESET hidden)
     endif()
@@ -110,7 +111,7 @@ include_directories(${MINDSPORE_DIR}) ## api include
 include_directories(${MINDSPORE_DIR}/mindspore/core/include) ## core include
 include_directories(${MINDSPORE_DIR}/mindspore/core/mindrt) ## core include
 include_directories(${MINDSPORE_DIR}/mindspore/core/mindrt/include) ## core include
-include_directories(${MINDSPORE_DIR}/mindspore/ops/kernel/cpu)
+include_directories(${NNACL_DIR}/../)
 include_directories(${TOP_DIR}/build) ## flatbuffers
 
 if(PLATFORM_ARM64 OR PLATFORM_ARM32)
@@ -137,7 +138,7 @@ set(JNI_SRC
         )
 
 set(CCSRC
-        ${MINDSPORE_DIR}/mindspore/ops/kernel/cpu/nnacl/nnacl_common.c
+        ${NNACL_DIR}/nnacl_common.c
         )
 
 if(MSLITE_ENABLE_PARALLEL_INFERENCE)
@@ -178,9 +179,9 @@ else()
     target_link_libraries(mindspore-lite-jni ${LITE_SO_NAME})
     if(USE_GLOG)
         find_library(GLOG_LIB
-        NAMES mindspore_glog libmindspore_glog.so.0
-        PATHS ${PLATFORM_DIR}
-        )
+                NAMES mindspore_glog libmindspore_glog.so.0
+                PATHS ${PLATFORM_DIR}
+                )
         if(GLOG_LIB)
             message("Found glog lib :${GLOG_LIB}")
         else()

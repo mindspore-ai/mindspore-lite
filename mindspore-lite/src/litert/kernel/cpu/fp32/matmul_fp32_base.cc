@@ -16,10 +16,10 @@
 
 #include "src/litert/kernel/cpu/fp32/matmul_fp32_base.h"
 #include <algorithm>
-#include "nnacl/fp32/matmul_fp32.h"
-#include "nnacl/fp32/pack_fp32.h"
-#include "nnacl/fp32/pack_fp32_opt.h"
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#include "nnacl_c/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32/pack_fp32.h"
+#include "nnacl_c/fp32/pack_fp32_opt.h"
+#if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
 #include "thread/parallel_thread_pool_manager.h"
 #endif
 
@@ -752,7 +752,7 @@ int MatmulFp32BaseCPUKernel::InitTmpOutBuffer() {
 }
 
 int MatmulFp32BaseCPUKernel::GetThreadCuttingPolicy() {
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
   constexpr int kNumDeepThreshold = 512;
   if (params_->deep_ < kNumDeepThreshold) {
     auto num = ParallelThreadPoolManager::GetInstance()->GetThreadPoolSize(

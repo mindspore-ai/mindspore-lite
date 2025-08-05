@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "tools/converter/parser/tf/tf_fake_quant_parser.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/converter/ops/ops_def.h"
 #include "tools/converter/parser/tf/tf_node_parser_registry.h"
 

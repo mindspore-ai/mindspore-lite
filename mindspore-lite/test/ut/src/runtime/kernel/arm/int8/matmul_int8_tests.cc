@@ -18,9 +18,9 @@
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
 #include "src/litert/kernel/cpu/int8/matmul_int8.h"
-#include "nnacl/int8/quantize.h"
-#include "nnacl/common_func.h"
-#include "nnacl/int8/matmul_int8.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/common_func.h"
+#include "nnacl_c/int8/matmul_int8.h"
 #include "src/litert/kernel_registry.h"
 #include "src/executor/kernel_exec.h"
 

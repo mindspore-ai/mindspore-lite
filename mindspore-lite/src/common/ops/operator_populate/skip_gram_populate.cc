@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/skip_gram_parameter.h"
+#include "nnacl_c/skip_gram_parameter.h"
 #include "infer/skip_gram.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 using mindspore::ops::kNameSkipGram;

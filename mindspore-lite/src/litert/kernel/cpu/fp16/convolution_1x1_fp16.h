@@ -22,8 +22,8 @@
 #include "src/litert/lite_kernel.h"
 #include "src/litert/kernel/cpu/base/convolution_base.h"
 #include "src/common/utils.h"
-#include "nnacl/matmul_parameter.h"
-#include "nnacl/fp16/matmul_fp16.h"
+#include "nnacl_c/matmul_parameter.h"
+#include "nnacl_c/fp16/matmul_fp16.h"
 
 namespace mindspore::kernel {
 class Convolution1x1FP16CPUKernel : public ConvolutionBaseCPUKernel {

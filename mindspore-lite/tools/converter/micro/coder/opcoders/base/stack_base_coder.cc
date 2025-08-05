@@ -40,7 +40,7 @@ int StackFP32Coder::ReSize() {
 int StackFP32Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/base/stack_base.h",
+            "nnacl_c/base/stack_base.h",
           },
           {
             "stack_base.c",

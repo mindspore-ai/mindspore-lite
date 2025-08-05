@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/audio_spectrogram_infer.h"
+#include "nnacl_c/infer/audio_spectrogram_infer.h"
 
 namespace mindspore {
 

@@ -20,7 +20,7 @@
 #include <vector>
 #include "coder/opcoders/op_coder.h"
 #include "coder/opcoders/nnacl/int8/matmul_base_int8_coder.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 namespace mindspore::lite::micro::nnacl {
 class MatMulInt8Coder final : public MatMulBaseInt8Coder {
  public:

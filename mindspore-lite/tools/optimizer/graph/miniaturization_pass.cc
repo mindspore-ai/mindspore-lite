@@ -19,7 +19,7 @@
 #include <functional>
 #include <vector>
 #include <memory>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "infer/fill.h"
 #include "src/common/utils.h"
@@ -38,23 +38,22 @@ static inline tensor::TensorPtr GetTensorFromNode(const AnfNodePtr &node) {
     return nullptr;
   }
   auto tensor = value->cast<tensor::TensorPtr>();
-  if (tensor == nullptr || tensor->data_ptr() == nullptr || tensor->data_c() == nullptr) {
+  if (tensor == nullptr || tensor->device_address() == nullptr || tensor->data_c() == nullptr) {
     return nullptr;
   }
   return tensor;
 }
 
 bool MiniaturizationPass::NeedCompress(const tensor::TensorPtr &tensor) {
-  auto tensor_data_ptr = tensor->data_ptr();
-  auto item_size = tensor_data_ptr->itemsize();
-  auto item_num = tensor_data_ptr->size();
-  auto data_ptr = tensor_data_ptr->data();
+  auto item_size = tensor->DataItemSize();
+  auto item_num = tensor->DataSize();
+  auto data_ptr = tensor->device_address()->GetMutablePtr();
   // No need cast to fill ops while tensor data size is small.
   if (item_num < COMPRESS_TRIGGER_SIZE_) {
     return false;
   }
   int ret = 0;
-  for (ssize_t idx = 1; idx < item_num; idx++) {
+  for (size_t idx = 1; idx < item_num; idx++) {
     auto offset = idx * item_size;
     // No memcmp_s provide in secure lib of huawei
     ret = memcmp(static_cast<uint8_t *>(data_ptr) + offset, static_cast<uint8_t *>(data_ptr) + offset - item_size,
@@ -67,15 +66,14 @@ bool MiniaturizationPass::NeedCompress(const tensor::TensorPtr &tensor) {
 }
 
 static inline ValuePtr GetFirstVal(const tensor::TensorPtr &tensor) {
-  auto tensor_data_ptr = tensor->data_ptr();
+  auto tensor_data_ptr = tensor->device_address()->GetMutablePtr();
   auto data_type = tensor->data_type();
-  auto data_ptr = tensor_data_ptr->data();
   if (data_type == kNumberTypeFloat32) {
-    float val = static_cast<float *>(data_ptr)[0];
+    float val = static_cast<float *>(tensor_data_ptr)[0];
     return MakeValue(val);
   }
   if (data_type == kNumberTypeUInt32) {
-    int32_t val = static_cast<int32_t *>(data_ptr)[0];
+    int32_t val = static_cast<int32_t *>(tensor_data_ptr)[0];
     return MakeValue(val);
   }
   return nullptr;

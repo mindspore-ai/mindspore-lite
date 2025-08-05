@@ -15,7 +15,7 @@
  */
 
 #include "wrapper/int8/add_int8_wrapper.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/errorcode.h"
 
 int AddBroadcastInt8Run(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   AddInt8Args *args = (AddInt8Args *)(cdata);

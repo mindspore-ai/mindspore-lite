@@ -21,7 +21,7 @@
 #include "src/litert/lite_kernel.h"
 #include "src/common/log_util.h"
 #include "src/litert/kernel/cpu/base/convolution_base.h"
-#include "nnacl/fp32/conv_depthwise_fp32.h"
+#include "nnacl_c/fp32/conv_depthwise_fp32.h"
 
 namespace mindspore::kernel {
 class ConvolutionDepthwiseSWInt8CPUKernel : public ConvolutionBaseCPUKernel {

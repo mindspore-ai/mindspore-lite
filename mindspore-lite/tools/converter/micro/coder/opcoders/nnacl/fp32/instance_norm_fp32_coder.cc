@@ -40,7 +40,7 @@ int InstanceNormFP32Coder::Prepare(CoderContext *const context) {
 int InstanceNormFP32Coder::DoCode(CoderContext *const context) {
   NNaclFp32Serializer code;
   code.CodeStruct("instance_norm_param", *param_);
-  Collect(context, {"nnacl/fp32/pack_fp32.h", "nnacl/fp32/instance_norm_fp32.h"},
+  Collect(context, {"nnacl_c/fp32/pack_fp32.h", "nnacl_c/fp32/instance_norm_fp32.h"},
           {"pack_fp32.c", "instance_norm_fp32.c"});
   if (input_tensors_[0]->format() == NHWC) {
     code.CodeFunction("PackNHWCToNC4HW4NotAlignedFp32", input_tensor_, tmp_src_data_, param_->batch_,

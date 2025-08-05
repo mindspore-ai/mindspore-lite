@@ -19,7 +19,8 @@
 #include "src/common/utils.h"
 #include "tools/common/graph_util.h"
 #include "abstract/utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
+#include "ir/tensor_new.h"
 
 namespace mindspore::lite {
 namespace {
@@ -76,14 +77,14 @@ tensor::TensorPtr CreateTensorInfo(const void *data, size_t data_size, const std
   tensor::TensorPtr tensor_info = nullptr;
   if (shape.empty() && data_size == mindspore::abstract::TypeIdSize(data_type)) {
     ShapeVector scalar_shape = {1};
-    tensor_info = std::make_shared<tensor::Tensor>(data_type, scalar_shape);
+    tensor_info = tensor::from_spec(data_type, scalar_shape, device::DeviceType::kCPU);
     if (tensor_info == nullptr) {
       MS_LOG(ERROR) << "new tensor init failed";
       return nullptr;
     }
     tensor_info->set_shape({});
   } else {
-    tensor_info = std::make_shared<tensor::Tensor>(data_type, shape);
+    tensor_info = tensor::from_spec(data_type, shape, device::DeviceType::kCPU);
   }
   if (tensor_info == nullptr) {
     MS_LOG(ERROR) << "new tensor init failed";
@@ -97,7 +98,7 @@ tensor::TensorPtr CreateTensorInfo(const void *data, size_t data_size, const std
     return nullptr;
   }
   MS_CHECK_TRUE_MSG(tensor_info->Size() == data_size, nullptr, "invalid const tensor");
-  auto ret = memcpy_s(tensor_info->data_c(), tensor_info->data().nbytes(), data, data_size);
+  auto ret = memcpy_s(tensor_info->data_c(), tensor_info->DataNBytes(), data, data_size);
   if (ret != EOK) {
     MS_LOG(ERROR) << "memcpy_s error : " << ret;
     return nullptr;
@@ -149,7 +150,7 @@ int SetTensorData(const tensor::TensorPtr &tensor_info, const void *data, size_t
     return RET_ERROR;
   }
   MS_CHECK_TRUE_MSG(tensor_info->Size() == data_size, RET_ERROR, "invalid const tensor");
-  auto ret = memcpy_s(tensor_info->data_c(), tensor_info->data().nbytes(), data, data_size);
+  auto ret = memcpy_s(tensor_info->data_c(), tensor_info->DataNBytes(), data, data_size);
   if (ret != EOK) {
     MS_LOG(ERROR) << "memcpy_s error : " << ret;
     return RET_ERROR;
@@ -191,10 +192,12 @@ int UpdateTensorTFromTensorInfo(const tensor::TensorPtr &src_tensor, std::unique
   (void)std::transform(shape_vector.begin(), shape_vector.end(), std::back_inserter(dims),
                        [](const int64_t &value) { return static_cast<int32_t>(value); });
   schema_tensor->dims = dims;
-  if (src_tensor->data().data() != nullptr) {
-    schema_tensor->data.resize(src_tensor->data().nbytes());
-    if (EOK != memcpy_s(schema_tensor->data.data(), schema_tensor->data.size(), src_tensor->data().data(),
-                        src_tensor->data().nbytes())) {
+  auto src_device = src_tensor->device_address();
+  if (src_device != nullptr && src_device->GetMutablePtr() != nullptr &&
+      src_device->GetDeviceType() != device::DeviceType::kCPU) {
+    auto data_ptr = src_device->GetMutablePtr();
+    schema_tensor->data.resize(src_tensor->DataNBytes());
+    if (EOK != memcpy_s(schema_tensor->data.data(), schema_tensor->data.size(), data_ptr, src_tensor->DataNBytes())) {
       MS_LOG(ERROR) << "memcpy_s failed.";
       return RET_ERROR;
     }

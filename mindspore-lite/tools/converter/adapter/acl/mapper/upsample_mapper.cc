@@ -21,7 +21,7 @@
 #include "tools/optimizer/common/gllo_utils.h"
 #include "src/common/log_util.h"
 #include "ops_utils/op_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/converter/adapter/acl/common/utils.h"
 
 namespace mindspore {

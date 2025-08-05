@@ -103,9 +103,8 @@ Status FuncGraphReuseManager::StoreFbModelBuf(void *model_buf, size_t data_size,
 }
 
 Status FuncGraphReuseManager::GetInOut(std::map<std::string, std::map<std::string, std::string>> config_info,
-                                       std::vector<tensor::TensorPtr> *in_tensor,
-                                       std::vector<tensor::TensorPtr> *out_tensor, std::vector<std::string> *in_name,
-                                       std::vector<std::string> *out_name) {
+                                       std::vector<MSTensorPtr> *in_tensor, std::vector<MSTensorPtr> *out_tensor,
+                                       std::vector<std::string> *in_name, std::vector<std::string> *out_name) {
   std::unique_lock<std::mutex> l(mtx_manager_);
   auto id = config_info.find(mindspore::lite::kInnerModelParallelRunnerSection);
   if (id != config_info.end()) {
@@ -131,9 +130,8 @@ Status FuncGraphReuseManager::GetInOut(std::map<std::string, std::map<std::strin
 }
 
 Status FuncGraphReuseManager::StoreInOut(std::map<std::string, std::map<std::string, std::string>> config_info,
-                                         std::vector<tensor::TensorPtr> in_tensor,
-                                         std::vector<tensor::TensorPtr> out_tensor, std::vector<std::string> in_name,
-                                         std::vector<std::string> out_name) {
+                                         std::vector<MSTensorPtr> in_tensor, std::vector<MSTensorPtr> out_tensor,
+                                         std::vector<std::string> in_name, std::vector<std::string> out_name) {
   std::unique_lock<std::mutex> l(mtx_manager_);
   auto id = config_info.find(lite::kInnerModelParallelRunnerSection);
   if (id != config_info.end()) {

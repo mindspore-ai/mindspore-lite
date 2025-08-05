@@ -17,7 +17,7 @@
 #include <set>
 #include <string>
 #include <map>
-#include "nnacl/fp32/common_func_fp32.h"
+#include "nnacl_c/fp32/common_func_fp32.h"
 #include "src/litert/kernel_registry.h"
 #include "src/litert/kernel/opencl/kernel/fullconnection.h"
 #include "src/litert/kernel/opencl/utils.h"

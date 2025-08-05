@@ -20,7 +20,7 @@
 #include <vector>
 #include "src/litert/kernel/opencl/opencl_kernel.h"
 #include "src/common/utils.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 
 namespace mindspore::kernel {
 class MatMulOpenCLKernel : public OpenCLKernel {

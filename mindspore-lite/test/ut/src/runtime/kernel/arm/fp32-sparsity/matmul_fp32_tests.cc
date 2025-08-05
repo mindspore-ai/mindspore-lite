@@ -19,7 +19,7 @@
 #include <random>
 #include "common/common_test.h"
 #include "src/common/file_utils.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "src/tensor.h"
 #include "include/securec.h"
 #include "src/litert/infer_manager.h"

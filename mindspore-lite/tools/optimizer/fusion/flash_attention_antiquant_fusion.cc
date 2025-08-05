@@ -154,6 +154,7 @@ ParameterPtr FlashAttentionAntiquantFusion::ConcatParameter(const FuncGraphPtr &
     MS_LOG(INFO) << "concat_data size is" << concat_data.size();
     concat_parameter = opt::BuildFloatVecParameterNode(func_graph, concat_data, name);
   }
+
   MS_CHECK_TRUE_RET(concat_parameter != nullptr, nullptr);
   auto abstract = concat_parameter->abstract();
   MS_CHECK_TRUE_RET(abstract != nullptr, nullptr);

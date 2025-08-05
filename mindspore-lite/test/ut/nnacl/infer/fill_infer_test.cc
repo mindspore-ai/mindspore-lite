@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/fill_infer.h"
-#include "nnacl/fill_parameter.h"
+#include "nnacl_c/infer/fill_infer.h"
+#include "nnacl_c/fill_parameter.h"
 
 namespace mindspore {
 

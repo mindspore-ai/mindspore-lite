@@ -41,7 +41,7 @@
 #include "src/common/utils.h"
 #include "ir/dtype/type_id.h"
 #include "schema/model_generated.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore::lite {
 #define BENCHMARK_LOG_ERROR(str)   \

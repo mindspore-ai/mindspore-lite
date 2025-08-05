@@ -19,7 +19,7 @@
 #include <string>
 #include "src/litert/kernel_registry.h"
 #include "src/litert/kernel/opencl/kernel/layer_norm.h"
-#include "nnacl/layer_norm_parameter.h"
+#include "nnacl_c/layer_norm_parameter.h"
 #include "src/litert/kernel/opencl/utils.h"
 #include "src/litert/kernel/opencl/cl/layer_norm.cl.inc"
 

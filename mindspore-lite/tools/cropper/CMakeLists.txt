@@ -16,7 +16,5 @@ add_executable(cropper
 
 add_dependencies(cropper fbs_src)
 
-target_link_libraries(cropper)
-
 add_custom_command(TARGET cropper POST_BUILD COMMAND
         bash build_cropper_config.sh WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

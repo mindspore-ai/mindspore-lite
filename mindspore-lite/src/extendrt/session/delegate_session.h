@@ -27,8 +27,6 @@
 
 namespace mindspore {
 /// \brief Delegate Session implementation, use delegate api for inference.
-// (zhaizhiqiang): use GraphSinkDelegateSession instead of GraphSinkSession in future.
-// class GraphSinkDelegateSession
 struct DelegateGraphInfo {
   std::vector<MutableTensorImplPtr> inputs;
   std::vector<std::string> input_names;
@@ -48,11 +46,12 @@ class GraphSinkSession : public InferSession {
   Status CompileGraph(FuncGraphPtr graph, const void *data = nullptr, size_t size = 0,
                       uint32_t *graph_id = nullptr) override;
   Status CompileGraph(const void *model_data, size_t data_size, uint32_t *graph_id) override;
-  Status RunGraph(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs, std::vector<tensor::Tensor> *outputs,
-                  const MSKernelCallBack &before, const MSKernelCallBack &after) override;
-  Status RunGraph(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
-                  std::vector<tensor::Tensor> *outputs) override;
-  Status Resize(uint32_t graph_id, const std::vector<tensor::Tensor> &inputs,
+  Status RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                  std::vector<mindspore::MSTensor> *outputs, const MSKernelCallBack &before,
+                  const MSKernelCallBack &after) override;
+  Status RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                  std::vector<mindspore::MSTensor> *outputs) override;
+  Status Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                 const std::vector<std::vector<int64_t>> &dims) override;
 
   std::vector<MutableTensorImplPtr> GetOutputs(uint32_t graph_id) override;
@@ -62,19 +61,21 @@ class GraphSinkSession : public InferSession {
   MutableTensorImplPtr GetOutputByTensorName(uint32_t graph_id, const std::string &tensorName) override;
   MutableTensorImplPtr GetInputByTensorName(uint32_t graph_id, const std::string &name) override;
   void SetConfigInfo(ConfigInfos config_infos) { config_infos_ = config_infos; }
-  Status UpdateWeights(const std::vector<std::vector<std::shared_ptr<tensor::Tensor>>> &weights) override;
+  Status UpdateWeights(const std::vector<std::vector<std::shared_ptr<mindspore::MSTensor>>> &weights) override;
+  Status Finalize() {
+    MS_LOG(INFO) << "Finalize is only implemented in single_op_session now.";
+    graph_executor_->Finalize();
+    return kSuccess;
+  }
 
  private:
   Status InitGraphInfo(DelegateGraphInfo *graph_info_ptr, uint32_t graph_id);
   Status InitGraphInputsOutputs(const FuncGraphPtr &graph, DelegateGraphInfo *graph_info);
   Status UpdateGraphInputsOutputs(uint32_t graph_id, DelegateGraphInfo *graph_info);
-  void UpdateDataFlowGraphInputsOutputs(DelegateGraphInfo *graph_info_ptr, const std::vector<tensor::Tensor> &inputs,
-                                        const std::vector<tensor::Tensor> &outputs);
 
   std::shared_ptr<mindspore::LiteGraphExecutor> graph_executor_;
   std::map<std::string, std::string> options_;
   std::map<uint32_t, DelegateGraphInfo> graph_infos_;
-  bool is_data_flow_graph_ = false;
   std::shared_ptr<Context> context_;
   ConfigInfos config_infos_;
 };

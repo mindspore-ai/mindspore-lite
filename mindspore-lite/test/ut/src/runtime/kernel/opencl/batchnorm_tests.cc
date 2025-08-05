@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "ut/src/runtime/kernel/opencl/common.h"
-#include "nnacl/batchnorm_parameter.h"
+#include "nnacl_c/batchnorm_parameter.h"
 
 namespace mindspore::lite::opencl::test {
 

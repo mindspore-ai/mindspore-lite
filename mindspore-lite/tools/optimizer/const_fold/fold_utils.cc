@@ -43,6 +43,7 @@
 
 using mindspore::lite::KernelRegistry;
 using mindspore::lite::Tensor;
+#include "ir/tensor_new.h"
 namespace mindspore {
 namespace opt {
 namespace {
@@ -57,7 +58,7 @@ ParameterPtr CreateNewParamter(const FuncGraphPtr &func_graph, Tensor *tensor) {
   (void)std::transform(shape.begin(), shape.end(), std::back_inserter(shape_vector),
                        [](const int32_t &value) { return static_cast<int64_t>(value); });
 
-  auto tensor_info = std::make_shared<tensor::Tensor>(tensor->data_type(), shape_vector);
+  auto tensor_info = tensor::from_spec(tensor->data_type(), shape_vector, device::DeviceType::kCPU);
   if (tensor_info == nullptr) {
     MS_LOG(ERROR) << "create tensor info failed.";
     return nullptr;

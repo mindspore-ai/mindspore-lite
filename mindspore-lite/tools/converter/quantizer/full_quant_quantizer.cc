@@ -37,7 +37,7 @@
 #include "tools/common/tensor_util.h"
 #include "src/common/utils.h"
 #include "tools/common/node_util.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "tools/converter/quantizer/bias_correction_strategy.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"

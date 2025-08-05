@@ -22,7 +22,7 @@
 #include "src/common/utils.h"
 #include "src/common/file_utils.h"
 #include "src/litert/kernel/cpu/fp32_grad/softmax_grad.h"
-#include "nnacl/fp32_grad/softmax_grad.h"
+#include "nnacl_c/fp32_grad/softmax_grad.h"
 #include "src/litert/kernel_registry.h"
 
 namespace mindspore {

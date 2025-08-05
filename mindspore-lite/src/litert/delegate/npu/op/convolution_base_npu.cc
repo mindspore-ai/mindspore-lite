@@ -18,7 +18,7 @@
 #include "src/litert/delegate/npu/npu_converter_utils.h"
 #include "src/litert/delegate/npu/transpose_kernel.h"
 #include "src/litert/delegate/delegate_utils.h"
-#include "nnacl/int8/pack_int8.h"
+#include "nnacl_c/int8/pack_int8.h"
 
 namespace mindspore::lite {
 ConvolutionBaseNPUOp::~ConvolutionBaseNPUOp() {

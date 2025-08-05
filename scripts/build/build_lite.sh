@@ -264,7 +264,6 @@ build_python_wheel_package() {
       find src/extendrt/unified_executor/ -name "*.so" -exec cp '{}' package/mindspore_lite/lib/ \;
       find src/extendrt/convert/ -name "*.so" -exec cp '{}' package/mindspore_lite/lib/ \;
       if [[ "X${MSLITE_ENABLE_ACL}" == "Xon" ]]; then
-        cp src/extendrt/kernel/ascend/*.so package/mindspore_lite/lib/
         local dvpp_utils=minddata/kernels-dvpp-image/utils/libdvpp_utils.so
         if [ -f ${dvpp_utils} ]; then
           cp ${dvpp_utils} package/mindspore_lite/lib/
@@ -284,6 +283,9 @@ build_python_wheel_package() {
       fi
       if [ -f "${INSTALL_PREFIX}/${pkg_name}/runtime/lib/libllm_engine_plugin.so" ]; then
         cp ${INSTALL_PREFIX}/${pkg_name}/runtime/lib/libllm_engine_plugin.so package/mindspore_lite/lib/
+      fi
+      if [ -f "${INSTALL_PREFIX}/${pkg_name}/runtime/lib/libascend_acl_plugin.so" ]; then
+        cp ${INSTALL_PREFIX}/${pkg_name}/runtime/lib/libascend_acl_plugin.so package/mindspore_lite/lib/
       fi
     else
       if [[ "X${MSLITE_ENABLE_ACL}" == "Xon" ]]; then
@@ -911,7 +913,6 @@ INSTALL_PREFIX=${BASEPATH}/output/tmp
 LITE_JAVA_PATH=${LITE_BASEPATH}/java
 LITE_PYTHON_PATH=${LITE_BASEPATH}/python
 
-#update_submodule
 CMAKE_ARGS="${CMAKE_ARGS} -DENABLE_VERBOSE=${ENABLE_VERBOSE}"
 if [[ "${DEBUG_MODE}" == "on" ]]; then
     CMAKE_ARGS="${CMAKE_ARGS} -DCMAKE_BUILD_TYPE=Debug "

@@ -24,7 +24,7 @@
 #include "infer/cxx_api/add_fusion.h"
 #include "infer/cxx_api/mat_mul_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_b.h"

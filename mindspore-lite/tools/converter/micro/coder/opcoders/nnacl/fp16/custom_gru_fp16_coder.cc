@@ -21,7 +21,7 @@ using mindspore::schema::PrimitiveType_Custom;
 
 namespace mindspore::lite::micro::nnacl {
 void CustomGruFP16Coder::InitNnaclFile(CoderContext *const context) {
-  Collect(context, {"nnacl/fp16/custom_gru_fp16.h"},
+  Collect(context, {"nnacl_c/fp16/custom_gru_fp16.h"},
           {"custom_gru_fp16.c", "pack_fp16.c", "matmul_fp16.c", "arithmetic_fp16.c", "activation_fp16.c"});
 }
 

@@ -1,0 +1,11 @@
+approvers:
+- jjfeing
+- YeFeng_24
+- fatmouse007fatmouse007 # zhuguodong
+- xu_anyue
+
+reviewers:
+- liuf9 # liufeiyang
+
+options:
+  no_parent_owners: true

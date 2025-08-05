@@ -30,7 +30,7 @@
 #include "tools/optimizer/parallel/operator_info_register.h"
 #include "tools/optimizer/parallel/spliter.h"
 #include "tools/optimizer/fisson/fisson_util.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "utils/anf_utils.h"

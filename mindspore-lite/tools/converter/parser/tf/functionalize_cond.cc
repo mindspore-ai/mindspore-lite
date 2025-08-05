@@ -24,7 +24,7 @@
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "include/errorcode.h"
 #include "tools/converter/ops/ops_def.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "infer/return.h"
 #include "tools/lite_exporter/fetch_content.h"

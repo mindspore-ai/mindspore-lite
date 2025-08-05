@@ -17,8 +17,8 @@
 #include "src/litert/kernel/cpu/fp32/lstm_fp32_base.h"
 #include <vector>
 #include "include/errorcode.h"
-#include "nnacl/fp32/pack_fp32.h"
-#include "nnacl/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32/pack_fp32.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_MEMORY_FAILED;

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/crop_and_resize_infer.h"
+#include "nnacl_c/infer/crop_and_resize_infer.h"
 
 namespace mindspore {
 

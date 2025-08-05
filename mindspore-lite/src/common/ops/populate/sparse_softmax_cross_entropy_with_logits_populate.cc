@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/fp32_grad/softmax_grad.h"
+#include "nnacl_c/fp32_grad/softmax_grad.h"
 using mindspore::schema::PrimitiveType_SparseSoftmaxCrossEntropyWithLogits;
 
 namespace mindspore {

@@ -15,7 +15,6 @@
  */
 
 #include "cxx_api/model/acl/model_converter.h"
-
 #include <memory>
 #include <algorithm>
 #include <utility>
@@ -24,7 +23,6 @@
 #include "graph/graph_buffer.h"
 #include "graph/graph.h"
 #include "cxx_api/model/aoe/auto_tune_process.h"
-#include "plugin/device/ascend/optimizer/ge_optimization.h"
 #include "plugin/res_manager/ascend/symbol_interface/acl_rt_symbol.h"
 #include "plugin/res_manager/ascend/symbol_interface/acl_symbol.h"
 #include "plugin/res_manager/ascend/symbol_interface/symbol_utils.h"
@@ -190,12 +188,7 @@ Buffer ModelConverter::LoadMindIR(const FuncGraphPtr &func_graph) {
 #else
   std::string lib_opsproto_file = ascend_path + "latest/opp/built-in/op_proto/lib/linux/x86_64/libopsproto.so";
 #endif
-  std::string real_path = lite::RealPath(lib_opsproto_file.c_str());
-  if (real_path.empty()) {
-    MS_LOG(ERROR) << "real_path is invalid.";
-    return buffer_ret;
-  }
-  static void *handler = dlopen(real_path.c_str(), RTLD_LAZY);
+  static void *handler = dlopen(lib_opsproto_file.c_str(), RTLD_LAZY);
   if (handler == nullptr) {
     MS_LOG(ERROR) << "dlopen opsproto library failed: " << lib_opsproto_file;
     return buffer_ret;

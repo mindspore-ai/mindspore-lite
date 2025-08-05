@@ -16,9 +16,9 @@
 
 #include "src/litert/kernel/cpu/fp32_grad/deconvolution_grad_filter.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/pack.h"
-#include "nnacl/fp32_grad/pack_ext.h"
-#include "nnacl/fp32_grad/gemm.h"
+#include "nnacl_c/pack.h"
+#include "nnacl_c/fp32_grad/pack_ext.h"
+#include "nnacl_c/fp32_grad/gemm.h"
 #include "include/errorcode.h"
 
 using mindspore::kernel::KERNEL_ARCH;

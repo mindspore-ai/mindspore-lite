@@ -17,8 +17,8 @@
 #include "tools/converter/micro/coder/opcoders/nnacl/fp32/slice_fp32_coder.h"
 #include "tools/converter/micro/coder/opcoders/file_collector.h"
 #include "tools/converter/micro/coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
-#include "nnacl/slice_parameter.h"
-#include "nnacl/base/slice_base.h"
+#include "nnacl_c/slice_parameter.h"
+#include "nnacl_c/base/slice_base.h"
 #include "coder/opcoders/parallel.h"
 
 using mindspore::schema::PrimitiveType_SliceFusion;
@@ -73,7 +73,7 @@ int SliceFP32Coder::Prepare(CoderContext *const context) {
 int SliceFP32Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/base/slice_base.h",
+            "nnacl_c/base/slice_base.h",
             "wrapper/fp32/slice_fp32_wrapper.h",
           },
           {

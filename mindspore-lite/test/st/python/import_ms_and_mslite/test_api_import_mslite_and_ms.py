@@ -20,7 +20,6 @@ import numpy as np
 import mindspore_lite as mslite
 import mindspore
 
-
 # ============================ ut testcases ============================
 # ============================ Context ============================
 def test_context_construct():

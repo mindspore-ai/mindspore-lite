@@ -16,14 +16,14 @@
 #include "src/common/ops/populate/populate_register.h"
 #include "src/common/log_adapter.h"
 #include "src/tensor.h"
-#include "nnacl/custom_parameter.h"
-#include "nnacl/split_parameter.h"
-#include "nnacl/custom_gru_parameter.h"
-#include "nnacl/custom_masked_fill_parameter.h"
-#include "nnacl/custom_is_inf_parameter.h"
-#include "nnacl/scatter_nd_parameter.h"
-#include "nnacl/conv3d_parameter.h"
-#include "nnacl/grid_sampler_parameter.h"
+#include "nnacl_c/custom_parameter.h"
+#include "nnacl_c/split_parameter.h"
+#include "nnacl_c/custom_gru_parameter.h"
+#include "nnacl_c/custom_masked_fill_parameter.h"
+#include "nnacl_c/custom_is_inf_parameter.h"
+#include "nnacl_c/scatter_nd_parameter.h"
+#include "nnacl_c/conv3d_parameter.h"
+#include "nnacl_c/grid_sampler_parameter.h"
 
 using mindspore::schema::PrimitiveType_Custom;
 

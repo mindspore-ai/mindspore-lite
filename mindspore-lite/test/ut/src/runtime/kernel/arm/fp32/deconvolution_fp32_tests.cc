@@ -18,8 +18,8 @@
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
 #include "src/common/file_utils.h"
-#include "nnacl/fp32/deconv_fp32.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/fp32/deconv_fp32.h"
+#include "nnacl_c/op_base.h"
 #include "src/litert/tensor_category.h"
 #include "nnacl/nnacl_manager.h"
 

@@ -18,8 +18,8 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_INT8_SLICE_INT8_WRAPPER_H_
 
 #include <stdint.h>
-#include "nnacl/slice_parameter.h"
-#include "nnacl/kernel/slice.h"
+#include "nnacl_c/slice_parameter.h"
+#include "nnacl_c/kernel/slice.h"
 
 typedef struct SliceArgs {
   int8_t *input_data_;

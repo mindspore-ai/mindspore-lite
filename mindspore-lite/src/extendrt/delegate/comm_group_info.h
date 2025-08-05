@@ -32,6 +32,7 @@ class CommGroupInfo {
   CommGroupInfo() {}
   ~CommGroupInfo() = default;
   bool LoadGroupInfo(const std::string &file, GroupInfoMap *group_info_map) const;
+  static std::optional<std::string> CreatePrefixPath(const std::string &input_path, bool support_relative_path);
 
  private:
   bool CheckPointExit(const std::string path) const;

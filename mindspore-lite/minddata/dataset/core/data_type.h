@@ -16,14 +16,14 @@
 #ifndef MINDSPORE_CCSRC_MINDDATA_DATASET_CORE_DATA_TYPE_H_
 #define MINDSPORE_CCSRC_MINDDATA_DATASET_CORE_DATA_TYPE_H_
 
-#if !defined(ENABLE_ANDROID) || defined(ENABLE_MINDDATA_PYTHON)
+#if !defined(ENABLE_ANDROID) || defined(ENABLE_CLOUD_FUSION_INFERENCE)
 #include <opencv2/core/hal/interface.h>
 #endif
 
 #include <string>
 #include <utility>
 
-#ifdef ENABLE_MINDDATA_PYTHON
+#ifdef ENABLE_CLOUD_FUSION_INFERENCE
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "mindspore-lite/minddata/dataset/core/pybind_support.h"
@@ -67,7 +67,7 @@ class DataType {
     const uint8_t cvType_;                      // OpenCv matching type
   };
 
-#ifdef ENABLE_MINDDATA_PYTHON
+#ifdef ENABLE_CLOUD_FUSION_INFERENCE
   static inline const TypeInfo kTypeInfo[] = {
     // name, sizeInBytes, pybindType, pybindFormatDescriptor, openCV
     {"unknown", 0, "object", "", kCVInvalidType},                                        // DE_UNKNOWN
@@ -88,7 +88,7 @@ class DataType {
     {"python", 0, "object", "O", kCVInvalidType}                                         // DE_PYTHON
   };
 #else
-#if !defined(ENABLE_ANDROID) || defined(ENABLE_MINDDATA_PYTHON)
+#if !defined(ENABLE_ANDROID) || defined(ENABLE_CLOUD_FUSION_INFERENCE)
   static inline const TypeInfo kTypeInfo[] = {
     // name, sizeInBytes, pybindTypem formatDescriptor, openCV
     {"unknown", 0, "object", "", kCVInvalidType},  // DE_UNKNOWN
@@ -165,7 +165,7 @@ class DataType {
   /// \return the number of bytes of the type.
   uint8_t SizeInBytes() const;
 
-#if !defined(ENABLE_ANDROID) || defined(ENABLE_MINDDATA_PYTHON)
+#if !defined(ENABLE_ANDROID) || defined(ENABLE_CLOUD_FUSION_INFERENCE)
   // Convert from DataType to OpenCV type
   /// \return
   uint8_t AsCVType() const;
@@ -207,7 +207,7 @@ class DataType {
   template <typename T>
   static DataType FromCType();
 
-#ifdef ENABLE_MINDDATA_PYTHON
+#ifdef ENABLE_CLOUD_FUSION_INFERENCE
   // Convert from DataType to Pybind type
   /// \return
   py::dtype AsNumpyType() const;

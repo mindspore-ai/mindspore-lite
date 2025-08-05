@@ -211,13 +211,13 @@ int GptqQuantizer::UpdateWeightNode(const FuncGraphPtr &func_graph,
         MS_CHECK_TRUE_MSG(weight_tensor != nullptr, RET_ERROR, "default_param can not cast to tensor::Tensor.");
         weight_tensor->set_data_type(kNumberTypeInt8);
         size_t new_size = weights.at(weight_tensor_name)->elements_num * sizeof(int8_t);
-        if (new_size != static_cast<size_t>(weight_tensor->data().nbytes())) {
+        if (new_size != static_cast<size_t>(weight_tensor->DataNBytes())) {
           MS_LOG(ERROR) << "Data size of tensor info is error, new_size: " << new_size
-                        << ", weight nbytes: " << static_cast<size_t>(weight_tensor->data().nbytes());
+                        << ", weight nbytes: " << static_cast<size_t>(weight_tensor->DataNBytes());
           return RET_ERROR;
         }
-        if (memcpy_s(weight_tensor->data_c(), weight_tensor->data().nbytes(),
-                     weights.at(weight_tensor_name)->quant_data, new_size) != EOK) {
+        if (memcpy_s(weight_tensor->data_c(), weight_tensor->DataNBytes(), weights.at(weight_tensor_name)->quant_data,
+                     new_size) != EOK) {
           MS_LOG(ERROR) << "memcpy data failed.";
           return RET_ERROR;
         }

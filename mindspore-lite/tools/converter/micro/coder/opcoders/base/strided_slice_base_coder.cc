@@ -176,7 +176,7 @@ int StridedSliceBaseCoder::DoCode(CoderContext *ctx) {
   inner_size_ = GetInnerSize(input_tensor_->data_type(), inner_);
   Collect(ctx,
           {
-            "nnacl/fp32/strided_slice_fp32.h",
+            "nnacl_c/fp32/strided_slice_fp32.h",
             "wrapper/base/strided_slice_wrapper.h",
           },
           {

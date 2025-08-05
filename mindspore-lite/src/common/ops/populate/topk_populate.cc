@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/fp32/topk_fp32.h"
+#include "nnacl_c/fp32/topk_fp32.h"
 using mindspore::schema::PrimitiveType_TopKFusion;
 
 namespace mindspore {

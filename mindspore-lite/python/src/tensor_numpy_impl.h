@@ -29,7 +29,7 @@
 #include "pybind11/pybind11.h"
 #include "pybind11/numpy.h"
 #ifdef ENABLE_CLOUD_INFERENCE
-#include "extendrt/kernel/ascend/plugin/ascend_allocator_plugin.h"
+#include "src/extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"
 #endif
 
 namespace py = pybind11;
@@ -49,7 +49,7 @@ class TensorNumpyImpl : public MutableTensorImpl {
     }
     if (device_data_ != nullptr) {
       MS_LOG(INFO) << "free device data in tensor numpy impl.";
-      kernel::AscendAllocatorPlugin::GetInstance().Free(device_data_, device_id_);
+      AscendAllocatorPlugin::GetInstance().Free(device_data_, device_id_);
     }
   }
   const std::vector<int64_t> &Shape() const override { return ms_shape_; }
@@ -84,7 +84,7 @@ class TensorNumpyImpl : public MutableTensorImpl {
   void SetDeviceData(void *data) override {
 #ifdef ENABLE_CLOUD_INFERENCE
     if (device_data_ != nullptr) {
-      kernel::AscendAllocatorPlugin::GetInstance().Free(device_data_, device_id_);
+      AscendAllocatorPlugin::GetInstance().Free(device_data_, device_id_);
     }
     device_data_ = data;
     return;

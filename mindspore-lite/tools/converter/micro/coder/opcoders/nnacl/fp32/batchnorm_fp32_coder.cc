@@ -16,8 +16,8 @@
 #include "coder/opcoders/nnacl/fp32/batchnorm_fp32_coder.h"
 #include <string>
 #include <vector>
-#include "nnacl/fp32/batchnorm_fp32.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/fp32/batchnorm_fp32.h"
+#include "nnacl_c/op_base.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
@@ -58,11 +58,11 @@ int BatchnormFP32Coder::DoCode(CoderContext *const context) {
   MS_CHECK_PTR(var_tensor);
   Collect(context,
           {
-            "nnacl/fp32/batchnorm.h",
-            "nnacl/kernel/batch_norm.h",
+            "nnacl_c/fp32/batchnorm.h",
+            "nnacl_c/kernel/batch_norm.h",
           },
           {
-            "nnacl/fp32/batchnorm.c",
+            "nnacl_c/fp32/batchnorm.c",
           });
   NNaclFp32Serializer code;
   code.CodeStruct("bn_struct", batchnorm_struct_);

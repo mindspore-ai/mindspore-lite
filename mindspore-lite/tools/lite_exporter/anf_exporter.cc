@@ -31,7 +31,7 @@
 #include "mindspore/ops/op_def/op_name.h"
 #include "mindspore/ops/ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/sequence_ops.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "infer/depend.h"
 #include "infer/cxx_api/partial_fusion.h"
 #include "infer/make_tuple.h"

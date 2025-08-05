@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/triu_tril_parameter.h"
+#include "nnacl_c/triu_tril_parameter.h"
 using mindspore::schema::PrimitiveType_Tril;
 using mindspore::schema::PrimitiveType_Triu;
 

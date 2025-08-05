@@ -17,7 +17,7 @@
 #include "tools/converter/parser/pytorch/pytorch_embedding_parser.h"
 #include <memory>
 #include "infer/ops_func_impl/gather.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

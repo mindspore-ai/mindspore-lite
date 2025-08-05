@@ -17,12 +17,11 @@ Test lite python API.
 """
 import pytest
 import numpy as np
+import mindspore_lite as mslite
 import mindspore
 import mindspore.nn as nn
 from mindspore import Tensor
 from mindspore.common.initializer import One
-import mindspore_lite as mslite
-
 
 # ============================ ut testcases ============================
 # ============================ Context ============================

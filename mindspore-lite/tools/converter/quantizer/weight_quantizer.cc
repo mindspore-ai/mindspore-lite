@@ -48,6 +48,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_o.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
+#include "ir/tensor_new.h"
 
 namespace mindspore::lite::quant {
 namespace {
@@ -68,8 +69,8 @@ tensor::TensorPtr ConvertParameterFp16TensorToFp32(const ParameterPtr &parameter
     for (size_t j = 0; j < tensor_info->DataSize(); j++) {
       fp32_data[j] = mindspore::Float16::ToFloat32(data[j]);
     }
-    mindspore::tensor::TensorPtr tensor_ptr = std::make_shared<mindspore::tensor::Tensor>(
-      kNumberTypeFloat32, tensor_info->shape_c(), fp32_data.data(), fp32_data.size() * sizeof(float));
+    auto tensor_ptr = mindspore::tensor::from_buffer(kNumberTypeFloat32, tensor_info->shape_c(), fp32_data.data(),
+                                                     fp32_data.size() * sizeof(float));
     parameter->set_default_param(tensor_ptr);
     parameter->set_abstract(tensor_ptr->ToAbstract());
     return tensor_ptr;

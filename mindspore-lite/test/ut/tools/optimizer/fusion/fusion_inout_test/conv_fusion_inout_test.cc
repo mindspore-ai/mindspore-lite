@@ -20,7 +20,7 @@
 #include "src/common/log_adapter.h"
 #include "ir/func_graph.h"
 #include "infer/cxx_api/conv2d_fusion.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 ValueNodePtr ConvFusionInoutTest::CreateConvPrimitiveValue() {
