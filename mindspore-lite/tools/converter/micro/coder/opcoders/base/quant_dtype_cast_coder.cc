@@ -47,7 +47,7 @@ int QuantDTypeCastCoder::DoCode(CoderContext *const context) {
 
   Collect(context,
           {
-            "nnacl/int8/quant_dtype_cast_int8.h",
+            "nnacl_c/int8/quant_dtype_cast_int8.h",
           },
           {
             "quant_dtype_cast_int8.c",

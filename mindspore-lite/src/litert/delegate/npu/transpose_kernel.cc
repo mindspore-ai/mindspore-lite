@@ -18,7 +18,7 @@
 #include "src/litert/delegate/npu/npu_converter_utils.h"
 #include "src/litert/delegate/npu/op/npu_op.h"
 #include "src/litert/delegate/delegate_utils.h"
-#include "nnacl/fp32/pack_fp32.h"
+#include "nnacl_c/fp32/pack_fp32.h"
 namespace mindspore::lite {
 int TransposeNPUKernel::Execute() {
   if (perm_ != NHWC2NCHW_PERM && perm_ != NCHW2NHWC_PERM) {

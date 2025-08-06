@@ -42,9 +42,9 @@ int ScaleFP16Coder::DoCode(CoderContext *const context) {
   // init struct ScaleParameters
   Collect(context,
           {
-            "nnacl/scale_parameter.h",
-            "nnacl/kernel/scale.h",
-            "nnacl/fp16/scale_fp16.h",
+            "nnacl_c/scale_parameter.h",
+            "nnacl_c/kernel/scale.h",
+            "nnacl_c/fp16/scale_fp16.h",
           },
           {
             "scale_fp32_wrapper.c",

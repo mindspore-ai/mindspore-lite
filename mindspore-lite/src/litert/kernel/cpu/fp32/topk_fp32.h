@@ -18,9 +18,9 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/fp32/topk_fp32.h"
+#include "nnacl_c/fp32/topk_fp32.h"
 #ifdef ENABLE_FP16
-#include "nnacl/fp16/topk_fp16.h"
+#include "nnacl_c/fp16/topk_fp16.h"
 #endif
 
 namespace mindspore::kernel {

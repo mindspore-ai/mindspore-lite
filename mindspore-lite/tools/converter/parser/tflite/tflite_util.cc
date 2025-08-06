@@ -21,7 +21,7 @@
 #include <memory>
 #include "src/common/log_adapter.h"
 #include "include/errorcode.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 
 namespace mindspore {

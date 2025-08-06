@@ -17,7 +17,7 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CPU_FP32_INSTANCE_NORM_FP32_H_
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/instance_norm_parameter.h"
+#include "nnacl_c/instance_norm_parameter.h"
 
 using mindspore::lite::InnerContext;
 

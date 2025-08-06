@@ -17,8 +17,8 @@
 #include "src/litert/kernel/cpu/int8/matmul_int8.h"
 #include "src/litert/kernel/cpu/int8/matmul_dynamic_int8.h"
 #include "src/litert/kernel/cpu/int8/matmul_dynamic_sdot_int8.h"
-#include "nnacl/int8/matmul_int8.h"
-#include "nnacl/common_func.h"
+#include "nnacl_c/int8/matmul_int8.h"
+#include "nnacl_c/common_func.h"
 #include "include/errorcode.h"
 #include "src/litert/kernel_registry.h"
 

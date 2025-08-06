@@ -20,7 +20,7 @@
 #include <vector>
 #include <memory>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/reduce_parameter.h"
+#include "nnacl_c/reduce_parameter.h"
 
 namespace mindspore::lite::micro {
 class ReduceBaseCoder : public OperatorCoder {

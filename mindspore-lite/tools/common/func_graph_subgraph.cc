@@ -27,7 +27,7 @@
 #include "tools/common/graph_util.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "infer/cxx_api/partial_fusion.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 
 namespace mindspore::lite {

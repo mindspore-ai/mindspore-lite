@@ -55,6 +55,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_w.h"
 
 using mindspore::converter::kFmkTypeTf;
+#include "ir/tensor_new.h"
 namespace mindspore {
 namespace lite {
 namespace {
@@ -494,7 +495,7 @@ STATUS TFModelParser::ConvertConstTensor(const tensorflow::NodeDef &node_def, co
   for (int i = 0; i < tensor_shape.dim_size(); i++) {
     shape_vector->push_back(tensor_shape.dim(i).size());
   }
-  auto tensor_info = std::make_shared<tensor::Tensor>(type, *shape_vector);
+  auto tensor_info = tensor::from_spec(type, *shape_vector, device::DeviceType::kCPU);
   if (tensor_info == nullptr) {
     MS_LOG(ERROR) << "tensor info is nullptr";
     return RET_ERROR;

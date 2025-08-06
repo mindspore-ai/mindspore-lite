@@ -29,7 +29,7 @@
 #include "src/common/version_manager.h"
 #include "src/litert/cpu_info.h"
 #if defined(ENABLE_ARM) && defined(ENABLE_FP16)
-#include "nnacl/constant_of_shape_parameter.h"
+#include "nnacl_c/constant_of_shape_parameter.h"
 #endif
 
 namespace mindspore::kernel {

@@ -18,7 +18,7 @@
 
 #include <vector>
 #include "include/errorcode.h"
-#include "nnacl/cumsum_parameter.h"
+#include "nnacl_c/cumsum_parameter.h"
 #include "src/executor/kernel_exec.h"
 
 namespace mindspore::kernel {

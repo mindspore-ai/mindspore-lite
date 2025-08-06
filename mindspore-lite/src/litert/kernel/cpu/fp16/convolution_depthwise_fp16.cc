@@ -15,8 +15,8 @@
  */
 
 #include "src/litert/kernel/cpu/fp16/convolution_depthwise_fp16.h"
-#include "nnacl/fp16/pack_fp16.h"
-#include "nnacl/fp16/cast_fp16.h"
+#include "nnacl_c/fp16/pack_fp16.h"
+#include "nnacl_c/fp16/cast_fp16.h"
 #include "include/errorcode.h"
 
 using mindspore::lite::RET_ERROR;

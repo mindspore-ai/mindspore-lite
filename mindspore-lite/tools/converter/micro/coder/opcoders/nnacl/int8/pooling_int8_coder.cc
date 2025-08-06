@@ -16,7 +16,7 @@
 #include "coder/opcoders/nnacl/int8/pooling_int8_coder.h"
 #include <memory>
 #include <vector>
-#include "nnacl/int8/pooling_int8.h"
+#include "nnacl_c/int8/pooling_int8.h"
 #include "coder/log.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_int8_serializer.h"
 #include "coder/opcoders/file_collector.h"
@@ -54,9 +54,9 @@ int PoolingInt8Coder::DoCode(CoderContext *const context) {
   std::vector<LiteQuantParam> out_quant_args = out_tensor->quant_params();
   Collect(context,
           {
-            "nnacl/int8/pooling_int8.h",
-            "nnacl/kernel/pooling.h",
-            "nnacl/errorcode.h",
+            "nnacl_c/int8/pooling_int8.h",
+            "nnacl_c/kernel/pooling.h",
+            "nnacl_c/errorcode.h",
           },
           {
             "pooling_int8.c",

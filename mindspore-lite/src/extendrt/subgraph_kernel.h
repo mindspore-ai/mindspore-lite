@@ -23,21 +23,21 @@
 #include "ir/func_graph.h"
 #include "runtime/hardware/device_context.h"
 #include "common/common_utils.h"
-#include "extendrt/session/lite_graph_executor.h"
+#include "src/extendrt/session/lite_graph_executor.h"
+
 namespace mindspore::kernel {
-class SubgraphKernel : public KernelMod {
+class SubgraphKernel {
  public:
   SubgraphKernel(FuncGraphPtr subgraph, std::shared_ptr<LiteGraphExecutor> executor)
       : subgraph_(subgraph), executor_(executor) {}
   virtual ~SubgraphKernel() = default;
-  bool Init(const std::vector<KernelTensor *> & /* inputs */,
-            const std::vector<KernelTensor *> & /* outputs */) override;
+  bool Init(const std::vector<MSTensor *> & /* inputs */, const std::vector<MSTensor *> & /* outputs */);
 
-  int Resize(const std::vector<KernelTensor *> &inputs, const std::vector<KernelTensor *> &outputs) override;
+  int Resize(const std::vector<MSTensor *> &inputs, const std::vector<MSTensor *> &outputs);
 
-  bool Launch(const std::vector<KernelTensor *> &inputs, const std::vector<KernelTensor *> &workspace,
-              const std::vector<KernelTensor *> &outputs, void *stream_ptr) override;
-  std::vector<KernelAttr> GetOpSupport() override { return {}; }
+  bool Launch(const std::vector<MSTensor *> &inputs, const std::vector<MSTensor *> &workspace,
+              const std::vector<MSTensor *> &outputs, void *stream_ptr);
+  std::vector<KernelAttr> GetOpSupport() { return {}; }
 
  protected:
   FuncGraphPtr subgraph_;

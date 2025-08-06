@@ -15,7 +15,7 @@
  */
 
 #include "wrapper/fp32/split_fp32_wrapper.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/errorcode.h"
 
 int DoSplitRun(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   SplitFp32Args *args = (SplitFp32Args *)cdata;

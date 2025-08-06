@@ -18,9 +18,9 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CPU_FP32_SPARSE_MATMUL_SPARSE_FP32_H_
 
 #include <vector>
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "src/litert/lite_kernel.h"
-#include "nnacl/fp32/transpose_fp32.h"
+#include "nnacl_c/fp32/transpose_fp32.h"
 
 namespace mindspore::kernel {
 struct SparsityWeight {

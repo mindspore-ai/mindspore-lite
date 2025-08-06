@@ -23,7 +23,7 @@
 #include "src/litert/kernel/cpu/fp32_grad/convolution.h"
 #include "src/litert/kernel/cpu/fp32_grad/convolution_grad_filter.h"
 #include "src/litert/kernel/cpu/fp32_grad/convolution_grad_input.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 #include "src/litert/kernel_registry.h"
 
 namespace mindspore {

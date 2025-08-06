@@ -26,9 +26,6 @@ from mindspore_lite.context import Context
 from mindspore_lite.converter import FmkType, Converter
 from mindspore_lite.model import ModelType, Model, ModelParallelRunner, ModelGroup, ModelGroupFlag
 from mindspore_lite.tensor import DataType, Format, Tensor, TensorMeta
-from mindspore_lite.llm_engine import LLMReq, LLMEngineStatus, LLMRole, LLMEngine, LLMClusterInfo, LLMStatusCode
-from mindspore_lite.llm_engine import LLMException, LLMKVCacheNotExist, LLMWaitProcessTimeOut, LLMRepeatRequest
-from mindspore_lite.llm_engine import LLMRequestAlreadyCompleted, LLMEngineFinalized, LLMParamInvalid, LLMNotYetLink
 from mindspore_lite.lite_infer import LiteInfer
 from mindspore_lite import lite_infer
 
@@ -83,4 +80,3 @@ __all__.extend(context.__all__)
 __all__.extend(converter.__all__)
 __all__.extend(model.__all__)
 __all__.extend(tensor.__all__)
-__all__.extend(llm_engine.__all__)

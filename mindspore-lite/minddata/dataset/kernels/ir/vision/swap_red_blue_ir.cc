@@ -15,14 +15,14 @@
  */
 #include "mindspore-lite/minddata/dataset/kernels/ir/vision/swap_red_blue_ir.h"
 
-#if !defined(ENABLE_ANDROID) || defined(ENABLE_MINDDATA_PYTHON)
+#if !defined(ENABLE_ANDROID)
 #include "mindspore-lite/minddata/dataset/kernels/image/swap_red_blue_op.h"
 #endif
 
 namespace mindspore {
 namespace dataset {
 namespace vision {
-#if !defined(ENABLE_ANDROID) || defined(ENABLE_MINDDATA_PYTHON)
+#if !defined(ENABLE_ANDROID)
 // SwapRedBlueOperation.
 SwapRedBlueOperation::SwapRedBlueOperation() = default;
 

@@ -23,7 +23,7 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "include/backend/optimizer/graph_optimizer.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "infer/tuple_get_item.h"
 #include "src/common/log_adapter.h"
 #include "src/common/log_util.h"

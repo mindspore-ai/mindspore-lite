@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/stack_parameter.h"
+#include "nnacl_c/stack_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class StackFP32Coder final : public OperatorCoder {

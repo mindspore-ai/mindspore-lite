@@ -24,7 +24,7 @@
 #include "src/tensorlist.h"
 #include "tools/optimizer/common/format_utils.h"
 #include "utils/ms_utils_secure.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 
@@ -216,7 +216,7 @@ int LiteTensorExtractor::GetCNodeConstInputToAbstract(const CNodePtr &cnode, con
     }
     auto input_tensor = shape_value->cast<tensor::TensorPtr>();
     MS_CHECK_FALSE(input_tensor == nullptr, RET_ERROR);
-    if (input_tensor->data().const_data() != nullptr) {
+    if (input_tensor->unsafe_data() != nullptr) {
       MS_LOG(DEBUG) << "abstract already have const data.";
       continue;
     }

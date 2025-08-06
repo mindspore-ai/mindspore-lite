@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/stack_parameter.h"
+#include "nnacl_c/stack_parameter.h"
 using mindspore::schema::PrimitiveType_Stack;
 
 namespace mindspore {

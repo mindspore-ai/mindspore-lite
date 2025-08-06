@@ -35,7 +35,7 @@
 #include "src/tensorlist.h"
 #include "src/registry/kernel_interface_registry.h"
 #include "tools/optimizer/graph/lite_tensor_extractor.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "tools/optimizer/format/to_nchw_format.h"
 #include "tools/optimizer/format/to_nhwc_format.h"
@@ -58,6 +58,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_z.h"
 
+#include "ir/tensor_new.h"
 namespace mindspore {
 namespace opt {
 static const std::unordered_set<PrimitivePtr> kNNACLToOpsInfer = {
@@ -108,7 +109,7 @@ static const std::unordered_set<PrimitivePtr> kNNACLToOpsInfer = {
   prim::kPrimTupleGetItem,
   prim::kPrimMakeTuple,
   prim::kPrimMakeTupleV2,
-  // nnacl/infer/common_infer.c
+  // nnacl_c/infer/common_infer.c
   prim::kPrimClip,
   prim::kPrimElu,
   prim::kPrimLeakyRelu,
@@ -168,7 +169,7 @@ void RectifyFormat(const std::vector<lite::Tensor *> &inputs, FmkType fmk_type) 
 tensor::TensorPtr NewTensorInfo(const lite::Tensor *tensor) {
   std::vector<int> shape(tensor->shape());
   std::vector<int64_t> shape_vector(shape.begin(), shape.end());
-  auto tensor_info = std::make_shared<tensor::Tensor>(tensor->data_type(), shape_vector);
+  auto tensor_info = tensor::from_spec(tensor->data_type(), shape_vector, device::DeviceType::kNone);
   if (tensor_info == nullptr) {
     MS_LOG(ERROR) << "new tensor::Tensor failed";
     return nullptr;
@@ -679,7 +680,7 @@ abstract::AbstractBasePtr NodeInferShape::ConvertTensorListToAbstract(lite::Tens
   }
   std::vector<int64_t> data_shape;
   data_shape.push_back(data_info.size());
-  auto tensor_info = std::make_shared<tensor::Tensor>(kNumberTypeInt32, data_shape, data_info.data(), kNumberTypeInt32);
+  auto tensor_info = tensor::from_buffer(kNumberTypeInt32, data_shape, data_info.data(), kNumberTypeInt32);
   if (tensor_info == nullptr) {
     MS_LOG(ERROR) << "new tensor::Tensor failed";
     return nullptr;

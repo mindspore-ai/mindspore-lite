@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/fp32_grad/smooth_l1_loss.h"
+#include "nnacl_c/fp32_grad/smooth_l1_loss.h"
 
 namespace mindspore::kernel {
 class SmoothL1LossGradCPUKernel : public LiteKernel {

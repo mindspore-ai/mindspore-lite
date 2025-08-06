@@ -15,7 +15,7 @@
  */
 #include <vector>
 #include "ut/src/runtime/kernel/opencl/common.h"
-#include "nnacl/crop_parameter.h"
+#include "nnacl_c/crop_parameter.h"
 
 namespace mindspore::lite::opencl::test {
 class TestOpenCL_Crop : public CommonTest {};

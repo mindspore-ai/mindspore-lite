@@ -42,11 +42,12 @@
 #include "src/common/file_utils.h"
 #include "src/litert/cxx_api/tensor/tensor_impl.h"
 #include "ir/anf.h"
+#include "ir/tensor_new.h"
 #include "tools/converter/export_model.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "mindspore/ops/op_def/other_ops.h"
 #include "utils/anf_utils.h"
-#include "mindspore/ops/kernel/cpu/nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_i.h"
@@ -454,11 +455,11 @@ int UpdateTensorDataAndSize(const AnfNodePtr &node, const tensor::TensorPtr &wei
   MS_CHECK_TRUE_RET(weight != nullptr, RET_NULL_PTR);
   MS_CHECK_TRUE_RET(new_size > 0, RET_NULL_PTR);
   weight->set_data_type(new_data_type);
-  if (new_size != static_cast<size_t>(weight->data().nbytes())) {
+  if (new_size != static_cast<size_t>(weight->DataNBytes())) {
     MS_LOG(ERROR) << "Data size of tensor info is error.";
     return RET_ERROR;
   }
-  if (memcpy_s(weight->data_c(), weight->data().nbytes(), quant_datas, new_size) != EOK) {
+  if (memcpy_s(weight->data_c(), weight->DataNBytes(), quant_datas, new_size) != EOK) {
     MS_LOG(ERROR) << "memcpy data failed.";
     return RET_ERROR;
   }
@@ -771,8 +772,8 @@ int ConvertCNodeFp32ToFp16(const CNodePtr &cnode) {
         for (size_t j = 0; j < tensor_info->DataSize(); j++) {
           fp16_data[j] = mindspore::Float16(data[j]);
         }
-        mindspore::tensor::TensorPtr tensor_ptr = std::make_shared<mindspore::tensor::Tensor>(
-          kNumberTypeFloat16, tensor_info->shape_c(), fp16_data.data(), fp16_data.size() * sizeof(float) / 2);
+        auto tensor_ptr = mindspore::tensor::from_buffer(kNumberTypeFloat16, tensor_info->shape_c(), fp16_data.data(),
+                                                         fp16_data.size() * sizeof(float) / 2);
         param_node->set_default_param(tensor_ptr);
         param_node->set_abstract(tensor_ptr->ToAbstract());
       }
@@ -801,8 +802,8 @@ int ConvertCNodeFp32ToFp16(const CNodePtr &cnode) {
         for (int j = 0; j < total_size; j++) {
           fp16_data[j] = mindspore::Float16(data[j]);
         }
-        mindspore::tensor::TensorPtr tensor_ptr = std::make_shared<mindspore::tensor::Tensor>(
-          kNumberTypeFloat16, shapes, fp16_data.data(), fp16_data.size() * sizeof(float) / 2);
+        auto tensor_ptr = mindspore::tensor::from_buffer(kNumberTypeFloat16, shapes, fp16_data.data(),
+                                                         fp16_data.size() * sizeof(float) / 2);
         auto values = MakeValue(tensor_ptr);
         value_node->set_value(values);
         value_node->set_abstract(tensor_ptr->ToAbstract());
@@ -842,8 +843,8 @@ int ConvertCNodeFp16ToFp32(const CNodePtr &cnode) {
       for (size_t j = 0; j < tensor_info->DataSize(); j++) {
         fp32_data[j] = mindspore::Float16::ToFloat32(data[j]);
       }
-      mindspore::tensor::TensorPtr tensor_ptr = std::make_shared<mindspore::tensor::Tensor>(
-        kNumberTypeFloat32, tensor_info->shape_c(), fp32_data.data(), fp32_data.size() * sizeof(float));
+      mindspore::tensor::TensorPtr tensor_ptr = tensor::from_buffer(kNumberTypeFloat32, tensor_info->shape_c(),
+                                                                    fp32_data.data(), fp32_data.size() * sizeof(float));
 
       tensor::TensorPtr input_tensor = quant::GetNodeTensor(input);
       MS_CHECK_TRUE_MSG(input_tensor != nullptr, RET_NULL_PTR, "Get node tensor failed.");

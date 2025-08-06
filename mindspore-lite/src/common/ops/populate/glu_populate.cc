@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/glu_parameter.h"
+#include "nnacl_c/glu_parameter.h"
 using mindspore::schema::PrimitiveType_GLU;
 
 namespace mindspore {

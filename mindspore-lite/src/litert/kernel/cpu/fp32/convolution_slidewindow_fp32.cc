@@ -15,8 +15,8 @@
  */
 #if defined(ENABLE_AVX) || defined(ENABLE_ARM64)
 #include "src/litert/kernel/cpu/fp32/convolution_slidewindow_fp32.h"
-#include "nnacl/fp32/conv_depthwise_fp32.h"
-#include "nnacl/fp32/conv_common_fp32.h"
+#include "nnacl_c/fp32/conv_depthwise_fp32.h"
+#include "nnacl_c/fp32/conv_common_fp32.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
 

@@ -34,11 +34,12 @@
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/optimizer/graph/control_flow_pass.h"
 #include "tools/optimizer/graph/clip_convert_activation_pass.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 
+#include "ir/tensor_new.h"
 namespace mindspore {
 namespace lite {
 namespace {
@@ -112,7 +113,7 @@ AnfNodePtr CloneParameterAndValueNode(const CNodePtr &cnode, size_t index, const
   }
   std::shared_ptr<tensor::Tensor> tensor_info;
   if (static_cast<TensorCompressionType>(data_info.compress_type_) == TensorCompressionType::kNoCompression) {
-    tensor_info = std::make_shared<tensor::Tensor>(static_cast<TypeId>(data_info.data_type_), shape_vec);
+    tensor_info = tensor::from_spec(static_cast<TypeId>(data_info.data_type_), shape_vec, device::DeviceType::kCPU);
   } else {
     tensor_info =
       std::make_shared<tensor::Tensor>(static_cast<TypeId>(data_info.data_type_), shape_vec, data_info.data_.size(),
@@ -121,11 +122,11 @@ AnfNodePtr CloneParameterAndValueNode(const CNodePtr &cnode, size_t index, const
   MS_CHECK_TRUE_RET(tensor_info != nullptr, nullptr);
   if (!data_info.data_.empty()) {
     auto tensor_data = reinterpret_cast<uint8_t *>(tensor_info->data_c());
-    if (tensor_data == nullptr || tensor_info->data().nbytes() < 0) {
+    if (tensor_data == nullptr || tensor_info->DataNBytes() < 0) {
       MS_LOG(ERROR) << "tensor info data is nullptr or the size is smaller than zero.";
       return nullptr;
     }
-    if (memcpy_s(tensor_data, tensor_info->data().nbytes(), data_info.data_.data(), data_info.data_.size()) != EOK) {
+    if (memcpy_s(tensor_data, tensor_info->DataNBytes(), data_info.data_.data(), data_info.data_.size()) != EOK) {
       MS_LOG(ERROR) << "memcpy_s failed";
       return nullptr;
     }

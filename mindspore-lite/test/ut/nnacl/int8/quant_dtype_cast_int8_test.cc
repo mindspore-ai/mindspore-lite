@@ -16,9 +16,9 @@
 #include <iostream>
 #include <cmath>
 #include "common/common_test.h"
-#include "nnacl/int8/quant_dtype_cast_int8.h"
+#include "nnacl_c/int8/quant_dtype_cast_int8.h"
 #ifdef ENABLE_ARM64
-#include "nnacl/fp16/quant_dtype_cast_fp16.h"
+#include "nnacl_c/fp16/quant_dtype_cast_fp16.h"
 #endif
 
 namespace mindspore {

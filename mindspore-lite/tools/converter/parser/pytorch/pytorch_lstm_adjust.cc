@@ -20,12 +20,13 @@
 #include "tools/lite_exporter/fetch_content.h"
 #include "tools/common/tensor_util.h"
 #include "utils/check_convert_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/nn_ops.h"
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
+#include "ir/tensor_new.h"
 
 namespace mindspore {
 namespace opt {
@@ -190,7 +191,7 @@ bool PytorchLstmAdjustPass::AdjustDataFormat(const ParameterPtr &parameter) {
     return false;
   }
 
-  auto new_tensor = std::make_shared<tensor::Tensor>(weight->data_type(), weight->shape(), new_data, data_size);
+  auto new_tensor = tensor::from_buffer(weight->data_type(), weight->shape(), new_data, data_size);
   MS_CHECK_TRUE_RET(new_tensor != nullptr, false);
   parameter->set_default_param(new_tensor);
 

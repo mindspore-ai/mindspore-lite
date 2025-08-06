@@ -42,7 +42,7 @@ int ConcatFP16Coder::ReSize() {
 int ConcatFP16Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/base/concat_base.h",
+            "nnacl_c/base/concat_base.h",
           },
           {
             "concat_base.c",

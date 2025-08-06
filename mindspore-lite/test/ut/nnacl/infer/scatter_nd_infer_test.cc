@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/scatter_nd_infer.h"
+#include "nnacl_c/infer/scatter_nd_infer.h"
 
 namespace mindspore {
 

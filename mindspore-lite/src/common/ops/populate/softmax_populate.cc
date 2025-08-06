@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/softmax_parameter.h"
+#include "nnacl_c/softmax_parameter.h"
 using mindspore::schema::PrimitiveType_Softmax;
 
 namespace mindspore {

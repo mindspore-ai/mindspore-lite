@@ -21,7 +21,6 @@
 #include "include/lite_types.h"
 #include "src/litert/inner_allocator.h"
 #include "src/common/log_adapter.h"
-#include "src/extendrt/delegate/tensorrt/distribution/distribution_base.h"
 #include "src/extendrt/delegate_graph_executor.h"
 
 namespace mindspore {
@@ -284,108 +283,6 @@ bool CPUDeviceInfo::GetEnableFP16() const {
     return false;
   }
   return GetValue<bool>(data_, kModelOptionCpuEnableFP16);
-}
-
-void GPUDeviceInfo::SetEnableFP16(bool is_fp16) {
-  if (data_ == nullptr) {
-    MS_LOG(ERROR) << "Invalid context.";
-    return;
-  }
-  if (is_fp16) {
-    data_->params[kModelOptionGPUPrecisionMode] = std::string("preferred_fp16");
-  } else {
-    data_->params[kModelOptionGPUPrecisionMode] = std::string("enforce_fp32");
-  }
-  data_->params[kModelOptionGPUEnableFP16] = is_fp16;
-}
-
-bool GPUDeviceInfo::GetEnableFP16() const {
-  if (data_ == nullptr) {
-    MS_LOG(ERROR) << "Invalid context.";
-    return false;
-  }
-  return GetValue<bool>(data_, kModelOptionGPUEnableFP16);
-}
-
-void GPUDeviceInfo::SetPrecisionMode(const std::vector<char> &precision_mode) {
-  if (data_ == nullptr) {
-    MS_LOG(ERROR) << "Invalid context.";
-    return;
-  }
-  if (precision_mode == StringToChar("enforce_fp32")) {
-    data_->params[kModelOptionGPUEnableFP16] = false;
-  } else if (precision_mode == StringToChar("preferred_fp16")) {
-    data_->params[kModelOptionGPUEnableFP16] = true;
-  } else {
-    MS_LOG(ERROR) << "GPU only support mode enforce_fp32 and preferred_fp16. Now the precision mode is fp32 as default";
-    return;
-  }
-  data_->params[kModelOptionGPUPrecisionMode] = CharToString(precision_mode);
-}
-
-std::vector<char> GPUDeviceInfo::GetPrecisionModeChar() const {
-  if (data_ == nullptr) {
-    MS_LOG(ERROR) << "Invalid context.";
-    return std::vector<char>();
-  }
-  const std::string &ref = GetValue<std::string>(data_, kModelOptionGPUPrecisionMode);
-  return StringToChar(ref);
-}
-
-void GPUDeviceInfo::SetEnableGLTexture(bool is_enable_gl_texture) {
-  MS_LOG(ERROR) << "Unsupported Feature.";
-  return;
-}
-
-bool GPUDeviceInfo::GetEnableGLTexture() const {
-  MS_LOG(ERROR) << "Unsupported Feature.";
-  return false;
-}
-
-void GPUDeviceInfo::SetGLContext(void *gl_context) {
-  MS_LOG(ERROR) << "Unsupported Feature.";
-  return;
-}
-
-void *GPUDeviceInfo::GetGLContext() const {
-  MS_LOG(ERROR) << "Unsupported Feature.";
-  return nullptr;
-}
-
-void GPUDeviceInfo::SetGLDisplay(void *gl_display) {
-  MS_LOG(ERROR) << "Unsupported Feature.";
-  return;
-}
-
-void *GPUDeviceInfo::GetGLDisplay() const {
-  MS_LOG(ERROR) << "Unsupported Feature.";
-  return nullptr;
-}
-
-void GPUDeviceInfo::SetDeviceID(uint32_t device_id) {
-  if (data_ == nullptr) {
-    MS_LOG(ERROR) << "Invalid context.";
-    return;
-  }
-  data_->params[kModelOptionGPUDeviceID] = device_id;
-}
-
-uint32_t GPUDeviceInfo::GetDeviceID() const {
-  if (data_ == nullptr) {
-    MS_LOG(ERROR) << "Invalid context.";
-    return 0;
-  }
-  return GetValue<uint32_t>(data_, kModelOptionGPUDeviceID);
-}
-
-int GPUDeviceInfo::GetRankID() const {
-  data_->params[kModelOptionGPURankID] = lite::GetRankID();
-  return GetValue<int>(data_, kModelOptionGPURankID);
-}
-
-int GPUDeviceInfo::GetGroupSize() const {
-  data_->params[kModelOptionGPUGroupSize] = lite::GetGPUGroupSize();
-  return GetValue<int>(data_, kModelOptionGPUGroupSize);
 }
 
 void AscendDeviceInfo::SetDeviceID(uint32_t device_id) {

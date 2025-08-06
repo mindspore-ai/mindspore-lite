@@ -20,7 +20,7 @@
 #include <vector>
 #include <memory>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/resize_parameter.h"
+#include "nnacl_c/resize_parameter.h"
 
 namespace mindspore::lite::micro {
 class ResizeBaseCoder : public OperatorCoder {

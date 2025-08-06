@@ -104,7 +104,7 @@ int TransformUint8Pass::DoParameterNodeTrans(const CNodePtr &cnode, const Parame
 
   // transform weight data
   size_t elem_count = tensor_info->DataSize();
-  auto ret = Uint8toInt8(static_cast<uint8_t *>(tensor_info->data().data()), elem_count);
+  auto ret = Uint8toInt8(static_cast<uint8_t *>(tensor_info->device_address()->GetMutablePtr()), elem_count);
   if (ret != RET_OK) {
     MS_LOG(ERROR) << input_node->fullname_with_scope() << " transform data uint8 to int8 failed.";
     return ret;

@@ -19,7 +19,7 @@
 #include <vector>
 #include <memory>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 namespace mindspore::lite::micro::nnacl {
 class ConvDelegateCoder : public OperatorCoder {
  public:

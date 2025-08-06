@@ -9,7 +9,6 @@ endif()
 set_property(SOURCE ${TF_SRC_LIST} PROPERTY COMPILE_DEFINITIONS
         LOG_HDR_FILE_REL_PATH="mindspore-lite/../mindspore/mindspore/core/include/utils/log_adapter.h"
         SUBMODULE_ID=mindspore::SubModuleId::SM_LITE)
-
 add_library(tf_parser_mid OBJECT ${TF_SRC_LIST})
 
 add_dependencies(tf_parser_mid proto_mid)

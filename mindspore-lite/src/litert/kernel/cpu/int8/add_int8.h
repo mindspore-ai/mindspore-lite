@@ -20,8 +20,8 @@
 #include <limits>
 #include <algorithm>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/int8/add_int8.h"
-#include "nnacl/arithmetic_parameter.h"
+#include "nnacl_c/int8/add_int8.h"
+#include "nnacl_c/arithmetic_parameter.h"
 
 namespace mindspore::kernel {
 class QuantizedAddCPUKernel : public LiteKernel {

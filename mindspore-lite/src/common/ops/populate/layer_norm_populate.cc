@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "nnacl/layer_norm_parameter.h"
+#include "nnacl_c/layer_norm_parameter.h"
 #include <cstdint>
 #include "src/common/ops/populate/populate_register.h"
 using mindspore::schema::PrimitiveType_LayerNormFusion;

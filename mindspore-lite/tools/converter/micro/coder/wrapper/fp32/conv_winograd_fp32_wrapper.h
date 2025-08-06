@@ -15,8 +15,8 @@
  */
 #ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_FP32_CONV_WINOGRAD_FP32_WRAPPER_H_
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_FP32_CONV_WINOGRAD_FP32_WRAPPER_H_
-#include "nnacl/fp32/winograd_utils.h"
-#include "nnacl/fp32/conv_winograd_fp32.h"
+#include "nnacl_c/fp32/winograd_utils.h"
+#include "nnacl_c/fp32/conv_winograd_fp32.h"
 #ifdef __cplusplus
 #include <string>
 typedef struct TransFuncStr {

@@ -220,7 +220,8 @@ function(__install_ascend_ascendc)
 endfunction()
 
 # full mode will also package the files of lite_cv mode.
-if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full")
+if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full"
+        AND NOT(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
     # full header files
     install(FILES
             ${TOP_DIR}/mindspore-lite/minddata/dataset/include/dataset/constants.h
@@ -231,7 +232,7 @@ if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full")
             ${TOP_DIR}/mindspore-lite/minddata/dataset/include/dataset/transforms.h
             ${TOP_DIR}/mindspore-lite/minddata/dataset/include/dataset/vision_lite.h
             ${TOP_DIR}/mindspore-lite/minddata/dataset/liteapi/include/datasets.h
-        DESTINATION ${MIND_DATA_INC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+            DESTINATION ${MIND_DATA_INC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
 
     if(PLATFORM_ARM64)
         if((MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE) AND MSLITE_ENABLE_ACL)
@@ -255,10 +256,10 @@ if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full")
         install(FILES ${securec_LIBPATH}/libsecurec.a DESTINATION ${SECUREC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
     else()
         if((MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE) AND MSLITE_ENABLE_ACL)
-                install(FILES ${TOP_DIR}/mindspore-lite/minddata/dataset/include/dataset/vision_ascend.h
-                        DESTINATION ${MIND_DATA_INC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
-                install(FILES ${BUILD_DIR}/minddata/kernels-dvpp-image/utils/libdvpp_utils.so
-                        DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+            install(FILES ${TOP_DIR}/mindspore-lite/minddata/dataset/include/dataset/vision_ascend.h
+                    DESTINATION ${MIND_DATA_INC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+            install(FILES ${BUILD_DIR}/minddata/kernels-dvpp-image/utils/libdvpp_utils.so
+                    DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
         install(FILES ${BUILD_DIR}/minddata/libminddata-lite.so DESTINATION
                 ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
@@ -276,20 +277,21 @@ if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full")
             DESTINATION ${MIND_DATA_INC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
 endif()
 
-if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "wrapper")
+if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "wrapper"
+        AND NOT(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
     install(DIRECTORY ${TOP_DIR}/mindspore-lite/minddata/dataset/include/ DESTINATION ${MIND_DATA_INC_DIR}
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h" PATTERN "vision.h" EXCLUDE)
     if(PLATFORM_ARM64)
         install(FILES ${BUILD_DIR}/minddata/libminddata-lite.so DESTINATION
-        ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${JPEGTURBO_LIB_LIST} DESTINATION ${TURBO_DIR}/lib COMPONENT ${RUNTIME_COMPONENT_NAME})
     elseif(PLATFORM_ARM32)
         install(FILES ${BUILD_DIR}/minddata/libminddata-lite.so DESTINATION
-        ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${JPEGTURBO_LIB_LIST} DESTINATION ${TURBO_DIR}/lib COMPONENT ${RUNTIME_COMPONENT_NAME})
     else()
         install(FILES ${BUILD_DIR}/minddata/libminddata-lite.so DESTINATION
-        ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${jpeg_turbo_LIBPATH}/libjpeg.so.62.4.0 DESTINATION ${TURBO_DIR}/lib RENAME libjpeg.so.62
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${jpeg_turbo_LIBPATH}/libturbojpeg.so.0.3.0 DESTINATION ${TURBO_DIR}/lib RENAME libturbojpeg.so.0
@@ -297,26 +299,27 @@ if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "wrapper")
     endif()
 endif()
 
-if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite")
+if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite"
+        AND NOT(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
     install(DIRECTORY ${TOP_DIR}/mindspore-lite/minddata/dataset/include/ DESTINATION ${MIND_DATA_INC_DIR}
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
     if(PLATFORM_ARM64)
         install(FILES ${BUILD_DIR}/minddata/libminddata-lite.so DESTINATION
-        ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${TOP_DIR}/third_party/libjpeg-turbo/lib/libjpeg.so DESTINATION ${TURBO_DIR}/lib
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${TOP_DIR}/third_party/libjpeg-turbo/lib/libturbojpeg.so DESTINATION ${TURBO_DIR}/lib
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
     elseif(PLATFORM_ARM32)
         install(FILES ${BUILD_DIR}/minddata/libminddata-lite.so DESTINATION
-        ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${TOP_DIR}/third_party/libjpeg-turbo/lib/libjpeg.so DESTINATION ${TURBO_DIR}/lib
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${TOP_DIR}/third_party/libjpeg-turbo/lib/libturbojpeg.so DESTINATION ${TURBO_DIR}/lib
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
     else()
         install(FILES ${BUILD_DIR}/minddata/libminddata-lite.so DESTINATION
-        ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${TOP_DIR}/third_party/libjpeg-turbo/lib/libjpeg.so.62.4.0
                 DESTINATION ${TURBO_DIR}/lib RENAME libjpeg.so.62 COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${TOP_DIR}/third_party/libjpeg-turbo/lib/libturbojpeg.so.0.3.0
@@ -324,7 +327,8 @@ if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite")
     endif()
 endif()
 
-if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite_cv")
+if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite_cv" AND
+        NOT(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
     if(PLATFORM_ARM64)
         install(DIRECTORY ${TOP_DIR}/mindspore-lite/minddata/dataset/kernels/image/lite_cv
                 DESTINATION ${MIND_DATA_INC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
@@ -334,7 +338,7 @@ if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite_cv")
         install(DIRECTORY ${TOP_DIR}/mindspore-lite/minddata/dataset/kernels/image/lite_cv
                 DESTINATION ${MIND_DATA_INC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
         install(FILES ${BUILD_DIR}/minddata/libminddata-lite.so DESTINATION
-        ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
     else()
         install(DIRECTORY ${TOP_DIR}/mindspore-lite/minddata/dataset/kernels/image/lite_cv
                 DESTINATION ${MIND_DATA_INC_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
@@ -406,20 +410,18 @@ if(PLATFORM_ARM64)
         install(FILES ${BUILD_DIR}/src/extendrt/convert/libruntime_convert_plugin.so
                 DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         if(MSLITE_ENABLE_ACL)
-            install(FILES ${BUILD_DIR}/src/extendrt/kernel/ascend/libascend_kernel_plugin.so
+            install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_acl/libascend_acl_plugin.so
                     DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             if(NOT MSLITE_SIMPLEST_CLOUD_INFERENCE)
                 install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_ge/libascend_ge_plugin.so
                         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
-            install(FILES ${BUILD_DIR}/src/extendrt/cxx_api/llm_engine/libllm_engine_plugin.so
-                DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             __install_ascend_tbe_and_aicpu()
             __install_ascend_ascendc()
         endif()
         if(MSLITE_GPU_BACKEND STREQUAL tensorrt)
             install(FILES ${BUILD_DIR}/src/extendrt/delegate/tensorrt/libtensorrt_plugin.so
-                DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                    DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
     else()
         install(FILES ${BUILD_DIR}/src/${MINDSPORE_LITE_LIB_NAME}.so DESTINATION ${RUNTIME_LIB_DIR}
@@ -427,7 +429,7 @@ if(PLATFORM_ARM64)
         install(FILES ${BUILD_DIR}/src/${MINDSPORE_LITE_LIB_NAME}.a DESTINATION ${RUNTIME_LIB_DIR}
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
         if(MSLITE_ENABLE_ACL)
-            install(FILES ${BUILD_DIR}/src/litert/kernel/ascend/libascend_kernel_plugin.so
+            install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_acl/libascend_acl_plugin.so
                     DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
     endif()
@@ -531,11 +533,7 @@ if(PLATFORM_ARM64)
             endif()
             if(MSLITE_ENABLE_ACL)
                 set(LITE_ACL_DIR ${BUILD_DIR}/tools/converter/adapter/acl)
-                install(FILES ${LITE_ACL_DIR}/mslite_shared_lib/libmslite_shared_lib.so
-                        DESTINATION ${CONVERTER_ROOT_DIR}/lib COMPONENT ${RUNTIME_COMPONENT_NAME})
                 if(MSLITE_ENABLE_RUNTIME_CONVERT)
-                    install(FILES ${LITE_ACL_DIR}/mslite_shared_lib/libmslite_shared_lib.so
-                            DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
                     install(FILES ${glog_LIBPATH}/${glog_name} DESTINATION ${RUNTIME_LIB_DIR}
                             RENAME libmindspore_glog.so.0 COMPONENT ${RUNTIME_COMPONENT_NAME})
                     install(TARGETS mindspore_core mindspore_ops DESTINATION ${CONVERTER_ROOT_DIR}/lib
@@ -666,20 +664,18 @@ elseif(PLATFORM_ARM32)
         install(FILES ${BUILD_DIR}/src/extendrt/convert/libruntime_convert_plugin.so
                 DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         if(MSLITE_ENABLE_ACL)
-            install(FILES ${BUILD_DIR}/src/extendrt/kernel/ascend/libascend_kernel_plugin.so
+            install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_acl/libascend_acl_plugin.so
                     DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             if(NOT MSLITE_SIMPLEST_CLOUD_INFERENCE)
                 install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_ge/libascend_ge_plugin.so
                         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
-            install(FILES ${BUILD_DIR}/src/extendrt/cxx_api/llm_engine/libllm_engine_plugin.so
-                DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             __install_ascend_tbe_and_aicpu()
             __install_ascend_ascendc()
         endif()
         if(MSLITE_GPU_BACKEND STREQUAL tensorrt)
             install(FILES ${BUILD_DIR}/src/extendrt/delegate/tensorrt/libtensorrt_plugin.so
-                DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                    DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
     else()
         install(FILES ${BUILD_DIR}/src/${MINDSPORE_LITE_LIB_NAME}.so DESTINATION ${RUNTIME_LIB_DIR}
@@ -687,7 +683,7 @@ elseif(PLATFORM_ARM32)
         install(FILES ${BUILD_DIR}/src/${MINDSPORE_LITE_LIB_NAME}.a DESTINATION ${RUNTIME_LIB_DIR}
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
         if(MSLITE_ENABLE_ACL)
-            install(FILES ${BUILD_DIR}/src/litert/kernel/ascend/libascend_kernel_plugin.so
+            install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_acl/libascend_acl_plugin.so
                     DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
     endif()
@@ -875,14 +871,12 @@ else()
         install(FILES ${BUILD_DIR}/src/extendrt/convert/libruntime_convert_plugin.so
                 DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         if(MSLITE_ENABLE_ACL)
-            install(FILES ${BUILD_DIR}/src/extendrt/kernel/ascend/libascend_kernel_plugin.so
+            install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_acl/libascend_acl_plugin.so
                     DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             if(NOT MSLITE_SIMPLEST_CLOUD_INFERENCE)
                 install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_ge/libascend_ge_plugin.so
                         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
-            install(FILES ${BUILD_DIR}/src/extendrt/cxx_api/llm_engine/libllm_engine_plugin.so
-                DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             __install_ascend_tbe_and_aicpu()
             __install_ascend_ascendc()
             if(MSLITE_ASCEND_TARGET)
@@ -898,7 +892,7 @@ else()
         endif()
         if(MSLITE_GPU_BACKEND STREQUAL tensorrt)
             install(FILES ${BUILD_DIR}/src/extendrt/delegate/tensorrt/libtensorrt_plugin.so
-                DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                    DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
     else()
         install(FILES ${BUILD_DIR}/src/${MINDSPORE_LITE_LIB_NAME}.so DESTINATION ${RUNTIME_LIB_DIR}
@@ -906,7 +900,7 @@ else()
         install(FILES ${BUILD_DIR}/src/${MINDSPORE_LITE_LIB_NAME}.a DESTINATION ${RUNTIME_LIB_DIR}
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
         if(MSLITE_ENABLE_ACL)
-            install(FILES ${BUILD_DIR}/src/litert/kernel/ascend/libascend_kernel_plugin.so
+            install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_acl/libascend_acl_plugin.so
                     DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
     endif()
@@ -970,11 +964,7 @@ else()
 
         if(MSLITE_ENABLE_ACL)
             set(LITE_ACL_DIR ${BUILD_DIR}/tools/converter/adapter/acl)
-            install(FILES ${LITE_ACL_DIR}/mslite_shared_lib/libmslite_shared_lib.so
-                    DESTINATION ${CONVERTER_ROOT_DIR}/lib COMPONENT ${RUNTIME_COMPONENT_NAME})
             if(MSLITE_ENABLE_RUNTIME_CONVERT)
-                install(FILES ${LITE_ACL_DIR}/mslite_shared_lib/libmslite_shared_lib.so
-                        DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
                 install(FILES ${glog_LIBPATH}/${glog_name} DESTINATION ${RUNTIME_LIB_DIR}
                         RENAME libmindspore_glog.so.0 COMPONENT ${RUNTIME_COMPONENT_NAME})
                 install(TARGETS mindspore_core mindspore_ops DESTINATION ${RUNTIME_LIB_DIR}
@@ -1054,14 +1044,14 @@ else()
         if(NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
             install(TARGETS cropper RUNTIME DESTINATION ${CROPPER_ROOT_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             install(FILES ${BUILD_DIR}/tools/cropper/cropper_mapping_cpu.cfg
-                DESTINATION ${CROPPER_ROOT_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                    DESTINATION ${CROPPER_ROOT_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             install(FILES ${BUILD_DIR}/tools/cropper/cropper_mapping_gpu.cfg
-                DESTINATION ${CROPPER_ROOT_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                    DESTINATION ${CROPPER_ROOT_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             install(FILES ${BUILD_DIR}/tools/cropper/cropper_mapping_npu.cfg
-                DESTINATION ${CROPPER_ROOT_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                    DESTINATION ${CROPPER_ROOT_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             if(SUPPORT_TRAIN)
                 install(FILES ${BUILD_DIR}/tools/cropper/cropper_mapping_cpu_train.cfg
-                    DESTINATION ${CROPPER_ROOT_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
+                        DESTINATION ${CROPPER_ROOT_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
         endif()
     endif()

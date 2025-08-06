@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CPU_FP16_BIASADD_FP16_H_
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/fp16/arithmetic_fp16.h"
+#include "nnacl_c/fp16/arithmetic_fp16.h"
 
 namespace mindspore::kernel {
 class BiasAddCPUFp16Kernel : public LiteKernel {

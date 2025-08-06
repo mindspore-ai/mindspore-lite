@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 #include "coder/opcoders/base/conv2d_base_coder.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 #include "wrapper/fp32/conv_winograd_fp32_wrapper.h"
 
 namespace mindspore::lite::micro::nnacl {

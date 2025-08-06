@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/space_to_depth_parameter.h"
+#include "nnacl_c/space_to_depth_parameter.h"
 using mindspore::schema::PrimitiveType_SpaceToDepth;
 
 namespace mindspore {

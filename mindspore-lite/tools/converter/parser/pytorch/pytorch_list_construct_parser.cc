@@ -17,7 +17,7 @@
 #include "tools/converter/parser/pytorch/pytorch_list_construct_parser.h"
 #include <memory>
 #include "infer/make_tuple.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

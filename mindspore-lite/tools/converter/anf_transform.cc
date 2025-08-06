@@ -22,7 +22,7 @@
 #include <deque>
 #include <map>
 #include <tuple>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_adapter.h"
 #include "tools/converter/optimizer_manager.h"
 #include "tools/optimizer/common/gllo_utils.h"
@@ -116,7 +116,6 @@
 #include "src/common/log_util.h"
 #include "src/common/string_utils.h"
 #include "src/common/config_infos.h"
-#include "tools/graph_kernel/converter/graph_kernel_optimization.h"
 #include "tools/optimizer/fusion/groupnorm_fusion.h"
 #include "tools/optimizer/fusion/mul_reduce_fusion.h"
 #include "tools/optimizer/fusion/reshape_like_operator_ablation.h"

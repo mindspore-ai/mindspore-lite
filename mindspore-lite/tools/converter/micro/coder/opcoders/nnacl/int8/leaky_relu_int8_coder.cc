@@ -50,7 +50,7 @@ int LeakyReluInt8Coder::Prepare(CoderContext *context) {
 int LeakyReluInt8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/int8/leaky_relu_int8.h",
+            "nnacl_c/int8/leaky_relu_int8.h",
           },
           {
             "leaky_relu_int8.c",

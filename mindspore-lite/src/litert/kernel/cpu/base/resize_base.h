@@ -18,7 +18,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/resize_parameter.h"
+#include "nnacl_c/resize_parameter.h"
 
 using mindspore::schema::PrimitiveType_Resize;
 using mindspore::schema::ResizeMethod;

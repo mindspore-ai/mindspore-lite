@@ -15,7 +15,7 @@
  */
 
 #include "src/litert/kernel/cpu/fp32/lstm_non_mindir_fp32.h"
-#include "nnacl/fp32/pack_fp32.h"
+#include "nnacl_c/fp32/pack_fp32.h"
 
 namespace mindspore::kernel {
 namespace {

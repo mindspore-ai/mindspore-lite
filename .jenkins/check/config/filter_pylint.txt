@@ -6,8 +6,6 @@
 "mindspore-lite/mindspore-lite/python/api/model.py"                                                           "len-as-condition"
 "mindspore-lite/mindspore-lite/python/api/model.py"                                                           "invalid-name"
 "mindspore-lite/mindspore-lite/python/api/tensor.py"                                                          "protected-access"
-"mindspore-lite/mindspore-lite/python/api/llm_engine.py"                                                      "invalid-name"
-"mindspore-lite/mindspore-lite/python/api/llm_engine.py"                                                      "consider-using-in"
 "mindspore-lite/mindspore-lite/test"                                                                          "missing-docstring"
 "mindspore-lite/mindspore-lite/test"                                                                          "unused-variable"
 "mindspore-lite/mindspore-lite/test/st/python/import_ms_and_mslite/"                                          "unused-import"
@@ -29,3 +27,8 @@
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_and_aicpu/"                               "invalid-name"
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/ascendc/"                                     "invalid-name"
 "mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/ascendc/"                                     "unused-argument"
+
+# nnacl
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/experimental/HPC-generator/generator.py"         "redefined-builtin"
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/experimental/HPC-generator/generator.py"         "exec-used"
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/experimental/HPC-generator/generator.py"         "invalid-name"

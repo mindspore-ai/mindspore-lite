@@ -20,7 +20,7 @@
 #include <vector>
 #include <string>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/format_transpose_parameter.h"
+#include "nnacl_c/format_transpose_parameter.h"
 
 namespace mindspore::kernel {
 class FormatTransposeCPUKernel : public LiteKernel {

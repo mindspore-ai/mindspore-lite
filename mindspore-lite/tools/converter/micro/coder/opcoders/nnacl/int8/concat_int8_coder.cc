@@ -16,9 +16,9 @@
 
 #include "coder/opcoders/nnacl/int8/concat_int8_coder.h"
 #include <limits>
-#include "nnacl/int8/concat_int8.h"
-#include "nnacl/int8/arithmetic_int8.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/int8/concat_int8.h"
+#include "nnacl_c/int8/arithmetic_int8.h"
+#include "nnacl_c/int8/quantize.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/log.h"
 #include "coder/opcoders/parallel.h"
@@ -100,7 +100,7 @@ int ConcatInt8Coder::DoCode(CoderContext *const context) {
 
   Collect(context,
           {
-            "nnacl/int8/concat_int8.h",
+            "nnacl_c/int8/concat_int8.h",
             "wrapper/int8/concat_int8_wrapper.h",
           },
           {

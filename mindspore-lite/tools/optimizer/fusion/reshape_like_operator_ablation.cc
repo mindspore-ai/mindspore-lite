@@ -19,7 +19,7 @@
 #include <set>
 #include <string>
 #include <vector>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "include/errorcode.h"
 #include "src/common/log_util.h"
 

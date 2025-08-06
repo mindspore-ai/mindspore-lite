@@ -21,7 +21,7 @@
 #include <vector>
 #include "tools/converter/quantizer/quantizer.h"
 #include "src/tensor.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "tools/converter/quantizer/gptq_quantizer.h"
 
 namespace mindspore::lite::quant {

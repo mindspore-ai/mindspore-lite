@@ -23,8 +23,8 @@
 #include "coder/opcoders/serializers/serializer.h"
 #include "coder/utils/common.h"
 #include "mindspore/ops/op_def/array_ops.h"
-#include "nnacl/arithmetic_parameter.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/arithmetic_parameter.h"
+#include "nnacl_c/int8/quantize.h"
 
 using mindspore::schema::PrimitiveType_AddFusion;
 

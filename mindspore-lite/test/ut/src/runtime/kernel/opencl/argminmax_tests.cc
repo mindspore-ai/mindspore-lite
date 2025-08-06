@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "ut/src/runtime/kernel/opencl/common.h"
-#include "nnacl/arg_min_max_parameter.h"
+#include "nnacl_c/arg_min_max_parameter.h"
 
 namespace mindspore::lite::opencl::test {
 

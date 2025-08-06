@@ -16,7 +16,7 @@
 
 #include "tools/converter/parser/caffe/caffe_conv_base_parser.h"
 #include <algorithm>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 
 namespace mindspore {

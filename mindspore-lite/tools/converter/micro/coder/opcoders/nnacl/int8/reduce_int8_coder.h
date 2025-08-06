@@ -20,8 +20,8 @@
 #include <string>
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/int8/quantize.h"
-#include "nnacl/int8/reduce_int8.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/int8/reduce_int8.h"
 #include "coder/opcoders/base/reduce_base_coder.h"
 namespace mindspore::lite::micro::nnacl {
 class ReduceInt8Coder final : public ReduceBaseCoder {

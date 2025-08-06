@@ -17,8 +17,8 @@
 #include "src/litert/kernel/cpu/int8/sigmoid_int8.h"
 #include <limits>
 #include <algorithm>
-#include "nnacl/int8/sigmoid_int8.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/int8/sigmoid_int8.h"
+#include "nnacl_c/int8/quantize.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"

@@ -50,7 +50,7 @@ class TensorCompressor {
       return RET_OK;
     }
     auto max_size = tensor_info->Size();
-    auto quant_data_array = static_cast<T *>(tensor_info->data().data());
+    auto quant_data_array = static_cast<T *>(tensor_info->device_address()->GetMutablePtr());
 
     std::vector<T> quant_data(quant_data_array, quant_data_array + max_size / sizeof(T));
     auto elem_cnt = quant_data.size();
@@ -128,7 +128,7 @@ class TensorCompressor {
     auto tensor_info = weight->default_param()->cast<tensor::TensorPtr>();
     CHECK_NULL_RETURN(tensor_info);
     auto max_size = tensor_info->ElementsNum();
-    auto quant_data = static_cast<T *>(tensor_info->data().data());
+    auto quant_data = static_cast<T *>(tensor_info->device_address()->GetMutablePtr());
     // write the index: each index has unique_value_bit unsigned
     for (int i = 0; i < max_size; i++) {
       auto quant_value = quant_data[i];
@@ -157,7 +157,7 @@ class TensorCompressor {
                        size_t nz_cnt, size_t coor_best_bit, size_t bit_num) {
     auto tensor_info = weight->default_param()->cast<tensor::TensorPtr>();
     CHECK_NULL_RETURN(tensor_info);
-    auto quant_data = static_cast<T *>(tensor_info->data().data());
+    auto quant_data = static_cast<T *>(tensor_info->device_address()->GetMutablePtr());
     int elem_cnt = tensor_info->DataSize();
     auto channel_cnt = quant_params.size();
     if (channel_cnt == 0) {

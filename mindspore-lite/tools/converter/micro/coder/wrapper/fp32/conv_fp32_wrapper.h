@@ -15,7 +15,7 @@
  */
 #ifndef MINDSPORE_LITE_MICRO_CODER_WRAPPER_FP32_CONV_FP32_WRAPPER_H_
 #define MINDSPORE_LITE_MICRO_CODER_WRAPPER_FP32_CONV_FP32_WRAPPER_H_
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 #ifdef __cplusplus
 extern "C" {
 #endif

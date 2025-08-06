@@ -17,7 +17,7 @@
 #ifndef MINDSPORE_LITE_MICRO_CODER_OPERATOR_LIBRARY_WRAPPER_BASE_STRIDED_SLICE_WRAPPER_H_
 #define MINDSPORE_LITE_MICRO_CODER_OPERATOR_LIBRARY_WRAPPER_BASE_STRIDED_SLICE_WRAPPER_H_
 #include <string.h>
-#include "nnacl/strided_slice_parameter.h"
+#include "nnacl_c/strided_slice_parameter.h"
 
 #ifdef __cplusplus
 extern "C" {

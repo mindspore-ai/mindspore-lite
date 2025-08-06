@@ -15,7 +15,7 @@
  */
 
 #include "src/litert/delegate/delegate_utils.h"
-#include "nnacl/fp32/pack_fp32.h"
+#include "nnacl_c/fp32/pack_fp32.h"
 namespace mindspore::lite {
 void PackNHWCToNCHWFp32(const void *src, void *dst, int batches, int plane, int channel) {
   int hw8 = plane / C8NUM * C8NUM;

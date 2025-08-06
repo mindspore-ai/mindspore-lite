@@ -17,7 +17,7 @@
 #include "tools/optimizer/graph/attr_to_args_pass.h"
 #include <utility>
 #include "tools/common/node_util.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "ops/primitive_c.h"
 #include "ops/base_operator.h"

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/range_parameter.h"
+#include "nnacl_c/range_parameter.h"
 using mindspore::schema::PrimitiveType_Range;
 
 namespace mindspore {

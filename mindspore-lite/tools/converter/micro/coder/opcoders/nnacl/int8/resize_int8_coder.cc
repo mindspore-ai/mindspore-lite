@@ -19,7 +19,7 @@
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_int8_serializer.h"
 #include "coder/opcoders/file_collector.h"
 #include "include/securec.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/int8/quantize.h"
 #include "coder/opcoders/parallel.h"
 
 using mindspore::schema::PrimitiveType_Resize;
@@ -67,7 +67,7 @@ int ResizeInt8Coder::ReSize() {
 int ResizeInt8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/int8/resize_int8.h",
+            "nnacl_c/int8/resize_int8.h",
             "wrapper/int8/resize_int8_wrapper.h",
           },
           {

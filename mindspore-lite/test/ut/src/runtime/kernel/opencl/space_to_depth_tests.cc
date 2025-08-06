@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 #include "ut/src/runtime/kernel/opencl/common.h"
-#include "nnacl/space_to_depth_parameter.h"
-#include "nnacl/base/space_to_depth_base.h"
-#include "nnacl/depth_to_space_parameter.h"
+#include "nnacl_c/space_to_depth_parameter.h"
+#include "nnacl_c/base/space_to_depth_base.h"
+#include "nnacl_c/depth_to_space_parameter.h"
 
 namespace mindspore::lite::opencl::test {
 

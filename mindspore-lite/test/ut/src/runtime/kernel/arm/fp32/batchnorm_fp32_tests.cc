@@ -16,7 +16,7 @@
 #include <iostream>
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
-#include "nnacl/batchnorm_parameter.h"
+#include "nnacl_c/batchnorm_parameter.h"
 #include "nnacl/nnacl_manager.h"
 
 namespace mindspore {

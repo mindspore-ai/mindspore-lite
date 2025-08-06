@@ -21,7 +21,7 @@
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "tools/common/node_util.h"
 #include "tools/common/tensor_util.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "ops_utils/op_utils.h"
 #include "tools/optimizer/graph/decrease_transpose_algo.h"

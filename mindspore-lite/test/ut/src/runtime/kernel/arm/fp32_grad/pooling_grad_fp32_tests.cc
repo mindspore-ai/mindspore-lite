@@ -20,8 +20,8 @@
 #include "common/common_test.h"
 #include "src/common/utils.h"
 #include "src/common/file_utils.h"
-#include "nnacl/fp32_grad/pooling_grad.h"
-#include "nnacl/kernel/pooling.h"
+#include "nnacl_c/fp32_grad/pooling_grad.h"
+#include "nnacl_c/kernel/pooling.h"
 #include "src/litert/kernel/cpu/fp32_grad/pooling_grad.h"
 #include "src/litert/kernel_registry.h"
 

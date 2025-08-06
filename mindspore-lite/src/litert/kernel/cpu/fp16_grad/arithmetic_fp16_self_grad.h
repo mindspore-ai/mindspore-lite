@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/fp16_grad/arithmetic_self_grad.h"
+#include "nnacl_c/fp16_grad/arithmetic_self_grad.h"
 
 namespace mindspore::kernel {
 class ArithmeticSelfGradFp16CPUKernel : public LiteKernel {

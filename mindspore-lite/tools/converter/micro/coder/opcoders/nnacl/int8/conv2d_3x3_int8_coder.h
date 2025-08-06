@@ -20,7 +20,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class Conv2D3x3Int8Coder final : public Conv2DBaseCoder {

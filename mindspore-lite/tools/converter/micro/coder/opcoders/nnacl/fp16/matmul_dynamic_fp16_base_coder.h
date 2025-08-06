@@ -21,7 +21,7 @@
 #include <string>
 #include "tools/converter/micro/coder/opcoders/op_coder.h"
 #include "tools/converter/micro/coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/matmul_dynamic_parameter.h"
 #include "base/float16.h"
 

@@ -15,7 +15,7 @@
  */
 
 #include "wrapper/fp32/slice_fp32_wrapper.h"
-#include "nnacl/base/slice_base.h"
+#include "nnacl_c/base/slice_base.h"
 
 int DoSliceRun(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   SliceFp32Args *args = (SliceFp32Args *)(cdata);

@@ -20,10 +20,10 @@
 #include "src/litert/kernel_registry.h"
 #include "schema/model_generated.h"
 #include "include/errorcode.h"
-#include "nnacl/int8/dynamic_quant_int8.h"
-#include "nnacl/int8/quant_dtype_cast_int8.h"
-#include "nnacl/fp32/transpose_fp32.h"
-#include "nnacl/int8/transpose_int8.h"
+#include "nnacl_c/int8/dynamic_quant_int8.h"
+#include "nnacl_c/int8/quant_dtype_cast_int8.h"
+#include "nnacl_c/fp32/transpose_fp32.h"
+#include "nnacl_c/int8/transpose_int8.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

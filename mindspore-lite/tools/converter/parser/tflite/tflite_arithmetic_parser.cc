@@ -25,7 +25,7 @@
 #include "infer/cxx_api/exp_fusion.h"
 #include "infer/cxx_api/pow_fusion.h"
 #include "infer/squared_difference.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

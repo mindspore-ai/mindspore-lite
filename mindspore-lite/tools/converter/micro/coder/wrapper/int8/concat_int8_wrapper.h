@@ -17,9 +17,9 @@
 #ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_INT8_CONCAT_INT8_WRAPPER_H_
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_INT8_CONCAT_INT8_WRAPPER_H_
 
-#include "nnacl/errorcode.h"
-#include "nnacl/concat_parameter.h"
-#include "nnacl/int8/concat_int8.h"
+#include "nnacl_c/errorcode.h"
+#include "nnacl_c/concat_parameter.h"
+#include "nnacl_c/int8/concat_int8.h"
 
 typedef struct {
   int8_t **inputs_;

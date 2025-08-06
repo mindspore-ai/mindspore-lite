@@ -20,9 +20,9 @@
 #include <cstring>
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/op_base.h"
-#include "nnacl/split_parameter.h"
-#include "nnacl/glu_parameter.h"
+#include "nnacl_c/op_base.h"
+#include "nnacl_c/split_parameter.h"
+#include "nnacl_c/glu_parameter.h"
 
 using mindspore::lite::InnerContext;
 

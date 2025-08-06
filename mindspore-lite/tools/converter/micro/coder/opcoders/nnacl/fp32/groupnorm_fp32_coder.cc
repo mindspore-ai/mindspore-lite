@@ -16,8 +16,8 @@
 #include "coder/opcoders/nnacl/fp32/groupnorm_fp32_coder.h"
 #include <string>
 #include <vector>
-#include "nnacl/fp32/group_norm_fp32.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/fp32/group_norm_fp32.h"
+#include "nnacl_c/op_base.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
@@ -68,7 +68,7 @@ int GroupNormFP32Coder::DoCode(CoderContext *const context) {
   MS_CHECK_PTR(offset_tensor);
   Collect(context,
           {
-            "nnacl/fp32/group_norm_fp32.h",
+            "nnacl_c/fp32/group_norm_fp32.h",
           },
           {
             "group_norm_fp32.c",

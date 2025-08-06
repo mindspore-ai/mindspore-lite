@@ -49,7 +49,7 @@ int TransposeInt8Coder::Prepare(CoderContext *const context) {
 }
 
 int TransposeInt8Coder::DoCode(CoderContext *const context) {
-  Collect(context, {"nnacl/int8/pack_int8.h", "nnacl/int8/transpose_int8.h"}, {"pack_int8.c", "transpose_int8.c"});
+  Collect(context, {"nnacl_c/int8/pack_int8.h", "nnacl_c/int8/transpose_int8.h"}, {"pack_int8.c", "transpose_int8.c"});
 
   NNaclInt8Serializer code;
   auto out_shape = output_tensors_[0]->shape();

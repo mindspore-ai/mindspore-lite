@@ -23,7 +23,7 @@
 #include <algorithm>
 #include "src/common/utils.h"
 #include "src/common/log_util.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/litert/inner_context.h"
 #include "src/tensor.h"
 #include "include/errorcode.h"

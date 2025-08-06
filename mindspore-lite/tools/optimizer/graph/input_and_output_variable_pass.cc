@@ -29,6 +29,7 @@
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "tools/common/func_graph_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
+#include "ir/tensor_new.h"
 
 namespace mindspore::opt {
 
@@ -154,7 +155,7 @@ CNodePtr InputAndOutputVariablePass::CreateAssign(const AnfNodePtr &anf_node, co
     MS_LOG(ERROR) << "type ptr is nullptr";
     return nullptr;
   }
-  tensor::TensorPtr tensor_data = std::make_shared<tensor::Tensor>(type_ptr->type_id(), shape);
+  tensor::TensorPtr tensor_data = tensor::from_spec(type_ptr->type_id(), shape, device::DeviceType::kCPU);
   float *val = static_cast<float *>(tensor_data->data_c());
   for (size_t i = 0; i < tensor_data->DataSize(); ++i) {
     *(val + i) = 0;

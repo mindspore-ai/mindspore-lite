@@ -28,7 +28,7 @@
 #include "infer/space_to_batch_nd.h"
 #include "infer/space_to_depth.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_f.h"

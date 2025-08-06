@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/random_standard_normal_infer.h"
+#include "nnacl_c/infer/random_standard_normal_infer.h"
 
 namespace mindspore {
 

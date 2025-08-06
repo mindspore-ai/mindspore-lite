@@ -17,7 +17,7 @@
 #include "tools/optimizer/fusion/prelu_fusion.h"
 #include "mindspore/ops/op_def/math_ops.h"
 #include "mindspore/ops/op_def/lite_ops.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "infer/cxx_api/prelu_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 

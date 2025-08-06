@@ -15,10 +15,10 @@
  */
 
 #include "src/litert/kernel/cpu/fp32_grad/convolution.h"
-#include "nnacl/fp32_grad/pack_ext.h"
-#include "nnacl/fp32_grad/gemm.h"
+#include "nnacl_c/fp32_grad/pack_ext.h"
+#include "nnacl_c/fp32_grad/gemm.h"
 #include "include/errorcode.h"
-#include "nnacl/pack.h"
+#include "nnacl_c/pack.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::RET_ERROR;

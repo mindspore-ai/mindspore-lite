@@ -15,7 +15,7 @@
  */
 #include <iostream>
 #include "common/common_test.h"
-#include "nnacl/fp32/space_to_batch_fp32.h"
+#include "nnacl_c/fp32/space_to_batch_fp32.h"
 #include "src/litert/kernel_registry.h"
 
 namespace mindspore {

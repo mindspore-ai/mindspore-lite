@@ -25,7 +25,7 @@
 #include "include/registry/node_parser_registry.h"
 #include "ir/func_graph.h"
 #include "mindspore/ops/op_def/nn_ops.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/make_tuple.h"
 #include "infer/return.h"
@@ -53,6 +53,7 @@
 #include "tools/converter/parser/einsum_adjust.h"
 
 using mindspore::converter::kFmkTypeOnnx;
+#include "ir/tensor_new.h"
 namespace mindspore {
 namespace lite {
 namespace {
@@ -272,7 +273,7 @@ STATUS BuildParameterNode(const ParameterPtr &parameter_node, const onnx::Tensor
       return RET_ERROR;
     }
   } else {
-    tensor_info = std::make_shared<tensor::Tensor>(data_type, shape_vector);
+    tensor_info = tensor::from_spec(data_type, shape_vector, device::DeviceType::kCPU);
     MS_CHECK_TRUE_MSG(tensor_info != nullptr, RET_NULL_PTR, "create tensor_info return nullptr");
     std::vector<int> shape;
     std::transform(shape_vector.begin(), shape_vector.end(), std::back_inserter(shape),

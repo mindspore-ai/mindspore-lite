@@ -15,7 +15,7 @@
  */
 #include "coder/opcoders/nnacl/fp32/convolution_winograd_fp32_coder.h"
 #include <array>
-#include "nnacl/base/minimal_filtering_generator.h"
+#include "nnacl_c/base/minimal_filtering_generator.h"
 #include "coder/log.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/opcoders/file_collector.h"
@@ -226,10 +226,10 @@ void ConvolutionWinogradFP32Coder::InitCodeOnline(CoderContext *const context) {
   }
   Collect(context,
           {
-            "nnacl/base/minimal_filtering_generator.h",
-            "nnacl/fp32/pack_fp32.h",
+            "nnacl_c/base/minimal_filtering_generator.h",
+            "nnacl_c/fp32/pack_fp32.h",
           },
-          {"minimal_filtering_generator.c", "nnacl/fp32/pack_fp32.h"});
+          {"minimal_filtering_generator.c", "nnacl_c/fp32/pack_fp32.h"});
   NNaclFp32Serializer init_code;
   init_code.CodeBufferOffsetExpression(trans_weight_, context->weight_name(), context->weight_offset_name(),
                                        context->weight_size_name(), trans_weight_size_);
@@ -279,8 +279,8 @@ void ConvolutionWinogradFP32Coder::CollectFilesForFunc(CoderContext *const conte
   }
   Collect(context,
           {
-            "nnacl/fp32/conv_winograd_fp32.h",
-            "nnacl/common_func.h",
+            "nnacl_c/fp32/conv_winograd_fp32.h",
+            "nnacl_c/common_func.h",
           },
           {
             "common_func.c",

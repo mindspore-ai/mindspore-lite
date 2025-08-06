@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/layer_norm_infer.h"
+#include "nnacl_c/infer/layer_norm_infer.h"
 
 namespace mindspore {
 

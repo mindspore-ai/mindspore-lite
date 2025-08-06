@@ -17,7 +17,7 @@
 #ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_BASE_OPTIMIZE_HANDLER_WRAPPER_H_
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_BASE_OPTIMIZE_HANDLER_WRAPPER_H_
 
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 #ifdef ENABLE_ARM64
 void IndirectGemmInt8_optimize_handler(int8_t *dst, const int8_t *src, const int8_t *weight, const int32_t *bias,

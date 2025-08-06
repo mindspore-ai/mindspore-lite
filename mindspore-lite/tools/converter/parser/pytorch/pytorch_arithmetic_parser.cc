@@ -20,7 +20,7 @@
 #include "infer/cxx_api/mul_fusion.h"
 #include "infer/cxx_api/div_fusion.h"
 #include "infer/cxx_api/sub_fusion.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

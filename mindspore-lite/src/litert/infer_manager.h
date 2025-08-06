@@ -24,8 +24,8 @@
 #include <memory>
 #include "src/common/prim_util.h"
 #include "src/tensor.h"
-#include "nnacl/tensor_c.h"
-#include "nnacl/infer/infer.h"
+#include "nnacl_c/tensor_c.h"
+#include "nnacl_c/infer/infer.h"
 #include "include/api/kernel.h"
 #include "include/api/allocator.h"
 

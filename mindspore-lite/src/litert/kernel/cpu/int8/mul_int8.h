@@ -20,9 +20,9 @@
 #include <limits>
 #include <algorithm>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/mul_parameter.h"
-#include "nnacl/int8/mul_int8.h"
-#include "nnacl/int8/arithmetic_int8.h"
+#include "nnacl_c/mul_parameter.h"
+#include "nnacl_c/int8/mul_int8.h"
+#include "nnacl_c/int8/arithmetic_int8.h"
 
 namespace mindspore::kernel {
 class MulInt8CPUKernel : public LiteKernel {

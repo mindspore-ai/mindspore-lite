@@ -20,7 +20,7 @@
 #include <algorithm>
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "include/common/utils/anfalgo.h"
 #include "mindspore/ccsrc/include/common/utils/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_b.h"

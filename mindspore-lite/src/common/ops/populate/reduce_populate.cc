@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/reduce_parameter.h"
+#include "nnacl_c/reduce_parameter.h"
 using mindspore::schema::PrimitiveType_ReduceFusion;
 
 namespace mindspore {

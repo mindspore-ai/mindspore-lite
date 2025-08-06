@@ -30,7 +30,7 @@
 #include "infer/fft_imag.h"
 #include "infer/mfcc.h"
 #include "infer/rfft.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

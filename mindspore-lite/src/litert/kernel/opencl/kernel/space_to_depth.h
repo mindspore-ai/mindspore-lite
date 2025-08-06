@@ -21,7 +21,7 @@
 #include <string>
 #include "src/litert/lite_kernel.h"
 #include "src/litert/kernel/opencl/opencl_kernel.h"
-#include "nnacl/space_to_depth_parameter.h"
+#include "nnacl_c/space_to_depth_parameter.h"
 
 namespace mindspore::kernel {
 class SpaceToDepthOpenCLKernel : public OpenCLKernel {

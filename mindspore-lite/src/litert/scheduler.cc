@@ -22,7 +22,7 @@
 #include <vector>
 #include <algorithm>
 #include "src/tensorlist.h"
-#include "nnacl/partial_fusion_parameter.h"
+#include "nnacl_c/partial_fusion_parameter.h"
 #include "include/errorcode.h"
 #include "src/common/graph_util.h"
 #include "src/common/utils.h"
@@ -47,7 +47,7 @@
 #endif
 #include "src/litert/weight_decoder.h"
 #include "src/litert/kernel/cpu/fp16/fp16_op_handler.h"
-#include "nnacl/nnacl_common.h"
+#include "nnacl_c/nnacl_common.h"
 #if GPU_OPENCL
 #include "src/litert/kernel/opencl/opencl_subgraph.h"
 #include "src/litert/kernel/gpu/opencl/opencl_runtime.h"
@@ -55,7 +55,7 @@
 #include "include/registry/register_kernel_interface.h"
 #include "extendrt/mindir_loader/abstract_base_model.h"
 #include "src/litert/pack_weight_manager.h"
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
 #include "thread/parallel_thread_pool_manager.h"
 #endif
 
@@ -1030,7 +1030,7 @@ int Scheduler::FindCpuKernel(const std::vector<Tensor *> &in_tensors, const std:
     }
   }
 
-#if defined(PARALLEL_INFERENCE) && defined(ENABLE_MINDRT)
+#if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
   // reset op task num, The number of operator segmentation tasks is not necessarily equal to the number of threads
   int thread_num_limit = ParallelThreadPoolManager::GetInstance()->GetTaskNum(config_info_);
   if (thread_num_limit != -1 && IsSharedThreadPoolOp(op_type)) {

@@ -34,7 +34,7 @@ int ReduceFP16Coder::Prepare(CoderContext *const context) {
 int ReduceFP16Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/fp16/reduce_fp16.h",
+            "nnacl_c/fp16/reduce_fp16.h",
           },
           {
             "reduce_fp16.c",

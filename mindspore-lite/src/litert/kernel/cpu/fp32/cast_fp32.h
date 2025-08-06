@@ -20,8 +20,8 @@
 #include "include/errorcode.h"
 #include "src/litert/lite_kernel.h"
 #include "src/tensor.h"
-#include "nnacl/op_base.h"
-#include "nnacl/base/cast_base.h"
+#include "nnacl_c/op_base.h"
+#include "nnacl_c/base/cast_base.h"
 
 namespace mindspore::kernel {
 class CastCPUKernel : public LiteKernel {

@@ -26,7 +26,7 @@
 #include "tools/optimizer/common/format_utils.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "src/common/log_adapter.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "infer/make_tuple.h"
 #include "mindspore/ccsrc/include/common/utils/utils.h"

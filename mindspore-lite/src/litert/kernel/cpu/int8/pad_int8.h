@@ -20,10 +20,10 @@
 #include <vector>
 #include "include/errorcode.h"
 #include "src/litert/lite_kernel.h"
-#include "nnacl/errorcode.h"
-#include "nnacl/pad_parameter.h"
-#include "nnacl/int8/pad_int8.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/errorcode.h"
+#include "nnacl_c/pad_parameter.h"
+#include "nnacl_c/int8/pad_int8.h"
+#include "nnacl_c/int8/quantize.h"
 
 namespace mindspore::kernel {
 class PadInt8CPUKernel : public LiteKernel {

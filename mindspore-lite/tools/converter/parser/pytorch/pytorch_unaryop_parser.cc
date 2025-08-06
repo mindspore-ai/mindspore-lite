@@ -21,7 +21,7 @@
 #include "infer/cxx_api/exp_fusion.h"
 #include "infer/ops_func_impl/tan.h"
 #include "infer/eltwise.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

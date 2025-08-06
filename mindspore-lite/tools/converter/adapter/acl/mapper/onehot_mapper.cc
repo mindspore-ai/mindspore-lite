@@ -20,7 +20,7 @@
 #include "tools/converter/adapter/acl/mapper/primitive_mapper_register.h"
 #include "include/registry/converter_context.h"
 #include "ops_utils/op_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_name_o.h"
 

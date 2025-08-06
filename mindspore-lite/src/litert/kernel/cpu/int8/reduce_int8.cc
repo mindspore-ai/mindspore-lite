@@ -18,8 +18,8 @@
 #include <limits>
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/int8/quantize.h"
-#include "nnacl/pack.h"
+#include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/pack.h"
 #include "include/errorcode.h"
 
 using mindspore::lite::KernelRegistrar;

@@ -16,7 +16,7 @@
 #include <iostream>
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
-#include "nnacl/fp32/activation_fp32.h"
+#include "nnacl_c/fp32/activation_fp32.h"
 #include "src/executor/kernel_exec.h"
 #include "nnacl/nnacl_manager.h"
 

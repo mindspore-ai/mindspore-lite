@@ -15,6 +15,7 @@
  */
 
 #include "coder/opcoders/nnacl/fp32/biasadd_fp32_coder.h"
+#include <string>
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 
@@ -35,12 +36,12 @@ int BiasAddFP32Coder::DoCode(CoderContext *ctx) {
   std::string bias_str = allocator_->GetRuntimeAddr(input_tensors_.at(kWeightIndex), true);
   Collect(ctx,
           {
-            "nnacl/arithmetic_parameter.h",
-            "nnacl/nnacl_utils.h",
-            "nnacl/nnacl_common.h",
-            "nnacl/base/arithmetic_base.h",
-            "nnacl/fp32/add_fp32.h",
-            "nnacl/fp32/arithmetic_fp32.h",
+            "nnacl_c/arithmetic_parameter.h",
+            "nnacl_c/nnacl_utils.h",
+            "nnacl_c/nnacl_common.h",
+            "nnacl_c/base/arithmetic_base.h",
+            "nnacl_c/fp32/add_fp32.h",
+            "nnacl_c/fp32/arithmetic_fp32.h",
           },
           {
             "arithmetic_base.c",

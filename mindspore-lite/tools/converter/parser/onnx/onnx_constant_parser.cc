@@ -24,7 +24,8 @@
 #include "tools/converter/parser/onnx/onnx_node_parser.h"
 #include "tools/converter/ops/ops_def.h"
 #include "tools/common/tensor_util.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
+#include "ir/tensor_new.h"
 
 namespace mindspore {
 namespace lite {
@@ -55,7 +56,7 @@ STATUS OnnxConstantParser::AddDataInfoAttr(const onnx::TensorProto &onnx_const_t
       return RET_ERROR;
     }
     std::vector<int64_t> shape_vector(onnx_const_tensor.dims().begin(), onnx_const_tensor.dims().end());
-    tensor_info = std::make_shared<tensor::Tensor>(data_type, shape_vector);
+    tensor_info = tensor::from_spec(data_type, shape_vector, device::DeviceType::kCPU);
     MS_CHECK_TRUE_MSG(tensor_info != nullptr, RET_ERROR, "create tensor_info return nullptr");
     std::vector<int> shape;
     std::transform(shape_vector.begin(), shape_vector.end(), std::back_inserter(shape),

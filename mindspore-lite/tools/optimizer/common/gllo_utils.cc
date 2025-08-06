@@ -36,7 +36,7 @@
 #include "frontend/operator/ops.h"
 #include "include/backend/optimizer/helper.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/optimizer/common/helper.h"
@@ -57,6 +57,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 
+#include "ir/tensor_new.h"
 namespace mindspore {
 namespace opt {
 namespace {
@@ -881,7 +882,7 @@ ParameterPtr BuildParameterNode(const FuncGraphPtr &func_graph, const tensor::Te
   }
   param_node->set_name(node_name);
   param_node->debug_info()->set_name(node_name);
-  auto tensor_info_new = std::make_shared<tensor::Tensor>(data_type, shape_vector);
+  auto tensor_info_new = tensor::from_spec(data_type, shape_vector, device::DeviceType::kCPU);
   if (tensor_info_new == nullptr) {
     MS_LOG(ERROR) << "new tensor::Tensor failed.";
     return nullptr;

@@ -37,7 +37,7 @@
 #include "tools/converter/parser/unify_format.h"
 #include "tools/converter/parser/lstm_adjust_pass.h"
 #include "tools/optimizer/graph/redundant_op_remove_pass.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/common.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_d.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"

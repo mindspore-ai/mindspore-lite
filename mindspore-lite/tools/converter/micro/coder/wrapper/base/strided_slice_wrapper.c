@@ -15,7 +15,7 @@
  */
 
 #include "wrapper/base/strided_slice_wrapper.h"
-#include "nnacl/fp32/strided_slice_fp32.h"
+#include "nnacl_c/fp32/strided_slice_fp32.h"
 
 int DoStridedSlice(const void *in_data, void *out_data, StridedSliceParameter *param) {
   StridedSliceStruct strided_slice;

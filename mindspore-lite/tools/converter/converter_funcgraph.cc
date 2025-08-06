@@ -25,7 +25,6 @@
 #include "src/common/log_adapter.h"
 #include "tools/common/meta_graph_serializer.h"
 #include "tools/lite_exporter/anf_exporter.h"
-#include "tools/graph_kernel/converter/graph_kernel_optimization.h"
 #ifdef SUPPORT_TRAIN
 #include "src/train/train_populate_parameter.h"
 #endif
@@ -34,7 +33,7 @@
 #include "src/common/log_util.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/converter/import/mindspore_importer.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/converter/micro/coder/coder.h"
 #include "src/common/prim_util.h"
 #include "src/common/version_manager.h"

@@ -19,7 +19,7 @@
 #include "utils/ms_utils.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/fp32/lstm_fp32.h"
+#include "nnacl_c/fp32/lstm_fp32.h"
 
 namespace mindspore {
 namespace kernel {

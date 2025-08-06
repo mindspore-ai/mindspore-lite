@@ -19,7 +19,7 @@
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_int8_serializer.h"
-#include "nnacl/int8/conv_depthwise_int8.h"
+#include "nnacl_c/int8/conv_depthwise_int8.h"
 
 namespace mindspore::lite::micro {
 int ConvolutionDepthwiseINT8Coder::Prepare(CoderContext *const context) {
@@ -90,8 +90,8 @@ int ConvolutionDepthwiseINT8Coder::DoCode(CoderContext *const context) {
                 "Only support input channel equals output channel.");
   Collect(context,
           {
-            "nnacl/int8/conv_depthwise_int8.h",
-            "nnacl/int8/pack_int8.h",
+            "nnacl_c/int8/conv_depthwise_int8.h",
+            "nnacl_c/int8/pack_int8.h",
             "wrapper/int8/convolution_depthwise_int8_wrapper.h",
           },
           {

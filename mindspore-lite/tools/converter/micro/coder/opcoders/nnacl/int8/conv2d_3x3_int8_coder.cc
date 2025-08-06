@@ -17,7 +17,7 @@
 #include "coder/opcoders/nnacl/int8/conv2d_3x3_int8_coder.h"
 #include <vector>
 #include "include/securec.h"
-#include "nnacl/int8/conv3x3_int8.h"
+#include "nnacl_c/int8/conv3x3_int8.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/log.h"
 #include "coder/opcoders/parallel.h"
@@ -128,8 +128,8 @@ int Conv2D3x3Int8Coder::Prepare(CoderContext *const context) {
 int Conv2D3x3Int8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/int8/conv_int8.h",
-            "nnacl/int8/conv3x3_int8.h",
+            "nnacl_c/int8/conv_int8.h",
+            "nnacl_c/int8/conv3x3_int8.h",
           },
           {
             "pack_int8.c",

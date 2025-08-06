@@ -19,6 +19,7 @@
 #include "tools/common/func_graph_utils.h"
 #include "mindspore/ops/infer/tuple_get_item.h"
 #include "src/common/common.h"
+#include "ir/tensor_new.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 
@@ -89,8 +90,8 @@ ParameterPtr CustomAscendUtils::CreateOmParameter(const FuncGraphPtr &func_graph
   MS_CHECK_TRUE_MSG(abstract_tensor != nullptr, nullptr, "abstract_tensor is nullptr.");
   om_parameter->set_abstract(abstract_tensor);
 
-  auto param_value =
-    std::make_shared<tensor::Tensor>(kNumberTypeUInt8, ShapeVector({static_cast<int64_t>(om_data.DataSize())}));
+  auto param_value = tensor::from_spec(kNumberTypeUInt8, ShapeVector({static_cast<int64_t>(om_data.DataSize())}),
+                                       device::DeviceType::kCPU);
   MS_CHECK_TRUE_MSG(param_value != nullptr, nullptr, "param_value is nullptr.");
   auto tensor_data = param_value->data_c();
   MS_CHECK_TRUE_MSG(tensor_data != nullptr, nullptr, "New Tensor failed.");
@@ -173,7 +174,7 @@ bool CustomAscendUtils::GetZeroValueRefDatas(const ops::PrimitiveCPtr &primc,
     auto param_name = GetValue<std::string>(value_ptr_list[i]);
     auto data_type = static_cast<TypeId>(GetValue<uint64_t>(value_ptr_list[i + 1]));
     auto param_shape = GetValue<ShapeVector>(value_ptr_list[i + 2]);
-    auto tensor = std::make_shared<tensor::Tensor>(data_type, param_shape);
+    auto tensor = tensor::from_spec(data_type, param_shape, device::DeviceType::kCPU);
     ref_infos->push_back(std::make_pair(param_name, tensor));
   }
   return true;

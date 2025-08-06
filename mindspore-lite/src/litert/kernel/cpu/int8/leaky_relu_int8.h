@@ -20,8 +20,8 @@
 #include <vector>
 #include <limits>
 #include "include/errorcode.h"
-#include "nnacl/fp32/activation_fp32.h"
-#include "nnacl/int8/leaky_relu_int8.h"
+#include "nnacl_c/fp32/activation_fp32.h"
+#include "nnacl_c/int8/leaky_relu_int8.h"
 #include "src/litert/lite_kernel.h"
 
 namespace mindspore::kernel {

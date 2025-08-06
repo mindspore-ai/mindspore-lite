@@ -19,8 +19,8 @@
 #include <string>
 #include "coder/opcoders/op_coder.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/strided_slice_dynamic_parameter.h"
-#include "nnacl/strided_slice_parameter.h"
-#include "nnacl/kernel/strided_slice.h"
+#include "nnacl_c/strided_slice_parameter.h"
+#include "nnacl_c/kernel/strided_slice.h"
 
 namespace mindspore::lite::micro {
 class StridedSliceDynamicBaseCoder final : public OperatorCoder {

@@ -19,11 +19,11 @@
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
 #include "src/common/file_utils.h"
-#include "nnacl/pack.h"
-#include "nnacl/fp32/conv_common_fp32.h"
+#include "nnacl_c/pack.h"
+#include "nnacl_c/fp32/conv_common_fp32.h"
 #ifdef ENABLE_FP16
-#include "nnacl/fp16/pack_fp16.h"
-#include "nnacl/fp16/conv_fp16.h"
+#include "nnacl_c/fp16/pack_fp16.h"
+#include "nnacl_c/fp16/conv_fp16.h"
 #endif
 
 namespace mindspore {

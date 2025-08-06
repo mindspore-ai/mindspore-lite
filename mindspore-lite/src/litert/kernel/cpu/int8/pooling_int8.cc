@@ -16,7 +16,7 @@
 
 #include "src/litert/kernel/cpu/int8/pooling_int8.h"
 #include <cfloat>
-#include "nnacl/int8/pooling_int8.h"
+#include "nnacl_c/int8/pooling_int8.h"
 #include "include/errorcode.h"
 #include "src/litert/kernel_registry.h"
 

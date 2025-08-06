@@ -20,7 +20,7 @@
 #include <memory>
 #include <vector>
 #include "coder/opcoders/base/conv2d_base_coder.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_int8_serializer.h"
 
 namespace mindspore::lite::micro::nnacl {

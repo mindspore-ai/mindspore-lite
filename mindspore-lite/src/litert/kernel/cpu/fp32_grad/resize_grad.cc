@@ -16,12 +16,12 @@
 
 #include <vector>
 #include "src/litert/kernel/cpu/fp32_grad/resize_grad.h"
-#include "nnacl/fp32_grad/resize_grad.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/fp32_grad/resize_grad.h"
+#include "nnacl_c/errorcode.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
-#include "nnacl/nnacl_common.h"
+#include "nnacl_c/nnacl_common.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

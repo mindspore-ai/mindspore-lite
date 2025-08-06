@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/non_max_suppression_parameter.h"
+#include "nnacl_c/non_max_suppression_parameter.h"
 #include "infer/non_max_suppression.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_n.h"
 using mindspore::ops::kNameNonMaxSuppression;

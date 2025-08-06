@@ -20,7 +20,7 @@
 #include <cstring>
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/batchnorm_parameter.h"
+#include "nnacl_c/batchnorm_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class BatchNormInt8Coder final : public OperatorCoder {

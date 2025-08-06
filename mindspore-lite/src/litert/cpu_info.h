@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_CPU_INFO_H_
 
 #if defined(ENABLE_AVX512) || defined(ENABLE_AVX)
-#include "nnacl/intrinsics/ms_simd_cpu_info.h"
+#include "nnacl_c/intrinsics/ms_simd_cpu_info.h"
 #endif
 
 inline bool PlatformInstructionSetSupportCheck() {

@@ -20,7 +20,7 @@
 #include <vector>
 #include <limits>
 #include "include/errorcode.h"
-#include "nnacl/int8/crop_int8.h"
+#include "nnacl_c/int8/crop_int8.h"
 #include "src/litert/lite_kernel.h"
 
 namespace mindspore::kernel {

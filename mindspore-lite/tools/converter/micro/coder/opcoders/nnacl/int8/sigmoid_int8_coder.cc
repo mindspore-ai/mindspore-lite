@@ -55,7 +55,7 @@ int SigmodInt8Coder::Prepare(CoderContext *const context) {
 int SigmodInt8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/int8/sigmoid_int8.h",
+            "nnacl_c/int8/sigmoid_int8.h",
           },
           {
             "sigmoid_int8.c",

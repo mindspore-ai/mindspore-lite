@@ -18,8 +18,8 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CPU_FP16_DECONVOLUTION_FP16_H_
 
 #include <vector>
-#include "nnacl/fp16/deconv_fp16.h"
-#include "nnacl/fp16/matmul_fp16.h"
+#include "nnacl_c/fp16/deconv_fp16.h"
+#include "nnacl_c/fp16/matmul_fp16.h"
 #include "src/litert/kernel_registry.h"
 #include "src/litert/kernel/cpu/base/convolution_base.h"
 

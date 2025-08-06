@@ -19,7 +19,7 @@
 #include <memory>
 #include "infer/tril.h"
 #include "infer/ops_func_impl/triu.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "op_def/auto_generate/gen_lite_ops.h"
 

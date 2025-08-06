@@ -19,7 +19,7 @@
 #include <algorithm>
 #include "src/common/log_adapter.h"
 #include "src/tensor.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore::lite {
 #ifndef CONTROLFLOW_TENSORLIST_CLIP

@@ -22,7 +22,7 @@
 #include "infer/tuple_get_item.h"
 #include "include/common/utils/utils.h"
 #include "include/errorcode.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "src/common/log_util.h"
 

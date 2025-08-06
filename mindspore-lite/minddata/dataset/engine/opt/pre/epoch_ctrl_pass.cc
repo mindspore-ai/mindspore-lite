@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include "mindspore-lite/minddata/dataset/engine/opt/pre/epoch_ctrl_pass.h"
 #include <algorithm>
 #include "mindspore-lite/minddata/dataset/engine/ir/datasetops/epoch_ctrl_node.h"

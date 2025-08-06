@@ -16,7 +16,7 @@
 #include "coder/opcoders/nnacl/fp32/pooling_fp32_coder.h"
 #include <cfloat>
 #include <string>
-#include "nnacl/fp32/pooling_fp32.h"
+#include "nnacl_c/fp32/pooling_fp32.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 #include "coder/log.h"
 #include "coder/opcoders/parallel.h"
@@ -49,8 +49,8 @@ int PoolingFP32Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
             "wrapper/fp32/pooling_fp32_wrapper.h",
-            "nnacl/kernel/pooling.h",
-            "nnacl/fp32/pooling_fp32.h",
+            "nnacl_c/kernel/pooling.h",
+            "nnacl_c/fp32/pooling_fp32.h",
           },
           {
             "pooling_fp32_wrapper.c",

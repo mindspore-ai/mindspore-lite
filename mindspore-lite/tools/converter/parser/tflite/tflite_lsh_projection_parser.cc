@@ -18,7 +18,7 @@
 #include <vector>
 #include <memory>
 #include "infer/lsh_projection.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

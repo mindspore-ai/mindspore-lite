@@ -20,7 +20,7 @@
 #include <memory>
 #include <vector>
 #include "include/errorcode.h"
-#include "nnacl/tensorlist_c.h"
+#include "nnacl_c/tensorlist_c.h"
 #include "src/common/log_adapter.h"
 #include "schema/model_generated.h"
 #include "src/tensor.h"
@@ -207,9 +207,7 @@ class TensorList : public Tensor {
 };
 
 #else
-
 using TensorList = void;
-
 #endif
 }  // namespace mindspore::lite
 #endif  // MINDSPORE_LITE_SRC_TENSORLIST_H_

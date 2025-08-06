@@ -15,7 +15,7 @@
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
 #include "src/common/ops/operator_populate/utils.h"
-#include "nnacl/fp32/exp_fp32.h"
+#include "nnacl_c/fp32/exp_fp32.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/cxx_api/exp_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_e.h"

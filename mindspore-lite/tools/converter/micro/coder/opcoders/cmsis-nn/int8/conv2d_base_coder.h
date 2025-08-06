@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 #include "coder/opcoders/base/conv2d_base_coder.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 
 namespace mindspore::lite::micro::cmsis {
 class Conv2DBaseCoder : public micro::Conv2DBaseCoder {

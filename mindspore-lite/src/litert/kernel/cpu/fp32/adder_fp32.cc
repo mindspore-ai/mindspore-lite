@@ -19,8 +19,8 @@
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
 #include "schema/model_generated.h"
-#include "nnacl/fp32/adder_fp32.h"
-#include "nnacl/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32/adder_fp32.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;

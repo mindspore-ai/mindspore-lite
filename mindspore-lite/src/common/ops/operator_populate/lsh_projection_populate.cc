@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/lsh_projection_parameter.h"
+#include "nnacl_c/lsh_projection_parameter.h"
 #include "infer/lsh_projection.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"
 using mindspore::ops::kNameLshProjection;

@@ -15,8 +15,8 @@
  */
 #ifdef ENABLE_AVX
 #include "src/litert/kernel/cpu/fp32/convolution_slidewindow_avx_fp32.h"
-#include "nnacl/fp32/conv_common_fp32.h"
-#include "nnacl/fp32/conv_1x1_x86_fp32.h"
+#include "nnacl_c/fp32/conv_common_fp32.h"
+#include "nnacl_c/fp32/conv_1x1_x86_fp32.h"
 
 namespace mindspore::kernel {
 void ConvolutionSWAVXCPUKernel::InitGlobalVariable() {

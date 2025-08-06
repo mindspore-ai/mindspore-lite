@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "src/litert/lite_kernel.h"
-#include "nnacl/all_gather_parameter.h"
+#include "nnacl_c/all_gather_parameter.h"
 
 namespace mindspore::kernel {
 class AllGatherCPUKernel : public LiteKernel {

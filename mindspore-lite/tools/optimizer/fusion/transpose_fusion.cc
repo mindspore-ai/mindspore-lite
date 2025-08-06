@@ -26,7 +26,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "tools/optimizer/common/format_utils.h"
 #include "infer/cxx_api/scale_fusion.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_b.h"

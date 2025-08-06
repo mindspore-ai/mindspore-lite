@@ -123,7 +123,7 @@ int DTypeCastCoder::DoCode(CoderContext *const context) {
 
   Collect(context,
           {
-            "nnacl/base/cast_base.h",
+            "nnacl_c/base/cast_base.h",
           },
           {
             "cast_base.c",

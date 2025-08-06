@@ -15,7 +15,7 @@
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
 #include "src/common/ops/operator_populate/utils.h"
-#include "nnacl/conv_parameter.h"
+#include "nnacl_c/conv_parameter.h"
 #include "infer/conv2d.h"
 #include "infer/cxx_api/conv2d_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"

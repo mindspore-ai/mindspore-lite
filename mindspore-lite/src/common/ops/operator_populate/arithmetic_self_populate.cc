@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/arithmetic_self_parameter.h"
+#include "nnacl_c/arithmetic_self_parameter.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/grad/log_grad.h"
 #include "infer/grad/neg_grad.h"

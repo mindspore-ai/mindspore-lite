@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/detection_post_process_parameter.h"
+#include "nnacl_c/detection_post_process_parameter.h"
 #include "infer/detection_post_process.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_d.h"
 using mindspore::ops::kNameDetectionPostProcess;

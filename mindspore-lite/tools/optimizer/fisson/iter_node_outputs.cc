@@ -17,7 +17,7 @@
 #define USE_DEPRECATED_API
 #include "tools/optimizer/fisson/iter_node_outputs.h"
 #include "tools/optimizer/parallel/spliter.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace opt {

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
-#include "nnacl/base/tile_base.h"
+#include "nnacl_c/base/tile_base.h"
 #include "infer/cxx_api/tile_fusion.h"
 #include "mindspore/ops/op_def/op_name.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"

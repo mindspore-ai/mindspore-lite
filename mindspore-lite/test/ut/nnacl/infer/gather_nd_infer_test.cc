@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/gather_nd_infer.h"
-#include "nnacl/gather_nd_parameter.h"
+#include "nnacl_c/infer/gather_nd_infer.h"
+#include "nnacl_c/gather_nd_parameter.h"
 
 namespace mindspore {
 

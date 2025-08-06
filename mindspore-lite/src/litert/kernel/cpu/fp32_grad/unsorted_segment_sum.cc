@@ -19,7 +19,7 @@
 #include <algorithm>
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl/base/unsorted_segment_sum_base.h"
+#include "nnacl_c/base/unsorted_segment_sum_base.h"
 #include "include/errorcode.h"
 
 using mindspore::kernel::KERNEL_ARCH;

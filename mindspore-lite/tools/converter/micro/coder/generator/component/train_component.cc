@@ -17,7 +17,7 @@
 #include "coder/generator/component/train_component.h"
 #include <string>
 #include "coder/utils/coder_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "coder/utils/type_cast.h"
 
 namespace mindspore::lite::micro {

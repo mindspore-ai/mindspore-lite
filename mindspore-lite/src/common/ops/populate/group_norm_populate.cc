@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/group_norm_parameter.h"
+#include "nnacl_c/group_norm_parameter.h"
 using mindspore::schema::PrimitiveType_GroupNormFusion;
 
 namespace mindspore {

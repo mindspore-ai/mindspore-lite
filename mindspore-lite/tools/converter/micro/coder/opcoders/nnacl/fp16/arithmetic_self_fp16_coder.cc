@@ -59,7 +59,7 @@ int ArithmeticSelfFP16Coder::DoCode(CoderContext *const context) {
 
   Collect(context,
           {
-            "nnacl/fp16/arithmetic_self_fp16.h",
+            "nnacl_c/fp16/arithmetic_self_fp16.h",
           },
           {
             "arithmetic_self_fp16.c",

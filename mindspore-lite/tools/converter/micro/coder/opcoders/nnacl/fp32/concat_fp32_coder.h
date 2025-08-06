@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/concat_parameter.h"
+#include "nnacl_c/concat_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class ConcatFP32Coder : public OperatorCoder {

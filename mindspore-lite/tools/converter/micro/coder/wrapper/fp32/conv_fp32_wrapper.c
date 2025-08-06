@@ -16,8 +16,8 @@
 
 #include "wrapper/fp32/conv_fp32_wrapper.h"
 #include <pthread.h>
-#include "nnacl/errorcode.h"
-#include "nnacl/fp32/conv_common_fp32.h"
+#include "nnacl_c/errorcode.h"
+#include "nnacl_c/fp32/conv_common_fp32.h"
 
 int ConvFp32Run(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   ConvFp32Args *args = (ConvFp32Args *)cdata;

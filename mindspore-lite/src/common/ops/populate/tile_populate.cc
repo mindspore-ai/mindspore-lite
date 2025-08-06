@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/base/tile_base.h"
+#include "nnacl_c/base/tile_base.h"
 using mindspore::schema::PrimitiveType_TileFusion;
 
 namespace mindspore {

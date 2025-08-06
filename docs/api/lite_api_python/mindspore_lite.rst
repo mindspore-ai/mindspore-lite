@@ -43,19 +43,6 @@ Python接口仅支持云侧推理。
     mindspore_lite.Tensor
     mindspore_lite.TensorMeta
 
-大语言模型引擎
---------------
-
-.. mscnautosummary::
-    :toctree: mindspore_lite
-
-    mindspore_lite.LLMReq
-    mindspore_lite.LLMEngineStatus
-    mindspore_lite.LLMRole
-    mindspore_lite.LLMEngine
-    mindspore_lite.LLMStatusCode
-    mindspore_lite.LLMException
-
 Lite推理
 ---------
 

@@ -60,7 +60,7 @@ int UnstackBaseCoder::Prepare(CoderContext *context) {
 int UnstackBaseCoder::DoCode(CoderContext *ctx) {
   Collect(ctx,
           {
-            "nnacl/base/unstack_base.h",
+            "nnacl_c/base/unstack_base.h",
           },
           {
             "unstack_base.c",

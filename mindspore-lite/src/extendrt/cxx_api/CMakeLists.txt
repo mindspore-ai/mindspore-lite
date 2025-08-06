@@ -12,9 +12,6 @@ if(MODE_ASCEND_ACL)
     string(STRIP "${PY3_LIBG}" PY3_LIBG)
     message("Python3 general library = " ${PY3_LIBG})
 endif()
-# build mslite_shared_lib
-include_directories(${CMAKE_SOURCE_DIR}/mindspore/ccsrc)
-include_directories(${CMAKE_SOURCE_DIR}/mindspore/ccsrc/minddata/dataset)
 
 if(ENABLE_D OR ENABLE_ACL)
     # build 910 and 310 code into one distro, files needed for 310 mode
@@ -56,30 +53,9 @@ set(MSLIB_INFER_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/model_pool/model_parallel_runner.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/model_pool/model_parallel_runner_impl.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/model_pool/resource_manager.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/llm_engine/llm_engine.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/llm_engine/llm_engine_impl.cc
     ${API_MS_INFER_SRC}
     ${API_ACL_SRC}
     ${API_OPS_SRC}
     )
-
-if(ENABLE_D)
-    list(APPEND MSLIB_INFER_SRC
-        "${CMAKE_SOURCE_DIR}/../ccsrc/frontend/parallel/strategy_checkpoint/strategy_checkpoint_info.cc"
-        "${CMAKE_SOURCE_DIR}/../ccsrc/frontend/parallel/strategy_checkpoint/parallel_strategy_checkpoint.cc"
-        "${CMAKE_SOURCE_DIR}/../ccsrc/frontend/parallel/group_manager.cc"
-        "${CMAKE_SOURCE_DIR}/../ccsrc/frontend/parallel/device_manager.cc"
-        "${CMAKE_SOURCE_DIR}/../ccsrc/frontend/parallel/device_matrix.cc"
-        "${CMAKE_SOURCE_DIR}/../ccsrc/frontend/parallel/tensor_layout/array.cc"
-        "${CMAKE_SOURCE_DIR}/../ccsrc/frontend/parallel/tensor_layout/map.cc"
-        "${CMAKE_SOURCE_DIR}/../ccsrc/frontend/parallel/tensor_layout/arrangement.cc"
-        "${CMAKE_SOURCE_DIR}/../ccsrc/frontend/parallel/tensor_layout/shape_util.cc"
-        "${CMAKE_SOURCE_DIR}/../ccsrc/frontend/parallel/tensor_layout/tensor_layout.cc")
-endif()
-
 add_library(mindspore_infer_shared_lib_obj OBJECT ${MSLIB_INFER_SRC})
 add_dependencies(mindspore_infer_shared_lib_obj fbs_inner_src)
-
-if(MSLITE_ENABLE_ACL)
-add_subdirectory(llm_engine)
-endif()

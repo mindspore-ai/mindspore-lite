@@ -30,7 +30,7 @@
 #include "tools/common/node_util.h"
 #include "src/common/string_utils.h"
 #include "src/common/log_util.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 using mindspore::converter::kFmkTypeTf;
 namespace {

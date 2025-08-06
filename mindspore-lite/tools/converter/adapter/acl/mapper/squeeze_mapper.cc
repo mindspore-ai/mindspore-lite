@@ -51,7 +51,7 @@ bool SqueezeMapper::GetAxisValue(AnfNodePtr input_node, std::vector<int64_t> *ax
   }
   if (value->isa<tensor::Tensor>()) {
     auto tensor = value->cast<tensor::TensorPtr>();
-    if (tensor == nullptr || tensor->data().const_data() == nullptr) {
+    if (tensor == nullptr || tensor->unsafe_data() == nullptr) {
       return false;
     }
     if (tensor->data_type() == kNumberTypeInt64) {

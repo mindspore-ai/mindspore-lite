@@ -16,8 +16,8 @@
 
 #include "src/litert/kernel/cpu/int8/split_int8.h"
 #include <limits>
-#include "nnacl/split_parameter.h"
-#include "nnacl/int8/split_int8.h"
+#include "nnacl_c/split_parameter.h"
+#include "nnacl_c/int8/split_int8.h"
 #include "include/errorcode.h"
 #include "src/litert/kernel_registry.h"
 

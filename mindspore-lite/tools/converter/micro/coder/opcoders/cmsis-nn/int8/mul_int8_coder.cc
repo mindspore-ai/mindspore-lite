@@ -17,7 +17,7 @@
 #include "coder/opcoders/cmsis-nn/int8/mul_int8_coder.h"
 #include <string>
 #include "coder/opcoders/serializers/serializer.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/int8/quantize.h"
 #include "coder/opcoders/file_collector.h"
 
 using mindspore::schema::PrimitiveType_MulFusion;

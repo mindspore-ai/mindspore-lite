@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/non_max_suppression_parameter.h"
+#include "nnacl_c/non_max_suppression_parameter.h"
 using mindspore::schema::PrimitiveType_NonMaxSuppression;
 
 namespace mindspore {

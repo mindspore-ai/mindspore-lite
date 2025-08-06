@@ -15,7 +15,7 @@
  */
 
 #include "src/litert/kernel/cpu/int8/add_int8.h"
-#include "nnacl/int8/quantize.h"
+#include "nnacl_c/int8/quantize.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
 #include "src/common/file_utils.h"

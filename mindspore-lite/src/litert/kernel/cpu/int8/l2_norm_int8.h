@@ -18,7 +18,7 @@
 
 #include <vector>
 #include "src/litert/kernel/cpu/fp32/l2_norm_fp32.h"
-#include "nnacl/int8/l2_norm_int8.h"
+#include "nnacl_c/int8/l2_norm_int8.h"
 
 namespace mindspore::kernel {
 class L2NormInt8CPUKernel : public L2NormCPUKernel {

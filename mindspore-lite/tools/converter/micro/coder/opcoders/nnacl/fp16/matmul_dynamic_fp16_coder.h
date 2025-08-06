@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "tools/converter/micro/coder/opcoders/nnacl/fp16/matmul_dynamic_fp16_base_coder.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class MatMulDynamicFP16Coder final : public MatMulDynamicFP16BaseCoder {

@@ -94,7 +94,7 @@ if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full")
     include_directories("dataset/liteapi")
     include_directories("${TOP_DIR}/mindspore-lite")
     include_directories("${TOP_DIR}")
-    include_directories("${TOP_DIR}/mindspore/mindspore/ops/kernel/cpu")
+    include_directories("${NNACL_DIR}/../")
 
     if(MSLITE_ENABLE_ACL)
         include_directories(${CCSRC_DIR})
@@ -105,7 +105,7 @@ if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full")
         ${TOP_DIR}/mindspore-lite/src/litert/cxx_api/tensor_utils.cc
         ${TOP_DIR}/mindspore-lite/src/litert/cxx_api/tensor/tensor_impl.cc
         ${TOP_DIR}/mindspore-lite/src/tensor.cc
-        ${TOP_DIR}/mindspore/mindspore/ops/kernel/cpu/nnacl/tensor_c_utils.c
+        ${NNACL_DIR}/tensor_c_utils.c
         ${TOP_DIR}/mindspore-lite/src/common/utils.cc
         ${TOP_DIR}/mindspore-lite/src/common/string_util.cc)
 

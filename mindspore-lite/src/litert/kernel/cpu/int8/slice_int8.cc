@@ -17,9 +17,9 @@
 #include "src/litert/kernel/cpu/int8/slice_int8.h"
 #include <limits>
 #include "src/litert/kernel_registry.h"
-#include "nnacl/int8/slice_int8.h"
+#include "nnacl_c/int8/slice_int8.h"
 #include "include/errorcode.h"
-#include "nnacl/base/slice_base.h"
+#include "nnacl_c/base/slice_base.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;

@@ -19,8 +19,8 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "nnacl/conv_parameter.h"
-#include "nnacl/matmul_parameter.h"
+#include "nnacl_c/conv_parameter.h"
+#include "nnacl_c/matmul_parameter.h"
 #include "wrapper/base/micro_parameter.h"
 
 typedef struct {

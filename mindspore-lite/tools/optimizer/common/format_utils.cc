@@ -64,7 +64,7 @@
 #include "infer/deformable_conv2d.h"
 #include "infer/roi_align.h"
 #include "tools/lite_exporter/fetch_content.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/common/graph_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_d.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
@@ -82,6 +82,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_q.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 
+#include "ir/tensor_new.h"
 namespace mindspore {
 namespace opt {
 // treat the weight of deformableConv2d as an input instead of a const because of the ops infershape only support nchw.
@@ -341,7 +342,7 @@ int SetAbstractTensorInfo(const AbstractBasePtr &abstract) {
   TypeId type = lite::GetAbstractTensorDtype(abstract->cast<abstract::AbstractTensorPtr>());
   // For kObjectTypeTensorType, the abstract value is TensorList amd does not need to reset.
   if (type != kObjectTypeTensorType) {
-    auto tensor_info = std::make_shared<tensor::Tensor>(type, shape);
+    auto tensor_info = tensor::from_spec(type, shape, device::DeviceType::kCPU);
     if (tensor_info == nullptr) {
       MS_LOG(ERROR) << "new tensor::Tensor failed";
       return RET_ERROR;

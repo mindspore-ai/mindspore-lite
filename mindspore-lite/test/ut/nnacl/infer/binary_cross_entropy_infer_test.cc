@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "nnacl/infer/binary_cross_entropy_infer.h"
+#include "nnacl_c/infer/binary_cross_entropy_infer.h"
 
 namespace mindspore {
 

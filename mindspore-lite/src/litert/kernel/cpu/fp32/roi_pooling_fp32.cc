@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/litert/kernel/cpu/fp32/roi_pooling_fp32.h"
-#include "nnacl/fp32/roi_pooling_fp32.h"
+#include "nnacl_c/fp32/roi_pooling_fp32.h"
 #include <vector>
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"

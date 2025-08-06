@@ -25,8 +25,8 @@
 #include "include/errorcode.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel/cpu/base/convolution_base.h"
-#include "nnacl/fp32/deconv_fp32.h"
-#include "nnacl/fp32/matmul_fp32.h"
+#include "nnacl_c/fp32/deconv_fp32.h"
+#include "nnacl_c/fp32/matmul_fp32.h"
 
 namespace mindspore::kernel {
 #define DECONV_WINOGRAD_MAX 2000

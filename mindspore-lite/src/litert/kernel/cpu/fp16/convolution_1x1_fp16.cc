@@ -15,10 +15,10 @@
  */
 
 #include "src/litert/kernel/cpu/fp16/convolution_1x1_fp16.h"
-#include "nnacl/base/conv1x1_base.h"
-#include "nnacl/fp16/conv_fp16.h"
-#include "nnacl/fp16/cast_fp16.h"
-#include "nnacl/fp16/pack_fp16.h"
+#include "nnacl_c/base/conv1x1_base.h"
+#include "nnacl_c/fp16/conv_fp16.h"
+#include "nnacl_c/fp16/cast_fp16.h"
+#include "nnacl_c/fp16/pack_fp16.h"
 #include "src/litert/kernel/cpu/fp16/layout_transform_fp16.h"
 #include "include/errorcode.h"
 

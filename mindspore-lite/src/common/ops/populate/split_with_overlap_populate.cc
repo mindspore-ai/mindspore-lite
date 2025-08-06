@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/split_parameter.h"
+#include "nnacl_c/split_parameter.h"
 using mindspore::schema::PrimitiveType_SplitWithOverlap;
 
 namespace mindspore {

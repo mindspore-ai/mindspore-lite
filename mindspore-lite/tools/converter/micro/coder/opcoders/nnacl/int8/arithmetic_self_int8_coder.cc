@@ -114,7 +114,7 @@ int ArithmeticSelfInt8Coder::Prepare(CoderContext *context) {
 int ArithmeticSelfInt8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/int8/arithmetic_self_int8.h",
+            "nnacl_c/int8/arithmetic_self_int8.h",
           },
           {
             "arithmetic_self_int8.c",

@@ -16,7 +16,7 @@
 
 #include <memory>
 #include "common/common_test.h"
-#include "nnacl/strided_slice_parameter.h"
+#include "nnacl_c/strided_slice_parameter.h"
 #include "nnacl/nnacl_manager.h"
 
 namespace mindspore {

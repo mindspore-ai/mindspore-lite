@@ -20,7 +20,7 @@
 #include <vector>
 #include <memory>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/int8/quant_dtype_cast_int8.h"
+#include "nnacl_c/int8/quant_dtype_cast_int8.h"
 
 namespace mindspore::lite::micro {
 class QuantDTypeCastCoder final : public OperatorCoder {

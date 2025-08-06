@@ -16,7 +16,7 @@
 
 #include "src/litert/kernel/cpu/int8/hswish_int8.h"
 #include <limits>
-#include "nnacl/int8/hswish_int8.h"
+#include "nnacl_c/int8/hswish_int8.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"

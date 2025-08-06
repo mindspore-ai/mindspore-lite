@@ -19,8 +19,8 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
-#include "nnacl/layer_norm_parameter.h"
-#include "nnacl/kernel/layer_norm.h"
+#include "nnacl_c/layer_norm_parameter.h"
+#include "nnacl_c/kernel/layer_norm.h"
 
 namespace mindspore::lite::micro::nnacl {
 class LayerNormFP32Coder : public OperatorCoder {

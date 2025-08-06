@@ -33,4 +33,3 @@ add_library(ge_proto SHARED ${GE_PROTO_SRCS})
 if(NOT MSVC)
     set_target_properties(ge_proto PROPERTIES COMPILE_FLAGS "-Wno-unused-veriable -Wno-array-bounds")
 endif()
-

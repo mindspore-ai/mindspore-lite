@@ -15,7 +15,7 @@
  */
 #ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_BASE_AFFINE_WRAPPER_H_
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_WRAPPER_BASE_AFFINE_WRAPPER_H_
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #ifdef __cplusplus
 extern "C" {
 #endif

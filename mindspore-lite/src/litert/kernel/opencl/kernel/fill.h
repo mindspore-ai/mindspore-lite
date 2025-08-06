@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_OPENCL_KERNEL_FILL_H_
 
 #include <vector>
-#include "nnacl/base/fill_base.h"
+#include "nnacl_c/base/fill_base.h"
 #include "src/litert/kernel/opencl/opencl_kernel.h"
 
 namespace mindspore::kernel {

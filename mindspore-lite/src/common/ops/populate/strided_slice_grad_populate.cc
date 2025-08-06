@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/strided_slice_parameter.h"
+#include "nnacl_c/strided_slice_parameter.h"
 using mindspore::schema::PrimitiveType_StridedSliceGrad;
 
 namespace mindspore {

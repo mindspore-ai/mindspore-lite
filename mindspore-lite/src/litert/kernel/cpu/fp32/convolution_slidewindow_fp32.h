@@ -18,7 +18,7 @@
 #if defined(ENABLE_AVX) || defined(ENABLE_ARM64)
 #include <vector>
 #include "src/executor/kernel_exec.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/litert/kernel/cpu/base/convolution_base.h"
 
 namespace mindspore::kernel {

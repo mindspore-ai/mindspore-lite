@@ -16,9 +16,9 @@
 #include <iostream>
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
-#include "nnacl/fp32/gatherNd_fp32.h"
-#include "nnacl/int8/gatherNd_int8.h"
-#include "nnacl/gather_nd_parameter.h"
+#include "nnacl_c/fp32/gatherNd_fp32.h"
+#include "nnacl_c/int8/gatherNd_int8.h"
+#include "nnacl_c/gather_nd_parameter.h"
 #include "src/litert/kernel_registry.h"
 #include "src/executor/kernel_exec.h"
 

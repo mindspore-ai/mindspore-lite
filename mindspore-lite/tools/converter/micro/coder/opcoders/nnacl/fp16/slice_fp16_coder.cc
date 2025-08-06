@@ -24,7 +24,7 @@ namespace mindspore::lite::micro::nnacl {
 int SliceFP16Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/base/slice_base.h",
+            "nnacl_c/base/slice_base.h",
           },
           {
             "slice_base.c",

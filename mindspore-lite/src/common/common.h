@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_COMMON_COMMON_H_
 
 #include <string>
-#include "mindspore/ops/kernel/cpu/nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 /*
 Naming a key of path must be consistent with existing naming styles and follow the following rules:
@@ -156,10 +156,6 @@ static const char *const kOMConverterOptionsSection = "om_converter";
 static const char *const KModelUserInfo = "user_info";
 static const char *const KModelInputShape = "input_shape";
 
-static const char *const KCurrentPid = "current_pid";
-static const char *const kSharableWeightMemHandle = "shareable_weight_mem_handle";
-static const char *const kShareableWeightPidList = "shareable_weight_pid_list";
-
 // for [ascend_context] [kvcache_input_layout]
 static const char *const kKVCacheLayoutBNSD = "BNSD";
 static const char *const kKVCacheLayoutBSH = "BSH";
@@ -172,10 +168,6 @@ static const char *const kInnerWeightspace = "inner_weightspace";
 static const char *const kInnerWorkspace = "inner_workspace";
 static const char *const kInnerCalcWorkspaceSize = "inner_calc_workspace_size";
 static const char *const kInnerWeightspaceWorkspace = "inner_weightspace_workspace";
-
-static const char *const kInnerPids = "inner_pids";
-static const char *const kInnerSharableHandle = "inner_sharable_handle";
-
 // for lora
 static const char *const kBundleModel = "bundle_model";
 }  // namespace lite

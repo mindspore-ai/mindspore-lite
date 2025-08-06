@@ -17,7 +17,7 @@
 #include "src/litert/schema_tensor_wrapper.h"
 #include "src/common/log_adapter.h"
 #include "src/common/file_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

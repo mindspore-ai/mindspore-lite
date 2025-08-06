@@ -19,7 +19,7 @@
 #include <type_traits>
 #include <limits>
 #include "schema/inner/ops_generated.h"
-#include "nnacl/softmax_parameter.h"
+#include "nnacl_c/softmax_parameter.h"
 #include "coder/log.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_int8_serializer.h"
 #include "coder/opcoders/file_collector.h"
@@ -72,7 +72,7 @@ int SoftMaxInt8Coder::DoCode(CoderContext *const context) {
                 "n_dim should be less than the length of maximum value of input_shape");
   Collect(context,
           {
-            "nnacl/int8/softmax_int8.h",
+            "nnacl_c/int8/softmax_int8.h",
           },
           {
             "softmax_int8.c",

@@ -16,7 +16,7 @@
 
 #include "tools/converter/parser/onnx/onnx_dequantize_linear_parser.h"
 #include <memory>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "tools/converter/ops/ops_def.h"
 #include "ops_utils/op_utils.h"
 

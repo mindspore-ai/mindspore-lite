@@ -17,7 +17,7 @@
 #include "tools/converter/parser/onnx/onnx_topk_parser.h"
 #include <memory>
 #include "infer/cxx_api/topk_fusion.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 
 namespace mindspore {

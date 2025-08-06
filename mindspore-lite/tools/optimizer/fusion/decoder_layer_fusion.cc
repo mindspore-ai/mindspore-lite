@@ -26,7 +26,7 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "infer/tuple_get_item.h"
 #include "tools/common/tensor_util.h"
 #include "ops_utils/op_utils.h"
@@ -364,7 +364,7 @@ STATUS DecoderLayerFusion::GetEps(const EquivPtr &equiv, VarPtr node_name, float
     if (value_node->isa<tensor::Tensor>()) {
       auto tensor = value_node->cast<tensor::TensorPtr>();
       MS_EXCEPTION_IF_NULL(tensor);
-      *eps = *reinterpret_cast<float *>(tensor->data().data());
+      *eps = *reinterpret_cast<float *>(tensor->device_address()->GetMutablePtr());
       return RET_OK;
     }
   }

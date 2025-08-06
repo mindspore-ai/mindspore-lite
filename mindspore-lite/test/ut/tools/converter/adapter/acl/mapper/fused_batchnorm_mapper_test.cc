@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include <memory>
 #include "tools/converter/adapter/acl/mapper/fused_batchnorm_mapper.h"
+#include <memory>
 #include "tools/converter/adapter/acl/mapper/primitive_mapper_register.h"
 #include "src/common/log_util.h"
 #include "ops_utils/op_utils.h"
@@ -33,11 +33,6 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 
 namespace mindspore {
-constexpr float kEpsilonValue = 0.1;
-constexpr float kMomentumValue = 0.2;
-constexpr int kFusedBatchNormAttrSize5 = 5;
-constexpr int kInputIndex0 = 0;
-constexpr int kNumInputSize1 = 1;
 class FusedBatchNormMapperTest : public mindspore::CommonTest {
  public:
   FusedBatchNormMapperTest() = default;
@@ -54,7 +49,7 @@ CNodePtr AddReturn(const FuncGraphPtr &graph, const std::vector<AnfNodePtr> &ret
     return nullptr;
   }
   AnfNodePtr return_input;
-  if (return_inputs.size() == kNumInputSize1) {
+  if (return_inputs.size() == 1) {
     return_input = return_inputs.front();
   } else {
     auto make_tuple_prim_ptr = std::make_shared<ops::MakeTuple>();
@@ -105,8 +100,8 @@ CNodePtr InitFusedBatchNormNodeWithInput(const FuncGraphPtr &func_graph) {
     MS_LOG(ERROR) << "FusedBatchNorm prim is nullptr!";
     return nullptr;
   }
-  prim->set_epsilon(kEpsilonValue);
-  prim->set_momentum(kMomentumValue);
+  prim->set_epsilon(0.1);
+  prim->set_momentum(0.2);
   auto prim_c = prim->GetPrim();
   if (prim_c == nullptr) {
     MS_LOG(ERROR) << "get prim_c failed, FusedBatchNorm node prim_c is nullptr!";
@@ -145,25 +140,25 @@ TEST_F(FusedBatchNormMapperTest, InitFusedBatchNormNodeWithInput) {
   ASSERT_NE(data_param, nullptr);
   auto cnode = InitFusedBatchNormNodeWithInput(func_graph);
   ASSERT_NE(cnode, nullptr);
-  ASSERT_EQ(cnode->inputs().size(), kNumInputSize1);
+  ASSERT_EQ(cnode->inputs().size(), 1);
   auto mapper = lite::PrimitiveMapperRegister::GetInstance().GetPrimitiveMapper(ops::kNameFusedBatchNorm);
   ASSERT_NE(mapper, nullptr);
   auto status = mapper->Mapper(cnode);
   ASSERT_EQ(status, lite::RET_OK);
-  ASSERT_EQ(cnode->inputs().size(), kNumInputSize1);
-  auto cnode_input_0 = cnode->input(kInputIndex0);
+  ASSERT_EQ(cnode->inputs().size(), 1);
+  auto cnode_input_0 = cnode->input(0);
   auto input_value_node = utils::isa<ValueNodePtr>(cnode_input_0);
   ASSERT_EQ(input_value_node, true);
   const auto &origin_prim = GetCNodePrimitive(cnode);
   ASSERT_NE(origin_prim, nullptr);
   auto prim_name = origin_prim->name();
   ASSERT_EQ(prim_name, "FusedBatchNorm");
-  auto value_node = cnode->input(kInputIndex0)->cast<ValueNodePtr>();
+  auto value_node = cnode->input(0)->cast<ValueNodePtr>();
   ASSERT_NE(value_node, nullptr);
   auto new_prim = GetValueNode<PrimitivePtr>(value_node);
   ASSERT_NE(new_prim, nullptr);
   auto attr_size = new_prim->attrs().size();
-  ASSERT_EQ(attr_size, kFusedBatchNormAttrSize5);
+  ASSERT_EQ(attr_size, 5);
   MS_LOG(INFO) << "PASS";
 }
 }  // namespace mindspore

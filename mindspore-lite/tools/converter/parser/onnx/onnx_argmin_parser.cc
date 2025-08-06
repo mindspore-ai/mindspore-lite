@@ -17,7 +17,7 @@
 #include "tools/converter/parser/onnx/onnx_argmin_parser.h"
 #include <memory>
 #include "infer/cxx_api/arg_min_fusion.h"
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {

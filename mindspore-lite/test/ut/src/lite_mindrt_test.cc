@@ -57,14 +57,14 @@ TEST_F(LiteMindRtTest, ActorThreadPoolTest) {
   std::vector<Future<int>> fv;
   std::vector<int> expected;
   size_t sz = 300;
+
   for (size_t i = 0; i < sz; i++) {
     int data = 0;
     for (auto a : actors) {
       int *val = new int(i);
       vv.emplace_back(val);
       Future<int> ret;
-      ret = Async(a, &TestActor::Fn1, val)
-              .Then(Defer(a, &TestActor::Fn2, val), ret);
+      ret = Async(a, &TestActor::Fn1, val).Then(Defer(a, &TestActor::Fn2, val), ret);
       fv.emplace_back(ret);
       expected.emplace_back(data + i + 1);
       data++;
@@ -74,6 +74,7 @@ TEST_F(LiteMindRtTest, ActorThreadPoolTest) {
     int ret = fv[i].Get();
     ASSERT_EQ(ret, expected[i]);
   }
+
   Finalize();
 
   for (size_t i = 0; i < vv.size(); i++) {

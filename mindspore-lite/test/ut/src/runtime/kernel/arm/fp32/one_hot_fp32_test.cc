@@ -17,7 +17,7 @@
 #include "src/executor/kernel_exec.h"
 #include "src/tensor.h"
 #include "common/common_test.h"
-#include "nnacl/fp32/one_hot_fp32.h"
+#include "nnacl_c/fp32/one_hot_fp32.h"
 #include "src/litert/kernel_registry.h"
 #include "schema/ops_generated.h"
 #include "nnacl/nnacl_manager.h"

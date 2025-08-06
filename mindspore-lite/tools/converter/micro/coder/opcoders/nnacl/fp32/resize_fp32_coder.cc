@@ -159,7 +159,7 @@ int ResizeFP32Coder::ResizePrepare() {
 int ResizeFP32Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
-            "nnacl/fp32/resize_fp32.h",
+            "nnacl_c/fp32/resize_fp32.h",
           },
           {
             "resize_fp32.c",

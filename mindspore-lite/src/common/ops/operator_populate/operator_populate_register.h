@@ -22,7 +22,7 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include "nnacl/op_base.h"
+#include "nnacl_c/op_base.h"
 #include "src/common/common.h"
 #include "src/common/log_adapter.h"
 #include "src/common/version_manager.h"

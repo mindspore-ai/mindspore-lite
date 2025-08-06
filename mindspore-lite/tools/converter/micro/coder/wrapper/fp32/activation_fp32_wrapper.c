@@ -15,8 +15,8 @@
  */
 
 #include "wrapper/fp32/activation_fp32_wrapper.h"
-#include "nnacl/fp32/activation_fp32.h"
-#include "nnacl/errorcode.h"
+#include "nnacl_c/fp32/activation_fp32.h"
+#include "nnacl_c/errorcode.h"
 
 int DoSigmoid(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   ActivationFp32Args *args = (ActivationFp32Args *)cdata;

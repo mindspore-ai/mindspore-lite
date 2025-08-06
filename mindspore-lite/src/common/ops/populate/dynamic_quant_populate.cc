@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "src/common/ops/populate/populate_register.h"
-#include "nnacl/dynamic_quant_parameter.h"
+#include "nnacl_c/dynamic_quant_parameter.h"
 using mindspore::schema::PrimitiveType_DynamicQuant;
 
 namespace mindspore {

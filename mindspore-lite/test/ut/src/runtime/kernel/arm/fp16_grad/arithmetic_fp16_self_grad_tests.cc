@@ -21,7 +21,7 @@
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
 #include "src/common/file_utils.h"
-#include "nnacl/fp16_grad/arithmetic_self_grad.h"
+#include "nnacl_c/fp16_grad/arithmetic_self_grad.h"
 
 namespace mindspore {
 class TestArithmeticSelfGradFp16 : public mindspore::CommonTest {

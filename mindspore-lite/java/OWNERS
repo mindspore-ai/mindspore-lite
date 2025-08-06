@@ -1,6 +1,9 @@
 approvers:
-- jpc_chenjianping
-- YeFeng_24 #
+- jjfeing
+- YeFeng_24
+- fatmouse007fatmouse007
+- xu_anyue
 
-options:
-  no_parent_owners: true
+reviewers:
+- ZhangZGC
+- chenyihang5
