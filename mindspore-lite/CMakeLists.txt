@@ -245,8 +245,6 @@ endif()
 
 if(MSLITE_TARGET_SITEAI)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/providers/siteai)
-else()
-    set(MSLITE_DEPS_CMSIS on)
 endif()
 
 if(DEFINED ENV{MSLITE_ENABLE_MODEL_ENCRYPTION})
@@ -295,9 +293,6 @@ endif()
 
 if(DEFINED ENV{ENABLE_FAST_HASH_TABLE})
     add_compile_definitions(ENABLE_FAST_HASH_TABLE)
-    if(NOT MSLITE_TARGET_SITEAI)
-        set(MSLITE_DEPS_ROBIN_HOOD_HASHING on)
-    endif()
 endif()
 
 if(DEFINED ENV{MSLITE_ENABLE_MODEL_OBF})
@@ -489,7 +484,6 @@ if(MSVC)
   if(MSLITE_ENABLE_RUNTIME_GLOG)
     add_definitions(-DNOMINMAX)
     add_definitions(-DNOGDI)
-    set(MSLITE_DEPS_DIRENT on)
   endif()
 endif()
 
@@ -907,14 +901,8 @@ if(MSLITE_ENABLE_CONVERTER OR MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENA
     set(MSLITE_DEPS_EIGEN on)
 endif()
 
-if(NOT MSLITE_TARGET_SITEAI)
-    set(MSLITE_DEPS_CMSIS on)
-endif()
-
 if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
     if(NOT MSLITE_TARGET_SITEAI)
-        set(MSLITE_DEPS_MKLDNN on)
-        set(MSLITE_DEPS_LIBEVENT on)
         set(MSLITE_DEPS_PYBIND11 on)
     endif()
 endif()

@@ -2,10 +2,6 @@ set(MINDSPORE_PROJECT_DIR ${TOP_DIR})
 
 find_required_package(Patch)
 
-if(MSLITE_DEPS_ROBIN_HOOD_HASHING)
-    include(${TOP_DIR}/cmake/external_libs/robin.cmake)
-endif()
-
 if(MSLITE_DEPS_FLATBUFFERS)
     include(${TOP_DIR}/cmake/external_libs/flatbuffers.cmake)
 endif()
@@ -35,24 +31,6 @@ if(MSLITE_DEPS_OPENCV)
     include(${TOP_DIR}/cmake/external_libs/opencv.cmake)
 endif()
 
-if(MSLITE_DEPS_FAST_TRANSFORMERS)
-    include(${TOP_DIR}/cmake/external_libs/fast_transformers.cmake)
-endif()
-
-if(MSLITE_DEPS_MKLDNN)
-    if(CMAKE_SYSTEM_NAME MATCHES "Linux")
-        set(USE_MS_THREADPOOL_FOR_DNNL ON)
-    endif()
-    if(USE_MS_THREADPOOL_FOR_DNNL)
-        add_compile_definitions(USE_MS_THREADPOOL_FOR_DNNL)
-    endif()
-    include(${TOP_DIR}/cmake/external_libs/mkl_dnn.cmake)
-endif()
-
-if(MSLITE_DEPS_LIBEVENT)
-    include(${TOP_DIR}/cmake/external_libs/libevent.cmake)
-endif()
-
 if(MSLITE_DEPS_PYBIND11)
     find_package(Python3 COMPONENTS Interpreter Development)
     set(PYTHON_LIBRARIES ${Python3_LIBRARIES})
@@ -76,8 +54,4 @@ endif()
 
 if(MSLITE_DEPS_OPENSSL)
     include(${TOP_DIR}/cmake/external_libs/openssl.cmake)
-endif()
-
-if(MSLITE_DEPS_DIRENT)
-    include(${TOP_DIR}/cmake/external_libs/dirent.cmake)
 endif()
