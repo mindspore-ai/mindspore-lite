@@ -488,7 +488,8 @@ if(PLATFORM_ARM64)
         endif()
         if(MSLITE_ENABLE_CONVERTER)
             install(DIRECTORY ${TOP_DIR}/mindspore-lite/include/registry/ DESTINATION
-                    ${CONVERTER_ROOT_DIR}/include/registry COMPONENT ${RUNTIME_COMPONENT_NAME})
+                    ${CONVERTER_ROOT_DIR}/include/registry COMPONENT ${RUNTIME_COMPONENT_NAME}
+                    PATTERN "opencl_runtime_wrapper.h" EXCLUDE)
             install(FILES ${API_HEADER}  DESTINATION ${CONVERTER_ROOT_DIR}/include/api
                     COMPONENT ${RUNTIME_COMPONENT_NAME})
             install(FILES ${MINDAPI_BASE_HEADER} DESTINATION ${CONVERTER_ROOT_DIR}/include/mindapi/base
@@ -921,7 +922,8 @@ else()
         install(FILES ${TOP_DIR}/mindspore-lite/include/kernel_interface.h DESTINATION ${CONVERTER_ROOT_DIR}/include
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(DIRECTORY ${TOP_DIR}/mindspore-lite/include/registry/ DESTINATION ${CONVERTER_ROOT_DIR}/include/registry
-                COMPONENT ${RUNTIME_COMPONENT_NAME})
+                COMPONENT ${RUNTIME_COMPONENT_NAME}
+                PATTERN "opencl_runtime_wrapper.h" EXCLUDE)
         install(FILES ${API_HEADER}  DESTINATION ${CONVERTER_ROOT_DIR}/include/api
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${MINDAPI_BASE_HEADER} DESTINATION ${CONVERTER_ROOT_DIR}/include/mindapi/base
