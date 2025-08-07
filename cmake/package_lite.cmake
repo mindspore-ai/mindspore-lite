@@ -863,10 +863,6 @@ else()
         endif()
         install(FILES ${glog_LIBPATH}/${glog_name} DESTINATION ${RUNTIME_LIB_DIR}
                 RENAME libmindspore_glog.so.0 COMPONENT ${RUNTIME_COMPONENT_NAME})
-        if(MSLITE_DEPS_MKLDNN)
-                install(FILES ${onednn_LIBPATH}/libdnnl.so.2.2 DESTINATION ${DNNL_DIR}
-                        RENAME libdnnl.so.2 COMPONENT ${RUNTIME_COMPONENT_NAME})
-        endif()
         install(TARGETS mindspore_core mindspore_ops DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${BUILD_DIR}/src/extendrt/convert/libruntime_convert_plugin.so
                 DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})

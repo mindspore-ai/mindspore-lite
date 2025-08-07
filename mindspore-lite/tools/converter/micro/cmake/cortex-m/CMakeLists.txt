@@ -7,7 +7,6 @@ set(MICRO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 include_directories(${NNACL_DIR}/..)
 
 include(${TOP_DIR}/cmake/utils.cmake)
-include(${TOP_DIR}/cmake/external_libs/cmsis.cmake)
 
 set(CMSIS_DIR ${CMAKE_BINARY_DIR}/cmsis)
 message("build cmsis kernels")

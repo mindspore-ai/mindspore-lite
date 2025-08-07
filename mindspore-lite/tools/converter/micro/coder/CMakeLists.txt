@@ -20,10 +20,6 @@ include_directories(${LITE_DIR})
 
 #include coder
 if(NOT MSVC OR NOT WIN32 OR NOT APPLE)
-    if(MSLITE_DEPS_CMSIS)
-        message("MSLITE_DEPS_CMSIS enabled")
-        include(${TOP_DIR}/cmake/external_libs/cmsis.cmake)
-    endif()
     include(${MICRO_DIR}/cmake/package_wrapper.cmake)
     add_subdirectory(wrapper)
 endif()
