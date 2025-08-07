@@ -24,7 +24,7 @@
 #include "extendrt/infer_session.h"
 #include "runtime/hardware/device_context.h"
 #include "extendrt/session/lite_graph_executor.h"
-
+#include "extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"
 namespace mindspore {
 /// \brief Delegate Session implementation, use delegate api for inference.
 struct DelegateGraphInfo {
@@ -64,8 +64,7 @@ class GraphSinkSession : public InferSession {
   Status UpdateWeights(const std::vector<std::vector<std::shared_ptr<mindspore::MSTensor>>> &weights) override;
   Status Finalize() {
     MS_LOG(INFO) << "Finalize is only implemented in single_op_session now.";
-    graph_executor_->Finalize();
-    return kSuccess;
+    return AscendAllocatorPlugin::GetInstance().Finalize();
   }
 
  private:

@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2025 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,9 @@
 #include "pybind11/pybind11.h"
 #include "pybind11/numpy.h"
 #include "pybind11/stl.h"
-
+#ifdef ENABLE_LITE_ACL
+#include "src/extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"
+#endif
 namespace mindspore::lite {
 namespace py = pybind11;
 
@@ -54,6 +56,11 @@ PYBIND11_MODULE(_c_lite_wrapper, m) {
   m.def("create_tensor_by_numpy", &create_tensor_by_numpy);
 
   // call aclFinalize manually before exit.
-  (void)py::module::import("atexit").attr("register")(py::cpp_function{[&]() -> void { return; }});
+  (void)py::module::import("atexit").attr("register")(py::cpp_function{[&]() -> void {
+#ifdef ENABLE_LITE_ACL
+    (void)AscendAllocatorPlugin::GetInstance().Finalize();
+    return;
+#endif
+  }});
 }
 }  // namespace mindspore::lite

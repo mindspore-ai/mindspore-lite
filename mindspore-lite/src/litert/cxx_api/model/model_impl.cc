@@ -1048,10 +1048,4 @@ int ModelImpl::ModelDeObfuscate() {
   }
   return RET_OK;
 }
-
-Status ModelImpl::Finalize() {
-  MS_LOG(INFO) << "Finalize is only support for mindspore_lite's ascend backend.";
-  return kSuccess;
-}
-
 }  // namespace mindspore

@@ -34,6 +34,7 @@ class AscendAllocatorPluginImpl {
   virtual Status CopyHostDataToDevice(void *host_data, void *device_data, size_t data_size) = 0;
   virtual Status CopyDeviceDataToDevice(void *src_device, void *dst_device, size_t src_data_size, size_t dst_data_size,
                                         int src_device_id, int dst_device_id) = 0;
+  virtual Status Finalize() = 0;
 };
 
 class MS_API AscendAllocatorPlugin {
@@ -51,6 +52,7 @@ class MS_API AscendAllocatorPlugin {
   Status CopyHostDataToDevice(void *host_data, void *device_data, size_t data_size);
   Status CopyDeviceDataToDevice(void *src_device, void *dst_device, size_t src_data_size, size_t dst_data_size,
                                 int src_device_id, int dst_device_id);
+  Status Finalize();
 
  private:
   AscendAllocatorPlugin();

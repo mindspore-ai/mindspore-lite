@@ -236,4 +236,20 @@ Status AscendAllocatorPlugin::CopyHostDataToDevice(void *host_data, void *device
 #endif
   return kSuccess;
 }
+
+Status AscendAllocatorPlugin::Finalize() {
+#if !defined(_WIN32)
+  if (!is_registered_) {
+    MS_LOG(INFO) << "AscendAllocatorPlugin is not registered.";
+    return kSuccess;
+  }
+  if (ascend_allocator_plugin_impl_ == nullptr) {
+    MS_LOG(ERROR) << "ascend_allocator_plugin_impl_ is nullptr.";
+    return kLiteError;
+  }
+  return ascend_allocator_plugin_impl_->Finalize();
+#endif
+  return kSuccess;
+}
+
 }  // namespace mindspore

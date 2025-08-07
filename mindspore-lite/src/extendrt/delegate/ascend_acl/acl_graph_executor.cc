@@ -30,82 +30,80 @@ namespace {
 constexpr auto kProviderAcl = "litert";
 }  // namespace
 
-Status AclGraphExecutor::Init() {
-  auto device_list = context_->MutableDeviceInfo();
-  for (const auto &device_info : device_list) {
-    if (device_info == nullptr) {
-      MS_LOG(ERROR) << "Device info get from Context cannot be nullptr";
-      return kLiteError;
-    }
-    if (device_info->GetDeviceType() == DeviceType::kAscend) {
-      bool is_registered = AscendAllocatorPlugin::GetInstance().Register();
-      if (!is_registered) {
-        MS_LOG(ERROR) << "AscendAllocatorPlugin failed to register, cannot do acl memory operations";
-        return kLiteError;
-      }
-      auto ascend_device_info = device_info->Cast<mindspore::AscendDeviceInfo>();
-      if (ascend_device_info == nullptr) {
-        MS_LOG(ERROR) << "Failed to cast device info to AscendDeviceInfo";
-        return kLiteError;
-      }
-      return kSuccess;
-    }
+std::string AclGraphExecutor::GetConfigOption(const std::string &section_name, const std::string &option_name) {
+  auto config_it = config_info_.find(section_name);
+  if (config_it == config_info_.end()) {
+    return "";
   }
-  return kSuccess;
+  auto &options = config_it->second;
+  auto option_it = options.find(option_name);
+  if (option_it == options.end()) {
+    return "";
+  }
+  return option_it->second;
 }
 
+Status AclGraphExecutor::Init() { return kSuccess; }
+
 std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
+  auto device_id = 0;
   auto acl_options_ptr = std::make_shared<AclModelOptions>();
   if (acl_options_ptr == nullptr) {
     MS_LOG(ERROR) << "Acl options make shared failed.";
     return nullptr;
   }
-  auto profiling_path_val = primitive_->GetAttr(lite::kProfilingPathKey);
-  if (profiling_path_val != nullptr) {
-    auto val = GetValue<std::string>(profiling_path_val);
-    acl_options_ptr->profiling_path = val;
+  std::string profiling_path = GetConfigOption(lite::kAscendContextSection, lite::kProfilingPathKey);
+  if (profiling_path != "") {
+    acl_options_ptr->profiling_path = profiling_path;
   }
-  auto dump_path_val = primitive_->GetAttr(lite::kDumpPathKey);
-  if (dump_path_val != nullptr) {
-    auto val = GetValue<std::string>(dump_path_val);
-    acl_options_ptr->dump_path = val;
+
+  std::string dump_path = GetConfigOption(lite::kAscendContextSection, lite::kDumpPathKey);
+  if (dump_path != "") {
+    acl_options_ptr->dump_path = dump_path;
   }
-  auto inner_calc_workspace_size = primitive_->GetAttr(lite::kInnerCalcWorkspaceSize);
-  if (inner_calc_workspace_size != nullptr) {
-    auto val = GetValue<bool>(inner_calc_workspace_size);
-    acl_options_ptr->multi_model_sharing_mem_prepare = val;
+
+  std::string multi_model_sharing_mem_prepare_value =
+    GetConfigOption(lite::kInnerCommon, lite::kInnerCalcWorkspaceSize);
+  if (multi_model_sharing_mem_prepare_value != "") {
+    bool is_multi_model_sharing_mem_prepare = multi_model_sharing_mem_prepare_value == "true" ? true : false;
+    acl_options_ptr->multi_model_sharing_mem_prepare = is_multi_model_sharing_mem_prepare;
   }
-  auto inner_sharing_workspace = primitive_->GetAttr(lite::kInnerSharingWorkspace);
-  if (inner_sharing_workspace != nullptr) {
-    auto val = GetValue<bool>(inner_sharing_workspace);
-    acl_options_ptr->multi_model_sharing_mem = val;
+
+  std::string multi_model_sharing_mem_value = GetConfigOption(lite::kInnerCommon, lite::kInnerSharingWorkspace);
+  if (multi_model_sharing_mem_value != "") {
+    bool is_inner_sharing_workspace = multi_model_sharing_mem_value == "true" ? true : false;
+    acl_options_ptr->multi_model_sharing_mem = is_inner_sharing_workspace;
   }
-  auto inner_model_path = primitive_->GetAttr(lite::kInnerModelPath);
-  if (inner_model_path != nullptr) {
-    auto val = GetValue<std::string>(inner_model_path);
-    acl_options_ptr->model_path = val;
+
+  std::string model_path = GetConfigOption(lite::kInnerCommon, lite::kInnerModelPath);
+  if (model_path != "") {
+    acl_options_ptr->model_path = model_path;
   }
-  auto workspace_key = primitive_->GetAttr(lite::kInnerWorkspace);
-  if (workspace_key != nullptr) {
-    auto val = GetValue<bool>(workspace_key);
-    acl_options_ptr->share_workspace = val;
+
+  std::string share_workspace_value = GetConfigOption(lite::kInnerCommon, lite::kInnerWorkspace);
+  if (share_workspace_value != "") {
+    bool is_workspace = share_workspace_value == "true" ? true : false;
+    acl_options_ptr->share_workspace = is_workspace;
   }
-  auto weightspace_key = primitive_->GetAttr(lite::kInnerWeightspace);
-  if (weightspace_key != nullptr) {
-    auto val = GetValue<bool>(weightspace_key);
-    acl_options_ptr->share_weightspace = val;
+
+  std::string share_weightspace_value = GetConfigOption(lite::kInnerCommon, lite::kInnerWeightspace);
+  if (share_weightspace_value != "") {
+    bool is_weightspace = share_weightspace_value == "true" ? true : false;
+    acl_options_ptr->share_weightspace = is_weightspace;
   }
-  auto weightspace_workspace_key = primitive_->GetAttr(lite::kInnerWeightspaceWorkspace);
-  if (weightspace_workspace_key != nullptr) {
-    auto val = GetValue<bool>(weightspace_workspace_key);
-    acl_options_ptr->share_weightspace_workspace = val;
+
+  std::string weightspace_workspace_value = GetConfigOption(lite::kInnerCommon, lite::kInnerWeightspaceWorkspace);
+  if (weightspace_workspace_value != "") {
+    bool is_weightspace_workspace = weightspace_workspace_value == "true" ? true : false;
+    acl_options_ptr->share_weightspace_workspace = is_weightspace_workspace;
   }
-  auto bundle_model = primitive_->GetAttr(lite::kBundleModel);
-  if (bundle_model != nullptr) {
-    auto val = GetValue<bool>(bundle_model);
-    acl_options_ptr->is_bundle_model = val;
+
+  std::string bundle_model = GetConfigOption(lite::kInnerCommon, lite::kBundleModel);
+  if (bundle_model != "") {
+    bool is_bundle_model = bundle_model == "true" ? true : false;
+    acl_options_ptr->is_bundle_model = is_bundle_model;
   }
-  acl_options_ptr->device_id = static_cast<int32_t>(0);
+  acl_options_ptr->device_id = static_cast<int32_t>(device_id);
   return acl_options_ptr;
 }
 
@@ -154,7 +152,6 @@ bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<st
     MS_LOG(ERROR) << "om data is nullptr.";
     return false;
   }
-  // todo
   primitive_ = op->GetPrim();
   auto acl_options = GenAclOptions();
   if (acl_options == nullptr) {
@@ -206,7 +203,7 @@ bool AclGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<mindspore::
 static std::shared_ptr<LiteGraphExecutor> AclGraphExecutorCreator(const std::shared_ptr<Context> &ctx,
                                                                   const ConfigInfos &config_infos) {
   auto acl_executor = std::make_shared<mindspore::AclGraphExecutor>(ctx, config_infos);
-  if (acl_executor == nullptr && acl_executor->Init() != kSuccess) {
+  if (acl_executor == nullptr || acl_executor->Init() != kSuccess) {
     MS_LOG(ERROR) << "Failed to init GeGraphExecutor";
     return nullptr;
   }

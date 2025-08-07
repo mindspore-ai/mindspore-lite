@@ -383,7 +383,8 @@ static std::shared_ptr<InferSession> DelegateSessionCreator(const std::shared_pt
         return nullptr;
       }
     } else {
-      if (!lite::AscendAclExecutorPlugin::GetInstance().Register()) {
+      if (!lite::AscendAclExecutorPlugin::GetInstance().Register() ||
+          !AscendAllocatorPlugin::GetInstance().Register()) {
         MS_LOG(WARNING) << "Failed to register Ascend ACL plugin";
         return nullptr;
       }

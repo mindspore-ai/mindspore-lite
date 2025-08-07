@@ -50,8 +50,7 @@ class AclGraphExecutor : public LiteGraphExecutor {
   const std::vector<TypeId> GetOutputDataType() { return model_infer_->GetOutputDataType(); }
 
   Status Init();
-
-  void Finalize() override { AclEnvGuard::Finalize(); }
+  std::string GetConfigOption(const std::string &section_name, const std::string &option_name);
 
  private:
   Status BuildCustomAscendKernel(const CNodePtr &cnode);

@@ -69,14 +69,17 @@ inline std::string FindFileWithRecursion(const std::string &parent_dir, const st
 
 inline Status FindSoPath(const std::string &parent_dir, const std::string &target_so, std::string *target_so_path) {
   if (target_so_path == nullptr) {
+    MS_LOG(ERROR) << "Input target_so_path is nullptr.";
     return Status(kMEFailed, "Input target_so_path is nullptr.");
   }
   std::string found_target_so = FindFileWithRecursion(parent_dir, target_so);
   if (found_target_so.empty()) {
+    MS_LOG(ERROR) << "Could not find target so " + target_so + " in " + parent_dir;
     return Status(kMEFailed, "Could not find target so " + target_so + " in " + parent_dir);
   }
   auto realpath = lite::RealPath(found_target_so.c_str());
   if (realpath.empty()) {
+    MS_LOG(ERROR) << "Get target so " + target_so + " real path failed, path: " + found_target_so;
     return Status(kMEFailed, "Get target so " + target_so + " real path failed, path: " + found_target_so);
   }
   *target_so_path = realpath;
