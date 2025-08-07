@@ -4,7 +4,6 @@
 "mindspore-lite/mindspore-lite/tools/converter/parser/onnx/onnx_relu_parser.cc"                            "useStlAlgorithm"
 "mindspore-lite/mindspore-lite/tools/converter/parser/pytorch/pytorch_model_parser.cc"                     "variableScope"
 "mindspore-lite/mindspore-lite/tools/converter/quantizer/quantize_util.cc"                                 "useStlAlgorithm"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_and_aicpu/op_proto/"                        "syntaxError"
 "mindspore-lite/mindspore-lite/tools/optimizer/fusion/batchnorm_to_scale_fusion.cc"                        "nullPointerRedundantCheck"
 
 # src

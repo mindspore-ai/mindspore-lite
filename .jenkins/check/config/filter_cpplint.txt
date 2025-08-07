@@ -11,9 +11,6 @@
 "mindspore-lite/mindspore-lite/tools/benchmark/benchmark_base.cc"                                       "runtime/threadsafe_fn"
 "mindspore-lite/mindspore-lite/tools/benchmark/benchmark_unified_api.cc"                                "runtime/threadsafe_fn"
 "mindspore-lite/mindspore-lite/tools/benchmark/run_benchmark.cc"                                        "runtime/threadsafe_fn"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/ascendc/op_host/decoder_kv_cache.cpp"        "runtime/references"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/ascendc/op_host/platform_ascendc.h"          "runtime/references"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/ascendc/op_host/prompt_kv_cache.cpp"         "runtime/references"
 "mindspore-lite/mindspore-lite/tools/optimizer/fusion/flash_attention_fusion.cc"                        "runtime/string"
 
 # src
@@ -65,32 +62,6 @@
 "mindspore-lite/mindspore-lite/examples/runtime_gpu_extend/src/cl"                                      "readability/fn_size"
 "mindspore-lite/mindspore-lite/include/lite_utils.h"                                                    "build/include_what_you_use"
 "mindspore-lite/mindspore-lite/python/src/lite_infer_pybind.cc"                                         "runtime/references"
-
-# ascend samples
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/aicpu/sample/"                               "build/include_subdir"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/aicpu/sample/"                               "runtime/references"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/aicpu/sample/"                               "whitespace/comments"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/aicpu/sample/"                               "legal/copyright"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/aicpu/sample/"                               "whitespace/ending_newline"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/aicpu/sample/"                               "build/include"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/ascendc/op_host/"                            "build/include"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/ascendc/op_host/"                            "runtime/references"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/ascendc/op_kernel/"                          "build/include"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/ascendc/op_kernel/"                          "build/namespaces"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_and_aicpu/cpukernel/impl/"               "build/include"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_and_aicpu/op_proto/"                     "build/include"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_dsl/sample/"                             "build/include_subdir"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_dsl/sample/"                             "runtime/references"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_dsl/sample/"                             "whitespace/comments"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_dsl/sample/"                             "legal/copyright"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_dsl/sample/"                             "whitespace/ending_newline"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_dsl/sample/"                             "build/include"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"                             "build/include_subdir"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"                             "runtime/references"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"                             "whitespace/comments"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"                             "legal/copyright"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"                             "whitespace/ending_newline"
-"mindspore-lite/mindspore-lite/tools/kernel_builder/ascend/tbe_tik/sample/"                             "build/include"
 
 # nnacl
 "mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/"                                                   "readability/casting"
