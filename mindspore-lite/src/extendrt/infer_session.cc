@@ -119,7 +119,7 @@ SessionType InferSession::SelectSession(const std::shared_ptr<Context> &context,
 }
 
 Status InferSession::Finalize() {
-  MS_LOG(INFO) << "Finalize is only implemented in single_op_session now.";
+  MS_LOG(INFO) << "Finalize is only implemented in delegate_session now.";
   return kLiteError;
 }
 }  // namespace mindspore

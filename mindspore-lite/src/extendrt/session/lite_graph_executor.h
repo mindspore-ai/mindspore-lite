@@ -33,7 +33,6 @@ class LiteGraphExecutor {
   virtual ~LiteGraphExecutor() = default;
 
   virtual void Initialize() { return; }
-  virtual void Finalize() { return; }
 
   virtual bool CompileGraph(const std::shared_ptr<FuncGraph> &graph,
                             const std::map<std::string, std::string> &compile_options, uint32_t *graph_id) {

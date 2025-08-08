@@ -19,6 +19,8 @@
 #include "src/common/log_adapter.h"
 #include "plugin/res_manager/ascend/symbol_interface/acl_rt_symbol.h"
 #include "plugin/res_manager/ascend/symbol_interface/symbol_utils.h"
+#include "plugin/res_manager/ascend/symbol_interface/acl_symbol.h"
+#include "extendrt/delegate/ascend_acl/acl_env_guard.h"
 
 namespace mindspore {
 AclAllocator *CreateAclAllocator() {
@@ -285,6 +287,16 @@ Status AclAllocator::CopyDeviceDataToDevice(void *src_device_data, void *dst_dev
   ret = CALL_ASCEND_API(aclrtSetCurrentContext, curr_context);
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Set runtime context failed.";
+    return kLiteError;
+  }
+  return kSuccess;
+}
+
+Status AclAllocator::Finalize() {
+  MS_LOG(INFO) << "start finalize.";
+  auto ret = AclEnvGuard::Finalize();
+  if (!ret) {
+    MS_LOG(ERROR) << "finalize failed.";
     return kLiteError;
   }
   return kSuccess;

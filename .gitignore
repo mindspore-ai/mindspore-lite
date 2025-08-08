@@ -1,6 +1,7 @@
 # MindSpore Lite
 build/
 output/
+.idea/
 
 ## third_party
 third_party/proto/caffe/caffe.proto

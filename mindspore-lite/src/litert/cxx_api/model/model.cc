@@ -620,10 +620,7 @@ std::vector<char> Model::GetModelInfo(const std::vector<char> &key) {
 }
 
 Status Model::Finalize() {
-  if (impl_ == nullptr) {
-    MS_LOG(ERROR) << "Model implement is null!";
-    return kLiteNullptr;
-  }
-  return impl_->Finalize();
+  MS_LOG(INFO) << "Finalize is only support for mindspore_lite's ascend backend.";
+  return kSuccess;
 }
 }  // namespace mindspore
