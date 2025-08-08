@@ -421,6 +421,7 @@ if(PLATFORM_ARM64)
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/format.h
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/type_id.h
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/types.h
+            ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/macros.h
             DESTINATION ${RUNTIME_INC_DIR}/mindapi/base
             COMPONENT ${RUNTIME_COMPONENT_NAME})
     install(DIRECTORY ${TOP_DIR}/mindspore/include/api/ DESTINATION ${RUNTIME_INC_DIR}/api
@@ -674,6 +675,7 @@ elseif(PLATFORM_ARM32)
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/format.h
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/type_id.h
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/types.h
+            ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/macros.h
             DESTINATION ${RUNTIME_INC_DIR}/mindapi/base
             COMPONENT ${RUNTIME_COMPONENT_NAME})
     install(DIRECTORY ${TOP_DIR}/mindspore/include/api/ DESTINATION ${RUNTIME_INC_DIR}/api
@@ -772,6 +774,7 @@ elseif(WIN32)
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/format.h
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/type_id.h
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/types.h
+            ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/macros.h
             DESTINATION ${RUNTIME_INC_DIR}/mindapi/base
             COMPONENT ${RUNTIME_COMPONENT_NAME})
     install(DIRECTORY ${TOP_DIR}/mindspore/include/api/ DESTINATION ${RUNTIME_INC_DIR}/api
@@ -823,6 +826,7 @@ else()
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/format.h
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/type_id.h
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/types.h
+            ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/macros.h
             DESTINATION ${RUNTIME_INC_DIR}/mindapi/base
             COMPONENT ${RUNTIME_COMPONENT_NAME})
     install(DIRECTORY ${TOP_DIR}/mindspore/include/api/ DESTINATION ${RUNTIME_INC_DIR}/api
