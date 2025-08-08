@@ -72,6 +72,9 @@ elseif(NOT MSVC)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -fomit-frame-pointer -fstrict-aliasing -ffunction-sections \
         -fdata-sections -ffast-math -fno-rtti")
     endif()
+    if(MSLITE_ENABLE_AVX512)
+        string(REPLACE "-fno-rtti" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+    endif()
 endif()
 
 if(MSLITE_ENABLE_MULTI_LAYOUT)
