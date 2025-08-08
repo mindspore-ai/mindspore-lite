@@ -199,26 +199,6 @@ function(__install_white_list_ops)
             )
 endfunction()
 
-function(__install_ascend_tbe_and_aicpu)
-    set(TBE_CUSTOM_OPP_DIR ${BUILD_DIR}/tools/kernel_builder/ascend/tbe_and_aicpu/makepkg/packages)
-    set(TBE_OPP_DST_DIR ${RUNTIME_PKG_NAME}/tools/custom_kernels/ascend/tbe_and_aicpu)
-    install(DIRECTORY ${TBE_CUSTOM_OPP_DIR} DESTINATION ${TBE_OPP_DST_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
-    install(FILES ${TBE_CUSTOM_OPP_DIR}/../install.sh DESTINATION
-                  ${TBE_OPP_DST_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
-    install(FILES ${TBE_CUSTOM_OPP_DIR}/../set_env.bash DESTINATION
-                  ${TBE_OPP_DST_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
-endfunction()
-
-function(__install_ascend_ascendc)
-    set(ASCEMDC_CUSTOM_OPP_DIR ${BUILD_DIR}/tools/kernel_builder/ascend/ascendc/makepkg/packages)
-    set(ASCENDC_OPP_DST_DIR ${RUNTIME_PKG_NAME}/tools/custom_kernels/ascend/ascendc)
-    install(DIRECTORY ${ASCEMDC_CUSTOM_OPP_DIR} DESTINATION ${ASCENDC_OPP_DST_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
-    install(FILES ${CMAKE_BINARY_DIR}/ascendc_scripts/install.sh DESTINATION
-            ${ASCENDC_OPP_DST_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
-    install(FILES ${CMAKE_BINARY_DIR}/ascendc_scripts/set_env.bash DESTINATION
-            ${ASCENDC_OPP_DST_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
-endfunction()
-
 # full mode will also package the files of lite_cv mode.
 if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full"
         AND NOT(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
@@ -416,8 +396,6 @@ if(PLATFORM_ARM64)
                 install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_ge/libascend_ge_plugin.so
                         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
-            __install_ascend_tbe_and_aicpu()
-            __install_ascend_ascendc()
         endif()
         if(MSLITE_GPU_BACKEND STREQUAL tensorrt)
             install(FILES ${BUILD_DIR}/src/extendrt/delegate/tensorrt/libtensorrt_plugin.so
@@ -671,8 +649,6 @@ elseif(PLATFORM_ARM32)
                 install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_ge/libascend_ge_plugin.so
                         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
-            __install_ascend_tbe_and_aicpu()
-            __install_ascend_ascendc()
         endif()
         if(MSLITE_GPU_BACKEND STREQUAL tensorrt)
             install(FILES ${BUILD_DIR}/src/extendrt/delegate/tensorrt/libtensorrt_plugin.so
@@ -874,8 +850,6 @@ else()
                 install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_ge/libascend_ge_plugin.so
                         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
-            __install_ascend_tbe_and_aicpu()
-            __install_ascend_ascendc()
             if(MSLITE_ASCEND_TARGET)
                 install(TARGETS ascend_native_plugin
                 DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})

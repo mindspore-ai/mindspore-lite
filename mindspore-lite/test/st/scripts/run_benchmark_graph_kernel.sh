@@ -9,9 +9,6 @@ function Run_Converter() {
 
     cp tools/converter/converter/converter_lite ./ || exit 1
     export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:./tools/converter/lib/:./tools/converter/third_party/glog/lib
-    if [[  ${backend} =~ "ascend"  ]]; then
-     source ${benchmark_test_path}/ascend_custom_op/mslite_tbe_and_aicpu/bin/set_env.bash
-    fi
     rm -rf ${ms_models_path}
     mkdir -p ${ms_models_path}
     echo "convert model cfg: "${models_server_inference_cfg_file_list[*]}
@@ -34,9 +31,6 @@ function Run_Benchmark() {
     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./runtime/lib:./tools/converter/lib/
     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./runtime/third_party/glog
     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./runtime/third_party/dnnl
-    if [[  ${backend} =~ "ascend"  ]]; then
-        source ${benchmark_test_path}/ascend_custom_op/mslite_tbe_and_aicpu/bin/set_env.bash
-    fi
     cp tools/benchmark/benchmark ./ || exit 1
 
     echo "benchmark model cfg list:"
@@ -211,20 +205,6 @@ function ConfigGPU() {
     export CUDA_VISIBLE_DEVICES=${device_id}
 }
 
-function InstallAscendCustomOps() {
-    echo "prepare to install ascend custom op at: ${benchmark_test_path}/ascend_custom_op"
-    cd ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/
-    install_script="bash tools/custom_kernels/ascend/tbe_and_aicpu/install.sh --install-path=${benchmark_test_path}/ascend_custom_op"
-    ${install_script}
-    install_result=$?
-    if [ ${install_result} != 0 ]; then
-        echo "install ascend custom op failed, run '${install_script}' failed."
-        exit 1
-    fi
-    source ${benchmark_test_path}/ascend_custom_op/mslite_tbe_and_aicpu/bin/set_env.bash
-    echo "Successfully installed ascend custom op, ASCEND_CUSTOM_OPP_PATH is: $ASCEND_CUSTOM_OPP_PATH"
-}
-
 function ConfigAscend() {
     echo "Start to copy Ascend local file"
     benchmark_device=Ascend
@@ -337,11 +317,6 @@ echo "installing akg..."
 python3 -m pip uninstall -y mindspore_lite || exit 1
 python3 -m pip uninstall -y akg || exit 1
 python3 -m pip install ./mindspore-lite-${version}-linux-${arch}/tools/akg/*.whl  || exit 1
-
-# install ascend custom op
-if [[ ${backend} =~ "ascend" ]]; then
-    InstallAscendCustomOps
-fi
 
 # Write converter result to temp file
 run_converter_log_file=${benchmark_test_path}/run_converter_log.txt

@@ -82,38 +82,9 @@ def set_env(func):
     """set env for Ascend custom opp"""
 
     def wrapper(*args, **kwargs):
-        current_path = os.path.dirname(os.path.realpath(__file__))
-        mslite_ascend_ascendc_custom_kernel_path = os.path.join(current_path,
-                                                                "custom_kernels",
-                                                                "ascend", "ascendc",
-                                                                "packages", "vendors", "mslite_ascendc")
-        mslite_ascend_tbe_custom_kernel_path = os.path.join(current_path,
-                                                            "custom_kernels",
-                                                            "ascend", "tbe_and_aicpu", "packages",
-                                                            "vendors", "mslite_tbe_and_aicpu")
-        if os.path.exists(mslite_ascend_tbe_custom_kernel_path):
-            if os.getenv('ASCEND_CUSTOM_OPP_PATH'):
-                if mslite_ascend_tbe_custom_kernel_path in os.environ['ASCEND_CUSTOM_OPP_PATH']:
-                    logging.info("mslite ascend tbe custom kernel path found.")
-                    return func(*args, **kwargs)
-                os.environ['ASCEND_CUSTOM_OPP_PATH'] = mslite_ascend_tbe_custom_kernel_path + ":" + \
-                                                       os.environ['ASCEND_CUSTOM_OPP_PATH']
-            else:
-                os.environ['ASCEND_CUSTOM_OPP_PATH'] = mslite_ascend_tbe_custom_kernel_path
-        else:
-            logging.warning(
-                "mslite tbe_and_aicpu custom kernel path not found")
-        if os.path.exists(mslite_ascend_ascendc_custom_kernel_path):
-            if os.getenv('ASCEND_CUSTOM_OPP_PATH'):
-                if mslite_ascend_ascendc_custom_kernel_path in os.environ['ASCEND_CUSTOM_OPP_PATH']:
-                    logging.info("mslite ascend ascendc custom kernel path found.")
-                    return func(*args, **kwargs)
-                os.environ['ASCEND_CUSTOM_OPP_PATH'] = mslite_ascend_ascendc_custom_kernel_path + ":" + \
-                                                       os.environ['ASCEND_CUSTOM_OPP_PATH']
-            else:
-                os.environ['ASCEND_CUSTOM_OPP_PATH'] = mslite_ascend_ascendc_custom_kernel_path
-        else:
-            logging.warning("mslite ascendc custom kernel path not found")
+        if not os.getenv('ASCEND_CUSTOM_OPP_PATH'):
+            logging.warning("Ascend custom operator path not found")
+
         return func(*args, **kwargs)
 
     return wrapper
