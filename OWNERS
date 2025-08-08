@@ -21,3 +21,8 @@ files:
     - YeFeng_24
     - fatmouse007fatmouse007
     - xu_anyue
+
+  ".gitmodules":
+    approvers:
+    - YeFeng_24
+    - qll1998  # qiuleilei
