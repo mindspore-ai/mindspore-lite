@@ -94,6 +94,15 @@ if [[ $backend == "all" || $backend == "x86_cloud_onnx" || $backend == "x86_clou
     fi
 fi
 
+if [[ $backend == "all" || $backend == "arm64_cloud_onnx" || $backend == "arm64_cloud_tf" ]]; then
+    sh $cur_path/scripts/run_benchmark_arm64_cloud.sh -r $release_path -m $models_path -e $backend -l $level -p $fail_not_return
+    arm64_status=$?
+    if [[ $arm64_status -ne 0 ]]; then
+      echo "Run arm64_cloud failed"
+      exit 1
+    fi
+fi
+
 if [[ $backend == "all" || $backend == "x86-all" || $backend == "x86_avx512" || $backend == "x86_avx512_onnx" || $backend == "x86_avx512_tf" || \
       $backend == "x86_avx512_tflite" || $backend == "x86_avx512_caffe" || $backend == "x86_avx512_mindir" ]]; then
     sh $cur_path/scripts/run_benchmark_x86.sh -r $release_path -m $models_path -e $backend -l $level -p $fail_not_return
