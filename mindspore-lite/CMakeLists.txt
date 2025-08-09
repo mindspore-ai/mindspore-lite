@@ -616,8 +616,8 @@ if(ENABLE_ASAN)
 endif()
 
 if(MSLITE_ENABLE_COVERAGE)
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -g --coverage -fprofile-arcs -ftest-coverage")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -g --coverage -fprofile-arcs -ftest-coverage")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g --coverage -fprofile-arcs -ftest-coverage -lgcov")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g --coverage -fprofile-arcs -ftest-coverage -lgcov")
 endif()
 
 if(MSLITE_ENABLE_ACL)

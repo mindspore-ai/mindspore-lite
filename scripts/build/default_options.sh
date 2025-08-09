@@ -24,8 +24,6 @@ init_default_options()
   export THREAD_NUM=8
   export DEBUG_MODE="off"
   VERBOSE=""
-  export MSLITE_ENABLE_COVERAGE="off"
-  # export MSLITE_ENABLE_TESTCASES="off"
   export ENABLE_ASAN="off"
   export ENABLE_PROFILE="off"
   export INC_BUILD="off"
