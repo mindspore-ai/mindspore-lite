@@ -57,8 +57,7 @@ class AclGraphExecutor : public LiteGraphExecutor {
  private:
   Status BuildCustomAscendKernel(const CNodePtr &cnode);
   std::shared_ptr<AclModelOptions> GenAclOptions();
-
- private:
+  bool GetDeviceID(int32_t *device_id);
   std::shared_ptr<mindspore::Context> context_ = nullptr;
   ConfigInfos config_info_;
   std::shared_ptr<ModelInfer> model_infer_;
