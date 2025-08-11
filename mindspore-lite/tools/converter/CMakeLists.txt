@@ -454,8 +454,8 @@ set(CCSRC_SRC_NEW ${CCSRC_DIR}/backend/common/optimizer/graph_optimizer.cc
     ${CCSRC_DIR}/common/debug/common.cc
     ${CCSRC_DIR}/utils/compile_cache_context.cc
     ${CCSRC_DIR}/runtime/device/res_manager/utils/convert_tensor_utils.cc
-    ${OPS_DIR}/kernel/common/device_address.cc
-    ${OPS_DIR}/kernel/common/format_utils.cc
+    ${CCSRC_DIR}/runtime/hardware_abstract/kernel_base/device_address.cc
+    ${CCSRC_DIR}/runtime/hardware_abstract/kernel_base/format_utils.cc
     )
 if(NOT WIN32)
     set(CCSRC_SRC_NEW ${CCSRC_SRC_NEW}
@@ -465,13 +465,13 @@ if(NOT WIN32)
 endif()
 if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
     set(CCSRC_SRC_NEW ${CCSRC_SRC_NEW}
-    ${OPS_DIR}/kernel/common/kernel_factory.cc
-    ${OPS_DIR}/kernel/common/kernel_tensor.cc
-    ${OPS_DIR}/kernel/common/kernel.cc)
+    ${CCSRC_DIR}/runtime/hardware_abstract/kernel_base/kernel_factory.cc
+    ${CCSRC_DIR}/runtime/hardware_abstract/kernel_base/kernel_tensor.cc
+    ${CCSRC_DIR}/runtime/hardware_abstract/kernel_base/kernel.cc)
 endif()
 add_library(ccsrc_src_new_mid OBJECT ${CCSRC_SRC_NEW})
 target_compile_definitions(ccsrc_src_new_mid PRIVATE BACKEND_DLL)
 target_compile_definitions(ccsrc_src_new_mid PRIVATE COMMON_DLL)
-target_compile_definitions(ccsrc_src_new_mid PRIVATE OPS_KERNEL_COMMON_DLL)
+target_compile_definitions(ccsrc_src_new_mid PRIVATE RUNTIME_HARDWARE_DLL)
 target_link_libraries(mindspore_converter ccsrc_src_new_mid)
 add_subdirectory(converter_lite)

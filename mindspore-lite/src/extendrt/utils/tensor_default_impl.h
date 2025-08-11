@@ -26,7 +26,7 @@
 
 #include "include/api/types.h"
 #include "ir/tensor.h"
-#include "common/device_address.h"
+#include "runtime/hardware_abstract/kernel_base/device_address.h"
 #include "common/utils.h"
 #include "common/mutable_tensor_impl.h"
 #include "src/extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"

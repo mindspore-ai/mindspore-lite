@@ -21,7 +21,7 @@
 #include <memory>
 
 #include "utils/hash_map.h"
-#include "runtime/hardware/device_context.h"
+#include "runtime/hardware_abstract/device_context/device_context.h"
 #include "src/extendrt/delegate_graph_executor.h"
 #include "include/api/context.h"
 #include "src/common/config_infos.h"

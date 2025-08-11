@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 #include "extendrt/infer_session.h"
-
-#include "common/ms_factory.h"
+#include "runtime/hardware_abstract/kernel_base/ms_factory.h"
 #include "extendrt/delegate/factory.h"
 #include "extendrt/session/factory.h"
 #include "extendrt/delegate/plugin/litert_executor_plugin.h"

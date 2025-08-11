@@ -30,7 +30,7 @@
 #include "include/api/data_type.h"
 #include "include/api/types.h"
 #include "include/api/status.h"
-#include "common/kernel.h"
+#include "runtime/hardware_abstract/kernel_base/kernel.h"
 #include "include/common/utils/anfalgo.h"
 
 namespace mindspore {

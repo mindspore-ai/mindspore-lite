@@ -39,7 +39,7 @@
 #include "op_proto/inc/array_ops.h"
 #include "op_proto/inc/elewise_calculation_ops.h"
 #include "tools/optimizer/graph/attr_to_args_pass.h"
-
+#include "utils/ms_utils_secure.h"
 namespace mindspore {
 namespace {
 constexpr auto kProviderGe = "ge";

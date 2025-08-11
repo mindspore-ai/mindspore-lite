@@ -34,8 +34,9 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/ccsrc/include/common/utils/convert_utils.h"
 #include "mindspore/core/include/utils/trace_info.h"
-
+#include "mindspore/core/include/ir/func_graph_flag.h"
 #include "ir/tensor_new.h"
+
 namespace mindspore {
 const PrimitivePtr kPrimMakeTupleV2 = std::make_shared<Primitive>("make_tuple");
 ValuePtr FuncGraphUtils::GetNodeValuePtr(AnfNodePtr input_node) {
