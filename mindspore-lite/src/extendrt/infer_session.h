@@ -137,9 +137,7 @@ class InferSession : public std::enable_shared_from_this<InferSession> {
   /// \return The input tensor with the given name, if the name is not found, an invalid tensor is returned.
   virtual MutableTensorImplPtr GetInputByTensorName(uint32_t graph_id, const std::string &name) = 0;
 
-  virtual Status UpdateWeights(const std::vector<std::vector<std::shared_ptr<mindspore::MSTensor>>> &weights) {
-    return kLiteError;
-  }
+  virtual Status UpdateWeights(const std::vector<std::vector<mindspore::MSTensor>> &weights) { return kLiteError; }
 
   // release inference resource, only used for mindspore_lite's ascend backend now.
   virtual Status Finalize();

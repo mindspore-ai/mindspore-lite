@@ -760,7 +760,10 @@ MSTensor ModelImpl::GetOutputByTensorName(const std::string &name) {
   return MSTensor(tensor_impl);
 }
 
-Status ModelImpl::UpdateWeights(const std::vector<std::vector<MSTensor>> &weights) { return kSuccess; }
+Status ModelImpl::UpdateWeights(const std::vector<std::vector<MSTensor>> &weights) {
+  MS_CHECK_TRUE_MSG(session_, kLiteError, "session is nullptr!");
+  return session_->UpdateWeights(weights);
+}
 
 Status ModelImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
                           const MSKernelCallBack &before, const MSKernelCallBack &after) {

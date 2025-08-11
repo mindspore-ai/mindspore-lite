@@ -2,6 +2,18 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${TOP_DIR}/mindspore-lite/minddata/dataset)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,-rpath,$ORIGIN/")
 
+set(ASCEND_VERSION_FILE "${ASCEND_PATH}/latest/compiler/version.info")
+if(MSLITE_ENABLE_ACL AND EXISTS ${ASCEND_VERSION_FILE})
+    file(STRINGS ${ASCEND_VERSION_FILE} CANN_VERSION_STRING LIMIT_INPUT 20)
+    string(REGEX MATCH "([0-9]+\\.[0-9]+)" EXTRACTED_VERSION "${CANN_VERSION_STRING}")
+    set(VERSION_FLOW "${EXTRACTED_VERSION}")
+    message("cann version:" ${VERSION_FLOW})
+    if(VERSION_FLOW GREATER_EQUAL 7.5)
+        message("define enable bundle")
+        add_compile_definitions(ENABLE_BUNDLE)
+    endif()
+endif()
+
 link_directories(${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
 file(GLOB ACL_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/api/*.cc
