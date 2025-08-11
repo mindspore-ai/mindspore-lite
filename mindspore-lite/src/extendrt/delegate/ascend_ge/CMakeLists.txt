@@ -31,10 +31,13 @@ find_library(libaicpu_engine_common libaicpu_engine_common.so ${ASCEND_CANN_RUNT
         ${ASCEND_TOOLKIT_RUNTIME_PATH})
 find_library(ge_runner libge_runner.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
 
+# Ascend_ge_plugin needs to link multiple So,
+# and since there are static variables or functions with the same name in different So,
+# it is necessary to ensure that mindspore-extendrt is linked first, and then mindspore_graph_ir is linked;
+# Currently, it has been identified that there is a static CreateTensor func in the MSTensor object
+target_link_libraries(ascend_ge_plugin mindspore-extendrt)
 target_link_libraries(ascend_ge_plugin ${ge_graph} ${ge_compiler} ${acl_retr} ${acl_cblas} ${acl_dvpp}
         ${acl_runtime} ${libplatform} ${libcompress} ${libopskernel} ${libaicore_utils}
         ${libaicpu_engine_common} ${acl} ${ge_runner} mindspore_converter mindspore_core mindspore_ops
         mindspore_graph_ir)
-
-target_link_libraries(ascend_ge_plugin mindspore-extendrt)
 set_target_properties(ascend_ge_plugin PROPERTIES INSTALL_RPATH "$ORIGIN")
