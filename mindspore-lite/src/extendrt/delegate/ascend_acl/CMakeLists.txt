@@ -9,8 +9,6 @@ find_library(acl_cblas libacl_cblas.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOL
 file(GLOB_RECURSE ASCEND_SRC ${CMAKE_CURRENT_SOURCE_DIR}
         "*.cc"
         )
-#list(APPEND ASCEND_SRC $<TARGET_OBJECTS:_mindspore_ascend_op_adapter_obj>
-#        $<TARGET_OBJECTS:_mindspore_transform_graph_ir_obj> $<TARGET_OBJECTS:_mindspore_ascend_symbol_obj>)
 
 set_property(SOURCE ${ASCEND_SRC} PROPERTY COMPILE_DEFINITIONS
         LOG_HDR_FILE_REL_PATH="mindspore-lite/../mindspore/mindspore/core/include/utils/log_adapter.h"
@@ -43,5 +41,3 @@ else()
     target_link_libraries(ascend_acl_plugin ${ge_graph} ${ge_compiler} ${acl_cblas} ${acl_dvpp} ${acl_runtime}
         ${libplatform} ${libcompress} ${libopskernel} ${libaicore_utils} ${libaicpu_engine_common} ${acl})
 endif()
-# target_link_libraries(ascend_acl_plugin mindspore-extendrt)
-

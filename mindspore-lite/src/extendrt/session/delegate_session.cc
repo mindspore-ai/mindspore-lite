@@ -245,18 +245,26 @@ Status GraphSinkSession::RunGraph(uint32_t graph_id, const std::vector<mindspore
   if (inputs.size() != input_infos.size()) {
     MS_LOG(ERROR) << "Input size not match, graph input size " << input_infos.size() << ", given input size "
                   << inputs.size();
-    return kCoreFailed;
+    return kLiteError;
   }
   for (size_t i = 0; i < inputs.size(); i++) {
     if (input_infos[i] == nullptr) {
       MS_LOG(ERROR) << "Input " << i << " info is nullptr";
-      return kCoreFailed;
+      return kLiteError;
     }
   }
   bool ret = graph_executor_->RunGraph(graph_id, inputs, outputs, options_);
   if (!ret) {
     MS_LOG(ERROR) << "GraphSinkSession::RunGraph run graph failed";
     return kCoreFailed;
+  }
+  // reset model output tensor name
+  if (graph_infos_[graph_id].output_names.size() != outputs->size()) {
+    MS_LOG(ERROR) << "model output size is wrong.";
+    return kLiteError;
+  }
+  for (size_t i = 0; i < outputs->size(); i++) {
+    outputs->at(i).SetTensorName(graph_infos_[graph_id].output_names[i]);
   }
   return kSuccess;
 }
