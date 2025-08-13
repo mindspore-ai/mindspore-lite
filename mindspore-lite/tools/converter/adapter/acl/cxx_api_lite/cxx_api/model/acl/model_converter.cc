@@ -30,6 +30,10 @@
 
 namespace mindspore {
 namespace {
+// some config is not supported in the update subgraph, do not add to the update_options. e.g. lora weight update.
+const std::set<std::string> update_options_blacklist = {
+  "ge.dynamicDims",
+};
 std::string GetAscendPath() {
   Dl_info info;
   if (dladdr(reinterpret_cast<void *>(aclrtMalloc), &info) == 0) {
@@ -128,6 +132,10 @@ Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &grap
     for (auto it : build_options) {
       bund_bundle_options.insert(
         std::make_pair(ge::AscendString(it.first.c_str()), ge::AscendString(it.second.c_str())));
+      // some config is not supported in update subgraph, do not add to the update_options.
+      if (update_options_blacklist.find(it.first) == update_options_blacklist.end()) {
+        update_options.insert(std::make_pair(ge::AscendString(it.first.c_str()), ge::AscendString(it.second.c_str())));
+      }
     }
     std::vector<ge::GraphWithOptions> graph_and_options;
     graph_and_options.push_back(ge::GraphWithOptions{split_graphs.infer_graph, bund_bundle_options});
