@@ -32,6 +32,8 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_d.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
+#include "mindspore/ccsrc/include/common/utils/convert_utils.h"
+#include "mindspore/core/include/utils/trace_info.h"
 
 #include "ir/tensor_new.h"
 namespace mindspore {

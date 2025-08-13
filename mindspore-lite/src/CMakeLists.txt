@@ -72,9 +72,6 @@ elseif(NOT MSVC)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -fomit-frame-pointer -fstrict-aliasing -ffunction-sections \
         -fdata-sections -ffast-math -fno-rtti")
     endif()
-    if(MSLITE_ENABLE_AVX512)
-        string(REPLACE "-fno-rtti" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
-    endif()
 endif()
 
 if(MSLITE_ENABLE_MULTI_LAYOUT)
@@ -327,6 +324,7 @@ endif()
 if(MSLITE_ENABLE_MINDRT)
     if((NOT MSLITE_ENABLE_CONVERTER) AND (NOT MSLITE_ENABLE_KERNEL_EXECUTOR))
         add_subdirectory(${CORE_DIR}/mindrt mindspore_mindrt)
+        target_compile_options(mindrt_mid PRIVATE -frtti)
     endif()
     set(LITE_SRC ${LITE_SRC}
         ${CMAKE_CURRENT_SOURCE_DIR}/litert/lite_mindrt.cc

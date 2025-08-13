@@ -28,7 +28,6 @@
 #endif
 #include "src/common/log_adapter.h"
 #include "src/common/log_util.h"
-#include "include/securec.h"
 
 #ifndef SECUREC_MEM_MAX_LEN
 #define SECUREC_MEM_MAX_LEN 0x7fffffffUL
@@ -291,7 +290,7 @@ std::unique_ptr<Byte[]> Decrypt(const std::string &lib_path, size_t *decrypt_len
       MS_LOG(ERROR) << "buffer is invalid.";
       return nullptr;
     }
-    memcpy_s(tag, Byte16, model_data + offset, Byte16);
+    memcpy(tag, model_data + offset, Byte16);
     offset += Byte16;
     if (offset + sizeof(int32_t) > data_size) {
       MS_LOG(ERROR) << "assign len is invalid.";
@@ -322,8 +321,7 @@ std::unique_ptr<Byte[]> Decrypt(const std::string &lib_path, size_t *decrypt_len
       decrypt_block_buf = nullptr;
       return nullptr;
     }
-    memcpy_s(decrypt_data.get() + *decrypt_len, static_cast<size_t>(decrypt_block_len), decrypt_block_buf,
-             static_cast<size_t>(decrypt_block_len));
+    memcpy(decrypt_data.get() + *decrypt_len, decrypt_block_buf, static_cast<size_t>(decrypt_block_len));
     free(decrypt_block_buf);
     decrypt_block_buf = nullptr;
     *decrypt_len += static_cast<size_t>(decrypt_block_len);
