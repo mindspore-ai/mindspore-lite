@@ -3,26 +3,26 @@ set(MICRO_DIR ${TOP_DIR}/mindspore-lite/tools/converter/micro)
 
 function(__install_micro_wrapper)
     file(GLOB NNACL_FILES GLOB ${NNACL_DIR}/*.h)
-    install(FILES ${NNACL_FILES} DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl COMPONENT ${RUNTIME_COMPONENT_NAME})
-    install(DIRECTORY ${NNACL_DIR}/base DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl
+    install(FILES ${NNACL_FILES} DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl_c COMPONENT ${RUNTIME_COMPONENT_NAME})
+    install(DIRECTORY ${NNACL_DIR}/base DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl_c
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
-    install(DIRECTORY ${NNACL_DIR}/int8 DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl
+    install(DIRECTORY ${NNACL_DIR}/int8 DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl_c
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
-    install(DIRECTORY ${NNACL_DIR}/fp32 DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl
+    install(DIRECTORY ${NNACL_DIR}/fp32 DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl_c
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
-    install(DIRECTORY ${NNACL_DIR}/fp16 DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl
+    install(DIRECTORY ${NNACL_DIR}/fp16 DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl_c
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
     install(FILES ${NNACL_DIR}/fp32_grad/activation_grad_fp32.h DESTINATION
-            ${CODEGEN_ROOT_DIR}/include/nnacl/fp32_grad COMPONENT ${RUNTIME_COMPONENT_NAME})
+            ${CODEGEN_ROOT_DIR}/include/nnacl_c/fp32_grad COMPONENT ${RUNTIME_COMPONENT_NAME})
     install(FILES ${NNACL_DIR}/fp32_grad/softmax_cross_entropy_with_logits.h DESTINATION
-            ${CODEGEN_ROOT_DIR}/include/nnacl/fp32_grad COMPONENT ${RUNTIME_COMPONENT_NAME})
-    install(DIRECTORY ${NNACL_DIR}/kernel DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl
+            ${CODEGEN_ROOT_DIR}/include/nnacl_c/fp32_grad COMPONENT ${RUNTIME_COMPONENT_NAME})
+    install(DIRECTORY ${NNACL_DIR}/kernel DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl_c
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
-    install(DIRECTORY ${NNACL_DIR}/infer DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl
+    install(DIRECTORY ${NNACL_DIR}/infer DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl_c
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
-    install(DIRECTORY ${NNACL_DIR}/experimental DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl
+    install(DIRECTORY ${NNACL_DIR}/experimental DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl_c
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
-    install(DIRECTORY ${NNACL_DIR}/intrinsics DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl
+    install(DIRECTORY ${NNACL_DIR}/intrinsics DESTINATION ${CODEGEN_ROOT_DIR}/include/nnacl_c
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
     install(DIRECTORY ${MICRO_DIR}/coder/wrapper DESTINATION ${CODEGEN_ROOT_DIR}/include
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")

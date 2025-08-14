@@ -16,7 +16,7 @@
 #include "cxx_api/graph/graph_data.h"
 #include "src/common/log_adapter.h"
 #include "utils/ms_context.h"
-#include "runtime/hardware/device_context_manager.h"
+#include "runtime/hardware_abstract/device_context/device_context_manager.h"
 
 namespace mindspore {
 Graph::GraphData::GraphData(const FuncGraphPtr &func_graph, enum ModelType model_type)

@@ -22,7 +22,7 @@
 #include <map>
 
 #include "include/api/types.h"
-#include "runtime/hardware/device_context.h"
+#include "runtime/hardware_abstract/device_context/device_context.h"
 #include "include/api/status.h"
 
 namespace mindspore {

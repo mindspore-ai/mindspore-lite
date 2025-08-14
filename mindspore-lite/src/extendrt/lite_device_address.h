@@ -21,7 +21,7 @@
 #include <string>
 #include <utility>
 
-#include "common/device_address.h"
+#include "runtime/hardware_abstract/kernel_base/device_address.h"
 
 namespace mindspore {
 namespace lite {

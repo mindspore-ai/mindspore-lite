@@ -20,9 +20,9 @@
 #include "include/api/delegate_api.h"
 #include "ir/func_graph.h"
 #include "ir/anf.h"
-#include "runtime/hardware/device_context.h"
+#include "runtime/hardware_abstract/device_context/device_context.h"
 #include "tools/common/func_graph_subgraph.h"
-#include "common/kernel.h"
+#include "runtime/hardware_abstract/kernel_base/kernel.h"
 
 #include "src/extendrt/session/lite_graph_executor.h"
 #include "src/extendrt/subgraph_kernel.h"

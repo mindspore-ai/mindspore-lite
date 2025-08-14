@@ -19,10 +19,10 @@
 #include <memory>
 #include <map>
 #include <vector>
-#include "common/kernel.h"
+#include "runtime/hardware_abstract/kernel_base/kernel.h"
 #include "ir/func_graph.h"
-#include "runtime/hardware/device_context.h"
-#include "common/common_utils.h"
+#include "runtime/hardware_abstract/device_context/device_context.h"
+#include "runtime/hardware_abstract/kernel_base/common_utils.h"
 #include "src/extendrt/session/lite_graph_executor.h"
 
 namespace mindspore::kernel {

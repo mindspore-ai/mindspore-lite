@@ -54,8 +54,8 @@
 #include "mindspore-lite/minddata/dataset/util/ftok_key.h"
 #endif
 #ifdef WITH_BACKEND
-#include "runtime/hardware/device_context.h"
-#include "runtime/hardware/device_context_manager.h"
+#include "runtime/hardware_abstract/device_context/device_context.h"
+#include "runtime/hardware_abstract/device_context/device_context_manager.h"
 #include "utils/ms_context.h"
 #endif
 
