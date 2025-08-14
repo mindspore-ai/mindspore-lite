@@ -581,7 +581,7 @@ Contributions of any kind are welcome!
 
 #### Codegen
 
-1. Support 79 ops for the ARM platform and all CMSIS ops for Arm Cortex-M Series.
+1. Support 79 ops for the ARM platform for Arm Cortex-M Series.
 2. Multiplatform support, including Android, IoT Devices.
 3. Support offline model weight preprocessing while compiling.
 4. Support offline memory reuse computing for minimum runtime buffer size.

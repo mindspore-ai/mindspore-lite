@@ -23,9 +23,7 @@ void CodeCMakeNetLibrary(std::ofstream &ofs, const std::unique_ptr<CoderContext>
   ofs << "include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../include/)\n";
   ofs << "include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../)\n";
   if (config->target() == kCortex_M) {
-    ofs << "include_directories(${OP_HEADER_PATH}/CMSIS/NN/Include)\n"
-        << "include_directories(${OP_HEADER_PATH}/CMSIS/DSP/Include)\n"
-        << "include_directories(${OP_HEADER_PATH}/CMSIS/Core/Include)\n";
+    // cmsis is not supported and currently disabled in the current version.
   }
   ofs << "set(OP_SRC\n";
   for (const std::string &c_file : ctx->c_files()) {

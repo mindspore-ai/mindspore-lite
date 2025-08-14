@@ -171,13 +171,6 @@ include_directories(${OP_HEADER_PATH})
 include_directories(${HEADER_PATH})
 include_directories(${HEADER_PATH}/include)
 
-if(NOT PLATFORM_ARM32 AND NOT PLATFORM_ARM64)
-  include_directories(${PKG_PATH}/tools/codegen/third_party/include)
-  include_directories(${PKG_PATH}/tools/codegen/third_party/include/CMSIS/Core/Include)
-  include_directories(${PKG_PATH}/tools/codegen/third_party/include/CMSIS/DSP/Include)
-  include_directories(${PKG_PATH}/tools/codegen/third_party/include/CMSIS/NN/Include)
-endif()
-
 include(net.cmake)
 
 option(PLATFORM_ARM64 "build android arm64" OFF)
@@ -231,10 +224,6 @@ function(create_library)
             COMMAND mv ${library_name} ./tmp && cd tmp && ar -x ${library_name}
             COMMENT "unzip raw static library ${library_name}"
             )
-    if(NOT PLATFORM_ARM32 AND NOT PLATFORM_ARM64)
-        set(CMSIS_LIB ${PKG_PATH}/tools/codegen/third_party/lib/libcmsis_nn.a)
-        add_custom_command(TARGET net POST_BUILD COMMAND cd tmp && ar -x ${CMSIS_LIB})
-    endif()
 
     foreach(object_file ${OP_SRC})
         add_custom_command(TARGET net POST_BUILD COMMAND mv ./tmp/${object_file} .)
