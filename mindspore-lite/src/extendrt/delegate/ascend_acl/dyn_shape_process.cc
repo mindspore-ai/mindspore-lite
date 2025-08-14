@@ -283,7 +283,7 @@ bool DynShapeProcess::GetRealImageSize(const std::vector<ShapeVector> &new_shape
   }
   *height_p = static_cast<int32_t>(height);
   *width_p = static_cast<int32_t>(width);
-  MS_LOG(ERROR) << "Current height " << height << " width " << width;
+  MS_LOG(INFO) << "Current height " << height << " width " << width;
   return true;
 }
 }  // namespace mindspore
