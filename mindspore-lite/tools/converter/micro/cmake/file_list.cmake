@@ -36,8 +36,9 @@ file(GLOB CODER_OPCODERS_SRC
         ${MICRO_DIR}/coder/opcoders/serializers/nnacl_serializer/*.cc
         #### base coder
         ${MICRO_DIR}/coder/opcoders/base/*.cc
-        #### cmsis int8 coder
-        ${MICRO_DIR}/coder/opcoders/cmsis-nn/int8/*.cc
+        # cmsis is not supported and currently disabled in the current version.
+        # #### cmsis int8 coder
+        # ${MICRO_DIR}/coder/opcoders/cmsis-nn/int8/*.cc
         #### nnacl fp16 coder
         ${MICRO_DIR}/coder/opcoders/nnacl/fp16/*.cc
         #### nnacl fp32 coder

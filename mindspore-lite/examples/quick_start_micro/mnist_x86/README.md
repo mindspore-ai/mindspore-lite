@@ -66,13 +66,8 @@ name: Softmax-7, DataType: 43, Size: 40, Shape: [1 10], Data:
          ├── include                # 推理框架头文件
          │   ├── nnacl              # nnacl 算子头文件
          │   └── wrapper
-         ├── lib
-         │   └── libwrapper.a       # MindSpore Lite CodeGen生成代码依赖的部分算子静态库
-         └── third_party
-             ├── include
-             │   └── CMSIS          # ARM CMSIS NN 算子头文件
-             └── lib
-                 └── libcmsis_nn.a  # ARM CMSIS NN 算子静态库
+         └── lib
+             └── libwrapper.a       # MindSpore Lite CodeGen生成代码依赖的部分算子静态库
 ```
 
 ### 生成代码
