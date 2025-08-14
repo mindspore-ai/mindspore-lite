@@ -31,6 +31,25 @@ constexpr auto kProviderAcl = "litert";
 constexpr size_t kSupportedWeightNum = 1;
 }  // namespace
 
+bool AclGraphExecutor::GetDeviceID(int32_t *device_id) {
+  if (context_ != nullptr && !context_->MutableDeviceInfo().empty()) {
+    auto device_info = context_->MutableDeviceInfo()[0];
+    if (device_info == nullptr) {
+      MS_LOG(ERROR) << "device info is nullptr!";
+      return false;
+    }
+    if (device_info->GetDeviceType() == DeviceType::kAscend) {
+      auto ascend_device = device_info->Cast<AscendDeviceInfo>();
+      if (ascend_device == nullptr) {
+        MS_LOG(ERROR) << "not ascend device!";
+        return false;
+      }
+      *device_id = ascend_device->GetDeviceID();
+    }
+  }
+  return true;
+}
+
 std::string AclGraphExecutor::GetConfigOption(const std::string &section_name, const std::string &option_name) {
   auto config_it = config_info_.find(section_name);
   if (config_it == config_info_.end()) {
@@ -47,7 +66,6 @@ std::string AclGraphExecutor::GetConfigOption(const std::string &section_name, c
 Status AclGraphExecutor::Init() { return kSuccess; }
 
 std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
-  auto device_id = 0;
   auto acl_options_ptr = std::make_shared<AclModelOptions>();
   if (acl_options_ptr == nullptr) {
     MS_LOG(ERROR) << "Acl options make shared failed.";
@@ -104,7 +122,12 @@ std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
     bool is_bundle_model = bundle_model == "true" ? true : false;
     acl_options_ptr->is_bundle_model = is_bundle_model;
   }
-  acl_options_ptr->device_id = static_cast<int32_t>(device_id);
+  int32_t device_id = 0;
+  if (!GetDeviceID(&device_id)) {
+    MS_LOG(ERROR) << "GetDeviceID failed!";
+    return nullptr;
+  }
+  acl_options_ptr->device_id = device_id;
   return acl_options_ptr;
 }
 
