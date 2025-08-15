@@ -23,7 +23,7 @@
 #include "mindspore-lite/minddata/dataset/engine/connector.h"
 #include "mindspore-lite/minddata/dataset/util/status.h"
 #include "mindspore-lite/minddata/dataset/include/dataset/constants.h"
-#include "include/backend/data_queue/blocking_queue.h"
+#include "mindspore/ccsrc/include/runtime/hardware_abstract/data_queue/blocking_queue.h"
 
 using mindspore::device::DataQueueItem;
 

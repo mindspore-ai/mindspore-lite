@@ -21,7 +21,7 @@
 #include <unordered_map>
 
 #include "ir/device_address_maker.h"
-#include "runtime/device/res_manager/utils/convert_tensor_utils.h"
+#include "include/common/convert_tensor_utils.h"
 #include "utils/ms_context.h"
 #include "src/common/log_adapter.h"
 

@@ -33,7 +33,7 @@
 #endif
 #include "mindspore-lite/minddata/dataset/util/queue.h"
 #include "mindspore-lite/minddata/dataset/util/circular_pool.h"
-#include "mindspore/ccsrc/include/backend/data_queue/data_queue.h"
+#include "mindspore/ccsrc/include/runtime/hardware_abstract/data_queue/data_queue.h"
 
 namespace mindspore {
 namespace dataset {
