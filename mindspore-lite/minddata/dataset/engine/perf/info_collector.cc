@@ -15,7 +15,7 @@
  */
 
 #include "mindspore-lite/minddata/dataset/engine/perf/info_collector.h"
-#include "debug/profiler/profiling.h"
+#include "mindspore/mindspore/ccsrc/tools/profiler/profiling.h"
 
 namespace mindspore::dataset {
 
