@@ -208,8 +208,7 @@ bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<st
 
 bool AclGraphExecutor::Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                               const std::vector<std::vector<int64_t>> &dims) {
-  (void)model_infer_->Resize(dims);
-  return true;
+  return model_infer_->Resize(dims);
 }
 
 std::vector<mindspore::MSTensor> AclGraphExecutor::GetOutputInfos(uint32_t graph_id) {
@@ -221,9 +220,20 @@ std::vector<mindspore::MSTensor> AclGraphExecutor::GetOutputInfos(uint32_t graph
 bool AclGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                                 std::vector<mindspore::MSTensor> *output,
                                 const std::map<string, string> &compile_options) {
+  std::vector<std::vector<int64_t>> inputs_shape_new;
+  for (auto &tensor : inputs) {
+    MS_CHECK_TRUE_MSG(tensor != nullptr, false, "Input tensor is null.");
+    auto tensor_shape = tensor.Shape();
+    inputs_shape_new.push_back(tensor_shape);
+  }
+  auto inputs_shape_model = model_infer_->GetInputShape();
+
+  if (inputs_shape_model != inputs_shape_new)
+    MS_CHECK_TRUE_MSG(model_infer_->Resize(inputs_shape_new), false, "Resize input shape failed.");
+
   auto ret = model_infer_->Inference(inputs, output);
   if (!ret) {
-    MS_LOG(ERROR) << "model infer failed.";
+    MS_LOG(ERROR) << "Model infer failed.";
     return false;
   }
   graph_outputs_[graph_id] = *output;
