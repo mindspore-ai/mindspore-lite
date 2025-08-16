@@ -59,7 +59,8 @@ int MatmulKernel::ReSize() {
   CHECK_NULL_RETURN(kernel_);
   MatmulStruct *matmul = reinterpret_cast<MatmulStruct *>(kernel_);
 
-  matmul->model_thread_nr_ = kernel_->thread_nr_;
+  kernel_->thread_nr_ = thread_num_;
+  matmul->model_thread_nr_ = thread_num_;
 #if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
   auto num = ParallelThreadPoolManager::GetInstance()->GetThreadPoolSize(ms_context_->thread_pool_);
   matmul->model_thread_nr_ = (num != -1) ? (num) : (kernel_->thread_nr_);
