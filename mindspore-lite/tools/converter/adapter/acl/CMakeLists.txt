@@ -40,10 +40,10 @@ set_property(SOURCE ${ACL_SRC} PROPERTY COMPILE_DEFINITIONS
         SUBMODULE_ID=mindspore::SubModuleId::SM_LITE)
 
 add_library(ascend_pass_plugin SHARED ${ACL_SRC})
-target_link_libraries(ascend_pass_plugin mindspore_graph_ir)
 add_dependencies(ascend_pass_plugin fbs_inner_src)
 add_dependencies(ascend_pass_plugin mindspore_converter)
 target_link_libraries(ascend_pass_plugin mindspore_converter)
 target_link_libraries(ascend_pass_plugin _mindspore_ascend_symbol_obj)
 add_dependencies(ascend_pass_plugin lite_src_common_mid)
 target_link_libraries(ascend_pass_plugin lite_src_common_mid)
+target_link_libraries(ascend_pass_plugin mindspore_graph_ir)
