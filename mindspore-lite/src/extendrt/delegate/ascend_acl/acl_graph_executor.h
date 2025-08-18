@@ -23,6 +23,7 @@
 
 #include "include/api/context.h"
 #include "include/api/status.h"
+#include "include/api/types.h"
 #include "extendrt/session/lite_graph_executor.h"
 #include "common/config_infos.h"
 #include "src/common/common.h"
@@ -45,6 +46,8 @@ class AclGraphExecutor : public LiteGraphExecutor {
   bool Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
               const std::vector<ShapeVector> &dims) override;
 
+  std::vector<mindspore::MSTensor> GetInputInfos(uint32_t graph_id) override;
+
   std::vector<mindspore::MSTensor> GetOutputInfos(uint32_t graph_id) override;
 
   const std::vector<TypeId> GetOutputDataType() { return model_infer_->GetOutputDataType(); }
@@ -63,6 +66,7 @@ class AclGraphExecutor : public LiteGraphExecutor {
   std::shared_ptr<ModelInfer> model_infer_;
   std::shared_ptr<Primitive> primitive_ = nullptr;
   std::map<uint32_t, std::vector<mindspore::MSTensor>> graph_outputs_;
+  std::vector<std::string> input_names_;
 };
 
 }  // namespace mindspore

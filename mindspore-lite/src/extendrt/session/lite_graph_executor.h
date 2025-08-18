@@ -79,10 +79,12 @@ class LiteGraphExecutor {
   }
   virtual std::vector<mindspore::MSTensor> GetInputInfos(uint32_t graph_id) {
     (void)graph_id;
+    MS_LOG(WARNING) << "Getting graph input info is not supported.";
     return {};
   }
   virtual std::vector<mindspore::MSTensor> GetOutputInfos(uint32_t graph_id) {
     (void)graph_id;
+    MS_LOG(WARNING) << "Getting graph output info is not supported.";
     return {};
   }
 
