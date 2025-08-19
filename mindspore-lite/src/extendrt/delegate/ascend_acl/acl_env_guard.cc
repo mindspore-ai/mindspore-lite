@@ -17,8 +17,8 @@
 #include "extendrt/delegate/ascend_acl/acl_env_guard.h"
 #include "extendrt/delegate/ascend_acl/model_infer.h"
 #include "common/log_adapter.h"
-#include "plugin/res_manager/ascend/symbol_interface/acl_symbol.h"
-#include "plugin/res_manager/ascend/symbol_interface/symbol_utils.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_symbol.h"
+#include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 
 namespace mindspore {
 std::shared_ptr<AclEnvGuard> AclEnvGuard::global_acl_env_ = nullptr;

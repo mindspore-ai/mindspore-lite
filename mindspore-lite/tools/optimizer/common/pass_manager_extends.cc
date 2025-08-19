@@ -21,7 +21,7 @@
 #include <string>
 #include <algorithm>
 #include "ir/anf.h"
-#include "backend/common/optimizer/cache_manager.h"
+#include "backend/common/pass_manager/cache_manager.h"
 
 namespace mindspore {
 namespace opt {

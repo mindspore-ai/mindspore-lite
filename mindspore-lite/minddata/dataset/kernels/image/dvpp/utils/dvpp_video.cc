@@ -44,8 +44,8 @@
 
 #include "mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/AclLiteUtils.h"
 #include "src/common/log_adapter.h"
-#include "plugin/res_manager/ascend/symbol_interface/acl_rt_symbol.h"
-#include "plugin/res_manager/ascend/symbol_interface/symbol_utils.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
+#include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 
 namespace {
 const int64_t kUsec = 1000000;

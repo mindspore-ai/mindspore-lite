@@ -18,8 +18,8 @@
 #include <memory>
 #include "mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/CommonDataType.h"
 #include "mindspore-lite/minddata/dataset/util/log_adapter.h"
-#include "plugin/res_manager/ascend/symbol_interface/acl_rt_symbol.h"
-#include "plugin/res_manager/ascend/symbol_interface/symbol_utils.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
+#include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 
 static const auto g_resizeConfigDeleter = [](acldvppResizeConfig *p) { (void)acldvppDestroyResizeConfig(p); };
 static const auto g_picDescDeleter = [](acldvppPicDesc *picDesc) { (void)acldvppDestroyPicDesc(picDesc); };

@@ -17,9 +17,9 @@
 #include "src/extendrt/delegate/ascend_acl/acl_allocator.h"
 #include <utility>
 #include "src/common/log_adapter.h"
-#include "plugin/res_manager/ascend/symbol_interface/acl_rt_symbol.h"
-#include "plugin/res_manager/ascend/symbol_interface/symbol_utils.h"
-#include "plugin/res_manager/ascend/symbol_interface/acl_symbol.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
+#include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_symbol.h"
 #include "extendrt/delegate/ascend_acl/acl_env_guard.h"
 
 namespace mindspore {
