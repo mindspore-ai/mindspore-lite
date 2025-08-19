@@ -645,6 +645,28 @@ bool ModelProcess::ShareWorkspaceAndWeightspaceProcess(const size_t &work_size) 
   return true;
 }
 
+bool ModelProcess::CreateModelOutputs() {
+  if (!IsDynamicShape()) {
+    for (size_t i = 0; i < output_infos_.size(); ++i) {
+      const auto &output_info = output_infos_[i];
+      auto host_data = malloc(output_info.buffer_size);
+      MS_CHECK_TRUE_MSG(host_data != nullptr, false, "Malloc data failed.");
+      auto output =
+        MSTensor::CreateTensor(output_info.name, static_cast<DataType>(TransToDataType(output_info.data_type)),
+                               output_info.dims, host_data, output_info.buffer_size);
+      free(host_data);
+      host_data = nullptr;
+      if (output == nullptr) {
+        MS_LOG(ERROR) << "Create dynamic shape output tensor failed.";
+        return false;
+      }
+      model_outputs_.push_back(*output);
+      MSTensor::DestroyTensorPtr(output);
+    }
+  }
+  return true;
+}
+
 bool ModelProcess::Load(const void *om_data, size_t om_data_size) {
   if (loaded_) {
     MS_LOG(INFO) << "Model has been loaded";
@@ -727,7 +749,11 @@ bool ModelProcess::Load(const void *om_data, size_t om_data_size) {
     return false;
   }
   loaded_ = true;
-  MS_LOG(INFO) << "Load model model success.";
+  if (!CreateModelOutputs()) {
+    MS_LOG(ERROR) << "Cannot pre-allocate buffer for tensor in static shape.";
+    return false;
+  }
+  MS_LOG(INFO) << "Load model success.";
   return true;
 }
 
@@ -1549,28 +1575,46 @@ void ModelProcess::FreeResourceOutput(std::vector<AclTensorInfo> *acl_tensor_inf
   }
 }
 
+// TODO(liuf9): Remove `CreateTensor` method and instead use memory pool and shallow copy.
 bool ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
   std::vector<MSTensor> new_outputs;
   aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;
 
   for (size_t i = 0; i < output_infos_.size(); ++i) {
     auto &output_info = output_infos_[i];
-    auto host_data = malloc(output_info.buffer_size);
-    auto ret =
-      AclrtMemcpy(host_data, output_info.buffer_size, output_info.cur_device_data, output_info.buffer_size, kind);
-    if (ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "Memcpy output " << i << " from " << (is_run_on_device_ ? "host" : "device")
-                    << " to host failed, memory size " << output_info.buffer_size << ", ret: " << ret;
-      return false;
-    }
-    auto output =
-      mindspore::MSTensor::CreateTensor(output_info.name, static_cast<DataType>(TransToDataType(output_info.data_type)),
-                                        output_info.dims, host_data, output_info.buffer_size);
+    if (IsDynamicShape()) {
+      auto host_data = malloc(output_info.buffer_size);
+      MS_CHECK_TRUE_MSG(host_data != nullptr, false, "Malloc data failed.");
+      auto ret =
+        AclrtMemcpy(host_data, output_info.buffer_size, output_info.cur_device_data, output_info.buffer_size, kind);
+      if (ret != ACL_SUCCESS) {
+        MS_LOG(ERROR) << "Memcpy output " << i << " from " << (is_run_on_device_ ? "host" : "device")
+                      << " to host failed, memory size " << output_info.buffer_size << ", ret: " << ret;
+        return false;
+      }
+      auto output =
+        MSTensor::CreateTensor(output_info.name, static_cast<DataType>(TransToDataType(output_info.data_type)),
+                               output_info.dims, host_data, output_info.buffer_size);
 
-    free(host_data);
-    host_data = nullptr;
-    new_outputs.push_back(*output);
-    delete output;
+      free(host_data);
+      host_data = nullptr;
+      if (output == nullptr) {
+        MS_LOG(ERROR) << "Create dynamic shape output tensor failed.";
+        return false;
+      }
+      new_outputs.push_back(*output);
+      MSTensor::DestroyTensorPtr(output);
+    } else {
+      auto host_data = model_outputs_[i].MutableData();
+      auto ret =
+        AclrtMemcpy(host_data, output_info.buffer_size, output_info.cur_device_data, output_info.buffer_size, kind);
+      if (ret != ACL_SUCCESS) {
+        MS_LOG(ERROR) << "Memcpy output " << i << " from " << (is_run_on_device_ ? "host" : "device")
+                      << " to host failed, memory size " << output_info.buffer_size << ", ret: " << ret;
+        return false;
+      }
+      new_outputs.push_back(model_outputs_[i]);
+    }
   }
   const_cast<std::vector<MSTensor> *>(outputs)->clear();
   const_cast<std::vector<MSTensor> *>(outputs)->insert(outputs->end(), new_outputs.begin(), new_outputs.end());
