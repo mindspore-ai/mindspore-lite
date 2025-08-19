@@ -446,11 +446,11 @@ endif()
 
 file(STRINGS "${TOP_DIR}/version.txt" VERSION)
 add_definitions(-DVERSION=\"${VERSION}\")
-set(CCSRC_SRC_NEW ${CCSRC_DIR}/backend/common/optimizer/graph_optimizer.cc
-    ${CCSRC_DIR}/backend/common/optimizer/pattern_engine.cc
+set(CCSRC_SRC_NEW ${CCSRC_DIR}/backend/common/pass_manager/graph_optimizer.cc
+    ${CCSRC_DIR}/backend/common/pass_manager/pattern_engine.cc
     ${CCSRC_DIR}/utils/convert_utils.cc
     ${CCSRC_DIR}/common/debug/mindir_exporter.cc
-    ${CCSRC_DIR}/backend/common/optimizer/visitor.cc
+    ${CCSRC_DIR}/backend/common/pass_manager/visitor.cc
     ${CCSRC_DIR}/common/debug/common.cc
     ${CCSRC_DIR}/utils/compile_cache_context.cc
     ${CCSRC_DIR}/utils/convert_tensor_utils.cc

@@ -16,8 +16,8 @@
 #include "mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/acl_env_guard.h"
 #include "src/common/log_adapter.h"
 #include "utils/ms_utils.h"
-#include "plugin/res_manager/ascend/symbol_interface/acl_symbol.h"
-#include "plugin/res_manager/ascend/symbol_interface/symbol_utils.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_symbol.h"
+#include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 
 namespace mindspore {
 std::shared_ptr<AclEnvGuard> AclEnvGuard::global_acl_env_ = nullptr;

@@ -26,8 +26,8 @@
 #include "mindspore-lite/minddata/dataset/include/dataset/constants.h"
 #include "mindspore-lite/minddata/dataset/kernels/image/image_utils.h"
 #include "mindspore-lite/minddata/dataset/util/status.h"
-#include "plugin/res_manager/ascend/symbol_interface/acl_rt_symbol.h"
-#include "plugin/res_manager/ascend/symbol_interface/symbol_utils.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
+#include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 
 namespace {
 const int BUFFER_SIZE = 2048;

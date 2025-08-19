@@ -26,8 +26,8 @@
 #include "mindspore-lite/minddata/dataset/core/device_tensor_ascend910b.h"
 #endif
 #include "mindspore-lite/minddata/dataset/include/dataset/constants.h"
-#include "plugin/res_manager/ascend/symbol_interface/acl_rt_symbol.h"
-#include "plugin/res_manager/ascend/symbol_interface/symbol_utils.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
+#include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 
 void *PluginCreateDvppVideo(aclrtContext context, uint8_t *data, uint32_t size, uint32_t width, uint32_t height,
                             uint32_t type, uint32_t out_format, const std::string &output) {

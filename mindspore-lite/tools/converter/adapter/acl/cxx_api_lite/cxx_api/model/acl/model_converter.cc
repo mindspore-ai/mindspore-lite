@@ -23,9 +23,9 @@
 #include "graph/graph_buffer.h"
 #include "graph/graph.h"
 #include "cxx_api/model/aoe/auto_tune_process.h"
-#include "plugin/res_manager/ascend/symbol_interface/acl_rt_symbol.h"
-#include "plugin/res_manager/ascend/symbol_interface/acl_symbol.h"
-#include "plugin/res_manager/ascend/symbol_interface/symbol_utils.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_symbol.h"
+#include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 #include "src/common/file_utils.h"
 
 namespace mindspore {

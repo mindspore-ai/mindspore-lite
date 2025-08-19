@@ -21,8 +21,8 @@
 #include <map>
 #include <string>
 #include "src/common/log_adapter.h"
-#include "plugin/res_manager/ascend/symbol_interface/acl_rt_symbol.h"
-#include "plugin/res_manager/ascend/symbol_interface/symbol_utils.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
+#include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 
 namespace mindspore {
 STATUS AclMemManager::UpdateWorkspace(size_t work_size, size_t weight_size, int32_t device_id) {
