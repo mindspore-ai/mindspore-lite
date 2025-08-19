@@ -39,7 +39,7 @@
 namespace mindspore::opt {
 #if !defined(_WIN32) && !defined(_WIN64)
 const std::map<std::string, std::map<size_t, TypeId>> OpInputDtypeMap = {{prim::kPrimGroupedMatmul->name(),
-                                                                          {{2, TypeId::kNumberTypeFloat16},
+                                                                          {{2, TypeId::kTypeUnknown},
                                                                            {3, TypeId::kNumberTypeUInt64},
                                                                            {4, TypeId::kNumberTypeFloat32},
                                                                            {5, TypeId::kNumberTypeFloat16},
@@ -104,6 +104,18 @@ void GroupedMatmulOpPass::UseEmptyNodeReplaceNone(const FuncGraphPtr &graph, con
   if (OpInputDtypeMap.at(cnode_name).find(input_idx) != OpInputDtypeMap.at(cnode_name).end()) {
     // create empty tensor
     auto tensor_type = OpInputDtypeMap.at(cnode_name).at(input_idx);
+    if (tensor_type == TypeId::kTypeUnknown) {
+      if (plant_inputs->size() < kInputNum2) {
+        MS_LOG(EXCEPTION) << "The [" << input_idx
+                          << "] input of GroupedMatmul, its dtype must be determined by first input of GroupedMatmul. "
+                             "But GroupedMatmul's input is empty. node is ["
+                          << cnode_name << "].";
+      }
+      if (GetDataTypeFromAnfNode(plant_inputs->at(kIndex1), &tensor_type) != lite::RET_OK) {
+        MS_LOG(EXCEPTION) << "Cannot determine the dtype of the first input of GroupedMatmul. node is [" << cnode_name
+                          << "].";
+      }
+    }
     std::vector<int64_t> tensor_shape = {0};
     auto empty_tensor = tensor::from_spec(tensor_type, tensor_shape, device::DeviceType::kCPU);
     // create node
@@ -216,11 +228,12 @@ AnfNodePtr GroupedMatmulOpPass::ConvertMakeTupleInputToPlantInputs(const FuncGra
       if (i >= input_args.size()) {
         MS_LOG(EXCEPTION) << "The [" << i << "] in op [" << cnode_name << "] is out of op_def args range";
       }
+      auto is_dynamic_type = InputArgTypeIsDynamicType(input_args[i].arg_dtype_);
       // When input[i] is None and input[i] type in op_yaml is dynamic type, do replace
-      if (common::AnfAlgo::IsNoneInput(cnode_ptr, i) && InputArgTypeIsDynamicType(input_args[i].arg_dtype_)) {
+      if (common::AnfAlgo::IsNoneInput(cnode_ptr, i) && is_dynamic_type) {
         UseEmptyNodeReplaceNone(graph, cnode_name, i, &dyn_input_sizes, &plant_inputs);
       } else {
-        dyn_input_sizes.push_back(-1);
+        dyn_input_sizes.push_back(is_dynamic_type ? 1 : -1);
         plant_inputs.push_back(input_node);
       }
     } else {

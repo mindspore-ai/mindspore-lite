@@ -75,6 +75,7 @@
 #include "tools/optimizer/fusion/add_layernorm_fusion.h"
 #include "tools/common/custom_ascend_utils.h"
 #include "tools/optimizer/graph/attr_to_args_pass.h"
+#include "tools/optimizer/graph/grouped_matmul_op_pass.h"
 #include "tools/optimizer/fusion/ffn_fusion.h"
 #include "tools/optimizer/fusion/gnsnz_pass.h"
 #include "tools/optimizer/fusion/ffn_custom_pass.h"
@@ -964,6 +965,15 @@ STATUS AclPassImpl::ConvertGraphToOm(const FuncGraphPtr &func_graph, Buffer *om_
   }
   if (!args_to_attr_pass->Run(func_graph)) {
     MS_LOG(ERROR) << "convert args to attr pass failed";
+    return lite::RET_ERROR;
+  }
+  auto grouped_matmul_adjust = std::make_shared<opt::GroupedMatmulOpPass>();
+  if (grouped_matmul_adjust == nullptr) {
+    MS_LOG(ERROR) << "Create GroupedMatmul's adjustment pass failed";
+    return lite::RET_ERROR;
+  }
+  if (!grouped_matmul_adjust->Run(func_graph)) {
+    MS_LOG(ERROR) << "Adjust GroupedMatmul failed";
     return lite::RET_ERROR;
   }
   if (!lite::RunOptimizerPass(func_graph, {kAdjustControlFlowPass})) {
