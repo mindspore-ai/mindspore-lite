@@ -69,7 +69,7 @@
 #include "tools/converter/adapter/acl/common/acl_types_utils.h"
 #include "tools/optimizer/graph/redundant_op_remove_pass.h"
 #include "src/common/common.h"
-#include "pipeline/jit/ps/parse/resolve.h"
+#include "frontend/jit/ps/parse/resolve.h"
 #include "tools/optimizer/graph/scalar_op_pass.h"
 #include "tools/optimizer/graph/make_list_pass.h"
 #include "tools/optimizer/fusion/add_layernorm_fusion.h"
