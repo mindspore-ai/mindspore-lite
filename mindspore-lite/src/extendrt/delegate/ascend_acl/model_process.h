@@ -111,6 +111,7 @@ class ModelProcess {
   bool ShareWeightspaceProcess(const size_t &work_size);
   bool ShareWorkspaceProcess(const size_t &work_size, const size_t &weight_size);
   bool ShareWorkspaceAndWeightspaceProcess(const size_t &work_size);
+  bool CreateModelOutputs();
 
   std::shared_ptr<AclModelOptions> options_;
   uint32_t model_id_ = UINT32_MAX;
@@ -147,6 +148,7 @@ class ModelProcess {
   int32_t device_id_ = 0;
   uint32_t infer_id_ = 0;
   uint32_t update_id_ = 0;
+  std::vector<MSTensor> model_outputs_;
 };
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_EXTENDRT_KERNEL_ASCEND_MODEL_MODEL_PROCESS_H_
