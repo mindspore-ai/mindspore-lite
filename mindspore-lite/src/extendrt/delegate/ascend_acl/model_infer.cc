@@ -61,7 +61,7 @@ bool ModelInfer::Init() {
   }
   MS_LOG(INFO) << "Open device " << device_id << " success.";
 
-  ret = CALL_ASCEND_API(aclrtGetCurrentContext, &context_);
+  ret = CALL_ASCEND_API(aclrtCreateContext, &context_, device_id);
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Acl create context failed.";
     return false;
@@ -115,8 +115,11 @@ bool ModelInfer::Finalize(bool process_ends) {
     stream_ = nullptr;
   }
   if (context_ != nullptr) {
+    rt_ret = CALL_ASCEND_API(aclrtDestroyContext, context_);
+    if (rt_ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Destroy context failed";
+    }
     context_ = nullptr;
-    MS_LOG(INFO) << "use default context, not destroy context";
   }
   MS_LOG(INFO) << "End to destroy context.";
   if (process_ends || AclEnvGuard::GetModelNum() == 0) {
