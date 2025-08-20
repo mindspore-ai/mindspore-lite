@@ -139,6 +139,11 @@ bool AclGraphExecutor::UpdateWeights(const std::vector<std::vector<MSTensor>> &i
 
 bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
                                     uint32_t *graph_id) {
+  for (const auto &input : graph->get_inputs()) {
+    MS_CHECK_TRUE_MSG(input != nullptr, false, "graph's inputs[i] is nullptr.");
+    MS_LOG(INFO) << "input name: " << input->fullname_with_scope();
+    input_names_.push_back(input->fullname_with_scope());
+  }
   // Get whether the current model is a bundle model for LORA.
   if (graph->get_attr(lite::kBundleModel) != nullptr) {
     config_info_["inner_common"][lite::kBundleModel] = "true";
@@ -209,6 +214,21 @@ bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<st
 bool AclGraphExecutor::Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                               const std::vector<std::vector<int64_t>> &dims) {
   return model_infer_->Resize(dims);
+}
+
+std::vector<mindspore::MSTensor> AclGraphExecutor::GetInputInfos(uint32_t graph_id) {
+  auto inputs_shape = model_infer_->GetInputShape();
+  auto inputs_dtype = model_infer_->GetInputDataType();
+  std::vector<mindspore::MSTensor> inputs;
+  for (size_t i = 0; i < input_names_.size(); ++i) {
+    // Create a fake tensor that includes input_names, dtype, and shape for input info.
+    auto tensor = mindspore::MSTensor(input_names_[i], static_cast<enum DataType>(inputs_dtype[i]), {}, nullptr, 0);
+    // To avoid internal checking for empty shape and data during creation,
+    // we use `SetShape` after MSTensor is created.
+    tensor.SetShape(inputs_shape[i]);
+    inputs.push_back(tensor);
+  }
+  return inputs;
 }
 
 std::vector<mindspore::MSTensor> AclGraphExecutor::GetOutputInfos(uint32_t graph_id) {
