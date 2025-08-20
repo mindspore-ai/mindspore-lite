@@ -30,8 +30,8 @@ void Usage() {
   std::cerr << "Usage: ./runtime_cpp --model_path=[model_path] --device_type=[device_type] --device_id=[device_id]"
                " --batch_size=[batch_size] --config_file=[config_file]"
             << std::endl;
-  std::cerr << "Example: ./runtime_cpp ../model/mobilenetv2.mindr GPU 0 1" << std::endl;
-  std::cerr << "[device_type], optional, can be GPU, Ascend or CPU, default CPU" << std::endl;
+  std::cerr << "Example: ./runtime_cpp ../model/mobilenetv2.mindr CPU 0 1" << std::endl;
+  std::cerr << "[device_type], optional, can be Ascend or CPU, default CPU" << std::endl;
   std::cerr << "[device_id], optional, should be an integer >=0, default 0" << std::endl;
   std::cerr << "[batch_size], optional, should be an positive integer, default 1" << std::endl;
   std::cerr << "[config_file], optional, config file for dynamic input" << std::endl;
@@ -49,7 +49,7 @@ int Run(const CommandArgs &args);
 
 int main(int argc, const char **argv) {
   DEFINE_string(model_path, "", "model path");
-  DEFINE_string(device_type, "CPU", "device type, optional, can be GPU, Ascend or CPU, default CPU");
+  DEFINE_string(device_type, "CPU", "device type, optional, can be Ascend or CPU, default CPU");
   DEFINE_string(config_file, "", "config file for dynamic input");
   DEFINE_int32(device_id, 0, "device id, optional, should be an integer >=0, default 0");
   DEFINE_int32(batch_size, 1, "optional, should be an positive integer, default 1");
@@ -65,7 +65,7 @@ int main(int argc, const char **argv) {
     return -1;
   }
   args.device_type = FLAGS_device_type;
-  if (args.device_type != "Ascend" && args.device_type != "GPU" && args.device_type != "CPU") {
+  if (args.device_type != "Ascend" && args.device_type != "CPU") {
     Usage();
     return -1;
   }
@@ -137,16 +137,6 @@ std::shared_ptr<mindspore::CPUDeviceInfo> CreateCPUDeviceInfo() {
   return device_info;
 }
 
-std::shared_ptr<mindspore::GPUDeviceInfo> CreateGPUDeviceInfo(int32_t device_id) {
-  auto device_info = std::make_shared<mindspore::GPUDeviceInfo>();
-  if (device_info == nullptr) {
-    std::cerr << "New GPUDeviceInfo failed." << std::endl;
-    return nullptr;
-  }
-  device_info->SetDeviceID(device_id);
-  return device_info;
-}
-
 std::shared_ptr<mindspore::AscendDeviceInfo> CreateAscendDeviceInfo(int32_t device_id) {
   // for Ascend 310, 310P
   auto device_info = std::make_shared<mindspore::AscendDeviceInfo>();
@@ -173,8 +163,6 @@ std::shared_ptr<mindspore::Model> BuildModel(const CommandArgs &args) {
   std::shared_ptr<mindspore::DeviceInfoContext> device_info = nullptr;
   if (device_type == "CPU") {
     device_info = CreateCPUDeviceInfo();
-  } else if (device_type == "GPU") {
-    device_info = CreateGPUDeviceInfo(device_id);
   } else if (device_type == "Ascend") {
     device_info = CreateAscendDeviceInfo(device_id);
   }
