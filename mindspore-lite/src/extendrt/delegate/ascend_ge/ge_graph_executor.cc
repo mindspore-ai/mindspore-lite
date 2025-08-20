@@ -1481,8 +1481,7 @@ bool GeGraphExecutor::SyncDeviceOutputsToHost(std::vector<mindspore::MSTensor> *
   } else {
     for (size_t i = 0; i < output_size; i++) {
       auto &output_info = outputs_buffer_infos_[i];
-      auto ms_tensor =
-        *MSTensor::CreateTensor("", static_cast<DataType>(output_info.dtype), output_info.shape, nullptr, 0);
+      auto ms_tensor = MSTensor("", static_cast<DataType>(output_info.dtype), output_info.shape, nullptr, 0);
       auto mem_ret =
         memory_manager_->MemcpyDevice2Host(reinterpret_cast<uint8_t *>(ms_tensor.MutableData()), ms_tensor.DataSize(),
                                            output_info.device_addr, output_info.max_size);
@@ -1542,7 +1541,6 @@ bool GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &i
   MS_LOG(INFO) << "Run ge graph [" << graph_id << "] with " << inputs.size() << " ms_tensor_inputs";
   for (size_t i = 0; i < inputs.size(); i++) {
     auto &ms_tensor_input = inputs[i];
-    ms_tensor_input.DataType();
     MS_LOG(INFO) << "Input " << i << " shape " << ms_tensor_input.Shape() << ", datatype "
                  << ms_tensor_input.DataType();
   }
@@ -1668,8 +1666,10 @@ MSTensorPtr GeGraphExecutor::ConvertGeTensorNoCopy(::ge::Tensor *ge_tensor_ptr, 
     MS_LOG(ERROR) << "Output datatype error! Output tensor size from GE RunGraph does not match.";
     return nullptr;
   }
-  return std::shared_ptr<MSTensor>(
-    MSTensor::CreateTensor("", static_cast<DataType>(type_id), me_shape, ge_data, ge_tensor.GetSize()));
+  auto ret =
+    std::make_shared<MSTensor>(MSTensor("", static_cast<DataType>(type_id), me_shape, ge_data, ge_tensor.GetSize()));
+  deleter(reinterpret_cast<uint8_t *>(ge_data));
+  return ret;
 }
 
 std::vector<mindspore::MSTensor> GeGraphExecutor::GetOutputInfos(uint32_t graph_id) {
