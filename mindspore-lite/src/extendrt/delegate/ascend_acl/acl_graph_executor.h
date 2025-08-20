@@ -40,6 +40,8 @@ class AclGraphExecutor : public LiteGraphExecutor {
 
   bool CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
                     uint32_t *graph_id) override;
+  bool CompileGraph(const void *model_data, size_t data_size, const std::map<string, string> &compile_options,
+                    uint32_t *graph_id) override;
   bool RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                 std::vector<mindspore::MSTensor> *outputs, const std::map<string, string> &compile_options) override;
 
@@ -67,6 +69,7 @@ class AclGraphExecutor : public LiteGraphExecutor {
   std::shared_ptr<Primitive> primitive_ = nullptr;
   std::map<uint32_t, std::vector<mindspore::MSTensor>> graph_outputs_;
   std::vector<std::string> input_names_;
+  std::vector<std::string> output_names_;
 };
 
 }  // namespace mindspore

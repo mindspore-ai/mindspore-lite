@@ -170,6 +170,16 @@ static const char *const kInnerCalcWorkspaceSize = "inner_calc_workspace_size";
 static const char *const kInnerWeightspaceWorkspace = "inner_weightspace_workspace";
 // for lora
 static const char *const kBundleModel = "bundle_model";
+// for graph split
+static const char *const kSubgraphInferPath = "subgraph_infer_path";
+static const char *const kSubgraphInputNames = "subgraph_input_names";
+static const char *const kSubgraphOutputNames = "subgraph_output_names";
+static const char *const kGraphInputNames = "graph_input_names";
+static const char *const kExtendedSubgraphInputOutput = "extended_subgraph_input_output";
+static const char *const kInnerGraphSplit = "inner_graph_split";
+static const char *const kInnerInputNames = "inner_input_names";
+static const char *const kInnerOutputNames = "inner_output_names";
+
 }  // namespace lite
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_COMMON_COMMON_H_

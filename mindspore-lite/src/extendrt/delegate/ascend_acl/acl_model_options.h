@@ -37,6 +37,8 @@ struct AclModelOptions {
   bool share_workspace = false;
   bool share_weightspace_workspace = false;
   bool is_bundle_model = false;
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
   AclModelOptions() : device_id(0) {}
 };
 

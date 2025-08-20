@@ -28,7 +28,7 @@ from mindspore_lite.tensor import Tensor
 from mindspore_lite.base_model import BaseModel
 from mindspore_lite._parse_update_weights_name import _parse_update_weight_config_name, _rename_variable_weight
 
-__all__ = ['ModelType', 'Model', 'ModelParallelRunner', 'ModelGroup']
+__all__ = ['ModelType', 'Model', 'ModelParallelRunner', 'ModelGroup', 'MultiModelRunner', 'ModelExecutor']
 
 
 class ModelType(Enum):
@@ -839,3 +839,194 @@ class ModelGroup:
         if not ret.IsOk():
             raise RuntimeError(
                 f"ModelGroup's cal max size of workspace failed.")
+
+class MultiModelRunner:
+    """
+    The `MultiModelRunner` class is used to run ModelExec
+    """
+    def __init__(self):
+        self._runner = _c_lite_wrapper.MultiModelRunnerBind()
+
+    def build_from_file(self, model_path, model_type, context=None, config_path="", config_dict: dict = None):
+        """
+        Load and build a runner from file.
+
+        Args:
+            model_path (str): Path of the input model when build from file. For example, "/home/user/model.mindir".
+                Model should use .mindir as suffix.
+            model_type (ModelType): Define The type of input model file. Option is ``ModelType.MINDIR``.
+                For details, see
+                `ModelType <https://mindspore.cn/lite/api/en/master/mindspore_lite/mindspore_lite.ModelType.html>`_ .
+            context (Context, optional): Define the context used to transfer options during execution.
+                Default: ``None``. ``None`` means the Context with cpu target.
+            config_path (str, optional): Define the config file path. the config file is used to transfer user defined
+                options during build model. In the following scenarios, users may need to set the parameter.
+                For example, "/home/user/config.txt". Default: ``""``.
+
+                - Usage 1: Set mixed precision inference. The content and description of the configuration file are as
+                    follows:
+
+                    .. code-block::
+
+                        [execution_plan]
+                        [op_name1]=data_Type: float16 (The operator named op_name1 sets the data type as float16)
+                        [op_name2]=data_Type: float32 (The operator named op_name2 sets the data type as float32)
+
+                - Usage 2: When GPU inference, set the configuration of TensorRT. The content and description of the
+                    configuration file are as follows:
+
+                    .. code-block::
+
+                        [ms_cache]
+                        serialize_Path=[serialization model path](storage path of serialization model)
+                        [gpu_context]
+                        input_shape=input_Name: [input_dim] (Model input dimension, for dynamic shape)
+                        dynamic_Dims=[min_dim~max_dim] (dynamic dimension range of model input, for dynamic shape)
+                        opt_Dims=[opt_dim] (the optimal input dimension of the model, for dynamic shape)
+
+            config_dict (dict, optional): When you set config in this dict, the priority is higher than the
+                configuration items in config_path.
+
+                Set rank table file for inference. The content of the configuration file is as follows:
+
+                .. code-block::
+
+                    [ascend_context]
+                    rank_table_file=[path_a](storage initial path of the rank table file)
+
+                When set
+
+                .. code-block::
+
+                    config_dict = {"ascend_context" : {"rank_table_file" : "path_b"}}
+
+                The the path_b from the config_dict will be used to compile the model.
+            """
+        check_isinstance("model_path", model_path, str)
+        check_isinstance("model_type", model_type, ModelType)
+        if context is None:
+            context = Context()
+        check_isinstance("context", context, Context)
+        check_isinstance("config_path", config_path, str)
+        self.provider = context.ascend.provider
+        if not os.path.exists(model_path):
+            raise RuntimeError(
+                f"build_from_file failed, model_path does not exist!")
+        self.model_path_ = model_path
+        model_type_ = _c_lite_wrapper.ModelType.kMindIR
+        if model_type is not ModelType.MINDIR:
+            raise RuntimeError(
+                f"build_from_file failed, model_type only support MINDIR!")
+        if config_path:
+            if not os.path.exists(config_path):
+                raise RuntimeError(
+                    f"build_from_file failed, config_path does not exist!")
+            ret = self._runner.load_config(config_path)
+            if not ret.IsOk():
+                raise RuntimeError(
+                    f"load configuration failed! Error is {ret.ToString()}")
+        if config_dict:
+            check_isinstance("config_dict", config_dict, dict)
+            for k, v in config_dict.items():
+                check_isinstance("config_dict_key", k, str)
+                check_isinstance("config_dict_value", v, dict)
+                for v_k, v_v in v.items():
+                    check_isinstance("config_dict_value_key", v_k, str)
+                    check_isinstance("config_dict_value_value", v_v, str)
+            for key, value in config_dict.items():
+                ret = self._runner.update_config(key, value)
+                if not ret.IsOk():
+                    raise RuntimeError(f"update configuration failed! Error is {ret.ToString()}.")
+
+        ret = self._runner.build_from_file(model_path, model_type_, context._context._inner_context)
+        if not ret.IsOk():
+            raise RuntimeError(
+                f"build_from_file failed! Error is {ret.ToString()}")
+    def get_runner_exec(self):
+        return self._runner.get_runner_exec()
+
+class ModelExecutor:
+    """
+    The `ModelExecutor` class is used to run Model
+    """
+    def __init__(self):
+        self._exec = _c_lite_wrapper.ModelExecBind()
+
+    def predict(self, inputs, outputs=None):
+        """
+            Inference ModelExecutor.
+
+            Args:
+                inputs (list[Tensor]): A list that includes all input Tensors in order.
+                outputs (list[Tensor], optional): A list that includes all output Tensors in order,
+                    this tensor include output data buffer.
+
+            Returns:
+                list[Tensor], the output Tensor list of the ModelExecutor.
+        """
+        if not isinstance(inputs, (list, tuple)):
+            raise TypeError(
+                "inputs must be list or tuple, but got {}.".format(type(inputs)))
+        model_input_tensors = self.get_inputs()
+        inputs_tensor = []
+        for i, in_tensor in enumerate(inputs):
+            if isinstance(in_tensor, np.ndarray):
+                model_input_tensors[i].set_data_from_numpy(in_tensor)
+                inputs_tensor.append(model_input_tensors[i])
+            elif isinstance(in_tensor, Tensor):
+                inputs_tensor.append(in_tensor)
+            else:
+                raise TypeError("inputs element must be Tensor, or numpy.")
+        _inputs = []
+        _outputs = []
+        for i, element in enumerate(inputs_tensor):
+            if not isinstance(element, Tensor):
+                raise TypeError(f"inputs element must be Tensor, but got "
+                                f"{type(element)} at index {i}.")
+            _inputs.append(element._tensor)
+        if outputs is not None:
+            if not isinstance(outputs, list):
+                raise TypeError("outputs must be list, but got {}.".format(type(outputs)))
+            for i, element in enumerate(outputs):
+                if not isinstance(element, Tensor):
+                    raise TypeError(f"outputs element must be Tensor, but got "
+                                    f"{type(element)} at index {i}.")
+                _outputs.append(element._tensor)
+        predict_result = self._exec.Predict(_inputs, _outputs)
+        if predict_result is None or len(predict_result) == 0:
+            raise RuntimeError(f"predict failed!")
+        predict_outputs = []
+        for output_tensor in predict_result:
+            predict_outputs.append(Tensor(output_tensor))
+        return predict_outputs
+    def get_inputs(self):
+        """
+        Obtains all input Tensors of the ModelExecutor.
+
+        Returns:
+            list[Tensor], the input Tensor list of the ModelExecutor.
+        """
+        inputs = []
+        for _tensor in self._exec.get_inputs():
+            inputs.append(Tensor(_tensor))
+        return inputs
+
+    def get_outputs(self):
+        """"
+        Obtains all output information Tensors of the ModelExecutor.
+
+        Returns:
+            list[TensorMeta], the output TensorMeta list of the ModelExecutor.
+        """
+        outputs_metadata = []
+        for _tensor in self._exec.get_outputs():
+            out_tensor = Tensor(_tensor)
+            output_meta = TensorMeta()
+            output_meta.name = out_tensor.name
+            output_meta.dtype = out_tensor.dtype
+            output_meta.shape = out_tensor.shape
+            output_meta.format = out_tensor.format
+            output_meta.element_num = out_tensor.element_num
+            output_meta.data_size = out_tensor.data_size
+            outputs_metadata.append(output_meta)
+        return tuple(outputs_metadata)
