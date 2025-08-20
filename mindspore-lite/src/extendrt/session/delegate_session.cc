@@ -51,8 +51,6 @@ Status GraphSinkSession::Init(const std::shared_ptr<Context> &context, const Con
 }
 
 Status GraphSinkSession::CompileGraph(const void *model_data, size_t data_size, uint32_t *graph_id) {
-  // This lock can be removed when LiteRT supports concurrent multithreading compilation.
-  std::lock_guard<std::mutex> lock(g_build_graph_mutex);
   auto ret = graph_executor_->CompileGraph(model_data, data_size, options_, graph_id);
   if (!ret) {
     MS_LOG(ERROR) << "GraphSinkSession::CompileGraph compile graph failed";
@@ -70,8 +68,6 @@ Status GraphSinkSession::CompileGraph(const void *model_data, size_t data_size, 
 
 Status GraphSinkSession::CompileGraph(FuncGraphPtr graph, const void *data, size_t size, uint32_t *graph_id) {
   MS_LOG(INFO) << "GraphSinkSession::CompileGraph";
-  // This lock can be removed when LiteRT supports concurrent multithreading compilation.
-  std::lock_guard<std::mutex> lock(g_build_graph_mutex);
   // kernel graph will be removed from GraphSinkSession, and this code will be moved to TensorRT plugin
   if (context_ && !context_->MutableDeviceInfo().empty()) {
     auto device_info = context_->MutableDeviceInfo()[0];
