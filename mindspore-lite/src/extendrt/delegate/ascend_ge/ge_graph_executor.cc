@@ -1783,7 +1783,7 @@ std::shared_ptr<GeTensor> GeGraphExecutor::ConvertMSTensor(const std::shared_ptr
     return nullptr;
   }
   if (copy) {
-    auto ret = tensor_ptr->SetData(std::static_pointer_cast<const uint8_t>(tensor->Data()).get(), data_buff_size);
+    auto ret = tensor_ptr->SetData(static_cast<uint8_t *>(tensor->MutableData()), data_buff_size);
     if (ret != ge::GRAPH_SUCCESS) {
       MS_LOG(ERROR) << "Failed to call ge::Tensor SetData(const uint8_t*, size), data size " << data_buff_size;
       return nullptr;
