@@ -58,11 +58,11 @@ fi
 # get securec path
 if [ ${MSLIBS_CACHE_PATH} ]; then
   SECUREC_LIST=()
-  while IFS='' read -r line; do SECUREC_LIST+=("$line"); done < <(ls -d ${MSLIBS_CACHE_PATH}/securec_*/include)
+  while IFS='' read -r line; do SECUREC_LIST+=("$line"); done < <(ls -d ${MSLIBS_CACHE_PATH}/securec_*)
   SECUREC=${SECUREC_LIST[0]}
   echo "SECUREC path is ${SECUREC}"
 else
-  SECUREC=$(ls -d mindspore/lite/build/.mslib/securec_*/include)
+  SECUREC=$(ls -d mindspore-lite/build/_deps/securec_*/include)
   echo "SECUREC path is ${SECUREC}"
 fi
 
