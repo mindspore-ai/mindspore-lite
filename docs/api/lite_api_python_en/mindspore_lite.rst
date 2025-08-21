@@ -71,5 +71,7 @@ LiteInfer
 
 .. autosummary::
     :toctree: mindspore_lite
+    :nosignatures:
+    :template: classtemplate.rst
 
     mindspore_lite.LiteInfer
