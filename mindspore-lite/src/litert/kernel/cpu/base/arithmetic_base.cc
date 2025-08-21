@@ -236,6 +236,10 @@ int ArithmeticBaseCPUKernel::BroadCastConstTensor() {
   if (a_matric_.is_const) {
     CHECK_NULL_RETURN(in_tensors_[FIRST_INPUT]->data());
     if (param_->in_elements_num0_ != param_->out_elements_num_ && prefer_explicit_broadcast) {
+      if (out_tensors_.front()->ElementsNum() * in_data_size_ == 0) {
+        MS_LOG(ERROR) << "malloc broadcast buffer size is 0";
+        return RET_ERROR;
+      }
       a_matric_.data = ms_context_->allocator->Malloc(out_tensors_.front()->ElementsNum() * in_data_size_);
       if (a_matric_.data == nullptr) {
         MS_LOG(ERROR) << "malloc broadcast buffer for input-0 failed";
@@ -257,6 +261,10 @@ int ArithmeticBaseCPUKernel::BroadCastConstTensor() {
   if (b_matric_.is_const) {
     CHECK_NULL_RETURN(in_tensors_[SECOND_INPUT]->data());
     if (param_->in_elements_num1_ != param_->out_elements_num_ && prefer_explicit_broadcast) {
+      if (out_tensors_.front()->ElementsNum() * in_data_size_ == 0) {
+        MS_LOG(ERROR) << "malloc broadcast buffer size is 0";
+        return RET_ERROR;
+      }
       b_matric_.data = ms_context_->allocator->Malloc(out_tensors_.front()->ElementsNum() * in_data_size_);
       if (b_matric_.data == nullptr) {
         MS_LOG(ERROR) << "malloc broadcast buffer for input-1 failed";
