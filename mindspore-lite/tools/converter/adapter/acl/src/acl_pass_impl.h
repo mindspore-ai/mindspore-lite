@@ -54,6 +54,7 @@ class AclPassImpl {
   /* map func graph */
   STATUS DeparseGraph(const FuncGraphPtr &func_graph, const FuncGraphManagerPtr &manager);
   STATUS ConvertGraphToOm(const FuncGraphPtr &func_graph, Buffer *om_data);
+  STATUS BuildSplitGraph(const FuncGraphPtr &func_graph, const std::vector<FuncGraphPtr> &subgraphs);
 
  private:
   /* pre or post pass */

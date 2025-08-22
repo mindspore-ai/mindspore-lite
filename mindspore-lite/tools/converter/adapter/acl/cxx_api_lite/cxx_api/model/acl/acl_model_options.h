@@ -59,6 +59,8 @@ class MS_API AclModelOptions {
   static std::string GetSocName();
   std::vector<std::string> GetConstName() const { return const_names_; }
   void SetConstName(const std::vector<std::string> &const_names) { const_names_ = const_names; }
+  bool IsLastModel() { return is_last_model_; }
+  void SetLastModel() { is_last_model_ = true; }
 
  private:
   std::string output_node_;  // todo: at convert.cc::BuildGraph(), no atc options
@@ -86,6 +88,7 @@ class MS_API AclModelOptions {
   std::string aoe_mode_;
   std::string dump_model_name_;
   std::vector<std::string> const_names_;
+  bool is_last_model_ = false;
 };
 }  // namespace mindspore
 

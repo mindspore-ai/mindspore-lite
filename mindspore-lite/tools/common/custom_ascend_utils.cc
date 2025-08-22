@@ -375,6 +375,49 @@ bool CustomAscendUtils::CreateCustomFuncGraph(const FuncGraphPtr &func_graph, co
   return true;
 }
 
+bool CustomAscendUtils::CreateMultiCustomFuncGraph(const FuncGraphPtr &func_graph,
+                                                   const std::vector<FuncGraphPtr> &subgraphs,
+                                                   const std::vector<Buffer> &model_cache_vec,
+                                                   const std::vector<std::string> &graph_name_vec,
+                                                   const std::map<std::string, ValuePtr> &attr_map,
+                                                   const std::vector<std::string> &ref_datas,
+                                                   const DynKVCacheSaveInfo &dyn_kv_info) {
+  if (model_cache_vec.size() != graph_name_vec.size()) {
+    MS_LOG(ERROR) << "model_cache_vec size must equal to graph_name_vec.size! Current model_cache_vec size:"
+                  << model_cache_vec.size() << " graph_name_vec size:" << graph_name_vec.size();
+    return false;
+  }
+  std::vector<AnfNodePtr> custom_nodes;
+  for (size_t i = 0; i < model_cache_vec.size(); i++) {
+    CustomAscendUtils utils;
+    utils.outputs_ = opt::GetNodeInputs(func_graph->get_return());
+    auto om_parameter = CreateOmParameter(func_graph, model_cache_vec[i], graph_name_vec[i]);
+    if (om_parameter == nullptr) {
+      MS_LOG(ERROR) << "Create custom parameter failed";
+      return false;
+    }
+    std::map<std::string, ValuePtr> attr_map_new = attr_map;
+    SaveDynKVCacheInfo(dyn_kv_info, &attr_map_new);
+    auto cnode = utils.CreateCustomNode(func_graph, om_parameter, attr_map_new, ref_datas);
+    if (cnode == nullptr) {
+      MS_LOG(ERROR) << "Create custom cnode failed";
+      return false;
+    }
+    custom_nodes.push_back(cnode);
+    if (i > 0) {
+      auto cnode_inputs = cnode->inputs();
+      cnode_inputs.push_back(custom_nodes[i - 1]);
+      cnode->set_inputs(cnode_inputs);
+    }
+    if (i == model_cache_vec.size() - 1) {
+      if (!utils.ModifyGraphByCustomNode(func_graph, cnode)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 CNodePtr CustomAscendUtils::GetCustomNode(const FuncGraphPtr &func_graph) {
   if (func_graph == nullptr) {
     return nullptr;
