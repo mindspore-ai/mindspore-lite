@@ -20,6 +20,8 @@
 #include <deque>
 #include <set>
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
@@ -92,6 +94,13 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/core/include/utils/trace_info.h"
+#include "infer/return.h"
+#include "tools/converter/export_model.h"
+#include "infer/make_tuple.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_base_symbol.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_mdl_symbol.h"
+#include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
+#include "cxx_api/graph/acl/acl_convert_init_adapter.h"
 
 namespace mindspore {
 namespace opt {
@@ -129,6 +138,7 @@ constexpr auto kCustomOpFFNFusion = "FFNFusion";
 constexpr auto kCustomOpGNSNZPass = "GNSNZPass";
 constexpr auto kCustomOpGNBMMPass = "GNBMMPass";
 constexpr auto kCustomOpFFNCustomPass = "FFNCustomPass";
+constexpr auto kGraphSplitPass = "GraphSplitPass";
 constexpr auto kScalarOpPass = "ScalarOpPass";
 constexpr auto kMakeListPass = "MakeListPass";
 constexpr auto kFuncType = "func_type";
@@ -1023,6 +1033,7 @@ STATUS AclPassImpl::SetAclModelOptions(const FuncGraphPtr &func_graph) {
 // now build the whole graph, not split
 STATUS AclPassImpl::BuildGraph(const FuncGraphPtr &func_graph) {
   MS_CHECK_TRUE_MSG(func_graph != nullptr, lite::RET_ERROR, "func_graph is nullptr.");
+  options_->SetLastModel();
   Buffer om_data;
   if (ConvertGraphToOm(func_graph, &om_data) != lite::RET_OK) {
     MS_LOG(ERROR) << "Convert graph  to om failed.";
@@ -1033,6 +1044,101 @@ STATUS AclPassImpl::BuildGraph(const FuncGraphPtr &func_graph) {
     return lite::RET_ERROR;
   }
   MS_LOG(DEBUG) << "Build graph success.";
+  return lite::RET_OK;
+}
+
+STATUS AclPassImpl::BuildSplitGraph(const FuncGraphPtr &func_graph, const std::vector<FuncGraphPtr> &subgraphs) {
+  MS_CHECK_TRUE_MSG(func_graph != nullptr, lite::RET_ERROR, "func_graph is nullptr!");
+  std::map<aclDataType, TypeId> dtype_map = {
+    {aclDataType::ACL_BOOL, kNumberTypeBool},       {aclDataType::ACL_INT8, kNumberTypeInt8},
+    {aclDataType::ACL_UINT8, kNumberTypeUInt8},     {aclDataType::ACL_INT16, kNumberTypeInt16},
+    {aclDataType::ACL_UINT16, kNumberTypeUInt16},   {aclDataType::ACL_INT32, kNumberTypeInt32},
+    {aclDataType::ACL_INT64, kNumberTypeInt64},     {aclDataType::ACL_UINT64, kNumberTypeUInt64},
+    {aclDataType::ACL_FLOAT16, kNumberTypeFloat16}, {aclDataType::ACL_FLOAT, kNumberTypeFloat32},
+    {aclDataType::ACL_DOUBLE, kNumberTypeFloat64},  {aclDataType::ACL_STRING, kObjectTypeString}};
+  AclConvertInitAdapter::GetInstance().AclInit(nullptr);
+  std::vector<Buffer> om_data_vec;
+  std::vector<std::string> graph_name_vec;
+  auto subgraph_output_name_val = func_graph->get_attr("subgraph_output_names");
+  MS_CHECK_TRUE_MSG(subgraph_output_name_val != nullptr, lite::RET_ERROR, "subgraph output name is nullptr!");
+  std::map<std::string, std::pair<ShapeVector, TypeId>> outname_shape_map;
+  auto subgraph_output_names = GetValue<std::vector<std::vector<std::string>>>(subgraph_output_name_val);
+  for (size_t i = 0; i < subgraphs.size(); i++) {
+    if (i == subgraphs.size() - 1) {
+      options_->SetLastModel();
+    }
+    MS_CHECK_TRUE_MSG(subgraphs[i] != nullptr, lite::RET_ERROR, "subgraph is nullptr! index:" << i);
+    auto graph_inputs = subgraphs[i]->get_inputs();
+    for (auto input : graph_inputs) {
+      if (outname_shape_map.find(input->fullname_with_scope()) != outname_shape_map.end()) {
+        auto abstract = lite::CreateTensorAbstract(outname_shape_map[input->fullname_with_scope()].first,
+                                                   outname_shape_map[input->fullname_with_scope()].second);
+        input->set_abstract(abstract);
+      }
+    }
+    Buffer om_data;
+    if (ConvertGraphToOm(subgraphs[i], &om_data) != lite::RET_OK) {
+      MS_LOG(ERROR) << "ConvertGraphToOm failed!";
+      return lite::RET_ERROR;
+    }
+    auto acl_ret = CALL_ASCEND_API(aclrtSetDevice, user_options_cfg_.device_id);
+    if (acl_ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Failed to open acl device " << user_options_cfg_.device_id;
+      return lite::RET_ERROR;
+    }
+    aclrtContext context;
+    if (CALL_ASCEND_API(aclrtCreateContext, &context, user_options_cfg_.device_id) != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "aclrtCreatecontext failed!";
+      return lite::RET_ERROR;
+    }
+    uint32_t model_id;
+    acl_ret = CALL_ASCEND_API(aclmdlLoadFromMem, om_data.Data(), om_data.DataSize(), &model_id);
+    if (acl_ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "aclmdlLoadFromMem failed!, ret:" << acl_ret;
+      return lite::RET_ERROR;
+    }
+    auto model_desc = CALL_ASCEND_API(aclmdlCreateDesc);
+    acl_ret = CALL_ASCEND_API(aclmdlGetDesc, model_desc, model_id);
+    if (acl_ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Read model desc failed, ret = " << acl_ret;
+      return lite::RET_ERROR;
+    }
+    size_t output_size = CALL_ASCEND_API(aclmdlGetNumOutputs, model_desc);
+    for (size_t j = 0; j < output_size; j++) {
+      aclmdlIODims output_dims;
+      acl_ret = CALL_ASCEND_API(aclmdlGetOutputDims, model_desc, j, &output_dims);
+      if (acl_ret != ACL_SUCCESS) {
+        MS_LOG(ERROR) << "Get output dims failed!";
+        return lite::RET_ERROR;
+      }
+      std::vector<int64_t> shape(output_dims.dims, output_dims.dims + output_dims.dimCount);
+      auto acl_data_type = CALL_ASCEND_API(aclmdlGetOutputDataType, model_desc, j);
+      auto data_type = kTypeUnknown;
+      if (dtype_map.find(acl_data_type) != dtype_map.end()) {
+        data_type = dtype_map[acl_data_type];
+      }
+      outname_shape_map[subgraph_output_names[i][j]] = std::make_pair(shape, data_type);
+    }
+    (void)CALL_ASCEND_API(aclmdlUnload, model_id);
+    om_data_vec.push_back(om_data);
+    graph_name_vec.push_back("ACL_om_data_" + std::to_string(i));
+    acl_ret = CALL_ASCEND_API(aclrtDestroyContext, context);
+    if (acl_ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Destroy context failed!";
+      return lite::RET_ERROR;
+    }
+    acl_ret = CALL_ASCEND_API(aclrtResetDevice, user_options_cfg_.device_id);
+    if (acl_ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Reset device " << user_options_cfg_.device_id << " failed!";
+      return lite::RET_ERROR;
+    }
+  }
+  if (!CustomAscendUtils::CreateMultiCustomFuncGraph(func_graph, subgraphs, om_data_vec, graph_name_vec, {}, {})) {
+    MS_LOG(ERROR) << "Create custom func graph failed!";
+    return lite::RET_ERROR;
+  }
+  AclConvertInitAdapter::GetInstance().AclFinalize();
+  MS_LOG(DEBUG) << "Build graph success";
   return lite::RET_OK;
 }
 
@@ -1308,10 +1414,32 @@ bool AclPassImpl::Run(const FuncGraphPtr &func_graph) {
     MS_LOG(ERROR) << "Post proc CustomOp failed.";
     return false;
   }
+  if (!lite::RunOptimizerPass(func_graph, {kGraphSplitPass})) {
+    MS_LOG(ERROR) << "graph split pass failed!";
+  }
+  std::vector<FuncGraphPtr> subgraphs = {};
+  if (!param_->splitGraphCfg.split_node_names.empty()) {
+    auto subgraphs_val = func_graph->get_attr("subgraphs");
+    if (subgraphs_val == nullptr) {
+      MS_LOG(ERROR) << "subgraphs is nullptr!";
+      return false;
+    }
+    subgraphs = GetValue<std::vector<FuncGraphPtr>>(subgraphs_val);
+    func_graph->set_attr("subgraphs", MakeValue<int>(0));
+  }
 
-  if (BuildGraph(func_graph) != lite::RET_OK) {
-    MS_LOG(ERROR) << "Build graph failed.";
-    return false;
+  if (!subgraphs.empty()) {
+    MS_LOG(INFO) << "Build split graph";
+    if (BuildSplitGraph(func_graph, subgraphs) != lite::RET_OK) {
+      MS_LOG(ERROR) << "Build split graph failed!";
+      return false;
+    }
+  } else {
+    MS_LOG(INFO) << "Build single graph";
+    if (BuildGraph(func_graph) != lite::RET_OK) {
+      MS_LOG(ERROR) << "Build graph failed!";
+      return false;
+    }
   }
 
   if (PostProcGraph(func_graph) != lite::RET_OK) {

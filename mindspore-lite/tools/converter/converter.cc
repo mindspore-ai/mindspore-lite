@@ -57,6 +57,7 @@
 #include "tools/converter/converter_packed_node.h"
 #include "tools/converter/config_parser/cpu_option_param_parser.h"
 #include "tools/converter/export_model.h"
+#include "tools/converter/config_parser/graph_split_param_parser.h"
 
 namespace mindspore {
 std::map<std::string, Format> StrToEnumFormatMap = {{"NHWC", Format::NHWC}, {"NCHW", Format::NCHW}};
@@ -532,6 +533,14 @@ int ConverterImpl::ParseParam(lite::ConfigFileParser *config_parser, const std::
   ret = graph_kernel_parser.ParseGraphKernelCfg(config_parser->GetGraphKernelString(), &param->graphKernelParam);
   if (ret != RET_OK) {
     MS_LOG(ERROR) << "Parse graph kernel param failed.";
+    return ret;
+  }
+
+  lite::GraphPllitParamParser graph_split_parser;
+
+  ret = graph_split_parser.ParseGraphSplitCfg(param);
+  if (ret != RET_OK) {
+    MS_LOG(ERROR) << "Parse split graph param failed!";
     return ret;
   }
   return RET_OK;

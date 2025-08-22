@@ -27,6 +27,7 @@
 #include "plugin/ascend/res_manager/symbol_interface/acl_symbol.h"
 #include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 #include "src/common/file_utils.h"
+#include "cxx_api/graph/acl/acl_convert_init_adapter.h"
 
 namespace mindspore {
 namespace {
@@ -104,14 +105,14 @@ Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &grap
                                      const std::map<std::string, std::string> &init_options,
                                      const std::map<std::string, std::string> &build_options) const {
   ge::ModelBufferData model;
-  auto ret = ge::aclgrphBuildInitialize(init_options);
-  if (ret != ge::SUCCESS) {
-    MS_LOG(ERROR) << "Call aclgrphBuildInitialize fail: " << CALL_ASCEND_API(aclGetRecentErrMsg);
+  if (AclConvertInitAdapter::GetInstance().AclBuildInit(init_options) != ge::GRAPH_SUCCESS) {
+    MS_LOG(ERROR) << "AclBuildInit failed!";
     return Buffer();
   }
+  auto option = options_.lock();
+
 #ifdef ENABLE_BUNDLE
   ge::WeightRefreshableGraphs split_graphs;
-  auto option = options_.lock();
   std::vector<ge::AscendString> ascend_const_names;
   std::vector<std::string> const_names;
   if (option != nullptr && !option->GetConstName().empty()) {
@@ -121,7 +122,7 @@ Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &grap
     ascend_const_names.resize(const_names.size());
     std::transform(const_names.begin(), const_names.end(), ascend_const_names.begin(),
                    [](std::string s) { return ge::AscendString(s.c_str()); });
-    ret = ge::aclgrphConvertToWeightRefreshableGraphs(*graph, ascend_const_names, split_graphs);
+    auto ret = ge::aclgrphConvertToWeightRefreshableGraphs(*graph, ascend_const_names, split_graphs);
     if (ret != 0) {
       MS_LOG(ERROR) << "aclgraphConvertToWeightRefreshableGraphs failed! ret:" << ret;
       ge::aclgrphBuildFinalize();
@@ -147,7 +148,7 @@ Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &grap
       return Buffer();
     }
   } else {
-    ret = ge::aclgrphBuildModel(*graph, build_options, model);
+    auto ret = ge::aclgrphBuildModel(*graph, build_options, model);
     if (ret != ge::SUCCESS) {
       MS_LOG(ERROR) << "Call aclgrphBuildModel fail: " << CALL_ASCEND_API(aclGetRecentErrMsg);
       ge::aclgrphBuildFinalize();
@@ -162,7 +163,9 @@ Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &grap
     return Buffer();
   }
 #endif
-  ge::aclgrphBuildFinalize();
+  if (option != nullptr && option->IsLastModel()) {
+    ge::aclgrphBuildFinalize();
+  }
   return Buffer(model.data.get(), model.length);
 }
 

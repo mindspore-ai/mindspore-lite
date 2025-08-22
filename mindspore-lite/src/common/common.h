@@ -118,6 +118,7 @@ static const char *const kModelCacheMode = "model_cache_mode";
 static const char *const kVariableWeightsFile = "variable_weights_file";
 static const char *const kMaxWeightBatch = "max_weight_batch";
 static const char *const kStreamLabelFile = "stream_label_file";
+static const char *const kSplitNodeName = "split_node_name";
 // ge options
 static const char *const kGeSessionOptionsSection = "ge_session_options";
 static const char *const kGeGraphOptionsSection = "ge_graph_options";
@@ -140,6 +141,7 @@ static const char *const kAoeTuningOptionsSection = "aoe_tuning_options";
 static const char *const kAclOptionParam = "acl_option_cfg_param";
 static const char *const kAclInitOptionParam = "acl_init_options";
 static const char *const kAclBuildOptionParam = "acl_build_options";
+static const char *const kSplitGraph = "SplitGraph";
 
 static const char *const kNameAttrWeightDir = "weight_dir";
 

@@ -69,6 +69,13 @@ class MS_API CustomAscendUtils {
                                     const std::vector<std::string> &ref_datas,
                                     const DynKVCacheSaveInfo &dyn_kv_info = {});
 
+  static bool CreateMultiCustomFuncGraph(const FuncGraphPtr &func_graph, const std::vector<FuncGraphPtr> &subgraphs,
+                                         const std::vector<Buffer> &model_cache_vec,
+                                         const std::vector<std::string> &graph_name_vec,
+                                         const std::map<std::string, ValuePtr> &attr_map,
+                                         const std::vector<std::string> &ref_datas,
+                                         const DynKVCacheSaveInfo &dyn_kv_info = {});
+
   static bool ParseCustomFuncGraph(const FuncGraphPtr &func_graph, tensor::TensorPtr *model_cache,
                                    std::string *graph_name, std::map<std::string, ValuePtr> *attr_map,
                                    std::vector<std::pair<std::string, tensor::TensorPtr>> *ref_datas,

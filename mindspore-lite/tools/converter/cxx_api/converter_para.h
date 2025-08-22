@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <utility>
 #include "include/converter.h"
 #include "tools/converter/quantizer/quant_params.h"
 #include "tools/converter/preprocess/preprocess_param.h"
@@ -50,6 +51,11 @@ struct AscendGeOptionCfg {
   std::map<std::string, std::map<std::string, std::string>> op_attrs_map;
   std::vector<int64_t> inputs_to_variable;
   std::vector<int64_t> outputs_to_variable;
+};
+
+struct SplitGraphCfg {
+  std::vector<std::string> split_node_names;
+  std::vector<std::pair<std::vector<std::string>, std::vector<std::string>>> subgraph_input_output;
 };
 
 struct ConverterPara {
@@ -107,6 +113,7 @@ struct ConverterPara {
   lite::quant::TransformQuantParam transformQuantParam;
   lite::quant::DynamicQuantParam dynamicQuantParam;
   GraphKernelCfg graphKernelParam;
+  SplitGraphCfg splitGraphCfg;
   // configs parse from config_file
   ConfigInfos config_infos;
   std::vector<std::string> const_names;

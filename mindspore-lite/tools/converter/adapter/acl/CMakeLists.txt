@@ -27,6 +27,7 @@ file(GLOB ACL_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/cxx_api_lite/cxx_api/model/acl/model_converter.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/cxx_api_lite/cxx_api/graph/graph_data.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/cxx_api_lite/cxx_api/model/aoe/auto_tune_process.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/cxx_api_lite/cxx_api/graph/acl/acl_convert_init_adapter.cc
         )
 
 set(ACL_SRC ${ACL_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/acl_pass.cc)
