@@ -25,6 +25,8 @@
 #include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
 #include "plugin/ascend/res_manager/symbol_interface/acl_symbol.h"
 #include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
+#include "src/common/common.h"
+#include "src/common/utils.h"
 namespace mindspore {
 namespace {
 constexpr auto kProviderAcl = "litert";
@@ -67,10 +69,7 @@ Status AclGraphExecutor::Init() { return kSuccess; }
 
 std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
   auto acl_options_ptr = std::make_shared<AclModelOptions>();
-  if (acl_options_ptr == nullptr) {
-    MS_LOG(ERROR) << "Acl options make shared failed.";
-    return nullptr;
-  }
+  MS_CHECK_TRUE_MSG(acl_options_ptr != nullptr, nullptr, "Acl options make shared failed.");
   std::string profiling_path = GetConfigOption(lite::kAscendContextSection, lite::kProfilingPathKey);
   if (profiling_path != "") {
     acl_options_ptr->profiling_path = profiling_path;
@@ -128,6 +127,16 @@ std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
     return nullptr;
   }
   acl_options_ptr->device_id = device_id;
+  auto input_name_str = GetConfigOption(lite::kInnerGraphSplit, lite::kInnerInputNames);
+  if (input_name_str != "") {
+    acl_options_ptr->input_names = lite::StrSplit(input_name_str, ",");
+  }
+
+  auto output_name_str = GetConfigOption(lite::kInnerGraphSplit, lite::kInnerOutputNames);
+  if (output_name_str != "") {
+    acl_options_ptr->output_names = lite::StrSplit(output_name_str, ",");
+  }
+
   return acl_options_ptr;
 }
 
@@ -211,6 +220,32 @@ bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<st
   return true;
 }
 
+bool AclGraphExecutor::CompileGraph(const void *model_data, size_t data_size,
+                                    const std::map<std::string, std::string> &compile_options, uint32_t *graph_id) {
+  auto acl_options = GenAclOptions();
+  if (acl_options == nullptr) {
+    MS_LOG(ERROR) << "Generate acl options failed!";
+    return false;
+  }
+  input_names_.insert(input_names_.end(), acl_options->input_names.begin(), acl_options->input_names.end());
+  output_names_.insert(output_names_.end(), acl_options->output_names.begin(), acl_options->output_names.end());
+  model_infer_ = std::make_shared<ModelInfer>(acl_options);
+  if (model_infer_ == nullptr) {
+    MS_LOG(ERROR) << "Create ModelInfer failed.";
+    return false;
+  }
+  if (!model_infer_->Init()) {
+    MS_LOG(ERROR) << "Model infer init failed.";
+    return false;
+  }
+  if (!model_infer_->Load(model_data, data_size)) {
+    MS_LOG(ERROR) << "Load om data failed.";
+    return false;
+  }
+  AclEnvGuard::AddModel(model_infer_);
+  return true;
+}
+
 bool AclGraphExecutor::Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                               const std::vector<std::vector<int64_t>> &dims) {
   return model_infer_->Resize(dims);
@@ -232,8 +267,20 @@ std::vector<mindspore::MSTensor> AclGraphExecutor::GetInputInfos(uint32_t graph_
 }
 
 std::vector<mindspore::MSTensor> AclGraphExecutor::GetOutputInfos(uint32_t graph_id) {
-  auto output_infos = graph_outputs_.find(graph_id) != graph_outputs_.end() ? graph_outputs_.at(graph_id)
-                                                                            : std::vector<mindspore::MSTensor>();
+  std::vector<mindspore::MSTensor> output_infos = {};
+  if (output_names_.empty()) {
+    output_infos = graph_outputs_.find(graph_id) != graph_outputs_.end() ? graph_outputs_.at(graph_id)
+                                                                         : std::vector<mindspore::MSTensor>();
+  } else {
+    auto outputs_shape = model_infer_->GetOutputShape();
+    auto outputs_dtype = model_infer_->GetOutputDataType();
+    for (size_t i = 0; i < output_names_.size(); i++) {
+      auto tensor = mindspore::MSTensor(output_names_[i], static_cast<enum DataType>(outputs_dtype[i]), {}, nullptr, 0);
+      tensor.SetShape(outputs_shape[i]);
+      output_infos.push_back(tensor);
+    }
+  }
+
   return output_infos;
 }
 

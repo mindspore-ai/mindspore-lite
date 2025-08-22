@@ -23,6 +23,7 @@
 #include "pybind11/stl.h"
 #include "pybind11/functional.h"
 #include "src/common/crypto.h"
+#include "include/api/multi_model_runner.h"
 
 namespace mindspore::lite {
 namespace py = pybind11;
@@ -68,6 +69,21 @@ Status PyModelUpdateConfig(Model *model, const std::string &key, const std::map<
   }
   for (auto &item : value) {
     if (model->UpdateConfig(key, item).IsError()) {
+      MS_LOG(ERROR) << "Update config failed, please check your key and value.";
+      return kLiteError;
+    }
+  }
+  return kSuccess;
+}
+
+Status PyRunnerUpdateConfig(MultiModelRunner *runner, const std::string &key,
+                            const std::map<std::string, std::string> &value) {
+  if (runner == nullptr) {
+    MS_LOG(ERROR) << "Model object cannot be nullptr";
+    return kLiteError;
+  }
+  for (auto &item : value) {
+    if (runner->UpdateConfig(key, item).IsError()) {
       MS_LOG(ERROR) << "Update config failed, please check your key and value.";
       return kLiteError;
     }
@@ -135,6 +151,46 @@ Status PyModelBuild(Model *model, const std::string &model_path, ModelType model
   }
   (void)memset_s(key, key_len, 0, key_len);
   return kSuccess;
+}
+
+std::vector<MSTensorPtr> PyExecGetInputs(ModelExecutor *exec) {
+  if (exec == nullptr) {
+    MS_LOG(ERROR) << "ModelExecutor object cannot be nullptr!";
+    return {};
+  }
+  return MSTensorToMSTensorPtr(exec->GetInputs());
+}
+
+std::vector<MSTensorPtr> PyExecGetOutputs(ModelExecutor *exec) {
+  if (exec == nullptr) {
+    MS_LOG(ERROR) << "ModelExecutor object cannot be nullptr!";
+    return {};
+  }
+  return MSTensorToMSTensorPtr(exec->GetOutputs());
+}
+
+std::vector<MSTensorPtr> PyExecPredict(ModelExecutor *exec, const std::vector<MSTensorPtr> &inputs_ptr,
+                                       const std::vector<MSTensorPtr> &outputs_ptr) {
+  if (exec == nullptr) {
+    MS_LOG(ERROR) << "ModelExecutor object cannot be nullptr";
+    return {};
+  }
+  std::vector<MSTensor> inputs = MSTensorPtrToMSTensor(inputs_ptr);
+  std::vector<MSTensor> outputs;
+  if (!outputs_ptr.empty()) {
+    outputs = MSTensorPtrToMSTensor(outputs_ptr);
+  }
+  if (!exec->Predict(inputs, &outputs).IsOk()) {
+    return {};
+  }
+  if (!outputs_ptr.empty()) {
+    for (size_t i = 0; i < outputs.size(); i++) {
+      outputs_ptr[i]->SetShape(outputs[i].Shape());
+      outputs_ptr[i]->SetDataType(outputs[i].DataType());
+    }
+    return outputs_ptr;
+  }
+  return MSTensorToMSTensorPtr(outputs);
 }
 
 void ModelPyBind(const py::module &m) {
@@ -218,6 +274,21 @@ void ModelPyBind(const py::module &m) {
          [](Model &model, const std::string &tensor_name) { return model.GetInputByTensorName(tensor_name); })
     .def("get_output_by_tensor_name",
          [](Model &model, const std::string &tensor_name) { return model.GetOutputByTensorName(tensor_name); });
+
+  (void)py::class_<MultiModelRunner, std::shared_ptr<MultiModelRunner>>(m, "MultiModelRunnerBind")
+    .def(py::init<>())
+    .def("build_from_file",
+         py::overload_cast<const std::string &, ModelType, const std::shared_ptr<Context> &>(&MultiModelRunner::Build),
+         py::call_guard<py::gil_scoped_release>())
+    .def("load_config", py::overload_cast<const std::string &>(&MultiModelRunner::LoadConfig))
+    .def("update_config", &PyRunnerUpdateConfig)
+    .def("get_runner_exec", &MultiModelRunner::GetRunnerExec);
+
+  (void)py::class_<ModelExecutor, std::shared_ptr<ModelExecutor>>(m, "ModelExecBind")
+    .def(py::init<>())
+    .def("predict", &PyExecPredict, py::call_guard<py::gil_scoped_release>())
+    .def("get_inputs", &PyExecGetInputs)
+    .def("get_outputs", &PyExecGetOutputs);
 }
 
 #ifdef ENABLE_CLOUD_INFERENCE

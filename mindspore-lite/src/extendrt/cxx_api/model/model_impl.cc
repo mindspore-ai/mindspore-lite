@@ -434,24 +434,33 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, M
     return session_->CompileGraph(func_graph, nullptr, 0, &graph_id_);
   }
 
-  func_graph = LoadGraphByBufferImpl(model_buff, model_size, model_type, model_context, model_path);
-  if (func_graph == nullptr) {
-    MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
-    return kLiteError;
+  if (model_type != kOM) {
+    func_graph = LoadGraphByBufferImpl(model_buff, model_size, model_type, model_context, model_path);
+    if (func_graph == nullptr) {
+      MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
+      return kLiteError;
+    }
+    // convert and optimize func graph to infer
+    ret = ConvertGraphOnline(func_graph, model_context);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "convert graph failed!ret = " << ret;
+      return ret;
+    }
+    ret = session_->CompileGraph(func_graph, nullptr, 0, &graph_id_);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "compile graph failed!ret = " << ret;
+      return ret;
+    }
+    std::shared_lock<std::shared_mutex> build_lock(g_model_converter_lock);
+    return FuncGraphReuseManager::GetInstance()->StoreFuncGraph(func_graph, config_info_);
+  } else {
+    ret = session_->CompileGraph(model_buff, model_size, &graph_id_);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "compile graph failed!ret = " << ret;
+      return ret;
+    }
   }
-  // convert and optimize func graph to infer
-  ret = ConvertGraphOnline(func_graph, model_context);
-  if (ret != kSuccess) {
-    MS_LOG(ERROR) << "convert graph failed!ret = " << ret;
-    return ret;
-  }
-  ret = session_->CompileGraph(func_graph, nullptr, 0, &graph_id_);
-  if (ret != kSuccess) {
-    MS_LOG(ERROR) << "compile graph failed!ret = " << ret;
-    return ret;
-  }
-  std::shared_lock<std::shared_mutex> build_lock(g_model_converter_lock);
-  return FuncGraphReuseManager::GetInstance()->StoreFuncGraph(func_graph, config_info_);
+  return kSuccess;
 }
 
 Status ModelImpl::BuildByBufferImpl(const void *model_data, size_t model_size, ModelType model_type,
