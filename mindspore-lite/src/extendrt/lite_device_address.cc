@@ -34,7 +34,7 @@ DeviceAddressPtr CreateDeviceAddress(void *ptr, size_t size, const ShapeVector &
                                      TypeId type_id, const std::string &device_name, uint32_t device_id,
                                      uint32_t stream_id, const UserDataPtr &user_data = nullptr) {
   MS_CHECK_TRUE_RET(ptr != nullptr, nullptr);
-  return std::make_shared<TestDeviceAddress>(ptr, size, "fault", type_id, device_name, 0);
+  return std::make_shared<TestDeviceAddress>(ptr, size, "fault", type_id, device_name);
 }
 DeviceSyncPtr MakeTestDeviceAddress(TypeId data_type, const ShapeVector &shape, void *data_ptr,
                                     DeviceAddressDeleter &&deleter) {
