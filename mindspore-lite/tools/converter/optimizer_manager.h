@@ -50,7 +50,8 @@ class PassStorage {
   static std::set<std::string> inaccessible_for_outer_;
 };
 
-bool RunOptimizerPass(const FuncGraphPtr &func_graph, const std::vector<std::string> &pass_names);
+bool RunOptimizerPass(const FuncGraphPtr &func_graph, const std::vector<std::string> &pass_names,
+                      const std::set<std::string> &pass_blacklist = {});
 bool RunExternalPass(const FuncGraphPtr &func_graph, registry::PassPosition position);
 }  // namespace lite
 }  // namespace mindspore

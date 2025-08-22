@@ -325,7 +325,7 @@ STATUS AclPassImpl::CommonPass(const FuncGraphPtr &func_graph) {
     MS_LOG(INFO) << "Dynamic input no need to run const fold pass.";
     return lite::RET_OK;
   }
-  if (!lite::RunOptimizerPass(func_graph, {kConstFoldPass})) {
+  if (!lite::RunOptimizerPass(func_graph, {kConstFoldPass}, param_->fusion_blacklists)) {
     MS_LOG(WARNING) << "Const fold pass failed.";
   }
   return lite::RET_OK;

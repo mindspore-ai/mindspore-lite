@@ -30,7 +30,9 @@ namespace mindspore {
 namespace lite {
 std::map<std::string, opt::PassPtr> PassStorage::pass_storage_;
 std::set<std::string> PassStorage::inaccessible_for_outer_;
-bool RunOptimizerPass(const FuncGraphPtr &func_graph, const std::vector<std::string> &pass_names) {
+
+bool RunOptimizerPass(const FuncGraphPtr &func_graph, const std::vector<std::string> &pass_names,
+                      const std::set<std::string> &pass_blacklist) {
   if (func_graph == nullptr) {
     MS_LOG(ERROR) << "func graph is nullptr.";
     return false;
@@ -46,6 +48,11 @@ bool RunOptimizerPass(const FuncGraphPtr &func_graph, const std::vector<std::str
     }
   }
   for (auto &pass_name : pass_names) {
+    if (pass_blacklist.find(pass_name) != pass_blacklist.end()) {
+      MS_LOG(INFO) << "pass name :" << pass_name << " is in the blacklist, skipped.";
+      continue;
+    }
+
     auto pass_outer = registry::PassRegistry::GetPassFromStoreRoom(pass_name);
     if (pass_outer != nullptr) {
       auto api_graph = api::MakeShared<api::FuncGraph>(func_graph);
