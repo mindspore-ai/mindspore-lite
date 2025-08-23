@@ -646,22 +646,20 @@ bool ModelProcess::ShareWorkspaceAndWeightspaceProcess(const size_t &work_size) 
 }
 
 bool ModelProcess::CreateModelOutputs() {
-  if (!IsDynamicShape()) {
+  if (!(IsDynamicShape() || is_dynamic_output_)) {
     for (size_t i = 0; i < output_infos_.size(); ++i) {
       const auto &output_info = output_infos_[i];
       auto host_data = malloc(output_info.buffer_size);
       MS_CHECK_TRUE_MSG(host_data != nullptr, false, "Malloc data failed.");
-      auto output =
-        MSTensor::CreateTensor(output_info.name, static_cast<DataType>(TransToDataType(output_info.data_type)),
-                               output_info.dims, host_data, output_info.buffer_size);
+      auto output = MSTensor(output_info.name, static_cast<DataType>(TransToDataType(output_info.data_type)),
+                             output_info.dims, host_data, output_info.buffer_size);
       free(host_data);
       host_data = nullptr;
       if (output == nullptr) {
         MS_LOG(ERROR) << "Create dynamic shape output tensor failed.";
         return false;
       }
-      model_outputs_.push_back(*output);
-      MSTensor::DestroyTensorPtr(output);
+      model_outputs_.push_back(output);
     }
   }
   return true;
@@ -1613,7 +1611,7 @@ bool ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
         continue;
       }
     }
-    if (IsDynamicShape()) {
+    if (IsDynamicShape() || is_dynamic_output_) {
       auto host_data = malloc(output_info.buffer_size);
       MS_CHECK_TRUE_MSG(host_data != nullptr, false, "Malloc data failed.");
       auto ret =
@@ -1623,9 +1621,8 @@ bool ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
                       << " to host failed, memory size " << output_info.buffer_size << ", ret: " << ret;
         return false;
       }
-      auto output =
-        MSTensor::CreateTensor(output_info.name, static_cast<DataType>(TransToDataType(output_info.data_type)),
-                               output_info.dims, host_data, output_info.buffer_size);
+      auto output = MSTensor(output_info.name, static_cast<DataType>(TransToDataType(output_info.data_type)),
+                             output_info.dims, host_data, output_info.buffer_size);
 
       free(host_data);
       host_data = nullptr;
@@ -1633,8 +1630,7 @@ bool ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
         MS_LOG(ERROR) << "Create dynamic shape output tensor failed.";
         return false;
       }
-      new_outputs.push_back(*output);
-      MSTensor::DestroyTensorPtr(output);
+      new_outputs.push_back(output);
     } else {
       auto host_data = model_outputs_[i].MutableData();
       auto ret =
