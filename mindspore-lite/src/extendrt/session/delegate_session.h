@@ -71,6 +71,7 @@ class GraphSinkSession : public InferSession {
   Status InitGraphInfo(DelegateGraphInfo *graph_info_ptr, uint32_t graph_id);
   Status InitGraphInputsOutputs(const FuncGraphPtr &graph, DelegateGraphInfo *graph_info);
   Status UpdateGraphInputsOutputs(uint32_t graph_id, DelegateGraphInfo *graph_info);
+  std::string GetConfigOption(const std::string &section_name, const std::string &option_name);
 
   std::shared_ptr<mindspore::LiteGraphExecutor> graph_executor_;
   std::map<std::string, std::string> options_;
