@@ -91,6 +91,10 @@ Status GraphSinkSession::CompileGraph(FuncGraphPtr graph, const void *data, size
     MS_LOG(ERROR) << "GraphSinkSession::CompileGraph compile graph failed";
     return kCoreFailed;
   }
+  auto prepare_share_mem = GetConfigOption(lite::kInnerCommon, lite::kInnerCalcWorkspaceSize);
+  if (prepare_share_mem == "true") {
+    return kSuccess;
+  }
   status = UpdateGraphInputsOutputs(*graph_id, &graph_info);
   if (!status.IsOk()) {
     MS_LOG(ERROR) << "Failed to update inputs and outputs info from graph executor";
@@ -346,6 +350,19 @@ Status GraphSinkSession::UpdateWeights(const std::vector<std::vector<mindspore::
     return kLiteError;
   }
   return kSuccess;
+}
+
+std::string GraphSinkSession::GetConfigOption(const std::string &section_name, const std::string &option_name) {
+  auto config_it = config_infos_.find(section_name);
+  if (config_it == config_infos_.end()) {
+    return "";
+  }
+  auto &options = config_it->second;
+  auto option_it = options.find(option_name);
+  if (option_it == options.end()) {
+    return "";
+  }
+  return option_it->second;
 }
 
 MutableTensorImplPtr GraphSinkSession::GetOutputByTensorName(uint32_t graph_id, const std::string &tensorName) {
