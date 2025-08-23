@@ -1232,6 +1232,13 @@ bool ModelProcess::CheckAndInitOutput(const std::vector<MSTensor> *outputs) {
     void *output_device_buffer = nullptr;
     output_device_buffer = nullptr;  // in dynamic output shape, setting nullptr allows acl to alloc memory
     auto output_device_buffer_size = 0;
+    if (outputs->size() > i) {
+      auto &user_output = const_cast<std::vector<MSTensor> *>(outputs)->at(i);
+      if (user_output.GetDeviceId() == device_id_ && user_output.GetDeviceData()) {
+        output_device_buffer = user_output.GetDeviceData();
+        output_device_buffer_size = user_output.DataSize();
+      }
+    }
     auto data_buffer = CALL_ASCEND_API(aclmdlGetDatasetBuffer, outputs_, i);
     if (data_buffer == nullptr) {
       MS_LOG(ERROR) << "Failed to get dataset buffer of output " << i;
@@ -1556,16 +1563,23 @@ void ModelProcess::FreeResourceInput(std::vector<AclTensorInfo> acl_tensor_info)
 void ModelProcess::FreeResourceOutput(std::vector<AclTensorInfo> *acl_tensor_info,
                                       const std::vector<MSTensor> *outputs) {
   for (size_t i = 0; i < acl_tensor_info->size(); i++) {
+    bool user_device_data = false;
+    if (outputs->size() > i) {
+      auto &user_output = const_cast<std::vector<MSTensor> *>(outputs)->at(i);
+      if (user_output.GetDeviceId() == device_id_ && user_output.GetDeviceData()) {
+        user_device_data = true;
+      }
+    }
     auto &item = (*acl_tensor_info)[i];
-    if (item.device_data != nullptr) {
+    if (item.device_data != nullptr && !user_device_data) {
       MS_LOG(DEBUG) << "freeing device buffer at addr: " << item.device_data;
       if (!is_run_on_device_) {
         CALL_ASCEND_API(aclrtFree, item.device_data);
       } else {
         CALL_ASCEND_API(aclrtFreeHost, item.device_data);
       }
-      item.device_data = nullptr;
     }
+    item.device_data = nullptr;
     if (item.dynamic_acl_data_buffer != nullptr) {
       CALL_ASCEND_API(aclDestroyDataBuffer, item.dynamic_acl_data_buffer);
     }
@@ -1582,6 +1596,23 @@ bool ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
 
   for (size_t i = 0; i < output_infos_.size(); ++i) {
     auto &output_info = output_infos_[i];
+    if (outputs->size() > i) {
+      auto &user_output = const_cast<std::vector<MSTensor> *>(outputs)->at(i);
+      if (user_output.GetDeviceData()) {
+        if (user_output.GetDeviceId() != device_id_) {
+          // memcpy output data from current device to output device.
+          auto ret = AscendAllocatorPlugin::GetInstance().CopyDeviceDataToDevice(
+            output_info.cur_device_data, user_output.GetDeviceData(), user_output.DataSize(), output_info.buffer_size,
+            device_id_, user_output.GetDeviceId());
+          if (ret != kSuccess) {
+            MS_LOG(ERROR) << "Copy output data from device to current device failed.";
+            return false;
+          }
+        }
+        new_outputs.push_back(outputs->at(i));
+        continue;
+      }
+    }
     if (IsDynamicShape()) {
       auto host_data = malloc(output_info.buffer_size);
       MS_CHECK_TRUE_MSG(host_data != nullptr, false, "Malloc data failed.");
