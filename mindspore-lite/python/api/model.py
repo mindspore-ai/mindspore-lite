@@ -24,7 +24,7 @@ import numpy as np
 from mindspore_lite._checkparam import check_isinstance
 from mindspore_lite.context import Context
 from mindspore_lite.lib import _c_lite_wrapper
-from mindspore_lite.tensor import Tensor
+from mindspore_lite.tensor import Tensor, TensorMeta
 from mindspore_lite.base_model import BaseModel
 from mindspore_lite._parse_update_weights_name import _parse_update_weight_config_name, _rename_variable_weight
 
@@ -943,14 +943,20 @@ class MultiModelRunner:
             raise RuntimeError(
                 f"build_from_file failed! Error is {ret.ToString()}")
     def get_runner_exec(self):
-        return self._runner.get_runner_exec()
+        executors = []
+        for exec_ in self._runner.get_runner_exec():
+            executors.append(ModelExecutor(exec_))
+        return executors
 
 class ModelExecutor:
     """
     The `ModelExecutor` class is used to run Model
     """
-    def __init__(self):
-        self._exec = _c_lite_wrapper.ModelExecBind()
+    def __init__(self, executor=None):
+        if executor is None:
+            self._executor = _c_lite_wrapper.ModelExecBind()
+        else:
+            self._executor = executor
 
     def predict(self, inputs, outputs=None):
         """
@@ -992,7 +998,7 @@ class ModelExecutor:
                     raise TypeError(f"outputs element must be Tensor, but got "
                                     f"{type(element)} at index {i}.")
                 _outputs.append(element._tensor)
-        predict_result = self._exec.Predict(_inputs, _outputs)
+        predict_result = self._executor.predict(_inputs, _outputs)
         if predict_result is None or len(predict_result) == 0:
             raise RuntimeError(f"predict failed!")
         predict_outputs = []
@@ -1007,7 +1013,7 @@ class ModelExecutor:
             list[Tensor], the input Tensor list of the ModelExecutor.
         """
         inputs = []
-        for _tensor in self._exec.get_inputs():
+        for _tensor in self._executor.get_inputs():
             inputs.append(Tensor(_tensor))
         return inputs
 
@@ -1019,7 +1025,7 @@ class ModelExecutor:
             list[TensorMeta], the output TensorMeta list of the ModelExecutor.
         """
         outputs_metadata = []
-        for _tensor in self._exec.get_outputs():
+        for _tensor in self._executor.get_outputs():
             out_tensor = Tensor(_tensor)
             output_meta = TensorMeta()
             output_meta.name = out_tensor.name
