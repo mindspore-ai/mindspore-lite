@@ -29,9 +29,15 @@ namespace mindspore {
 class ModelImpl;
 class MS_API ModelExecutor {
  public:
-  friend class MultiModelRunner;
   /// \brief Constructor of ModelExecutor.
   ModelExecutor() = default;
+  ModelExecutor(std::vector<std::shared_ptr<ModelImpl>> models, std::vector<std::string> executor_input_names,
+                std::vector<std::string> executor_output_names,
+                std::vector<std::vector<std::string>> subgraph_input_names)
+      : models_(models),
+        executor_input_names_(executor_input_names),
+        executor_output_names_(executor_output_names),
+        subgraph_input_names_(subgraph_input_names) {}
   /// \brief Destructor of ModelExecutor.
   ~ModelExecutor() = default;
   /// \brief Inference ModelExecutor API. If use this API in train mode, it's equal to RunStep API.
@@ -51,16 +57,10 @@ class MS_API ModelExecutor {
   /// \return The vector that includes all output tensors.
   std::vector<MSTensor> GetOutputs();
 
- protected:
-  void SetModels(std::vector<std::shared_ptr<ModelImpl>> models);
-  void SetModelInputs(std::vector<std::string> model_input_names);
-  void SetModelOutputs(std::vector<std::string> model_output_names);
-  void SetSubGraphInputNames(std::vector<std::vector<std::string>> subgraph_input_names);
-
  private:
   std::vector<std::shared_ptr<ModelImpl>> models_;
-  std::vector<std::string> graph_input_names_;
-  std::vector<std::string> graph_output_names_;
+  std::vector<std::string> executor_input_names_;
+  std::vector<std::string> executor_output_names_;
   std::vector<std::vector<std::string>> subgraph_input_names_;
 };
 
@@ -82,14 +82,14 @@ class MS_API MultiModelRunner {
   /// \brief Get ModelExecutors in thr multimodelrunner.
   ///
   /// \return Vector of ModelExecutor.
-  std::vector<ModelExecutor> GetRunnerExec();
+  std::vector<ModelExecutor> GetRunnerExecutor();
 
   /// \brief Load config file.
   ///
   /// \param[in] config_path config file path.
   ///
   /// \return Status.
-  inline void LoadConfig(const std::string &config_path);
+  inline Status LoadConfig(const std::string &config_path);
 
   /// \brief Update config.
   ///
@@ -102,16 +102,16 @@ class MS_API MultiModelRunner {
  private:
   Status Build(const std::vector<char> &model_path, ModelType model_type,
                const std::shared_ptr<Context> &model_context);
-  void LoadConfig(const std::vector<char> &config_path);
+  Status LoadConfig(const std::vector<char> &config_path);
   Status UpdateConfig(const std::vector<char> &section, const std::pair<std::vector<char>, std::vector<char>> &config);
   Status SetConfigs(const std::shared_ptr<ModelImpl> &model_impl_ptr);
-  std::vector<ModelExecutor> execs_;
+  std::vector<ModelExecutor> executors_;
   std::vector<std::shared_ptr<ModelImpl>> models_;
   std::string config_file_ = "";
   ConfigInfos config_info_;
 };
 
-void MultiModelRunner::LoadConfig(const std::string &config_path) { return LoadConfig(StringToChar(config_path)); }
+Status MultiModelRunner::LoadConfig(const std::string &config_path) { return LoadConfig(StringToChar(config_path)); }
 
 Status MultiModelRunner::UpdateConfig(const std::string &section, const std::pair<std::string, std::string> &config) {
   std::pair<std::vector<char>, std::vector<char>> config_pair = {StringToChar(config.first),

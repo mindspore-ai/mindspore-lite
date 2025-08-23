@@ -282,7 +282,7 @@ void ModelPyBind(const py::module &m) {
          py::call_guard<py::gil_scoped_release>())
     .def("load_config", py::overload_cast<const std::string &>(&MultiModelRunner::LoadConfig))
     .def("update_config", &PyRunnerUpdateConfig)
-    .def("get_runner_exec", &MultiModelRunner::GetRunnerExec);
+    .def("get_runner_executor", &MultiModelRunner::GetRunnerExecutor);
 
   (void)py::class_<ModelExecutor, std::shared_ptr<ModelExecutor>>(m, "ModelExecBind")
     .def(py::init<>())

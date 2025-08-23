@@ -157,7 +157,6 @@ Status MultiModelRunner::Build(const std::vector<char> &model_path, ModelType mo
     std::vector<std::shared_ptr<ModelImpl>> curr_executor_models;
     auto curr_executor_input_output_names = extended_subgraph_input_output[executor_id];
     std::vector<std::vector<std::string>> curr_subgraph_input_names;
-    ModelExecutor executor;
     auto min_index = subgraph_infer_path[executor_id][0];
     auto max_index = subgraph_infer_path[executor_id][1];
     for (auto subgraph_id = min_index; subgraph_id <= max_index; subgraph_id++) {
@@ -178,18 +177,19 @@ Status MultiModelRunner::Build(const std::vector<char> &model_path, ModelType mo
       curr_executor_input_names.insert(curr_executor_input_names.end(), curr_executor_input_output_names[0].begin(),
                                        curr_executor_input_output_names[0].end());
     }
-    executor.SetModels(curr_executor_models);
-    executor.SetModelInputs(curr_executor_input_names);
-    executor.SetModelOutputs(curr_executor_input_output_names[1]);
-    executor.SetSubGraphInputNames(curr_subgraph_input_names);
-    execs_.push_back(executor);
+    auto executor = ModelExecutor(curr_executor_models, curr_executor_input_names, curr_executor_input_output_names[1],
+                                  curr_subgraph_input_names);
+    executors_.push_back(executor);
   }
   return kSuccess;
 }
 
-std::vector<ModelExecutor> MultiModelRunner::GetRunnerExec() { return execs_; }
+std::vector<ModelExecutor> MultiModelRunner::GetRunnerExecutor() { return executors_; }
 
-void MultiModelRunner::LoadConfig(const std::vector<char> &config_path) { config_file_ = CharToString(config_path); }
+Status MultiModelRunner::LoadConfig(const std::vector<char> &config_path) {
+  config_file_ = CharToString(config_path);
+  return kSuccess;
+}
 
 Status MultiModelRunner::UpdateConfig(const std::vector<char> &section,
                                       const std::pair<std::vector<char>, std::vector<char>> &config) {
@@ -244,7 +244,7 @@ Status ModelExecutor::Predict(const std::vector<MSTensor> &inputs, std::vector<M
       sub_model_output_map[output.Name()] = output;
     }
   }
-  for (auto out_name : graph_output_names_) {
+  for (auto out_name : executor_output_names_) {
     if (sub_model_output_map.find(out_name) != sub_model_output_map.end()) {
       outputs->push_back(sub_model_output_map[out_name]);
     } else {
@@ -264,7 +264,7 @@ std::vector<MSTensor> ModelExecutor::GetInputs() {
       model_input_map[input.Name()] = input;
     }
   }
-  for (auto input_name : graph_input_names_) {
+  for (auto input_name : executor_input_names_) {
     if (model_input_map.find(input_name) != model_input_map.end()) {
       exec_inputs.push_back(model_input_map[input_name]);
     } else {
@@ -284,7 +284,7 @@ std::vector<MSTensor> ModelExecutor::GetOutputs() {
       model_output_map[output.Name()] = output;
     }
   }
-  for (auto output_name : graph_output_names_) {
+  for (auto output_name : executor_output_names_) {
     if (model_output_map.find(output_name) != model_output_map.end()) {
       exec_outputs.push_back(model_output_map[output_name]);
     } else {
@@ -293,16 +293,5 @@ std::vector<MSTensor> ModelExecutor::GetOutputs() {
     }
   }
   return exec_outputs;
-}
-
-void ModelExecutor::SetModels(std::vector<std::shared_ptr<ModelImpl>> models) { models_ = models; }
-void ModelExecutor::SetModelInputs(std::vector<std::string> model_input_names) {
-  graph_input_names_ = model_input_names;
-}
-void ModelExecutor::SetModelOutputs(std::vector<std::string> model_output_names) {
-  graph_output_names_ = model_output_names;
-}
-void ModelExecutor::SetSubGraphInputNames(std::vector<std::vector<std::string>> subgraph_input_names) {
-  subgraph_input_names_ = subgraph_input_names;
 }
 }  // namespace mindspore
