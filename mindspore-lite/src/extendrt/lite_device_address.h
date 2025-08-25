@@ -33,9 +33,8 @@ class TestDeviceAddress : public DeviceAddress {
  public:
   TestDeviceAddress() : DeviceAddress() {}
   TestDeviceAddress(void *ptr, size_t size) : DeviceAddress(ptr, size) {}
-  TestDeviceAddress(void *ptr, size_t size, const std::string &format, TypeId type_id, const std::string &device_name,
-                    uint32_t device_id)
-      : DeviceAddress(ptr, size, format, type_id, device_name, device_id) {}
+  TestDeviceAddress(void *ptr, size_t size, const std::string &format, TypeId type_id, const std::string &device_name)
+      : DeviceAddress(ptr, size, format, type_id, device_name) {}
   ~TestDeviceAddress() {}
   virtual bool SyncDeviceToHost(const ShapeVector &shape, size_t size, TypeId type, void *host_ptr,
                                 bool sync_on_demand) const {
