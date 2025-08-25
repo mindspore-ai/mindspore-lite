@@ -30,14 +30,18 @@ using mindspore::schema::PrimitiveType_UnsortedSegmentSum;
 
 namespace mindspore::kernel {
 int UnsortedSegmentSumCPUKernel::Prepare() {
-  if (!InferShapeDone()) {
-    return RET_OK;
-  }
   CHECK_LESS_RETURN(in_tensors_.size(), 2);
   CHECK_LESS_RETURN(out_tensors_.size(), 1);
   CHECK_NULL_RETURN(in_tensors_.at(0));
   CHECK_NULL_RETURN(in_tensors_.at(1));
   CHECK_NULL_RETURN(out_tensors_.at(0));
+  if (!InferShapeDone()) {
+    return RET_OK;
+  }
+  return ReSize();
+}
+
+int UnsortedSegmentSumCPUKernel::ReSize() {
   auto input_shape = in_tensors_.at(0)->shape();
   auto segment_ids_shape = in_tensors_.at(1)->shape();
   auto output_shape = out_tensors_.at(0)->shape();
@@ -56,8 +60,6 @@ int UnsortedSegmentSumCPUKernel::Prepare() {
   }
   return RET_OK;
 }
-
-int UnsortedSegmentSumCPUKernel::ReSize() { return RET_OK; }
 
 int UnsortedSegmentSumRun(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   CHECK_NULL_RETURN(cdata);

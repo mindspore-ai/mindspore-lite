@@ -392,7 +392,7 @@ void MatmulBaseGetThreadCuttingPolicy(MatmulStruct *matmul) {
     matmul->get_thread_cutting_info_by_row_(matmul);
   } else {
     int total_col_unit = UP_DIV(matmul->compute_.col_align_, matmul->compute_.col_min_unit_);
-    matmul->base_.thread_nr_ = MSMIN(matmul->base_.thread_nr_, total_col_unit);
+    matmul->base_.thread_nr_ = MSMAX(MSMIN(matmul->base_.thread_nr_, total_col_unit), 1);
     int block_col_unit = UP_DIV(total_col_unit, matmul->base_.thread_nr_);
 
     int count = 0;

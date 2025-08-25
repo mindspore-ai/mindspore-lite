@@ -26,12 +26,18 @@ int UnsortedSegmentSumInferShape(const TensorC *const *inputs, size_t inputs_siz
 
   TensorC *out = outputs[0];
   const TensorC *x = inputs[0];
+  SetDataTypeFormat(out, x);
+  if (!InferFlag(inputs, inputs_size)) {
+    return NNACL_INFER_INVALID;
+  }
+  if (inputs[THIRD_INPUT]->data_ == NULL) {
+    return NNACL_INFER_INVALID;
+  }
   const TensorC *segment_id = inputs[1];
-  if (inputs[2]->data_ == NULL ||
-      (inputs[2]->data_type_ != kNumberTypeInt && inputs[2]->data_type_ != kNumberTypeInt32)) {
+  if (inputs[THIRD_INPUT]->data_type_ != kNumberTypeInt && inputs[THIRD_INPUT]->data_type_ != kNumberTypeInt32) {
     return NNACL_INPUT_TENSOR_ERROR;
   }
-  int num_segments = *(int *)(inputs[2]->data_);
+  int num_segments = *(int *)(inputs[THIRD_INPUT]->data_);
   int output_shape[MAX_SHAPE_SIZE] = {0};
   size_t output_shape_size = 0;
   ShapePush(output_shape, &output_shape_size, num_segments);
@@ -42,7 +48,6 @@ int UnsortedSegmentSumInferShape(const TensorC *const *inputs, size_t inputs_siz
     ShapePush(output_shape, &output_shape_size, x->shape_[index]);
   }
   SetShapeArray(out, output_shape, output_shape_size);
-  SetDataTypeFormat(out, x);
   return NNACL_OK;
 }
 
