@@ -94,6 +94,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/core/include/utils/trace_info.h"
+#include "mindspore/core/include/ir/scope.h"
 #include "infer/return.h"
 #include "tools/converter/export_model.h"
 #include "infer/make_tuple.h"
