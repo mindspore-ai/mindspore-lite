@@ -593,7 +593,7 @@ Tensor *Tensor::CreateTensorByDeepCopy(const std::string &name, TypeId type, con
 
   size_t shape_size = 1;
   if (shape.empty()) {
-    shape_size = 0;
+    shape_size = 1;
   } else {
     for (size_t i = 0; i < shape.size(); ++i) {
       if (shape[i] < 0) {
