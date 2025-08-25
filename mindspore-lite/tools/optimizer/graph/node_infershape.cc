@@ -323,7 +323,7 @@ STATUS NodeInferShape::InferShape(const CNodePtr &cnode) {
   if (JudgeOpSupportNNACLInfer(cnode)) {
     status = InferShapeByNNACL(cnode);
   } else {
-    MS_LOG(ERROR) << "Unsupported node: " << cnode->fullname_with_scope() << " for infershape.";
+    MS_LOG(WARNING) << "Unsupported node: " << cnode->fullname_with_scope() << " for infershape.";
     return RET_ERROR;
   }
   return status;
