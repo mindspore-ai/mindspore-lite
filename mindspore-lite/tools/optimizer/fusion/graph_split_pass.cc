@@ -87,7 +87,7 @@ STATUS BuildReturnNode(const FuncGraphPtr &anf_graph, const std::vector<AnfNodeP
   return lite::RET_OK;
 }
 
-bool IsWeight(AnfNodePtr node) {
+bool IsWeight(const AnfNodePtr &node) {
   return (utils::isa<ParameterPtr>(node) && node->cast<ParameterPtr>() != nullptr &&
           node->cast<ParameterPtr>()->has_default());
 }

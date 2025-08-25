@@ -29,7 +29,7 @@ std::mutex g_config_lock;
 constexpr size_t kMaxSectionNum = 100;
 constexpr size_t kMaxConfigNumPerSection = 1000;
 }  // namespace
-FuncGraphPtr LoadGraphByBufferImpl(const void *model_buff, size_t model_size, ModelType model_type,
+FuncGraphPtr LoadGraphByBufferImpl(const void *model_buff, const size_t &model_size, const ModelType &model_type,
                                    const std::shared_ptr<Context> &model_context, const std::string &model_path) {
   if (model_type != kMindIR) {
     MS_LOG(ERROR) << "Invalid model type!";
@@ -92,7 +92,7 @@ Status MultiModelRunner::SetConfigs(const std::shared_ptr<ModelImpl> &model_impl
   return kSuccess;
 }
 
-Status MultiModelRunner::Build(const std::vector<char> &model_path, ModelType model_type,
+Status MultiModelRunner::Build(const std::vector<char> &model_path, const ModelType &model_type,
                                const std::shared_ptr<Context> &model_context) {
   MS_CHECK_TRUE_MSG(!model_path.empty(), kLiteError, "Model path cannot be empty!");
   auto buffer = ReadFile(CharToString(model_path));
@@ -150,8 +150,11 @@ Status MultiModelRunner::Build(const std::vector<char> &model_path, ModelType mo
       MS_LOG(ERROR) << "Set configs failed!";
       return kLiteError;
     }
-    model_impl_ptr->Build(om_data, om_size, kOM, model_context);
-    models_.push_back(model_impl_ptr);
+    if (model_impl_ptr->Build(om_data, om_size, kOM, model_context) != kSuccess) {
+      MS_LOG(ERROR) << "Model build failed!";
+      return kLiteError;
+    }
+    models_.emplace_back(model_impl_ptr);
   }
   for (size_t executor_id = 0; executor_id < subgraph_infer_path.size(); executor_id++) {
     std::vector<std::shared_ptr<ModelImpl>> curr_executor_models;
@@ -160,7 +163,7 @@ Status MultiModelRunner::Build(const std::vector<char> &model_path, ModelType mo
     auto min_index = subgraph_infer_path[executor_id][0];
     auto max_index = subgraph_infer_path[executor_id][1];
     for (auto subgraph_id = min_index; subgraph_id <= max_index; subgraph_id++) {
-      curr_executor_models.push_back(models_[subgraph_id]);
+      curr_executor_models.emplace_back(models_[subgraph_id]);
       curr_subgraph_input_names.push_back(subgraph_input_names[subgraph_id]);
     }
     std::vector<std::string> curr_executor_input_names;
@@ -184,7 +187,7 @@ Status MultiModelRunner::Build(const std::vector<char> &model_path, ModelType mo
   return kSuccess;
 }
 
-std::vector<ModelExecutor> MultiModelRunner::GetRunnerExecutor() { return executors_; }
+std::vector<ModelExecutor> MultiModelRunner::GetModelExecutor() const { return executors_; }
 
 Status MultiModelRunner::LoadConfig(const std::vector<char> &config_path) {
   config_file_ = CharToString(config_path);
@@ -255,7 +258,7 @@ Status ModelExecutor::Predict(const std::vector<MSTensor> &inputs, std::vector<M
   return kSuccess;
 }
 
-std::vector<MSTensor> ModelExecutor::GetInputs() {
+std::vector<MSTensor> ModelExecutor::GetInputs() const {
   std::vector<MSTensor> exec_inputs;
   std::map<std::string, MSTensor> model_input_map;
   for (auto model : models_) {
@@ -275,7 +278,7 @@ std::vector<MSTensor> ModelExecutor::GetInputs() {
   return exec_inputs;
 }
 
-std::vector<MSTensor> ModelExecutor::GetOutputs() {
+std::vector<MSTensor> ModelExecutor::GetOutputs() const {
   std::vector<MSTensor> exec_outputs;
   std::map<std::string, MSTensor> model_output_map;
   for (auto model : models_) {

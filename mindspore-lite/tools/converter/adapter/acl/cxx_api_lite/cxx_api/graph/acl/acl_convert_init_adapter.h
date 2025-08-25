@@ -22,9 +22,10 @@
 #include <string>
 #include "acl/acl_base.h"
 #include "ge/ge_ir_build.h"
+#include "include/api/visible.h"
 
 namespace mindspore {
-class __attribute__((visibility("default"))) AclConvertInitAdapter {
+class MS_API AclConvertInitAdapter {
  public:
   static AclConvertInitAdapter &GetInstance();
   aclError AclInit(const char *config_file);

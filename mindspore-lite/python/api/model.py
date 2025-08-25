@@ -842,7 +842,30 @@ class ModelGroup:
 
 class MultiModelRunner:
     """
-    The `MultiModelRunner` class is used to run ModelExec
+    The `MultiModelRunner` class is used to run ModelExecutor
+    Examples:
+        >>> import mindspore_lite as mslite
+        >>> import numpy as np
+        >>> dtype_map = {
+        >>>     mslite.DataType.FLOAT32:np.float32,
+        >>>     mslite.DataType.INT32:np.int32,
+        >>>     mslite.DataType.FLOAT16:np.float16,
+        >>>     mslite.DataType.INT8:np.int8
+        >>> }
+        >>> model_type=mslite.ModelType.MINDIR
+        >>> context = mslite.Context()
+        >>> context.ascend.device_id = 2
+        >>> model_path = "path_to_model1"
+        >>> model_runner = mslite.MultiModelRunner()
+        >>> runner.build_from_file(model_path, mslite.ModelType.MINDIR, context)
+        >>> execs = runner.get_model_ececutor()
+        >>> for exec in execs:
+        >>>     exec_inputs = exec.get_inputs()
+        >>>     exec_outputs = exec.get_outputs()
+        >>>     for i, input in enumerate(exec_inputs):
+        >>>         data = np.random.randn(*input.shape).astype(dtype_map[input.dtype])
+        >>>         input.set_data_from_numpy(data)
+        >>>     exec.predict(exec_inputs)
     """
     def __init__(self):
         self._runner = _c_lite_wrapper.MultiModelRunnerBind()
@@ -942,9 +965,9 @@ class MultiModelRunner:
         if not ret.IsOk():
             raise RuntimeError(
                 f"build_from_file failed! Error is {ret.ToString()}")
-    def get_runner_executor(self):
+    def get_model_executor(self):
         executors = []
-        for executor_ in self._runner.get_runner_executor():
+        for executor_ in self._runner.get_model_executor():
             executors.append(ModelExecutor(executor_))
         return executors
 

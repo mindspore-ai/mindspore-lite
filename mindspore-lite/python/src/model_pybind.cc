@@ -153,25 +153,25 @@ Status PyModelBuild(Model *model, const std::string &model_path, ModelType model
   return kSuccess;
 }
 
-std::vector<MSTensorPtr> PyExecGetInputs(ModelExecutor *exec) {
-  if (exec == nullptr) {
+std::vector<MSTensorPtr> PyExecGetInputs(ModelExecutor *executor) {
+  if (executor == nullptr) {
     MS_LOG(ERROR) << "ModelExecutor object cannot be nullptr!";
     return {};
   }
-  return MSTensorToMSTensorPtr(exec->GetInputs());
+  return MSTensorToMSTensorPtr(executor->GetInputs());
 }
 
-std::vector<MSTensorPtr> PyExecGetOutputs(ModelExecutor *exec) {
-  if (exec == nullptr) {
+std::vector<MSTensorPtr> PyExecGetOutputs(ModelExecutor *executor) {
+  if (executor == nullptr) {
     MS_LOG(ERROR) << "ModelExecutor object cannot be nullptr!";
     return {};
   }
-  return MSTensorToMSTensorPtr(exec->GetOutputs());
+  return MSTensorToMSTensorPtr(executor->GetOutputs());
 }
 
-std::vector<MSTensorPtr> PyExecPredict(ModelExecutor *exec, const std::vector<MSTensorPtr> &inputs_ptr,
+std::vector<MSTensorPtr> PyExecPredict(ModelExecutor *executor, const std::vector<MSTensorPtr> &inputs_ptr,
                                        const std::vector<MSTensorPtr> &outputs_ptr) {
-  if (exec == nullptr) {
+  if (executor == nullptr) {
     MS_LOG(ERROR) << "ModelExecutor object cannot be nullptr";
     return {};
   }
@@ -180,7 +180,7 @@ std::vector<MSTensorPtr> PyExecPredict(ModelExecutor *exec, const std::vector<MS
   if (!outputs_ptr.empty()) {
     outputs = MSTensorPtrToMSTensor(outputs_ptr);
   }
-  if (!exec->Predict(inputs, &outputs).IsOk()) {
+  if (!executor->Predict(inputs, &outputs).IsOk()) {
     return {};
   }
   if (!outputs_ptr.empty()) {
@@ -278,11 +278,12 @@ void ModelPyBind(const py::module &m) {
   (void)py::class_<MultiModelRunner, std::shared_ptr<MultiModelRunner>>(m, "MultiModelRunnerBind")
     .def(py::init<>())
     .def("build_from_file",
-         py::overload_cast<const std::string &, ModelType, const std::shared_ptr<Context> &>(&MultiModelRunner::Build),
+         py::overload_cast<const std::string &, const ModelType &, const std::shared_ptr<Context> &>(
+           &MultiModelRunner::Build),
          py::call_guard<py::gil_scoped_release>())
     .def("load_config", py::overload_cast<const std::string &>(&MultiModelRunner::LoadConfig))
     .def("update_config", &PyRunnerUpdateConfig)
-    .def("get_runner_executor", &MultiModelRunner::GetRunnerExecutor);
+    .def("get_model_executor", &MultiModelRunner::GetModelExecutor);
 
   (void)py::class_<ModelExecutor, std::shared_ptr<ModelExecutor>>(m, "ModelExecBind")
     .def(py::init<>())
