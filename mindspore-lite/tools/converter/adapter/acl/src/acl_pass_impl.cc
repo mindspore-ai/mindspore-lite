@@ -1130,7 +1130,10 @@ STATUS AclPassImpl::BuildSplitGraph(const FuncGraphPtr &func_graph, const std::v
       }
       outname_shape_map[subgraph_output_names[i][j]] = std::make_pair(shape, data_type);
     }
-    (void)CALL_ASCEND_API(aclmdlUnload, model_id);
+    if (CALL_ASCEND_API(aclmdlUnload, model_id) != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "aclmdlUnload failed!";
+      return lite::RET_ERROR;
+    }
     om_data_vec.push_back(om_data);
     graph_name_vec.push_back("ACL_om_data_" + std::to_string(i));
     acl_ret = CALL_ASCEND_API(aclrtDestroyContext, context);
@@ -1436,7 +1439,7 @@ bool AclPassImpl::Run(const FuncGraphPtr &func_graph) {
       return false;
     }
     subgraphs = GetValue<std::vector<FuncGraphPtr>>(subgraphs_val);
-    func_graph->set_attr("subgraphs", MakeValue<int>(0));
+    func_graph->erase_flag("subgraphs");
   }
 
   if (!subgraphs.empty()) {

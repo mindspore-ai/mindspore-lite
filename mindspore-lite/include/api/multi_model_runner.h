@@ -31,9 +31,17 @@ class MS_API ModelExecutor {
  public:
   /// \brief Constructor of ModelExecutor.
   ModelExecutor() = default;
-  ModelExecutor(std::vector<std::shared_ptr<ModelImpl>> models, std::vector<std::string> executor_input_names,
-                std::vector<std::string> executor_output_names,
-                std::vector<std::vector<std::string>> subgraph_input_names)
+  /// \brief Constructor of ModelExecutor.
+  ///
+  /// \param[in] models Which is a vector of ModelImplPtr, used to inference in ModelExecutor.
+  /// \param[in] executor_input_names Which is a vector of string, name of ModelExecutor's inputs.
+  /// \param[in] executor_output_names Which is a vector of string, name of ModelExecutor's outputs.
+  /// \param[in] subgraph_input_names Which is a vector of vector of string, name of every model's inputs in
+  /// ModelExecutor.
+  ModelExecutor(const std::vector<std::shared_ptr<ModelImpl>> &models,
+                const std::vector<std::string> &executor_input_names,
+                const std::vector<std::string> &executor_output_names,
+                const std::vector<std::vector<std::string>> &subgraph_input_names)
       : models_(models),
         executor_input_names_(executor_input_names),
         executor_output_names_(executor_output_names),
@@ -51,11 +59,11 @@ class MS_API ModelExecutor {
   /// \brief Obtains all input tensors of the ModelExecutor.
   ///
   /// \return The vector that includes all input tensors.
-  std::vector<MSTensor> GetInputs();
+  std::vector<MSTensor> GetInputs() const;
   /// \brief Obtains all output tensors of the ModelExecutor.
   ///
   /// \return The vector that includes all output tensors.
-  std::vector<MSTensor> GetOutputs();
+  std::vector<MSTensor> GetOutputs() const;
 
  private:
   std::vector<std::shared_ptr<ModelImpl>> models_;
@@ -77,12 +85,12 @@ class MS_API MultiModelRunner {
   /// iterations. \param[in] model_context Define the context used to store options during execution.
   ///
   /// \return Status. kSuccess: build success, kLiteModelRebuild: build model repeatedly, Other: other types of errors.
-  inline Status Build(const std::string &model_path, ModelType model_type,
+  inline Status Build(const std::string &model_path, const ModelType &model_type,
                       const std::shared_ptr<Context> &model_context = nullptr);
   /// \brief Get ModelExecutors in thr multimodelrunner.
   ///
   /// \return Vector of ModelExecutor.
-  std::vector<ModelExecutor> GetRunnerExecutor();
+  std::vector<ModelExecutor> GetModelExecutor() const;
 
   /// \brief Load config file.
   ///
@@ -100,7 +108,7 @@ class MS_API MultiModelRunner {
   inline Status UpdateConfig(const std::string &section, const std::pair<std::string, std::string> &config);
 
  private:
-  Status Build(const std::vector<char> &model_path, ModelType model_type,
+  Status Build(const std::vector<char> &model_path, const ModelType &model_type,
                const std::shared_ptr<Context> &model_context);
   Status LoadConfig(const std::vector<char> &config_path);
   Status UpdateConfig(const std::vector<char> &section, const std::pair<std::vector<char>, std::vector<char>> &config);
@@ -119,7 +127,7 @@ Status MultiModelRunner::UpdateConfig(const std::string &section, const std::pai
   return UpdateConfig(StringToChar(section), config_pair);
 }
 
-Status MultiModelRunner::Build(const std::string &model_path, ModelType model_type,
+Status MultiModelRunner::Build(const std::string &model_path, const ModelType &model_type,
                                const std::shared_ptr<Context> &model_context) {
   return Build(StringToChar(model_path), model_type, model_context);
 }
