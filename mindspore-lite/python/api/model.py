@@ -942,10 +942,10 @@ class MultiModelRunner:
         if not ret.IsOk():
             raise RuntimeError(
                 f"build_from_file failed! Error is {ret.ToString()}")
-    def get_runner_exec(self):
+    def get_runner_executor(self):
         executors = []
-        for exec_ in self._runner.get_runner_exec():
-            executors.append(ModelExecutor(exec_))
+        for executor_ in self._runner.get_runner_executor():
+            executors.append(ModelExecutor(executor_))
         return executors
 
 class ModelExecutor:
