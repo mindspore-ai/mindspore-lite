@@ -67,19 +67,7 @@ std::string AclGraphExecutor::GetConfigOption(const std::string &section_name, c
 
 Status AclGraphExecutor::Init() { return kSuccess; }
 
-std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
-  auto acl_options_ptr = std::make_shared<AclModelOptions>();
-  MS_CHECK_TRUE_MSG(acl_options_ptr != nullptr, nullptr, "Acl options make shared failed.");
-  std::string profiling_path = GetConfigOption(lite::kAscendContextSection, lite::kProfilingPathKey);
-  if (profiling_path != "") {
-    acl_options_ptr->profiling_path = profiling_path;
-  }
-
-  std::string dump_path = GetConfigOption(lite::kAscendContextSection, lite::kDumpPathKey);
-  if (dump_path != "") {
-    acl_options_ptr->dump_path = dump_path;
-  }
-
+void AclGraphExecutor::GetShareMemInfos(std::shared_ptr<AclModelOptions> acl_options_ptr) {
   std::string multi_model_sharing_mem_prepare_value =
     GetConfigOption(lite::kInnerCommon, lite::kInnerCalcWorkspaceSize);
   if (multi_model_sharing_mem_prepare_value != "") {
@@ -116,6 +104,30 @@ std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
     acl_options_ptr->share_weightspace_workspace = is_weightspace_workspace;
   }
 
+  std::string pids_str = GetConfigOption(lite::kInnerCommon, lite::kInnerPids);
+  if (pids_str != "") {
+    acl_options_ptr->pids = pids_str;
+  }
+
+  std::string shareable_handle_str = GetConfigOption(lite::kInnerCommon, lite::kInnerSharableHandle);
+  if (shareable_handle_str != "") {
+    acl_options_ptr->sharable_handle = std::stoull(shareable_handle_str.c_str());
+  }
+}
+
+std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
+  auto acl_options_ptr = std::make_shared<AclModelOptions>();
+  MS_CHECK_TRUE_MSG(acl_options_ptr != nullptr, nullptr, "Acl options make shared failed.");
+  std::string profiling_path = GetConfigOption(lite::kAscendContextSection, lite::kProfilingPathKey);
+  if (profiling_path != "") {
+    acl_options_ptr->profiling_path = profiling_path;
+  }
+
+  std::string dump_path = GetConfigOption(lite::kAscendContextSection, lite::kDumpPathKey);
+  if (dump_path != "") {
+    acl_options_ptr->dump_path = dump_path;
+  }
+  GetShareMemInfos(acl_options_ptr);
   std::string bundle_model = GetConfigOption(lite::kInnerCommon, lite::kBundleModel);
   if (bundle_model != "") {
     bool is_bundle_model = bundle_model == "true" ? true : false;
@@ -216,6 +228,7 @@ bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<st
     MS_LOG(ERROR) << "Load om data failed.";
     return false;
   }
+  sharable_handle_ = model_infer_->GetSharableHandle();
   AclEnvGuard::AddModel(model_infer_);
   return true;
 }

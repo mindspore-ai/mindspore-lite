@@ -39,6 +39,8 @@ struct AclModelOptions {
   bool is_bundle_model = false;
   std::vector<std::string> input_names;
   std::vector<std::string> output_names;
+  std::string pids = "";
+  uint64_t sharable_handle = 0;
   AclModelOptions() : device_id(0) {}
 };
 

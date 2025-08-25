@@ -13,7 +13,7 @@ if(MODE_ASCEND_ACL)
     message("Python3 general library = " ${PY3_LIBG})
 endif()
 
-if(ENABLE_D OR ENABLE_ACL)
+if(ENABLE_D OR MSLITE_ENABLE_ACL)
     # build 910 and 310 code into one distro, files needed for 310 mode
     add_compile_definitions(ENABLE_ACL)
     include_directories(${CMAKE_BINARY_DIR}/proto/ge)

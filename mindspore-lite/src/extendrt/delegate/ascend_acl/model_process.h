@@ -72,6 +72,7 @@ class ModelProcess {
   std::vector<Format> GetOutputFormat();
 
   bool Resize(const std::vector<ShapeVector> &new_shapes);
+  uint64_t GetSharableHandle() { return sharable_handle_; }
 
  private:
   bool PreInitModelResource();
@@ -112,6 +113,9 @@ class ModelProcess {
   bool ShareWorkspaceProcess(const size_t &work_size, const size_t &weight_size);
   bool ShareWorkspaceAndWeightspaceProcess(const size_t &work_size);
   bool CreateModelOutputs();
+  bool MainProcess(const void *om_data, size_t om_data_size);
+  bool SubProcess(const void *om_data, size_t om_data_size);
+  bool ShareMemProcess(const void *om_data, size_t om_data_size);
 
   std::shared_ptr<AclModelOptions> options_;
   uint32_t model_id_ = UINT32_MAX;
@@ -149,6 +153,9 @@ class ModelProcess {
   uint32_t infer_id_ = 0;
   uint32_t update_id_ = 0;
   std::vector<MSTensor> model_outputs_;
+  aclrtDrvMemHandle shareable_phy_addr_ = nullptr;
+  void *multiprocess_weight_ptr_ = nullptr;
+  uint64_t sharable_handle_ = 0;
 };
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_EXTENDRT_KERNEL_ASCEND_MODEL_MODEL_PROCESS_H_

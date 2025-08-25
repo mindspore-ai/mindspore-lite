@@ -19,7 +19,7 @@
 #include "common/log_adapter.h"
 #include "plugin/ascend/res_manager/symbol_interface/acl_symbol.h"
 #include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
-
+#include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
 namespace mindspore {
 std::shared_ptr<AclEnvGuard> AclEnvGuard::global_acl_env_ = nullptr;
 std::vector<std::shared_ptr<ModelInfer>> AclEnvGuard::model_infers_ = {};
@@ -83,6 +83,12 @@ aclError AclInitAdapter::ForceFinalize() {
     MS_LOG(WARNING) << "has repeat init, not aclFinalize";
   }
   return ACL_SUCCESS;
+}
+
+aclError AclInitAdapter::GetPid(int32_t *pid) {
+  mindspore::device::ascend::LoadAscendApiSymbols();
+  aclError rt_ret = CALL_ASCEND_API(aclrtDeviceGetBareTgid, pid);
+  return rt_ret;
 }
 
 AclEnvGuard::AclEnvGuard() : errno_(AclInitAdapter::GetInstance().AclInit(nullptr)) {
@@ -184,6 +190,16 @@ bool AclEnvGuard::Finalize() {
     return false;
   }
   MS_LOG(INFO) << "Execute acl env finalize success.";
+  return true;
+}
+
+bool GetPid(int32_t *pid) {
+  auto err = AclInitAdapter::GetInstance().GetPid(pid);
+  if (err != ACL_ERROR_NONE) {
+    MS_LOG(WARNING) << "Getpid failed! ret:" << err;
+    return false;
+  }
+  MS_LOG(INFO) << "get pid success";
   return true;
 }
 

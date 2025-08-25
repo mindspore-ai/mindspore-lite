@@ -88,6 +88,8 @@ class LiteGraphExecutor {
     return {};
   }
 
+  virtual uint64_t GetShareableHandle() { return sharable_handle_; }
+
   virtual const std::vector<TypeId> GetOutputDataType() { return {}; }
   void SetBefore(const MSKernelCallBack &before) { before_ = before; }
 
@@ -96,6 +98,7 @@ class LiteGraphExecutor {
  protected:
   MSKernelCallBack before_;
   MSKernelCallBack after_;
+  uint64_t sharable_handle_;
 };
 }  // namespace mindspore
 

@@ -15,9 +15,6 @@
  */
 #include "extendrt/cxx_api/graph/graph_data.h"
 #include "src/common/log_adapter.h"
-#ifdef ENABLE_ACL
-#include "framework/common/helper/model_helper.h"
-#endif
 
 namespace mindspore {
 Graph::GraphData::GraphData(const FuncGraphPtr &func_graph, mindspore::ModelType model_type)
@@ -34,21 +31,7 @@ Graph::GraphData::GraphData(const Buffer &om_data, mindspore::ModelType model_ty
   if (model_type_ != ModelType::kOM) {
     MS_LOG(EXCEPTION) << "Invalid ModelType " << model_type_;
   }
-
-#ifdef ENABLE_ACL
-  // check om
-  ge::ModelHelper helper;
-  ge::ModelData model_data;
-  model_data.model_data = om_data_.MutableData();
-  model_data.model_len = om_data_.DataSize();
-  ge::Status ret = helper.LoadRootModel(model_data);
-  if (ret != ge::SUCCESS) {
-    MS_LOG(EXCEPTION) << "Invalid input data cannot parse to om.";
-  }
-
-#else
   MS_LOG(EXCEPTION) << "Unsupported ModelType OM.";
-#endif
 }
 
 Graph::GraphData::~GraphData() {}
