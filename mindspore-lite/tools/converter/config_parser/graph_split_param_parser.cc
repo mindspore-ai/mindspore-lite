@@ -101,6 +101,7 @@ STATUS GraphPllitParamParser::ParseGraphSplitCfg(const std::shared_ptr<Converter
           for (auto s : second_vector) {
             op_set.insert(s);
           }
+          MS_CHECK_TRUE_MSG(!second_vector.empty(), lite::RET_ERROR, "Current subgraph output name is empty!");
           param->splitGraphCfg.subgraph_input_output.emplace_back(first_vector, second_vector);
         }
         pos = i + 1;
