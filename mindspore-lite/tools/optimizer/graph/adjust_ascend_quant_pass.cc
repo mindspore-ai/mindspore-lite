@@ -23,6 +23,7 @@
 #include "tools/converter/quantizer/quant_param_holder.h"
 #include "tools/converter/quantizer/insert_quant_node_manager.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 namespace opt {

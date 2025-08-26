@@ -30,6 +30,7 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "ops_utils/op_constants.h"
 #include "tools/converter/export_model.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 namespace opt {

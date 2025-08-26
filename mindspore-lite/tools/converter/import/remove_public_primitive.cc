@@ -21,6 +21,7 @@
 #include "mindspore/ops/op_def/structure_ops.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "nnacl_c/op_base.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 namespace lite {

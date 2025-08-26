@@ -27,6 +27,8 @@
 #include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 #include "src/common/common.h"
 #include "src/common/utils.h"
+#include "mindspore/core/include/ir/graph_utils.h"
+
 namespace mindspore {
 namespace {
 constexpr auto kProviderAcl = "litert";

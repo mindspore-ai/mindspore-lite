@@ -26,6 +26,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 namespace lite {

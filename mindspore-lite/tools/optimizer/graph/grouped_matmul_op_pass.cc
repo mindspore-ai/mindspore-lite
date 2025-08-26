@@ -35,6 +35,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 #include "ir/tensor_new.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore::opt {
 #if !defined(_WIN32) && !defined(_WIN64)

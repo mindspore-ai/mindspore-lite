@@ -46,6 +46,7 @@
 #include "src/extendrt/model_manager.h"
 #include "include/api/model_group.h"
 #include "src/common/common.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 namespace {

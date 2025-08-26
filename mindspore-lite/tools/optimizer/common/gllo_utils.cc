@@ -58,6 +58,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 #include "mindspore/core/include/ir/func_graph_flag.h"
 #include "ir/tensor_new.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 namespace opt {

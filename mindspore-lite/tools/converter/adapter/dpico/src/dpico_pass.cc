@@ -38,6 +38,7 @@
 #include "src/mapper_config_parser.h"
 #include "src/calib_data_generator.h"
 #include "src/custom_creator.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 namespace dpico {

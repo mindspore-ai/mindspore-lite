@@ -25,6 +25,7 @@
 #include "src/common/common.h"
 #include "plugin/ascend/res_manager/symbol_interface/acl_base_symbol.h"
 #include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 static std::string AdjustCnodeName(const PrimitivePtr &prim) {

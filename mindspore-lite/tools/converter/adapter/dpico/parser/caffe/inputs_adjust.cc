@@ -26,6 +26,7 @@
 #include "infer/cxx_api/pad_fusion.h"
 #include "infer/cxx_api/pow_fusion.h"
 #include "infer/resize.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore::lite {
 namespace {

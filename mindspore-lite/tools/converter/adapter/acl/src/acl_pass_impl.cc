@@ -103,6 +103,7 @@
 #include "plugin/ascend/res_manager/symbol_interface/acl_mdl_symbol.h"
 #include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
 #include "cxx_api/graph/acl/acl_convert_init_adapter.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 namespace opt {

@@ -27,6 +27,7 @@
 #include "include/op_def/auto_generate/gen_lite_ops.h"
 #include "include/mindapi/ir/anf.h"
 #include "mindspore/ops/op_def/op_enum.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 namespace opt {

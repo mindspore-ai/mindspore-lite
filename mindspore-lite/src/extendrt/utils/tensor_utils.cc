@@ -21,7 +21,6 @@
 #include <utility>
 
 #include "extendrt/utils/tensor_utils.h"
-#include "mindspore/ccsrc/kernel/framework_utils.h"
 
 namespace mindspore {
 kernel::AddressPtr CloudTensorUtils::LiteTensorToAddressPtr(const lite::Tensor *lite_tensor) {

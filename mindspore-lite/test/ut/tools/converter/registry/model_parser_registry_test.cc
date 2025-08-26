@@ -24,6 +24,7 @@
 #include "mindapi/ir/func_graph.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 using mindspore::converter::ConverterParameters;
 using mindspore::converter::kFmkTypeCaffe;

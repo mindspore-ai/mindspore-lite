@@ -156,6 +156,7 @@
 #include "tools/optimizer/fusion/add_stream_label_pass.h"
 #include "tools/optimizer/fusion/adjust_controlflow_pass.h"
 #include "tools/optimizer/fusion/graph_split_pass.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 using std::string;
 namespace mindspore::lite {

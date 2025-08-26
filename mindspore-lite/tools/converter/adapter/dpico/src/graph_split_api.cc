@@ -29,6 +29,7 @@
 #include "common/check_base.h"
 #include "common/anf_util.h"
 #include "common/op_enum.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_NULL_PTR;

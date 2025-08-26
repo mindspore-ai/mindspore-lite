@@ -25,6 +25,7 @@
 #include "src/common/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "utils/check_convert_utils.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore::opt {
 static inline tensor::TensorPtr GetTensorFromNode(const AnfNodePtr &node) {

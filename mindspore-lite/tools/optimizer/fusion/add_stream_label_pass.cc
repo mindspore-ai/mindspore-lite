@@ -21,6 +21,8 @@
 #include "tools/common/string_util.h"
 #include "tools/common/parse_config_utils.h"
 #include "common/common.h"
+#include "mindspore/core/include/ir/graph_utils.h"
+
 namespace mindspore {
 namespace opt {
 namespace {

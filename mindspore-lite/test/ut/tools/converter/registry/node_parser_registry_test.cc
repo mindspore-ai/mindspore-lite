@@ -24,6 +24,7 @@
 #include "ir/func_graph.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "proto/graph.pb.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 using mindspore::converter::kFmkTypeTf;
 namespace mindspore {

@@ -35,6 +35,7 @@
 #include "tools/lite_exporter/fetch_content.h"
 #include "abstract/utils.h"
 #include "mindspore/ops/ops_utils/op_utils.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore::lite {
 namespace {
