@@ -37,7 +37,7 @@ class MS_API ModelExecutor {
   /// \param[in] executor_input_names Which is a vector of string, name of ModelExecutor's inputs.
   /// \param[in] executor_output_names Which is a vector of string, name of ModelExecutor's outputs.
   /// \param[in] subgraph_input_names Which is a vector of vector of string, name of every model's inputs in
-  /// ModelExecutor.
+  ///     ModelExecutor.
   ModelExecutor(const std::vector<std::shared_ptr<ModelImpl>> &models,
                 const std::vector<std::string> &executor_input_names,
                 const std::vector<std::string> &executor_output_names,
@@ -48,11 +48,11 @@ class MS_API ModelExecutor {
         subgraph_input_names_(subgraph_input_names) {}
   /// \brief Destructor of ModelExecutor.
   ~ModelExecutor() = default;
-  /// \brief Inference ModelExecutor API. If use this API in train mode, it's equal to RunStep API.
+  /// \brief Inference ModelExecutor API.
   ///
   /// \param[in] inputs A vector where ModelExecutor inputs are arranged in sequence.
   /// \param[out] outputs Which is a pointer to a vector. The ModelExecutor outputs are filled in the container in
-  /// sequence.
+  ///     sequence.
   ///
   /// \return Status.
   Status Predict(const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs);
@@ -82,7 +82,7 @@ class MS_API MultiModelRunner {
   ///
   /// \param[in] model_path Define the model path.
   /// \param[in] model_type Define The type of model file. Options: ModelType::kMindIR.
-  /// iterations. \param[in] model_context Define the context used to store options during execution.
+  /// \param[in] model_context Define the context used to store options during execution.
   ///
   /// \return Status. kSuccess: build success, kLiteModelRebuild: build model repeatedly, Other: other types of errors.
   inline Status Build(const std::string &model_path, const ModelType &model_type,

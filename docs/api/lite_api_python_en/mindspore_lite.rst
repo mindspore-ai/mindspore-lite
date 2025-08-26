@@ -33,10 +33,12 @@ Model
     :template: classtemplate.rst
 
     mindspore_lite.Model
+    mindspore_lite.ModelExecutor
     mindspore_lite.ModelGroup
     mindspore_lite.ModelGroupFlag
     mindspore_lite.ModelParallelRunner
     mindspore_lite.ModelType
+    mindspore_lite.MultiModelRunner
 
 Tensor
 ------

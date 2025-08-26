@@ -1,9 +1,9 @@
 mindspore_lite.ModelExecutor
-====================
+============================
 
 .. py:class:: mindspore_lite.ModelExecutor()
 
-    `ModelExecutor` 类包装多个多个mindspore_lite模型，并实现其推理调度。
+    `ModelExecutor` 类包装多个mindspore_lite模型，并实现其推理调度。
 
     .. py:method:: get_inputs()
 
@@ -25,7 +25,7 @@ mindspore_lite.ModelExecutor
 
         参数：
             - **inputs** (list[Tensor]) - 包含所有输入Tensor的顺序列表。
-            - **outputs** (list[Tensor]，可选) - 包含所有输出Tensor的顺序列表。
+            - **outputs** (list[Tensor]，可选) - 包含所有输出Tensor的顺序列表。默认值：``None``。
 
         返回：
             list[Tensor]，模型的输出Tensor列表。
