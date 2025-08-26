@@ -27,7 +27,7 @@ file(GLOB IR_DTYPE_HEADER ${CORE_INC_DIR}/ir/dtype/*.h)
 set(IR_HEADER
         ${CORE_INC_DIR}/ir/anf.h
         ${CORE_INC_DIR}/ir/device_event.h
-        ${CORE_INC_DIR}/ir/device_sync.h
+        ${CORE_INC_DIR}/ir/device_address.h
         ${CORE_INC_DIR}/ir/dtype.h
         ${CORE_INC_DIR}/ir/func_graph.h
         ${CORE_INC_DIR}/ir/func_graph_cloner.h

@@ -36,15 +36,15 @@ DeviceAddressPtr CreateDeviceAddress(void *ptr, size_t size, const ShapeVector &
   MS_CHECK_TRUE_RET(ptr != nullptr, nullptr);
   return std::make_shared<TestDeviceAddress>(ptr, size, "fault", type_id, device_name);
 }
-DeviceSyncPtr MakeTestDeviceAddress(TypeId data_type, const ShapeVector &shape, void *data_ptr,
-                                    DeviceAddressDeleter &&deleter) {
+DeviceAddressPtr MakeTestDeviceAddress(TypeId data_type, const ShapeVector &shape, void *data_ptr,
+                                       DeviceAddressDeleter &&deleter) {
   auto context = MsContext::GetInstance();
   MS_EXCEPTION_IF_NULL(context);
   auto device_id = context->get_param<uint32_t>(MS_CTX_DEVICE_ID);
   auto data_size = SizeOf(shape) * abstract::TypeIdSize(data_type);
   auto device_address =
     CreateDeviceAddress(data_ptr, data_size, shape, Format::DEFAULT_FORMAT, data_type, kDeviceName, device_id, 0);
-  device_address->SetPointerRefCountDeleter(std::move(deleter));
+  device_address->SetDevicePointerDeleter(std::move(deleter));
   return device_address;
 }
 
@@ -162,7 +162,7 @@ void CopyData(const DeviceAddress *src_device_address, const DeviceAddress *dst_
 }
 }  // namespace
 
-bool LiteAsyncCopy(const DeviceSyncPtr &dst_device_sync, const DeviceSyncPtr &src_device_sync, size_t stream_id) {
+bool LiteAsyncCopy(const DeviceAddressPtr &dst_device_sync, const DeviceAddressPtr &src_device_sync, size_t stream_id) {
   const auto &dst_device_address = dynamic_cast<const TestDeviceAddress *>(dst_device_sync.get());
   const auto &src_device_address = dynamic_cast<const TestDeviceAddress *>(src_device_sync.get());
   MS_EXCEPTION_IF_NULL(dst_device_address);
@@ -215,14 +215,14 @@ bool LiteAsyncCopy(const DeviceSyncPtr &dst_device_sync, const DeviceSyncPtr &sr
   return true;
 }
 
-bool LiteSyncCopy(const DeviceSyncPtr &dst_device_sync, const DeviceSyncPtr &src_device_sync, size_t stream_id) {
+bool LiteSyncCopy(const DeviceAddressPtr &dst_device_sync, const DeviceAddressPtr &src_device_sync, size_t stream_id) {
   return LiteAsyncCopy(dst_device_sync, src_device_sync, stream_id);
 }
 
 MS_REGISTER_HAL_COPY_FUNC(DeviceType::kCPU,
-                          ([](const DeviceSyncPtr &dst_device_sync, const DeviceSyncPtr &src_device_sync,
+                          ([](const DeviceAddressPtr &dst_device_sync, const DeviceAddressPtr &src_device_sync,
                               size_t stream_id) { return LiteSyncCopy(dst_device_sync, src_device_sync, stream_id); }),
-                          ([](const DeviceSyncPtr &dst_device_sync, const DeviceSyncPtr &src_device_sync,
+                          ([](const DeviceAddressPtr &dst_device_sync, const DeviceAddressPtr &src_device_sync,
                               size_t stream_id,
                               bool) { return LiteSyncCopy(dst_device_sync, src_device_sync, stream_id); }),
                           ([](void *dst, const void *src, uint64_t size, size_t stream_id) { return true; }));

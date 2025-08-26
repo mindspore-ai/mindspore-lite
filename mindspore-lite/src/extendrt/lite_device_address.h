@@ -21,7 +21,7 @@
 #include <string>
 #include <utility>
 
-#include "runtime/hardware_abstract/kernel_base/device_address.h"
+#include "ir/device_address.h"
 
 namespace mindspore {
 namespace lite {
@@ -44,14 +44,13 @@ class TestDeviceAddress : public DeviceAddress {
                                 const std::string &format) const {
     return true;
   }
-  virtual void ClearDeviceMemory() {}
-  DeviceType GetDeviceType() const override { return DeviceType::kCPU; }
+  DeviceType GetDeviceType() const { return DeviceType::kCPU; }
 
-  void set_data(tensor::TensorDataPtr &&data) override { data_ = std::move(data); }
+  void set_data(tensor::TensorDataPtr &&data) { data_ = std::move(data); }
 
-  const tensor::TensorDataPtr &data() const override { return data_; }
+  const tensor::TensorDataPtr &data() const { return data_; }
 
-  bool has_data() const override { return data_ != nullptr; }
+  bool has_data() const { return data_ != nullptr; }
 
  private:
   // the data for numpy object.
