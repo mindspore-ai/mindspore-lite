@@ -664,7 +664,7 @@ bool ModelProcess::ShareWorkspaceAndWeightspaceProcess(const size_t &work_size) 
 }
 
 bool ModelProcess::CreateModelOutputs() {
-  if (!(IsDynamicShape() || is_dynamic_output_)) {
+  if (!is_dynamic_output_) {
     for (size_t i = 0; i < output_infos_.size(); ++i) {
       const auto &output_info = output_infos_[i];
       auto host_data = malloc(output_info.buffer_size);
@@ -1766,7 +1766,7 @@ bool ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
         continue;
       }
     }
-    if (IsDynamicShape() || is_dynamic_output_) {
+    if (is_dynamic_output_) {
       auto host_data = malloc(output_info.buffer_size);
       MS_CHECK_TRUE_MSG(host_data != nullptr, false, "Malloc data failed.");
       auto ret =
@@ -1795,6 +1795,7 @@ bool ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
                       << " to host failed, memory size " << output_info.buffer_size << ", ret: " << ret;
         return false;
       }
+      model_outputs_[i].SetShape(output_info.dims);
       new_outputs.push_back(model_outputs_[i]);
     }
   }
