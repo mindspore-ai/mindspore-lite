@@ -48,6 +48,7 @@ class ModelInfer {
   const std::vector<TypeId> GetInputDataType();
   const std::vector<TypeId> GetOutputDataType();
   std::vector<Format> GetOutputFormat();
+  uint64_t GetSharableHandle() { return sharable_handle_; }
 
   bool Resize(const std::vector<std::vector<int64_t>> &new_shapes);
 
@@ -60,6 +61,7 @@ class ModelInfer {
   ModelProcess model_process_;
   Profiling profiling_;
   std::shared_ptr<AclEnvGuard> acl_env_;
+  uint64_t sharable_handle_ = 0;
 };
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_EXTENDRT_KERNEL_ASCEND_MODEL_MODEL_INFER_H_

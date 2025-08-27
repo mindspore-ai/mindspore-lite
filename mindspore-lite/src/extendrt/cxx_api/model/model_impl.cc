@@ -309,6 +309,23 @@ bool ModelImpl::IsEnableModelSharing(const std::string &model_path, ModelGroupFl
   }
 }
 
+std::map<std::string, std::string> ModelImpl::GetModelInfo() const {
+  auto current_info = model_info_;
+  if (model_info_.find(lite::KCurrentPid) == model_info_.end()) {
+    int32_t pid;
+    if (!AscendAllocatorPlugin::GetInstance().Register()) {
+      MS_LOG(WARNING) << "Register ascendallocatorplugin failed!";
+      return current_info;
+    }
+    if (!AscendAllocatorPlugin::GetInstance().GetPid(&pid)) {
+      MS_LOG(WARNING) << "GetPid failed!";
+    } else {
+      current_info[lite::KCurrentPid] = std::to_string(pid);
+    }
+  }
+  return current_info;
+}
+
 bool ModelImpl::IsEnableModelSharing(const std::pair<const void *, size_t> &model_buff) {
   const std::set<std::pair<const void *, size_t>> &model_buff_set = ModelManager::GetInstance().GetModelBuff();
   return (model_buff_set.find(model_buff) != model_buff_set.end());
@@ -353,6 +370,26 @@ Status ModelImpl::UpdateSharingWorkspaceConfig(const void *model_buff, size_t mo
         MS_LOG(ERROR) << "UpdateConfig " << lite::kInnerCommon << " " << lite::kInnerWeightspaceWorkspace << " failed!";
         return ret;
       }
+    }
+  }
+  auto pids = GetConfig(lite::kAscendContextSection, lite::kShareableWeightPidList);
+  auto sharable_handle = GetConfig(lite::kAscendContextSection, lite::kSharableWeightMemHandle);
+  if (pids != "" && sharable_handle != "") {
+    MS_LOG(ERROR) << "You can only set pids or sharable_handle, but not set both of them!";
+    return kLiteError;
+  }
+  if (pids != "") {
+    auto ret = UpdateConfig(lite::kInnerCommon, std::make_pair(lite::kInnerPids, pids));
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "UpdateConfig " << lite::kInnerCommon << " " << lite::kInnerPids << " failed!";
+      return ret;
+    }
+  }
+  if (sharable_handle != "") {
+    auto ret = UpdateConfig(lite::kInnerCommon, std::make_pair(lite::kInnerSharableHandle, sharable_handle));
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "UpdateConfig " << lite::kInnerCommon << " " << lite::kInnerSharableHandle << " failed!";
+      return ret;
     }
   }
   return kSuccess;
@@ -450,6 +487,10 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, M
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "compile graph failed!ret = " << ret;
       return ret;
+    }
+    auto sharable_handle = session_->GetSharableHandle();
+    if (sharable_handle != 0) {
+      SetModelInfo(lite::kSharableWeightMemHandle, std::to_string(sharable_handle));
     }
     std::shared_lock<std::shared_mutex> build_lock(g_model_converter_lock);
     return FuncGraphReuseManager::GetInstance()->StoreFuncGraph(func_graph, config_info_);

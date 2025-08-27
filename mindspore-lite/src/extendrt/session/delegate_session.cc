@@ -56,6 +56,7 @@ Status GraphSinkSession::CompileGraph(const void *model_data, size_t data_size, 
     MS_LOG(ERROR) << "GraphSinkSession::CompileGraph compile graph failed";
     return kCoreFailed;
   }
+  sharable_handle_ = graph_executor_->GetShareableHandle();
   DelegateGraphInfo graph_info;
   auto status = InitGraphInfo(&graph_info, *graph_id);
   if (!status.IsOk()) {
@@ -95,6 +96,7 @@ Status GraphSinkSession::CompileGraph(FuncGraphPtr graph, const void *data, size
   if (prepare_share_mem == "true") {
     return kSuccess;
   }
+  sharable_handle_ = graph_executor_->GetShareableHandle();
   status = UpdateGraphInputsOutputs(*graph_id, &graph_info);
   if (!status.IsOk()) {
     MS_LOG(ERROR) << "Failed to update inputs and outputs info from graph executor";

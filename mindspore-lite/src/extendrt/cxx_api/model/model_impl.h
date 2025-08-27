@@ -215,7 +215,7 @@ class ModelImpl {
   static bool CheckModelSupport(DeviceType device_type, ModelType model_type);
   void SetModelInfo(const std::string &key, const std::string &value) { model_info_[key] = value; }
 
-  std::map<std::string, std::string> GetModelInfo() const { return model_info_; }
+  std::map<std::string, std::string> GetModelInfo() const;
 
   // release inference resource, only used for mindspore_lite's ascend backend now.
   Status Finalize();
