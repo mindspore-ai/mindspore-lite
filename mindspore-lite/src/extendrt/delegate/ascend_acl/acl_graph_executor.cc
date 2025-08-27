@@ -35,6 +35,13 @@ constexpr auto kProviderAcl = "litert";
 constexpr size_t kSupportedWeightNum = 1;
 }  // namespace
 
+AclGraphExecutor::~AclGraphExecutor() {
+  AclEnvGuard::DeleteModel(model_infer_);
+  if (!model_infer_->Finalize()) {
+    MS_LOG(ERROR) << "model finalize failed.";
+  }
+}
+
 bool AclGraphExecutor::GetDeviceID(int32_t *device_id) {
   if (context_ != nullptr && !context_->MutableDeviceInfo().empty()) {
     auto device_info = context_->MutableDeviceInfo()[0];

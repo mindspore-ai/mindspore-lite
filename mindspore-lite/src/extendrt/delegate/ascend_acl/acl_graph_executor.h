@@ -36,7 +36,7 @@ class AclGraphExecutor : public LiteGraphExecutor {
     context_ = context;
     config_info_ = config_info;
   }
-  ~AclGraphExecutor() {}
+  ~AclGraphExecutor();
 
   bool CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
                     uint32_t *graph_id) override;
