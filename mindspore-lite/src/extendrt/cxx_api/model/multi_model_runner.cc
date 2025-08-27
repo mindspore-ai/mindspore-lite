@@ -23,14 +23,14 @@
 #include "extendrt/utils/func_graph_utils.h"
 #include "include/api/dual_abi_helper.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-
+#include "include/api/types.h"
 namespace mindspore {
 namespace {
 std::mutex g_load_mindir_lock;
 std::mutex g_config_lock;
 constexpr size_t kMaxSectionNum = 100;
 constexpr size_t kMaxConfigNumPerSection = 1000;
-}  // namespace
+
 FuncGraphPtr LoadGraphByBufferImpl(const void *model_buff, const size_t &model_size, const ModelType &model_type,
                                    const std::shared_ptr<Context> &model_context, const std::string &model_path) {
   if (model_type != kMindIR) {
@@ -76,51 +76,13 @@ void SetInputOutputNames(const size_t &cnode_count, const std::vector<std::vecto
   model_impl_ptr->UpdateConfig(lite::kInnerGraphSplit, std::make_pair(lite::kInnerOutputNames, output_name_str));
 }
 
-Status MultiModelRunner::SetConfigs(const std::shared_ptr<ModelImpl> &model_impl_ptr) {
-  if (!config_file_.empty()) {
-    if (model_impl_ptr->LoadConfig(config_file_) != kSuccess) {
-      MS_LOG(ERROR) << "Model LoadConfig failed!";
-      return kLiteError;
-    }
-  }
-  for (auto key_value : config_info_) {
-    for (auto pair : key_value.second) {
-      if (model_impl_ptr->UpdateConfig(key_value.first, pair) != kSuccess) {
-        MS_LOG(ERROR) << "Model updateconfig failed!";
-        return kLiteError;
-      }
-    }
-  }
-  return kSuccess;
-}
-
-Status MultiModelRunner::Build(const std::vector<char> &model_path, const ModelType &model_type,
-                               const std::shared_ptr<Context> &model_context) {
-  MS_CHECK_TRUE_MSG(!model_path.empty(), kLiteError, "Model path cannot be empty!");
-  auto buffer = ReadFile(CharToString(model_path));
-  MS_CHECK_TRUE_MSG(buffer.DataSize() != 0, kLiteError, "Failed to read buffer from model file.");
-  auto func_graph =
-    LoadGraphByBufferImpl(buffer.Data(), buffer.DataSize(), model_type, model_context, CharToString(model_path));
-  MS_CHECK_TRUE_MSG(func_graph != nullptr, kLiteError, "LoadGraphByBufferImpl failed!");
+Status BuildModels(const FuncGraphPtr &func_graph, const std::vector<std::vector<std::string>> &subgraph_input_names,
+                   const std::vector<std::vector<std::string>> &subgraph_output_names,
+                   const std::shared_ptr<Context> &model_context, std::vector<std::shared_ptr<ModelImpl>> *models) {
+  MS_CHECK_TRUE_MSG(func_graph != nullptr, kLiteError, "func_graph is nullptr!");
+  MS_CHECK_TRUE_MSG(model_context != nullptr, kLiteError, "model_context is nullptr!");
   auto nodes = func_graph->TopoSort(func_graph->get_return());
   MS_CHECK_TRUE_MSG(!nodes.empty(), kLiteError, "There are no nodes in the func_graph");
-  auto subgraph_infer_path_val = func_graph->get_attr(lite::kSubgraphInferPath);
-  MS_CHECK_TRUE_MSG(subgraph_infer_path_val != nullptr, kLiteError, "subgraph_infer_path is nullptr!");
-  auto subgraph_infer_path = GetValue<std::vector<std::vector<int32_t>>>(subgraph_infer_path_val);
-  auto subgraph_inputs_name_val = func_graph->get_attr(lite::kSubgraphInputNames);
-  MS_CHECK_TRUE_MSG(subgraph_inputs_name_val != nullptr, kLiteError, "subgraph_inputs_name_val is nullptr!");
-  auto subgraph_input_names = GetValue<std::vector<std::vector<std::string>>>(subgraph_inputs_name_val);
-  auto subgraph_output_names_val = func_graph->get_attr(lite::kSubgraphOutputNames);
-  MS_CHECK_TRUE_MSG(subgraph_output_names_val != nullptr, kLiteError, "subgraph_output_names_val is nullptr!");
-  auto subgraph_output_names = GetValue<std::vector<std::vector<std::string>>>(subgraph_output_names_val);
-  auto main_graph_inputs_names_val = func_graph->get_attr(lite::kGraphInputNames);
-  MS_CHECK_TRUE_MSG(main_graph_inputs_names_val != nullptr, kLiteError, "main_graph_inputs_nmes_val is nullptr!");
-  auto main_graph_input_names = GetValue<std::vector<std::string>>(main_graph_inputs_names_val);
-  auto extended_subgraph_input_output_val = func_graph->get_attr(lite::kExtendedSubgraphInputOutput);
-  MS_CHECK_TRUE_MSG(extended_subgraph_input_output_val != nullptr, kLiteError,
-                    "extended_subgraph_input_output_val is nullptr");
-  auto extended_subgraph_input_output =
-    GetValue<std::vector<std::vector<std::vector<std::string>>>>(extended_subgraph_input_output_val);
   size_t cnode_count = 0;
   for (const auto &node : nodes) {
     auto cnode = node->cast<CNodePtr>();
@@ -148,15 +110,69 @@ Status MultiModelRunner::Build(const std::vector<char> &model_path, const ModelT
     auto om_size = tensor_data->Size();
     auto model_impl_ptr = std::make_shared<ModelImpl>();
     SetInputOutputNames(cnode_count, subgraph_input_names, subgraph_output_names, model_impl_ptr);
-    if (SetConfigs(model_impl_ptr) != kSuccess) {
-      MS_LOG(ERROR) << "Set configs failed!";
-      return kLiteError;
-    }
     if (model_impl_ptr->Build(om_data, om_size, kOM, model_context) != kSuccess) {
       MS_LOG(ERROR) << "Model build failed!";
       return kLiteError;
     }
-    models_.emplace_back(model_impl_ptr);
+    models->emplace_back(model_impl_ptr);
+  }
+  return kSuccess;
+}
+}  // namespace
+
+Status MultiModelRunner::SetConfigs(const std::shared_ptr<ModelImpl> &model_impl_ptr) {
+  if (!config_file_.empty()) {
+    if (model_impl_ptr->LoadConfig(config_file_) != kSuccess) {
+      MS_LOG(ERROR) << "Model LoadConfig failed!";
+      return kLiteError;
+    }
+  }
+  for (auto key_value : config_info_) {
+    for (auto pair : key_value.second) {
+      if (model_impl_ptr->UpdateConfig(key_value.first, pair) != kSuccess) {
+        MS_LOG(ERROR) << "Model updateconfig failed!";
+        return kLiteError;
+      }
+    }
+  }
+  return kSuccess;
+}
+
+Status MultiModelRunner::Build(const std::vector<char> &model_path, const ModelType &model_type,
+                               const std::shared_ptr<Context> &model_context) {
+  MS_CHECK_TRUE_MSG(!model_path.empty(), kLiteError, "Model path cannot be empty!");
+  MS_CHECK_TRUE_MSG(model_context != nullptr, kLiteError, "model_context is nullptr!");
+  auto buffer = ReadFile(CharToString(model_path));
+  MS_CHECK_TRUE_MSG(buffer.DataSize() != 0, kLiteError, "Failed to read buffer from model file.");
+  auto func_graph =
+    LoadGraphByBufferImpl(buffer.Data(), buffer.DataSize(), model_type, model_context, CharToString(model_path));
+  MS_CHECK_TRUE_MSG(func_graph != nullptr, kLiteError, "LoadGraphByBufferImpl failed!");
+  auto subgraph_infer_path_val = func_graph->get_attr(lite::kSubgraphInferPath);
+  MS_CHECK_TRUE_MSG(subgraph_infer_path_val != nullptr, kLiteError, "subgraph_infer_path is nullptr!");
+  auto subgraph_infer_path = GetValue<std::vector<std::vector<int32_t>>>(subgraph_infer_path_val);
+  auto subgraph_inputs_name_val = func_graph->get_attr(lite::kSubgraphInputNames);
+  MS_CHECK_TRUE_MSG(subgraph_inputs_name_val != nullptr, kLiteError, "subgraph_inputs_name_val is nullptr!");
+  auto subgraph_input_names = GetValue<std::vector<std::vector<std::string>>>(subgraph_inputs_name_val);
+  auto subgraph_output_names_val = func_graph->get_attr(lite::kSubgraphOutputNames);
+  MS_CHECK_TRUE_MSG(subgraph_output_names_val != nullptr, kLiteError, "subgraph_output_names_val is nullptr!");
+  auto subgraph_output_names = GetValue<std::vector<std::vector<std::string>>>(subgraph_output_names_val);
+  auto main_graph_inputs_names_val = func_graph->get_attr(lite::kGraphInputNames);
+  MS_CHECK_TRUE_MSG(main_graph_inputs_names_val != nullptr, kLiteError, "main_graph_inputs_nmes_val is nullptr!");
+  auto main_graph_input_names = GetValue<std::vector<std::string>>(main_graph_inputs_names_val);
+  auto extended_subgraph_input_output_val = func_graph->get_attr(lite::kExtendedSubgraphInputOutput);
+  MS_CHECK_TRUE_MSG(extended_subgraph_input_output_val != nullptr, kLiteError,
+                    "extended_subgraph_input_output_val is nullptr");
+  auto extended_subgraph_input_output =
+    GetValue<std::vector<std::vector<std::vector<std::string>>>>(extended_subgraph_input_output_val);
+  if (BuildModels(func_graph, subgraph_input_names, subgraph_output_names, model_context, &models_) != kSuccess) {
+    MS_LOG(ERROR) << "BuildModels failed!";
+    return kLiteError;
+  }
+  for (auto model : models_) {
+    if (SetConfigs(model) != kSuccess) {
+      MS_LOG(ERROR) << "Set configs failed!";
+      return kLiteError;
+    }
   }
   for (size_t executor_id = 0; executor_id < subgraph_infer_path.size(); executor_id++) {
     std::vector<std::shared_ptr<ModelImpl>> curr_executor_models;
@@ -184,6 +200,10 @@ Status MultiModelRunner::Build(const std::vector<char> &model_path, const ModelT
     }
     auto executor = ModelExecutor(curr_executor_models, curr_executor_input_names, curr_executor_input_output_names[1],
                                   curr_subgraph_input_names);
+    if (executor.Initialize(model_context) != kSuccess) {
+      MS_LOG(ERROR) << "executor init failed!";
+      return kLiteError;
+    }
     executors_.push_back(executor);
   }
   return kSuccess;
@@ -218,15 +238,58 @@ Status MultiModelRunner::UpdateConfig(const std::vector<char> &section,
   return kSuccess;
 }
 
+Status ModelExecutor::Initialize(const std::shared_ptr<Context> &model_context) {
+  if (initialized_) {
+    MS_LOG(WARNING) << "ModelExecutor has been initialized!";
+    return kSuccess;
+  }
+  MS_CHECK_TRUE_MSG(model_context != nullptr, kLiteError, "model_context is nullptr!");
+  int32_t device_id = 0;
+  if (!model_context->MutableDeviceInfo().empty()) {
+    auto device_info = model_context->MutableDeviceInfo()[0];
+    if (device_info == nullptr) {
+      MS_LOG(ERROR) << "device info is nullptr!";
+      return kLiteError;
+    }
+    if (device_info->GetDeviceType() != DeviceType::kAscend) {
+      MS_LOG(ERROR) << "ModelExecutor only support ascend backend!";
+      return kLiteError;
+    }
+    auto ascend_device = device_info->Cast<AscendDeviceInfo>();
+    if (ascend_device == nullptr) {
+      MS_LOG(ERROR) << "not ascend device!";
+      return kLiteError;
+    }
+    device_id = ascend_device->GetDeviceID();
+  }
+  for (auto model : models_) {
+    MS_CHECK_TRUE_MSG(model != nullptr, kLiteError, "model is nullptr!");
+    auto model_outputs = model->GetOutputs();
+    std::vector<MSTensor> output_tensors = {};
+    for (auto output : model_outputs) {
+      auto tensor = MSTensor::CreateTensor(output.Name(), output, "ascend", device_id);
+      output_tensors.push_back(*tensor);
+      delete tensor;
+    }
+    model_output_tensors_.push_back(output_tensors);
+  }
+  initialized_ = true;
+  return kSuccess;
+}
+
 Status ModelExecutor::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs) {
+  MS_CHECK_TRUE_MSG(outputs != nullptr, kLiteError, "outputs is nullptr!");
+  MS_CHECK_TRUE_MSG(models_.size() == model_output_tensors_.size(), kLiteError,
+                    "size of models must equal model_output_tensors! models size:"
+                      << models_.size() << " model_output_tensors size:" << model_output_tensors_.size());
   std::map<std::string, MSTensor> sub_model_output_map;
   std::map<std::string, MSTensor> input_map;
   for (auto tensor : inputs) {
     input_map[tensor.Name()] = tensor;
   }
-  for (auto model : models_) {
+  for (size_t model_id = 0; model_id < models_.size(); model_id++) {
     std::vector<MSTensor> curr_inputs;
-    auto model_inputs = model->GetInputs();
+    auto model_inputs = models_[model_id]->GetInputs();
     for (auto tensor : model_inputs) {
       if (sub_model_output_map.find(tensor.Name()) != sub_model_output_map.end() &&
           input_map.find(tensor.Name()) != input_map.end()) {
@@ -241,7 +304,10 @@ Status ModelExecutor::Predict(const std::vector<MSTensor> &inputs, std::vector<M
       }
     }
     std::vector<MSTensor> model_outputs;
-    if (model->Predict(curr_inputs, &model_outputs) != kSuccess) {
+    if (!model_output_tensors_[model_id].empty()) {
+      model_outputs = model_output_tensors_[model_id];
+    }
+    if (models_[model_id]->Predict(curr_inputs, &model_outputs) != kSuccess) {
       MS_LOG(ERROR) << "Predict failed!";
       return kLiteError;
     }
