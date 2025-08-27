@@ -21,6 +21,7 @@
 #include "tools/converter/adapter/acl/src/acl_memory_offload_pass_impl.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/common/custom_ascend_utils.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace {
 constexpr auto kCustomPrimTypeACL = "ACL";

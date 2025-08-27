@@ -20,6 +20,7 @@
 #include "ops/primitive_c.h"
 #include "ops/base_operator.h"
 #include "ops/op_def.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 namespace opt {

@@ -31,6 +31,7 @@
 #include "include/common/utils/anfalgo.h"
 #include "tools/converter/quantizer/quantize_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore::opt {
 

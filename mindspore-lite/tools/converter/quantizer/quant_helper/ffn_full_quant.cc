@@ -40,6 +40,7 @@
 #include "tools/optimizer/graph/remove_load_pass.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_f.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_o.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore::lite::quant {
 namespace {

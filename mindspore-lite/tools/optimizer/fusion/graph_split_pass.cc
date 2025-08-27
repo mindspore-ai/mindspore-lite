@@ -24,6 +24,7 @@
 #include "infer/return.h"
 #include "tools/converter/export_model.h"
 #include "infer/make_tuple.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore::opt {
 namespace {

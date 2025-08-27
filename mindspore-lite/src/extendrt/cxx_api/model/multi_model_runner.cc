@@ -22,6 +22,8 @@
 #include "extendrt/cxx_api/file_utils.h"
 #include "extendrt/utils/func_graph_utils.h"
 #include "include/api/dual_abi_helper.h"
+#include "mindspore/core/include/ir/graph_utils.h"
+
 namespace mindspore {
 namespace {
 std::mutex g_load_mindir_lock;

@@ -23,6 +23,7 @@
 #include "infer/cxx_api/activation.h"
 #include "utils/check_convert_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 namespace opt {

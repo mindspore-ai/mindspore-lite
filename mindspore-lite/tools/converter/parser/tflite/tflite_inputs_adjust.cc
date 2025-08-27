@@ -36,6 +36,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_b.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore::lite {
 namespace {

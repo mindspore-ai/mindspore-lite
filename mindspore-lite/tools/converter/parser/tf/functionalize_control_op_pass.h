@@ -26,6 +26,7 @@
 #include "tools/converter/ops/ops_def.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "include/registry/converter_context.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 using mindspore::converter::FmkType;
 namespace mindspore::opt {

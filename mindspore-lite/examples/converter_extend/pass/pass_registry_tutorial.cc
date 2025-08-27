@@ -22,6 +22,7 @@
 #include "include/registry/pass_registry.h"
 #include "infer/custom.h"
 #include "infer/cxx_api/add_fusion.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 namespace opt {

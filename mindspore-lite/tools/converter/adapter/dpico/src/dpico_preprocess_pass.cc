@@ -24,6 +24,7 @@
 #include "mindspore/ops/op_def/op_name.h"
 #include "common/check_base.h"
 #include "common/op_attr.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
 namespace dpico {
