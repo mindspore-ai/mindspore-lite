@@ -454,8 +454,6 @@ set(CCSRC_SRC_NEW ${CCSRC_DIR}/backend/common/pass_manager/graph_optimizer.cc
     ${CCSRC_DIR}/common/debug/common.cc
     ${CCSRC_DIR}/utils/compile_cache_context.cc
     ${CCSRC_DIR}/utils/convert_tensor_utils.cc
-    ${CCSRC_DIR}/runtime/hardware_abstract/kernel_base/device_address.cc
-    ${CCSRC_DIR}/runtime/hardware_abstract/kernel_base/format_utils.cc
     )
 if(NOT WIN32)
     set(CCSRC_SRC_NEW ${CCSRC_SRC_NEW}
