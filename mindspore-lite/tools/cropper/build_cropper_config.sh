@@ -62,7 +62,7 @@ if [ ${MSLIBS_CACHE_PATH} ]; then
   SECUREC=${SECUREC_LIST[0]}
   echo "SECUREC path is ${SECUREC}"
 else
-  SECUREC=$(ls -d mindspore-lite/build/.mslib/securec_*)
+  SECUREC=$(ls -d build/.mslib/securec_*)
   echo "SECUREC path is ${SECUREC}"
 fi
 
