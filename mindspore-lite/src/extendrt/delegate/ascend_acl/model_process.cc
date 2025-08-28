@@ -673,10 +673,6 @@ bool ModelProcess::CreateModelOutputs() {
                              output_info.dims, host_data, output_info.buffer_size);
       free(host_data);
       host_data = nullptr;
-      if (output == nullptr) {
-        MS_LOG(ERROR) << "Create dynamic shape output tensor failed.";
-        return false;
-      }
       model_outputs_.push_back(output);
     }
   }

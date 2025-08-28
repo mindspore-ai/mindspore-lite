@@ -24,6 +24,7 @@
 #include "include/api/context.h"
 #include "src/common/config_infos.h"
 #include "include/api/dual_abi_helper.h"
+#include "extendrt/utils/func_graph_utils.h"
 
 namespace mindspore {
 class ModelImpl;
@@ -65,11 +66,20 @@ class MS_API ModelExecutor {
   /// \return The vector that includes all output tensors.
   std::vector<MSTensor> GetOutputs() const;
 
+  /// \brief Inference ModelExecutor API. If use this API in train mode, it's equal to RunStep API.
+  ///
+  /// \param[in] model_context Define the context used to store options during execution.
+  ///
+  /// \return Status.
+  Status Initialize(const std::shared_ptr<Context> &model_context);
+
  private:
   std::vector<std::shared_ptr<ModelImpl>> models_;
   std::vector<std::string> executor_input_names_;
   std::vector<std::string> executor_output_names_;
   std::vector<std::vector<std::string>> subgraph_input_names_;
+  std::vector<std::vector<MSTensor>> model_output_tensors_;
+  bool initialized_ = false;
 };
 
 class MS_API MultiModelRunner {

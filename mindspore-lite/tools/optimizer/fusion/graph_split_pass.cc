@@ -288,7 +288,8 @@ STATUS GetInferPath(const std::map<std::string, size_t> &subgraph_output_map,
     min_index = 0;
   }
   if (max_index < min_index) {
-    MS_LOG(ERROR) << "max_index should larger than min_index";
+    MS_LOG(ERROR) << "max_index should larger or equal to min_index! min_index:" << min_index
+                  << ", max_index:" << max_index;
     return lite::RET_ERROR;
   }
   infer_path->push_back(min_index);
