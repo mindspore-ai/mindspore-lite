@@ -1767,22 +1767,14 @@ bool ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
       }
     }
     if (is_dynamic_output_) {
-      auto host_data = malloc(output_info.buffer_size);
-      MS_CHECK_TRUE_MSG(host_data != nullptr, false, "Malloc data failed.");
-      auto ret =
-        AclrtMemcpy(host_data, output_info.buffer_size, output_info.cur_device_data, output_info.buffer_size, kind);
+      auto output =
+        MSTensor(output_info.name, static_cast<DataType>(TransToDataType(output_info.data_type)), {}, nullptr, 0);
+      output.SetShape(output_info.dims);
+      auto ret = AclrtMemcpy(output.MutableData(), output_info.buffer_size, output_info.cur_device_data,
+                             output_info.buffer_size, kind);
       if (ret != ACL_SUCCESS) {
-        MS_LOG(ERROR) << "Memcpy output " << i << " from " << (is_run_on_device_ ? "host" : "device")
-                      << " to host failed, memory size " << output_info.buffer_size << ", ret: " << ret;
-        return false;
-      }
-      auto output = MSTensor(output_info.name, static_cast<DataType>(TransToDataType(output_info.data_type)),
-                             output_info.dims, host_data, output_info.buffer_size);
-
-      free(host_data);
-      host_data = nullptr;
-      if (output == nullptr) {
-        MS_LOG(ERROR) << "Create dynamic shape output tensor failed.";
+        MS_LOG(ERROR) << "Memcpy output " << i << " from device to host failed, memory size " << output_info.buffer_size
+                      << ", ret: " << ret;
         return false;
       }
       new_outputs.push_back(output);
@@ -1791,8 +1783,8 @@ bool ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
       auto ret =
         AclrtMemcpy(host_data, output_info.buffer_size, output_info.cur_device_data, output_info.buffer_size, kind);
       if (ret != ACL_SUCCESS) {
-        MS_LOG(ERROR) << "Memcpy output " << i << " from " << (is_run_on_device_ ? "host" : "device")
-                      << " to host failed, memory size " << output_info.buffer_size << ", ret: " << ret;
+        MS_LOG(ERROR) << "Memcpy output " << i << " from device to host failed, memory size " << output_info.buffer_size
+                      << ", ret: " << ret;
         return false;
       }
       model_outputs_[i].SetShape(output_info.dims);
