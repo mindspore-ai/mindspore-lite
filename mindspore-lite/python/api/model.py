@@ -842,7 +842,19 @@ class ModelGroup:
 
 class MultiModelRunner:
     """
-    The `MultiModelRunner` class is used to run ModelExecutor
+    The `MultiModelRunner` class is used to create mindir with multiple Models
+    and provides a way to schedule multiple models.
+
+    Raises:
+        TypeError: `model_path` is not str.
+        TypeError: `model_type` is not ModelType.
+        TypeError: `context` is not Context or ``None`` .
+        TypeError: `config_path` is not str.
+        RuntimeError: `model_path` file path not exist.
+        RuntimeError: `config_path` file path not exist.
+        RuntimeError: load `config_path` failed.
+        RuntimeError: load and build MultiModelRunner failed.
+
     Examples:
         >>> import mindspore_lite as mslite
         >>> import numpy as np
@@ -973,7 +985,7 @@ class MultiModelRunner:
 
 class ModelExecutor:
     """
-    The `ModelExecutor` class is used to run Model
+    The `ModelExecutor` class wraps multiple mindspore_lite models and implements their inference scheduling.
     """
     def __init__(self, executor=None):
         if executor is None:
