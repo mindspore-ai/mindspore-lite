@@ -73,9 +73,95 @@
 #include "load_mindir/infer_mindir.h"
 #include "tools/optimizer/fusion/matmul_allreduce_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_f.h"
+#include "ir/graph_utils.h"
 
 namespace mindspore {
 namespace lite {
+namespace {
+Status AdjustNodeInput(const CNodePtr &cnode) {
+  MS_CHECK_FALSE_MSG(cnode == nullptr, kLiteNullptr, "cnode is nullptr!");
+  auto inputs = cnode->inputs();
+  for (size_t i = 1; i < inputs.size(); i++) {
+    auto input = inputs[i];
+    if (input->isa<ValueNode>()) {
+      auto input_value_node = input->cast<ValueNodePtr>();
+      if (input_value_node == nullptr) {
+        continue;
+      }
+      auto value_ptr = input_value_node->value();
+      if (value_ptr == nullptr) {
+        continue;
+      }
+      auto type_ptr = value_ptr->type();
+      if (type_ptr == nullptr) {
+        continue;
+      }
+      if (type_ptr->type_id() == kObjectTypeTuple) {
+        auto type_tuple = type_ptr->cast<TuplePtr>();
+        const auto &elements = type_tuple->elements();
+        if (!elements.empty() && elements[0]->type_id() == kNumberTypeFloat64) {
+          auto fp64_vec_value = GetValue<std::vector<double>>(value_ptr);
+          std::vector<float> fp32_vec_value;
+          fp32_vec_value.reserve(fp64_vec_value.size());
+          std::transform(fp64_vec_value.begin(), fp64_vec_value.end(), std::back_inserter(fp32_vec_value),
+                         [](double val) { return static_cast<float>(val); });
+          auto new_value_node = NewValueNode(fp32_vec_value);
+          inputs[i] = new_value_node;
+        }
+      }
+    }
+  }
+  cnode->set_inputs(inputs);
+  return kSuccess;
+}
+
+Status CvtFp64ModelToFp32(const FuncGraphPtr &func_graph) {
+  MS_CHECK_FALSE_MSG(func_graph == nullptr, kLiteNullptr, "func_graph is nullptr!");
+  auto node_list = TopoSort(func_graph->get_return());
+  for (auto node : node_list) {
+    if (!utils::isa<CNodePtr>(node)) {
+      continue;
+    }
+    auto cnode = node->cast<CNodePtr>();
+    MS_CHECK_TRUE_MSG(cnode != nullptr, kLiteNullptr, "cnode is nullptr!");
+    if (cnode->inputs().empty() || cnode->input(0) == nullptr) {
+      continue;
+    }
+    auto value_node = cnode->input(0)->cast<ValueNodePtr>();
+    if (value_node == nullptr || value_node->value() == nullptr) {
+      continue;
+    }
+    auto primitive = value_node->value()->cast<PrimitivePtr>();
+    if (primitive == nullptr) {
+      continue;
+    }
+    auto attrs = primitive->attrs();
+    for (const auto &pair : attrs) {
+      if (pair.second->type() != nullptr && pair.second->type()->type_id() == kNumberTypeFloat64) {
+        float val = GetValue<double>(pair.second);
+        primitive->AddAttr(pair.first, MakeValue<float>(static_cast<float>(val)));
+      } else if (pair.second->type() != nullptr && pair.second->type()->type_id() == kObjectTypeTuple) {
+        auto type_tuple = pair.second->type()->cast<TuplePtr>();
+        const auto &elements = type_tuple->elements();
+        if (!elements.empty() && elements[0]->type_id() == kNumberTypeFloat64) {
+          auto fp64_vec_value = GetValue<std::vector<double>>(pair.second);
+          std::vector<float> fp32_vec_value;
+          fp32_vec_value.reserve(fp64_vec_value.size());
+          std::transform(fp64_vec_value.begin(), fp64_vec_value.end(), std::back_inserter(fp32_vec_value),
+                         [](double val) { return static_cast<float>(val); });
+          primitive->AddAttr(pair.first, MakeValue<std::vector<float>>(fp32_vec_value));
+        }
+      }
+    }
+    if (AdjustNodeInput(cnode) != kSuccess) {
+      MS_LOG(ERROR) << "AdjustNodeInput failed!";
+      return kLiteError;
+    }
+  }
+  return kSuccess;
+}
+}  // namespace
+
 FuncGraphPtr ConvertGraph(const api::FuncGraphPtr &func_graph) {
   auto impl = func_graph->impl();
   return std::dynamic_pointer_cast<FuncGraph>(impl);
@@ -136,6 +222,10 @@ FuncGraphPtr ConverterFuncGraph::Load(const std::shared_ptr<ConverterPara> &para
   }
   if (func_graph == nullptr) {
     MS_LOG(ERROR) << "Load MindIR file failed. Please check model file and decrypt key.";
+    return nullptr;
+  }
+  if (CvtFp64ModelToFp32(func_graph) != kSuccess) {
+    MS_LOG(ERROR) << "CvtFp64ModelToFp32 failed!";
     return nullptr;
   }
   auto manager = func_graph->manager();
