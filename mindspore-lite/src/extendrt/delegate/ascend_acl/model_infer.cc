@@ -22,7 +22,33 @@
 namespace mindspore {
 namespace {
 std::mutex g_context_mutex;
-}
+
+struct ModelInferContextGuard {
+  ModelInferContextGuard() {
+    aclError ret = CALL_ASCEND_API(aclrtGetCurrentContext, &context_);
+    if (ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Acl store env context failed.";
+    } else {
+      stored_ = true;
+    }
+  }
+  ~ModelInferContextGuard() {
+    if (stored_) {
+      aclError ret = CALL_ASCEND_API(aclrtSetCurrentContext, context_);
+      if (ret != ACL_SUCCESS) {
+        MS_LOG(ERROR) << "Acl restore env context failed.";
+      }
+    } else {
+      MS_LOG(ERROR) << "Acl restore env context failed. because of failed store.";
+    }
+  }
+
+ private:
+  aclrtContext context_;
+  bool stored_ = false;
+};
+}  // namespace
+
 ModelInfer::ModelInfer(const std::shared_ptr<AclModelOptions> &options)
     : init_flag_(false),
       device_type_("AscendCL"),
@@ -77,29 +103,31 @@ bool ModelInfer::Init() {
       return false;
     }
   }
+  {
+    ModelInferContextGuard guard;
+    ret = CALL_ASCEND_API(aclrtCreateContext, &context_, device_id);
+    if (ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Acl create context failed.";
+      return false;
+    }
+    MS_LOG(INFO) << "get default context success, we will use default context";
 
-  ret = CALL_ASCEND_API(aclrtCreateContext, &context_, device_id);
-  if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "Acl create context failed.";
-    return false;
+    aclrtRunMode run_mode;
+    ret = CALL_ASCEND_API(aclrtGetRunMode, &run_mode);
+    if (ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Acl get run mode failed.";
+      return false;
+    }
+    bool is_device = (run_mode == ACL_DEVICE);
+    model_process_.SetIsDevice(is_device);
+    MS_LOG(INFO) << "Get run mode success is device input/output " << is_device;
+    ret = aclrtCreateStream(&stream_);
+    if (ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Acl create stream failed";
+      return false;
+    }
+    MS_LOG(INFO) << "Init model success, device id " << device_id;
   }
-  MS_LOG(INFO) << "get default context success, we will use default context";
-
-  aclrtRunMode run_mode;
-  ret = CALL_ASCEND_API(aclrtGetRunMode, &run_mode);
-  if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "Acl get run mode failed.";
-    return false;
-  }
-  bool is_device = (run_mode == ACL_DEVICE);
-  model_process_.SetIsDevice(is_device);
-  MS_LOG(INFO) << "Get run mode success is device input/output " << is_device;
-  ret = aclrtCreateStream(&stream_);
-  if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "Acl create stream failed";
-    return false;
-  }
-  MS_LOG(INFO) << "Init model success, device id " << device_id;
   init_flag_ = true;
   return true;
 }
@@ -110,39 +138,42 @@ bool ModelInfer::Finalize(bool process_ends) {
     MS_LOG(INFO) << "Init is not ok, no need to finalize.";
     return true;
   }
-  aclError rt_ret = CALL_ASCEND_API(aclrtSetCurrentContext, context_);
-  if (rt_ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "Set the ascend device context failed.";
-    return false;
-  }
-  if (!model_process_.UnLoad()) {
-    MS_LOG(ERROR) << "Unload model inner failed.";
-  }
-  if (profiling_.IsProfilingOpen()) {
-    if (!profiling_.StopProfiling(stream_)) {
-      MS_LOG(ERROR) << "Stop profiling failed";
+  {
+    ModelInferContextGuard guard;
+    aclError rt_ret = CALL_ASCEND_API(aclrtSetCurrentContext, context_);
+    if (rt_ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Set the ascend device context failed.";
+      return false;
     }
-  }
+    if (!model_process_.UnLoad()) {
+      MS_LOG(ERROR) << "Unload model inner failed.";
+    }
+    if (profiling_.IsProfilingOpen()) {
+      if (!profiling_.StopProfiling(stream_)) {
+        MS_LOG(ERROR) << "Stop profiling failed";
+      }
+    }
 
-  if (stream_ != nullptr) {
-    rt_ret = CALL_ASCEND_API(aclrtDestroyStream, stream_);
-    if (rt_ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "Destroy stream failed";
+    if (stream_ != nullptr) {
+      rt_ret = CALL_ASCEND_API(aclrtDestroyStream, stream_);
+      if (rt_ret != ACL_SUCCESS) {
+        MS_LOG(ERROR) << "Destroy stream failed";
+      }
+      stream_ = nullptr;
     }
-    stream_ = nullptr;
-  }
-  if (context_ != nullptr) {
-    rt_ret = CALL_ASCEND_API(aclrtDestroyContext, context_);
-    if (rt_ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "Destroy context failed";
+    if (context_ != nullptr) {
+      rt_ret = CALL_ASCEND_API(aclrtDestroyContext, context_);
+      if (rt_ret != ACL_SUCCESS) {
+        MS_LOG(ERROR) << "Destroy context failed";
+      }
+      context_ = nullptr;
     }
-    context_ = nullptr;
+    MS_LOG(INFO) << "End to destroy context.";
   }
-  MS_LOG(INFO) << "End to destroy context.";
   if (process_ends || AclEnvGuard::GetModelNum() == 0) {
     AclMemManager::GetInstance().ReleaseDeviceMem(options_->device_id, options_->model_path);
   }
-  rt_ret = CALL_ASCEND_API(aclrtResetDevice, options_->device_id);
+  aclError rt_ret = CALL_ASCEND_API(aclrtResetDevice, options_->device_id);
   if (rt_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Reset device " << options_->device_id << " failed.";
   }
@@ -154,6 +185,7 @@ bool ModelInfer::Finalize(bool process_ends) {
 }
 
 bool ModelInfer::Load(const void *om_data, size_t om_data_size) {
+  ModelInferContextGuard guard;
   aclError rt_ret = CALL_ASCEND_API(aclrtSetCurrentContext, context_);
   if (rt_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Set the ascend device context failed, ret = " << rt_ret;
@@ -175,6 +207,7 @@ bool ModelInfer::Load(const void *om_data, size_t om_data_size) {
 }
 
 bool ModelInfer::Inference(const std::vector<mindspore::MSTensor> &inputs, std::vector<mindspore::MSTensor> *outputs) {
+  ModelInferContextGuard guard;
   aclError rt_ret = CALL_ASCEND_API(aclrtSetCurrentContext, context_);
   if (rt_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Set the ascend device context failed, ret = " << rt_ret;
@@ -189,6 +222,7 @@ bool ModelInfer::Inference(const std::vector<mindspore::MSTensor> &inputs, std::
 }
 
 bool ModelInfer::UpdateWeights(const std::vector<MSTensor> &inputs) {
+  ModelInferContextGuard guard;
   aclError rt_ret = CALL_ASCEND_API(aclrtSetCurrentContext, context_);
   if (rt_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Set the ascend device context failed, ret = " << rt_ret;
@@ -210,6 +244,7 @@ const std::vector<TypeId> ModelInfer::GetOutputDataType() { return model_process
 std::vector<Format> ModelInfer::GetOutputFormat() { return model_process_.GetOutputFormat(); }
 
 bool ModelInfer::Resize(const std::vector<std::vector<int64_t>> &new_shapes) {
+  ModelInferContextGuard guard;
   aclError rt_ret = CALL_ASCEND_API(aclrtSetCurrentContext, context_);
   if (rt_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Set the ascend device context failed, ret = " << rt_ret;
