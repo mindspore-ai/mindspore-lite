@@ -36,9 +36,9 @@ constexpr size_t kSupportedWeightNum = 1;
 }  // namespace
 
 AclGraphExecutor::~AclGraphExecutor() {
-  AclEnvGuard::DeleteModel(model_infer_);
-  if (!model_infer_->Finalize()) {
-    MS_LOG(ERROR) << "model finalize failed.";
+  if (load_model_) {
+    AclEnvGuard::DeleteModel(model_infer_);
+    (void)model_infer_->Finalize();
   }
 }
 
@@ -265,6 +265,7 @@ bool AclGraphExecutor::CompileGraph(const void *model_data, size_t data_size,
     return false;
   }
   AclEnvGuard::AddModel(model_infer_);
+  load_model_ = true;
   return true;
 }
 

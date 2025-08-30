@@ -71,6 +71,7 @@ class AclGraphExecutor : public LiteGraphExecutor {
   std::map<uint32_t, std::vector<mindspore::MSTensor>> graph_outputs_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
+  bool load_model_ = false;
 };
 
 }  // namespace mindspore
