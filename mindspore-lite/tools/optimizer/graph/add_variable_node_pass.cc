@@ -472,7 +472,7 @@ lite::STATUS InsertVariableNodePass::ParseInsertNode(std::string file_path,
     if (pos_colon == std::string::npos) {
       MS_LOG(ERROR) << "Parse variable weight file error!";
       file.close();
-      return RET_FAILED;
+      return RET_ERROR;
     }
     auto variable_para_name = line.substr(0, pos_colon);
     if (variable_para_name.find("alpha") != std::string::npos && (*has_alpha) != true) {
@@ -482,7 +482,7 @@ lite::STATUS InsertVariableNodePass::ParseInsertNode(std::string file_path,
     if (pos_semicolon == std::string::npos) {
       MS_LOG(ERROR) << "Parse variable weight file error!";
       file.close();
-      return RET_FAILED;
+      return RET_ERROR;
     }
     auto weight_shape_str = line.substr(pos_colon + 1, pos_semicolon - pos_colon - 1);
     auto node_name = line.substr(pos_semicolon + 1);

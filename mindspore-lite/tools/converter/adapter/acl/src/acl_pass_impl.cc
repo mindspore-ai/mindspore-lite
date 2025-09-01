@@ -778,7 +778,7 @@ STATUS AclPassImpl::PreProcGraph(const FuncGraphPtr &func_graph) {
 }
 
 STATUS AclPassImpl::PostProcGraph(const FuncGraphPtr &func_graph) {
-  if (lite::acl::DelRedundantParameter(func_graph) != RET_SUCCESS) {
+  if (lite::acl::DelRedundantParameter(func_graph) != RET_OK) {
     MS_LOG(ERROR) << "Delete redundant parameters failed.";
     return lite::RET_ERROR;
   }

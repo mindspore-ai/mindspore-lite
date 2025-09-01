@@ -61,7 +61,7 @@ STATUS GenNewConvBias(const ParameterPtr &down_bias_node, const ParameterPtr &do
                       const ParameterPtr &up_bias_node, const ParameterPtr &new_bias_node) {
   if (down_weight_node == nullptr || up_bias_node == nullptr || new_bias_node == nullptr) {
     MS_LOG(ERROR) << "Input down_weight_node or up_bias_node or new_bias_node is nullptr";
-    return RET_FAILED;
+    return RET_ERROR;
   }
   float *down_bias_data = nullptr;
   if (down_bias_node != nullptr) {
@@ -70,7 +70,7 @@ STATUS GenNewConvBias(const ParameterPtr &down_bias_node, const ParameterPtr &do
     auto down_bias_shape = down_bias_param->shape();
     if (down_bias_shape.size() != 1) {
       MS_LOG(ERROR) << "cur conv_conv fusion only support scalar bias shape";
-      return RET_FAILED;
+      return RET_ERROR;
     }
     MS_CHECK_TRUE_RET(down_bias_param->data_c() != nullptr, false);
     down_bias_data = static_cast<float *>(down_bias_param->data_c());
@@ -80,7 +80,7 @@ STATUS GenNewConvBias(const ParameterPtr &down_bias_node, const ParameterPtr &do
   auto up_bias_shape = up_bias_param->shape();
   if (up_bias_shape.size() != 1) {
     MS_LOG(ERROR) << "cur conv_conv fusion only support scalar bias shape";
-    return RET_FAILED;
+    return RET_ERROR;
   }
   auto down_weight_param = std::dynamic_pointer_cast<tensor::Tensor>(down_weight_node->default_param());
   MS_CHECK_TRUE_RET(down_weight_param != nullptr && down_weight_param->data_c() != nullptr, false);

@@ -445,21 +445,21 @@ STATUS TfliteLstmCellFusion::GetConcatedParam(const std::vector<AnfNodePtr> &par
   for (auto &param : params) {
     if (!utils::isa<ParameterPtr>(param)) {
       MS_LOG(DEBUG) << "param is not Parameter node";
-      return RET_FAILED;
+      return RET_ERROR;
     }
     auto param_t = utils::cast<ParameterPtr>(param);
     if (!param_t->has_default() || param_t->default_param() == nullptr) {
       MS_LOG(DEBUG) << "param not have default value";
-      return RET_FAILED;
+      return RET_ERROR;
     }
     if (!utils::isa<tensor::TensorPtr>(param_t->default_param())) {
       MS_LOG(DEBUG) << "default value is not tensor::Tensor";
-      return RET_FAILED;
+      return RET_ERROR;
     }
     auto origin_tensor = std::dynamic_pointer_cast<tensor::Tensor>(param_t->default_param());
     if (origin_tensor->data_type() != kNumberTypeFloat32 && origin_tensor->data_type() != kNumberTypeFloat) {
       MS_LOG(DEBUG) << "origin_tensor is not float32 type";
-      return RET_FAILED;
+      return RET_ERROR;
     }
     auto data_ptr = reinterpret_cast<float *>(origin_tensor->data_c());
     auto data_shape = origin_tensor->shape();
@@ -470,7 +470,7 @@ STATUS TfliteLstmCellFusion::GetConcatedParam(const std::vector<AnfNodePtr> &par
   for (size_t i = 1; i < data_shapes.size(); ++i) {
     if (data_shapes[i] != data_shapes[0]) {
       MS_LOG(DEBUG) << "data shape not same";
-      return RET_FAILED;
+      return RET_ERROR;
     }
   }
   std::vector<int64_t> new_shape;

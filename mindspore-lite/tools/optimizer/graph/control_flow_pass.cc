@@ -197,7 +197,7 @@ int ControlFlowPass::SplitGraph(const FuncGraphPtr &fg, AnfNodePtr *control_flow
 
   BindGetItemNodes(visited_nodes, remain_nodes);
 
-  return RET_SUCCESS;
+  return RET_OK;
 }
 
 int ControlFlowPass::CreateAfterGraph(const FuncGraphPtr &main_fg, const std::vector<AnfNodePtr> &remain_nodes,
@@ -227,7 +227,7 @@ int ControlFlowPass::CreateAfterGraph(const FuncGraphPtr &main_fg, const std::ve
     }
     main_fg->DropNode(cur_node);
   }
-  return RET_SUCCESS;
+  return RET_OK;
 }
 
 int ControlFlowPass::CreateWhileCondCallNode(
@@ -239,14 +239,14 @@ int ControlFlowPass::CreateWhileCondCallNode(
   auto cond_fg = GetValueNode<std::shared_ptr<FuncGraph>>(cond_vnode);
   if (cond_fg == nullptr) {
     MS_LOG(ERROR) << "Get value as func graph failed.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
 
   // create after partial node
   ValueNodePtr cond_partial_anf_primitive = lite::GetPartialFusionPrim();
   if (cond_partial_anf_primitive == nullptr) {
     MS_LOG(ERROR) << "GetPartialFusionPrim failed.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
 
   std::vector<AnfNodePtr> cond_partial_cnode_inputs{cond_partial_anf_primitive, cond_vnode};
@@ -291,23 +291,23 @@ int ControlFlowPass::CreateWhileCondCallNode(
   MS_CHECK_TRUE_MSG(*cond_call_cnode != nullptr, lite::RET_NULL_PTR, "new cnode is nullptr");
   (*cond_call_cnode)->set_fullname_with_scope("call_" + cond_partial_cnode->fullname_with_scope());
 
-  return RET_SUCCESS;
+  return RET_OK;
 }
 
 int ControlFlowPass::CreateWhileBodyPartialNode(const FuncGraphPtr &cond_fg, const CNodePtr &while_cnode,
                                                 CNodePtr *body_partial_node) {
   auto body_vnode = while_cnode->input(kWhileBodyIndex);
-  MS_CHECK_TRUE_MSG(body_vnode != nullptr, RET_FAILED, "body_vnode is nullptr");
+  MS_CHECK_TRUE_MSG(body_vnode != nullptr, RET_ERROR, "body_vnode is nullptr");
   auto body_fg = GetValueNode<std::shared_ptr<FuncGraph>>(body_vnode);
   if (body_fg == nullptr) {
     MS_LOG(ERROR) << "Get value as func_graph failed.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
 
   ValueNodePtr partial_anf_primitive = lite::GetPartialFusionPrim();
   if (partial_anf_primitive == nullptr) {
     MS_LOG(ERROR) << "GetPartialFusionPrim failed.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
 
   std::vector<AnfNodePtr> body_partial_node_inputs{partial_anf_primitive, body_vnode};
@@ -315,7 +315,7 @@ int ControlFlowPass::CreateWhileBodyPartialNode(const FuncGraphPtr &cond_fg, con
   auto cond_fg_inputs = cond_fg->get_inputs();
   body_partial_node_inputs.insert(body_partial_node_inputs.end(), cond_fg_inputs.begin(), cond_fg_inputs.end());
   *body_partial_node = cond_fg->NewCNode(body_partial_node_inputs);
-  MS_CHECK_TRUE_MSG(*body_partial_node != nullptr, RET_FAILED, "new cnode is nullptr");
+  MS_CHECK_TRUE_MSG(*body_partial_node != nullptr, RET_ERROR, "new cnode is nullptr");
   (*body_partial_node)->set_fullname_with_scope("CNode_" + body_fg->get_attr("graph_name")->ToString());
 
   // add after inputs for body fg to call cond fg
@@ -324,7 +324,7 @@ int ControlFlowPass::CreateWhileBodyPartialNode(const FuncGraphPtr &cond_fg, con
   for (size_t i = origin_body_fg_inputs_size; i < cond_fg_inputs.size(); ++i) {
     if (!utils::isa<ParameterPtr>(cond_fg_inputs[i])) {
       MS_LOG(ERROR) << "fg is not right.";
-      return RET_FAILED;
+      return RET_ERROR;
     }
     auto new_parameter = body_fg->add_parameter();
     MS_CHECK_TRUE_MSG(new_parameter != nullptr, lite::RET_NULL_PTR, "new_parameter is nullptr");
@@ -336,7 +336,7 @@ int ControlFlowPass::CreateWhileBodyPartialNode(const FuncGraphPtr &cond_fg, con
   ValueNodePtr cond_partial_anf_primitive = lite::GetPartialFusionPrim();
   if (cond_partial_anf_primitive == nullptr) {
     MS_LOG(ERROR) << "`new cond_partial_anf_primitive failed.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
   auto cond_partial_vnode = NewValueNode(cond_fg);
   MS_CHECK_TRUE_MSG(cond_partial_vnode != nullptr, lite::RET_NULL_PTR, "cond_partial_vnode is nullptr");
@@ -365,12 +365,12 @@ int ControlFlowPass::CreateWhileBodyPartialNode(const FuncGraphPtr &cond_fg, con
   // insert call node
   std::vector<AnfNodePtr> call_node_inputs{cond_partial_cnode};
   auto cond_call_cnode = body_fg->NewCNode(call_node_inputs);
-  MS_CHECK_TRUE_MSG(cond_call_cnode != nullptr, RET_FAILED, "new cnode is nullptr");
+  MS_CHECK_TRUE_MSG(cond_call_cnode != nullptr, RET_ERROR, "new cnode is nullptr");
   cond_call_cnode->set_fullname_with_scope("call_" + cond_partial_cnode->fullname_with_scope());
   body_fg->set_output(cond_call_cnode);
 
   to_process_q.push_back(body_fg);
-  return RET_SUCCESS;
+  return RET_OK;
 }
 
 int ControlFlowPass::CreateWhileAfterPartialNode(
@@ -380,17 +380,17 @@ int ControlFlowPass::CreateWhileAfterPartialNode(
   const CNodePtr *while_cnode, CNodePtr *after_partial_cnode) {
   // create after_fg
   FuncGraphPtr after_fg = nullptr;
-  if (CreateAfterGraph(main_fg, remain_nodes, *while_cnode, &after_fg) != RET_SUCCESS) {
+  if (CreateAfterGraph(main_fg, remain_nodes, *while_cnode, &after_fg) != RET_OK) {
     MS_LOG(ERROR) << "CreateAfterGraph failed.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
 
   auto after_value_node = NewValueNode(after_fg);
-  MS_CHECK_TRUE_MSG(after_value_node != nullptr, RET_FAILED, "after_value_node is nullptr");
+  MS_CHECK_TRUE_MSG(after_value_node != nullptr, RET_ERROR, "after_value_node is nullptr");
   ValueNodePtr partial_anf_primitive = lite::GetPartialFusionPrim();
   if (partial_anf_primitive == nullptr) {
     MS_LOG(ERROR) << "GetPartialFusionPrim failed.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
 
   std::unordered_map<AnfNodePtr, AnfNodePtr> after_partial_inputs_and_after_fg_inputs_replace_pairs{};
@@ -409,7 +409,7 @@ int ControlFlowPass::CreateWhileAfterPartialNode(
     auto index_vnode = get_tuple_item_cnode->inputs().at(kCNodeSecondInputIndex);
     if (!utils::isa<ValueNode>(index_vnode)) {
       MS_LOG(ERROR) << "TupleGetItem's input 2 is not value node";
-      return RET_FAILED;
+      return RET_ERROR;
     }
     auto value_node = utils::cast<ValueNodePtr>(index_vnode);
     MS_ASSERT(value_node != nullptr);
@@ -420,7 +420,7 @@ int ControlFlowPass::CreateWhileAfterPartialNode(
 
     after_partial_cnode_inputs.push_back(cond_fg_inputs.at(input_index));
     auto new_parameter = after_fg->add_parameter();
-    MS_CHECK_TRUE_MSG(new_parameter != nullptr, RET_FAILED, "new_parameter != nullptr");
+    MS_CHECK_TRUE_MSG(new_parameter != nullptr, RET_ERROR, "new_parameter != nullptr");
     new_parameter->set_name(node->fullname_with_scope() + "_after_partial_parameter");
     new_parameter->set_abstract(node->abstract());
     after_partial_inputs_and_after_fg_inputs_replace_pairs[node] = new_parameter;
@@ -430,7 +430,7 @@ int ControlFlowPass::CreateWhileAfterPartialNode(
   for (auto &input : cond_nodes_used_by_after_partial) {
     after_partial_cnode_inputs.push_back(visited_nodes_and_cond_fg_inputs_replace_pairs.at(input));
     auto new_parameter = after_fg->add_parameter();
-    MS_CHECK_TRUE_MSG(new_parameter != nullptr, RET_FAILED, "new_parameter != nullptr");
+    MS_CHECK_TRUE_MSG(new_parameter != nullptr, RET_ERROR, "new_parameter != nullptr");
     new_parameter->set_name(input->fullname_with_scope() + "_after_fg_parameter");
     new_parameter->set_abstract(input->abstract());
     visited_nodes_after_fg_replace_pair[visited_nodes_and_cond_fg_inputs_replace_pairs.at(input)] = new_parameter;
@@ -440,23 +440,23 @@ int ControlFlowPass::CreateWhileAfterPartialNode(
   ReplaceNode(after_fg, after_partial_inputs_and_after_fg_inputs_replace_pairs);
   ReplaceNode(after_fg, visited_nodes_after_fg_replace_pair);
   *after_partial_cnode = cond_fg->NewCNode(after_partial_cnode_inputs);
-  MS_CHECK_TRUE_MSG(*after_partial_cnode != nullptr, RET_FAILED, "new cnode is nullptr");
+  MS_CHECK_TRUE_MSG(*after_partial_cnode != nullptr, RET_ERROR, "new cnode is nullptr");
   (*after_partial_cnode)->set_fullname_with_scope("CNode_" + after_fg->get_attr("graph_name")->ToString());
-  return RET_SUCCESS;
+  return RET_OK;
 }
 
 int ControlFlowPass::ProcessWhileOp(const FuncGraphPtr &fg, const std::set<AnfNodePtr> &visited_nodes,
                                     const std::vector<AnfNodePtr> &remain_nodes, const AnfNodePtr &while_node) {
   if (while_node == nullptr) {
     MS_LOG(INFO) << "not found while, no need to process.";
-    return RET_SUCCESS;
+    return RET_OK;
   }
 
   auto while_cnode = while_node->cast<CNodePtr>();
   MS_ASSERT(while_cnode != nullptr);
   if (while_cnode->size() < kWhileMinInputSize) {
     MS_LOG(ERROR) << "while input is not right.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
 
   std::vector<AnfNodePtr> visited_nodes_used_by_after_fg{};
@@ -467,7 +467,7 @@ int ControlFlowPass::ProcessWhileOp(const FuncGraphPtr &fg, const std::set<AnfNo
   std::vector<AnfNodePtr> cond_nodes_used_by_after_partial{};
   int ret = CreateWhileCondCallNode(fg, while_cnode, visited_nodes_used_by_after_fg, &cond_call_cnode,
                                     &cond_nodes_used_by_after_partial, &visited_nodes_and_cond_fg_inputs_replace_pairs);
-  if (ret != RET_SUCCESS) {
+  if (ret != RET_OK) {
     MS_LOG(ERROR) << "while create cond call cnode failed, ret: " << ret;
     return ret;
   }
@@ -477,11 +477,11 @@ int ControlFlowPass::ProcessWhileOp(const FuncGraphPtr &fg, const std::set<AnfNo
   AnfNodePtr cond_fg_vnode = cond_fg_cnode->input(kCNodeFirstInputIndex);
   MS_ASSERT(cond_fg_vnode != nullptr);
   auto cond_fg = GetValueNode<std::shared_ptr<FuncGraph>>(cond_fg_vnode);
-  MS_CHECK_TRUE_MSG(cond_fg != nullptr, RET_FAILED, "Get value as func_graph failed.");
+  MS_CHECK_TRUE_MSG(cond_fg != nullptr, RET_ERROR, "Get value as func_graph failed.");
 
   CNodePtr body_partial_node = nullptr;
   ret = CreateWhileBodyPartialNode(cond_fg, while_cnode, &body_partial_node);
-  if (ret != RET_SUCCESS) {
+  if (ret != RET_OK) {
     MS_LOG(ERROR) << "while create body partial cnode failed, ret: " << ret;
     return ret;
   }
@@ -489,7 +489,7 @@ int ControlFlowPass::ProcessWhileOp(const FuncGraphPtr &fg, const std::set<AnfNo
   CNodePtr after_partial_cnode = nullptr;
   ret = CreateWhileAfterPartialNode(fg, cond_fg, remain_nodes, visited_nodes_used_by_after_fg,
                                     visited_nodes_and_cond_fg_inputs_replace_pairs, &while_cnode, &after_partial_cnode);
-  if (ret != RET_SUCCESS) {
+  if (ret != RET_OK) {
     MS_LOG(ERROR) << "while create after partial cnode failed, ret: " << ret;
     return ret;
   }
@@ -524,29 +524,29 @@ int ControlFlowPass::ProcessWhileOp(const FuncGraphPtr &fg, const std::set<AnfNo
   auto after_fg = after_cnode->value()->cast<FuncGraphPtr>();
   if (after_fg == nullptr) {
     MS_LOG(ERROR) << "after_fg is nullptr.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
   to_process_q.push_back(cond_fg);
   to_process_q.push_back(after_fg);
-  return RET_SUCCESS;
+  return RET_OK;
 }
 
 int ControlFlowPass::CreateIfPartialNodeExternalInputs(const CNodePtr &if_cnode, const FuncGraphPtr &partial_fg,
                                                        std::vector<AnfNodePtr> *then_partial_cnode_inputs) {
   auto if_inputs = if_cnode->inputs();
   auto fg_name_attr = partial_fg->get_attr("graph_name");
-  MS_CHECK_TRUE_RET(fg_name_attr != nullptr, RET_FAILED);
+  MS_CHECK_TRUE_RET(fg_name_attr != nullptr, RET_ERROR);
   auto partial_fg_name = fg_name_attr->ToString();
   std::vector<AnfNodePtr> if_external_inputs{};
   if_external_inputs.assign(if_inputs.begin() + kIfMinInputSize, if_inputs.end());
   auto origin_then_fg_inputs = partial_fg->get_inputs();
   if (if_external_inputs.size() < origin_then_fg_inputs.size()) {
     MS_LOG(ERROR) << "graph is not right.";
-    return RET_FAILED;
+    return RET_ERROR;
   } else if (if_external_inputs.size() == origin_then_fg_inputs.size()) {
     then_partial_cnode_inputs->insert(then_partial_cnode_inputs->end(), if_external_inputs.begin(),
                                       if_external_inputs.end());
-    return RET_SUCCESS;
+    return RET_OK;
   } else {
     for (auto &fg_input : origin_then_fg_inputs) {
       auto fg_input_name = fg_input->fullname_with_scope();
@@ -558,12 +558,12 @@ int ControlFlowPass::CreateIfPartialNodeExternalInputs(const CNodePtr &if_cnode,
         partial_idx = std::stoi(idx_str);
       } catch (const std::exception &e) {
         MS_LOG(ERROR) << "Get index failed: " << e.what();
-        return RET_FAILED;
+        return RET_ERROR;
       }
       then_partial_cnode_inputs->push_back(if_external_inputs.at(partial_idx));
     }
   }
-  return RET_SUCCESS;
+  return RET_OK;
 }
 
 int ControlFlowPass::CreateIfPartialNode(const FuncGraphPtr &fg, const size_t &index,
@@ -573,15 +573,15 @@ int ControlFlowPass::CreateIfPartialNode(const FuncGraphPtr &fg, const size_t &i
   auto then_vnode = if_cnode->input(index);
   MS_ASSERT(then_vnode != nullptr);
   auto then_fg = GetValueNode<std::shared_ptr<FuncGraph>>(then_vnode);
-  MS_CHECK_TRUE_MSG(then_fg != nullptr, RET_FAILED, "Get value as func_graph failed.");
+  MS_CHECK_TRUE_MSG(then_fg != nullptr, RET_ERROR, "Get value as func_graph failed.");
 
   // create then partial node
   ValueNodePtr then_partial_anf_primitive = lite::GetPartialFusionPrim();
-  MS_CHECK_TRUE_MSG(then_partial_anf_primitive != nullptr, RET_FAILED, "GetPartialFusionPrim failed.");
+  MS_CHECK_TRUE_MSG(then_partial_anf_primitive != nullptr, RET_ERROR, "GetPartialFusionPrim failed.");
   std::vector<AnfNodePtr> then_partial_cnode_inputs{then_partial_anf_primitive, then_vnode};
-  if (CreateIfPartialNodeExternalInputs(if_cnode, then_fg, &then_partial_cnode_inputs) != RET_SUCCESS) {
+  if (CreateIfPartialNodeExternalInputs(if_cnode, then_fg, &then_partial_cnode_inputs) != RET_OK) {
     MS_LOG(ERROR) << "CreateIfPartialNodeExternalInputs failed.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
   std::unordered_map<AnfNodePtr, AnfNodePtr> visited_nodes_and_after_partial_inputs_replace_pairs{};
   std::vector<AnfNodePtr> then_nodes_used_by_after_partial{};
@@ -606,7 +606,7 @@ int ControlFlowPass::CreateIfPartialNode(const FuncGraphPtr &fg, const size_t &i
     // set after fg inputs to cond_partial_cnode inputs
     then_partial_cnode_inputs.push_back(item);
     auto new_parameter = then_fg->add_parameter();
-    MS_CHECK_TRUE_MSG(new_parameter != nullptr, RET_FAILED, "new_parameter is nullptr");
+    MS_CHECK_TRUE_MSG(new_parameter != nullptr, RET_ERROR, "new_parameter is nullptr");
     auto then_fg_name_postfix = index == kIfThenIndex ? "_then_fg_parameter" : "_else_fg_parameter";
     new_parameter->set_name(item->fullname_with_scope() + then_fg_name_postfix);
     new_parameter->set_abstract(item->abstract());
@@ -614,17 +614,17 @@ int ControlFlowPass::CreateIfPartialNode(const FuncGraphPtr &fg, const size_t &i
     then_nodes_used_by_after_partial.push_back(new_parameter);
   }
   *then_partial_cnode = fg->NewCNode(then_partial_cnode_inputs);
-  MS_CHECK_TRUE_MSG(*then_partial_cnode != nullptr, RET_FAILED, "new cnode is nullptr");
+  MS_CHECK_TRUE_MSG(*then_partial_cnode != nullptr, RET_ERROR, "new cnode is nullptr");
   auto fg_name_attr = then_fg->get_attr("graph_name");
-  MS_CHECK_TRUE_RET(fg_name_attr != nullptr, RET_FAILED);
+  MS_CHECK_TRUE_RET(fg_name_attr != nullptr, RET_ERROR);
   auto then_fg_name = fg_name_attr->ToString();
   (*then_partial_cnode)->set_fullname_with_scope("partial_" + then_fg_name);
 
   // create after partial node
   ValueNodePtr after_partial_anf_primitive = lite::GetPartialFusionPrim();
-  MS_CHECK_TRUE_MSG(after_partial_anf_primitive != nullptr, RET_FAILED, "GetPartialFusionPrim failed.");
+  MS_CHECK_TRUE_MSG(after_partial_anf_primitive != nullptr, RET_ERROR, "GetPartialFusionPrim failed.");
   auto after_value_node = NewValueNode(after_fg);
-  MS_CHECK_TRUE_MSG(after_value_node != nullptr, RET_FAILED, "NewValueNode failed.");
+  MS_CHECK_TRUE_MSG(after_value_node != nullptr, RET_ERROR, "NewValueNode failed.");
   // make the right after partial input
   std::vector<AnfNodePtr> after_partial_cnode_inputs{after_partial_anf_primitive, after_value_node};
   if (!CheckPrimitiveType(then_fg->output(), prim::kPrimMakeTuple)) {
@@ -644,15 +644,15 @@ int ControlFlowPass::CreateIfPartialNode(const FuncGraphPtr &fg, const size_t &i
             std::back_inserter(after_partial_cnode_inputs));
   // insert partial node
   auto after_partial_cnode = then_fg->NewCNode(after_partial_cnode_inputs);
-  MS_CHECK_TRUE_MSG(after_partial_cnode != nullptr, RET_FAILED, "NewCNode failed");
-  MS_CHECK_TRUE_MSG(after_fg->get_attr("graph_name") != nullptr, RET_FAILED, "Get graph_name failed.");
+  MS_CHECK_TRUE_MSG(after_partial_cnode != nullptr, RET_ERROR, "NewCNode failed");
+  MS_CHECK_TRUE_MSG(after_fg->get_attr("graph_name") != nullptr, RET_ERROR, "Get graph_name failed.");
   auto after_fg_name = after_fg->get_attr("graph_name")->ToString();
   after_partial_cnode->set_fullname_with_scope("partial_" + after_fg_name);
 
   // insert call node
   std::vector<AnfNodePtr> call_node_inputs{after_partial_cnode};
   auto call_node = then_fg->NewCNode(call_node_inputs);
-  MS_CHECK_TRUE_MSG(call_node != nullptr, RET_FAILED, "NewCNode failed");
+  MS_CHECK_TRUE_MSG(call_node != nullptr, RET_ERROR, "NewCNode failed");
   call_node->set_fullname_with_scope("call_" + after_partial_cnode->fullname_with_scope());
   then_fg->set_output(call_node);
   to_process_q.push_back(then_fg);
@@ -661,7 +661,7 @@ int ControlFlowPass::CreateIfPartialNode(const FuncGraphPtr &fg, const size_t &i
   // check the inputs of after fg
   auto after_fg_inputs_size = after_fg->get_inputs().size();
   if (after_fg_inputs_size == after_partial_cnode_inputs.size() - kPartialFirstInputSize) {
-    return RET_SUCCESS;
+    return RET_OK;
   }
 
   // make the inputs of the after fg
@@ -669,7 +669,7 @@ int ControlFlowPass::CreateIfPartialNode(const FuncGraphPtr &fg, const size_t &i
   for (size_t i = kPartialFirstInputSize; i < after_partial_cnode_inputs.size(); ++i) {
     auto &input = after_partial_cnode_inputs[i];
     auto new_parameter = after_fg->add_parameter();
-    MS_CHECK_TRUE_MSG(new_parameter != nullptr, RET_FAILED, "add_parameter failed");
+    MS_CHECK_TRUE_MSG(new_parameter != nullptr, RET_ERROR, "add_parameter failed");
     new_parameter->set_name(std::to_string(i - kPartialFirstInputSize) + "_" + input->fullname_with_scope());
     new_parameter->set_abstract(input->abstract());
     if (i < kPartialFirstInputSize + if_output_size) {
@@ -680,7 +680,7 @@ int ControlFlowPass::CreateIfPartialNode(const FuncGraphPtr &fg, const size_t &i
   }
   ReplaceNode(after_fg, after_partial_after_fg_replace_pairs);
 
-  return RET_SUCCESS;
+  return RET_OK;
 }
 
 int ControlFlowPass::CreateIfElsePartialNode(const FuncGraphPtr &main_fg,
@@ -703,21 +703,21 @@ int ControlFlowPass::ProcessIfOp(const FuncGraphPtr &fg, const std::set<AnfNodeP
                                  const std::vector<AnfNodePtr> &remain_nodes, const AnfNodePtr &if_node) {
   if (if_node == nullptr) {
     MS_LOG(INFO) << "not found if, no need to process.";
-    return RET_SUCCESS;
+    return RET_OK;
   }
 
   auto if_cnode = if_node->cast<CNodePtr>();
   MS_ASSERT(if_cnode != nullptr);
   if (if_cnode->size() < kIfMinInputSize) {
     MS_LOG(ERROR) << "if input is not right.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
 
   // create after_fg
   FuncGraphPtr after_fg = nullptr;
-  if (CreateAfterGraph(fg, remain_nodes, if_cnode, &after_fg) != RET_SUCCESS) {
+  if (CreateAfterGraph(fg, remain_nodes, if_cnode, &after_fg) != RET_OK) {
     MS_LOG(ERROR) << "CreateAfterGraph failed.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
 
   // get fg input which is not used by after_parts
@@ -726,14 +726,14 @@ int ControlFlowPass::ProcessIfOp(const FuncGraphPtr &fg, const std::set<AnfNodeP
 
   CNodePtr then_partial_cnode = nullptr;
   int ret = CreateIfThenPartialNode(fg, &visited_nodes_used_by_after_fg, if_cnode, after_fg, &then_partial_cnode);
-  if (ret != RET_SUCCESS) {
+  if (ret != RET_OK) {
     MS_LOG(ERROR) << "if create then partial cnode failed, ret: " << ret;
     return ret;
   }
 
   CNodePtr else_partial_cnode = nullptr;
   ret = CreateIfElsePartialNode(fg, &visited_nodes_used_by_after_fg, if_cnode, after_fg, &else_partial_cnode);
-  if (ret != RET_SUCCESS) {
+  if (ret != RET_OK) {
     MS_LOG(ERROR) << "if create else partial cnode failed, ret: " << ret;
     return ret;
   }
@@ -742,51 +742,51 @@ int ControlFlowPass::ProcessIfOp(const FuncGraphPtr &fg, const std::set<AnfNodeP
   ValueNodePtr switch_anf_primitive = lite::GetSwitchAnfPrim();
   if (switch_anf_primitive == nullptr) {
     MS_LOG(ERROR) << "GetSwitchAnfPrim failed.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
 
   //  insert switch node
   std::vector<AnfNodePtr> switch_node_inputs = {switch_anf_primitive, if_cnode->input(kIfCondIndex), then_partial_cnode,
                                                 else_partial_cnode};
   auto switch_cnode = fg->NewCNode(switch_node_inputs);
-  MS_CHECK_TRUE_MSG(switch_cnode != nullptr, RET_FAILED, "NewCNode failed");
+  MS_CHECK_TRUE_MSG(switch_cnode != nullptr, RET_ERROR, "NewCNode failed");
   switch_cnode->set_fullname_with_scope("if-Switch-" + fg->get_attr("graph_name")->ToString());
 
   // insert call node
   std::vector<AnfNodePtr> call_node_inputs{switch_cnode};
   auto call_node = fg->NewCNode(call_node_inputs);
-  MS_CHECK_TRUE_MSG(call_node != nullptr, RET_FAILED, "NewCNode failed");
+  MS_CHECK_TRUE_MSG(call_node != nullptr, RET_ERROR, "NewCNode failed");
   call_node->set_fullname_with_scope("call_" + switch_cnode->fullname_with_scope());
   fg->DropNode(if_cnode);
   fg->set_output(call_node, true);
 
   to_process_q.push_back(after_fg);
-  return RET_SUCCESS;
+  return RET_OK;
 }
 
 int ControlFlowPass::ProcessControlOp(const FuncGraphPtr &fg) {
   if (fg == nullptr) {
     MS_LOG(ERROR) << "fg is nullptr.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
 
   AnfNodePtr control_flow_node = nullptr;
   std::vector<AnfNodePtr> remain_nodes{};
   std::set<AnfNodePtr> visited_nodes{};
   int ret = SplitGraph(fg, &control_flow_node, &visited_nodes, &remain_nodes);
-  if (ret != RET_SUCCESS) {
+  if (ret != RET_OK) {
     MS_LOG(ERROR) << "SplitGraph failed, ret: " << ret;
     return ret;
   }
 
   if (control_flow_node == nullptr) {
     MS_LOG(INFO) << "not found control flow op, no need to process.";
-    return RET_SUCCESS;
+    return RET_OK;
   }
 
   if (CheckPrimitiveType(control_flow_node, prim::kPrimWhile)) {
     ret = ProcessWhileOp(fg, visited_nodes, remain_nodes, control_flow_node);
-    if (ret != RET_SUCCESS) {
+    if (ret != RET_OK) {
       MS_LOG(ERROR) << "ProcessWhileOp failed.";
       return ret;
     }
@@ -794,12 +794,12 @@ int ControlFlowPass::ProcessControlOp(const FuncGraphPtr &fg) {
 
   if (CheckPrimitiveType(control_flow_node, prim::kPrimIf)) {
     ret = ProcessIfOp(fg, visited_nodes, remain_nodes, control_flow_node);
-    if (ret != RET_SUCCESS) {
+    if (ret != RET_OK) {
       MS_LOG(ERROR) << "ProcessIfOp failed.";
       return ret;
     }
   }
-  return RET_SUCCESS;
+  return RET_OK;
 }
 
 bool ControlFlowPass::Run(const FuncGraphPtr &fg) {
@@ -809,7 +809,7 @@ bool ControlFlowPass::Run(const FuncGraphPtr &fg) {
     auto cur_fg = to_process_q.front();
     auto cur_fg_name = cur_fg->get_attr("graph_name")->ToString();
     int ret = ProcessControlOp(cur_fg);
-    if (ret != RET_SUCCESS) {
+    if (ret != RET_OK) {
       MS_LOG(ERROR) << "ProcessControlOp for graph: " << cur_fg_name << " failed.";
       lite::ReturnCode::GetSingleReturnCode()->UpdateReturnCode(ret);
       return false;
