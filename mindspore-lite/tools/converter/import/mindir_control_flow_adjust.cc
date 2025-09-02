@@ -79,7 +79,7 @@ int MindIRControlFlowAdjust::ModifyFgToCallAfterFg(const FuncGraphPtr &fg, const
   ValueNodePtr after_partial_anf_primitive = GetPartialFusionPrim();
   if (after_partial_anf_primitive == nullptr) {
     MS_LOG(ERROR) << "GetPartialFusionPrim failed.";
-    return RET_FAILED;
+    return RET_ERROR;
   }
   auto after_value_node = NewValueNode(after_fg);
   MS_CHECK_TRUE_MSG(after_value_node != nullptr, RET_NULL_PTR, "Failed to create value node.");

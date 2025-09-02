@@ -64,7 +64,7 @@ int HuffmanEncode::DoHuffmanEncode(const tensor::TensorPtr &weight, const Primit
   }
   huffman_encoded_str_.clear();
   huffman_table_.clear();
-  return RET_SUCCESS;
+  return RET_OK;
 }
 
 int HuffmanEncode::GetHuffmanPriorityQueue(const int8_t *data, const size_t data_size, HuffmanPriorityQueue *pq) {

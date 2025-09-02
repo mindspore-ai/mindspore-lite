@@ -244,7 +244,7 @@ STATUS TfLstmCellFusion::SplitWeights(const AnfNodePtr &weight, const ParameterP
   }
   if (!utils::isa<tensor::TensorPtr>(weight_param->default_param())) {
     MS_LOG(DEBUG) << "default value is not tensor::Tensor";
-    return RET_FAILED;
+    return RET_ERROR;
   }
   auto origin_tensor = std::dynamic_pointer_cast<tensor::Tensor>(weight_param->default_param());
   if (origin_tensor->data_type() != kNumberTypeFloat32 && origin_tensor->data_type() != kNumberTypeFloat) {
@@ -297,7 +297,7 @@ STATUS TfLstmCellFusion::PopulateBiasNode(const EquivPtr &body_equiv, const Para
   }
   if (!utils::isa<tensor::TensorPtr>(old_bias_param->default_param())) {
     MS_LOG(DEBUG) << "default value is not tensor::Tensor";
-    return RET_FAILED;
+    return RET_ERROR;
   }
   auto origin_tensor = std::dynamic_pointer_cast<tensor::Tensor>(old_bias_param->default_param());
   MS_CHECK_TRUE_RET(origin_tensor != nullptr, RET_ERROR);

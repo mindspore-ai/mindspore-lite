@@ -23,6 +23,7 @@
 #include "include/errorcode.h"
 #include "src/common/log_util.h"
 #include "mindspore/core/include/ir/graph_utils.h"
+#include "mindspore/core/include/ir/primitive.h"
 
 namespace mindspore {
 namespace opt {
