@@ -40,6 +40,7 @@
 #include "op_proto/inc/elewise_calculation_ops.h"
 #include "tools/optimizer/graph/attr_to_args_pass.h"
 #include "utils/ms_utils_secure.h"
+#include "src/extendrt/utils/tensor_default_impl.h"
 namespace mindspore {
 namespace {
 constexpr auto kProviderGe = "ge";
@@ -1666,10 +1667,13 @@ MSTensorPtr GeGraphExecutor::ConvertGeTensorNoCopy(::ge::Tensor *ge_tensor_ptr, 
     MS_LOG(ERROR) << "Output datatype error! Output tensor size from GE RunGraph does not match.";
     return nullptr;
   }
-  auto ret =
-    std::make_shared<MSTensor>(MSTensor("", static_cast<DataType>(type_id), me_shape, ge_data, ge_tensor.GetSize()));
-  deleter(reinterpret_cast<uint8_t *>(ge_data));
-  return ret;
+  auto tensor_impl = std::make_shared<TensorDefaultImpl>("", static_cast<DataType>(type_id), me_shape);
+  MS_CHECK_TRUE_RET(tensor_impl != nullptr, nullptr);
+  tensor_impl->SetDeleter(deleter);
+  tensor_impl->SetData(static_cast<void *>(ge_data), true);
+  auto tensor = std::make_shared<MSTensor>(tensor_impl);
+  MS_CHECK_TRUE_RET(tensor != nullptr, nullptr);
+  return tensor;
 }
 
 std::vector<mindspore::MSTensor> GeGraphExecutor::GetOutputInfos(uint32_t graph_id) {

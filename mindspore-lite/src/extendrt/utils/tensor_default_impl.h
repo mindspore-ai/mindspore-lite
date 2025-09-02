@@ -69,6 +69,10 @@ class TensorDefaultImpl : public MutableTensorImpl {
     }
   }
   ~TensorDefaultImpl() {
+    if (deleter_ != nullptr && data_ != nullptr && own_data_) {
+      deleter_(reinterpret_cast<uint8_t *>(const_cast<void *>(data_)));
+      data_ = nullptr;
+    }
     if (own_data_ && data_ != nullptr && data_ != buffer_.Data()) {
       free(const_cast<void *>(data_));
     }
@@ -84,6 +88,7 @@ class TensorDefaultImpl : public MutableTensorImpl {
   void SetShape(const std::vector<int64_t> &shape) override { shape_ = shape; }
   void SetDataType(mindspore::DataType data_type) override { type_ = data_type; }
   void SetName(const std::string &name) override { name_ = name; }
+  void SetDeleter(const std::function<void(uint8_t *)> &deleter) { deleter_ = deleter; }
 
   mindspore::Format Format() const override { return format_; }
   void SetFormat(mindspore::Format format) override { format_ = format; }
@@ -188,6 +193,7 @@ class TensorDefaultImpl : public MutableTensorImpl {
 
   bool is_const_ = false;
   bool is_acl_host_ = false;
+  std::function<void(uint8_t *)> deleter_ = nullptr;
 
   void ResizeData() const {
     if (data_ != nullptr && data_ != buffer_.Data()) {
