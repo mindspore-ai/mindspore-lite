@@ -10,7 +10,6 @@ if(Python3_FOUND)
   find_package(Python3 COMPONENTS NumPy Development)
 
   if(Python3_NumPy_FOUND)
-    include_directories(${Python3_INCLUDE_DIRS})
     include_directories(${Python3_NumPy_INCLUDE_DIRS})
     include_directories(${TOP_DIR}/mindspore)
     include_directories(${TOP_DIR}/mindspore/mindspore/core/include)
@@ -33,6 +32,7 @@ if(Python3_FOUND)
       list(REMOVE_ITEM PY_SRC_LIST ${LITE_INFER_SRC_FILES})
     endif()
     pybind11_add_module(_c_lite_wrapper NO_EXTRAS ${PY_SRC_LIST})
+    target_include_directories(_c_lite_wrapper PRIVATE -I${pybind11_INC} -I${Python3_INCLUDE_DIRS})
 
     if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
       target_link_libraries(_c_lite_wrapper PRIVATE -Wl,--whole-archive mindspore-extendrt lite_src_common_mid
