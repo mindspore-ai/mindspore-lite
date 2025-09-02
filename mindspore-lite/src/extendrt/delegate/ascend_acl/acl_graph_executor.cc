@@ -257,10 +257,12 @@ bool AclGraphExecutor::CompileGraph(const void *model_data, size_t data_size,
     return false;
   }
   if (!model_infer_->Init()) {
+    model_infer_.reset();
     MS_LOG(ERROR) << "Model infer init failed.";
     return false;
   }
   if (!model_infer_->Load(model_data, data_size)) {
+    model_infer_.reset();
     MS_LOG(ERROR) << "Load om data failed.";
     return false;
   }
