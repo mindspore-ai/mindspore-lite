@@ -41,6 +41,7 @@
 #include "tools/optimizer/graph/attr_to_args_pass.h"
 #include "utils/ms_utils_secure.h"
 #include "src/extendrt/utils/tensor_default_impl.h"
+#include "mindspore/core/include/utils/misc.h"
 namespace mindspore {
 namespace {
 constexpr auto kProviderGe = "ge";
