@@ -21,7 +21,7 @@
 
 #include "runtime/hardware_abstract/kernel_base/kernel.h"
 #include "runtime/hardware_abstract/kernel_base/ms_factory.h"
-#include "plugin/device/cpu/kernel/cpu_kernel_mod.h"
+#include "mindspore/ops/kernel/cpu/cpu_kernel_mod.h"
 
 namespace mindspore::kernel {
 std::shared_ptr<mindspore::kernel::InnerKernel> KernelModUtil::GetInnerKernel(
