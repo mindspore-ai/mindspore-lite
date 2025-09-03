@@ -32,7 +32,8 @@ if(Python3_FOUND)
       list(REMOVE_ITEM PY_SRC_LIST ${LITE_INFER_SRC_FILES})
     endif()
     pybind11_add_module(_c_lite_wrapper NO_EXTRAS ${PY_SRC_LIST})
-    target_include_directories(_c_lite_wrapper PRIVATE -I${pybind11_INC} -I${Python3_INCLUDE_DIRS})
+    target_include_directories(_c_lite_wrapper BEFORE PRIVATE  ${pybind11_INC})
+    target_include_directories(_c_lite_wrapper PRIVATE ${Python3_INCLUDE_DIRS})
 
     if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
       target_link_libraries(_c_lite_wrapper PRIVATE -Wl,--whole-archive mindspore-extendrt lite_src_common_mid
