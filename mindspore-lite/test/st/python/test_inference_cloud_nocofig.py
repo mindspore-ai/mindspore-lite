@@ -76,6 +76,46 @@ def test_model_group_inference_ascend(mindir_dir):
         outputs = model1.predict(inputs)
         assert (outputs[0].get_data_to_numpy() == (np.ones((4, 4), np.float32) * 2)).all()
 
+@lite_test
+def test_graph_split_ascend(mindir_dir):
+    dtype_map = {
+        mslite.DataType.FLOAT32: np.float32,
+        mslite.DataType.INT32: np.int32,
+        mslite.DataType.FLOAT16: np.float16,
+        mslite.DataType.INT8: np.int8
+    }
+
+    converter = mslite.converter.Converter()
+    converter.save_type = mslite.ModelType.MINDIR
+    converter.optimize = "ascend_oriented"
+    converter.input_shape = {"input": [1, 289, 289, 3]}
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               '../graph_split.config')
+    print("config path:", config_path)
+    try:
+        converter.convert(mslite.FmkType.ONNX, os.path.join(mindir_dir, "02-seg_3.onnx"),
+                          os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                       '../ms_models/graph_split'), config_file=config_path)
+    except:
+        raise RuntimeError('convert graph split model failed!')
+
+    context = mslite.Context()
+    context.target = ["ascend"]
+    context.ascend.devcie_id = 0
+    try:
+        runner = mslite.MultiModelRunner()
+        model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  '../ms_models/graph_split.mindir')
+        runner.build_from_file(model_path, mslite.ModelType.MINDIR, context)
+        execs = runner.get_model_executor()
+        for exec_ in execs:
+            exec_inputs = exec_.get_inputs()
+            for input_ in exec_inputs:
+                data = np.random.randn(*input_.shape).astype(dtype_map[input_.dtype])
+                input_.set_data_from_numpy(data)
+            exec_.predict(exec_inputs)
+    except:
+        raise RuntimeError('run graph split model failed!')
 
 @lite_test
 def test_model_invalid_dynamic_dims_error_ascend(mindir_dir):
@@ -101,6 +141,7 @@ if __name__ == '__main__':
     backend = sys.argv[2]
     if backend == "Ascend":
         test_model_group_inference_ascend(model_dir)
+        test_graph_split_ascend(model_dir)
         test_model_invalid_dynamic_dims_error_ascend(model_dir)
     else:
         print(f'test_inference_cloud_nocofig.py: skip backend {backend}!')
