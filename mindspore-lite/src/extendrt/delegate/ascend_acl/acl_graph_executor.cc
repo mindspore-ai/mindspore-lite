@@ -239,6 +239,7 @@ bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<st
   }
   sharable_handle_ = model_infer_->GetSharableHandle();
   AclEnvGuard::AddModel(model_infer_);
+  load_model_ = true;
   return true;
 }
 
