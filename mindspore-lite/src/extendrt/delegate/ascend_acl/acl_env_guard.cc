@@ -180,7 +180,7 @@ bool AclEnvGuard::Finalize() {
   bool model_finalized =
     std::all_of(model_infers_.begin(), model_infers_.end(),
                 [](const std::shared_ptr<ModelInfer> &model_infer) { return model_infer->Finalize(true); });
-  if (!model_finalized || global_acl_env_.use_count() > 1) {
+  if (!model_finalized) {
     MS_LOG(ERROR) << "There is model has not been unloaded, and will not finalize acl.";
     return false;
   }
