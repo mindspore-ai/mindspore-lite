@@ -109,6 +109,9 @@ ModelProcess::~ModelProcess() {
     delete[] dynamic_dims_;
     dynamic_dims_ = nullptr;
   }
+  if (allocator_ != nullptr) {
+    delete allocator_;
+  }
 }
 
 aclError ModelProcess::AclrtMemcpy(void *dst, size_t destMax, const void *src, size_t count, aclrtMemcpyKind kind) {
@@ -1296,6 +1299,7 @@ bool ModelProcess::CheckOutputTensors(const std::vector<MSTensor> *outputs) {
 }
 
 bool ModelProcess::CheckAndInitInput(const std::vector<MSTensor> &inputs) {
+  MS_CHECK_TRUE_MSG(allocator_ != nullptr, false, "allocator_ is nullptr!");
   // check inputs
   if (!CheckInputTensors(inputs)) {
     MS_LOG(ERROR) << "Check input tensor failed.";
@@ -1316,9 +1320,8 @@ bool ModelProcess::CheckAndInitInput(const std::vector<MSTensor> &inputs) {
       } else {
         // memcpy device data from src device to current device.
         auto data_copy_size = input.DataSize();
-        if (AscendAllocatorPlugin::GetInstance().CopyDeviceDataToDevice(device_data_addr, info.device_data,
-                                                                        data_copy_size, info.buffer_size,
-                                                                        input_device_id, device_id_) != kSuccess) {
+        if (allocator_->CopyDeviceDataToDevice(device_data_addr, info.device_data, data_copy_size, info.buffer_size,
+                                               input_device_id, device_id_) != kSuccess) {
           MS_LOG(ERROR) << "Copy input data from device to current device failed.";
           return false;
         }
@@ -1498,6 +1501,7 @@ bool ModelProcess::PredictFromHost(const std::vector<MSTensor> &inputs, const st
 bool ModelProcess::CreateWeightsInput(const std::vector<MSTensor> &kernel_inputs) {
   MS_CHECK_TRUE_MSG(weight_inputs_ != nullptr, false, "Weight inputs is nullptr!");
   MS_CHECK_TRUE_MSG(model_weight_desc_ != nullptr, false, "Weight desc is nullptr!");
+  MS_CHECK_TRUE_MSG(allocator_ != nullptr, false, "allocator_ is nullptr!");
   size_t input_size = CALL_ASCEND_API(aclmdlGetNumInputs, model_weight_desc_);
   if (input_size != kernel_inputs.size()) {
     MS_LOG(ERROR) << "variable weight num " << kernel_inputs.size() << "!="
@@ -1517,9 +1521,8 @@ bool ModelProcess::CreateWeightsInput(const std::vector<MSTensor> &kernel_inputs
       } else {
         // memcpy device data from src device to current device.
         auto data_copy_size = kernel_input.DataSize();
-        if (AscendAllocatorPlugin::GetInstance().CopyDeviceDataToDevice(device_data_addr, info.device_data,
-                                                                        data_copy_size, info.buffer_size,
-                                                                        input_device_id, device_id_) != kSuccess) {
+        if (allocator_->CopyDeviceDataToDevice(device_data_addr, info.device_data, data_copy_size, info.buffer_size,
+                                               input_device_id, device_id_) != kSuccess) {
           MS_LOG(ERROR) << "Copy input data from device to current device failed!";
           return false;
         }
@@ -1740,6 +1743,7 @@ void ModelProcess::FreeResourceOutput(std::vector<AclTensorInfo> *acl_tensor_inf
 
 // TODO(liuf9): Remove `CreateTensor` method and instead use memory pool and shallow copy.
 bool ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
+  MS_CHECK_TRUE_MSG(allocator_ != nullptr, false, "allocator_ is nullptr!");
   std::vector<MSTensor> new_outputs;
   aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;
 
@@ -1750,9 +1754,9 @@ bool ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
       if (user_output.GetDeviceData()) {
         if (user_output.GetDeviceId() != device_id_) {
           // memcpy output data from current device to output device.
-          auto ret = AscendAllocatorPlugin::GetInstance().CopyDeviceDataToDevice(
-            output_info.cur_device_data, user_output.GetDeviceData(), user_output.DataSize(), output_info.buffer_size,
-            device_id_, user_output.GetDeviceId());
+          auto ret = allocator_->CopyDeviceDataToDevice(output_info.cur_device_data, user_output.GetDeviceData(),
+                                                        user_output.DataSize(), output_info.buffer_size, device_id_,
+                                                        user_output.GetDeviceId());
           if (ret != kSuccess) {
             MS_LOG(ERROR) << "Copy output data from device to current device failed.";
             return false;
