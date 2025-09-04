@@ -869,11 +869,11 @@ class MultiModelRunner:
         >>> context.ascend.device_id = 2
         >>> model_path = "path_to_model1"
         >>> model_runner = mslite.MultiModelRunner()
-        >>> runner.build_from_file(model_path, mslite.ModelType.MINDIR, context)
+        >>> model_runner.build_from_file(model_path, mslite.ModelType.MINDIR, context)
         >>> execs = runner.get_model_ececutor()
-        >>> for exec in execs:
-        >>>     exec_inputs = exec.get_inputs()
-        >>>     exec_outputs = exec.get_outputs()
+        >>> for exec_ in execs:
+        >>>     exec_inputs = exec_.get_inputs()
+        >>>     exec_outputs = exec_.get_outputs()
         >>>     for i, input in enumerate(exec_inputs):
         >>>         data = np.random.randn(*input.shape).astype(dtype_map[input.dtype])
         >>>         input.set_data_from_numpy(data)
