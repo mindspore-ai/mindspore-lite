@@ -263,7 +263,8 @@ STATUS GroupedMatmulOpPass::RunInsertSizeAttrPass(const FuncGraphPtr &func_graph
     if (!utils::isa<CNodePtr>(node)) {
       continue;
     }
-    if (CheckPrimitiveType(node, prim::kPrimGroupedMatmul)) {
+    auto cnode_type = common::AnfAlgo::GetCNodeName(node);
+    if (cnode_type == prim::kPrimGroupedMatmul->name()) {
       MS_LOG(INFO) << "Run GroupedMatmul op pass for grouped_matmul node " << node->fullname_with_scope();
       auto new_cnode = this->ConvertMakeTupleInputToPlantInputs(func_graph, node->cast<CNodePtr>());
       if (!new_cnode) {
