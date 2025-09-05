@@ -66,7 +66,7 @@ class MS_API ModelExecutor {
   /// \return The vector that includes all output tensors.
   std::vector<MSTensor> GetOutputs() const;
 
-  /// \brief Inference ModelExecutor API. If use this API in train mode, it's equal to RunStep API.
+  /// \brief Initialize ModelExecutor API.
   ///
   /// \param[in] model_context Define the context used to store options during execution.
   ///
