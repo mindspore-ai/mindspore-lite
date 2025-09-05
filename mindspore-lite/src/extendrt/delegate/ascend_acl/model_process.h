@@ -29,6 +29,7 @@
 #include "acl/acl_rt.h"
 #include "include/api/types.h"
 #include "include/errorcode.h"
+#include "include/api/status.h"
 #include "extendrt/delegate/ascend_acl/acl_model_options.h"
 #include "extendrt/delegate/ascend_acl/dyn_shape_process.h"
 #include "extendrt/delegate/ascend_acl/acl_mem_manager.h"
@@ -93,7 +94,7 @@ class ModelProcess {
   bool CheckInputTensors(const std::vector<MSTensor> &inputs);
   bool CheckOutputTensors(const std::vector<MSTensor> *outputs);
   bool CheckAndSetDynFlag();
-  bool GetOutputs(const std::vector<MSTensor> *outputs);
+  Status GetOutputs(const std::vector<MSTensor> *outputs);
 
   bool ResetInputSize(const std::vector<ShapeVector> &new_shapes);
   bool ResetOutputSize();
@@ -119,6 +120,7 @@ class ModelProcess {
   bool MainProcess(const void *om_data, size_t om_data_size);
   bool SubProcess(const void *om_data, size_t om_data_size);
   bool ShareMemProcess(const void *om_data, size_t om_data_size);
+  MSTensor GetOutputWithZeroCopy(const std::vector<MSTensor> *outputs, size_t index);
 
   std::shared_ptr<AclModelOptions> options_;
   uint32_t model_id_ = UINT32_MAX;

@@ -266,7 +266,8 @@ Status GraphSinkSession::RunGraph(uint32_t graph_id, const std::vector<mindspore
   }
   // reset model output tensor name
   if (graph_infos_[graph_id].output_names.size() != outputs->size()) {
-    MS_LOG(ERROR) << "model output size is wrong.";
+    MS_LOG(ERROR) << "model output size is wrong, graph infos outputs size: "
+                  << graph_infos_[graph_id].output_names.size() << ", outputs size: " << outputs->size();
     return kLiteError;
   }
   for (size_t i = 0; i < outputs->size(); i++) {
