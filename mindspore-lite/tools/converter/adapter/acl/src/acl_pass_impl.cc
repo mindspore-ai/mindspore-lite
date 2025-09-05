@@ -1067,7 +1067,8 @@ STATUS AclPassImpl::BuildSplitGraph(const FuncGraphPtr &func_graph, const std::v
     {aclDataType::ACL_UINT16, kNumberTypeUInt16},   {aclDataType::ACL_INT32, kNumberTypeInt32},
     {aclDataType::ACL_INT64, kNumberTypeInt64},     {aclDataType::ACL_UINT64, kNumberTypeUInt64},
     {aclDataType::ACL_FLOAT16, kNumberTypeFloat16}, {aclDataType::ACL_FLOAT, kNumberTypeFloat32},
-    {aclDataType::ACL_DOUBLE, kNumberTypeFloat64},  {aclDataType::ACL_STRING, kObjectTypeString}};
+    {aclDataType::ACL_DOUBLE, kNumberTypeFloat64},  {aclDataType::ACL_STRING, kObjectTypeString},
+    {aclDataType::ACL_BF16, kNumberTypeBFloat16}};
   AclConvertInitAdapter::GetInstance().AclInit(nullptr);
   std::vector<Buffer> om_data_vec;
   std::vector<std::string> graph_name_vec;
