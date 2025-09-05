@@ -33,6 +33,7 @@
 #include "extendrt/delegate/ascend_acl/dyn_shape_process.h"
 #include "extendrt/delegate/ascend_acl/acl_mem_manager.h"
 #include "mindspore/core/include/mindapi/base/type_id.h"
+#include "src/extendrt/delegate/ascend_acl/acl_allocator.h"
 
 namespace mindspore {
 struct AclTensorInfo {
@@ -50,7 +51,9 @@ struct AclTensorInfo {
 class ModelProcess {
  public:
   explicit ModelProcess(const std::shared_ptr<AclModelOptions> &options)
-      : options_(options), device_id_(options->device_id) {}
+      : options_(options), device_id_(options->device_id) {
+    allocator_ = CreateAclAllocator();
+  }
   ~ModelProcess();
 
   bool Load(const void *om_data, size_t om_data_size);
@@ -156,6 +159,7 @@ class ModelProcess {
   aclrtDrvMemHandle shareable_phy_addr_ = nullptr;
   void *multiprocess_weight_ptr_ = nullptr;
   uint64_t sharable_handle_ = 0;
+  AclAllocator *allocator_ = nullptr;
 };
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_EXTENDRT_KERNEL_ASCEND_MODEL_MODEL_PROCESS_H_
