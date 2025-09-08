@@ -1380,6 +1380,10 @@ void ModelProcess::CheckAndInitDynOutputDeviceBuf(const MSTensor output, const A
 
 bool ModelProcess::CheckAndInitOutput(const std::vector<MSTensor> *outputs) {
   aclError ret;
+  if (!outputs->empty() && outputs->size() != output_infos_.size()) {
+    MS_LOG(ERROR) << "outputs size wrong.";
+    return false;
+  }
   for (size_t i = 0; i < output_infos_.size(); ++i) {
     void *output_device_buffer = nullptr;
     output_device_buffer = nullptr;  // in dynamic output shape, setting nullptr allows acl to alloc memory
@@ -1488,8 +1492,9 @@ bool ModelProcess::PredictFromHost(const std::vector<MSTensor> &inputs, const st
       output_info.cur_device_data = acl_device_data;
     }
   }
-  if (!GetOutputs(outputs)) {
-    MS_LOG(ERROR) << "Build outputs failed";
+  auto status = GetOutputs(outputs);
+  if (status != kSuccess) {
+    MS_LOG(ERROR) << "Get outputs failed";
     return false;
   }
   // The device_data is malloced by acl, user need to free the addr
@@ -1741,58 +1746,62 @@ void ModelProcess::FreeResourceOutput(std::vector<AclTensorInfo> *acl_tensor_inf
   }
 }
 
-// TODO(liuf9): Remove `CreateTensor` method and instead use memory pool and shallow copy.
-bool ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
-  MS_CHECK_TRUE_MSG(allocator_ != nullptr, false, "allocator_ is nullptr!");
-  std::vector<MSTensor> new_outputs;
-  aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;
+MSTensor ModelProcess::GetOutputWithZeroCopy(const std::vector<MSTensor> *outputs, size_t index) {
+  auto &user_output = const_cast<std::vector<MSTensor> *>(outputs)->at(index);
+  auto &output_info = output_infos_[index];
+  if (user_output.GetDeviceData()) {
+    if (user_output.GetDeviceId() != device_id_) {
+      auto ret = allocator_->CopyDeviceDataToDevice(output_info.cur_device_data, user_output.GetDeviceData(),
+                                                    user_output.DataSize(), output_info.buffer_size, device_id_,
+                                                    user_output.GetDeviceId());
+      if (ret != kSuccess) {
+        MS_LOG(ERROR) << "Copy output data from device to current device failed.";
+        return MSTensor(nullptr);
+      }
+    }
+  } else if (user_output.Data() != nullptr) {
+    aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;
+    auto ret = AclrtMemcpy(user_output.MutableData(), output_info.buffer_size, output_info.cur_device_data,
+                           output_info.buffer_size, kind);
+    if (ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Memcpy output " << index << " from device to host failed, memory size "
+                    << output_info.buffer_size << ", ret: " << ret;
+      return MSTensor(nullptr);
+    }
+  } else {
+    MS_LOG(ERROR) << "The data of the tensor passed by the user is nullptr. If you are using the zero-copy feature, "
+                     "please set the tensor to include host data or device data; if you are not using zero-copy, you "
+                     "do not need to pass the output tensor.";
+    return MSTensor(nullptr);
+  }
+  return outputs->at(index);
+}
 
+Status ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
+  std::vector<MSTensor> new_outputs;
   for (size_t i = 0; i < output_infos_.size(); ++i) {
+    if (!outputs->empty()) {
+      auto tensor = GetOutputWithZeroCopy(outputs, i);
+      MS_CHECK_TRUE_MSG(tensor.impl() != nullptr, kLiteError, "tensor impl is nullptr!");
+      new_outputs.push_back(tensor);
+      continue;
+    }
+    aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;
     auto &output_info = output_infos_[i];
-    if (outputs->size() > i) {
-      auto &user_output = const_cast<std::vector<MSTensor> *>(outputs)->at(i);
-      if (user_output.GetDeviceData()) {
-        if (user_output.GetDeviceId() != device_id_) {
-          // memcpy output data from current device to output device.
-          auto ret = allocator_->CopyDeviceDataToDevice(output_info.cur_device_data, user_output.GetDeviceData(),
-                                                        user_output.DataSize(), output_info.buffer_size, device_id_,
-                                                        user_output.GetDeviceId());
-          if (ret != kSuccess) {
-            MS_LOG(ERROR) << "Copy output data from device to current device failed.";
-            return false;
-          }
-        }
-        new_outputs.push_back(outputs->at(i));
-        continue;
-      }
+    auto output =
+      MSTensor(output_info.name, static_cast<DataType>(TransToDataType(output_info.data_type)), {}, nullptr, 0);
+    output.SetShape(output_info.dims);
+    auto ret = AclrtMemcpy(output.MutableData(), output_info.buffer_size, output_info.cur_device_data,
+                           output_info.buffer_size, kind);
+    if (ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Memcpy output " << i << " from device to host failed, memory size " << output_info.buffer_size
+                    << ", ret: " << ret;
+      return kLiteError;
     }
-    if (is_dynamic_output_) {
-      auto output =
-        MSTensor(output_info.name, static_cast<DataType>(TransToDataType(output_info.data_type)), {}, nullptr, 0);
-      output.SetShape(output_info.dims);
-      auto ret = AclrtMemcpy(output.MutableData(), output_info.buffer_size, output_info.cur_device_data,
-                             output_info.buffer_size, kind);
-      if (ret != ACL_SUCCESS) {
-        MS_LOG(ERROR) << "Memcpy output " << i << " from device to host failed, memory size " << output_info.buffer_size
-                      << ", ret: " << ret;
-        return false;
-      }
-      new_outputs.push_back(output);
-    } else {
-      auto host_data = model_outputs_[i].MutableData();
-      auto ret =
-        AclrtMemcpy(host_data, output_info.buffer_size, output_info.cur_device_data, output_info.buffer_size, kind);
-      if (ret != ACL_SUCCESS) {
-        MS_LOG(ERROR) << "Memcpy output " << i << " from device to host failed, memory size " << output_info.buffer_size
-                      << ", ret: " << ret;
-        return false;
-      }
-      model_outputs_[i].SetShape(output_info.dims);
-      new_outputs.push_back(model_outputs_[i]);
-    }
+    new_outputs.push_back(output);
   }
   const_cast<std::vector<MSTensor> *>(outputs)->clear();
   const_cast<std::vector<MSTensor> *>(outputs)->insert(outputs->end(), new_outputs.begin(), new_outputs.end());
-  return true;
+  return kSuccess;
 }
 }  // namespace mindspore
