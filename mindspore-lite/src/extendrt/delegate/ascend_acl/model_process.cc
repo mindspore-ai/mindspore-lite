@@ -44,6 +44,7 @@ bool GetSizeByDtype(aclDataType data_type, size_t *size) {
     case ACL_INT32:
       *size = 4;
       break;
+    case ACL_BF16:
     case ACL_FLOAT16:
       *size = 2;
       break;
@@ -81,7 +82,7 @@ static TypeId TransToDataType(aclDataType data_type) {
     {ACL_INT32, TypeId::kNumberTypeInt32},     {ACL_INT64, TypeId::kNumberTypeInt64},
     {ACL_UINT8, TypeId::kNumberTypeUInt8},     {ACL_UINT16, TypeId::kNumberTypeUInt16},
     {ACL_UINT32, TypeId::kNumberTypeUInt32},   {ACL_UINT64, TypeId::kNumberTypeUInt64},
-    {ACL_BOOL, TypeId::kNumberTypeBool},
+    {ACL_BOOL, TypeId::kNumberTypeBool},       {ACL_BF16, TypeId::kNumberTypeBFloat16},
   };
   auto it = data_type_map.find(data_type);
   if (it == data_type_map.end()) {

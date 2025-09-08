@@ -19,14 +19,14 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <map>
 #include "include/api/status.h"
 #include "include/api/types.h"
 #include "include/api/context.h"
-#include "src/common/config_infos.h"
 #include "include/api/dual_abi_helper.h"
-#include "extendrt/utils/func_graph_utils.h"
 
 namespace mindspore {
+using ConfigInfos = std::map<std::string, std::map<std::string, std::string>>;
 class ModelImpl;
 class MS_API ModelExecutor {
  public:
@@ -122,7 +122,6 @@ class MS_API MultiModelRunner {
                const std::shared_ptr<Context> &model_context);
   Status LoadConfig(const std::vector<char> &config_path);
   Status UpdateConfig(const std::vector<char> &section, const std::pair<std::vector<char>, std::vector<char>> &config);
-  Status SetConfigs(const std::shared_ptr<ModelImpl> &model_impl_ptr);
   std::vector<ModelExecutor> executors_;
   std::vector<std::shared_ptr<ModelImpl>> models_;
   std::string config_file_ = "";
