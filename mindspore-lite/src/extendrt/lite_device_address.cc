@@ -16,12 +16,12 @@
 
 #include "src/extendrt/lite_device_address.h"
 
+#include <complex>
 #include <string>
 #include <utility>
 #include <unordered_map>
 
 #include "ir/device_address_maker.h"
-#include "include/common/convert_tensor_utils.h"
 #include "utils/ms_context.h"
 #include "src/common/log_adapter.h"
 
@@ -29,7 +29,93 @@ namespace mindspore {
 namespace lite {
 namespace {
 const char kDeviceName[] = "CPU";
+template <typename T>
+void ConvertSameType(T *dst, const T *src, size_t elem_num) {
+  if (dst == nullptr || src == nullptr) {
+    return;
+  }
+  for (size_t i = 0; i < elem_num; ++i) {
+    dst[i] = src[i];
+  }
+}
 
+void ConvertSameType(void *const dst, const void *src, size_t size, TypeId type) {
+  if (type == kNumberTypeFloat16) {
+    auto dst_data = static_cast<float16 *>(dst);
+    auto src_data = static_cast<const float16 *>(src);
+    ConvertSameType(dst_data, src_data, size >> 1);
+  } else if (type == kNumberTypeFloat32) {
+    auto dst_data = static_cast<float *>(dst);
+    auto src_data = static_cast<const float *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(float));
+  } else if (type == kNumberTypeFloat64) {
+    auto dst_data = static_cast<double *>(dst);
+    auto src_data = static_cast<const double *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(double));
+  } else if (type == kNumberTypeBFloat16) {
+    auto dst_data = static_cast<bfloat16 *>(dst);
+    auto src_data = static_cast<const bfloat16 *>(src);
+    ConvertSameType(dst_data, src_data, size >> 1);
+  } else if (type == kNumberTypeHiFloat8) {
+    auto dst_data = static_cast<hifloat8 *>(dst);
+    auto src_data = static_cast<const hifloat8 *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(hifloat8));
+  } else if (type == kNumberTypeFloat8E5M2) {
+    auto dst_data = static_cast<float8_e5m2 *>(dst);
+    auto src_data = static_cast<const float8_e5m2 *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(float8_e5m2));
+  } else if (type == kNumberTypeFloat8E4M3FN) {
+    auto dst_data = static_cast<float8_e4m3fn *>(dst);
+    auto src_data = static_cast<const float8_e4m3fn *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(float8_e4m3fn));
+  } else if (type == kNumberTypeInt8) {
+    auto dst_data = static_cast<int8_t *>(dst);
+    auto src_data = static_cast<const int8_t *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(int8_t));
+  } else if (type == kNumberTypeInt16) {
+    auto dst_data = static_cast<int16_t *>(dst);
+    auto src_data = static_cast<const int16_t *>(src);
+    ConvertSameType(dst_data, src_data, size >> 1);
+  } else if (type == kNumberTypeInt32) {
+    auto dst_data = static_cast<int *>(dst);
+    auto src_data = static_cast<const int *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(int));
+  } else if (type == kNumberTypeInt64) {
+    auto dst_data = static_cast<int64_t *>(dst);
+    auto src_data = static_cast<const int64_t *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(int64_t));
+  } else if (type == kNumberTypeBool) {
+    auto dst_data = static_cast<bool *>(dst);
+    auto src_data = static_cast<const bool *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(bool));
+  } else if (type == kNumberTypeUInt8) {
+    auto dst_data = static_cast<uint8_t *>(dst);
+    auto src_data = static_cast<const uint8_t *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(uint8_t));
+  } else if (type == kNumberTypeUInt16) {
+    auto dst_data = static_cast<uint16_t *>(dst);
+    auto src_data = static_cast<const uint16_t *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(uint16_t));
+  } else if (type == kNumberTypeUInt32) {
+    auto dst_data = static_cast<uint32_t *>(dst);
+    auto src_data = static_cast<const uint32_t *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(uint32_t));
+  } else if (type == kNumberTypeUInt64) {
+    auto dst_data = static_cast<uint64_t *>(dst);
+    auto src_data = static_cast<const uint64_t *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(uint64_t));
+  } else if (type == kNumberTypeComplex64) {
+    auto dst_data = static_cast<std::complex<float> *>(dst);
+    auto src_data = static_cast<const std::complex<float> *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(std::complex<float>));
+  } else if (type == kNumberTypeComplex128) {
+    auto dst_data = static_cast<std::complex<double> *>(dst);
+    auto src_data = static_cast<const std::complex<double> *>(src);
+    ConvertSameType(dst_data, src_data, size / sizeof(std::complex<double>));
+  } else {
+    MS_LOG(EXCEPTION) << "Invalid Type: " << TypeIdLabel(type);
+  }
+}
 DeviceAddressPtr CreateDeviceAddress(void *ptr, size_t size, const ShapeVector &shape_vector, const Format &format,
                                      TypeId type_id, const std::string &device_name, uint32_t device_id,
                                      uint32_t stream_id, const UserDataPtr &user_data = nullptr) {
@@ -198,8 +284,8 @@ bool LiteAsyncCopy(const DeviceAddressPtr &dst_device_sync, const DeviceAddressP
     auto ret_code = memcpy_s(dst_ptr, src_device_address->GetSize(), src_ptr, src_device_address->GetSize());
     // Return ERANGE when the copy size is larger than SECUREC_MEM_MAX_LEN.
     if (ret_code == ERANGE) {
-      device::ConvertSameType(dst_device_address->GetMutablePtr(), src_device_address->GetMutablePtr(),
-                              dst_device_address->GetSize(), src_type_id);
+      ConvertSameType(dst_device_address->GetMutablePtr(), src_device_address->GetMutablePtr(),
+                      dst_device_address->GetSize(), src_type_id);
     } else if (ret_code != EOK) {
       MS_LOG(ERROR) << "Failed to copy tensor from device address:" << src_device_address->ToString()
                     << " to :" << dst_device_address->ToString();
