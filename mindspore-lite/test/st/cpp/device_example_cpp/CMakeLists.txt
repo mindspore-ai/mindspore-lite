@@ -43,7 +43,7 @@ file(GLOB_RECURSE QUICK_START_CXX ${CMAKE_CURRENT_SOURCE_DIR}/*.cc)
 add_executable(mindspore_quick_start_cpp ${QUICK_START_CXX})
 
 target_link_libraries(
-    mindspore_quick_start_cpp mindspore-lite pthread dl
+    mindspore_quick_start_cpp mindspore-lite pthread dl mindspore_core_lite
 )
 
 if("${EXAMPLE_TARGET}" STREQUAL "Ascend")
