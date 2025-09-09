@@ -21,7 +21,7 @@
 #include "include/common/utils/scoped_long_running.h"
 #include "include/api/context.h"
 #include "include/api/status.h"
-#include "include/common/utils/ms_device_shape_transfer.h"
+#include "mindspore/ccsrc/include/backend/common/ms_device_shape_transfer.h"
 #include "backend/ge_backend/graph_ir/utils.h"
 #include "ge/ge_api.h"
 #include "common/config_infos.h"
