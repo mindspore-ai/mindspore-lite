@@ -19,6 +19,9 @@
 void MatVecMulAvxFp32(const float *a, const float *b, float *c, const float *bias, int act_type, int depth, int cur_col,
                       int col_align) {
   // one time process 32 out_channel
+  if (cur_col % C8NUM != 0) {
+    cur_col = UP_ROUND(cur_col, C8NUM);
+  }
   int col_block = C32NUM;
   int act_flag = C0NUM;
   if (act_type == ActType_Relu6) {
