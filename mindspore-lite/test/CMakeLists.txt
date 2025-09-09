@@ -245,7 +245,7 @@ if(MSLITE_ENABLE_CONVERTER AND (NOT MSLITE_ENABLE_RUNTIME_CONVERT))
                 coder_mid
                 ccsrc_debug_common_mid_
                 mindir_proto_mid
-                _mindspore_transform_express_ir_obj
+                _mindspore_utils_ir_dump_onnx_obj
                 mindir_serializer_mid
                 )
     else()

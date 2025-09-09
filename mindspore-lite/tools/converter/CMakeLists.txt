@@ -434,7 +434,7 @@ endif()
 target_link_libraries(mindspore_converter
         ccsrc_debug_common_mid_
         mindir_proto_mid
-        _mindspore_transform_express_ir_obj)
+        _mindspore_utils_ir_dump_onnx_obj)
 
 if(NOT MSVC)
     target_link_libraries(mindspore_converter pthread)
@@ -462,6 +462,7 @@ if(NOT WIN32)
 endif()
 if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
     set(CCSRC_SRC_NEW ${CCSRC_SRC_NEW}
+    ${CCSRC_DIR}/utils/callback.cc
     ${CCSRC_DIR}/runtime/hardware_abstract/kernel_base/kernel_factory.cc
     ${CCSRC_DIR}/runtime/hardware_abstract/kernel_base/kernel_tensor.cc
     ${CCSRC_DIR}/runtime/hardware_abstract/kernel_base/kernel.cc)

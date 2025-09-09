@@ -15,9 +15,9 @@ add_library(mindir_proto_mid OBJECT ${PROTO_SRCS})
 add_compile_definitions(MINDIR_EXPORT_TENSOR_LAYOUT_CLIP)
 add_compile_definitions(COMMON_DLL)
 
-set(MINDIR_EXPORT_DIR ${CCSRC_DIR}/transform/express_ir)
-add_subdirectory(${MINDIR_EXPORT_DIR} mindir_exporter)
-add_dependencies(_mindspore_transform_express_ir_obj mindir_proto_mid)
+set(IR_DUMP_ONNX ${CCSRC_DIR}/utils/ir_dump/onnx)
+add_subdirectory(${IR_DUMP_ONNX} ir_dump_onnx)
+add_dependencies(_mindspore_utils_ir_dump_onnx_obj mindir_proto_mid)
 
 add_library(mindir_serializer_mid OBJECT
         ${MINDIR_EXPORTER_SRC_LIST}
@@ -38,7 +38,7 @@ add_library(ccsrc_debug_common_mid_ OBJECT
 add_dependencies(ccsrc_debug_common_mid_ mindir_proto_mid)
 
 target_link_libraries(mindir_serializer_mid
-        _mindspore_transform_express_ir_obj
+        _mindspore_utils_ir_dump_onnx_obj
         ccsrc_debug_common_mid_
         mindir_proto_mid
         )
