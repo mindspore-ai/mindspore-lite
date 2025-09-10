@@ -107,6 +107,12 @@ int ConvolutionDepthwiseIndirectCompute(KernelBase *self) {
   NNACL_CHECK_NULL_RETURN_ERR(input_tensor);
   void *input_ptr = input_tensor->data_;
   NNACL_CHECK_NULL_RETURN_ERR(input_ptr);
+  TensorC *output_tensor = self->out_[OUTPUT_INDEX];
+  NNACL_CHECK_NULL_RETURN_ERR(output_tensor);
+  conv_dw->output_ptr_ = output_tensor->data_;
+  NNACL_CHECK_NULL_RETURN_ERR(conv_dw->output_ptr_);
+  ConvParameter *conv_param = (ConvParameter *)self->param_;
+  NNACL_CHECK_NULL_RETURN_ERR(conv_param);
 
   if (conv_dw->conv_.compute_.in_c_ % conv_dw->div_flag_ != 0) {
     int ret = ConvDwIndirectMallocPackedInput(conv_dw);
@@ -125,22 +131,12 @@ int ConvolutionDepthwiseIndirectCompute(KernelBase *self) {
   }
 
   int ret = ConvBaseRepackWeight(&conv_dw->conv_);
-  if (ret != NNACL_OK) {
-    return ret;
+  if (ret == NNACL_OK) {
+    ConvDwInitIndirection(conv_dw->indirect_buffer_, conv_dw->packed_input_, conv_dw->zero_ptr_, conv_param,
+                          conv_dw->step_h_, conv_dw->step_w_);
+
+    ret = self->env_->ParallelLaunch(self->env_->thread_pool_, ConvDwIndirectRun, self, self->thread_nr_);
   }
-
-  TensorC *output_tensor = self->out_[OUTPUT_INDEX];
-  NNACL_CHECK_NULL_RETURN_ERR(output_tensor);
-  conv_dw->output_ptr_ = output_tensor->data_;
-  NNACL_CHECK_NULL_RETURN_ERR(conv_dw->output_ptr_);
-  ConvParameter *conv_param = (ConvParameter *)self->param_;
-  NNACL_CHECK_NULL_RETURN_ERR(conv_param);
-
-  ConvDwInitIndirection(conv_dw->indirect_buffer_, conv_dw->packed_input_, conv_dw->zero_ptr_, conv_param,
-                        conv_dw->step_h_, conv_dw->step_w_);
-
-  ret = self->env_->ParallelLaunch(self->env_->thread_pool_, ConvDwIndirectRun, self, self->thread_nr_);
-
   if (conv_dw->conv_.compute_.in_c_ % conv_dw->div_flag_ != 0) {
     self->env_->Free(self->env_->allocator_, conv_dw->packed_input_);
   }
