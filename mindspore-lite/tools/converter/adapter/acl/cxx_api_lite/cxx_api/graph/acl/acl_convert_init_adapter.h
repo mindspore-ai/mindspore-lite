@@ -32,6 +32,7 @@ class MS_API AclConvertInitAdapter {
   aclError AclFinalize();
   aclError ForceFinalize();
   ge::graphStatus AclBuildInit(const std::map<std::string, std::string> &init_options);
+  void AclBuildFinalize();
 
  private:
   AclConvertInitAdapter() : init_flag_(false) {}

@@ -65,4 +65,12 @@ ge::graphStatus AclConvertInitAdapter::AclBuildInit(const std::map<std::string, 
     return ge::GRAPH_SUCCESS;
   }
 }
+
+void AclConvertInitAdapter::AclBuildFinalize() {
+  std::lock_guard<std::mutex> lock(build_flag_mutex_);
+  if (init_build_flag_) {
+    init_build_flag_ = false;
+    ge::aclgrphBuildFinalize();
+  }
+}
 }  // namespace mindspore
