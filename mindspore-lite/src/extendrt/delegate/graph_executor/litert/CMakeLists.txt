@@ -269,7 +269,7 @@ if(MSLITE_ENABLE_RUNTIME_CONVERT)
             config_parser_mid mslite_converter_plugin mindspore_core mindspore_ops coder_mid
             mindir_serializer_mid mindspore::protobuf mindspore::securec)
     target_link_libraries(msplugin-ge-litert
-            ccsrc_debug_common_mid_ mindir_proto_mid _mindspore_transform_express_ir_obj)
+            ccsrc_debug_common_mid_ mindir_proto_mid _mindspore_utils_ir_dump_onnx_obj)
 endif()
 
 
