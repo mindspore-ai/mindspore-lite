@@ -24,6 +24,7 @@ void MatmulInitShapeA(MatmulStruct *matmul) {
   int batch = 1;
   NNACL_CHECK_TRUE_RET_VOID(a_shape_size >= C2NUM);
   for (size_t i = 0; i < a_shape_size - C2NUM; ++i) {
+    NNACL_CHECK_TRUE_RET_VOID(!INT_MUL_OVERFLOW(batch, a_shape[i]));
     batch *= a_shape[i];
   }
   matmul->a_batch_ = batch;
@@ -38,6 +39,7 @@ void MatmulInitShapeB(MatmulStruct *matmul) {
   int batch = 1;
   NNACL_CHECK_TRUE_RET_VOID(b_shape_size >= C2NUM);
   for (size_t i = 0; i < b_shape_size - C2NUM; ++i) {
+    NNACL_CHECK_TRUE_RET_VOID(!INT_MUL_OVERFLOW(batch, b_shape[i]));
     batch *= b_shape[i];
   }
   matmul->b_batch_ = batch;

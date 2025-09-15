@@ -67,6 +67,7 @@ int ConvDwSWAVXMallocWeightBiasData(ConvolutionBaseStruct *conv) {
   NNACL_CHECK_NULL_RETURN_ERR(conv_dw);
 
   int oc_algin = UP_DIV(conv->compute_.out_c_, conv_dw->oc_tile_);
+  NNACL_CHECK_INT_MUL_NOT_OVERFLOW(oc_algin * conv_dw->oc_tile_, conv->compute_.kernel_hw_, NNACL_ERR);
   int pack_weight_size = oc_algin * conv_dw->oc_tile_ * conv->compute_.kernel_hw_;
 
   if (!conv->base_.train_session_) {

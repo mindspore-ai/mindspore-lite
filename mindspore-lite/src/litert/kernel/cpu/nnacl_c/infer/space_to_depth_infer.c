@@ -50,7 +50,7 @@ int SpaceToDepthInferShape(const TensorC *const *inputs, size_t inputs_size, Ten
   outputs[0]->shape_[kNHWC_N] = input->shape_[kNHWC_N];
   outputs[0]->shape_[kNHWC_H] = input->shape_[kNHWC_H] / block_size;
   outputs[0]->shape_[kNHWC_W] = input->shape_[kNHWC_W] / block_size;
-  if (input->shape_[kNHWC_C] == 0 || block_size * block_size > INT_MAX / input->shape_[kNHWC_C]) {
+  if (input->shape_[kNHWC_C] == 0 || block_size > (INT_MAX / input->shape_[kNHWC_C]) / block_size) {
     return NNACL_ERR;
   }
   outputs[0]->shape_[kNHWC_C] = input->shape_[kNHWC_C] * (block_size * block_size);

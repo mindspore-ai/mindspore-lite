@@ -26,7 +26,10 @@
 
 int DeConvMallocWeightBiasData(ConvolutionBaseStruct *conv) {
   int output_aligned_size = UP_ROUND(conv->compute_.out_c_, C8NUM) * sizeof(float);
-  size_t pack_weight_size = conv->compute_.in_c_ * conv->compute_.kernel_hw_ * output_aligned_size;
+  NNACL_CHECK_INT_MUL_NOT_OVERFLOW(conv->compute_.in_c_, conv->compute_.kernel_hw_, NNACL_ERR);
+  int kernel_chw = conv->compute_.in_c_ * conv->compute_.kernel_hw_;
+  NNACL_CHECK_INT_MUL_NOT_OVERFLOW(kernel_chw, output_aligned_size, NNACL_ERR);
+  size_t pack_weight_size = kernel_chw * output_aligned_size;
   if (!conv->base_.train_session_) {
     conv->packed_weight_ = conv->base_.env_->Alloc(conv->base_.env_->allocator_, pack_weight_size);
     NNACL_MALLOC_CHECK_NULL_RETURN_ERR(conv->packed_weight_);
