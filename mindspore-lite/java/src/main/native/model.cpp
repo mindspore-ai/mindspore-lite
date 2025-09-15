@@ -512,9 +512,9 @@ std::vector<mindspore::MSTensor> convertArrayToVector(JNIEnv *env, jlongArray in
     MS_LOG(ERROR) << "inputs from java is nullptr";
     return c_inputs;
   }
-  auto input_size = static_cast<int>(env->GetArrayLength(inputs));
+  auto input_size = env->GetArrayLength(inputs);
   jlong *input_data = env->GetLongArrayElements(inputs, nullptr);
-  for (int i = 0; i < input_size; i++) {
+  for (auto i = 0; i < input_size; i++) {
     auto *tensor_pointer = reinterpret_cast<void *>(input_data[i]);
     if (tensor_pointer == nullptr) {
       MS_LOG(ERROR) << "Tensor pointer from java is nullptr";

@@ -165,8 +165,8 @@ Java_com_mindspore_ModelParallelRunner_getOutputs(JNIEnv *env, jobject thiz, jlo
 static void release_ptr_to_java(JNIEnv *env,
                            const std::vector<void *> &ptr_array,
                            const std::vector<jarray> &arr_inputs) {
-    auto input_size = static_cast<int> (arr_inputs.size());
-    for (int i = 0; i < input_size; i++) {
+    auto input_size = arr_inputs.size();
+    for (size_t i = 0; i < input_size; i++) {
         env->ReleasePrimitiveArrayCritical(arr_inputs[i], ptr_array[i], 0);
         env->DeleteLocalRef(arr_inputs[i]);
     }
