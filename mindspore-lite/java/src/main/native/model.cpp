@@ -439,8 +439,8 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_Model_setTrainMode(JNIE
 static void release_ptr_to_java(JNIEnv *env,
                                 const std::vector<void *> &ptr_array,
                                 const std::vector<jarray> &arr_inputs) {
-    auto input_size = static_cast<int> (arr_inputs.size());
-    for (int i = 0; i < input_size; i++) {
+    size_t input_size = arr_inputs.size();
+    for (size_t i = 0; i < input_size; i++) {
         env->ReleasePrimitiveArrayCritical(arr_inputs[i], ptr_array[i], 0);
         env->DeleteLocalRef(arr_inputs[i]);
     }
@@ -766,6 +766,7 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_Model_updateFeatureMaps
     auto *tensor_pointer = reinterpret_cast<void *>(input_data[i]);
     if (tensor_pointer == nullptr) {
       MS_LOG(ERROR) << "Tensor pointer from java is nullptr";
+      env->ReleaseLongArrayElements(features, input_data, JNI_ABORT);
       return (jboolean) false;
     }
     auto *ms_tensor_ptr = static_cast<mindspore::MSTensor *>(tensor_pointer);
@@ -773,6 +774,7 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_Model_updateFeatureMaps
   }
   auto lite_model_ptr = reinterpret_cast<mindspore::Model *>(model_ptr_local);
   auto ret = lite_model_ptr->UpdateFeatureMaps(newFeatures);
+  env->ReleaseLongArrayElements(features, input_data, JNI_ABORT);
   return (jboolean)(ret.IsOk());
 }
 

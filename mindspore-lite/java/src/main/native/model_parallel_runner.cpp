@@ -190,7 +190,7 @@ Java_com_mindspore_ModelParallelRunner_predictZeroCopy(JNIEnv *env, jobject thiz
 
     auto input_size = static_cast<int>(env->GetArrayLength(inputs));
     auto row = static_cast<int>(env->GetArrayLength(buffer));
-    if (row != input_size) {
+    if (row != input_size || input_size <= 0) {
         MS_LOG(ERROR) << "Input data buffer size is not consistent with input tensor number";
         return ret;
     }
@@ -261,7 +261,7 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_ModelParallelRunner_pre
 
     auto input_size = static_cast<int>(env->GetArrayLength(inputs));
     auto row = static_cast<int>(env->GetArrayLength(buffer));
-    if (row != input_size) {
+    if (row != input_size || input_size <= 0) {
         MS_LOG(ERROR) << "Input data buffer size is not consistent with input tensor number";
         return false;
     }
@@ -277,6 +277,9 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_ModelParallelRunner_pre
     std::vector<jarray> jarr_inputs;
 
     auto output_size = static_cast<int>(env->GetArrayLength(outputs));
+    if (output_size <= 0) {
+      return false;
+    }
     jlong *output_data = env->GetLongArrayElements(outputs, nullptr);
     if (output_data == nullptr) {
         env->ReleaseLongArrayElements(outputs, output_data, JNI_ABORT);

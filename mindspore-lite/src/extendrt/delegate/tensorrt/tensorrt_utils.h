@@ -202,8 +202,8 @@ nvinfer1::Dims ConvertCudaDims(const std::vector<T> &shape) {
 }
 
 inline size_t IntToSize(int u) {
-  if (u < 0) {
-    MS_LOG(WARNING) << "The int value(" << u << ") is less than 0.";
+  if (u < 0 || u > INT32_MAX) {
+    MS_LOG(WARNING) << "The int value(" << u << ") is less than 0 or more than INT32_MAX.";
     return SIZE_MAX;
   }
   return static_cast<size_t>(u);
