@@ -45,15 +45,8 @@ def _get_package_data():
         '__init__.py', '_checkparam.py', 'base_model.py', 'context.py', 'converter.py', 'model.py', 'tensor.py',
         '_check_ascend.py', 'lib/*.so*', '.commit_id', 'include/api/*', 'include/api/callback/*',
         'include/api/metrics/*', 'include/mindapi/base/*', 'include/registry/converter_context.h',
-        'include/converter.h', 'custom_kernels/**'
+        'include/converter.h'
     ]
-    custom_ops_data = ['custom_kernels/*', 'custom_kernels/*/*', 'custom_kernels/*/*/*', 'custom_kernels/*/*/*/*',
-                       'custom_kernels/*/*/*/*/*', 'custom_kernels/*/*/*/*/*/*', 'custom_kernels/*/*/*/*/*/*/*',
-                       'custom_kernels/*/*/*/*/*/*/*/*', 'custom_kernels/*/*/*/*/*/*/*/*/*',
-                       'custom_kernels/*/*/*/*/*/*/*/*/*/*', 'custom_kernels/*/*/*/*/*/*/*/*/*/*/*',
-                       'custom_kernels/*/*/*/*/*/*/*/*/*/*/*/*', 'custom_kernels/*/*/*/*/*/*/*/*/*/*/*/*/*',
-                       'custom_kernels/*/*/*/*/*/*/*/*/*/*/*/*/*/*', 'custom_kernels/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*']
-    pkg_data.extend(custom_ops_data)
     if os.getenv('MSLITE_ENABLE_CLOUD_INFERENCE') == "on":
         pkg_data.append('lite_infer.py')
     if is_enable_akg():

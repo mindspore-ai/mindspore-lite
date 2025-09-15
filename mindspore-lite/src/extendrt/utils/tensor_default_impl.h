@@ -19,6 +19,7 @@
 #ifndef MINDSPORE_LITE_SRC_EXTENDRT_UTILS_TENSOR_DEFAULT_IMPL_H_
 #define MINDSPORE_LITE_SRC_EXTENDRT_UTILS_TENSOR_DEFAULT_IMPL_H_
 
+#include <limits.h>
 #include <vector>
 #include <string>
 #include <memory>
@@ -32,6 +33,8 @@
 #include "src/extendrt/kernel/ascend/plugin/ascend_allocator_plugin.h"
 
 namespace mindspore {
+#define CHECK_SIZE_MUL_OVERFLOW(x, y) (((x) == 0) ? false : (SIZE_MAX / (x)) < (y))
+
 class TensorDefaultImpl : public MutableTensorImpl {
  public:
   TensorDefaultImpl() = default;
@@ -46,6 +49,9 @@ class TensorDefaultImpl : public MutableTensorImpl {
       size_t data_type_size = lite::DataTypeSize(TypeId(type));
       size_t data_buf_size = data_type_size;
       for (auto s : shape) {
+        if (CHECK_SIZE_MUL_OVERFLOW(data_buf_size, static_cast<size_t>(s))) {
+          MS_LOG(ERROR) << "tensor shape mul overflow.";
+        }
         data_buf_size *= static_cast<size_t>(s);
       }
       void *data_buf_ptr = kernel::AscendAllocatorPlugin::GetInstance().MallocHost(data_buf_size);
