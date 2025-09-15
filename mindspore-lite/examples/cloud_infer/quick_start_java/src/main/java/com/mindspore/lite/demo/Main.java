@@ -69,6 +69,7 @@ public class Main {
         if (!ret) {
             System.err.println("Compile graph failed");
             model.free();
+            context.free();
             return false;
         }
         return true;
@@ -134,6 +135,7 @@ public class Main {
 
     private static void freeBuffer() {
         model.free();
+        context.free();
     }
 
     public static void main(String[] args) {

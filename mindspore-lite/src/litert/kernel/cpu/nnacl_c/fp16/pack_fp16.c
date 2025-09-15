@@ -38,6 +38,9 @@ void PackWeightConvDw3x3Fp16(const void *src, void *dst, int channel) {
 #endif
 
 void PackHWCToWHCFp16(const float16_t *src, float16_t *dst, int height, int width, int channel) {
+  NNACL_CHECK_TRUE_RET_VOID(!INT_MUL_OVERFLOW(height, width));
+  int hw = height * width;
+  NNACL_CHECK_TRUE_RET_VOID(!INT_MUL_OVERFLOW(hw, channel));
   for (int i = 0; i < height; ++i) {
     for (int j = 0; j < width; ++j) {
       memcpy(dst + (j * height + i) * channel, src + (i * width + j) * channel, channel * sizeof(float16_t));

@@ -28,7 +28,10 @@ typedef struct ConcatF16Struct {
 int ConcatEnsureFp16InputsAndOutput(ConcatF16Struct *concat_f16) {
   ConcatStruct *concat = &concat_f16->concat_;
 
-  int tmp_buffer_size = (concat->base_.in_size_ + concat->base_.out_size_) * sizeof(float16_t *);
+  NNACL_CHECK_INT_ADD_NOT_OVERFLOW(concat->base_.in_size_, concat->base_.out_size_, NNACL_ERR);
+  int inner_sizes = concat->base_.in_size_ + concat->base_.out_size_;
+  NNACL_CHECK_INT_MUL_NOT_OVERFLOW(inner_sizes, sizeof(float16_t *), NNACL_ERR);
+  int tmp_buffer_size = inner_sizes * sizeof(float16_t *);
   concat_f16->tmp_buffer_ = concat->base_.env_->Alloc(concat->base_.env_->allocator_, tmp_buffer_size);
   NNACL_CHECK_NULL_RETURN_ERR(concat_f16->tmp_buffer_);
   memset(concat_f16->tmp_buffer_, 0, tmp_buffer_size);

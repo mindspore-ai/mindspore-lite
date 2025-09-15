@@ -230,7 +230,7 @@ extern "C" JNIEXPORT jfloatArray JNICALL Java_com_mindspore_MSTensor_getFloat16D
     MS_LOG(ERROR) << "malloc failed.";
     return env->NewFloatArray(0);
   }
-  for (int i = 0; i < ms_tensor_ptr->ElementNum(); i++) {
+  for (auto i = 0; i < ms_tensor_ptr->ElementNum(); i++) {
     uint16_t tmpInt = local_data_cpp[i];
     local_data_float[i] = ShortToFloat32(tmpInt);
   }
@@ -331,6 +331,10 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_MSTensor_setIntData(JNI
     MS_LOG(ERROR) << "data from java is nullptr";
     return static_cast<jboolean>(false);
   }
+  if (static_cast<jsize>(data_len) != data_len) {
+    MS_LOG(ERROR) << "data_len overflows when converting to jsize";
+    return static_cast<jboolean>(false);
+  }
   env->GetIntArrayRegion(data, 0, static_cast<jsize>(data_len), local_data);
   return static_cast<jboolean>(true);
 }
@@ -413,14 +417,14 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_MSTensor_setShape(JNIEn
   }
 
   auto *ms_tensor_ptr = static_cast<mindspore::MSTensor *>(pointer);
-  auto size = static_cast<int>(env->GetArrayLength(tensor_shape));
+  auto size = env->GetArrayLength(tensor_shape);
   std::vector<int64_t> c_shape(size);
   jint *shape_pointer = env->GetIntArrayElements(tensor_shape, nullptr);
   if (shape_pointer == nullptr) {
     MS_LOG(ERROR) << "shape_pointer is nullptr.";
     return static_cast<jboolean>(false);
   }
-  for (int i = 0; i < size; i++) {
+  for (auto i = 0; i < size; i++) {
     c_shape[i] = static_cast<int64_t>(shape_pointer[i]);
   }
   env->ReleaseIntArrayElements(tensor_shape, shape_pointer, JNI_ABORT);
