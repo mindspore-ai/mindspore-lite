@@ -59,7 +59,7 @@ std::string ParseAscendDevInfoProvider(JNIEnv *env, jclass clazz_ascend_device_i
     MS_LOG(ERROR) << "AscendDeviceInfo method getProvider from java is nullptr";
     return "";
   }
-  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getProvider, 0));
+  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getProvider));
   if (rv == nullptr) {
     return "";
   }
@@ -106,7 +106,7 @@ std::string ParseAscendDevInfoInsrtOpConfigPath(JNIEnv *env, jclass clazz_ascend
     MS_LOG(ERROR) << "AscendDeviceInfo method getInsertOpConfigPath from java is nullptr";
     return "";
   }
-  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getInsertOpConfigPath, 0));
+  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getInsertOpConfigPath));
   if (rv == nullptr) {
     return "";
   }
@@ -127,7 +127,7 @@ std::string ParseAscendDevInfoInputFormat(JNIEnv *env, jclass clazz_ascend_devic
     MS_LOG(ERROR) << "AscendDeviceInfo method getInputFormat from java is nullptr";
     return "";
   }
-  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getInputFormat, 0));
+  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getInputFormat));
   if (rv == nullptr) {
     return "";
   }
@@ -147,7 +147,7 @@ std::string ParseAscendDevInfoInputShape(JNIEnv *env, jclass clazz_ascend_device
     MS_LOG(ERROR) << "AscendDeviceInfo method getInputShape from java is nullptr";
     return "";
   }
-  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getInputShape, 0));
+  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getInputShape));
   if (rv == nullptr) {
     return "";
   }
@@ -168,7 +168,7 @@ std::string ParseAscendDevInfoDynImageSize(JNIEnv *env, jclass clazz_ascend_devi
     MS_LOG(ERROR) << "AscendDeviceInfo method getDynamicImageSize from java is nullptr";
     return "";
   }
-  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getDynamicImageSize, 0));
+  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getDynamicImageSize));
   if (rv == nullptr) {
     return "";
   }
@@ -202,7 +202,7 @@ std::string ParseAscendDevInfoPrecisionMode(JNIEnv *env, jclass clazz_ascend_dev
     MS_LOG(ERROR) << "AscendDeviceInfo method getPrecisionMode from java is nullptr";
     return "";
   }
-  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getPrecisionMode, 0));
+  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getPrecisionMode));
   if (rv == nullptr) {
     return "";
   }
@@ -223,7 +223,7 @@ std::string ParseAscendDevInfoOpSelectImplMode(JNIEnv *env, jclass clazz_ascend_
     MS_LOG(ERROR) << "AscendDeviceInfo method getOpSelectImplMode from java is nullptr";
     return "";
   }
-  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getOpSelectImplMode, 0));
+  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getOpSelectImplMode));
   if (rv == nullptr) {
     return "";
   }
@@ -244,7 +244,7 @@ std::string ParseAscendDevInfoFusionSwitchConfigPath(JNIEnv *env, jclass clazz_a
     MS_LOG(ERROR) << "AscendDeviceInfo method getFusionSwitchConfigPath from java is nullptr";
     return "";
   }
-  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getFusionSwitchConfigPath, 0));
+  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getFusionSwitchConfigPath));
   if (rv == nullptr) {
     return "";
   }
@@ -265,7 +265,7 @@ std::string ParseAscendDevInfoBufferOptimizeMode(JNIEnv *env, jclass clazz_ascen
     MS_LOG(ERROR) << "AscendDeviceInfo method getBufferOptimizeMode from java is nullptr";
     return "";
   }
-  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getBufferOptimizeMode, 0));
+  jstring rv = (jstring)(env->CallObjectMethod(ascend_device_info_obj, methodID_getBufferOptimizeMode));
   if (rv == nullptr) {
     return "";
   }
