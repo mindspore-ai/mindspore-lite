@@ -144,14 +144,14 @@ Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &grap
     ret = ge::aclgrphBundleBuildModel(graph_and_options, model);
     if (ret != ge::SUCCESS) {
       MS_LOG(ERROR) << "Call aclgrphBuildModel fail: " << CALL_ASCEND_API(aclGetRecentErrMsg);
-      ge::aclgrphBuildFinalize();
+      AclConvertInitAdapter::GetInstance().AclBuildFinalize();
       return Buffer();
     }
   } else {
     auto ret = ge::aclgrphBuildModel(*graph, build_options, model);
     if (ret != ge::SUCCESS) {
       MS_LOG(ERROR) << "Call aclgrphBuildModel fail: " << CALL_ASCEND_API(aclGetRecentErrMsg);
-      ge::aclgrphBuildFinalize();
+      AclConvertInitAdapter::GetInstance().AclBuildFinalize();
       return Buffer();
     }
   }
@@ -159,12 +159,12 @@ Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &grap
   ret = ge::aclgrphBuildModel(*graph, build_options, model);
   if (ret != ge::SUCCESS) {
     MS_LOG(ERROR) << "Call aclgrphBuildModel fail: " << CALL_ASCEND_API(aclGetRecentErrMsg);
-    ge::aclgrphBuildFinalize();
+    AclConvertInitAdapter::GetInstance().AclBuildFinalize();
     return Buffer();
   }
 #endif
   if (option != nullptr && option->IsLastModel()) {
-    ge::aclgrphBuildFinalize();
+    AclConvertInitAdapter::GetInstance().AclBuildFinalize();
   }
   return Buffer(model.data.get(), model.length);
 }
