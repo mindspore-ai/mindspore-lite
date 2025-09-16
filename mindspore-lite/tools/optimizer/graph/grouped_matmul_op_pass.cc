@@ -17,6 +17,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <algorithm>
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/lite_ops.h"
@@ -286,11 +287,95 @@ STATUS GroupedMatmulOpPass::RunInsertSizeAttrPass(const FuncGraphPtr &func_graph
   return lite::RET_OK;
 }
 
+CNodePtr GetCastInt64Node(const FuncGraphPtr &func_graph, const AnfNodePtr &group_list_node,
+                          std::map<std::string, CNodePtr> *cast_map) {
+  auto it = cast_map->find(group_list_node->fullname_with_scope());
+  if (it != cast_map->end()) {
+    return it->second;
+  }
+
+  auto cast_prim_c = ops::Cast().GetPrim();
+  MS_EXCEPTION_IF_NULL(cast_prim_c);
+  auto type_ptr = TypeIdToType(kNumberTypeInt64);
+  MS_EXCEPTION_IF_NULL(type_ptr);
+  auto value_node = NewValueNode(type_ptr);
+  MS_EXCEPTION_IF_NULL(value_node);
+  auto abstract = std::make_shared<abstract::AbstractTensor>(kInt64, ShapeVector());
+  MS_EXCEPTION_IF_NULL(abstract);
+  value_node->set_abstract(abstract);
+  auto cast_node = func_graph->NewCNode(cast_prim_c, {group_list_node, value_node});
+  MS_EXCEPTION_IF_NULL(cast_node);
+  cast_node->set_fullname_with_scope(group_list_node->fullname_with_scope() + "_cast_int64");
+  MS_EXCEPTION_IF_NULL(group_list_node->abstract());
+  cast_node->set_abstract(group_list_node->abstract()->Clone());
+  cast_map->insert({group_list_node->fullname_with_scope(), cast_node});
+  return cast_node;
+}
+
+bool CheckValidGroupList(const AnfNodePtr &input_node) {
+  MS_EXCEPTION_IF_NULL(input_node);
+  if (!input_node->isa<ValueNode>()) {
+    return true;
+  }
+  auto value_node = input_node->cast<ValueNodePtr>();
+  MS_EXCEPTION_IF_NULL(value_node);
+  auto value = value_node->value();
+  MS_EXCEPTION_IF_NULL(value);
+  if (value->isa<None>()) {
+    return false;
+  }
+  return true;
+}
+
+STATUS ConvertGroupListToInt64(const FuncGraphPtr &func_graph, const CNodePtr &cnode_ptr,
+                               std::map<std::string, CNodePtr> *cast_map) {
+  MS_EXCEPTION_IF_NULL(func_graph);
+  MS_EXCEPTION_IF_NULL(cnode_ptr);
+  const auto dyn_input_sizes = common::AnfAlgo::GetNodeAttr<std::vector<int64_t>>(cnode_ptr, kAttrDynInputSizes);
+  MS_EXCEPTION_IF_CHECK_FAIL(dyn_input_sizes.size() >= kIndex7, "size of dyn_input_sizes must be greater equal 7");
+  auto group_list_index = std::accumulate(
+    dyn_input_sizes.begin(), dyn_input_sizes.begin() + kIndex7, static_cast<int64_t>(0),
+    [](const auto &prev, const auto &current) { return prev + std::max(current, static_cast<int64_t>(1)); });
+  auto group_list_node = common::AnfAlgo::GetInputNode(cnode_ptr, group_list_index);
+  MS_EXCEPTION_IF_NULL(group_list_node);
+
+  if (!CheckValidGroupList(group_list_node)) {
+    return lite::RET_NO_CHANGE;
+  }
+  auto cast_node = GetCastInt64Node(func_graph, group_list_node, cast_map);
+  MS_EXCEPTION_IF_NULL(cast_node);
+  common::AnfAlgo::SetNodeInput(cnode_ptr, cast_node, group_list_index);
+  return lite::RET_OK;
+}
+
+STATUS GroupedMatmulOpPass::RunInsertGroupListCastPass(const FuncGraphPtr &func_graph,
+                                                       const FuncGraphManagerPtr & /*manager*/) {
+  auto node_list = TopoSort(func_graph->get_return());
+  std::map<std::string, CNodePtr> cast_map;
+  for (auto &node : node_list) {
+    if (!utils::isa<CNodePtr>(node)) {
+      continue;
+    }
+    auto cnode_type = common::AnfAlgo::GetCNodeName(node);
+    if (cnode_type == prim::kPrimGroupedMatmul->name()) {
+      MS_LOG(INFO) << "GroupedMatmulOpPass::RunInsertGroupListCastPass for grouped_matmul node "
+                   << node->fullname_with_scope();
+      auto status = ConvertGroupListToInt64(func_graph, node->cast<CNodePtr>(), &cast_map);
+      if (status == lite::RET_NO_CHANGE) {
+        MS_LOG(INFO) << "Skip to insert cast int64 at cnode: " << node->fullname_with_scope();
+      }
+    }
+  }
+  return lite::RET_OK;
+}
+
 bool GroupedMatmulOpPass::Run(const FuncGraphPtr &func_graph) {
   MS_CHECK_TRUE_RET(func_graph != nullptr, false);
   auto manager = func_graph->manager();
   MS_CHECK_TRUE_RET(manager != nullptr, false);
   auto status = RunInsertSizeAttrPass(func_graph, manager);
+  MS_CHECK_TRUE_RET(status != lite::RET_ERROR, false);
+  status = RunInsertGroupListCastPass(func_graph, manager);
   MS_CHECK_TRUE_RET(status != lite::RET_ERROR, false);
   return true;
 }
