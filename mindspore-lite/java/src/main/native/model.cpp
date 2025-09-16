@@ -436,74 +436,71 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_Model_setTrainMode(JNIE
   return static_cast<jboolean>(status.IsOk());
 }
 
-static void release_ptr_to_java(JNIEnv *env,
-                                const std::vector<void *> &ptr_array,
+static void release_ptr_to_java(JNIEnv *env, const std::vector<void *> &ptr_array,
                                 const std::vector<jarray> &arr_inputs) {
-    auto input_size = static_cast<int> (arr_inputs.size());
-    for (int i = 0; i < input_size; i++) {
-        env->ReleasePrimitiveArrayCritical(arr_inputs[i], ptr_array[i], 0);
-        env->DeleteLocalRef(arr_inputs[i]);
-    }
+  size_t input_size = arr_inputs.size();
+  for (size_t i = 0; i < input_size; i++) {
+    env->ReleasePrimitiveArrayCritical(arr_inputs[i], ptr_array[i], 0);
+    env->DeleteLocalRef(arr_inputs[i]);
+  }
 }
-extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_Model_runStep(JNIEnv *env, jobject thiz,
-                                                                       jlong model_ptr,
-                                                                       jlongArray inputs,
-                                                                       jobjectArray buffer) {
-    jlong model_ptr_local = CheckAndConvertSharedPtrToPtr(env, thiz, model_ptr);
-    auto *pointer = reinterpret_cast<void *>(model_ptr_local);
-    if (pointer == nullptr) {
-        MS_LOG(ERROR) << "Model pointer from java is nullptr";
-        return (jboolean) false;
-    }
+extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_Model_runStep(JNIEnv *env, jobject thiz, jlong model_ptr,
+                                                                       jlongArray inputs, jobjectArray buffer) {
+  jlong model_ptr_local = CheckAndConvertSharedPtrToPtr(env, thiz, model_ptr);
+  auto *pointer = reinterpret_cast<void *>(model_ptr_local);
+  if (pointer == nullptr) {
+    MS_LOG(ERROR) << "Model pointer from java is nullptr";
+    return (jboolean) false;
+  }
 
-    auto input_size = static_cast<int>(env->GetArrayLength(inputs));
-    auto row = static_cast<int>(env->GetArrayLength(buffer));
-    if (row != input_size) {
-        MS_LOG(ERROR) << "Input data buffer size is not consistent with input tensor number";
-        return (jboolean) false;
-    }
-    jlong *input_data = env->GetLongArrayElements(inputs, nullptr);
-    if (input_data == nullptr) {
-        env->ReleaseLongArrayElements(inputs, input_data, JNI_ABORT);
-        MS_LOG(ERROR) << "Tensor pointer from java is nullptr";
-        return (jboolean) false;
-    }
-
-    std::vector<void *> ptr_array;
-    std::vector<jarray> jarr_inputs;
-    for (int i = 0; i < input_size; i++) {
-        auto *tensor_pointer = reinterpret_cast<void *>(input_data[i]);
-        if (tensor_pointer == nullptr) {
-            MS_LOG(ERROR) << "Tensor pointer from java is nullptr";
-            env->ReleaseLongArrayElements(inputs, input_data, JNI_ABORT);
-            release_ptr_to_java(env, ptr_array, jarr_inputs);
-            return (jboolean) false;
-        }
-        auto &ms_tensor = *static_cast<mindspore::MSTensor *>(tensor_pointer);
-        jarray jarr = (jarray) env->GetObjectArrayElement(buffer, i);
-        jarr_inputs.push_back(jarr);
-        void *java_data = env->GetPrimitiveArrayCritical(jarr, nullptr);
-        ptr_array.push_back(java_data);
-        if (java_data == nullptr) {
-            MS_LOG(ERROR) << "buffer pointer from java is nullptr";
-            env->ReleaseLongArrayElements(inputs, input_data, JNI_ABORT);
-            release_ptr_to_java(env, ptr_array, jarr_inputs);
-            return (jboolean) false;
-        }
-        auto *local_data = ms_tensor.MutableData();
-        if (local_data == nullptr) {
-          MS_LOG(ERROR) << "data_arr or local_data is nullptr.";
-          env->ReleaseLongArrayElements(inputs, input_data, JNI_ABORT);
-          release_ptr_to_java(env, ptr_array, jarr_inputs);
-          return (jboolean) false;
-        }
-        std::memcpy(local_data, java_data, ms_tensor.DataSize());
-    }
-    auto *lite_model_ptr = static_cast<mindspore::Model *>(pointer);
-    auto status = lite_model_ptr->RunStep(nullptr, nullptr);
+  auto input_size = static_cast<int>(env->GetArrayLength(inputs));
+  auto row = static_cast<int>(env->GetArrayLength(buffer));
+  if (row != input_size) {
+    MS_LOG(ERROR) << "Input data buffer size is not consistent with input tensor number";
+    return (jboolean) false;
+  }
+  jlong *input_data = env->GetLongArrayElements(inputs, nullptr);
+  if (input_data == nullptr) {
     env->ReleaseLongArrayElements(inputs, input_data, JNI_ABORT);
-    release_ptr_to_java(env, ptr_array, jarr_inputs);
-    return static_cast<jboolean>(status.IsOk());
+    MS_LOG(ERROR) << "Tensor pointer from java is nullptr";
+    return (jboolean) false;
+  }
+
+  std::vector<void *> ptr_array;
+  std::vector<jarray> jarr_inputs;
+  for (int i = 0; i < input_size; i++) {
+    auto *tensor_pointer = reinterpret_cast<void *>(input_data[i]);
+    if (tensor_pointer == nullptr) {
+      MS_LOG(ERROR) << "Tensor pointer from java is nullptr";
+      env->ReleaseLongArrayElements(inputs, input_data, JNI_ABORT);
+      release_ptr_to_java(env, ptr_array, jarr_inputs);
+      return (jboolean) false;
+    }
+    auto &ms_tensor = *static_cast<mindspore::MSTensor *>(tensor_pointer);
+    jarray jarr = (jarray)env->GetObjectArrayElement(buffer, i);
+    jarr_inputs.push_back(jarr);
+    void *java_data = env->GetPrimitiveArrayCritical(jarr, nullptr);
+    ptr_array.push_back(java_data);
+    if (java_data == nullptr) {
+      MS_LOG(ERROR) << "buffer pointer from java is nullptr";
+      env->ReleaseLongArrayElements(inputs, input_data, JNI_ABORT);
+      release_ptr_to_java(env, ptr_array, jarr_inputs);
+      return (jboolean) false;
+    }
+    auto *local_data = ms_tensor.MutableData();
+    if (local_data == nullptr) {
+      MS_LOG(ERROR) << "data_arr or local_data is nullptr.";
+      env->ReleaseLongArrayElements(inputs, input_data, JNI_ABORT);
+      release_ptr_to_java(env, ptr_array, jarr_inputs);
+      return (jboolean) false;
+    }
+    std::memcpy(local_data, java_data, ms_tensor.DataSize());
+  }
+  auto *lite_model_ptr = static_cast<mindspore::Model *>(pointer);
+  auto status = lite_model_ptr->RunStep(nullptr, nullptr);
+  env->ReleaseLongArrayElements(inputs, input_data, JNI_ABORT);
+  release_ptr_to_java(env, ptr_array, jarr_inputs);
+  return static_cast<jboolean>(status.IsOk());
 }
 
 std::vector<mindspore::MSTensor> convertArrayToVector(JNIEnv *env, jlongArray inputs) {
@@ -720,9 +717,9 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_Model_export(JNIEnv *en
   return (jboolean)(ret.IsOk());
 }
 
-extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_Model_exportWeightsCollaborateWithMicro(JNIEnv *env,
-         jobject thiz, jlong model_ptr, jstring weight_file, jboolean is_inference, jboolean enable_fp16,
-         jobjectArray weight_names) {
+extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_Model_exportWeightsCollaborateWithMicro(
+  JNIEnv *env, jobject thiz, jlong model_ptr, jstring weight_file, jboolean is_inference, jboolean enable_fp16,
+  jobjectArray weight_names) {
   auto *model_pointer = reinterpret_cast<void *>(model_ptr);
   if (model_pointer == nullptr) {
     MS_LOG(ERROR) << "Model pointer from java is nullptr";
@@ -748,9 +745,8 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_Model_exportWeightsColl
     env->DeleteLocalRef(weight_name_jstr);
   }
   auto weight_path = env->GetStringUTFChars(weight_file, JNI_FALSE);
-  auto ret = mindspore::Serialization::ExportWeightsCollaborateWithMicro(*lite_model_ptr, mindspore::kMindIR,
-                                                                         weight_path, is_inference, enable_fp16,
-                                                                         changeable_weight_names);
+  auto ret = mindspore::Serialization::ExportWeightsCollaborateWithMicro(
+    *lite_model_ptr, mindspore::kMindIR, weight_path, is_inference, enable_fp16, changeable_weight_names);
   env->ReleaseStringUTFChars(weight_file, weight_path);
   return (jboolean)(ret.IsOk());
 }
@@ -766,6 +762,7 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_Model_updateFeatureMaps
     auto *tensor_pointer = reinterpret_cast<void *>(input_data[i]);
     if (tensor_pointer == nullptr) {
       MS_LOG(ERROR) << "Tensor pointer from java is nullptr";
+      env->ReleaseLongArrayElements(features, input_data, JNI_ABORT);
       return (jboolean) false;
     }
     auto *ms_tensor_ptr = static_cast<mindspore::MSTensor *>(tensor_pointer);
@@ -773,6 +770,7 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_mindspore_Model_updateFeatureMaps
   }
   auto lite_model_ptr = reinterpret_cast<mindspore::Model *>(model_ptr_local);
   auto ret = lite_model_ptr->UpdateFeatureMaps(newFeatures);
+  env->ReleaseLongArrayElements(features, input_data, JNI_ABORT);
   return (jboolean)(ret.IsOk());
 }
 
