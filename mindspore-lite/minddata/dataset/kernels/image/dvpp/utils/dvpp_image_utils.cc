@@ -2779,6 +2779,9 @@ APP_ERROR CreateAclTensor(const int64_t *view_dims, uint64_t view_dims_num, mind
     case kNumberTypeFloat16:
       acl_data_type = aclDataType::ACL_FLOAT16;
       break;
+    case kNumberTypeBFloat16:
+      acl_data_type = aclDataType::ACL_BF16;
+      break;
     case kNumberTypeFloat32:
       acl_data_type = aclDataType::ACL_FLOAT;
       break;
