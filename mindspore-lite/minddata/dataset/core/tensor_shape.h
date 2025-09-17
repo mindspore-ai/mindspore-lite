@@ -22,6 +22,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <stdexcept>
 
 #ifndef ENABLE_ANDROID
 #include <opencv2/core/mat.hpp>
@@ -145,6 +146,9 @@ class DATASET_API TensorShape {
   bool operator!=(const TensorShape &rhs) const { return !(rhs == *this); }
 
   dsize_t operator[](const dsize_t index) const {
+    if ((index >= raw_shape_.size()) || (index < -static_cast<dsize_t>(raw_shape_.size()))) {
+      throw std::out_of_range("Index out of range");
+    }
     if (index < 0) {
       return raw_shape_[raw_shape_.size() + index];
     }

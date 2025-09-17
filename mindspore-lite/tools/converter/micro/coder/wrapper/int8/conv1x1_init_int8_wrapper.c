@@ -58,7 +58,6 @@ int Conv1x1Init(int8_t *src_weight, int32_t *src_bias, int32_t *filter_zps, int3
   int32_t *bias_data_ = (int32_t *)(buf + *offset);
   *offset += size * sizeof(int32_t);
   if (bias_data_ == NULL) {
-    free(packed_weight_);
     return NNACL_ERR;
   }
   memset(bias_data_, 0, size * sizeof(int32_t));
@@ -86,7 +85,6 @@ int Conv1x1Init(int8_t *src_weight, int32_t *src_bias, int32_t *filter_zps, int3
   int32_t *bias_data_ = ((*offset + size * sizeof(int32_t)) <= buf_size) ? (int32_t *)(buf + *offset) : NULL;
   *offset += size * sizeof(int32_t);
   if (bias_data_ == NULL) {
-    free(packed_weight_);
     packed_weight_ = NULL;
     return NNACL_ERR;
   }
