@@ -31,7 +31,6 @@
 #include "extendrt/delegate/plugin/ascend_acl_executor_plugin.h"
 namespace mindspore {
 namespace {
-constexpr auto kIsAdapted = "is_adapted";
 constexpr size_t kSupportedWeightNum = 1;
 
 std::mutex kernel_graph_mutex;
@@ -50,9 +49,27 @@ Status GraphSinkSession::Init(const std::shared_ptr<Context> &context, const Con
   return kSuccess;
 }
 
+bool GraphSinkSession::CheckCompileGraphParallel() {
+  auto option = GetConfigOption(lite::kCommonContextSection, lite::kCompileGraphParallel);
+  if (option.empty() || option == lite::kDisableValue) {
+    return false;
+  }
+
+  if (option == lite::kEnableValue) {
+    return true;
+  }
+  MS_LOG(WARNING) << "compile_graph_parallel=off is default, please set "
+                     "compile_graph_parallel=on to enable compile graph in parallel between different threads. got: "
+                  << option << ", fallback to default.";
+  return false;
+}
+
 Status GraphSinkSession::CompileGraph(const void *model_data, size_t data_size, uint32_t *graph_id) {
   // This lock can be removed when LiteRT supports concurrent multithreading compilation.
-  std::lock_guard<std::mutex> lock(g_build_graph_mutex);
+  std::unique_lock<std::mutex> lock(g_build_graph_mutex);
+  if (CheckCompileGraphParallel()) {
+    lock.unlock();
+  }
   auto ret = graph_executor_->CompileGraph(model_data, data_size, options_, graph_id);
   if (!ret) {
     MS_LOG(ERROR) << "GraphSinkSession::CompileGraph compile graph failed";
@@ -75,18 +92,11 @@ Status GraphSinkSession::CompileGraph(const void *model_data, size_t data_size, 
 
 Status GraphSinkSession::CompileGraph(FuncGraphPtr graph, const void *data, size_t size, uint32_t *graph_id) {
   MS_LOG(INFO) << "GraphSinkSession::CompileGraph";
+  MS_CHECK_TRUE_MSG(graph != nullptr, kLiteNullptr, "graph is nullptr");
   // This lock can be removed when LiteRT supports concurrent multithreading compilation.
-  std::lock_guard<std::mutex> lock(g_build_graph_mutex);
-  // kernel graph will be removed from GraphSinkSession, and this code will be moved to TensorRT plugin
-  if (context_ && !context_->MutableDeviceInfo().empty()) {
-    auto device_info = context_->MutableDeviceInfo()[0];
-    bool is_ge_backend = device_info && device_info->GetDeviceType() == DeviceType::kAscend &&
-                         device_info->GetProvider() == lite::kAscendProviderGe;
-    bool is_adapted = graph->has_attr(kIsAdapted);  // The funcgraph will only adapted once while running parallel.
-    if (is_ge_backend && !is_adapted) {
-      lite::AscendGeExecutorPlugin::GetInstance().AdaptGraph(graph);
-      graph->set_attr(kIsAdapted, MakeValue(true));
-    }
+  std::unique_lock<std::mutex> lock(g_build_graph_mutex);
+  if (CheckCompileGraphParallel()) {
+    lock.unlock();
   }
   DelegateGraphInfo graph_info;
   // the funcgraph constructed by flowgraph has no inputs and outputs.

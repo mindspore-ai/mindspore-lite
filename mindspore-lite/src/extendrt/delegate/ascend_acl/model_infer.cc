@@ -30,7 +30,9 @@ struct ModelInferContextGuard {
   ModelInferContextGuard() {
     aclError ret = CALL_ASCEND_API(aclrtGetCurrentContext, &context_);
     if (ret != ACL_SUCCESS) {
-      MS_LOG(WARNING) << "Acl store env context failed.";
+      if (ret != ACL_ERROR_RT_CONTEXT_NULL) {
+        MS_LOG(WARNING) << "Acl store env context failed. aclError: " << ret;
+      }
     } else {
       stored_ = true;
     }

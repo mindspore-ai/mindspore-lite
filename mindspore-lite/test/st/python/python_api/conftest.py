@@ -68,35 +68,35 @@ def pytest_addoption(parser):
         help="path of mindspore_lite tools",
     )
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def device_id(request):
     """
     device_id fixture
     """
     return list(set(request.config.getoption("device_id")))
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def so_path(request):
     """
     so_path fixture
     """
     return request.config.getoption("so_path")
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mindir_dir(request):
     """
     mindir_dir fixture
     """
     return request.config.getoption("mindir_dir")
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def output_dir(request):
     """
     output_dir fixture
     """
     return request.config.getoption("output_dir")
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def config_dir(request):
     """
     config_dir fixture
