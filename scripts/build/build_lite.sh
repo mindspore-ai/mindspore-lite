@@ -389,6 +389,8 @@ build_lite() {
       MSLITE_REGISTRY_DEVICE=Hi3516D
     elif [[ "${MSLITE_MICRO_PLATFORM}" == cortex-m* && "${local_lite_platform}" == "x86_64" ]]; then
       TOOLCHAIN_NAME=${MSLITE_MICRO_PLATFORM}
+    elif [[ ("${MSLITE_REGISTRY_DEVICE}" == "ft04" || "${MSLITE_REGISTRY_DEVICE}" == "ft78") && "${local_lite_platform}" == "arm32" ]]; then
+      TOOLCHAIN_NAME="cortex-a15"
     fi
 
     machine=`uname -m`
@@ -416,6 +418,12 @@ build_lite() {
         pkg_name=mindspore-lite-${VERSION_STR}-ohos-arm32
         CMAKE_TOOLCHAIN_FILE=${OHOS_NDK}/build/cmake/ohos.toolchain.cmake
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DCMAKE_OHOS_NDK=${OHOS_NDK} -DOHOS_ARCH=armeabi-v7a -DOHOS_STL=c++_static -DTOOLCHAIN_NAME=${TOOLCHAIN_NAME}"
+        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off"
+        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_FP16=off -DMSLITE_ENABLE_TRAIN=off -DMSLITE_GPU_BACKEND=off"
+      elif [[ "${TOOLCHAIN_NAME}" == "cortex-a15" ]]; then
+        # ft04&ft78 : Linux-aarch32
+        CMAKE_TOOLCHAIN_FILE=${LITE_BASEPATH}/cmake/cortex-a15.toolchain.cmake
+        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DTOOLCHAIN_NAME=cortex-a15"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_FP16=off -DMSLITE_ENABLE_TRAIN=off -DMSLITE_GPU_BACKEND=off"
       else
