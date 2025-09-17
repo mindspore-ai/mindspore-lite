@@ -26,6 +26,7 @@ using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_INVALID_OP_ATTR;
+using mindspore::lite::RET_NOT_SUPPORT;
 using mindspore::lite::RET_NULL_PTR;
 using mindspore::lite::RET_OK;
 
@@ -397,6 +398,10 @@ int ResizeInt8CPUKernel::RunImpl(int task_id) {
 }
 
 int ResizeInt8CPUKernel::Run() {
+  if (in_tensors_.at(0)->ElementsNum() > INT_MAX || out_tensors_.at(0)->ElementsNum() > INT_MAX) {
+    MS_LOG(ERROR) << "Resize cannot support big data operations, the upper limit is INT32_MAX";
+    return RET_NOT_SUPPORT;
+  }
   int error_code = ParallelLaunch(this->ms_context_, ResizeInt8Impl, this, op_parameter_->thread_num_);
   if (error_code != RET_OK) {
     MS_LOG(ERROR) << "Resize run error, error_code[" << error_code << "]";

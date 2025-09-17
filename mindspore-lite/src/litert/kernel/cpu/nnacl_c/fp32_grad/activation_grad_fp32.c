@@ -44,16 +44,18 @@ int ReluGrad(const float *src0, const float *src1, int length, float *dst) {
 int Relu6Grad(const float *src0, const float *src1, size_t length, float *dst) {
   size_t i = 0;
 #ifdef ENABLE_ARM
-  float32x4_t zero_4 = vdupq_n_f32(0.0f);
-  float32x4_t six_4 = vdupq_n_f32(6.0f);
-  for (; i < length - C4NUM; i += C4NUM) {
-    float32x4_t src1_4 = vld1q_f32(src1 + i);
-    float32x4_t src0_4 = vld1q_f32(src0 + i);
-    uint32x4_t gt_4 = vcgtq_f32(src1_4, zero_4);
-    uint32x4_t le_4 = vcleq_f32(src1_4, six_4);
-    uint32x4_t mask_4 = vandq_u32(gt_4, le_4);
-    float32x4_t dst_4 = vbslq_f32(mask_4, src0_4, zero_4);
-    vst1q_f32(dst + i, dst_4);
+  if (length > C4NUM) {
+    float32x4_t zero_4 = vdupq_n_f32(0.0f);
+    float32x4_t six_4 = vdupq_n_f32(6.0f);
+    for (; i < length - C4NUM; i += C4NUM) {
+      float32x4_t src1_4 = vld1q_f32(src1 + i);
+      float32x4_t src0_4 = vld1q_f32(src0 + i);
+      uint32x4_t gt_4 = vcgtq_f32(src1_4, zero_4);
+      uint32x4_t le_4 = vcleq_f32(src1_4, six_4);
+      uint32x4_t mask_4 = vandq_u32(gt_4, le_4);
+      float32x4_t dst_4 = vbslq_f32(mask_4, src0_4, zero_4);
+      vst1q_f32(dst + i, dst_4);
+    }
   }
 #endif
   for (; i < length; ++i) {

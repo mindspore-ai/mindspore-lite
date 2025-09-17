@@ -40,6 +40,9 @@ int CheckIndexValue_int64_t(int64_t *index, const int max_index, const size_t *i
   // check index
   size_t index_size = 1;
   for (size_t i = 0; i < index_shape_size; ++i) {
+    if (SIZE_MUL_OVERFLOW(index_size, index_shape[i])) {
+      return NNACL_ERRCODE_MUL_OVERFLOW;
+    }
     index_size *= index_shape[i];
   }
   for (size_t i = 0; i < index_size; ++i) {

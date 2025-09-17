@@ -45,14 +45,18 @@ int LstmGradWeightInferShape(const TensorC *const *inputs, size_t inputs_size, T
   LstmGradParameter *param = (LstmGradParameter *)parameter;
   int has_bias = param->has_bias_;
   int output_shape[3] = {0, 1, 1};
-  int gate_size = 4 * param->hidden_size_;
-  output_shape[0] += gate_size * param->input_size_;
-  output_shape[0] += gate_size * param->hidden_size_;
-  if (has_bias) {
-    output_shape[0] += C2NUM * gate_size;
-  }
   int dir_mul = (param->bidirectional_) ? C2NUM : C1NUM;
-  output_shape[0] *= dir_mul;
+  int bias_multiplier = has_bias ? C2NUM : 0;
+  // gate_size = 4 * hidden_size
+  // output_shape[0] = (4 * hidden_size * input_size + 4 * hidden_size * hidden_size + bias_multiplier * 4 *
+  // hidden_size) * dir_mul
+  NNACL_CHECK_TRUE_RET((((int64_t)dir_mul) * ((int64_t)(param->hidden_size_))) <= (INT_MAX / C4NUM),
+                       NNACL_ERRCODE_MUL_OVERFLOW);
+  NNACL_CHECK_TRUE_RET(
+    (((int64_t)(param->input_size_)) + ((int64_t)(param->hidden_size_))) <= (INT_MAX - bias_multiplier),
+    NNACL_ERRCODE_ADD_OVERFLOW);
+  output_shape[0] =
+    (C4NUM * param->hidden_size_ * dir_mul) * (param->input_size_ + param->hidden_size_ + bias_multiplier);
   SetShapeArray(output, output_shape, C3NUM);
 
   return NNACL_OK;

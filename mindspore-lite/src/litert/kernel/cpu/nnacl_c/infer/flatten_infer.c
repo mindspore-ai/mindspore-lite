@@ -51,10 +51,12 @@ int FlattenInferShape(const TensorC *const *inputs, size_t inputs_size, TensorC 
   int output_shape[2];
   output_shape[0] = axis == 0 ? 1 : input_shape[0];
   for (size_t i = 1; i < (size_t)axis; i++) {
+    NNACL_CHECK_INT_MUL_NOT_OVERFLOW(output_shape[0], input_shape[i], NNACL_ERRCODE_MUL_OVERFLOW);
     output_shape[0] *= input_shape[i];
   }
   output_shape[1] = input_shape[axis];
   for (size_t i = (size_t)axis + 1; i < input_shape_size; i++) {
+    NNACL_CHECK_INT_MUL_NOT_OVERFLOW(output_shape[1], input_shape[i], NNACL_ERRCODE_MUL_OVERFLOW);
     output_shape[1] *= input_shape[i];
   }
   SetShapeArray(output, output_shape, 2);
