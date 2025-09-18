@@ -72,6 +72,7 @@ public class Main {
             context.free();
             return false;
         }
+        context.free();
         return true;
     }
 
@@ -135,7 +136,6 @@ public class Main {
 
     private static void freeBuffer() {
         model.free();
-        context.free();
     }
 
     public static void main(String[] args) {
