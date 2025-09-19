@@ -65,7 +65,7 @@ function(__install_white_list_ops)
             ${TOP_DIR}/mindspore/mindspore/ops/infer/audio_spectrogram.h
             ${TOP_DIR}/mindspore/mindspore/ops/infer/batch_to_space.h
             ${TOP_DIR}/mindspore/mindspore/ops/infer/batch_to_space_nd.h
-            ${TOP_DIR}/mindspore/mindspore/ops/infer/broadcast.h
+            ${TOP_DIR}/mindspore/mindspore/ops/infer/ops_func_impl/communication/broadcast.h
             ${TOP_DIR}/mindspore/mindspore/ops/infer/clip.h
             ${TOP_DIR}/mindspore/mindspore/ops/infer/attention.h
             ${TOP_DIR}/mindspore/mindspore/ops/infer/constant_of_shape.h
@@ -138,8 +138,8 @@ function(__install_white_list_ops)
             ${TOP_DIR}/mindspore/mindspore/ops/infer/tensor_array_read.h
             ${TOP_DIR}/mindspore/mindspore/ops/infer/tensor_array_write.h
             ${TOP_DIR}/mindspore/mindspore/ops/infer/affine.h
-            ${TOP_DIR}/mindspore/mindspore/ops/infer/all_gather.h
-            ${TOP_DIR}/mindspore/mindspore/ops/infer/reduce_scatter.h
+            ${TOP_DIR}/mindspore/mindspore/ops/infer/ops_func_impl/communication/all_gather.h
+            ${TOP_DIR}/mindspore/mindspore/ops/infer/ops_func_impl/communication/reduce_scatter.h
             ${TOP_DIR}/mindspore/mindspore/ops/infer/dynamic_quant.h
             ${TOP_DIR}/mindspore/mindspore/ops/infer/random_normal.h
             ${TOP_DIR}/mindspore/mindspore/ops/infer/tuple_get_item.h
