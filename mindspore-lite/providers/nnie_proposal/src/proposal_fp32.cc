@@ -27,6 +27,22 @@ using mindspore::lite::RET_OK;
 using mindspore::schema::PrimitiveType_Custom;
 
 namespace mindspore {
+namespace common {
+bool SafeStrToInt(const std::string &str) {
+  char *res = nullptr;
+  constexpr int decimal = 10;
+  int64_t value = strtol(str.c_str(), &res, decimal);
+  if (str.size() > 0 && res == str.c_str() + str.size()) {
+    if (value >= std::numeric_limits<int>::min() && value <= std::numeric_limits<int>::max()) {
+      return true;
+    }
+  }
+  return false;
+}
+}  // namespace common
+}  // namespace mindspore
+
+namespace mindspore {
 namespace proposal {
 constexpr int kMaxSize = 1024;
 constexpr int kNumInput2 = 2;
@@ -91,7 +107,7 @@ int ProposalCPUKernel::Prepare() {
   int max_roi_num_int = 300;
   auto nnie_arg = GetConfig("nnie");
   if (nnie_arg.find(kMazRoiNum) != nnie_arg.end()) {
-    if (IsValidUnsignedNum(nnie_arg.at(kMazRoiNum)) == true) {
+    if (IsValidUnsignedNum(nnie_arg.at(kMazRoiNum)) == true && common::SafeStrToInt(nnie_arg.at(kMazRoiNum))) {
       max_roi_num_int = stoi(nnie_arg.at(kMazRoiNum));
     } else {
       PrintInvalidChar(kMazRoiNum, nnie_arg.at(kMazRoiNum));
