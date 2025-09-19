@@ -184,6 +184,25 @@ CNodePtr GenTransposeNode(const FuncGraphPtr &func_graph, const AnfNodePtr &inpu
   return cnode;
 }
 
+bool CheckIfOneofPermNc2nhOrNh2nc(const CNodePtr &pre_node, const std::vector<int> &pre_perm, const CNodePtr &post_node,
+                                  const std::vector<int> &post_perm) {
+  bool is_pre_orig_transpose = false;
+  bool is_post_orig_transpose = false;
+  if (pre_node->HasAttr("orig_trans")) {
+    is_pre_orig_transpose = GetValue<bool>(pre_node->GetAttr("orig_trans"));
+  }
+  if (post_node->HasAttr("orig_trans")) {
+    is_post_orig_transpose = GetValue<bool>(post_node->GetAttr("orig_trans"));
+  }
+  if (!is_pre_orig_transpose && (pre_perm == kNH2NC || pre_perm == kNC2NH)) {
+    return true;
+  }
+  if (!is_post_orig_transpose && (post_perm == kNH2NC || post_perm == kNC2NH)) {
+    return true;
+  }
+  return false;
+}
+
 AnfNodePtr TransposeFusion::TransTransFusion(const FuncGraphPtr &func_graph, const mindspore::AnfNodePtr &node) const {
   MS_ASSERT(func_graph != nullptr && node != nullptr);
   auto trans_cnode_2 = node->cast<CNodePtr>();
@@ -218,6 +237,11 @@ AnfNodePtr TransposeFusion::TransTransFusion(const FuncGraphPtr &func_graph, con
   }
   if ((pre_perm == kNH2NC && post_perm == kNC2NH) || (pre_perm == kNC2NH && post_perm == kNH2NC)) {
     return pre_cnode->input(1);
+  }
+  if (CheckIfOneofPermNc2nhOrNh2nc(pre_cnode, pre_perm, trans_cnode_2, post_perm)) {
+    // in this condition, the perm also influnence the output_format of transpose, so disable the fusion, otherwise the
+    // result of infer might be wrong
+    return nullptr;
   }
   if (pre_perm.size() == post_perm.size()) {
     std::vector<int> perm;

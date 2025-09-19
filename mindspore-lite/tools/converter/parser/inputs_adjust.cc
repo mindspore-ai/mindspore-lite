@@ -128,6 +128,8 @@ bool InputAdjust::Run(const FuncGraphPtr &func_graph) {
     if (opt::CheckPrimitiveType(node, prim::kPrimTranspose)) {
       MS_LOG(INFO) << "Adjust Transpose";
       status = AddAttrToInput(func_graph, cnode, opt::kInputIndexTwo, "perm", kBuildInputFlagTwo);
+      bool is_orig_trans = true;
+      cnode->AddAttr("orig_trans", MakeValue(is_orig_trans));
     } else if (opt::CheckPrimitiveType(node, prim::kPrimReshape)) {
       MS_LOG(INFO) << "Adjust Reshape";
       status = AddAttrToInput(func_graph, cnode, opt::kInputIndexTwo, "shape", kBuildInputFlagTwo);
