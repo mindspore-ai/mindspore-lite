@@ -21,7 +21,7 @@
 #include <vector>
 #include "mindspore/ops/op_def/math_ops.h"
 #include "mindspore/ops/op_def/other_ops.h"
-#include "mindspore/ops/infer/all_reduce.h"
+#include "mindspore/ops/infer/ops_func_impl/communication/all_reduce.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "nnacl_c/op_base.h"

@@ -17,8 +17,8 @@
 #include <vector>
 #include <string>
 #include <memory>
-#include "infer/all_gather.h"
-#include "infer/all_reduce.h"
+#include "infer/ops_func_impl/communication/all_gather.h"
+#include "infer/ops_func_impl/communication/all_reduce.h"
 #include "infer/cxx_api/mul_fusion.h"
 #include "infer/cxx_api/mat_mul_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
