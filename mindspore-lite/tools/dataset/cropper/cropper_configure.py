@@ -49,7 +49,6 @@ MANUAL_HEADERS = [
 # (not all of them may be used now in MindData lite)
 EXTERNAL_DEPS = [
     "third_party",
-    "build/_deps/sqlite-src",
     "build/_deps/pybind11-src/include",
     "build/_deps/tinyxml2-src",
     "build/_deps/jpeg_turbo-src",
