@@ -51,9 +51,9 @@ add_dependencies(dpico_atc_adapter fbs_src fbs_inner_src)
 target_link_libraries(dpico_atc_adapter
         ${PICO_MAPPER_PATH}/lib/libsvp_atc_api.so
         ${PROTOBUF_PATH}/lib/libprotobuf.so.3.13.0.0
-        ${OPENCV_PATH}/lib/libopencv_core.so.4.5.2
-        ${OPENCV_PATH}/lib/libopencv_imgcodecs.so.4.5.2
-        ${OPENCV_PATH}/lib/libopencv_imgproc.so.4.5.2
+        ${OPENCV_PATH}/lib/libopencv_core.so.4.11.0
+        ${OPENCV_PATH}/lib/libopencv_imgcodecs.so.4.11.0
+        ${OPENCV_PATH}/lib/libopencv_imgproc.so.4.11.0
         stdc++fs)
 
 if((NOT WIN32) AND ${CMAKE_BUILD_TYPE} STREQUAL "Release")
