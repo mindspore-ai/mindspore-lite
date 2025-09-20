@@ -741,6 +741,11 @@ class ModelGroup:
     Examples:
         >>> # Multi models share workspace memory
         >>> import mindspore_lite as mslite
+        >>> context = mslite.Context()
+        >>> context.target = ["Ascend"]
+        >>> context.ascend.device_id = 0
+        >>> context.ascend.rank_id = 0
+        >>> context.ascend.provider = "ge"
         >>> model_type=mslite.ModelType.MINDIR
         >>> path1 = "path_to_model1"
         >>> path2 = "path_to_model2"
