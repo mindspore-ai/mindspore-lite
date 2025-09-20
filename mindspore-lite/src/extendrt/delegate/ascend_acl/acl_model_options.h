@@ -26,6 +26,23 @@
 #include "acl/acl_mdl.h"
 
 namespace mindspore {
+
+template <typename T>
+class ModelExecConfigAttr {
+  using type = T;
+  T value_;
+
+ public:
+  ModelExecConfigAttr() = default;
+  explicit ModelExecConfigAttr(const T &value) : value_(value) {}
+  T &Value() { return value_; }
+  static constexpr size_t Size() { return sizeof(T); }
+};
+
+struct ModelExecConfig {
+  ModelExecConfigAttr<int32_t> stream_sync_timeout{0};
+};
+
 struct AclModelOptions {
   int32_t device_id;
   std::string dump_path;
@@ -41,6 +58,7 @@ struct AclModelOptions {
   std::vector<std::string> output_names;
   std::string pids = "";
   uint64_t sharable_handle = 0;
+  ModelExecConfig model_exec_config;
   AclModelOptions() : device_id(0) {}
 };
 

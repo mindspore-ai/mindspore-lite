@@ -119,6 +119,9 @@ static const char *const kVariableWeightsFile = "variable_weights_file";
 static const char *const kMaxWeightBatch = "max_weight_batch";
 static const char *const kStreamLabelFile = "stream_label_file";
 static const char *const kSplitNodeName = "split_node_name";
+static const char *const kTimeout = "timeout";
+static constexpr int32_t kModelExecStreamSyncTimeoutIgnoreValue = 0;
+static constexpr int32_t kModelExecStreamSyncTimeoutUnlimitedValue = -1;
 // ge options
 static const char *const kGeSessionOptionsSection = "ge_session_options";
 static const char *const kGeGraphOptionsSection = "ge_graph_options";

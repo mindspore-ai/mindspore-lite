@@ -124,6 +124,26 @@ void AclGraphExecutor::GetShareMemInfos(std::shared_ptr<AclModelOptions> acl_opt
   }
 }
 
+Status AclGraphExecutor::GetExecConfig(const std::shared_ptr<AclModelOptions> &acl_options_ptr) {
+  MS_CHECK_TRUE_MSG(acl_options_ptr != nullptr, kLiteError, "Acl options ptr is nullptr.");
+  std::string stream_sync_timeout_str = GetConfigOption(lite::kAscendContextSection, lite::kTimeout);
+  if (stream_sync_timeout_str.empty()) {
+    return kSuccess;
+  }
+  int32_t stream_sync_timeout = INT32_MIN;
+  if (!lite::ConvertStrToInt(stream_sync_timeout_str, &stream_sync_timeout)) {
+    MS_LOG(ERROR) << "Convert stream_sync_timeout_str to int failed, got: " << stream_sync_timeout_str;
+    return kLiteInputParamInvalid;
+  }
+  if (stream_sync_timeout < lite::kModelExecStreamSyncTimeoutUnlimitedValue ||
+      stream_sync_timeout == lite::kModelExecStreamSyncTimeoutIgnoreValue) {
+    MS_LOG(ERROR) << "stream_sync_timeout should be -1 or positive integer, but got " << stream_sync_timeout;
+    return kLiteInputParamInvalid;
+  }
+  acl_options_ptr->model_exec_config.stream_sync_timeout = ModelExecConfigAttr(stream_sync_timeout);
+  return kSuccess;
+}
+
 std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
   auto acl_options_ptr = std::make_shared<AclModelOptions>();
   MS_CHECK_TRUE_MSG(acl_options_ptr != nullptr, nullptr, "Acl options make shared failed.");
@@ -157,7 +177,8 @@ std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
   if (output_name_str != "") {
     acl_options_ptr->output_names = lite::StrSplit(output_name_str, ",");
   }
-
+  auto ret = GetExecConfig(acl_options_ptr);
+  MS_CHECK_TRUE_MSG(ret == kSuccess, nullptr, "Get exec config failed.");
   return acl_options_ptr;
 }
 
