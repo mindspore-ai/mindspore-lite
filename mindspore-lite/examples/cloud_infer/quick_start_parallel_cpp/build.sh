@@ -26,10 +26,12 @@ MINDSPORE_LITE_DOWNLOAD_URL="https://ms-release.obs.cn-north-4.myhuaweicloud.com
 
 mkdir -p model
 if [ ! -e ${BASEPATH}/model/mobilenetv2.mindir ]; then
-    wget -c -O ${BASEPATH}/model/mobilenetv2.mindir --no-check-certificate ${MODEL_DOWNLOAD_URL}
+    echo "Please download ${BASEPATH}/model/mobilenetv2.mindir from ${MODEL_DOWNLOAD_URL}"
+    exit 1
 fi
 if [ ! -e ${BASEPATH}/${MINDSPORE_FILE} ]; then
-  wget -c -O ${BASEPATH}/${MINDSPORE_FILE} --no-check-certificate ${MINDSPORE_LITE_DOWNLOAD_URL}
+    echo "Please download ${BASEPATH}/${MINDSPORE_FILE} from ${MINDSPORE_LITE_DOWNLOAD_URL}"
+    exit 1
 fi
 tar xzvf ${BASEPATH}/${MINDSPORE_FILE}
 export LITE_HOME=${BASEPATH}/${MINDSPORE_FILE_NAME}
