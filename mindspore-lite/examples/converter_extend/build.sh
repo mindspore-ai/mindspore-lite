@@ -27,10 +27,12 @@ MINDSPORE_LITE_DOWNLOAD_URL="https://ms-release.obs.cn-north-4.myhuaweicloud.com
 mkdir -p build
 mkdir -p model
 if [ ! -e ${BASEPATH}/model/add.tflite ]; then
-    wget -c -O ${BASEPATH}/model/add.tflite --no-check-certificate ${MODEL_DOWNLOAD_URL}
+    echo "Please download ${BASEPATH}/model/add.tflite from ${MODEL_DOWNLOAD_URL}"
+    exit 1
 fi
 if [ ! -e ${BASEPATH}/build/${MINDSPORE_FILE} ]; then
-  wget -c -O ${BASEPATH}/build/${MINDSPORE_FILE} --no-check-certificate ${MINDSPORE_LITE_DOWNLOAD_URL}
+    echo "Please download ${BASEPATH}/build/${MINDSPORE_FILE} from ${MINDSPORE_LITE_DOWNLOAD_URL}"
+    exit 1
 fi
 tar -xzf ${BASEPATH}/build/${MINDSPORE_FILE} -C ${BASEPATH}/build/
 cp -r ${BASEPATH}/build/${MINDSPORE_FILE_NAME}/tools/converter/lib ${BASEPATH}/

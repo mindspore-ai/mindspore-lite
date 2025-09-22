@@ -55,7 +55,8 @@ if [ -n "$TARBALL" ]; then
 fi
 
 if [ ! -e ${BASEPATH}/build/${MINDSPORE_FILE} ]; then
-  wget -c -O ${BASEPATH}/build/${MINDSPORE_FILE} --no-check-certificate ${MINDSPORE_LITE_DOWNLOAD_URL}
+    echo "Please download ${BASEPATH}/build/${MINDSPORE_FILE} from ${MINDSPORE_LITE_DOWNLOAD_URL}"
+    exit 1
 fi
 
 tar xzvf ${BASEPATH}/build/${MINDSPORE_FILE} -C ${BASEPATH}/build/${MINDSPORE_FILE_NAME} --strip-components=1
