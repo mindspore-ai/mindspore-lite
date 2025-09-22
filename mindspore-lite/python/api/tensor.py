@@ -571,6 +571,7 @@ class Tensor:
             format: Format.NCHW,
             element_num: 150528,
             data_size: 602112.
+            device: None:-1
             >>> # 2. set Tensor data which is numpy arange
             >>> import mindspore_lite as mslite
             >>> import numpy as np
@@ -586,6 +587,7 @@ class Tensor:
             format: Format.NCHW,
             element_num: 12,
             data_size: 48.
+            device: None:-1
         """
         if not isinstance(numpy_obj, numpy.ndarray):
             raise TypeError(f"numpy_obj must be numpy.ndarray, but got {type(numpy_obj)}.")
