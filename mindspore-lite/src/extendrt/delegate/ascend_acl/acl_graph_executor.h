@@ -64,6 +64,7 @@ class AclGraphExecutor : public LiteGraphExecutor {
   void GetShareMemInfos(std::shared_ptr<AclModelOptions> acl_options_ptr);
   std::shared_ptr<AclModelOptions> GenAclOptions();
   bool GetDeviceID(int32_t *device_id);
+  Status GetOutputTensors(const std::vector<std::string> &output_names, std::vector<MSTensor> *output_tensors);
   std::shared_ptr<mindspore::Context> context_ = nullptr;
   ConfigInfos config_info_;
   std::shared_ptr<ModelInfer> model_infer_;

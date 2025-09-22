@@ -1770,12 +1770,31 @@ MSTensor ModelProcess::GetOutputWithZeroCopy(const std::vector<MSTensor> *output
       return MSTensor(nullptr);
     }
   } else {
-    MS_LOG(ERROR) << "The data of the tensor passed by the user is nullptr. If you are using the zero-copy feature, "
-                     "please set the tensor to include host data or device data; if you are not using zero-copy, you "
-                     "do not need to pass the output tensor.";
+    user_output = CreateOutputTensor(index);
+    if (user_output.impl() == nullptr) {
+      MS_LOG(ERROR) << "CreateOutputTensor failed!";
+      return MSTensor(nullptr);
+    }
+  }
+  user_output.SetShape(output_info.dims);
+  return outputs->at(index);
+}
+
+MSTensor ModelProcess::CreateOutputTensor(size_t index) {
+  MS_CHECK_TRUE_MSG(output_infos_.size() > index, MSTensor(nullptr), "index should less than size of output_infos_!");
+  aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;
+  auto &output_info = output_infos_[index];
+  auto output =
+    MSTensor(output_info.name, static_cast<DataType>(TransToDataType(output_info.data_type)), {}, nullptr, 0);
+  output.SetShape(output_info.dims);
+  auto ret = AclrtMemcpy(output.MutableData(), output_info.buffer_size, output_info.cur_device_data,
+                         output_info.buffer_size, kind);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Memcpy output " << index << " from device to host failed, memory size " << output_info.buffer_size
+                  << ", ret: " << ret;
     return MSTensor(nullptr);
   }
-  return outputs->at(index);
+  return output;
 }
 
 Status ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
@@ -1787,16 +1806,9 @@ Status ModelProcess::GetOutputs(const std::vector<MSTensor> *outputs) {
       new_outputs.push_back(tensor);
       continue;
     }
-    aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;
-    auto &output_info = output_infos_[i];
-    auto output =
-      MSTensor(output_info.name, static_cast<DataType>(TransToDataType(output_info.data_type)), {}, nullptr, 0);
-    output.SetShape(output_info.dims);
-    auto ret = AclrtMemcpy(output.MutableData(), output_info.buffer_size, output_info.cur_device_data,
-                           output_info.buffer_size, kind);
-    if (ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "Memcpy output " << i << " from device to host failed, memory size " << output_info.buffer_size
-                    << ", ret: " << ret;
+    auto output = CreateOutputTensor(i);
+    if (output.impl() == nullptr) {
+      MS_LOG(ERROR) << "CreateOutputTensor failed!";
       return kLiteError;
     }
     new_outputs.push_back(output);

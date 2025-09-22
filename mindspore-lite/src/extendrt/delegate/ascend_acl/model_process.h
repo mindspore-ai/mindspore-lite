@@ -121,6 +121,7 @@ class ModelProcess {
   bool SubProcess(const void *om_data, size_t om_data_size);
   bool ShareMemProcess(const void *om_data, size_t om_data_size);
   MSTensor GetOutputWithZeroCopy(const std::vector<MSTensor> *outputs, size_t index);
+  MSTensor CreateOutputTensor(size_t index);
 
   std::shared_ptr<AclModelOptions> options_;
   uint32_t model_id_ = UINT32_MAX;
