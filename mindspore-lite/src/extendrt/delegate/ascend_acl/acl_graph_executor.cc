@@ -167,6 +167,37 @@ bool AclGraphExecutor::UpdateWeights(const std::vector<std::vector<MSTensor>> &i
   return model_infer_->UpdateWeights(inputs[0]);
 }
 
+Status AclGraphExecutor::GetOutputTensors(const std::vector<std::string> &output_names,
+                                          std::vector<MSTensor> *output_tensors) {
+  MS_CHECK_TRUE_MSG(output_tensors != nullptr, kLiteNullptr, "output_tensors is nullptr!");
+  auto outputs_shape = model_infer_->GetOutputShape();
+  auto outputs_dtype = model_infer_->GetOutputDataType();
+  MS_CHECK_TRUE_MSG(outputs_shape.size() == outputs_dtype.size(), kLiteParamInvalid,
+                    "size of output_shape should equal to size of outputs_dtype"
+                      << " output_shape size:" << output_shape.size() << " output_dtype size:" << output_dtype.size());
+  bool is_output_name_empty = output_names.empty();
+  if (!is_output_name_empty) {
+    MS_CHECK_TRUE_MSG(outputs_shape.size() == output_names.size(), kLiteParamInvalid,
+                      "size of output_names must equal to size of output_shape, size of output_names:"
+                        << output_names.size() << " size of output_shape:" << output_shape.size());
+  }
+  for (size_t i = 0; i < outputs_dtype.size(); i++) {
+    MSTensor tensor;
+    if (!is_output_name_empty) {
+      tensor = mindspore::MSTensor(output_names[i], static_cast<enum DataType>(outputs_dtype[i]), {}, nullptr, 0);
+    } else {
+      tensor = mindspore::MSTensor("", static_cast<enum DataType>(outputs_dtype[i]), {}, nullptr, 0);
+    }
+    tensor.SetShape(outputs_shape[i]);
+    bool has_negative = std::any_of(outputs_shape[i].begin(), outputs_shape[i].end(), [](int x) { return x <= 0; });
+    if (!has_negative) {
+      tensor.MutableData();
+    }
+    output_tensors->push_back(tensor);
+  }
+  return kSuccess;
+}
+
 bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
                                     uint32_t *graph_id) {
   for (const auto &input : graph->get_inputs()) {
@@ -237,6 +268,13 @@ bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<st
     MS_LOG(ERROR) << "Load om data failed.";
     return false;
   }
+  std::vector<MSTensor> output_tensors;
+  auto ret = GetOutputTensors(output_names_, &output_tensors);
+  if (ret != kSuccess) {
+    MS_LOG(ERROR) << "GetOutputTensors failed!";
+    return false;
+  }
+  graph_outputs_[*graph_id] = output_tensors;
   sharable_handle_ = model_infer_->GetSharableHandle();
   AclEnvGuard::AddModel(model_infer_);
   load_model_ = true;
@@ -263,6 +301,12 @@ bool AclGraphExecutor::CompileGraph(const void *model_data, size_t data_size,
   }
   if (!model_infer_->Load(model_data, data_size)) {
     MS_LOG(ERROR) << "Load om data failed.";
+    return false;
+  }
+  std::vector<MSTensor> output_tensors;
+  auto ret = GetOutputTensors(output_names_, &output_tensors);
+  if (ret != kSuccess) {
+    MS_LOG(ERROR) << "GetOutputTensors failed!";
     return false;
   }
   AclEnvGuard::AddModel(model_infer_);
@@ -296,15 +340,11 @@ std::vector<mindspore::MSTensor> AclGraphExecutor::GetOutputInfos(uint32_t graph
     output_infos = graph_outputs_.find(graph_id) != graph_outputs_.end() ? graph_outputs_.at(graph_id)
                                                                          : std::vector<mindspore::MSTensor>();
   } else {
-    auto outputs_shape = model_infer_->GetOutputShape();
-    auto outputs_dtype = model_infer_->GetOutputDataType();
-    for (size_t i = 0; i < output_names_.size(); i++) {
-      auto tensor = mindspore::MSTensor(output_names_[i], static_cast<enum DataType>(outputs_dtype[i]), {}, nullptr, 0);
-      tensor.SetShape(outputs_shape[i]);
-      output_infos.push_back(tensor);
+    if (!GetOutputTensors(output_names_, &output_infos)) {
+      MS_LOG(ERROR) << "GetOutputTensors failed!";
+      return {};
     }
   }
-
   return output_infos;
 }
 
