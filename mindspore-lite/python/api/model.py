@@ -875,7 +875,7 @@ class MultiModelRunner:
         >>> model_path = "path_to_model1"
         >>> model_runner = mslite.MultiModelRunner()
         >>> model_runner.build_from_file(model_path, mslite.ModelType.MINDIR, context)
-        >>> execs = runner.get_model_ececutor()
+        >>> execs = model_runner.get_model_ececutor()
         >>> for exec_ in execs:
         >>>     exec_inputs = exec_.get_inputs()
         >>>     exec_outputs = exec_.get_outputs()
