@@ -76,7 +76,7 @@ int ArgMinMaxInt8CPUKernel::Prepare() {
   }
 
   if (compute_param_ == nullptr) {
-    compute_param_ = reinterpret_cast<ArgMinMaxComputeParam *>(sizeof(ArgMinMaxComputeParam));
+    compute_param_ = reinterpret_cast<ArgMinMaxComputeParam *>(malloc(sizeof(ArgMinMaxComputeParam)));
     if (compute_param_ == nullptr) {
       MS_LOG(ERROR) << "Malloc ArgMinMaxComputeParam for argmin or argmax int8 op failed!";
       return RET_ERROR;
