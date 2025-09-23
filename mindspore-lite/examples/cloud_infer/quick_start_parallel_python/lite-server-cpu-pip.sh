@@ -71,10 +71,12 @@ INPUT_DOWNLOAD_URL="https://download.mindspore.cn/model_zoo/official/lite/quick_
 
 mkdir -p model
 if [ ! -e ${BASEPATH}/model/mobilenetv2.mindir ]; then
-    wget -c -O ${BASEPATH}/model/mobilenetv2.mindir --no-check-certificate ${MODEL_DOWNLOAD_URL}
+    echo "Please download ${BASEPATH}/model/mobilenetv2.mindir from ${MODEL_DOWNLOAD_URL}"
+    exit 1
 fi
 if [ ! -e ${BASEPATH}/model/input.bin ]; then
-    wget -c -O ${BASEPATH}/model/input.bin --no-check-certificate ${INPUT_DOWNLOAD_URL}
+    echo "Please download ${BASEPATH}/model/input.bin from ${INPUT_DOWNLOAD_URL}"
+    exit 1
 fi
 
 # Reinstall MindSpore Lite whl package
