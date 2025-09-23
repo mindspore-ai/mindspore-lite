@@ -29,10 +29,12 @@ mkdir -p lib/runtime
 mkdir -p lib/tools/converter
 mkdir -p model
 if [ ! -e ${BASEPATH}/model/mobilenetv2.mindir ]; then
-    wget -c -O ${BASEPATH}/model/mobilenetv2.mindir --no-check-certificate ${MODEL_DOWNLOAD_URL}
+    echo "Please download ${BASEPATH}/model/mobilenetv2.mindir from ${MODEL_DOWNLOAD_URL}"
+    exit 1
 fi
 if [ ! -e ${BASEPATH}/build/${MINDSPORE_FILE} ]; then
-  wget -c -O ${BASEPATH}/build/${MINDSPORE_FILE} --no-check-certificate ${MINDSPORE_LITE_DOWNLOAD_URL}
+    echo "Please download ${BASEPATH}/build/${MINDSPORE_FILE} from ${MINDSPORE_LITE_DOWNLOAD_URL}"
+    exit 1
 fi
 tar xzvf ${BASEPATH}/build/${MINDSPORE_FILE} -C ${BASEPATH}/build/
 

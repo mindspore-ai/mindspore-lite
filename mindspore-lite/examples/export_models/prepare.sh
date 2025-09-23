@@ -69,7 +69,8 @@ fi
 
 if [ ! -f "models/efficient_net_b0.ckpt" ]; then
   echo "Pretrained model weights are missing, downloading efficient_net_b0.ckpt"
-  wget https://download.mindspore.cn/model_zoo/official/lite/efficient_net/efficient_net_b0.ckpt
+  echo "Please download https://download.mindspore.cn/model_zoo/official/lite/efficient_net/efficient_net_b0.ckpt"
+  exit 1
 fi
 
 mkdir -p mindir

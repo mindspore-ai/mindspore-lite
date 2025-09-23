@@ -299,7 +299,8 @@ MINDSPORE_FILE="${MINDSPORE_FILE_NAME}.tar.gz"
 MINDSPORE_LITE_DOWNLOAD_URL=\
 "https://ms-release.obs.cn-north-4.myhuaweicloud.com/${VERSION_STR}/MindSpore/lite/none_cortex-m/${MINDSPORE_FILE}"
 if [ ! -e ${BASEPATH}/${MINDSPORE_FILE} ]; then
-  wget -c -O ${BASEPATH}/${MINDSPORE_FILE} --no-check-certificate ${MINDSPORE_LITE_DOWNLOAD_URL}
+  echo "Please download ${BASEPATH}/${MINDSPORE_FILE} from ${MINDSPORE_LITE_DOWNLOAD_URL}"
+  exit 1
 fi
 if [ ! -e ${BASEPATH}/${MINDSPORE_FILE_NAME} ]; then
   tar xzf ${BASEPATH}/${MINDSPORE_FILE} -C ${BASEPATH}/

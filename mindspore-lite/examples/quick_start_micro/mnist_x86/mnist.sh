@@ -68,7 +68,8 @@ DownloadModel() {
 
     if [ ! -e ${MODEL_DIR}/${MODEL_FILE} ]; then
       echo "download models ..."
-      wget -c -O ${MODEL_DIR}/${MODEL_FILE} --no-check-certificate ${MNIST_DOWNLOAD_URL}
+      echo "Please download ${MODEL_DIR}/${MODEL_FILE} from ${MNIST_DOWNLOAD_URL}"
+      exit 1
     fi
     echo "unpack models ..."
     tar xzvf ${MODEL_DIR}/${MODEL_FILE} -C ${MODEL_DIR} || exit 1

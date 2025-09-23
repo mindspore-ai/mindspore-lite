@@ -73,7 +73,8 @@ download_inference() {
     local MINDSPORE_LITE_DOWNLOAD_URL="https://ms-release.obs.cn-north-4.myhuaweicloud.com/${VERSION_STR}/MindSpore/lite/release/android/${DEVICE}/${MINDSPORE_FILE}"
 
     if [ ! -e ${PKG_DIR}/${MINDSPORE_FILE} ]; then
-      wget -c -O ${PKG_DIR}/${MINDSPORE_FILE} --no-check-certificate ${MINDSPORE_LITE_DOWNLOAD_URL}
+        echo "Please download ${PKG_DIR}/${MINDSPORE_FILE} from ${MINDSPORE_LITE_DOWNLOAD_URL}"
+        exit 1
     fi
 
     tar xzvf ${PKG_DIR}/${MINDSPORE_FILE} -C ${PKG_DIR} || exit 1
@@ -87,8 +88,9 @@ DownloadModel() {
     local DOWNLOAD_URL=https://download.mindspore.cn/model_zoo/official/lite/quick_start/micro/${MODEL_FILE}
 
     if [ ! -e ${MODEL_DIR}/${MODEL_FILE} ]; then
-      echo "download models ..."
-      wget -c -O ${MODEL_DIR}/${MODEL_FILE} --no-check-certificate ${DOWNLOAD_URL}
+        echo "download models ..."
+        echo "Please download ${MODEL_DIR}/${MODEL_FILE} from ${DOWNLOAD_URL}"
+        exit 1
     fi
     echo "unpack models ..."
     tar xzvf ${MODEL_DIR}/${MODEL_FILE} -C ${MODEL_DIR} || exit 1
