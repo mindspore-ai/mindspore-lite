@@ -21,6 +21,7 @@
 #include "schema/model_generated.h"
 #include "include/registry/register_kernel.h"
 #include "include/errorcode.h"
+#include "src/common/utils.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;
@@ -91,9 +92,7 @@ int ProposalCPUKernel::Prepare() {
   int max_roi_num_int = 300;
   auto nnie_arg = GetConfig("nnie");
   if (nnie_arg.find(kMazRoiNum) != nnie_arg.end()) {
-    if (IsValidUnsignedNum(nnie_arg.at(kMazRoiNum)) == true) {
-      max_roi_num_int = stoi(nnie_arg.at(kMazRoiNum));
-    } else {
+    if (!lite::ConvertStrToInt(nnie_arg.at(kMazRoiNum), &max_roi_num_int)) {
       PrintInvalidChar(kMazRoiNum, nnie_arg.at(kMazRoiNum));
       return RET_ERROR;
     }
