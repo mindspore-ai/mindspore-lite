@@ -82,7 +82,7 @@ bool OutputVariablePass::Run(const FuncGraphPtr &graph) {
     tensor::TensorPtr tensor_data = tensor::from_spec(type_ptr->type_id(), shape->shape(), device::DeviceType::kCPU);
 
     float *data_addr = static_cast<float *>(tensor_data->data_c());
-    for (size_t j = 0; i < tensor_data->DataSize(); ++j) {
+    for (size_t j = 0; j < tensor_data->DataSize(); ++j) {
       *(data_addr + j) = 0;
     }
     auto full_encoder_parameter = graph->add_parameter();
