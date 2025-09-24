@@ -113,6 +113,7 @@ include_directories(${MINDSPORE_DIR}/mindspore/core/mindrt) ## core include
 include_directories(${MINDSPORE_DIR}/mindspore/core/mindrt/include) ## core include
 include_directories(${NNACL_DIR}/../)
 include_directories(${TOP_DIR}/build) ## flatbuffers
+include_directories(${TOP_DIR})
 
 if(PLATFORM_ARM64 OR PLATFORM_ARM32)
     set(PLATFORM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/)
