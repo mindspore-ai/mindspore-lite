@@ -46,7 +46,7 @@ MSTensorHandle MSModelGetInputByTensorName(const MSModelHandle model, const char
     if (micro_tensor == NULL) {
       return NULL;
     }
-    if (strcmp(micro_tensor->name, tensor_name)) {
+    if (strcmp(micro_tensor->name, tensor_name) == 0) {
       return micro_tensor;
     }
   }
@@ -63,7 +63,7 @@ MSTensorHandle MSModelGetOutputByTensorName(const MSModelHandle model, const cha
     if (micro_tensor == NULL) {
       return NULL;
     }
-    if (strcmp(micro_tensor->name, tensor_name)) {
+    if (strcmp(micro_tensor->name, tensor_name) == 0) {
       return micro_tensor;
     }
   }
