@@ -1411,6 +1411,7 @@ bool ModelProcess::CheckAndInitOutput(const std::vector<MSTensor> *outputs) {
 
 bool ModelProcess::ResetDynamicOutputTensor(const std::vector<MSTensor> *outputs) {
   dyn_out_sys_buf_addr_.clear();
+  FreeResourceOutput(&output_infos_, outputs);
   for (size_t i = 0; i < output_infos_.size(); ++i) {
     auto &output_info = output_infos_[i];
 
@@ -1485,6 +1486,7 @@ bool ModelProcess::PredictFromHost(const std::vector<MSTensor> &inputs, const st
       return false;
     }
   } else {
+    FreeResourceOutput(&output_infos_, outputs);
     for (size_t i = 0; i < output_infos_.size(); ++i) {
       auto &output_info = output_infos_[i];
       aclDataBuffer *data_buffer = CALL_ASCEND_API(aclmdlGetDatasetBuffer, outputs_, i);
@@ -1740,9 +1742,11 @@ void ModelProcess::FreeResourceOutput(std::vector<AclTensorInfo> *acl_tensor_inf
     item.device_data = nullptr;
     if (item.dynamic_acl_data_buffer != nullptr) {
       CALL_ASCEND_API(aclDestroyDataBuffer, item.dynamic_acl_data_buffer);
+      item.dynamic_acl_data_buffer = nullptr;
     }
     if (item.dynamic_acl_tensor_desc != nullptr) {
       CALL_ASCEND_API(aclDestroyTensorDesc, item.dynamic_acl_tensor_desc);
+      item.dynamic_acl_tensor_desc = nullptr;
     }
   }
 }
