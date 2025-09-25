@@ -18,7 +18,8 @@
 #include <memory>
 #include "tools/converter/adapter/acl/mapper/primitive_mapper_register.h"
 #include "src/common/log_util.h"
-#include "infer/tensor_scatter_add.h"
+#include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
+#include "mindspore/ops/op_def/auto_generate/gen_ops_name_t.h"
 #include "ops_utils/op_utils.h"
 
 namespace mindspore {

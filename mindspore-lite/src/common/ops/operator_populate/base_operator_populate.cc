@@ -37,7 +37,7 @@
 #include "infer/sparse_fill_empty_rows.h"
 #include "infer/size.h"
 #include "infer/scatter_nd_update.h"
-#include "infer/tensor_scatter_add.h"
+#include "mindspore/ops/op_def/auto_generate/gen_ops_name_t.h"
 #include "infer/ragged_range.h"
 #include "infer/ops_func_impl/isfinite.h"
 #include "infer/invert_permutation.h"
