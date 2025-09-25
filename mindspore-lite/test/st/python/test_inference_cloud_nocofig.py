@@ -77,6 +77,23 @@ def test_model_group_inference_ascend(mindir_dir):
         assert (outputs[0].get_data_to_numpy() == (np.ones((4, 4), np.float32) * 2)).all()
 
 @lite_test
+def test_model_invalid_dynamic_dims_error_ascend(mindir_dir):
+    context = mslite.Context()
+    context.target = ["ascend"]
+    context.ascend.device_id = 0
+    context.ascend.provider = "ge"
+    model0 = mslite.Model()
+
+    model_path0 = os.path.join(mindir_dir, "model_group_first.mindir")
+    config_dict = {"ascend_context": {"input_format": "NHWC", "input_shape": "input:[1,-1,-1,3]",
+                                      "dynamic_dims": "[19200,960],960"}}
+    try:
+        model0.build_from_file(model_path0, mslite.ModelType.MINDIR, context, "", config_dict)
+        assert False
+    except RuntimeError as ex:
+        assert "build_from_file failed" in str(ex)
+
+@lite_test
 def test_graph_split_ascend(mindir_dir):
     dtype_map = {
         mslite.DataType.FLOAT32: np.float32,
@@ -117,29 +134,12 @@ def test_graph_split_ascend(mindir_dir):
     except:
         raise RuntimeError('run graph split model failed!')
 
-@lite_test
-def test_model_invalid_dynamic_dims_error_ascend(mindir_dir):
-    context = mslite.Context()
-    context.target = ["ascend"]
-    context.ascend.device_id = 0
-    context.ascend.provider = "ge"
-    model0 = mslite.Model()
-
-    model_path0 = os.path.join(mindir_dir, "model_group_first.mindir")
-    config_dict = {"ascend_context": {"input_format": "NHWC", "input_shape": "input:[1,-1,-1,3]",
-                                      "dynamic_dims": "[19200,960],960"}}
-    try:
-        model0.build_from_file(model_path0, mslite.ModelType.MINDIR, context, "", config_dict)
-        assert False
-    except RuntimeError as ex:
-        assert "build_from_file failed" in str(ex)
-
-
 if __name__ == '__main__':
     print("test_inference_cloud_nocofig.py: begin run testcases.")
     model_dir = sys.argv[1]
     backend = sys.argv[2]
     if backend == "Ascend":
+        test_graph_split_ascend(model_dir)
         test_model_group_inference_ascend(model_dir)
         test_model_invalid_dynamic_dims_error_ascend(model_dir)
     else:

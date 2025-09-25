@@ -303,12 +303,6 @@ bool AclGraphExecutor::CompileGraph(const void *model_data, size_t data_size,
     MS_LOG(ERROR) << "Load om data failed.";
     return false;
   }
-  std::vector<MSTensor> output_tensors;
-  auto ret = GetOutputTensors(output_names_, &output_tensors);
-  if (ret != kSuccess) {
-    MS_LOG(ERROR) << "GetOutputTensors failed!";
-    return false;
-  }
   AclEnvGuard::AddModel(model_infer_);
   load_model_ = true;
   return true;
