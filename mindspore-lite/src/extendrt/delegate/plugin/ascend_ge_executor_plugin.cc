@@ -24,6 +24,7 @@ namespace mindspore::lite {
 namespace {
 constexpr auto kAscendGePluginSoName = "libascend_ge_plugin.so";
 constexpr auto kFunCreateAscendGePluginImpl = "CreateAscendGeExecutorPluginImpl";
+std::mutex g_ge_plugin_lock;
 }  // namespace
 AscendGeExecutorPlugin::AscendGeExecutorPlugin() = default;
 AscendGeExecutorPlugin::~AscendGeExecutorPlugin() {
@@ -41,6 +42,7 @@ AscendGeExecutorPlugin &AscendGeExecutorPlugin::GetInstance() {
 }
 
 bool AscendGeExecutorPlugin::Register() {
+  std::lock_guard lock(g_ge_plugin_lock);
 #if !defined(_WIN32)
   if (is_registered_) {
     return true;
