@@ -39,14 +39,17 @@ class MS_API ModelExecutor {
   /// \param[in] executor_output_names Which is a vector of string, name of ModelExecutor's outputs.
   /// \param[in] subgraph_input_names Which is a vector of vector of string, name of every model's inputs in
   ///     ModelExecutor.
+  /// \param[in] model_output_tensors Which is a vector of MSTensor, output tensor of model.
   ModelExecutor(const std::vector<std::shared_ptr<ModelImpl>> &models,
                 const std::vector<std::string> &executor_input_names,
                 const std::vector<std::string> &executor_output_names,
-                const std::vector<std::vector<std::string>> &subgraph_input_names)
+                const std::vector<std::vector<std::string>> &subgraph_input_names,
+                const std::vector<std::vector<MSTensor>> &model_output_tensors)
       : models_(models),
         executor_input_names_(executor_input_names),
         executor_output_names_(executor_output_names),
-        subgraph_input_names_(subgraph_input_names) {}
+        subgraph_input_names_(subgraph_input_names),
+        model_output_tensors_(model_output_tensors) {}
   /// \brief Destructor of ModelExecutor.
   ~ModelExecutor() = default;
   /// \brief Inference ModelExecutor API.
@@ -65,13 +68,6 @@ class MS_API ModelExecutor {
   ///
   /// \return The vector that includes all output tensors.
   std::vector<MSTensor> GetOutputs() const;
-
-  /// \brief Initialize ModelExecutor API.
-  ///
-  /// \param[in] model_context Define the context used to store options during execution.
-  ///
-  /// \return Status.
-  Status Initialize(const std::shared_ptr<Context> &model_context);
 
  private:
   std::vector<std::shared_ptr<ModelImpl>> models_;
@@ -124,6 +120,7 @@ class MS_API MultiModelRunner {
   Status UpdateConfig(const std::vector<char> &section, const std::pair<std::vector<char>, std::vector<char>> &config);
   std::vector<ModelExecutor> executors_;
   std::vector<std::shared_ptr<ModelImpl>> models_;
+  std::vector<std::vector<MSTensor>> model_output_tensors_;
   std::string config_file_ = "";
   ConfigInfos config_info_;
 };

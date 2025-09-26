@@ -193,7 +193,6 @@ def test_model_group_weight_workspace_for_ascend(model_path, in_data_path, input
     # use model one for inference
     test_model_inference_ascend(model_file, in_data_file_list, shapes)
 
-
 if __name__ == '__main__':
     model_file = sys.argv[1]
     in_data_file = sys.argv[2]
@@ -225,6 +224,7 @@ if __name__ == '__main__':
         print("run model inference ascend success.")
         test_parallel_inference_ascend(model_file, in_data_file_list, shapes)
         print("run parallel inference ascend success.")
+        print("run graph split success.")
     elif backend == "CPU_PARALLEL":
         test_parallel_inference_cpu(model_file, in_data_file_list, shapes)
         print("run parallel inference cpu success.")
