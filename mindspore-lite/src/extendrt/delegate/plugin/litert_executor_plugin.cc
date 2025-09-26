@@ -26,6 +26,7 @@ namespace mindspore::infer {
 namespace {
 constexpr auto kLiteRtPluginSoName = "libmsplugin-ge-litert.so";
 constexpr auto kFunCreateLiteRTPluginImp = "CreateLiteRTPluginImpl";
+std::mutex g_litert_plugin_lock;
 }  // namespace
 LiteRTExecutorPlugin::LiteRTExecutorPlugin() = default;
 LiteRTExecutorPlugin::~LiteRTExecutorPlugin() {
@@ -42,6 +43,7 @@ LiteRTExecutorPlugin &LiteRTExecutorPlugin::GetInstance() {
 }
 
 bool LiteRTExecutorPlugin::Register() {
+  std::lock_guard lock(g_litert_plugin_lock);
 #if !defined(_WIN32)
   if (is_registered_) {
     return true;

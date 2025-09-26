@@ -24,6 +24,7 @@ namespace mindspore::lite {
 namespace {
 constexpr auto kAscendAclPluginSoName = "libascend_acl_plugin.so";
 constexpr auto kFunCreateAscendAclPluginImpl = "CreateAscendAclExecutorPluginImpl";
+std::mutex g_acl_plugin_lock;
 }  // namespace
 AscendAclExecutorPlugin::AscendAclExecutorPlugin() = default;
 AscendAclExecutorPlugin::~AscendAclExecutorPlugin() {
@@ -41,6 +42,7 @@ AscendAclExecutorPlugin &AscendAclExecutorPlugin::GetInstance() {
 }
 
 bool AscendAclExecutorPlugin::Register() {
+  std::lock_guard lock(g_acl_plugin_lock);
 #if !defined(_WIN32)
   if (is_registered_) {
     return true;

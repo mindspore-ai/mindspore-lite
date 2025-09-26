@@ -30,18 +30,22 @@ extern "C" {
 extern void mindspore_log_init();
 }
 #endif
+std::mutex g_log_lock;
 }  // namespace
 
 Model::Model() {
+  {
+    std::lock_guard lock(g_log_lock);
 #ifdef USE_GLOG
 #if defined(_WIN32) || defined(_WIN64) || defined(__APPLE__)
 #ifdef _MSC_VER
-  mindspore::mindspore_log_init();
+    mindspore::mindspore_log_init();
 #endif
 #else
-  mindspore::mindspore_log_init();
+    mindspore::mindspore_log_init();
 #endif
 #endif
+  }
   impl_ = std::make_shared<ModelImpl>();
   if (impl_ == nullptr) {
     MS_LOG(ERROR) << "Failed to create ModelImpl";
