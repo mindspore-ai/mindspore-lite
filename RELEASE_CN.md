@@ -2,6 +2,53 @@
 
 [View English](./RELEASE.md)
 
+## MindSpore Lite 2.7.1 Release Notes
+
+### 主要特性及增强
+
+- MindSpore Lite与MindSpore解耦，CPU算子库等相关动态库独立于MindSpore进行演进。
+
+- 支持图片生成等AIGC模型中的Cache算法基于图模式实现。
+
+### API 变更
+
+- 新增MultiModelRunner、ModelExecutor接口，支持Cache算法的图模式实现。
+
+    ```python
+    import mindspore_lite as mslite
+    import numpy as np
+    dtype_map = {
+        mslite.DataType.FLOAT32: np.float32,
+        mslite.DataType.INT32: np.int32,
+        mslite.DataType.FLOAT16: np.float16,
+        mslite.DataType.INT8: np.int8
+    }
+    context = mslite.Context()
+    context.target = ["ascend"]
+    context.ascend.devcie_id = 0
+    runner = mslite.MultiModelRunner()
+    model_path = "path_to_model"
+    runner.build_from_file(model_path, mslite.ModelType.MINDIR, context)
+    execs = runner.get_model_executor()
+    for exec_ in execs:
+        exec_inputs = exec_.get_inputs()
+        for input_ in exec_inputs:
+            data = np.random.randn(*input_.shape).astype(dtype_map[input_.dtype])
+            input_.set_data_from_numpy(data)
+        exec_.predict(exec_inputs)
+    ```
+
+- 离线转换工具conver_lite通过配置SplitGraph参数以及split_node_name参数实现子图切分。
+
+    ```bash
+    [SplitGraph]
+    split_node_name=[[node_name_1],[node_name_2]]
+    ```
+
+### 贡献者
+
+YeFeng_24,xiong-pan,jjfeing,liuf9,zhangzhugucheng,xu_anyue,yiguangzheng,zxx_xxz,jianghui58,hbhu_bin,chenyihang5,qll1998,yangyingchun1999,liuchengji3,cheng-chao23,gemini524,yangly,yanghui00
+
 ## MindSpore Lite 2.7.0 Release Notes
 
 MindSpore Lite面向不同硬件设备提供轻量化AI推理加速能力，使能智能应用，为开发者提供端到端的解决方案，为算法工程师和数据科学家提供开发友好、运行高效、部署灵活的体验。

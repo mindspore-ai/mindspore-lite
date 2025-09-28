@@ -2,6 +2,53 @@
 
 [查看中文](./RELEASE_CN.md)
 
+## MindSpore Lite 2.7.1 Release Notes
+
+### Major Features and Improvements
+
+- MindSpore Lite is decoupled from MindSpore, and CPU operator libraries and other related dynamic libraries evolve independently of MindSpore.
+
+- The cache algorithm in AIGC models supporting image generation is implemented based on graph patterns.
+
+### API Change
+
+- Added MultiModelRunner and ModelExecutor interfaces, supporting graph mode implementation of the Cache algorithm.
+
+    ```python
+    import mindspore_lite as mslite
+    import numpy as np
+    dtype_map = {
+        mslite.DataType.FLOAT32: np.float32,
+        mslite.DataType.INT32: np.int32,
+        mslite.DataType.FLOAT16: np.float16,
+        mslite.DataType.INT8: np.int8
+    }
+    context = mslite.Context()
+    context.target = ["ascend"]
+    context.ascend.devcie_id = 0
+    runner = mslite.MultiModelRunner()
+    model_path = "path_to_model"
+    runner.build_from_file(model_path, mslite.ModelType.MINDIR, context)
+    execs = runner.get_model_executor()
+    for exec_ in execs:
+        exec_inputs = exec_.get_inputs()
+        for input_ in exec_inputs:
+            data = np.random.randn(*input_.shape).astype(dtype_map[input_.dtype])
+            input_.set_data_from_numpy(data)
+        exec_.predict(exec_inputs)
+    ```
+
+- The offline conversion tool conver_lite implements subgraph partitioning through the configuration of the SplitGraph parameter and the split_node_name parameter.
+
+    ```bash
+    [SplitGraph]
+    split_node_name=[[node_name_1],[node_name_2]]
+    ```
+
+### Contributors
+
+YeFeng_24,xiong-pan,jjfeing,liuf9,zhangzhugucheng,xu_anyue,yiguangzheng,zxx_xxz,jianghui58,hbhu_bin,chenyihang5,qll1998,yangyingchun1999,liuchengji3,cheng-chao23,gemini524,yangly,yanghui00
+
 ## MindSpore Lite 2.7.0 Release Notes
 
 MindSpore Lite​​ delivers lightweight AI inference acceleration capabilities for diverse hardware devices, empowering smart applications. It provides developers with an ​​end-to-end solution​​ and offers algorithm engineers and data scientists a ​​user-friendly development experience​​ characterized by efficient execution and flexible deployment.
