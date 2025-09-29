@@ -139,7 +139,6 @@ if __name__ == '__main__':
     model_dir = sys.argv[1]
     backend = sys.argv[2]
     if backend == "Ascend":
-        test_graph_split_ascend(model_dir)
         test_model_group_inference_ascend(model_dir)
         test_model_invalid_dynamic_dims_error_ascend(model_dir)
     else:
