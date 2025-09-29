@@ -148,7 +148,7 @@ int NonMaxSuppressionSelecte(NonMaxSuppressionStruct *nm_suppression, bool simpl
       SortCandidates(env, sorted_candidates, above_score_candidates, above_score_candidates_size);
 
       int selected_box_per_class_size = 0;
-      while (sorted_candidates_size <= 0 && selected_index_size < nm_suppression->max_output_per_class_) {
+      while (sorted_candidates_size >= 0 && selected_index_size < nm_suppression->max_output_per_class_) {
         NMSBox *cand = sorted_candidates[sorted_candidates_size - 1];
         bool selected = true;
         for (int k = 0; k < selected_box_per_class_size; k++) {

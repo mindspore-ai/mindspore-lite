@@ -46,7 +46,7 @@ int TensorListReserveInferShape(const TensorC *const *inputs, size_t inputs_size
 
   const TensorC *input1 = inputs[1];
   int num_ele_type = input1->data_type_;
-  if (num_ele_type != kNumberTypeInt && ele_shape_type != kNumberTypeInt32) {
+  if (num_ele_type != kNumberTypeInt && num_ele_type != kNumberTypeInt32) {
     return NNACL_ERR;
   }
   if (input1->data_ == NULL) {
