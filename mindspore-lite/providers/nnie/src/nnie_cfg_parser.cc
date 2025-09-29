@@ -65,9 +65,9 @@ int Flags::ParserBool(const std::map<std::string, std::string> &nnie_arg, const 
   auto iter = nnie_arg.find(key);
   if (iter != nnie_arg.end()) {
     auto str = iter->second;
-    if (str.find("on") != std::string::npos) {
+    if (str == "on") {
       *val = true;
-    } else if (str.find("off") != std::string::npos) {
+    } else if (str == "off") {
       *val = false;
     } else {
       PrintInvalidChar(key, str);
