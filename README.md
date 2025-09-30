@@ -10,7 +10,7 @@ For more details please check out our [MindSpore Lite Architecture Guide](https:
 
 MindSpore Lite achieves double the inference performance for AIGC, speech algorithms, and CV model inference, and has been deployed in Huawei's flagship smartphones for commercial use. As shown in the figure below, MindSpore Lite supports image style transfer and image segmentation for CV algorithms.
 
-<img src="docs/screenshot_001.png" alt="original image for image segmentation" width="300"/> <img src="docs/screenshot_002.png" alt="image segmentation rendering" width="300"/> <img src="docs/screenshot_003.png" alt="image style transfer original image" width="300"/> <img src="docs/screenshot_004.png" alt="Image style transfer rendering" width="300"/>
+<img src="docs/screenshot_001.png" alt="original image for image segmentation" width="180"/> <img src="docs/screenshot_002.png" alt="image segmentation rendering" width="180"/> <img src="docs/screenshot_003.png" alt="image style transfer original image" width="180"/> <img src="docs/screenshot_004.png" alt="Image style transfer rendering" width="180"/>
 
 ## Quick Start
 

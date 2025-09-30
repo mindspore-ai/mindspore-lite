@@ -9,7 +9,7 @@ MindSpore Lite面向不同硬件设备提供轻量化AI推理加速能力，使�
 
 MindSpore Lite针对AIGC、语音类算法以及CV类模型推理，实现推理性能倍增，在华为多款旗舰手机落地商用落地。如下图所示，MindSpore Lite支持CV算法的图像风格迁移与图像分割。
 
-<img src="docs/screenshot_001.png" alt="original image for image segmentation" width="300"/> <img src="docs/screenshot_002.png" alt="image segmentation rendering" width="300"/> <img src="docs/screenshot_003.png" alt="image style transfer original image" width="300"/> <img src="docs/screenshot_004.png" alt="Image style transfer rendering" width="300"/>
+<img src="docs/screenshot_001.png" alt="original image for image segmentation" width="180"/> <img src="docs/screenshot_002.png" alt="image segmentation rendering" width="180"/> <img src="docs/screenshot_003.png" alt="image style transfer original image" width="180"/> <img src="docs/screenshot_004.png" alt="Image style transfer rendering" width="180"/>
 
 ## 快速入门
 
