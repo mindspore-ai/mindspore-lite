@@ -1,0 +1,133 @@
+# The CODEOWNERS file is used to define the maintainer of a specific file or directory in the code repository.
+# Its main purpose is to automatically request designated maintainer to conduct code review in Pull Request (PR),
+# in order to clarify code ownership, improve code quality, and accelerate the review process.
+
+# The lines starting with # are comments.
+# Each line corresponds to a specified file or directory and maintainer by @ splitting.
+# The rules are applied from top to bottom, and the last matching rule will take effect.
+
+# If the file in PR does not match rule, the default maintainer YeFeng_24 will be designated to conduct code review.
+* @YeFeng_24
+
+# The maintainers of mindspore-lite/.
+/mindspore-lite/  @jjfeing
+/mindspore-lite/cmake/  @jjfeing
+
+/mindspore-lite/examples/  @YeFeng_24
+/mindspore-lite/examples/cloud_infer/  @YeFeng_24
+/mindspore-lite/examples/converter_acl_custom_pass/  @YeFeng_24
+/mindspore-lite/examples/converter_extend/  @YeFeng_24
+/mindspore-lite/examples/export_models/  @fatmouse007fatmouse007
+/mindspore-lite/examples/ilsvrc2012/  @fatmouse007fatmouse007
+/mindspore-lite/examples/quick_start_c/  @fatmouse007fatmouse007
+/mindspore-lite/examples/quick_start_cpp/  @YeFeng_24
+/mindspore-lite/examples/quick_start_java/  @YeFeng_24
+/mindspore-lite/examples/quick_start_micro/  @fatmouse007fatmouse007
+/mindspore-lite/examples/quick_start_python/  @YeFeng_24
+/mindspore-lite/examples/runtime_cpp/  @fatmouse007fatmouse007
+/mindspore-lite/examples/runtime_extend/  @YeFeng_24
+/mindspore-lite/examples/runtime_gpu_extend/  @YeFeng_24
+/mindspore-lite/examples/runtime_java/  @YeFeng_24
+/mindspore-lite/examples/train_lenet_cpp/  @fatmouse007fatmouse007
+/mindspore-lite/examples/train_lenet_java/  @fatmouse007fatmouse007
+/mindspore-lite/examples/transfer_learning/  @YeFeng_24
+
+/mindspore-lite/include/  @jjfeing @YeFeng_24
+/mindspore-lite/java/  @YeFeng_24 @jjfeing
+/mindspore-lite/minddata/  @fatmouse007fatmouse007 @jjfeing
+/mindspore-lite/providers/  @fatmouse007fatmouse007 @jjfeing
+/mindspore-lite/python/  @YeFeng_24 @jjfeing
+/mindspore-lite/schema/  @jjfeing @fatmouse007fatmouse007
+
+# The maintainers of mindspore-lite/src/.
+/mindspore-lite/src/  @YeFeng_24 @jjfeing
+/mindspore-lite/src/common/  @YeFeng_24 @jjfeing
+/mindspore-lite/src/control_flow/  @yangyingchun1999 @fatmouse007fatmouse007
+/mindspore-lite/src/executor/  @yangyingchun1999 @fatmouse007fatmouse007
+/mindspore-lite/src/extendrt/  @YeFeng_24 @jjfeing
+/mindspore-lite/src/infer/  @fatmouse007fatmouse007 @jjfeing
+/mindspore-lite/src/litert/  @fatmouse007fatmouse007 @jjfeing
+/mindspore-lite/src/registry/  @yangyingchun1999 @fatmouse007fatmouse007
+/mindspore-lite/src/runtime/  @fatmouse007fatmouse007 @jjfeing
+/mindspore-lite/src/train/  @yangyingchun1999 @fatmouse007fatmouse007
+
+# The maintainers of mindspore-lite/tools/.
+/mindspore-lite/tools/  @YeFeng_24 @jjfeing
+/mindspore-lite/tools/benchmark/  @YeFeng_24 @jjfeing
+/mindspore-lite/tools/benchmark_train/  @fatmouse007fatmouse007 @jjfeing
+/mindspore-lite/tools/common/  @YeFeng_24 @jjfeing
+
+/mindspore-lite/tools/converter/  @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/config_parser/  @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/converter_lite/  @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/cxx_api/  @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/decomposer/  @jjfeing
+/mindspore-lite/tools/converter/import/  @YeFeng_24
+/mindspore-lite/tools/converter/legacy_optimizer/  @fatmouse007fatmouse007 @jjfeing
+/mindspore-lite/tools/converter/micro/  @fatmouse007fatmouse007 @jjfeing
+/mindspore-lite/tools/converter/ops/  @xu_anyue @jjfeing
+/mindspore-lite/tools/converter/parser/  @xu_anyue @jjfeing
+/mindspore-lite/tools/converter/parser/caffe/  @xu_anyue @jjfeing
+/mindspore-lite/tools/converter/parser/om/  @xu_anyue @jjfeing
+/mindspore-lite/tools/converter/parser/pytorch/  @xu_anyue @jjfeing
+/mindspore-lite/tools/converter/parser/tf/  @xu_anyue @jjfeing
+/mindspore-lite/tools/converter/parser/tflite/  @xu_anyue @jjfeing
+/mindspore-lite/tools/converter/preprocess/  @xu_anyue @jjfeing
+/mindspore-lite/tools/converter/quantizer/  @xu_anyue @jjfeing
+/mindspore-lite/tools/converter/registry/  @xu_anyue @jjfeing
+/mindspore-lite/tools/converter/session/  @xu_anyue @jjfeing
+
+/mindspore-lite/tools/cropper/  @fatmouse007fatmouse007
+/mindspore-lite/tools/dataset/  @fatmouse007fatmouse007
+/mindspore-lite/tools/lite_exporter/  @fatmouse007fatmouse007
+/mindspore-lite/tools/mindir_exporter/  @YeFeng_24
+/mindspore-lite/tools/obfuscator/  @fatmouse007fatmouse007
+
+/mindspore-lite/tools/optimizer/  @xu_anyue @YeFeng_24
+/mindspore-lite/tools/optimizer/common/  @xu_anyue @YeFeng_24
+/mindspore-lite/tools/optimizer/const_fold/  @xu_anyue @YeFeng_24
+/mindspore-lite/tools/optimizer/fisson/  @xu_anyue @YeFeng_24
+/mindspore-lite/tools/optimizer/format/  @xu_anyue @YeFeng_24
+/mindspore-lite/tools/optimizer/fusion/  @xu_anyue @YeFeng_24
+/mindspore-lite/tools/optimizer/graph/  @xu_anyue @YeFeng_24
+/mindspore-lite/tools/optimizer/parallel/  @xu_anyue @YeFeng_24
+
+/mindspore-lite/tools/providers/  @jjfeing
+/mindspore-lite/tools/schema_gen/  @jjfeing
+
+# The maintainers of mindspore-lite/test/.
+/mindspore-lite/test/  @YeFeng_24
+/mindspore-lite/test/common/  @YeFeng_24
+/mindspore-lite/test/config/  @YeFeng_24
+/mindspore-lite/test/config_level0/  @YeFeng_24
+/mindspore-lite/test/config_level1/  @YeFeng_24
+
+/mindspore-lite/test/st/  @YeFeng_24
+/mindspore-lite/test/st/cpp/  @YeFeng_24
+/mindspore-lite/test/st/java/  @YeFeng_24
+/mindspore-lite/test/st/ops/  @fatmouse007fatmouse007
+/mindspore-lite/test/st/python/  @YeFeng_24
+/mindspore-lite/test/st/scripts/  @YeFeng_24
+
+/mindspore-lite/test/ut/nnacl/  @xu_anyue
+/mindspore-lite/test/ut/python/  @YeFeng_24
+/mindspore-lite/test/ut/scripts/  @YeFeng_24
+/mindspore-lite/test/ut/src/  @YeFeng_24
+/mindspore-lite/test/ut/test_data/  @YeFeng_24
+/mindspore-lite/test/ut/tools/  @xu_anyue
+/mindspore-lite/test/ut/tools/converter/  @xu_anyue
+/mindspore-lite/test/ut/tools/optimizer/  @xu_anyue
+/mindspore-lite/test/ut/utils/  @xu_anyue
+
+/mindspore-lite/scripts/  @YeFeng_24
+/mindspore-lite/cmake/  @nicholas_yhr
+/mindspore-lite/docs/  @xuzhenyoumi
+/mindspore-lite/third_party/  @tronzhang
+
+# The maintainers of other code directories.
+/.jenkins/  @nicholas_yhr
+/build.sh  @jjfeing
+/build.bat  @jjfeing
+/SECURITY.md  @tronzhang
+/version.txt  @YeFeng_24
+/Third_Party_Open_Source_Software_Notice  @tronzhang
