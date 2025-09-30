@@ -4,52 +4,124 @@
 
 MindSpore Lite provides lightweight AI inference acceleration capabilities for different hardware devices, enabling intelligent applications and providing end-to-end solutions for developers. It offers development friendly, efficient, and flexible deployment experiences for algorithm engineers and data scientists, helping the AI software and hardware application ecosystem thrive. In the future, MindSpore Lite will work with the MindSpore AI community to enrich the AI software and hardware application ecosystem.
 
-<img src="docs/MindSpore-Lite-architecture.png" alt="MindSpore Lite Architecture" width="600"/>
-
 For more details please check out our [MindSpore Lite Architecture Guide](https://www.mindspore.cn/lite/docs/en/master/reference/architecture_lite.html).
 
-### MindSpore Lite features
+## Example
+
+MindSpore Lite achieves double the inference performance for AIGC, speech algorithms, and CV model inference, and has been deployed in Huawei's flagship smartphones for commercial use. As shown in the figure below, MindSpore Lite supports image style transfer and image segmentation for CV algorithms.
+
+<img src="docs/screenshot_001.png" alt="original image for image segmentation" width="300"/> <img src="docs/screenshot_002.png" alt="image segmentation rendering" width="300"/> <img src="docs/screenshot_003.png" alt="image style transfer original image" width="300"/> <img src="docs/screenshot_004.png" alt="Image style transfer rendering" width="300"/>
+
+## Quick Start
+
+1. Compile
+
+    MindSpore Lite has multiple different hardware backends, including:
+
+    - For service side devices, users can compile dynamic libraries and Python wheel packages by setting compilation options such as `MSLITE_ENABLE_CLOUD_INFERENCE` for inference of upgrade and CPU hardware. For detailed compilation tutorials, please refer to [the official website of MindSpore Lite](https://www.mindspore.cn/lite/docs/en/master/mindir/build.html).
+
+    - For end and edge devices, different dynamic libraries can be compiled through different cross compilation toolchains. For detailed compilation tutorials, please refer to [the official website of MindSpore Lite](https://www.mindspore.cn/lite/docs/en/master/build/build.html).
+
+2. Model conversion
+
+    MindSpore Lite supports the conversion of models serialized from various AI frameworks such as MindSpore, ONNX, TF, etc. into MindSpore Lite format IR. In order to achieve more efficient model inference, MindSpore Lite supports the conversion of models into `.ms` format or `.mindir` format, where:
+
+    - The `.mindir` model is used for inference on service side devices and is more compatible with the model structure exported by the MindSpore training framework. It is mainly suitable for Ascend cards and X86/Arm architecture CPU hardware. For detailed conversion methods, please refer to [the Conversion Tool Tutorial](https://www.mindspore.cn/lite/docs/en/master/mindir/converter.html).
+
+    - The `.ms` model is mainly used for inference of end and edge devices, and is mainly suitable for terminal hardware such as Kirin NPU and Arm architecture CPU. In order to better reduce the size of the model file, the `.ms` model is serialized and deserialized through protobuffer. For detailed instructions on how to use the conversion tool, please refer to [the Conversion Tool](https://www.mindspore.cn/lite/docs/en/master/converter/converter_tool.html)
+
+3. Model inference
+
+    MindSpore Lite provides three APIs: Python, C++, and Java, and complete usage cases for the corresponding APIs:
+
+    - Python API Interface Use Case
+
+        [`.mindir` Reasoning Case Based on Python Interface](https://www.mindspore.cn/lite/docs/en/master/mindir/runtime_python.html)
+
+    - C/C++ Complete Use Cases
+
+        [`.mindir` model based on C/C++ Interface Inference Use Case](https://www.mindspore.cn/lite/docs/en/master/mindir/runtime_cpp.html)
+
+        [`.ms` Model Based on C/C++ Interface Reasoning Case](https://developer.huawei.com/consumer/en/doc/harmonyos-guides/mindspore-guidelines-based-native)
+
+    - Complete Java Use Cases
+
+        [`.mindir` model based on Java interface inference use case](https://www.mindspore.cn/lite/docs/en/master/mindir/runtime_java.html)
+
+## Technical Solution
+
+### MindSpore Lite Features
+
+<img src="docs/MindSpore-Lite-architecture.png" alt="MindSpore Lite Architecture" width="800"/>
 
 1. Terminal and Cloud one-stop inference deployment
-   - Provide end-to-end processes for model transformation optimization, deployment, and inference.
-   - The unified IR realizes the device-cloud AI application integration.
+
+    - Provide end-to-end processes for model transformation optimization, deployment, and inference.
+
+    - The unified IR realizes the device-cloud AI application integration.
 
 2. Lightweight
-   - Provides model compress, which could help to improve performance as well.
-   - Provides the ultra-lightweight reasoning solution MindSpore Lite Micro to meet the deployment requirements in extreme environments such as smart watches and headphones.
+
+    - Provides model compression, which could help to improve performance as well.
+
+    - Provides the ultra-lightweight reasoning solution MindSpore Lite Micro to meet the deployment requirements in extreme environments such as smart watches and headphones.
 
 3. High-performance
-   - The built-in high-performance kernel computing library NNACL supports high-performance inference for dedicated chips such as CPU, NNRt, and Ascend, maximizing hardware computing power while minimizing inference latency and power consumption.
-   - Assembly code to improve performance of kernel operators. Supports CPU, GPU, and NPU.
+
+    - The built-in high-performance kernel computing library NNACL supports high-performance inference for dedicated chips such as CPU, NNRt, and Ascend, maximizing hardware computing power while minimizing inference latency and power consumption.
+
+    - Assembly code to improve performance of kernel operators. Supports CPU, GPU, and NPU.
 
 4. Versatility
-   - Support deployment of multiple hardware such as server-side Ascend and CPU.
-   - Supports HarmonyOS and Android mobile operating systems.
 
-## MindSpore Lite AI deployment procedure
+    - Supports deployment of multiple hardware such as server-side Ascend and CPU.
 
-1. Model selection and personalized training
+    - Supports HarmonyOS and Android mobile operating systems.
 
-   Select a new model or use an existing model for incremental training using labeled data. When designing a model for mobile device, it is necessary to consider the model size, accuracy and calculation amount.
+## Further Understanding of MindSpore Lite
 
-   The MindSpore Lite team provides a series of pre-training models used for image classification, object detection. You can use these pre-trained models in your application.
+If you wish to further learn and use MindSpore Lite, please refer to the following content:
 
-   The pre-trained model provided by MindSpore: [Image Classification](https://download.mindspore.cn/model_zoo/official/lite/). More models will be provided in the feature.
+### API and documentation
 
-   MindSpore allows you to retrain pre-trained models to perform other tasks.
+1. API documentation:
 
-2. Model converter and optimization
+    - [C++ API documentation](https://www.mindspore.cn/lite/api/en/master/api_cpp/mindspore.html)
 
-   If you use MindSpore or a third-party model, you need to use [MindSpore Lite Model Converter Tool](https://www.mindspore.cn/lite/docs/en/master/converter/converter_tool.html) to convert the model into MindSpore Lite model. The MindSpore Lite model converter tool provides the converter of TensorFlow Lite, Caffe, ONNX to MindSpore Lite model, fusion and quantization could be introduced during convert procedure.
+    - [Java API documentation](https://www.mindspore.cn/lite/api/en/master/api_java/class_list.html)
 
-   MindSpore Lite also provides a tool to convert models running on IoT devices .
+    - [Python API documentation](https://www.mindspore.cn/lite/api/en/master/mindspore_lite.html)
 
-3. Model deployment
+    - [HarmonyOS API Document](https://developer.huawei.com/consumer/en/doc/harmonyos-references/development-intro-api)
 
-   This stage mainly realizes model deployment, including model management, deployment, operation and maintenance monitoring, etc.
+2. [MindSpore Lite Official Website Document](https://www.mindspore.cn/lite/docs/en/master/index.html)
 
-4. Inference
+### Key characteristic capability
 
-   Load the model and perform inference. [Inference](https://www.mindspore.cn/lite/docs/en/master/infer/runtime_cpp.html) is the process of running input data through the model to get output.
+- [Support Ascend hardware inference](https://www.mindspore.cn/lite/docs/en/master/mindir/runtime_python.html)
 
-   MindSpore Lite provides pre-trained model that can be deployed on mobile device [example](https://www.mindspore.cn/lite/examples/en).
+- [Supporting HarmonyOS](https://developer.huawei.com/consumer/cn/sdk/mindspore-lite-kit)
+
+- [Quantification after Training](https://www.mindspore.cn/lite/docs/en/master/advanced/quantization.html)
+
+- [Lightweight Micro inference deployment](https://www.mindspore.cn/lite/docs/en/master/advanced/micro.html#%20Model%20inference%20code%20generation)
+
+- [Benchmark Debugging Tool](https://www.mindspore.cn/lite/docs/en/master/tools/benchmark.html)
+
+## Communication and Feedback
+
+- Welcome to [Gitee Issues](https://gitee.com/mindspore/mindspore-lite/issues): submit questions, reports, and suggestions;
+
+- Welcome to [Community Forum](https://discuss.mindspore.cn/c/mindspore-lite/38): engage in technical and problem-solving exchanges;
+
+- Welcome to [Sig](https://www.mindspore.cn/sig/MindSpore%20Lite): to manage and improve workflow, participate in discussions and exchanges;
+
+## Surrounding communities
+
+- [MindSpore](https://gitee.com/mindspore/mindspore)
+
+- [MindOne](https://github.com/mindspore-lab/mindone)
+
+- [Mindyolo](https://github.com/mindspore-lab/mindyolo)
+
+- [OpenHarmony](https://gitcode.com/openharmony/third_party_mindspore)
