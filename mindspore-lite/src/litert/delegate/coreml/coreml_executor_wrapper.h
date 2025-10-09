@@ -19,7 +19,7 @@
 #include <vector>
 #include <string>
 #include "include/errorcode.h"
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 
 namespace mindspore::lite {
 class CoreMLExecutorWrapper {

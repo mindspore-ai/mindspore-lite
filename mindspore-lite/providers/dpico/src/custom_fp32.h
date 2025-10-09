@@ -19,7 +19,7 @@
 
 #include <vector>
 #include <string>
-#include "include/api/kernel.h"
+#include "include/cxx_api/kernel.h"
 #include "include/errorcode.h"
 #include "manager/acl_model_manager.h"
 

@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_TOOLS_PROVIDERS_TRITON_BACKEND_SRC_MSLITE_UTILS_H_
 
 #include <map>
-#include "include/api/data_type.h"
+#include "include/cxx_api/data_type.h"
 #include "triton/core/tritonserver.h"
 
 namespace triton {

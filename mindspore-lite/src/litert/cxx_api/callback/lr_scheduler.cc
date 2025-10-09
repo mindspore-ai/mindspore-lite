@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "include/api/callback/lr_scheduler.h"
+#include "include/cxx_api/callback/lr_scheduler.h"
 #include <cstddef>
 #include <string>
 #include <vector>

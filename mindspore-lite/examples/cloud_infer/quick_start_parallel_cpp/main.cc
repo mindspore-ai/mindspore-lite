@@ -20,10 +20,10 @@
 #include <fstream>
 #include <cstring>
 #include <memory>
-#include "include/api/model_parallel_runner.h"
-#include "include/api/context.h"
-#include "include/api/status.h"
-#include "include/api/types.h"
+#include "include/cxx_api/model_parallel_runner.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/status.h"
+#include "include/cxx_api/types.h"
 namespace {
 constexpr int kNumPrintOfOutData = 50;
 constexpr int kNumWorkers = 2;

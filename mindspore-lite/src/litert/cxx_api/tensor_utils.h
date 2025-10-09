@@ -22,7 +22,7 @@
 #include <memory>
 #include "ir/dtype/type_id.h"
 #include "src/tensor.h"
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 #include "src/litert/cxx_api/tensor/tensor_impl.h"
 
 namespace mindspore {

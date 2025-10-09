@@ -26,7 +26,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 #include "include/dataset/lite_cv/lite_mat.h"
 #include "include/dataset/lite_cv/image_process.h"
 #include "include/dataset/vision_lite.h"

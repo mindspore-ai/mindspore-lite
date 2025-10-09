@@ -21,17 +21,17 @@
 #include <vector>
 #include <memory>
 #include <utility>
-#include "include/api/context.h"
-#include "include/api/model.h"
-#include "include/api/graph.h"
-#include "include/api/serialization.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/model.h"
+#include "include/cxx_api/graph.h"
+#include "include/cxx_api/serialization.h"
 #include "extendrt/cxx_api/graph/graph_data.h"
 #include "include/common/utils/utils.h"
 #include "ir/func_graph.h"
 #include "extendrt/infer_session.h"
 #include "src/common/config_infos.h"
 #include "mindapi/ir/common.h"
-#include "include/api/model_group.h"
+#include "include/cxx_api/model_group.h"
 #include "utils/crypto.h"
 
 #ifndef _WIN32

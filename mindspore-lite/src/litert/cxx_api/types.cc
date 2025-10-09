@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 #include <cstring>
 #include <limits>
 #include <numeric>
-#include "include/api/status.h"
-#include "include/api/dual_abi_helper.h"
+#include "include/cxx_api/status.h"
+#include "include/cxx_api/dual_abi_helper.h"
 #include "src/litert/cxx_api/tensor/tensor_impl.h"
 #include "src/litert/cxx_api/tensor_utils.h"
 #include "src/common/log_adapter.h"

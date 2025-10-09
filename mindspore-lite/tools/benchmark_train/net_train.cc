@@ -25,7 +25,7 @@
 #include <arm_neon.h>
 #endif
 #include "src/common/common.h"
-#include "include/api/serialization.h"
+#include "include/cxx_api/serialization.h"
 #include "include/securec.h"
 
 namespace mindspore {

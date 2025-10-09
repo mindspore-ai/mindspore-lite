@@ -15,7 +15,7 @@
  */
 #ifndef BUILDING_DLL
 #define BUILDING_DLL
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 #undef BUILDING_DLL
 #endif
 

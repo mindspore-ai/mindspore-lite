@@ -21,7 +21,7 @@
 
 #include "extendrt/session/type.h"
 #include "extendrt/infer_session.h"
-#include "include/api/context.h"
+#include "include/cxx_api/context.h"
 namespace mindspore {
 using InferSessionRegFunc =
   std::function<std::shared_ptr<InferSession>(const std::shared_ptr<Context> &, const ConfigInfos &)>;

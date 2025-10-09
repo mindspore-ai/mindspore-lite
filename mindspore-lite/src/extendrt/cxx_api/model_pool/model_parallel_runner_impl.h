@@ -21,7 +21,7 @@
 #include <map>
 #include <string>
 #include "src/extendrt/cxx_api/model_pool/model_pool.h"
-#include "include/api/context.h"
+#include "include/cxx_api/context.h"
 namespace mindspore {
 class ModelParallelRunnerImpl {
  public:

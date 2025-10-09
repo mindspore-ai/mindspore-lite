@@ -15,7 +15,7 @@
  */
 
 #include "src/custom_common.h"
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "include/registry/register_kernel_interface.h"
 
 namespace mindspore {

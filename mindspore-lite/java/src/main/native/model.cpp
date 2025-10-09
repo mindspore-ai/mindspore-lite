@@ -16,9 +16,9 @@
 
 #include <jni.h>
 #include <cstring>
-#include "include/api/model.h"
+#include "include/cxx_api/model.h"
 #include "common/log_adapter.h"
-#include "include/api/serialization.h"
+#include "include/cxx_api/serialization.h"
 
 extern "C" JNIEXPORT jlong JNICALL Java_com_mindspore_Model_createModel(JNIEnv *env, jobject thiz) {
   auto model = new (std::nothrow) mindspore::Model();

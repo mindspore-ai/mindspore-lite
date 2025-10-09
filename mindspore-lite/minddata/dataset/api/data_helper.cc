@@ -16,7 +16,7 @@
 #include "mindspore-lite/minddata/dataset/include/dataset/data_helper.h"
 
 #include "mindspore-lite/minddata/dataset/util/json_helper.h"
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 
 namespace mindspore {
 namespace dataset {

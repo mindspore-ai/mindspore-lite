@@ -15,7 +15,7 @@
  */
 
 #include <jni.h>
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 
 extern "C" JNIEXPORT jstring JNICALL Java_com_mindspore_config_Version_version(JNIEnv *env, jclass thiz) {
   return env->NewStringUTF(mindspore::Version().c_str());

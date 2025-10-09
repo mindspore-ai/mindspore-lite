@@ -19,11 +19,11 @@
 
 #include <map>
 #include <string>
-#include "include/api/status.h"
-#include "include/api/data_type.h"
-#include "include/api/types.h"
-#include "include/api/kernel.h"
-#include "include/api/delegate.h"
+#include "include/cxx_api/status.h"
+#include "include/cxx_api/data_type.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/kernel.h"
+#include "include/cxx_api/delegate.h"
 #include "src/litert/lite_model.h"
 
 namespace mindspore {

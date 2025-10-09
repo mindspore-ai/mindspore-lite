@@ -24,7 +24,7 @@
 #include "extendrt/session/lite_graph_executor.h"
 #include "schema/inner/model_generated.h"
 #include "runtime/hardware_abstract/device_context/device_context.h"
-#include "include/api/context.h"
+#include "include/cxx_api/context.h"
 #include "include/model.h"
 #include "src/litert/lite_session.h"
 #include "src/common/helper/infer_helpers.h"

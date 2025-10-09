@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include <memory>
-#include "include/api/types.h"
-#include "include/api/context.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/context.h"
 #include "common/common_test.h"
 #include "src/runtime/cxx_api/converters.h"
 #include "src/common/context_util.h"

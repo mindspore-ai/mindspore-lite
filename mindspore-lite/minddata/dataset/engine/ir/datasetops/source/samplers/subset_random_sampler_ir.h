@@ -24,7 +24,7 @@
 
 #include "mindspore-lite/minddata/dataset/engine/ir/datasetops/source/samplers/samplers_ir.h"
 #include "mindspore-lite/minddata/dataset/engine/ir/datasetops/source/samplers/subset_sampler_ir.h"
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #ifndef ENABLE_ANDROID
 #include "minddata/mindrecord/include/shard_operator.h"
 #endif

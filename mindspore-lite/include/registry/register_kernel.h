@@ -22,11 +22,11 @@
 #include <vector>
 #include <memory>
 #include "schema/model_generated.h"
-#include "include/api/context.h"
-#include "include/api/types.h"
-#include "include/api/kernel.h"
-#include "include/api/data_type.h"
-#include "include/api/status.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/kernel.h"
+#include "include/cxx_api/data_type.h"
+#include "include/cxx_api/status.h"
 
 namespace mindspore {
 namespace registry {

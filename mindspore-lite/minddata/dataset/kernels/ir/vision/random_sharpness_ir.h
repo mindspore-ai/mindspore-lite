@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "mindspore-lite/minddata/dataset/include/dataset/constants.h"
 #include "mindspore-lite/minddata/dataset/include/dataset/transforms.h"
 #include "mindspore-lite/minddata/dataset/kernels/ir/tensor_operation.h"

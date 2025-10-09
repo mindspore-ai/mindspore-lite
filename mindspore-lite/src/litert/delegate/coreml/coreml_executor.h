@@ -20,7 +20,7 @@
 #import <Foundation/Foundation.h>
 #include <string>
 #include <vector>
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 
 constexpr int kNum12 = 12;
 

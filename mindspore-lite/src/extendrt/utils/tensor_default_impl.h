@@ -25,7 +25,7 @@
 #include <memory>
 #include <functional>
 
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 #include "ir/tensor.h"
 #include "ir/device_address.h"
 #include "common/utils.h"

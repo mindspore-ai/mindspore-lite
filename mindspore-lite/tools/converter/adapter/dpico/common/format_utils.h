@@ -20,7 +20,7 @@
 #include <set>
 #include <vector>
 #include <string>
-#include "include/api/format.h"
+#include "include/cxx_api/format.h"
 #include "common/anf_util.h"
 
 namespace mindspore {

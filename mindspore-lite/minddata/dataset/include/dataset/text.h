@@ -24,8 +24,8 @@
 #include <utility>
 #include <vector>
 
-#include "include/api/dual_abi_helper.h"
-#include "include/api/status.h"
+#include "include/cxx_api/dual_abi_helper.h"
+#include "include/cxx_api/status.h"
 #include "include/dataset/constants.h"
 #include "include/dataset/transforms.h"
 

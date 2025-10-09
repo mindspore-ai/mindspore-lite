@@ -22,7 +22,7 @@
 #include <map>
 #include <string>
 #include <unordered_map>
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 #include "include/svp_acl_base.h"
 #include "include/svp_acl_mdl.h"
 #include "manager/acl_context_manager.h"

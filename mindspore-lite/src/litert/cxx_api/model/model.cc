@@ -14,18 +14,18 @@
  * limitations under the License.
  */
 
-#include "include/api/model.h"
+#include "include/cxx_api/model.h"
 #include <mutex>
 #ifdef GPU_TENSORRT
 #include <cuda_runtime.h>
 #endif
 #include "flatbuffers/flatbuffers.h"
-#include "include/api/callback/callback.h"
-#include "include/api/context.h"
-#include "include/api/dual_abi_helper.h"
-#include "include/api/types.h"
-#include "include/api/serialization.h"
-#include "include/api/graph.h"
+#include "include/cxx_api/callback/callback.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/dual_abi_helper.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/serialization.h"
+#include "include/cxx_api/graph.h"
 #include "src/common/log_adapter.h"
 #if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
 #include "src/common/thread_utils.h"

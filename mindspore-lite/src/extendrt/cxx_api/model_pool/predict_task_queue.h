@@ -21,8 +21,8 @@
 #include <memory>
 #include <vector>
 #include <condition_variable>
-#include "include/api/types.h"
-#include "include/api/status.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/status.h"
 #include "src/extendrt/cxx_api/model_pool/model_worker.h"
 #include "thread/hqueue.h"
 #ifndef USE_HQUEUE

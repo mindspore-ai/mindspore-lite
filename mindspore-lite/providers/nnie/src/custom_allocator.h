@@ -25,7 +25,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <atomic>
-#include "include/api/allocator.h"
+#include "include/cxx_api/allocator.h"
 #include "include/hi_type.h"
 
 namespace mindspore {

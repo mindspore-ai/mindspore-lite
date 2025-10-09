@@ -16,9 +16,9 @@
 
 #include <jni.h>
 #include "common/log_adapter.h"
-#include "include/api/graph.h"
-#include "include/api/serialization.h"
-#include "include/api/types.h"
+#include "include/cxx_api/graph.h"
+#include "include/cxx_api/serialization.h"
+#include "include/cxx_api/types.h"
 
 extern "C" JNIEXPORT jlong JNICALL Java_com_mindspore_Graph_loadModel(JNIEnv *env, jobject thiz, jstring ms_file) {
   auto graph = new (std::nothrow) mindspore::Graph();

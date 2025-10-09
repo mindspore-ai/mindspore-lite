@@ -22,9 +22,9 @@
 #include <algorithm>
 #include <vector>
 #include "./flags.h"
-#include "include/api/model.h"
-#include "include/api/context.h"
-#include "include/api/types.h"
+#include "include/cxx_api/model.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/types.h"
 
 void Usage() {
   std::cerr << "Usage: ./runtime_cpp --model_path=[model_path] --device_type=[device_type] --device_id=[device_id]"

@@ -21,9 +21,9 @@
 #include <memory>
 #include <map>
 
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 #include "runtime/hardware_abstract/device_context/device_context.h"
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 
 namespace mindspore {
 /// \brief Adaptive Graph Executor for cloud Graph Executor to solve interface conflicts.

@@ -20,10 +20,10 @@
 #include <fstream>
 #include <cstring>
 #include <memory>
-#include "include/api/model.h"
-#include "include/api/context.h"
-#include "include/api/status.h"
-#include "include/api/types.h"
+#include "include/cxx_api/model.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/status.h"
+#include "include/cxx_api/types.h"
 
 constexpr int kMaxDeviceNum = 7;
 

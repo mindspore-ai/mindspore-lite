@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "include/api/graph.h"
+#include "include/cxx_api/graph.h"
 #include "extendrt/cxx_api/graph/graph_data.h"
 #include "src/common/log_adapter.h"
 

@@ -17,7 +17,7 @@
 #ifndef MINDSPORE_LITE_SRC_RUNTIME_CXX_API_CALLBACK_CALLBACK_ADAPTER_H_
 #define MINDSPORE_LITE_SRC_RUNTIME_CXX_API_CALLBACK_CALLBACK_ADAPTER_H_
 
-#include "include/api/model.h"
+#include "include/cxx_api/model.h"
 #include "include/train/train_loop_callback.h"
 
 namespace mindspore {

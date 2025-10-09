@@ -17,7 +17,7 @@
 #define MINDSPORE_LITE_SRC_EXTENDRT_ASCEND_ACL_ACL_PLUGIN_IMPL_H_
 
 #include <memory>
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "src/common/log_adapter.h"
 #include "extendrt/delegate/plugin/ascend_acl_executor_plugin.h"
 #include "extendrt/delegate/ascend_acl/acl_graph_executor.h"

@@ -19,7 +19,7 @@
 #include <vector>
 #include <algorithm>
 #include <memory>
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 #include "src/common/log_adapter.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"

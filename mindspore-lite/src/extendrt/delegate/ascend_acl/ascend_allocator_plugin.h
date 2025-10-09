@@ -18,7 +18,7 @@
 #define delegate_MINDSPORE_LITE_SRC_EXTENDRT_KERNEL_ASCEND_ASCEND_ALLOCATOR_PLUGIN_H_
 #include <string>
 #include <memory>
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 namespace mindspore {
 class AscendAllocatorPluginImpl {
  public:

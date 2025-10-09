@@ -21,7 +21,7 @@
 #include <string>
 #include <memory>
 #include "include/schema/model_generated.h"
-#include "include/api/kernel.h"
+#include "include/cxx_api/kernel.h"
 #include "src/custom_infer.h"
 #include "include/hi_type.h"
 #include "src/nnie_cfg_parser.h"

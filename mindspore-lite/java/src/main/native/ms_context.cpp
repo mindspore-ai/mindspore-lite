@@ -16,7 +16,7 @@
 
 #include <jni.h>
 #include "common/log_adapter.h"
-#include "include/api/context.h"
+#include "include/cxx_api/context.h"
 #include "common/jni_utils.h"
 
 constexpr const int kCpuDevice = 0;

@@ -22,8 +22,8 @@
 #include <string>
 #include <vector>
 
-#include "include/api/context.h"
-#include "include/api/visible.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/visible.h"
 #include "include/dataset/constants.h"
 #include "include/dataset/transforms.h"
 #if !defined(BUILD_LITE) && defined(ENABLE_D)

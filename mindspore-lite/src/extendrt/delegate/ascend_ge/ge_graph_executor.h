@@ -23,7 +23,7 @@
 #include <set>
 #include <utility>
 
-#include "include/api/context.h"
+#include "include/cxx_api/context.h"
 #include "include/model.h"
 #include "backend/ge_backend/graph_ir/types.h"
 #include "extendrt/session/lite_graph_executor.h"

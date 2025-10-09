@@ -18,7 +18,7 @@
 #include <vector>
 #include <memory>
 #include "include/train/classification_train_accuracy_monitor.h"
-#include "include/api/callback/train_accuracy.h"
+#include "include/cxx_api/callback/train_accuracy.h"
 #include "src/litert/cxx_api/callback/callback_impl.h"
 #include "src/common/log_adapter.h"
 

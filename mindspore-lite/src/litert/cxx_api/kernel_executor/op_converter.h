@@ -21,7 +21,7 @@
 #include <map>
 #include "ops/base_operator.h"
 #include "src/common/log_adapter.h"
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 
 namespace mindspore {
 namespace lite {

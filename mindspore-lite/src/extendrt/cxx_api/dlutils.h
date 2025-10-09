@@ -17,7 +17,7 @@
 #define MINDSPORE_LITE_SRC_EXTENDRT_CXX_API_DLUTILS_H_
 #include <string>
 #include <vector>
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "src/common/file_utils.h"
 #if !defined(_WIN32) && !defined(_WIN64)
 #include <dlfcn.h>

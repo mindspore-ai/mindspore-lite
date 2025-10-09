@@ -22,7 +22,7 @@
 #include <vector>
 #include <string>
 #include "backend/ge_backend/graph_ir/types.h"
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "cxx_api/model/acl/acl_model_options.h"
 #include "ge/ge_api.h"
 

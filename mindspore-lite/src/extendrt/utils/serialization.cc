@@ -24,7 +24,7 @@
 #endif
 #include "utils/crypto.h"
 #include "extendrt/cxx_api/file_utils.h"
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 #include "src/common/crypto.h"
 
 namespace mindspore::infer {

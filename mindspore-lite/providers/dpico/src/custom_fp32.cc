@@ -22,7 +22,7 @@
 #include "common/check_base.h"
 #include "common/infer_util.h"
 #include "common/op_attr.h"
-#include "include/api/data_type.h"
+#include "include/cxx_api/data_type.h"
 #include "include/registry/register_kernel.h"
 #include "include/registry/register_kernel_interface.h"
 

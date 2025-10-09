@@ -25,9 +25,9 @@
 #include <map>
 #include <set>
 #include "src/extendrt/dynamic_mem_allocator.h"
-#include "include/api/status.h"
-#include "include/api/context.h"
-#include "include/api/model_parallel_runner.h"
+#include "include/cxx_api/status.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/model_parallel_runner.h"
 #include "src/extendrt/cxx_api/model_pool/model_worker.h"
 #include "src/extendrt/cxx_api/model_pool/predict_task_queue.h"
 namespace mindspore {

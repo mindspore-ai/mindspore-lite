@@ -21,7 +21,7 @@
 #include <stdio.h>
 #include <string>
 #include <memory>
-#include "include/api/context.h"
+#include "include/cxx_api/context.h"
 
 namespace mindspore::lite {
 char *RuntimeConvert(const char *model_buf, const size_t &buf_size, size_t *size, mindspore::Context *context);

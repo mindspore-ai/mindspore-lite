@@ -32,7 +32,7 @@
 #include "src/tensor.h"
 #include "src/tensorlist.h"
 #include "src/common/dynamic_library_loader.h"
-#include "include/api/delegate.h"
+#include "include/cxx_api/delegate.h"
 #if GPU_OPENCL
 #include "src/litert/kernel/gpu/opencl/opencl_runtime.h"
 #endif

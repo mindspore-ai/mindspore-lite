@@ -19,7 +19,7 @@
 #include "src/litert/lite_session.h"
 #include "src/executor/sub_graph_kernel.h"
 #include "ir/dtype/type_id.h"
-#include "include/api/model.h"
+#include "include/cxx_api/model.h"
 #include "src/litert/cxx_api/converters.h"
 #include "src/litert/cxx_api/model/model_impl.h"
 

@@ -20,7 +20,7 @@
 #include <tuple>
 #include <utility>
 #include <unordered_map>
-#include "include/api/callback/callback.h"
+#include "include/cxx_api/callback/callback.h"
 
 namespace mindspore {
 namespace lite {

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "include/api/cell.h"
+#include "include/cxx_api/cell.h"
 #include "src/common/log_adapter.h"
 
 namespace mindspore {

@@ -21,8 +21,8 @@
 #include <string>
 #include <vector>
 #include <thread>
-#include "include/api/status.h"
-#include "include/api/types.h"
+#include "include/cxx_api/status.h"
+#include "include/cxx_api/types.h"
 #include "schema/model_generated.h"
 
 namespace mindspore {

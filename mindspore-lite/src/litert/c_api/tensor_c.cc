@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "include/c_api/tensor_c.h"
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "src/tensor.h"
 #include "src/litert/cxx_api/tensor/tensor_impl.h"
 #include "src/litert/inner_allocator.h"
