@@ -7,7 +7,7 @@
 # The rules are applied from top to bottom, and the last matching rule will take effect.
 
 # If the file in PR does not match rule, the default maintainer YeFeng_24 will be designated to conduct code review.
-* @YeFeng_24
+* @jjfeing @YeFeng_24
 
 # The maintainers of mindspore-lite/.
 /mindspore-lite/  @jjfeing
@@ -96,36 +96,15 @@
 /mindspore-lite/tools/schema_gen/  @jjfeing
 
 # The maintainers of mindspore-lite/test/.
-/mindspore-lite/test/  @YeFeng_24
-/mindspore-lite/test/common/  @YeFeng_24
-/mindspore-lite/test/config/  @YeFeng_24
-/mindspore-lite/test/config_level0/  @YeFeng_24
-/mindspore-lite/test/config_level1/  @YeFeng_24
-
-/mindspore-lite/test/st/  @YeFeng_24
-/mindspore-lite/test/st/cpp/  @YeFeng_24
-/mindspore-lite/test/st/java/  @YeFeng_24
-/mindspore-lite/test/st/ops/  @fatmouse007fatmouse007
-/mindspore-lite/test/st/python/  @YeFeng_24
-/mindspore-lite/test/st/scripts/  @YeFeng_24
-
-/mindspore-lite/test/ut/nnacl/  @xu_anyue
-/mindspore-lite/test/ut/python/  @YeFeng_24
-/mindspore-lite/test/ut/scripts/  @YeFeng_24
-/mindspore-lite/test/ut/src/  @YeFeng_24
-/mindspore-lite/test/ut/test_data/  @YeFeng_24
-/mindspore-lite/test/ut/tools/  @xu_anyue
-/mindspore-lite/test/ut/tools/converter/  @xu_anyue
-/mindspore-lite/test/ut/tools/optimizer/  @xu_anyue
-/mindspore-lite/test/ut/utils/  @xu_anyue
+/mindspore-lite/test/  @YeFeng_24 @jjfeing
 
 /mindspore-lite/scripts/  @YeFeng_24
-/mindspore-lite/cmake/  @nicholas_yhr
+/mindspore-lite/cmake/  @jjfeing @YeFeng_24
 /mindspore-lite/docs/  @xuzhenyoumi
-/mindspore-lite/third_party/  @tronzhang
+/mindspore-lite/third_party/  @tronzhang @jjfeing
 
 # The maintainers of other code directories.
-/.jenkins/  @nicholas_yhr
+/.jenkins/  @nicholas_yhr @jjfeing
 /build.sh  @jjfeing
 /build.bat  @jjfeing
 /SECURITY.md  @tronzhang
