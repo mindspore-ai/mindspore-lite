@@ -221,6 +221,7 @@ function ConfigAscend() {
     cp ${basepath}/../${config_folder}/models_with_large_model_python_with_config_cloud_ascend.cfg ${benchmark_test_path} || exit 1
     cp ${basepath}/../${config_folder}/models_with_large_model_acl_with_config_cloud_ascend.cfg ${benchmark_test_path} || exit 1
     cp ${basepath}/../${config_folder}/models_with_large_model_ge_with_config_cloud_ascend.cfg ${benchmark_test_path} || exit 1
+    cp ${basepath}/../${config_folder}/models_cloud_ascend_a2.cfg ${benchmark_test_path} || exit 1
     # we do not convert ge models, because we will use benchmark to run mindir with ge backend
     models_server_inference_cfg_file_list=${benchmark_test_path}/models_with_large_model_acl_with_config_cloud_ascend.cfg
     models_ge_cfg_file_list=${benchmark_test_path}/models_with_large_model_ge_with_config_cloud_ascend.cfg
@@ -373,4 +374,16 @@ if [[ ${Run_benchmark_ge_status} != 0 ]]; then
 fi
 echo "Run_Benchmark success"
 Print_Benchmark_Result $run_benchmark_result_file
+
+# run converter and predict by python api
+echo "basepath: ${basepath}"
+cd ${basepath}/python/benchmark/
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/tools/converter/lib/:${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/tools/converter/third_party/glog/lib
+python run_python_benchmark.py ${models_path}/ ${ms_models_path} ${basepath}/../${config_folder}/ascend/ ${benchmark_test_path}/models_cloud_ascend_a2.cfg ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ ${device_id}
+run_python_status=$?
+if [[ ${run_python_status} != 0 ]]; then
+    echo "run python benchmark failed"
+    exit ${Run_benchmark_status}
+fi
+echo "success"
 exit 0

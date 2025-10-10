@@ -50,6 +50,26 @@ export MSLITE_OPST_PATH=${cur_path}
 fail_not_return="OFF"
 level=${level:-"level0"}
 
+
+# [mslite_large_model_inference_arm_ascend910B]
+if [[ $backend == "all" || $backend == "mslite_large_model_inference_arm_ascend910B" ]]; then
+  echo "Run large model in ascend910B....."
+  sh ${cur_path}/scripts/ascend/run_cloud_arm_a2.sh -r ${release_path} -m ${models_path} -e ${backend} -l ${level} -d ${device_id}
+  ascend_status=$?
+  if [[ ascend_status -ne 0 ]]; then
+    echo "Run ${backend} failed"
+    exit 1
+  fi
+
+  echo "Run Python ST in ascend910B....."
+  sh $cur_path/scripts/ascend/run_python_api_ascend.sh -r $release_path
+  ascend_status=$?
+  if [[ ascend_status -ne 0 ]]; then
+    echo "Run MSLite Python ST on Arm Ascend failed"
+    exit 1
+  fi
+fi
+
 if [[ $backend == "all" || $backend == "arm64_cpu" || $backend == "arm64_tflite" || $backend == "arm64_mindir" || \
       $backend == "arm64_tf" || $backend == "arm64_caffe" || $backend == "arm64_onnx" || $backend == "arm64_quant" ]]; then
     sh $cur_path/scripts/run_benchmark_arm64.sh -r $release_path -m $models_path -d $device_id -e $backend -l $level -p $fail_not_return
@@ -276,33 +296,6 @@ if [[ $backend == "all" || $backend =~ "graph_kernel" ]]; then
       echo "Run graph kernel failed"
       exit 1
     fi
-fi
-
-
-if [[ $backend == "all" || $backend == "mslite_large_model_inference_arm_ascend910B" ]]; then
-  echo "Run large model in ascend910B....."
-  sh $cur_path/scripts/ascend/run_large_models.sh -r $release_path -m $models_path -e $backend -l $level -d $device_id
-  ascend_status=$?
-  if [[ ascend_status -ne 0 ]]; then
-    echo "Run ${backend} failed"
-    exit 1
-  fi
-
-  echo "Run Python ST in ascend910B....."
-  sh $cur_path/scripts/ascend/run_python_api_ascend.sh -r $release_path
-  ascend_status=$?
-  if [[ ascend_status -ne 0 ]]; then
-    echo "Run MSLite Python ST on Arm Ascend failed"
-    exit 1
-  fi
-
-  #echo "Run AKG Cutsom Ops ST in ascend910B....."
-  #sh $cur_path/scripts/ascend/run_akg_custom_ops.sh -r $release_path
-  #ascend_status=$?
-  #if [[ ascend_status -ne 0 ]]; then
-  #  echo "Run AKG Cutsom Ops ST on Arm Ascend failed"
-  #  exit 1
-  #fi
 fi
 
 if [[ $backend == "all" || $backend == "mslite_large_model_cloud_infer" ]]; then
