@@ -18,8 +18,8 @@
 
 #include <string>
 #include <memory>
-#include "include/api/context.h"
-#include "include/api/status.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/status.h"
 #include "src/common/log_adapter.h"
 #include "mindapi/base/macros.h"
 #include "base/base.h"

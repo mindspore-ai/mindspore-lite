@@ -23,7 +23,7 @@
 #include <string>
 #include <memory>
 #include <utility>
-#include "include/api/model_group.h"
+#include "include/cxx_api/model_group.h"
 
 namespace mindspore {
 class ModelManager {

@@ -20,7 +20,7 @@
 #include <memory>
 #include <vector>
 
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "infer/tensor.h"
 
 namespace mindspore::infer::abstract {

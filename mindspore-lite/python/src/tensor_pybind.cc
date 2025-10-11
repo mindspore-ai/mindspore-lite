@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "include/api/types.h"
-#include "include/api/data_type.h"
-#include "include/api/format.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/data_type.h"
+#include "include/cxx_api/format.h"
 #include "src/common/log_adapter.h"
 #include "src/litert/cxx_api/tensor_utils.h"
 #include "include/securec.h"

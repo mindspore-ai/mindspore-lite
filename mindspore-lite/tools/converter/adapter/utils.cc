@@ -32,8 +32,8 @@
 #include <string>
 #include <vector>
 #include <regex>
-#include "include/api/model.h"
-#include "include/api/context.h"
+#include "include/cxx_api/model.h"
+#include "include/cxx_api/context.h"
 #include "src/common/file_utils.h"
 
 #ifdef _WIN32

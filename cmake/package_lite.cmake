@@ -401,7 +401,7 @@ if(PLATFORM_ARM64)
             install(FILES ${BUILD_DIR}/src/extendrt/delegate/tensorrt/libtensorrt_plugin.so
                     DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
-        install(DIRECTORY ${TOP_DIR}/mindspore-lite/include/api/ DESTINATION ${RUNTIME_INC_DIR}/api
+        install(DIRECTORY ${TOP_DIR}/mindspore-lite/include/cxx_api/ DESTINATION ${RUNTIME_INC_DIR}/cxx_api
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
     else()
         install(FILES ${BUILD_DIR}/src/${MINDSPORE_LITE_LIB_NAME}.so DESTINATION ${RUNTIME_LIB_DIR}
@@ -426,9 +426,9 @@ if(PLATFORM_ARM64)
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/macros.h
             DESTINATION ${RUNTIME_INC_DIR}/mindapi/base
             COMPONENT ${RUNTIME_COMPONENT_NAME})
-    install(DIRECTORY ${TOP_DIR}/mindspore/include/api/ DESTINATION ${RUNTIME_INC_DIR}/api
+    install(DIRECTORY ${TOP_DIR}/include/cxx_api/ DESTINATION ${RUNTIME_INC_DIR}/cxx_api
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h" PATTERN "ops*" EXCLUDE)
-    install(DIRECTORY ${TOP_DIR}/mindspore/include/c_api/ DESTINATION ${RUNTIME_INC_DIR}/c_api
+    install(DIRECTORY ${TOP_DIR}/include/c_api/ DESTINATION ${RUNTIME_INC_DIR}/c_api
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
     if(ANDROID_NDK_TOOLCHAIN_INCLUDED OR MSLITE_ENABLE_CONVERTER OR TARGET_HIMIX)
         __install_micro_wrapper()
@@ -471,7 +471,7 @@ if(PLATFORM_ARM64)
             install(DIRECTORY ${TOP_DIR}/mindspore-lite/include/registry/ DESTINATION
                     ${CONVERTER_ROOT_DIR}/include/registry COMPONENT ${RUNTIME_COMPONENT_NAME}
                     PATTERN "opencl_runtime_wrapper.h" EXCLUDE)
-            install(FILES ${API_HEADER}  DESTINATION ${CONVERTER_ROOT_DIR}/include/api
+            install(FILES ${API_HEADER}  DESTINATION ${CONVERTER_ROOT_DIR}/include/cxx_api
                     COMPONENT ${RUNTIME_COMPONENT_NAME})
             install(FILES ${MINDAPI_BASE_HEADER} DESTINATION ${CONVERTER_ROOT_DIR}/include/mindapi/base
                     COMPONENT ${RUNTIME_COMPONENT_NAME})
@@ -680,9 +680,9 @@ elseif(PLATFORM_ARM32)
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/macros.h
             DESTINATION ${RUNTIME_INC_DIR}/mindapi/base
             COMPONENT ${RUNTIME_COMPONENT_NAME})
-    install(DIRECTORY ${TOP_DIR}/mindspore/include/api/ DESTINATION ${RUNTIME_INC_DIR}/api
+    install(DIRECTORY ${TOP_DIR}/include/cxx_api/ DESTINATION ${RUNTIME_INC_DIR}/cxx_api
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h" PATTERN "ops*" EXCLUDE)
-    install(DIRECTORY ${TOP_DIR}/mindspore/include/c_api/ DESTINATION ${RUNTIME_INC_DIR}/c_api
+    install(DIRECTORY ${TOP_DIR}/include/c_api/ DESTINATION ${RUNTIME_INC_DIR}/c_api
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
     if(ANDROID_NDK_TOOLCHAIN_INCLUDED OR MSLITE_ENABLE_CONVERTER OR TARGET_OHOS_LITE OR TARGET_HIMIX)
         __install_micro_wrapper()
@@ -778,9 +778,9 @@ elseif(WIN32)
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/macros.h
             DESTINATION ${RUNTIME_INC_DIR}/mindapi/base
             COMPONENT ${RUNTIME_COMPONENT_NAME})
-    install(DIRECTORY ${TOP_DIR}/mindspore/include/api/ DESTINATION ${RUNTIME_INC_DIR}/api
+    install(DIRECTORY ${TOP_DIR}/include/cxx_api/ DESTINATION ${RUNTIME_INC_DIR}/cxx_api
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h" PATTERN "ops*" EXCLUDE)
-    install(DIRECTORY ${TOP_DIR}/mindspore/include/c_api/ DESTINATION ${RUNTIME_INC_DIR}/c_api
+    install(DIRECTORY ${TOP_DIR}/include/c_api/ DESTINATION ${RUNTIME_INC_DIR}/c_api
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
     if(MSVC)
         install(FILES ${TOP_DIR}/build/mindspore/src/${MINDSPORE_LITE_LIB_NAME}.lib DESTINATION ${RUNTIME_LIB_DIR}
@@ -800,7 +800,7 @@ elseif(WIN32)
     endif()
 elseif(PLATFORM_MCU)
     __install_micro_wrapper()
-    install(DIRECTORY ${TOP_DIR}/mindspore/include/c_api/ DESTINATION ${RUNTIME_INC_DIR}/c_api
+    install(DIRECTORY ${TOP_DIR}/include/c_api/ DESTINATION ${RUNTIME_INC_DIR}/c_api
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
 else()
     install(FILES ${TOP_DIR}/mindspore-lite/include/kernel_interface.h DESTINATION ${RUNTIME_INC_DIR}
@@ -829,12 +829,12 @@ else()
             ${TOP_DIR}/mindspore/mindspore/core/include/mindapi/base/macros.h
             DESTINATION ${RUNTIME_INC_DIR}/mindapi/base
             COMPONENT ${RUNTIME_COMPONENT_NAME})
-    install(DIRECTORY ${TOP_DIR}/mindspore/include/api/ DESTINATION ${RUNTIME_INC_DIR}/api
+    install(DIRECTORY ${TOP_DIR}/include/cxx_api/ DESTINATION ${RUNTIME_INC_DIR}/cxx_api
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h" PATTERN "ops*" EXCLUDE)
-    install(DIRECTORY ${TOP_DIR}/mindspore/include/c_api/ DESTINATION ${RUNTIME_INC_DIR}/c_api
+    install(DIRECTORY ${TOP_DIR}/include/c_api/ DESTINATION ${RUNTIME_INC_DIR}/c_api
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
     if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
-        install(DIRECTORY ${TOP_DIR}/mindspore-lite/include/api/ DESTINATION ${RUNTIME_INC_DIR}/api
+        install(DIRECTORY ${TOP_DIR}/mindspore-lite/include/cxx_api/ DESTINATION ${RUNTIME_INC_DIR}/cxx_api
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
         install(FILES ${BUILD_DIR}/src/extendrt/${MINDSPORE_LITE_EXTENDRT_LIB_NAME}.so
                 DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
@@ -900,7 +900,7 @@ else()
         install(DIRECTORY ${TOP_DIR}/mindspore-lite/include/registry/ DESTINATION ${CONVERTER_ROOT_DIR}/include/registry
                 COMPONENT ${RUNTIME_COMPONENT_NAME}
                 PATTERN "opencl_runtime_wrapper.h" EXCLUDE)
-        install(FILES ${API_HEADER}  DESTINATION ${CONVERTER_ROOT_DIR}/include/api
+        install(FILES ${API_HEADER}  DESTINATION ${CONVERTER_ROOT_DIR}/include/cxx_api
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
         install(FILES ${MINDAPI_BASE_HEADER} DESTINATION ${CONVERTER_ROOT_DIR}/include/mindapi/base
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
@@ -1065,7 +1065,7 @@ if(MSLITE_ENABLE_KERNEL_EXECUTOR)
             DESTINATION ${RUNTIME_INC_DIR}/mindapi/ir
             COMPONENT ${RUNTIME_COMPONENT_NAME})
     install(FILES ${TOP_DIR}/mindspore-lite/src/litert/cxx_api/kernel_executor/kernel_executor.h DESTINATION
-            ${RUNTIME_INC_DIR}/api COMPONENT ${RUNTIME_COMPONENT_NAME})
+            ${RUNTIME_INC_DIR}/cxx_api COMPONENT ${RUNTIME_COMPONENT_NAME})
     install(TARGETS kernel_executor DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
     install(TARGETS mindspore_core mindspore_ops DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
     install(FILES ${glog_LIBPATH}/${glog_name} DESTINATION ${RUNTIME_LIB_DIR}

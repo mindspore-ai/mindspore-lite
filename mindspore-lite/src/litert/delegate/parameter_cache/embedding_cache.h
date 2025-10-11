@@ -19,9 +19,9 @@
 #include <cmath>
 #include <algorithm>
 #include <memory>
-#include "include/api/status.h"
-#include "include/api/types.h"
-#include "include/api/data_type.h"
+#include "include/cxx_api/status.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/data_type.h"
 #include "src/common/log_adapter.h"
 #include "src/litert/delegate/parameter_cache/cache_algorithm.h"
 #include "src/litert/delegate/parameter_cache/cache_mem_base.h"

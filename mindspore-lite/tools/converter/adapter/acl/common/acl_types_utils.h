@@ -21,8 +21,8 @@
 #include <vector>
 #include <map>
 #include <memory>
-#include "include/api/data_type.h"
-#include "include/api/context.h"
+#include "include/cxx_api/data_type.h"
+#include "include/cxx_api/context.h"
 #include "src/common/log_util.h"
 #include "tools/converter/adapter/acl/common/acl_types.h"
 

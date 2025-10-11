@@ -15,7 +15,7 @@
  */
 #ifndef MINDSPORE_LITE_SRC_EXTENDRT_LITERT_EXECUTOR_PLUGIN_H_
 #define MINDSPORE_LITE_SRC_EXTENDRT_LITERT_EXECUTOR_PLUGIN_H_
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "src/common/log_adapter.h"
 #include "mindapi/base/macros.h"
 

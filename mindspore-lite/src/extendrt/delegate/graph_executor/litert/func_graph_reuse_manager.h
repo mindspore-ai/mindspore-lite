@@ -23,7 +23,7 @@
 #include <unordered_map>
 #include <map>
 #include "base/base.h"
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "src/common/helper/infer_helpers.h"
 #include "src/extendrt/session/lite_graph_executor.h"
 namespace mindspore {

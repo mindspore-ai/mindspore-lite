@@ -16,8 +16,8 @@
 
 #include <jni.h>
 #include "common/log_adapter.h"
-#include "include/api/types.h"
-#include "include/api/cfg.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/cfg.h"
 
 constexpr const int kOLKeepBatchNorm = 2;
 constexpr const int kOLNotKeepBatchNorm = 3;

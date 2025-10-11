@@ -18,9 +18,9 @@
 #define MINDSPORE_CCSRC_MINDDATA_DATASET_CORE_DEVICE_RESOURCE_H_
 
 #include <memory>
-#include "include/api/context.h"
-#include "include/api/status.h"
-#include "include/api/visible.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/status.h"
+#include "include/cxx_api/visible.h"
 #include "mindspore-lite/minddata/dataset/core/device_tensor.h"
 #include "mindspore-lite/minddata/dataset/core/tensor.h"
 

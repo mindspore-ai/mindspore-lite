@@ -21,8 +21,8 @@
 #include <string>
 #include <vector>
 
-#include "include/api/dual_abi_helper.h"
-#include "include/api/visible.h"
+#include "include/cxx_api/dual_abi_helper.h"
+#include "include/cxx_api/visible.h"
 
 namespace mindspore {
 namespace dataset {

@@ -20,7 +20,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "include/api/visible.h"
+#include "include/cxx_api/visible.h"
 
 namespace mindspore {
 namespace schema {

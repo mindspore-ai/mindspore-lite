@@ -21,7 +21,7 @@
 #include <memory>
 #include <string>
 #include <fstream>
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "utils/file_utils.h"
 
 namespace mindspore {

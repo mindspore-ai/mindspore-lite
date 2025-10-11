@@ -24,8 +24,8 @@
 #include <memory>
 #include "include/errorcode.h"
 #include "include/context.h"
-#include "include/api/types.h"
-#include "include/api/model.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/model.h"
 
 namespace mindspore {
 namespace lite {

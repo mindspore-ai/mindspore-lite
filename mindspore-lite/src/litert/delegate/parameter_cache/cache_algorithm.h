@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_DELEGATE_PARAMETER_CACHE_CACHE_ALGORITHM_H_
 
 #include <vector>
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 
 namespace mindspore {
 namespace cache {

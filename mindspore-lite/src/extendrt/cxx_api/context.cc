@@ -16,8 +16,8 @@
 #include "src/extendrt/cxx_api/context.h"
 #include <string>
 #include <memory>
-#include "include/api/types.h"
-#include "include/api/data_type.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/data_type.h"
 #include "include/lite_types.h"
 #include "src/litert/inner_allocator.h"
 #include "src/common/log_adapter.h"

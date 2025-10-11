@@ -22,8 +22,8 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "include/api/types.h"
-#include "include/api/context.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/context.h"
 #include "src/litert/inner_allocator.h"
 #include "src/litert/cxx_api/converters.h"
 #include "src/litert/cxx_api/graph/graph_data.h"

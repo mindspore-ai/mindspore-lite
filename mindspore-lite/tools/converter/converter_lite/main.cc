@@ -20,7 +20,7 @@
 #define USE_DEPRECATED_API
 #include <iostream>
 #include "include/converter.h"
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "tools/converter/converter_lite/converter_flags.h"
 #include "include/securec.h"
 

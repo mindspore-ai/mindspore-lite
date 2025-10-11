@@ -21,7 +21,7 @@
 #include <unordered_map>
 #include <list>
 #include <vector>
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "src/litert/delegate/parameter_cache/cache_algorithm.h"
 namespace mindspore {
 namespace cache {

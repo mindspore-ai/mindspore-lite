@@ -20,7 +20,7 @@
 #include <string>
 #include <map>
 #include <vector>
-#include "include/api/visible.h"
+#include "include/cxx_api/visible.h"
 #include "mindapi/base/shape_vector.h"
 
 namespace mindspore {

@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_COMMON_PRIM_UTIL_H_
 
 #include "src/common/version_manager.h"
-#include "include/api/visible.h"
+#include "include/cxx_api/visible.h"
 
 namespace mindspore {
 namespace lite {

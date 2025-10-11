@@ -17,9 +17,9 @@
 #include "src/litert/cxx_api/model/model_impl.h"
 #include <unordered_map>
 #include <algorithm>
-#include "include/api/serialization.h"
-#include "include/api/callback/callback.h"
-#include "include/api/metrics/metrics.h"
+#include "include/cxx_api/serialization.h"
+#include "include/cxx_api/callback/callback.h"
+#include "include/cxx_api/metrics/metrics.h"
 #include "src/litert/cxx_api/converters.h"
 #include "src/litert/cxx_api/metrics/metrics_adapter.h"
 #include "src/litert/cxx_api/metrics/metrics_impl.h"

@@ -21,8 +21,8 @@
 #include <map>
 #include <memory>
 #include "include/errorcode.h"
-#include "include/api/types.h"
-#include "include/api/allocator.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/allocator.h"
 #include "src/nnie_common.h"
 #include "src/nnie_cfg_parser.h"
 

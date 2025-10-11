@@ -19,7 +19,7 @@
 #include <vector>
 #include "include/errorcode.h"
 #include "src/proposal.h"
-#include "include/api/format.h"
+#include "include/cxx_api/format.h"
 #include "include/registry/register_kernel_interface.h"
 
 using mindspore::kernel::KernelInterface;

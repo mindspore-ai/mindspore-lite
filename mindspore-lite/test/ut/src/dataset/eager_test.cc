@@ -24,7 +24,7 @@
 #include "minddata/dataset/include/dataset/execute.h"
 #include "minddata/dataset/util/path.h"
 #include "src/common/log_adapter.h"
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 
 using MSTensor = mindspore::lite::Tensor;
 using DETensor = mindspore::tensor::DETensor;

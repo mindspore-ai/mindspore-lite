@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#include "include/api/model.h"
-#include "include/api/callback/callback.h"
-#include "include/api/dual_abi_helper.h"
+#include "include/cxx_api/model.h"
+#include "include/cxx_api/callback/callback.h"
+#include "include/cxx_api/dual_abi_helper.h"
 #include "src/litert/cxx_api/model/model_impl.h"
 #include "src/litert/cxx_api/callback/callback_impl.h"
 #include "src/common/log_adapter.h"

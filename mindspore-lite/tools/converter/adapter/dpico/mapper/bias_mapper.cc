@@ -24,7 +24,7 @@
 #include "common/op_attr.h"
 #include "common/op_enum.h"
 #include "op/bias_operator.h"
-#include "include/api/format.h"
+#include "include/cxx_api/format.h"
 
 namespace mindspore {
 namespace dpico {

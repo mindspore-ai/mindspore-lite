@@ -19,7 +19,7 @@
 
 #include <vector>
 #include <map>
-#include "include/api/delegate.h"
+#include "include/cxx_api/delegate.h"
 #include "src/litert/delegate/coreml/op/coreml_op.h"
 #include "src/litert/delegate/coreml/pass/coreml_pass_manager.h"
 

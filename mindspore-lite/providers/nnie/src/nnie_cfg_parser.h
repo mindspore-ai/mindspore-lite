@@ -18,7 +18,7 @@
 #include <vector>
 #include <map>
 #include <string>
-#include "include/api/kernel.h"
+#include "include/cxx_api/kernel.h"
 #include "include/hi_type.h"
 
 namespace mindspore {

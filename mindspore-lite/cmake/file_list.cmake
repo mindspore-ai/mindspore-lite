@@ -1,10 +1,10 @@
 set(API_HEADER
-        ${TOP_DIR}/mindspore/include/api/data_type.h
-        ${TOP_DIR}/mindspore/include/api/dual_abi_helper.h
-        ${TOP_DIR}/mindspore/include/api/format.h
-        ${TOP_DIR}/mindspore/include/api/status.h
-        ${TOP_DIR}/mindspore/include/api/types.h
-        ${TOP_DIR}/mindspore/include/api/visible.h
+        ${TOP_DIR}/include/cxx_api/data_type.h
+        ${TOP_DIR}/include/cxx_api/dual_abi_helper.h
+        ${TOP_DIR}/include/cxx_api/format.h
+        ${TOP_DIR}/include/cxx_api/status.h
+        ${TOP_DIR}/include/cxx_api/types.h
+        ${TOP_DIR}/include/cxx_api/visible.h
         )
 
 set(ABSTRACT_HEADER

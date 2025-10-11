@@ -17,8 +17,8 @@
 #include <memory>
 #include "schema/inner/model_generated.h"
 #include "common/common_test.h"
-#include "include/api/context.h"
-#include "include/api/model.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/model.h"
 #include "src/common/log_adapter.h"
 #include "src/litert/lite_session.h"
 #include "include/registry/register_kernel_interface.h"

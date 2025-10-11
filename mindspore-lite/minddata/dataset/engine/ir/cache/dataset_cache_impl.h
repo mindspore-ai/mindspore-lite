@@ -21,7 +21,7 @@
 #include <optional>
 #include <utility>
 #include <vector>
-#include "include/api/dual_abi_helper.h"
+#include "include/cxx_api/dual_abi_helper.h"
 #include "mindspore-lite/minddata/dataset/engine/cache/cache_client.h"
 #include "mindspore-lite/minddata/dataset/engine/datasetops/cache_op.h"
 #include "mindspore-lite/minddata/dataset/engine/ir/cache/dataset_cache.h"

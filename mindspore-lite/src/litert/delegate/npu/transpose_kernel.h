@@ -20,7 +20,7 @@
 #include <vector>
 #include <string>
 #include "include/graph/op/all_ops.h"
-#include "include/api/kernel.h"
+#include "include/cxx_api/kernel.h"
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 

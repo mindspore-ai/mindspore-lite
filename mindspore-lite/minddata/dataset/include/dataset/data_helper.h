@@ -34,8 +34,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "include/api/dual_abi_helper.h"
-#include "include/api/status.h"
+#include "include/cxx_api/dual_abi_helper.h"
+#include "include/cxx_api/status.h"
 
 namespace mindspore {
 namespace dataset {

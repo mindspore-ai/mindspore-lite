@@ -25,8 +25,8 @@
 #include "triton/backend/backend_model.h"
 #include "triton/backend/backend_model_instance.h"
 #include "triton/core/tritonserver.h"
-#include "include/api/context.h"
-#include "include/api/model.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/model.h"
 #include "triton/backend/backend_input_collector.h"
 #include "triton/backend/backend_output_responder.h"
 

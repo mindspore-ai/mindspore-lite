@@ -24,8 +24,8 @@
 #include <memory>
 #include <utility>
 #include <unordered_map>
-#include "include/api/model_group.h"
-#include "include/api/context.h"
+#include "include/cxx_api/model_group.h"
+#include "include/cxx_api/context.h"
 #include "src/litert/lite_session.h"
 #include "src/litert/inner_context.h"
 

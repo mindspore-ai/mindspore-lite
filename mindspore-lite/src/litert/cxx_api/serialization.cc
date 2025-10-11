@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-#include "include/api/serialization.h"
+#include "include/cxx_api/serialization.h"
 #include <algorithm>
 #include <queue>
-#include "include/api/graph.h"
-#include "include/api/types.h"
+#include "include/cxx_api/graph.h"
+#include "include/cxx_api/types.h"
 #include "include/model.h"
 #include "src/litert/cxx_api/graph/graph_data.h"
 #include "src/litert/cxx_api/model/model_impl.h"

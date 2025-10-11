@@ -20,9 +20,9 @@
 #include <random>
 #include <string>
 #include <vector>
-#include "include/api/status.h"
-#include "include/api/context.h"
-#include "include/api/model.h"
+#include "include/cxx_api/status.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/model.h"
 
 namespace mindspore {
 namespace lite {

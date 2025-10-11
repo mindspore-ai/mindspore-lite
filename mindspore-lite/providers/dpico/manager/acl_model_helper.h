@@ -20,7 +20,7 @@
 #include <vector>
 #include <unordered_map>
 #include "include/svp_acl_mdl.h"
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 #include "include/schema/model_generated.h"
 #include "common/custom_enum.h"
 #include "include/lite_types.h"

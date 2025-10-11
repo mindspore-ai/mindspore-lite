@@ -24,7 +24,7 @@
 #include <memory>
 #include <utility>
 #include <unordered_map>
-#include "include/api/model.h"
+#include "include/cxx_api/model.h"
 #include "include/train/metrics.h"
 
 namespace mindspore {

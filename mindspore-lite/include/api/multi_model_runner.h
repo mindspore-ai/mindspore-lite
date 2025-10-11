@@ -20,10 +20,10 @@
 #include <string>
 #include <memory>
 #include <map>
-#include "include/api/status.h"
-#include "include/api/types.h"
-#include "include/api/context.h"
-#include "include/api/dual_abi_helper.h"
+#include "include/cxx_api/status.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/dual_abi_helper.h"
 
 namespace mindspore {
 using ConfigInfos = std::map<std::string, std::map<std::string, std::string>>;

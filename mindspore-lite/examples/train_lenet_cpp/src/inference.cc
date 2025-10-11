@@ -19,10 +19,10 @@
 #include <iostream>
 #include <fstream>
 #include "src/utils.h"
-#include "include/api/model.h"
-#include "include/api/context.h"
-#include "include/api/graph.h"
-#include "include/api/serialization.h"
+#include "include/cxx_api/model.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/graph.h"
+#include "include/cxx_api/serialization.h"
 
 static void Usage() { std::cout << "Usage: infer -f <.ms model file>" << std::endl; }
 

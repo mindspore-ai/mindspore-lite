@@ -22,7 +22,7 @@
 #include <set>
 #include <utility>
 #include <string>
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 #include "include/errorcode.h"
 
 #include "extendrt/delegate/ascend_acl/model_process.h"

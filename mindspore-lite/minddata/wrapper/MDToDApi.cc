@@ -32,7 +32,7 @@
 #include "minddata/dataset/include/dataset/vision.h"
 #include "minddata/dataset/include/dataset/data_helper.h"
 #include "minddata/dataset/core/de_tensor.h"
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 #if defined(__ANDROID__) || defined(ANDROID)
 #include <android/log.h>
 #include <android/asset_manager.h>

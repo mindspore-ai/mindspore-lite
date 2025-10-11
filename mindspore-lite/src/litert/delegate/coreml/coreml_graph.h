@@ -24,7 +24,7 @@
 #include <utility>
 #include "proto/Model.pb.h"
 #include "proto/NeuralNetwork.pb.h"
-#include "include/api/kernel.h"
+#include "include/cxx_api/kernel.h"
 #include "src/litert/delegate/coreml/op/coreml_op.h"
 #include "src/litert/delegate/coreml/coreml_executor_wrapper.h"
 

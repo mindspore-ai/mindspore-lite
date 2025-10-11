@@ -16,7 +16,7 @@
 #ifndef MINDSPORE_LITE_SRC_RUNTIME_DELEGATE_DELEGATE_UTILS_H_
 #define MINDSPORE_LITE_SRC_RUNTIME_DELEGATE_DELEGATE_UTILS_H_
 #include <vector>
-#include "include/api/delegate.h"
+#include "include/cxx_api/delegate.h"
 #include "src/common/log_adapter.h"
 #include "include/errorcode.h"
 #include "nnacl_c/op_base.h"

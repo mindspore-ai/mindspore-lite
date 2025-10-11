@@ -21,7 +21,7 @@
 #include <unordered_map>
 #include "acl/acl_base.h"
 #include "acl/acl_rt.h"
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "src/extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"
 
 namespace mindspore {

@@ -29,7 +29,7 @@
 #include <string>
 #include <utility>
 
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "mindspore-lite/minddata/dataset/util/log_adapter.h"
 
 namespace mindspore {

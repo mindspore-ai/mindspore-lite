@@ -35,7 +35,7 @@
 #include <functional>
 #include "ir/anf.h"
 #include "src/tensor.h"
-#include "include/api/model.h"
+#include "include/cxx_api/model.h"
 #include "include/errorcode.h"
 #include "tools/converter/cxx_api/converter_para.h"
 #include "tools/converter/quantizer/quant_param_holder.h"

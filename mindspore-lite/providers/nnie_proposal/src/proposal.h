@@ -17,7 +17,7 @@
 #ifndef MINDSPORE_LITE_PROVIDERS_NNIE_PROPOSAL_SRC_PROPOSAL_H_
 #define MINDSPORE_LITE_PROVIDERS_NNIE_PROPOSAL_SRC_PROPOSAL_H_
 #include <vector>
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 
 #define LOG_TAG1 "Proposal"
 #define LOGE(format, ...)                                                                       \

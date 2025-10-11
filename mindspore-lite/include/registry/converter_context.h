@@ -20,8 +20,8 @@
 #include <map>
 #include <string>
 #include <vector>
-#include "include/api/types.h"
-#include "include/api/dual_abi_helper.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/dual_abi_helper.h"
 
 namespace mindspore {
 namespace converter {

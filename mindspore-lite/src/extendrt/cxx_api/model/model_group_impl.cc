@@ -19,8 +19,8 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "include/api/types.h"
-#include "include/api/context.h"
+#include "include/cxx_api/types.h"
+#include "include/cxx_api/context.h"
 #include "src/common/log_adapter.h"
 #include "src/extendrt/model_manager.h"
 #include "extendrt/cxx_api/model/model_impl.h"

@@ -20,8 +20,8 @@
 #include <vector>
 #include <memory>
 #include <functional>
-#include "include/api/status.h"
-#include "include/api/visible.h"
+#include "include/cxx_api/status.h"
+#include "include/cxx_api/visible.h"
 #include "ir/api_tensor_impl.h"
 
 namespace mindspore {

@@ -20,7 +20,7 @@
 #include <vector>
 #include <map>
 #include <string>
-#include "include/api/delegate.h"
+#include "include/cxx_api/delegate.h"
 #include "src/litert/delegate/npu/npu_manager.h"
 #include "src/litert/delegate/npu/pass/npu_pass_manager.h"
 #include "src/litert/delegate/npu/op/npu_op.h"

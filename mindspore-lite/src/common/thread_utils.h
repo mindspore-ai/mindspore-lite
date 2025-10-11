@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_COMMON_THREAD_UTILS_H_
 
 #ifdef __linux__
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 namespace mindspore {
 namespace lite {
 constexpr int kProcessSuccess = 0;

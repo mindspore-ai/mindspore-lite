@@ -26,8 +26,8 @@
 #else
 #include <experimental/any>
 #endif
-#include "include/api/context.h"
-#include "include/api/delegate.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/delegate.h"
 
 namespace mindspore {
 struct Context::Data {

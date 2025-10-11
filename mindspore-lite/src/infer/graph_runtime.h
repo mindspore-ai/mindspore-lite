@@ -19,7 +19,7 @@
 #include <vector>
 #include <memory>
 
-#include "include/api/status.h"
+#include "include/cxx_api/status.h"
 #include "infer/executor.h"
 #include "infer/execution_plan.h"
 #include "infer/kernel_callback.h"

@@ -25,7 +25,7 @@
 #include "include/registry/register_kernel.h"
 #include "include/registry/opencl_runtime_wrapper.h"
 #include "src/cl/arithmetic.cl.inc"
-#include "include/api/data_type.h"
+#include "include/cxx_api/data_type.h"
 #include "include/schema/ops_generated.h"
 
 #define UP_ROUND(x, y) (((x) + (y) - (1)) / (y) * (y))

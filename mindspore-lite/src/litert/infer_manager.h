@@ -26,8 +26,8 @@
 #include "src/tensor.h"
 #include "nnacl_c/tensor_c.h"
 #include "nnacl_c/infer/infer.h"
-#include "include/api/kernel.h"
-#include "include/api/allocator.h"
+#include "include/cxx_api/kernel.h"
+#include "include/cxx_api/allocator.h"
 
 namespace mindspore::lite {
 MS_API int KernelInferShape(const std::vector<lite::Tensor *> &tensors_in, const std::vector<lite::Tensor *> &outputs,

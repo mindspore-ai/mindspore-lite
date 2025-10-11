@@ -23,7 +23,7 @@
 #include <algorithm>
 #include <vector>
 #include "gtest/gtest.h"
-#include "include/api/format.h"
+#include "include/cxx_api/format.h"
 #include "src/litert/tensor_category.h"
 #include "nnacl_c/tensorlist_c_utils.h"
 #include "nnacl_c/tensor_c_utils.h"

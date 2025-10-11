@@ -19,10 +19,10 @@
 #include <memory>
 #include <map>
 #include <vector>
-#include "include/api/context.h"
-#include "include/api/model.h"
-#include "include/api/graph.h"
-#include "include/api/status.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/model.h"
+#include "include/cxx_api/graph.h"
+#include "include/cxx_api/status.h"
 #include "include/common/utils/utils.h"
 #include "ir/func_graph.h"
 #include "src/executor/kernel_exec.h"

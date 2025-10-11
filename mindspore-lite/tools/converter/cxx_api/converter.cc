@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "include/converter.h"
-#include "include/api/data_type.h"
+#include "include/cxx_api/data_type.h"
 #include "include/securec.h"
 #include "tools/converter/cxx_api/converter_para.h"
 #include "tools/converter/converter_context.h"

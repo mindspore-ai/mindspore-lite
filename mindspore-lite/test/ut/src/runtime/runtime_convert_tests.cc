@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "common/common_test.h"
-#include "include/api/model.h"
-#include "include/api/status.h"
+#include "include/cxx_api/model.h"
+#include "include/cxx_api/status.h"
 
 namespace mindspore {
 class RuntimeConvert : public mindspore::CommonTest {

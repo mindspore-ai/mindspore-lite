@@ -34,7 +34,7 @@
 #include "src/common/utils.h"
 #include "tools/common/statistic_utils.h"
 #include "src/tensor.h"
-#include "include/api/model.h"
+#include "include/cxx_api/model.h"
 
 namespace mindspore {
 namespace lite {

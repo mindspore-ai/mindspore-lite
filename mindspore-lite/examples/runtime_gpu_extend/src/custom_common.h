@@ -20,9 +20,9 @@
 #include <arm_neon.h>
 #include <vector>
 #include <iostream>
-#include "include/api/types.h"
+#include "include/cxx_api/types.h"
 #include "include/errorcode.h"
-#include "include/api/data_type.h"
+#include "include/cxx_api/data_type.h"
 #include "include/registry/opencl_runtime_wrapper.h"
 
 #define UP_DIV(x, y) (((x) + (y) - (1)) / (y))

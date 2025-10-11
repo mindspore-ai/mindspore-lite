@@ -29,8 +29,8 @@
 #include "include/errorcode.h"
 #include "schema/model_generated.h"
 #include "src/litert/cxx_api/tensor/tensor_impl.h"
-#include "include/api/context.h"
-#include "include/api/kernel.h"
+#include "include/cxx_api/context.h"
+#include "include/cxx_api/kernel.h"
 #include "src/litert/thread_cost_model.h"
 #include "extendrt/mindir_loader/abstract_kernel.h"
 
