@@ -66,6 +66,10 @@ typedef struct AscendDeviceInfo {
   std::string image_size_;
 } AscendDeviceInfo;
 
+typedef struct DspDeviceInfo {
+  uint32_t device_id_ = 0;
+} DspDeviceInfo;
+
 /// \brief CustomDeviceInfo defined for user defined device configuration information.
 typedef struct CustomDeviceInfo {
   std::shared_ptr<DeviceInfoContext> user_defined_device_info_;
@@ -76,6 +80,7 @@ struct DeviceInfo {
   GpuDeviceInfo gpu_device_info_;
   NpuDeviceInfo npu_device_info_;
   AscendDeviceInfo ascend_device_info_;
+  DspDeviceInfo dsp_device_info_;
   CustomDeviceInfo custom_device_info_;
 };
 

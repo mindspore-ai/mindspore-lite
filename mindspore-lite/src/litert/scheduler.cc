@@ -1093,6 +1093,42 @@ int Scheduler::FindGpuKernel(const std::vector<Tensor *> &in_tensors, const std:
 }
 #endif
 
+#ifdef ENABLE_DSP
+int Scheduler::FindDspKernel(const std::vector<Tensor *> &in_tensors, const std::vector<Tensor *> &out_tensors,
+                             OpParameter *op_parameter, const kernel::KernelKey &desc, kernel::KernelExec **kernel,
+                             TypeId prefer_data_type) {
+  MS_ASSERT(op_parameter != nullptr);
+  MS_ASSERT(kernel != nullptr);
+  if (!context_->IsDeviceTypeEnabled(DT_DSP)) {
+    return RET_NOT_SUPPORT;
+  }
+
+  // support more data type like int32
+  kernel::KernelKey dsp_desc{kernel::KERNEL_ARCH::kDSP, desc.data_type, NHWC, desc.type};
+  // weight dequant
+  auto ret = WeightDecoder::DequantNode(op_parameter, in_tensors, kNumberTypeFloat32, src_model_->graph_.version_,
+                                        context_->float_mode);
+  if (ret != RET_OK) {
+    MS_LOG(DEBUG) << "Dequant input tensors failed: " << ret;
+    return RET_NOT_SUPPORT;
+  }
+  // we don't need to restore tensor for copy data
+  ret = CopyConstTensorData(in_tensors, op_parameter->type_);
+  if (ret != RET_OK) {
+    MS_LOG(DEBUG) << "CopyConstTensorsData failed: " << ret;
+    return RET_NOT_SUPPORT;
+  }
+  ret = KernelRegistry::GetInstance()->GetKernelExec(in_tensors, out_tensors, context_, ms_context_, dsp_desc,
+                                                     op_parameter, kernel);
+  if (ret == RET_OK) {
+    MS_LOG(DEBUG) << "Get dsp_desc op success: " << PrimitiveCurVersionTypeName(dsp_desc.type);
+  } else {
+    MS_LOG(DEBUG) << "Get dsp_desc op failed, scheduler to cpu: " << PrimitiveCurVersionTypeName(dsp_desc.type);
+  }
+  return ret;
+}
+#endif
+
 int Scheduler::FindProviderKernel(const std::vector<Tensor *> &in_tensors, const std::vector<Tensor *> &out_tensors,
                                   const LiteGraph::Node *node, TypeId data_type, kernel::KernelExec **kernel) {
 #ifndef CUSTOM_KERNEL_REGISTRY_CLIP
@@ -1102,6 +1138,15 @@ int Scheduler::FindProviderKernel(const std::vector<Tensor *> &in_tensors, const
   if (prim_type == schema::PrimitiveType_Custom) {
     for (auto &&device : context_->device_list_) {
       if (!device.provider_.empty() && !device.provider_device_.empty()) {
+        if (device.provider_device_ == "DSP") {
+          kernel::KernelKey desc{kernel::KERNEL_ARCH::kDSP, data_type,       NHWC, prim_type,
+                                 device.provider_device_,   device.provider_};
+          ret = KernelRegistry::GetInstance()->GetKernelExec(in_tensors, out_tensors, context_, ms_context_, desc,
+                                                             nullptr, kernel, node->primitive_);
+          if (ret == RET_OK && *kernel != nullptr) {
+            return ret;
+          }
+        }
         kernel::KernelKey desc{kernel::KERNEL_ARCH::kCPU, data_type,       NHWC, prim_type,
                                device.provider_device_,   device.provider_};
         ret = KernelRegistry::GetInstance()->GetKernelExec(in_tensors, out_tensors, context_, ms_context_, desc,
@@ -1187,6 +1232,30 @@ kernel::KernelExec *Scheduler::FindBackendKernel(const std::vector<Tensor *> &in
 #endif
   op_parameter->is_train_session_ = is_train_session_;
   kernel::KernelKey desc{kernel::KERNEL_ARCH::kCPU, data_type, NHWC, op_parameter->type_};
+
+#ifdef ENABLE_DSP
+  bool dsp_priority = DeviceTypePriority(context_, DT_DSP, DT_CPU);
+  bool use_dsp_kernel = node->device_type_ == DT_DSP || node->device_type_ == kDefaultDeviceType;
+  if (dsp_priority && use_dsp_kernel) {
+    status = FindDspKernel(in_tensors, out_tensors, op_parameter, desc, &kernel, prefer_data_type);
+    if (status == RET_OK) {
+      return kernel;
+    } else {
+      MS_LOG(DEBUG) << "Get dsp op failed, scheduler to cpu: " << PrimitiveCurVersionTypeName(desc.type) << " "
+                    << node->name_;
+      if (status == RET_ERROR) {
+        op_parameters_.erase(node->output_indices_.at(0));
+        auto ret = InferNodeShape(node);
+        if (ret == RET_INFER_INVALID || ret == RET_OK) {
+          op_parameter = op_parameters_[node->output_indices_.at(0)];
+        } else {
+          MS_LOG(ERROR) << "Try repeat infer fail: " << node->name_;
+          return nullptr;
+        }
+      }
+    }
+  }
+#endif
 
 #ifdef GPU_OPENCL
   bool gpu_priority = DeviceTypePriority(context_, DT_GPU, DT_CPU);
@@ -1283,6 +1352,8 @@ kernel::SubGraphType GetKernelSubGraphType(const kernel::KernelExec *kernel, con
     }
   } else if (desc.arch == kernel::KERNEL_ARCH::kCustom) {
     return kernel::kCustomSubGraph;
+  } else if (desc.arch == kernel::KERNEL_ARCH::kDSP) {
+    return kernel::kDspSubGraph;
   }
   return kernel::kNotSubGraph;
 }
@@ -1598,6 +1669,8 @@ bool KernelFitCurrentSubGraph(const kernel::SubGraphType subgraph_type, const ke
       }
       return KernelFitCurrentSubGraphCPUFp32(desc.data_type);
     }
+    case kernel::SubGraphType::kDspSubGraph:
+      return kernel.desc().arch == kernel::KERNEL_ARCH::kDSP;
     default:
       return false;
   }
@@ -1687,8 +1760,9 @@ TypeId Scheduler::GetFirstFp32Fp16OrInt8Type(const std::vector<Tensor *> &in_ten
     if (dtype == kObjectTypeTensorType) {
       return TensorListDataType(tensor);
     }
-    std::unordered_set<TypeId> type_set = {kNumberTypeFloat32, kNumberTypeFloat16, kNumberTypeInt8,  kNumberTypeInt32,
-                                           kNumberTypeBool,    kNumberTypeUInt8,   kObjectTypeString};
+    std::unordered_set<TypeId> type_set = {kNumberTypeFloat32, kNumberTypeFloat16,   kNumberTypeInt8,
+                                           kNumberTypeInt32,   kNumberTypeBool,      kNumberTypeUInt8,
+                                           kObjectTypeString,  kNumberTypeComplex64, kNumberTypeComplex128};
     if (type_set.find(dtype) != type_set.end()) {
       return dtype;
     }

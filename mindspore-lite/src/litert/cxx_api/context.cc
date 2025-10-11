@@ -683,4 +683,20 @@ std::vector<char> AscendDeviceInfo::GetBufferOptimizeModeChar() const {
   const std::string &ref = GetValue<std::string>(data_, kModelOptionAscendBufferOptimize);
   return StringToChar(ref);
 }
+
+void DSPDeviceInfo::SetDeviceID(uint32_t device_id) {
+  if (data_ == nullptr) {
+    MS_LOG(ERROR) << "Invalid context.";
+    return;
+  }
+  data_->params[kModelOptionDeviceID] = device_id;
+}
+
+uint32_t DSPDeviceInfo::GetDeviceID() const {
+  if (data_ == nullptr) {
+    MS_LOG(ERROR) << "Invalid context.";
+    return 0;
+  }
+  return GetValue<uint32_t>(data_, kModelOptionDeviceID);
+}
 }  // namespace mindspore

@@ -36,6 +36,7 @@ enum DeviceType {
   kAscend,
   kAscend910,
   kAscend310,
+  kDSP,
   kCustomDevice,
   kAllDevice,
   // add new type here
@@ -598,5 +599,26 @@ void AscendDeviceInfo::SetBufferOptimizeMode(const std::string &buffer_optimize_
   SetBufferOptimizeMode(StringToChar(buffer_optimize_mode));
 }
 std::string AscendDeviceInfo::GetBufferOptimizeMode() const { return CharToString(GetBufferOptimizeModeChar()); }
+
+/// \brief Derived from DeviceInfoContext, The configuration of the model running on the dsp. This option is
+/// invalid for MindSpore Lite.
+class MS_API DSPDeviceInfo : public DeviceInfoContext {
+ public:
+  /// \brief Get the type of this DeviceInfoContext.
+  ///
+  /// \return Type of this DeviceInfoContext.
+  enum DeviceType GetDeviceType() const override { return DeviceType::kDSP; };
+
+  /// \brief Set device id.
+  ///
+  /// \param[in] device_id The device id.
+  void SetDeviceID(uint32_t device_id);
+
+  /// \brief Get the device id.
+  ///
+  /// \return The device id.
+  uint32_t GetDeviceID() const;
+};
+
 }  // namespace mindspore
 #endif  // MINDSPORE_INCLUDE_API_CONTEXT_H

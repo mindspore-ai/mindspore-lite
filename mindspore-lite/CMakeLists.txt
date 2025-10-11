@@ -346,9 +346,13 @@ elseif(TOOLCHAIN_NAME STREQUAL "ohos")
 elseif(TOOLCHAIN_NAME STREQUAL "cortex-a15")
     if((${MSLITE_REGISTRY_DEVICE} STREQUAL "ft78"))
         set(TARGET_FT78 on)
+        add_compile_definitions(SUPPORT_FT78)
     elseif((${MSLITE_REGISTRY_DEVICE} STREQUAL "ft04"))
         set(TARGET_FT04 on)
+        add_compile_definitions(SUPPORT_FT04)
     endif()
+    set(MSLITE_ENABLE_DSP ON)
+    add_compile_definitions(ENABLE_DSP)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.3.0

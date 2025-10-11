@@ -108,6 +108,17 @@ std::shared_ptr<mindspore::AscendDeviceInfo> AscendDeviceInfoFromAscendDeviceCon
   return ascend_info;
 }
 
+std::shared_ptr<mindspore::DSPDeviceInfo> DSPDeviceInfoFromDSPDeviceContext(const lite::DeviceContext &dsp_context) {
+  if (dsp_context.device_type_ != DT_DSP) {
+    MS_LOG(ERROR) << "Function input parameter is not dsp context.";
+    return nullptr;
+  }
+  auto dsp_info = std::make_shared<mindspore::DSPDeviceInfo>();
+  MS_CHECK_TRUE_RET(dsp_info != nullptr, nullptr);
+  PassBasicProperties(dsp_info, dsp_context);
+  return dsp_info;
+}
+
 std::shared_ptr<mindspore::DeviceInfoContext> CustomDeviceInfoFromCustomDeviceContext(
   const lite::DeviceContext &inner_context) {
   if (inner_context.device_type_ != DT_CUSTOM) {
@@ -140,11 +151,10 @@ mindspore::Context *MSContextFromContext(const std::shared_ptr<InnerContext> &co
   }
   auto &device_infos = ms_context->MutableDeviceInfo();
   std::map<DeviceType, std::function<std::shared_ptr<mindspore::DeviceInfoContext>(const lite::DeviceContext &)>>
-    transfer_funcs = {{DT_CPU, CPUDeviceInfoFromCPUDeviceContext},
-                      {DT_GPU, GPUDeviceInfoFromGPUDeviceContext},
-                      {DT_NPU, NPUDeviceInfoFromNPUDeviceContext},
-                      {DT_ASCEND, AscendDeviceInfoFromAscendDeviceContext},
-                      {DT_CUSTOM, CustomDeviceInfoFromCustomDeviceContext}};
+    transfer_funcs = {
+      {DT_CPU, CPUDeviceInfoFromCPUDeviceContext}, {DT_GPU, GPUDeviceInfoFromGPUDeviceContext},
+      {DT_NPU, NPUDeviceInfoFromNPUDeviceContext}, {DT_ASCEND, AscendDeviceInfoFromAscendDeviceContext},
+      {DT_DSP, DSPDeviceInfoFromDSPDeviceContext}, {DT_CUSTOM, CustomDeviceInfoFromCustomDeviceContext}};
   for (auto &device_context : context->device_list_) {
     auto device_type = device_context.device_type_;
     if (transfer_funcs.find(device_type) == transfer_funcs.end()) {

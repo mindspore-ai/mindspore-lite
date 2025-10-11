@@ -446,6 +446,27 @@ if(MSLITE_GPU_BACKEND STREQUAL opencl)
     target_link_libraries(mindspore-lite_static opencl_kernel_mid)
 endif()
 
+if(${MSLITE_REGISTRY_DEVICE}  STREQUAL "ft04" OR ${MSLITE_REGISTRY_DEVICE}  STREQUAL "ft78")
+    if(NOT DEFINED ENV{DSP_SDK_PATH})
+        message(FATAL_ERROR "DSP SDK path not found. Please set DSP_SDK_PATH environment variable.")
+    endif()
+    message(STATUS "DSP SDK path: $ENV{DSP_SDK_PATH}")
+    set(HTHREAD_LIB_PATH "$ENV{DSP_SDK_PATH}/hthread/lib/${MSLITE_REGISTRY_DEVICE}")
+    if(NOT EXISTS "${HTHREAD_LIB_PATH}")
+        message(FATAL_ERROR "HTHREAD library directory not found at: ${HTHREAD_LIB_PATH}")
+    endif()
+    find_library(HTHREAD_LIB
+                    NAMES libhthread_host.a hthread_host
+                    PATHS "${HTHREAD_LIB_PATH}"
+                    NO_DEFAULT_PATH
+                    REQUIRED)
+    add_subdirectory(litert/kernel/dsp)
+    target_link_libraries(mindspore-lite dsp_kernel_mid)
+    target_link_libraries(mindspore-lite_static dsp_kernel_mid)
+    target_link_libraries(mindspore-lite ${HTHREAD_LIB})
+    target_link_libraries(mindspore-lite_static ${HTHREAD_LIB})
+endif()
+
 if(SUPPORT_NPU)
     add_subdirectory(litert/delegate/npu)
     target_link_libraries(mindspore-lite npu_kernel_mid)
