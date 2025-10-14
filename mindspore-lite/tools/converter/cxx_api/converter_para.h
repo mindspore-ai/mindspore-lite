@@ -116,7 +116,9 @@ struct ConverterPara {
   SplitGraphCfg splitGraphCfg;
   // configs parse from config_file
   ConfigInfos config_infos;
-  std::vector<std::string> const_names;
+  std::vector<std::string> variable_node_names;
+  std::vector<AbstractBasePtr> variable_node_abstracts;
+  FuncGraphPtr update_graph = nullptr;
 };
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_TOOLS_CONVERTER_CXX_API_CONVERTER_PARA_H_

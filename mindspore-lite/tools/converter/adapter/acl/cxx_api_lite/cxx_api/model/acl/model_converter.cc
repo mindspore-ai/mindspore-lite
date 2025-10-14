@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <utility>
 #include <vector>
+#include <set>
 #include "backend/ge_backend/graph_ir/utils.h"
 #include "graph/graph_buffer.h"
 #include "graph/graph.h"
@@ -28,6 +29,8 @@
 #include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 #include "src/common/file_utils.h"
 #include "cxx_api/graph/acl/acl_convert_init_adapter.h"
+#include "mindspore/ops/infer/custom.h"
+#include "mindspore/core/include/ir/func_graph.h"
 
 namespace mindspore {
 namespace {
@@ -113,16 +116,12 @@ Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &grap
 
 #ifdef ENABLE_BUNDLE
   ge::WeightRefreshableGraphs split_graphs;
-  std::vector<ge::AscendString> ascend_const_names;
-  std::vector<std::string> const_names;
-  if (option != nullptr && !option->GetConstName().empty()) {
-    const_names = option->GetConstName();
-  }
-  if (const_names.size() > 0) {
-    ascend_const_names.resize(const_names.size());
-    std::transform(const_names.begin(), const_names.end(), ascend_const_names.begin(),
+  std::vector<ge::AscendString> ascend_variable_names;
+  if (variable_node_names_.size() > 0 && update_func_graph_ != nullptr) {
+    ascend_variable_names.resize(variable_node_names_.size());
+    std::transform(variable_node_names_.begin(), variable_node_names_.end(), ascend_variable_names.begin(),
                    [](std::string s) { return ge::AscendString(s.c_str()); });
-    auto ret = ge::aclgrphConvertToWeightRefreshableGraphs(*graph, ascend_const_names, split_graphs);
+    auto ret = ge::aclgrphConvertToWeightRefreshableGraphs(*graph, ascend_variable_names, split_graphs);
     if (ret != 0) {
       MS_LOG(ERROR) << "aclgraphConvertToWeightRefreshableGraphs failed! ret:" << ret;
       ge::aclgrphBuildFinalize();
@@ -138,9 +137,15 @@ Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &grap
         update_options.insert(std::make_pair(ge::AscendString(it.first.c_str()), ge::AscendString(it.second.c_str())));
       }
     }
+    auto update_graph = ConvertFuncGraphToAIR(update_func_graph_);
+    if (update_graph == nullptr) {
+      MS_LOG(ERROR) << "Convert FuncGraph to AscendIR failed.";
+      return Buffer();
+    }
+
     std::vector<ge::GraphWithOptions> graph_and_options;
     graph_and_options.push_back(ge::GraphWithOptions{split_graphs.infer_graph, bund_bundle_options});
-    graph_and_options.push_back(ge::GraphWithOptions{split_graphs.var_update_graph, update_options});
+    graph_and_options.push_back(ge::GraphWithOptions{*update_graph, update_options});
     ret = ge::aclgrphBundleBuildModel(graph_and_options, model);
     if (ret != ge::SUCCESS) {
       MS_LOG(ERROR) << "Call aclgrphBuildModel fail: " << CALL_ASCEND_API(aclGetRecentErrMsg);

@@ -994,7 +994,8 @@ STATUS AclPassImpl::ConvertGraphToOm(const FuncGraphPtr &func_graph, Buffer *om_
   }
   // call interface of cloud
   ModelConverter model_converter;
-  options_->SetConstName(param_->const_names);
+  model_converter.set_update_graph(param_->update_graph);
+  model_converter.set_variable_node_names(param_->variable_node_names);
   model_converter.set_options(options_);
   *om_data = model_converter.LoadMindIR(func_graph);
   if (om_data->Data() == nullptr || om_data->DataSize() == 0) {

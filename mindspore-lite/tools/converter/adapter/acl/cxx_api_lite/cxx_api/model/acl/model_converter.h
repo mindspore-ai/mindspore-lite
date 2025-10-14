@@ -19,6 +19,7 @@
 #include <string>
 #include <map>
 #include <memory>
+#include <vector>
 #include "include/cxx_api/types.h"
 #include "include/cxx_api/status.h"
 #include "ir/func_graph.h"
@@ -35,6 +36,10 @@ class MS_API ModelConverter {
   Buffer LoadMindIR(const FuncGraphPtr &func_graph);
 
   void set_options(const std::weak_ptr<AclModelOptions> &options) { options_ = options; }
+  void set_update_graph(const FuncGraphPtr &update_graph) { update_func_graph_ = update_graph; }
+  void set_variable_node_names(const std::vector<string> variable_node_names) {
+    variable_node_names_ = variable_node_names;
+  }
 
  private:
   backend::ge_backend::DfGraphPtr ConvertFuncGraphToAIR(const FuncGraphPtr &anf_graph) const;
@@ -43,8 +48,12 @@ class MS_API ModelConverter {
                        const std::map<std::string, std::string> &build_options) const;
   Buffer LoadAscendIRInner(const Buffer &model_data);
   Status SaveModel(const ge::ModelBufferData &model) const;
+  Status CreateUpdateGraph(const std::vector<std::string> &const_names, const std::vector<AbstractBasePtr> &abstarcts,
+                           backend::ge_backend::DfGraphPtr *df_graph) const;
 
   std::weak_ptr<AclModelOptions> options_;
+  std::vector<std::string> variable_node_names_;
+  FuncGraphPtr update_func_graph_ = nullptr;
 };
 }  // namespace mindspore
 #endif  // MINDSPORE_CCSRC_CXXAPI_SESSION_ACL_MODEL_CONVERTER_H

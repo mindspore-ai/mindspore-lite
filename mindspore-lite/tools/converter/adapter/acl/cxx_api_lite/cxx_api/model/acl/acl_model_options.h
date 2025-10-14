@@ -57,8 +57,6 @@ class MS_API AclModelOptions {
   }
   std::map<std::string, std::string> GetAoeGlobalOptionsMap() const { return aoe_global_options_map_; }
   static std::string GetSocName();
-  std::vector<std::string> GetConstName() const { return const_names_; }
-  void SetConstName(const std::vector<std::string> &const_names) { const_names_ = const_names; }
   bool IsLastModel() { return is_last_model_; }
   void SetLastModel() { is_last_model_ = true; }
 
@@ -87,7 +85,6 @@ class MS_API AclModelOptions {
   std::string om_file_path_;
   std::string aoe_mode_;
   std::string dump_model_name_;
-  std::vector<std::string> const_names_;
   bool is_last_model_ = false;
 };
 }  // namespace mindspore

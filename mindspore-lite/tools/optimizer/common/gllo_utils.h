@@ -32,6 +32,7 @@
 #include "infer/cxx_api/conv2d_backprop_input_fusion.h"
 #include "schema/inner/model_generated.h"
 #include "tools/converter/converter_context.h"
+#include "include/cxx_api/status.h"
 
 using PrimitiveCPtr = std::shared_ptr<mindspore::ops::PrimitiveC>;
 using mindspore::lite::RET_ERROR;
@@ -227,6 +228,7 @@ inline bool IsSpecifiedNode(const BaseRef &n) {
   return false;
 }
 
+Status BuildReturnNode(const FuncGraphPtr &anf_graph, const std::vector<AnfNodePtr> &return_inputs);
 tensor::TensorPtr GetTensorFromParameterNode(const EquivPtr &equiv, const VarPtr &input);
 const float GetFloatParameterValue(const EquivPtr &equiv, const VarPtr &input);
 const int GetIntParameterValue(const EquivPtr &equiv, const VarPtr &input);

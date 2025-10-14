@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include <vector>
 #include <memory>
+#include <set>
 #include "include/backend/optimizer/pass.h"
 #include "tools/converter/cxx_api/converter_para.h"
 #include "include/errorcode.h"
@@ -36,35 +37,19 @@ class InsertVariableNodePass : public Pass {
   bool Run(const FuncGraphPtr &graph) override;
 
  private:
-  lite::STATUS BuildVariableNode(const std::shared_ptr<ConverterPara> &param, FuncGraphPtr func_graph,
-                                 std::vector<std::string> *const_names);
-  lite::STATUS InsertVariableNodeForMatmul(const AnfNodePtr &node, const CNodePtr &cnode,
-                                           const FuncGraphPtr &func_graph, const std::vector<int> &up_shape,
-                                           std::unordered_map<std::string, std::string> *node_name_map, bool has_alpha,
-                                           int max_weight_batch);
-  lite::STATUS InsertVariableNodeForConv(const AnfNodePtr &node, const CNodePtr &cnode, const FuncGraphPtr &func_graph,
-                                         const std::vector<int> &up_shape,
-                                         std::unordered_map<std::string, std::string> *node_name_map, bool has_alpha,
-                                         int max_weight_batch);
-  lite::STATUS ParseInsertNode(std::string file_path, std::map<std::string, std::vector<int>> *variable_nodes,
-                               std::unordered_map<std::string, std::string> *node_name_map,
-                               std::vector<std::string> *node_name_list, bool *has_alpha);
-  lite::STATUS ParseShapeStr(std::string shape_str, std::vector<int> *shape);
-  lite::STATUS InsertVariableAddNode(const CNodePtr &cnode, const FuncGraphPtr &func_graph, const bool &is_matmul,
-                                     std::unordered_map<std::string, std::string> *node_name_map);
-  lite::STATUS CheckOnlyReplace(CNodePtr cnode, const std::vector<int> &para_shape, const bool &is_matmul,
-                                bool *compare_res);
-  lite::STATUS RecordVariableName(const FuncGraphPtr &func_graph, const CNodePtr &cnode, const string &search_key,
-                                  bool is_matmul, std::unordered_map<std::string, std::string> *node_name_map);
-  lite::STATUS RecordParameterVariableName(const FuncGraphPtr &func_graph, const ParameterPtr &para_node,
-                                           const string &search_key, bool is_matmul,
-                                           std::unordered_map<std::string, std::string> *node_name_map);
+  lite::STATUS BuildVariableNode(FuncGraphPtr func_graph);
+  lite::STATUS ParseInsertNode(std::string file_path, std::set<std::string> *variable_nodes,
+                               std::vector<std::string> *node_name_list);
   template <typename T>
   ParameterPtr BuildZeroVecNDParameterNode(const FuncGraphPtr &anf_graph, ShapeVector weight_shape,
                                            const std::string &node_name, T value, TypeId dtype);
-  void InitWeightParam(const std::shared_ptr<ConverterPara> &param, std::string *variable_weights_file,
-                       int32_t *max_weight_batch);
-
+  void InitWeightParam(std::string *variable_weights_file, int32_t *max_weight_batch);
+  FuncGraphPtr CreateUpdateGraph(const std::vector<std::string> &const_names,
+                                 const std::vector<AbstractBasePtr> &abstarcts);
+  lite::STATUS RecordParameterVariableName(const FuncGraphPtr &func_graph, const ParameterPtr &para_node,
+                                           const string &search_key,
+                                           std::unordered_map<std::string, std::string> *node_name_map,
+                                           std::unordered_map<std::string, AbstractBasePtr> *node_abstract_map);
   std::shared_ptr<ConverterPara> param_;
 };
 }  // namespace opt
