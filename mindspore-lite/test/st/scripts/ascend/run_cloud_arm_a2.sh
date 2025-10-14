@@ -214,9 +214,6 @@ function ConfigAscend() {
     mkdir -p ${benchmark_test_path}
     models_path=/home/workspace/mindspore_dataset/mslite/models/hiai
     # mkdir -p ${benchmark_test_path}/large_models
-    echo "config file name: "
-    ls ${basepath}/../${config_folder}/ascend/*.config
-    echo "========== config file list end =============="
     cp ${basepath}/../${config_folder}/ascend/*.config ${benchmark_test_path} || exit 1
     cp ${basepath}/../${config_folder}/models_with_large_model_python_with_config_cloud_ascend.cfg ${benchmark_test_path} || exit 1
     cp ${basepath}/../${config_folder}/models_with_large_model_acl_with_config_cloud_ascend.cfg ${benchmark_test_path} || exit 1
@@ -383,7 +380,7 @@ python run_python_benchmark.py ${models_path}/ ${ms_models_path} ${basepath}/../
 run_python_status=$?
 if [[ ${run_python_status} != 0 ]]; then
     echo "run python benchmark failed"
-    exit ${Run_benchmark_status}
+    exit ${run_python_status}
 fi
 echo "success"
 exit 0
