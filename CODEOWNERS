@@ -11,7 +11,6 @@
 
 # The maintainers of mindspore-lite/.
 /mindspore-lite/  @jjfeing
-/mindspore-lite/cmake/  @jjfeing
 
 /mindspore-lite/examples/  @YeFeng_24
 /mindspore-lite/examples/cloud_infer/  @YeFeng_24
@@ -98,15 +97,28 @@
 # The maintainers of mindspore-lite/test/.
 /mindspore-lite/test/  @YeFeng_24 @jjfeing
 
-/mindspore-lite/scripts/  @YeFeng_24
-/mindspore-lite/cmake/  @jjfeing @YeFeng_24
-/mindspore-lite/docs/  @xuzhenyoumi
-/mindspore-lite/third_party/  @tronzhang @jjfeing
-
-# The maintainers of other code directories.
+/.gitee/  @jjfeing @YeFeng_24
 /.jenkins/  @nicholas_yhr @jjfeing
-/build.sh  @jjfeing
-/build.bat  @jjfeing
-/SECURITY.md  @tronzhang
+/cmake/  @jjfeing @YeFeng_24
+/docs/  @xuzhenyoumi
+/include/  @jjfeing @YeFeng_24
+/mindspore/  @jjfeing @YeFeng_24
+/scripts/  @YeFeng_24 @jjfeing
+/third_party/  @tronzhang @jjfeing
+/.clang-format  @YeFeng_24
+/.gitignore  @YeFeng_24
+/.gitmodules  @YeFeng_24
+/build.bat  @jjfeing @YeFeng_24
+/build.sh  @jjfeing @YeFeng_24
+/CODEOWNERS  @jjfeing @YeFeng_24
+/CONTRIBUTING.md  @jjfeing @YeFeng_24
+/CONTRIBUTING_CN.md  @jjfeing @YeFeng_24
+/LICENSE  @jjfeing @YeFeng_24
+/NOTICE  @jjfeing @YeFeng_24
+/README.md  @jjfeing @YeFeng_24
+/README_CN.md  @jjfeing @YeFeng_24
+/RELEASE.md  @jjfeing @YeFeng_24
+/RELEASE_CN.md  @jjfeing @YeFeng_24
+/SECURITY.md  @jjfeing @tronzhang
+/Third_Party_Open_Source_Software_Notice  @jjfeing @tronzhang
 /version.txt  @YeFeng_24
-/Third_Party_Open_Source_Software_Notice  @tronzhang
