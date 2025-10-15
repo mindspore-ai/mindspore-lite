@@ -12,13 +12,16 @@
 - /kind task
 - /kind feature
 - /kind refactor
+- /kind clean_code
 如PR描述不符合规范，修改PR描述后需要/check-pr重新检查PR规范。
 -->
 /kind <label>
 
+---
 
 **What does this PR do / why do we need it**:
 
+---
 
 **Which issue(s) this PR fixes**:
 <!-- 
@@ -27,14 +30,19 @@
 -->
 Fixes #
 
+---
 
-**Code review checklist [【代码检视checklist说明】](https://gitee.com/mindspore/community/blob/master/security/code_review_checklist_mechanism.md)**:
+**Test Plan and Test result：What scenarios were tested, and what were the verification results（Function, performance, reliability, etc.）**：
 
-+ - [ ] 是否进行返回值校验 (禁止使用void屏蔽安全函数、自研函数返回值，C++标准库函数确认无问题可以屏蔽)
-+ - [ ] 是否遵守 ***SOLID原则 / 迪米特法则***
-+ - [ ] 是否具备UT测试用例看护 && 测试用例为有效用例 (若新特性无测试用例看护请说明原因)
-+ - [ ] 是否为对外接口变更
-+ - [ ] 是否涉及官网文档修改
+---
+
+**Self-checklist**:（**请自检，在[ ]内打上x，我们将检视你的完成情况，否则会导致pr无法合入**）
+
++ - [ ] **设计**：PR对应的方案是否已经经过Maintainer评审，方案检视意见是否均已答复并完成方案修改
++ - [ ] **测试**：PR中的代码是否已有UT/ST测试用例进行充分的覆盖，新增测试用例是否随本PR一并上库或已经上库
++ - [ ] **验证**：PR描述信息中是否已包含对该PR对应的Feature、Refactor、Bugfix的预期目标达成情况的详细验证结果描述
++ - [ ] **接口**：是否涉及对外接口变更，相应变更已得到接口评审组织的通过，API对应的注释信息已经刷新正确
++ - [ ] **文档**：是否涉及官网文档修改，如果涉及请及时提交资料到Doc仓
 
 <!-- **Special notes for your reviewers**: -->
 <!-- + - [ ] 是否导致无法前向兼容 -->
