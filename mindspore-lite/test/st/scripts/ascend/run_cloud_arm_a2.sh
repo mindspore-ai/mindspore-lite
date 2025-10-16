@@ -371,7 +371,7 @@ if [[ ${Run_benchmark_ge_status} != 0 ]]; then
 fi
 echo "Run_Benchmark success"
 Print_Benchmark_Result $run_benchmark_result_file
-
+#---------------------------------------------------------
 # run converter and predict by python api
 echo "basepath: ${basepath}"
 cd ${basepath}/python/benchmark/
@@ -382,5 +382,15 @@ if [[ ${run_python_status} != 0 ]]; then
     echo "run python benchmark failed"
     exit ${run_python_status}
 fi
+
+# run python api test
+cd ${basepath}/python/python_api/
+pytest test_tensor.py -s
+ret=$?
+if [ ${ret} -ne 0 ]; then
+  echo "run test_tensor.py failed."
+  exit ${ret}
+ fi
+#---------------------------------------------------------
 echo "success"
 exit 0
