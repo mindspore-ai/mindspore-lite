@@ -480,7 +480,7 @@ bool AnalyseLine(const std::string &line, std::string &key, std::string &value) 
     }
     end_pos = pos - 1;
   }
-  std::string new_line = line.substr(start_pos, start_pos + 1 - end_pos);  // delete comment
+  std::string new_line = line.substr(start_pos, end_pos - start_pos + 1);  // delete comment
   pos = new_line.find(EQUALS_CHAR);
   if (pos == std::string::npos) {  // has no =
     return false;
