@@ -17,11 +17,11 @@
 #include <memory>
 #include <unordered_map>
 #include <algorithm>
-#include "include/cxx_api/types.h"
-#include "include/cxx_api/context.h"
-#include "include/cxx_api/dual_abi_helper.h"
-#include "include/cxx_api/callback/callback.h"
-#include "include/cxx_api/metrics/metrics.h"
+#include "include/api/types.h"
+#include "include/api/context.h"
+#include "include/api/dual_abi_helper.h"
+#include "include/api/callback/callback.h"
+#include "include/api/metrics/metrics.h"
 #include "src/litert/lite_model.h"
 #include "src/litert/inner_context.h"
 #include "src/litert/inner_allocator.h"

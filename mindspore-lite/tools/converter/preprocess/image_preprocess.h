@@ -22,7 +22,7 @@
 #include <opencv2/opencv.hpp>
 #endif
 #include "tools/converter/preprocess/preprocess_param.h"
-#include "include/cxx_api/model.h"
+#include "include/api/model.h"
 #include "src/tensor.h"
 
 namespace mindspore {

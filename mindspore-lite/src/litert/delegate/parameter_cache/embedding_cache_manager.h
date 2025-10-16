@@ -20,9 +20,9 @@
 #include <map>
 #include <string>
 #include <vector>
-#include "include/cxx_api/kernel.h"
-#include "include/cxx_api/status.h"
-#include "include/cxx_api/data_type.h"
+#include "include/api/kernel.h"
+#include "include/api/status.h"
+#include "include/api/data_type.h"
 #include "src/litert/delegate/parameter_cache/embedding_cache.h"
 #include "src/litert/delegate/parameter_cache/load_host_cache_model.h"
 #include "src/litert/delegate/tensorrt/distribution/distribution_base.h"

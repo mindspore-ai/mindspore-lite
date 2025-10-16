@@ -21,7 +21,7 @@
 #include <map>
 #include <memory>
 #include <unordered_map>
-#include "include/cxx_api/allocator.h"
+#include "include/api/allocator.h"
 #include "src/extendrt/dynamic_mem_manager.h"
 
 namespace mindspore {

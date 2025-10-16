@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include <memory>
-#include "include/cxx_api/model_parallel_runner.h"
+#include "include/api/model_parallel_runner.h"
 #include "common/common_test.h"
 #include "src/common/file_utils.h"
 

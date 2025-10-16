@@ -20,7 +20,7 @@
 #include <string>
 #include <memory>
 #include <map>
-#include "include/cxx_api/context.h"
+#include "include/api/context.h"
 #include "mindapi/ir/func_graph.h"
 #include "src/common/config_infos.h"
 

@@ -23,7 +23,7 @@
 #include <typeinfo>
 #include <typeindex>
 #include "ir/dtype/type_id.h"
-#include "include/cxx_api/format.h"
+#include "include/api/format.h"
 #include "src/common/log_adapter.h"
 #include "nnacl_c/op_base.h"
 #include "tools/converter/micro/coder/config.h"

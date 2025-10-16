@@ -14,16 +14,16 @@
  * limitations under the License.
  */
 #include "include/api/multi_model_runner.h"
-#include "include/cxx_api/context.h"
+#include "include/api/context.h"
 #include "extendrt/cxx_api/model/model_impl.h"
 #include "src/common/config_file.h"
 #include "src/common/common.h"
 #include "load_mindir/load_model.h"
 #include "extendrt/cxx_api/file_utils.h"
 #include "extendrt/utils/func_graph_utils.h"
-#include "include/cxx_api/dual_abi_helper.h"
+#include "include/api/dual_abi_helper.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "include/cxx_api/types.h"
+#include "include/api/types.h"
 #include "src/extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"
 namespace mindspore {
 namespace {

@@ -38,7 +38,7 @@
 #include "src/common/prim_util.h"
 #include "src/common/version_manager.h"
 #include "tools/common/tensor_util.h"
-#include "include/cxx_api/model.h"
+#include "include/api/model.h"
 #include "tools/mindir_exporter/mindir_serializer.h"
 #include "src/common/primitive_t_utils.h"
 #include "tools/converter/config_parser/acl_option_param_parser.h"

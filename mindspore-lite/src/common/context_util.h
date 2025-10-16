@@ -19,7 +19,7 @@
 #include <memory>
 #include <set>
 #include <string>
-#include "include/cxx_api/context.h"
+#include "include/api/context.h"
 #include "src/executor/kernel_exec.h"
 
 namespace mindspore {

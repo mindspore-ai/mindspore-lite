@@ -19,9 +19,9 @@
 #include <vector>
 #include <string>
 #include <memory>
-#include "include/cxx_api/context.h"
-#include "include/cxx_api/status.h"
-#include "include/cxx_api/cfg.h"
+#include "include/api/context.h"
+#include "include/api/status.h"
+#include "include/api/cfg.h"
 #include "include/train/train_cfg.h"
 #include "src/litert/inner_context.h"
 #include "src/common/log_adapter.h"

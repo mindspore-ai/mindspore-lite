@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "include/cxx_api/model.h"
-#include "include/cxx_api/model_group.h"
-#include "include/cxx_api/model_parallel_runner.h"
+#include "include/api/model.h"
+#include "include/api/model_group.h"
+#include "include/api/model_parallel_runner.h"
 #include "extendrt/cxx_api/model/model_impl.h"
 #include "src/common/log_adapter.h"
 #include "python/src/common_pybind.h"

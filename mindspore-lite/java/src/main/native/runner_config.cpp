@@ -16,7 +16,7 @@
 
 #include <jni.h>
 #include "common/log_adapter.h"
-#include "include/cxx_api/model_parallel_runner.h"
+#include "include/api/model_parallel_runner.h"
 #include "common/jni_utils.h"
 
 extern "C" JNIEXPORT jlong JNICALL Java_com_mindspore_config_RunnerConfig_createRunnerConfig(JNIEnv *env,

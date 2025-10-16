@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "include/cxx_api/cell.h"
+#include "include/api/cell.h"
 #include "src/common/log_adapter.h"
 
 namespace mindspore {
@@ -24,7 +24,7 @@ std::vector<Output> CellBase::operator()(const std::vector<Input> &inputs) const
   return empty;
 }
 
-GraphCell::GraphCell(const Graph &graph) : graph_(std::shared_ptr<Graph>(new (std::nothrow) Graph(graph))) {
+GraphCell::GraphCell(const Graph &graph) : graph_(std::shared_ptr<Graph>(new(std::nothrow) Graph(graph))) {
   if (graph_ == nullptr) {
     MS_LOG(ERROR) << "Invalid graph.";
   }
@@ -36,7 +36,7 @@ GraphCell::GraphCell(const std::shared_ptr<Graph> &graph) : graph_(graph) {
   }
 }
 
-GraphCell::GraphCell(Graph &&graph) : graph_(std::shared_ptr<Graph>(new (std::nothrow) Graph(graph))) {
+GraphCell::GraphCell(Graph &&graph) : graph_(std::shared_ptr<Graph>(new(std::nothrow) Graph(graph))) {
   if (graph_ == nullptr) {
     MS_LOG(ERROR) << "Invalid graph.";
   }

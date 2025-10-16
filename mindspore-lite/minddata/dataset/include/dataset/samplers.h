@@ -20,8 +20,8 @@
 #include <memory>
 #include <vector>
 
-#include "include/cxx_api/visible.h"
-#include "include/cxx_api/status.h"
+#include "include/api/visible.h"
+#include "include/api/status.h"
 #include "include/dataset/constants.h"
 
 namespace mindspore {

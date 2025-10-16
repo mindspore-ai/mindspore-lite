@@ -15,7 +15,7 @@
  */
 #ifndef MINDSPORE_LITE_SRC_EXTENDRT_DELEGATE_GRAPH_EXECUTOR_LITERT_GRAPH_EXECUTO_LITERT_PLUGIN_IMPL_H_
 #define MINDSPORE_LITE_SRC_EXTENDRT_DELEGATE_GRAPH_EXECUTOR_LITERT_GRAPH_EXECUTO_LITERT_PLUGIN_IMPL_H_
-#include "include/cxx_api/status.h"
+#include "include/api/status.h"
 #include "src/common/log_adapter.h"
 #include "extendrt/delegate/plugin/litert_executor_plugin.h"
 

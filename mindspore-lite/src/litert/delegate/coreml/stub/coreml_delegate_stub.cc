@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "include/cxx_api/delegate.h"
+#include "include/api/delegate.h"
 #include "src/common/log_adapter.h"
 
 namespace mindspore {

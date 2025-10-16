@@ -18,8 +18,8 @@
 
 #include <string>
 #include <memory>
-#include "include/cxx_api/context.h"
-#include "include/cxx_api/status.h"
+#include "include/api/context.h"
+#include "include/api/status.h"
 
 namespace mindspore::lite {
 class AscendAclExecutorPluginImplBase {

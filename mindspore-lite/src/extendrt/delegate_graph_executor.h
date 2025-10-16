@@ -17,7 +17,7 @@
 #define MINDSPORE_LITE_EXTENDRT_DELEGATE_GRAPH_EXECUTOR_H_
 #include <vector>
 #include <memory>
-#include "include/cxx_api/delegate_api.h"
+#include "include/api/delegate_api.h"
 #include "ir/func_graph.h"
 #include "ir/anf.h"
 #include "runtime/hardware_abstract/device_context/device_context.h"

@@ -19,7 +19,7 @@
 
 #include <memory>
 #include "ir/anf.h"
-#include "include/cxx_api/context.h"
+#include "include/api/context.h"
 #include "include/registry/converter_context.h"
 #include "schema/inner/model_generated.h"
 #include "src/litert/inner_context.h"

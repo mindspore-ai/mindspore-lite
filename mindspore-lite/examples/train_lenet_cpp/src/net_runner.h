@@ -23,9 +23,9 @@
 #include <vector>
 #include <memory>
 #include <string>
-#include "include/cxx_api/model.h"
-#include "include/cxx_api/graph.h"
-#include "include/cxx_api/metrics/accuracy.h"
+#include "include/api/model.h"
+#include "include/api/graph.h"
+#include "include/api/metrics/accuracy.h"
 #include "include/dataset/datasets.h"
 
 using mindspore::AccuracyMetrics;

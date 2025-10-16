@@ -15,10 +15,10 @@
  */
 #include <memory>
 #include "common/common_test.h"
-#include "include/cxx_api/model.h"
-#include "include/cxx_api/context.h"
-#include "include/cxx_api/serialization.h"
-#include "include/cxx_api/metrics/accuracy.h"
+#include "include/api/model.h"
+#include "include/api/context.h"
+#include "include/api/serialization.h"
+#include "include/api/metrics/accuracy.h"
 
 namespace mindspore {
 namespace {

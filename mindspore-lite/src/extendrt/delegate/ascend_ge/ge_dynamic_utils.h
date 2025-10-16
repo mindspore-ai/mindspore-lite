@@ -20,7 +20,7 @@
 #include <vector>
 #include <map>
 #include <utility>
-#include "include/cxx_api/context.h"
+#include "include/api/context.h"
 #include "include/model.h"
 #include "backend/ge_backend/graph_ir/types.h"
 #include "extendrt/session/lite_graph_executor.h"

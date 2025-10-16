@@ -23,7 +23,7 @@
 
 #include "src/tensor.h"
 #include "include/errorcode.h"
-#include "include/cxx_api/kernel.h"
+#include "include/api/kernel.h"
 #include "src/litert/inner_context.h"
 #include "runtime/hardware_abstract/kernel_base/kernel.h"
 #include "extendrt/mindir_loader/abstract_kernel.h"

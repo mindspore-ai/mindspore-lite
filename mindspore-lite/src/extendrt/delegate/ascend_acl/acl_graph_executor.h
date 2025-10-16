@@ -21,9 +21,9 @@
 #include <memory>
 #include <map>
 
-#include "include/cxx_api/context.h"
-#include "include/cxx_api/status.h"
-#include "include/cxx_api/types.h"
+#include "include/api/context.h"
+#include "include/api/status.h"
+#include "include/api/types.h"
 #include "extendrt/session/lite_graph_executor.h"
 #include "common/config_infos.h"
 #include "src/common/common.h"

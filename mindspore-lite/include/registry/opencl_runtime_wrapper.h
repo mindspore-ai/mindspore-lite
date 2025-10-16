@@ -25,9 +25,9 @@
 #include <utility>
 #include <type_traits>
 #include "CL/cl2.hpp"
-#include "include/cxx_api/allocator.h"
-#include "include/cxx_api/status.h"
-#include "include/cxx_api/dual_abi_helper.h"
+#include "include/api/allocator.h"
+#include "include/api/status.h"
+#include "include/api/dual_abi_helper.h"
 
 namespace mindspore::registry::opencl {
 class MS_API OpenCLRuntimeWrapper {

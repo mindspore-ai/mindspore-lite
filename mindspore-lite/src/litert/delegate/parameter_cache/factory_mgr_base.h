@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_DELEGATE_PARAMETER_CACHE_FACTORY_MGR_BASE_H_
 #include <map>
 #include <memory>
-#include "include/cxx_api/status.h"
+#include "include/api/status.h"
 
 namespace mindspore {
 namespace lite {

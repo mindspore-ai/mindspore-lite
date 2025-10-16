@@ -16,7 +16,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "include/cxx_api/model_group.h"
+#include "include/api/model_group.h"
 #include "src/common/file_utils.h"
 
 namespace mindspore {

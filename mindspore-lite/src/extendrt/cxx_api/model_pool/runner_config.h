@@ -19,7 +19,7 @@
 #include <string>
 #include <map>
 #include <vector>
-#include "include/cxx_api/model_parallel_runner.h"
+#include "include/api/model_parallel_runner.h"
 namespace mindspore {
 struct RunnerConfig::Data {
   int workers_num = 0;

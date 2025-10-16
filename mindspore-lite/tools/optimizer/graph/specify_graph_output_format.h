@@ -19,8 +19,8 @@
 
 #include "include/backend/optimizer/pass.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "include/cxx_api/format.h"
-#include "include/cxx_api/types.h"
+#include "include/api/format.h"
+#include "include/api/types.h"
 #include "include/registry/converter_context.h"
 
 namespace mindspore {

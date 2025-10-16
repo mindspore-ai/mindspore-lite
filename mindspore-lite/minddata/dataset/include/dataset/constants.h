@@ -20,7 +20,7 @@
 #include <limits>
 #include <random>
 
-#include "include/cxx_api/visible.h"
+#include "include/api/visible.h"
 
 namespace mindspore {
 namespace dataset {

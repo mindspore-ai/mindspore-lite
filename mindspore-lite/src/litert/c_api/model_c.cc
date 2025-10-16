@@ -16,9 +16,9 @@
 #include "include/c_api/model_c.h"
 #include <vector>
 #include <cstdint>
-#include "include/cxx_api/context.h"
-#include "include/cxx_api/serialization.h"
-#include "include/cxx_api/types.h"
+#include "include/api/context.h"
+#include "include/api/serialization.h"
+#include "include/api/types.h"
 #include "src/litert/cxx_api/tensor/tensor_impl.h"
 
 namespace mindspore {

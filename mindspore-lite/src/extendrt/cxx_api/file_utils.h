@@ -18,7 +18,7 @@
 
 #include <string>
 #include <vector>
-#include "include/cxx_api/types.h"
+#include "include/api/types.h"
 
 namespace mindspore {
 Buffer ReadFile(const std::string &file);

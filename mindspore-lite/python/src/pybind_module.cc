@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "include/cxx_api/types.h"
+#include "include/api/types.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/numpy.h"
 #include "pybind11/stl.h"

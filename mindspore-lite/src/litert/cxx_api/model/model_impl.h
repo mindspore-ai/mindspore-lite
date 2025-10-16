@@ -24,9 +24,9 @@
 #include <memory>
 #include <utility>
 #include <unordered_map>
-#include "include/cxx_api/model.h"
-#include "include/cxx_api/context.h"
-#include "include/cxx_api/cell.h"
+#include "include/api/model.h"
+#include "include/api/context.h"
+#include "include/api/cell.h"
 #include "src/litert/cxx_api/graph/graph_data.h"
 #include "src/litert/inner_context.h"
 #include "src/litert/lite_session.h"

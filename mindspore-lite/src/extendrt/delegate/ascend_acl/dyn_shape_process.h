@@ -21,7 +21,7 @@
 #include <memory>
 #include <string>
 #include "extendrt/delegate/ascend_acl/acl_model_options.h"
-#include "include/cxx_api/types.h"
+#include "include/api/types.h"
 #include "acl/acl.h"
 #include "acl/acl_mdl.h"
 #include "acl/acl_rt.h"

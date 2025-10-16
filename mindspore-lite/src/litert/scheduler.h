@@ -29,7 +29,7 @@
 #include "src/litert/inner_context.h"
 #include "include/model.h"
 #include "src/litert/scheduler_cb.h"
-#include "include/cxx_api/delegate.h"
+#include "include/api/delegate.h"
 #include "src/control_flow/control_flow_scheduler.h"
 #include "src/litert/runtime_shape_fusion_pass.h"
 

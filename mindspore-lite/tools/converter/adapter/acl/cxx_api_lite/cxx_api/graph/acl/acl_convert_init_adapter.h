@@ -22,7 +22,7 @@
 #include <string>
 #include "acl/acl_base.h"
 #include "ge/ge_ir_build.h"
-#include "include/cxx_api/visible.h"
+#include "include/api/visible.h"
 
 namespace mindspore {
 class MS_API AclConvertInitAdapter {

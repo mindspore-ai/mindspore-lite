@@ -21,7 +21,7 @@
 #include <mutex>
 #include <vector>
 #include "acl/acl_base.h"
-#include "include/cxx_api/visible.h"
+#include "include/api/visible.h"
 
 namespace mindspore {
 class AclInitAdapter {

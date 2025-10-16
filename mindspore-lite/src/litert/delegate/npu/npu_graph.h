@@ -21,7 +21,7 @@
 #include <queue>
 #include <map>
 #include <utility>
-#include "include/cxx_api/kernel.h"
+#include "include/api/kernel.h"
 #include "src/litert/delegate/npu/op/npu_op.h"
 #include "src/litert/delegate/npu/npu_executor.h"
 

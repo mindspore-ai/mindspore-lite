@@ -17,7 +17,7 @@
 #define MINDSPORE_LITE_SRC_EXTENDRT_ASCEND_GE_GE_PLUGIN_IMPL_H_
 
 #include <memory>
-#include "include/cxx_api/status.h"
+#include "include/api/status.h"
 #include "src/common/log_adapter.h"
 #include "extendrt/delegate/plugin/ascend_ge_executor_plugin.h"
 #include "extendrt/delegate/ascend_ge/ge_device_context.h"

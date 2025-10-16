@@ -1,4 +1,10 @@
 ---
+BasedOnStyle: LLVM
+IndentWidth: 4
+---
+Language: ObjC
+BasedOnStyle: LLVM
+---
 Language:        Cpp
 # BasedOnStyle:  Google
 AccessModifierOffset: -1

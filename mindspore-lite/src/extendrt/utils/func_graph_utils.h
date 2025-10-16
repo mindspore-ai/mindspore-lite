@@ -27,9 +27,9 @@
 #include "ir/anf.h"
 #include "ir/dtype/type.h"
 #include "ir/func_graph.h"
-#include "include/cxx_api/data_type.h"
-#include "include/cxx_api/types.h"
-#include "include/cxx_api/status.h"
+#include "include/api/data_type.h"
+#include "include/api/types.h"
+#include "include/api/status.h"
 #include "runtime/hardware_abstract/kernel_base/kernel.h"
 #include "include/common/utils/anfalgo.h"
 

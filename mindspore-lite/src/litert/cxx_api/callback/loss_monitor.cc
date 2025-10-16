@@ -18,7 +18,7 @@
 #include <vector>
 #include <memory>
 #include "include/train/loss_monitor.h"
-#include "include/cxx_api/callback/loss_monitor.h"
+#include "include/api/callback/loss_monitor.h"
 #include "src/litert/cxx_api/callback/callback_impl.h"
 #include "src/common/log_adapter.h"
 

@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "include/cxx_api/model.h"
-#include "include/cxx_api/context.h"
+#include "include/api/model.h"
+#include "include/api/context.h"
 #include "extendrt/cxx_api/model/model_impl.h"
 #include "src/common/config_file.h"
 #include "src/common/common.h"

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "include/cxx_api/serialization.h"
+#include "include/api/serialization.h"
 #include <fstream>
 #include <sstream>
 #include "cxx_api/graph/graph_data.h"

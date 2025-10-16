@@ -17,7 +17,7 @@
 #include <string>
 #include <iostream>
 #include "common/common_test.h"
-#include "include/cxx_api/serialization.h"
+#include "include/api/serialization.h"
 
 namespace mindspore {
 class TestCxxApiLiteSerialization : public mindspore::CommonTest {

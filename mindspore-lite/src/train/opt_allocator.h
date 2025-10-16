@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_SRC_TRAIN_OPT_ALLOCATOR_H_
 
 #include <map>
-#include "include/cxx_api/allocator.h"
+#include "include/api/allocator.h"
 
 namespace mindspore {
 class OptAllocator {
@@ -37,5 +37,5 @@ class OptAllocator {
   size_t heap_ = 0;
   size_t align_size_;
 };
-};      // namespace mindspore
+};  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_TRAIN_OPT_ALLOCATOR_H_
