@@ -36,6 +36,9 @@
 #if GPU_OPENCL
 #include "src/litert/kernel/gpu/opencl/opencl_runtime.h"
 #endif
+#ifdef ENABLE_DSP
+#include "src/litert/kernel/dsp/dsp_runtime.h"
+#endif
 #include "src/litert/scheduler_cb.h"
 #include "src/executor/sub_graph_kernel.h"
 
@@ -180,6 +183,7 @@ class MS_API LiteSession {
   int CreateCoreMLDelegate();
   int InitDelegate();
   int InitGPURuntime();
+  int InitDSPRuntime();
   int InitSharedThreadPool();
   int ReshapeWeightTensor(lite::Tensor *orig_tensor, lite::Tensor *new_tensor);
 
@@ -233,6 +237,9 @@ class MS_API LiteSession {
   friend class TransferSession;
 #if GPU_OPENCL
   opencl::OpenCLRuntimeInnerWrapper *opencl_runtime_wrapper_{nullptr};
+#endif
+#ifdef ENABLE_DSP
+  dsp::DSPRuntimeInnerWrapper *dsp_runtime_wrapper_{nullptr};
 #endif
 
   // In the dynamic shape scene, the flag is to indicate when to do shape-infer for kernel. If true, the shape-infer

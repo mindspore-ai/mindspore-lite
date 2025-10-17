@@ -188,11 +188,14 @@ int KernelRegistry::GetCustomKernel(const std::vector<Tensor *> &in_tensors, con
     if (kernel_exec != nullptr) {
       constexpr auto kArchCPU = "CPU";
       constexpr auto kArchGPU = "GPU";
+      constexpr auto kArchDSP = "DSP";
       kernel::KernelKey tmp_key = key;
       if (desc.arch == kArchCPU) {
         tmp_key.arch = kernel::kCPU;
       } else if (desc.arch == kArchGPU) {
         tmp_key.arch = kernel::kGPU;
+      } else if (desc.arch == kArchDSP) {
+        tmp_key.arch = kernel::kDSP;
       } else {
         tmp_key.arch = kernel::kCustom;
       }

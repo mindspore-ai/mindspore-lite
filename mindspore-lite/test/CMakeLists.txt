@@ -74,6 +74,13 @@ if(MSLITE_GPU_BACKEND STREQUAL opencl)
     endif()
 endif()
 
+if(MSLITE_ENABLE_DSP)
+    file(GLOB_RECURSE TEST_GPU_UT_SRC
+        ${TEST_DIR}/ut/src/runtime/kernel/dsp/*.cc
+        )
+    list(APPEND TEST_UT_SRC ${TEST_GPU_UT_SRC})
+endif()
+
 if(MSLITE_GPU_BACKEND STREQUAL cuda)
     set(CUDA_PATH $ENV{CUDA_HOME})
     include_directories(${CUDA_PATH}/include)

@@ -1153,6 +1153,13 @@ int LiteSession::Init(const std::shared_ptr<InnerContext> &context) {
     return ret;
   }
 
+  ret = InitDSPRuntime();
+  if (ret != RET_OK) {
+    MS_LOG(ERROR) << "Init DSP runtime failed.";
+    is_running_.store(false);
+    return ret;
+  }
+
   is_running_.store(false);
   return RET_OK;
 }
@@ -1218,6 +1225,10 @@ LiteSession::~LiteSession() {
 #ifdef GPU_OPENCL
   delete opencl_runtime_wrapper_;
   opencl_runtime_wrapper_ = nullptr;
+#endif
+#ifdef ENABLE_DSP
+  delete dsp_runtime_wrapper_;
+  dsp_runtime_wrapper_ = nullptr;
 #endif
   delete ms_context_;
   ms_context_ = nullptr;
@@ -1736,6 +1747,26 @@ int LiteSession::RuntimeAllocatorSetData() {
     }
     tensor->set_data(int8_data + iter.second);
   }
+  return RET_OK;
+}
+
+int LiteSession::InitDSPRuntime() {
+#ifdef ENABLE_DSP
+  if (this->context_->IsDeviceTypeEnabled(DT_DSP)) {
+    dsp_runtime_wrapper_ = new (std::nothrow) dsp::DSPRuntimeInnerWrapper();
+    if (dsp_runtime_wrapper_ == nullptr) {
+      MS_LOG(ERROR) << "create DSPRuntimeInnerWrapper failed";
+      return RET_ERROR;
+    }
+    auto dsp_runtime = dsp_runtime_wrapper_->GetInstance();
+    if (dsp_runtime->Init() != RET_OK) {
+      this->context_->device_list_ = {{DT_CPU, {false, MID_CPU}}};
+      MS_LOG(WARNING) << "Init DSP runtime failed, change to CPU mode.";
+    } else {
+      MS_LOG(INFO) << "Init DSP runtime success.";
+    }
+  }
+#endif
   return RET_OK;
 }
 

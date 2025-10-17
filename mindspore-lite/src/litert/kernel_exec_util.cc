@@ -25,6 +25,9 @@
 #include "src/litert/kernel/opencl/opencl_subgraph.h"
 #include "src/litert/kernel/gpu/opencl/opencl_runtime.h"
 #endif
+#if ENABLE_DSP
+#include "src/litert/kernel/dsp/dsp_subgraph.h"
+#endif
 #include "src/control_flow/control_subgraph_creator.h"
 #include "src/litert/kernel/cpu/base/partial_fusion.h"
 
@@ -417,6 +420,11 @@ SubGraphKernel *KernelExecUtil::CreateSubGraphKernel(const std::vector<KernelExe
     } break;
     case kAclSubGraph: {
       sub_graph = new (std::nothrow) AclSubGraph(input_kernels, output_kernels, kernels, lite_kernel);
+    } break;
+    case kDspSubGraph: {
+#if ENABLE_DSP
+      sub_graph = new (std::nothrow) DspSubGraph(input_kernels, output_kernels, kernels, lite_kernel);
+#endif
     } break;
     default: {
       MS_LOG(ERROR) << "not support subgraph type: " << type;

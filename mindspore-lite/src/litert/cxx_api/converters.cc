@@ -78,6 +78,15 @@ Status ContextUtils::AddAscendDevice(lite::InnerContext *inner_context, DeviceIn
   return kSuccess;
 }
 
+Status ContextUtils::AddDspDevice(lite::InnerContext *inner_context, DeviceInfoContext *device) {
+  lite::DeviceInfo device_info;
+  auto dsp_context = device->Cast<DSPDeviceInfo>();
+  device_info.dsp_device_info_ = {dsp_context->GetDeviceID()};
+  inner_context->device_list_.push_back(
+    {lite::DT_DSP, device_info, dsp_context->GetProvider(), dsp_context->GetProviderDevice()});
+  return kSuccess;
+}
+
 Status ContextUtils::AddCustomDevice(lite::InnerContext *inner_context,
                                      const std::shared_ptr<DeviceInfoContext> &device) {
   lite::DeviceInfo device_info;
@@ -161,6 +170,8 @@ std::shared_ptr<lite::InnerContext> ContextUtils::Convert(Context *context) {
       ret = AddNpuDevice(npu_context->GetEnableFP16(), npu_context->GetFrequency(), inner_context.get());
     } else if (device->GetDeviceType() == kAscend) {
       ret = AddAscendDevice(inner_context.get(), device.get());
+    } else if (device->GetDeviceType() == kDSP) {
+      ret = AddDspDevice(inner_context.get(), device.get());
     } else if (device->GetDeviceType() == kCustomDevice) {
       ret = AddCustomDevice(inner_context.get(), device);
     }

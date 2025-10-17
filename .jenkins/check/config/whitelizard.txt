@@ -27,6 +27,8 @@ mindspore-lite/mindspore-lite/src/litert/kernel/opencl/kernel/fullconnection.cc:
 mindspore-lite/mindspore-lite/src/litert/scheduler.cc:mindspore::lite::Scheduler::FindBackendKernel
 mindspore-lite/mindspore-lite/src/litert/thread_pool.c:GetArch
 mindspore-lite/mindspore-lite/src/train/train_loop.cc:mindspore::lite::TrainLoop::Train
+mindspore-lite/mindspore-lite/src/common/utils.h:mindspore::lite::DataTypeSize
+mindspore-lite/mindspore-lite/src/litert/scheduler.cc:mindspore::lite::Scheduler::FindProviderKernel
 
 # minddata
 mindspore-lite/mindspore-lite/minddata/dataset/engine/datasetops/data_queue_op.cc:mindspore::dataset::DataQueueOp::SendDataToAscend

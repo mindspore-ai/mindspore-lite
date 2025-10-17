@@ -34,6 +34,13 @@ check_Hi35xx() {
   fi
 }
 
+check_dsp_sdk() {
+  if [[ "X${DSP_SDK_PATH}" == "X" ]]; then
+    echo "error: to compile the runtime package of DSP, you need to set DSP_SDK_PATH to declare the path of DSP sdk."
+    exit 1
+  fi
+}
+
 get_version() {
     VERSION_STR=$(cat ${BASEPATH}/version.txt)
 }
@@ -391,6 +398,7 @@ build_lite() {
       TOOLCHAIN_NAME=${MSLITE_MICRO_PLATFORM}
     elif [[ ("${MSLITE_REGISTRY_DEVICE}" == "ft04" || "${MSLITE_REGISTRY_DEVICE}" == "ft78") && "${local_lite_platform}" == "arm32" ]]; then
       TOOLCHAIN_NAME="cortex-a15"
+      check_dsp_sdk
     fi
 
     machine=`uname -m`

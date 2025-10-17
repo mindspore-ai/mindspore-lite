@@ -20,6 +20,7 @@
 #include <ctime>
 #include <cstdint>
 #include <vector>
+#include <complex>
 #include <set>
 #include <limits>
 #include <cmath>
@@ -342,6 +343,10 @@ inline size_t DataTypeSize(TypeId type) {
       return 0;
     case kMetaTypeTypeType:
       return sizeof(int);
+    case kNumberTypeComplex64:
+      return sizeof(std::complex<float>);
+    case kNumberTypeComplex128:
+      return sizeof(std::complex<double>);
     default:
       MS_LOG(ERROR) << "Not support the type: " << type;
       return 0;

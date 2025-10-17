@@ -89,6 +89,13 @@ class Scheduler {
                     OpParameter *op_parameter, const kernel::KernelKey &desc, kernel::KernelExec **kernel,
                     TypeId prefer_data_type);
 #endif
+
+#ifdef ENABLE_DSP
+  int FindDspKernel(const std::vector<Tensor *> &in_tensors, const std::vector<Tensor *> &out_tensors,
+                    OpParameter *op_parameter, const kernel::KernelKey &desc, kernel::KernelExec **kernel,
+                    TypeId prefer_data_type);
+#endif
+
   int FindProviderKernel(const std::vector<Tensor *> &in_tensors, const std::vector<Tensor *> &out_tensors,
                          const LiteGraph::Node *node, TypeId data_type, kernel::KernelExec **kernel);
 
