@@ -387,9 +387,10 @@ fi
 echo "---------- Run MindSpore Lite API ----------"
 cd ${basepath}/python/python_api/  || exit 1 
 cp -r ${ms_models_path}/sd1.5_unet.onnx* . || exit 1 # for Model Predict ST
-pytest test_tensor.py -s || exit 1
-pytest test_model.py -s || exit 1
-pytest test_model_parallel_runner.py -s || exit 1
+pytest test_tensor.py || exit 1
+pytest test_model.py || exit 1
+pytest test_model_parallel_runner.py || exit 1
+pytest test_model_info.py || exit 1
 echo "---------- Run MindSpore Lite API SUCCESS ----------"
 #---------------------------------------------------------
 echo "success"
