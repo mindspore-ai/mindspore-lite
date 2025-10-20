@@ -18,6 +18,12 @@
 #define __STDC_FORMAT_MACROS
 #include <cinttypes>
 #undef __STDC_FORMAT_MACROS
+#include <unordered_map>
+#include <iostream>
+#include <map>
+#include <string>
+#include <vector>
+#include <cstdio>
 #include <algorithm>
 #include <utility>
 #include <regex>
@@ -398,7 +404,8 @@ int BenchmarkBase::CheckThreadNumValid() {
 }
 
 int BenchmarkBase::CheckDeviceTypeValid() {
-  if (flags_->device_ != "CPU" && flags_->device_ != "GPU" && flags_->device_ != "NPU" && flags_->device_ != "Ascend") {
+  if (flags_->device_ != "CPU" && flags_->device_ != "GPU" && flags_->device_ != "NPU" && flags_->device_ != "Ascend" &&
+      flags_->device_ != "DSP") {
     MS_LOG(ERROR) << "Device type:" << flags_->device_ << " is not supported.";
     std::cerr << "Device type:" << flags_->device_ << " is not supported." << std::endl;
     return RET_ERROR;
