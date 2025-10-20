@@ -384,13 +384,13 @@ if [[ ${run_python_status} != 0 ]]; then
 fi
 
 # run python api test
-cd ${basepath}/python/python_api/
-pytest test_tensor.py -s
-ret=$?
-if [ ${ret} -ne 0 ]; then
-  echo "run test_tensor.py failed."
-  exit ${ret}
- fi
+echo "---------- Run MindSpore Lite API ----------"
+cd ${basepath}/python/python_api/  || exit 1 
+cp -r ${ms_models_path}/sd1.5_unet.onnx* . || exit 1 # for Model Predict ST
+pytest test_tensor.py -s || exit 1
+pytest test_model.py -s || exit 1
+pytest test_model_parallel_runner.py -s || exit 1
+echo "---------- Run MindSpore Lite API SUCCESS ----------"
 #---------------------------------------------------------
 echo "success"
 exit 0
