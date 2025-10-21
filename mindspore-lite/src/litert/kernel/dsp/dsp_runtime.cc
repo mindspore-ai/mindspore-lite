@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "src/litert/kernel/dsp/dsp_runtime.h"
 #include <memory>
 #include <numeric>
 #include <string>
@@ -22,7 +23,6 @@
 #include "include/errorcode.h"
 #include "src/common/file_utils.h"
 #include "src/common/log_adapter.h"
-#include "src/litert/kernel/dsp/dsp_runtime.h"
 #include "src/litert/kernel/dsp/dsp_allocator.h"
 #include "hthread/include/hthread_host.h"
 

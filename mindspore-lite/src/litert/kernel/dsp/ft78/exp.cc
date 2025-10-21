@@ -1,6 +1,6 @@
 
 /**
- * Copyright 2019 Huawei Technologies Co., Ltd
+ * Copyright 2025 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -93,7 +93,6 @@ int ExpDSPKernel::ExpRunComplex128() {
 
 int ExpDSPKernel::Run() {
   int ret = -1;
-  MS_LOG(DEBUG) << this->name() << " Running! ";
   uint64_t length = in_tensors_[0]->ElementsNum();
   auto allocator = dsp_runtime_->GetAllocator();
   uint64_t x_device_ptr = allocator->GetDeviceMemPtr(in_tensors_[0]->data());
@@ -120,16 +119,15 @@ int ExpDSPKernel::Run() {
   }
   if (ret != RET_OK) {
     MS_LOG(ERROR) << this->name() << " Run failed! ";
-    return ret;
+    return RET_ERROR;
   }
-  MS_LOG(DEBUG) << this->name() << " Run success! ";
   return RET_OK;
 }
 
 REG_KERNEL(kDSP, kNumberTypeFloat32, PrimitiveType_ExpFusion, DSPKernelCreator<ExpDSPKernel>)
 REG_KERNEL(kDSP, kNumberTypeFloat64, PrimitiveType_ExpFusion, DSPKernelCreator<ExpDSPKernel>)
-REG_KERNEL(kDSP, kNumberTypeInt8, PrimitiveType_ExpFusion, DSPKernelCreator<ExpDSPKernel>);
-REG_KERNEL(kDSP, kNumberTypeInt32, PrimitiveType_ExpFusion, DSPKernelCreator<ExpDSPKernel>);
-REG_KERNEL(kDSP, kNumberTypeComplex64, PrimitiveType_ExpFusion, DSPKernelCreator<ExpDSPKernel>);
-REG_KERNEL(kDSP, kNumberTypeComplex128, PrimitiveType_ExpFusion, DSPKernelCreator<ExpDSPKernel>);
+REG_KERNEL(kDSP, kNumberTypeInt8, PrimitiveType_ExpFusion, DSPKernelCreator<ExpDSPKernel>)
+REG_KERNEL(kDSP, kNumberTypeInt32, PrimitiveType_ExpFusion, DSPKernelCreator<ExpDSPKernel>)
+REG_KERNEL(kDSP, kNumberTypeComplex64, PrimitiveType_ExpFusion, DSPKernelCreator<ExpDSPKernel>)
+REG_KERNEL(kDSP, kNumberTypeComplex128, PrimitiveType_ExpFusion, DSPKernelCreator<ExpDSPKernel>)
 }  // namespace mindspore::kernel

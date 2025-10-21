@@ -51,6 +51,7 @@ file(GLOB_RECURSE CONVERTER_SRC RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/parser/inputs_adjust.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/parser/unify_format.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/adapter/acl/plugin/acl_pass_plugin.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/adapter/dsp/infer/*.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/import/*.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/import/convert_extend_ops/*.cc
         ${SRC_DIR}/extendrt/delegate/plugin/ascend_ge_executor_plugin.cc

@@ -61,6 +61,8 @@ size_t GetMaxMallocSize();
 
 int GetCoreNum();
 
+bool IsPowerOfTwo(int n);
+
 #ifdef __ANDROID__
 uint32_t getHwCap(int hwcap_type);
 #endif
