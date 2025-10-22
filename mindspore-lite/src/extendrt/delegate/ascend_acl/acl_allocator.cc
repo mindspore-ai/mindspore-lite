@@ -247,7 +247,7 @@ Status AclAllocator::CopyDeviceDataToDevice(void *src_device_data, void *dst_dev
     return kLiteError;
   }
   int32_t can_access_peer;
-  ret = aclrtDeviceCanAccessPeer(&can_access_peer, src_device_id, dst_device_id);
+  ret = CALL_ASCEND_API(aclrtDeviceCanAccessPeer, &can_access_peer, src_device_id, dst_device_id);
   if (ret != ACL_SUCCESS || can_access_peer != 1) {
     MS_LOG(ERROR) << "ret: " << ret << ", can_access_peer: " << can_access_peer;
     return kLiteError;
@@ -260,7 +260,7 @@ Status AclAllocator::CopyDeviceDataToDevice(void *src_device_data, void *dst_dev
       return kLiteError;
     }
   }
-  ret = aclrtDeviceEnablePeerAccess(src_device_id, 0);
+  ret = CALL_ASCEND_API(aclrtDeviceEnablePeerAccess, src_device_id, 0);
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "aclrtDeviceEnablePeerAccess failed.";
     return kLiteError;
@@ -270,7 +270,7 @@ Status AclAllocator::CopyDeviceDataToDevice(void *src_device_data, void *dst_dev
     MS_LOG(ERROR) << "aclrtSetDevice failed.";
     return kLiteError;
   }
-  ret = aclrtDeviceEnablePeerAccess(dst_device_id, 0);
+  ret = CALL_ASCEND_API(aclrtDeviceEnablePeerAccess, dst_device_id, 0);
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "aclrtDeviceEnablePeerAccess failed.";
     return kLiteError;

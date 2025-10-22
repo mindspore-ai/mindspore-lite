@@ -21,6 +21,9 @@
 #include <regex>
 #include <map>
 #include <thread>
+#include <set>
+#include <string>
+#include <vector>
 #include "common/log_adapter.h"
 #include "src/common/utils.h"
 #include "src/common/log_util.h"
@@ -264,7 +267,7 @@ std::vector<Format> ModelProcess::GetInputFormat() {
   static const std::map<aclFormat, enum Format> acl_format_map = {
     {ACL_FORMAT_NCHW, NCHW}, {ACL_FORMAT_NHWC, NHWC}, {ACL_FORMAT_ND, NCHW}};
   for (size_t i = 0; i < data_input_num_; ++i) {
-    aclFormat format = aclmdlGetInputFormat(model_desc_, i);
+    aclFormat format = CALL_ASCEND_API(aclmdlGetInputFormat, model_desc_, i);
     auto iter = acl_format_map.find(format);
     if (iter != acl_format_map.end()) {
       input_formats.emplace_back(iter->second);
@@ -1192,7 +1195,7 @@ bool ModelProcess::ResizeDynamicBatchAndImageSize(const std::vector<ShapeVector>
       MS_LOG(ERROR) << "CheckAndGetDynamicDims failed.";
       return false;
     }
-    ret = aclmdlSetInputDynamicDims(infer_id_, inputs_, index, &dynamic_dims);
+    ret = CALL_ASCEND_API(aclmdlSetInputDynamicDims, infer_id_, inputs_, index, &dynamic_dims);
     if (ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "aclmdlSetInputDynamicDims failed.";
       return false;
@@ -1348,7 +1351,7 @@ bool ModelProcess::CheckAndInitInput(const std::vector<MSTensor> &inputs) {
       MS_LOG(ERROR) << "Failed to get dataset buffer of input " << i;
       return false;
     }
-    ret = aclUpdateDataBuffer(data_buffer, input_buffer, info.buffer_size);
+    ret = CALL_ASCEND_API(aclUpdateDataBuffer, data_buffer, input_buffer, info.buffer_size);
     if (ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "Failed to update Data Buffer of input " << i << ", buffer size: " << info.buffer_size
                     << ", input shape: " << input.Shape();
@@ -1409,6 +1412,32 @@ bool ModelProcess::CheckAndInitOutput(const std::vector<MSTensor> *outputs) {
   return true;
 }
 
+Status GetTensorDescDim(aclTensorDesc *tensor_info, size_t j, int64_t *dim) {
+  MS_CHECK_TRUE_MSG(tensor_info != nullptr, kLiteError, "tensor_info is nullptr");
+  MS_CHECK_TRUE_MSG(dim != nullptr, kLiteError, "dim is nullptr");
+
+  if (HAS_ASCEND_API(aclGetTensorDescDimV2)) {
+    auto ret = CALL_ASCEND_API(aclGetTensorDescDimV2, tensor_info, j, dim);
+    MS_CHECK_TRUE_MSG(ret == ACL_SUCCESS, kLiteError, "Get tensor desc dim failed");
+  } else if (HAS_ASCEND_API(aclGetTensorDescDim)) {
+    *dim = CALL_ASCEND_API(aclGetTensorDescDim, tensor_info, j);
+    // -1 means tensor desc or index is invalid. see aclGetTensorDescDim API doc for more details.
+    if (*dim == -1) {
+      MS_LOG(ERROR) << "Get tensor desc dim failed";
+      return kLiteError;
+    }
+  } else {
+    MS_LOG(ERROR) << "Cannot find aclGetTensorDescDimV2 or aclGetTensorDescDim API.";
+    return kLiteError;
+  }
+  // 0 is a invalid dim
+  if (*dim == 0) {
+    MS_LOG(ERROR) << "dim is invalid value. got: 0";
+    return kLiteError;
+  }
+  return kSuccess;
+}
+
 bool ModelProcess::ResetDynamicOutputTensor(const std::vector<MSTensor> *outputs) {
   dyn_out_sys_buf_addr_.clear();
   FreeResourceOutput(&output_infos_, outputs);
@@ -1423,7 +1452,12 @@ bool ModelProcess::ResetDynamicOutputTensor(const std::vector<MSTensor> *outputs
     size_t dim_nums = CALL_ASCEND_API(aclGetTensorDescNumDims, tensor_info);
     ShapeVector shape;
     for (size_t j = 0; j < dim_nums; ++j) {
-      int64_t shape_j = aclGetTensorDescDim(tensor_info, j);
+      int64_t shape_j;
+      auto ret = GetTensorDescDim(tensor_info, j, &shape_j);
+      if (ret != kSuccess) {
+        MS_LOG(ERROR) << "Get tensor desc dim failed, output index: " << i << ", dim index: " << j;
+        return false;
+      }
       shape.emplace_back(shape_j);
     }
     output_info.device_data = acl_device_data;
