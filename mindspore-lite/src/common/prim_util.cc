@@ -36,7 +36,8 @@ static const char *const kInnerOpNames[C20NUM] = {"Inner_ToFormat",           "I
                                                   "Inner_CustomGru",          "Inner_CastGatherReduceFusion",
                                                   "Inner_ReduceConcatFusion", "Inner_AclCustomOp",
                                                   "Inner_CustomMaskedFill",   "Inner_CustomTensorScatterMax",
-                                                  "Inner_CustomIsInf"};
+                                                  "Inner_CustomIsInf",        "Inner_Conv3D",
+                                                  "Inner_GridSampler",        "Inner_ThirdPartyModel"};
 int GetPrimitiveType(const void *primitive, int schema_version) {
   if (primitive == nullptr) {
     return -1;
@@ -56,6 +57,8 @@ const char *PrimitiveCurVersionTypeName(int type) {
     return schema::EnumNamePrimitiveType(static_cast<schema::PrimitiveType>(type));
   } else if (type >= static_cast<int>(schema::PrimitiveType_MAX)) {
     if (type >= PrimType_InnerOpMin && type < PrimType_InnerOpMax) {
+      MS_LOG(INFO) << "Current real type index:" << type << ", expected type index:" << (type - PrimType_InnerOpMin)
+                   << ".";
       return kInnerOpNames[type - PrimType_InnerOpMin];
     }
   }

@@ -58,6 +58,9 @@
 #if defined(MSLITE_ENABLE_CLOUD_INFERENCE) && defined(ENABLE_MINDRT)
 #include "thread/parallel_thread_pool_manager.h"
 #endif
+#ifdef SUPPORT_NPU
+#include "src/litert/delegate/npu/npu_delegate.h"
+#endif
 
 using AbstractBaseModel = mindspore::infer::AbstractBaseModel;
 
@@ -255,6 +258,13 @@ int Scheduler::CheckCpuValid(const std::vector<kernel::KernelExec *> *dst_kernel
   if (context_->IsDeviceTypeEnabled(DT_CPU)) {
     return RET_OK;
   }
+  // Custom model
+  if (dst_kernels->size() == 1 && (*dst_kernels)[0]->name() == "Custom" &&
+      (*dst_kernels)[0]->desc().arch == kernel::KERNEL_ARCH::kDelegate) {
+    MS_LOG(INFO) << "kernel type is " << (*dst_kernels)[0]->name() << " and device type is "
+                 << (*dst_kernels)[0]->desc().arch << ".";
+    return RET_OK;
+  }
   for (auto kernel : *dst_kernels) {
     if (kernel->desc().arch == kernel::KERNEL_ARCH::kCPU) {
       MS_LOG(ERROR) << "kernel: " << kernel->name() << " only support in CPU.";
@@ -406,6 +416,13 @@ int Scheduler::Schedule(std::vector<kernel::KernelExec *> *dst_kernels) {
     return ret;
   }
 
+  for (auto kernel : *dst_kernels) {
+    MS_LOG(DEBUG) << "kernel: [" << kernel->name() << "] "
+                  << "TypeId(" << kernel->desc().data_type << "); "
+                  << "OpType(" << PrimitiveCurVersionTypeName(kernel->desc().type) << "); "
+                  << "format(" << kernel->desc().format << "); "
+                  << "arch(" << kernel->desc().arch << ")";
+  }
   ret = CheckCpuValid(dst_kernels);
   if (ret != RET_OK) {
     MS_LOG(ERROR) << "kernels invalid in set devices.";
@@ -501,6 +518,11 @@ int Scheduler::ReplaceDelegateKernels(std::vector<kernel::KernelExec *> *dst_ker
     MS_LOG(ERROR) << "New delegate model failed.";
     return RET_NULL_PTR;
   }
+
+#ifdef SUPPORT_NPU
+  auto delegate = static_cast<NPUDelegate *>(delegate_.get());
+  delegate->ShallowCopyLiteGraph(this->src_model_->graph_);
+#endif
   auto ret = delegate_->Build(model);
   if (ret != mindspore::kSuccess) {
     delete model;
@@ -1001,8 +1023,8 @@ int Scheduler::FindCpuKernel(const std::vector<Tensor *> &in_tensors, const std:
   MS_CHECK_TRUE_MSG(op_parameter != nullptr, RET_ERROR, "op parameter is nullptr.");
   auto op_type = op_parameter->type_;
   if (!KernelRegistry::GetInstance()->SupportKernel(desc)) {
-    MS_LOG(INFO) << "unsupported op_type: " << PrimitiveCurVersionTypeName(op_type)
-                 << ", data_type: " << desc.data_type;
+    MS_LOG(INFO) << "Unsupported op_type index: " << op_type << ", op_type: " << PrimitiveCurVersionTypeName(op_type)
+                 << ", data_type: " << desc.data_type << ".";
     return RET_NOT_SUPPORT;
   }
   kernel::KernelKey cpu_desc = desc;
@@ -1041,8 +1063,8 @@ int Scheduler::FindCpuKernel(const std::vector<Tensor *> &in_tensors, const std:
   ret = KernelRegistry::GetInstance()->GetKernelExec(in_tensors, out_tensors, context_, ms_context_, cpu_desc,
                                                      op_parameter, kernel);
   if (ret == RET_OK) {
-    MS_LOG(DEBUG) << "Get TypeId(expect = " << kernel_data_type << ", real = " << cpu_desc.data_type
-                  << ") op success: " << PrimitiveCurVersionTypeName(op_type);
+    MS_LOG(INFO) << "Get TypeId(expect = " << kernel_data_type << ", real = " << cpu_desc.data_type
+                 << ") op success: " << PrimitiveCurVersionTypeName(op_type);
     if (is_train_session_) {
       ret = (*kernel)->Prepare();
       RestoreTensorData(&restored_origin_tensors);
@@ -1288,8 +1310,9 @@ kernel::KernelExec *Scheduler::FindBackendKernel(const std::vector<Tensor *> &in
     if (status == RET_OK) {
       return kernel;
     } else {
-      MS_LOG(DEBUG) << "Get fp16 op failed, scheduler to cpu: " << PrimitiveCurVersionTypeName(desc.type) << " "
-                    << node->name_;
+      MS_LOG(INFO) << "Get op failed, scheduler to CPU by node: " << node->name_ << ", prefer_data_type is "
+                   << (prefer_data_type == kNumberTypeFloat16 ? "fp16" : "unknown") << ", desc.type index:" << desc.type
+                   << ", desc.type:" << PrimitiveCurVersionTypeName(desc.type) << ".";
       if (status == RET_ERROR) {
         op_parameters_.erase(node->output_indices_.at(0));
         auto ret = InferNodeShape(node);

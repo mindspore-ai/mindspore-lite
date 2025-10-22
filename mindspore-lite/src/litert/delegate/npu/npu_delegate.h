@@ -21,10 +21,12 @@
 #include <map>
 #include <string>
 #include "include/api/delegate.h"
+#include "include/model.h"
 #include "src/litert/delegate/npu/npu_manager.h"
 #include "src/litert/delegate/npu/pass/npu_pass_manager.h"
 #include "src/litert/delegate/npu/op/npu_op.h"
 #include "src/litert/inner_context.h"
+#include "src/litert/delegate/npu/offline_model_kernel.h"
 
 namespace mindspore::lite {
 class NPUDelegate : public Delegate {
@@ -39,6 +41,12 @@ class NPUDelegate : public Delegate {
   Status Init() override;
 
   Status Build(DelegateModel<schema::Primitive> *model) override;
+  void ShallowCopyLiteGraph(const lite::LiteGraph &liteGraph);
+  void FreeLiteGraph(lite::LiteGraph **liteGraph);
+  bool IsCustomModel() const;
+  bool CheckTensorSupported(const schema::Tensor *primitive);
+  Status buildOfflineModel(DelegateModel<schema::Primitive> *model);
+  Status buildOnlineModel(DelegateModel<schema::Primitive> *model);
 
  protected:
   NPUOp *GetOP(kernel::Kernel *kernel, const schema::Primitive *primitive);
@@ -48,6 +56,7 @@ class NPUDelegate : public Delegate {
 
   Status AddPasses();
 
+  LiteGraph *lite_graph_ = nullptr;
   NPUManager *npu_manager_ = nullptr;
   NPUPassManager *pass_manager_ = nullptr;
   std::map<schema::PrimitiveType, NPUGetOp> op_func_lists_;

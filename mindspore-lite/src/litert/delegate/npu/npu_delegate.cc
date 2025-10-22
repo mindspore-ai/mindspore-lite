@@ -60,9 +60,14 @@
 #include "src/litert/delegate/npu/pass/npu_transform_pass.h"
 #include "src/litert/delegate/npu/pass/npu_insert_transform_pass.h"
 #include "src/litert/delegate/npu/pass/npu_fusion_pass.h"
+#include "src/litert/delegate/npu/offline_model_kernel.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;
+
+namespace {
+constexpr int32_t kNum2 = 2;
+}  // namespace
 
 namespace mindspore::lite {
 NPUDelegate::~NPUDelegate() {
@@ -76,6 +81,7 @@ NPUDelegate::~NPUDelegate() {
     delete pass_manager_;
     pass_manager_ = nullptr;
   }
+  FreeLiteGraph(&lite_graph_);
 }
 
 Status NPUDelegate::AddPasses() {
@@ -197,11 +203,195 @@ Status NPUDelegate::Init() {
   return mindspore::kSuccess;
 }
 
-Status NPUDelegate::Build(DelegateModel<schema::Primitive> *model) {
+void NPUDelegate::ShallowCopyLiteGraph(const lite::LiteGraph &lite_graph) {
+  std::vector<LiteGraph::Node *> node_list;
+  node_list.reserve(lite_graph.all_nodes_.size());
+  MS_LOG(INFO) << "HIAIDelegate ShallowCopyLiteGraph start.";
+  // copy node
+  for (auto node : lite_graph.all_nodes_) {
+    auto new_node = new (std::nothrow) LiteGraph::Node(*node);
+    if (new_node == nullptr) {
+      MS_LOG(ERROR) << "New LiteGraph node failed. Origin node:" << node->name_;
+      for (auto cur_node : node_list) {
+        delete cur_node;
+      }
+      return;
+    }
+    node_list.emplace_back(new_node);
+  }
+  // copy subgraph
+  std::vector<LiteGraph::SubGraph *> subgraph_list;
+  for (auto subgraph : lite_graph.sub_graphs_) {
+    auto new_subgraph = new (std::nothrow) LiteGraph::SubGraph(*subgraph);
+    if (new_subgraph == nullptr) {
+      MS_LOG(ERROR) << "New LiteGraph::Subgraph failed. Origin graph:" << subgraph->name_;
+      for (auto cur_subgraph : subgraph_list) {
+        delete cur_subgraph;
+      }
+      for (auto cur_node : node_list) {
+        delete cur_node;
+      }
+      return;
+    }
+    subgraph_list.emplace_back(new_subgraph);
+  }
+  // check tensor
+  for (auto tensor : lite_graph.all_tensors_) {
+    bool ret = CheckTensorSupported(static_cast<const schema::Tensor *>(tensor));
+    if (!ret) {
+      MS_LOG(ERROR) << "Tensor supported check failed.";
+      for (auto cur_subgraph : subgraph_list) {
+        delete cur_subgraph;
+      }
+      for (auto cur_node : node_list) {
+        delete cur_node;
+      }
+      return;
+    }
+  }
+
+  lite_graph_ = new (std::nothrow) lite::LiteGraph();
+  if (lite_graph_ == nullptr) {
+    MS_LOG(ERROR) << "New LiteGraph failed.";
+    for (auto cur_subgraph : subgraph_list) {
+      delete cur_subgraph;
+    }
+    for (auto cur_node : node_list) {
+      delete cur_node;
+    }
+    return;
+  }
+
+  lite_graph_->name_ = lite_graph.name_;
+  lite_graph_->version_ = lite_graph.version_;
+  lite_graph_->input_indices_ = lite_graph.input_indices_;
+  lite_graph_->output_indices_ = lite_graph.output_indices_;
+  lite_graph_->all_tensors_ = lite_graph.all_tensors_;
+  lite_graph_->all_nodes_ = node_list;
+  lite_graph_->sub_graphs_ = subgraph_list;
+  MS_LOG(INFO) << "NPUDelegate ShallowCopyLiteGraph success. all_tensors_ size " << lite_graph_->all_tensors_.size()
+               << " all_nodes_ size " << lite_graph_->all_nodes_.size() << " sub_graphs_ size "
+               << lite_graph_->sub_graphs_.size() << " sub_graphs_[0] input_indices_ size "
+               << lite_graph_->sub_graphs_[0]->input_indices_.size() << " sub_graphs_[0] output_indices_ size "
+               << lite_graph_->sub_graphs_[0]->output_indices_.size();
+}
+
+void NPUDelegate::FreeLiteGraph(lite::LiteGraph **liteGraph) {
+  if (liteGraph != nullptr && *liteGraph != nullptr) {
+    MS_LOG(INFO) << "start to free LiteGraph.";
+    auto graph = *liteGraph;
+    MS_LOG(INFO) << "Destroying  nodes.";
+
+    for (size_t idx = 0; idx < graph->all_nodes_.size(); idx++) {
+      if (graph->all_nodes_[idx] != nullptr) {
+        delete graph->all_nodes_[idx];
+        graph->all_nodes_[idx] = nullptr;
+      }
+    }
+    MS_LOG(INFO) << "Destroying  subgraphs.";
+
+    for (size_t idx = 0; idx < graph->sub_graphs_.size(); idx++) {
+      if (graph->sub_graphs_[idx] != nullptr) {
+        delete graph->sub_graphs_[idx];
+        graph->sub_graphs_[idx] = nullptr;
+      }
+    }
+    delete graph;
+    *liteGraph = nullptr;
+  } else {
+    MS_LOG(WARNING) << "npu_lite_graph is nullptr, no need to free.";
+  }
+}
+
+bool NPUDelegate::IsCustomModel() const {
+  // check if there is only one Cutsom kernel in LiteModel.
+  if (lite_graph_ == nullptr) {
+    MS_LOG(ERROR) << "Current lite graph is null.";
+    return false;
+  }
+  if (lite_graph_->all_nodes_.size() != 1) {
+    MS_LOG(ERROR) << "Current node num in lite graph is:" << lite_graph_->all_nodes_.size() << ".";
+    return false;
+  }
+  auto node = lite_graph_->all_nodes_[0];
+  if (node == nullptr) {
+    MS_LOG(ERROR) << "Current node is null in lite graph.";
+    return false;
+  }
+  if (node->node_type_ != mindspore::schema::PrimitiveType_Custom) {
+    MS_LOG(ERROR) << "Current node type is:" << node->node_type_ << ", expected type is PrimitiveType_Custom.";
+    return false;
+  }
+  return true;
+}
+
+bool NPUDelegate::CheckTensorSupported(const schema::Tensor *primitive) {
+  if (primitive == nullptr) {
+    MS_LOG(ERROR) << "primitive is nullptr, which type is Tensor.";
+    return false;
+  }
+
+  int32_t data_type = primitive->dataType();
+  if (data_type <= kTypeUnknown || data_type >= kMonadTypeEnd) {
+    MS_LOG(ERROR) << "invalid data type. " << data_type;
+    return false;
+  }
+
+  if (primitive->dims() == nullptr) {
+    MS_LOG(ERROR) << "Dims of tensor is nullptr";
+    return false;
+  }
+
+  if (data_type == kObjectTypeTensorType) {
+    MS_LOG(ERROR) << "Not support TensorList.";
+    return false;
+  }
+
+  if (primitive->data() == nullptr || primitive->data()->size() <= 0) {
+    MS_LOG(DEBUG) << "No valid data converted.";
+    return true;
+  }
+  return true;
+}
+
+Status NPUDelegate::buildOfflineModel(DelegateModel<schema::Primitive> *model) {
+  MS_LOG(INFO) << "enable npu offline model infer.";
+
+  // Get Node Tensor
+  auto node = lite_graph_->all_nodes_[0];
+  MS_CHECK_TRUE_RET(node != nullptr, kLiteError);
+  auto input_num = node->input_indices_.size();
+
+  // at least one input and one OM model buffer(as the last constant input)
+  MS_CHECK_TRUE_RET(input_num >= kNum2, kLiteError);
+  MS_CHECK_TRUE_RET(lite_graph_->all_tensors_.size() >= kNum2, kLiteError);
+  auto input_tensor = lite_graph_->all_tensors_[node->input_indices_[0]];
+  MS_CHECK_TRUE_RET(input_tensor != nullptr, kLiteError);
+  auto model_tensor = lite_graph_->all_tensors_[node->input_indices_[input_num - 1]];
+  MS_CHECK_TRUE_RET(model_tensor != nullptr, kLiteError);
+  MS_CHECK_TRUE_RET(model_tensor->data() != nullptr, kLiteError);
+  uint8_t *model_buffer = const_cast<uint8_t *>(model_tensor->data()->data());
+  size_t model_size = model_tensor->data()->size();
+  MS_LOG(DEBUG) << "Model input size:" << model->inputs().size() << ", output size:" << model->outputs().size() << ".";
+  // create offlineModelKernel
+  auto offline_model_kernel =
+    new (std::nothrow) OfflineModelKernel(model->inputs(), model->outputs(), model_buffer, model_size);
+  if (offline_model_kernel == nullptr) {
+    MS_LOG(ERROR) << "new OfflineModelKernel failed.";
+    return mindspore::kLiteError;
+  }
+  (void)model->Replace(model->BeginKernelIterator(), model->EndKernelIterator(), offline_model_kernel);
+  MS_LOG(INFO) << "Replace kernel in NPUDelegate success.";
+  return mindspore::kSuccess;
+}
+
+Status NPUDelegate::buildOnlineModel(DelegateModel<schema::Primitive> *model) {
   KernelIter from;
   KernelIter end;
   std::vector<NPUOp *> npu_ops;
   int graph_index = 0;
+
+  MS_LOG(INFO) << "enable npu online model infer.";
   for (auto iter = model->BeginKernelIterator(); iter != model->EndKernelIterator(); iter++) {
     kernel::Kernel *kernel = *iter;
     auto npu_op = GetOP(kernel, model->GetPrimitive(kernel));
@@ -241,6 +431,14 @@ Status NPUDelegate::Build(DelegateModel<schema::Primitive> *model) {
     return mindspore::kLiteError;
   }
   return mindspore::kSuccess;
+}
+
+Status NPUDelegate::Build(DelegateModel<schema::Primitive> *model) {
+  if (IsCustomModel()) {
+    return buildOfflineModel(model);
+  } else {
+    return buildOnlineModel(model);
+  }
 }
 
 NPUOp *NPUDelegate::GetOP(kernel::Kernel *kernel, const schema::Primitive *primitive) {

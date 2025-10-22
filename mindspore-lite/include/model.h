@@ -42,6 +42,7 @@ struct MS_API LiteGraph {
     std::vector<uint32_t> output_indices_;
     int quant_type_;
     int device_type_ = -1;
+    Node() = default;
   };
   struct SubGraph {
     std::string name_;
@@ -49,6 +50,7 @@ struct MS_API LiteGraph {
     std::vector<uint32_t> output_indices_;
     std::vector<uint32_t> node_indices_;
     std::vector<uint32_t> tensor_indices_;
+    SubGraph() = default;
   };
   std::string name_;
   std::string version_;

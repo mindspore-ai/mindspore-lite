@@ -81,4 +81,25 @@ void BinaryMaskData2Bool(int src_mask, bool *dst_mask, size_t mask_size) {
 bool IsSubGraphInputTensor(const std::vector<mindspore::MSTensor> &inputs, mindspore::MSTensor input) {
   return std::find(inputs.begin(), inputs.end(), input) != inputs.end();
 }
+
+#ifdef SUPPORT_NPU
+hiai::HIAI_DataType MSDataTypeToHIAIDataType(DataType ms_dtype) {
+  static const std::unordered_map<DataType, hiai::HIAI_DataType> ms_dtype_to_hiai_dtype_map = {
+    {DataType::kNumberTypeUInt8, hiai::HIAI_DataType::HIAI_DATATYPE_UINT8},
+    {DataType::kNumberTypeInt8, hiai::HIAI_DataType::HIAI_DATATYPE_INT8},
+    {DataType::kNumberTypeInt16, hiai::HIAI_DataType::HIAI_DATATYPE_INT16},
+    {DataType::kNumberTypeInt32, hiai::HIAI_DataType::HIAI_DATATYPE_INT32},
+    {DataType::kNumberTypeUInt32, hiai::HIAI_DataType::HIAI_DATATYPE_UINT32},
+    {DataType::kNumberTypeInt64, hiai::HIAI_DataType::HIAI_DATATYPE_INT64},
+    {DataType::kNumberTypeFloat16, hiai::HIAI_DataType::HIAI_DATATYPE_FLOAT16},
+    {DataType::kNumberTypeFloat32, hiai::HIAI_DataType::HIAI_DATATYPE_FLOAT32},
+    {DataType::kNumberTypeFloat64, hiai::HIAI_DataType::HIAI_DATATYPE_DOUBLE},
+  };
+  auto it = ms_dtype_to_hiai_dtype_map.find(ms_dtype);
+  if (it != ms_dtype_to_hiai_dtype_map.end()) {
+    return it->second;
+  }
+  return hiai::HIAI_DataType::HIAI_DATATYPE_FLOAT32;
+}
+#endif
 }  // namespace mindspore::lite
