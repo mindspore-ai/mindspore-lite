@@ -21,71 +21,12 @@
 #include <set>
 #include <algorithm>
 #include <map>
-#include "infer/return.h"
-#include "tools/converter/export_model.h"
-#include "infer/make_tuple.h"
 #include "mindspore/core/include/ir/graph_utils.h"
+#include "tools/optimizer/common/gllo_utils.h"
 
 namespace mindspore::opt {
 namespace {
 constexpr size_t kTargetNodeSize = 2;
-}
-
-STATUS BuildReturnNode(const FuncGraphPtr &anf_graph, const std::vector<AnfNodePtr> &return_inputs) {
-  MS_CHECK_TRUE_RET(anf_graph != nullptr, lite::RET_NULL_PTR);
-  auto return_prim = std::make_shared<ops::Return>();
-  if (return_prim == nullptr) {
-    MS_LOG(ERROR) << "new return failed!";
-    return lite::RET_NULL_PTR;
-  }
-  if (return_inputs.empty()) {
-    MS_LOG(ERROR) << "return input is empty";
-    return lite::RET_ERROR;
-  }
-  auto final_return = return_inputs;
-  AbstractBasePtr abstract = nullptr;
-  if (return_inputs.size() == 1) {
-    anf_graph->set_output(return_inputs.front(), false);
-    abstract = return_inputs.front()->abstract();
-  } else if (return_inputs.size() > 1) {
-    auto make_tuple_prim_ptr = std::make_shared<ops::MakeTuple>();
-    if (make_tuple_prim_ptr == nullptr) {
-      MS_LOG(DEBUG) << "new maketyple failed";
-      return lite::RET_NULL_PTR;
-    }
-    AbstractBasePtrList elem;
-    std::transform(return_inputs.begin(), return_inputs.end(), std::back_inserter(elem),
-                   [](auto &node) { return node->abstract(); });
-    auto make_tuple_prim_c = make_tuple_prim_ptr->GetPrim();
-    MS_CHECK_TRUE_MSG(make_tuple_prim_c != nullptr, lite::RET_NULL_PTR, "make_tuple_prim_c is nullptr!");
-    auto make_tuple_cnode = anf_graph->NewCNode(make_tuple_prim_c, return_inputs);
-    if (make_tuple_cnode == nullptr) {
-      MS_LOG(ERROR) << "new cnode failed!";
-      return lite::RET_NULL_PTR;
-    }
-    make_tuple_cnode->set_fullname_with_scope("return tuple");
-    make_tuple_cnode->set_abstract(std::make_shared<abstract::AbstractTuple>(elem));
-    abstract = make_tuple_cnode->abstract();
-    final_return = {make_tuple_cnode};
-  } else {
-    MS_LOG(ERROR) << "Return inputs is 0!";
-    return lite::RET_ERROR;
-  }
-  if (abstract == nullptr) {
-    MS_LOG(ERROR) << "Input node abstract is null, node:" << final_return.front()->fullname_with_scope();
-    return lite::RET_ERROR;
-  }
-  auto return_prim_c = return_prim->GetPrim();
-  CHECK_NULL_RETURN(return_prim_c);
-  auto return_cnode = anf_graph->NewCNode(return_prim_c, final_return);
-  if (return_cnode == nullptr) {
-    MS_LOG(ERROR) << "new cnode error";
-    return lite::RET_ERROR;
-  }
-  return_cnode->set_fullname_with_scope("Return");
-  return_cnode->set_abstract(abstract);
-  anf_graph->set_return(return_cnode);
-  return lite::RET_OK;
 }
 
 bool IsWeight(const AnfNodePtr &node) {
@@ -677,7 +618,7 @@ bool GraphSplitPass::Run(const FuncGraphPtr &original_graph) {
     for (auto subgraph_output : subgraph_output_vec[i]) {
       subgraph_output_names[i].push_back(subgraph_output->fullname_with_scope());
     }
-    if (BuildReturnNode(subgraphs[i], subgraph_output_vec[i]) != lite::RET_OK) {
+    if (BuildReturnNode(subgraphs[i], subgraph_output_vec[i]) != kSuccess) {
       MS_LOG(ERROR) << "build return node failed!";
       return false;
     }

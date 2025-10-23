@@ -387,6 +387,7 @@ fi
 echo "---------- Run MindSpore Lite API ----------"
 cd ${basepath}/python/python_api/  || exit 1 
 cp -r ${ms_models_path}/sd1.5_unet.onnx* . || exit 1 # for Model Predict ST
+cp -r ${ms_models_path}/single_matmul_model.onnx.mindir . || exit 1 # for Update weights ST
 #for code coverage in A2
 if [[ "${MSLITE_ENABLE_COVERAGE}" == "on" || "${MSLITE_ENABLE_COVERAGE}" == "ON" ]]; then
     echo "MSLITE_ENABLE_COVERAGE: ${MSLITE_ENABLE_COVERAGE}, MSLITE_COVERAGE_FILE: ${MSLITE_COVERAGE_FILE}"
@@ -394,13 +395,16 @@ if [[ "${MSLITE_ENABLE_COVERAGE}" == "on" || "${MSLITE_ENABLE_COVERAGE}" == "ON"
     python3 -m coverage run --rcfile=${MSLITE_COVERAGE_FILE} -m pytest test_model.py || exit 1
     python3 -m coverage run --rcfile=${MSLITE_COVERAGE_FILE} -m pytest test_model_parallel_runner.py || exit 1
     python3 -m coverage run --rcfile=${MSLITE_COVERAGE_FILE} -m pytest test_model_info.py || exit 1
+    python3 -m coverage run --rcfile=${MSLITE_COVERAGE_FILE} -m pytest test_update_weight.py || exit 1
 else
     pytest test_tensor.py || exit 1
     pytest test_model.py || exit 1
     pytest test_model_parallel_runner.py || exit 1
     pytest test_model_info.py || exit 1
+    pytest test_update_weight.py || exit 1
 fi
 echo "---------- Run MindSpore Lite API SUCCESS ----------"
 #---------------------------------------------------------
+
 echo "success"
 exit 0

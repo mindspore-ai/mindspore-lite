@@ -59,6 +59,8 @@
 #include "mindspore/core/include/ir/func_graph_flag.h"
 #include "ir/tensor_new.h"
 #include "mindspore/core/include/ir/graph_utils.h"
+#include "mindspore/ops/infer/return.h"
+#include "mindspore/ops/infer/make_tuple.h"
 
 namespace mindspore {
 namespace opt {
@@ -2057,5 +2059,59 @@ STATUS GetPrimFromCnode(const CNodePtr &cnode, PrimitivePtr *prim_ptr) {
   return lite::RET_OK;
 }
 
+Status BuildReturnNode(const FuncGraphPtr &anf_graph, const std::vector<AnfNodePtr> &return_inputs) {
+  MS_CHECK_TRUE_RET(anf_graph != nullptr, kLiteNullptr);
+  auto return_prim = std::make_shared<ops::Return>();
+  if (return_prim == nullptr) {
+    MS_LOG(ERROR) << "new return failed!";
+    return kLiteNullptr;
+  }
+  if (return_inputs.empty()) {
+    MS_LOG(ERROR) << "return input is empty";
+    return kLiteError;
+  }
+  auto final_return = return_inputs;
+  AbstractBasePtr abstract = nullptr;
+  if (return_inputs.size() == 1) {
+    anf_graph->set_output(return_inputs.front(), false);
+    abstract = return_inputs.front()->abstract();
+    MS_CHECK_TRUE_MSG(abstract != nullptr, kLiteNullptr, "abstract is nullptr!");
+  } else if (return_inputs.size() > 1) {
+    auto make_tuple_prim_ptr = std::make_shared<ops::MakeTuple>();
+    if (make_tuple_prim_ptr == nullptr) {
+      MS_LOG(DEBUG) << "new maketyple failed";
+      return kLiteNullptr;
+    }
+    AbstractBasePtrList elem;
+    std::transform(return_inputs.begin(), return_inputs.end(), std::back_inserter(elem),
+                   [](auto &node) { return node->abstract(); });
+    auto make_tuple_prim_c = make_tuple_prim_ptr->GetPrim();
+    MS_CHECK_TRUE_MSG(make_tuple_prim_c != nullptr, kLiteNullptr, "make_tuple_prim_c is nullptr!");
+    auto make_tuple_cnode = anf_graph->NewCNode(make_tuple_prim_c, return_inputs);
+    if (make_tuple_cnode == nullptr) {
+      MS_LOG(ERROR) << "new cnode failed!";
+      return kLiteNullptr;
+    }
+    make_tuple_cnode->set_fullname_with_scope("return tuple");
+    abstract = std::make_shared<abstract::AbstractTuple>(elem);
+    MS_CHECK_TRUE_MSG(abstract != nullptr, kLiteNullptr, "abstract is nullptr!");
+    make_tuple_cnode->set_abstract(abstract);
+    final_return = {make_tuple_cnode};
+  } else {
+    MS_LOG(ERROR) << "Return inputs is 0!";
+    return kLiteError;
+  }
+  auto return_prim_c = return_prim->GetPrim();
+  MS_CHECK_TRUE_MSG(return_prim_c != nullptr, kLiteNullptr, "return_prim_c is nullptr!");
+  auto return_cnode = anf_graph->NewCNode(return_prim_c, final_return);
+  if (return_cnode == nullptr) {
+    MS_LOG(ERROR) << "new cnode error";
+    return kLiteError;
+  }
+  return_cnode->set_fullname_with_scope("Return");
+  return_cnode->set_abstract(abstract);
+  anf_graph->set_return(return_cnode);
+  return kSuccess;
+}
 };  // namespace opt
 }  // namespace mindspore
