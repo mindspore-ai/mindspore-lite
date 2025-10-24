@@ -1,4 +1,4 @@
 [submodule "mindspore"]
 	path = mindspore
 	url = https://gitee.com/mindspore/mindspore.git
-	branch = r2.7.1
+	branch = r2.7.2
