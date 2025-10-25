@@ -170,7 +170,7 @@
 #include "infer/dynamic_quant.h"
 #include "infer/random_normal.h"
 #include "infer/format_transpose.h"
-#include "infer/tensor_scatter_add.h"
+#include "mindspore/ops/op_def/auto_generate/gen_ops_name_t.h"
 #include "infer/decoder_layer.h"
 #include "infer/encoder_layer.h"
 #include "infer/scatter_elements.h"

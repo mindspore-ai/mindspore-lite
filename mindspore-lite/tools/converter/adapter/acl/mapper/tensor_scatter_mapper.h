@@ -18,7 +18,8 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_ADAPTER_ACL_MAPPER_TENSOR_SCATTER_MAPPER_H_
 
 #include "tools/converter/adapter/acl/mapper/primitive_mapper.h"
-#include "infer/tensor_scatter_add.h"
+#include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
+#include "mindspore/ops/op_def/auto_generate/gen_ops_name_t.h"
 
 namespace mindspore {
 namespace lite {
