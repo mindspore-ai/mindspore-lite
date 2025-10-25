@@ -73,7 +73,6 @@ class ModelProcess {
   const std::vector<ShapeVector> GetInputShape();
   const std::vector<TypeId> GetInputDataType();
   const std::vector<TypeId> GetOutputDataType();
-  std::vector<Format> GetOutputFormat();
 
   bool Resize(const std::vector<ShapeVector> &new_shapes);
   uint64_t GetSharableHandle() { return sharable_handle_; }
@@ -89,10 +88,7 @@ class ModelProcess {
 
   bool CheckAndInitInput(const std::vector<MSTensor> &inputs);
   bool CheckAndInitOutput(const std::vector<MSTensor> *outputs);
-  void CheckAndInitDynOutputDeviceBuf(const MSTensor output, const AclTensorInfo &output_info,
-                                      void **output_device_buffer, size_t *output_buf_size, size_t output_idx);
   bool CheckInputTensors(const std::vector<MSTensor> &inputs);
-  bool CheckOutputTensors(const std::vector<MSTensor> *outputs);
   bool CheckAndSetDynFlag();
   Status GetOutputs(const std::vector<MSTensor> *outputs);
 

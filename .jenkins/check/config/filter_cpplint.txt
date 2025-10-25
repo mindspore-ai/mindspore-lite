@@ -64,4 +64,8 @@
 "mindspore-lite/mindspore-lite/python/src/lite_infer_pybind.cc"                                         "runtime/references"
 
 # nnacl
-"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/"                                                   "readability/casting"
+"mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/"                                          "readability/casting"
+
+# ACL
+"mindspore-lite/mindspore-lite/src/extendrt/delegate/ascend_acl/model_infer.cc"                         "whitespace/indent_namespace"
+"mindspore-lite/mindspore-lite/src/extendrt/delegate/ascend_acl/model_process.cc"                       "whitespace/newline"
