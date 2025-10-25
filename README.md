@@ -56,23 +56,23 @@ MindSpore Lite achieves double the inference performance for AIGC, speech algori
 
 <img src="docs/img/MindSpore-Lite-architecture-en.png" alt="MindSpore Lite Architecture" width="800"/>
 
-1. Terminal and Cloud one-stop inference deployment
+1. Device and Cloud one-stop inference deployment
 
-    - Provide end-to-end processes for model transformation optimization, deployment, and inference.
+    - Provide end-to-end workflow for model transformation optimization, deployment, and inference.
 
     - The unified IR realizes the device-cloud AI application integration.
 
 2. Lightweight
 
-    - Provides model compression, which could help to improve performance as well.
+    - Provides model compression, which could help to improve performance.
 
-    - Provides the ultra-lightweight reasoning solution MindSpore Lite Micro to meet the deployment requirements in extreme environments such as smart watches and headphones.
+    - Provides the ultra-lightweight inference solution - MindSpore Lite Micro, to meet the deployment requirements in extreme environments such as smart watches and headphones.
 
 3. High-performance
 
-    - The built-in high-performance kernel computing library NNACL supports high-performance inference for dedicated chips such as CPU, NNRt, and Ascend, maximizing hardware computing power while minimizing inference latency and power consumption.
+    - The built-in kernel computing library NNACL supports high-performance inference for dedicated chips such as CPU, NNRt, and Ascend, maximizing hardware computing power while minimizing inference latency and power consumption.
 
-    - Assembly code to improve performance of kernel operators. Supports CPU, GPU, and NPU.
+    - Use assembly instructions to improve performance of kernels.
 
 4. Versatility
 
