@@ -28,6 +28,8 @@
 "mindspore-lite/mindspore-lite/src/litert/thread_pool.c"                                                "readability/casting"
 "mindspore-lite/mindspore-lite/src/litert/thread_pool.c"                                                "runtime/arrays"
 "mindspore-lite/mindspore-lite/src/litert/thread_pool.c"                                                "runtime/int"
+"mindspore-lite/mindspore-lite/src/extendrt/delegate/ascend_acl/model_process.cc"                       "whitespace/newline"
+"mindspore-lite/mindspore-lite/src/extendrt/delegate/ascend_acl/model_infer.cc"                         "whitespace/indent_namespace"
 "mindspore/mindspore/lite/src/litert/delegate/coreml/coreml_executor.h"                                 "whitespace/parens"
 
 # MindData

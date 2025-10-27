@@ -122,7 +122,7 @@ bool ModelInfer::Init() {
     bool is_device = (run_mode == ACL_DEVICE);
     model_process_.SetIsDevice(is_device);
     MS_LOG(INFO) << "Get run mode success is device input/output " << is_device;
-    ret = aclrtCreateStream(&stream_);
+    ret = CALL_ASCEND_API(aclrtCreateStream, &stream_);
     if (ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "Acl create stream failed";
       return false;
