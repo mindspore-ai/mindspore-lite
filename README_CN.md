@@ -29,7 +29,7 @@ MindSpore Lite针对AIGC、语音类算法以及CV类模型推理，实现推理
 
     - `.mindir`模型：用于服务侧设备的推理，可以更好地兼容MindSpore训练框架导出的模型结构，主要适用于昇腾卡，以及X86/Arm架构的CPU硬件，详细的转换方法可以参考[转换工具教程](https://www.mindspore.cn/lite/docs/zh-CN/master/mindir/converter.html)。
 
-    - `.ms`模型：主要用于端、边设备的推理，主要适用于麒麟NPU、Arm架构CPU等终端硬件。为了更好地降低模型文件大小，`.ms`的模型通过protobuffer进行序列化与反序列化，详细的转换工具使用方式可以参考[转换教程](https://www.mindspore.cn/lite/docs/zh-CN/master/converter/converter_tool.html)。
+    - `.ms`模型：主要用于端、边设备的推理，主要适用于麒麟NPU、Arm架构CPU等终端硬件。为了更好地降低模型文件大小，`.ms`的模型通过flatbuffers进行序列化与反序列化，详细的转换工具使用方式可以参考[转换教程](https://www.mindspore.cn/lite/docs/zh-CN/master/converter/converter_tool.html)。
 
 3. 模型推理
 
