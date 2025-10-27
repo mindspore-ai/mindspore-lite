@@ -5,7 +5,7 @@ mindspore_lite.MultiModelRunner
 
     `MultiModelRunner` 用于创建包含多个Model的mindir，并提供调度多个模型的方式。
 
-    .. py:method:: build_from_file(model_path, model_type, context=None, config_path="", config_dict: dict = None)
+    .. py:method:: build_from_file(model_path, model_type, context=None, config_path="", config_dict=None)
 
         从文件加载并构建模型。
 
@@ -15,24 +15,13 @@ mindspore_lite.MultiModelRunner
             - **context** (Context，可选) - 定义上下文，用于在执行期间传递选项。默认值： ``None``，表示设置target为cpu的Context。
             - **config_path** (str，可选) - 定义配置文件的路径，用于在构建模型期间传递用户定义选项。在以下场景中，用户可能需要设置参数。例如："/home/user/config.txt"。默认值： ``""`` 。
 
-              - **用法1** - 进行混合精度推理的设置，配置文件内容及说明如下：
+              进行混合精度推理的设置，配置文件内容及说明如下：
 
-                .. code-block::
+              .. code-block::
 
-                    [execution_plan]
-                    [op_name1]=data_type:float16（名字为op_name1的算子设置数据类型为float16）
-                    [op_name2]=data_type:float32（名字为op_name2的算子设置数据类型为float32）
-
-              - **用法2** - 在使用GPU推理时，进行TensorRT设置，配置文件内容及说明如下：
-
-                .. code-block::
-
-                    [ms_cache]
-                    serialize_path=[serialization model path]（序列化模型的存储路径）
-                    [gpu_context]
-                    input_shape=input_name:[input_dim]（模型输入维度，用于动态shape）
-                    dynamic_dims=[min_dim~max_dim]（模型输入的动态维度范围，用于动态shape）
-                    opt_dims=[opt_dim]（模型最优输入维度，用于动态shape）
+                  [execution_plan]
+                  [op_name1]=data_type:float16（名字为op_name1的算子设置数据类型为float16）
+                  [op_name2]=data_type:float32（名字为op_name2的算子设置数据类型为float32）
 
             - **config_dict** (dict，可选) - 配置参数字典，当使用该字典配置参数时，优先级高于配置文件。默认值：``None``。
 
