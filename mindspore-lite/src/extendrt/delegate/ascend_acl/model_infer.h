@@ -47,7 +47,6 @@ class ModelInfer {
   const std::vector<std::vector<int64_t>> GetInputShape();
   const std::vector<TypeId> GetInputDataType();
   const std::vector<TypeId> GetOutputDataType();
-  std::vector<Format> GetOutputFormat();
   uint64_t GetSharableHandle() { return sharable_handle_; }
 
   bool Resize(const std::vector<std::vector<int64_t>> &new_shapes);

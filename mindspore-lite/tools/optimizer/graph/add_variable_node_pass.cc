@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2025 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 #include <map>
 #include <unordered_map>
 #include <regex>
+#include <string>
 #include "src/common/log_adapter.h"
 #include "src/common/log_util.h"
 #include "src/common/common.h"
@@ -62,71 +63,7 @@ bool MatchPattern(const std::string &input) {
   std::regex pattern(R"(^([^:;]+):(\d+(?:,\d+)*);([^:;]+)$)");
   return std::regex_match(input, pattern);
 }
-
 }  // namespace
-
-template <typename T>
-ParameterPtr InsertVariableNodePass::BuildZeroVecNDParameterNode(const FuncGraphPtr &anf_graph,
-                                                                 ShapeVector weight_shape, const std::string &node_name,
-                                                                 T value, TypeId dtype) {
-  if (std::find_if(weight_shape.begin(), weight_shape.end(), [](int64_t num) { return num <= 0; }) !=
-      weight_shape.end()) {
-    MS_LOG(ERROR) << "Weight shape has zero or negative value!"
-                  << "node name:" << node_name << ", weight shape:" << weight_shape << "!";
-    return nullptr;
-  }
-  MS_CHECK_TRUE_RET(anf_graph != nullptr, nullptr);
-  auto param_node = anf_graph->add_parameter();
-  MS_CHECK_TRUE_RET(param_node != nullptr, nullptr);
-  param_node->set_name(node_name);
-  int weight_length = kWeightInitLen;
-  for (auto dim : weight_shape) {
-    MS_CHECK_INT_MUL_NOT_OVERFLOW(weight_length, dim, nullptr);
-    weight_length *= dim;
-  }
-
-  std::vector<T> data_1d(weight_length, value);
-  auto size = data_1d.size() * sizeof(T);
-  auto tensor_info = lite::CreateTensorInfo(data_1d.data(), size, weight_shape, dtype);
-  if (tensor_info == nullptr) {
-    MS_LOG(ERROR) << "Create tensor info failed! weight_shape:" << weight_shape << "!";
-    return nullptr;
-  }
-  auto status = lite::InitParameterFromTensorInfo(param_node, tensor_info);
-  if (status != RET_OK) {
-    MS_LOG(ERROR) << "init parameter from tensor info failed!";
-    return nullptr;
-  }
-  return param_node;
-}
-
-TypeId FetchTypeIdByNode(const AnfNodePtr &node) {
-  TypeId type_id = kTypeUnknown;
-  MS_CHECK_TRUE_RET(node != nullptr, kTypeUnknown);
-  auto weight_param = node->cast<ParameterPtr>();
-  MS_CHECK_TRUE_RET(weight_param != nullptr, kTypeUnknown);
-  auto value = weight_param->default_param();
-  MS_CHECK_TRUE_RET(value != nullptr, kTypeUnknown);
-  auto weight_tensor = value->cast<std::shared_ptr<tensor::Tensor>>();
-  MS_CHECK_TRUE_RET(weight_tensor != nullptr, kTypeUnknown);
-  type_id = weight_tensor->data_type();
-  return type_id;
-}
-
-lite::STATUS FetchWeightShape(AnfNodePtr weight, ShapeVector *weight_shape) {
-  if (!utils::isa<ParameterPtr>(weight)) {
-    MS_LOG(ERROR) << "weight is not ParameterPtr!";
-    return RET_ERROR;
-  }
-  auto weight_param = weight->cast<ParameterPtr>();
-  MS_CHECK_TRUE_RET(weight_param != nullptr, false);
-  auto value = weight_param->default_param();
-  MS_CHECK_TRUE_RET(value != nullptr, false);
-  auto weight_tensor = value->cast<std::shared_ptr<tensor::Tensor>>();
-  MS_CHECK_TRUE_RET(weight_tensor != nullptr, false);
-  *weight_shape = weight_tensor->shape();
-  return RET_OK;
-}
 
 lite::STATUS InsertVariableNodePass::ParseInsertNode(std::string file_path, std::set<std::string> *variable_nodes,
                                                      std::vector<std::string> *node_name_list) {

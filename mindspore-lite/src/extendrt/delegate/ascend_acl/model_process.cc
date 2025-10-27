@@ -20,6 +20,9 @@
 #include <algorithm>
 #include <regex>
 #include <map>
+#include <set>
+#include <string>
+#include <vector>
 #include <thread>
 #include "common/log_adapter.h"
 #include "src/common/utils.h"
@@ -275,28 +278,6 @@ std::vector<Format> ModelProcess::GetInputFormat() {
     MS_LOG(DEBUG) << "Format of Input " << i << " is " << static_cast<int32_t>(format);
   }
   return input_formats;
-}
-
-std::vector<Format> ModelProcess::GetOutputFormat() {
-  if (model_desc_ == nullptr) {
-    MS_LOG(ERROR) << " Model desc is nullptr.";
-    return std::vector<Format>();
-  }
-  std::vector<Format> output_formats;
-  static const std::map<aclFormat, enum Format> acl_format_map = {
-    {ACL_FORMAT_NCHW, NCHW}, {ACL_FORMAT_NHWC, NHWC}, {ACL_FORMAT_ND, NCHW}};
-  for (size_t i = 0; i < output_infos_.size(); ++i) {
-    aclFormat format = CALL_ASCEND_API(aclmdlGetOutputFormat, model_desc_, i);
-    auto iter = acl_format_map.find(format);
-    if (iter != acl_format_map.end()) {
-      output_formats.emplace_back(iter->second);
-    } else {
-      MS_LOG(INFO) << "aclFormat " << format << " not found in map, please double check and add...using default format";
-      output_formats.emplace_back(DEFAULT_FORMAT);
-    }
-    MS_LOG(DEBUG) << "Format of Output " << i << " is " << static_cast<int32_t>(format);
-  }
-  return output_formats;
 }
 
 const std::vector<TypeId> ModelProcess::GetOutputDataType() {
@@ -1253,52 +1234,6 @@ bool ModelProcess::CheckInputTensors(const std::vector<MSTensor> &input_tensors)
   return true;
 }
 
-bool ModelProcess::CheckOutputTensors(const std::vector<MSTensor> *outputs) {
-  if (outputs->size() != output_infos_.size()) {
-    MS_LOG(ERROR) << "Actual tensor count not match, required count " << output_infos_.size() << ", given count "
-                  << outputs->size();
-    return false;
-  }
-  if (is_dynamic_output_) {
-    MS_LOG(INFO) << "This Model has dynamic output shape.";
-    return true;
-  }
-  for (size_t i = 0; i < outputs->size(); ++i) {
-    auto &tensor = outputs->at(i);
-    auto &info = output_infos_[i];
-    if (tensor.Shape() != info.dims) {
-      MS_LOG(WARNING) << "Note: output " << i << " shape not match, required " << ShapeToString(info.dims) << ", given "
-                      << ShapeToString(tensor.Shape()) << "."
-                      << "Please check output shape.";
-    }
-    if (static_cast<enum TypeId>(tensor.DataType()) != TransToDataType(info.data_type)) {
-      MS_LOG(ERROR) << "Note: output " << i << " data type not match, required "
-                    << static_cast<int>(TransToDataType(info.data_type)) << ", given "
-                    << static_cast<int>(static_cast<enum TypeId>(tensor.DataType()));
-      return false;
-    }
-    auto device_data_addr = static_cast<MSTensor>(tensor).GetDeviceData();
-    auto host_data_addr = tensor.Data().get();
-    if (device_data_addr != nullptr) {
-      if (tensor.DataSize() != info.buffer_size) {
-        MS_LOG(ERROR) << "Output " << i << " device data size not match, required size " << info.buffer_size
-                      << ", given count " << tensor.DataSize();
-        return false;
-      }
-    } else if (host_data_addr != nullptr) {
-      if (tensor.DataSize() != info.buffer_size) {
-        MS_LOG(ERROR) << "Output " << i << " host data size not match, required size " << info.buffer_size
-                      << ", given count " << tensor.DataSize();
-        return false;
-      }
-    } else {
-      MS_LOG(ERROR) << "Failed to get data from output " << i;
-      return false;
-    }
-  }
-  return true;
-}
-
 bool ModelProcess::CheckAndInitInput(const std::vector<MSTensor> &inputs) {
   MS_CHECK_TRUE_MSG(allocator_ != nullptr, false, "allocator_ is nullptr!");
   // check inputs
@@ -1356,27 +1291,6 @@ bool ModelProcess::CheckAndInitInput(const std::vector<MSTensor> &inputs) {
     }
   }
   return true;
-}
-
-void ModelProcess::CheckAndInitDynOutputDeviceBuf(const MSTensor output, const AclTensorInfo &output_info,
-                                                  void **output_device_buffer, size_t *output_buf_size,
-                                                  size_t output_idx) {
-  auto device_data_addr = static_cast<MSTensor>(output).GetDeviceData();
-  auto host_data_addr = const_cast<void *>(output.Data().get());
-  if ((device_data_addr == nullptr) || (dyn_out_sys_buf_addr_.find(host_data_addr) != dyn_out_sys_buf_addr_.end()) ||
-      (output.DataSize() == 0)) {
-    MS_LOG(DEBUG) << "host_data->addr: " << host_data_addr
-                  << ", user not defined dynamic output buffer on host, using system defined buffer";
-    user_defined_output_buf_[output_idx] = false;
-  }
-  if (user_defined_output_buf_[output_idx]) {
-    *output_device_buffer = output_info.device_data;
-    auto addr = (host_data_addr != nullptr) ? host_data_addr : device_data_addr;
-    auto size = output.DataSize();
-    *output_buf_size = size;
-    MS_LOG(DEBUG) << "found user buffer with addr: " << addr << " with size: " << size
-                  << ". init output device addr: " << output_info.device_data;
-  }
 }
 
 bool ModelProcess::CheckAndInitOutput(const std::vector<MSTensor> *outputs) {

@@ -15,6 +15,9 @@
  */
 
 #include "extendrt/delegate/ascend_acl/model_infer.h"
+#include <memory>
+#include <string>
+#include <vector>
 #include "common/log_adapter.h"
 #include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
 #include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
@@ -239,7 +242,6 @@ const std::vector<std::vector<int64_t>> ModelInfer::GetOutputShape() { return mo
 const std::vector<std::vector<int64_t>> ModelInfer::GetInputShape() { return model_process_.GetInputShape(); }
 const std::vector<TypeId> ModelInfer::GetInputDataType() { return model_process_.GetInputDataType(); }
 const std::vector<TypeId> ModelInfer::GetOutputDataType() { return model_process_.GetOutputDataType(); }
-std::vector<Format> ModelInfer::GetOutputFormat() { return model_process_.GetOutputFormat(); }
 
 bool ModelInfer::Resize(const std::vector<std::vector<int64_t>> &new_shapes) {
   ModelInferContextGuard guard;
