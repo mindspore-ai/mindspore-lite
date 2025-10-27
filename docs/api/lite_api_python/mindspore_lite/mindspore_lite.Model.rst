@@ -5,7 +5,7 @@ mindspore_lite.Model
 
     `Model` 类定义MindSpore Lite模型，便于计算图管理。
 
-    .. py:method:: build_from_file(model_path, model_type, context=None, config_path="", config_dict: dict = None, dec_key=None, dec_mode="AES-GCM", dec_num_parallel=0)
+    .. py:method:: build_from_file(model_path, model_type, context=None, config_path="", config_dict=None, dec_key=None, dec_mode="AES-GCM", dec_num_parallel=0)
 
         从文件加载并构建模型。
 

@@ -108,7 +108,7 @@ class Model(BaseModel):
     """
 
     def __init__(self):
-        super(Model, self).__init__(_c_lite_wrapper.ModelBind())
+        super().__init__(_c_lite_wrapper.ModelBind())
         self.model_path_ = ""
         self.lora_name_map = {}
         self.provider = ""
@@ -219,7 +219,7 @@ class Model(BaseModel):
         self.provider = context.ascend.provider
         if not os.path.exists(model_path):
             raise RuntimeError(
-                f"build_from_file failed, model_path does not exist!")
+                "build_from_file failed, model_path does not exist!")
         self.model_path_ = model_path
         model_type_ = _c_lite_wrapper.ModelType.kMindIR_Lite
         if model_type is ModelType.MINDIR:
@@ -227,7 +227,7 @@ class Model(BaseModel):
         if config_path:
             if not os.path.exists(config_path):
                 raise RuntimeError(
-                    f"build_from_file failed, config_path does not exist!")
+                    "build_from_file failed, config_path does not exist!")
             ret = self._model.load_config(config_path)
             if not ret.IsOk():
                 raise RuntimeError(
@@ -276,7 +276,7 @@ class Model(BaseModel):
             list[TensorMeta], the output TensorMeta list of the model.
         """
         # pylint: disable=useless-super-delegation
-        return super(Model, self).get_outputs()
+        return super().get_outputs()
 
     def get_inputs(self):
         """
@@ -292,7 +292,7 @@ class Model(BaseModel):
             >>> inputs = model.get_inputs()
         """
         # pylint: disable=useless-super-delegation
-        return super(Model, self).get_inputs()
+        return super().get_inputs()
 
     def update_weights(self, weights):
         """
@@ -325,7 +325,7 @@ class Model(BaseModel):
                 elif self.provider == "ge":
                     name = _rename_variable_weight(tensor.name)
                     tensor.name = name
-        return super(Model, self).update_weights(weights)
+        return super().update_weights(weights)
 
     def predict(self, inputs, outputs=None):
         """
@@ -418,7 +418,7 @@ class Model(BaseModel):
                 inputs_tensor.append(in_tensor)
             else:
                 raise TypeError("inputs element must be Tensor, of numpy.")
-        return super(Model, self).predict(inputs_tensor, outputs)
+        return super().predict(inputs_tensor, outputs)
 
     def resize(self, inputs, dims):
         """
@@ -461,7 +461,7 @@ class Model(BaseModel):
             After resize, the first input shape: [1, 3, 112, 112]
         """
         # pylint: disable=useless-super-delegation
-        super(Model, self).resize(inputs, dims)
+        super().resize(inputs, dims)
 
 
 class ModelParallelRunner:
@@ -486,8 +486,8 @@ class ModelParallelRunner:
         if hasattr(_c_lite_wrapper, "ModelParallelRunnerBind"):
             self._model = _c_lite_wrapper.ModelParallelRunnerBind()
         else:
-            raise RuntimeError(f"ModelParallelRunner init failed, If you want to use it, you need to build"
-                               f"MindSpore Lite serving package by export MSLITE_ENABLE_CLOUD_INFERENCE=on.")
+            raise RuntimeError("ModelParallelRunner init failed, If you want to use it, you need to build"
+                               "MindSpore Lite serving package by export MSLITE_ENABLE_CLOUD_INFERENCE=on.")
         self.model_path_ = ""
 
     def __str__(self):
@@ -525,7 +525,7 @@ class ModelParallelRunner:
         check_isinstance("model_path", model_path, str)
         if not os.path.exists(model_path):
             raise RuntimeError(
-                f"ModelParallelRunner's build from file failed, model_path does not exist!")
+                "ModelParallelRunner's build from file failed, model_path does not exist!")
         self.model_path_ = model_path
         if context is None:
             ret = self._model.init(self.model_path_, None)
@@ -680,7 +680,7 @@ class ModelParallelRunner:
 
         _outputs = self._model.predict(_inputs, _outputs, None, None)
         if not isinstance(_outputs, list) or len(_outputs) == 0:
-            raise RuntimeError(f"predict failed!")
+            raise RuntimeError("predict failed!")
         predict_outputs = []
         for _output in _outputs:
             predict_outputs.append(Tensor(_output))
@@ -777,8 +777,8 @@ class ModelGroup:
             flags_inner = _c_lite_wrapper.ModelGroupFlag.kShareWeightAndWorkspace
         else:
             raise RuntimeError(
-                f"Parameter flags should be ModelGroupFlag.SHARE_WORKSPACE or ModelGroupFlag.SHARE_WEIGHT"
-                f" or ModelGroupFlag.kShareWeightAndWorkspace")
+                "Parameter flags should be ModelGroupFlag.SHARE_WORKSPACE or ModelGroupFlag.SHARE_WEIGHT"
+                " or ModelGroupFlag.kShareWeightAndWorkspace")
         self._model_group = _c_lite_wrapper.ModelGroupBind(flags_inner)
 
     def add_model(self, models):
@@ -799,7 +799,7 @@ class ModelGroup:
         if not isinstance(models, (list, tuple)):
             raise TypeError(f"models must be list/tuple, but got {type(models)}")
         if not models:
-            raise RuntimeError(f"models cannot be empty")
+            raise RuntimeError("models cannot be empty")
         model0 = models[0]
         if isinstance(model0, str):
             for i, element in enumerate(models):
@@ -818,7 +818,7 @@ class ModelGroup:
             raise TypeError(f"models element must be all str or Model, but got "
                             f"{type(model0)} at index {0}.")
         if not ret.IsOk():
-            raise RuntimeError(f"ModelGroup's add model failed.")
+            raise RuntimeError("ModelGroup's add model failed.")
 
     def cal_max_size_of_workspace(self, model_type, context):
         """
@@ -843,22 +843,12 @@ class ModelGroup:
             model_type_, context._context._inner_context)
         if not ret.IsOk():
             raise RuntimeError(
-                f"ModelGroup's cal max size of workspace failed.")
+                "ModelGroup's cal max size of workspace failed.")
 
 class MultiModelRunner:
     """
     The `MultiModelRunner` class is used to create mindir with multiple Models
     and provides a way to schedule multiple models.
-
-    Raises:
-        TypeError: `model_path` is not str.
-        TypeError: `model_type` is not ModelType.
-        TypeError: `context` is not Context or ``None`` .
-        TypeError: `config_path` is not str.
-        RuntimeError: `model_path` file path not exist.
-        RuntimeError: `config_path` file path not exist.
-        RuntimeError: load `config_path` failed.
-        RuntimeError: load and build MultiModelRunner failed.
 
     Examples:
         >>> import mindspore_lite as mslite
@@ -903,26 +893,14 @@ class MultiModelRunner:
                 options during build model. In the following scenarios, users may need to set the parameter.
                 For example, "/home/user/config.txt". Default: ``""``.
 
-                - Usage 1: Set mixed precision inference. The content and description of the configuration file are as
-                    follows:
+                Set mixed precision inference. The content and description of the configuration file are as
+                follows:
 
-                    .. code-block::
+                .. code-block::
 
-                        [execution_plan]
-                        [op_name1]=data_Type: float16 (The operator named op_name1 sets the data type as float16)
-                        [op_name2]=data_Type: float32 (The operator named op_name2 sets the data type as float32)
-
-                - Usage 2: When GPU inference, set the configuration of TensorRT. The content and description of the
-                    configuration file are as follows:
-
-                    .. code-block::
-
-                        [ms_cache]
-                        serialize_Path=[serialization model path](storage path of serialization model)
-                        [gpu_context]
-                        input_shape=input_Name: [input_dim] (Model input dimension, for dynamic shape)
-                        dynamic_Dims=[min_dim~max_dim] (dynamic dimension range of model input, for dynamic shape)
-                        opt_Dims=[opt_dim] (the optimal input dimension of the model, for dynamic shape)
+                    [execution_plan]
+                    [op_name1]=data_Type: float16 (The operator named op_name1 sets the data type as float16)
+                    [op_name2]=data_Type: float32 (The operator named op_name2 sets the data type as float32)
 
             config_dict (dict, optional): When you set config in this dict, the priority is higher than the
                 configuration items in config_path.
@@ -941,6 +919,16 @@ class MultiModelRunner:
                     config_dict = {"ascend_context" : {"rank_table_file" : "path_b"}}
 
                 The the path_b from the config_dict will be used to compile the model.
+
+        Raises:
+            TypeError: `model_path` is not str.
+            TypeError: `model_type` is not ModelType.
+            TypeError: `context` is not Context or ``None`` .
+            TypeError: `config_path` is not str.
+            RuntimeError: `model_path` file path not exist.
+            RuntimeError: `config_path` file path not exist.
+            RuntimeError: load `config_path` failed.
+            RuntimeError: load and build MultiModelRunner failed.
             """
         check_isinstance("model_path", model_path, str)
         check_isinstance("model_type", model_type, ModelType)
@@ -951,16 +939,16 @@ class MultiModelRunner:
         self.provider = context.ascend.provider
         if not os.path.exists(model_path):
             raise RuntimeError(
-                f"build_from_file failed, model_path does not exist!")
+                "build_from_file failed, model_path does not exist!")
         self.model_path_ = model_path
         model_type_ = _c_lite_wrapper.ModelType.kMindIR
         if model_type is not ModelType.MINDIR:
             raise RuntimeError(
-                f"build_from_file failed, model_type only support MINDIR!")
+                "build_from_file failed, model_type only support MINDIR!")
         if config_path:
             if not os.path.exists(config_path):
                 raise RuntimeError(
-                    f"build_from_file failed, config_path does not exist!")
+                    "build_from_file failed, config_path does not exist!")
             ret = self._runner.load_config(config_path)
             if not ret.IsOk():
                 raise RuntimeError(
@@ -983,6 +971,12 @@ class MultiModelRunner:
             raise RuntimeError(
                 f"build_from_file failed! Error is {ret.ToString()}")
     def get_model_executor(self):
+        """
+        Get ModelExecutors from MultiModelRunner.
+
+        Returns:
+            list[ModelExecutor], all Executors in MultiModelRunner.
+        """
         executors = []
         for executor_ in self._runner.get_model_executor():
             executors.append(ModelExecutor(executor_))
@@ -991,6 +985,10 @@ class MultiModelRunner:
 class ModelExecutor:
     """
     The `ModelExecutor` class wraps multiple mindspore_lite models and implements their inference scheduling.
+
+    Args:
+        executor (_c_lite_wrapper.ModelExecBind, optional): ModelExecutor class wrapped with pybind11.
+            Default: ``None``.
     """
     def __init__(self, executor=None):
         if executor is None:
@@ -1009,6 +1007,13 @@ class ModelExecutor:
 
             Returns:
                 list[Tensor], the output Tensor list of the ModelExecutor.
+
+            Raises:
+                TypeError: `inputs` is not a list.
+                TypeError: `outputs` is not a list.
+                TypeError: `inputs` is a list, but the elements are not Tensor.
+                TypeError: `outputs` is a list, but the elements are not Tensor.
+                RuntimeError: predict model failed.
         """
         if not isinstance(inputs, (list, tuple)):
             raise TypeError(
@@ -1040,7 +1045,7 @@ class ModelExecutor:
                 _outputs.append(element._tensor)
         predict_result = self._executor.predict(_inputs, _outputs)
         if predict_result is None or len(predict_result) == 0:
-            raise RuntimeError(f"predict failed!")
+            raise RuntimeError("predict failed!")
         predict_outputs = []
         for output_tensor in predict_result:
             predict_outputs.append(Tensor(output_tensor))
