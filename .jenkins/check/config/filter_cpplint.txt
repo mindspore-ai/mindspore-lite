@@ -8,6 +8,8 @@
 "mindspore-lite/mindspore-lite/tools/converter/parser/tflite/tflite_node_parser.h"                      "runtime/references"
 "mindspore-lite/mindspore-lite/tools/converter/quantizer/quantize_util.h"                               "runtime/references"
 "mindspore-lite/mindspore-lite/tools/benchmark/benchmark.cc"                                            "runtime/threadsafe_fn"
+"mindspore-lite/mindspore-lite/tools/benchmark/benchmark_base.h"                                       "whitespace/indent_namespace"
+"mindspore-lite/mindspore-lite/tools/benchmark/benchmark_base.cc"                                       "whitespace/indent_namespace"
 "mindspore-lite/mindspore-lite/tools/benchmark/benchmark_base.cc"                                       "runtime/threadsafe_fn"
 "mindspore-lite/mindspore-lite/tools/benchmark/benchmark_unified_api.cc"                                "runtime/threadsafe_fn"
 "mindspore-lite/mindspore-lite/tools/benchmark/run_benchmark.cc"                                        "runtime/threadsafe_fn"

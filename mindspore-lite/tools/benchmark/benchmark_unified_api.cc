@@ -18,6 +18,12 @@
 #define __STDC_FORMAT_MACROS
 #include <cinttypes>
 #undef __STDC_FORMAT_MACROS
+#include <cstdio>
+#include <map>
+#include <memory>
+#include <iostream>
+#include <vector>
+#include <string>
 #include <algorithm>
 #include <utility>
 #include <functional>
@@ -522,6 +528,12 @@ int BenchmarkUnifiedApi::InitMSContext(const std::shared_ptr<mindspore::Context>
 
   if (flags_->device_ == "Ascend" || flags_->device_ == "Auto") {
     InitMSContextForAscend(context, &device_list);
+  }
+
+  if (flags_->device_ == "DSP" || flags_->device_ == "Auto") {
+    std::shared_ptr<DSPDeviceInfo> dsp_device_info = std::make_shared<DSPDeviceInfo>();
+    device_list.push_back(dsp_device_info);
+    context->SetEnableParallel(flags_->enable_parallel_);
   }
 
   // CPU priority is behind GPU and NPU
