@@ -1,9 +1,12 @@
 mindspore_lite.ModelExecutor
 ============================
 
-.. py:class:: mindspore_lite.ModelExecutor()
+.. py:class:: mindspore_lite.ModelExecutor(executor=None)
 
     `ModelExecutor` 类包装多个mindspore_lite模型，并实现其推理调度。
+
+    参数：
+        - **executor** (_c_lite_wrapper.ModelExecBind, 可选) - pybind11包装的ModelExecutor类。默认值：``None``。
 
     .. py:method:: get_inputs()
 
