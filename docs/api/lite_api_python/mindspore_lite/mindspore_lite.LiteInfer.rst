@@ -1,7 +1,7 @@
 mindspore_lite.LiteInfer
 =============================
 
-.. py:class:: mindspore_lite.LiteInfer(model_or_net, *net_inputs, context=None, model_group_id=None, config: dict = None)
+.. py:class:: mindspore_lite.LiteInfer(model_or_net, *net_inputs, context=None, model_group_id=None, config=None)
 
     `LiteInfer` 类接受训练模型作为输入直接执行推理。
 
