@@ -25,6 +25,7 @@
 #include "tools/converter/parser/parser_utils.h"
 #include "include/registry/pass_base.h"
 #include "nnacl_c/op_base.h"
+#include "tools/converter/ir_dump.h"
 
 namespace mindspore {
 namespace lite {
@@ -52,7 +53,6 @@ bool RunOptimizerPass(const FuncGraphPtr &func_graph, const std::vector<std::str
       MS_LOG(INFO) << "pass name :" << pass_name << " is in the blacklist, skipped.";
       continue;
     }
-
     auto pass_outer = registry::PassRegistry::GetPassFromStoreRoom(pass_name);
     if (pass_outer != nullptr) {
       auto api_graph = api::MakeShared<api::FuncGraph>(func_graph);
@@ -67,8 +67,14 @@ bool RunOptimizerPass(const FuncGraphPtr &func_graph, const std::vector<std::str
       MS_LOG(ERROR) << "exited pass cannot be obtained, pass name is " << pass_name;
       return false;
     }
-    if (!pass_builtin->Run(func_graph)) {
+    auto ret = pass_builtin->Run(func_graph);
+    if (!ret) {
       MS_LOG(INFO) << "Execute this pass without modifying the graph, pass name: " << pass_name;
+    } else {
+      auto status = DumpGraph(pass_name, func_graph);
+      if (status != kSuccess) {
+        MS_LOG(WARNING) << "DumpGraph graph failed in " << pass_name;
+      }
     }
   }
   return true;

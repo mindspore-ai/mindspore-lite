@@ -15,6 +15,7 @@ endif()
 include_directories(${NNACL_DIR}/..)
 
 file(GLOB_RECURSE CONVERTER_SRC RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/ir_dump.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/ops/*.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/converter.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/offline_packing_optimizer.cc
