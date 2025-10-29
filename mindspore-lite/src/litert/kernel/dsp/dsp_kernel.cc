@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "src/litert/infer_manager.h"
 #include "src/litert/kernel/dsp/dsp_kernel.h"
+#include "src/litert/infer_manager.h"
 #include "src/litert/weight_decoder.h"
 #include "src/common/file_utils.h"
 
@@ -54,7 +54,6 @@ int DSPKernel::PreProcess() {
     CHECK_NULL_RETURN(output);
     CHECK_NULL_RETURN(output->allocator());
     ret = output->MallocData();
-    MS_LOG(DEBUG) << "MallocData for output " << i << ", data: " << output->data();
     if (ret != RET_OK) {
       MS_LOG(ERROR) << "MallocData failed";
       return ret;

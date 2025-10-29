@@ -336,5 +336,7 @@ int GetCoreNum() {
 #endif
   return core_num;
 }
+
+bool IsPowerOfTwo(int n) { return n > 0 && (n & (n - 1)) == 0; }
 }  // namespace lite
 }  // namespace mindspore

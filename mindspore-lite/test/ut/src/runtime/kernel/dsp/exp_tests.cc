@@ -74,8 +74,12 @@ TEST_F(TestDSP_Exp, Exp_Fp32) {
                                  outputs_[0]->ElementsNum()));
   UninitDSPRuntime();
   delete ctx;
-  for (auto t : inputs_) delete t;
-  for (auto t : outputs_) delete t;
+  for (auto t : inputs_) {
+    delete t;
+  }
+  for (auto t : outputs_) {
+    delete t;
+  }
   delete kernel;
 }
 
@@ -119,8 +123,12 @@ TEST_F(TestDSP_Exp, Exp_Int32) {
                                  outputs_[0]->ElementsNum()));
   UninitDSPRuntime();
   delete ctx;
-  for (auto t : inputs_) delete t;
-  for (auto t : outputs_) delete t;
+  for (auto t : inputs_) {
+    delete t;
+  }
+  for (auto t : outputs_) {
+    delete t;
+  }
   delete kernel;
 }
 
@@ -168,8 +176,12 @@ TEST_F(TestDSP_Exp, Exp_Cplx64) {
                                  outputs_[0]->ElementsNum() * 2));
   UninitDSPRuntime();
   delete ctx;
-  for (auto t : inputs_) delete t;
-  for (auto t : outputs_) delete t;
+  for (auto t : inputs_) {
+    delete t;
+  }
+  for (auto t : outputs_) {
+    delete t;
+  }
   delete kernel;
 }
 
@@ -214,8 +226,12 @@ TEST_F(TestDSP_Exp, Exp_Fp64) {
                                  outputs_[0]->ElementsNum()));
   UninitDSPRuntime();
   delete ctx;
-  for (auto t : inputs_) delete t;
-  for (auto t : outputs_) delete t;
+  for (auto t : inputs_) {
+    delete t;
+  }
+  for (auto t : outputs_) {
+    delete t;
+  }
   delete kernel;
 }
 
@@ -259,8 +275,12 @@ TEST_F(TestDSP_Exp, Exp_Int8) {
                                  outputs_[0]->ElementsNum()));
   UninitDSPRuntime();
   delete ctx;
-  for (auto t : inputs_) delete t;
-  for (auto t : outputs_) delete t;
+  for (auto t : inputs_) {
+    delete t;
+  }
+  for (auto t : outputs_) {
+    delete t;
+  }
   delete kernel;
 }
 
@@ -308,8 +328,12 @@ TEST_F(TestDSP_Exp, Exp_Cplx128) {
                                  outputs_[0]->ElementsNum() * 2));
   UninitDSPRuntime();
   delete ctx;
-  for (auto t : inputs_) delete t;
-  for (auto t : outputs_) delete t;
+  for (auto t : inputs_) {
+    delete t;
+  }
+  for (auto t : outputs_) {
+    delete t;
+  }
   delete kernel;
 }
 #endif

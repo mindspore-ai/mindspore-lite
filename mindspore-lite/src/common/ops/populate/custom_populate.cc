@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#include <vector>
+#include <string>
 #include "src/common/ops/populate/populate_register.h"
 #include "src/common/log_adapter.h"
 #include "src/tensor.h"
@@ -221,6 +224,8 @@ OpParameter *PopulateCustomParameter(const void *prim) {
     return CreateCustomConv3DParameter(value);
   } else if (type == "GridSampler") {
     return CreateGridSamplerParameter(value);
+  } else if (type.compare(0, 10, "Custom_FT_") == 0) {
+    return CreateParam(PrimType_Custom);
   } else {
     MS_LOG(WARNING) << "Unsupported custom type: " << type;
   }
