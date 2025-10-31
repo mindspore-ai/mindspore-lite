@@ -31,8 +31,18 @@ if(ENABLE_GITEE OR ENABLE_GITEE_EULER) # Channel GITEE_EULER is NOT supported no
         # Refer to: https://github.com/pybind/pybind11/pull/2701
         # And: https://pybind11.readthedocs.io/en/stable/changelog.html#v2-6-2-jan-26-2021
         set(PYBIND11_PATCH_FILE "pybind11.patch002")
+    elseif(PYTHON_VERSION MATCHES "3.12")
+        set(REQ_URL "https://gitee.com/mirrors/pybind11/repository/archive/v2.13.1.tar.gz")
+        set(SHA256 "2200dda5c64ece586f537af8fd292103a3042cb40c443dde1b70fd1e419d8cb0")
+        set(PYBIND_VERSION 2.13.1)
+        set(PYBIND_DISABLE_GIL_CHECK TRUE)
+        # This patch reverts a PR introduced in pybind 2.6.2, as it causes many runtime exceptions in mindspore
+        # due to the type checking introduced in this PR.
+        # Refer to: https://github.com/pybind/pybind11/pull/2701
+        # And: https://pybind11.readthedocs.io/en/stable/changelog.html#v2-6-2-jan-26-2021
+        set(PYBIND11_PATCH_FILE "pybind11.patch002")
     else()
-        message("Could not find Python versions 3.7 - 3.11")
+        message("Could not find Python versions 3.7 - 3.12")
         return()
     endif()
 else()
@@ -60,8 +70,14 @@ else()
         set(PYBIND_VERSION 2.13.1)
         set(PYBIND_DISABLE_GIL_CHECK TRUE)
         set(PYBIND11_PATCH_FILE "pybind11.patch002")
+    elseif(PYTHON_VERSION MATCHES "3.12")
+        set(REQ_URL "https://github.com/pybind/pybind11/archive/v2.13.1.tar.gz")
+        set(SHA256 "51631e88960a8856f9c497027f55c9f2f9115cafb08c0005439838a05ba17bfc")
+        set(PYBIND_VERSION 2.13.1)
+        set(PYBIND_DISABLE_GIL_CHECK TRUE)
+        set(PYBIND11_PATCH_FILE "pybind11.patch002")
     else()
-        message("Could not find Python versions 3.7 - 3.11")
+        message("Could not find Python versions 3.7 - 3.12")
         return()
     endif()
 endif()
