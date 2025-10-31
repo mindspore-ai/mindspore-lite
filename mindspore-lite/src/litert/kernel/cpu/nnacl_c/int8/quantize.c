@@ -157,5 +157,9 @@ void QuantizeMultiplier(double double_multiplier, int32_t *quantized_multiplier,
     rounded >>= 1;
     ++*shift;
   }
+  if (rounded >= INT_MAX) {
+    *quantized_multiplier = 0;
+    return;
+  }
   *quantized_multiplier = (dul.ul & dSignMask) ? (-(int32_t)(rounded)) : (int32_t)(rounded);
 }

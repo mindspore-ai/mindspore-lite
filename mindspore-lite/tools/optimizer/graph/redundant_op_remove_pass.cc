@@ -345,8 +345,8 @@ int RemoveRedundantOpPass::RemoveDropoutOp(const AnfNodePtr &anf_node, const Fun
         MS_LOG(ERROR) << "dropout out node is invalid.";
         return lite::RET_ERROR;
       }
-      MS_CHECK_TRUE_RET(node->cast<CNodePtr>() != nullptr, RET_ERROR);
-      MS_CHECK_TRUE_RET(node->cast<CNodePtr>()->size() > kInputSizeThree, RET_ERROR);
+      MS_CHECK_TRUE_MSG(node->cast<CNodePtr>() != nullptr, RET_ERROR, "node is not cnode!");
+      MS_CHECK_TRUE_MSG(node->cast<CNodePtr>()->size() >= kInputSizeThree, RET_ERROR, "size of cnode should >= 3!");
       auto get_index_node = node->cast<CNodePtr>()->input(kInputIndexTwo)->cast<ValueNodePtr>();
       if (get_index_node == nullptr) {
         MS_LOG(ERROR) << "tuple get item node is invalid.";

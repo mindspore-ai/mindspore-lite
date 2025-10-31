@@ -936,11 +936,9 @@ class MultiModelRunner:
             context = Context()
         check_isinstance("context", context, Context)
         check_isinstance("config_path", config_path, str)
-        self.provider = context.ascend.provider
         if not os.path.exists(model_path):
             raise RuntimeError(
                 "build_from_file failed, model_path does not exist!")
-        self.model_path_ = model_path
         model_type_ = _c_lite_wrapper.ModelType.kMindIR
         if model_type is not ModelType.MINDIR:
             raise RuntimeError(

@@ -25,7 +25,11 @@ class DropoutCPUKernel : public LiteKernel {
  public:
   DropoutCPUKernel(OpParameter *parameter, const std::vector<lite::Tensor *> &inputs,
                    const std::vector<lite::Tensor *> &outputs, const lite::InnerContext *ctx)
-      : LiteKernel(parameter, inputs, outputs, ctx), thread_count_(ctx->thread_num_) {}
+      : LiteKernel(parameter, inputs, outputs, ctx), thread_count_(ctx->thread_num_) {
+    std::random_device rd;
+    unsigned int random_value = rd();
+    generator_.seed(random_value);
+  }
 
   ~DropoutCPUKernel() override = default;
 
