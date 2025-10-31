@@ -118,6 +118,7 @@ class ModelProcess {
   bool ShareMemProcess(const void *om_data, size_t om_data_size);
   MSTensor GetOutputWithZeroCopy(const std::vector<MSTensor> *outputs, size_t index);
   MSTensor CreateOutputTensor(size_t index);
+  Status ExecuteModel(uint32_t model_id, aclmdlDataset *inputs, aclmdlDataset *outputs);
 
   std::shared_ptr<AclModelOptions> options_;
   uint32_t model_id_ = UINT32_MAX;
@@ -129,6 +130,8 @@ class ModelProcess {
   aclmdlDataset *weight_inputs_ = nullptr;
   aclmdlDataset *weight_outputs_ = nullptr;
   aclmdlDesc *model_weight_desc_ = nullptr;
+  aclrtStream stream_ = nullptr;
+  aclmdlExecConfigHandle *exec_config_handle_ = nullptr;
 
   bool loaded_ = false;
   bool inited_weights_ = false;

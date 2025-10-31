@@ -62,6 +62,7 @@ class AclGraphExecutor : public LiteGraphExecutor {
  private:
   Status BuildCustomAscendKernel(const CNodePtr &cnode);
   void GetShareMemInfos(std::shared_ptr<AclModelOptions> acl_options_ptr);
+  Status GetExecConfig(const std::shared_ptr<AclModelOptions> &acl_options_ptr);
   std::shared_ptr<AclModelOptions> GenAclOptions();
   bool GetDeviceID(int32_t *device_id);
   Status GetOutputTensors(const std::vector<std::string> &output_names, std::vector<MSTensor> *output_tensors);

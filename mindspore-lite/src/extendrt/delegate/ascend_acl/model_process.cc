@@ -20,13 +20,11 @@
 #include <algorithm>
 #include <regex>
 #include <map>
-#include <set>
-#include <string>
-#include <vector>
 #include <thread>
 #include <set>
 #include <string>
 #include <vector>
+#include "common/common.h"
 #include "common/log_adapter.h"
 #include "src/common/utils.h"
 #include "src/common/log_util.h"
@@ -111,6 +109,11 @@ static std::string ShapeToString(const std::vector<int64_t> &shape) {
   return result;
 }
 
+bool CheckModelExecuteV2Support() {
+  return HAS_ASCEND_API(aclmdlExecuteV2) && HAS_ASCEND_API(aclmdlCreateExecConfigHandle) &&
+         HAS_ASCEND_API(aclmdlDestroyExecConfigHandle) && HAS_ASCEND_API(aclmdlSetExecConfigOpt);
+}
+
 ModelProcess::~ModelProcess() {
   if (dynamic_dims_ != nullptr) {
     delete[] dynamic_dims_;
@@ -167,6 +170,25 @@ bool ModelProcess::PreInitModelResource() {
   if (!InitOutputsBuffer()) {
     MS_LOG(ERROR) << "Create output buffer failed.";
     return false;
+  }
+  auto &stream_sync_timeout = options_->model_exec_config.stream_sync_timeout;
+  if (stream_sync_timeout.Value() != lite::kModelExecStreamSyncTimeoutIgnoreValue) {
+    if (CheckModelExecuteV2Support()) {
+      acl_ret = CALL_ASCEND_API(aclrtCreateStream, &stream_);
+      if (acl_ret != ACL_SUCCESS) {
+        MS_LOG(ERROR) << "Create stream failed.";
+        return false;
+      }
+      exec_config_handle_ = CALL_ASCEND_API(aclmdlCreateExecConfigHandle);
+      acl_ret = CALL_ASCEND_API(aclmdlSetExecConfigOpt, exec_config_handle_, ACL_MDL_STREAM_SYNC_TIMEOUT,
+                                &stream_sync_timeout.Value(), stream_sync_timeout.Size());
+      if (acl_ret != ACL_SUCCESS) {
+        MS_LOG(ERROR) << "Set stream sync timeout failed.";
+        return false;
+      }
+    } else {
+      MS_LOG(WARNING) << "The current CANN version does not support specify stream_sync_timeout, please upgrade CANN.";
+    }
   }
   if (is_dynamic_input_) {
     data_input_num_ = input_infos_.size();
@@ -929,6 +951,22 @@ bool ModelProcess::UnLoad() {
     CALL_ASCEND_API(aclrtFreePhysical, shareable_phy_addr_);
     shareable_phy_addr_ = nullptr;
   }
+  if (stream_ != nullptr) {
+    ret = CALL_ASCEND_API(aclrtDestroyStream, stream_);
+    if (ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Destroy stream failed";
+      return false;
+    }
+    stream_ = nullptr;
+  }
+  if (exec_config_handle_ != nullptr) {
+    ret = CALL_ASCEND_API(aclmdlDestroyExecConfigHandle, exec_config_handle_);
+    if (ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Destroy exec config handle failed";
+      return false;
+    }
+    exec_config_handle_ = nullptr;
+  }
   MS_LOG(INFO) << "End unload model " << model_id_;
   return true;
 }
@@ -1383,6 +1421,20 @@ bool ModelProcess::ResetDynamicOutputTensor(const std::vector<MSTensor> *outputs
   return true;
 }
 
+Status ModelProcess::ExecuteModel(uint32_t model_id, aclmdlDataset *input, aclmdlDataset *output) {
+  aclError ret = ACL_SUCCESS;
+  if (stream_ && exec_config_handle_) {
+    ret = CALL_ASCEND_API(aclmdlExecuteV2, model_id, input, output, stream_, exec_config_handle_);
+  } else {
+    ret = CALL_ASCEND_API(aclmdlExecute, model_id, input, output);
+  }
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Execute Model Failed, ret = " << ret << ", detail:" << CALL_ASCEND_API(aclGetRecentErrMsg);
+    return kLiteError;
+  }
+  return kSuccess;
+}
+
 bool ModelProcess::PredictFromHost(const std::vector<MSTensor> &inputs, const std::vector<MSTensor> *outputs) {
   if (!loaded_) {
     MS_LOG(ERROR) << "Model has not been loaded";
@@ -1397,7 +1449,6 @@ bool ModelProcess::PredictFromHost(const std::vector<MSTensor> &inputs, const st
     return false;
   }
 
-  aclError acl_ret;
   struct timeval start_time;
   auto env = std::getenv("GLOG_v");
   bool output_timecost = (env != nullptr && (env[0] == kINFOLogLevel || env[0] == kDEBUGLogLevel));
@@ -1409,7 +1460,7 @@ bool ModelProcess::PredictFromHost(const std::vector<MSTensor> &inputs, const st
     MS_LOG(DEBUG) << "Need to lock before aclmdlExecute.";
     AclMemManager::GetInstance().Lock(options_->device_id);
   }
-  acl_ret = CALL_ASCEND_API(aclmdlExecute, infer_id_, inputs_, outputs_);
+  auto model_ret = ExecuteModel(infer_id_, inputs_, outputs_);
   if (is_sharing_workspace_) {
     MS_LOG(DEBUG) << "Unlock after aclmdlExecute.";
     AclMemManager::GetInstance().Unlock(options_->device_id);
@@ -1424,8 +1475,8 @@ bool ModelProcess::PredictFromHost(const std::vector<MSTensor> &inputs, const st
     MS_LOG(INFO) << "Model execute in " << cost << " us";
   }
 
-  if (acl_ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "Execute Model Failed, ret = " << acl_ret << ", detail:" << CALL_ASCEND_API(aclGetRecentErrMsg);
+  if (model_ret != kSuccess) {
+    MS_LOG(ERROR) << "Execute Model Failed";
     return false;
   }
   if (is_dynamic_output_) {
