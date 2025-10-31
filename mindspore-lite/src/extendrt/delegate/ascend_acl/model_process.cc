@@ -1759,10 +1759,7 @@ MSTensor ModelProcess::GetOutputWithZeroCopy(const std::vector<MSTensor> *output
       auto ret = allocator_->CopyDeviceDataToDevice(output_info.cur_device_data, user_output.GetDeviceData(),
                                                     user_output.DataSize(), output_info.buffer_size, device_id_,
                                                     user_output.GetDeviceId());
-      if (ret != kSuccess) {
-        MS_LOG(ERROR) << "Copy output data from device to current device failed.";
-        return MSTensor(nullptr);
-      }
+      MS_CHECK_TRUE_MSG(ret == kSuccess, MSTensor(nullptr), "Copy output data from device to current device failed!");
     }
   } else if (user_output.Data() != nullptr) {
     aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;
