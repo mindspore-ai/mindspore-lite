@@ -25,6 +25,9 @@ using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;
 using mindspore::schema::PrimitiveType_LogGrad;
 
+namespace {
+constexpr int kCountMinVal = 4;
+}  // namespace
 namespace mindspore::kernel {
 int ArithmeticSelfGradFp16CPUKernel::Prepare() {
   if (in_tensors_.size() != C2NUM) {
@@ -56,6 +59,7 @@ int ArithmeticSelfGradFp16CPUKernel::DoActivation(int task_id) {
   auto error_code = RET_OK;
   CHECK_NULL_RETURN(param_act_grad_);
   if (param_act_grad_->type_ == schema::PrimitiveType_LogGrad) {
+    MS_CHECK_TRUE_RET(count >= kCountMinVal, RET_ERROR);
     error_code = Fp16LogGrad(yt_addr + start, input_addr + start, count, output_addr + start);
   } else {
     MS_LOG(ERROR) << "Activation type error";
