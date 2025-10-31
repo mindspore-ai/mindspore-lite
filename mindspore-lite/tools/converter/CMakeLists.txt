@@ -416,7 +416,7 @@ target_link_libraries(mindspore_converter
         coder_mid
         mindir_serializer_mid
         )
-if(PYTHON_VERSION MATCHES "3.11")
+if(PYTHON_VERSION MATCHES "3.11" OR PYTHON_VERSION MATCHES "3.12")
   target_link_libraries(mindspore_converter ${PYTHON_LIBRARIES})
 endif()
 
