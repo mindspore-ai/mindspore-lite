@@ -1055,7 +1055,8 @@ bool ModelProcess::Resize(const std::vector<ShapeVector> &new_shapes) {
   bool input_shape_changed = false;
   for (size_t i = 0; i < new_shapes.size(); i++) {
     auto new_shape = new_shapes[i];
-    if (std::any_of(new_shape.begin(), new_shape.end(), [](auto dim) { return dim < 0; })) {
+    auto has_negtive_shape = std::any_of(new_shape.begin(), new_shape.end(), [](auto dim) { return dim < 0; });
+    if (has_negtive_shape) {
       MS_LOG(ERROR) << "New shape of input " << i << " cannot be dynamic, new shape: " << new_shape;
       return false;
     }
@@ -1758,10 +1759,7 @@ MSTensor ModelProcess::GetOutputWithZeroCopy(const std::vector<MSTensor> *output
       auto ret = allocator_->CopyDeviceDataToDevice(output_info.cur_device_data, user_output.GetDeviceData(),
                                                     user_output.DataSize(), output_info.buffer_size, device_id_,
                                                     user_output.GetDeviceId());
-      if (ret != kSuccess) {
-        MS_LOG(ERROR) << "Copy output data from device to current device failed.";
-        return MSTensor(nullptr);
-      }
+      MS_CHECK_TRUE_MSG(ret == kSuccess, MSTensor(nullptr), "Copy output data from device to current device failed!");
     }
   } else if (user_output.Data() != nullptr) {
     aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;

@@ -340,8 +340,13 @@ static STATUS TransFilterData(kTransFilterType type, int32_t filterK, int32_t fi
 template <typename T>
 static STATUS TransFilterData(schema::TensorT *tensor, kTransFilterType type, int32_t filterK, int32_t filterC,
                               int32_t filterH, int32_t filterW) {
-  MS_ASSERT(tensor != nullptr);
-  int count = filterH * filterW * filterC * filterK;
+  MS_CHECK_TRUE_MSG(tensor != nullptr, RET_NULL_PTR, "tensor is nullptr!");
+  MS_CHECK_INT_MUL_NOT_OVERFLOW(filterH, filterW, RET_ERROR);
+  int hwVal = filterH * filterW;
+  MS_CHECK_INT_MUL_NOT_OVERFLOW(filterC, filterK, RET_ERROR);
+  int ckVal = filterC * filterK;
+  MS_CHECK_INT_MUL_NOT_OVERFLOW(hwVal, ckVal, RET_ERROR);
+  int count = hwVal * ckVal;
   if (count <= 0) {
     MS_LOG(ERROR) << "Dim size invalid";
     return RET_ERROR;
@@ -377,7 +382,7 @@ template <typename T>
 static STATUS TransFilterFormat(schema::TensorT *tensor, kTransFilterType type) {
   MS_ASSERT(tensor != nullptr);
   std::vector<int32_t> oriDims = tensor->dims;
-  if (oriDims.size() != (size_t)DIM_DEFAULT_SIZE) {
+  if (oriDims.size() != static_cast<size_t>(DIM_DEFAULT_SIZE)) {
     MS_LOG(ERROR) << "Filter dim-num is not supported, dim-num: " << oriDims.size();
     return RET_ERROR;
   }

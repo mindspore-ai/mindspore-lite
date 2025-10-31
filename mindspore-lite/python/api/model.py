@@ -693,7 +693,7 @@ class ModelGroupFlag(Enum):
 
     The `ModelGroupFlag` is used to define the flags used to construct a `ModelGroup`. Currently, supports:
 
-    1. `ModelGroupFlag.SHARE_WEIGHT`, multiple models share weights(including constatns and variables) memory.
+    1. `ModelGroupFlag.SHARE_WEIGHT`, multiple models share weights(including constants and variables) memory.
        Currently only supported in cloud side Ascend inference and the provider is GE.
 
     2. `ModelGroupFlag.SHARE_WORKSPACE`, multiple models share weights share workspace memory, default construction flag
@@ -936,11 +936,9 @@ class MultiModelRunner:
             context = Context()
         check_isinstance("context", context, Context)
         check_isinstance("config_path", config_path, str)
-        self.provider = context.ascend.provider
         if not os.path.exists(model_path):
             raise RuntimeError(
                 "build_from_file failed, model_path does not exist!")
-        self.model_path_ = model_path
         model_type_ = _c_lite_wrapper.ModelType.kMindIR
         if model_type is not ModelType.MINDIR:
             raise RuntimeError(
