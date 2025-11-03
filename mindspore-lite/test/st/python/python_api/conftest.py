@@ -40,6 +40,33 @@ def pytest_addoption(parser):
         help="Available device ids for test, default is [0]. Example: --device_id 0 1",
     )
 
+    parser.addoption(
+        "--mindir_dir",
+        action="store",
+        default="",
+        help="path of mindir",
+    )
+
+    parser.addoption(
+        "--output_dir",
+        action="store",
+        default="",
+        help="convert output dir",
+    )
+
+    parser.addoption(
+        "--config_dir",
+        action="store",
+        default="",
+        help="convert config dir",
+    )
+
+    parser.addoption(
+        "--so_path",
+        action="store",
+        default="",
+        help="path of mindspore_lite tools",
+    )
 
 @pytest.fixture
 def device_id(request):
@@ -48,6 +75,33 @@ def device_id(request):
     """
     return list(set(request.config.getoption("device_id")))
 
+@pytest.fixture
+def so_path(request):
+    """
+    so_path fixture
+    """
+    return request.config.getoption("so_path")
+
+@pytest.fixture
+def mindir_dir(request):
+    """
+    mindir_dir fixture
+    """
+    return request.config.getoption("mindir_dir")
+
+@pytest.fixture
+def output_dir(request):
+    """
+    output_dir fixture
+    """
+    return request.config.getoption("output_dir")
+
+@pytest.fixture
+def config_dir(request):
+    """
+    config_dir fixture
+    """
+    return request.config.getoption("config_dir")
 
 def _parse_backend_mark(item, device_id_option):
     """

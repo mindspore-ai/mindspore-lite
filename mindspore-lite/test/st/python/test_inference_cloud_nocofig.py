@@ -26,6 +26,9 @@ error_happened = []
 
 
 def lite_test(func):
+    '''
+    wrapper of test lite
+    '''
     @wraps(func)
     def wrap_test(*args, **kwargs):
         try:
@@ -36,7 +39,9 @@ def lite_test(func):
             traceback.print_exc()
             print(f"[FAILED] {str(func.__name__)}")
             global error_happened
-            error_happened.append(str(func.__name__))
+            error_happened_local = error_happened
+            error_happened_local.append(str(func.__name__))
+            error_happened = error_happened_local
 
     return wrap_test
 
@@ -46,12 +51,15 @@ def handle_error():
         print(f"test_inference_cloud_nocofig.py: run testcases failed: {error_happened}")
         sys.exit(1)
     else:
-        print(f"test_inference_cloud_nocofig.py: run testcases success")
+        print("test_inference_cloud_nocofig.py: run testcases success")
 
 
 # ============================ ascend inference ============================
 @lite_test
 def test_model_group_inference_ascend(mindir_dir):
+    '''
+    test model group
+    '''
     context = mslite.Context()
     context.target = ["ascend"]
     context.ascend.device_id = 0
@@ -67,7 +75,7 @@ def test_model_group_inference_ascend(mindir_dir):
     model0.build_from_file(model_path0, mslite.ModelType.MINDIR, context)
     model1.build_from_file(model_path1, mslite.ModelType.MINDIR, context)
 
-    for i in range(2):
+    for _ in range(2):
         inputs = [mslite.Tensor(np.ones((4, 4), np.float32))]
         outputs = model0.predict(inputs)
         assert (outputs[0].get_data_to_numpy() == np.ones((4, 4), np.float32)).all()
@@ -78,6 +86,9 @@ def test_model_group_inference_ascend(mindir_dir):
 
 @lite_test
 def test_model_invalid_dynamic_dims_error_ascend(mindir_dir):
+    '''
+    test invalid dynamic dims
+    '''
     context = mslite.Context()
     context.target = ["ascend"]
     context.ascend.device_id = 0
@@ -92,47 +103,6 @@ def test_model_invalid_dynamic_dims_error_ascend(mindir_dir):
         assert False
     except RuntimeError as ex:
         assert "build_from_file failed" in str(ex)
-
-@lite_test
-def test_graph_split_ascend(mindir_dir):
-    dtype_map = {
-        mslite.DataType.FLOAT32: np.float32,
-        mslite.DataType.INT32: np.int32,
-        mslite.DataType.FLOAT16: np.float16,
-        mslite.DataType.INT8: np.int8
-    }
-
-    converter = mslite.converter.Converter()
-    converter.save_type = mslite.ModelType.MINDIR
-    converter.optimize = "ascend_oriented"
-    converter.input_shape = {"input": [1, 289, 289, 3]}
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               '../graph_split.config')
-    print("config path:", config_path)
-    try:
-        converter.convert(mslite.FmkType.ONNX, os.path.join(mindir_dir, "02-seg_3.onnx"),
-                          os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                       '../ms_models/graph_split'), config_file=config_path)
-    except:
-        raise RuntimeError('convert graph split model failed!')
-
-    context = mslite.Context()
-    context.target = ["ascend"]
-    context.ascend.devcie_id = 0
-    try:
-        runner = mslite.MultiModelRunner()
-        model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                  '../ms_models/graph_split.mindir')
-        runner.build_from_file(model_path, mslite.ModelType.MINDIR, context)
-        execs = runner.get_model_executor()
-        for exec_ in execs:
-            exec_inputs = exec_.get_inputs()
-            for input_ in exec_inputs:
-                data = np.random.randn(*input_.shape).astype(dtype_map[input_.dtype])
-                input_.set_data_from_numpy(data)
-            exec_.predict(exec_inputs)
-    except:
-        raise RuntimeError('run graph split model failed!')
 
 if __name__ == '__main__':
     print("test_inference_cloud_nocofig.py: begin run testcases.")

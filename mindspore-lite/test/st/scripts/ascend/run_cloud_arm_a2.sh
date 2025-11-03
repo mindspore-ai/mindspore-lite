@@ -401,6 +401,7 @@ if [[ "${MSLITE_ENABLE_COVERAGE}" == "on" || "${MSLITE_ENABLE_COVERAGE}" == "ON"
     python3 -m coverage run --rcfile=${MSLITE_COVERAGE_FILE} -m pytest test_acl_profiling.py || exit 1
     python3 -m coverage run --rcfile=${MSLITE_COVERAGE_FILE} -m pytest test_encrypt_and_decrypt.py || exit 1
     python3 -m coverage run --rcfile=${MSLITE_COVERAGE_FILE} -m pytest test_stream_sync_timeout.py -c pytest.ini --device_id ${device_id} || exit 1
+    python3 -m coverage run --rcfile=${MSLITE_COVERAGE_FILE} -m pytest test_model_split.py --mindir_dir=${models_path}/ --so_path=${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ --output_dir=${ms_models_path}/ --config_dir=${basepath}/../${config_folder}/ascend/ || exit 1
 else
     pytest test_tensor.py || exit 1
     pytest test_model.py || exit 1
@@ -410,6 +411,7 @@ else
     pytest test_acl_profiling.py || exit 1
     pytest test_encrypt_and_decrypt.py || exit 1
     pytest test_stream_sync_timeout.py -c pytest.ini --device_id ${device_id} || exit 1
+    pytest test_model_split.py --mindir_dir=${models_path}/ --so_path=${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ --output_dir=${ms_models_path}/ --config_dir=${basepath}/../${config_folder}/ascend/ || exit 1
 fi
 echo "---------- Run MindSpore Lite API SUCCESS ----------"
 #---------------------------------------------------------
