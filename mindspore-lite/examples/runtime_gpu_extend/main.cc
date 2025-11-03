@@ -24,8 +24,8 @@
 #include <memory>
 #include "include/errorcode.h"
 #include "include/context.h"
-#include "include/cxx_api/types.h"
-#include "include/cxx_api/model.h"
+#include "include/api/types.h"
+#include "include/api/model.h"
 
 namespace mindspore {
 namespace lite {
@@ -143,7 +143,7 @@ int CompileAndRun(int argc, const char **argv) {
     return RET_ERROR;
   }
   auto ret = ms_model.Build(model_buf, size, kMindIR, context);
-  delete[](model_buf);
+  delete[] (model_buf);
   if (ret != kSuccess) {
     std::cerr << "ms_model.Build failed." << std::endl;
     return RET_ERROR;

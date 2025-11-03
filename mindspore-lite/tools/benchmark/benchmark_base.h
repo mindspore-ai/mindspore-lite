@@ -34,8 +34,8 @@
 #include <nlohmann/json.hpp>
 #endif
 #include "include/model.h"
-#include "include/cxx_api/types.h"
-#include "include/cxx_api/format.h"
+#include "include/api/types.h"
+#include "include/api/format.h"
 #include "tools/common/flag_parser.h"
 #include "src/common/file_utils.h"
 #include "src/common/utils.h"

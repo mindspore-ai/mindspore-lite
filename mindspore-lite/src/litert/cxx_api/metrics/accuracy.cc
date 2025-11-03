@@ -18,7 +18,7 @@
 #include <vector>
 #include <memory>
 #include "include/train/accuracy_metrics.h"
-#include "include/cxx_api/metrics/accuracy.h"
+#include "include/api/metrics/accuracy.h"
 #include "src/litert/cxx_api/metrics/metrics_impl.h"
 #include "src/common/log_adapter.h"
 

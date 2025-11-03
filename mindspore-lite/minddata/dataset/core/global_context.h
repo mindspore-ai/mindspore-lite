@@ -19,7 +19,7 @@
 #include <memory>
 #include <mutex>
 
-#include "include/cxx_api/status.h"
+#include "include/api/status.h"
 #include "mindspore-lite/minddata/dataset/core/config_manager.h"
 #include "mindspore-lite/minddata/dataset/engine/perf/profiling.h"
 

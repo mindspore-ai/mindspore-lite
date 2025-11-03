@@ -19,7 +19,7 @@
 
 #include <stdint.h>
 #include "nnacl_c/op_base.h"
-#include "include/cxx_api/context.h"
+#include "include/api/context.h"
 #include "schema/ops_generated.h"
 
 namespace mindspore::lite {

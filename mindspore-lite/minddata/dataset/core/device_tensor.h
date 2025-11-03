@@ -19,7 +19,7 @@
 #include <memory>
 #include <utility>
 #include <vector>
-#include "include/cxx_api/status.h"
+#include "include/api/status.h"
 #include "mindspore-lite/minddata/dataset/include/dataset/constants.h"
 #include "mindspore-lite/minddata/dataset/core/data_type.h"
 #include "mindspore-lite/minddata/dataset/core/tensor.h"

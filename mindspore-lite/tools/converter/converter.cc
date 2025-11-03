@@ -30,7 +30,7 @@
 #include "src/train/train_populate_parameter.h"
 #endif
 #include "include/registry/model_parser_registry.h"
-#include "include/cxx_api/format.h"
+#include "include/api/format.h"
 #include "src/common/dynamic_library_loader.h"
 #include "src/common/log_util.h"
 #include "tools/converter/parser/parser_utils.h"
@@ -40,7 +40,7 @@
 #include "src/common/prim_util.h"
 #include "src/common/version_manager.h"
 #include "tools/common/tensor_util.h"
-#include "include/cxx_api/model.h"
+#include "include/api/model.h"
 #include "tools/mindir_exporter/mindir_serializer.h"
 #include "src/common/primitive_t_utils.h"
 #include "tools/converter/config_parser/acl_option_param_parser.h"

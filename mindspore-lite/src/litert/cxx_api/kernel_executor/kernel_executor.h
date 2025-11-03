@@ -19,9 +19,9 @@
 
 #include <vector>
 #include <memory>
-#include "include/cxx_api/types.h"
-#include "include/cxx_api/status.h"
-#include "include/cxx_api/context.h"
+#include "include/api/types.h"
+#include "include/api/status.h"
+#include "include/api/context.h"
 #include "ops/base_operator.h"
 #include "infer/custom.h"
 

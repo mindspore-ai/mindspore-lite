@@ -19,7 +19,7 @@
 #include <algorithm>
 #include <map>
 #include <string>
-#include "include/cxx_api/model_group.h"
+#include "include/api/model_group.h"
 
 namespace mindspore {
 bool JudgeMergeFlag(ModelGroupFlag input_flag, ModelGroupFlag cur_flag) {

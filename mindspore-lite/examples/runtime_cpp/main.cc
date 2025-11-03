@@ -20,11 +20,11 @@
 #include <fstream>
 #include <thread>
 #include <algorithm>
-#include "include/cxx_api/allocator.h"
-#include "include/cxx_api/model.h"
-#include "include/cxx_api/context.h"
-#include "include/cxx_api/types.h"
-#include "include/cxx_api/serialization.h"
+#include "include/api/allocator.h"
+#include "include/api/model.h"
+#include "include/api/context.h"
+#include "include/api/types.h"
+#include "include/api/serialization.h"
 
 std::string RealPath(const char *path) {
   const size_t max = 4096;
@@ -337,7 +337,7 @@ int Run(const char *model_path) {
 
   // Create and Build MindSpore model.
   auto model = CreateAndBuildModel(model_buf, size);
-  delete[](model_buf);
+  delete[] (model_buf);
   if (model == nullptr) {
     std::cerr << "Create and build model failed." << std::endl;
     return -1;
@@ -381,7 +381,7 @@ int RunResize(const char *model_path) {
 
   // Create and Build MindSpore model.
   auto model = CreateAndBuildModel(model_buf, size);
-  delete[](model_buf);
+  delete[] (model_buf);
   if (model == nullptr) {
     std::cerr << "Create and build model failed." << std::endl;
     return -1;
@@ -433,7 +433,7 @@ int RunCreateModelComplicated(const char *model_path) {
 
   // Create and Build MindSpore model.
   auto model = CreateAndBuildModelComplicated(model_buf, size);
-  delete[](model_buf);
+  delete[] (model_buf);
   if (model == nullptr) {
     std::cerr << "Create and build model failed." << std::endl;
     return -1;
@@ -478,7 +478,7 @@ int RunModelParallel(const char *model_path) {
   // Create and Build MindSpore model.
   auto model1 = CreateAndBuildModel(model_buf, size);
   auto model2 = CreateAndBuildModel(model_buf, size);
-  delete[](model_buf);
+  delete[] (model_buf);
   if (model1 == nullptr || model2 == nullptr) {
     std::cerr << "Create and build model failed." << std::endl;
     return -1;
@@ -558,13 +558,13 @@ int RunWithSharedMemoryPool(const char *model_path) {
 
   auto model1 = new (std::nothrow) mindspore::Model();
   if (model1 == nullptr) {
-    delete[](model_buf);
+    delete[] (model_buf);
     std::cerr << "New Model failed." << std::endl;
     return -1;
   }
   auto build_ret = model1->Build(model_buf, size, mindspore::kMindIR, context1);
   if (build_ret != mindspore::kSuccess) {
-    delete[](model_buf);
+    delete[] (model_buf);
     delete model1;
     std::cerr << "Build model failed." << std::endl;
     return -1;
@@ -572,7 +572,7 @@ int RunWithSharedMemoryPool(const char *model_path) {
 
   auto context2 = std::make_shared<mindspore::Context>();
   if (context2 == nullptr) {
-    delete[](model_buf);
+    delete[] (model_buf);
     delete model1;
     std::cerr << "New context failed." << std::endl;
     return -1;
@@ -580,7 +580,7 @@ int RunWithSharedMemoryPool(const char *model_path) {
   auto &device_list2 = context2->MutableDeviceInfo();
   auto device_info2 = CreateCPUDeviceInfo();
   if (device_info2 == nullptr) {
-    delete[](model_buf);
+    delete[] (model_buf);
     delete model1;
     std::cerr << "Create CPUDeviceInfo failed." << std::endl;
     return -1;
@@ -591,13 +591,13 @@ int RunWithSharedMemoryPool(const char *model_path) {
 
   auto model2 = new (std::nothrow) mindspore::Model();
   if (model2 == nullptr) {
-    delete[](model_buf);
+    delete[] (model_buf);
     delete model1;
     std::cerr << "New Model failed." << std::endl;
     return -1;
   }
   build_ret = model2->Build(model_buf, size, mindspore::kMindIR, context2);
-  delete[](model_buf);
+  delete[] (model_buf);
   if (build_ret != mindspore::kSuccess) {
     delete model1;
     delete model2;
@@ -652,7 +652,7 @@ int RunCallback(const char *model_path) {
 
   // Create and Build MindSpore model.
   auto model = CreateAndBuildModel(model_buf, size);
-  delete[](model_buf);
+  delete[] (model_buf);
   if (model == nullptr) {
     delete model;
     std::cerr << "Create model failed." << std::endl;

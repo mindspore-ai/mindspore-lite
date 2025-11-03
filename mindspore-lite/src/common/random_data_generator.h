@@ -19,7 +19,7 @@
 
 #include <random>
 #include "src/common/log_adapter.h"
-#include "include/cxx_api/types.h"
+#include "include/api/types.h"
 namespace mindspore {
 namespace lite {
 int GenRandomData(mindspore::MSTensor *tensors);

@@ -379,7 +379,7 @@ set_target_properties(mindspore-lite PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 
 if(APPLE)
     file(GLOB_RECURSE MINDSPORE_LITE_PUB_HDRS LIST_DIRECTORIES true
-            ${TOP_DIR}/include/cxx_api/*.h)
+            ${TOP_DIR}/include/api/*.h)
     file(GLOB MINDSPORE_LITE_PUB_HDRS_IR_HDRS
             ${TOP_DIR}/mindspore-lite/mindspore/mindspor/core/include/ir/dtype/type_id.h)
     file(GLOB MINDSPORE_LITE_PUB_HDRS_MINDAPI_HDRS

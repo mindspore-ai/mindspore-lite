@@ -18,15 +18,15 @@
 #include <memory>
 #include "schema/inner/model_generated.h"
 #include "common/common_test.h"
-#include "include/cxx_api/context.h"
-#include "include/cxx_api/model.h"
+#include "include/api/context.h"
+#include "include/api/model.h"
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 #include "src/litert/lite_session.h"
 #include "include/registry/register_kernel_interface.h"
 #include "include/registry/register_kernel.h"
 #include "include/registry/opencl_runtime_wrapper.h"
-#include "include/cxx_api/data_type.h"
+#include "include/api/data_type.h"
 
 using mindspore::kernel::Kernel;
 using mindspore::kernel::KernelInterface;

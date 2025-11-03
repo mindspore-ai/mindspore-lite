@@ -19,7 +19,7 @@
 
 #include <vector>
 
-#include "include/cxx_api/kernel.h"
+#include "include/api/kernel.h"
 #include "src/tensor.h"
 
 using mindspore::kernel::Kernel;

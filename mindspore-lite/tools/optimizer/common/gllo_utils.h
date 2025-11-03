@@ -32,7 +32,7 @@
 #include "infer/cxx_api/conv2d_backprop_input_fusion.h"
 #include "schema/inner/model_generated.h"
 #include "tools/converter/converter_context.h"
-#include "include/cxx_api/status.h"
+#include "include/api/status.h"
 
 using PrimitiveCPtr = std::shared_ptr<mindspore::ops::PrimitiveC>;
 using mindspore::lite::RET_ERROR;

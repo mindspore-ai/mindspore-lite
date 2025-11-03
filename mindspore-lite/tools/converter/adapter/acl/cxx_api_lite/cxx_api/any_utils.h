@@ -21,8 +21,8 @@
 #include <vector>
 #include <string>
 #include <map>
-#include "include/cxx_api/visible.h"
-#include "include/cxx_api/data_type.h"
+#include "include/api/visible.h"
+#include "include/api/data_type.h"
 
 namespace mindspore {
 // std::any is not support to access across shared libraries, so add an adapter to access std::any

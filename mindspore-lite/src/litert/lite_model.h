@@ -32,7 +32,7 @@
 #ifdef ENABLE_MODEL_OBF
 #include "tools/obfuscator/include/deobfuscator.h"
 #endif
-#include "include/cxx_api/types.h"
+#include "include/api/types.h"
 #ifdef ENABLE_LITE_HELPER
 #include "src/common/helper/infer_helpers.h"
 #endif

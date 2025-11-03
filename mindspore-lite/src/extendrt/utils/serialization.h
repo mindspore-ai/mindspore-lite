@@ -20,11 +20,11 @@
 #include <vector>
 #include <map>
 #include <memory>
-#include "include/cxx_api/status.h"
-#include "include/cxx_api/types.h"
-#include "include/cxx_api/model.h"
-#include "include/cxx_api/graph.h"
-#include "include/cxx_api/dual_abi_helper.h"
+#include "include/api/status.h"
+#include "include/api/types.h"
+#include "include/api/model.h"
+#include "include/api/graph.h"
+#include "include/api/dual_abi_helper.h"
 #include "base/base.h"
 
 namespace mindspore::infer {

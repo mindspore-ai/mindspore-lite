@@ -31,10 +31,10 @@
 #include <utility>
 #include <algorithm>
 #include <nlohmann/json.hpp>
-#include "include/cxx_api/model.h"
-#include "include/cxx_api/types.h"
-#include "include/cxx_api/context.h"
-#include "include/cxx_api/cfg.h"
+#include "include/api/model.h"
+#include "include/api/types.h"
+#include "include/api/context.h"
+#include "include/api/cfg.h"
 
 #ifdef ENABLE_FP16
 #include <arm_neon.h>

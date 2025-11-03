@@ -15,7 +15,7 @@
  */
 #include "src/litert/cxx_api/converters.h"
 #include "include/train/train_cfg.h"
-#include "include/cxx_api/cfg.h"
+#include "include/api/cfg.h"
 #include "src/common/log_adapter.h"
 
 namespace mindspore {

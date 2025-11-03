@@ -19,8 +19,8 @@
 #include <vector>
 #include <map>
 #include <memory>
-#include "include/cxx_api/graph.h"
-#include "include/cxx_api/types.h"
+#include "include/api/graph.h"
+#include "include/api/types.h"
 #include "ir/func_graph.h"
 
 namespace mindspore {

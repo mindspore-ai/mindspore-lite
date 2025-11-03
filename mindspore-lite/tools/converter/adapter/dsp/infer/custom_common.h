@@ -18,8 +18,8 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_ADAPTER_DSP_CUSTOM_COMMON_H
 
 #include <vector>
-#include "include/cxx_api/types.h"
-#include "include/cxx_api/status.h"
+#include "include/api/types.h"
+#include "include/api/status.h"
 
 namespace mindspore::lite {
 namespace common {

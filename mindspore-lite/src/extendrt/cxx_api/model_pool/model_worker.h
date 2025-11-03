@@ -24,7 +24,7 @@
 #include <utility>
 #include <memory>
 #include <map>
-#include "include/cxx_api/model.h"
+#include "include/api/model.h"
 #include "src/extendrt/cxx_api/model_pool/predict_task_queue.h"
 namespace mindspore {
 class PredictTaskQueue;

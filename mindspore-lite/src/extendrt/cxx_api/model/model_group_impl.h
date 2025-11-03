@@ -25,8 +25,8 @@
 #include <mutex>
 #include <utility>
 #include <unordered_map>
-#include "include/cxx_api/model_group.h"
-#include "include/cxx_api/context.h"
+#include "include/api/model_group.h"
+#include "include/api/context.h"
 
 namespace mindspore {
 class ModelGroupImpl {

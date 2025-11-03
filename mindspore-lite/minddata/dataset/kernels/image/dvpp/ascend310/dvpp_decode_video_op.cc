@@ -16,7 +16,7 @@
 
 #include "mindspore-lite/minddata/dataset/kernels/image/dvpp/ascend310/dvpp_decode_video_op.h"
 
-#include "include/cxx_api/context.h"
+#include "include/api/context.h"
 #include "mindspore-lite/minddata/dataset/core/cv_tensor.h"
 #include "mindspore-lite/minddata/dataset/core/data_type.h"
 #include "mindspore-lite/minddata/dataset/core/device_tensor.h"

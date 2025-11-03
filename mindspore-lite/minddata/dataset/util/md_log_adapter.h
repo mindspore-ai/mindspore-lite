@@ -20,7 +20,7 @@
 #include <string>
 #include <utility>
 
-#include "include/cxx_api/status.h"
+#include "include/api/status.h"
 
 namespace mindspore {
 namespace dataset {

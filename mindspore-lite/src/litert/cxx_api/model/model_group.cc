@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-#include "include/cxx_api/model_group.h"
+#include "include/api/model_group.h"
 #include <mutex>
-#include "include/cxx_api/types.h"
-#include "include/cxx_api/context.h"
-#include "include/cxx_api/dual_abi_helper.h"
+#include "include/api/types.h"
+#include "include/api/context.h"
+#include "include/api/dual_abi_helper.h"
 #include "src/litert/cxx_api/model/model_group_impl.h"
 #include "src/common/log_adapter.h"
 

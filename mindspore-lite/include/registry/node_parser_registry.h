@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 #include "include/registry/node_parser.h"
-#include "include/cxx_api/dual_abi_helper.h"
+#include "include/api/dual_abi_helper.h"
 
 namespace mindspore {
 namespace registry {

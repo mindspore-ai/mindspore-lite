@@ -16,7 +16,7 @@
 
 #include "src/litert/c_api/context_c.h"
 #include "include/c_api/context_c.h"
-#include "include/cxx_api/context.h"
+#include "include/api/context.h"
 #include "src/common/log_adapter.h"
 
 // ================ Context ================

@@ -24,7 +24,7 @@
 #include "infer/tuple_get_item.h"
 #include "common/op_attr.h"
 #include "include/errorcode.h"
-#include "include/cxx_api/format.h"
+#include "include/api/format.h"
 #include "src/graph_split_info.h"
 #include "common/check_base.h"
 #include "common/anf_util.h"

@@ -21,7 +21,7 @@
 #include "ir/anf.h"
 #include "mindapi/base/type_id.h"
 #include "proto/mind_ir.pb.h"
-#include "include/cxx_api/context.h"
+#include "include/api/context.h"
 
 namespace mindspore::infer::mindir {
 class MindirModelUtil {

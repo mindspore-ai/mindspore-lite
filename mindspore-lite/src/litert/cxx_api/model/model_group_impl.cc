@@ -21,8 +21,8 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "include/cxx_api/types.h"
-#include "include/cxx_api/context.h"
+#include "include/api/types.h"
+#include "include/api/context.h"
 #include "src/litert/cxx_api/converters.h"
 #include "src/common/log_adapter.h"
 #include "src/litert/lite_session.h"

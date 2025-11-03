@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "include/cxx_api/graph.h"
-#include "include/cxx_api/cell.h"
+#include "include/api/graph.h"
+#include "include/api/cell.h"
 #include "src/litert/cxx_api/graph/graph_data.h"
 
 namespace mindspore {

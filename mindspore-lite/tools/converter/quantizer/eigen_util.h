@@ -20,7 +20,7 @@
 #include <Eigen/Dense>
 #include <vector>
 #include "ir/tensor.h"
-#include "include/cxx_api/types.h"
+#include "include/api/types.h"
 #include "src/tensor.h"
 
 namespace mindspore::lite::quant {

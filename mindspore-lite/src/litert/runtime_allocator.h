@@ -20,7 +20,7 @@
 #include <memory>
 #include <map>
 #include <unordered_map>
-#include "include/cxx_api/allocator.h"
+#include "include/api/allocator.h"
 #include "include/errorcode.h"
 #include "src/tensor.h"
 

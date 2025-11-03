@@ -20,8 +20,8 @@
 #include <map>
 #include <memory>
 #include <vector>
-#include "include/cxx_api/types.h"
-#include "include/cxx_api/status.h"
+#include "include/api/types.h"
+#include "include/api/status.h"
 #include "ir/func_graph.h"
 #include "backend/ge_backend/graph_ir/types.h"
 #include "ge/ge_ir_build.h"

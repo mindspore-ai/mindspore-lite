@@ -17,7 +17,7 @@
 #include "tools/converter/adapter/dsp/infer/custom_fft_infer.h"
 #include <vector>
 #include <memory>
-#include "include/cxx_api/status.h"
+#include "include/api/status.h"
 #include "include/registry/register_kernel_interface.h"
 #include "tools/converter/adapter/dsp/infer/custom_common.h"
 

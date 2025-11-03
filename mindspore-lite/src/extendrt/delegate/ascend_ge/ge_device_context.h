@@ -21,8 +21,8 @@
 #include <map>
 
 #include "common/config_infos.h"
-#include "include/cxx_api/context.h"
-#include "include/cxx_api/status.h"
+#include "include/api/context.h"
+#include "include/api/status.h"
 #include "utils/ms_context.h"
 
 namespace mindspore {

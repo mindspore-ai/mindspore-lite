@@ -18,7 +18,7 @@
 #include <memory>
 #include <fstream>
 #include <utility>
-#include "include/cxx_api/status.h"
+#include "include/api/status.h"
 #include "src/common/log_adapter.h"
 #include "src/common/utils.h"
 #include "src/extendrt/numa_adapter.h"

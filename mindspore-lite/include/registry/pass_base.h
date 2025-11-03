@@ -19,7 +19,7 @@
 
 #include <memory>
 #include <string>
-#include "include/cxx_api/types.h"
+#include "include/api/types.h"
 #include "mindapi/ir/func_graph.h"
 
 namespace mindspore {

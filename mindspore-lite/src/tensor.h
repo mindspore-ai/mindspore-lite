@@ -24,7 +24,7 @@
 #include <numeric>
 #include <functional>
 #include <atomic>
-#include "include/cxx_api/format.h"
+#include "include/api/format.h"
 #include "include/lite_types.h"
 #include "nnacl_c/tensor_c.h"
 #include "nnacl_c/tensor_c_utils.h"

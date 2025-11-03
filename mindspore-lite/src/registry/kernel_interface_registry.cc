@@ -20,7 +20,7 @@
 #include "src/common/log_adapter.h"
 #include "src/common/version_manager.h"
 #include "schema/model_generated.h"
-#include "include/cxx_api/kernel.h"
+#include "include/api/kernel.h"
 
 using mindspore::registry::KernelInterfaceCreator;
 using mindspore::schema::PrimitiveType_MAX;

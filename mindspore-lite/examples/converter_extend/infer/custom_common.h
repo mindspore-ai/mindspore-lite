@@ -18,8 +18,8 @@
 #define MINDSPORE_LITE_EXAMPLES_CONVERTER_EXTEND_INFER_CUSTOM_COMMON_H
 
 #include <vector>
-#include "include/cxx_api/types.h"
-#include "include/cxx_api/status.h"
+#include "include/api/types.h"
+#include "include/api/status.h"
 
 namespace mindspore {
 namespace common {

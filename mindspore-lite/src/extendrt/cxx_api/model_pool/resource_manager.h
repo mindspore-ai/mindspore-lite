@@ -23,7 +23,7 @@
 #include <memory>
 #include <mutex>
 #include "src/common/log_adapter.h"
-#include "include/cxx_api/status.h"
+#include "include/api/status.h"
 #include "src/extendrt/cxx_api/model_pool/model_worker.h"
 namespace mindspore {
 class ResourceManager {

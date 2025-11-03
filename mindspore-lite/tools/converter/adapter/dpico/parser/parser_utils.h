@@ -21,7 +21,7 @@
 #include <string>
 #include "mindapi/ir/common.h"
 #include "mindapi/ir/anf.h"
-#include "include/cxx_api/format.h"
+#include "include/api/format.h"
 #include "mindapi/ir/func_graph.h"
 #include "mindapi/base/logging.h"
 #include "include/errorcode.h"

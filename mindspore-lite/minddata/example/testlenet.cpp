@@ -28,7 +28,7 @@
 #include "include/dataset/iterator.h"
 #include "include/dataset/vision_lite.h"
 #include "include/dataset/transforms.h"
-#include "include/cxx_api/types.h"
+#include "include/api/types.h"
 
 using mindspore::dataset::Dataset;
 using mindspore::dataset::Iterator;

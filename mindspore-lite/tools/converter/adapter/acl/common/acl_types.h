@@ -21,8 +21,8 @@
 #include <vector>
 #include <map>
 #include <memory>
-#include "include/cxx_api/data_type.h"
-#include "include/cxx_api/context.h"
+#include "include/api/data_type.h"
+#include "include/api/context.h"
 
 namespace mindspore {
 namespace lite {
