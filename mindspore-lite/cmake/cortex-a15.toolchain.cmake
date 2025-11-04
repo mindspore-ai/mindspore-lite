@@ -23,6 +23,9 @@ set(CMAKE_CXX_COMPILER "arm-linux-gnueabihf-g++")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv7-a -mtune=cortex-a15 -mfpu=neon -mfloat-abi=hard")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv7-a -mtune=cortex-a15 -mfpu=neon -mfloat-abi=hard")
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}" CACHE STRING "c flags")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "c++ flags")
+
 # used for flatc compile
 find_path(GCC_PATH gcc)
 find_path(GXX_PATH g++)
