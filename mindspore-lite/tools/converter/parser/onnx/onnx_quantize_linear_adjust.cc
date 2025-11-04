@@ -29,7 +29,7 @@
 #include "tools/common/node_util.h"
 #include "tools/common/tensor_util.h"
 #include "mindspore/ops/op_def/array_ops.h"
-#include "mindspore/ccsrc/include/common/utils/utils.h"
+#include "mindspore/ccsrc/include/utils/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_o.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 

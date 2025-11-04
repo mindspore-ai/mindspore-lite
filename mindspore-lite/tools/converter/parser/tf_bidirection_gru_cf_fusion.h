@@ -22,7 +22,7 @@
 #include "tools/optimizer/fusion/tf_bidirection_gru_fusion.h"
 #include "schema/inner/model_generated.h"
 #include "include/backend/optimizer/optimizer.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "include/errorcode.h"
 
 namespace mindspore {

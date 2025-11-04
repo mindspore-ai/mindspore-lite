@@ -19,7 +19,7 @@
 #include <iomanip>
 #include <stack>
 
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "mindspore-lite/minddata/dataset/core/pybind_support.h"
 #ifndef BUILD_LITE
 #include "utils/file_utils.h"
@@ -293,7 +293,7 @@ Status Serdes::ConstructTensorOps(nlohmann::json json_obj, std::vector<std::shar
 
 std::map<std::string, Status (*)(nlohmann::json json_obj, std::shared_ptr<TensorOperation> *operation)>
 Serdes::InitializeFuncPtr() {
-  std::map<std::string, Status (*)(nlohmann::json json_obj, std::shared_ptr<TensorOperation> * operation)> ops_ptr;
+  std::map<std::string, Status (*)(nlohmann::json json_obj, std::shared_ptr<TensorOperation> *operation)> ops_ptr;
   ops_ptr[vision::kAdjustGammaOperation] = &(vision::AdjustGammaOperation::from_json);
   ops_ptr[vision::kAffineOperation] = &(vision::AffineOperation::from_json);
   ops_ptr[vision::kAutoContrastOperation] = &(vision::AutoContrastOperation::from_json);

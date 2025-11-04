@@ -21,7 +21,7 @@
 #include <unordered_map>
 #include <vector>
 #include "tools/optimizer/common/multiple_pattern_process_pass.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "include/errorcode.h"
 #include "infer/decoder_layer.h"
 #include "infer/cxx_api/layer_norm_fusion.h"

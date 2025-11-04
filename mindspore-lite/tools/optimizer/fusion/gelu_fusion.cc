@@ -19,7 +19,7 @@
 #include <memory>
 #include <string>
 #include "infer/cxx_api/activation.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "nnacl_c/op_base.h"
 

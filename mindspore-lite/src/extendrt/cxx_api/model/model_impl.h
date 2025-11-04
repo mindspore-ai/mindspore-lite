@@ -26,7 +26,7 @@
 #include "include/api/graph.h"
 #include "include/api/serialization.h"
 #include "extendrt/cxx_api/graph/graph_data.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "ir/func_graph.h"
 #include "extendrt/infer_session.h"
 #include "src/common/config_infos.h"

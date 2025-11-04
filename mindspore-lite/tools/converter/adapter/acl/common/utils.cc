@@ -22,7 +22,7 @@
 #include "base/base_ref.h"
 #include "abstract/dshape.h"
 #include "abstract/abstract_value.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "src/common/log_util.h"
 #include "ir/func_graph.h"
 #include "nnacl_c/op_base.h"

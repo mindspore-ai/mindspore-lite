@@ -19,7 +19,7 @@
 #include <algorithm>
 #include <utility>
 #include "extendrt/delegate/factory.h"
-#include "include/common/utils/scoped_long_running.h"
+#include "include/utils/scoped_long_running.h"
 #include "mindspore/ccsrc/include/backend/common/ms_device_shape_transfer.h"
 #include "src/common/common.h"
 #include "src/common/file_utils.h"

@@ -23,7 +23,7 @@
 #include "mindspore/ops/op_def/op_name.h"
 #include "mindspore/ops/op_def/other_ops.h"
 #include "tools/converter/quantizer/quantize_util.h"
-#include "mindspore/ccsrc/include/common/utils/utils.h"
+#include "mindspore/ccsrc/include/utils/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_f.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"

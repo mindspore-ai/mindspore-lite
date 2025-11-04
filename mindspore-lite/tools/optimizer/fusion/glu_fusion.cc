@@ -21,7 +21,7 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "ops_utils/op_utils.h"
 #include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"

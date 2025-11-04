@@ -19,7 +19,7 @@
 #include <unordered_map>
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "nnacl_c/op_base.h"
-#include "mindspore/ccsrc/include/common/utils/utils.h"
+#include "mindspore/ccsrc/include/utils/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_d.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_e.h"

@@ -27,7 +27,7 @@
 #include "nnacl_c/op_base.h"
 #include "infer/cxx_api/conv2d_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "include/errorcode.h"
 #include "tools/optimizer/parallel/operator_info_register.h"
 #include "tools/optimizer/fisson/fisson_util.h"

@@ -20,7 +20,7 @@
 #include "tools/optimizer/parallel/split_strategy.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/tuple_get_item.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "include/errorcode.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"

@@ -27,7 +27,7 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "src/common/utils.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "include/securec.h"
 #include "tools/converter/ops/ops_def.h"

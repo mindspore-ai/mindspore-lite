@@ -452,7 +452,7 @@ set(CCSRC_SRC_NEW ${CCSRC_DIR}/backend/common/pass_manager/graph_optimizer.cc
     ${CCSRC_DIR}/utils/convert_utils.cc
     ${CCSRC_DIR}/utils/ir_dump/mindir_exporter.cc
     ${CCSRC_DIR}/backend/common/pass_manager/visitor.cc
-    ${CCSRC_DIR}/common/debug/common.cc
+    ${CCSRC_DIR}/utils/common.cc
     ${CCSRC_DIR}/utils/compile_cache_context.cc
     )
 if(NOT WIN32)

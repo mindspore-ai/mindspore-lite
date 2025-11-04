@@ -32,7 +32,7 @@
 #include "infer/cxx_api/pad_fusion.h"
 #include "ops_utils/op_utils.h"
 #include "nnacl_c/op_base.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_d.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_i.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"

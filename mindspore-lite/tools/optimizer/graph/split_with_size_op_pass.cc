@@ -28,7 +28,7 @@
 #include "utils/anf_utils.h"
 #include "mindspore/ops/op_def/math_ops.h"
 #include "extendrt/utils/func_graph_utils.h"
-#include "include/common/utils/anfalgo.h"
+#include "include/utils/anfalgo.h"
 #include "tools/converter/quantizer/quantize_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/core/include/ir/graph_utils.h"

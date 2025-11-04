@@ -17,7 +17,7 @@
 #include "tools/optimizer/fusion/conv_bn_fusion.h"
 #include <memory>
 #include "mindspore/ops/op_def/nn_ops.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/fusion/batchnorm_to_scale_fusion.h"
 #include "nnacl_c/op_base.h"

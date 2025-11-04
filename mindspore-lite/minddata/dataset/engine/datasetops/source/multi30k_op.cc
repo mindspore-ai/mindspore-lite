@@ -18,7 +18,7 @@
 #include <fstream>
 #include <utility>
 
-#include "include/common/debug/common.h"
+#include "include/utils/common.h"
 #include "mindspore-lite/minddata/dataset/engine/datasetops/source/io_block.h"
 #include "utils/file_utils.h"
 

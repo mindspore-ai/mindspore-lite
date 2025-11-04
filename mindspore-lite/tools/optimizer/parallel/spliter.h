@@ -21,7 +21,7 @@
 #include <set>
 #include <unordered_map>
 #include "schema/inner/model_generated.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "include/lite_types.h"
 namespace mindspore {

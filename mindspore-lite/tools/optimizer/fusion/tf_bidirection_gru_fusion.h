@@ -22,7 +22,7 @@
 #include "tools/optimizer/common/gllo_utils.h"
 #include "schema/inner/model_generated.h"
 #include "tools/optimizer/common/pattern_process_pass_extends.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "include/errorcode.h"
 
 namespace mindspore {

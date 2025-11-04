@@ -16,7 +16,7 @@
 
 #include "extendrt/delegate/ascend_ge/ge_memory_manager.h"
 #include "src/common/log_adapter.h"
-#include "mindspore/ccsrc/include/common/utils/utils.h"
+#include "mindspore/ccsrc/include/utils/utils.h"
 #include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
 #include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 

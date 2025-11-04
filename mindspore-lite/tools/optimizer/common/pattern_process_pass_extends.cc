@@ -21,7 +21,7 @@
 #include <utility>
 
 #include "include/backend/optimizer/pass_manager.h"
-#include "include/common/utils/anfalgo.h"
+#include "include/utils/anfalgo.h"
 #include "ir/manager.h"
 #include "tools/optimizer/common/helper.h"
 

@@ -27,7 +27,7 @@
 #include "tools/common/tensor_util.h"
 #include "tools/converter/ops/ops_def.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "mindspore/ccsrc/include/common/utils/utils.h"
+#include "mindspore/ccsrc/include/utils/utils.h"
 #include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore::lite {
