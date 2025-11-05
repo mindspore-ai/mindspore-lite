@@ -31,6 +31,9 @@ DEVICE_ID = 0
 
 
 def test_python_api_func_parallel_001():
+    """
+    test_python_api_func_parallel_001 success
+    """
     context = mslite.Context()
     context.target = ["ascend"]
     context.parallel.workers_num = 2
@@ -44,6 +47,9 @@ def test_python_api_func_parallel_001():
 
 
 def test_python_api_fi_parallel_003():
+    """
+    test_python_api_fi_parallel_003 file not exist
+    """
     with pytest.raises(RuntimeError) as raise_info:
         context = mslite.Context()
         context.target = ["ascend"]
@@ -54,6 +60,9 @@ def test_python_api_fi_parallel_003():
 
 
 def test_python_api_fi_parallel_005():
+    """
+    test_python_api_fi_parallel_005 incorrect input
+    """
     with pytest.raises(RuntimeError) as raise_info:
         context = mslite.Context()
         context.target = ["ascend"]
@@ -61,10 +70,13 @@ def test_python_api_fi_parallel_005():
         runner = mslite.ModelParallelRunner()
         runner.build_from_file(model_path=MODEL_FILE, context=context)
         runner.predict([])
-    assert "ModelParallelRunner's build from file failed! Error is Common error code." in str(raise_info.value)
+    assert "predict failed!" in str(raise_info.value)
 
 
 def test_python_api_fi_parallel_006():
+    """
+    test_python_api_fi_parallel_006 predict without build
+    """
     with pytest.raises(RuntimeError) as raise_info:
         context = mslite.Context()
         context.target = ["ascend"]
