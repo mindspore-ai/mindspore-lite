@@ -16,6 +16,7 @@
 Test for MindSpore Lite update_weights
 """
 
+import os
 import pytest
 import mindspore_lite as mslite
 import numpy as np
@@ -24,6 +25,9 @@ MODEL_FILE = "./single_matmul_model.onnx.mindir"
 DEVICE_ID = 0
 
 def test_update_weight_resul_change():
+    '''
+    test inference result changed after update weight
+    '''
     model = mslite.Model()
     context = mslite.Context()
     context.target = ["ascend"]
@@ -40,6 +44,9 @@ def test_update_weight_resul_change():
     assert not np.allclose(outputs_nolora, outputs_lora)
 
 def test_update_weight_multiple_times():
+    '''
+    test update weight multi time
+    '''
     try:
         model = mslite.Model()
         context = mslite.Context()
@@ -48,12 +55,15 @@ def test_update_weight_multiple_times():
         model.build_from_file(model_path=MODEL_FILE, model_type=mslite.ModelType.MINDIR, context=context)
         weight = np.ones((4, 4), dtype=np.float32)
         tensor = mslite.Tensor(weight)
-        for i in range(5):
+        for _ in range(5):
             model.update_weights([[tensor]])
-    except:
-        raise "test update weight multiple times failed!"
+    except Exception as exc:
+        raise RuntimeError("test update weight multiple times failed!") from exc
 
 def test_update_weight_zero_copy():
+    '''
+    test update weight use zero copy
+    '''
     model = mslite.Model()
     context = mslite.Context()
     context.target = ["ascend"]
@@ -70,6 +80,9 @@ def test_update_weight_zero_copy():
     assert np.mean(lora_out-outputs_lora) < 1e-5
 
 def test_update_weight_precision():
+    '''
+    test precision after update weight
+    '''
     model = mslite.Model()
     context = mslite.Context()
     context.target = ["ascend"]
@@ -86,6 +99,9 @@ def test_update_weight_precision():
     assert np.mean(lora_out-outputs_lora) < 1e-5
 
 def test_update_weight_empty_weight():
+    '''
+    test update empty weight
+    '''
     model = mslite.Model()
     context = mslite.Context()
     context.target = ["ascend"]
@@ -94,3 +110,31 @@ def test_update_weight_empty_weight():
     with pytest.raises(RuntimeError) as e:
         model.update_weights([[]])
     assert "update weight failed! Error is Common error code" in str(e.value)
+
+def test_update_weight_mindir(mindir_dir, so_path, output_dir, config_dir):
+    '''
+    test update weight for mindir model
+    '''
+    model_path = os.path.join(mindir_dir, "linear.mindir")
+    fmk_type = "MINDIR"
+    config_path = os.path.join(config_dir, "linear.mindir.config")
+    output_path = os.path.join(output_dir, "linear_lite")
+    cmd_string = so_path + "/tools/converter/converter/converter_lite " + \
+                    " --modelFile=" + model_path + \
+                    " --optimize=ascend_oriented " + \
+                    " --outputFile=" + output_path + \
+                    " --fmk=" + fmk_type + \
+                    " --configFile=" + config_path
+    ret = os.system(cmd_string)
+    if ret != 0:
+        raise RuntimeError("model convert failed, cmd_string is: ", cmd_string)
+    try:
+        model = mslite.Model()
+        context = mslite.Context()
+        context.target = ["ascend"]
+        context.ascend.device_id = DEVICE_ID
+        model.build_from_file(output_path+".mindir", mslite.ModelType.MINDIR, context)
+        weight = mslite.Tensor(np.random.randn(64,128).astype(np.float32))
+        model.update_weights([[weight]])
+    except Exception as exc:
+        raise RuntimeError('update weight for mindir model failed!') from exc
