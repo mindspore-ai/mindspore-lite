@@ -38,6 +38,6 @@ add_executable(ascend_ge_distributed ${ASCEND_GE_DISTRIBUTED})
 
 target_link_libraries(ascend_ge_distributed ${ge_graph} ${ge_compiler} ${acl_retr} ${acl_cblas} ${acl_dvpp}
                       ${acl_runtime} ${libplatform} ${libcompress} ${libopskernel} ${libaicore_utils}
-                      ${libaicpu_engine_common} ${acl} ${ge_runner} mindspore-lite)
+                      ${libaicpu_engine_common} ${acl} ${ge_runner} mindspore-lite mindspore_core_lite)
 
 
