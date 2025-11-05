@@ -19,7 +19,7 @@
 
 #include <memory>
 #include <string>
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/common/multiple_pattern_process_pass.h"
 

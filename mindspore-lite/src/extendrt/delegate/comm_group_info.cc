@@ -17,13 +17,13 @@
 #include <fstream>
 #include <vector>
 #include <utility>
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "utils/ms_utils.h"
 #include "src/extendrt/delegate/comm_group_info.h"
 #include "src/common/common.h"
-#include "include/common/utils/convert_utils.h"
+#include "include/utils/convert_utils.h"
 #include "src/common/log_adapter.h"
-#include "include/common/debug/common.h"
+#include "include/utils/common.h"
 #include "utils/file_utils.h"
 namespace mindspore::lite {
 std::optional<std::string> CommGroupInfo::CreatePrefixPath(const std::string &input_path, bool support_relative_path) {

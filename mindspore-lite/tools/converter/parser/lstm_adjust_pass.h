@@ -22,7 +22,7 @@
 #include <string>
 #include <unordered_map>
 #include "include/backend/optimizer/optimizer.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "tools/optimizer/common/format_utils.h"
 
 namespace mindspore {

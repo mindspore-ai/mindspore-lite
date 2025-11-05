@@ -24,7 +24,7 @@
 #include "include/api/cell.h"
 #include "include/api/graph.h"
 #include "extendrt/cxx_api/graph/graph_data.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 
 namespace mindspore {
 class GraphCell::GraphImpl {

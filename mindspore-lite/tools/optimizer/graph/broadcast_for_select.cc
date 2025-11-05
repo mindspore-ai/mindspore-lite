@@ -21,8 +21,8 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "nnacl_c/op_base.h"
-#include "include/common/utils/anfalgo.h"
-#include "mindspore/ccsrc/include/common/utils/utils.h"
+#include "include/utils/anfalgo.h"
+#include "mindspore/ccsrc/include/utils/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_b.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 
@@ -45,8 +45,9 @@ ShapeVector CalcBroadcastShape(AnfNodePtr cond, AnfNodePtr x, AnfNodePtr y) {
   auto cond_size = cond_shape.size();
   auto x_size = x_shape.size();
   auto y_size = y_shape.size();
-  ShapeVector broadcast_shape =
-    cond_size > x_size ? cond_size > y_size ? cond_shape : y_shape : x_size > y_size ? x_shape : y_shape;
+  ShapeVector broadcast_shape = cond_size > x_size ? cond_size > y_size ? cond_shape : y_shape
+                                : x_size > y_size  ? x_shape
+                                                   : y_shape;
   auto n = broadcast_shape.size();
   for (size_t i = n; i > 0; --i) {
     auto cond_i = cond_size < i ? 1 : cond_shape[cond_size - i];

@@ -30,7 +30,7 @@
 #include "include/api/data_type.h"
 #include "include/api/status.h"
 #include "runtime/hardware_abstract/kernel_base/kernel.h"
-#include "include/common/utils/anfalgo.h"
+#include "include/utils/anfalgo.h"
 #include "mindspore/ops/infer/custom.h"
 #include "src/common/common.h"
 

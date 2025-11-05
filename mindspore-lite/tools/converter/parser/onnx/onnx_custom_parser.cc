@@ -18,7 +18,7 @@
 #include <vector>
 #include <string>
 #include "infer/custom.h"
-#include "mindspore/ccsrc/include/common/utils/utils.h"
+#include "mindspore/ccsrc/include/utils/utils.h"
 
 namespace mindspore {
 namespace lite {

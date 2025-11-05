@@ -23,7 +23,7 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/optimizer/fisson/eliminate_concat_split.h"
 #include "schema/inner/model_generated.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "infer/split_with_overlap.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"

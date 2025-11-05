@@ -20,7 +20,7 @@
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "mindspore/ops/op_def/nn_ops.h"
 #include "infer/fused_batch_norm.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "infer/cxx_api/scale_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/common/tensor_util.h"

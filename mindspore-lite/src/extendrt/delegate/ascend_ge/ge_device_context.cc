@@ -18,7 +18,7 @@
 #include <cxxabi.h>
 #include <utility>
 #include <vector>
-#include "include/common/utils/scoped_long_running.h"
+#include "include/utils/scoped_long_running.h"
 #include "include/api/context.h"
 #include "include/api/status.h"
 #include "mindspore/ccsrc/include/backend/common/ms_device_shape_transfer.h"

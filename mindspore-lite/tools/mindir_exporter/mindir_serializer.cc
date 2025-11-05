@@ -23,7 +23,7 @@
 #include <map>
 #include "utils/crypto.h"
 #include "mindspore/ccsrc/utils/ir_dump/dump_proto.h"
-#include "mindspore/ccsrc/include/common/utils/utils.h"
+#include "mindspore/ccsrc/include/utils/utils.h"
 #include "src/common/file_utils.h"
 #include "src/common/common.h"
 #include "tools/converter/parser/parser_utils.h"

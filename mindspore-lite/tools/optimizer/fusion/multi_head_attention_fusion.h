@@ -22,7 +22,7 @@
 #include <vector>
 #include <tuple>
 #include "tools/optimizer/common/multiple_pattern_process_pass.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "include/errorcode.h"
 #include "infer/attention.h"
 

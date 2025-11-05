@@ -23,7 +23,7 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "infer/cxx_api/groupnorm_fusion.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "include/securec.h"
 #include "nnacl_c/op_base.h"

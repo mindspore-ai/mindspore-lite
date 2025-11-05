@@ -31,7 +31,7 @@
 #include "include/api/types.h"
 #include "include/api/status.h"
 #include "runtime/hardware_abstract/kernel_base/kernel.h"
-#include "include/common/utils/anfalgo.h"
+#include "include/utils/anfalgo.h"
 
 namespace mindspore {
 using AnfWithOutIndex = std::pair<AnfNodePtr, size_t>;

@@ -21,7 +21,7 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "infer/cxx_api/activation.h"
 #include "infer/cxx_api/add_fusion.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"

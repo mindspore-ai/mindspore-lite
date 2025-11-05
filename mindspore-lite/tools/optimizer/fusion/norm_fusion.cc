@@ -24,7 +24,7 @@
 #include "infer/cxx_api/layer_norm_fusion.h"
 #include "infer/cxx_api/reduce_fusion.h"
 #include "mindspore/ops/infer/instance_norm.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "include/securec.h"
 #include "nnacl_c/op_base.h"

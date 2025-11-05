@@ -17,7 +17,7 @@
 
 #include <fstream>
 
-#include "include/common/debug/common.h"
+#include "include/utils/common.h"
 #include "mindspore-lite/minddata/dataset/core/config_manager.h"
 #include "mindspore-lite/minddata/dataset/engine/execution_tree.h"
 #include "mindspore-lite/minddata/dataset/engine/jagged_connector.h"

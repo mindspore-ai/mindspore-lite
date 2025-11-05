@@ -24,7 +24,7 @@
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/converter/import/convert_extend_ops/utils.h"
 #include "tools/converter/import/convert_extend_ops/convert_extend_ops_pass.h"
-#include "mindspore/ccsrc/include/common/utils/convert_utils.h"
+#include "mindspore/ccsrc/include/utils/convert_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 
 namespace mindspore::opt {

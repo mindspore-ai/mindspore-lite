@@ -28,7 +28,7 @@
 #include "infer/tuple_get_item.h"
 #include "src/common/utils.h"
 #include "tools/common/tensor_util.h"
-#include "include/common/utils/utils.h"
+#include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/common/helper.h"
 #include "include/securec.h"
