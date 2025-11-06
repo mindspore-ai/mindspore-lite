@@ -189,6 +189,7 @@ bool AclEnvGuard::Finalize() {
     MS_LOG(ERROR) << "Execute acl env finalize failed.";
     return false;
   }
+  global_acl_env_ = nullptr;
   MS_LOG(INFO) << "Execute acl env finalize success.";
   return true;
 }
