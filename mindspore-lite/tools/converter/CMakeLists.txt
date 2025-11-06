@@ -175,7 +175,6 @@ endif()
 set(MODEL_LOADER_FRAMEWORK_SRC
         ${MODEL_LOADER_FRAMEWORK_SRC}
         ${SRC_DIR}/extendrt/mindir_loader/model_loader.cc
-        ${SRC_DIR}/extendrt/lite_device_address.cc
 )
 
 if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
