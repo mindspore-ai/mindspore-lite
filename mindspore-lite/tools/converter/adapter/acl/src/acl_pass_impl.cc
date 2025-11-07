@@ -20,8 +20,12 @@
 #include <deque>
 #include <set>
 #include <map>
+#include <string>
+#include <utility>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
@@ -259,10 +263,6 @@ STATUS PreProcForOnnx(const FuncGraphPtr &func_graph, bool offline) {
   // This modify should do in to format base pass, but many network not work now
   if (ModifyCNodeFormat(func_graph, NCHW) != kSuccess) {
     MS_LOG(ERROR) << "modify cnode format failed.";
-    return lite::RET_ERROR;
-  }
-  if (!lite::RunOptimizerPass(func_graph, {kCustomOpInsertVariableNodePass})) {
-    MS_LOG(ERROR) << "Insert variable node failed!";
     return lite::RET_ERROR;
   }
 
@@ -765,6 +765,10 @@ STATUS AclPassImpl::PreProcGraph(const FuncGraphPtr &func_graph) {
   }
   // flash attention fusion after infer shape
   if (param_->provider != "ge") {
+    if (!lite::RunOptimizerPass(func_graph, {kCustomOpInsertVariableNodePass})) {
+      MS_LOG(ERROR) << "Insert variable node failed!";
+      return lite::RET_ERROR;
+    }
     // if provider is ge, it will fusion in anf_transform_for_ge.cc
     STATUS acl_optimizer_result = RunAclOptimizerPass(func_graph);
     if (acl_optimizer_result == lite::RET_ERROR) {
