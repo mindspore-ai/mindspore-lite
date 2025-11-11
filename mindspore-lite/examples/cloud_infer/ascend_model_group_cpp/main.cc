@@ -22,6 +22,7 @@
 #include <thread>
 #include <tuple>
 #include <vector>
+#include <string>
 #include "include/api/model.h"
 #include "include/api/context.h"
 #include "include/api/status.h"
@@ -86,10 +87,23 @@ void ThreadFunc(ThreadArgs threadArg) {
   std::cout << "predict model 2 finished!" << std::endl;
 }
 
-int QuickStart() {
+int QuickStart(int argc, const char **argv) {
   // Read model file.
-  std::string model_path1 = "path_to_model1";
-  std::string model_path2 = "path_to_model2";
+  if (argc < 3) {
+    std::cerr << "Model file must be provided.\n";
+    return -1;
+  }
+  // Read model file
+  std::string model_path1 = argv[1];
+  if (model_path1.empty()) {
+    std::cerr << "Model path " << model_path1 << " is invalid";
+    return -1;
+  }
+  std::string model_path2 = argv[1];
+  if (model_path2.empty()) {
+    std::cerr << "Model path " << model_path1 << " is invalid";
+    return -1;
+  }
 
   // Create and init context, add CPU device info
   auto context = std::make_shared<mindspore::Context>();
@@ -101,11 +115,7 @@ int QuickStart() {
   }
   device_list.push_back(device_info);
   // share weight
-  // auto model_group = std::make_shared<mindspore::ModelGroup>(mindspore::ModelGroupFlag::kShareWeight);
-  // share weight and workmem
-  // auto model_group = std::make_shared<mindspore::ModelGroup>(mindspore::ModelGroupFlag::kShareWeightAndWorkspace);
-  // share workmem
-  auto model_group = std::make_shared<mindspore::ModelGroup>();
+  auto model_group = std::make_shared<mindspore::ModelGroup>(mindspore::ModelGroupFlag::kShareWeight);
   std::vector<std::string> model_path_list = {model_path1, model_path2};
   std::vector<mindspore::MSTensor> outputs;
   std::vector<std::thread> threads;
@@ -130,7 +140,14 @@ int QuickStart() {
     t.join();
   }
   std::cout << "finished!" << std::endl;
+  mindspore::Model model1;
+  auto build_ret = model1.Build(model_path1, mindspore::kMindIR, context);
+  if (build_ret != mindspore::kSuccess) {
+    std::cerr << "Build model error " << build_ret << std::endl;
+    return -1;
+  }
+  model1.Finalize();
   return 0;
 }
 
-int main(int argc, const char **argv) { return QuickStart(); }
+int main(int argc, const char **argv) { return QuickStart(argc, argv); }

@@ -15,5 +15,5 @@
 # ============================================================================
 
 clear
-python3 ./main.py --model_path1=/your/path/to/xxx1.mindir --model_path2=/your/path/to/xxx2.mindir --config_file=./config_file.ini &
+python3 ./main.py --model_path1=/your/path/to/model.mindir --model_path2=/your/path/to/model.mindir &
 echo "model predict.."
