@@ -135,26 +135,13 @@ class Model(BaseModel):
                 options during build model. In the following scenarios, users may need to set the parameter.
                 For example, "/home/user/config.txt". Default: ``""``.
 
-                - Usage 1: Set mixed precision inference. The content and description of the configuration file are as
-                  follows:
+                Set mixed precision inference. The content and description of the configuration file are as follows:
 
-                  .. code-block::
+                .. code-block::
 
-                      [execution_plan]
-                      [op_name1]=data_Type: float16 (The operator named op_name1 sets the data type as float16)
-                      [op_name2]=data_Type: float32 (The operator named op_name2 sets the data type as float32)
-
-                - Usage 2: When GPU inference, set the configuration of TensorRT. The content and description of the
-                  configuration file are as follows:
-
-                  .. code-block::
-
-                      [ms_cache]
-                      serialize_Path=[serialization model path](storage path of serialization model)
-                      [gpu_context]
-                      input_shape=input_Name: [input_dim] (Model input dimension, for dynamic shape)
-                      dynamic_Dims=[min_dim~max_dim] (dynamic dimension range of model input, for dynamic shape)
-                      opt_Dims=[opt_dim] (the optimal input dimension of the model, for dynamic shape)
+                    [execution_plan]
+                    [op_name1]=data_Type: float16 (The operator named op_name1 sets the data type as float16)
+                    [op_name2]=data_Type: float32 (The operator named op_name2 sets the data type as float32)
 
             config_dict (dict, optional): When you set config in this dict, the priority is higher than the
                 configuration items in config_path.
@@ -224,34 +211,8 @@ class Model(BaseModel):
         model_type_ = _c_lite_wrapper.ModelType.kMindIR_Lite
         if model_type is ModelType.MINDIR:
             model_type_ = _c_lite_wrapper.ModelType.kMindIR
-        if config_path:
-            if not os.path.exists(config_path):
-                raise RuntimeError(
-                    "build_from_file failed, config_path does not exist!")
-            ret = self._model.load_config(config_path)
-            if not ret.IsOk():
-                raise RuntimeError(
-                    f"load configuration failed! Error is {ret.ToString()}")
-            parse_res = _parse_update_weight_config_name(config_path)
-            if parse_res is not None and len(parse_res) >= 2:
-                update_names, self.lora_name_map = parse_res[0], parse_res[1]
-                if config_dict is None:
-                    config_dict = {"ascend_context": {"variable_weights_list": update_names}}
-                else:
-                    config_dict['ascend_context']["variable_weights_list"] = update_names
 
-        if config_dict:
-            check_isinstance("config_dict", config_dict, dict)
-            for k, v in config_dict.items():
-                check_isinstance("config_dict_key", k, str)
-                check_isinstance("config_dict_value", v, dict)
-                for v_k, v_v in v.items():
-                    check_isinstance("config_dict_value_key", v_k, str)
-                    check_isinstance("config_dict_value_value", v_v, str)
-            for key, value in config_dict.items():
-                ret = self._model.update_config(key, value)
-                if not ret.IsOk():
-                    raise RuntimeError(f"update configuration failed! Error is {ret.ToString()}.")
+        self._apply_config(config_path, config_dict)
 
         if dec_key:
             check_isinstance("dec_key", dec_key, bytes)
@@ -267,6 +228,150 @@ class Model(BaseModel):
         if not ret.IsOk():
             raise RuntimeError(
                 f"build_from_file failed! Error is {ret.ToString()}")
+
+    @set_env
+    def build_from_buffer(
+        self,
+        model_bytes,
+        weight_bytes=None,
+        model_type=None,
+        context=None,
+        config_path="",
+        config_dict: dict = None,
+    ):
+        """
+        Load and build a model from buffer.
+
+        Args:
+            model_bytes (Bytes): Bytes of the mindir model when build from buffer.
+            weight_bytes (Bytes, optional): Bytes of the separate weight when build from buffer. Default: ``None``.
+            model_type (ModelType, optional): Define The type of input model file. Option is ``ModelType.MINDIR``.
+                Default: ``None``. For details, see
+                `ModelType <https://mindspore.cn/lite/api/en/master/mindspore_lite/mindspore_lite.ModelType.html>`_ .
+            context (Context, optional): Define the context used to transfer options during execution.
+                Default: ``None``. ``None`` means the Context with cpu target.
+            config_path (str, optional): Define the config file path. the config file is used to transfer user defined
+                options during build model. In the following scenarios, users may need to set the parameter.
+                For example, "/home/user/config.txt". Default: ``""``.
+
+                Set mixed precision inference. The content and description of the configuration
+                file are as follows:
+
+                .. code-block::
+
+                    [execution_plan]
+                    [op_name1]=data_Type: float16 (The operator named op_name1 sets the data type as float16)
+                    [op_name2]=data_Type: float32 (The operator named op_name2 sets the data type as float32)
+
+
+            config_dict (dict, optional): When you set config in this dict, the priority is higher than the
+                configuration items in config_path. Default: ``None``.
+
+                Set rank table file for inference. The content of the configuration file is as follows:
+
+                .. code-block::
+
+                    [ascend_context]
+                    rank_table_file=[path_a](storage initial path of the rank table file)
+
+                When set
+
+                .. code-block::
+
+                    config_dict = {"ascend_context" : {"rank_table_file" : "path_b"}}
+
+                The path_b from the config_dict will be used to compile the model.
+
+        Raises:
+            TypeError: `model_bytes` is not a Bytes.
+            TypeError: `weight_bytes` is neither a Bytes nor ``None``.
+            TypeError: `model_type` is not a ModelType.
+            TypeError: `context` is neither a Context nor ``None``.
+            TypeError: `config_path` is not a str.
+            RuntimeError: Length of `model_bytes` is 0.
+            RuntimeError: Value of `model_type` is is not ``ModelType.MINDIR``.
+            RuntimeError: `config_path` does not exist.
+            RuntimeError: Failed to load the configuration file from `config_path`.
+            RuntimeError: Failed to load and build the model from the buffer.
+
+        Examples:
+            >>> # Testcase 1: build from buffer with a single file mindir model.
+            >>> import mindspore_lite as mslite
+            >>> with open("mobilenetv2.mindir", "rb") as f:
+            >>>     model_bytes = f.read()
+            >>> model = mslite.Model()
+            >>> model.build_from_buffer(model_bytes, None, mslite.ModelType.MINDIR)
+            >>> print(model)
+            model_path: None.
+            >>> # Testcase 2: build from buffer with a separated weight model.
+            >>> import mindspore_lite as mslite
+            >>> with open("sd1.5_unet.onnx_graph.mindir", "rb") as f:
+            >>>     model_bytes = f.read()
+            >>> with open("sd1.5_unet.onnx_variables/data_0", "rb") as f:
+            >>>     weight_bytes = f.read()
+            >>> model = mslite.Model()
+            >>> context = mslite.Context()
+            >>> context.target = ["ascend"]
+            >>> model.build_from_buffer(model_bytes, weight_bytes, mslite.ModelType.MINDIR, context)
+            >>> print(model)
+            model_path: None.
+        """
+        check_isinstance("model_bytes", model_bytes, bytes)
+        if len(model_bytes) == 0:
+            raise RuntimeError("build_from_buffer failed, model_bytes is empty.")
+
+        check_isinstance("weight_bytes", weight_bytes, bytes, enable_none=True)
+        check_isinstance("model_type", model_type, ModelType)
+        if model_type != ModelType.MINDIR:
+            raise RuntimeError("build_from_buffer failed, model_type should be MINDIR")
+
+        model_type_ = _c_lite_wrapper.ModelType.kMindIR
+
+        if context is None:
+            context = Context()
+        check_isinstance("context", context, Context)
+        check_isinstance("config_path", config_path, str)
+
+        self.provider = context.ascend.provider
+
+        self.model_path_ = None
+
+        self._apply_config(config_path, config_dict)
+
+        ret = self._model.build_from_buff(model_bytes, weight_bytes, model_type_, context._context._inner_context)
+        if not ret.IsOk():
+            raise RuntimeError(f"build_from_buffer failed! Error is {ret.ToString()}")
+
+    def _apply_config(self, config_path, config_dict):
+        """
+        apply config for build
+        """
+        if config_path:
+            if not os.path.exists(config_path):
+                raise RuntimeError("build_from_file failed, config_path does not exist!")
+            ret = self._model.load_config(config_path)
+            if not ret.IsOk():
+                raise RuntimeError(f"load configuration failed! Error is {ret.ToString()}")
+            parse_res = _parse_update_weight_config_name(config_path)
+            if parse_res is not None and len(parse_res) >= 2:
+                update_names, self.lora_name_map = parse_res[0], parse_res[1]
+                if config_dict is None:
+                    config_dict = {"ascend_context": {"variable_weights_list": update_names}}
+                else:
+                    config_dict["ascend_context"]["variable_weights_list"] = update_names
+
+        if config_dict:
+            check_isinstance("config_dict", config_dict, dict)
+            for k, v in config_dict.items():
+                check_isinstance("config_dict_key", k, str)
+                check_isinstance("config_dict_value", v, dict)
+                for v_k, v_v in v.items():
+                    check_isinstance("config_dict_value_key", v_k, str)
+                    check_isinstance("config_dict_value_value", v_v, str)
+            for key, value in config_dict.items():
+                ret = self._model.update_config(key, value)
+                if not ret.IsOk():
+                    raise RuntimeError(f"update configuration failed! Error is {ret.ToString()}.")
 
     def get_outputs(self):
         """

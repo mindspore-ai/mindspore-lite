@@ -153,6 +153,42 @@ Status PyModelBuild(Model *model, const std::string &model_path, ModelType model
   return kSuccess;
 }
 
+Status PyModelBuildFromBuffer(Model *model, py::bytes model_bytes, py::object weight_bytes, ModelType model_type,
+                              const std::shared_ptr<Context> &model_context) {
+  if (model_bytes.is_none()) {
+    MS_LOG(ERROR) << "model_bytes is None.";
+    return kLiteError;
+  }
+  void *model_ptr = nullptr;
+  ssize_t model_size = 0;
+  PYBIND11_BYTES_AS_STRING_AND_SIZE(model_bytes.ptr(), reinterpret_cast<char **>(&model_ptr), &model_size);
+  if (model_ptr == nullptr) {
+    MS_LOG(ERROR) << "model_ptr is nullptr.";
+    return kLiteError;
+  }
+  if (model_size == 0) {
+    MS_LOG(ERROR) << "model_size is 0.";
+    return kLiteError;
+  }
+  void *weight_ptr = nullptr;
+  ssize_t weight_size = 0;
+  if (!weight_bytes.is_none() && !py::isinstance<py::bytes>(weight_bytes)) {
+    MS_LOG(ERROR) << "weight_bytes should be bytes or None.";
+    return kLiteError;
+  }
+  if (!weight_bytes.is_none()) {
+    PYBIND11_BYTES_AS_STRING_AND_SIZE(weight_bytes.ptr(), reinterpret_cast<char **>(&weight_ptr), &weight_size);
+    if (weight_ptr == nullptr) {
+      MS_LOG(ERROR) << "weight_ptr is nullptr.";
+      return kLiteError;
+    }
+  }
+
+  py::gil_scoped_release release;
+  auto ret = model->Build(model_ptr, model_size, weight_ptr, weight_size, model_type, model_context);
+  return ret;
+}
+
 std::vector<MSTensorPtr> PyExecGetInputs(ModelExecutor *executor) {
   if (executor == nullptr) {
     MS_LOG(ERROR) << "ModelExecutor object cannot be nullptr!";
@@ -252,9 +288,7 @@ void ModelPyBind(const py::module &m) {
 
   (void)py::class_<Model, std::shared_ptr<Model>>(m, "ModelBind")
     .def(py::init<>())
-    .def("build_from_buff",
-         py::overload_cast<const void *, size_t, ModelType, const std::shared_ptr<Context> &>(&Model::Build),
-         py::call_guard<py::gil_scoped_release>())
+    .def("build_from_buff", PyModelBuildFromBuffer)
     .def("build_from_file",
          py::overload_cast<const std::string &, ModelType, const std::shared_ptr<Context> &>(&Model::Build),
          py::call_guard<py::gil_scoped_release>())

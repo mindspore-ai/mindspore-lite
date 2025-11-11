@@ -134,6 +134,14 @@ Status PrimitivePyToC(const FuncGraphPtr &func_graph) {
   }
   return kSuccess;
 }
+
+std::string WeightBufferParamsDisplayStr(const void *weight_data, size_t weight_size) {
+  std::stringstream ss;
+  ss << (weight_data == nullptr ? " weight_data is nullptr." : " weight_data is not nullptr.")
+     << " weight_size: " << weight_size;
+  return ss.str();
+}
+
 }  // namespace
 
 void ModelImpl::SetMsContext() {
@@ -190,7 +198,51 @@ ConverterPlugin::ConverterFunc ConverterPlugin::GetConverterFuncInner() {
 
 ModelImpl::ModelImpl() : graph_(nullptr), session_(nullptr), context_(nullptr) {}
 
-FuncGraphPtr ModelImpl::LoadGraphByBufferImpl(const void *model_buff, size_t model_size, ModelType model_type,
+FuncGraphPtr ModelImpl::DispatchLoadGraph(const void *model_buff, size_t model_size, const void *weight_data,
+                                          size_t weight_size, const std::string &model_path) {
+  std::string weight_path = "./";
+  auto mindir_path = GetConfig(lite::kConfigModelFileSection, lite::kConfigMindIRPathKey);
+  std::string base_path = "";
+  if (!mindir_path.empty()) {
+    base_path = mindir_path;
+  } else {
+    // user does not set mindir_path, convert from model_path
+    base_path = model_path;
+  }
+  FuncGraphPtr func_graph;
+  std::string user_info_string;
+  bool build_from_file = weight_data == nullptr && weight_size == 0 && !base_path.empty();
+  bool build_from_buffer_model = weight_data == nullptr && weight_size == 0 && base_path.empty();
+  bool build_from_buffer_model_weight = weight_data != nullptr && weight_size != 0 && base_path.empty();
+  std::unique_lock<std::mutex> l(g_load_mindir_lock);
+  MindIRLoader mindir_loader(true, nullptr, 0, kDecModeAesGcm, false);
+  bool ret = false;
+  if (build_from_file) {
+    if (base_path.find("/") != std::string::npos) {
+      weight_path = base_path.substr(0, base_path.rfind("/"));
+    }
+    MS_LOG(INFO) << "model will build from file.";
+    ret = mindir_loader.LoadMindIR(model_buff, model_size, weight_path, &func_graph, &user_info_string);
+  } else if (build_from_buffer_model || build_from_buffer_model_weight) {
+    MS_LOG(INFO) << "model will build from buffer.";
+    ret = mindir_loader.LoadMindIR(model_buff, model_size, weight_data, weight_size, &func_graph, &user_info_string);
+  } else {
+    MS_LOG(ERROR) << "cannot determine how to build model."
+                  << " got:" << WeightBufferParamsDisplayStr(weight_data, weight_size) << " model_path: \""
+                  << model_path << "\"";
+  }
+  if (!ret || func_graph == nullptr) {
+    MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
+    return nullptr;
+  }
+  if (!user_info_string.empty()) {
+    SetModelInfo(lite::KModelUserInfo, user_info_string);
+  }
+  return func_graph;
+}
+
+FuncGraphPtr ModelImpl::LoadGraphByBufferImpl(const void *model_buff, size_t model_size, const void *weight_data,
+                                              size_t weight_size, ModelType model_type,
                                               const std::shared_ptr<Context> &model_context,
                                               const std::string &model_path) {
   if (model_type != kMindIR) {
@@ -203,18 +255,7 @@ FuncGraphPtr ModelImpl::LoadGraphByBufferImpl(const void *model_buff, size_t mod
     MS_LOG(ERROR) << "UpdateSharingWorkspaceConfig failed!";
     return nullptr;
   }
-  auto mindir_path = GetConfig(lite::kConfigModelFileSection, lite::kConfigMindIRPathKey);
-  std::string weight_path = "./";
-  std::string base_path = "";
-  if (!mindir_path.empty()) {
-    base_path = mindir_path;
-  } else {
-    // user does not set mindir_path, convert from model_path
-    base_path = model_path;
-  }
-  if (base_path.find("/") != std::string::npos) {
-    weight_path = base_path.substr(0, base_path.rfind("/"));
-  }
+
   auto dump_path = GetConfig(lite::kAscendContextSection, lite::kDumpPathKey);
   if (!dump_path.empty()) {
     auto dir_pos = model_path.find_last_of('/');
@@ -224,20 +265,12 @@ FuncGraphPtr ModelImpl::LoadGraphByBufferImpl(const void *model_buff, size_t mod
     (void)UpdateConfig(lite::kAscendContextSection,
                        std::pair<std::string, std::string>(lite::kDumpModelNameKey, model_name));
   }
-  FuncGraphPtr func_graph;
-  std::string user_info_string;
-  {
-    std::unique_lock<std::mutex> l(g_load_mindir_lock);
-    MindIRLoader mindir_loader(true, nullptr, 0, kDecModeAesGcm, false);
-    auto ret = mindir_loader.LoadMindIR(model_buff, model_size, weight_path, &func_graph, &user_info_string);
-    if (!ret || func_graph == nullptr) {
-      MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
-      return nullptr;
-    }
-    if (!user_info_string.empty()) {
-      SetModelInfo(lite::KModelUserInfo, user_info_string);
-    }
+  FuncGraphPtr func_graph = DispatchLoadGraph(model_buff, model_size, weight_data, weight_size, model_path);
+  if (func_graph == nullptr) {
+    MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
+    return nullptr;
   }
+
   if (func_graph->get_attr(lite::kDynamicDimsKey) != nullptr) {
     auto dynamic_dims = GetValue<std::string>(func_graph->get_attr(lite::kDynamicDimsKey));
     SetModelInfo(lite::kDynamicDimsKey, dynamic_dims);
@@ -411,14 +444,23 @@ void ModelImpl::UpdateProvider() {
     }
   }
 }
-
-Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, ModelType model_type,
+Status ModelImpl::CheckBuildFromBuffer(ModelType model_type, const void *weight_data, size_t weight_size) {
+  if (model_type != kMindIR && (weight_data != nullptr || weight_size != 0)) {
+    MS_LOG(ERROR) << "Build from weight buffer is not support model_type:" << model_type
+                  << ". got: " << WeightBufferParamsDisplayStr(weight_data, weight_size);
+    return kLiteParamInvalid;
+  }
+  return kSuccess;
+}
+Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, const void *weight_data,
+                                    size_t weight_size, ModelType model_type,
                                     const std::shared_ptr<Context> &model_context, const std::string &model_path) {
   MS_CHECK_TRUE_MSG(model_buff != nullptr, kLiteError, "The input model buffer is nullptr!");
   MS_CHECK_TRUE_MSG(model_size != 0, kLiteError, "The input model buffer size is 0!");
-  if (model_context == nullptr) {
-    MS_LOG(ERROR) << "Invalid context pointers!";
-    return kLiteError;
+  MS_CHECK_TRUE_MSG(model_context != nullptr, kLiteError, "Invalid context pointers!");
+  auto ret = CheckBuildFromBuffer(model_type, weight_data, weight_size);
+  if (ret != kSuccess) {
+    return ret;
   }
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (session_) {
@@ -457,7 +499,7 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, M
     MS_LOG(ERROR) << "Create session failed!";
     return kLiteError;
   }
-  Status ret;
+
   if (model_type == kMindIR_Lite) {
     ret = session_->CompileGraph(model_buff, model_size, &graph_id_);
     if (ret != kSuccess) {
@@ -475,7 +517,8 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, M
   }
 
   if (model_type != kOM) {
-    func_graph = LoadGraphByBufferImpl(model_buff, model_size, model_type, model_context, model_path);
+    func_graph =
+      LoadGraphByBufferImpl(model_buff, model_size, weight_data, weight_size, model_type, model_context, model_path);
     if (func_graph == nullptr) {
       MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
       return kLiteError;
@@ -648,7 +691,12 @@ Status ModelImpl::Build(const FuncGraphPtr &func_graph, const std::shared_ptr<Co
 
 Status ModelImpl::Build(const void *model_data, size_t data_size, ModelType model_type,
                         const std::shared_ptr<Context> &model_context) {
-  return BuildByBufferImpl(model_data, data_size, model_type, model_context);
+  return BuildByBufferImpl(model_data, data_size, nullptr, 0, model_type, model_context);
+}
+
+Status ModelImpl::Build(const void *model_data, size_t data_size, const void *weight_data, size_t weight_size,
+                        ModelType model_type, const std::shared_ptr<Context> &model_context) {
+  return BuildByBufferImpl(model_data, data_size, weight_data, weight_size, model_type, model_context);
 }
 
 Status ModelImpl::Build(const void *model_data, size_t data_size, ModelType model_type,
@@ -668,7 +716,7 @@ Status ModelImpl::Build(const std::string &model_path, ModelType model_type,
     MS_LOG(ERROR) << "Failed to read buffer from model file.";
     return kLiteError;
   }
-  return BuildByBufferImpl(buffer.Data(), buffer.DataSize(), model_type, model_context, model_path);
+  return BuildByBufferImpl(buffer.Data(), buffer.DataSize(), nullptr, 0, model_type, model_context, model_path);
 }
 
 Status ModelImpl::ConvertGraphOnline(const FuncGraphPtr &func_graph, const std::shared_ptr<Context> &model_context) {
