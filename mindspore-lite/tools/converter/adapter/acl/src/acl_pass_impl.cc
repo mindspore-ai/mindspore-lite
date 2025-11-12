@@ -619,8 +619,6 @@ STATUS AclPassImpl::MakeListToMakeTuple(const FuncGraphPtr &func_graph) {
         add_todo(fg->return_node());
       }
     }
-    TraceGuard trace_guard(MakeTraceInfo<TraceOpt>(node->debug_info()));
-    ScopeGuard scope_guard(node->scope());
     auto new_node = MakeListNodeRewrite(node);
     if (new_node != nullptr) {
       (void)manager->Replace(node, new_node);

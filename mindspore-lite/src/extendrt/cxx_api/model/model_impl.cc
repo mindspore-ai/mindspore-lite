@@ -55,6 +55,7 @@ constexpr size_t kMaxSectionNum = 100;
 constexpr size_t kMaxConfigNumPerSection = 1000;
 std::shared_mutex g_model_converter_lock;
 std::mutex g_load_mindir_lock;
+std::mutex g_ms_context_lock;
 
 std::unordered_map<std::string, mindspore::Format> kStr2FormatMap{{"DEFAULT_FORMAT", mindspore::Format::DEFAULT_FORMAT},
                                                                   {"NCHW", mindspore::Format::NCHW},
@@ -136,6 +137,7 @@ Status PrimitivePyToC(const FuncGraphPtr &func_graph) {
 }  // namespace
 
 void ModelImpl::SetMsContext() {
+  std::lock_guard lock(g_ms_context_lock);
   if (MsContext::GetInstance() != nullptr) {
     auto back_policy_env = std::getenv("ASCEND_BACK_POLICY");
     if (back_policy_env != nullptr) {

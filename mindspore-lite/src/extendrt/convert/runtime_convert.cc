@@ -16,11 +16,14 @@
 #include <vector>
 #include <map>
 #include <string>
+#include <mutex>
 #include "src/extendrt/convert/runtime_convert.h"
 #include "tools/common/string_util.h"
 #include "tools/converter/converter_funcgraph.h"
 #include "tools/converter/cxx_api/converter_para.h"
 #include "tools/converter/config_parser/config_file_parser.h"
+
+std::mutex g_runtime_convert_lock;
 
 static int ParseShapeStrToShapeMap(const std::string &input_shape_str,
                                    std::vector<std::vector<int64_t>> *input_shapes) {
@@ -150,6 +153,7 @@ void SetParamByAscendInfo(const std::shared_ptr<mindspore::ConverterPara> &param
 
 int RuntimeConvert(const mindspore::api::FuncGraphPtr &graph, const std::shared_ptr<mindspore::Context> &context,
                    const mindspore::ConfigInfos &config_info) {
+  std::lock_guard lock(g_runtime_convert_lock);
   auto param = std::make_shared<mindspore::ConverterPara>();
   if (param == nullptr) {
     MS_LOG(ERROR) << "New ConverterPara failed";

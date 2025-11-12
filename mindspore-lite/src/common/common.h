@@ -89,6 +89,9 @@ static const char *const kInnerWorkerNumKey = "inner_worker_num";
 
 // common context
 static const char *const kCommonContextSection = "common_context";
+static const char *const kCompileGraphParallel = "compile_graph_parallel";
+static const char *const kEnableValue = "on";
+static const char *const kDisableValue = "off";
 // gpu context
 static const char *const kGPUContextSection = "gpu_context";
 static const char *const kInputShapeKey = "input_shape";

@@ -52,9 +52,10 @@ constexpr auto kUnkonwnSessionId = -1;
 constexpr auto kRefModeNone = "none";
 constexpr auto kRefModeVariable = "variable";
 constexpr auto kRefModeAll = "all";
+constexpr auto kIsAdapted = "is_adapted";
 constexpr size_t kAlignRefData = 32;
 constexpr size_t kErrorSize = 0;
-
+std::mutex g_compile_graph_mutex;
 size_t ALIGN_UP_REF_DATA(size_t size) {
   return ((size + kMemAlignSize + kAlignRefData - 1) / kMemAlignSize) * kMemAlignSize;
 }
@@ -1166,7 +1167,23 @@ backend::ge_backend::DfGraphPtr GeGraphExecutor::CompileGraphCommon(
 
 bool GeGraphExecutor::CompileGraph(const FuncGraphPtr &anf_graph, const std::map<string, string> &,
                                    uint32_t *graph_id) {
+  MS_CHECK_TRUE_RET(anf_graph != nullptr, false);
   MS_CHECK_TRUE_RET(graph_id != nullptr, false);
+
+  std::string compile_graph_parallel;
+  GetConfigOption(lite::kCommonContextSection, lite::kCompileGraphParallel, &compile_graph_parallel);
+  if (compile_graph_parallel == lite::kEnableValue) {
+    MS_LOG(WARNING) << lite::kCompileGraphParallel << " does not support ge provider";
+  }
+
+  std::lock_guard lock(g_compile_graph_mutex);
+
+  bool is_adapted = anf_graph->has_attr(kIsAdapted);
+  if (!is_adapted) {
+    auto ret = GeUtils::AdaptGraph(anf_graph);
+    MS_CHECK_TRUE_MSG(ret == kSuccess, false, "Adapt graph failed");
+    anf_graph->set_attr(kIsAdapted, MakeValue(true));
+  }
   uint32_t compute_graph_id = 0;
   if (CustomAscendUtils::IsCustomFuncGraph(anf_graph)) {
     MS_LOG(ERROR) << "Offline converted MindIR is not supported currently";
