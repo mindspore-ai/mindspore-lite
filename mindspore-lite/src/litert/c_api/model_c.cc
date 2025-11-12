@@ -157,13 +157,11 @@ MSModelHandle MSModelCreate() {
 }
 
 void MSModelDestroy(MSModelHandle *model) {
-  if (model == nullptr || *model == nullptr) {
-    MS_LOG(ERROR) << "model is nullptr.";
-    return;
+  if (model != nullptr && *model != nullptr) {
+    auto impl = static_cast<mindspore::ModelC *>(*model);
+    delete impl;
+    *model = nullptr;
   }
-  auto impl = static_cast<mindspore::ModelC *>(*model);
-  delete impl;
-  *model = nullptr;
 }
 
 void MSModelSetWorkspace(MSModelHandle model, void *workspace, size_t workspace_size) {
