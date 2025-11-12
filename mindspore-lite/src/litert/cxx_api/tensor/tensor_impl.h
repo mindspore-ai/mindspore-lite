@@ -29,7 +29,7 @@
 #include "include/errorcode.h"
 #include "src/tensor.h"
 #include "src/common/log_adapter.h"
-#include "ir/api_tensor_impl.h"
+#include "src/common/api_tensor_impl.h"
 #include "common/mutable_tensor_impl.h"
 #if defined(ENABLE_CLOUD_FUSION_INFERENCE) || defined(ENABLE_CLOUD_INFERENCE)
 #include "src/extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"

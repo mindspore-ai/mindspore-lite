@@ -21,7 +21,7 @@
 #include "include/securec.h"
 #include "src/common/mutable_tensor_impl.h"
 #include "python/src/tensor_numpy_impl.h"
-#include "ir/api_tensor_impl.h"
+#include "src/common/api_tensor_impl.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/numpy.h"
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION

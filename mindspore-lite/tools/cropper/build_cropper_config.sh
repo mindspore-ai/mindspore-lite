@@ -284,7 +284,7 @@ getCommonFile() {
     "${MINDSPORE_LITE_HOME}"/src/litert/kernel/cpu/nnacl_c/tensorlist_c.h
     "${MINDSPORE_LITE_HOME}"/src/litert/kernel/cpu/nnacl_c/tensorlist_c_utils.h
     "${MINDSPORE_HOME}"/mindspore/core/include/utils/log_adapter.h
-    "${MINDSPORE_HOME}"/mindspore/core/include/ir/api_tensor_impl.h
+    "${MINDSPORE_LITE_HOME}"/src/common/api_tensor_impl.h
     "${MINDSPORE_LITE_HOME}"/src/litert/cxx_api/tensor/tensor_impl.h
   )
   all_files_h=("${include_h[@]}" "${regist_include_h[@]}" "${src_files_h[@]}" "${common_files_h[@]}"

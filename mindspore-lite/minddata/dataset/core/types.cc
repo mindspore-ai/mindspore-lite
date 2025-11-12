@@ -22,7 +22,7 @@
 #include <fstream>
 #include <numeric>
 #include "include/securec.h"
-#include "ir/api_tensor_impl.h"
+#include "src/common/api_tensor_impl.h"
 #include "utils/convert_utils_base.h"
 #include "utils/file_utils.h"
 

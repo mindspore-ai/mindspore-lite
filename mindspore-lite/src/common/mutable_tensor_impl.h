@@ -20,7 +20,7 @@
 #include <string>
 #include <memory>
 #include <vector>
-#include "ir/api_tensor_impl.h"
+#include "src/common/api_tensor_impl.h"
 
 namespace mindspore {
 class MutableTensorImpl : public MSTensor::Impl {
