@@ -645,6 +645,7 @@ int LiteSession::CompileGraph(Model *model) {
     this->context_->set_infer_checker(InferCheckerAll);
   }
   is_running_.store(false);
+  MS_LOG(INFO) << "CompileGraph for current model success.";
   return RET_OK;
 }
 
@@ -782,6 +783,7 @@ int LiteSession::PrepareKernels(const Model *model) {
         MS_LOG(ERROR) << "Prepare kernel " << kernel->name() << " failed: " << ret;
         return ret;
       }
+      MS_LOG(INFO) << "Set Allocator For Delegate Kernels success.";
     }
 
     if (!is_train_session_ && kernel->desc().arch != kernel::kDelegate && kernel->desc().arch != kernel::kGPU) {
@@ -1094,6 +1096,7 @@ int LiteSession::InitDelegate() {
   }
 
   if (ret != RET_OK) {
+    MS_LOG(ERROR) << "Create Delegate failed. ret info: " << ret;
     return ret;
   }
   if (delegate_ != nullptr) {

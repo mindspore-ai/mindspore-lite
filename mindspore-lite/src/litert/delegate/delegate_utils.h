@@ -20,6 +20,9 @@
 #include "src/common/log_adapter.h"
 #include "include/errorcode.h"
 #include "nnacl_c/op_base.h"
+#ifdef SUPPORT_NPU
+#include "include/HiAiModelManagerService.h"
+#endif
 
 namespace mindspore::lite {
 bool IsSubGraphInputTensor(const std::vector<mindspore::MSTensor> &inputs, mindspore::MSTensor input);
@@ -31,6 +34,10 @@ void PackNCHWToNHWCFp32(const void *src, void *dst, int batch, int plane, int ch
 int MaskDataNHWC2NCHWBinary(int mask);
 
 void BinaryMaskData2Bool(int src_mask, bool *dst_mask, size_t mask_size);
+
+#ifdef SUPPORT_NPU
+hiai::HIAI_DataType MSDataTypeToHIAIDataType(DataType ms_dtype);
+#endif
 
 template <typename T>
 void AssistDataNHWC2NCHW(void *raw_data, size_t unit_size) {

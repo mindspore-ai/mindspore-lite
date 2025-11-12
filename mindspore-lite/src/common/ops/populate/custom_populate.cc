@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <cstddef>
+#include <unordered_map>
 #include <vector>
 #include <string>
 #include "src/common/ops/populate/populate_register.h"
@@ -27,6 +29,7 @@
 #include "nnacl_c/scatter_nd_parameter.h"
 #include "nnacl_c/conv3d_parameter.h"
 #include "nnacl_c/grid_sampler_parameter.h"
+#include "nnacl_c/op_base.h"
 
 using mindspore::schema::PrimitiveType_Custom;
 
@@ -175,6 +178,36 @@ OpParameter *CreateGridSamplerParameter(const schema::Custom *value) {
   return reinterpret_cast<OpParameter *>(param);
 }
 
+OpParameter *CreateNpuOfflineModelParameter(const void *prim) {
+  auto *param = static_cast<CustomParameter *>(malloc(sizeof(CustomParameter)));
+  if (param == nullptr) {
+    MS_LOG(ERROR) << "Malloc NpuOfflineModel Parameter failed.";
+    return nullptr;
+  }
+  memset(param, 0, sizeof(CustomParameter));
+  param->op_parameter_.type_ = PrimType_Inner_ThirdPartyModel;
+  // The offline model only uses the attr_data [0] field, and other fields do not need to be assigned values.
+  param->attr_data[0] = static_cast<char *>(const_cast<void *>(prim));
+  return reinterpret_cast<OpParameter *>(param);
+}
+
+OpParameter *AllocOpParameter(std::string type) {
+  static std::unordered_map<std::string, PrimType> str_to_prim_type_map = {
+    {"ShapeFusion", PrimType_Inner_ShapeFusion},
+    {"ReduceConcatFusion", PrimType_Inner_ReduceConcatFusion},
+    {"EncoderLayer", PrimType_Inner_EncoderLayer},
+    {"DecoderLayer", PrimType_Inner_DecoderLayer},
+    {"UsePastEmbedding", PrimType_Inner_UsePastEmbedding},
+    {"FSEDecode", PrimType_Inner_FseDecode},
+    {"CastGatherReduceFusion", PrimType_Inner_CastGatherReduceFusion},
+  };
+  auto it = str_to_prim_type_map.find(type);
+  if (it != str_to_prim_type_map.end()) {
+    return CreateParam(str_to_prim_type_map[type]);
+  }
+  return nullptr;
+}
+
 OpParameter *PopulateCustomParameter(const void *prim) {
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
   auto primitive = static_cast<const schema::Primitive *>(prim);
@@ -185,9 +218,7 @@ OpParameter *PopulateCustomParameter(const void *prim) {
   }
   MS_CHECK_TRUE_RET(value->type() != nullptr, nullptr);
   std::string type = value->type()->c_str();
-  if (type == "ShapeFusion") {
-    return CreateParam(PrimType_Inner_ShapeFusion);
-  } else if (type == "GraphKernel") {
+  if (type == "GraphKernel") {
     auto *param = static_cast<CustomParameter *>(malloc(sizeof(CustomParameter)));
     if (param == nullptr) {
       MS_LOG(ERROR) << "malloc CustomParameter failed.";
@@ -200,20 +231,8 @@ OpParameter *PopulateCustomParameter(const void *prim) {
     return reinterpret_cast<OpParameter *>(param);
   } else if (type == "SplitReduceConcatFusion") {
     return PopulateSplitReduceConcatFusionParam(value);
-  } else if (type == "ReduceConcatFusion") {
-    return CreateParam(PrimType_Inner_ReduceConcatFusion);
-  } else if (type == "EncoderLayer") {
-    return CreateParam(PrimType_Inner_EncoderLayer);
-  } else if (type == "DecoderLayer") {
-    return CreateParam(PrimType_Inner_DecoderLayer);
-  } else if (type == "UsePastEmbedding") {
-    return CreateParam(PrimType_Inner_UsePastEmbedding);
-  } else if (type == "FSEDecode") {
-    return CreateParam(PrimType_Inner_FseDecode);
   } else if (type == "CustomGRU") {
     return CreateCustomGruParameter();
-  } else if (type == "CastGatherReduceFusion") {
-    return CreateParam(PrimType_Inner_CastGatherReduceFusion);
   } else if (type == "MaskedFill") {
     return CreateCustomMaskedFillParameter();
   } else if (type == "TensorScatterMax") {
@@ -226,10 +245,17 @@ OpParameter *PopulateCustomParameter(const void *prim) {
     return CreateGridSamplerParameter(value);
   } else if (type.compare(0, 10, "Custom_FT_") == 0) {
     return CreateParam(PrimType_Custom);
+  } else if (type == "ThirdPartyModel") {
+    return CreateNpuOfflineModelParameter(prim);
   } else {
-    MS_LOG(WARNING) << "Unsupported custom type: " << type;
+    auto param = AllocOpParameter(type);
+    if (param == nullptr) {
+      MS_LOG(WARNING) << "Unsupported custom type: " << type;
+      return nullptr;
+    } else {
+      return param;
+    }
   }
-  return nullptr;
 }
 
 REG_POPULATE(PrimType_Custom, PopulateCustomParameter, SCHEMA_CUR)

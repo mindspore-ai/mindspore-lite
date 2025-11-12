@@ -189,6 +189,10 @@ int KernelInferShape(const std::vector<lite::Tensor *> &inputs, const std::vecto
     MS_LOG(ERROR) << "No input!";
     return RET_ERROR;
   }
+  if (parameter->type_ == static_cast<int>(PrimType_Inner_ThirdPartyModel)) {
+    MS_LOG(INFO) << "No need infer shape for PrimType_Inner_ThirdPartyModel.";
+    return RET_OK;
+  }
   std::vector<TensorC *> in_tensors;
   std::vector<TensorC *> out_tensors;
   int ret = GenerateInTensorC(inputs, &in_tensors, allocator);

@@ -178,6 +178,7 @@ int KernelRegistry::GetCustomKernel(const std::vector<Tensor *> &in_tensors, con
   registry::KernelDesc desc{static_cast<DataType>(key.data_type), key.type, key.kernel_arch, key.provider};
   auto creator = registry::RegisterKernel::GetCreator(static_cast<const schema::Primitive *>(primitive), &desc);
   if (creator == nullptr) {
+    MS_LOG(INFO) << "Not support to get Creator.";
     return RET_NOT_SUPPORT;
   }
 
@@ -205,6 +206,7 @@ int KernelRegistry::GetCustomKernel(const std::vector<Tensor *> &in_tensors, con
     }
   }
 #endif
+  MS_LOG(ERROR) << "Common base kernel registry failed.";
   return RET_ERROR;
 }
 
@@ -257,6 +259,7 @@ int KernelRegistry::GetKernelExec(const std::vector<Tensor *> &in_tensors, const
     if (ret == RET_OK) {
       (*kernel)->set_context(ctx);
     }
+    MS_LOG(INFO) << "Get kernel " << (ret == RET_OK ? "succeed." : "failed.");
     return ret;
   }
 #endif
@@ -271,10 +274,12 @@ int KernelRegistry::GetKernelExec(const std::vector<Tensor *> &in_tensors, const
       kernel_exec->set_desc(modify_key);
       kernel_exec->set_context(ctx);
       *kernel = kernel_exec;
+      MS_LOG(INFO) << "Get Lite Kernel succeed for type:" << PrimitiveCurVersionTypeName(key.type)
+                   << " by type index:" << key.type << ".";
       return RET_OK;
     }
   }
-  MS_LOG(WARNING) << "common cpu kernel registry failed";
+  MS_LOG(ERROR) << "common cpu kernel registry for lite_kernel failed.";
   return RET_ERROR;
 }
 }  // namespace mindspore::lite
