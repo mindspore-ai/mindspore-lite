@@ -396,7 +396,7 @@ if [[ "${MSLITE_ENABLE_COVERAGE}" == "on" || "${MSLITE_ENABLE_COVERAGE}" == "ON"
     echo "MSLITE_ENABLE_COVERAGE: ${MSLITE_ENABLE_COVERAGE}, MSLITE_COVERAGE_FILE: ${MSLITE_COVERAGE_FILE}"
     MSLITE_COVERAGE_ARGS="-m coverage run --rcfile=${MSLITE_COVERAGE_FILE}"
 fi
-python3 ${MSLITE_COVERAGE_ARGS} -m pytest . --device_id ${device_id} --mindir_dir=${models_path}/ --so_path=${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ --output_dir=${ms_models_path}/ --config_dir=${basepath}/../${config_folder}/ascend/ || exit 1
+python3 ${MSLITE_COVERAGE_ARGS} -m pytest . --dist=loadfile -n 1 -q -rA --forked --device_id ${device_id} --mindir_dir=${models_path}/ --so_path=${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ --output_dir=${ms_models_path}/ --config_dir=${basepath}/../${config_folder}/ascend/ || exit 1
 echo "---------- Run MindSpore Lite API SUCCESS ----------"
 #---------------------------------------------------------
 
