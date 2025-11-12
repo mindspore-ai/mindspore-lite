@@ -46,13 +46,11 @@ MSTensorHandle MSTensorCreate(const char *name, MSDataType type, const int64_t *
 }
 
 void MSTensorDestroy(MSTensorHandle *tensor) {
-  if (tensor == nullptr || *tensor == nullptr) {
-    MS_LOG(ERROR) << "tensor is nullptr.";
-    return;
+  if (tensor != nullptr && *tensor != nullptr) {
+    auto impl = static_cast<mindspore::MSTensor *>(*tensor);
+    delete impl;
+    *tensor = nullptr;
   }
-  auto impl = static_cast<mindspore::MSTensor *>(*tensor);
-  delete impl;
-  *tensor = nullptr;
 }
 
 MSTensorHandle MSTensorClone(MSTensorHandle tensor) {
