@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2023 Huawei Technologies Co., Ltd
+ * Copyright 2020-2025 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -196,6 +196,7 @@ static const char *const kInnerGraphSplit = "inner_graph_split";
 static const char *const kInnerInputNames = "inner_input_names";
 static const char *const kInnerOutputNames = "inner_output_names";
 
+bool IsGe(const std::string &provider);
 }  // namespace lite
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_COMMON_COMMON_H_

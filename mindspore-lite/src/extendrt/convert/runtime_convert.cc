@@ -183,7 +183,7 @@ int RuntimeConvert(const mindspore::api::FuncGraphPtr &graph, const std::shared_
           return RET_ERROR;
         }
       }
-      if (device->GetProvider() == mindspore::lite::kAscendProviderGe) {
+      if (mindspore::lite::IsGe(device->GetProvider())) {
         param->provider = mindspore::lite::kAscendProviderGe;
         continue;
       }
