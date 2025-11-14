@@ -8,11 +8,10 @@
 
 - 编译构建
 
-  > 根据系统环境，请手动下载x86_64或aarch64平台的的[MindSpore Lite 云侧推理包](https://www.mindspore.cn/lite/docs/zh-CN/master/use/downloads.html)
+  > 根据系统环境，请手动下载x86_64或aarch64平台的[MindSpore Lite 云侧推理包](https://www.mindspore.cn/lite/docs/zh-CN/master/use/downloads.html)
   ，并解压。
   >
-  > 请手动下载相关模型文件[mobilenetv2](https://download.mindspore.cn/model_zoo/official/lite/quick_start/mobilenetv2.mindir)
-  ，并将其拷贝到`mindspore/lite/examples/cloud_infer/quick_start_cpp/`目录。
+  > 请使用提供的onnx模型本地转换成Mindir推理，转换命令 ./convert_lite --saveType=MINDIR --optimize=ascend_oriented --modelFile=model.onnx --outputFile=MODEL。
 
   设置环境变量`LITE_HOME`为MindSpore Lite tar包解压路径，并设置环境变量`LD_LIBRARY_PATH`：
 
@@ -30,8 +29,8 @@
 
 - 执行推理
 
-  可以执行以下命令，体验MindSpore Lite推理MobileNetV2模型。
+  可以执行以下命令，体验MindSpore Lite推理model模型。
 
   ```bash
-  ./mindspore_quick_start_cpp ../mobilenetv2.mindir
+  ./mindspore_quick_start_cpp ../model.mindir ../model.mindir
   ```

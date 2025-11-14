@@ -20,9 +20,8 @@ import mindspore_lite as mslite
 
 # read args
 parser = argparse.ArgumentParser()
-parser.add_argument('--moadel_path1', type=str)
-parser.add_argument('--moadel_path2', type=str)
-parser.add_argument('--config_file', type=str)
+parser.add_argument('--model_path1', type=str)
+parser.add_argument('--model_path2', type=str)
 args = parser.parse_args()
 
 # init context, and set Ascend target
@@ -31,20 +30,20 @@ model_group_context.target = ["Ascend"]
 
 # init model group
 model_group = mslite.ModelGroup()
-model_group.add_model([args.moadel_path1, args.moadel_path2])
+model_group.add_model([args.model_path1, args.model_path2])
 model_group.cal_max_size_of_workspace(mslite.ModelType.MINDIR, model_group_context)
 
 # 1: create Model and build Model
 model_context_1 = mslite.Context()
 model_context_1.target = ["Ascend"]
 model1 = mslite.Model()
-model1.build_from_file(args.model_path, mslite.ModelType.MINDIR, model_context_1)
+model1.build_from_file(args.model_path1, mslite.ModelType.MINDIR, model_context_1)
 
 # 2: create Model and build Model
 model_context_2 = mslite.Context()
 model_context_2.target = ["Ascend"]
 model2 = mslite.Model()
-model2.build_from_file(args.model_path, mslite.ModelType.MINDIR, model_context_2)
+model2.build_from_file(args.model_path2, mslite.ModelType.MINDIR, model_context_2)
 
 # for model1
 # set model input as ones
