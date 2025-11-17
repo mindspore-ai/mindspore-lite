@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 #include "include/api/model.h"
+#include <map>
+#include <utility>
+#include <memory>
+#include <string>
+#include <vector>
 #include "include/api/context.h"
 #include "extendrt/cxx_api/model/model_impl.h"
 #include "src/common/config_file.h"
@@ -80,7 +85,12 @@ Status Model::Build(const void *model_data, size_t data_size, ModelType model_ty
     return kLiteNullptr;
   }
   try {
-    Status ret = impl_->Build(model_data, data_size, model_type, model_context);
+    auto ret = impl_->PreInference(model_data, data_size, model_type, model_context);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "PreInference failed!";
+      return ret;
+    }
+    ret = impl_->Build(model_data, data_size, model_type, model_context);
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
       return ret;
@@ -99,7 +109,12 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
     return kLiteNullptr;
   }
   try {
-    Status ret = impl_->Build(CharToString(model_path), model_type, model_context);
+    auto ret = impl_->PreInference(CharToString(model_path), model_type, model_context);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "PreInference failed!";
+      return ret;
+    }
+    ret = impl_->Build(CharToString(model_path), model_type, model_context);
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
       return ret;
@@ -150,18 +165,22 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
       MS_LOG(ERROR) << "Catch exception: " << exe.what();
       return kCoreFailed;
     }
-  } else {
-    try {
-      Status ret = impl_->Build(CharToString(model_path), model_type, model_context);
-      if (ret != kSuccess) {
-        MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
-        return ret;
-      }
-      return kSuccess;
-    } catch (const std::exception &exe) {
-      MS_LOG(ERROR) << "Catch exception: " << exe.what();
-      return kCoreFailed;
+  }
+  try {
+    auto ret = impl_->PreInference(CharToString(model_path), model_type, model_context);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "PreInference failed!";
+      return ret;
     }
+    ret = impl_->Build(CharToString(model_path), model_type, model_context);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
+      return ret;
+    }
+    return kSuccess;
+  } catch (const std::exception &exe) {
+    MS_LOG(ERROR) << "Catch exception: " << exe.what();
+    return kCoreFailed;
   }
 #else
   MS_LOG(ERROR) << "The lib is not support Decrypt Model.";
@@ -198,18 +217,22 @@ Status Model::Build(const void *model_data, size_t data_size, ModelType model_ty
       MS_LOG(ERROR) << "Catch exception: " << exe.what();
       return kCoreFailed;
     }
-  } else {
-    try {
-      Status ret = impl_->Build(model_data, data_size, model_type, model_context);
-      if (ret != kSuccess) {
-        MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
-        return ret;
-      }
-      return kSuccess;
-    } catch (const std::exception &exe) {
-      MS_LOG(ERROR) << "Catch exception: " << exe.what();
-      return kCoreFailed;
+  }
+  try {
+    auto ret = impl_->PreInference(model_data, data_size, model_type, model_context);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "PreInference failed!";
+      return ret;
     }
+    Status ret = impl_->Build(model_data, data_size, model_type, model_context);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
+      return ret;
+    }
+    return kSuccess;
+  } catch (const std::exception &exe) {
+    MS_LOG(ERROR) << "Catch exception: " << exe.what();
+    return kCoreFailed;
   }
 #else
   MS_LOG(ERROR) << "The lib is not support Decrypt Model.";

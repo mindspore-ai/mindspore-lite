@@ -15,6 +15,7 @@
  */
 #include "src/litert/delegate/coreml/pass/coreml_format_trans_pass.h"
 #include <vector>
+#include <set>
 #include "src/litert/delegate/coreml/pass/coreml_pass_utils.h"
 
 using mindspore::lite::RET_ERROR;
@@ -27,6 +28,7 @@ std::set<mindspore::schema::PrimitiveType> nchw_nodes = {
   schema::PrimitiveType_CropAndResize, schema::PrimitiveType_InstanceNorm};
 
 int CoreMLFormatTransPass::InsertPreNodes(CoreMLOp *op, std::vector<CoreMLOp *> *trans_ops) {
+  MS_CHECK_TRUE_MSG(op != nullptr, RET_NULL_PTR, "op is nullptr!");
   bool is_input_op = op->in_ops().empty();
   // not always single input (like CropAndResize), but we care about the input with 4d.
   auto it = std::find_if(op->in_ops().begin(), op->in_ops().end(), [](CoreMLOp *k) {

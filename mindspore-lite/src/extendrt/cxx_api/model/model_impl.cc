@@ -19,6 +19,10 @@
 #include <shared_mutex>
 #include <cstring>
 #include <memory>
+#include <map>
+#include <vector>
+#include <string>
+#include <utility>
 #include <unordered_map>
 #include "mindspore/ccsrc/frontend/operator/primitive_py.h"
 #include "ops/primitive_c.h"
@@ -47,12 +51,19 @@
 #include "include/api/model_group.h"
 #include "src/common/common.h"
 #include "mindspore/core/include/ir/graph_utils.h"
+#if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
+#include "src/common/random_data_generator.h"
+#include "src/common/thread_utils.h"
+#endif
 
 namespace mindspore {
 namespace {
 const char *const kExecutionPlan = "execution_plan";
 constexpr size_t kMaxSectionNum = 100;
 constexpr size_t kMaxConfigNumPerSection = 1000;
+constexpr auto kCommonSection = "common";  // support external user configuration
+constexpr auto kEnablePreInferenceKey = "enable_pre_inference";
+constexpr auto kEnablePreInferenceValue = "true";
 std::shared_mutex g_model_converter_lock;
 std::mutex g_load_mindir_lock;
 
@@ -134,6 +145,109 @@ Status PrimitivePyToC(const FuncGraphPtr &func_graph) {
   return kSuccess;
 }
 }  // namespace
+
+Status ModelImpl::BuildAndRun(const void *model_data, size_t data_size, ModelType model_type,
+                              const std::shared_ptr<Context> &model_context) {
+#if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
+  Status ret = this->Build(model_data, data_size, model_type, model_context);
+  if (ret != kSuccess) {
+    return ret;
+  }
+  ret = RandomInference();
+  if (ret != kSuccess) {
+    return ret;
+  }
+#endif
+  return kSuccess;
+}
+
+Status ModelImpl::RandomInference() {
+  for (auto &tensor : this->GetInputs()) {
+    if (tensor.Shape().empty() || tensor.DataSize() == 0 ||
+        std::find(tensor.Shape().begin(), tensor.Shape().end(), -1) != tensor.Shape().end()) {
+      return kSuccess;
+    }
+    auto status = lite::GenRandomData(&tensor);
+    if (status != RET_OK) {
+      return kLiteError;
+    }
+  }
+  auto ret = this->Predict();
+  if (ret != kSuccess) {
+    return ret;
+  }
+  return kSuccess;
+}
+
+Status ModelImpl::BuildAndRun(const std::string &model_path, ModelType model_type,
+                              const std::shared_ptr<Context> &model_context) {
+#if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
+  Status ret = this->Build(model_path, model_type, model_context);
+  if (ret != kSuccess) {
+    return ret;
+  }
+  ret = RandomInference();
+  if (ret != kSuccess) {
+    return ret;
+  }
+#endif
+  return kSuccess;
+}
+
+Status ModelImpl::PreInference(const std::string &model_path, ModelType model_type,
+                               const std::shared_ptr<Context> &model_context) {
+#if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
+  if (lite::GetNumThreads() == lite::kSingleThread && IsEnablePreInference()) {
+    pid_t pid = fork();
+    if (pid < 0) {
+      return kLiteError;
+    } else if (pid == 0) {
+      auto ret = this->BuildAndRun(model_path, model_type, model_context);
+      int ret_code = ret == kSuccess ? lite::kProcessSuccess : lite::kProcessFailed;
+      exit(ret_code);
+    }
+    auto ret = lite::CheckPidStatus(pid);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "PreBuild or PreInference failed!";
+      return ret;
+    }
+  }
+#endif
+  return kSuccess;
+}
+
+Status ModelImpl::PreInference(const void *model_data, size_t data_size, ModelType model_type,
+                               const std::shared_ptr<Context> &model_context) {
+#if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
+  if (lite::GetNumThreads() == lite::kSingleThread && IsEnablePreInference()) {
+    pid_t pid = fork();
+    if (pid < 0) {
+      return kLiteError;
+    } else if (pid == 0) {
+      auto ret = this->BuildAndRun(model_data, data_size, model_type, model_context);
+      int ret_code = ret == kSuccess ? lite::kProcessSuccess : lite::kProcessFailed;
+      exit(ret_code);
+    }
+    auto ret = lite::CheckPidStatus(pid);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "PreBuild or PreInference failed!";
+      return ret;
+    }
+  }
+#endif
+  return kSuccess;
+}
+
+bool ModelImpl::IsEnablePreInference() {
+  if (config_info_.find(kCommonSection) == config_info_.end()) {
+    return false;
+  }
+  auto common_config = config_info_.at(kCommonSection);
+  if (common_config.find(kEnablePreInferenceKey) == common_config.end()) {
+    return false;
+  }
+  return common_config.at(kEnablePreInferenceKey) == kEnablePreInferenceValue;
+}
 
 void ModelImpl::SetMsContext() {
   if (MsContext::GetInstance() != nullptr) {
