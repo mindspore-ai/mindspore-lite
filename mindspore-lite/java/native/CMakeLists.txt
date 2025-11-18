@@ -107,7 +107,6 @@ endif()
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${LITE_DIR}) ## lite include
 include_directories(${LITE_DIR}/src)##for common/log_adapter.h
-include_directories(${MINDSPORE_DIR}) ## api include
 include_directories(${MINDSPORE_DIR}/mindspore/core/include) ## core include
 include_directories(${MINDSPORE_DIR}/mindspore/core/mindrt) ## core include
 include_directories(${MINDSPORE_DIR}/mindspore/core/mindrt/include) ## core include

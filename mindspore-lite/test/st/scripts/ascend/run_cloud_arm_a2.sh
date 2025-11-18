@@ -375,7 +375,7 @@ Print_Benchmark_Result $run_benchmark_result_file
 # run converter and predict by python api
 echo "basepath: ${basepath}"
 cd ${basepath}/python/benchmark/
-export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/tools/converter/lib/:${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/tools/converter/third_party/glog/lib
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/tools/converter/lib/:${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/tools/converter/third_party/glog/lib:${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/runtime/lib
 python run_python_benchmark.py ${models_path}/ ${ms_models_path} ${basepath}/../${config_folder}/ascend/ ${benchmark_test_path}/models_cloud_ascend_a2.cfg ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ ${device_id}
 run_python_status=$?
 if [[ ${run_python_status} != 0 ]]; then
