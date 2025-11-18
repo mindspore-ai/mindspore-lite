@@ -465,6 +465,23 @@ if(${MSLITE_REGISTRY_DEVICE}  STREQUAL "ft04" OR ${MSLITE_REGISTRY_DEVICE}  STRE
     target_link_libraries(mindspore-lite_static dsp_kernel_mid)
     target_link_libraries(mindspore-lite ${HTHREAD_LIB})
     target_link_libraries(mindspore-lite_static ${HTHREAD_LIB})
+    if(TARGET_FT78)
+        target_include_directories(lite_src_mid PRIVATE $ENV{DSP_SDK_PATH}/pnna_core/include)
+        set(PNNACORE_LIB_PATH "$ENV{DSP_SDK_PATH}/pnna_core/lib")
+        if(NOT EXISTS "${PNNACORE_LIB_PATH}")
+            message(FATAL_ERROR "PNNACORE library directory not found at: ${PNNACORE_LIB_PATH}")
+        endif()
+        find_library(PNNACORE_LIB
+                        NAMES libpnna_core.so pnna_core
+                        PATHS "${PNNACORE_LIB_PATH}"
+                        NO_DEFAULT_PATH
+                        REQUIRED)
+        add_subdirectory(litert/delegate/pnna)
+        target_link_libraries(mindspore-lite pnna_kernel_mid)
+        target_link_libraries(mindspore-lite_static pnna_kernel_mid)
+        target_link_libraries(mindspore-lite ${PNNACORE_LIB})
+        target_link_libraries(mindspore-lite_static ${PNNACORE_LIB})
+    endif()
 endif()
 
 if(SUPPORT_NPU)

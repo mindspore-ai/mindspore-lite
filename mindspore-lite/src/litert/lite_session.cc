@@ -47,6 +47,9 @@
 #ifdef SUPPORT_NPU
 #include "src/litert/delegate/npu/npu_delegate.h"
 #endif
+#ifdef SUPPORT_FT78
+#include "src/litert/delegate/pnna/pnna_delegate.h"
+#endif
 #ifdef GPU_OPENCL
 #include "src/litert/kernel/opencl/opencl_subgraph.h"
 #endif
@@ -1070,6 +1073,18 @@ int LiteSession::CreateCoreMLDelegate() {
   return RET_OK;
 }
 
+int LiteSession::CreatePNNADelegate() {
+#ifdef SUPPORT_FT78
+  delegate_ = std::make_shared<PNNADelegate>();
+  if (delegate_ == nullptr) {
+    MS_LOG(ERROR) << "New delegate_ failed";
+    return RET_ERROR;
+  }
+  this->context_->delegate = delegate_;
+#endif
+  return RET_OK;
+}
+
 int LiteSession::InitDelegate() {
 #ifndef DELEGATE_CLIP
   int ret = RET_OK;
@@ -1080,6 +1095,9 @@ int LiteSession::InitDelegate() {
     switch (context_->delegate_mode_) {
       case kCoreML:
         ret = CreateCoreMLDelegate();
+        break;
+      case kPNNA:
+        ret = CreatePNNADelegate();
         break;
       default:
         MS_LOG(ERROR) << "Unsupported built-in delegate mode: " << context_->delegate_mode_;

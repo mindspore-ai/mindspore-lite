@@ -181,6 +181,7 @@ class MS_API LiteSession {
   int CreateNPUDelegate();
   int CreateNNAPIDelegate();
   int CreateCoreMLDelegate();
+  int CreatePNNADelegate();
   int InitDelegate();
   int InitGPURuntime();
   int InitDSPRuntime();
