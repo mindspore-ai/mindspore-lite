@@ -21,6 +21,7 @@
 #include <string>
 #include <algorithm>
 #include "ir/anf.h"
+#include "tools/converter/ir_dump.h"
 
 namespace mindspore {
 namespace opt {
@@ -105,7 +106,14 @@ bool LitePassManager::Run(const FuncGraphPtr &func_graph, const std::vector<Pass
   size_t num = 0;
   for (const auto &pass : passes) {
     if (pass != nullptr) {
-      changed = RunPass(func_graph, num, pass) || changed;
+      auto ret = RunPass(func_graph, num, pass);
+      if (ret) {
+        auto status = lite::DumpGraph(pass->name(), func_graph);
+        if (status != kSuccess) {
+          MS_LOG(WARNING) << "dump mindspore lite graph ir failed in " << pass->name();
+        }
+      }
+      changed = ret || changed;
     } else {
       MS_LOG(INFO) << "pass is null";
     }
