@@ -19,7 +19,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "include/backend/optimizer/node_pass.h"
+#include "include/backend/common/pass_manager/node_pass.h"
 
 namespace mindspore {
 namespace opt {

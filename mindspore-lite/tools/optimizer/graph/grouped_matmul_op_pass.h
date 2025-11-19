@@ -20,7 +20,7 @@
 #include <string>
 #include <set>
 #include "include/registry/converter_context.h"
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 #include "tools/optimizer/common/gllo_utils.h"
 
 namespace mindspore::opt {

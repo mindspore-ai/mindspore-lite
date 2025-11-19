@@ -16,7 +16,7 @@
 
 #ifndef MINDSPORE_LITE_TOOLS_OPTIMIZER_GRAPH_MINIATURIZATION_PASS_H
 #define MINDSPORE_LITE_TOOLS_OPTIMIZER_GRAPH_MINIATURIZATION_PASS_H
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 
 namespace mindspore::opt {
 class MiniaturizationPass : public Pass {

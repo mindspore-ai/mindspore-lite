@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_TOOLS_OPTIMIZER_GRAPH_INPUT_AND_OUTPUT_VARIABLE_PASS_H_
 
 #include <vector>
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 #include "tools/optimizer/common/gllo_utils.h"
 
 namespace mindspore::opt {

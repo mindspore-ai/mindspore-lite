@@ -19,7 +19,7 @@
 
 #include <memory>
 #include <string>
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 #include "tools/converter/cxx_api/converter_para.h"
 #include "tools/converter/optimizer_manager.h"
 

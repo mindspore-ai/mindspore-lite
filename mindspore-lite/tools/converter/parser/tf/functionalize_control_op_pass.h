@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 #include <memory>
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "tools/converter/ops/ops_def.h"
 #include "tools/optimizer/common/gllo_utils.h"

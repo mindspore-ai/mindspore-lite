@@ -35,7 +35,7 @@
 #include "tools/converter/quantizer/cle_strategy.h"
 #include "tools/optimizer/common/pass_manager_extends.h"
 #include "tools/optimizer/fusion/quant_dtype_cast_fusion.h"
-#include "include/backend/optimizer/graph_optimizer.h"
+#include "include/backend/common/pass_manager/graph_optimizer.h"
 #include "tools/optimizer/graph/infershape_pass.h"
 #include "tools/converter/quantizer/split_shared_bias.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_o.h"

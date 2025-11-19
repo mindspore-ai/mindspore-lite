@@ -24,7 +24,7 @@
 #include <vector>
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
-#include "include/backend/optimizer/optimizer.h"
+#include "include/backend/common/pass_manager/optimizer.h"
 #include "include/errorcode.h"
 #include "ir/func_graph.h"
 #include "tools/lite_exporter/anf_exporter.h"

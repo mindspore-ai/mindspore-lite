@@ -129,7 +129,7 @@
 #include "tools/converter/parser/conv2d_transpose_input_adjust.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/converter/parser/unify_format.h"
-#include "include/backend/optimizer/graph_optimizer.h"
+#include "include/backend/common/pass_manager/graph_optimizer.h"
 #include "tools/optimizer/fusion/squeeze_expanddims_fusion.h"
 #include "mindspore/ops/op_def/op_name.h"
 #include "tools/common/string_util.h"

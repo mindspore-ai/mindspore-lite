@@ -24,7 +24,7 @@
 #include <string>
 #include <utility>
 #include <unordered_map>
-#include "mindspore/ccsrc/frontend/operator/primitive_py.h"
+#include "mindspore/ccsrc/include/frontend/operator/primitive_py.h"
 #include "ops/primitive_c.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "src/common/utils.h"

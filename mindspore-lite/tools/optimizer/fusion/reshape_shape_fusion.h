@@ -17,7 +17,7 @@
 #ifndef MINDSPORE_LITE_TOOLS_OPTIMIZER_FUSION_RESHAPE_SHAPE_FUSION_H
 #define MINDSPORE_LITE_TOOLS_OPTIMIZER_FUSION_RESHAPE_SHAPE_FUSION_H
 
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 
 namespace mindspore {
 namespace opt {

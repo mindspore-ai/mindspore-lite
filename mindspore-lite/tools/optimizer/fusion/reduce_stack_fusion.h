@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_TOOLS_OPTIMIZER_FUSION_REDUCE_STACK_FUSION_H
 
 #include "ir/anf.h"
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 
 namespace mindspore {
 namespace opt {

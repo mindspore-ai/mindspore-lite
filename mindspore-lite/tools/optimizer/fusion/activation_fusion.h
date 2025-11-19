@@ -17,9 +17,9 @@
 #ifndef MINDSPORE_LITE_TOOLS_OPTIMIZER_FUSION_ACTIVATION_FUSION_H_
 #define MINDSPORE_LITE_TOOLS_OPTIMIZER_FUSION_ACTIVATION_FUSION_H_
 
-#include "include/backend/optimizer/optimizer.h"
+#include "include/backend/common/pass_manager/optimizer.h"
 #include "tools/converter/converter_context.h"
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 
 namespace mindspore {
 namespace opt {

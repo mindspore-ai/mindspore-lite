@@ -18,8 +18,8 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_PARSER_CONV1D_INOUT_ADJUST_H_
 #include <string>
 #include <vector>
-#include "include/backend/optimizer/pass.h"
-#include "include/backend/optimizer/optimizer.h"
+#include "include/backend/common/pass_manager/pass.h"
+#include "include/backend/common/pass_manager/optimizer.h"
 #include "include/errorcode.h"
 #include "schema/inner/model_generated.h"
 

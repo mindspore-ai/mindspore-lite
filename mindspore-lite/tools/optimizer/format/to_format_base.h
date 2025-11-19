@@ -22,7 +22,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 #include "mindspore/ops/op_def/nn_optimizer_ops.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/optimizer/common/format_utils.h"

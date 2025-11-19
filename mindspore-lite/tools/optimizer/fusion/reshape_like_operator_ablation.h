@@ -19,7 +19,7 @@
 
 #include "ir/anf.h"
 #include "tools/optimizer/graph/preprocess_dynamic_shape.h"
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 
 namespace mindspore {
 namespace opt {

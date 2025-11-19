@@ -21,9 +21,9 @@
 #include "test/ut/tools/optimizer/fusion/fusion_inout_test/fusion_inout_test.h"
 #include "ir/anf.h"
 #include "nnacl_c/matmul_parameter.h"
-#include "include/backend/optimizer/pass.h"
-#include "include/backend/optimizer/optimizer.h"
-#include "include/backend/optimizer/pass_manager.h"
+#include "include/backend/common/pass_manager/pass.h"
+#include "include/backend/common/pass_manager/optimizer.h"
+#include "include/backend/common/pass_manager/pass_manager.h"
 #include "infer/cxx_api/activation.h"
 
 namespace mindspore {

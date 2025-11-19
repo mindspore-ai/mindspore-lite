@@ -20,7 +20,7 @@
 #include <map>
 #include <string>
 #include <utility>
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 #include "tools/optimizer/graph/preprocess_dynamic_shape.h"
 
 namespace mindspore {

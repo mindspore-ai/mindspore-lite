@@ -20,7 +20,7 @@
 #include <set>
 #include <string>
 #include <vector>
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 #include "src/common/log_util.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "include/registry/pass_base.h"

@@ -22,7 +22,7 @@
 #include <deque>
 #include <set>
 #include "schema/inner/model_generated.h"
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 
 namespace mindspore::opt {
 class ControlFlowPass : public Pass {
