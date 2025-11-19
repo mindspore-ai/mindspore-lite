@@ -102,6 +102,25 @@ Status Model::Build(const void *model_data, size_t data_size, ModelType model_ty
   }
 }
 
+Status Model::Build(const void *model_data, size_t data_size, const void *weight_data, size_t weight_size,
+                    ModelType model_type, const std::shared_ptr<Context> &model_context) {
+  if (impl_ == nullptr) {
+    MS_LOG(ERROR) << "Model implement is null.";
+    return kLiteNullptr;
+  }
+  try {
+    Status ret = impl_->Build(model_data, data_size, weight_data, weight_size, model_type, model_context);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
+      return ret;
+    }
+    return kSuccess;
+  } catch (const std::exception &exe) {
+    MS_LOG(ERROR) << "Catch exception: " << exe.what();
+    return kCoreFailed;
+  }
+}
+
 Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
                     const std::shared_ptr<Context> &model_context) {
   if (impl_ == nullptr) {

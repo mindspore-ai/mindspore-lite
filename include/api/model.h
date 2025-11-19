@@ -51,12 +51,28 @@ class MS_API Model {
   /// \param[in] data_size Define bytes number of model buffer.
   /// \param[in] model_type Define The type of model file. Options: ModelType::kMindIR, ModelType::kMindIR_Lite. Only
   /// ModelType::kMindIR_Lite is valid for Device-side Inference. Cloud-side Inference supports options
-  /// ModelType::kMindIR and ModelType::kMindIR_Lite, but option odelType::kMindIR_Lite will be removed in future
+  /// ModelType::kMindIR and ModelType::kMindIR_Lite, but option ModelType::kMindIR_Lite will be removed in future
   /// iterations. \param[in] model_context Define the context used to store options during execution.
   ///
   /// \return Status. kSuccess: build success, kLiteModelRebuild: build model repeatedly, Other: other types of errors.
   Status Build(const void *model_data, size_t data_size, ModelType model_type,
                const std::shared_ptr<Context> &model_context = nullptr);
+
+  /// \brief Build a model from model buffer so that it can run on a device.
+  ///
+  /// \param[in] model_data Define the buffer read from a model file.
+  /// \param[in] data_size Define bytes number of model buffer.
+  /// \param[in] weight_data Define the buffer read from a weight file.
+  /// \param[in] weight_size Define bytes number of weight buffer.
+  /// \param[in] model_type Define The type of model file. Options: ModelType::kMindIR, ModelType::kMindIR_Lite. Only
+  ///     ModelType::kMindIR_Lite is valid for Device-side Inference. Cloud-side Inference supports options
+  ///     ModelType::kMindIR and ModelType::kMindIR_Lite, but option ModelType::kMindIR_Lite will be removed in future
+  ///     iterations.
+  /// \param[in] model_context Define the context used to store options during execution.
+  ///
+  /// \return Status. kSuccess: build success, kLiteModelRebuild: build model repeatedly, Other: other types of errors.
+  Status Build(const void *model_data, size_t data_size, const void *weight_data, size_t weight_size,
+               ModelType model_type, const std::shared_ptr<Context> &model_context = nullptr);
 
   /// \brief Load and build a model from model buffer so that it can run on a device.
   ///
