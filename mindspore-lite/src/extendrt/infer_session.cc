@@ -20,14 +20,14 @@
 #include "extendrt/delegate/plugin/litert_executor_plugin.h"
 #include "extendrt/delegate/plugin/ascend_ge_executor_plugin.h"
 #include "extendrt/delegate/plugin/ascend_acl_executor_plugin.h"
+#include "src/common/common.h"
 #include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace {
 void AscendPluginRegistration(const std::shared_ptr<AscendDeviceInfo> &ascend_device, bool use_experimental_rts) {
-  constexpr auto default_npu_provider = "ge";
   auto provider = ascend_device->GetProvider();
-  if (provider == default_npu_provider) {
+  if (lite::IsGe(provider)) {
     if (!lite::AscendGeExecutorPlugin::GetInstance().Register()) {
       MS_LOG(WARNING) << "Failed to register AscendGe plugin";
       return;
@@ -102,12 +102,6 @@ SessionType InferSession::SelectSession(const std::shared_ptr<Context> &context,
       auto &device_contexts = context->MutableDeviceInfo();
       for (const auto &device_context : device_contexts) {
         MS_EXCEPTION_IF_NULL(device_context);
-        if (device_context->GetDeviceType() == kAscend) {
-          if (device_context->GetProvider() == "ge") {
-            return kDelegateSession;
-          }
-          return kDelegateSession;
-        }
         return kDelegateSession;
       }
     } else {

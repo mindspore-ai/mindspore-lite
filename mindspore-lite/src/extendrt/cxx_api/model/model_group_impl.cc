@@ -89,7 +89,7 @@ Status ModelGroupImpl::AddModel(const std::vector<std::shared_ptr<ModelImpl>> &m
 }
 
 Status ModelGroupImpl::CalMaxSizeOfWorkspace(ModelType model_type, const std::shared_ptr<Context> &ms_context) {
-  if (ms_context->MutableDeviceInfo().size() > 0 && ms_context->MutableDeviceInfo()[0]->GetProvider() == "ge") {
+  if (ms_context->MutableDeviceInfo().size() > 0 && lite::IsGe(ms_context->MutableDeviceInfo()[0]->GetProvider())) {
     MS_LOG(ERROR) << "Not Support GE model to ModelGroup::CalMaxSizeOfWorkspace!";
     return kLiteError;
   }

@@ -177,7 +177,7 @@ std::shared_ptr<AscendDeviceInfo> GeDeviceContext::GetGeAscendDeviceInfo(const s
   auto device_list = context->MutableDeviceInfo();
   auto ascend_info_iter = std::find_if(
     device_list.begin(), device_list.end(), [&](std::shared_ptr<mindspore::DeviceInfoContext> &device_info) {
-      return (device_info && device_info->GetDeviceType() == kAscend && device_info->GetProvider() == "ge");
+      return (device_info && device_info->GetDeviceType() == kAscend && lite::IsGe(device_info->GetProvider()));
     });
   if (ascend_info_iter == device_list.end()) {
     MS_LOG(ERROR) << "AscendDeviceInfo is not set. If using distributed inference, make sure device_id "
