@@ -30,7 +30,7 @@ class AscendEnvChecker(metaclass=ABCMeta):
     def __init__(self):
         # Note: This list contains the compatible Ascend versions for current MSLite version,
         # It MUST be updated when the MSLite Ascend version is upgraded!
-        self.compatible_cann_versions = ["7.7", "7.8", "8.2", "8.3"]
+        self.compatible_cann_versions = ["7.8", "8.2", "8.3", "8.5"]
 
         self.ascend_home_path = None
         # Get ascend install path in several envs.
