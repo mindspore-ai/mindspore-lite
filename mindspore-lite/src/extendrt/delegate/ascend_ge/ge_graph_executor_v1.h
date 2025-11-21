@@ -59,8 +59,8 @@ class GeGraphExecutorV1 : public LiteGraphExecutor {
   bool InitGEResource();
   bool InitMsTensor(const FuncGraphPtr &graph, uint32_t graph_id);
   bool InitGeTensor(uint32_t graph_id);
-  bool PrepareGeInputs(const std::vector<MSTensor> &inputs, uint32_t graph_id);
-  bool PrepareGeOutputs(std::vector<MSTensor> *outputs, uint32_t graph_id);
+  bool PrepareGeInputs(const std::vector<MSTensor> &inputs, std::vector<GeTensor> *ge_inputs, uint32_t graph_id);
+  bool PrepareGeOutputs(std::vector<MSTensor> *outputs, std::vector<GeTensor> *ge_outputs, uint32_t graph_id);
   bool PostProcessGeOutputs(std::vector<MSTensor> *outputs, uint32_t graph_id);
   GeOptionsContainer ge_options_container_;
   GeGraphCompiler ge_graph_compiler_;
@@ -70,8 +70,12 @@ class GeGraphExecutorV1 : public LiteGraphExecutor {
   std::shared_ptr<GeDeviceContext> ge_global_context_{nullptr};
   std::shared_ptr<GeMemoryManager> memory_manager_{nullptr};
   std::shared_ptr<GeContextManager> context_manager_{nullptr};
-  std::map<uint32_t, std::vector<GeTensor>> ge_inputs_;
-  std::map<uint32_t, std::vector<GeTensor>> ge_outputs_;
+  // {graph_id, {tensor, {allocate_address_by_us, size}}}. delayed free.
+  // Used to defer releasing device memory allocated for GE input tensors
+  std::map<uint32_t, std::vector<std::pair<GeTensor, std::pair<void *, size_t>>>> ge_inputs_;
+  // {graph_id, {tensor, {allocate_address_by_us, size}}}. delayed free.
+  // Used to defer releasing device memory allocated for GE output tensors
+  std::map<uint32_t, std::vector<std::pair<GeTensor, std::pair<void *, size_t>>>> ge_outputs_;
   std::map<uint32_t, std::vector<mindspore::MSTensor>> ms_inputs_;
   std::map<uint32_t, std::vector<mindspore::MSTensor>> ms_outputs_;
 };

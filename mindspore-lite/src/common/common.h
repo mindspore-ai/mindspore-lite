@@ -196,7 +196,7 @@ static const char *const kInnerGraphSplit = "inner_graph_split";
 static const char *const kInnerInputNames = "inner_input_names";
 static const char *const kInnerOutputNames = "inner_output_names";
 
-bool IsGe(const std::string &provider);
+inline bool IsGe(const std::string &provider) { return provider == "ge" || provider == "ge-v1"; }
 }  // namespace lite
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_COMMON_COMMON_H_

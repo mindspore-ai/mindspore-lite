@@ -3,7 +3,6 @@ set(LITE_SRC_TRAIN_COMMON_MID_SRC "")
 
 set(LITE_SRC_COMMON_MID_SRC
         ${LITE_SRC_COMMON_MID_SRC}
-        ${CMAKE_CURRENT_SOURCE_DIR}/common.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/context_util.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/file_utils.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/mmap_utils.cc

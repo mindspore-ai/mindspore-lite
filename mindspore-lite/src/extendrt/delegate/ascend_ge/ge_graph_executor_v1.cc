@@ -31,8 +31,9 @@ constexpr auto kIsAdapted = "is_adapted";
 std::mutex g_compile_graph_mutex;
 constexpr size_t kAlignRefData = 32;
 std::atomic_int64_t global_session_idx = 0;
+// provide an empty deleter
+static void EmptyFree(uint8_t *) {}
 }  // namespace
-
 bool GeGraphExecutorV1::Init() {
   ge_global_context_ = GeDeviceContext::InitGlobalContext(context_, config_infos_);
   if (ge_global_context_ == nullptr) {
@@ -42,6 +43,21 @@ bool GeGraphExecutorV1::Init() {
   return true;
 }
 GeGraphExecutorV1::~GeGraphExecutorV1() {
+  for (auto &it1 : ge_inputs_) {
+    for (auto &it2 : it1.second) {
+      if (it2.second.first) {
+        memory_manager_->FreeDeviceMemory(it2.second.first);
+      }
+    }
+  }
+  for (auto &it1 : ge_outputs_) {
+    for (auto &it2 : it1.second) {
+      void *device_ptr = it2.second.first;
+      if (device_ptr != nullptr) {
+        memory_manager_->FreeDeviceMemory(device_ptr);
+      }
+    }
+  }
   if (ge_session_info_.session_) {
     for (auto graph_id : ge_session_info_.graph_ids_) {
       ge_session_info_.session_->RemoveGraph(graph_id);
@@ -49,7 +65,6 @@ GeGraphExecutorV1::~GeGraphExecutorV1() {
   }
   ge_session_info_.session_ = nullptr;
 }
-
 bool GeGraphExecutorV1::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &, uint32_t *graph_id) {
   MS_CHECK_TRUE_MSG(graph != nullptr, false, "graph is NULL.");
   MS_CHECK_TRUE_MSG(graph_id != nullptr, false, "graph_id is NULL.");
@@ -68,7 +83,6 @@ bool GeGraphExecutorV1::CompileGraph(const FuncGraphPtr &graph, const std::map<s
   if (CheckParallelCompile()) {
     MS_LOG(WARNING) << lite::kCompileGraphParallel << " does not support ge provider";
   }
-
   std::lock_guard lock(g_compile_graph_mutex);
   bool is_adapted = graph->has_attr(kIsAdapted);
   if (!is_adapted) {
@@ -81,6 +95,11 @@ bool GeGraphExecutorV1::CompileGraph(const FuncGraphPtr &graph, const std::map<s
     return false;
   }
   *graph_id = ge_session_info_.graph_ids_.back();
+  auto summary = ge_session_info_.session_->GetCompiledGraphSummary(*graph_id);
+  if (!summary->IsStatic()) {
+    MS_LOG(ERROR) << "Currently, ge-v1 only support static-model, please set provider=ge.";
+    return false;
+  }
   if (!InitGEResource()) {
     MS_LOG(ERROR) << "Init resource for GE failed.";
     return false;
@@ -95,7 +114,6 @@ bool GeGraphExecutorV1::CompileGraph(const FuncGraphPtr &graph, const std::map<s
   }
   return true;
 }
-
 bool GeGraphExecutorV1::CheckParallelCompile() {
   auto config_it = config_infos_.find(lite::kCommonContextSection);
   if (config_it == config_infos_.end()) {
@@ -108,7 +126,6 @@ bool GeGraphExecutorV1::CheckParallelCompile() {
   }
   return option_it->second == lite::kEnableValue;
 }
-
 bool GeGraphExecutorV1::InitGEResource() {
   if (memory_manager_ == nullptr) {
     memory_manager_ = std::make_shared<GeMemoryManager>();
@@ -182,21 +199,31 @@ bool GeGraphExecutorV1::InitMsTensor(const FuncGraphPtr &graph, uint32_t graph_i
 
 bool GeGraphExecutorV1::InitGeTensor(uint32_t graph_id) {
   // Delayed HBM memory allocation.
-  auto create_func = [](const std::vector<mindspore::MSTensor> &ms_tensors, std::vector<GeTensor> *ge_tensors) {
+  auto create_func = [this, graph_id](const std::vector<mindspore::MSTensor> &ms_tensors,
+                                      std::vector<std::pair<GeTensor, std::pair<void *, size_t>>> *ge_tensors) {
+    auto summary = this->ge_session_info_.session_->GetCompiledGraphSummary(graph_id);
+    std::vector<ge::Shape> shapes;
+    auto res = summary->GetOutputShapes(shapes);
+    if (res != ge::GRAPH_SUCCESS) {
+      MS_LOG(ERROR) << "GetOutputShapes failed!";
+      return false;
+    }
+    MS_LOG(INFO) << "MODEL STATUS: " << res;
     ge_tensors->resize(ms_tensors.size());
     for (size_t i = 0; i < ms_tensors.size(); ++i) {
       auto dtype = static_cast<TypeId>(ms_tensors[i].DataType());
-      auto desc = device::ascend::TransformUtil::GetGeTensorDesc({}, dtype, kOpFormat_NCHW);
+      auto desc = device::ascend::TransformUtil::GetGeTensorDesc(shapes[i].GetDims(), dtype, kOpFormat_NCHW);
       if (desc == nullptr) {
         MS_LOG(ERROR) << "Failed to create Tensor Desc";
         return false;
       }
       desc->SetPlacement(::ge::kPlacementDevice);
-      auto ret = ge_tensors->at(i).SetTensorDesc(*desc);
+      auto ret = ge_tensors->at(i).first.SetTensorDesc(*desc);
       if (ret != ACL_SUCCESS) {
         MS_LOG(ERROR) << "Failed to call ge::Tensor::SetTensorDesc, ret " << ret;
         return false;
       }
+      ge_tensors->at(i).second = {nullptr, 0};
     }
     return true;
   };
@@ -227,20 +254,19 @@ bool GeGraphExecutorV1::RunGraph(uint32_t graph_id, const std::vector<MSTensor> 
     MS_LOG(ERROR) << " outputs param is nullptr.";
     return false;
   }
-
-  MS_LOG(INFO) << "Run ge graph [" << graph_id << "] with " << inputs.size() << " ms_tensor_inputs";
-  if (!PrepareGeInputs(inputs, graph_id)) {
+  std::vector<GeTensor> ge_inputs;
+  if (!PrepareGeInputs(inputs, &ge_inputs, graph_id)) {
     MS_LOG(ERROR) << "Prepare ge inputs failed.";
     return false;
   }
-  if (!PrepareGeOutputs(outputs, graph_id)) {
+  std::vector<GeTensor> ge_outputs;
+  if (!PrepareGeOutputs(outputs, &ge_outputs, graph_id)) {
     MS_LOG(ERROR) << "Prepare ge outputs failed.";
     return false;
   }
   auto stream = context_manager_->GetDefaultStream();
   auto time_start = std::chrono::system_clock::now();
-  auto ret =
-    ge_session_info_.session_->RunGraphWithStreamAsync(graph_id, stream, ge_inputs_[graph_id], ge_outputs_[graph_id]);
+  auto ret = ge_session_info_.session_->RunGraphWithStreamAsync(graph_id, stream, ge_inputs, ge_outputs);
   if (ret != ge::GRAPH_SUCCESS) {
     MS_LOG(ERROR) << "Call GE RunGraphWithStreamAsync Failed, ret is: " << ret;
     return false;
@@ -252,21 +278,181 @@ bool GeGraphExecutorV1::RunGraph(uint32_t graph_id, const std::vector<MSTensor> 
   auto time_cost =
     std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - time_start).count();
   MS_LOG(INFO) << "Call GE RunGraph Success in " << time_cost << " us, graph id " << graph_id;
-  if (!PostProcessGeOutputs(outputs, graph_id)) {
-    MS_LOG(ERROR) << "PostPrecess ge outputs failed.";
+  auto status = PostProcessGeOutputs(outputs, graph_id);
+  if (!status) {
+    MS_LOG(ERROR) << "PostProcess ge outputs failed.";
     return false;
   }
   return true;
 }
 
-// Todo
-bool GeGraphExecutorV1::PrepareGeInputs(const std::vector<MSTensor> &inputs, uint32_t graph_id) { return true; }
+bool GeGraphExecutorV1::PrepareGeInputs(const std::vector<MSTensor> &inputs, std::vector<GeTensor> *ge_inputs,
+                                        uint32_t graph_id) {
+  if (ge_inputs == nullptr) {
+    MS_LOG(ERROR) << "ge_inputs pointer is null.";
+    return false;
+  }
+  if (ge_inputs_[graph_id].size() != inputs.size()) {
+    MS_LOG(ERROR) << "ge_inputs_[graph_id].size()!=inputs.size()!!!";
+    return false;
+  }
+  for (size_t i = 0; i < inputs.size(); i++) {
+    auto input = inputs[i];
+    auto &it = ge_inputs_[graph_id][i];
+    auto desc = it.first.GetTensorDesc();
+    desc.SetShape(::ge::Shape(input.Shape()));
+    it.first.SetTensorDesc(desc);
+    auto size = input.DataSize();
+    void *device_addr = nullptr;
+    if (input.GetDeviceData() != nullptr) {
+      device_addr = input.GetDeviceData();
+    } else if (input.Data() != nullptr) {
+      if (size > it.second.second) {
+        if (it.second.first) {
+          memory_manager_->FreeDeviceMemory(it.second.first);
+          it.second = {nullptr, 0};
+        }
+        device_addr = memory_manager_->MallocDeviceMemory("Data", size);
+        if (device_addr == nullptr) {
+          MS_LOG(ERROR) << "Malloc device memory failed.";
+          return false;
+        }
+        it.second = {device_addr, size};
+      } else {
+        device_addr = it.second.first;
+      }
+      auto mem_ret = memory_manager_->MemcpyHost2Device(device_addr, size, input.MutableData(), size);
+      if (!mem_ret) {
+        MS_LOG(ERROR) << "Failed to H2D, input " << i;
+        (void)memory_manager_->FreeDeviceMemory(device_addr);
+        return false;
+      }
+    } else {
+      MS_LOG(ERROR) << "Provided graph-input " << i << " has no data.";
+      return false;
+    }
+    // cppcheck-suppress internalAstError
+    auto ret = it.first.SetData(static_cast<uint8_t *>(device_addr), size, EmptyFree);
+    if (ret != ge::GRAPH_SUCCESS) {
+      MS_LOG(ERROR) << "Failed to call ge::Tensor SetData for graph-input " << i;
+      return false;
+    }
+    ge_inputs->push_back(it.first);
+  }
+  return true;
+}
 
-// Todo
-bool GeGraphExecutorV1::PrepareGeOutputs(std::vector<MSTensor> *outputs, uint32_t graph_id) { return true; }
+bool GeGraphExecutorV1::PrepareGeOutputs(std::vector<MSTensor> *outputs, std::vector<GeTensor> *ge_outputs,
+                                         uint32_t graph_id) {
+  auto fill_addr_func = [this](std::pair<GeTensor, std::pair<void *, size_t>> *it, const std::vector<int64_t> &shape) {
+    size_t size = GetSizeByDataType(it->first.GetDataType());
+    size = std::accumulate(shape.begin(), shape.end(), size, std::multiplies<>());
+    void *device_addr = it->second.first;
+    if (size > it->second.second) {
+      if (device_addr) {
+        memory_manager_->FreeDeviceMemory(device_addr);
+        it->second = {nullptr, 0};
+      }
+      device_addr = memory_manager_->MallocDeviceMemory("Output Data", size);
+      if (device_addr == nullptr) {
+        MS_LOG(ERROR) << "Malloc device memory failed.";
+        return false;
+      }
+      it->second = {device_addr, size};
+    } else {
+      device_addr = it->second.first;
+    }
+    // cppcheck-suppress internalAstError
+    it->first.SetData(static_cast<uint8_t *>(device_addr), size, EmptyFree);
+    return true;
+  };
+  if (outputs->empty()) {
+    for (auto &it : ge_outputs_[graph_id]) {
+      auto ge_tensor = it.first;
+      auto desc = ge_tensor.GetTensorDesc();
+      auto ge_shape = desc.GetOriginShape();
+      desc.SetShape(ge_shape);
+      ge_tensor.SetTensorDesc(desc);
+      auto shape = ge_shape.GetDims();
+      if (!fill_addr_func(&it, shape)) {
+        MS_LOG(ERROR) << "Fill device-addr to graph-output failed.";
+        return false;
+      }
+      ge_outputs->push_back(it.first);
+    }
+    return true;
+  }
+  if (outputs->size() != ge_outputs_[graph_id].size()) {
+    MS_LOG(ERROR) << "Provided graph-output's number is not equal ge::outputs, which is " << outputs->size() << " VS "
+                  << ge_outputs_[graph_id].size();
+    return false;
+  }
+  for (size_t i = 0; i < outputs->size(); ++i) {
+    auto output = outputs->at(i);
+    auto &it = ge_outputs_[graph_id][i];
+    auto ms_shape = output.Shape();
+    auto shape = ms_shape;
+    auto desc = it.first.GetTensorDesc();
+    auto ge_shape = desc.GetOriginShape();
+    auto is_determined = std::all_of(ms_shape.begin(), ms_shape.end(), [](int64_t dim) { return dim > 0; });
+    if (!is_determined) {
+      shape = ge_shape.GetDims();
+    }
+    desc.SetShape(::ge::Shape(shape));
+    it.first.SetTensorDesc(desc);
 
-// Todo
-bool GeGraphExecutorV1::PostProcessGeOutputs(std::vector<MSTensor> *outputs, uint32_t graph_id) { return true; }
+    if (output.GetDeviceData() != nullptr) {
+      auto size = output.DataSize();
+      // cppcheck-suppress internalAstError
+      auto ret = it.first.SetData(static_cast<uint8_t *>(output.GetDeviceData()), size, EmptyFree);
+      if (ret != ge::GRAPH_SUCCESS) {
+        MS_LOG(ERROR) << "Failed to call ge::Tensor SetData(uint8_t*, size, DeleteFunc) for graph-output " << i;
+        return false;
+      }
+    } else {
+      if (!fill_addr_func(&it, shape)) {
+        MS_LOG(ERROR) << "Fill device-addr to graph-output failed.";
+        return false;
+      }
+    }
+    ge_outputs->push_back(it.first);
+  }
+  return true;
+}
+
+bool GeGraphExecutorV1::PostProcessGeOutputs(std::vector<MSTensor> *outputs, uint32_t graph_id) {
+  if (outputs->empty()) {
+    for (size_t i = 0; i < ge_outputs_[graph_id].size(); ++i) {
+      auto name = "output[" + std::to_string(i) + "]";
+      auto ms_tensor = MSTensor(name, ms_inputs_[graph_id][i].DataType(), {}, nullptr, 0);
+      outputs->push_back(ms_tensor);
+    }
+  }
+  for (size_t i = 0; i < outputs->size(); ++i) {
+    auto ms_tensor = outputs->at(i);
+    auto &it = ge_outputs_[graph_id][i];
+    if (ms_tensor.GetDeviceData() != nullptr) {
+      it.first.ResetData(nullptr, 0, EmptyFree);
+      continue;
+    }
+    if (ms_tensor.Data() == nullptr) {
+      ms_tensor.SetDataType(ms_inputs_[graph_id][i].DataType());
+      ms_tensor.SetShape(it.first.GetTensorDesc().GetShape().GetDims());
+    }
+    if (ms_tensor.DataSize() > it.second.second) {
+      MS_LOG(ERROR) << "The data-size of MSTensor is more than that of GETensor. which is " << ms_tensor.DataSize()
+                    << " VS " << it.second.second;
+      return false;
+    }
+    auto mem_ret = memory_manager_->MemcpyDevice2Host(ms_tensor.MutableData(), ms_tensor.DataSize(), it.second.first,
+                                                      ms_tensor.DataSize());
+    if (!mem_ret) {
+      MS_LOG(ERROR) << "Failed to D2H, output " << i;
+      return false;
+    }
+  }
+  return true;
+}
 
 static std::shared_ptr<LiteGraphExecutor> GeGraphExecutorCreatorV1(const std::shared_ptr<Context> &ctx,
                                                                    const ConfigInfos &config_infos) {
