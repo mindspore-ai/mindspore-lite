@@ -162,7 +162,7 @@ Status ModelImpl::BuildAndRun(const void *model_data, size_t data_size, ModelTyp
   if (ret != kSuccess) {
     return ret;
   }
-  ret = RandomInference();
+  ret = InferWithRandomData();
   if (ret != kSuccess) {
     return ret;
   }
@@ -170,7 +170,8 @@ Status ModelImpl::BuildAndRun(const void *model_data, size_t data_size, ModelTyp
   return kSuccess;
 }
 
-Status ModelImpl::RandomInference() {
+Status ModelImpl::InferWithRandomData() {
+#if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
   for (auto &tensor : this->GetInputs()) {
     if (tensor.Shape().empty() || tensor.DataSize() == 0 ||
         std::find(tensor.Shape().begin(), tensor.Shape().end(), -1) != tensor.Shape().end()) {
@@ -185,6 +186,7 @@ Status ModelImpl::RandomInference() {
   if (ret != kSuccess) {
     return ret;
   }
+#endif
   return kSuccess;
 }
 
@@ -195,7 +197,7 @@ Status ModelImpl::BuildAndRun(const std::string &model_path, ModelType model_typ
   if (ret != kSuccess) {
     return ret;
   }
-  ret = RandomInference();
+  ret = InferWithRandomData();
   if (ret != kSuccess) {
     return ret;
   }
@@ -203,8 +205,8 @@ Status ModelImpl::BuildAndRun(const std::string &model_path, ModelType model_typ
   return kSuccess;
 }
 
-Status ModelImpl::PreInference(const std::string &model_path, ModelType model_type,
-                               const std::shared_ptr<Context> &model_context) {
+Status ModelImpl::PreInfer(const std::string &model_path, ModelType model_type,
+                           const std::shared_ptr<Context> &model_context) {
 #if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
   if (lite::GetNumThreads() == lite::kSingleThread && IsEnablePreInference()) {
     pid_t pid = fork();
@@ -225,8 +227,8 @@ Status ModelImpl::PreInference(const std::string &model_path, ModelType model_ty
   return kSuccess;
 }
 
-Status ModelImpl::PreInference(const void *model_data, size_t data_size, ModelType model_type,
-                               const std::shared_ptr<Context> &model_context) {
+Status ModelImpl::PreInfer(const void *model_data, size_t data_size, ModelType model_type,
+                           const std::shared_ptr<Context> &model_context) {
 #if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
   if (lite::GetNumThreads() == lite::kSingleThread && IsEnablePreInference()) {
     pid_t pid = fork();

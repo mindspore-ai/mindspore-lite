@@ -743,6 +743,7 @@ find_required_package(Patch)
 
 include_directories(${TOP_DIR})
 include_directories(${TOP_DIR}/mindspore)
+include_directories(${TOP_DIR}/mindspore/mindspore/ops/include)
 include_directories(${CORE_INC_DIR})
 include_directories(${CCSRC_DIR})
 include_directories(${CCSRC_DIR}/include)

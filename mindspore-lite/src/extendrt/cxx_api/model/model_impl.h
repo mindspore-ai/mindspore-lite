@@ -234,11 +234,10 @@ class ModelImpl {
   // release inference resource, only used for mindspore_lite's ascend backend now.
   Status Finalize();
 
-  Status PreInference(const std::string &model_path, ModelType model_type,
-                      const std::shared_ptr<Context> &model_context);
+  Status PreInfer(const std::string &model_path, ModelType model_type, const std::shared_ptr<Context> &model_context);
 
-  Status PreInference(const void *model_data, size_t data_size, ModelType model_type,
-                      const std::shared_ptr<Context> &model_context);
+  Status PreInfer(const void *model_data, size_t data_size, ModelType model_type,
+                  const std::shared_ptr<Context> &model_context);
 
  private:
   /// \brief Model build by buffer implementation, unified model build flow.
@@ -309,7 +308,7 @@ class ModelImpl {
   Status BuildAndRun(const void *model_data, size_t data_size, ModelType model_type,
                      const std::shared_ptr<Context> &model_context);
 
-  Status RandomInference();
+  Status InferWithRandomData();
   bool IsEnablePreInference();
   friend class Model;
   friend class Serialization;
