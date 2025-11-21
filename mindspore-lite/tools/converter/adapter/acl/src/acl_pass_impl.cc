@@ -21,11 +21,11 @@
 #include <set>
 #include <map>
 #include <string>
-#include <utility>
 #include <memory>
+#include <utility>
+#include <vector>
 #include <unordered_map>
 #include <unordered_set>
-#include <vector>
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
@@ -161,7 +161,6 @@ constexpr auto kNameScatterNdMax = "ScatterNdMax";
 const std::set<std::string> kSocVersionForAscendCFA = {
   "Ascend910B1",    "Ascend910B2",    "Ascend910B2C",   "Ascend910B3",    "Ascend910B4",    "Ascend310P3",
   "Ascend910_9391", "Ascend910_9381", "Ascend910_9392", "Ascend910_9382", "Ascend910_9372", "Ascend910_9361"};
-
 STATUS ModifyCNodeFormat(const FuncGraphPtr &func_graph, Format format) {
   CHECK_NULL_RETURN(func_graph);
   auto node_list = TopoSort(func_graph->get_return());
@@ -854,7 +853,7 @@ STATUS AclPassImpl::MapperForOrgMindIR(const FuncGraphPtr &func_graph) {
 
   std::set<std::string> mindir_mapper = {ops::kNameTranspose, ops::kNameStandardNormal, ops::kNameBatchMatMul,
                                          ops::kNameMatMul,    ops::kNameAvgPool,        ops::kNameBatchNorm,
-                                         kNameResizeBilinear, kNameScatterNdMax};
+                                         kNameResizeBilinear, kNameScatterNdMax,        ops::kNameReduceMean};
   const std::set<PrimitivePtr> support_ptq_mindir_types = {prim::kPrimQuantDTypeCast, prim::kPrimAddFusion,
                                                            prim::kPrimMulFusion};
   for (auto graph : all_func_graphs) {

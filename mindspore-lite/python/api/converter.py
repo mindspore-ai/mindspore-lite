@@ -353,8 +353,8 @@ class Converter:
         """
         check_isinstance("input_data_type", input_data_type, DataType)
         if input_data_type not in [DataType.FLOAT32, DataType.INT8, DataType.UINT8, DataType.UNKNOWN]:
-            raise ValueError(f"input_data_type must be in [DataType.FLOAT32, DataType.INT8, DataType.UINT8, "
-                             f"DataType.UNKNOWN].")
+            raise ValueError("input_data_type must be in [DataType.FLOAT32, DataType.INT8, DataType.UINT8, "
+                             "DataType.UNKNOWN].")
         self._converter.set_input_data_type(data_type_py_cxx_map.get(input_data_type))
 
     @property
@@ -392,7 +392,7 @@ class Converter:
         """
         check_isinstance("input_format", input_format, Format)
         if input_format not in [Format.NCHW, Format.NHWC]:
-            raise ValueError(f"input_format must be in [Format.NCHW, Format.NHWC].")
+            raise ValueError("input_format must be in [Format.NCHW, Format.NHWC].")
         self._converter.set_input_format(format_py_cxx_map.get(input_format))
 
     @property
@@ -522,7 +522,7 @@ class Converter:
             elif len(split_str) == 2:
                 chip_name = split_str[1]
             else:
-                raise ValueError(f"chip_name must be single")
+                raise ValueError("chip_name must be single")
             check_isinstance("chip_name", chip_name, str)
             if chip_name not in ["default", "910b"]:
                 raise ValueError(f"chip_name must be in [default, 910b], but got {chip_name}.")
@@ -530,7 +530,7 @@ class Converter:
             self.optimize_user_defined = "ascend_oriented"
         else:
             raise ValueError(
-                f"optimize must be 'none', 'general', 'gpu_oriented', 'ascend_oriented' or 'ascend_oriented:910b'.")
+                "optimize must be 'none', 'general', 'ascend_oriented'.")
 
     @property
     def output_data_type(self):
@@ -577,8 +577,8 @@ class Converter:
         """
         check_isinstance("output_data_type", output_data_type, DataType)
         if output_data_type not in [DataType.FLOAT32, DataType.INT8, DataType.UINT8, DataType.UNKNOWN]:
-            raise ValueError(f"output_data_type must be in [DataType.FLOAT32, DataType.INT8, DataType.UINT8, "
-                             f"DataType.UNKNOWN].")
+            raise ValueError("output_data_type must be in [DataType.FLOAT32, DataType.INT8, DataType.UINT8, "
+                             "DataType.UNKNOWN].")
         self._converter.set_output_data_type(data_type_py_cxx_map.get(output_data_type))
 
     @property
@@ -753,13 +753,13 @@ class Converter:
         check_isinstance("weight_file", weight_file, str)
         check_isinstance("config_file", config_file, str)
         if not os.path.exists(model_file):
-            raise RuntimeError(f"Perform convert method failed, model_file does not exist!")
+            raise RuntimeError("Perform convert method failed, model_file does not exist!")
         if weight_file != "":
             if not os.path.exists(weight_file):
-                raise RuntimeError(f"Perform convert method failed, weight_file does not exist!")
+                raise RuntimeError("Perform convert method failed, weight_file does not exist!")
         if config_file != "":
             if not os.path.exists(config_file):
-                raise RuntimeError(f"Perform convert method failed, config_file does not exist!")
+                raise RuntimeError("Perform convert method failed, config_file does not exist!")
             self._converter.set_config_file(config_file)
 
         fmk_type_py_cxx_map = {
