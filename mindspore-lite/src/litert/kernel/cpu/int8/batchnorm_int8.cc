@@ -52,7 +52,10 @@ int BatchnormInt8CPUKernel::InitConstTensor() {
   auto mean = in_tensors_.at(kNumInput1);
   auto variance = in_tensors_.at(kNumInput2);
   auto output = out_tensors_.at(0);
-  MS_CHECK_FALSE_MSG(mean->shape().empty() || variance->shape().empty(), RET_ERROR, "Invalid input tensors.");
+  // Eliminate the "free-nonheap-object" warning.
+  const auto &mean_shape = mean->shape();
+  const auto &variance_shape = variance->shape();
+  MS_CHECK_FALSE_MSG(mean_shape.empty() || variance_shape.empty(), RET_ERROR, "Invalid input tensors.");
 
   auto mean_ptr = reinterpret_cast<int8_t *>(mean->MutableData());
   CHECK_NULL_RETURN(mean_ptr);

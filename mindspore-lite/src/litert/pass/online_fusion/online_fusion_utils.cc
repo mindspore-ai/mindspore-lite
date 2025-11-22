@@ -18,7 +18,9 @@
 
 namespace mindspore::lite {
 bool IsIntScalarValue(lite::Tensor *tensor, int value) {
-  if ((tensor->shape().size() == 0 || (tensor->shape().size() == 1 && tensor->shape().at(0) == 1)) &&
+  // Eliminate the "free-nonheap-object" warning.
+  const auto &shape = tensor->shape();
+  if ((shape.size() == 0 || (shape.size() == 1 && tensor->shape().at(0) == 1)) &&
       (tensor->data_type() == TypeId::kNumberTypeInt32 || tensor->data_type() == TypeId::kNumberTypeInt)) {
     auto data = static_cast<int *>(tensor->data())[0];
     if (data != value) {

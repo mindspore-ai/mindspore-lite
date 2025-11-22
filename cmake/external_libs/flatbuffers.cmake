@@ -4,12 +4,11 @@ if(EXISTS ${TOP_DIR}/mindspore-lite/providers/flatbuffer/native_flatbuffer.cfg)
 endif()
 if(ENABLE_NATIVE_FLATBUFFER)
     file(STRINGS ${TOP_DIR}/mindspore-lite/providers/flatbuffer/native_flatbuffer.cfg native_flatbuffer_path)
-    set(FLATC "${native_flatbuffer_path}/bin")
+    #set the flatc path
+    set(FLATC "${native_flatbuffer_path}/bin/flatc")
     set(FLAT_BUFFERS "")
-    set(flatbuffers_INC "${native_flatbuffer_path}/common")
-    if(EXISTS ${native_flatbuffer_path}/template)
-        set(FLATBUFFER_TEMPALTE "${native_flatbuffer_path}/template")
-    endif()
+    #set the include dir
+    set(flatbuffers_INC "${native_flatbuffer_path}/include")
     include_directories(${flatbuffers_INC})
 
 else()
@@ -153,18 +152,20 @@ if(ENABLE_NATIVE_FLATBUFFER)
                 if(if_inner MATCHES "inner")
                     add_custom_command(
                             OUTPUT ${generated_file}
-                            COMMAND ${FLATC} --template ${FLATBUFFER_TEMPALTE} --cpp
-                            -o ${generated_output_dir}
-                            ${schema}
+                            COMMAND ${FLATC} --gen-mutable
+                            --reflect-names --gen-object-api -o ${generated_output_dir}
+                            ${total_schema_dirs}
+                            -c -b --reflect-types ${schema}
                             DEPENDS ${FLATC} ${schema}
                             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
                             COMMENT "Running C++ flatbuffers compiler on ${schema}" VERBATIM)
                 else()
                     add_custom_command(
                             OUTPUT ${generated_file}
-                            COMMAND ${FLATC} --template ${FLATBUFFER_TEMPALTE} --cpp
-                            -o ${generated_output_dir}
-                            ${schema}
+                            COMMAND ${FLATC} --gen-mutable
+                            --reflect-names --gen-object-api -o ${generated_output_dir}
+                            ${total_schema_dirs}
+                            -c -b --reflect-types ${schema}
                             DEPENDS ${FLATC} ${schema}
                             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
                             COMMENT "Running C++ flatbuffers compiler on ${schema}" VERBATIM)

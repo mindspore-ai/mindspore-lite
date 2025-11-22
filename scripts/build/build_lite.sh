@@ -521,6 +521,12 @@ build_lite() {
       else
         # CPU : Linux-x86_64
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DPLATFORM_X86_64=on"
+        #At x86_64 platform croess compile riscv arch
+        if [[ "${MSLITE_CROSS_RISCV}" == "on" ]]; then
+          CMAKE_TOOLCHAIN_FILE=${LITE_BASEPATH}/cmake/riscv64.toolchain.cmake
+          LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DTOOLCHAIN_NAME=riscv64"
+          LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_TARGET_SITEAI=on -DMSLITE_ENABLE_TRAIN=off -DMSLITE_ENABLE_CONVERTER=off -DMSLITE_ENABLE_TOOLS=off"
+        fi
       fi
     fi
 
