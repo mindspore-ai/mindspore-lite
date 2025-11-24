@@ -27,6 +27,7 @@ namespace mindspore {
 enum DelegateMode {
   kNoDelegate = 0,
   kCoreML = 1,
+  kPNNA = 2,
 };
 
 enum DeviceType {

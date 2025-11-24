@@ -281,3 +281,11 @@ endif()
 if(MSLITE_ENABLE_KERNEL_EXECUTOR)
     target_link_libraries(lite-test kernel_executor)
 endif()
+
+if(TARGET_FT78)
+    set(PNNACORE_DRIVERS "$ENV{DSP_SDK_PATH}/pnna_core/drivers")
+    target_link_options(lite-test PRIVATE
+        "-Wl,-rpath-link,${PNNACORE_DRIVERS}"
+        "-Wl,-rpath,${PNNACORE_DRIVERS}"
+    )
+endif()

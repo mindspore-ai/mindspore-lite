@@ -110,6 +110,14 @@ if(TARGET_OHOS)
     add_dependencies(benchmark mindspore-lite)
 endif()
 
+if(TARGET_FT78)
+    set(PNNACORE_DRIVERS "$ENV{DSP_SDK_PATH}/pnna_core/drivers")
+    target_link_options(benchmark PRIVATE
+        "-Wl,-rpath-link,${PNNACORE_DRIVERS}"
+        "-Wl,-rpath,${PNNACORE_DRIVERS}"
+    )
+endif()
+
 add_dependencies(benchmark fbs_src)
 
 target_link_libraries(benchmark ${BENCHMARK_LINK_LIB})
