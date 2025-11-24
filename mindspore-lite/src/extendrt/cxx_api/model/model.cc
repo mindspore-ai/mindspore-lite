@@ -85,9 +85,9 @@ Status Model::Build(const void *model_data, size_t data_size, ModelType model_ty
     return kLiteNullptr;
   }
   try {
-    auto ret = impl_->PreInference(model_data, data_size, model_type, model_context);
+    auto ret = impl_->PreInfer(model_data, data_size, model_type, model_context);
     if (ret != kSuccess) {
-      MS_LOG(ERROR) << "PreInference failed!";
+      MS_LOG(ERROR) << "PreInfer failed!";
       return ret;
     }
     ret = impl_->Build(model_data, data_size, model_type, model_context);
@@ -128,9 +128,9 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
     return kLiteNullptr;
   }
   try {
-    auto ret = impl_->PreInference(CharToString(model_path), model_type, model_context);
+    auto ret = impl_->PreInfer(CharToString(model_path), model_type, model_context);
     if (ret != kSuccess) {
-      MS_LOG(ERROR) << "PreInference failed!";
+      MS_LOG(ERROR) << "PreInfer failed!";
       return ret;
     }
     ret = impl_->Build(CharToString(model_path), model_type, model_context);
@@ -186,9 +186,9 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
     }
   }
   try {
-    auto ret = impl_->PreInference(CharToString(model_path), model_type, model_context);
+    auto ret = impl_->PreInfer(CharToString(model_path), model_type, model_context);
     if (ret != kSuccess) {
-      MS_LOG(ERROR) << "PreInference failed!";
+      MS_LOG(ERROR) << "PreInfer failed!";
       return ret;
     }
     ret = impl_->Build(CharToString(model_path), model_type, model_context);
@@ -238,12 +238,12 @@ Status Model::Build(const void *model_data, size_t data_size, ModelType model_ty
     }
   }
   try {
-    auto ret = impl_->PreInference(model_data, data_size, model_type, model_context);
+    auto ret = impl_->PreInfer(model_data, data_size, model_type, model_context);
     if (ret != kSuccess) {
-      MS_LOG(ERROR) << "PreInference failed!";
+      MS_LOG(ERROR) << "PreInfer failed!";
       return ret;
     }
-    Status ret = impl_->Build(model_data, data_size, model_type, model_context);
+    ret = impl_->Build(model_data, data_size, model_type, model_context);
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
       return ret;
