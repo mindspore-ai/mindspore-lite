@@ -22,9 +22,6 @@ namespace mindspore::lite::micro {
 void CodeCMakeNetLibrary(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator *config) {
   ofs << "include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../include/)\n";
   ofs << "include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../)\n";
-  if (config->target() == kCortex_M) {
-    // cmsis is not supported and currently disabled in the current version.
-  }
   ofs << "set(OP_SRC\n";
   for (const std::string &c_file : ctx->c_files()) {
     ofs << "    " << c_file << ".o\n";
