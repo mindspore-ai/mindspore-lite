@@ -200,19 +200,31 @@ bool GeGraphExecutorV1::InitMsTensor(const FuncGraphPtr &graph, uint32_t graph_i
 bool GeGraphExecutorV1::InitGeTensor(uint32_t graph_id) {
   // Delayed HBM memory allocation.
   auto create_func = [this, graph_id](const std::vector<mindspore::MSTensor> &ms_tensors,
-                                      std::vector<std::pair<GeTensor, std::pair<void *, size_t>>> *ge_tensors) {
-    auto summary = this->ge_session_info_.session_->GetCompiledGraphSummary(graph_id);
-    std::vector<ge::Shape> shapes;
-    auto res = summary->GetOutputShapes(shapes);
-    if (res != ge::GRAPH_SUCCESS) {
-      MS_LOG(ERROR) << "GetOutputShapes failed!";
-      return false;
+                                      std::vector<std::pair<GeTensor, std::pair<void *, size_t>>> *ge_tensors,
+                                      bool graph_input) {
+    std::vector<std::vector<int64_t>> shapes;
+    if (!graph_input) {
+      auto summary = this->ge_session_info_.session_->GetCompiledGraphSummary(graph_id);
+      std::vector<ge::Shape> ge_shapes;
+      auto res = summary->GetOutputShapes(ge_shapes);
+      if (res != ge::GRAPH_SUCCESS) {
+        MS_LOG(ERROR) << "GetOutputShapes failed!";
+        return false;
+      }
+      (void)std::transform(ge_shapes.begin(), ge_shapes.end(), std::back_inserter(shapes),
+                           [](const ge::Shape &ge_shape) { return ge_shape.GetDims(); });
+    } else {
+      shapes.resize(ms_tensors.size());
     }
-    MS_LOG(INFO) << "MODEL STATUS: " << res;
+    if (shapes.size() != ms_tensors.size()) {
+      MS_LOG(ERROR) << "The number of shape is different with that of tensor when initializing graph "
+                    << (graph_input ? "input" : "output") << ", which is " << shapes.size() << " VS "
+                    << ms_tensors.size();
+    }
     ge_tensors->resize(ms_tensors.size());
     for (size_t i = 0; i < ms_tensors.size(); ++i) {
       auto dtype = static_cast<TypeId>(ms_tensors[i].DataType());
-      auto desc = device::ascend::TransformUtil::GetGeTensorDesc(shapes[i].GetDims(), dtype, kOpFormat_NCHW);
+      auto desc = device::ascend::TransformUtil::GetGeTensorDesc(shapes[i], dtype, kOpFormat_NCHW);
       if (desc == nullptr) {
         MS_LOG(ERROR) << "Failed to create Tensor Desc";
         return false;
@@ -228,12 +240,12 @@ bool GeGraphExecutorV1::InitGeTensor(uint32_t graph_id) {
     return true;
   };
   ge_inputs_[graph_id] = {};
-  if (!create_func(ms_inputs_[graph_id], &ge_inputs_[graph_id])) {
+  if (!create_func(ms_inputs_[graph_id], &ge_inputs_[graph_id], true)) {
     MS_LOG(ERROR) << "Create ge::Tensor for inputs failed.";
     return false;
   }
   ge_outputs_[graph_id] = {};
-  if (!create_func(ms_outputs_[graph_id], &ge_outputs_[graph_id])) {
+  if (!create_func(ms_outputs_[graph_id], &ge_outputs_[graph_id], false)) {
     MS_LOG(ERROR) << "Create ge::Tensor for outputs failed.";
     return false;
   }
@@ -254,6 +266,7 @@ bool GeGraphExecutorV1::RunGraph(uint32_t graph_id, const std::vector<MSTensor> 
     MS_LOG(ERROR) << " outputs param is nullptr.";
     return false;
   }
+  MS_LOG(INFO) << "Run ge graph [" << graph_id << "] with " << inputs.size() << " ms_tensor_inputs";
   std::vector<GeTensor> ge_inputs;
   if (!PrepareGeInputs(inputs, &ge_inputs, graph_id)) {
     MS_LOG(ERROR) << "Prepare ge inputs failed.";
@@ -324,7 +337,6 @@ bool GeGraphExecutorV1::PrepareGeInputs(const std::vector<MSTensor> &inputs, std
       auto mem_ret = memory_manager_->MemcpyHost2Device(device_addr, size, input.MutableData(), size);
       if (!mem_ret) {
         MS_LOG(ERROR) << "Failed to H2D, input " << i;
-        (void)memory_manager_->FreeDeviceMemory(device_addr);
         return false;
       }
     } else {
@@ -424,7 +436,7 @@ bool GeGraphExecutorV1::PostProcessGeOutputs(std::vector<MSTensor> *outputs, uin
   if (outputs->empty()) {
     for (size_t i = 0; i < ge_outputs_[graph_id].size(); ++i) {
       auto name = "output[" + std::to_string(i) + "]";
-      auto ms_tensor = MSTensor(name, ms_inputs_[graph_id][i].DataType(), {}, nullptr, 0);
+      auto ms_tensor = MSTensor(name, ms_outputs_[graph_id][i].DataType(), {}, nullptr, 0);
       outputs->push_back(ms_tensor);
     }
   }
@@ -436,7 +448,7 @@ bool GeGraphExecutorV1::PostProcessGeOutputs(std::vector<MSTensor> *outputs, uin
       continue;
     }
     if (ms_tensor.Data() == nullptr) {
-      ms_tensor.SetDataType(ms_inputs_[graph_id][i].DataType());
+      ms_tensor.SetDataType(ms_outputs_[graph_id][i].DataType());
       ms_tensor.SetShape(it.first.GetTensorDesc().GetShape().GetDims());
     }
     if (ms_tensor.DataSize() > it.second.second) {

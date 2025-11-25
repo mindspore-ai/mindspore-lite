@@ -8,26 +8,6 @@ include_directories(${NNACL_DIR}/..)
 
 include(${TOP_DIR}/cmake/utils.cmake)
 
-set(CMSIS_DIR ${CMAKE_BINARY_DIR}/cmsis)
-message("build cmsis kernels")
-include_directories(${CMSIS_DIR}/CMSIS/Core/Include)
-include_directories(${CMSIS_DIR}/CMSIS/DSP/Include)
-include_directories(${CMSIS_DIR}/CMSIS/NN/Include)
-
-file(GLOB CMSIS_OPS
-        ${CMSIS_DIR}/CMSIS/NN/Source/BasicMathFunctions/*.c
-        ${CMSIS_DIR}/CMSIS/NN/Source/ActivationFunctions/*.c
-        ${CMSIS_DIR}/CMSIS/NN/Source/ConcatenationFunctions/*.c
-        ${CMSIS_DIR}/CMSIS/NN/Source/ConvolutionFunctions/*.c
-        ${CMSIS_DIR}/CMSIS/NN/Source/FullyConnectedFunctions/*.c
-        ${CMSIS_DIR}/CMSIS/NN/Source/NNSupportFunctions/*.c
-        ${CMSIS_DIR}/CMSIS/NN/Source/PoolingFunctions/*.c
-        ${CMSIS_DIR}/CMSIS/NN/Source/ReshapeFunctions/*.c
-        ${CMSIS_DIR}/CMSIS/NN/Source/SoftmaxFunctions/*.c
-        )
-
-add_library(cmsis_nn STATIC ${CMSIS_OPS})
-
 include_directories(${MICRO_DIR}/coder/)
 set(WRAPPER_DIR ${MICRO_DIR}/coder/wrapper/)
 file(GLOB WRAPPER_SRC
