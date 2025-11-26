@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef MINDSPORE_LITE_SRC_LITERT_DELEGATE_PNNA_OP_TRANSPOSE_PNNA_H_
-#define MINDSPORE_LITE_SRC_LITERT_DELEGATE_PNNA_OP_TRANSPOSE_PNNA_H_
+#ifndef MINDSPORE_LITE_SRC_LITERT_DELEGATE_PNNA_OP_POOLING_PNNA_H_
+#define MINDSPORE_LITE_SRC_LITERT_DELEGATE_PNNA_OP_POOLING_PNNA_H_
 
 #include <string>
 #include <vector>
@@ -22,29 +22,28 @@
 
 namespace mindspore {
 namespace lite {
-class PNNATranspose : public PNNAOp {
+class PNNAPooling : public PNNAOp {
  public:
-  PNNATranspose(const std::string &name, std::vector<int> perm, const std::vector<mindspore::MSTensor> &in_tensors,
-                const std::vector<mindspore::MSTensor> &out_tensors)
-      : PNNAOp(name, nullptr, in_tensors, out_tensors, schema::QuantType_QUANT_NONE) {
-    perm_ = std::move(perm);
-    type_ = schema::PrimitiveType_Transpose;
-  }
-
-  PNNATranspose(const std::string &name, const schema::Primitive *primitive,
-                const std::vector<mindspore::MSTensor> &in_tensors, const std::vector<mindspore::MSTensor> &out_tensors,
-                schema::QuantType quant_type)
+  PNNAPooling(const std::string &name, const schema::Primitive *primitive,
+              const std::vector<mindspore::MSTensor> &in_tensors, const std::vector<mindspore::MSTensor> &out_tensors,
+              schema::QuantType quant_type)
       : PNNAOp(name, primitive, in_tensors, out_tensors, quant_type) {}
-  ~PNNATranspose() override {}
+  ~PNNAPooling() override {}
 
   bool IsSupport() override;
   int InitParams() override;
   int AddOpToPNNAModel(PNNASubGraph *graph) override;
-  std::vector<int> GetPerm() { return perm_; }
 
  private:
-  std::vector<int> perm_;
+  int SetPoolingParams(const flatbuffers::Vector<int64_t> *pads, const flatbuffers::Vector<int64_t> *strides,
+                       const flatbuffers::Vector<int64_t> *kernels, bool is_global);
+  int act_type_;
+  schema::RoundMode ceil_mode_;
+  schema::PadMode pad_mode_;
+  std::array<uint32_t, 4> pad_list_;
+  std::array<uint32_t, 2> strides_;
+  std::array<uint32_t, 2> kernel_size_;
 };
 }  // namespace lite
 }  // namespace mindspore
-#endif  // MINDSPORE_LITE_SRC_LITERT_DELEGATE_PNNA_OP_TRANSPOSE_PNNA_H_
+#endif  // MINDSPORE_LITE_SRC_LITERT_DELEGATE_PNNA_OP_POOLING_PNNA_H_

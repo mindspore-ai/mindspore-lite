@@ -51,7 +51,6 @@ class PNNASubGraph : public kernel::Kernel {
   }
   int Execute() override;
   std::vector<PNNAOp *> *GetOps() { return &ops_; }
-  std::vector<mindspore::MSTensor *> *GetInsertTensors() { return &insert_tensors_; }
   std::shared_ptr<pnna::Graph> graph() { return graph_; }
   std::shared_ptr<pnna::Tensor> GetMappedTensor(MSTensor *operand);
   void UpdateTensorMap(MSTensor *operand, std::shared_ptr<pnna::Tensor> tensor);
@@ -68,7 +67,6 @@ class PNNASubGraph : public kernel::Kernel {
   std::vector<mindspore::MSTensor> origin_outputs_;
   std::shared_ptr<pnna::Graph> graph_{nullptr};
   std::map<MSTensor *, std::vector<std::shared_ptr<pnna::Tensor>>> tensors_;
-  std::vector<mindspore::MSTensor *> insert_tensors_;
 };
 }  // namespace mindspore::lite
 
