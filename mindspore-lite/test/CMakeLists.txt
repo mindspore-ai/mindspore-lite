@@ -190,10 +190,6 @@ target_link_libraries(lite-test gmock_tests)
 
 if(MSLITE_ENABLE_TRAIN)
     target_link_libraries(lite-test mindspore-lite-train)
-    if(NOT MSLITE_MINDDATA_IMPLEMENT STREQUAL "off"
-    AND NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-        target_link_libraries(lite-test minddata-lite)
-    endif()
 endif()
 
 if(PLATFORM_ARM AND NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))

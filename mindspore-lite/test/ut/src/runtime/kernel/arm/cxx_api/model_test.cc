@@ -18,7 +18,6 @@
 #include "include/api/model.h"
 #include "include/api/context.h"
 #include "include/api/serialization.h"
-#include "include/api/metrics/accuracy.h"
 
 namespace mindspore {
 namespace {
@@ -100,30 +99,6 @@ TEST_F(TestCxxApiLiteModel, test_outputs_SUCCESS) {
   ASSERT_TRUE(model.Build(GraphCell(graph), context, nullptr) == kSuccess);
   auto outputs = model.GetOutputs();
   ASSERT_GT(outputs.size(), 0);
-}
-
-TEST_F(TestCxxApiLiteModel, test_metrics_FAILURE) {
-  Model model;
-  AccuracyMetrics ac;
-  ASSERT_TRUE(model.InitMetrics({&ac}) == kSuccess);
-  auto metrics = model.GetMetrics();
-  ASSERT_EQ(metrics.size(), 1);
-}
-
-TEST_F(TestCxxApiLiteModel, test_metrics_SUCCESS) {
-  Model model;
-  Graph graph;
-  auto context = std::make_shared<Context>();
-  context->SetThreadNum(kNumThreads);
-  auto cpu_context = std::make_shared<mindspore::CPUDeviceInfo>();
-  context->MutableDeviceInfo().push_back(cpu_context);
-
-  ASSERT_TRUE(Serialization::Load("./nets/conv_train_model.ms", ModelType::kMindIR, &graph) == kSuccess);
-  ASSERT_TRUE(model.Build(GraphCell(graph), context, nullptr) == kSuccess);
-  AccuracyMetrics ac;
-  ASSERT_TRUE(model.InitMetrics({&ac}) == kSuccess);
-  auto metrics = model.GetMetrics();
-  ASSERT_EQ(metrics.size(), 1);
 }
 
 TEST_F(TestCxxApiLiteModel, test_getparams_SUCCESS) {

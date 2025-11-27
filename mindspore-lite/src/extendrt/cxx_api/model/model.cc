@@ -506,18 +506,6 @@ bool Model::GetTrainMode() const {
   return false;
 }
 
-// cppcheck-suppress passedByValue
-Status Train(int epochs, std::shared_ptr<dataset::Dataset> ds, std::vector<TrainCallBack *> cbs) {
-  MS_LOG(ERROR) << "Unsupported Feature.";
-  return kLiteNotSupport;
-}
-
-// cppcheck-suppress passedByValue
-Status Evaluate(std::shared_ptr<dataset::Dataset> ds, std::vector<TrainCallBack *> cbs) {
-  MS_LOG(ERROR) << "Unsupported Feature.";
-  return kLiteNotSupport;
-}
-
 std::vector<char> Model::GetModelInfo(const std::vector<char> &key) {
   std::vector<char> ret;
   if (impl_ == nullptr) {

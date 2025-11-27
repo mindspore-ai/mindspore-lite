@@ -98,7 +98,7 @@ HEADER_LOCATION="-I${MINDSPORE_HOME}
 -I${PROJECT_ROOT_HOME}/build/schema/inner
 -I${PROJECT_ROOT_HOME}/build/src
 -I${MINDSPORE_HOME}/mindspore/ops/kernel/cpu
--I${MINDSPORE_HOME}/mindspore/ccsrc/minddata/dataset"
+-I${PROJECT_ROOT_HOME}"
 
 REMOVE_LISTS_STR=""
 getDeep() {
@@ -369,8 +369,6 @@ getTrainCommonFile() {
   # save train files
   train_files=()
   while IFS='' read -r line; do train_files+=("$line"); done < <(ls ${MINDSPORE_LITE_HOME}/src/train/*.cc)
-  while IFS='' read -r line; do train_files+=("$line"); done < <(ls ${MINDSPORE_LITE_HOME}/src/litert/cxx_api/callback/*.cc)
-  while IFS='' read -r line; do train_files+=("$line"); done < <(ls ${MINDSPORE_LITE_HOME}/src/litert/cxx_api/metrics/*.cc)
   while IFS='' read -r line; do train_files+=("$line"); done < <(ls ${MINDSPORE_LITE_HOME}/src/litert/cxx_api/train/*.cc)
   others_train_files=(
     "${MINDSPORE_LITE_HOME}"/tools/common/storage.cc

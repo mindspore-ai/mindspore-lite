@@ -123,10 +123,6 @@ build_lite_jni_and_jar() {
         echo "libmindspore-lite-train.so so not exist"
         is_train=off
     fi
-    if [[ "X$is_train" = "Xon" ]]; then
-        cp ./${PKG_NAME}/runtime/third_party/libjpeg-turbo/lib/*.so* ${LITE_JAVA_PATH}/java/${NATIVE_PATH_ARCH}/libs/
-        cp ./${PKG_NAME}/runtime/third_party/libjpeg-turbo/lib/*.so* ${LITE_JAVA_PATH}/native/libs/${NATIVE_PATH_ARCH}/
-    fi
     # prepare
     cd ${BASEPATH}/build
     rm -rf java/jni && mkdir -pv java/jni
@@ -642,9 +638,6 @@ build_lite() {
             if [ -d "${INSTALL_PREFIX}/mindspore-lite*/runtime/third_party/glog" ]; then
               cp ${INSTALL_PREFIX}/mindspore-lite*/runtime/third_party/glog/*.so* ${LITE_BASEPATH}/test/do_test || true
             fi
-            if [[ ! "${MSLITE_ENABLE_TRAIN}" || "${MSLITE_ENABLE_TRAIN}" == "ON" || "${MSLITE_ENABLE_TRAIN}" == "on" ]]; then
-              cp ${INSTALL_PREFIX}/mindspore-lite*/runtime/third_party/libjpeg-turbo/lib/*.so* ${LITE_BASEPATH}/test/do_test || true
-            fi
           fi
         fi
 
@@ -691,11 +684,6 @@ build_lite_arm64_and_jni() {
     if [ -e "${minddata_so}" ]; then
        cp ./${pkg_name}/runtime/lib/libminddata-lite.so  ${LITE_JAVA_PATH}/java/app/libs/arm64-v8a/
        cp ./${pkg_name}/runtime/lib/libminddata-lite.so  ${LITE_JAVA_PATH}/native/libs/arm64-v8a/
-    fi
-    local jpeg_turbo_dir=${pkg_name}/runtime/third_party/libjpeg-turbo/lib
-    if [ -e "$jpeg_turbo_dir" ]; then
-       cp ./${pkg_name}/runtime/third_party/libjpeg-turbo/lib/*.so* ${LITE_JAVA_PATH}/java/app/libs/arm64-v8a/
-       cp ./${pkg_name}/runtime/third_party/libjpeg-turbo/lib/*.so* ${LITE_JAVA_PATH}/native/libs/arm64-v8a/
     fi
     local npu_so=${pkg_name}/runtime/third_party/hiai_ddk/lib/libhiai.so
     if [ -e "${npu_so}" ]; then
@@ -753,11 +741,6 @@ build_lite_arm32_and_jni() {
     if [ -e "${minddata_so}" ]; then
        cp ./${pkg_name}/runtime/lib/libminddata-lite.so  ${LITE_JAVA_PATH}/java/app/libs/armeabi-v7a/
        cp ./${pkg_name}/runtime/lib/libminddata-lite.so  ${LITE_JAVA_PATH}/native/libs/armeabi-v7a/
-    fi
-    local jpeg_turbo_dir=${pkg_name}/runtime/third_party/libjpeg-turbo/lib
-    if [ -e "$jpeg_turbo_dir" ]; then
-       cp ./${pkg_name}/runtime/third_party/libjpeg-turbo/lib/*.so* ${LITE_JAVA_PATH}/java/app/libs/armeabi-v7a/
-       cp ./${pkg_name}/runtime/third_party/libjpeg-turbo/lib/*.so* ${LITE_JAVA_PATH}/native/libs/armeabi-v7a/
     fi
     local npu_so=$pkg_name/runtime/third_party/hiai_ddk/lib/libhiai.so
     if [ -e "$npu_so" ]; then

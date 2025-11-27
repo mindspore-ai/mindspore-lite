@@ -43,8 +43,6 @@ class Graph::GraphData {
 
   Buffer GetOMData() const;
 
-  void SetPreprocess(const std::vector<std::shared_ptr<dataset::Execute>> &data_graph);
-
   std::vector<std::shared_ptr<dataset::Execute>> GetPreprocess() { return data_graph_; }
 
  private:

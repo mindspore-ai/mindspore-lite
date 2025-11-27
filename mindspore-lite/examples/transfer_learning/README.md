@@ -27,7 +27,7 @@ For this demo we will use only the [validation data of small images](http://plac
 
 - Dataset size：501M，36,500 224*224 images in 365 classes
 - Dataiset format：jpg files
-    - Note：In the current release, data is customely loaded using a proprietary DataSet class (provided in dataset.cc). In the upcoming releases loading will be done using MindSpore MindData infrastructure. In order to fit the data to the model it will be preprocessed using [ImageMagick convert tool](https://imagemagick.org/), namely croping and converting to bmp format.
+    - Note：In the current release, data is customely loaded using a proprietary DataSet class (provided in dataset.cc). In order to fit the data to the model it will be preprocessed using [ImageMagick convert tool](https://imagemagick.org/), namely croping and converting to bmp format.
     - Note: Only 10 classes out of the 365 will be used in this demo
     - Note: 60% of the data will be used for training, 20% will be used for testing and the remaining 20% for validation
 
@@ -49,7 +49,7 @@ places
     - [MindSpore Framework](https://www.mindspore.cn/install/en) - it is recommended to install a docker image
     - MindSpore ToD Framework
         - [Downloads](https://www.mindspore.cn/lite/docs/en/master/use/downloads.html)
-        - [Build](https://www.mindspore.cn/lite/docs/en/master/build/build.html)
+        - [Build](https://www.mindspore.cn/lite/cloud_docs/en/master/use/build.html)
     - [Android NDK r20b](https://dl.google.com/android/repository/android-ndk-r20b-linux-x86_64.zip)
     - [Android SDK](https://developer.android.com/studio?hl=zh-cn#cmdline-tools)
     - [ImageMagick convert tool](https://imagemagick.org/)
@@ -144,8 +144,6 @@ package-arm64/
 │   │   └── 99.bmp
 ├── lib
 │   ├── libjpeg.so.62
-│   ├── libminddata-lite.a
-│   ├── libminddata-lite.so
 │   ├── libmindspore-lite.a
 │   ├── libmindspore-lite-jni.so
 │   ├── libmindspore-lite.so

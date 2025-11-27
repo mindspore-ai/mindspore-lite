@@ -233,10 +233,6 @@ if(NOT MSLITE_SIMPLEST_CLOUD_INFERENCE)
             AND NOT TARGET_FT78 AND NOT TARGET_FT04)
         target_link_libraries(lite-unified-executor log)
     endif()
-    if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite" AND NOT
-        (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-        target_link_libraries(lite-unified-executor minddata_eager_mid minddata-lite)
-    endif()
 
     ########################## build optimize and float16 library #################################
     if(PLATFORM_ARM)

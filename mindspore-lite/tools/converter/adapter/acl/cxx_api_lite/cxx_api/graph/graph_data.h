@@ -22,7 +22,6 @@
 #include <memory>
 #include "include/api/graph.h"
 #include "include/api/types.h"
-#include "include/dataset/execute.h"
 #include "ir/func_graph.h"
 
 namespace mindspore {
@@ -42,15 +41,10 @@ class Graph::GraphData {
 
   Buffer GetOMData() const;
 
-  void SetPreprocess(const std::vector<std::shared_ptr<dataset::Execute>> &data_graph);
-
-  std::vector<std::shared_ptr<dataset::Execute>> GetPreprocess() { return data_graph_; }
-
  private:
   FuncGraphPtr func_graph_;
   Buffer om_data_;
   enum ModelType model_type_;
-  std::vector<std::shared_ptr<dataset::Execute>> data_graph_;
 };
 }  // namespace mindspore
 #endif  // MINDSPORE_CCSRC_CXX_API_GRAPH_GRAPH_DATA_H

@@ -20,7 +20,6 @@
 #include <cuda_runtime.h>
 #endif
 #include "flatbuffers/flatbuffers.h"
-#include "include/api/callback/callback.h"
 #include "include/api/context.h"
 #include "include/api/dual_abi_helper.h"
 #include "include/api/types.h"
@@ -30,8 +29,6 @@
 #if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
 #include "src/common/thread_utils.h"
 #endif
-#include "src/litert/cxx_api/callback/callback_adapter.h"
-#include "src/litert/cxx_api/callback/callback_impl.h"
 #include "src/litert/cxx_api/model/model_impl.h"
 #ifdef ENABLE_OPENSSL
 #include "src/common/decrypt.h"

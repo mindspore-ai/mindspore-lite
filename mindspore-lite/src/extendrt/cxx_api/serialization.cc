@@ -218,31 +218,6 @@ Status Serialization::Load(const std::vector<char> &file, ModelType model_type, 
       return Status(kMEInvalidInput, err_msg.str());
     }
     auto graph_data = std::make_shared<Graph::GraphData>(anf_graph, kMindIR);
-#if !defined(_WIN32) && !defined(_WIN64)
-    // Config preprocessor, temporary way to let mindspore.so depends on _c_dataengine
-    std::vector<std::string> preprocessor = mindir_loader.LoadPreprocess(file_path);
-    if (!preprocessor.empty()) {
-      std::string dataengine_so_path;
-      Status dlret = DLSoPath({"libmindspore.so"}, "_c_dataengine", &dataengine_so_path);
-      CHECK_FAIL_AND_RELEASE(dlret, nullptr, "Parse dataengine_so failed: " + dlret.GetErrDescription());
-
-      void *handle = nullptr;
-      void *function = nullptr;
-      dlret = DLSoOpen(dataengine_so_path, "ParseMindIRPreprocess_C", &handle, &function);
-      CHECK_FAIL_AND_RELEASE(dlret, handle, "Parse ParseMindIRPreprocess_C failed: " + dlret.GetErrDescription());
-      auto ParseMindIRPreprocessFun =
-        (void (*)(const std::vector<std::string> &, std::vector<std::shared_ptr<mindspore::dataset::Execute>> *,
-                  Status *))(function);
-
-      std::vector<std::shared_ptr<dataset::Execute>> data_graph;
-      ParseMindIRPreprocessFun(preprocessor, &data_graph, &dlret);
-      CHECK_FAIL_AND_RELEASE(dlret, handle, "Load preprocess failed: " + dlret.GetErrDescription());
-      DLSoClose(handle);
-      if (!data_graph.empty()) {
-        graph_data->SetPreprocess(data_graph);
-      }
-    }
-#endif
     *graph = Graph(graph_data);
     return kSuccess;
   } else if (model_type == kOM) {
@@ -312,9 +287,6 @@ Status Serialization::Load(const std::vector<std::vector<char>> &files, ModelTyp
     dlret = DLSoOpen(dataengine_so_path, "ParseMindIRPreprocess_C", &handle, &function);
     CHECK_FAIL_AND_RELEASE(dlret, handle, "Parse ParseMindIRPreprocess_C failed: " + dlret.GetErrDescription());
 
-    auto ParseMindIRPreprocessFun =
-      (void (*)(const std::vector<std::string> &, std::vector<std::shared_ptr<mindspore::dataset::Execute>> *,
-                Status *))(function);
 #endif
     std::vector<Graph> results;
     for (size_t i = 0; i < anf_graphs.size(); ++i) {
@@ -328,18 +300,6 @@ Status Serialization::Load(const std::vector<std::vector<char>> &files, ModelTyp
         return Status(kMEInvalidInput, err_msg.str());
       }
       auto graph_data = std::make_shared<Graph::GraphData>(anf_graphs[i], kMindIR);
-#if !defined(_WIN32) && !defined(_WIN64)
-      // Config preprocessor, temporary way to let mindspore.so depends on _c_dataengine
-      std::vector<std::string> preprocessor = mindir_loader.LoadPreprocess(files_path[i]);
-      if (!preprocessor.empty()) {
-        std::vector<std::shared_ptr<dataset::Execute>> data_graph;
-        ParseMindIRPreprocessFun(preprocessor, &data_graph, &dlret);
-        CHECK_FAIL_AND_RELEASE(dlret, handle, "Load preprocess failed: " + dlret.GetErrDescription());
-        if (!data_graph.empty()) {
-          graph_data->SetPreprocess(data_graph);
-        }
-      }
-#endif
       results.emplace_back(graph_data);
     }
 #if !defined(_WIN32) && !defined(_WIN64)

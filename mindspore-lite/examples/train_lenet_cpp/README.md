@@ -47,7 +47,7 @@ mnist/
     - [MindSpore Framework](https://www.mindspore.cn/install/en): it is recommended to install a docker image
     - MindSpore ToD Framework
         - [Downloads](https://www.mindspore.cn/lite/docs/en/master/use/downloads.html)
-        - [Build](https://www.mindspore.cn/lite/docs/en/master/build/build.html)
+        - [Build](https://www.mindspore.cn/lite/cloud_docs/en/master/use/build.html)
     - [Android NDK r20b](https://dl.google.com/android/repository/android-ndk-r20b-linux-x86_64.zip)
     - [Android SDK](https://developer.android.com/studio?hl=zh-cn#cmdline-tools)
 - A connected Android device
@@ -129,8 +129,6 @@ When the `prepare_and_run.sh` script is run, the following folder is prepared. I
 │   ├── eval.sh                          # on-device script that load the train model and evaluates its accuracy
 │   ├── lib
 │   │   ├── libjpeg.so.62
-│   │   ├── libminddata-lite.a
-│   │   ├── libminddata-lite.so
 │   │   ├── libmindspore-lite.a
 │   │   ├── libmindspore-lite-jni.so
 │   │   ├── libmindspore-lite.so

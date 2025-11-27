@@ -35,7 +35,7 @@
 * tqdm
 * mindspore_lite
 
->需要注意：`mindspore_lite`可以通过[编译MindSpore Lite](https://www.mindspore.cn/lite/docs/zh-CN/master/build/build.html)获取 `mindspore_lite-{version}-*.whl`文件，然后通过`pip install mindspore_lite-{version}-*.whl`进行安装
+>需要注意：`mindspore_lite`可以通过[编译MindSpore Lite](https://www.mindspore.cn/lite/cloud_docs/zh-CN/master/use/build.html)获取 `mindspore_lite-{version}-*.whl`文件，然后通过`pip install mindspore_lite-{version}-*.whl`进行安装
 
 ## 运行脚本
 

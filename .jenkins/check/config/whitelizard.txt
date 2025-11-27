@@ -30,11 +30,6 @@ mindspore-lite/mindspore-lite/src/train/train_loop.cc:mindspore::lite::TrainLoop
 mindspore-lite/mindspore-lite/src/common/utils.h:mindspore::lite::DataTypeSize
 mindspore-lite/mindspore-lite/src/litert/scheduler.cc:mindspore::lite::Scheduler::FindProviderKernel
 
-# minddata
-mindspore-lite/mindspore-lite/minddata/dataset/engine/datasetops/data_queue_op.cc:mindspore::dataset::DataQueueOp::SendDataToAscend
-mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_image_utils.cc:mindspore::dataset::DvppConvertColor, mindspore::dataset::DvppErase, mindspore::dataset::DvppNormalize, mindspore::dataset::DvppPerspective, mindspore::dataset::DvppResizedCrop, mindspore::dataset::DvppRotate, mindspore::dataset::CreateAclTensor
-mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_video.cc:DvppVideo::SaveYuvFile
-
 # other
 mindspore-lite/mindspore-lite/providers/nnie_proposal/src/proposal.cc:mindspore::proposal::Rpn
 mindspore-lite/mindspore-lite/providers/nnie/src/custom_infer.cc:mindspore::nnie::CustomInterface::Infer

@@ -20,7 +20,7 @@
 
 namespace mindspore {
 Graph::GraphData::GraphData(const FuncGraphPtr &func_graph, enum ModelType model_type)
-    : func_graph_(nullptr), om_data_(), model_type_(ModelType::kUnknownType), data_graph_({}) {
+    : func_graph_(nullptr), om_data_(), model_type_(ModelType::kUnknownType) {
   if (model_type != ModelType::kMindIR) {
     MS_LOG(EXCEPTION) << "Invalid ModelType " << model_type;
   }
@@ -29,7 +29,7 @@ Graph::GraphData::GraphData(const FuncGraphPtr &func_graph, enum ModelType model
 }
 
 Graph::GraphData::GraphData(const Buffer &om_data, enum ModelType model_type)
-    : func_graph_(nullptr), om_data_(om_data), model_type_(model_type), data_graph_({}) {
+    : func_graph_(nullptr), om_data_(om_data), model_type_(model_type) {
   if (model_type_ != ModelType::kOM) {
     MS_LOG(EXCEPTION) << "Invalid ModelType " << model_type_;
   }
@@ -55,7 +55,4 @@ Buffer Graph::GraphData::GetOMData() const {
   return om_data_;
 }
 
-void Graph::GraphData::SetPreprocess(const std::vector<std::shared_ptr<dataset::Execute>> &data_graph) {
-  data_graph_ = data_graph;
-}
 }  // namespace mindspore
