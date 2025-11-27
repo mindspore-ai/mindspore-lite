@@ -43,12 +43,12 @@ mindspore_lite.Model
 
         异常：
             - **TypeError** - `model_bytes` 不是Bytes类型。
-            - **TypeError** - `weight_bytes` 既不是Bytes类型也不是``None``。
+            - **TypeError** - `weight_bytes` 既不是Bytes类型也不是 ``None`` 。
             - **TypeError** - `model_type` 不是ModelType类型。
             - **TypeError** - `context` 既不是Context类型也不是 ``None`` 。
             - **TypeError** - `config_path` 不是str类型。
             - **RuntimeError** - `model_bytes` 长度为0。
-            - **RuntimeError** - `model_type` 的值不是``ModelType::MINDIR``。
+            - **RuntimeError** - `model_type` 的值不是 ``ModelType::MINDIR`` 。
             - **RuntimeError** - `config_path` 文件路径不存在。
             - **RuntimeError** - 从 `config_path` 加载配置文件失败。
             - **RuntimeError** - 从缓冲区加载并构建模型失败。
