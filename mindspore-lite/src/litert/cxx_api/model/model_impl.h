@@ -44,6 +44,17 @@ void clearVectorOfPointers(std::vector<T> *v) {
 
 namespace mindspore {
 
+struct KernelInfo {
+  std::string name;
+  std::string type;
+  int arch;
+  uint64_t start_time;
+  uint64_t end_time;
+  std::vector<std::vector<int64_t>> input_shape;
+  std::vector<DataType> input_dtype;
+  int tid;
+};
+
 typedef std::shared_ptr<lite::LiteSession>(CreateTrainSessionProto)(std::shared_ptr<Graph::GraphData> graph_data,
                                                                     std::shared_ptr<TrainCfg> cfg,
                                                                     const std::shared_ptr<lite::InnerContext> &context);
@@ -85,6 +96,7 @@ class ModelImpl {
 
   Status LoadConfig(const std::string &config_path);
   Status UpdateConfig(const std::string &section, const std::pair<std::string, std::string> &config);
+  std::string GetConfig(const std::string &section, const std::string &key);
   std::vector<MSTensor> GetInputs();
   std::vector<MSTensor> GetOutputs();
   std::vector<MSTensor> GetGradients() const;
@@ -136,6 +148,8 @@ class ModelImpl {
   void SetContext(const std::shared_ptr<Context> &context) { context_ = context; }
   void SetConfig(const std::shared_ptr<TrainCfg> cfg) { cfg_ = cfg; }
   Status RunGraph(const MSKernelCallBack &before, const MSKernelCallBack &after);
+  Status RunGraphWithTracing();
+  Status ExportTraceData(const std::vector<KernelInfo> &kernel_infos, uint64_t first_op_start_time);
   bool IsEnableModelSharing(const std::string &model_path);
   bool IsEnableModelSharing(const std::pair<const void *, size_t> &model_buff);
   bool IsValidDoubleNum(const std::string &num_str);

@@ -15,6 +15,8 @@
  */
 
 #include "src/litert/cxx_api/model/model_impl.h"
+#include <fstream>
+#include <unordered_map>
 #include <memory>
 #include <algorithm>
 #include <map>
@@ -33,12 +35,14 @@
 #include "src/litert/lite_session.h"
 #include "src/litert/model_manager.h"
 #include "src/common/file_utils.h"
+#include "src/common/utils.h"
 #if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
 #include "src/common/random_data_generator.h"
 #endif
 #include "src/common/config_file.h"
 #include "src/litert/cpu_info.h"
 #include "src/litert/pack_weight_manager.h"
+#include "nlohmann/json.hpp"
 namespace mindspore {
 namespace {
 const char *const kExecutionPlan = "execution_plan";
@@ -52,6 +56,9 @@ constexpr auto kObfRatioKey = "obf_ratio";
 constexpr auto kObfNodeName = "obf_op-obf_mul";
 constexpr size_t kFloatSize = 4;
 constexpr int kDataIndex = 1;
+constexpr float FloatMSEC = 1000.0f;
+constexpr int DSPTid = 20;
+constexpr int PNNATid = 60;
 #if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
 constexpr auto kCommonSection = "common";  // support external user configuration
 constexpr auto kEnablePreInferenceKey = "enable_pre_inference";
@@ -415,6 +422,150 @@ Status ModelImpl::UpdateConfig(const std::string &section, const std::pair<std::
   return kSuccess;
 }
 
+std::string ModelImpl::GetConfig(const std::string &section, const std::string &key) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  auto iter = config_info_.find(section);
+  if (iter == config_info_.end()) {
+    return "";
+  }
+  auto elem_iter = iter->second.find(key);
+  if (elem_iter == iter->second.end()) {
+    return "";
+  }
+  return elem_iter->second;
+}
+
+Status ModelImpl::ExportTraceData(const std::vector<KernelInfo> &kernel_infos, uint64_t first_op_start_time) {
+  std::vector<nlohmann::json> trace_events;
+  auto pid = lite::GetCurrentPid();
+  for (const auto &kernel : kernel_infos) {
+    uint64_t relative_start_time = kernel.start_time - first_op_start_time;
+    uint64_t relative_end_time = kernel.end_time - first_op_start_time;
+    uint64_t op_time = relative_end_time - relative_start_time;
+    std::string backend;
+    switch (kernel.arch) {
+      case kernel::kCPU:
+        backend = "CPU";
+        break;
+      case kernel::kGPU:
+        backend = "GPU";
+        break;
+      case kernel::kDSP:
+        backend = "DSP";
+        break;
+      case kernel::kDelegate:
+        backend = "NPU";
+        break;
+      default:
+        backend = "Unknown!";
+        break;
+    }
+    nlohmann::json event;
+    event["name"] = kernel.name + "[" + std::to_string(op_time / FloatMSEC) + "ms]";
+    event["ph"] = "X";
+    event["ts"] = relative_start_time;
+    event["dur"] = op_time;
+    event["pid"] = pid;
+    event["tid"] = kernel.tid;
+    event["cat"] = "Operator";
+    nlohmann::json input_shapes_json = nlohmann::json::array();
+    std::transform(kernel.input_shape.begin(), kernel.input_shape.end(), std::back_inserter(input_shapes_json),
+                   [](const std::vector<int64_t> &shape) { return lite::ShapeVectorToStr(shape); });
+    nlohmann::json input_dtypes_json = nlohmann::json::array();
+    std::transform(kernel.input_dtype.begin(), kernel.input_dtype.end(), std::back_inserter(input_dtypes_json),
+                   [](const DataType &dtype) { return lite::DataTypeToString(dtype); });
+    event["args"] = {{"start_time", relative_start_time},
+                     {"end_time", relative_end_time},
+                     {"backend", backend},
+                     {"op_type", kernel.type},
+                     {"input_shapes", input_shapes_json},
+                     {"input_dtypes", input_dtypes_json}};
+    trace_events.push_back(event);
+  }
+  nlohmann::json output_json;
+  output_json["traceEvents"] = trace_events;
+  std::string filename = std::to_string(first_op_start_time) + "_tracing.json";
+  std::ofstream json_file(filename);
+  if (json_file.is_open()) {
+    json_file << output_json.dump(4);
+    json_file.close();
+    MS_LOG(INFO) << "Trace file generated: " << filename;
+  } else {
+    MS_LOG(ERROR) << "Failed to open trace file: " << filename;
+    return kLiteError;
+  }
+  return kSuccess;
+}
+
+Status ModelImpl::RunGraphWithTracing() {
+  MSKernelCallBack before = nullptr;
+  MSKernelCallBack after = nullptr;
+  std::vector<KernelInfo> kernel_infos;
+  std::unordered_map<std::string, uint64_t> op_start_times;
+  uint64_t first_op_start_time = 0;
+  bool first_op_set = false;
+  before = [&](const std::vector<mindspore::MSTensor> &before_inputs,
+               const std::vector<mindspore::MSTensor> &before_outputs, const MSCallBackParam &call_param) {
+    if (before_inputs.empty()) {
+      MS_LOG(INFO) << "The num of beforeInputs is empty";
+    }
+    if (before_outputs.empty()) {
+      MS_LOG(INFO) << "The num of beforeOutputs is empty";
+    }
+    auto op_start_time = lite::GetTimeUs();
+    std::string op_name = call_param.node_name;
+    if (!first_op_set) {
+      first_op_start_time = op_start_time;
+      first_op_set = true;
+    }
+    op_start_times[op_name] = op_start_time;
+    return true;
+  };
+  after = [&](const std::vector<mindspore::MSTensor> &after_inputs,
+              const std::vector<mindspore::MSTensor> &after_outputs, const MSCallBackParam &call_param) {
+    if (after_inputs.empty()) {
+      MS_LOG(INFO) << "The num of afterInputs is empty";
+    }
+    if (after_outputs.empty()) {
+      MS_LOG(INFO) << "The num of afterOutputs is empty";
+    }
+    std::string op_name = call_param.node_name;
+    std::string op_type = call_param.node_type;
+    auto arch = call_param.arch;
+    auto it = op_start_times.find(op_name);
+    if (it != op_start_times.end()) {
+      uint64_t op_start_time = it->second;
+      auto op_end_time = lite::GetTimeUs();
+      std::vector<std::vector<int64_t>> input_shapes;
+      std::vector<DataType> input_dtypes;
+      for (const auto &input : after_inputs) {
+        input_shapes.push_back(input.Shape());
+        input_dtypes.push_back(input.DataType());
+      }
+      int tid;
+      if (arch == kernel::kDSP) {
+        tid = DSPTid;
+      } else if (arch == kernel::kDelegate) {
+        tid = PNNATid;
+      } else {
+        tid = lite::GetCurrentTid();
+      }
+      kernel_infos.push_back({op_name, op_type, arch, op_start_time, op_end_time, input_shapes, input_dtypes, tid});
+      op_start_times.erase(it);
+    }
+    return true;
+  };
+  auto result = RunGraph(before, after);
+  if (result == kSuccess) {
+    auto ret = ExportTraceData(kernel_infos, first_op_start_time);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "Failed to export trace data!";
+      return ret;
+    }
+  }
+  return result;
+}
+
 Status ModelImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
                           const MSKernelCallBack &before, const MSKernelCallBack &after) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -495,7 +646,13 @@ Status ModelImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTen
       }
     }
   }
-  auto ret = RunGraph(before, after);
+  auto tracing = GetConfig(lite::kKernelTracingSection, lite::kEnableTracing);
+  Status ret;
+  if (tracing == lite::kEnableValue) {
+    ret = RunGraphWithTracing();
+  } else {
+    ret = RunGraph(before, after);
+  }
   ResetTensorData(old_data, input_tensors);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "Run graph failed!ret = " << ret;
