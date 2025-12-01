@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "src/litert/kernel/cpu/fp32_grad/unsorted_segment_sum.h"
+#include "src/litert/kernel/cpu/fp32/unsorted_segment_sum.h"
 #include <vector>
 #include <algorithm>
 #include "schema/model_generated.h"
