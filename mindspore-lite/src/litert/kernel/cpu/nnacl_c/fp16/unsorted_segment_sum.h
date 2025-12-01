@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef NNACL_FP16_GRAD_UNSORTED_SEGMENT_SUM_H_
-#define NNACL_FP16_GRAD_UNSORTED_SEGMENT_SUM_H_
+#ifndef NNACL_FP16_UNSORTED_SEGMENT_SUM_H_
+#define NNACL_FP16_UNSORTED_SEGMENT_SUM_H_
 
 #include "nnacl_c/op_base.h"
 
@@ -28,4 +28,4 @@ int UnsortedSegmentSumFp16(const float16_t *input, int unit_num, int input_dim1,
 #ifdef __cplusplus
 }
 #endif
-#endif  //  NNACL_FP16_GRAD_UNSORTED_SEGMENT_SUM_H_
+#endif  //  NNACL_FP16_UNSORTED_SEGMENT_SUM_H_

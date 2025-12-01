@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-#include "src/litert/kernel/cpu/fp16_grad/unsorted_segment_sum_fp16.h"
+#include "src/litert/kernel/cpu/fp16/unsorted_segment_sum_fp16.h"
 #include <vector>
 #include <algorithm>
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
-#include "nnacl_c/fp16_grad/unsorted_segment_sum.h"
+#include "nnacl_c/fp16/unsorted_segment_sum.h"
 #include "include/errorcode.h"
 
 using mindspore::kernel::KERNEL_ARCH::kCPU;
