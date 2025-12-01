@@ -159,7 +159,7 @@ function(__find_pkg_then_add_target pkg_name pkg_exe lib_path)
                     PATH_SUFFIXES ${LIB_SUFFIXES_PATH} NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
         else()
             find_library(${_LIB_NAME}_LIB ${_LIB_SEARCH_NAME} PATHS ${${pkg_name}_BASE_DIR}/${lib_path}
-                    PATH_SUFFIXES ${LIB_SUFFIXES_PATH} NO_DEFAULT_PATH)
+                    PATH_SUFFIXES ${LIB_SUFFIXES_PATH} NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
         endif()
         if(NOT ${_LIB_NAME}_LIB)
             message("not find ${_LIB_SEARCH_NAME} in path: ${${pkg_name}_BASE_DIR}/${lib_path}")
