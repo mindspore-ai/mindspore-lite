@@ -22,7 +22,7 @@
 #include <algorithm>
 #include <limits>
 #include <vector>
-#include "include/cxx_api/types.h"
+#include "include/api/types.h"
 #include "pnna_core.h"  // NOLINT(build/include_subdir)
 
 #define kNCHW_N 0

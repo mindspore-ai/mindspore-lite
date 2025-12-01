@@ -19,8 +19,8 @@
 #include <string>
 #include <vector>
 #include <utility>
-#include "include/cxx_api/kernel.h"
-#include "include/cxx_api/data_type.h"
+#include "include/api/kernel.h"
+#include "include/api/data_type.h"
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 #include "schema/ops_generated.h"

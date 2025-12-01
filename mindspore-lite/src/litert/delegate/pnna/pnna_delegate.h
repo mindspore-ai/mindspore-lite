@@ -23,9 +23,10 @@
 #include <queue>
 #include <unordered_map>
 #include <utility>
-#include "include/cxx_api/delegate.h"
+#include "include/api/delegate.h"
 #include "src/litert/delegate/pnna/pnna_subgraph.h"
 #include "src/litert/delegate/pnna/op/pnna_op.h"
+#include "src/litert/delegate/pnna/op/transpose_pnna.h"
 
 namespace mindspore {
 namespace lite {

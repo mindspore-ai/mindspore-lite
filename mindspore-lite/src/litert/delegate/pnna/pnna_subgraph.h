@@ -22,7 +22,7 @@
 #include <utility>
 #include <memory>
 #include <map>
-#include "include/cxx_api/kernel.h"
+#include "include/api/kernel.h"
 #include "src/common/log_adapter.h"
 #include "src/litert/delegate/pnna/op/pnna_op.h"
 #include "src/litert/delegate/pnna/pnna_utils.h"
