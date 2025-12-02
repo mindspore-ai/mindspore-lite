@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "nnacl_c/fp16_grad/unsorted_segment_sum.h"
+#include "nnacl_c/fp16/unsorted_segment_sum.h"
 #include "nnacl_c/errorcode.h"
 
 int UnsortedSegmentSumFp16(const float16_t *input, int unit_num, int input_dim1, const int *indices, float16_t *output,
