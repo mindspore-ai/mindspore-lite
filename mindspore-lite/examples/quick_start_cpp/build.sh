@@ -29,7 +29,7 @@ get_version
 MODEL_DOWNLOAD_URL="https://download.mindspore.cn/model_zoo/official/lite/quick_start/mobilenetv2.ms"
 MINDSPORE_FILE_NAME="mindspore-lite-${VERSION_STR}-linux-x64"
 MINDSPORE_FILE="${MINDSPORE_FILE_NAME}.tar.gz"
-MINDSPORE_LITE_DOWNLOAD_URL="https://ms-release.obs.cn-north-4.myhuaweicloud.com/${VERSION_STR}/MindSpore/lite/release/linux/x86_64/${MINDSPORE_FILE}"
+MINDSPORE_LITE_DOWNLOAD_URL="https://ms-release.obs.cn-north-4.myhuaweicloud.com/${VERSION_STR}/MindSporeLite/lite/release/linux/x86_64/${MINDSPORE_FILE}"
 
 # 如果当前版本的 MindSpore Lite 包不存在，则使用最新的已发布版本（例如 2.7.1）
 # 这是为了防止因为版本未发布而导致构建失败
@@ -37,7 +37,7 @@ if ! is_url_exist "$MINDSPORE_LITE_DOWNLOAD_URL"; then
     VERSION_STR=2.7.1 #latest release version
     MINDSPORE_FILE_NAME="mindspore-lite-${VERSION_STR}-linux-x64"
     MINDSPORE_FILE="${MINDSPORE_FILE_NAME}.tar.gz"
-    MINDSPORE_LITE_DOWNLOAD_URL="https://ms-release.obs.cn-north-4.myhuaweicloud.com/${VERSION_STR}/MindSpore/lite/release/linux/x86_64/${MINDSPORE_FILE}"
+    MINDSPORE_LITE_DOWNLOAD_URL="https://ms-release.obs.cn-north-4.myhuaweicloud.com/${VERSION_STR}/MindSporeLite/lite/release/linux/x86_64/${MINDSPORE_FILE}"
     echo "Current version not released, use $VERSION_STR instead."
 fi
 
