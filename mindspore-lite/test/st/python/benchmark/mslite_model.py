@@ -103,11 +103,11 @@ class MSLiteModel():
             self.mindir_path = os.path.join(save_models_path, self.model_name + "_graph.mindir")
         self.input_shape_str = ""
         if model_info.split(";")[3].split(" ")[0] == "static":
-            for i in range(len(self.input_names)):
+            for i,name in enumerate(self.input_names):
                 input_shape_str = ""
                 for shape in self.input_shapes[i]:
                     input_shape_str += str(shape) + ","
-                self.input_shape_str += self.input_names[i] + ":" + input_shape_str[:-1] + ";"
+                self.input_shape_str += name + ":" + input_shape_str[:-1] + ";"
         self.input_shape_str = self.input_shape_str[:-1]
 
         self.predict_result = {}
@@ -123,7 +123,7 @@ class MSLiteModel():
         model_inputs = self.model.get_inputs()
         inputs = []
         if len(self.in_data_file_list) == len(model_inputs):
-            for i in range(len(model_inputs)):
+            for i,_ in enumerate(model_inputs):
                 if model_inputs[i].dtype == mslite.DataType.FLOAT32:
                     data = np.fromfile(self.in_data_file_list[i], dtype=np.float32).reshape(self.input_shapes[i])
                 elif model_inputs[i].dtype == mslite.DataType.INT32:
@@ -137,7 +137,7 @@ class MSLiteModel():
                 inputs.append(model_inputs[i])
 
         else:
-            for i in range(len(model_inputs)):
+            for i,_ in enumerate(model_inputs):
                 if model_inputs[i].dtype == mslite.DataType.FLOAT32:
                     data = np.random.random(self.input_shapes[i]).astype(np.float32)
                 elif model_inputs[i].dtype == mslite.DataType.INT32:
@@ -155,7 +155,7 @@ class MSLiteModel():
         """
         all_benchmark_data = []
         num_line = 0
-        with open(benchmark_file, "r") as f:
+        with open(benchmark_file, "r", encoding='utf-8') as f:
             for line in f:
                 num_line += 1
                 if line[-1] == "\n":
@@ -172,12 +172,14 @@ class MSLiteModel():
         if len(all_benchmark_data) != len(outputs_tensors):
             raise RuntimeError("benchmark data file is wrong.")
         all_err = 0
-        for input_i in range(len(outputs_tensors)):
+        for input_i,output in enumerate(outputs_tensors):
             mean_err = 0
             count = 0
-            out_data = outputs_tensors[input_i].get_data_to_numpy().flatten()
+            out_data = output.get_data_to_numpy().flatten()
             benchmark_data = all_benchmark_data[input_i]
-            for i in range(len(benchmark_data)):
+            if len(benchmark_data) != out_data.size:
+                raise RuntimeError("benchmark data size not equal to model output data size.")
+            for i,_ in enumerate(benchmark_data):
                 abs_err = np.abs(out_data[i] - benchmark_data[i])
                 tolerance = 1e-10 + 1e-7 * np.abs(benchmark_data[i])
                 if abs_err > tolerance:
@@ -249,10 +251,10 @@ class MSLiteModel():
         """
         self.model.resize(self.model.get_inputs(), self.input_shapes)
         inputs = self.CreateInputTensors()
-        for i in range(WARM_UP):
+        for _ in range(WARM_UP):
             outputs = self.model.predict(inputs)
         time_predict_start = time.time()
-        for i in range(LOOP_COUNT):
+        for _ in range(LOOP_COUNT):
             outputs = self.model.predict(inputs)
         time_predict_end = time.time()
         time_predict = (time_predict_end - time_predict_start) * 1000 / LOOP_COUNT

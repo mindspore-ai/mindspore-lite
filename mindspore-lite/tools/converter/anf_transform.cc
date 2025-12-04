@@ -21,6 +21,8 @@
 #include <unordered_map>
 #include <deque>
 #include <map>
+#include <set>
+#include <vector>
 #include <tuple>
 #include "nnacl_c/op_base.h"
 #include "src/common/log_adapter.h"
@@ -210,6 +212,26 @@ std::map<std::string, std::vector<int64_t>> TransStringToInputShapes(const std::
   }
   return shapes;
 }
+
+std::set<std::string> GetVariableNodeNames(const std::shared_ptr<ConverterPara> &param) {
+  std::string variable_weights_file = "";
+  std::set<std::string> variable_nodes;
+  std::vector<std::string> node_name_list;
+  auto config_infos = param->config_infos;
+  if (config_infos.find(lite::kAscendContextSection) != config_infos.end()) {
+    auto ascend_context = config_infos.at(lite::kAscendContextSection);
+    if (ascend_context.find(lite::kVariableWeightsFile) != ascend_context.end()) {
+      variable_weights_file = ascend_context.at(lite::kVariableWeightsFile);
+    }
+  }
+  if (variable_weights_file != "" &&
+      opt::ParseVariableNode(variable_weights_file, &variable_nodes, &node_name_list) != lite::RET_OK) {
+    MS_LOG(ERROR) << "Parse variable node name failed!";
+    return {};
+  }
+  return variable_nodes;
+}
+
 }  // namespace
 
 AnfTransform::AnfTransform() = default;
@@ -258,8 +280,10 @@ STATUS AnfTransform::MarkTrainWeightSharingOp(const FuncGraphPtr &func_graph, co
   return RET_OK;
 }
 
-STATUS AnfTransform::MarkTrainOp(const FuncGraphPtr &func_graph) {
+STATUS AnfTransform::MarkOperatorAsNonFusible(const FuncGraphPtr &func_graph,
+                                              const std::shared_ptr<ConverterPara> &param) {
   auto node_list = TopoSort(func_graph->get_return());
+  auto variable_node_names = GetVariableNodeNames(param);
   for (auto &node : node_list) {
     if (!utils::isa<CNodePtr>(node)) {
       continue;
@@ -282,6 +306,13 @@ STATUS AnfTransform::MarkTrainOp(const FuncGraphPtr &func_graph) {
       if (status != RET_OK) {
         MS_LOG(ERROR) << "MarkTrainWeightSharingOp failed.";
         return RET_ERROR;
+      }
+    }
+    for (size_t i = 1; i < cnode->inputs().size(); i++) {
+      if (utils::isa<Parameter>(cnode->input(i)) &&
+          variable_node_names.find(cnode->input(i)->fullname_with_scope()) != variable_node_names.end()) {
+        (void)prim->AddAttr("trainOp", MakeValue(true));
+        break;
       }
     }
   }
@@ -351,11 +382,6 @@ std::vector<opt::PassPtr> InitFusions(const std::shared_ptr<ConverterPara> &para
 }
 
 int AnfTransform::RunFusionPass(const FuncGraphPtr &old_graph, const std::shared_ptr<ConverterPara> &param) {
-  auto status = MarkTrainOp(old_graph);
-  if (status != RET_OK) {
-    MS_LOG(ERROR) << "MarkTrainOp failed.";
-    return RET_ERROR;
-  }
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
   CHECK_NULL_RETURN(optimizer);
   auto fusion_pm = std::make_shared<opt::LitePassManager>("anf fusion pass manager", false);
@@ -677,7 +703,12 @@ STATUS AnfTransform::ProcOnlineTransform(const FuncGraphPtr &old_graph, const st
 }
 
 int AnfTransform::RunPass(const FuncGraphPtr &old_graph, const std::shared_ptr<ConverterPara> &param) {
-  auto status = RunConvertPass(old_graph, param);
+  auto status = MarkOperatorAsNonFusible(old_graph, param);
+  if (status != RET_OK) {
+    MS_LOG(ERROR) << "MarkOperatorAsNonFusible failed.";
+    return RET_ERROR;
+  }
+  status = RunConvertPass(old_graph, param);
   if (status != RET_OK) {
     MS_LOG(ERROR) << "Run convert pass failed.";
     return RET_ERROR;

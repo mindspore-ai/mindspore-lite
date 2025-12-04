@@ -22,6 +22,8 @@
 #include <string>
 #include <set>
 #include <fstream>
+#include <memory>
+#include <regex>
 #include "mindspore/ops/op_def/structure_ops.h"
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "mindspore/ops/op_def/conv_pool_ops.h"
@@ -61,6 +63,8 @@
 #include "mindspore/core/include/ir/graph_utils.h"
 #include "mindspore/ops/infer/return.h"
 #include "mindspore/ops/infer/make_tuple.h"
+#include "tools/common/parse_config_utils.h"
+#include "common/common.h"
 
 namespace mindspore {
 namespace opt {
@@ -283,6 +287,12 @@ int CopyTensorDataFromTensorInfo(const tensor::TensorPtr &tensor_info,
   }
   return RET_OK;
 }
+
+bool MatchPattern(const std::string &input) {
+  std::regex pattern(R"(^([\s\S]*?):(\d+(?:,\d+)*);([\s\S]*)$)");
+  return std::regex_match(input, pattern);
+}
+
 }  // namespace
 
 bool CheckInputs(const CNodePtr &cnode) {
@@ -2113,5 +2123,45 @@ Status BuildReturnNode(const FuncGraphPtr &anf_graph, const std::vector<AnfNodeP
   anf_graph->set_return(return_cnode);
   return kSuccess;
 }
+
+lite::STATUS ParseVariableNode(std::string file_path, std::set<std::string> *variable_nodes,
+                               std::vector<std::string> *node_name_list) {
+  MS_CHECK_TRUE_RET(variable_nodes != nullptr, lite::RET_NULL_PTR);
+  MS_CHECK_TRUE_RET(node_name_list != nullptr, lite::RET_NULL_PTR);
+  std::ifstream file;
+  auto ret = lite::ReadFileToIfstream(file_path, &file);
+  if (ret != RET_OK) {
+    MS_LOG(ERROR) << "read file to ifstream failed!";
+    return ret;
+  }
+  size_t config_len = 0;
+  std::string line;
+  while (std::getline(file, line)) {
+    if (!MatchPattern(line)) {
+      MS_LOG(ERROR) << "Format of config error, it should be 'weight_name:num1,num2,num3;node_name', input config:"
+                    << line;
+      return RET_ERROR;
+    }
+    config_len++;
+    if (config_len >= lite::kMaxConfigLen) {
+      MS_LOG(ERROR) << "Support max config len is " << lite::kMaxConfigLen << ", current len:" << config_len << "!";
+      return RET_ERROR;
+    }
+    std::reverse(line.begin(), line.end());
+    auto pos_colon = line.find(':');
+    if (pos_colon == std::string::npos) {
+      MS_LOG(ERROR) << "Parse variable weight file error!";
+      file.close();
+      return RET_ERROR;
+    }
+    auto variable_para_name = line.substr(pos_colon + 1, line.size() - pos_colon);
+    std::reverse(variable_para_name.begin(), variable_para_name.end());
+    (*node_name_list).push_back(variable_para_name);
+    variable_nodes->insert(variable_para_name);
+  }
+  file.close();
+  return RET_OK;
+}
+
 };  // namespace opt
 }  // namespace mindspore

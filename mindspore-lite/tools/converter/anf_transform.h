@@ -66,7 +66,7 @@ class AnfTransform {
 
   static STATUS MarkTrainWeightSharingOp(const FuncGraphPtr &func_graph, const CNodePtr &cnode);
 
-  static STATUS MarkTrainOp(const FuncGraphPtr &func_graph);
+  static STATUS MarkOperatorAsNonFusible(const FuncGraphPtr &func_graph, const std::shared_ptr<ConverterPara> &param);
 
   static bool CheckExternalExtension(const std::shared_ptr<ConverterPara> &param);
 

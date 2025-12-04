@@ -186,6 +186,8 @@ static const char *const kInnerSharableHandle = "inner_sharable_handle";
 
 // for lora
 static const char *const kBundleModel = "bundle_model";
+static constexpr size_t kMaxConfigLen = 1e6;
+
 // for graph split
 static const char *const kSubgraphInferPath = "subgraph_infer_path";
 static const char *const kSubgraphInputNames = "subgraph_input_names";
