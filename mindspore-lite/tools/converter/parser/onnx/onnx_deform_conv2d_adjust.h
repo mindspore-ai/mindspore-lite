@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_PARSER_ONNX_ONNX_DEFORM_CONV2D_ADJUST_H_
 #include <string>
 #include <vector>
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 #include "tools/optimizer/common/gllo_utils.h"
 
 using mindspore::converter::FmkType;

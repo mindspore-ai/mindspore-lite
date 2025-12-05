@@ -21,7 +21,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
-#include "include/backend/optimizer/optimizer.h"
+#include "include/backend/common/pass_manager/optimizer.h"
 #include "include/utils/utils.h"
 #include "tools/optimizer/common/format_utils.h"
 #include "tools/optimizer/graph/transpose_strategy.h"

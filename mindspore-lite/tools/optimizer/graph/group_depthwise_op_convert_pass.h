@@ -16,7 +16,7 @@
 #ifndef MINDSPORE_LITE_TOOLS_OPTIMIZER_GRAPH_GROUP_DEPTHWISE_OP_CONVERT_PASS_H_
 #define MINDSPORE_LITE_TOOLS_OPTIMIZER_GRAPH_GROUP_DEPTHWISE_OP_CONVERT_PASS_H_
 #include <string>
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 
 namespace mindspore::opt {
 class GroupDepthwiseOpConvertPass : public Pass {

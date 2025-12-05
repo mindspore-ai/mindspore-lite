@@ -21,9 +21,9 @@
 #include <vector>
 #include "common/common_test.h"
 #include "ir/anf.h"
-#include "include/backend/optimizer/pass.h"
-#include "include/backend/optimizer/optimizer.h"
-#include "include/backend/optimizer/pass_manager.h"
+#include "include/backend/common/pass_manager/pass.h"
+#include "include/backend/common/pass_manager/optimizer.h"
+#include "include/backend/common/pass_manager/pass_manager.h"
 #include "src/common/log_util.h"
 
 namespace mindspore {

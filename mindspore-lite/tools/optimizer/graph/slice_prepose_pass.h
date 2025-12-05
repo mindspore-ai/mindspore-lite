@@ -20,7 +20,7 @@
 #include <memory>
 #include <utility>
 #include <string>
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 #include "include/errorcode.h"
 #include "ir/manager.h"
 #include "include/registry/converter_context.h"

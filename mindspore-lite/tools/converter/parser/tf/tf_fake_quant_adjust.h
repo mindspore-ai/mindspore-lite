@@ -18,8 +18,8 @@
 
 #include <string>
 #include <vector>
-#include "include/backend/optimizer/pass.h"
-#include "include/backend/optimizer/optimizer.h"
+#include "include/backend/common/pass_manager/pass.h"
+#include "include/backend/common/pass_manager/optimizer.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
 
 namespace mindspore {

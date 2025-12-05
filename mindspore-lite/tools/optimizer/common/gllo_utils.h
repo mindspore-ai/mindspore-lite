@@ -28,7 +28,7 @@
 #include "ir/anf.h"
 #include "ir/func_graph.h"
 #include "src/common/utils.h"
-#include "include/backend/optimizer/pattern_engine.h"
+#include "include/backend/common/pass_manager/pattern_engine.h"
 #include "infer/cxx_api/conv2d_backprop_input_fusion.h"
 #include "schema/inner/model_generated.h"
 #include "tools/converter/converter_context.h"

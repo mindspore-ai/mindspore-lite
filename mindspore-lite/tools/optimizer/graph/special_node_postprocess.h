@@ -17,7 +17,7 @@
 #ifndef MINDSPORE_LITE_TOOLS_OPTIMIZER_GRAPH_SPECIAL_NODE_POSTPROCESS_H_
 #define MINDSPORE_LITE_TOOLS_OPTIMIZER_GRAPH_SPECIAL_NODE_POSTPROCESS_H_
 
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 
 namespace mindspore {
 namespace opt {

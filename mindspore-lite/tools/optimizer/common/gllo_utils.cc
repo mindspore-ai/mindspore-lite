@@ -34,7 +34,7 @@
 #include "infer/tuple_get_item.h"
 #include "tools/common/tensor_util.h"
 #include "frontend/operator/ops.h"
-#include "include/backend/optimizer/helper.h"
+#include "include/backend/common/pass_manager/helper.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
 #include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"

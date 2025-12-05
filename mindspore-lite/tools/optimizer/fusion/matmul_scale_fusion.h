@@ -20,7 +20,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
-#include "include/backend/optimizer/optimizer.h"
+#include "include/backend/common/pass_manager/optimizer.h"
 #include "tools/optimizer/fusion/scale_base_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 

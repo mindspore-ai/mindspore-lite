@@ -21,7 +21,7 @@
 #include <vector>
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "mindspore/ops/op_def/math_ops.h"
-#include "include/backend/optimizer/helper.h"
+#include "include/backend/common/pass_manager/helper.h"
 #include "ir/anf.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
 #include "tools/optimizer/common/format_utils.h"

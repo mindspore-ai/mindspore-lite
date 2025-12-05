@@ -33,7 +33,7 @@
 #include "src/common/string_utils.h"
 #include "src/common/config_infos.h"
 #include "tools/converter/parser/parser_utils.h"
-#include "include/backend/optimizer/graph_optimizer.h"
+#include "include/backend/common/pass_manager/graph_optimizer.h"
 #include "mindspore/ops/op_def/op_name.h"
 #include "tools/common/string_util.h"
 #include "src/common/common.h"

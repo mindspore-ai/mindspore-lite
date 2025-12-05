@@ -28,7 +28,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "include/utils/utils.h"
 #include "include/utils/anfalgo.h"
-#include "include/backend/anf_runtime_algorithm.h"
+#include "include/backend/common/kernel_graph/anf_runtime_algorithm.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "nnacl_c/op_base.h"
 #include "tools/optimizer/graph/node_infershape.h"

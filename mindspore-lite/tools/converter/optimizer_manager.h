@@ -21,7 +21,7 @@
 #include <set>
 #include <string>
 #include <vector>
-#include "include/backend/optimizer/pass.h"
+#include "include/backend/common/pass_manager/pass.h"
 #include "include/errorcode.h"
 #include "include/registry/pass_registry.h"
 #include "ir/func_graph.h"
