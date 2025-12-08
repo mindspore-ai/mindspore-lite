@@ -58,49 +58,7 @@ constexpr float kInitOne = 1.0;
 constexpr size_t kInitBatchSize = 1;
 constexpr size_t kMaxConfigLen = 1e6;
 constexpr uint16_t kFloatOne = 15360;
-
-bool MatchPattern(const std::string &input) {
-  std::regex pattern(R"(^([^:;]+):(\d+(?:,\d+)*);([^:;]+)$)");
-  return std::regex_match(input, pattern);
-}
 }  // namespace
-
-lite::STATUS InsertVariableNodePass::ParseInsertNode(std::string file_path, std::set<std::string> *variable_nodes,
-                                                     std::vector<std::string> *node_name_list) {
-  MS_CHECK_TRUE_RET(variable_nodes != nullptr, lite::RET_NULL_PTR);
-  MS_CHECK_TRUE_RET(node_name_list != nullptr, lite::RET_NULL_PTR);
-  std::ifstream file;
-  auto ret = lite::ReadFileToIfstream(file_path, &file);
-  if (ret != RET_OK) {
-    MS_LOG(ERROR) << "read file to ifstream failed!";
-    return ret;
-  }
-  size_t config_len = 0;
-  std::string line;
-  while (std::getline(file, line)) {
-    if (!MatchPattern(line)) {
-      MS_LOG(ERROR) << "Format of config error, it should be 'weight_name:num1,num2,num3;node_name', input config:"
-                    << line;
-      return RET_ERROR;
-    }
-    config_len++;
-    if (config_len >= kMaxConfigLen) {
-      MS_LOG(ERROR) << "Support max config len is " << kMaxConfigLen << ", current len:" << config_len << "!";
-      return RET_ERROR;
-    }
-    auto pos_colon = line.find(':');
-    if (pos_colon == std::string::npos) {
-      MS_LOG(ERROR) << "Parse variable weight file error!";
-      file.close();
-      return RET_ERROR;
-    }
-    auto variable_para_name = line.substr(0, pos_colon);
-    (*node_name_list).push_back(variable_para_name);
-    variable_nodes->insert(variable_para_name);
-  }
-  file.close();
-  return RET_OK;
-}
 
 void InsertVariableNodePass::InitWeightParam(std::string *variable_weights_file, int32_t *max_weight_batch) {
   if (param_->config_infos.find(lite::kAscendContextSection) != param_->config_infos.end()) {
@@ -203,7 +161,7 @@ lite::STATUS InsertVariableNodePass::BuildVariableNode(FuncGraphPtr func_graph) 
   std::unordered_map<std::string, std::string> node_name_map;
   std::unordered_map<std::string, AbstractBasePtr> node_abstract_map;
   std::vector<std::string> node_name_list;
-  auto ret = ParseInsertNode(variable_weights_file, &variable_nodes, &node_name_list);
+  auto ret = ParseVariableNode(variable_weights_file, &variable_nodes, &node_name_list);
   MS_CHECK_TRUE_MSG(ret == RET_OK, ret, "ParseInsertNode failed!");
   uint32_t matched_num = 0;
   auto node_list = TopoSort(func_graph->get_return());

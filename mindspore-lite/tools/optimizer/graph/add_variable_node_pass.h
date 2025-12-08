@@ -38,8 +38,6 @@ class InsertVariableNodePass : public Pass {
 
  private:
   lite::STATUS BuildVariableNode(FuncGraphPtr func_graph);
-  lite::STATUS ParseInsertNode(std::string file_path, std::set<std::string> *variable_nodes,
-                               std::vector<std::string> *node_name_list);
   template <typename T>
   ParameterPtr BuildZeroVecNDParameterNode(const FuncGraphPtr &anf_graph, ShapeVector weight_shape,
                                            const std::string &node_name, T value, TypeId dtype);

@@ -23,6 +23,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <set>
 #include "ops/primitive_c.h"
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "ir/anf.h"
@@ -233,6 +234,8 @@ tensor::TensorPtr GetTensorFromParameterNode(const EquivPtr &equiv, const VarPtr
 const float GetFloatParameterValue(const EquivPtr &equiv, const VarPtr &input);
 const int GetIntParameterValue(const EquivPtr &equiv, const VarPtr &input);
 STATUS GetPrimFromCnode(const CNodePtr &cnode, PrimitivePtr *prim_ptr);
+STATUS ParseVariableNode(std::string file_path, std::set<std::string> *variable_nodes,
+                         std::vector<std::string> *node_name_list);
 }  // namespace opt
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_TOOLS_OPTIMIZER_COMMON_GLLO_UTILS_H_
