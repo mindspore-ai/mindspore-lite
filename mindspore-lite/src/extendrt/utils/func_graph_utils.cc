@@ -20,6 +20,7 @@
 #include <vector>
 #include <map>
 #include <memory>
+#include <tuple>
 
 #include "src/extendrt/utils/func_graph_utils.h"
 #include "mindspore/ops/op_def/sequence_ops.h"
@@ -32,7 +33,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_d.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
-#include "mindspore/ccsrc/include/utils/convert_utils.h"
+#include "mindspore/core/include/utils/convert_utils.h"
 #include "mindspore/core/include/utils/trace_info.h"
 #include "mindspore/core/include/ir/func_graph_flag.h"
 #include "ir/tensor_new.h"
