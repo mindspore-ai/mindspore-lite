@@ -241,6 +241,11 @@ if(PLATFORM_ARM)
         COMPILE_FLAGS "${CMAKE_C_FLAGS} -fno-fast-math")
 endif()
 
+if(PLATFORM_RISCV64 AND ENABLE_RVV EQUAL 1)
+    file(GLOB ASSEMBLY_RVV_SRC ${NNACL_DIR}/intrinsics/rvv/*.c)
+    set_property(SOURCE ${ASSEMBLY_RVV_SRC} PROPERTY LANGUAGE C)
+endif()
+
 add_library(nnacl_mid OBJECT ${KERNEL_SRC} ${ASSEMBLY_SRC} ${MS_X86_SIMD_SRC})
 
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")

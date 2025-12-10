@@ -319,6 +319,8 @@ void MatMulOpt(const float *a, const float *b, float *c, const float *bias, ActT
   MatmulFloatAvxOpt(a, b, c, bias, (size_t)act_type, deep, row, col, stride, (size_t)(out_type));
 #elif ENABLE_SSE
   MatmulFloatSse64Opt(a, b, c, bias, (int)act_type, deep, row, col, stride, (int)(out_type));
+#elif ENABLE_RVV
+  MatmulFloatRvv64Opt(a, b, c, bias, act_type, deep, row, col, stride, out_type);
 #else
   MatMul12x8(a, b, c, bias, act_type, deep, row, col, stride, out_type);
 #endif
@@ -603,8 +605,8 @@ void MatMul4x1Kernel(const float *input, const float *weight, float *output, con
     "st1 {v0.4s}, [%[output]]\n"
 
     :
-    : [ input ] "r"(input), [ weight ] "r"(weight), [ output ] "r"(output), [ bias ] "r"(bias), [ deep ] "r"(deep),
-      [ act ] "r"(act_type)
+    : [input] "r"(input), [weight] "r"(weight), [output] "r"(output), [bias] "r"(bias), [deep] "r"(deep),
+      [act] "r"(act_type)
     : "cc", "x5", "x6", "x7", "x8", "x9", "x10", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v16", "v17", "v18",
       "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31");
 }
@@ -709,8 +711,8 @@ void MatMul2x1Kernel(const float *input, const float *weight, float *output, con
     "st1 {v0.2s}, [%[output]]\n"
 
     :
-    : [ input ] "r"(input), [ weight ] "r"(weight), [ output ] "r"(output), [ bias ] "r"(bias), [ deep ] "r"(deep),
-      [ act ] "r"(act_type)
+    : [input] "r"(input), [weight] "r"(weight), [output] "r"(output), [bias] "r"(bias), [deep] "r"(deep),
+      [act] "r"(act_type)
     : "cc", "x5", "x8", "x9", "x10", "v0", "v1", "v4", "v5", "v6", "v7", "v16", "v17", "v18", "v19", "v28", "v29",
       "v30", "v31", "memory");
 }
@@ -795,8 +797,8 @@ void MatMul1x1Kernel(const float *input, const float *weight, float *output, con
     "str s0, [%[output]]\n"
 
     :
-    : [ input ] "r"(input), [ weight ] "r"(weight), [ output ] "r"(output), [ bias ] "r"(bias), [ deep ] "r"(deep),
-      [ act ] "r"(act_type)
+    : [input] "r"(input), [weight] "r"(weight), [output] "r"(output), [bias] "r"(bias), [deep] "r"(deep),
+      [act] "r"(act_type)
     : "cc", "x8", "x9", "x10", "v0", "v4", "v5", "v6", "v7", "v16", "v17", "v18", "v19", "v28", "v29", "v30", "v31");
 }
 
