@@ -24,7 +24,9 @@
 #include <set>
 #include <functional>
 #include <deque>
-#include "include/utils/convert_utils.h"
+#include <map>
+#include <algorithm>
+#include "mindspore/core/include/utils/convert_utils.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "abstract/abstract_value.h"

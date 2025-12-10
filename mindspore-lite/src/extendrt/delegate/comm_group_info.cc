@@ -17,11 +17,12 @@
 #include <fstream>
 #include <vector>
 #include <utility>
+#include <string>
 #include "include/utils/utils.h"
 #include "utils/ms_utils.h"
 #include "src/extendrt/delegate/comm_group_info.h"
 #include "src/common/common.h"
-#include "include/utils/convert_utils.h"
+#include "mindspore/core/include/utils/convert_utils.h"
 #include "src/common/log_adapter.h"
 #include "include/utils/common.h"
 #include "utils/file_utils.h"
@@ -62,7 +63,7 @@ std::optional<std::string> CommGroupInfo::CreatePrefixPath(const std::string &in
 
 bool CommGroupInfo::CheckPath(const std::string path) const {
   if (path.size() > PATH_MAX) {
-    MS_LOG(ERROR) << "The checkpoit path " << path << " is too long";
+    MS_LOG(ERROR) << "The checkpoint path " << path << " is too long";
     return false;
   }
   auto realpath = CreatePrefixPath(path, true);
