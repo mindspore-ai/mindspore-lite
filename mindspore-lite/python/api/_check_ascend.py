@@ -91,8 +91,8 @@ class AscendEnvChecker(metaclass=ABCMeta):
 
     def check_lib_path(self) -> bool:
         """Check LI_LIBRARY_PATH is configured correctly."""
-        ld_lib_keyword = r"latest/.*lib64"  # the suffix subdirectories of ascend lib path
-        ascend_opp_keyword = "latest/opp"  # the suffix subdirectories of ascend opp path
+        ld_lib_keyword = r"cann"  # the suffix subdirectories of ascend lib path
+        ascend_opp_keyword = "opp"  # the suffix subdirectories of ascend opp path
 
         if self.env_ld_lib_path is None:
             logging.warning("Env LD_LIBRARY_PATH is not set(needed by Mindspore Lite-Ascend). "
