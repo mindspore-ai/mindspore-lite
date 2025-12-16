@@ -14,32 +14,20 @@
  * limitations under the License.
  */
 
-#ifndef MINDSPORE_LITE_SRC_RUNTIME_KERNEL_DSP_KERNEL_ADD_H_
-#define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_DSP_KERNEL_ADD_H_
+#ifndef MINDSPORE_LITE_SRC_RUNTIME_KERNEL_DSP_KERNEL_ADD_FT78_H_
+#define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_DSP_KERNEL_ADD_FT78_H_
 
 #include <vector>
 #include <string>
-#include "src/litert/kernel/dsp/dsp_kernel.h"
+#include "src/litert/kernel/dsp/base/add_base.h"
 
 namespace mindspore::kernel {
-class AddDSPKernel : public DSPKernel {
+class AddFT78DSPKernel : public AddBaseDSPKernel {
  public:
-  using DSPKernel::DSPKernel;
+  using AddBaseDSPKernel::AddBaseDSPKernel;
 
-  ~AddDSPKernel() override = default;
+  ~AddFT78DSPKernel() override = default;
   int Prepare() override;
-  int CheckSpecs() override;
-  int Run() override;
-
-  int AddRunFp32();
-  int AddRunFp16();
-  int AddRunInt16();
-  int AddRunInt32();
-  int AddRunComplex64();
-
- private:
-  std::string kernel_name_;
-  uint64_t core_mask_;
 };
 }  // namespace mindspore::kernel
-#endif
+#endif  // MINDSPORE_LITE_SRC_RUNTIME_KERNEL_DSP_KERNEL_ADD_FT78_H_
