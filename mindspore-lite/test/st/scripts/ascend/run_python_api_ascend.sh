@@ -54,7 +54,7 @@ function RunAscendST() {
     echo "Run mindspore_lite python api st..."
     echo "-----------------------------------------------------------------------------------------"
     local base_path=${PWD}
-    # pytest ${base_path}/python/python_api/test_check_ascend.py -s
+    pytest ${base_path}/python/python_api/test_check_ascend.py -s
     RET=$?
     if [ ${RET} -ne 0 ]; then
       echo "Run test_check_ascend failed. Make sure mindspore-lite/python/api/_check_ascend.py:30"

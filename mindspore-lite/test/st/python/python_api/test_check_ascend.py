@@ -98,21 +98,21 @@ def test_check_cann_version_without_version_file():
 
 def test_check_lib_path():
     checker = AscendEnvChecker()
-    checker.env_ld_lib_path = "/usr/local/Ascend/ascend-toolkit/latest/lib64:"  # mock LD_LIBRARY_PATH
+    checker.env_ld_lib_path = "/usr/local/Ascend/cann/lib64:"  # mock LD_LIBRARY_PATH
     checker.env_ascend_opp_path = "/usr/local/Ascend/ascend-toolkit/latest/opp"  # mock ASCEND_OPP_PATH
     assert checker.check_lib_path()
 
 
 def test_check_lib_path_good_case_2():
     checker = AscendEnvChecker()
-    checker.env_ld_lib_path = "/usr/local/Ascend/ascend-toolkit/latest/runtime/lib64:"  # mock LD_LIBRARY_PATH
+    checker.env_ld_lib_path = "/usr/local/Ascend/cann/lib64:"  # mock LD_LIBRARY_PATH
     checker.env_ascend_opp_path = "/usr/local/Ascend/ascend-toolkit/latest/opp"  # mock ASCEND_OPP_PATH
     assert checker.check_lib_path()
 
 
 def test_check_lib_path_good_case_3():
     checker = AscendEnvChecker()
-    checker.env_ld_lib_path = "/usr/local/Ascend/ascend-toolkit/latest/opp/lib64:"  # mock LD_LIBRARY_PATH
+    checker.env_ld_lib_path = "/usr/local/Ascend/cann/opp/lib64:"  # mock LD_LIBRARY_PATH
     checker.env_ascend_opp_path = "/usr/local/Ascend/ascend-toolkit/latest/opp"  # mock ASCEND_OPP_PATH
     assert checker.check_lib_path()
 
