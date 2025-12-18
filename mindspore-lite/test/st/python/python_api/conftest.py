@@ -27,7 +27,13 @@ def pytest_addoption(parser):
         action="store",
         nargs="+",
         default=[],
-        choices=("arm_ascend310_cloud", "arm_ascend310_ge_cloud", "mslite_large_model_inference_arm_ascend910B"),
+        choices=(
+            "arm_ascend310p_cloud",
+            "arm_ascend310p_ge_cloud",
+            "mslite_large_model_inference_arm_ascend910B",
+            "arm32_cpu",
+            "arm64_cpu",
+        ),
         help="Only test specified backend testcases. Example: --backend arm_ascend310_cloud arm_ascend310_ge_cloud",
     )
 
