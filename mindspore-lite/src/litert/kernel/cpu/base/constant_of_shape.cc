@@ -37,6 +37,13 @@ int ConstantOfShapeRun(void *cdata, int task_id, float lhs_scale, float rhs_scal
   return RET_OK;
 }
 
+bool ConstantOfShapeCPUKernel::InferShapeDone() const {
+  if (in_tensors_.front()->IsConst()) {
+    return LiteKernel::InferShapeDone();
+  }
+  return false;
+}
+
 int ConstantOfShapeCPUKernel::DoExecute(int task_id) {
   int start = task_id * thread_stride_;
   int current_stride = MSMIN(thread_stride_, param_->element_size_ - start);

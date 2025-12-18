@@ -36,6 +36,7 @@ class ConstantOfShapeCPUKernel : public LiteKernel {
   int Prepare() override { return lite::RET_OK; }
   int ReSize() override { return lite::RET_OK; }
   int Run() override;
+  bool InferShapeDone() const override;
   int DoExecute(int task_id);
 
  private:
