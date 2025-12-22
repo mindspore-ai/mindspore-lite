@@ -250,8 +250,8 @@ static int GenerateCvData(mindspore::MSTensor *tensor) {
 
   const int num_of_images = kNumOfCalibrationImages;
   const uint8_t *ims[num_of_images] = {COCO_train2014_0581821, COCO_train2014_0581821, COCO_train2014_0581821};
-  int im_sizes[num_of_images] = {sizeof(COCO_train2014_0581882), sizeof(COCO_train2014_0581909),
-                                 sizeof(COCO_train2014_0581909)};
+  int im_sizes[num_of_images] = {sizeof(COCO_train2014_0581821), sizeof(COCO_train2014_0581821),
+                                 sizeof(COCO_train2014_0581821)};
   uint8_t *t_data = reinterpret_cast<uint8_t *>(tensor->MutableData());
   size_t t_size = tensor->DataSize();
   size_t loc = 0;
