@@ -16,7 +16,7 @@
 
 ## Android编译部署
 
-本教程以MobileNetv2在安卓手机编译部署为例，使用用户快速了解codegen在安卓平台生成代码、工程构建以及部署的一系列流程。关于converter、codegen的获取以及详细参数介绍可参考mindspore的[编译构建介绍](https://www.mindspore.cn/lite/docs/zh-CN/master/use/build.html)。
+本教程以MobileNetv2在安卓手机编译部署为例，帮助用户快速了解codegen在安卓平台生成代码、工程构建以及部署的一系列流程。关于converter、codegen的获取以及详细参数介绍可参考mindspore的[编译构建介绍](https://www.mindspore.cn/lite/docs/zh-CN/master/use/build.html)。
 
 ### 编译依赖
 

@@ -116,7 +116,7 @@
 - **解决issue时，请先评论**，告知他人由您来负责解决该issue。
 - **对于长时间未关闭的issue**，建议贡献者在解决该issue之前进行预先检查。
 - **如您自行解决了自己报告的issue**，仍需在关闭该issue之前告知他人。
-- **如需issue快速响应**，可为issue添加标签。标签详情，参见[标签列表](https://gitee.com/mindspore/community/blob/master/sigs/dx/docs/labels.md)。
+- **如需issue快速响应**，可为issue添加标签。标签详情，参见[标签列表](https://gitee.com/mindspore/community/blob/master/archived_sigs/dx/docs/labels.md)。
 
 ### 提交PR
 
