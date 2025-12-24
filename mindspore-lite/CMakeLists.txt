@@ -54,10 +54,7 @@ option(MSLITE_ENABLE_FAST_HASH_TABLE "enable fast hash table" ON)
 
 # pre/post process
 option(MSLITE_ENABLE_OPENCV "enable opencv" on)
-if(NOT((MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)))
-    set(MSLITE_MINDDATA_IMPLEMENT "full" CACHE STRING "minddata mode, \
-    currently supported : off/full/wrapper/lite/lite_cv")
-endif()
+
 # tests
 option(MSLITE_ENABLE_TESTCASES "enable testcase" off)
 option(MSLITE_ENABLE_COVERAGE "enable code coverage" off)
@@ -233,10 +230,7 @@ endif()
 if(DEFINED ENV{MSLITE_ENABLE_OPENCV})
     set(MSLITE_ENABLE_OPENCV $ENV{MSLITE_ENABLE_OPENCV})
 endif()
-if(DEFINED ENV{MSLITE_MINDDATA_IMPLEMENT} AND
-NOT(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-    set(MSLITE_MINDDATA_IMPLEMENT $ENV{MSLITE_MINDDATA_IMPLEMENT})
-endif()
+
 if(DEFINED ENV{MSLITE_TARGET_SITEAI})
     set(MSLITE_TARGET_SITEAI $ENV{MSLITE_TARGET_SITEAI})
 endif()
@@ -562,7 +556,6 @@ message(STATUS "\tMSLITE_ENABLE_AUTO_PARALLEL                = \t${MSLITE_ENABLE
 message(STATUS "\tMSLITE_ENABLE_WEIGHT_DECODE                = \t${MSLITE_ENABLE_WEIGHT_DECODE}")
 message(STATUS "\tMSLITE_ENABLE_CUSTOM_KERNEL                = \t${MSLITE_ENABLE_CUSTOM_KERNEL}")
 message(STATUS "\tMSLITE_ENABLE_MINDRT                       = \t${MSLITE_ENABLE_MINDRT}")
-message(STATUS "\tMSLITE_MINDDATA_IMPLEMENT                  = \t${MSLITE_MINDDATA_IMPLEMENT}")
 message(STATUS "\tMSLITE_ENABLE_DELEGATE                     = \t${MSLITE_ENABLE_DELEGATE}")
 message(STATUS "\tMSLITE_ENABLE_ACL                          = \t${MSLITE_ENABLE_ACL}")
 message(STATUS "\tMSLITE_ENABLE_FP16                         = \t${MSLITE_ENABLE_FP16}")
@@ -755,9 +748,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/litert/kernel/cpu)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/)
 include_directories(${TOP_DIR}/third_party)
 include_directories(${CMAKE_BINARY_DIR})
-if(NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/minddata/dataset)
-endif()
 include(${TOP_DIR}/cmake/utils.cmake)
 include(${TOP_DIR}/cmake/dependency_utils.cmake)
 include(${TOP_DIR}/cmake/external_libs/securec.cmake)
@@ -790,11 +780,6 @@ if(MSLITE_ENABLE_COREML)
 endif()
 
 if(MSLITE_ENABLE_CONVERTER OR MSLITE_ENABLE_TOOLS OR MSLITE_ENABLE_KERNEL_EXECUTOR)
-    set(MSLITE_DEPS_JSON on)
-endif()
-
-if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full" OR MSLITE_MINDDATA_IMPLEMENT STREQUAL "wrapper"
-    AND NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
     set(MSLITE_DEPS_JSON on)
 endif()
 
@@ -1028,13 +1013,6 @@ if(NOT PLATFORM_ARM)
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.1")
         endif()
     endif()
-endif()
-
-if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite" OR MSLITE_MINDDATA_IMPLEMENT STREQUAL "full"
-    OR MSLITE_MINDDATA_IMPLEMENT STREQUAL "wrapper" OR MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite_cv"
-    AND NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-    add_compile_definitions(ENABLE_ANDROID)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/minddata)
 endif()
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/common/ops)

@@ -54,7 +54,4 @@ Buffer Graph::GraphData::GetOMData() const {
   return om_data_;
 }
 
-void Graph::GraphData::SetPreprocess(const std::vector<std::shared_ptr<dataset::Execute>> &data_graph) {
-  data_graph_ = data_graph;
-}
 }  // namespace mindspore

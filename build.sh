@@ -53,7 +53,6 @@ echo "---------------- MindSpore-Lite: build start ----------------"
 init_default_options
 process_options "$@"
 
-export COMPILE_MINDDATA_LITE
 export ENABLE_VERBOSE
 export LITE_PLATFORM
 export LITE_ENABLE_AAR

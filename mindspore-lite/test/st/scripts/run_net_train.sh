@@ -362,11 +362,6 @@ function Run_arm() {
 
     # If build with minddata, copy the minddata related libs
     cd ${benchmark_train_test_path} || exit 1
-    if [ -f ${arm_path}/mindspore-lite-${version_arm}-android-${process_unit}/runtime/lib/libminddata-lite.so ]; then
-        cp -a ${arm_path}/mindspore-lite-${version_arm}-android-${process_unit}/runtime/third_party/libjpeg-turbo/lib/libjpeg.so* ${benchmark_train_test_path}/ || exit 1
-        cp -a ${arm_path}/mindspore-lite-${version_arm}-android-${process_unit}/runtime/third_party/libjpeg-turbo/lib/libturbojpeg.so* ${benchmark_train_test_path}/ || exit 1
-        cp -a ${arm_path}/mindspore-lite-${version_arm}-android-${process_unit}/runtime/lib/libminddata-lite.so ${benchmark_train_test_path}/libminddata-lite.so || exit 1
-    fi
     cp -a ${arm_path}/mindspore-lite-${version_arm}-android-${process_unit}/runtime/third_party/hiai_ddk/lib/libhiai.so ${benchmark_train_test_path}/libhiai.so || exit 1
     cp -a ${arm_path}/mindspore-lite-${version_arm}-android-${process_unit}/runtime/third_party/hiai_ddk/lib/libhiai_ir.so ${benchmark_train_test_path}/libhiai_ir.so || exit 1
     cp -a ${arm_path}/mindspore-lite-${version_arm}-android-${process_unit}/runtime/third_party/hiai_ddk/lib/libhiai_ir_build.so ${benchmark_train_test_path}/libhiai_ir_build.so || exit 1

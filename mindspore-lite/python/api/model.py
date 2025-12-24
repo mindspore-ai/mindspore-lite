@@ -413,7 +413,7 @@ class Model(BaseModel):
 
         Tutorial Examples:
             - `Dynamic Weight Update
-              <https://www.mindspore.cn/lite/docs/en/master/mindir/runtime_python.html#update-weights>`_
+              <https://www.mindspore.cn/lite/cloud_docs/en/master/mindir/runtime_python.html#update-weights>`_
         """
         if not isinstance(weights, list):
             raise TypeError("weights must be list, but got {}".format(type(weights)))

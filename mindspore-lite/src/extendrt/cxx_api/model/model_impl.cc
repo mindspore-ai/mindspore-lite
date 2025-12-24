@@ -1030,75 +1030,11 @@ bool ModelImpl::HasPreprocess() {
     MS_LOG(ERROR) << "Model has not been called Build, or Model Build has failed";
     return false;
   }
-  return graph_->graph_data_->GetPreprocess().empty() ? false : true;
+  return false;
 }
 
 Status ModelImpl::Preprocess(const std::vector<std::vector<MSTensor>> &inputs, std::vector<MSTensor> *outputs) {
-#if !defined(_WIN32) && !defined(_WIN64)
-  if (session_ == nullptr) {
-    MS_LOG(ERROR) << "Model has not been called Build, or Model Build has failed";
-    return kLiteError;
-  }
-  // Config preprocessor, temporary way to let mindspore.so depends on _c_dataengine
-  std::string dataengine_so_path;
-  Status dlret = DLSoPath({"libmindspore.so"}, "_c_dataengine", &dataengine_so_path);
-  CHECK_FAIL_AND_RELEASE(dlret, nullptr, "Parse dataengine_so failed: " + dlret.GetErrDescription());
-
-  // Run preprocess
-  if (!HasPreprocess()) {
-    MS_LOG(ERROR) << "Attempt to predict with data preprocessor, but no preprocessor is defined in MindIR.";
-    return Status(kMEFailed, "Attempt to predict with data preprocessor, but no preprocessor is defined in MindIR.");
-  }
-
-  void *handle = nullptr;
-  void *function = nullptr;
-  dlret = DLSoOpen(dataengine_so_path, "ExecuteRun_C", &handle, &function);
-  CHECK_FAIL_AND_RELEASE(dlret, handle, "Parse ExecuteRun_C failed: " + dlret.GetErrDescription());
-  auto ExecuteRun =
-    (void (*)(const std::vector<std::shared_ptr<dataset::Execute>> &, const std::vector<mindspore::MSTensor> &,
-              std::vector<mindspore::MSTensor> *, Status *))(function);
-
-  // perform preprocess on each tensor separately
-  std::vector<std::shared_ptr<dataset::Execute>> preprocessor = graph_->graph_data_->GetPreprocess();
-  std::vector<std::vector<MSTensor>> output_unbatch;
-  std::vector<MSTensor> output_batched;
-  for (auto tensor : inputs) {
-    std::vector<MSTensor> temp;
-    ExecuteRun(preprocessor, tensor, &temp, &dlret);
-    CHECK_FAIL_AND_RELEASE(dlret, handle, "Run preprocess failed: " + dlret.GetErrDescription());
-    output_unbatch.push_back(temp);
-  }
-
-  // Construct a tensor with batch dim
-  output_batched.resize(output_unbatch[0].size());
-  for (size_t i = 0; i < output_batched.size(); i++) {
-    std::vector<int64_t> ori_shape = output_unbatch[0][i].Shape();
-    ori_shape.insert(ori_shape.begin(), output_unbatch.size());
-    output_batched[i] = mindspore::MSTensor("outputs", output_unbatch[0][i].DataType(), ori_shape, nullptr,
-                                            output_unbatch[0][i].DataSize() * output_unbatch.size());
-  }
-
-  // Copy unbatch data into tensor
-  for (size_t i = 0; i < output_unbatch[0].size(); i++) {
-    size_t offset = 0;
-    for (size_t j = 0; j < output_unbatch.size(); j++) {
-      auto ret =
-        memcpy_s(reinterpret_cast<uint8_t *>(output_batched[i].MutableData()) + offset, output_unbatch[j][i].DataSize(),
-                 output_unbatch[j][i].MutableData(), output_unbatch[j][i].DataSize());
-      if (ret) {
-        MS_LOG(ERROR) << "Memory copy failed to construct High-Dim Tensor.";
-        return Status(kMEFailed, "Memory copy failed to construct High-Dim Tensor.");
-      }
-      offset += output_unbatch[j][i].DataSize();
-    }
-  }
-  *outputs = output_batched;
-  DLSoClose(handle);
-  return kSuccess;
-#else
-  MS_LOG(ERROR) << "Data preprocess is not supported on Windows yet.";
-  return Status(kMEFailed, "Data preprocess is not supported on Windows yet.");
-#endif
+  return kLiteError;
 }
 
 Status ModelImpl::PredictWithPreprocess(const std::vector<std::vector<MSTensor>> &inputs,

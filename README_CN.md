@@ -19,15 +19,15 @@ MindSpore Lite针对AIGC、语音类算法以及CV类模型推理，实现推理
 
     MindSpore Lite支持多种不同的硬件后端，其中：
 
-    - 针对服务侧设备，用户可以通过设置`MSLITE_ENABLE_CLOUD_INFERENCE`等编译选项，编译出动态库以及Python wheel包，用于昇腾、CPU硬件的推理，详细编译教程，可以参考[MindSpore Lite官网](https://www.mindspore.cn/lite/docs/zh-CN/master/mindir/build.html)。
+    - 针对服务侧设备，用户可以通过设置`MSLITE_ENABLE_CLOUD_INFERENCE`等编译选项，编译出动态库以及Python wheel包，用于昇腾、CPU硬件的推理，详细编译教程，可以参考[MindSpore Lite官网](https://www.mindspore.cn/lite/cloud_docs/zh-CN/master/use/build.html)。
 
-    - 针对端、边设备，可以通过不同的交叉编译工具链编译出不同的动态库，详细编译教程，可以参考[MindSpore Lite官网](https://www.mindspore.cn/lite/docs/zh-CN/master/build/build.html)。
+    - 针对端、边设备，可以通过不同的交叉编译工具链编译出不同的动态库，详细编译教程，可以参考[MindSpore Lite官网](https://www.mindspore.cn/lite/docs/zh-CN/master/use/build.html)。
 
 2. 模型转换
 
     MindSpore Lite支持将MindSpore、ONNX、TF等多种AI框架序列化出的模型转换成MindSpore Lite格式的IR，为了更高效地实现模型推理，MindSpore Lite支持将模型转换成`.mindir`格式或`.ms`格式，其中：
 
-    - `.mindir`模型：用于服务侧设备的推理，可以更好地兼容MindSpore训练框架导出的模型结构，主要适用于昇腾卡，以及X86/Arm架构的CPU硬件，详细的转换方法可以参考[转换工具教程](https://www.mindspore.cn/lite/docs/zh-CN/master/mindir/converter.html)。
+    - `.mindir`模型：用于服务侧设备的推理，可以更好地兼容MindSpore训练框架导出的模型结构，主要适用于昇腾卡，以及X86/Arm架构的CPU硬件，详细的转换方法可以参考[转换工具教程](https://www.mindspore.cn/lite/cloud_docs/zh-CN/master/mindir/converter.html)。
 
     - `.ms`模型：主要用于端、边设备的推理，主要适用于麒麟NPU、Arm架构CPU等终端硬件。为了更好地降低模型文件大小，`.ms`的模型通过flatbuffers进行序列化与反序列化，详细的转换工具使用方式可以参考[转换教程](https://www.mindspore.cn/lite/docs/zh-CN/master/converter/converter_tool.html)。
 
@@ -37,17 +37,17 @@ MindSpore Lite针对AIGC、语音类算法以及CV类模型推理，实现推理
 
     - Python API接口用例
 
-        [`.mindir`基于Python接口推理用例](https://www.mindspore.cn/lite/docs/zh-CN/master/mindir/runtime_python.html)
+        [`.mindir`基于Python接口推理用例](https://www.mindspore.cn/lite/cloud_docs/zh-CN/master/mindir/runtime_python.html)
 
     - C/C++完整用例
 
-        [`.mindir`模型基于C/C++接口推理用例](https://www.mindspore.cn/lite/docs/zh-CN/master/mindir/runtime_cpp.html)
+        [`.mindir`模型基于C/C++接口推理用例](https://www.mindspore.cn/lite/cloud_docs/zh-CN/master/mindir/runtime_cpp.html)
 
         [`.ms`模型基于C/C++接口推理用例](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/mindspore-guidelines-based-native)
 
     - Java完整用例
 
-        [`.mindir`模型基于Java接口推理用例](https://www.mindspore.cn/lite/docs/zh-CN/master/mindir/runtime_java.html)
+        [`.mindir`模型基于Java接口推理用例](https://www.mindspore.cn/lite/cloud_docs/zh-CN/master/mindir/runtime_java.html)
 
 ## 技术方案
 
@@ -99,7 +99,7 @@ MindSpore Lite针对AIGC、语音类算法以及CV类模型推理，实现推理
 
 ### 关键特性能力
 
-- [支持昇腾硬件推理](https://www.mindspore.cn/lite/docs/zh-CN/master/mindir/runtime_python.html)
+- [支持昇腾硬件推理](https://www.mindspore.cn/lite/cloud_docs/zh-CN/master/mindir/runtime_python.html)
 
 - [支持鸿蒙](https://developer.huawei.com/consumer/cn/sdk/mindspore-lite-kit)
 

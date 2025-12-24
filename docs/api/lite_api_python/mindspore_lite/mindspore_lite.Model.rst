@@ -187,4 +187,4 @@ mindspore_lite.Model
 
         教程样例：
             - `动态权重更新
-              <https://www.mindspore.cn/lite/docs/zh-CN/master/mindir/runtime_python.html#%E5%8A%A8%E6%80%81%E6%9D%83%E9%87%8D%E6%9B%B4%E6%96%B0>`_
+              <https://www.mindspore.cn/lite/cloud_docs/zh-CN/master/mindir/runtime_python.html#%E5%8A%A8%E6%80%81%E6%9D%83%E9%87%8D%E6%9B%B4%E6%96%B0>`_

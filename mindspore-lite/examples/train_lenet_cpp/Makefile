@@ -1,7 +1,7 @@
 BASE_DIR=$(realpath ../../../../)
 APP:=bin/net_runner
 INF_APP:=bin/infer
-LMSTLIB:=-lmindspore-lite-train -lminddata-lite
+LMSTLIB:=-lmindspore-lite-train
 LMSLIB:=-lmindspore-lite
 MSDIR:=$(realpath package-$(TARGET)/lib)
 ifneq ("$(wildcard $(MSDIR)/libhiai.so)","")
@@ -20,7 +20,6 @@ CFLAGS := -Ofast -std=c++17  \
 	-I . \
         -I ./msl/runtime \
         -I ./msl/runtime/include \
-        -I ./msl/runtime/minddata \
         -I ./msl/tools/third_party/flatbuffers/include
 
 

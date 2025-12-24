@@ -70,10 +70,10 @@ echo "======Start building MindSpore Lite %VERSION_STR%======"
 rd /s /q "%BASE_PATH%\output"
 (git log -1 | findstr "^commit") > %BUILD_PATH%\.commit_id
 IF defined VisualStudioVersion (
-    cmake -DMSLITE_MINDDATA_IMPLEMENT=off -DMSLITE_ENABLE_TRAIN=off -DVERSION_STR=%VERSION_STR% ^
+    cmake -DMSLITE_ENABLE_TRAIN=off -DVERSION_STR=%VERSION_STR% ^
         -DCMAKE_BUILD_TYPE=Release -G "Ninja" "%BASE_PATH%/mindspore-lite"
 ) ELSE (
-    cmake -DMSLITE_MINDDATA_IMPLEMENT=off -DMSLITE_ENABLE_TRAIN=off -DVERSION_STR=%VERSION_STR% ^
+    cmake -DMSLITE_ENABLE_TRAIN=off -DVERSION_STR=%VERSION_STR% ^
         -DCMAKE_BUILD_TYPE=Release -G "CodeBlocks - MinGW Makefiles" "%BASE_PATH%/mindspore-lite"
 )
 

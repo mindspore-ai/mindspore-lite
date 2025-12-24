@@ -97,18 +97,6 @@ set(API_SRC ${CXX_API_SRCS} ${C_API_SRCS})
 if(NOT MSLITE_ENABLE_RUNTIME_CONVERT)
     set(API_SRC ${API_SRC} ${CORE_DIR}/utils/status.cc)
 endif()
-if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full" AND NOT
-    (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-    file(GLOB CXX_API_TRAIN_SRCS
-            ${CMAKE_CURRENT_SOURCE_DIR}/litert/cxx_api/train/model.cc
-            ${CMAKE_CURRENT_SOURCE_DIR}/litert/cxx_api/train/model_impl.cc
-            ${CMAKE_CURRENT_SOURCE_DIR}/litert/cxx_api/metrics/*.cc
-            ${CMAKE_CURRENT_SOURCE_DIR}/litert/cxx_api/callback/*.cc
-            )
-    set(API_TRAIN_SRC
-            ${CXX_API_TRAIN_SRCS}
-            )
-endif()
 
 if(SUPPORT_NPU)
     include_directories(${DDK_PATH})
@@ -268,37 +256,15 @@ if(MSLITE_GPU_BACKEND STREQUAL cuda)
             ${CUDA_RUNTIME_SRC}
             )
 endif()
-if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full" AND NOT
-    (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-    set(TRAIN_SRC_WITH_MD
-            ${CMAKE_CURRENT_SOURCE_DIR}/train/train_loop.cc
-            )
-endif()
 
-set(TRAIN_SRC
+file(GLOB TRAIN_SRC
         ${API_TRAIN_SRC}
         ${TRAIN_SRC_WITH_MD}
         ${CMAKE_CURRENT_SOURCE_DIR}/common/utils.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/tensor.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/executor/kernel_exec.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/litert/cxx_api/metrics/accuracy.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/litert/cxx_api/train/model_build.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/litert/cxx_api/train/model_build_impl.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/litert/cxx_api/train/converters.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/litert/cxx_api/train/train_support.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/train/train_populate_parameter.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/train/train_session.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/train/graph_fusion.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/train/graph_dropout.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/train/transfer_session.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/train/train_utils.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/train/loss_monitor.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/train/lr_scheduler.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/train/accuracy_metrics.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/train/accuracy_monitor.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/train/classification_train_accuracy_monitor.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/train/train_export.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/train/opt_allocator.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/litert/cxx_api/train/*.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/train/*.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/train/optimizer/common/fusion_utils.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/train/optimizer/fusion/gru_fusion_pass.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/train/optimizer/fusion/matmul_activation_fusion_pass.cc
@@ -361,6 +327,7 @@ add_subdirectory(litert/kernel/cpu)
 add_subdirectory(common)
 
 add_library(lite_src_mid OBJECT ${LITE_SRC})
+target_include_directories(lite_src_mid PRIVATE ${TOP_DIR})
 add_dependencies(lite_src_mid lite_src_common_mid fbs_src fbs_inner_src)
 
 if(MSLITE_ENABLE_ACL)
@@ -504,12 +471,6 @@ if(TARGET_OHOS)
     target_link_libraries(mindspore-lite_static hilog_ndk.z.so)
 endif()
 
-if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite" AND NOT
-    (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-    target_link_libraries(mindspore-lite minddata_eager_mid minddata-lite)
-    target_link_libraries(mindspore-lite_static minddata_eager_mid)
-endif()
-
 if(SUPPORT_TRAIN)
   add_library(lite_train_src_mid OBJECT ${TRAIN_SRC})
   add_dependencies(lite_train_src_mid lite_src_train_common_mid fbs_src fbs_inner_src)
@@ -518,23 +479,14 @@ if(SUPPORT_TRAIN)
   target_link_libraries(mindspore-lite-train lite_src_train_common_mid mindspore::securec)
   set_target_properties(mindspore-lite-train PROPERTIES OUTPUT_NAME "mindspore-lite-train")
   set_target_properties(mindspore-lite-train PROPERTIES CLEAN_DIRECT_OUTPUT 1)
-  if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full" AND NOT
-    (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-    target_link_libraries(mindspore-lite-train minddata-lite mindspore-lite)
-  else()
-    target_link_libraries(mindspore-lite-train mindspore-lite)
-  endif()
+  target_link_libraries(mindspore-lite-train mindspore-lite)
+
 
   add_library(mindspore-lite-train_static STATIC $<TARGET_OBJECTS:lite_train_src_mid>)
   target_link_libraries(mindspore-lite-train_static lite_src_train_common_mid)
   set_target_properties(mindspore-lite-train_static PROPERTIES OUTPUT_NAME "mindspore-lite-train")
   set_target_properties(mindspore-lite-train_static PROPERTIES CLEAN_DIRECT_OUTPUT 1)
-  if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "full" AND NOT
-    (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-    target_link_libraries(mindspore-lite-train_static minddata-lite mindspore-lite)
-  else()
-    target_link_libraries(mindspore-lite-train_static mindspore-lite)
-  endif()
+  target_link_libraries(mindspore-lite-train_static mindspore-lite)
 endif()
 
 if(MSLITE_ENABLE_KERNEL_EXECUTOR)

@@ -10,7 +10,6 @@ set(MSLITE_REGISTRY_DEVICE "off" CACHE STRING "Compile Mindspore Lite that suppo
     currently supported devices: Hi3516D/Hi3519A/Hi3559A/SD3403")
 set(MSLITE_MICRO_PLATFORM "auto" CACHE STRING "Platform of micro static library micro static, \
     currently supported : cortex-m7/auto")
-set(MSLITE_MINDDATA_IMPLEMENT "lite_cv" CACHE STRING "off, lite_cv, cloud, or full")
 
 option(MSLITE_ENABLE_NPU "enable npu, only arm64 or arm32 support" off)
 option(MSLITE_ENABLE_COREML "enable coreML, only apple ios devices support" off)
@@ -148,10 +147,6 @@ if(DEFINED ENV{MSLITE_ENABLE_SPARSE_COMPUTE})
 endif()
 if(DEFINED ENV{MSLITE_ENABLE_ACL})
     set(MSLITE_ENABLE_ACL $ENV{MSLITE_ENABLE_ACL})
-endif()
-if(DEFINED ENV{MSLITE_MINDDATA_IMPLEMENT} AND NOT
-    (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-    set(MSLITE_MINDDATA_IMPLEMENT $ENV{MSLITE_MINDDATA_IMPLEMENT})
 endif()
 if(DEFINED ENV{MSLITE_ENABLE_MODEL_ENCRYPTION})
     if((${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND PLATFORM_X86_64)
@@ -312,10 +307,6 @@ endif()
 
 if(MSLITE_ENABLE_TRAIN)
     set(SUPPORT_TRAIN on)
-    if(NOT MSLITE_MINDDATA_IMPLEMENT STREQUAL "off" OR NOT PLATFORM_ARM AND
-    NOT(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-        set(MSLITE_MINDDATA_IMPLEMENT full)
-    endif()
 endif()
 
 if(MSLITE_ENABLE_NPU)
@@ -371,7 +362,6 @@ message(STATUS "\tMSLITE_ENABLE_AUTO_PARALLEL                = \t${MSLITE_ENABLE
 message(STATUS "\tMSLITE_ENABLE_WEIGHT_DECODE                = \t${MSLITE_ENABLE_WEIGHT_DECODE}")
 message(STATUS "\tMSLITE_ENABLE_CUSTOM_KERNEL                = \t${MSLITE_ENABLE_CUSTOM_KERNEL}")
 message(STATUS "\tMSLITE_ENABLE_MINDRT                       = \t${MSLITE_ENABLE_MINDRT}")
-message(STATUS "\tMSLITE_MINDDATA_IMPLEMENT                  = \t${MSLITE_MINDDATA_IMPLEMENT}")
 message(STATUS "\tMSLITE_ENABLE_DELEGATE                     = \t${MSLITE_ENABLE_DELEGATE}")
 message(STATUS "\tMSLITE_ENABLE_ACL                          = \t${MSLITE_ENABLE_ACL}")
 message(STATUS "\tMSLITE_ENABLE_FP16                         = \t${MSLITE_ENABLE_FP16}")

@@ -1,6 +1,6 @@
 /**
  * To download necessary library from HuaWei server.
- * Including mindspore-lite .so file, minddata-lite .so file and model file.
+ * Including mindspore-lite .so file, and model file.
  * The libraries can be downloaded manually.
  */
 def targetModelFile = "src/main/assets/mobilenetv2.ms"

@@ -30,7 +30,6 @@
 #include "src/litert/cxx_api/graph/graph_data.h"
 #include "src/litert/inner_context.h"
 #include "src/litert/lite_session.h"
-#include "include/train/train_loop_callback.h"
 
 template <class T>
 void clearVectorOfPointers(std::vector<T> *v) {
@@ -48,11 +47,6 @@ typedef std::shared_ptr<lite::LiteSession>(CreateTrainSessionProto)(std::shared_
                                                                     std::shared_ptr<TrainCfg> cfg,
                                                                     const std::shared_ptr<lite::InnerContext> &context);
 MS_API CreateTrainSessionProto *CreateTrainSessionCallbackHolder(CreateTrainSessionProto *proto = nullptr);
-
-namespace session {
-class Metrics;
-class TrainLoopCallBack;
-}  // namespace session
 
 class ModelImpl {
  public:
@@ -114,14 +108,6 @@ class ModelImpl {
   }
   std::vector<Metrics *> GetMetrics() { return metrics_; }
   const lite::LiteSession *GetSession() const { return session_.get(); }
-
- protected:
-  // Utility methods
-  Status ConvertCallbacks(Model *model, std::vector<TrainCallBack *> *i_cbs,
-                          std::vector<lite::TrainLoopCallBack *> *o_cbs,
-                          std::vector<lite::TrainLoopCallBack *> *adapter_cbs);
-  Status PrepareMetrics(Model *model, std::vector<session::Metrics *> *o_ms,
-                        std::vector<session::Metrics *> *adapter_ms);
 
  private:
   friend class Model;

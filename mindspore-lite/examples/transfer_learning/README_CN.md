@@ -48,7 +48,7 @@ places
 - 服务端
     - [MindSpore Framework](https://www.mindspore.cn/install/en) - 建议使用安装docker环境
     - [MindSpore ToD Download](https://www.mindspore.cn/lite/docs/zh-CN/master/use/downloads.html)
-    - [MindSpore ToD Build](https://www.mindspore.cn/lite/docs/zh-CN/master/build/build.html)
+    - [MindSpore ToD Build](https://www.mindspore.cn/lite/cloud_docs/zh-CN/master/use/build.html)
     - [Android NDK r20b](https://dl.google.com/android/repository/android-ndk-r20b-linux-x86_64.zip)
     - [Android SDK](https://developer.android.com/studio?hl=zh-cn#cmdline-tools)
     - [ImageMagick convert tool](https://imagemagick.org/)
@@ -129,8 +129,6 @@ package-arm64/
 │   │   └── 99.bmp
 ├── lib
 │   ├── libjpeg.so.62
-│   ├── libminddata-lite.a
-│   ├── libminddata-lite.so
 │   ├── libmindspore-lite.a
 │   ├── libmindspore-lite-jni.so
 │   ├── libmindspore-lite.so

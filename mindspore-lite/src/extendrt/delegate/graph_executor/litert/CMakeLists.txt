@@ -247,10 +247,6 @@ if(PLATFORM_ARM32 OR PLATFORM_ARM64 AND NOT TARGET_HIMIX
         AND NOT TARGET_MIX210 AND NOT TARGET_OHOS_LITE AND NOT MACHINE_LINUX_ARM64)
     target_link_libraries(msplugin-ge-litert log)
 endif()
-if(MSLITE_MINDDATA_IMPLEMENT STREQUAL "lite" AND NOT
-    (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
-    target_link_libraries(msplugin-ge-litert minddata_eager_mid minddata-lite)
-endif()
 
 ########################## build optimize and float16 library #################################
 if(PLATFORM_ARM)

@@ -288,11 +288,7 @@ function Push_Files() {
     cd $1 || exit 1
     tar -zxf mindspore-lite-$3-android-$2.tar.gz || exit 1
 
-    # If build with minddata, copy the minddata related libs
     cd $4 || exit 1
-    if [ -f $1/mindspore-lite-$3-android-$2/runtime/lib/libminddata-lite.so ]; then
-        cp -a $1/mindspore-lite-$3-android-$2/runtime/lib/libminddata-lite.so $4/libminddata-lite.so || exit 1
-    fi
     if [ -f $1/mindspore-lite-$3-android-$2/runtime/third_party/hiai_ddk/lib/libhiai.so ]; then
       cp -a $1/mindspore-lite-$3-android-$2/runtime/third_party/hiai_ddk/lib/libhiai.so $4/libhiai.so || exit 1
       cp -a $1/mindspore-lite-$3-android-$2/runtime/third_party/hiai_ddk/lib/libhiai_ir.so $4/libhiai_ir.so || exit 1

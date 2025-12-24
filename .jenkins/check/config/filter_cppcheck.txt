@@ -22,15 +22,6 @@
 "mindspore-lite/mindspore-lite/test/"                                                                      "syntaxError"
 "mindspore-lite/mindspore-lite/test/ut/tools/converter/registry/pass_registry_test.cc"                     "unknownMacro"
 
-# MindData
-"mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_image_utils.cc"              "nullPointerRedundantCheck"
-"mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_image_utils.cc"              "unsignedLessThanZero"
-"mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_image_utils.cc"              "constParameter"
-"mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_image_utils.cc"              "constParameter"
-"mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/dvpp_image_utils.cc"              "useStlAlgorithm"
-"mindspore-lite/mindspore-lite/minddata/dataset/kernels/image/dvpp/utils/ResourceManager.cc"               "unreadVariable"
-"mindspore-lite/mindspore-lite/minddata/dataset/util/arena.cc"                                             "useStlAlgorithm"
-
 # other
 "mindspore-lite/mindspore-lite/examples/quick_start_micro/"                                                "syntaxError"
 "mindspore-lite/mindspore-lite/python/src/pybind_module.cc"                                                "syntaxError"

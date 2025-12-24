@@ -25,7 +25,6 @@
 #include "include/api/types.h"
 #include "include/api/graph.h"
 #include "include/api/context.h"
-#include "include/api/callback/callback.h"
 #include "include/api/cell.h"
 #include "include/api/cfg.h"
 #include "include/api/dual_abi_helper.h"
@@ -361,23 +360,6 @@ class MS_API Model {
   ///
   /// \return Is Train Mode or not.
   bool GetTrainMode() const;
-
-  /// \brief Performs the training Loop in Train Mode.
-  ///
-  /// \param[in] epochs The number of epoch to run.
-  /// \param[in] ds A smart pointer to MindData Dataset object.
-  /// \param[in] cbs A vector of TrainLoopCallBack objects.
-  ///
-  /// \return Status of operation.
-  Status Train(int epochs, std::shared_ptr<dataset::Dataset> ds, std::vector<TrainCallBack *> cbs);
-
-  /// \brief Performs the training loop over all data in Eval Mode.
-  ///
-  /// \param[in] ds A smart pointer to MindData Dataset object.
-  /// \param[in] cbs A vector of TrainLoopCallBack objects.
-  ///
-  /// \return Status of operation.
-  Status Evaluate(std::shared_ptr<dataset::Dataset> ds, std::vector<TrainCallBack *> cbs);
 
   /// \brief Performs the implication.
   ///
