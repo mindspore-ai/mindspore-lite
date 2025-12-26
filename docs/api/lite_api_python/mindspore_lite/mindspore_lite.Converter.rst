@@ -11,7 +11,7 @@ mindspore_lite.Converter
 
     2. 将MindSpore模型转换生成MindSpore模型或MindSpore Lite模型。
 
-    推荐转换为MindSpore模型。目前，支持转换为MindSpore Lite模型，但是该选项将会被废弃。如有需要，请使用 `推理模型离线转换 <https://www.mindspore.cn/lite/docs/zh-CN/master/mindir/converter_tool.html>`_ 来替换Python接口。Model接口和ModelParallelRunner接口只支持MindSpore模型。
+    推荐转换为MindSpore模型。目前，支持转换为MindSpore Lite模型，但是该选项将会被废弃。如有需要，请使用 `推理模型离线转换 <https://www.mindspore.cn/lite/cloud_docs/zh-CN/master/mindir/converter_tool.html>`_ 来替换Python接口。Model接口和ModelParallelRunner接口只支持MindSpore模型。
 
     .. note::
         请先构造Converter类，再通过执行Converter.convert()方法生成模型。

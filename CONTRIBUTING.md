@@ -115,7 +115,7 @@ When reporting issues, refer to this format:
 - **If you find an unclosed issue, which is exactly what you are going to solve,** please put some comments on that issue to tell others you would be in charge of it.
 - **If an issue is opened for a while,** it's recommended for contributors to precheck before working on solving that issue.
 - **If you resolve an issue which is reported by yourself,** it's also required to let others know before closing that issue.
-- **If you want the issue to be responded as quickly as possible,** please try to label it, you can find kinds of labels on [Label List](https://gitee.com/mindspore/community/blob/master/sigs/dx/docs/labels.md)
+- **If you want the issue to be responded as quickly as possible,** please try to label it, you can find kinds of labels on [Label List](https://gitee.com/mindspore/community/blob/master/archived_sigs/dx/docs/labels.md)
 
 ### Propose PRs
 

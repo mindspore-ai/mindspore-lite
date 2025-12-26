@@ -76,7 +76,7 @@ class Converter:
 
     Convert to MindSpore model is recommended. Currently, Convert to MindSpore Lite model is supported,
     but it will be deprecated in the future. If you want to convert to MindSpore Lite model, please use
-    `converter_tool <https://www.mindspore.cn/lite/docs/en/master/mindir/converter_tool.html>`_  instead of
+    `converter_tool <https://www.mindspore.cn/lite/cloud_docs/en/master/mindir/converter_tool.html>`_  instead of
     The Python interface. The Model api and ModelParallelRunner api only support MindSpore model.
 
     Note:
