@@ -1,5 +1,5 @@
 /**
- * Copyright 2025 Huawei Technologies Co., Ltd
+ * Copyright 2025-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +21,9 @@
 #include "extendrt/delegate/ascend_ge/ge_utils.h"
 #include "extendrt/utils/func_graph_utils.h"
 #include "extendrt/delegate/factory.h"
-#include "src/common/common.h"
-#include "src/common/log_util.h"
+#include "external/ge_common/ge_api_error_codes.h"
+#include "tools/common/graph_util.h"
+#include "utils/ms_utils_secure.h"
 
 namespace mindspore {
 namespace {
@@ -65,6 +66,7 @@ GeGraphExecutorV1::~GeGraphExecutorV1() {
   }
   ge_session_info_.session_ = nullptr;
 }
+
 bool GeGraphExecutorV1::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &, uint32_t *graph_id) {
   MS_CHECK_TRUE_MSG(graph != nullptr, false, "graph is NULL.");
   MS_CHECK_TRUE_MSG(graph_id != nullptr, false, "graph_id is NULL.");
@@ -95,10 +97,19 @@ bool GeGraphExecutorV1::CompileGraph(const FuncGraphPtr &graph, const std::map<s
     return false;
   }
   *graph_id = ge_session_info_.graph_ids_.back();
-  auto summary = ge_session_info_.session_->GetCompiledGraphSummary(*graph_id);
-  if (!summary->IsStatic()) {
-    MS_LOG(ERROR) << "Currently, ge-v1 only support static-model, please set provider=ge.";
+  auto graph_summary = ge_session_info_.session_->GetCompiledGraphSummary(*graph_id);
+  if (graph_summary == nullptr) {
+    MS_LOG(ERROR) << "GetCompiledGraphSummary failed for graph " << graph_id;
     return false;
+  }
+  graph_id_group_.emplace(*graph_id, std::make_pair(*graph_id, UINT32_MAX));
+  if (!graph_summary->IsStatic()) {
+    if (!ge_graph_compiler_.ReCompileGraph(&ge_session_info_, ge_options_container_,
+                                           &graph_id_group_.at(*graph_id).second)) {
+      MS_LOG(ERROR) << "GE compile  graph  secondly failed.";
+      return false;
+    }
+    ge_session_info_.df_ptr_ = nullptr;
   }
   if (!InitGEResource()) {
     MS_LOG(ERROR) << "Init resource for GE failed.";
@@ -114,6 +125,7 @@ bool GeGraphExecutorV1::CompileGraph(const FuncGraphPtr &graph, const std::map<s
   }
   return true;
 }
+
 bool GeGraphExecutorV1::CheckParallelCompile() {
   auto config_it = config_infos_.find(lite::kCommonContextSection);
   if (config_it == config_infos_.end()) {
@@ -204,15 +216,19 @@ bool GeGraphExecutorV1::InitGeTensor(uint32_t graph_id) {
                                       bool graph_input) {
     std::vector<std::vector<int64_t>> shapes;
     if (!graph_input) {
-      auto summary = this->ge_session_info_.session_->GetCompiledGraphSummary(graph_id);
-      std::vector<ge::Shape> ge_shapes;
-      auto res = summary->GetOutputShapes(ge_shapes);
-      if (res != ge::GRAPH_SUCCESS) {
-        MS_LOG(ERROR) << "GetOutputShapes failed!";
-        return false;
+      if (graph_id_group_[graph_id].second != UINT32_MAX) {
+        shapes.resize(ms_tensors.size());
+      } else {
+        auto summary = this->ge_session_info_.session_->GetCompiledGraphSummary(graph_id);
+        std::vector<ge::Shape> ge_shapes;
+        auto res = summary->GetOutputShapes(ge_shapes);
+        if (res != ge::GRAPH_SUCCESS) {
+          MS_LOG(ERROR) << "GetOutputShapes failed!";
+          return false;
+        }
+        (void)std::transform(ge_shapes.begin(), ge_shapes.end(), std::back_inserter(shapes),
+                             [](const ge::Shape &ge_shape) { return ge_shape.GetDims(); });
       }
-      (void)std::transform(ge_shapes.begin(), ge_shapes.end(), std::back_inserter(shapes),
-                           [](const ge::Shape &ge_shape) { return ge_shape.GetDims(); });
     } else {
       shapes.resize(ms_tensors.size());
     }
@@ -252,12 +268,107 @@ bool GeGraphExecutorV1::InitGeTensor(uint32_t graph_id) {
   return true;
 }
 
+bool GeGraphExecutorV1::IsDynamical(const std::vector<MSTensor> &outputs, const uint32_t &graph_id) {
+  if (graph_id_group_[graph_id].second != UINT32_MAX) {
+    if (outputs.empty()) {
+      return true;
+    }
+    for (size_t i = 0; i < outputs.size(); i++) {
+      auto output = outputs[i];
+      if (output.GetDeviceData() == nullptr) {
+        return true;
+      }
+    }
+    return false;
+  }
+  return false;
+}
+
 std::vector<mindspore::MSTensor> GeGraphExecutorV1::GetInputInfos(uint32_t graph_id) {
   return ms_inputs_.find(graph_id) != ms_inputs_.end() ? ms_inputs_.at(graph_id) : std::vector<mindspore::MSTensor>();
 }
 std::vector<mindspore::MSTensor> GeGraphExecutorV1::GetOutputInfos(uint32_t graph_id) {
   return ms_outputs_.find(graph_id) != ms_outputs_.end() ? ms_outputs_.at(graph_id)
                                                          : std::vector<mindspore::MSTensor>();
+}
+
+bool GeGraphExecutorV1::RunStaticGraph(const uint32_t &graph_id, const std::vector<GeTensor> &ge_inputs,
+                                       std::vector<MSTensor> *outputs) {
+  std::vector<GeTensor> ge_outputs;
+  if (!PrepareGeOutputsForStatic(outputs, &ge_outputs, graph_id)) {
+    MS_LOG(ERROR) << "Prepare ge outputs for static graph  failed.";
+    return false;
+  }
+  auto time_start = lite::GetTimeUs();
+  auto stream = context_manager_->GetDefaultStream();
+  auto ret =
+    ge_session_info_.session_->RunGraphWithStreamAsync(graph_id_group_[graph_id].first, stream, ge_inputs, ge_outputs);
+  if (ret != ge::GRAPH_SUCCESS) {
+    MS_LOG(ERROR) << "Call GE RunGraphWithStreamAsync Failed, ret is: " << ret;
+    return false;
+  }
+  if (!context_manager_->SyncStream(stream)) {
+    MS_LOG(ERROR) << "Sync stream for RunGraphWithStreamAsync failed";
+    return false;
+  }
+  auto time_cost = lite::GetTimeUs() - time_start;
+  MS_LOG(INFO) << "Call GE RunGraph Success in " << static_cast<float>(time_cost) / 1000.0f << " ms, graph id "
+               << graph_id;
+  auto status = PostProcessOutputsForStatic(outputs, graph_id);
+  if (!status) {
+    MS_LOG(ERROR) << "PostProcess ge outputs failed.";
+    return false;
+  }
+  return true;
+}
+
+bool GeGraphExecutorV1::RunDynamicGraph(const uint32_t &graph_id, const std::vector<GeTensor> &ge_inputs,
+                                        std::vector<MSTensor> *outputs) {
+  std::vector<GeTensor> ge_outputs;
+  bool is_finished = false;
+  bool end_of_sequence = false;
+  std::promise<void> promise;
+  auto time_start = lite::GetTimeUs();
+  auto call_back = [&ge_outputs, &is_finished, &end_of_sequence, &promise](ge::Status ge_status,
+                                                                           const std::vector<ge::Tensor> &outputs) {
+    if (ge_status == ge::GRAPH_SUCCESS) {
+      ge_outputs = outputs;
+      is_finished = true;
+    } else if (ge_status == ge::END_OF_SEQUENCE) {
+      end_of_sequence = true;
+    } else {
+      MS_LOG(ERROR) << "RunAsync failed." << ge::GEGetErrorMsg();
+    }
+    promise.set_value();
+  };
+  if (ge_session_info_.session_ == nullptr) {
+    MS_LOG(ERROR) << "The GE session is null, can't run the graph!";
+    return false;
+  }
+  ge::Status ret = ge_session_info_.session_->RunGraphAsync(graph_id_group_[graph_id].second, ge_inputs, call_back);
+  if (ret != ge::GRAPH_SUCCESS) {
+    MS_LOG(ERROR) << "Call GE RunGraphAsync Failed: " << ge::GEGetErrorMsg();
+    return false;
+  }
+  auto future = promise.get_future();
+  future.wait();
+  if (end_of_sequence) {
+    MS_LOG(ERROR) << "Failed to call GE RunGraphAsync: End of sequence";
+    return false;
+  }
+  if (!is_finished) {
+    MS_LOG(ERROR) << "Failed to call GE RunGraphAsync";
+    return false;
+  }
+  auto time_cost = lite::GetTimeUs() - time_start;
+  MS_LOG(INFO) << "Call GE RunGraph Success in " << static_cast<float>(time_cost) / 1000.0f << " ms, graph id "
+               << graph_id;
+  auto status = PostProcessOutputsForDynamic(outputs, graph_id, ge_outputs);
+  if (!status) {
+    MS_LOG(ERROR) << "PostProcess ge outputs failed.";
+    return false;
+  }
+  return true;
 }
 
 bool GeGraphExecutorV1::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
@@ -272,29 +383,17 @@ bool GeGraphExecutorV1::RunGraph(uint32_t graph_id, const std::vector<MSTensor> 
     MS_LOG(ERROR) << "Prepare ge inputs failed.";
     return false;
   }
-  std::vector<GeTensor> ge_outputs;
-  if (!PrepareGeOutputs(outputs, &ge_outputs, graph_id)) {
-    MS_LOG(ERROR) << "Prepare ge outputs failed.";
-    return false;
-  }
-  auto stream = context_manager_->GetDefaultStream();
-  auto time_start = std::chrono::system_clock::now();
-  auto ret = ge_session_info_.session_->RunGraphWithStreamAsync(graph_id, stream, ge_inputs, ge_outputs);
-  if (ret != ge::GRAPH_SUCCESS) {
-    MS_LOG(ERROR) << "Call GE RunGraphWithStreamAsync Failed, ret is: " << ret;
-    return false;
-  }
-  if (!context_manager_->SyncStream(stream)) {
-    MS_LOG(ERROR) << "Sync stream for RunGraphWithStreamAsync failed";
-    return false;
-  }
-  auto time_cost =
-    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - time_start).count();
-  MS_LOG(INFO) << "Call GE RunGraph Success in " << time_cost << " us, graph id " << graph_id;
-  auto status = PostProcessGeOutputs(outputs, graph_id);
-  if (!status) {
-    MS_LOG(ERROR) << "PostProcess ge outputs failed.";
-    return false;
+  auto run_dynamic_graph = IsDynamical(*outputs, graph_id);
+  if (run_dynamic_graph) {
+    if (!RunDynamicGraph(graph_id, ge_inputs, outputs)) {
+      MS_LOG(ERROR) << "RunDynamicGraph failed.";
+      return false;
+    }
+  } else {
+    if (!RunStaticGraph(graph_id, ge_inputs, outputs)) {
+      MS_LOG(ERROR) << "RunStaticGraph failed.";
+      return false;
+    }
   }
   return true;
 }
@@ -332,6 +431,7 @@ bool GeGraphExecutorV1::PrepareGeInputs(const std::vector<MSTensor> &inputs, std
     auto &it = ge_inputs_[graph_id][i];
     auto desc = it.first.GetTensorDesc();
     desc.SetShape(::ge::Shape(input.Shape()));
+    desc.SetOriginShape(::ge::Shape(input.Shape()));
     it.first.SetTensorDesc(desc);
     auto size = input.DataSize();
     void *device_addr = nullptr;
@@ -361,8 +461,8 @@ bool GeGraphExecutorV1::PrepareGeInputs(const std::vector<MSTensor> &inputs, std
   return true;
 }
 
-bool GeGraphExecutorV1::PrepareGeOutputs(std::vector<MSTensor> *outputs, std::vector<GeTensor> *ge_outputs,
-                                         uint32_t graph_id) {
+bool GeGraphExecutorV1::PrepareGeOutputsForStatic(std::vector<MSTensor> *outputs, std::vector<GeTensor> *ge_outputs,
+                                                  const uint32_t &graph_id) {
   auto fill_addr_func = [this](std::pair<GeTensor, std::pair<void *, size_t>> *it, const std::vector<int64_t> &shape) {
     size_t size = GetSizeByDataType(it->first.GetDataType());
     size = std::accumulate(shape.begin(), shape.end(), size, std::multiplies<>());
@@ -370,7 +470,6 @@ bool GeGraphExecutorV1::PrepareGeOutputs(std::vector<MSTensor> *outputs, std::ve
     if (!MallocDeviceMem(it->second, device_addr, size)) {
       MS_LOG(ERROR) << "malloc output ge_tensor device memory failed.";
     }
-    // cppcheck-suppress internalAstError
     it->first.SetData(static_cast<uint8_t *>(device_addr), size, EmptyFree);
     return true;
   };
@@ -402,16 +501,16 @@ bool GeGraphExecutorV1::PrepareGeOutputs(std::vector<MSTensor> *outputs, std::ve
     auto shape = ms_shape;
     auto desc = it.first.GetTensorDesc();
     auto ge_shape = desc.GetOriginShape();
-    auto is_determined = std::all_of(ms_shape.begin(), ms_shape.end(), [](int64_t dim) { return dim > 0; });
-    if (!is_determined) {
-      shape = ge_shape.GetDims();
+    if (ge_shape.GetDims().size() == 0) {
+      auto is_determined = std::all_of(ms_shape.begin(), ms_shape.end(), [](int64_t dim) { return dim > 0; });
+      if (!is_determined) {
+        shape = ge_shape.GetDims();
+      }
     }
     desc.SetShape(::ge::Shape(shape));
     it.first.SetTensorDesc(desc);
-
     if (output.GetDeviceData() != nullptr) {
       auto size = output.DataSize();
-      // cppcheck-suppress internalAstError
       auto ret = it.first.SetData(static_cast<uint8_t *>(output.GetDeviceData()), size, EmptyFree);
       if (ret != ge::GRAPH_SUCCESS) {
         MS_LOG(ERROR) << "Failed to call ge::Tensor SetData(uint8_t*, size, DeleteFunc) for graph-output " << i;
@@ -428,10 +527,54 @@ bool GeGraphExecutorV1::PrepareGeOutputs(std::vector<MSTensor> *outputs, std::ve
   return true;
 }
 
-bool GeGraphExecutorV1::PostProcessGeOutputs(std::vector<MSTensor> *outputs, uint32_t graph_id) {
+bool GeGraphExecutorV1::PostProcessOutputsForDynamic(std::vector<MSTensor> *outputs, const uint32_t &graph_id,
+                                                     const std::vector<GeTensor> &outputs_ge_tensors) {
+  if (outputs->empty()) {
+    for (size_t i = 0; i < outputs_ge_tensors.size(); ++i) {
+      auto name = ms_outputs_[graph_id][i].Name();
+      auto ge_tensor = outputs_ge_tensors[i];
+      auto data_type = ms_outputs_[graph_id][i].DataType();
+      auto ms_tensor = MSTensor(name, data_type, {}, nullptr, 0);
+      ms_tensor.SetShape(ge_tensor.GetTensorDesc().GetShape().GetDims());
+      outputs->push_back(ms_tensor);
+    }
+  }
+  for (size_t i = 0; i < outputs_ge_tensors.size(); ++i) {
+    auto ge_tensor = outputs_ge_tensors[i];
+    auto ms_tensor = outputs->at(i);
+    auto size = ge_tensor.GetSize();
+    auto data_addr = ge_tensor.GetData();
+    if (ms_tensor.DataSize() < size) {
+      MS_LOG(ERROR) << "Output[" << i << "] DataSize notice: "
+                    << "Allocated: " << ms_tensor.DataSize() << ", Actual data: " << size;
+      return false;
+    }
+    if (ms_tensor.GetDeviceData() != nullptr) {
+      auto mem_ret = memory_manager_->MemcpyHost2Device(ms_tensor.GetDeviceData(), size, data_addr, size);
+      if (!mem_ret) {
+        MS_LOG(ERROR) << "Failed to H2D, output " << i;
+        return false;
+      }
+    } else {
+      if (ms_tensor.MutableData() == nullptr) {
+        MS_LOG(ERROR) << "ms_tensor.MutableData() = nullptr!" << i;
+        return false;
+      }
+      auto mem_ret = common::huge_memcpy(static_cast<uint8_t *>(ms_tensor.MutableData()), size, data_addr, size);
+      if (mem_ret != EOK) {
+        MS_LOG(ERROR) << "Failed to copy output data, dst size: " << ms_tensor.DataSize()
+                      << ", src size: " << ge_tensor.GetSize();
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool GeGraphExecutorV1::PostProcessOutputsForStatic(std::vector<MSTensor> *outputs, uint32_t graph_id) {
   if (outputs->empty()) {
     for (size_t i = 0; i < ge_outputs_[graph_id].size(); ++i) {
-      auto name = "output[" + std::to_string(i) + "]";
+      auto name = ms_outputs_[graph_id][i].Name();
       auto ms_tensor = MSTensor(name, ms_outputs_[graph_id][i].DataType(), {}, nullptr, 0);
       outputs->push_back(ms_tensor);
     }

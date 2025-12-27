@@ -1,5 +1,5 @@
 /**
- * Copyright 2025 Huawei Technologies Co., Ltd
+ * Copyright 2025-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,16 @@ backend::ge_backend::TensorOrderMap GetParams(const FuncGraphPtr &anf_graph) {
 }
 }  // namespace
 
+std::map<ge::AscendString, ge::AscendString> ConvertToAscendMap(const std::map<std::string, std::string> &src_map) {
+  std::map<ge::AscendString, ge::AscendString> dst_map;
+  for (const auto &item : src_map) {
+    ge::AscendString key(item.first.c_str());
+    ge::AscendString value(item.second.c_str());
+    dst_map.insert({key, value});
+  }
+  return dst_map;
+}
+
 bool GeGraphCompiler::CompileGraph(const FuncGraphPtr &graph, GeSessionInfo *ge_session_info,
                                    const GeOptionsContainer &ge_options_container) {
   MS_CHECK_TRUE_MSG(graph != nullptr, false, "graph is NULL.");
@@ -52,13 +62,16 @@ bool GeGraphCompiler::CompileGraph(const FuncGraphPtr &graph, GeSessionInfo *ge_
     MS_LOG(ERROR) << "ge_session hasn't been created.";
     return false;
   }
-  auto df_graph = ToGeGraph(graph, ge_session_info, ge_options_container.GeGraphOptions().at(kGeGraphKey));
-  if (df_graph == nullptr) {
+  ge_session_info->df_ptr_ = ToGeGraph(graph, ge_session_info, ge_options_container.GeGraphOptions().at(kGeGraphKey));
+  if (ge_session_info->df_ptr_ == nullptr) {
     MS_LOG(ERROR) << "Convert FuncGraph to ge::graph failed.";
     return false;
   }
   uint32_t graph_id = ge_session_info->graph_ids_.size();
-  auto ge_status = ge_session_info->session_->AddGraph(graph_id, *(df_graph), ge_options_container.GeGraphOptions());
+  std::map<ge::AscendString, ge::AscendString> ascend_options =
+    ConvertToAscendMap(ge_options_container.GeGraphOptions());
+
+  auto ge_status = ge_session_info->session_->AddGraphWithCopy(graph_id, *ge_session_info->df_ptr_, ascend_options);
   if (ge_status != ge::GRAPH_SUCCESS) {
     MS_LOG(ERROR) << "Call GE AddGraph Failed: " << ge::GEGetErrorMsg();
     return false;
@@ -69,6 +82,20 @@ bool GeGraphCompiler::CompileGraph(const FuncGraphPtr &graph, GeSessionInfo *ge_
     return false;
   }
   ge_session_info->graph_ids_.push_back(graph_id);
+  return true;
+}
+
+bool GeGraphCompiler::ReCompileGraph(GeSessionInfo *ge_session_info, const GeOptionsContainer &ge_options_container,
+                                     uint32_t *graph_id) {
+  auto graph_id_dynamic = ge_session_info->graph_ids_.size();
+  auto status = ge_session_info->session_->AddGraph(graph_id_dynamic, *ge_session_info->df_ptr_,
+                                                    ge_options_container.GeGraphOptions());
+  if (status != ge::GRAPH_SUCCESS) {
+    MS_LOG(ERROR) << "Call GE AddGraph Failed: " << ge::GEGetErrorMsg();
+    return false;
+  }
+  ge_session_info->graph_ids_.push_back(graph_id_dynamic);
+  *graph_id = graph_id_dynamic;
   return true;
 }
 

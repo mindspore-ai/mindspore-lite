@@ -1,5 +1,5 @@
 /**
- * Copyright 2025 Huawei Technologies Co., Ltd
+ * Copyright 2025-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ struct GeSessionInfo {
   GeSessionPtr session_{nullptr};
   int64_t session_id_{-1};
   std::vector<uint32_t> graph_ids_;
+  backend::ge_backend::DfGraphPtr df_ptr_;
 };
 
 class GeGraphCompiler {
@@ -38,6 +39,8 @@ class GeGraphCompiler {
 
   bool CompileGraph(const FuncGraphPtr &graph, GeSessionInfo *ge_session_info,
                     const GeOptionsContainer &ge_options_container);
+  bool ReCompileGraph(GeSessionInfo *ge_session_info, const GeOptionsContainer &ge_options_container,
+                      uint32_t *graph_id);
 
  private:
   backend::ge_backend::DfGraphPtr ToGeGraph(const FuncGraphPtr &graph, GeSessionInfo *ge_session_info,
