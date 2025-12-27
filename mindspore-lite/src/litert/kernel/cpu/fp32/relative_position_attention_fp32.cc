@@ -39,9 +39,11 @@ constexpr int kRightMatrixDeepIndex = 0;
 constexpr int kRelativePositionHasBiasInputSize = 15;
 
 bool AttentionActivationTensorCheck(const lite::Tensor *tensor) {
-  if (tensor == nullptr || tensor->data_type() != kNumberTypeFloat32 ||
-      tensor->shape().size() != kActivationTensorShapeSize ||
-      tensor->shape().at(kTensorShapeBatchIndex) != kActivationTensorBatch) {
+  if (tensor == nullptr || tensor->data_type() != kNumberTypeFloat32) {
+    return false;
+  }
+  const auto &shape = tensor->shape();
+  if (shape.size() != kActivationTensorShapeSize || shape.at(kTensorShapeBatchIndex) != kActivationTensorBatch) {
     return false;
   }
   return true;

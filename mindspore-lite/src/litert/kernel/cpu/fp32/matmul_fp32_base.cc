@@ -658,14 +658,19 @@ int MatmulFp32BaseCPUKernel::MatmulReSize() {
 }
 
 int MatmulFp32BaseCPUKernel::FullConnectionReSize() {
-  MS_CHECK_TRUE_MSG(out_tensors_.at(0)->shape().size() > 0, RET_ERROR, "Invalid output tensor shape");
+  auto in_shape = in_tensors_.at(1)->shape();
+  auto out_shape = out_tensors_.at(0)->shape();
+
+  MS_CHECK_TRUE_MSG(in_shape.size() > 0, RET_ERROR, "Invalid input tensor shape");
+  MS_CHECK_TRUE_MSG(out_shape.size() > 0, RET_ERROR, "Invalid output tensor shape");
+
   int row = 1;
-  for (size_t i = 0; i < out_tensors_.at(0)->shape().size() - 1; ++i) {
-    row *= (out_tensors_.at(0)->shape())[i];
+  for (size_t i = 0; i < out_shape.size() - 1; ++i) {
+    row *= out_shape[i];
   }
   params_->row_ = row;
-  params_->col_ = out_tensors_.at(0)->shape().back();
-  params_->deep_ = (in_tensors_.at(1)->shape()).at(1);
+  params_->col_ = out_shape.back();
+  params_->deep_ = in_shape.at(1);
 
   return MatmulFp32BaseCPUKernel::ReSize();
 }

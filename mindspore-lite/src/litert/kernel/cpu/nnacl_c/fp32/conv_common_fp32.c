@@ -148,6 +148,9 @@ void ConvFp32(const float *input_data, float *packed_input, const float *packed_
 #elif ENABLE_ARM64
       MatmulFloatOpt(col_major_input, packed_weight, gemm_output, bias_data, conv_param->act_type_, deep, real_cal_row,
                      out_channel, out_channel, OutType_Nhwc);
+#elif ENABLE_RVV
+      MatmulFloatRvv64Opt(col_major_input, packed_weight, gemm_output, bias_data, conv_param->act_type_, deep,
+                          real_cal_row, out_channel, out_channel, OutType_Nhwc);
 #else
       MatMul12x8(col_major_input, packed_weight, gemm_output, bias_data, (int)conv_param->act_type_, deep, real_cal_row,
                  out_channel, out_channel, OutType_Nhwc);

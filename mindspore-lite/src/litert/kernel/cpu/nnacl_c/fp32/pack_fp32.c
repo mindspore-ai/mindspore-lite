@@ -286,7 +286,7 @@ void RowMajor2Col12Major_arm64(const float *src_c, float *dst_c, size_t col) {
     "st1 {v28.4s, v29.4s, v30.4s, v31.4s}, [x11], #64\n"
 
     :
-    : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ stride ] "r"(stride)
+    : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [stride] "r"(stride)
     : "x10", "x11", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
       "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30",
       "v31");
@@ -347,9 +347,51 @@ void RowMajor2Col12Major_arm32(const float *src_c, float *dst_c, size_t col) {
     "vst1.32 {q14, q15}, [r12]!\n"
 
     :
-    : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ stride ] "r"(stride)
+    : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [stride] "r"(stride)
     : "r10", "r12", "q0", "q1", "q2", "q3", "q8", "q9", "q10", "q11", "q12", "q13", "q14", "q15");
   return;
+}
+#endif
+#ifdef ENABLE_RVV
+/**
+ * @brief Converts a 12xN row-major float matrix to column-major for first 4 cols.
+ * Input: 12 rows, N cols (N>=4), row-major. Output: 4 cols x 12 rows, column-major.
+ * Uses RISC-V scalar inline assembly (RV64GC) with all 32 FP regs + GPRs for speed.
+ * Output layout: col0: dst[0-11], col1: dst[12-23], col2: dst[24-35], col3: dst[36-47].
+ * @param src_c Input matrix (>=12*col floats)
+ * @param dst_c Output buffer (>=48 floats)
+ * @param col   Number of input columns (>=4)
+ */
+void RowMajor2Col12Major_rvv64(const float *src_c, float *dst_c, size_t col) {
+  const float *src = src_c;
+  float *dst = dst_c;
+  asm volatile(
+    "slli t0, %2, 2\n"
+    "flw f0, 0(%0); flw f1, 4(%0); flw f2, 8(%0); flw f3, 12(%0); add %0, %0, t0\n"
+    "flw f4, 0(%0); flw f5, 4(%0); flw f6, 8(%0); flw f7, 12(%0); add %0, %0, t0\n"
+    "flw f8, 0(%0); flw f9, 4(%0); flw f10, 8(%0); flw f11, 12(%0); add %0, %0, t0\n"
+    "flw f12, 0(%0); flw f13, 4(%0); flw f14, 8(%0); flw f15, 12(%0); add %0, %0, t0\n"
+    "flw f16, 0(%0); flw f17, 4(%0); flw f18, 8(%0); flw f19, 12(%0); add %0, %0, t0\n"
+    "flw f20, 0(%0); flw f21, 4(%0); flw f22, 8(%0); flw f23, 12(%0); add %0, %0, t0\n"
+    "flw f24, 0(%0); flw f25, 4(%0); flw f26, 8(%0); flw f27, 12(%0); add %0, %0, t0\n"
+    "flw f28, 0(%0); flw f29, 4(%0); flw f30, 8(%0); flw f31, 12(%0); add %0, %0, t0\n"
+    "lw t1, 0(%0); lw t2, 4(%0); lw t3, 8(%0); lw t4, 12(%0); add %0, %0, t0\n"
+    "lw t5, 0(%0); lw t6, 4(%0); addi a5, %0, 8; lw a6, 0(a5); addi a5, %0, 12; lw a7, 0(a5); add %0, %0, t0\n"
+    "lw s0, 0(%0); lw s1, 4(%0); addi a5, %0, 8; lw s2, 0(a5); addi a5, %0, 12; lw s3, 0(a5); add %0, %0, t0\n"
+    "lw s4, 0(%0); lw s5, 4(%0); addi a5, %0, 8; lw s6, 0(a5); addi a5, %0, 12; lw s7, 0(a5)\n"
+    "fsw f0, 0(%1); fsw f4, 4(%1); fsw f8, 8(%1); fsw f12, 12(%1); fsw f16, 16(%1); fsw f20, 20(%1); fsw f24, 24(%1); "
+    "fsw f28, 28(%1); sw t1, 32(%1); sw t5, 36(%1); sw s0, 40(%1); sw s4, 44(%1)\n"
+    "fsw f1, 48(%1); fsw f5, 52(%1); fsw f9, 56(%1); fsw f13, 60(%1); fsw f17, 64(%1); fsw f21, 68(%1); fsw f25, "
+    "72(%1); fsw f29, 76(%1); sw t2, 80(%1); sw t6, 84(%1); sw s1, 88(%1); sw s5, 92(%1)\n"
+    "fsw f2, 96(%1); fsw f6, 100(%1); fsw f10, 104(%1); fsw f14, 108(%1); fsw f18, 112(%1); fsw f22, 116(%1); fsw f26, "
+    "120(%1); fsw f30, 124(%1); sw t3, 128(%1); sw a6, 132(%1); sw s2, 136(%1); sw s6, 140(%1)\n"
+    "fsw f3, 144(%1); fsw f7, 148(%1); fsw f11, 152(%1); fsw f15, 156(%1); fsw f19, 160(%1); fsw f23, 164(%1); fsw "
+    "f27, 168(%1); fsw f31, 172(%1); sw t4, 176(%1); sw a7, 180(%1); sw s3, 184(%1); sw s7, 188(%1)\n"
+    : "+r"(src), "+r"(dst)
+    : "r"(col)
+    : "memory", "t0", "t1", "t2", "t3", "t4", "t5", "t6", "a5", "a6", "a7", "s0", "s1", "s2", "s3", "s4", "s5", "s6",
+      "s7", "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12", "f13", "f14", "f15", "f16",
+      "f17", "f18", "f19", "f20", "f21", "f22", "f23", "f24", "f25", "f26", "f27", "f28", "f29", "f30", "f31");
 }
 #endif
 void RowMajor2Col12MajorParallel(const float *src_ptr, float *dst_ptr, int row, int col, int row_start, int row_end) {
@@ -421,6 +463,8 @@ void RowMajor2Col12MajorParallel(const float *src_ptr, float *dst_ptr, int row, 
       _mm_storeu_ps(dst_c + 36, dst9);
       _mm_storeu_ps(dst_c + 40, dst10);
       _mm_storeu_ps(dst_c + 44, dst11);
+#elif ENABLE_RVV
+      RowMajor2Col12Major_rvv64(src_c, dst_c, col);
 #else
       for (int tr = 0; tr < C12NUM; tr++) {
         for (int tc = 0; tc < C4NUM; tc++) {
@@ -528,7 +572,7 @@ void RowMajor2Col8Major_arm64(const float *src_c, float *dst_c, size_t col) {
     "st1 {v23.4s}, [x11], #16\n"
 
     :
-    : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ stride ] "r"(stride)
+    : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [stride] "r"(stride)
     : "x10", "x11", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
       "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30",
       "v31");
@@ -575,7 +619,7 @@ void RowMajor2Col8Major_arm32(const float *src_c, float *dst_c, size_t col) {
     "vst1.32 {q6, q7}, [r11]!\n"
 
     :
-    : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ stride ] "r"(stride)
+    : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [stride] "r"(stride)
     : "r10", "r11", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7");
   return;
 }
@@ -618,7 +662,7 @@ void RowMajor2Col8Major_arm32(const float *src_c, float *dst_c, size_t col) {
     "vst1.32 {q6, q7}, [r7]!\n"
 
     :
-    : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ stride ] "r"(stride)
+    : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [stride] "r"(stride)
     : "r10", "r7", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7");
   return;
 }
@@ -958,7 +1002,7 @@ void RowMajor2Col4MajorParallel(const float *src_ptr, float *dst_ptr, int row, i
         "vst1.32 {q3}, [r12]!\n"
 
         :
-        : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ stride ] "r"(stride)
+        : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [stride] "r"(stride)
         : "r10", "r12", "q0", "q1", "q2", "q3");
 #elif ENABLE_SSE
       __m128 src1 = _mm_loadu_ps(src_c);
@@ -1834,7 +1878,7 @@ inline void Transpose8X8Fp32Arm64(const float *src_ptr, float *dst_ptr, int src_
     "st1 {v30.4s, v31.4s}, [x11], %[dstStride]\n"
 
     :
-    : [ dst_ptr ] "r"(dst_ptr), [ src_ptr ] "r"(src_ptr), [ srcStride ] "r"(srcStride), [ dstStride ] "r"(dstStride)
+    : [dst_ptr] "r"(dst_ptr), [src_ptr] "r"(src_ptr), [srcStride] "r"(srcStride), [dstStride] "r"(dstStride)
     : "x10", "x11", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
       "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30",
       "v31");
@@ -1910,7 +1954,7 @@ inline void Transpose8X8Fp32Arm32(const float *src_ptr, float *dst_ptr, int src_
     "vst1.32 {q15}, [r10], %[dstStride]\n"
 
     :
-    : [ dst_ptr ] "r"(dst_ptr), [ src_ptr ] "r"(src_ptr), [ srcStride ] "r"(srcStride), [ dstStride ] "r"(dstStride)
+    : [dst_ptr] "r"(dst_ptr), [src_ptr] "r"(src_ptr), [srcStride] "r"(srcStride), [dstStride] "r"(dstStride)
     : "r10", "r12", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11", "q12", "q13", "q14",
       "q15");
 }

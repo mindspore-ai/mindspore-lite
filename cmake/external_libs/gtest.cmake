@@ -23,6 +23,9 @@ if(BUILD_LITE)
                 -DANDROID_STL=${ANDROID_STL}
                 ${CMAKE_OPTION})
     endif()
+    if(PLATFORM_RISCV64)
+        set(CMAKE_OPTION -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE} ${CMAKE_OPTION})
+    endif()
 endif()
 
 if(NOT ENABLE_GLIBCXX)

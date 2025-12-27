@@ -115,12 +115,13 @@ int L2NormCPUKernel::DivSqrtSum(int task_id) const {
 int L2NormCPUKernel::CalcL2NormTrailingAxis(int task_id) const {
   auto input = in_tensors_.at(0);
   CHECK_NULL_RETURN(input);
-  MS_CHECK_TRUE_MSG(!input->shape().empty(), RET_ERROR, "Input shape of L2Norm is empty.");
-  if (input->shape().back() == 0) {
+  auto input_shape = input->shape();
+  MS_CHECK_TRUE_MSG(!input_shape.empty(), RET_ERROR, "Input shape of L2Norm is empty.");
+  if (input_shape.back() == 0) {
     MS_LOG(ERROR) << "input->shape().back() is 0";
     return RET_ERROR;
   }
-  int outer_size = input->ElementsNum() / input->shape().back();
+  int outer_size = input->ElementsNum() / input_shape.back();
   int unit = UP_DIV(outer_size, op_parameter_->thread_num_);
   if (INT_MUL_OVERFLOW(task_id, unit)) {
     MS_LOG(ERROR) << "int mul overflow.";
