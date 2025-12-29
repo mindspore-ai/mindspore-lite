@@ -5,6 +5,7 @@ file(GLOB_RECURSE COMMON_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/dsp_runtime.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/dsp_subgraph.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/custom_kernel.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/base/*.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../../tools/converter/adapter/dsp/infer/*.cc
     )
 

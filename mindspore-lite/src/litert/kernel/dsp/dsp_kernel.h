@@ -67,11 +67,15 @@ class DSPKernel : public LiteKernel {
   void SetMemType(lite::dsp::MemType mem_type) { out_mem_type_ = mem_type; }
   void SetKernelArg(const std::vector<uint64_t> &kernel_args = {}) { kernel_args_ = kernel_args; }
   int InferShape() override;
+  void SetCoreMask(int core_mask) { core_mask_ = core_mask; }
+  void SetKernelName(const std::string &kernel_name) { kernel_name_ = kernel_name; }
 
  protected:
   lite::dsp::DSPRuntime *dsp_runtime_;
   std::vector<uint64_t> kernel_args_;
   lite::dsp::MemType out_mem_type_{lite::dsp::MemType::DDR};
+  int core_mask_{0xf};
+  std::string kernel_name_;
 
  private:
   lite::dsp::DSPRuntimeInnerWrapper dsp_runtime_wrapper_;
@@ -104,6 +108,36 @@ kernel::LiteKernel *DSPKernelCreator(const std::vector<lite::Tensor *> &inputs,
   }
   return kernel;
 }
-}  // namespace mindspore::kernel
 
+inline const std::string GetDataTypePrefix(int data_type) {
+  if (data_type == kNumberTypeFloat16) return "hp";
+  if (data_type == kNumberTypeFloat32) return "fp";
+  if (data_type == kNumberTypeFloat64) return "dp";
+  if (data_type == kNumberTypeInt8) return "i8";
+  if (data_type == kNumberTypeInt16) return "i16";
+  if (data_type == kNumberTypeInt32) return "i32";
+  if (data_type == kNumberTypeComplex64) return "c64";
+  if (data_type == kNumberTypeComplex128) return "c128";
+  return "";
+}
+
+inline char GetMemTypeSuffix(lite::dsp::MemType mem_type) {
+  switch (mem_type) {
+    case lite::dsp::MemType::DDR:
+    case lite::dsp::MemType::SMC:
+      return 's';
+    case lite::dsp::MemType::L2:
+      return 'p';
+    default:
+      return 's';
+  }
+}
+
+inline std::string GenerateKernelName(int data_type, lite::dsp::MemType mem_type, const std::string op_name) {
+  const std::string prefix = GetDataTypePrefix(data_type);
+  char suffix = GetMemTypeSuffix(mem_type);
+  auto result = prefix + "_" + op_name + "_" + suffix;
+  return result;
+}
+}  // namespace mindspore::kernel
 #endif  // MINDSPORE_LITE_SRC_RUNTIME_KERNEL_DSP_DSP_KERNEL_H_
