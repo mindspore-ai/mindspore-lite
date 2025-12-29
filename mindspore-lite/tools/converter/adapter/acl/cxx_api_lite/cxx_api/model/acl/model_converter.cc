@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 #include <set>
+#include <map>
+#include <string>
 #include "backend/ge_backend/graph_ir/utils.h"
 #include "graph/graph_buffer.h"
 #include "graph/graph.h"
@@ -45,12 +47,12 @@ std::string GetAscendPath() {
     return "";
   }
   auto path_tmp = std::string(info.dli_fname);
-  const std::string kLatest = "latest";
+  const std::string kLatest = "cann/lib64";
   auto pos = path_tmp.find(kLatest);
   if (pos == std::string::npos) {
     MS_EXCEPTION(ValueError) << "Get ascend path failed, please check the run package.";
   }
-  return path_tmp.substr(0, pos);
+  return path_tmp.substr(0, pos) + "cann/";
 }
 
 // todo: acl doesn't support to clear current context
@@ -113,8 +115,6 @@ Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &grap
     return Buffer();
   }
   auto option = options_.lock();
-
-#ifdef ENABLE_BUNDLE
   ge::WeightRefreshableGraphs split_graphs;
   std::vector<ge::AscendString> ascend_variable_names;
   if (variable_node_names_.size() > 0 && update_func_graph_ != nullptr) {
@@ -160,14 +160,6 @@ Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &grap
       return Buffer();
     }
   }
-#else
-  ret = ge::aclgrphBuildModel(*graph, build_options, model);
-  if (ret != ge::SUCCESS) {
-    MS_LOG(ERROR) << "Call aclgrphBuildModel fail: " << CALL_ASCEND_API(aclGetRecentErrMsg);
-    AclConvertInitAdapter::GetInstance().AclBuildFinalize();
-    return Buffer();
-  }
-#endif
   if (option != nullptr && option->IsLastModel()) {
     AclConvertInitAdapter::GetInstance().AclBuildFinalize();
   }
@@ -200,9 +192,9 @@ Buffer ModelConverter::LoadMindIR(const FuncGraphPtr &func_graph) {
   ClearCurrentRtCtx();
   auto ascend_path = GetAscendPath();
 #ifdef MACHINE_LINUX_ARM64
-  std::string lib_opsproto_file = ascend_path + "latest/opp/built-in/op_proto/lib/linux/aarch64/libopsproto.so";
+  std::string lib_opsproto_file = ascend_path + "opp/built-in/op_proto/lib/linux/aarch64/libopsproto.so";
 #else
-  std::string lib_opsproto_file = ascend_path + "latest/opp/built-in/op_proto/lib/linux/x86_64/libopsproto.so";
+  std::string lib_opsproto_file = ascend_path + "opp/built-in/op_proto/lib/linux/x86_64/libopsproto.so";
 #endif
   static void *handler = dlopen(lib_opsproto_file.c_str(), RTLD_LAZY);
   if (handler == nullptr) {
