@@ -54,7 +54,8 @@ if [ ! -e ${BASEPATH}/build/${MINDSPORE_FILE} ]; then
 fi
 tar xzvf ${BASEPATH}/build/${MINDSPORE_FILE} -C ${BASEPATH}/build/
 cp -r ${BASEPATH}/build/${MINDSPORE_FILE_NAME}/runtime/lib/libmindspore-lite.so ${BASEPATH}/lib
-cp -r ${BASEPATH}/build/${MINDSPORE_FILE_NAME}/runtime/third_party/glog/libmindspore_glog.so* ${BASEPATH}/lib/libmindspore_glog.so
+cp -r ${BASEPATH}/build/${MINDSPORE_FILE_NAME}/runtime/third_party/glog/libmindspore_glog.so* ${BASEPATH}/lib/
+ln -s ${BASEPATH}/lib/libmindspore_glog.so.0 ${BASEPATH}/lib/libmindspore_glog.so
 cp -r ${BASEPATH}/build/${MINDSPORE_FILE_NAME}/runtime/include ${BASEPATH}/
 cd ${BASEPATH}/build || exit
 cmake ${BASEPATH}
