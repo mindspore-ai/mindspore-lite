@@ -466,7 +466,7 @@ int MindIRSerializer::ChangeParaDataFile(const std::string &file) {
     }
   }
   ChangeFileMode(real_path, S_IWUSR);
-  data_fs_ = OpenFile(real_path, std::ios::app);
+  data_fs_ = std::unique_ptr<std::fstream>(OpenFile(real_path, std::ios::app));
   if (data_fs_ == nullptr) {
     MS_LOG(ERROR) << "data_fs_ is nullptr.";
     return RET_NULL_PTR;
@@ -536,7 +536,8 @@ int MindIRSerializer::SplitSave(const std::shared_ptr<ConverterPara> &param) {
   int64_t parameter_size = 0;
   int64_t offset = OFFSET;
 
-  data_fs_ = OpenFile(external_local_path, std::ios::out | std::ios::binary | std::ios::trunc);
+  data_fs_ =
+    std::unique_ptr<std::fstream>(OpenFile(external_local_path, std::ios::out | std::ios::binary | std::ios::trunc));
   if (data_fs_ == nullptr) {
     MS_LOG(ERROR) << "Open " << external_local_path << " failed";
     return RET_ERROR;
@@ -573,7 +574,7 @@ int MindIRSerializer::SplitSave(const std::shared_ptr<ConverterPara> &param) {
       index++;
       external_local = "data_" + std::to_string(index);
       data_fs_->close();
-      delete data_fs_;
+      data_fs_ = nullptr;
       ret = ChangeParaDataFile(external_local);
       if (ret != RET_OK) {
         MS_LOG(ERROR) << "change parameter data file failed.";
