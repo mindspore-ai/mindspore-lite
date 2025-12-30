@@ -304,7 +304,7 @@ table ArgMaxFusion {
 
 table ArgMinFusion {
     axis: long;
-    top_k: long;
+    top_k: long = 1;
     keep_dims: bool;
     out_max_value: bool;
 }
