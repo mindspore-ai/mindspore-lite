@@ -25,6 +25,8 @@ namespace mindspore {
 namespace lite {
 Status PNNADelegate::Init() {
   ctx_ = pnna::Context::Create();
+  op_func_lists_.clear();
+  op_func_lists_ = {{schema::PrimitiveType_Transpose, GetPNNAOp<PNNATranspose>}};
   return mindspore::kSuccess;
 }
 
