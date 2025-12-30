@@ -38,7 +38,6 @@ class MindIRSerializer {
   virtual ~MindIRSerializer() {
     if (data_fs_ != nullptr) {
       data_fs_->close();
-      delete data_fs_;
       data_fs_ = nullptr;
     }
   }
@@ -82,7 +81,7 @@ class MindIRSerializer {
   mind_ir::ModelProto model_proto_;
   std::unordered_map<std::string, ParameterPtr> param_dict_{};
   std::unordered_map<tensor::TensorPtr, mind_ir::TensorProto *> para_proto_dict_{};
-  std::fstream *data_fs_ = nullptr;
+  std::unique_ptr<std::fstream> data_fs_ = nullptr;
   std::shared_ptr<system::FileSystem> fs_{};
   bool is_export_model_ = true;
   bool remove_variable_dir_ = true;
