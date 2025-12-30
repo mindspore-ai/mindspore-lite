@@ -27,9 +27,15 @@ else()
 endif()
 
 if("${EXAMPLE_TARGET}" STREQUAL "Ascend")
+    # >= CANN 8.5
     include_directories(${ASCEND_PATH}/include/)
     include_directories(${ASCEND_PATH}/cann/include/)
     link_directories(${ASCEND_PATH}/cann/lib64)
+    # < CANN 8.5
+    include_directories(${ASCEND_PATH}/latest/include/)
+    include_directories(${ASCEND_PATH}/ascend-toolkit/latest/include/)
+    link_directories(${ASCEND_PATH}/latest/lib64)
+    link_directories(${ASCEND_PATH}/ascend-toolkit/latest/lib64)
     add_definitions(-DENABLE_ASCEND)
 else()
     set(CUDA_HOME $ENV{CUDA_HOME})
