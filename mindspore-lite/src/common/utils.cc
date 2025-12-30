@@ -26,6 +26,10 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/param.h>
+#include <sys/syscall.h>
+#include <vector>
+#include <string>
+#include <algorithm>
 #endif
 
 namespace mindspore {
@@ -338,5 +342,25 @@ int GetCoreNum() {
 }
 
 bool IsPowerOfTwo(int n) { return n > 0 && (n & (n - 1)) == 0; }
+
+int GetCurrentPid() {
+  int pid = 0;
+#if defined(_MSC_VER) || defined(_WIN32)
+  pid = GetCurrentProcessId();
+#else
+  pid = getpid();
+#endif
+  return pid;
+}
+
+int GetCurrentTid() {
+  int tid = 0;
+#if defined(_MSC_VER) || defined(_WIN32)
+  tid = GetCurrentThreadId();
+#else
+  tid = syscall(SYS_gettid);
+#endif
+  return tid;
+}
 }  // namespace lite
 }  // namespace mindspore

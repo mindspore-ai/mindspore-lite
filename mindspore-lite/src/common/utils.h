@@ -32,6 +32,7 @@
 #include "tools/common/option.h"
 #include "include/errorcode.h"
 #include "ir/dtype/type_id.h"
+#include "include/api/data_type.h"
 
 namespace mindspore {
 namespace lite {
@@ -63,6 +64,9 @@ int GetCoreNum();
 
 bool IsPowerOfTwo(int n);
 
+int GetCurrentPid();
+
+int GetCurrentTid();
 #ifdef __ANDROID__
 uint32_t getHwCap(int hwcap_type);
 #endif
@@ -383,6 +387,45 @@ inline std::string StringTolower(const std::string &str) {
   std::string ret = str;
   std::transform(ret.begin(), ret.end(), ret.begin(), [](unsigned char c) { return std::tolower(c); });
   return ret;
+}
+
+inline std::string DataTypeToString(DataType dtype) {
+  switch (dtype) {
+    case DataType::kObjectTypeString:
+      return "String";
+    case DataType::kNumberTypeBool:
+      return "Bool";
+    case DataType::kNumberTypeInt8:
+      return "Int8";
+    case DataType::kNumberTypeInt16:
+      return "Int16";
+    case DataType::kNumberTypeInt32:
+      return "Int32";
+    case DataType::kNumberTypeInt64:
+      return "Int64";
+    case DataType::kNumberTypeUInt8:
+      return "UInt8";
+    case DataType::kNumberTypeUInt16:
+      return "UInt16";
+    case DataType::kNumberTypeUInt32:
+      return "UInt32";
+    case DataType::kNumberTypeUInt64:
+      return "UInt64";
+    case DataType::kNumberTypeFloat16:
+      return "Float16";
+    case DataType::kNumberTypeFloat32:
+      return "Float32";
+    case DataType::kNumberTypeFloat64:
+      return "Float64";
+    case DataType::kNumberTypeBFloat16:
+      return "BFloat16";
+    case DataType::kNumberTypeComplex64:
+      return "Complex64";
+    case DataType::kNumberTypeComplex128:
+      return "Complex128";
+    default:
+      return "Unknown_" + std::to_string(static_cast<int>(dtype));
+  }
 }
 }  // namespace lite
 }  // namespace mindspore

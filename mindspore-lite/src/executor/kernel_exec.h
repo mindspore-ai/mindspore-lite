@@ -119,7 +119,12 @@ class KernelExec {
     auto ret = DoExecute();
 
     if (after != nullptr) {
-      if (!after(this->in_tensors(), this->out_tensors(), {this->name(), TypeName(type())})) {
+      auto desc = this->desc();
+      MSCallBackParam opInfo;
+      opInfo.node_name = this->name();
+      opInfo.node_type = TypeName(type());
+      opInfo.arch = desc.arch;
+      if (!after(this->in_tensors(), this->out_tensors(), opInfo)) {
         MS_LOG(WARNING) << "run kernel after_callback failed, name: " << this->name();
       }
     }

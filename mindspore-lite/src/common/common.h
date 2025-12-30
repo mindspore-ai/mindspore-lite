@@ -92,6 +92,8 @@ static const char *const kCommonContextSection = "common_context";
 static const char *const kCompileGraphParallel = "compile_graph_parallel";
 static const char *const kEnableValue = "on";
 static const char *const kDisableValue = "off";
+static const char *const kEnableTracing = "enable_tracing";
+static const char *const kKernelTracingSection = "kernel_tracing";
 // gpu context
 static const char *const kGPUContextSection = "gpu_context";
 static const char *const kInputShapeKey = "input_shape";
