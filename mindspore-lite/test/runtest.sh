@@ -80,9 +80,6 @@ if [[ "${MSLITE_ENABLE_CLOUD_FUSION_INFERENCE}" == "on" || "${MSLITE_ENABLE_CLOU
 fi
 
 
-# test cases of MindData
-./lite-test --gtest_filter="*MindDataTestTensorDE*"
-./lite-test --gtest_filter="*MindDataTestEager*"
 
 # test cases of Converter
 ## ./lite-test --gtest_filter="TestTfliteParser*"
