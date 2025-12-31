@@ -29,6 +29,7 @@ namespace opt {
 namespace {
 
 static const std::map<std::string, std::vector<std::pair<std::string, size_t>>> kAttrMapNeedAdjust = {
+  {"RotaryPositionEmbedding", {{"mode", 4}}},
   {"LogSoftmax", {{"axis", 2}}},
   {"ArgMin", {{"axis", 2}, {"output_type", 3}}},
   {"PromptFlashAttention",
