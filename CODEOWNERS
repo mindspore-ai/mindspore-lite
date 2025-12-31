@@ -33,7 +33,6 @@
 
 /mindspore-lite/include/  @jjfeing @YeFeng_24
 /mindspore-lite/java/  @YeFeng_24 @jjfeing
-/mindspore-lite/minddata/  @fatmouse007fatmouse007 @jjfeing
 /mindspore-lite/providers/  @fatmouse007fatmouse007 @jjfeing
 /mindspore-lite/python/  @YeFeng_24 @jjfeing
 /mindspore-lite/schema/  @jjfeing @fatmouse007fatmouse007

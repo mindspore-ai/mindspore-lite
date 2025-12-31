@@ -360,14 +360,6 @@ function Run_arm() {
     cd ${arm_path} || exit 1
     tar -zxf mindspore-lite-${version_arm}-android-${process_unit}.tar.gz || exit 1
 
-    # If build with minddata, copy the minddata related libs
-    cd ${benchmark_train_test_path} || exit 1
-    cp -a ${arm_path}/mindspore-lite-${version_arm}-android-${process_unit}/runtime/third_party/hiai_ddk/lib/libhiai.so ${benchmark_train_test_path}/libhiai.so || exit 1
-    cp -a ${arm_path}/mindspore-lite-${version_arm}-android-${process_unit}/runtime/third_party/hiai_ddk/lib/libhiai_ir.so ${benchmark_train_test_path}/libhiai_ir.so || exit 1
-    cp -a ${arm_path}/mindspore-lite-${version_arm}-android-${process_unit}/runtime/third_party/hiai_ddk/lib/libhiai_ir_build.so ${benchmark_train_test_path}/libhiai_ir_build.so || exit 1
-    cp -a ${arm_path}/mindspore-lite-${version_arm}-android-${process_unit}/runtime/lib/libmindspore-lite.so ${benchmark_train_test_path}/libmindspore-lite.so || exit 1
-    cp -a ${arm_path}/mindspore-lite-${version_arm}-android-${process_unit}/runtime/lib/libmindspore-lite-train.so ${benchmark_train_test_path}/libmindspore-lite-train.so || exit 1
-    cp -a ${arm_path}/mindspore-lite-${version_arm}-android-${process_unit}/tools/benchmark_train/benchmark_train ${benchmark_train_test_path}/benchmark_train || exit 1
 
     # adb push all needed files to the phone
     adb -s ${device_id} push ${benchmark_train_test_path} /data/local/tmp/ > ${adb_push_log_file}
