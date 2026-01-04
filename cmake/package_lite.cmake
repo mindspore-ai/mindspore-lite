@@ -192,7 +192,7 @@ function(__install_white_list_ops)
             )
     file(GLOB GEN_OPS_NAME_H ${TOP_DIR}/mindspore/mindspore/ops/op_def/auto_generate/gen_ops_name_*.h)
     install(FILES
-            ${TOP_DIR}/mindspore/mindspore/ops/op_def/auto_generate/gen_lite_ops.h
+            ${TOP_DIR}/mindspore/mindspore/ops/include/primitive/auto_generate/gen_lite_ops.h
             ${GEN_OPS_NAME_H}
             DESTINATION ${CONVERTER_ROOT_DIR}/include/op_def/auto_generate
             COMPONENT ${RUNTIME_COMPONENT_NAME}
@@ -907,7 +907,7 @@ endif()
 if(MSLITE_ENABLE_KERNEL_EXECUTOR)
     file(GLOB GEN_OPS_NAME_H ${TOP_DIR}/mindspore/mindspore/ops/op_def/auto_generate/gen_ops_name_*.h)
     install(FILES
-            ${TOP_DIR}/mindspore/mindspore/ops/op_def/auto_generate/gen_lite_ops.h
+            ${TOP_DIR}/mindspore/mindspore/ops/include/primitive/auto_generate/gen_lite_ops.h
             ${GEN_OPS_NAME_H}
             ${TOP_DIR}/mindspore/mindspore/core/include/ops/base_operator.h
             ${TOP_DIR}/mindspore/mindspore/ops/infer/custom.h
