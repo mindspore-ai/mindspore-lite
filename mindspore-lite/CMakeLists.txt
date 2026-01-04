@@ -628,6 +628,14 @@ if(MSLITE_ENABLE_COVERAGE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g --coverage -fprofile-arcs -ftest-coverage -lgcov")
 endif()
 
+#
+if("${EXAMPLE_TARGET}" STREQUAL "Ascend" OR MSLITE_ENABLE_ACL)
+    set(ENABLE_ACL ON)
+    include(${TOP_DIR}/mindspore/cmake/ascend_variables.cmake)
+    include(${TOP_DIR}/mindspore/cmake/metadef_variables.cmake)
+    unset(ENABLE_ACL)
+endif()
+
 if(MSLITE_ENABLE_ACL)
     add_definitions(-D ENABLE_LITE_ACL)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--allow-shlib-undefined")
@@ -643,22 +651,13 @@ if(MSLITE_ENABLE_ACL)
     if("${MSLITE_REGISTRY_DEVICE}" STREQUAL "SD3403")
         # only support < cann 8.5
         if(PLATFORM_ARM64)
-            set(ASCEND_CANN_RUNTIME_PATH ${ASCEND_PATH}/ascend-toolkit/latest/arm64-lmixlinux200/lib64)
+            set(ASCEND_CANN_RUNTIME_PATH ${ASCEND_PATH}/arm64-lmixlinux200/lib64)
         elseif(PLATFORM_ARM32 OR WIN32)
             message(FATAL_ERROR "SD3403 compilation only supports x86 and arm64 platform")
         else()
             add_compile_definitions(SUPPORT_SD3403_DAVINCI)
-            set(ASCEND_CANN_RUNTIME_PATH ${ASCEND_PATH}/ascend-toolkit/latest/x86_64-linux/lib64)
+            set(ASCEND_CANN_RUNTIME_PATH ${ASCEND_PATH}/x86_64-linux/lib64)
         endif()
-    else()
-        if(EXISTS "${ASCEND_PATH}/cann/")
-            # >= CANN 8.5
-            set(ASCEND_CANN_RUNTIME_PATH ${ASCEND_PATH}/cann/lib64)
-        else()
-            # < CANN 8.5
-            set(ASCEND_CANN_RUNTIME_PATH ${ASCEND_PATH}/latest/lib64)
-        endif()
-        set(ASCEND_TOOLKIT_RUNTIME_PATH ${ASCEND_PATH}/ascend-toolkit/latest/lib64)
     endif()
 endif()
 
@@ -758,7 +757,6 @@ include_directories(${CMAKE_BINARY_DIR})
 include(${TOP_DIR}/cmake/utils.cmake)
 include(${TOP_DIR}/cmake/dependency_utils.cmake)
 include(${TOP_DIR}/cmake/external_libs/securec.cmake)
-include(${TOP_DIR}/cmake/metadef_variables.cmake)
 
 find_and_use_mold()
 
