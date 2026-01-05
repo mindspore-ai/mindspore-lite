@@ -38,10 +38,13 @@ int ScatterNDBinaryCPUKernel::ReSize() {
   auto input_shape = input->shape();
   auto indices_shape = indices->shape();
   auto update_shape = update->shape();
+
+  MS_CHECK_TRUE_MSG(!indices_shape.empty(), RET_ERROR, "indices_shape shouldn't be empty.");
+
   const int input_rank = static_cast<int>(input_shape.size());
   const int indices_rank = static_cast<int>(indices_shape.size());
   const int update_rank = static_cast<int>(update_shape.size());
-  const int indices_unit_rank = indices->shape().back();
+  const int indices_unit_rank = indices_shape.back();
 
   // check indices shape
   MS_CHECK_TRUE_MSG(indices_rank >= DIMENSION_2D, RET_ERROR, "The rank of indices must be greater equal than 2.");

@@ -57,7 +57,7 @@ int ScatterNDCPUKernel::ReSize() {
   int update_rank = static_cast<int>(update->shape().size());
   auto shape_rank = shape->ElementsNum();
   MS_CHECK_TRUE_MSG(!indices_shape.empty(), RET_ERROR, "indices_shape shouldn't be empty.");
-  int indice_unit_rank = indices->shape().back();
+  int indice_unit_rank = indices_shape.back();
 
   // check indices shape
   MS_CHECK_TRUE_MSG(indices_rank >= DIMENSION_2D, RET_ERROR, "The rank of indices must be greater equal than 2.");
@@ -115,7 +115,9 @@ int ScatterNDRun(void *cdata, int task_id, float, float) {
 
 int ScatterNDCPUKernel::Run() {
   auto indices = in_tensors_[kScatterIndicesIndex];
-  auto indice_unit_rank = indices->shape().back();
+  auto indices_shape = indices->shape();
+  MS_CHECK_TRUE_MSG(!indices_shape.empty(), RET_ERROR, "indices_shape shouldn't be empty.");
+  auto indice_unit_rank = indices_shape.back();
   int *indices_ptr = reinterpret_cast<int *>(indices->data());
   output_unit_offsets_.clear();
   for (int i = 0; i < param_->num_unit; i++) {
