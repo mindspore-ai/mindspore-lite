@@ -26,7 +26,13 @@ namespace lite {
 Status PNNADelegate::Init() {
   ctx_ = pnna::Context::Create();
   op_func_lists_.clear();
-  op_func_lists_ = {{schema::PrimitiveType_Transpose, GetPNNAOp<PNNATranspose>}};
+  op_func_lists_ = {
+    {schema::PrimitiveType_Transpose, GetPNNAOp<PNNATranspose>},
+    {schema::PrimitiveType_Abs, GetPNNAOp<PNNAAbs>},
+    {schema::PrimitiveType_AddN, GetPNNAOp<PNNAAddN>},
+    {schema::PrimitiveType_ArgMaxFusion, GetPNNAOp<PNNAArg>},
+    {schema::PrimitiveType_ArgMinFusion, GetPNNAOp<PNNAArg>},
+  };
   return mindspore::kSuccess;
 }
 

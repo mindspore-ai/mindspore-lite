@@ -27,6 +27,9 @@
 #include "src/litert/delegate/pnna/pnna_subgraph.h"
 #include "src/litert/delegate/pnna/op/pnna_op.h"
 #include "src/litert/delegate/pnna/op/transpose_pnna.h"
+#include "src/litert/delegate/pnna/op/abs_pnna.h"
+#include "src/litert/delegate/pnna/op/addn_pnna.h"
+#include "src/litert/delegate/pnna/op/arg_pnna.h"
 
 namespace mindspore {
 namespace lite {
