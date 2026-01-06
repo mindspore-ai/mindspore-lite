@@ -20,11 +20,43 @@
 #include "include/errorcode.h"
 #include "src/litert/delegate/delegate_utils.h"
 #include "src/litert/delegate/pnna/pnna_delegate.h"
+#include "src/litert/delegate/pnna/pass/pnna_format_trans_pass.h"
 
 namespace mindspore {
 namespace lite {
+PNNADelegate::~PNNADelegate() {
+  if (pass_manager_ != nullptr) {
+    pass_manager_->Clear();
+    delete pass_manager_;
+    pass_manager_ = nullptr;
+  }
+}
+
+Status PNNADelegate::AddPasses() {
+  auto format_trans_pass = new (std::nothrow) PNNAFormatTransPass();
+  if (format_trans_pass == nullptr) {
+    MS_LOG(ERROR) << "New PNNAFormatTransPass failed.";
+    return mindspore::kLiteNullptr;
+  }
+  pass_manager_->AddPass(format_trans_pass);
+  return mindspore::kSuccess;
+}
+
 Status PNNADelegate::Init() {
   ctx_ = pnna::Context::Create();
+
+  pass_manager_ = new (std::nothrow) PNNAPassManager();
+  if (pass_manager_ == nullptr) {
+    MS_LOG(ERROR) << "New pnna pass manager failed.";
+    return mindspore::kLiteNullptr;
+  }
+
+  auto ret = AddPasses();
+  if (ret != mindspore::kSuccess) {
+    MS_LOG(ERROR) << "add passes for pnna pass manager failed.";
+    return ret;
+  }
+
   op_func_lists_.clear();
   op_func_lists_ = {
     {schema::PrimitiveType_Transpose, GetPNNAOp<PNNATranspose>},
@@ -32,6 +64,7 @@ Status PNNADelegate::Init() {
     {schema::PrimitiveType_AddN, GetPNNAOp<PNNAAddN>},
     {schema::PrimitiveType_ArgMaxFusion, GetPNNAOp<PNNAArg>},
     {schema::PrimitiveType_ArgMinFusion, GetPNNAOp<PNNAArg>},
+    {schema::PrimitiveType_MaxPoolFusion, GetPNNAOp<PNNAPooling>},
   };
   return mindspore::kSuccess;
 }
@@ -161,6 +194,13 @@ PNNASubGraph *PNNADelegate::CreatePNNASubGraph(DelegateModel<schema::Primitive> 
   auto pnna_kernel = new (std::nothrow) PNNASubGraph(ctx_, chosen_ops, inputs, outputs);
   if (pnna_kernel == nullptr) {
     MS_LOG(ERROR) << "New pnna subgraph kernel failed.";
+    return nullptr;
+  }
+  ret = pass_manager_->RunPass(pnna_kernel);
+  if (ret != RET_OK) {
+    delete pnna_kernel;
+    MS_LOG(ERROR) << "PNNA Graph run pass failed. This function mainly solves the problem that the format is "
+                     "inconsistent and requires interpolation transpose operators.";
     return nullptr;
   }
   ret = pnna_kernel->Init();

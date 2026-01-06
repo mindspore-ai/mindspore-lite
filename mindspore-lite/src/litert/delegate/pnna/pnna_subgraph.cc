@@ -25,9 +25,6 @@ PNNASubGraph::~PNNASubGraph() {
       delete op;
     }
   }
-  for (auto tensor : insert_tensors_) {
-    MSTensor::DestroyTensorPtr(tensor);
-  }
 }
 
 std::shared_ptr<pnna::Tensor> PNNASubGraph::GetMappedTensor(MSTensor *operand) {

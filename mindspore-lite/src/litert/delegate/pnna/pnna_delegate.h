@@ -25,18 +25,20 @@
 #include <utility>
 #include "include/api/delegate.h"
 #include "src/litert/delegate/pnna/pnna_subgraph.h"
+#include "src/litert/delegate/pnna/pass/pnna_pass_manager.h"
 #include "src/litert/delegate/pnna/op/pnna_op.h"
 #include "src/litert/delegate/pnna/op/transpose_pnna.h"
 #include "src/litert/delegate/pnna/op/abs_pnna.h"
 #include "src/litert/delegate/pnna/op/addn_pnna.h"
 #include "src/litert/delegate/pnna/op/arg_pnna.h"
+#include "src/litert/delegate/pnna/op/pooling_pnna.h"
 
 namespace mindspore {
 namespace lite {
 class PNNADelegate : public Delegate {
  public:
   PNNADelegate() = default;
-  ~PNNADelegate() override {};
+  ~PNNADelegate() override;
 
   Status Init() override;
   Status Build(DelegateModel<schema::Primitive> *model) override;
@@ -92,6 +94,7 @@ class PNNADelegate : public Delegate {
     return RET_OK;
   }
   PNNASubGraph *CreatePNNASubGraph(DelegateModel<schema::Primitive> *model, std::vector<PNNAOp *> *candidate_ops);
+  Status AddPasses();
 
  private:
   std::shared_ptr<pnna::Context> ctx_{nullptr};
@@ -100,6 +103,7 @@ class PNNADelegate : public Delegate {
   std::vector<kernel::Kernel *> remained_kernels_;
   std::vector<PNNASubGraph *> pnna_kernels_;
   std::unordered_map<schema::PrimitiveType, PNNAGetOp> op_func_lists_;
+  PNNAPassManager *pass_manager_ = nullptr;
 };
 }  // namespace lite
 }  // namespace mindspore
