@@ -2,6 +2,58 @@
 
 [View English](./RELEASE.md)
 
+## MindSpore Lite 2.8.0 Release Notes
+
+### 主要特性及增强
+
+- MindSpore Lite支持python3.12。
+
+- LoRA权重更新性能优化。
+
+- MindSpore Lite支持保存转换过程的中间图。
+
+- MindSpore Lite支持Android NPU离线模型推理；
+
+- MindSpore Lite移除数据预处理MindData模块；
+
+- MindSpore Lite移除Micro对Cortex-m CMSIS的支持；
+
+- MindSpore Lite Ascend后端ACL推理支持TimeOut配置；
+
+- MindSpore Lite 云侧推理支持模型并发加载；
+
+- MindSpore Lite Ascend后端GE推理支持静态shape、动态分档下数据零拷贝；
+
+### API 变更
+
+- LoRA权重更新对外接口变更，variable_weight_file内容格式由
+
+```plaintext
+weight_name:(shape);node_name
+```
+
+修改为
+
+```plaintext
+weight_name:shape;node_name
+```
+
+- 保存转换过程中间图，新增宏开关：
+
+```plaintext
+当用户配置export MSLITE_DUMP_LEVEL=0 表示Dump详细的图结构，以及常量Tensor数据；
+当用户配置export MSLITE_DUMP_LEVEL=1 表示仅Dump图结构，不dump常量Tensor数据。
+当用户配置export MSLITE_DUMP_PATH="/xx/xx/" 表示dump graph的路径。
+```
+
+- 移除端侧训练Train()/Evaluate()高阶接口，可通过RunStep()低阶接口替代。
+
+- MindSpore Lite 云侧推理新增支持权重分离下基于buffer加载。
+
+### 贡献者
+
+YeFeng_24,xiong-pan,jjfeing,liuf9,xu_anyue,yiguangzheng,zxx_xxz,jianghui58,hbhu_bin,chenyihang5,qll1998,yangyingchun1999,liuchengji3,cheng-chao23,gemini524,yangly
+
 ## MindSpore Lite 2.7.1 Release Notes
 
 ### 主要特性及增强

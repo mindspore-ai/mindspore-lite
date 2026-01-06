@@ -2,6 +2,58 @@
 
 [查看中文](./RELEASE_CN.md)
 
+## MindSpore Lite 2.8.0 Release Notes
+
+### Key Features and Enhancements
+
+- MindSpore Lite supports Python 3.12.
+
+- Optimized the performance of LoRA weight update.
+
+- MindSpore Lite supports saving intermediate graphs during the conversion process.
+
+- MindSpore Lite supports offline model inference on Android NPU.
+
+- Removed the MindData data preprocessing module from MindSpore Lite.
+
+- Removed the support for Cortex-M CMSIS in MindSpore Lite Micro.
+
+- The ACL inference of MindSpore Lite Ascend backend supports timeout configuration.
+
+- MindSpore Lite cloud-side inference supports concurrent model loading.
+
+- The GE inference of MindSpore Lite Ascend backend supports zero-copy data under static shape and dynamic batching scenarios.
+
+### API Changes
+
+- The external interface for LoRA weight update has been changed, and the content format of `variable_weight_file` has been modified from:
+
+```plaintext
+weight_name:(shape);node_name
+```
+
+to
+
+```plaintext
+weight_name:shape;node_name
+```
+
+- Added new macro switches for saving intermediate graphs during the conversion process:
+
+```plaintext
+When users configure export MSLITE_DUMP_LEVEL=0, it means dumping detailed graph structures and constant Tensor data.
+When users configure export MSLITE_DUMP_LEVEL=1, it means dumping only graph structures without constant Tensor data.
+When users configure export MSLITE_DUMP_PATH="/xx/xx/", it specifies the path for dumping graphs.
+```
+
+- Removed the high-level Train()/Evaluate() interfaces for on-device training, which can be replaced by the low-level RunStep() interface.
+
+- MindSpore Lite cloud-side inference newly supports buffer-based loading under weight separation.
+
+### Contributors
+
+YeFeng_24, xiong-pan, jjfeing, liuf9, xu_anyue, yiguangzheng, zxx_xxz, jianghui58, hbhu_bin, chenyihang5, qll1998, yangyingchun1999, liuchengji3, cheng-chao23, gemini524, yangly
+
 ## MindSpore Lite 2.7.1 Release Notes
 
 ### Major Features and Improvements
@@ -302,7 +354,7 @@ Contributions of any kind are welcome!
 4. Provide unified runtime API for developer reusing their code between cloud side and end side.
 5. Now developer can configure built-in pass as custom passes.
 6. Now user can specify format and shape of model inputs while converting model.
-7. Support multiple devices inference, includeing CPU, NPU, GPU. User can set devices in mindspore::Context.
+7. Support multiple devices inference, including CPU, NPU, GPU. User can set devices in mindspore::Context.
 8. Support mixed precision inference. User can set inference precision by LoadConfig API.
 9. Support custom operator registration and enable inference on third-party hardware.
 
@@ -619,7 +671,7 @@ Contributions of any kind are welcome!
 
 #### Training on Device
 
-1. Virtual batching, use mini-batch to minic large batch in theorical with few RAM consumption.
+1. Virtual batching, use mini-batch to minic large batch in theoretical with few RAM consumption.
 2. Converter unify, do not compile tod and iod converter separately.
 3. Performance optimization to BWD ops.
 4. TrainLoop with Off-The-Shelf Functionality blocks, like LR scheduler, Loss Monitor, Ckpt Saver, Accuracy Monitor.
@@ -1317,7 +1369,7 @@ Contributions of any kind are welcome!
 
 1. Add new ops: add 10+ ops, total 58 ops;
 2. Performance optimization: by memory layout optimize, Winograd Convolution select strategyoptimize, SIMT local size optimize, local cache optimize,  GPU performance improvement up to 20+% vs MSLITE Version1.0
-3. Add Online Graph optimzation: by fusion Convolution/Matmul/Fullconnection and add/mul/pad/reshape, improve performance up to 50+% for some networks;
+3. Add Online Graph optimization: by fusion Convolution/Matmul/Fullconnection and add/mul/pad/reshape, improve performance up to 50+% for some networks;
 4. Add auto tuning: by online tuning in the graph compilation phase, optimize performance up to 10%;
 5. Add weight quant: support weight quant
 6. Add opencl kernel binary cache: improve Initialization time .
@@ -1431,7 +1483,7 @@ Contributions of any kind are welcome!
 - Data processing
     - fix hang when use pyfunc([!6346](https://gitee.com/mindspore/mindspore/pulls/6346))
     - fix GPU device queue does not release GIL during resource clean up([!5964](https://gitee.com/mindspore/mindspore/pulls/5964))
-    - fix hang if scripte exit unnormally([!6441](https://gitee.com/mindspore/mindspore/pulls/6441))
+    - fix hang if script exit unnormally([!6441](https://gitee.com/mindspore/mindspore/pulls/6441))
 - Third party
     - Sqlite : Update sqlite to 3.32.2 to handle [CVE-2020-11656](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-11656), [CVE-2020-13871](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13871), [CVE-2020-11655](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-11655), [CVE-2020-9327](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-9327), [CVE-2020-13630](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13630), [CVE-2020-15358](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15358), [CVE-2020-13631](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13631), [CVE-2020-13632](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13632), [CVE-2020-13434](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13434), [CVE-2020-13435](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13435), and [CVE-2020-15358](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-11655).
     - Libjpeg-turbo : Update libjpeg-turbo to 2.0.4 to handle [CVE-2020-13790](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13790).
@@ -1526,7 +1578,7 @@ Contributions of any kind are welcome!
     - Support asynchronous execution save checkpoint file.
     - Support implicit type conversion in pynative mode.
     - User interfaces change log
-        - unform learning rate behavior in optimizers([!2755](https://gitee.com/mindspore/mindspore/pulls/2755))
+        - uniform learning rate behavior in optimizers([!2755](https://gitee.com/mindspore/mindspore/pulls/2755))
         - rename operator of sparse optimizer([!3217](https://gitee.com/mindspore/mindspore/pulls/3217))
         - move profiler module from mindinsight to mindspore([!3075](https://gitee.com/mindspore/mindspore/pulls/3075))
         - VOCDataset output change to multi-columns([!3093](https://gitee.com/mindspore/mindspore/pulls/3093))
