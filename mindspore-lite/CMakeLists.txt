@@ -643,11 +643,7 @@ if(MSLITE_ENABLE_ACL)
     if(MSLITE_ENABLE_ACL_QUANT_PARAM)
         add_definitions(-D ENABLE_ACL_QUANT_PARAM)
     endif()
-    if(DEFINED ENV{ASCEND_CUSTOM_PATH})
-        set(ASCEND_PATH $ENV{ASCEND_CUSTOM_PATH})
-    else()
-        set(ASCEND_PATH /usr/local/Ascend)
-    endif()
+
     if("${MSLITE_REGISTRY_DEVICE}" STREQUAL "SD3403")
         # only support < cann 8.5
         if(PLATFORM_ARM64)
