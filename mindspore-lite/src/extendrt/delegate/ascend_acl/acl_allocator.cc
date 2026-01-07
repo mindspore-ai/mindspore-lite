@@ -97,11 +97,6 @@ void *AclAllocator::Malloc(size_t size, int device_id) {
     return nullptr;
   }
   MS_LOG(DEBUG) << "aclrtMalloc device data addr: " << device_data << ", device id: " << device_id;
-  ret = CALL_ASCEND_API(aclrtResetDevice, device_id);
-  if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "aclrtResetDevice failed.";
-    return nullptr;
-  }
   return device_data;
 }
 
@@ -115,11 +110,6 @@ void AclAllocator::Free(void *device_data, int device_id) {
     MS_LOG(DEBUG) << "aclrtFree device data addr: " << device_data << ", device id: " << device_id;
     CALL_ASCEND_API(aclrtFree, device_data);
     device_data = nullptr;
-    ret = CALL_ASCEND_API(aclrtResetDevice, device_id);
-    if (ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "aclrtResetDevice failed.";
-      return;
-    }
   }
 }
 
@@ -202,11 +192,6 @@ Status AclAllocator::CopyDeviceDataToHost(void *device_data, void *host_data, si
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "copy device data: " << device_data << " to host: " << host_data
                   << " failed, data size: " << data_size;
-    return kLiteMemoryFailed;
-  }
-  ret = CALL_ASCEND_API(aclrtResetDevice, device_id);
-  if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "aclrtResetDevice failed.";
     return kLiteMemoryFailed;
   }
   return kSuccess;
