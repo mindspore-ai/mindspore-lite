@@ -498,7 +498,8 @@ bool ModelProcess::InitOutputsBuffer() {
   return true;
 }
 
-bool ModelProcess::CreateDataBuffer(void **data_mem_buffer, size_t buffer_size, aclmdlDataset *dataset) {
+bool ModelProcess::CreateDataBuffer(void **data_mem_buffer, size_t buffer_size, aclmdlDataset *dataset,
+                                    bool use_existing_mem) {
   aclError ret;
   auto free_data_buffer = [this](void *dataMemBuffer) {
     if (!is_run_on_device_) {
@@ -507,44 +508,54 @@ bool ModelProcess::CreateDataBuffer(void **data_mem_buffer, size_t buffer_size, 
       (void)CALL_ASCEND_API(aclrtFreeHost, dataMemBuffer);
     }
   };
+
   if (data_mem_buffer == nullptr) {
     MS_LOG(ERROR) << "Data mem buffer is nullptr.";
     return false;
   }
-  // The model with dynamic input do not need to malloc the memory of output
-  if (buffer_size != 0) {
-    if (!is_run_on_device_) {
-      ret = CALL_ASCEND_API(aclrtMalloc, data_mem_buffer, buffer_size, ACL_MEM_MALLOC_HUGE_FIRST);
-      if (ret != ACL_SUCCESS) {
-        MS_LOG(ERROR) << "Malloc device buffer failed , buffer size " << buffer_size;
-        return false;
+  if (!use_existing_mem) {
+    if (buffer_size != 0) {
+      if (!is_run_on_device_) {
+        ret = CALL_ASCEND_API(aclrtMalloc, data_mem_buffer, buffer_size, ACL_MEM_MALLOC_HUGE_FIRST);
+        if (ret != ACL_SUCCESS) {
+          MS_LOG(ERROR) << "Malloc device buffer failed , buffer size " << buffer_size;
+          return false;
+        }
+      } else {
+        ret = CALL_ASCEND_API(aclrtMallocHost, data_mem_buffer, buffer_size);
+        if (ret != ACL_SUCCESS) {
+          MS_LOG(ERROR) << "Malloc host buffer failed , buffer size " << buffer_size;
+          return false;
+        }
       }
-    } else {
-      ret = CALL_ASCEND_API(aclrtMallocHost, data_mem_buffer, buffer_size);
-      if (ret != ACL_SUCCESS) {
-        MS_LOG(ERROR) << "Malloc host buffer failed , buffer size " << buffer_size;
-        return false;
-      }
+      is_weight_input_from_external_device_mem_ = false;
     }
+  } else {
+    if (*data_mem_buffer == nullptr) {
+      MS_LOG(ERROR) << "Existing memory buffer is nullptr, buffer size " << buffer_size;
+      return false;
+    }
+    MS_LOG(INFO) << "Use existing memory, skip malloc, buffer size: " << buffer_size;
+    is_weight_input_from_external_device_mem_ = true;
   }
   auto data_buffer = CALL_ASCEND_API(aclCreateDataBuffer, *data_mem_buffer, buffer_size);
   if (data_buffer == nullptr) {
     MS_LOG(ERROR) << "Create Data Buffer failed";
-    if (data_mem_buffer != nullptr) {
+    if (!use_existing_mem && *data_mem_buffer != nullptr) {
       free_data_buffer(*data_mem_buffer);
     }
-    CALL_ASCEND_API(aclDestroyDataBuffer, data_buffer);
     return false;
   }
   ret = CALL_ASCEND_API(aclmdlAddDatasetBuffer, dataset, data_buffer);
   if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "add data buffer failed";
-    if (data_mem_buffer != nullptr) {
+    MS_LOG(ERROR) << "add data buffer failed, ret: " << ret;
+    if (!use_existing_mem && *data_mem_buffer != nullptr) {
       free_data_buffer(*data_mem_buffer);
     }
     CALL_ASCEND_API(aclDestroyDataBuffer, data_buffer);
     return false;
   }
+
   return true;
 }
 
@@ -1583,7 +1594,7 @@ void ModelProcess::DestoryUpdateWeightBuffer() {
     }
   } else {
     for (const auto &item : weight_input_infos_) {
-      if (item.device_data != nullptr) {
+      if (item.device_data != nullptr && !is_weight_input_from_external_device_mem_) {
         CALL_ASCEND_API(aclrtFree, item.device_data);
       }
     }
@@ -1615,7 +1626,7 @@ bool ModelProcess::InitUpdateWeightBuffer(const std::vector<MSTensor> &kernel_in
   }
   weight_outputs_ = CALL_ASCEND_API(aclmdlCreateDataset);
   if (weight_outputs_ == nullptr) {
-    MS_LOG(ERROR) << "Create input dataset failed!";
+    MS_LOG(ERROR) << "Create output dataset failed!";
     return false;
   }
   model_weight_desc_ = CALL_ASCEND_API(aclmdlCreateDesc);
@@ -1630,12 +1641,16 @@ bool ModelProcess::InitUpdateWeightBuffer(const std::vector<MSTensor> &kernel_in
                   << "variable node num " << input_size << "!";
     return false;
   }
+  bool all_device_tensor = std::all_of(kernel_inputs.begin(), kernel_inputs.end(), [](const MSTensor &tensor) {
+    return (const_cast<MSTensor &>(tensor).GetDeviceData() != nullptr);
+  });
+
   for (size_t i = 0; i < input_size; ++i) {
     auto kernel_input = kernel_inputs[i];
     auto shape = kernel_input.Shape();
     aclDataType data_type = CALL_ASCEND_API(aclmdlGetInputDataType, model_weight_desc_, i);
     if (data_type == aclDataType::ACL_DT_UNDEFINED) {
-      MS_LOG(ERROR) << "ModelProcess InitUpdateWeightBuffer ERROR" << data_type;
+      MS_LOG(ERROR) << "ModelProcess InitUpdateWeightBuffer ERROR, data type is undefined";
       return false;
     }
     size_t type_size = 0;
@@ -1645,10 +1660,21 @@ bool ModelProcess::InitUpdateWeightBuffer(const std::vector<MSTensor> &kernel_in
     }
     auto buffer_size = kernel_input.DataSize();
     void *data_mem_buffer = nullptr;
-    if (!CreateDataBuffer(&data_mem_buffer, buffer_size, weight_inputs_)) {
-      MS_LOG(ERROR) << "Add input data buffer failed, buffer size " << buffer_size << "!";
-      return false;
+    if (kernel_input.GetDeviceData() != nullptr && all_device_tensor) {
+      data_mem_buffer = kernel_input.GetDeviceData();
+      MS_LOG(INFO) << "Use existing device memory for input " << i << ", buffer size: " << buffer_size;
+      if (!CreateDataBuffer(&data_mem_buffer, buffer_size, weight_inputs_, true)) {
+        MS_LOG(ERROR) << "Add input data buffer (use device mem) failed, buffer size " << buffer_size << "!";
+        return false;
+      }
+    } else {
+      MS_LOG(INFO) << "Malloc new device memory for host tensor input " << i << ", buffer size: " << buffer_size;
+      if (!CreateDataBuffer(&data_mem_buffer, buffer_size, weight_inputs_)) {
+        MS_LOG(ERROR) << "Add input data buffer (malloc device mem) failed, buffer size " << buffer_size << "!";
+        return false;
+      }
     }
+
     std::string input_name = CALL_ASCEND_API(aclmdlGetInputNameByIndex, model_weight_desc_, i);
     aclFormat input_format = CALL_ASCEND_API(aclmdlGetInputFormat, model_weight_desc_, i);
     aclTensorDesc *desc = CALL_ASCEND_API(aclCreateTensorDesc, data_type, shape.size(), shape.data(), input_format);
@@ -1666,7 +1692,7 @@ bool ModelProcess::InitUpdateWeightBuffer(const std::vector<MSTensor> &kernel_in
       AclTensorInfo{data_mem_buffer, data_mem_buffer, buffer_size, buffer_size, data_type, shape, input_name});
   }
   inited_weights_ = true;
-  MS_LOG(INFO) << "Create model inputs success";
+  MS_LOG(INFO) << "Create model inputs success, all device tensor: " << (all_device_tensor ? "yes" : "no");
   return true;
 }
 
@@ -1675,7 +1701,10 @@ bool ModelProcess::UpdateWeights(const std::vector<MSTensor> &kernel_weights) {
     MS_LOG(ERROR) << "Model has not been loaded!";
     return false;
   }
-  if (!inited_weights_) {
+  bool all_device_tensor = std::all_of(kernel_weights.begin(), kernel_weights.end(), [](const MSTensor &tensor) {
+    return (const_cast<MSTensor &>(tensor).GetDeviceData() != nullptr);
+  });
+  if (!inited_weights_ || (inited_weights_ && is_weight_input_from_external_device_mem_ && !all_device_tensor)) {
     if (!InitUpdateWeightBuffer(kernel_weights)) {
       DestoryUpdateWeightBuffer();
       MS_LOG(ERROR) << "Init weight input buffer failed!";
