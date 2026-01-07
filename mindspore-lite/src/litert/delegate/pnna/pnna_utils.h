@@ -24,6 +24,7 @@
 #include <vector>
 #include "include/api/types.h"
 #include "pnna_core.h"  // NOLINT(build/include_subdir)
+#include "src/litert/delegate/pnna/pnna_subgraph.h"
 
 #define kNCHW_N 0
 #define kNCHW_C 1
@@ -36,6 +37,8 @@
 
 namespace mindspore {
 namespace lite {
+
+class PNNASubGraph;
 enum PAD {
   PAD_UP = 0,
   PAD_DOWN = 1,
@@ -55,6 +58,7 @@ std::shared_ptr<pnna::Tensor> CreatePnnaTensor(pnna::Graph *graph, pnna::ShapeTy
 std::shared_ptr<pnna::Tensor> CreatePnnaTensor(pnna::Graph *graph, MSTensor *tensor, pnna::TensorAttribute tensor_attr);
 std::vector<uint32_t> ConvertToPnnaPerm(const int32_t *input_perm_data, size_t input_perm_count);
 int32_t ConvertToPnnaAxis(int32_t axis, size_t dimension_count);
+int HandleConstantInputs(PNNASubGraph *graph, std::vector<mindspore::MSTensor> &inputs);
 }  // namespace lite
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_LITERT_DELEGATE_PNNA_PNNA_UTILS_H_

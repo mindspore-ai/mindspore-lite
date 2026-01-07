@@ -26,7 +26,7 @@ int Deconv2dInferShape(const TensorC *const *inputs, size_t inputs_size, TensorC
   }
 
   const TensorC *input = inputs[0];
-  if (input->format_ != Format_NHWC) {
+  if (input->format_ != Format_NHWC && input->format_ != Format_NCHW) {
     return NNACL_FORMAT_ERROR;
   }
   const TensorC *weight = inputs[1];
@@ -89,10 +89,17 @@ int Deconv2dInferShape(const TensorC *const *inputs, size_t inputs_size, TensorC
   output_w += param->output_padding_w_;
 
   output->shape_size_ = 4;
-  output->shape_[0] = output_n;
-  output->shape_[1] = output_h;
-  output->shape_[2] = output_w;
-  output->shape_[3] = output_c;
+  if (input->format_ == Format_NHWC) {
+    output->shape_[kNHWC_N] = output_n;
+    output->shape_[kNHWC_H] = output_h;
+    output->shape_[kNHWC_W] = output_w;
+    output->shape_[kNHWC_C] = output_c;
+  } else if (input->format_ == Format_NCHW) {
+    output->shape_[kNCHW_N] = output_n;
+    output->shape_[kNCHW_C] = output_c;
+    output->shape_[kNCHW_H] = output_h;
+    output->shape_[kNCHW_W] = output_w;
+  }
 
   if (pad_mode == Pad_same) {
     param->pad_u_ = ((input_h - 1) * stride_h + (kernel_h - 1) * dilate_h + 1 - output_h) / 2;
@@ -103,10 +110,17 @@ int Deconv2dInferShape(const TensorC *const *inputs, size_t inputs_size, TensorC
   }
 
   const int *in_shape = input->shape_;
-  param->input_batch_ = in_shape[0];
-  param->input_h_ = in_shape[1];
-  param->input_w_ = in_shape[2];
-  param->input_channel_ = in_shape[3];
+  if (input->format_ == Format_NHWC) {
+    param->input_batch_ = in_shape[kNHWC_N];
+    param->input_h_ = in_shape[kNHWC_H];
+    param->input_w_ = in_shape[kNHWC_W];
+    param->input_channel_ = in_shape[kNHWC_C];
+  } else if (input->format_ == Format_NCHW) {
+    param->input_batch_ = in_shape[kNCHW_N];
+    param->input_h_ = in_shape[kNCHW_H];
+    param->input_w_ = in_shape[kNCHW_W];
+    param->input_channel_ = in_shape[kNCHW_C];
+  }
   param->output_batch_ = output_n;
   param->output_h_ = output_h;
   param->output_w_ = output_w;
