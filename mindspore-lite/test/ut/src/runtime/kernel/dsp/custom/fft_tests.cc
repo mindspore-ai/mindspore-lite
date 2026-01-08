@@ -36,12 +36,19 @@ namespace mindspore::lite::dsp::test {
 
 class TestDSP_FFT : public DSPCommonTest {
  public:
-  void w_init(float *w, int n) {
+  void w_init(float *w, int n, bool is_ifft) {
     int i;
     const float PI = 3.14159;
-    for (i = 0; i < n; i++) {
-      w[i * 2] = cos(2 * PI * i / n);
-      w[i * 2 + 1] = -sin(2 * PI * i / n);
+    if (!is_ifft) {
+      for (i = 0; i < n; i++) {
+        w[i * 2] = cos(2 * PI * i / n);
+        w[i * 2 + 1] = -sin(2 * PI * i / n);
+      }
+    } else {
+      for (i = 0; i < n; i++) {
+        w[i * 2] = cos(2 * PI * i / n);
+        w[i * 2 + 1] = sin(2 * PI * i / n);
+      }
     }
   }
 
@@ -64,9 +71,13 @@ class TestDSP_FFT : public DSPCommonTest {
     }
   }
 
-  void fft(float *src, float *src_w, int n) {
+  void fft(float *src, float *src_w, int n, bool is_ifft) {
     if (n <= 0 || (n & (n - 1)) != 0) {
       MS_LOG(ERROR) << "Input size must be a power of 2";
+      return;
+    }
+    if (src == nullptr || src_w == nullptr) {
+      MS_LOG(ERROR) << "Input data is null";
       return;
     }
     int log_n = log2(n);
@@ -100,6 +111,12 @@ class TestDSP_FFT : public DSPCommonTest {
           src[upper_offset + 1] = imag_up;
           src[lower_offset] = real_down;
           src[lower_offset + 1] = imag_down;
+          if (is_ifft && stage == (log_n - 1)) {
+            src[upper_offset] /= n;
+            src[upper_offset + 1] /= n;
+            src[lower_offset] /= n;
+            src[lower_offset + 1] /= n;
+          }
         }
       }
       for (int idx = 0; idx < segment_size / 2; idx += 2) {
@@ -111,7 +128,7 @@ class TestDSP_FFT : public DSPCommonTest {
   }
 };
 
-TEST_F(TestDSP_FFT, 16K_Cplx64) {
+TEST_F(TestDSP_FFT, fft_16K_Cplx64) {
   InitDSPRuntime();
   std::vector<lite::Tensor *> inputs_;
   std::vector<lite::Tensor *> outputs_;
@@ -150,7 +167,7 @@ TEST_F(TestDSP_FFT, 16K_Cplx64) {
   }
   float *input_x_s = new float[num * 2];
   float *input_w = new float[num * 2];
-  w_init(input_w, num);
+  w_init(input_w, num, false);
   for (int i = 0; i < num; ++i) {
     input_x[i * 2] = (i % 50) * 0.01 + 0.6;
     input_x[i * 2 + 1] = (i % 50) * 0.01 - 0.7;
@@ -167,9 +184,84 @@ TEST_F(TestDSP_FFT, 16K_Cplx64) {
   mskernel->set_name("Custom_FT_FFT");
   mskernel->Prepare();
   mskernel->Execute();
-  fft(input_x_s, input_w, num);
+  fft(input_x_s, input_w, num, false);
   bitrev_r(reinterpret_cast<std::complex<float> *>(input_x_s), num);
   ASSERT_EQ(0, CompareOutputData(output, input_x_s, num * 2, 0.01));
+  UninitDSPRuntime();
+  delete[] input_x_s;
+  delete[] input_w;
+  delete context;
+  for (auto t : inputs_) {
+    delete t;
+  }
+  for (auto t : outputs_) {
+    delete t;
+  }
+  delete kernel_exec;
+}
+
+TEST_F(TestDSP_FFT, ifft_16x16K_Cplx64) {
+  InitDSPRuntime();
+  std::vector<lite::Tensor *> inputs_;
+  std::vector<lite::Tensor *> outputs_;
+  std::vector<int> input0_shape = {16, 16 * 1024};
+  std::vector<int> output_shape = {16, 16 * 1024};
+  int loop = input0_shape[0];
+  int num = input0_shape[1];
+  auto x = new lite::Tensor(kNumberTypeComplex64, input0_shape, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  x->MallocData(allocator_);
+  inputs_.push_back(x);
+  auto out_t = new lite::Tensor(kNumberTypeComplex64, output_shape, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  out_t->MallocData(allocator_);
+  outputs_.push_back(out_t);
+  auto input_x = reinterpret_cast<float *>(x->MutableData());
+  auto output = reinterpret_cast<float *>(out_t->MutableData());
+  flatbuffers::FlatBufferBuilder fbb(1024);
+  // create custom kernel
+  auto val_offset = schema::CreateCustomDirect(fbb, "Custom_FT_IFFT");
+  flatbuffers::Offset<mindspore::schema::Primitive> primitive =
+    schema::CreatePrimitive(fbb, static_cast<schema::PrimitiveType>(PrimType::PrimType_Custom), val_offset.o);
+  fbb.Finish(primitive);
+  const mindspore::schema::Primitive *primitive_ptr =
+    flatbuffers::GetRoot<mindspore::schema::Primitive>(fbb.GetBufferPointer());
+  auto data_type = x->data_type();
+  auto prim_type = mindspore::schema::PrimitiveType::PrimitiveType_Custom;
+  std::string kernel_arch = "DSP";
+  std::string provider = "FTMatrix";
+  auto arch = kernel::KERNEL_ARCH::kDSP;
+  kernel::KernelKey key{arch, data_type, NHWC, prim_type, kernel_arch, provider};
+  registry::KernelDesc desc{static_cast<DataType>(key.data_type), key.type, key.kernel_arch, key.provider};
+  auto creator = registry::RegisterKernel::GetCreator(primitive_ptr, &desc);
+  if (creator == nullptr) {
+    MS_LOG(ERROR) << "creator Custom_FT_IFFT kernel error";
+    return;
+  }
+  float *input_x_s = new float[loop * num * 2];
+  float *input_w = new float[num * 2];
+  w_init(input_w, num, true);
+  for (int j = 0; j < loop; ++j) {
+    for (int i = 0; i < num; ++i) {
+      input_x[j * num * 2 + i * 2] = (i % 50) * 0.01 + 0.6;
+      input_x[j * num * 2 + i * 2 + 1] = (i % 50) * 0.01 - 0.7;
+      input_x_s[j * num * 2 + i * 2] = input_x[j * num * 2 + i * 2];
+      input_x_s[j * num * 2 + i * 2 + 1] = input_x[j * num * 2 + i * 2 + 1];
+    }
+  }
+  auto context = new mindspore::Context();
+  auto ms_in_tensors = LiteTensorsToMSTensors(inputs_);
+  auto ms_out_tensors = LiteTensorsToMSTensors(outputs_);
+  auto base_kernel = creator(ms_in_tensors, ms_out_tensors, primitive_ptr, context);
+  ASSERT_NE(nullptr, base_kernel);
+  auto *kernel_exec = new (std::nothrow) kernel::KernelExec(base_kernel);
+  auto mskernel = kernel_exec->kernel();
+  mskernel->set_name("Custom_FT_IFFT");
+  mskernel->Prepare();
+  mskernel->Execute();
+  for (int j = 0; j < loop; ++j) {
+    fft(input_x_s + j * num * 2, input_w, num, true);
+    bitrev_r(reinterpret_cast<std::complex<float> *>(input_x_s + j * num * 2), num);
+  }
+  ASSERT_EQ(0, CompareOutputData(output, input_x_s, loop * num * 2, 0.01));
   UninitDSPRuntime();
   delete[] input_x_s;
   delete[] input_w;
