@@ -84,7 +84,8 @@ class ModelProcess {
   bool InitOutputsBuffer();
   void DestroyInputsBuffer();
   void DestroyOutputsBuffer();
-  bool CreateDataBuffer(void **data_mem_buffer, size_t buffer_size, aclmdlDataset *dataset);
+  bool CreateDataBuffer(void **data_mem_buffer, size_t buffer_size, aclmdlDataset *dataset,
+                        bool use_existing_mem = false);
 
   bool CheckAndInitInput(const std::vector<MSTensor> &inputs);
   bool CheckAndInitOutput(const std::vector<MSTensor> *outputs);
@@ -162,6 +163,7 @@ class ModelProcess {
   void *multiprocess_weight_ptr_ = nullptr;
   uint64_t sharable_handle_ = 0;
   AclAllocator *allocator_ = nullptr;
+  bool is_weight_input_from_external_device_mem_ = false;
 };
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_EXTENDRT_KERNEL_ASCEND_MODEL_MODEL_PROCESS_H_
