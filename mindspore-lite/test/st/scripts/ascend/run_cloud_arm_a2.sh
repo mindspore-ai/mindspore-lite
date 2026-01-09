@@ -390,6 +390,7 @@ cp -r ${ms_models_path}/sd1.5_unet.onnx* . || exit 1 # for Model Predict ST
 cp -r ${ms_models_path}/single_matmul_model.onnx.mindir . || exit 1 # for Update weights ST
 cp -r ${basepath}/../${config_folder}/ascend/prof.json . || exit 1 # for test profiling
 cp -r ${models_path}/single_matmul_model.onnx . || exit 1 # for Encrypt And Decrypt ST
+cp -r ${models_path}/ge_test_mul.mindir . || exit 1 # for GE ST
 #for code coverage in A2
 MSLITE_COVERAGE_ARGS=""
 if [[ "${MSLITE_ENABLE_COVERAGE}" == "on" || "${MSLITE_ENABLE_COVERAGE}" == "ON" ]]; then
