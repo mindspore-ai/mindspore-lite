@@ -56,6 +56,10 @@ int PNNAFormatTransPass::InsertPreNodes(PNNAOp *op, std::vector<PNNAOp *> *trans
       MS_LOG(ERROR) << "New nchw tensor failed when inserting pre nhwc2nchw op.";
       return RET_ERROR;
     }
+    // When the actual data length does not match the expected size calculated from shape and data type,
+    // override the original shape with a 1D shape based on the actual data length.
+    // Otherwise, keep the originally specified shape. Here need to keep the original specified shape.
+    tensor.SetShape(nchw_shape);
     tensor.SetFormat(Format::NCHW);
     tensor.SetQuantParams(op->inputs()[0].QuantParams());
     std::vector<mindspore::MSTensor> pre_trans_outputs = {tensor};
@@ -113,6 +117,7 @@ int PNNAFormatTransPass::InsertPostNodes(PNNAOp *op, std::vector<PNNAOp *> *tran
       MS_LOG(ERROR) << "New nchw tensor failed when inserting post nchw2nhwc op.";
       return RET_ERROR;
     }
+    nc2nh_tensor.SetShape(nchw_shape);
     nc2nh_tensor.SetFormat(Format::NCHW);
     nc2nh_tensor.SetQuantParams(op->outputs()[0].QuantParams());
     // for those non-insert post ops, update their in_tensor
@@ -135,6 +140,7 @@ int PNNAFormatTransPass::InsertPostNodes(PNNAOp *op, std::vector<PNNAOp *> *tran
     MS_LOG(ERROR) << "New nchw tensor failed when inserting post nchw2nhwc op.";
     return RET_ERROR;
   }
+  nc2nh_tensor.SetShape(nchw_shape);
   nc2nh_tensor.SetFormat(Format::NCHW);
   nc2nh_tensor.SetQuantParams(op->outputs()[0].QuantParams());
   if (is_output_op && op->out_ops().empty()) {

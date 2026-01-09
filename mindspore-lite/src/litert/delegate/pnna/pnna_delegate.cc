@@ -65,6 +65,8 @@ Status PNNADelegate::Init() {
     {schema::PrimitiveType_ArgMaxFusion, GetPNNAOp<PNNAArg>},
     {schema::PrimitiveType_ArgMinFusion, GetPNNAOp<PNNAArg>},
     {schema::PrimitiveType_MaxPoolFusion, GetPNNAOp<PNNAPooling>},
+    {schema::PrimitiveType_Conv2dTransposeFusion, GetPNNAOp<PNNADeConv2d>},
+    {schema::PrimitiveType_Softmax, GetPNNAOp<PNNASoftmax>},
   };
   return mindspore::kSuccess;
 }

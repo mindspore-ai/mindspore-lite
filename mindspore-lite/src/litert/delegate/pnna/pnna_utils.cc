@@ -16,9 +16,15 @@
 
 #include "src/litert/delegate/pnna/pnna_utils.h"
 #include <vector>
+#include <utility>
+#include <memory>
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 #include "nnacl_c/op_base.h"
+#include "src/common/common.h"
+#include "src/litert/cxx_api/tensor/tensor_impl.h"
+#include "src/litert/kernel/cpu/nnacl_c/int8/pack_int8.h"
+#include "src/litert/delegate/delegate_utils.h"
 
 namespace mindspore {
 namespace lite {
@@ -164,5 +170,53 @@ std::vector<uint32_t> ConvertToPnnaPerm(const int32_t *data, size_t count) {
 }
 
 int32_t ConvertToPnnaAxis(int32_t axis, size_t count) { return count - 1 - (axis < 0 ? count + axis : axis); }
+
+int HandleConstantInputs(PNNASubGraph *graph, std::vector<mindspore::MSTensor> &inputs) {
+  for (size_t i = 0; i < inputs.size(); i++) {
+    auto in_tensor = inputs.at(i);
+    if (!in_tensor.IsConst() || in_tensor.Shape().size() != DIMENSION_4D) {
+      continue;
+    }
+    if (in_tensor.format() == NCHW) {
+      continue;
+    }
+    auto shape = in_tensor.Shape();
+    MS_CHECK_TRUE_RET(shape.size() == DIMENSION_4D, RET_ERROR);
+    auto new_shape = {shape.at(NHWC_N), shape.at(NHWC_C), shape.at(NHWC_H), shape.at(NHWC_W)};
+    auto nh2nc_tensor =
+      MSTensor(in_tensor.Name() + "_nh2nc", in_tensor.DataType(), new_shape, nullptr, in_tensor.DataSize());
+    if (nh2nc_tensor == nullptr) {
+      MS_LOG(ERROR) << "New nchw tensor failed when inserting nchw2nhwc op.";
+      return RET_ERROR;
+    }
+    auto dst_data = nh2nc_tensor.MutableData();
+    MS_CHECK_TRUE_RET(dst_data != nullptr, RET_ERROR);
+    // transpose dst_data to nchw.
+    CHECK_NULL_RETURN(in_tensor.Data());
+    if (in_tensor.DataType() == DataType::kNumberTypeInt8) {
+      // avoid to lose the original QuantParams.
+      auto quant_params = in_tensor.QuantParams();
+      nh2nc_tensor.SetQuantParams(quant_params);
+      PackNHWCToNCHWInt8(in_tensor.MutableData(), dst_data, shape[NHWC_N], shape[NHWC_H] * shape[NHWC_W],
+                         shape[NHWC_C]);
+    } else if (in_tensor.DataType() == DataType::kNumberTypeFloat32) {
+      PackNHWCToNCHWFp32(in_tensor.MutableData(), dst_data, shape[NHWC_N], shape[NHWC_H] * shape[NHWC_W],
+                         shape[NHWC_C]);
+    } else {
+      MS_LOG(ERROR) << "Unsupported data type for nchw2nhwc op.";
+      return RET_ERROR;
+    }
+    nh2nc_tensor.SetFormat(NCHW);
+    auto lite_impl = std::static_pointer_cast<LiteTensorImpl>(nh2nc_tensor.impl());
+    if (!lite_impl) {
+      MS_LOG(ERROR) << "Failed to cast MSTensor to LiteTensorImpl.";
+      return RET_ERROR;
+    }
+    auto lite_tensor = lite_impl->lite_tensor();
+    lite_tensor->set_category(Category::CONST_TENSOR);
+    inputs.at(i) = nh2nc_tensor;
+  }
+  return RET_OK;
+}
 }  // namespace lite
 }  // namespace mindspore
