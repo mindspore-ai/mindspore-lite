@@ -38,5 +38,7 @@ STATUS ReduceMeanMapper::Mapper(const CNodePtr &cnode) {
 }
 
 REGISTER_PRIMITIVE_MAPPER(kNameReduceMean, ReduceMeanMapper)
+REGISTER_PRIMITIVE_MAPPER(kNameReduceMax, ReduceMeanMapper)
+REGISTER_PRIMITIVE_MAPPER(kNameReduceMin, ReduceMeanMapper)
 }  // namespace lite
 }  // namespace mindspore

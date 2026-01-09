@@ -1660,7 +1660,7 @@ bool ModelProcess::InitUpdateWeightBuffer(const std::vector<MSTensor> &kernel_in
     }
     auto buffer_size = kernel_input.DataSize();
     void *data_mem_buffer = nullptr;
-    if (kernel_input.GetDeviceData() != nullptr && all_device_tensor) {
+    if (all_device_tensor) {
       data_mem_buffer = kernel_input.GetDeviceData();
       MS_LOG(INFO) << "Use existing device memory for input " << i << ", buffer size: " << buffer_size;
       if (!CreateDataBuffer(&data_mem_buffer, buffer_size, weight_inputs_, true)) {

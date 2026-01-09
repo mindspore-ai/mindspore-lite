@@ -22,7 +22,9 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_name_r.h"
 namespace mindspore {
 namespace lite {
+using mindspore::ops::kNameReduceMax;
 using mindspore::ops::kNameReduceMean;
+using mindspore::ops::kNameReduceMin;
 class ReduceMeanMapper : public PrimitiveMapper {
  public:
   ReduceMeanMapper() : PrimitiveMapper(kNameReduceMean) {}
