@@ -65,6 +65,7 @@
 #include "tools/optimizer/fusion/flash_attention_fusion.h"
 #include "tools/optimizer/fusion/flash_attention_tik_fusion.h"
 #include "tools/optimizer/fusion/groupnormsilu_fusion.h"
+#include "tools/optimizer/fusion/adjust_reducesum_pass.h"
 #include "tools/converter/quantizer/quantization_optimizer.h"
 #include "tools/converter/quantizer/insert_quant_node_manager.h"
 #include "tools/converter/parser/unify_format.h"
@@ -146,6 +147,7 @@ constexpr auto kCustomOpGNSNZPass = "GNSNZPass";
 constexpr auto kCustomOpGNBMMPass = "GNBMMPass";
 constexpr auto kCustomOpFFNCustomPass = "FFNCustomPass";
 constexpr auto kGraphSplitPass = "GraphSplitPass";
+constexpr auto kAdjustReduceSumPass = "AdjustReduceSumPass";
 constexpr auto kScalarOpPass = "ScalarOpPass";
 constexpr auto kMakeListPass = "MakeListPass";
 constexpr auto kFuncType = "func_type";
@@ -726,7 +728,7 @@ STATUS AclPassImpl::RunLiteInnerPass(const FuncGraphPtr &func_graph) {
                         "FlashAttentionTik op pass failed.");
     }
   }
-  if (!lite::RunOptimizerPass(func_graph, {kAdjustResizeDimsPass, kAdjustCol2imPass})) {
+  if (!lite::RunOptimizerPass(func_graph, {kAdjustResizeDimsPass, kAdjustCol2imPass, kAdjustReduceSumPass})) {
     MS_LOG(ERROR) << "AdjustResizeDimsPass or AdjustCol2imPass failed!";
     return lite::RET_ERROR;
   }
@@ -853,7 +855,8 @@ STATUS AclPassImpl::MapperForOrgMindIR(const FuncGraphPtr &func_graph) {
 
   std::set<std::string> mindir_mapper = {ops::kNameTranspose, ops::kNameStandardNormal, ops::kNameBatchMatMul,
                                          ops::kNameMatMul,    ops::kNameAvgPool,        ops::kNameBatchNorm,
-                                         kNameResizeBilinear, kNameScatterNdMax,        ops::kNameReduceMean};
+                                         kNameResizeBilinear, kNameScatterNdMax,        ops::kNameReduceMean,
+                                         ops::kNameReduceMax, ops::kNameReduceMin};
   const std::set<PrimitivePtr> support_ptq_mindir_types = {prim::kPrimQuantDTypeCast, prim::kPrimAddFusion,
                                                            prim::kPrimMulFusion};
   for (auto graph : all_func_graphs) {
