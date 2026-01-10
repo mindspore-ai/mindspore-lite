@@ -32,7 +32,7 @@
 #include "include/api/status.h"
 #include "extendrt/delegate/ascend_acl/acl_model_options.h"
 #include "extendrt/delegate/ascend_acl/dyn_shape_process.h"
-#include "extendrt/delegate/ascend_acl/acl_mem_manager.h"
+#include "extendrt/delegate/ascend_acl/acl_shared_memory_manager.h"
 #include "mindspore/core/include/mindapi/base/type_id.h"
 #include "src/extendrt/delegate/ascend_acl/acl_allocator.h"
 
@@ -78,6 +78,7 @@ class ModelProcess {
   uint64_t GetSharableHandle() { return sharable_handle_; }
 
  private:
+  Status LoadModelForUpdateWeight(const void *om_data, size_t om_data_size);
   bool PreInitModelResource();
 
   bool InitInputsBuffer();

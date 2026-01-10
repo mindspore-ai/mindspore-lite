@@ -174,7 +174,7 @@ bool ModelInfer::Finalize(bool process_ends) {
     MS_LOG(INFO) << "End to destroy context.";
   }
   if (process_ends || AclEnvGuard::GetModelNum() == 0) {
-    AclMemManager::GetInstance().ReleaseDeviceMem(options_->device_id, options_->model_path);
+    AclSharedMemoryManager::GetInstance().ReleaseDeviceMem(options_->device_id, options_->model_path);
   }
   aclError rt_ret = CALL_ASCEND_API(aclrtResetDevice, options_->device_id);
   if (rt_ret != ACL_SUCCESS) {
