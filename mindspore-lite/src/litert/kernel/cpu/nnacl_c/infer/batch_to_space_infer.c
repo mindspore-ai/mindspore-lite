@@ -36,14 +36,26 @@ int SetOutputShapeFromParam(const TensorC *const *inputs, TensorC **outputs, con
     if (block_shape[i] <= 0) {
       return NNACL_PARAM_INVALID;
     }
-    if (input_shape[kNHWC_N] % block_shape[i]) {
-      return NNACL_ERR;
+    if (inputs[FIRST_INPUT]->format_ == Format_NHWC) {
+      if (input_shape[kNHWC_N] % block_shape[i]) {
+        return NNACL_ERR;
+      }
+    } else if (inputs[FIRST_INPUT]->format_ == Format_NCHW) {
+      if (input_shape[kNCHW_N] % block_shape[i]) {
+        return NNACL_ERR;
+      }
     }
     mul_block_shape *= block_shape[i];
   }
 
-  if (input_shape[kNHWC_N] < mul_block_shape) {
-    return NNACL_PARAM_INVALID;
+  if (inputs[FIRST_INPUT]->format_ == Format_NHWC) {
+    if (input_shape[kNHWC_N] < mul_block_shape) {
+      return NNACL_PARAM_INVALID;
+    }
+  } else if (inputs[FIRST_INPUT]->format_ == Format_NCHW) {
+    if (input_shape[kNCHW_N] < mul_block_shape) {
+      return NNACL_PARAM_INVALID;
+    }
   }
   for (size_t i = 0; i < 4; ++i) {
     if (crops[i] < 0) {
@@ -55,10 +67,21 @@ int SetOutputShapeFromParam(const TensorC *const *inputs, TensorC **outputs, con
   }
   int output_shape[MAX_SHAPE_SIZE];
   size_t output_shape_size = input_shape_size;
-  output_shape[kNHWC_N] = input_shape[kNHWC_N] / mul_block_shape;
-  output_shape[kNHWC_H] = input_shape[kNHWC_H] * block_shape[0] - crops[0] - crops[1];
-  output_shape[kNHWC_W] = input_shape[kNHWC_W] * block_shape[1] - crops[2] - crops[3];
-  output_shape[kNHWC_C] = input_shape[kNHWC_C];
+  if (inputs[FIRST_INPUT]->format_ == Format_NHWC) {
+    output_shape[kNHWC_N] = input_shape[kNHWC_N] / mul_block_shape;
+    output_shape[kNHWC_H] =
+      input_shape[kNHWC_H] * block_shape[DIMENSION_0D] - crops[DIMENSION_0D] - crops[DIMENSION_1D];
+    output_shape[kNHWC_W] =
+      input_shape[kNHWC_W] * block_shape[DIMENSION_1D] - crops[DIMENSION_2D] - crops[DIMENSION_3D];
+    output_shape[kNHWC_C] = input_shape[kNHWC_C];
+  } else if (inputs[FIRST_INPUT]->format_ == Format_NCHW) {
+    output_shape[kNCHW_N] = input_shape[kNCHW_N] / mul_block_shape;
+    output_shape[kNCHW_H] =
+      input_shape[kNCHW_H] * block_shape[DIMENSION_0D] - crops[DIMENSION_0D] - crops[DIMENSION_1D];
+    output_shape[kNCHW_W] =
+      input_shape[kNCHW_W] * block_shape[DIMENSION_1D] - crops[DIMENSION_2D] - crops[DIMENSION_3D];
+    output_shape[kNCHW_C] = input_shape[kNCHW_C];
+  }
   SetShapeArray(outputs[0], output_shape, output_shape_size);
   return NNACL_OK;
 }
@@ -84,14 +107,25 @@ int SetOutputShapeFromInput(const TensorC *const *inputs, TensorC **outputs) {
     if (block_shape[i] <= 0) {
       return NNACL_PARAM_INVALID;
     }
-    if (input_shape[kNHWC_N] % block_shape[i]) {
-      return 1;
+    if (inputs[FIRST_INPUT]->format_ == Format_NHWC) {
+      if (input_shape[kNHWC_N] % block_shape[i]) {
+        return 1;
+      }
+    } else if (inputs[FIRST_INPUT]->format_ == Format_NCHW) {
+      if (input_shape[kNCHW_N] % block_shape[i]) {
+        return 1;
+      }
     }
     mul_block_shape_ *= block_shape[i];
   }
-
-  if (input_shape[kNHWC_N] < mul_block_shape_) {
-    return NNACL_PARAM_INVALID;
+  if (inputs[FIRST_INPUT]->format_ == Format_NHWC) {
+    if (input_shape[kNHWC_N] < mul_block_shape_) {
+      return NNACL_PARAM_INVALID;
+    }
+  } else if (inputs[FIRST_INPUT]->format_ == Format_NCHW) {
+    if (input_shape[kNCHW_N] < mul_block_shape_) {
+      return NNACL_PARAM_INVALID;
+    }
   }
   for (size_t i = 0; i < 4; ++i) {
     if (crops[i] < 0) {
@@ -103,10 +137,21 @@ int SetOutputShapeFromInput(const TensorC *const *inputs, TensorC **outputs) {
   }
   int output_shape[MAX_SHAPE_SIZE];
   size_t output_shape_size = input_shape_size;
-  output_shape[kNHWC_N] = input_shape[kNHWC_N] / mul_block_shape_;
-  output_shape[kNHWC_H] = input_shape[kNHWC_H] * block_shape[0] - crops[0] - crops[1];
-  output_shape[kNHWC_W] = input_shape[kNHWC_W] * block_shape[1] - crops[2] - crops[3];
-  output_shape[kNHWC_C] = input_shape[kNHWC_C];
+  if (inputs[FIRST_INPUT]->format_ == Format_NHWC) {
+    output_shape[kNHWC_N] = input_shape[kNHWC_N] / mul_block_shape_;
+    output_shape[kNHWC_H] =
+      input_shape[kNHWC_H] * block_shape[DIMENSION_0D] - crops[DIMENSION_0D] - crops[DIMENSION_1D];
+    output_shape[kNHWC_W] =
+      input_shape[kNHWC_W] * block_shape[DIMENSION_1D] - crops[DIMENSION_2D] - crops[DIMENSION_3D];
+    output_shape[kNHWC_C] = input_shape[kNHWC_C];
+  } else if (inputs[FIRST_INPUT]->format_ == Format_NCHW) {
+    output_shape[kNCHW_N] = input_shape[kNCHW_N] / mul_block_shape_;
+    output_shape[kNCHW_H] =
+      input_shape[kNCHW_H] * block_shape[DIMENSION_0D] - crops[DIMENSION_0D] - crops[DIMENSION_1D];
+    output_shape[kNCHW_W] =
+      input_shape[kNCHW_W] * block_shape[DIMENSION_1D] - crops[DIMENSION_2D] - crops[DIMENSION_3D];
+    output_shape[kNCHW_C] = input_shape[kNCHW_C];
+  }
   SetShapeArray(outputs[0], output_shape, output_shape_size);
   return NNACL_OK;
 }
@@ -122,7 +167,7 @@ int BatchToSpaceInferShape(const TensorC *const *inputs, size_t inputs_size, Ten
   }
 
   const TensorC *input = inputs[0];
-  if (input->format_ != Format_NHWC) {
+  if (input->format_ != Format_NHWC && input->format_ != Format_NCHW) {
     return NNACL_FORMAT_ERROR;
   }
   SetDataTypeFormat(outputs[0], input);
