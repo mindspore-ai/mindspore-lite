@@ -32,6 +32,8 @@
 #include "src/litert/delegate/pnna/op/addn_pnna.h"
 #include "src/litert/delegate/pnna/op/arg_pnna.h"
 #include "src/litert/delegate/pnna/op/pooling_pnna.h"
+#include "src/litert/delegate/pnna/op/neg_pnna.h"
+#include "src/litert/delegate/pnna/op/onehot_pnna.h"
 #include "src/litert/delegate/pnna/op/deconv2d_pnna.h"
 #include "src/litert/delegate/pnna/op/softmax_pnna.h"
 
