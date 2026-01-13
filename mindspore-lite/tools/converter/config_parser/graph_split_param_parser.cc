@@ -52,7 +52,7 @@ void GetSplitNode(const std::shared_ptr<ConverterPara> &param, std::string *spli
   }
 }
 
-STATUS GraphPllitParamParser::ParseGraphSplitCfg(const std::shared_ptr<ConverterPara> &param) {
+STATUS GraphSplitParamParser::ParseGraphSplitCfg(const std::shared_ptr<ConverterPara> &param) {
   MS_CHECK_TRUE_MSG(param != nullptr, RET_ERROR, "param is nullptr!");
   std::string split_node_str = "";
   GetSplitNode(param, &split_node_str);

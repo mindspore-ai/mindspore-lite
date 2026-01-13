@@ -59,6 +59,7 @@ constexpr int kDataIndex = 1;
 constexpr float FloatMSEC = 1000.0f;
 constexpr int DSPTid = 20;
 constexpr int PNNATid = 60;
+constexpr int kJsonIndentSpaces = 4;
 #if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
 constexpr auto kCommonSection = "common";  // support external user configuration
 constexpr auto kEnablePreInferenceKey = "enable_pre_inference";
@@ -487,7 +488,7 @@ Status ModelImpl::ExportTraceData(const std::vector<KernelInfo> &kernel_infos, u
   std::string filename = std::to_string(first_op_start_time) + "_tracing.json";
   std::ofstream json_file(filename);
   if (json_file.is_open()) {
-    json_file << output_json.dump(4);
+    json_file << output_json.dump(kJsonIndentSpaces);
     json_file.close();
     MS_LOG(INFO) << "Trace file generated: " << filename;
   } else {
@@ -572,10 +573,7 @@ Status ModelImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTen
   MS_CHECK_TRUE_MSG(session_ != nullptr, kLiteNullptr, "Model has not been Built, or Model Build failed!");
   MS_CHECK_TRUE_MSG(outputs != nullptr, kLiteError, "outputs is nullptr!");
   auto input_tensors = session_->GetInputs();
-  if (input_tensors.empty()) {
-    MS_LOG(ERROR) << "Failed to get input tensor!";
-    return kLiteError;
-  }
+  MS_CHECK_TRUE_MSG(!input_tensors.empty(), kLiteError, "Failed to get input tensor!");
   if (input_tensors.size() != inputs.size()) {
     MS_LOG(ERROR) << "Wrong input size " << inputs.size() << ", session input tensor size " << input_tensors.size();
     return kLiteError;
@@ -664,10 +662,7 @@ Status ModelImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTen
   }
   MS_LOG(DEBUG) << "Run graph success.";
   auto res = GetOutputs();
-  if (res.empty()) {
-    MS_LOG(ERROR) << "Empty outputs!";
-    return kLiteError;
-  }
+  MS_CHECK_TRUE_MSG(!res.empty(), kLiteError, "Empty outputs!");
   outputs->clear();
   outputs->insert(outputs->end(), res.begin(), res.end());
   return kSuccess;

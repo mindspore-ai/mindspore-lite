@@ -302,12 +302,14 @@ Status DumpOperands(const AnfNodePtr &node, const std::map<AnfNodePtr, int32_t> 
         gsub->buffer << "%" << iter->second;
       } else {
         auto input = in->cast<CNodePtr>();
+        MS_CHECK_TRUE_MSG(input != nullptr, kLiteError, "input is nullptr");
         auto fg = input->func_graph();
         MS_CHECK_TRUE_MSG(fg != nullptr, kLiteError, "fg is nullptr");
         gsub->buffer << "$(@" << fg->ToString() << ":" << input->ToString() << ")";
       }
     } else if (in->isa<ValueNode>() && !IsValueNode<FuncGraph>(in)) {
       auto value = GetValueNode(in);
+      MS_CHECK_TRUE_MSG(value != nullptr, kLiteError, "value is nullptr");
       if (IsPrimitiveCNode(node, prim::kPrimVirtualViewGrad) && value->isa<Primitive>()) {
         gsub->buffer << value->ToString();
       }
@@ -418,7 +420,6 @@ Status DumpParameters(const FuncGraphPtr &func_graph, std::ostringstream &oss) {
     MS_CHECK_TRUE_MSG(parameters[0] != nullptr, kLiteError, "parameters[0] is nullptr");
     auto status = PrintNodeOutputType(oss, parameters[0]);
     MS_CHECK_TRUE_MSG(status == kSuccess, kLiteError, "PrintNodeOutputType failed");
-
   } else if (parameters.size() > 1) {
     for (size_t idx = 0; idx < parameters.size() - 1; idx++) {
       MS_CHECK_TRUE_MSG(parameters[idx] != nullptr, kLiteError, "parameters[idx] is nullptr");
@@ -534,7 +535,6 @@ Status CollectGraphInfo(const std::vector<AnfNodePtr> &nodes, std::map<AnfNodePt
         gsub->cnode_num++;
         auto status = DumpCNode(node->cast<CNodePtr>(), sub_graph, *para_map, gsub);
         MS_CHECK_TRUE_MSG(status == kSuccess, kLiteError, "DumpCNode failed.");
-
       } else {
         gsub->buffer << "  " << node->ToString() << std::endl;
       }

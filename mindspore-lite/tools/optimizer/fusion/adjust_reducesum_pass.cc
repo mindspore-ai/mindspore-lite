@@ -66,6 +66,7 @@ bool IsAxesEmpty(AnfNodePtr axes_input) {
       return false;
     } else if (value_ptr->type() != nullptr && value_ptr->type()->type_id() == kObjectTypeTuple) {
       auto type_tuple = value_ptr->type()->cast<TuplePtr>();
+      MS_CHECK_TRUE_MSG(type_tuple != nullptr, true, "type_tuple is nullptr!");
       const auto &elements = type_tuple->elements();
       return elements.size() == 0 ? true : false;
     }

@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 #include <unordered_map>
-#include "src/litert/delegate/npu/offline_model_kernel.h"
 #include "litert/cxx_api/tensor/tensor_impl.h"
 #include "include/api/data_type.h"
+#include "src/litert/delegate/npu/offline_model_kernel.h"
 
 namespace {
 constexpr int32_t kHiaiFrequencyType = 3;  // HIGH
