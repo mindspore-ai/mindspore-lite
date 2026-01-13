@@ -299,6 +299,24 @@ bool GeGraphExecutorV1::RunGraph(uint32_t graph_id, const std::vector<MSTensor> 
   return true;
 }
 
+bool GeGraphExecutorV1::MallocDeviceMem(std::pair<void *, size_t> &tensor_mem_info, void *&device_addr, size_t size) {
+  if (size > tensor_mem_info.second) {
+    if (tensor_mem_info.first) {
+      memory_manager_->FreeDeviceMemory(tensor_mem_info.first);
+      tensor_mem_info = {nullptr, 0};
+    }
+    device_addr = memory_manager_->MallocDeviceMemory("Data", size);
+    if (device_addr == nullptr) {
+      MS_LOG(ERROR) << "Malloc device memory failed.";
+      return false;
+    }
+    tensor_mem_info = {device_addr, size};
+  } else {
+    device_addr = tensor_mem_info.first;
+  }
+  return true;
+}
+
 bool GeGraphExecutorV1::PrepareGeInputs(const std::vector<MSTensor> &inputs, std::vector<GeTensor> *ge_inputs,
                                         uint32_t graph_id) {
   if (ge_inputs == nullptr) {
@@ -320,19 +338,8 @@ bool GeGraphExecutorV1::PrepareGeInputs(const std::vector<MSTensor> &inputs, std
     if (input.GetDeviceData() != nullptr) {
       device_addr = input.GetDeviceData();
     } else if (input.Data() != nullptr) {
-      if (size > it.second.second) {
-        if (it.second.first) {
-          memory_manager_->FreeDeviceMemory(it.second.first);
-          it.second = {nullptr, 0};
-        }
-        device_addr = memory_manager_->MallocDeviceMemory("Data", size);
-        if (device_addr == nullptr) {
-          MS_LOG(ERROR) << "Malloc device memory failed.";
-          return false;
-        }
-        it.second = {device_addr, size};
-      } else {
-        device_addr = it.second.first;
+      if (!MallocDeviceMem(it.second, device_addr, size)) {
+        MS_LOG(ERROR) << "malloc input ge_tensor device memory failed.";
       }
       auto mem_ret = memory_manager_->MemcpyHost2Device(device_addr, size, input.MutableData(), size);
       if (!mem_ret) {
@@ -359,20 +366,9 @@ bool GeGraphExecutorV1::PrepareGeOutputs(std::vector<MSTensor> *outputs, std::ve
   auto fill_addr_func = [this](std::pair<GeTensor, std::pair<void *, size_t>> *it, const std::vector<int64_t> &shape) {
     size_t size = GetSizeByDataType(it->first.GetDataType());
     size = std::accumulate(shape.begin(), shape.end(), size, std::multiplies<>());
-    void *device_addr = it->second.first;
-    if (size > it->second.second) {
-      if (device_addr) {
-        memory_manager_->FreeDeviceMemory(device_addr);
-        it->second = {nullptr, 0};
-      }
-      device_addr = memory_manager_->MallocDeviceMemory("Output Data", size);
-      if (device_addr == nullptr) {
-        MS_LOG(ERROR) << "Malloc device memory failed.";
-        return false;
-      }
-      it->second = {device_addr, size};
-    } else {
-      device_addr = it->second.first;
+    void *device_addr = nullptr;
+    if (!MallocDeviceMem(it->second, device_addr, size)) {
+      MS_LOG(ERROR) << "malloc output ge_tensor device memory failed.";
     }
     // cppcheck-suppress internalAstError
     it->first.SetData(static_cast<uint8_t *>(device_addr), size, EmptyFree);
