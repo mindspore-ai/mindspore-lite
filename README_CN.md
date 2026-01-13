@@ -53,6 +53,8 @@ MindSpore Lite针对AIGC、语音类算法以及CV类模型推理，实现推理
 
 <img src="docs/img/MindSpore-Lite-architecture-zh-cn.png" alt="MindSpore Lite Architecture" width="800"/>
 
+- MindSpore Lite云侧推理导出`.mindir`模型，支持Atlas 300I Duo、Atlas 800IA3等昇腾系列加速卡及X86/ARM架构CPU；端侧推理导出`.ms`模型，支持通用CPU与Kirin NPU。
+
 ### MindSpore Lite技术特点
 
 1. 端云一站式推理部署
