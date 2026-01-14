@@ -54,6 +54,8 @@ MindSpore Lite achieves double the inference performance for AIGC, speech algori
 
 <img src="docs/img/MindSpore-Lite-architecture-en.png" alt="MindSpore Lite Architecture" width="800"/>
 
+- MindSpore Lite exports `.mindir` models for cloud-side inference on Atlas 300I Duo, Atlas 800IA3 Ascend accelerators and X86/ARM CPUs, and `.ms` models for device-side inference on general-purpose CPUs and Kirin NPUs.
+
 1. Device and Cloud one-stop inference deployment
 
     - Provide end-to-end workflow for model transformation optimization, deployment, and inference.
