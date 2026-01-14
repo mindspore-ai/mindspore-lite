@@ -61,6 +61,7 @@ class GeGraphExecutorV1 : public LiteGraphExecutor {
   bool InitGeTensor(uint32_t graph_id);
   bool PrepareGeInputs(const std::vector<MSTensor> &inputs, std::vector<GeTensor> *ge_inputs, uint32_t graph_id);
   bool PrepareGeOutputs(std::vector<MSTensor> *outputs, std::vector<GeTensor> *ge_outputs, uint32_t graph_id);
+  bool MallocDeviceMem(std::pair<void *, size_t> &tensor_mem_info, void *&device_addr, size_t size);
   bool PostProcessGeOutputs(std::vector<MSTensor> *outputs, uint32_t graph_id);
   GeOptionsContainer ge_options_container_;
   GeGraphCompiler ge_graph_compiler_;

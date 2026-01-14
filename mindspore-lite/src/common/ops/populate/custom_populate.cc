@@ -210,6 +210,7 @@ OpParameter *AllocOpParameter(std::string type) {
 
 OpParameter *PopulateCustomParameter(const void *prim) {
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
+  static const std::string prefix_line = "Custom_FT_";
   auto primitive = static_cast<const schema::Primitive *>(prim);
   auto value = primitive->value_as_Custom();
   if (value == nullptr) {
@@ -243,7 +244,7 @@ OpParameter *PopulateCustomParameter(const void *prim) {
     return CreateCustomConv3DParameter(value);
   } else if (type == "GridSampler") {
     return CreateGridSamplerParameter(value);
-  } else if (type.compare(0, 10, "Custom_FT_") == 0) {
+  } else if (type.length() >= prefix_line.length() && type.compare(0, prefix_line.length(), prefix_line) == 0) {
     return CreateParam(PrimType_Custom);
   } else if (type == "ThirdPartyModel") {
     return CreateNpuOfflineModelParameter(prim);
