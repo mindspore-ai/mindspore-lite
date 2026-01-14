@@ -24,7 +24,8 @@ namespace mindspore {
 namespace lite {
 std::vector<std::string> ParseInnerList(const std::string &s) {
   std::vector<std::string> result;
-  if (s.length() < 2) {
+  constexpr size_t kMinBracketPairLength = 2;  // Minimum length for a pair of brackets "[]"
+  if (s.length() < kMinBracketPairLength) {
     return result;
   }
   std::string content = s.substr(1, s.length() - 2);
@@ -52,7 +53,7 @@ void GetSplitNode(const std::shared_ptr<ConverterPara> &param, std::string *spli
   }
 }
 
-STATUS GraphPllitParamParser::ParseGraphSplitCfg(const std::shared_ptr<ConverterPara> &param) {
+STATUS GraphSplitParamParser::ParseGraphSplitCfg(const std::shared_ptr<ConverterPara> &param) {
   MS_CHECK_TRUE_MSG(param != nullptr, RET_ERROR, "param is nullptr!");
   std::string split_node_str = "";
   GetSplitNode(param, &split_node_str);

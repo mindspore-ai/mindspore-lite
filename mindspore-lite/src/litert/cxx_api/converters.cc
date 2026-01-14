@@ -81,6 +81,10 @@ Status ContextUtils::AddAscendDevice(lite::InnerContext *inner_context, DeviceIn
 Status ContextUtils::AddDspDevice(lite::InnerContext *inner_context, DeviceInfoContext *device) {
   lite::DeviceInfo device_info;
   auto dsp_context = device->Cast<DSPDeviceInfo>();
+  if (dsp_context == nullptr) {
+    MS_LOG(ERROR) << "Cast to DSPDeviceInfo failed, dsp_context is nullptr";
+    return kLiteError;
+  }
   device_info.dsp_device_info_ = {dsp_context->GetDeviceID()};
   inner_context->device_list_.push_back(
     {lite::DT_DSP, device_info, dsp_context->GetProvider(), dsp_context->GetProviderDevice()});

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "tools/converter/parser/onnx/onnx_multi_scale_deformable_attn_function.h"
+#include "tools/converter/parser/onnx/onnx_multi_scale_deformable_attn_function_parser.h"
 #include <memory>
 #include <string>
 #include <vector>

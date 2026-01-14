@@ -572,10 +572,7 @@ Status ModelImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTen
   MS_CHECK_TRUE_MSG(session_ != nullptr, kLiteNullptr, "Model has not been Built, or Model Build failed!");
   MS_CHECK_TRUE_MSG(outputs != nullptr, kLiteError, "outputs is nullptr!");
   auto input_tensors = session_->GetInputs();
-  if (input_tensors.empty()) {
-    MS_LOG(ERROR) << "Failed to get input tensor!";
-    return kLiteError;
-  }
+  MS_CHECK_TRUE_MSG(!input_tensors.empty(), kLiteError, "Failed to get input tensor!");
   if (input_tensors.size() != inputs.size()) {
     MS_LOG(ERROR) << "Wrong input size " << inputs.size() << ", session input tensor size " << input_tensors.size();
     return kLiteError;
@@ -664,10 +661,7 @@ Status ModelImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTen
   }
   MS_LOG(DEBUG) << "Run graph success.";
   auto res = GetOutputs();
-  if (res.empty()) {
-    MS_LOG(ERROR) << "Empty outputs!";
-    return kLiteError;
-  }
+  MS_CHECK_TRUE_MSG(!res.empty(), kLiteError, "Empty outputs!");
   outputs->clear();
   outputs->insert(outputs->end(), res.begin(), res.end());
   return kSuccess;

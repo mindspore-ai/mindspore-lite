@@ -24,7 +24,7 @@
 
 namespace mindspore {
 namespace lite {
-class GraphPllitParamParser {
+class GraphSplitParamParser {
  public:
   STATUS ParseGraphSplitCfg(const std::shared_ptr<ConverterPara> &param);
 };
