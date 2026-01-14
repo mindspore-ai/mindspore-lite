@@ -28,8 +28,8 @@
 namespace mindspore {
 
 template <typename T>
-class ModelExecConfigAttr {
-  using type = T;
+struct ModelExecConfigAttr {
+ private:
   T value_;
 
  public:

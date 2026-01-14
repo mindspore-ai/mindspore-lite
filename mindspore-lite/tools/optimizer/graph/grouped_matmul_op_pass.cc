@@ -349,7 +349,7 @@ STATUS ConvertGroupListToInt64(const FuncGraphPtr &func_graph, const CNodePtr &c
 }
 
 STATUS GroupedMatmulOpPass::RunInsertGroupListCastPass(const FuncGraphPtr &func_graph,
-                                                       const FuncGraphManagerPtr & /*manager*/) {
+                                                       const FuncGraphManagerPtr & /* manager */) {
   auto node_list = TopoSort(func_graph->get_return());
   std::map<std::string, CNodePtr> cast_map;
   for (auto &node : node_list) {
