@@ -96,6 +96,11 @@ class Scheduler {
                     TypeId prefer_data_type);
 #endif
 
+  int FindCustomKernel(const std::vector<Tensor *> &in_tensors, const std::vector<Tensor *> &out_tensors,
+                       const LiteGraph::Node *node, TypeId data_type, kernel::KernelExec **kernel);
+  int FindGeneralProviderKernel(const std::vector<Tensor *> &in_tensors, const std::vector<Tensor *> &out_tensors,
+                                const LiteGraph::Node *node, TypeId data_type, int prim_type,
+                                kernel::KernelExec **kernel);
   int FindProviderKernel(const std::vector<Tensor *> &in_tensors, const std::vector<Tensor *> &out_tensors,
                          const LiteGraph::Node *node, TypeId data_type, kernel::KernelExec **kernel);
 

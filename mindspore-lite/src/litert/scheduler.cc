@@ -1151,51 +1151,18 @@ int Scheduler::FindDspKernel(const std::vector<Tensor *> &in_tensors, const std:
 }
 #endif
 
-int Scheduler::FindProviderKernel(const std::vector<Tensor *> &in_tensors, const std::vector<Tensor *> &out_tensors,
-                                  const LiteGraph::Node *node, TypeId data_type, kernel::KernelExec **kernel) {
-#ifndef CUSTOM_KERNEL_REGISTRY_CLIP
-  MS_ASSERT(kernel != nullptr);
+int Scheduler::FindCustomKernel(const std::vector<Tensor *> &in_tensors, const std::vector<Tensor *> &out_tensors,
+                                const LiteGraph::Node *node, TypeId data_type, kernel::KernelExec **kernel) {
+  auto prim_type = schema::PrimitiveType_Custom;
   int ret = RET_NOT_SUPPORT;
-  auto prim_type = GetPrimitiveType(node->primitive_, context_->get_schema_version());
-  if (prim_type == schema::PrimitiveType_Custom) {
-    for (auto &&device : context_->device_list_) {
-      if (!device.provider_.empty() && !device.provider_device_.empty()) {
-        if (device.provider_device_ == "DSP") {
-          kernel::KernelKey desc{kernel::KERNEL_ARCH::kDSP, data_type,       NHWC, prim_type,
-                                 device.provider_device_,   device.provider_};
-          ret = KernelRegistry::GetInstance()->GetKernelExec(in_tensors, out_tensors, context_, ms_context_, desc,
-                                                             nullptr, kernel, node->primitive_);
-          if (ret == RET_OK && *kernel != nullptr) {
-            return ret;
-          }
-        }
-        kernel::KernelKey desc{kernel::KERNEL_ARCH::kCPU, data_type,       NHWC, prim_type,
-                               device.provider_device_,   device.provider_};
-        ret = KernelRegistry::GetInstance()->GetKernelExec(in_tensors, out_tensors, context_, ms_context_, desc,
-                                                           nullptr, kernel, node->primitive_);
-        if (ret == RET_OK && *kernel != nullptr) {
-          return ret;
-        }
-      }
+
+  for (auto &&device : context_->device_list_) {
+    if (device.provider_.empty() || device.provider_device_.empty()) {
+      continue;
     }
 
-    kernel::KernelKey desc{kernel::KERNEL_ARCH::kCPU, data_type, NHWC, prim_type, "", ""};
-    ret = KernelRegistry::GetInstance()->GetKernelExec(in_tensors, out_tensors, context_, ms_context_, desc, nullptr,
-                                                       kernel, node->primitive_);
-    if (ret == RET_OK && *kernel != nullptr) {
-      return ret;
-    }
-    return RET_NOT_SUPPORT;
-  }
-  if (!context_->IsProviderEnabled()) {
-    return ret;
-  }
-  if (context_->get_schema_version() == SCHEMA_V0) {
-    return ret;
-  }
-  for (auto &&device : context_->device_list_) {
-    if (!device.provider_.empty()) {
-      kernel::KernelKey desc{kernel::KERNEL_ARCH::kCPU, data_type,       NHWC, prim_type,
+    if (device.provider_device_ == "DSP") {
+      kernel::KernelKey desc{kernel::KERNEL_ARCH::kDSP, data_type,       NHWC, prim_type,
                              device.provider_device_,   device.provider_};
       ret = KernelRegistry::GetInstance()->GetKernelExec(in_tensors, out_tensors, context_, ms_context_, desc, nullptr,
                                                          kernel, node->primitive_);
@@ -1203,7 +1170,58 @@ int Scheduler::FindProviderKernel(const std::vector<Tensor *> &in_tensors, const
         return ret;
       }
     }
+
+    kernel::KernelKey desc{kernel::KERNEL_ARCH::kCPU, data_type,       NHWC, prim_type,
+                           device.provider_device_,   device.provider_};
+    ret = KernelRegistry::GetInstance()->GetKernelExec(in_tensors, out_tensors, context_, ms_context_, desc, nullptr,
+                                                       kernel, node->primitive_);
+    if (ret == RET_OK && *kernel != nullptr) {
+      return ret;
+    }
   }
+
+  kernel::KernelKey desc{kernel::KERNEL_ARCH::kCPU, data_type, NHWC, prim_type, "", ""};
+  ret = KernelRegistry::GetInstance()->GetKernelExec(in_tensors, out_tensors, context_, ms_context_, desc, nullptr,
+                                                     kernel, node->primitive_);
+  if (ret == RET_OK && *kernel != nullptr) {
+    return ret;
+  }
+  return RET_NOT_SUPPORT;
+}
+
+int Scheduler::FindGeneralProviderKernel(const std::vector<Tensor *> &in_tensors,
+                                         const std::vector<Tensor *> &out_tensors, const LiteGraph::Node *node,
+                                         TypeId data_type, int prim_type, kernel::KernelExec **kernel) {
+  if (!context_->IsProviderEnabled() || context_->get_schema_version() == SCHEMA_V0) {
+    return RET_NOT_SUPPORT;
+  }
+
+  for (auto &&device : context_->device_list_) {
+    if (!device.provider_.empty()) {
+      kernel::KernelKey desc{kernel::KERNEL_ARCH::kCPU, data_type,       NHWC, prim_type,
+                             device.provider_device_,   device.provider_};
+      int ret = KernelRegistry::GetInstance()->GetKernelExec(in_tensors, out_tensors, context_, ms_context_, desc,
+                                                             nullptr, kernel, node->primitive_);
+      if (ret == RET_OK && *kernel != nullptr) {
+        return ret;
+      }
+    }
+  }
+  return RET_NOT_SUPPORT;
+}
+
+int Scheduler::FindProviderKernel(const std::vector<Tensor *> &in_tensors, const std::vector<Tensor *> &out_tensors,
+                                  const LiteGraph::Node *node, TypeId data_type, kernel::KernelExec **kernel) {
+#ifndef CUSTOM_KERNEL_REGISTRY_CLIP
+  MS_CHECK_TRUE_MSG(kernel != nullptr, RET_ERROR, "kernel is nullptr.");
+
+  auto prim_type = GetPrimitiveType(node->primitive_, context_->get_schema_version());
+
+  if (prim_type == schema::PrimitiveType_Custom) {
+    return FindCustomKernel(in_tensors, out_tensors, node, data_type, kernel);
+  }
+
+  return FindGeneralProviderKernel(in_tensors, out_tensors, node, data_type, prim_type, kernel);
 #endif
   return RET_NOT_SUPPORT;
 }

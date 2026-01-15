@@ -309,6 +309,7 @@ Status DumpOperands(const AnfNodePtr &node, const std::map<AnfNodePtr, int32_t> 
       }
     } else if (in->isa<ValueNode>() && !IsValueNode<FuncGraph>(in)) {
       auto value = GetValueNode(in);
+      MS_CHECK_TRUE_MSG(value != nullptr, kLiteError, "value is nullptr");
       if (IsPrimitiveCNode(node, prim::kPrimVirtualViewGrad) && value->isa<Primitive>()) {
         MS_CHECK_TRUE_MSG(value != nullptr, kLiteError, "value is nullptr");
         gsub->buffer << value->ToString();

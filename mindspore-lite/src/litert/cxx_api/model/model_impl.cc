@@ -59,6 +59,7 @@ constexpr int kDataIndex = 1;
 constexpr float FloatMSEC = 1000.0f;
 constexpr int DSPTid = 20;
 constexpr int PNNATid = 60;
+constexpr int kJsonIndentSpaces = 4;
 #if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
 constexpr auto kCommonSection = "common";  // support external user configuration
 constexpr auto kEnablePreInferenceKey = "enable_pre_inference";
@@ -487,7 +488,7 @@ Status ModelImpl::ExportTraceData(const std::vector<KernelInfo> &kernel_infos, u
   std::string filename = std::to_string(first_op_start_time) + "_tracing.json";
   std::ofstream json_file(filename);
   if (json_file.is_open()) {
-    json_file << output_json.dump(4);
+    json_file << output_json.dump(kJsonIndentSpaces);
     json_file.close();
     MS_LOG(INFO) << "Trace file generated: " << filename;
   } else {
