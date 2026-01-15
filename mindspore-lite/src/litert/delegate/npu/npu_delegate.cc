@@ -405,10 +405,7 @@ Status NPUDelegate::buildOnlineModel(DelegateModel<schema::Primitive> *model) {
     } else {
       if (!npu_ops.empty()) {
         auto npu_graph_kernel = CreateNPUGraph(npu_ops, model, from, end);
-        if (npu_graph_kernel == nullptr) {
-          MS_LOG(ERROR) << "Create NPU Graph failed.";
-          return mindspore::kLiteNullptr;
-        }
+        MS_CHECK_TRUE_MSG(npu_graph_kernel != nullptr, mindspore::kLiteNullptr, "Create NPU Graph failed.");
         npu_graph_kernel->set_name("NpuGraph" + std::to_string(graph_index++));
         iter = model->Replace(from, end + 1, npu_graph_kernel);
         npu_ops.clear();
@@ -417,10 +414,7 @@ Status NPUDelegate::buildOnlineModel(DelegateModel<schema::Primitive> *model) {
   }
   if (!npu_ops.empty()) {
     auto npu_graph_kernel = CreateNPUGraph(npu_ops, model, from, end);
-    if (npu_graph_kernel == nullptr) {
-      MS_LOG(ERROR) << "Create NPU Graph failed.";
-      return mindspore::kLiteNullptr;
-    }
+    MS_CHECK_TRUE_MSG(npu_graph_kernel != nullptr, mindspore::kLiteNullptr, "Create NPU Graph failed.");
     npu_graph_kernel->set_name("NpuGraph" + std::to_string(graph_index++));
     model->Replace(from, end + 1, npu_graph_kernel);
     npu_ops.clear();

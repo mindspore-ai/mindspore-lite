@@ -58,7 +58,7 @@ STATUS BuildInputOutputMap(const std::vector<std::vector<std::string>> &subgraph
   for (size_t i = 0; i < subgraph_output_names.size(); i++) {
     auto single_subgraph_output_names = subgraph_output_names[i];
     subgraph_output_to_subgraph_input_map->push_back(
-      std::vector<std::vector<int>>(single_subgraph_output_names.size(), std::vector<int>(2, -1)));
+      std::vector<std::vector<int>>(single_subgraph_output_names.size(), std::vector<int>(kTargetNodeSize, -1)));
     for (size_t j = 0; j < single_subgraph_output_names.size(); j++) {
       auto output_name = single_subgraph_output_names[j];
       auto input_output_iter = subgraph_input_name_to_index_map.find(output_name);
@@ -269,6 +269,7 @@ STATUS CollectSubgraphNodes(const FuncGraphPtr &original_graph, const std::vecto
     size_t output_num = 1;
     if (abstract->isa<abstract::AbstractTuple>()) {
       auto abstract_tuple = abstract->cast<abstract::AbstractTuplePtr>();
+      MS_CHECK_TRUE_MSG(abstract_tuple != nullptr, lite::RET_ERROR, "abstract_tuple is nullptr!");
       output_num = abstract_tuple->elements().size();
     }
     if (output_num > 1) {
@@ -359,6 +360,7 @@ STATUS BuildSubGraph(const FuncGraphPtr &original_graph, const std::unordered_se
   std::unordered_set<AnfNodePtr> tensor_produced_internally;
   for (const auto &node : nodes_in_subgraph) {
     tensor_produced_internally.insert(node);
+    MS_CHECK_TRUE_MSG(node != nullptr, lite::RET_ERROR, "node is nullptr!");
     auto cnode = node->cast<CNodePtr>();
     for (size_t j = 1; j < cnode->size(); j++) {
       all_required_inputs.insert(cnode->input(j));

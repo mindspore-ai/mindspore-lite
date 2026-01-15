@@ -536,7 +536,7 @@ int ConverterImpl::ParseParam(lite::ConfigFileParser *config_parser, const std::
     return ret;
   }
 
-  lite::GraphPllitParamParser graph_split_parser;
+  lite::GraphSplitParamParser graph_split_parser;
 
   ret = graph_split_parser.ParseGraphSplitCfg(param);
   if (ret != RET_OK) {

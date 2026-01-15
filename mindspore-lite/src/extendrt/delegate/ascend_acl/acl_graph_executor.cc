@@ -373,7 +373,6 @@ bool AclGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<mindspore::
     inputs_shape_new.push_back(tensor_shape);
   }
   auto inputs_shape_model = model_infer_->GetInputShape();
-
   if (inputs_shape_model != inputs_shape_new)
     MS_CHECK_TRUE_MSG(model_infer_->Resize(inputs_shape_new), false, "Resize input shape failed.");
 

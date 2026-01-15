@@ -950,6 +950,7 @@ class ModelGroup:
             raise RuntimeError(
                 "ModelGroup's cal max size of workspace failed.")
 
+
 class MultiModelRunner:
     """
     The `MultiModelRunner` class is used to create mindir with multiple Models
@@ -1034,7 +1035,7 @@ class MultiModelRunner:
             RuntimeError: `config_path` file path not exist.
             RuntimeError: load `config_path` failed.
             RuntimeError: load and build MultiModelRunner failed.
-            """
+        """
         check_isinstance("model_path", model_path, str)
         check_isinstance("model_type", model_type, ModelType)
         if context is None:
@@ -1073,6 +1074,7 @@ class MultiModelRunner:
         if not ret.IsOk():
             raise RuntimeError(
                 f"build_from_file failed! Error is {ret.ToString()}")
+
     def get_model_executor(self):
         """
         Get ModelExecutors from MultiModelRunner.
@@ -1084,6 +1086,7 @@ class MultiModelRunner:
         for executor_ in self._runner.get_model_executor():
             executors.append(ModelExecutor(executor_))
         return executors
+
 
 class ModelExecutor:
     """
@@ -1153,6 +1156,7 @@ class ModelExecutor:
         for output_tensor in predict_result:
             predict_outputs.append(Tensor(output_tensor))
         return predict_outputs
+
     def get_inputs(self):
         """
         Obtains all input Tensors of the ModelExecutor.

@@ -517,16 +517,12 @@ bool ModelProcess::CreateDataBuffer(void **data_mem_buffer, size_t buffer_size, 
     if (buffer_size != 0) {
       if (!is_run_on_device_) {
         ret = CALL_ASCEND_API(aclrtMalloc, data_mem_buffer, buffer_size, ACL_MEM_MALLOC_HUGE_FIRST);
-        if (ret != ACL_SUCCESS) {
-          MS_LOG(ERROR) << "Malloc device buffer failed , buffer size " << buffer_size;
-          return false;
-        }
+        std::string error_msg = "Malloc device buffer failed, buffer size " + std::to_string(buffer_size);
+        MS_CHECK_TRUE_MSG(ret == ACL_SUCCESS, false, error_msg.c_str());
       } else {
         ret = CALL_ASCEND_API(aclrtMallocHost, data_mem_buffer, buffer_size);
-        if (ret != ACL_SUCCESS) {
-          MS_LOG(ERROR) << "Malloc host buffer failed , buffer size " << buffer_size;
-          return false;
-        }
+        std::string error_msg = "Malloc host buffer failed, buffer size " + std::to_string(buffer_size);
+        MS_CHECK_TRUE_MSG(ret == ACL_SUCCESS, false, error_msg.c_str());
       }
       is_weight_input_from_external_device_mem_ = false;
     }
@@ -1309,11 +1305,9 @@ bool ModelProcess::CheckAndInitInput(const std::vector<MSTensor> &inputs) {
       } else {
         // memcpy device data from src device to current device.
         auto data_copy_size = input.DataSize();
-        if (allocator_->CopyDeviceDataToDevice(device_data_addr, info.device_data, data_copy_size, info.buffer_size,
-                                               input_device_id, device_id_) != kSuccess) {
-          MS_LOG(ERROR) << "Copy input data from device to current device failed.";
-          return false;
-        }
+        auto copy_result = allocator_->CopyDeviceDataToDevice(device_data_addr, info.device_data, data_copy_size,
+                                                              info.buffer_size, input_device_id, device_id_);
+        MS_CHECK_TRUE_MSG(copy_result == kSuccess, false, "Copy input data from device to current device failed.");
         input_buffer = info.device_data;
       }
     } else {
@@ -1540,11 +1534,9 @@ bool ModelProcess::CreateWeightsInput(const std::vector<MSTensor> &kernel_inputs
       } else {
         // memcpy device data from src device to current device.
         auto data_copy_size = kernel_input.DataSize();
-        if (allocator_->CopyDeviceDataToDevice(device_data_addr, info.device_data, data_copy_size, info.buffer_size,
-                                               input_device_id, device_id_) != kSuccess) {
-          MS_LOG(ERROR) << "Copy input data from device to current device failed!";
-          return false;
-        }
+        auto copy_result = allocator_->CopyDeviceDataToDevice(device_data_addr, info.device_data, data_copy_size,
+                                                              info.buffer_size, input_device_id, device_id_);
+        MS_CHECK_TRUE_MSG(copy_result == kSuccess, false, "Copy input data from device to current device failed!");
         input_buffer = info.device_data;
       }
     } else {

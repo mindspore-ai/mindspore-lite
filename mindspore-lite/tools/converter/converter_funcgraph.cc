@@ -98,6 +98,7 @@ Status AdjustNodeInput(const CNodePtr &cnode) {
       }
       if (type_ptr->type_id() == kObjectTypeTuple) {
         auto type_tuple = type_ptr->cast<TuplePtr>();
+        MS_CHECK_FALSE_MSG(type_tuple == nullptr, kLiteNullptr, "type_tuple is nullptr!");
         const auto &elements = type_tuple->elements();
         if (!elements.empty() && elements[0]->type_id() == kNumberTypeFloat64) {
           auto fp64_vec_value = GetValue<std::vector<double>>(value_ptr);
@@ -142,6 +143,7 @@ Status CvtFp64ModelToFp32(const FuncGraphPtr &func_graph) {
         primitive->AddAttr(pair.first, MakeValue<float>(static_cast<float>(val)));
       } else if (pair.second->type() != nullptr && pair.second->type()->type_id() == kObjectTypeTuple) {
         auto type_tuple = pair.second->type()->cast<TuplePtr>();
+        MS_CHECK_FALSE_MSG(type_tuple == nullptr, kLiteNullptr, "type_tuple is nullptr!");
         const auto &elements = type_tuple->elements();
         if (!elements.empty() && elements[0]->type_id() == kNumberTypeFloat64) {
           auto fp64_vec_value = GetValue<std::vector<double>>(pair.second);

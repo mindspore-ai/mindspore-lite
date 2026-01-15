@@ -341,7 +341,13 @@ int GetCoreNum() {
   return core_num;
 }
 
-bool IsPowerOfTwo(int n) { return n > 0 && (n & (n - 1)) == 0; }
+bool IsPowerOfTwo(int n) {
+  if (n <= 0) {
+    return false;
+  }
+  auto unsigned_n = static_cast<unsigned int>(n);
+  return (unsigned_n & (unsigned_n - 1)) == 0;
+}
 
 int GetCurrentPid() {
   int pid = 0;
