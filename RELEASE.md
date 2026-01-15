@@ -8,15 +8,11 @@
 
 - MindSpore Lite supports Python 3.12.
 
-- Optimized the performance of LoRA weight update.
+- MindSpore Lite supports saving the intermediate graphs generated during the conversion process. You can use environment variables to control whether to save these intermediate graphs, which can be used for troubleshooting issues during model conversion.
 
-- MindSpore Lite supports saving intermediate graphs during the conversion process.
+#### Cloud-side inference
 
-- MindSpore Lite supports offline model inference on Android NPU.
-
-- Removed the MindData data preprocessing module from MindSpore Lite.
-
-- Removed the support for Cortex-M CMSIS in MindSpore Lite Micro.
+- Performance optimization of LoRA weight update: the latency of calling the Model.UpdateWeights() interface is reduced from the second-level to the hundred-millisecond level.
 
 - The ACL inference of MindSpore Lite Ascend backend supports timeout configuration.
 
@@ -24,31 +20,39 @@
 
 - The GE inference of MindSpore Lite Ascend backend supports zero-copy data under static shape and dynamic batching scenarios.
 
+#### Device-side inference
+
+- MindSpore Lite supports offline model inference on Android NPU.
+
+- Removed the MindData data preprocessing module from MindSpore Lite.
+
+- Removed the support for Cortex-M CMSIS in MindSpore Lite Micro.
+
 ### API Changes
 
-- The external interface for LoRA weight update has been changed, and the content format of `variable_weight_file` has been modified from:
+- Configuration change for LoRA weight update conversion: the content format of the [variable_weights_file](https://www.mindspore.cn/lite/cloud_docs/en/master/mindir/runtime_python.html#creating-config-file) has been changed from:
 
-```plaintext
-weight_name:(shape);node_name
-```
+    ```plaintext
+    weight_name:(shape);node_name
+    ```
 
-to
+    to
 
-```plaintext
-weight_name:shape;node_name
-```
+    ```plaintext
+    weight_name:shape;node_name
+    ```
 
-- Added new macro switches for saving intermediate graphs during the conversion process:
+- Added new [environment variable](https://www.mindspore.cn/lite/cloud_docs/en/master/reference/environment_variable_support.html) switches for saving intermediate graphs during the conversion process:
 
-```plaintext
-When users configure export MSLITE_DUMP_LEVEL=0, it means dumping detailed graph structures and constant Tensor data.
-When users configure export MSLITE_DUMP_LEVEL=1, it means dumping only graph structures without constant Tensor data.
-When users configure export MSLITE_DUMP_PATH="/xx/xx/", it specifies the path for dumping graphs.
-```
+    ```plaintext
+    When users configure export MSLITE_DUMP_LEVEL=0, it means dumping detailed graph structures and constant Tensor data.
+    When users configure export MSLITE_DUMP_LEVEL=1, it means dumping only graph structures without constant Tensor data.
+    When users configure export MSLITE_DUMP_PATH="/xx/xx/", it specifies the path for dumping graphs.
+    ```
 
-- Removed the high-level Train()/Evaluate() interfaces for on-device training, which can be replaced by the low-level RunStep() interface.
+- Removed the high-level Train()/Evaluate() interfaces for on-device training, which can be replaced by the low-level [RunStep()](https://www.mindspore.cn/lite/api/en/master/generate/classmindspore_Model.html) interface.
 
-- MindSpore Lite cloud-side inference newly supports buffer-based loading under weight separation.
+- MindSpore Lite has added the C++ interface [Model.Build](https://www.mindspore.cn/lite/api/en/master/generate/classmindspore_Model.html) and the Python interface [Model.build_from_buffer](https://www.mindspore.cn/lite/api/en/master/mindspore_lite/mindspore_lite.Model.html#mindspore_lite.Model.build_from_buffer) for cloud-side inference, which supports buffer-based model loading in the weight separation scenario.
 
 ### Contributors
 

@@ -6,49 +6,53 @@
 
 ### 主要特性及增强
 
-- MindSpore Lite支持python3.12。
+- MindSpore Lite支持Python3.12。
 
-- LoRA权重更新性能优化。
+- MindSpore Lite支持保存转换过程的中间图，可以使用环境变量控制模型转换时是否保存中间图，用于转换时问题定位。
 
-- MindSpore Lite支持保存转换过程的中间图。
+#### 云侧推理
 
-- MindSpore Lite支持Android NPU离线模型推理；
+- LoRA权重更新性能优化，调用Model.UpdateWeights()接口性能从秒级优化至百毫秒级。
 
-- MindSpore Lite移除数据预处理MindData模块；
+- MindSpore Lite Ascend后端ACL推理支持TimeOut配置。
 
-- MindSpore Lite移除Micro对Cortex-m CMSIS的支持；
+- MindSpore Lite 云侧推理支持模型并发加载。
 
-- MindSpore Lite Ascend后端ACL推理支持TimeOut配置；
+- MindSpore Lite Ascend后端GE推理支持静态shape、动态分档下数据零拷贝。
 
-- MindSpore Lite 云侧推理支持模型并发加载；
+#### 端侧推理
 
-- MindSpore Lite Ascend后端GE推理支持静态shape、动态分档下数据零拷贝；
+- MindSpore Lite支持Android NPU离线模型推理。
+
+- MindSpore Lite移除数据预处理MindData模块。
+
+- MindSpore Lite移除Micro对Cortex-m CMSIS的支持。
 
 ### API 变更
 
-- LoRA权重更新对外接口变更，variable_weight_file内容格式由
+- LoRA权重更新转换配置变更，[variable_weights_file](https://www.mindspore.cn/lite/cloud_docs/zh-CN/master/mindir/runtime_python.html#%E5%88%9B%E5%BB%BA%E9%85%8D%E7%BD%AE%E6%96%87%E4%BB%B6)内容格式由
 
-```plaintext
-weight_name:(shape);node_name
-```
+    ```plaintext
+    weight_name:(shape);node_name
+    ```
 
-修改为
+    修改为
 
-```plaintext
-weight_name:shape;node_name
-```
+    ```plaintext
+    weight_name:shape;node_name
+    ```
 
-- 保存转换过程中间图，新增宏开关：
+- [环境变量](https://www.mindspore.cn/lite/cloud_docs/zh-CN/master/reference/environment_variable_support.html)新增保存转换过程中间图功能：
 
-```plaintext
-当用户配置export MSLITE_DUMP_LEVEL=0 表示Dump详细的图结构，以及常量Tensor数据；
-当用户配置export MSLITE_DUMP_LEVEL=1 表示仅Dump图结构，不dump常量Tensor数据。
-当用户配置export MSLITE_DUMP_PATH="/xx/xx/" 表示dump graph的路径。
-```
+    ```plaintext
+    当用户配置export MSLITE_DUMP_LEVEL=0 表示Dump详细的图结构，以及常量Tensor数据；
+    当用户配置export MSLITE_DUMP_LEVEL=1 表示仅Dump图结构，不dump常量Tensor数据。
+    当用户配置export MSLITE_DUMP_PATH="/xx/xx/" 表示dump graph的路径。
+    ```
 
-- 移除端侧训练Train()/Evaluate()高阶接口，可通过RunStep()低阶接口替代。
+- 移除端侧训练Train()/Evaluate()高阶接口，可通过[RunStep()](https://www.mindspore.cn/lite/api/zh-CN/master/api_cpp/mindspore.html#runstep)低阶接口替代。
 
-- MindSpore Lite 云侧推理新增支持权重分离下基于buffer加载。
+- MindSpore Lite 云侧推理新增c++接口[Model.Build](https://www.mindspore.cn/lite/api/zh-CN/master/api_cpp/mindspore.html#build-1)以及python接口[Model.build_from_buffer](https://www.mindspore.cn/lite/api/zh-CN/master/mindspore_lite/mindspore_lite.Model.html#mindspore_lite.Model.build_from_buffer)接口，用于支持权重分离下基于buffer加载模型。
 
 ### 贡献者
 
