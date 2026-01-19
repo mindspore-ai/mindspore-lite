@@ -1195,7 +1195,6 @@ int Scheduler::FindGeneralProviderKernel(const std::vector<Tensor *> &in_tensors
   if (!context_->IsProviderEnabled() || context_->get_schema_version() == SCHEMA_V0) {
     return RET_NOT_SUPPORT;
   }
-
   for (auto &&device : context_->device_list_) {
     if (!device.provider_.empty()) {
       kernel::KernelKey desc{kernel::KERNEL_ARCH::kCPU, data_type,       NHWC, prim_type,
@@ -1214,13 +1213,10 @@ int Scheduler::FindProviderKernel(const std::vector<Tensor *> &in_tensors, const
                                   const LiteGraph::Node *node, TypeId data_type, kernel::KernelExec **kernel) {
 #ifndef CUSTOM_KERNEL_REGISTRY_CLIP
   MS_CHECK_TRUE_MSG(kernel != nullptr, RET_ERROR, "kernel is nullptr.");
-
   auto prim_type = GetPrimitiveType(node->primitive_, context_->get_schema_version());
-
   if (prim_type == schema::PrimitiveType_Custom) {
     return FindCustomKernel(in_tensors, out_tensors, node, data_type, kernel);
   }
-
   return FindGeneralProviderKernel(in_tensors, out_tensors, node, data_type, prim_type, kernel);
 #endif
   return RET_NOT_SUPPORT;

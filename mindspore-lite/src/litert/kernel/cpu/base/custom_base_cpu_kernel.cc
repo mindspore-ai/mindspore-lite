@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "src/litert/kernel/cpu/base/custom_base.h"
+#include "src/litert/kernel/cpu/base/custom_base_cpu_kernel.h"
 #include <algorithm>
 #include <utility>
 #include <vector>
