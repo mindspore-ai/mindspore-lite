@@ -186,7 +186,6 @@ std::shared_ptr<AbstractDelegate> Context::get_delegate() const {
   return nullptr;
 }
 
-// deprecated
 void Context::SetDelegate(const std::shared_ptr<Delegate> &delegate) {
   MS_LOG(ERROR) << "Unsupported Feature.";
   return;

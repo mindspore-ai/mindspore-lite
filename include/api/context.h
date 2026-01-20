@@ -136,7 +136,9 @@ class MS_API Context {
   /// \param[in] delegate the custom delegate.
   void set_delegate(const std::shared_ptr<AbstractDelegate> &delegate);
 
-  // deprecated
+  /// \brief Set Delegate to access third-party AI framework.
+  ///
+  /// \param[in] delegate the custom delegate.
   void SetDelegate(const std::shared_ptr<Delegate> &delegate);
 
   /// \brief Get the delegate of the third-party AI framework.
