@@ -1,5 +1,5 @@
 /**
- * Copyright 2025 Huawei Technologies Co., Ltd
+ * Copyright 2025-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef MINDSPORE_LITE_INCLUDE_MULTI_MODEL_RUNNER_H_
-#define MINDSPORE_LITE_INCLUDE_MULTI_MODEL_RUNNER_H_
+#ifndef MINDSPORE_LITE_INCLUDE_API_MULTI_MODEL_RUNNER_H_
+#define MINDSPORE_LITE_INCLUDE_API_MULTI_MODEL_RUNNER_H_
 #include <utility>
 #include <vector>
 #include <string>
@@ -137,7 +137,5 @@ Status MultiModelRunner::Build(const std::string &model_path, const ModelType &m
                                const std::shared_ptr<Context> &model_context) {
   return Build(StringToChar(model_path), model_type, model_context);
 }
-
 }  // namespace mindspore
-
-#endif  // MINDSPORE_LITE_INCLUDE_MULTI_MODEL_RUNNER_H_
+#endif  // MINDSPORE_LITE_INCLUDE_API_MULTI_MODEL_RUNNER_H_
