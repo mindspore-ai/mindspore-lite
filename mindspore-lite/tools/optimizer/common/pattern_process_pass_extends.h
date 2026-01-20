@@ -26,12 +26,7 @@ namespace mindspore {
 namespace opt {
 class LitePatternProcessPass : public LiteNodePass {
  public:
-  explicit LitePatternProcessPass(const std::string &name = "", bool multigraph = true)
-      : LiteNodePass(name),
-        multigraph_(multigraph),
-        pattern_engine_(PatternEngine(std::make_shared<Visitor>())),
-        primitive_vars_(std::make_shared<PrimitiveVarMap>()),
-        equiv_(std::make_shared<Equiv>()) {}
+  explicit LitePatternProcessPass(const std::string &name = "", bool multigraph = true);
   ~LitePatternProcessPass() override = default;
   virtual const AnfNodePtr Process(const FuncGraphPtr &, const AnfNodePtr &, const EquivPtr &) const = 0;
   virtual const BaseRef DefinePattern() const = 0;

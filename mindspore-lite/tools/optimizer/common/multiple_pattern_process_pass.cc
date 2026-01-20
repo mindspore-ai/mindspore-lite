@@ -17,8 +17,12 @@
 #include "tools/optimizer/common/multiple_pattern_process_pass.h"
 #include "tools/optimizer/common/helper.h"
 #include "nnacl_c/op_base.h"
+#include "backend/common/pass_manager/visitor.h"
 
 namespace mindspore::opt {
+MultiplePatternProcessPass::MultiplePatternProcessPass(const std::string &name, bool multigraph)
+    : LiteNodePass(name), multigraph_(multigraph), pattern_engine_(PatternEngine(std::make_shared<Visitor>())) {}
+
 AnfNodePtr MultiplePatternProcessPass::Run(const FuncGraphPtr &func_graph, const AnfNodePtr &node) {
   if (patterns_.empty()) {
     VarPtr fg = std::make_shared<Var>("RootG");

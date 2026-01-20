@@ -24,9 +24,17 @@
 #include "include/utils/anfalgo.h"
 #include "ir/manager.h"
 #include "tools/optimizer/common/helper.h"
+#include "backend/common/pass_manager/visitor.h"
 
 namespace mindspore {
 namespace opt {
+LitePatternProcessPass::LitePatternProcessPass(const std::string &name, bool multigraph)
+    : LiteNodePass(name),
+      multigraph_(multigraph),
+      pattern_engine_(PatternEngine(std::make_shared<Visitor>())),
+      primitive_vars_(std::make_shared<PrimitiveVarMap>()),
+      equiv_(std::make_shared<Equiv>()) {}
+
 void LitePatternProcessPass::Build() {
   VarPtr fg = std::make_shared<Var>("RootG");
   pattern_ = Helper::SexpToNode(DefinePattern(), fg, primitive_vars_.get(), multigraph_);
