@@ -213,7 +213,6 @@ std::shared_ptr<AbstractDelegate> Context::get_delegate() const {
   return data_->delegate;
 }
 
-// deprecated
 void Context::SetDelegate(const std::shared_ptr<Delegate> &delegate) {
   if (data_ == nullptr) {
     MS_LOG(ERROR) << "Invalid context.";
