@@ -34,7 +34,8 @@ std::shared_ptr<LiteOpActor> CreateActor(kernel::KernelExec *kernel, lite::Inner
   } else if (kernel->subgraph_type() != kernel::kNotSubGraph) {
     auto subgraph_kernel = reinterpret_cast<kernel::SubGraphKernel *>(kernel);
     if (subgraph_kernel->nodes().size() > 1 && ctx->inter_op_parallel_num_ > 1 &&
-        (kernel->subgraph_type() == kernel::kCpuFP32SubGraph || kernel->subgraph_type() == kernel::kCpuFP16SubGraph)) {
+        (kernel->subgraph_type() == kernel::kCpuFP32SubGraph || kernel->subgraph_type() == kernel::kCpuFP16SubGraph ||
+         kernel->subgraph_type() == kernel::kDspSubGraph)) {
       actor = std::make_shared<ParallelLiteActor>(kernel, ctx);
     } else {
       actor = std::make_shared<LiteOpActor>(kernel, ctx);
