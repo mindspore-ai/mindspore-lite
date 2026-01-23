@@ -45,8 +45,8 @@
 /mindspore-lite/src/extendrt/  @YeFeng_24 @jjfeing
 /mindspore-lite/src/infer/  @fatmouse007fatmouse007 @jjfeing
 /mindspore-lite/src/litert/  @fatmouse007fatmouse007 @jjfeing
-/mindspore-lite/src/litert/kernel/  @yhwang-ftdsp @jjfeing
-/mindspore-lite/src/litert/delegate/pnna/  @yhwang-ftdsp @YeFeng_24
+/mindspore-lite/src/litert/kernel/dsp/  @yhwang-ftdsp @fatmouse007fatmouse007
+/mindspore-lite/src/litert/delegate/pnna/  @yhwang-ftdsp @fatmouse007fatmouse007
 /mindspore-lite/src/registry/  @yangyingchun1999 @fatmouse007fatmouse007
 /mindspore-lite/src/runtime/  @fatmouse007fatmouse007 @jjfeing
 /mindspore-lite/src/train/  @yangyingchun1999 @fatmouse007fatmouse007
