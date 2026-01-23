@@ -1,5 +1,5 @@
 /**
- * Copyright 2025 Huawei Technologies Co., Ltd
+ * Copyright 2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CUSTOM_KERNEL_FFT_H_
-#define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CUSTOM_KERNEL_FFT_H_
+#ifndef MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CUSTOM_KERNEL_FFT_BASE_H_
+#define MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CUSTOM_KERNEL_FFT_BASE_H_
 
 #include <iostream>
 #include <map>
@@ -29,22 +29,27 @@
 
 namespace mindspore::lite {
 
-class CustomFFTKernel : public CustomKernel {
+class FFTBaseKernel : public CustomKernel {
  public:
-  using CustomKernel::CustomKernel;
-  ~CustomFFTKernel();
+  FFTBaseKernel(const std::vector<MSTensor> &inputs, const std::vector<MSTensor> &outputs,
+                const schema::Primitive *primitive, const mindspore::Context *ctx)
+      : CustomKernel(inputs, outputs, primitive, ctx) {
+    InitializeFFTType();
+  }
+  ~FFTBaseKernel();
   int Prepare() override;
   int CheckSpecs(const std::vector<MSTensor> &inputs, const std::vector<MSTensor> &outputs) override;
   int Run() override;
 
  private:
-  std::string kernel_name_ = "";
-  uint64_t core_mask_ = 0x1;
+  void InitializeFFTType();
   uint64_t w_device_ptr_ = 0;
   void *w_ptr_ = nullptr;
   int64_t length_ = 0;
+  void *temp_fft_ptr_ = nullptr;
+  uint64_t temp_fft_device_ptr_ = 0;
   std::shared_ptr<lite::dsp::DSPAllocator> allocator_{};
+  std::string fft_type_;
 };
-
 }  // namespace mindspore::lite
-#endif  // MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CUSTOM_KERNEL_FFT_H_
+#endif  // MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CUSTOM_KERNEL_FFT_BASE_H_

@@ -43,4 +43,5 @@ Status CustomFFTInfer::Infer(std::vector<mindspore::MSTensor> *inputs, std::vect
 
 std::shared_ptr<kernel::KernelInterface> CustomFFTInferCreator() { return std::make_shared<CustomFFTInfer>(); }
 REGISTER_CUSTOM_KERNEL_INTERFACE(FTMatrix, Custom_FT_FFT, CustomFFTInferCreator)
+REGISTER_CUSTOM_KERNEL_INTERFACE(FTMatrix, Custom_FT_IFFT, CustomFFTInferCreator)
 }  // namespace mindspore::lite

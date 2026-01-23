@@ -120,7 +120,6 @@ int CustomKernel::Execute() {
     MS_LOG(ERROR) << "run kernel PreProcess failed, name: " << this->name();
     return ret;
   }
-  ParseAttrData();
   ConvertTensors();
   ret = Run();
   if (ret != kSuccess) {
