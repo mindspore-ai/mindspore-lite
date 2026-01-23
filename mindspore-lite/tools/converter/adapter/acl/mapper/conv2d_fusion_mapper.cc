@@ -17,6 +17,7 @@
 #include "tools/converter/adapter/acl/mapper/conv2d_fusion_mapper.h"
 #include <vector>
 #include <memory>
+#include <map>
 #include "tools/converter/adapter/acl/mapper/primitive_mapper_register.h"
 #include "tools/converter/adapter/acl/mapper/tbe_op_def.h"
 #include "src/common/log_util.h"
@@ -26,6 +27,11 @@
 #include "tools/converter/quantizer/insert_quant_node_manager.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/unsqueeze.h"
+#include "infer/leaky_relu.h"
+#include "infer/softsign.h"
+#include "infer/softplus.h"
+#include "infer/selu.h"
+#include "tools/converter/adapter/acl/common/utils.h"
 
 namespace mindspore {
 namespace lite {
@@ -282,6 +288,43 @@ STATUS Conv2DFusionMapper::Mapper(const CNodePtr &cnode) {
   if (status != lite::RET_OK) {
     MS_LOG(ERROR) << "adjust pad failed.";
     return status;
+  }
+  std::map<ActivationType, BaseOperatorPtr> activation_type_map = {
+    {mindspore::ELU, std::make_shared<ops::Elu>()},
+    {mindspore::GELU, std::make_shared<ops::GeLU>()},
+    {mindspore::RELU, std::make_shared<ops::ReLU>()},
+    {mindspore::RELU6, std::make_shared<ops::ReLU6>()},
+    {mindspore::SIGMOID, std::make_shared<ops::Sigmoid>()},
+    {mindspore::HSIGMOID, std::make_shared<ops::HSigmoid>()},
+    {mindspore::ABS, std::make_shared<ops::Abs>()},
+    {mindspore::SOFTSIGN, std::make_shared<ops::Softsign>()},
+    {mindspore::SOFTPLUS, std::make_shared<ops::Softplus>()},
+    {mindspore::SELU, std::make_shared<ops::SeLU>()},
+    {mindspore::HSWISH, std::make_shared<ops::HSwish>()},
+    {mindspore::SIGN, std::make_shared<ops::Sign>()},
+    {mindspore::TANH, std::make_shared<ops::Tanh>()},
+    {mindspore::LEAKY_RELU, std::make_shared<ops::LeakyRelu>()}};
+  auto activation_type_ptr = src_prim->GetAttr(ops::kActivationType);
+  if (activation_type_ptr != nullptr && GetValue<int64_t>(activation_type_ptr) != 0) {
+    auto activation_type = ActivationType(GetValue<int64_t>(activation_type_ptr));
+    PrimitivePtr dst_activation_prim = nullptr;
+    if (activation_type_map.find(activation_type) != activation_type_map.end()) {
+      auto dest_op = activation_type_map[activation_type];
+      MS_CHECK_TRUE_MSG(dest_op != nullptr, lite::RET_ERROR, "Activation op is nullptr!");
+      dst_activation_prim = dest_op->GetPrim();
+      auto func_graph = cnode->func_graph();
+      std::vector<AnfNodePtr> activation_inputs = {cnode};
+      auto activation_cnode = func_graph->NewCNode(dst_activation_prim, activation_inputs);
+      auto abstract = cnode->abstract();
+      MS_CHECK_TRUE_MSG(abstract != nullptr, lite::RET_ERROR, "abstract is nullptr!");
+      activation_cnode->set_abstract(abstract);
+      auto manager = Manage(func_graph);
+      MS_CHECK_TRUE_MSG(manager != nullptr, lite::RET_ERROR, "manager is nullptr!");
+      manager->Replace(cnode, activation_cnode);
+    } else {
+      MS_LOG(ERROR) << "Type " << static_cast<int>(activation_type) << " is unsupported.";
+      return lite::RET_ERROR;
+    }
   }
   value_node->set_value(dst_prim);
   return lite::RET_OK;

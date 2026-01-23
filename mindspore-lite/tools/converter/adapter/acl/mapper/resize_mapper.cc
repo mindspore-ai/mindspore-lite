@@ -49,15 +49,22 @@ constexpr auto kNameSizeFour = 4;
 
 STATUS ResizeMapper::Mapper(const CNodePtr &cnode) {
   CHECK_NULL_RETURN(cnode);
-  if (cnode->size() != kNameInputNum) {
-    MS_LOG(WARNING) << "Input of resize must be " << kNameInputNum << ", real size: " << cnode->size() << ", cnode "
-                    << cnode->fullname_with_scope();
-    return lite::RET_OK;
-  }
   ValueNodePtr value_node = nullptr;
   PrimitivePtr src_prim = nullptr;
   if (GetValueNodeAndPrimFromCnode(cnode, &value_node, &src_prim) != lite::RET_OK) {
     MS_LOG(ERROR) << "Get primitive from cnode failed, cnode " << cnode->fullname_with_scope();
+    return lite::RET_ERROR;
+  }
+  if (cnode->size() != kNameInputNum && src_prim->GetAttr(ops::kNewHeight) == nullptr &&
+      src_prim->GetAttr(ops::kNewWidth) == nullptr) {
+    MS_LOG(WARNING) << "Input of resize must be " << kNameInputNum << ", real size: " << cnode->size() << ", cnode "
+                    << cnode->fullname_with_scope();
+    return lite::RET_OK;
+  }
+  if (cnode->size() == kNameInputNum && src_prim->GetAttr(ops::kNewHeight) != nullptr &&
+      src_prim->GetAttr(ops::kNewWidth) != nullptr) {
+    MS_LOG(ERROR) << "Do not set new_height, new_width and size or scale at the same time, node name:"
+                  << cnode->fullname_with_scope();
     return lite::RET_ERROR;
   }
   if (ProcScaleInput(cnode, src_prim) != lite::RET_OK) {
@@ -125,6 +132,18 @@ STATUS ResizeMapper::ProcScaleInput(const CNodePtr &cnode, const PrimitivePtr &p
   if (prim->GetAttr(ops::kFormat) != nullptr) {
     node_format = GetValue<int64_t>(prim->GetAttr(ops::kFormat));
   }
+  if (prim->GetAttr(ops::kNewHeight) != nullptr && prim->GetAttr(ops::kNewWidth) != nullptr) {
+    auto new_height = GetValue<int64_t>(prim->GetAttr(ops::kNewHeight));
+    auto new_width = GetValue<int64_t>(prim->GetAttr(ops::kNewWidth));
+    std::vector<int32_t> new_tensor_size = {static_cast<int32_t>(new_height), static_cast<int32_t>(new_width)};
+    auto func_graph = cnode->func_graph();
+    auto param_node =
+      opt::BuildIntVecParameterNode(func_graph, new_tensor_size, cnode->fullname_with_scope() + "_sizes");
+    auto inputs = cnode->inputs();
+    inputs.push_back(param_node);
+    cnode->set_inputs(inputs);
+    return lite::RET_OK;
+  }
   if (type_id == kNumberTypeFloat32) {
     std::vector<int64_t> shape_vector;
     if (acl::GetShapeVectorFromCNode(cnode, &shape_vector) != RET_OK) {
@@ -154,6 +173,11 @@ STATUS ResizeMapper::ProcScaleInput(const CNodePtr &cnode, const PrimitivePtr &p
     auto param_node =
       opt::BuildIntVecParameterNode(func_graph, new_tensor_size, cnode->fullname_with_scope() + "_sizes");
     cnode->set_input(kNameInputNum - 1, param_node);
+  }
+  if (cnode->size() != kNameInputNum) {
+    MS_LOG(ERROR) << "The number of inputs should be " << kNameInputNum << ", now is:" << cnode->size()
+                  << ", node name:" << cnode->fullname_with_scope();
+    return lite::RET_ERROR;
   }
   return lite::RET_OK;
 }

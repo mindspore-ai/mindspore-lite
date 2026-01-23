@@ -86,9 +86,12 @@ Status AdjustReduceSum(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
     MS_LOG(ERROR) << "Value node[" << cnode->fullname_with_scope() << "] cast to primitive failed!";
     return kLiteError;
   }
-  auto axes_attr = src_prim->GetAttr("axes");
-  if (axes_attr != nullptr) {
-    return kSuccess;
+  auto skip_mode_ptr = src_prim->GetAttr("skip_mode");
+  if (skip_mode_ptr != nullptr) {
+    auto skip_mode = GetValue<bool>(skip_mode_ptr);
+    if (skip_mode == true) {
+      return kSuccess;
+    }
   }
   if (cnode->inputs().size() >= kIndex3) {
     auto axes_input = cnode->input(kIndex2);
