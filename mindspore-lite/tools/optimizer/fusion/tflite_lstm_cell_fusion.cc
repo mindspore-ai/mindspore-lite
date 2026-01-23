@@ -34,11 +34,8 @@
 #include "include/securec.h"
 #include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_w.h"
 #include "mindspore/core/include/ir/graph_utils.h"
+#include "backend/common/pass_manager/visitor.h"
 
 namespace mindspore {
 namespace opt {
