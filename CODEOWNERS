@@ -100,7 +100,7 @@
 /mindspore-lite/test/  @YeFeng_24 @jjfeing
 /mindspore-lite/test/ut/src/runtime/kernel/dsp/  @fatmouse007fatmouse007 @yhwang-ftdsp
 
-/.gitee/  @jjfeing @YeFeng_24
+/.gitcode/  @jjfeing @YeFeng_24
 /.jenkins/  @nicholas_yhr @jjfeing
 /cmake/  @jjfeing @YeFeng_24
 /docs/  @xuzhenyoumi

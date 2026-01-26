@@ -27,7 +27,7 @@
 
 用户可以使用脚本一键式编译生成MNIST分类模型的推理代码并执行推理，得到单次推理输出。
 
-第一步：下载MindSpore源码(https://gitee.com/mindspore/mindspore)，在项目根目录使用命令
+第一步：下载MindSpore源码(https://atomgit.com/mindspore/mindspore)，在项目根目录使用命令
 
 ```bash
 bash build.sh -I x86_64 -j128
@@ -173,7 +173,7 @@ outputFile 指定micro代码生成目录，当前脚本目录下将生成source_
 #### 编写推理代码示例
 
 本教程中的`benchmark`内部实现主要用于指导用户如何编写以及调用codegen编译的模型推理代码接口。以下为接口调用的详细介绍，
-详情代码可以参见[examples/quick_start_micro/mnist_x86](https://gitee.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/quick_start_micro/mnist_x86)下的示例代码示例：
+详情代码可以参见[examples/quick_start_micro/mnist_x86](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/quick_start_micro/mnist_x86)下的示例代码示例：
 
 1. **构建推理的上下文以及会话**
 
@@ -256,6 +256,6 @@ outputFile 指定micro代码生成目录，当前脚本目录下将生成source_
 
 ## 更多详情
 
-### [Android平台编译部署](https://gitee.com/mindspore/mindspore-lite/blob/master/mindspore-lite/examples/quick_start_micro/mobilenetv2_arm64/README.md)
+### [Android平台编译部署](https://atomgit.com/mindspore/mindspore-lite/blob/master/mindspore-lite/examples/quick_start_micro/mobilenetv2_arm64/README.md)
 
 ### [Arm&nbsp;Cortex-M平台编译部署](https://www.mindspore.cn/lite/docs/zh-CN/master/advanced/micro.html)

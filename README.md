@@ -8,7 +8,7 @@ MindSpore Lite provides lightweight AI inference acceleration capabilities for d
 
 MindSpore Lite achieves double the inference performance for AIGC, speech algorithms, and CV model inference, and has been deployed in Huawei's flagship smartphones for commercial use. As shown in the figure below, MindSpore Lite supports image style transfer and image segmentation for CV algorithms.
 
-<img src="docs/img/mindir_infer_case_1.gif" alt="mindir infer case 1" width="240"/> <img src="docs/img/mindir_infer_case_2.gif" alt="mindir infer case 2" width="240"/> <img src="docs/img/mindir_infer_case_3.gif" alt="mindir infer case 3" height="135" width="240"/>
+<img src="docs/img/mindir_infer_case_1.gif" alt="mindir infer case 1" width="240"/> <img src="docs/img/mindir_infer_case_2.gif" alt="mindir infer case 2" width="240"/> <img src="docs/img/mindir_infer_case_3.gif" alt="mindir infer case 3" style="height: 135px;" width="240"/>
 
 <img src="docs/img/screenshot_001.png" alt="original image for image segmentation" width="180"/> <img src="docs/img/screenshot_002.png" alt="image segmentation rendering" width="180"/> <img src="docs/img/screenshot_003.png" alt="image style transfer original image" width="180"/> <img src="docs/img/screenshot_004.png" alt="Image style transfer rendering" width="180"/>
 
@@ -112,7 +112,7 @@ If you wish to further learn and use MindSpore Lite, please refer to the followi
 
 ## Communication and Feedback
 
-- Welcome to [Gitee Issues](https://gitee.com/mindspore/mindspore-lite/issues): submit questions, reports, and suggestions;
+- Welcome to [AtomGit Issues](https://atomgit.com/mindspore/mindspore-lite/issues): submit questions, reports, and suggestions;
 
 - Welcome to [Community Forum](https://discuss.mindspore.cn/c/mindspore-lite/38): engage in technical and problem-solving exchanges;
 
@@ -120,10 +120,10 @@ If you wish to further learn and use MindSpore Lite, please refer to the followi
 
 ## Surrounding communities
 
-- [MindSpore](https://gitee.com/mindspore/mindspore)
+- [MindSpore](https://atomgit.com/mindspore/mindspore)
 
 - [MindOne](https://github.com/mindspore-lab/mindone)
 
 - [Mindyolo](https://github.com/mindspore-lab/mindyolo)
 
-- [OpenHarmony](https://gitcode.com/openharmony/third_party_mindspore)
+- [OpenHarmony](https://atomgit.com/openharmony/third_party_mindspore)
