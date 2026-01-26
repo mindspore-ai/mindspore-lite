@@ -9,7 +9,7 @@ MindSpore Lite面向不同硬件设备提供轻量化AI推理加速能力，使�
 
 MindSpore Lite针对AIGC、语音类算法以及CV类模型推理，实现推理性能倍增，在华为多款旗舰手机落地商用落地。如下图所示，MindSpore Lite支持CV算法的图像风格迁移与图像分割。
 
-<img src="docs/img/mindir_infer_case_1.gif" alt="mindir infer case 1" width="240"/> <img src="docs/img/mindir_infer_case_2.gif" alt="mindir infer case 2" width="240"/> <img src="docs/img/mindir_infer_case_3.gif" alt="mindir infer case 3" height="135" width="240"/>
+<img src="docs/img/mindir_infer_case_1.gif" alt="mindir infer case 1" width="240"/> <img src="docs/img/mindir_infer_case_2.gif" alt="mindir infer case 2" width="240"/> <img src="docs/img/mindir_infer_case_3.gif" alt="mindir infer case 3" style="height: 135px;" width="240"/>
 
 <img src="docs/img/screenshot_001.png" alt="original image for image segmentation" width="180"/> <img src="docs/img/screenshot_002.png" alt="image segmentation rendering" width="180"/> <img src="docs/img/screenshot_003.png" alt="image style transfer original image" width="180"/> <img src="docs/img/screenshot_004.png" alt="Image style transfer rendering" width="180"/>
 
@@ -113,7 +113,7 @@ MindSpore Lite针对AIGC、语音类算法以及CV类模型推理，实现推理
 
 ## 交流与反馈
 
-- 欢迎您通过[Gitee Issues](https://gitee.com/mindspore/mindspore-lite/issues)来提交问题、报告与建议。
+- 欢迎您通过[AtomGit Issues](https://atomgit.com/mindspore/mindspore-lite/issues)来提交问题、报告与建议。
 
 - 欢迎您通过[社区论坛](https://discuss.mindspore.cn/c/mindspore-lite/38)进行技术、问题交流。
 
@@ -121,10 +121,10 @@ MindSpore Lite针对AIGC、语音类算法以及CV类模型推理，实现推理
 
 ## 周边社区
 
-- [MindSpore](https://gitee.com/mindspore/mindspore)
+- [MindSpore](https://atomgit.com/mindspore/mindspore)
 
 - [MindOne](https://github.com/mindspore-lab/mindone)
 
 - [Mindyolo](https://github.com/mindspore-lab/mindyolo)
 
-- [OpenHarmony](https://gitcode.com/openharmony/third_party_mindspore)
+- [OpenHarmony](https://atomgit.com/openharmony/third_party_mindspore)

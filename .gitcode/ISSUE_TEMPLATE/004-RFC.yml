@@ -1,0 +1,51 @@
+name: 💬 Request for comments (RFC).
+description: Ask for feedback on major architectural changes or design choices.
+title: "[RFC]: "
+labels: ["RFC"]
+
+body:
+- type: textarea
+  attributes:
+    label: 背景与目标描述.
+    description: >
+      The motivation of the RFC.
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: 建议的方案.
+    description: >
+      The proposed change of the RFC.
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: 期望的反馈时间.
+    description: >
+      The feedback period of the RFC. Usually at least one week.
+  validations:
+    required: false
+- type: textarea
+  attributes:
+    label: CC List.
+    description: >
+      The list of people you want to CC.
+  validations:
+    required: false
+- type: textarea
+  attributes:
+    label: 其他补充信息.
+    description: >
+      Any other things you would like to mention.
+  validations:
+    required: false
+- type: markdown
+  attributes:
+    value: >
+      Thanks for contributing 🎉! The mindspore Lite core team hosts a biweekly RFC review session, while most RFCs can be discussed online, you can optionally sign up for a slot to discuss your RFC online.
+- type: checkboxes
+  attributes:
+    label: Before submitting a new issue...
+    options:
+      - label: Make sure you already searched for previous [RFCs](https://atomgit.com/mindspore/mindspore-lite/issues?q=is:all+label:RFC+sort:recently-updated&categorysearch=%255B%257B%22field%22:%22labels%22,%22value%22:%255B%257B%22id%22:22207,%22name%22:%22RFC%22%257D%255D,%22label%22:%22RFC%22%257D,%257B%22field%22:%22order_by_sort%22,%22value%22:%22created_at_desc%22,%22label%22:%22%E6%9C%80%E8%BF%91%E5%88%9B%E5%BB%BA%22%257D%255D&state=opened&scope=all&page=1&order_by=created_at&sort=desc).
+        required: true
