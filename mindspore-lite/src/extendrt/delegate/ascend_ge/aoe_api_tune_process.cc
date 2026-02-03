@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 
 #include "extendrt/delegate/ascend_ge/aoe_api_tune_process.h"
-#include <cstdio>
+
 #include <iostream>
 #include <tuple>
 #include <vector>
@@ -23,7 +23,6 @@
 #include <map>
 #include "src/common/common.h"
 #include "src/extendrt/cxx_api/dlutils.h"
-#include "mindspore/ccsrc/utils/dlopen_macro.h"
 #include "cxx_api/acl_utils.h"
 
 namespace mindspore {

@@ -85,8 +85,8 @@ bool GeOptionsContainer::GetGeSessionOptionsFromAscendSection(
         MS_LOG(ERROR) << "Failed to create build cache dir " << build_cache_dir;
         return false;
       }
-      ge_session_options_[kGeGraphCompilerCacheDir] = build_cache_dir;
-      MS_LOG(INFO) << "Update session attr " << kGeGraphCompilerCacheDir << " to " << build_cache_dir;
+      ge_session_options_[lite::kGeGraphCompilerCacheDir] = build_cache_dir;
+      MS_LOG(INFO) << "Update session attr " << lite::kGeGraphCompilerCacheDir << " to " << build_cache_dir;
     }
   }
   option_it = config.find(lite::kDumpPathKey);
@@ -138,7 +138,7 @@ bool GeOptionsContainer::GetGeSessionOptionsFromAscendSection(
   }
   option_it = config.find(lite::kGraphCompilerCacheDirKey);
   if (option_it != config.end()) {
-    ge_session_options_[kGeGraphCompilerCacheDir] = option_it->second;
+    ge_session_options_[lite::kGeGraphCompilerCacheDir] = option_it->second;
   }
   return true;
 }
@@ -154,7 +154,7 @@ bool GeOptionsContainer::InitGeGraphOptions(const ConfigInfos &config_info,
   auto graph_key = std::to_string(ascend_device_info->GetRankID()) + "_" + std::to_string(unique_identification_++) +
                    "_" + graph_key_suffix;
   std::replace_if(graph_key.begin(), graph_key.end(), [](char c) { return c == '.'; }, '_');
-  ge_graph_options_[kGeGraphKey] = graph_key;
+  ge_graph_options_[lite::kGeGraphKey] = graph_key;
   auto config_it = config_info.find(lite::kGeGraphOptionsSection);
   if (config_it != config_info.end()) {
     for (auto &item : config_it->second) {

@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ void Spliter::RecordGraphInfo(const FuncGraphPtr &func_graph) {
     }
     auto cnode = node->cast<CNodePtr>();
     MS_CHECK_PTR_IF_NULL(cnode);
-    auto prim = GetValueNode<PrimitivePtr>(cnode->input(kAnfPrimitiveIndex));
+    auto prim = GetValueNode<PrimitivePtr>(cnode->input(lite::kAnfPrimitiveIndex));
     MS_CHECK_PTR_IF_NULL(prim);
     auto device_type =
       prim->GetAttr(ops::kDeviceType) != nullptr ? GetValue<int>(prim->GetAttr(ops::kDeviceType)) : kDeviceTypeNone;

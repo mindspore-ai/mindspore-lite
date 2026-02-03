@@ -1,5 +1,5 @@
 /**
- * Copyright 2025 Huawei Technologies Co., Ltd
+ * Copyright 2025-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 #include "tools/converter/import/convert_extend_ops/utils.h"
 #include "tools/converter/import/convert_extend_ops/convert_extend_ops_pass.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_z.h"
+#include "mindspore/ops/ops_utils/op_constants.h"
 
 namespace mindspore::opt {
 namespace {

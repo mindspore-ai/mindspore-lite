@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,7 @@
 #include <memory>
 #include <map>
 #include <vector>
-#include "runtime/hardware_abstract/kernel_base/kernel.h"
 #include "ir/func_graph.h"
-#include "runtime/hardware_abstract/device_context/device_context.h"
-#include "runtime/hardware_abstract/kernel_base/common_utils.h"
 #include "src/extendrt/session/lite_graph_executor.h"
 
 namespace mindspore::kernel {
@@ -37,7 +34,6 @@ class SubgraphKernel {
 
   bool Launch(const std::vector<MSTensor *> &inputs, const std::vector<MSTensor *> &workspace,
               const std::vector<MSTensor *> &outputs, void *stream_ptr);
-  std::vector<KernelAttr> GetOpSupport() { return {}; }
 
  protected:
   FuncGraphPtr subgraph_;

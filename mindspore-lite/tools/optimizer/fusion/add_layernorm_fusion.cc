@@ -20,25 +20,18 @@
 #include <vector>
 #include <string>
 #include <algorithm>
-#include "mindspore/ops/op_def/nn_ops.h"
 #include "src/common/ops/primitive/activation.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "infer/add_layernorm.h"
 #include "src/common/ops/primitive/layer_norm_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "include/utils/utils.h"
-#include "include/utils/anfalgo.h"
-#include "include/backend/common/kernel_graph/anf_runtime_algorithm.h"
+#include "tools/converter/ms_depend/utils.h"
+#include "tools/converter/ms_depend/anfalgo.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "nnacl_c/op_base.h"
 #include "tools/optimizer/graph/node_infershape.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_d.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_p.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 
 namespace mindspore {

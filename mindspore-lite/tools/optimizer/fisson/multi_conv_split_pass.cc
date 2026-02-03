@@ -18,7 +18,7 @@
 #include "tools/optimizer/fisson/multi_conv_split_pass.h"
 #include <string>
 #include <memory>
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "base/base.h"
 #include "src/common/ops/primitive/conv2d_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"

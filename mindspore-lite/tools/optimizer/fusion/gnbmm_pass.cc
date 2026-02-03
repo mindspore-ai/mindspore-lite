@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2024-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,16 @@
 #define USE_DEPRECATED_API
 #include "tools/optimizer/fusion/gnbmm_pass.h"
 #include <memory>
-#include <utility>
+
 #include "op_def/array_ops.h"
 #include "op_def/nn_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "op_def/auto_generate/gen_lite_ops.h"
 #include "infer/custom.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_i.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
+#include "mindspore/ops/ops_utils/op_constants.h"
 
 namespace mindspore::opt {
 namespace {

@@ -17,7 +17,7 @@
 #ifndef MINDSPORE_LITE_TOOLS_OPTIMIZER_FUSION_ADJUST_REDUCESUM_PASS_H
 #define MINDSPORE_LITE_TOOLS_OPTIMIZER_FUSION_ADJUST_REDUCESUM_PASS_H
 
-#include "include/backend/common/pass_manager/pass.h"
+#include "tools/converter/ms_depend/pass.h"
 
 namespace mindspore {
 namespace opt {

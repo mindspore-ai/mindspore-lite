@@ -1,5 +1,5 @@
 /**
- * Copyright 2022-2024 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/graph/specify_graph_input_format.h"
 #include "utils/ms_utils_secure.h"
-#include "mindspore/ccsrc/include/backend/common/pass_manager/graph_optimizer.h"
+#include "tools/converter/ms_depend/graph_optimizer.h"
 #include "tools/optimizer/fusion/conv_biasadd_fusion.h"
 #include "tools/optimizer/fusion/conv_bn_fusion.h"
 #include "tools/optimizer/fusion/conv_scale_fusion.h"
@@ -88,7 +88,7 @@
 #include "tools/optimizer/fusion/ffn_custom_pass.h"
 #include "tools/optimizer/fusion/gnbmm_pass.h"
 #include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
-#include "mindspore/ccsrc/include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"

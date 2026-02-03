@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,11 +20,11 @@
 #include <vector>
 #include <utility>
 
-#include "include/backend/common/pass_manager/pass_manager.h"
-#include "include/utils/anfalgo.h"
+#include "tools/converter/ms_depend/pass_manager.h"
+#include "tools/converter/ms_depend/anfalgo.h"
 #include "ir/manager.h"
 #include "tools/optimizer/common/helper.h"
-#include "backend/common/pass_manager/visitor.h"
+#include "tools/converter/ms_depend/visitor.h"
 
 namespace mindspore {
 namespace opt {

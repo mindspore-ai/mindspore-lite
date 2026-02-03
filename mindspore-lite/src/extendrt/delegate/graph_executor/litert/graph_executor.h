@@ -1,5 +1,5 @@
 /**
- * Copyright 2019-2022 Huawei Technologies Co., Ltd
+ * Copyright 2019-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@
 
 #include "extendrt/session/lite_graph_executor.h"
 #include "schema/inner/model_generated.h"
-#include "runtime/hardware_abstract/device_context/device_context.h"
 #include "include/api/context.h"
 #include "include/model.h"
 #include "src/litert/lite_session.h"
@@ -42,12 +41,13 @@ class LiteRTGraphExecutor : public LiteGraphExecutor {
       fb_model_buf_ = nullptr;
     }
   }
-  Status CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
+
+  Status CompileGraph(const FuncGraphPtr &graph, const std::map<std::string, std::string> &compile_options,
                       uint32_t *graph_id) override;
-  Status CompileGraph(const void *model_data, size_t data_size, const std::map<string, string> &compile_options,
-                      uint32_t *graph_id) override;
+  Status CompileGraph(const void *model_data, size_t data_size,
+                      const std::map<std::string, std::string> &compile_options, uint32_t *graph_id) override;
   Status RunGraph(uint32_t graph_id, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
-                  const std::map<string, string> &compile_options) override;
+                  const std::map<std::string, std::string> &compile_options) override;
 
   Status Resize(uint32_t graph_id, const std::vector<MSTensor> &inputs, const std::vector<ShapeVector> &dims) override;
   std::vector<MSTensor> GetInputInfos(uint32_t graph_id) override;

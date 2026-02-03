@@ -19,6 +19,7 @@
 #include "tools/common/graph_util.h"
 #include "tools/optimizer/graph/remove_load_pass.h"
 #include "tools/optimizer/graph/attr_to_args_pass.h"
+#include "tools/converter/ms_depend/utils.h"
 
 namespace mindspore {
 namespace {
@@ -62,7 +63,8 @@ bool GeGraphCompiler::CompileGraph(const FuncGraphPtr &graph, GeSessionInfo *ge_
     MS_LOG(ERROR) << "ge_session hasn't been created.";
     return false;
   }
-  ge_session_info->df_ptr_ = ToGeGraph(graph, ge_session_info, ge_options_container.GeGraphOptions().at(kGeGraphKey));
+  ge_session_info->df_ptr_ =
+    ToGeGraph(graph, ge_session_info, ge_options_container.GeGraphOptions().at(lite::kGeGraphKey));
   if (ge_session_info->df_ptr_ == nullptr) {
     MS_LOG(ERROR) << "Convert FuncGraph to ge::graph failed.";
     return false;

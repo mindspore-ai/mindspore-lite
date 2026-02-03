@@ -362,7 +362,6 @@ build_lite() {
     if [[ "$(uname)" == "Darwin" && "${local_lite_platform}" != "x86_64" ]]; then
       LITE_CMAKE_ARGS=`echo $LITE_CMAKE_ARGS | sed 's/-DCMAKE_BUILD_TYPE=Debug/-DCMAKE_BUILD_TYPE=Release/g'`
       LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_TRAIN=off -DMSLITE_GPU_BACKEND=off -DMSLITE_ENABLE_NPU=off"
-      LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off"
       LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DENABLE_BITCODE=0 -G Xcode"
       CMAKE_TOOLCHAIN_FILE=${BASEPATH}/cmake/lite_ios.cmake
     fi
@@ -405,30 +404,25 @@ build_lite() {
         # CPU : iOS-aarch32
         pkg_name=mindspore-lite-${VERSION_STR}-ios-aarch32
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DARCHS=armv7;armv7s"
-        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off"
       elif [[ "${TOOLCHAIN_NAME}" == "ohos-lite" ]]; then
         # Hi3516D : OpenHarmony-aarch32
         CMAKE_TOOLCHAIN_FILE=${LITE_BASEPATH}/cmake/ohos-lite.toolchain.cmake
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DTOOLCHAIN_NAME=ohos-lite"
-        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_FP16=off"
       elif [[ "${TOOLCHAIN_NAME}" == "himix200" ]]; then
         # Hi3516D : Linux-aarch32
         CMAKE_TOOLCHAIN_FILE=${LITE_BASEPATH}/cmake/himix200.toolchain.cmake
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DTOOLCHAIN_NAME=himix200"
-        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_FP16=off -DMSLITE_ENABLE_TRAIN=off -DMSLITE_GPU_BACKEND=off"
       elif [[ "${TOOLCHAIN_NAME}" == "ohos" ]]; then
         pkg_name=mindspore-lite-${VERSION_STR}-ohos-arm32
         CMAKE_TOOLCHAIN_FILE=${OHOS_NDK}/build/cmake/ohos.toolchain.cmake
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DCMAKE_OHOS_NDK=${OHOS_NDK} -DOHOS_ARCH=armeabi-v7a -DOHOS_STL=c++_static -DTOOLCHAIN_NAME=${TOOLCHAIN_NAME}"
-        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_FP16=off -DMSLITE_ENABLE_TRAIN=off -DMSLITE_GPU_BACKEND=off"
       elif [[ "${TOOLCHAIN_NAME}" == "cortex-a15" ]]; then
         # ft04&ft78 : Linux-aarch32
         CMAKE_TOOLCHAIN_FILE=${LITE_BASEPATH}/cmake/cortex-a15.toolchain.cmake
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DTOOLCHAIN_NAME=cortex-a15"
-        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_FP16=off -DMSLITE_ENABLE_TRAIN=off -DMSLITE_GPU_BACKEND=off"
       else
         # CPU : Android-aarch32
@@ -439,7 +433,6 @@ build_lite() {
         fi
         export PATH=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin:${ANDROID_NDK}/toolchains/arm-linux-androideabi-4.9/prebuilt/linux-x86_64/bin:${PATH}
         CMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake
-        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=full"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_FP16=on"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DANDROID_NATIVE_API_LEVEL=19 -DANDROID_NDK=${ANDROID_NDK} -DANDROID_ABI=armeabi-v7a -DANDROID_TOOLCHAIN_NAME=clang -DANDROID_STL=${MSLITE_ANDROID_STL}"
       fi
@@ -450,27 +443,22 @@ build_lite() {
         pkg_name=mindspore-lite-${VERSION_STR}-ios-aarch64
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DARCHS=arm64"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_FP16=on"
-        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off"
       elif [[ "${TOOLCHAIN_NAME}" == "himix100" ]]; then
         # Hi3559A :
         CMAKE_TOOLCHAIN_FILE=${LITE_BASEPATH}/cmake/himix100.toolchain.cmake
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DTOOLCHAIN_NAME=himix100"
-        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_FP16=off -DMSLITE_ENABLE_TRAIN=off -DMSLITE_GPU_BACKEND=off"
       elif [[ "${TOOLCHAIN_NAME}" == "mix210" ]]; then
         # SD3403 :
         CMAKE_TOOLCHAIN_FILE=${LITE_BASEPATH}/cmake/mix210.toolchain.cmake
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DTOOLCHAIN_NAME=mix210"
-        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_FP16=on -DMSLITE_ENABLE_TRAIN=off -DMSLITE_GPU_BACKEND=off"
       elif [[ "${TOOLCHAIN_NAME}" == "ohos" ]]; then
         pkg_name=mindspore-lite-${VERSION_STR}-ohos-aarch64
         CMAKE_TOOLCHAIN_FILE=${OHOS_NDK}/build/cmake/ohos.toolchain.cmake
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DCMAKE_OHOS_NDK=${OHOS_NDK} -DOHOS_ARCH=arm64-v8a -DOHOS_STL=c++_static -DTOOLCHAIN_NAME=${TOOLCHAIN_NAME}"
-        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_FP16=on -DMSLITE_ENABLE_TRAIN=off -DMSLITE_GPU_BACKEND=off"
       elif [[ "${AOS_SDK}" ]]; then
-        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=full"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DTARGET_AOS_ARM=on"
         if [[ "${TOOLCHAIN_NAME}" == "gcc" ]]; then
           LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DTOOLCHAIN_NAME=gcc"
@@ -492,7 +480,6 @@ build_lite() {
           export PATH=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin:${ANDROID_NDK}/toolchains/arm-linux-androideabi-4.9/prebuilt/linux-x86_64/bin:${PATH}
           CMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake
           LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DANDROID_NATIVE_API_LEVEL=19 -DANDROID_NDK=${ANDROID_NDK} -DANDROID_ABI=arm64-v8a -DANDROID_TOOLCHAIN_NAME=aarch64-linux-android-clang -DANDROID_STL=${MSLITE_ANDROID_STL}"
-          LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=full"
         fi
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_FP16=on"
       fi
@@ -501,7 +488,6 @@ build_lite() {
        CMAKE_TOOLCHAIN_FILE=${BASEPATH}/cmake/lite_ios.cmake
        LITE_CMAKE_ARGS=`echo $LITE_CMAKE_ARGS | sed 's/-DCMAKE_BUILD_TYPE=Debug/-DCMAKE_BUILD_TYPE=Release/g'`
        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DPLATFORM=SIMULATOR64 -DPLATFORM_ARM64=off -DENABLE_NEON=off -DMSLITE_ENABLE_TRAIN=off -DMSLITE_GPU_BACKEND=off -DMSLITE_ENABLE_NPU=off"
-       LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off"
        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_TOOLS=off -DMSLITE_ENABLE_CONVERTER=off"
        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -G Xcode .."
     else
@@ -513,7 +499,7 @@ build_lite() {
         CMAKE_TOOLCHAIN_FILE=${LITE_BASEPATH}/cmake/${TOOLCHAIN_NAME}.toolchain.cmake
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DTOOLCHAIN_NAME=${TOOLCHAIN_NAME}"
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DPLATFORM_MCU=on"
-        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_MINDDATA_IMPLEMENT=off -DMSLITE_ENABLE_TRAIN=off -DMSLITE_GPU_BACKEND=off -DMSLITE_ENABLE_TOOLS=off -DMSLITE_ENABLE_TESTCASES=on"
+        LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DMSLITE_ENABLE_TRAIN=off -DMSLITE_GPU_BACKEND=off -DMSLITE_ENABLE_TOOLS=off -DMSLITE_ENABLE_TESTCASES=on"
       else
         # CPU : Linux-x86_64
         LITE_CMAKE_ARGS="${LITE_CMAKE_ARGS} -DPLATFORM_X86_64=on"

@@ -29,7 +29,7 @@
 #include "ir/anf.h"
 #include "ir/func_graph.h"
 #include "src/common/utils.h"
-#include "include/backend/common/pass_manager/pattern_engine.h"
+#include "tools/converter/ms_depend/pattern_engine.h"
 #include "src/common/ops/primitive/conv2d_backprop_input_fusion.h"
 #include "schema/inner/model_generated.h"
 #include "tools/converter/converter_context.h"

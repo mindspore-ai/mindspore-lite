@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2021 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,14 +28,14 @@
 #include "infer/tuple_get_item.h"
 #include "src/common/utils.h"
 #include "tools/common/tensor_util.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/common/helper.h"
 #include "include/securec.h"
 #include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "backend/common/pass_manager/visitor.h"
+#include "tools/converter/ms_depend/visitor.h"
 
 namespace mindspore {
 namespace opt {

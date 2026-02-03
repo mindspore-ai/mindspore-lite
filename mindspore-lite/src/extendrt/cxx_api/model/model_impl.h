@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@
 #include "include/api/graph.h"
 #include "include/api/serialization.h"
 #include "extendrt/cxx_api/graph/graph_data.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "ir/func_graph.h"
 #include "extendrt/infer_session.h"
 #include "src/common/config_infos.h"

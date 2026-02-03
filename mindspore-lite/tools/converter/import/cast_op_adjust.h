@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2021 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 #ifndef MINDSPORE_LITE_TOOLS_CONVERTER_IMPORT_CAST_OP_ADJUST_H_
 #define MINDSPORE_LITE_TOOLS_CONVERTER_IMPORT_CAST_OP_ADJUST_H_
 #include <string>
-#include "include/backend/common/pass_manager/pass.h"
+#include "tools/converter/ms_depend/pass.h"
 #include "tools/optimizer/common/gllo_utils.h"
 
 namespace mindspore {

@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2024-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,26 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "tools/optimizer/graph/concat_op_pass.h"
+
 #include <memory>
 #include <vector>
 #include <string>
-#include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "mindspore/ops/op_def/array_ops.h"
-#include "mindspore/ops/op_def/lite_ops.h"
+
 #include "infer/tuple_get_item.h"
-#include "infer/make_tuple.h"
-#include "tools/optimizer/graph/concat_op_pass.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/graph/lite_tensor_extractor.h"
 #include "abstract/ops/primitive_infer_map.h"
 #include "utils/anf_utils.h"
-#include "mindspore/ops/op_def/math_ops.h"
-#include "extendrt/utils/func_graph_utils.h"
-#include "include/utils/anfalgo.h"
+#include "tools/converter/ms_depend/anfalgo.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 #include "mindspore/core/include/ir/graph_utils.h"
+#include "mindspore/ops/ops_utils/op_constants.h"
 
 namespace mindspore::opt {
 
@@ -74,7 +69,7 @@ bool IsTupleHasDynamicSequence(const abstract::AbstractBasePtr &abstract) {
 
 size_t GetOutputElementNum(const AnfNodePtr &node) {
   if (node->abstract() != nullptr && IsTupleHasDynamicSequence(node->abstract())) {
-    return common::AnfAlgo::GetOutputNumByAbstract(node->abstract());
+    return lite::common::AnfAlgo::GetOutputNumByAbstract(node->abstract());
   }
   return AnfUtils::GetOutputTensorNum(node);
 }
@@ -82,7 +77,7 @@ size_t GetOutputElementNum(const AnfNodePtr &node) {
 int64_t SplitTupleInputs(const FuncGraphPtr &graph, const AnfNodePtr &tuple_input,
                          std::vector<AnfNodePtr> *plant_inputs) {
   MS_EXCEPTION_IF_NULL(tuple_input);
-  if (!common::AnfAlgo::IsTupleOutput(tuple_input)) {
+  if (!lite::common::AnfAlgo::IsTupleOutput(tuple_input)) {
     auto abs = tuple_input->abstract();
     MS_EXCEPTION_IF_NULL(abs);
     MS_LOG(WARNING) << "The Function only split the output type is tuple type but got" << abs->ToString();
@@ -90,16 +85,17 @@ int64_t SplitTupleInputs(const FuncGraphPtr &graph, const AnfNodePtr &tuple_inpu
   }
   MS_EXCEPTION_IF_NULL(plant_inputs);
   auto input_size = GetOutputElementNum(tuple_input);
-  if (tuple_input->isa<CNode>() && common::AnfAlgo::CheckPrimitiveType(tuple_input, prim::kPrimMakeTuple)) {
+  if (tuple_input->isa<CNode>() && lite::common::AnfAlgo::CheckPrimitiveType(tuple_input, prim::kPrimMakeTuple)) {
     auto make_tuple = tuple_input->cast<CNodePtr>();
     MS_EXCEPTION_IF_NULL(make_tuple);
-    size_t tuple_input_num = common::AnfAlgo::GetInputTensorNum(make_tuple);
+    size_t tuple_input_num = lite::common::AnfAlgo::GetInputTensorNum(make_tuple);
     for (size_t j = 0; j < tuple_input_num; ++j) {
       // using for graph kernel
-      auto dyn_input_node = common::AnfAlgo::GetInputNode(make_tuple, j);
+      auto dyn_input_node = lite::common::AnfAlgo::GetInputNode(make_tuple, j);
       MS_EXCEPTION_IF_NULL(dyn_input_node);
       // Handle tuple nested scenes.
-      if (dyn_input_node->isa<CNode>() && common::AnfAlgo::CheckPrimitiveType(dyn_input_node, prim::kPrimMakeTuple)) {
+      if (dyn_input_node->isa<CNode>() &&
+          lite::common::AnfAlgo::CheckPrimitiveType(dyn_input_node, prim::kPrimMakeTuple)) {
         input_size += LongToSize(SplitTupleInputs(graph, dyn_input_node, plant_inputs));
         continue;
       }
@@ -136,23 +132,23 @@ AnfNodePtr ConcatOpPass::ConvertMakeTupleInputToPlantInputs(const FuncGraphPtr &
   MS_EXCEPTION_IF_NULL(cnode_ptr);
   MS_EXCEPTION_IF_NULL(graph);
 
-  if (common::AnfAlgo::HasDynamicTupleInput(cnode_ptr)) {
+  if (lite::common::AnfAlgo::HasDynamicTupleInput(cnode_ptr)) {
     MS_LOG(INFO) << "Node " << cnode_ptr->fullname_with_scope()
                  << " has dynamic tuple input, can't convert. Node debug string:" << cnode_ptr->DebugString();
     return nullptr;
   }
   std::vector<AnfNodePtr> plant_inputs;
   std::vector<int64_t> dyn_input_sizes;
-  plant_inputs.push_back(common::AnfAlgo::GetCNodePrimitiveNode(cnode_ptr));
+  plant_inputs.push_back(lite::common::AnfAlgo::GetCNodePrimitiveNode(cnode_ptr));
   if (cnode_ptr->empty()) {
     MS_LOG(ERROR) << "Node " << cnode_ptr->fullname_with_scope() << " input_size is 0";
     return nullptr;
   }
   size_t input_num = cnode_ptr->size() - 1;
   for (size_t i = 0; i < input_num; ++i) {
-    auto input_node = common::AnfAlgo::GetInputNode(cnode_ptr, i);
+    auto input_node = lite::common::AnfAlgo::GetInputNode(cnode_ptr, i);
     MS_EXCEPTION_IF_NULL(input_node);
-    bool output_is_tuple = common::AnfAlgo::IsTupleOutput(input_node);
+    bool output_is_tuple = lite::common::AnfAlgo::IsTupleOutput(input_node);
     if (output_is_tuple) {
       int64_t dyn_input_size;
       if (IsNotSequenceOfTensor(input_node->abstract())) {
@@ -184,7 +180,7 @@ AnfNodePtr ConcatOpPass::ConvertMakeTupleInputToPlantInputs(const FuncGraphPtr &
     new_cnode->set_primal_attrs(cnode_ptr->primal_attrs());
     new_cnode->set_attrs(cnode_ptr->attrs());
     new_cnode->set_fullname_with_scope(cnode_ptr->fullname_with_scope() + "-plant_input");
-    common::AnfAlgo::SetNodeAttr(kAttrDynInputSizes, MakeValue(dyn_input_sizes), new_cnode);
+    lite::common::AnfAlgo::SetNodeAttr(kAttrDynInputSizes, MakeValue(dyn_input_sizes), new_cnode);
     return new_cnode;
   }
   return nullptr;

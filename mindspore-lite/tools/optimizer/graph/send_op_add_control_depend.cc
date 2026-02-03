@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2024-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 
 #include <vector>
 #include "mindspore/ops/op_def/framework_ops.h"
-#include "include/utils/anfalgo.h"
+#include "tools/converter/ms_depend/anfalgo.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "ir/tensor_new.h"
 
@@ -71,7 +71,7 @@ const AnfNodePtr SendOpAddControlDepend::Process(const FuncGraphPtr &func_graph,
   depend_node->set_abstract(value_node->abstract());
   MS_LOG(INFO) << "Create new depend: " << depend_node->fullname_with_scope()
                << " for node: " << cnode->fullname_with_scope();
-  common::AnfAlgo::SetNodeAttr(kDataToControl, MakeValue(true), cnode);
+  lite::common::AnfAlgo::SetNodeAttr(kDataToControl, MakeValue(true), cnode);
   return depend_node;
 }
 #endif

@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ bool PytorchLstmAdjustPass::Run(const FuncGraphPtr &func_graph) {
     if (CheckPrimitiveType(node, prim::kPrimLstm)) {
       auto lstm = node->cast<CNodePtr>();
       MS_CHECK_TRUE_RET(lstm != nullptr, false);
-      auto lstm_prim = ops::GetOperator<ops::LSTM>(lstm->input(kAnfPrimitiveIndex));
+      auto lstm_prim = ops::GetOperator<ops::LSTM>(lstm->input(lite::kAnfPrimitiveIndex));
       MS_CHECK_TRUE_RET(lstm != nullptr, false);
 
       auto bidirectional = lstm_prim->get_bidirectional();
@@ -109,7 +109,7 @@ bool PytorchLstmAdjustPass::Run(const FuncGraphPtr &func_graph) {
         MS_LOG(ERROR) << "CombineTwoBiasInput failed";
         return false;
       }
-      std::vector<AnfNodePtr> op_inputs{lstm->input(kAnfPrimitiveIndex),
+      std::vector<AnfNodePtr> op_inputs{lstm->input(lite::kAnfPrimitiveIndex),
                                         lstm->input(SECOND_INPUT),
                                         weight_input,
                                         weight_hidden,

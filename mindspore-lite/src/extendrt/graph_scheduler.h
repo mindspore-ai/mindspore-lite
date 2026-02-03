@@ -23,7 +23,7 @@
 #include "include/api/model.h"
 #include "include/api/graph.h"
 #include "include/api/status.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "ir/func_graph.h"
 #include "src/executor/kernel_exec.h"
 

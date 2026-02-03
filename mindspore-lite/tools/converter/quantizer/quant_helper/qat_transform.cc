@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@
 #include "tools/converter/quantizer/insert_quant_node_manager.h"
 #include "tools/converter/quantizer/fixed_bit_weight_quantization_with_holder.h"
 #include "tools/converter/quantizer/quant_strategy.h"
-#include "include/backend/common/pass_manager/graph_optimizer.h"
+#include "tools/converter/ms_depend/graph_optimizer.h"
 #include "tools/optimizer/fusion/quant_dtype_cast_fusion.h"
 #include "tools/optimizer/graph/infershape_pass.h"
 #include "tools/optimizer/common/gllo_utils.h"

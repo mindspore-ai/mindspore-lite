@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2023 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,35 +18,27 @@
 #include <set>
 #include <shared_mutex>
 #include <cstring>
-#include <memory>
 #include <map>
 #include <vector>
 #include <string>
 #include <utility>
 #include <unordered_map>
-#include "mindspore/ccsrc/include/frontend/operator/primitive_py.h"
 #include "ops/primitive_c.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "src/common/utils.h"
 #include "nnacl_c/op_base.h"
-#include "ops_utils/op_utils.h"
 #include "extendrt/cxx_api/model/model_impl.h"
 #include "extendrt/cxx_api/dlutils.h"
 #include "extendrt/cxx_api/file_utils.h"
-#include "extendrt/utils/tensor_utils.h"
 #include "utils/ms_context.h"
 #include "extendrt/mindir_loader/mindir_model/mindir_model_util.h"
 #include "src/extendrt/convert/runtime_convert.h"
 #include "src/common/config_file.h"
-#include "src/extendrt/utils/serialization.h"
 #include "mindapi/ir/func_graph.h"
 #include "mindapi/base/base.h"
 #include "src/extendrt/delegate/graph_executor/litert/func_graph_reuse_manager.h"
 #include "load_mindir/load_model.h"
 #include "src/extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"
 #include "utils/ms_utils_secure.h"
-#include "infer/custom.h"
-#include "infer/return.h"
 #include "src/extendrt/model_manager.h"
 #include "include/api/model_group.h"
 #include "src/common/common.h"
@@ -89,62 +81,6 @@ std::unordered_map<std::string, mindspore::Format> kStr2FormatMap{{"DEFAULT_FORM
                                                                   {"NCW", mindspore::Format::NCW},
                                                                   {"NDHWC", mindspore::Format::NDHWC},
                                                                   {"NC8HW8", mindspore::Format::NC8HW8}};
-
-Status PrimitivePyToC(const FuncGraphPtr &func_graph) {
-  MS_CHECK_TRUE_MSG(func_graph != nullptr, kLiteError, "func_graph is nullptr!");
-  auto node_list = TopoSort(func_graph->get_return());
-  for (auto &node : node_list) {
-    MS_CHECK_TRUE_MSG(node != nullptr, kLiteError, "node is nullptr!");
-    if (!utils::isa<CNodePtr>(node)) {
-      continue;
-    }
-    auto cnode = node->cast<CNodePtr>();
-    MS_CHECK_TRUE_MSG(cnode != nullptr, kLiteError, "cnode is nullptr!");
-
-    // judge if primitive is PrimitivePy
-    auto primpy_ptr = GetValueNode<PrimitivePtr>(cnode->input(0));
-    MS_EXCEPTION_IF_NULL(primpy_ptr);
-    if (!utils::isa<PrimitivePy>(primpy_ptr)) {
-      continue;
-    }
-    MS_LOG(INFO) << "Transform a primitivePy to primitiveC for node " << cnode->fullname_with_scope();
-
-    auto kernel_name = primpy_ptr->name();
-    ops::PrimitiveCPtr primc_ptr = nullptr;
-    static auto &primc_fns = ops::OpPrimCRegister::GetInstance().GetPrimCMap();
-    auto primc_it = primc_fns.find(kernel_name);
-    if (primc_it != primc_fns.end() && primc_it->second) {
-      primc_ptr = primc_it->second();
-    }
-    if (primc_ptr == nullptr) {
-      MS_LOG(ERROR) << "OpPrimCRegister can not find " << kernel_name;
-      return kLiteError;
-    }
-    (void)primc_ptr->SetAttrs(primpy_ptr->attrs());
-
-    if (primpy_ptr->HasAttr(ops::kFormat)) {
-      MS_LOG(INFO) << "Add attr Original format to " << cnode->fullname_with_scope();
-      auto format_str = GetValue<string>(primpy_ptr->GetAttr(ops::kFormat));
-      auto format_it = kStr2FormatMap.find(format_str.c_str());
-      if (format_it != kStr2FormatMap.end()) {
-        MS_LOG(INFO) << "Add attr Original format" << format_it->second << " to " << cnode->fullname_with_scope();
-        (void)primc_ptr->AddAttr(mindspore::ops::kOriginalFormat,
-                                 std::dynamic_pointer_cast<mindspore::Value>(
-                                   api::MakeValue<int64_t>(static_cast<int64_t>(format_it->second))->impl()));
-      } else {
-        MS_LOG(ERROR) << "Fail to find format " << format_str.c_str() << "in kStr2FormatMap";
-        return kLiteError;
-      }
-    }
-
-    auto new_prim = MakeValue(primc_ptr);
-    auto new_value_node = NewValueNode(new_prim);
-    MS_CHECK_TRUE_MSG(new_value_node != nullptr, kLiteError, "new_value_node is nullptr!");
-    new_value_node->set_abstract(new_prim->ToAbstract());
-    cnode->set_input(0, new_value_node);
-  }
-  return kSuccess;
-}
 
 std::string WeightBufferParamsDisplayStr(const void *weight_data, size_t weight_size) {
   std::stringstream ss;
@@ -786,14 +722,7 @@ Status ModelImpl::Build(const FuncGraphPtr &func_graph, const std::shared_ptr<Co
     MS_LOG(ERROR) << "Input func graph is nullptr!";
     return kLiteError;
   }
-  // transfer primitivePy to primitiveC
-  auto ret = PrimitivePyToC(func_graph);
-  if (ret != kSuccess) {
-    MS_LOG(ERROR) << "transfer primitivePy to primitiveCfailed!";
-    return ret;
-  }
-  // convert and optimize func graph to infer
-  ret = ConvertGraphOnline(func_graph, model_context);
+  auto ret = ConvertGraphOnline(func_graph, model_context);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "convert graph failed!ret = " << ret;
     return ret;

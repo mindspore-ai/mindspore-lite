@@ -1,5 +1,5 @@
 /**
- * Copyright 2021-2023 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -273,7 +273,7 @@ bool UpdateSplitInfo(const FuncGraphPtr &func_graph, const std::vector<AnfNodePt
   while (index_node < node_size) {
     auto conv_cnode = conv_nodes[index_node]->cast<CNodePtr>();
     MS_ASSERT(conv_cnode != nullptr);
-    auto ori_conv_prim = ops::GetOperator<ops::Conv2DFusion>(conv_cnode->input(kAnfPrimitiveIndex));
+    auto ori_conv_prim = ops::GetOperator<ops::Conv2DFusion>(conv_cnode->input(lite::kAnfPrimitiveIndex));
     MS_CHECK_TRUE_RET(ori_conv_prim != nullptr, false);
     if (!CalSplitInShape(node_in_out_shapes, split_info, ori_conv_prim, index_node, &split_axis_inputs_shape,
                          &split_axis_reduce_inputs_shape)) {

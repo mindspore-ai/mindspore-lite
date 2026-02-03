@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2024-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 #include "mindspore/ops/op_def/math_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
-#include "include/backend/common/pass_manager/graph_optimizer.h"
+#include "tools/converter/ms_depend/graph_optimizer.h"
 #include "nnacl_c/op_base.h"
 #include "infer/tuple_get_item.h"
 #include "src/common/log_adapter.h"

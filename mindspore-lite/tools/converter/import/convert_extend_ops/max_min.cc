@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2024-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 #include "tools/converter/import/convert_extend_ops/convert_extend_ops_pass.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
+#include "mindspore/ops/ops_utils/op_constants.h"
 
 namespace mindspore::opt {
 AnfNodePtr ConvertMaxMinPass(const FuncGraphPtr &func_graph, const mindspore::AnfNodePtr &node) {

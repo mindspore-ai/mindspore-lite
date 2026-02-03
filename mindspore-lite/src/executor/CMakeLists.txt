@@ -39,7 +39,6 @@ set(LITE_SRC
         ${LITE_DIR}/src/litert/pack_weight_manager.cc
         ${LITE_DIR}/src/control_flow/control_flow_scheduler.cc
         ${LITE_DIR}/src/control_flow/control_subgraph_creator.cc
-        ${LITE_DIR}/src/extendrt/utils/tensor_utils.cc
         )
 
 set(MODEL_LOADER_FRAMEWORK_SRC
@@ -50,14 +49,8 @@ set(MINDIR_MODEL_SRC
         ${MINDIR_MODEL_SRC}
         ${LITE_DIR}/src/extendrt/mindir_loader/mindir_model/mindir_model.cc
         ${LITE_DIR}/src/extendrt/mindir_loader/mindir_model/mindir_model_util.cc
-        ${LITE_DIR}/src/extendrt/mindir_loader/mindir_model/mindir_model_convertor.cc
         ${LITE_DIR}/src/extendrt/mindir_loader/mindir_model/mindir_model_loader.cc
-        ${LITE_DIR}/src/extendrt/mindir_loader/mindir_model/kernel_mod_util.cc
         )
-
-set(MINDIR_KERNEL_SRC
-        ${MINDIR_KERNEL_SRC}
-        ${LITE_DIR}/src/extendrt/mindir_loader/mindir_model/inner_kernel.cc)
 
 set(LITE_SRC
         ${LITE_SRC}

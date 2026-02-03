@@ -184,7 +184,6 @@ set(TEST_SRC
 
 add_executable(lite-test ${TEST_SRC})
 add_dependencies(lite-test fbs_src fbs_inner_src)
-
 target_link_libraries(lite-test mindspore-lite dl mindspore::gtest)
 
 # test file using gmock

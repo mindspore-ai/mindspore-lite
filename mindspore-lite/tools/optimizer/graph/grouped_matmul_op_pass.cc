@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2024-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,10 +31,12 @@
 #include "mindspore/ops/op_def/math_ops.h"
 #include "ops/op_def.h"
 #include "extendrt/utils/func_graph_utils.h"
-#include "include/utils/anfalgo.h"
+#include "tools/converter/ms_depend/anfalgo.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_g.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
+#include "mindspore/ops/ops_utils/op_constants.h"
+#include "tools/optimizer/graph/concat_op_pass.h"
 #include "ir/tensor_new.h"
 #include "mindspore/core/include/ir/graph_utils.h"
 
@@ -66,7 +68,7 @@ bool GroupedMatmulOpPass::IsTupleHasDynamicSequence(const abstract::AbstractBase
 
 size_t GroupedMatmulOpPass::GetOutputElementNum(const AnfNodePtr &node) {
   if (node->abstract() != nullptr && IsTupleHasDynamicSequence(node->abstract())) {
-    return common::AnfAlgo::GetOutputNumByAbstract(node->abstract());
+    return lite::common::AnfAlgo::GetOutputNumByAbstract(node->abstract());
   }
   return AnfUtils::GetOutputTensorNum(node);
 }
@@ -142,7 +144,7 @@ bool InputArgTypeIsDynamicType(const mindspore::ops::OP_DTYPE input_arg_dtype) {
 int64_t GroupedMatmulOpPass::SplitTupleInputs(const FuncGraphPtr &graph, const AnfNodePtr &tuple_input,
                                               std::vector<AnfNodePtr> *plant_inputs) {
   MS_EXCEPTION_IF_NULL(tuple_input);
-  if (!common::AnfAlgo::IsTupleOutput(tuple_input)) {
+  if (!lite::common::AnfAlgo::IsTupleOutput(tuple_input)) {
     auto abs = tuple_input->abstract();
     MS_EXCEPTION_IF_NULL(abs);
     MS_LOG(WARNING) << "The Function only split the output type is tuple type but got" << abs->ToString();
@@ -150,16 +152,17 @@ int64_t GroupedMatmulOpPass::SplitTupleInputs(const FuncGraphPtr &graph, const A
   }
   MS_EXCEPTION_IF_NULL(plant_inputs);
   auto input_size = GetOutputElementNum(tuple_input);
-  if (tuple_input->isa<CNode>() && common::AnfAlgo::CheckPrimitiveType(tuple_input, prim::kPrimMakeTuple)) {
+  if (tuple_input->isa<CNode>() && lite::common::AnfAlgo::CheckPrimitiveType(tuple_input, prim::kPrimMakeTuple)) {
     auto make_tuple = tuple_input->cast<CNodePtr>();
     MS_EXCEPTION_IF_NULL(make_tuple);
-    size_t tuple_input_num = common::AnfAlgo::GetInputTensorNum(make_tuple);
+    size_t tuple_input_num = lite::common::AnfAlgo::GetInputTensorNum(make_tuple);
     for (size_t j = 0; j < tuple_input_num; ++j) {
       // using for graph kernel
-      auto dyn_input_node = common::AnfAlgo::GetInputNode(make_tuple, j);
+      auto dyn_input_node = lite::common::AnfAlgo::GetInputNode(make_tuple, j);
       MS_EXCEPTION_IF_NULL(dyn_input_node);
       // Handle tuple nested scenes.
-      if (dyn_input_node->isa<CNode>() && common::AnfAlgo::CheckPrimitiveType(dyn_input_node, prim::kPrimMakeTuple)) {
+      if (dyn_input_node->isa<CNode>() &&
+          lite::common::AnfAlgo::CheckPrimitiveType(dyn_input_node, prim::kPrimMakeTuple)) {
         input_size += LongToSize(SplitTupleInputs(graph, dyn_input_node, plant_inputs));
         continue;
       }
@@ -194,21 +197,21 @@ AnfNodePtr GroupedMatmulOpPass::ConvertMakeTupleInputToPlantInputs(const FuncGra
   MS_EXCEPTION_IF_NULL(cnode_ptr);
   MS_EXCEPTION_IF_NULL(graph);
 
-  if (common::AnfAlgo::HasDynamicTupleInput(cnode_ptr)) {
+  if (lite::common::AnfAlgo::HasDynamicTupleInput(cnode_ptr)) {
     MS_LOG(INFO) << "Node " << cnode_ptr->fullname_with_scope()
                  << " has dynamic tuple input, can't convert. Node debug string:" << cnode_ptr->DebugString();
     return nullptr;
   }
 
-  auto cnode_name = common::AnfAlgo::GetCNodeName(cnode_ptr);
+  auto cnode_name = lite::common::AnfAlgo::GetCNodeName(cnode_ptr);
   std::vector<AnfNodePtr> plant_inputs;
   std::vector<int64_t> dyn_input_sizes;
-  plant_inputs.push_back(common::AnfAlgo::GetCNodePrimitiveNode(cnode_ptr));
+  plant_inputs.push_back(lite::common::AnfAlgo::GetCNodePrimitiveNode(cnode_ptr));
   size_t input_num = cnode_ptr->size() - 1;
   for (size_t i = 0; i < input_num; ++i) {
-    auto input_node = common::AnfAlgo::GetInputNode(cnode_ptr, i);
+    auto input_node = lite::common::AnfAlgo::GetInputNode(cnode_ptr, i);
     MS_EXCEPTION_IF_NULL(input_node);
-    bool output_is_tuple = common::AnfAlgo::IsTupleOutput(input_node);
+    bool output_is_tuple = lite::common::AnfAlgo::IsTupleOutput(input_node);
     if (output_is_tuple) {
       int64_t dyn_input_size;
       if (IsNotSequenceOfTensor(input_node->abstract())) {
@@ -232,7 +235,7 @@ AnfNodePtr GroupedMatmulOpPass::ConvertMakeTupleInputToPlantInputs(const FuncGra
       }
       auto is_dynamic_type = InputArgTypeIsDynamicType(input_args[i].arg_dtype_);
       // When input[i] is None and input[i] type in op_yaml is dynamic type, do replace
-      if (common::AnfAlgo::IsNoneInput(cnode_ptr, i) && is_dynamic_type) {
+      if (lite::common::AnfAlgo::IsNoneInput(cnode_ptr, i) && is_dynamic_type) {
         UseEmptyNodeReplaceNone(graph, cnode_name, i, &dyn_input_sizes, &plant_inputs);
       } else {
         dyn_input_sizes.push_back(is_dynamic_type ? 1 : -1);
@@ -251,7 +254,7 @@ AnfNodePtr GroupedMatmulOpPass::ConvertMakeTupleInputToPlantInputs(const FuncGra
     new_cnode->set_scope(cnode_ptr->scope());
     new_cnode->set_primal_attrs(cnode_ptr->primal_attrs());
     new_cnode->set_attrs(cnode_ptr->attrs());
-    common::AnfAlgo::SetNodeAttr(kAttrDynInputSizes, MakeValue(dyn_input_sizes), new_cnode);
+    lite::common::AnfAlgo::SetNodeAttr(kAttrDynInputSizes, MakeValue(dyn_input_sizes), new_cnode);
     return new_cnode;
   }
   return nullptr;
@@ -264,7 +267,7 @@ STATUS GroupedMatmulOpPass::RunInsertSizeAttrPass(const FuncGraphPtr &func_graph
     if (!utils::isa<CNodePtr>(node)) {
       continue;
     }
-    auto cnode_type = common::AnfAlgo::GetCNodeName(node);
+    auto cnode_type = lite::common::AnfAlgo::GetCNodeName(node);
     if (cnode_type == prim::kPrimGroupedMatmul->name()) {
       MS_LOG(INFO) << "Run GroupedMatmul op pass for grouped_matmul node " << node->fullname_with_scope();
       auto new_cnode = this->ConvertMakeTupleInputToPlantInputs(func_graph, node->cast<CNodePtr>());
@@ -331,12 +334,12 @@ STATUS ConvertGroupListToInt64(const FuncGraphPtr &func_graph, const CNodePtr &c
                                std::map<std::string, CNodePtr> *cast_map) {
   MS_EXCEPTION_IF_NULL(func_graph);
   MS_EXCEPTION_IF_NULL(cnode_ptr);
-  const auto dyn_input_sizes = common::AnfAlgo::GetNodeAttr<std::vector<int64_t>>(cnode_ptr, kAttrDynInputSizes);
+  const auto dyn_input_sizes = lite::common::AnfAlgo::GetNodeAttr<std::vector<int64_t>>(cnode_ptr, kAttrDynInputSizes);
   MS_EXCEPTION_IF_CHECK_FAIL(dyn_input_sizes.size() >= kIndex7, "size of dyn_input_sizes must be greater equal 7");
   auto group_list_index = std::accumulate(
     dyn_input_sizes.begin(), dyn_input_sizes.begin() + kIndex7, static_cast<int64_t>(0),
     [](const auto &prev, const auto &current) { return prev + std::max(current, static_cast<int64_t>(1)); });
-  auto group_list_node = common::AnfAlgo::GetInputNode(cnode_ptr, group_list_index);
+  auto group_list_node = lite::common::AnfAlgo::GetInputNode(cnode_ptr, group_list_index);
   MS_EXCEPTION_IF_NULL(group_list_node);
 
   if (!CheckValidGroupList(group_list_node)) {
@@ -344,7 +347,7 @@ STATUS ConvertGroupListToInt64(const FuncGraphPtr &func_graph, const CNodePtr &c
   }
   auto cast_node = GetCastInt64Node(func_graph, group_list_node, cast_map);
   MS_EXCEPTION_IF_NULL(cast_node);
-  common::AnfAlgo::SetNodeInput(cnode_ptr, cast_node, group_list_index);
+  lite::common::AnfAlgo::SetNodeInput(cnode_ptr, cast_node, group_list_index);
   return lite::RET_OK;
 }
 
@@ -356,7 +359,7 @@ STATUS GroupedMatmulOpPass::RunInsertGroupListCastPass(const FuncGraphPtr &func_
     if (!utils::isa<CNodePtr>(node)) {
       continue;
     }
-    auto cnode_type = common::AnfAlgo::GetCNodeName(node);
+    auto cnode_type = lite::common::AnfAlgo::GetCNodeName(node);
     if (cnode_type == prim::kPrimGroupedMatmul->name()) {
       MS_LOG(INFO) << "GroupedMatmulOpPass::RunInsertGroupListCastPass for grouped_matmul node "
                    << node->fullname_with_scope();

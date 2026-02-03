@@ -95,6 +95,7 @@ file(GLOB C_API_SRCS
         )
 set(API_SRC ${CXX_API_SRCS} ${C_API_SRCS})
 if(NOT MSLITE_ENABLE_RUNTIME_CONVERT)
+#    TODO(jjfeing)
     set(API_SRC ${API_SRC} ${CORE_DIR}/utils/status.cc)
 endif()
 
@@ -193,6 +194,7 @@ if(MSLITE_ENABLE_RUNTIME_GLOG)
     string(REPLACE "-fno-rtti" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
     string(REPLACE "-fno-rtti" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
     if(NOT MSLITE_ENABLE_RUNTIME_CONVERT AND NOT MSLITE_ENABLE_KERNEL_EXECUTOR)
+        #    TODO(jjfeing)
         set(LITE_SRC ${LITE_SRC}
                 ${CORE_DIR}/utils/log_adapter.cc)
     endif()
@@ -305,17 +307,19 @@ if(MSLITE_ENABLE_MINDRT)
         set(LITE_SRC ${LITE_SRC} ${CONTROL_FLOW_ACTOR_SRC})
     endif()
 elseif(TARGET_AOS_ARM)
-    set(LITE_SRC ${LITE_SRC}
-            ${CORE_DIR}/mindrt/src/thread/aos_worker.cc
-            ${CORE_DIR}/mindrt/src/thread/hal_adapter.cc
-            ${CORE_DIR}/mindrt/src/thread/core_affinity.cc
-            ${CORE_DIR}/mindrt/src/thread/threadpool.cc
-            )
+#    TODO(jjfeing)
+#    set(LITE_SRC ${LITE_SRC}
+#            ${CORE_DIR}/mindrt/src/thread/aos_worker.cc
+#            ${CORE_DIR}/mindrt/src/thread/hal_adapter.cc
+#            ${CORE_DIR}/mindrt/src/thread/core_affinity.cc
+#            ${CORE_DIR}/mindrt/src/thread/threadpool.cc
+#            )
 else()
-    set(LITE_SRC ${LITE_SRC}
-            ${CORE_DIR}/mindrt/src/thread/core_affinity.cc
-            ${CORE_DIR}/mindrt/src/thread/threadpool.cc
-            )
+#    TODO(jjfeing)
+#    set(LITE_SRC ${LITE_SRC}
+#            ${CORE_DIR}/mindrt/src/thread/core_affinity.cc
+#            ${CORE_DIR}/mindrt/src/thread/threadpool.cc
+#            )
 endif()
 
 if(NOT MSLITE_ENABLE_COREML)

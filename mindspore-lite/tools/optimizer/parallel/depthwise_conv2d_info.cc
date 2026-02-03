@@ -27,7 +27,7 @@
 #include "nnacl_c/op_base.h"
 #include "src/common/ops/primitive/conv2d_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "include/errorcode.h"
 #include "tools/optimizer/parallel/operator_info_register.h"
 #include "tools/optimizer/fisson/fisson_util.h"
@@ -344,7 +344,7 @@ AnfNodePtr DepthwiseConv2DInfo::CreateOutputsOfSplit(const CNodePtr &ori_node, s
                                                      std::vector<AnfNodePtr> *split_outputs, size_t split_dim,
                                                      size_t split_num, const std::vector<int64_t> &splits) {
   MS_ASSERT(orig_node != nullptr && split_outputs != nullptr);
-  auto depth_wise_conv_prim = ops::GetOperator<ops::Conv2DFusion>(cnode_->input(kAnfPrimitiveIndex));
+  auto depth_wise_conv_prim = ops::GetOperator<ops::Conv2DFusion>(cnode_->input(lite::kAnfPrimitiveIndex));
   MS_CHECK_TRUE_RET(depth_wise_conv_prim != nullptr, nullptr);
   auto ori_node_name = ori_node->fullname_with_scope();
   auto graph_node_input_shapes = Spliter::GetInstance()->graph_node_input_shapes();
@@ -407,7 +407,7 @@ AnfNodePtr DepthwiseConv2DInfo::CreateOutputsOfSplit(const CNodePtr &ori_node, s
 }
 
 int DepthwiseConv2DInfo::CheckDepthWiseConv2DPrimitiveType() {
-  auto prim = GetValueNode<PrimitivePtr>(cnode_->input(kAnfPrimitiveIndex));
+  auto prim = GetValueNode<PrimitivePtr>(cnode_->input(lite::kAnfPrimitiveIndex));
   MS_CHECK_TRUE_RET(prim != nullptr, RET_ERROR);
   // depth_wise can not be splited in conv_info, we deal with in depthwise_conv_info
   bool is_depth_wise = prim->GetAttr(ops::kIsDepthWise) != nullptr && GetValue<bool>(prim->GetAttr(ops::kIsDepthWise));
@@ -504,7 +504,7 @@ int DepthwiseConv2DInfo::InferParallelCNodes() {
     }
   }
   name_ = input_op_name;
-  auto depth_wise_conv_prim = ops::GetOperator<ops::Conv2DFusion>(cnode_->input(kAnfPrimitiveIndex));
+  auto depth_wise_conv_prim = ops::GetOperator<ops::Conv2DFusion>(cnode_->input(lite::kAnfPrimitiveIndex));
   MS_CHECK_TRUE_RET(depth_wise_conv_prim != nullptr, RET_ERROR);
   return ConstructOutputCNodes(depth_wise_conv_prim, feature_split_outputs, kernel_split_outputs, bias_split_outputs);
 }

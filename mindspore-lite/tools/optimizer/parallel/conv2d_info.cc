@@ -25,7 +25,7 @@
 #include "src/common/ops/primitive/conv2d_fusion.h"
 #include "infer/split_with_overlap.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "include/errorcode.h"
 #include "tools/optimizer/parallel/operator_info_register.h"
 #include "tools/optimizer/parallel/spliter.h"
@@ -96,7 +96,7 @@ int Conv2DInfo::CheckStrategy(const SplitStrategy &strategy) {
 }
 
 int Conv2DInfo::CheckIfSplit() {
-  auto conv_prim = ops::GetOperator<ops::Conv2DFusion>(cnode_->input(kAnfPrimitiveIndex));
+  auto conv_prim = ops::GetOperator<ops::Conv2DFusion>(cnode_->input(lite::kAnfPrimitiveIndex));
   MS_ASSERT(conv_prim != nullptr);
   auto strides = conv_prim->get_stride();
   std::vector<int64_t> weight_shape;
@@ -159,7 +159,7 @@ AnfNodePtr Conv2DInfo::CreateOutputsOfSplit(const CNodePtr &orig_node, size_t in
   auto input_shapes = input_shape_iter->second;
   auto input_shape = input_shapes.front();
 
-  auto conv_prim = ops::GetOperator<ops::Conv2DFusion>(cnode_->input(kAnfPrimitiveIndex));
+  auto conv_prim = ops::GetOperator<ops::Conv2DFusion>(cnode_->input(lite::kAnfPrimitiveIndex));
   MS_ASSERT(conv_prim != nullptr);
   // prim of split
   auto split_prim = std::make_shared<ops::SplitWithOverlap>();
@@ -218,7 +218,7 @@ int Conv2DInfo::CheckConv2DPrimitiveType() {
   if (!CheckPrimitiveType(cnode_, prim::kPrimConv2D) && !CheckPrimitiveType(cnode_, prim::kPrimConv2DFusion)) {
     return RET_ERROR;
   }
-  auto prim = GetValueNode<PrimitivePtr>(cnode_->input(kAnfPrimitiveIndex));
+  auto prim = GetValueNode<PrimitivePtr>(cnode_->input(lite::kAnfPrimitiveIndex));
   MS_ASSERT(prim != nullptr);
   MS_CHECK_TRUE_RET(prim->GetAttr(ops::kPad) != nullptr, RET_ERROR);
   MS_CHECK_TRUE_RET(prim->GetAttr(ops::kInChannel) != nullptr, RET_ERROR);
@@ -265,7 +265,7 @@ int Conv2DInfo::InferParallelCNodes() {
   }
   name_ = orig_name;
   parallel_output_nodes_.clear();
-  auto conv_prim = ops::GetOperator<ops::Conv2DFusion>(cnode_->input(kAnfPrimitiveIndex));
+  auto conv_prim = ops::GetOperator<ops::Conv2DFusion>(cnode_->input(lite::kAnfPrimitiveIndex));
   MS_ASSERT(conv_prim != nullptr);
   return ConstructOutputCNodes(conv_prim, feature_split_outputs, kernel_split_outputs, bias_split_outputs);
 }

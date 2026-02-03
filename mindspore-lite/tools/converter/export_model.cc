@@ -1,5 +1,5 @@
 /**
- * Copyright 2021-2023 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@
 #include <vector>
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
-#include "include/backend/common/pass_manager/optimizer.h"
+#include "tools/converter/ms_depend/optimizer.h"
 #include "include/errorcode.h"
 #include "ir/func_graph.h"
 #include "tools/lite_exporter/anf_exporter.h"

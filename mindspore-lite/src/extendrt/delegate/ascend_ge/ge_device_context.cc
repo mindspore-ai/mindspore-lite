@@ -1,5 +1,5 @@
 /**
- * Copyright 2022-2023 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@
 #include "include/utils/scoped_long_running.h"
 #include "include/api/context.h"
 #include "include/api/status.h"
-#include "mindspore/ccsrc/include/backend/common/ms_device_shape_transfer.h"
 #include "backend/ge_backend/graph_ir/utils.h"
 #include "ge/ge_api.h"
 #include "common/config_infos.h"

@@ -20,12 +20,10 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "src/common/ops/primitive/activation.h"
 #include "src/common/ops/primitive/mat_mul_fusion.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 
 namespace mindspore::opt {
 const BaseRef MatMulActivationFusion::DefinePattern() const {

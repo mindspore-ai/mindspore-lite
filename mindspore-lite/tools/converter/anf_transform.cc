@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2023 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -131,7 +131,7 @@
 #include "tools/converter/parser/conv2d_transpose_input_adjust.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/converter/parser/unify_format.h"
-#include "include/backend/common/pass_manager/graph_optimizer.h"
+#include "tools/converter/ms_depend/graph_optimizer.h"
 #include "tools/optimizer/fusion/squeeze_expanddims_fusion.h"
 #include "mindspore/ops/op_def/op_name.h"
 #include "tools/common/string_util.h"
