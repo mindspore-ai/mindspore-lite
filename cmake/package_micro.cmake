@@ -26,6 +26,15 @@ function(__install_micro_wrapper)
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
     install(DIRECTORY ${MICRO_DIR}/coder/wrapper DESTINATION ${CODEGEN_ROOT_DIR}/include
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
-    install(TARGETS wrapper ARCHIVE DESTINATION ${CODEGEN_ROOT_DIR}/lib COMPONENT ${RUNTIME_COMPONENT_NAME})
-    install(TARGETS nnacl_static ARCHIVE DESTINATION ${CODEGEN_ROOT_DIR}/lib COMPONENT ${RUNTIME_COMPONENT_NAME})
+    install(TARGETS wrapper ARCHIVE DESTINATION ${CODEGEN_ROOT_DIR}/lib/cpu COMPONENT ${RUNTIME_COMPONENT_NAME})
+    install(TARGETS nnacl_static ARCHIVE DESTINATION ${CODEGEN_ROOT_DIR}/lib/cpu COMPONENT ${RUNTIME_COMPONENT_NAME})
+    if(MSLITE_TARGET_RISCV)
+        install(FILES ${RISCV_BINARY_DIR}/nnacl/libnnacl.a
+                DESTINATION ${CODEGEN_ROOT_DIR}/lib/riscv
+                COMPONENT ${RUNTIME_COMPONENT_NAME})
+
+        install(FILES ${RISCV_BINARY_DIR}/wrapper/libwrapper.a
+                DESTINATION ${CODEGEN_ROOT_DIR}/lib/riscv
+                COMPONENT ${RUNTIME_COMPONENT_NAME})
+    endif()
 endfunction()
