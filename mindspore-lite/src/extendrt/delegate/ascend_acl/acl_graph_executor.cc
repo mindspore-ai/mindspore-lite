@@ -1,5 +1,5 @@
 /**
- * Copyright 2022-2024 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,30 +35,32 @@ constexpr auto kProviderAcl = "litert";
 constexpr size_t kSupportedWeightNum = 1;
 }  // namespace
 
+AclGraphExecutor::AclGraphExecutor(const std::shared_ptr<mindspore::Context> &context, const ConfigInfos &config_info)
+    : context_(context), config_info_(config_info) {}
+
 AclGraphExecutor::~AclGraphExecutor() {
+  MS_LOG(INFO) << "delete acl graph executor.";
   if (load_model_) {
     AclEnvGuard::DeleteModel(model_infer_);
     (void)model_infer_->Finalize();
   }
 }
 
-bool AclGraphExecutor::GetDeviceID(int32_t *device_id) {
-  if (context_ != nullptr && !context_->MutableDeviceInfo().empty()) {
-    auto device_info = context_->MutableDeviceInfo()[0];
-    if (device_info == nullptr) {
-      MS_LOG(ERROR) << "device info is nullptr!";
-      return false;
-    }
-    if (device_info->GetDeviceType() == DeviceType::kAscend) {
-      auto ascend_device = device_info->Cast<AscendDeviceInfo>();
-      if (ascend_device == nullptr) {
-        MS_LOG(ERROR) << "not ascend device!";
-        return false;
-      }
-      *device_id = ascend_device->GetDeviceID();
-    }
+int32_t AclGraphExecutor::GetDeviceID() {
+  MS_CHECK_TRUE_MSG(context_ != nullptr, -1, "context_ is nullptr.");
+  MS_CHECK_TRUE_MSG(!context_->MutableDeviceInfo().empty(), -1, "context's device info is empty.");
+  auto device_info = context_->MutableDeviceInfo()[0];
+  if (device_info == nullptr) {
+    MS_LOG(ERROR) << "device info is nullptr!";
+    return -1;
   }
-  return true;
+  MS_CHECK_TRUE_MSG(device_info->GetDeviceType() == DeviceType::kAscend, -1, "device type is not ascend.");
+  auto ascend_device = device_info->Cast<AscendDeviceInfo>();
+  if (ascend_device == nullptr) {
+    MS_LOG(ERROR) << "not ascend device!";
+    return -1;
+  }
+  return ascend_device->GetDeviceID();
 }
 
 std::string AclGraphExecutor::GetConfigOption(const std::string &section_name, const std::string &option_name) {
@@ -73,8 +75,6 @@ std::string AclGraphExecutor::GetConfigOption(const std::string &section_name, c
   }
   return option_it->second;
 }
-
-Status AclGraphExecutor::Init() { return kSuccess; }
 
 void AclGraphExecutor::GetShareMemInfos(std::shared_ptr<AclModelOptions> acl_options_ptr) {
   std::string multi_model_sharing_mem_prepare_value =
@@ -162,8 +162,9 @@ std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
     bool is_bundle_model = bundle_model == "true" ? true : false;
     acl_options_ptr->is_bundle_model = is_bundle_model;
   }
-  int32_t device_id = 0;
-  if (!GetDeviceID(&device_id)) {
+
+  int32_t device_id = GetDeviceID();
+  if (device_id == -1) {
     MS_LOG(ERROR) << "GetDeviceID failed!";
     return nullptr;
   }
@@ -195,20 +196,16 @@ Status AclGraphExecutor::GetOutputTensors(const std::vector<std::string> &output
   auto outputs_dtype = model_infer_->GetOutputDataType();
   MS_CHECK_TRUE_MSG(outputs_shape.size() == outputs_dtype.size(), kLiteParamInvalid,
                     "size of output_shape should equal to size of outputs_dtype"
-                      << " output_shape size:" << output_shape.size() << " output_dtype size:" << output_dtype.size());
+                      << " output_shape size:" << outputs_shape.size() << " output_dtype size:" << output_dtype.size());
   bool is_output_name_empty = output_names.empty();
-  if (!is_output_name_empty) {
-    MS_CHECK_TRUE_MSG(outputs_shape.size() == output_names.size(), kLiteParamInvalid,
-                      "size of output_names must equal to size of output_shape, size of output_names:"
-                        << output_names.size() << " size of output_shape:" << output_shape.size());
+  if ((!is_output_name_empty) && outputs_shape.size() != output_names.size()) {
+    MS_LOG(ERROR) << "size of output_names must equal to size of output_shape, size of output_names: "
+                  << output_names.size() << " size of output_shape:" << outputs_shape.size();
+    return kLiteParamInvalid;
   }
   for (size_t i = 0; i < outputs_dtype.size(); i++) {
-    MSTensor tensor;
-    if (!is_output_name_empty) {
-      tensor = mindspore::MSTensor(output_names[i], static_cast<enum DataType>(outputs_dtype[i]), {}, nullptr, 0);
-    } else {
-      tensor = mindspore::MSTensor("", static_cast<enum DataType>(outputs_dtype[i]), {}, nullptr, 0);
-    }
+    std::string tensor_name = is_output_name_empty ? "" : output_names[i];
+    auto tensor = mindspore::MSTensor(tensor_name, static_cast<enum DataType>(outputs_dtype[i]), {}, nullptr, 0);
     tensor.SetShape(outputs_shape[i]);
     bool has_negative = std::any_of(outputs_shape[i].begin(), outputs_shape[i].end(), [](int x) { return x <= 0; });
     if (!has_negative) {
@@ -231,10 +228,7 @@ bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<st
     config_info_["inner_common"][lite::kBundleModel] = "true";
   }
   auto nodes = graph->TopoSort(graph->get_return());
-  if (nodes.empty()) {
-    MS_LOG(ERROR) << "There are no nodes in the graph";
-    return false;
-  }
+  MS_CHECK_TRUE_MSG(!nodes.empty(), false, "graph's inputs[i] is nullptr.");
   void *om_data = nullptr;
   size_t om_data_size = 0;
   size_t cnode_count = 0;
@@ -265,10 +259,9 @@ bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<st
     om_data = tensor_data->data_c();
     (void)FuncGraphUtils::GetCNodeOperator(cnode, &op);
   }
-  if (om_data == nullptr || op == nullptr) {
-    MS_LOG(ERROR) << "om data is nullptr.";
-    return false;
-  }
+  MS_CHECK_TRUE_MSG(om_data != nullptr, false, "model buffer is nullptr.");
+  MS_CHECK_TRUE_MSG(op != nullptr, false, "op is nullptr.");
+
   primitive_ = op->GetPrim();
   auto acl_options = GenAclOptions();
   if (acl_options == nullptr) {
@@ -355,7 +348,8 @@ std::vector<mindspore::MSTensor> AclGraphExecutor::GetOutputInfos(uint32_t graph
     output_infos = graph_outputs_.find(graph_id) != graph_outputs_.end() ? graph_outputs_.at(graph_id)
                                                                          : std::vector<mindspore::MSTensor>();
   } else {
-    if (!GetOutputTensors(output_names_, &output_infos)) {
+    auto status = GetOutputTensors(output_names_, &output_infos);
+    if (status != kSuccess) {
       MS_LOG(ERROR) << "GetOutputTensors failed!";
       return {};
     }
@@ -373,9 +367,13 @@ bool AclGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<mindspore::
     inputs_shape_new.push_back(tensor_shape);
   }
   auto inputs_shape_model = model_infer_->GetInputShape();
-  if (inputs_shape_model != inputs_shape_new)
-    MS_CHECK_TRUE_MSG(model_infer_->Resize(inputs_shape_new), false, "Resize input shape failed.");
-
+  if (inputs_shape_model != inputs_shape_new) {
+    auto ret = model_infer_->Resize(inputs_shape_new);
+    if (!ret) {
+      MS_LOG(ERROR) << "Resize input shape failed.";
+      return false;
+    }
+  }
   auto ret = model_infer_->Inference(inputs, output);
   if (!ret) {
     MS_LOG(ERROR) << "Model infer failed.";
@@ -388,10 +386,7 @@ bool AclGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<mindspore::
 static std::shared_ptr<LiteGraphExecutor> AclGraphExecutorCreator(const std::shared_ptr<Context> &ctx,
                                                                   const ConfigInfos &config_infos) {
   auto acl_executor = std::make_shared<mindspore::AclGraphExecutor>(ctx, config_infos);
-  if (acl_executor == nullptr || acl_executor->Init() != kSuccess) {
-    MS_LOG(ERROR) << "Failed to init GeGraphExecutor";
-    return nullptr;
-  }
+  MS_CHECK_TRUE_MSG(acl_executor != nullptr, nullptr, "create acl graph executor failed.");
   return acl_executor;
 }
 

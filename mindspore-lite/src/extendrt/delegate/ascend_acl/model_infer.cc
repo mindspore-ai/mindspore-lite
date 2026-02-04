@@ -1,5 +1,5 @@
 /**
- * Copyright 2021-2022 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -239,7 +239,6 @@ bool ModelInfer::UpdateWeights(const std::vector<MSTensor> &inputs) {
   return true;
 }
 
-std::vector<Format> ModelInfer::GetInputFormat() { return model_process_.GetInputFormat(); }
 const std::vector<std::vector<int64_t>> ModelInfer::GetOutputShape() { return model_process_.GetOutputShape(); }
 const std::vector<std::vector<int64_t>> ModelInfer::GetInputShape() { return model_process_.GetInputShape(); }
 const std::vector<TypeId> ModelInfer::GetInputDataType() { return model_process_.GetInputDataType(); }

@@ -16,7 +16,6 @@
 
 #include "extendrt/delegate/ascend_acl/dyn_shape_process.h"
 #include <utility>
-#include "nnacl_c/op_base.h"
 #include "include/errorcode.h"
 #include "src/common/log.h"
 
@@ -34,16 +33,6 @@ constexpr auto kNCHWWidthIdx = 3;
 constexpr auto kImageSizeHwNum = 2;
 constexpr auto kUnknownDim = -1;
 }  // namespace
-std::string GenResultStr(const std::vector<int64_t> &input_vec) {
-  std::string res;
-  for (size_t i = 0; i < input_vec.size(); ++i) {
-    res += std::to_string(input_vec[i]);
-    if (i != input_vec.size() - 1) {
-      res += ",";
-    }
-  }
-  return res;
-}
 
 bool DynShapeProcess::Init(const AclDynamicShapeOptions &options) {
   acl_options_ = options;
@@ -126,8 +115,7 @@ bool DynShapeProcess::CheckBatchSize(const std::vector<ShapeVector> &new_shapes)
       return false;
     }
     if (original_shape[i] != kUnknownDim && (original_shape[i] != cur_shape[i])) {
-      MS_LOG(ERROR) << "Shape Conflict: Original Shape:[" << GenResultStr(original_shape) << "], Current Shape:["
-                    << GenResultStr(cur_shape) << "]";
+      MS_LOG(ERROR) << "Shape Conflict: Original Shape:[" << original_shape << "], Current Shape:[" << cur_shape << "]";
       return false;
     }
   }
@@ -187,8 +175,7 @@ bool DynShapeProcess::CheckImageSize(const std::vector<ShapeVector> &new_shapes)
       return false;
     }
     if (original_shape[i] != kUnknownDim && (original_shape[i] != cur_shape[i])) {
-      MS_LOG(ERROR) << "Shape Conflict: Original Shape:[" << GenResultStr(original_shape) << "], Current Shape:["
-                    << GenResultStr(cur_shape) << "]";
+      MS_LOG(ERROR) << "Shape Conflict: Original Shape:[" << original_shape << "], Current Shape:[" << cur_shape << "]";
       return false;
     }
   }
@@ -196,15 +183,13 @@ bool DynShapeProcess::CheckImageSize(const std::vector<ShapeVector> &new_shapes)
   if (format == mindspore::Format::NHWC) {
     if ((original_shape[kNHWCCIdx] != kUnknownDim && (original_shape[kNHWCCIdx] != cur_shape[kNHWCCIdx])) ||
         (original_shape[kNHWCNIdx] != kUnknownDim && (original_shape[kNHWCNIdx] != cur_shape[kNHWCNIdx]))) {
-      MS_LOG(ERROR) << "Shape Conflict: Original Shape:[" << GenResultStr(original_shape) << "], Current Shape:["
-                    << GenResultStr(cur_shape) << "]";
+      MS_LOG(ERROR) << "Shape Conflict: Original Shape:[" << original_shape << "], Current Shape:[" << cur_shape << "]";
       return false;
     }
   } else {
     if ((original_shape[kNCHWCIdx] != kUnknownDim && (original_shape[kNCHWCIdx] != cur_shape[kNCHWCIdx])) ||
         (original_shape[kNCHWNIdx] != kUnknownDim && (original_shape[kNCHWNIdx] != cur_shape[kNCHWNIdx]))) {
-      MS_LOG(ERROR) << "Shape Conflict: Original Shape:[" << GenResultStr(original_shape) << "], Current Shape:["
-                    << GenResultStr(cur_shape) << "]";
+      MS_LOG(ERROR) << "Shape Conflict: Original Shape:[" << original_shape << "], Current Shape:[" << cur_shape << "]";
       return false;
     }
   }

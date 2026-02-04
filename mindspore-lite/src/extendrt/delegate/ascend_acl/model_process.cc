@@ -1,5 +1,5 @@
 /**
- * Copyright 2021-2022 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@
 #include <sys/time.h>
 #include <utility>
 #include <algorithm>
-#include <regex>
 #include <map>
 #include <thread>
 #include <set>
@@ -37,47 +36,10 @@
 
 namespace mindspore {
 namespace {
-constexpr size_t kBatchSizeNum = 1;
-constexpr size_t kImageSizeHwNum = 2;
 constexpr size_t kGranularitySize = 2097152;  // The physical memory size must be 2M aligned
 constexpr char kINFOLogLevel = '1';
 constexpr char kDEBUGLogLevel = '0';
-bool GetSizeByDtype(aclDataType data_type, size_t *size) {
-  switch (data_type) {
-    case ACL_FLOAT:
-    case ACL_INT32:
-      *size = 4;
-      break;
-    case ACL_BF16:
-    case ACL_FLOAT16:
-      *size = 2;
-      break;
-    case ACL_INT8:
-    case ACL_UINT8:
-      *size = 1;
-      break;
-    default:
-      return false;
-  }
-  return true;
-}
 
-bool ConvertStringToIntVector(const std::string &input, std::vector<int> *res) {
-  MS_CHECK_TRUE_MSG(res != nullptr, false, "res is nullptr!");
-  std::regex pattern(R"(^(?!,$)(\d+(,\s*\d+)*,?)?$)");  // "num1, num2, num3"
-  if (!std::regex_match(input, pattern)) {
-    MS_LOG(ERROR) << "Format of pids should like '123, 456, 789'! input pids:" << input;
-    return false;
-  }
-  std::stringstream ss(input);
-  std::string token;
-  while (std::getline(ss, token, ',')) {
-    res->push_back(std::stoi(token));
-  }
-  return true;
-}
-
-}  // namespace
 static TypeId TransToDataType(aclDataType data_type) {
   static const std::map<aclDataType, enum TypeId> data_type_map = {
     {ACL_FLOAT16, TypeId::kNumberTypeFloat16}, {ACL_FLOAT, TypeId::kNumberTypeFloat32},
@@ -97,22 +59,11 @@ static TypeId TransToDataType(aclDataType data_type) {
   }
 }
 
-static std::string ShapeToString(const std::vector<int64_t> &shape) {
-  std::string result = "[";
-  for (size_t i = 0; i < shape.size(); ++i) {
-    result += std::to_string(shape[i]);
-    if (i + 1 < shape.size()) {
-      result += ", ";
-    }
-  }
-  result += "]";
-  return result;
-}
-
 bool CheckModelExecuteV2Support() {
   return HAS_ASCEND_API(aclmdlExecuteV2) && HAS_ASCEND_API(aclmdlCreateExecConfigHandle) &&
          HAS_ASCEND_API(aclmdlDestroyExecConfigHandle) && HAS_ASCEND_API(aclmdlSetExecConfigOpt);
 }
+}  // namespace
 
 ModelProcess::~ModelProcess() {
   if (dynamic_dims_ != nullptr) {
@@ -121,29 +72,27 @@ ModelProcess::~ModelProcess() {
   }
   if (allocator_ != nullptr) {
     delete allocator_;
+    allocator_ = nullptr;
   }
 }
 
 aclError ModelProcess::AclrtMemcpy(void *dst, size_t destMax, const void *src, size_t count, aclrtMemcpyKind kind) {
-  struct timeval start_time;
+  uint64_t start_time = 0;
   auto env = std::getenv("GLOG_v");
-  if (env != nullptr && (env[0] == kDEBUGLogLevel)) {
-    (void)gettimeofday(&start_time, nullptr);
+  auto is_debug = env != nullptr && (env[0] == kDEBUGLogLevel || env[0] == kINFOLogLevel);
+  if (is_debug) {
+    start_time = lite::GetTimeUs();
   }
   auto ret = CALL_ASCEND_API(aclrtMemcpy, dst, destMax, src, count, kind);
-  if (env != nullptr && (env[0] == kDEBUGLogLevel)) {
-    struct timeval end_time;
-    (void)gettimeofday(&end_time, nullptr);
-    constexpr uint64_t kUSecondInSecond = 1000000;
-    uint64_t cost =
-      (kUSecondInSecond * static_cast<uint64_t>(end_time.tv_sec) + static_cast<uint64_t>(end_time.tv_usec)) -
-      (kUSecondInSecond * static_cast<uint64_t>(start_time.tv_sec) + static_cast<uint64_t>(start_time.tv_usec));
+  if (is_debug) {
+    auto end_time = lite::GetTimeUs();
+    auto cost = end_time - start_time;
     if (kind == ACL_MEMCPY_DEVICE_TO_HOST) {
-      MS_LOG(ERROR) << "Device to Host copy in " << cost << " us";
+      MS_LOG(INFO) << "[D2H] Device to Host copy in " << cost << " us";
     } else if (kind == ACL_MEMCPY_HOST_TO_DEVICE) {
-      MS_LOG(ERROR) << "Host to Device copy in " << cost << " us";
+      MS_LOG(INFO) << "[H2D] Host to Device copy in " << cost << " us";
     } else if (kind == ACL_MEMCPY_DEVICE_TO_DEVICE) {
-      MS_LOG(ERROR) << "Device to Device copy in " << cost << " us";
+      MS_LOG(INFO) << "[D2D] Device to Device copy in " << cost << " us";
     }
   }
   return ret;
@@ -210,10 +159,7 @@ bool ModelProcess::PreInitModelResource() {
 }
 
 std::set<uint64_t> ModelProcess::GetDynamicBatch() {
-  if (model_desc_ == nullptr) {
-    MS_LOG(ERROR) << " Model desc is nullptr.";
-    return std::set<uint64_t>();
-  }
+  MS_CHECK_TRUE_MSG(model_desc_ != nullptr, std::set<uint64_t>(), "Model desc is nullptr.");
   aclmdlBatch dynamic_batch;
   if (CALL_ASCEND_API(aclmdlGetDynamicBatch, model_desc_, &dynamic_batch) != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Failed to get dynamic batch.";
@@ -232,10 +178,7 @@ std::set<uint64_t> ModelProcess::GetDynamicBatch() {
 }
 
 std::pair<aclmdlIODims *, size_t> ModelProcess::GetDynamicDims() {
-  if (model_desc_ == nullptr) {
-    MS_LOG(ERROR) << " Model desc is nullptr.";
-    return std::make_pair(nullptr, 0);
-  }
+  MS_CHECK_TRUE_MSG(model_desc_ != nullptr, (std::make_pair(nullptr, 0)), "Model desc is nullptr.");
   size_t gear_conut = 0;
   auto ret = CALL_ASCEND_API(aclmdlGetInputDynamicGearCount, model_desc_, -1, &gear_conut);
   if (ret != ACL_SUCCESS) {
@@ -262,10 +205,7 @@ std::pair<aclmdlIODims *, size_t> ModelProcess::GetDynamicDims() {
 }
 
 std::set<std::pair<uint64_t, uint64_t>> ModelProcess::GetDynamicImage() {
-  if (model_desc_ == nullptr) {
-    MS_LOG(ERROR) << " Model desc is nullptr.";
-    return std::set<std::pair<uint64_t, uint64_t>>();
-  }
+  MS_CHECK_TRUE_MSG(model_desc_ != nullptr, (std::set<std::pair<uint64_t, uint64_t>>()), "Model desc is nullptr.");
   aclmdlHW dynamic_hw;
   if (CALL_ASCEND_API(aclmdlGetDynamicHW, model_desc_, 0, &dynamic_hw) != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Failed to get dynamic hw.";
@@ -284,10 +224,7 @@ std::set<std::pair<uint64_t, uint64_t>> ModelProcess::GetDynamicImage() {
 }
 
 std::vector<Format> ModelProcess::GetInputFormat() {
-  if (model_desc_ == nullptr) {
-    MS_LOG(ERROR) << " Model desc is nullptr.";
-    return std::vector<Format>();
-  }
+  MS_CHECK_TRUE_MSG(model_desc_ != nullptr, std::vector<Format>(), "Model desc is nullptr.");
   std::vector<Format> input_formats;
   static const std::map<aclFormat, enum Format> acl_format_map = {
     {ACL_FORMAT_NCHW, NCHW}, {ACL_FORMAT_NHWC, NHWC}, {ACL_FORMAT_ND, NCHW}};
@@ -310,7 +247,7 @@ const std::vector<TypeId> ModelProcess::GetOutputDataType() {
   for (size_t i = 0; i < output_infos_.size(); ++i) {
     TypeId data_type = TransToDataType(output_infos_[i].data_type);
     if (data_type == TypeId::kNumberTypeEnd) {
-      MS_LOG(ERROR) << "ModelProcess GetOutputDataType ERROR" << data_type;
+      MS_LOG(ERROR) << "ModelProcess GetOutputDataType error, data_type:" << data_type;
       return {};
     }
     data_types.emplace_back(data_type);
@@ -644,11 +581,9 @@ bool ModelProcess::MainProcess(const void *om_data, size_t om_data_size) {
     MS_LOG(ERROR) << "aclrtMemExportToShareableHandle failed! ret:" << ret;
     return lite::RET_ERROR;
   }
-  std::vector<int> pids;
-  if (!ConvertStringToIntVector(options_->pids, &pids)) {
-    MS_LOG(ERROR) << "ConvertStringToIntVector failed!";
-    return false;
-  }
+  std::vector<int> pids = lite::ConvertStringToIntVector(options_->pids);
+  MS_CHECK_TRUE_MSG(!pids.empty(), false, "pids is empty!");
+
   ret = CALL_ASCEND_API(aclrtMemSetPidToShareableHandle, sharable_handle_, pids.data(), pids.size());
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Set pid to shareable_handle failed! ret:" << ret;
@@ -965,10 +900,7 @@ bool ModelProcess::ResetInputSize(const std::vector<ShapeVector> &new_shapes) {
 }
 
 bool ModelProcess::ResetOutputSize() {
-  if (model_desc_ == nullptr) {
-    MS_LOG(ERROR) << " Model desc is nullptr.";
-    return false;
-  }
+  MS_CHECK_TRUE_MSG(model_desc_ != nullptr, false, "Model desc is nullptr.");
   aclDataType data_type;
   aclError ret;
   size_t output_size = CALL_ASCEND_API(aclmdlGetNumOutputs, model_desc_);
@@ -1131,10 +1063,7 @@ bool ModelProcess::ResizeDynamicInputShapeRange(const std::vector<ShapeVector> &
   return true;
 }
 bool ModelProcess::ResizeDynamicBatchAndImageSize(const std::vector<ShapeVector> &new_shapes) {
-  if (model_desc_ == nullptr || inputs_ == nullptr) {
-    MS_LOG(ERROR) << "Model is not inited";
-    return false;
-  }
+  MS_CHECK_TRUE_MSG(model_desc_ != nullptr && inputs_ != nullptr, false, "Model desc is nullptr.");
   size_t index;
   auto ret = CALL_ASCEND_API(aclmdlGetInputIndexByName, model_desc_, ACL_DYNAMIC_TENSOR_NAME, &index);
   if (ret != ACL_SUCCESS) {
@@ -1201,8 +1130,8 @@ bool ModelProcess::CheckInputTensors(const std::vector<MSTensor> &input_tensors)
     auto &tensor = input_tensors[i];
     auto &info = input_infos_[i];
     if (tensor.Shape() != info.dims) {
-      MS_LOG(WARNING) << "Note: input " << i << " shape not match, required " << ShapeToString(info.dims) << ", given "
-                      << ShapeToString(tensor.Shape()) << "."
+      MS_LOG(WARNING) << "Note: input " << i << " shape not match, required " << info.dims << ", given "
+                      << tensor.Shape() << "."
                       << "Please check input shape has been modified by DVPP method.";
     }
     if (static_cast<enum TypeId>(tensor.DataType()) != TransToDataType(info.data_type)) {
@@ -1405,11 +1334,11 @@ bool ModelProcess::PredictFromHost(const std::vector<MSTensor> &inputs, const st
     return false;
   }
 
-  struct timeval start_time;
+  uint64_t start_time = 0;
   auto env = std::getenv("GLOG_v");
-  bool output_timecost = (env != nullptr && (env[0] == kINFOLogLevel || env[0] == kDEBUGLogLevel));
-  if (output_timecost) {
-    (void)gettimeofday(&start_time, nullptr);
+  bool print_time = (env != nullptr && (env[0] == kINFOLogLevel || env[0] == kDEBUGLogLevel));
+  if (print_time) {
+    start_time = lite::GetTimeUs();
   }
 
   if (is_sharing_workspace_) {
@@ -1421,14 +1350,10 @@ bool ModelProcess::PredictFromHost(const std::vector<MSTensor> &inputs, const st
     MS_LOG(DEBUG) << "Unlock after aclmdlExecute.";
     AclSharedMemoryManager::GetInstance().Unlock(options_->device_id);
   }
-  if (output_timecost) {
-    struct timeval end_time;
-    (void)gettimeofday(&end_time, nullptr);
-    constexpr uint64_t kUSecondInSecond = 1000000;
-    uint64_t cost =
-      (kUSecondInSecond * static_cast<uint64_t>(end_time.tv_sec) + static_cast<uint64_t>(end_time.tv_usec)) -
-      (kUSecondInSecond * static_cast<uint64_t>(start_time.tv_sec) + static_cast<uint64_t>(start_time.tv_usec));
-    MS_LOG(INFO) << "Model execute in " << cost << " us";
+
+  if (print_time) {
+    auto end_time = lite::GetTimeUs();
+    MS_LOG(INFO) << "Model execute in " << end_time - start_time << " us";
   }
 
   if (model_ret != kSuccess) {
@@ -1593,11 +1518,6 @@ bool ModelProcess::InitUpdateWeightBuffer(const std::vector<MSTensor> &kernel_in
     aclDataType data_type = CALL_ASCEND_API(aclmdlGetInputDataType, model_weight_desc_, i);
     if (data_type == aclDataType::ACL_DT_UNDEFINED) {
       MS_LOG(ERROR) << "ModelProcess InitUpdateWeightBuffer ERROR, data type is undefined";
-      return false;
-    }
-    size_t type_size = 0;
-    if (!GetSizeByDtype(data_type, &type_size)) {
-      MS_LOG(ERROR) << "Get size of data type :" << data_type << " failed!";
       return false;
     }
     auto buffer_size = kernel_input.DataSize();
