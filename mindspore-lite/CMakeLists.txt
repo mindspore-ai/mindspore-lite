@@ -74,6 +74,7 @@ option(MSLITE_ENABLE_COREML "enable coreML, only apple ios devices support" off)
 option(MSLITE_ENABLE_NPU "enable npu, only arm64 or arm32 support" off)
 
 # runtime
+option(MSLITE_TARGET_RISCV "target riscv32" off)
 option(MSLITE_ENABLE_TRAIN "enable train" on)
 option(MSLITE_ENABLE_WEIGHT_DECODE "enable weight decode" on)
 
@@ -112,6 +113,14 @@ endif()
 
 if(DEFINED ENV{MSLITE_ENABLE_CLOUD_FUSION_INFERENCE})
     set(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE $ENV{MSLITE_ENABLE_CLOUD_FUSION_INFERENCE})
+endif()
+
+if(DEFINED ENV{MSLITE_TARGET_RISCV})
+    set(MSLITE_TARGET_RISCV $ENV{MSLITE_TARGET_RISCV})
+endif()
+
+if(MSLITE_TARGET_RISCV)
+    add_definitions(-DMSLITE_TARGET_RISCV)
 endif()
 
 if(DEFINED ENV{MSLITE_ENABLE_CLOUD_INFERENCE})
@@ -579,6 +588,7 @@ message(STATUS "\tMSLITE_ENABLE_OPENCV                       = \t${MSLITE_ENABLE
 message(STATUS "\tMSLITE_TARGET_SITEAI                       = \t${MSLITE_TARGET_SITEAI}")
 message(STATUS "\tMSLITE_ENABLE_W_NO_ERROR                   = \t${MSLITE_ENABLE_W_NO_ERROR}")
 message(STATUS "\tMSLITE_ENABLE_FAST_HASH_TABLE              = \t${MSLITE_ENABLE_FAST_HASH_TABLE}")
+message(STATUS "\tMSLITE_TARGET_RISCV                        = \t${MSLITE_TARGET_RISCV}")
 
 if(NOT MSLITE_TARGET_SITEAI)
     if((MSLITE_ENABLE_CONVERTER OR MSLITE_ENABLE_TESTCASES) AND (
@@ -613,6 +623,53 @@ endif()
 
 if(MSLITE_ENABLE_HIGH_PERFORMANCE)
     add_compile_definitions(ENABLE_HIGH_PERFORMANCE)
+endif()
+
+if(MSLITE_TARGET_RISCV)
+    include(ExternalProject)
+    set(RISCV_PREFIX "${CMAKE_BINARY_DIR}/riscv")
+    set(RISCV_BINARY_DIR "${RISCV_PREFIX}/build")
+    ExternalProject_Add(nnacl_riscv
+            SOURCE_DIR "${TOP_DIR}/mindspore-lite/src/litert/kernel/cpu/nnacl_c"
+            PREFIX ${RISCV_PREFIX}
+            BINARY_DIR  "${RISCV_BINARY_DIR}/nnacl"
+            BUILD_BYPRODUCTS "${RISCV_BINARY_DIR}/nnacl/libnnacl.a"
+            CMAKE_ARGS
+            -DMY_FLAGS=ON
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/riscv64.toolchain.cmake
+            BUILD_COMMAND ${CMAKE_MAKE_PROGRAM}
+            INSTALL_COMMAND ""
+            STEP_TARGETS build
+            LOG_BUILD 1
+    )
+    ExternalProject_Add(wrapper_riscv
+            SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tools/converter/micro/coder/wrapper"
+            PREFIX ${RISCV_PREFIX}
+            BINARY_DIR  "${RISCV_BINARY_DIR}/wrapper"
+            BUILD_BYPRODUCTS "${RISCV_BINARY_DIR}/nnacl/libwrapper.a"
+            CMAKE_ARGS
+            -DRISCV32=ON
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+            -DCMAKE_BUILD_TYPE=Release
+            -DTOP_DIR=${TOP_DIR}
+            -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/riscv64.toolchain.cmake
+            -DCMAKE_INSTALL_PREFIX=${RISCV_INSTALL_DIR}
+            BUILD_COMMAND ${CMAKE_MAKE_PROGRAM}
+            INSTALL_COMMAND ""
+            STEP_TARGETS build
+            LOG_BUILD 1
+    )
+
+    add_custom_target(ensure_riscv_libs
+            DEPENDS
+            nnacl_riscv-build
+            wrapper_riscv-build
+            COMMENT "Ensuring RISC-V libraries are built"
+    )
+
+    add_dependencies(ensure_riscv_libs nnacl_riscv wrapper_riscv)
 endif()
 
 if(ENABLE_ASAN)
