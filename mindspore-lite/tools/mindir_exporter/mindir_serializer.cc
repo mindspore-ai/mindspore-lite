@@ -22,7 +22,7 @@
 #include <algorithm>
 #include <map>
 #include "utils/crypto.h"
-#include "mindspore/ccsrc/utils/ir_dump/dump_proto.h"
+#include "mindspore/ccsrc/include/utils/ir_dump/dump_proto_interface.h"
 #include "mindspore/ccsrc/include/utils/utils.h"
 #include "src/common/file_utils.h"
 #include "src/common/common.h"
