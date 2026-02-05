@@ -34,9 +34,11 @@ class AscendEnvChecker(metaclass=ABCMeta):
 
         self.ascend_home_path = None
         # Get ascend install path in several envs.
-        if "ASCEND_HOME_PATH" in os.environ:
+        if ("ASCEND_HOME_PATH" in os.environ and
+            os.path.isfile(os.path.join(os.environ["ASCEND_HOME_PATH"],"compiler/version.info"))):
             self.ascend_home_path = os.environ["ASCEND_HOME_PATH"]
-        if "ASCEND_CUSTOM_PATH" in os.environ:
+        if ("ASCEND_CUSTOM_PATH" in os.environ and
+            os.path.isfile(os.path.join(os.environ["ASCEND_HOME_PATH"],"latest/compiler/version.info"))):
             self.ascend_home_path = os.path.join(os.environ["ASCEND_CUSTOM_PATH"], "latest")
 
         if (self.ascend_home_path is None) or (not os.path.isdir(self.ascend_home_path)):
