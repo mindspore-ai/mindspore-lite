@@ -145,6 +145,6 @@ def test_check_lib_path_with_bad_opp_path():
     assert checker.check_lib_path() is False
 
 
-# def test_check_env():
-#     checker = AscendEnvChecker()
-#     assert checker.check_env()
+def test_check_env():
+    checker = AscendEnvChecker()
+    assert checker.check_env()
