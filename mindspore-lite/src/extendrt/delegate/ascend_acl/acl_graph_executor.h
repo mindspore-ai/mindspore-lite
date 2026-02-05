@@ -32,10 +32,8 @@
 namespace mindspore {
 class AclGraphExecutor : public LiteGraphExecutor {
  public:
-  AclGraphExecutor(const std::shared_ptr<mindspore::Context> &context, const ConfigInfos &config_info) {
-    context_ = context;
-    config_info_ = config_info;
-  }
+  AclGraphExecutor(const std::shared_ptr<mindspore::Context> &context, const ConfigInfos &config_info);
+
   ~AclGraphExecutor();
 
   bool CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
@@ -56,7 +54,6 @@ class AclGraphExecutor : public LiteGraphExecutor {
 
   bool UpdateWeights(const std::vector<std::vector<MSTensor>> &inputs);
 
-  Status Init();
   std::string GetConfigOption(const std::string &section_name, const std::string &option_name);
 
  private:
@@ -64,7 +61,7 @@ class AclGraphExecutor : public LiteGraphExecutor {
   void GetShareMemInfos(std::shared_ptr<AclModelOptions> acl_options_ptr);
   Status GetExecConfig(const std::shared_ptr<AclModelOptions> &acl_options_ptr);
   std::shared_ptr<AclModelOptions> GenAclOptions();
-  bool GetDeviceID(int32_t *device_id);
+  int32_t GetDeviceID();
   Status GetOutputTensors(const std::vector<std::string> &output_names, std::vector<MSTensor> *output_tensors);
   std::shared_ptr<mindspore::Context> context_ = nullptr;
   ConfigInfos config_info_;

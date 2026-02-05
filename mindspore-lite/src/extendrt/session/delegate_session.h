@@ -37,9 +37,9 @@ struct DelegateGraphInfo {
 class GraphSinkSession : public InferSession {
  public:
   GraphSinkSession() = default;
-  explicit GraphSinkSession(std::shared_ptr<LiteGraphExecutor> graph_executor) {
-    graph_executor_ = std::dynamic_pointer_cast<mindspore::LiteGraphExecutor>(graph_executor);
-  }
+
+  explicit GraphSinkSession(std::shared_ptr<LiteGraphExecutor> graph_executor) : graph_executor_(graph_executor) {}
+
   ~GraphSinkSession() override;
 
   Status Init(const std::shared_ptr<Context> &context, const ConfigInfos &config_info = {}) override;
@@ -62,10 +62,7 @@ class GraphSinkSession : public InferSession {
   MutableTensorImplPtr GetInputByTensorName(uint32_t graph_id, const std::string &name) override;
   void SetConfigInfo(ConfigInfos config_infos) { config_infos_ = config_infos; }
   Status UpdateWeights(const std::vector<std::vector<mindspore::MSTensor>> &weights) override;
-  Status Finalize() {
-    MS_LOG(INFO) << "Finalize is only implemented in single_op_session now.";
-    return AscendAllocatorPlugin::GetInstance().Finalize();
-  }
+  Status Finalize();
 
  private:
   Status InitGraphInfo(DelegateGraphInfo *graph_info_ptr, uint32_t graph_id);

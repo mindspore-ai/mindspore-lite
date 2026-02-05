@@ -29,10 +29,6 @@ std::shared_ptr<AclGraphExecutor> AscendAclExecutorPluginImpl::InitAclGraphExecu
     MS_LOG(ERROR) << "Failed to create GeGraphExecutor";
     return nullptr;
   }
-  if (!acl_graph_executor->Init()) {
-    MS_LOG(ERROR) << "Failed to init acl graph executor";
-    return nullptr;
-  }
   return acl_graph_executor;
 }
 

@@ -24,9 +24,6 @@ import pytest
 import numpy as np
 import mindspore_lite as mslite
 
-
-
-
 MODEL_PATH1: str = ""
 DIM_IN1 = [[1, 3, 64, 64], [1, 1, 64, 64], [1, 1, 1, 1]]
 DIM_OUT1 = [[1, 6, 1, 1], [1, 256, 2, 2], [1, 256, 2, 2]]
@@ -39,11 +36,11 @@ MODEL_PATH3: str = ""
 DIM_IN3 = [1, 3, 512, 512]
 DIM_OUT3 = [1, 3, 512, 512]
 
-
 DEVICE_ID = 0
 ResultList = List[List[np.ndarray]]
 
-def _convert_onnx_to_mindir(model_name: str, so_path: Path, mindir_dir: Path, output_dir: Path)-> Path:
+
+def _convert_onnx_to_mindir(model_name: str, so_path: Path, mindir_dir: Path, output_dir: Path) -> Path:
     '''
     convert model from onnx to mindir
     '''
@@ -61,10 +58,11 @@ def _convert_onnx_to_mindir(model_name: str, so_path: Path, mindir_dir: Path, ou
     subprocess.run(cmd, check=True)
     return Path(str(output_path) + ".mindir")
 
+
 @pytest.fixture(scope="module", autouse=True)
 def setup_model_paths(so_path, mindir_dir, output_dir):
     """
-    Automatically converts raw ONNX models to MindIR format and assigns paths 
+    Automatically converts raw ONNX models to MindIR format and assigns paths
     to global MODEL_PATHx variables before running tests.
     Cleans up the converted files after tests are done.
     """
@@ -106,6 +104,7 @@ def _create_inputs_outputs():
     np_output2 = np.random.random((1, 256, 2, 2)).astype(np.float32)
     np_output3 = np.random.random((1, 256, 2, 2)).astype(np.float32)
     return [[np_input1, np_input2, np_input3], [np_output1, np_output2, np_output3]]
+
 
 def _common_functional_accuracy(outputs_type: str):
     """
@@ -158,7 +157,7 @@ def _common_functional_accuracy(outputs_type: str):
                     tensor = mslite.Tensor(shape=DIM_OUT1[j], dtype=mslite.DataType.FLOAT32)
                 elif char == '1':
                     tensor = mslite.Tensor(tensor=inputs_outputs[1][j].copy(), shape=DIM_OUT1[j],
-                                        dtype=mslite.DataType.FLOAT32)
+                                           dtype=mslite.DataType.FLOAT32)
                 elif char == '2':
                     tensor = mslite.Tensor(tensor=inputs_outputs[1][j].copy(),
                                            shape=DIM_OUT1[j],
@@ -179,6 +178,7 @@ def _common_functional_accuracy(outputs_type: str):
     print("Common single-model accuracy verification passed.")
     return True
 
+
 def test_inputs_host_device_outputs_null():
     '''
     test inputs are on host and device, outputs are []
@@ -186,6 +186,7 @@ def test_inputs_host_device_outputs_null():
     result = _common_functional_accuracy("")
     if result:
         print("test_inputs_host_device_outputs_data_null test success!")
+
 
 def test_inputs_host_device_outputs_data_null():
     '''
@@ -195,6 +196,7 @@ def test_inputs_host_device_outputs_data_null():
     if result:
         print("test_inputs_host_device_outputs_data_null test success!")
 
+
 def test_inputs_host_device_outputs_data_device():
     '''
     test inputs are on host and device, outputs's data is on [device, device, device]
@@ -202,6 +204,7 @@ def test_inputs_host_device_outputs_data_device():
     result = _common_functional_accuracy("222")
     if result:
         print("test_inputs_host_device_outputs_data_device test success")
+
 
 def test_inputs_host_device_outputs_data_host():
     '''
@@ -211,6 +214,7 @@ def test_inputs_host_device_outputs_data_host():
     if result:
         print("test_inputs_host_device_outputs_data_host test success!")
 
+
 def test_inputs_host_device_outputs_host_device():
     '''
     test inputs are on host and device, outputs's data is on [host, device, device]
@@ -218,6 +222,7 @@ def test_inputs_host_device_outputs_host_device():
     result = _common_functional_accuracy("122")
     if result:
         print("test_inputs_host_device_outputs_host_device test success!")
+
 
 def test_inputs_host_device_outputs_data_null_host_device():
     '''
@@ -242,10 +247,10 @@ def performance_guardrail(max_ration: float, third_loop_time_host_ms: float,
 
         assert ratio <= max_ration, \
             f"Performance Guard Failed for {test_name}: Device time ({third_loop_time_device_ms:.4f} ms) " \
-            f"is {ratio*100:.2f}% of Host time ({third_loop_time_host_ms:.4f} ms). " \
-            f"Required maximum ratio: {max_ration*100:.0f}%."
+            f"is {ratio * 100:.2f}% of Host time ({third_loop_time_host_ms:.4f} ms). " \
+            f"Required maximum ratio: {max_ration * 100:.0f}%."
 
-        print(f"SUCCESS: Device time ratio is {ratio*100:.2f}%, within the required range.")
+        print(f"SUCCESS: Device time ratio is {ratio * 100:.2f}%, within the required range.")
     else:
         assert False, (
             f"Guard Failed ({test_name}): Host time invalid ({third_loop_time_host_ms:.4f} ms). "
@@ -300,7 +305,7 @@ def test_single_model_performance():
         if i == 2:
             third_loop_time_host_ms = current_time_ms
     predict_end1 = time.time()
-    print("[inputs_host_outputs_host] model predict time = ", (predict_end1 - predict_start1)*1000, " ms")
+    print("[inputs_host_outputs_host] model predict time = ", (predict_end1 - predict_start1) * 1000, " ms")
 
     predict_start2 = time.time()
     for i in range(loop):
@@ -315,7 +320,7 @@ def test_single_model_performance():
             third_loop_time_device_ms = current_time_ms
     predict_end2 = time.time()
     print("[inputs_device_outputs_device] model predict time = ",
-          (predict_end2 - predict_start2)*1000, " ms")
+          (predict_end2 - predict_start2) * 1000, " ms")
     # Performance Guardrail
     max_ration = 0.80
     performance_guardrail(max_ration, third_loop_time_host_ms, third_loop_time_device_ms,
@@ -462,8 +467,8 @@ def _common_functional_accuracy_mult_model(model1_path: str, model2_path: str, o
     result_ge = []
     for i in range(loop):
         inputs = mslite.Tensor(tensor=np_input.copy(), shape=DIM_IN2, dtype=mslite.DataType.FLOAT32)
-        outputs_host1 = mslite.Tensor(tensor=np_input.copy(),shape=DIM_OUT2, dtype=mslite.DataType.FLOAT32)
-        outputs_host2 = mslite.Tensor(tensor=np_input.copy(),shape=DIM_OUT2, dtype=mslite.DataType.FLOAT32)
+        outputs_host1 = mslite.Tensor(tensor=np_input.copy(), shape=DIM_OUT2, dtype=mslite.DataType.FLOAT32)
+        outputs_host2 = mslite.Tensor(tensor=np_input.copy(), shape=DIM_OUT2, dtype=mslite.DataType.FLOAT32)
 
         model1_ge.predict([inputs], [outputs_host1])
         model2_ge.predict([outputs_host1], [outputs_host2])
@@ -472,7 +477,7 @@ def _common_functional_accuracy_mult_model(model1_path: str, model2_path: str, o
     result_ge_v1 = []
     for i in range(loop):
         inputs = mslite.Tensor(tensor=np_input.copy(), shape=DIM_IN2, dtype=mslite.DataType.FLOAT32)
-        outputs2_host = mslite.Tensor(tensor=np_input.copy(),shape=DIM_IN2, dtype=mslite.DataType.FLOAT32)
+        outputs2_host = mslite.Tensor(tensor=np_input.copy(), shape=DIM_IN2, dtype=mslite.DataType.FLOAT32)
         outputs1 = (
             mslite.Tensor(tensor=np_input.copy(),
                           shape=DIM_IN2,
@@ -493,6 +498,7 @@ def _common_functional_accuracy_mult_model(model1_path: str, model2_path: str, o
     print("Common multi-model accuracy verification passed.")
     return True
 
+
 def test_single_autoregressive_accuracy_device():
     '''
     test Single-model autoregression (device output) accuracy
@@ -502,6 +508,7 @@ def test_single_autoregressive_accuracy_device():
     if result:
         print("Single-model autoregression (device output) accuracy passed.")
 
+
 def test_single_autoregressive_accuracy_host():
     '''
     test Single-model autoregression (host output) accuracy
@@ -510,6 +517,7 @@ def test_single_autoregressive_accuracy_host():
     if result:
         print("Single-model autoregression (host output) accuracy passed.")
 
+
 def test_double_accuracy_device():
     '''
     test double-model (host output) accuracy
@@ -517,6 +525,7 @@ def test_double_accuracy_device():
     result = _common_functional_accuracy_mult_model(MODEL_PATH2, MODEL_PATH3, "device")
     if result:
         print("The accuracy verification for dual-model device output passed.")
+
 
 def test_double_accuracy_host():
     '''

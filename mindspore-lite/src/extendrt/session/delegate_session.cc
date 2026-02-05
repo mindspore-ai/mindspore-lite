@@ -39,11 +39,14 @@ std::mutex g_build_graph_mutex;
 
 GraphSinkSession::~GraphSinkSession() = default;
 
+Status GraphSinkSession::Finalize() {
+  MS_LOG(INFO) << "Finalize is only implemented in single_op_session now.";
+  return AscendAllocatorPlugin::GetInstance().Finalize();
+}
+
 Status GraphSinkSession::Init(const std::shared_ptr<Context> &context, const ConfigInfos &config_info) {
-  if (graph_executor_ == nullptr) {
-    MS_LOG(ERROR) << "GraphSinkSession::Init failed, graph executor is nullptr.";
-    return kLiteUninitializedObj;
-  }
+  MS_CHECK_TRUE_MSG(graph_executor_ != nullptr, kLiteUninitializedObj,
+                    "GraphSinkSession::Init failed, graph executor is nullptr.");
   context_ = context;
   config_infos_ = config_info;
   return kSuccess;
@@ -67,6 +70,7 @@ bool GraphSinkSession::CheckCompileGraphParallel() {
 Status GraphSinkSession::CompileGraph(const void *model_data, size_t data_size, uint32_t *graph_id) {
   // This lock can be removed when LiteRT supports concurrent multithreading compilation.
   std::unique_lock<std::mutex> lock(g_build_graph_mutex);
+  MS_LOG(INFO) << "GraphSinkSession::CompileGraph";
   if (CheckCompileGraphParallel()) {
     lock.unlock();
   }
@@ -101,7 +105,7 @@ Status GraphSinkSession::CompileGraph(FuncGraphPtr graph, const void *data, size
   DelegateGraphInfo graph_info;
   // the funcgraph constructed by flowgraph has no inputs and outputs.
   auto status = InitGraphInputsOutputs(graph, &graph_info);
-  if (!status.IsOk()) {
+  if (status != kSuccess) {
     MS_LOG(ERROR) << "Failed to get inputs and outputs info from graph";
     return status;
   }
@@ -116,7 +120,7 @@ Status GraphSinkSession::CompileGraph(FuncGraphPtr graph, const void *data, size
   }
   sharable_handle_ = graph_executor_->GetShareableHandle();
   status = UpdateGraphInputsOutputs(*graph_id, &graph_info);
-  if (!status.IsOk()) {
+  if (status != kSuccess) {
     MS_LOG(ERROR) << "Failed to update inputs and outputs info from graph executor";
     return status;
   }
@@ -125,6 +129,7 @@ Status GraphSinkSession::CompileGraph(FuncGraphPtr graph, const void *data, size
 }
 
 Status GraphSinkSession::InitGraphInfo(DelegateGraphInfo *graph_info_ptr, uint32_t graph_id) {
+  MS_CHECK_TRUE_MSG(graph_info_ptr != nullptr, kLiteNullptr, "graph_info_ptr is nullptr.");
   auto &info = *graph_info_ptr;
 
   auto new_inputs = graph_executor_->GetInputInfos(graph_id);
@@ -139,6 +144,7 @@ Status GraphSinkSession::InitGraphInfo(DelegateGraphInfo *graph_info_ptr, uint32
     info.input_names.push_back(input.Name());
     auto data_type = static_cast<enum DataType>(input.DataType());
     auto impl = std::make_shared<TensorDefaultImpl>(info.input_names[i], data_type, input.Shape());
+    MS_CHECK_TRUE_MSG(impl != nullptr, kLiteNullptr, "impl is nullptr.");
     info.inputs.push_back(impl);
   }
 
@@ -161,6 +167,7 @@ Status GraphSinkSession::InitGraphInfo(DelegateGraphInfo *graph_info_ptr, uint32
 }
 
 Status GraphSinkSession::InitGraphInputsOutputs(const FuncGraphPtr &graph, DelegateGraphInfo *graph_info_ptr) {
+  MS_CHECK_TRUE_MSG(graph_info_ptr != nullptr, kLiteNullptr, "graph_info_ptr is nullptr.");
   auto &info = *graph_info_ptr;
   std::vector<MSTensorPtr> graph_inputs, graph_outputs;
   {
@@ -258,7 +265,7 @@ Status GraphSinkSession::UpdateGraphInputsOutputs(uint32_t graph_id, DelegateGra
 Status GraphSinkSession::RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                                   std::vector<mindspore::MSTensor> *outputs, const MSKernelCallBack &before,
                                   const MSKernelCallBack &after) {
-  MS_EXCEPTION_IF_NULL(outputs);
+  MS_CHECK_TRUE_MSG(outputs != nullptr, kLiteNullptr, "outputs is nullptr.");
   graph_executor_->SetBefore(before);
   graph_executor_->SetAfter(after);
   auto input_infos = GetInputs(graph_id);

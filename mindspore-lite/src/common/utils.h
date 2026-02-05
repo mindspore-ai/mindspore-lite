@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 #define MINDSPORE_LITE_SRC_COMMON_UTILS_H_
 
 #include <ctime>
+#include <regex>
 #include <cstdint>
 #include <vector>
 #include <complex>
@@ -286,6 +287,26 @@ std::string GetShortVersionStr(const std::string &str);
 
 // compare string
 bool IsVersionGreaterThan(const std::string &str1, const std::string &str2);
+
+inline std::vector<int> ConvertStringToIntVector(const std::string &input) {
+  std::regex pattern(R"(^(?!,$)(\d+(,\s*\d+)*,?)?$)");  // "num1, num2, num3"
+  if (!std::regex_match(input, pattern)) {
+    MS_LOG(ERROR) << "Format of pids should like '123, 456, 789'! input pids:" << input;
+    return {};
+  }
+  std::stringstream ss(input);
+  std::string token;
+  std::vector<int> result = {};
+  while (std::getline(ss, token, ',')) {
+    int32_t pid = 0;
+    if (!ConvertStrToInt(token, &pid)) {
+      MS_LOG(ERROR) << "Invalid pids";
+      return {};
+    }
+    result.push_back(static_cast<int>(pid));
+  }
+  return result;
+}
 
 template <typename T>
 inline Option<T> GenericParseValue(const std::string &value) {
