@@ -69,6 +69,8 @@ Status PNNADelegate::Init() {
     {schema::PrimitiveType_OneHot, GetPNNAOp<PNNAOneHot>},
     {schema::PrimitiveType_Conv2dTransposeFusion, GetPNNAOp<PNNADeConv2d>},
     {schema::PrimitiveType_Softmax, GetPNNAOp<PNNASoftmax>},
+    {schema::PrimitiveType_Unsqueeze, GetPNNAOp<PNNAUnsqueeze>},
+    {schema::PrimitiveType_BatchToSpace, GetPNNAOp<PNNABatchToSpace>},
   };
   return mindspore::kSuccess;
 }

@@ -36,6 +36,8 @@
 #include "src/litert/delegate/pnna/op/onehot_pnna.h"
 #include "src/litert/delegate/pnna/op/deconv2d_pnna.h"
 #include "src/litert/delegate/pnna/op/softmax_pnna.h"
+#include "src/litert/delegate/pnna/op/unsqueeze_pnna.h"
+#include "src/litert/delegate/pnna/op/batch_to_space_pnna.h"
 
 namespace mindspore {
 namespace lite {
