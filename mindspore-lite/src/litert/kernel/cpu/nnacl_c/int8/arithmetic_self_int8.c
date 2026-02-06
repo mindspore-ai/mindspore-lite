@@ -137,6 +137,25 @@ int Int8ElementCos(const int8_t *input, int8_t *output, int element_size, ArithS
   return NNACL_OK;
 }
 
+int Int8ElementExp(const int8_t *input, int8_t *output, int element_size, ArithSelfQuantArg para) {
+  float in_scale = para.in_args_.scale_;
+  int32_t in_zp = para.in_args_.zp_;
+  float out_scale = para.out_args_.scale_;
+  int32_t out_zp = para.out_args_.zp_;
+  float bias = in_zp * in_scale;
+  for (int i = 0; i < element_size; i++) {
+    int32_t output_tmp = round(exp(input[i] * in_scale + bias) / out_scale) + out_zp;
+    if (output_tmp > para.output_activation_max_) {
+      output[i] = para.output_activation_max_;
+    } else if (output_tmp < para.output_activation_min_) {
+      output[i] = para.output_activation_min_;
+    } else {
+      output[i] = (int8_t)output_tmp;
+    }
+  }
+  return NNACL_OK;
+}
+
 int Int8ElementLog(const int8_t *input, int8_t *output, int element_size, ArithSelfQuantArg para) {
   float in_scale = para.in_args_.scale_;
   int32_t in_zp = para.in_args_.zp_;

@@ -45,6 +45,8 @@ class AddInt8Coder final : public OperatorCoder {
   int in_size_{0};
   int out_size_{0};
   int elements_num_{0};
+  int8_t *tile0_data_{nullptr};
+  int8_t *tile1_data_{nullptr};
   bool support_opt_add_{false};
 };
 }  // namespace mindspore::lite::micro::nnacl

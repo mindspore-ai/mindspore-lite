@@ -40,6 +40,8 @@ int Int8ElementSin(const int8_t *input, int8_t *output, int element_size, ArithS
 
 int Int8ElementCos(const int8_t *input, int8_t *output, int element_size, ArithSelfQuantArg para);
 
+int Int8ElementExp(const int8_t *input, int8_t *output, int element_size, ArithSelfQuantArg para);
+
 int Int8ElementLog(const int8_t *input, int8_t *output, int element_size, ArithSelfQuantArg para);
 
 int Int8ElementSqrt(const int8_t *input, int8_t *output, int element_size, ArithSelfQuantArg para);
