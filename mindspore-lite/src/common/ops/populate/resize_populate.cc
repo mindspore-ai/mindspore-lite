@@ -37,6 +37,7 @@ OpParameter *PopulateResizeParameter(const void *prim) {
 
   param->op_parameter_.type_ = primitive->value_type();
   param->method_ = static_cast<int>(value->method());
+  param->nearest_method_ = static_cast<int>(value->nearest_mode());
   param->new_height_ = value->new_height();
   param->new_width_ = value->new_width();
   param->coordinate_transform_mode_ = value->coordinate_transform_mode();

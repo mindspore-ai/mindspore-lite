@@ -18,6 +18,7 @@
 #include "nnacl_c/common_func.h"
 #include "nnacl_c/int8/fixed_point.h"
 #include "nnacl_c/errorcode.h"
+#include "nnacl_c/base/resize_base.h"
 
 int ResizeBilinearInt8(const int8_t *input_ptr, int8_t *output_ptr, int batch, int in_h, int in_w, int out_h, int out_w,
                        int channel, int index, int count, ResizeQuantArg quant_arg) {
@@ -157,7 +158,8 @@ int ResizeBilinearWithFloatScaleInt8(const int8_t *input_ptr, int8_t *output_ptr
 }
 
 int ResizeNearestNeighborInt8Simple(const int8_t *input_data, int8_t *output_data, const int32_t *input_shape,
-                                    const int32_t *output_shape, const bool align_corners, int tid, int thread_num) {
+                                    const int32_t *output_shape, const bool align_corners,
+                                    int coordinate_transform_mode, int nearest_method, int tid, int thread_num) {
   int batch, y, x, c;
   c = output_shape[3];
   int in_h, in_w, new_height, new_width;
@@ -166,13 +168,21 @@ int ResizeNearestNeighborInt8Simple(const int8_t *input_data, int8_t *output_dat
   new_height = output_shape[1];
   new_width = output_shape[2];
 
+  int height_high_bound = in_h - 1;
+  int width_high_bound = in_w - 1;
   for (batch = 0; batch < output_shape[0]; batch++) {
     for (y = tid; y < output_shape[1]; y += thread_num) {
       int input_y = 0;
-      ComputeNearestNeighborInt(y, in_h, new_height, align_corners, &input_y);
+      ComputeNearestNeighborInt(y, in_h, new_height, align_corners, &input_y, coordinate_transform_mode,
+                                nearest_method);
+      // limit input_y to the [0, height_high_bound]
+      input_y = ClampIndex(input_y, 0, height_high_bound);
       for (x = 0; x < output_shape[2]; x++) {
         int input_x = 0;
-        ComputeNearestNeighborInt(x, in_w, new_width, align_corners, &input_x);
+        ComputeNearestNeighborInt(x, in_w, new_width, align_corners, &input_x, coordinate_transform_mode,
+                                  nearest_method);
+        // limit input_x to the [0, width_high_bound]
+        input_x = ClampIndex(input_x, 0, width_high_bound);
         int in_offset = Offset(input_shape, batch, input_y, input_x, 0);
         int out_offset = Offset(output_shape, batch, y, x, 0);
         memcpy(output_data + out_offset, input_data + in_offset, c * sizeof(int8_t));
@@ -184,20 +194,44 @@ int ResizeNearestNeighborInt8Simple(const int8_t *input_data, int8_t *output_dat
 }
 
 void ComputeNearestNeighborInt(const int32_t pos, const int in_size, const int32_t new_size, const bool align_corners,
-                               int32_t *nearest) {
+                               int32_t *nearest, int coordinate_transform_mode, int nearest_method) {
   if (new_size == 0) {
     return;
   }
-  *nearest = (in_size * pos) / new_size;
-  if (align_corners && new_size != 1) {
-    *nearest = ((in_size - 1) * pos + (new_size - 1) / 2) / (new_size - 1);
+  // nearest_method is 0 when tflite model
+  if (nearest_method == 0) {
+    *nearest = (in_size * pos) / new_size;
+    if (align_corners && new_size != 1) {
+      *nearest = ((in_size - 1) * pos + (new_size - 1) / 2) / (new_size - 1);
+    } else if (coordinate_transform_mode == 2) {
+      *nearest = (int32_t)CalculateHalfPixelTfliteNearest(pos, in_size, new_size);
+    }
+    *nearest = *nearest < in_size ? *nearest : in_size - 1;
+    return;
   }
-  *nearest = *nearest < in_size ? *nearest : in_size - 1;
+  float actual;
+  switch (coordinate_transform_mode) {
+    case 0:
+      actual = CalculateAsymmetric(pos, in_size, new_size);
+      break;
+    case 1:
+      actual = CalculateAlignCorners(pos, in_size, new_size);
+      break;
+    case 2:
+      actual = CalculateHalfPixel(pos, in_size, new_size);
+      break;
+    default:
+      actual = CalculateHalfPixel(pos, in_size, new_size);
+      break;
+  }
+  *nearest = ResizeNearestModeSelectInt8(actual, nearest_method);
+  return;
 }
 
 int ResizeNearestNeighborInt8(const int8_t *input_data, int8_t *output_data, const int32_t *input_shape,
                               const int32_t *output_shape, const bool align_corners, const QuantMulArg *multiplier,
-                              const QuantArg *quant_in, const QuantArg *quant_out, int tid, int thread_num) {
+                              const QuantArg *quant_in, const QuantArg *quant_out, int coordinate_transform_mode,
+                              int nearest_method, int tid, int thread_num) {
   const int base_offset = 20;
   int32_t batch, y, x, c;
   int32_t in_h, in_w, new_height, new_width;
@@ -205,16 +239,28 @@ int ResizeNearestNeighborInt8(const int8_t *input_data, int8_t *output_data, con
   in_w = input_shape[2];
   new_height = output_shape[1];
   new_width = output_shape[2];
+  int height_high_bound = in_h - 1;
+  int width_high_bound = in_w - 1;
+  int input_size = input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3];
 
   for (batch = 0; batch < output_shape[0]; batch++) {
     for (y = tid; y < output_shape[1]; y += thread_num) {
       int input_y = 0;
-      ComputeNearestNeighborInt(y, in_h, new_height, align_corners, &input_y);
+      ComputeNearestNeighborInt(y, in_h, new_height, align_corners, &input_y, coordinate_transform_mode,
+                                nearest_method);
+      // limit input_y to the [0, height_high_bound]
+      input_y = ClampIndex(input_y, 0, height_high_bound);
       for (x = 0; x < output_shape[2]; x++) {
         int input_x = 0;
-        ComputeNearestNeighborInt(x, in_w, new_width, align_corners, &input_x);
+        ComputeNearestNeighborInt(x, in_w, new_width, align_corners, &input_x, coordinate_transform_mode,
+                                  nearest_method);
+        // limit input_x to the [0, width_high_bound]
+        input_x = ClampIndex(input_x, 0, width_high_bound);
         for (c = 0; c < output_shape[3]; c++) {
           int in_offset = Offset(input_shape, batch, input_y, input_x, c);
+          if (in_offset >= input_size) {
+            in_offset %= input_size;
+          }
           int out_offset = Offset(output_shape, batch, y, x, c);
 
           int32_t out_value = MultiplyByQuantizedMultiplier(

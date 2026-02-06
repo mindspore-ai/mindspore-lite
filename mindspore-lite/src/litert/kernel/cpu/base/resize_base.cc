@@ -39,6 +39,7 @@ int ResizeBaseCPUKernel::CheckParameters() {
   }
   MS_CHECK_FALSE_MSG(op_parameter_->thread_num_ == 0, RET_ERROR, "thread_num_ should not be 0");
   method_ = parameter->method_;
+  nearest_method_ = parameter->nearest_method_;
   if (method_ <= schema::ResizeMethod::ResizeMethod_UNKNOWN || method_ > schema::ResizeMethod::ResizeMethod_MAX) {
     MS_LOG(ERROR) << "Resize method is invalid.";
     return RET_INVALID_OP_ATTR;

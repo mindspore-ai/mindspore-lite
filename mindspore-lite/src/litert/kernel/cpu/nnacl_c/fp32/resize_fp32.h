@@ -57,13 +57,7 @@ int CropAndResizeBilinear(const float *input_data, float *output_data, const int
 
 int ResizeNearestNeighbor(const float *input_data, float *output_data, const int32_t *input_shape,
                           const int32_t *output_shape, CalculateOriginalCoordinate calculate,
-                          int coordinate_transform_mode, int tid, int thread_num);
-
-float CalculateAsymmetric(int x_resized, int length_original, int length_resized);
-
-float CalculateAlignCorners(int x_resized, int length_original, int length_resized);
-
-float CalculateHalfPixel(int x_resized, int length_original, int length_resized);
+                          int coordinate_transform_mode, int nearest_mode, int tid, int thread_num);
 
 int CheckCropAndResizeBoxIdx(int32_t *box_idx, int32_t num_boxes, int32_t batch);
 

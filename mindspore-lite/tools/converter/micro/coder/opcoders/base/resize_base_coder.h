@@ -38,6 +38,7 @@ class ResizeBaseCoder : public OperatorCoder {
   int new_height_{0};
   int new_width_{0};
   int coordinate_transform_mode_{0};
+  int nearest_method_{0};
   bool preserve_aspect_ratio_{false};
   bool const_shape_{false};
 

@@ -21,6 +21,7 @@
 #include <vector>
 #include "coder/opcoders/base/resize_base_coder.h"
 #include "nnacl_c/op_base.h"
+#include "nnacl_c/int8/quantize.h"
 
 namespace mindspore::lite::micro::nnacl {
 class ResizeInt8Coder final : public ResizeBaseCoder {
@@ -42,6 +43,16 @@ class ResizeInt8Coder final : public ResizeBaseCoder {
   ::QuantArg *quant_in_{nullptr};
   ::QuantArg *quant_out_{nullptr};
   QuantMulArg *multiplier_{nullptr};
+  ResizeQuantArg resize_quant_arg_ = {};
+  ResizeFloatScaleQuantArg resize_float_quant_arg_ = {};
+  int InitResizeQuantArg();
+  int CalRatio();
+  int CalInterpolationRange();
+  int InitResizeBiLinear();
+  int InitFloatResizeBiLinear();
+  int InitResizeFloatQuantArg();
+  int CalFloatRatio();
+  int CalFloatInterpolationRange();
 };
 }  // namespace mindspore::lite::micro::nnacl
 #endif  // MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_OPCODERS_NNACL_INT8_RESIZE_INT8_CODER_H_

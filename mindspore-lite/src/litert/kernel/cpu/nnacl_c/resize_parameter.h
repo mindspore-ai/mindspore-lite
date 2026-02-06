@@ -21,6 +21,7 @@ typedef struct ResizeParameter {
   // primitive parameter
   OpParameter op_parameter_;
   int method_;
+  int nearest_method_;
   int64_t new_height_;
   int64_t new_width_;
   int coordinate_transform_mode_;
