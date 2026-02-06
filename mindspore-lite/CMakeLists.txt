@@ -635,6 +635,7 @@ if(MSLITE_TARGET_RISCV)
             BINARY_DIR  "${RISCV_BINARY_DIR}/nnacl"
             BUILD_BYPRODUCTS "${RISCV_BINARY_DIR}/nnacl/libnnacl.a"
             CMAKE_ARGS
+            -DRISCV32=ON
             -DMY_FLAGS=ON
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
             -DCMAKE_BUILD_TYPE=Release
