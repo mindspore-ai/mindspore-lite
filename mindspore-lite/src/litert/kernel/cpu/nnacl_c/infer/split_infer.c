@@ -17,6 +17,9 @@
 #include "nnacl_c/infer/split_infer.h"
 #include "nnacl_c/infer/infer_register.h"
 
+#define DIVIDEND_CAN_BE_DIVISIBLE 1
+#define HALF_OF_THE_DIVIDEND 2
+
 int UpdateSplitSize(const TensorC *const *inputs, size_t inputs_size, SplitParameter *param) {
   // get split size from the second input.
   if (inputs_size == DIMENSION_2D && inputs[SECOND_INPUT]->data_ != NULL) {
@@ -35,11 +38,22 @@ int UpdateSplitSize(const TensorC *const *inputs, size_t inputs_size, SplitParam
   if (param->split_count_ == 0) {
     const TensorC *input = inputs[0];
     int32_t split_chunk_size = UP_DIV(input->shape_[param->split_dim_], param->num_split_);
-    for (int i = 0; i < param->num_split_; ++i) {
-      if (i != param->num_split_ - 1) {
-        param->split_sizes_[i] = split_chunk_size;
-      } else {
-        param->split_sizes_[i] = input->shape_[param->split_dim_] - split_chunk_size * i;
+    int remainder = input->shape_[param->split_dim_] % param->num_split_;
+    if (split_chunk_size == DIVIDEND_CAN_BE_DIVISIBLE || split_chunk_size >= HALF_OF_THE_DIVIDEND) {
+      for (int i = 0; i < param->num_split_; ++i) {
+        if (i != param->num_split_ - 1) {
+          param->split_sizes_[i] = split_chunk_size;
+        } else {
+          param->split_sizes_[i] = input->shape_[param->split_dim_] - split_chunk_size * i;
+        }
+      }
+    } else {
+      for (int i = 0; i < param->num_split_; ++i) {
+        if (i < remainder) {
+          param->split_sizes_[i] = split_chunk_size;
+        } else {
+          param->split_sizes_[i] = 1;
+        }
       }
     }
   }
