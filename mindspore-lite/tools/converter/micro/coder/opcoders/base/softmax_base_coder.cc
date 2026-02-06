@@ -55,6 +55,9 @@ int SoftmaxBaseCoder::MallocTmpBuffer() {
     softmax_param_->axis_ += n_dim;
   }
   auto axis = softmax_param_->axis_;
+  int ret = axis >= -n_dim && axis < n_dim;
+  MS_CHECK_TRUE_MSG(ret, RET_ERROR, "SoftmaxBaseCoder failed!, Softmax axis must in [-n_dim, n_dim-1]");
+  axis = axis < 0 ? axis + n_dim : axis;
   auto in_shape = input_tensor_->shape();
   int out_plane_size = 1;
   for (int i = 0; i < axis; ++i) {

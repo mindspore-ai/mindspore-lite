@@ -104,10 +104,13 @@ const char tensor_source[] = R"RAW(
  * limitations under the License.
  */
 
-#include "include/c_api/tensor_c.h"
-#include "stdlib.h"
-#include "string.h"
 #include "tensor.h"
+
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+
+#include "include/c_api/tensor_c.h"
 
 size_t DataTypeSize(const MSDataType type) {
   switch (type) {
@@ -150,15 +153,31 @@ MSTensorHandle MSTensorCreate(const char *name, MSDataType type, const int64_t *
     return NULL;
   }
   MicroTensor *micro_tensor = malloc(sizeof(MicroTensor));
+  if (micro_tensor == NULL) {
+    printf("MSTensorCreate failed, micro_tensor is NULL.");
+    return NULL;
+  }
   size_t len = strlen(name);
   micro_tensor->name = malloc(len + 1);
+  if (micro_tensor->name == NULL) {
+    printf("MSTensorCreate failed, micro_tensor->name is NULL.");
+    return NULL;
+  }
   memcpy(micro_tensor->name, name, len + 1);
   micro_tensor->type = type;
   micro_tensor->ndim = shape_num;
   micro_tensor->data = malloc(data_len);
+  if (micro_tensor->data == NULL) {
+    printf("MSTensorCreate failed, micro_tensor->data is NULL.");
+    return NULL;
+  }
   micro_tensor->owned = true;
   memcpy(micro_tensor->data, data, data_len);
   micro_tensor->shape = malloc(shape_num * sizeof(int64_t));
+  if (micro_tensor->shape == NULL) {
+    printf("MSTensorCreate failed, micro_tensor->shape is NULL.");
+    return NULL;
+  }
   memcpy(micro_tensor->shape, shape, shape_num * sizeof(int64_t));
   micro_tensor->format = kMSFormatNHWC;
   return micro_tensor;
@@ -166,6 +185,10 @@ MSTensorHandle MSTensorCreate(const char *name, MSDataType type, const int64_t *
 
 void MSTensorDestroy(MSTensorHandle *tensor) {
   MicroTensor* micro_tensor = (MicroTensor*)(*tensor);
+  if (micro_tensor == NULL) {
+    printf("micro_tensor is NULL, no need to free.");
+    return;
+  }
   if (micro_tensor->data != NULL && micro_tensor->owned) {
     free(micro_tensor->data);
   }
@@ -174,20 +197,37 @@ void MSTensorDestroy(MSTensorHandle *tensor) {
 }
 
 void MSTensorSetName(MSTensorHandle tensor, const char *name) {
+  if (tensor == NULL) {
+    printf("MSTensorSetName failed, tensor is NULL.");
+    return;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   if(micro_tensor->name != NULL) {
     free(micro_tensor->name);
   }
   size_t len = strlen(name);
   micro_tensor->name = malloc(len + 1);
+  if (micro_tensor->name == NULL) {
+    printf("MSTensorSetName failed, micro_tensor->name is NULL.");
+    return;
+  }
   memcpy(micro_tensor->name, name, len + 1);
 }
 
 MSTensorHandle MSTensorClone(MSTensorHandle tensor) {
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   MicroTensor *clone_tensor = malloc( sizeof(MicroTensor));
+  if (clone_tensor == NULL) {
+    printf("MSTensorClone failed, clone_tensor is NULL.");
+    return NULL;
+  }
   size_t tensor_data_size = MSTensorGetDataSize(micro_tensor);
   clone_tensor->data = malloc(tensor_data_size);
+  if (clone_tensor->data == NULL) {
+    free(clone_tensor);
+    printf("MSTensorClone failed, clone_tensor->data is NULL.");
+    return NULL;
+  }
   clone_tensor->owned = true;
   memcpy(clone_tensor->data,micro_tensor->data,tensor_data_size);
   clone_tensor->name = micro_tensor->name;
@@ -195,56 +235,105 @@ MSTensorHandle MSTensorClone(MSTensorHandle tensor) {
   clone_tensor->ndim = micro_tensor->ndim;
   size_t shape_data_size = sizeof(int64_t) * micro_tensor->ndim;
   int64_t* clone_shape = malloc(shape_data_size);
+  if (clone_shape == NULL) {
+    free(clone_tensor->data);
+    free(clone_tensor);
+    printf("MSTensorClone failed, clone_shape is NULL.");
+    return NULL;
+  }
   memcpy(clone_shape,micro_tensor->shape,shape_data_size);
   clone_tensor->shape = clone_shape;
   char* clone_name = malloc(strlen(micro_tensor->name));
+  if (clone_name == NULL) {
+    free(clone_shape);
+    free(clone_tensor->data);
+    free(clone_tensor);
+    printf("MSTensorClone failed, clone_name is NULL.");
+    return NULL;
+  }
   strcpy(clone_name,micro_tensor->name);
   clone_tensor->format = kMSFormatNHWC;
   return clone_tensor;
 }
 
 const char *MSTensorGetName(const MSTensorHandle tensor) {
+  if (tensor == NULL) {
+    printf("MSTensorGetName failed, tensor is NULL.");
+    return NULL;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   return micro_tensor->name;
 }
 
 void MSTensorSetDataType(MSTensorHandle tensor, MSDataType type) {
+  if (tensor == NULL) {
+    printf("MSTensorSetDataType failed, tensor is NULL.");
+    return;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   micro_tensor->type = type;
 }
 
 MSDataType MSTensorGetDataType(const MSTensorHandle tensor) {
+  if (tensor == NULL) {
+    printf("MSTensorGetDataType failed, tensor is NULL.");
+    return kMSDataTypeUnknown;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   return micro_tensor->type;
 }
 
 void MSTensorSetShape(MSTensorHandle tensor, const int64_t *shape, size_t shape_num) {
+  if (tensor == NULL) {
+    printf("MSTensorSetShape failed, tensor is NULL.");
+    return;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   if(micro_tensor->shape != NULL) {
     free(micro_tensor->shape);
   }
   micro_tensor->ndim = shape_num;
   micro_tensor->shape = malloc(shape_num * sizeof(int64_t));
+  if (micro_tensor->shape == NULL) {
+    printf("MSTensorSetShape failed, micro_tensor->shape is NULL.");
+    return;
+  }
   memcpy(micro_tensor->shape, shape, shape_num * sizeof(int64_t));
 }
 
 const int64_t *MSTensorGetShape(const MSTensorHandle tensor, size_t *shape_num) {
+  if (tensor == NULL) {
+    printf("MSTensorGetShape failed, tensor is NULL.");
+    return NULL;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   *shape_num =  micro_tensor->ndim;
   return micro_tensor->shape;
 }
 
 void MSTensorSetFormat(MSTensorHandle tensor, MSFormat format) {
+  if (tensor == NULL) {
+    printf("MSTensorSetFormat failed, tensor is NULL.");
+    return;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   micro_tensor->format = format;
 }
 
 MSFormat MSTensorGetFormat(const MSTensorHandle tensor) {
+  if (tensor == NULL) {
+    printf("MSTensorGetFormat failed, tensor is NULL.");
+    return kMSFormatNCHW;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   return micro_tensor->format;
 }
 
 void MSTensorSetData(MSTensorHandle tensor, void *data) {
+  if (tensor == NULL) {
+    printf("MSTensorSetData failed, tensor is NULL.");
+    return;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   if (micro_tensor->data == data) {
     return;
@@ -259,22 +348,36 @@ void MSTensorSetData(MSTensorHandle tensor, void *data) {
 }
 
 const void *MSTensorGetData(const MSTensorHandle tensor) {
+  if (tensor == NULL) {
+    printf("MSTensorGetData failed, tensor is NULL.");
+    return NULL;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   return micro_tensor->data;
 }
 
 void *MSTensorGetMutableData(const MSTensorHandle tensor) {
+  if (tensor == NULL) {
+    return NULL;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   if(micro_tensor->data) {
     return micro_tensor->data;
   }
   void* data = malloc(MSTensorGetDataSize(tensor));
+  if (data == NULL) {
+    printf("MSTensorGetMutableData failed, data is NULL.");
+    return NULL;
+  }
   micro_tensor->owned = true;
   micro_tensor->data = data;
   return data;
 }
 
 int64_t MSTensorGetElementNum(const MSTensorHandle tensor) {
+  if (tensor == NULL) {
+    return -1;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   int64_t acc_sum = 1;
   for(int i=0;i< micro_tensor->ndim;i++) {
@@ -284,6 +387,9 @@ int64_t MSTensorGetElementNum(const MSTensorHandle tensor) {
 }
 
 size_t MSTensorGetDataSize(const MSTensorHandle tensor) {
+  if (tensor == NULL) {
+    return 0;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   size_t data_type_size = DataTypeSize(micro_tensor->type);
   int64_t elements = MSTensorGetElementNum(tensor);
@@ -305,6 +411,9 @@ void Fp16CastToFp32(const float16_t *input, float *output, int number) {
 #endif
 
 void *TransformInput(MSTensorHandle tensor, int expect_type, bool *type_changed) {
+  if (tensor == NULL) {
+    return NULL;
+  }
   MicroTensor* micro_tensor = (MicroTensor*)(tensor);
   int cur_type = micro_tensor->type;
   if (cur_type == expect_type) {
@@ -327,11 +436,19 @@ void *TransformInput(MSTensorHandle tensor, int expect_type, bool *type_changed)
   }
   if (type_trans_mode == TypeTransMode_FP32_TO_FP16) {
     void *expect_input_fp16 = (void *)malloc(DataTypeSize(expect_type) * num);
+    if (expect_input_fp16 == NULL) {
+      printf("TransformInput failed, expect_input_fp16 is NULL.");
+      return NULL;
+    }
     Fp32CastToFp16((float *)micro_tensor->data, (float16_t *)expect_input_fp16, num);
     *type_changed = true;
     return expect_input_fp16;
   } else if (type_trans_mode == TypeTransMode_FP16_TO_FP32) {
     void *expect_input_fp32 = (void *)malloc(DataTypeSize(expect_type) * num);
+    if (expect_input_fp32 == NULL) {
+      printf("TransformInput failed, expect_input_fp32 is NULL.");
+      return NULL;
+    }
     Fp16CastToFp32((float16_t *)micro_tensor->data, (float *)expect_input_fp32, num);
     *type_changed = true;
     return expect_input_fp32;

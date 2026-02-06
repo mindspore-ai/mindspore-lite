@@ -46,6 +46,10 @@ int SoftMaxFP32Coder::DoCode(CoderContext *const context) {
           });
   NNaclFp32Serializer code;
   std::string param_name = "softmax_parameter";
+  // ret = 1 if axis not in [-n_dim, n_dim-1] else 0
+  auto ret = softmax_param_->axis_ < -n_dim_ && softmax_param_->axis_ >= n_dim_;
+  MS_CHECK_RET_CODE(ret, "SoftMaxFP32Coder::DoCode failed! softmax axis must be in [-n_dim_, n_dim_-1]");
+  softmax_param_->axis_ = softmax_param_->axis_ < 0 ? softmax_param_->axis_ + n_dim_ : softmax_param_->axis_;
   code.CodeStruct(param_name, *softmax_param_);
   code.CodeStruct("input_shape", input_shape_, DIMENSION_5D);
   code.CodeFunction("memset", sum_data_, "0", sum_data_size_);

@@ -54,6 +54,10 @@ int SoftMaxInt8Coder::Prepare(CoderContext *const context) {
   int inner_size = 1;
   MS_CHECK_TRUE(n_dim_ <= static_cast<int>(std::extent<decltype(input_shape_)>::value),
                 "n_dim should be less than the length of maximum value of input_shape");
+  // ret = 1 if axis not in [-n_dim, n_dim-1] else 0
+  auto ret = softmax_param_->axis_ < -n_dim_ && softmax_param_->axis_ >= n_dim_;
+  MS_CHECK_RET_CODE(ret, "SoftMaxInt8Coder::Prepare failed!, Softmax axis must be in [-n_dim, n_dim-1]");
+  softmax_param_->axis_ = softmax_param_->axis_ < 0 ? softmax_param_->axis_ + n_dim_ : softmax_param_->axis_;
   for (int i = softmax_param_->axis_ + 1; i < n_dim_; i++) {
     inner_size *= input_shape_[i];
   }

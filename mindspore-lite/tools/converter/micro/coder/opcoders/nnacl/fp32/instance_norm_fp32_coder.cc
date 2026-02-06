@@ -27,13 +27,21 @@ int InstanceNormFP32Coder::Prepare(CoderContext *const context) {
     param_->op_parameter_.thread_num_ = 1;
   }
   param_->op_parameter_.thread_num_ = MSMIN(UP_DIV(param_->channel_, C8NUM), param_->op_parameter_.thread_num_);
-  if (input_tensors_[0]->format() == NHWC) {
+  if (input_tensors_[0]->format() != NHWC) {
+    return RET_OK;
+  }
+  if (input_tensors_[0]->shape().size() == DIMENSION_3D) {
+    auto input_shape = input_tensor_->shape();
+    param_->batch_ = input_shape[FIRST_INPUT];
+    param_->inner_size_ = input_shape[SECOND_INPUT];
+    param_->channel_ = input_shape[THIRD_INPUT];
+  } else {
     param_->batch_ = input_tensor_->Batch();
     param_->inner_size_ = input_tensor_->Height() * input_tensor_->Width();
     param_->channel_ = input_tensor_->Channel();
-    tmp_src_data_ =
-      reinterpret_cast<float *>(allocator_->Malloc(kNumberTypeFloat32, input_tensors_[0]->Size(), kWorkspace));
   }
+  tmp_src_data_ =
+    reinterpret_cast<float *>(allocator_->Malloc(kNumberTypeFloat32, input_tensors_[0]->Size(), kWorkspace));
   return RET_OK;
 }
 
@@ -45,10 +53,10 @@ int InstanceNormFP32Coder::DoCode(CoderContext *const context) {
   if (input_tensors_[0]->format() == NHWC) {
     code.CodeFunction("PackNHWCToNC4HW4NotAlignedFp32", input_tensor_, tmp_src_data_, param_->batch_,
                       param_->inner_size_, param_->channel_);
-    code.CodeFunction("InstanceNormNC4HW4", tmp_src_data_, input_tensor_, input_tensors_.at(SECOND_INPUT),
+    code.CodeFunction("InstanceNormNC4HW4", tmp_src_data_, output_tensor_, input_tensors_.at(SECOND_INPUT),
                       input_tensors_.at(THIRD_INPUT), "&instance_norm_param", 0);
   } else {
-    code.CodeFunction("InstanceNorm", input_tensor_, input_tensor_, input_tensors_.at(SECOND_INPUT),
+    code.CodeFunction("InstanceNorm", input_tensor_, output_tensor_, input_tensors_.at(SECOND_INPUT),
                       input_tensors_.at(THIRD_INPUT), "&instance_norm_param", 0);
   }
 
