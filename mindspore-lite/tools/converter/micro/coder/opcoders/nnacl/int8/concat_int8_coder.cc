@@ -114,7 +114,11 @@ int ConcatInt8Coder::DoCode(CoderContext *const context) {
   // input data
   for (int i = 0; i < static_cast<int>(input_tensors().size()); ++i) {
     MS_CHECK_PTR(input_tensors().at(i));
-    code << "input_data[" << i << "] = " << allocator_->GetRuntimeAddr(input_tensors().at(i)) << ";\n";
+    if (input_tensors().at(i)->IsConst()) {
+      code << "input_data[" << i << "] = " << allocator_->GetRuntimeAddr(input_tensors().at(i), true) << ";\n";
+    } else {
+      code << "input_data[" << i << "] = " << allocator_->GetRuntimeAddr(input_tensors().at(i)) << ";\n";
+    }
   }
 
   code << "int8_t *output_data;\n";
