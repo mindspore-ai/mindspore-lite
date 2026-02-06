@@ -1,0 +1,54 @@
+/**
+ * Copyright 2025 Huawei Technologies Co., Ltd
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_OPCODERS_NNACL_INT8_LAYERNORM_INT8_CODER_H_
+#define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_OPCODERS_NNACL_INT8_LAYERNORM_INT8_CODER_H_
+
+#include <cstring>
+#include <vector>
+#include "coder/opcoders/op_coder.h"
+#include "nnacl_c/layer_norm_parameter.h"
+#include "nnacl_c/kernel/layer_norm.h"
+
+namespace mindspore::lite::micro::nnacl {
+class LayerNormInt8Coder final : public OperatorCoder {
+ public:
+  LayerNormInt8Coder(const std::vector<Tensor *> &in_tensors, const std::vector<Tensor *> &out_tensors,
+                     const LiteGraph::Node *node, size_t node_index, Target target)
+      : OperatorCoder(in_tensors, out_tensors, node, node_index, target) {}
+
+  ~LayerNormInt8Coder() override = default;
+
+  int Prepare(CoderContext *const context) override;
+
+  int DoCode(CoderContext *context) override;
+
+ private:
+  int SetQuantArgs();
+
+  int ReSize();
+
+  LayerNormQuantArg quant_param_{};
+  LayerNormComputeParam compute_{};
+  Tensor *input{nullptr};
+  Tensor *output{nullptr};
+  Tensor *gamma{nullptr};
+  Tensor *beta{nullptr};
+  LayerNormParameter *layer_norm_param_;
+  bool is_const_{false};
+};
+}  // namespace mindspore::lite::micro::nnacl
+#endif  // MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_OPCODERS_NNACL_INT8_LAYERNORM_INT8_CODER_H_

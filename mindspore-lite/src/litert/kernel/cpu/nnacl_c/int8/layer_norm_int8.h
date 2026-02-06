@@ -28,6 +28,10 @@ extern "C" {
 int LayerNormInt8(const int8_t *src_data, const float *gamma_data, const float *beta_data, int8_t *dst_data,
                   const LayerNormComputeParam *param, const LayerNormQuantArg *quant, int task_id, int thread_num);
 
+int LayerNormDynamicInt8(const int8_t *src_data, const int8_t *gamma_data, const int8_t *beta_data, int8_t *dst_data,
+                         const LayerNormComputeParam *param, const LayerNormQuantArg *quant, int task_id,
+                         int thread_num);
+
 #ifdef __cplusplus
 }
 #endif

@@ -46,14 +46,24 @@ LayerNormInt8CPUKernel::~LayerNormInt8CPUKernel() {
 }
 
 int LayerNormInt8CPUKernel::SetQuantArgs() {
+  CHECK_LESS_RETURN(in_tensors_.size(), min_layernorm_input);
+  CHECK_LESS_RETURN(out_tensors_.size(), min_layernorm_output);
   lite::Tensor *input = in_tensors_.at(0);
   CHECK_NULL_RETURN(input);
+  lite::Tensor *gamma_tensor = in_tensors_.at(Index1);
+  CHECK_NULL_RETURN(gamma_tensor);
+  lite::Tensor *beta_tensor = in_tensors_.at(Index2);
+  CHECK_NULL_RETURN(beta_tensor);
   lite::Tensor *output = out_tensors_.at(0);
   CHECK_NULL_RETURN(output);
 
   const auto &input_params = input->quant_params();
+  const auto &gamma_params = gamma_tensor->quant_params();
+  const auto &beta_params = beta_tensor->quant_params();
   const auto &output_params = output->quant_params();
   MS_CHECK_TRUE_MSG(!input_params.empty(), RET_ERROR, "Input quant param cannot be empty.");
+  MS_CHECK_TRUE_MSG(!gamma_params.empty(), RET_ERROR, "Gamma quant param cannot be empty.");
+  MS_CHECK_TRUE_MSG(!beta_params.empty(), RET_ERROR, "Beta quant param cannot be empty.");
   MS_CHECK_TRUE_MSG(!output_params.empty(), RET_ERROR, "Output quant param cannot be empty.");
   compute_ = reinterpret_cast<LayerNormComputeParam *>(malloc(sizeof(LayerNormComputeParam)));
   if (compute_ == nullptr) {
@@ -76,35 +86,33 @@ int LayerNormInt8CPUKernel::SetQuantArgs() {
   quant_param_->out_zp_ = output_params.front().zeroPoint;
   quant_param_->out_scale_ = output_params.front().scale;
 
-  lite::Tensor *gamma_tensor = in_tensors_.at(1);
-  CHECK_NULL_RETURN(gamma_tensor);
-  if (gamma_tensor->quant_params().size() < 1) {
-    MS_LOG(ERROR) << "LayerNorm int8 op gamma tensor error.";
-    return RET_ERROR;
-  }
-  double gamma_scale = gamma_tensor->quant_params().front().scale;
-  int gamma_zp = gamma_tensor->quant_params().front().zeroPoint;
-  MS_CHECK_GT(gamma_tensor->ElementsNum(), 0, RET_ERROR);
-  gamma_ptr_ = reinterpret_cast<float *>(malloc(gamma_tensor->ElementsNum() * sizeof(float)));
-  CHECK_NULL_RETURN(gamma_ptr_);
-  int8_t *src_gamma = reinterpret_cast<int8_t *>(gamma_tensor->data());
-  for (int i = 0; i < gamma_tensor->ElementsNum(); i++) {
-    gamma_ptr_[i] = (src_gamma[i] - gamma_zp) * gamma_scale;
-  }
+  quant_param_->gamma_zp_ = gamma_params.front().zeroPoint;
+  quant_param_->gamma_scale_ = gamma_params.front().scale;
 
-  lite::Tensor *beta_tensor = in_tensors_.at(2);
-  CHECK_NULL_RETURN(beta_tensor);
-  MS_CHECK_GT(beta_tensor->ElementsNum(), 0, RET_ERROR);
-  beta_ptr_ = reinterpret_cast<float *>(malloc(beta_tensor->ElementsNum() * sizeof(float)));
-  if (beta_ptr_ == nullptr) {
-    MS_LOG(ERROR) << "malloc beta_ptr_ failed";
-    free(gamma_ptr_);
-    gamma_ptr_ = nullptr;
-    return RET_ERROR;
-  }
-  int32_t *src_beta = reinterpret_cast<int32_t *>(beta_tensor->data());
-  for (int i = 0; i < beta_tensor->ElementsNum(); i++) {
-    beta_ptr_[i] = src_beta[i] * quant_param_->in_scale_ * gamma_scale;
+  quant_param_->beta_zp_ = beta_params.front().zeroPoint;
+  quant_param_->beta_scale_ = beta_params.front().scale;
+
+  if (is_static_input_) {
+    MS_CHECK_GT(gamma_tensor->ElementsNum(), 0, RET_ERROR);
+    gamma_ptr_ = reinterpret_cast<float *>(malloc(gamma_tensor->ElementsNum() * sizeof(float)));
+    CHECK_NULL_RETURN(gamma_ptr_);
+    int8_t *src_gamma = reinterpret_cast<int8_t *>(gamma_tensor->data());
+    for (int i = 0; i < gamma_tensor->ElementsNum(); i++) {
+      gamma_ptr_[i] = (src_gamma[i] - quant_param_->gamma_zp_) * quant_param_->gamma_scale_;
+    }
+
+    MS_CHECK_GT(beta_tensor->ElementsNum(), 0, RET_ERROR);
+    beta_ptr_ = reinterpret_cast<float *>(malloc(beta_tensor->ElementsNum() * sizeof(float)));
+    if (beta_ptr_ == nullptr) {
+      MS_LOG(ERROR) << "malloc beta_ptr_ failed";
+      free(gamma_ptr_);
+      gamma_ptr_ = nullptr;
+      return RET_ERROR;
+    }
+    int32_t *src_beta = reinterpret_cast<int32_t *>(beta_tensor->data());
+    for (int i = 0; i < beta_tensor->ElementsNum(); i++) {
+      beta_ptr_[i] = src_beta[i] * quant_param_->in_scale_ * quant_param_->gamma_scale_;
+    }
   }
   return RET_OK;
 }
@@ -118,7 +126,8 @@ int LayerNormInt8CPUKernel::Prepare() {
   CHECK_NULL_RETURN(out_tensors_[0]);
   if (in_tensors_[0]->data_type() != mindspore::kNumberTypeInt8 ||
       in_tensors_[C1NUM]->data_type() != mindspore::kNumberTypeInt8 ||
-      in_tensors_[C2NUM]->data_type() != mindspore::kNumberTypeInt32 ||
+      (in_tensors_[C2NUM]->data_type() != mindspore::kNumberTypeInt32 &&
+       in_tensors_[C2NUM]->data_type() != mindspore::kNumberTypeInt8) ||
       out_tensors_[0]->data_type() != mindspore::kNumberTypeInt8) {
     MS_LOG(ERROR) << "Datatype error, input0 data_type is " << in_tensors_[0]->data_type() << ", input1 data_type is "
                   << in_tensors_[C1NUM]->data_type() << ", input2 data_type is " << in_tensors_[C2NUM]->data_type()
@@ -126,6 +135,13 @@ int LayerNormInt8CPUKernel::Prepare() {
     return RET_ERROR;
   }
   CHECK_NULL_RETURN(param_);
+  if (in_tensors_[C1NUM]->IsConst() && in_tensors_[C2NUM]->IsConst()) {
+    is_static_input_ = true;
+  } else {
+    is_static_input_ = false;
+    gamma_ptr_ = nullptr;
+    beta_ptr_ = nullptr;
+  }
 
   auto ret = SetQuantArgs();
   if (ret != RET_OK) {
@@ -167,8 +183,19 @@ int LayerNormInt8CPUKernel::ReSize() {
 }
 
 int LayerNormInt8CPUKernel::DoExecute(int task_id) {
-  auto ret = LayerNormInt8(src_ptr_, gamma_ptr_, beta_ptr_, dst_ptr_, compute_, quant_param_, task_id,
-                           param_->op_parameter_.thread_num_);
+  int ret;
+  if (is_static_input_) {
+    ret = LayerNormInt8(src_ptr_, gamma_ptr_, beta_ptr_, dst_ptr_, compute_, quant_param_, task_id,
+                        param_->op_parameter_.thread_num_);
+  } else {
+    CHECK_LESS_RETURN(in_tensors_.size(), THREE_TENSOR);
+    auto gamma_int8_ptr_ = reinterpret_cast<int8_t *>(in_tensors_.at(C1NUM)->MutableData());
+    CHECK_NULL_RETURN(gamma_int8_ptr_);
+    auto beta_int8_ptr_ = reinterpret_cast<int8_t *>(in_tensors_.at(C2NUM)->MutableData());
+    CHECK_NULL_RETURN(beta_int8_ptr_);
+    ret = LayerNormDynamicInt8(src_ptr_, gamma_int8_ptr_, beta_int8_ptr_, dst_ptr_, compute_, quant_param_, task_id,
+                               param_->op_parameter_.thread_num_);
+  }
   if (ret != RET_OK) {
     MS_LOG(ERROR) << "DoExecute task id " << task_id << " failed.";
     return ret;
@@ -188,6 +215,8 @@ int LayerNormInt8Run(void *cdata, int task_id, float, float) {
 }
 
 int LayerNormInt8CPUKernel::Run() {
+  CHECK_LESS_RETURN(in_tensors_.size(), ONE_TENSOR);
+  CHECK_LESS_RETURN(out_tensors_.size(), ONE_TENSOR);
   src_ptr_ = reinterpret_cast<int8_t *>(in_tensors_.at(0)->data());
   CHECK_NULL_RETURN(src_ptr_);
   dst_ptr_ = reinterpret_cast<int8_t *>(out_tensors_.at(0)->data());
