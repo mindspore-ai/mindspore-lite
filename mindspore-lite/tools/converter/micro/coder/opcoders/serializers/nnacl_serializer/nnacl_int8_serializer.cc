@@ -14,12 +14,46 @@
  * limitations under the License.
  */
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_int8_serializer.h"
+
+#include <stdio.h>
 #include <string>
+#include <vector>
+#include <cmath>    // lrint
+#include <cstdint>  // int32_t
+#include <limits>   // numeric_limits
+
 #include "src/common/log_adapter.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/log.h"
 
 namespace mindspore::lite::micro::nnacl {
+
+void FloatToInt32(const float *input, int32_t *output, size_t size) {
+  for (size_t i = 0; i < size; ++i) {
+    output[i] = static_cast<int32_t>(input[i]);
+  }
+}
+
+void NNaclInt8Serializer::CodeStruct(const std::string &name, const ::ConvQuantArg &conv_quant_arg) {
+  size_t filter_arg_num = conv_quant_arg.filter_arg_num_;
+  QuantArg *filter_quant_args = conv_quant_arg.filter_quant_args_;
+  float *scale_ratio_fp = nullptr;
+  scale_ratio_fp = (float *)malloc(filter_arg_num * sizeof(float));
+  float input_scale[1];
+  input_scale[0] = conv_quant_arg.input_quant_args_[0].scale_;
+  float output_scale[1];
+  output_scale[0] = conv_quant_arg.output_quant_args_[0].scale_;
+  for (size_t i = 0; i < filter_arg_num; i++) {
+    scale_ratio_fp[i] = output_scale[0] / (input_scale[0] * filter_quant_args[i].scale_);
+  }
+  int32_t *scale_ratio_int32 = nullptr;
+  scale_ratio_int32 = (int32_t *)malloc(filter_arg_num * sizeof(int32_t));
+  FloatToInt32(scale_ratio_fp, scale_ratio_int32, filter_arg_num);
+  CodeArray(name, scale_ratio_int32, filter_arg_num, true);
+  free(scale_ratio_fp);
+  free(scale_ratio_int32);
+}
+
 void NNaclInt8Serializer::CodeStruct(const std::string &name, const ConvParameter &conv_parameter) {
   const ConvQuantArg &quant_arg = conv_parameter.conv_quant_arg_;
   std::string quant_arg_in = name + "_quant_arg_in";

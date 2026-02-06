@@ -16,14 +16,25 @@
 
 #include "coder/opcoders/nnacl/int8/conv2d_3x3_int8_coder.h"
 #include <vector>
+#include <string>
+#include <regex>
 #include "include/securec.h"
 #include "nnacl_c/int8/conv3x3_int8.h"
 #include "coder/opcoders/file_collector.h"
 #include "coder/log.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_int8_serializer.h"
-
 namespace mindspore::lite::micro::nnacl {
+const int kNumber1 = 1;
+const int kNumber3 = 3;
+const int kNumber6 = 6;
+const int kNumber12 = 12;
+const int kNumber16 = 16;
+const int kNumber32 = 32;
+const int kNumber25 = 25;
+const int kNumber24 = 24;
+const int kNumber64 = 64;
+
 void ProcessFilterUint8(int8_t *origin_weight, int16_t *dst_weight, ConvParameter *conv_param) {
   int input_channel = conv_param->input_channel_;
   int output_channel = conv_param->output_channel_;
@@ -44,7 +55,7 @@ void ProcessFilterUint8(int8_t *origin_weight, int16_t *dst_weight, ConvParamete
   free(tmp_addr);
 }
 
-int Conv2D3x3Int8Coder::InitWeightBias() {
+int Conv2D3x3Int8Coder::HandleNormalCase() {
   int input_channel = conv_param_->input_channel_;
   int output_channel = conv_param_->output_channel_;
   MS_CHECK_TRUE(input_channel > 0, "invalid input_channel");
@@ -74,6 +85,46 @@ int Conv2D3x3Int8Coder::InitWeightBias() {
     MS_CHECK_TRUE_RET(input_tensors_.size() == kInputSize1, RET_ERROR);
   }
   return RET_OK;
+}
+
+int Conv2D3x3Int8Coder::HandleRiscvLowMemCase() {
+  CHECK_LESS_RETURN(input_tensors_.size(), THREE_TENSOR);
+  Tensor *filter = input_tensors_.at(1);
+  Tensor *bias = input_tensors_.at(2);
+  filter_addr_ =
+    reinterpret_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, filter->ElementsNum(), kOfflinePackWeight));
+  MS_CHECK_TRUE_RET(filter_addr_ != nullptr, RET_ERROR);
+  int input_channel = conv_param_->input_channel_;
+  int output_channel = conv_param_->output_channel_;
+  int8_t *filter_mutable_data = (int8_t *)filter->MutableData();
+  /* Copy filter [o, h, w, i] to [o, i, h, w] format, */
+  /*     to enhance cache hit consistency (first hit addr is 0 in cache line) and hit rate */
+  for (int out = 0; out < output_channel; out++) {
+    for (int hw = 0; hw < kNumber3 * kNumber3; hw++) {
+      for (int in = 0; in < input_channel; in++) {
+        filter_addr_[out * kNumber3 * kNumber3 * input_channel + in * kNumber3 * kNumber3 + hw] =
+          filter_mutable_data[out * kNumber3 * kNumber3 * input_channel + hw * input_channel + in];
+      }
+    }
+  }
+  bias_addr_ = reinterpret_cast<int32_t *>(
+    allocator_->Malloc(kNumberTypeInt32, bias->ElementsNum() * sizeof(int32_t), kOfflinePackWeight));
+  MS_CHECK_PTR(bias_addr_);
+  auto ret_mcpy = memcpy_s(bias_addr_, bias->ElementsNum() * sizeof(int32_t), bias->MutableData(),
+                           bias->ElementsNum() * sizeof(int32_t));
+  if (ret_mcpy != EOK) {
+    MS_LOG(ERROR) << "memcpy error: " << ret_mcpy;
+    return RET_ERROR;
+  }
+  return RET_OK;
+}
+
+int Conv2D3x3Int8Coder::InitWeightBias() {
+  Configurator *config_ = Configurator::GetInstance();
+  if ((config_->target() != kRiscV) || ((config_->target() == kRiscV) && !is_conv2d_low_memory_condition_)) {
+    return HandleNormalCase();
+  }
+  return HandleRiscvLowMemCase();
 }
 
 int Conv2D3x3Int8Coder::InitTmpBuffer(CoderContext *const context) {
@@ -111,17 +162,50 @@ int Conv2D3x3Int8Coder::InitTmpBuffer(CoderContext *const context) {
 
 void Conv2D3x3Int8Coder::ConfigInputOutput() { output_tensor_->set_format(mindspore::NHWC); }
 
+bool Ic1Oc16InputH25W24Judgement(const ConvParameter *conv_param) {
+  return (conv_param->input_channel_ == kNumber1 && conv_param->output_channel_ == kNumber16 &&
+          conv_param->input_h_ == kNumber25 && conv_param->input_w_ == kNumber24);
+}
+
+bool Ic16Oc32InputH12W12Judgement(const ConvParameter *conv_param) {
+  return (conv_param->input_channel_ == kNumber16 && conv_param->output_channel_ == kNumber32 &&
+          conv_param->input_h_ == kNumber12 && conv_param->input_w_ == kNumber12);
+}
+
+bool Ic32Oc64InputH6W6Judgement(const ConvParameter *conv_param) {
+  return (conv_param->input_channel_ == kNumber32 && conv_param->output_channel_ == kNumber64 &&
+          conv_param->input_h_ == kNumber6 && conv_param->input_w_ == kNumber6);
+}
+
+bool Conv2DConditionalJudgment(const ConvParameter *conv_param) {
+  if (conv_param->pad_u_ == kNumber1 && conv_param->pad_d_ == kNumber1 && conv_param->pad_l_ == kNumber1 &&
+      conv_param->pad_r_ == kNumber1 && conv_param->stride_h_ == kNumber1 && conv_param->stride_w_ == kNumber1 &&
+      conv_param->dilation_h_ == kNumber1 && conv_param->dilation_w_ == kNumber1) {
+    return (Ic1Oc16InputH25W24Judgement(conv_param) || Ic16Oc32InputH12W12Judgement(conv_param) ||
+            Ic32Oc64InputH6W6Judgement(conv_param));
+  }
+  return false;
+}
+
 int Conv2D3x3Int8Coder::Prepare(CoderContext *const context) {
+  Configurator *config_ = Configurator::GetInstance();
   MS_CHECK_RET_CODE(Conv2DBaseCoder::Init(), "ConvolutionBase init failed.");
-  conv_param_->thread_num_ = thread_num_;
-  // to 1, task id is set to 0
-  conv_param_->op_parameter_.thread_num_ = thread_num_;
-  MS_CHECK_RET_CODE(SetQuantParam(), "Set quant param failed.");
-  MS_CHECK_RET_CODE(InitWeightBias(), "Init weight bias failed.");
-  // init tmp input, output
-  MS_CHECK_RET_CODE(InitTmpBuffer(context), "Init tmp buffer failed.");
-  // config input output
-  ConfigInputOutput();
+  // set flag to judge if the convolution parameters of conv2d satisfy specific specifications
+  is_conv2d_low_memory_condition_ = Conv2DConditionalJudgment(conv_param_);
+  if ((config_->target() != kRiscV) || ((config_->target() == kRiscV) && !is_conv2d_low_memory_condition_)) {
+    conv_param_->thread_num_ = thread_num_;
+    // to 1, task id is set to 0
+    conv_param_->op_parameter_.thread_num_ = thread_num_;
+    MS_CHECK_RET_CODE(SetQuantParam(), "Set quant param failed.");
+    MS_CHECK_RET_CODE(InitWeightBias(), "Init weight bias failed.");
+    // init tmp input, output
+    MS_CHECK_RET_CODE(InitTmpBuffer(context), "Init tmp buffer failed.");
+    // config input output
+    ConfigInputOutput();
+  } else {
+    MS_CHECK_RET_CODE(SetQuantParam(), "Set quant param failed.");
+    MS_CHECK_RET_CODE(InitWeightBias(), "InitWeightBias failed");
+  }
   return RET_OK;
 }
 
@@ -159,31 +243,63 @@ int Conv2D3x3Int8Coder::DoCode(CoderContext *const context) {
               "PreSum4x16Int8Pert.S",
               "MatmulInt8Opt.S",
             });
+  } else if (target_ == kRiscV) {
+    Collect(context,
+            {
+              "nnacl_c/int8/conv_int8.h",
+              "nnacl_c/int8/conv3x3_int8.h",
+            },
+            {
+              "pack_int8.c",
+              "conv_int8.c",
+              "conv3x3_int8.c",
+              "conv3x3_int8_low_memory.c",
+              "fixed_point.c",
+            });
   }
   nnacl::NNaclInt8Serializer code;
   code.precision(kPrecision);
-  // call the op function
-  code.CodeFunction("memset", tile_buffer_, 0, tile_buffer_size_);
-  code.CodeFunction("memset", block_unit_buffer_, 0, block_unit_buffer_size_);
-  code.CodeFunction("memset", tmp_dst_buffer_, 0, tmp_dst_buffer_size_);
-  code.CodeFunction("memset", tmp_out_, 0, tmp_out_size_);
-  code.CodeFunction("memset", c8_input_, 0, c8_input_size_);
+  Configurator *config_ = Configurator::GetInstance();
+  MS_CHECK_TRUE_MSG(!output_tensors_.empty(), RET_ERROR, "output tensor is empty.");
+  MS_CHECK_TRUE_MSG(input_tensors_.at(0) != nullptr, RET_ERROR, "input is nullptr.");
+  MS_CHECK_TRUE_MSG(output_tensors_.at(0) != nullptr, RET_ERROR, "output is nullptr.");
+  std::vector<int> input_tensor_shape = (*input_tensors_.at(0)).shape();
+  std::vector<int> output_tensor_shape = (*output_tensors_.at(0)).shape();
+  if ((config_->target() != kRiscV) || ((config_->target() == kRiscV) && !is_conv2d_low_memory_condition_)) {
+    // call the op function
+    code.CodeFunction("memset", tile_buffer_, 0, tile_buffer_size_);
+    code.CodeFunction("memset", block_unit_buffer_, 0, block_unit_buffer_size_);
+    code.CodeFunction("memset", tmp_dst_buffer_, 0, tmp_dst_buffer_size_);
+    code.CodeFunction("memset", tmp_out_, 0, tmp_out_size_);
+    code.CodeFunction("memset", c8_input_, 0, c8_input_size_);
 
-  // define conv params
-  code.CodeStruct("conv_param_", *conv_param_);
-  // pack to c8
-  code.CodeFunction("PackInputToC8Int8", input_tensor_, c8_input_, "&conv_param_");
-  // code operator func
-  if (thread_num_ > 1) {
-    code.CodeBaseStruct("Conv3x3Int8Args", kRunArgs, c8_input_, transformed_filter_addr_, new_bias_addr_,
-                        output_tensor_, tile_buffer_, block_unit_buffer_, tmp_dst_buffer_, tmp_out_, "&conv_param_");
-    code.CodeFunction(kParallelLaunch, "Conv3x3Int8Run", kRunArgsAddr, gThreadNum);
+    // define conv params
+    code.CodeStruct("conv_param_", *conv_param_);
+    // pack to c8
+    code.CodeFunction("PackInputToC8Int8", input_tensor_, c8_input_, "&conv_param_");
+    // code operator func
+    if (thread_num_ > 1) {
+      code.CodeBaseStruct("Conv3x3Int8Args", kRunArgs, c8_input_, transformed_filter_addr_, new_bias_addr_,
+                          output_tensor_, tile_buffer_, block_unit_buffer_, tmp_dst_buffer_, tmp_out_, "&conv_param_");
+      code.CodeFunction(kParallelLaunch, "Conv3x3Int8Run", kRunArgsAddr, gThreadNum);
+    } else {
+      code.CodeFunction("Conv3x3Int8", c8_input_, transformed_filter_addr_, new_bias_addr_, output_tensor_,
+                        tile_buffer_, block_unit_buffer_, tmp_dst_buffer_, tmp_out_, kDefaultTaskId, "&conv_param_");
+    }
+    code.CodeFunction("PackNC4HW4ToNHWCInt8", tmp_out_, output_tensor_, conv_param_->output_batch_,
+                      conv_param_->output_h_ * conv_param_->output_w_, conv_param_->output_channel_);
   } else {
-    code.CodeFunction("Conv3x3Int8", c8_input_, transformed_filter_addr_, new_bias_addr_, output_tensor_, tile_buffer_,
-                      block_unit_buffer_, tmp_dst_buffer_, tmp_out_, kDefaultTaskId, "&conv_param_");
+    const uint32_t quant_num = conv_param_->conv_quant_arg_.filter_arg_num_;
+    const ConvQuantArg &conv_quant_args = conv_param_->conv_quant_arg_;
+    const int8_t input_zp = conv_quant_args.input_quant_args_[0].zp_;
+    const int8_t output_zp = conv_quant_args.output_quant_args_[0].zp_;
+    const std::string scale_ratio_name = "unified_scale_int32";
+    code.CodeStruct(scale_ratio_name, conv_quant_args);
+    code.CodeArray<int>("input_shape", input_tensor_shape.data(), input_tensor_shape.size(), true);
+    code.CodeArray<int>("output_shape", output_tensor_shape.data(), output_tensor_shape.size(), true);
+    code.CodeFunction("Conv3x3Int8OptimzedForOutC", input_tensor_, output_tensor_, filter_addr_, bias_addr_, input_zp,
+                      scale_ratio_name, output_zp, quant_num, "input_shape", "output_shape");
   }
-  code.CodeFunction("PackNC4HW4ToNHWCInt8", tmp_out_, output_tensor_, conv_param_->output_batch_,
-                    conv_param_->output_h_ * conv_param_->output_w_, conv_param_->output_channel_);
   context->AppendCode(code.str());
   return RET_OK;
 }

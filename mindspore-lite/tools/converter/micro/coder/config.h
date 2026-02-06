@@ -22,7 +22,15 @@
 #include <vector>
 
 namespace mindspore::lite::micro {
-enum Target { kX86 = 0, kCortex_M = 1, kARM32 = 2, kARM64 = 3, kAllTargets = 4, kTargetUnknown = 99 };
+enum class Target {
+  kX86 = 0,
+  kARM64 = 1,
+  kARM32 = 2,
+  kCortex_M = 3,
+  kRiscV = 4,
+  kAllTargets = 90,
+  kTargetUnknown = 99
+};
 enum CodeMode { Inference = 0, Train = 1, Code_Unknown = 99 };
 
 struct MicroParam {
@@ -108,7 +116,7 @@ class Configurator {
   Configurator() = default;
   ~Configurator() = default;
   std::string code_path_;
-  Target target_{kTargetUnknown};
+  Target target_{Target::kTargetUnknown};
   CodeMode code_mode_{Code_Unknown};
   bool support_parallel_{false};
   bool debug_mode_{false};
@@ -123,4 +131,12 @@ class Configurator {
   std::vector<std::vector<std::string>> user_graph_inputs_template_;
 };
 }  // namespace mindspore::lite::micro
+using mindspore::lite::micro::Target;
+constexpr mindspore::lite::micro::Target kX86 = mindspore::lite::micro::Target::kX86;
+constexpr mindspore::lite::micro::Target kARM64 = mindspore::lite::micro::Target::kARM64;
+constexpr mindspore::lite::micro::Target kARM32 = mindspore::lite::micro::Target::kARM32;
+constexpr mindspore::lite::micro::Target kCortex_M = mindspore::lite::micro::Target::kCortex_M;
+constexpr mindspore::lite::micro::Target kRiscV = mindspore::lite::micro::Target::kRiscV;
+constexpr mindspore::lite::micro::Target kAllTargets = mindspore::lite::micro::Target::kAllTargets;
+constexpr mindspore::lite::micro::Target kTargetUnknown = mindspore::lite::micro::Target::kTargetUnknown;
 #endif  // MICRO_CODER_CONFIG_H

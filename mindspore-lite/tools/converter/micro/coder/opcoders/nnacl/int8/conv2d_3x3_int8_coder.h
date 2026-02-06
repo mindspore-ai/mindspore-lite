@@ -39,10 +39,13 @@ class Conv2D3x3Int8Coder final : public Conv2DBaseCoder {
   }
 
  private:
+  int HandleRiscvLowMemCase();
+  int HandleNormalCase();
   int InitWeightBias();
 
   void ConfigInputOutput();
-
+  int8_t *filter_addr_{nullptr};
+  int32_t *bias_addr_{nullptr};
   int InitTmpBuffer(CoderContext *ctx);
 
   int16_t *transformed_filter_addr_{nullptr};
@@ -59,6 +62,7 @@ class Conv2D3x3Int8Coder final : public Conv2DBaseCoder {
   size_t tmp_dst_buffer_size_{0};
   size_t tmp_out_size_{0};
   size_t c8_input_size_{0};
+  bool is_conv2d_low_memory_condition_{false};
 };
 }  // namespace mindspore::lite::micro::nnacl
 #endif  // MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_OPCODERS_NNACL_INT8_CONV2D_3X3_INT8_CODER_H_
