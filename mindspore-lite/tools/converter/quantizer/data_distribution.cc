@@ -157,6 +157,7 @@ int DataDistribution::ComputeThreshold() {
 
   int threshold = INT8_MAX + 1;
   float min_kl = FLT_MAX;
+  CHECK_LESS_RETURN(this->histogram_.size(), static_cast<size_t>(this->bin_num_));
   float after_threshold_sum = std::accumulate(this->histogram_.begin() + INT8_MAX + 1, this->histogram_.end(), 0.0f);
 
   for (int i = INT8_MAX + 1; i < this->bin_num_; ++i) {
@@ -233,5 +234,26 @@ int32_t DataDistribution::GetZeroPoint() {
     zero_point_ = static_cast<int32_t>(std::round(quant_min_ - encode_min_ / scale_));
   }
   return zero_point_;
+}
+
+int DataDistribution::MergeOldDataForQuant(float old_encode_min, float old_encode_max) {
+  if (old_encode_min > old_encode_max) {
+    MS_LOG(ERROR) << "Invalid old data: encode_min(" << old_encode_min << ") > encode_max(" << old_encode_max << ")";
+    return RET_ERROR;
+  }
+  switch (this->activation_quant_method_) {
+    case MAX_MIN:
+      real_min_ = std::min(real_min_, old_encode_min);
+      real_max_ = std::max(real_max_, old_encode_max);
+      break;
+    case KL:
+    case REMOVAL_OUTLIER:
+      // Skip KL/REMOVAL_OUTLIER merge - insufficient info
+      break;
+    default:
+      MS_LOG(ERROR) << "Unsupported activation quant method " << this->activation_quant_method_;
+      return RET_ERROR;
+  }
+  return RET_OK;
 }
 }  // namespace mindspore::lite::quant

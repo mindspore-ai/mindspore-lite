@@ -42,6 +42,7 @@
 #include "tools/converter/quantizer/bias_correction_strategy.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
+#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_e.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_f.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
@@ -51,6 +52,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_u.h"
+#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_g.h"
 
 using std::string;
 using std::vector;
@@ -197,6 +199,22 @@ int FullQuantQuantizer::DoValueNodeQuant(const CNodePtr &cnode, const ValueNodeP
   return RET_OK;
 }
 
+std::vector<schema::QuantParamT> GetQuantParamAttr(const PrimitivePtr &primitive) {
+  std::vector<schema::QuantParamT> quant_params;
+  auto graph_input_quant_param_val = primitive->GetAttr(quant::kGraphInputQuantParam);
+  if (graph_input_quant_param_val == nullptr) {
+    MS_LOG(ERROR) << "Get graph input quant param failed";
+    return quant_params;
+  }
+  auto graph_input_quant_param = std::dynamic_pointer_cast<mindspore::QuantizationParam>(graph_input_quant_param_val);
+  if (graph_input_quant_param == nullptr) {
+    MS_LOG(ERROR) << "Convert to QuantizationParam failed";
+    return quant_params;
+  }
+  quant_params = quant::ConvertQuantizationParamToQuantParamT(graph_input_quant_param);
+  return quant_params;
+}
+
 int FullQuantQuantizer::QuantNodeGraphInput(const PrimitivePtr &primitive, const AnfNodePtr &input_node,
                                             const std::unique_ptr<DataDistribution> &info) {
   TypeId type_id = kTypeUnknown;
@@ -215,6 +233,23 @@ int FullQuantQuantizer::QuantNodeGraphInput(const PrimitivePtr &primitive, const
     quant_param.inited = true;
     quant_param.roundType = 1;
     quant_param.multiplier = 1;
+    if (primitive->HasAttr(quant::kGraphInputQuantParam)) {
+      auto quant_params = GetQuantParamAttr(primitive);
+      if (quant_params.empty()) {
+        return RET_ERROR;
+      }
+      auto old_quant_param = quant_params.front();
+      auto new_info = std::make_unique<DataDistribution>(*info);
+      auto ret = new_info->MergeOldDataForQuant(old_quant_param.min, old_quant_param.max);
+      if (ret != RET_OK) {
+        MS_LOG(ERROR) << "Failed to merge old data.";
+        return RET_ERROR;
+      }
+      quant_param.scale = new_info->GetScale();
+      quant_param.zeroPoint = new_info->GetZeroPoint();
+      quant_param.max = new_info->GetEncodeMax();
+      quant_param.min = new_info->GetEncodeMin();
+    }
     auto quantization_param = quant::ConvertQuantParamTToQuantizationParam({quant_param});
     primitive->AddAttr(quant::kGraphInputQuantParam, quantization_param);
   }
@@ -358,7 +393,12 @@ int FullQuantQuantizer::QuantNode(const FuncGraphPtr &func_graph) {
         MS_LOG(WARNING) << "index value node is null";
         continue;
       }
-      size_t index = static_cast<size_t>(opt::CastToInt(index_value_node->value()).front());
+      auto index_int_value = opt::CastToInt(index_value_node->value());
+      if (index_int_value.empty()) {
+        MS_LOG(WARNING) << "index_value_node->value() is null";
+        continue;
+      }
+      size_t index = static_cast<size_t>(index_int_value.front());
       auto input_node_quant_params = quant::GetInputNodeQuantParam(cnode, FIRST_INPUT + kPrimOffset, index);
       std::vector<ValuePtr> quantization_list;
       auto quantization_ptr = quant::ConvertQuantParamTToQuantizationParam(input_node_quant_params);
@@ -378,7 +418,18 @@ int FullQuantQuantizer::QuantNode(const FuncGraphPtr &func_graph) {
       }
     }
     // do output quant, there may multi-output
+    if (outputs_diverg_info == nullptr) {
+      MS_LOG(ERROR) << "outputs_diverg_info is nullptr";
+      return RET_ERROR;
+    }
+    if (outputs_diverg_info->find(op_name) == outputs_diverg_info->end()) {
+      continue;
+    }
     auto &infos = (*outputs_diverg_info)[op_name];
+    if (infos.empty()) {
+      MS_LOG(ERROR) << "infos is empty.";
+      return RET_ERROR;
+    }
     std::vector<ValuePtr> quantization_list;
     for (size_t index = 0; index < infos.size(); index++) {
       auto &info = infos.at(index);
@@ -616,9 +667,9 @@ int FullQuantQuantizer::DoInference(CollectType collect_type) {
       int status = calibrator_->GenerateInputData(tensor.Name(), calib_index, &tensor);
       MS_CHECK_TRUE_MSG(status == RET_OK, RET_ERROR, "generate input data from images failed!");
     }
-    MSKernelCallBack beforeCallBack = [&](const std::vector<mindspore::MSTensor> &beforeInputs,
-                                          const std::vector<mindspore::MSTensor> &beforeOutputs,
-                                          const MSCallBackParam &callParam) -> bool {
+    MSKernelCallBack beforeCallBack = [this, &collect_type](const std::vector<mindspore::MSTensor> &beforeInputs,
+                                                            const std::vector<mindspore::MSTensor> &beforeOutputs,
+                                                            const MSCallBackParam &callParam) -> bool {
       auto diverg_info_map = calibrator_->GetInputDivergInfo();
       // restore node name
       auto node_names = SplitStringToVector(callParam.node_name, "_fusion");
@@ -635,9 +686,9 @@ int FullQuantQuantizer::DoInference(CollectType collect_type) {
       return true;
     };
     // func
-    MSKernelCallBack afterCallBack = [&](const std::vector<mindspore::MSTensor> &afterInputs,
-                                         const std::vector<mindspore::MSTensor> &afterOutputs,
-                                         const MSCallBackParam &callParam) -> bool {
+    MSKernelCallBack afterCallBack = [this, &collect_type](const std::vector<mindspore::MSTensor> &afterInputs,
+                                                           const std::vector<mindspore::MSTensor> &afterOutputs,
+                                                           const MSCallBackParam &callParam) -> bool {
       auto diverg_info_map = calibrator_->GetOutputDivergInfo();
       auto node_names = SplitStringToVector(callParam.node_name, "_fusion");
       if (node_names.empty()) {

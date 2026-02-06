@@ -23,6 +23,7 @@
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
 
 using mindspore::schema::PrimitiveType_BatchNorm;
+using mindspore::schema::PrimitiveType_FusedBatchNorm;
 
 namespace mindspore::lite::micro::nnacl {
 int BatchnormFP32Coder::Init() {
@@ -51,27 +52,44 @@ int BatchnormFP32Coder::DoCode(CoderContext *const context) {
     MS_LOG(ERROR) << "BatchnormFP32Coder Init error";
     return RET_ERROR;
   }
-  MS_CHECK_TRUE(input_tensors_.size() == DIMENSION_3D, "inputs size is not equal to three");
-  Tensor *mean_tensor = input_tensors_.at(1);
-  Tensor *var_tensor = input_tensors_.at(kInputSize1);
-  MS_CHECK_PTR(mean_tensor);
-  MS_CHECK_PTR(var_tensor);
   Collect(context,
           {
-            "nnacl_c/fp32/batchnorm.h",
+            "nnacl_c/fp32/batchnorm_fp32.h",
             "nnacl_c/kernel/batch_norm.h",
           },
           {
-            "nnacl_c/fp32/batchnorm.c",
+            "batchnorm_fp32.c",
+            "tensor_c_utils.c",
           });
   NNaclFp32Serializer code;
-  code.CodeStruct("bn_struct", batchnorm_struct_);
-  code.CodeFunction("BatchNormFp32", input_tensor_, mean_tensor, var_tensor, "&bn_struct", kDefaultTaskId,
-                    kDefaultThreadNum, output_tensor_);
+  if (parameter_->type_ == PrimType_FusedBatchNorm) {
+    MS_CHECK_TRUE(input_tensors_.size() == DIMENSION_5D, "inputs size is not equal to five");
+    Tensor *scale_tensor = input_tensors_.at(SECOND_INPUT);
+    Tensor *offset_tensor = input_tensors_.at(THIRD_INPUT);
+    Tensor *mean_tensor = input_tensors_.at(FOURTH_INPUT);
+    Tensor *var_tensor = input_tensors_.at(FIFTH_INPUT);
+    MS_CHECK_PTR(scale_tensor);
+    MS_CHECK_PTR(offset_tensor);
+    MS_CHECK_PTR(mean_tensor);
+    MS_CHECK_PTR(var_tensor);
+    code.CodeStruct("bn_struct", batchnorm_struct_);
+    code.CodeFunction("FusedBatchNormFp32", input_tensor_, scale_tensor, offset_tensor, mean_tensor, var_tensor,
+                      "&bn_struct", kDefaultTaskId, kDefaultThreadNum, output_tensor_);
+  } else {
+    MS_CHECK_TRUE(input_tensors_.size() == DIMENSION_3D, "inputs size is not equal to three");
+    Tensor *mean_tensor = input_tensors_.at(1);
+    Tensor *var_tensor = input_tensors_.at(kInputSize1);
+    MS_CHECK_PTR(mean_tensor);
+    MS_CHECK_PTR(var_tensor);
+    code.CodeStruct("bn_struct", batchnorm_struct_);
+    code.CodeFunction("BatchNormFp32", input_tensor_, mean_tensor, var_tensor, "&bn_struct", kDefaultTaskId,
+                      kDefaultThreadNum, output_tensor_);
+  }
   MS_LOG(INFO) << "BatchnormFP32Code has been called";
   context->AppendCode(code.str());
   return lite::RET_OK;
 }
 
+REG_OPERATOR_CODER(kAllTargets, kNumberTypeFloat32, PrimitiveType_FusedBatchNorm, CPUOpCoderCreator<BatchnormFP32Coder>)
 REG_OPERATOR_CODER(kAllTargets, kNumberTypeFloat32, PrimitiveType_BatchNorm, CPUOpCoderCreator<BatchnormFP32Coder>)
 }  // namespace mindspore::lite::micro::nnacl

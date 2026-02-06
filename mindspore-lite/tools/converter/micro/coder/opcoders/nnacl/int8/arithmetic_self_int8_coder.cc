@@ -115,9 +115,11 @@ int ArithmeticSelfInt8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
             "nnacl_c/int8/arithmetic_self_int8.h",
+            "nnacl_c/int8/fixed_point.h",
           },
           {
             "arithmetic_self_int8.c",
+            "fixed_point.c",
           });
   NNaclInt8Serializer code;
   code.CodeStruct("param", param_.quant_arg_);
