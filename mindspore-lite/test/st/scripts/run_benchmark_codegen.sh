@@ -574,7 +574,7 @@ function Run_arm_codegen() {
       rm -rf "$benchmark_dir"
       mkdir "$benchmark_dir" && cd "$benchmark_dir" || exit 1
       cp -a "$1/benchmark/benchmark" "$benchmark_dir/benchmark" || exit 1
-      cp -a "$1/$model_name/src/model0/net0.bin" "$benchmark_dir/net.bin" || exit 1
+      cp -a "$1/$model_name/src/model0/net0.bin" "$benchmark_dir/net0.bin" || exit 1
 
       {
             echo "ls $benchmark_dir:"
@@ -589,7 +589,9 @@ function Run_arm_codegen() {
           echo 'chmod 777 net0.bin'
           echo 'ls'
           echo './benchmark /data/local/tmp/input_output/input/'${model_name}'.ms.bin ./net0.bin 1 /data/local/tmp/input_output/output/'${model_name}'.ms.out'
+          echo 'benchmark_ret=$?'
           echo "cd .. && rm -rf codegen_test_$7"
+          echo 'exit $benchmark_ret'
       } >> $4
 
         {
@@ -598,7 +600,9 @@ function Run_arm_codegen() {
             echo 'chmod 777 net0.bin'
             echo 'ls'
             echo './benchmark /data/local/tmp/input_output/input/'${model_name}'.ms.bin ./net0.bin 1 /data/local/tmp/input_output/output/'${model_name}'.ms.out'
+            echo 'benchmark_ret=$?'
             echo "cd .. && rm -rf codegen_test_$7"
+            echo 'exit $benchmark_ret'
         } > adb_run_cmd.txt
         elapsed_time=$(date +%s.%N)
         adb -s $6 shell < adb_run_cmd.txt >> $4

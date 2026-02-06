@@ -220,6 +220,12 @@ void NNaclInt8Serializer::CodeStruct(const std::string &name, const MatmulQuantP
                  "filter_zp", "left_shift", "right_shift", "multiplier");
 }
 
+void NNaclInt8Serializer::CodeStruct(const std::string &name, const MulQuantArg &mul_quant_arg) {
+  CodeBaseStruct("MulQuantArg", name, mul_quant_arg.in0_quant_args_, mul_quant_arg.in1_quant_args_,
+                 mul_quant_arg.out_quant_arg_, mul_quant_arg.output_multiplier_, mul_quant_arg.output_activation_min_,
+                 mul_quant_arg.output_activation_max_, mul_quant_arg.shift_left_, mul_quant_arg.shift_right_);
+}
+
 void NNaclInt8Serializer::CodeStruct(const std::string &name, const SubQuantArg &sub_quant_arg) {
   CodeBaseStruct("SubQuantArg", name, sub_quant_arg.in0_args_, sub_quant_arg.in1_args_, sub_quant_arg.out_args_,
                  sub_quant_arg.output_activation_min_, sub_quant_arg.output_activation_max_,

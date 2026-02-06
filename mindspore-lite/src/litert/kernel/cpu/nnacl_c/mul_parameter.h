@@ -20,7 +20,8 @@
 #include "nnacl_c/op_base.h"
 
 typedef struct MulQuantArg {
-  QuantArg in_quant_args_[2];
+  QuantArg in0_quant_args_;
+  QuantArg in1_quant_args_;
   QuantArg out_quant_arg_;
   int output_multiplier_;
   int output_activation_min_;
