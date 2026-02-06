@@ -158,10 +158,12 @@ void NNaclFp32Serializer::CodeStruct(const std::string &name, const SplitParamet
 }
 
 void NNaclFp32Serializer::CodeStruct(const std::string &name, const TileStruct &tile_struct) {
-  CodeBaseStruct<false>(
-    "TileStruct", name, "{}", tile_struct.one_dim_tile_, tile_struct.resize_done_, ToString(tile_struct.dims_),
-    tile_struct.dims_size_, "NULL", "NULL", ToString(tile_struct.multiples_), ToString(tile_struct.in_shape_),
-    ToString(tile_struct.out_shape_), ToString(tile_struct.in_strides_), ToString(tile_struct.out_strides_));
+  CodeBaseStruct<false>("TileStruct", name, "{}", tile_struct.one_dim_tile_, tile_struct.resize_done_,
+                        ToString(tile_struct.dims_), tile_struct.dims_size_, tile_struct.input_addr_,
+                        tile_struct.output_addr_, ToString(tile_struct.multiples_), ToString(tile_struct.in_shape_),
+                        ToString(tile_struct.out_shape_), ToString(tile_struct.in_strides_),
+                        ToString(tile_struct.out_strides_), tile_struct.in_dim_, tile_struct.data_size_,
+                        tile_struct.fast_outer_size_, tile_struct.fast_stride_, tile_struct.fast_multiple_);
 }
 
 void NNaclFp32Serializer::CodeStruct(const std::string &name, const TransposeParameter &transpose_parameter) {
