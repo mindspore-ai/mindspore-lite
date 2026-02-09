@@ -1,5 +1,5 @@
 // /**
-//  * Copyright 2023 Huawei Technologies Co., Ltd
+//  * Copyright 2023-2026 Huawei Technologies Co., Ltd
 //  *
 //  * Licensed under the Apache License, Version 2.0 (the "License");
 //  * you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@
 #include "include/utils/utils.h"
 #include "include/errorcode.h"
 #include "infer/decoder_layer.h"
-#include "infer/cxx_api/layer_norm_fusion.h"
-#include "infer/cxx_api/activation.h"
+#include "src/common/ops/primitive/layer_norm_fusion.h"
+#include "src/common/ops/primitive/activation.h"
 #include "tools/optimizer/fusion/multi_head_attention_fusion.h"
 
 namespace mindspore {

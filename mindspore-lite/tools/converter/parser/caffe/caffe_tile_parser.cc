@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 #include "tools/converter/parser/caffe/caffe_tile_parser.h"
 #include <memory>
 #include <vector>
-#include "infer/cxx_api/tile_fusion.h"
+#include "src/common/ops/primitive/tile_fusion.h"
 #include "nnacl_c/op_base.h"
 
 namespace mindspore {

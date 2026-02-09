@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@
 #include <memory>
 #include <vector>
 #include "mindspore/ops/op_def/lite_ops.h"
-#include "infer/cxx_api/conv2d_fusion.h"
-#include "infer/cxx_api/conv2d_transpose_fusion.h"
+#include "src/common/ops/primitive/conv2d_fusion.h"
+#include "src/common/ops/primitive/conv2d_transpose_fusion.h"
 #include "tools/common/tensor_util.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/converter/quantizer/quant_param_holder.h"

@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2021 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 #include "tools/optimizer/fusion/sigmoid_mul_fusion.h"
 #include <memory>
 #include "mindspore/ops/op_def/lite_ops.h"
-#include "infer/cxx_api/activation.h"
+#include "src/common/ops/primitive/activation.h"
 #include "ops_utils/op_utils.h"
 #include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"

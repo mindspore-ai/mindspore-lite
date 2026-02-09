@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2023 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@
 #include "mindspore/ops/op_def/math_ops.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
-#include "infer/cxx_api/layer_norm_fusion.h"
-#include "infer/cxx_api/reduce_fusion.h"
+#include "src/common/ops/primitive/layer_norm_fusion.h"
+#include "src/common/ops/primitive/reduce_fusion.h"
 #include "mindspore/ops/infer/instance_norm.h"
 #include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"

@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2024-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@
 #include <iostream>
 #include "include/registry/pass_registry.h"
 #include "infer/custom.h"
-#include "infer/cxx_api/add_fusion.h"
+#include "src/common/ops/primitive/add_fusion.h"
 #include "include/op_def/auto_generate/gen_lite_ops.h"
 #include "include/mindapi/ir/anf.h"
 #include "mindspore/ops/op_def/op_enum.h"

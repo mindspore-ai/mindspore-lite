@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "nnacl_c/arg_min_max_parameter.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "infer/cxx_api/arg_max_fusion.h"
-#include "infer/cxx_api/arg_min_fusion.h"
+#include "src/common/ops/primitive/arg_max_fusion.h"
+#include "src/common/ops/primitive/arg_min_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 using mindspore::ops::kAxis;
 using mindspore::ops::kKeepDims;

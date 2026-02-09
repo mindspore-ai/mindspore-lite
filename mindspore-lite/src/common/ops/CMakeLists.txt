@@ -50,3 +50,10 @@ set_property(SOURCE ${OPS_SRC} PROPERTY COMPILE_DEFINITIONS
 add_library(cpu_ops_mid OBJECT ${OPS_SRC})
 add_dependencies(cpu_ops_mid fbs_src fbs_inner_src)
 
+if(MSLITE_ENABLE_CONVERTER)
+    set(LITE_FUSION_DIR ${CMAKE_CURRENT_SOURCE_DIR}/primitive)
+    file(GLOB LITE_FUSION_SRC CONFIGURE_DEPENDS
+        ${LITE_FUSION_DIR}/*.cc
+        )
+    add_library(mslite_primitive_mid OBJECT ${LITE_FUSION_SRC})
+endif()

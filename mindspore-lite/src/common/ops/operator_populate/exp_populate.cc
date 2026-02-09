@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 #include "src/common/ops/operator_populate/utils.h"
 #include "nnacl_c/fp32/exp_fp32.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "infer/cxx_api/exp_fusion.h"
+#include "src/common/ops/primitive/exp_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_e.h"
 using mindspore::ops::kBase;
 using mindspore::ops::kNameExp;

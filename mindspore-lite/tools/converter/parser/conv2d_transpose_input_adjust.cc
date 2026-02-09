@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 #include "tools/converter/parser/parser_utils.h"
 #include "nnacl_c/op_base.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "infer/cxx_api/conv2d_transpose_fusion.h"
+#include "src/common/ops/primitive/conv2d_transpose_fusion.h"
 #include "mindspore/ops/op_def/op_name.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/core/include/ir/graph_utils.h"

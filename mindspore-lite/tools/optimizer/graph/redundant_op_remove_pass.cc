@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2021 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@
 #include "tools/lite_exporter/fetch_content.h"
 #include "infer/make_tuple.h"
 #include "infer/depend.h"
-#include "infer/cxx_api/pad_fusion.h"
+#include "src/common/ops/primitive/pad_fusion.h"
 #include "ops_utils/op_utils.h"
 #include "nnacl_c/op_base.h"
 #include "include/utils/utils.h"

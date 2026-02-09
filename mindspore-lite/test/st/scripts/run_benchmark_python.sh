@@ -67,6 +67,7 @@ function Run_python_ST() {
       fi
       model_file=${model_path}'/'${model_name}${suffix}
       elapsed_time=$(date +%s.%N)
+      echo "${model_file} | ${input_files} | ${input_shapes} | ${target}"
       python test_inference_cloud.py ${model_file} ${input_files} ${input_shapes} ${target} >> ${run_python_log}
       Run_python_st_status=$?
       elapsed_time=$(printf %.2f "$(echo "$(date +%s.%N) - $elapsed_time" | bc)")

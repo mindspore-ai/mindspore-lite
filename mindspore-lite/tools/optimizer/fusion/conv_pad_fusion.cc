@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/common/tensor_util.h"
 #include "tools/lite_exporter/fetch_content.h"
-#include "infer/cxx_api/pad_fusion.h"
-#include "infer/cxx_api/conv2d_fusion.h"
+#include "src/common/ops/primitive/pad_fusion.h"
+#include "src/common/ops/primitive/conv2d_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops/primitive_c.h"

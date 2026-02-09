@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@
 #include "schema/inner/model_generated.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "include/lite_types.h"
-#include "infer/cxx_api/conv2d_fusion.h"
+#include "src/common/ops/primitive/conv2d_fusion.h"
 
 namespace mindspore {
 using mindspore::schema::PrimitiveType;

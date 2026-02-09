@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 #include "src/common/ops/operator_populate/operator_populate_register.h"
 #include "nnacl_c/fp32/activation_fp32.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "infer/cxx_api/activation.h"
+#include "src/common/ops/primitive/activation.h"
 #include "infer/leaky_relu.h"
 #include "infer/ops_func_impl/hswish.h"
 #include "infer/softplus.h"

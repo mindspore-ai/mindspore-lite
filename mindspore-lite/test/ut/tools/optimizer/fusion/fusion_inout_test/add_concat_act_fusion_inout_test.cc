@@ -1,5 +1,5 @@
 /**
- * Copyright 2021-2023 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,9 @@
 #include "include/backend/common/pass_manager/pass_manager.h"
 #include "tools/optimizer/fusion/add_concat_activation_fusion.h"
 #include "nnacl_c/op_base.h"
-#include "infer/cxx_api/activation.h"
+#include "src/common/ops/primitive/activation.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "infer/cxx_api/add_fusion.h"
+#include "src/common/ops/primitive/add_fusion.h"
 
 namespace mindspore {
 namespace {

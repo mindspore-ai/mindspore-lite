@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2024-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@
 #include "infer/return.h"
 #include "infer/make_tuple.h"
 #include "mindspore/ops/op_def/nn_optimizer_ops.h"
-#include "mindspore/ops/infer/cxx_api/arg_min_fusion.h"
+#include "src/common/ops/primitive/arg_min_fusion.h"
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 #include "tools/converter/anf_transform.h"

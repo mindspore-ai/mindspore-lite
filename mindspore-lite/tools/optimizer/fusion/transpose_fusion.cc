@@ -1,5 +1,5 @@
 /**
- * Copyright 2021-2022 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@
 #include "tools/converter/quantizer/quant_param_holder.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "tools/optimizer/common/format_utils.h"
-#include "infer/cxx_api/scale_fusion.h"
+#include "src/common/ops/primitive/scale_fusion.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"

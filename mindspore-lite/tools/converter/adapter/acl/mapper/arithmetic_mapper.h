@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,12 +18,12 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_ADAPTER_ACL_MAPPER_ARITHMETIC_MAPPER_H_
 
 #include "tools/converter/adapter/acl/mapper/primitive_mapper.h"
-#include "infer/cxx_api/add_fusion.h"
-#include "infer/cxx_api/div_fusion.h"
-#include "infer/cxx_api/mul_fusion.h"
-#include "infer/cxx_api/pow_fusion.h"
-#include "infer/cxx_api/sub_fusion.h"
-#include "infer/cxx_api/exp_fusion.h"
+#include "src/common/ops/primitive/add_fusion.h"
+#include "src/common/ops/primitive/div_fusion.h"
+#include "src/common/ops/primitive/mul_fusion.h"
+#include "src/common/ops/primitive/pow_fusion.h"
+#include "src/common/ops/primitive/sub_fusion.h"
+#include "src/common/ops/primitive/exp_fusion.h"
 
 namespace mindspore {
 namespace lite {

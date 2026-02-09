@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@
 #define USE_DEPRECATED_API
 #include "tools/optimizer/fusion/mul_activation_fusion.h"
 #include "mindspore/ops/op_def/lite_ops.h"
-#include "infer/cxx_api/activation.h"
-#include "infer/cxx_api/mul_fusion.h"
+#include "src/common/ops/primitive/activation.h"
+#include "src/common/ops/primitive/mul_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"

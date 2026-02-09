@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 #include <string>
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "infer/cxx_api/conv2d_fusion.h"
+#include "src/common/ops/primitive/conv2d_fusion.h"
 #include "include/errorcode.h"
 #include "ops_utils/op_utils.h"
 #include "infer/depend.h"

@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2021 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@
 #include "ir/func_graph.h"
 #include "src/common/utils.h"
 #include "include/backend/common/pass_manager/pattern_engine.h"
-#include "infer/cxx_api/conv2d_backprop_input_fusion.h"
+#include "src/common/ops/primitive/conv2d_backprop_input_fusion.h"
 #include "schema/inner/model_generated.h"
 #include "tools/converter/converter_context.h"
 #include "include/api/status.h"

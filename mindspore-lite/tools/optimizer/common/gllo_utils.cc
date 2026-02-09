@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2023 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "base/float16.h"
-#include "infer/cxx_api/conv2d_fusion.h"
+#include "src/common/ops/primitive/conv2d_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/ops_func_impl/gather.h"
 #include "infer/tuple_get_item.h"
@@ -48,7 +48,7 @@
 #include "include/utils/anfalgo.h"
 #include "tools/optimizer/common/format_utils.h"
 #include "mindspore/ccsrc/include/utils/utils.h"
-#include "infer/cxx_api/mul_fusion.h"
+#include "src/common/ops/primitive/mul_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_d.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_h.h"

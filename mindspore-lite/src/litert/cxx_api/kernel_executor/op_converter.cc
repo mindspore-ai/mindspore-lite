@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,21 @@
 
 #include "src/litert/cxx_api/kernel_executor/op_converter.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "infer/cxx_api/activation.h"
-#include "infer/cxx_api/add_fusion.h"
-#include "infer/cxx_api/arg_max_fusion.h"
-#include "infer/cxx_api/arg_min_fusion.h"
-#include "infer/cxx_api/avg_pool_fusion.h"
+#include "src/common/ops/primitive/activation.h"
+#include "src/common/ops/primitive/add_fusion.h"
+#include "src/common/ops/primitive/arg_max_fusion.h"
+#include "src/common/ops/primitive/arg_min_fusion.h"
+#include "src/common/ops/primitive/avg_pool_fusion.h"
 #include "infer/fused_batch_norm.h"
-#include "infer/cxx_api/conv2d_fusion.h"
-#include "infer/cxx_api/conv2d_transpose_fusion.h"
-#include "infer/cxx_api/div_fusion.h"
-#include "infer/cxx_api/mat_mul_fusion.h"
-#include "infer/cxx_api/max_pool_fusion.h"
-#include "infer/cxx_api/mul_fusion.h"
-#include "infer/cxx_api/pad_fusion.h"
-#include "infer/cxx_api/prelu_fusion.h"
-#include "infer/cxx_api/topk_fusion.h"
+#include "src/common/ops/primitive/conv2d_fusion.h"
+#include "src/common/ops/primitive/conv2d_transpose_fusion.h"
+#include "src/common/ops/primitive/div_fusion.h"
+#include "src/common/ops/primitive/mat_mul_fusion.h"
+#include "src/common/ops/primitive/max_pool_fusion.h"
+#include "src/common/ops/primitive/mul_fusion.h"
+#include "src/common/ops/primitive/pad_fusion.h"
+#include "src/common/ops/primitive/prelu_fusion.h"
+#include "src/common/ops/primitive/topk_fusion.h"
 
 namespace mindspore {
 namespace lite {

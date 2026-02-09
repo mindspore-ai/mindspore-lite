@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@
 #include "tools/converter/parser/pytorch/pytorch_unaryop_parser.h"
 #include <memory>
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "infer/cxx_api/tile_fusion.h"
-#include "infer/cxx_api/exp_fusion.h"
+#include "src/common/ops/primitive/tile_fusion.h"
+#include "src/common/ops/primitive/exp_fusion.h"
 #include "infer/ops_func_impl/tan.h"
 #include "infer/eltwise.h"
 #include "nnacl_c/op_base.h"

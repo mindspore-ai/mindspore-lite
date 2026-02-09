@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2021 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "infer/batch_to_space.h"
 #include "infer/batch_to_space_nd.h"
-#include "infer/cxx_api/arg_max_fusion.h"
-#include "infer/cxx_api/arg_min_fusion.h"
+#include "src/common/ops/primitive/arg_max_fusion.h"
+#include "src/common/ops/primitive/arg_min_fusion.h"
 #include "ops_utils/op_utils.h"
 #include "infer/resize.h"
 #include "infer/space_to_batch.h"

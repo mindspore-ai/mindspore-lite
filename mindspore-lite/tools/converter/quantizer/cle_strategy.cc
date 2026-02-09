@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@
 #include "include/errorcode.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/lite_exporter/fetch_content.h"
-#include "infer/cxx_api/conv2d_fusion.h"
+#include "src/common/ops/primitive/conv2d_fusion.h"
 #include "src/common/log_util.h"
 #include "tools/common/statistic_utils.h"
 #include "tools/converter/quantizer/quantize_util.h"

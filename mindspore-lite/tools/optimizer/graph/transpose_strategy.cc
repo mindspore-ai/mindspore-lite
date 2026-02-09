@@ -1,5 +1,5 @@
 /**
- * Copyright 2021-2022 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,8 +29,8 @@
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "infer/crop.h"
 #include "src/common/utils.h"
-#include "infer/cxx_api/activation.h"
-#include "infer/cxx_api/slice_fusion.h"
+#include "src/common/ops/primitive/activation.h"
+#include "src/common/ops/primitive/slice_fusion.h"
 #include "ops_utils/op_utils.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "nnacl_c/op_base.h"

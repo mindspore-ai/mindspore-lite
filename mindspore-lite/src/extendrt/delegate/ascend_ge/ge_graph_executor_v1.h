@@ -59,16 +59,14 @@ class GeGraphExecutorV1 : public LiteGraphExecutor {
   bool InitMsTensor(const FuncGraphPtr &graph, uint32_t graph_id);
   bool InitGeTensor(uint32_t graph_id);
   bool PrepareGeInputs(const std::vector<MSTensor> &inputs, std::vector<GeTensor> *ge_inputs, uint32_t graph_id);
-  bool PrepareGeOutputsForStatic(std::vector<MSTensor> *outputs, std::vector<GeTensor> *ge_outputs,
-                                 const uint32_t &graph_id);
-  bool RunStaticGraph(const uint32_t &graph_id, const std::vector<GeTensor> &ge_inputs, std::vector<MSTensor> *outputs);
-  bool RunDynamicGraph(const uint32_t &graph_id, const std::vector<GeTensor> &ge_inputs,
-                       std::vector<MSTensor> *outputs);
+  bool PrepareGeOutputsForStatic(std::vector<MSTensor> *outputs, std::vector<GeTensor> *ge_outputs, uint32_t graph_id);
+  bool RunStaticGraph(uint32_t graph_id, const std::vector<GeTensor> &ge_inputs, std::vector<MSTensor> *outputs);
+  bool RunDynamicGraph(uint32_t graph_id, const std::vector<GeTensor> &ge_inputs, std::vector<MSTensor> *outputs);
   bool MallocDeviceMem(std::pair<void *, size_t> &tensor_mem_info, void *&device_addr, size_t size);
   bool PostProcessOutputsForStatic(std::vector<MSTensor> *outputs, uint32_t graph_id);
-  bool PostProcessOutputsForDynamic(std::vector<MSTensor> *outputs, const uint32_t &graph_id,
+  bool PostProcessOutputsForDynamic(std::vector<MSTensor> *outputs, uint32_t graph_id,
                                     const std::vector<GeTensor> &outputs_ge_tensors);
-  bool IsDynamical(const std::vector<MSTensor> &outputs, const uint32_t &graph_id);
+  bool IsDynamical(const std::vector<MSTensor> &outputs, uint32_t graph_id);
   GeOptionsContainer ge_options_container_;
   GeGraphCompiler ge_graph_compiler_;
   const std::shared_ptr<mindspore::Context> context_;

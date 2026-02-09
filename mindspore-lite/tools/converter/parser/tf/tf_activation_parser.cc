@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 #include <map>
 #include <vector>
 #include "tools/converter/parser/tf/tf_node_parser_registry.h"
-#include "infer/cxx_api/activation.h"
+#include "src/common/ops/primitive/activation.h"
 #include "infer/leaky_relu.h"
 
 namespace mindspore {
