@@ -15,6 +15,7 @@
  */
 
 #include "tools/converter/quantizer/cle_strategy.h"
+#include <cmath>
 #include <memory>
 #include <map>
 #include <vector>
@@ -146,7 +147,7 @@ int CLEStrategy::CalcScaleWithTwoLayer(const CombinationLayer &layer_group, std:
     // scale = range1 / sqrt(range1 * range2)
     MS_ASSERT(range1.at(i) * range2.at(i) >= 0);
     auto sqrt_range = sqrt(range1.at(i) * range2.at(i));
-    if (sqrt_range <= 0 || isnan(sqrt_range) || isinf(sqrt_range)) {
+    if (sqrt_range <= 0 || std::isnan(sqrt_range) || std::isinf(sqrt_range)) {
       MS_LOG(WARNING) << "sqrt_range <= 0, and set scale factor to default." << kDefaultScale;
       scales->push_back(kDefaultScale);
       MS_LOG(INFO) << layer_group.layer1->fullname_with_scope() << " " << 1 << " "
@@ -197,7 +198,7 @@ int CLEStrategy::CalcScaleWithThreeLayer(const CombinationLayer &layer_group, st
   // scale2 = cubeRoot(range1 * range2 * range3)/range3
   for (size_t i = 0; i < range1.size(); i++) {
     auto cube_root = std::pow(range1.at(i) * range2.at(i) * range3.at(i), 1.0f / 3);
-    if (cube_root <= 0 || isnan(cube_root) || isinf(cube_root)) {
+    if (cube_root <= 0 || std::isnan(cube_root) || std::isinf(cube_root)) {
       MS_LOG(WARNING) << "cube_root <= 0, and set scale factor to default." << kDefaultScale;
       scales12->push_back(kDefaultScale);
       scales23->push_back(kDefaultScale);
