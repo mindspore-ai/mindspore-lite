@@ -28,8 +28,8 @@ namespace mindspore::kernel {
 int SplitBaseCPUKernel::Prepare() {
   CHECK_LESS_RETURN(in_tensors_.size(), 1);
   CHECK_LESS_RETURN(out_tensors_.size(), 1);
-  CHECK_NULL_RETURN(param);
-  output_ptr_.resize(param->num_split_);
+  CHECK_NULL_RETURN(param_);
+  output_ptr_.resize(param_->num_split_);
   for (size_t i = 0; i < output_ptr_.size(); i++) {
     output_ptr_.at(i) = nullptr;
   }
@@ -102,7 +102,7 @@ int SplitBaseCPUKernel::CheckAndInitSplitParam(const lite::Tensor &in_tensor, Sp
 int SplitBaseCPUKernel::ReSize() {
   auto in_tensor = in_tensors_.front();
   CHECK_NULL_RETURN(in_tensor);
-  auto status = CheckAndInitSplitParam(*in_tensor, param);
+  auto status = CheckAndInitSplitParam(*in_tensor, param_);
   if (RET_OK != status) {
     MS_LOG(ERROR) << "CheckAndInitSplitParam failed";
     return status;
@@ -110,8 +110,8 @@ int SplitBaseCPUKernel::ReSize() {
 
   // split_count means the previous dims num before split dim
   // e.g. input dims is [1, 3, 4, 8], split axis is 2, num_split is 2, so split_count_ is 1*3, num_unit_ is 1*3*2
-  MS_CHECK_FALSE(INT_MUL_OVERFLOW(param->split_count_, param->num_split_), RET_ERROR);
-  num_unit_ = param->split_count_ * param->num_split_;
+  MS_CHECK_FALSE(INT_MUL_OVERFLOW(param_->split_count_, param_->num_split_), RET_ERROR);
+  num_unit_ = param_->split_count_ * param_->num_split_;
 
   if (UpdateThreadNumPass(TC_PTYPE(type_), 1, 1, out_tensors_.at(0)->ElementsNum()) != RET_OK) {
     return RET_ERROR;
@@ -133,7 +133,7 @@ int SplitBaseCPUKernel::Split(int task_id) {
 
   int thread_offset = task_id * thread_n_stride_;
   auto ret = DoSplit(input_ptr_, output_ptr_.data(), in_tensors_.front()->shape().data(), thread_offset,
-                     num_unit_thread, param, lite::DataTypeSize(in_tensors_.front()->data_type()));
+                     num_unit_thread, param_, lite::DataTypeSize(in_tensors_.front()->data_type()));
   if (ret != RET_OK) {
     MS_LOG(ERROR) << "Split error task_id[" << task_id << "] error_code[" << ret << "]";
     return RET_ERROR;
@@ -159,7 +159,7 @@ int SplitBaseCPUKernel::Run() {
     return RET_NULL_PTR;
   }
 
-  for (int i = 0; i < param->num_split_; i++) {
+  for (int i = 0; i < param_->num_split_; i++) {
     auto output_tensor = out_tensors_.at(i);
     output_ptr_.at(i) = output_tensor->data();
     if (output_ptr_.at(i) == nullptr) {

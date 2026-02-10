@@ -77,6 +77,7 @@ int AddnInferShape(const TensorC *const *inputs, size_t inputs_size, TensorC **o
         max_dim = dim;
       }
     }
+    NNACL_CHECK_FALSE(max_dim > (size_t)INT_MAX, NNACL_TENSOR_SIZE_INVALID);
     output->shape_[d] = (int)(max_dim);  // set the biggest dimension in the output tensor
   }
 

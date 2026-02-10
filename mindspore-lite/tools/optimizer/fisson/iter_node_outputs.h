@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-#include "ir/anf.h"
-#include "tools/optimizer/common/node_pass_extends.h"
-
 #ifndef MINDSPORE_LITE_TOOLS_OPTIMIZER_FISSON_ITER_NODE_OUTPUTS_H_
 #define MINDSPORE_LITE_TOOLS_OPTIMIZER_FISSON_ITER_NODE_OUTPUTS_H_
+
+#include "ir/anf.h"
+#include "tools/optimizer/common/node_pass_extends.h"
 
 namespace mindspore {
 namespace opt {

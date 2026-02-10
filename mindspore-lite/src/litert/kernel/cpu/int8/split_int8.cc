@@ -45,25 +45,25 @@ int SplitInt8CPUKernel::Prepare() {
     return RET_ERROR;
   }
 
-  output_ptr_.resize(param->num_split_);
+  output_ptr_.resize(param_->num_split_);
 
   auto in_tensor = in_tensors_.at(kInputIndex);
 
   auto in_quant_args = in_tensor->quant_params();
   CHECK_LESS_RETURN(in_quant_args.size(), 1);
-  param->quant_arg_.in_args_.scale_ = static_cast<float>(in_quant_args.front().scale);
-  param->quant_arg_.in_args_.zp_ = in_quant_args.front().zeroPoint;
-  MS_CHECK_TRUE_RET(static_cast<size_t>(param->num_split_) == this->out_tensors_.size(), RET_ERROR);
-  for (int i = 0; i < param->num_split_; i++) {
+  param_->quant_arg_.in_args_.scale_ = static_cast<float>(in_quant_args.front().scale);
+  param_->quant_arg_.in_args_.zp_ = in_quant_args.front().zeroPoint;
+  MS_CHECK_TRUE_RET(static_cast<size_t>(param_->num_split_) == this->out_tensors_.size(), RET_ERROR);
+  for (int i = 0; i < param_->num_split_; i++) {
     auto *out_tensor = out_tensors_.at(i);
     auto out_quant_args = out_tensor->quant_params();
     CHECK_LESS_RETURN(out_quant_args.size(), 1);
-    param->quant_arg_.out_args_[i].scale_ = static_cast<float>(out_quant_args.front().scale);
-    param->quant_arg_.out_args_[i].zp_ = out_quant_args.front().zeroPoint;
+    param_->quant_arg_.out_args_[i].scale_ = static_cast<float>(out_quant_args.front().scale);
+    param_->quant_arg_.out_args_[i].zp_ = out_quant_args.front().zeroPoint;
   }
 
-  param->quant_arg_.output_activation_max_ = std::numeric_limits<int8_t>::max();
-  param->quant_arg_.output_activation_min_ = std::numeric_limits<int8_t>::min();
+  param_->quant_arg_.output_activation_max_ = std::numeric_limits<int8_t>::max();
+  param_->quant_arg_.output_activation_min_ = std::numeric_limits<int8_t>::min();
   if (!InferShapeDone()) {
     return RET_OK;
   }
@@ -82,9 +82,9 @@ int SplitInt8CPUKernel::Split(int task_id) {
 
   int thread_offset = task_id * thread_n_stride_;
   CHECK_NULL_RETURN(input_ptr_);
-  CHECK_NULL_RETURN(param);
+  CHECK_NULL_RETURN(param_);
   auto ret = Int8DoSplit(input_ptr_, output_ptr_.data(), in_tensors_.front()->shape().data(), thread_offset,
-                         num_unit_thread, param);
+                         num_unit_thread, param_);
   if (ret != RET_OK) {
     MS_LOG(ERROR) << "Split error task_id[" << task_id << "] error_code[" << ret << "]";
     return RET_ERROR;
@@ -106,9 +106,9 @@ int SplitInt8Run(void *cdata, int task_id, float, float) {
 int SplitInt8CPUKernel::Run() {
   auto in_tensor = in_tensors_.at(kInputIndex);
   input_ptr_ = reinterpret_cast<int8_t *>(in_tensor->MutableData());
-  MS_CHECK_TRUE_RET(static_cast<size_t>(param->num_split_) == this->out_tensors_.size(), RET_ERROR);
-  CHECK_LESS_RETURN(static_cast<int>(output_ptr_.size()), param->num_split_);
-  for (int i = 0; i < param->num_split_; i++) {
+  MS_CHECK_TRUE_RET(static_cast<size_t>(param_->num_split_) == this->out_tensors_.size(), RET_ERROR);
+  CHECK_LESS_RETURN(static_cast<int>(output_ptr_.size()), param_->num_split_);
+  for (int i = 0; i < param_->num_split_; i++) {
     CHECK_NULL_RETURN(out_tensors_.at(i)->data());
     output_ptr_[i] = reinterpret_cast<int8_t *>(out_tensors_.at(i)->data());
   }
