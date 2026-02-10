@@ -69,7 +69,6 @@ set(LITE_SRC_TRAIN_COMMON_MID_SRC
         ${LITE_SRC_TRAIN_COMMON_MID_SRC}
         ${CMAKE_CURRENT_SOURCE_DIR}/quant_utils.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/storage.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/file_utils.cc
         )
 
 add_library(lite_src_common_mid OBJECT ${LITE_SRC_COMMON_MID_SRC})
