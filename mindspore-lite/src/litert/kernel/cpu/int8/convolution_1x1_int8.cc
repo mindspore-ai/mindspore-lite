@@ -359,9 +359,9 @@ int Convolution1x1Int8CPUKernel::Prepare() {
 int Convolution1x1Int8CPUKernel::InitParam() {
   pre_trans_input_ = (conv_param_->pad_u_ != 0 || conv_param_->pad_l_ != 0 || conv_param_->stride_h_ != 1 ||
                       conv_param_->stride_w_ != 1);
-
-  MS_CHECK_INT_MUL_NOT_OVERFLOW(conv_param_->output_h_, conv_param_->output_w_, RET_ERROR);
-  matmul_param_->row_ = conv_param_->output_h_ * conv_param_->output_w_;
+  MS_CHECK_INT_MUL_NOT_OVERFLOW(conv_param_->input_batch_, conv_param_->output_h_, RET_ERROR);
+  MS_CHECK_INT_MUL_NOT_OVERFLOW(conv_param_->input_batch_ * conv_param_->output_h_, conv_param_->output_w_, RET_ERROR);
+  matmul_param_->row_ = conv_param_->output_h_ * conv_param_->output_w_ * conv_param_->input_batch_;
   matmul_param_->deep_ = conv_param_->input_channel_;
   matmul_param_->col_ = conv_param_->output_channel_;
   matmul_param_->row_4_ = UP_ROUND(matmul_param_->row_, C4NUM);
@@ -582,38 +582,35 @@ int Convolution1x1Int8CPUKernel::Run() {
   auto src_out = reinterpret_cast<int8_t *>(out_tensors_[0]->data());
   CHECK_NULL_RETURN(src_out);
 
-  for (int batch_index = 0; batch_index < conv_param_->input_batch_; batch_index++) {
-    Pre1x1Trans(src_in + batch_index * conv_param_->input_h_ * conv_param_->input_w_ * conv_param_->input_channel_,
-                src_out + batch_index * matmul_param_->row_ * matmul_param_->col_);
-    if (parallel_by_oc_) {
-      /* input transpose and input sum */
-      if (support_optimize_) {
-        error_code = ParallelLaunch(this->ms_context_, Convolution1x1Int8OcOptPre, this, thread_count_hw_);
-        if (error_code != RET_OK) {
-          MS_LOG(ERROR) << "ParallelLaunch run error error_code[" << error_code << "]";
-          FreeRunBuf();
-          return error_code;
-        }
-      } else {
-        RowMajor2Row16x4MajorInt8(input_ptr_, packed_input_, matmul_param_->row_, matmul_param_->deep_);
-        if (filter_peroc_) {
-          PackInputSum16x4PerLayer(packed_input_, input_sum_, 1, matmul_param_->row_4_, matmul_param_->deep_16_);
-        } else {
-          PackInputSum16x4PerLayer(packed_input_, input_sum_, conv_param_->conv_quant_arg_.filter_quant_args_[0].zp_,
-                                   matmul_param_->row_4_, matmul_param_->deep_16_);
-        }
+  Pre1x1Trans(src_in, src_out);
+  if (parallel_by_oc_) {
+    /* input transpose and input sum */
+    if (support_optimize_) {
+      error_code = ParallelLaunch(this->ms_context_, Convolution1x1Int8OcOptPre, this, thread_count_hw_);
+      if (error_code != RET_OK) {
+        MS_LOG(ERROR) << "ParallelLaunch run error error_code[" << error_code << "]";
+        FreeRunBuf();
+        return error_code;
       }
-      /* matmul parallel by oc */
-      error_code = ParallelLaunch(this->ms_context_, Convolution1x1Int8OcRun, this, thread_count_oc_);
     } else {
-      /* matmul parallel by hw */
-      error_code = ParallelLaunch(this->ms_context_, Convolution1x1Int8HwRun, this, thread_count_hw_);
+      RowMajor2Row16x4MajorInt8(input_ptr_, packed_input_, matmul_param_->row_, matmul_param_->deep_);
+      if (filter_peroc_) {
+        PackInputSum16x4PerLayer(packed_input_, input_sum_, 1, matmul_param_->row_4_, matmul_param_->deep_16_);
+      } else {
+        PackInputSum16x4PerLayer(packed_input_, input_sum_, conv_param_->conv_quant_arg_.filter_quant_args_[0].zp_,
+                                 matmul_param_->row_4_, matmul_param_->deep_16_);
+      }
     }
-    if (error_code != RET_OK) {
-      MS_LOG(ERROR) << "ParallelLaunch run error error_code[" << error_code << "]";
-      FreeRunBuf();
-      return error_code;
-    }
+    /* matmul parallel by oc */
+    error_code = ParallelLaunch(this->ms_context_, Convolution1x1Int8OcRun, this, thread_count_oc_);
+  } else {
+    /* matmul parallel by hw */
+    error_code = ParallelLaunch(this->ms_context_, Convolution1x1Int8HwRun, this, thread_count_hw_);
+  }
+  if (error_code != RET_OK) {
+    MS_LOG(ERROR) << "ParallelLaunch run error error_code[" << error_code << "]";
+    FreeRunBuf();
+    return error_code;
   }
 
   FreeRunBuf();

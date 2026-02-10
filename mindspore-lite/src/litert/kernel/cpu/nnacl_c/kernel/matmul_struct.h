@@ -30,12 +30,14 @@ typedef struct MatrixInfo {
   float *pack_ptr_;
 } MatrixInfo;
 
+#ifdef ENABLE_AVX512
 typedef struct MatmulSlice {
   int row_s_;
   int row_e_;
   int col_s_;
   int col_e_;
 } MatmulSlice;
+#endif
 
 typedef struct MatmulComputeParam {
   int row_;
@@ -116,6 +118,7 @@ typedef struct MatmulStruct {
   int (*parallel_run_by_batch_)(struct MatmulStruct *matmul, int task_id);
   int (*parallel_run_not_pack_by_batch_)(struct MatmulStruct *matmul, int task_id);
 
+#ifdef ENABLE_AVX512
   /* optimize for avx512 */
   int col_split_points_size_;
   int row_split_points_size_;
@@ -128,6 +131,7 @@ typedef struct MatmulStruct {
   int (*parallel_run_by_gepdot_)(struct MatmulStruct *matmul, int task_id);
   int (*parallel_run_by_batch_col_row_gemm_)(struct MatmulStruct *matmul, int task_id);
   int (*parallel_run_by_row1_deep1_gepdot_)(struct MatmulStruct *matmul, int task_id);
+#endif
 } MatmulStruct;
 
 #endif  // NNACL_KERNEL_MATMUL_STRUCT_H_

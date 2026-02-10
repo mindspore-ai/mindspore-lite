@@ -40,6 +40,9 @@ class Convolution1x1Int8CPUKernel : public ConvolutionBaseCPUKernel {
   int ReSize() override;
   int Run() override;
 
+  // Getter for matmul_param_ (needed for testing batch dimension fix)
+  const MatMulParameter *GetMatMulParam() const { return matmul_param_; }
+
  private:
   int InitRunBuf();
   void FreeRunBuf();

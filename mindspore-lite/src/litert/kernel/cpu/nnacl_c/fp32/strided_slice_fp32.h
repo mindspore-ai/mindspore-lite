@@ -28,6 +28,8 @@ int DoStridedSliceIn8D(const void *input, void *output, StridedSliceStruct *stri
 
 void FastStride(const uint8_t *input, uint8_t *output, int split_len, int stride, size_t outer, size_t inner_size,
                 size_t in_offset);
+int NormalizedSlice(StridedSliceStruct *stride_slice);
+int DoStrideSliceCopyOpt(void *input_data, void *output_data, StridedSliceStruct *s);
 
 #ifdef __cplusplus
 }
