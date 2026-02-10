@@ -157,8 +157,8 @@ endif()
 
 get_filename_component(PKG_PATH ${PKG_PATH} ABSOLUTE BASE_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
-set(OP_LIB ${PKG_PATH}/tools/codegen/lib/libnnacl.a)
-set(WRAPPER_LIB ${PKG_PATH}/tools/codegen/lib/libwrapper.a)
+set(OP_LIB ${PKG_PATH}/tools/codegen/lib/cpu/libnnacl.a)
+set(WRAPPER_LIB ${PKG_PATH}/tools/codegen/lib/cpu/libwrapper.a)
 set(OP_HEADER_PATH ${PKG_PATH}/tools/codegen/include)
 set(HEADER_PATH ${PKG_PATH}/runtime)
 

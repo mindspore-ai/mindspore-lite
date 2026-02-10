@@ -114,6 +114,7 @@ fi
 ./lite-test --gtest_filter=TestBatchnormInt8.*
 ./lite-test --gtest_filter=TestDeconvInt8.*
 ./lite-test --gtest_filter=TestPadInt8.*
+./lite-test --gtest_filter=MulInt8Test.*
 
 # test cases of generic api
 ./lite-test --gtest_filter="GenericApiTest*"

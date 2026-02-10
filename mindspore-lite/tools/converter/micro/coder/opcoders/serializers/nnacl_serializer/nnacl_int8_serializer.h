@@ -38,6 +38,7 @@
 #include "wrapper/int8/concat_int8_wrapper.h"
 #include "nnacl_c/kernel/pooling.h"
 #include "nnacl_c/kernel/batch_norm.h"
+#include "nnacl_c/mul_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class NNaclInt8Serializer : public Serializer {
@@ -62,6 +63,7 @@ class NNaclInt8Serializer : public Serializer {
   void CodeStruct(const std::string &name, const ReduceQuantArg &reduce_quant_arg);
   void CodeStruct(const std::string &name, const ReshapeQuantArg &reshape_quant_arg);
   void CodeStruct(const std::string &name, const MatmulQuantParameter &matmul_quant_arg, int weight_quant_num);
+  void CodeStruct(const std::string &name, const MulQuantArg &mul_quant_arg);
   void CodeStruct(const std::string &name, const SubQuantArg &sub_quant_arg);
   void CodeStruct(const std::string &name, const DivQuantArg &div_quant_arg);
   void CodeStruct(const std::string &name, const ReluXQuantArg &relu_quant_arg);

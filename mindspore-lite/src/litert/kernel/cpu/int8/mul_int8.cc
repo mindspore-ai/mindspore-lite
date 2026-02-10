@@ -15,8 +15,8 @@
  */
 
 #include "src/litert/kernel/cpu/int8/mul_int8.h"
-#include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
+#include "src/litert/kernel_registry.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;
@@ -51,17 +51,17 @@ int MulInt8CPUKernel::Prepare() {
   MS_CHECK_TRUE_MSG(!input1_params.empty(), RET_ERROR, "Input 1 quant param cannot be empty.");
   MS_CHECK_TRUE_MSG(!output_params.empty(), RET_ERROR, "Output quant param cannot be empty.");
 
-  quant_args_->in_quant_args_[0].scale_ = static_cast<float>(input0_params.front().scale);
-  quant_args_->in_quant_args_[0].zp_ = input0_params.front().zeroPoint * -1;
-  quant_args_->in_quant_args_[1].scale_ = static_cast<float>(input1_params.front().scale);
-  quant_args_->in_quant_args_[1].zp_ = input1_params.front().zeroPoint * -1;
+  quant_args_->in0_quant_args_.scale_ = static_cast<float>(input0_params.front().scale);
+  quant_args_->in0_quant_args_.zp_ = input0_params.front().zeroPoint * -1;
+  quant_args_->in1_quant_args_.scale_ = static_cast<float>(input1_params.front().scale);
+  quant_args_->in1_quant_args_.zp_ = input1_params.front().zeroPoint * -1;
   quant_args_->out_quant_arg_.scale_ = static_cast<float>(output_params.front().scale);
   quant_args_->out_quant_arg_.zp_ = output_params.front().zeroPoint;
   quant_args_->output_activation_max_ = std::numeric_limits<int8_t>::max();
   quant_args_->output_activation_min_ = std::numeric_limits<int8_t>::min();
 
-  const double real_multiplier = (quant_args_->in_quant_args_[0].scale_ * quant_args_->in_quant_args_[1].scale_) /
-                                 quant_args_->out_quant_arg_.scale_;
+  const double real_multiplier =
+    (quant_args_->in0_quant_args_.scale_ * quant_args_->in1_quant_args_.scale_) / quant_args_->out_quant_arg_.scale_;
 
   int right_shift = 0;
   QuantizeMultiplierSmallerThanOne(real_multiplier, &quant_args_->output_multiplier_, &right_shift);
