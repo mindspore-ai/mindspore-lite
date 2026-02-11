@@ -362,6 +362,7 @@ STATUS BuildSubGraph(const FuncGraphPtr &original_graph, const std::unordered_se
     tensor_produced_internally.insert(node);
     MS_CHECK_TRUE_MSG(node != nullptr, lite::RET_ERROR, "node is nullptr!");
     auto cnode = node->cast<CNodePtr>();
+    MS_CHECK_TRUE_MSG(cnode != nullptr, lite::RET_ERROR, "cnode is nullptr!");
     for (size_t j = 1; j < cnode->size(); j++) {
       all_required_inputs.insert(cnode->input(j));
     }
