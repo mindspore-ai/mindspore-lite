@@ -31,7 +31,6 @@ constexpr size_t kNumShapeSize2 = 2;
 constexpr size_t kNumShapeSize3 = 3;
 constexpr size_t kNumShapeSize4 = 4;
 constexpr size_t kNumShapeSize6 = 6;
-
 bool CheckDilations(const onnx::AttributeProto &onnx_node_attr) {
   for (int i = 0; i < onnx_node_attr.ints_size(); ++i) {
     if (onnx_node_attr.ints(i) != 1) {
@@ -42,93 +41,68 @@ bool CheckDilations(const onnx::AttributeProto &onnx_node_attr) {
   return true;
 }
 
-static void ParseKernelShape(const onnx::AttributeProto &onnx_node_attr,
-                             const std::unique_ptr<ops::AvgPoolFusion> &prim, std::vector<int64_t> *kernels,
-                             bool *is_3d) {
-  if (onnx_node_attr.ints_size() == kNumShapeSize2) {
-    kernels->push_back(onnx_node_attr.ints(0));
-    kernels->push_back(onnx_node_attr.ints(kIndex1));
-    prim->set_kernel_size(*kernels);
-  } else if (onnx_node_attr.ints_size() == kNumShapeSize3) {
-    *is_3d = true;
-    kernels->push_back(onnx_node_attr.ints(0));
-    kernels->push_back(onnx_node_attr.ints(kIndex1));
-    kernels->push_back(onnx_node_attr.ints(kIndex2));
-    prim->AddAttr("kernel_size", api::MakeValue<std::vector<int64_t>>(*kernels));
-  }
-}
-
-static void ParseStrides(const onnx::AttributeProto &onnx_node_attr, std::vector<int64_t> *strides, bool *is_3d) {
-  if (onnx_node_attr.ints_size() == kNumShapeSize2) {
-    strides->push_back(onnx_node_attr.ints(0));
-    strides->push_back(onnx_node_attr.ints(kIndex1));
-  } else if (onnx_node_attr.ints_size() == kNumShapeSize3) {
-    *is_3d = true;
-    strides->push_back(onnx_node_attr.ints(0));
-    strides->push_back(onnx_node_attr.ints(kIndex1));
-    strides->push_back(onnx_node_attr.ints(kIndex2));
-  }
-}
-
-static bool ParseAutoPad(const onnx::AttributeProto &onnx_node_attr, const std::unique_ptr<ops::AvgPoolFusion> &prim) {
-  if (onnx_node_attr.s() == "SAME_UPPER") {
-    prim->set_pad_mode(mindspore::PadMode::SAME);
-  } else if (onnx_node_attr.s() == "SAME_LOWER") {
-    MS_LOG(ERROR) << "PadMode_SAME_LOWER is not supported now";
-    return false;
-  }
-  return true;
-}
-
-static void ParsePads(const onnx::AttributeProto &onnx_node_attr, std::vector<int64_t> *pads, bool *is_3d) {
-  if (onnx_node_attr.ints_size() == kNumShapeSize4) {
-    pads->push_back(onnx_node_attr.ints(0));
-    pads->push_back(onnx_node_attr.ints(kIndex2));
-    pads->push_back(onnx_node_attr.ints(kIndex1));
-    pads->push_back(onnx_node_attr.ints(kIndex3));
-  } else if (onnx_node_attr.ints_size() == kNumShapeSize6) {
-    *is_3d = true;
-    pads->push_back(onnx_node_attr.ints(0));
-    pads->push_back(onnx_node_attr.ints(kIndex3));
-    pads->push_back(onnx_node_attr.ints(kIndex1));
-    pads->push_back(onnx_node_attr.ints(kIndex4));
-    pads->push_back(onnx_node_attr.ints(kIndex2));
-    pads->push_back(onnx_node_attr.ints(kIndex5));
-  }
-}
-
-static void ParseCeilMode(const onnx::AttributeProto &onnx_node_attr, mindspore::RoundMode *round_mode) {
-  *round_mode = (onnx_node_attr.i() == 0) ? mindspore::RoundMode::FLOOR : mindspore::RoundMode::CEIL;
-}
-
-static void ParseCountIncludePad(const onnx::AttributeProto &onnx_node_attr,
-                                 const std::unique_ptr<ops::AvgPoolFusion> &prim) {
-  bool include = onnx_node_attr.i() == 0 ? false : true;
-  (void)prim->AddAttr(ops::kCountIncludePad, api::MakeValue(include));
-}
-
 bool ParseAttrs(const onnx::NodeProto &onnx_node, const std::unique_ptr<ops::AvgPoolFusion> &prim,
                 std::vector<int64_t> *kernels, std::vector<int64_t> *strides, std::vector<int64_t> *pads,
                 mindspore::RoundMode *round_mode, bool *is_3d) {
   for (const auto &onnx_node_attr : onnx_node.attribute()) {
     const auto &attribute_name = onnx_node_attr.name();
     if (attribute_name == "kernel_shape") {
-      ParseKernelShape(onnx_node_attr, prim, kernels, is_3d);
-    } else if (attribute_name == "strides") {
-      ParseStrides(onnx_node_attr, strides, is_3d);
-    } else if (attribute_name == "auto_pad") {
-      if (!ParseAutoPad(onnx_node_attr, prim)) {
+      if (onnx_node_attr.ints_size() == kNumShapeSize2) {
+        kernels->push_back(onnx_node_attr.ints(0));
+        kernels->push_back(onnx_node_attr.ints(kIndex1));
+        prim->set_kernel_size(*kernels);
+      } else if (onnx_node_attr.ints_size() == kNumShapeSize3) {
+        *is_3d = true;
+        kernels->push_back(onnx_node_attr.ints(0));
+        kernels->push_back(onnx_node_attr.ints(kIndex1));
+        kernels->push_back(onnx_node_attr.ints(kIndex2));
+        prim->AddAttr("kernel_size", api::MakeValue<std::vector<int64_t>>(*kernels));
+      }
+    }
+    if (attribute_name == "strides") {
+      if (onnx_node_attr.ints_size() == kNumShapeSize2) {
+        strides->push_back(onnx_node_attr.ints(0));
+        strides->push_back(onnx_node_attr.ints(kIndex1));
+      } else if (onnx_node_attr.ints_size() == kNumShapeSize3) {
+        *is_3d = true;
+        strides->push_back(onnx_node_attr.ints(0));
+        strides->push_back(onnx_node_attr.ints(kIndex1));
+        strides->push_back(onnx_node_attr.ints(kIndex2));
+      }
+    }
+    if (attribute_name == "auto_pad") {
+      if (onnx_node_attr.s() == "SAME_UPPER") {
+        prim->set_pad_mode(mindspore::PadMode::SAME);
+      } else if (onnx_node_attr.s() == "SAME_LOWER") {
+        MS_LOG(ERROR) << "PadMode_SAME_LOWER is not supported now";
         return false;
       }
-    } else if (attribute_name == "pads") {
-      ParsePads(onnx_node_attr, pads, is_3d);
-    } else if (attribute_name == "ceil_mode") {
-      ParseCeilMode(onnx_node_attr, round_mode);
-    } else if (attribute_name == ops::kCountIncludePad) {
-      ParseCountIncludePad(onnx_node_attr, prim);
-    } else if (attribute_name == "dilations") {
-      MS_CHECK_TRUE_MSG(CheckDilations(onnx_node_attr), false, "dilations is invalid!");
     }
+    if (attribute_name == "pads") {
+      if (onnx_node_attr.ints_size() == kNumShapeSize4) {
+        pads->push_back(onnx_node_attr.ints(0));
+        pads->push_back(onnx_node_attr.ints(kIndex2));
+        pads->push_back(onnx_node_attr.ints(kIndex1));
+        pads->push_back(onnx_node_attr.ints(kIndex3));
+      } else if (onnx_node_attr.ints_size() == kNumShapeSize6) {
+        *is_3d = true;
+        pads->push_back(onnx_node_attr.ints(0));
+        pads->push_back(onnx_node_attr.ints(kIndex3));
+        pads->push_back(onnx_node_attr.ints(kIndex1));
+        pads->push_back(onnx_node_attr.ints(kIndex4));
+        pads->push_back(onnx_node_attr.ints(kIndex2));
+        pads->push_back(onnx_node_attr.ints(kIndex5));
+      }
+    }
+    if (attribute_name == "ceil_mode") {
+      *round_mode = (onnx_node_attr.i() == 0) ? mindspore::RoundMode::FLOOR : mindspore::RoundMode::CEIL;
+    }
+    if (attribute_name == ops::kCountIncludePad) {
+      bool include = onnx_node_attr.i() == 0 ? false : true;
+      (void)prim->AddAttr(ops::kCountIncludePad, api::MakeValue(include));
+    }
+    MS_CHECK_TRUE_MSG(!(attribute_name == "dilations" && !CheckDilations(onnx_node_attr)), false,
+                      "dilations is invalid!");
   }
   return true;
 }

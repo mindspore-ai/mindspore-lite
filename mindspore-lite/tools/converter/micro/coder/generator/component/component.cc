@@ -41,7 +41,9 @@ char *ModifyPrefixName(char *name, int model_index, const std::string &prefix) {
   int ret = memcpy_s(name, (variable_prefix_name.size() + 1) * sizeof(char), variable_prefix_name.c_str(),
                      (variable_prefix_name.size() + 1) * sizeof(char));
   if (ret != EOK) {
-    MS_LOG(ERROR) << "memcpy_s failed";
+    free(name);
+    name = nullptr;
+    MS_LOG(ERROR) << "memcpy_s ret:(" << ret << ") failed";
     return nullptr;
   }
   return name;

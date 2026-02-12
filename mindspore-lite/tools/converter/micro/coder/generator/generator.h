@@ -73,6 +73,7 @@ class Generator {
   int CodeStaticContent();
   int CodeBenchmarkHFile(const std::string &file);
   int CodeModelHandleHFile();
+  int CodeLogRegFile();
   int CodeCommonModelFile();
   int CodeMSModelImplement();
   int CodeDataCFile();

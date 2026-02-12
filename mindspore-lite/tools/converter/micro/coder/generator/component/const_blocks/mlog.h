@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2025 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,15 +14,11 @@
  * limitations under the License.
  */
 
-#ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_CONST_BLOCKS_CMAKE_LISTS_H_
-#define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_CONST_BLOCKS_CMAKE_LISTS_H_
+#ifndef MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_CONST_BLOCKS_MLOG_H_
+#define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_CONST_BLOCKS_MLOG_H_
 
 namespace mindspore::lite::micro {
-extern const char *bench_cmake_lists;
-extern const char *bench_cmake_lists_cortex;
-extern const char *src_cmake_lists;
-extern const char *src_cmake_lists_riscv;
-extern const char *bench_cmake_lists_riscv;
-extern const char *bench_cmake_lists_riscv_debug;
+extern const char *log_header;
+extern const char *log_source;
 }  // namespace mindspore::lite::micro
-#endif  // MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_CONST_BLOCKS_CMAKE_LISTS_H_
+#endif  // MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_CONST_BLOCKS_MLOG_H_

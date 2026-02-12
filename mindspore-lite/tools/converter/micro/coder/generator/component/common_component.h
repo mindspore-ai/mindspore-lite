@@ -46,7 +46,6 @@ void CodeCopyOutputsState(std::ofstream &ofs, const int model_index);
 void CodeCopyOutputsImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx);
 
 void CodeGlobalCodeBlocks(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx);
-
 void CodeInputState(std::ofstream &ofs, const int model_index);
 void CodeInputImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx);
 

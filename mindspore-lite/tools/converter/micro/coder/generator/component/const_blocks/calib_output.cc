@@ -345,6 +345,14 @@ const char *calib_source_cortex = R"RAW(/**
 #define kToleranceVal 0.0001f
 
 int LoadCalibInputs(MSTensorHandleArray *inputs, TensorArray *tensor_array) {
+  if (inputs == NULL) {
+    printf("error, inputs is NULL.\n");
+    return kMSStatusLiteError;
+  }
+  if (tensor_array == NULL) {
+    printf("error, tensor_array is NULL.\n");
+    return kMSStatusLiteError;
+  }
   if (inputs->handle_num != tensor_array->tensors_size_) {
     printf("error, inputs and calibs size is mismatch.\n");
     return kMSStatusLiteError;
@@ -421,6 +429,14 @@ int LoadCalibInputs(MSTensorHandleArray *inputs, TensorArray *tensor_array) {
 }
 
 int CompareOutputs(MSTensorHandleArray *outputs, TensorArray *tensor_array) {
+  if (outputs == NULL) {
+    printf("error, outputs is NULL.\n");
+    return kMSStatusLiteError;
+  }
+  if (tensor_array == NULL) {
+    printf("error, tensor_array is NULL.\n");
+    return kMSStatusLiteError;
+  }
   if (outputs->handle_num != tensor_array->tensors_size_) {
     printf("error, outputs and calibs size is mismatch\n");
     return kMSStatusLiteError;

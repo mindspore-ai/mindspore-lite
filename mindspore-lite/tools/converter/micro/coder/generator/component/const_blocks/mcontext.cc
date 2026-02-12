@@ -130,11 +130,15 @@ MSContextHandle MSContextCreate() {
 }
 
 void MSContextDestroy(MSContextHandle *context) {
+  if (context == NULL) {
+    return;
+  }
   MicroContext *micro_context = (MicroContext *)(*context);
   if (micro_context) {
     free(micro_context);
     micro_context = NULL;
   }
+  *context = NULL;
 }
 
 void MSContextSetThreadNum(MSContextHandle context, int32_t thread_num) {
@@ -199,6 +203,7 @@ void MSContextDestroy(MSContextHandle *context) {
     free(micro_context);
     micro_context = NULL;
   }
+  *context = NULL;
 }
 
 void MSContextSetThreadNum(MSContextHandle context, int32_t thread_num) {

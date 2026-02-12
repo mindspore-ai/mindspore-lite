@@ -28,7 +28,17 @@ void InferenceGenerator::CodeNetExecuteFunc(std::ofstream &ofs) {
     ofs << "  SetSpinCountMaxValue();\n";
   }
   for (const auto &block : ctx_->code_blocks()) {
+    if (config_->target() == kRiscV && config_->debug_mode()) {
+      ofs << R"RAW(
+    MS_LOG_PRINT("kernel start execute\n");
+    )RAW";
+    }
     ofs << "  {\n" << block << "  }\n";
+    if (config_->target() == kRiscV && config_->debug_mode()) {
+      ofs << R"RAW(
+    MS_LOG_PRINT("kernel end execute\n");
+    )RAW";
+    }
   }
 
   for (const auto &block : ctx_->after_inference_code_blocks()) {

@@ -165,12 +165,14 @@ std::string EnumNameTarget(Target target) {
   switch (target) {
     case kX86:
       return "kX86";
-    case kCortex_M:
-      return "kCortex_M";
-    case kARM32:
-      return "kARM32";
     case kARM64:
       return "kARM64";
+    case kARM32:
+      return "kARM32";
+    case kCortex_M:
+      return "kCortex_M";
+    case kRiscV:
+      return "kRiscV";
     case kAllTargets:
       return "kAllTargets";
     default:

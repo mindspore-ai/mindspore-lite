@@ -89,7 +89,7 @@ MSStatus MSModelBuild(MSModelHandle model, const void *model_data,
   if (model_type != kMSModelTypeMindIR) {
     return kMSStatusLiteNotSupport;
   }
-  if (model == NULL) {
+  if (model == NULL || model_context == NULL) {
     return kMSStatusLiteParamInvalid;
   }
 )RAW";
@@ -330,7 +330,7 @@ void CodeMSModelBuildCommon(std::ofstream &ofs, const Configurator &config) {
     return kMSStatusLiteNullptr;
   }
 )RAW";
-  if (config.target() != kCortex_M && !config.dynamic_shape()) {
+  if (config.target() != kCortex_M && config.target() != kRiscV && !config.dynamic_shape()) {
     ofs << "  IncRefCount();\n";
   }
   ofs << R"RAW(
@@ -348,7 +348,10 @@ void CodeMSModelBuild(std::ofstream &ofs, const int model_index, const size_t we
   ofs << "MSStatus MSModelBuild" << model_index
       << "(MSModelHandle model, const void *model_data, size_t data_size,\n"
          "                      const MSContextHandle model_context) {\n"
-         "  if (model == NULL) {\n"
+         "  if (model == NULL || model_context == NULL) {\n"
+         "    return kMSStatusLiteParamInvalid;\n"
+         "  }\n"
+         "  if (model_data == NULL && data_size != 0) {\n"
          "    return kMSStatusLiteParamInvalid;\n"
          "  }\n";
   if (config.changeable_weights_name().empty()) {
@@ -364,7 +367,7 @@ void CodeMSModelBuild(std::ofstream &ofs, const int model_index, const size_t we
          "  if (ret != kMSStatusSuccess) {\n"
          "    return ret;\n"
          "  }\n";
-  if (config.target() != kCortex_M) {
+  if (config.target() != kCortex_M && config.target() != kRiscV) {
     ofs << "  ret = Init" << model_index << "((void*)model_data, data_size);\n";
   } else {
     ofs << "  ret = Init" << model_index << "(NULL, 0);\n";
@@ -431,6 +434,10 @@ void CodeRealDimImplement(std::ofstream &ofs, const Configurator &config,
                           const std::map<std::string, std::string> &user_to_inner,
                           std::map<std::string, std::string> *inner_to_outer) {
   int index = 0;
+  if (config.dynamic_symbols_map().empty()) {
+    MS_LOG(ERROR) << "config.dynamic_symbols_map() is empty";
+    return;
+  }
   for (auto &item : symbol_to_indexes) {
     ofs << "  int dim" << index << " = shape_infos[" << item.second[0] << "].shape[" << item.second[1] << "];\n";
     (*inner_to_outer)[item.first] = "dim" + std::to_string(index);
@@ -442,6 +449,10 @@ void CodeRealDimImplement(std::ofstream &ofs, const Configurator &config,
         break;
       }
     }
+    if (config.dynamic_symbols_map().find(cur_dim_symbol) == config.dynamic_symbols_map().end()) {
+      MS_LOG(ERROR) << "cur_dim_symbol not found in config.dynamic_symbols_map";
+      return;
+    }
     auto dynamic_dim_range = config.dynamic_symbols_map().at(cur_dim_symbol);
     ofs << "  int dim" << index << "_range[" << dynamic_dim_range.size() << "] = {";
     for (const auto dim : dynamic_dim_range) {
@@ -452,13 +463,43 @@ void CodeRealDimImplement(std::ofstream &ofs, const Configurator &config,
   }
 }
 
-void CodeMSModelResize(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config) {
-  auto &shape_templates = ctx->shape_templates();
+void CodeMSModelResizeHead(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx) {
   ofs << "MSStatus MSModelResize" << ctx->GetCurModelIndex()
       << "(MSModelHandle model, const MSTensorHandleArray inputs, MSShapeInfo *shape_infos, size_t shape_info_num) {\n"
          "  if (model == NULL) {\n"
          "    return kMSStatusLiteParamInvalid;\n"
          "  }\n";
+}
+
+void CodeMSModelResizeDynanmicSymbol(const Configurator &config, std::map<std::string, std::string> *inner_to_outer,
+                                     std::map<std::string, std::string> *user_to_inner, std::ofstream &ofs) {
+  const auto &dynamic_symbols = config.dynamic_symbols();
+  int id = 0;
+  for (auto &symbol : dynamic_symbols) {
+    auto cur_dim = (*inner_to_outer)[(*user_to_inner)[symbol]];
+    auto dim_list = cur_dim + "_range";
+    ofs << "  int index" << id << " = 0;\n";
+    ofs << "  for (int i = 0; i < sizeof(" << dim_list << ") / sizeof(" << dim_list << "[0]); i++) {\n"
+        << "    if (" << dim_list << "[i] == " << cur_dim << ") {\n"
+        << "      index" << id << " = i;\n"
+        << "      break;\n"
+        << "    }\n"
+        << "  }\n";
+    id++;
+  }
+  ofs << "  if (" << kBufferPrefixName << " != NULL) {\n";
+  ofs << "    free(" << kBufferPrefixName << ");\n";
+  ofs << "    " << kBufferPrefixName << " = NULL;\n";
+  ofs << "  }\n";
+}
+
+void CodeMSModelResize(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config) {
+  auto &shape_templates = ctx->shape_templates();
+  if (!shape_templates.empty()) {
+    MS_LOG(ERROR) << "shape_templates is empty";
+    return;
+  }
+  CodeMSModelResizeHead(ofs, ctx);
   if (!config.dynamic_shape()) {
     ofs << "  return kMSStatusLiteNotSupport;\n";
   } else {
@@ -472,6 +513,10 @@ void CodeMSModelResize(std::ofstream &ofs, const std::unique_ptr<CoderContext> &
     auto &user_graph_inputs_template = config.user_graph_inputs_template();
     for (size_t i = 0; i < ctx->graph_inputs().size(); ++i) {
       auto cur_tensor = ctx->graph_inputs()[i];
+      if (shape_templates.find(cur_tensor) == shape_templates.end()) {
+        MS_LOG(ERROR) << "cur_tensor not found in shape_templates";
+        return;
+      }
       auto cur_shapes = shape_templates.at(cur_tensor);
       for (size_t j = 0; j < cur_shapes.size(); ++j) {
         if (IsNumber(cur_shapes.at(j))) {
@@ -505,25 +550,9 @@ void CodeMSModelResize(std::ofstream &ofs, const std::unique_ptr<CoderContext> &
     for (size_t i = 0; i < symbol_to_indexes.size(); ++i) {
       ofs << "  store" + std::to_string(ctx->GetCurModelIndex()) + "_" << i << " = dim" << i << ";\n";
     }
-    auto &dynamic_symbols = config.dynamic_symbols();
-    int id = 0;
-    for (auto &symbol : dynamic_symbols) {
-      auto cur_dim = inner_to_outer[user_to_inner[symbol]];
-      auto dim_list = cur_dim + "_range";
-      ofs << "  int index" << id << " = 0;\n";
-      ofs << "  for (int i = 0; i < sizeof(" << dim_list << ") / sizeof(" << dim_list << "[0]); i++) {\n"
-          << "    if (" << dim_list << "[i] == " << cur_dim << ") {\n"
-          << "      index" << id << " = i;\n"
-          << "      break;\n"
-          << "    }\n"
-          << "  }\n";
-      id++;
-    }
-    ofs << "  if (" << kBufferPrefixName << " != NULL) {\n";
-    ofs << "    free(" << kBufferPrefixName << ");\n";
-    ofs << "    " << kBufferPrefixName << " = NULL;\n";
-    ofs << "  }\n";
+    CodeMSModelResizeDynanmicSymbol(config, &inner_to_outer, &user_to_inner, ofs);
     std::string array_index_str;
+    const auto &dynamic_symbols = config.dynamic_symbols();
     for (size_t i = 0; i < dynamic_symbols.size(); i++) {
       array_index_str += "[index" + std::to_string(i) + "]";
     }
@@ -535,6 +564,10 @@ void CodeMSModelResize(std::ofstream &ofs, const std::unique_ptr<CoderContext> &
     for (size_t i = 0; i < ctx->graph_outputs().size(); ++i) {
       ofs << "  MSTensorSetData(outputs.handle_list[" << i << "], NULL);\n";
       auto cur_tensor = ctx->graph_outputs()[i];
+      if (shape_templates.find(cur_tensor) == shape_templates.end()) {
+        MS_LOG(ERROR) << "cur_tensor not found in shape_templates";
+        return;
+      }
       auto cur_shapes = shape_templates.at(cur_tensor);
       for (size_t j = 0; j < cur_shapes.size(); ++j) {
         if (IsNumber(cur_shapes.at(j))) {
@@ -554,6 +587,9 @@ void CodeMSModelDestory(std::ofstream &ofs, const Configurator *config) {
     ofs << handle_array_destroy;
   }
   ofs << "void MSModelDestroy(MSModelHandle *model) {\n";
+  ofs << "  if (model == NULL || *model == NULL) {\n"
+      << "    return;\n"
+      << "  }\n";
   ofs << "  if (*model) {\n"
          "    MicroModel *micro_model = (MicroModel *)*model;\n";
   if (config->target() != kCortex_M) {
@@ -615,6 +651,9 @@ void CodeMSModelPredict(std::ofstream &ofs, const std::unique_ptr<CoderContext> 
   if (micro_model == NULL) {
     return kMSStatusLiteNullptr;
   }
+  if (outputs == NULL) {
+    return kMSStatusLiteNullptr;
+  }
   if (micro_model->runtime_buffer == NULL) {
     return kMSStatusLiteMemoryFailed;
   }
@@ -625,7 +664,7 @@ void CodeMSModelPredict(std::ofstream &ofs, const std::unique_ptr<CoderContext> 
   ofs << "  if (outputs->handle_num != " << outputs_num << ") {\n";
   ofs << "    return kMSStatusLiteParamInvalid;\n";
   ofs << "  }\n";
-  if (config.target() != kCortex_M && !config.dynamic_shape()) {
+  if (config.target() != kCortex_M && config.target() != kRiscV && !config.dynamic_shape()) {
     ofs << "  if (!LockBuffer(micro_model->runtime_buffer)) {\n"
         << "    void *buffer = Malloc(GetBufferSize" << ctx->GetCurModelIndex() << "());\n"
         << "    if (buffer == NULL) {\n"
@@ -676,7 +715,7 @@ void CodeMSModelPredict(std::ofstream &ofs, const std::unique_ptr<CoderContext> 
   ofs << "};\n";
   ofs << "  MSStatus ret = CopyOutputsData" << ctx->GetCurModelIndex()
       << "(outputs, cur_out_types, out_type_changed);\n";
-  if (config.target() != kCortex_M && !config.dynamic_shape()) {
+  if (config.target() != kCortex_M && config.target() != kRiscV && !config.dynamic_shape()) {
     ofs << "  UnLockBuffer(micro_model->runtime_buffer);\n";
   }
   ofs << "  return ret;\n";

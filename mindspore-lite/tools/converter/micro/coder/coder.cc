@@ -58,8 +58,16 @@ int ParseMicroDynamicShape(const schema::MetaGraphT &graph, micro::MicroParam *m
 }
 
 int ParseMicroDynamicShape(const Model &model, micro::MicroParam *micro_param) {
+  if (model.graph_.all_tensors_.empty()) {
+    MS_LOG(ERROR) << "all_tensors_ NULLPTR Error";
+    return RET_ERROR;
+  }
   for (auto index : model.graph_.input_indices_) {
-    auto input_name = model.graph_.all_tensors_.at(index)->name()->str();
+    CHECK_EQUAL_RETURN(model.graph_.all_tensors_.size(), 0);
+    MS_CHECK_LT(index, model.graph_.all_tensors_.size(), RET_ERROR);
+    auto input_name_ptr = model.graph_.all_tensors_.at(index)->name();
+    MS_CHECK_TRUE_MSG(input_name_ptr != nullptr, RET_ERROR, "input_name_ptr is nullptr");
+    auto input_name = input_name_ptr->str();
     if (micro_param->graph_inputs_origin_info.find(input_name) == micro_param->graph_inputs_origin_info.end() ||
         micro_param->inputs_shape_by_scenes.find(input_name) == micro_param->inputs_shape_by_scenes.end()) {
       MS_LOG(ERROR) << "Micro param: dynamic inputs name is invalid";
@@ -71,6 +79,7 @@ int ParseMicroDynamicShape(const Model &model, micro::MicroParam *micro_param) {
   return RET_OK;
 }
 }  // namespace
+
 int Coder::Run(const void *model_buff, size_t size, const std::string &model_name, bool end_flag, bool enable_fp16) {
   session_ = CreateCoderSession();
   if (session_ == nullptr) {
@@ -206,9 +215,11 @@ int Coder::ExecuteMicroGeneration(const void *model_buf, size_t size, const std:
 }
 
 int Coder::Init(const MicroParam &param) const {
-  static const std::map<std::string, Target> kTargetMap = {
-    {"x86", kX86}, {"Cortex-M", kCortex_M}, {"ARM32", kARM32}, {"ARM64", kARM64}, {"All", kAllTargets}};
-  static const std::map<std::string, CodeMode> kCodeModeMap = {{"Inference", Inference}, {"Train", Train}};
+  static const std::map<std::string, Target> kTargetMap = {{"x86", kX86},     {"ARM64", kARM64},
+                                                           {"ARM32", kARM32}, {"Cortex-M", kCortex_M},
+                                                           {"RISCV", kRiscV}, {"All", kAllTargets}};
+  static const std::map<std::string, CodeMode> kCodeModeMap = {{"Inference", CodeMode::Inference},
+                                                               {"Train", CodeMode::Train}};
   Configurator *config = Configurator::GetInstance();
 
   auto target_item = kTargetMap.find(param.target);
@@ -218,15 +229,19 @@ int Coder::Init(const MicroParam &param) const {
   auto code_item = kCodeModeMap.find(param.codegen_mode);
   MS_CHECK_TRUE_MSG(code_item != kCodeModeMap.end(), RET_ERROR, "unsupported code mode: " + code_mode);
   config->set_code_mode(code_item->second);
-  if (code_item->second == CodeMode::Train && config->target() == kCortex_M) {
-    MS_LOG(ERROR) << "Cortex-M cannot support train.";
-    return RET_ERROR;
+
+  if ((config->target() == kCortex_M) || (config->target() == kRiscV)) {
+    if (code_item->second == CodeMode::Train) {
+      MS_LOG(ERROR) << "Cortex-M and RISC-V do not support train.";
+      return RET_ERROR;
+    }
+
+    if (param.support_parallel) {
+      MS_LOG(ERROR) << "Cortex-M and RISC-V do not support parallel.";
+      return RET_ERROR;
+    }
   }
 
-  if (param.support_parallel && config->target() == kCortex_M) {
-    MS_LOG(ERROR) << "Cortex-M cannot support parallel.";
-    return RET_ERROR;
-  }
   config->set_support_parallel(param.support_parallel);
   config->set_debug_mode(param.debug_mode);
 

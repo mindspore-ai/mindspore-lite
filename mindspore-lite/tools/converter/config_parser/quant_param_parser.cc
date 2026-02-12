@@ -213,6 +213,11 @@ int QuantParamParser::ParseFullQuant(const FullQuantString &full_quant_string, q
     MS_LOG(ERROR) << "INPUT ILLEGAL: enable_smooth_shift should be true or false.";
     return RET_INPUT_PARAM_INVALID;
   }
+  if (!full_quant_string.enable_all_ops.empty() &&
+      !ConvertBool(full_quant_string.enable_all_ops, &full_quant->enable_all_ops)) {
+    MS_LOG(ERROR) << "INPUT ILLEGAL: enable_all_ops should be true or false.";
+    return RET_INPUT_PARAM_INVALID;
+  }
   return RET_OK;
 }
 

@@ -22,22 +22,27 @@ namespace mindspore::lite::micro {
 void CodeCMakeNetLibrary(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator *config) {
   ofs << "include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../include/)\n";
   ofs << "include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../)\n";
+  if (config->target() == kCortex_M) {
+    // cmsis is not supported and currently disabled in the current version.
+  }
   ofs << "set(OP_SRC\n";
   for (const std::string &c_file : ctx->c_files()) {
     ofs << "    " << c_file << ".o\n";
   }
-  for (int i = 0; i <= ctx->GetCurModelIndex(); ++i) {
-    ofs << "    weight" << i << ".c.o\n"
-        << "    net" << i << ".c.o\n"
-        << "    model" << i << ".c.o\n";
+  if (config->target() != kRiscV) {
+    for (int i = 0; i <= ctx->GetCurModelIndex(); ++i) {
+      ofs << "    weight" << i << ".c.o\n"
+          << "    net" << i << ".c.o\n"
+          << "    model" << i << ".c.o\n";
+    }
+    ofs << "    model.c.o\n"
+        << "    context.c.o\n"
+        << "    tensor.c.o\n";
+    if (config->target() != kCortex_M && !config->dynamic_shape()) {
+      ofs << "    allocator.c.o\n";
+    }
   }
-  ofs << "    model.c.o\n"
-      << "    context.c.o\n"
-      << "    tensor.c.o\n";
-  if (config->target() != kCortex_M && !config->dynamic_shape()) {
-    ofs << "    allocator.c.o\n";
-  }
-  if (config->debug_mode()) {
+  if (config->target() != kRiscV && config->debug_mode()) {
     ofs << "    debug_utils.c.o\n";
   }
   if (config->support_parallel()) {

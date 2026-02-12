@@ -73,6 +73,10 @@ uint64_t GetTimeUs() {
 }
 
 void PrintTensorHandle(MSTensorHandle tensor) {
+  if (tensor == NULL) {
+    printf("input tensor is null");
+    return;
+  }
   printf("name: %s, ", MSTensorGetName(tensor));
   MSDataType data_type = MSTensorGetDataType(tensor);
   printf("DataType: %d, ", data_type);
@@ -86,7 +90,8 @@ void PrintTensorHandle(MSTensorHandle tensor) {
   }
   printf("], Data: \n");
   void *data = MSTensorGetMutableData(tensor);
-  element_num = element_num > 10 ? 10 : element_num;
+  const size_t MAX_ELEMENT_NUM = 10;
+  element_num = element_num > MAX_ELEMENT_NUM ? MAX_ELEMENT_NUM : element_num;
   switch (data_type) {
     case kMSDataTypeNumberTypeFloat32: {
       for (size_t i = 0; i < element_num; i++) {

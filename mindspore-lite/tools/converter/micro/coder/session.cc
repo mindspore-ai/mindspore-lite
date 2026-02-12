@@ -78,7 +78,7 @@ int CoderSession::PassArgsToContext(const std::string &model_name) {
   context_->set_shape_info_container(&shape_info_container_);
   context_->set_dynamic_mem_manager(&dynamic_mem_manager_);
   Configurator *config = Configurator::GetInstance();
-  if (config->debug_mode()) {
+  if (config->target() != kRiscV && config->debug_mode()) {
     std::vector<std::string> blocks;
     blocks = AddDumpDataInfo(context_->code_blocks(), op_coders_);
     if (blocks.size() == 0) {

@@ -154,6 +154,10 @@ const char *EnumNameFormat(enum FormatC e) {
 }
 
 void PrintTensorData(MicroTensor *tensor) {
+  if (tensor == NULL) {
+    MICRO_ERROR("tensor is NULL, print tensor data failed");
+    return;
+  }
   void *data = tensor->data;
   unsigned int elenums = GetTensorElementSize(tensor);
   if (data == NULL || elenums == 0) {
@@ -268,6 +272,10 @@ void PrintDataToFile(const void *data, const size_t elenums, const enum DataType
 }
 
 void PrintTensor(MicroTensor *tensor, FILE *output_file, const char *is_input) {
+  if (tensor == NULL) {
+    MICRO_ERROR("tensor is NULL, print tensor failed");
+    return;
+  }
   if (output_file == NULL) {
     MICRO_ERROR("output file is NULL");
     return;

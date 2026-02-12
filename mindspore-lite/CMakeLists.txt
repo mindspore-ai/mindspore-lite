@@ -642,10 +642,9 @@ if(MSLITE_TARGET_RISCV)
             BUILD_BYPRODUCTS "${RISCV_BINARY_DIR}/nnacl/libnnacl.a"
             CMAKE_ARGS
             -DRISCV32=ON
-            -DMY_FLAGS=ON
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
             -DCMAKE_BUILD_TYPE=Release
-            -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/riscv64.toolchain.cmake
+            -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/riscv.toolchain.cmake
             BUILD_COMMAND ${CMAKE_MAKE_PROGRAM}
             INSTALL_COMMAND ""
             STEP_TARGETS build
@@ -661,7 +660,7 @@ if(MSLITE_TARGET_RISCV)
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
             -DCMAKE_BUILD_TYPE=Release
             -DTOP_DIR=${TOP_DIR}
-            -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/riscv64.toolchain.cmake
+            -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/riscv.toolchain.cmake
             -DCMAKE_INSTALL_PREFIX=${RISCV_INSTALL_DIR}
             BUILD_COMMAND ${CMAKE_MAKE_PROGRAM}
             INSTALL_COMMAND ""

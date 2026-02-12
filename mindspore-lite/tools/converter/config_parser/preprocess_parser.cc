@@ -99,7 +99,7 @@ int PreprocessParser::ParsePreprocess(const DataPreProcessString &data_pre_proce
     }
 
     ret = CollectCalibInputs(data_pre_process->calibrate_path, data_pre_process->calibrate_size,
-                             &data_pre_process->calibrate_path_vector);
+                             data_pre_process->input_type, &data_pre_process->calibrate_path_vector);
     if (ret != RET_OK) {
       MS_LOG(ERROR) << "collect calibrate inputs failed.";
       return ret;
@@ -180,7 +180,7 @@ int PreprocessParser::ParseImageToFormat(const std::string &image_to_format_str,
 }
 
 int PreprocessParser::CollectCalibInputs(const std::map<std::string, std::string> &calibrate_data_path,
-                                         size_t limited_count,
+                                         size_t limited_count, preprocess::InputType input_type,
                                          std::map<std::string, std::vector<std::string>> *inputs) {
   if (inputs == nullptr) {
     MS_LOG(ERROR) << "inputs is null";
@@ -202,19 +202,20 @@ int PreprocessParser::CollectCalibInputs(const std::map<std::string, std::string
     if (ret != RET_OK) {
       return ret;
     }
-    MS_ASSERT(file_names.size() >= kDotDirCount);
-    if (file_names.size() < (limited_count + kDotDirCount)) {
-      MS_LOG(ERROR) << "file count less than calibrate size, file count: " << file_names.size()
-                    << " limited_count: " << limited_count << " kDotDirCount: " << kDotDirCount;
-      return RET_ERROR;
-    }
-    for (size_t index = 0; index < (limited_count + kDotDirCount); index++) {
-      if (file_names[index] == "." || file_names[index] == "..") {
+    size_t valid_file_cnt = 0;
+    for (size_t index = 0; index < file_names.size(); index++) {
+      if (!FileNameValid(file_names[index], input_type)) {
         continue;
       }
       const std::string file_path = image_path.second + "/" + file_names[index];
       MS_LOG(DEBUG) << "calibrate file_path: " << file_path;
       AddImage(file_path, image_path.first);
+      valid_file_cnt++;
+    }
+    if (valid_file_cnt != limited_count) {
+      MS_LOG(ERROR) << "file count must equal calibrate size, file count: " << file_names.size()
+                    << ", calibrate size: " << limited_count;
+      return RET_ERROR;
     }
   }
   return RET_OK;
@@ -297,6 +298,36 @@ int PreprocessParser::ParseImageCenterCrop(const DataPreProcessString &data_pre_
   return RET_OK;
 }
 
+bool PreprocessParser::FileNameValid(const std::string &path, preprocess::InputType input_type) {
+  auto ends_with = [](const std::string &str, const std::string &ending) {
+    if (ending.size() > str.size()) {
+      return false;
+    }
+    return std::equal(ending.rbegin(), ending.rend(), str.rbegin());
+  };
+  auto contains = [](const std::string &str1, const std::string &str2) {
+    if (str2.empty()) {
+      return true;
+    }
+    if (str1.empty()) {
+      return false;
+    }
+    if (str2.size() > str1.size()) {
+      return false;
+    }
+    return str1.find(str2) != std::string::npos;
+  };
+  if (input_type == preprocess::InputType::BIN) {
+    if (ends_with(path, ".raw")) {
+      return true;
+    } else if (contains(path, ".bin")) {
+      return true;
+    }
+    return false;
+  }
+  return true;
+}
+
 int PreprocessParser::ReadDirectory(const std::string &path, std::vector<std::string> *file_names) {
   if (file_names == nullptr) {
     MS_LOG(ERROR) << "file_names is null";
@@ -316,6 +347,9 @@ int PreprocessParser::ReadDirectory(const std::string &path, std::vector<std::st
     struct dirent *de = readdir(dp);
     if (de == nullptr) {
       break;
+    }
+    if (std::string(de->d_name) == "." || std::string(de->d_name) == "..") {
+      continue;
     }
     file_names->push_back(std::string(de->d_name));
     file_count++;

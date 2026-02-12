@@ -25,9 +25,6 @@
 namespace mindspore::lite::micro {
 namespace {
 constexpr size_t kMaxLineSize = 120;
-struct camp {
-  bool operator()(const std::string &a, const std::string &b) const { return a.size() < b.size() || a < b; }
-};
 
 std::string GenerateArrayContent(const std::vector<size_t> &contents, const std::string &prefix) {
   std::string lines;
@@ -101,7 +98,7 @@ void CodeModelParamsData(std::ofstream &ofs, const std::map<std::string, Tensor 
 void CodeModelParamsForNet(std::ofstream &hofs, std::ofstream &cofs, const std::unique_ptr<CoderContext> &ctx,
                            const Configurator &config) {
   // reverse key and value of tensors_map
-  std::map<std::string, Tensor *, camp> address_map;
+  std::map<std::string, Tensor *> address_map;
   for (const auto &item : ctx->tensors_map()) {
     address_map.insert(std::make_pair(item.second, item.first));
   }
@@ -113,7 +110,7 @@ void CodeModelParamsForNet(std::ofstream &hofs, std::ofstream &cofs, const std::
       continue;
     }
     if (CheckConstantTensor(tensor)) {
-      if (config.target() != kCortex_M) {
+      if (config.target() != kCortex_M && config.target() != kRiscV) {
         if (w_auxiliary.find(tensor) == w_auxiliary.end()) {
           hofs << "extern " << GetTensorDataType(tensor->data_type()) << name << "[];  // " << tensor->tensor_name()
                << std::endl;
@@ -153,7 +150,7 @@ void CodeExportWeightState(std::ofstream &ofs, const int model_index) {
 void CodeWeightContentInit(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx,
                            const std::map<Tensor *, int> &tensors_index) {
   auto &w_auxiliary = ctx->auxiliary_weights();
-  std::map<std::string, Tensor *, camp> real_need_tensors;
+  std::map<std::string, Tensor *> real_need_tensors;
   auto record_saved_tensors = ctx->saved_weights();
   for (auto &item : record_saved_tensors) {
     real_need_tensors.insert(std::make_pair(item.first, item.second));
@@ -164,6 +161,7 @@ void CodeWeightContentInit(std::ofstream &ofs, const std::unique_ptr<CoderContex
   int copy_static_num = 0;
   int copy_dynamic_num = 0;
   auto tensors_map = ctx->tensors_map();
+  MS_CHECK_TRUE_WITHOUT_RET(tensors_index.size() != 0, "tensors_index size is 0, please check!");
   for (const auto &item : real_need_tensors) {
     if (!CheckConstantTensor(item.second) || item.second->data() == nullptr) {
       continue;
@@ -171,19 +169,31 @@ void CodeWeightContentInit(std::ofstream &ofs, const std::unique_ptr<CoderContex
     auto iter = tensors_map.find(item.second);
     if (iter == tensors_map.end()) {
       TypeId data_type = item.second->data_type();
+      if (tensors_index.find(item.second) == tensors_index.end()) {
+        continue;
+      }
       non_copy += "  " + GetTensorDataType(data_type) + "*" + item.first + " = (weight_buffer + offsets[" +
                   std::to_string(tensors_index.at(item.second)) + "]);\n";
       continue;
     }
     if (w_auxiliary.find(item.second) == w_auxiliary.end()) {
+      if (tensors_index.find(item.second) == tensors_index.end()) {
+        continue;
+      }
       copy_static += "    {" + item.first + ", " + std::to_string(tensors_index.at(item.second)) + "},\n";
       ++copy_static_num;
     } else {
+      if (tensors_index.find(item.second) == tensors_index.end()) {
+        continue;
+      }
       copy_dynamic += "    {&" + item.first + ", " + std::to_string(tensors_index.at(item.second)) + "},\n";
       ++copy_dynamic_num;
     }
   }
   for (const auto &item : w_auxiliary) {
+    if (tensors_index.find(item.second.first) == tensors_index.end()) {
+      continue;
+    }
     copy_static += "    {" + item.second.second + ", " + std::to_string(tensors_index.at(item.second.first)) + "},\n";
     ++copy_static_num;
   }
@@ -243,6 +253,8 @@ void CodeWeightInitIfKeepWeight(std::ofstream &ofs, const std::unique_ptr<CoderC
   }
   std::vector<size_t> offsets{0};
   int last = online_compute_index.empty() ? tensors_size.size() - 1 : online_compute_index.front();
+  MS_CHECK_TRUE_WITHOUT_RET(tensors_size.size() >= static_cast<size_t>(last + 1),
+                            "The size of tensors_size is incorrect.");
   for (int i = 1; i <= last; ++i) {
     offsets.push_back(offsets[i - 1] + tensors_size[i - 1]);
   }
@@ -280,16 +292,21 @@ void CodeWeightInitIfKeepWeight(std::ofstream &ofs, const std::unique_ptr<CoderC
   CodeWeightContentInit(ofs, ctx, tensors_index);
 }
 
-void CodeWeightInitIfNonKeepWeight(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx) {
-  ofs << "int Init" << ctx->GetCurModelIndex() << "(void *weight_buffer, int weight_size) {\n"
-      << "  if (weight_buffer == NULL) {\n"
-      << "    return RET_ERROR;\n"
-      << "  }\n";
-  ofs << "  struct ModelParameter {\n"
-      << "    void *addr;\n"
-      << "    size_t size;\n"
-      << "    size_t offset;\n"
-      << "  };\n";
+void CodeWeightInitIfNonKeepWeight(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx,
+                                   const Configurator &config) {
+  ofs << "int Init" << ctx->GetCurModelIndex() << "(void *weight_buffer, int weight_size) {\n";
+
+  if (config.target() != kRiscV) {
+    ofs << "  if (weight_buffer == NULL) {\n"
+        << "    return RET_ERROR;\n"
+        << "  }\n";
+
+    ofs << "  struct ModelParameter {\n"
+        << "    void *addr;\n"
+        << "    size_t size;\n"
+        << "    size_t offset;\n"
+        << "  };\n";
+  }
 
   ofs << "  size_t " << ctx->weight_size_name() << " = PackWeightSize" << ctx->GetCurModelIndex() << "();\n";
   size_t params_num = 0;
@@ -314,15 +331,20 @@ void CodeWeightInitIfNonKeepWeight(std::ofstream &ofs, const std::unique_ptr<Cod
     }
     offset += tensor->Size();
   }
-  ofs << params << "\n";
-  ofs << "  struct ModelParameter model_params[] = {\n" << origins << "  };\n";
-  ofs << "\n";
-  ofs << "  for(int i = 0; i < " << params_num << "; ++i) {\n"
-      << "    if (model_params[i].offset + model_params[i].size > weight_size) {\n"
-         "      return RET_ERROR;\n"
-         "    }\n"
-      << "    memcpy(model_params[i].addr, (weight_buffer + model_params[i].offset), model_params[i].size);\n"
-      << "  }\n";
+  if (config.target() != kRiscV) {
+    ofs << params << "\n";
+    ofs << "  struct ModelParameter model_params[] = {\n" << origins << "  };\n";
+    ofs << "\n";
+
+    // copy weight_buffer to each kernel weight
+    ofs << "  for(int i = 0; i < " << params_num << "; ++i) {\n"
+        << "    if (model_params[i].offset + model_params[i].size > weight_size) {\n"
+           "      return RET_ERROR;\n"
+           "    }\n"
+        << "    memcpy(model_params[i].addr, (weight_buffer + model_params[i].offset), model_params[i].size);\n"
+        << "  }\n";
+  }
+
   ofs << "  if (" << ctx->weight_size_name() << " > 0) {\n";
   ofs << "    " << ctx->weight_name() << " = malloc(" << ctx->weight_size_name() << ");\n";
   ofs << "    if (" << ctx->weight_name() << " == NULL) {\n      return RET_ERROR;\n    }\n";
@@ -332,7 +354,7 @@ void CodeWeightInitIfNonKeepWeight(std::ofstream &ofs, const std::unique_ptr<Cod
 }
 
 void CodeWeightInitFunc(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config) {
-  if (config.target() != kCortex_M) {
+  if (config.target() != kCortex_M || config.target() != kRiscV) {
     ofs << "static size_t PackWeightSize" << ctx->GetCurModelIndex() << "() {\n";
     ofs << "  size_t w_size = 0;\n";
     for (const auto &block : ctx->GetInitWeightSizeCode()) {
@@ -343,7 +365,7 @@ void CodeWeightInitFunc(std::ofstream &ofs, const std::unique_ptr<CoderContext> 
     if (config.keep_original_weight()) {
       CodeWeightInitIfKeepWeight(ofs, ctx);
     } else {
-      CodeWeightInitIfNonKeepWeight(ofs, ctx);
+      CodeWeightInitIfNonKeepWeight(ofs, ctx, config);
     }
   } else {
     ofs << "int Init" << ctx->GetCurModelIndex() << "(void *weight_buffer, int weight_size) {\n";
@@ -362,7 +384,7 @@ void CodeWeightInitFunc(std::ofstream &ofs, const std::unique_ptr<CoderContext> 
 }
 
 void CodeWeightExportFunc(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config) {
-  if (config.target() == kCortex_M) {
+  if (config.target() == kCortex_M && config.target() == kRiscV) {
     MS_LOG(DEBUG) << "weight file is unsupported to export when in Cortex M mode.";
     return;
   }
