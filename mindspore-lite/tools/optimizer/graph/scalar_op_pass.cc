@@ -610,22 +610,6 @@ STATUS ScalarOpPass::RunArithmeticCheckPass(const FuncGraphPtr &func_graph, cons
       if (first_data_type == second_data_type) {
         continue;
       }
-
-      // Insert cast node before second input, and set infer type the same as the first input
-      auto cast_data_type = first_data_type;
-      ShapeVector cast_shape;
-      if (FetchShapeFromAbstract(second_input->abstract(), &cast_shape) != lite::RET_OK) {
-        MS_LOG(ERROR) << "Fetch shape from second input abstract failed!";
-        return lite::RET_ERROR;
-      }
-      auto new_cast_abstract =
-        abstract::MakeAbstract(std::make_shared<abstract::Shape>(cast_shape), TypeIdToType(cast_data_type));
-      auto new_cast_node =
-        GenCastNode(func_graph, second_input, second_input->fullname_with_scope() + "cast_after_second_in",
-                    cast_data_type, new_cast_abstract);
-      MS_CHECK_TRUE_RET(new_cast_node != nullptr, lite::RET_ERROR);
-      new_cast_node->set_abstract(new_cast_abstract);
-      manager->SetEdge(node, kIndexTwo, new_cast_node);
     }
   }
   return lite::RET_OK;
