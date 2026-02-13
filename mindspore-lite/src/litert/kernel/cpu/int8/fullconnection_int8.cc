@@ -49,12 +49,22 @@ int FullconnectionInt8CPUKernel::Prepare() {
 
 int FullconnectionInt8CPUKernel::ReSize() {
   CHECK_NULL_RETURN(param_);
+  // out_tensors_ is empty, cannot get 0th tensor
+  MS_CHECK_GT(out_tensors_.size(), 0, RET_ERROR);
+
+  auto out_tensor = out_tensors_.at(0);
+
+  const auto &out_shape = out_tensor->shape();
+  // out_tensor shape is empty, cannot get back element
+  MS_CHECK_GT(out_shape.size(), 0, RET_ERROR);
+
   int row = 1;
-  for (size_t i = 0; i < out_tensors_.at(0)->shape().size() - 1; ++i) {
-    row *= (out_tensors_.at(0)->shape()).at(i);
+  for (size_t i = 0; i < out_shape.size() - 1; ++i) {
+    row *= out_shape.at(i);
   }
   param_->row_ = row;
-  param_->col_ = out_tensors_.at(0)->shape().back();
+  param_->col_ = out_shape.back();
+
   CHECK_LESS_RETURN(in_tensors_.at(1)->shape().size(), C2NUM);
   param_->deep_ = (in_tensors_.at(1)->shape()).at(1);
 
