@@ -55,6 +55,8 @@ class NodeInferShape {
   STATUS SetCNodeAbstract(const std::shared_ptr<CNode> &cnode, const std::vector<lite::Tensor *> &outputs, int status);
   abstract::AbstractBasePtr ConvertLiteTensorToAbstract(lite::Tensor *tensor);
   abstract::AbstractBasePtr ConvertTensorListToAbstract(lite::Tensor *tensor);
+  virtual int GetCNodeInputTensors(const CNodePtr &cnode, std::vector<TensorPtr> *inputs, converter::FmkType fmk_type,
+                                   bool train_flag, bool copy_data);
   FmkType fmk_type_{converter::kFmkTypeMs};
   bool train_flag_{false};
 };

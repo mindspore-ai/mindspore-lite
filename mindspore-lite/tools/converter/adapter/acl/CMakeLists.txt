@@ -5,6 +5,7 @@ link_directories(${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
 file(GLOB ACL_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/api/*.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/aclnn/*.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/common/*.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/mapper/*.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/infer/*.cc

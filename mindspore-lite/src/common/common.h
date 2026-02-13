@@ -155,6 +155,11 @@ static const char *const kNameAttrWeightDir = "weight_dir";
 
 static const char *const kOutputShapes = "outputs_shape";
 static const char *const kNameCustomAscend = "CustomAscend";
+static const char *const kNameCustomAclnnSubgraph = "CustomAclnnSubgraph";
+static const char *const kNameGraphAttr = "graph";
+static const char *const kNameShapeAttr = "shapes";
+static const char *const kNameShapeValueAttr = "is_shape_value";
+static const char *const kNameCNodeValueAttr = "value";
 
 static const char *const kNameAttrRefDatas = "ref_datas";
 static const char *const kNameAttrZeroValRefDatas = "zero_val_ref_datas";

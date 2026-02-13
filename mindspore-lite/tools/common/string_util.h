@@ -47,6 +47,68 @@ bool ConvertDoubleVector(const std::string &str, std::vector<double> *value);
 size_t Hex2ByteArray(const std::string &hex_str, unsigned char *byte_array, size_t max_len);
 
 bool IsNumber(const std::string &item);
+
+template <typename T, typename = void>
+struct IsStreamable : std::false_type {};
+
+template <typename T>
+struct IsStreamable<T, std::void_t<decltype(std::declval<std::ostream &>() << std::declval<T>())>> : std::true_type {};
+
+template <typename... Args>
+class StringJoiner {
+ private:
+  std::string delimiter_;
+  std::tuple<Args...> args_;
+
+  template <std::size_t... I>
+  std::string JoinImpl(std::index_sequence<I...>) const {
+    std::ostringstream oss;
+    ((oss << (I == 0 ? "" : delimiter_) << std::get<I>(args_)), ...);
+    return oss.str();
+  }
+
+ public:
+  explicit StringJoiner(const std::string &delimiter, Args &&...args)
+      : delimiter_(delimiter), args_(std::forward<Args>(args)...) {}
+
+  std::string Join() const { return JoinImpl(std::index_sequence_for<Args...>{}); }
+};
+
+template <typename T>
+struct IsIterable {
+ private:
+  template <typename U>
+  static auto Test(U) -> decltype(std::begin(std::declval<U &>()) != std::end(std::declval<U &>()),
+                                  ++std::declval<decltype(std::begin(std::declval<U &>())) &>(),
+                                  *std::begin(std::declval<U &>()), std::true_type{});
+
+  template <typename... Args>
+  static auto Test(Args...) -> std::false_type;
+
+ public:
+  static constexpr bool value = decltype(Test(std::declval<T>()))::value;
+};
+
+template <typename Container, typename = std::enable_if_t<IsIterable<Container>::value, void>>
+std::string Join(const std::string &delimiter, Container &&container) {
+  std::ostringstream oss;
+  auto iter = std::begin(container);
+  auto end = std::end(container);
+
+  if (iter != end) {
+    oss << *iter;
+    ++iter;
+    for (; iter != end; ++iter) {
+      oss << delimiter << *iter;
+    }
+  }
+  return oss.str();
+}
+
+template <typename... Args, typename = std::enable_if_t<(IsStreamable<Args>::value && ...), void>>
+std::string Join(const std::string &delimiter, Args &&...args) {
+  return StringJoiner<Args...>(delimiter, std::forward<Args>(args)...).Join();
+}
 }  // namespace lite
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_TOOLS_COMMON_STRING_UTIL_H_
