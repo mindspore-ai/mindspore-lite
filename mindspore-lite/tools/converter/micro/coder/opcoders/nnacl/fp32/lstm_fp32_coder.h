@@ -43,7 +43,7 @@ class LstmFP32Coder : public OperatorCoder {
   void *weight_h_ptr_{nullptr};
   void *input_bias_{nullptr};
   void *state_bias_{nullptr};
-  float *buffer_[7] = {nullptr};
+  float *buffer_[C9NUM] = {nullptr};
   int row_tile_{C12NUM};
   int col_tile_{C8NUM};
   int weight_batch_{0};

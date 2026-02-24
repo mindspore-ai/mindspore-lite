@@ -167,6 +167,18 @@ int LstmFP32Coder::MallocRunBuffer(CoderContext *const context) {
     MS_CHECK_PTR(buffer_[kFive]);
   }
   buffer_[kSix] = nullptr;
+  if (input_tensors_.size() == kSeven || lstm_param_->project_size_ != 0) {
+    if (!is_vec_) {
+      const int scale = lstm_param_->bidirectional_ ? kTwo : 1;
+      buffer_[kSeven] = reinterpret_cast<float *>(allocator_->Malloc(
+        kNumberTypeFloat32, lstm_param_->state_row_align_ * lstm_param_->hidden_size_ * scale * sizeof(float),
+        kWorkspace));
+      MS_CHECK_PTR(buffer_[kSeven]);
+    } else {
+      buffer_[kSeven] = nullptr;
+    }
+  }
+  buffer_[kEight] = nullptr;
   return RET_OK;
 }
 
@@ -186,6 +198,12 @@ int LstmFP32Coder::DoCode(CoderContext *context) {
             "nnacl_c/fp32/lstm_fp32.h",
           },
           {
+            "activation_fp32.c",
+            "arithmetic_fp32.c",
+            "arithmetic_base.c",
+            "add_fp32.c",
+            "matmul_fp32.c",
+            "pack_fp32.c",
             "lstm_fp32.c",
             "mul_fp32.c",
           });

@@ -28,6 +28,7 @@ constexpr int kThree = 3;
 constexpr int kFour = 4;
 constexpr int kFive = 5;
 constexpr int kSix = 6;
+constexpr int kSeven = 7;
 constexpr int kEight = 8;
 constexpr int kNine = 9;
 constexpr int k64 = 64;
