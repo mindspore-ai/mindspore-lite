@@ -515,25 +515,29 @@ int BenchmarkUnifiedApi::InitMSContext(const std::shared_ptr<mindspore::Context>
 #endif
 
   auto &device_list = context->MutableDeviceInfo();
-  if (flags_->device_ == "GPU" || flags_->device_ == "Auto") {
-    InitMSContextForGPU(context, &device_list);
-  }
-
-  if (flags_->device_ == "NPU" || flags_->device_ == "Auto") {
-    std::shared_ptr<KirinNPUDeviceInfo> npu_device_info = std::make_shared<KirinNPUDeviceInfo>();
-    npu_device_info->SetEnableFP16(flags_->enable_fp16_);
-    npu_device_info->SetFrequency(kFrequencyDefault);
-    device_list.push_back(npu_device_info);
-  }
-
-  if (flags_->device_ == "Ascend" || flags_->device_ == "Auto") {
-    InitMSContextForAscend(context, &device_list);
-  }
-
-  if (flags_->device_ == "DSP" || flags_->device_ == "Auto") {
-    std::shared_ptr<DSPDeviceInfo> dsp_device_info = std::make_shared<DSPDeviceInfo>();
-    device_list.push_back(dsp_device_info);
-    context->SetEnableParallel(flags_->enable_parallel_);
+  if (flags_->model_type_ == "MindIR") {
+    if (flags_->device_ == "Ascend" || flags_->device_ == "Auto") {
+      InitMSContextForAscend(context, &device_list);
+    }
+  } else if (flags_->model_type_ == "MindIR_Lite") {
+    if (flags_->device_ == "GPU" || flags_->device_ == "Auto") {
+      InitMSContextForGPU(context, &device_list);
+    }
+    if (flags_->device_ == "NPU" || flags_->device_ == "Auto") {
+      std::shared_ptr<KirinNPUDeviceInfo> npu_device_info = std::make_shared<KirinNPUDeviceInfo>();
+      npu_device_info->SetEnableFP16(flags_->enable_fp16_);
+      npu_device_info->SetFrequency(kFrequencyDefault);
+      device_list.push_back(npu_device_info);
+    }
+    if (flags_->device_ == "DSP" || flags_->device_ == "Auto") {
+      std::shared_ptr<DSPDeviceInfo> dsp_device_info = std::make_shared<DSPDeviceInfo>();
+      device_list.push_back(dsp_device_info);
+      context->SetEnableParallel(flags_->enable_parallel_);
+    }
+  } else {
+    MS_LOG(ERROR) << "Model type " << flags_->model_type_ << " is not valid.";
+    std::cerr << "Model type " << flags_->model_type_ << " is not valid." << std::endl;
+    return RET_ERROR;
   }
 
   // CPU priority is behind GPU and NPU
@@ -1420,8 +1424,13 @@ int BenchmarkUnifiedApi::RunBenchmark() {
       std::cout << "ms_model_.LoadConfig failed while running ", model_name.c_str();
     }
   }
-
-  UpdateConfigInfo();
+  if (flags_->model_type_ == "MindIR") {
+    UpdateConfigInfo();
+  } else if (flags_->model_type_ != "MindIR" && flags_->model_type_ != "MindIR_Lite") {
+    MS_LOG(ERROR) << "Model type " << flags_->model_type_ << " is not valid.";
+    std::cerr << "Model type " << flags_->model_type_ << " is not valid." << std::endl;
+    return RET_ERROR;
+  }
 #ifdef MSLITE_ENABLE_CLOUD_INFERENCE
   if (flags_->enable_parallel_predict_) {
     MS_CHECK_FALSE_MSG(RunParallelBenchmark(context) != RET_OK, RET_ERROR, "run model pool failed.");

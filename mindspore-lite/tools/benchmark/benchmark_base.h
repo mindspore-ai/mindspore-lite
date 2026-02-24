@@ -514,7 +514,7 @@ class MS_API BenchmarkBase {
 
   int CheckModelValid();
 
-  int CheckDeviceTypeValid();
+  int VerifyDeviceType();
 
  protected:
   BenchmarkFlags *flags_;
