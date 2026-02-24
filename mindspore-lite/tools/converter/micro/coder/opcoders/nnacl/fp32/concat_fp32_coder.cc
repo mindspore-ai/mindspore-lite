@@ -48,7 +48,11 @@ int ConcatFP32Coder::DoCode(CoderContext *const context) {
   NNaclFp32Serializer code;
   code << "\t\tvoid *inputs_addr[] = {";
   for (size_t i = 0; i < input_num; ++i) {
-    code << allocator_->GetRuntimeAddr(input_tensors_.at(i)) << ", ";
+    if (input_tensors_.at(i)->IsConst()) {
+      code << allocator_->GetRuntimeAddr(input_tensors_.at(i), true) << ", ";
+    } else {
+      code << allocator_->GetRuntimeAddr(input_tensors_.at(i)) << ", ";
+    }
   }
   code << "};\n";
 

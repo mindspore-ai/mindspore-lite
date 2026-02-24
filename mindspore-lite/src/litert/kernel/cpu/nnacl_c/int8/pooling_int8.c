@@ -65,18 +65,18 @@ int AvgPoolingInt8(const int8_t *input_ptr, int8_t *output_ptr, const PoolingPar
               ++real_count;
             }
           }  // win_w loop
-        }    // win_h loop
+        }  // win_h loop
         if (real_count == 0) {
           return NNACL_ERR;
         }
         int16_t tmp_out = round((float)tmp_avg / (float)real_count);
-        tmp_out = (int8_t)(round((tmp_out - input_zp) * real_multiplier) + output_zp);
+        tmp_out = (int16_t)round((tmp_out - input_zp) * real_multiplier + output_zp);
         int8_t real_out = tmp_out < out_min ? out_min : tmp_out;
         real_out = real_out > out_max ? out_max : real_out;
         *(output_ptr + out_channel_offset) = real_out;
       }  // in_channel loop
-    }    // out_plane loop
-  }      // out_batch loop
+    }  // out_plane loop
+  }  // out_batch loop
   return NNACL_OK;
 }
 
@@ -153,7 +153,7 @@ int AvgPoolingOptInt8(const int8_t *input_ptr, int8_t *output_ptr, const Pooling
               }
 #endif
             }  // win_w loop
-          }    // win_h loop
+          }  // win_h loop
 #ifdef ENABLE_NEON
           int16_t tmp_data[8];
           int16_t tmp_out[8];
@@ -221,7 +221,7 @@ int AvgPoolingOptInt8(const int8_t *input_ptr, int8_t *output_ptr, const Pooling
               }
 #endif
             }  // win_w loop
-          }    // win_h loop
+          }  // win_h loop
 #ifdef ENABLE_NEON
           int16_t tmp_data[8];
           int16_t tmp_out[8];
@@ -263,15 +263,15 @@ int AvgPoolingOptInt8(const int8_t *input_ptr, int8_t *output_ptr, const Pooling
               int in_offset = in_channel_offset + input_stride + (h * in_w + w) * channel;
               tmp_avg += input_ptr[in_offset];
             }  // win_w loop
-          }    // win_h loop
+          }  // win_h loop
           int16_t tmp_out = round((float)tmp_avg / (float)real_count + 128) - 128;
           tmp_out = (int8_t)(round((tmp_out - input_zp) * real_multiplier) + output_zp);
           int16_t real_out = tmp_out < out_min ? out_min : tmp_out;
           real_out = real_out > out_max ? out_max : real_out;
           *(output_ptr + out_channel_offset) = (int8_t)real_out;
         }  // channel_res loop
-      }    // out_plane loop
-    }      // out_batch loop
+      }  // out_plane loop
+    }  // out_batch loop
   }
   return NNACL_OK;
 }
@@ -297,6 +297,8 @@ void MaxPoolingInt8(const int8_t *input_ptr, int8_t *output_ptr, const PoolingPa
   float output_scale = quant_args[1][0].scale_;
   int output_zp = quant_args[1][0].zp_;
   double real_multiplier = input_scale / output_scale;
+  const int8_t out_min = INT8_MIN;
+  const int8_t out_max = INT8_MAX;
 
   for (int batch = 0; batch < output_batch; batch++) {
     int in_batch_offset = batch * in_h * in_w * channel;
@@ -320,11 +322,78 @@ void MaxPoolingInt8(const int8_t *input_ptr, int8_t *output_ptr, const PoolingPa
               tmp_max = MaxInt8(tmp_max, *(input_ptr + in_offset));
             }
           }  // win_w loop
-        }    // win_h loop
-        *(output_ptr + out_channel_offset) = (int8_t)(round((tmp_max - input_zp) * real_multiplier) + output_zp);
+        }  // win_h loop
+        tmp_max = (int)round((tmp_max - input_zp) * real_multiplier + output_zp);
+        int8_t real_out = tmp_max < out_min ? out_min : tmp_max;
+        real_out = real_out > out_max ? out_max : real_out;
+        *(output_ptr + out_channel_offset) = real_out;
       }  // in_channel loop
-    }    // out_plane loop
-  }      // out_batch loop
+    }  // out_plane loop
+  }  // out_batch loop
+}
+
+void MaxPoolingInt8V1(const int8_t *input_ptr, int8_t *output_ptr, const PoolingParameter *pooling_param,
+                      PoolingComputeParam *compute_args, QuantArg **quant_args) {
+  int stride_w = pooling_param->stride_w_;
+  int stride_h = pooling_param->stride_h_;
+  int pad_w = pooling_param->pad_l_;
+  int pad_h = pooling_param->pad_u_;
+  int win_w = pooling_param->window_w_;
+  int win_h = pooling_param->window_h_;
+  int channel = compute_args->input_channel_;
+  int in_w = compute_args->input_w_;
+  int in_h = compute_args->input_h_;
+  int output_w = compute_args->output_w_;
+  int output_h = compute_args->output_h_;
+  int output_batch = compute_args->output_batch_;
+  int out_plane = output_w * output_h;
+  // input channel is equal to output channel
+  float input_scale = quant_args[0][0].scale_;
+  int input_zp = quant_args[0][0].zp_;
+  float output_scale = quant_args[1][0].scale_;
+  int output_zp = quant_args[1][0].zp_;
+  float real_multiplier = input_scale / output_scale;
+  int h_index_stride = in_w * channel;
+  const int8_t out_min = INT8_MIN;
+  const int8_t out_max = INT8_MAX;
+  for (int batch = 0; batch < output_batch; batch++) {
+    int in_batch_offset = batch * in_h * in_w * channel;
+    int out_batch_offset = batch * output_h * output_w * channel;
+
+    for (int i = 0; i < out_plane; i++) {
+      int out_w_index = i % output_w;
+      int out_h_index = i / output_w;
+      int in_w_index = out_w_index * stride_w - pad_w;
+      int in_w_index_start = in_w_index < 0 ? 0 : in_w_index;
+      int in_w_index_end = (in_w_index + win_w) > in_w ? in_w : (in_w_index + win_w);
+      int in_h_index = out_h_index * stride_h - pad_h;
+      int out_plane_offset = out_batch_offset + i * channel;
+      int in_h_index_start = in_h_index < 0 ? 0 : in_h_index;
+      int in_h_index_end = (in_h_index + win_h) > in_h ? in_h : (in_h_index + win_h);
+
+      int h_index_base = in_h_index_start * h_index_stride;
+      int h_index_base_end = in_h_index_end * h_index_stride;
+
+      int w_index_base = in_w_index_start * channel;
+      int w_index_base_end = in_w_index_end * channel;
+      for (int j = 0; j < channel; j++) {
+        int in_channel_offset = in_batch_offset + j;
+        int out_channel_offset = out_plane_offset + j;
+        int8_t tmp_max = INT8_MIN;
+        for (int h_index = h_index_base; h_index < h_index_base_end; h_index += h_index_stride) {
+          int offset_h = in_channel_offset + h_index;
+          for (int w_index = w_index_base; w_index < w_index_base_end; w_index += channel) {
+            int in_offset = offset_h + w_index;
+            tmp_max = MaxInt8(tmp_max, *(input_ptr + in_offset));
+          }
+        }
+        tmp_max = (int)round((tmp_max - input_zp) * real_multiplier + output_zp);
+        int8_t real_out = tmp_max < out_min ? out_min : tmp_max;
+        real_out = real_out > out_max ? out_max : real_out;
+        *(output_ptr + out_channel_offset) = real_out;
+      }  // in_channel loop
+    }  // out_plane loop
+  }  // out_batch loop
 }
 
 void MaxPoolingWithQuantInt8(const int8_t *input_ptr, int8_t *output_ptr, PoolingParameter *pooling_param,
@@ -343,6 +412,8 @@ void MaxPoolingWithQuantInt8(const int8_t *input_ptr, int8_t *output_ptr, Poolin
   float output_scale = quant_args[1][0].scale_;
   int output_zp = quant_args[1][0].zp_;
   double real_multiplier = input_scale / output_scale;
+  const int8_t out_min = INT8_MIN;
+  const int8_t out_max = INT8_MAX;
 
   NNACL_CHECK_ZERO_RETURN(output_w);
   for (int batch = 0; batch < compute_args->output_batch_; batch++) {
@@ -385,7 +456,7 @@ void MaxPoolingWithQuantInt8(const int8_t *input_ptr, int8_t *output_ptr, Poolin
 #endif
               }
             }  // win_w loop
-          }    // win_h loop
+          }  // win_h loop
 #ifdef ENABLE_NEON
           for (int l = 0; l < C16NUM; ++l) {
             tmp_max[l] = (int8_t)(round((tmp_max[l] - input_zp) * real_multiplier) + output_zp);
@@ -415,11 +486,14 @@ void MaxPoolingWithQuantInt8(const int8_t *input_ptr, int8_t *output_ptr, Poolin
                 tmp_max = MaxInt8(tmp_max, *(input_ptr + in_offset));
               }
             }  // win_w loop
-          }    // win_h loop
-          *(output_ptr + out_channel_offset) = (int8_t)(round((tmp_max - input_zp) * real_multiplier) + output_zp);
+          }  // win_h loop
+          tmp_max = (int)round((tmp_max - input_zp) * real_multiplier + output_zp);
+          int8_t real_out = tmp_max < out_min ? out_min : tmp_max;
+          real_out = real_out > out_max ? out_max : real_out;
+          *(output_ptr + out_channel_offset) = real_out;
         }  // channel_res loop
-      }    // out_plane loop
-    }      // out_batch loop
+      }  // out_plane loop
+    }  // out_batch loop
   }
 }
 
@@ -489,7 +563,7 @@ void MaxPoolingOptInt8(const int8_t *input_ptr, int8_t *output_ptr, PoolingParam
                 out_array[j] = out_array[j] > in_data[j] ? out_array[j] : in_data[j];
               }
             }  // kw loop
-          }    // kh loop
+          }  // kh loop
 
           int j = 0;
 #ifdef ENABLE_NEON
@@ -510,7 +584,7 @@ void MaxPoolingOptInt8(const int8_t *input_ptr, int8_t *output_ptr, PoolingParam
             out_data[j] = out_array[j];
           }
         }  // 256 channel loop
-      }    // out_plane loop
-    }      // out_batch loop
+      }  // out_plane loop
+    }  // out_batch loop
   }
 }
