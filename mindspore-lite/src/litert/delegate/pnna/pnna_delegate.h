@@ -1,5 +1,5 @@
 /**
- * Copyright 2025 Huawei Technologies Co., Ltd
+ * Copyright 2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,6 +38,8 @@
 #include "src/litert/delegate/pnna/op/softmax_pnna.h"
 #include "src/litert/delegate/pnna/op/unsqueeze_pnna.h"
 #include "src/litert/delegate/pnna/op/batch_to_space_pnna.h"
+#include "src/litert/delegate/pnna/op/conv2d_pnna.h"
+#include "src/litert/delegate/pnna/op/data_convert_pnna.h"
 
 namespace mindspore {
 namespace lite {
