@@ -240,10 +240,12 @@ int ArithmeticFP32Coder::ConstTensorBroadCast(CoderContext *const context) {
     arithmetic_parameter_->in_elements_num1_ = arithmetic_parameter_->out_elements_num_;
     arithmetic_parameter_->broadcasting_ = false;
   }
+  context->AppendInitCode(init_code.str());
   return RET_OK;
 }
 
 int ArithmeticFP32Coder::Prepare(CoderContext *const context) {
+  MS_CHECK_TRUE_MSG(input_tensors_.size() >= Num2, RET_ERROR, "ArithmeticFP32Coder input tensors size should >= 2");
   filter_tensor_ = input_tensors_.at(kWeightIndex);
   MS_CHECK_PTR(filter_tensor_);
   MS_CHECK_RET_CODE(CheckDataType(), "ArithmeticFP32Coder check datatype fail");
@@ -279,6 +281,8 @@ void ArithmeticFP32Coder::CollectFilesForFunc(CoderContext *const context) {
             "wrapper/fp32/arithmetic_fp32_wrapper.h",
           },
           {
+            "arithmetic_base.c",
+            "arithmetic_fp32.c",
             "arithmetic_fp32_wrapper.c",
           });
   // for nnacl's operator combine all arithmetic to nnalc/arithmetic.c
@@ -301,7 +305,8 @@ void ArithmeticFP32Coder::CollectFilesForFunc(CoderContext *const context) {
               "arithmetic_fp32.c",
               "arithmetic_base.c",
             });
-  } else if (arithmetic_opt_run_ == "ElementOptMul" || arithmetic_run_ == "ElementMul") {
+  } else if (arithmetic_opt_run_ == "ElementOptMul" || arithmetic_run_ == "ElementMul" ||
+             arithmetic_run_ == "ElementMulRelu" || arithmetic_run_ == "ElementMulRelu6") {
     Collect(context,
             {
               "nnacl_c/fp32/mul_fp32.h",
@@ -448,15 +453,15 @@ int ArithmeticFP32Coder::DoCode(CoderContext *const context) {
     return RET_OK;
   }
   int offset = stride * kDefaultTaskId * data_type_len_;
-  input0_ptr_str_ = allocator_->GetRuntimeAddr(input0_ptr_);
-  input1_ptr_str_ = allocator_->GetRuntimeAddr(input1_ptr_);
-  if (!input0_broadcast_) {
-    input0_ptr_str_ = allocator_->GetRuntimeAddr(input_tensor_, true);
-    input1_ptr_str_ = allocator_->GetRuntimeAddr(filter_tensor_);
+  if (input0_broadcast_) {
+    input0_ptr_str_ = allocator_->GetRuntimeAddr(input0_ptr_);
+  } else {
+    input0_ptr_str_ = allocator_->GetRuntimeAddr(input_tensor_, input_tensor_->IsConst());
   }
-  if (!input1_broadcast_) {
-    input0_ptr_str_ = allocator_->GetRuntimeAddr(input_tensor_);
-    input1_ptr_str_ = allocator_->GetRuntimeAddr(filter_tensor_, true);
+  if (input1_broadcast_) {
+    input1_ptr_str_ = allocator_->GetRuntimeAddr(input1_ptr_);
+  } else {
+    input1_ptr_str_ = allocator_->GetRuntimeAddr(filter_tensor_, filter_tensor_->IsConst());
   }
   output_ptr_str_ = allocator_->GetRuntimeAddr(output_tensor_);
   NNaclFp32Serializer code;

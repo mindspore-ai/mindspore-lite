@@ -93,7 +93,9 @@ int SoftmaxInt8CPUKernel::ReSize() {
   auto in_dims = in_shape.size();
   int ele_size = 1;
   n_dim_ = static_cast<int>(in_dims);
-  if (softmax_param_->axis_ == -1) {
+  auto ret = softmax_param_->axis_ >= -n_dim_ && softmax_param_->axis_ < n_dim_;
+  MS_CHECK_TRUE_MSG(ret, RET_ERROR, "Softmax axis must be in [-n_dim, n_dim-1]");
+  if (softmax_param_->axis_ < 0) {
     softmax_param_->axis_ += static_cast<int>(in_dims);
   }
   for (size_t i = 0; i < in_dims; i++) {
