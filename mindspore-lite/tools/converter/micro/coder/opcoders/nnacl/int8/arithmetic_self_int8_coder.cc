@@ -25,6 +25,7 @@
 using mindspore::schema::PrimitiveType_Abs;
 using mindspore::schema::PrimitiveType_Ceil;
 using mindspore::schema::PrimitiveType_Cos;
+using mindspore::schema::PrimitiveType_ExpFusion;
 using mindspore::schema::PrimitiveType_Floor;
 using mindspore::schema::PrimitiveType_Log;
 using mindspore::schema::PrimitiveType_LogicalNot;
@@ -56,7 +57,7 @@ int ArithmeticSelfInt8Coder::Prepare(CoderContext *context) {
   param_.quant_arg_.output_activation_max_ = std::numeric_limits<int8_t>::max();
   param_.quant_arg_.output_activation_min_ = std::numeric_limits<int8_t>::min();
 
-  if (param_.op_parameter_.type_ == PrimitiveType_Square) {
+  if (parameter_->type_ == PrimitiveType_Square) {
     const double real_multiplier =
       (param_.quant_arg_.in_args_.scale_ * param_.quant_arg_.in_args_.scale_) / param_.quant_arg_.out_args_.scale_;
 
@@ -85,6 +86,9 @@ int ArithmeticSelfInt8Coder::Prepare(CoderContext *context) {
       break;
     case PrimitiveType_Cos:
       arithmeticSelf_run_ = "Int8ElementCos";
+      break;
+    case PrimitiveType_ExpFusion:
+      arithmeticSelf_run_ = "Int8ElementExp";
       break;
     case PrimitiveType_Log:
       arithmeticSelf_run_ = "Int8ElementLog";
@@ -115,9 +119,11 @@ int ArithmeticSelfInt8Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
             "nnacl_c/int8/arithmetic_self_int8.h",
+            "nnacl_c/int8/fixed_point.h",
           },
           {
             "arithmetic_self_int8.c",
+            "fixed_point.c",
           });
   NNaclInt8Serializer code;
   code.CodeStruct("param", param_.quant_arg_);
@@ -133,6 +139,7 @@ REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_Ceil, CPUOpCoderC
 REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_Abs, CPUOpCoderCreator<ArithmeticSelfInt8Coder>)
 REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_Sin, CPUOpCoderCreator<ArithmeticSelfInt8Coder>)
 REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_Cos, CPUOpCoderCreator<ArithmeticSelfInt8Coder>)
+REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_ExpFusion, CPUOpCoderCreator<ArithmeticSelfInt8Coder>)
 REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_Log, CPUOpCoderCreator<ArithmeticSelfInt8Coder>)
 REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_Sqrt, CPUOpCoderCreator<ArithmeticSelfInt8Coder>)
 REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_Rsqrt, CPUOpCoderCreator<ArithmeticSelfInt8Coder>)

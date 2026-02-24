@@ -43,13 +43,23 @@ int AddInt8Coder::Prepare(CoderContext *const context) {
 
 int AddInt8Coder::Init() {
   arith_para_ = reinterpret_cast<ArithmeticParameter *>(parameter_);
-  para_.in0_args_.zp_ = input0->quant_params().front().zeroPoint * -1;
-  para_.in1_args_.zp_ = input1->quant_params().front().zeroPoint * -1;
-  para_.out_zp_ = output_tensor_->quant_params().front().zeroPoint;
+  double in0_scale = 1.0;
+  double in1_scale = 1.0;
+  double out_scale = 1.0;
+  if (input0->quant_params().size() != 0 && input1->quant_params().size() != 0 &&
+      output_tensor_->quant_params().size() != 0) {
+    para_.in0_args_.zp_ = input0->quant_params().front().zeroPoint * -1;
+    para_.in1_args_.zp_ = input1->quant_params().front().zeroPoint * -1;
+    para_.out_zp_ = output_tensor_->quant_params().front().zeroPoint;
 
-  const double in0_scale = input0->quant_params().front().scale;
-  const double in1_scale = input1->quant_params().front().scale;
-  const double out_scale = output_tensor_->quant_params().front().scale;
+    in0_scale = input0->quant_params().front().scale;
+    in1_scale = input1->quant_params().front().scale;
+    out_scale = output_tensor_->quant_params().front().scale;
+  } else {
+    para_.in0_args_.zp_ = 0;
+    para_.in1_args_.zp_ = 0;
+    para_.out_zp_ = 0;
+  }
 
   para_.left_shift_ = kLeftShift;
   const double twice_max_input_scale = 2 * std::max(in0_scale, in1_scale);
@@ -156,9 +166,9 @@ int AddInt8Coder::DoCode(CoderContext *const context) {
 
   code.CodeStruct("para", para_);
   code.CodeStruct("arith_para", *arith_para_);
-  code.CodeBaseStruct("AddInt8Args", kRunArgs, "&para", "&arith_para", in_size_, out_size_, gThreadNum, elements_num_,
-                      support_opt_add_, input0, input1, output_tensor_);
   if (support_parallel_) {
+    code.CodeBaseStruct("AddInt8Args", kRunArgs, "&para", "&arith_para", in_size_, out_size_, gThreadNum, elements_num_,
+                        support_opt_add_, input0, input1, output_tensor_);
     if (arith_para_->broadcasting_) {
       code.CodeFunction(kParallelLaunch, "AddBroadcastInt8Run", kRunArgsAddr, gThreadNum);
     } else {
@@ -166,8 +176,15 @@ int AddInt8Coder::DoCode(CoderContext *const context) {
     }
   } else {
     if (arith_para_->broadcasting_) {
-      code.CodeFunction("AddBroadcastInt8Run", kRunArgsAddr, kDefaultTaskId, kLhsScale, kRhsScale);
+      tile0_data_ = static_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, output_tensor_->Size(), kWorkspace));
+      MS_CHECK_PTR(tile0_data_);
+      tile1_data_ = static_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, output_tensor_->Size(), kWorkspace));
+      MS_CHECK_PTR(tile1_data_);
+      code.CodeFunction("TileDimensionsInt8", input0, input1, tile0_data_, tile1_data_, "&arith_para");
+      code.CodeFunction("AddInt8", tile0_data_, tile1_data_, output_tensor_, elements_num_, "&para");
     } else {
+      code.CodeBaseStruct("AddInt8Args", kRunArgs, "&para", "&arith_para", in_size_, out_size_, gThreadNum,
+                          elements_num_, support_opt_add_, input0, input1, output_tensor_);
       code.CodeFunction("AddInt8Run", kRunArgsAddr, kDefaultTaskId, kLhsScale, kRhsScale);
     }
   }

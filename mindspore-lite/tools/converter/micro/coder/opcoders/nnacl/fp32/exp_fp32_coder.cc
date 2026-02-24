@@ -50,8 +50,7 @@ int ExpFP32Coder::DoCode(CoderContext *ctx) {
             "exp_fp32.c",
           });
   nnacl::NNaclFp32Serializer code;
-  code.CodeStruct("exp_struct", exp_struct_);
-  code.CodeFunction("ExpFusionFp32", input_tensor_, output_tensor_, "&exp_struct", kDefaultTaskId);
+  code.CodeFunction("ExpFp32", input_tensor_, output_tensor_, exp_struct_.element_num_);
   ctx->AppendCode(code.str());
   return RET_OK;
 }

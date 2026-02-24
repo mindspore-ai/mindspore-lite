@@ -112,6 +112,8 @@ int ArithmeticSelfInt8CPUKernel::DoArithmeticSelf(int task_id) {
 }
 
 int ArithmeticSelfInt8CPUKernel::Run() {
+  MS_CHECK_TRUE_MSG(!in_tensors_.empty(), RET_ERROR, "In tensors cannot be empty.");
+  MS_CHECK_TRUE_MSG(!out_tensors_.empty(), RET_ERROR, "Out tensors cannot be empty.");
   auto input_tensor = in_tensors_.at(0);
   auto out_tensor = out_tensors_.at(0);
   in_ptr_ = reinterpret_cast<int8_t *>(input_tensor->MutableData());
@@ -134,6 +136,7 @@ REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_Log, LiteKernelCreator<Arithmeti
 REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_Sqrt, LiteKernelCreator<ArithmeticSelfInt8CPUKernel>)
 REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_Rsqrt, LiteKernelCreator<ArithmeticSelfInt8CPUKernel>)
 REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_Square, LiteKernelCreator<ArithmeticSelfInt8CPUKernel>)
+REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_ExpFusion, LiteKernelCreator<ArithmeticSelfInt8CPUKernel>)
 REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_LogicalNot, LiteKernelCreator<ArithmeticSelfInt8CPUKernel>)
 REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_Reciprocal, LiteKernelCreator<ArithmeticSelfInt8CPUKernel>)
 }  // namespace mindspore::kernel
