@@ -304,18 +304,30 @@ int GroupConvolutionCompute(KernelBase *self) {
     // second, separate group conv input into several parts. This step must be in runtime stage.
     int ret = GroupConvSeparateInput(group_conv, i);
     if (ret != NNACL_OK) {
+      self->env_->Free(self->env_->allocator_, sub_kernel_in_tensor->data_);
+      sub_kernel_in_tensor->data_ = NULL;
+      self->env_->Free(self->env_->allocator_, sub_kernel_out_tensor->data_);
+      sub_kernel_out_tensor->data_ = NULL;
       return ret;
     }
 
     // sun kernels run
     ret = group_conv->group_convs_[i]->Compute(group_conv->group_convs_[i]);
     if (ret != NNACL_OK) {
+      self->env_->Free(self->env_->allocator_, sub_kernel_in_tensor->data_);
+      sub_kernel_in_tensor->data_ = NULL;
+      self->env_->Free(self->env_->allocator_, sub_kernel_out_tensor->data_);
+      sub_kernel_out_tensor->data_ = NULL;
       return ret;
     }
 
     // post process, concat all outputs of sub-kernels into one output
     ret = GroupConvPostConcat(group_conv, i);
     if (ret != NNACL_OK) {
+      self->env_->Free(self->env_->allocator_, sub_kernel_in_tensor->data_);
+      sub_kernel_in_tensor->data_ = NULL;
+      self->env_->Free(self->env_->allocator_, sub_kernel_out_tensor->data_);
+      sub_kernel_out_tensor->data_ = NULL;
       return ret;
     }
 

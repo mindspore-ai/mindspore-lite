@@ -184,7 +184,7 @@ int ScaleInitScaleOffset(ScaleStruct *scale) {
     int malloc_size = NNACLGetElementNum(offset_tensor) * data_type_size;
     NNACL_CHECK_MALLOC_SIZE(malloc_size);
     scale->offset_ = scale->base_.env_->Alloc(scale->base_.env_->allocator_, malloc_size);
-    NNACL_MALLOC_CHECK_NULL_RETURN_ERR(scale->scale_);
+    NNACL_MALLOC_CHECK_NULL_RETURN_ERR(scale->offset_);
     (void)memcpy(scale->offset_, offset_tensor->data_, malloc_size);
   } else {
     scale->malloc_offset_ = false;

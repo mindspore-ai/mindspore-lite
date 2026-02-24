@@ -62,10 +62,12 @@ class TfliteNodeParser {
     }
 
     size_t count = 1;
-    std::for_each(tensor->shape.begin(), tensor->shape.end(), [&](int32_t sha) {
-      MS_CHECK_TRUE_RET_VOID(sha >= 0);
-      count *= static_cast<size_t>(sha);
-    });
+    for (const auto &dim : tensor->shape) {
+      MS_CHECK_TRUE_RET(dim >= 0, RET_ERROR);
+      const size_t dim_size = static_cast<size_t>(dim);
+      MS_CHECK_TRUE_RET(!SIZE_MUL_OVERFLOW(count, dim_size), RET_ERROR);
+      count *= dim_size;
+    }
     CHECK_LESS_RETURN(tflite_model_buffer.size(), static_cast<size_t>(tensor->buffer + 1));
     auto &buf_data = tflite_model_buffer[tensor->buffer];
     if (buf_data == nullptr) {

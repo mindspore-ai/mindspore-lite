@@ -608,6 +608,10 @@ MSStatus MSExportModelBuffer(MSModelHandle model, MSModelType model_type, char *
                                                    &buffer, static_cast<mindspore::QuantizationType>(quantization_type),
                                                    export_inference_only, tensor_name);
   auto data = reinterpret_cast<char *>(buffer.MutableData());
+  if (data == nullptr) {
+    MS_LOG(ERROR) << "data is nullptr.";
+    return kMSStatusLiteNullptr;
+  }
   *model_data = reinterpret_cast<char *>(malloc(buffer.DataSize()));
   if (*model_data == nullptr) {
     MS_LOG(ERROR) << "malloc model_data failed.";

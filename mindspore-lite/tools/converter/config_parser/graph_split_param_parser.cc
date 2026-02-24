@@ -43,6 +43,39 @@ std::vector<std::string> ParseInnerList(const std::string &s) {
   return result;
 }
 
+static STATUS ProcessBlock(const std::string &block, std::set<std::string> *op_set,
+                           std::vector<std::pair<std::vector<std::string>, std::vector<std::string>>> *output_cfg) {
+  int inner_bracket_level = 0;
+  size_t split_pos = std::string::npos;
+  for (size_t j = 1; j < block.length() - 1; j++) {
+    if (block[j] == '[') {
+      inner_bracket_level++;
+    } else if (block[j] == ']') {
+      inner_bracket_level--;
+    }
+    if (block[j] == ',' && inner_bracket_level == 0) {
+      split_pos = j;
+      break;
+    }
+  }
+  if (split_pos == std::string::npos) {
+    return RET_OK;
+  }
+  std::string first_part = block.substr(1, split_pos - 1);
+  std::string second_part = block.substr(split_pos + 1, block.length() - (split_pos + 1) - 1);
+  std::vector<std::string> first_vector = ParseInnerList(first_part);
+  std::vector<std::string> second_vector = ParseInnerList(second_part);
+  for (const auto &s : first_vector) {
+    op_set->insert(s);
+  }
+  for (const auto &s : second_vector) {
+    op_set->insert(s);
+  }
+  MS_CHECK_TRUE_MSG(!second_vector.empty(), lite::RET_ERROR, "Current subgraph output name is empty!");
+  output_cfg->emplace_back(first_vector, second_vector);
+  return RET_OK;
+}
+
 void GetSplitNode(const std::shared_ptr<ConverterPara> &param, std::string *split_node_str) {
   auto config_infos = param->config_infos;
   if (config_infos.find(kSplitGraph) != config_infos.end()) {
@@ -58,59 +91,36 @@ STATUS GraphSplitParamParser::ParseGraphSplitCfg(const std::shared_ptr<Converter
   std::string split_node_str = "";
   GetSplitNode(param, &split_node_str);
   MS_CHECK_TRUE_RET(!split_node_str.empty(), RET_OK);
-  auto input = split_node_str;
+
   std::set<std::string> op_set;
   size_t pos = 0;
-  while (pos < input.length()) {
-    while (pos < input.length() && input[pos] != '[') {
+  while (pos < split_node_str.length()) {
+    while (pos < split_node_str.length() && split_node_str[pos] != '[') {
       pos++;
     }
-    if (pos >= input.length()) {
+    if (pos >= split_node_str.length()) {
       break;
     }
     int bracket_level = 0;
     size_t start_pos = pos;
-    for (size_t i = start_pos; i < input.length(); i++) {
-      if (input[i] == '[') {
+    for (size_t i = start_pos; i < split_node_str.length(); i++) {
+      if (split_node_str[i] == '[') {
         bracket_level++;
-      } else if (input[i] == ']') {
+      } else if (split_node_str[i] == ']') {
         bracket_level--;
       }
       if (bracket_level == 0 && i > start_pos) {
-        std::string block = input.substr(start_pos, i - start_pos + 1);
-        int inner_bracket_level = 0;
-        size_t split_pos = std::string::npos;
-        for (size_t j = 1; j < block.length() - 1; j++) {
-          if (block[j] == '[') {
-            inner_bracket_level++;
-          } else if (block[j] == ']') {
-            inner_bracket_level--;
-          }
-          if (block[j] == ',' && inner_bracket_level == 0) {
-            split_pos = j;
-            break;
-          }
-        }
-        if (split_pos != std::string::npos) {
-          std::string first_part = block.substr(1, split_pos - 1);
-          std::string second_part = block.substr(split_pos + 1, block.length() - (split_pos + 1) - 1);
-          std::vector<std::string> first_vector = ParseInnerList(first_part);
-          std::vector<std::string> second_vector = ParseInnerList(second_part);
-          for (auto s : first_vector) {
-            op_set.insert(s);
-          }
-          for (auto s : second_vector) {
-            op_set.insert(s);
-          }
-          MS_CHECK_TRUE_MSG(!second_vector.empty(), lite::RET_ERROR, "Current subgraph output name is empty!");
-          param->splitGraphCfg.subgraph_input_output.emplace_back(first_vector, second_vector);
+        std::string block = split_node_str.substr(start_pos, i - start_pos + 1);
+        auto ret = ProcessBlock(block, &op_set, &param->splitGraphCfg.subgraph_input_output);
+        if (ret != RET_OK) {
+          return ret;
         }
         pos = i + 1;
         break;
       }
     }
   }
-  for (auto s : op_set) {
+  for (const auto &s : op_set) {
     param->splitGraphCfg.split_node_names.push_back(s);
   }
   return RET_OK;
