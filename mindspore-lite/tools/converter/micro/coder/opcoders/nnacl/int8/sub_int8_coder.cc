@@ -34,14 +34,22 @@ int SubInt8Coder::Prepare(CoderContext *const context) {
   MS_CHECK_PTR(input1);
 
   broadcast_ = input0->ElementsNum() != input1->ElementsNum();
-
-  param_.in0_args_.scale_ = input0->quant_params().front().scale;
-  param_.in0_args_.zp_ = -input0->quant_params().front().zeroPoint;
-  param_.in1_args_.scale_ = input1->quant_params().front().scale;
-  param_.in1_args_.zp_ = -input1->quant_params().front().zeroPoint;
-  param_.out_args_.scale_ = output_tensor_->quant_params().front().scale;
-  param_.out_args_.zp_ = output_tensor_->quant_params().front().zeroPoint;
-
+  if (input0->quant_params().size() != 0 && input1->quant_params().size() != 0 &&
+      output_tensor_->quant_params().size() != 0) {
+    param_.in0_args_.scale_ = input0->quant_params().front().scale;
+    param_.in1_args_.scale_ = input1->quant_params().front().scale;
+    param_.out_args_.scale_ = output_tensor_->quant_params().front().scale;
+    param_.in0_args_.zp_ = -input0->quant_params().front().zeroPoint;
+    param_.in1_args_.zp_ = -input1->quant_params().front().zeroPoint;
+    param_.out_args_.zp_ = output_tensor_->quant_params().front().zeroPoint;
+  } else {
+    param_.in0_args_.scale_ = 1.0;
+    param_.in0_args_.zp_ = 0;
+    param_.in1_args_.scale_ = 1.0;
+    param_.in1_args_.zp_ = 0;
+    param_.out_args_.scale_ = 1.0;
+    param_.out_args_.zp_ = 0;
+  }
   const uint32_t left_shift = 20;
   const double twice_max_input_scale = kTwo * std::max(param_.in0_args_.scale_, param_.in1_args_.scale_);
   const double real_input0_multiplier = param_.in0_args_.scale_ / twice_max_input_scale;
@@ -74,17 +82,45 @@ int SubInt8Coder::Prepare(CoderContext *const context) {
 }
 
 int SubInt8Coder::DoCode(CoderContext *const context) {
-  Collect(context, {"nnacl_c/int8/arithmetic_int8.h", "nnacl_c/int8/sub_int8.h"}, {"arithmetic_int8.c", "sub_int8.c"});
+  Collect(context,
+          {
+            "nnacl_c/int8/arithmetic_int8.h",
+            "nnacl_c/int8/sub_int8.h",
+            "nnacl_c/int8/fixed_point.h",
+          },
+          {
+            "arithmetic_int8.c",
+            "sub_int8.c",
+            "fixed_point.c",
+            "arithmetic_base.c",
+          });
   NNaclInt8Serializer code;
   // Todo: Parallel run wrapper
   auto element_num = output_tensor_->ElementsNum();
   code.CodeStruct("param", param_);
   if (broadcast_) {
-    ArithmeticParameter tile_para;
-    tile_para.ndim_ = output_tensor_->shape().size();
-    for (size_t i = 0; i < tile_para.ndim_; i++) {
-      tile_para.in_shape0_[i] = input0->DimensionSize(i);
-      tile_para.in_shape1_[i] = input1->DimensionSize(i);
+    ArithmeticParameter tile_para = {0};
+    auto out_shape = output_tensor_->shape();
+    tile_para.ndim_ = out_shape.size();
+    auto in_shape0 = input0->shape();
+    MS_CHECK_TRUE_MSG(out_shape.size() >= in_shape0.size(), RET_ERROR,
+                      "Sub first-input shape size is larger than out.");
+    for (size_t i = 0; i < out_shape.size() - in_shape0.size(); ++i) {
+      tile_para.in_shape0_[i] = 1;
+    }
+    for (size_t i = out_shape.size() - in_shape0.size(); i < out_shape.size(); ++i) {
+      tile_para.in_shape0_[i] = input0->DimensionSize(i - (out_shape.size() - in_shape0.size()));
+    }
+    auto in_shape1 = input1->shape();
+    MS_CHECK_TRUE_MSG(out_shape.size() >= in_shape1.size(), RET_ERROR,
+                      "Sub second-input shape size is larger than out.");
+    for (size_t i = 0; i < out_shape.size() - in_shape1.size(); ++i) {
+      tile_para.in_shape1_[i] = 1;
+    }
+    for (size_t i = out_shape.size() - in_shape1.size(); i < out_shape.size(); ++i) {
+      tile_para.in_shape1_[i] = input1->DimensionSize(i - (out_shape.size() - in_shape1.size()));
+    }
+    for (size_t i = 0; i < out_shape.size(); ++i) {
       tile_para.out_shape_[i] = output_tensor_->DimensionSize(i);
     }
     tile0_data_ = static_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, output_tensor_->Size(), kWorkspace));
