@@ -35,8 +35,6 @@ class PNNADeConv2d : public PNNAOp {
   int InitParams() override;
   int AddOpToPNNAModel(PNNASubGraph *graph) override;
   int SetDeConv2dPadAndStride();
-  int GetDeConv2dFilterDims(mindspore::MSTensor filter_tensor, uint32_t *c_out, uint32_t *c_in, uint32_t *h,
-                            uint32_t *w, bool is_depthwise_mode);
   int UpdateDeConv2dPad(uint32_t input_size, uint32_t output_size, uint32_t filter_height_or_width,
                         schema::PadMode pad_mode, uint32_t *pad_top_or_left, uint32_t *pad_bottom_or_right,
                         uint32_t stride_height_or_width);

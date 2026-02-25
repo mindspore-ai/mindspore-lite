@@ -1,5 +1,5 @@
 /**
- * Copyright 2025 Huawei Technologies Co., Ltd
+ * Copyright 2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,12 +65,15 @@ Status PNNADelegate::Init() {
     {schema::PrimitiveType_ArgMaxFusion, GetPNNAOp<PNNAArg>},
     {schema::PrimitiveType_ArgMinFusion, GetPNNAOp<PNNAArg>},
     {schema::PrimitiveType_MaxPoolFusion, GetPNNAOp<PNNAPooling>},
+    {schema::PrimitiveType_AvgPoolFusion, GetPNNAOp<PNNAPooling>},
     {schema::PrimitiveType_Neg, GetPNNAOp<PNNANeg>},
     {schema::PrimitiveType_OneHot, GetPNNAOp<PNNAOneHot>},
     {schema::PrimitiveType_Conv2dTransposeFusion, GetPNNAOp<PNNADeConv2d>},
     {schema::PrimitiveType_Softmax, GetPNNAOp<PNNASoftmax>},
     {schema::PrimitiveType_Unsqueeze, GetPNNAOp<PNNAUnsqueeze>},
     {schema::PrimitiveType_BatchToSpace, GetPNNAOp<PNNABatchToSpace>},
+    {schema::PrimitiveType_Conv2DFusion, GetPNNAOp<PNNAConv2d>},
+    {schema::PrimitiveType_QuantDTypeCast, GetPNNAOp<PNNADataConvert>},
   };
   return mindspore::kSuccess;
 }

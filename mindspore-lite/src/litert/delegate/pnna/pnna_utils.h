@@ -59,6 +59,8 @@ std::shared_ptr<pnna::Tensor> CreatePnnaTensor(pnna::Graph *graph, MSTensor *ten
 std::vector<uint32_t> ConvertToPnnaPerm(const int32_t *input_perm_data, size_t input_perm_count);
 int32_t ConvertToPnnaAxis(int32_t axis, size_t dimension_count);
 int HandleConstantInputs(PNNASubGraph *graph, std::vector<mindspore::MSTensor> &inputs);
+int GetConvFilterDims(mindspore::MSTensor filter_tensor, uint32_t *c_out, uint32_t *c_in, uint32_t *h, uint32_t *w,
+                      bool is_depthwise_mode);
 }  // namespace lite
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_LITERT_DELEGATE_PNNA_PNNA_UTILS_H_

@@ -22,36 +22,6 @@
 namespace mindspore {
 namespace lite {
 
-int PNNADeConv2d::GetDeConv2dFilterDims(mindspore::MSTensor filter_tensor, uint32_t *c_out, uint32_t *c_in, uint32_t *h,
-                                        uint32_t *w, bool is_depthwise_mode) {
-  if (c_out == nullptr || c_in == nullptr || h == nullptr || w == nullptr) {
-    MS_LOG(ERROR) << "Invalid filter parameters.";
-    return RET_ERROR;
-  }
-  auto filter_layout = filter_tensor.format();
-  switch (filter_layout) {
-    case NHWC:
-      if (is_depthwise_mode) {
-        *c_out = filter_tensor.Shape()[Index3];
-        *c_in = filter_tensor.Shape()[Index0];
-      } else {
-        *c_out = filter_tensor.Shape()[Index0];
-        *c_in = filter_tensor.Shape()[Index3];
-      }
-      *h = filter_tensor.Shape()[Index1];
-      *w = filter_tensor.Shape()[Index2];
-      break;
-    case NCHW:
-    default:
-      *c_out = filter_tensor.Shape()[Index0];
-      *c_in = filter_tensor.Shape()[Index1];
-      *h = filter_tensor.Shape()[Index2];
-      *w = filter_tensor.Shape()[Index3];
-      break;
-  }
-  return RET_OK;
-}
-
 int PNNADeConv2d::UpdateDeConv2dPad(uint32_t input_size, uint32_t output_size, uint32_t filter_height_or_width,
                                     schema::PadMode pad_mode, uint32_t *pad_top_or_left, uint32_t *pad_bottom_or_right,
                                     uint32_t stride_height_or_width) {
@@ -153,10 +123,10 @@ int PNNADeConv2d::AddOpToPNNAModel(PNNASubGraph *graph) {
   uint32_t filter_height;
   uint32_t filter_width;
   uint32_t filter_channel_size;
-  auto ret = GetDeConv2dFilterDims(in_tensors_[kWeightIndex], &output_channel_size, &filter_channel_size,
-                                   &filter_height, &filter_width, is_dw_conv_);
+  auto ret = GetConvFilterDims(in_tensors_[kWeightIndex], &output_channel_size, &filter_channel_size, &filter_height,
+                               &filter_width, is_dw_conv_);
   if (ret != RET_OK) {
-    MS_LOG(ERROR) << "GetDeConv2dFilterDims failed.";
+    MS_LOG(ERROR) << "GetDeConvFilterDims failed.";
     return RET_ERROR;
   }
   if (pad_mode_ != schema::PadMode::PadMode_PAD) {
