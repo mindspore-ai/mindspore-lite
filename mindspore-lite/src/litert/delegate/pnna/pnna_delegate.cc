@@ -74,6 +74,9 @@ Status PNNADelegate::Init() {
     {schema::PrimitiveType_BatchToSpace, GetPNNAOp<PNNABatchToSpace>},
     {schema::PrimitiveType_Conv2DFusion, GetPNNAOp<PNNAConv2d>},
     {schema::PrimitiveType_QuantDTypeCast, GetPNNAOp<PNNADataConvert>},
+    {schema::PrimitiveType_Concat, GetPNNAOp<PNNAConcat>},
+    {schema::PrimitiveType_Split, GetPNNAOp<PNNASplit>},
+    {schema::PrimitiveType_PadFusion, GetPNNAOp<PNNAPad>},
   };
   return mindspore::kSuccess;
 }

@@ -40,6 +40,9 @@
 #include "src/litert/delegate/pnna/op/batch_to_space_pnna.h"
 #include "src/litert/delegate/pnna/op/conv2d_pnna.h"
 #include "src/litert/delegate/pnna/op/data_convert_pnna.h"
+#include "src/litert/delegate/pnna/op/concat_pnna.h"
+#include "src/litert/delegate/pnna/op/split_pnna.h"
+#include "src/litert/delegate/pnna/op/pad_pnna.h"
 
 namespace mindspore {
 namespace lite {
