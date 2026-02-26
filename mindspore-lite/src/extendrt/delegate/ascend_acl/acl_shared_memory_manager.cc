@@ -26,6 +26,7 @@
 #include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
 #include "plugin/ascend/res_manager/symbol_interface/acl_symbol.h"
 #include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
+#include "include/api/status.h"
 
 namespace mindspore {
 AclSharedMemoryManager &AclSharedMemoryManager::GetInstance() {
@@ -90,18 +91,18 @@ Status AclSharedMemoryManager::PrepareMutiModelShare(const void *om_data, size_t
   auto acl_ret = CALL_ASCEND_API(aclmdlQuerySizeFromMem, om_data, om_data_size, &work_size, &weight_size);
   if (acl_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Call aclmdlQuerySizeFromMem failed, ret = " << acl_ret;
-    return kLiteError;
+    return Status(kLiteAclInitFailed, "Call aclmdlQuerySizeFromMem failed.");
   }
   MS_LOG(INFO) << "work_size: " << work_size << " weight_size: " << weight_size;
   auto ret = UpdateWorkSpace(work_size, options->device_id);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "update workspace failed, ret = " << ret;
-    return kLiteError;
+    return Status(kLiteError, "update workspace failed.");
   }
   ret = UpdateWeightSpace(options->model_path, weight_size, options->device_id);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "update weightspace failed, ret = " << ret;
-    return kLiteError;
+    return Status(kLiteError, "update weightspace failed.");
   }
   return kSuccess;
 }

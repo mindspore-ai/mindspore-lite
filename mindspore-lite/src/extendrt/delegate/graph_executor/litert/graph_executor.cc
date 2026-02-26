@@ -80,38 +80,44 @@ LiteRTGraphExecutor::LiteRTGraphExecutor(const std::shared_ptr<mindspore::Contex
   lite_session_ = CreateLiteSession(ContextUtils::Convert(context_.get()), config_infos_);
 }
 
-bool LiteRTGraphExecutor::CompileGraph(const void *model_data, size_t data_size,
-                                       const std::map<string, string> &compile_options, uint32_t *graph_id) {
-  MS_EXCEPTION_IF_NULL(model_data);
-  MS_EXCEPTION_IF_NULL(graph_id);
+Status LiteRTGraphExecutor::CompileGraph(const void *model_data, size_t data_size,
+                                         const std::map<string, string> &compile_options, uint32_t *graph_id) {
+  if (model_data == nullptr) {
+    MS_LOG(ERROR) << "model_data is nullptr.";
+    return Status(kLiteNullptr, "model_data is nullptr.");
+  }
+  if (graph_id == nullptr) {
+    MS_LOG(ERROR) << "graph_id is nullptr.";
+    return Status(kLiteNullptr, "graph_id is nullptr.");
+  }
   *graph_id = 0;
 
   if (!PlatformInstructionSetSupportCheck()) {
     MS_LOG(ERROR) << "The platform exist don't support's instruction.";
-    return false;
+    return kLiteError;
   }
   if (lite_session_ == nullptr) {
     MS_LOG(ERROR) << "lite session is nullptr.";
-    return false;
+    return kLiteError;
   }
   int ret = lite_session_->LoadModelAndCompileByBuf(reinterpret_cast<const char *>(model_data), kMindIR_Lite, data_size,
                                                     helpers_.get());
   if (ret != lite::RET_OK) {
     MS_LOG(ERROR) << "Load model by meta graph failed";
-    return false;
+    return kLiteError;
   }
-  return true;
+  return kSuccess;
 }
 
-bool LiteRTGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
-                                       uint32_t *graph_id) {
+Status LiteRTGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
+                                         uint32_t *graph_id) {
   MS_EXCEPTION_IF_NULL(graph);
   MS_EXCEPTION_IF_NULL(graph_id);
   *graph_id = 0;
 
   if (!PlatformInstructionSetSupportCheck()) {
     MS_LOG(ERROR) << "The platform exist don't support's instruction.";
-    return false;
+    return kLiteError;
   }
   size_t data_size;
   auto pair_result = FuncGraphReuseManager::GetInstance()->GetFbModelBuf(&data_size, &is_shared_fb_buf_, config_infos_);
@@ -126,12 +132,12 @@ bool LiteRTGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map
     meta_graph = lite::ConverterToMetaGraph::Build(param, mutable_graph);
     if (meta_graph == nullptr) {
       MS_LOG(ERROR) << "func graph convert to meta graph failed.";
-      return false;
+      return kLiteError;
     }
     if (this->IsNeedExtractTensorData(meta_graph)) {
       if (!this->ExtractTensorData(meta_graph)) {
         MS_LOG(ERROR) << "Compile Large Graph failed, extract tensor data error.";
-        return false;
+        return kLiteError;
       }
     }
     flatbuffers::FlatBufferBuilder builder(kBufferSize);
@@ -145,7 +151,7 @@ bool LiteRTGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map
   }
   if (lite_session_ == nullptr) {
     MS_LOG(ERROR) << "lite session is nullptr.";
-    return false;
+    return kLiteError;
   }
   int ret = lite_session_->LoadModelAndCompileByBuf(reinterpret_cast<char *>(fb_model_buf_), kMindIR_Lite, data_size,
                                                     helpers_.get());
@@ -153,13 +159,13 @@ bool LiteRTGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map
   meta_graph = nullptr;
   if (ret != lite::RET_OK) {
     MS_LOG(ERROR) << "Load model by meta graph failed";
-    return false;
+    return kLiteError;
   }
-  return true;
+  return kSuccess;
 }
 
-bool LiteRTGraphExecutor::RunGraph(uint32_t, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
-                                   const std::map<string, string> &compile_options) {
+Status LiteRTGraphExecutor::RunGraph(uint32_t, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
+                                     const std::map<string, string> &compile_options) {
   MS_LOG(INFO) << "LiteRTGraphExecutor::RunGraph with input and outputs";
   MS_EXCEPTION_IF_NULL(outputs);
   MS_EXCEPTION_IF_NULL(lite_session_);
@@ -233,24 +239,24 @@ bool LiteRTGraphExecutor::RunGraph(uint32_t, const std::vector<MSTensor> &inputs
   auto ret = lite_session_->RunGraph(before_call_back, after_call_back);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "Run graph failed.";
-    return false;
+    return kLiteError;
   }
   MS_LOG(DEBUG) << "Run graph success.";
   auto res = GetLiteSessionOutputs();
   if (res.empty()) {
     MS_LOG(DEBUG) << "Empty outputs.";
-    return false;
+    return kLiteError;
   }
   if (outputs == nullptr) {
     MS_LOG(ERROR) << "Output tensor is null.";
-    return false;
+    return kLiteError;
   }
   *outputs = res;
-  return true;
+  return kSuccess;
 }
 
-bool LiteRTGraphExecutor::Resize(uint32_t, const std::vector<MSTensor> &inputs,
-                                 const std::vector<std::vector<int64_t>> &dims) {
+Status LiteRTGraphExecutor::Resize(uint32_t, const std::vector<MSTensor> &inputs,
+                                   const std::vector<std::vector<int64_t>> &dims) {
   auto input_tensors = lite_session_->GetInputs();
   if (input_tensors.empty()) {
     MS_LOG(EXCEPTION) << "Failed to get input tensor.";
@@ -267,9 +273,9 @@ bool LiteRTGraphExecutor::Resize(uint32_t, const std::vector<MSTensor> &inputs,
   auto ret = lite_session_->Resize(input_tensors, user_shapes);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "lite session resize failed";
-    return false;
+    return kLiteError;
   }
-  return true;
+  return kSuccess;
 }
 
 std::vector<MSTensor> LiteRTGraphExecutor::GetInputInfos(uint32_t) {

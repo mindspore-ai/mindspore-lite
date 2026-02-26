@@ -67,18 +67,19 @@ GeGraphExecutorV1::~GeGraphExecutorV1() {
   ge_session_info_.session_ = nullptr;
 }
 
-bool GeGraphExecutorV1::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &, uint32_t *graph_id) {
-  MS_CHECK_TRUE_MSG(graph != nullptr, false, "graph is NULL.");
-  MS_CHECK_TRUE_MSG(graph_id != nullptr, false, "graph_id is NULL.");
+Status GeGraphExecutorV1::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &,
+                                       uint32_t *graph_id) {
+  MS_CHECK_TRUE_MSG(graph != nullptr, Status(kLiteNullptr, "graph is NULL."), "graph is NULL.");
+  MS_CHECK_TRUE_MSG(graph_id != nullptr, Status(kLiteNullptr, "graph_id is NULL."), "graph_id is NULL.");
   if (!ge_options_container_.InitGeOptions(graph, config_infos_, context_)) {
     MS_LOG(ERROR) << "Init Ge options failed.";
-    return false;
+    return Status(kLiteError, "Init Ge options failed.");
   }
   if (ge_session_info_.session_ == nullptr) {
     ge_session_info_.session_ = std::make_shared<ge::Session>(ge_options_container_.GeSessionOptions());
     if (ge_session_info_.session_ == nullptr) {
       MS_LOG(ERROR) << "Failed to create ge session";
-      return false;
+      return Status(kLiteError, "Failed to create ge session");
     }
     ge_session_info_.session_id_ = global_session_idx++;
   }
@@ -89,41 +90,41 @@ bool GeGraphExecutorV1::CompileGraph(const FuncGraphPtr &graph, const std::map<s
   bool is_adapted = graph->has_attr(kIsAdapted);
   if (!is_adapted) {
     auto ret = GeUtils::AdaptGraph(graph);
-    MS_CHECK_TRUE_MSG(ret == kSuccess, false, "Adapt graph failed");
+    MS_CHECK_TRUE_MSG(ret == kSuccess, Status(kLiteError, "Adapt graph failed"), "Adapt graph failed");
     graph->set_attr(kIsAdapted, MakeValue(true));
   }
   if (!ge_graph_compiler_.CompileGraph(graph, &ge_session_info_, ge_options_container_)) {
     MS_LOG(ERROR) << "GE compile graph failed.";
-    return false;
+    return Status(kLiteError, "GE compile graph failed.");
   }
   *graph_id = ge_session_info_.graph_ids_.back();
   auto graph_summary = ge_session_info_.session_->GetCompiledGraphSummary(*graph_id);
   if (graph_summary == nullptr) {
     MS_LOG(ERROR) << "GetCompiledGraphSummary failed for graph " << graph_id;
-    return false;
+    return Status(kLiteError, "GetCompiledGraphSummary failed for graph.");
   }
   graph_id_group_.emplace(*graph_id, std::make_pair(*graph_id, UINT32_MAX));
   if (!graph_summary->IsStatic()) {
     if (!ge_graph_compiler_.ReCompileGraph(&ge_session_info_, ge_options_container_,
                                            &graph_id_group_.at(*graph_id).second)) {
       MS_LOG(ERROR) << "GE compile  graph  secondly failed.";
-      return false;
+      return Status(kLiteError, "GE compile  graph  secondly failed.");
     }
     ge_session_info_.df_ptr_ = nullptr;
   }
   if (!InitGEResource()) {
     MS_LOG(ERROR) << "Init resource for GE failed.";
-    return false;
+    return Status(kLiteError, "Init resource for GE failed.");
   }
   if (!InitMsTensor(graph, *graph_id)) {
     MS_LOG(ERROR) << "Init MSTensor for inputs/outputs failed.";
-    return false;
+    return Status(kLiteError, "Init MSTensor for inputs/outputs failed.");
   }
   if (!InitGeTensor(*graph_id)) {
     MS_LOG(ERROR) << "Init ge::Tensor for inputs/outputs failed.";
-    return false;
+    return Status(kLiteError, "Init ge::Tensor for inputs/outputs failed.");
   }
-  return true;
+  return kSuccess;
 }
 
 bool GeGraphExecutorV1::CheckParallelCompile() {
@@ -371,31 +372,32 @@ bool GeGraphExecutorV1::RunDynamicGraph(const uint32_t &graph_id, const std::vec
   return true;
 }
 
-bool GeGraphExecutorV1::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
-                                 const std::map<string, string> & /* compile_options */) {
+Status GeGraphExecutorV1::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &inputs,
+                                   std::vector<MSTensor> *outputs,
+                                   const std::map<string, string> & /* compile_options */) {
   if (outputs == nullptr) {
     MS_LOG(ERROR) << " outputs param is nullptr.";
-    return false;
+    return kLiteError;
   }
   MS_LOG(INFO) << "Run ge graph [" << graph_id << "] with " << inputs.size() << " ms_tensor_inputs";
   std::vector<GeTensor> ge_inputs;
   if (!PrepareGeInputs(inputs, &ge_inputs, graph_id)) {
     MS_LOG(ERROR) << "Prepare ge inputs failed.";
-    return false;
+    return kLiteError;
   }
   auto run_dynamic_graph = IsDynamical(*outputs, graph_id);
   if (run_dynamic_graph) {
     if (!RunDynamicGraph(graph_id, ge_inputs, outputs)) {
       MS_LOG(ERROR) << "RunDynamicGraph failed.";
-      return false;
+      return kLiteError;
     }
   } else {
     if (!RunStaticGraph(graph_id, ge_inputs, outputs)) {
       MS_LOG(ERROR) << "RunStaticGraph failed.";
-      return false;
+      return kLiteError;
     }
   }
-  return true;
+  return kSuccess;
 }
 
 bool GeGraphExecutorV1::MallocDeviceMem(std::pair<void *, size_t> &tensor_mem_info, void *&device_addr, size_t size) {

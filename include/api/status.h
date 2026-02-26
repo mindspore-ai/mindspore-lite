@@ -81,6 +81,7 @@ enum StatusCode : uint32_t {
   kLiteFileError = kLite | (0x0FFFFFFF & -10),       /**< Invalid file. */
   kLiteServiceDeny = kLite | (0x0FFFFFFF & -11),     /**< Denial of service. */
   kLiteModelRebuild = kLite | (0x0FFFFFFF & -12),    /**< Model has been built. */
+  kLiteAclInitFailed = kLite | (0x0FFFFFFF & -13),
 
   // Executor error code, range: [-100,-200)
   kLiteOutOfTensorRange = kLite | (0x0FFFFFFF & -100),           /**< Failed to check range. */
@@ -117,6 +118,11 @@ enum StatusCode : uint32_t {
 
   // Tensor error code, range: [-400,-500)
   kLiteFormatError = kLite | (0x0FFFFFFF & -400), /**< Failed to checking tensor format. */
+  kLiteShapeError = kLite | (0x0FFFFFFF & -401),
+  kLiteDataSizeError = kLite | (0x0FFFFFFF & -402),
+  kLiteDTypeError = kLite | (0x0FFFFFFF & -403),
+  kLiteDeviceDataError = kLite | (0x0FFFFFFF & -404),
+  kLiteHostDataError = kLite | (0x0FFFFFFF & -405),
 
   // InferShape error code, range: [-500,-600)
   kLiteInferError = kLite | (0x0FFFFFFF & -500),   /**< Failed to infer shape. */
@@ -124,6 +130,7 @@ enum StatusCode : uint32_t {
 
   // User input param error code, range: [-600, 700)
   kLiteInputParamInvalid = kLite | (0x0FFFFFFF & -600), /**< Invalid input param by user. */
+  kLiteOutputParamInvalid = kLite | (0x0FFFFFFF & -700),
 };
 
 class MS_API Status {

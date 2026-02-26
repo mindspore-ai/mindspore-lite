@@ -18,6 +18,7 @@
 #include <utility>
 #include "include/errorcode.h"
 #include "src/common/log.h"
+#include "include/api/status.h"
 
 namespace mindspore {
 namespace {
@@ -34,7 +35,7 @@ constexpr auto kImageSizeHwNum = 2;
 constexpr auto kUnknownDim = -1;
 }  // namespace
 
-bool DynShapeProcess::Init(const AclDynamicShapeOptions &options) {
+Status DynShapeProcess::Init(const AclDynamicShapeOptions &options) {
   acl_options_ = options;
   for (size_t i = 0; i < options.input_shapes.size(); i++) {
     auto &shape = options.input_shapes[i];
@@ -46,88 +47,91 @@ bool DynShapeProcess::Init(const AclDynamicShapeOptions &options) {
   if (input_data_idx_ >= acl_options_.input_shapes.size()) {
     MS_LOG(ERROR) << "Input data index " << input_data_idx_
                   << " is invalid, inputs count: " << acl_options_.input_shapes.size();
-    return false;
+    return Status(kLiteAclInitFailed, "Input data index is invalid!");
   }
-  return true;
+  return kSuccess;
 }
 
-bool DynShapeProcess::CheckAndGetBatchSize(const std::vector<ShapeVector> &new_shapes, int32_t *batch_size) {
+Status DynShapeProcess::CheckAndGetBatchSize(const std::vector<ShapeVector> &new_shapes, int32_t *batch_size) {
   if (acl_options_.batch_size.empty()) {
     MS_LOG(ERROR) << "Not support dynamic batch size";
-    return false;
+    return Status(kLiteAclInitFailed, "Not support dynamic batch size!");
   }
   if (batch_size == nullptr) {
     MS_LOG(ERROR) << "Input parameter batch size cannot be nullptr";
-    return false;
+    return Status(kLiteNullptr, "Input parameter batch size cannot be nullptr!");
   }
-  if (!CheckBatchSize(new_shapes)) {
-    return false;
+  auto status = CheckBatchSize(new_shapes);
+  if (status != kSuccess) {
+    return status;
   }
   return GetRealBatchSize(new_shapes, batch_size);
 }
 
-bool DynShapeProcess::CheckAndGetDynamicDims(const std::vector<ShapeVector> &new_shapes, aclmdlIODims *dynamic_dims) {
+Status DynShapeProcess::CheckAndGetDynamicDims(const std::vector<ShapeVector> &new_shapes, aclmdlIODims *dynamic_dims) {
   if (dynamic_dims == nullptr) {
     MS_LOG(ERROR) << "Input parameter dynamic dims cannot be nullptr";
-    return false;
+    return Status(kLiteNullptr, "Input parameter dynamic dims cannot be nullptr!");
   }
-  if (!CheckDynamicDims(new_shapes)) {
-    return false;
+  auto status = CheckDynamicDims(new_shapes);
+  if (status != kSuccess) {
+    return status;
   }
   return GetRealDynamicDims(new_shapes, dynamic_dims);
 }
 
-bool DynShapeProcess::CheckAndGetImageSize(const std::vector<ShapeVector> &new_shapes, int32_t *height,
-                                           int32_t *width) {
+Status DynShapeProcess::CheckAndGetImageSize(const std::vector<ShapeVector> &new_shapes, int32_t *height,
+                                             int32_t *width) {
   if (acl_options_.image_size.empty()) {
     MS_LOG(ERROR) << "Not support image batch size";
-    return false;
+    return Status(kLiteAclInitFailed, "Not support image batch size!");
   }
   if (height == nullptr || width == nullptr) {
     MS_LOG(ERROR) << "Input parameter image size cannot be nullptr";
-    return false;
+    return Status(kLiteNullptr, "Input parameter image size cannot be nullptr!");
   }
-  if (!CheckImageSize(new_shapes)) {
-    return false;
+  auto status = CheckImageSize(new_shapes);
+  if (status != kSuccess) {
+    return status;
   }
   return GetRealImageSize(new_shapes, height, width);
 }
 
-bool DynShapeProcess::CheckBatchSize(const std::vector<ShapeVector> &new_shapes) {
+Status DynShapeProcess::CheckBatchSize(const std::vector<ShapeVector> &new_shapes) {
   if (input_data_idx_ >= new_shapes.size()) {
     MS_LOG(ERROR) << " Input data index " << input_data_idx_ << " is larger than input size " << new_shapes.size();
-    return false;
+    return Status(kLiteInputParamInvalid, "Input data index is larger than input size!");
   }
   std::vector<int64_t> original_shape = acl_options_.input_shapes[input_data_idx_];
   std::vector<int64_t> cur_shape = new_shapes[input_data_idx_];
   if (cur_shape.empty() || original_shape.empty()) {
     MS_LOG(ERROR) << "Shape is empty, input index = " << input_data_idx_;
-    return false;
+    return Status(kLiteInputParamInvalid, "The given input shape is empty!");
   }
   if (cur_shape.size() != original_shape.size()) {
     MS_LOG(ERROR) << "Cur shape size " << cur_shape.size() << " is not equal with original shape size "
                   << original_shape.size();
-    return false;
+    return Status(kLiteInputParamInvalid, "The given input shape size != original shape size");
   }
   for (size_t i = 1; i < cur_shape.size(); ++i) {
     if (cur_shape[i] <= 0) {
       MS_LOG(ERROR) << "Invalid new shape " << cur_shape << " for input " << i;
-      return false;
+      return Status(kLiteInputParamInvalid, "Invalid shape value, the value of shape is less than or equal to 0.");
     }
     if (original_shape[i] != kUnknownDim && (original_shape[i] != cur_shape[i])) {
       MS_LOG(ERROR) << "Shape Conflict: Original Shape:[" << original_shape << "], Current Shape:[" << cur_shape << "]";
-      return false;
+      return Status(kLiteInputParamInvalid, "Shape conflict: original Shape != given shape.");
     }
   }
-  return true;
+  return kSuccess;
 }
 
-bool DynShapeProcess::CheckDynamicDims(const std::vector<ShapeVector> &new_shapes) {
+Status DynShapeProcess::CheckDynamicDims(const std::vector<ShapeVector> &new_shapes) {
   std::vector<std::vector<int64_t>> original_shapes = acl_options_.input_shapes;
   if (original_shapes.size() != new_shapes.size() || new_shapes.empty()) {
     MS_LOG(ERROR) << "new shape size is: [" << new_shapes.size() << "], not equal original shapes size: ["
                   << original_shapes.size() << "].";
-    return false;
+    return Status(kLiteInputParamInvalid, "the number of given inputs != the number of original inputs.");
   }
   size_t shape_size = 0;
   for (size_t i = 0; i < new_shapes.size(); i++) {
@@ -135,48 +139,48 @@ bool DynShapeProcess::CheckDynamicDims(const std::vector<ShapeVector> &new_shape
     if (new_shapes[i].size() != original_shapes[i].size()) {
       MS_LOG(ERROR) << "new shapes[" << i << "] size: " << new_shapes[i].size() << ", not equal original shapes[" << i
                     << "] size: " << original_shapes[i].size();
-      return false;
+      return Status(kLiteInputParamInvalid, "cur input shape's size != original input shape's size.");
     }
     for (size_t j = 0; j < new_shapes[i].size(); j++) {
       if (new_shapes[i][j] != original_shapes[i][j] && original_shapes[i][j] != -1) {
         MS_LOG(ERROR) << "input shape is wrong.";
-        return false;
+        return Status(kLiteInputParamInvalid, "The given input shape's value != original input shape's value.");
       }
     }
   }
   if (shape_size > ACL_MAX_DIM_CNT) {
     MS_LOG(ERROR) << "The sum of all inputs dims must be less than 128! Current size:" << shape_size;
-    return false;
+    return Status(kLiteInputParamInvalid, "The sum of all inputs dims must be less than 128!");
   }
 
-  return true;
+  return kSuccess;
 }
 
-bool DynShapeProcess::CheckImageSize(const std::vector<ShapeVector> &new_shapes) {
+Status DynShapeProcess::CheckImageSize(const std::vector<ShapeVector> &new_shapes) {
   if (input_data_idx_ >= new_shapes.size() || input_data_idx_ >= acl_options_.input_format.size()) {
     MS_LOG(ERROR) << "Input data index " << input_data_idx_ << " is invalid, inputs size " << new_shapes.size()
                   << " input formats size " << acl_options_.input_format.size();
-    return false;
+    return Status(kLiteInputParamInvalid, "Input data index is invalid!");
   }
   std::vector<int64_t> original_shape = acl_options_.input_shapes[input_data_idx_];
   std::vector<int64_t> cur_shape = new_shapes[input_data_idx_];
   if (original_shape.size() != kInputDimNum) {
     MS_LOG(ERROR) << "Shape size " << original_shape.size() << " is invalid, input index = " << input_data_idx_;
-    return false;
+    return Status(kLiteAclInitFailed, "original_shape size is invalid.");
   }
   if (cur_shape.size() != original_shape.size()) {
     MS_LOG(ERROR) << "Cur shape size " << cur_shape.size() << " is not equal with original shape size "
                   << original_shape.size();
-    return false;
+    return Status(kLiteInputParamInvalid, "The given input shape size != original shape size");
   }
   for (size_t i = 1; i < cur_shape.size(); ++i) {
     if (cur_shape[i] <= 0) {
       MS_LOG(ERROR) << "Invalid new shape " << cur_shape << " for input " << i;
-      return false;
+      return Status(kLiteInputParamInvalid, "Invalid shape value, the value of shape is less than or equal to 0.");
     }
     if (original_shape[i] != kUnknownDim && (original_shape[i] != cur_shape[i])) {
       MS_LOG(ERROR) << "Shape Conflict: Original Shape:[" << original_shape << "], Current Shape:[" << cur_shape << "]";
-      return false;
+      return Status(kLiteInputParamInvalid, "Shape conflict: original shape != given shape.");
     }
   }
   auto format = acl_options_.input_format[input_data_idx_];
@@ -184,43 +188,43 @@ bool DynShapeProcess::CheckImageSize(const std::vector<ShapeVector> &new_shapes)
     if ((original_shape[kNHWCCIdx] != kUnknownDim && (original_shape[kNHWCCIdx] != cur_shape[kNHWCCIdx])) ||
         (original_shape[kNHWCNIdx] != kUnknownDim && (original_shape[kNHWCNIdx] != cur_shape[kNHWCNIdx]))) {
       MS_LOG(ERROR) << "Shape Conflict: Original Shape:[" << original_shape << "], Current Shape:[" << cur_shape << "]";
-      return false;
+      return Status(kLiteInputParamInvalid, "Shape conflict: original shape != given shape.");
     }
   } else {
     if ((original_shape[kNCHWCIdx] != kUnknownDim && (original_shape[kNCHWCIdx] != cur_shape[kNCHWCIdx])) ||
         (original_shape[kNCHWNIdx] != kUnknownDim && (original_shape[kNCHWNIdx] != cur_shape[kNCHWNIdx]))) {
       MS_LOG(ERROR) << "Shape Conflict: Original Shape:[" << original_shape << "], Current Shape:[" << cur_shape << "]";
-      return false;
+      return Status(kLiteInputParamInvalid, "Shape conflict: original shape != given shape.");
     }
   }
-  return true;
+  return kSuccess;
 }
 
-bool DynShapeProcess::GetRealBatchSize(const std::vector<ShapeVector> &new_shapes, int32_t *batch_size) {
+Status DynShapeProcess::GetRealBatchSize(const std::vector<ShapeVector> &new_shapes, int32_t *batch_size) {
   if (input_data_idx_ >= new_shapes.size()) {
     MS_LOG(ERROR) << " Input data index " << input_data_idx_ << " is larger than input size " << new_shapes.size();
-    return false;
+    return Status(kLiteInputParamInvalid, "Input data index is larger than input size!");
   }
   std::vector<int64_t> shape = new_shapes[input_data_idx_];
   if (shape.empty()) {
     MS_LOG(ERROR) << "Shape is empty, input index = " << input_data_idx_;
-    return false;
+    return Status(kLiteInputParamInvalid, "The given input shape is empty!");
   }
   int32_t cur_batch_size = static_cast<uint64_t>(shape[0]);
   auto iter = acl_options_.batch_size.find(cur_batch_size);
   if (iter == acl_options_.batch_size.end()) {
     MS_LOG(ERROR) << "Current batch size " << cur_batch_size << " is invalid, please check device info of context";
-    return false;
+    return Status(kLiteInputParamInvalid, "Current batch size is invalid, please check device info of context.");
   }
   *batch_size = cur_batch_size;
   MS_LOG(DEBUG) << "Current batch size " << cur_batch_size;
-  return true;
+  return kSuccess;
 }
 
-bool DynShapeProcess::GetRealDynamicDims(const std::vector<ShapeVector> &new_shapes, aclmdlIODims *dynamic_dims) {
+Status DynShapeProcess::GetRealDynamicDims(const std::vector<ShapeVector> &new_shapes, aclmdlIODims *dynamic_dims) {
   if (input_data_idx_ >= new_shapes.size()) {
     MS_LOG(ERROR) << " Input data index " << input_data_idx_ << " is larger than input size " << new_shapes.size();
-    return false;
+    return Status(kLiteInputParamInvalid, "The number of given inputs is wrong.");
   }
   std::vector<int64_t> dims;
   for (auto shape : new_shapes) {
@@ -234,20 +238,20 @@ bool DynShapeProcess::GetRealDynamicDims(const std::vector<ShapeVector> &new_sha
     MS_LOG(INFO) << "dynamic dim: " << dims[i];
     dynamic_dims->dims[i] = dims[i];
   }
-  return true;
+  return kSuccess;
 }
 
-bool DynShapeProcess::GetRealImageSize(const std::vector<ShapeVector> &new_shapes, int32_t *height_p,
-                                       int32_t *width_p) {
+Status DynShapeProcess::GetRealImageSize(const std::vector<ShapeVector> &new_shapes, int32_t *height_p,
+                                         int32_t *width_p) {
   if (input_data_idx_ >= new_shapes.size() || input_data_idx_ >= acl_options_.input_format.size()) {
     MS_LOG(ERROR) << "Input data index " << input_data_idx_ << " is invalid, inputs size " << new_shapes.size()
                   << " input formats size " << acl_options_.input_format.size();
-    return false;
+    return Status(kLiteInputParamInvalid, "Input data index is invalid!");
   }
   std::vector<int64_t> shape = new_shapes[input_data_idx_];
   if (shape.size() != kInputDimNum) {
     MS_LOG(ERROR) << "Shape size " << shape.size() << " is invalid, input index = " << input_data_idx_;
-    return false;
+    return Status(kLiteInputParamInvalid, "The given input shape size is invalid.");
   }
   auto format = acl_options_.input_format[input_data_idx_];
   int64_t height;
@@ -264,11 +268,11 @@ bool DynShapeProcess::GetRealImageSize(const std::vector<ShapeVector> &new_shape
   if (iter == acl_options_.image_size.end()) {
     MS_LOG(ERROR) << "Image size height " << height << ",weight " << width
                   << " is invalid, please check device info of context.";
-    return false;
+    return Status(kLiteInputParamInvalid, "input shape's H and W is invalid.");
   }
   *height_p = static_cast<int32_t>(height);
   *width_p = static_cast<int32_t>(width);
   MS_LOG(INFO) << "Current height " << height << " width " << width;
-  return true;
+  return kSuccess;
 }
 }  // namespace mindspore

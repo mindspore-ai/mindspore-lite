@@ -216,10 +216,11 @@ Status AclGraphExecutor::GetOutputTensors(const std::vector<std::string> &output
   return kSuccess;
 }
 
-bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
-                                    uint32_t *graph_id) {
+Status AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
+                                      uint32_t *graph_id) {
   for (const auto &input : graph->get_inputs()) {
-    MS_CHECK_TRUE_MSG(input != nullptr, false, "graph's inputs[i] is nullptr.");
+    MS_CHECK_TRUE_MSG(input != nullptr, Status(kLiteGraphFileError, "graph's inputs[i] is nullptr."),
+                      "graph's inputs[i] is nullptr.");
     MS_LOG(INFO) << "input name: " << input->fullname_with_scope();
     input_names_.push_back(input->fullname_with_scope());
   }
@@ -228,7 +229,8 @@ bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<st
     config_info_["inner_common"][lite::kBundleModel] = "true";
   }
   auto nodes = graph->TopoSort(graph->get_return());
-  MS_CHECK_TRUE_MSG(!nodes.empty(), false, "graph's inputs[i] is nullptr.");
+  MS_CHECK_TRUE_MSG(!nodes.empty(), Status(kLiteGraphFileError, "There are no nodes in the graph"),
+                    "There are no nodes in the graph");
   void *om_data = nullptr;
   size_t om_data_size = 0;
   size_t cnode_count = 0;
@@ -242,13 +244,13 @@ bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<st
     if (kernel_name != lite::kNameCustomAscend) {
       MS_LOG(ERROR) << "Only support " << lite::kNameCustomAscend << ", but got " << kernel_name << ", node "
                     << cnode->fullname_with_scope();
-      return false;
+      return Status(kLiteGraphFileError, "kernel_name only support CustomAscend.");
     }
     cnode_count += 1;
     if (cnode_count > 1) {
       MS_LOG(ERROR) << "Only support one " << lite::kNameCustomAscend << " node, but got " << kernel_name << ", node "
                     << cnode->fullname_with_scope();
-      return false;
+      return Status(kLiteGraphFileError, "kernel_name only support CustomAscend.");
     }
     std::vector<AnfWithOutIndex> inputs;
     std::vector<AnfWithOutIndex> outputs;
@@ -259,71 +261,75 @@ bool AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<st
     om_data = tensor_data->data_c();
     (void)FuncGraphUtils::GetCNodeOperator(cnode, &op);
   }
-  MS_CHECK_TRUE_MSG(om_data != nullptr, false, "model buffer is nullptr.");
-  MS_CHECK_TRUE_MSG(op != nullptr, false, "op is nullptr.");
+  MS_CHECK_TRUE_MSG(om_data != nullptr, Status(kLiteNullptr, "om_data is nullptr."), "om_data is nullptr.");
+  MS_CHECK_TRUE_MSG(op != nullptr, Status(kLiteNullptr, "op is nullptr."), "op is nullptr.");
 
   primitive_ = op->GetPrim();
   auto acl_options = GenAclOptions();
   if (acl_options == nullptr) {
     MS_LOG(ERROR) << "Generate acl options failed.";
-    return false;
+    return Status(kLiteNullptr, "Generate acl options failed.");
   }
 
   model_infer_ = std::make_shared<ModelInfer>(acl_options);
   if (model_infer_ == nullptr) {
     MS_LOG(ERROR) << "Create ModelInfer failed.";
-    return false;
+    return Status(kLiteNullptr, "Create ModelInfer failed.");
   }
-  if (!model_infer_->Init()) {
+  auto status = model_infer_->Init();
+  if (status != kSuccess) {
     MS_LOG(ERROR) << "Model infer init failed.";
-    return false;
+    return status;
   }
-  if (!model_infer_->Load(om_data, om_data_size)) {
+  status = model_infer_->Load(om_data, om_data_size);
+  if (status != kSuccess) {
     MS_LOG(ERROR) << "Load om data failed.";
-    return false;
+    return status;
   }
   std::vector<MSTensor> output_tensors;
   auto ret = GetOutputTensors(output_names_, &output_tensors);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "GetOutputTensors failed!";
-    return false;
+    return ret;
   }
   graph_outputs_[*graph_id] = output_tensors;
   sharable_handle_ = model_infer_->GetSharableHandle();
   AclEnvGuard::AddModel(model_infer_);
   load_model_ = true;
-  return true;
+  return kSuccess;
 }
 
-bool AclGraphExecutor::CompileGraph(const void *model_data, size_t data_size,
-                                    const std::map<std::string, std::string> &compile_options, uint32_t *graph_id) {
+Status AclGraphExecutor::CompileGraph(const void *model_data, size_t data_size,
+                                      const std::map<std::string, std::string> &compile_options, uint32_t *graph_id) {
   auto acl_options = GenAclOptions();
   if (acl_options == nullptr) {
     MS_LOG(ERROR) << "Generate acl options failed!";
-    return false;
+    return Status(kLiteNullptr, "Generate acl options failed!");
   }
   input_names_.insert(input_names_.end(), acl_options->input_names.begin(), acl_options->input_names.end());
   output_names_.insert(output_names_.end(), acl_options->output_names.begin(), acl_options->output_names.end());
   model_infer_ = std::make_shared<ModelInfer>(acl_options);
   if (model_infer_ == nullptr) {
     MS_LOG(ERROR) << "Create ModelInfer failed.";
-    return false;
+    return Status(kLiteNullptr, "Create ModelInfer failed.");
   }
-  if (!model_infer_->Init()) {
+  auto status = model_infer_->Init();
+  if (status != kSuccess) {
     MS_LOG(ERROR) << "Model infer init failed.";
-    return false;
+    return status;
   }
-  if (!model_infer_->Load(model_data, data_size)) {
+  status = model_infer_->Load(model_data, data_size);
+  if (status != kSuccess) {
     MS_LOG(ERROR) << "Load om data failed.";
-    return false;
+    return status;
   }
   AclEnvGuard::AddModel(model_infer_);
   load_model_ = true;
-  return true;
+  return kSuccess;
 }
 
-bool AclGraphExecutor::Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
-                              const std::vector<std::vector<int64_t>> &dims) {
+Status AclGraphExecutor::Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                                const std::vector<std::vector<int64_t>> &dims) {
   return model_infer_->Resize(dims);
 }
 
@@ -357,30 +363,31 @@ std::vector<mindspore::MSTensor> AclGraphExecutor::GetOutputInfos(uint32_t graph
   return output_infos;
 }
 
-bool AclGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
-                                std::vector<mindspore::MSTensor> *output,
-                                const std::map<string, string> &compile_options) {
+Status AclGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                                  std::vector<mindspore::MSTensor> *output,
+                                  const std::map<string, string> &compile_options) {
   std::vector<std::vector<int64_t>> inputs_shape_new;
   for (auto &tensor : inputs) {
-    MS_CHECK_TRUE_MSG(tensor != nullptr, false, "Input tensor is null.");
+    MS_CHECK_TRUE_MSG(tensor != nullptr, Status(kLiteInputParamInvalid, "Input tensor is nullptr."),
+                      "Input tensor is null.");
     auto tensor_shape = tensor.Shape();
     inputs_shape_new.push_back(tensor_shape);
   }
   auto inputs_shape_model = model_infer_->GetInputShape();
   if (inputs_shape_model != inputs_shape_new) {
     auto ret = model_infer_->Resize(inputs_shape_new);
-    if (!ret) {
+    if (ret != kSuccess) {
       MS_LOG(ERROR) << "Resize input shape failed.";
-      return false;
+      return ret;
     }
   }
   auto ret = model_infer_->Inference(inputs, output);
-  if (!ret) {
+  if (ret != kSuccess) {
     MS_LOG(ERROR) << "Model infer failed.";
-    return false;
+    return ret;
   }
   graph_outputs_[graph_id] = *output;
-  return true;
+  return kSuccess;
 }
 
 static std::shared_ptr<LiteGraphExecutor> AclGraphExecutorCreator(const std::shared_ptr<Context> &ctx,

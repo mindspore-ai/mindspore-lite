@@ -40,14 +40,14 @@ class GeGraphExecutorV1 : public LiteGraphExecutor {
   ~GeGraphExecutorV1();
 
   bool Init();
-  bool CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
-                    uint32_t *graph_id) override;
+  Status CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
+                      uint32_t *graph_id) override;
 
-  bool RunGraph(uint32_t graph_id, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
-                const std::map<string, string> &compile_options) override;
-  bool Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
-              const std::vector<ShapeVector> &dims) override {
-    return true;
+  Status RunGraph(uint32_t graph_id, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
+                  const std::map<string, string> &compile_options) override;
+  Status Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                const std::vector<ShapeVector> &dims) override {
+    return kSuccess;
   }
 
   std::vector<mindspore::MSTensor> GetInputInfos(uint32_t graph_id) override;

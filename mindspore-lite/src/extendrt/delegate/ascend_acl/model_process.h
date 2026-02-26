@@ -57,9 +57,9 @@ class ModelProcess {
   }
   ~ModelProcess();
 
-  bool Load(const void *om_data, size_t om_data_size);
-  bool UnLoad();
-  bool PredictFromHost(const std::vector<MSTensor> &inputs, const std::vector<MSTensor> *outputs);
+  Status Load(const void *om_data, size_t om_data_size);
+  Status UnLoad();
+  Status PredictFromHost(const std::vector<MSTensor> &inputs, const std::vector<MSTensor> *outputs);
   bool UpdateWeights(const std::vector<MSTensor> &inputs);
 
   // override this method to avoid request/reply data copy
@@ -74,50 +74,50 @@ class ModelProcess {
   const std::vector<TypeId> GetInputDataType();
   const std::vector<TypeId> GetOutputDataType();
 
-  bool Resize(const std::vector<ShapeVector> &new_shapes);
+  Status Resize(const std::vector<ShapeVector> &new_shapes);
   uint64_t GetSharableHandle() { return sharable_handle_; }
 
  private:
   Status LoadModelForUpdateWeight(const void *om_data, size_t om_data_size);
-  bool PreInitModelResource();
+  Status PreInitModelResource();
 
-  bool InitInputsBuffer();
-  bool InitOutputsBuffer();
+  Status InitInputsBuffer();
+  Status InitOutputsBuffer();
   void DestroyInputsBuffer();
   void DestroyOutputsBuffer();
-  bool CreateDataBuffer(void **data_mem_buffer, size_t buffer_size, aclmdlDataset *dataset,
-                        bool use_existing_mem = false);
+  Status CreateDataBuffer(void **data_mem_buffer, size_t buffer_size, aclmdlDataset *dataset,
+                          bool use_existing_mem = false);
 
-  bool CheckAndInitInput(const std::vector<MSTensor> &inputs);
-  bool CheckAndInitOutput(const std::vector<MSTensor> *outputs);
-  bool CheckInputTensors(const std::vector<MSTensor> &inputs);
-  bool CheckAndSetDynFlag();
+  Status CheckAndInitInput(const std::vector<MSTensor> &inputs);
+  Status CheckAndInitOutput(const std::vector<MSTensor> *outputs);
+  Status CheckInputTensors(const std::vector<MSTensor> &inputs);
+  Status CheckAndSetDynFlag();
   Status GetOutputs(const std::vector<MSTensor> *outputs);
 
-  bool ResetInputSize(const std::vector<ShapeVector> &new_shapes);
-  bool ResetOutputSize();
+  Status ResetInputSize(const std::vector<ShapeVector> &new_shapes);
+  Status ResetOutputSize();
   bool IsDynamicShape();
   bool IsDynamicBatchSize();
   bool IsDynamicImageSize();
   bool IsDynamicDims();
-  bool ResetDynamicOutputTensor(const std::vector<MSTensor> *outputs);
-  bool ResizeDynamicInputShape(const std::vector<ShapeVector> &new_shapes);
-  bool ResizeDynamicInputShapeRange(const std::vector<ShapeVector> &new_shapes);
-  bool ResizeDynamicBatchAndImageSize(const std::vector<ShapeVector> &new_shapes);
+  Status ResetDynamicOutputTensor(const std::vector<MSTensor> *outputs);
+  Status ResizeDynamicInputShape(const std::vector<ShapeVector> &new_shapes);
+  Status ResizeDynamicInputShapeRange(const std::vector<ShapeVector> &new_shapes);
+  Status ResizeDynamicBatchAndImageSize(const std::vector<ShapeVector> &new_shapes);
   void FreeResourceInput(std::vector<AclTensorInfo> acl_tensor_info);
   void FreeResourceOutput(std::vector<AclTensorInfo> *acl_tensor_info, const std::vector<MSTensor> *outputs);
   aclError AclrtMemcpy(void *dst, size_t destMax, const void *src, size_t count, aclrtMemcpyKind kind);
-  bool PrepareMutiModelShare(const void *om_data, size_t om_data_size);
+  Status PrepareMutiModelShare(const void *om_data, size_t om_data_size);
   bool InitUpdateWeightBuffer(const std::vector<MSTensor> &kernel_inputs);
   bool CreateWeightsInput(const std::vector<MSTensor> &inputs);
   void DestoryUpdateWeightBuffer();
-  bool ShareWeightspaceProcess(const size_t &work_size);
-  bool ShareWorkspaceProcess(const size_t &work_size, const size_t &weight_size);
-  bool ShareWorkspaceAndWeightspaceProcess(const size_t &work_size);
-  bool CreateModelOutputs();
+  Status ShareWeightspaceProcess(const size_t &work_size);
+  Status ShareWorkspaceProcess(const size_t &work_size, const size_t &weight_size);
+  Status ShareWorkspaceAndWeightspaceProcess(const size_t &work_size);
+  Status CreateModelOutputs();
   bool MainProcess(const void *om_data, size_t om_data_size);
   bool SubProcess(const void *om_data, size_t om_data_size);
-  bool ShareMemProcess(const void *om_data, size_t om_data_size);
+  Status ShareMemProcess(const void *om_data, size_t om_data_size);
   MSTensor GetOutputWithZeroCopy(const std::vector<MSTensor> *outputs, size_t index);
   MSTensor CreateOutputTensor(size_t index);
   Status ExecuteModel(uint32_t model_id, aclmdlDataset *inputs, aclmdlDataset *outputs);

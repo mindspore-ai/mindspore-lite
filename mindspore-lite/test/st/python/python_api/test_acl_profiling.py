@@ -70,4 +70,5 @@ def test_acl_profiling_without_config_file():
     with pytest.raises(RuntimeError) as raise_info:
         model.build_from_file(model_path=MODEL_FILE, model_type=mslite.ModelType.MINDIR, context=context,
                               config_dict=profiling_config)
-    assert "build_from_file failed! Error is Common error code." in str(raise_info.value)
+    assert "build_from_file failed! Error is Profiling init failed, please check your file." \
+           in str(raise_info.value)

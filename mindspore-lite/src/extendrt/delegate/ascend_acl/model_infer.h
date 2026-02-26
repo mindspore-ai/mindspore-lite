@@ -37,10 +37,10 @@ class ModelInfer {
   explicit ModelInfer(const std::shared_ptr<AclModelOptions> &options);
   ~ModelInfer() = default;
 
-  bool Init();
-  bool Finalize(bool process_ends = false);
-  bool Load(const void *om_data, size_t om_data_size);
-  bool Inference(const std::vector<mindspore::MSTensor> &inputs, std::vector<mindspore::MSTensor> *outputs);
+  Status Init();
+  Status Finalize(bool process_ends = false);
+  Status Load(const void *om_data, size_t om_data_size);
+  Status Inference(const std::vector<mindspore::MSTensor> &inputs, std::vector<mindspore::MSTensor> *outputs);
   bool UpdateWeights(const std::vector<MSTensor> &inputs);
   std::vector<Format> GetInputFormat();
   const std::vector<std::vector<int64_t>> GetOutputShape();
@@ -49,7 +49,7 @@ class ModelInfer {
   const std::vector<TypeId> GetOutputDataType();
   uint64_t GetSharableHandle() { return sharable_handle_; }
 
-  bool Resize(const std::vector<std::vector<int64_t>> &new_shapes);
+  Status Resize(const std::vector<std::vector<int64_t>> &new_shapes);
 
  private:
   bool init_flag_;

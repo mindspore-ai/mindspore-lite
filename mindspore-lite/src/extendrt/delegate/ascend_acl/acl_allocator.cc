@@ -219,24 +219,24 @@ Status AclAllocator::CopyDeviceDataToDevice(void *src_device_data, void *dst_dev
   if (dst_device_id == -1 || src_device_id == -1) {
     MS_LOG(ERROR) << "device data copy device data, need set src device id and dst device id, now src device id: "
                   << src_device_id << ", dst device id: " << dst_device_id;
-    return kLiteError;
+    return kLiteMemoryFailed;
   }
   auto device_count = GetDeviceCount();
   if (dst_device_id >= static_cast<int>(device_count) || src_device_id >= static_cast<int>(device_count)) {
     MS_LOG(ERROR) << "device id is more than device count, src device id: " << src_device_id
                   << ", dst device id: " << dst_device_id << ", device count: " << device_count;
-    return kLiteError;
+    return kLiteMemoryFailed;
   }
   if (src_data_size > dst_data_size) {
     MS_LOG(ERROR) << "src data_size: " << src_data_size << " cannot be greater than dst data_size: " << dst_data_size;
-    return kLiteError;
+    return kLiteMemoryFailed;
   }
   if (src_device_id == dst_device_id) {
     auto ret = CALL_ASCEND_API(aclrtMemcpy, dst_device_data, dst_data_size, src_device_data, src_data_size,
                                ACL_MEMCPY_DEVICE_TO_DEVICE);
     if (ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "aclrtMemcpy failed.";
-      return kLiteError;
+      return kLiteMemoryFailed;
     }
     return kSuccess;
   }
@@ -244,42 +244,42 @@ Status AclAllocator::CopyDeviceDataToDevice(void *src_device_data, void *dst_dev
   auto ret = CALL_ASCEND_API(aclrtGetCurrentContext, &curr_context);
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Get current runtime context failed.";
-    return kLiteError;
+    return kLiteMemoryFailed;
   }
   int32_t can_access_peer;
   ret = CALL_ASCEND_API(aclrtDeviceCanAccessPeer, &can_access_peer, src_device_id, dst_device_id);
   if (ret != ACL_SUCCESS || can_access_peer != 1) {
     MS_LOG(ERROR) << "ret: " << ret << ", can_access_peer: " << can_access_peer;
-    return kLiteError;
+    return kLiteMemoryFailed;
   }
   auto current_device_id = GetCurrentDeviceId();
   if (current_device_id != dst_device_id) {
     ret = CALL_ASCEND_API(aclrtSetDevice, dst_device_id);
     if (ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "aclrtSetDevice failed.";
-      return kLiteError;
+      return kLiteMemoryFailed;
     }
   }
   ret = CALL_ASCEND_API(aclrtDeviceEnablePeerAccess, src_device_id, 0);
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "aclrtDeviceEnablePeerAccess failed.";
-    return kLiteError;
+    return kLiteMemoryFailed;
   }
   ret = CALL_ASCEND_API(aclrtSetDevice, src_device_id);
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "aclrtSetDevice failed.";
-    return kLiteError;
+    return kLiteMemoryFailed;
   }
   ret = CALL_ASCEND_API(aclrtDeviceEnablePeerAccess, dst_device_id, 0);
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "aclrtDeviceEnablePeerAccess failed.";
-    return kLiteError;
+    return kLiteMemoryFailed;
   }
   ret = CALL_ASCEND_API(aclrtMemcpy, dst_device_data, dst_data_size, src_device_data, src_data_size,
                         ACL_MEMCPY_DEVICE_TO_DEVICE);
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "aclrtMemcpy failed.";
-    return kLiteError;
+    return kLiteMemoryFailed;
   }
   if (current_device_id != GetCurrentDeviceId()) {
     ResetDeviceId(current_device_id);
@@ -287,7 +287,7 @@ Status AclAllocator::CopyDeviceDataToDevice(void *src_device_data, void *dst_dev
   ret = CALL_ASCEND_API(aclrtSetCurrentContext, curr_context);
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Set runtime context failed.";
-    return kLiteError;
+    return kLiteMemoryFailed;
   }
   return kSuccess;
 }
