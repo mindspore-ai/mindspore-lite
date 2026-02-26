@@ -48,8 +48,8 @@ void NNaclFp32Serializer::CodeStruct(const std::string &name, const PoolingCompu
 }
 
 void NNaclFp32Serializer::CodeStruct(const std::string &name, const BatchNormStruct &bn_struct) {
-  CodeBaseStruct<false>("BatchNormStruct", name, "{}", "{}", "{}", "{}", bn_struct.momentum_, bn_struct.unit_,
-                        bn_struct.channel_, bn_struct.epsilon_);
+  CodeBaseStruct<false>("BatchNormStruct", name, "{}", bn_struct.data_type_, bn_struct.mean_, bn_struct.variance_,
+                        bn_struct.momentum_, bn_struct.unit_, bn_struct.channel_, bn_struct.epsilon_);
 }
 
 void NNaclFp32Serializer::CodeStruct(const std::string &name, const InstanceNormParameter &param) {

@@ -37,6 +37,8 @@ class BatchnormFP32Coder final : public OperatorCoder {
  private:
   int Init();
   float default_momentum_{-1.0f};
+  float *scale_tensor{nullptr};
+  float *offset_tensor{nullptr};
   float *mean_{nullptr};
   float *variance_{nullptr};
 

@@ -77,6 +77,8 @@ class DataDistribution {
 
   CNodePtr GetCNode() { return this->cnode_; }
 
+  int MergeOldDataForQuant(float old_encode_min, float old_encode_max);
+
  private:
   double CalculateMinMaxScale();
 
