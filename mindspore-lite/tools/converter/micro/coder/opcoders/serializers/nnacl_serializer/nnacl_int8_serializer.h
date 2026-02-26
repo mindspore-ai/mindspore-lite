@@ -33,6 +33,7 @@
 #include "nnacl_c/slice_parameter.h"
 #include "nnacl_c/batchnorm_parameter.h"
 #include "nnacl_c/pad_parameter.h"
+#include "nnacl_c/kernel/tile.h"
 #include "nnacl_c/transpose_parameter.h"
 #include "nnacl_c/int8/relux_int8.h"
 #include "wrapper/int8/concat_int8_wrapper.h"
@@ -46,7 +47,8 @@ class NNaclInt8Serializer : public Serializer {
   NNaclInt8Serializer() = default;
   ~NNaclInt8Serializer() override = default;
   void CodeStruct(const std::string &name, const ConvParameter &conv_parameter);
-  void CodeStruct(const std::string &name, const MicroMatmulParameter &matmul_parameter);
+  void CodeStruct(const std::string &name, const MicroMatmulParameter &micro_matmul_parameter);
+  void CodeStruct(const std::string &name, const TileStruct &tile_parameter);
   void CodeStruct(const std::string &name, const TransposeParameter &transpose_parameter);
   void CodeStruct(const std::string &name, const AddQuantParameter &add_quant_parameter);
   void CodeStruct(const std::string &name, const ArithmeticParameter &arithmetic_parameter);

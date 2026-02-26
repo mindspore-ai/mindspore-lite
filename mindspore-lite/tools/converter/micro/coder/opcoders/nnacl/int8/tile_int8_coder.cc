@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,18 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-#include "coder/opcoders/nnacl/fp32/tile_fp32_coder.h"
-#include "coder/opcoders/serializers/nnacl_serializer/nnacl_fp32_serializer.h"
+#include "coder/opcoders/nnacl/int8/tile_int8_coder.h"
+#include "coder/opcoders/serializers/nnacl_serializer/nnacl_int8_serializer.h"
 #include "coder/opcoders/file_collector.h"
 
 using mindspore::schema::PrimitiveType_TileFusion;
 
 namespace mindspore::lite::micro::nnacl {
 
-int TileFP32Coder::Prepare(CoderContext *const context) { return TileBaseCoder::Resize(); }
+int TileInt8Coder::Prepare(CoderContext *const context) { return TileBaseCoder::Resize(); }
 
-int TileFP32Coder::DoCode(CoderContext *const context) {
+int TileInt8Coder::DoCode(CoderContext *const context) {
   // generate code .h .c
   Collect(context,
           {
@@ -34,7 +33,7 @@ int TileFP32Coder::DoCode(CoderContext *const context) {
             "tile_base.c",
           });
 
-  NNaclFp32Serializer code;
+  NNaclInt8Serializer code;
 
   code.CodeStruct("tile_struct", tile_struct_);
   // call the op function
@@ -43,5 +42,5 @@ int TileFP32Coder::DoCode(CoderContext *const context) {
   return RET_OK;
 }
 
-REG_OPERATOR_CODER(kAllTargets, kNumberTypeFloat32, PrimitiveType_TileFusion, CPUOpCoderCreator<TileFP32Coder>)
+REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_TileFusion, CPUOpCoderCreator<TileInt8Coder>)
 }  // namespace mindspore::lite::micro::nnacl

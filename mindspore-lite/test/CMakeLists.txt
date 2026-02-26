@@ -31,6 +31,7 @@ else()
             ${TEST_DIR}/st/multiple_device_test.cc
             ${TEST_DIR}/st/mindrt_parallel_runtime_test.cc
             ${TEST_DIR}/st/mix_data_type_test.cc
+            ${TEST_DIR}/ut/nnacl/fp32/*.cc
             ${TEST_DIR}/ut/nnacl/infer/*.cc
             ${TEST_DIR}/ut/src/runtime/kernel/arm/common/*.cc
             ${TEST_DIR}/ut/src/runtime/kernel/arm/fp32/*.cc

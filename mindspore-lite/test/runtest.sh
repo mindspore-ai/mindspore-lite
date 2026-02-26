@@ -109,6 +109,7 @@ fi
 ./lite-test --gtest_filter=TestRaggedRangeFp32*
 ./lite-test --gtest_filter=TestScaleFp32*
 ./lite-test --gtest_filter=TestTileFp32*
+./lite-test --gtest_filter=TileFp32Test.*
 
 # test cases of INT8 OP
 ./lite-test --gtest_filter=TestBatchnormInt8.*

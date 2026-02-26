@@ -72,6 +72,7 @@ void BroadcastRun(const void *input0, const void *input1, void *output, int dim,
     int offset = out_thread_stride * data_type_len;
     ArithmeticExecute((const uint8_t *)(input0) + offset, (const uint8_t *)(input1) + offset,
                       (uint8_t *)(output) + offset, out_count, false, arithmetic_func_type, arithmetic_func, param);
+    return;
   }
   int offset_size[] = {param->in_strides0_[dim] * data_type_len, param->in_strides1_[dim] * data_type_len,
                        param->out_strides_[dim] * data_type_len};
