@@ -29,12 +29,12 @@ class SplitBaseCPUKernel : public LiteKernel {
   SplitBaseCPUKernel(OpParameter *parameter, const std::vector<lite::Tensor *> &inputs,
                      const std::vector<lite::Tensor *> &outputs, const lite::InnerContext *ctx)
       : LiteKernel(parameter, inputs, outputs, ctx) {
-    param = reinterpret_cast<SplitParameter *>(op_parameter_);
+    param_ = reinterpret_cast<SplitParameter *>(op_parameter_);
   }
   ~SplitBaseCPUKernel() override {
-    if (param != nullptr && param->split_sizes_ != nullptr) {
-      free(param->split_sizes_);
-      param->split_sizes_ = nullptr;
+    if (param_ != nullptr && param_->split_sizes_ != nullptr) {
+      free(param_->split_sizes_);
+      param_->split_sizes_ = nullptr;
     }
   }
   int Prepare() override;
@@ -46,7 +46,7 @@ class SplitBaseCPUKernel : public LiteKernel {
  protected:
   int thread_n_stride_ = 0;
   int num_unit_ = 0;
-  SplitParameter *param = nullptr;
+  SplitParameter *param_ = nullptr;
   void *input_ptr_ = nullptr;
   std::vector<void *> output_ptr_;
 };

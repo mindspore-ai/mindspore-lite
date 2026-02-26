@@ -216,7 +216,7 @@ const schema::Primitive *SearchSubGraph::CreatePartialPrimitive(int64_t subgraph
   fbb.Clear();
 
   model_->node_bufs_.push_back(prim_buf);
-  return std::move(primitive);
+  return primitive;
 }
 
 void SearchSubGraph::ConvertSubGraphToModel(std::vector<Subgraph> *sub_graphs) {

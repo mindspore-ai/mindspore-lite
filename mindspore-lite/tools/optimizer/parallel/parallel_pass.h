@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+#ifndef MINDSPORE_LITE_TOOLS_OPTIMIZER_PARALLEL_PARALLEL_PASS_H_
+#define MINDSPORE_LITE_TOOLS_OPTIMIZER_PARALLEL_PARALLEL_PASS_H_
+
 #include <memory>
 #include <utility>
 #include <set>
@@ -24,9 +27,6 @@
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/parallel/split_strategy.h"
 #include "tools/optimizer/parallel/operator_info.h"
-
-#ifndef MINDSPORE_LITE_TOOLS_OPTIMIZER_PARALLEL_PARALLEL_PASS_H_
-#define MINDSPORE_LITE_TOOLS_OPTIMIZER_PARALLEL_PARALLEL_PASS_H_
 
 namespace mindspore {
 namespace opt {

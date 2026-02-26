@@ -63,6 +63,9 @@ int DetectionPostProcessInferShape(const TensorC *const *inputs, size_t inputs_s
   }
   const int max_detections = param->max_detections_;
   const int max_classes_per_detection = param->max_classes_per_detection_;
+  if (INT_MUL_OVERFLOW(max_detections, max_classes_per_detection)) {
+    return NNACL_PARAM_INVALID;
+  }
   const int num_detected_boxes = (int)(max_detections * max_classes_per_detection);
   detected_boxes->shape_size_ = 3;
   detected_boxes->shape_[0] = 1;

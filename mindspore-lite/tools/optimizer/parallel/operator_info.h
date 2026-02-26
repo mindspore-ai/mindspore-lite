@@ -46,11 +46,7 @@ using OperatorInfoPtr = std::shared_ptr<OperatorInfo>;
 class OperatorInfo {
  public:
   OperatorInfo(const std::string &name, const SplitStrategy &strategy)
-      : name_(std::move(name)),
-        strategy_(std::move(strategy)),
-        replace_op_(nullptr),
-        func_graph_(nullptr),
-        cnode_(nullptr) {}
+      : name_(name), strategy_(strategy), replace_op_(nullptr), func_graph_(nullptr), cnode_(nullptr) {}
   virtual ~OperatorInfo() = default;
   const std::string name() const { return name_; }
   void set_name(const std::string &name) { name_ = name; }
