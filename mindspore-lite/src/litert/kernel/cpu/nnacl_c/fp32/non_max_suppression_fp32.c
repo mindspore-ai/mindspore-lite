@@ -75,7 +75,7 @@ bool LessThan(NMSBox *box1, NMSBox *box2) {
 
 void SortCandidates(ExecEnv *env, NMSBox **sorted, NMSBox *origin, int size) {
   bool *sorted_index = (bool *)env->Alloc(env->allocator_, size * sizeof(bool));
-  NNACL_CHECK_NULL_RETURN_VOID(sorted);
+  NNACL_CHECK_NULL_RETURN_VOID(sorted_index);
   memset(sorted_index, 0, size * sizeof(bool));
 
   NMSBox min_box;
@@ -97,7 +97,7 @@ void SortCandidates(ExecEnv *env, NMSBox **sorted, NMSBox *origin, int size) {
     sorted_index[max_index] = true;
   }
 
-  env->Free(env->allocator_, sorted);
+  env->Free(env->allocator_, sorted_index);
   return;
 }
 

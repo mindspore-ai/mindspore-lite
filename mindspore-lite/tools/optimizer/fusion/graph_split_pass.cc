@@ -109,17 +109,24 @@ bool IsParentNode(const AnfNodePtr &input_node, const AnfNodePtr &output_node) {
   return false;
 }
 
+static bool CheckOutputNodesWithBoundary(const std::vector<AnfNodePtr> &output_nodes,
+                                         const std::vector<AnfNodePtr> &current_stop_nodes) {
+  return std::any_of(output_nodes.begin(), output_nodes.end(), [&current_stop_nodes](const AnfNodePtr &output_node) {
+    return std::any_of(current_stop_nodes.begin(), current_stop_nodes.end(),
+                       [&output_node](const AnfNodePtr &stop_node) { return IsParentNode(stop_node, output_node); });
+  });
+}
+
 STATUS GetSubgraphStopNodes(const std::vector<std::vector<AnfNodePtr>> &boundaries, const size_t &current_index,
                             const std::vector<AnfNodePtr> &output_nodes, std::vector<AnfNodePtr> *stop_nodes) {
-  for (int i = current_index - 1; i >= 0; i--) {
-    auto current_stop_nodes = boundaries[i];
-    for (size_t j = 0; j < output_nodes.size(); j++) {
-      for (size_t k = 0; k < current_stop_nodes.size(); k++) {
-        if (IsParentNode(current_stop_nodes[k], output_nodes[j])) {
-          stop_nodes->insert(stop_nodes->end(), current_stop_nodes.begin(), current_stop_nodes.end());
-          return lite::RET_OK;
-        }
-      }
+  if (stop_nodes == nullptr) {
+    MS_LOG(ERROR) << "stop_nodes pointer is nullptr.";
+    return lite::RET_NULL_PTR;
+  }
+  for (int i = static_cast<int>(current_index) - 1; i >= 0; i--) {
+    if (CheckOutputNodesWithBoundary(output_nodes, boundaries[i])) {
+      stop_nodes->insert(stop_nodes->end(), boundaries[i].begin(), boundaries[i].end());
+      return lite::RET_OK;
     }
   }
   MS_LOG(ERROR) << "Can not found prenode for current output nodes";

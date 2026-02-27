@@ -30,7 +30,6 @@ from mindspore_lite._parse_update_weights_name import _parse_update_weight_confi
 
 __all__ = ['ModelType', 'Model', 'ModelParallelRunner', 'ModelGroup', 'MultiModelRunner', 'ModelExecutor']
 
-
 class ModelType(Enum):
     """
     The `ModelType` class defines the type of the model exported or imported in MindSpot Lite.

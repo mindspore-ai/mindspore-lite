@@ -20,6 +20,7 @@
 #include "nnacl_c/base/conv_common_base.h"
 #include "nnacl_c/errorcode.h"
 
+#define FUNC_LIST_SIZE 9
 #ifdef ENABLE_ARM64
 void transpose4(MS_FLOAT32X4 *s0, MS_FLOAT32X4 *s1, MS_FLOAT32X4 *s2, MS_FLOAT32X4 *s3) {
   float64x2_t m0 = (float64x2_t)(vtrn1q_f32(*s0, *s1));
@@ -34,7 +35,7 @@ void transpose4(MS_FLOAT32X4 *s0, MS_FLOAT32X4 *s1, MS_FLOAT32X4 *s2, MS_FLOAT32
 #endif
 
 #ifdef ENABLE_AVX
-static InputTransFunc InputTransFuncList[] = {
+static InputTransFunc InputTransFuncList[FUNC_LIST_SIZE] = {
   NULL, NULL, NULL, NULL, InputTransform4x4AvxUnit, NULL, InputTransform6x6AvxUnit, NULL, InputTransform8x8AvxUnit};
 
 static OutputTransFunc OutputTransFuncList[] = {
@@ -51,7 +52,7 @@ static OutputTransFunc OutputTransFuncList[] = {
   OutputTransform8x2Relu6AvxUnit, OutputTransform8x3Relu6AvxUnit, OutputTransform8x4Relu6AvxUnit,
   OutputTransform8x5Relu6AvxUnit, OutputTransform8x6Relu6AvxUnit, OutputTransform8x7Relu6AvxUnit};
 #else
-static InputTransFunc InputTransFuncList[] = {
+static InputTransFunc InputTransFuncList[FUNC_LIST_SIZE] = {
   NULL, NULL, NULL, NULL, InputTransform4x4Unit, NULL, InputTransform6x6Unit, NULL, InputTransform8x8Unit};
 
 static OutputTransFunc OutputTransFuncList[] = {
@@ -66,7 +67,12 @@ static OutputTransFunc OutputTransFuncList[] = {
   OutputTransform8x4Relu6Unit, OutputTransform8x5Relu6Unit, OutputTransform8x6Relu6Unit, OutputTransform8x7Relu6Unit};
 #endif
 
-InputTransFunc GetInputTransFunc(int input_unit) { return InputTransFuncList[input_unit]; }
+InputTransFunc GetInputTransFunc(int input_unit) {
+  if (input_unit < 0 || input_unit >= FUNC_LIST_SIZE) {
+    return NULL;
+  }
+  return InputTransFuncList[input_unit];
+}
 
 #ifdef ENABLE_ARM64
 static InputTransStepFunc InputTransStepFuncList[] = {
@@ -75,9 +81,19 @@ static InputTransStepFunc InputTransStepFuncList[] = {
 static InputTransPackFunc InputTransPackFuncList[] = {
   NULL, NULL, NULL, NULL, InputTransform4x4Pack12, NULL, InputTransform6x6Pack12, NULL, InputTransform8x8Pack12};
 
-InputTransStepFunc GetInputTransStepFunc(int input_unit) { return InputTransStepFuncList[input_unit]; }
+InputTransStepFunc GetInputTransStepFunc(int input_unit) {
+  if (input_unit < 0 || input_unit >= FUNC_LIST_SIZE) {
+    return NULL;
+  }
+  return InputTransStepFuncList[input_unit];
+}
 
-InputTransPackFunc GetInputTransPackFunc(int input_unit) { return InputTransPackFuncList[input_unit]; }
+InputTransPackFunc GetInputTransPackFunc(int input_unit) {
+  if (input_unit < 0 || input_unit >= FUNC_LIST_SIZE) {
+    return NULL;
+  }
+  return InputTransPackFuncList[input_unit];
+}
 #endif
 
 void InputTransform4x4Unit(const float *src_data, float *dst_data, int src_step, int dst_step, int real_c) {

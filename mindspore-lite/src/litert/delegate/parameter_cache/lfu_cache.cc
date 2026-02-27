@@ -31,7 +31,7 @@ LFUCacheAlgorithm::~LFUCacheAlgorithm() {
 }
 
 Status LFUCacheAlgorithm::Init(size_t cache_size, int min_host_index, int max_host_index) {
-  if (cache_size <= 0 || min_host_index < 0 || max_host_index <= 0) {
+  if (cache_size == 0 || min_host_index < 0 || max_host_index <= 0) {
     return kLiteParamInvalid;
   }
   cache_size_ = cache_size;

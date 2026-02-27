@@ -17,6 +17,16 @@
 #include "nnacl_c/infer/affine_infer.h"
 #include "nnacl_c/infer/infer_register.h"
 
+static int ValidateAffineParameter(const AffineParameter *param) {
+  if (param == NULL) {
+    return NNACL_NULL_PTR;
+  }
+  if (param->context_size_ < 1) {
+    return NNACL_INFER_INVALID;
+  }
+  return NNACL_OK;
+}
+
 int MatmulInfer(const AffineParameter *param, int a_shape[MAX_SHAPE_SIZE], size_t a_shape_size,
                 int b_shape[MAX_SHAPE_SIZE], size_t b_shape_size) {
   MatMulParameter *matmul_param = param->matmul_parameter_;
@@ -52,8 +62,9 @@ int AffineInferShape(const TensorC *const *inputs, size_t inputs_size, TensorC *
   }
 
   AffineParameter *param = (AffineParameter *)parameter;
-  if (param == NULL) {
-    return NNACL_NULL_PTR;
+  int ret = ValidateAffineParameter(param);
+  if (ret != NNACL_OK) {
+    return ret;
   }
 
   int a_shape[MAX_SHAPE_SIZE] = {0};
@@ -76,7 +87,7 @@ int AffineInferShape(const TensorC *const *inputs, size_t inputs_size, TensorC *
   bool del_start = false;
   bool del_end = false;
   if (a_shape_size == 1) {
-    int ret = ShapeInsert(a_shape, &a_shape_size, 0, 1);
+    ret = ShapeInsert(a_shape, &a_shape_size, 0, 1);
     if (ret != NNACL_OK) {
       return NNACL_ERR;
     }
@@ -94,7 +105,7 @@ int AffineInferShape(const TensorC *const *inputs, size_t inputs_size, TensorC *
     }
   }
 
-  int ret = MatmulInfer(param, a_shape, a_shape_size, b_shape, b_shape_size);
+  ret = MatmulInfer(param, a_shape, a_shape_size, b_shape, b_shape_size);
   if (ret != NNACL_OK) {
     return ret;
   }

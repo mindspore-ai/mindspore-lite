@@ -49,6 +49,7 @@ constexpr size_t kEncMaxLen = 16;
 
 bool DeleteDirRecursively(const std::string &dir_name) {
   DIR *dir = opendir(dir_name.c_str());
+  MS_CHECK_TRUE_MSG(dir != nullptr, false, "open dir failed.");
   dirent *dirent = nullptr;
   std::vector<std::string> file_names{};
   while ((dirent = readdir(dir)) != 0) {

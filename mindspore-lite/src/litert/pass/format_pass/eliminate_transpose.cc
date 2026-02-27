@@ -26,6 +26,7 @@ constexpr size_t kPackConstDim = 4;
 namespace mindspore::lite::pass {
 int TransFullyFusion(kernel::SubGraphKernel *subgraph, kernel::KernelExec *trans_kernel0,
                      kernel::KernelExec *trans_kernel1) {
+  CHECK_NULL_RETURN(subgraph);
   CHECK_NULL_RETURN(trans_kernel0);
   CHECK_NULL_RETURN(trans_kernel1);
   auto in_tensor = trans_kernel0->in_tensors().at(0);

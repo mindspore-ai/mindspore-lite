@@ -41,7 +41,7 @@ hiai::HIAI_DataType MSDataTypeToHIAIDataType(DataType ms_dtype);
 
 template <typename T>
 void AssistDataNHWC2NCHW(void *raw_data, size_t unit_size) {
-  MS_ASSERT(raw_data != nullptr);
+  CHECK_NULL_RETURN_VOID(raw_data);
   auto data = reinterpret_cast<T *>(raw_data);
   for (size_t i = 0; i < unit_size; ++i) {
     int org_c = data[kNHWC_C * unit_size + i];

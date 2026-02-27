@@ -53,10 +53,12 @@ void *DefaultAllocator::Malloc(size_t size) {
   Lock();
   if (size > max_malloc_size_) {
     MS_LOG(ERROR) << "MallocData out of max_size, size: " << size;
+    UnLock();
     return nullptr;
   }
   if (this->total_size_ >= max_malloc_size_) {
     MS_LOG(ERROR) << "Memory pool is exhausted";
+    UnLock();
     return nullptr;
   }
   auto iter = freeList_.lower_bound(size);

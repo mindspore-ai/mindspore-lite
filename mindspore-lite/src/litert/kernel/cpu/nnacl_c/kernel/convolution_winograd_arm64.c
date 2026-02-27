@@ -30,14 +30,14 @@ int ConvWinoARM64ConfigInputOutput(ConvolutionWinogradBaseStruct *winograd) {
   NNACL_CHECK_NULL_RETURN_ERR(winograd->transfer_functions_.in_func_);
 
   winograd->transfer_functions_.in_step_func_ = GetInputTransStepFunc(winograd->input_unit_);
-  NNACL_CHECK_NULL_RETURN_ERR(winograd->transfer_functions_.in_func_);
+  NNACL_CHECK_NULL_RETURN_ERR(winograd->transfer_functions_.in_step_func_);
 
   winograd->transfer_functions_.in_pack_func_ = GetInputTransPackFunc(winograd->input_unit_);
-  NNACL_CHECK_NULL_RETURN_ERR(winograd->transfer_functions_.in_func_);
+  NNACL_CHECK_NULL_RETURN_ERR(winograd->transfer_functions_.in_pack_func_);
 
   ActType act_type = ((ConvParameter *)winograd->conv_.base_.param_)->act_type_;
   winograd->transfer_functions_.out_func_ = GetOutputTransFunc(winograd->input_unit_, winograd->output_unit_, act_type);
-  NNACL_CHECK_NULL_RETURN_ERR(winograd->transfer_functions_.in_func_);
+  NNACL_CHECK_NULL_RETURN_ERR(winograd->transfer_functions_.out_func_);
 
   return NNACL_OK;
 }

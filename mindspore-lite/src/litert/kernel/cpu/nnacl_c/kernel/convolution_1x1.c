@@ -309,6 +309,8 @@ int Convolution1x1Compute(KernelBase *self) {
 
   int ret = ConvBaseRepackWeight(&conv_1x1->conv_);
   if (ret != NNACL_OK) {
+    self->env_->Free(self->env_->allocator_, conv_1x1->pack_input_);
+    conv_1x1->pack_input_ = NULL;
     return ret;
   }
 
