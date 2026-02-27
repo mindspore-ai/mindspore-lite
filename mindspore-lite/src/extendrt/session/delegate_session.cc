@@ -75,9 +75,9 @@ Status GraphSinkSession::CompileGraph(const void *model_data, size_t data_size, 
     lock.unlock();
   }
   auto ret = graph_executor_->CompileGraph(model_data, data_size, options_, graph_id);
-  if (!ret) {
+  if (ret != kSuccess) {
     MS_LOG(ERROR) << "GraphSinkSession::CompileGraph compile graph failed";
-    return kCoreFailed;
+    return ret;
   }
   auto prepare_share_mem = GetConfigOption(lite::kInnerCommon, lite::kInnerCalcWorkspaceSize);
   if (prepare_share_mem == "true") {
@@ -110,9 +110,9 @@ Status GraphSinkSession::CompileGraph(FuncGraphPtr graph, const void *data, size
     return status;
   }
   auto ret = graph_executor_->CompileGraph(graph, options_, graph_id);
-  if (!ret) {
+  if (ret != kSuccess) {
     MS_LOG(ERROR) << "GraphSinkSession::CompileGraph compile graph failed";
-    return kCoreFailed;
+    return ret;
   }
   auto prepare_share_mem = GetConfigOption(lite::kInnerCommon, lite::kInnerCalcWorkspaceSize);
   if (prepare_share_mem == "true") {
@@ -272,24 +272,24 @@ Status GraphSinkSession::RunGraph(uint32_t graph_id, const std::vector<mindspore
   if (inputs.size() != input_infos.size()) {
     MS_LOG(ERROR) << "Input size not match, graph input size " << input_infos.size() << ", given input size "
                   << inputs.size();
-    return kLiteError;
+    return Status(kLiteInputParamInvalid, "The given input size != graph input size.");
   }
   for (size_t i = 0; i < inputs.size(); i++) {
     if (input_infos[i] == nullptr) {
       MS_LOG(ERROR) << "Input " << i << " info is nullptr";
-      return kLiteError;
+      return Status(kLiteNullptr, "input_info is nullptr.");
     }
   }
-  bool ret = graph_executor_->RunGraph(graph_id, inputs, outputs, options_);
-  if (!ret) {
+  auto ret = graph_executor_->RunGraph(graph_id, inputs, outputs, options_);
+  if (ret != kSuccess) {
     MS_LOG(ERROR) << "GraphSinkSession::RunGraph run graph failed";
-    return kCoreFailed;
+    return ret;
   }
   // reset model output tensor name
   if (graph_infos_[graph_id].output_names.size() != outputs->size()) {
     MS_LOG(ERROR) << "model output size is wrong, graph infos outputs size: "
                   << graph_infos_[graph_id].output_names.size() << ", outputs size: " << outputs->size();
-    return kLiteError;
+    return Status(kLiteOutputParamInvalid, "model output size is wrong.");
   }
   for (size_t i = 0; i < outputs->size(); i++) {
     outputs->at(i).SetTensorName(graph_infos_[graph_id].output_names[i]);
@@ -313,9 +313,9 @@ Status GraphSinkSession::Resize(uint32_t graph_id, const std::vector<mindspore::
   }
   auto &info = info_it->second;
   auto ret = graph_executor_->Resize(graph_id, inputs, new_shapes);
-  if (!ret) {
+  if (ret != kSuccess) {
     MS_LOG(ERROR) << "model resize failed.";
-    return kCoreFailed;
+    return ret;
   }
   for (size_t i = 0; i < new_shapes.size(); i++) {
     auto &input_shape = new_shapes[i];

@@ -64,15 +64,15 @@ Status DecryptModel(const std::string &cropto_lib_path, const void *model_buf, s
                     const std::string &dec_mode, std::unique_ptr<Byte[]> *decrypt_buffer, size_t *decrypt_len) {
   if (model_buf == nullptr) {
     MS_LOG(ERROR) << "model_buf is nullptr.";
-    return kLiteError;
+    return Status(kLiteNullptr, "model_buf is nullptr.");
   }
-  MS_CHECK_TRUE_RET(decrypt_len != nullptr, kLiteNullptr);
+  MS_CHECK_TRUE_RET(decrypt_len != nullptr, Status(kLiteNullptr, "decrypt_len is nullptr."));
   *decrypt_len = 0;
   *decrypt_buffer = lite::Decrypt(cropto_lib_path, decrypt_len, reinterpret_cast<const Byte *>(model_buf), model_size,
                                   dec_key.key, dec_key.len, dec_mode);
   if (*decrypt_buffer == nullptr || *decrypt_len == 0) {
     MS_LOG(ERROR) << "Decrypt buffer failed";
-    return kLiteError;
+    return Status(kLiteNullptr, "Decrypt buffer is nullptr.");
   }
   return kSuccess;
 }
@@ -80,10 +80,11 @@ Status DecryptModel(const std::string &cropto_lib_path, const void *model_buf, s
 
 Status Model::Build(const void *model_data, size_t data_size, ModelType model_type,
                     const std::shared_ptr<Context> &model_context) {
-  if (impl_ == nullptr) {
-    MS_LOG(ERROR) << "Model implement is null.";
-    return kLiteNullptr;
-  }
+  MS_CHECK_TRUE_MSG(impl_ != nullptr, Status(kLiteNullptr, "Model implement is nullptr!"),
+                    "Model implement is nullptr!");
+  MS_CHECK_TRUE_MSG(model_data != nullptr, Status(kLiteNullptr, "model_data is nullptr!"), "model_data is nullptr!");
+  MS_CHECK_TRUE_MSG(model_context != nullptr, Status(kLiteNullptr, "model_context is nullptr!"),
+                    "model_context is nullptr!");
   try {
     auto ret = impl_->PreInfer(model_data, data_size, model_type, model_context);
     if (ret != kSuccess) {
@@ -123,10 +124,9 @@ Status Model::Build(const void *model_data, size_t data_size, const void *weight
 
 Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
                     const std::shared_ptr<Context> &model_context) {
-  if (impl_ == nullptr) {
-    MS_LOG(ERROR) << "Model implement is null.";
-    return kLiteNullptr;
-  }
+  MS_CHECK_TRUE_MSG(impl_ != nullptr, Status(kLiteNullptr, "Model implement is nullptr!"),
+                    "Model implement is nullptr!");
+  MS_CHECK_TRUE_MSG(model_context != nullptr, Status(kLiteNullptr, "context is nullptr!"), "context is nullptr!");
   try {
     auto ret = impl_->PreInfer(CharToString(model_path), model_type, model_context);
     if (ret != kSuccess) {
@@ -151,15 +151,16 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
 #ifdef ENABLE_OPENSSL
   if (impl_ == nullptr) {
     MS_LOG(ERROR) << "Model implement is null.";
-    return kLiteNullptr;
+    return Status(kLiteNullptr, "Model implement is nullptr!");
   }
-
+  MS_CHECK_TRUE_MSG(model_context != nullptr, Status(kLiteNullptr, "model_context is nullptr!"),
+                    "model_context is nullptr!");
   if (dec_key.len > 0) {
     size_t model_size;
     auto model_buf = lite::ReadFile(CharToString(model_path).c_str(), &model_size);
     if (model_buf == nullptr) {
       MS_LOG(ERROR) << "Read model file failed";
-      return kLiteFileError;
+      return Status(kLiteFileError, "Read model file failed");
     }
     std::unique_ptr<Byte[]> decrypt_buffer;
     size_t decrypt_len = 0;
@@ -203,7 +204,7 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
   }
 #else
   MS_LOG(ERROR) << "The lib is not support Decrypt Model.";
-  return kLiteError;
+  return Status(kLiteNotSupport, "The lib is not support Decrypt Model.");
 #endif
 }
 
@@ -213,7 +214,7 @@ Status Model::Build(const void *model_data, size_t data_size, ModelType model_ty
 #ifdef ENABLE_OPENSSL
   if (impl_ == nullptr) {
     MS_LOG(ERROR) << "Model implement is null.";
-    return kLiteNullptr;
+    return Status(kLiteNullptr, "Model implement is nullptr.");
   }
 
   if (dec_key.len > 0) {
@@ -255,7 +256,7 @@ Status Model::Build(const void *model_data, size_t data_size, ModelType model_ty
   }
 #else
   MS_LOG(ERROR) << "The lib is not support Decrypt Model.";
-  return kLiteError;
+  return Status(kLiteNotSupport, "The lib is not support Decrypt Model.");
 #endif
 }
 
@@ -274,7 +275,7 @@ Status BuildTransferLearning(GraphCell backbone, GraphCell head, const std::shar
 Status Model::Resize(const std::vector<MSTensor> &inputs, const std::vector<std::vector<int64_t>> &dims) {
   if (impl_ == nullptr) {
     MS_LOG(ERROR) << "Model implement is null.";
-    return kLiteNullptr;
+    return Status(kLiteNullptr, "Model implement is nullptr.");
   }
   try {
     return impl_->Resize(inputs, dims);
@@ -298,7 +299,7 @@ Status Model::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTensor>
                       const MSKernelCallBack &before, const MSKernelCallBack &after) {
   if (impl_ == nullptr) {
     MS_LOG(ERROR) << "Model implement is null.";
-    return kLiteNullptr;
+    return Status(kLiteNullptr, "Model implement is nullptr!");
   }
   try {
     return impl_->Predict(inputs, outputs, before, after);
@@ -364,7 +365,7 @@ MSTensor Model::GetInputByTensorName(const std::vector<char> &name) {
     return impl_->GetInputByTensorName(CharToString(name));
   } catch (const std::exception &exe) {
     MS_LOG(ERROR) << "Catch exception: " << exe.what();
-    return {};
+    return MSTensor(nullptr);
   }
 }
 
@@ -398,13 +399,13 @@ Status Model::BindGLTexture2DMemory(const std::map<std::string, unsigned int> &i
 Status Model::LoadConfig(const std::vector<char> &config_path) {
   if (impl_ == nullptr) {
     MS_LOG(ERROR) << "Model implement is null.";
-    return Status(kLiteFileError, "Fail to load config file.");
+    return Status(kLiteNullptr, "Model implement is nullptr, failed to load config file.");
   }
 
   auto ret = impl_->LoadConfig(CharToString(config_path));
   if (ret != kSuccess) {
-    MS_LOG(ERROR) << "Fail to load config file.";
-    return Status(kLiteFileError, "Invalid config file.");
+    MS_LOG(ERROR) << "The config file is invalid, failed to load config file.";
+    return ret;
   }
   return kSuccess;
 }
@@ -413,12 +414,12 @@ Status Model::UpdateConfig(const std::vector<char> &section,
                            const std::pair<std::vector<char>, std::vector<char>> &config) {
   if (impl_ == nullptr) {
     MS_LOG(ERROR) << "Model implement is null.";
-    return Status(kLiteFileError, "Fail to update config file.");
+    return Status(kLiteNullptr, "Model implement is nullptr, failed to update config file.");
   }
   auto ret = impl_->UpdateConfig(CharToString(section), {CharToString(config.first), CharToString(config.second)});
   if (ret != kSuccess) {
-    MS_LOG(ERROR) << "Fail to update config file.";
-    return Status(kLiteFileError, "Fail to update config file.");
+    MS_LOG(ERROR) << "Failed to update config file.";
+    return ret;
   }
   return kSuccess;
 }
@@ -529,8 +530,8 @@ std::vector<char> Model::GetModelInfo(const std::vector<char> &key) {
 
 Status Model::Finalize() {
   if (impl_ == nullptr) {
-    MS_LOG(ERROR) << "Model implement is null!";
-    return kLiteNullptr;
+    MS_LOG(ERROR) << "Model implement is nullptr.";
+    return Status(kLiteNullptr, "Model implement is nullptr.");
   }
   return impl_->Finalize();
 }

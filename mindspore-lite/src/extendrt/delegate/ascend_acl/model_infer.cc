@@ -60,25 +60,25 @@ ModelInfer::ModelInfer(const std::shared_ptr<AclModelOptions> &options)
       model_process_(options),
       acl_env_(nullptr) {}
 
-bool ModelInfer::Init() {
+Status ModelInfer::Init() {
   if (init_flag_) {
     MS_LOG(INFO) << "Acl has been initialized, skip.";
-    return true;
+    return kSuccess;
   }
   if (options_ == nullptr) {
     MS_LOG(ERROR) << "Acl options is nullptr.";
-    return false;
+    return Status(kLiteAclInitFailed, "Acl options is nullptr!");
   }
   std::string acl_init_option = !options_->dump_path.empty() ? options_->dump_path : std::string();
   acl_env_ = AclEnvGuard::GetAclEnv(acl_init_option);
   if (acl_env_ == nullptr) {
     MS_LOG(ERROR) << "Acl init failed.";
-    return false;
+    return Status(kLiteAclInitFailed, "acl_env_ is nullptr, Acl init failed!");
   }
   if (!options_->profiling_path.empty()) {
     if (!profiling_.Init(options_->profiling_path, options_->device_id)) {
       MS_LOG(ERROR) << "Profiling init failed";
-      return false;
+      return Status(kLiteFileError, "Profiling init failed, please check your file.");
     }
   }
   std::lock_guard<std::mutex> lock(g_context_mutex);
@@ -86,7 +86,7 @@ bool ModelInfer::Init() {
   aclError ret = CALL_ASCEND_API(aclrtSetDevice, device_id);
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Acl open device " << device_id << " failed.";
-    return false;
+    return Status(kLiteParamInvalid, "Acl open device failed, device_id is invalid.");
   }
   MS_LOG(INFO) << "Open device " << device_id << " success.";
 
@@ -96,14 +96,14 @@ bool ModelInfer::Init() {
     ret = CALL_ASCEND_API(aclrtSetDeviceSatMode, mode);
     if (ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "Set INFNAN mode failed";
-      return false;
+      return Status(kLiteAclInitFailed, "Set INFNAN mode failed!");
     }
   } else if (overflow_mode == "SATURATION_MODE") {
     auto mode = aclrtFloatOverflowMode::ACL_RT_OVERFLOW_MODE_SATURATION;
     ret = CALL_ASCEND_API(aclrtSetDeviceSatMode, mode);
     if (ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "Set SATURATION mode failed";
-      return false;
+      return Status(kLiteAclInitFailed, "Set SATURATION mode failed!");
     }
   }
   {
@@ -111,7 +111,7 @@ bool ModelInfer::Init() {
     ret = CALL_ASCEND_API(aclrtCreateContext, &context_, device_id);
     if (ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "Acl create context failed.";
-      return false;
+      return Status(kLiteAclInitFailed, "Acl create context failed!");
     }
     MS_LOG(INFO) << "get default context success, we will use default context";
 
@@ -119,7 +119,7 @@ bool ModelInfer::Init() {
     ret = CALL_ASCEND_API(aclrtGetRunMode, &run_mode);
     if (ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "Acl get run mode failed.";
-      return false;
+      return Status(kLiteAclInitFailed, "Acl get run mode failed!");
     }
     bool is_device = (run_mode == ACL_DEVICE);
     model_process_.SetIsDevice(is_device);
@@ -127,26 +127,26 @@ bool ModelInfer::Init() {
     ret = CALL_ASCEND_API(aclrtCreateStream, &stream_);
     if (ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "Acl create stream failed";
-      return false;
+      return Status(kLiteAclInitFailed, "Acl create stream failed!");
     }
     MS_LOG(INFO) << "Init model success, device id " << device_id;
   }
   init_flag_ = true;
-  return true;
+  return kSuccess;
 }
 
-bool ModelInfer::Finalize(bool process_ends) {
+Status ModelInfer::Finalize(bool process_ends) {
   std::lock_guard<std::mutex> lock(g_context_mutex);
   if (!init_flag_) {
     MS_LOG(INFO) << "Init is not ok, no need to finalize.";
-    return true;
+    return kSuccess;
   }
   {
     ModelInferContextGuard guard;
     aclError rt_ret = CALL_ASCEND_API(aclrtSetCurrentContext, context_);
     if (rt_ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "Set the ascend device context failed.";
-      return false;
+      return Status(kLiteAclInitFailed, "Set the ascend device context failed!");
     }
     if (!model_process_.UnLoad()) {
       MS_LOG(ERROR) << "Unload model inner failed.";
@@ -184,44 +184,46 @@ bool ModelInfer::Finalize(bool process_ends) {
 
   acl_env_ = nullptr;
   init_flag_ = false;
-  return true;
+  return kSuccess;
 }
 
-bool ModelInfer::Load(const void *om_data, size_t om_data_size) {
+Status ModelInfer::Load(const void *om_data, size_t om_data_size) {
   ModelInferContextGuard guard;
   aclError rt_ret = CALL_ASCEND_API(aclrtSetCurrentContext, context_);
   if (rt_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Set the ascend device context failed, ret = " << rt_ret;
-    return false;
+    return Status(kLiteAclInitFailed, "Set the ascend device context failed!");
   }
   if (profiling_.IsProfilingOpen()) {
     MS_LOG(INFO) << "Ascend profiling is open";
     if (!profiling_.StartProfiling(stream_)) {
       MS_LOG(ERROR) << "Start profiling failed";
-      return false;
+      return Status(kLiteAclInitFailed, "Start profiling failed!");
     }
   }
-  if (!model_process_.Load(om_data, om_data_size)) {
+  auto ret = model_process_.Load(om_data, om_data_size);
+  if (ret != kSuccess) {
     MS_LOG(ERROR) << "Load model model failed.";
-    return false;
+    return ret;
   }
   sharable_handle_ = model_process_.GetSharableHandle();
-  return true;
+  return kSuccess;
 }
 
-bool ModelInfer::Inference(const std::vector<mindspore::MSTensor> &inputs, std::vector<mindspore::MSTensor> *outputs) {
+Status ModelInfer::Inference(const std::vector<mindspore::MSTensor> &inputs,
+                             std::vector<mindspore::MSTensor> *outputs) {
   ModelInferContextGuard guard;
   aclError rt_ret = CALL_ASCEND_API(aclrtSetCurrentContext, context_);
   if (rt_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Set the ascend device context failed, ret = " << rt_ret;
-    return false;
+    return Status(kLiteAclInitFailed, "Set the ascend device context failed!");
   }
   auto ret = model_process_.PredictFromHost(inputs, outputs);
-  if (!ret) {
+  if (ret != kSuccess) {
     MS_LOG(ERROR) << "Model predict failed";
-    return false;
+    return ret;
   }
-  return true;
+  return kSuccess;
 }
 
 bool ModelInfer::UpdateWeights(const std::vector<MSTensor> &inputs) {
@@ -244,18 +246,18 @@ const std::vector<std::vector<int64_t>> ModelInfer::GetInputShape() { return mod
 const std::vector<TypeId> ModelInfer::GetInputDataType() { return model_process_.GetInputDataType(); }
 const std::vector<TypeId> ModelInfer::GetOutputDataType() { return model_process_.GetOutputDataType(); }
 
-bool ModelInfer::Resize(const std::vector<std::vector<int64_t>> &new_shapes) {
+Status ModelInfer::Resize(const std::vector<std::vector<int64_t>> &new_shapes) {
   ModelInferContextGuard guard;
   aclError rt_ret = CALL_ASCEND_API(aclrtSetCurrentContext, context_);
   if (rt_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Set the ascend device context failed, ret = " << rt_ret;
-    return false;
+    return Status(kLiteAclInitFailed, "Set the ascend device context failed!");
   }
   auto ret = model_process_.Resize(new_shapes);
-  if (!ret) {
+  if (ret != kSuccess) {
     MS_LOG(ERROR) << "model resize failed.";
-    return false;
+    return ret;
   }
-  return true;
+  return kSuccess;
 }
 }  // namespace mindspore

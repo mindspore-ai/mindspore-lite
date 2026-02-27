@@ -48,7 +48,8 @@ def test_python_api_fi_resize_001():
         model = mslite.Model()
         model.build_from_file(model_path=MODEL_FILE, model_type=mslite.ModelType.MINDIR, context=context)
         model.resize(model.get_inputs(), [[10, 4, 64, 64], [1], [2, 77, 768]])
-    assert "resize failed! Error is Common error code." in str(raise_info.value)
+    assert "resize failed! Error is The given input shape's value != original input shape's value." \
+            in str(raise_info.value)
 
 
 def test_python_api_fi_resize_002():
@@ -59,10 +60,13 @@ def test_python_api_fi_resize_002():
         model = mslite.Model()
         model.build_from_file(model_path=MODEL_FILE, model_type=mslite.ModelType.MINDIR, context=context)
         model.resize(model.get_inputs(), [[2, 4, -1, -1], [1], [2, 77, 768]])
-    assert "resize failed! Error is Invalid input param by user." in str(raise_info.value)
+    assert "resize failed! Error is Invalid shape!" in str(raise_info.value)
 
 
 def test_python_api_func_resize_random_shape_001():
+    """
+    test python api func resize random shape 001
+    """
     context = mslite.Context()
     context.target = ["ascend"]
     context.ascend.device_id = DEVICE_ID
@@ -90,6 +94,9 @@ def test_python_api_func_resize_random_shape_001():
 
 
 def test_python_api_func_resize_random_shape_002():
+    """
+    test python api func resize random shape 002
+    """
     context = mslite.Context()
     context.target = ["ascend"]
     context.ascend.device_id = DEVICE_ID

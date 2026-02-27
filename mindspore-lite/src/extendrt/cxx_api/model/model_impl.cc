@@ -179,7 +179,7 @@ Status ModelImpl::InferWithRandomData() {
     }
     auto status = lite::GenRandomData(&tensor);
     if (status != RET_OK) {
-      return kLiteError;
+      return Status(kLiteError, "generate random data failed for input tensor.");
     }
   }
   auto ret = this->Predict();
@@ -528,7 +528,7 @@ Status ModelImpl::UpdateSharingWorkspaceConfig(const void *model_buff, size_t mo
   auto sharable_handle = GetConfig(lite::kAscendContextSection, lite::kSharableWeightMemHandle);
   if (pids != "" && sharable_handle != "") {
     MS_LOG(ERROR) << "You can only set pids or sharable_handle, but not set both of them!";
-    return kLiteError;
+    return Status(kLiteParamInvalid, "You can only set pids or sharable_handle, but not set both of them!");
   }
   if (pids != "") {
     auto ret = UpdateConfig(lite::kInnerCommon, std::make_pair(lite::kInnerPids, pids));
@@ -571,9 +571,11 @@ Status ModelImpl::CheckBuildFromBuffer(ModelType model_type, const void *weight_
 Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, const void *weight_data,
                                     size_t weight_size, ModelType model_type,
                                     const std::shared_ptr<Context> &model_context, const std::string &model_path) {
-  MS_CHECK_TRUE_MSG(model_buff != nullptr, kLiteError, "The input model buffer is nullptr!");
-  MS_CHECK_TRUE_MSG(model_size != 0, kLiteError, "The input model buffer size is 0!");
-  MS_CHECK_TRUE_MSG(model_context != nullptr, kLiteError, "Invalid context pointers!");
+  MS_CHECK_TRUE_MSG(model_buff != nullptr, Status(kLiteFileError, "The input model buffer is nullptr!"),
+                    "The input model buffer is nullptr!");
+  MS_CHECK_TRUE_MSG(model_size != 0, Status(kLiteFileError, "The input model buffer size is 0!"),
+                    "The input model buffer size is 0!");
+  MS_CHECK_TRUE_MSG(model_context != nullptr, Status(kLiteNullptr, "context is nullptr!"), "Invalid context pointers!");
   auto ret = CheckBuildFromBuffer(model_type, weight_data, weight_size);
   if (ret != kSuccess) {
     return ret;
@@ -581,29 +583,29 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, c
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (session_) {
     MS_LOG(ERROR) << "Model has been called Build!";
-    return kLiteModelRebuild;
+    return Status(kLiteModelRebuild, "Model has been called build!");
   }
   if (model_context == nullptr) {
     MS_LOG(ERROR) << "Invalid context pointers!";
-    return kLiteError;
+    return Status(kLiteNullptr, "context is nullptr!");
   }
   for (auto &device_info : model_context->MutableDeviceInfo()) {
     if (device_info == nullptr) {
       MS_LOG(ERROR) << "There is nullptr device info in context!";
-      return kLiteError;
+      return Status(kLiteNullptr, "device_info is nullptr!");
     }
   }
   SetMsContext();
   auto thread_num = model_context->GetThreadNum();
   if (thread_num < 0) {
     MS_LOG(ERROR) << "Invalid thread num " << thread_num;
-    return kLiteError;
+    return Status(kLiteParamInvalid, "Invalid thread num!");
   }
   UpdateProvider();
   auto status = UpdateSharingWorkspaceConfig(model_buff, model_size, model_path);
   if (status != kSuccess) {
     MS_LOG(ERROR) << "UpdateSharingWorkspaceConfig failed!";
-    return kLiteError;
+    return status;
   }
   auto mindir_path = GetConfig(lite::kConfigModelFileSection, lite::kConfigMindIRPathKey);
   if (mindir_path.empty()) {
@@ -613,7 +615,7 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, c
   session_ = InferSession::CreateSession(model_context, config_info_);
   if (session_ == nullptr) {
     MS_LOG(ERROR) << "Create session failed!";
-    return kLiteError;
+    return Status(kLiteNullptr, "session is nullptr, Create session failed!");
   }
 
   if (model_type == kMindIR_Lite) {
@@ -637,7 +639,7 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, c
       LoadGraphByBufferImpl(model_buff, model_size, weight_data, weight_size, model_type, model_context, model_path);
     if (func_graph == nullptr) {
       MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
-      return kLiteError;
+      Status(kLiteNullptr, "func_graph is nullptr, failed to load MindIR model!");
     }
     // convert and optimize func graph to infer
     ret = ConvertGraphOnline(func_graph, model_context);
@@ -671,38 +673,38 @@ Status ModelImpl::BuildByBufferImpl(const void *model_data, size_t model_size, M
                                     const CryptoInfo &cryptoInfo) {
   if (model_data == nullptr) {
     MS_LOG(ERROR) << "The input model buffer is nullptr!";
-    return kLiteError;
+    return Status(kLiteFileError, "The input model buffer is nullptr!");
   }
   if (model_size == 0) {
     MS_LOG(ERROR) << "The input model buffer size is 0!";
-    return kLiteError;
+    return Status(kLiteFileError, "The input model buffer size is 0!");
   }
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (session_) {
     MS_LOG(ERROR) << "Model has been called Build!";
-    return kLiteModelRebuild;
+    return Status(kLiteModelRebuild, "Model has been called Build!");
   }
   if (model_context == nullptr) {
     MS_LOG(ERROR) << "Invalid context pointers!";
-    return kLiteError;
+    return Status(kLiteNullptr, "context is nullptr!");
   }
   for (auto &device_info : model_context->MutableDeviceInfo()) {
     if (device_info == nullptr) {
       MS_LOG(ERROR) << "There is nullptr device info in context!";
-      return kLiteError;
+      return Status(kLiteNullptr, "device_info is nullptr!");
     }
   }
   SetMsContext();
   auto thread_num = model_context->GetThreadNum();
   if (thread_num < 0) {
     MS_LOG(ERROR) << "Invalid thread num " << thread_num;
-    return kLiteError;
+    return Status(kLiteParamInvalid, "Invalid thread num!");
   }
   UpdateProvider();
   auto status = UpdateSharingWorkspaceConfig(model_data, model_size, model_path);
   if (status != kSuccess) {
     MS_LOG(ERROR) << "UpdateSharingWorkspaceConfig failed!";
-    return kLiteError;
+    return status;
   }
   auto mindir_path = GetConfig(lite::kConfigModelFileSection, lite::kConfigMindIRPathKey);
   if (mindir_path.empty()) {
@@ -712,7 +714,7 @@ Status ModelImpl::BuildByBufferImpl(const void *model_data, size_t model_size, M
   session_ = InferSession::CreateSession(model_context, config_info_);
   if (session_ == nullptr) {
     MS_LOG(ERROR) << "Create session failed!";
-    return kLiteError;
+    return Status(kLiteError, "session_ is nullptr, Create session failed!");
   }
   Status ret;
   if (model_type == kMindIR_Lite) {
@@ -734,7 +736,7 @@ Status ModelImpl::BuildByBufferImpl(const void *model_data, size_t model_size, M
   func_graph = LoadGraphByBufferImpl(model_data, model_size, model_type, model_context, model_path, cryptoInfo);
   if (func_graph == nullptr) {
     MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
-    return kLiteError;
+    return Status(kLiteGraphFileError, "Failed to load MindIR model, please check the validity of the model.");
   }
   // convert and optimize func graph to infer
   ret = ConvertGraphOnline(func_graph, model_context);
@@ -825,18 +827,19 @@ Status ModelImpl::Build(const std::string &model_path, ModelType model_type,
                         const std::shared_ptr<Context> &model_context) {
   if (model_path.empty()) {
     MS_LOG(ERROR) << "Model path cannot be empty!";
-    return kLiteError;
+    return Status(kLiteFileError, "Model path is empty!");
   }
   auto buffer = ReadFile(model_path);
   if (buffer.DataSize() == 0) {
     MS_LOG(ERROR) << "Failed to read buffer from model file.";
-    return kLiteError;
+    return Status(kLiteFileError, "Failed to read buffer from model file!");
   }
   return BuildByBufferImpl(buffer.Data(), buffer.DataSize(), nullptr, 0, model_type, model_context, model_path);
 }
 
 Status ModelImpl::ConvertGraphOnline(const FuncGraphPtr &func_graph, const std::shared_ptr<Context> &model_context) {
-  MS_CHECK_TRUE_MSG(func_graph != nullptr, kLiteError, "func_graph is nullptr!");
+  MS_CHECK_TRUE_MSG(func_graph != nullptr, Status(kLiteNullptr, "func_graph is nullptr, failed to load MindIR model!"),
+                    "func_graph is nullptr!");
   bool is_device_ascend = false;
   auto device_list = model_context->MutableDeviceInfo();
   for (const auto &device_info : device_list) {
@@ -854,21 +857,22 @@ Status ModelImpl::ConvertGraphOnline(const FuncGraphPtr &func_graph, const std::
       return kSuccess;
     } else if (config_info_.find(lite::kInnerModelParallelRunnerSection) != config_info_.end() && is_device_ascend) {
       MS_LOG(ERROR) << "Model Parallel Runner is not supported on Ascend, due to the func_graph is unoptimized!";
-      return kLiteError;
+      return Status(kLiteError,
+                    "Model Parallel Runner is not supported on Ascend, due to the func_graph is unoptimized!");
     }
   }
 
   auto convert = ConverterPlugin::GetConverterFunc();
   if (convert == nullptr) {
     MS_LOG(ERROR) << "get Converter func failed";
-    return kLiteError;
+    return Status(kLiteNullptr, "Converter is nullptr, get Converter func failed!");
   }
   auto api_graph = mindspore::api::MakeShared<mindspore::api::FuncGraph>(func_graph);
   std::unique_lock<std::shared_mutex> build_lock(g_model_converter_lock);
   auto status = convert(api_graph, model_context, config_info_);
   if (status != kSuccess) {
     MS_LOG(ERROR) << "Failed to converter graph";
-    return kLiteError;
+    return Status(kLiteError, "Failed to converter graph");
   }
 
   return kSuccess;
@@ -877,16 +881,16 @@ Status ModelImpl::ConvertGraphOnline(const FuncGraphPtr &func_graph, const std::
 Status ModelImpl::Resize(const std::vector<MSTensor> &inputs, const std::vector<std::vector<int64_t>> &dims) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (MS_UNLIKELY(session_ == nullptr)) {
-    MS_LOG(ERROR) << "Model has not been called Build, or Model Build failed!";
-    return kLiteError;
+    MS_LOG(ERROR) << "Model has not been called Build, or Model Build has failed!";
+    return Status(kLiteUninitializedObj, "Model has not been called Build, or Model Build has failed!");
   }
   if (inputs.empty()) {
-    MS_LOG(ERROR) << "Inputs is null!";
-    return kLiteInputParamInvalid;
+    MS_LOG(ERROR) << "Inputs is empty!";
+    return Status(kLiteInputParamInvalid, "Inputs is empty!");
   }
   if (dims.empty()) {
-    MS_LOG(ERROR) << "Dims is null!";
-    return kLiteInputParamInvalid;
+    MS_LOG(ERROR) << "Dims is empty!";
+    return Status(kLiteInputParamInvalid, "dims is empty!");
   }
   for (size_t j = 0; j < dims.size(); j++) {
     auto dims_v = dims[j];
@@ -894,22 +898,22 @@ Status ModelImpl::Resize(const std::vector<MSTensor> &inputs, const std::vector<
       auto dim = dims_v[i];
       if (dim <= 0 || dim > INT_MAX) {
         MS_LOG(ERROR) << "Invalid shape! dim: " << dim;
-        return kLiteInputParamInvalid;
+        return Status(kLiteInputParamInvalid, "Invalid shape!");
       }
     }
   }
   if (inputs.size() != dims.size()) {
     MS_LOG(ERROR) << "The size of inputs does not match the size of dims.";
-    return kLiteInputParamInvalid;
+    return Status(kLiteInputParamInvalid, "The size of inputs does not match the size of dims!");
   }
   auto model_inputs = session_->GetInputs(graph_id_);
   if (model_inputs.empty()) {
-    MS_LOG(ERROR) << "The inputs of model is null.";
-    return kLiteParamInvalid;
+    MS_LOG(ERROR) << "The inputs of model is empty.";
+    return Status(kLiteInputParamInvalid, "The inputs of model is empty.");
   }
   if (inputs.size() != model_inputs.size()) {
     MS_LOG(ERROR) << "The size of inputs is incorrect.";
-    return kLiteInputParamInvalid;
+    return Status(kLiteInputParamInvalid, "The given input size is inconsistent with the input size of the model.");
   }
   return session_->Resize(graph_id_, inputs, dims);
 }
@@ -917,7 +921,7 @@ Status ModelImpl::Resize(const std::vector<MSTensor> &inputs, const std::vector<
 std::vector<MSTensor> ModelImpl::GetInputs() {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (session_ == nullptr) {
-    MS_LOG(ERROR) << "Model has not been called Build, or Model Build failed!";
+    MS_LOG(ERROR) << "Model has not been called Build, or Model Build has failed";
     return {};
   }
   auto graph_inputs = session_->GetInputs(graph_id_);
@@ -930,7 +934,7 @@ std::vector<MSTensor> ModelImpl::GetInputs() {
 std::vector<MSTensor> ModelImpl::GetOutputs() {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (session_ == nullptr) {
-    MS_LOG(ERROR) << "Model has not been called Build, or Model Build failed!";
+    MS_LOG(ERROR) << "Model has not been called Build, or Model Build has failed!";
     return {};
   }
   auto graph_outputs = session_->GetOutputs(graph_id_);
@@ -986,10 +990,17 @@ Status ModelImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTen
                           const MSKernelCallBack &before, const MSKernelCallBack &after) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (MS_UNLIKELY(session_ == nullptr)) {
-    MS_LOG(ERROR) << "Model has not been called Build, or Model Build failed!";
-    return kLiteError;
+    MS_LOG(ERROR) << "Model has not been called Build, or Model Build has failed!";
+    return Status(kLiteUninitializedObj, "Model has not been called Build, or Model Build has failed");
   }
-  MS_EXCEPTION_IF_NULL(outputs);
+  if (outputs == nullptr) {
+    MS_LOG(ERROR) << "outputs pointer is nullptr!";
+    return Status(kLiteOutputParamInvalid, "outputs pointer is nullptr");
+  }
+  if (inputs.empty()) {
+    MS_LOG(ERROR) << "user input tensor is empty!";
+    return Status(kLiteInputParamInvalid, "user input tensor is empty!");
+  }
   auto ret = session_->RunGraph(graph_id_, inputs, outputs, before, after);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "ModelImpl::Predict RunGraph failed!ret = " << ret;
@@ -999,7 +1010,7 @@ Status ModelImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTen
   if (outputs->size() != session_outputs.size()) {
     MS_LOG(ERROR) << "Outputs count get from session " << session_outputs.size() << " != outputs count of RunGraph "
                   << outputs->size();
-    return kCoreFailed;
+    return Status(kLiteOutputParamInvalid, "output size is wrong!");
   }
   for (size_t i = 0; i < session_outputs.size(); i++) {
     MSTensor session_output(session_outputs[i]);
@@ -1067,14 +1078,14 @@ Status ModelImpl::PredictWithPreprocess(const std::vector<std::vector<MSTensor>>
 Status ModelImpl::LoadConfig(const std::string &config_path) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (session_ != nullptr) {
-    MS_LOG(ERROR) << "Model has been called Build, please call LoadConfig before Build.";
-    return kLiteError;
+    MS_LOG(ERROR) << "Model has been called Build, please call LoadConfig before build.";
+    return Status(kLiteError, "Model has been called build, please call LoadConfig before build.");
   }
   ConfigInfos all_config_info;
   int ret = lite::GetAllSectionInfoFromConfigFile(config_path, &all_config_info);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "GetAllSectionInfoFromConfigFile fail!ret = " << ret;
-    return kLiteFileError;
+    return Status(kLiteFileError, "GetAllSectionInfoFromConfigFile failed, please check your config file.");
   }
   for (auto &section : all_config_info) {
     const auto &section_name = section.first;
@@ -1096,15 +1107,15 @@ Status ModelImpl::UpdateConfig(const std::string &section, const std::pair<std::
   auto iter = config_info_.find(section);
   if (iter == config_info_.end()) {
     if (config_info_.size() >= kMaxSectionNum) {
-      MS_LOG(ERROR) << "config too many sections!";
-      return kLiteError;
+      MS_LOG(ERROR) << "The config has too many sections!";
+      return Status(kLiteParamInvalid, "The config has too many sections!");
     }
     config_info_[section][config.first] = config.second;
     return kSuccess;
   }
   if (iter->second.size() >= kMaxConfigNumPerSection) {
-    MS_LOG(ERROR) << "config too many items!";
-    return kLiteError;
+    MS_LOG(ERROR) << "The config has too mant items!";
+    return Status(kLiteParamInvalid, "The config has too mant items!");
   }
   iter->second[config.first] = config.second;
   return kSuccess;
@@ -1141,8 +1152,8 @@ bool ModelImpl::CheckModelSupport(DeviceType device_type, ModelType model_type) 
 
 Status ModelImpl::Finalize() {
   if (session_ == nullptr) {
-    MS_LOG(ERROR) << "session_ is nullptr,please build model first!";
-    return kLiteError;
+    MS_LOG(ERROR) << "session_ is nullptr, please build model first!";
+    return Status(kLiteUninitializedObj, "session_ is nullptr, please build model first!");
   }
   return session_->Finalize();
 }

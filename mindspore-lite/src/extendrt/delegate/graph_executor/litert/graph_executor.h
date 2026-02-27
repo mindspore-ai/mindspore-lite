@@ -42,14 +42,14 @@ class LiteRTGraphExecutor : public LiteGraphExecutor {
       fb_model_buf_ = nullptr;
     }
   }
-  bool CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
-                    uint32_t *graph_id) override;
-  bool CompileGraph(const void *model_data, size_t data_size, const std::map<string, string> &compile_options,
-                    uint32_t *graph_id) override;
-  bool RunGraph(uint32_t graph_id, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
-                const std::map<string, string> &compile_options) override;
+  Status CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
+                      uint32_t *graph_id) override;
+  Status CompileGraph(const void *model_data, size_t data_size, const std::map<string, string> &compile_options,
+                      uint32_t *graph_id) override;
+  Status RunGraph(uint32_t graph_id, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
+                  const std::map<string, string> &compile_options) override;
 
-  bool Resize(uint32_t graph_id, const std::vector<MSTensor> &inputs, const std::vector<ShapeVector> &dims) override;
+  Status Resize(uint32_t graph_id, const std::vector<MSTensor> &inputs, const std::vector<ShapeVector> &dims) override;
   std::vector<MSTensor> GetInputInfos(uint32_t graph_id) override;
   std::vector<MSTensor> GetOutputInfos(uint32_t graph_id) override;
 

@@ -36,15 +36,15 @@ class AclGraphExecutor : public LiteGraphExecutor {
 
   ~AclGraphExecutor();
 
-  bool CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
-                    uint32_t *graph_id) override;
-  bool CompileGraph(const void *model_data, size_t data_size, const std::map<string, string> &compile_options,
-                    uint32_t *graph_id) override;
-  bool RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
-                std::vector<mindspore::MSTensor> *outputs, const std::map<string, string> &compile_options) override;
+  Status CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
+                      uint32_t *graph_id) override;
+  Status CompileGraph(const void *model_data, size_t data_size, const std::map<string, string> &compile_options,
+                      uint32_t *graph_id) override;
+  Status RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                  std::vector<mindspore::MSTensor> *outputs, const std::map<string, string> &compile_options) override;
 
-  bool Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
-              const std::vector<ShapeVector> &dims) override;
+  Status Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                const std::vector<ShapeVector> &dims) override;
 
   std::vector<mindspore::MSTensor> GetInputInfos(uint32_t graph_id) override;
 

@@ -34,20 +34,21 @@ class LiteGraphExecutor {
 
   virtual void Initialize() { return; }
 
-  virtual bool CompileGraph(const std::shared_ptr<FuncGraph> &graph,
-                            const std::map<std::string, std::string> &compile_options, uint32_t *graph_id) {
-    return false;
+  virtual Status CompileGraph(const std::shared_ptr<FuncGraph> &graph,
+                              const std::map<std::string, std::string> &compile_options, uint32_t *graph_id) {
+    return kLiteNotSupport;
   }
 
-  virtual bool CompileGraph(const void *model_data, size_t data_size,
-                            const std::map<std::string, std::string> &compile_options, uint32_t *graph_id) {
-    return false;
+  virtual Status CompileGraph(const void *model_data, size_t data_size,
+                              const std::map<std::string, std::string> &compile_options, uint32_t *graph_id) {
+    return kLiteNotSupport;
   }
 
   // form base class
-  virtual bool RunGraph(const std::shared_ptr<FuncGraph> &graph, const std::vector<MSTensor> &inputs,
-                        std::vector<MSTensor> *outputs, const std::map<std::string, std::string> &compile_options) {
+  virtual Status RunGraph(const std::shared_ptr<FuncGraph> &graph, const std::vector<MSTensor> &inputs,
+                          std::vector<MSTensor> *outputs, const std::map<std::string, std::string> &compile_options) {
     MS_LOG(EXCEPTION) << "Unimplemented interface.";
+    return kLiteNotSupport;
   }
 
   virtual bool CompileGraph(const std::shared_ptr<FuncGraph> &graph,
@@ -60,22 +61,22 @@ class LiteGraphExecutor {
     return false;
   }
 
-  virtual bool RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
-                        std::vector<mindspore::MSTensor> *outputs,
-                        const std::map<std::string, std::string> &compile_options) {
+  virtual Status RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                          std::vector<mindspore::MSTensor> *outputs,
+                          const std::map<std::string, std::string> &compile_options) {
     (void)graph_id;
     (void)inputs;
     (void)outputs;
     (void)compile_options;
-    return false;
+    return kLiteNotSupport;
   }
 
-  virtual bool Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
-                      const std::vector<std::vector<int64_t>> &new_shapes) {
+  virtual Status Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                        const std::vector<std::vector<int64_t>> &new_shapes) {
     (void)graph_id;
     (void)inputs;
     (void)new_shapes;
-    return true;
+    return kLiteNotSupport;
   }
   virtual std::vector<mindspore::MSTensor> GetInputInfos(uint32_t graph_id) {
     (void)graph_id;

@@ -46,6 +46,11 @@ if(MSLITE_ENABLE_RUNTIME_CONVERT)
     list(APPEND TEST_UT_SRC ${TEST_DIR}/ut/src/runtime/runtime_convert_tests.cc)
 endif()
 
+# UT for Status check
+if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
+    list(APPEND TEST_UT_SRC ${TEST_DIR}/ut/src/api/model_test.cc)
+endif()
+
 if(MSLITE_ENABLE_RUNTIME_PASS)
     list(APPEND TEST_UT_SRC ${TEST_DIR}/ut/src/runtime/runtime_pass_tests.cc)
 endif()

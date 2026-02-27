@@ -61,7 +61,7 @@ bool AscendAllocatorPlugin::Register() {
   auto ret = DLSoPath({"libmindspore-lite.so", "_c_lite", "tools/converter/lib", "libmindspore_converter.so"},
                       kAscendkernelPluginSoNmae, &plugin_path_);
   if (ret != kSuccess) {
-    MS_LOG(WARNING) << "get real path of " << kAscendkernelPluginSoNmae << " failed.";
+    MS_LOG(ERROR) << "get real path of " << kAscendkernelPluginSoNmae << " failed.";
     return false;
   }
   MS_LOG(INFO) << "find ascend allocator plugin so path: " << plugin_path_;
@@ -218,18 +218,18 @@ Status AscendAllocatorPlugin::CopyDeviceDataToDevice(void *src_device, void *dst
 #if !defined(_WIN32)
   if (!is_registered_) {
     MS_LOG(ERROR) << "AscendAllocatorPlugin is not registered.";
-    return kLiteMemoryFailed;
+    return Status(kLiteAclInitFailed, "AscendAllocatorPlugin is not registered.");
   }
   if (src_device_id < -1 || dst_device_id < -1) {
     MS_LOG(ERROR) << "device id is wrong, src device id: " << src_device_id << ", dst device id: " << dst_device_id;
-    return kLiteError;
+    return Status(kLiteInputParamInvalid, "device id is wrong.");
   }
   if (dst_device == nullptr || src_device == nullptr) {
     MS_LOG(INFO) << "device data is nullptr.";
-    return kLiteMemoryFailed;
+    return Status(kLiteDeviceDataError, "device data is nullptr.");
   }
   if (ascend_allocator_plugin_impl_ == nullptr) {
-    return kLiteMemoryFailed;
+    return Status(kLiteNullptr, "ascend_allocator_plugin_impl_ is nullptr.");
   }
   return ascend_allocator_plugin_impl_->CopyDeviceDataToDevice(src_device, dst_device, src_data_size, dst_data_size,
                                                                src_device_id, dst_device_id);

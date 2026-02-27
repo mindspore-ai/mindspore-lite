@@ -1165,10 +1165,10 @@ backend::ge_backend::DfGraphPtr GeGraphExecutor::CompileGraphCommon(
   return df_graph;
 }
 
-bool GeGraphExecutor::CompileGraph(const FuncGraphPtr &anf_graph, const std::map<string, string> &,
-                                   uint32_t *graph_id) {
-  MS_CHECK_TRUE_RET(anf_graph != nullptr, false);
-  MS_CHECK_TRUE_RET(graph_id != nullptr, false);
+Status GeGraphExecutor::CompileGraph(const FuncGraphPtr &anf_graph, const std::map<string, string> &,
+                                     uint32_t *graph_id) {
+  MS_CHECK_TRUE_RET(anf_graph != nullptr, Status(kLiteNullptr, "anf_graph is nullptr."));
+  MS_CHECK_TRUE_RET(graph_id != nullptr, Status(kLiteNullptr, "graph_id is nullptr"));
 
   std::string compile_graph_parallel;
   GetConfigOption(lite::kCommonContextSection, lite::kCompileGraphParallel, &compile_graph_parallel);
@@ -1181,18 +1181,18 @@ bool GeGraphExecutor::CompileGraph(const FuncGraphPtr &anf_graph, const std::map
   bool is_adapted = anf_graph->has_attr(kIsAdapted);
   if (!is_adapted) {
     auto ret = GeUtils::AdaptGraph(anf_graph);
-    MS_CHECK_TRUE_MSG(ret == kSuccess, false, "Adapt graph failed");
+    MS_CHECK_TRUE_MSG(ret == kSuccess, kLiteError, "Adapt graph failed");
     anf_graph->set_attr(kIsAdapted, MakeValue(true));
   }
   uint32_t compute_graph_id = 0;
   if (CustomAscendUtils::IsCustomFuncGraph(anf_graph)) {
     MS_LOG(ERROR) << "Offline converted MindIR is not supported currently";
-    return false;
+    return Status(kLiteError, "Offline converted MindIR is not supported currently");
   } else {
     auto ret = LoadOnlineGraph(anf_graph, &compute_graph_id);
     if (!ret) {
       MS_LOG(ERROR) << "Failed to load online model";
-      return false;
+      return Status(kLiteError, "Failed to load online model");
     }
   }
   compute_graph_id_list_.push_back(compute_graph_id);
@@ -1200,14 +1200,14 @@ bool GeGraphExecutor::CompileGraph(const FuncGraphPtr &anf_graph, const std::map
   if (ref_mode_flag_ != backend::ge_backend::RefModeFlag::kRefModeNone) {
     if (!BuildGraphRefMode(anf_graph, compute_graph_id)) {
       MS_LOG(ERROR) << "Failed to build ge graph with refdata";
-      return false;
+      return Status(kLiteError, "Failed to build ge graph with refdata");
     }
   }
   std::vector<MSTensorPtr> orig_output;
   std::vector<std::string> output_names;
   FuncGraphUtils::GetFuncGraphOutputsInfo(anf_graph, &orig_output, &output_names);
   original_graph_outputs_[*graph_id] = orig_output;
-  return true;
+  return kSuccess;
 }
 
 bool GeGraphExecutor::GetOneRealInputs(const FuncGraphPtr &anf_graph, std::vector<ge::Tensor> *ge_tensors_ptr) {
@@ -1550,11 +1550,11 @@ bool GeGraphExecutor::RunGraphWithStreamAsync(uint32_t graph_id, void *stream, c
   return true;
 }
 
-bool GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
-                               const std::map<string, string> & /* compile_options */) {
+Status GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
+                                 const std::map<string, string> & /* compile_options */) {
   if (outputs == nullptr) {
     MS_LOG(ERROR) << " Input param is nullptr.";
-    return false;
+    return kLiteError;
   }
 
   MS_LOG(INFO) << "Run ge graph [" << graph_id << "] with " << inputs.size() << " ms_tensor_inputs";
@@ -1565,7 +1565,10 @@ bool GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &i
   }
   if (ref_mode_flag_ != backend::ge_backend::RefModeFlag::kRefModeNone) {
     MS_LOG(ERROR) << "RunGraphRefMode";
-    return RunGraphRefMode(graph_id, inputs, outputs);
+    auto ret = RunGraphRefMode(graph_id, inputs, outputs);
+    if (!ret) {
+      return kLiteError;
+    }
   }
   std::vector<::ge::Tensor> ge_inputs;
   for (size_t i = 0; i < inputs.size(); i++) {
@@ -1573,7 +1576,7 @@ bool GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &i
     auto ge_tensor = ConvertMSTensor(std::make_shared<MSTensor>(ms_tensor_input), kOpFormat_NCHW, false);
     if (ge_tensor == nullptr) {
       MS_LOG(ERROR) << "Failed to converter input " << i << " ME Tensor to GE Tensor";
-      return false;
+      return kLiteError;
     }
     ge_inputs.emplace_back(*ge_tensor);
   }
@@ -1585,7 +1588,7 @@ bool GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &i
   auto ret = RunGeGraphAsync(graph_id, ge_inputs, &ge_outputs);
   if (!ret) {
     MS_LOG(ERROR) << "Exec compute graph failed, graph id " << graph_id;
-    return false;
+    return kLiteError;
   }
   auto time_cost =
     std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - time_start).count();
@@ -1596,7 +1599,7 @@ bool GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &i
     if (outputs->size() != ge_outputs.size()) {
       MS_LOG(ERROR) << "Invalid output size, outputs' size " << outputs->size() << "ge tensor size "
                     << ge_outputs.size();
-      return false;
+      return kLiteError;
     }
     for (size_t i = 0; i < outputs->size(); ++i) {
       const auto &tensor = ge_outputs[i];
@@ -1607,14 +1610,14 @@ bool GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &i
       }
       if ((*outputs)[i].Data() == nullptr) {
         MS_LOG(ERROR) << "Output data ptr is nullptr.";
-        return false;
+        return kLiteError;
       }
       auto mem_ret = common::huge_memcpy(static_cast<uint8_t *>(output.MutableData()), output.DataSize(),
                                          tensor.GetData(), tensor.GetSize());
       if (mem_ret != EOK) {
         MS_LOG(ERROR) << "Failed to copy output data, dst size: " << output.DataSize()
                       << ", src size: " << tensor.GetSize();
-        return false;
+        return kLiteError;
       }
     }
   } else {
@@ -1623,7 +1626,7 @@ bool GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &i
       auto ms_tensor = ConvertGeTensorNoCopy(&ge_tensor, graph_id, i);
       if (ms_tensor == nullptr) {
         MS_LOG(ERROR) << "Failed to converter output " << i << " GE Tensor to ME Tensor";
-        return false;
+        return kLiteError;
       }
       MS_LOG(INFO) << "Output " << i << " shape " << tensor::ShapeToString(ms_tensor->Shape()) << ", datatype "
                    << ms_tensor->DataType();
@@ -1633,7 +1636,7 @@ bool GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> &i
   graph_inputs_[graph_id] = inputs;
   graph_outputs_[graph_id] = *outputs;
   MS_LOG(INFO) << "GE run graph " << graph_id << " end.";
-  return true;
+  return kSuccess;
 }
 
 std::vector<mindspore::MSTensor> GeGraphExecutor::GetInputInfos(uint32_t graph_id) {
