@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2023 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,13 @@
 #include <memory>
 #include <string>
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "infer/cxx_api/add_fusion.h"
-#include "infer/cxx_api/mul_fusion.h"
-#include "infer/cxx_api/div_fusion.h"
-#include "infer/cxx_api/sub_fusion.h"
-#include "infer/cxx_api/exp_fusion.h"
+#include "src/common/ops/primitive/add_fusion.h"
+#include "src/common/ops/primitive/mul_fusion.h"
+#include "src/common/ops/primitive/div_fusion.h"
+#include "src/common/ops/primitive/sub_fusion.h"
+#include "src/common/ops/primitive/exp_fusion.h"
 #include "infer/ops_func_impl/tan.h"
-#include "infer/cxx_api/pow_fusion.h"
+#include "src/common/ops/primitive/pow_fusion.h"
 #include "infer/eltwise.h"
 #include "infer/mod.h"
 #include "nnacl_c/op_base.h"

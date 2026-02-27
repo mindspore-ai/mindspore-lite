@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 
 #include <vector>
 #include "tools/converter/adapter/acl/mapper/primitive_mapper.h"
-#include "infer/cxx_api/mat_mul_fusion.h"
+#include "src/common/ops/primitive/mat_mul_fusion.h"
 
 namespace mindspore {
 namespace lite {

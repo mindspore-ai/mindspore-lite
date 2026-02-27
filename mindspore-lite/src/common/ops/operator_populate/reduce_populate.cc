@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 #include "src/common/ops/operator_populate/operator_populate_register.h"
 #include "nnacl_c/reduce_parameter.h"
 #include "infer/reduce.h"
-#include "infer/cxx_api/reduce_fusion.h"
+#include "src/common/ops/primitive/reduce_fusion.h"
 #include "mindspore/ops/op_def/op_name.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 using mindspore::ops::kNameReduce;

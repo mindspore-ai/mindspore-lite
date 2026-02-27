@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "infer/ops_func_impl/incre_flash_attention.h"
 #include "infer/ops_func_impl/prompt_flash_attention.h"
-#include "infer/cxx_api/pad_fusion.h"
+#include "src/common/ops/primitive/pad_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "mindspore/ops/op_def/op_enum.h"
 #include "infer/custom.h"

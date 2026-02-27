@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@
 #include "base/base.h"
 #include "ir/dtype/number.h"
 #include "tools/common/graph_util.h"
-#include "infer/cxx_api/conv2d_fusion.h"
+#include "src/common/ops/primitive/conv2d_fusion.h"
 
 namespace mindspore {
 namespace lite {

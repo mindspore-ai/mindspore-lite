@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2023 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,9 +35,9 @@
 #include "tools/converter/graphdef_transform.h"
 #include "tools/common/tensor_util.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "infer/cxx_api/mat_mul_fusion.h"
+#include "src/common/ops/primitive/mat_mul_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "infer/cxx_api/conv2d_transpose_fusion.h"
+#include "src/common/ops/primitive/conv2d_transpose_fusion.h"
 #include "infer/ops_func_impl/gather.h"
 #include "ops_utils/op_utils.h"
 #include "src/common/utils.h"

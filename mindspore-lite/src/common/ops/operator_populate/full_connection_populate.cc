@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 #include "src/common/ops/operator_populate/operator_populate_register.h"
 #include "nnacl_c/matmul_parameter.h"
-#include "infer/cxx_api/full_connection.h"
+#include "src/common/ops/primitive/full_connection.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_f.h"
 using mindspore::ops::kNameFullConnection;
 using mindspore::schema::PrimitiveType_FullConnection;

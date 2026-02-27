@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 #include "tools/converter/parser/onnx/onnx_argmin_parser.h"
 #include <memory>
-#include "infer/cxx_api/arg_min_fusion.h"
+#include "src/common/ops/primitive/arg_min_fusion.h"
 #include "nnacl_c/op_base.h"
 
 namespace mindspore {

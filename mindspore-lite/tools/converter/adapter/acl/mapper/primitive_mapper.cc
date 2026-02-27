@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@
 #include "include/errorcode.h"
 #include "include/registry/converter_context.h"
 #include "ops_utils/op_utils.h"
-#include "infer/cxx_api/avg_pool_fusion.h"
-#include "infer/cxx_api/max_pool_fusion.h"
+#include "src/common/ops/primitive/avg_pool_fusion.h"
+#include "src/common/ops/primitive/max_pool_fusion.h"
 #include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"

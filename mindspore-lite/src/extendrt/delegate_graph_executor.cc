@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 #include <set>
 #include <memory>
 #include "src/extendrt/subgraph_kernel.h"
-#include "infer/cxx_api/partial_fusion.h"
+#include "src/common/ops/primitive/partial_fusion.h"
 namespace mindspore {
 // Graph sink delegate, the whole FuncGraph as a node to execute.
 void GraphSinkDelegate::ReplaceNodes(const std::shared_ptr<FuncGraph> &graph) {

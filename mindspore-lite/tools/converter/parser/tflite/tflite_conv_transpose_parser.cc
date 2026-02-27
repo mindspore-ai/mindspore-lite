@@ -1,5 +1,5 @@
 /**
- * Copyright 2020~2024 Huawei Technologies Co., Ltd
+ * Copyright 2020~2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 #include "tools/converter/parser/tflite/tflite_conv_transpose_parser.h"
 #include <vector>
 #include <memory>
-#include "infer/cxx_api/conv2d_transpose_fusion.h"
+#include "src/common/ops/primitive/conv2d_transpose_fusion.h"
 #include "nnacl_c/op_base.h"
 
 namespace mindspore {

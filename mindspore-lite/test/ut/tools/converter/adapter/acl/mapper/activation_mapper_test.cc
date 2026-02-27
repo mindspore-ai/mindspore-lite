@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2024-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@
 #include "infer/ops_func_impl/sign.h"
 #include "infer/return.h"
 #include "infer/make_tuple.h"
-#include "infer/cxx_api/activation.h"
+#include "src/common/ops/primitive/activation.h"
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 #include "tools/converter/anf_transform.h"

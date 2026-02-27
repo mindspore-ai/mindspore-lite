@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@
 
 #include "tools/converter/parser/pytorch/pytorch_arithmetic_parser.h"
 #include <memory>
-#include "infer/cxx_api/add_fusion.h"
-#include "infer/cxx_api/mul_fusion.h"
-#include "infer/cxx_api/div_fusion.h"
-#include "infer/cxx_api/sub_fusion.h"
+#include "src/common/ops/primitive/add_fusion.h"
+#include "src/common/ops/primitive/mul_fusion.h"
+#include "src/common/ops/primitive/div_fusion.h"
+#include "src/common/ops/primitive/sub_fusion.h"
 #include "nnacl_c/op_base.h"
 
 namespace mindspore {

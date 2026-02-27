@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@
 #include <vector>
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "nnacl_c/op_base.h"
-#include "infer/cxx_api/add_fusion.h"
-#include "infer/cxx_api/mul_fusion.h"
-#include "infer/cxx_api/scale_fusion.h"
+#include "src/common/ops/primitive/add_fusion.h"
+#include "src/common/ops/primitive/mul_fusion.h"
+#include "src/common/ops/primitive/scale_fusion.h"
 #include "ops_utils/op_utils.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "tools/optimizer/common/gllo_utils.h"

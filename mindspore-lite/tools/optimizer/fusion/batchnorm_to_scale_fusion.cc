@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2021 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 #include "mindspore/ops/op_def/nn_ops.h"
 #include "infer/fused_batch_norm.h"
 #include "include/utils/utils.h"
-#include "infer/cxx_api/scale_fusion.h"
+#include "src/common/ops/primitive/scale_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/common/tensor_util.h"
 #include "include/securec.h"

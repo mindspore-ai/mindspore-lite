@@ -415,6 +415,7 @@ target_link_libraries(mindspore_converter
         config_parser_mid
         coder_mid
         mindir_serializer_mid
+        mslite_primitive_mid
         )
 if(PYTHON_VERSION MATCHES "3.11" OR PYTHON_VERSION MATCHES "3.12")
   target_link_libraries(mindspore_converter ${PYTHON_LIBRARIES})

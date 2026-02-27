@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2024-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 #define USE_DEPRECATED_API
 #include <memory>
 #include "common/common_test.h"
-#include "infer/cxx_api/layer_norm_fusion.h"
+#include "src/common/ops/primitive/layer_norm_fusion.h"
 #include "tools/converter/parser/onnx/onnx_layer_norm_parser.h"
 #include "include/registry/converter_context.h"
 #include "include/registry/node_parser_registry.h"

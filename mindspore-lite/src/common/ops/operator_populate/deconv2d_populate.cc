@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 #include "src/common/ops/operator_populate/operator_populate_register.h"
 #include "src/common/ops/operator_populate/utils.h"
 #include "nnacl_c/conv_parameter.h"
-#include "infer/cxx_api/conv2d_transpose_fusion.h"
+#include "src/common/ops/primitive/conv2d_transpose_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 using mindspore::ops::kNameConv2dTransposeFusion;
 using mindspore::ops::kPadMode;

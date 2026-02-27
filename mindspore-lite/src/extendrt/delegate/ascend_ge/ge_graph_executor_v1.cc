@@ -269,7 +269,7 @@ bool GeGraphExecutorV1::InitGeTensor(uint32_t graph_id) {
   return true;
 }
 
-bool GeGraphExecutorV1::IsDynamical(const std::vector<MSTensor> &outputs, const uint32_t &graph_id) {
+bool GeGraphExecutorV1::IsDynamical(const std::vector<MSTensor> &outputs, uint32_t graph_id) {
   if (graph_id_group_[graph_id].second != UINT32_MAX) {
     if (outputs.empty()) {
       return true;
@@ -293,7 +293,7 @@ std::vector<mindspore::MSTensor> GeGraphExecutorV1::GetOutputInfos(uint32_t grap
                                                          : std::vector<mindspore::MSTensor>();
 }
 
-bool GeGraphExecutorV1::RunStaticGraph(const uint32_t &graph_id, const std::vector<GeTensor> &ge_inputs,
+bool GeGraphExecutorV1::RunStaticGraph(uint32_t graph_id, const std::vector<GeTensor> &ge_inputs,
                                        std::vector<MSTensor> *outputs) {
   std::vector<GeTensor> ge_outputs;
   if (!PrepareGeOutputsForStatic(outputs, &ge_outputs, graph_id)) {
@@ -323,7 +323,7 @@ bool GeGraphExecutorV1::RunStaticGraph(const uint32_t &graph_id, const std::vect
   return true;
 }
 
-bool GeGraphExecutorV1::RunDynamicGraph(const uint32_t &graph_id, const std::vector<GeTensor> &ge_inputs,
+bool GeGraphExecutorV1::RunDynamicGraph(uint32_t graph_id, const std::vector<GeTensor> &ge_inputs,
                                         std::vector<MSTensor> *outputs) {
   std::vector<GeTensor> ge_outputs;
   bool is_finished = false;
@@ -464,7 +464,7 @@ bool GeGraphExecutorV1::PrepareGeInputs(const std::vector<MSTensor> &inputs, std
 }
 
 bool GeGraphExecutorV1::PrepareGeOutputsForStatic(std::vector<MSTensor> *outputs, std::vector<GeTensor> *ge_outputs,
-                                                  const uint32_t &graph_id) {
+                                                  uint32_t graph_id) {
   auto fill_addr_func = [this](std::pair<GeTensor, std::pair<void *, size_t>> *it, const std::vector<int64_t> &shape) {
     size_t size = GetSizeByDataType(it->first.GetDataType());
     size = std::accumulate(shape.begin(), shape.end(), size, std::multiplies<>());
@@ -503,11 +503,9 @@ bool GeGraphExecutorV1::PrepareGeOutputsForStatic(std::vector<MSTensor> *outputs
     auto shape = ms_shape;
     auto desc = it.first.GetTensorDesc();
     auto ge_shape = desc.GetOriginShape();
-    if (ge_shape.GetDims().size() == 0) {
-      auto is_determined = std::all_of(ms_shape.begin(), ms_shape.end(), [](int64_t dim) { return dim > 0; });
-      if (!is_determined) {
-        shape = ge_shape.GetDims();
-      }
+    auto is_determined = std::all_of(ms_shape.begin(), ms_shape.end(), [](int64_t dim) { return dim > 0; });
+    if (!is_determined) {
+      shape = ge_shape.GetDims();
     }
     desc.SetShape(::ge::Shape(shape));
     it.first.SetTensorDesc(desc);
@@ -529,7 +527,7 @@ bool GeGraphExecutorV1::PrepareGeOutputsForStatic(std::vector<MSTensor> *outputs
   return true;
 }
 
-bool GeGraphExecutorV1::PostProcessOutputsForDynamic(std::vector<MSTensor> *outputs, const uint32_t &graph_id,
+bool GeGraphExecutorV1::PostProcessOutputsForDynamic(std::vector<MSTensor> *outputs, uint32_t graph_id,
                                                      const std::vector<GeTensor> &outputs_ge_tensors) {
   if (outputs->empty()) {
     for (size_t i = 0; i < outputs_ge_tensors.size(); ++i) {

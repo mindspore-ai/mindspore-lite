@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@
 #include <memory>
 #include "infer/ops_func_impl/communication/all_gather.h"
 #include "infer/ops_func_impl/communication/all_reduce.h"
-#include "infer/cxx_api/mul_fusion.h"
-#include "infer/cxx_api/mat_mul_fusion.h"
+#include "src/common/ops/primitive/mul_fusion.h"
+#include "src/common/ops/primitive/mat_mul_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/where.h"
 #include "include/errorcode.h"

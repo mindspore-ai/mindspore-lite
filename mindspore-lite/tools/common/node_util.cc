@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2021 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@
 #include "src/litert/infer_manager.h"
 #include "mindspore/ops/infer/switch.h"
 #include "mindspore/ops/infer/call.h"
-#include "mindspore/ops/infer/cxx_api/partial_fusion.h"
+#include "src/common/ops/primitive/partial_fusion.h"
 #include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"

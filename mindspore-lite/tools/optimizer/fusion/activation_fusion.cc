@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "nnacl_c/op_base.h"
-#include "infer/cxx_api/activation.h"
+#include "src/common/ops/primitive/activation.h"
 #include "ops_utils/op_utils.h"
 #include "src/common/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
@@ -49,11 +49,13 @@ STATUS DoFusion(CNodePtr cur_cnode, const CNodePtr &pre_cnode) {
   MS_CHECK_TRUE_MSG(cur_act_prim->GetAttr(ops::kMaxVal) != nullptr, RET_ERROR, "Get max value failed.");
   MS_CHECK_TRUE_MSG(pre_act_prim->GetAttr(ops::kMinVal) != nullptr, RET_ERROR, "Get min value failed.");
   MS_CHECK_TRUE_MSG(cur_act_prim->GetAttr(ops::kMinVal) != nullptr, RET_ERROR, "Get min value failed.");
-  auto pre_max_val =
-    pre_act_type == RELU ? FLT_MAX : pre_act_type == RELU6 ? kValueThreshold6 : pre_act_prim->get_max_val();
+  auto pre_max_val = pre_act_type == RELU    ? FLT_MAX
+                     : pre_act_type == RELU6 ? kValueThreshold6
+                                             : pre_act_prim->get_max_val();
   auto pre_min_val = (pre_act_type == RELU || pre_act_type == RELU6) ? 0 : pre_act_prim->get_min_val();
-  auto cur_max_val =
-    cur_act_type == RELU ? FLT_MAX : cur_act_type == RELU6 ? kValueThreshold6 : cur_act_prim->get_max_val();
+  auto cur_max_val = cur_act_type == RELU    ? FLT_MAX
+                     : cur_act_type == RELU6 ? kValueThreshold6
+                                             : cur_act_prim->get_max_val();
   auto cur_min_val = (cur_act_type == RELU || cur_act_type == RELU6) ? 0 : cur_act_prim->get_min_val();
   auto new_max_val = std::min(pre_max_val, cur_max_val);
   auto new_min_val = std::max(pre_min_val, cur_min_val);

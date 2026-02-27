@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 #include <vector>
 #include "include/registry/pass_registry.h"
 #include "infer/custom.h"
-#include "infer/cxx_api/add_fusion.h"
+#include "src/common/ops/primitive/add_fusion.h"
 #include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {

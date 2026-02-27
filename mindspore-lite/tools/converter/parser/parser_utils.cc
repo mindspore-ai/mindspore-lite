@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,9 @@
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "infer/adam.h"
 #include "infer/apply_momentum.h"
-#include "infer/cxx_api/conv2d_fusion.h"
-#include "infer/cxx_api/conv2d_transpose_fusion.h"
-#include "infer/cxx_api/conv2d_backprop_input_fusion.h"
+#include "src/common/ops/primitive/conv2d_fusion.h"
+#include "src/common/ops/primitive/conv2d_transpose_fusion.h"
+#include "src/common/ops/primitive/conv2d_backprop_input_fusion.h"
 #include "infer/sgd.h"
 #include "tools/common/tensor_util.h"
 #include "tools/converter/parser/conv1d_inout_adjust.h"

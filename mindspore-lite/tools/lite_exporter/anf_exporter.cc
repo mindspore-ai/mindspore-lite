@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2021 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "nnacl_c/op_base.h"
 #include "infer/depend.h"
-#include "infer/cxx_api/partial_fusion.h"
+#include "src/common/ops/primitive/partial_fusion.h"
 #include "infer/make_tuple.h"
 #include "infer/return.h"
 #include "infer/tuple_get_item.h"

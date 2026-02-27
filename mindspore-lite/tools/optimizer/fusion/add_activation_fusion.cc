@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@
 #include "tools/optimizer/fusion/add_activation_fusion.h"
 #include <memory>
 #include "mindspore/ops/op_def/lite_ops.h"
-#include "infer/cxx_api/activation.h"
-#include "infer/cxx_api/add_fusion.h"
+#include "src/common/ops/primitive/activation.h"
+#include "src/common/ops/primitive/add_fusion.h"
 #include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "nnacl_c/op_base.h"

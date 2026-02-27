@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@
 #include "tools/optimizer/fusion/matmul_activation_fusion.h"
 #include "test/ut/tools/optimizer/fusion/fusion_inout_test/fusion_inout_test.h"
 #include "nnacl_c/op_base.h"
-#include "infer/cxx_api/mat_mul_fusion.h"
-#include "infer/cxx_api/activation.h"
+#include "src/common/ops/primitive/mat_mul_fusion.h"
+#include "src/common/ops/primitive/activation.h"
 
 namespace mindspore {
 class MatMulActivationFusionInoutTest : public FusionInoutTest {

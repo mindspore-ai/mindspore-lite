@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2023 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,9 @@
 #include <memory>
 #include <vector>
 #include "include/securec.h"
-#include "infer/cxx_api/prelu_fusion.h"
+#include "src/common/ops/primitive/prelu_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
-#include "infer/cxx_api/activation.h"
+#include "src/common/ops/primitive/activation.h"
 #include "nnacl_c/op_base.h"
 #include "infer/softplus.h"
 #include "infer/selu.h"

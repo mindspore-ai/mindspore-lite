@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2024-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@
 #include <memory>
 #include "op_def/auto_generate/gen_lite_ops.h"
 #include "ops/primitive_c.h"
-#include "infer/cxx_api/scale_fusion.h"
-#include "infer/cxx_api/mat_mul_fusion.h"
+#include "src/common/ops/primitive/scale_fusion.h"
+#include "src/common/ops/primitive/mat_mul_fusion.h"
 #include "tools/converter/ops/ops_def.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "src/common/utils.h"
