@@ -48,6 +48,7 @@ target_link_libraries(kernel_executor
         mindspore-lite
         mindspore_core
         mindspore_ops
+        mslite_primitive_mid
         mindspore::json
         mindspore::flatbuffers
         mindspore::glog)
