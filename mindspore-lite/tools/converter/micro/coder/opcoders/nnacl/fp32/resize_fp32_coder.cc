@@ -22,6 +22,7 @@
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/utils/common.h"
+#include "nnacl_c/base/resize_base.h"
 
 using mindspore::schema::CoordinateTransformMode_ALIGN_CORNERS;
 using mindspore::schema::CoordinateTransformMode_ASYMMETRIC;
@@ -160,10 +161,9 @@ int ResizeFP32Coder::DoCode(CoderContext *const context) {
   Collect(context,
           {
             "nnacl_c/fp32/resize_fp32.h",
+            "nnacl_c/base/resize_base.h",
           },
-          {
-            "resize_fp32.c",
-          });
+          {"resize_fp32.c", "common_func.c", "resize_base.c"});
   Serializer code;
   code.CodeArray("input_shape", input_tensor_->shape().data(), input_tensor_->shape().size(), true);
   code.CodeArray("output_shape", output_tensor_->shape().data(), output_tensor_->shape().size(), true);
@@ -186,7 +186,7 @@ int ResizeFP32Coder::DoCode(CoderContext *const context) {
     }
     case static_cast<int>(schema::ResizeMethod_NEAREST): {
       code.CodeFunction("ResizeNearestNeighbor", input_tensor_, output_tensor_, "input_shape", "output_shape",
-                        calculate_str_, coordinate_transform_mode_, kDefaultTaskId, kDefaultThreadNum);
+                        calculate_str_, coordinate_transform_mode_, nearest_method_, kDefaultTaskId, kDefaultThreadNum);
       break;
     }
     case static_cast<int>(schema::ResizeMethod_CUBIC): {

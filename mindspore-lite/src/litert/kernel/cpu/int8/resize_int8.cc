@@ -314,7 +314,6 @@ int ResizeInt8CPUKernel::ReSize() {
     }
   }
   if (in_tensors_.front()->quant_params().empty() || out_tensors_.front()->quant_params().empty() ||
-      in_tensors_.front()->quant_params().front().scale != out_tensors_.front()->quant_params().front().scale ||
       in_tensors_.front()->quant_params().front().zeroPoint != out_tensors_.front()->quant_params().front().zeroPoint ||
       in_tensors_.front()->quant_params().front().zeroPoint > INT8_MAX ||
       in_tensors_.front()->quant_params().front().zeroPoint < INT8_MIN ||
@@ -381,10 +380,12 @@ int ResizeInt8CPUKernel::RunImpl(int task_id) {
       auto out_shape = out_tensors_[0]->shape();
       if (same_zp && same_scale) {
         ret = ResizeNearestNeighborInt8Simple(input_data, output_data, input_shape.data(), out_shape.data(),
-                                              align_corners, task_id, op_parameter_->thread_num_);
+                                              align_corners, coordinate_transform_mode_, nearest_method_, task_id,
+                                              op_parameter_->thread_num_);
       } else {
         ret = ResizeNearestNeighborInt8(input_data, output_data, input_shape.data(), out_shape.data(), align_corners,
-                                        multiplier_, quant_in_, quant_out_, task_id, op_parameter_->thread_num_);
+                                        multiplier_, quant_in_, quant_out_, coordinate_transform_mode_, nearest_method_,
+                                        task_id, op_parameter_->thread_num_);
       }
       break;
     }
@@ -398,6 +399,8 @@ int ResizeInt8CPUKernel::RunImpl(int task_id) {
 }
 
 int ResizeInt8CPUKernel::Run() {
+  CHECK_LESS_RETURN(in_tensors_.size(), 1);
+  CHECK_LESS_RETURN(out_tensors_.size(), 1);
   if (in_tensors_.at(0)->ElementsNum() > INT_MAX || out_tensors_.at(0)->ElementsNum() > INT_MAX) {
     MS_LOG(ERROR) << "Resize cannot support big data operations, the upper limit is INT32_MAX";
     return RET_NOT_SUPPORT;

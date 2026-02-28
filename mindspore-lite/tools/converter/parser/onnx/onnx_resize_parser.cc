@@ -34,7 +34,10 @@ PrimitiveCPtr OnnxResizeParser::Parse(const onnx::GraphProto &onnx_graph, const 
   auto prim_c = prim->GetPrim();
   MS_CHECK_TRUE_RET(prim_c != nullptr, nullptr);
   (void)prim_c->AddAttr(mindspore::ops::kOriginalFormat, MakeValue<int64_t>(mindspore::Format::NCHW));
-  prim->set_nearest_mode(mindspore::NearestMode::ROUND_HALF_DOWN);
+  // if opset>=11, default value of nearest_mode is round_prefer_floor else floor
+  mindspore::NearestMode initial_nearest_mode =
+    OnnxNodeParser::opset_version() > 10 ? mindspore::NearestMode::ROUND_HALF_DOWN : mindspore::NearestMode::FLOOR;
+  prim->set_nearest_mode(initial_nearest_mode);
 
   for (const auto &onnx_node_attr : onnx_node.attribute()) {
     const auto &attribute_name = onnx_node_attr.name();

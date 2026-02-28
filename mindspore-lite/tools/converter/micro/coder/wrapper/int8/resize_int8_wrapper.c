@@ -19,7 +19,9 @@
 
 int ResizeInt8Run(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   ResizeInt8Args *args = (ResizeInt8Args *)cdata;
+  NNACL_CHECK_NULL_RETURN_ERR(args);
   ResizeNearestNeighborInt8Simple(args->input_data_, args->output_data_, args->input_shape_, args->output_shape_,
-                                  args->align_corners_, task_id, args->thread_num_);
+                                  args->align_corners_, args->coordinate_transform_mode_, args->nearest_method_,
+                                  task_id, args->thread_num_);
   return NNACL_OK;
 }

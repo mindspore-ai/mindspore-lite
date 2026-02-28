@@ -37,6 +37,7 @@ class ResizeBaseCPUKernel : public LiteKernel {
 
  protected:
   int method_ = 0;
+  int nearest_method_ = 0;
   int new_height_ = 0;
   int new_width_ = 0;
   int coordinate_transform_mode_ = 0;

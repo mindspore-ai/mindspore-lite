@@ -18,6 +18,7 @@
 #include "nnacl_c/common_func.h"
 #include "nnacl_c/errorcode.h"
 #include "nnacl_c/intrinsics/ms_simd_instructions.h"
+#include "nnacl_c/base/resize_base.h"
 
 void CalculateCoordinate(float out, int in, int32_t *bottom, int32_t *top, float *bottom_weight) {
   *bottom = (int)(floorf(out));
@@ -540,29 +541,33 @@ int CropAndResizeBilinear(const float *input_data, float *output_data, const int
 
 int ResizeNearestNeighbor(const float *input_data, float *output_data, const int32_t *input_shape,
                           const int32_t *output_shape, CalculateOriginalCoordinate calculate,
-                          int coordinate_transform_mode, int tid, int thread_num) {
+                          int coordinate_transform_mode, int nearest_mode, int tid, int thread_num) {
   if (thread_num == 0) {
     return NNACL_PARAM_INVALID;
   }
   int c = input_shape[3];
+  int height_high_bound = input_shape[1] - 1;
+  int width_high_bound = input_shape[2] - 1;
   bool align_corners = coordinate_transform_mode == 1;
   for (int batch = 0; batch < output_shape[0]; batch++) {
     for (int y = tid; y < output_shape[1]; y += thread_num) {
       float actual_y = calculate(y, input_shape[1], output_shape[1]);
-      int input_y;
-      if (align_corners) {
-        input_y = (int)(roundf(actual_y));
-      } else {
-        input_y = (int)(floorf(actual_y));
+      // if tflite resize_nearest and half_pixel_center
+      if (coordinate_transform_mode == 2 && nearest_mode == 0) {
+        actual_y = CalculateHalfPixelTfliteNearest(y, input_shape[1], output_shape[1]);
       }
+      int input_y = ResizeNearestModeSelect(actual_y, align_corners, nearest_mode);
+      // limit input_y to the [0, height_high_bound]
+      input_y = ClampIndex(input_y, 0, height_high_bound);
       for (int x = 0; x < output_shape[2]; x++) {
         float actual_x = calculate(x, input_shape[2], output_shape[2]);
-        int input_x;
-        if (align_corners) {
-          input_x = (int)(roundf(actual_x));
-        } else {
-          input_x = (int)(floorf(actual_x));
+        // if tflite resize_nearest and half_pixel_center
+        if (coordinate_transform_mode == 2 && nearest_mode == 0) {
+          actual_x = CalculateHalfPixelTfliteNearest(x, input_shape[2], output_shape[2]);
         }
+        int input_x = ResizeNearestModeSelect(actual_x, align_corners, nearest_mode);
+        // limit input_x to the [0, width_high_bound]
+        input_x = ClampIndex(input_x, 0, width_high_bound);
         int in_offset = Offset(input_shape, batch, input_y, input_x, 0);
         int out_offset = Offset(output_shape, batch, y, x, 0);
         memcpy(output_data + out_offset, input_data + in_offset, c * sizeof(float));
@@ -570,22 +575,6 @@ int ResizeNearestNeighbor(const float *input_data, float *output_data, const int
     }
   }
   return NNACL_OK;
-}
-
-float CalculateAsymmetric(int x_resized, int length_original, int length_resized) {
-  float scale = (float)(length_resized) / (float)(length_original);
-  return (float)(x_resized) / scale;
-}
-
-float CalculateAlignCorners(int x_resized, int length_original, int length_resized) {
-  float scale = (float)(length_resized - 1) / (float)(length_original - 1);
-  return (float)(x_resized) / scale;
-}
-
-float CalculateHalfPixel(int x_resized, int length_original, int length_resized) {
-  float scale = (float)(length_resized) / (float)(length_original);
-  float actual = (float)(x_resized + 0.5) / scale - 0.5;
-  return actual > 0 ? actual : 0;
 }
 
 int CheckCropAndResizeBoxIdx(int32_t *box_idx, int32_t num_boxes, int32_t batch) {

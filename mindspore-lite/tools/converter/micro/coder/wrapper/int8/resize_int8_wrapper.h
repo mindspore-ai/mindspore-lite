@@ -29,6 +29,8 @@ typedef struct {
   const int *input_shape_;
   const int *output_shape_;
   const bool align_corners_;
+  const int coordinate_transform_mode_;
+  const int nearest_method_;
   int thread_num_;
 } ResizeInt8Args;
 

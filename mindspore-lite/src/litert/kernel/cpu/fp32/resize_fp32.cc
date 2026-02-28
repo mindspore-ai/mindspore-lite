@@ -19,6 +19,7 @@
 #include "src/litert/kernel/cpu/fp32/resize_fp32.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
+#include "nnacl_c/base/resize_base.h"
 
 using mindspore::kernel::KERNEL_ARCH;
 using mindspore::lite::KernelRegistrar;
@@ -142,6 +143,7 @@ int ResizeCPUKernel::MallocTmpBuffer() {
   }
 
   {
+    CHECK_LESS_RETURN(in_tensors_.size(), 1);
     MS_CHECK_LE((static_cast<int64_t>(DataTypeLen()) * x_len * in_tensors_.at(0)->Channel() * kResizeSizeDouble *
                  op_parameter_->thread_num_),
                 MAX_MALLOC_SIZE, RET_ERROR);
@@ -167,6 +169,22 @@ void ResizeCPUKernel::FreeTmpBuffer() {
     free(line_buffer_);
     line_buffer_ = nullptr;
   }
+  if (coordinate_.x_lefts_ != nullptr) {
+    free(coordinate_.x_lefts_);
+    coordinate_.x_lefts_ = nullptr;
+  }
+  if (coordinate_.y_tops_ != nullptr) {
+    free(coordinate_.y_tops_);
+    coordinate_.y_tops_ = nullptr;
+  }
+  if (coordinate_.x_rights_ != nullptr) {
+    free(coordinate_.x_rights_);
+    coordinate_.x_rights_ = nullptr;
+  }
+  if (coordinate_.y_bottoms_ != nullptr) {
+    free(coordinate_.y_bottoms_);
+    coordinate_.y_bottoms_ = nullptr;
+  }
 }
 
 int ResizeImpl(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
@@ -180,6 +198,8 @@ int ResizeImpl(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
 }
 
 int ResizeCPUKernel::RunImpl(int task_id) {
+  CHECK_LESS_RETURN(out_tensors_.size(), 1);
+  CHECK_LESS_RETURN(in_tensors_.size(), 1);
   auto input = in_tensors_.at(0);
   auto input_data = reinterpret_cast<float *>(input->data());
   auto output_data = reinterpret_cast<float *>(out_tensors_.at(0)->data());
@@ -203,11 +223,12 @@ int ResizeCPUKernel::RunImpl(int task_id) {
     }
     case static_cast<int>(schema::ResizeMethod_NEAREST): {
       return ResizeNearestNeighbor(input_data, output_data, input_shape.data(), out_tensors_[0]->shape().data(),
-                                   calculate_, coordinate_transform_mode_, task_id, op_parameter_->thread_num_);
+                                   calculate_, coordinate_transform_mode_, nearest_method_, task_id,
+                                   op_parameter_->thread_num_);
     }
     case static_cast<int>(schema::ResizeMethod_CUBIC): {
       float *line_buffer = static_cast<float *>(line_buffer_) +
-                           static_cast<size_t>(new_width_ * c) * sizeof(float) * static_cast<size_t>(task_id);
+                           static_cast<size_t>(new_width_ * c) * static_cast<size_t>(task_id) * sizeof(float);
       return ResizeBicubic(input_data, output_data, input_shape.data(), out_tensors_.at(0)->shape().data(),
                            coordinate_.y_tops_, coordinate_.x_lefts_, static_cast<float *>(y_weights_),
                            static_cast<float *>(x_weights_), line_buffer, h_begin, h_end);
