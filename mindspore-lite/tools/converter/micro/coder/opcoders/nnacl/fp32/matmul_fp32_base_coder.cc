@@ -38,10 +38,10 @@ int MatMulFP32BaseCoder::ReSize() {
   MS_CHECK_TRUE(thread_count_ != 0, "thread_count_ = 0");
   thread_stride_ = UP_DIV(UP_DIV(params_.col_align_, col_tile_), thread_count_);
   // can not call Malloc in DoCode,so move this runtime init to final resize
-  if (!params_.a_const_) {
+  if (!params_.a_const_ && target_ != kRiscV) {
     MS_CHECK_RET_CODE(InitBufferA(), "InitBufferA failed");
   }
-  if (!params_.b_const_) {
+  if (!params_.b_const_ && target_ != kRiscV) {
     MS_CHECK_RET_CODE(InitBufferB(), "InitBufferB failed");
   }
   return RET_OK;
@@ -58,12 +58,18 @@ void MatMulFP32BaseCoder::CalculateOutBatchSize() {
 
 int MatMulFP32BaseCoder::InitBufferForBias() {
   if (input_tensors_.size() == DIMENSION_3D) {
-    int max_bias_data = params_.col_align_;
+    int max_bias_data = 0;
+    if (target_ == kRiscV) {
+      max_bias_data = params_.col_;
+    } else {
+      max_bias_data = params_.col_align_;
+    }
     bias_pack_ptr_size_ = static_cast<size_t>(max_bias_data * DataTypeSize(data_type_));
     if (bias_tensor_->ElementsNum() == 1) {
       is_bias_broadcast_ = true;
     }
     ori_bias_pack_ptr_size_ = bias_tensor_->ElementsNum() * DataTypeSize(data_type_);
+    MS_CHECK_TRUE_MSG(allocator_ != nullptr, RET_ERROR, "allocator_ is nullptr");
     bias_ptr_ =
       allocator_->Malloc(data_type_, kOnlineSize, kOnlinePackWeight, bias_tensor_->tensor_name() + "_online_pack");
     MS_CHECK_PTR(bias_ptr_);
@@ -146,10 +152,10 @@ int MatMulFP32BaseCoder::Init() {
   thread_count_ = thread_num_;
   ResizeParameter();
   MS_CHECK_RET_CODE(InitBufferForBias(), "InitBufferForBias failed");
-  if (params_.a_const_) {
+  if (params_.a_const_ && target_ != kRiscV) {
     MS_CHECK_RET_CODE(InitBufferA(), "InitBufferA failed");
   }
-  if (params_.b_const_) {
+  if (params_.b_const_ && target_ != kRiscV) {
     MS_CHECK_RET_CODE(InitBufferB(), "InitBufferB failed");
   }
   return RET_OK;
@@ -202,6 +208,23 @@ int MatMulFP32BaseCoder::CollectFilesForTarget(CoderContext *const context) {
   return RET_OK;
 }
 
+void MatMulFP32BaseCoder::GenerateMatrixCalculationLowMemory(NNaclFp32Serializer *const code, const std::string *c_str,
+                                                             const std::string *a_str, const std::string *b_str) {
+  bool transA = params_.a_transpose_;
+  bool transB = params_.b_transpose_;
+  *code << "    for (int i = 0; i < " << params_.batch << "; ++i) {\n";
+  *code << "      const float *batch_a_ptr = " << *a_str << " + i * " << params_.row_ * params_.deep_ << ";\n";
+  if (params_.b_batch_ != 1) {
+    *code << "      const float *batch_b_ptr = " << *b_str << " + i * " << params_.deep_ * params_.col_ << ";\n";
+  } else {
+    *code << "      const float *batch_b_ptr = " << *b_str << ";\n";
+  }
+  *code << "      float *batch_c_ptr = " << *c_str << " + i * " << params_.row_ * params_.col_ << ";\n  ";
+  code->CodeFunction("MatmulLowMemory", "batch_a_ptr", "batch_b_ptr", "batch_c_ptr", bias_ptr_, params_.act_type_,
+                     params_.deep_, params_.row_, params_.col_, transA, transB);
+  *code << "    }\n";
+}
+
 void MatMulFP32BaseCoder::GenerateMatrixCalculation(NNaclFp32Serializer *const code, const std::string *c_str,
                                                     const std::string *a_pack_str, const std::string *b_pack_str,
                                                     int cur_oc) {
@@ -233,6 +256,7 @@ void MatMulFP32BaseCoder::GenerateMatrixCalculation(NNaclFp32Serializer *const c
 }
 
 int MatMulFP32BaseCoder::DoCode(CoderContext *const context) {
+  Configurator *config_ = Configurator::GetInstance();
   CollectFilesForTarget(context);
   NNaclFp32Serializer code, init_code;
   size_t w_buf_size = 0;
@@ -246,7 +270,7 @@ int MatMulFP32BaseCoder::DoCode(CoderContext *const context) {
     init_code.CodeBufferOffsetExpression(bias_ptr_, context->weight_name(), context->weight_offset_name(),
                                          context->weight_size_name(), bias_pack_ptr_size_);
     w_buf_size += bias_pack_ptr_size_;
-    int max_bias_data = params_.col_align_;
+    int max_bias_data = (target_ == kRiscV) ? params_.col_ : params_.col_align_;
     if (is_bias_broadcast_) {
       float broad_cast_data = (reinterpret_cast<float *>(bias_tensor_->data()))[0];
       std::string bias_ptr_str = allocator_->GetRuntimeAddr(bias_ptr_);
@@ -260,16 +284,18 @@ int MatMulFP32BaseCoder::DoCode(CoderContext *const context) {
   }
   // Get Tensor Pointer
   std::string a_str = allocator_->GetRuntimeAddr(input_tensor_);
-  std::string b_str = allocator_->GetRuntimeAddr(filter_tensor_);
+  std::string b_str = allocator_->GetRuntimeAddr(filter_tensor_, true);
   std::string c_str = allocator_->GetRuntimeAddr(output_tensor_);
-  std::string a_pack_str = allocator_->GetRuntimeAddr(static_cast<float *>(a_pack_ptr_));
-  std::string b_pack_str = allocator_->GetRuntimeAddr(static_cast<float *>(b_pack_ptr_));
-  // do const value packing to init
-  if ((params_.a_const_ && !a_packed_) || (params_.b_const_ && !b_packed_)) {
-    init_code.CodeStruct("mat_mul_parameter", params_);
-  }
-  if (params_.a_const_) {
-    if (!a_packed_) {
+  if (config_->target() != kRiscV) {
+    std::string a_pack_str = allocator_->GetRuntimeAddr(static_cast<float *>(a_pack_ptr_));
+    std::string b_pack_str = allocator_->GetRuntimeAddr(static_cast<float *>(b_pack_ptr_));
+    // do const value packing to init
+    bool isApackedConst = params_.a_const_ && !a_packed_;
+    bool isBpackedConst = params_.b_const_ && !b_packed_;
+    if (isApackedConst || isBpackedConst) {
+      init_code.CodeStruct("mat_mul_parameter", params_);
+    }
+    if (params_.a_const_ && !a_packed_) {
       init_code.CodeBufferOffsetExpression(a_pack_ptr_, context->weight_name(), context->weight_offset_name(),
                                            context->weight_size_name(), a_pack_ptr_size_);
       w_buf_size += a_pack_ptr_size_;
@@ -282,12 +308,10 @@ int MatMulFP32BaseCoder::DoCode(CoderContext *const context) {
       }
       // a_pack_str has been memset, no need to memset
       init_code.CodeFunction("InitMatrixA", a_src_str, a_pack_ptr_, "&mat_mul_parameter", vec_matmul_);
+    } else if (!params_.a_const_) {
+      code.CodeFunction("InitMatrixA", input_tensor_, a_pack_ptr_, "&mat_mul_parameter", vec_matmul_);
     }
-  } else {
-    code.CodeFunction("InitMatrixA", input_tensor_, a_pack_ptr_, "&mat_mul_parameter", vec_matmul_);
-  }
-  if (params_.b_const_) {
-    if (!b_packed_) {
+    if (params_.b_const_ && !b_packed_) {
       init_code.CodeBufferOffsetExpression(b_pack_ptr_, context->weight_name(), context->weight_offset_name(),
                                            context->weight_size_name(), b_pack_ptr_size_);
       w_buf_size += b_pack_ptr_size_;
@@ -300,15 +324,17 @@ int MatMulFP32BaseCoder::DoCode(CoderContext *const context) {
       }
       // b_pack_str has been memset, no need to memset
       init_code.CodeFunction("InitMatrixB", b_src_str, b_pack_ptr_, "&mat_mul_parameter", vec_matmul_);
+    } else if (!params_.b_const_) {
+      code.CodeFunction("InitMatrixB", filter_tensor_, b_pack_ptr_, "&mat_mul_parameter", vec_matmul_);
     }
+    int current_stride_oc = thread_stride_ * col_tile_;
+    int current_rest_oc = params_.col_ - kDefaultTaskId * thread_stride_ * col_tile_;
+    int cur_oc = MSMIN(current_stride_oc, current_rest_oc);
+    if (cur_oc <= 0) return RET_OK;
+    GenerateMatrixCalculation(&code, &c_str, &a_pack_str, &b_pack_str, cur_oc);
   } else {
-    code.CodeFunction("InitMatrixB", filter_tensor_, b_pack_ptr_, "&mat_mul_parameter", vec_matmul_);
+    GenerateMatrixCalculationLowMemory(&code, &c_str, &a_str, &b_str);
   }
-  int current_stride_oc = thread_stride_ * col_tile_;
-  int current_rest_oc = params_.col_ - kDefaultTaskId * thread_stride_ * col_tile_;
-  int cur_oc = MSMIN(current_stride_oc, current_rest_oc);
-  if (cur_oc <= 0) return RET_OK;
-  GenerateMatrixCalculation(&code, &c_str, &a_pack_str, &b_pack_str, cur_oc);
   context->AppendInitWeightSizeCode(w_buf_size);
   context->AppendCode(code.str());
   context->AppendInitCode(init_code.str());

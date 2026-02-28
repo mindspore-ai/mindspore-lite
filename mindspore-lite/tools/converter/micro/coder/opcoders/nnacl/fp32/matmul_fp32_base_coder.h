@@ -54,6 +54,8 @@ class MatMulFP32BaseCoder : public OperatorCoder {
   int InitMatrixB(const float *src_ptr);
   void GenerateMatrixCalculation(nnacl::NNaclFp32Serializer *const code, const std::string *c_str,
                                  const std::string *a_pack_str, const std::string *b_pack_str, int cur_oc);
+  void GenerateMatrixCalculationLowMemory(nnacl::NNaclFp32Serializer *const code, const std::string *c_str,
+                                          const std::string *a_str, const std::string *b_str);
 
  protected:
   Tensor *filter_tensor_{nullptr};
@@ -61,6 +63,7 @@ class MatMulFP32BaseCoder : public OperatorCoder {
   MicroMatmulParameter params_;
   void *a_pack_ptr_ = nullptr;
   void *b_pack_ptr_ = nullptr;
+  void *b_ptr = nullptr;
   void *bias_ptr_{nullptr};
   bool vec_matmul_{false};
   bool de_quant_flag_{false};

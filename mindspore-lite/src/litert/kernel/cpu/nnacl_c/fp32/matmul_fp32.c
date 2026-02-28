@@ -319,19 +319,106 @@ void MatMulOpt(const float *a, const float *b, float *c, const float *bias, ActT
   MatmulFloatAvxOpt(a, b, c, bias, (size_t)act_type, deep, row, col, stride, (size_t)(out_type));
 #elif ENABLE_SSE
   MatmulFloatSse64Opt(a, b, c, bias, (int)act_type, deep, row, col, stride, (int)(out_type));
-#elif ENABLE_RVV
-  MatmulFloatRvv64Opt(a, b, c, bias, act_type, deep, row, col, stride, out_type);
 #else
   MatMul12x8(a, b, c, bias, act_type, deep, row, col, stride, out_type);
 #endif
 }
 
-#define ActCompute(bit_num, down_threshold, up_threshold) \
-  if (act_type != 0) {                                    \
-    dst = MS_MAX##bit_num##_F32(dst, down_threshold);     \
-    if (act_type == 3) {                                  \
-      dst = MS_MIN##bit_num##_F32(dst, up_threshold);     \
-    }                                                     \
+static inline void AccumulateRowColNoTrans(const float *a, const float *b, float *dst, const float *bias,
+                                           ActType act_type, size_t deep, size_t row, size_t col) {
+  for (size_t r = 0; r < row; r++) {
+    for (size_t c = 0; c < col; c++) {
+      float value = 0;
+      size_t ci = r * col + c;
+      for (size_t d = 0; d < deep; d++) {
+        size_t ai = r * deep + d;
+        size_t bi = d * col + c;
+        value = value + a[ai] * b[bi];
+      }
+      ADD_BIAS(value, bias, c)
+      DO_RELU(value, act_type)
+      DO_RELU6(value, act_type)
+      dst[ci] = value;
+    }
+  }
+}
+
+static inline void AccumulateRowColTranA(const float *a, const float *b, float *dst, const float *bias,
+                                         ActType act_type, size_t deep, size_t row, size_t col) {
+  for (size_t r = 0; r < row; r++) {
+    for (size_t c = 0; c < col; c++) {
+      float value = 0;
+      size_t ci = r * col + c;
+      for (size_t d = 0; d < deep; d++) {
+        size_t ai = d * row + r;
+        size_t bi = d * col + c;
+        value = value + a[ai] * b[bi];
+      }
+      ADD_BIAS(value, bias, c)
+      DO_RELU(value, act_type)
+      DO_RELU6(value, act_type)
+      dst[ci] = value;
+    }
+  }
+}
+
+static inline void AccumulateRowColTranB(const float *a, const float *b, float *dst, const float *bias,
+                                         ActType act_type, size_t deep, size_t row, size_t col) {
+  for (size_t r = 0; r < row; r++) {
+    for (size_t c = 0; c < col; c++) {
+      float value = 0;
+      size_t ci = r * col + c;
+      for (size_t d = 0; d < deep; d++) {
+        size_t ai = r * deep + d;
+        size_t bi = c * deep + d;
+        value = value + a[ai] * b[bi];
+      }
+      ADD_BIAS(value, bias, c)
+      DO_RELU(value, act_type)
+      DO_RELU6(value, act_type)
+      dst[ci] = value;
+    }
+  }
+}
+
+static inline void AccumulateRowColTranAB(const float *a, const float *b, float *dst, const float *bias,
+                                          ActType act_type, size_t deep, size_t row, size_t col) {
+  for (size_t r = 0; r < row; r++) {
+    for (size_t c = 0; c < col; c++) {
+      float value = 0;
+      size_t ci = r * col + c;
+      for (size_t d = 0; d < deep; d++) {
+        size_t ai = d * row + r;
+        size_t bi = c * deep + d;
+        value = value + a[ai] * b[bi];
+      }
+      ADD_BIAS(value, bias, c)
+      DO_RELU(value, act_type)
+      DO_RELU6(value, act_type)
+      dst[ci] = value;
+    }
+  }
+}
+
+void MatmulLowMemory(const float *a, const float *b, float *dst, const float *bias, ActType act_type, int deep, int row,
+                     int col, bool transA, bool transB) {
+  if (!transA && !transB) {
+    AccumulateRowColNoTrans(a, b, dst, bias, act_type, (size_t)deep, (size_t)row, (size_t)col);
+  } else if (transA && !transB) {
+    AccumulateRowColTranA(a, b, dst, bias, act_type, (size_t)deep, (size_t)row, (size_t)col);
+  } else if (!transA && transB) {
+    AccumulateRowColTranB(a, b, dst, bias, act_type, (size_t)deep, (size_t)row, (size_t)col);
+  } else {
+    AccumulateRowColTranAB(a, b, dst, bias, act_type, (size_t)deep, (size_t)row, (size_t)col);
+  }
+}
+
+#define ActCompute(act_type, bit_num, down_threshold, up_threshold) \
+  if (act_type != 0) {                                              \
+    dst = MS_MAX##bit_num##_F32(dst, down_threshold);               \
+    if (act_type == 3) {                                            \
+      dst = MS_MIN##bit_num##_F32(dst, up_threshold);               \
+    }                                                               \
   }
 
 // act_type must be 0, 1, 2. 0: no_act, 1: relu, 3: relu6.
@@ -342,7 +429,7 @@ void GemmIsNotPack(const float *a, const float *b, float *c, const float *bias, 
 
   for (; index < row; ++index) {
     float dst = a[index] * b[0] + bias[0];
-    ActCompute(32, 0, C6NUM);
+    ActCompute(act_type, 32, 0, C6NUM);
     c[index] = dst;
   }
 }
@@ -355,7 +442,7 @@ void Row1Deep1GemmIsNotPack(const float *a, const float *b, float *c, const floa
   SIMD_RUN_NO_SCALAR(Row1Deep1GemmIsNotPack, index, a, b, c, bias, col, act_type);
   for (; index < col; ++index) {
     float dst = a[0] * b[index] + bias[index];
-    ActCompute(32, 0, C6NUM);
+    ActCompute(act_type, 32, 0, C6NUM);
     c[index] = dst;
   }
 }
@@ -368,7 +455,7 @@ void Row1Deep1NoBiasGemmIsNotPack(const float *a, const float *b, float *c, cons
   SIMD_RUN_NO_SCALAR(Row1Deep1NoBiasGemmIsNotPack, index, a, b, c, bias, col, act_type);
   for (; index < col; ++index) {
     float dst = a[0] * b[index];
-    ActCompute(32, 0, C6NUM);
+    ActCompute(act_type, 32, 0, C6NUM);
     c[index] = dst;
   }
 }
@@ -403,7 +490,7 @@ void GemmIsNotPackOptimize(const float *a, const float *b, float *c, const float
       MS_F32X8_GETI(dst, C2NUM) += b[k_index] * a[m_index * k + k_index + C2NUM * k];
       MS_F32X8_GETI(dst, C3NUM) += b[k_index] * a[m_index * k + k_index + C3NUM * k];
     }
-    ActCompute(128, down_threshold128, up_threshold128);
+    ActCompute(act_type, 128, down_threshold128, up_threshold128);
     MS_ST128_F32(c + m_index, dst);
   }
 #endif
@@ -419,7 +506,7 @@ void GemmIsNotPackOptimize(const float *a, const float *b, float *c, const float
     for (; k_index < k; k_index++) {
       dst += b[k_index] * a[m_index * k + k_index];
     }
-    ActCompute(32, 0, C6NUM);
+    ActCompute(act_type, 32, 0, C6NUM);
     c[m_index] = dst;
   }
 }
@@ -438,7 +525,7 @@ void MatVecMulNoPackFp32(const float *a, const float *b, float *c, const float *
         dst += a[k_index] * b[oc_index + k_index * col];
       }
       if ((inc_flag & 0x2) != 0) {
-        ActCompute(32, 0, C6NUM);
+        ActCompute(act_type, 32, 0, C6NUM);
       }
       c[oc_index] = dst;
     }
@@ -456,7 +543,7 @@ void MatVecMulNoPackFp32(const float *a, const float *b, float *c, const float *
     for (int64_t k_index = 0; k_index < depth; ++k_index) {
       dst += a[k_index] * b[oc_index + k_index * col];
     }
-    ActCompute(32, 0, C6NUM);
+    ActCompute(act_type, 32, 0, C6NUM);
     c[oc_index] = dst;
   }
 }

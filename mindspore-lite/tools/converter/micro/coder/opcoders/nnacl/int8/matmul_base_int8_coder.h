@@ -47,6 +47,9 @@ class MatMulBaseInt8Coder : public OperatorCoder {
   int InitQuantParam();
   int InitBias();
   int InitTmpBuffer();
+  int CalcWeightBiasSumsMatrixBOffline();
+  int CalcWeightBiasSumsMatrixBOnline(std::string filter_tensor_name, std::string bias_ptr_str,
+                                      NNaclInt8Serializer &code);
 
  protected:
   bool filter_per_channel_{true};

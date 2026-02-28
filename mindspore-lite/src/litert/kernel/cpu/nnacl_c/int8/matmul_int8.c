@@ -186,7 +186,7 @@ void RowMajor2Row16x4MajorInt8(const int8_t *src_ptr, int8_t *dst_ptr, int row, 
         "st1 {v3.16b}, [x11], #16\n"
 
         :
-        : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ col_offset ] "r"(col_offset)
+        : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [col_offset] "r"(col_offset)
         : "x10", "x11", "v0", "v1", "v2", "v3");
 #elif ENABLE_ARM32
       asm volatile(
@@ -206,7 +206,7 @@ void RowMajor2Row16x4MajorInt8(const int8_t *src_ptr, int8_t *dst_ptr, int row, 
         "vst1.32 {d6, d7}, [r1], r3 \n"
 
         :
-        : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ col_offset ] "r"(col_offset)
+        : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [col_offset] "r"(col_offset)
         : "r0", "r1", "r2", "r3", "q0", "q1", "q2", "q3");
 #else
       MatrixPack4x16UnitInt8(src_c, dst_c, C4NUM, C16NUM, col_offset);
@@ -290,6 +290,85 @@ void MatMulInt8_4x2_r(const int8_t *a, const int8_t *b, int8_t *dst, size_t row,
     }
   }
   return;
+}
+
+#define QUANT_COMMON(value, filter_peroc, a_sums, r, c, filter_zp, left_shift, right_shift, multiplier, out_zp, maxi, \
+                     mini, bias)                                                                                      \
+  int32_t cur_input_sum = filter_peroc ? a_sums[r] * filter_zp[c] : a_sums[r];                                        \
+  value -= cur_input_sum;                                                                                             \
+  value += bias[c];                                                                                                   \
+  int32_t cur_left_shift = filter_peroc ? left_shift[c] : left_shift[0];                                              \
+  int32_t cur_right_shift = filter_peroc ? right_shift[c] : right_shift[0];                                           \
+  int32_t cur_multiplier = filter_peroc ? multiplier[c] : multiplier[0];                                              \
+  value = MultiplyByQuantizedMultiplier(value, cur_multiplier, cur_left_shift, cur_right_shift) + out_zp;             \
+  value = MSMIN(maxi, value);                                                                                         \
+  value = MSMAX(mini, value);
+
+void MatmulInt8LowMemory(const int8_t *a, const int8_t *b, int8_t *dst, int row, int col, int deep16,
+                         const int32_t *a_sums, const int32_t *bias, int mini, int maxi, int out_zp,
+                         const int32_t *multiplier, const int32_t *left_shift, const int32_t *right_shift,
+                         size_t stride, size_t filter_peroc, const int32_t *filter_zp, bool transB, bool transA) {
+  if (transB && !transA) {
+    for (int r = 0; r < row; r++) {
+      for (int c = 0; c < col; c++) {
+        int32_t value = 0;
+        size_t ci = (size_t)r * stride + (size_t)c;
+        for (int d = 0; d < deep16; d++) {
+          int32_t ai = r * deep16 + d;
+          int32_t bi = c * deep16 + d;
+          value = value + a[ai] * b[bi];
+        }
+        QUANT_COMMON(value, filter_peroc, a_sums, r, c, filter_zp, left_shift, right_shift, multiplier, out_zp, maxi,
+                     mini, bias)
+        dst[ci] = (int8_t)value;
+      }
+    }
+  } else if (!transB && !transA) {
+    for (int r = 0; r < row; r++) {
+      for (int c = 0; c < col; c++) {
+        int32_t value = 0;
+        size_t ci = (size_t)r * stride + (size_t)c;
+        for (int d = 0; d < deep16; d++) {
+          int32_t ai = r * deep16 + d;
+          int32_t bi = d * col + c;
+          value = value + a[ai] * b[bi];
+        }
+        QUANT_COMMON(value, filter_peroc, a_sums, r, c, filter_zp, left_shift, right_shift, multiplier, out_zp, maxi,
+                     mini, bias)
+        dst[ci] = (int8_t)value;
+      }
+    }
+  } else if (transB && transA) {
+    for (int r = 0; r < row; r++) {
+      for (int c = 0; c < col; c++) {
+        int32_t value = 0;
+        size_t ci = (size_t)r * stride + (size_t)c;
+        for (int d = 0; d < deep16; d++) {
+          int32_t ai = d * row + r;
+          int32_t bi = c * deep16 + d;
+          value = value + a[ai] * b[bi];
+        }
+        QUANT_COMMON(value, filter_peroc, a_sums, r, c, filter_zp, left_shift, right_shift, multiplier, out_zp, maxi,
+                     mini, bias)
+        dst[ci] = (int8_t)value;
+      }
+    }
+  } else {
+    for (int r = 0; r < row; r++) {
+      for (int c = 0; c < col; c++) {
+        int32_t value = 0;
+        size_t ci = (size_t)r * stride + (size_t)c;
+        for (int d = 0; d < deep16; d++) {
+          int32_t ai = d * row + r;
+          int32_t bi = d * col + c;
+          value = value + a[ai] * b[bi];
+        }
+        QUANT_COMMON(value, filter_peroc, a_sums, r, c, filter_zp, left_shift, right_shift, multiplier, out_zp, maxi,
+                     mini, bias)
+        dst[ci] = (int8_t)value;
+      }
+    }
+  }
 }
 
 #ifndef ENABLE_ARM
@@ -488,8 +567,8 @@ void PackInput4x4AndInputSumPert_arm64(const int8_t *src_ic, int8_t *pack_ic, in
     "st1 {v2.4s}, [x14], #16 \n"
 
     :
-    : [ src_ic ] "r"(src_ic), [ pack_ic ] "r"(pack_ic), [ input_sum_r ] "r"(input_sum_r),
-      [ src_stride ] "r"(src_stride), [ ic_4div ] "r"(ic_4div), [ ic_4res ] "r"(ic_4res), [ filter_zp ] "r"(filter_zp)
+    : [src_ic] "r"(src_ic), [pack_ic] "r"(pack_ic), [input_sum_r] "r"(input_sum_r), [src_stride] "r"(src_stride),
+      [ic_4div] "r"(ic_4div), [ic_4res] "r"(ic_4res), [filter_zp] "r"(filter_zp)
     : "x10", "x11", "x12", "x13", "x14", "x15", "v0", "v1", "v2", "v3");
   return;
 }
@@ -625,8 +704,8 @@ void PackInput2Col4x4AndInputSumPert_arm64(const int8_t *src_ic, int8_t *packed_
     "1:\n"
 
     :
-    : [ src_ic ] "r"(src_ic), [ packed_ic ] "r"(packed_ic), [ input_sum ] "r"(input_sum), [ row ] "r"(row),
-      [ row_stride ] "r"(row_stride), [ filter_zp ] "r"(filter_zp)
+    : [src_ic] "r"(src_ic), [packed_ic] "r"(packed_ic), [input_sum] "r"(input_sum), [row] "r"(row),
+      [row_stride] "r"(row_stride), [filter_zp] "r"(filter_zp)
     : "memory", "w10", "x11", "x12", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12");
 
   return;

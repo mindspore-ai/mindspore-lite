@@ -38,28 +38,115 @@ int MatMulBaseInt8Coder::ReSize(CoderContext *const context) {
   return RET_OK;
 }
 
-int MatMulBaseInt8Coder::InitTmpBuffer() {
-  a_pack_ptr_size_ = param_->row_align_ * param_->deep_16_ * sizeof(int8_t);
-  pack_a_ptr_ = reinterpret_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, a_pack_ptr_size_, kWorkspace));
-  MS_CHECK_PTR(pack_a_ptr_);
-  b_pack_ptr_size_ = param_->batch * param_->col_align_ * param_->deep_16_ * sizeof(int8_t);
-  if (param_->b_const_) {
-    if (target_ == kCortex_M) {
-      pack_b_ptr_ =
-        reinterpret_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, b_pack_ptr_size_, kOfflinePackWeight));
-    } else {
-      pack_b_ptr_ = reinterpret_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, kOnlineSize, kOnlinePackWeight));
+int MatMulBaseInt8Coder::CalcWeightBiasSumsMatrixBOffline() {
+  if (bias_tensor_ != nullptr) {
+    for (int i = 0; i < param_->batch; ++i) {
+      int8_t *cur_b = reinterpret_cast<int8_t *>(filter_tensor_->data()) + i * param_->deep_ * param_->col_;
+      if (param_->b_transpose_) {
+        CalcWeightBiasSums(cur_b, param_->deep_, param_->col_, quant_.input_.zp_, quant_.filter_zp_,
+                           reinterpret_cast<int *>(bias_tensor_->data()), weight_bias_sums_ + i * param_->col_,
+                           ColMajor, filter_per_channel_);
+      } else {
+        CalcWeightBiasSums(cur_b, param_->deep_, param_->col_, quant_.input_.zp_, quant_.filter_zp_,
+                           reinterpret_cast<int *>(bias_tensor_->data()), weight_bias_sums_ + i * param_->col_,
+                           RowMajor, false);
+      }
     }
+    MemoryAllocator::GetInstance()->FreeTensor(bias_tensor_);
+    bias_tensor_ = nullptr;
   } else {
-    pack_b_ptr_ = reinterpret_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, b_pack_ptr_size_, kWorkspace));
+    for (int i = 0; i < param_->batch; ++i) {
+      int8_t *cur_b = reinterpret_cast<int8_t *>(filter_tensor_->data()) + i * param_->deep_ * param_->col_;
+      if (param_->b_transpose_) {
+        CalcWeightBiasSums(cur_b, param_->deep_, param_->col_, quant_.input_.zp_, quant_.filter_zp_, nullptr,
+                           weight_bias_sums_ + i * param_->col_, ColMajor, filter_per_channel_);
+      } else {
+        CalcWeightBiasSums(cur_b, param_->deep_, param_->col_, quant_.input_.zp_, quant_.filter_zp_, nullptr,
+                           weight_bias_sums_ + i * param_->col_, RowMajor, false);
+      }
+    }
   }
-  MS_CHECK_PTR(pack_b_ptr_);
-  input_sums_size_ = static_cast<size_t>(param_->row_align_ * sizeof(int));
+  return RET_OK;
+}
+
+int MatMulBaseInt8Coder::CalcWeightBiasSumsMatrixBOnline(std::string filter_tensor_name, std::string bias_ptr_str,
+                                                         NNaclInt8Serializer &code) {
+  std::string weight_bias_sums_str = allocator_->GetRuntimeAddr(weight_bias_sums_);
+  for (int i = 0; i < param_->batch; i++) {
+    code << "\n  {\n";
+    std::string current_src_b = filter_tensor_name + "+" + std::to_string(b_offset_[i] * param_->col_ * param_->deep_);
+    std::string pack_b_ptr_str = allocator_->GetRuntimeAddr(pack_b_ptr_);
+    std::string current_pack_b_str =
+      pack_b_ptr_str + "+" + std::to_string(b_offset_[i] * param_->col_align_ * param_->deep_16_);
+    std::string current_sums_str = "";
+    if (target_ == kRiscV) {
+      current_sums_str = weight_bias_sums_str + "+" + std::to_string(b_offset_[i] * param_->col_);
+    } else {
+      current_sums_str = weight_bias_sums_str + "+" + std::to_string(b_offset_[i] * param_->col_align_);
+    }
+    if (param_->b_transpose_) {
+      if (target_ != kRiscV) {
+        code.CodeFunction("RowMajor2Row16x4MajorInt8", current_src_b, current_pack_b_str, param_->col_, param_->deep_);
+      }
+      code.CodeFunction("CalcWeightBiasSums", current_src_b, param_->deep_, param_->col_, quant_.input_.zp_,
+                        quant_.filter_zp_, bias_ptr_str, current_sums_str, ColMajor, filter_per_channel_);
+    } else {
+      if (target_ != kRiscV) {
+        code.CodeFunction("RowMajor2Col16x4MajorInt8", current_src_b, current_pack_b_str, param_->deep_, param_->col_);
+      }
+      std::string value_str_end = ";\n";
+      // get filter_zp of quant parameters
+      std::string tmp_weight_zp = "int32_t tmp_filter_zp[" + std::to_string(weight_quant_num_) + "] = {";
+      if (weight_quant_num_ > 0) {
+        tmp_weight_zp += std::to_string(quant_.filter_zp_[0]);
+      }
+      for (int index = 1; index < weight_quant_num_; index++) {
+        tmp_weight_zp += ", " + std::to_string(quant_.filter_zp_[index]);
+      }
+      tmp_weight_zp += "}";
+      code << tmp_weight_zp << value_str_end;
+      code.CodeFunction("CalcWeightBiasSums", current_src_b, param_->deep_, param_->col_, quant_.input_.zp_,
+                        "tmp_filter_zp", bias_ptr_str, current_sums_str, RowMajor, filter_per_channel_);
+    }
+    code << "\n  }\n";
+  }
+  return RET_OK;
+}
+int MatMulBaseInt8Coder::InitTmpBuffer() {
+  // c = a * b + bias
+  if (target_ != kRiscV) {
+    // allocate buffer for a
+    a_pack_ptr_size_ = param_->row_align_ * param_->deep_16_ * sizeof(int8_t);
+    pack_a_ptr_ = reinterpret_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, a_pack_ptr_size_, kWorkspace));
+    MS_CHECK_PTR(pack_a_ptr_);
+
+    // allocate buffer for b
+    b_pack_ptr_size_ = param_->batch * param_->col_align_ * param_->deep_16_ * sizeof(int8_t);
+    if (param_->b_const_) {
+      if (target_ == kCortex_M) {
+        pack_b_ptr_ =
+          reinterpret_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, b_pack_ptr_size_, kOfflinePackWeight));
+      } else {
+        pack_b_ptr_ = reinterpret_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, kOnlineSize, kOnlinePackWeight));
+      }
+    } else {
+      pack_b_ptr_ = reinterpret_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, b_pack_ptr_size_, kWorkspace));
+    }
+    MS_CHECK_PTR(pack_b_ptr_);
+  }
+
+  // allocate buffer or bias
+  if (target_ == kRiscV) {
+    input_sums_size_ = static_cast<size_t>(param_->row_ * sizeof(int));
+    weight_bias_sums_size_ = static_cast<size_t>(param_->batch * param_->col_ * sizeof(int));
+  } else {
+    input_sums_size_ = static_cast<size_t>(param_->row_align_ * sizeof(int));
+    weight_bias_sums_size_ = static_cast<size_t>(param_->batch * param_->col_align_ * sizeof(int));
+  }
   input_sums_ = reinterpret_cast<int *>(allocator_->Malloc(kNumberTypeInt32, input_sums_size_, kWorkspace));
   MS_CHECK_PTR(input_sums_);
-  weight_bias_sums_size_ = static_cast<size_t>(param_->batch * param_->col_align_ * sizeof(int));
   if (param_->b_const_) {
-    if (target_ == kCortex_M) {
+    if ((target_ == kCortex_M) || (target_ == kRiscV)) {
       weight_bias_sums_ =
         reinterpret_cast<int *>(allocator_->Malloc(kNumberTypeInt32, weight_bias_sums_size_, kOfflinePackWeight));
     } else {
@@ -69,25 +156,30 @@ int MatMulBaseInt8Coder::InitTmpBuffer() {
     weight_bias_sums_ =
       reinterpret_cast<int *>(allocator_->Malloc(kNumberTypeInt32, weight_bias_sums_size_, kWorkspace));
   }
-  MS_CHECK_PTR(weight_bias_sums_);
-  if (param_->b_const_ && target_ == kCortex_M) {
-    // For MCU init filter offline
-    memset(weight_bias_sums_, 0, weight_bias_sums_size_);
-    if (bias_tensor_ != nullptr) {
-      InitInt8MatrixB(reinterpret_cast<int8_t *>(filter_tensor_->data()), weight_bias_sums_, pack_b_ptr_, param_->batch,
-                      param_->deep_, param_->col_, param_->col_align_, param_->deep_16_, quant_.input_.zp_,
-                      quant_.filter_zp_, reinterpret_cast<int *>(bias_tensor_->data()), param_->b_transpose_,
-                      filter_per_channel_);
-      MemoryAllocator::GetInstance()->FreeTensor(bias_tensor_);
-      bias_tensor_ = nullptr;
-    } else {
-      InitInt8MatrixB(reinterpret_cast<int8_t *>(filter_tensor_->data()), weight_bias_sums_, pack_b_ptr_, param_->batch,
-                      param_->deep_, param_->col_, param_->col_align_, param_->deep_16_, quant_.input_.zp_,
-                      quant_.filter_zp_, nullptr, param_->b_transpose_, filter_per_channel_);
-    }
 
-    MemoryAllocator::GetInstance()->FreeTensor(filter_tensor_);
-    filter_tensor_ = nullptr;
+  MS_CHECK_PTR(weight_bias_sums_);
+  if (param_->b_const_) {
+    if (target_ == kRiscV) {
+      CalcWeightBiasSumsMatrixBOffline();
+    } else if (target_ == kCortex_M) {
+      // For MCU init filter offline
+      memset(weight_bias_sums_, 0, weight_bias_sums_size_);
+      if (bias_tensor_ != nullptr) {
+        InitInt8MatrixB(reinterpret_cast<int8_t *>(filter_tensor_->data()), weight_bias_sums_, pack_b_ptr_,
+                        param_->batch, param_->deep_, param_->col_, param_->col_align_, param_->deep_16_,
+                        quant_.input_.zp_, quant_.filter_zp_, reinterpret_cast<int *>(bias_tensor_->data()),
+                        param_->b_transpose_, filter_per_channel_);
+        MemoryAllocator::GetInstance()->FreeTensor(bias_tensor_);
+        bias_tensor_ = nullptr;
+      } else {
+        InitInt8MatrixB(reinterpret_cast<int8_t *>(filter_tensor_->data()), weight_bias_sums_, pack_b_ptr_,
+                        param_->batch, param_->deep_, param_->col_, param_->col_align_, param_->deep_16_,
+                        quant_.input_.zp_, quant_.filter_zp_, nullptr, param_->b_transpose_, filter_per_channel_);
+      }
+
+      MemoryAllocator::GetInstance()->FreeTensor(filter_tensor_);
+      filter_tensor_ = nullptr;
+    }
   }
   return RET_OK;
 }
@@ -128,9 +220,9 @@ void MatMulBaseInt8Coder::FreeQuantParam() {
 
 int MatMulBaseInt8Coder::MallocQuantParam() {
   std::vector<LiteQuantParam> weight_quant_params = filter_tensor_->quant_params();
-  int col = filter_tensor_->shape().front();
+  size_t col = weight_quant_params.size();
   filter_per_channel_ = (weight_quant_params.size() > 1);
-  weight_quant_num_ = filter_per_channel_ ? col : 1;
+  weight_quant_num_ = filter_per_channel_ ? static_cast<int>(col) : 1;
   quant_.filter_scale_ = reinterpret_cast<float *>(malloc(weight_quant_num_ * sizeof(float)));
   MS_CHECK_PTR(quant_.filter_scale_);
   quant_.filter_zp_ = reinterpret_cast<int32_t *>(malloc(weight_quant_num_ * sizeof(int32_t)));
@@ -174,8 +266,8 @@ int MatMulBaseInt8Coder::InitQuantParam() {
 }
 
 void MatMulBaseInt8Coder::InitParameter() {
-  param_->a_const_ = (input_tensor_ != nullptr);
-  param_->b_const_ = (filter_tensor_ != nullptr);
+  param_->a_const_ = (input_tensor_->data() != nullptr);
+  param_->b_const_ = (filter_tensor_->data() != nullptr);
   row_tile_ = C4NUM;
   if (target_ == kARM32) {
     col_tile_ = C2NUM;
@@ -212,8 +304,15 @@ void MatMulBaseInt8Coder::DoBatchCode(NNaclInt8Serializer *code_ptr) {
   NNaclInt8Serializer &code = *code_ptr;
   std::string value_str_end = ";\n";
   std::string a_ptr_str = allocator_->GetRuntimeAddr(input_tensor_);
+  std::string b_ptr_str = "";
+  if (target_ == kRiscV) {
+    b_ptr_str = allocator_->GetRuntimeAddr(filter_tensor_, true);
+  }
   std::string c_ptr_str = allocator_->GetRuntimeAddr(output_tensor_);
-  std::string pack_b_ptr_str = allocator_->GetRuntimeAddr(pack_b_ptr_);
+  std::string pack_b_ptr_str = "";
+  if (target_ != kRiscV) {
+    pack_b_ptr_str = allocator_->GetRuntimeAddr(pack_b_ptr_);
+  }
   std::string weight_bias_sums_str = allocator_->GetRuntimeAddr(weight_bias_sums_);
   code.precision(kPrecision);
   std::string tmp_weight_zp =
@@ -223,19 +322,28 @@ void MatMulBaseInt8Coder::DoBatchCode(NNaclInt8Serializer *code_ptr) {
     code << "\n  {\n";
     std::string current_src_a = a_ptr_str + "+" + std::to_string(a_offset_[i] * param_->row_ * param_->deep_);
     if (param_->a_transpose_) {
-      code.CodeFunction("RowMajor2Col16x4MajorInt8", current_src_a, pack_a_ptr_, param_->deep_, param_->row_);
+      if (target_ != kRiscV) {
+        code.CodeFunction("RowMajor2Col16x4MajorInt8", current_src_a, pack_a_ptr_, param_->deep_, param_->row_);
+      }
       code.CodeFunction("CalcInputSums", current_src_a, param_->row_, param_->deep_, "tmp_weight_zp", input_sums_,
                         ColMajor);
     } else {
-      code.CodeFunction("RowMajor2Row16x4MajorInt8", current_src_a, pack_a_ptr_, param_->row_, param_->deep_);
+      if (target_ != kRiscV) {
+        code.CodeFunction("RowMajor2Row16x4MajorInt8", current_src_a, pack_a_ptr_, param_->row_, param_->deep_);
+      }
       code.CodeFunction("CalcInputSums", current_src_a, param_->row_, param_->deep_, "tmp_weight_zp", input_sums_,
                         RowMajor);
     }
-    std::string batch_b_ptr_str =
-      pack_b_ptr_str + "+" + std::to_string(b_offset_[i] * param_->col_align_ * param_->deep_16_);
+    std::string batch_b_ptr_str = "";
+    std::string batch_weight_bias_sums_str = "";
+    if (target_ == kRiscV) {
+      batch_b_ptr_str = b_ptr_str + "+" + std::to_string(b_offset_[i] * param_->col_ * param_->deep_);
+      batch_weight_bias_sums_str = weight_bias_sums_str + "+" + std::to_string(b_offset_[i] * param_->col_);
+    } else {
+      batch_b_ptr_str = pack_b_ptr_str + "+" + std::to_string(b_offset_[i] * param_->col_align_ * param_->deep_16_);
+      batch_weight_bias_sums_str = weight_bias_sums_str + "+" + std::to_string(b_offset_[i] * param_->col_align_);
+    }
     std::string batch_c_ptr_str = c_ptr_str + "+" + std::to_string(i * param_->row_ * param_->col_);
-    std::string batch_weight_bias_sums_str =
-      weight_bias_sums_str + "+" + std::to_string(b_offset_[i] * param_->col_align_);
     int stride = thread_stride_ * col_tile_;
     int cur_stride = kDefaultTaskId * stride;
     int res_stride = param_->col_ - cur_stride;
@@ -263,10 +371,17 @@ void MatMulBaseInt8Coder::DoBatchCode(NNaclInt8Serializer *code_ptr) {
     std::string batch_b_ptr_str_final = batch_b_ptr_str + " + " + std::to_string(cur_stride * param_->deep_16_);
     std::string batch_c_ptr_final = batch_c_ptr_str + "+" + std::to_string(cur_stride);
     std::string weight_bias_sums_str_final = batch_weight_bias_sums_str + "+" + std::to_string(cur_stride);
-    code.CodeFunction("MatmulInt8Opt", pack_a_ptr_, batch_b_ptr_str_final, batch_c_ptr_final, param_->row_, cur_oc,
-                      param_->deep_16_, input_sums_, weight_bias_sums_str_final, quant_.out_act_min_,
-                      quant_.out_act_max_, quant_.output_.zp_, "cur_mul", "cur_left", "cur_right", param_->col_,
-                      filter_per_channel_, "cur_zp");
+    if (target_ == kRiscV) {
+      code.CodeFunction("MatmulInt8LowMemory", current_src_a, batch_b_ptr_str_final, batch_c_ptr_final, param_->row_,
+                        param_->col_, param_->deep_, input_sums_, weight_bias_sums_str_final, quant_.out_act_min_,
+                        quant_.out_act_max_, quant_.output_.zp_, "cur_mul", "cur_left", "cur_right", param_->col_,
+                        filter_per_channel_, "cur_zp", param_->b_transpose_, param_->a_transpose_);
+    } else {
+      code.CodeFunction("MatmulInt8Opt", pack_a_ptr_, batch_b_ptr_str_final, batch_c_ptr_final, param_->row_, cur_oc,
+                        param_->deep_16_, input_sums_, weight_bias_sums_str_final, quant_.out_act_min_,
+                        quant_.out_act_max_, quant_.output_.zp_, "cur_mul", "cur_left", "cur_right", param_->col_,
+                        filter_per_channel_, "cur_zp");
+    }
     code << "\n  }\n";
   }
 }
@@ -294,7 +409,7 @@ int MatMulBaseInt8Coder::DoCode(CoderContext *const context) {
   auto filter_tensor_name = MemoryAllocator::GetInstance()->GetRuntimeAddr(filter_tensor_);
   std::string bias_ptr_str = MemoryAllocator::GetInstance()->GetRuntimeAddr(bias_tensor_);
   bias_ptr_str = (bias_ptr_str == "") ? "NULL" : bias_ptr_str;
-  if (target_ != kCortex_M) {
+  if ((target_ != kCortex_M) && (target_ != kRiscV)) {
     if (param_->b_const_) {
       init_code.CodeBufferOffsetExpression(weight_bias_sums_, context->weight_name(), context->weight_offset_name(),
                                            context->weight_size_name(), weight_bias_sums_size_);
@@ -311,6 +426,9 @@ int MatMulBaseInt8Coder::DoCode(CoderContext *const context) {
                         param_->deep_, param_->col_, param_->col_align_, param_->deep_16_, quant_.input_.zp_,
                         "init_filter_zp", bias_ptr_str, param_->b_transpose_, filter_per_channel_);
     }
+  }
+  if (!param_->b_const_ && target_ == kRiscV) {
+    CalcWeightBiasSumsMatrixBOnline(filter_tensor_name, bias_ptr_str, code);
   }
   DoBatchCode(&code);
 
