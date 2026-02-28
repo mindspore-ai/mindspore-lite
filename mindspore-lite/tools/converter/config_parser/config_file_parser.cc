@@ -102,6 +102,7 @@ int DynBatchOrDynImage(const mindspore::ProfileConfigs &profile, size_t dynamic_
 }
 
 std::string CombineDynamicImageString(const struct mindspore::ProfileConfigs &profile, size_t dynamic_input) {
+  MS_CHECK_TRUE_MSG(dynamic_input < profile.input_infos.size(), "", "dynamic_input out of bound.");
   ShapeVector shape = profile.input_infos[dynamic_input].input_shape;
   std::string ret = "";
   size_t first_dim = kIndex0, second_dim = kIndex0;
@@ -116,7 +117,10 @@ std::string CombineDynamicImageString(const struct mindspore::ProfileConfigs &pr
     second_dim = kIndex3;
   }
   for (size_t dim_idx = 0; dim_idx < profile.profiles.size(); ++dim_idx) {
+    MS_CHECK_TRUE_MSG(profile.profiles[dim_idx].inputs.size() > dynamic_input, "", "inputs size invalid.");
     auto &dynamic_item = profile.profiles[dim_idx].inputs[dynamic_input];
+    MS_CHECK_TRUE_MSG(dynamic_item.min_dims.size() >= Num2, "", "min_dims size less than 2.");
+    MS_CHECK_TRUE_MSG(dynamic_item.max_dims.size() >= Num2, "", "max_dims size less than 2.");
     int64_t min_first = dynamic_item.min_dims[first_dim];
     int64_t max_first = dynamic_item.max_dims[first_dim];
     int64_t min_second = dynamic_item.min_dims[second_dim];
@@ -136,6 +140,10 @@ std::vector<size_t> CombineDynamicBatchList(const struct mindspore::ProfileConfi
   size_t batch_dim = 0;
   for (size_t dim_idx = 0; dim_idx < profile.profiles.size(); ++dim_idx) {
     auto &dynamic_item = profile.profiles[dim_idx].inputs[dynamic_input];
+    if (dynamic_item.min_dims.empty() || dynamic_item.max_dims.empty()) {
+      MS_LOG(ERROR) << "min_dims or max_dims is empty, dynamic batch list is not supported.";
+      return ret;
+    }
     int64_t min = dynamic_item.min_dims[batch_dim];
     int64_t max = dynamic_item.max_dims[batch_dim];
     for (int64_t i = min; i <= max; ++i) {
@@ -675,6 +683,7 @@ int ConfigFileParser::ParseFullQuantString(const std::map<std::string, std::map<
       {"per_channel", full_quant_string_.per_channel},
       {"smooth_alpha", full_quant_string_.smooth_alpha},
       {"enable_smooth_shift", full_quant_string_.enable_smooth_shift},
+      {"enable_all_ops", full_quant_string_.enable_all_ops},
     };
     return SetMapData(map, parse_map, kFullQuantParam);
   }

@@ -51,9 +51,11 @@ class PreprocessParser {
   static int ParseCalibratePath(const std::string &str, std::map<std::string, std::string> *value);
 
   static int CollectCalibInputs(const std::map<std::string, std::string> &calibrate_data_path, size_t limited_count,
+                                preprocess::InputType input_type,
                                 std::map<std::string, std::vector<std::string>> *inputs);
 
   static int ReadDirectory(const std::string &path, std::vector<std::string> *file_names);
+  static bool FileNameValid(const std::string &path, preprocess::InputType input_type);
 };
 }  // namespace lite
 }  // namespace mindspore

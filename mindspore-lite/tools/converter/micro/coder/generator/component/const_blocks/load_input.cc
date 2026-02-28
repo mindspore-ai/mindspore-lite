@@ -91,6 +91,11 @@ void *ReadInputData(const char *real_input_path, int *size) {
     fseek(file, 0, SEEK_END);
     *size = ftell(file);
     unsigned char *buf = malloc((*size));
+    if (buf == NULL) {
+      fclose(file);
+      printf("malloc failed");
+      return NULL;
+    }
     (void)memset(buf, 0, (*size));
     fseek(file, curr_file_posi, SEEK_SET);
     int read_size = (int)(fread(buf, 1, *size, file));
@@ -210,6 +215,14 @@ const char load_input_c_cortex[] = R"RAW(/**
 
 //Set data pointer to MSTensor
 int SetDataToMSTensor(MSTensorHandleArray *inputs_handle, TensorArray *tensor_array) {
+  if (inputs_handle == NULL) {
+    printf("inputs_handle is NULL, SetDataToMSTensor failed.");
+    return kMSStatusLiteError;
+  }
+  if (tensor_array == NULL) {
+    printf("tensor_array is NULL, SetDataToMSTensor failed.");
+    return kMSStatusLiteError;
+  }
   size_t inputs_num = inputs_handle->handle_num;
   if (inputs_num != tensor_array->tensors_size_) {
     printf("Tensor array num error, expected %d, but %d.", inputs_num, tensor_array->tensors_size_);

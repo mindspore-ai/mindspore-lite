@@ -28,6 +28,7 @@
 #include "coder/generator/component/const_blocks/calib_output.h"
 #include "coder/generator/component/const_blocks/msession.h"
 #include "coder/generator/component/const_blocks/mtensor.h"
+#include "coder/generator/component/const_blocks/mlog.h"
 #include "coder/generator/component/const_blocks/mcontext.h"
 #include "coder/generator/component/const_blocks/benchmark.h"
 #include "coder/generator/component/const_blocks/benchmark_train.h"
@@ -103,6 +104,7 @@ int Generator::CodeSourceCMakeFile() {
   std::ofstream ofs(src_cmake_file);
   MS_CHECK_TRUE(!ofs.bad(), "filed to open file");
   MS_LOG(INFO) << "write " << src_cmake_file;
+  MS_CHECK_PTR(ctx_);
   CodeCMakeNetLibrary(ofs, ctx_, config_);
   ofs.close();
   return RET_OK;
@@ -115,7 +117,7 @@ int Generator::CodeDataCFile() {
   MS_LOG(INFO) << "write " << cfile;
   cofs << g_hwLicense;
   cofs << "#include \"data.h\"\n";
-
+  MS_CHECK_PTR(ctx_);
   auto inputs_num = ctx_->graph_inputs().size();
   auto outputs_num = ctx_->graph_outputs().size();
 
@@ -210,12 +212,15 @@ extern "C" {
 
 )RAW";
   size_t shape_size = 0;
+  MS_CHECK_PTR(ctx_);
   std::vector<Tensor *> inputs = ctx_->graph_inputs();
   for (size_t i = 0; i < inputs.size(); ++i) {
+    MS_CHECK_PTR(inputs[i]);
     shape_size += inputs[i]->shape().size();
   }
   std::vector<Tensor *> outputs = ctx_->graph_outputs();
   for (size_t i = 0; i < outputs.size(); ++i) {
+    MS_CHECK_PTR(outputs[i]);
     shape_size += outputs[i]->shape().size();
   }
   constexpr int kMicroTensorSize = 36;  // sizeof(MicroTensor) in generated file tensor.h, need to check and update
@@ -246,10 +251,24 @@ int Generator::CodeStaticContent() {
   std::string load_input_c_txt = load_input_c;
   std::string benchmark_source_txt = benchmark_source;
   std::string src_cmake_lists_txt = src_cmake_lists;
+  if (config_->target() == kRiscV) {
+    if (config_->debug_mode()) {
+      bench_cmake_lists_txt = bench_cmake_lists_riscv_debug;
+    } else {
+      bench_cmake_lists_txt = bench_cmake_lists_riscv;
+    }
+    src_cmake_lists_txt = src_cmake_lists_riscv;
+  }
   std::string context_header_txt = context_header;
   std::string context_source_txt = context_source;
   std::string tensor_header_txt = tensor_header;
   std::string tensor_source_txt = tensor_source;
+  std::string log_header_txt;
+  std::string log_source_txt;
+  if (config_->target() == kRiscV && config_->debug_mode()) {
+    log_header_txt = log_header;
+    log_source_txt = log_source;
+  }
   if (config_->code_mode() == CodeMode::Train) {
     benchmark_source_txt = benchmark_train_source;
   }
@@ -277,8 +296,11 @@ int Generator::CodeStaticContent() {
     {net_src_file_path_ + "context.c", context_source_txt},
     {net_src_file_path_ + "tensor.h", tensor_header_txt},
     {net_src_file_path_ + "tensor.c", tensor_source_txt}};
-
-  if (config_->debug_mode()) {
+  if (config_->target() == kRiscV && config_->debug_mode()) {
+    const_blocks.emplace_back(std::make_pair(net_src_file_path_ + "log.h", log_header_txt));
+    const_blocks.emplace_back(std::make_pair(net_src_file_path_ + "log.c", log_source_txt));
+  }
+  if (config_->target() != kRiscV && config_->debug_mode()) {
     const_blocks.emplace_back(std::make_pair(net_src_file_path_ + "debug_utils.h", debug_utils_h));
     const_blocks.emplace_back(std::make_pair(net_src_file_path_ + "debug_utils.c", debug_utils_c));
   }
@@ -309,6 +331,7 @@ int Generator::CodeCommonModelFile() {
        << "#define MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_MODEL_H_\n\n"
        << "#include \"c_api/model_c.h\"\n";
   CodeMSModelBuildState(hofs);
+  MS_CHECK_PTR(config_);
   if (config_->code_mode() == CodeMode::Inference) {
     CodeMSModelPredictState(hofs);
   } else {
@@ -381,6 +404,20 @@ int Generator::CodeModelHandleHFile() {
     ofs << "extern MSModelHandle model" << std::to_string(i) << "; // " << ctx_->model_name() << "\n";
   }
   ofs << "\n#endif  // MINDSPORE_LITE_MICRO_LIBRARY_INCLUDE_MODEL_HANDLE_H_\n";
+  return RET_OK;
+}
+
+int Generator::CodeLogRegFile() {
+  std::string handle_file = net_include_file_path_ + "log_reg.h";
+  std::ofstream ofs(handle_file);
+  MS_CHECK_TRUE(!ofs.bad(), "failed to open file");
+  MS_LOG(INFO) << "write " << handle_file;
+  ofs << g_hwLicense;
+  ofs << "#ifndef MINDSPORE_LITE_MICRO_LIBRARY_INCLUDE_LOG_REG_H_\n"
+         "#define MINDSPORE_LITE_MICRO_LIBRARY_INCLUDE_LOG_REG_H_\n\n"
+      << "typedef void (*MSLogPrintFunc)(const char *);\n\n"
+      << "void MSRegisterLogFunc(MSLogPrintFunc func);\n\n";
+  ofs << "\n#endif  // MINDSPORE_LITE_MICRO_LIBRARY_INCLUDE_LOG_REG_H_\n";
   return RET_OK;
 }
 
@@ -498,7 +535,7 @@ int Generator::CodeWeightFile() {
   for (size_t i = 0; i < inputs.size(); ++i) {
     cofs << "extern const unsigned char *" << ctx_->input_name() + std::to_string(i) << ";\n";
   }
-  if (config_->target() != kCortex_M) {
+  if ((config_->target() != kCortex_M) && (config_->target() != kRiscV)) {
     cofs << "unsigned char *" << ctx_->buffer_name() << " = 0; \n";
     cofs << "unsigned char *" << ctx_->weight_name() << " = 0; \n";
     cofs << "int *" << kShapePrefixName << " = 0; \n";
@@ -544,10 +581,14 @@ void Generator::CodeCommonNetC(std::ofstream &ofs) {
   ofs << g_hwLicense << "\n"
       << "#include \"src/model" << ctx_->GetCurModelIndex() << "/" << net_weight_hfile_ << "\"\n"  //
       << "#include \"src/model" << ctx_->GetCurModelIndex() << "/" << net_inc_hfile_ << "\"\n\n";
+  if (config_->target() == kRiscV && config_->debug_mode()) {
+    ofs << "#include \"src/log.h"
+        << "\"\n\n";
+  }
   if (config_->support_parallel()) {
     ofs << "#include \"" << kThreadWrapper << "\"\n\n";
   }
-  if (config_->debug_mode()) {
+  if (config_->target() != kRiscV && config_->debug_mode()) {
     ofs << "#include \"src/" << kDebugUtils << "\"\n";
   }
   CodeGlobalCodeBlocks(ofs, ctx_);
@@ -594,17 +635,25 @@ int Generator::CodeAllocatorFile() {
   MS_CHECK_TRUE(!cofs.bad(), "failed to open file");
   MS_LOG(INFO) << "write " << cfile;
   cofs << g_hwLicense;
-  cofs << "#include \"src/allocator.h\"\n"
-       << "#include \"stdatomic.h\"\n"
-       << "#include \"stdlib.h\"\n"
-       << "#include <stdbool.h>\n\n";
-  cofs << "MemBlock *mem_block = NULL;\n"
-       << "atomic_int kReferenceCount = 0;\n"
-       << "#ifdef __clang__\n"
-       << "  atomic_bool kLock = false;\n"
-       << "#else\n"
-       << "  bool kLock = false;\n"
-       << "#endif\n";
+  if (config_->target() != kRiscV) {
+    cofs << "#include \"src/allocator.h\"\n"
+         << "#include \"stdatomic.h\"\n"
+         << "#include \"stdlib.h\"\n"
+         << "#include <stdbool.h>\n\n";
+    cofs << "MemBlock *mem_block = NULL;\n"
+         << "atomic_int kReferenceCount = 0;\n"
+         << "#ifdef __clang__\n"
+         << "  atomic_bool kLock = false;\n"
+         << "#else\n"
+         << "  bool kLock = false;\n"
+         << "#endif\n";
+  } else {
+    cofs << "#include \"src/allocator.h\"\n"
+         << "#include \"stdatomic.h\"\n"
+         << "#include \"stdlib.h\"\n"
+         << "#include <stdbool.h>\n\n";
+    cofs << "MemBlock *mem_block = NULL;\n";
+  }
   CodeCalcRefCount(cofs);
   CodeGlobalMemory(cofs, ctx_->max_buffer_size());
   CodeMemoryOccupied(cofs);
@@ -617,6 +666,9 @@ int Generator::CodeAllocatorFile() {
 int Generator::CreateCommonFiles() {
   MS_CHECK_RET_CODE(CodeStaticContent(), "code static content failed.");
   MS_CHECK_RET_CODE(CodeModelHandleHFile(), "code model_handle h file failed.");
+  if (config_->target() == kRiscV) {
+    MS_CHECK_RET_CODE(CodeLogRegFile(), "code log_reg h file failed.");
+  }
   MS_CHECK_RET_CODE(CodeCommonModelFile(), "code common model file failed.");
   if (!config_->dynamic_shape()) {
     MS_CHECK_RET_CODE(CodeAllocatorFile(), "code allocator file failed.");
@@ -637,6 +689,8 @@ int Generator::CreateModelFiles() {
 int Generator::GenerateCode() {
   auto ret = CreateModelFiles();
   MS_CHECK_RET_CODE(ret, "Create model files failed.");
+  MS_CHECK_PTR(ctx_);
+  MS_CHECK_PTR(config_);
   if (ctx_->end_flag()) {
     ret = CreateCommonFiles();
     MS_CHECK_RET_CODE(ret, "Create common files failed.");

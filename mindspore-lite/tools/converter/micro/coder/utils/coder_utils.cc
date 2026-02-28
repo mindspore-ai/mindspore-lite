@@ -26,17 +26,16 @@
 
 namespace mindspore::lite::micro {
 bool CheckConstantTensor(const Tensor *const tensor) {
+  MS_CHECK_TRUE_MSG(tensor != nullptr, false, "tensor is nullptr");
   return tensor->category() == lite::Category::CONST_TENSOR || tensor->category() == lite::Category::CONST_SCALAR;
 }
 
 template <typename T>
 void TensorDataToFile(const lite::Tensor *tensor, std::ofstream &ofs) {
+  CHECK_NULL_RETURN_VOID(tensor);
   const int NUM = 45;
   T *data = reinterpret_cast<T *>(tensor->data());
-  if (data == nullptr) {
-    MS_LOG(ERROR) << "data is nullptr";
-    return;
-  }
+  CHECK_NULL_RETURN_VOID(data);
   ofs << "{\n";
   if (typeid(T) == typeid(float)) {
     ofs.precision(kWeightPrecision);
@@ -52,6 +51,7 @@ void TensorDataToFile(const lite::Tensor *tensor, std::ofstream &ofs) {
 }
 
 void PrintTensorData(const lite::Tensor *tensor, std::ofstream &ofs) {
+  CHECK_NULL_RETURN_VOID(tensor);
   TypeId type = tensor->data_type();
   switch (tensor->data_type()) {
     case kNumberTypeFloat:
@@ -60,6 +60,9 @@ void PrintTensorData(const lite::Tensor *tensor, std::ofstream &ofs) {
       break;
     case kNumberTypeInt8:
       TensorDataToFile<int8_t>(tensor, ofs);
+      break;
+    case kNumberTypeInt16:
+      TensorDataToFile<int16_t>(tensor, ofs);
       break;
     case kNumberTypeInt:
     case kNumberTypeInt32:
@@ -150,6 +153,7 @@ std::vector<std::string> SplitString(std::string str, const std::string &pattern
 std::string AccumulateShape(const std::vector<std::string> &shape_template, size_t start_index, size_t end_index) {
   int64_t const_part = 1;
   std::string non_const_part;
+  MS_CHECK_TRUE_MSG(shape_template.size() >= end_index, "", "shape_template size is not enough");
   for (size_t i = start_index; i < end_index; ++i) {
     auto item = shape_template[i];
     if (IsNumber(item)) {
@@ -170,6 +174,14 @@ std::string AccumulateShape(const std::vector<std::string> &shape_template, size
 
 std::string GetTensorAddr(lite::Tensor *tensor, bool is_const, DynamicMemManager *dynamic_mem_manager,
                           MemoryAllocator *allocator) {
+  if (tensor == nullptr) {
+    MS_LOG(ERROR) << "tensor is nullptr";
+    return "";
+  }
+  if (allocator == nullptr) {
+    MS_LOG(ERROR) << "allocator is nullptr";
+    return "";
+  }
   if (is_const) {
     return allocator->GetRuntimeAddr(tensor, true);
   }
