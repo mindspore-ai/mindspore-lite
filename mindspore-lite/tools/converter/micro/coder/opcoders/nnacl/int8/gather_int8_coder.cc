@@ -36,13 +36,23 @@ int GatherInt8Coder::Prepare(CoderContext *context) {
   } else {
     axis_ = (reinterpret_cast<GatherParameter *>(parameter_))->axis_;
   }
-  auto in_quant_args = input_tensors_.at(0)->quant_params();
-  CHECK_LESS_RETURN(in_quant_args.size(), 1);
-  auto out_quant_args = output_tensors_.at(0)->quant_params();
-  CHECK_LESS_RETURN(out_quant_args.size(), 1);
-  param_.alpha_ = in_quant_args.front().scale / out_quant_args.front().scale;
-  param_.zp_in_ = in_quant_args.front().zeroPoint;
-  param_.zp_out_ = out_quant_args.front().zeroPoint;
+  auto in_shape = input_tensors_.at(0)->shape();
+  if (axis_ < 0) {
+    axis_ += (int)in_shape.size();
+  }
+  if (input_tensor_->quant_params().size() != 0 && output_tensor_->quant_params().size() != 0) {
+    auto in_quant_args = input_tensors_.at(0)->quant_params();
+    CHECK_LESS_RETURN(in_quant_args.size(), 1);
+    auto out_quant_args = output_tensors_.at(0)->quant_params();
+    CHECK_LESS_RETURN(out_quant_args.size(), 1);
+    param_.alpha_ = in_quant_args.front().scale / out_quant_args.front().scale;
+    param_.zp_in_ = in_quant_args.front().zeroPoint;
+    param_.zp_out_ = out_quant_args.front().zeroPoint;
+  } else {
+    param_.alpha_ = 1.0;
+    param_.zp_in_ = 0;
+    param_.zp_out_ = 0;
+  }
 
   return RET_OK;
 }

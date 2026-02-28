@@ -65,6 +65,9 @@ int GatherFP32Coder::DoCode(CoderContext *context) {
   auto in_shape = input0->shape();
   int in_rank = static_cast<int>(in_shape.size());
   axis_ = *(reinterpret_cast<int *>(input_tensors_.at(THIRD_INPUT)->data()));
+  if (axis_ < 0) {
+    axis_ += static_cast<int>(in_shape.size());
+  }
   MS_CHECK_TRUE(static_cast<int>(in_shape.size()) >= axis_, "invalid axis in gather parameter");
   int outer_size = 1;
   for (int i = 0; i < axis_; ++i) {
@@ -97,14 +100,14 @@ int GatherFP32Coder::DoCode(CoderContext *context) {
     limit = auxiliary_variable + "[" + std::to_string(axis_) + "]";
     in_offset = std::to_string(start) + " * " + limit + " * " + std::to_string(byte_inner_size);
   }
-  code << "\t\tconst int8_t *int8_in = (const int8_t *)" << input0_data << ";\n";
-  code << "\t\tint8_in += " << in_offset << ";\n";
+  code << "\t\tconst float *in = (const float *)" << input0_data << ";\n";
+  code << "\t\tin += " << in_offset << ";\n";
   code << "\t\tconst int *index_data = (const int *)" << input1_data << ";\n";
-  code << "\t\tint8_t *int8_out = (int8_t *)" << output_data << ";\n";
-  code << "\t\tint8_out += " << std::to_string(start * byte_out_stride) << ";\n";
+  code << "\t\tfloat *out = (float *)" << output_data << ";\n";
+  code << "\t\tout += " << std::to_string(start * byte_out_stride) << ";\n";
   code << "\t\tint error_index = -1;\n";
   // call the op function
-  code.CodeFunction("Gather", "int8_in", count, byte_inner_size, limit, "index_data", indices_element_size, "int8_out",
+  code.CodeFunction("Gather", "in", count, byte_inner_size, limit, "index_data", indices_element_size, "out",
                     byte_out_stride, "&error_index");
   context->AppendCode(code.str());
   return RET_OK;
