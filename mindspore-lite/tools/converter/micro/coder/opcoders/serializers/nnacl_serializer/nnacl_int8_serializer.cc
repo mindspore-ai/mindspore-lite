@@ -186,6 +186,18 @@ void NNaclInt8Serializer::CodeStruct(const std::string &name, const BatchNormStr
                         bn_struct.channel_, bn_struct.epsilon_);
 }
 
+void NNaclInt8Serializer::CodeStruct(const std::string &name, const LayerNormComputeParam &compute) {
+  CodeBaseStruct("LayerNormComputeParam", name, compute.epsilon_, compute.elementwise_affine_, compute.begin_norm_axis_,
+                 compute.begin_params_axis_, compute.norm_inner_size_, compute.norm_outer_size_,
+                 compute.params_inner_size_, compute.params_outer_size_);
+}
+
+void NNaclInt8Serializer::CodeStruct(const std::string &name, const LayerNormQuantArg &quant_arg) {
+  CodeBaseStruct("LayerNormQuantArg", name, quant_arg.in_zp_, quant_arg.out_zp_, quant_arg.in_scale_,
+                 quant_arg.out_scale_, quant_arg.gamma_zp_, quant_arg.beta_zp_, quant_arg.gamma_scale_,
+                 quant_arg.beta_scale_);
+}
+
 void NNaclInt8Serializer::CodeStruct(const std::string &name, const SoftmaxQuantArg &softmax_quant_parameter) {
   CodeBaseStruct<false>("SoftmaxQuantArg", name, softmax_quant_parameter.in_quant_args_,
                         softmax_quant_parameter.out_quant_arg_, softmax_quant_parameter.output_activation_min_,
@@ -315,5 +327,11 @@ void NNaclInt8Serializer::CodeStruct(const std::string &name, const SpliceWrappe
   CodeBaseStruct("SpliceWrapperParam", name, splice_param.src_row, splice_param.src_col, splice_param.dst_row,
                  splice_param.dst_col, splice_param.context_size, ToString(splice_param.context),
                  splice_param.src_to_dst_row_offset);
+}
+
+void NNaclInt8Serializer::CodeStruct(const std::string &name, const SplitParameter &split_parameter) {
+  CodeBaseStruct("SplitParameter", name, split_parameter.op_parameter_, split_parameter.num_split_, "split_sizes",
+                 split_parameter.split_dim_, ToString(split_parameter.strides_), "{0}", split_parameter.n_dims_,
+                 split_parameter.split_count_);
 }
 }  // namespace mindspore::lite::micro::nnacl

@@ -32,6 +32,10 @@ typedef struct LayerNormQuantArg {
   int32_t out_zp_;
   double in_scale_;
   double out_scale_;
+  int32_t gamma_zp_;
+  int32_t beta_zp_;
+  double gamma_scale_;
+  double beta_scale_;
 } LayerNormQuantArg;
 
 #endif  // NNACL_LAYER_NORM_PARAMETER_H_

@@ -51,6 +51,7 @@ class LayerNormInt8CPUKernel : public LiteKernel {
   int8_t *dst_ptr_ = nullptr;
   float *gamma_ptr_ = nullptr;
   float *beta_ptr_ = nullptr;
+  bool is_static_input_ = false;
 };
 }  // namespace mindspore::kernel
 

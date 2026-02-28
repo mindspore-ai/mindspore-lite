@@ -32,6 +32,8 @@
 #include "nnacl_c/reshape_parameter.h"
 #include "nnacl_c/slice_parameter.h"
 #include "nnacl_c/batchnorm_parameter.h"
+#include "nnacl_c/layer_norm_parameter.h"
+#include "nnacl_c/kernel/layer_norm.h"
 #include "nnacl_c/pad_parameter.h"
 #include "nnacl_c/kernel/tile.h"
 #include "nnacl_c/transpose_parameter.h"
@@ -40,6 +42,7 @@
 #include "nnacl_c/kernel/pooling.h"
 #include "nnacl_c/kernel/batch_norm.h"
 #include "nnacl_c/mul_parameter.h"
+#include "nnacl_c/split_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class NNaclInt8Serializer : public Serializer {
@@ -57,6 +60,8 @@ class NNaclInt8Serializer : public Serializer {
   void CodeStruct(const std::string &name, const QuantArg &in_quant, const QuantArg &out_quant);
   void CodeStruct(const std::string &name, const SoftmaxParameter &softmax_parameter);
   void CodeStruct(const std::string &name, const BatchNormStruct &bn_struct);
+  void CodeStruct(const std::string &name, const LayerNormComputeParam &compute);
+  void CodeStruct(const std::string &name, const LayerNormQuantArg &quant_arg);
   void CodeStruct(const std::string &name, const SoftmaxQuantArg &softmax_quant_parameter);
   void CodeStruct(const std::string &name, const ConcatInt8Args &ConcatInt8Args, int input_tensors, int in_shape,
                   int out_shape);
@@ -75,6 +80,7 @@ class NNaclInt8Serializer : public Serializer {
   void CodeStruct(const std::string &name, const PadParameter &batchnorm_parameter);
   void CodeStruct(const std::string &name, const GatherQuantArg &batchnorm_parameter);
   void CodeStruct(const std::string &name, const SpliceWrapperParam &splice_param);
+  void CodeStruct(const std::string &name, const SplitParameter &split_parameter);
   void CodeStruct(const std::string &name, const int *list, int size);
 };
 }  // namespace mindspore::lite::micro::nnacl

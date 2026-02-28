@@ -72,3 +72,68 @@ int LayerNormInt8(const int8_t *src_data, const float *gamma_data, const float *
   }
   return NNACL_OK;
 }
+
+void LayerNormDynamicCalInt8(int8_t *dst, const int8_t *src, const int8_t *gamma_data, const int8_t *beta_data,
+                             const LayerNormQuantArg *quant, int num, const float mean, const float deno) {
+  const int32_t in_zp = quant->in_zp_;
+  const float in_scale = (float)quant->in_scale_;
+  const int32_t gamma_zp = quant->gamma_zp_;
+  const float gamma_scale = (float)quant->gamma_scale_;
+  const int32_t beta_zp = quant->beta_zp_;
+  const float beta_scale = (float)quant->beta_scale_;
+  const int32_t out_zp = quant->out_zp_;
+  const float out_scale = (float)quant->out_scale_;
+  for (int i = 0; i < num; i++) {
+    float fp32_src = (src[i] - in_zp) * in_scale;
+    float fp32_dst = (fp32_src - mean) * deno;
+    float fp32_gamma = (gamma_data[i] - gamma_zp) * gamma_scale;
+    float fp32_beta = (beta_data[i] - beta_zp) * beta_scale;
+    fp32_dst = fp32_dst * fp32_gamma + fp32_beta;
+    int32_t int32_dst = (int32_t)round(fp32_dst / out_scale + out_zp);
+    dst[i] = (int8_t)MSMAX(MSMIN(int32_dst, 127), -128);
+  }
+}
+
+int LayerNormDynamicInt8(const int8_t *src_data, const int8_t *gamma_data, const int8_t *beta_data, int8_t *dst_data,
+                         const LayerNormComputeParam *param, const LayerNormQuantArg *quant, int task_id,
+                         int thread_num) {
+  if (src_data == NULL || dst_data == NULL || gamma_data == NULL || beta_data == NULL) {
+    return NNACL_NULL_PTR;
+  }
+  NNACL_CHECK_ZERO_RETURN_ERR(param->params_inner_size_);
+  NNACL_CHECK_ZERO_RETURN_ERR(param->params_outer_size_);
+
+  int step = UP_DIV(param->norm_outer_size_, thread_num);
+  int thread_end = NNACL_MIN((task_id + 1) * step, param->norm_outer_size_);
+  for (int i = task_id * step; i < thread_end; i++) {
+    const int8_t *src_norm = src_data + i * param->norm_inner_size_;
+    int8_t *dst_norm = dst_data + i * param->norm_inner_size_;
+    float mean = 0.0f;
+    float square_mean = 0.0f;
+    for (int j = 0; j < param->norm_inner_size_; j++) {
+      float float_src = (src_norm[j] - quant->in_zp_) * quant->in_scale_;
+      mean += float_src;
+      square_mean += float_src * float_src;
+    }
+    mean /= (float)param->norm_inner_size_;
+    square_mean /= (float)param->norm_inner_size_;
+    const float deno = 1 / sqrtf(square_mean - mean * mean + param->epsilon_);
+
+    if (param->norm_outer_size_ <= param->params_outer_size_) {
+      for (int x = 0; x < param->norm_inner_size_ / param->params_inner_size_; x++) {
+        const int8_t *src_param = src_norm + x * param->params_inner_size_;
+        int8_t *dst_param = dst_norm + x * param->params_inner_size_;
+        const int8_t *gamma_param = gamma_data + x * param->params_inner_size_;
+        const int8_t *beta_param = beta_data + x * param->params_inner_size_;
+        LayerNormDynamicCalInt8(dst_param, src_param, gamma_param, beta_param, quant, param->params_inner_size_, mean,
+                                deno);
+      }
+    } else {
+      int x = i / param->params_outer_size_;
+      const int8_t *gamma = gamma_data + x * param->norm_inner_size_;
+      const int8_t *beta = beta_data + x * param->norm_inner_size_;
+      LayerNormDynamicCalInt8(dst_norm, src_norm, gamma, beta, quant, param->norm_inner_size_, mean, deno);
+    }
+  }
+  return NNACL_OK;
+}
