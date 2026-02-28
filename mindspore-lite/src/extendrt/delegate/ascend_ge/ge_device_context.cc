@@ -21,7 +21,7 @@
 #include "include/utils/scoped_long_running.h"
 #include "include/api/context.h"
 #include "include/api/status.h"
-#include "backend/ge_backend/graph_ir/utils.h"
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/utils.h"
 #include "ge/ge_api.h"
 #include "common/config_infos.h"
 #include "common/common.h"

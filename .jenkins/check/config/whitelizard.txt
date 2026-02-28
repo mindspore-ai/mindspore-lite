@@ -6,6 +6,7 @@
 
 # tools
 mindspore-lite/mindspore-lite/tools/converter/adapter/acl/mapper/matmul_fusion_mapper.cc:mindspore::lite::MatMulFusionMapper::Mapper
+mindspore-lite/mindspore-lite/tools/converter/adapter/acl/backend/ge_backend/utils/anfalgo.cc:mindspore::common::AnfAlgo::GetTensorValueString
 mindspore-lite/mindspore-lite/tools/converter/config_parser/config_file_parser.cc:mindspore::lite::ConfigFileParser::SetParamByConfigfile
 mindspore-lite/mindspore-lite/tools/converter/graphdef_transform.cc:mindspore::lite::GraphDefTransform::Transform
 mindspore-lite/mindspore-lite/tools/converter/parser/onnx/onnx_inputs_adjust.cc:mindspore::lite::OnnxInputAdjust::Adjust

@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 #define MINDSPORE_CCSRC_CXXAPI_MODEL_AOE_AUTO_TUNE_PROCESS_H
 
 #include <memory>
-#include "backend/ge_backend/graph_ir/types.h"
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/types.h"
 #include "include/api/status.h"
 #include "cxx_api/model/acl/acl_model_options.h"
 

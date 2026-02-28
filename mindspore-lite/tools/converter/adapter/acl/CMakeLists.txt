@@ -21,7 +21,7 @@ set(ACL_SRC ${ACL_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/acl_pass.cc)
 
 set(ENABLE_ACL on)
 set(MODE_ASCEND_ACL off)
-add_subdirectory(${TOP_DIR}/mindspore/mindspore/ccsrc/backend/ge_backend/graph_ir _mindspore_transform_graph_ir)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/backend/ge_backend/graph_ir _mindspore_transform_graph_ir)
 
 set_property(SOURCE ${ACL_SRC} PROPERTY COMPILE_DEFINITIONS
         LOG_HDR_FILE_REL_PATH="mindspore-lite/../mindspore/mindspore/core/include/utils/log_adapter.h"

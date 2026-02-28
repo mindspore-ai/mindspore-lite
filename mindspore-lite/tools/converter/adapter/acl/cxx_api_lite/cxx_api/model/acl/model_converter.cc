@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2024 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 #include <set>
 #include <map>
 #include <string>
-#include "backend/ge_backend/graph_ir/utils.h"
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/utils.h"
 #include "graph/graph_buffer.h"
 #include "graph/graph.h"
 #include "cxx_api/model/aoe/auto_tune_process.h"
@@ -31,7 +31,6 @@
 #include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 #include "src/common/file_utils.h"
 #include "cxx_api/graph/acl/acl_convert_init_adapter.h"
-#include "mindspore/ops/infer/custom.h"
 #include "mindspore/core/include/ir/func_graph.h"
 
 namespace mindspore {

@@ -1,0 +1,24 @@
+file(GLOB_RECURSE _TRANSFORM_SRC_LIST RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cc")
+set_property(SOURCE ${_TRANSFORM_SRC_LIST} PROPERTY COMPILE_DEFINITIONS
+  SUBMODULE_ID=mindspore::SubModuleId::SM_GE_ADPT)
+
+add_subdirectory(${TOP_DIR}/mindspore/mindspore/ccsrc/plugin/ascend/res_manager/op_adapter/
+    _mindspore_ascend_op_adapter_obj)
+add_subdirectory(${TOP_DIR}/mindspore/mindspore/ccsrc/plugin/ascend/res_manager/symbol_interface
+    _mindspore_ascend_symbol_obj)
+list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../utils/anfalgo.cc")
+list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../utils/compile_cache_context.cc")
+
+add_library(mindspore_graph_ir SHARED ${_TRANSFORM_SRC_LIST} $<TARGET_OBJECTS:_mindspore_ascend_symbol_obj>
+    $<TARGET_OBJECTS:_mindspore_ascend_op_adapter_obj>)
+
+target_link_libraries(mindspore_graph_ir PRIVATE mindspore_core mindspore_ops)
+# libascendcl.so will be spilted to libacl_rt.so and libacl_mdl.so in the future.
+find_library(ACL ascendcl ${ASCEND_CANN_RUNTIME_PATH})
+if(NOT ACL)
+    set(ACL "")
+endif()
+find_library(GE_RUNNER ge_runner ${ASCEND_CANN_RUNTIME_PATH})
+find_library(GRAPH graph ${ASCEND_CANN_RUNTIME_PATH})
+target_link_libraries(mindspore_graph_ir PRIVATE ${GE_RUNNER} ${GRAPH} ${ACL})
+set_target_properties(mindspore_graph_ir PROPERTIES INSTALL_RPATH $ORIGIN:$ORIGIN/../..)

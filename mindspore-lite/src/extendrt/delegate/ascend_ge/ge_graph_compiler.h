@@ -18,8 +18,8 @@
 
 #include <memory>
 #include <string>
-#include "backend/ge_backend/graph_ir/types.h"
-#include "backend/ge_backend/graph_ir/utils.h"
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/types.h"
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/utils.h"
 #include "extendrt/delegate/ascend_ge/ge_options_container.h"
 
 namespace mindspore {

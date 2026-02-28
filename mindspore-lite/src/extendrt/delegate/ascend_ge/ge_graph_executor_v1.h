@@ -21,7 +21,7 @@
 #include <memory>
 #include <map>
 #include "include/api/context.h"
-#include "backend/ge_backend/graph_ir/types.h"
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/types.h"
 #include "common/config_infos.h"
 #include "extendrt/session/lite_graph_executor.h"
 #include "extendrt/delegate/ascend_ge/ge_device_context.h"
