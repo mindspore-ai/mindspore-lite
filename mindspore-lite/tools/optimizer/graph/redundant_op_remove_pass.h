@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2021 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_TOOLS_OPTIMIZER_GRAPH_REDUNDANT_OP_REMOVE_PASS_H_
 #include <string>
 #include <set>
-#include "include/backend/common/pass_manager/pass.h"
+#include "tools/converter/ms_depend/pass.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/lite_exporter/fetch_content.h"
 

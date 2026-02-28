@@ -19,9 +19,9 @@
 #include <memory>
 #include "test/ut/tools/optimizer/fusion/fusion_inout_test/fusion_inout_test.h"
 #include "ir/anf.h"
-#include "include/backend/common/pass_manager/pass.h"
-#include "include/backend/common/pass_manager/optimizer.h"
-#include "include/backend/common/pass_manager/pass_manager.h"
+#include "tools/converter/ms_depend/pass.h"
+#include "tools/converter/ms_depend/optimizer.h"
+#include "tools/converter/ms_depend/pass_manager.h"
 #include "tools/optimizer/fusion/add_concat_activation_fusion.h"
 #include "nnacl_c/op_base.h"
 #include "src/common/ops/primitive/activation.h"

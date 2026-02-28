@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ tensor::TensorPtr FuncGraphUtils::CreateEmptyTupleTensor(const ValueTuplePtr &va
   MS_EXCEPTION_IF_NULL(tensor);
   tensor::DeviceInfo device_info{kOpFormat_DEFAULT, kInt64};
   tensor->set_device_info(device_info);
-  tensor->set_user_data(kTensorValueIsEmpty, value_tuple);
+  tensor->set_user_data(lite::kTensorValueIsEmpty, value_tuple);
   return tensor;
 }
 
@@ -164,8 +164,7 @@ tensor::TensorPtr FuncGraphUtils::GetConstNodeValue(AnfNodePtr input_node) {
   return nullptr;
 }
 
-bool FuncGraphUtils::GetCNodeOperator(const mindspore::CNodePtr &cnode,
-                                      mindspore::kernel::BaseOperatorPtr *base_operator) {
+bool FuncGraphUtils::GetCNodeOperator(const mindspore::CNodePtr &cnode, BaseOperatorPtr *base_operator) {
   if (!cnode || !base_operator) {
     MS_LOG(ERROR) << "Input cnode or base_operator cannot be nullptr";
     return false;
@@ -208,14 +207,14 @@ bool CheckPrimitiveType(const AnfNodePtr &node, const PrimitivePtr &primitive_ty
   }
   if (node->isa<CNode>()) {
     auto cnode = node->cast<CNodePtr>();
-    return IsPrimitive(cnode->input(kAnfPrimitiveIndex), primitive_type);
+    return IsPrimitive(cnode->input(lite::kAnfPrimitiveIndex), primitive_type);
   } else if (node->isa<ValueNode>()) {
     return IsPrimitive(node, primitive_type);
   }
   return false;
 }
 
-std::vector<common::KernelWithIndex> FuncGraphUtils::GetNodeInputs(const AnfNodePtr &anf_node) {
+std::vector<lite::common::KernelWithIndex> FuncGraphUtils::GetNodeInputs(const AnfNodePtr &anf_node) {
   if (anf_node == nullptr) {
     return {};
   }
@@ -223,17 +222,17 @@ std::vector<common::KernelWithIndex> FuncGraphUtils::GetNodeInputs(const AnfNode
     return {{anf_node, 0}};
   }
   auto cnode = anf_node->cast<CNodePtr>();
-  std::vector<common::KernelWithIndex> inputs;
-  size_t input_num = common::AnfAlgo::GetInputTensorNum(cnode);
+  std::vector<lite::common::KernelWithIndex> inputs;
+  size_t input_num = lite::common::AnfAlgo::GetInputTensorNum(cnode);
   for (size_t input_idx = 0; input_idx < input_num; ++input_idx) {
-    const auto &pre_node_output = common::AnfAlgo::GetPrevNodeOutput(cnode, input_idx);
+    const auto &pre_node_output = lite::common::AnfAlgo::GetPrevNodeOutput(cnode, input_idx);
     auto pre_node = pre_node_output.first;
     if (CheckPrimitiveType(pre_node, prim::kPrimMakeTuple) || CheckPrimitiveType(pre_node, kPrimMakeTupleV2)) {
       auto tuple_inputs = GetNodeInputs(pre_node);
       std::copy(tuple_inputs.begin(), tuple_inputs.end(), std::back_inserter(inputs));
     } else if (CheckPrimitiveType(pre_node, prim::kPrimSplit) &&
                CheckPrimitiveType(cnode->input(1), prim::kPrimSplit)) {
-      inputs = common::AnfAlgo::GetAllOutputWithIndex(pre_node);
+      inputs = lite::common::AnfAlgo::GetAllOutputWithIndex(pre_node);
     } else {
       inputs.push_back(pre_node_output);
     }
@@ -254,7 +253,7 @@ bool FuncGraphUtils::GetCNodeInputsOutputs(const mindspore::CNodePtr &cnode,
   output_tensors->clear();
   auto output_num = AnfUtils::GetOutputTensorNum(cnode);
   for (size_t output_idx = 0; output_idx < output_num; ++output_idx) {
-    session::KernelWithIndex tensor_id = {cnode, output_idx};
+    KernelWithIndex tensor_id = {cnode, output_idx};
     output_tensors->push_back(tensor_id);
   }
   return true;
@@ -309,7 +308,7 @@ DataType FuncGraphUtils::GetTensorDataType(const AnfWithOutIndex &tensor) {
   if (tensor_val) {
     type_id = tensor_val->Dtype()->type_id();
   } else {
-    type_id = common::AnfAlgo::GetOutputInferDataType(node, output_idx);
+    type_id = lite::common::AnfAlgo::GetOutputInferDataType(node, output_idx);
   }
   return static_cast<enum DataType>(type_id);
 }
@@ -322,7 +321,7 @@ ShapeVector FuncGraphUtils::GetTensorShape(const AnfWithOutIndex &tensor) {
   if (tensor_val) {
     shape = tensor_val->shape_c();
   } else {
-    shape = common::AnfAlgo::GetOutputInferShape(node, output_idx);
+    shape = lite::common::AnfAlgo::GetOutputInferShape(node, output_idx);
   }
   return shape;
 }
@@ -382,7 +381,7 @@ AbstractBasePtr FuncGraphUtils::GetAbstract(const AnfWithOutIndex &tensor) {
   MS_EXCEPTION_IF_NULL(node);
   AbstractBasePtr abstract = node->abstract();
   MS_EXCEPTION_IF_NULL(abstract);
-  return common::AnfAlgo::FetchAbstractByIndex(node->abstract(), idx);
+  return lite::common::AnfAlgo::FetchAbstractByIndex(node->abstract(), idx);
 }
 
 void FuncGraphUtils::GetFuncGraphInputsInfo(const FuncGraphPtr &func_graph,
@@ -468,9 +467,9 @@ std::tuple<FuncGraphPtr, AnfNodePtrList, AnfNodePtrList> FuncGraphUtils::Transfo
     }
     auto fn = inps[0];
     std::vector<AnfNodePtr> args{fn};
-    if (IsPrimitive(fn, prim::kPrimDepend) && inps.size() >= kDependInputSize &&
-        eqv.find(inps[kDependAttachNodeIndex]) == eqv.end()) {
-      args.emplace_back(RefSubGraphNode(fg, inps[kRealInputIndexInDepend], &inputs, &eqv));
+    if (IsPrimitive(fn, prim::kPrimDepend) && inps.size() >= lite::kDependInputSize &&
+        eqv.find(inps[lite::kDependAttachNodeIndex]) == eqv.end()) {
+      args.emplace_back(RefSubGraphNode(fg, inps[lite::kRealInputIndexInDepend], &inputs, &eqv));
       const size_t value_start_index = 2;
       for (size_t i = value_start_index; i < inps.size(); ++i) {
         args.emplace_back(NewValueNode(MakeValue(0)));

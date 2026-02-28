@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2022 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 #include <vector>
 #include <map>
 #include <unordered_set>
-#include "include/backend/common/pass_manager/pass.h"
+#include "tools/converter/ms_depend/pass.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/converter/parser/tf/functionalize_control_op_pass.h"
 

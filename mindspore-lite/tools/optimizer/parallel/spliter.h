@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 #include <set>
 #include <unordered_map>
 #include "schema/inner/model_generated.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "include/lite_types.h"
 namespace mindspore {

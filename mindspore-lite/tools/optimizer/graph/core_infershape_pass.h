@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "include/backend/common/pass_manager/pass.h"
+#include "tools/converter/ms_depend/pass.h"
 #include "include/errorcode.h"
 #include "include/registry/converter_context.h"
 

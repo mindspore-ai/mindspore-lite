@@ -1,5 +1,5 @@
 /**
- * Copyright 2021-2022 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,15 +22,14 @@
 #include "extendrt/mindir_loader/mindir_model/mindir_model.h"
 #include "utils/ms_utils_secure.h"
 #include "extendrt/mindir_loader/mindir_model/mindir_model_util.h"
-#include "extendrt/mindir_loader/mindir_model/kernel_mod_util.h"
 #include "src/executor/kernel_exec.h"
-#include "extendrt/mindir_loader/mindir_model/inner_kernel.h"
 #include "extendrt/mock/lite_runtime/populate/base_operator_populate_register.h"
+#include "utils/ms_utils.h"
+#include "ops/base_operator.h"
 
 #include "src/litert/kernel_registry.h"
 
 namespace mindspore::infer::mindir {
-#define IS_LITTLE_ENDIAN (uint8_t)1U
 
 bool MindirModel::ModelVerify() const { return true; }
 
@@ -80,16 +79,7 @@ mindspore::kernel::KernelExec *MindirModel::FindBackendKernel(const std::vector<
                                                               const std::vector<mindspore::lite::Tensor *> &out_tensors,
                                                               const LiteGraph::Node *node, lite::InnerContext *context,
                                                               TypeId prefer_data_type) {
-  if (select_lite_kernel_) {
-    return FindLiteKernel(in_tensors, out_tensors, node, context, prefer_data_type);
-  }
-  std::shared_ptr<kernel::InnerKernel> inner_kernel =
-    mindspore::kernel::KernelModUtil::GetInnerKernel(in_tensors, out_tensors, node, context);
-  kernel::KernelExec *kernel_exec = new kernel::KernelExec(inner_kernel);
-  auto desc = kernel_exec->desc();
-  desc.data_type = in_tensors.front()->data_type();
-  kernel_exec->set_desc(desc);
-  return kernel_exec;
+  return FindLiteKernel(in_tensors, out_tensors, node, context, prefer_data_type);
 }
 
 mindspore::kernel::KernelExec *MindirModel::FindLiteKernel(const std::vector<mindspore::lite::Tensor *> &in_tensors,
@@ -195,7 +185,7 @@ int MindirModel::CheckTensorValid(lite::Tensor *dst_tensor) {
 
 void MindirModel::Free() {
   if (this->buf != nullptr) {
-    delete[](this->buf);
+    delete[] (this->buf);
     this->buf = nullptr;
   }
   auto nodes_size = this->graph_.all_nodes_.size();

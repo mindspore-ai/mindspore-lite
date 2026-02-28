@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2021 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@
 #include <string>
 #include "schema/inner/model_generated.h"
 #include "tools/optimizer/fusion/tflite_lstm_cell_fusion.h"
-#include "include/backend/common/pass_manager/optimizer.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/optimizer.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "include/errorcode.h"
 
 namespace mindspore {

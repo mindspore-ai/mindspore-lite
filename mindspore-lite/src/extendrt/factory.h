@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 #include <vector>
 #include <memory>
 #include <utility>
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 
 namespace mindspore {
 inline enum DeviceType g_device_target = kInvalidDeviceType;

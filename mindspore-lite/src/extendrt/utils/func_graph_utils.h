@@ -1,7 +1,7 @@
 /**
  * This is the C++ adaptation and derivative work of Myia (https://github.com/mila-iqia/myia/).
  *
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,17 +30,17 @@
 #include "include/api/data_type.h"
 #include "include/api/types.h"
 #include "include/api/status.h"
-#include "runtime/hardware_abstract/kernel_base/kernel.h"
-#include "include/utils/anfalgo.h"
+#include "tools/converter/ms_depend/anfalgo.h"
+#include "mindspore/mindspore/core/include/ops/base_operator.h"
 
 namespace mindspore {
 using AnfWithOutIndex = std::pair<AnfNodePtr, size_t>;
-using kernel::BaseOperatorPtr;
+using BaseOperatorPtr = std::shared_ptr<ops::BaseOperator>;
 
 class FuncGraphUtils {
  public:
   static tensor::TensorPtr GetConstNodeValue(AnfNodePtr input_node);
-  static std::vector<common::KernelWithIndex> GetNodeInputs(const AnfNodePtr &anf_node);
+  static std::vector<lite::common::KernelWithIndex> GetNodeInputs(const AnfNodePtr &anf_node);
 
   static bool GetCNodeOperator(const CNodePtr &cnode, BaseOperatorPtr *base_operator);
 

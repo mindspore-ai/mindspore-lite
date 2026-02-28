@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2021 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 #include <set>
 #include <utility>
 #include <memory>
-#include "include/backend/common/pass_manager/pass.h"
+#include "tools/converter/ms_depend/pass.h"
 #include "include/registry/converter_context.h"
 #include "tools/optimizer/graph/node_infershape.h"
 #include "tools/optimizer/const_fold/fold_utils.h"

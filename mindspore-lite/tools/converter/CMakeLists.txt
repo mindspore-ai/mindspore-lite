@@ -188,15 +188,7 @@ if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
             ${MINDIR_MODEL_SRC}
             ${SRC_DIR}/extendrt/mindir_loader/mindir_model/mindir_model.cc
             ${SRC_DIR}/extendrt/mindir_loader/mindir_model/mindir_model_util.cc
-            ${SRC_DIR}/extendrt/mindir_loader/mindir_model/mindir_model_convertor.cc
             ${SRC_DIR}/extendrt/mindir_loader/mindir_model/mindir_model_loader.cc
-            ${SRC_DIR}/extendrt/mindir_loader/mindir_model/kernel_mod_util.cc
-            )
-
-    set(MINDIR_KERNEL_SRC
-            ${MINDIR_KERNEL_SRC}
-            ${SRC_DIR}/extendrt/mindir_loader/mindir_model/inner_kernel.cc
-            ${SRC_DIR}/extendrt/utils/tensor_utils.cc
             )
 endif()
 
@@ -448,25 +440,15 @@ endif()
 
 file(STRINGS "${TOP_DIR}/version.txt" VERSION)
 add_definitions(-DVERSION=\"${VERSION}\")
-set(CCSRC_SRC_NEW ${CCSRC_DIR}/backend/common/pass_manager/graph_optimizer.cc
-    ${CCSRC_DIR}/backend/common/pass_manager/pattern_engine.cc
-    ${CCSRC_DIR}/utils/ir_dump/mindir_exporter.cc
-    ${CCSRC_DIR}/backend/common/pass_manager/visitor.cc
-    ${CCSRC_DIR}/utils/common.cc
-    ${CCSRC_DIR}/utils/compile_cache_context.cc
-    )
+set(CCSRC_SRC_NEW
+    ${CMAKE_CURRENT_SOURCE_DIR}/ms_depend/graph_optimizer.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/ms_depend/pattern_engine.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/ms_depend/visitor.cc
+)
 if(NOT WIN32)
     set(CCSRC_SRC_NEW ${CCSRC_SRC_NEW}
-        ${CCSRC_DIR}/utils/anfalgo.cc
-        ${CCSRC_DIR}/utils/parallel_context.cc
-        ${CCSRC_DIR}/utils/utils.cc)
-endif()
-if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
-    set(CCSRC_SRC_NEW ${CCSRC_SRC_NEW}
-    ${CCSRC_DIR}/utils/callback.cc
-    ${CCSRC_DIR}/runtime/hardware_abstract/kernel_base/kernel_factory.cc
-    ${CCSRC_DIR}/runtime/hardware_abstract/kernel_base/kernel_tensor.cc
-    ${CCSRC_DIR}/runtime/hardware_abstract/kernel_base/kernel.cc)
+        ${CMAKE_CURRENT_SOURCE_DIR}/ms_depend/anfalgo_depend.cc
+            )
 endif()
 add_library(ccsrc_src_new_mid OBJECT ${CCSRC_SRC_NEW})
 target_compile_definitions(ccsrc_src_new_mid PRIVATE BACKEND_DLL)

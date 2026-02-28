@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2024-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,8 @@
 #include "common/config_infos.h"
 #include "src/common/common.h"
 #include "extendrt/delegate/ascend_acl/model_infer.h"
+#include "mindspore/mindspore/core/include/ir/primitive.h"
+#include "mindspore/mindspore/core/include/ir/anf.h"
 
 namespace mindspore {
 class AclGraphExecutor : public LiteGraphExecutor {
@@ -36,12 +38,13 @@ class AclGraphExecutor : public LiteGraphExecutor {
 
   ~AclGraphExecutor();
 
-  Status CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
+  Status CompileGraph(const FuncGraphPtr &graph, const std::map<std::string, std::string> &compile_options,
                       uint32_t *graph_id) override;
-  Status CompileGraph(const void *model_data, size_t data_size, const std::map<string, string> &compile_options,
-                      uint32_t *graph_id) override;
+  Status CompileGraph(const void *model_data, size_t data_size,
+                      const std::map<std::string, std::string> &compile_options, uint32_t *graph_id) override;
   Status RunGraph(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
-                  std::vector<mindspore::MSTensor> *outputs, const std::map<string, string> &compile_options) override;
+                  std::vector<mindspore::MSTensor> *outputs,
+                  const std::map<std::string, std::string> &compile_options) override;
 
   Status Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                 const std::vector<ShapeVector> &dims) override;
@@ -50,9 +53,9 @@ class AclGraphExecutor : public LiteGraphExecutor {
 
   std::vector<mindspore::MSTensor> GetOutputInfos(uint32_t graph_id) override;
 
-  const std::vector<TypeId> GetOutputDataType() { return model_infer_->GetOutputDataType(); }
+  const std::vector<TypeId> GetOutputDataType() override { return model_infer_->GetOutputDataType(); }
 
-  bool UpdateWeights(const std::vector<std::vector<MSTensor>> &inputs);
+  bool UpdateWeights(const std::vector<std::vector<MSTensor>> &inputs) override;
 
   std::string GetConfigOption(const std::string &section_name, const std::string &option_name);
 

@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@
 #include "ir/func_graph.h"
 #include "tools/converter/quantizer/quantize_util.h"
 #include "infer/dynamic_quant.h"
-#include "mindspore/ccsrc/frontend/parallel/strategy.h"
 
 namespace mindspore::lite::quant {
 class InsertQuantNodeManager {

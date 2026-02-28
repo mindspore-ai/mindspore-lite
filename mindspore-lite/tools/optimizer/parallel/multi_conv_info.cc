@@ -67,7 +67,7 @@ bool MultiConvSplit::CheckSplitValid() {
   for (const auto &conv_node : conv_nodes_) {
     auto conv_cnode = conv_node->cast<CNodePtr>();
     MS_ASSERT(conv_cnode != nullptr);
-    auto conv_prim = ops::GetOperator<ops::Conv2DFusion>(conv_cnode->input(kAnfPrimitiveIndex));
+    auto conv_prim = ops::GetOperator<ops::Conv2DFusion>(conv_cnode->input(lite::kAnfPrimitiveIndex));
     MS_ASSERT(conv_prim != nullptr);
     MS_CHECK_TRUE_RET(conv_prim->GetAttr(ops::kPadMode) != nullptr, false);
     if (conv_prim->get_pad_mode() != SAME) {
@@ -180,7 +180,7 @@ bool MultiConvSplit::SplitSingleConv(const AnfNodePtr &ori_node, const std::vect
   MS_ASSERT(ori_node != nullptr && outputs_node != nullptr);
   auto ori_conv_cnode = ori_node->cast<CNodePtr>();
   MS_CHECK_TRUE_MSG(ori_conv_cnode != nullptr, false, "ori_conv_cnode is nullptr!");
-  auto ori_attr = ops::GetOperator<ops::Conv2DFusion>(ori_conv_cnode->input(kAnfPrimitiveIndex));
+  auto ori_attr = ops::GetOperator<ops::Conv2DFusion>(ori_conv_cnode->input(lite::kAnfPrimitiveIndex));
   MS_ASSERT(ori_attr != nullptr);
   for (int output_conv_index = 0; output_conv_index < static_cast<int>(split_info_.out_num); output_conv_index++) {
     // Create Conv node attr

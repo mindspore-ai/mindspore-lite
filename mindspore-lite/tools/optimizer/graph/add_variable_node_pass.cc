@@ -1,5 +1,5 @@
 /**
- * Copyright 2025 Huawei Technologies Co., Ltd
+ * Copyright 2025-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,27 +18,20 @@
 #include <memory>
 #include <vector>
 #include <set>
-#include <algorithm>
-#include <map>
 #include <unordered_map>
-#include <regex>
 #include <string>
-#include "src/common/log_adapter.h"
+
 #include "src/common/log_util.h"
 #include "src/common/common.h"
 #include "tools/common/tensor_util.h"
 #include "tools/common/func_graph_utils.h"
-#include "tools/optimizer/fusion/matmul_allreduce_fusion.h"
 #include "op_def/auto_generate/gen_lite_ops.h"
-#include "tools/common/parse_config_utils.h"
 #include "op_def/conv_pool_ops.h"
 #include "include/errorcode.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_b.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/core/include/ir/graph_utils.h"
 #include "mindspore/ops/infer/custom.h"
+#include "mindspore/ops/ops_utils/op_constants.h"
 
 namespace mindspore {
 namespace opt {

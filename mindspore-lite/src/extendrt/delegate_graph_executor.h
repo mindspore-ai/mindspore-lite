@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +20,7 @@
 #include "include/api/delegate_api.h"
 #include "ir/func_graph.h"
 #include "ir/anf.h"
-#include "runtime/hardware_abstract/device_context/device_context.h"
 #include "tools/common/func_graph_subgraph.h"
-#include "runtime/hardware_abstract/kernel_base/kernel.h"
 
 #include "src/extendrt/session/lite_graph_executor.h"
 #include "src/extendrt/subgraph_kernel.h"

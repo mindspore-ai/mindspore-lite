@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@
 #ifndef MINDSPORE_LITE_TOOLS_OPTIMIZER_FUSION_ACTIVATION_FUSION_H_
 #define MINDSPORE_LITE_TOOLS_OPTIMIZER_FUSION_ACTIVATION_FUSION_H_
 
-#include "include/backend/common/pass_manager/optimizer.h"
+#include "tools/converter/ms_depend/optimizer.h"
 #include "tools/converter/converter_context.h"
-#include "include/backend/common/pass_manager/pass.h"
+#include "tools/converter/ms_depend/pass.h"
 
 namespace mindspore {
 namespace opt {

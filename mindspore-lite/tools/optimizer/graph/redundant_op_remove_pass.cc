@@ -32,7 +32,7 @@
 #include "src/common/ops/primitive/pad_fusion.h"
 #include "ops_utils/op_utils.h"
 #include "nnacl_c/op_base.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_d.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_i.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"
@@ -519,8 +519,8 @@ int RemoveRedundantOpPass::RemoveUmonad(const FuncGraphPtr &func_graph, const Fu
     if (!opt::CheckPrimitiveType(cnode, prim::kPrimDepend)) {
       continue;
     }
-    if (cnode->size() < kDependInputSize) {
-      MS_LOG(ERROR) << "Depend input size " << cnode->size() << " cannot less than " << kDependInputSize;
+    if (cnode->size() < lite::kDependInputSize) {
+      MS_LOG(ERROR) << "Depend input size " << cnode->size() << " cannot less than " << lite::kDependInputSize;
       continue;
     }
     auto depend_src = cnode->input(kIndex1);

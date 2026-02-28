@@ -38,6 +38,8 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_p.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
+#include "mindspore/ops/ops_utils/op_constants.h"
+#include "primitive/op_name.h"
 
 namespace mindspore {
 namespace {

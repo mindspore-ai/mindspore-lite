@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2024 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 #include "cxx_api/graph/graph_data.h"
 #include "src/common/log_adapter.h"
 #include "utils/ms_context.h"
-#include "runtime/hardware_abstract/device_context/device_context_manager.h"
 
 namespace mindspore {
 Graph::GraphData::GraphData(const FuncGraphPtr &func_graph, enum ModelType model_type)

@@ -86,8 +86,5 @@ class MindIRSerializer {
   bool is_export_model_ = true;
   bool remove_variable_dir_ = true;
 };
-// export func_graph
-int MindIRSerialize(const std::shared_ptr<ConverterPara> &param, const FuncGraphPtr &func_graph, bool need_buff,
-                    void **buff, size_t *size);
 }  // namespace mindspore::lite
 #endif  // MINDSPORE_LITE_TOOLS_MINDIR_EXPORTER_MINDIR_SERIALIZER_H_

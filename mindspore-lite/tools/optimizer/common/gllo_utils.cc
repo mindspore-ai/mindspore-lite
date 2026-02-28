@@ -36,7 +36,7 @@
 #include "infer/tuple_get_item.h"
 #include "tools/common/tensor_util.h"
 #include "frontend/operator/ops.h"
-#include "include/backend/common/pass_manager/helper.h"
+#include "tools/converter/ms_depend/helper.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
 #include "nnacl_c/op_base.h"
 #include "src/common/log_util.h"
@@ -45,9 +45,9 @@
 #include "ops_utils/op_utils.h"
 #include "infer/custom.h"
 #include "infer/tensor_copy.h"
-#include "include/utils/anfalgo.h"
+#include "tools/converter/ms_depend/anfalgo.h"
 #include "tools/optimizer/common/format_utils.h"
-#include "mindspore/ccsrc/include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "src/common/ops/primitive/mul_fusion.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_d.h"
@@ -604,7 +604,7 @@ AbstractBasePtr GetCNodeInputAbstract(const CNodePtr &cnode, size_t index) {
   } else if (utils::isa<CNodePtr>(input)) {
     auto input_cnode = input->cast<CNodePtr>();
     if (CheckPrimitiveType(input_cnode, prim::kPrimTupleGetItem)) {
-      MS_ASSERT(input_cnode->size() == kTupleGetItemInputSize);
+      MS_ASSERT(input_cnode->size() == lite::kTupleGetItemInputSize);
       auto get_item_input_cnode = input_cnode->input(1);
       MS_ASSERT(get_item_input_cnode != nullptr);
       auto idx = GetTupleGetItemOutIndex(input_cnode);
@@ -809,7 +809,7 @@ AnfNodePtr GetTupleGetItemRealInput(const CNodePtr &tuple_get_item) {
     MS_LOG(ERROR) << "The node tuple_get_item must have 2 inputs!";
     return nullptr;
   }
-  return tuple_get_item->input(kRealInputNodeIndexInTupleGetItem);
+  return tuple_get_item->input(lite::kRealInputNodeIndexInTupleGetItem);
 }
 
 size_t GetTupleGetItemOutIndex(const CNodePtr &tuple_get_item) {
@@ -1938,10 +1938,10 @@ std::vector<KernelWithIndex> GetNodeInputs(const AnfNodePtr &anf_node) {
     return {{anf_node, 0}};
   }
   auto cnode = anf_node->cast<CNodePtr>();
-  std::vector<common::KernelWithIndex> inputs;
-  size_t input_num = common::AnfAlgo::GetInputTensorNum(cnode);
+  std::vector<lite::common::KernelWithIndex> inputs;
+  size_t input_num = lite::common::AnfAlgo::GetInputTensorNum(cnode);
   for (size_t input_idx = 0; input_idx < input_num; ++input_idx) {
-    const auto &pre_node_output = common::AnfAlgo::GetPrevNodeOutput(cnode, input_idx);
+    const auto &pre_node_output = lite::common::AnfAlgo::GetPrevNodeOutput(cnode, input_idx);
     auto pre_node = pre_node_output.first;
     if (opt::CheckPrimitiveType(pre_node, prim::kPrimMakeTuple) ||
         opt::CheckPrimitiveType(pre_node, prim::kPrimMakeTupleV2)) {

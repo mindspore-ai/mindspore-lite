@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Huawei Technologies Co., Ltd
+ * Copyright 2024-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@
 #include "utils/anf_utils.h"
 #include "mindspore/ops/op_def/math_ops.h"
 #include "extendrt/utils/func_graph_utils.h"
-#include "include/utils/anfalgo.h"
+#include "tools/converter/ms_depend/anfalgo.h"
 #include "tools/converter/quantizer/quantize_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/core/include/ir/graph_utils.h"

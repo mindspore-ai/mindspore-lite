@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@
 #include <utility>
 #include <memory>
 #include <unordered_map>
-#include "include/backend/common/pass_manager/node_pass.h"
-#include "include/backend/common/pass_manager/pattern_engine.h"
-#include "include/backend/common/pass_manager/helper.h"
+#include "tools/converter/ms_depend/node_pass.h"
+#include "tools/converter/ms_depend/pattern_engine.h"
+#include "tools/converter/ms_depend/helper.h"
 #include "tools/optimizer/common/node_pass_extends.h"
 
 namespace mindspore {

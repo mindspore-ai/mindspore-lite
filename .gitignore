@@ -19,6 +19,4 @@ third_party/proto/tensorflow/types.proto
 third_party/proto/tensorflow/versions.proto
 
 # IDE
-mindspore-lite/_deps/
-mindspore-lite/_ms_patch/
-mindspore-lite/cmake-build-debug/
+.vscode/

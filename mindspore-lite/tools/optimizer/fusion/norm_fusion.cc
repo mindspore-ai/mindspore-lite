@@ -24,7 +24,7 @@
 #include "src/common/ops/primitive/layer_norm_fusion.h"
 #include "src/common/ops/primitive/reduce_fusion.h"
 #include "mindspore/ops/infer/instance_norm.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "include/securec.h"
 #include "nnacl_c/op_base.h"

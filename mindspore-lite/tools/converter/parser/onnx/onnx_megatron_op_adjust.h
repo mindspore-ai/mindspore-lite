@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_PARSER_ONNX_ONNX_MEGATRON_OP_ADJUST_H_
 #include <string>
 #include <vector>
-#include "include/backend/common/pass_manager/pass.h"
+#include "tools/converter/ms_depend/pass.h"
 #include "tools/optimizer/common/gllo_utils.h"
 
 using mindspore::converter::FmkType;

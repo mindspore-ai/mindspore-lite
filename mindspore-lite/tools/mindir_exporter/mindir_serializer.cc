@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@
 #include <algorithm>
 #include <map>
 #include "utils/crypto.h"
-#include "mindspore/ccsrc/include/utils/ir_dump/dump_proto_interface.h"
-#include "mindspore/ccsrc/include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
+#include "tools/mindir_exporter/export_depend/dump_proto.h"
 #include "src/common/file_utils.h"
 #include "src/common/common.h"
 #include "tools/converter/parser/parser_utils.h"
@@ -69,6 +69,40 @@ bool DeleteDirRecursively(const std::string &dir_name) {
   }
   closedir(dir);
   return true;
+}
+
+std::optional<std::string> CreatePrefixPath(const std::string &input_path, const bool support_relative_path) {
+  std::optional<std::string> prefix_path;
+  std::optional<std::string> file_name;
+  FileUtils::SplitDirAndFileName(input_path, &prefix_path, &file_name);
+  if (!file_name.has_value()) {
+    MS_LOG(ERROR) << "Cannot get file_name from: " << input_path;
+    return std::nullopt;
+  }
+  auto file_name_str = file_name.value();
+#if defined(SYSTEM_ENV_POSIX)
+  if (file_name_str.length() > NAME_MAX) {
+    MS_LOG(ERROR) << "The length of file name: " << file_name_str.length() << " exceeds limit: " << NAME_MAX;
+    return std::nullopt;
+  }
+#endif
+
+  std::string prefix_path_str;
+  if (prefix_path.has_value()) {
+    auto create_prefix_path = FileUtils::CreateNotExistDirs(prefix_path.value(), support_relative_path);
+    if (!create_prefix_path.has_value()) {
+      return std::nullopt;
+    }
+    prefix_path_str = create_prefix_path.value();
+  } else {
+    auto pwd_path = FileUtils::GetRealPath("./");
+    if (!pwd_path.has_value()) {
+      MS_LOG(ERROR) << "Cannot get pwd path";
+      return std::nullopt;
+    }
+    prefix_path_str = pwd_path.value();
+  }
+  return std::string(prefix_path_str + "/" + file_name_str);
 }
 }  // namespace
 
@@ -667,7 +701,7 @@ int MindIRSerializer::SaveProtoToFile(mind_ir::ModelProto *model_proto, const st
     MS_LOG(INFO) << "No need to save proto to file";
     return RET_OK;
   }
-  auto realpath = CommGroupInfo::CreatePrefixPath(output_file, true);
+  auto realpath = CreatePrefixPath(output_file, true);
   if (!realpath.has_value()) {
     MS_LOG(ERROR) << "Get real path of file " << output_file << " failed.";
     return RET_ERROR;
@@ -751,20 +785,6 @@ int MindIRSerializer::GetBuffAndSize(void **buff, size_t *size) {
     return RET_ERROR;
   }
   model_proto_.SerializeToArray(*buff, *size);
-  return RET_OK;
-}
-
-int MindIRSerialize(const std::shared_ptr<ConverterPara> &param, const FuncGraphPtr &func_graph, bool need_buff,
-                    void **buff, size_t *size) {
-  mindspore::lite::MindIRSerializer serializer;
-  auto ret = serializer.Save(param, func_graph);
-  if (ret != RET_OK) {
-    MS_LOG(ERROR) << "MindIR serialize fail";
-    return ret;
-  }
-  if (need_buff) {
-    return serializer.GetBuffAndSize(buff, size);
-  }
   return RET_OK;
 }
 }  // namespace mindspore::lite

@@ -1,5 +1,5 @@
 /**
- * Copyright 2021-2022 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 #include "tools/optimizer/common/multiple_pattern_process_pass.h"
 #include "tools/optimizer/common/helper.h"
 #include "nnacl_c/op_base.h"
-#include "backend/common/pass_manager/visitor.h"
+#include "tools/converter/ms_depend/visitor.h"
 
 namespace mindspore::opt {
 MultiplePatternProcessPass::MultiplePatternProcessPass(const std::string &name, bool multigraph)

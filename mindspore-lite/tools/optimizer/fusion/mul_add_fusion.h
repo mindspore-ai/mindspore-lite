@@ -20,7 +20,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include "include/backend/common/pass_manager/optimizer.h"
+#include "tools/converter/ms_depend/optimizer.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
 #include "tools/optimizer/common/multiple_pattern_process_pass.h"
 #include "src/common/ops/primitive/scale_fusion.h"

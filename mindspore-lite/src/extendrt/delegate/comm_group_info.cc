@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,12 @@
 #include <vector>
 #include <utility>
 #include <string>
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "utils/ms_utils.h"
 #include "src/extendrt/delegate/comm_group_info.h"
 #include "src/common/common.h"
 #include "mindspore/core/include/utils/convert_utils.h"
 #include "src/common/log_adapter.h"
-#include "include/utils/common.h"
 #include "utils/file_utils.h"
 namespace mindspore::lite {
 std::optional<std::string> CommGroupInfo::CreatePrefixPath(const std::string &input_path, bool support_relative_path) {

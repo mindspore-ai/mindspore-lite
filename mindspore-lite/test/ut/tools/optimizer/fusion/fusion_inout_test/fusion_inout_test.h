@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@
 #include <vector>
 #include "common/common_test.h"
 #include "ir/anf.h"
-#include "include/backend/common/pass_manager/pass.h"
-#include "include/backend/common/pass_manager/optimizer.h"
-#include "include/backend/common/pass_manager/pass_manager.h"
+#include "tools/converter/ms_depend/pass.h"
+#include "tools/converter/ms_depend/optimizer.h"
+#include "tools/converter/ms_depend/pass_manager.h"
 #include "src/common/log_util.h"
 
 namespace mindspore {

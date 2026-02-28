@@ -1,5 +1,5 @@
 /**
- * Copyright 2019-2021 Huawei Technologies Co., Ltd
+ * Copyright 2019-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 #include "extendrt/infer_session.h"
-#include "runtime/hardware_abstract/kernel_base/ms_factory.h"
 #include "extendrt/delegate/factory.h"
 #include "extendrt/session/factory.h"
 #include "extendrt/delegate/plugin/litert_executor_plugin.h"

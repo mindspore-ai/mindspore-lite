@@ -240,7 +240,7 @@ Status AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<
     if (!cnode || !AnfUtils::IsRealKernel(cnode)) {
       continue;
     }
-    std::string kernel_name = common::AnfAlgo::GetCNodeName(cnode);
+    std::string kernel_name = lite::common::AnfAlgo::GetCNodeName(cnode);
     if (kernel_name != lite::kNameCustomAscend) {
       MS_LOG(ERROR) << "Only support " << lite::kNameCustomAscend << ", but got " << kernel_name << ", node "
                     << cnode->fullname_with_scope();

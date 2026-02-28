@@ -1,5 +1,5 @@
 /**
- * Copyright 2021-2023 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/optimizer/fisson/eliminate_concat_split.h"
 #include "schema/inner/model_generated.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "infer/split_with_overlap.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
@@ -84,9 +84,9 @@ int ConcatSplitEliminate(const FuncGraphPtr &func_graph, const CNodePtr &cnode) 
   }
   int64_t pre_inputs_size = static_cast<int64_t>(pre_inputs_size_unsigned);
   int64_t pre_inputs_node_size = pre_inputs_size - 1;
-  auto pre_prim = ops::GetOperator<mindspore::ops::Concat>(pre_cnode->input(kAnfPrimitiveIndex));
+  auto pre_prim = ops::GetOperator<mindspore::ops::Concat>(pre_cnode->input(lite::kAnfPrimitiveIndex));
   MS_CHECK_TRUE_MSG(pre_prim != nullptr, lite::RET_ERROR, "pre_cnode is not a ops::Concat");
-  auto prim = ops::GetOperator<mindspore::ops::SplitWithOverlap>(cnode->input(kAnfPrimitiveIndex));
+  auto prim = ops::GetOperator<mindspore::ops::SplitWithOverlap>(cnode->input(lite::kAnfPrimitiveIndex));
   MS_CHECK_TRUE_MSG(prim != nullptr, lite::RET_ERROR, "cnode is not a ops::SplitWithOverlap");
   if (prim->get_number_split() != pre_inputs_node_size) {
     return RET_OK;

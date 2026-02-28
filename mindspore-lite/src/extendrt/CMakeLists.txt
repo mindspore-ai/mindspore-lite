@@ -22,7 +22,6 @@ if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
         ${CMAKE_CURRENT_SOURCE_DIR}/infer_session.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/session/delegate_session.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/session/factory.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/utils/tensor_utils.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/utils/serialization.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/utils/func_graph_utils.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/delegate/comm_group_info.cc

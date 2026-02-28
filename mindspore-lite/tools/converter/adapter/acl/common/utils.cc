@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,11 +22,10 @@
 #include "base/base_ref.h"
 #include "abstract/dshape.h"
 #include "abstract/abstract_value.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "src/common/log_util.h"
 #include "ir/func_graph.h"
 #include "nnacl_c/op_base.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 #include "mindspore/core/include/ir/graph_utils.h"
 
 namespace mindspore {
@@ -40,9 +39,9 @@ constexpr size_t kInvalidSize = SIZE_MAX;
 
 static size_t GetTupleGetItemOutIndex(const mindspore::CNodePtr &tuple_get_item) {
   MS_CHECK_TRUE_MSG(tuple_get_item != nullptr, kInvalidSize, "tuple_get_item is nullptr.");
-  MS_CHECK_TRUE_MSG(tuple_get_item->size() == mindspore::kTupleGetItemInputSize, kInvalidSize,
+  MS_CHECK_TRUE_MSG(tuple_get_item->size() == mindspore::lite::kTupleGetItemInputSize, kInvalidSize,
                     "The node tuple_get_item must have 3 inputs!");
-  auto output_index_value_node = tuple_get_item->input(mindspore::kInputNodeOutputIndexInTupleGetItem);
+  auto output_index_value_node = tuple_get_item->input(mindspore::lite::kInputNodeOutputIndexInTupleGetItem);
   MS_CHECK_TRUE_MSG(output_index_value_node != nullptr, kInvalidSize, "output_index_value_node is nullptr.");
   auto value_node = output_index_value_node->cast<mindspore::ValueNodePtr>();
   MS_CHECK_TRUE_MSG(value_node != nullptr, kInvalidSize, "value_node is nullptr.");
@@ -67,7 +66,8 @@ STATUS GetShapeVectorFromCNode(const mindspore::CNodePtr &cnode, std::vector<int
   mindspore::AbstractBasePtr cnode_abstract;
   if (CheckPrimitiveType(cnode, mindspore::prim::kPrimTupleGetItem)) {
     auto tuple_inputs = cnode->inputs();
-    MS_CHECK_TRUE_MSG(tuple_inputs.size() == kTupleGetItemInputSize, lite::RET_ERROR, "The node must have 3 inputs!");
+    MS_CHECK_TRUE_MSG(tuple_inputs.size() == lite::kTupleGetItemInputSize, lite::RET_ERROR,
+                      "The node must have 3 inputs!");
     auto get_item_input_cnode = tuple_inputs.at(kSecondIndex);
     MS_CHECK_TRUE_MSG(get_item_input_cnode != nullptr, lite::RET_ERROR, "input node is nullptr.");
     auto idx = GetTupleGetItemOutIndex(cnode);

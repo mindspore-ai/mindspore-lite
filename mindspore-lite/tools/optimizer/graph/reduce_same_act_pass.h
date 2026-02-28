@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@
 #include <set>
 #include <string>
 #include <unordered_map>
-#include "include/backend/common/pass_manager/optimizer.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/optimizer.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/format_utils.h"
 #include "tools/optimizer/graph/transpose_strategy.h"
 

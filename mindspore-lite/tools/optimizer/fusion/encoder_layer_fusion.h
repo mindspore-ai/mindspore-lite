@@ -21,7 +21,7 @@
 #include <unordered_map>
 #include <vector>
 #include "tools/optimizer/common/multiple_pattern_process_pass.h"
-#include "include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "include/errorcode.h"
 #include "infer/encoder_layer.h"
 #include "tools/optimizer/fusion/multi_head_attention_fusion.h"

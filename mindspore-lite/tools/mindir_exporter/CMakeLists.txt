@@ -20,20 +20,13 @@ add_subdirectory(${IR_DUMP_ONNX} ir_dump_onnx)
 add_dependencies(_mindspore_utils_ir_dump_onnx_obj mindir_proto_mid)
 
 add_library(mindir_serializer_mid OBJECT
-        ${MINDIR_EXPORTER_SRC_LIST}
+        ${CMAKE_CURRENT_SOURCE_DIR}/mindir_serializer.cc
         )
 add_dependencies(mindir_serializer_mid fbs_src fbs_inner_src)
-# file(STRINGS "${TOP_DIR}/version.txt" VERSION)
-# add_definitions(-DVERSION=\"${VERSION}\")
-# set(NEW_CCSRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../ccsrc)
+file(STRINGS "${TOP_DIR}/version.txt" VERSION)
+add_definitions(-DVERSION=\"${VERSION}\")
 add_library(ccsrc_debug_common_mid_ OBJECT
-        # ${CCSRC_DIR}/common/debug/common.cc
-        # ${CCSRC_DIR}/utils/compile_cache_context.cc
-        # ${CCSRC_DIR}/common/debug/mindir_exporter.cc
-#        ${NEW_CCSRC_DIR}/common/debug/common.cc
-#        ${NEW_CCSRC_DIR}/utils/compile_cache_context.cc
-#        ${NEW_CCSRC_DIR}/common/debug/mindir_exporter.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../src/extendrt/delegate/comm_group_info.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/export_depend/mindir_exporter.cc
         )
 add_dependencies(ccsrc_debug_common_mid_ mindir_proto_mid)
 

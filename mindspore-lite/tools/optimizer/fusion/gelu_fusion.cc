@@ -18,10 +18,9 @@
 #include "tools/optimizer/fusion/gelu_fusion.h"
 #include <memory>
 #include <string>
+#include "tools/converter/ms_depend/utils.h"
 #include "src/common/ops/primitive/activation.h"
-#include "include/utils/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace opt {

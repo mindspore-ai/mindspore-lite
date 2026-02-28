@@ -1,5 +1,5 @@
 /**
- * Copyright 2025 Huawei Technologies Co., Ltd
+ * Copyright 2025-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -164,7 +164,7 @@ Status BuildModels(const FuncGraphPtr &func_graph, const std::vector<std::vector
     if (!cnode || !mindspore::AnfUtils::IsRealKernel(cnode)) {
       continue;
     }
-    std::string kernel_name = mindspore::common::AnfAlgo::GetCNodeName(cnode);
+    std::string kernel_name = mindspore::lite::common::AnfAlgo::GetCNodeName(cnode);
     if (kernel_name != lite::kNameCustomAscend) {
       MS_LOG(ERROR) << "Only support " << lite::kNameCustomAscend << ", but got " << kernel_name << ", node "
                     << cnode->fullname_with_scope();

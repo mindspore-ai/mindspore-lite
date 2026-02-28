@@ -1,5 +1,5 @@
 /**
- * Copyright 2022-2024 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,12 @@
  */
 
 #include "extendrt/delegate/ascend_ge/ge_graph_executor.h"
-#include <tuple>
+
 #include <algorithm>
 #include <utility>
+#include <nlohmann/json.hpp>
 #include "extendrt/delegate/factory.h"
 #include "include/utils/scoped_long_running.h"
-#include "mindspore/ccsrc/include/backend/common/ms_device_shape_transfer.h"
 #include "src/common/common.h"
 #include "src/common/file_utils.h"
 #include "cxx_api/acl_utils.h"
@@ -474,8 +474,8 @@ bool GeGraphExecutor::SetModelCacheDir(std::map<std::string, std::string> *sessi
     MS_LOG(ERROR) << "Failed to create build cache dir " << build_cache_dir;
     return false;
   }
-  ge_options[kGeGraphCompilerCacheDir] = build_cache_dir;
-  MS_LOG(INFO) << "Update session attr " << kGeGraphCompilerCacheDir << " to " << build_cache_dir;
+  ge_options[lite::kGeGraphCompilerCacheDir] = build_cache_dir;
+  MS_LOG(INFO) << "Update session attr " << lite::kGeGraphCompilerCacheDir << " to " << build_cache_dir;
   return true;
 }
 
@@ -494,7 +494,7 @@ bool GeGraphExecutor::SetOfflineBuildModelCacheDir(std::map<std::string, std::st
   auto ge_session_context = GeSessionManager::GetGeSessionContext(session_id_);
   if (ge_session_context) {
     const auto &last_ge_options = ge_session_context->session_options;
-    if (auto it = last_ge_options.find(kGeGraphCompilerCacheDir); it != last_ge_options.end()) {
+    if (auto it = last_ge_options.find(lite::kGeGraphCompilerCacheDir); it != last_ge_options.end()) {
       build_cache_dir = it->second;
       build_cache_enabled = true;
     }
@@ -515,8 +515,8 @@ bool GeGraphExecutor::SetOfflineBuildModelCacheDir(std::map<std::string, std::st
     MS_LOG(ERROR) << "Failed to create build cache dir " << build_cache_dir;
     return false;
   }
-  ge_options[kGeGraphCompilerCacheDir] = build_cache_dir;
-  MS_LOG(INFO) << "Update session attr " << kGeGraphCompilerCacheDir << " to " << build_cache_dir;
+  ge_options[lite::kGeGraphCompilerCacheDir] = build_cache_dir;
+  MS_LOG(INFO) << "Update session attr " << lite::kGeGraphCompilerCacheDir << " to " << build_cache_dir;
   if (build_cache_dir.find(output_dir) == 0) {
     build_cache_relative_dir_ = "./" + build_cache_dir.substr(output_dir.size());
   }
@@ -575,7 +575,7 @@ void GeGraphExecutor::GetGeSessionOptionsFromAscendContext(const std::map<std::s
   }
   option_id = config.find(lite::kGraphCompilerCacheDirKey);
   if (option_id != config.end()) {
-    ge_options[kGeGraphCompilerCacheDir] = option_id->second;
+    ge_options[lite::kGeGraphCompilerCacheDir] = option_id->second;
   }
 }
 
@@ -595,7 +595,7 @@ void GeGraphExecutor::GetGeGraphOptions(const FuncGraphPtr &anf_graph,
       c = '_';
     }
   }
-  ge_options[kGeGraphKey] = graph_name_;
+  ge_options[lite::kGeGraphKey] = graph_name_;
   auto config_it = config_infos_.find(lite::kGeGraphOptionsSection);
   if (config_it != config_infos_.end()) {
     for (auto &item : config_it->second) {
@@ -641,7 +641,7 @@ bool GeGraphExecutor::CreateSession(const std::map<std::string, std::string> &ex
   (void)setenv("GE_TRAIN", "0", 1);
   std::map<std::string, std::string> session_options = extra_options;
   GetGeSessionOptions(&session_options);
-  if (auto option_id = session_options.find(kGeGraphCompilerCacheDir); option_id != session_options.end()) {
+  if (auto option_id = session_options.find(lite::kGeGraphCompilerCacheDir); option_id != session_options.end()) {
     build_cache_dir_ = option_id->second;
   }
   session_options_ = session_options;
@@ -993,12 +993,12 @@ bool GeGraphExecutor::InitRefDataContext(const FuncGraphPtr &func_graph,
 backend::ge_backend::DfGraphPtr GeGraphExecutor::CreateFakeGraph(const std::map<std::string, std::string> &ge_options) {
   if (build_cache_dir_.empty()) {
     MS_LOG(INFO) << "Option model_cache_mode " << cache_mode_ << " is not mem_opt and not load offline model or "
-                 << kGeGraphCompilerCacheDir << " is empty, skip create small ge graph";
+                 << lite::kGeGraphCompilerCacheDir << " is empty, skip create small ge graph";
     return nullptr;
   }
-  auto graph_it = ge_options.find(kGeGraphKey);
+  auto graph_it = ge_options.find(lite::kGeGraphKey);
   if (graph_it == ge_options.end()) {
-    MS_LOG(INFO) << "Cannot find option " << kGeGraphKey << ", skip create small ge graph";
+    MS_LOG(INFO) << "Cannot find option " << lite::kGeGraphKey << ", skip create small ge graph";
     return nullptr;
   }
   auto graph_key = graph_it->second;

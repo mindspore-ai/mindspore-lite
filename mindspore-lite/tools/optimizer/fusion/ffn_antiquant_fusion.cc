@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@
 #include "mindspore/ops/op_def/op_name.h"
 #include "mindspore/ops/op_def/other_ops.h"
 #include "tools/converter/quantizer/quantize_util.h"
-#include "mindspore/ccsrc/include/utils/utils.h"
+#include "tools/converter/ms_depend/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_f.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"
