@@ -26,7 +26,7 @@
 
 namespace mindspore::lite {
 STATUS GetConvChannel(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node, int64_t group,
-                      int64_t *channel_out, int64_t *channel_in) {
+                      int64_t *channel_out, int64_t *channel_in, int *conv_dims) {
   MS_CHECK_TRUE_RET(channel_out != nullptr && channel_in != nullptr, RET_NULL_PTR);
   MS_CHECK_GE(onnx_node.input_size(), kInputSize1, RET_ERROR);
   const auto &onnx_conv_weight = onnx_node.input(kWeightIndex);
@@ -41,6 +41,7 @@ STATUS GetConvChannel(const onnx::GraphProto &onnx_graph, const onnx::NodeProto 
       std::vector<int> weight_shape;
       auto size = (*node_iter).dims_size();
       weight_shape.reserve(size);
+      *conv_dims = (size == DIMENSION_3D) ? DIMENSION_1D : 0;
       for (int i = 0; i < size; ++i) {
         weight_shape.emplace_back((*node_iter).dims(i));
       }
@@ -72,7 +73,9 @@ STATUS GetConvChannel(const onnx::GraphProto &onnx_graph, const onnx::NodeProto 
         MS_LOG(ERROR) << "dims insert failed";
         return RET_ERROR;
       }
-      dims.insert(dims.begin(), iter->ints().begin(), iter->ints().end());
+      for (const auto &val : iter->ints()) {
+        dims.insert(dims.begin(), static_cast<int>(val));
+      }
     } else {
       return RET_NO_CHANGE;
     }
@@ -81,6 +84,7 @@ STATUS GetConvChannel(const onnx::GraphProto &onnx_graph, const onnx::NodeProto 
       MS_LOG(ERROR) << "index out of dims range";
       return RET_ERROR;
     }
+    *conv_dims = (dims.size() == DIMENSION_3D) ? DIMENSION_1D : 0;
     *channel_out = dims.at(kNHWC_N);
     // the fourth dim of filter of conv is channel dim
     if (INT_MUL_OVERFLOW_THRESHOLD(dims.at(kNHWC_C), group, INT64_MAX)) {
@@ -162,9 +166,6 @@ PrimitiveCPtr OnnxConvParser::Parse(const onnx::GraphProto &onnx_graph, const on
   (void)prim_c->AddAttr(mindspore::ops::kOriginalFormat, MakeValue<int64_t>(format));
   prim->set_pad_mode(pad_mode);
   prim->set_group(group);
-  if (conv_dims == CONV1D_DIM) {
-    (void)prim_c->AddAttr(mindspore::ops::kOriginalFormat, MakeValue<int64_t>(NCW));
-  }
   prim->set_dilation({1, 1});
   if (!dilation.empty()) {
     prim->set_dilation(dilation);
@@ -176,12 +177,16 @@ PrimitiveCPtr OnnxConvParser::Parse(const onnx::GraphProto &onnx_graph, const on
   if (!kernels.empty()) {
     prim->set_kernel_size(kernels);
   }
+  prim->set_stride({1, 1});
   if (!strides.empty()) {
     prim->set_stride(strides);
   }
 
   // get channel_out and channel_in
-  status = GetConvChannel(onnx_graph, onnx_node, group, &channel_out, &channel_in);
+  status = GetConvChannel(onnx_graph, onnx_node, group, &channel_out, &channel_in, &conv_dims);
+  if (conv_dims == CONV1D_DIM) {
+    (void)prim_c->AddAttr(mindspore::ops::kOriginalFormat, MakeValue<int64_t>(NCW));
+  }
   if (status == RET_OK) {
     prim->set_in_channel(channel_in);
     prim->set_out_channel(channel_out);
