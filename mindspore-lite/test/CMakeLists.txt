@@ -102,6 +102,7 @@ if(MSLITE_ENABLE_INT8 AND NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_EN
     file(GLOB_RECURSE TEST_INT8_UT_SRC
             ${TEST_DIR}/ut/src/runtime/kernel/arm/int8/*.cc
             ${TEST_DIR}/ut/nnacl/int8/*.cc
+            ${TEST_DIR}/ut/nnacl/fp32/*.cc
             )
     list(APPEND TEST_UT_SRC ${TEST_INT8_UT_SRC})
 endif()
