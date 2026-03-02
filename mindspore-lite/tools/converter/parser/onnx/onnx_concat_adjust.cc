@@ -23,20 +23,28 @@
 namespace mindspore::lite {
 namespace {
 constexpr uint32_t kTwoNum = 2;
+constexpr uint32_t kMinNodeNum = 2;
 }  // namespace
 
 bool OnnxConcatAdjust::Adjust(const FuncGraphPtr &func_graph) {
   MS_CHECK_TRUE_RET(func_graph != nullptr, false);
   auto cnodes = func_graph->GetOrderedCnodes();
+  auto node_count = cnodes.size();
   for (auto &cnode : cnodes) {
+    if (node_count <= kMinNodeNum) {
+      return true;
+    }
     if (!opt::CheckPrimitiveType(cnode, prim::kPrimConcat) || cnode->size() != kTwoNum) {
       continue;
     }
+    MS_CHECK_TRUE_RET(cnode->cast<CNodePtr>() != nullptr, false);
     MS_LOG(INFO) << "Del Concat node, node name: " << cnode->cast<CNodePtr>()->fullname_with_scope()
                  << ", node size: " << cnode->size();
     auto manager = Manage(func_graph);
     MS_CHECK_TRUE_RET(manager != nullptr, false);
+    MS_CHECK_TRUE_RET(cnode->cast<CNodePtr>() != nullptr, false);
     (void)manager->Replace(cnode, cnode->cast<CNodePtr>()->input(1));
+    node_count -= 1;
   }
   return true;
 }

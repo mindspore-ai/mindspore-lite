@@ -19,6 +19,7 @@
 
 #include "tools/converter/parser/onnx/onnx_node_parser.h"
 #include "tools/converter/parser/onnx/onnx_node_parser_registry.h"
+#include "src/common/ops/primitive/max_pool_fusion.h"
 
 namespace mindspore {
 namespace lite {
@@ -36,6 +37,11 @@ class OnnxMaxPoolParser : public OnnxNodeParser {
   ~OnnxMaxPoolParser() override = default;
 
   PrimitiveCPtr Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) override;
+
+ private:
+  int GetKernelSize(const onnx::NodeProto &onnx_node) const;
+  PrimitiveCPtr ParseMaxPool1D(const onnx::NodeProto &onnx_node, std::unique_ptr<ops::MaxPoolFusion> &prim);
+  PrimitiveCPtr ParseMaxPool2D(const onnx::NodeProto &onnx_node, std::unique_ptr<ops::MaxPoolFusion> &prim);
 };
 }  // namespace lite
 }  // namespace mindspore
