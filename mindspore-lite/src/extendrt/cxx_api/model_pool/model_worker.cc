@@ -114,11 +114,12 @@ void ModelWorker::Run() {
 }
 
 Status ModelWorker::Init(const char *model_buf, size_t size, ModelType model_type) {
-  MS_CHECK_TRUE_MSG(model_buf != nullptr, kLiteError, "model_buf is nullptr in model worker.");
+  MS_CHECK_TRUE_MSG(model_buf != nullptr, Status(kLiteNullptr, "model_buf is nullptr."),
+                    "model_buf is nullptr in model worker.");
   model_ = new Model();
   if (model_ == nullptr) {
     MS_LOG(ERROR) << "model is nullptr.";
-    return kLiteNullptr;
+    return Status(kLiteNullptr, "model_ is nullptr, new model failed.");
   }
   if (!worker_config_->config_path.empty()) {
     auto status = model_->LoadConfig(worker_config_->config_path);
@@ -127,7 +128,7 @@ Status ModelWorker::Init(const char *model_buf, size_t size, ModelType model_typ
       delete model_;
       model_ = nullptr;
       model_is_nullptr_ = true;
-      return kLiteError;
+      return status;
     }
   }
   for (auto &section : worker_config_->config_info) {
@@ -159,7 +160,7 @@ Status ModelWorker::Init(const char *model_buf, size_t size, ModelType model_typ
     delete model_;
     model_ = nullptr;
     model_is_nullptr_ = true;
-    return kLiteError;
+    return Status(kLiteError, "model worker get empty input/output.");
   }
   return kSuccess;
 }
@@ -201,7 +202,7 @@ Status ModelWorker::CopyOutputTensor(std::vector<MSTensor> model_outputs, std::v
                                         user_output.MutableData(), user_output.DataSize());
     if (copy_tensor == nullptr) {
       MS_LOG(ERROR) << "model thread copy output tensor failed.";
-      return kLiteError;
+      return Status(kLiteNullptr, "copy_tensor is nullptr, create copy output tensor failed.");
     }
     auto device_data = user_output.GetDeviceData();
     if (device_data != nullptr) {
@@ -224,7 +225,7 @@ Status ModelWorker::Predict(const std::vector<MSTensor> &inputs, std::vector<MST
     PrintWorkerInfo();
     MS_LOG(ERROR) << "model input size is: " << model_input.size() << ", but get input size is: " << inputs.size();
     available_ = true;
-    return kLiteError;
+    return Status(kLiteInputParamInvalid, "Model inputs size != the given inputs size.");
   }
   auto resize_pair = GetModelResize(model_input, inputs);
   if (resize_pair.second) {
@@ -241,7 +242,7 @@ Status ModelWorker::Predict(const std::vector<MSTensor> &inputs, std::vector<MST
       (void)model_->Resize(model_->GetInputs(), old_dims);
       MS_LOG(INFO) << "Fallback wrong shape end.";
       available_ = true;
-      return kLiteError;
+      return status;
     }
   }
   auto model_outputs = model_->GetOutputs();
@@ -260,7 +261,7 @@ Status ModelWorker::Predict(const std::vector<MSTensor> &inputs, std::vector<MST
     status = CopyOutputTensor(model_outputs, outputs);
     if (status != kSuccess) {
       available_ = true;
-      return kLiteError;
+      return status;
     }
   } else {
     model_outputs = model_->GetOutputs();

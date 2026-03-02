@@ -183,9 +183,18 @@ set(TEST_SRC
         ${TEST_LITE_SRC}
         )
 
+if(MSLITE_ENABLE_SERVER_INFERENCE OR MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
+    list(APPEND TEST_SRC ${TEST_DIR}/ut/src/api/model_parallel_runner_test.cc)
+endif()
+
 add_executable(lite-test ${TEST_SRC})
 add_dependencies(lite-test fbs_src fbs_inner_src)
-target_link_libraries(lite-test mindspore-lite dl mindspore::gtest)
+
+if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
+    target_link_libraries(lite-test mindspore-extendrt dl mindspore::gtest)
+else()
+    target_link_libraries(lite-test mindspore-lite dl mindspore::gtest)
+endif()
 
 # test file using gmock
 target_link_libraries(lite-test mindspore::gmock)

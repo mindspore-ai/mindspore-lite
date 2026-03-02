@@ -32,14 +32,14 @@ Status ModelParallelRunnerImpl::Init(const std::string &model_path,
   model_pool_ = new (std::nothrow) ModelPool();
   if (model_pool_ == nullptr) {
     MS_LOG(ERROR) << "new model pool failed, model pool is nullptr.";
-    return kLiteNullptr;
+    return Status(kLiteNullptr, "model_pool_ is nullptr, new model pool failed.");
   }
   auto status = model_pool_->InitByPath(model_path, runner_config);
   if (status != kSuccess) {
     MS_LOG(ERROR) << "ModelParallelRunner init failed.";
     delete model_pool_;
     model_pool_ = nullptr;
-    return kLiteError;
+    return status;
   }
 #ifdef CAPTURE_SIGNALS
   CaptureSignal();
@@ -95,9 +95,13 @@ std::vector<MSTensor> ModelParallelRunnerImpl::GetOutputs() {
 Status ModelParallelRunnerImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
                                         const MSKernelCallBack &before, const MSKernelCallBack &after) {
   std::shared_lock<std::shared_mutex> l(model_parallel_runner_impl_mutex_);
-  if (MS_UNLIKELY((outputs == nullptr || model_pool_ == nullptr))) {
-    MS_LOG(ERROR) << "predict output is nullptr or ModelParallelRunner Not Initialize.";
-    return kLiteNullptr;
+  if (MS_UNLIKELY(outputs == nullptr)) {
+    MS_LOG(ERROR) << "predict output is nullptr.";
+    return Status(kLiteOutputParamInvalid, "Outputs is nullptr.");
+  }
+  if (MS_UNLIKELY(model_pool_ == nullptr)) {
+    MS_LOG(ERROR) << "ModelParallelRunner is not initialized.";
+    return Status(kLiteUninitializedObj, "model_pool_ is nullptr, ModelParallelRunner is not initialized.");
   }
   auto status = model_pool_->Predict(inputs, outputs, before, after);
   if (status != kSuccess) {

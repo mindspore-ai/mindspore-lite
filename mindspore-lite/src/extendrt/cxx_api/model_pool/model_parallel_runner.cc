@@ -146,7 +146,7 @@ Status ModelParallelRunner::Init(const std::vector<char> &model_path,
       model_parallel_runner_impl_ = std::make_shared<ModelParallelRunnerImpl>();
       if (model_parallel_runner_impl_ == nullptr) {
         MS_LOG(ERROR) << "new model pool failed, model pool is nullptr.";
-        return kLiteNullptr;
+        return Status(kLiteNullptr, "model_parallel_runner_impl_ is nullptr, new model pool failed.");
       }
     }
   }
@@ -193,7 +193,8 @@ Status ModelParallelRunner::Predict(const std::vector<MSTensor> &inputs, std::ve
                                     const MSKernelCallBack &before, const MSKernelCallBack &after) {
   if (model_parallel_runner_impl_ == nullptr) {
     MS_LOG(ERROR) << "ModelParallelRunner Not Initialize.";
-    return kLiteNullptr;
+    return Status(kLiteUninitializedObj,
+                  "model_parallel_runner_impl_ is nullptr, ModelParallelRunner is not initialized.");
   }
   return model_parallel_runner_impl_->Predict(inputs, outputs, before, after);
 }
