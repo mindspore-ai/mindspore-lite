@@ -271,4 +271,108 @@ TEST_F(TestTransposeFp32, TransposeFp32_test5) { /* 1x2x3x2x2 */
   delete kernel;
 }
 
+// ===================================================================
+// Test Group: Transpose Optimization (merge_back commit d7d3641a)
+// Kernel-level tests for memcpy optimization when last axis is contiguous
+// Note: TransposeDim4Fp32 is internal, so we test through the kernel API
+// ===================================================================
+
+TEST_F(TestTransposeFp32, TransposeOpt_ContiguousLastAxis) {
+  // Test kernel with contiguous last axis (perm[last] == last_index)
+  // This triggers the memcpy optimization path
+  lite::Tensor in_tensor(kNumberTypeFloat32, {2, 3, 4, 1});
+  float in[24] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
+  in_tensor.set_data(in);
+
+  lite::Tensor perm_tensor(kNumberTypeInt32, {4});
+  int perm[4] = {0, 1, 2, 3};  // Identity - last axis unchanged
+  perm_tensor.set_data(perm);
+
+  lite::Tensor out_tensor(kNumberTypeFloat32, {2, 3, 4, 1});
+  float out[24] = {0};
+  out_tensor.set_data(out);
+
+  auto param = new (std::nothrow) TransposeParameter();
+  if (param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  param->op_parameter_.type_ = schema::PrimitiveType_Transpose;
+  std::vector<lite::Tensor *> inputs = {&in_tensor, &perm_tensor};
+  std::vector<lite::Tensor *> outputs = {&out_tensor};
+  kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_Transpose};
+
+  auto ctx = std::make_shared<lite::InnerContext>();
+  ctx->thread_num_ = 2;
+  ASSERT_EQ(lite::RET_OK, ctx->Init());
+
+  param->op_parameter_.thread_num_ = ctx->thread_num_;
+  auto kernel = nnacl::NNACLKernelRegistry(&param->op_parameter_, inputs, outputs, ctx.get(), desc);
+  ASSERT_NE(kernel, nullptr);
+
+  auto ret = kernel->Prepare();
+  EXPECT_EQ(0, ret);
+  ret = kernel->Run();
+  EXPECT_EQ(0, ret);
+
+  // With identity permutation, output should match input
+  for (int i = 0; i < 24; ++i) {
+    ASSERT_NEAR(out[i], in[i], 0.001);
+  }
+
+  in_tensor.set_data(nullptr);
+  perm_tensor.set_data(nullptr);
+  out_tensor.set_data(nullptr);
+  delete kernel;
+}
+
+TEST_F(TestTransposeFp32, TransposeOpt_LastAxisTransposed) {
+  // Test kernel with transposed last axis (non-optimized path)
+  lite::Tensor in_tensor(kNumberTypeFloat32, {2, 3, 4, 1});
+  float in[24] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
+  in_tensor.set_data(in);
+
+  lite::Tensor perm_tensor(kNumberTypeInt32, {4});
+  int perm[4] = {3, 2, 1, 0};  // Reverse - last axis moved to front
+  perm_tensor.set_data(perm);
+
+  lite::Tensor out_tensor(kNumberTypeFloat32, {1, 4, 3, 2});
+  float out[24] = {0};
+  out_tensor.set_data(out);
+
+  auto param = new (std::nothrow) TransposeParameter();
+  if (param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  param->op_parameter_.type_ = schema::PrimitiveType_Transpose;
+  std::vector<lite::Tensor *> inputs = {&in_tensor, &perm_tensor};
+  std::vector<lite::Tensor *> outputs = {&out_tensor};
+  kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_Transpose};
+
+  auto ctx = std::make_shared<lite::InnerContext>();
+  ctx->thread_num_ = 2;
+  ASSERT_EQ(lite::RET_OK, ctx->Init());
+
+  param->op_parameter_.thread_num_ = ctx->thread_num_;
+  auto kernel = nnacl::NNACLKernelRegistry(&param->op_parameter_, inputs, outputs, ctx.get(), desc);
+  ASSERT_NE(kernel, nullptr);
+
+  auto ret = kernel->Prepare();
+  EXPECT_EQ(0, ret);
+  ret = kernel->Run();
+  EXPECT_EQ(0, ret);
+
+  // Verify correct transpose
+  float expect[24] = {1, 13, 5, 17, 9, 21, 2, 14, 6, 18, 10, 22, 3, 15, 7, 19, 11, 23, 4, 16, 8, 20, 12, 24};
+  for (int i = 0; i < 24; ++i) {
+    ASSERT_NEAR(out[i], expect[i], 0.001);
+  }
+
+  in_tensor.set_data(nullptr);
+  perm_tensor.set_data(nullptr);
+  out_tensor.set_data(nullptr);
+  delete kernel;
+}
+
 }  // namespace mindspore

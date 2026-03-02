@@ -124,6 +124,7 @@ TEST_F(TestConv1x1Int8, Conv1x1TestPerChannel) {
   auto ctx = new lite::InnerContext;
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  conv_param->op_parameter_.thread_num_ = ctx->thread_num_;
   int total_size = Conv1x1Int8TestInit1_perchannel(&inputs_, &outputs_, conv_param, &correct);
   kernel::Convolution1x1Int8CPUKernel *conv1x1 =
     new kernel::Convolution1x1Int8CPUKernel(reinterpret_cast<OpParameter *>(conv_param), inputs_, outputs_, ctx);
@@ -193,6 +194,7 @@ TEST_F(TestConv1x1Int8, Conv1x1Int8Test1) {
   auto ctx = new lite::InnerContext;
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  conv_param->op_parameter_.thread_num_ = ctx->thread_num_;
   int total_size = Conv1x1Int8TestInit1(&inputs_, &outputs_, conv_param, &correct);
   kernel::Convolution1x1Int8CPUKernel *conv1x1 =
     new kernel::Convolution1x1Int8CPUKernel(reinterpret_cast<OpParameter *>(conv_param), inputs_, outputs_, ctx);
@@ -270,6 +272,7 @@ TEST_F(TestConv1x1Int8, Conv1x1Int8Test2) {
   auto ctx = new lite::InnerContext;
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  conv_param->op_parameter_.thread_num_ = ctx->thread_num_;
   int total_size = Conv1x1Int8TestInit2(&inputs_, &outputs_, conv_param, &correct);
   auto *conv1x1 =
     new kernel::Convolution1x1Int8CPUKernel(reinterpret_cast<OpParameter *>(conv_param), inputs_, outputs_, ctx);
@@ -284,4 +287,298 @@ TEST_F(TestConv1x1Int8, Conv1x1Int8Test2) {
   for (auto t : outputs_) delete t;
   free(correct);
 }
+
+// ===================================================================
+// Test Group: Batch Dimension Fix (merge_back commit d7d3641a)
+// Tests for matmul_param_->row_ calculation fix:
+// row_ = output_h * output_w * input_batch
+// ===================================================================
+
+int Conv1x1Int8TestInitBatch(std::vector<lite::Tensor *> *inputs_, std::vector<lite::Tensor *> *outputs_,
+                             ConvParameter *conv_param, int8_t **correct, int batch) {
+  // Create input with specified batch size
+  Tensor *in_t = new Tensor(kNumberTypeInt8, {batch, 2, 3, 4}, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  auto in_quant_arg = new mindspore::lite::LiteQuantParam();
+  in_quant_arg->zeroPoint = -42;
+  in_quant_arg->scale = 0.117647;
+  in_t->AddQuantParam(*in_quant_arg);
+  in_t->MallocData();
+
+  // Generate test data for each batch
+  constexpr int kMaxBatchSize = 8;
+  float in[24 * kMaxBatchSize];
+  for (int b = 0; b < batch; ++b) {
+    for (int i = 0; i < 24; ++i) {
+      in[b * 24 + i] = static_cast<float>((b * 100 + i) % 128 - 64);
+    }
+  }
+  Quantize(in, in_t->ElementsNum(), in_quant_arg->scale, in_quant_arg->zeroPoint,
+           reinterpret_cast<int8_t *>(in_t->MutableData()));
+  inputs_->push_back(in_t);
+
+  // Create weight tensor
+  Tensor *weight_t = new Tensor(kNumberTypeInt8, {3, 1, 1, 4}, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  auto weight_quant_arg = new mindspore::lite::LiteQuantParam();
+  weight_quant_arg->zeroPoint = 66;
+  weight_quant_arg->scale = 0.036439215686275;
+  weight_t->AddQuantParam(*weight_quant_arg);
+  weight_t->MallocData();
+  float weight[] = {-0.7308652, 0.5257509,  -0.87825793, -1.123181,   -1.2206168, 0.562695,
+                    1.5382664,  -0.5020635, 0.8591602,   -0.26410004, 1.1262615,  0.073132955};
+  Quantize(weight, weight_t->ElementsNum(), weight_quant_arg->scale, weight_quant_arg->zeroPoint,
+           reinterpret_cast<int8_t *>(weight_t->MutableData()));
+  inputs_->push_back(weight_t);
+
+  // Create output tensor
+  Tensor *out_t = new Tensor(kNumberTypeInt8, {batch, 2, 3, 3}, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  out_t->MallocData();
+  auto output_quant_arg = new mindspore::lite::LiteQuantParam();
+  output_quant_arg->zeroPoint = 7;
+  output_quant_arg->scale = 0.234321233;
+  out_t->AddQuantParam(*output_quant_arg);
+  outputs_->push_back(out_t);
+
+  // Allocate correct output (we'll compute it dynamically in test)
+  *correct = reinterpret_cast<int8_t *>(malloc(out_t->ElementsNum() * sizeof(int8_t)));
+
+  conv_param->kernel_h_ = conv_param->kernel_w_ = 1;
+  conv_param->stride_h_ = conv_param->stride_w_ = 1;
+  conv_param->dilation_h_ = conv_param->dilation_w_ = 1;
+  conv_param->pad_u_ = conv_param->pad_l_ = 0;
+  conv_param->act_type_ = ActType_No;
+  conv_param->input_batch_ = batch;
+
+  return out_t->ElementsNum();
+}
+
+TEST_F(TestConv1x1Int8, BatchDimension_SingleBatch) {
+  // Test with input_batch = 1
+  // Verify matmul_param_->row_ = output_h * output_w * input_batch = 6 * 1 = 6
+  std::vector<lite::Tensor *> inputs_;
+  std::vector<lite::Tensor *> outputs_;
+  auto conv_param = new ConvParameter();
+  int8_t *correct;
+  auto ctx = new lite::InnerContext;
+  ctx->thread_num_ = 1;
+  ASSERT_EQ(lite::RET_OK, ctx->Init());
+  conv_param->op_parameter_.thread_num_ = ctx->thread_num_;
+
+  int batch = 1;
+  int total_size = Conv1x1Int8TestInitBatch(&inputs_, &outputs_, conv_param, &correct, batch);
+
+  kernel::Convolution1x1Int8CPUKernel *conv1x1 =
+    new kernel::Convolution1x1Int8CPUKernel(reinterpret_cast<OpParameter *>(conv_param), inputs_, outputs_, ctx);
+
+  conv1x1->Prepare();
+
+  // Verify matmul_param_->row_ calculation
+  // After fix: row_ = output_h * output_w * input_batch = 6 * 1 = 6
+  EXPECT_EQ(conv1x1->GetMatMulParam()->row_, 2 * 3 * 1);
+
+  conv1x1->Run();
+
+  // Store output for verification
+  memcpy(correct, outputs_[0]->MutableData(), total_size * sizeof(int8_t));
+
+  // Verify output is generated correctly (non-zero)
+  int8_t *out_data = reinterpret_cast<int8_t *>(outputs_[0]->MutableData());
+  bool has_non_zero = false;
+  for (int i = 0; i < total_size; ++i) {
+    if (out_data[i] != 0) {
+      has_non_zero = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(has_non_zero);
+
+  delete conv1x1;
+  delete ctx;
+  for (auto t : inputs_) delete t;
+  for (auto t : outputs_) delete t;
+  free(correct);
+}
+
+TEST_F(TestConv1x1Int8, BatchDimension_MultiBatch) {
+  // Test with input_batch > 1
+  // Verify matmul_param_->row_ = output_h * output_w * input_batch = 6 * 4 = 24
+  std::vector<lite::Tensor *> inputs_;
+  std::vector<lite::Tensor *> outputs_;
+  auto conv_param = new ConvParameter();
+  int8_t *correct;
+  auto ctx = new lite::InnerContext;
+  ctx->thread_num_ = 2;
+  ASSERT_EQ(lite::RET_OK, ctx->Init());
+  conv_param->op_parameter_.thread_num_ = ctx->thread_num_;
+
+  int batch = 4;
+  int total_size = Conv1x1Int8TestInitBatch(&inputs_, &outputs_, conv_param, &correct, batch);
+
+  kernel::Convolution1x1Int8CPUKernel *conv1x1 =
+    new kernel::Convolution1x1Int8CPUKernel(reinterpret_cast<OpParameter *>(conv_param), inputs_, outputs_, ctx);
+
+  conv1x1->Prepare();
+
+  // Verify matmul_param_->row_ calculation with batch
+  // After fix: row_ = output_h * output_w * input_batch = 6 * 4 = 24
+  EXPECT_EQ(conv1x1->GetMatMulParam()->row_, 2 * 3 * batch);
+
+  conv1x1->Run();
+
+  // Verify output is generated correctly for all batches
+  int8_t *out_data = reinterpret_cast<int8_t *>(outputs_[0]->MutableData());
+  bool has_non_zero = false;
+  for (int i = 0; i < total_size; ++i) {
+    if (out_data[i] != 0) {
+      has_non_zero = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(has_non_zero);
+
+  delete conv1x1;
+  delete ctx;
+  for (auto t : inputs_) delete t;
+  for (auto t : outputs_) delete t;
+  free(correct);
+}
+
+TEST_F(TestConv1x1Int8, BatchDimension_WithPadding) {
+  // Test batch calculation with padding
+  std::vector<lite::Tensor *> inputs_;
+  std::vector<lite::Tensor *> outputs_;
+  auto conv_param = new ConvParameter();
+  int8_t *correct;
+  auto ctx = new lite::InnerContext;
+  ctx->thread_num_ = 1;
+  ASSERT_EQ(lite::RET_OK, ctx->Init());
+  conv_param->op_parameter_.thread_num_ = ctx->thread_num_;
+
+  int batch = 2;
+  int total_size = Conv1x1Int8TestInitBatch(&inputs_, &outputs_, conv_param, &correct, batch);
+
+  // Add padding
+  conv_param->pad_u_ = 1;
+  conv_param->pad_l_ = 1;
+  conv_param->input_h_ = 2;
+  conv_param->input_w_ = 3;
+  conv_param->output_h_ = 2;  // Same with padding
+  conv_param->output_w_ = 3;
+
+  kernel::Convolution1x1Int8CPUKernel *conv1x1 =
+    new kernel::Convolution1x1Int8CPUKernel(reinterpret_cast<OpParameter *>(conv_param), inputs_, outputs_, ctx);
+
+  conv1x1->Prepare();
+
+  // Verify row_ calculation with padding
+  // row_ = output_h * output_w * input_batch = 6 * 2 = 12
+  EXPECT_EQ(conv1x1->GetMatMulParam()->row_, conv_param->output_h_ * conv_param->output_w_ * batch);
+
+  conv1x1->Run();
+
+  // Verify output
+  int8_t *out_data = reinterpret_cast<int8_t *>(outputs_[0]->MutableData());
+  bool has_non_zero = false;
+  for (int i = 0; i < total_size; ++i) {
+    if (out_data[i] != 0) {
+      has_non_zero = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(has_non_zero);
+
+  delete conv1x1;
+  delete ctx;
+  for (auto t : inputs_) delete t;
+  for (auto t : outputs_) delete t;
+  free(correct);
+}
+
+TEST_F(TestConv1x1Int8, BatchDimension_WithStride) {
+  // Test batch calculation with stride != 1
+  std::vector<lite::Tensor *> inputs_;
+  std::vector<lite::Tensor *> outputs_;
+  auto conv_param = new ConvParameter();
+  int8_t *correct;
+  auto ctx = new lite::InnerContext;
+  ctx->thread_num_ = 1;
+  ASSERT_EQ(lite::RET_OK, ctx->Init());
+  conv_param->op_parameter_.thread_num_ = ctx->thread_num_;
+
+  int batch = 3;
+  int total_size = Conv1x1Int8TestInitBatch(&inputs_, &outputs_, conv_param, &correct, batch);
+
+  // Set stride
+  conv_param->stride_h_ = 2;
+  conv_param->stride_w_ = 2;
+  conv_param->input_h_ = 4;
+  conv_param->input_w_ = 6;
+  conv_param->output_h_ = 2;  // ceil(4/2) = 2
+  conv_param->output_w_ = 3;  // ceil(6/2) = 3
+
+  kernel::Convolution1x1Int8CPUKernel *conv1x1 =
+    new kernel::Convolution1x1Int8CPUKernel(reinterpret_cast<OpParameter *>(conv_param), inputs_, outputs_, ctx);
+
+  conv1x1->Prepare();
+
+  // Verify row_ calculation with stride
+  // row_ = output_h * output_w * input_batch = 6 * 3 = 18
+  EXPECT_EQ(conv1x1->GetMatMulParam()->row_, conv_param->output_h_ * conv_param->output_w_ * batch);
+
+  conv1x1->Run();
+
+  // Verify output
+  int8_t *out_data = reinterpret_cast<int8_t *>(outputs_[0]->MutableData());
+  bool has_non_zero = false;
+  for (int i = 0; i < total_size; ++i) {
+    if (out_data[i] != 0) {
+      has_non_zero = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(has_non_zero);
+
+  delete conv1x1;
+  delete ctx;
+  for (auto t : inputs_) delete t;
+  for (auto t : outputs_) delete t;
+  free(correct);
+}
+
+TEST_F(TestConv1x1Int8, MatmulParam_Row_Calculation) {
+  // Test edge cases for matmul_param_->row_ calculation
+  std::vector<lite::Tensor *> inputs_;
+  std::vector<lite::Tensor *> outputs_;
+  auto conv_param = new ConvParameter();
+  int8_t *correct;
+  auto ctx = new lite::InnerContext;
+  ctx->thread_num_ = 1;
+  ASSERT_EQ(lite::RET_OK, ctx->Init());
+  conv_param->op_parameter_.thread_num_ = ctx->thread_num_;
+
+  // Test with larger batch size
+  int batch = 8;
+  int total_size = Conv1x1Int8TestInitBatch(&inputs_, &outputs_, conv_param, &correct, batch);
+  (void)total_size;  // Unused in this test, only verifying matmul parameters
+
+  kernel::Convolution1x1Int8CPUKernel *conv1x1 =
+    new kernel::Convolution1x1Int8CPUKernel(reinterpret_cast<OpParameter *>(conv_param), inputs_, outputs_, ctx);
+
+  conv1x1->Prepare();
+
+  // Verify row_ = output_h * output_w * input_batch
+  // row_ = 6 * 8 = 48
+  int expected_row = 2 * 3 * batch;
+  EXPECT_EQ(conv1x1->GetMatMulParam()->row_, expected_row);
+
+  // Also verify other parameters are set correctly
+  EXPECT_EQ(conv1x1->GetMatMulParam()->col_, conv_param->output_channel_);
+  EXPECT_EQ(conv1x1->GetMatMulParam()->deep_, conv_param->input_channel_);
+
+  delete conv1x1;
+  delete ctx;
+  for (auto t : inputs_) delete t;
+  for (auto t : outputs_) delete t;
+  free(correct);
+}
+
 }  // namespace mindspore

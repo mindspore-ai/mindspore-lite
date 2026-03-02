@@ -85,6 +85,15 @@ int StridedSliceFastRun(StridedSliceStruct *strided_slice) {
                                                    strided_slice, strided_slice->base_.thread_nr_);
 }
 
+bool HasSettedStrides(StridedSliceStruct *strided_slice) {
+  for (int i = 0; i < MAX_SHAPE_SIZE; ++i) {
+    if (strided_slice->strides_[i] != 1 && strided_slice->strides_[i] != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool StridedSliceMatchInOutShapeEqualPattern(StridedSliceStruct *strided_slice) {
   for (int i = 0; i < MAX_SHAPE_SIZE; i++) {
     if (strided_slice->strides_[i] < 0) {
@@ -234,6 +243,7 @@ int StridedSliceResize(KernelBase *self) {
 
   strided_slice->soft_copy_mode_ = StridedSliceMatchInOutShapeEqualPattern(strided_slice);
   strided_slice->fast_run_ = StridedSliceMatchFastPattern(strided_slice);
+  strided_slice->has_setted_strides = HasSettedStrides(strided_slice);
   if (strided_slice->fast_run_) {
     StridedSliceInitFastRunParam(strided_slice);
   }
@@ -254,6 +264,9 @@ int StridedSliceCompute(KernelBase *self) {
   }
   if (strided_slice->fast_run_) {
     return StridedSliceFastRun(strided_slice);
+  }
+  if (strided_slice->has_setted_strides) {
+    return DoStrideSliceCopyOpt(self->in_[FIRST_INPUT]->data_, self->out_[OUTPUT_INDEX]->data_, strided_slice);
   }
 
   return DoStridedSliceIn8D(self->in_[FIRST_INPUT]->data_, self->out_[OUTPUT_INDEX]->data_, strided_slice);

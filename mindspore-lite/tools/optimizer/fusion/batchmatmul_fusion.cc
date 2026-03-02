@@ -40,6 +40,24 @@ namespace mindspore::opt {
 namespace {
 constexpr int64_t kFcRightInputDims = 3;
 constexpr float kFpPrecision = 1e-6;
+
+CNodePtr GetLeftInputBaseCNode(const AnfNodePtr &node) {
+  if (node == nullptr) {
+    return nullptr;
+  }
+  auto cnode = node->cast<CNodePtr>();
+  if (cnode == nullptr) {
+    return nullptr;
+  }
+  if (CheckPrimitiveType(cnode, prim::kPrimReshape) || CheckPrimitiveType(cnode, prim::kPrimTupleGetItem)) {
+    if (cnode->size() <= kInputIndexOne) {
+      return nullptr;
+    }
+    return GetLeftInputBaseCNode(cnode->input(kInputIndexOne));
+  }
+  return cnode;
+}
+
 void *GetInputAddr(const AnfNodePtr &node, size_t input_index) {
   MS_ASSERT(node != nullptr);
   if (!node->isa<CNode>()) {
@@ -221,6 +239,52 @@ bool ConnectTransposeConcat(const AnfNodePtr &node) {
   return false;
 }
 
+/*
+*
+*                                                │
+                                          ┌──────┴─────┐
+                                          │   Split    │
+                                 ┌────────┴──────┬─────┴──────────┐            │                        │
+                             ┌───┴─────┐    ┌────┴─────┐     ┌────┴────┐       │                        │
+       │                     │ Reshape │    │  Reshape │     │ Reshape │       └─┬─────────────────────┬┘
+       │                     └────┬────┘    └─────┬────┘     └────┬────┘         │      BatchMatmul    │
+┌──────┴──────┐                   │               │               │    --------> │                     │
+│      Split  │              ┌────┴────┐    ┌─────┴─────┐    ┌────┴─────┐        └─────────────────────┘
+└┬────┬───┬───┘              │ Transpose    │ Transpose │    │ Transpose│
+ │    │   │                  └────┬────┘    └─────┬─────┘    └────┬─────┘
+ │    │   └──────────────────┬────┴────┬────┬─────┴──────┐   ┌────┴─────┐
+ │    └──────────────────────┤ FC      │    │    FC      │   │   FC     │
+ └───────────────────────────┴────┬────┴────┴────┬───────┴───┴────┬─────┘
+                                  └────────┬─────┴────────┬───────┘
+                                           │   Stack      │
+                                           └──────────────┘
+ */
+bool ConnectTransposeReshapeSplit(const AnfNodePtr &node) {
+  auto cnode = node->cast<CNodePtr>();
+  if (cnode == nullptr) {
+    MS_LOG(ERROR) << "cnode is null";
+    return false;
+  }
+  auto right_transpose_node = cnode->input(1);
+  MS_CHECK_TRUE_RET(right_transpose_node != nullptr, false);
+  auto right_transpose_cnode = right_transpose_node->cast<CNodePtr>();
+  MS_CHECK_TRUE_RET(right_transpose_cnode != nullptr, false);
+  auto front_node = right_transpose_cnode->input(1);
+  MS_CHECK_TRUE_RET(front_node != nullptr, false);
+  auto front_cnode = front_node->cast<CNodePtr>();
+  MS_CHECK_TRUE_RET(front_cnode != nullptr, false);
+  auto front_front_node = front_cnode->input(1);
+  MS_CHECK_TRUE_RET(front_front_node != nullptr, false);
+  auto front_front_cnode = front_front_node->cast<CNodePtr>();
+  MS_CHECK_TRUE_RET(front_front_cnode != nullptr, false);
+  if (CheckPrimitiveType(cnode, prim::kPrimTranspose) && CheckPrimitiveType(right_transpose_node, prim::kPrimReshape) &&
+      CheckPrimitiveType(front_cnode, prim::kPrimTupleGetItem) &&
+      CheckPrimitiveType(front_front_cnode, prim::kPrimSplit)) {
+    return true;
+  }
+  return false;
+}
+
 int ResetReshapeParameters(const AnfNodePtr &reshape_node) {
   auto reshape_cnode = reshape_node->cast<CNodePtr>();
   MS_ASSERT(reshape_cnode != nullptr);
@@ -275,6 +339,19 @@ const BaseRef BatchMatMulFusion::DefinePattern() const {
   return VectorRef({is_stack, is_fullconnect1, is_fullconnect2, is_seq_var});
 }
 
+/**
+ *
+            ┌──────────────────┐
+            │     Split        │
+     ┌──────┴─────────┬────────┴─────────┐
+     │                │                  │                          ┌─────────────────┐
+┌────┴─────┐    ┌─────┴─────┐     ┌──────┴─────┐      ------->      │    BatchMatmul  │
+│   FC     │    │    FC     │     │      FC    │                    └─────────────────┘
+└────┬─────┘    └─────┬─────┘     └──────┬─────┘
+     └───────────┬────┴────────┬─────────┘
+                 │     Stack   │
+                 └─────────────┘
+ */
 bool BatchMatMulFusion::CheckCnodeProper(const CNodePtr &stack_cnode, const CNodePtr &fullconnect_cnode,
                                          const CNodePtr &left_slice_cnode) const {
   if (IsMarkedTrainOp(stack_cnode)) {
@@ -300,17 +377,19 @@ bool BatchMatMulFusion::CheckCnodeProper(const CNodePtr &stack_cnode, const CNod
     return false;
   }
 
-  if (!CheckPrimitiveType(left_slice_cnode, prim::kPrimSliceFusion)) {
-    if (!CheckPrimitiveType(left_slice_cnode, prim::kPrimReshape)) {
-      return false;
-    }
-    auto up_slice_cnode = left_slice_cnode->input(1)->cast<CNodePtr>();
-    if (IsMarkedTrainOp(up_slice_cnode)) {
-      return false;
-    }
-    if (up_slice_cnode == nullptr || !CheckPrimitiveType(up_slice_cnode, prim::kPrimSliceFusion)) {
-      return false;
-    }
+  auto left_input_node = fullconnect_cnode->input(1);
+  auto left_input_cnode = left_input_node->cast<CNodePtr>();
+  if (left_input_cnode != nullptr && IsMarkedTrainOp(left_input_cnode)) {
+    return false;
+  }
+
+  auto left_base_cnode = GetLeftInputBaseCNode(left_input_node);
+  if (left_base_cnode == nullptr || left_base_cnode->size() <= 1) {
+    return false;
+  }
+  if (!CheckPrimitiveType(left_base_cnode, prim::kPrimSliceFusion) &&
+      !CheckPrimitiveType(left_base_cnode, prim::kPrimSplit)) {
+    return false;
   }
   return true;
 }
@@ -333,14 +412,10 @@ const AnfNodePtr BatchMatMulFusion::Process(const FuncGraphPtr &func_graph, cons
     MS_LOG(WARNING) << stack_cnode->fullname_with_scope() << " can't fusion into matmul. Fusion failed";
     return nullptr;
   }
-  if (CheckPrimitiveType(left_slice_cnode, prim::kPrimReshape)) {
-    auto &left_reshape_cnode = left_slice_cnode;
-    left_slice_cnode = left_reshape_cnode->input(1)->cast<CNodePtr>();
-  }
+  auto left_base_cnode = GetLeftInputBaseCNode(fullconnect_cnode->input(1));
+  MS_CHECK_TRUE_RET(left_base_cnode != nullptr && left_base_cnode->size() > 1, nullptr);
 
-  // slice +fullconnect ->batchmatmul
-  MS_CHECK_TRUE_RET(left_slice_cnode->size() > 1, nullptr);
-  auto left_matmul_input = left_slice_cnode->input(1);
+  auto left_matmul_input = left_base_cnode->input(1);
   MS_CHECK_TRUE_RET(left_matmul_input != nullptr, nullptr);
   auto right_reshape_node = fullconnect_cnode->input(kInputIndexTwo);
   MS_CHECK_TRUE_RET(right_reshape_node != nullptr, nullptr);
@@ -371,6 +446,14 @@ const AnfNodePtr BatchMatMulFusion::Process(const FuncGraphPtr &func_graph, cons
       return nullptr;
     }
     matmul_inputs.push_back(right_reshape_node);
+  } else if (ConnectTransposeReshapeSplit(right_reshape_node)) {
+    // If the right matrix is connected to transpose+reshape+split, directly use the split input as MatMul right input
+    MS_CHECK_TRUE_RET(right_reshape_node != nullptr, nullptr);
+    auto right_reshape_cnode = right_reshape_node->cast<CNodePtr>();
+    MS_CHECK_TRUE_RET(right_reshape_cnode != nullptr, nullptr);
+    auto right_base_node = GetLeftInputBaseCNode(right_reshape_cnode->input(kInputIndexOne));
+    auto right_matmul_input = right_base_node->input(kInputIndexOne);
+    matmul_inputs.push_back(right_matmul_input);
   } else {
     auto right_reshape_cnode = right_reshape_node->cast<CNodePtr>();
     MS_CHECK_TRUE_RET(right_reshape_cnode != nullptr, nullptr);

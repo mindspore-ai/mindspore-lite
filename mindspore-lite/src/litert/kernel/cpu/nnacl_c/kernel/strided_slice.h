@@ -40,7 +40,23 @@ typedef struct StridedSliceStruct {
   size_t outer_;
   size_t inner_size_;
   int cal_num_per_thread_;
+
+  size_t normalized_begins[MAX_SHAPE_SIZE];
+  size_t normalized_input_shape[MAX_SHAPE_SIZE];
+  size_t normalized_output_shape[MAX_SHAPE_SIZE];
+  size_t num_normalized_dims;
+  bool has_setted_strides;
 } StridedSliceStruct;
+
+typedef struct slice_context {
+  void *input;
+  size_t input_stride[DIMENSION_8D - 1];
+  void *output;
+  size_t output_stride[DIMENSION_8D - 1];
+  size_t offsets[DIMENSION_8D];
+  size_t contiguous_size;
+  size_t num_normalized_dims;
+} SliceContext;
 
 KernelBase *CreateStridedSlice(OpParameter *param, int data_type);
 

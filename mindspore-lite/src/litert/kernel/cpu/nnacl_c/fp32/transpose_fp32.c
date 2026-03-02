@@ -17,6 +17,10 @@
 #include "nnacl_c/fp32/transpose_fp32.h"
 #include "nnacl_c/op_base.h"
 
+// Constants for TransposeDim4Fp32 optimization
+#define LAST_AXIS_INDEX DIMENSION_3D  // Index of last axis in 4D transpose (0-based, value = 3)
+#define CONTIGUOUS_STRIDE 1           // Stride value indicating contiguous memory layout
+
 void TransposeDim2Fp32(const float *in_data, float *out_data, const int32_t *strides, int32_t *out_strides,
                        const int32_t *perm, const int32_t *output_shape) {
   const int stride0 = strides[perm[0]];
@@ -78,9 +82,15 @@ void TransposeDim4Fp32(const float *in_data, float *out_data, const int32_t *str
       for (int k = 0; k < output2; ++k) {
         int out_stride2_k = k * out_stride2;
         int stride2_k = k * stride2;
-        for (int m = 0; m < output3; ++m) {
-          out_data[out_stride0_i + out_stride1_j + out_stride2_k + m] =
-            in_data[stride0_i + stride1_j + stride2_k + m * stride3];
+        if (perm[LAST_AXIS_INDEX] == LAST_AXIS_INDEX && stride3 == CONTIGUOUS_STRIDE) {
+          float *out_ptr = out_data + out_stride0_i + out_stride1_j + out_stride2_k;
+          const float *in_ptr = in_data + stride0_i + stride1_j + stride2_k;
+          memcpy(out_ptr, in_ptr, output3 * sizeof(float));
+        } else {
+          for (int m = 0; m < output3; ++m) {
+            out_data[out_stride0_i + out_stride1_j + out_stride2_k + m] =
+              in_data[stride0_i + stride1_j + stride2_k + m * stride3];
+          }
         }
       }
     }
