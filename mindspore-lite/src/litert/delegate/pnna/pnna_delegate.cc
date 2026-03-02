@@ -87,6 +87,8 @@ Status PNNADelegate::Init() {
     {schema::PrimitiveType_Erf, GetPNNAOp<PNNAErf>},
     {schema::PrimitiveType_ExpFusion, GetPNNAOp<PNNAExp>},
     {schema::PrimitiveType_Dropout, GetPNNAOp<PNNADropout>},
+    {schema::PrimitiveType_Resize, GetPNNAOp<PNNAResize>},
+    {schema::PrimitiveType_Reshape, GetPNNAOp<PNNAReshape>},
   };
   return mindspore::kSuccess;
 }
