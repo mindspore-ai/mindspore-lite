@@ -1,0 +1,78 @@
+/**
+ * copy from https://gitcode.com/mindspore/mindspore/blob/master/mindspore/ccsrc/backend/ge_backend/graph_ir/aoe_util.h
+ *
+ * Copyright 2026 Huawei Technologies Co., Ltd
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#ifndef MINDSPORE_LITE_TOOLS_CONVERTER_ADAPTER_ACL_BACKEND_GE_BACKEND_GRAPH_IR_AOE_UTIL_H_
+#define MINDSPORE_LITE_TOOLS_CONVERTER_ADAPTER_ACL_BACKEND_GE_BACKEND_GRAPH_IR_AOE_UTIL_H_
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <vector>
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/types.h"
+#include "utils/dlopen_macro.h"
+
+namespace mindspore::backend::ge_backend {
+
+using AoeStatus = int32_t;
+constexpr AoeStatus AOE_SUCCESS = 0;
+constexpr AoeStatus AOE_ERROR_NON_OPTIMIZE_GRAPH = 8;
+
+ORIGIN_METHOD(AoeInitialize, AoeStatus, const std::map<::ge::AscendString, ::ge::AscendString> &);
+ORIGIN_METHOD(AoeFinalize, AoeStatus);
+ORIGIN_METHOD(AoeCreateSession, AoeStatus, uint64_t &);
+ORIGIN_METHOD(AoeSetGeSession, AoeStatus, uint64_t, ::ge::Session *);
+ORIGIN_METHOD(AoeSetTuningGraph, AoeStatus, uint64_t, const ::ge::Graph &);
+ORIGIN_METHOD(AoeTuningGraph, AoeStatus, uint64_t, const std::map<::ge::AscendString, ::ge::AscendString> &);
+ORIGIN_METHOD(AoeDestroySession, AoeStatus, uint64_t);
+
+class AoeUtil {
+ public:
+  Status AoeOnlineGeGraph(const std::shared_ptr<::ge::Session> &ge_session,
+                          const backend::ge_backend::DfGraphPtr &graph) const;
+  static AoeUtil &GetInstance();
+  ~AoeUtil();
+  void Initialize(const std::string &aoe_job_type);
+  void Destroy();
+  void SaveOptimizedGraph(const int32_t &graph_id);
+  bool IsSaveOptimizedGraph(const int32_t &graph_id) const;
+  void RemoveWaitOptimizedGraph(const std::set<std::string> &optimized_graph_names);
+  void AddOptimizeGraph(const std::string &graph_name);
+  std::set<std::string> GetWaitOptimizeGraph() const;
+  void SetOfflineEnvDumpGeGraph();
+
+ private:
+  std::set<std::string> wait_optimize_graphs_;
+  std::set<int32_t> optimized_graphs_id_;
+  AoeUtil();
+  bool initialize_;
+
+  Status AoeGeGraph(::ge::Session *ge_session, const backend::ge_backend::DfGraphPtr &graph,
+                    const std::map<::ge::AscendString, ::ge::AscendString> &tuningOptions) const;
+  void *plugin_handle_ = nullptr;
+  std::vector<void *> depend_handler_;
+  AoeInitializeFunObj aoe_initialize_ = nullptr;
+  AoeFinalizeFunObj aoe_finalize_ = nullptr;
+  AoeCreateSessionFunObj aoe_create_session_ = nullptr;
+  AoeSetGeSessionFunObj aoe_set_ge_gession_ = nullptr;
+  AoeSetTuningGraphFunObj aoe_set_tuning_graph_ = nullptr;
+  AoeTuningGraphFunObj aoe_tuning_graph_ = nullptr;
+  AoeDestroySessionFunObj aoe_destroy_session_ = nullptr;
+};
+}  // namespace mindspore::backend::ge_backend
+
+#endif  // MINDSPORE_LITE_TOOLS_CONVERTER_ADAPTER_ACL_BACKEND_GE_BACKEND_GRAPH_IR_AOE_UTIL_H_

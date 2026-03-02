@@ -1,5 +1,5 @@
 /**
- * Copyright 2022-2023 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,10 +25,10 @@
 
 #include "include/api/context.h"
 #include "include/model.h"
-#include "backend/ge_backend/graph_ir/types.h"
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/types.h"
 #include "extendrt/session/lite_graph_executor.h"
 #include "common/config_infos.h"
-#include "backend/ge_backend/graph_ir/utils.h"
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/utils.h"
 #include "extendrt/delegate/ascend_ge/ge_device_context.h"
 #include "extendrt/delegate/ascend_ge/ge_memory_manager.h"
 #include "extendrt/delegate/ascend_ge/ge_context_manager.h"
