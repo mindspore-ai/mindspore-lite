@@ -249,6 +249,7 @@ if(MSLITE_ENABLE_CONVERTER AND (NOT MSLITE_ENABLE_RUNTIME_CONVERT))
                 mindspore::json
                 -Wl,--whole-archive mindspore_core -Wl,--no-whole-archive
                 mindspore_ops
+                mslite_primitive_mid
                 mindspore::glog
                 mindspore::flatbuffers
                 preprocess_mid
