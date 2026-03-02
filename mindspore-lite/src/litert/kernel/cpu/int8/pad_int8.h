@@ -62,7 +62,7 @@ class PadInt8CPUKernel : public LiteKernel {
   int in_strides[DEFAULT_PAD_NDIMS] = {0};
   int out_strides[DEFAULT_PAD_NDIMS] = {0};
   int mirror_offset_ = 0;
-  PadQuantArg pad_quant_arg_;
+  PadQuantArg pad_quant_arg_ = {nullptr, nullptr, nullptr};
 };
 }  // namespace mindspore::kernel
 #endif  // MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CPU_INT8_PAD_INT8_H_
