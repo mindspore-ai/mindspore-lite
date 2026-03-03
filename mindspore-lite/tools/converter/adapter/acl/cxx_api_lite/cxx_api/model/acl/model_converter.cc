@@ -23,6 +23,7 @@
 #include <map>
 #include <string>
 #include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/utils.h"
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/df_graph_converter.h"
 #include "graph/graph_buffer.h"
 #include "graph/graph.h"
 #include "cxx_api/model/aoe/auto_tune_process.h"
@@ -32,6 +33,7 @@
 #include "src/common/file_utils.h"
 #include "cxx_api/graph/acl/acl_convert_init_adapter.h"
 #include "mindspore/core/include/ir/func_graph.h"
+#include "ir/graph_utils.h"
 
 namespace mindspore {
 namespace {
@@ -101,6 +103,22 @@ backend::ge_backend::TensorOrderMap GetParams(const FuncGraphPtr &anf_graph) {
   }
   return res;
 }
+
+bool HasSubgraph(const FuncGraphPtr &func_graph) {
+  auto node_list = TopoSort(func_graph->get_return());
+  for (auto &node : node_list) {
+    if (!utils::isa<CNodePtr>(node)) {
+      continue;
+    }
+    auto cnode = node->cast<CNodePtr>();
+    for (auto &input : cnode->inputs()) {
+      if (GetValueNode<FuncGraphPtr>(input) != nullptr) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 }  // namespace
 
 backend::ge_backend::DfGraphPtr ModelConverter::ConvertFuncGraphToAIR(const FuncGraphPtr &anf_graph) const {
@@ -108,15 +126,22 @@ backend::ge_backend::DfGraphPtr ModelConverter::ConvertFuncGraphToAIR(const Func
 #ifndef BUILD_LITE
   opt::ReduceOptimization(anf_graph);
 #endif
-  auto converter =
-    backend::ge_backend::NewConverter(anf_graph, "", backend::ge_backend::RefModeFlag::kRefModeNone, true);
   std::string compute_graph_name = anf_graph->ToString();
   auto option = options_.lock();
   if (option != nullptr && !option->GetDumpModelName().empty()) {
     compute_graph_name = option->GetDumpModelName();
   }
+  bool is_control_model = HasSubgraph(anf_graph);
+  if (!is_control_model) {
+    auto converter = std::make_shared<lite::backend::ge_backend::DfGraphConvertor>(
+      anf_graph, "", lite::backend::ge_backend::RefModeFlag::kRefModeNone, std::vector<std::string>{}, nullptr, true);
+    MS_CHECK_TRUE_MSG(converter != nullptr, nullptr, "Create converter failed.");
+    converter->ConvertAllNode().InitParam(GetParams(anf_graph)).BuildGraph(compute_graph_name);
+    return converter->GetComputeGraph();
+  }
+  auto converter =
+    backend::ge_backend::NewConverter(anf_graph, "", backend::ge_backend::RefModeFlag::kRefModeNone, true);
   backend::ge_backend::SetTraining(converter, false);
-
   backend::ge_backend::BuildGraph(compute_graph_name, converter, GetParams(anf_graph));
   return backend::ge_backend::GetComputeGraph(converter);
 }
