@@ -69,6 +69,70 @@ uint16_t Float32ToFloat16_(float input) {
   return output;
 }
 
+uint16_t Float32ToBFloat16_(float input) {
+  float32_bits hbit;
+  hbit.f = input;
+  uint16_t output = 0;
+
+  // 1. Extract the sign bit, exponent bits, and mantissa bits of float32.
+  uint32_t sign = (hbit.u >> BITS_SHIFT_SIZE_31) & 0x1;        // Sign bit (1 bit)
+  int32_t exponent = ((hbit.u >> BITS_SHIFT_SIZE_23) & 0xFF);  // Original Index (8-bit, unshifted)
+  uint32_t mantissa = hbit.u & 0x007FFFFF;                     // 23-digit tail number
+
+  // 2. Handling special values: Inf/Nan/0
+  if (exponent == 0xFF) {
+    output = (sign << BITS_SHIFT_SIZE_15) | 0x7F80;
+    if (mantissa != 0) {
+      output |= (mantissa >> (BITS_SHIFT_SIZE_23 - BITS_SHIFT_SIZE_7)) & 0x7F;
+    }
+    return output;
+  } else if (exponent == 0) {
+    output = (sign << BITS_SHIFT_SIZE_15) | 0x0000;
+    return output;
+  }
+
+  // 3. Handling normalized numbers : exponent range check
+  int32_t exp_unbiased = exponent - FP32_EXPONENT_BIAS;  // Non-Shift Index
+  // Exponent too small : underflow, return 0
+  if (exp_unbiased < (1 - FP32_EXPONENT_BIAS)) {
+    output = (sign << BITS_SHIFT_SIZE_15) | 0x0000;
+    return output;
+  }
+  // Exponent too large : overflow, return Inf
+  if (exp_unbiased > (254 - FP32_EXPONENT_BIAS)) {
+    output = (sign << BITS_SHIFT_SIZE_15) | 0x7F80;
+    return output;
+  }
+
+  // 4. Trailing bits processing: 23 bits -> 7bits
+  uint32_t mantissa_high7 =
+    mantissa >> (BITS_SHIFT_SIZE_23 - BITS_SHIFT_SIZE_7);  // Take the highest 7 digits of the mantissa
+  uint32_t rounding_bit =
+    (mantissa >> (BITS_SHIFT_SIZE_23 - BITS_SHIFT_SIZE_7 - 1)) & 0x1;  // Rounding position (the 8th digit)
+  uint32_t sticky_bits =
+    mantissa & ((1 << (BITS_SHIFT_SIZE_23 - BITS_SHIFT_SIZE_7 - 1)) - 1);  // Sticky bit (low-order bits)
+
+  // Rounding up
+  if (rounding_bit && ((mantissa_high7 & 0x1) || sticky_bits)) {
+    mantissa_high7++;
+    // Carry overflow (all 1 in the last dight -> carry 1)
+    if (mantissa_high7 == (1 << BITS_SHIFT_SIZE_7)) {
+      mantissa_high7 = 0;
+      exponent++;
+      // Overflow after exponent carry -> converted to Inf
+      if (exponent > 254) {
+        output = (sign << BITS_SHIFT_SIZE_15) | 0x7F80;
+        return output;
+      }
+    }
+  }
+
+  // 5. Concatenating bfloat16: sign bit (1) + exponent bits (8) + mantissa bits (7)
+  output = (sign << BITS_SHIFT_SIZE_15) | (exponent << BITS_SHIFT_SIZE_7) | mantissa_high7;
+
+  return output;
+}
+
 void Int32ToFloat32(const int32_t *input, float *output, int number) {
   int index = 0;
 
