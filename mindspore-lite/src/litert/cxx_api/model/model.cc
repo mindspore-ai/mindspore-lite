@@ -60,9 +60,37 @@ Status DecryptModel(const std::string &cropto_lib_path, const void *model_buf, s
 }
 #endif
 
+bool VerifyDeviceInfo(const std::shared_ptr<Context> &model_context) {
+  if (model_context == nullptr) {
+    MS_LOG(ERROR) << "model_context is nullptr!";
+    return false;
+  }
+  const auto &device_infos = model_context->MutableDeviceInfo();
+  if (device_infos.empty()) {
+    MS_LOG(ERROR) << "Device info list is empty!";
+    return false;
+  }
+  const std::vector<DeviceType> white_list = {kCPU, kGPU, kDSP, kKirinNPU};
+  for (const auto &device_info : device_infos) {
+    if (device_info == nullptr) {
+      continue;
+    }
+    auto type = device_info->GetDeviceType();
+    if (std::find(white_list.begin(), white_list.end(), type) == white_list.end()) {
+      MS_LOG(ERROR) << "Edge inference only supports CPU, GPU, DSP, or KirinNPU backends. Current type: " << type;
+      return false;
+    }
+  }
+  return true;
+}
+
 Status Model::Build(const void *model_data, size_t data_size, ModelType model_type,
                     const std::shared_ptr<Context> &model_context, const Key &dec_key,
                     const std::vector<char> &dec_mode, const std::vector<char> &cropto_lib_path) {
+  bool valid = VerifyDeviceInfo(model_context);
+  if (!valid) {
+    return Status(kLiteParamInvalid, "Device info is invalid");
+  }
 #ifdef ENABLE_OPENSSL
   if (impl_ == nullptr) {
     MS_LOG(ERROR) << "Model implement is null.";
@@ -125,6 +153,10 @@ Status Model::Build(const void *model_data, size_t data_size, ModelType model_ty
     MS_LOG(ERROR) << "Model implement is null.";
     return kLiteNullptr;
   }
+  bool valid = VerifyDeviceInfo(model_context);
+  if (!valid) {
+    return Status(kLiteParamInvalid, "Device info is invalid");
+  }
   Status ret;
 #if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
   if (lite::GetNumThreads() == lite::kSingleThread && impl_->IsEnablePreInference()) {
@@ -170,6 +202,10 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
     err_msg << "Invalid null context.";
     MS_LOG(ERROR) << err_msg.str();
     return Status(kLiteNullptr, err_msg.str());
+  }
+  bool valid = VerifyDeviceInfo(model_context);
+  if (!valid) {
+    return Status(kLiteParamInvalid, "Device info is invalid");
   }
 #ifdef ENABLE_OPENSSL
   if (impl_ == nullptr) {
@@ -249,6 +285,10 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
     MS_LOG(ERROR) << "Model implement is null.";
     return kLiteNullptr;
   }
+  bool valid = VerifyDeviceInfo(model_context);
+  if (!valid) {
+    return Status(kLiteParamInvalid, "Device info is invalid");
+  }
   Status ret;
 #if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
   if (lite::GetNumThreads() == lite::kSingleThread && impl_->IsEnablePreInference()) {
@@ -297,6 +337,10 @@ Status Model::Build(GraphCell graph, const std::shared_ptr<Context> &model_conte
     err_msg << "Invalid null context.";
     MS_LOG(ERROR) << err_msg.str();
     return Status(kLiteNullptr, err_msg.str());
+  }
+  bool valid = VerifyDeviceInfo(model_context);
+  if (!valid) {
+    return Status(kLiteParamInvalid, "Device info is invalid");
   }
 #if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
   if (lite::GetNumThreads() == lite::kSingleThread && impl_->IsEnablePreInference()) {

@@ -403,14 +403,25 @@ int BenchmarkBase::CheckThreadNumValid() {
   return RET_OK;
 }
 
-int BenchmarkBase::CheckDeviceTypeValid() {
-  if (flags_->device_ != "CPU" && flags_->device_ != "GPU" && flags_->device_ != "NPU" && flags_->device_ != "Ascend" &&
-      flags_->device_ != "DSP") {
-    MS_LOG(ERROR) << "Device type:" << flags_->device_ << " is not supported.";
-    std::cerr << "Device type:" << flags_->device_ << " is not supported." << std::endl;
-    return RET_ERROR;
+int BenchmarkBase::VerifyDeviceType() {
+  if (flags_->model_type_ == "MindIR") {
+    if (flags_->device_ != "CPU" && flags_->device_ != "Ascend") {
+      MS_LOG(ERROR) << "Device type:" << flags_->device_ << " is not supported.";
+      std::cerr << "Device type:" << flags_->device_ << " is not supported." << std::endl;
+      return RET_ERROR;
+    }
+    return RET_OK;
+  } else if (flags_->model_type_ == "MindIR_Lite") {
+    if (flags_->device_ != "CPU" && flags_->device_ != "GPU" && flags_->device_ != "NPU" && flags_->device_ != "DSP") {
+      MS_LOG(ERROR) << "Device type:" << flags_->device_ << " is not supported.";
+      std::cerr << "Device type:" << flags_->device_ << " is not supported." << std::endl;
+      return RET_ERROR;
+    }
+    return RET_OK;
   }
-  return RET_OK;
+  MS_LOG(ERROR) << "Model type " << flags_->model_type_ << " is not valid.";
+  std::cerr << "Model type " << flags_->model_type_ << " is not valid." << std::endl;
+  return RET_ERROR;
 }
 
 int BenchmarkBase::InitDumpConfigFromJson(const char *path) {
@@ -575,7 +586,7 @@ int BenchmarkBase::Init() {
     return RET_ERROR;
   }
 
-  if (CheckDeviceTypeValid() != RET_OK) {
+  if (VerifyDeviceType() != RET_OK) {
     MS_LOG(ERROR) << "Device type is invalid.";
     return RET_ERROR;
   }
