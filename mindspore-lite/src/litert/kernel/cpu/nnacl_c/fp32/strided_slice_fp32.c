@@ -217,10 +217,7 @@ static int CopySlice2D(const SliceContext *ctx, const StridedSliceStruct *s) {
     SAFE_MUL(&output_offset, i, ctx->output_stride[0]);
     const uint8_t *src = ctx->input + input_offset;
     uint8_t *dst = ctx->output + output_offset;
-    errno_t memcpy_ret = memcpy_s(dst, ctx->contiguous_size, src, ctx->contiguous_size);
-    if (memcpy_ret != 0) {
-      return NNACL_ERR;
-    }
+    memcpy(dst, src, ctx->contiguous_size);
   }
   return NNACL_OK;
 }
@@ -240,10 +237,7 @@ static int CopySlice3D(const SliceContext *ctx, const StridedSliceStruct *s) {
       SAFE_ADD(&output_offset_total, output_offset_i, output_offset_j);
       const void *src = ctx->input + input_offset_total;
       void *dst = ctx->output + output_offset_total;
-      errno_t memcpy_ret = memcpy_s(dst, ctx->contiguous_size, src, ctx->contiguous_size);
-      if (memcpy_ret != 0) {
-        return NNACL_ERR;
-      }
+      memcpy(dst, src, ctx->contiguous_size);
     }
   }
   return NNACL_OK;
@@ -269,10 +263,7 @@ static int CopySlice4D(const SliceContext *ctx, const StridedSliceStruct *s) {
         SAFE_ADD(&output_offset_total, output_offset_total, output_offset_l);
         const void *src = ctx->input + input_offset_total;
         void *dst = ctx->output + output_offset_total;
-        errno_t memcpy_ret = memcpy_s(dst, ctx->contiguous_size, src, ctx->contiguous_size);
-        if (memcpy_ret != 0) {
-          return NNACL_ERR;
-        }
+        memcpy(dst, src, ctx->contiguous_size);
       }
     }
   }

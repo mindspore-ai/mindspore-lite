@@ -307,19 +307,17 @@ if(MSLITE_ENABLE_MINDRT)
         set(LITE_SRC ${LITE_SRC} ${CONTROL_FLOW_ACTOR_SRC})
     endif()
 elseif(TARGET_AOS_ARM)
-#    TODO(jjfeing)
-#    set(LITE_SRC ${LITE_SRC}
-#            ${CORE_DIR}/mindrt/src/thread/aos_worker.cc
-#            ${CORE_DIR}/mindrt/src/thread/hal_adapter.cc
-#            ${CORE_DIR}/mindrt/src/thread/core_affinity.cc
-#            ${CORE_DIR}/mindrt/src/thread/threadpool.cc
-#            )
+    set(LITE_SRC ${LITE_SRC}
+            ${CORE_DIR}/mindrt/src/thread/aos_worker.cc
+            ${CORE_DIR}/mindrt/src/thread/hal_adapter.cc
+            ${CORE_DIR}/mindrt/src/thread/core_affinity.cc
+            ${CORE_DIR}/mindrt/src/thread/threadpool.cc
+    )
 else()
-#    TODO(jjfeing)
-#    set(LITE_SRC ${LITE_SRC}
-#            ${CORE_DIR}/mindrt/src/thread/core_affinity.cc
-#            ${CORE_DIR}/mindrt/src/thread/threadpool.cc
-#            )
+    set(LITE_SRC ${LITE_SRC}
+            ${CORE_DIR}/mindrt/src/thread/core_affinity.cc
+            ${CORE_DIR}/mindrt/src/thread/threadpool.cc
+    )
 endif()
 
 if(NOT MSLITE_ENABLE_COREML)
