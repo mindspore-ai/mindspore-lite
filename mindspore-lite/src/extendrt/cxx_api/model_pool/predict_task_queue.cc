@@ -45,32 +45,32 @@ void PredictTaskQueue::SetPredictTaskDone() {
 Status PredictTaskQueue::InitTaskQueue(size_t num, size_t max_queue_size) {
   if (num == 0) {
     MS_LOG(ERROR) << "task queue size should greater than 0";
-    return kLiteError;
+    return Status(kLiteParamInvalid, "task queue size should greater than 0");
   }
 #ifdef USE_HQUEUE
   task_queue_num_ = num;
   predict_task_ = new (std::nothrow) HQueue<PredictTask>[num]();
   if (predict_task_ == nullptr) {
     MS_LOG(ERROR) << "new predict task failed.";
-    return kLiteNullptr;
+    return Status(kLiteNullptr, "predict_task_ is nullptr, new predict task failed.");
   }
   for (size_t i = 0; i < num; i++) {
     if (!predict_task_[i].Init(max_queue_size + 1)) {
       MS_LOG(ERROR) << "HQueue init failed.";
-      return kLiteError;
+      return Status(kLiteError, "HQueue init failed.");
     }
   }
 #else
   predict_task_ = new (std::nothrow) std::queue<PredictTask *>[num]();
   if (predict_task_ == nullptr) {
     MS_LOG(ERROR) << "new predict task failed.";
-    return kLiteNullptr;
+    return Status(kLiteNullptr, "predict_task_ is nullptr, new predict task failed.");
   }
 #endif
   idle_worker_num_ = new (std::nothrow) std::atomic_int[num]();
   if (idle_worker_num_ == nullptr) {
     MS_LOG(ERROR) << "new wait worker num list failed.";
-    return kLiteError;
+    return Status(kLiteNullptr, "idle_worker_num_ is nullptr, new wait worker num list failed.");
   }
   return kSuccess;
 }

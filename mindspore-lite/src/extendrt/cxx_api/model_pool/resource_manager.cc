@@ -165,7 +165,7 @@ Status ResourceManager::DistinguishPhysicalAndLogicalByNuma(std::vector<std::vec
                                                             std::vector<std::vector<int>> *numa_logical_cores) {
   if (numa_logical_cores == nullptr || numa_physical_cores == nullptr) {
     MS_LOG(ERROR) << "numa_logical_cores/numa_logical_cores is nullptr";
-    return kLiteError;
+    return Status(kLiteNullptr, "numa_logical_cores or numa_logical_cores is nullptr.");
   }
   (void)DistinguishPhysicalAndLogical(nullptr, nullptr);
   std::unique_lock<std::mutex> l(manager_mutex_);
@@ -180,13 +180,15 @@ Status ResourceManager::DistinguishPhysicalAndLogicalByNuma(std::vector<std::vec
     std::vector<int> numa_cpu_list = numa::NUMAAdapter::GetInstance()->GetCPUList(i);
     if (numa_cpu_list.empty()) {
       MS_LOG(ERROR) << i << "-th numa node does not exist";
-      return kLiteError;
+      return Status(kLiteParamInvalid, "numa_cpu_list is empty.");
     }
     all_numa_core_list.push_back(numa_cpu_list);
   }
-  MS_CHECK_TRUE_MSG(!all_numa_core_list.empty(), kLiteError, "numa core list is empty.");
+  MS_CHECK_TRUE_MSG(!all_numa_core_list.empty(), Status(kLiteParamInvalid, "numa core list is empty."),
+                    "numa core list is empty.");
   for (auto one_numa_list : all_numa_core_list) {
-    MS_CHECK_TRUE_MSG(!one_numa_list.empty(), kLiteError, "one numa core list is empty.");
+    MS_CHECK_TRUE_MSG(!one_numa_list.empty(), Status(kLiteParamInvalid, "one numa core list is empty."),
+                      "one numa core list is empty.");
     std::vector<int> physical_cores;
     std::vector<int> logical_cores;
     for (auto core_id : one_numa_list) {
@@ -198,7 +200,7 @@ Status ResourceManager::DistinguishPhysicalAndLogicalByNuma(std::vector<std::vec
         MS_LOG(ERROR) << "core id not belong physical/logical core id.";
         numa_physical_core_ids_.clear();
         numa_logical_core_ids_.clear();
-        return kLiteError;
+        return Status(kLiteParamInvalid, "core id not belong physical/logical core id.");
       }
     }
     numa_physical_core_ids_.push_back(physical_cores);

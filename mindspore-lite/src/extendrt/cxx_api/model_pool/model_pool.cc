@@ -84,20 +84,20 @@ Status ModelPool::SetNumaBindStrategy(std::vector<std::vector<int>> *all_worker_
                                       std::vector<int> *numa_node_id, int thread_num) {
   if (all_worker_bind_list == nullptr || numa_node_id == nullptr) {
     MS_LOG(ERROR) << "has nullptr.";
-    return kLiteError;
+    return Status(kLiteNullptr, "all_worker_bind_list or numa_node_id is nullptr.");
   }
   if (MS_UNLIKELY(thread_num == 0)) {
     MS_LOG(ERROR) << "thread num is zero.";
-    return kLiteError;
+    return Status(kLiteParamInvalid, "Invalid thread num.");
   }
   if (numa_physical_cores_.empty()) {
     MS_LOG(ERROR) << "numa physical cores is empty.";
-    return kLiteError;
+    return Status(kLiteParamInvalid, "numa physical cores is empty.");
   }
   if (numa_physical_cores_.front().size() < static_cast<size_t>(thread_num)) {
     MS_LOG(ERROR) << "thread num more than physical core num. one numa physical core size: "
                   << numa_physical_cores_.front().size();
-    return kLiteError;
+    return Status(kLiteParamInvalid, "thread num more than physical core num.");
   }
   std::vector<int> physical_index(numa_physical_cores_.size(), 0);  // numa node size
   std::vector<int> logical_index(numa_logical_cores_.size(), 0);
@@ -125,7 +125,9 @@ Status ModelPool::SetNumaBindStrategy(std::vector<std::vector<int>> *all_worker_
                     << "workers num: " << workers_num_ << " | thread num: " << thread_num
                     << " | numa physical cores: " << numa_physical_cores_
                     << " | numa logical cores: " << numa_logical_cores_;
-      return kLiteError;
+      return Status(kLiteParamInvalid,
+                    "The product of the number of threads and the number of workers should not exceed the number of "
+                    "cores in machine.");
     }
     all_worker_bind_list->push_back(worker_bind_list);
     numa_node_id->push_back(bind_numa_id);
@@ -139,18 +141,18 @@ Status ModelPool::SetBindStrategy(std::vector<std::vector<int>> *all_model_bind_
                                   int thread_num) {
   if (all_model_bind_list == nullptr || numa_node_id == nullptr) {
     MS_LOG(ERROR) << "param is nullptr.";
-    return kLiteError;
+    return Status(kLiteNullptr, "all_model_bind_list or numa_node_id is nullptr.");
   }
   if (thread_num == 0) {
     MS_LOG(ERROR) << "thread num is zero.";
-    return kLiteError;
+    return Status(kLiteParamInvalid, "Invalid thread num.");
   }
   std::vector<int> physical_core_list;
   std::vector<int> logical_core_list;
   auto status = ResourceManager::GetInstance()->DistinguishPhysicalAndLogical(&physical_core_list, &logical_core_list);
   if (status != kSuccess) {
     MS_LOG(ERROR) << "distinguish physical and logical failed.";
-    return kLiteError;
+    return status;
   }
   std::vector<int> all_core_list = {};
   if (!can_use_all_physical_core_) {
@@ -194,7 +196,7 @@ Status ModelPool::SetBindStrategy(std::vector<std::vector<int>> *all_model_bind_
 Status ModelPool::SetDefaultOptimalModelNum(int thread_num) {
   if (thread_num <= 0) {
     MS_LOG(ERROR) << "the number of threads set in the context is less than 1.";
-    return kLiteError;
+    return Status(kLiteParamInvalid, "the number of threads set in the context is less than 1.");
   }
   if (!can_use_all_physical_core_) {
     workers_num_ = can_use_core_num_ > thread_num ? can_use_core_num_ / thread_num : 1;
@@ -254,7 +256,7 @@ Status ModelPool::CheckAffinityCoreList(const std::shared_ptr<RunnerConfig> &run
     MS_LOG(ERROR) << "user set core list size != " << context->GetThreadNum() * worker_num
                   << " If the user sets the Bind core list, the size must be equal to the number of threads "
                      "multiplied by the number of workers";
-    return kLiteError;
+    return Status(kLiteParamInvalid, "The given core list size != (the number of threads * the number of workers).");
   }
   if (worker_num != 0 && !all_bind_core_list.empty() &&
       static_cast<int>(all_bind_core_list.size()) == context->GetThreadNum() * worker_num) {
@@ -264,7 +266,7 @@ Status ModelPool::CheckAffinityCoreList(const std::shared_ptr<RunnerConfig> &run
       if (all_bind_core_list[i] < 0 || all_bind_core_list[i] >= max_core_id) {
         MS_LOG(ERROR) << "Please set correct core id, core id should be less than " << max_core_id
                       << "and greater than 0";
-        return kLiteError;
+        return Status(kLiteParamInvalid, "Invalid core id.");
       }
     }
     is_user_core_list_ = true;
@@ -277,7 +279,7 @@ Status ModelPool::CheckThreadNum(const std::shared_ptr<RunnerConfig> &runner_con
   auto thread_num = context->GetThreadNum();
   if (thread_num < 0) {
     MS_LOG(ERROR) << "Invalid thread num " << thread_num;
-    return kLiteError;
+    return Status(kLiteParamInvalid, "Invalid thread num.");
   }
 
   int core_num = static_cast<int>(std::max<size_t>(1, std::thread::hardware_concurrency()));
@@ -294,7 +296,7 @@ Status ModelPool::CheckThreadNum(const std::shared_ptr<RunnerConfig> &runner_con
     if (default_thread_num == 0) {
       MS_LOG(ERROR) << "computer thread num failed, worker num: " << runner_config->GetWorkersNum()
                     << " | can use core num: " << can_use_core_num_;
-      return kLiteError;
+      return Status(kLiteParamInvalid, "Failed to calculate the number of physical core.");
     }
     context->SetThreadNum(default_thread_num);
   }
@@ -302,7 +304,7 @@ Status ModelPool::CheckThreadNum(const std::shared_ptr<RunnerConfig> &runner_con
     MS_LOG(WARNING) << "thread num[" << context->GetThreadNum() << "] more than core num[" << can_use_core_num_ << "]";
     if (context->GetThreadAffinityMode() != lite::NO_BIND || !context->GetThreadAffinityCoreList().empty()) {
       MS_LOG(ERROR) << "thread num more than core num, can not bind cpu core.";
-      return kLiteError;
+      return Status(kLiteParamInvalid, "thread num more than core num, can not bind cpu core.");
     }
   }
   return kSuccess;
@@ -391,7 +393,7 @@ Status ModelPool::SetModelBindMode(std::vector<std::vector<int>> *all_worker_bin
   }
   if (status != kSuccess) {
     MS_LOG(ERROR) << "Set  bind strategy failed.";
-    return kLiteError;
+    return status;
   }
   return kSuccess;
 }
@@ -403,7 +405,7 @@ Status ModelPool::SetWorkersNum(const std::shared_ptr<RunnerConfig> &runner_conf
     auto status = SetDefaultOptimalModelNum(context->GetThreadNum());
     if (status != kSuccess) {
       MS_LOG(ERROR) << "SetDefaultOptimalModelNum failed.";
-      return kLiteError;
+      return status;
     }
   } else if (runner_config != nullptr && runner_config->GetWorkersNum() > 0 &&
              runner_config->GetWorkersNum() <= can_use_core_num_ * kNumCoreNumTimes) {
@@ -411,17 +413,17 @@ Status ModelPool::SetWorkersNum(const std::shared_ptr<RunnerConfig> &runner_conf
     workers_num_ = runner_config->GetWorkersNum();
   } else {
     MS_LOG(ERROR) << "user set worker num: " << runner_config->GetWorkersNum() << "is invalid";
-    return kLiteError;
+    return Status(kLiteParamInvalid, "The worker num given by the user is invalid.");
   }
   if (workers_num_ == 0) {
     MS_LOG(ERROR) << "worker num is zero.";
-    return kLiteError;
+    return Status(kLiteParamInvalid, "worker num is zero.");
   }
   return kSuccess;
 }
 
 Status ModelPool::SetWorkersNumaId(std::vector<int> *numa_node_id) {
-  MS_CHECK_TRUE_RET(numa_node_id != nullptr, kLiteNullptr);
+  MS_CHECK_TRUE_RET(numa_node_id != nullptr, kLiteError);
   if (!numa_available_) {
     MS_LOG(WARNING) << "numa is not available.";
     numa_node_id->resize(workers_num_, kInvalidNumaId);
@@ -548,7 +550,7 @@ Status ModelPool::InitModelPoolBindList(const std::shared_ptr<Context> &init_con
     auto status = SetWorkersNumaId(bind_numa_list);
     if (status != kSuccess) {
       MS_LOG(ERROR) << "set worker numa id failed in NO_BIND";
-      return kLiteError;
+      return status;
     }
   } else if (bind_core_available_ && init_context->GetThreadAffinityMode() == lite::HIGHER_CPU) {
     // The user specified the id of the bundled core
@@ -567,11 +569,11 @@ Status ModelPool::InitModelPoolBindList(const std::shared_ptr<Context> &init_con
     auto status = SetModelBindMode(bind_core_list, bind_numa_list, init_context);
     if (status != kSuccess) {
       MS_LOG(ERROR) << "SetModelBindMode failed.";
-      return kLiteError;
+      return status;
     }
   } else {
     MS_LOG(ERROR) << "not support bind MID_CPU.";
-    return kLiteError;
+    return Status(kLiteParamInvalid, "Invalid thread affinity type.");
   }
   return kSuccess;
 }
@@ -672,7 +674,7 @@ Status ModelPool::InitNumaParameter(const std::shared_ptr<RunnerConfig> &runner_
     ResourceManager::GetInstance()->DistinguishPhysicalAndLogicalByNuma(&numa_physical_cores_, &numa_logical_cores_);
   if (status != kSuccess) {
     MS_LOG(ERROR) << "distinguish physical and logical by numa failed.";
-    return kLiteError;
+    return status;
   }
   return kSuccess;
 }
@@ -688,12 +690,12 @@ Status ModelPool::CheckSharingThreadPoolParam(const ModelPoolConfig &model_pool_
   }
   if (remaining_thread_num_ < 0) {
     MS_LOG(ERROR) << "remaining thread num is invalid, remaining_thread_num_: " << remaining_thread_num_;
-    return kLiteParamInvalid;
+    return Status(kLiteParamInvalid, "Remaining thread num is invalid.");
   }
   if (remaining_thread_num_ > model_pool_config.front()->context->GetThreadNum()) {
     MS_LOG(ERROR) << "remaining thread num must less then thread num, remaining_thread_num is: "
                   << remaining_thread_num_ << ", thread num: " << model_pool_config.front()->context->GetThreadNum();
-    return kLiteParamInvalid;
+    return Status(kLiteParamInvalid, "Remaining thread num must less than thread num.");
   }
   if (thread_num_limit_ == 0) {
     thread_num_limit_ = model_pool_config.front()->context->GetThreadNum() * kDefaultThreadNumTimes;
@@ -702,13 +704,13 @@ Status ModelPool::CheckSharingThreadPoolParam(const ModelPoolConfig &model_pool_
     MS_LOG(ERROR) << "thread_num_limit_ is:" << thread_num_limit_ << "  thread num."
                   << model_pool_config.front()->context->GetThreadNum()
                   << " thread_num_limit_ should more than thread num.";
-    return kLiteParamInvalid;
+    return Status(kLiteParamInvalid, "thread_num_limit_ should more than thread num.");
   }
   if (thread_num_limit_ > model_pool_config.front()->context->GetThreadNum() * kNumCoreNumTimes) {
     MS_LOG(ERROR) << "thread num limit: " << thread_num_limit_
                   << " is more than 5 times thread num: " << model_pool_config.front()->context->GetThreadNum()
                   << ", change it to 5 times thread num. Please check whether Thread num is reasonable.";
-    return kLiteParamInvalid;
+    return Status(kLiteParamInvalid, "thread_num_limit_ is more than 5 times thread num.");
   }
   return kSuccess;
 }
@@ -721,7 +723,7 @@ Status ModelPool::CreateWorkers(const char *graph_buf, size_t size, const ModelP
   auto status = CheckSharingThreadPoolParam(model_pool_config);
   if (status != kSuccess) {
     MS_LOG(ERROR) << "CheckSharingThreadPoolParam failed.";
-    return kLiteError;
+    return status;
   }
   MS_LOG(INFO) << "runner_id_: " << runner_id_ << " | enable_shared_thread_pool_: " << enable_shared_thread_pool_
                << " | workers_num_: " << workers_num_ << " | remaining_thread_num_: " << remaining_thread_num_
@@ -745,7 +747,7 @@ Status ModelPool::CreateWorkers(const char *graph_buf, size_t size, const ModelP
     model_worker = std::make_shared<ModelWorker>();
     if (model_worker == nullptr) {
       MS_LOG(ERROR) << "model worker is nullptr.";
-      return kLiteNullptr;
+      return Status(kLiteNullptr, "model_worker is nullptr.");
     }
     int task_queue_id = numa_node_id != -1 ? numa_node_id : 0;
     predict_task_queue_->IncreaseWaitModelNum(1, task_queue_id);
@@ -758,7 +760,7 @@ Status ModelPool::CreateWorkers(const char *graph_buf, size_t size, const ModelP
                                   model_type);
     if (!create_worker_success) {
       MS_LOG(ERROR) << "Create work init failed.";
-      return kLiteError;
+      return Status(kLiteError, "Create worker init failed.");
     }
     threads_.push_back(std::thread(&ModelWorker::Run, model_worker));
     model_worker->WaitCreateWorkerDone();
@@ -778,7 +780,7 @@ Status ModelPool::CreateWorkers(const char *graph_buf, size_t size, const ModelP
   }
   if (!create_worker_success) {
     MS_LOG(ERROR) << "worker init failed.";
-    return kLiteError;
+    return Status(kLiteError, "worker init failed.");
   }
   MS_LOG(INFO) << "All models are initialized.";
   // init model pool input and output
@@ -853,7 +855,7 @@ Status ModelPool::InitByPath(const std::string &model_path, const std::shared_pt
   auto model_pool_config = Init(runner_config);
   if (model_pool_config.empty() || model_pool_config.size() != workers_num_) {
     MS_LOG(ERROR) << "InitModelPoolConfig failed.";
-    return kLiteFileError;
+    return Status(kLiteError, "InitModelPoolConfig failed.");
   }
   size_t size = 0;
   bool numa_copy_buf = numa_available_ && (used_numa_node_num_ > 1);
@@ -861,13 +863,13 @@ Status ModelPool::InitByPath(const std::string &model_path, const std::shared_pt
     allocator_ = std::make_shared<DynamicMemAllocator>(0);
     if (allocator_ == nullptr) {
       MS_LOG(ERROR) << "new dynamic allocator failed.";
-      return kLiteNullptr;
+      return Status(kLiteNullptr, "allocator_ is nullptr, new dynamic allocator failed.");
     }
   }
   graph_buf_ = lite::ReadFile(model_path.c_str(), &size, allocator_);
   if (graph_buf_ == nullptr) {
     MS_LOG(ERROR) << "read model failed, please check your model file.";
-    return kLiteNullptr;
+    return Status(kLiteFileError, "Read model failed, please check your model file.");
   }
   auto dir_pos = model_path.find_last_of('/');
   auto mindir_name = dir_pos != std::string::npos ? model_path.substr(dir_pos + 1) : model_path;
@@ -880,7 +882,7 @@ Status ModelPool::InitByPath(const std::string &model_path, const std::shared_pt
   auto status = CreateWorkers(graph_buf_, size, model_pool_config, numa_copy_buf, model_type);
   if (status != kSuccess) {
     MS_LOG(ERROR) << "create worker failed.";
-    return kLiteError;
+    return status;
   }
   return kSuccess;
 }
@@ -894,7 +896,7 @@ Status ModelPool::ParseParamByConfigInfo(std::map<std::string, std::map<std::str
   auto shared_thread_pool_param = shared_thread_pool->second;
   if (shared_thread_pool_param.find(lite::kEnableSharedThreadPoolKey) == shared_thread_pool_param.end()) {
     MS_LOG(INFO) << "not find key of enable_shared_thread_pool";
-    return kLiteParamInvalid;
+    return Status(kLiteParamInvalid, "No find key of enable_shared_thread_pool.");
   }
   if (shared_thread_pool_param[lite::kEnableSharedThreadPoolKey] == "false") {
     MS_LOG(INFO) << "Not use shared thread pool";
@@ -906,8 +908,9 @@ Status ModelPool::ParseParamByConfigInfo(std::map<std::string, std::map<std::str
         !shared_thread_pool_param[lite::kThreadNumLimitPerWorkerKey].empty()) {
       thread_num_limit_ = std::atoi(shared_thread_pool_param[lite::kThreadNumLimitPerWorkerKey].c_str());
       if (thread_num_limit_ <= 0) {
-        MS_LOG(WARNING) << "thread_num_limit is invalid, thread_num_limit: " << thread_num_limit_;
-        return kLiteParamInvalid;
+        MS_LOG(WARNING) << "thread_num_limit_per_worker is invalid, thread_num_limit_per_worker : "
+                        << thread_num_limit_;
+        return Status(kLiteParamInvalid, "thread_num_limit_per_worker is invalid");
       }
     }
   }
@@ -919,8 +922,9 @@ Status ModelPool::ParseParamByConfigInfo(std::map<std::string, std::map<std::str
       if (!shared_thread_pool_param[lite::kThreadNumRemainingPerWorkerKey].empty()) {
         remaining_thread_num_ = std::atoi(shared_thread_pool_param[lite::kThreadNumRemainingPerWorkerKey].c_str());
         if (remaining_thread_num_ < 0) {
-          MS_LOG(WARNING) << "remaining_thread_num_ is invalid, remaining_thread_num_: " << remaining_thread_num_;
-          return kLiteParamInvalid;
+          MS_LOG(WARNING) << "thread_num_remaining_per_worker is invalid, remaining_thread_num_: "
+                          << remaining_thread_num_;
+          return Status(kLiteParamInvalid, "thread_num_remaining_per_worker is invalid");
         }
       } else {
         MS_LOG(INFO) << "not set thread_num_remaining_per_worker param, default remaining thread num is 0.";
@@ -942,7 +946,7 @@ Status ModelPool::ParseSharedThreadPoolParam(const std::shared_ptr<RunnerConfig>
     int ret = lite::GetAllSectionInfoFromConfigFile(runner_config->GetConfigPath(), &config_file_info);
     if (ret != lite::RET_OK) {
       MS_LOG(ERROR) << "GetAllSectionInfoFromConfigFile failed.";
-      return kLiteError;
+      return Status(kLiteFileError, "GetAllSectionInfoFromConfigFile failed, Please check your config file.");
     }
   }
   if (config_file_info.find(lite::kSharedThreadPoolSection) != config_file_info.end()) {
@@ -1096,7 +1100,7 @@ Status ModelPool::WarmUpForAllWorker(const std::vector<MSTensor> &inputs, std::v
         auto ret = worker->Predict(inputs, outputs);
         if (ret != kSuccess) {
           MS_LOG(ERROR) << "predict failed.";
-          return kLiteError;
+          return ret;
         }
         user_data = false;
         continue;
@@ -1105,7 +1109,7 @@ Status ModelPool::WarmUpForAllWorker(const std::vector<MSTensor> &inputs, std::v
       auto ret = worker->Predict(inputs, &outs);
       if (ret != kSuccess) {
         MS_LOG(WARNING) << "warm up failed.";
-        return kSuccess;
+        return ret;
       }
     }
   }
@@ -1116,14 +1120,15 @@ Status ModelPool::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTen
                           const MSKernelCallBack &before, const MSKernelCallBack &after) {
   if (MS_UNLIKELY((inputs.size() == 0 || inputs.front().Shape().size() == 0))) {
     MS_LOG(ERROR) << "inputs is invalid. input size: " << inputs.size();
-    return kLiteError;
+    return Status(kLiteInputParamInvalid, "inputs is invalid.");
   }
   if (MS_UNLIKELY(!is_warm_up_)) {
     std::unique_lock<std::mutex> warm_up_l(warm_up_mutex);
     if (!is_warm_up_) {
       MS_LOG(INFO) << "do warm up.";
-      if (WarmUpForAllWorker(inputs, outputs) != kSuccess) {
-        return kLiteError;
+      auto status = WarmUpForAllWorker(inputs, outputs);
+      if (status != kSuccess) {
+        return status;
       }
       is_warm_up_ = true;
       MS_LOG(INFO) << "do warm up done.";
@@ -1138,7 +1143,7 @@ Status ModelPool::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTen
     auto ret = available_worker->Predict(inputs, outputs, before, after);
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "direct predict failed.";
-      return kLiteError;
+      return ret;
     }
     predict_task_queue_->IncreaseWaitModelNum(1, max_wait_worker_node_id);
     return kSuccess;
@@ -1148,7 +1153,7 @@ Status ModelPool::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTen
     auto task = CreatePredictTask(inputs, outputs, before, after, &task_id);
     if (task == nullptr) {
       MS_LOG(ERROR) << "The number of waiting tasks in the queue exceeds the limit, ret=" << kLiteServiceDeny;
-      return kLiteServiceDeny;
+      return Status(kLiteServiceDeny, "The number of waiting tasks in the queue exceeds the limit");
     }
     predict_task_queue_->PushPredictTask(task, max_wait_worker_node_id);
     predict_task_queue_->WaitUntilPredictActive(task, max_wait_worker_node_id);
@@ -1201,7 +1206,7 @@ Status ModelPool::ParseDeviceIds(const std::shared_ptr<RunnerConfig> &runner_con
   }
   if (model_pool_config == nullptr) {
     MS_LOG(ERROR) << "model pool config is nullptr.";
-    return kLiteNullptr;
+    return Status(kLiteNullptr, "model_pool_config is nullptr.");
   }
   auto device_ids = runner_config->GetDeviceIds();
   if (!device_ids.empty()) {
@@ -1209,7 +1214,7 @@ Status ModelPool::ParseDeviceIds(const std::shared_ptr<RunnerConfig> &runner_con
       auto id = device_ids[config->worker_id % device_ids.size()];
       if (config->context == nullptr) {
         MS_LOG(ERROR) << "context is nullptr.";
-        return kLiteNullptr;
+        return Status(kLiteNullptr, "context is nullptr.");
       }
       auto device_infos = config->context->MutableDeviceInfo();
       bool has_ascend_or_gpu = false;
