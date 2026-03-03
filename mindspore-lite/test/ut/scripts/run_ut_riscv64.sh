@@ -177,11 +177,12 @@ log_info "Launching tests with QEMU (sysroot: ${QEMU_LIB_PATH})"
 
 declare -a TC_LIST=(
     "TestMatMulFp32*"
+    "TestConvolutionFp32*"
 )
 
 tcs="$(IFS=:; echo "${TC_LIST[*]}")"
 
-qemu-riscv64 -L "${QEMU_LIB_PATH}" -- ./lite-test --gtest_filter=${tcs}
+qemu-riscv64 -cpu rv64,v=true,vlen=128 -L "${QEMU_LIB_PATH}" -- ./lite-test --gtest_filter=${tcs}
 
 log_info "All unit tests completed successfully"
 cd "${basepath}"

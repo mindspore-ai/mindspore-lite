@@ -32,6 +32,9 @@ extern "C" {
 #ifdef ENABLE_ARM64
 void AdderFloatNeon64(const float *a, const float *b, float *c, const float *bias, int act_type, int depth, int row,
                       int col, size_t stride);
+#elif defined(ENABLE_RVV)
+void AdderFloatRVV(const float *a, const float *b, float *dst, const float *bias, ActType act_type, int deep, int row,
+                   int col, int stride);
 #endif
 
 void AdderOpt(const float *a, const float *b, float *c, const float *bias, ActType act_type, int deep, int row, int col,
@@ -39,6 +42,9 @@ void AdderOpt(const float *a, const float *b, float *c, const float *bias, ActTy
 
 void AdderFp32(const float *input_data, float *packed_input, const float *packed_weight, const float *bias_data,
                float *col_major_input, float *output_data, int task_id, ConvParameter *conv_param);
+
+void Adder12x4(const float *a, const float *b, float *dst, const float *bias, ActType act_type, int deep, int row,
+               int col, int stride);
 
 #ifdef __cplusplus
 }

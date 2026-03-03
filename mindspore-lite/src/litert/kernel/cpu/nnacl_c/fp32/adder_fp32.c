@@ -46,6 +46,8 @@ void AdderOpt(const float *a, const float *b, float *c, const float *bias, ActTy
               size_t stride) {
 #ifdef ENABLE_ARM64
   AdderFloatNeon64(a, b, c, bias, (int)act_type, deep, row, col, stride);
+#elif defined(ENABLE_RVV)
+  AdderFloatRVV(a, b, c, bias, act_type, deep, row, col, stride);
 #else
   Adder12x4(a, b, c, bias, act_type, deep, row, col, stride);
 #endif

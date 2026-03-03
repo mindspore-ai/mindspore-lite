@@ -20,6 +20,8 @@
 #include "src/common/file_utils.h"
 #include "src/litert/kernel/cpu/base/convolution_base.h"
 #include "nnacl/nnacl_manager.h"
+#include "include/securec.h"
+#include "src/litert/kernel/cpu/nnacl_c/fp32/adder_fp32.h"
 
 namespace mindspore {
 class TestConvolutionFp32 : public mindspore::CommonTest {
@@ -139,4 +141,40 @@ TEST_F(TestConvolutionFp32, conv1) {
   delete kernel;
   delete ctx;
 }
+
+#ifdef ENABLE_RVV
+TEST_F(TestConvolutionFp32, conv2) {
+  const int deep = 16, row = 24, col = 20, stride = 32;
+  const int size_a = (row / 12 + 1) * deep * 12;
+  const int size_b = (col / 4 + 1) * deep * 4;
+  const int size_dst = row * stride;
+
+  std::vector<float> va(size_a);
+  std::vector<float> vb(size_b);
+  std::vector<float> vbias(col);
+  std::vector<float> vdst_ref(size_dst);
+  std::vector<float> vdst_rvv(size_dst);
+
+  float *a = va.data();
+  float *b = vb.data();
+  float *bias = vbias.data();
+  float *dst_ref = vdst_ref.data();
+  float *dst_rvv = vdst_rvv.data();
+
+  for (int i = 0; i < size_a; i++) a[i] = (float)rand() / RAND_MAX * 10.0f - 5.0f;
+  for (int i = 0; i < size_b; i++) b[i] = (float)rand() / RAND_MAX * 10.0f - 5.0f;
+  for (int i = 0; i < col; i++) bias[i] = (float)rand() / RAND_MAX * 2.0f - 1.0f;
+  ActType types[] = {ActType_No, ActType_Relu, ActType_Relu6};
+  for (int t = 0; t < 3; t++) {
+    memset_s(dst_ref, size_dst * sizeof(float), 0, size_dst * sizeof(float));
+    memset_s(dst_rvv, size_dst * sizeof(float), 0, size_dst * sizeof(float));
+    Adder12x4(a, b, dst_ref, bias, types[t], deep, row, col, stride);
+    AdderFloatRVV(a, b, dst_rvv, bias, types[t], deep, row, col, stride);
+
+    ASSERT_EQ(0, CompareOutputData(dst_rvv, dst_ref, size_dst));
+  }
+
+  return;
+}
+#endif
 }  // namespace mindspore
