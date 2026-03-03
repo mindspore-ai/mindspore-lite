@@ -151,7 +151,7 @@ int PNNADeConv2d::AddOpToPNNAModel(PNNASubGraph *graph) {
   }
   input_tensors.emplace_back(input_tensor);
   // handle constant input.
-  ret = HandleConstantInputs(graph, in_tensors_);
+  ret = HandleConstantInputs(graph, &in_tensors_);
   if (ret != RET_OK) {
     MS_LOG(ERROR) << "handle constant inputs failed.";
     return RET_ERROR;

@@ -43,6 +43,7 @@
 #include "src/litert/delegate/pnna/op/concat_pnna.h"
 #include "src/litert/delegate/pnna/op/split_pnna.h"
 #include "src/litert/delegate/pnna/op/pad_pnna.h"
+#include "src/litert/delegate/pnna/op/activation_pnna.h"
 
 namespace mindspore {
 namespace lite {

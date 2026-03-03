@@ -70,7 +70,7 @@ int PNNAConv2d::AddOpToPNNAModel(PNNASubGraph *graph) {
   MS_CHECK_TRUE_RET(graph != nullptr, RET_ERROR);
   MS_CHECK_TRUE_RET(graph->graph() != nullptr, RET_ERROR);
 
-  int ret = HandleConstantInputs(graph, in_tensors_);
+  int ret = HandleConstantInputs(graph, &in_tensors_);
   if (ret != RET_OK) {
     MS_LOG(ERROR) << "handle constant inputs failed.";
     return RET_ERROR;

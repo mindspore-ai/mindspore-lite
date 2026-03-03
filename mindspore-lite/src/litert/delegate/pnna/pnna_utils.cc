@@ -171,9 +171,10 @@ std::vector<uint32_t> ConvertToPnnaPerm(const int32_t *data, size_t count) {
 
 int32_t ConvertToPnnaAxis(int32_t axis, size_t count) { return count - 1 - (axis < 0 ? count + axis : axis); }
 
-int HandleConstantInputs(PNNASubGraph *graph, std::vector<mindspore::MSTensor> &inputs) {
-  for (size_t i = 0; i < inputs.size(); i++) {
-    auto in_tensor = inputs.at(i);
+int HandleConstantInputs(PNNASubGraph *graph, std::vector<mindspore::MSTensor> *inputs) {
+  MS_CHECK_TRUE_RET(inputs != nullptr, RET_ERROR);
+  for (size_t i = 0; i < inputs->size(); i++) {
+    auto in_tensor = inputs->at(i);
     if (!in_tensor.IsConst() || in_tensor.Shape().size() != DIMENSION_4D) {
       continue;
     }
@@ -214,7 +215,7 @@ int HandleConstantInputs(PNNASubGraph *graph, std::vector<mindspore::MSTensor> &
     }
     auto lite_tensor = lite_impl->lite_tensor();
     lite_tensor->set_category(Category::CONST_TENSOR);
-    inputs.at(i) = nh2nc_tensor;
+    inputs->at(i) = nh2nc_tensor;
   }
   return RET_OK;
 }
