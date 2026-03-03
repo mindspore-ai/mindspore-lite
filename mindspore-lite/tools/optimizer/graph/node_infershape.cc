@@ -246,7 +246,7 @@ STATUS NodeInferShape::InferShapeByNNACL(const CNodePtr &cnode) {
   }
   (void)anf_prim->AddAttr(kInferDone, MakeValue<bool>(false));
   std::vector<TensorPtr> inputs_ptr;
-  if (LiteTensorExtractor::GetCNodeInputTensors(cnode, &inputs_ptr, fmk_type_, train_flag_, false) != lite::RET_OK) {
+  if (GetCNodeInputTensors(cnode, &inputs_ptr, fmk_type_, train_flag_, false) != lite::RET_OK) {
     MS_LOG(ERROR) << cnode->fullname_with_scope() << " get inputs failed.";
     return lite::RET_ERROR;
   }
@@ -634,6 +634,10 @@ STATUS NodeInferShape::SetCNodeAbstract(const std::shared_ptr<CNode> &cnode, con
     cnode->set_abstract(new_abstract_list);
   }
   return RET_OK;
+}
+int NodeInferShape::GetCNodeInputTensors(const CNodePtr &cnode, std::vector<TensorPtr> *inputs,
+                                         converter::FmkType fmk_type, bool train_flag, bool copy_data) {
+  return LiteTensorExtractor::GetCNodeInputTensors(cnode, inputs, fmk_type, train_flag, copy_data);
 }
 
 abstract::AbstractBasePtr NodeInferShape::ConvertLiteTensorToAbstract(lite::Tensor *tensor) {

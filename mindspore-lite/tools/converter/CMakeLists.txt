@@ -376,6 +376,7 @@ endif()
 
 if(MSLITE_ENABLE_FP16)
     target_link_libraries(mindspore_converter
+        cpu_fp16_kernel_mid
         nnacl_fp16_mid
         )
 endif()

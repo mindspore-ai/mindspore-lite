@@ -18,6 +18,7 @@
 #ifdef ENABLE_LITE_ACL
 #include "tools/converter/adapter/acl/src/acl_pass_impl.h"
 #include "tools/converter/adapter/acl/src/acl_memory_offload_pass_impl.h"
+#include "tools/converter/adapter/acl/src/aclnn/aclnn_pass_impl.h"
 #endif
 
 namespace mindspore {
@@ -26,6 +27,8 @@ AclPass::AclPass(const std::shared_ptr<ConverterPara> &param) : Pass("ACL") {
 #ifdef ENABLE_LITE_ACL
   if (param->enable_memory_offload) {
     impl_ = std::make_shared<AclMemoryOffloadPassImpl>(param);
+  } else if (!param->aclModelOptionCfgParam.aclnn_nodes.empty()) {
+    impl_ = std::make_shared<AclnnPassImpl>(param);
   } else {
     impl_ = std::make_shared<AclPassImpl>(param);
   }
