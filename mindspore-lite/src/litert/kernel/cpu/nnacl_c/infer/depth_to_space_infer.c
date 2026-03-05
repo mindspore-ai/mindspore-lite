@@ -25,7 +25,7 @@ int DepthToSpaceInferShape(const TensorC *const *inputs, size_t inputs_size, Ten
   }
 
   const TensorC *input = inputs[0];
-  if (input->format_ != Format_NHWC) {
+  if (input->format_ != Format_NHWC && input->format_ != Format_NCHW) {
     return NNACL_FORMAT_ERROR;
   }
   SetDataTypeFormat(outputs[0], input);
@@ -44,16 +44,29 @@ int DepthToSpaceInferShape(const TensorC *const *inputs, size_t inputs_size, Ten
   if (INT_MUL_OVERFLOW(block_size, block_size)) {
     return NNACL_PARAM_INVALID;
   }
-  if (block_size == 0 || input_shape[kNHWC_C] % (block_size * block_size) != 0 || input_shape[kNHWC_C] == 0) {
-    return NNACL_PARAM_INVALID;
+  if (input->format_ == Format_NHWC) {
+    if (block_size == 0 || input_shape[kNHWC_C] % (block_size * block_size) != 0 || input_shape[kNHWC_C] == 0) {
+      return NNACL_PARAM_INVALID;
+    }
+    int output_shape[MAX_SHAPE_SIZE];
+    size_t output_shape_size = input_shape_size;
+    output_shape[kNHWC_N] = input_shape[kNHWC_N];
+    output_shape[kNHWC_H] = input_shape[kNHWC_H] * block_size;
+    output_shape[kNHWC_W] = input_shape[kNHWC_W] * block_size;
+    output_shape[kNHWC_C] = input_shape[kNHWC_C] / (block_size * block_size);
+    SetShapeArray(outputs[0], output_shape, output_shape_size);
+  } else if (input->format_ == Format_NCHW) {
+    if (block_size == 0 || input_shape[kNCHW_C] % (block_size * block_size) != 0 || input_shape[kNCHW_C] == 0) {
+      return NNACL_PARAM_INVALID;
+    }
+    int output_shape[MAX_SHAPE_SIZE];
+    size_t output_shape_size = input_shape_size;
+    output_shape[kNCHW_N] = input_shape[kNCHW_N];
+    output_shape[kNCHW_C] = input_shape[kNCHW_C] / (block_size * block_size);
+    output_shape[kNCHW_H] = input_shape[kNCHW_H] * block_size;
+    output_shape[kNCHW_W] = input_shape[kNCHW_W] * block_size;
+    SetShapeArray(outputs[0], output_shape, output_shape_size);
   }
-  int output_shape[MAX_SHAPE_SIZE];
-  size_t output_shape_size = input_shape_size;
-  output_shape[kNHWC_N] = input_shape[kNHWC_N];
-  output_shape[kNHWC_H] = input_shape[kNHWC_H] * block_size;
-  output_shape[kNHWC_W] = input_shape[kNHWC_W] * block_size;
-  output_shape[kNHWC_C] = input_shape[kNHWC_C] / (block_size * block_size);
-  SetShapeArray(outputs[0], output_shape, output_shape_size);
   return NNACL_OK;
 }
 
