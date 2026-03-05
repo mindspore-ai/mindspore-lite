@@ -104,6 +104,7 @@ static const int EXPONENT_BIAS_VALUE_14 = 14;
 static const int EXPONENT_BIAS_VALUE_15 = 15;
 static const int EXPONENT_BIAS_VALUE_30 = 30;
 static const int EXPONENT_BIAS_VALUE_128 = 128;
+static const int BITS_SHIFT_SIZE_7 = 7;
 static const int BITS_SHIFT_SIZE_10 = 10;
 static const int BITS_SHIFT_SIZE_12 = 12;
 static const int BITS_SHIFT_SIZE_13 = 13;

@@ -145,6 +145,9 @@ ParameterPtr BuildFloatVecParameterNode(const FuncGraphPtr &func_graph, const st
 ParameterPtr BuildFloat16ValueParameterNode(const FuncGraphPtr &func_graph, const uint16_t &data,
                                             const std::string &node_name, bool empty_shape);
 
+ParameterPtr BuildBFloat16ValueParameterNode(const FuncGraphPtr &func_graph, const uint16_t &data,
+                                             const std::string &node_name, bool empty_shape);
+
 ParameterPtr BuildFloat16VecParameterNode(const FuncGraphPtr &func_graph, const std::vector<float16> &data,
                                           const std::string &node_name);
 

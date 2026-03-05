@@ -88,6 +88,13 @@ STATUS ConstantOfShapeMapper::Mapper(const CNodePtr &cnode) {
           opt::BuildFloat16ValueParameterNode(func_graph, value, cnode->fullname_with_scope() + "_value", true);
       }
     } break;
+    case kNumberTypeBFloat16: {
+      if (values.size() == 1) {
+        auto value = Float32ToBFloat16_(values[0]);
+        value_param =
+          opt::BuildBFloat16ValueParameterNode(func_graph, value, cnode->fullname_with_scope() + "_value", true);
+      }
+    } break;
     default:
       MS_LOG(ERROR) << "Unsupported data type: " << data_type;
       return RET_ERROR;
