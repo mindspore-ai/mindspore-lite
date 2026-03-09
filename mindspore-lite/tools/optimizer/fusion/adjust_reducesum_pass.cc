@@ -93,6 +93,14 @@ Status AdjustReduceSum(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
       return kSuccess;
     }
   }
+  auto keep_dims_ptr = src_prim->GetAttr("keep_dims");
+  if (keep_dims_ptr != nullptr) {
+    auto keep_dims = GetValue<bool>(keep_dims_ptr);
+    if (keep_dims == true) {
+      MS_LOG(INFO) << "keep_dims is true, skip adjust reducesum node: " << cnode->fullname_with_scope();
+      return kSuccess;
+    }
+  }
   if (cnode->inputs().size() >= kIndex3) {
     auto axes_input = cnode->input(kIndex2);
     if (!IsAxesEmpty(axes_input)) {
@@ -124,7 +132,8 @@ bool AdjustReduceSumPass::Run(const FuncGraphPtr &func_graph) {
   MS_CHECK_TRUE_RET(func_graph != nullptr, false);
   MS_LOG(INFO) << "AdjustReduceSumPass start.";
   auto fmk_type_ptr = func_graph->get_attr("fmk");
-  if (fmk_type_ptr != nullptr && GetValue<int>(fmk_type_ptr) != static_cast<int>(converter::kFmkTypeMs)) {
+  if (fmk_type_ptr != nullptr && (GetValue<int>(fmk_type_ptr) != static_cast<int>(converter::kFmkTypeMs) &&
+                                  GetValue<int>(fmk_type_ptr) != static_cast<int>(converter::kFmkTypeOnnx))) {
     return true;
   }
   auto node_list = TopoSort(func_graph->get_return());

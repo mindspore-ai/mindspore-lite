@@ -38,6 +38,8 @@ PrimitiveCPtr OnnxReduceParser::Parse(const onnx::GraphProto &onnx_graph, const 
       }
     } else if (attribute_name == "keepdims") {
       prim->set_keep_dims(static_cast<bool>(onnx_node_attr.i()));
+    } else if (attribute_name == "noop_with_empty_axes") {
+      prim->set_skip_mode(static_cast<bool>(onnx_node_attr.i()));
     }
   }
   // An empty axis means that for all axes, the axis attributes will be adjusted to input in inputs_adjust.cc

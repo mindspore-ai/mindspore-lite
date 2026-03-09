@@ -62,6 +62,10 @@ float ReduceFusion::get_coeff() const {
   return GetValue<float>(value_ptr);
 }
 
+void ReduceFusion::set_skip_mode(const bool skip_mode) { (void)this->AddAttr(kSkipMode, api::MakeValue(skip_mode)); }
+
+bool ReduceFusion::get_skip_mode() const { return GetValue<bool>(GetAttr(kSkipMode)); }
+
 void ReduceFusion::Init(const bool keep_dims, const ReduceMode mode, const bool reduce_to_end, const float coeff) {
   this->set_keep_dims(keep_dims);
   this->set_mode(mode);
