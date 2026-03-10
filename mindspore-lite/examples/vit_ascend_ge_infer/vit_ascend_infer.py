@@ -1,4 +1,4 @@
-# Copyright 2025 Huawei Technologies Co., Ltd
+# Copyright 2026 Huawei Technologies Co., Ltd
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 # ============================================================================
 """
-MindSpore Lite ViT Model Inference Example on Ascend 910B.
+MindSpore Lite ViT Model Inference Example on Atlas 800I A2.
 
 This module demonstrates high-performance inference deployment for Vision
 Transformer (ViT) models using the Ascend GE (Graph Engine) backend.

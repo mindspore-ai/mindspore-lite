@@ -1,7 +1,7 @@
-# ViT (Vision Transformer) High-Performance Deployment on Ascend 910B
+# ViT (Vision Transformer) High-Performance Deployment on Atlas 800I A2
 
 <!--
-Copyright 2025 Huawei Technologies Co., Ltd
+Copyright 2026 Huawei Technologies Co., Ltd
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,12 +18,12 @@ limitations under the License.
 
 ## Overview
 
-This tutorial demonstrates how to deploy and optimize open-source Vision Transformer (ViT) models on Ascend 910B (A2 280T) hardware using MindSpore Lite. With proper engine scheduling and environment configuration, this solution achieves **< 150ms** end-to-end inference latency at `BatchSize=256` while maintaining high accuracy with cosine similarity **> 0.999**.
+This tutorial demonstrates how to deploy and optimize open-source Vision Transformer (ViT) models on Atlas 800I A2 hardware using MindSpore Lite. With proper engine scheduling and environment configuration, this solution achieves **~227ms** end-to-end inference latency at `BatchSize=256` (well within the 410ms target) while maintaining high accuracy with cosine similarity **> 0.999**.
 
 ## 1. Hardware and Software Requirements
 
 ### Hardware
-- Ascend 910B series (e.g., Atlas 800T A2)
+- Ascend Atlas 800I A2
 
 ### Operating System
 - openEuler or Ubuntu Linux
@@ -31,7 +31,7 @@ This tutorial demonstrates how to deploy and optimize open-source Vision Transfo
 ### Software Dependencies
 - Python >= 3.11.4
 - CANN >= 8.2.RC1
-- MindSpore >= 2.7.0 (including MindSpore Lite)
+- MindSpore Lite >= 2.7.0 
 - PyTorch and timm (for model export)
 
 ## 2. Deployment Strategy and Best Practices
@@ -57,6 +57,8 @@ Use the provided script to export a standard NCHW static batch model:
 ```bash
 python export_vit_onnx.py --batch_size 256 --output vit_base_b256.onnx
 ```
+
+**Note**: The export script enables `do_constant_folding=True` during ONNX export, which pre-computes and folds constant expressions in the graph, reducing model size and eliminating redundant computation at inference time.
 
 ### Step 2: Convert to MindIR Format
 
@@ -88,13 +90,48 @@ python vit_ascend_infer.py --model_path vit_base_b256.mindir --batch_size 256 --
 ## 4. Performance and Accuracy Baseline
 
 ### Performance Metrics
-- **Average Latency**: ~146 ms
-- **Throughput**: ~1749 FPS
-- Significantly better than the target of 410 ms
+- **Average Latency**: ~227 ms
+- **Throughput**: ~1130 FPS
+- Well within the target of 410 ms
 
 ### Accuracy Metrics (compared to PyTorch CPU FP32)
 - **Max Absolute Error**: ~0.075
 - **Cosine Similarity**: 0.99996 (extremely high consistency)
+
+### Ascend Profiling Data
+
+Profiling data collected on Atlas 800I A2 using `msprof` (CANN >= 8.2.RC1), BatchSize=256, 53 iterations.
+
+#### Host-Side API Timing
+
+| API Level | API Name      | Avg (ms) | Min (ms) | Max (ms) | Count |
+|-----------|---------------|----------|----------|----------|-------|
+| model     | ModelExecute  | 135.30   | 134.97   | 139.15   | 53    |
+| model     | InputCopy     | 67.60    | 28.92    | 98.76    | 53    |
+| model     | OutputCopy    | 1.40     | 0.37     | 4.20     | 53    |
+| model     | ModelLoad     | 192.50   | —        | —        | 1     |
+| acl       | RunGraphAsync | 0.11     | 0.07     | 0.44     | 53    |
+
+> **Note**: `InputCopy` accounts for a significant portion of end-to-end latency due to host-to-device data transfer at BatchSize=256. `ModelExecute` represents pure NPU compute time (~135ms).
+
+#### GE Automatic Operator Fusion
+
+The GE backend automatically performs the following operator fusions at compile time (no manual modification required):
+
+| Fused Op Name              | Original Ops Fused                              |
+|----------------------------|-------------------------------------------------|
+| `node_MatMul_xx_batch_matmul` | MatMul + AddBias (all attention/FFN layers)  |
+| `node_gelu/Gelu`           | Add + Div + Erf + Mul + Gelu (FFN activation)   |
+| `node_conv2d_post`         | Conv2D post-processing                          |
+| `node_permute / Transpose` | Layout permutation ops                          |
+
+#### How to Collect Profiling Data
+
+```bash
+msprof --application="python vit_ascend_infer.py --model_path vit_base_b256.mindir --batch_size 256 --device_id 0" --output=./profiling_output
+```
+
+Output is saved to `/root/PROF_xxx/mindstudio_profiler_output/`. If you need further guidance, please submit an issue or discussion in the [MindSpore Lite Community](https://gitcode.com/mindspore/mindspore-lite/issues).
 
 ## License
 
