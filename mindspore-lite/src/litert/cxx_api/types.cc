@@ -584,6 +584,7 @@ bool MSTensor::IsDevice() const {
 void MSTensor::DestroyTensorPtr(MSTensor *tensor) noexcept {
   if (tensor != nullptr) {
     delete tensor;
+    tensor = nullptr;
   }
 }
 
