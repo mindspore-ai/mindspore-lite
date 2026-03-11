@@ -48,8 +48,6 @@ int SubInt8CPUKernel::Prepare() {
   lite::Tensor *input1 = in_tensors_.at(1);
   lite::Tensor *output = out_tensors_.at(0);
 
-  broadcast_ = input0->ElementsNum() != input1->ElementsNum();
-
   quant_param_ = reinterpret_cast<SubQuantArg *>(malloc(sizeof(SubQuantArg)));
   if (quant_param_ == nullptr) {
     MS_LOG(ERROR) << "Malloc SubQuantArg for Sub int8 op failed!";
@@ -103,7 +101,12 @@ int SubInt8CPUKernel::Prepare() {
   return ReSize();
 }
 
-int SubInt8CPUKernel::ReSize() { return RET_OK; }
+int SubInt8CPUKernel::ReSize() {
+  auto input0_shape = in_tensors_.at(0)->shape();
+  auto input1_shape = in_tensors_.at(1)->shape();
+  broadcast_ = (input0_shape != input1_shape);
+  return RET_OK;
+}
 
 int SubInt8CPUKernel::DoExecute(int task_id) {
   auto input0_data_ = static_cast<int8_t *>(in_tensors_.at(0)->MutableData());

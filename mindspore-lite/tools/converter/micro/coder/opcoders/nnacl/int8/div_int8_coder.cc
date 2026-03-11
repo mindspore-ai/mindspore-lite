@@ -31,7 +31,9 @@ int DivInt8Coder::Prepare(CoderContext *context) {
   MS_ASSERT(input0);
   MS_ASSERT(input1);
 
-  broadcast_ = input0->ElementsNum() != input1->ElementsNum();
+  auto input0_shape = input0->shape();
+  auto input1_shape = input1->shape();
+  broadcast_ = (input0_shape != input1_shape);
 
   param_.in0_args_.scale_ = input0->quant_params().front().scale;
   param_.in0_args_.zp_ = -input0->quant_params().front().zeroPoint;

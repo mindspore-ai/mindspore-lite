@@ -171,7 +171,7 @@ int MulInt8CPUKernel::Run() {
   MS_CHECK_GT(elements_num_, 0, RET_ERROR);
   count_unit_ = thread_count_ > 1 ? UP_DIV(elements_num_, thread_count_) : elements_num_;
   int ret = RET_ERROR;
-  if (in_tensors_.at(0)->ElementsNum() != in_tensors_.at(1)->ElementsNum()) {
+  if (tile_para->broadcasting_) {
     MS_CHECK_GT(in_tensors_.at(0)->ElementsNum(), 0, RET_ERROR);
     MS_CHECK_GT(in_tensors_.at(1)->ElementsNum(), 0, RET_ERROR);
     MS_CHECK_GT(out_tensors_.at(0)->Size(), 0, RET_ERROR);
