@@ -45,8 +45,8 @@ Status AclSharedMemoryManager::UpdateWeightSpace(std::string model_path, size_t 
     mem_share_info.memory_info = new_weight_mem;
     mem_share_info.allocated = false;
     std::map<std::string, SharedMemoryInfo> inner_map;
-    inner_map.insert(std::make_pair(model_path, mem_share_info));
-    shared_weight_memory_info_map_.insert(std::make_pair(device_id, inner_map));
+    inner_map.emplace(model_path, mem_share_info);
+    shared_weight_memory_info_map_.emplace(device_id, inner_map);
   } else if (shared_weight_memory_info_map_.at(device_id).find(model_path) ==
              shared_weight_memory_info_map_.at(device_id).end()) {
     MS_LOG(DEBUG) << "find model path id in weight memory info map.";
@@ -56,7 +56,7 @@ Status AclSharedMemoryManager::UpdateWeightSpace(std::string model_path, size_t 
     mem_share_info.model_path = "";
     mem_share_info.memory_info = new_weight_mem;
     mem_share_info.allocated = false;
-    shared_weight_memory_info_map_.at(device_id).insert(std::make_pair(model_path, mem_share_info));
+    shared_weight_memory_info_map_.at(device_id).emplace(model_path, mem_share_info);
   }
   return kSuccess;
 }
@@ -65,7 +65,7 @@ Status AclSharedMemoryManager::UpdateWorkSpace(size_t work_size, int32_t device_
   auto it = shared_work_memory_info_map_.find(device_id);
   if (it == shared_work_memory_info_map_.end()) {
     AclMemoryInfo new_work_mem = {nullptr, 0};
-    shared_work_memory_info_map_.insert(std::make_pair(device_id, std::make_pair(new_work_mem, false)));
+    shared_work_memory_info_map_.emplace(device_id, std::make_pair(new_work_mem, false));
   } else if (it->second.second == true) {
     MS_LOG(ERROR) << "Device " << device_id << " has alloc memory!";
     return kLiteError;

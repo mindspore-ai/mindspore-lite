@@ -81,7 +81,7 @@ void *AclAllocator::Malloc(size_t size, int device_id) {
     device_id = current_device_id;
   }
   auto device_count = GetDeviceCount();
-  if (device_id > static_cast<int>(device_count)) {
+  if (device_id >= static_cast<int>(device_count)) {
     MS_LOG(ERROR) << "device id is wrong, device id: " << device_id << ", device count: " << device_count;
     return nullptr;
   }
