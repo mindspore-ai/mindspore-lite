@@ -495,10 +495,6 @@ void CodeMSModelResizeDynanmicSymbol(const Configurator &config, std::map<std::s
 
 void CodeMSModelResize(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config) {
   auto &shape_templates = ctx->shape_templates();
-  if (!shape_templates.empty()) {
-    MS_LOG(ERROR) << "shape_templates is empty";
-    return;
-  }
   CodeMSModelResizeHead(ofs, ctx);
   if (!config.dynamic_shape()) {
     ofs << "  return kMSStatusLiteNotSupport;\n";
