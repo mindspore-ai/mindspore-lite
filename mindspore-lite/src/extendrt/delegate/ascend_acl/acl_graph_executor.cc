@@ -292,6 +292,15 @@ Status AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<
     MS_LOG(ERROR) << "GetOutputTensors failed!";
     return ret;
   }
+  for (auto tensor : output_tensors) {
+    auto shape = tensor.Shape();
+    auto it = std::find(shape.begin(), shape.end(), -1);
+    if (it != shape.end()) {
+      is_dynamic_ = true;
+      origin_tensor_.insert(origin_tensor_.end(), output_tensors.begin(), output_tensors.end());
+      break;
+    }
+  }
   graph_outputs_[*graph_id] = output_tensors;
   sharable_handle_ = model_infer_->GetSharableHandle();
   AclEnvGuard::AddModel(model_infer_);
@@ -330,7 +339,21 @@ Status AclGraphExecutor::CompileGraph(const void *model_data, size_t data_size,
 
 Status AclGraphExecutor::Resize(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                                 const std::vector<std::vector<int64_t>> &dims) {
-  return model_infer_->Resize(dims);
+  auto status = model_infer_->Resize(dims);
+  if (status != kSuccess) {
+    MS_LOG(ERROR) << "model resize failed, resize dim:" << dims;
+    return status;
+  }
+  std::vector<mindspore::MSTensor> output_infos = origin_tensor_;
+  if (!is_dynamic_) {
+    status = GetOutputTensors(output_names_, &output_infos);
+    if (status != kSuccess) {
+      MS_LOG(ERROR) << "GetOutputTensors failed!";
+      return kLiteError;
+    }
+  }
+  graph_outputs_[graph_id] = output_infos;
+  return kSuccess;
 }
 
 std::vector<mindspore::MSTensor> AclGraphExecutor::GetInputInfos(uint32_t graph_id) {

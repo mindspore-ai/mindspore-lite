@@ -321,6 +321,17 @@ Status GraphSinkSession::Resize(uint32_t graph_id, const std::vector<mindspore::
     info.inputs[i]->SetShape(input_shape);
     info.inputs[i]->SetData(nullptr, false);  // reset data
   }
+  auto new_outputs = graph_executor_->GetOutputInfos(graph_id);
+  if (new_outputs.empty()) {
+    return kSuccess;
+  }
+  for (size_t i = 0; i < new_outputs.size(); i++) {
+    auto &output = new_outputs[i];
+    auto data_type = static_cast<enum DataType>(output.DataType());
+    auto impl = std::make_shared<TensorDefaultImpl>(info.outputs[i]->Name(), data_type, output.Shape());
+    MS_CHECK_TRUE_MSG(impl != nullptr, kLiteNullptr, "impl is nullptr!");
+    info.outputs[i] = impl;
+  }
   return kSuccess;
 }
 std::vector<MutableTensorImplPtr> GraphSinkSession::GetOutputs(uint32_t graph_id) {
