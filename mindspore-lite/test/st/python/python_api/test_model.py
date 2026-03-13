@@ -27,6 +27,8 @@ import numpy as np
 # ge.dynamicDims="64,64;96,96"
 
 MODEL_FILE = "./sd1.5_unet.onnx_graph.mindir"
+MODEL_STATIC_FILE = "./single_matmul_model.onnx.mindir"
+MODEL_DYNAMIC_FILE = "./resize.onnx.mindir"
 DEVICE_ID = 0
 
 
@@ -62,6 +64,67 @@ def test_python_api_fi_resize_002():
         model.resize(model.get_inputs(), [[2, 4, -1, -1], [1], [2, 77, 768]])
     assert "resize failed! Error is Invalid shape!" in str(raise_info.value)
 
+def test_python_api_resize_003():
+    """
+    test output shape after resize for Dynamic Binning Model
+    """
+    context = mslite.Context()
+    context.target = ["ascend"]
+    context.ascend.device_id = DEVICE_ID
+    model = mslite.Model()
+    model.build_from_file(model_path=MODEL_FILE, model_type=mslite.ModelType.MINDIR, context=context)
+    inputs = model.get_inputs()
+    input_shapes = [inp.shape for inp in inputs]
+    assert (input_shapes == [[2, 4, -1, -1], [1], [2, 77, 768]])
+    outputs = model.get_outputs()
+    output_shapes = [out.shape for out in outputs]
+    assert (output_shapes == [[2,4,96,96]])
+    model.resize(model.get_inputs(), [[2, 4, 64, 64], [1], [2, 77, 768]])
+    inputs = model.get_inputs()
+    input_shapes = [inp.shape for inp in inputs]
+    assert (input_shapes == [[2, 4, 64, 64], [1], [2, 77, 768]])
+    outputs = model.get_outputs()
+    output_shapes = [out.shape for out in outputs]
+    assert (output_shapes == [[2,4,64, 64]])
+
+def test_python_api_resize_004():
+    """
+    test output shape after resize for static input model
+    """
+    context = mslite.Context()
+    context.target = ["ascend"]
+    context.ascend.device_id = DEVICE_ID
+    model = mslite.Model()
+    model.build_from_file(model_path=MODEL_STATIC_FILE, model_type=mslite.ModelType.MINDIR, context=context)
+    inputs = model.get_inputs()
+    input_shapes = [inp.shape for inp in inputs]
+    assert (input_shapes == [[1, 4]])
+    outputs = model.get_outputs()
+    output_shapes = [out.shape for out in outputs]
+    assert (output_shapes == [[1,4]])
+
+def test_python_api_resize_005():
+    """
+    test output shape after resize for dynamic input model
+    """
+    context = mslite.Context()
+    context.target = ["ascend"]
+    context.ascend.device_id = DEVICE_ID
+    model = mslite.Model()
+    model.build_from_file(model_path=MODEL_DYNAMIC_FILE, model_type=mslite.ModelType.MINDIR, context=context)
+    inputs = model.get_inputs()
+    input_shapes = [inp.shape for inp in inputs]
+    assert (input_shapes == [[-1,3,512,512]])
+    outputs = model.get_outputs()
+    output_shapes = [out.shape for out in outputs]
+    assert output_shapes == [[-1]]
+    model.resize(model.get_inputs(),[[1,3,512,512]])
+    inputs = model.get_inputs()
+    input_shapes = [inp.shape for inp in inputs]
+    assert (input_shapes == [[1,3,512,512]])
+    outputs = model.get_outputs()
+    output_shapes = [out.shape for out in outputs]
+    assert output_shapes == [[-1]]
 
 def test_python_api_func_resize_random_shape_001():
     """
