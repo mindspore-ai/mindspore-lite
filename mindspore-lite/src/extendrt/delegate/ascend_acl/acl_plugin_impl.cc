@@ -26,7 +26,7 @@ std::shared_ptr<AclGraphExecutor> AscendAclExecutorPluginImpl::InitAclGraphExecu
   }
   auto acl_graph_executor = std::make_shared<mindspore::AclGraphExecutor>(context, config_infos);
   if (acl_graph_executor == nullptr) {
-    MS_LOG(ERROR) << "Failed to create GeGraphExecutor";
+    MS_LOG(ERROR) << "Failed to create AclGraphExecutor";
     return nullptr;
   }
   return acl_graph_executor;

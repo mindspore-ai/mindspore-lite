@@ -79,47 +79,47 @@ std::string AclGraphExecutor::GetConfigOption(const std::string &section_name, c
 void AclGraphExecutor::GetShareMemInfos(std::shared_ptr<AclModelOptions> acl_options_ptr) {
   std::string multi_model_sharing_mem_prepare_value =
     GetConfigOption(lite::kInnerCommon, lite::kInnerCalcWorkspaceSize);
-  if (multi_model_sharing_mem_prepare_value != "") {
-    bool is_multi_model_sharing_mem_prepare = multi_model_sharing_mem_prepare_value == "true" ? true : false;
+  if (!multi_model_sharing_mem_prepare_value.empty()) {
+    bool is_multi_model_sharing_mem_prepare = multi_model_sharing_mem_prepare_value == "true";
     acl_options_ptr->multi_model_sharing_mem_prepare = is_multi_model_sharing_mem_prepare;
   }
 
   std::string multi_model_sharing_mem_value = GetConfigOption(lite::kInnerCommon, lite::kInnerSharingWorkspace);
-  if (multi_model_sharing_mem_value != "") {
-    bool is_inner_sharing_workspace = multi_model_sharing_mem_value == "true" ? true : false;
+  if (!multi_model_sharing_mem_value.empty()) {
+    bool is_inner_sharing_workspace = multi_model_sharing_mem_value == "true";
     acl_options_ptr->multi_model_sharing_mem = is_inner_sharing_workspace;
   }
 
   std::string model_path = GetConfigOption(lite::kInnerCommon, lite::kInnerModelPath);
-  if (model_path != "") {
+  if (!model_path.empty()) {
     acl_options_ptr->model_path = model_path;
   }
 
   std::string share_workspace_value = GetConfigOption(lite::kInnerCommon, lite::kInnerWorkspace);
-  if (share_workspace_value != "") {
-    bool is_workspace = share_workspace_value == "true" ? true : false;
+  if (!share_workspace_value.empty()) {
+    bool is_workspace = share_workspace_value == "true";
     acl_options_ptr->share_workspace = is_workspace;
   }
 
   std::string share_weightspace_value = GetConfigOption(lite::kInnerCommon, lite::kInnerWeightspace);
-  if (share_weightspace_value != "") {
-    bool is_weightspace = share_weightspace_value == "true" ? true : false;
+  if (!share_weightspace_value.empty()) {
+    bool is_weightspace = share_weightspace_value == "true";
     acl_options_ptr->share_weightspace = is_weightspace;
   }
 
   std::string weightspace_workspace_value = GetConfigOption(lite::kInnerCommon, lite::kInnerWeightspaceWorkspace);
-  if (weightspace_workspace_value != "") {
-    bool is_weightspace_workspace = weightspace_workspace_value == "true" ? true : false;
+  if (!weightspace_workspace_value.empty()) {
+    bool is_weightspace_workspace = weightspace_workspace_value == "true";
     acl_options_ptr->share_weightspace_workspace = is_weightspace_workspace;
   }
 
   std::string pids_str = GetConfigOption(lite::kInnerCommon, lite::kInnerPids);
-  if (pids_str != "") {
+  if (!pids_str.empty()) {
     acl_options_ptr->pids = pids_str;
   }
 
   std::string shareable_handle_str = GetConfigOption(lite::kInnerCommon, lite::kInnerSharableHandle);
-  if (shareable_handle_str != "") {
+  if (!shareable_handle_str.empty()) {
     acl_options_ptr->sharable_handle = std::stoull(shareable_handle_str.c_str());
   }
 }
@@ -148,18 +148,18 @@ std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
   auto acl_options_ptr = std::make_shared<AclModelOptions>();
   MS_CHECK_TRUE_MSG(acl_options_ptr != nullptr, nullptr, "Acl options make shared failed.");
   std::string profiling_path = GetConfigOption(lite::kAscendContextSection, lite::kProfilingPathKey);
-  if (profiling_path != "") {
+  if (!profiling_path.empty()) {
     acl_options_ptr->profiling_path = profiling_path;
   }
 
   std::string dump_path = GetConfigOption(lite::kAscendContextSection, lite::kDumpPathKey);
-  if (dump_path != "") {
+  if (!dump_path.empty()) {
     acl_options_ptr->dump_path = dump_path;
   }
   GetShareMemInfos(acl_options_ptr);
   std::string bundle_model = GetConfigOption(lite::kInnerCommon, lite::kBundleModel);
-  if (bundle_model != "") {
-    bool is_bundle_model = bundle_model == "true" ? true : false;
+  if (!bundle_model.empty()) {
+    bool is_bundle_model = bundle_model == "true";
     acl_options_ptr->is_bundle_model = is_bundle_model;
   }
 
@@ -170,12 +170,12 @@ std::shared_ptr<AclModelOptions> AclGraphExecutor::GenAclOptions() {
   }
   acl_options_ptr->device_id = device_id;
   auto input_name_str = GetConfigOption(lite::kInnerGraphSplit, lite::kInnerInputNames);
-  if (input_name_str != "") {
+  if (!input_name_str.empty()) {
     acl_options_ptr->input_names = lite::StrSplit(input_name_str, ",");
   }
 
   auto output_name_str = GetConfigOption(lite::kInnerGraphSplit, lite::kInnerOutputNames);
-  if (output_name_str != "") {
+  if (!output_name_str.empty()) {
     acl_options_ptr->output_names = lite::StrSplit(output_name_str, ",");
   }
   auto ret = GetExecConfig(acl_options_ptr);
@@ -196,7 +196,8 @@ Status AclGraphExecutor::GetOutputTensors(const std::vector<std::string> &output
   auto outputs_dtype = model_infer_->GetOutputDataType();
   MS_CHECK_TRUE_MSG(outputs_shape.size() == outputs_dtype.size(), kLiteParamInvalid,
                     "size of output_shape should equal to size of outputs_dtype"
-                      << " output_shape size:" << outputs_shape.size() << " output_dtype size:" << output_dtype.size());
+                      << " output_shape size:" << outputs_shape.size()
+                      << " output_dtype size:" << outputs_dtype.size());
   bool is_output_name_empty = output_names.empty();
   if ((!is_output_name_empty) && outputs_shape.size() != output_names.size()) {
     MS_LOG(ERROR) << "size of output_names must equal to size of output_shape, size of output_names: "
