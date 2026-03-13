@@ -82,6 +82,16 @@ class OPS_API ReduceFusion : public Reduce {
   ///
   /// \return a size factor applied to output.
   float get_coeff() const;
+
+  /// \brief Method to set skip_mode attribute.
+  ///
+  /// \param[in] skip_mode Define whether skip reduce, default false.
+  void set_skip_mode(const bool skip_mode);
+
+  /// \brief Method to get skip_mode attribute.
+  ///
+  /// \return skip_mode attribute.
+  bool get_skip_mode() const;
 };
 }  // namespace ops
 }  // namespace mindspore

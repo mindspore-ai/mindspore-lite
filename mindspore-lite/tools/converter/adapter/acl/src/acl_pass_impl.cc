@@ -728,7 +728,7 @@ STATUS AclPassImpl::RunLiteInnerPass(const FuncGraphPtr &func_graph) {
                         "FlashAttentionTik op pass failed.");
     }
   }
-  if (!lite::RunOptimizerPass(func_graph, {kAdjustResizeDimsPass, kAdjustCol2imPass, kAdjustReduceSumPass})) {
+  if (!lite::RunOptimizerPass(func_graph, {kAdjustResizeDimsPass, kAdjustCol2imPass})) {
     MS_LOG(ERROR) << "AdjustResizeDimsPass or AdjustCol2imPass failed!";
     return lite::RET_ERROR;
   }
@@ -1416,8 +1416,8 @@ bool AclPassImpl::Run(const FuncGraphPtr &func_graph) {
     return false;
   }
 
-  if (!lite::RunOptimizerPass(func_graph, {kAddStreamLabelPass})) {
-    MS_LOG(ERROR) << "add stream label pass failed!";
+  if (!lite::RunOptimizerPass(func_graph, {kAdjustReduceSumPass, kAddStreamLabelPass})) {
+    MS_LOG(ERROR) << "AdjustReduceSumPass or AddStreamLabelPass failed!";
     return lite::RET_ERROR;
   }
 
