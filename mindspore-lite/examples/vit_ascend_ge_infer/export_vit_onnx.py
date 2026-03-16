@@ -55,8 +55,8 @@ def export_vit_to_onnx(batch_size: int, output_path: str) -> None:
     Export ViT-Base model to ONNX format.
 
     Args:
-        batch_size: Batch size for the exported model.
-        output_path: Path where the ONNX model will be saved.
+        batch_size (int): Batch size for the exported model.
+        output_path (str): Path where the ONNX model will be saved.
     """
     print("[INFO] Loading pretrained ViT-Base model from timm...")
     model = timm.create_model('vit_base_patch16_224', pretrained=True).eval()
@@ -78,7 +78,7 @@ def export_vit_to_onnx(batch_size: int, output_path: str) -> None:
 
 
 def main() -> None:
-    """Main function for exporting ViT model to ONNX."""
+    """Main function for exporting ViT model to ONNX"""
     args = parse_args()
     export_vit_to_onnx(args.batch_size, args.output)
 

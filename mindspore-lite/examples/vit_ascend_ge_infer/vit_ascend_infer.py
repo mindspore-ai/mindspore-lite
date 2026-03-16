@@ -33,8 +33,8 @@ def parse_args() -> argparse.Namespace:
     Parse command line arguments.
 
     Returns:
-        argparse.Namespace: Parsed arguments containing model path, batch size,
-                           and device ID.
+         argparse.Namespace containing parsed arguments with model path,
+         batch size, and device ID.
     """
     parser = argparse.ArgumentParser(
         description="ViT Model Inference on Ascend using MindSpore Lite"
@@ -65,10 +65,10 @@ def build_context(device_id: int) -> mslite.Context:
     Build MindSpore Lite context for Ascend device.
 
     Args:
-        device_id: Ascend NPU device ID.
+        device_id: Ascend NPU device ID
 
     Returns:
-        mslite.Context: Configured context with GE backend and FP16 precision.
+        mslite.Context configured with GE backend and FP16 precision.
     """
     context = mslite.Context()
     context.target = ["Ascend"]
@@ -87,7 +87,7 @@ def load_model(model_path: str, context: mslite.Context) -> mslite.Model:
         context: MindSpore Lite context.
 
     Returns:
-        mslite.Model: Built model ready for inference.
+        mslite.Model built and ready for inference.
 
     Raises:
         SystemExit: If model building fails.
@@ -112,8 +112,8 @@ def prepare_input_data(
     Prepare input data for inference.
 
     Args:
-        model: MindSpore Lite model.
-        batch_size: Batch size for inference.
+        model (mslite.Model): MindSpore Lite model.
+        batch_size (int): Batch size for inference.
 
     Returns:
         Tuple containing the input tensor and numpy array.

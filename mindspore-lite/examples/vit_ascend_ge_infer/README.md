@@ -23,15 +23,16 @@ This tutorial demonstrates how to deploy and optimize open-source Vision Transfo
 ## 1. Hardware and Software Requirements
 
 ### Hardware
+
 - Ascend Atlas 800I A2
 
 ### Operating System
 - openEuler or Ubuntu Linux
 
 ### Software Dependencies
-- Python >= 3.11.4
-- CANN >= 8.2.RC1
-- MindSpore Lite >= 2.7.0 
+- `Python` >= 3.11.4
+- `CANN` >= 8.2.RC1
+- `MindSpore Lite` >= 2.7.0
 - PyTorch and timm (for model export)
 
 ## 2. Deployment Strategy and Best Practices
@@ -58,13 +59,13 @@ Use the provided script to export a standard NCHW static batch model:
 python export_vit_onnx.py --batch_size 256 --output vit_base_b256.onnx
 ```
 
-**Note**: The export script enables `do_constant_folding=True` during ONNX export, which pre-computes and folds constant expressions in the graph, reducing model size and eliminating redundant computation at inference time.
+**注意**: The export script enables `do_constant_folding=True` during ONNX export, which pre-computes and folds constant expressions in the graph, reducing model size and eliminating redundant computation at inference time.
 
 ### Step 2: Convert to MindIR Format
 
 Use MindSpore Lite converter to convert ONNX to universal MindIR format.
 
-**Important**: Do NOT add any optimize or device parameters at this stage.
+**Important**: Do NOT add any optimization or device parameters at this stage.
 
 ```bash
 converter_lite --fmk=ONNX --modelFile=vit_base_b256.onnx --outputFile=vit_base_b256
@@ -74,7 +75,7 @@ converter_lite --fmk=ONNX --modelFile=vit_base_b256.onnx --outputFile=vit_base_b
 
 Use the provided `vit_ascend_infer.py` script to execute benchmarking.
 
-**Note**: On large-core servers, set thread environment variables to prevent CPU operator library crashes:
+**注意**: On large-core servers, set thread environment variables to prevent CPU operator library crashes:
 
 ```bash
 export OMP_NUM_THREADS=16
@@ -112,7 +113,7 @@ Profiling data collected on Atlas 800I A2 using `msprof` (CANN >= 8.2.RC1), Batc
 | model     | ModelLoad     | 192.50   | —        | —        | 1     |
 | acl       | RunGraphAsync | 0.11     | 0.07     | 0.44     | 53    |
 
-> **Note**: `InputCopy` accounts for a significant portion of end-to-end latency due to host-to-device data transfer at BatchSize=256. `ModelExecute` represents pure NPU compute time (~135ms).
+> **注意**: `InputCopy` accounts for a significant portion of end-to-end latency due to host-to-device data transfer at BatchSize=256. `ModelExecute` represents pure NPU compute time (~135ms).
 
 #### GE Automatic Operator Fusion
 
