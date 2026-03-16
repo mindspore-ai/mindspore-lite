@@ -245,7 +245,7 @@ Status ModelWorker::Predict(const std::vector<MSTensor> &inputs, std::vector<MST
       return status;
     }
   }
-  auto model_outputs = model_->GetOutputs();
+  std::vector<MSTensor> model_outputs = {};
   auto outputs_ptr = outputs->empty() ? &model_outputs : outputs;
   auto status = model_->Predict(inputs, outputs_ptr, before, after);
   for (size_t i = 0; i < model_input.size(); i++) {
