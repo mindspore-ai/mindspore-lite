@@ -138,7 +138,7 @@ int main(int argc, const char **argv) {
   }
   printf("=======run benchmark_train======\n");
 
-  MSContextHandle ms_context_handle = NULL;
+  MSContextHandle ms_context_handle = MSContextCreate();
   if (argc >= 6) {
     int thread_num = atoi(argv[5]);
     if (thread_num < 1 || thread_num > kMaxThreadNum) {
@@ -153,7 +153,6 @@ int main(int argc, const char **argv) {
         return kMSStatusLiteParamInvalid;
       }
     }
-    ms_context_handle = MSContextCreate();
     if (ms_context_handle) {
       MSContextSetThreadNum(ms_context_handle, thread_num);
       MSContextSetThreadAffinityMode(ms_context_handle, bind_mode);
