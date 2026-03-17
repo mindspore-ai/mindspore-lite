@@ -263,8 +263,8 @@ if(MSLITE_GPU_BACKEND STREQUAL opencl)
 endif()
 
 include(${TOP_DIR}/cmake/utils.cmake)
-__download_pkg(onnx https://gitee.com/mirrors/ONNX/repository/archive/v1.6.0
-    56a2606f684821213ad2a61713521eb9027bd8ac05520be3fb26e997787cedd7)
+__download_pkg(onnx https://gitee.com/mirrors/ONNX/repository/archive/v1.19.1
+    269d1329a31f9648622d5aca8d8804c8f8cd16398270d0d462bb1fa0bfb3a262)
 __download_pkg(tensorflow https://gitee.com/mirrors/tensorflow/repository/archive/v2.4.1
     bc32b7046e1ad83158d99d890aafe384ef94b1d03a2c0a86859c72e264a9d885)
 __download_pkg(caffe https://gitee.com/mirrors/caffe/repository/archive/1.0

@@ -1,8 +1,8 @@
 include(${TOP_DIR}/cmake/utils.cmake)
 __download_pkg(coreml https://gitee.com/mirrors/coremltools/repository/archive/4.1
         be3f3fa4e5b215a585b7ba98b841215c1217b1c56cf3d598550b88d552e1e036)
-__download_pkg(mnn https://gitee.com/mirrors/mnn/repository/archive/1.2.0
-        613bd5cbce2b50227a4fb847de6ffafb98d8660c34f4f6819aa73f8a152581b8)
+__download_pkg(mnn https://gitee.com/mirrors/mnn/repository/archive/3.3.0
+        3f7d697e1a4db16992bec53a33561a5c8828b204f34ab4231e9dd15071b0cf81)
 message("coreml package path:${coreml_SOURCE_DIR}")
 message("mnn package path:${mnn_SOURCE_DIR}")
 file(COPY ${coreml_SOURCE_DIR}/mlmodel/format/DataStructures.proto DESTINATION ${TOP_DIR}/third_party/proto/coreml)

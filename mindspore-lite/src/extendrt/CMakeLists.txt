@@ -43,7 +43,6 @@ if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
             )
     endif()
 
-    include(${TOP_DIR}/cmake/external_libs/pocketfft.cmake)
     set_property(SOURCE ${MSLITE_EXTEND_RUNTIME_SRC} PROPERTY COMPILE_DEFINITIONS
             LOG_HDR_FILE_REL_PATH="mindspore-lite/../mindspore/mindspore/core/include/utils/log_adapter.h"
             SUBMODULE_ID=mindspore::SubModuleId::SM_LITE)

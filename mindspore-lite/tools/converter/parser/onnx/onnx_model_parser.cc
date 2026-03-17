@@ -1300,7 +1300,9 @@ STATUS OnnxModelParser::SetTensorQuantParamFromNode(const std::string &tensor_na
   quant_params->clear();
   auto quant_param = std::make_unique<QuantParamT>();
   MS_CHECK_TRUE_MSG(quant_param != nullptr, RET_NULL_PTR, "create QuantParamT return nullptr");
-  if (OnnxNodeParser::opset_version() <= 15) {
+  // Set multiplier to 0 for ONNX opset versions <= 19 (upgraded from 15 for ONNX 1.19.1)
+  // This maintains backward compatibility with older quantization formats
+  if (OnnxNodeParser::opset_version() <= 19) {
     quant_param->multiplier = 0;
   }
   std::string quant_tensor_name = "scale_" + tensor_name;

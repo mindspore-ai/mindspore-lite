@@ -31,7 +31,7 @@ bool ReadProtoFromCodedInputStream(google::protobuf::io::CodedInputStream *coded
 
 STATUS ReadProtoFromText(const std::string &file, google::protobuf::Message *message);
 
-STATUS ReadProtoFromBinaryFile(const std::string &file, google::protobuf::Message *message);
+STATUS ReadProtoFromBinaryFile(const std::string &file, google::protobuf::MessageLite *message);
 }  // namespace lite
 }  // namespace mindspore
 

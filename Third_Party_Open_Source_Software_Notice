@@ -384,7 +384,7 @@ apply, that proxy's public statement of acceptance of any version is
 permanent authorization for you to choose that version for the
 Library.
 
-Software: Eigen 3.4.0
+Software: Eigen 5.0.0
 Copyright notice: 
 Copyright (C) 2014 Benoit Steiner <benoit.steiner.goog@gmail.com>
 Copyright (C) 2013 Christian Seiler <christian@iwakd.de>
@@ -705,7 +705,7 @@ Exhibit B - “Incompatible With Secondary Licenses” Notice
 This Source Code Form is “Incompatible With Secondary Licenses”, as defined by the Mozilla Public License, v. 2.0.
 
 
-Software: JSON for Modern C++ 3.10.1
+Software: JSON for Modern C++ 3.12.0
 Copyright notice: 
 Copyright 2015 Google Inc. All rights reserved.
 Copyright 2018 Google Inc. All rights reserved.
@@ -3040,7 +3040,7 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-Software: onnx 1.6.0
+Software: onnx 1.19.1
 Copyright notice: 
 Copyright (c) ONNX Project Contributors.
 Copyright (c) Facebook Inc. and Microsoft Corporation.
@@ -10437,7 +10437,7 @@ By contributing to the BVLC/caffe repository through pull-request, comment,
 or otherwise, the contributor releases their content to the
 license and copyright terms herein.
 
-Software: MNN 1.2.0
+Software: MNN 3.3.0
 Copyright notice:
 Copyright @ 2019 Alibaba. All rights reserved.
 License: Apache License
