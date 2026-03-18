@@ -41,7 +41,6 @@
 #include "tools/optimizer/fusion/conv_bn_fusion.h"
 #include "tools/optimizer/fusion/conv_tuplegetitem_fusion.h"
 #include "tools/optimizer/const_fold/constant_folding_fusion.h"
-#include "tools/optimizer/const_fold/constant_tag.h"
 #include "tools/optimizer/fusion/hard_swish_fusion.h"
 #include "tools/optimizer/fusion/norm_fusion.h"
 #include "tools/optimizer/fusion/prelu_fusion.h"
@@ -159,7 +158,6 @@
 #include "tools/optimizer/fusion/add_stream_label_pass.h"
 #include "tools/optimizer/fusion/adjust_controlflow_pass.h"
 #include "tools/optimizer/fusion/graph_split_pass.h"
-#include "tools/optimizer/fusion/mixed_aclnn_pass.h"
 #include "mindspore/core/include/ir/graph_utils.h"
 #include "tools/optimizer/fusion/adjust_reducesum_pass.h"
 
@@ -887,9 +885,7 @@ bool AnfTransform::StoreBuiltinPass(const std::shared_ptr<ConverterPara> &param)
     {"AddStreamLabelPass", std::make_shared<opt::AddStreamLabelPass>(param), false},
     {"AdjustControlflowPass", std::make_shared<opt::AdjustControlflowPass>(), false},
     {"GraphSplitPass", std::make_shared<opt::GraphSplitPass>(param), false},
-    {"AdjustReduceSumPass", std::make_shared<opt::AdjustReduceSumPass>(), false},
-    {"ConstantTag", std::make_shared<opt::ConstantTag>(fmk, is_train), true},
-    {"MixedAclnnPass", std::make_shared<opt::MixedAclnnPass>(param), false}};
+    {"AdjustReduceSumPass", std::make_shared<opt::AdjustReduceSumPass>(), false}};
   for (const auto &pass_info : pass_infos) {
     MS_CHECK_TRUE_RET(std::get<1>(pass_info) != nullptr, false);
     PassStorage::StorePass(std::get<0>(pass_info), std::get<1>(pass_info), std::get<opt::kInputIndexTwo>(pass_info));

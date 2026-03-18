@@ -25,15 +25,13 @@ namespace mindspore {
 namespace opt {
 class ConstFoldAlongInferShape : public InferShapePass {
  public:
-  explicit ConstFoldAlongInferShape(FmkType fmk_type = converter::kFmkTypeMs, bool train_flag = false,
-                                    std::string name = "ConstFoldAlongInferShape")
-      : InferShapePass(fmk_type, train_flag, false, name) {}
+  explicit ConstFoldAlongInferShape(FmkType fmk_type = converter::kFmkTypeMs, bool train_flag = false)
+      : InferShapePass(fmk_type, train_flag, "ConstFoldAlongInferShape") {}
   ~ConstFoldAlongInferShape() override = default;
 
- protected:
+ private:
   STATUS PostProcess(const FuncGraphPtr &func_graph, const CNodePtr &cnode) override;
   bool CheckCanFold(const FuncGraphPtr &func_graph, const CNodePtr &cnode);
-  virtual bool CheckAllConstInput(const FuncGraphPtr &func_graph, const CNodePtr &cnode);
   std::shared_ptr<ConstFoldProcessor> const_fold_processor_{nullptr};
 };
 }  // namespace opt
