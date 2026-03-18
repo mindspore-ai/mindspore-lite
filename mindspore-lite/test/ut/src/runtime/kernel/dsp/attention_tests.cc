@@ -48,7 +48,7 @@ static void SoftmaxNormalize(std::vector<float> *row) {
   }
 }
 
-TEST_F(TestDSP_Attention, Attention_Fp32_FT78) {
+TEST_F(TestDSP_Attention, Attention_Fp32) {
   InitDSPRuntime();
   const int batch = 1;
   const int seq_len = 2;

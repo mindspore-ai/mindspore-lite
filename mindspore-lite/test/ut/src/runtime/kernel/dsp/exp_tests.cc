@@ -28,7 +28,6 @@
 
 namespace mindspore::lite::dsp::test {
 
-// 编译时常量，用于替代变长数组
 constexpr int kTestArraySize = 10000;   // 100 * 100
 constexpr int kTestArraySize2 = 20000;  // 100 * 100 * 2
 

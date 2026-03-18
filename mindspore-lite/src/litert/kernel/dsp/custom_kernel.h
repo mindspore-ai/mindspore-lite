@@ -57,7 +57,6 @@ class CustomKernel : public Kernel {
   void SetMemType(lite::dsp::MemType mem_type) { out_mem_type_ = mem_type; }
   lite::dsp::MemType GetMemType() { return out_mem_type_; }
   void SetCoreMask(int core_mask) { core_mask_ = core_mask; }
-  void SetKernelName(const std::string &kernel_name) { kernel_name_ = kernel_name; }
   std::vector<uint8_t> GetAttrByKey(std::string attr_key) { return attrs_[attr_key]; }
   void ParseAttrData();
   int CheckOutputs(const std::vector<mindspore::MSTensor> &outputs);
@@ -69,7 +68,6 @@ class CustomKernel : public Kernel {
   std::vector<uint64_t> kernel_args_;
   lite::dsp::MemType out_mem_type_{lite::dsp::MemType::DDR};
   int core_mask_{0xf};
-  std::string kernel_name_;
   lite::dsp::DSPRuntime *dsp_runtime_;
 
  private:

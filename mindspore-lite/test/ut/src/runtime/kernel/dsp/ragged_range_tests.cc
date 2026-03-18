@@ -32,82 +32,6 @@ namespace mindspore::lite::dsp::test {
 
 class TestDSP_RaggedRange : public DSPCommonTest {};
 
-// fp16 helpers (consistent with other tests)
-typedef uint16_t float16;
-static inline float fp16_to_fp32(float16 h) {
-  uint32_t sign = (h & 0x8000) << 16;
-  uint32_t exp = (h & 0x7C00) >> 10;
-  uint32_t frac = (h & 0x03FF);
-  uint32_t f_exp, f_frac;
-  if (exp == 0) {
-    if (frac == 0) {
-      f_exp = 0;
-      f_frac = 0;
-    } else {
-      int shift = 0;
-      while ((frac & 0x0200) == 0) {
-        frac <<= 1;
-        ++shift;
-      }
-      frac &= 0x03FF;
-      f_exp = 127 - 15 - shift;
-      f_frac = frac << 13;
-    }
-  } else if (exp == 0x1F) {
-    f_exp = 255;
-    f_frac = frac << 13;
-  } else {
-    f_exp = exp - 15 + 127;
-    f_frac = frac << 13;
-  }
-  uint32_t f_bits = sign | (f_exp << 23) | f_frac;
-  float result;
-  std::memcpy(&result, &f_bits, sizeof(result));
-  return result;
-}
-[[maybe_unused]] static inline float16 fp32_to_fp16(float v) {
-  uint32_t bits;
-  std::memcpy(&bits, &v, sizeof(bits));
-  uint32_t sign = (bits >> 31) & 0x1;
-  int32_t exponent = ((bits >> 23) & 0xFF) - 127 + 15;
-  uint32_t mantissa = bits & 0x007FFFFF;
-  float16 result;
-  if (exponent <= 0) {
-    if (exponent < -10) {
-      result = static_cast<float16>(sign << 15);
-    } else {
-      mantissa |= 0x00800000;
-      int shift = 14 - exponent;
-      uint32_t mantissa_shifted = mantissa >> shift;
-      uint32_t remainder = mantissa & ((1U << shift) - 1);
-      if (remainder > (1U << (shift - 1)) || (remainder == (1U << (shift - 1)) && (mantissa_shifted & 1))) {
-        mantissa_shifted++;
-      }
-      result = static_cast<float16>((sign << 15) | (mantissa_shifted & 0x3FF));
-    }
-  } else if (exponent == 0xFF - 127 + 15) {
-    result =
-      (mantissa == 0) ? static_cast<float16>((sign << 15) | 0x7C00) : static_cast<float16>((sign << 15) | 0x7E00);
-  } else if (exponent > 30) {
-    result = static_cast<float16>((sign << 15) | 0x7C00);
-  } else {
-    uint32_t mantissa_rounded = mantissa >> 13;
-    uint32_t remainder = mantissa & 0x1FFF;
-    if (remainder > 0x1000 || (remainder == 0x1000 && (mantissa_rounded & 1))) {
-      mantissa_rounded++;
-      if (mantissa_rounded == 0x400) {
-        mantissa_rounded = 0;
-        exponent++;
-        if (exponent > 30) {
-          return static_cast<float16>((sign << 15) | 0x7C00);
-        }
-      }
-    }
-    result = static_cast<float16>((sign << 15) | (static_cast<uint32_t>(exponent) << 10) | (mantissa_rounded & 0x3FF));
-  }
-  return result;
-}
-
 TEST_F(TestDSP_RaggedRange, RaggedRange_Fp32) {
   InitDSPRuntime();
   std::vector<lite::Tensor *> inputs_;
@@ -324,9 +248,9 @@ TEST_F(TestDSP_RaggedRange, RaggedRange_Fp16) {
 
   auto out_fp16 = reinterpret_cast<uint16_t *>(outputs_[1]->MutableData());
   std::vector<float> actual(acc);
-  for (int i = 0; i < acc; ++i) actual[i] = fp16_to_fp32(static_cast<float16>(out_fp16[i]));
+  for (int i = 0; i < acc; ++i) actual[i] = Fp16ToFp32(out_fp16[i]);
   std::vector<float> correct(acc);
-  for (int i = 0; i < acc; ++i) correct[i] = fp16_to_fp32(fp32_to_fp16(expect_values[i]));
+  for (int i = 0; i < acc; ++i) correct[i] = Fp16ToFp32(Fp32ToFp16(expect_values[i]));
   ASSERT_EQ(0, CompareOutputData(actual.data(), correct.data(), acc, 1e-3));
 
   UninitDSPRuntime();
@@ -335,9 +259,7 @@ TEST_F(TestDSP_RaggedRange, RaggedRange_Fp16) {
   for (auto t : outputs_) delete t;
   delete kernel;
 }
-#endif
 
-#ifdef SUPPORT_FT04
 TEST_F(TestDSP_RaggedRange, RaggedRange_Int16) {
   InitDSPRuntime();
   std::vector<lite::Tensor *> inputs_;
@@ -411,7 +333,7 @@ TEST_F(TestDSP_RaggedRange, RaggedRange_Int16) {
 #endif
 
 #ifdef SUPPORT_FT78
-TEST_F(TestDSP_RaggedRange, RaggedRange_Int16_FT78) {
+TEST_F(TestDSP_RaggedRange, RaggedRange_Int16) {
   InitDSPRuntime();
   std::vector<lite::Tensor *> inputs_;
   std::vector<lite::Tensor *> outputs_;
@@ -479,9 +401,7 @@ TEST_F(TestDSP_RaggedRange, RaggedRange_Int16_FT78) {
   for (auto t : outputs_) delete t;
   delete kernel;
 }
-#endif
 
-#ifdef SUPPORT_FT78
 TEST_F(TestDSP_RaggedRange, RaggedRange_Fp64) {
   InitDSPRuntime();
   std::vector<lite::Tensor *> inputs_;
