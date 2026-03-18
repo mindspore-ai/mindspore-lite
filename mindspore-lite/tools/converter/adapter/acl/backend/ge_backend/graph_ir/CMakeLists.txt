@@ -1,7 +1,8 @@
 file(GLOB_RECURSE _TRANSFORM_SRC_LIST RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cc")
 set_property(SOURCE ${_TRANSFORM_SRC_LIST} PROPERTY COMPILE_DEFINITIONS
   SUBMODULE_ID=mindspore::SubModuleId::SM_GE_ADPT)
-
+# avoid cpp error as CANN is deprecating current version of ops protos by Dec 2026
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=cpp")
 add_subdirectory(${TOP_DIR}/mindspore/mindspore/ccsrc/plugin/ascend/res_manager/op_adapter/
     _mindspore_ascend_op_adapter_obj)
 add_subdirectory(${TOP_DIR}/mindspore/mindspore/ccsrc/plugin/ascend/res_manager/symbol_interface
