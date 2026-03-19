@@ -72,7 +72,7 @@ STATUS ReadProtoFromText(const std::string &file, google::protobuf::Message *mes
   return RET_OK;
 }
 
-STATUS ReadProtoFromBinaryFile(const std::string &file, google::protobuf::Message *message) {
+STATUS ReadProtoFromBinaryFile(const std::string &file, google::protobuf::MessageLite *message) {
   if (file.empty() || message == nullptr) {
     return RET_ERROR;
   }
@@ -92,7 +92,7 @@ STATUS ReadProtoFromBinaryFile(const std::string &file, google::protobuf::Messag
   google::protobuf::io::IstreamInputStream istream(&fs);
   google::protobuf::io::CodedInputStream coded_stream(&istream);
 
-  bool success = ReadProtoFromCodedInputStream(&coded_stream, message);
+  bool success = message->ParseFromCodedStream(&coded_stream);
   fs.close();
 
   if (!success) {
