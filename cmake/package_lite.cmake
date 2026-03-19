@@ -214,7 +214,7 @@ endif()
 if(ANDROID_NDK)
     set(glog_name libmindspore_glog.so)
 else()
-    set(glog_name libmindspore_glog.so.0.4.0)
+    set(glog_name libmindspore_glog.so.0.7.1)
 endif()
 
 if(PLATFORM_ARM64)
