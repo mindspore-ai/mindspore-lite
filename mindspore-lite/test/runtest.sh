@@ -125,6 +125,8 @@ fi
 ./lite-test --gtest_filter=ArithmeticSelfInt8Test.*
 ./lite-test --gtest_filter=GatherInt8Test.*
 ./lite-test --gtest_filter=SoftmaxInt8Test.*
+./lite-test --gtest_filter=DivInt8Test.*
+./lite-test --gtest_filter=SubInt8Test.*
 
 # test cases of generic api
 ./lite-test --gtest_filter="GenericApiTest*"

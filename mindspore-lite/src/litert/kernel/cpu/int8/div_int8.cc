@@ -87,7 +87,9 @@ int DivInt8CPUKernel::ReSize() {
   MS_CHECK_GT(input0->ElementsNum(), 0, RET_ERROR);
   MS_CHECK_GT(input1->ElementsNum(), 0, RET_ERROR);
 
-  broadcast_ = input0->ElementsNum() != input1->ElementsNum();
+  auto input0_shape = in_tensors_.at(0)->shape();
+  auto input1_shape = in_tensors_.at(1)->shape();
+  broadcast_ = (input0_shape != input1_shape);
   div_scalar_ = input1->ElementsNum() == 1;
   return RET_OK;
 }

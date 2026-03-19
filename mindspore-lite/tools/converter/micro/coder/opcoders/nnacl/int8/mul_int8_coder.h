@@ -19,6 +19,7 @@
 
 #include <vector>
 #include "coder/opcoders/op_coder.h"
+#include "nnacl_c/arithmetic_parameter.h"
 
 namespace mindspore::lite::micro::nnacl {
 class MulInt8Coder final : public OperatorCoder {
@@ -47,6 +48,7 @@ class MulInt8Coder final : public OperatorCoder {
   int8_t *tile0_data_{nullptr};
   int8_t *tile1_data_{nullptr};
   bool need_broadcast_{false};
+  ArithmeticParameter *arith_para_{nullptr};
 };
 }  // namespace mindspore::lite::micro::nnacl
 #endif  // MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_OPCODERS_NNACL_NN_INT8_MUL_INT8_CODER_H_

@@ -21,6 +21,7 @@
 #include "coder/opcoders/file_collector.h"
 #include "coder/utils/common.h"
 #include "nnacl_c/mul_parameter.h"
+#include "nnacl_c/arithmetic_parameter.h"
 
 using mindspore::schema::PrimitiveType_MulFusion;
 
@@ -34,7 +35,9 @@ int MulInt8Coder::Prepare(CoderContext *const context) {
   MS_CHECK_PTR(input2_);
   MS_CHECK_PTR(output_tensor_);
   // check if need to broadcast
-  need_broadcast_ = input1_->ElementsNum() != input2_->ElementsNum();
+  arith_para_ = reinterpret_cast<ArithmeticParameter *>(parameter_);
+  MS_CHECK_PTR(arith_para_);
+  need_broadcast_ = arith_para_->broadcasting_;
   if (!need_broadcast_) {
     block_size_ = input1_->ElementsNum();
   }

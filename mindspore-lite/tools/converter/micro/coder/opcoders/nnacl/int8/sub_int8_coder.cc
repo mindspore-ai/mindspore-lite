@@ -33,7 +33,9 @@ int SubInt8Coder::Prepare(CoderContext *const context) {
   MS_CHECK_PTR(input0);
   MS_CHECK_PTR(input1);
 
-  broadcast_ = input0->ElementsNum() != input1->ElementsNum();
+  auto input0_shape = input0->shape();
+  auto input1_shape = input1->shape();
+  broadcast_ = (input0_shape != input1_shape);
   if (input0->quant_params().size() != 0 && input1->quant_params().size() != 0 &&
       output_tensor_->quant_params().size() != 0) {
     param_.in0_args_.scale_ = input0->quant_params().front().scale;
