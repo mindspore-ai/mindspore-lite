@@ -414,7 +414,6 @@ bool ConfigFileParser::SetParamByConfigfile(const std::shared_ptr<mindspore::Con
   set_option("aoe_mode", &param->aclModelOptionCfgParam.aoe_mode);
   set_option(kDumpModelNameKey, &param->aclModelOptionCfgParam.dump_model_name);
   set_option("provider", &param->provider);
-  set_option("aclnn_nodes", &param->aclModelOptionCfgParam.aclnn_nodes);
 
   auto plugin_custom_ops_str = FindInAscendMap(kPluginCustomOps, ascend_map);
   std::vector<std::string> plugin_custom_ops_vec = {};

@@ -18,12 +18,11 @@
 #define MINDSPORE_LITE_TOOLS_OPTIMIZER_CONST_FOLD_FOLD_UTILS_H_
 
 #include <memory>
+#include "ir/anf.h"
 #include "include/api/context.h"
 #include "include/registry/converter_context.h"
-#include "ir/anf.h"
 #include "schema/inner/model_generated.h"
 #include "src/litert/inner_context.h"
-#include "tools/lite_exporter/fetch_content.h"
 
 namespace mindspore {
 namespace opt {
@@ -32,29 +31,14 @@ class ConstFoldProcessor {
   explicit ConstFoldProcessor(converter::FmkType fmk_type = converter::kFmkTypeMs, bool train_flag = false)
       : fmk_type_(fmk_type), train_flag_(train_flag) {}
   int DoConstantFold(const FuncGraphPtr &func_graph, const CNodePtr &cnode);
-  virtual ~ConstFoldProcessor() = default;
+  ~ConstFoldProcessor() = default;
 
- protected:
+ private:
   bool Init();
-  virtual lite::STATUS Apply(const FuncGraphPtr &func_graph, const CNodePtr &cnode,
-                             std::vector<lite::Tensor *> output_tensors);
-  virtual int GetCNodeInputTensors(const CNodePtr &cnode, std::vector<TensorPtr> *inputs, converter::FmkType fmk_type,
-                                   bool train_flag, bool copy_data);
   converter::FmkType fmk_type_{converter::kFmkTypeMs};
   bool train_flag_{false};
   std::shared_ptr<lite::InnerContext> context_{nullptr};
   std::shared_ptr<mindspore::Context> ms_context_{nullptr};
-};
-
-class ConstantTagProcessor : public ConstFoldProcessor {
- public:
-  using ConstFoldProcessor::ConstFoldProcessor;
-
- private:
-  lite::STATUS Apply(const FuncGraphPtr &func_graph, const CNodePtr &cnode,
-                     std::vector<lite::Tensor *> output_tensors) override;
-  int GetCNodeInputTensors(const CNodePtr &cnode, std::vector<TensorPtr> *inputs, converter::FmkType fmk_type,
-                           bool train_flag, bool copy_data) override;
 };
 }  // namespace opt
 }  // namespace mindspore

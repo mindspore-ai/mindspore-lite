@@ -45,7 +45,15 @@ bool ConstFoldAlongInferShape::CheckCanFold(const FuncGraphPtr &func_graph, cons
   if (IsSpecialType(cnode) || CheckPrimitiveType(cnode, prim::kPrimCustom) || IsMarkedTrainOp(cnode)) {
     return false;
   }
-  if (CheckAllConstInput(func_graph, cnode)) {
+  auto inputs = cnode->inputs();
+  auto graph_inputs =
+    sub_inputs_map_.find(func_graph) != sub_inputs_map_.end() ? sub_inputs_map_[func_graph] : func_graph->get_inputs();
+  auto is_all_const = std::all_of(inputs.begin(), inputs.end(), [&graph_inputs](const AnfNodePtr &node) {
+    return (node->isa<ValueNode>() && !IsValueNode<FuncGraph>(node)) ||
+           (node->isa<Parameter>() && node->cast<ParameterPtr>()->has_default() &&
+            std::find(graph_inputs.begin(), graph_inputs.end(), node) == graph_inputs.end());
+  });
+  if (is_all_const) {
     return true;
   }
   auto prim = GetCNodePrimitive(cnode);
@@ -63,19 +71,6 @@ bool ConstFoldAlongInferShape::CheckCanFold(const FuncGraphPtr &func_graph, cons
     return true;
   }
   return false;
-}
-
-bool ConstFoldAlongInferShape::CheckAllConstInput(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
-  MS_CHECK_TRUE_MSG(func_graph != nullptr, false, "func_graph is nullptr.");
-  MS_CHECK_TRUE_MSG(cnode != nullptr, false, "cnode is nullptr.");
-  auto inputs = cnode->inputs();
-  auto graph_inputs =
-    sub_inputs_map_.find(func_graph) != sub_inputs_map_.end() ? sub_inputs_map_[func_graph] : func_graph->get_inputs();
-  return std::all_of(inputs.begin(), inputs.end(), [&graph_inputs](const AnfNodePtr &node) {
-    return (node->isa<ValueNode>() && !IsValueNode<FuncGraph>(node)) ||
-           (node->isa<Parameter>() && node->cast<ParameterPtr>()->has_default() &&
-            std::find(graph_inputs.begin(), graph_inputs.end(), node) == graph_inputs.end());
-  });
 }
 }  // namespace opt
 }  // namespace mindspore

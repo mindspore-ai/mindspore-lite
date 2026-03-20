@@ -36,7 +36,6 @@ class InferShapePass : public Pass {
 
  protected:
   virtual STATUS PostProcess(const FuncGraphPtr &func_graph, const CNodePtr &cnode) { return lite::RET_OK; }
-  virtual std::shared_ptr<NodeInferShape> CreateNodeInferShape();
 
  private:
   bool JudgeAllOpsCanInfer(const FuncGraphPtr &func_graph);

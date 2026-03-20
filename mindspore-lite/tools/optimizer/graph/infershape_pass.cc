@@ -174,7 +174,7 @@ bool InferShapePass::Run(const FuncGraphPtr &func_graph) {
     lite::ReturnCode::GetSingleReturnCode()->UpdateReturnCode(lite::RET_NULL_PTR);
     return false;
   }
-  node_infer_shape_ = CreateNodeInferShape();
+  node_infer_shape_ = std::make_shared<NodeInferShape>(fmk_type_, train_flag_);
   if (node_infer_shape_ == nullptr) {
     MS_LOG(ERROR) << "create NodeInferShape object failed.";
     return false;
@@ -499,10 +499,5 @@ int InferShapePass::ResetSubGraphInput() {
   }
   return lite::RET_OK;
 }
-
-std::shared_ptr<NodeInferShape> InferShapePass::CreateNodeInferShape() {
-  return std::make_shared<NodeInferShape>(fmk_type_, train_flag_);
-}
-
 }  // namespace opt
 }  // namespace mindspore

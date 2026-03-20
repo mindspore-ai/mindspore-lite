@@ -33,14 +33,11 @@
 #include "src/litert/kernel_registry.h"
 #include "src/litert/inner_context.h"
 #include "src/tensor.h"
-#include "src/tensorlist.h"
 #include "src/common/ops/anf_utils.h"
 #include "src/litert/infer_manager.h"
 #include "tools/optimizer/graph/lite_tensor_extractor.h"
 #include "tools/optimizer/common/helper.h"
 #include "tools/optimizer/const_fold/rsqrt_fp32.h"
-#include "tools/optimizer/const_fold/constant_tag_utils.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_w.h"
 
@@ -51,36 +48,29 @@ namespace mindspore {
 namespace opt {
 namespace {
 bool IsInferInRunning(const CNodePtr &cnode) { return CheckPrimitiveType(cnode, prim::kPrimWhere); }
-
-ValuePtr MakeValue(Tensor &tensor) {
-  std::vector<int> shape(tensor.shape());
-  std::vector<int64_t> shape_vector;
-  (void)std::transform(shape.begin(), shape.end(), std::back_inserter(shape_vector),
-                       [](const int32_t &value) { return static_cast<int64_t>(value); });
-
-  auto tensor_info = tensor::from_spec(tensor.data_type(), shape_vector, device::DeviceType::kCPU);
-  if (tensor_info == nullptr) {
-    MS_LOG(ERROR) << "create tensor info failed.";
-    return nullptr;
-  }
-  if (tensor.MutableData() != nullptr && tensor.ElementsNum() != 0) {
-    auto tensor_data = static_cast<uint8_t *>(tensor_info->data_c());
-    auto ret = memcpy_s(tensor_data, tensor_info->Size(), tensor.data(), tensor.Size());
-    if (ret != EOK) {
-      MS_LOG(ERROR) << "memcpy error: " << ret;
-      return nullptr;
-    }
-  }
-  return tensor_info;
-}
-
 ParameterPtr CreateNewParamter(const FuncGraphPtr &func_graph, Tensor *tensor) {
   MS_ASSERT(func_graph != nullptr);
   MS_ASSERT(tensor != nullptr);
   auto parameter = func_graph->add_parameter();
   MS_CHECK_TRUE_RET(parameter != nullptr, nullptr);
-  auto tensor_info = std::static_pointer_cast<tensor::Tensor>(MakeValue(*tensor));
-  MS_CHECK_TRUE_RET(tensor_info != nullptr, nullptr);
+  std::vector<int> shape(tensor->shape());
+  std::vector<int64_t> shape_vector;
+  (void)std::transform(shape.begin(), shape.end(), std::back_inserter(shape_vector),
+                       [](const int32_t &value) { return static_cast<int64_t>(value); });
+
+  auto tensor_info = tensor::from_spec(tensor->data_type(), shape_vector, device::DeviceType::kCPU);
+  if (tensor_info == nullptr) {
+    MS_LOG(ERROR) << "create tensor info failed.";
+    return nullptr;
+  }
+  if (tensor->MutableData() != nullptr && tensor->ElementsNum() != 0) {
+    auto tensor_data = static_cast<uint8_t *>(tensor_info->data_c());
+    auto ret = memcpy_s(tensor_data, tensor_info->Size(), tensor->data(), tensor->Size());
+    if (ret != EOK) {
+      MS_LOG(ERROR) << "memcpy error: " << ret;
+      return nullptr;
+    }
+  }
   auto status = lite::InitParameterFromTensorInfo(parameter, tensor_info);
   if (status != RET_OK) {
     MS_LOG(ERROR) << "init parameter from tensor info failed";
@@ -277,7 +267,7 @@ int ConstFoldProcessor::DoConstantFold(const FuncGraphPtr &func_graph, const CNo
     return lite::RET_ERROR;
   }
   std::vector<TensorPtr> inputs_ptr;
-  if (GetCNodeInputTensors(cnode, &inputs_ptr, fmk_type_, train_flag_, true) != lite::RET_OK) {
+  if (LiteTensorExtractor::GetCNodeInputTensors(cnode, &inputs_ptr, fmk_type_, train_flag_, true) != lite::RET_OK) {
     MS_LOG(ERROR) << "extract input tensor from cnode failed. " << cnode->fullname_with_scope();
     return lite::RET_ERROR;
   }
@@ -328,7 +318,7 @@ int ConstFoldProcessor::DoConstantFold(const FuncGraphPtr &func_graph, const CNo
     return lite::RET_ERROR;
   }
   // replace cnode by new param
-  status = Apply(func_graph, cnode, output_tensors);
+  status = ReplaceCNode(func_graph, cnode, output_tensors);
   if (status != lite::RET_OK) {
     MS_LOG(ERROR) << "constant_folding replace cnode failed";
   } else {
@@ -336,61 +326,5 @@ int ConstFoldProcessor::DoConstantFold(const FuncGraphPtr &func_graph, const CNo
   }
   return status;
 }
-
-STATUS ConstFoldProcessor::Apply(const FuncGraphPtr &func_graph, const CNodePtr &cnode,
-                                 std::vector<lite::Tensor *> output_tensors) {
-  return ReplaceCNode(func_graph, cnode, output_tensors);
-}
-
-int ConstFoldProcessor::GetCNodeInputTensors(const CNodePtr &cnode, std::vector<TensorPtr> *inputs,
-                                             converter::FmkType fmk_type, bool train_flag, bool copy_data) {
-  return LiteTensorExtractor::GetCNodeInputTensors(cnode, inputs, fmk_type, train_flag, copy_data);
-}
-
-int ConstantTagProcessor::GetCNodeInputTensors(const CNodePtr &cnode, std::vector<TensorPtr> *inputs,
-                                               converter::FmkType fmk_type, bool train_flag, bool copy_data) {
-  return ConstantTagUtils::GetCNodeInputTensors(cnode, inputs, fmk_type, train_flag, copy_data);
-}
-
-STATUS ConstantTagProcessor::Apply(const FuncGraphPtr &func_graph, const CNodePtr &cnode,
-                                   std::vector<lite::Tensor *> output_tensors) {
-  MS_ASSERT(func_graph != nullptr);
-  auto manager = func_graph->manager();
-  MS_CHECK_TRUE_RET(manager != nullptr, lite::RET_NULL_PTR);
-  if (output_tensors.size() != 1) {
-    for (size_t k = 0; k < output_tensors.size(); k++) {
-      auto used_node_list = Helper::GetRealNodeUsedListByOutputIdx(func_graph, cnode, k);
-      if (used_node_list->empty()) {
-        MS_LOG(DEBUG) << "this output don't be used by other node.";
-        continue;
-      }
-      if (used_node_list->size() != 1) {
-        MS_LOG(ERROR) << " output must tuple_getitem";
-        return lite::RET_ERROR;
-      }
-      auto tuple_node = used_node_list->at(0).first;
-      if (CheckPrimitiveType(tuple_node, prim::kPrimTupleGetItem)) {
-        MS_CHECK_TRUE_MSG(tuple_node != nullptr, lite::RET_NULL_PTR, "tuple_node is nullptr.");
-        auto tuple_cnode = tuple_node->cast<CNodePtr>();
-        MS_CHECK_TRUE_MSG(tuple_cnode != nullptr, lite::RET_NULL_PTR, "tuple_cnode is nullptr.");
-        auto abstract = tuple_cnode->abstract();
-        MS_CHECK_TRUE_MSG(abstract != nullptr, lite::RET_NULL_PTR, "abstract is nullptr.");
-
-        tuple_cnode->AddAttr(lite::kNameCNodeValueAttr, MakeValue(*output_tensors.at(k)));
-      } else {
-        MS_LOG(ERROR) << " multi out tensor must connect tuple-getitem: " << cnode->fullname_with_scope();
-        return lite::RET_ERROR;
-      }
-    }
-  } else {
-    MS_CHECK_TRUE_MSG(cnode != nullptr, lite::RET_NULL_PTR, "cnode is nullptr.");
-    auto abstract = cnode->abstract();
-    MS_CHECK_TRUE_MSG(abstract != nullptr, lite::RET_NULL_PTR, "abstract is nullptr.");
-
-    cnode->AddAttr(lite::kNameCNodeValueAttr, MakeValue(*output_tensors.front()));
-  }
-  return lite::RET_OK;
-}
-
 }  // namespace opt
 }  // namespace mindspore
