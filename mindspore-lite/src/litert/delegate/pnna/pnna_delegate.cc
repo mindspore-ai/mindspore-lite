@@ -78,6 +78,9 @@ Status PNNADelegate::Init() {
     {schema::PrimitiveType_Split, GetPNNAOp<PNNASplit>},
     {schema::PrimitiveType_PadFusion, GetPNNAOp<PNNAPad>},
     {schema::PrimitiveType_Activation, GetPNNAOp<PNNAActivation>},
+    {schema::PrimitiveType_FusedBatchNorm, GetPNNAOp<PNNABatchnorm>},
+    {schema::PrimitiveType_BroadcastTo, GetPNNAOp<PNNABroadcast>},
+    {schema::PrimitiveType_Cast, GetPNNAOp<PNNACast>},
   };
   return mindspore::kSuccess;
 }

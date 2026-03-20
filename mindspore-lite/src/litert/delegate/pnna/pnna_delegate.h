@@ -44,6 +44,9 @@
 #include "src/litert/delegate/pnna/op/split_pnna.h"
 #include "src/litert/delegate/pnna/op/pad_pnna.h"
 #include "src/litert/delegate/pnna/op/activation_pnna.h"
+#include "src/litert/delegate/pnna/op/batchnorm_pnna.h"
+#include "src/litert/delegate/pnna/op/broadcast_pnna.h"
+#include "src/litert/delegate/pnna/op/cast_pnna.h"
 
 namespace mindspore {
 namespace lite {
