@@ -99,7 +99,7 @@ def load_model(model_path: str, context: mslite.Context) -> mslite.Model:
         model.build_from_file(model_path, mslite.ModelType.MINDIR, context)
         print("[INFO] Model built successfully")
         return model
-    except Exception as e:
+    except RuntimeError as e:
         print(f"[ERROR] Model build failed: {e}")
         sys.exit(1)
 
@@ -218,4 +218,3 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
-
