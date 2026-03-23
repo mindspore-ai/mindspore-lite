@@ -27,9 +27,11 @@ This tutorial demonstrates how to deploy and optimize open-source Vision Transfo
 - Ascend Atlas 800I A2
 
 ### Operating System
+
 - openEuler or Ubuntu Linux
 
 ### Software Dependencies
+
 - `Python` >= 3.11.4
 - `CANN` >= 8.2.RC1
 - `MindSpore Lite` >= 2.7.0
@@ -91,11 +93,13 @@ python vit_ascend_infer.py --model_path vit_base_b256.mindir --batch_size 256 --
 ## 4. Performance and Accuracy Baseline
 
 ### Performance Metrics
+
 - **Average Latency**: ~227 ms
 - **Throughput**: ~1130 FPS
 - Well within the target of 410 ms
 
 ### Accuracy Metrics (compared to PyTorch CPU FP32)
+
 - **Max Absolute Error**: ~0.075
 - **Cosine Similarity**: 0.99996 (extremely high consistency)
 
