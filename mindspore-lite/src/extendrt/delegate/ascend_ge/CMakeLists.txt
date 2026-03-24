@@ -17,6 +17,9 @@ set_property(SOURCE ${GE_EXECUTOR_SRC} PROPERTY COMPILE_DEFINITIONS
         SUBMODULE_ID=mindspore::SubModuleId::SM_LITE)
 add_library(ascend_ge_plugin SHARED ${GE_EXECUTOR_SRC})
 
+# avoid cpp error as CANN is deprecating current version of ops protos by Dec 2026
+target_compile_options(ascend_ge_plugin PRIVATE -Wno-error=cpp)
+
 find_library(ge_graph libgraph.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
 find_library(acl libascendcl.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
 find_library(acl_cblas libacl_cblas.so ${ASCEND_CANN_RUNTIME_PATH} ${ASCEND_TOOLKIT_RUNTIME_PATH})
