@@ -380,16 +380,21 @@ TEST_F(TestConv1x1Int8, BatchDimension_SingleBatch) {
   // Store output for verification
   memcpy(correct, outputs_[0]->MutableData(), total_size * sizeof(int8_t));
 
-  // Verify output is generated correctly (non-zero)
+  // Verify output is generated correctly - use same pattern as multi-batch tests
   int8_t *out_data = reinterpret_cast<int8_t *>(outputs_[0]->MutableData());
-  bool has_non_zero = false;
+  int batch_size = total_size / batch;
+  std::vector<bool> batch_has_nonzero(batch, false);
+
   for (int i = 0; i < total_size; ++i) {
     if (out_data[i] != 0) {
-      has_non_zero = true;
-      break;
+      int batch_idx = i / batch_size;
+      batch_has_nonzero[batch_idx] = true;
     }
   }
-  EXPECT_TRUE(has_non_zero);
+
+  for (int b = 0; b < batch; ++b) {
+    EXPECT_TRUE(batch_has_nonzero[b]) << "Batch " << b << " has no non-zero output!";
+  }
 
   delete conv1x1;
   delete ctx;
@@ -426,14 +431,21 @@ TEST_F(TestConv1x1Int8, BatchDimension_MultiBatch) {
 
   // Verify output is generated correctly for all batches
   int8_t *out_data = reinterpret_cast<int8_t *>(outputs_[0]->MutableData());
-  bool has_non_zero = false;
+
+  // Check each batch independently to catch PR#651 bug where only batch 0 was processed
+  int batch_size = total_size / batch;
+  std::vector<bool> batch_has_nonzero(batch, false);
+
   for (int i = 0; i < total_size; ++i) {
     if (out_data[i] != 0) {
-      has_non_zero = true;
-      break;
+      int batch_idx = i / batch_size;
+      batch_has_nonzero[batch_idx] = true;
     }
   }
-  EXPECT_TRUE(has_non_zero);
+
+  for (int b = 0; b < batch; ++b) {
+    EXPECT_TRUE(batch_has_nonzero[b]) << "Batch " << b << " has no non-zero output!";
+  }
 
   delete conv1x1;
   delete ctx;
@@ -475,16 +487,21 @@ TEST_F(TestConv1x1Int8, BatchDimension_WithPadding) {
 
   conv1x1->Run();
 
-  // Verify output
+  // Verify output - check each batch independently to catch PR#651 bug
   int8_t *out_data = reinterpret_cast<int8_t *>(outputs_[0]->MutableData());
-  bool has_non_zero = false;
+  int batch_size = total_size / batch;
+  std::vector<bool> batch_has_nonzero(batch, false);
+
   for (int i = 0; i < total_size; ++i) {
     if (out_data[i] != 0) {
-      has_non_zero = true;
-      break;
+      int batch_idx = i / batch_size;
+      batch_has_nonzero[batch_idx] = true;
     }
   }
-  EXPECT_TRUE(has_non_zero);
+
+  for (int b = 0; b < batch; ++b) {
+    EXPECT_TRUE(batch_has_nonzero[b]) << "Batch " << b << " has no non-zero output! Bug detected.";
+  }
 
   delete conv1x1;
   delete ctx;
@@ -526,16 +543,21 @@ TEST_F(TestConv1x1Int8, BatchDimension_WithStride) {
 
   conv1x1->Run();
 
-  // Verify output
+  // Verify output - check each batch independently to catch PR#651 bug
   int8_t *out_data = reinterpret_cast<int8_t *>(outputs_[0]->MutableData());
-  bool has_non_zero = false;
+  int batch_size = total_size / batch;
+  std::vector<bool> batch_has_nonzero(batch, false);
+
   for (int i = 0; i < total_size; ++i) {
     if (out_data[i] != 0) {
-      has_non_zero = true;
-      break;
+      int batch_idx = i / batch_size;
+      batch_has_nonzero[batch_idx] = true;
     }
   }
-  EXPECT_TRUE(has_non_zero);
+
+  for (int b = 0; b < batch; ++b) {
+    EXPECT_TRUE(batch_has_nonzero[b]) << "Batch " << b << " has no non-zero output!";
+  }
 
   delete conv1x1;
   delete ctx;
@@ -579,6 +601,54 @@ TEST_F(TestConv1x1Int8, MatmulParam_Row_Calculation) {
   for (auto t : inputs_) delete t;
   for (auto t : outputs_) delete t;
   free(correct);
+}
+
+TEST_F(TestConv1x1Int8, Conv1x1InputPackBatch_GoldenTest) {
+  // Golden test for Conv1x1InputPackBatch to catch PR#651 bug
+  // 1x1 convolution: kernel_size=1x1, stride=1, no padding
+  // Input: [Batch, H, W, C] → Output: [Batch*H, W, C]
+  auto conv_param = new ConvParameter();
+  conv_param->input_batch_ = 2;
+  conv_param->input_channel_ = 3;
+  conv_param->input_h_ = 2;
+  conv_param->input_w_ = 2;
+  conv_param->output_h_ = 2;
+  conv_param->output_w_ = 2;
+  conv_param->stride_h_ = 1;
+  conv_param->stride_w_ = 1;
+  conv_param->pad_u_ = 0;
+  conv_param->pad_l_ = 0;
+  conv_param->kernel_h_ = 1;
+  conv_param->kernel_w_ = 1;
+  conv_param->output_channel_ = 3;
+
+  // Input: 2 batches, [2, 2, 3] = 12 elements each
+  constexpr int input_size = 2 * 2 * 2 * 3;
+  int8_t input[input_size] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, -1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12};
+
+  // Expected output: with stride=1, values preserved (layout reorganized)
+  constexpr int output_size = 2 * 2 * 2 * 3;
+  int8_t expected_output[output_size] = {1,  2,  3,  4,  5,  6,  7,  8,  9,  10,  11,  12,
+                                         -1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12};
+
+  int8_t actual_output[output_size] = {0};
+  Conv1x1InputPackBatch(input, actual_output, conv_param, sizeof(int8_t), 2);
+
+  // Precise comparison - will FAIL if Batch 1 has wrong data
+  int ret = CompareOutputData(actual_output, expected_output, output_size, 0);
+  EXPECT_EQ(0, ret) << "Output mismatch! Expected negative values for Batch 1, but got positive.";
+
+  // Additional check: verify batches are not identical
+  bool batch_identical = true;
+  for (int i = 0; i < output_size / 2; ++i) {
+    if (actual_output[i] != actual_output[output_size / 2 + i]) {
+      batch_identical = false;
+      break;
+    }
+  }
+  EXPECT_FALSE(batch_identical) << "Batch 0 and Batch 1 are identical! PR#651 bug detected.";
+
+  delete conv_param;
 }
 
 }  // namespace mindspore

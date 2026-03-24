@@ -436,7 +436,8 @@ void Convolution1x1Int8CPUKernel::Pre1x1Trans(int8_t *src_input, int8_t *src_out
   /* deal with pad and stride */
   output_ptr_ = src_output;
   if (pre_trans_input_) {
-    Conv1x1InputPack(src_input, input_ptr_, conv_param_, sizeof(int8_t));
+    // Use batch-aware function to handle multiple batches correctly
+    Conv1x1InputPackBatch(src_input, input_ptr_, conv_param_, sizeof(int8_t), conv_param_->input_batch_);
   } else {
     input_ptr_ = src_input;
   }
