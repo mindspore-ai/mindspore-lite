@@ -385,7 +385,7 @@ endif()
 set_target_properties(mindspore-lite_static PROPERTIES OUTPUT_NAME "mindspore-lite")
 set_target_properties(mindspore-lite_static PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 
-if(NOT MSVC)
+if(NOT MSVC AND NOT MSLITE_ENABLE_ACL)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-private-field")
 endif()
 
