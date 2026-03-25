@@ -388,6 +388,7 @@ echo "---------- Run MindSpore Lite API ----------"
 cd ${basepath}/python/python_api/  || exit 1 
 cp -r ${ms_models_path}/sd1.5_unet.onnx* . || exit 1 # for Model Predict ST
 cp -r ${ms_models_path}/single_matmul_model.onnx.mindir . || exit 1 # for Update weights ST
+cp -r ${ms_models_path}/deepaudio.onnx* . || exit 1 # for ModelParallelRunner 'for-loop' Predict ST
 cp -r ${ms_models_path}/resize.onnx.mindir . || exit 1 # for Model ST
 cp -r ${basepath}/../${config_folder}/ascend/prof.json . || exit 1 # for test profiling
 cp -r ${models_path}/single_matmul_model.onnx . || exit 1 # for Encrypt And Decrypt ST
