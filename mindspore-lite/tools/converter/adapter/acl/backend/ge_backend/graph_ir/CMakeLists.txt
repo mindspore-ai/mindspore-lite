@@ -1,8 +1,6 @@
 file(GLOB_RECURSE _TRANSFORM_SRC_LIST RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cc")
 set_property(SOURCE ${_TRANSFORM_SRC_LIST} PROPERTY COMPILE_DEFINITIONS
   SUBMODULE_ID=mindspore::SubModuleId::SM_GE_ADPT)
-# avoid cpp error as CANN is deprecating current version of ops protos by Dec 2026
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=cpp")
 add_subdirectory(${TOP_DIR}/mindspore/mindspore/ccsrc/plugin/ascend/res_manager/op_adapter/
     _mindspore_ascend_op_adapter_obj)
 add_subdirectory(${TOP_DIR}/mindspore/mindspore/ccsrc/plugin/ascend/res_manager/symbol_interface
@@ -12,6 +10,9 @@ list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../utils/compile_ca
 
 add_library(mindspore_graph_ir SHARED ${_TRANSFORM_SRC_LIST} $<TARGET_OBJECTS:_mindspore_ascend_symbol_obj>
     $<TARGET_OBJECTS:_mindspore_ascend_op_adapter_obj>)
+
+# avoid cpp error as CANN is deprecating current version of ops protos by Dec 2026
+target_compile_options(mindspore_graph_ir PRIVATE -Wno-error=cpp)
 
 target_link_libraries(mindspore_graph_ir PRIVATE mindspore_core mindspore_ops)
 # libascendcl.so will be spilted to libacl_rt.so and libacl_mdl.so in the future.
