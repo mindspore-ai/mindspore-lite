@@ -25,6 +25,21 @@ extern "C" {
 
 void Conv1x1InputPack(const void *src_ptr, void *dst_ptr, ConvParameter *conv_param, int data_size);
 
+/**
+ * @brief Conv1x1 input packing function with batch support
+ *
+ * This function handles multiple batches by flattening the batch dimension
+ * into the height dimension. Data layout: [Batch, H, W, C] -> [Batch*H, W, C]
+ *
+ * @param src_ptr Source data pointer [Batch, H, W, C]
+ * @param dst_ptr Destination data pointer [Batch*H, W, C]
+ * @param conv_param Convolution parameters
+ * @param data_size Size of each data element (e.g., sizeof(int8_t))
+ * @param input_batch Number of batches
+ */
+void Conv1x1InputPackBatch(const void *src_ptr, void *dst_ptr, ConvParameter *conv_param, int data_size,
+                           int input_batch);
+
 #ifdef __cplusplus
 }
 #endif
