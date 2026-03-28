@@ -192,7 +192,7 @@ size_t Hex2ByteArray(const std::string &hex_str, unsigned char *byte_array, size
     }
     if (hex_str[p + 1] >= 'a' && hex_str[p + 1] <= 'f') {
       byte_array[i] = (byte_array[i] << half_byte_offset) | (hex_str[p + 1] - 'a' + a_val);
-    } else if (hex_str[p] >= 'A' && hex_str[p] <= 'F') {
+    } else if (hex_str[p + 1] >= 'A' && hex_str[p + 1] <= 'F') {
       byte_array[i] = (byte_array[i] << half_byte_offset) | (hex_str[p + 1] - 'A' + a_val);
     } else {
       byte_array[i] = (byte_array[i] << half_byte_offset) | (hex_str[p + 1] - '0');

@@ -76,6 +76,9 @@ MSTensor **ModelC::GetInputs(size_t *input_num) {
   for (size_t i = 0; i < inputs.size(); i++) {
     inputs_[i] = new (std::nothrow) MSTensor(inputs[i].impl());
     if (inputs_[i] == nullptr) {
+      for (size_t j = 0; j < i; j++) {
+        delete inputs_[j];
+      }
       inputs_.clear();
       return nullptr;
     }
@@ -107,6 +110,9 @@ MSTensor **ModelC::GetOutputsTensor(size_t *output_num, std::vector<MSTensor *> 
   for (size_t i = 0; i < outputs.size(); i++) {
     (*vec_tensors)[i] = new (std::nothrow) MSTensor(outputs[i].impl());
     if ((*vec_tensors)[i] == nullptr) {
+      for (size_t j = 0; j < i; j++) {
+        delete (*vec_tensors)[j];
+      }
       vec_tensors->clear();
       return nullptr;
     }
