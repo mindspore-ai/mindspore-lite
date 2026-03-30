@@ -102,6 +102,17 @@ class TfliteLogisticParser : public TfliteNodeParser {
                       const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph,
                       const std::unique_ptr<tflite::ModelT> &tflite_model) override;
 };
+
+class TfliteEluParser : public TfliteNodeParser {
+ public:
+  TfliteEluParser() : TfliteNodeParser("Elu") {}
+
+  ~TfliteEluParser() override = default;
+
+  PrimitiveCPtr Parse(const std::unique_ptr<tflite::OperatorT> &tflite_op,
+                      const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph,
+                      const std::unique_ptr<tflite::ModelT> &tflite_model) override;
+};
 }  // namespace lite
 }  // namespace mindspore
 

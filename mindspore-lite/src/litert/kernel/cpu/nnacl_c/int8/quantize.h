@@ -167,6 +167,15 @@ typedef struct LeakyReluQuantArg {
   int thread_num_;
 } LeakyReluQuantArg;
 
+typedef struct EluQuantArg {
+  QuantArg in_args_;
+  QuantArg out_args_;
+  float alpha_;
+  int input_dim_;
+  int element_num;
+  int thread_num_;
+} EluQuantArg;
+
 typedef struct ResizeQuantArg {
   int32_t ratio_x_;
   int32_t ratio_y_;
