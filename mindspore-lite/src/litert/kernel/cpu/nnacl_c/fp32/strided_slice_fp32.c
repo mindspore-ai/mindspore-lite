@@ -19,7 +19,6 @@
 #include <stdio.h>
 #include "nnacl_c/nnacl_common.h"
 #include "nnacl_c/errorcode.h"
-#include "include/securec.h"
 
 // Safe multiplication check macro to prevent integer overflow
 // Returns true if multiplication would overflow, false otherwise
