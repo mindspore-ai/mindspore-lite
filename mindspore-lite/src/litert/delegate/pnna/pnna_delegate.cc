@@ -81,6 +81,9 @@ Status PNNADelegate::Init() {
     {schema::PrimitiveType_FusedBatchNorm, GetPNNAOp<PNNABatchnorm>},
     {schema::PrimitiveType_BroadcastTo, GetPNNAOp<PNNABroadcast>},
     {schema::PrimitiveType_Cast, GetPNNAOp<PNNACast>},
+    {schema::PrimitiveType_Erf, GetPNNAOp<PNNAErf>},
+    {schema::PrimitiveType_ExpFusion, GetPNNAOp<PNNAExp>},
+    {schema::PrimitiveType_Dropout, GetPNNAOp<PNNADropout>},
   };
   return mindspore::kSuccess;
 }
