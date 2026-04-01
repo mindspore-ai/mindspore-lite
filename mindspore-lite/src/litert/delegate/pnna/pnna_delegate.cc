@@ -97,6 +97,9 @@ Status PNNADelegate::Init() {
     {schema::PrimitiveType_Dropout, GetPNNAOp<PNNADropout>},
     {schema::PrimitiveType_Resize, GetPNNAOp<PNNAResize>},
     {schema::PrimitiveType_Reshape, GetPNNAOp<PNNAReshape>},
+    {schema::PrimitiveType_Floor, GetPNNAOp<PNNAFloor>},
+    {schema::PrimitiveType_FullConnection, GetPNNAOp<PNNAFullyConnected>},
+    {schema::PrimitiveType_GatherD, GetPNNAOp<PNNAGatherElements>},
   };
   return mindspore::kSuccess;
 }
