@@ -21,6 +21,7 @@
 #include <vector>
 #include <utility>
 #include <algorithm>
+#include "glog/export.h"
 #include "torch/script.h"
 #include "include/errorcode.h"
 #include "ir/dtype/type_id.h"
