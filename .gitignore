@@ -2,7 +2,7 @@
 build/
 output/
 .idea/
-
+.claude/settings.local.json
 ## third_party
 third_party/proto/caffe/caffe.proto
 third_party/proto/onnx/onnx.proto

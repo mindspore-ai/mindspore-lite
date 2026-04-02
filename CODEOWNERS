@@ -65,18 +65,18 @@
 /mindspore-lite/tools/converter/import/  @YeFeng_24
 /mindspore-lite/tools/converter/legacy_optimizer/  @fatmouse007fatmouse007 @jjfeing
 /mindspore-lite/tools/converter/micro/  @fatmouse007fatmouse007 @jjfeing
-/mindspore-lite/tools/converter/ops/  @xu_anyue @jjfeing
-/mindspore-lite/tools/converter/parser/  @xu_anyue @jjfeing
-/mindspore-lite/tools/converter/parser/caffe/  @xu_anyue @jjfeing
-/mindspore-lite/tools/converter/parser/om/  @xu_anyue @jjfeing
-/mindspore-lite/tools/converter/parser/pytorch/  @xu_anyue @jjfeing
-/mindspore-lite/tools/converter/parser/tf/  @xu_anyue @jjfeing
-/mindspore-lite/tools/converter/parser/tflite/  @xu_anyue @jjfeing
-/mindspore-lite/tools/converter/preprocess/  @xu_anyue @jjfeing
-/mindspore-lite/tools/converter/quantizer/  @xu_anyue @jjfeing
-/mindspore-lite/tools/converter/registry/  @xu_anyue @jjfeing
-/mindspore-lite/tools/converter/session/  @xu_anyue @jjfeing
-/mindspore-lite/tools/converter/adapter/dsp/  @xu_anyue @yhwang-ftdsp
+/mindspore-lite/tools/converter/ops/  @fatmouse007fatmouse007 @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/parser/  @fatmouse007fatmouse007 @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/parser/caffe/  @fatmouse007fatmouse007 @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/parser/om/  @fatmouse007fatmouse007 @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/parser/pytorch/  @fatmouse007fatmouse007 @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/parser/tf/  @fatmouse007fatmouse007 @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/parser/tflite/  @fatmouse007fatmouse007 @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/preprocess/  @fatmouse007fatmouse007 @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/quantizer/  @fatmouse007fatmouse007 @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/registry/  @fatmouse007fatmouse007 @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/session/  @fatmouse007fatmouse007 @YeFeng_24 @jjfeing
+/mindspore-lite/tools/converter/adapter/dsp/  @fatmouse007fatmouse007 @YeFeng_24 @yhwang-ftdsp
 
 /mindspore-lite/tools/cropper/  @fatmouse007fatmouse007
 /mindspore-lite/tools/dataset/  @fatmouse007fatmouse007
@@ -84,14 +84,14 @@
 /mindspore-lite/tools/mindir_exporter/  @YeFeng_24
 /mindspore-lite/tools/obfuscator/  @fatmouse007fatmouse007
 
-/mindspore-lite/tools/optimizer/  @xu_anyue @YeFeng_24
-/mindspore-lite/tools/optimizer/common/  @xu_anyue @YeFeng_24
-/mindspore-lite/tools/optimizer/const_fold/  @xu_anyue @YeFeng_24
-/mindspore-lite/tools/optimizer/fisson/  @xu_anyue @YeFeng_24
-/mindspore-lite/tools/optimizer/format/  @xu_anyue @YeFeng_24
-/mindspore-lite/tools/optimizer/fusion/  @xu_anyue @YeFeng_24
-/mindspore-lite/tools/optimizer/graph/  @xu_anyue @YeFeng_24
-/mindspore-lite/tools/optimizer/parallel/  @xu_anyue @YeFeng_24
+/mindspore-lite/tools/optimizer/  @fatmouse007fatmouse007 @YeFeng_24
+/mindspore-lite/tools/optimizer/common/  @fatmouse007fatmouse007 @YeFeng_24
+/mindspore-lite/tools/optimizer/const_fold/  @fatmouse007fatmouse007 @YeFeng_24
+/mindspore-lite/tools/optimizer/fisson/  @fatmouse007fatmouse007 @YeFeng_24
+/mindspore-lite/tools/optimizer/format/  @fatmouse007fatmouse007 @YeFeng_24
+/mindspore-lite/tools/optimizer/fusion/  @fatmouse007fatmouse007 @YeFeng_24
+/mindspore-lite/tools/optimizer/graph/  @fatmouse007fatmouse007 @YeFeng_24
+/mindspore-lite/tools/optimizer/parallel/  @fatmouse007fatmouse007 @YeFeng_24 @YeFeng_24
 
 /mindspore-lite/tools/providers/  @jjfeing
 /mindspore-lite/tools/schema_gen/  @jjfeing
@@ -99,6 +99,15 @@
 # The maintainers of mindspore-lite/test/.
 /mindspore-lite/test/  @YeFeng_24 @jjfeing
 /mindspore-lite/test/ut/src/runtime/kernel/dsp/  @fatmouse007fatmouse007 @yhwang-ftdsp
+
+/.claude/ @jjfeing
+/.claude/skills/lite-build/ @jjfeing
+/.claude/skills/lite-cloud-side-infer/ @YeFeng_24
+/.claude/skills/lite-code-quality/ @jjfeing
+/.claude/skills/lite-converter/ @fatmouse007fatmouse007 @YeFeng_24
+/.claude/skills/lite-debug-test/ @fatmouse007fatmouse007 @YeFeng_24
+/.claude/skills/lite-device-side-infer/ @fatmouse007fatmouse007
+/.claude/skills/lite-kernel-dev/ @fatmouse007fatmouse007 @YeFeng_24
 
 /.gitcode/  @jjfeing @YeFeng_24
 /.jenkins/  @nicholas_yhr @jjfeing
@@ -114,6 +123,7 @@
 /build.bat  @jjfeing @YeFeng_24
 /build.sh  @jjfeing @YeFeng_24
 /CODEOWNERS  @jjfeing @YeFeng_24
+/CLAUDE.md  @jjfeing @YeFeng_24
 /CONTRIBUTING.md  @jjfeing @YeFeng_24
 /CONTRIBUTING_CN.md  @jjfeing @YeFeng_24
 /LICENSE  @jjfeing @YeFeng_24
