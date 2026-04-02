@@ -36,6 +36,11 @@ class ResizeMapper : public PrimitiveMapper {
   STATUS ProcScaleInput(const CNodePtr &cnode, const PrimitivePtr &prim);
   STATUS CalResizeShape(const CNodePtr &cnode, const PrimitivePtr &prim);
   STATUS CastSize(const CNodePtr &cnode, const PrimitivePtr &prim);
+
+  // Helper functions for Mapper
+  STATUS ValidateInputs(const CNodePtr &cnode, const PrimitivePtr &src_prim);
+  PrimitivePtr CreateDstPrimByMethod(int64_t method, const PrimitivePtr &src_prim, const CNodePtr &cnode);
+  void SetCoordinateTransformAttrs(const PrimitivePtr &src_prim, PrimitivePtr *dst_prim);
 };
 }  // namespace lite
 }  // namespace mindspore

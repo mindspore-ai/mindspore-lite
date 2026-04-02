@@ -1,4 +1,4 @@
-# Copyright 2022-2023 Huawei Technologies Co., Ltd
+# Copyright 2022 - 2023 Huawei Technologies Co., Ltd
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,17 +15,33 @@
 """
 Converter API.
 """
+
 from __future__ import absolute_import
 import os
 from enum import Enum
 
-from mindspore_lite._checkparam import check_isinstance, check_input_shape, check_config_info
+from mindspore_lite._checkparam import (
+    check_isinstance,
+    check_input_shape,
+    check_config_info,
+)
 from mindspore_lite.lib import _c_lite_wrapper
-from mindspore_lite.tensor import DataType, Format, data_type_py_cxx_map, data_type_cxx_py_map, format_py_cxx_map, \
-    format_cxx_py_map
-from mindspore_lite.model import ModelType, model_type_py_cxx_map, model_type_cxx_py_map, set_env
+from mindspore_lite.tensor import (
+    DataType,
+    Format,
+    data_type_py_cxx_map,
+    data_type_cxx_py_map,
+    format_py_cxx_map,
+    format_cxx_py_map,
+)
+from mindspore_lite.model import (
+    ModelType,
+    MODEL_TYPE_PY_CXX_MAP,
+    MODEL_TYPE_CXX_PY_MAP,
+    set_env,
+)
 
-__all__ = ['FmkType', 'Converter']
+__all__ = ["FmkType", "Converter"]
 
 
 class FmkType(Enum):
@@ -132,17 +148,19 @@ class Converter:
         self.optimize_user_defined = "general"
 
     def __str__(self):
-        res = f"config_info: {self.get_config_info()},\n" \
-              f"weight_fp16: {self.weight_fp16},\n" \
-              f"input_shape: {self.input_shape},\n" \
-              f"input_format: {self.input_format},\n" \
-              f"input_data_type: {self.input_data_type},\n" \
-              f"output_data_type: {self.output_data_type},\n" \
-              f"save_type: {self.save_type},\n" \
-              f"enable_encryption: {self.enable_encryption},\n" \
-              f"infer: {self.infer},\n" \
-              f"optimize: {self.optimize},\n" \
-              f"device: {self.device}."
+        res = (
+            f"config_info: {self.get_config_info()},\n"
+            f"weight_fp16: {self.weight_fp16},\n"
+            f"input_shape: {self.input_shape},\n"
+            f"input_format: {self.input_format},\n"
+            f"input_data_type: {self.input_data_type},\n"
+            f"output_data_type: {self.output_data_type},\n"
+            f"save_type: {self.save_type},\n"
+            f"enable_encryption: {self.enable_encryption},\n"
+            f"infer: {self.infer},\n"
+            f"optimize: {self.optimize},\n"
+            f"device: {self.device}."
+        )
         return res
 
     @property
@@ -352,9 +370,16 @@ class Converter:
                 when `input_data_type` is a DataType.
         """
         check_isinstance("input_data_type", input_data_type, DataType)
-        if input_data_type not in [DataType.FLOAT32, DataType.INT8, DataType.UINT8, DataType.UNKNOWN]:
-            raise ValueError("input_data_type must be in [DataType.FLOAT32, DataType.INT8, DataType.UINT8, "
-                             "DataType.UNKNOWN].")
+        if input_data_type not in [
+            DataType.FLOAT32,
+            DataType.INT8,
+            DataType.UINT8,
+            DataType.UNKNOWN,
+        ]:
+            raise ValueError(
+                "input_data_type must be in [DataType.FLOAT32, DataType.INT8, "
+                "DataType.UINT8, DataType.UNKNOWN]."
+            )
         self._converter.set_input_data_type(data_type_py_cxx_map.get(input_data_type))
 
     @property
@@ -529,8 +554,7 @@ class Converter:
             self._converter.set_chip_name(chip_name)
             self.optimize_user_defined = "ascend_oriented"
         else:
-            raise ValueError(
-                "optimize must be 'none', 'general', 'ascend_oriented'.")
+            raise ValueError("optimize must be 'none', 'general', 'ascend_oriented'.")
 
     @property
     def output_data_type(self):
@@ -576,9 +600,16 @@ class Converter:
                 when `output_data_type` is a DataType.
         """
         check_isinstance("output_data_type", output_data_type, DataType)
-        if output_data_type not in [DataType.FLOAT32, DataType.INT8, DataType.UINT8, DataType.UNKNOWN]:
-            raise ValueError("output_data_type must be in [DataType.FLOAT32, DataType.INT8, DataType.UINT8, "
-                             "DataType.UNKNOWN].")
+        if output_data_type not in [
+            DataType.FLOAT32,
+            DataType.INT8,
+            DataType.UINT8,
+            DataType.UNKNOWN,
+        ]:
+            raise ValueError(
+                "output_data_type must be in [DataType.FLOAT32, DataType.INT8, "
+                "DataType.UINT8, DataType.UNKNOWN]."
+            )
         self._converter.set_output_data_type(data_type_py_cxx_map.get(output_data_type))
 
     @property
@@ -592,7 +623,7 @@ class Converter:
             but it will be deprecated in the future. For details, see
             `ModelType <https://mindspore.cn/lite/api/en/master/mindspore_lite/mindspore_lite.ModelType.html>`_ .
         """
-        return model_type_cxx_py_map.get(self._converter.get_save_type())
+        return MODEL_TYPE_CXX_PY_MAP.get(self._converter.get_save_type())
 
     @save_type.setter
     def save_type(self, save_type):
@@ -609,7 +640,7 @@ class Converter:
             TypeError: `save_type` is not a ModelType.
         """
         check_isinstance("save_type", save_type, ModelType)
-        self._converter.set_save_type(model_type_py_cxx_map.get(save_type))
+        self._converter.set_save_type(MODEL_TYPE_PY_CXX_MAP.get(save_type))
 
     @property
     def weight_fp16(self):
@@ -776,71 +807,81 @@ class Converter:
 
     def get_config_info(self):
         r"""
-        Get config info of converter.It is used together with `set_config_info` method for online converter.
-        Please use `set_config_info` method before `get_config_info` .
+                Get config info of converter.It is used together with `set_config_info` method for online converter.
+                Please use `set_config_info` method before `get_config_info` .
 
-        Returns:
-            :obj:`dict{str: dict{str: str}}`, the config info which has been set in converter.
+                Returns:
+                    :obj:`dict{
+        str:
+          dict {
+          str:
+            str
+          }
+        }
+        `, the config info which has been set in converter.
 
-        Examples:
-            >>> import mindspore_lite as mslite
-            >>> converter = mslite.Converter()
-            >>> section = "common_quant_param"
-            >>> config_info_in = {"quant_type": "WEIGHT_QUANT"}
-            >>> converter.set_config_info(section, config_info_in)
-            >>> config_info_out = converter.get_config_info()
-            >>> print(config_info_out)
-            {'common_quant_param': {'quant_type': 'WEIGHT_QUANT'}}
+             Examples : >>>
+                        import mindspore_lite as mslite >>>
+                        converter = mslite.Converter() >>> section = "common_quant_param" >>> config_info_in = {
+          "quant_type" : "WEIGHT_QUANT"
+        } >>> converter.set_config_info(section, config_info_in) >>> config_info_out = converter.get_config_info() >>>
+                                                                                       print(config_info_out) {
+          'common_quant_param' : { 'quant_type' : 'WEIGHT_QUANT' }
+        }
         """
         return self._converter.get_config_info()
 
     def set_config_info(self, section="", config_info=None):
         r"""
-        Set config info for Converter.It is used together with `get_config_info` method for online converter.
+                Set config info for Converter.It is used together with `get_config_info` method for online converter.
 
-        Args:
-            section (str, optional): The category of the configuration parameter.
-                Set the individual parameters of the configfile together with `config_info` .
-                For example, for `section` = ``"common_quant_param"``, `config_info` = {"quant_type": "WEIGHT_QUANT"}.
-                Default: ``""`` .
+                Args:
+                    section (str, optional): The category of the configuration
+                        parameter. Set the individual parameters of the
+                        configfile together with `config_info` .
+                        For example, for `section` = ``"common_quant_param"``,
+                        `config_info` = {"quant_type": "WEIGHT_QUANT"}.
+                        Default: ``""`` .
 
-                For the configuration parameters related to post training quantization, please refer to
-                `quantization <https://www.mindspore.cn/lite/docs/en/master/advanced/quantization.html>`_ .
+                        For the configuration parameters related to post training quantization, please refer to
+                        `quantization <https://www.mindspore.cn/lite/docs/en/master/advanced/quantization.html>`_ .
 
-                For the configuration parameters related to extension, please refer to
-                `extension  <https://www.mindspore.cn/lite/docs/en/master/advanced/third_party/converter_register.
-                html#extension-configuration>`_ .
+                        For the configuration parameters related to extension, please refer to
+                        `extension  <https://www.mindspore.cn/lite/docs/en/master/advanced/third_party/converter_register.
+                        html#extension-configuration>`_ .
 
-                - ``"common_quant_param"``: Common quantization parameter.
-                - ``"mixed_bit_weight_quant_param"``: Mixed bit weight quantization parameter.
-                - ``"full_quant_param"``: Full quantization parameter.
-                - ``"data_preprocess_param"``: Data preprocess quantization parameter.
-                - ``"registry"``: Extension configuration parameter.
+                        - ``"common_quant_param"``: Common quantization parameter.
+                        - ``"mixed_bit_weight_quant_param"``: Mixed bit weight quantization parameter.
+                        - ``"full_quant_param"``: Full quantization parameter.
+                        - ``"data_preprocess_param"``: Data preprocess quantization parameter.
+                        - ``"registry"``: Extension configuration parameter.
 
-            config_info (:obj:`dict{str: str}`, optional): List of configuration parameters.
-                Set the individual parameters of the configfile together with `section` .
-                For example, for `section` = ``"common_quant_param"``, `config_info` = {"quant_type": "WEIGHT_QUANT"}.
-                Default: ``None``, ``None`` is equivalent to {}.
+                    config_info (:obj:`dict`, optional): List of configuration parameters.
+                        Set the individual parameters of the configfile
+                        together with `section` .
+                        For example, for `section` = ``"common_quant_param"``,
+                        `config_info` = {"quant_type": "WEIGHT_QUANT"}.
+                        Default: ``None``, ``None`` is equivalent to {}.
 
-                For the configuration parameters related to post training quantization, please refer to
-                `quantization <https://www.mindspore.cn/lite/docs/en/master/advanced/quantization.html>`_ .
+                        For the configuration parameters related to post training quantization, please refer to
+                        `quantization <https://www.mindspore.cn/lite/docs/en/master/advanced/quantization.html>`_ .
 
-                For the configuration parameters related to extension, please refer to
-                `extension  <https://www.mindspore.cn/lite/docs/en/master/advanced/third_party/converter_register.
-                html#extension-configuration>`_ .
+                        For the configuration parameters related to extension, please refer to
+                        `extension  <https://www.mindspore.cn/lite/docs/en/master/advanced/third_party/converter_register.
+                        html#extension-configuration>`_ .
 
-        Raises:
-            TypeError: `section` is not a str.
-            TypeError: `config_info` is not a dict .
-            TypeError: `config_info` is a dict, but the keys are not str.
-            TypeError: `config_info` is a dict, the keys are str, but the values are not str.
+                Raises:
+                    TypeError: `section` is not a str.
+                    TypeError: `config_info` is not a dict .
+                    TypeError: `config_info` is a dict, but the keys are not str.
+                    TypeError: `config_info` is a dict, the keys are str, but the values are not str.
 
-        Examples:
-            >>> import mindspore_lite as mslite
-            >>> converter = mslite.Converter()
-            >>> section = "common_quant_param"
-            >>> config_info = {"quant_type": "WEIGHT_QUANT"}
-            >>> converter.set_config_info(section, config_info)
+                Examples:
+                    >>> import mindspore_lite as mslite
+                    >>> converter = mslite.Converter()
+                    >>> section = "common_quant_param"
+                    >>> config_info = {"quant_type": "WEIGHT_QUANT"}
+                    >>> converter.set_config_info(section, config_info)
         """
         check_isinstance("section", section, str)
         check_config_info("config_info", config_info, enable_none=True)

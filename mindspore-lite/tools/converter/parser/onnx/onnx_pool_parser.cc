@@ -101,12 +101,17 @@ bool ParseAttrs(const onnx::NodeProto &onnx_node, const std::unique_ptr<ops::Avg
                 mindspore::RoundMode *round_mode, bool *is_3d) {
   for (const auto &onnx_node_attr : onnx_node.attribute()) {
     const auto &attribute_name = onnx_node_attr.name();
+
     if (attribute_name == "kernel_shape") {
       ParseKernelSize(prim, onnx_node_attr, kernels, is_3d);
+      continue;
     }
+
     if (attribute_name == "strides") {
       ParseStrides(prim, onnx_node_attr, strides, is_3d);
+      continue;
     }
+
     if (attribute_name == "auto_pad") {
       if (onnx_node_attr.s() == "SAME_UPPER") {
         prim->set_pad_mode(mindspore::PadMode::SAME);
@@ -114,19 +119,31 @@ bool ParseAttrs(const onnx::NodeProto &onnx_node, const std::unique_ptr<ops::Avg
         MS_LOG(ERROR) << "PadMode_SAME_LOWER is not supported now";
         return false;
       }
+      continue;
     }
+
     if (attribute_name == "pads") {
       ParsePads(prim, onnx_node_attr, pads, is_3d);
+      continue;
     }
+
     if (attribute_name == "ceil_mode") {
       *round_mode = (onnx_node_attr.i() == 0) ? mindspore::RoundMode::FLOOR : mindspore::RoundMode::CEIL;
+      continue;
     }
+
     if (attribute_name == ops::kCountIncludePad) {
       bool include = onnx_node_attr.i() == 0 ? false : true;
       (void)prim->AddAttr(ops::kCountIncludePad, api::MakeValue(include));
+      continue;
     }
-    MS_CHECK_TRUE_MSG(!(attribute_name == "dilations" && !CheckDilations(onnx_node_attr)), false,
-                      "dilations is invalid!");
+
+    if (attribute_name == "dilations") {
+      if (!CheckDilations(onnx_node_attr)) {
+        MS_LOG(ERROR) << "dilations is invalid!";
+        return false;
+      }
+    }
   }
   return true;
 }
@@ -168,6 +185,47 @@ PrimitiveCPtr OnnxAvgPoolParser::Parse(const onnx::GraphProto &onnx_graph, const
 }
 
 /// MaxPool
+namespace {
+bool ParseKernelShapeAttr1D(const onnx::AttributeProto &onnx_node_attr, std::vector<int64_t> *kernel_shape,
+                            const std::unique_ptr<ops::MaxPoolFusion> &prim) {
+  if (onnx_node_attr.ints_size() != kNumShapeSize1) {
+    MS_LOG(ERROR) << "kernel_shape must be of size 1 for MaxPool1D";
+    return false;
+  }
+  *kernel_shape = {onnx_node_attr.ints(0)};
+  prim->set_kernel_size(*kernel_shape);
+  return true;
+}
+
+bool ParseStridesAttr1D(const onnx::AttributeProto &onnx_node_attr, std::vector<int64_t> *strides) {
+  if (onnx_node_attr.ints_size() != kNumShapeSize1) {
+    MS_LOG(ERROR) << "strides must be of size 1 for MaxPool1D";
+    return false;
+  }
+  *strides = {onnx_node_attr.ints(0)};
+  return true;
+}
+
+bool ParsePadsAttr1D(const onnx::AttributeProto &onnx_node_attr, const std::unique_ptr<ops::MaxPoolFusion> &prim,
+                     std::vector<int64_t> *pads) {
+  if (onnx_node_attr.ints_size() != kNumShapeSize2) {
+    MS_LOG(ERROR) << "pads must be of size 2 for MaxPool1D";
+    return false;
+  }
+  prim->set_pad_mode(mindspore::PadMode::PAD);
+  *pads = {onnx_node_attr.ints(0), onnx_node_attr.ints(1)};
+  return true;
+}
+
+bool ParseDilationsAttr1D(const onnx::AttributeProto &onnx_node_attr) {
+  if (!((onnx_node_attr.ints_size() == kNumShapeSize1) && (onnx_node_attr.ints(0) == 1))) {
+    MS_LOG(ERROR) << "MaxPool1D op only support dilations = 1 now!";
+    return false;
+  }
+  return true;
+}
+}  // namespace
+
 PrimitiveCPtr OnnxMaxPoolParser::ParseMaxPool1D(const onnx::NodeProto &onnx_node,
                                                 std::unique_ptr<ops::MaxPoolFusion> &prim) {
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
@@ -183,18 +241,13 @@ PrimitiveCPtr OnnxMaxPoolParser::ParseMaxPool1D(const onnx::NodeProto &onnx_node
   for (const auto &onnx_node_attr : onnx_node.attribute()) {
     const auto &attribute_name = onnx_node_attr.name();
     if (attribute_name == "kernel_shape") {
-      if (onnx_node_attr.ints_size() != kNumShapeSize1) {
-        MS_LOG(ERROR) << "kernel_shape must be of size 1 for MaxPool1D";
+      if (!ParseKernelShapeAttr1D(onnx_node_attr, &kernel_shape, prim)) {
         return nullptr;
       }
-      kernel_shape = {onnx_node_attr.ints(0)};
-      prim->set_kernel_size(kernel_shape);
     } else if (attribute_name == "strides") {
-      if (onnx_node_attr.ints_size() != kNumShapeSize1) {
-        MS_LOG(ERROR) << "strides must be of size 1 for MaxPool1D";
+      if (!ParseStridesAttr1D(onnx_node_attr, &strides)) {
         return nullptr;
       }
-      strides = {onnx_node_attr.ints(0)};
     } else if (attribute_name == "auto_pad") {
       if (onnx_node_attr.s() == "SAME_UPPER") {
         prim->set_pad_mode(mindspore::PadMode::SAME);
@@ -203,21 +256,13 @@ PrimitiveCPtr OnnxMaxPoolParser::ParseMaxPool1D(const onnx::NodeProto &onnx_node
         return nullptr;
       }
     } else if (attribute_name == "pads") {
-      if (onnx_node_attr.ints_size() != kNumShapeSize2) {
-        MS_LOG(ERROR) << "pads must be of size 2 for MaxPool1D";
+      if (!ParsePadsAttr1D(onnx_node_attr, prim, &pads)) {
         return nullptr;
       }
-      prim->set_pad_mode(mindspore::PadMode::PAD);
-      pads = {onnx_node_attr.ints(0), onnx_node_attr.ints(1)};
     } else if (attribute_name == "ceil_mode") {
-      if (onnx_node_attr.i() == 0) {
-        round_mode = mindspore::RoundMode::FLOOR;
-      } else {
-        round_mode = mindspore::RoundMode::CEIL;
-      }
+      round_mode = (onnx_node_attr.i() == 0) ? mindspore::RoundMode::FLOOR : mindspore::RoundMode::CEIL;
     } else if (attribute_name == "dilations") {
-      if (!((onnx_node_attr.ints_size() == kNumShapeSize1) && (onnx_node_attr.ints(0) == 1))) {
-        MS_LOG(ERROR) << "MaxPool1D op only support dilations = 1 now!";
+      if (!ParseDilationsAttr1D(onnx_node_attr)) {
         return nullptr;
       }
     }
@@ -246,14 +291,14 @@ PrimitiveCPtr OnnxMaxPoolParser::ParseMaxPool2D(const onnx::NodeProto &onnx_node
     const auto &attribute_name = onnx_node_attr.name();
     if (attribute_name == "kernel_shape") {
       if (onnx_node_attr.ints_size() != kNumShapeSize2) {
-        MS_LOG(ERROR) << "kernel_shape must be of size 1 for MaxPool1D";
+        MS_LOG(ERROR) << "kernel_shape must be of size 2 for MaxPool2D";
         return nullptr;
       }
       kernel_shape = {onnx_node_attr.ints(0), onnx_node_attr.ints(1)};
       prim->set_kernel_size(kernel_shape);
     } else if (attribute_name == "strides") {
       if (onnx_node_attr.ints_size() != kNumShapeSize2) {
-        MS_LOG(ERROR) << "strides must be of size 1 for MaxPool1D";
+        MS_LOG(ERROR) << "strides must be of size 2 for MaxPool2D";
         return nullptr;
       }
       strides = {onnx_node_attr.ints(0), onnx_node_attr.ints(1)};
@@ -266,17 +311,13 @@ PrimitiveCPtr OnnxMaxPoolParser::ParseMaxPool2D(const onnx::NodeProto &onnx_node
       }
     } else if (attribute_name == "pads") {
       if (onnx_node_attr.ints_size() != kNumShapeSize4) {
-        MS_LOG(ERROR) << "pads must be of size 2 for MaxPool1D";
+        MS_LOG(ERROR) << "pads must be of size 4 for MaxPool2D";
         return nullptr;
       }
       prim->set_pad_mode(mindspore::PadMode::PAD);
       pads = {onnx_node_attr.ints(0), onnx_node_attr.ints(2), onnx_node_attr.ints(1), onnx_node_attr.ints(3)};
     } else if (attribute_name == "ceil_mode") {
-      if (onnx_node_attr.i() == 0) {
-        round_mode = mindspore::RoundMode::FLOOR;
-      } else {
-        round_mode = mindspore::RoundMode::CEIL;
-      }
+      round_mode = (onnx_node_attr.i() == 0) ? mindspore::RoundMode::FLOOR : mindspore::RoundMode::CEIL;
     } else if (attribute_name == "dilations") {
       if (!((onnx_node_attr.ints_size() == kNumShapeSize2) && (onnx_node_attr.ints(0) == 1) &&
             (onnx_node_attr.ints(1) == 1))) {

@@ -61,6 +61,7 @@ constexpr int kTensorListDatasize = 3;
 constexpr int kTypeIndex = 0;
 constexpr int kElementShapeIndex = 1;
 constexpr int kTensorsNumIndex = 2;
+constexpr int kOnnxTensorQuantParamOpsetVersion = 19;
 
 int Onnx2AnfAdjust(const std::set<FuncGraphPtr> &all_func_graphs, const converter::ConverterParameters &flag) {
   for (const auto &func_graph : all_func_graphs) {
@@ -227,7 +228,7 @@ STATUS BuildReturnNode(const FuncGraphPtr &anf_graph, const std::vector<AnfNodeP
     return RET_ERROR;
   }
   auto input = return_inputs[0];
-  MS_EXCEPTION_IF_NULL(input);
+  MS_CHECK_TRUE_MSG(input != nullptr, RET_NULL_PTR, "input is nullptr");
   auto abstract = input->abstract();
   if (abstract == nullptr) {
     MS_LOG(ERROR) << "Input node abstract is null, node: " << input->fullname_with_scope();
@@ -1302,7 +1303,7 @@ STATUS OnnxModelParser::SetTensorQuantParamFromNode(const std::string &tensor_na
   MS_CHECK_TRUE_MSG(quant_param != nullptr, RET_NULL_PTR, "create QuantParamT return nullptr");
   // Set multiplier to 0 for ONNX opset versions <= 19 (upgraded from 15 for ONNX 1.19.1)
   // This maintains backward compatibility with older quantization formats
-  if (OnnxNodeParser::opset_version() <= 19) {
+  if (OnnxNodeParser::opset_version() <= kOnnxTensorQuantParamOpsetVersion) {
     quant_param->multiplier = 0;
   }
   std::string quant_tensor_name = "scale_" + tensor_name;
@@ -1438,7 +1439,7 @@ STATUS OnnxModelParser::AddTensorArrayEdge(const FuncGraphPtr &anf_graph, std::v
     return RET_NULL_PTR;
   }
   auto add_one_input = CreateConstParamter(anf_graph, 1);
-  MS_CHECK_TRUE_MSG(root_item_index_parameter != nullptr, RET_NULL_PTR, "create add_one_input return nullptr");
+  MS_CHECK_TRUE_MSG(add_one_input != nullptr, RET_NULL_PTR, "create add_one_input return nullptr");
   add_one_input->set_name(loop_node_name + "_const_placeholder_1");
   std::vector<AnfNodePtr> add_inputs = {add_value_node, item_index_parameter, add_one_input};
   auto add_cnode = anf_graph->NewCNode(add_inputs);

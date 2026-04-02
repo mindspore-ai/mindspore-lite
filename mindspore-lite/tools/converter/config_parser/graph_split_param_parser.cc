@@ -86,6 +86,57 @@ void GetSplitNode(const std::shared_ptr<ConverterPara> &param, std::string *spli
   }
 }
 
+// Helper function to find the next block start position
+static size_t FindNextBlockStart(const std::string &str, size_t pos) {
+  while (pos < str.length() && str[pos] != '[') {
+    pos++;
+  }
+  return pos;
+}
+
+// Helper function to extract a complete block (from [ to matching ])
+static bool ExtractBlock(const std::string &str, size_t start_pos, std::string *block, size_t *next_pos) {
+  int bracket_level = 0;
+  for (size_t i = start_pos; i < str.length(); i++) {
+    if (str[i] == '[') {
+      bracket_level++;
+    } else if (str[i] == ']') {
+      bracket_level--;
+    }
+    if (bracket_level == 0 && i > start_pos) {
+      *block = str.substr(start_pos, i - start_pos + 1);
+      *next_pos = i + 1;
+      return true;
+    }
+  }
+  return false;
+}
+
+// Helper function to process all blocks in the split node string
+static STATUS ProcessAllBlocks(const std::string &split_node_str, std::set<std::string> *op_set,
+                               std::vector<std::pair<std::vector<std::string>, std::vector<std::string>>> *output_cfg) {
+  size_t pos = 0;
+  while (pos < split_node_str.length()) {
+    pos = FindNextBlockStart(split_node_str, pos);
+    if (pos >= split_node_str.length()) {
+      break;
+    }
+
+    std::string block;
+    size_t next_pos;
+    if (!ExtractBlock(split_node_str, pos, &block, &next_pos)) {
+      break;
+    }
+
+    auto ret = ProcessBlock(block, op_set, output_cfg);
+    if (ret != RET_OK) {
+      return ret;
+    }
+    pos = next_pos;
+  }
+  return RET_OK;
+}
+
 STATUS GraphSplitParamParser::ParseGraphSplitCfg(const std::shared_ptr<ConverterPara> &param) {
   MS_CHECK_TRUE_MSG(param != nullptr, RET_ERROR, "param is nullptr!");
   std::string split_node_str = "";
@@ -93,33 +144,11 @@ STATUS GraphSplitParamParser::ParseGraphSplitCfg(const std::shared_ptr<Converter
   MS_CHECK_TRUE_RET(!split_node_str.empty(), RET_OK);
 
   std::set<std::string> op_set;
-  size_t pos = 0;
-  while (pos < split_node_str.length()) {
-    while (pos < split_node_str.length() && split_node_str[pos] != '[') {
-      pos++;
-    }
-    if (pos >= split_node_str.length()) {
-      break;
-    }
-    int bracket_level = 0;
-    size_t start_pos = pos;
-    for (size_t i = start_pos; i < split_node_str.length(); i++) {
-      if (split_node_str[i] == '[') {
-        bracket_level++;
-      } else if (split_node_str[i] == ']') {
-        bracket_level--;
-      }
-      if (bracket_level == 0 && i > start_pos) {
-        std::string block = split_node_str.substr(start_pos, i - start_pos + 1);
-        auto ret = ProcessBlock(block, &op_set, &param->splitGraphCfg.subgraph_input_output);
-        if (ret != RET_OK) {
-          return ret;
-        }
-        pos = i + 1;
-        break;
-      }
-    }
+  auto ret = ProcessAllBlocks(split_node_str, &op_set, &param->splitGraphCfg.subgraph_input_output);
+  if (ret != RET_OK) {
+    return ret;
   }
+
   for (const auto &s : op_set) {
     param->splitGraphCfg.split_node_names.push_back(s);
   }

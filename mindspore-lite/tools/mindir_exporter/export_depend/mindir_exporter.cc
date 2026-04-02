@@ -472,7 +472,6 @@ bool IrExportBuilder::ExportWeight(const ParameterPtr &param, const std::string 
 bool IrExportBuilder::BuildParameters(const FuncGraphPtr &func_graph, mind_ir::GraphProto *const graph_proto) {
   MS_EXCEPTION_IF_NULL(func_graph);
   MS_EXCEPTION_IF_NULL(graph_proto);
-  //  auto &context = CompileCacheContext::GetInstance();
   auto param_size = func_graph->parameters().size();
   MS_LOG(DEBUG) << "func graph: " << func_graph->ToString() << " parameter num:" << param_size
                 << ", fv param num:" << func_graph->fv_param_count();

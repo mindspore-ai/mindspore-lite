@@ -29,6 +29,10 @@
 namespace mindspore::lite::micro::nnacl {
 
 void FloatToInt32(const float *input, int32_t *output, size_t size) {
+  if (output == nullptr) {
+    MS_LOG(ERROR) << "output is nullptr";
+    return;
+  }
   for (size_t i = 0; i < size; ++i) {
     output[i] = static_cast<int32_t>(input[i]);
   }
@@ -39,6 +43,10 @@ void NNaclInt8Serializer::CodeStruct(const std::string &name, const ::ConvQuantA
   QuantArg *filter_quant_args = conv_quant_arg.filter_quant_args_;
   float *scale_ratio_fp = nullptr;
   scale_ratio_fp = (float *)malloc(filter_arg_num * sizeof(float));
+  if (scale_ratio_fp == nullptr) {
+    MS_LOG(ERROR) << "Failed to allocate memory for scale_ratio_fp";
+    return;
+  }
   float input_scale[1];
   input_scale[0] = conv_quant_arg.input_quant_args_[0].scale_;
   float output_scale[1];
@@ -164,9 +172,8 @@ void NNaclInt8Serializer::CodeStruct(const std::string &name, const QuantArg &in
   code << "    static QuantArg " << in_quant_name << " = " << in_quant << ";\n";
   code << "    static QuantArg " << out_quant_name << " = " << out_quant << ";\n";
 
-  code << "    static QuantArg *" << name << "[2] = {"
-       << " &" << in_quant_name << ", "
-       << " &" << out_quant_name << "};\n";
+  code << "    static QuantArg *" << name << "[2] = {" << " &" << in_quant_name << ", " << " &" << out_quant_name
+       << "};\n";
 }
 
 void NNaclInt8Serializer::CodeStruct(const std::string &name, const SoftmaxParameter &softmax_parameter) {

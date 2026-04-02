@@ -81,7 +81,12 @@ void GetRealOutputRecursively(const AnfNodePtr &node, size_t output_index, std::
   // Skip control node
   if (AnfAlgo::CheckPrimitiveType(node, prim::kPrimDepend) || AnfAlgo::CheckPrimitiveType(node, prim::kPrimLoad) ||
       AnfAlgo::CheckPrimitiveType(node, prim::kPrimUpdateState)) {
-    return GetRealOutputRecursively(node->cast<CNodePtr>()->input(kRealInputIndexInDepend), 0, inputs);
+    auto cnode = node->cast<CNodePtr>();
+    if (cnode == nullptr) {
+      MS_LOG(ERROR) << "cnode is nullptr";
+      return;
+    }
+    return GetRealOutputRecursively(cnode->input(kRealInputIndexInDepend), 0, inputs);
   }
 
   // Bypass TupleGetItem
@@ -165,6 +170,7 @@ std::vector<KernelWithIndex> GetAllOutputWithIndexInner(const AnfNodePtr &node,
 
   // Value node need get all the elements.
   if (node->isa<ValueNode>()) {
+    MS_CHECK_TRUE_MSG(node->cast<ValueNodePtr>() != nullptr, ret_empty, "node->cast<ValueNodePtr>() is nullptr");
     auto value = node->cast<ValueNodePtr>()->value();
     MS_EXCEPTION_IF_NULL(value);
     if (value->isa<ValueSequence>()) {
@@ -655,7 +661,15 @@ void AnfAlgo::CopyNodeAttrs(const AnfNodePtr &from, const AnfNodePtr &to) {
   auto to_primitive = AnfAlgo::GetCNodePrimitive(to);
   MS_EXCEPTION_IF_NULL(to_primitive);
   auto from_cnode = from->cast<CNodePtr>();
+  if (from_cnode == nullptr) {
+    MS_LOG(ERROR) << "from_cnode is nullptr";
+    return;
+  }
   auto to_cnode = to->cast<CNodePtr>();
+  if (to_cnode == nullptr) {
+    MS_LOG(ERROR) << "to_cnode is nullptr";
+    return;
+  }
   if (from_cnode->HasPrimalAttr(kAttrMicro)) {
     to_cnode->AddPrimalAttr(kAttrMicro, from_cnode->GetPrimalAttr(kAttrMicro));
   }
@@ -1691,7 +1705,7 @@ bool AnfAlgo::IsNodeOutputDynamicRank(const AnfNodePtr &node) {
   }
   if (base_shape->isa<abstract::DynamicSequenceShape>()) {
     auto b_ptr = base_shape->cast<abstract::DynamicSequenceShapePtr>();
-    if (b_ptr->IsDimUnknown()) {
+    if (b_ptr != nullptr && b_ptr->IsDimUnknown()) {
       return true;
     }
   }
@@ -1743,6 +1757,10 @@ bool AnfAlgo::IsDynamicValue(const AnfNodePtr &node) {
   }
 
   auto cnode = node->cast<CNodePtr>();
+  if (cnode == nullptr) {
+    MS_LOG(ERROR) << "cnode is nullptr";
+    return false;
+  }
   if (cnode->HasAttr(ops::kHasDynamicValue)) {
     return true;
   }
@@ -1755,8 +1773,8 @@ bool AnfAlgo::IsDynamicValue(const AnfNodePtr &node) {
       }
       if (!cnode->input(*i + 1)->isa<ValueNode>()) {
         cnode->AddAttr(mindspore::ops::kHasDynamicValue, MakeValue(true));
-        MS_LOG(DEBUG) << "The input index[" << *i << "]"
-                      << " of node: " << cnode->fullname_with_scope() << " is a dynamic value input";
+        MS_LOG(DEBUG) << "The input index[" << *i << "]" << " of node: " << cnode->fullname_with_scope()
+                      << " is a dynamic value input";
         return true;
       }
     }
@@ -1781,6 +1799,7 @@ static ShapeVector GetShapeFromSequenceShape(const abstract::SequenceShapePtr &s
   }
 
   auto shape_ptr = shape->cast<abstract::ShapePtr>();
+  MS_EXCEPTION_IF_NULL(shape_ptr);
   return shape_ptr->max_shape();
 }
 
@@ -1790,6 +1809,7 @@ ShapeVector AnfAlgo::GetOutputMaxShape(const AnfNodePtr &anf_node, size_t index)
   MS_EXCEPTION_IF_NULL(shape);
   if (shape->isa<abstract::Shape>()) {
     auto shape_ptr = shape->cast<abstract::ShapePtr>();
+    MS_EXCEPTION_IF_NULL(shape_ptr);
     return shape_ptr->max_shape();
   } else if (shape->isa<abstract::SequenceShape>()) {
     auto sequeue_shape_ptr = shape->cast<abstract::SequenceShapePtr>();
@@ -1841,12 +1861,16 @@ std::string AnfAlgo::GetMoveToDstStr(const AnfNodePtr &node) {
     return "";
   }
   auto to_value_node = to_input->cast<ValueNodePtr>();
+  MS_EXCEPTION_IF_NULL(to_value_node);
   auto to_value = to_value_node->value();
+  MS_EXCEPTION_IF_NULL(to_value);
   if (!to_value->isa<StringImm>()) {
     MS_LOG(INFO) << "The value of the second input of MoveTo[" << node->ToString() << "] is not a string.";
     return "";
   }
-  return to_value->cast<StringImmPtr>()->value();
+  auto string_imm = to_value->cast<StringImmPtr>();
+  MS_EXCEPTION_IF_NULL(string_imm);
+  return string_imm->value();
 }
 
 bool AnfAlgo::IsNodeInputDynamicShape(const CNodePtr &anf_node_ptr) {
@@ -1947,8 +1971,10 @@ bool AnfAlgo::IsNoneInput(const AnfNodePtr &node, size_t index) {
   MS_EXCEPTION_IF_NULL(prev_node);
   // Only const optional input(None) support now.
   if (prev_node->isa<ValueNode>()) {
-    auto value = prev_node->cast<ValueNodePtr>()->value();
-    MS_EXCEPTION_IF_NULL(value);
+    auto value_node = prev_node->cast<ValueNodePtr>();
+    MS_CHECK_TRUE_MSG(value_node != nullptr, false, "value_node is nullptr");
+    auto value = value_node->value();
+    MS_CHECK_TRUE_MSG(value != nullptr, false, "value is nullptr");
     if (value->isa<None>()) {
       return true;
     }
@@ -1962,7 +1988,9 @@ bool AnfAlgo::IsCallNode(const AnfNodePtr &node) {
   if (!node->isa<CNode>()) {
     return false;
   }
-  auto input0 = node->cast<CNodePtr>()->input(0);
+  auto cnode = node->cast<CNodePtr>();
+  MS_CHECK_TRUE_MSG(cnode != nullptr, false, "cnode is nullptr");
+  auto input0 = cnode->input(0);
   if (IsValueNode<Primitive>(input0)) {
     return false;
   }
@@ -2788,6 +2816,8 @@ void AnfAlgo::InsertDepend(const AnfNodePtr &prior_node, const AnfNodePtr &post_
 
 bool AnfAlgo::IsNeededOverlapComm(const CNodePtr &cnode, const std::string &pp_1f1b_value) {
   bool is_target = IsNeededOverlapCommA2a(cnode, pp_1f1b_value);
+  auto prim = GetCNodePrimitive(cnode);
+  MS_CHECK_TRUE_MSG(prim != nullptr, false, "prim is nullptr");
   if (pp_1f1b_value.find("MorphAllGather") != std::string::npos) {
     is_target =
       is_target || (IsPrimitiveCNode(cnode, prim::kPrimAllGather) &&
@@ -2824,6 +2854,10 @@ AnfNodePtr AnfAlgo::GetInputNode(const AnfNodePtr &node,
       return end;
     }
     auto cnode_queue_end = end->cast<CNodePtr>();
+    if (cnode_queue_end == nullptr) {
+      MS_LOG(ERROR) << "cnode_queue_end is nullptr";
+      return end;
+    }
     auto check_res = check_filter(cnode_queue_end);
     if (!check_res.first) {
       return end;

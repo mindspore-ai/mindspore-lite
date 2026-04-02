@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "mindapi/helper.h"
 #include "src/common/ops/primitive/conv2d_fusion.h"
+#include "mindapi/helper.h"
 #include "primitive/op_name.h"
 #include "ops/primitive_c.h"
 
