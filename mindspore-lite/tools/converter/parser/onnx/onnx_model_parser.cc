@@ -784,7 +784,7 @@ STATUS OnnxModelParser::ConvertOnnxGraph(const onnx::GraphProto &onnx_graph, con
   if (RET_OK != status) {
     ReturnCode::GetSingleReturnCode()->UpdateReturnCode(status);
     MS_LOG(ERROR) << "convert graph inputs failed.";
-    return RET_OK;
+    return RET_ERROR;
   }
 
   status = ConvertNodes(onnx_graph, anf_graph, anf_nodes_map, extra_subgraph_inputs, root_node_name);
