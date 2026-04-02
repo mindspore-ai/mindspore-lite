@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 #include "common/log_adapter.h"
+#include "src/common/utils.h"
 #include "plugin/ascend/res_manager/symbol_interface/acl_rt_symbol.h"
 #include "plugin/ascend/res_manager/symbol_interface/symbol_utils.h"
 
@@ -61,6 +62,7 @@ ModelInfer::ModelInfer(const std::shared_ptr<AclModelOptions> &options)
       acl_env_(nullptr) {}
 
 Status ModelInfer::Init() {
+  auto start_time = lite::GetTimeUs();
   if (init_flag_) {
     MS_LOG(INFO) << "Acl has been initialized, skip.";
     return kSuccess;
@@ -132,6 +134,9 @@ Status ModelInfer::Init() {
     MS_LOG(INFO) << "Init model success, device id " << device_id;
   }
   init_flag_ = true;
+  auto end_time = lite::GetTimeUs();
+  auto cost = end_time - start_time;
+  MS_LOG(INFO) << "[init time] ModelInfer::Init() cost " << cost << " us";
   return kSuccess;
 }
 
@@ -188,6 +193,7 @@ Status ModelInfer::Finalize(bool process_ends) {
 }
 
 Status ModelInfer::Load(const void *om_data, size_t om_data_size) {
+  auto start_time = lite::GetTimeUs();
   ModelInferContextGuard guard;
   aclError rt_ret = CALL_ASCEND_API(aclrtSetCurrentContext, context_);
   if (rt_ret != ACL_SUCCESS) {
@@ -207,6 +213,9 @@ Status ModelInfer::Load(const void *om_data, size_t om_data_size) {
     return ret;
   }
   sharable_handle_ = model_process_.GetSharableHandle();
+  auto end_time = lite::GetTimeUs();
+  auto cost = end_time - start_time;
+  MS_LOG(INFO) << "[init time] ModelInfer::Load() cost " << cost << " us";
   return kSuccess;
 }
 

@@ -104,7 +104,6 @@ void ModelWorker::Run() {
   }
   MS_LOG(INFO) << "task queue all tasks completed.";
   if (model_ != nullptr) {
-    model_->Finalize();
     delete model_;
     model_ = nullptr;
   }
