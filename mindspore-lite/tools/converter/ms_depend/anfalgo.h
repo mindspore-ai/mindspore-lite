@@ -35,6 +35,7 @@
 #include "primitive/array_op_name.h"
 #include "primitive/other_op_name.h"
 #include "primitive/sequence_ops.h"
+#include "src/common/log_util.h"
 #include "utils/anf_utils.h"
 
 namespace mindspore::lite {
@@ -269,6 +270,7 @@ class COMMON_EXPORT AnfAlgo {
     auto &abs = node->abstract();
     if ((abs != nullptr) && (abs->isa<abstract::AbstractSequence>())) {
       auto abs_seq = abs->cast_ptr<abstract::AbstractSequence>();
+      MS_CHECK_TRUE_MSG(abs_seq != nullptr, false, "abs_seq is nullptr");
       const auto &elements = abs_seq->elements();
       return std::any_of(elements.begin(), elements.end(), [](const AbstractBasePtr &element) {
         return (element != nullptr) && element->isa<abstract::AbstractRefTensor>();
@@ -323,10 +325,6 @@ class COMMON_EXPORT AnfAlgo {
   // if graph output is valuenode or parameter, used to skip run and construct output
   static bool IsGraphOutputValueNodeOrParameter(const AnfNodePtr &graph_output, const VectorRef &args,
                                                 VectorRef *outputs);
-  //  // charge if the node's output is a feature map output
-  //  static bool IsFeatureMapOutput(const AnfNodePtr &node);
-  //  // charge if the node's input is from a feature map output
-  //  static bool IsFeatureMapInput(const AnfNodePtr &node, size_t input_index);
 };
 }  // namespace common
 }  // namespace mindspore::lite

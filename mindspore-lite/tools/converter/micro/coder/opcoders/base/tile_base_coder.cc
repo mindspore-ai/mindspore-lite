@@ -53,7 +53,7 @@ int TileBaseCoder::Resize() {
   MS_CHECK_TRUE_MSG(input_tensor_ != nullptr, RET_ERROR, "input_tensor_ is nullptr");
   MS_CHECK_TRUE_MSG(output_tensor_ != nullptr, RET_ERROR, "output_tensor_ is nullptr");
   MS_CHECK_TRUE_MSG(parameter_ != nullptr, RET_ERROR, "parameter_ is nullptr");
-  tile_struct_.in_dim_ = input_tensor_->shape().size();
+  tile_struct_.in_dim_ = static_cast<int>(input_tensor_->shape().size());
   TileParameter *param = reinterpret_cast<TileParameter *>(parameter_);
   tile_struct_.dims_size_ = param->dims_size_;
   for (int i = 0; i < MAX_SHAPE_SIZE; i++) {

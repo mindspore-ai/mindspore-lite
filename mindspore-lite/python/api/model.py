@@ -1,4 +1,4 @@
-# Copyright 2022-2023 Huawei Technologies Co., Ltd
+# Copyright 2022 - 2023 Huawei Technologies Co., Ltd
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 """
 Model API.
 """
+
 from __future__ import absolute_import
 import os
 import logging
@@ -26,9 +27,20 @@ from mindspore_lite.context import Context
 from mindspore_lite.lib import _c_lite_wrapper
 from mindspore_lite.tensor import Tensor, TensorMeta
 from mindspore_lite.base_model import BaseModel
-from mindspore_lite._parse_update_weights_name import _parse_update_weight_config_name, _rename_variable_weight
+from mindspore_lite._parse_update_weights_name import (
+    _parse_update_weight_config_name,
+    _rename_variable_weight,
+)
 
-__all__ = ['ModelType', 'Model', 'ModelParallelRunner', 'ModelGroup', 'MultiModelRunner', 'ModelExecutor']
+__all__ = [
+    "ModelType",
+    "Model",
+    "ModelParallelRunner",
+    "ModelGroup",
+    "MultiModelRunner",
+    "ModelExecutor",
+]
+
 
 class ModelType(Enum):
     """
@@ -66,22 +78,22 @@ class ModelType(Enum):
     MINDIR_LITE = 4
 
 
-model_type_py_cxx_map = {
+MODEL_TYPE_PY_CXX_MAP = {
     ModelType.MINDIR: _c_lite_wrapper.ModelType.kMindIR,
     ModelType.MINDIR_LITE: _c_lite_wrapper.ModelType.kMindIR_Lite,
 }
 
-model_type_cxx_py_map = {
+MODEL_TYPE_CXX_PY_MAP = {
     _c_lite_wrapper.ModelType.kMindIR: ModelType.MINDIR,
     _c_lite_wrapper.ModelType.kMindIR_Lite: ModelType.MINDIR_LITE,
 }
 
 
 def set_env(func):
-    """set env for Ascend custom opp"""
+    """Set env for Ascend custom opp."""
 
     def wrapper(*args, **kwargs):
-        if not os.getenv('ASCEND_CUSTOM_OPP_PATH'):
+        if not os.getenv("ASCEND_CUSTOM_OPP_PATH"):
             logging.warning("Ascend custom operator path not found")
 
         return func(*args, **kwargs)
@@ -90,7 +102,7 @@ def set_env(func):
 
 
 def check_empty_string(arg_name, arg_value):
-    """Check if str arg is not empty"""
+    """Check if str arg is not empty."""
     if arg_value == "":
         raise ValueError(f"{arg_name} must not be empty string!")
 
@@ -117,8 +129,17 @@ class Model(BaseModel):
         return res
 
     @set_env
-    def build_from_file(self, model_path, model_type, context=None, config_path="", config_dict: dict = None,
-                        dec_key=None, dec_mode="AES-GCM", dec_num_parallel=0):
+    def build_from_file(
+        self,
+        model_path,
+        model_type,
+        context=None,
+        config_path="",
+        config_dict: dict = None,
+        dec_key=None,
+        dec_mode="AES-GCM",
+        dec_num_parallel=0,
+    ):
         """
         Load and build a model from file.
 
@@ -204,8 +225,7 @@ class Model(BaseModel):
         check_isinstance("config_path", config_path, str)
         self.provider = context.ascend.provider
         if not os.path.exists(model_path):
-            raise RuntimeError(
-                "build_from_file failed, model_path does not exist!")
+            raise RuntimeError("build_from_file failed, model_path does not exist!")
         self.model_path_ = model_path
         model_type_ = _c_lite_wrapper.ModelType.kMindIR_Lite
         if model_type is ModelType.MINDIR:
@@ -219,14 +239,18 @@ class Model(BaseModel):
             check_isinstance("dec_num_parallel", dec_num_parallel, int)
             check_empty_string("dec_mode", dec_mode)
             ret = self._model.build_from_file_with_decrypt(
-                self.model_path_, model_type_, context._context._inner_context,
-                dec_key, len(dec_key), dec_mode, dec_num_parallel)
+                self.model_path_,
+                model_type_,
+                context._context._inner_context,
+                dec_key,
+                len(dec_key),
+                dec_mode,
+                dec_num_parallel,
+            )
         else:
-            ret = self._model.build_from_file(
-                self.model_path_, model_type_, context._context._inner_context)
+            ret = self._model.build_from_file(self.model_path_, model_type_, context._context._inner_context)
         if not ret.IsOk():
-            raise RuntimeError(
-                f"build_from_file failed! Error is {ret.ToString()}")
+            raise RuntimeError(f"build_from_file failed! Error is {ret.ToString()}")
 
     @set_env
     def build_from_buffer(
@@ -261,7 +285,6 @@ class Model(BaseModel):
                     [execution_plan]
                     [op_name1]=data_Type: float16 (The operator named op_name1 sets the data type as float16)
                     [op_name2]=data_Type: float32 (The operator named op_name2 sets the data type as float32)
-
 
             config_dict (dict, optional): When you set config in this dict, the priority is higher than the
                 configuration items in config_path. Default: ``None``.
@@ -343,7 +366,7 @@ class Model(BaseModel):
 
     def _apply_config(self, config_path, config_dict):
         """
-        apply config for build
+        Apply config for build.
         """
         if config_path:
             if not os.path.exists(config_path):
@@ -415,14 +438,13 @@ class Model(BaseModel):
               <https://www.mindspore.cn/lite/cloud_docs/en/master/mindir/runtime_python.html#update-weights>`_
         """
         if not isinstance(weights, list):
-            raise TypeError("weights must be list, but got {}".format(type(weights)))
+            raise TypeError(f"weights must be list, but got {type(weights)}.")
         for i, weight in enumerate(weights):
             if not isinstance(weight, list):
-                raise TypeError("weight must be list, but got {}".format(type(weight)))
+                raise TypeError(f"weight must be list, but got {type(weight)}.")
             for j, tensor in enumerate(weight):
                 if not isinstance(tensor, Tensor):
-                    raise TypeError(f"weights element must be Tensor, but got "
-                                    f"{type(tensor)} as index {i}{j}.")
+                    raise TypeError(f"weights element must be Tensor, but got " f"{type(tensor)} as index {i}{j}.")
                 if tensor.name in self.lora_name_map and self.provider == "ge":
                     name = self.lora_name_map[tensor.name]
                     tensor.name = name
@@ -508,8 +530,7 @@ class Model(BaseModel):
         """
         # pylint: disable=useless-super-delegation
         if not isinstance(inputs, (list, tuple)):
-            raise TypeError(
-                "inputs must be list or tuple, but got {}.".format(type(inputs)))
+            raise TypeError(f"inputs must be list or tuple, but got {type(inputs)}.")
         model_input_tensors = self.get_inputs()
         if len(model_input_tensors) != len(inputs):
             raise RuntimeError(f"model input len:{len(model_input_tensors)} not equal input len:{len(inputs)}!")
@@ -590,8 +611,10 @@ class ModelParallelRunner:
         if hasattr(_c_lite_wrapper, "ModelParallelRunnerBind"):
             self._model = _c_lite_wrapper.ModelParallelRunnerBind()
         else:
-            raise RuntimeError("ModelParallelRunner init failed, If you want to use it, you need to build"
-                               "MindSpore Lite serving package by export MSLITE_ENABLE_CLOUD_INFERENCE=on.")
+            raise RuntimeError(
+                "ModelParallelRunner init failed, If you want to use it, you need to build"
+                "MindSpore Lite serving package by export MSLITE_ENABLE_CLOUD_INFERENCE=on."
+            )
         self.model_path_ = ""
 
     def __str__(self):
@@ -628,18 +651,15 @@ class ModelParallelRunner:
         """
         check_isinstance("model_path", model_path, str)
         if not os.path.exists(model_path):
-            raise RuntimeError(
-                "ModelParallelRunner's build from file failed, model_path does not exist!")
+            raise RuntimeError("ModelParallelRunner's build from file failed, model_path does not exist!")
         self.model_path_ = model_path
         if context is None:
             ret = self._model.init(self.model_path_, None)
         else:
             check_isinstance("context", context, Context)
-            ret = self._model.init(
-                self.model_path_, context.parallel._runner_config)
+            ret = self._model.init(self.model_path_, context.parallel._runner_config)
         if not ret.IsOk():
-            raise RuntimeError(
-                f"ModelParallelRunner's build from file failed! Error is {ret.ToString()}")
+            raise RuntimeError(f"ModelParallelRunner's build from file failed! Error is {ret.ToString()}")
 
     def get_inputs(self):
         """
@@ -764,21 +784,19 @@ class ModelParallelRunner:
             >>> print("total run time: ", total_end_time - total_start_time, " s")
         """
         if not isinstance(inputs, (list, tuple)):
-            raise TypeError(
-                "inputs must be list or tuple, but got {}.".format(type(inputs)))
+            raise TypeError(f"inputs must be list or tuple, but got {type(inputs)}.")
         _inputs = []
         for i, element in enumerate(inputs):
             if not isinstance(element, Tensor):
-                raise TypeError(f"inputs element must be Tensor, but got "
-                                f"{type(element)} at index {i}.")
+                raise TypeError(f"inputs element must be Tensor, but got " f"{type(element)} at index {i}.")
             _inputs.append(element._tensor)
         _outputs = []
         if outputs is not None:
             if not isinstance(outputs, list):
-                raise TypeError("outputs must be list, bug got {}.".format(type(inputs)))
+                raise TypeError(f"outputs must be list, but got {type(outputs)}.")
             for i, element in enumerate(outputs):
                 if not isinstance(element, Tensor):
-                    raise TypeError(f"outputs element must be Tensor, bug got {type(element)} at index {i}.")
+                    raise TypeError(f"outputs element must be Tensor, but got {type(element)} at index {i}.")
                 # pylint: disable=protected-access
                 _outputs.append(element._tensor)
 
@@ -825,7 +843,7 @@ class ModelGroupFlag(Enum):
     SHARE_WEIGHT_WORKSPACE = 3
 
 
-model_group_flag_py_cxx_map = {
+MODEL_GROUP_FLAG_PY_CXX_MAP = {
     ModelGroupFlag.SHARE_WEIGHT: _c_lite_wrapper.ModelGroupFlag.kShareWeight,
     ModelGroupFlag.SHARE_WORKSPACE: _c_lite_wrapper.ModelGroupFlag.kShareWorkspace,
     ModelGroupFlag.SHARE_WEIGHT_WORKSPACE: _c_lite_wrapper.ModelGroupFlag.kShareWeightAndWorkspace,
@@ -881,8 +899,9 @@ class ModelGroup:
             flags_inner = _c_lite_wrapper.ModelGroupFlag.kShareWeightAndWorkspace
         else:
             raise RuntimeError(
-                "Parameter flags should be ModelGroupFlag.SHARE_WORKSPACE or ModelGroupFlag.SHARE_WEIGHT"
-                " or ModelGroupFlag.kShareWeightAndWorkspace")
+                "Parameter flags should be ModelGroupFlag.SHARE_WORKSPACE or "
+                "ModelGroupFlag.SHARE_WEIGHT or ModelGroupFlag.SHARE_WEIGHT_WORKSPACE"
+            )
         self._model_group = _c_lite_wrapper.ModelGroupBind(flags_inner)
 
     def add_model(self, models):
@@ -908,19 +927,20 @@ class ModelGroup:
         if isinstance(model0, str):
             for i, element in enumerate(models):
                 if not isinstance(element, str):
-                    raise TypeError(f"models element must be all str or Model, but got "
-                                    f"{type(element)} at index {i}.")
+                    raise TypeError(
+                        f"models element must be all str or Model, but got " f"{type(element)} at index {i}."
+                    )
             ret = self._model_group.add_model(models)
         elif isinstance(model0, Model):
             for i, element in enumerate(models):
                 if not isinstance(element, Model):
-                    raise TypeError(f"models element must be all str or Model, but got "
-                                    f"{type(element)} at index {i}.")
+                    raise TypeError(
+                        f"models element must be all str or Model, but got " f"{type(element)} at index {i}."
+                    )
             models_inner = [model._model for model in models]
             ret = self._model_group.add_model_by_object(models_inner)
         else:
-            raise TypeError(f"models element must be all str or Model, but got "
-                            f"{type(model0)} at index {0}.")
+            raise TypeError(f"models element must be all str or Model, but got {type(model0)} at index 0.")
         if not ret.IsOk():
             raise RuntimeError("ModelGroup's add model failed.")
 
@@ -943,11 +963,9 @@ class ModelGroup:
         model_type_ = _c_lite_wrapper.ModelType.kMindIR_Lite
         if model_type is ModelType.MINDIR:
             model_type_ = _c_lite_wrapper.ModelType.kMindIR
-        ret = self._model_group.cal_max_size_of_workspace(
-            model_type_, context._context._inner_context)
+        ret = self._model_group.cal_max_size_of_workspace(model_type_, context._context._inner_context)
         if not ret.IsOk():
-            raise RuntimeError(
-                "ModelGroup's cal max size of workspace failed.")
+            raise RuntimeError("ModelGroup's cal max size of workspace failed.")
 
 
 class MultiModelRunner:
@@ -979,61 +997,73 @@ class MultiModelRunner:
         >>>         input.set_data_from_numpy(data)
         >>>     exec.predict(exec_inputs)
     """
+
     def __init__(self):
         self._runner = _c_lite_wrapper.MultiModelRunnerBind()
 
-    def build_from_file(self, model_path, model_type, context=None, config_path="", config_dict: dict = None):
+    def build_from_file(
+        self,
+        model_path,
+        model_type,
+        context=None,
+        config_path="",
+        config_dict: dict = None,
+    ):
         """
-        Load and build a runner from file.
+              Load and build a runner from file.
 
-        Args:
-            model_path (str): Path of the input model when build from file. For example, "/home/user/model.mindir".
-                Model should use .mindir as suffix.
-            model_type (ModelType): Define The type of input model file. Option is ``ModelType.MINDIR``.
-                For details, see
-                `ModelType <https://mindspore.cn/lite/api/en/master/mindspore_lite/mindspore_lite.ModelType.html>`_ .
-            context (Context, optional): Define the context used to transfer options during execution.
-                Default: ``None``. ``None`` means the Context with cpu target.
-            config_path (str, optional): Define the config file path. the config file is used to transfer user defined
-                options during build model. In the following scenarios, users may need to set the parameter.
-                For example, "/home/user/config.txt". Default: ``""``.
+              Args:
+                  model_path (str): Path of the input model when build from file.
+                      For example, "/home/user/model.mindir".
+                      Model should use .mindir as suffix.
+                  model_type (ModelType): Define The type of input model file. Option is ``ModelType.MINDIR``.
+                      For details, see
+                      `ModelType <https://mindspore.cn/lite/api/en/master/mindspore_lite/mindspore_lite.ModelType.html>`_ .
+                  context (Context, optional): Define the context used to transfer options during execution.
+                      Default: ``None``. ``None`` means the Context with cpu target.
+                  config_path (str, optional): Define the config file path.
+                      The config file is used to transfer user defined
+                      options during build model. In the following scenarios,
+                      users may need to set the parameter.
+                      For example, "/home/user/config.txt". Default: ``""``.
 
-                Set mixed precision inference. The content and description of the configuration file are as
-                follows:
+                      Set mixed precision inference. The content and description of the configuration file are as
+                      follows:
 
-                .. code-block::
+                      .. code-block::
 
-                    [execution_plan]
-                    [op_name1]=data_Type: float16 (The operator named op_name1 sets the data type as float16)
-                    [op_name2]=data_Type: float32 (The operator named op_name2 sets the data type as float32)
+                          [execution_plan]
+                          [op_name1]=data_Type: float16 (The operator named op_name1 sets the data type as float16)
+                          [op_name2]=data_Type: float32 (The operator named op_name2 sets the data type as float32)
 
-            config_dict (dict, optional): When you set config in this dict, the priority is higher than the
-                configuration items in config_path.
+                  config_dict (dict, optional): When you set config in this dict, the priority is higher than the
+                      configuration items in config_path.
 
-                Set rank table file for inference. The content of the configuration file is as follows:
+                      Set rank table file for inference. The content of the configuration file is as follows:
 
-                .. code-block::
+                      .. code-block::
 
-                    [ascend_context]
-                    rank_table_file=[path_a](storage initial path of the rank table file)
+                          [ascend_context]
+                          rank_table_file=[path_a](storage initial path of the rank table file)
 
-                When set
+                      When set
 
-                .. code-block::
+                      .. code-block::
 
-                    config_dict = {"ascend_context" : {"rank_table_file" : "path_b"}}
+                          config_dict = {
+        "ascend_context" : { "rank_table_file" : "path_b" }}
 
-                The the path_b from the config_dict will be used to compile the model.
+                      The the path_b from the config_dict will be used to compile the model.
 
-        Raises:
-            TypeError: `model_path` is not str.
-            TypeError: `model_type` is not ModelType.
-            TypeError: `context` is not Context or ``None`` .
-            TypeError: `config_path` is not str.
-            RuntimeError: `model_path` file path not exist.
-            RuntimeError: `config_path` file path not exist.
-            RuntimeError: load `config_path` failed.
-            RuntimeError: load and build MultiModelRunner failed.
+              Raises:
+                  TypeError: `model_path` is not str.
+                  TypeError: `model_type` is not ModelType.
+                  TypeError: `context` is not Context or ``None`` .
+                  TypeError: `config_path` is not str.
+                  RuntimeError: `model_path` file path not exist.
+                  RuntimeError: `config_path` file path not exist.
+                  RuntimeError: load `config_path` failed.
+                  RuntimeError: load and build MultiModelRunner failed.
         """
         check_isinstance("model_path", model_path, str)
         check_isinstance("model_type", model_type, ModelType)
@@ -1042,20 +1072,16 @@ class MultiModelRunner:
         check_isinstance("context", context, Context)
         check_isinstance("config_path", config_path, str)
         if not os.path.exists(model_path):
-            raise RuntimeError(
-                "build_from_file failed, model_path does not exist!")
+            raise RuntimeError("build_from_file failed, model_path does not exist!")
         model_type_ = _c_lite_wrapper.ModelType.kMindIR
         if model_type is not ModelType.MINDIR:
-            raise RuntimeError(
-                "build_from_file failed, model_type only support MINDIR!")
+            raise RuntimeError("build_from_file failed, model_type only support MINDIR!")
         if config_path:
             if not os.path.exists(config_path):
-                raise RuntimeError(
-                    "build_from_file failed, config_path does not exist!")
+                raise RuntimeError("build_from_file failed, config_path does not exist!")
             ret = self._runner.load_config(config_path)
             if not ret.IsOk():
-                raise RuntimeError(
-                    f"load configuration failed! Error is {ret.ToString()}")
+                raise RuntimeError(f"load configuration failed! Error is {ret.ToString()}")
         if config_dict:
             check_isinstance("config_dict", config_dict, dict)
             for k, v in config_dict.items():
@@ -1071,15 +1097,14 @@ class MultiModelRunner:
 
         ret = self._runner.build_from_file(model_path, model_type_, context._context._inner_context)
         if not ret.IsOk():
-            raise RuntimeError(
-                f"build_from_file failed! Error is {ret.ToString()}")
+            raise RuntimeError(f"build_from_file failed! Error is {ret.ToString()}")
 
     def get_model_executor(self):
         """
         Get ModelExecutors from MultiModelRunner.
 
         Returns:
-            list[ModelExecutor], all Executors in MultiModelRunner.
+            list[ModelExecutor]: All Executors in MultiModelRunner.
         """
         executors = []
         for executor_ in self._runner.get_model_executor():
@@ -1095,6 +1120,7 @@ class ModelExecutor:
         executor (_c_lite_wrapper.ModelExecBind, optional): ModelExecutor class wrapped with pybind11.
             Default: ``None``.
     """
+
     def __init__(self, executor=None):
         if executor is None:
             self._executor = _c_lite_wrapper.ModelExecBind()
@@ -1103,26 +1129,25 @@ class ModelExecutor:
 
     def predict(self, inputs, outputs=None):
         """
-            Inference ModelExecutor.
+        Inference ModelExecutor.
 
-            Args:
-                inputs (list[Tensor]): A list that includes all input Tensors in order.
-                outputs (list[Tensor], optional): A list that includes all output Tensors in order,
-                    this tensor include output data buffer.
+        Args:
+            inputs (list[Tensor]): A list that includes all input Tensors in order.
+            outputs (list[Tensor], optional): A list that includes all output Tensors in order,
+                this tensor include output data buffer.
 
-            Returns:
-                list[Tensor], the output Tensor list of the ModelExecutor.
+        Returns:
+            list[Tensor], the output Tensor list of the ModelExecutor.
 
-            Raises:
-                TypeError: `inputs` is not a list.
-                TypeError: `outputs` is not a list.
-                TypeError: `inputs` is a list, but the elements are not Tensor.
-                TypeError: `outputs` is a list, but the elements are not Tensor.
-                RuntimeError: predict model failed.
+        Raises:
+            TypeError: `inputs` is not a list.
+            TypeError: `outputs` is not a list.
+            TypeError: `inputs` is a list, but the elements are not Tensor.
+            TypeError: `outputs` is a list, but the elements are not Tensor.
+            RuntimeError: predict model failed.
         """
         if not isinstance(inputs, (list, tuple)):
-            raise TypeError(
-                "inputs must be list or tuple, but got {}.".format(type(inputs)))
+            raise TypeError(f"inputs must be list or tuple, but got {type(inputs)}.")
         model_input_tensors = self.get_inputs()
         inputs_tensor = []
         for i, in_tensor in enumerate(inputs):
@@ -1137,16 +1162,14 @@ class ModelExecutor:
         _outputs = []
         for i, element in enumerate(inputs_tensor):
             if not isinstance(element, Tensor):
-                raise TypeError(f"inputs element must be Tensor, but got "
-                                f"{type(element)} at index {i}.")
+                raise TypeError(f"inputs element must be Tensor, but got " f"{type(element)} at index {i}.")
             _inputs.append(element._tensor)
         if outputs is not None:
             if not isinstance(outputs, list):
-                raise TypeError("outputs must be list, but got {}.".format(type(outputs)))
+                raise TypeError(f"outputs must be list, but got {type(outputs)}.")
             for i, element in enumerate(outputs):
                 if not isinstance(element, Tensor):
-                    raise TypeError(f"outputs element must be Tensor, but got "
-                                    f"{type(element)} at index {i}.")
+                    raise TypeError(f"outputs element must be Tensor, but got " f"{type(element)} at index {i}.")
                 _outputs.append(element._tensor)
         predict_result = self._executor.predict(_inputs, _outputs)
         if predict_result is None or len(predict_result) == 0:
@@ -1169,11 +1192,11 @@ class ModelExecutor:
         return inputs
 
     def get_outputs(self):
-        """"
+        """
         Obtains all output information Tensors of the ModelExecutor.
 
         Returns:
-            list[TensorMeta], the output TensorMeta list of the ModelExecutor.
+            list[TensorMeta]: The output TensorMeta list of the ModelExecutor.
         """
         outputs_metadata = []
         for _tensor in self._executor.get_outputs():

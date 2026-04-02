@@ -170,6 +170,11 @@ class BACKEND_EXPORT DfGraphConvertor {
   Status TryConvertValueNodeToMultiConst(const ValueNodePtr node);
   OperatorPtr ConvertValueNode(ValueNodePtr node);
   void SaveParamFormat(CNodePtr node);
+
+  // Helper functions for SaveParamFormat
+  std::string ExtractFormatFromOpDef(const PrimitivePtr &prim, const CNodePtr &node);
+  std::string ExtractFormatFromAttr(const PrimitivePtr &prim);
+
   void ConvertTopK(const CNodePtr &node);
   AnfNodePtr CreateCast(const AnfNodePtr &input, const TypePtr &dst_type) const;
   void ConvertReshape(const CNodePtr &node);
@@ -196,6 +201,11 @@ class BACKEND_EXPORT DfGraphConvertor {
   void AddGraphConstInput(const OperatorPtr &op);
   AnfNodePtr ParseLoadInput(const CNodePtr &cnode) const;
   void SetGraphInputs(std::vector<Operator> *inputs);
+
+  // Helper functions for SetGraphInputs
+  OperatorPtr FindGetNextInput(const std::vector<PrimitivePtr> &input_prims);
+  void ProcessParameterInput(const AnfNodePtr &it, int *index, std::vector<Operator> *inputs);
+  void ProcessVarInput(const AnfNodePtr &it, const std::string &name, std::vector<Operator> *inputs);
   void TransformConstOp(const CNodePtr &node, const AnfNodePtr &pred);
   void ProcessInputData(std::vector<Operator> *init_input,
                         std::unordered_set<std::string> *infer_need_update_parameter_names, const OperatorPtr &param_op,

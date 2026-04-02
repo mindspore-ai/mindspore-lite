@@ -47,14 +47,7 @@ constexpr auto kNameSizeTwo = 2;
 constexpr auto kNameSizeFour = 4;
 }  // namespace
 
-STATUS ResizeMapper::Mapper(const CNodePtr &cnode) {
-  CHECK_NULL_RETURN(cnode);
-  ValueNodePtr value_node = nullptr;
-  PrimitivePtr src_prim = nullptr;
-  if (GetValueNodeAndPrimFromCnode(cnode, &value_node, &src_prim) != lite::RET_OK) {
-    MS_LOG(ERROR) << "Get primitive from cnode failed, cnode " << cnode->fullname_with_scope();
-    return lite::RET_ERROR;
-  }
+STATUS ResizeMapper::ValidateInputs(const CNodePtr &cnode, const PrimitivePtr &src_prim) {
   if (cnode->size() != kNameInputNum && src_prim->GetAttr(ops::kNewHeight) == nullptr &&
       src_prim->GetAttr(ops::kNewWidth) == nullptr) {
     MS_LOG(WARNING) << "Input of resize must be " << kNameInputNum << ", real size: " << cnode->size() << ", cnode "
@@ -67,13 +60,10 @@ STATUS ResizeMapper::Mapper(const CNodePtr &cnode) {
                   << cnode->fullname_with_scope();
     return lite::RET_ERROR;
   }
-  if (ProcScaleInput(cnode, src_prim) != lite::RET_OK) {
-    MS_LOG(ERROR) << "Proc scale input failed, cnode " << cnode->fullname_with_scope();
-    return lite::RET_ERROR;
-  }
-  auto val_ptr = src_prim->GetAttr(ops::kMethod);
-  CHECK_NULL_RETURN(val_ptr);
-  int64_t method = GetValue<int64_t>(val_ptr);
+  return lite::RET_OK;
+}
+
+PrimitivePtr ResizeMapper::CreateDstPrimByMethod(int64_t method, const PrimitivePtr &src_prim, const CNodePtr &cnode) {
   PrimitivePtr dst_prim = nullptr;
   if (method == static_cast<int64_t>(mindspore::ResizeMethod::NEAREST)) {
     dst_prim = std::make_shared<acl::ResizeNearestNeighborV2>();
@@ -100,21 +90,56 @@ STATUS ResizeMapper::Mapper(const CNodePtr &cnode) {
     }
   } else {
     MS_LOG(ERROR) << "Not support resize method " << method << ", cnode " << cnode->fullname_with_scope();
-    return RET_ERROR;
+    return nullptr;
   }
-  CHECK_NULL_RETURN(dst_prim);
+  return dst_prim;
+}
+
+void ResizeMapper::SetCoordinateTransformAttrs(const PrimitivePtr &src_prim, PrimitivePtr *dst_prim) {
   auto coordinate_transformation_mode_ptr = src_prim->GetAttr("coordinate_transform_mode");
   if (coordinate_transformation_mode_ptr != nullptr &&
       GetValue<int64_t>(coordinate_transformation_mode_ptr) == mindspore::CoordinateTransformMode::HALF_PIXEL) {
-    dst_prim->set_attr("half_pixel_centers", MakeValue(true));
-    dst_prim->set_attr("align_corners", MakeValue(false));
+    (*dst_prim)->set_attr("half_pixel_centers", MakeValue(true));
+    (*dst_prim)->set_attr("align_corners", MakeValue(false));
   }
   if (coordinate_transformation_mode_ptr != nullptr &&
       GetValue<int64_t>(coordinate_transformation_mode_ptr) == mindspore::CoordinateTransformMode::ALIGN_CORNERS) {
-    dst_prim->set_attr("align_corners", MakeValue(true));
-    dst_prim->set_attr("coordinate_transformation_mode", MakeValue("align_corners"));
-    dst_prim->set_attr("half_pixel_centers", MakeValue(false));
+    (*dst_prim)->set_attr("align_corners", MakeValue(true));
+    (*dst_prim)->set_attr("coordinate_transformation_mode", MakeValue("align_corners"));
+    (*dst_prim)->set_attr("half_pixel_centers", MakeValue(false));
   }
+}
+
+STATUS ResizeMapper::Mapper(const CNodePtr &cnode) {
+  CHECK_NULL_RETURN(cnode);
+  ValueNodePtr value_node = nullptr;
+  PrimitivePtr src_prim = nullptr;
+  if (GetValueNodeAndPrimFromCnode(cnode, &value_node, &src_prim) != lite::RET_OK) {
+    MS_LOG(ERROR) << "Get primitive from cnode failed, cnode " << cnode->fullname_with_scope();
+    return lite::RET_ERROR;
+  }
+
+  auto ret = ValidateInputs(cnode, src_prim);
+  if (ret != lite::RET_OK) {
+    return ret;
+  }
+
+  ret = ProcScaleInput(cnode, src_prim);
+  if (ret != lite::RET_OK) {
+    MS_LOG(ERROR) << "Proc scale input failed, cnode " << cnode->fullname_with_scope();
+    return lite::RET_ERROR;
+  }
+
+  auto val_ptr = src_prim->GetAttr(ops::kMethod);
+  CHECK_NULL_RETURN(val_ptr);
+  int64_t method = GetValue<int64_t>(val_ptr);
+
+  auto dst_prim = CreateDstPrimByMethod(method, src_prim, cnode);
+  if (dst_prim == nullptr) {
+    return RET_ERROR;
+  }
+
+  SetCoordinateTransformAttrs(src_prim, &dst_prim);
   dst_prim->SetAttrs(src_prim->attrs());
   value_node->set_value(dst_prim);
   return RET_OK;

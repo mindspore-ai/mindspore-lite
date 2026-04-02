@@ -81,7 +81,7 @@ int GatherInt8CPUKernel::DoGather(int task_id) {
   auto in_shape = input_tensor->shape();
   int in_rank = in_shape.size();
   if (axis_ < 0) {
-    axis_ += in_shape.size();
+    axis_ += static_cast<int>(in_shape.size());
   }
   MS_CHECK_LT(axis_, in_rank, RET_ERROR);
   MS_CHECK_GE(axis_, 0, RET_ERROR);

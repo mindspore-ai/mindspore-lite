@@ -679,7 +679,59 @@ DfGraphConvertor &DfGraphConvertor::ConvertAllNode() {
   return *this;
 }
 
+// Helper function to find GetNext input in sink mode
+OperatorPtr DfGraphConvertor::FindGetNextInput(const std::vector<PrimitivePtr> &input_prims) {
+  auto nodes = GetOrderedCNodes(anf_graph_);
+  for (auto &it : nodes) {
+    if (std::any_of(input_prims.begin(), input_prims.end(),
+                    [&it](const PrimitivePtr &prim) { return IsPrimitiveCNode(it, prim); })) {
+      auto it_op = op_cache_.find(it.get());
+      if (it_op != op_cache_.end()) {
+        return it_op->second;
+      } else {
+        MS_LOG_WITH_NODE(EXCEPTION, it) << "Can not find the operator of node: " << it->fullname_with_scope();
+      }
+    }
+  }
+  return nullptr;
+}
+
+// Helper function to process a parameter input
+void DfGraphConvertor::ProcessParameterInput(const AnfNodePtr &it, int *index, std::vector<Operator> *inputs) {
+  if (HasAbstractMonad(it)) {
+    MS_LOG(INFO) << it->DebugString() << " is a monad parameter, skip.";
+    return;
+  }
+  auto op = Convert(it);
+  if (op == nullptr) {
+    MS_LOG(ERROR) << "Convert graph failed!";
+    return;
+  }
+  MS_LOG(INFO) << "add not var input " << it->ToString() << ", index " << *index;
+  UpdateDataOpDesc(it, op);
+  MS_LOG(INFO) << "add input " << it->ToString() << ", index " << *index;
+  SetXDataIndex(op, *index);
+  (*index)++;
+  inputs->emplace_back(*op);
+}
+
+// Helper function to process a var input
+void DfGraphConvertor::ProcessVarInput(const AnfNodePtr &it, const std::string &name, std::vector<Operator> *inputs) {
+  MS_LOG(INFO) << "add var input " << it->ToString();
+  auto op = Convert(it);
+  if (op == nullptr) {
+    MS_LOG(ERROR) << "Convert graph failed!";
+    return;
+  }
+  UpdateConstOpDesc(it, vars_[name]);
+  inputs->emplace_back(*op);
+}
+
 void DfGraphConvertor::SetGraphInputs(std::vector<Operator> *inputs) {
+  if (anf_graph_ == nullptr) {
+    MS_LOG(ERROR) << "anf_graph_ is nullptr";
+    return;
+  }
   if (ConfigManager::GetInstance().dataset_mode() == DS_SINK_MODE) {
     auto ms_context = MsContext::GetInstance();
     MS_EXCEPTION_IF_NULL(ms_context);
@@ -690,26 +742,12 @@ void DfGraphConvertor::SetGraphInputs(std::vector<Operator> *inputs) {
       input_prims = {prim::kPrimGetNext, prim::kPrimDynamicGetNextV2};
     }
 
-    OperatorPtr input;
-    auto nodes = GetOrderedCNodes(anf_graph_);
-    for (auto &it : nodes) {
-      if (std::any_of(input_prims.begin(), input_prims.end(),
-                      [&it](const PrimitivePtr &prim) { return IsPrimitiveCNode(it, prim); })) {
-        auto it_op = op_cache_.find(it.get());
-        if (it_op != op_cache_.end()) {
-          input = it_op->second;
-          break;
-        } else {
-          MS_LOG_WITH_NODE(EXCEPTION, it) << "Can not find the operator of node: " << it->fullname_with_scope();
-        }
-      }
-    }
+    auto input = FindGetNextInput(input_prims);
     if (input == nullptr) {
       MS_LOG(EXCEPTION) << "Can not find the GetNext node in graph in sink_mode, please check.";
     }
     inputs->emplace_back(*input);
 
-    MS_EXCEPTION_IF_NULL(anf_graph_);
     anf_graph_->set_flag(kGraphFlagHasGetNext, true);
   } else {
     auto params = anf_graph_->parameters();
@@ -730,30 +768,10 @@ void DfGraphConvertor::SetGraphInputs(std::vector<Operator> *inputs) {
           (void)input_shapes_.emplace_back(sv);
         }
       }
-      //  the parameters which has not been converted to var
       if (vars_.find(name) == vars_.end()) {
-        if (HasAbstractMonad(it)) {
-          MS_LOG(INFO) << it->DebugString() << " is a monad parameter, skip.";
-          continue;
-        }
-        auto op = Convert(it);
-        MS_EXCEPTION_IF_NULL(op);
-        MS_LOG(INFO) << "add not var input " << it->ToString() << ", index " << index;
-        if (op == nullptr) {
-          MS_LOG(ERROR) << "Convert graph failed!";
-          return;
-        }
-        UpdateDataOpDesc(it, op);
-        MS_LOG(INFO) << "add input " << it->ToString() << ", index " << index;
-        SetXDataIndex(op, index);
-        index++;
-        inputs->emplace_back(*op);
+        ProcessParameterInput(it, &index, inputs);
       } else if (vars_[name] != nullptr) {
-        MS_LOG(INFO) << "add var input " << it->ToString();
-        auto op = Convert(it);
-        MS_EXCEPTION_IF_NULL(op);
-        UpdateConstOpDesc(it, vars_[name]);
-        inputs->emplace_back(*op);
+        ProcessVarInput(it, name, inputs);
       }
     }
   }
@@ -969,7 +987,6 @@ void DfGraphConvertor::UpdateConstOpDesc(const AnfNodePtr &it, const OperatorPtr
 
 void DfGraphConvertor::UpdateDataOpDesc(const AnfNodePtr &it, const OperatorPtr &op) const {
   auto node = std::static_pointer_cast<AnfNode>(it);
-  MS_EXCEPTION_IF_NULL(node);
   if (node == nullptr) {
     MS_LOG(ERROR) << "Update data op descriptor failed! Invalid node.";
     return;
@@ -2430,42 +2447,74 @@ OperatorPtr DfGraphConvertor::ConvertParameter(const AnfNodePtr node) {
   return op_cache_[node.get()];
 }
 
+// Helper function to extract format from op_def
+std::string DfGraphConvertor::ExtractFormatFromOpDef(const PrimitivePtr &prim, const CNodePtr &node) {
+  if (prim == nullptr) {
+    MS_LOG(ERROR) << "prim is nullptr in ExtractFormatFromOpDef";
+    return "";
+  }
+  if (node == nullptr) {
+    MS_LOG(ERROR) << "node is nullptr in ExtractFormatFromOpDef";
+    return "";
+  }
+  std::string format;
+  auto op_def = ops::GetOpDef(prim->name());
+  if (op_def) {
+    for (size_t index = 0; index < op_def->args_.size() && index < node->size() - 1; index++) {
+      auto arg = op_def->args_[index];
+      if (arg.as_init_arg_ && (arg.arg_name_ == ops::kFormat || arg.arg_name_ == ops::kDataFormat)) {
+        auto value_ptr = node->input(index + 1)->cast<ValueNodePtr>();
+        if (value_ptr == nullptr) {
+          break;
+        }
+        auto input_value = value_ptr->value();
+        if (input_value == nullptr) {
+          MS_LOG(ERROR) << "input_value is nullptr";
+          break;
+        }
+        auto format_id = GetValue<int64_t>(input_value);
+        format = FormatEnumToString(static_cast<Format>(format_id));
+      }
+    }
+  }
+  return format;
+}
+
+// Helper function to extract format from attributes
+std::string DfGraphConvertor::ExtractFormatFromAttr(const PrimitivePtr &prim) {
+  if (prim == nullptr) {
+    MS_LOG(ERROR) << "prim is nullptr in ExtractFormatFromAttr";
+    return "";
+  }
+  std::string format;
+  auto value_ptr = prim->GetAttr(ops::kFormat);
+  if (value_ptr) {
+    if (value_ptr->isa<Int64Imm>()) {
+      bool converted = CheckAndConvertUtils::ConvertAttrValueToString(prim->name(), "format", &value_ptr);
+      if (converted) {
+        format = value_ptr->ToString();
+      } else {
+        CheckAndConvertUtils::GetFormatStringVal(prim, &format);
+      }
+    } else if (value_ptr->isa<StringImm>()) {
+      format = value_ptr->ToString();
+    }
+  }
+  return format;
+}
+
 void DfGraphConvertor::SaveParamFormat(const CNodePtr node) {
   AnfNodePtr op = node->input(0);
   if (IsValueNode<Primitive>(op)) {
     auto prim = GetValueNode<PrimitivePtr>(op);
-    MS_EXCEPTION_IF_NULL(prim);
-    std::string format;
-    auto op_def = ops::GetOpDef(prim->name());
-    if (op_def) {
-      for (size_t index = 0; index < op_def->args_.size() && index < node->size() - 1; index++) {
-        auto arg = op_def->args_[index];
-        if (arg.as_init_arg_ && (arg.arg_name_ == ops::kFormat || arg.arg_name_ == ops::kDataFormat)) {
-          auto value_ptr = node->input(index + 1)->cast<ValueNodePtr>();
-          if (value_ptr == nullptr) {
-            break;
-          }
-          auto input_value = value_ptr->value();
-          MS_EXCEPTION_IF_NULL(input_value);
-          auto format_id = GetValue<int64_t>(input_value);
-          format = FormatEnumToString(static_cast<Format>(format_id));
-        }
-      }
+    if (prim == nullptr) {
+      MS_LOG(ERROR) << "prim is nullptr";
+      return;
     }
-    auto value_ptr = prim->GetAttr(ops::kFormat);
-    if (value_ptr) {
-      if (value_ptr->isa<Int64Imm>()) {
-        bool converted = CheckAndConvertUtils::ConvertAttrValueToString(prim->name(), "format", &value_ptr);
-        if (converted) {
-          format = value_ptr->ToString();
-        } else {
-          CheckAndConvertUtils::GetFormatStringVal(prim, &format);
-        }
-      } else if (value_ptr->isa<StringImm>()) {
-        format = value_ptr->ToString();
-      }
+    std::string format = ExtractFormatFromOpDef(prim, node);
+    if (format.empty()) {
+      format = ExtractFormatFromAttr(prim);
     }
-
     if (format == "NCDHW" || format == "NHWC") {
       for (size_t i = 1; i < node->size(); i++) {
         auto input = node->input(i);

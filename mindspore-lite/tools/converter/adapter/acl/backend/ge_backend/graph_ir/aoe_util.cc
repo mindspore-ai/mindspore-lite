@@ -15,11 +15,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/aoe_util.h"
 #include <dlfcn.h>
 #include <cxxabi.h>
 #include <set>
 #include <string>
-#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/aoe_util.h"
 #include "utils/file_utils.h"
 #include "utils/ms_context.h"
 #include "utils/distributed_meta.h"
