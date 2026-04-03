@@ -206,6 +206,7 @@ class BACKEND_EXPORT DfGraphConvertor {
   OperatorPtr FindGetNextInput(const std::vector<PrimitivePtr> &input_prims);
   void ProcessParameterInput(const AnfNodePtr &it, int *index, std::vector<Operator> *inputs);
   void ProcessVarInput(const AnfNodePtr &it, const std::string &name, std::vector<Operator> *inputs);
+  void CollectParameterShape(const ParameterPtr &param);
   void TransformConstOp(const CNodePtr &node, const AnfNodePtr &pred);
   void ProcessInputData(std::vector<Operator> *init_input,
                         std::unordered_set<std::string> *infer_need_update_parameter_names, const OperatorPtr &param_op,

@@ -17,6 +17,15 @@ Model API.
 """
 
 from __future__ import absolute_import
+
+__all__ = [
+    "ModelType",
+    "Model",
+    "ModelParallelRunner",
+    "ModelGroup",
+    "MultiModelRunner",
+    "ModelExecutor",
+]
 import os
 import logging
 from enum import Enum
@@ -31,15 +40,6 @@ from mindspore_lite._parse_update_weights_name import (
     _parse_update_weight_config_name,
     _rename_variable_weight,
 )
-
-__all__ = [
-    "ModelType",
-    "Model",
-    "ModelParallelRunner",
-    "ModelGroup",
-    "MultiModelRunner",
-    "ModelExecutor",
-]
 
 
 class ModelType(Enum):
@@ -130,15 +130,15 @@ class Model(BaseModel):
 
     @set_env
     def build_from_file(
-        self,
-        model_path,
-        model_type,
-        context=None,
-        config_path="",
-        config_dict: dict = None,
-        dec_key=None,
-        dec_mode="AES-GCM",
-        dec_num_parallel=0,
+            self,
+            model_path,
+            model_type,
+            context=None,
+            config_path="",
+            config_dict: dict = None,
+            dec_key=None,
+            dec_mode="AES-GCM",
+            dec_num_parallel=0,
     ):
         """
         Load and build a model from file.
@@ -241,26 +241,26 @@ class Model(BaseModel):
             ret = self._model.build_from_file_with_decrypt(
                 self.model_path_,
                 model_type_,
-                context._context._inner_context,
+                context._inner_context,
                 dec_key,
                 len(dec_key),
                 dec_mode,
                 dec_num_parallel,
             )
         else:
-            ret = self._model.build_from_file(self.model_path_, model_type_, context._context._inner_context)
+            ret = self._model.build_from_file(self.model_path_, model_type_, context._inner_context)
         if not ret.IsOk():
             raise RuntimeError(f"build_from_file failed! Error is {ret.ToString()}")
 
     @set_env
     def build_from_buffer(
-        self,
-        model_bytes,
-        weight_bytes=None,
-        model_type=None,
-        context=None,
-        config_path="",
-        config_dict: dict = None,
+            self,
+            model_bytes,
+            weight_bytes=None,
+            model_type=None,
+            context=None,
+            config_path="",
+            config_dict: dict = None,
     ):
         """
         Load and build a model from buffer.
@@ -360,7 +360,7 @@ class Model(BaseModel):
 
         self._apply_config(config_path, config_dict)
 
-        ret = self._model.build_from_buff(model_bytes, weight_bytes, model_type_, context._context._inner_context)
+        ret = self._model.build_from_buff(model_bytes, weight_bytes, model_type_, context._inner_context)
         if not ret.IsOk():
             raise RuntimeError(f"build_from_buffer failed! Error is {ret.ToString()}")
 
@@ -963,7 +963,7 @@ class ModelGroup:
         model_type_ = _c_lite_wrapper.ModelType.kMindIR_Lite
         if model_type is ModelType.MINDIR:
             model_type_ = _c_lite_wrapper.ModelType.kMindIR
-        ret = self._model_group.cal_max_size_of_workspace(model_type_, context._context._inner_context)
+        ret = self._model_group.cal_max_size_of_workspace(model_type_, context._inner_context)
         if not ret.IsOk():
             raise RuntimeError("ModelGroup's cal max size of workspace failed.")
 
@@ -1002,68 +1002,64 @@ class MultiModelRunner:
         self._runner = _c_lite_wrapper.MultiModelRunnerBind()
 
     def build_from_file(
-        self,
-        model_path,
-        model_type,
-        context=None,
-        config_path="",
-        config_dict: dict = None,
+            self,
+            model_path,
+            model_type,
+            context=None,
+            config_path="",
+            config_dict: dict = None,
     ):
         """
-              Load and build a runner from file.
+        Load and build a runner from file.
 
-              Args:
-                  model_path (str): Path of the input model when build from file.
-                      For example, "/home/user/model.mindir".
-                      Model should use .mindir as suffix.
-                  model_type (ModelType): Define The type of input model file. Option is ``ModelType.MINDIR``.
-                      For details, see
-                      `ModelType <https://mindspore.cn/lite/api/en/master/mindspore_lite/mindspore_lite.ModelType.html>`_ .
-                  context (Context, optional): Define the context used to transfer options during execution.
-                      Default: ``None``. ``None`` means the Context with cpu target.
-                  config_path (str, optional): Define the config file path.
-                      The config file is used to transfer user defined
-                      options during build model. In the following scenarios,
-                      users may need to set the parameter.
-                      For example, "/home/user/config.txt". Default: ``""``.
+        Args:
+            model_path (str): Path of the input model when build from file. For example, "/home/user/model.mindir".
+                Model should use .mindir as suffix.
+            model_type (ModelType): Define The type of input model file. Option is ``ModelType.MINDIR``.
+                For details, see
+                `ModelType <https://mindspore.cn/lite/api/en/master/mindspore_lite/mindspore_lite.ModelType.html>`_ .
+            context (Context, optional): Define the context used to transfer options during execution.
+                Default: ``None``. ``None`` means the Context with cpu target.
+            config_path (str, optional): Define the config file path. the config file is used to transfer user defined
+                options during build model. In the following scenarios, users may need to set the parameter.
+                For example, "/home/user/config.txt". Default: ``""``.
 
-                      Set mixed precision inference. The content and description of the configuration file are as
-                      follows:
+                Set mixed precision inference. The content and description of the configuration file are as
+                follows:
 
-                      .. code-block::
+                .. code-block::
 
-                          [execution_plan]
-                          [op_name1]=data_Type: float16 (The operator named op_name1 sets the data type as float16)
-                          [op_name2]=data_Type: float32 (The operator named op_name2 sets the data type as float32)
+                    [execution_plan]
+                    [op_name1]=data_Type: float16 (The operator named op_name1 sets the data type as float16)
+                    [op_name2]=data_Type: float32 (The operator named op_name2 sets the data type as float32)
 
-                  config_dict (dict, optional): When you set config in this dict, the priority is higher than the
-                      configuration items in config_path.
+            config_dict (dict, optional): When you set config in this dict, the priority is higher than the
+                configuration items in config_path.
 
-                      Set rank table file for inference. The content of the configuration file is as follows:
+                Set rank table file for inference. The content of the configuration file is as follows:
 
-                      .. code-block::
+                .. code-block::
 
-                          [ascend_context]
-                          rank_table_file=[path_a](storage initial path of the rank table file)
+                    [ascend_context]
+                    rank_table_file=[path_a](storage initial path of the rank table file)
 
-                      When set
+                When set
 
-                      .. code-block::
+                .. code-block::
 
-                          config_dict = {
-        "ascend_context" : { "rank_table_file" : "path_b" }}
+                    config_dict = {"ascend_context" : {"rank_table_file" : "path_b"}}
 
-                      The the path_b from the config_dict will be used to compile the model.
+                The the path_b from the config_dict will be used to compile the model.
 
-              Raises:
-                  TypeError: `model_path` is not str.
-                  TypeError: `model_type` is not ModelType.
-                  TypeError: `context` is not Context or ``None`` .
-                  TypeError: `config_path` is not str.
-                  RuntimeError: `model_path` file path not exist.
-                  RuntimeError: `config_path` file path not exist.
-                  RuntimeError: load `config_path` failed.
-                  RuntimeError: load and build MultiModelRunner failed.
+        Raises:
+            TypeError: `model_path` is not str.
+            TypeError: `model_type` is not ModelType.
+            TypeError: `context` is not Context or ``None`` .
+            TypeError: `config_path` is not str.
+            RuntimeError: `model_path` file path not exist.
+            RuntimeError: `config_path` file path not exist.
+            RuntimeError: load `config_path` failed.
+            RuntimeError: load and build MultiModelRunner failed.
         """
         check_isinstance("model_path", model_path, str)
         check_isinstance("model_type", model_type, ModelType)
@@ -1095,7 +1091,7 @@ class MultiModelRunner:
                 if not ret.IsOk():
                     raise RuntimeError(f"update configuration failed! Error is {ret.ToString()}.")
 
-        ret = self._runner.build_from_file(model_path, model_type_, context._context._inner_context)
+        ret = self._runner.build_from_file(model_path, model_type_, context._inner_context)
         if not ret.IsOk():
             raise RuntimeError(f"build_from_file failed! Error is {ret.ToString()}")
 
@@ -1129,22 +1125,22 @@ class ModelExecutor:
 
     def predict(self, inputs, outputs=None):
         """
-        Inference ModelExecutor.
+            Inference ModelExecutor.
 
-        Args:
-            inputs (list[Tensor]): A list that includes all input Tensors in order.
-            outputs (list[Tensor], optional): A list that includes all output Tensors in order,
-                this tensor include output data buffer.
+            Args:
+                inputs (list[Tensor]): A list that includes all input Tensors in order.
+                outputs (list[Tensor], optional): A list that includes all output Tensors in order,
+                    this tensor include output data buffer.
 
-        Returns:
-            list[Tensor], the output Tensor list of the ModelExecutor.
+            Returns:
+                list[Tensor], the output Tensor list of the ModelExecutor.
 
-        Raises:
-            TypeError: `inputs` is not a list.
-            TypeError: `outputs` is not a list.
-            TypeError: `inputs` is a list, but the elements are not Tensor.
-            TypeError: `outputs` is a list, but the elements are not Tensor.
-            RuntimeError: predict model failed.
+            Raises:
+                TypeError: `inputs` is not a list.
+                TypeError: `outputs` is not a list.
+                TypeError: `inputs` is a list, but the elements are not Tensor.
+                TypeError: `outputs` is a list, but the elements are not Tensor.
+                RuntimeError: predict model failed.
         """
         if not isinstance(inputs, (list, tuple)):
             raise TypeError(f"inputs must be list or tuple, but got {type(inputs)}.")

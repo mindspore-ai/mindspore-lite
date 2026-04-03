@@ -17,6 +17,8 @@ Converter API.
 """
 
 from __future__ import absolute_import
+
+__all__ = ["FmkType", "Converter"]
 import os
 from enum import Enum
 
@@ -40,8 +42,6 @@ from mindspore_lite.model import (
     MODEL_TYPE_CXX_PY_MAP,
     set_env,
 )
-
-__all__ = ["FmkType", "Converter"]
 
 
 class FmkType(Enum):
@@ -807,81 +807,71 @@ class Converter:
 
     def get_config_info(self):
         r"""
-                Get config info of converter.It is used together with `set_config_info` method for online converter.
-                Please use `set_config_info` method before `get_config_info` .
+        Get config info of converter.It is used together with `set_config_info` method for online converter.
+        Please use `set_config_info` method before `get_config_info` .
 
-                Returns:
-                    :obj:`dict{
-        str:
-          dict {
-          str:
-            str
-          }
-        }
-        `, the config info which has been set in converter.
+        Returns:
+            :obj:`dict{str: dict{str: str}}`, the config info which has been set in converter.
 
-             Examples : >>>
-                        import mindspore_lite as mslite >>>
-                        converter = mslite.Converter() >>> section = "common_quant_param" >>> config_info_in = {
-          "quant_type" : "WEIGHT_QUANT"
-        } >>> converter.set_config_info(section, config_info_in) >>> config_info_out = converter.get_config_info() >>>
-                                                                                       print(config_info_out) {
-          'common_quant_param' : { 'quant_type' : 'WEIGHT_QUANT' }
-        }
+        Examples:
+            >>> import mindspore_lite as mslite
+            >>> converter = mslite.Converter()
+            >>> section = "common_quant_param"
+            >>> config_info_in = {"quant_type": "WEIGHT_QUANT"}
+            >>> converter.set_config_info(section, config_info_in)
+            >>> config_info_out = converter.get_config_info()
+            >>> print(config_info_out)
+            {'common_quant_param': {'quant_type': 'WEIGHT_QUANT'}}
         """
         return self._converter.get_config_info()
 
     def set_config_info(self, section="", config_info=None):
         r"""
-                Set config info for Converter.It is used together with `get_config_info` method for online converter.
+        Set config info for Converter.It is used together with `get_config_info` method for online converter.
 
-                Args:
-                    section (str, optional): The category of the configuration
-                        parameter. Set the individual parameters of the
-                        configfile together with `config_info` .
-                        For example, for `section` = ``"common_quant_param"``,
-                        `config_info` = {"quant_type": "WEIGHT_QUANT"}.
-                        Default: ``""`` .
+        Args:
+            section (str, optional): The category of the configuration parameter.
+                Set the individual parameters of the configfile together with `config_info` .
+                For example, for `section` = ``"common_quant_param"``, `config_info` = {"quant_type": "WEIGHT_QUANT"}.
+                Default: ``""`` .
 
-                        For the configuration parameters related to post training quantization, please refer to
-                        `quantization <https://www.mindspore.cn/lite/docs/en/master/advanced/quantization.html>`_ .
+                For the configuration parameters related to post training quantization, please refer to
+                `quantization <https://www.mindspore.cn/lite/docs/en/master/advanced/quantization.html>`_ .
 
-                        For the configuration parameters related to extension, please refer to
-                        `extension  <https://www.mindspore.cn/lite/docs/en/master/advanced/third_party/converter_register.
-                        html#extension-configuration>`_ .
+                For the configuration parameters related to extension, please refer to
+                `extension  <https://www.mindspore.cn/lite/docs/en/master/advanced/third_party/converter_register.
+                html#extension-configuration>`_ .
 
-                        - ``"common_quant_param"``: Common quantization parameter.
-                        - ``"mixed_bit_weight_quant_param"``: Mixed bit weight quantization parameter.
-                        - ``"full_quant_param"``: Full quantization parameter.
-                        - ``"data_preprocess_param"``: Data preprocess quantization parameter.
-                        - ``"registry"``: Extension configuration parameter.
+                - ``"common_quant_param"``: Common quantization parameter.
+                - ``"mixed_bit_weight_quant_param"``: Mixed bit weight quantization parameter.
+                - ``"full_quant_param"``: Full quantization parameter.
+                - ``"data_preprocess_param"``: Data preprocess quantization parameter.
+                - ``"registry"``: Extension configuration parameter.
 
-                    config_info (:obj:`dict`, optional): List of configuration parameters.
-                        Set the individual parameters of the configfile
-                        together with `section` .
-                        For example, for `section` = ``"common_quant_param"``,
-                        `config_info` = {"quant_type": "WEIGHT_QUANT"}.
-                        Default: ``None``, ``None`` is equivalent to {}.
+            config_info (:obj:`dict{str: str}`, optional): List of configuration parameters.
+                Set the individual parameters of the configfile together with `section` .
+                For example, for `section` = ``"common_quant_param"``, `config_info` = {"quant_type": "WEIGHT_QUANT"}.
+                Default: ``None``, ``None`` is equivalent to {}.
 
-                        For the configuration parameters related to post training quantization, please refer to
-                        `quantization <https://www.mindspore.cn/lite/docs/en/master/advanced/quantization.html>`_ .
+                For the configuration parameters related to post training quantization, please refer to
+                `quantization <https://www.mindspore.cn/lite/docs/en/master/advanced/quantization.html>`_ .
 
-                        For the configuration parameters related to extension, please refer to
-                        `extension  <https://www.mindspore.cn/lite/docs/en/master/advanced/third_party/converter_register.
-                        html#extension-configuration>`_ .
+                For the configuration parameters related to extension, please refer to
+                `extension  <https://www.mindspore.cn/lite/docs/en/master/advanced/third_party/converter_register.
+                html#extension-configuration>`_ .
 
-                Raises:
-                    TypeError: `section` is not a str.
-                    TypeError: `config_info` is not a dict .
-                    TypeError: `config_info` is a dict, but the keys are not str.
-                    TypeError: `config_info` is a dict, the keys are str, but the values are not str.
+        Raises:
+            TypeError: `section` is not a str.
+            TypeError: `config_info` is not a dict .
+            TypeError: `config_info` is a dict, but the keys are not str.
+            TypeError: `config_info` is a dict, the keys are str, but the values are not str.
 
-                Examples:
-                    >>> import mindspore_lite as mslite
-                    >>> converter = mslite.Converter()
-                    >>> section = "common_quant_param"
-                    >>> config_info = {"quant_type": "WEIGHT_QUANT"}
-                    >>> converter.set_config_info(section, config_info)
+        Examples:
+            >>> import mindspore_lite as mslite
+            >>> converter = mslite.Converter()
+            >>> section = "common_quant_param"
+            >>> config_info = {"quant_type": "WEIGHT_QUANT"}
+            >>> converter.set_config_info(section, config_info)
         """
         check_isinstance("section", section, str)
         check_config_info("config_info", config_info, enable_none=True)
