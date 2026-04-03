@@ -1,5 +1,5 @@
 /**
- * Copyright 2025 Huawei Technologies Co., Ltd
+ * Copyright 2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,18 +31,12 @@ int PNNAArg::InitParams() {
     case schema::PrimitiveType_ArgMinFusion: {
       auto arg_min = op_primitive_->value_as_ArgMinFusion();
       MS_CHECK_TRUE_RET(arg_min != nullptr, RET_ERROR);
-      axis_ = arg_min->axis();
-      if (axis_ < 0) {
-        axis_ += static_cast<int>(in_tensors_.front().Shape().size());
-      }
+      axis_ = ConvertToPnnaAxis(arg_min->axis(), in_tensors_.front().Shape().size());
     } break;
     case schema::PrimitiveType_ArgMaxFusion: {
       auto arg_max = op_primitive_->value_as_ArgMaxFusion();
       MS_CHECK_TRUE_RET(arg_max != nullptr, RET_ERROR);
-      axis_ = arg_max->axis();
-      if (axis_ < 0) {
-        axis_ += static_cast<int>(in_tensors_.front().Shape().size());
-      }
+      axis_ = ConvertToPnnaAxis(arg_max->axis(), in_tensors_.front().Shape().size());
     } break;
     default:
       MS_LOG(WARNING) << "Unsupported arg type for operation " << static_cast<int>(type_) << " when running pnna";
@@ -60,16 +54,16 @@ int PNNAArg::AddOpToPNNAModel(PNNASubGraph *graph) {
   }
   auto output_tensor = graph->ConvertOperand(&out_tensors_[kOutputIndex]);
   switch (type_) {
-#define CONVERT_ELEMENTWISE(TYPE, CLASS_NAME)                             \
-  case schema::PrimitiveType_##TYPE: {                                    \
-    auto arg_op = graph->graph()->CreateOperation<pnna::ops::CLASS_NAME>( \
-      ConvertToPnnaAxis(axis_, in_tensors_.front().Shape().size()));      \
-    arg_op->BindInputs({input0_tensor});                                  \
-    arg_op->BindOutput({output_tensor});                                  \
-  } break;
-    CONVERT_ELEMENTWISE(ArgMinFusion, ArgMin);
-    CONVERT_ELEMENTWISE(ArgMaxFusion, ArgMax);
-#undef CONVERT_ELEMENTWISE
+    case schema::PrimitiveType_ArgMinFusion: {
+      auto arg_op = graph->graph()->CreateOperation<pnna::ops::ArgMin>(axis_);
+      arg_op->BindInputs({input0_tensor});
+      arg_op->BindOutput({output_tensor});
+    } break;
+    case schema::PrimitiveType_ArgMaxFusion: {
+      auto arg_op = graph->graph()->CreateOperation<pnna::ops::ArgMax>(axis_);
+      arg_op->BindInputs({input0_tensor});
+      arg_op->BindOutput({output_tensor});
+    } break;
     default:
       MS_LOG(ERROR) << "Unsupported arg type " << static_cast<int>(type_) << " is found.";
       return RET_ERROR;
