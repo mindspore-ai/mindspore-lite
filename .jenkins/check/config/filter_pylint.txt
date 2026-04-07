@@ -22,3 +22,7 @@
 "mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/experimental/HPC-generator/generator.py"         "redefined-builtin"
 "mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/experimental/HPC-generator/generator.py"         "exec-used"
 "mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/experimental/HPC-generator/generator.py"         "invalid-name"
+"mindspore-lite/mindspore-lite/examples/base_models"                                                          "broad-exception-caught"
+"mindspore-lite/mindspore-lite/examples/base_models"                                                          "bare-except"
+"mindspore-lite/mindspore-lite/examples/base_models"                                                          "protected-access"
+"mindspore-lite/mindspore-lite/examples/base_models"                                                          "invalid-name"
