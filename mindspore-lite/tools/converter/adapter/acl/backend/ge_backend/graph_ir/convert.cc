@@ -30,6 +30,7 @@
 #include "op_proto/inc/state_ops.h"
 #include "include/utils/ir_dump/anf_ir_dump_interface.h"
 #include "tools/converter/adapter/acl/backend/ge_backend/utils/anfalgo.h"
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/infer_need_update_para_names.h"
 #include "utils/config_manager.h"
 #include "include/utils/utils.h"
 #include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/utils.h"
@@ -497,14 +498,6 @@ bool IsMonadOrTupleParameter(const AnfNodePtr &node) {
   }
   return false;
 }
-
-class InferNeedUpdateParaNames {
- public:
-  std::unordered_set<std::string> &GetInferParameterNames() { return infer_need_update_para_names; }
-
- private:
-  std::unordered_set<std::string> infer_need_update_para_names;
-};
 }  // namespace
 
 DfGraphPtr GenExampleGraph(const std::string &name) {
@@ -898,7 +891,7 @@ void DfGraphConvertor::InitParamWithData(const TensorOrderMap &tensors) {
       node->set_user_data(kNoNeedAllocDeviceAddress, std::make_shared<bool>(true));
     } else {
       auto &infer_need_update_parameter_names =
-        Singleton<InferNeedUpdateParaNames>::Instance().GetInferParameterNames();
+        Singleton<mindspore::lite::InferNeedUpdateParaNames>::Instance().GetInferParameterNames();
       // we need three variable ops for each graph with same name
       // build init subgraph
       auto adpt = device::ascend::FindAdapter(device::ascend::kNameParam, training_);

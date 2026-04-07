@@ -120,6 +120,10 @@ class Serializer {
    */
   template <typename T>
   void CodeArray(const std::string &name, T *data, int length, bool is_const = true) {
+    if (data == nullptr) {
+      MS_LOG(ERROR) << "CodeArray data is nullptr";
+      return;
+    }
     std::string type = GetVariableTypeName<T>();
     if (is_const) {
       code << "    const " << type << " " << name << "[" << length << "] = {";
@@ -158,8 +162,8 @@ class Serializer {
       exit(1);
     }
     GenCode(t);
-    code << " = ( (" << buf_off_name << " + " << size << ") <= " << buf_size_name << ") ? "
-         << "(void*)(" << buf_name << " + " << buf_off_name << ") : NULL;\n";
+    code << " = ( (" << buf_off_name << " + " << size << ") <= " << buf_size_name << ") ? " << "(void*)(" << buf_name
+         << " + " << buf_off_name << ") : NULL;\n";
     code << "if (";
     GenCode(t);
     code << " == NULL) {\n";

@@ -96,6 +96,16 @@ void ParsePads(const std::unique_ptr<ops::AvgPoolFusion> &prim, const onnx::Attr
   }
 }
 
+bool ParseAutoPad(const onnx::AttributeProto &onnx_node_attr, const std::unique_ptr<ops::AvgPoolFusion> &prim) {
+  if (onnx_node_attr.s() == "SAME_UPPER") {
+    prim->set_pad_mode(mindspore::PadMode::SAME);
+  } else if (onnx_node_attr.s() == "SAME_LOWER") {
+    MS_LOG(ERROR) << "PadMode_SAME_LOWER is not supported now";
+    return false;
+  }
+  return true;
+}
+
 bool ParseAttrs(const onnx::NodeProto &onnx_node, const std::unique_ptr<ops::AvgPoolFusion> &prim,
                 std::vector<int64_t> *kernels, std::vector<int64_t> *strides, std::vector<int64_t> *pads,
                 mindspore::RoundMode *round_mode, bool *is_3d) {
@@ -113,10 +123,7 @@ bool ParseAttrs(const onnx::NodeProto &onnx_node, const std::unique_ptr<ops::Avg
     }
 
     if (attribute_name == "auto_pad") {
-      if (onnx_node_attr.s() == "SAME_UPPER") {
-        prim->set_pad_mode(mindspore::PadMode::SAME);
-      } else if (onnx_node_attr.s() == "SAME_LOWER") {
-        MS_LOG(ERROR) << "PadMode_SAME_LOWER is not supported now";
+      if (!ParseAutoPad(onnx_node_attr, prim)) {
         return false;
       }
       continue;

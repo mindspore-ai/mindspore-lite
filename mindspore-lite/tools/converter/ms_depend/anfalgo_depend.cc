@@ -14,38 +14,35 @@
  * limitations under the License.
  */
 #include "tools/converter/ms_depend/anfalgo.h"
-#include <memory>
+
 #include <algorithm>
+#include <complex>
 #include <map>
+#include <memory>
 #include <numeric>
 #include <queue>
 #include <set>
-#include <complex>
-#include "mindapi/base/shape_vector.h"
-#include "primitive/math_op_name.h"
-#include "primitive/structure_ops.h"
-#include "primitive/sequence_ops.h"
-#include "primitive/sparse_ops.h"
-#include "primitive/other_ops.h"
-#include "primitive/nn_ops.h"
-#include "primitive/math_ops.h"
-#include "primitive/array_ops.h"
-#include "primitive/arithmetic_ops.h"
-#include "primitive/framework_ops.h"
-#include "ops_utils/op_utils.h"
-#include "ops/op_def.h"
+
 #include "ir/anf.h"
 #include "ir/func_graph.h"
-#include "ir/tensor_new.h"
 #include "ir/graph_utils.h"
-#include "utils/convert_utils.h"
-#include "tools/converter/ms_depend/utils.h"
-#include "utils/shape_utils.h"
-#include "utils/trace_base.h"
-#include "utils/anf_utils.h"
-#include "utils/ms_context.h"
-#include "include/frontend/operator/primitive_py.h"
+#include "ir/tensor_new.h"
+#include "mindapi/base/shape_vector.h"
+#include "ops/op_def.h"
+#include "ops_utils/op_utils.h"
+#include "primitive/arithmetic_ops.h"
+#include "primitive/array_ops.h"
+#include "primitive/framework_ops.h"
+#include "primitive/math_op_name.h"
+#include "primitive/math_ops.h"
+#include "primitive/nn_ops.h"
+#include "primitive/other_ops.h"
+#include "primitive/sequence_ops.h"
+#include "primitive/sparse_ops.h"
+#include "primitive/structure_ops.h"
 #include "abstract/ops/primitive_infer_map.h"
+#include "include/frontend/operator/primitive_py.h"
+#include "ir/func_graph_flag.h"
 #include "primitive/auto_generate/gen_ops_primitive_c.h"
 #include "primitive/auto_generate/gen_ops_primitive_f.h"
 #include "primitive/auto_generate/gen_ops_primitive_l.h"
@@ -53,7 +50,12 @@
 #include "primitive/auto_generate/gen_ops_primitive_r.h"
 #include "primitive/auto_generate/gen_ops_primitive_s.h"
 #include "primitive/auto_generate/gen_ops_primitive_t.h"
-#include "ir/func_graph_flag.h"
+#include "tools/converter/ms_depend/utils.h"
+#include "utils/anf_utils.h"
+#include "utils/convert_utils.h"
+#include "utils/ms_context.h"
+#include "utils/shape_utils.h"
+#include "utils/trace_base.h"
 
 namespace mindspore::lite {
 namespace common {

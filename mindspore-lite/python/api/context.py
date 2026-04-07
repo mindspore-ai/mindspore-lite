@@ -116,6 +116,11 @@ class Context:
         if hasattr(_c_lite_wrapper, "RunnerConfigBind"):
             self.parallel = _Parallel(self._context)
 
+    @property
+    def _inner_context(self):
+        """Get the inner context used to bind Python API to C++ API."""
+        return self._context._inner_context
+
     def __str__(self):
         res = f"target: {self.target}."
         return res
@@ -323,7 +328,7 @@ class _InnerContext:
         """Set the number of threads at runtime."""
         check_isinstance("cpu_thread_num", cpu_thread_num, int)
         if cpu_thread_num < 0:
-            raise ValueError(f"cpu_thread_num must be a non-negative int.")
+            raise ValueError("cpu_thread_num must be a non-negative int.")
         self._inner_context.set_thread_num(cpu_thread_num)
 
     @property
@@ -336,7 +341,7 @@ class _InnerContext:
         """Set the parallel number of operators at runtime."""
         check_isinstance("cpu_inter_op_parallel_num", cpu_inter_op_parallel_num, int)
         if cpu_inter_op_parallel_num < 0:
-            raise ValueError(f"Context's init failed, cpu_inter_op_parallel_num must be a non-negative int.")
+            raise ValueError("Context's init failed, cpu_inter_op_parallel_num must be a non-negative int.")
         self._inner_context.set_inter_op_parallel_num(cpu_inter_op_parallel_num)
 
     @property
@@ -405,7 +410,7 @@ class _CPU(_Target):
     """
 
     def __init__(self, inner_context):
-        super(_CPU, self).__init__()
+        super().__init__()
         check_isinstance("inner_context", inner_context, _InnerContext)
         self._inner_context = inner_context
         self._device_info = _c_lite_wrapper.CPUDeviceInfoBind()
@@ -471,7 +476,7 @@ class _CPU(_Target):
         """
         check_isinstance("cpu_thread_num", cpu_thread_num, int)
         if cpu_thread_num < 0:
-            raise ValueError(f"cpu_thread_num must be a non-negative int.")
+            raise ValueError("cpu_thread_num must be a non-negative int.")
         self._inner_context.cpu_thread_num = cpu_thread_num
 
     @property
@@ -496,7 +501,7 @@ class _CPU(_Target):
         """
         check_isinstance("cpu_inter_op_parallel_num", cpu_inter_op_parallel_num, int)
         if cpu_inter_op_parallel_num < 0:
-            raise ValueError(f"cpu_inter_op_parallel_num must be a non-negative int.")
+            raise ValueError("cpu_inter_op_parallel_num must be a non-negative int.")
         self._inner_context.cpu_inter_op_parallel_num = cpu_inter_op_parallel_num
 
     @property
@@ -552,7 +557,7 @@ class _GPU(_Target):
     """
 
     def __init__(self):
-        super(_GPU, self).__init__()
+        super().__init__()
         self._device_info = _c_lite_wrapper.GPUDeviceInfoBind()
 
     def __str__(self):
@@ -613,7 +618,7 @@ class _GPU(_Target):
         """
         check_isinstance("gpu_device_id", gpu_device_id, int)
         if gpu_device_id < 0:
-            raise ValueError(f"gpu_device_id must be a non-negative int.")
+            raise ValueError("gpu_device_id must be a non-negative int.")
         self._device_info.set_device_id(gpu_device_id)
 
     @property
@@ -644,7 +649,7 @@ class _Ascend(_Target):
     """
 
     def __init__(self):
-        super(_Ascend, self).__init__()
+        super().__init__()
         self._device_info = _c_lite_wrapper.AscendDeviceInfoBind()
 
     def __str__(self):
@@ -706,7 +711,7 @@ class _Ascend(_Target):
         """
         check_isinstance("ascend_device_id", ascend_device_id, int)
         if ascend_device_id < 0:
-            raise ValueError(f"ascend_device_id must be a non-negative int.")
+            raise ValueError("ascend_device_id must be a non-negative int.")
         self._device_info.set_device_id(ascend_device_id)
 
     @property
@@ -733,7 +738,7 @@ class _Ascend(_Target):
         """
         check_isinstance("ascend_rank_id", ascend_rank_id, int)
         if ascend_rank_id < 0:
-            raise ValueError(f"ascend_rank_id must be a non-negative int.")
+            raise ValueError("ascend_rank_id must be a non-negative int.")
         self._device_info.set_rank_id(ascend_rank_id)
 
     @property
@@ -772,8 +777,8 @@ class _Parallel:
         if hasattr(_c_lite_wrapper, "RunnerConfigBind"):
             self._runner_config = _c_lite_wrapper.RunnerConfigBind()
         else:
-            raise RuntimeError(f"parallel init failed, If you want to set parallel, you need to build"
-                               f"MindSpore Lite serving package by export MSLITE_ENABLE_CLOUD_INFERENCE=on.")
+            raise RuntimeError("parallel init failed, If you want to set parallel, you need to build"
+                               "MindSpore Lite serving package by export MSLITE_ENABLE_CLOUD_INFERENCE=on.")
         if context is not None:
             self._runner_config.set_context(context._inner_context)
 
@@ -804,7 +809,7 @@ class _Parallel:
         """
         check_isinstance("workers_num", workers_num, int)
         if workers_num < 0:
-            raise ValueError(f"Set parallel failed, workers_num must be a non-negative int.")
+            raise ValueError("Set parallel failed, workers_num must be a non-negative int.")
         self._runner_config.set_workers_num(workers_num)
 
     @property
@@ -905,7 +910,7 @@ class _Parallel:
         check_isinstance("config_path", config_path, str)
         if config_path != "":
             if not os.path.exists(config_path):
-                raise ValueError(f"Set parallel failed, config_path does not exist!")
+                raise ValueError("Set parallel failed, config_path does not exist!")
             self._runner_config.set_config_path(config_path)
 
     @property
@@ -931,5 +936,5 @@ class _Parallel:
         check_list_of_element("device_ids", device_ids, int, enable_none=False)
         for _, element in enumerate(device_ids):
             if element < 0:
-                raise ValueError(f"Set parallel failed, device_ids contain a negative number.")
+                raise ValueError("Set parallel failed, device_ids contain a negative number.")
         self._runner_config.set_device_ids(device_ids)
