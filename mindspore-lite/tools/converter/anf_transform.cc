@@ -309,6 +309,27 @@ STATUS AnfTransform::MarkOperatorAsNonFusible(const FuncGraphPtr &func_graph,
         return RET_ERROR;
       }
     }
+  }
+  return RET_OK;
+}
+
+STATUS AnfTransform::MarkVariableConstNode(const FuncGraphPtr &func_graph,
+                                           const std::shared_ptr<ConverterPara> &param) {
+  MS_CHECK_TRUE_RET(func_graph != nullptr, RET_ERROR);
+  MS_CHECK_TRUE_RET(param != nullptr, RET_ERROR);
+  auto node_list = TopoSort(func_graph->get_return());
+  auto variable_node_names = GetVariableNodeNames(param);
+  for (auto &node : node_list) {
+    if (!utils::isa<CNodePtr>(node)) {
+      continue;
+    }
+    auto cnode = utils::cast<CNodePtr>(node);
+    MS_CHECK_TRUE_RET(cnode != nullptr, RET_ERROR);
+    auto prim = GetValueNode<PrimitivePtr>(cnode->input(0));
+    if (prim == nullptr) {
+      MS_LOG(DEBUG) << "Primitive is nullptr.";
+      continue;
+    }
     for (size_t i = 1; i < cnode->inputs().size(); i++) {
       if (utils::isa<Parameter>(cnode->input(i)) &&
           variable_node_names.find(cnode->input(i)->fullname_with_scope()) != variable_node_names.end()) {
@@ -319,6 +340,7 @@ STATUS AnfTransform::MarkOperatorAsNonFusible(const FuncGraphPtr &func_graph,
   }
   return RET_OK;
 }
+
 std::vector<opt::PassPtr> InitFusions(const std::shared_ptr<ConverterPara> &param) {
   // The training model only does the fusion of the inference part
   // remove quantdtype when awaretraining
@@ -383,6 +405,11 @@ std::vector<opt::PassPtr> InitFusions(const std::shared_ptr<ConverterPara> &para
 }
 
 int AnfTransform::RunFusionPass(const FuncGraphPtr &old_graph, const std::shared_ptr<ConverterPara> &param) {
+  auto status = MarkOperatorAsNonFusible(old_graph, param);
+  if (status != RET_OK) {
+    MS_LOG(ERROR) << "MarkOperatorAsNonFusible failed!";
+    return RET_ERROR;
+  }
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
   CHECK_NULL_RETURN(optimizer);
   auto fusion_pm = std::make_shared<opt::LitePassManager>("anf fusion pass manager", false);
@@ -704,9 +731,9 @@ STATUS AnfTransform::ProcOnlineTransform(const FuncGraphPtr &old_graph, const st
 }
 
 int AnfTransform::RunPass(const FuncGraphPtr &old_graph, const std::shared_ptr<ConverterPara> &param) {
-  auto status = MarkOperatorAsNonFusible(old_graph, param);
+  auto status = MarkVariableConstNode(old_graph, param);
   if (status != RET_OK) {
-    MS_LOG(ERROR) << "MarkOperatorAsNonFusible failed.";
+    MS_LOG(ERROR) << "MarkVariableConstNode failed.";
     return RET_ERROR;
   }
   status = RunConvertPass(old_graph, param);
