@@ -31,6 +31,7 @@
 #include "op_proto/inc/state_ops.h"
 #include "include/utils/ir_dump/anf_ir_dump_interface.h"
 #include "tools/converter/adapter/acl/backend/ge_backend/utils/anfalgo.h"
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/infer_need_update_para_names.h"
 #include "utils/config_manager.h"
 #include "include/utils/utils.h"
 #include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/utils.h"
@@ -399,14 +400,6 @@ bool IsMonadOrTupleParameter(const AnfNodePtr &node) {
   }
   return false;
 }
-
-class InferNeedUpdateParaNames {
- public:
-  std::unordered_set<std::string> &GetInferParameterNames() { return infer_need_update_para_names; }
-
- private:
-  std::unordered_set<std::string> infer_need_update_para_names;
-};
 }  // namespace
 
 // ---------------implement of DfGraphConvertor-------------
@@ -584,7 +577,7 @@ void DfGraphConvertor::InitParamWithData(const TensorOrderMap &tensors) {
       node->set_user_data(kNoNeedAllocDeviceAddress, std::make_shared<bool>(true));
     } else {
       auto &infer_need_update_parameter_names =
-        Singleton<InferNeedUpdateParaNames>::Instance().GetInferParameterNames();
+        Singleton<mindspore::lite::InferNeedUpdateParaNames>::Instance().GetInferParameterNames();
       // we need three variable ops for each graph with same name
       // build init subgraph
       auto adpt = device::ascend::FindAdapter(device::ascend::kNameParam);
@@ -727,6 +720,19 @@ void DfGraphConvertor::ProcessVarInput(const AnfNodePtr &it, const std::string &
   inputs->emplace_back(*op);
 }
 
+void DfGraphConvertor::CollectParameterShape(const ParameterPtr &param) {
+  const auto &param_shape = param->Shape();
+  MS_EXCEPTION_IF_NULL(param_shape);
+  const auto &shape = param_shape->cast<abstract::ShapePtr>();
+  if (shape != nullptr) {
+    const auto &sv = shape->shape();
+    if (IsDynamic(sv)) {
+      dynamic_shape_inputs_ = true;
+    }
+    (void)input_shapes_.emplace_back(sv);
+  }
+}
+
 void DfGraphConvertor::SetGraphInputs(std::vector<Operator> *inputs) {
   if (anf_graph_ == nullptr) {
     MS_LOG(ERROR) << "anf_graph_ is nullptr";
@@ -757,16 +763,7 @@ void DfGraphConvertor::SetGraphInputs(std::vector<Operator> *inputs) {
       MS_EXCEPTION_IF_NULL(param);
       auto name = param->name();
       if (std::find(init_data_names_.begin(), init_data_names_.end(), name) == init_data_names_.end()) {
-        const auto &param_shape = param->Shape();
-        MS_EXCEPTION_IF_NULL(param_shape);
-        const auto &shape = param_shape->cast<abstract::ShapePtr>();
-        if (shape != nullptr) {
-          const auto &sv = shape->shape();
-          if (IsDynamic(sv)) {
-            dynamic_shape_inputs_ = true;
-          }
-          (void)input_shapes_.emplace_back(sv);
-        }
+        CollectParameterShape(param);
       }
       if (vars_.find(name) == vars_.end()) {
         ProcessParameterInput(it, &index, inputs);
@@ -2459,23 +2456,25 @@ std::string DfGraphConvertor::ExtractFormatFromOpDef(const PrimitivePtr &prim, c
   }
   std::string format;
   auto op_def = ops::GetOpDef(prim->name());
-  if (op_def) {
-    for (size_t index = 0; index < op_def->args_.size() && index < node->size() - 1; index++) {
-      auto arg = op_def->args_[index];
-      if (arg.as_init_arg_ && (arg.arg_name_ == ops::kFormat || arg.arg_name_ == ops::kDataFormat)) {
-        auto value_ptr = node->input(index + 1)->cast<ValueNodePtr>();
-        if (value_ptr == nullptr) {
-          break;
-        }
-        auto input_value = value_ptr->value();
-        if (input_value == nullptr) {
-          MS_LOG(ERROR) << "input_value is nullptr";
-          break;
-        }
-        auto format_id = GetValue<int64_t>(input_value);
-        format = FormatEnumToString(static_cast<Format>(format_id));
-      }
+  if (!op_def) {
+    return format;
+  }
+  for (size_t index = 0; index < op_def->args_.size() && index < node->size() - 1; index++) {
+    auto arg = op_def->args_[index];
+    if (!arg.as_init_arg_ || (arg.arg_name_ != ops::kFormat && arg.arg_name_ != ops::kDataFormat)) {
+      continue;
     }
+    auto value_ptr = node->input(index + 1)->cast<ValueNodePtr>();
+    if (value_ptr == nullptr) {
+      break;
+    }
+    auto input_value = value_ptr->value();
+    if (input_value == nullptr) {
+      MS_LOG(ERROR) << "input_value is nullptr";
+      break;
+    }
+    auto format_id = GetValue<int64_t>(input_value);
+    format = FormatEnumToString(static_cast<Format>(format_id));
   }
   return format;
 }
@@ -2505,24 +2504,26 @@ std::string DfGraphConvertor::ExtractFormatFromAttr(const PrimitivePtr &prim) {
 
 void DfGraphConvertor::SaveParamFormat(const CNodePtr node) {
   AnfNodePtr op = node->input(0);
-  if (IsValueNode<Primitive>(op)) {
-    auto prim = GetValueNode<PrimitivePtr>(op);
-    if (prim == nullptr) {
-      MS_LOG(ERROR) << "prim is nullptr";
-      return;
-    }
-    std::string format = ExtractFormatFromOpDef(prim, node);
-    if (format.empty()) {
-      format = ExtractFormatFromAttr(prim);
-    }
-    if (format == "NCDHW" || format == "NHWC") {
-      for (size_t i = 1; i < node->size(); i++) {
-        auto input = node->input(i);
-        if (input->isa<Parameter>()) {
-          param_format_[input->DebugString()] = format;
-          MS_LOG(DEBUG) << "Save Param " << input->DebugString() << " format: " << format;
-        }
-      }
+  if (!IsValueNode<Primitive>(op)) {
+    return;
+  }
+  auto prim = GetValueNode<PrimitivePtr>(op);
+  if (prim == nullptr) {
+    MS_LOG(ERROR) << "prim is nullptr";
+    return;
+  }
+  std::string format = ExtractFormatFromOpDef(prim, node);
+  if (format.empty()) {
+    format = ExtractFormatFromAttr(prim);
+  }
+  if (format != "NCDHW" && format != "NHWC") {
+    return;
+  }
+  for (size_t i = 1; i < node->size(); i++) {
+    auto input = node->input(i);
+    if (input->isa<Parameter>()) {
+      param_format_[input->DebugString()] = format;
+      MS_LOG(DEBUG) << "Save Param " << input->DebugString() << " format: " << format;
     }
   }
 }
