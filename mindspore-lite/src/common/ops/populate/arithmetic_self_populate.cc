@@ -19,6 +19,7 @@
 using mindspore::schema::PrimitiveType_Abs;
 using mindspore::schema::PrimitiveType_Ceil;
 using mindspore::schema::PrimitiveType_Cos;
+using mindspore::schema::PrimitiveType_Erf;
 using mindspore::schema::PrimitiveType_Floor;
 using mindspore::schema::PrimitiveType_Log;
 using mindspore::schema::PrimitiveType_LogGrad;
@@ -64,5 +65,6 @@ REG_POPULATE(PrimitiveType_Floor, PopulateArithmeticSelf, SCHEMA_CUR)
 REG_POPULATE(PrimitiveType_Ceil, PopulateArithmeticSelf, SCHEMA_CUR)
 REG_POPULATE(PrimitiveType_Round, PopulateArithmeticSelf, SCHEMA_CUR)
 REG_POPULATE(PrimitiveType_Reciprocal, PopulateArithmeticSelf, SCHEMA_CUR)
+REG_POPULATE(PrimitiveType_Erf, PopulateArithmeticSelf, SCHEMA_CUR)
 }  // namespace lite
 }  // namespace mindspore

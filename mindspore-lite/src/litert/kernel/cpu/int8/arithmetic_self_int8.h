@@ -27,6 +27,7 @@ using mindspore::lite::InnerContext;
 using mindspore::schema::PrimitiveType_Abs;
 using mindspore::schema::PrimitiveType_Ceil;
 using mindspore::schema::PrimitiveType_Cos;
+using mindspore::schema::PrimitiveType_Erf;
 using mindspore::schema::PrimitiveType_ExpFusion;
 using mindspore::schema::PrimitiveType_Floor;
 using mindspore::schema::PrimitiveType_Log;
@@ -85,6 +86,9 @@ class ArithmeticSelfInt8CPUKernel : public LiteKernel {
         break;
       case PrimitiveType_Reciprocal:
         arithmeticSelf_run_ = Int8ElementReciprocal;
+        break;
+      case PrimitiveType_Erf:
+        arithmeticSelf_run_ = Int8ElementErf;
         break;
       default:
         break;
