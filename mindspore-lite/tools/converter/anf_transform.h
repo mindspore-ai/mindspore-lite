@@ -72,6 +72,8 @@ class AnfTransform {
 
   static STATUS ProcOnlineTransform(const FuncGraphPtr &old_graph, const std::shared_ptr<ConverterPara> &param);
 
+  static STATUS MarkVariableConstNode(const FuncGraphPtr &func_graph, const std::shared_ptr<ConverterPara> &param);
+
   FuncGraphManagerPtr manager_ = nullptr;
 };
 }  // namespace lite
