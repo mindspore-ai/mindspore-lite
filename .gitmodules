@@ -1,4 +1,5 @@
 [submodule "mindspore"]
 	path = mindspore
 	url = https://atomgit.com/mindspore/mindspore.git
-	branch = r2.9
+	shallow = true
+	branch = master
