@@ -621,8 +621,12 @@ bool ModelProcess::MainProcess(const void *om_data, size_t om_data_size) {
     }
   }
   options_->share_weightspace = true;
+  auto start_time = lite::GetTimeUs();
   acl_ret = CALL_ASCEND_API(aclmdlLoadFromMemWithMem, om_data, om_data_size, &model_id_, work_ptr_, work_size,
                             multiprocess_weight_ptr_, weight_size);
+  auto end_time = lite::GetTimeUs();
+  auto cost = end_time - start_time;
+  MS_LOG(INFO) << "[init time] call aclmdlLoadFromMemWithMem cost " << cost << " us";
   if (acl_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Call aclmdlLoadFromMemWithMem failed, ret = " << acl_ret;
     return false;
@@ -665,8 +669,12 @@ bool ModelProcess::SubProcess(const void *om_data, size_t om_data_size) {
     }
   }
   options_->share_weightspace = true;
+  auto start_time = lite::GetTimeUs();
   acl_ret = CALL_ASCEND_API(aclmdlLoadFromMemWithMem, om_data, om_data_size, &model_id_, work_ptr_, work_size,
                             multiprocess_weight_ptr_, weight_size);
+  auto end_time = lite::GetTimeUs();
+  auto cost = end_time - start_time;
+  MS_LOG(INFO) << "[init time] call aclmdlLoadFromMemWithMem cost " << cost << " us";
   if (acl_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Call aclmdlLoadFromMemWithMem failed, ret = " << acl_ret;
     return false;
@@ -718,8 +726,12 @@ Status ModelProcess::ShareMemProcess(const void *om_data, size_t om_data_size) {
     MS_LOG(ERROR) << "Please specify the sharing type!";
     return Status(kLiteParamInvalid, "Please specify the sharing type!");
   }
+  auto start_time = lite::GetTimeUs();
   acl_ret = CALL_ASCEND_API(aclmdlLoadFromMemWithMem, om_data, om_data_size, &model_id_, work_ptr_, work_size,
                             weight_ptr_, weight_size);
+  auto end_time = lite::GetTimeUs();
+  auto cost = end_time - start_time;
+  MS_LOG(INFO) << "[init time] call aclmdlLoadFromMemWithMem cost " << cost << " us";
   if (acl_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Call aclmdlLoadFromMemWithMem failed, ret = " << acl_ret;
     return Status(kLiteAclInitFailed, "Call aclmdlLoadFromMemWithMem failed!");
@@ -729,7 +741,11 @@ Status ModelProcess::ShareMemProcess(const void *om_data, size_t om_data_size) {
 }
 
 Status ModelProcess::LoadModelForUpdateWeight(const void *om_data, size_t om_data_size) {
+  auto start_time = lite::GetTimeUs();
   auto acl_ret = CALL_ASCEND_API(aclmdlBundleLoadFromMem, om_data, om_data_size, &model_id_);
+  auto end_time = lite::GetTimeUs();
+  auto cost = end_time - start_time;
+  MS_LOG(INFO) << "[init time] call aclmdlBundleLoadFromMem cost " << cost << " us";
   if (acl_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Call aclmdlLoadFromMem failed, ret = " << acl_ret;
     return kLiteError;
@@ -791,7 +807,11 @@ Status ModelProcess::Load(const void *om_data, size_t om_data_size) {
         return Status(kLiteError, "Sub process failed!");
       }
     } else {
+      auto start_time = lite::GetTimeUs();
       auto acl_ret = CALL_ASCEND_API(aclmdlLoadFromMem, om_data, om_data_size, &model_id_);
+      auto end_time = lite::GetTimeUs();
+      auto cost = end_time - start_time;
+      MS_LOG(INFO) << "[init time] call aclmdlLoadFromMem cost " << cost << " us";
       if (acl_ret != ACL_SUCCESS) {
         MS_LOG(ERROR) << "Call aclmdlLoadFromMem failed, ret = " << acl_ret;
         return Status(kLiteAclInitFailed, "Call aclmdlLoadFromMem failed.");

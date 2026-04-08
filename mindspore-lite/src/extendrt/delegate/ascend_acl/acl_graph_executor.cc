@@ -219,6 +219,7 @@ Status AclGraphExecutor::GetOutputTensors(const std::vector<std::string> &output
 
 Status AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
                                       uint32_t *graph_id) {
+  auto start_time = lite::GetTimeUs();
   for (const auto &input : graph->get_inputs()) {
     MS_CHECK_TRUE_MSG(input != nullptr, Status(kLiteGraphFileError, "graph's inputs[i] is nullptr."),
                       "graph's inputs[i] is nullptr.");
@@ -306,11 +307,15 @@ Status AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<
   sharable_handle_ = model_infer_->GetSharableHandle();
   AclEnvGuard::AddModel(model_infer_);
   load_model_ = true;
+  auto end_time = lite::GetTimeUs();
+  auto cost = end_time - start_time;
+  MS_LOG(INFO) << "[init time] compile graph cost " << cost << " us";
   return kSuccess;
 }
 
 Status AclGraphExecutor::CompileGraph(const void *model_data, size_t data_size,
                                       const std::map<std::string, std::string> &compile_options, uint32_t *graph_id) {
+  auto start_time = lite::GetTimeUs();
   auto acl_options = GenAclOptions();
   if (acl_options == nullptr) {
     MS_LOG(ERROR) << "Generate acl options failed!";
@@ -335,6 +340,9 @@ Status AclGraphExecutor::CompileGraph(const void *model_data, size_t data_size,
   }
   AclEnvGuard::AddModel(model_infer_);
   load_model_ = true;
+  auto end_time = lite::GetTimeUs();
+  auto cost = end_time - start_time;
+  MS_LOG(INFO) << "[init time] compile graph cost " << cost << " us";
   return kSuccess;
 }
 

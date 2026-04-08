@@ -23,6 +23,7 @@
 #include "extendrt/cxx_api/model/model_impl.h"
 #include "src/common/config_file.h"
 #include "src/common/common.h"
+#include "src/common/utils.h"
 #ifdef ENABLE_OPENSSL
 #include "src/common/decrypt.h"
 #include "src/common/file_utils.h"
@@ -91,11 +92,15 @@ Status Model::Build(const void *model_data, size_t data_size, ModelType model_ty
       MS_LOG(ERROR) << "PreInfer failed!";
       return ret;
     }
+    auto start_time = lite::GetTimeUs();
     ret = impl_->Build(model_data, data_size, model_type, model_context);
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
       return ret;
     }
+    auto end_time = lite::GetTimeUs();
+    auto cost = end_time - start_time;
+    MS_LOG(INFO) << "[init time] model build cost " << cost << " us";
     return kSuccess;
   } catch (const std::exception &exe) {
     MS_LOG(ERROR) << "Catch exception: " << exe.what();
@@ -110,11 +115,15 @@ Status Model::Build(const void *model_data, size_t data_size, const void *weight
     return kLiteNullptr;
   }
   try {
+    auto start_time = lite::GetTimeUs();
     Status ret = impl_->Build(model_data, data_size, weight_data, weight_size, model_type, model_context);
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
       return ret;
     }
+    auto end_time = lite::GetTimeUs();
+    auto cost = end_time - start_time;
+    MS_LOG(INFO) << "[init time] model build cost " << cost << " us";
     return kSuccess;
   } catch (const std::exception &exe) {
     MS_LOG(ERROR) << "Catch exception: " << exe.what();
@@ -133,11 +142,15 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
       MS_LOG(ERROR) << "PreInfer failed!";
       return ret;
     }
+    auto start_time = lite::GetTimeUs();
     ret = impl_->Build(CharToString(model_path), model_type, model_context);
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
       return ret;
     }
+    auto end_time = lite::GetTimeUs();
+    auto cost = end_time - start_time;
+    MS_LOG(INFO) << "[init time] model build cost " << cost << " us";
     return kSuccess;
   } catch (const std::exception &exe) {
     MS_LOG(ERROR) << "Catch exception: " << exe.what();
@@ -172,12 +185,16 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
       return ret;
     }
     try {
+      auto start_time = lite::GetTimeUs();
       ret = impl_->Build(decrypt_buffer.get(), decrypt_len, model_type, model_context);
       if (ret != kSuccess) {
         delete[] model_buf;
         MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
         return ret;
       }
+      auto end_time = lite::GetTimeUs();
+      auto cost = end_time - start_time;
+      MS_LOG(INFO) << "[init time] model build cost " << cost << " us";
       delete[] model_buf;
       return kSuccess;
     } catch (const std::exception &exe) {
@@ -197,6 +214,9 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
       MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
       return ret;
     }
+    auto end_time = lite::GetTimeUs();
+    auto cost = end_time - start_time;
+    MS_LOG(INFO) << "[init time] model build cost " << cost << " us";
     return kSuccess;
   } catch (const std::exception &exe) {
     MS_LOG(ERROR) << "Catch exception: " << exe.what();
@@ -227,11 +247,17 @@ Status Model::Build(const void *model_data, size_t data_size, ModelType model_ty
       return ret;
     }
     try {
+      auto start_time = lite::GetTimeUs();
       ret = impl_->Build(decrypt_buffer.get(), decrypt_len, model_type, model_context);
       if (ret != kSuccess) {
         MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
         return ret;
       }
+
+      auto end_time = lite::GetTimeUs();
+      auto cost = end_time - start_time;
+      MS_LOG(INFO) << "[init time] model build cost " << cost << " us";
+
       return kSuccess;
     } catch (const std::exception &exe) {
       MS_LOG(ERROR) << "Catch exception: " << exe.what();
@@ -244,11 +270,17 @@ Status Model::Build(const void *model_data, size_t data_size, ModelType model_ty
       MS_LOG(ERROR) << "PreInfer failed!";
       return ret;
     }
+    auto start_time1 = lite::GetTimeUs();
     ret = impl_->Build(model_data, data_size, model_type, model_context);
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
       return ret;
     }
+
+    auto end_time1 = lite::GetTimeUs();
+    auto cost1 = end_time1 - start_time1;
+    MS_LOG(INFO) << "[init time] model build cost " << cost1 << " us";
+
     return kSuccess;
   } catch (const std::exception &exe) {
     MS_LOG(ERROR) << "Catch exception: " << exe.what();
