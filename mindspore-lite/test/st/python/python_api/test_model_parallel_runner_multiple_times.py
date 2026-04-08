@@ -51,7 +51,6 @@ class MSLiteModel:
             model_inputs[i].shape = list(input_data[i].shape)
             model_inputs[i].set_data_from_numpy(input_data[i])
         outputs = self.model.predict(model_inputs)
-        print(len(outputs))
         np_out = []
         for out in outputs:
             np_out.append(out.get_data_to_numpy())
