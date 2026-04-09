@@ -209,6 +209,7 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
       MS_LOG(ERROR) << "PreInfer failed!";
       return ret;
     }
+    auto start_time = lite::GetTimeUs();
     ret = impl_->Build(CharToString(model_path), model_type, model_context);
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
