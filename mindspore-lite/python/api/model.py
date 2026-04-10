@@ -1100,7 +1100,7 @@ class MultiModelRunner:
         Get ModelExecutors from MultiModelRunner.
 
         Returns:
-            list[ModelExecutor]: All Executors in MultiModelRunner.
+            list[ModelExecutor], all Executors in MultiModelRunner.
         """
         executors = []
         for executor_ in self._runner.get_model_executor():
@@ -1192,7 +1192,7 @@ class ModelExecutor:
         Obtains all output information Tensors of the ModelExecutor.
 
         Returns:
-            list[TensorMeta]: The output TensorMeta list of the ModelExecutor.
+            list[TensorMeta], the output TensorMeta list of the ModelExecutor.
         """
         outputs_metadata = []
         for _tensor in self._executor.get_outputs():
