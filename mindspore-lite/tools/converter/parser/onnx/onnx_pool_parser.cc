@@ -32,6 +32,15 @@ constexpr int kNumShapeSize3 = 3;
 constexpr int kNumShapeSize4 = 4;
 constexpr int kNumShapeSize6 = 6;
 constexpr int kNumShapeInvalidSize = -1;
+
+struct AvgPoolAttrs {
+  std::vector<int64_t> kernels;
+  std::vector<int64_t> strides;
+  std::vector<int64_t> pads;
+  mindspore::RoundMode round_mode = mindspore::RoundMode::FLOOR;
+  bool is_3d = false;
+};
+
 bool CheckDilations(const onnx::AttributeProto &onnx_node_attr) {
   for (int i = 0; i < onnx_node_attr.ints_size(); ++i) {
     if (onnx_node_attr.ints(i) != 1) {
@@ -43,60 +52,78 @@ bool CheckDilations(const onnx::AttributeProto &onnx_node_attr) {
 }
 
 void ParseKernelSize(const std::unique_ptr<ops::AvgPoolFusion> &prim, const onnx::AttributeProto &onnx_node_attr,
-                     std::vector<int64_t> *kernels, bool *is_3d) {
+                     AvgPoolAttrs *attrs) {
+  if (prim == nullptr) {
+    MS_LOG(ERROR) << "prim is nullptr!";
+    return;
+  }
+  if (attrs == nullptr) {
+    MS_LOG(ERROR) << "attrs is nullptr!";
+    return;
+  }
+  auto &kernels = attrs->kernels;
   if (onnx_node_attr.ints_size() == kNumShapeSize2) {
-    kernels->push_back(onnx_node_attr.ints(kIndex0));
-    kernels->push_back(onnx_node_attr.ints(kIndex1));
-    prim->set_kernel_size(*kernels);
+    kernels.push_back(onnx_node_attr.ints(kIndex0));
+    kernels.push_back(onnx_node_attr.ints(kIndex1));
+    prim->set_kernel_size(kernels);
   } else if (onnx_node_attr.ints_size() == kNumShapeSize1) {
-    kernels->push_back(onnx_node_attr.ints(kIndex0));
-    prim->set_kernel_size(*kernels);
+    kernels.push_back(onnx_node_attr.ints(kIndex0));
+    prim->set_kernel_size(kernels);
   } else if (onnx_node_attr.ints_size() == kNumShapeSize3) {
-    *is_3d = true;
-    kernels->push_back(onnx_node_attr.ints(0));
-    kernels->push_back(onnx_node_attr.ints(kIndex1));
-    kernels->push_back(onnx_node_attr.ints(kIndex2));
-    prim->AddAttr("kernel_size", api::MakeValue<std::vector<int64_t>>(*kernels));
+    attrs->is_3d = true;
+    kernels.push_back(onnx_node_attr.ints(kIndex0));
+    kernels.push_back(onnx_node_attr.ints(kIndex1));
+    kernels.push_back(onnx_node_attr.ints(kIndex2));
+    prim->AddAttr("kernel_size", api::MakeValue<std::vector<int64_t>>(kernels));
   }
 }
 
-void ParseStrides(const std::unique_ptr<ops::AvgPoolFusion> &prim, const onnx::AttributeProto &onnx_node_attr,
-                  std::vector<int64_t> *strides, bool *is_3d) {
+void ParseStrides(const onnx::AttributeProto &onnx_node_attr, AvgPoolAttrs *attrs) {
+  if (attrs == nullptr) {
+    MS_LOG(ERROR) << "attrs is nullptr!";
+    return;
+  }
+  auto &strides = attrs->strides;
   if (onnx_node_attr.ints_size() == kNumShapeSize2) {
-    strides->push_back(onnx_node_attr.ints(kIndex0));
-    strides->push_back(onnx_node_attr.ints(kIndex1));
+    strides.push_back(onnx_node_attr.ints(kIndex0));
+    strides.push_back(onnx_node_attr.ints(kIndex1));
   } else if (onnx_node_attr.ints_size() == kNumShapeSize1) {
-    strides->push_back(onnx_node_attr.ints(kIndex0));
+    strides.push_back(onnx_node_attr.ints(kIndex0));
   } else if (onnx_node_attr.ints_size() == kNumShapeSize3) {
-    *is_3d = true;
-    strides->push_back(onnx_node_attr.ints(0));
-    strides->push_back(onnx_node_attr.ints(kIndex1));
-    strides->push_back(onnx_node_attr.ints(kIndex2));
+    attrs->is_3d = true;
+    strides.push_back(onnx_node_attr.ints(kIndex0));
+    strides.push_back(onnx_node_attr.ints(kIndex1));
+    strides.push_back(onnx_node_attr.ints(kIndex2));
   }
 }
 
-void ParsePads(const std::unique_ptr<ops::AvgPoolFusion> &prim, const onnx::AttributeProto &onnx_node_attr,
-               std::vector<int64_t> *pads, bool *is_3d) {
+void ParsePads(const onnx::AttributeProto &onnx_node_attr, AvgPoolAttrs *attrs) {
+  if (attrs == nullptr) {
+    MS_LOG(ERROR) << "attrs is nullptr!";
+    return;
+  }
+  auto &pads = attrs->pads;
   if (onnx_node_attr.ints_size() == kNumShapeSize4) {
-    pads->push_back(onnx_node_attr.ints(kIndex0));
-    pads->push_back(onnx_node_attr.ints(kIndex2));
-    pads->push_back(onnx_node_attr.ints(kIndex1));
-    pads->push_back(onnx_node_attr.ints(kIndex3));
+    pads.push_back(onnx_node_attr.ints(kIndex0));
+    pads.push_back(onnx_node_attr.ints(kIndex2));
+    pads.push_back(onnx_node_attr.ints(kIndex1));
+    pads.push_back(onnx_node_attr.ints(kIndex3));
   } else if (onnx_node_attr.ints_size() == kNumShapeSize2) {
-    pads->push_back(onnx_node_attr.ints(kIndex0));
-    pads->push_back(onnx_node_attr.ints(kIndex1));
+    pads.push_back(onnx_node_attr.ints(kIndex0));
+    pads.push_back(onnx_node_attr.ints(kIndex1));
   } else if (onnx_node_attr.ints_size() == kNumShapeSize6) {
-    *is_3d = true;
-    pads->push_back(onnx_node_attr.ints(0));
-    pads->push_back(onnx_node_attr.ints(kIndex3));
-    pads->push_back(onnx_node_attr.ints(kIndex1));
-    pads->push_back(onnx_node_attr.ints(kIndex4));
-    pads->push_back(onnx_node_attr.ints(kIndex2));
-    pads->push_back(onnx_node_attr.ints(kIndex5));
+    attrs->is_3d = true;
+    pads.push_back(onnx_node_attr.ints(kIndex0));
+    pads.push_back(onnx_node_attr.ints(kIndex3));
+    pads.push_back(onnx_node_attr.ints(kIndex1));
+    pads.push_back(onnx_node_attr.ints(kIndex4));
+    pads.push_back(onnx_node_attr.ints(kIndex2));
+    pads.push_back(onnx_node_attr.ints(kIndex5));
   }
 }
 
 bool ParseAutoPad(const onnx::AttributeProto &onnx_node_attr, const std::unique_ptr<ops::AvgPoolFusion> &prim) {
+  MS_CHECK_TRUE_MSG(prim != nullptr, false, "prim is nullptr!");
   if (onnx_node_attr.s() == "SAME_UPPER") {
     prim->set_pad_mode(mindspore::PadMode::SAME);
   } else if (onnx_node_attr.s() == "SAME_LOWER") {
@@ -107,18 +134,18 @@ bool ParseAutoPad(const onnx::AttributeProto &onnx_node_attr, const std::unique_
 }
 
 bool ParseAttrs(const onnx::NodeProto &onnx_node, const std::unique_ptr<ops::AvgPoolFusion> &prim,
-                std::vector<int64_t> *kernels, std::vector<int64_t> *strides, std::vector<int64_t> *pads,
-                mindspore::RoundMode *round_mode, bool *is_3d) {
+                AvgPoolAttrs *attrs) {
+  MS_CHECK_TRUE_MSG(attrs != nullptr, false, "attrs is nullptr!");
   for (const auto &onnx_node_attr : onnx_node.attribute()) {
     const auto &attribute_name = onnx_node_attr.name();
 
     if (attribute_name == "kernel_shape") {
-      ParseKernelSize(prim, onnx_node_attr, kernels, is_3d);
+      ParseKernelSize(prim, onnx_node_attr, attrs);
       continue;
     }
 
     if (attribute_name == "strides") {
-      ParseStrides(prim, onnx_node_attr, strides, is_3d);
+      ParseStrides(onnx_node_attr, attrs);
       continue;
     }
 
@@ -130,17 +157,17 @@ bool ParseAttrs(const onnx::NodeProto &onnx_node, const std::unique_ptr<ops::Avg
     }
 
     if (attribute_name == "pads") {
-      ParsePads(prim, onnx_node_attr, pads, is_3d);
+      ParsePads(onnx_node_attr, attrs);
       continue;
     }
 
     if (attribute_name == "ceil_mode") {
-      *round_mode = (onnx_node_attr.i() == 0) ? mindspore::RoundMode::FLOOR : mindspore::RoundMode::CEIL;
+      attrs->round_mode = (onnx_node_attr.i() == 0) ? mindspore::RoundMode::FLOOR : mindspore::RoundMode::CEIL;
       continue;
     }
 
     if (attribute_name == ops::kCountIncludePad) {
-      bool include = onnx_node_attr.i() == 0 ? false : true;
+      bool include = onnx_node_attr.i() != 0;
       (void)prim->AddAttr(ops::kCountIncludePad, api::MakeValue(include));
       continue;
     }
@@ -159,31 +186,27 @@ bool ParseAttrs(const onnx::NodeProto &onnx_node, const std::unique_ptr<ops::Avg
 
 PrimitiveCPtr OnnxAvgPoolParser::Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) {
   auto prim = std::make_unique<ops::AvgPoolFusion>();
-  bool is_3d = false;
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
   auto prim_c = prim->GetPrim();
   MS_CHECK_TRUE_RET(prim_c != nullptr, nullptr);
   (void)prim_c->AddAttr(mindspore::ops::kOriginalFormat, MakeValue<int64_t>(mindspore::Format::NCHW));
   prim->set_pad_mode(mindspore::PadMode::PAD);
-  mindspore::RoundMode round_mode = mindspore::RoundMode::FLOOR;
-  std::vector<int64_t> kernels;
-  std::vector<int64_t> strides;
-  std::vector<int64_t> pads;
-  if (!ParseAttrs(onnx_node, prim, &kernels, &strides, &pads, &round_mode, &is_3d)) {
+  AvgPoolAttrs attrs;
+  if (!ParseAttrs(onnx_node, prim, &attrs)) {
     MS_LOG(ERROR) << "ParseAttrs failed!";
     return nullptr;
   }
-  prim->set_round_mode(round_mode);
+  prim->set_round_mode(attrs.round_mode);
 
-  if (strides.empty()) {
-    strides.push_back(1);
-    strides.push_back(1);
+  if (attrs.strides.empty()) {
+    attrs.strides.push_back(1);
+    attrs.strides.push_back(1);
   }
-  prim->set_strides(strides);
-  if (pads.empty()) {
-    pads = is_3d ? std::vector<int64_t>(kNumShapeSize6, 0) : std::vector<int64_t>(kNumShapeSize4, 0);
+  prim->set_strides(attrs.strides);
+  if (attrs.pads.empty()) {
+    attrs.pads = attrs.is_3d ? std::vector<int64_t>(kNumShapeSize6, 0) : std::vector<int64_t>(kNumShapeSize4, 0);
   }
-  prim->set_pad(pads);
+  prim->set_pad(attrs.pads);
   prim->set_global(onnx_node.op_type() == "GlobalAveragePool");
 
   int fmk_type = converter::FmkType::kFmkTypeOnnx;
