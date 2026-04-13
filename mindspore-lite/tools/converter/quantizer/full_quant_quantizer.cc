@@ -502,6 +502,9 @@ void FullQuantQuantizer::InitCpuConfig() {
     (void)support_int8_ops_.emplace(prim::kPrimAddFusion);
     (void)support_int8_ops_.emplace(prim::kPrimSubFusion);
     (void)support_int8_ops_.emplace(prim::kPrimGather);
+    (void)support_int8_ops_.emplace(prim::kPrimErf);
+    (void)support_int8_ops_.emplace(prim::kPrimDepthToSpace);
+    (void)support_int8_ops_.emplace(prim::kPrimSpaceToDepth);
   }
   skip_check_dtype_ops_ = {prim::kPrimTupleGetItem, prim::kPrimShape};
   per_channel_ops_ = {prim::kPrimConv2DFusion, prim::kPrimConv2dTransposeFusion, prim::kPrimMatMulFusion,
