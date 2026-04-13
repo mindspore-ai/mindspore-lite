@@ -1,51 +1,53 @@
-# Qwen3-VL-2B ONNX Export and Inference
+# Qwen3-VL-2B ONNX 导出与推理
 
-This directory provides complete tooling for exporting Qwen3-VL-2B to ONNX format and running end-to-end inference. The implementation splits the model into three optimized components for efficient deployment.
+本目录提供 Qwen3-VL-2B 导出为 ONNX 以及端到端推理的完整脚本。实现上将模型拆分为 3 个组件，便于部署与加速。
 
-## Overview
+## 概览
 
-Qwen3-VL-2B is a multimodal large language model that processes both images and text. This toolkit provides:
+Qwen3-VL-2B 是一个同时处理图像与文本的多模态大模型。本目录提供：
 
-- **ONNX Export**: Split model into Vision, LLM Prefill, and LLM Decode components
+- **ONNX 导出**：将模型拆分为 Vision、LLM Prefill、LLM Decode 三个部分导出
 
-- **ONNX Inference**: Complete end-to-end inference pipeline with all three models
+- **ONNX 推理**：使用三段 ONNX 模型完成端到端推理
 
-- **MindSpore Lite Integration**: Optional conversion to `.mindir` format for Ascend deployment
+- **MindSpore Lite 集成**：可选，将 ONNX 转换为 `.mindir` 以便在 Ascend 上部署
 
-## Architecture
+## 架构拆分
 
-The model is split into three ONNX components:
+模型被拆分为 3 个 ONNX 文件：
 
-1. **Vision Tower** (`qwen3_vl_vision.onnx`): Extracts visual features from images
-2. **LLM Prefill** (`qwen3_vl_llm_prefill.onnx`): Processes the full prompt (text + image tokens) in one pass
-3. **LLM Decode** (`qwen3_vl_llm_decode.onnx`): Incremental token generation using KV cache
+1. **Vision Tower**（`qwen3_vl_vision.onnx`）：对图像进行编码，输出视觉特征
 
-This separation avoids KV cache recomputation and enables efficient autoregressive generation.
+2. **LLM Prefill**（`qwen3_vl_llm_prefill.onnx`）：一次性处理完整 prompt（文本 + 图像 token），输出 logits 与 KV cache
 
-## Prerequisites
+3. **LLM Decode**（`qwen3_vl_llm_decode.onnx`）：基于 KV cache 做自回归增量生成
 
-### Python Environment
+这种拆分避免每步生成都重复计算历史 token 的注意力，从而提升推理效率。
+
+## 环境依赖
+
+### Python 环境
 
 ```bash
 pip install -U "transformers>=4.50" torch onnx onnxscript pillow numpy
 pip install -U onnxruntime
 ```
 
-For GPU acceleration:
+如需 GPU 加速：
 
 ```bash
 pip install -U onnxruntime-gpu
 ```
 
-### Model Access
+### 模型访问
 
-Ensure you have access to `Qwen/Qwen3-VL-2B-Instruct` on HuggingFace.
+请确保你能从 HuggingFace 访问 `Qwen/Qwen3-VL-2B-Instruct`。
 
-## Quick Start
+## 快速开始
 
-### 1. Export to ONNX
+### 1. 导出 ONNX
 
-Export all three ONNX models:
+导出全部三段模型：
 
 ```bash
 python export_qwen3_vl_onnx.py \
@@ -55,17 +57,17 @@ python export_qwen3_vl_onnx.py \
     --vision-image-size 128
 ```
 
-This generates:
+导出产物：
 
-- `qwen3_vl_vision.onnx` - Vision tower
+- `qwen3_vl_vision.onnx`：Vision Tower
 
-- `qwen3_vl_llm_prefill.onnx` + `.data` - LLM prefill model
+- `qwen3_vl_llm_prefill.onnx` + `.data`：LLM Prefill
 
-- `qwen3_vl_llm_decode.onnx` + `.data` - LLM decode model
+- `qwen3_vl_llm_decode.onnx` + `.data`：LLM Decode
 
-### 2. Run ONNX Inference
+### 2. 运行 ONNX 推理
 
-Execute end-to-end inference:
+端到端推理示例：
 
 ```bash
 python infer_qwen3_vl_onnx.py \
@@ -79,87 +81,91 @@ python infer_qwen3_vl_onnx.py \
     --device cpu
 ```
 
-## Model I/O Specifications
+## 模型 I/O 说明
 
-### Vision Model
+### Vision 模型
 
-**Inputs:**
+**输入：**
 
-- `pixel_values`: `float16`, shape `(seq_len, 1536)`
+- `pixel_values`：`float16`，形状 `(seq_len, 1536)`
 
-- `grid_thw`: `int64`, shape `(1, 3)` - temporal, height, width grid dimensions
+- `grid_thw`：`int64`，形状 `(1, 3)`，分别表示 `t/h/w` 网格维度（可选；部分导出变体会把它固化进模型）
 
-**Outputs:**
+**输出：**
 
-- `image_embeds`: `float16`, shape `(num_image_tokens, hidden_size)`
+- `image_embeds`：`float16`，形状 `(num_image_tokens, hidden_size)`
 
-- `deepstack_embeds`: `float16`, shape `(num_deepstack, num_image_tokens, hidden_size)`
+- `deepstack_embeds`：`float16`，形状 `(num_deepstack, num_image_tokens, hidden_size)`
 
-### LLM Prefill Model
+### LLM Prefill 模型
 
-**Inputs:**
+**输入：**
 
-- `input_ids`: `int64`, shape `(batch, seq_len)`
+- `input_ids`：`int64`，形状 `(batch, seq_len)`
 
-- `attention_mask`: `int64`, shape `(batch, seq_len)`
+- `attention_mask`：`int64`，形状 `(batch, seq_len)`
 
-- `position_ids`: `int64`, shape `(4, batch, seq_len)`
+- `position_ids`：`int64`，形状 `(4, batch, seq_len)`
 
-- `image_embeds`: `float16`, shape `(num_image_tokens, hidden_size)`
+- `image_embeds`：`float16`，形状 `(num_image_tokens, hidden_size)`
 
-- `deepstack_embeds`: `float16`, shape `(num_deepstack, num_image_tokens, hidden_size)`
+- `deepstack_embeds`：`float16`，形状 `(num_deepstack, num_image_tokens, hidden_size)`
 
-**Outputs:**
+**输出：**
 
-- `logits`: `float16/float32`, shape `(batch, seq_len, vocab_size)`
+- `logits`：`float16/float32`，形状 `(batch, seq_len, vocab_size)`
 
-- `present_key_values`: `float16`, shape `(2*num_layers, batch, num_kv_heads, seq_len, head_dim)`
+- `present_key_values`：`float16`，形状 `(2*num_layers, batch, num_kv_heads, seq_len, head_dim)`
 
-### LLM Decode Model
+### LLM Decode 模型
 
-**Inputs:**
+**输入：**
 
-- `input_ids`: `int64`, shape `(batch, 1)` - single token
-- `attention_mask`: `int64`, shape `(batch, total_seq_len)`
-- `position_ids`: `int64`, shape `(4, batch, 1)`
-- `past_key_values`: `float16`, shape `(2*num_layers, batch, num_kv_heads, past_seq_len, head_dim)`
+- `input_ids`：`int64`，形状 `(batch, 1)`（单 token）
 
-**Outputs:**
+- `attention_mask`：`int64`，形状 `(batch, total_seq_len)`
 
-- `logits`: `float16/float32`, shape `(batch, 1, vocab_size)`
-- `present_key_values`: `float16`, shape `(2*num_layers, batch, num_kv_heads, total_seq_len, head_dim)`
+- `position_ids`：`int64`，形状 `(4, batch, 1)`
 
-## MindSpore Lite Integration (Optional)
+- `past_key_values`：`float16`，形状 `(2*num_layers, batch, num_kv_heads, past_seq_len, head_dim)`
 
-For deployment on Ascend devices, convert ONNX models to `.mindir` format:
+**输出：**
+
+- `logits`：`float16/float32`，形状 `(batch, 1, vocab_size)`
+
+- `present_key_values`：`float16`，形状 `(2*num_layers, batch, num_kv_heads, total_seq_len, head_dim)`
+
+## MindSpore Lite 集成（可选）
+
+如需在 Ascend 上部署，可将 ONNX 转换为 `.mindir`：
 
 ```bash
-# Convert Vision model
+# 转换 Vision 模型
 converter_lite \
     --fmk=ONNX \
     --modelFile=./qwen3_vl_onnx/qwen3_vl_vision.onnx \
     --outputFile=./qwen3_vl_onnx/qwen3_vl_vision \
-    --device=Ascend \
+    --optimize=ascend_oriented \
     --saveType=MINDIR
 
-# Convert Prefill model
+# 转换 Prefill 模型
 converter_lite \
     --fmk=ONNX \
     --modelFile=./qwen3_vl_onnx/qwen3_vl_llm_prefill.onnx \
     --outputFile=./qwen3_vl_onnx/qwen3_vl_llm_prefill \
-    --device=Ascend \
+    --optimize=ascend_oriented \
     --saveType=MINDIR
 
-# Convert Decode model
+# 转换 Decode 模型
 converter_lite \
     --fmk=ONNX \
     --modelFile=./qwen3_vl_onnx/qwen3_vl_llm_decode.onnx \
     --outputFile=./qwen3_vl_onnx/qwen3_vl_llm_decode \
-    --device=Ascend \
+    --optimize=ascend_oriented \
     --saveType=MINDIR
 ```
 
-Then run inference with MindSpore Lite:
+随后用 MindSpore Lite 推理：
 
 ```bash
 python infer_qwen3_vl_mslite.py \
@@ -168,70 +174,84 @@ python infer_qwen3_vl_mslite.py \
     --decode-model ./qwen3_vl_onnx/qwen3_vl_llm_decode.mindir \
     --image ./your_image.jpg \
     --prompt "Describe this image." \
+    --max-new-tokens 128 \
+    --image-size 128 \
+    --device ascend \
     --device-id 0
 ```
 
-## File Structure
+## 目录结构
 
 ```Shell
 qwen3_vl_2b/
-├── export_qwen3_vl_onnx.py          # ONNX export script (3 models)
-├── infer_qwen3_vl_onnx.py           # Complete ONNX inference pipeline
-├── infer_qwen3_vl_mslite.py         # MindSpore Lite inference
-├── README.md                        # This file
-└── qwen3_vl_onnx/                   # Exported models directory
+├── export_qwen3_vl_onnx.py          # ONNX 导出脚本（3 段模型）
+├── infer_qwen3_vl_onnx.py           # ONNX 端到端推理脚本
+├── infer_qwen3_vl_mslite.py         # MindSpore Lite 推理脚本
+├── README.md                        # 本说明
+└── qwen3_vl_onnx/                   # 导出模型目录
     ├── qwen3_vl_vision.onnx
     ├── qwen3_vl_llm_prefill.onnx + .data
     └── qwen3_vl_llm_decode.onnx + .data
 ```
 
-## Key Features
+## 关键点
 
-### Prefill/Decode Separation
+### Prefill / Decode 拆分
 
-The LLM is split into prefill and decode models to optimize inference:
+将 LLM 拆成 prefill 与 decode 有助于优化推理：
 
-- **Prefill**: Processes the entire prompt (including image tokens) in one forward pass
-- **Decode**: Generates tokens incrementally using cached key-value pairs
-- **Benefit**: Avoids recomputing attention for all previous tokens at each generation step
+- **Prefill**：一次性处理完整 prompt（含图像 token）
 
-### Memory Management
+- **Decode**：利用 KV cache 增量生成
 
-The export script includes automatic memory management to handle large models:
+- **收益**：避免每步生成都重新计算历史 token 的注意力
 
-- Clears CUDA cache between export phases
-- Deletes unused model components
-- Works on systems with 8GB RAM
+### 内存管理
 
-### Dynamic Shape Support
+导出脚本包含必要的内存回收逻辑以降低导出峰值内存：
 
-Models support dynamic batch sizes and sequence lengths through ONNX dynamic axes.
+- 导出阶段之间清理 CUDA cache
 
-## Troubleshooting
+- 删除不再使用的子模块以释放内存
 
-### Memory Issues During Export
+- 可在 8GB 内存机器上以较小配置完成导出（视环境而定）
 
-If you encounter OOM errors during export:
+### 动态形状
 
-- Use `--device cpu` for CPU export (slower but lower memory)
-- Reduce `--vision-image-size` (default 128)
-- Close other applications to free memory
+模型通过 ONNX dynamic axes 支持动态 batch 与序列长度。
 
-### Image Embeds Length Mismatch
+## 常见问题
 
-If inference fails with image embeds length mismatch:
+### 导出时内存不足（OOM）
 
-- Ensure processor and model versions match
-- Verify `--vision-image-size` matches the export configuration
-- Check that `image_grid_thw` is consistent
+导出过程中出现 OOM 时可尝试：
 
-## References
+- 使用 `--device cpu` 在 CPU 上导出（更慢但通常更省显存）
+
+- 减小 `--vision-image-size`（默认 128）
+
+- 关闭其它占用内存的程序
+
+### image_embeds 长度不匹配
+
+若推理时报 `image_embeds` 长度不匹配：
+
+- 确保 processor 与模型版本一致
+
+- 确认 `--vision-image-size` 与导出配置一致
+
+- 检查 `image_grid_thw` 是否与输入图像对应
+
+## 参考链接
+
+- [MindSpore Lite Ascend 推理](https://www.mindspore.cn/lite/)
 
 - [Qwen3-VL GitHub](https://github.com/QwenLM/Qwen3-VL)
+
 - [Qwen3-VL HuggingFace](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct)
-- [MindSpore Lite Ascend Inference](https://www.mindspore.cn/lite/docs/zh-CN/master/use/ascend_info.html)
-- [ONNX Runtime Documentation](https://onnxruntime.ai/docs/)
 
-## License
+- [ONNX Runtime 文档](https://onnxruntime.ai/docs/)
 
-This toolkit follows the license of the Qwen3-VL model. Please refer to the [Qwen3-VL license](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct) for details.
+## 许可证
+
+本工具遵循 Qwen3-VL 模型的许可证要求，详见 [Qwen3-VL license](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct)。
