@@ -66,6 +66,7 @@
 #include "coder/opcoders/nnacl/dynamic_parameter/conv_dynamic_parameter.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/arithmetic_dynamic_parameter.h"
 #include "coder/opcoders/nnacl/dynamic_parameter/pooling_dynamic_parameter.h"
+#include "nnacl_c/kernel/depth_to_space.h"
 
 namespace mindspore::lite::micro::nnacl {
 class NNaclFp32Serializer : public Serializer {
@@ -124,6 +125,7 @@ class NNaclFp32Serializer : public Serializer {
   void CodeStruct(const std::string &name, const PoolingComputeParam &pooling_compute,
                   const PoolingDynamicParameter &dynamic_pooling_param);
   void CodeStruct(const std::string &name, const int *list, int size);
+  void CodeStruct(const std::string &name, const DepthToSpaceArgs &args);
   void CodeArrayStruct(const std::string &name, TensorC *tensorC, std::vector<Tensor *> tensor);
 
  private:

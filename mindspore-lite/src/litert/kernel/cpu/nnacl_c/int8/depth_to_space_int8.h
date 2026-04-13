@@ -25,6 +25,8 @@ extern "C" {
 #endif
 void DepthToSpaceForNHWCInt8(const int8_t *input, int8_t *output, const int32_t *in_shape, DepthToSpaceArgs *param,
                              QuantArg *in_quant_arg, QuantArg *out_quant_arg);
+void DepthToSpaceCRDForNHWCInt8(const int8_t *input, int8_t *output, const int32_t *in_shape, DepthToSpaceArgs *param,
+                                QuantArg *in_quant_arg, QuantArg *out_quant_arg);
 #ifdef __cplusplus
 }
 #endif

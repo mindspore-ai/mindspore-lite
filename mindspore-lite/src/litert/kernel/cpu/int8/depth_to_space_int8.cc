@@ -68,7 +68,9 @@ int DepthToSpaceInt8CPUKernel::Prepare() {
     return RET_ERROR;
   }
   args_.data_type_size_ = sizeof(int8_t);
-
+  CHECK_NULL_RETURN(op_parameter_);
+  auto *depth_to_space_param = reinterpret_cast<DepthToSpaceParameter *>(op_parameter_);
+  args_.block_size_ = depth_to_space_param->block_size_;
   in_quant_arg_ = reinterpret_cast<QuantArg *>(malloc(sizeof(QuantArg)));
   if (in_quant_arg_ == nullptr) {
     MS_LOG(ERROR) << "Malloc QuantArg for DepthToSpace int8 op failed!";
@@ -104,11 +106,20 @@ int DepthToSpaceInt8CPUKernel::Run() {
   int8_t *output_data = reinterpret_cast<int8_t *>(output->data());
   CHECK_NULL_RETURN(output_data);
   auto in_shape = input->shape();
-  if (std::abs(in_quant_arg_->scale_ - out_quant_arg_->scale_) < FLT_EPSILON &&
-      in_quant_arg_->zp_ == out_quant_arg_->zp_) {
-    DepthToSpaceForNHWC(input_data, output_data, in_shape.data(), &args_);
+  bool same_quant =
+    std::abs(in_quant_arg_->scale_ - out_quant_arg_->scale_) < FLT_EPSILON && in_quant_arg_->zp_ == out_quant_arg_->zp_;
+  if (reinterpret_cast<DepthToSpaceParameter *>(op_parameter_)->mode_ == 1) {
+    if (same_quant) {
+      DepthToSpaceCRDForNHWC(input_data, output_data, in_shape.data(), &args_);
+    } else {
+      DepthToSpaceCRDForNHWCInt8(input_data, output_data, in_shape.data(), &args_, in_quant_arg_, out_quant_arg_);
+    }
   } else {
-    DepthToSpaceForNHWCInt8(input_data, output_data, in_shape.data(), &args_, in_quant_arg_, out_quant_arg_);
+    if (same_quant) {
+      DepthToSpaceForNHWC(input_data, output_data, in_shape.data(), &args_);
+    } else {
+      DepthToSpaceForNHWCInt8(input_data, output_data, in_shape.data(), &args_, in_quant_arg_, out_quant_arg_);
+    }
   }
   return RET_OK;
 }
