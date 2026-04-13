@@ -18,7 +18,6 @@
 #include <memory>
 #include <vector>
 #include <string>
-#include <functional>
 #include "ops_utils/op_utils.h"
 #include "tools/common/tensor_util.h"
 #include "mindspore/ops/op_def/lite_ops.h"
@@ -67,11 +66,23 @@ bool IsAxesEmpty(AnfNodePtr axes_input) {
     } else if (value_ptr->type() != nullptr && value_ptr->type()->type_id() == kObjectTypeTuple) {
       auto type_tuple = value_ptr->type()->cast<TuplePtr>();
       MS_CHECK_TRUE_MSG(type_tuple != nullptr, true, "type_tuple is nullptr!");
-      const auto &elements = type_tuple->elements();
-      return elements.size() == 0 ? true : false;
+      return type_tuple->elements().empty();
     }
   }
   return true;
+}
+
+Status FillAxesForNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode, const std::vector<int32_t> &axes_values) {
+  auto axes_value_node = opt::BuildIntVecValueNode(func_graph, axes_values);
+  MS_CHECK_TRUE_MSG(axes_value_node != nullptr, kLiteError, "Create axes value node failed!");
+  auto inputs = cnode->inputs();
+  if (inputs.size() >= kIndex3) {
+    inputs[kIndex2] = axes_value_node->cast<AnfNodePtr>();
+  } else {
+    inputs.push_back(axes_value_node->cast<AnfNodePtr>());
+  }
+  cnode->set_inputs(inputs);
+  return kSuccess;
 }
 
 Status AdjustReduceSum(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
@@ -93,20 +104,41 @@ Status AdjustReduceSum(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
       return kSuccess;
     }
   }
-  auto keep_dims_ptr = src_prim->GetAttr("keep_dims");
-  if (keep_dims_ptr != nullptr) {
-    auto keep_dims = GetValue<bool>(keep_dims_ptr);
-    if (keep_dims == true) {
-      MS_LOG(INFO) << "keep_dims is true, skip adjust reducesum node: " << cnode->fullname_with_scope();
-      return kSuccess;
-    }
-  }
   if (cnode->inputs().size() >= kIndex3) {
     auto axes_input = cnode->input(kIndex2);
     if (!IsAxesEmpty(axes_input)) {
       return kSuccess;
     }
   }
+
+  auto keep_dims_ptr = src_prim->GetAttr("keep_dims");
+  bool keep_dims = false;
+  if (keep_dims_ptr != nullptr) {
+    keep_dims = GetValue<bool>(keep_dims_ptr);
+  }
+
+  if (keep_dims) {
+    // For keep_dims=true, follow MindSpore ReduceAxisUpdate::BuildAxis strategy:
+    // fill axis with [0, 1, ..., rank-1] to preserve output dimensions.
+    auto input_abstract = cnode->input(kIndex1)->abstract();
+    MS_CHECK_TRUE_MSG(input_abstract != nullptr, kLiteError, "input abstract is nullptr!");
+    auto input_shape = input_abstract->GetShape();
+    MS_CHECK_TRUE_MSG(input_shape != nullptr, kLiteError, "input shape is nullptr!");
+    auto shape_vec = input_shape->GetShapeVector();
+    if (shape_vec.empty()) {
+      MS_LOG(INFO) << "Input shape is empty for keep_dims=true, skip: " << cnode->fullname_with_scope();
+      return kSuccess;
+    }
+    std::vector<int32_t> full_axis;
+    for (size_t i = 0; i < shape_vec.size(); i++) {
+      full_axis.push_back(static_cast<int32_t>(i));
+    }
+    MS_LOG(INFO) << "Fill full axis list for keep_dims=true ReduceSum node: " << cnode->fullname_with_scope()
+                 << ", axis size: " << full_axis.size();
+    return FillAxesForNode(func_graph, cnode, full_axis);
+  }
+
+  // For keep_dims=false, flatten input to 1D and reduce on axis 0.
   auto reshape_node = CreateReshapeCNode(func_graph, cnode->input(kIndex1), {kNumberFlatten});
   MS_CHECK_TRUE_MSG(reshape_node != nullptr, kLiteNullptr, "reshape node is nullptr!");
   auto graph_manager = func_graph->manager();
@@ -116,16 +148,7 @@ Status AdjustReduceSum(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
                   << cnode->fullname_with_scope() << ", input size: " << cnode->size();
     return kLiteError;
   }
-  auto axes_param_node = opt::BuildIntVecParameterNode(func_graph, {0}, cnode->fullname_with_scope() + "_input_axes");
-  MS_CHECK_TRUE_MSG(axes_param_node != nullptr, kLiteError, "Create axes param failed!");
-  auto inputs = cnode->inputs();
-  if (inputs.size() >= kIndex3) {
-    inputs[kIndex2] = axes_param_node->cast<AnfNodePtr>();
-  } else {
-    inputs.push_back(axes_param_node->cast<AnfNodePtr>());
-  }
-  cnode->set_inputs(inputs);
-  return kSuccess;
+  return FillAxesForNode(func_graph, cnode, {0});
 }
 }  // namespace
 bool AdjustReduceSumPass::Run(const FuncGraphPtr &func_graph) {
