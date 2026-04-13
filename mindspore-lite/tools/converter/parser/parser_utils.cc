@@ -49,6 +49,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/core/include/ir/graph_utils.h"
+#include "tools/optimizer/fusion/adjust_reducesum_pass.h"
 
 namespace mindspore::lite {
 namespace {
@@ -122,7 +123,7 @@ int CommonAnfAdjust(const FuncGraphPtr &func_graph) {
   MS_CHECK_TRUE_MSG(asylic_optimizer != nullptr, RET_NULL_PTR, "asylic_optimizer is nullptr.");
   auto asylic_pm = std::make_shared<opt::LitePassManager>("asylic pass manager", false);
   MS_CHECK_TRUE_MSG(asylic_pm != nullptr, RET_NULL_PTR, "asylic_pm is nullptr.");
-
+  asylic_pm->AddPass(std::make_shared<opt::AdjustReduceSumPass>());
   // convert some extend ops to normal ops
   asylic_pm->AddPass(std::make_shared<opt::ConvertExtendOpsPass>());
   // fuse tf1.x bidirection_gru into GRU, must be placed here because graph is cyclic
