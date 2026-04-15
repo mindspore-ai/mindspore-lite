@@ -20,3 +20,4 @@ third_party/proto/tensorflow/versions.proto
 
 # IDE
 .vscode/
+.trae
