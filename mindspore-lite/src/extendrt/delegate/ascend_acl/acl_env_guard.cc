@@ -107,14 +107,6 @@ AclEnvGuard::AclEnvGuard(std::string_view cfg_file) : errno_(AclInitAdapter::Get
   MS_LOG(INFO) << "Execute aclInit success.";
 }
 
-AclEnvGuard::~AclEnvGuard() {
-  errno_ = AclInitAdapter::GetInstance().AclFinalize();
-  if (errno_ != ACL_SUCCESS && errno_ != ACL_ERROR_REPEAT_FINALIZE) {
-    MS_LOG(ERROR) << "Execute AclFinalize failed.";
-  }
-  MS_LOG(INFO) << "Execute AclFinalize success.";
-}
-
 std::shared_ptr<AclEnvGuard> AclEnvGuard::GetAclEnv() {
   std::shared_ptr<AclEnvGuard> acl_env;
 
