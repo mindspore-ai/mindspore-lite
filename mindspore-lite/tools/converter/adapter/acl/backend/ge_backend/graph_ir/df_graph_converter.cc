@@ -899,7 +899,13 @@ DfGraphConvertor &DfGraphConvertor::BuildGraph(const std::string &name) {
   MS_LOG(INFO) << "Set graph input num: " << inputs.size();
   (void)df_graph_->SetInputs(inputs);
 
-  SetGraphOutputs(true);
+  if (IsUpdateGraph()) {
+    graph_outputs_.clear();
+    MS_LOG(INFO) << "clear graph outptus";
+  } else {
+    SetGraphOutputs(true);
+    MS_LOG(INFO) << "set graph outptus";
+  }
   (void)df_graph_->SetOutputs(graph_outputs_);
 
   IdentityOptimization();
@@ -1708,16 +1714,20 @@ void DfGraphConvertor::RemoveIdentity(::ge::GNode identity_node) {
   }
 }
 
-bool DfGraphConvertor::IsIdentityInUpdateGraph(const ::ge::GNode &node) const {
+bool DfGraphConvertor::IsUpdateGraph() const {
   MS_EXCEPTION_IF_NULL(anf_graph_);
-  auto node_type = GetGNodeType(node);
-  auto is_identity = (node_type == kTypeIdentityN || node_type == kTypeIdentity);
   auto is_update_graph_attr = anf_graph_->get_attr("is_update_graph");
   bool is_update_graph = false;
   if (is_update_graph_attr != nullptr) {
     is_update_graph = GetValue<bool>(is_update_graph_attr);
   }
-  return is_update_graph && is_identity;
+  return is_update_graph;
+}
+
+bool DfGraphConvertor::IsIdentityInUpdateGraph(const ::ge::GNode &node) const {
+  auto node_type = GetGNodeType(node);
+  auto is_identity = (node_type == kTypeIdentityN || node_type == kTypeIdentity);
+  return IsUpdateGraph() && is_identity;
 }
 
 void DfGraphConvertor::IdentityOptimization() {

@@ -234,6 +234,7 @@ class BACKEND_EXPORT DfGraphConvertor {
   std::string GetGNodeType(const ::ge::GNode &node) const;
   bool IsIdentityRedundant(const ::ge::GNode &node) const;
   bool IsIdentityInUpdateGraph(const ::ge::GNode &node) const;
+  bool IsUpdateGraph() const;
   void RemoveIdentity(::ge::GNode identity_node);
   void NoOpOptimization();
   bool IsNoOpRedundant(const ::ge::GNode &node) const;
