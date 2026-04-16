@@ -46,7 +46,7 @@ class AclEnvGuard {
  public:
   AclEnvGuard();
   explicit AclEnvGuard(std::string_view cfg_file);
-  ~AclEnvGuard();
+  ~AclEnvGuard() = default;
   aclError GetErrno() const { return errno_; }
   static std::shared_ptr<AclEnvGuard> GetAclEnv();
   static std::shared_ptr<AclEnvGuard> GetAclEnv(std::string_view cfg_file);
