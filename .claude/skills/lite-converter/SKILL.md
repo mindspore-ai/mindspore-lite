@@ -39,10 +39,12 @@ Input Model (MindIR/TF/Caffe/ONNX/TFLite/PyTorch)
   --quantType=WeightQuant --bitNum=8
 
 # Cloud-side optimization
-./converter_lite --fmk=MINDIR --modelFile=model.mindir --outputFile=model \
-  --optimize=ascend_oriented    # Ascend-specific
-./converter_lite --fmk=MINDIR --modelFile=model.mindir --outputFile=model \
-  --optimize=general            # CPU/GPU
+
+# Ascend-specific
+./converter_lite --fmk=ONNX --modelFile=model.ONNX --outputFile=model --optimize=ascend_oriented
+
+# CPU
+./converter_lite --fmk=ONNX --modelFile=model.ONNX --outputFile=model
 ```
 
 ### Key Parameters
@@ -57,18 +59,16 @@ Input Model (MindIR/TF/Caffe/ONNX/TFLite/PyTorch)
 | `--bitNum` | Quantization bits: 1-8 (default 8) |
 | `--optimize` | ascend_oriented / general / none |
 | `--configFile` | Quantization or runtime config file |
-| `--inputShape` | Dynamic shape input (e.g., `input_1:[1,3,224,224]`) |
+| `--inputShape` | Dynamic shape input (e.g., `input1:1,3,224,224;input2:1,3,256,256`) |
 
 ## Parser Development
 
 ```
 mindspore-lite/tools/converter/parser/
-  caffe/            # caffe_model_parser.cc + per-operator parsers
   onnx/             # onnx_model_parser.cc + per-operator parsers
   tf/               # tf_model_parser.cc + per-operator parsers
   tflite/           # tflite_model_parser.cc + per-operator parsers
-  pytorch/          # pytorch_model_parser.cc + per-operator parsers
-  om/               # Ascend OM format support
+  caffe/            # caffe_model_parser.cc + per-operator parsers
 ```
 
 ### Adding a New Framework Parser

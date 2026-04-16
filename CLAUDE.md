@@ -14,6 +14,8 @@ bash build.sh -I arm64 -j8
 bash build.sh -I x86_64 -j8
 
 # Cloud-side inference
+export MSLITE_ENABLE_CLOUD_INFERENCE=on
+export MSLITE_ENABLE_ACL=on
 bash build.sh -I x86_64 -e cpu -a x64 -j8
 
 # iOS
@@ -112,7 +114,7 @@ This project provides the following Claude Code skills:
 | `lite-kernel-dev` | Operator/kernel development, NNACL, delegate mechanism |
 | `lite-converter` | Model conversion, parser, optimizer, quantization |
 | `lite-debug-test` | Debugging, testing, benchmarking, profiling |
-| `lite-cloud-side-infer` | Cloud-side inference (ExtendRT), Ascend, TensorRT, LLM |
+| `lite-cloud-side-infer` | Cloud-side inference (ExtendRT), Ascend, LLM |
 | `lite-device-side-infer` | Device-side inference (LiteRT), Android/iOS, Micro, training |
 | `lite-code-quality` | Code standards, security checks, CI |
 

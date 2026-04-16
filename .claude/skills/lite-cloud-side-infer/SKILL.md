@@ -52,8 +52,7 @@ mindspore-lite/src/extendrt/
 
 | Hardware            | Device Type | Usage |
 |---------------------|------------|-------|
-| Atlas 300I Duo/800I | Atlas Inference Series | Inference |
-| NVIDIA GPU          | Tesla/A100 | TensorRT (device-side runtime) |
+| Ascend | Atlas 300I Duo/800I A2/A3 | Inference |
 | CPU                 | x86_64 / aarch64 | General Inference |
 
 ## Three Ascend Inference Backends
@@ -65,6 +64,49 @@ mindspore-lite/src/extendrt/
 | **GE-v1** | `"ge-v1"` | Refactored GE for zero-copy inference (v2.8+). Device memory for input/output. Eliminates host-device round trips. |
 
 ## API Usage
+
+### Model Converter
+
+#### Ascend Model Conversion
+
+```bash
+converter_lite --fmk=ONNX --modelFile=/path/to/model --configFile=/path/to/config.ini --optimize=ascend_oriented --outputFile=/path/to/output
+```
+
+##### Dynamic Shape (Ascend)
+
+Config file:
+
+```ini
+[acl_build_options]
+input_shape="input1:-1,3,224,224;input2:1,3,-1,-1"
+```
+
+##### Dynamic Range Shape (Ascend)
+
+Config file:
+
+```ini
+[acl_build_options]
+input_format="ND"
+input_shape="input1:-1,3,224,224;input2:1,3,-1,-1"
+ge.dynamicDims="1,256,256;2,512,512"
+```
+
+##### Static Shape (Ascend)
+
+Config file:
+
+```ini
+[acl_init_options]
+input_shape="input1:1,3,224,224;input2:1,3,256,256"
+```
+
+#### Cpu Model Conversion
+
+```bash
+converter_lite --fmk=ONNX --modelFile=/path/to/model --outputFile=/path/to/output
+```
 
 ### C++ Inference
 
@@ -84,33 +126,7 @@ auto inputs = model->GetInputs();
 // Fill inputs...
 std::vector<mindspore::MSTensor> outputs;
 model->Predict(inputs, &outputs);
-model->Reset();  // Release compilation resources
-```
-
-### Precision Modes (Ascend)
-
-```cpp
-ascend->SetPrecisionMode("enforce_fp32");     // Force FP32
-ascend->SetPrecisionMode("preferred_fp32");   // Prefer FP32, some FP16
-ascend->SetPrecisionMode("enforce_fp16");     // Force FP16
-ascend->SetPrecisionMode("preferred_optimal"); // Auto optimal
-```
-
-### Dynamic Shape (Ascend)
-
-Config file:
-
-```ini
-[ascend_context]
-input_shape=input_1:[-1,3,224,224]
-dynamic_dims=[1~4],[8],[16]
-```
-
-`-1` marks dynamic dims. Ranges: `[start~end]`. Discrete: `[val]`. Larger range = longer compilation.
-
-```cpp
-model->LoadConfig(config_file);
-model->Build(model_path, mindspore::kMindIR, context);
+model->Finalize();
 ```
 
 ### Zero-copy (GE-v1)
@@ -177,8 +193,7 @@ Requires: `provider="ge"`, separate `device_id`/`rank_id` per process, HCCL conf
 
 | Section | Purpose |
 |---------|---------|
-| `[ascend_context]` | input_shape, dynamic_dims, timeout, precision_mode |
-| `[common_context]` | compile_graph_parallel (on/off) |
+| `[ascend_context]` | timeout, precision_mode |
 | `[ge_global_options]` | GE global options |
 | `[ge_session_options]` | ge.externalWeight (for weight sharing) |
 | `[ge_graph_options]` | precision, inputShape, dynamicDims |
@@ -202,12 +217,13 @@ compile_graph_parallel=on
 
 ```bash
 # Cloud-side CPU
-bash build.sh -I x86_64 -e cpu -a x64 -j8
+export MSLITE_ENABLE_CLOUD_INFERENCE=on
+bash build.sh -I x86_64 -j8
 
 # Cloud-side Ascend
-bash build.sh -I x86_64 -e ascend -a x64 -j8
-
-# CMake options: MSLITE_ENABLE_CLOUD_INFERENCE=ON, MSLITE_ENABLE_ACL=ON
+export MSLITE_ENABLE_CLOUD_INFERENCE=on
+export MSLITE_ENABLE_ACL=on
+bash build.sh -I arm64 -j8
 ```
 
 ### Output Packages
