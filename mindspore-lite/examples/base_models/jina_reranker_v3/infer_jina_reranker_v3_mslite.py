@@ -16,14 +16,14 @@
 
 """
 Inference with Jina Reranker V3 using MindSpore Lite.
-Supports both unified and split model modes.
+Uses a single unified model.
 """
 
 import argparse
 import numpy as np
 
 try:
-    import mindspore_lite as mslite
+    import mindspore_lite as mslite  # type: ignore
     from transformers import AutoTokenizer
 except ImportError:
     print("Error: mindspore_lite or transformers package not found.")
@@ -41,18 +41,12 @@ def _parse_args():
         "--model-path",
         type=str,
         required=True,
-        help="Path to .ms model (unified) or encoder model (split mode)",
-    )
-    parser.add_argument(
-        "--head-path",
-        type=str,
-        default=None,
-        help="Path to head .ms model (required for split mode)",
+        help="Path to unified MindIR model",
     )
     parser.add_argument(
         "--tokenizer",
         type=str,
-        default="jinaai/jina-reranker-v3-base",
+        default="jinaai/jina-reranker-v3",
         help="Tokenizer model ID or path",
     )
     parser.add_argument(
@@ -82,7 +76,7 @@ def _load_tokenizer(args):
 
 def _load_mslite_models(args):
     """
-    Load MindSpore Lite models from specified paths.
+    Load MindSpore Lite model from specified path.
     """
     print(f"Initializing MindSpore Lite context for {args.device}...")
 
@@ -92,15 +86,9 @@ def _load_mslite_models(args):
         context.ascend.device_id = args.device_id
 
     print(f"Loading model from {args.model_path}...")
-    encoder_model = mslite.Model()
-    encoder_model.build_from_file(args.model_path, mslite.ModelType.MINDIR, context)
-
-    if args.head_path:
-        print(f"Loading head model from {args.head_path}...")
-        head_model = mslite.Model()
-        head_model.build_from_file(args.head_path, mslite.ModelType.MINDIR, context)
-        return encoder_model, head_model
-    return encoder_model, None
+    model = mslite.Model()
+    model.build_from_file(args.model_path, mslite.ModelType.MINDIR, context)
+    return model
 
 
 def _format_query_doc_pair(query, doc):
@@ -146,40 +134,13 @@ def _compute_scores_unified(model, inputs):
     return scores
 
 
-def _compute_scores_split(encoder_model, head_model, inputs):
-    """
-    Compute reranking scores using split model (encoder + head).
-    """
-    batch_size = inputs["input_ids"].shape[0]
-    scores = []
-
-    for i in range(batch_size):
-        encoder_inputs = [
-            mslite.Tensor(inputs["input_ids"][i : i + 1].astype(np.int64)),
-            mslite.Tensor(inputs["attention_mask"][i : i + 1].astype(np.int64)),
-        ]
-        encoder_outputs = encoder_model.predict(encoder_inputs)
-        hidden_states = encoder_outputs[0].get_data_to_numpy()
-
-        head_inputs = [
-            mslite.Tensor(hidden_states.astype(np.float16)),
-        ]
-        head_outputs = head_model.predict(head_inputs)
-        logits = head_outputs[0].get_data_to_numpy()
-
-        score = logits[0, 1]
-        scores.append(score)
-
-    return scores
-
-
 def main():
     """
     Main function to run inference with MindSpore Lite.
     """
     args = _parse_args()
     tokenizer = _load_tokenizer(args)
-    encoder_model, head_model = _load_mslite_models(args)
+    model = _load_mslite_models(args)
 
     queries = [
         "What is the capital of China?",
@@ -200,12 +161,8 @@ def main():
     ]
     inputs = _prepare_inputs(pairs, tokenizer, args.max_length)
 
-    if head_model:
-        print("\nRunning inference with split model (encoder + head)...")
-        scores = _compute_scores_split(encoder_model, head_model, inputs)
-    else:
-        print("\nRunning inference with unified model...")
-        scores = _compute_scores_unified(encoder_model, inputs)
+    print("\nRunning inference with unified model...")
+    scores = _compute_scores_unified(model, inputs)
 
     print("\nReranking scores:")
     for i, (query, doc, score) in enumerate(zip(queries, documents, scores)):
