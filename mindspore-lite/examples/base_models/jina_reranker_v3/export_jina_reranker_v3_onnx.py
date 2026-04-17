@@ -16,7 +16,7 @@
 
 """
 Export Jina Reranker V3 to ONNX format.
-This script exports the model with optional splitting for better inference performance.
+This script exports a single unified ONNX model for inference.
 """
 
 import argparse
@@ -48,46 +48,6 @@ class JinaRerankerV3(torch.nn.Module):
         return logits
 
 
-class JinaRerankerV3Encoder(torch.nn.Module):
-    """
-    Jina Reranker V3 encoder part (embeddings + transformer layers).
-    """
-
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(self, input_ids, attention_mask):
-        """
-        Forward pass for encoder.
-        """
-        outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            return_dict=True,
-            output_hidden_states=True,
-        )
-        hidden_states = outputs.hidden_states[-1]
-        return hidden_states
-
-
-class JinaRerankerV3Head(torch.nn.Module):
-    """
-    Jina Reranker V3 classification head.
-    """
-
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(self, hidden_states):
-        """
-        Forward pass for classification head.
-        """
-        logits = self.model.score(hidden_states)
-        return logits
-
-
 def _parse_args():
     """
     Parse command-line arguments.
@@ -96,7 +56,7 @@ def _parse_args():
     parser.add_argument(
         "--model-id",
         type=str,
-        default="jinaai/jina-reranker-v3-base",
+        default="jinaai/jina-reranker-v3",
         help="Model ID or path",
     )
     parser.add_argument(
@@ -110,11 +70,6 @@ def _parse_args():
     )
     parser.add_argument(
         "--device", type=str, default="cpu", help="Device to use (cpu/cuda)"
-    )
-    parser.add_argument(
-        "--split",
-        action="store_true",
-        help="Split model into encoder and head for better performance",
     )
     return parser.parse_args()
 
@@ -136,14 +91,10 @@ def _load_model_and_tokenizer(args):
     return model, tokenizer
 
 
-def _prepare_model_for_export(model, device, split=False):
+def _prepare_model_for_export(model, device):
     """
-    Prepare model for ONNX export.
+    Prepare model for unified ONNX export.
     """
-    if split:
-        encoder = JinaRerankerV3Encoder(model).to(device).eval()
-        head = JinaRerankerV3Head(model).to(device).eval()
-        return encoder, head
     reranker = JinaRerankerV3(model).to(device).eval()
     return reranker
 
@@ -167,32 +118,21 @@ def _create_dummy_inputs(args, tokenizer):
     return dummy_input_ids, dummy_attention_mask
 
 
-def _export_to_onnx(
-    model, output_path, dummy_input_ids, dummy_attention_mask, is_head=False
-):
+def _export_to_onnx(model, output_path, dummy_input_ids, dummy_attention_mask):
     """
     Export model to ONNX format.
     """
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    if is_head:
-        dynamic_axes = {
-            "hidden_states": {0: "batch_size", 1: "sequence"},
-            "logits": {0: "batch_size"},
-        }
-        input_names = ["hidden_states"]
-        output_names = ["logits"]
-        dummy_inputs = (dummy_input_ids,)
-    else:
-        dynamic_axes = {
-            "input_ids": {0: "batch_size", 1: "sequence"},
-            "attention_mask": {0: "batch_size", 1: "sequence"},
-            "logits": {0: "batch_size"},
-        }
-        input_names = ["input_ids", "attention_mask"]
-        output_names = ["logits"]
-        dummy_inputs = (dummy_input_ids, dummy_attention_mask)
+    dynamic_axes = {
+        "input_ids": {0: "batch_size", 1: "sequence"},
+        "attention_mask": {0: "batch_size", 1: "sequence"},
+        "logits": {0: "batch_size"},
+    }
+    input_names = ["input_ids", "attention_mask"]
+    output_names = ["logits"]
+    dummy_inputs = (dummy_input_ids, dummy_attention_mask)
 
     print(f"Exporting model to {output_path}")
     torch.onnx.export(
@@ -299,41 +239,14 @@ def main():
     model, tokenizer = _load_model_and_tokenizer(args)
     dummy_input_ids, dummy_attention_mask = _create_dummy_inputs(args, tokenizer)
 
-    if args.split:
-        print("Exporting split model (encoder + head)...")
-        encoder, head = _prepare_model_for_export(model, args.device, split=True)
+    print("Exporting unified model...")
+    reranker = _prepare_model_for_export(model, args.device)
 
-        encoder_output_path = os.path.join(
-            args.output_dir, "jina_reranker_v3_encoder.onnx"
-        )
-        head_output_path = os.path.join(args.output_dir, "jina_reranker_v3_head.onnx")
+    output_path = os.path.join(args.output_dir, "jina_reranker_v3.onnx")
+    _export_to_onnx(reranker, output_path, dummy_input_ids, dummy_attention_mask)
 
-        _export_to_onnx(
-            encoder,
-            encoder_output_path,
-            dummy_input_ids,
-            dummy_attention_mask,
-            is_head=False,
-        )
-
-        hidden_dim = model.config.hidden_size
-        dummy_hidden_states = torch.randn(
-            1, args.max_length, hidden_dim, dtype=torch.float16
-        )
-        _export_to_onnx(head, head_output_path, dummy_hidden_states, None, is_head=True)
-
-        print("\nExport completed successfully!")
-        print(f"Encoder ONNX model saved to: {encoder_output_path}")
-        print(f"Head ONNX model saved to: {head_output_path}")
-    else:
-        print("Exporting unified model...")
-        reranker = _prepare_model_for_export(model, args.device, split=False)
-
-        output_path = os.path.join(args.output_dir, "jina_reranker_v3.onnx")
-        _export_to_onnx(reranker, output_path, dummy_input_ids, dummy_attention_mask)
-
-        print("\nExport completed successfully!")
-        print(f"ONNX model saved to: {output_path}")
+    print("\nExport completed successfully!")
+    print(f"ONNX model saved to: {output_path}")
 
     print(f"Max sequence length: {args.max_length}")
 

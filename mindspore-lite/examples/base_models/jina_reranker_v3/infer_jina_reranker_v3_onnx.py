@@ -16,7 +16,7 @@
 
 """
 Inference with Jina Reranker V3 ONNX model.
-Supports both unified and split model modes.
+Uses a single unified ONNX model.
 """
 
 import argparse
@@ -36,18 +36,12 @@ def _parse_args():
         "--model-path",
         type=str,
         default="./onnx/jina_reranker_v3.onnx",
-        help="Path to ONNX model (unified) or encoder model (split mode)",
-    )
-    parser.add_argument(
-        "--head-path",
-        type=str,
-        default=None,
-        help="Path to head ONNX model (required for split mode)",
+        help="Path to unified ONNX model",
     )
     parser.add_argument(
         "--tokenizer",
         type=str,
-        default="jinaai/jina-reranker-v3-base",
+        default="jinaai/jina-reranker-v3",
         help="Tokenizer model ID or path",
     )
     parser.add_argument(
@@ -76,7 +70,7 @@ def _load_tokenizer(args):
 
 def _load_onnx_sessions(args):
     """
-    Load ONNX sessions from specified paths.
+    Load ONNX session from specified path.
     """
     print(f"Loading ONNX model from {args.model_path}")
     providers = (
@@ -84,13 +78,8 @@ def _load_onnx_sessions(args):
         if args.device == "CUDA"
         else ["CPUExecutionProvider"]
     )
-    encoder_session = ort.InferenceSession(args.model_path, providers=providers)
-
-    if args.head_path:
-        print(f"Loading head model from {args.head_path}")
-        head_session = ort.InferenceSession(args.head_path, providers=providers)
-        return encoder_session, head_session
-    return encoder_session, None
+    session = ort.InferenceSession(args.model_path, providers=providers)
+    return session
 
 
 def _format_query_doc_pair(query, doc):
@@ -135,38 +124,13 @@ def _compute_scores_unified(session, inputs):
     return scores
 
 
-def _compute_scores_split(encoder_session, head_session, inputs):
-    """
-    Compute reranking scores using split model (encoder + head).
-    """
-    batch_size = inputs["input_ids"].shape[0]
-    scores = []
-
-    for i in range(batch_size):
-        encoder_inputs = {
-            "input_ids": inputs["input_ids"][i : i + 1].astype(np.int64),
-            "attention_mask": inputs["attention_mask"][i : i + 1].astype(np.int64),
-        }
-        hidden_states = encoder_session.run(["logits"], encoder_inputs)[0]
-
-        head_inputs = {
-            "hidden_states": hidden_states.astype(np.float16),
-        }
-        logits = head_session.run(["logits"], head_inputs)[0]
-
-        score = logits[0, 1]
-        scores.append(score)
-
-    return scores
-
-
 def main():
     """
     Main function to run inference with Jina Reranker V3 ONNX model.
     """
     args = _parse_args()
     tokenizer = _load_tokenizer(args)
-    encoder_session, head_session = _load_onnx_sessions(args)
+    session = _load_onnx_sessions(args)
 
     queries = [
         "What is the capital of China?",
@@ -187,12 +151,8 @@ def main():
     ]
     inputs = _prepare_inputs(pairs, tokenizer, args.max_length)
 
-    if head_session:
-        print("\nRunning inference with split model (encoder + head)...")
-        scores = _compute_scores_split(encoder_session, head_session, inputs)
-    else:
-        print("\nRunning inference with unified model...")
-        scores = _compute_scores_unified(encoder_session, inputs)
+    print("\nRunning inference with unified model...")
+    scores = _compute_scores_unified(session, inputs)
 
     print("\nReranking scores:")
     for i, (query, doc, score) in enumerate(zip(queries, documents, scores)):
