@@ -32,6 +32,7 @@
 #include "extendrt/delegate/ascend_ge/ge_device_context.h"
 #include "extendrt/delegate/ascend_ge/ge_memory_manager.h"
 #include "extendrt/delegate/ascend_ge/ge_context_manager.h"
+#include "extendrt/delegate/ascend_ge/ge_session_manager.h"
 #include "src/common/common.h"
 
 namespace mindspore {
@@ -45,17 +46,6 @@ class MSTensorRel {
 
  private:
   mutable MSTensorPtr tensor_;
-};
-
-struct RefDataInfo {
-  std::string name;
-  ShapeVector shape;
-  ShapeVector dyn_shape;
-  TypeId dtype = kTypeUnknown;
-  tensor::TensorPtr host_data = nullptr;  // will be released after device tensor allocated
-  size_t offset = 0;
-  size_t size = 0;
-  GeTensor ge_tensor;
 };
 
 struct InOutBufferInfo {
@@ -217,35 +207,6 @@ class GeGraphExecutor : public LiteGraphExecutor {
   bool InitOutputDeviceTensor(const FuncGraphPtr &anf_graph, uint32_t graph_id);
   std::shared_ptr<GeTensor> ConvertMSTensor(const std::shared_ptr<MSTensor> &tensor, const std::string &format,
                                             bool copy = true);
-};
-
-struct GeSessionContext {
-  std::weak_ptr<ge::Session> ge_session;
-  std::map<std::string, std::string> session_options;
-  std::set<std::string> session_variables;
-  std::map<std::string, RefDataInfo> ref_data_map_;
-  std::weak_ptr<GeMemoryManager> memory_manager;
-  std::weak_ptr<GeContextManager> context_manager;
-  std::vector<void *> ref_data_device_memories;
-  void *feature_memory = nullptr;
-  size_t feature_size = 0;
-  std::map<uint32_t, size_t> feature_graph_ids;
-};
-
-class GeSessionManager {
- public:
-  static std::shared_ptr<ge::Session> CreateGeSession(int64_t session_id,
-                                                      const std::map<std::string, std::string> &session_options);
-  // return new Variables not in session
-  static std::set<std::string> UpdateSessionVariables(int64_t session_id,
-                                                      const std::vector<std::string> &graph_variables);
-  static void TryReleaseGeSessionContext(int64_t session_id);
-
-  static std::shared_ptr<GeSessionContext> GetGeSessionContext(int64_t session_id);
-
- private:
-  static std::map<int64_t, std::shared_ptr<GeSessionContext>> ge_session_map_;
-  static std::mutex session_mutex_;
 };
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_EXTENDRT_DELEGATE_ASCEND_GE_GE_GRAPH_EXECUTOR_H_
