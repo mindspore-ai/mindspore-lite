@@ -48,7 +48,6 @@ constexpr auto kProviderGe = "ge";
 constexpr auto kDump = "dump";
 constexpr auto kDumpMode = "dump_mode";
 constexpr auto kProfiling = "profiler";
-constexpr auto kUnkonwnSessionId = -1;
 constexpr auto kRefModeNone = "none";
 constexpr auto kRefModeVariable = "variable";
 constexpr auto kRefModeAll = "all";
@@ -622,12 +621,12 @@ int64_t GeGraphExecutor::GetSessionId() {
   std::string inner_group_id;
   (void)GetConfigOption(lite::kLiteInnerGroupSection, lite::kLiteInnerGroupId, &inner_group_id);
   if (inner_group_id.empty()) {
-    return kUnkonwnSessionId;
+    return lite::kUnkonwnSessionId;
   }
-  int64_t session_id = kUnkonwnSessionId;
+  int64_t session_id = lite::kUnkonwnSessionId;
   if (!lite::ConvertStrToInt(inner_group_id, &session_id)) {
     MS_LOG(WARNING) << "Failed to parse session_id to int64_t";
-    return kUnkonwnSessionId;
+    return lite::kUnkonwnSessionId;
   }
   return session_id;
 }
@@ -686,7 +685,7 @@ void GeGraphExecutor::GetParams(const FuncGraphPtr &anf_graph, backend::ge_backe
       res.emplace(para_name, tensor);
     }
   }
-  if (session_id_ != kUnkonwnSessionId) {
+  if (session_id_ != lite::kUnkonwnSessionId) {
     std::vector<std::string> graph_params;
     std::transform(res.begin(), res.end(), std::back_inserter(graph_params),
                    [](const auto &item) { return item.first; });
@@ -1826,110 +1825,12 @@ std::shared_ptr<GeTensor> GeGraphExecutor::ConvertMSTensor(const std::shared_ptr
   return tensor_ptr;
 }
 
-std::map<int64_t, std::shared_ptr<GeSessionContext>> GeSessionManager::ge_session_map_;
-std::mutex GeSessionManager::session_mutex_;
-
-std::shared_ptr<ge::Session> GeSessionManager::CreateGeSession(
-  int64_t session_id, const std::map<std::string, std::string> &session_options) {
-  std::shared_ptr<ge::Session> ge_session = nullptr;
-  if (session_id == kUnkonwnSessionId) {
-    ge_session = std::make_shared<ge::Session>(session_options);
-    if (ge_session == nullptr) {
-      MS_LOG(ERROR) << "Failed to create ge session";
-      return nullptr;
-    }
-    MS_LOG(INFO) << "Create ge session successfully, which will not be shared with other graph";
-    return ge_session;
-  }
-  std::lock_guard<std::mutex> lock(session_mutex_);
-  auto s_it = ge_session_map_.find(session_id);
-  if (s_it != ge_session_map_.end() && s_it->second != nullptr) {
-    ge_session = s_it->second->ge_session.lock();
-  }
-  if (ge_session == nullptr) {
-    ge_session = std::make_shared<ge::Session>(session_options);
-    if (ge_session == nullptr) {
-      MS_LOG(ERROR) << "Failed to create ge session";
-      return nullptr;
-    }
-    auto session_context = std::make_shared<GeSessionContext>();
-    if (session_context == nullptr) {
-      MS_LOG(ERROR) << "Failed to create GeSessionContext";
-      return nullptr;
-    }
-    session_context->ge_session = ge_session;
-    session_context->session_options = session_options;
-    ge_session_map_[session_id] = session_context;
-    MS_LOG(INFO) << "Create ge session successfully, lite session id: " << session_id;
-  } else {
-    auto old_options = s_it->second->session_options;
-    if (old_options != session_options) {
-      MS_LOG(ERROR) << "Session options is not equal in diff config infos when models' weights are shared, last "
-                       "session options != current session options, please check your session options.";
-      return nullptr;
-    }
-    MS_LOG(INFO) << "Get ge session from session map, lite session id: " << session_id;
-  }
-  return ge_session;
-}
-
-std::set<std::string> GeSessionManager::UpdateSessionVariables(int64_t session_id,
-                                                               const std::vector<std::string> &graph_variables) {
-  std::set<std::string> new_variables;
-  if (session_id == kUnkonwnSessionId) {
-    std::transform(graph_variables.begin(), graph_variables.end(), std::inserter(new_variables, new_variables.begin()),
-                   [](const auto &item) { return item; });
-    return new_variables;
-  }
-  std::lock_guard<std::mutex> lock(session_mutex_);
-  std::shared_ptr<ge::Session> ge_session = nullptr;
-  auto s_it = ge_session_map_.find(session_id);
-  if (s_it != ge_session_map_.end() && s_it->second != nullptr) {
-    ge_session = s_it->second->ge_session.lock();
-  }
-  if (ge_session == nullptr) {
-    std::transform(graph_variables.begin(), graph_variables.end(), std::inserter(new_variables, new_variables.begin()),
-                   [](const auto &item) { return item; });
-    return new_variables;
-  }
-  auto &current_session_variables = s_it->second->session_variables;
-  for (auto &item : graph_variables) {
-    if (current_session_variables.find(item) == current_session_variables.end()) {
-      new_variables.insert(item);
-      current_session_variables.insert(item);
-    }
-  }
-  return new_variables;
-}
-
-void GeSessionManager::TryReleaseGeSessionContext(int64_t session_id) {
-  std::lock_guard<std::mutex> lock(session_mutex_);
-  auto s_it = ge_session_map_.find(session_id);
-  if (s_it != ge_session_map_.end()) {
-    if (s_it->second != nullptr) {
-      auto ge_session = s_it->second->ge_session.lock();
-      if (ge_session == nullptr) {
-        ge_session_map_.erase(s_it);
-      }
-    } else {
-      ge_session_map_.erase(s_it);
-    }
-  }
-}
-
-std::shared_ptr<GeSessionContext> GeSessionManager::GetGeSessionContext(int64_t session_id) {
-  std::lock_guard<std::mutex> lock(session_mutex_);
-  auto s_it = ge_session_map_.find(session_id);
-  if (s_it != ge_session_map_.end()) {
-    return s_it->second;
-  }
-  return nullptr;
-}
-
 static std::shared_ptr<LiteGraphExecutor> GeGraphExecutorCreator(const std::shared_ptr<Context> &ctx,
                                                                  const ConfigInfos &config_infos) {
   auto ge_executor = std::make_shared<GeGraphExecutor>(ctx, config_infos);
-  if (ge_executor == nullptr || !ge_executor->Init()) {
+  MS_CHECK_TRUE_RET(ge_executor != nullptr, nullptr);
+  auto ret = ge_executor->Init();
+  if (!ret) {
     MS_LOG(ERROR) << "Failed to init GeGraphExecutor";
     return nullptr;
   }
