@@ -84,6 +84,29 @@ MindSpore Lite achieves double the inference performance for AIGC, speech algori
 
 If you wish to further learn and use MindSpore Lite, please refer to the following content:
 
+### Supported models for cloud-side inference
+
+| Image/Video Generation Models | Vision-Language Models (VLM) | Large Language Models (LLM) | Audio Models (ASR/TTS) | Information Retrieval / Embeddings / CNN / Others |
+| :---------------------------: | :--------------------------: | :-------------------------: | :-------------------: | :----------------------------------------------: |
+|   Kandinsky-5.0-I2V-Lite-5s   | Qwen3-VL-4B-Thinking         | Qwen3.5-9B                  | Qwen3-ASR-1.7B        | [Qwen3-Reranker-0.6B](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/qwen3_reranker_0.6b) &#9989; |
+| Kand0-T2V0-T2V-Lite-sft-10s   | Qwen3-VL-4B-Instruct         | Qwen3.5-4B                  | Qwen3-ASR-0.6B        | [Qwen3-VL-Embedding-2B](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/qwen3_vl_embedding_2b) &#9989; |
+|    Kandinsky-5.0-T2I-Lite     | Qwen3-VL-2B-Thinking         | Qwen3.5-2B                  | Qwen3-TTS-12Hz-1.7B-Base | [jina_reranker_v3](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/jina_reranker_v3) &#9989; |
+|    Kandinsky-5.0-I2I-Lite     | [Qwen3-VL-2B-Instruct](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/qwen3_vl_2b_instruct) &#9989; | Qwen3.5-0.8B                | Qwen3-TTS-12Hz-1.7B-CustomVoice | YoLo                                     |
+|        Wan2.1-T2V-1.3B        | Qwen2.5-VL-3B-Instruct       | Qwen3-8B                    | Qwen3-TTS-12Hz-1.7B-VoiceDesign | ViT                                      |
+|        Wan2.1-T2V-1.3B        | Qwen2.5-VL-3B-Instruct       | Qwen3-8B                    | Qwen3-TTS-12Hz-1.7B-VoiceDesign | [ViT-Base-Patch16-224](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/vit_base_patch16_224) &#9989; |
+|        Wan2.1-T2V-14B         | Qwen2-VL-2B-Instruct         | Qwen3-4B                    | Qwen3-TTS-12Hz-0.6B-Base |                                          |
+|      Wan2.1-I2V-14B-480P      | Qwen2-VL-2B                  | Qwen3-1.7B                  | Qwen3-TTS-12Hz-0.6B-CustomVoice |                                       |
+|        Wan2.2-TI2V-5B         | InternVL3_5-4B-Flash         | [Qwen3-0.6B](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/qwen3_0.6b) &#9989; | CosyVoice3-0.5B       |                                          |
+|        Wan2.2-T2V-A14B        | InternVL3_5-2B-Flash         | Qwen2.5-7B                  | CosyVoice2-0.5B       |                                          |
+|        Wan2.2-I2V-A14B        | InternVL3_5-1B-Flash         | Qwen2.5-3B                  | FireRedASR            |                                          |
+|      Wan2.2-Animate-14B       | InternVL3-2B                 | Qwen2.5-1.5B                | WeNet                 |                                          |
+|        Qwen-Image-Edit        | InternVL3-1B                 | Qwen2.5-0.5B                |                       |                                          |
+|          Qwen-Image           | llava-v1.6                   | Qwen2-7B                    |                       |                                          |
+|          FLUX.1-dev           | LLaVa                        | Qwen2-1.5B                  |                       |                                          |
+|     stable-diffusion-v1-5     | BLIP                        | Qwen2-0.5B                  |                       |                                          |
+|     stable-diffusion-2-1      | BLIP-2                      |                             |                       |                                          |
+| stable-diffusion-xl-base-1.0  | CLIP                        |                             |                       |                                          |
+
 ### API and documentation
 
 1. API documentation:

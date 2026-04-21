@@ -1,10 +1,10 @@
-# Qwen3-VL-2B ONNX 导出与推理
+# Qwen3-VL-2B-Instruct ONNX 导出与推理
 
-本目录提供 Qwen3-VL-2B 导出为 ONNX 以及端到端推理的完整脚本。实现上将模型拆分为 3 个组件，便于部署与加速。
+本目录提供 Qwen3-VL-2B-Instruct 导出为 ONNX 以及端到端推理的完整脚本。实现上将模型拆分为 3 个组件，便于部署与加速。
 
 ## 概览
 
-Qwen3-VL-2B 是一个同时处理图像与文本的多模态大模型。本目录提供：
+Qwen3-VL-2B-Instruct 是一个同时处理图像与文本的多模态大模型。本目录提供：
 
 - **ONNX 导出**：将模型拆分为 Vision、LLM Prefill、LLM Decode 三个部分导出
 
@@ -50,9 +50,9 @@ pip install -U onnxruntime-gpu
 导出全部三段模型：
 
 ```bash
-python export_qwen3_vl_onnx.py \
+python export_qwen3_vl_2b_instruct_onnx.py \
     --model-id Qwen/Qwen3-VL-2B-Instruct \
-    --output-dir ./qwen3_vl_onnx \
+    --output-dir ./qwen3_vl_2b_instruct_onnx \
     --device cpu \
     --vision-image-size 128
 ```
@@ -70,10 +70,10 @@ python export_qwen3_vl_onnx.py \
 端到端推理示例：
 
 ```bash
-python infer_qwen3_vl_onnx.py \
-    --vision qwen3_vl_onnx/qwen3_vl_vision.onnx \
-    --prefill qwen3_vl_onnx/qwen3_vl_llm_prefill.onnx \
-    --decode qwen3_vl_onnx/qwen3_vl_llm_decode.onnx \
+python infer_qwen3_vl_2b_instruct_onnx.py \
+    --vision qwen3_vl_2b_instruct_onnx/qwen3_vl_vision.onnx \
+    --prefill qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_prefill.onnx \
+    --decode qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_decode.onnx \
     --processor Qwen/Qwen3-VL-2B-Instruct \
     --image ./your_image.jpg \
     --prompt "Describe this image." \
@@ -143,24 +143,24 @@ python infer_qwen3_vl_onnx.py \
 # 转换 Vision 模型
 converter_lite \
     --fmk=ONNX \
-    --modelFile=./qwen3_vl_onnx/qwen3_vl_vision.onnx \
-    --outputFile=./qwen3_vl_onnx/qwen3_vl_vision \
+    --modelFile=./qwen3_vl_2b_instruct_onnx/qwen3_vl_vision.onnx \
+    --outputFile=./qwen3_vl_2b_instruct_onnx/qwen3_vl_vision \
     --optimize=ascend_oriented \
     --saveType=MINDIR
 
 # 转换 Prefill 模型
 converter_lite \
     --fmk=ONNX \
-    --modelFile=./qwen3_vl_onnx/qwen3_vl_llm_prefill.onnx \
-    --outputFile=./qwen3_vl_onnx/qwen3_vl_llm_prefill \
+    --modelFile=./qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_prefill.onnx \
+    --outputFile=./qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_prefill \
     --optimize=ascend_oriented \
     --saveType=MINDIR
 
 # 转换 Decode 模型
 converter_lite \
     --fmk=ONNX \
-    --modelFile=./qwen3_vl_onnx/qwen3_vl_llm_decode.onnx \
-    --outputFile=./qwen3_vl_onnx/qwen3_vl_llm_decode \
+    --modelFile=./qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_decode.onnx \
+    --outputFile=./qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_decode \
     --optimize=ascend_oriented \
     --saveType=MINDIR
 ```
@@ -168,10 +168,10 @@ converter_lite \
 随后用 MindSpore Lite 推理：
 
 ```bash
-python infer_qwen3_vl_mslite.py \
-    --vision-model ./qwen3_vl_onnx/qwen3_vl_vision.mindir \
-    --prefill-model ./qwen3_vl_onnx/qwen3_vl_llm_prefill.mindir \
-    --decode-model ./qwen3_vl_onnx/qwen3_vl_llm_decode.mindir \
+python infer_qwen3_vl_2b_instruct_mslite.py \
+    --vision-model ./qwen3_vl_2b_instruct_onnx/qwen3_vl_vision.mindir \
+    --prefill-model ./qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_prefill.mindir \
+    --decode-model ./qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_decode.mindir \
     --image ./your_image.jpg \
     --prompt "Describe this image." \
     --max-new-tokens 128 \
@@ -183,12 +183,12 @@ python infer_qwen3_vl_mslite.py \
 ## 目录结构
 
 ```Shell
-qwen3_vl_2b/
-├── export_qwen3_vl_onnx.py          # ONNX 导出脚本（3 段模型）
-├── infer_qwen3_vl_onnx.py           # ONNX 端到端推理脚本
-├── infer_qwen3_vl_mslite.py         # MindSpore Lite 推理脚本
+qwen3_vl_2b_instruct/
+├── export_qwen3_vl_2b_instruct_onnx.py          # ONNX 导出脚本（3 段模型）
+├── infer_qwen3_vl_2b_instruct_onnx.py           # ONNX 端到端推理脚本
+├── infer_qwen3_vl_2b_instruct_mslite.py         # MindSpore Lite 推理脚本
 ├── README.md                        # 本说明
-└── qwen3_vl_onnx/                   # 导出模型目录
+└── qwen3_vl_2b_instruct_onnx/       # 导出模型目录
     ├── qwen3_vl_vision.onnx
     ├── qwen3_vl_llm_prefill.onnx + .data
     └── qwen3_vl_llm_decode.onnx + .data

@@ -15,7 +15,7 @@
 # ============================================================================
 
 """
-Export Qwen3-VL-2B to ONNX.
+Export Qwen3-VL-2B-Instruct to ONNX.
 """
 
 import sys
@@ -158,19 +158,19 @@ def export_vision_tower(model, output_path, device="cpu", vision_image_size=128)
 
 class LLMWrapper(torch.nn.Module):
     """
-    Wrapper for Qwen3-VL-2B LLM to cache position embeddings.
+    Wrapper for Qwen3-VL-2B-Instruct LLM to cache position embeddings.
     """
 
     def __init__(self, llm):
         """
-        Initialize Qwen3-VL-2B LLM wrapper.
+        Initialize Qwen3-VL-2B-Instruct LLM wrapper.
         """
         super().__init__()
         self.llm = llm
 
     def forward(self, input_ids, attention_mask, position_ids):
         """
-        Forward pass for Qwen3-VL-2B LLM decode.
+        Forward pass for Qwen3-VL-2B-Instruct LLM decode.
         """
         # Explicitly pass arguments to the LLM's forward method
         outputs = self.llm(
@@ -189,7 +189,7 @@ class LLMWrapper(torch.nn.Module):
 
 def _make_additive_causal_mask(attention_mask, q_len, k_len, past_len, dtype):
     """
-    Create additive causal mask for Qwen3-VL-2B text model.
+    Create additive causal mask for Qwen3-VL-2B-Instruct text model.
     """
     mask_value = torch.finfo(dtype).min
     ar_q = torch.arange(q_len, device=attention_mask.device)
@@ -204,7 +204,7 @@ def _make_additive_causal_mask(attention_mask, q_len, k_len, past_len, dtype):
 
 def _text_position_ids(position_ids, batch, seq_len, device):
     """
-    Process position ids for Qwen3-VL-2B text model.
+    Process position ids for Qwen3-VL-2B-Instruct text model.
     """
     if position_ids is None:
         base = torch.arange(seq_len, device=device).view(1, -1).expand(batch, -1)
@@ -222,7 +222,7 @@ def _text_attn_forward(
     attn_mod, hidden_states, position_embeddings, attention_mask, past_key, past_value
 ):
     """
-    Forward pass for Qwen3-VL-2B text attention.
+    Forward pass for Qwen3-VL-2B-Instruct text attention.
     """
     input_shape = hidden_states.shape[:-1]
     head_dim = attn_mod.head_dim
@@ -265,12 +265,12 @@ def _text_attn_forward(
 
 class Qwen3VLLlmPrefill(torch.nn.Module):
     """
-    Qwen3-VL-2B LLM prefill model.
+    Qwen3-VL-2B-Instruct LLM prefill model.
     """
 
     def __init__(self, text_model, lm_head, image_token_id: int, num_deepstack: int):
         """
-        Initialize Qwen3-VL-2B LLM prefill model.
+        Initialize Qwen3-VL-2B-Instruct LLM prefill model.
         """
         super().__init__()
         self.text_model = text_model
@@ -283,7 +283,7 @@ class Qwen3VLLlmPrefill(torch.nn.Module):
         self, input_ids, attention_mask, position_ids, image_embeds, deepstack_embeds
     ):
         """
-        Forward pass for Qwen3-VL-2B LLM prefill.
+        Forward pass for Qwen3-VL-2B-Instruct LLM prefill.
         """
         inputs_embeds = self.text_model.embed_tokens(input_ids)
         image_mask = input_ids == self.image_token_id
@@ -342,12 +342,12 @@ class Qwen3VLLlmPrefill(torch.nn.Module):
 
 class Qwen3VLLlmDecode(torch.nn.Module):
     """
-    Qwen3-VL-2B LLM decode model.
+    Qwen3-VL-2B-Instruct LLM decode model.
     """
 
     def __init__(self, text_model, lm_head):
         """
-        Qwen3-VL-2B LLM decode model.
+        Qwen3-VL-2B-Instruct LLM decode model.
         """
         super().__init__()
         self.text_model = text_model
@@ -356,7 +356,7 @@ class Qwen3VLLlmDecode(torch.nn.Module):
 
     def forward(self, input_ids, attention_mask, position_ids, past_key_values):
         """
-        Forward pass for Qwen3-VL-2B LLM decode.
+        Forward pass for Qwen3-VL-2B-Instruct LLM decode.
         """
         inputs_embeds = self.text_model.embed_tokens(input_ids)
         bsz, q_len = input_ids.shape
@@ -401,7 +401,7 @@ class Qwen3VLLlmDecode(torch.nn.Module):
 
 def _get_llm_export_meta(model):
     """
-    Get metadata for Qwen3-VL-2B LLM export.
+    Get metadata for Qwen3-VL-2B-Instruct LLM export.
     """
     text_model = model.model.language_model
     lm_head = model.lm_head
@@ -429,7 +429,7 @@ def _get_llm_export_meta(model):
 
 def _prepare_llm_modules(model, device):
     """
-    Prepare Qwen3-VL-2B LLM modules for export.
+    Prepare Qwen3-VL-2B-Instruct LLM modules for export.
     """
     text_model, lm_head, *_ = _get_llm_export_meta(model)
     text_model.eval()
@@ -441,7 +441,7 @@ def _prepare_llm_modules(model, device):
 
 def _build_llm_wrappers(text_model, lm_head, image_token_id, num_deepstack, device):
     """
-    Build Qwen3-VL-2B LLM wrappers for export.
+    Build Qwen3-VL-2B-Instruct LLM wrappers for export.
     """
     prefill = (
         Qwen3VLLlmPrefill(
@@ -461,7 +461,7 @@ def _make_prefill_dummy_inputs(
     text_model, num_deepstack, device, dummy_seq=8, dummy_num_img_tokens=16
 ):
     """
-    Create dummy inputs for Qwen3-VL-2B LLM prefill.
+    Create dummy inputs for Qwen3-VL-2B-Instruct LLM prefill.
     """
     dummy_input_ids = torch.randint(
         0, 1000, (1, dummy_seq), dtype=torch.int64, device=device
@@ -495,7 +495,7 @@ def _make_decode_dummy_inputs(
     num_layers, num_kv_heads, head_dim, device, dummy_past_len=8, dummy_step=1
 ):
     """
-    Create dummy inputs for Qwen3-VL-2B LLM decode.
+    Create dummy inputs for Qwen3-VL-2B-Instruct LLM decode.
     """
     dummy_input_ids_step = torch.randint(
         0, 1000, (1, dummy_step), dtype=torch.int64, device=device
@@ -526,7 +526,7 @@ def _export_onnx(
     prefill_or_decode, onnx_path, args, input_names, output_names, dynamic_axes
 ):
     """
-    Export Qwen3-VL-2B LLM prefill or decode model to ONNX.
+    Export Qwen3-VL-2B-Instruct LLM prefill or decode model to ONNX.
     """
     print(f"Exporting {args} to {onnx_path}...")
     with torch.no_grad():
@@ -544,7 +544,7 @@ def _export_onnx(
 
 def export_llm_prefill_decode(model, output_dir, device="cpu"):
     """
-    Export Qwen3-VL-2B LLM prefill and decode models to ONNX.
+    Export Qwen3-VL-2B-Instruct LLM prefill and decode models to ONNX.
     """
     (
         text_model,
@@ -649,7 +649,7 @@ def _clear_torch_cache():
 
 def _export_vision_step(model_id, output_dir, device, vision_image_size):
     """
-    Export Qwen3-VL-2B vision tower model to ONNX.
+    Export Qwen3-VL-2B-Instruct vision tower model to ONNX.
     """
     print("\nStep 1/2: Exporting Vision Tower...")
     print(f"Loading model {model_id} in FP16 for Vision export...")
@@ -675,7 +675,7 @@ def _export_vision_step(model_id, output_dir, device, vision_image_size):
 
 def _export_llm_step(model_id, output_dir, device):
     """
-    Export Qwen3-VL-2B LLM prefill and decode models to ONNX.
+    Export Qwen3-VL-2B-Instruct LLM prefill and decode models to ONNX.
     """
     print("\nStep 2/2: Exporting LLM...")
     print(f"Loading model {model_id} in FP16 for LLM export...")
@@ -698,9 +698,9 @@ def _export_llm_step(model_id, output_dir, device):
 
 def main():
     """
-    Main function for Qwen3-VL-2B export to ONNX.
+    Main function for Qwen3-VL-2B-Instruct export to ONNX.
     """
-    parser = argparse.ArgumentParser(description="Export Qwen3-VL-2B to ONNX")
+    parser = argparse.ArgumentParser(description="Export Qwen3-VL-2B-Instruct to ONNX")
     parser.add_argument(
         "--model-id",
         type=str,
@@ -708,7 +708,7 @@ def main():
         help="HuggingFace model ID",
     )
     parser.add_argument(
-        "--output-dir", type=str, default="./qwen3_vl_onnx", help="Output directory"
+        "--output-dir", type=str, default="./qwen3_vl_2b_instruct_onnx", help="Output directory"
     )
     parser.add_argument(
         "--device", type=str, default="cpu", help="Device for export (cpu or cuda)"
