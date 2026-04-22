@@ -14,7 +14,7 @@
 # limitations under the License.
 # ============================================================================
 """
-Infer Qwen3-VL-2B on ONNX.
+Infer Qwen3-VL-2B-Instruct on ONNX.
 """
 
 import argparse
@@ -77,7 +77,7 @@ def _get_vision_position_ids(
     start_position: int, grid_thw: torch.Tensor, spatial_merge_size: int, device
 ):
     """
-    Get position ids for Qwen3-VL-2B.
+    Get position ids for Qwen3-VL-2B-Instruct.
     """
     llm_grid_t = int(grid_thw[0].item())
     llm_grid_h = int(grid_thw[1].item()) // spatial_merge_size
@@ -99,7 +99,7 @@ def _get_rope_index(
     input_ids, mm_token_type_ids, image_grid_thw, attention_mask, spatial_merge_size
 ):
     """
-    Get rope index for Qwen3-VL-2B.
+    Get rope index for Qwen3-VL-2B-Instruct.
     """
     bsz, seq_len = input_ids.shape
     position_ids = torch.zeros(
@@ -170,10 +170,10 @@ def _get_rope_index(
 
 def _parse_args():
     """
-    Parse command-line arguments for Qwen3-VL-2B ONNX inference.
+    Parse command-line arguments for Qwen3-VL-2B-Instruct ONNX inference.
     """
     parser = argparse.ArgumentParser(
-        description="Qwen3-VL-2B ONNX inference (vision + prefill + decode)"
+        description="Qwen3-VL-2B-Instruct ONNX inference (vision + prefill + decode)"
     )
     parser.add_argument(
         "--vision", type=str, required=True, help="Path to qwen3_vl_vision.onnx"
@@ -207,7 +207,7 @@ def _parse_args():
 
 def _check_deps():
     """
-    Check dependencies for Qwen3-VL-2B ONNX inference.
+    Check dependencies for Qwen3-VL-2B-Instruct ONNX inference.
     """
     if ort is None:
         print(
@@ -221,15 +221,15 @@ def _check_deps():
 
 def _load_cfg_and_processor(processor_id: str, image_size: int):
     """
-    Load Qwen3-VL-2B configuration and processor.
+    Load Qwen3-VL-2B-Instruct configuration and processor.
 
     Args:
         processor_id (str): HuggingFace processor id.
         image_size (int): Image size to force in processor.
 
     Returns:
-        cfg (AutoConfig): Qwen3-VL-2B configuration.
-        processor (AutoProcessor): Qwen3-VL-2B processor.
+        cfg (AutoConfig): Qwen3-VL-2B-Instruct configuration.
+        processor (AutoProcessor): Qwen3-VL-2B-Instruct processor.
     """
     cfg = AutoConfig.from_pretrained(processor_id)
     processor = AutoProcessor.from_pretrained(processor_id)
@@ -246,7 +246,7 @@ def _load_cfg_and_processor(processor_id: str, image_size: int):
 
 def _prepare_inputs(processor, image_path: str, prompt: str):
     """
-    Prepare inputs for Qwen3-VL-2B ONNX inference.
+    Prepare inputs for Qwen3-VL-2B-Instruct ONNX inference.
     """
     image = _pad_to_square(_load_image(image_path))
     messages = [
@@ -277,10 +277,10 @@ def _build_position_ids(
     cfg, input_ids, attention_mask, mm_token_type_ids, image_grid_thw
 ):
     """
-    Build position ids for Qwen3-VL-2B ONNX inference.
+    Build position ids for Qwen3-VL-2B-Instruct ONNX inference.
 
     Args:
-        cfg (AutoConfig): Qwen3-VL-2B configuration.
+        cfg (AutoConfig): Qwen3-VL-2B-Instruct configuration.
         input_ids (torch.Tensor): Input ids.
         attention_mask (torch.Tensor): Attention mask.
         mm_token_type_ids (torch.Tensor): MM token type ids.
@@ -309,7 +309,7 @@ def _create_sessions(
     vision_path: str, prefill_path: str, decode_path: str, device: str
 ):
     """
-    Create ONNX inference sessions for Qwen3-VL-2B ONNX inference.
+    Create ONNX inference sessions for Qwen3-VL-2B-Instruct ONNX inference.
     """
     providers = _pick_providers(device)
     so = ort.SessionOptions()
@@ -327,7 +327,7 @@ def _create_sessions(
 
 def _validate_vision_inputs(vision_sess, pixel_values, image_grid_thw):
     """
-    Validate vision inputs for Qwen3-VL-2B ONNX inference.
+    Validate vision inputs for Qwen3-VL-2B-Instruct ONNX inference.
     """
     expected_patches = int(vision_sess.get_inputs()[0].shape[0])
     if int(pixel_values.shape[0]) != expected_patches:
@@ -349,7 +349,7 @@ def _validate_vision_inputs(vision_sess, pixel_values, image_grid_thw):
 
 def _run_vision(vision_sess, pixel_values):
     """
-    Run vision inference for Qwen3-VL-2B ONNX inference.
+    Run vision inference for Qwen3-VL-2B-Instruct ONNX inference.
     """
     vision_out = vision_sess.run(
         None,
@@ -369,7 +369,7 @@ def _run_prefill(
     deepstack_embeds,
 ):
     """
-    Run prefill inference for Qwen3-VL-2B ONNX inference.
+    Run prefill inference for Qwen3-VL-2B-Instruct ONNX inference.
     """
     prefill_out = prefill_sess.run(
         None,
@@ -394,10 +394,10 @@ def _decode_generate(
     eos_token_id,
 ):
     """
-    Decode and generate for Qwen3-VL-2B ONNX inference.
+    Decode and generate for Qwen3-VL-2B-Instruct ONNX inference.
 
     Args:
-        decode_sess (ort.InferenceSession): ONNX inference session for Qwen3-VL-2B ONNX inference.
+        decode_sess (ort.InferenceSession): ONNX inference session for Qwen3-VL-2B-Instruct ONNX inference.
         logits (torch.Tensor): Logits from prefill inference.
         past_kv (list): Past key values from prefill inference.
         attention_mask (torch.Tensor): Attention mask from prefill inference.
@@ -442,7 +442,7 @@ def _decode_generate(
 
 def main():
     """
-    Main function for Qwen3-VL-2B ONNX inference.
+    Main function for Qwen3-VL-2B-Instruct ONNX inference.
     """
     args = _parse_args()
     _check_deps()

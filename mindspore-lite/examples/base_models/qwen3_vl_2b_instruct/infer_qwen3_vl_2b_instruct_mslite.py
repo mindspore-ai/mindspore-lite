@@ -15,7 +15,7 @@
 # ============================================================================
 
 """
-Infer Qwen3-VL-2B on Ascend with MindSpore Lite.
+Infer Qwen3-VL-2B-Instruct on Ascend with MindSpore Lite.
 """
 
 import sys
@@ -56,7 +56,7 @@ def _pad_to_square(image: Image.Image) -> Image.Image:
 
 def _get_vision_position_ids(start_position, grid_thw, spatial_merge_size, device):
     """
-    Get vision position ids for Qwen3-VL-2B.
+    Get vision position ids for Qwen3-VL-2B-Instruct.
 
     Args:
         start_position (int): Start position for vision position ids.
@@ -89,7 +89,7 @@ def _get_rope_index(
     input_ids, mm_token_type_ids, image_grid_thw, attention_mask, spatial_merge_size
 ):
     """
-    Get rope index for Qwen3-VL-2B.
+    Get rope index for Qwen3-VL-2B-Instruct.
 
     Args:
         input_ids (torch.Tensor): Input ids.
@@ -174,10 +174,10 @@ def _build_position_ids(
     cfg, input_ids, attention_mask, mm_token_type_ids, image_grid_thw
 ):
     """
-    Build position ids for Qwen3-VL-2B.
+    Build position ids for Qwen3-VL-2B-Instruct.
 
     Args:
-        cfg (Qwen3VLConfig): Qwen3-VL-2B configuration.
+        cfg (Qwen3VLConfig): Qwen3-VL-2B-Instruct configuration.
         input_ids (torch.Tensor): Input ids.
         attention_mask (torch.Tensor): Attention mask.
         mm_token_type_ids (torch.Tensor): MM token type ids.
@@ -220,7 +220,7 @@ def _mslite_tensor(np_array: np.ndarray) -> mslite.Tensor:
 
 def _build_mslite_inputs(model: mslite.Model, feed_dict, preferred_order=None):
     """
-    Build MindSpore Lite inputs for Qwen3-VL-2B.
+    Build MindSpore Lite inputs for Qwen3-VL-2B-Instruct.
 
     Args:
         model (mslite.Model): MindSpore Lite model.
@@ -255,7 +255,7 @@ def _build_mslite_inputs(model: mslite.Model, feed_dict, preferred_order=None):
 
 class Qwen3VLInferencer:
     """
-    Qwen3-VL-2B inferencer.
+    Qwen3-VL-2B-Instruct inferencer.
     """
 
     def __init__(
@@ -269,7 +269,7 @@ class Qwen3VLInferencer:
         image_size: int = 128,
     ):
         """
-        Initialize Qwen3-VL-2B inferencer.
+        Initialize Qwen3-VL-2B-Instruct inferencer.
         """
         if device not in ["cpu", "ascend"]:
             raise ValueError("device must be cpu or ascend")
@@ -314,7 +314,7 @@ class Qwen3VLInferencer:
 
     def _prepare_inputs(self, image_path_or_url: str, prompt: str):
         """
-        Prepare inputs for Qwen3-VL-2B.
+        Prepare inputs for Qwen3-VL-2B-Instruct.
 
         Args:
             image_path_or_url (str): Path or URL to the image.
@@ -359,7 +359,7 @@ class Qwen3VLInferencer:
         self, image_path_or_url: str, text_prompt: str, max_new_tokens: int = 128
     ):
         """
-        Infer Qwen3-VL-2B on AscSpore Lite.
+        Infer Qwen3-VL-2B-Instruct on MindSpore Lite.
         """
         input_ids, attention_mask, mm_token_type_ids, pixel_values, image_grid_thw = (
             self._prepare_inputs(image_path_or_url, text_prompt)
@@ -467,10 +467,10 @@ class Qwen3VLInferencer:
 
 def main():
     """
-    Main function for Qwen3-VL-2B inference on Ascend with MindSpore Lite.
+    Main function for Qwen3-VL-2B-Instruct inference on Ascend with MindSpore Lite.
     """
     parser = argparse.ArgumentParser(
-        description="Qwen3-VL-2B MindSpore Lite inference (vision + prefill + decode)"
+        description="Qwen3-VL-2B-Instruct MindSpore Lite inference (vision + prefill + decode)"
     )
     parser.add_argument(
         "--vision-model", type=str, required=True, help="Path to qwen3_vl_vision.mindir"
