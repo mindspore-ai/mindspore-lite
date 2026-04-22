@@ -33,7 +33,11 @@ set ENABLE_AKG=OFF
 set ENABLE_FFMPEG=ON
 set ENABLE_FFMPEG_DOWNLOAD=OFF
 for /f "tokens=1" %%a in (version.txt) do (set VERSION_STR=%%a)
-git submodule update --init --remote mindspore
+if "%MSLITE_ENABLE_SKIP_SUBMODULE_UPDATE%"=="on" (
+    echo "Skipping update submodule"
+) else (
+    git submodule update --init --remote mindspore
+)
 ECHO %2%|FINDSTR "^[0-9][0-9]*$"
 IF %errorlevel% == 0 (
     SET threads=%2%

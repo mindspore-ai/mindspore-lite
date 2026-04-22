@@ -47,7 +47,6 @@ build_exit()
     stty echo
     exit 1
 }
-
 echo "---------------- MindSpore-Lite: build start ----------------"
 init_default_options
 process_options "$@"
@@ -57,7 +56,11 @@ export LITE_ENABLE_AAR
 if [[ "X${BUILD_OPTIONAL_TARGET:-off}" == "Xlite_boost" ]]; then
   bash "${BASEPATH}/mindspore-lite/lite_boost/build.sh"
 else
-  update_submodule
+  if [ "${MSLITE_ENABLE_SKIP_SUBMODULE_UPDATE}" = "on" ]; then
+    echo "Skipping update submodule"
+  else
+      update_submodule
+  fi
   source ./scripts/build/build_lite.sh
 fi
 echo "---------------- MindSpore-Lite: build end   ----------------"
