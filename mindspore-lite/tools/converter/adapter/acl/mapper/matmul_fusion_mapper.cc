@@ -37,6 +37,8 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_b.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
+#include "ir/dtype.h"
+#include "abstract/abstract_value.h"
 
 namespace mindspore {
 using mindspore::ops::kNameBatchMatMul;
@@ -57,6 +59,11 @@ constexpr size_t kSize_1 = 1;
 constexpr size_t kSize_2 = 2;
 constexpr size_t kSize_3 = 3;
 constexpr size_t kSize_4 = 4;
+constexpr size_t kSize_32 = 32;
+union FloatBits {
+  float f;
+  uint32_t u;
+};
 
 CNodePtr InsertCastFp32(const FuncGraphPtr &func_graph, const CNodePtr &fp16_node) {
   MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
@@ -90,7 +97,8 @@ CNodePtr InsertAdd(const FuncGraphPtr &func_graph, const CNodePtr &QBMM_cnode, c
   return add_fusion;
 }
 
-std::shared_ptr<CNode> CreateTransQuantParamV2(const FuncGraphPtr &func_graph, const CNodePtr &mm_cnode) {
+std::shared_ptr<Parameter> CreateScaleParameterNodeUint64(const FuncGraphPtr &func_graph, const CNodePtr &mm_cnode,
+                                                          int8_t shift_bit = 0) {
   MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
   MS_CHECK_TRUE_RET(mm_cnode != nullptr, nullptr);
   auto quant_param_holder = mindspore::lite::GetCNodeQuantHolder(mm_cnode);
@@ -117,34 +125,36 @@ std::shared_ptr<CNode> CreateTransQuantParamV2(const FuncGraphPtr &func_graph, c
     return nullptr;
   }
   auto per_channel_size = quant_params_x2.size();
-  std::vector<int64_t> shape_vector = {static_cast<int64_t>(per_channel_size)};
-  auto buf = std::make_unique<float[]>(per_channel_size);
-  MS_CHECK_TRUE_RET(buf != nullptr, nullptr);
-  // QuantBatchMatmul scale = scale1 * scale2
+  std::vector<uint64_t> packed_data_vec(per_channel_size);
   for (uint64_t i = 0; i < per_channel_size; i++) {
-    buf[i] = scale_x1 * quant_params_x2.at(i).scale;
     if (quant_params_x2.at(i).zeroPoint != 0) {
       MS_LOG(ERROR) << "Only support zero_point = 0!";
       return nullptr;
     }
+    FloatBits fb;
+    fb.f = scale_x1 * quant_params_x2.at(i).scale;
+    uint32_t scale_bits;
+    scale_bits = fb.u;
+    packed_data_vec[i] = static_cast<uint64_t>(scale_bits) | (static_cast<uint64_t>(shift_bit & 0xFF) << kSize_32);
   }
-  auto tensor_info = lite::CreateTensorInfo(buf.get(), per_channel_size * sizeof(float), shape_vector,
-                                            mindspore::TypeId::kNumberTypeFloat32);
+  std::vector<int64_t> shape_vector = {static_cast<int64_t>(per_channel_size)};
+  auto tensor_info = lite::CreateTensorInfo(packed_data_vec.data(), per_channel_size * sizeof(uint64_t), shape_vector,
+                                            mindspore::TypeId::kNumberTypeUInt64);
   MS_CHECK_TRUE_RET(tensor_info != nullptr, nullptr);
-  auto scale_param_node =
-    opt::BuildParameterNode(func_graph, tensor_info, mm_cnode->fullname_with_scope() + "_scale", false);
-  MS_CHECK_TRUE_RET(scale_param_node != nullptr, nullptr);
-  MS_CHECK_TRUE_RET(mm_cnode->abstract() != nullptr, nullptr);
-  scale_param_node->set_abstract(mm_cnode->abstract()->Clone());
-  // insert TransQuantParamV2
-  auto trans_quant_param_prim = std::make_shared<mindspore::lite::acl::TransQuantParamV2>();
-  MS_CHECK_TRUE_RET(trans_quant_param_prim != nullptr, nullptr);
-  std::vector<AnfNodePtr> trans_quant_param_inputs = {NewValueNode(trans_quant_param_prim), scale_param_node};
-  auto trans_quant_param_cnode = func_graph->NewCNode(trans_quant_param_inputs);
-  MS_CHECK_TRUE_RET(trans_quant_param_cnode != nullptr, nullptr);
-  trans_quant_param_cnode->set_fullname_with_scope(mm_cnode->fullname_with_scope() + "_TransQuantParamV2");
-  trans_quant_param_cnode->set_abstract(mm_cnode->abstract()->Clone());
-  return trans_quant_param_cnode;
+  auto parameter_node = func_graph->add_parameter();
+  MS_CHECK_TRUE_RET(parameter_node != nullptr, nullptr);
+  auto tensor_abstract = std::make_shared<abstract::AbstractTensor>(
+    mindspore::TypeIdToType(mindspore::TypeId::kNumberTypeUInt64), shape_vector);
+  MS_CHECK_TRUE_RET(tensor_abstract != nullptr, nullptr);
+  parameter_node->set_abstract(tensor_abstract);
+  parameter_node->set_name(mm_cnode->fullname_with_scope() + "_scale_shift");
+  auto ret = lite::InitParameterFromTensorInfo(parameter_node, tensor_info);
+  if (ret != RET_OK) {
+    MS_LOG(ERROR) << "InitParameterFromTensorInfo failed!";
+    return nullptr;
+  }
+
+  return parameter_node;
 }
 
 int ReplaceMMToQuantBatchMatmul(const FuncGraphPtr &func_graph, const CNodePtr &mm_cnode) {
@@ -172,8 +182,8 @@ int ReplaceMMToQuantBatchMatmul(const FuncGraphPtr &func_graph, const CNodePtr &
     QBMM_prim->AddAttr(kAttrTransposeX2, MakeValue(false));
   }
   QBMM_prim->AddAttr(kAttrDType, MakeValue(kFloat16));
-  auto trans_quant_param_cnode = CreateTransQuantParamV2(func_graph, mm_cnode);
-  MS_CHECK_TRUE_RET(trans_quant_param_cnode != nullptr, RET_ERROR);
+  auto scale_param_cnode = CreateScaleParameterNodeUint64(func_graph, mm_cnode);
+  MS_CHECK_TRUE_RET(scale_param_cnode != nullptr, RET_ERROR);
   auto none_value_node_offset = NewValueNode(std::make_shared<mindspore::None>());
   MS_CHECK_TRUE_RET(none_value_node_offset != nullptr, RET_ERROR);
   none_value_node_offset->set_abstract(std::make_shared<abstract::AbstractNone>());
@@ -183,13 +193,9 @@ int ReplaceMMToQuantBatchMatmul(const FuncGraphPtr &func_graph, const CNodePtr &
   auto none_value_node_pertoken_scale = NewValueNode(std::make_shared<mindspore::None>());
   MS_CHECK_TRUE_RET(none_value_node_pertoken_scale != nullptr, RET_ERROR);
   none_value_node_pertoken_scale->set_abstract(std::make_shared<abstract::AbstractNone>());
-  std::vector<AnfNodePtr> quant_op_inputs = {NewValueNode(QBMM_prim),
-                                             input_x1,
-                                             input_x2,
-                                             trans_quant_param_cnode,
-                                             none_value_node_offset,
-                                             none_value_node_bias,
-                                             none_value_node_pertoken_scale};
+  std::vector<AnfNodePtr> quant_op_inputs = {
+    NewValueNode(QBMM_prim),       input_x1, input_x2, scale_param_cnode, none_value_node_offset, none_value_node_bias,
+    none_value_node_pertoken_scale};
   auto QBMM_cnode = func_graph->NewCNode(quant_op_inputs);
   MS_CHECK_TRUE_RET(QBMM_cnode != nullptr, RET_ERROR);
   QBMM_cnode->set_fullname_with_scope(mm_cnode->fullname_with_scope() + "_QuantBatchMatmul");
