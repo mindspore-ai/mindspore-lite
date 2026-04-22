@@ -41,4 +41,5 @@ init_default_options()
   export ARM_SIMD="off"
   export USER_ENABLE_DUMP_IR=false
   export ENABLE_FAST_HASH_TABLE="on"
+  export BUILD_OPTIONAL_TARGET="off"
 }

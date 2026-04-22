@@ -20,7 +20,7 @@ set -e
 process_options()
 {
   # Process the options
-  while getopts 'dfhirvA:I:S:W:a:c:g:j:n:t:' opt
+  while getopts 'dfhirvA:I:O:S:W:a:c:g:j:n:t:' opt
   do
     OPTARG=$(echo ${OPTARG} | tr '[A-Z]' '[a-z]')
     case "${opt}" in
@@ -52,6 +52,15 @@ process_options()
         build_option_proc_upper_i ;;
       A)
         build_option_proc_upper_a ;;
+      O)
+        if [[ "X${OPTARG}" == "Xlite_boost" ]]; then
+          export BUILD_OPTIONAL_TARGET="lite_boost"
+        else
+          echo "Invalid value ${OPTARG} for option -O"
+          usage
+          exit 1
+        fi
+        ;;
       W)
         build_option_proc_upper_w ;;
       f)

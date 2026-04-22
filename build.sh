@@ -48,14 +48,16 @@ build_exit()
     exit 1
 }
 
-update_submodule
 echo "---------------- MindSpore-Lite: build start ----------------"
 init_default_options
 process_options "$@"
-
 export ENABLE_VERBOSE
 export LITE_PLATFORM
 export LITE_ENABLE_AAR
-source ./scripts/build/build_lite.sh
-
+if [[ "X${BUILD_OPTIONAL_TARGET:-off}" == "Xlite_boost" ]]; then
+  bash "${BASEPATH}/mindspore-lite/lite_boost/build.sh"
+else
+  update_submodule
+  source ./scripts/build/build_lite.sh
+fi
 echo "---------------- MindSpore-Lite: build end   ----------------"
