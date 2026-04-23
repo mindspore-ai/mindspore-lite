@@ -26,3 +26,4 @@
 "mindspore-lite/mindspore-lite/examples/base_models"                                                          "bare-except"
 "mindspore-lite/mindspore-lite/examples/base_models"                                                          "protected-access"
 "mindspore-lite/mindspore-lite/examples/base_models"                                                          "invalid-name"
+"mindspore-lite/mindspore-lite/lite_boost"                                                                    "broad-exception-caught"
