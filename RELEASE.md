@@ -2,6 +2,20 @@
 
 [查看中文](./RELEASE_CN.md)
 
+## MindSpore Lite 2.9.0 Release Notes
+
+### Key Features and Enhancements
+
+- The minimum CMake version required for MindSpore Lite compilation has been updated to 3.22.
+
+- Improved MindSpore Lite error codes: Fixed issues where error codes were incomplete or poorly categorized. For more details, please refer to [issue](https://gitcode.com/mindspore/mindspore-lite/issues/167).
+
+#### Device-side inference
+
+- Added the [enable_all_ops](https://www.mindspore.cn/lite/docs/en/master/advanced/quantization.html#full-quantization-parameters) option for MindSpore Lite Micro full-quantization scenarios in mobile-side inference, enabling comprehensive operator quantization. For details, see [issue](https://atomgit.com/mindspore/mindspore-lite/issues/205).
+
+- Adapted MindSpore Lite Micro for RISC-V backends to support high-level development in mobile-side inference. For details, see [issue](https://atomgit.com/mindspore/mindspore-lite/issues/205).
+
 ## MindSpore Lite 2.8.0 Release Notes
 
 ### Key Features and Enhancements
