@@ -2,6 +2,20 @@
 
 [View English](./RELEASE.md)
 
+## MindSpore Lite 2.9.0 Release Notes
+
+### 主要特性及增强
+
+- MindSpore Lite编译CMake版本最低要求变更为3.22。
+
+- MindSpore Lite错误码完善，将原本覆盖不完整，分类不清晰的错误码修正，详情见[issue](https://gitcode.com/mindspore/mindspore-lite/issues/167)。
+
+#### 端侧推理
+
+- MindSpore Lite 端侧推理Micro高阶开发全量化场景增加[enable_all_ops](https://www.mindspore.cn/lite/docs/zh-CN/master/advanced/quantization.html#%E5%85%A8%E9%87%8F%E5%8C%96%E5%8F%82%E6%95%B0)选项，使能算子全量化，详情见[issue](https://atomgit.com/mindspore/mindspore-lite/issues/205)。
+
+- MindSpore Lite 端侧推理Micro高阶开发适配RISC-V后端，详情见[issue](https://atomgit.com/mindspore/mindspore-lite/issues/205)。
+
 ## MindSpore Lite 2.8.0 Release Notes
 
 ### 主要特性及增强
