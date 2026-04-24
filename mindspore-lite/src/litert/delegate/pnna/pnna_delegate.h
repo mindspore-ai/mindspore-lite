@@ -56,6 +56,9 @@
 #include "src/litert/delegate/pnna/op/dropout_pnna.h"
 #include "src/litert/delegate/pnna/op/reshape_pnna.h"
 #include "src/litert/delegate/pnna/op/resize_pnna.h"
+#include "src/litert/delegate/pnna/op/floor_pnna.h"
+#include "src/litert/delegate/pnna/op/fully_connected_pnna.h"
+#include "src/litert/delegate/pnna/op/gather_elements_pnna.h"
 
 namespace mindspore {
 namespace lite {
