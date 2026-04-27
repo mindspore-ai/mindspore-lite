@@ -19,7 +19,7 @@ else()
     endif()
 endif()
 
-if(TARGET_OHOS)
+if(TARGET_OHOS_LITE)
     set(securec_CFLAGS "${securec_CFLAGS} -Wno-unused-command-line-argument")
 endif()
 
@@ -57,6 +57,14 @@ if(BUILD_LITE)
         if(PLATFORM_ARM64 AND MSLITE_ENABLE_AOS)
             set(CMAKE_OPTION ${CMAKE_OPTION} -DCMAKE_C_COMPILER=${C_COMPILER}
                     -DCMAKE_CXX_COMPILER=${CXX_COMPILER}
+                    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE})
+        elseif(TARGET_OHOS_LITE OR TOOLCHAIN_NAME STREQUAL "ohos")
+            set(OHOS_NDK_PATH "$ENV{OHOS_NDK}")
+            set(CMAKE_OPTION ${CMAKE_OPTION}
+                    -DCMAKE_C_COMPILER=${OHOS_NDK_PATH}/llvm/bin/clang
+                    -DCMAKE_C_COMPILER_TARGET=aarch64-linux-ohos
+                    -DCMAKE_CXX_COMPILER=/bin/true
+                    -DCMAKE_SYSROOT=${OHOS_NDK_PATH}/sysroot
                     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE})
         endif()
     endif()
