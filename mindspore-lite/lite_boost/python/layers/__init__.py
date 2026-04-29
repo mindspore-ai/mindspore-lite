@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Copyright 2026 Huawei Technologies Co., Ltd
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +14,10 @@
 # limitations under the License.
 # ============================================================================
 """
-lite_boost api
+lite_boost layers module
 """
-from . import ops
 
-__all__ = ["ops"]
+from .rope import rope_apply
+from .attention import flash_attention
+
+__all__ = ["rope_apply", "flash_attention"]
