@@ -117,7 +117,7 @@ class LiteOpActor : public OpActor<lite::Tensor> {
 };
 
 int MindrtInit();
-void MindrtTerminate();
+void MindrtTerminate(const std::shared_ptr<ActorMgr> &actor_mgr);
 static std::atomic_int64_t actor_count = 0;
 
 std::vector<std::shared_ptr<LiteOpActor>> CreateOpActor(const std::vector<kernel::KernelExec *> &kernels,

@@ -485,5 +485,9 @@ std::vector<std::shared_ptr<LiteOpActor>> CreateOpActor(const std::vector<kernel
 
 int MindrtInit() { return mindspore::Initialize("", "", "", ""); }
 
-void MindrtTerminate() { mindspore::ActorMgr::GetActorMgrRef()->TerminateAll(); }
+void MindrtTerminate(const std::shared_ptr<ActorMgr> &actor_mgr) {
+  if (actor_mgr != nullptr) {
+    actor_mgr->TerminateAll();
+  }
+}
 }  // namespace mindspore::lite
