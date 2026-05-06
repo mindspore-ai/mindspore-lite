@@ -1,0 +1,280 @@
+# Qwen3-1.7B ONNX 模型导出与 MindSpore Lite 推理部署教程
+
+本教程详细介绍如何将 `Qwen3-1.7B` 模型导出为 ONNX 格式，转换为 MindSpore Lite MindIR 格式，并完成端到端推理与精度对齐验证。
+
+---
+
+## 1. 环境准备
+
+### 系统要求
+
+- Python 3.11
+- Linux 系统（推荐 Ubuntu 22.04）
+- 昇腾环境（用于 MindIR 推理，需安装 MindSpore Lite 与 Ascend 驱动）
+
+### 依赖版本（建议）
+
+| 软件包            | 版本 |
+|----------------|------|
+| Python         | 3.11 |
+| torch          | 2.8.0 |
+| transformers   | 4.51.0 |
+| onnx           | 1.21.0 |
+| onnxruntime    | 1.24.0 |
+| mindspore-lite | 2.8.0 |
+| CANN           | 8.5.0 |
+
+### 安装命令
+
+```bash
+pip install torch==2.8.0 transformers==4.51.0 onnx==1.21.0 onnxruntime==1.24.0 mindspore-lite==2.8.0
+```
+
+### 验证安装
+
+```bash
+python -c "import torch, transformers, onnx, onnxruntime, mindspore_lite; print('All dependencies installed successfully!')"
+```
+
+---
+
+## 2. 模型导出 ONNX
+
+### 导出脚本说明
+
+导出脚本会将 Qwen3-1.7B 拆分为两个 ONNX 子图：
+
+1. **LLM Prefill** (`qwen3_1_7b_llm_prefill.onnx`)：处理输入 prompt，输出 `logits` 与 `present_key_values`
+2. **LLM Decode** (`qwen3_1_7b_llm_decode.onnx`)：单 token 递归生成，输入 `past_key_values`
+
+### 导出命令
+
+```bash
+cd ./mindspore-lite/examples/base_models/qwen3_1.7b
+
+# 使用本地权重目录导出（FP16）
+python export_qwen3_1_7b_onnx.py \
+  --model-id ./Qwen3-1.7B \
+  --output-dir ./qwen3_1_7b_onnx \
+  --device cpu
+
+# 可选：导出 FP32（用于降低数值误差）
+python export_qwen3_1_7b_onnx.py \
+  --model-id ./Qwen3-1.7B \
+  --output-dir ./qwen3_1_7b_onnx_fp32 \
+  --device cpu \
+  --dtype fp32
+```
+
+### 参数说明
+
+| 参数 | 说明 | 默认值 |
+|---|---|---|
+| `--model-id` | HuggingFace 模型路径或本地目录 | `./Qwen3-1.7B` |
+| `--output-dir` | 导出输出目录 | `./qwen3_1_7b_onnx` |
+| `--device` | 导出设备（cpu/cuda） | `cpu` |
+| `--dummy-seq-len` | 导出用 dummy 序列长度 | `8` |
+| `--dtype` | 导出精度（fp16/fp32） | `fp16` |
+| `--use-dynamo` | 启用新 ONNX dynamo 导出路径 | `False` |
+
+### 导出输出
+
+导出目录采用分目录结构，避免 external data 命名冲突：
+
+```text
+qwen3_1_7b_onnx/
+├── prefill/
+│   ├── qwen3_1_7b_llm_prefill.onnx
+│   └── onnx__* / model.* (external data)
+└── decode/
+    ├── qwen3_1_7b_llm_decode.onnx
+    └── onnx__* / model.* (external data)
+```
+
+---
+
+## 3. ONNX 推理
+
+### ONNX Runtime 推理
+
+推理脚本执行流程：
+
+1. Prefill 处理输入 prompt
+2. Decode 循环生成 token
+3. 维护 KV cache，并在 `eos_token` 时提前停止
+
+```bash
+cd ./mindspore-lite/examples/base_models/qwen3_1.7b
+
+python infer_qwen3_1_7b_onnx.py \
+  --prefill ./qwen3_1_7b_onnx/prefill/qwen3_1_7b_llm_prefill.onnx \
+  --decode ./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode.onnx \
+  --tokenizer ./Qwen3-1.7B \
+  --prompt "你好，请用一句话介绍 MindSpore Lite。" \
+  --max-new-tokens 512 \
+  --device cpu
+```
+
+### 参数说明
+
+| 参数 | 说明 | 默认值 |
+|---|---|---|
+| `--prefill` | Prefill ONNX 模型路径 | 必填 |
+| `--decode` | Decode ONNX 模型路径 | 必填 |
+| `--tokenizer` | tokenizer 路径 | `./Qwen3-1.7B` |
+| `--prompt` | 输入提示词 | `"你好，请介绍一下你自己。"` |
+| `--max-new-tokens` | 最大生成 token 数 | `512` |
+| `--device` | 推理设备（cpu/cuda） | `cpu` |
+| `--no-chat-template` | 关闭 chat template | `False` |
+| `--low-mem` | 低内存 Session 配置 | `False` |
+
+---
+
+## 4. MindSpore Lite 转换
+
+### 转换命令
+
+使用 `converter_lite` 将 ONNX 转换为 MindIR。建议为 prefill/decode 分别提供 config 文件声明动态 shape。
+
+```bash
+cd ./mindspore-lite/examples/base_models/qwen3_1.7b
+
+# Prefill
+./converter_lite \
+  --fmk=ONNX \
+  --modelFile=./qwen3_1_7b_onnx/prefill/qwen3_1_7b_llm_prefill.onnx \
+  --outputFile=./qwen3_1_7b_onnx/prefill/qwen3_1_7b_llm_prefill \
+  --optimize=ascend_oriented \
+  --saveType=MINDIR \
+  --configFile=./configs/qwen3_1_7b_llm_prefill.config
+
+# Decode
+./converter_lite \
+  --fmk=ONNX \
+  --modelFile=./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode.onnx \
+  --outputFile=./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode \
+  --optimize=ascend_oriented \
+  --saveType=MINDIR \
+  --configFile=./configs/qwen3_1_7b_llm_decode.config
+```
+
+### config 文件示例
+
+#### `./configs/qwen3_1_7b_llm_prefill.config`
+
+```ini
+[acl_build_options]
+input_format="ND"
+input_shape="input_ids:1,-1;attention_mask:1,-1;position_ids:1,-1"
+
+[acl_init_options]
+ge.exec.precision_mode=force_fp32
+```
+
+#### `./configs/qwen3_1_7b_llm_decode.config`
+
+```ini
+[acl_build_options]
+input_format="ND"
+input_shape="input_ids:1,1;attention_mask:1,-1;position_ids:1,1;past_key_values:56,1,8,-1,128"
+
+[acl_init_options]
+ge.exec.precision_mode=force_fp32
+```
+
+> 注：`past_key_values` 维度可能随模型结构变化，请以导出 ONNX 的真实输入 shape 为准。
+
+---
+
+## 5. MindSpore Lite 推理
+
+### 推理命令
+
+```bash
+cd ./mindspore-lite/examples/base_models/qwen3_1.7b
+
+python infer_qwen3_1_7b_mslite.py \
+  --prefill-model ./qwen3_1_7b_onnx/prefill/qwen3_1_7b_llm_prefill_graph.mindir \
+  --decode-model ./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode_graph.mindir \
+  --tokenizer ./Qwen3-1.7B \
+  --prompt "你好，请用一句话介绍 MindSpore Lite。" \
+  --max-new-tokens 512 \
+  --device ascend \
+  --device-id 0
+```
+
+### 参数说明
+
+| 参数 | 说明 | 默认值 |
+|---|---|---|
+| `--prefill-model` | Prefill MindIR 路径 | 必填 |
+| `--decode-model` | Decode MindIR 路径 | 必填 |
+| `--tokenizer` | tokenizer 路径 | `./Qwen3-1.7B` |
+| `--prompt` | 输入提示词 | `"你好，请介绍一下你自己。"` |
+| `--max-new-tokens` | 最大生成 token 数 | `512` |
+| `--max-length` | 最大序列长度 | `4096` |
+| `--device` | 推理设备（ascend/cpu） | `ascend` |
+| `--device-id` | 昇腾设备 ID | `0` |
+
+---
+
+## 6. 性能数据
+
+### 性能测试结果
+
+测试模型：Qwen3-1.7B
+测试条件：输入 128 tokens，输出 128 tokens
+测试环境：昇腾Atlas 300I Duo，CANN 8.5.0，MindSpore Lite 2.8.0
+
+| 指标                       | time     |
+|--------------------------|------------|
+| Prefill (ms)             | 86.43      |
+| Total Decode (ms)        | 8701     |
+| **Avg decode step (ms)** | **67.9** |
+| Total (ms)               | 8787     |
+| **Throughput (tok/s)**   | **14.5** |
+
+> 注意：Avg decode step 为单次 decode 推理的耗时。性能数据为 3 次 warmup 后取 5 次测量的平均值。
+
+---
+
+## 7. 常见问题
+
+### 1) `apply_chat_template` 返回类型不一致
+
+不同 tokenizer 版本可能返回 `dict` 或 `ndarray`，推理脚本已兼容两种返回格式。
+
+### 2) ONNX Runtime 报 external data 越界
+
+通常由多个 ONNX 导出到同一目录导致 external data 文件重名冲突。请使用本教程的 `prefill/`、`decode/` 分目录导出方式。
+
+### 3) 输出“被截断”
+
+可能由以下原因导致：
+
+- `--max-new-tokens` 达到上限
+- 提前生成 `eos_token`
+
+### 4) 精度不达标
+
+建议逐项尝试：
+
+- 使用 `--dtype fp32` 导出
+- 使用 `--torch-dtype fp32` 做对齐评估
+- 检查 tokenizer 与权重目录是否一致
+- 固定相同 prompt 与 decode step 后再对比
+
+---
+
+## 8. 参考资源
+
+- [MindSpore Lite 文档](https://www.mindspore.cn/lite)
+- [Qwen3-1.7B 模型页](https://huggingface.co/Qwen/Qwen3-1.7B)
+- [Transformers 文档](https://huggingface.co/docs/transformers)
+- [ONNX Runtime 文档](https://onnxruntime.ai/docs/)
+
+---
+
+## 9. 许可证
+
+本教程遵循 Qwen3-1.7B 模型及相关依赖的许可证要求。
