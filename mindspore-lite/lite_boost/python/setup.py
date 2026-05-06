@@ -126,6 +126,7 @@ setup(
         "lite_boost.layers",
         "lite_boost.model",
         "lite_boost.model.wan2_1",
+        "lite_boost.model.wan2_2",
     ],
     package_dir={
         "lite_boost": "ops",
@@ -133,6 +134,7 @@ setup(
         "lite_boost.layers": "layers",
         "lite_boost.model": "model",
         "lite_boost.model.wan2_1": "model/wan2_1",
+        "lite_boost.model.wan2_2": "model/wan2_2",
     },
     package_data={"lite_boost": _get_package_data()},
     include_package_data=True,
