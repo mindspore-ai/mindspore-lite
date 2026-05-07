@@ -38,10 +38,17 @@ STATUS ScatterNdUpdateMapper::Mapper(const CNodePtr &cnode) {
     MS_LOG(ERROR) << "cnode input size is " << cnode->size() << ", not equal kNumInputSize.";
     return RET_ERROR;
   }
-  auto status = opt::AdjustInputToCnode(cnode, kNumCnodeInputIndex1);
-  if (status != RET_OK) {
-    MS_LOG(ERROR) << "AdjustInputToCnode failed.";
-    return RET_ERROR;
+  auto input_node = cnode->input(kNumCnodeInputIndex1);
+  bool is_constant_of_shape = false;
+  if (utils::isa<CNodePtr>(input_node)) {
+    is_constant_of_shape = opt::CheckPrimitiveType(input_node, prim::kPrimConstantOfShape);
+  }
+  if (is_constant_of_shape || !utils::isa<CNodePtr>(input_node)) {
+    auto status = opt::AdjustInputToCnode(cnode, kNumCnodeInputIndex1);
+    if (status != RET_OK) {
+      MS_LOG(ERROR) << "AdjustInputToCnode failed.";
+      return RET_ERROR;
+    }
   }
   ValueNodePtr value_node = nullptr;
   PrimitivePtr src_prim = nullptr;
