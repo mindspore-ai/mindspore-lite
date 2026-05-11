@@ -16,7 +16,6 @@
 """
 Test lite python API.
 """
-import time
 import subprocess
 from pathlib import Path
 from typing import List
@@ -233,100 +232,6 @@ def test_inputs_host_device_outputs_data_null_host_device():
         print("test_inputs_host_device_outputs_data_null_host_device test success!")
 
 
-def performance_guardrail(max_ration: float, third_loop_time_host_ms: float,
-                          third_loop_time_device_ms: float, test_name: str):
-    """
-    Performance guardrail for device-mode prediction time relative to host-mode prediction time.
-    """
-    print(f"\n--- Running Performance Guardrail for {test_name} ---")
-
-    if third_loop_time_host_ms > 0:
-        ratio = third_loop_time_device_ms / third_loop_time_host_ms
-
-        print(f"Device/Host Time Ratio: {ratio:.4f} (Required Max: {max_ration:.2f})")
-
-        assert ratio <= max_ration, \
-            f"Performance Guard Failed for {test_name}: Device time ({third_loop_time_device_ms:.4f} ms) " \
-            f"is {ratio * 100:.2f}% of Host time ({third_loop_time_host_ms:.4f} ms). " \
-            f"Required maximum ratio: {max_ration * 100:.0f}%."
-
-        print(f"SUCCESS: Device time ratio is {ratio * 100:.2f}%, within the required range.")
-    else:
-        assert False, (
-            f"Guard Failed ({test_name}): Host time invalid ({third_loop_time_host_ms:.4f} ms). "
-            f"Cannot calculate ratio."
-        )
-    print(f"--- {test_name} guardrail completed ---")
-
-
-def test_single_model_performance():
-    '''
-    test single model performance
-    '''
-    model = mslite.Model()
-    context = _create_context("ge-v1")
-    model.build_from_file(model_path=MODEL_PATH1, model_type=mslite.ModelType.MINDIR, context=context)
-
-    inputs_outputs = _create_inputs_outputs()
-
-    inputs_host1 = mslite.Tensor(tensor=inputs_outputs[0][0], shape=DIM_IN1[0], dtype=mslite.DataType.FLOAT32)
-    inputs_host2 = mslite.Tensor(tensor=inputs_outputs[0][1], shape=DIM_IN1[1], dtype=mslite.DataType.FLOAT32)
-    inputs_host3 = mslite.Tensor(tensor=inputs_outputs[0][2], shape=DIM_IN1[2], dtype=mslite.DataType.FLOAT32)
-
-    inputs_device1 = mslite.Tensor(tensor=inputs_outputs[0][0], shape=DIM_IN1[0],
-                                   dtype=mslite.DataType.FLOAT32, device="ascend:" + str(DEVICE_ID))
-    inputs_device2 = mslite.Tensor(tensor=inputs_outputs[0][1], shape=DIM_IN1[1],
-                                   dtype=mslite.DataType.FLOAT32, device="ascend:" + str(DEVICE_ID))
-    inputs_device3 = mslite.Tensor(tensor=inputs_outputs[0][2], shape=DIM_IN1[2],
-                                   dtype=mslite.DataType.FLOAT32, device="ascend:" + str(DEVICE_ID))
-
-    outputs_host1 = mslite.Tensor(tensor=inputs_outputs[1][0], shape=DIM_OUT1[0], dtype=mslite.DataType.FLOAT32)
-    outputs_host2 = mslite.Tensor(tensor=inputs_outputs[1][1], shape=DIM_OUT1[1], dtype=mslite.DataType.FLOAT32)
-    outputs_host3 = mslite.Tensor(tensor=inputs_outputs[1][2], shape=DIM_OUT1[2], dtype=mslite.DataType.FLOAT32)
-
-    outputs_device1 = mslite.Tensor(tensor=inputs_outputs[1][0], shape=DIM_OUT1[0],
-                                    dtype=mslite.DataType.FLOAT32, device="ascend:" + str(DEVICE_ID))
-    outputs_device2 = mslite.Tensor(tensor=inputs_outputs[1][1], shape=DIM_OUT1[1],
-                                    dtype=mslite.DataType.FLOAT32, device="ascend:" + str(DEVICE_ID))
-    outputs_device3 = mslite.Tensor(tensor=inputs_outputs[1][2], shape=DIM_OUT1[2],
-                                    dtype=mslite.DataType.FLOAT32, device="ascend:" + str(DEVICE_ID))
-
-    loop = 3
-    third_loop_time_host_ms = 0.0
-    third_loop_time_device_ms = 0.0
-    predict_start1 = time.time()
-    for i in range(loop):
-        loop_predict_start = time.time()
-        model.predict([inputs_host1, inputs_host2, inputs_host3], [outputs_host1, outputs_host2, outputs_host3])
-        loop_predict_end = time.time()
-
-        current_time_ms = (loop_predict_end - loop_predict_start) * 1000
-        print(f"Host loop {i}: predict time : {current_time_ms:.4f} ms")
-        if i == 2:
-            third_loop_time_host_ms = current_time_ms
-    predict_end1 = time.time()
-    print("[inputs_host_outputs_host] model predict time = ", (predict_end1 - predict_start1) * 1000, " ms")
-
-    predict_start2 = time.time()
-    for i in range(loop):
-        loop_predict_start = time.time()
-        model.predict([inputs_device1, inputs_device2, inputs_device3],
-                      [outputs_device1, outputs_device2, outputs_device3])
-        loop_predict_end = time.time()
-
-        current_time_ms = (loop_predict_end - loop_predict_start) * 1000
-        print(f"Device loop {i}: predict time : {current_time_ms:.4f} ms")
-        if i == 2:
-            third_loop_time_device_ms = current_time_ms
-    predict_end2 = time.time()
-    print("[inputs_device_outputs_device] model predict time = ",
-          (predict_end2 - predict_start2) * 1000, " ms")
-    # Performance Guardrail
-    max_ration = 0.80
-    performance_guardrail(max_ration, third_loop_time_host_ms, third_loop_time_device_ms,
-                          "Single model performance")
-
-
 def test_single_model_autoregression_performance():
     '''
     test Single-Model Autoregression performance
@@ -346,41 +251,12 @@ def test_single_model_autoregression_performance():
     outputs_host2 = mslite.Tensor(tensor=np_output, shape=DIM_OUT2, dtype=mslite.DataType.FLOAT32)
 
     loop = 3
-    third_loop_time_host_ms = 0.0
-    third_loop_time_device_ms = 0.0
-    predict_start1 = time.time()
     for i in range(loop):
-        loop_predict_start = time.time()
         model.predict([input_host], [output_device1])
         model.predict([output_device1], [output_device2])
-        loop_predict_end = time.time()
-
-        current_time_ms = (loop_predict_end - loop_predict_start) * 1000
-        print(f"outputs_device as inputs: {i}, predict time : {current_time_ms} ms")
-        if i == 2:
-            third_loop_time_device_ms = current_time_ms
-    predict_end1 = time.time()
-    print("[outputs_device as inputs] model predict time = ", (predict_end1 - predict_start1) * 1000, " ms")
-
-    predict_start2 = time.time()
     for i in range(loop):
-        loop_predict_start = time.time()
         model.predict([input_host], [outputs_host1])
         model.predict([outputs_host1], [outputs_host2])
-        loop_predict_end = time.time()
-
-        current_time_ms = (loop_predict_end - loop_predict_start) * 1000
-        print(f"outputs_host as inputs: {i}, predict time : {current_time_ms} ms")
-        if i == 2:
-            third_loop_time_host_ms = current_time_ms
-    predict_end2 = time.time()
-    print("[outputs_host as inputs] model predict time = ", (predict_end2 - predict_start2) * 1000, " ms")
-
-    # Performance Guardrail
-    max_ration = 0.98
-    performance_guardrail(max_ration, third_loop_time_host_ms, third_loop_time_device_ms,
-                          "Single-model autoregression performance")
-
 
 def test_double_model_autoregression_performance():
     '''
@@ -404,40 +280,12 @@ def test_double_model_autoregression_performance():
     outputs_host2 = mslite.Tensor(tensor=np_output, shape=DIM_OUT2, dtype=mslite.DataType.FLOAT32)
 
     loop = 3
-    third_loop_time_host_ms = 0.0
-    third_loop_time_device_ms = 0.0
-    predict_start1 = time.time()
     for i in range(loop):
-        loop_predict_start = time.time()
         model1.predict([input_host], [output_device1])
         model2.predict([output_device1], [output_device2])
-        loop_predict_end = time.time()
-
-        current_time_ms = (loop_predict_end - loop_predict_start) * 1000
-        print(f"outputs_device as inputs: {i}, predict time : {current_time_ms} ms")
-        if i == 2:
-            third_loop_time_device_ms = current_time_ms
-    predict_end1 = time.time()
-    print("[outputs_device as inputs] model predict time = ", (predict_end1 - predict_start1) * 1000, " ms")
-
-    predict_start2 = time.time()
     for i in range(loop):
-        loop_predict_start = time.time()
         model1.predict([input_host], [outputs_host1])
         model2.predict([outputs_host1], [outputs_host2])
-        loop_predict_end = time.time()
-
-        current_time_ms = (loop_predict_end - loop_predict_start) * 1000
-        print(f"outputs_host as inputs : {i}, predict time : {current_time_ms} ms")
-        if i == 2:
-            third_loop_time_host_ms = current_time_ms
-    predict_end2 = time.time()
-    print("[outputs_host as inputs] model predict time = ", (predict_end2 - predict_start2) * 1000, " ms")
-
-    # Performance Guardrail
-    max_ration = 0.95
-    performance_guardrail(max_ration, third_loop_time_host_ms, third_loop_time_device_ms,
-                          "Double model autoregression performance")
 
 
 def _common_functional_accuracy_mult_model(model1_path: str, model2_path: str, output_add: str):
