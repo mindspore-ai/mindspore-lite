@@ -89,7 +89,7 @@ link_directories(\${HI35XX_SDK_PATH}\/third_patry\/hi3516_sdk\/lib)\n\
 include_directories(\${HI35XX_SDK_PATH}\/third_patry\/hi3516_sdk)\n\
 add_executable(benchmark \${SRC_FILES})/g" CMakeLists.txt
         sed -i "s/target_link_libraries(benchmark net -lm -pthread)/\
-target_link_libraries(benchmark net micro_nnie nnie mpi VoiceEngine upvqe dnvqe securec -lm -pthread stdc++)/g"  CMakeLists.txt
+target_link_libraries(benchmark net micro_nnie nnie VoiceEngine upvqe dnvqe securec -lm -pthread stdc++)/g"  CMakeLists.txt
         sed -i "s/int main(int argc, const char \*\*argv) {/\
 int benchmark(int argc, const char \*\*argv) {/g"  benchmark/benchmark.c
         cat ${micro_config0_path}/svp_sys_init.c >> benchmark/benchmark.c
