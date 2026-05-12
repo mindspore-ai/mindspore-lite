@@ -510,6 +510,9 @@ void FullQuantQuantizer::InitCpuConfig() {
     RELU, RELU6, HSWISH, SIGMOID, TANH,
     // LEAKY_RELU must be symmetric.
   };
+  if (param_->fullQuantParam.enable_all_ops) {
+    (void)support_activation_.emplace(ELU);
+  }
 }
 
 void FullQuantQuantizer::InitKirinConfig() {

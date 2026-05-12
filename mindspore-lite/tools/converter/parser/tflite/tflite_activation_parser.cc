@@ -102,6 +102,17 @@ PrimitiveCPtr TfliteLogisticParser::Parse(const std::unique_ptr<tflite::Operator
   return prim->GetPrim();
 }
 
+PrimitiveCPtr TfliteEluParser::Parse(const std::unique_ptr<tflite::OperatorT> &tflite_op,
+                                     const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph,
+                                     const std::unique_ptr<tflite::ModelT> &tflite_model) {
+  auto prim = std::make_unique<ops::Activation>();
+  MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
+  prim->set_activation_type(mindspore::ActivationType::ELU);
+  prim->set_alpha(1.0);
+
+  return prim->GetPrim();
+}
+
 TfliteNodeRegister g_TfliteReluParser(tflite::BuiltinOperator_RELU, new TfliteReluParser());
 TfliteNodeRegister g_TfliteRelu6Parser(tflite::BuiltinOperator_RELU6, new TfliteRelu6Parser());
 TfliteNodeRegister g_TflitePReLUParser(tflite::BuiltinOperator_PRELU, new TflitePReLUParser());
@@ -109,5 +120,6 @@ TfliteNodeRegister g_TfliteLeakyReluParser(tflite::BuiltinOperator_LEAKY_RELU, n
 TfliteNodeRegister g_TfliteTanhParser(tflite::BuiltinOperator_TANH, new TfliteTanhParser());
 TfliteNodeRegister g_TfliteSwishParser(tflite::BuiltinOperator_HARD_SWISH, new TfliteHardSwishParser());
 TfliteNodeRegister g_tfliteLogisticParser(tflite::BuiltinOperator_LOGISTIC, new TfliteLogisticParser());
+TfliteNodeRegister g_tfliteEluParser(tflite::BuiltinOperator_ELU, new TfliteEluParser());
 }  // namespace lite
 }  // namespace mindspore

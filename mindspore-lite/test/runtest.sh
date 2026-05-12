@@ -112,6 +112,7 @@ fi
 ./lite-test --gtest_filter=TileFp32Test.*
 ./lite-test --gtest_filter=ResizeFp32Test.*
 ./lite-test --gtest_filter=LstmFp32Test.*
+./lite-test --gtest_filter=EluFp32Test.*
 
 # test cases of INT8 OP
 ./lite-test --gtest_filter=TestBatchnormInt8.*
@@ -127,6 +128,7 @@ fi
 ./lite-test --gtest_filter=SoftmaxInt8Test.*
 ./lite-test --gtest_filter=DivInt8Test.*
 ./lite-test --gtest_filter=SubInt8Test.*
+./lite-test --gtest_filter=EluInt8Test.*
 
 # test cases of generic api
 ./lite-test --gtest_filter="GenericApiTest*"
