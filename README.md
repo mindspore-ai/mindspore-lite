@@ -96,7 +96,7 @@ If you wish to further learn and use MindSpore Lite, please refer to the followi
 |        Wan2.1-T2V-14B         | Qwen2-VL-2B-Instruct         | Qwen3-4B                    | Qwen3-TTS-12Hz-0.6B-Base | YoLo                                     |
 |      Wan2.1-I2V-14B-480P      | Qwen2-VL-2B                  | [Qwen3-1.7B](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/qwen3_1.7b) &#9989;                  | Qwen3-TTS-12Hz-0.6B-CustomVoice |  Qwen2.5-Omni-3B            |
 |        Wan2.2-TI2V-5B         | InternVL3_5-4B-Flash         | [Qwen3-0.6B](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/qwen3_0.6b) &#9989; | CosyVoice3-0.5B       |  Mask2Former                |
-|        Wan2.2-T2V-A14B        | InternVL3_5-2B-Flash         | Qwen2.5-7B                  | CosyVoice2-0.5B       |  DinoV3                     |
+|        Wan2.2-T2V-A14B        | InternVL3_5-2B-Flash         | Qwen2.5-7B                  | [CosyVoice2-0.5B](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/cosyvoice2_0.5b) &#9989;       |  DinoV3                     |
 |        Wan2.2-I2V-A14B        | InternVL3_5-1B-Flash         | Qwen2.5-3B                  | FireRedASR            |  CenterPoint(2D)            |
 |      Wan2.2-Animate-14B       | InternVL3-2B                 | Qwen2.5-1.5B                | WeNet                 |  CenterPoint(3D)            |
 |        Qwen-Image-Edit        | InternVL3-1B                 | [Qwen2.5-0.5B](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/qwen2.5_0.5b) &#9989;                |                       |  BEVDet                     |
