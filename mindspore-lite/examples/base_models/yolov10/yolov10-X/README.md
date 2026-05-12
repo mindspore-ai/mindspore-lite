@@ -65,7 +65,7 @@ yolo_v10_X/
 ```bash
 python infer_yolov10x_onnx.py \
   --model ./yolov10x.onnx \
-  --image ./city-streets.png \
+  --image ./city-streets.jpg \
   --device cpu \
   --warmup 3 \
   --runs 5
@@ -77,7 +77,7 @@ python infer_yolov10x_onnx.py \
 ONNX: loading model from ./yolov10x.onnx...
 ONNX: inference session created with providers: ['CPUExecutionProvider']
 Detection Results:
-Image: ./city-streets.png
+Image: ./city-streets.jpg
   Det 0: cls=2 (car), conf=0.9581, bbox=[559.1, 473.2, 799.4, 597.6]
   Det 1: cls=2 (car), conf=0.9472, bbox=[221.6, 420.6, 498.7, 522.2]
   Det 2: cls=0 (person), conf=0.9153, bbox=[590.5, 538.6, 666.8, 667.4]
@@ -152,7 +152,7 @@ yolo_v10_X/
 ```bash
 python infer_yolov10x_mslite.py \
   --model ./yolov10x_ascend.mindir \
-  --image ./city-streets.png \
+  --image ./city-streets.jpg \
   --device ascend \
   --warmup 3 \
   --runs 5
@@ -164,7 +164,7 @@ python infer_yolov10x_mslite.py \
 Loading model from ./yolov10x_ascend.mindir...
 MindSpore Lite inference start.
 Detection Results:
-Image: ./city-streets.png
+Image: ./city-streets.jpg
   Det 0: cls=2 (car), conf=0.9582, bbox=[559.1, 473.2, 799.4, 597.6]
   Det 1: cls=2 (car), conf=0.9473, bbox=[221.5, 420.6, 498.7, 522.2]
   Det 2: cls=0 (person), conf=0.9152, bbox=[590.5, 538.6, 666.8, 667.4]
@@ -196,16 +196,16 @@ Performance:
 
 ## 6. 性能数据
 
-### 性能测试结果（300IDuo）
+### 性能测试结果（Atlas 300I Duo）
 
 测试模型：YOLOv10-X
-测试条件：输入 640x640，昇腾 NPU，CANN 8.5.0，MindSpore Lite 2.8.0
+测试条件：输入 640x640，Atlas 300I Duo，CANN 8.5.0，MindSpore Lite 2.8.0
 
 | 指标            | Mean (ms) |
 |---------------|-----------|
 | 延迟            | 28.33     |
 
-> 注：测试图片为 city-streets.png，检测到 20 个目标。
+> 注：测试图片为 [city-streets.jpg](https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/city-streets.jpg)，检测到 20 个目标。
 
 ---
 
