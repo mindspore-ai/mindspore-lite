@@ -54,6 +54,8 @@ int Int8ElementLogicalNot(const int8_t *input, int8_t *output, int element_size,
 
 int Int8ElementReciprocal(const int8_t *input, int8_t *output, int element_size, ArithSelfQuantArg para);
 
+int Int8ElementErf(const int8_t *input, int8_t *output, int element_size, ArithSelfQuantArg para);
+
 #ifdef __cplusplus
 }
 #endif

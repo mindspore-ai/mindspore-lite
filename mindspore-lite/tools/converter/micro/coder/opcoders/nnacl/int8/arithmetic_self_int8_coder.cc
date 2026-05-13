@@ -25,6 +25,7 @@
 using mindspore::schema::PrimitiveType_Abs;
 using mindspore::schema::PrimitiveType_Ceil;
 using mindspore::schema::PrimitiveType_Cos;
+using mindspore::schema::PrimitiveType_Erf;
 using mindspore::schema::PrimitiveType_ExpFusion;
 using mindspore::schema::PrimitiveType_Floor;
 using mindspore::schema::PrimitiveType_Log;
@@ -108,6 +109,9 @@ int ArithmeticSelfInt8Coder::Prepare(CoderContext *context) {
     case PrimitiveType_Reciprocal:
       arithmeticSelf_run_ = "Int8ElementReciprocal";
       break;
+    case PrimitiveType_Erf:
+      arithmeticSelf_run_ = "Int8ElementErf";
+      break;
     default:
       MS_LOG(ERROR) << "Unknown op type " << parameter_->type_;
       return RET_ERROR;
@@ -146,4 +150,5 @@ REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_Rsqrt, CPUOpCoder
 REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_Square, CPUOpCoderCreator<ArithmeticSelfInt8Coder>)
 REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_LogicalNot, CPUOpCoderCreator<ArithmeticSelfInt8Coder>)
 REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_Reciprocal, CPUOpCoderCreator<ArithmeticSelfInt8Coder>)
+REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_Erf, CPUOpCoderCreator<ArithmeticSelfInt8Coder>)
 }  // namespace mindspore::lite::micro::nnacl
