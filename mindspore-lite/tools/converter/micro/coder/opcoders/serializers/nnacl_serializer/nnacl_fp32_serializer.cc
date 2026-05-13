@@ -333,6 +333,12 @@ void NNaclFp32Serializer::CodeStruct(const std::string &name, const FillStruct &
                         param.src_data_, param.out_ptr_, param.thread_count_);
 }
 
+void NNaclFp32Serializer::CodeStruct(const std::string &name, const DepthToSpaceArgs &args) {
+  code << "    const DepthToSpaceArgs " << name << " = {" << args.in_stride_dim0_ << ", " << args.in_stride_dim1_
+       << ", " << args.in_stride_dim2_ << ", " << args.out_stride_dim0_ << ", " << args.out_stride_dim1_ << ", "
+       << args.out_stride_dim2_ << ", " << static_cast<int>(args.data_type_size_) << ", " << args.block_size_ << "};\n";
+}
+
 void NNaclFp32Serializer::CodeArrayStruct(const std::string &name, TensorC *tensorC, std::vector<Tensor *> tensor) {
   std::vector<std::string> tensor_names;
   int size = tensor.size();

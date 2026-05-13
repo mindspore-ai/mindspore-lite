@@ -43,6 +43,7 @@
 #include "nnacl_c/kernel/batch_norm.h"
 #include "nnacl_c/mul_parameter.h"
 #include "nnacl_c/split_parameter.h"
+#include "nnacl_c/kernel/depth_to_space.h"
 
 namespace mindspore::lite::micro::nnacl {
 class NNaclInt8Serializer : public Serializer {
@@ -81,6 +82,7 @@ class NNaclInt8Serializer : public Serializer {
   void CodeStruct(const std::string &name, const GatherQuantArg &batchnorm_parameter);
   void CodeStruct(const std::string &name, const SpliceWrapperParam &splice_param);
   void CodeStruct(const std::string &name, const SplitParameter &split_parameter);
+  void CodeStruct(const std::string &name, const DepthToSpaceArgs &args);
   void CodeStruct(const std::string &name, const int *list, int size);
 };
 }  // namespace mindspore::lite::micro::nnacl

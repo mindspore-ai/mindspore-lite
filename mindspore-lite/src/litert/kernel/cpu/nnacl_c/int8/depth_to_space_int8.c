@@ -49,3 +49,40 @@ void DepthToSpaceForNHWCInt8(const int8_t *input, int8_t *output, const int32_t 
     }
   }
 }
+
+void DepthToSpaceCRDForNHWCInt8(const int8_t *input, int8_t *output, const int32_t *in_shape, DepthToSpaceArgs *param,
+                                QuantArg *in_quant_arg, QuantArg *out_quant_arg) {
+  int32_t block_size = param->block_size_;
+  int32_t in_shape_dim3 = in_shape[3];
+  int32_t in_shape_dim2 = in_shape[2];
+  int32_t in_shape_dim1 = in_shape[1];
+  const float output_inverse_scale = 1.f / out_quant_arg->scale_;
+  float scale = in_quant_arg->scale_ * output_inverse_scale;
+  float bias = -in_quant_arg->zp_ * scale;
+  int32_t output_zp = out_quant_arg->zp_;
+  for (int i = 0; i < in_shape[0]; ++i) {
+    int64_t in_offset_n = i * param->in_stride_dim0_;
+    int64_t out_offset_n = i * param->out_stride_dim0_;
+    for (int j = 0; j < in_shape_dim1; ++j) {
+      int64_t in_offset_h = in_offset_n + j * param->in_stride_dim1_;
+      int64_t out_offset_h = out_offset_n + j * block_size * param->out_stride_dim1_;
+      for (int k = 0; k < in_shape_dim2; ++k) {
+        int64_t in_offset_w = in_offset_h + k * param->in_stride_dim2_;
+        int64_t out_offset_w = out_offset_h + k * block_size * param->out_stride_dim2_;
+        for (int l = 0; l < in_shape_dim3; ++l) {
+          int64_t offset = l % (block_size * block_size);
+          int64_t out_offset_c =
+            out_offset_w +
+            offset / block_size * block_size * in_shape_dim2 * in_shape_dim3 / (block_size * block_size) +
+            offset % block_size * in_shape_dim3 / (block_size * block_size);
+          int64_t out_idx = out_offset_c + l / (block_size * block_size);
+          int64_t in_idx = in_offset_w + l;
+          int32_t output_tmp = round(input[in_idx] * scale + bias) + output_zp;
+          output_tmp = output_tmp > 127 ? 127 : output_tmp;
+          output_tmp = output_tmp < -128 ? -128 : output_tmp;
+          output[out_idx] = output_tmp;
+        }
+      }
+    }
+  }
+}

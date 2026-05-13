@@ -341,4 +341,10 @@ void NNaclInt8Serializer::CodeStruct(const std::string &name, const SplitParamet
                  split_parameter.split_dim_, ToString(split_parameter.strides_), "{0}", split_parameter.n_dims_,
                  split_parameter.split_count_);
 }
+
+void NNaclInt8Serializer::CodeStruct(const std::string &name, const DepthToSpaceArgs &args) {
+  code << "    DepthToSpaceArgs " << name << " = {" << args.in_stride_dim0_ << ", " << args.in_stride_dim1_ << ", "
+       << args.in_stride_dim2_ << ", " << args.out_stride_dim0_ << ", " << args.out_stride_dim1_ << ", "
+       << args.out_stride_dim2_ << ", " << static_cast<int>(args.data_type_size_) << ", " << args.block_size_ << "};\n";
+}
 }  // namespace mindspore::lite::micro::nnacl
