@@ -103,7 +103,10 @@ void MulInt8CPUKernel::CheckIfFastImpl() {
         fast_hw_broadcast_ = true;
       }
     } else if (in_tensor0->shape().size() == COMM_SHAPE_SIZE && in_tensor1->shape().size() == 1) {
-      if (in_tensor1->ElementsNum() == in_tensor0->shape()[kNHWC_C]) {
+      // Fix: Only use fast broadcast path when input0 has shape [N,1,1,C]
+      // This ensures FastDoExecute's assumption about data layout is valid
+      if (in_tensor0->shape()[kNHWC_H] == 1 && in_tensor0->shape()[kNHWC_W] == 1 &&
+          in_tensor1->ElementsNum() == in_tensor0->shape()[kNHWC_C]) {
         fast_hw_broadcast_ = true;
         input1_hw_broadcast_ = true;
       }
@@ -112,8 +115,14 @@ void MulInt8CPUKernel::CheckIfFastImpl() {
 }
 
 int MulInt8CPUKernel::ReSize() {
-  size_t input0_size = in_tensors_.at(0)->shape().size();
-  size_t input1_size = in_tensors_.at(1)->shape().size();
+  auto input0_shape = in_tensors_.at(0)->shape();
+  auto input1_shape = in_tensors_.at(1)->shape();
+
+  // Set broadcasting flag based on shape comparison
+  tile_para->broadcasting_ = (input0_shape != input1_shape);
+
+  size_t input0_size = input0_shape.size();
+  size_t input1_size = input1_shape.size();
   size_t output_size = out_tensors_.at(0)->shape().size();
   tile_para->ndim_ = output_size;
 

@@ -87,7 +87,13 @@ int AddInt8Coder::Init() {
 
 int AddInt8Coder::ReSize() {
   support_opt_add_ = (input0->ElementsNum() == 1) || (input1->ElementsNum() == 1);
-  if (support_opt_add_) {
+
+  // Set broadcasting flag based on shape comparison
+  if (!support_opt_add_) {
+    auto input0_shape = input0->shape();
+    auto input1_shape = input1->shape();
+    arith_para_->broadcasting_ = (input0_shape != input1_shape);
+  } else {
     arith_para_->broadcasting_ = false;
   }
 
