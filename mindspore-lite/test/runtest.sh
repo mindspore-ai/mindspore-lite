@@ -116,6 +116,7 @@ fi
 ./lite-test --gtest_filter=ErfFp32Test.*
 ./lite-test --gtest_filter=DepthToSpaceFp32Test.*
 ./lite-test --gtest_filter=SpaceToDepthFp32Test.*
+./lite-test --gtest_filter=BroadcastFp32Test.*
 
 # test cases of INT8 OP
 ./lite-test --gtest_filter=TestBatchnormInt8.*
@@ -135,6 +136,7 @@ fi
 ./lite-test --gtest_filter=ErfInt8Test.*
 ./lite-test --gtest_filter=DepthToSpaceInt8Test.*
 ./lite-test --gtest_filter=SpaceToDepthInt8Test*
+./lite-test --gtest_filter=AddInt8Test.*
 
 # test cases of generic api
 ./lite-test --gtest_filter="GenericApiTest*"

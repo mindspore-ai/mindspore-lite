@@ -52,6 +52,8 @@ class QuantizedAddCPUKernel : public LiteKernel {
   int8_t *input0_data_ = nullptr;
   int8_t *input1_data_ = nullptr;
   int8_t *output_data_ = nullptr;
+  int8_t *tile0_data_ = nullptr;
+  int8_t *tile1_data_ = nullptr;
 };
 
 int AddInt8Run(void *cdata, int task_id, float lhs_scale, float rhs_scale);

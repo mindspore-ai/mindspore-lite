@@ -37,6 +37,12 @@ int MulInt8Coder::Prepare(CoderContext *const context) {
   // check if need to broadcast
   arith_para_ = reinterpret_cast<ArithmeticParameter *>(parameter_);
   MS_CHECK_PTR(arith_para_);
+
+  // Set broadcasting flag based on shape comparison
+  auto input1_shape = input1_->shape();
+  auto input2_shape = input2_->shape();
+  arith_para_->broadcasting_ = (input1_shape != input2_shape);
+
   need_broadcast_ = arith_para_->broadcasting_;
   if (!need_broadcast_) {
     block_size_ = input1_->ElementsNum();

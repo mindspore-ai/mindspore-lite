@@ -16,6 +16,7 @@
 
 #include "src/litert/kernel/cpu/int8/add_int8.h"
 #include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/int8/arithmetic_int8.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
 #include "src/common/file_utils.h"
@@ -112,7 +113,13 @@ int QuantizedAddCPUKernel::ReSize() {
   MS_CHECK_GT(input0->ElementsNum(), 0, RET_ERROR);
   MS_CHECK_GT(input1->ElementsNum(), 0, RET_ERROR);
   support_opt_add_ = (input0->ElementsNum() == 1) || (input1->ElementsNum() == 1);
-  if (support_opt_add_) {
+
+  // Set broadcasting flag based on shape comparison
+  if (!support_opt_add_) {
+    auto input0_shape = input0->shape();
+    auto input1_shape = input1->shape();
+    arith_para_->broadcasting_ = (input0_shape != input1_shape);
+  } else {
     arith_para_->broadcasting_ = false;
   }
 
@@ -185,45 +192,7 @@ int AddInt8Run(void *cdata, int task_id, float, float) {
   return ret;
 }
 
-int QuantizedAddCPUKernel::BroadcastRun(int task_id) {
-  if (thread_count_ == 0) {
-    MS_LOG(ERROR) << "div zero";
-    return RET_ERROR;
-  }
-  int stride = UP_DIV(out_size_, thread_count_);
-  int real_out_count = MSMIN(stride, out_size_ - stride * task_id);
-  if (real_out_count <= 0) {
-    return RET_OK;
-  }
-  int8_t *cur_in0 = nullptr;
-  int8_t *cur_in1 = nullptr;
-  int8_t *cur_out = nullptr;
-  for (int i = 0; i < real_out_count; i++) {
-    if (arith_para_->in_elements_num0_ == arith_para_->out_elements_num_) {
-      cur_in0 = input0_data_ + task_id * stride * in_size_ + i * in_size_;
-      cur_in1 = input1_data_;
-      cur_out = output_data_ + task_id * stride * in_size_ + i * in_size_;
-    } else {
-      cur_in0 = input0_data_;
-      cur_in1 = input1_data_ + task_id * stride * in_size_ + i * in_size_;
-      cur_out = output_data_ + task_id * stride * in_size_ + i * in_size_;
-    }
-#ifdef ENABLE_AVX
-    AddInt8_AVX2(cur_in0, cur_in1, cur_out, in_size_, para_);
-#else
-    AddInt8(cur_in0, cur_in1, cur_out, in_size_, para_);
-#endif
-  }
-  return RET_OK;
-}
-
 int QuantizedAddCPUKernel::DoExecute(int task_id) {
-  /* need broadcast */
-  if (arith_para_->broadcasting_) {
-    return BroadcastRun(task_id);
-  }
-
-  /* no need broadcast */
   if (thread_count_ == 0) {
     MS_LOG(ERROR) << "div zero";
     return RET_ERROR;
@@ -234,25 +203,39 @@ int QuantizedAddCPUKernel::DoExecute(int task_id) {
   if (real_count <= 0) {
     return RET_OK;
   }
-  int8_t *cur_in0 = input0_data_ + stride * task_id;
-  int8_t *cur_in1 = input1_data_ + stride * task_id;
-  int8_t *cur_out = output_data_ + stride * task_id;
-  if (support_opt_add_) {
-    int8_t *ptr_in = arith_para_->in_elements_num0_ == 1 ? cur_in1 : cur_in0;
-    int8_t element_in = arith_para_->in_elements_num0_ == 1 ? input0_data_[0] : input1_data_[0];
-    AddQuantQrgs *ptr_args = arith_para_->in_elements_num0_ == 1 ? &(para_->in1_args_) : &(para_->in0_args_);
-    AddQuantQrgs *ele_args = arith_para_->in_elements_num0_ == 1 ? &(para_->in0_args_) : &(para_->in1_args_);
+
+  // Reference: Div-INT8 implementation (div_int8.cc:97-121)
+  // Use tile_data_ for broadcasting, otherwise use original input_data_
+  if (arith_para_->broadcasting_) {
+    int8_t *cur_in0 = tile0_data_ + stride * task_id;
+    int8_t *cur_in1 = tile1_data_ + stride * task_id;
+    int8_t *cur_out = output_data_ + stride * task_id;
 #ifdef ENABLE_AVX
-    AddOptInt8_AVX2(ptr_in, element_in, cur_out, rest_count, para_, ptr_args, ele_args);
+    AddInt8_AVX2(cur_in0, cur_in1, cur_out, real_count, para_);
 #else
-    AddOptInt8(ptr_in, element_in, cur_out, rest_count, para_, ptr_args, ele_args);
+    AddInt8(cur_in0, cur_in1, cur_out, real_count, para_);
 #endif
   } else {
+    int8_t *cur_in0 = input0_data_ + stride * task_id;
+    int8_t *cur_in1 = input1_data_ + stride * task_id;
+    int8_t *cur_out = output_data_ + stride * task_id;
+    if (support_opt_add_) {
+      int8_t *ptr_in = arith_para_->in_elements_num0_ == 1 ? cur_in1 : cur_in0;
+      int8_t element_in = arith_para_->in_elements_num0_ == 1 ? input0_data_[0] : input1_data_[0];
+      AddQuantQrgs *ptr_args = arith_para_->in_elements_num0_ == 1 ? &(para_->in1_args_) : &(para_->in0_args_);
+      AddQuantQrgs *ele_args = arith_para_->in_elements_num0_ == 1 ? &(para_->in0_args_) : &(para_->in1_args_);
 #ifdef ENABLE_AVX
-    AddInt8_AVX2(cur_in0, cur_in1, cur_out, rest_count, para_);
+      AddOptInt8_AVX2(ptr_in, element_in, cur_out, rest_count, para_, ptr_args, ele_args);
 #else
-    AddInt8(cur_in0, cur_in1, cur_out, rest_count, para_);
+      AddOptInt8(ptr_in, element_in, cur_out, rest_count, para_, ptr_args, ele_args);
 #endif
+    } else {
+#ifdef ENABLE_AVX
+      AddInt8_AVX2(cur_in0, cur_in1, cur_out, rest_count, para_);
+#else
+      AddInt8(cur_in0, cur_in1, cur_out, rest_count, para_);
+#endif
+    }
   }
 
   return RET_OK;
@@ -266,7 +249,44 @@ int QuantizedAddCPUKernel::Run() {
   output_data_ = static_cast<int8_t *>(out_tensors_.at(0)->data());
   MSLITE_CHECK_PTR(output_data_);
   MS_CHECK_FALSE_MSG(input0_data_ == nullptr || input1_data_ == nullptr, RET_ERROR, "Input data nullptr.");
-  auto ret = ParallelLaunch(this->ms_context_, AddInt8Run, this, thread_count_);
+
+  elements_num_ = out_tensors_.at(0)->ElementsNum();
+
+  int ret = RET_ERROR;
+  // Reference: Div-INT8 implementation (div_int8.cc:159-218)
+  // Allocate tile_data_ buffers for broadcasting
+  if (arith_para_->broadcasting_) {
+    MS_CHECK_GT(in_tensors_.at(0)->ElementsNum(), 0, RET_ERROR);
+    MS_CHECK_GT(in_tensors_.at(1)->ElementsNum(), 0, RET_ERROR);
+    MS_CHECK_GT(out_tensors_.at(0)->Size(), 0, RET_ERROR);
+
+    tile0_data_ = static_cast<int8_t *>(this->ms_context_->allocator->Malloc(out_tensors_.at(0)->Size()));
+    if (tile0_data_ == nullptr) {
+      MS_LOG(ERROR) << "malloc tile0_data_ failed.";
+      return RET_ERROR;
+    }
+    tile1_data_ = static_cast<int8_t *>(this->ms_context_->allocator->Malloc(out_tensors_.at(0)->Size()));
+    if (tile1_data_ == nullptr) {
+      MS_LOG(ERROR) << "malloc tile1_data_ failed.";
+      this->ms_context_->allocator->Free(tile0_data_);
+      tile0_data_ = nullptr;
+      return RET_ERROR;
+    }
+
+    // Perform dual-direction broadcasting using TileDimensionsInt8
+    TileDimensionsInt8(input0_data_, input1_data_, tile0_data_, tile1_data_, arith_para_);
+  }
+
+  // Execute addition (DoExecute will choose between tile_data_ and input_data_ based on broadcasting_ flag)
+  ret = ParallelLaunch(this->ms_context_, AddInt8Run, this, thread_count_);
+
+  // Free tile_data_ buffers after computation
+  if (arith_para_->broadcasting_) {
+    this->ms_context_->allocator->Free(tile0_data_);
+    this->ms_context_->allocator->Free(tile1_data_);
+    tile0_data_ = nullptr;
+    tile1_data_ = nullptr;
+  }
 
   return ret;
 }
