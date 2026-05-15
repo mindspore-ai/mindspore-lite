@@ -1036,7 +1036,7 @@ STATUS AclPassImpl::SetAclModelOptions(const FuncGraphPtr &func_graph) {
   if (save_path.empty()) {
     return lite::RET_ERROR;
   }
-  options_->SetOmFilePath(user_options_cfg_.om_file_path);
+  options_->SetTilingGeneration(user_options_cfg_.enable_tiling_generation);
   options_->SetDumpModelName(user_options_cfg_.dump_model_name);
   options_->SetAoeMode(user_options_cfg_.aoe_mode);
   options_->SetInitOptionsMap(user_options_cfg_.init_options_map);

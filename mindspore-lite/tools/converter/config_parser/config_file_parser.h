@@ -99,6 +99,7 @@ struct AclOptionCfgString {
   std::string dynamic_dims;
   std::string aoe_mode;
   std::string custom_opp_path;
+  std::string enable_tiling_generation;
   std::map<std::string, std::string> init_options_map;
   std::map<std::string, std::string> build_options_map;
   std::map<std::string, std::string> aoe_global_options_map;

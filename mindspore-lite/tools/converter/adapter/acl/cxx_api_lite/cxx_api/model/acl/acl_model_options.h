@@ -56,6 +56,8 @@ class MS_API AclModelOptions {
     aoe_tuning_options_map_ = tuning_options;
   }
   std::map<std::string, std::string> GetAoeGlobalOptionsMap() const { return aoe_global_options_map_; }
+  void SetTilingGeneration(bool flag) noexcept { enable_tiling_generation_ = flag; }
+  bool GetTilingGeneration() const { return enable_tiling_generation_; }
   static std::string GetSocName();
   bool IsLastModel() { return is_last_model_; }
   void SetLastModel() { is_last_model_ = true; }
@@ -86,6 +88,7 @@ class MS_API AclModelOptions {
   std::string aoe_mode_;
   std::string dump_model_name_;
   bool is_last_model_ = false;
+  bool enable_tiling_generation_ = true;
 };
 }  // namespace mindspore
 

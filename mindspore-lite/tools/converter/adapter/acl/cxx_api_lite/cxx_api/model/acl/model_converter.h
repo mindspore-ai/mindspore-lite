@@ -47,7 +47,10 @@ class MS_API ModelConverter {
                        const std::map<std::string, std::string> &init_options,
                        const std::map<std::string, std::string> &build_options) const;
   Buffer LoadAscendIRInner(const Buffer &model_data);
-  Status SaveModel(const ge::ModelBufferData &model) const;
+  bool CompileBundleModel(const backend::ge_backend::DfGraphPtr &graph,
+                          const std::map<std::string, std::string> &build_options, ge::ModelBufferData *model) const;
+  Buffer LoadBufferFromSavedOm(const std::string &saved_om_path, const ge::ModelBufferData &model) const;
+  Status SaveModel(const ge::ModelBufferData &model, bool is_bundle, std::string *saved_om_path = nullptr) const;
   Status CreateUpdateGraph(const std::vector<std::string> &const_names, const std::vector<AbstractBasePtr> &abstarcts,
                            backend::ge_backend::DfGraphPtr *df_graph) const;
 
