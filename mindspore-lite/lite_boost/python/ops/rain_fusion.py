@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Copyright 2026 Huawei Technologies Co., Ltd
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +14,7 @@
 # limitations under the License.
 # ============================================================================
 """
-lite_boost ops
+lite_boost custom ops
 - rain_fusion_attention
 """
 
@@ -25,9 +26,7 @@ _LOADED = False
 
 
 def _resolve_default_so_path() -> str:
-    """
-    Resolve default shared library path.
-    """
+    """Resolve default shared library path."""
     env_path = os.getenv("LITE_BOOST_OPS_LIB")
     if env_path:
         p = Path(env_path)
@@ -50,9 +49,7 @@ def _resolve_default_so_path() -> str:
 
 
 def _load_library(path=None):
-    """
-    Load shared library.
-    """
+    """Load shared library."""
     global _LOADED
     if _LOADED:
         return
@@ -62,9 +59,7 @@ def _load_library(path=None):
 
 
 def ops():
-    """
-    Get ops.
-    """
+    """Get ops."""
     _load_library()
     return torch.ops.lite_boost
 
@@ -91,9 +86,7 @@ def rain_fusion_attention(
     inner_precise=1,
     block_size=0,
 ):
-    """
-    Rain fusion attention.
-    """
+    """Rain fusion attention."""
     return torch.ops.lite_boost.rain_fusion_attention(
         query,
         key,

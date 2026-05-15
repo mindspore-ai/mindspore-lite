@@ -120,8 +120,20 @@ version = _read_file(os.path.join(TOP_DIR, "version.txt")).strip()
 setup(
     name="lite_boost",
     version=version,
-    packages=["lite_boost"],
-    package_dir={"lite_boost": "api"},
+    packages=[
+        "lite_boost",
+        "lite_boost.parallel",
+        "lite_boost.layers",
+        "lite_boost.model",
+        "lite_boost.model.wan2_1",
+    ],
+    package_dir={
+        "lite_boost": "ops",
+        "lite_boost.parallel": "parallel",
+        "lite_boost.layers": "layers",
+        "lite_boost.model": "model",
+        "lite_boost.model.wan2_1": "model/wan2_1",
+    },
     package_data={"lite_boost": _get_package_data()},
     include_package_data=True,
     python_requires=">=3.8",
