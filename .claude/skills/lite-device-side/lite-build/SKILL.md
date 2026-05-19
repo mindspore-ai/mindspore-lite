@@ -32,9 +32,6 @@ bash build.sh -I arm32 -j8
 # x86 debug build
 bash build.sh -I x86_64 -j8
 
-# Cloud-side inference (ExtendRT)
-bash build.sh -I x86_64 -e cpu -a x64 -j8
-
 # iOS
 bash build.sh -I arm64 -T ios -j8
 
@@ -71,18 +68,6 @@ Options defined in `mindspore-lite/CMakeLists.txt`, set via `build.sh` flags or 
 | `MSLITE_ENABLE_TRAIN` | OFF | Device-side training support |
 | `MSLITE_ENABLE_MICRO` | OFF | Micro code generation |
 | `MSLITE_ENABLE_RISCV` | OFF | RISC-V support |
-
-### Cloud-side (ExtendRT) Options
-
-| CMake Variable | Default | Description |
-|-----------|--------|------|
-| `MSLITE_ENABLE_CLOUD_INFERENCE` | OFF | Cloud-side inference (ExtendRT) |
-| `MSLITE_ENABLE_ACL` | OFF | Ascend ACL backend |
-| `MSLITE_ENABLE_ACL_TDT` | OFF | Ascend TDT data transfer |
-| `MSLITE_ENABLE_SHARED_MUTEX` | ON | Shared mutex (cloud-side concurrency) |
-| `MSLITE_ENABLE_WEIGHT_SHARE` | OFF | Multi-model weight sharing |
-| `MSLITE_ENABLE_AUTO_PARALLEL` | OFF | Automatic parallel inference |
-| `MSLITE_ENABLE_CLOUD_FUSION_INFERENCE` | OFF | Cloud-side fusion inference |
 
 ### Debug Options
 
@@ -172,8 +157,6 @@ mindspore-lite-{version}-{os}-{arch}.tar.gz
 | Android ARM32 | `mindspore-lite-{version}-android-armv7.tar.gz` |
 | Linux x86_64 | `mindspore-lite-{version}-linux-x64.tar.gz` |
 | Windows x86_64 | `mindspore-lite-{version}-win-x64.zip` |
-| Cloud Linux x86_64 | `mindspore-lite-{version}-linux-x64.tar.gz` |
-| Cloud Linux ARM64 | `mindspore-lite-{version}-linux-aarch64.tar.gz` |
 
 ## Common Build Errors
 
