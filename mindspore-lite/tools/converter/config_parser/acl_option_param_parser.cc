@@ -60,6 +60,15 @@ STATUS AclOptionParamParser::ParseAclOptionCfg(const AclOptionCfgString &acl_opt
       return RET_INPUT_PARAM_INVALID;
     }
   }
+  if (!acl_option_string.enable_tiling_generation.empty()) {
+    bool enable_tiling_generation = true;
+    if (!ConvertBool(acl_option_string.enable_tiling_generation, &enable_tiling_generation)) {
+      MS_LOG(ERROR) << "Parse enable_tiling_generation failed, val: " << acl_option_string.enable_tiling_generation
+                    << ", accepted values: true/false";
+      return RET_INPUT_PARAM_INVALID;
+    }
+    acl_option_cfg->enable_tiling_generation = enable_tiling_generation;
+  }
   return RET_OK;
 }
 

@@ -15,6 +15,7 @@
  */
 
 #include "cxx_api/model/acl/model_converter.h"
+#include <dirent.h>
 #include <memory>
 #include <algorithm>
 #include <utility>
@@ -22,6 +23,7 @@
 #include <set>
 #include <map>
 #include <string>
+#include <ctime>
 #include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/utils.h"
 #include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/df_graph_converter.h"
 #include "graph/graph_buffer.h"
@@ -37,6 +39,37 @@
 
 namespace mindspore {
 namespace {
+constexpr size_t kOmSuffixLen = 3;
+const char kOmSuffix[] = ".om";
+std::string FindSavedOmFile(const std::string &base_path) {
+  // Try the standard path first (no platform suffix)
+  auto candidate = base_path + kOmSuffix;
+  if (access(candidate.c_str(), F_OK) == 0) {
+    return candidate;
+  }
+  // aclgrphSaveModel may append platform suffix like _linux_x86_64
+  auto pos = base_path.find_last_of('/');
+  std::string dir = (pos != std::string::npos) ? base_path.substr(0, pos + 1) : "./";
+  std::string prefix = (pos != std::string::npos) ? base_path.substr(pos + 1) : base_path;
+  candidate = "";
+  DIR *dp = opendir(dir.c_str());
+  if (dp == nullptr) {
+    MS_LOG(ERROR) << "Failed to open directory: " << dir;
+    return "";
+  }
+  struct dirent *entry = nullptr;
+  while ((entry = readdir(dp)) != nullptr) {
+    std::string name = entry->d_name;
+    if (name.size() > prefix.size() && name.compare(0, prefix.size(), prefix) == 0 && name.size() >= kOmSuffixLen &&
+        name.compare(name.size() - kOmSuffixLen, kOmSuffixLen, kOmSuffix) == 0) {
+      candidate = dir + name;
+      break;
+    }
+  }
+  (void)closedir(dp);
+  return candidate;
+}
+
 // some config is not supported in the update subgraph, do not add to the update_options. e.g. lora weight update.
 const std::set<std::string> update_options_blacklist = {
   "ge.dynamicDims",
@@ -146,6 +179,64 @@ backend::ge_backend::DfGraphPtr ModelConverter::ConvertFuncGraphToAIR(const Func
   return backend::ge_backend::GetComputeGraph(converter);
 }
 
+bool ModelConverter::CompileBundleModel(const backend::ge_backend::DfGraphPtr &graph,
+                                        const std::map<std::string, std::string> &build_options,
+                                        ge::ModelBufferData *model) const {
+  MS_CHECK_TRUE_MSG(model != nullptr, false, "Model buffer is nullptr.");
+  ge::WeightRefreshableGraphs split_graphs;
+  std::vector<ge::AscendString> ascend_variable_names(variable_node_names_.size());
+  std::transform(variable_node_names_.begin(), variable_node_names_.end(), ascend_variable_names.begin(),
+                 [](std::string s) { return ge::AscendString(s.c_str()); });
+  auto ret = ge::aclgrphConvertToWeightRefreshableGraphs(*graph, ascend_variable_names, split_graphs);
+  if (ret != 0) {
+    MS_LOG(ERROR) << "aclgraphConvertToWeightRefreshableGraphs failed! ret:" << ret;
+    return false;
+  }
+  std::map<ge::AscendString, ge::AscendString> bund_bundle_options;
+  std::map<ge::AscendString, ge::AscendString> update_options;
+  for (auto it : build_options) {
+    bund_bundle_options.insert(std::make_pair(ge::AscendString(it.first.c_str()), ge::AscendString(it.second.c_str())));
+    if (update_options_blacklist.find(it.first) == update_options_blacklist.end()) {
+      update_options.insert(std::make_pair(ge::AscendString(it.first.c_str()), ge::AscendString(it.second.c_str())));
+    }
+  }
+  auto update_graph = ConvertFuncGraphToAIR(update_func_graph_);
+  if (update_graph == nullptr) {
+    MS_LOG(ERROR) << "Convert FuncGraph to AscendIR failed.";
+    return false;
+  }
+  std::vector<ge::GraphWithOptions> graph_and_options;
+  graph_and_options.push_back(ge::GraphWithOptions{split_graphs.infer_graph, bund_bundle_options});
+  graph_and_options.push_back(ge::GraphWithOptions{*update_graph, update_options});
+  ret = ge::aclgrphBundleBuildModel(graph_and_options, *model);
+  if (ret != ge::SUCCESS) {
+    MS_LOG(ERROR) << "Call aclgrphBundleBuildModel fail: " << CALL_ASCEND_API(aclGetRecentErrMsg);
+    return false;
+  }
+  return true;
+}
+
+Buffer ModelConverter::LoadBufferFromSavedOm(const std::string &saved_om_path, const ge::ModelBufferData &model) const {
+  if (saved_om_path.empty()) {
+    MS_LOG(ERROR) << "Saved om file path is empty.";
+    return Buffer();
+  }
+  size_t om_size = 0;
+  auto om_data = lite::ReadFile(saved_om_path.c_str(), &om_size);
+  std::unique_ptr<char[]> om_guard(om_data);
+  if (om_data != nullptr && om_size > 0) {
+    Buffer om_buffer(om_data, om_size);
+    om_guard.reset();
+    if (remove(saved_om_path.c_str()) != 0) {
+      MS_LOG(WARNING) << "Remove temp om file " << saved_om_path << " failed.";
+    }
+    return om_buffer;
+  }
+  MS_LOG(ERROR) << "Read om file " << saved_om_path << " failed.";
+  (void)remove(saved_om_path.c_str());
+  return Buffer();
+}
+
 Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &graph,
                                      const std::map<std::string, std::string> &init_options,
                                      const std::map<std::string, std::string> &build_options) const {
@@ -155,40 +246,9 @@ Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &grap
     return Buffer();
   }
   auto option = options_.lock();
-  ge::WeightRefreshableGraphs split_graphs;
-  std::vector<ge::AscendString> ascend_variable_names;
-  if (variable_node_names_.size() > 0 && update_func_graph_ != nullptr) {
-    ascend_variable_names.resize(variable_node_names_.size());
-    std::transform(variable_node_names_.begin(), variable_node_names_.end(), ascend_variable_names.begin(),
-                   [](std::string s) { return ge::AscendString(s.c_str()); });
-    auto ret = ge::aclgrphConvertToWeightRefreshableGraphs(*graph, ascend_variable_names, split_graphs);
-    if (ret != 0) {
-      MS_LOG(ERROR) << "aclgraphConvertToWeightRefreshableGraphs failed! ret:" << ret;
-      ge::aclgrphBuildFinalize();
-      return Buffer();
-    }
-    std::map<ge::AscendString, ge::AscendString> bund_bundle_options;
-    std::map<ge::AscendString, ge::AscendString> update_options;
-    for (auto it : build_options) {
-      bund_bundle_options.insert(
-        std::make_pair(ge::AscendString(it.first.c_str()), ge::AscendString(it.second.c_str())));
-      // some config is not supported in update subgraph, do not add to the update_options.
-      if (update_options_blacklist.find(it.first) == update_options_blacklist.end()) {
-        update_options.insert(std::make_pair(ge::AscendString(it.first.c_str()), ge::AscendString(it.second.c_str())));
-      }
-    }
-    auto update_graph = ConvertFuncGraphToAIR(update_func_graph_);
-    if (update_graph == nullptr) {
-      MS_LOG(ERROR) << "Convert FuncGraph to AscendIR failed.";
-      return Buffer();
-    }
-
-    std::vector<ge::GraphWithOptions> graph_and_options;
-    graph_and_options.push_back(ge::GraphWithOptions{split_graphs.infer_graph, bund_bundle_options});
-    graph_and_options.push_back(ge::GraphWithOptions{*update_graph, update_options});
-    ret = ge::aclgrphBundleBuildModel(graph_and_options, model);
-    if (ret != ge::SUCCESS) {
-      MS_LOG(ERROR) << "Call aclgrphBuildModel fail: " << CALL_ASCEND_API(aclGetRecentErrMsg);
+  bool is_bundle = variable_node_names_.size() > 0 && update_func_graph_ != nullptr;
+  if (is_bundle) {
+    if (!CompileBundleModel(graph, build_options, &model)) {
       AclConvertInitAdapter::GetInstance().AclBuildFinalize();
       return Buffer();
     }
@@ -200,14 +260,27 @@ Buffer ModelConverter::BuildAirModel(const backend::ge_backend::DfGraphPtr &grap
       return Buffer();
     }
   }
+  Buffer result;
+  bool use_file_buffer = option != nullptr && option->GetTilingGeneration() && !option->GetOmFilePath().empty();
+  if (use_file_buffer) {
+    std::string saved_om_path;
+    auto save_ret = SaveModel(model, is_bundle, &saved_om_path);
+    if (save_ret != kSuccess) {
+      MS_LOG(ERROR) << "SaveModel failed, model build succeeded but save/reload step failed.";
+      AclConvertInitAdapter::GetInstance().AclBuildFinalize();
+      return Buffer();
+    }
+    result = LoadBufferFromSavedOm(saved_om_path, model);
+  } else {
+    result = Buffer(model.data.get(), model.length);
+  }
   if (option != nullptr && option->IsLastModel()) {
     AclConvertInitAdapter::GetInstance().AclBuildFinalize();
   }
-  return Buffer(model.data.get(), model.length);
+  return result;
 }
 
-Status ModelConverter::SaveModel(const ge::ModelBufferData &model) const {
-#ifdef BUILD_LITE
+Status ModelConverter::SaveModel(const ge::ModelBufferData &model, bool is_bundle, std::string *saved_om_path) const {
   std::string file_path;
   auto option = options_.lock();
   if (option != nullptr) {
@@ -217,13 +290,29 @@ Status ModelConverter::SaveModel(const ge::ModelBufferData &model) const {
     MS_LOG(INFO) << "File path is empty, there is no need to save model";
     return kSuccess;
   }
-  MS_LOG(INFO) << "Om file path: " << file_path;
-  auto ret = ge::aclgrphSaveModel(file_path, model);
-  if (ret != ge::SUCCESS) {
-    MS_LOG(ERROR) << "Call aclgrphSaveModel fail.";
-    return kMCFailed;
+  auto save_path = file_path + "_tmp_" + std::to_string(static_cast<uint64_t>(time(nullptr)));
+  MS_LOG(INFO) << "Om save path: " << save_path;
+  if (is_bundle) {
+    auto ret = ge::aclgrphBundleSaveModel(save_path.c_str(), model);
+    if (ret != ge::SUCCESS) {
+      MS_LOG(ERROR) << "Call aclgrphBundleSaveModel fail.";
+      return kLiteError;
+    }
+  } else {
+    auto ret = ge::aclgrphSaveModel(save_path, model);
+    if (ret != ge::SUCCESS) {
+      MS_LOG(ERROR) << "Call aclgrphSaveModel fail.";
+      return kLiteError;
+    }
   }
-#endif
+  auto om_path = FindSavedOmFile(save_path);
+  if (om_path.empty()) {
+    MS_LOG(ERROR) << "Saved om file not found for base path: " << save_path;
+    return kLiteError;
+  }
+  if (saved_om_path != nullptr) {
+    *saved_om_path = om_path;
+  }
   return kSuccess;
 }
 

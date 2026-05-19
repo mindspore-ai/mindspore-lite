@@ -415,6 +415,17 @@ bool ConfigFileParser::SetParamByConfigfile(const std::shared_ptr<mindspore::Con
   set_option(kDumpModelNameKey, &param->aclModelOptionCfgParam.dump_model_name);
   set_option("provider", &param->provider);
 
+  auto enable_tiling_generation_str = FindInAscendMap("enable_tiling_generation", ascend_map);
+  if (!enable_tiling_generation_str.empty()) {
+    bool enable_tiling_generation = true;
+    if (!ConvertBool(enable_tiling_generation_str, &enable_tiling_generation)) {
+      MS_LOG(ERROR) << "Parse enable_tiling_generation failed, val: " << enable_tiling_generation_str
+                    << ", accepted values: true/false";
+      return false;
+    }
+    param->aclModelOptionCfgParam.enable_tiling_generation = enable_tiling_generation;
+  }
+
   auto plugin_custom_ops_str = FindInAscendMap(kPluginCustomOps, ascend_map);
   std::vector<std::string> plugin_custom_ops_vec = {};
   if (!plugin_custom_ops_str.empty()) {
@@ -610,8 +621,7 @@ int ConfigFileParser::SetMapData(const std::map<std::string, std::string> &input
       continue;
     }
     if (parse_map.find(map.first) == parse_map.end()) {
-      MS_LOG(ERROR) << "INPUT ILLEGAL: `" << map.first << "` is not supported in "
-                    << "[" << section << "]";
+      MS_LOG(ERROR) << "INPUT ILLEGAL: `" << map.first << "` is not supported in " << "[" << section << "]";
       return RET_INPUT_PARAM_INVALID;
     } else {
       parse_map.at(map.first) = map.second;
@@ -721,7 +731,8 @@ int ConfigFileParser::ParseAclOptionCfgString(const std::map<std::string, std::m
       {"dynamic_image_size", acl_option_cfg_string_.dynamic_image_size},
       {"dynamic_dims", acl_option_cfg_string_.dynamic_dims},
       {"aoe_mode", acl_option_cfg_string_.aoe_mode},
-      {"custom_opp_path", acl_option_cfg_string_.custom_opp_path}};
+      {"custom_opp_path", acl_option_cfg_string_.custom_opp_path},
+      {"enable_tiling_generation", acl_option_cfg_string_.enable_tiling_generation}};
     auto ret = SetMapData(map, parse_map, kAclOptionParam);
     if (ret != RET_OK) {
       MS_LOG(ERROR) << "set map data failed.";

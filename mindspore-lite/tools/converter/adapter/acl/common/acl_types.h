@@ -44,6 +44,7 @@ struct AclModelOptionCfg {
   std::string dynamic_image_size;
   std::string dynamic_dims;
   std::string om_file_path;
+  bool enable_tiling_generation = true;
   std::string aoe_mode;
   std::string profiling_path;
   std::string dump_path;
