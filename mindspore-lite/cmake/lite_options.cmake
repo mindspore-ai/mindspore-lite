@@ -201,7 +201,7 @@ elseif(TOOLCHAIN_NAME STREQUAL "himix100")
     set(TARGET_HIMIX100 on)
 elseif(TOOLCHAIN_NAME STREQUAL "mix210")
     set(TARGET_MIX210 on)
-elseif(TOOLCHAIN_NAME STREQUAL "ohos-lite")
+elseif(TOOLCHAIN_NAME STREQUAL "ohos-lite" OR TOOLCHAIN_NAME STREQUAL "ohos")
     set(TARGET_OHOS_LITE on)
 endif()
 

@@ -62,6 +62,7 @@ else()
                 EXE flatc
                 URL ${REQ_URL}
                 SHA256 ${SHA256}
+                PATCHES ${CMAKE_CURRENT_LIST_DIR}/../patches/flatbuffers/flatbuffers-no-werror.patch
                 CMAKE_OPTION -DFLATBUFFERS_BUILD_TESTS=OFF -DCMAKE_INSTALL_LIBDIR=lib)
     else()
         if(TARGET_AOS_ARM)
@@ -71,6 +72,7 @@ else()
                     EXE flatc
                     URL ${REQ_URL}
                     SHA256 ${SHA256}
+                    PATCHES ${CMAKE_CURRENT_LIST_DIR}/../patches/flatbuffers/flatbuffers-no-werror.patch
                     CMAKE_OPTION -DCMAKE_C_COMPILER=/usr/bin/gcc -DCMAKE_CXX_COMPILER=/usr/bin/g++
                     -DFLATBUFFERS_BUILD_TESTS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release)
         else()
@@ -80,6 +82,7 @@ else()
                     EXE flatc
                     URL ${REQ_URL}
                     SHA256 ${SHA256}
+                    PATCHES ${CMAKE_CURRENT_LIST_DIR}/../patches/flatbuffers/flatbuffers-no-werror.patch
                     DIR ${FLATBUFFER_DIR}
                     CMAKE_OPTION -DCMAKE_C_COMPILER=${FLATC_GCC_COMPILER} -DCMAKE_CXX_COMPILER=${FLATC_GXX_COMPILER}
                     -DFLATBUFFERS_BUILD_TESTS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release)
