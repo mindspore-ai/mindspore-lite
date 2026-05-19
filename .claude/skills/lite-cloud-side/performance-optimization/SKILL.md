@@ -1,8 +1,7 @@
-***
-
-name: "performance-optimization"
-description: "基于Ascend硬件后端的自定义算子适配对接的性能优化流程。用户涉及自定义融合算子选型、ONNX改写、CANN对齐、转换失败排障或性能回归验证时调用。"
-----------------------------------------------------------------------------
+---
+name: performance-optimization
+description: 基于Ascend硬件后端的自定义算子适配对接的性能优化流程。用户涉及自定义融合算子选型、ONNX改写、CANN对齐、转换失败排障或性能回归验证时调用。
+---
 
 # Performance Optimization
 
@@ -15,6 +14,7 @@ description: "基于Ascend硬件后端的自定义算子适配对接的性能优
 - 用户要求做模型性能优化，尤其是融合算子优化
 - 通过修改 ONNX 模型，实现自定义算子适配
 - 优化模型结构，如合并算子、删除冗余算子等
+- 需要让 ONNX 中出现 Custom 节点并可被 MindSpore Lite Custom Parser 接入
 
 ## 通用原则（必须）
 
@@ -36,17 +36,37 @@ description: "基于Ascend硬件后端的自定义算子适配对接的性能优
 
 ## Custom 改写标准流程
 
-1. 读取 ONNX（大模型启用 external data）。
-2. 建立 `Constant/initializer` 索引，便于抽取属性标量。
-3. 遍历目标算子并映射到后端签名：
-   - 构建 `selected_inputs`
-   - 构建 `input_names`
-   - 构建 `input_index`
-   - 构建 `output_names/output_num`
-4. 从常量输入抽取后端要求属性（如 `epsilon/num_heads/scale_value/layout`）。
-5. 写回 `Custom` 节点，保留图连线一致性。
-6. 清理不兼容常量节点（尤其字符串常量导致的类型错误）。
-7. MindSpore Lite转换工具可以解析的自定义算子规格定义详细可见 [MindSpore Lite 自定义算子解析器](https://atomgit.com/mindspore/mindspore-lite/blob/master/mindspore-lite/tools/converter/parser/onnx/onnx_custom_parser.cc)。
+1. 确认 CANN 算子定义（规格对齐）
+
+- 目录：`/path-of-cann/ascend-toolkit/latest/opp/built-in/op_proto/inc/`
+- 目标：找到 `REG_OP(<OpName>)` 并确认：
+  - 输入：`.INPUT(...)` / `.DYNAMIC_INPUT(...)` / `.OPTIONAL_INPUT(...)`
+  - 输出：`.OUTPUT(...)`
+  - 属性：`.REQUIRED_ATTR(...)` / `.ATTR(...)`
+- dtype/shape/layout 限制（尤其 attention/rope 类算子）
+
+2. 在模型导出脚本实现 PyTorch → ONNX Custom 的最小替换
+
+- 统一用 `torch.autograd.Function`：
+- 在 symbolic 内用：
+  - `g.op("Custom", ...)`
+  - 必填属性（按 [MindSpore Lite 解析逻辑](https://atomgit.com/mindspore/mindspore-lite/blob/master/mindspore-lite/tools/converter/parser/onnx/onnx_custom_parser.cc)）：
+    - `type_s="<OpName>"`
+    - `input_names_s=[...]`
+    - `optional_input_names_s=[...]`（可为空，但会 warning）
+    - `output_names_s=[...]`
+    - `output_num_i=N`
+    - `input_index_i=[...]`（建议提供）
+  - 输出：
+    - 单输出：`y = g.op(...); return y`
+    - 多输出：`y0, y1 = g.op(..., outputs=2); return y0, y1`
+  - 类型：
+    - `y.setType(x.type())`，必要时对每个输出都 setType。
+  - 形状（可选但强烈建议）：
+    - `output_shapes_s="<rank,d0,d1,...>"`，动态维度用 `-1`。
+
+3. 基于适配后的导出脚本，重新导出onnx模型
+4. 导出的新onnx模型基于mindspore lite云侧转换工具验证模型转换是否成功
 
 ## 自定义算子属性规范
 
@@ -58,8 +78,6 @@ description: "基于Ascend硬件后端的自定义算子适配对接的性能优
 - 强烈建议：
   - `input_index`（有可选输入时必须）
   - `optional_input_names`（若解析器依赖）
-- 业务属性：
-  - 如 `epsilon`、`num_heads`、`num_key_value_heads`、`scale_value`、`input_layout` 等
 
 ## 控制流与动态图处理
 

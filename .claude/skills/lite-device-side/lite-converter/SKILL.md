@@ -38,15 +38,6 @@ Input Model (MindIR/TF/Caffe/ONNX/TFLite/PyTorch)
 ./converter_lite --fmk=MINDIR --modelFile=model.mindir --outputFile=model \
   --quantType=WeightQuant --bitNum=8
 
-# Cloud-side optimization
-
-# Ascend-specific
-./converter_lite --fmk=ONNX --modelFile=model.ONNX --outputFile=model --optimize=ascend_oriented
-
-# CPU
-./converter_lite --fmk=ONNX --modelFile=model.ONNX --outputFile=model
-```
-
 ### Key Parameters
 
 | Parameter | Description |
@@ -182,7 +173,6 @@ resize_width=224
 | Format | Target Runtime | Serialization |
 |------|------|----------|
 | `.ms` | LiteRT (device-side) | FlatBuffers, zero-copy deserialization |
-| `.mindir` | ExtendRT (cloud-side) | Protobuf, supports large models |
 
 Schema files: `mindspore-lite/schema/ops.fbs` (~1.3K lines), `model.fbs`, `ops_types.fbs`
 
