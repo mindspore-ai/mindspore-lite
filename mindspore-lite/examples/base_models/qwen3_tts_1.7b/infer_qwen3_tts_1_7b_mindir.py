@@ -18,16 +18,245 @@ np = _import_module("numpy")
 ort = _import_module("onnxruntime")
 
 
-demo = _import_module("demo")
-_torch_dtype = getattr(demo, "_torch_dtype")
-_sample_next_id = getattr(demo, "_sample_next_id")
-_build_talker_prompt_tensors = getattr(demo, "_build_talker_prompt_tensors")
-_create_suppress_mask = getattr(demo, "_create_suppress_mask")
-_resolve_max_new_tokens = getattr(demo, "_resolve_max_new_tokens")
-_GenArgs = getattr(demo, "_GenArgs")
-_OrtSessions = getattr(demo, "_OrtSessions")
-_make_trailing_step = getattr(demo, "_make_trailing_step")
-_build_step_feed = getattr(demo, "_build_step_feed")
+def _torch_dtype(name: str):
+    torch = _import_module("torch")
+    val = (name or "float32").strip().lower()
+    if val in ("float16", "fp16"):
+        return torch.float16
+    return torch.float32
+
+
+def _apply_repetition_penalty(logits: Any, prev_tokens: Any, penalty: float):
+    """Apply repetition penalty in-place style to logits for tokens seen in prev_tokens."""
+    torch = _import_module("torch")
+    if penalty is None or float(penalty) == 1.0 or prev_tokens.numel() == 0:
+        return logits
+    penalty = float(penalty)
+    unique = torch.unique(prev_tokens)
+    selected = logits.index_select(dim=-1, index=unique)
+    updated = torch.where(selected < 0, selected * penalty, selected / penalty)
+    out = logits.clone()
+    out.index_copy_(dim=-1, index=unique, source=updated)
+    return out
+
+
+def _sample_next_id(
+    logits: Any,
+    suppress_mask: Any,
+    prev_tokens: Any,
+    repetition_penalty: float = 1.05,
+) -> int:
+    """Sample the next token id from logits with a suppress mask and repetition penalty."""
+    torch = _import_module("torch")
+    logits = logits.to(torch.float32)
+    logits = logits.masked_fill(suppress_mask, float("-inf"))
+    logits = _apply_repetition_penalty(logits, prev_tokens=prev_tokens, penalty=repetition_penalty)
+    return int(torch.argmax(logits, dim=-1).item())
+
+
+def _get_speaker_embed(model: Any, input_id: Any, speaker: str | None):
+    torch = _import_module("torch")
+    qwen = model.model
+    talker = qwen.talker
+    cfg = qwen.config
+    if not speaker:
+        return None
+    spk_id = cfg.talker_config.spk_id[speaker.lower()]
+    return talker.get_input_embeddings()(torch.tensor(spk_id, device=talker.device, dtype=input_id.dtype))
+
+
+def _resolve_language_id(model: Any, language: str | None, speaker: str | None) -> int | None:
+    """Resolve codec language id with dialect override when speaker is dialect."""
+    cfg = model.model.config
+    if language is None or language.lower() == "auto":
+        language_id = None
+    else:
+        language_id = cfg.talker_config.codec_language_id[language.lower()]
+    if not speaker:
+        return language_id
+    if language is None or language.lower() not in ("chinese", "auto"):
+        return language_id
+    if cfg.talker_config.spk_is_dialect[speaker.lower()] is False:
+        return language_id
+    dialect = cfg.talker_config.spk_is_dialect[speaker.lower()]
+    return cfg.talker_config.codec_language_id[dialect]
+
+
+def _get_tts_special_embeds(model: Any, dtype: Any):
+    """Return (tts_bos_embed, tts_eos_embed, tts_pad_embed) projected to talker hidden size."""
+    torch = _import_module("torch")
+    qwen = model.model
+    talker = qwen.talker
+    cfg = qwen.config
+    token_ids = torch.tensor(
+        [[cfg.tts_bos_token_id, cfg.tts_eos_token_id, cfg.tts_pad_token_id]],
+        device=talker.device,
+        dtype=dtype,
+    )
+    return talker.text_projection(talker.get_text_embeddings()(token_ids)).chunk(3, dim=1)
+
+
+def _get_codec_prefill_list(cfg, language_id: int | None) -> list[list[int]]:
+    if language_id is None:
+        return [
+            [
+                cfg.talker_config.codec_nothink_id,
+                cfg.talker_config.codec_think_bos_id,
+                cfg.talker_config.codec_think_eos_id,
+            ]
+        ]
+    return [
+        [
+            cfg.talker_config.codec_think_id,
+            cfg.talker_config.codec_think_bos_id,
+            language_id,
+            cfg.talker_config.codec_think_eos_id,
+        ]
+    ]
+
+
+def _get_codec_input_embedding(
+    model: Any,
+    input_dtype: Any,
+    codec_prefill_list: list[list[int]],
+    speaker_embed: Any,
+):
+    """Build initial codec input embedding with optional speaker embedding inserted."""
+    torch = _import_module("torch")
+    qwen = model.model
+    talker = qwen.talker
+    cfg = qwen.config
+    embed_0 = talker.get_input_embeddings()(torch.tensor(codec_prefill_list, device=talker.device, dtype=input_dtype))
+    embed_1 = talker.get_input_embeddings()(
+        torch.tensor(
+            [[cfg.talker_config.codec_pad_id, cfg.talker_config.codec_bos_id]],
+            device=talker.device,
+            dtype=input_dtype,
+        )
+    )
+    if speaker_embed is None:
+        return torch.cat([embed_0, embed_1], dim=1)
+    return torch.cat([embed_0, speaker_embed.view(1, 1, -1), embed_1], dim=1)
+
+
+def _build_talker_input_embed(
+    model: Any,
+    input_id: Any,
+    codec_input_embedding: Any,
+    tts_bos_embed: Any,
+    tts_pad_embed: Any,
+):
+    """Build talker prompt input embeddings by combining role/text and codec embeddings."""
+    torch = _import_module("torch")
+    qwen = model.model
+    talker = qwen.talker
+    role_embed = talker.text_projection(talker.get_text_embeddings()(input_id[:, :3]))
+    prompt_embed = torch.cat(
+        (tts_pad_embed.expand(-1, codec_input_embedding.shape[1] - 2, -1), tts_bos_embed),
+        dim=1,
+    ) + codec_input_embedding[:, :-1]
+    prompt_embed = torch.cat((role_embed, prompt_embed), dim=1)
+    last_embed = talker.text_projection(talker.get_text_embeddings()(input_id[:, 3:4])) + codec_input_embedding[:, -1:]
+    return torch.cat([prompt_embed, last_embed], dim=1)
+
+
+def _build_trailing_text_hidden(model: Any, input_id: Any, tts_eos_embed: Any):
+    torch = _import_module("torch")
+    qwen = model.model
+    talker = qwen.talker
+    trailing = talker.text_projection(talker.get_text_embeddings()(input_id[:, 4:-5]))
+    return torch.cat((trailing, tts_eos_embed), dim=1)
+
+
+def _tokenize_assistant_input_id(model: Any, text: str, device: Any):
+    tokenize_texts = getattr(model, "_tokenize_texts")
+    build_assistant_text = getattr(model, "_build_assistant_text")
+    return tokenize_texts([build_assistant_text(text)])[0].to(device)
+
+
+def _build_talker_prompt_tensors(model: Any, text: str, language: str, speaker: str):
+    """Build (prompt_embeds, attention_mask, trailing_text_hidden, tts_pad_embed) for MindIR prefill."""
+    torch = _import_module("torch")
+    input_id = _tokenize_assistant_input_id(model, text=text, device=model.model.talker.device)
+    speaker_embed = _get_speaker_embed(model, input_id=input_id, speaker=speaker)
+    language_id = _resolve_language_id(model, language=language, speaker=speaker)
+    tts_bos_embed, tts_eos_embed, tts_pad_embed = _get_tts_special_embeds(model, dtype=input_id.dtype)
+    codec_input_embedding = _get_codec_input_embedding(
+        model,
+        input_dtype=input_id.dtype,
+        codec_prefill_list=_get_codec_prefill_list(model.model.config, language_id=language_id),
+        speaker_embed=speaker_embed,
+    )
+    talker_input_embed = _build_talker_input_embed(
+        model,
+        input_id=input_id,
+        codec_input_embedding=codec_input_embedding,
+        tts_bos_embed=tts_bos_embed,
+        tts_pad_embed=tts_pad_embed,
+    )
+    trailing_text_hidden = _build_trailing_text_hidden(model, input_id=input_id, tts_eos_embed=tts_eos_embed)
+    attn_mask = torch.ones((1, talker_input_embed.shape[1]), device=input_id.device, dtype=torch.int64)
+    return talker_input_embed, attn_mask, trailing_text_hidden, tts_pad_embed
+
+
+def _create_suppress_mask(cfg) -> tuple[Any, int]:
+    torch = _import_module("torch")
+    eos_id = int(cfg.talker_config.codec_eos_token_id)
+    vocab_size = int(cfg.talker_config.vocab_size)
+    suppress_mask = torch.zeros((vocab_size,), dtype=torch.bool)
+    suppress_from = max(vocab_size - 1024, 0)
+    suppress_mask[suppress_from:vocab_size] = True
+    suppress_mask[eos_id] = False
+    return suppress_mask, eos_id
+
+
+def _resolve_max_new_tokens(trailing_text_hidden: Any, max_new_tokens: int | None) -> int:
+    if max_new_tokens is not None:
+        return int(max_new_tokens)
+    trailing_len = int(trailing_text_hidden.shape[1])
+    return int(max(32, min(256, trailing_len + 32)))
+
+
+def _make_trailing_step(trailing_text_hidden: Any, step_idx: int, tts_pad_embed: Any):
+    torch = _import_module("torch")
+    if step_idx < int(trailing_text_hidden.shape[1]):
+        return trailing_text_hidden[:, step_idx].unsqueeze(1).to(torch.float32)
+    return tts_pad_embed.to(torch.float32)
+
+
+def _build_step_feed(step_embed: Any, past_k: Any, past_v: Any, cache_pos: int) -> dict[str, Any]:
+    pos = np.array([[[int(cache_pos)]], [[int(cache_pos)]], [[int(cache_pos)]]], dtype=np.int64)
+    cache_len = np.array([int(cache_pos)], dtype=np.int64)
+    step_embed_np = (
+        step_embed.detach().cpu().numpy().astype(np.float32)
+        if hasattr(step_embed, "detach")
+        else np.asarray(step_embed, dtype=np.float32)
+    )
+    return {
+        "step_embed": step_embed_np,
+        "past_k": past_k,
+        "past_v": past_v,
+        "position_ids_step": pos,
+        "cache_len": cache_len,
+    }
+
+
+@dataclass(frozen=True)
+class _GenArgs:
+    text: str
+    language: str
+    speaker: str
+    max_new_tokens: int | None
+    repetition_penalty: float
+
+
+@dataclass(frozen=True)
+class _OrtSessions:
+    prefill: Any
+    step: Any
+    gen: Any
+    speech: Any
+    gen_input_names: set[str]
 
 
 def _cosine_similarity(a: Any, b: Any) -> float:
@@ -68,18 +297,66 @@ def _diff_stats(a: Any, b: Any) -> dict:
     }
 
 
+def _get_out_by_name(
+    out_map: dict[str, Any],
+    *,
+    names: tuple[str, ...],
+    contains: tuple[str, ...] = (),
+    index_fallback: int | None = None,
+) -> Any:
+    """Pick a tensor/ndarray from an output map using name/substring heuristics."""
+    for n in names:
+        if n in out_map:
+            return out_map[n]
+    if contains:
+        for k, v in out_map.items():
+            kl = str(k).lower()
+            if any(s in kl for s in contains):
+                return v
+    if index_fallback is not None:
+        vals = list(out_map.values())
+        if 0 <= int(index_fallback) < len(vals):
+            return vals[int(index_fallback)]
+    raise KeyError(f"Output not found. names={names}, contains={contains}, keys={list(out_map.keys())}")
+
+
+def _to_numpy_any(x: Any) -> Any:
+    if isinstance(x, np.ndarray):
+        return x
+    if hasattr(x, "get_data_to_numpy"):
+        return np.asarray(x.get_data_to_numpy())
+    return np.asarray(x)
+
+
 class _LiteSession:
     """A minimal MindSpore Lite session wrapper for MindIR inference."""
 
-    def __init__(self, mindir_path: str, device_id: int = 0, target: str = "ascend"):
+    def __init__(
+        self,
+        mindir_path: str,
+        device_id: int = 0,
+        target: str = "ascend",
+        *,
+        alloc_output_seq_len: int | None = None,
+        alloc_kv_cache_seq_len: int | None = None,
+        graph_kind: str | None = None,
+    ):
         mslite = _import_module("mindspore_lite")
         os.environ.setdefault("DEVICE_ID", str(int(device_id)))
         os.environ.setdefault("ASCEND_DEVICE_ID", str(int(device_id)))
         ctx = mslite.Context()
         ctx.target = [str(target)]
+        self._mslite = mslite
+        self._tensor_type = getattr(mslite, "Tensor")
+        self._device_id = int(device_id)
+        self._target = str(target)
+        self._alloc_output_seq_len = None if alloc_output_seq_len is None else int(alloc_output_seq_len)
+        self._alloc_kv_cache_seq_len = None if alloc_kv_cache_seq_len is None else int(alloc_kv_cache_seq_len)
+        self._graph_kind = "" if graph_kind is None else str(graph_kind).strip().lower()
         self.model = mslite.Model()
         self.model.build_from_file(mindir_path, mslite.ModelType.MINDIR, context=ctx)
         self._refresh_io()
+        self._output_buffers = self._alloc_outputs_for_predict()
 
     def _refresh_io(self):
         self.inputs = list(self.model.get_inputs())
@@ -94,12 +371,17 @@ class _LiteSession:
             return arr.astype(np.int32, copy=False)
         return arr
 
-    def _prepare_active_inputs(self, feed: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
-        active: dict[str, np.ndarray] = {}
+    def _prepare_active_inputs(self, feed: dict[str, Any]) -> dict[str, Any]:
+        """Filter feed to only model inputs, and cast numpy int64 to int32 when needed."""
+        active: dict[str, Any] = {}
         for tensor in self.inputs:
             if tensor.name not in feed:
                 continue
-            active[tensor.name] = self._cast_input_array(feed[tensor.name])
+            val = feed[tensor.name]
+            if isinstance(val, np.ndarray):
+                active[tensor.name] = self._cast_input_array(val)
+            else:
+                active[tensor.name] = val
         return active
 
     @staticmethod
@@ -118,49 +400,148 @@ class _LiteSession:
         except (TypeError, ValueError, AttributeError):
             return None
 
-    def _needs_resize(self, active: dict[str, np.ndarray]) -> tuple[bool, list[list[int]]]:
+    def _needs_resize(self, active: dict[str, Any]) -> tuple[bool, list[list[int]]]:
         """Check whether MindSpore Lite model inputs need resizing."""
         shapes: list[list[int]] = []
         need_resize = False
         for tensor in self.inputs:
             if tensor.name not in active:
                 continue
-            arr = active[tensor.name]
-            exp_shape = tuple(int(x) for x in arr.shape)
+            val = active[tensor.name]
+            if isinstance(val, self._tensor_type):
+                exp_shape = self._tensor_shape(val)
+                if not exp_shape:
+                    need_resize = True
+                    exp_shape = self._tensor_shape(tensor) or ()
+            else:
+                exp_shape = tuple(int(x) for x in val.shape)
             shapes.append(list(exp_shape))
             cur_shape = self._tensor_shape(tensor)
             if not cur_shape or cur_shape != exp_shape:
                 need_resize = True
             cur_size = self._tensor_data_size(tensor)
-            if cur_size is None or cur_size != int(arr.nbytes):
+            exp_size = self._tensor_data_size(val) if isinstance(val, self._tensor_type) else int(val.nbytes)
+            if cur_size is None or cur_size != int(exp_size):
                 need_resize = True
         return need_resize, shapes
 
-    def _resize_if_needed(self, active: dict[str, np.ndarray]) -> None:
+    def _resize_if_needed(self, active: dict[str, Any]) -> None:
         need_resize, shapes = self._needs_resize(active)
         if need_resize and shapes:
             self.model.resize(self.inputs, shapes)
             self._refresh_io()
 
-    def _set_inputs(self, active: dict[str, np.ndarray]) -> None:
+    def _set_inputs(self, active: dict[str, Any]) -> list[Any]:
+        """Set input tensor data and return the inputs list for model.predict()."""
+        inputs_for_predict: list[Any] = []
         for tensor in self.inputs:
             if tensor.name in active:
-                tensor.set_data_from_numpy(active[tensor.name])
+                val = active[tensor.name]
+                if isinstance(val, self._tensor_type):
+                    inputs_for_predict.append(val)
+                    continue
+                tensor.set_data_from_numpy(val)
+                inputs_for_predict.append(tensor)
+            else:
+                inputs_for_predict.append(tensor)
+        return inputs_for_predict
 
-    def _collect_outputs(self, outs) -> dict[str, np.ndarray]:
-        out_map: dict[str, np.ndarray] = {}
+    def _collect_outputs(self, outs, *, return_tensors: bool) -> dict[str, Any]:
+        out_map: dict[str, Any] = {}
         for idx, tensor in enumerate(outs):
             name = self.output_names[idx] if idx < len(self.output_names) else f"output_{idx}"
-            out_map[name] = tensor.get_data_to_numpy()
+            out_map[name] = tensor if return_tensors else tensor.get_data_to_numpy()
         return out_map
 
-    def run(self, feed: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
-        """Run a single inference and return a name->numpy output mapping."""
+    def _prealloc_enabled(self) -> bool:
+        return (
+            str(self._target).lower() == "ascend"
+            and self._alloc_output_seq_len is not None
+            and self._mslite is not None
+        )
+
+    def _prealloc_dtype(self) -> tuple[Any, Any]:
+        dt = getattr(self._mslite, "DataType", None)
+        float32 = getattr(dt, "FLOAT32", None) if dt is not None else None
+        int32 = getattr(dt, "INT32", None) if dt is not None else None
+        return float32, int32
+
+    @staticmethod
+    def _make_shape_positive(shape: list[int]) -> list[int]:
+        out = [int(x) for x in shape]
+        for i, d in enumerate(out):
+            if int(d) <= 0:
+                out[i] = 1
+        return out
+
+    def _expected_output_specs(
+        self,
+        *,
+        kv_len: int,
+        float32: Any,
+        int32: Any,
+    ) -> dict[str, list[tuple[list[int], Any]]]:
+        """Return expected output shapes/dtypes for known prefill/step graphs."""
+        layers = 28
+        num_kv_heads = 8
+        head_dim = 128
+        hidden_size = 2048
+        vocab_size = 3072
+        prefill_expected: list[tuple[list[int], Any]] = [
+            ([1, vocab_size], float32),
+            ([1, 1, hidden_size], float32),
+            ([layers, 1, num_kv_heads, kv_len, head_dim], float32),
+            ([layers, 1, num_kv_heads, kv_len, head_dim], float32),
+            ([1], int32),
+        ]
+        step_expected: list[tuple[list[int], Any]] = [
+            ([1, vocab_size], float32),
+            ([1, 1, hidden_size], float32),
+            ([layers, 1, num_kv_heads, kv_len, head_dim], float32),
+            ([layers, 1, num_kv_heads, kv_len, head_dim], float32),
+        ]
+        return {"prefill": prefill_expected, "step": step_expected}
+
+    def _fallback_output_spec(self, *, idx: int, ref: Any, float32: Any, int32: Any) -> tuple[list[int], Any]:
+        name = self.output_names[idx] if idx < len(self.output_names) else f"output_{idx}"
+        name_l = str(name).lower()
+        ref_shape = list(getattr(ref, "shape", None) or [])
+        shape = self._make_shape_positive(ref_shape if ref_shape else [1, 1, 1])
+        out_dtype = getattr(ref, "dtype", None) or float32
+        if out_dtype is None and int32 is not None and any(x in name_l for x in ("id", "mask", "pos", "len")):
+            out_dtype = int32
+        return shape, out_dtype
+
+    def _alloc_outputs_for_predict(self) -> list[Any] | None:
+        """Pre-allocate output tensors on Ascend for model.predict(out_tensors=...)."""
+        if not self._prealloc_enabled():
+            return None
+        dev = f"ascend:{int(self._device_id)}"
+        seq_len = int(self._alloc_output_seq_len)
+        kv_len = int(self._alloc_kv_cache_seq_len) if self._alloc_kv_cache_seq_len is not None else int(seq_len)
+        float32, int32 = self._prealloc_dtype()
+        expected = self._expected_output_specs(kv_len=kv_len, float32=float32, int32=int32)
+        kind = str(self._graph_kind).strip().lower()
+
+        outs: list[Any] = []
+        for idx, ref in enumerate(self.outputs):
+            if kind in expected and idx < len(expected[kind]):
+                shape, out_dtype = expected[kind][idx]
+            else:
+                shape, out_dtype = self._fallback_output_spec(idx=idx, ref=ref, float32=float32, int32=int32)
+            outs.append(self._mslite.Tensor(shape=list(shape), dtype=out_dtype, device=dev))
+        return outs
+
+    def run(self, feed: dict[str, Any], *, return_tensors: bool = False) -> dict[str, Any]:
+        """Run a single inference and return a name->output mapping."""
         active = self._prepare_active_inputs(feed)
         self._resize_if_needed(active)
-        self._set_inputs(active)
-        outs = self.model.predict(self.inputs)
-        return self._collect_outputs(outs)
+        inputs_for_predict = self._set_inputs(active)
+        out_tensors = self._output_buffers
+        outs = self.model.predict(inputs_for_predict, out_tensors)
+        if out_tensors is not None:
+            outs = out_tensors if outs is None else outs
+        return self._collect_outputs(outs, return_tensors=bool(return_tensors))
 
     def get_io_names(self) -> tuple[list[str], list[str]]:
         """Return (input_names, output_names) for the underlying model."""
@@ -185,6 +566,10 @@ def _bucket_seq_len(seq_len: int, *, bucket: int = 10, min_len: int = 10, max_le
     return int(padded)
 
 
+_PREFILL_MAX_GEAR_SEQ_LEN = 260
+_KV_CACHE_TOTAL_SEQ_LEN = 512
+
+
 def _pad_seq_len(arr: np.ndarray, padded_len: int) -> np.ndarray:
     """Pad (or slice) an array along axis=1 to match padded_len."""
     if arr.ndim < 2:
@@ -200,9 +585,11 @@ def _pad_seq_len(arr: np.ndarray, padded_len: int) -> np.ndarray:
 
 
 def _slice_seq_len(arr: Any, seq_len: int, padded_len: int) -> Any:
+    """Slice numpy outputs back to seq_len for bucketed MindIR runs."""
+    del padded_len
     if not isinstance(arr, np.ndarray):
         return arr
-    if arr.ndim >= 2 and int(arr.shape[1]) == int(padded_len) and int(seq_len) != int(padded_len):
+    if arr.ndim >= 3 and int(arr.shape[1]) >= int(seq_len):
         return arr[:, : int(seq_len), ...]
     return arr
 
@@ -211,7 +598,7 @@ def _prefill_mindir(
     sess_prefill: _LiteSession,
     prompt_embeds: Any,
     attn_mask: Any,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
+) -> tuple[np.ndarray, np.ndarray, Any, Any, int]:
     """Run talker prefill MindIR with bucket padding and slice outputs back."""
     torch = _import_module("torch")
     prompt_embeds_np = prompt_embeds.to(torch.float32).detach().cpu().numpy()
@@ -224,13 +611,35 @@ def _prefill_mindir(
         {
             "inputs_embeds": prompt_embeds_np,
             "attention_mask": attn_mask_np,
-        }
+        },
+        return_tensors=True,
     )
-    prefill_vals = list(out_prefill.values())
-    logits_last, hidden_last, past_k, past_v, prompt_len = prefill_vals[:5]
-    logits_last = _slice_seq_len(np.asarray(logits_last), seq_len, padded_len)
-    hidden_last = _slice_seq_len(np.asarray(hidden_last), seq_len, padded_len)
-    prompt_len = np.asarray(prompt_len)
+    logits_last_t = _get_out_by_name(
+        out_prefill,
+        names=("logits_last", "logits"),
+        contains=("logits",),
+        index_fallback=0,
+    )
+    hidden_last_t = _get_out_by_name(
+        out_prefill,
+        names=("hidden_last", "hidden"),
+        contains=("hidden",),
+        index_fallback=1,
+    )
+    past_k = _get_out_by_name(
+        out_prefill,
+        names=("past_k", "present_k", "k_cache"),
+        contains=("past_k", "present_k", "k_cache"),
+        index_fallback=2,
+    )
+    past_v = _get_out_by_name(
+        out_prefill,
+        names=("past_v", "present_v", "v_cache"),
+        contains=("past_v", "present_v", "v_cache"),
+        index_fallback=3,
+    )
+    logits_last = _slice_seq_len(_to_numpy_any(logits_last_t), seq_len, padded_len)
+    hidden_last = _slice_seq_len(_to_numpy_any(hidden_last_t), seq_len, padded_len)
     cache_base_pos = int(np.maximum(np.int64(seq_len), 1))
     return logits_last, hidden_last, past_k, past_v, cache_base_pos
 
@@ -289,16 +698,39 @@ def _run_code_predictor_mindir(
 def _run_step_mindir(
     sess_step: _LiteSession,
     step_embed: Any,
-    past_k: np.ndarray,
-    past_v: np.ndarray,
+    past_k: Any,
+    past_v: Any,
     cache_pos: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, Any, Any]:
     """Run talker_step MindIR once and return updated KV cache."""
-    out_step = sess_step.run(
-        _build_step_feed(step_embed=step_embed, past_k=past_k, past_v=past_v, cache_pos=cache_pos)
+    feed = _build_step_feed(step_embed=step_embed, past_k=past_k, past_v=past_v, cache_pos=cache_pos)
+    out_step = sess_step.run(feed, return_tensors=True)
+    logits_last_t = _get_out_by_name(
+        out_step,
+        names=("logits_last", "logits"),
+        contains=("logits",),
+        index_fallback=0,
     )
-    step_vals = list(out_step.values())
-    logits_last, hidden_last, past_k_out, past_v_out = step_vals[:4]
+    hidden_last_t = _get_out_by_name(
+        out_step,
+        names=("hidden_last", "hidden"),
+        contains=("hidden",),
+        index_fallback=1,
+    )
+    past_k_out = _get_out_by_name(
+        out_step,
+        names=("past_k", "present_k", "k_cache"),
+        contains=("past_k", "present_k", "k_cache"),
+        index_fallback=2,
+    )
+    past_v_out = _get_out_by_name(
+        out_step,
+        names=("past_v", "present_v", "v_cache"),
+        contains=("past_v", "present_v", "v_cache"),
+        index_fallback=3,
+    )
+    logits_last = _to_numpy_any(logits_last_t)
+    hidden_last = _to_numpy_any(hidden_last_t)
     return logits_last, hidden_last, past_k_out, past_v_out
 
 
@@ -341,8 +773,20 @@ def _create_mindir_sessions(mindir_dir: str, device_id: int) -> Any:
     step_path = os.path.join(mindir_dir, mindir_files["step"])
     gen_path = os.path.join(mindir_dir, mindir_files["gen"])
     speech_path = os.path.join(mindir_dir, mindir_files["speech"])
-    sess_prefill = _LiteSession(prefill_path, device_id=device_id)
-    sess_step = _LiteSession(step_path, device_id=device_id)
+    sess_prefill = _LiteSession(
+        prefill_path,
+        device_id=device_id,
+        alloc_output_seq_len=int(_PREFILL_MAX_GEAR_SEQ_LEN),
+        alloc_kv_cache_seq_len=int(_KV_CACHE_TOTAL_SEQ_LEN),
+        graph_kind="prefill",
+    )
+    sess_step = _LiteSession(
+        step_path,
+        device_id=device_id,
+        alloc_output_seq_len=int(_KV_CACHE_TOTAL_SEQ_LEN),
+        alloc_kv_cache_seq_len=int(_KV_CACHE_TOTAL_SEQ_LEN),
+        graph_kind="step",
+    )
     sess_gen = _LiteSession(gen_path, device_id=device_id)
     sess_speech = _LiteSession(speech_path, device_id=device_id)
     gen_input_names = set(sess_gen.input_by_name.keys())
@@ -371,7 +815,19 @@ def _sample_first_token_id(
     torch = _import_module("torch")
     suppress_mask, eos_id = _create_suppress_mask(cfg)
     prev_tokens = torch.empty((0,), dtype=torch.long)
-    logits_t = torch.from_numpy(np.asarray(logits_last)[0])
+    logits_np = np.asarray(logits_last)
+    vocab_size = int(cfg.talker_config.vocab_size)
+    if logits_np.ndim == 3 and logits_np.shape[-1] == vocab_size:
+        logits_vec = logits_np[0, -1, :]
+    elif logits_np.ndim == 2 and logits_np.shape[-1] == vocab_size:
+        logits_vec = logits_np[-1, :]
+    elif logits_np.ndim == 2 and logits_np.shape[0] == vocab_size:
+        logits_vec = logits_np[:, -1]
+    elif logits_np.ndim == 1 and logits_np.shape[0] == vocab_size:
+        logits_vec = logits_np
+    else:
+        logits_vec = logits_np.reshape(-1)
+    logits_t = torch.from_numpy(np.asarray(logits_vec)).to(torch.float32)
     next_id = _sample_next_id(
         logits=logits_t,
         suppress_mask=suppress_mask,
@@ -494,11 +950,16 @@ def _infer_codes_bkt_mindir(model: Any, sessions: Any, args: _InferArgs) -> Any:
 
 
 def _run_talker_mindir_kv(model: Any, args: _InferArgs) -> tuple[np.ndarray, int]:
+    """Run MindIR end-to-end (talker KV + generate_process + speech) and return (wav, sr)."""
     sessions = _create_mindir_sessions(args.mindir_dir, device_id=args.device_id)
+    import time
+    tic = time.perf_counter()
     codes_bkt = _infer_codes_bkt_mindir(model, sessions=sessions, args=args)
     up = int(model.model.speech_tokenizer.get_decode_upsample_rate())
     wav = _decode_speech_chunked(sessions.speech, codes_bkt, upsample_rate=up, chunk=60)
     sr = int(model.model.speech_tokenizer.get_output_sample_rate())
+    toc = time.perf_counter()
+    print(f"MindIR inference time: {toc - tic:.4f} s")
     return wav, sr
 
 
@@ -646,10 +1107,16 @@ def _build_mindir_sessions(mindir_dir: str, device_id: int):
     sess_prefill = _LiteSession(
         os.path.join(mindir_dir, "talker_prefill_graph.mindir"),
         device_id=device_id,
+        alloc_output_seq_len=int(_PREFILL_MAX_GEAR_SEQ_LEN),
+        alloc_kv_cache_seq_len=int(_KV_CACHE_TOTAL_SEQ_LEN),
+        graph_kind="prefill",
     )
     sess_step = _LiteSession(
         os.path.join(mindir_dir, "talker_step_graph.mindir"),
         device_id=device_id,
+        alloc_output_seq_len=int(_KV_CACHE_TOTAL_SEQ_LEN),
+        alloc_kv_cache_seq_len=int(_KV_CACHE_TOTAL_SEQ_LEN),
+        graph_kind="step",
     )
     sess_gen = _LiteSession(
         os.path.join(mindir_dir, "generate_process.mindir"),
