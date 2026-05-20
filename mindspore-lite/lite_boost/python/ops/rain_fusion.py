@@ -16,11 +16,13 @@
 """
 lite_boost custom ops
 - rain_fusion_attention
+- sparse_attention
 """
 
 import os
 from pathlib import Path
 import torch
+from .sparse_attention import sparse_attention  # pylint: disable=unused-import
 
 _LOADED = False
 
@@ -33,7 +35,7 @@ def _resolve_default_so_path() -> str:
         if p.exists():
             return str(p.resolve())
 
-    pkg_dir = Path(__file__).resolve().parent
+    pkg_dir = Path(__file__).resolve().parent.parent
     candidates = [
         pkg_dir / "lib" / "liblite_boost_ops.so",
         pkg_dir / "lib" / "lite_boost_ops.so",
@@ -41,6 +43,14 @@ def _resolve_default_so_path() -> str:
     for p in candidates:
         if p.exists():
             return str(p)
+
+    # Fallback: search installed package location via sys.path
+    import sys as _sys  # pylint: disable=import-outside-toplevel
+    for entry in _sys.path:
+        for soname in ("liblite_boost_ops.so", "lite_boost_ops.so"):
+            p = Path(entry) / "lite_boost" / "lib" / soname
+            if p.exists():
+                return str(p)
 
     raise FileNotFoundError(
         "lite_boost_ops shared library not found. "
@@ -56,15 +66,6 @@ def _load_library(path=None):
     lib_path = path if path is not None else _resolve_default_so_path()
     torch.ops.load_library(lib_path)
     _LOADED = True
-
-
-def ops():
-    """Get ops."""
-    _load_library()
-    return torch.ops.lite_boost
-
-
-_load_library()
 
 
 def rain_fusion_attention(
@@ -108,4 +109,7 @@ def rain_fusion_attention(
     )
 
 
-__all__ = ["rain_fusion_attention"]
+_load_library()
+
+
+__all__ = ["rain_fusion_attention", "sparse_attention"]

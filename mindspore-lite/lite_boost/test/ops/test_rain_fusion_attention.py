@@ -119,7 +119,43 @@ class TestRainFusionAttention:
         print("rain_fusion_attention shape:", ra.shape)
         print("fusion_attention shape:", fascore.shape)
 
+    def test_sparse_attention_rf_v2(self):
+        """
+        Test sparse_attention rf_v2 path vs dense fusion attention.
+        """
+        from lite_boost.ops.sparse_attention import sparse_attention
+
+        latent_shape_q = (1, 64, 64)   # t=1, h=64, w=64 => 4096 tokens
+        latent_shape_k = (1, 64, 64)
+
+        out_sparse = sparse_attention(
+            self.q, self.k, self.v,
+            scale=self.scale,
+            head_num=self.head,
+            input_layout="BSND",
+            inner_precise=0,
+            sparse_type="rf_v2",
+            txt_len=0,
+            block_size=128,
+            latent_shape_q=latent_shape_q,
+            latent_shape_k=latent_shape_k,
+            sparsity=0.0,
+        )
+        out_dense = torch_npu.npu_fusion_attention(
+            self.q, self.k, self.v,
+            input_layout="BSND",
+            scale=self.scale,
+            pre_tockens=2147483647,
+            next_tockens=2147483647,
+            head_num=self.head,
+        )[0]
+        print("sparse_attention (rf_v2) shape:", out_sparse.shape)
+        print("fusion_attention (dense) shape:", out_dense.shape)
+        max_diff = (out_sparse - out_dense).abs().max().item()
+        print("max diff:", max_diff)
+
 
 if __name__ == "__main__":
     test = TestRainFusionAttention()
     test.test_rainfusionattention_vs_fusionattention()
+    test.test_sparse_attention_rf_v2()
