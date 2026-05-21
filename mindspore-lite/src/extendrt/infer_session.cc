@@ -19,14 +19,14 @@
 #include "extendrt/delegate/plugin/litert_executor_plugin.h"
 #include "extendrt/delegate/plugin/ascend_ge_executor_plugin.h"
 #include "extendrt/delegate/plugin/ascend_acl_executor_plugin.h"
-#include "src/common/common.h"
 #include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace {
 void AscendPluginRegistration(const std::shared_ptr<AscendDeviceInfo> &ascend_device, bool use_experimental_rts) {
+  constexpr auto default_npu_provider = "ge";
   auto provider = ascend_device->GetProvider();
-  if (lite::IsGe(provider)) {
+  if (provider == default_npu_provider) {
     if (!lite::AscendGeExecutorPlugin::GetInstance().Register()) {
       MS_LOG(WARNING) << "Failed to register AscendGe plugin";
       return;
