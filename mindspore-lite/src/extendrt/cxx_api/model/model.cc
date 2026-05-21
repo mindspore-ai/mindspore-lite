@@ -24,10 +24,6 @@
 #include "src/common/config_file.h"
 #include "src/common/common.h"
 #include "src/common/utils.h"
-#ifdef ENABLE_OPENSSL
-#include "src/common/decrypt.h"
-#include "src/common/file_utils.h"
-#endif
 
 namespace mindspore {
 namespace {
@@ -59,25 +55,6 @@ Model::Model() {
 }
 
 Model::~Model() {}
-
-#ifdef ENABLE_OPENSSL
-Status DecryptModel(const std::string &cropto_lib_path, const void *model_buf, size_t model_size, const Key &dec_key,
-                    const std::string &dec_mode, std::unique_ptr<Byte[]> *decrypt_buffer, size_t *decrypt_len) {
-  if (model_buf == nullptr) {
-    MS_LOG(ERROR) << "model_buf is nullptr.";
-    return Status(kLiteNullptr, "model_buf is nullptr.");
-  }
-  MS_CHECK_TRUE_RET(decrypt_len != nullptr, Status(kLiteNullptr, "decrypt_len is nullptr."));
-  *decrypt_len = 0;
-  *decrypt_buffer = lite::Decrypt(cropto_lib_path, decrypt_len, reinterpret_cast<const Byte *>(model_buf), model_size,
-                                  dec_key.key, dec_key.len, dec_mode);
-  if (*decrypt_buffer == nullptr || *decrypt_len == 0) {
-    MS_LOG(ERROR) << "Decrypt buffer failed";
-    return Status(kLiteNullptr, "Decrypt buffer is nullptr.");
-  }
-  return kSuccess;
-}
-#endif
 
 Status Model::Build(const void *model_data, size_t data_size, ModelType model_type,
                     const std::shared_ptr<Context> &model_context) {
@@ -161,136 +138,15 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
 Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
                     const std::shared_ptr<Context> &model_context, const Key &dec_key,
                     const std::vector<char> &dec_mode, const std::vector<char> &cropto_lib_path) {
-#ifdef ENABLE_OPENSSL
-  if (impl_ == nullptr) {
-    MS_LOG(ERROR) << "Model implement is null.";
-    return Status(kLiteNullptr, "Model implement is nullptr!");
-  }
-  MS_CHECK_TRUE_MSG(model_context != nullptr, Status(kLiteNullptr, "model_context is nullptr!"),
-                    "model_context is nullptr!");
-  if (dec_key.len > 0) {
-    size_t model_size;
-    auto model_buf = lite::ReadFile(CharToString(model_path).c_str(), &model_size);
-    if (model_buf == nullptr) {
-      MS_LOG(ERROR) << "Read model file failed";
-      return Status(kLiteFileError, "Read model file failed");
-    }
-    std::unique_ptr<Byte[]> decrypt_buffer;
-    size_t decrypt_len = 0;
-    Status ret = DecryptModel(CharToString(cropto_lib_path), model_buf, model_size, dec_key, CharToString(dec_mode),
-                              &decrypt_buffer, &decrypt_len);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "Decrypt model failed.";
-      delete[] model_buf;
-      return ret;
-    }
-    try {
-      auto start_time = lite::GetTimeUs();
-      ret = impl_->Build(decrypt_buffer.get(), decrypt_len, model_type, model_context);
-      if (ret != kSuccess) {
-        delete[] model_buf;
-        MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
-        return ret;
-      }
-      auto end_time = lite::GetTimeUs();
-      auto cost = end_time - start_time;
-      MS_LOG(INFO) << "[init time] model build cost " << cost << " us";
-      delete[] model_buf;
-      return kSuccess;
-    } catch (const std::exception &exe) {
-      delete[] model_buf;
-      MS_LOG(ERROR) << "Catch exception: " << exe.what();
-      return kCoreFailed;
-    }
-  }
-  try {
-    auto ret = impl_->PreInfer(CharToString(model_path), model_type, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "PreInfer failed!";
-      return ret;
-    }
-    auto start_time = lite::GetTimeUs();
-    ret = impl_->Build(CharToString(model_path), model_type, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
-      return ret;
-    }
-    auto end_time = lite::GetTimeUs();
-    auto cost = end_time - start_time;
-    MS_LOG(INFO) << "[init time] model build cost " << cost << " us";
-    return kSuccess;
-  } catch (const std::exception &exe) {
-    MS_LOG(ERROR) << "Catch exception: " << exe.what();
-    return kCoreFailed;
-  }
-#else
-  MS_LOG(ERROR) << "The lib is not support Decrypt Model.";
-  return Status(kLiteNotSupport, "The lib is not support Decrypt Model.");
-#endif
+  MS_LOG(ERROR) << "This interface has been deprecated.";
+  return kLiteNotSupport;
 }
 
 Status Model::Build(const void *model_data, size_t data_size, ModelType model_type,
                     const std::shared_ptr<Context> &model_context, const Key &dec_key,
                     const std::vector<char> &dec_mode, const std::vector<char> &cropto_lib_path) {
-#ifdef ENABLE_OPENSSL
-  if (impl_ == nullptr) {
-    MS_LOG(ERROR) << "Model implement is null.";
-    return Status(kLiteNullptr, "Model implement is nullptr.");
-  }
-
-  if (dec_key.len > 0) {
-    std::unique_ptr<Byte[]> decrypt_buffer;
-    size_t decrypt_len = 0;
-    Status ret = DecryptModel(CharToString(cropto_lib_path), model_data, data_size, dec_key, CharToString(dec_mode),
-                              &decrypt_buffer, &decrypt_len);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "Decrypt model failed. ret = " << ret;
-      return ret;
-    }
-    try {
-      auto start_time = lite::GetTimeUs();
-      ret = impl_->Build(decrypt_buffer.get(), decrypt_len, model_type, model_context);
-      if (ret != kSuccess) {
-        MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
-        return ret;
-      }
-
-      auto end_time = lite::GetTimeUs();
-      auto cost = end_time - start_time;
-      MS_LOG(INFO) << "[init time] model build cost " << cost << " us";
-
-      return kSuccess;
-    } catch (const std::exception &exe) {
-      MS_LOG(ERROR) << "Catch exception: " << exe.what();
-      return kCoreFailed;
-    }
-  }
-  try {
-    auto ret = impl_->PreInfer(model_data, data_size, model_type, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "PreInfer failed!";
-      return ret;
-    }
-    auto start_time1 = lite::GetTimeUs();
-    ret = impl_->Build(model_data, data_size, model_type, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
-      return ret;
-    }
-
-    auto end_time1 = lite::GetTimeUs();
-    auto cost1 = end_time1 - start_time1;
-    MS_LOG(INFO) << "[init time] model build cost " << cost1 << " us";
-
-    return kSuccess;
-  } catch (const std::exception &exe) {
-    MS_LOG(ERROR) << "Catch exception: " << exe.what();
-    return kCoreFailed;
-  }
-#else
-  MS_LOG(ERROR) << "The lib is not support Decrypt Model.";
-  return Status(kLiteNotSupport, "The lib is not support Decrypt Model.");
-#endif
+  MS_LOG(ERROR) << "This interface has been deprecated.";
+  return kLiteNotSupport;
 }
 
 Status Model::Build(GraphCell graph, const std::shared_ptr<Context> &model_context,

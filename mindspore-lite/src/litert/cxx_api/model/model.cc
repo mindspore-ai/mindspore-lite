@@ -30,33 +30,11 @@
 #include "src/common/thread_utils.h"
 #endif
 #include "src/litert/cxx_api/model/model_impl.h"
-#ifdef ENABLE_OPENSSL
-#include "src/common/decrypt.h"
-#include "src/common/file_utils.h"
-#endif
 
 namespace mindspore {
 #ifdef USE_GLOG
 extern "C" {
 extern void mindspore_log_init();
-}
-#endif
-
-#ifdef ENABLE_OPENSSL
-Status DecryptModel(const std::string &cropto_lib_path, const void *model_buf, size_t model_size, const Key &dec_key,
-                    const std::string &dec_mode, std::unique_ptr<Byte[]> *decrypt_buffer, size_t *decrypt_len) {
-  if (model_buf == nullptr) {
-    MS_LOG(ERROR) << "model_buf is nullptr.";
-    return kLiteError;
-  }
-  *decrypt_len = 0;
-  *decrypt_buffer = lite::Decrypt(cropto_lib_path, decrypt_len, reinterpret_cast<const Byte *>(model_buf), model_size,
-                                  dec_key.key, dec_key.len, dec_mode);
-  if (*decrypt_buffer == nullptr || *decrypt_len == 0) {
-    MS_LOG(ERROR) << "Decrypt buffer failed";
-    return kLiteError;
-  }
-  return kSuccess;
 }
 #endif
 
@@ -87,64 +65,8 @@ bool VerifyDeviceInfo(const std::shared_ptr<Context> &model_context) {
 Status Model::Build(const void *model_data, size_t data_size, ModelType model_type,
                     const std::shared_ptr<Context> &model_context, const Key &dec_key,
                     const std::vector<char> &dec_mode, const std::vector<char> &cropto_lib_path) {
-  bool valid = VerifyDeviceInfo(model_context);
-  if (!valid) {
-    return Status(kLiteParamInvalid, "Device info is invalid");
-  }
-#ifdef ENABLE_OPENSSL
-  if (impl_ == nullptr) {
-    MS_LOG(ERROR) << "Model implement is null.";
-    return kLiteNullptr;
-  }
-  if (dec_key.len > 0) {
-    std::unique_ptr<Byte[]> decrypt_buffer;
-    size_t decrypt_len = 0;
-    Status ret = DecryptModel(CharToString(cropto_lib_path), model_data, data_size, dec_key, CharToString(dec_mode),
-                              &decrypt_buffer, &decrypt_len);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "Decrypt model failed.";
-      return ret;
-    }
-    ret = impl_->Build(decrypt_buffer.get(), decrypt_len, model_type, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "Build model failed.";
-      return ret;
-    }
-  } else {
-    Status ret;
-#if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
-    if (lite::GetNumThreads() == lite::kSingleThread && impl_->IsEnablePreInference()) {
-      pid_t pid = fork();
-      if (pid < 0) {
-        return kLiteError;
-      } else if (pid == 0) {  // child process
-        auto impl = std::make_shared<ModelImpl>();
-        if (impl != nullptr) {
-          (void)impl->BuildAndRun(model_data, data_size, model_type, model_context);
-          impl.reset();
-          const_cast<std::shared_ptr<Context> &>(model_context).reset();
-        } else {
-          MS_LOG(WARNING) << "new ModelImpl failed, pre inference failed.";
-        }
-        exit(lite::kProcessSuccess);
-      }
-      ret = lite::CheckPidStatus(pid);
-      if (ret != kSuccess) {
-        MS_LOG(ERROR) << "PreBuild or PreInference failed.";
-        return ret;
-      }
-    }
-#endif
-    ret = impl_->Build(model_data, data_size, model_type, model_context);
-    if (ret != kSuccess) {
-      return ret;
-    }
-  }
-  return kSuccess;
-#else
-  MS_LOG(ERROR) << "The lib is not support Decrypt Model.";
-  return kLiteError;
-#endif
+  MS_LOG(ERROR) << "This interface has been deprecated.";
+  return kLiteNotSupport;
 }
 
 Status Model::Build(const void *model_data, size_t data_size, ModelType model_type,
@@ -197,80 +119,8 @@ Status Model::Build(const void *model_data, size_t data_size, const void *weight
 Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
                     const std::shared_ptr<Context> &model_context, const Key &dec_key,
                     const std::vector<char> &dec_mode, const std::vector<char> &cropto_lib_path) {
-  std::stringstream err_msg;
-  if (model_context == nullptr) {
-    err_msg << "Invalid null context.";
-    MS_LOG(ERROR) << err_msg.str();
-    return Status(kLiteNullptr, err_msg.str());
-  }
-  bool valid = VerifyDeviceInfo(model_context);
-  if (!valid) {
-    return Status(kLiteParamInvalid, "Device info is invalid");
-  }
-#ifdef ENABLE_OPENSSL
-  if (impl_ == nullptr) {
-    MS_LOG(ERROR) << "Model implement is null.";
-    return kLiteNullptr;
-  }
-  if (dec_key.len > 0) {
-    size_t model_size;
-    auto model_buf = lite::ReadFile(CharToString(model_path).c_str(), &model_size);
-    if (model_buf == nullptr) {
-      MS_LOG(ERROR) << "Read model file failed";
-      return kLiteError;
-    }
-    std::unique_ptr<Byte[]> decrypt_buffer;
-    size_t decrypt_len = 0;
-    Status ret = DecryptModel(CharToString(cropto_lib_path), model_buf, model_size, dec_key, CharToString(dec_mode),
-                              &decrypt_buffer, &decrypt_len);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "Decrypt model failed.";
-      delete[] model_buf;
-      return ret;
-    }
-    ret = impl_->Build(decrypt_buffer.get(), decrypt_len, model_type, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "Build model failed.";
-      delete[] model_buf;
-      return ret;
-    }
-    delete[] model_buf;
-  } else {
-    Status ret;
-#if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
-    if (lite::GetNumThreads() == lite::kSingleThread && impl_->IsEnablePreInference()) {
-      pid_t pid = fork();
-      if (pid < 0) {
-        return kLiteError;
-      } else if (pid == 0) {  // child process
-        auto impl = std::make_shared<ModelImpl>();
-        if (impl != nullptr) {
-          (void)impl->BuildAndRun(CharToString(model_path), model_type, model_context);
-          impl.reset();
-          const_cast<std::shared_ptr<Context> &>(model_context).reset();
-        } else {
-          MS_LOG(WARNING) << "new ModelImpl failed, pre inference failed.";
-        }
-        exit(lite::kProcessSuccess);
-      }
-      ret = lite::CheckPidStatus(pid);
-      if (ret != kSuccess) {
-        MS_LOG(ERROR) << "PreBuild or PreInference failed.";
-        return ret;
-      }
-    }
-#endif
-    ret = impl_->Build(CharToString(model_path), model_type, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "Build model failed.";
-      return ret;
-    }
-  }
-  return kSuccess;
-#else
-  MS_LOG(ERROR) << "The lib is not support Decrypt Model.";
-  return kLiteError;
-#endif
+  MS_LOG(ERROR) << "This interface has been deprecated.";
+  return kLiteNotSupport;
 }
 
 Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
