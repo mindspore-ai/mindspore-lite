@@ -17,6 +17,7 @@ lite_boost test rain_fusion_attention
 """
 
 import math
+import pytest
 import torch
 import torch_npu
 import lite_boost.ops as lite_ops
@@ -27,9 +28,13 @@ class TestRainFusionAttention:
     Test rain fusion attention.
     """
 
-    def __init__(self):
+    # 注意: pytest 不会收集带 __init__ 构造函数的测试类。
+    # 必须使用 setup_method(self) 作为测试前置初始化方法，
+    # pytest 在每个测试方法执行前自动调用 setup_method 完成实例属性初始化。
+    def setup_method(self):
         """
-        Test rain fusion attention.
+        Setup test fixtures before each test method.
+        在每个测试方法执行前初始化 NPU 设备、张量等前置数据。
         """
         self.device = torch.device("npu:1")
         torch.npu.set_device(self.device)
@@ -83,6 +88,7 @@ class TestRainFusionAttention:
 
         return select_idx, select_num_idx
 
+    @pytest.mark.L0
     def test_rainfusionattention_vs_fusionattention(self):
         """
         Test rain fusion attention vs fusion attention.
@@ -119,6 +125,7 @@ class TestRainFusionAttention:
         print("rain_fusion_attention shape:", ra.shape)
         print("fusion_attention shape:", fascore.shape)
 
+    @pytest.mark.L0
     def test_sparse_attention_rf_v2(self):
         """
         Test sparse_attention rf_v2 path vs dense fusion attention.
@@ -157,5 +164,8 @@ class TestRainFusionAttention:
 
 if __name__ == "__main__":
     test = TestRainFusionAttention()
+    # 本地调试时需要手动调用 setup_method 完成初始化，
+    # pytest 模式下 setup_method 由框架在每个测试方法前自动调用
+    test.setup_method()
     test.test_rainfusionattention_vs_fusionattention()
     test.test_sparse_attention_rf_v2()
