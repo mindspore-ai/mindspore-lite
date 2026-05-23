@@ -172,7 +172,6 @@ function Run_Benchmark() {
             enableFp16="true"
         fi
 
-        # different tensorrt run mode use different cuda command
         echo './benchmark --enableParallelPredict='${use_parallel_predict}' --modelFile='${model_file}' --inputShape="'${spec_shapes}'" --inDataFile='${input_files}' --benchmarkDataFile='${output_file}' --enableFp16='${enableFp16}' --accuracyThreshold='${acc_limit}' --device='${ascend_device} >> "${run_ascend_log_file}"
         elapsed_time=$(date +%s.%N)
         ./benchmark --enableParallelPredict=${use_parallel_predict} --modelFile=${model_file} --inputShape="${spec_shapes}" --inDataFile=${input_files} --benchmarkDataFile=${output_file} --enableFp16=${enableFp16} --accuracyThreshold=${acc_limit} --device=${ascend_device} >> ${run_ascend_log_file}

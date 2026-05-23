@@ -53,9 +53,6 @@
 #ifdef GPU_OPENCL
 #include "src/litert/kernel/opencl/opencl_subgraph.h"
 #endif
-#ifdef GPU_TENSORRT
-#include "src/litert/delegate/tensorrt/tensorrt_delegate.h"
-#endif
 #ifdef SUPPORT_NNAPI
 #endif
 #ifdef ENABLE_COREML
@@ -965,61 +962,6 @@ int LiteSession::InitContext(const std::shared_ptr<InnerContext> &context) {
   return RET_OK;
 }
 
-int LiteSession::CreateTensorRTDelegate() {
-#ifdef GPU_TENSORRT
-  std::string cache_model_path;
-  std::string serialize_path;
-  size_t vocab_size = 0;
-  size_t device_cache_size = 0;
-  std::map<std::string, std::string> input_ranges;
-  if (config_info_ != nullptr) {
-    auto input_ranges_iter = config_info_->find(kGPUContextSection);
-    if (input_ranges_iter != config_info_->end()) {
-      input_ranges = input_ranges_iter->second;
-    }
-    auto ms_cache_iter = config_info_->find(kMSCacheSection);
-    if (ms_cache_iter != config_info_->end()) {
-      auto ms_cache = ms_cache_iter->second;
-      auto model_path_iter = ms_cache.find(kMSCacheModelPathKey);
-      if (model_path_iter != ms_cache.end()) {
-        cache_model_path = model_path_iter->second;
-      }
-
-      auto vocab_size_iter = ms_cache.find(kMSCacheVocabSizeKey);
-      if (vocab_size_iter != ms_cache.end()) {
-        auto vocab_size_opt = GenericParseValue<size_t>(vocab_size_iter->second);
-        if (!vocab_size_opt.IsNone()) {
-          vocab_size = vocab_size_opt.Get();
-        }
-      }
-
-      auto device_cache_size_iter = ms_cache.find(kMSCacheDeviceSizeKey);
-      if (device_cache_size_iter != ms_cache.end()) {
-        auto device_cache_size_opt = GenericParseValue<size_t>(device_cache_size_iter->second);
-        if (!device_cache_size_opt.IsNone()) {
-          device_cache_size = device_cache_size_opt.Get();
-        }
-      }
-
-      auto serialize_path_iter = ms_cache.find(kMSCacheSerializePathKey);
-      if (serialize_path_iter != ms_cache.end()) {
-        serialize_path = serialize_path_iter->second;
-      }
-    }
-  }
-
-  delegate_ = std::make_shared<TensorRTDelegate>(ms_context_, cache_model_path, vocab_size, device_cache_size,
-                                                 serialize_path, input_ranges);
-  if (delegate_ == nullptr) {
-    MS_LOG(ERROR) << "New tensorrt delegate_ failed";
-    return RET_ERROR;
-  }
-  delegate_device_type_ = DT_GPU;
-  this->context_->delegate = delegate_;
-#endif
-  return RET_OK;
-}
-
 int LiteSession::CreateNPUDelegate() {
 #ifdef SUPPORT_NPU
   std::string model_cache_dir;
@@ -1108,8 +1050,6 @@ int LiteSession::InitDelegate() {
   } else {
     if (context_->IsDeviceTypeEnabled(DT_NPU)) {
       ret = CreateNPUDelegate();
-    } else if (context_->IsDeviceTypeEnabled(DT_GPU)) {
-      ret = CreateTensorRTDelegate();
     }
   }
 

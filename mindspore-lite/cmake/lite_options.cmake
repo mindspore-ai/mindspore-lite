@@ -5,7 +5,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/compile_link_option.cmake)
 
 #Options that can be configured through environment variables or manually
 set(MSLITE_GPU_BACKEND "" CACHE STRING "enable gpu backend, \
-    opencl only support arm64 and x86_64 , tensorrt only support x86_64, opencl/cuda/tensorrt/off")
+    opencl only support arm64 and x86_64 , opencl/off")
 set(MSLITE_REGISTRY_DEVICE "off" CACHE STRING "Compile Mindspore Lite that supports specific devices, \
     currently supported devices: Hi3516D/Hi3519A/Hi3559A/SD3403")
 set(MSLITE_MICRO_PLATFORM "auto" CACHE STRING "Platform of micro static library micro static, \
@@ -237,7 +237,7 @@ else()
     if(MSLITE_GPU_BACKEND STREQUAL "")
         set(MSLITE_GPU_BACKEND "off")
     endif()
-    if((NOT MSLITE_GPU_BACKEND STREQUAL "tensorrt") AND (NOT MSLITE_GPU_BACKEND STREQUAL "off") AND
+    if((NOT MSLITE_GPU_BACKEND STREQUAL "off") AND
     (NOT MSLITE_GPU_BACKEND STREQUAL "cuda") AND (NOT MSLITE_GPU_BACKEND STREQUAL "opencl"))
         message("invalid MSLITE_GPU_BACKEND value ${MSLITE_GPU_BACKEND} for x86_64, MSLITE_GPU_BACKEND is set to off.")
         set(MSLITE_GPU_BACKEND "off")

@@ -41,9 +41,6 @@ ls -l *.so*
 if [[ "X${CUDA_HOME}" != "X" ]]; then
   export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 fi
-if [[ "X${TENSORRT_PATH}" != "X" ]]; then
-  export LD_LIBRARY_PATH=${TENSORRT_PATH}/lib:${LD_LIBRARY_PATH}
-fi
 export LD_LIBRARY_PATH=./:${LD_LIBRARY_PATH}
 
 cp -r ${CUR_DIR}/ut/test_data/* ./

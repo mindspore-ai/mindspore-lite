@@ -12,8 +12,6 @@ set(REG_SRC ${CONVERT_REG_SRC}
         ${KERNEL_REG_DIR}/../litert/inner_allocator.cc
         ${KERNEL_REG_DIR}/../common/string_util.cc
         ${KERNEL_REG_DIR}/../common/utils.cc
-#        ${KERNEL_REG_DIR}/../extendrt/delegate/tensorrt/distribution/distribution_base.cc
-#        ${KERNEL_REG_DIR}/../extendrt/delegate/plugin/tensorrt_executor_plugin.cc
         # ${KERNEL_REG_DIR}/../extendrt/kernel/ascend/plugin/ascend_allocator_plugin.cc
         ${KERNEL_REG_DIR}/../extendrt/delegate/ascend_acl/ascend_allocator_plugin.cc
         ${CONVERTER_DIR}/converter_context.cc

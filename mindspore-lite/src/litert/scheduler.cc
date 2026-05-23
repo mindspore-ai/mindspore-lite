@@ -610,7 +610,7 @@ int Scheduler::InitDelegateKernels(std::vector<kernel::KernelExec *> *dst_kernel
     std::vector<kernel::KernelExec *> tmp_kernels;
     kernel::KernelExec *remain_kernel = nullptr;
 
-    /* Loop for inner delegate npu and TensorRT subgraph */
+    /* Loop for inner delegate npu subgraph */
     while (!src_kernels.empty()) {
       auto kernel = src_kernels.front();
       VectorErase(&src_kernels, kernel);

@@ -177,7 +177,6 @@ class MS_API LiteSession {
   int InitExecutor();
   void ResetInputsShape(const std::vector<std::vector<int>> &dims);
   int InitContext(const std::shared_ptr<InnerContext> &context);
-  int CreateTensorRTDelegate();
   int CreateNPUDelegate();
   int CreateNNAPIDelegate();
   int CreateCoreMLDelegate();

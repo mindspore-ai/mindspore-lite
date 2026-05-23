@@ -56,19 +56,7 @@ class Context:
                 [op_name1]=data_Type: float16 (The operator named op_name1 sets the data type as float16)
                 [op_name2]=data_Type: float32 (The operator named op_name2 sets the data type as float32)
 
-          - Usage 2: When GPU inference, set the configuration of TensorRT. The content and description of the
-            configuration file are as follows:
-
-            .. code-block::
-
-                [ms_cache]
-                serialize_Path=[serialization model path](storage path of serialization model)
-                [gpu_context]
-                input_shape=input_Name: [input_dim] (Model input dimension, for dynamic shape)
-                dynamic_Dims=[min_dim~max_dim] (dynamic dimension range of model input, for dynamic shape)
-                opt_Dims=[opt_dim] (the optimal input dimension of the model, for dynamic shape)
-
-          - Usage 3: For the large model, when using the model buffer to load and compile, you need to set the path
+          - Usage 2: For the large model, when using the model buffer to load and compile, you need to set the path
             of the weight file separately through passing the path of the large model. And it is necessary to ensure
             that the large model file and the folder where the weight file is located are in the same folder.
             For example, when the directory is as follows:
@@ -871,19 +859,7 @@ class _Parallel:
                       [op_name1]=data_Type: float16 (The operator named op_name1 sets the data type as float16)
                       [op_name2]=data_Type: float32 (The operator named op_name2 sets the data type as float32)
 
-                - Usage 2: When GPU inference, set the configuration of TensorRT. The content and description of the
-                  configuration file are as follows:
-
-                  .. code-block::
-
-                      [ms_cache]
-                      serialize_Path=[serialization model path](storage path of serialization model)
-                      [gpu_context]
-                      input_shape=input_Name: [input_dim] (Model input dimension, for dynamic shape)
-                      dynamic_Dims=[min_dim~max_dim] (dynamic dimension range of model input, for dynamic shape)
-                      opt_Dims=[opt_dim] (the optimal input dimension of the model, for dynamic shape)
-
-                - Usage 3: For the large model, when using the model buffer to load and compile, you need to set the
+                - Usage 2: For the large model, when using the model buffer to load and compile, you need to set the
                   path of the weight file separately through passing the path of the large model. And it is necessary to
                   ensure that the large model file and the folder where the weight file is located are in the same
                   folder. For example, when the directory is as follows:
