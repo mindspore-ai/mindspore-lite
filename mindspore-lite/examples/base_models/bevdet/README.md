@@ -34,7 +34,17 @@ pip install 'setuptools<70'
 pip install mmcv-full==1.7.0 --no-build-isolation
 pip install mmdet==2.28.2
 pip install mmsegmentation==0.30.0
+
+# 安装 mmdet3d（从 BEVDet 目录以 editable 模式安装）
+# 注意：需要先修改 requirements/runtime.txt 中不兼容 Python 3.10 的版本限制
+cd BEVDet/requirements
+sed -i 's/numba==0.53.0/numba>=0.56.0/' runtime.txt
+sed -i 's/networkx>=2.2,<2.3/networkx>=2.2/' runtime.txt
+cd ..
+pip install -v -e . --no-build-isolation
 ```
+
+> **注意：** `numpy<2.0` 是必须的，否则 `torch` 和 `torchvision` 会出现 `NumPy 1.x compiled with NumPy 2.x` 的兼容性问题。安装完成后请确认 `pip install "numpy<2.0"`。
 
 ***
 
@@ -323,14 +333,15 @@ Seed: 1024
 
 ## 7. 性能数据
 
-### 性能测试结果（Atlas 800 A2（313T））
+### 性能测试结果（Atlas 800 A2（313T）、Atals 300I Duo）
 
 测试模型：BEVDet 整网\
 测试条件：输入形状 (1, 6, 3, 256, 704)，固定随机种子 1024，50 次运行取平均
 
 | 设备                      | 平均延迟 (ms) |
 | ----------------------- | --------- |
-| Ascend (MindSpore Lite) | 11.18       |
+| Atlas 800 A2（313T） | 11.18       |
+| Atals 300I Duo | 18.28       |
 
 ***
 
@@ -401,6 +412,43 @@ ValueError: numba 0.53.0 is not compatible with Python 3.10
 
 ```bash
 pip install 'numba>=0.55'
+```
+
+### 8.6 mmdet3d 导入失败（CUDA 扩展缺失）
+
+**问题：**
+
+```log
+ImportError: cannot import name 'TRTBEVPoolv2' from 'mmdet3d.ops.bev_pool_v2'
+```
+
+**原因：**\
+BEVDet 包含 CUDA 自定义算子（`bev_pool_v2_ext`），在 CPU 环境下无法编译。
+
+**解决方案：**\
+修改 BEVDet 源码，将 CUDA 扩展导入改为可选：
+
+```python
+# 修改 mmdet3d/ops/bev_pool_v2/bev_pool.py
+try:
+    from . import bev_pool_v2_ext
+except ImportError:
+    bev_pool_v2_ext = None
+
+# 修改 mmdet3d/models/detectors/bevdet.py
+try:
+    from mmdet3d.ops.bev_pool_v2.bev_pool import TRTBEVPoolv2
+except ImportError:
+    TRTBEVPoolv2 = None
+
+# 修改 mmdet3d/models/utils/spconv_voxelize.py
+try:
+    from spconv.pytorch.utils import PointToVoxel  # spconv-cu111  2.1.22
+except ImportError:
+    PointToVoxel = None
+
+#修改setup.py 中跳过 CUDA 扩展编译
+ext_modules=[],  # 移除 CUDA 扩展
 ```
 
 ***
