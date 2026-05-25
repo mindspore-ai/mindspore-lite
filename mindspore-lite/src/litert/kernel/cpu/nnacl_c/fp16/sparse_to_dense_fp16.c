@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ int SparseToDenseFp16(int *indices_vec, const float16_t *sparse_values, float16_
   if (indices_vec == NULL || sparse_values == NULL || output == NULL || param == NULL) {
     return NNACL_NULL_PTR;
   }
-  if (param->op_parameter_.thread_num_) {
+  if (param->op_parameter_.thread_num_ == 0) {
     return NNACL_ERR;
   }
   int unit_per_thread = UP_DIV(param->index_num, param->op_parameter_.thread_num_);

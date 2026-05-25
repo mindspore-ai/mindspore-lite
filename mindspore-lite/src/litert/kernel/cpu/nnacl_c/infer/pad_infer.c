@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,7 +53,11 @@ int PadInferShape(const TensorC *const *inputs, size_t inputs_size, TensorC **ou
   int output_shape[DEFAULT_PAD_NDIMS] = {0};
   size_t output_shape_size = 0;
   for (size_t i = 0; i < input->shape_size_; i++) {
-    int shape = input->shape_[i] + param->paddings_[2 * i] + param->paddings_[2 * i + 1];
+    NNACL_CHECK_FALSE(INT_ADD_OVERFLOW(input->shape_[i], param->paddings_[2 * i]), NNACL_INFER_INVALID);
+    int tmp = input->shape_[i] + param->paddings_[2 * i];
+    NNACL_CHECK_FALSE(INT_ADD_OVERFLOW(tmp, param->paddings_[2 * i + 1]), NNACL_INFER_INVALID);
+    int shape = tmp + param->paddings_[2 * i + 1];
+    output->shape_[i] = shape;
     ShapePush(output_shape, &output_shape_size, shape);
   }
 
