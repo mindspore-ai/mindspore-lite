@@ -122,13 +122,15 @@ setup(
     version=version,
     packages=[
         "lite_boost",
+        "lite_boost.ops",
         "lite_boost.parallel",
         "lite_boost.layers",
         "lite_boost.model",
         "lite_boost.model.wan2_1",
     ],
     package_dir={
-        "lite_boost": "ops",
+        "lite_boost": ".",
+        "lite_boost.ops": "ops",
         "lite_boost.parallel": "parallel",
         "lite_boost.layers": "layers",
         "lite_boost.model": "model",

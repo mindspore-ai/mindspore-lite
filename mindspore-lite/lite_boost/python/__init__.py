@@ -16,6 +16,3 @@
 """
 lite_boost package
 """
-from .rain_fusion import rain_fusion_attention, sparse_attention
-
-__all__ = ["rain_fusion_attention", "sparse_attention"]
