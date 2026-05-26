@@ -326,7 +326,7 @@ Status DumpOperands(const AnfNodePtr &node, const std::map<AnfNodePtr, int32_t> 
   return kSuccess;
 }
 
-Status DumpAttrs(const mindspore::HashMap<std::string, ValuePtr> &attrs, const std::shared_ptr<SubGraphIRInfo> &gsub) {
+Status DumpAttrs(const std::unordered_map<std::string, ValuePtr> &attrs, const std::shared_ptr<SubGraphIRInfo> &gsub) {
   int i = 0;
   for (const auto &attr : attrs) {
     if (i++ != 0) {

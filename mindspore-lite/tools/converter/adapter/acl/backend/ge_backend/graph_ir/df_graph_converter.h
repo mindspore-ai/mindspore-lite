@@ -25,6 +25,7 @@
 #include <map>
 #include <set>
 #include <unordered_set>
+#include <unordered_map>
 #include <vector>
 #include <string>
 #include <utility>
@@ -34,7 +35,6 @@
 
 #include "utils/config_manager.h"
 #include "primitive/structure_ops.h"
-#include "utils/hash_map.h"
 #include "utils/ms_context.h"
 #include "utils/phase.h"
 #include "ir/anf.h"
@@ -222,10 +222,10 @@ class BACKEND_EXPORT DfGraphConvertor {
   std::vector<OutHandler> GetInputHandles(const AnfNodePtr &node, const AnfNodePtr &input);
   void FillEmptyInputsWithNoInputOp(std::vector<Operator> *);
   bool IsDynamicInputBeforeNormalInput(const OpAdapterPtr &adpt, int *ge_input_size,
-                                       mindspore::HashMap<int, int> *ge_input_to_ms_input);
+                                       std::unordered_map<int, int> *ge_input_to_ms_input);
   void SetDynamicInputBeforeNormalInput(const OpAdapterPtr &adpt, const CNodePtr &node,
                                         const std::vector<AnfNodePtr> &inputs, const int &ge_input_size,
-                                        const mindspore::HashMap<int, int> &ge_input_to_ms_input,
+                                        const std::unordered_map<int, int> &ge_input_to_ms_input,
                                         std::vector<int64_t> *dyn_input_sizes);
 
   // Identity Optimization
@@ -246,7 +246,7 @@ class BACKEND_EXPORT DfGraphConvertor {
   std::ostringstream init_sout_;
   std::ostringstream checkpoint_sout_;
   std::ostringstream restore_checkpoint_sout_;
-  mindspore::HashMap<AnfNode *, std::string> op_draw_name_;
+  std::unordered_map<AnfNode *, std::string> op_draw_name_;
   std::map<std::string, std::string> param_format_;
 
   std::shared_ptr<AnfGraph> anf_graph_{nullptr};
@@ -258,13 +258,13 @@ class BACKEND_EXPORT DfGraphConvertor {
 
   std::shared_ptr<DfGraph> df_graph_{nullptr};
   std::shared_ptr<DfGraph> init_graph_{nullptr};
-  mindspore::HashMap<AnfNode *, OperatorPtr> op_cache_;
+  std::unordered_map<AnfNode *, OperatorPtr> op_cache_;
   /* record "getnext"<->"out_handler" mapping */
-  mindspore::HashMap<AnfNode *, OutHandler> out_handle_cache_;
+  std::unordered_map<AnfNode *, OutHandler> out_handle_cache_;
   /* record "value tuple"<->"out_handler vector" mapping */
-  mindspore::HashMap<AnfNode *, std::shared_ptr<std::vector<OutHandler>>> tuple_out_handle_cache_;
-  mindspore::HashMap<std::string, AnfNodePtr> params_;
-  mindspore::HashMap<std::string, OperatorPtr> vars_;
+  std::unordered_map<AnfNode *, std::shared_ptr<std::vector<OutHandler>>> tuple_out_handle_cache_;
+  std::unordered_map<std::string, AnfNodePtr> params_;
+  std::unordered_map<std::string, OperatorPtr> vars_;
   std::vector<std::pair<::ge::Operator, std::string>> graph_outputs_;
   std::vector<OperatorPtr> graph_const_inputs_;
   std::vector<OperatorPtr> init_ops_;
@@ -272,7 +272,7 @@ class BACKEND_EXPORT DfGraphConvertor {
   ShapeArray input_shapes_;
   Status error_ = SUCCESS;
   bool dynamic_shape_inputs_ = false;
-  mindspore::HashMap<OperatorPtr, std::shared_ptr<tensor::Tensor>> const_op_to_value_;
+  std::unordered_map<OperatorPtr, std::shared_ptr<tensor::Tensor>> const_op_to_value_;
   bool offline_convert_ = false;
 };
 }  // namespace mindspore::lite::backend::ge_backend

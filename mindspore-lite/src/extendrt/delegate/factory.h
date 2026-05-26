@@ -20,7 +20,7 @@
 #include <string>
 #include <memory>
 
-#include "utils/hash_map.h"
+#include <unordered_map>
 #include "src/extendrt/delegate_graph_executor.h"
 #include "include/api/context.h"
 #include "src/common/config_infos.h"
@@ -43,7 +43,7 @@ class MS_API DelegateRegistry {
                 const std::shared_ptr<Context> &ctx, const ConfigInfos &config_infos);
 
  private:
-  mindspore::HashMap<DeviceType, mindspore::HashMap<std::string, DelegateCreator<T> *>> creator_map_;
+  std::unordered_map<DeviceType, std::unordered_map<std::string, DelegateCreator<T> *>> creator_map_;
 };
 
 template <typename T>

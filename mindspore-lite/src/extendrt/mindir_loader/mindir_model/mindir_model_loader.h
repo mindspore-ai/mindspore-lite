@@ -46,8 +46,8 @@ class MindirModelLoader : public ModelLoader {
 
  private:
   MindirModel *model_;
-  mindspore::HashMap<std::string, std::shared_ptr<mindspore::ops::BaseOperator>> all_operators_;
-  mindspore::HashMap<std::string, int32_t> tensor_index_map_;
+  std::unordered_map<std::string, std::shared_ptr<mindspore::ops::BaseOperator>> all_operators_;
+  std::unordered_map<std::string, int32_t> tensor_index_map_;
   int tensor_count_;
   int node_count_;
 };

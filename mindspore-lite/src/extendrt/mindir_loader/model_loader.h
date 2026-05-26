@@ -50,7 +50,7 @@ class ModelLoaderRegistry {
   }
 
  private:
-  mindspore::HashMap<mindspore::ModelType, std::function<std::shared_ptr<ModelLoader>()>> model_loader_map_;
+  std::unordered_map<mindspore::ModelType, std::function<std::shared_ptr<ModelLoader>()>> model_loader_map_;
 };
 
 class ModelLoaderRegistrar {

@@ -28,7 +28,7 @@
 #include "src/common/log_util.h"
 
 namespace mindspore::infer::mindir {
-static mindspore::HashMap<int, TypeId> kDefaultValueSwitchMap{
+static std::unordered_map<int, TypeId> kDefaultValueSwitchMap{
   {mind_ir::TensorProto_DataType_BOOL, kNumberTypeBool},
   {mind_ir::TensorProto_DataType_INT8, kNumberTypeInt8},
   {mind_ir::TensorProto_DataType_INT16, kNumberTypeInt16},
