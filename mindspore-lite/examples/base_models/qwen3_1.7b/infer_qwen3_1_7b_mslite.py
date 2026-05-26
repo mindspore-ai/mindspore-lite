@@ -30,6 +30,11 @@ except ImportError:
     print("Please install them first.")
     sys.exit(1)
 
+KV_CACHE_LEN = 512
+PREFILL_GEAR_MIN = 10
+PREFILL_GEAR_MAX = 200
+PREFILL_GEAR_STEP = 10
+
 
 def _compute_position_ids(attention_mask):
     """
@@ -120,6 +125,14 @@ class Qwen317BInferencer:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.eos_token_id = self.tokenizer.eos_token_id
 
+    def _select_prefill_gear(self, seq_len: int) -> int:
+        seq_len = int(seq_len)
+        if seq_len <= PREFILL_GEAR_MIN:
+            return PREFILL_GEAR_MIN
+        if seq_len >= PREFILL_GEAR_MAX:
+            return PREFILL_GEAR_MAX
+        return int(((seq_len + PREFILL_GEAR_STEP - 1) // PREFILL_GEAR_STEP) * PREFILL_GEAR_STEP)
+
     def _prepare_inputs(self, text: str, max_length: int):
         """
         Prepare inputs for Qwen3-1.7B inference.
@@ -142,28 +155,49 @@ class Qwen317BInferencer:
         if attention_mask.ndim == 1:
             attention_mask = attention_mask[None, :]
 
-        if max_length is not None and int(max_length) > 0:
-            max_length = int(max_length)
-            if input_ids.shape[1] > max_length:
-                input_ids = input_ids[:, -max_length:]
-                attention_mask = attention_mask[:, -max_length:]
+        max_length = int(max_length) if max_length is not None and int(max_length) > 0 else KV_CACHE_LEN
+        max_length = min(max_length, PREFILL_GEAR_MAX)
+        if input_ids.shape[1] > max_length:
+            input_ids = input_ids[:, -max_length:]
+            attention_mask = attention_mask[:, -max_length:]
+
+        seq_len = int(input_ids.shape[1])
+        gear_len = self._select_prefill_gear(seq_len)
+        if gear_len > seq_len:
+            pad_len = gear_len - seq_len
+            pad_id = int(self.tokenizer.pad_token_id)
+            pad_ids = np.full((input_ids.shape[0], pad_len), pad_id, dtype=input_ids.dtype)
+            pad_mask = np.zeros((attention_mask.shape[0], pad_len), dtype=attention_mask.dtype)
+            input_ids = np.concatenate([input_ids, pad_ids], axis=1)
+            attention_mask = np.concatenate([attention_mask, pad_mask], axis=1)
 
         input_ids = input_ids.astype(np.int32, copy=False)
         attention_mask = attention_mask.astype(np.int32, copy=False)
         position_ids = _compute_position_ids(attention_mask)
         return input_ids, attention_mask, position_ids
 
-    def _stream_print_token(self, token_id: int):
+    def _stream_print_delta(self, generated_ids, prev_text: str):
         """
-        Stream print token text.
+        Print incremental decoded text delta in stream mode.
         """
-        token_text = self.tokenizer.decode(
-            [token_id],
+        new_text = self.tokenizer.decode(
+            generated_ids,
             skip_special_tokens=True,
             clean_up_tokenization_spaces=False,
         )
-        if token_text:
-            print(token_text, end="", flush=True)
+        if prev_text and new_text.startswith(prev_text):
+            delta = new_text[len(prev_text) :]
+        else:
+            n = min(len(prev_text), len(new_text))
+            i = 0
+            while i < n and prev_text[i] == new_text[i]:
+                i += 1
+            delta = new_text[i:]
+        if delta:
+            delta = delta.replace("\uFFFD", "")
+        if delta:
+            print(delta, end="", flush=True)
+        return new_text
 
     def generate(
         self,
@@ -189,31 +223,43 @@ class Qwen317BInferencer:
         )
         prefill_outputs = self.prefill_model.predict(inputs)
         logits = prefill_outputs[0].get_data_to_numpy()
-        past_kv = prefill_outputs[1].get_data_to_numpy()
+        past_k = prefill_outputs[1].get_data_to_numpy()
+        past_v = prefill_outputs[2].get_data_to_numpy()
 
-        generated_ids = [int(np.argmax(logits[0, -1]))]
+        actual_len = int(attention_mask[0].sum())
+        if int(past_k.shape[3]) != KV_CACHE_LEN or int(past_v.shape[3]) != KV_CACHE_LEN:
+            raise RuntimeError(
+                f"prefill cache len mismatch, expected {KV_CACHE_LEN}, got k={past_k.shape}, v={past_v.shape}"
+            )
+
+        cur_attention_mask = np.zeros((1, KV_CACHE_LEN), dtype=np.int32)
+        if actual_len > 0:
+            cur_attention_mask[0, :actual_len] = 1
+        last_idx = max(actual_len - 1, 0)
+        generated_ids = [int(np.argmax(logits[0, last_idx]))]
+        streamed_text = ""
         if stream:
-            self._stream_print_token(generated_ids[-1])
-        cur_attention_mask = attention_mask
-        cur_pos = int(position_ids[0, -1])
+            streamed_text = self._stream_print_delta(generated_ids, streamed_text)
+        valid_len = int(actual_len)
 
         for _ in range(max_new_tokens - 1):
             if self.eos_token_id is not None and generated_ids[-1] == int(
                 self.eos_token_id
             ):
                 break
+            if valid_len >= KV_CACHE_LEN:
+                break
 
             next_input_ids = np.array([[generated_ids[-1]]], dtype=np.int32)
-            cur_attention_mask = np.concatenate(
-                [cur_attention_mask, np.ones((1, 1), dtype=np.int32)], axis=1
-            )
-            next_position_ids = np.array([[cur_pos + 1]], dtype=np.int32)
+            cur_attention_mask[0, valid_len] = 1
+            next_position_ids = np.array([[valid_len]], dtype=np.int32)
 
             decode_feed = {
                 "input_ids": next_input_ids,
                 "attention_mask": cur_attention_mask,
                 "position_ids": next_position_ids,
-                "past_key_values": past_kv,
+                "past_key_cache": past_k,
+                "past_value_cache": past_v,
             }
             inputs = _build_mslite_inputs(
                 self.decode_model,
@@ -222,16 +268,18 @@ class Qwen317BInferencer:
                     "input_ids",
                     "attention_mask",
                     "position_ids",
-                    "past_key_values",
+                    "past_key_cache",
+                    "past_value_cache",
                 ],
             )
             decode_outputs = self.decode_model.predict(inputs)
             logits = decode_outputs[0].get_data_to_numpy()
-            past_kv = decode_outputs[1].get_data_to_numpy()
-            cur_pos += 1
+            past_k = decode_outputs[1].get_data_to_numpy()
+            past_v = decode_outputs[2].get_data_to_numpy()
+            valid_len += 1
             generated_ids.append(int(np.argmax(logits[0, -1])))
             if stream:
-                self._stream_print_token(generated_ids[-1])
+                streamed_text = self._stream_print_delta(generated_ids, streamed_text)
 
         if stream:
             print()
