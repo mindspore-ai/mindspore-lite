@@ -132,6 +132,8 @@ If you wish to further learn and use MindSpore Lite, please refer to the followi
 
 - [Benchmark Debugging Tool](https://www.mindspore.cn/lite/docs/en/master/tools/benchmark.html)
 
+> Additionally, MindSpore Lite cloud-side inference provides a standalone acceleration component, Lite Boost, to improve inference performance for cloud-side inference based on the PyTorch interface. For details, see the [Lite Boost](mindspore-lite/lite_boost/README.md) section.
+
 ## Communication and Feedback
 
 - Welcome to [AtomGit Issues](https://atomgit.com/mindspore/mindspore-lite/issues): submit questions, reports, and suggestions;

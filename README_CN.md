@@ -133,6 +133,8 @@ MindSpore Lite针对AIGC、语音类算法以及CV类模型推理，实现推理
 
 - [基准调试工具](https://www.mindspore.cn/lite/docs/zh-CN/master/tools/benchmark.html)
 
+> 此外，MindSpore Lite云侧推理提供了完全独立的加速组件Lite Boost，用于提升基于PyTorch接口的云侧推理的推理性能，有关Lite Boost的详细说明，请参考[Lite Boost](mindspore-lite/lite_boost/README.md)章节。
+
 ## 交流与反馈
 
 - 欢迎您通过[AtomGit Issues](https://atomgit.com/mindspore/mindspore-lite/issues)来提交问题、报告与建议。

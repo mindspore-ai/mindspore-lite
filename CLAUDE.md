@@ -11,3 +11,5 @@ MindSpore Lite推理框架主要包含两种推理形式，分别为：
 - 端侧推理：主要用于端/边设备的推理，主要适用于麒麟NPU、Arm架构CPU等终端硬件，有关端侧推理的详细说明，请参考[端侧推理](.claude/lite-device-side.md)章节。  
 
 > 注意：MindSpore Lite的两种推理场景，用户在使用的时候，必须明确指定是云侧推理还是端侧推理，否则会导致推理失败。
+
+此外，MindSpore Lite提供了完全独立的加速组件[Lite Boost](mindspore-lite/lite_boost/README.md)，用于提升基于PyTorch接口的云侧推理的推理性能，有关Lite Boost的详细说明，请参考[Lite Boost](mindspore-lite/lite_boost/CLAUDE.md)章节。
