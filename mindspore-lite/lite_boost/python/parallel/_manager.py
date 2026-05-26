@@ -61,7 +61,7 @@ class ParallelManager:
         output = model(x, t, context, seq_len)
     """
 
-    def __new__(cls, model):
+    def __new__(cls, target):
         from lite_boost.model import setup_model
-        setup_model(model)
-        return model
+        setup_model(target)
+        return target
