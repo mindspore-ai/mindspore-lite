@@ -265,8 +265,8 @@ endif()
 include(${TOP_DIR}/cmake/utils.cmake)
 __download_pkg(onnx https://gitee.com/mirrors/ONNX/repository/archive/v1.19.1
     269d1329a31f9648622d5aca8d8804c8f8cd16398270d0d462bb1fa0bfb3a262)
-__download_pkg(tensorflow https://gitee.com/mirrors/tensorflow/repository/archive/v2.4.1
-    bc32b7046e1ad83158d99d890aafe384ef94b1d03a2c0a86859c72e264a9d885)
+__download_pkg(tensorflow https://gitee.com/mirrors/tensorflow/repository/archive/v2.20.0
+    1f2190e131ffc82036f4ffad9e784c322dd644eaa2316f15bc1267e53741c88e)
 __download_pkg(caffe https://gitee.com/mirrors/caffe/repository/archive/1.0
     17ae8ce8f1b4ba426e500c30efa93bc279209bea99c6ceafde49d2746bf3ef93)
 
@@ -294,7 +294,11 @@ file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/types.proto
     DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
 file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/versions.proto
     DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
-file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/lite/schema/schema.fbs
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/full_type.proto
+    DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/core/framework/graph_debug_info.proto
+    DESTINATION ${TOP_DIR}/third_party/proto/tensorflow)
+file(COPY ${tensorflow_SOURCE_DIR}/tensorflow/compiler/mlir/lite/schema/schema.fbs
     DESTINATION ${TOP_DIR}/third_party/proto/tensorflow/lite)
 file(COPY ${onnx_SOURCE_DIR}/onnx/onnx.proto DESTINATION ${TOP_DIR}/third_party/proto/onnx)
 file(COPY ${caffe_SOURCE_DIR}/src/caffe/proto/caffe.proto DESTINATION ${TOP_DIR}/third_party/proto/caffe)

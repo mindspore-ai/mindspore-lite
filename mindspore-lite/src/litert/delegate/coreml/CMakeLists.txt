@@ -1,6 +1,6 @@
 include(${TOP_DIR}/cmake/utils.cmake)
-__download_pkg(coreml https://gitee.com/mirrors/coremltools/repository/archive/4.1
-        be3f3fa4e5b215a585b7ba98b841215c1217b1c56cf3d598550b88d552e1e036)
+__download_pkg(coreml https://gitee.com/mirrors/coremltools/repository/archive/9.0
+        6d914166b770709519056086017ebdcc1185c6e2ca05a228ffaa12b5ed972adb)
 __download_pkg(mnn https://gitee.com/mirrors/mnn/repository/archive/3.3.0
         3f7d697e1a4db16992bec53a33561a5c8828b204f34ab4231e9dd15071b0cf81)
 message("coreml package path:${coreml_SOURCE_DIR}")

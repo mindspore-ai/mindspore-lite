@@ -44,6 +44,18 @@ TypeId GetTfliteDataType(const tflite::TensorType &tflite_data_type);
 STATUS getPaddingParam(const std::unique_ptr<tflite::TensorT> &tensor, mindspore::PadMode pad_mode, int strideH,
                        int strideW, int windowH, int windowW, std::vector<int64_t> *params);
 
+inline tflite::BuiltinOperator GetBuiltinCode(const std::unique_ptr<tflite::OperatorCodeT> &opcode) {
+  auto builtin_code = opcode->builtin_code;
+  // Backward compatibility with old TFLite models:
+  // Old models store the operator code at field 0 (now deprecated_builtin_code),
+  // while the new builtin_code field at field 3 defaults to 0 (ADD) for old models.
+  // For new operators (>=128), builtin_code has the correct value.
+  // For old operators (<128), read from deprecated_builtin_code.
+  if (builtin_code <= tflite::BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES) {
+    return static_cast<tflite::BuiltinOperator>(opcode->deprecated_builtin_code);
+  }
+  return builtin_code;
+}
 }  // namespace lite
 }  // namespace mindspore
 

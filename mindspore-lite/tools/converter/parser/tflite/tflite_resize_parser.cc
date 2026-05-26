@@ -38,7 +38,7 @@ PrimitiveCPtr TfliteResizeParser::Parse(const std::unique_ptr<tflite::OperatorT>
   prim->set_coordinate_transform_mode(mindspore::CoordinateTransformMode::ASYMMETRIC);
   auto &opcode = tflite_model->operator_codes[tflite_op->opcode_index];
   MS_CHECK_TRUE_RET(opcode != nullptr, nullptr);
-  auto tflite_op_type = opcode->builtin_code;
+  auto tflite_op_type = GetBuiltinCode(opcode);
   if (tflite_op_type == tflite::BuiltinOperator_RESIZE_BILINEAR) {
     MS_LOG(DEBUG) << "parse TfliteResizeBilinearParser";
     const auto &tfliteAttr = tflite_op->builtin_options.AsResizeBilinearOptions();

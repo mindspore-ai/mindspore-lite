@@ -2071,7 +2071,7 @@ Copyright (c) Facebook Inc. and Microsoft Corporation.
 License: MIT License
 Please see above.
 
-Software: flatbuffers 2.0.0
+Software: flatbuffers 25.9.23
 Copyright notice: 
 Copyright (c) 2015 Google, Inc.
 Copyright 2014 Google Inc. All rights reserved.
@@ -8910,7 +8910,7 @@ License: Apache License 2.0
    See the License for the specific language governing permissions and
    limitations under the License.
 
-Software: tensorflow 2.4.1
+Software: tensorflow 2.20.0
 Copyright notice:
 Copyright (c) . All rights reserved
 Copyright (c) 2014 Ryan Juckett
@@ -9393,7 +9393,7 @@ By contributing to the BVLC/caffe repository through pull-request, comment,
 or otherwise, the contributor releases their content to the
 license and copyright terms herein.
 
-Software: coremltools 4.1
+Software: coremltools 9.0
 Copyright notice: 
 Copyright © 2020-2023, Apple Inc. All rights reserved.
 License:  BSD 3-Clause "New" or "Revised" License
