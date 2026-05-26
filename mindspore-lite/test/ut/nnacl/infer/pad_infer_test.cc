@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -185,4 +185,40 @@ TEST_F(PadInferTest, PadInferTest4) {
     delete outputs[i];
   }
 }
+
+// Test: Integer overflow check (core fix verification)
+TEST_F(PadInferTest, PadInferTest5) {
+  size_t inputs_size = 1;
+  std::vector<TensorC *> inputs(inputs_size, NULL);
+  inputs[0] = new TensorC;
+  inputs[0]->shape_size_ = 2;
+  // Use large values that could cause integer overflow
+  inputs[0]->shape_[0] = INT_MAX / 2;
+  inputs[0]->shape_[1] = 10;
+
+  std::vector<TensorC *> outputs(1, NULL);
+  outputs[0] = new TensorC;
+  PadParameter *parameter = new PadParameter;
+  parameter->padding_length = 4;
+  // Set padding values that would cause overflow
+  parameter->paddings_[0] = INT_MAX / 2;  // This will cause overflow when added to shape_[0]
+  parameter->paddings_[1] = 1;
+  parameter->paddings_[2] = 2;
+  parameter->paddings_[3] = 2;
+
+  int ret = PadInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
+                          reinterpret_cast<OpParameter *>(parameter));
+
+  // Core fix: should return error due to integer overflow check
+  ASSERT_EQ(ret, NNACL_INFER_INVALID);
+
+  delete parameter;
+  for (size_t i = 0; i < inputs_size; i++) {
+    delete inputs[i];
+  }
+  for (size_t i = 0; i < outputs.size(); i++) {
+    delete outputs[i];
+  }
+}
+
 }  // namespace mindspore
