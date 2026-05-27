@@ -24,7 +24,7 @@
 #include <tuple>
 #include <set>
 
-#include "utils/hash_map.h"
+#include <unordered_map>
 #include "ir/anf.h"
 
 namespace mindspore {

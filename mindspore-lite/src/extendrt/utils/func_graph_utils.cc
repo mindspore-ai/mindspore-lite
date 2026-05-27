@@ -21,6 +21,7 @@
 #include <map>
 #include <memory>
 #include <tuple>
+#include <unordered_set>
 
 #include "src/extendrt/utils/func_graph_utils.h"
 #include "mindspore/ops/op_def/sequence_ops.h"
@@ -449,7 +450,7 @@ std::tuple<FuncGraphPtr, AnfNodePtrList, AnfNodePtrList> FuncGraphUtils::Transfo
     fg = std::make_shared<FuncGraph>();
   }
   AnfNodePtrList inputs;
-  mindspore::HashMap<AnfNodePtr, AnfNodePtr> eqv;
+  std::unordered_map<AnfNodePtr, AnfNodePtr> eqv;
   // Merge CNodes into a AnfGraph that represents a linear instruction segment
   for (auto n : lst) {
     MS_EXCEPTION_IF_NULL(n);
@@ -484,7 +485,7 @@ std::tuple<FuncGraphPtr, AnfNodePtrList, AnfNodePtrList> FuncGraphUtils::Transfo
     eqv[n]->set_abstract(n->abstract());
     eqv[n]->set_kernel_info(n->kernel_info_ptr());
   }
-  mindspore::HashSet<AnfNodePtr> eqv_keys;
+  std::unordered_set<AnfNodePtr> eqv_keys;
   for (auto &e : eqv) {
     (void)eqv_keys.emplace(e.first);
   }
@@ -510,7 +511,7 @@ std::tuple<FuncGraphPtr, AnfNodePtrList, AnfNodePtrList> FuncGraphUtils::Transfo
 }
 
 AnfNodePtrList FuncGraphUtils::GetOutput(const AnfNodePtrList &nodes, const NodeUsersMap &users,
-                                         const mindspore::HashSet<AnfNodePtr> &seen) {
+                                         const std::unordered_set<AnfNodePtr> &seen) {
   AnfNodePtrList output;
   if (users.size() == 0) {
     return output;
@@ -538,7 +539,7 @@ AnfNodePtrList FuncGraphUtils::GetOutput(const AnfNodePtrList &nodes, const Node
 }
 
 AnfNodePtr FuncGraphUtils::RefSubGraphNode(const FuncGraphPtr &fg, const AnfNodePtr &node, AnfNodePtrList *inputs_ptr,
-                                           mindspore::HashMap<AnfNodePtr, AnfNodePtr> *eqv_ptr) {
+                                           std::unordered_map<AnfNodePtr, AnfNodePtr> *eqv_ptr) {
   MS_EXCEPTION_IF_NULL(fg);
   MS_EXCEPTION_IF_NULL(inputs_ptr);
   MS_EXCEPTION_IF_NULL(eqv_ptr);

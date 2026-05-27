@@ -24,6 +24,7 @@
 #include <vector>
 #include <tuple>
 #include <memory>
+#include <unordered_set>
 #include "ir/anf.h"
 #include "ir/dtype/type.h"
 #include "ir/func_graph.h"
@@ -63,9 +64,9 @@ class FuncGraphUtils {
   static std::tuple<FuncGraphPtr, AnfNodePtrList, AnfNodePtrList> TransformSegmentToAnfGraph(const AnfNodePtrList &lst);
 
   static AnfNodePtrList GetOutput(const AnfNodePtrList &nodes, const NodeUsersMap &users,
-                                  const mindspore::HashSet<AnfNodePtr> &seen);
+                                  const std::unordered_set<AnfNodePtr> &seen);
   static AnfNodePtr RefSubGraphNode(const FuncGraphPtr &fg, const AnfNodePtr &node, AnfNodePtrList *inputs_ptr,
-                                    mindspore::HashMap<AnfNodePtr, AnfNodePtr> *eqv_ptr);
+                                    std::unordered_map<AnfNodePtr, AnfNodePtr> *eqv_ptr);
 
   static tensor::TensorPtr CreateEmptyTupleTensor(const ValueTuplePtr &value_tuple);
   template <typename T>

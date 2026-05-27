@@ -23,6 +23,7 @@
 #include <queue>
 #include <set>
 #include <complex>
+#include <unordered_set>
 #include "mindapi/base/shape_vector.h"
 #include "primitive/ascend_op_name.h"
 #include "primitive/nn_optimizer_op_name.h"
@@ -478,7 +479,7 @@ KernelWithIndex AnfAlgo::VisitKernelWithReturnType(const AnfNodePtr &anf_node, s
 
 KernelWithIndex AnfAlgo::FetchRealNodeSkipMonadControl(const KernelWithIndex &node_with_index) {
   MS_EXCEPTION_IF_NULL(node_with_index.first);
-  const mindspore::HashSet<PrimitivePtr, PrimitiveHasher, PrimitiveEqual> auto_monad_prims = {prim::kPrimDepend,
+  const std::unordered_set<PrimitivePtr, PrimitiveHasher, PrimitiveEqual> auto_monad_prims = {prim::kPrimDepend,
                                                                                               prim::kPrimLoad};
   if (IsOneOfPrimitiveCNode(node_with_index.first, auto_monad_prims)) {
     return common::AnfAlgo::VisitKernelWithReturnType(node_with_index.first, node_with_index.second, false);
@@ -2252,7 +2253,7 @@ bool AnfAlgo::IsViewNode(const AnfNodePtr &node) {
 }
 
 bool AnfAlgo::IsNopNode(const AnfNodePtr &node) {
-  static mindspore::HashSet<std::string> nop_nodes = {prim::kPrimReshape->name(),
+  static std::unordered_set<std::string> nop_nodes = {prim::kPrimReshape->name(),
                                                       kExpandDimsOpName,
                                                       prim::kPrimSqueeze->name(),
                                                       prim::kPrimFlatten->name(),
@@ -2664,7 +2665,7 @@ std::string AnfAlgo::GetInputName(const CNodePtr &origin_op, size_t input_index)
 }
 
 bool AnfAlgo::IsNoOuputNode(const AnfNodePtr &node) {
-  const mindspore::HashSet<PrimitivePtr, PrimitiveHasher, PrimitiveEqual> no_output_prims = {
+  const std::unordered_set<PrimitivePtr, PrimitiveHasher, PrimitiveEqual> no_output_prims = {
     prim::kPrimSend, prim::kPrimNPUClearFloatStatusV2};
   if (IsOneOfPrimitiveCNode(node, no_output_prims)) {
     return true;
