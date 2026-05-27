@@ -54,7 +54,15 @@ export ENABLE_VERBOSE
 export LITE_PLATFORM
 export LITE_ENABLE_AAR
 if [[ "X${BUILD_OPTIONAL_TARGET:-off}" == "Xlite_boost" ]]; then
-  bash "${BASEPATH}/mindspore-lite/lite_boost/build.sh"
+  LITE_BOOST_ARGS=(-j "${THREAD_NUM}")
+  if [[ "${DEBUG_MODE}" == "on" ]]; then
+    LITE_BOOST_ARGS+=(-d)
+  else
+    LITE_BOOST_ARGS+=(-r)
+  fi
+  [[ "${ENABLE_VERBOSE}" == "on" ]] && LITE_BOOST_ARGS+=(-v)
+  [[ "${INC_BUILD}" == "on" ]] && LITE_BOOST_ARGS+=(-i)
+  bash "${BASEPATH}/mindspore-lite/lite_boost/build.sh" "${LITE_BOOST_ARGS[@]}"
 else
   if [ "${MSLITE_ENABLE_SKIP_SUBMODULE_UPDATE}" = "on" ]; then
     echo "Skipping update submodule"
