@@ -80,13 +80,8 @@ class Flags : public virtual mindspore::lite::FlagParser {
   ModelType save_type = kMindIR_Lite;
 #endif
   std::string optimizeStr;
-#ifdef ENABLE_OPENSSL
-  std::string encryptionStr = "true";
-  bool encryption = true;
-#else
   std::string encryptionStr = "false";
   bool encryption = false;
-#endif
   std::string device;
   std::string chip_name;
   std::string optimizeTransformerStr;

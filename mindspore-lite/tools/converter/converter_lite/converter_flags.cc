@@ -80,16 +80,7 @@ Flags::Flags() {
           "Assign the input format of exported model. Only Valid for 4-dimensional input. NHWC | NCHW", "");
   AddFlag(&Flags::graphOutputFormatStr, "outputDataFormat",
           "Assign the output format of exported model. Only Valid for 4-dimensional output. NHWC | NCHW", "");
-#ifdef ENABLE_OPENSSL
-  AddFlag(&Flags::encryptionStr, "encryption",
-          "Whether to export the encryption model."
-          "true | false",
-          "true");
-  AddFlag(&Flags::encKeyStr, "encryptKey",
-          "The key used to encrypt the file, expressed in hexadecimal characters. Only support AES-GCM and the key "
-          "length is 16.",
-          "");
-#endif
+
   AddFlag(&Flags::inferStr, "infer",
           "Whether to do pre-inference after convert. "
           "true | false",

@@ -2,9 +2,7 @@ add_definitions(-DPRIMITIVE_WRITEABLE)
 add_definitions(-DUSE_GLOG)
 set(USE_GLOG on)
 set(MSLITE_MERGE_DISABLE on)
-if(MSLITE_ENABLE_MODEL_ENCRYPTION AND MSLITE_DEPS_OPENSSL)
-    add_compile_definitions(ENABLE_OPENSSL)
-endif()
+
 set(PYTHON_VERSION ${Python3_VERSION_MAJOR}.${Python3_VERSION_MINOR})
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
 
