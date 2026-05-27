@@ -32,9 +32,9 @@ else()
         set(GIT_TAG "openEuler-22.03-LTS")
         set(SHA256 "d94ef2fb0c22198c7ffe2a6044e864bd467ca70b8cfdc52720dc94313321777b")
         set(FLATBUFFER_SRC "${CMAKE_BINARY_DIR}/_deps/flatbuffers-src")
-        set(FLATBUFFER_DIR "${FLATBUFFER_SRC}/flatbuffers-2.0.0")
+        set(FLATBUFFER_DIR "${FLATBUFFER_SRC}/flatbuffers-25.9.23")
         __download_pkg_with_git(flatbuffers ${GIT_REPOSITORY} ${GIT_TAG} ${SHA256})
-        execute_process(COMMAND tar -xf ${FLATBUFFER_SRC}/v2.0.0.tar.gz WORKING_DIRECTORY ${FLATBUFFER_SRC})
+        execute_process(COMMAND tar -xf ${FLATBUFFER_SRC}/v25.9.23.tar.gz WORKING_DIRECTORY ${FLATBUFFER_SRC})
 
         foreach(_SUBMODULE_FILE ${PKG_SUBMODULES})
             STRING(REGEX REPLACE "(.+)_(.+)" "\\1" _SUBMODEPATH ${_SUBMODULE_FILE})
@@ -44,11 +44,11 @@ else()
         endforeach()
     else()
     if(ENABLE_GITEE)
-        set(REQ_URL "https://gitee.com/mirrors/flatbuffers/repository/archive/v2.0.0.tar.gz")
-        set(SHA256 "3d1eabe298ddac718de34d334aefc22486064dcd8e7a367a809d87393d59ac5a")
+        set(REQ_URL "https://gitee.com/mirrors/flatbuffers/repository/archive/v25.9.23.tar.gz")
+        set(SHA256 "d1dabbad1fbe86da23c630115139d02ea4e8d77b16710582197586432fc5758d")
     else()
-        set(REQ_URL "https://github.com/google/flatbuffers/archive/v2.0.0.tar.gz")
-        set(SHA256 "9ddb9031798f4f8754d00fca2f1a68ecf9d0f83dfac7239af1311e4fd9a565c4")
+        set(REQ_URL "https://github.com/google/flatbuffers/archive/v25.9.23.tar.gz")
+        set(SHA256 "9102253214dea6ae10c2ac966ea1ed2155d22202390b532d1dea64935c518ada")
     endif()
     endif()
 
@@ -57,32 +57,29 @@ else()
     endif()
     if(APPLE)
         mindspore_add_pkg(flatbuffers
-                VER 2.0.0
+                VER 25.9.23
                 LIBS flatbuffers
                 EXE flatc
                 URL ${REQ_URL}
                 SHA256 ${SHA256}
-                PATCHES ${CMAKE_CURRENT_LIST_DIR}/../patches/flatbuffers/flatbuffers-no-werror.patch
                 CMAKE_OPTION -DFLATBUFFERS_BUILD_TESTS=OFF -DCMAKE_INSTALL_LIBDIR=lib)
     else()
         if(TARGET_AOS_ARM)
             mindspore_add_pkg(flatbuffers
-                    VER 2.0.0
+                    VER 25.9.23
                     LIBS flatbuffers
                     EXE flatc
                     URL ${REQ_URL}
                     SHA256 ${SHA256}
-                    PATCHES ${CMAKE_CURRENT_LIST_DIR}/../patches/flatbuffers/flatbuffers-no-werror.patch
                     CMAKE_OPTION -DCMAKE_C_COMPILER=/usr/bin/gcc -DCMAKE_CXX_COMPILER=/usr/bin/g++
                     -DFLATBUFFERS_BUILD_TESTS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release)
         else()
             mindspore_add_pkg(flatbuffers
-                    VER 2.0.0
+                    VER 25.9.23
                     LIBS flatbuffers
                     EXE flatc
                     URL ${REQ_URL}
                     SHA256 ${SHA256}
-                    PATCHES ${CMAKE_CURRENT_LIST_DIR}/../patches/flatbuffers/flatbuffers-no-werror.patch
                     DIR ${FLATBUFFER_DIR}
                     CMAKE_OPTION -DCMAKE_C_COMPILER=${FLATC_GCC_COMPILER} -DCMAKE_CXX_COMPILER=${FLATC_GXX_COMPILER}
                     -DFLATBUFFERS_BUILD_TESTS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release)

@@ -301,7 +301,7 @@ STATUS TfliteModelParser::ConvertOps(const std::unique_ptr<tflite::SubGraphT> &t
       MS_LOG(ERROR) << "opcode is nullptr";
       return RET_ERROR;
     }
-    auto tflite_op_type = opcode->builtin_code;
+    auto tflite_op_type = GetBuiltinCode(opcode);
     std::string op_type = tflite::EnumNameBuiltinOperator(tflite_op_type);
     std::string op_name = op_type + "-" + std::to_string(op_idx);
     op_idx++;

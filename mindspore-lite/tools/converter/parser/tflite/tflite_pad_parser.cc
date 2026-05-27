@@ -38,7 +38,7 @@ PrimitiveCPtr TflitePadParser::Parse(const std::unique_ptr<tflite::OperatorT> &t
     MS_LOG(ERROR) << "opcode is nullptr";
     return nullptr;
   }
-  auto tflite_op_type = opcode->builtin_code;
+  auto tflite_op_type = GetBuiltinCode(opcode);
   if (tflite_op_type == tflite::BuiltinOperator_PAD) {
     MS_CHECK_GE(tflite_op->inputs.size(), kInputSize1, nullptr);
     prim->set_padding_mode(mindspore::PaddingMode::CONSTANT);
