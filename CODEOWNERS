@@ -112,7 +112,7 @@
 /.gitcode/  @jjfeing @YeFeng_24
 /.jenkins/  @nicholas_yhr @jjfeing
 /cmake/  @jjfeing @YeFeng_24
-/docs/  @xuzhenyoumi
+/docs/  @Hanshize
 /include/  @jjfeing @YeFeng_24
 /mindspore/  @jjfeing @YeFeng_24
 /scripts/  @YeFeng_24 @jjfeing
@@ -130,8 +130,8 @@
 /NOTICE  @jjfeing @YeFeng_24
 /README.md  @jjfeing @YeFeng_24
 /README_CN.md  @jjfeing @YeFeng_24
-/RELEASE.md  @jjfeing @YeFeng_24 @xuzhenyoumi
-/RELEASE_CN.md  @jjfeing @YeFeng_24 @xuzhenyoumi
+/RELEASE.md  @jjfeing @YeFeng_24 @Hanshize
+/RELEASE_CN.md  @jjfeing @YeFeng_24 @Hanshize
 /SECURITY.md  @jjfeing @tronzhang
 /Third_Party_Open_Source_Software_Notice  @jjfeing @tronzhang
 /version.txt  @YeFeng_24
