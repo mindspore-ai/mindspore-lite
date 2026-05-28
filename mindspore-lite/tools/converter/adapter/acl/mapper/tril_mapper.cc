@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "tools/converter/adapter/acl/mapper/triu_mapper.h"
+#include "tools/converter/adapter/acl/mapper/tril_mapper.h"
 #include <memory>
 #include "tools/converter/adapter/acl/mapper/primitive_mapper_register.h"
 #include "tools/converter/adapter/acl/mapper/tbe_op_def.h"
@@ -29,7 +29,7 @@ const size_t kNumInputSize = 3;
 const size_t kNumInputIndex2 = 2;
 const size_t kNumCnodeInputIndex = 1;
 }  // namespace
-STATUS TriuMapper::Mapper(const CNodePtr &cnode) {
+STATUS TrilMapper::Mapper(const CNodePtr &cnode) {
   MS_CHECK_TRUE_MSG(cnode != nullptr, lite::RET_ERROR, "cnode is nullptr.");
   if (cnode->size() != kNumInputSize) {
     MS_LOG(ERROR) << "cnode input size is " << cnode->size() << ", not equal " << kNumInputSize;
@@ -50,14 +50,13 @@ STATUS TriuMapper::Mapper(const CNodePtr &cnode) {
     MS_LOG(ERROR) << "value_node or src_prim is nullptr.";
     return RET_ERROR;
   }
-
   auto input_node = cnode->input(kNumInputIndex2);
   if (input_node == nullptr) {
     MS_LOG(ERROR) << "The second input is nullptr.";
     return RET_ERROR;
   }
   if (!utils::isa<ParameterPtr>(input_node)) {
-    MS_LOG(ERROR) << "The input_node is not a parameter node. But the Triu ops only accepts the second input as a "
+    MS_LOG(ERROR) << "The input_node is not a parameter node. But the Tril ops only accepts the second input as a "
                      "parameter node. Please change the second input to a constant input.";
     return RET_ERROR;
   }
@@ -88,9 +87,9 @@ STATUS TriuMapper::Mapper(const CNodePtr &cnode) {
   auto diagonal = diagonal_data[0];
   MS_LOG(INFO) << "diagonal: " << diagonal;
   cnode->set_inputs({cnode->input(0), cnode->input(1)});
-  auto dst_prim = std::make_shared<acl::Triu>();
+  auto dst_prim = std::make_shared<acl::Tril>();
   if (dst_prim == nullptr) {
-    MS_LOG(ERROR) << "make triu op failed.";
+    MS_LOG(ERROR) << "make tril op failed.";
     return RET_ERROR;
   }
   dst_prim->SetAttrs(src_prim->attrs());
@@ -98,6 +97,6 @@ STATUS TriuMapper::Mapper(const CNodePtr &cnode) {
   value_node->set_value(dst_prim);
   return lite::RET_OK;
 }
-REGISTER_PRIMITIVE_MAPPER(kNameTriu, TriuMapper)
+REGISTER_PRIMITIVE_MAPPER(kNameTril, TrilMapper)
 }  // namespace lite
 }  // namespace mindspore
