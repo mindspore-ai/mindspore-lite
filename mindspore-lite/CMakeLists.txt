@@ -342,6 +342,12 @@ elseif(TOOLCHAIN_NAME STREQUAL "cortex-a15")
     add_compile_definitions(ENABLE_DSP)
 endif()
 
+if(TARGET_OHOS)
+    if((NOT MSLITE_ENABLE_NPU STREQUAL "off") AND (NOT MSLITE_ENABLE_NPU STREQUAL "OFF"))
+        message(FATAL_ERROR "MSLite on ohos-aarch64 not support npu backend, please reconfigure your build options!")
+    endif()
+endif()
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.3.0
         AND NOT TARGET_HIMIX AND NOT TARGET_MIX210)
     message(FATAL_ERROR "GCC version ${CMAKE_CXX_COMPILER_VERSION} must not be less than 7.3.0")
