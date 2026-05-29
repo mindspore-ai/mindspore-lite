@@ -13,3 +13,14 @@ Parallel
 
     lite_boost.parallel.initialize_usp
     lite_boost.parallel.ParallelManager
+
+Operators
+--------
+
+.. autosummary::
+    :toctree: lite_boost
+    :nosignatures:
+    :template: classtemplate.rst
+
+    lite_boost.ops.rain_fusion_attention
+    lite_boost.ops.sparse_attention

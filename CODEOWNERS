@@ -12,6 +12,7 @@
 # The maintainers of mindspore-lite/.
 /mindspore-lite/  @jjfeing
 /mindspore-lite/lite_boost/ @YeFeng_24 @jjfeing
+/mindspore-lite/lite_boost/docs @YeFeng_24 @jjfeing @Hanshize
 /mindspore-lite/examples/  @YeFeng_24
 /mindspore-lite/examples/cloud_infer/  @YeFeng_24
 /mindspore-lite/examples/converter_acl_custom_pass/  @YeFeng_24
