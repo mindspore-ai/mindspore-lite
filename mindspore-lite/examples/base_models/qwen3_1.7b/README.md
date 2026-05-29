@@ -44,8 +44,8 @@ python -c "import torch, transformers, onnx, onnxruntime, mindspore_lite; print(
 
 导出脚本会将 Qwen3-1.7B 拆分为两个 ONNX 子图：
 
-1. **LLM Prefill** (`qwen3_1_7b_llm_prefill.onnx`)：处理输入 prompt，输出 `logits` 与 `present_key_values`
-2. **LLM Decode** (`qwen3_1_7b_llm_decode.onnx`)：单 token 递归生成，输入 `past_key_values`
+1. **LLM Prefill** (`qwen3_1_7b_llm_prefill.onnx`)：处理输入 prompt，输出 `logits`、`present_key_cache`、`present_value_cache`
+2. **LLM Decode** (`qwen3_1_7b_llm_decode.onnx`)：单 token 递归生成，输入 `past_key_cache`、`past_value_cache`，输出更新后的 cache
 
 ### 导出命令
 
@@ -74,8 +74,14 @@ python export_qwen3_1_7b_onnx.py \
 | `--output-dir` | 导出输出目录 | `./qwen3_1_7b_onnx` |
 | `--device` | 导出设备（cpu/cuda） | `cpu` |
 | `--dummy-seq-len` | 导出用 dummy 序列长度 | `8` |
+| `--kv-cache-len` | KV cache 固定长度（prefill 输出与 decode 输入） | `512` |
 | `--dtype` | 导出精度（fp16/fp32） | `fp16` |
 | `--use-dynamo` | 启用新 ONNX dynamo 导出路径 | `False` |
+
+说明：
+
+- Prefill 模型输入为动态长度（seq_len 动态），用于处理 prompt。
+- Decode 模型为固定 shape（单 token + 固定 KV cache length），用于逐 token 生成。
 
 ### 导出输出
 
@@ -153,6 +159,7 @@ cd ./mindspore-lite/examples/base_models/qwen3_1.7b
   --fmk=ONNX \
   --modelFile=./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode.onnx \
   --outputFile=./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode \
+  --inputShape="input_ids:1,1;attention_mask:1,512;position_ids:1,1;past_key_cache:28,1,8,512,128;past_value_cache:28,1,8,512,128" \
   --optimize=ascend_oriented \
   --saveType=MINDIR \
   --configFile=./configs/qwen3_1_7b_llm_decode.config
@@ -166,9 +173,13 @@ cd ./mindspore-lite/examples/base_models/qwen3_1.7b
 [acl_build_options]
 input_format="ND"
 input_shape="input_ids:1,-1;attention_mask:1,-1;position_ids:1,-1"
+ge.dynamicDims="10,10,10;20,20,20"
 
 [acl_init_options]
 ge.exec.precision_mode=force_fp32
+
+[ascend_context]
+plugin_custom_ops=All
 ```
 
 #### `./configs/qwen3_1_7b_llm_decode.config`
@@ -176,13 +187,19 @@ ge.exec.precision_mode=force_fp32
 ```ini
 [acl_build_options]
 input_format="ND"
-input_shape="input_ids:1,1;attention_mask:1,-1;position_ids:1,1;past_key_values:56,1,8,-1,128"
+input_shape="input_ids:1,1;attention_mask:1,512;position_ids:1,1;past_key_cache:28,1,8,512,128;past_value_cache:28,1,8,512,128"
 
 [acl_init_options]
 ge.exec.precision_mode=force_fp32
+
+[ascend_context]
+plugin_custom_ops=All
 ```
 
-> 注：`past_key_values` 维度可能随模型结构变化，请以导出 ONNX 的真实输入 shape 为准。
+> 注：
+> - prefill 模型在转换为 MindIR 时会转换为动态分档（dynamicDims），需要在 config 中配置 `ge.dynamicDims`。
+> - `ge.dynamicDims` 的每个分号分隔项，对应一次“动态分档”的实际值；数值个数需与 `input_shape` 中 `-1` 的数量一致。
+> - decode 的 cache 已拆分为 `past_key_cache`/`past_value_cache` 两个输入。
 
 ---
 
@@ -205,6 +222,8 @@ python infer_qwen3_1_7b_mslite.py \
 
 ### 参数说明
 
+脚本为适配 prefill 的动态分档，会在推理前对输入序列做 padding，使其落入 `ge.dynamicDims` 配置的挡位，推理结束后再按真实长度截断输出。
+
 | 参数 | 说明 | 默认值 |
 |---|---|---|
 | `--prefill-model` | Prefill MindIR 路径 | 必填 |
@@ -224,15 +243,15 @@ python infer_qwen3_1_7b_mslite.py \
 
 测试模型：Qwen3-1.7B
 测试条件：输入 128 tokens，输出 128 tokens
-测试环境：昇腾Atlas 300I Duo，CANN 8.5.0，MindSpore Lite 2.8.0
+测试环境：CANN 8.5.0，MindSpore Lite 2.8.0
 
-| 指标                       | time     |
-|--------------------------|------------|
-| Prefill (ms)             | 86.43      |
-| Total Decode (ms)        | 8701     |
-| **Avg decode step (ms)** | **67.9** |
-| Total (ms)               | 8787     |
-| **Throughput (tok/s)**   | **14.5** |
+| 指标                       | 300I Duo time     | 800I A2 time     |
+|--------------------------|------------|------------|
+| Prefill (ms)             | 55.88      | 20.49      |
+| Total Decode (ms)        | 6087.42     | 2109.44     |
+| **Avg decode step (ms)** | **47.56** | **16.48** |
+| Total (ms)               | 6170.95     | 2129.93     |
+| **Throughput (tok/s)**   | **21.03** | **60.6** |
 
 > 注意：Avg decode step 为单次 decode 推理的耗时。性能数据为 3 次 warmup 后取 5 次测量的平均值。
 
