@@ -75,6 +75,7 @@ int SpaceToBatchCPUKernel::ReSize() {
 
   ComputeStrides(param_->input_shape_, param_->in_stride_, DIMENSION_4D);
   ComputeStrides(param_->output_shape_, param_->out_stride_, DIMENSION_4D);
+  param_->need_paddings_ = (param_->paddings_[0] | param_->paddings_[1] | param_->paddings_[2] | param_->paddings_[3]);
   return RET_OK;
 }
 
