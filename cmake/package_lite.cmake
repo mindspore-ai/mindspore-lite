@@ -269,10 +269,6 @@ if(PLATFORM_ARM64)
                         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
         endif()
-        if(MSLITE_GPU_BACKEND STREQUAL tensorrt)
-            install(FILES ${BUILD_DIR}/src/extendrt/delegate/tensorrt/libtensorrt_plugin.so
-                    DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
-        endif()
         install(DIRECTORY ${TOP_DIR}/mindspore-lite/include/api DESTINATION ${RUNTIME_INC_DIR}/api
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")
     else()
@@ -523,10 +519,6 @@ elseif(PLATFORM_ARM32)
                         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
         endif()
-        if(MSLITE_GPU_BACKEND STREQUAL tensorrt)
-            install(FILES ${BUILD_DIR}/src/extendrt/delegate/tensorrt/libtensorrt_plugin.so
-                    DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
-        endif()
     else()
         install(FILES ${BUILD_DIR}/src/${MINDSPORE_LITE_LIB_NAME}.so DESTINATION ${RUNTIME_LIB_DIR}
                 COMPONENT ${RUNTIME_COMPONENT_NAME})
@@ -736,10 +728,6 @@ else()
                 install(TARGETS hccl_plugin
                 DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
-        endif()
-        if(MSLITE_GPU_BACKEND STREQUAL tensorrt)
-            install(FILES ${BUILD_DIR}/src/extendrt/delegate/tensorrt/libtensorrt_plugin.so
-                    DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
     else()
         install(FILES ${BUILD_DIR}/src/${MINDSPORE_LITE_LIB_NAME}.so DESTINATION ${RUNTIME_LIB_DIR}

@@ -16,9 +16,6 @@
 
 #include "include/api/model.h"
 #include <mutex>
-#ifdef GPU_TENSORRT
-#include <cuda_runtime.h>
-#endif
 #include "flatbuffers/flatbuffers.h"
 #include "include/api/context.h"
 #include "include/api/dual_abi_helper.h"
@@ -299,17 +296,6 @@ bool Model::CheckModelSupport(DeviceType device_type, ModelType model_type) {
   if (device_type == kCPU) {
     return true;
   }
-#ifdef GPU_TENSORRT
-  if (device_type == kGPU) {
-    int driver_version = 0;
-    int ret = cudaDriverGetVersion(&driver_version);
-    if (ret != cudaSuccess || driver_version == 0) {
-      MS_LOG(ERROR) << "No nvidia GPU driver.";
-      return false;
-    }
-    return true;
-  }
-#endif
   return false;
 }
 

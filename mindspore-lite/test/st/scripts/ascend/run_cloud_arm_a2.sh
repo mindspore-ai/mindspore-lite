@@ -39,7 +39,7 @@ function Run_Converter() {
     return $?
 }
 
-# Run on CPU,TensorRT or ACL
+# Run on CPU or ACL
 function Run_Benchmark() {
     echo "Start running benchmark models"
     cd ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ || exit 1

@@ -201,15 +201,6 @@ if [[ $backend == "all" || $backend == "arm64_cpu_cropping" ]]; then
     fi
 fi
 
-if [[ $backend == "all" || $backend == "x86_gpu" ]]; then
-    sh $cur_path/scripts/run_benchmark_tensorrt.sh -r $release_path -m $models_path -d $device_id -e $backend -l $level
-    tensorrt_status=$?
-    if [[ $tensorrt_status -ne 0 ]]; then
-      echo "Run x86 tensorrt gpu failed"
-      exit 1
-    fi
-fi
-
 if [[ $backend == "all" || $backend =~ "x86_ascend310" || $backend =~ "x86_ascend710" || $backend =~ "arm_ascend310" ||
       $backend =~ "ascend310_ge" ]]; then
     sh $cur_path/scripts/ascend/run_ascend.sh -r $release_path -m $models_path -d $device_id -e $backend -l $level -p $fail_not_return
@@ -225,24 +216,6 @@ if [[ $backend == "all" || $backend == "server_inference_x86" || $backend == "se
     server_inference_status=$?
     if [[ server_inference_status -ne 0 ]]; then
       echo "Run server inference failed"
-      exit 1
-    fi
-fi
-
-if [[ $backend == "all" || $backend == "server_inference_x86_gpu" ]]; then
-    sh $cur_path/scripts/run_benchmark_server_inference_tensorrt.sh -r $release_path -m $models_path -d $device_id -e $backend -l $level
-    server_inference_gpu_status=$?
-    if [[ server_inference_gpu_status -ne 0 ]]; then
-      echo "Run server inference gpu failed"
-      exit 1
-    fi
-fi
-
-if [[ $backend == "all" || $backend == "server_inference_x86_cloud_gpu" ]]; then
-    sh $cur_path/scripts/run_benchmark_server_inference_tensorrt_cloud.sh -r $release_path -m $models_path -d $device_id -e $backend -l $level
-    server_inference_gpu_status=$?
-    if [[ server_inference_gpu_status -ne 0 ]]; then
-      echo "Run server inference gpu failed"
       exit 1
     fi
 fi

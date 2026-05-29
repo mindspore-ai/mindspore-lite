@@ -123,7 +123,7 @@ class MS_API BenchmarkFlags : public virtual FlagParser {
     AddFlag(&BenchmarkFlags::group_info_file_, "GroupInfoFile", "Communication group info file", "");
     AddFlag(&BenchmarkFlags::config_file_, "configFile", "Config file", "");
     AddFlag(&BenchmarkFlags::device_, "device", "CPU | GPU | NPU | Ascend | DSP | Auto", "CPU");
-    AddFlag(&BenchmarkFlags::provider_, "provider", "device provider litert | tensorrt | mindrt", "litert");
+    AddFlag(&BenchmarkFlags::provider_, "provider", "device provider litert | mindrt", "litert");
     AddFlag(&BenchmarkFlags::cpu_bind_mode_, "cpuBindMode", "Input 0 for NO_BIND, 1 for HIGHER_CPU, 2 for MID_CPU.", 1);
     // MarkPerformance
     AddFlag(&BenchmarkFlags::loop_count_, "loopCount", "Run loop count", 10);

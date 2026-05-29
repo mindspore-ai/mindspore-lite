@@ -39,7 +39,7 @@ function Run_Converter() {
     return $?
 }
 
-# Run on CPU,TensorRT or ACL
+# Run on CPU or ACL
 function Run_Benchmark() {
     echo "Start running benchmark models"
     cd ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ || exit 1
@@ -209,15 +209,6 @@ function ConfigCPU() {
     fi
     benchmark_device="CPU"
     models_server_inference_cfg_file_list=${basepath}/../${config_folder}/models_graph_kernel_cpu_cloud.cfg
-}
-
-function ConfigGPU() {
-    source /etc/profile.tensorrt8.5.1
-    echo "NVIDIA TensorRT, basepath is ${basepath}"
-    release_package_path=${release_path}/centos_x86/cloud_fusion/ # ../release_pkg/lite
-    models_server_inference_cfg_file_list=${basepath}/../${config_folder}/models_graph_kernel_gpu_cloud.cfg
-    benchmark_device="GPU"
-    export CUDA_VISIBLE_DEVICES=${device_id}
 }
 
 function ConfigAscend() {

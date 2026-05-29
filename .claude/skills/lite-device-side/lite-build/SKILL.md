@@ -62,7 +62,6 @@ Options defined in `mindspore-lite/CMakeLists.txt`, set via `build.sh` flags or 
 |-----------|--------|------|
 | `MSLITE_ENABLE_GPU_OPENCL` | OFF | OpenCL GPU backend |
 | `MSLITE_ENABLE_GPU_VULKAN` | OFF | Vulkan GPU backend |
-| `MSLITE_ENABLE_GPU_TENSORRT` | OFF | TensorRT GPU backend |
 | `MSLITE_ENABLE_NPU` | OFF | HiSilicon NPU delegate |
 | `MSLITE_ENABLE_COREML` | OFF | Apple CoreML delegate |
 | `MSLITE_ENABLE_TRAIN` | OFF | Device-side training support |

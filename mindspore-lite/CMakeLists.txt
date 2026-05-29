@@ -68,7 +68,7 @@ option(MSLITE_ENABLE_W_NO_ERROR "enable W_NO_ERROR" off)
 
 # backends
 set(MSLITE_GPU_BACKEND "" CACHE STRING "enable gpu backend, \
-    opencl only support arm64 and x86_64 , tensorrt only support x86_64, opencl/cuda/tensorrt/off")
+    opencl only support arm64 and x86_64 , opencl/off")
 option(MSLITE_ENABLE_COREML "enable coreML, only apple ios devices support" off)
 option(MSLITE_ENABLE_NPU "enable npu, only arm64 or arm32 support" off)
 
@@ -376,7 +376,7 @@ else()
     if(MSLITE_GPU_BACKEND STREQUAL "")
         set(MSLITE_GPU_BACKEND "off")
     endif()
-    if((NOT MSLITE_GPU_BACKEND STREQUAL "tensorrt") AND (NOT MSLITE_GPU_BACKEND STREQUAL "off") AND
+    if((NOT MSLITE_GPU_BACKEND STREQUAL "off") AND
     (NOT MSLITE_GPU_BACKEND STREQUAL "cuda") AND (NOT MSLITE_GPU_BACKEND STREQUAL "opencl"))
         message("invalid MSLITE_GPU_BACKEND value ${MSLITE_GPU_BACKEND} for x86_64, MSLITE_GPU_BACKEND is set to off.")
         set(MSLITE_GPU_BACKEND "off")
@@ -601,10 +601,10 @@ else()
     endif()
 endif()
 
-if(((MSLITE_GPU_BACKEND STREQUAL tensorrt) OR MSLITE_ENABLE_NPU OR MSLITE_ENABLE_COREML) AND (
+if((MSLITE_ENABLE_NPU OR MSLITE_ENABLE_COREML) AND (
         NOT MSLITE_ENABLE_DELEGATE))
     message(FATAL_ERROR "If MSLITE_ENABLE_DELEGATE use is configured as off, MSLITE_ENABLE_NPU and MSLITE_ENABLE_COREML
-    must also be configured as off and MSLITE_GPU_BACKEND can not be configured as tensorrt.")
+    must also be configured as off.")
 endif()
 
 if(MSLITE_ENABLE_HIGH_PERFORMANCE)
@@ -849,35 +849,6 @@ endif()
 if(MSLITE_GPU_BACKEND STREQUAL cuda)
     add_compile_definitions(SUPPORT_GPU)
     set(SUPPORT_CUDA on)
-    if(DEFINED ENV{CUDA_HOME})
-        message("CUDA_HOME = $ENV{CUDA_HOME}")
-    else()
-        message(FATAL_ERROR "please set CUDA_HOME, example: export CUDA_HOME=/usr/local/cuda-10.1/")
-    endif()
-    find_package(CUDAToolkit)
-    if(NOT CUDAToolkit_FOUND)
-        message(FATAL_ERROR "Required package CUDAToolkit not found, "
-                "please install the package and try building MindSpore again.")
-    endif()
-    if((${CMAKE_SYSTEM_NAME} MATCHES "Linux") AND (${CUDAToolkit_VERSION} VERSION_GREATER "10.1.168"))
-        set(ENABLE_GLIBCXX OFF)
-    else()
-        message(WARNING "Current CUDAToolkit version (${CUDAToolkit_VERSION}) is less than 10.1.168, "
-                "might have unfixed issues with std string, set ENABLE_GLIBCXX = ON automatically to prevent errors. "
-                "However, import mindspore and import mindspore_lite in Python API at the same time cannot be used, "
-                "if you need to import them at the same time, the version higher than 10.1.168 is recommended.")
-        set(ENABLE_GLIBCXX ON)
-    endif()
-endif()
-
-if(MSLITE_GPU_BACKEND STREQUAL tensorrt)
-    add_compile_definitions(SUPPORT_GPU)
-    set(SUPPORT_TENSORRT on)
-    if(DEFINED ENV{TENSORRT_PATH})
-        message("TENSORRT_PATH = $ENV{TENSORRT_PATH}")
-    else()
-        message(FATAL_ERROR "please set TENSORRT_PATH, example: export TENSORRT_PATH=/root/usr/TensorRT-6.0.1.5/")
-    endif()
     if(DEFINED ENV{CUDA_HOME})
         message("CUDA_HOME = $ENV{CUDA_HOME}")
     else()

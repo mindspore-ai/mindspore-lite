@@ -22,18 +22,7 @@ mindspore_lite.Context
                 [op_name1]=data_type:float16（名字为op_name1的算子设置数据类型为float16）
                 [op_name2]=data_type:float32（名字为op_name2的算子设置数据类型为float32）
 
-          - **用法2** - 在使用GPU推理时，进行TensorRT设置，配置文件内容及说明如下：
-
-            .. code-block::
-
-                [ms_cache]
-                serialize_path=[serialization model path]（序列化模型的存储路径）
-                [gpu_context]
-                input_shape=input_name:[input_dim]（模型输入维度，用于动态shape）
-                dynamic_dims=[min_dim~max_dim]（模型输入的动态维度范围，用于动态shape）
-                opt_dims=[opt_dim]（模型最优输入维度，用于动态shape）
-
-          - **用法3** - 对于大模型，使用model buffer进行加载编译的时候需要单独设置权重文件的路径，并且需要确保大模型文件和权重文件所在的文件夹位于同一文件夹中。例如，当目录如下时：
+          - **用法2** - 对于大模型，使用model buffer进行加载编译的时候需要单独设置权重文件的路径，并且需要确保大模型文件和权重文件所在的文件夹位于同一文件夹中。例如，当目录如下时：
 
             .. code-block::
 

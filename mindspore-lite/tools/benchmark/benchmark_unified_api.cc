@@ -463,9 +463,6 @@ void BenchmarkUnifiedApi::InitMSContextForGPU(const std::shared_ptr<mindspore::C
 
     auto gl_display = eglGetCurrentDisplay();
     gpu_device_info->SetGLDisplay(gl_display);
-  } else {
-    gpu_device_info->SetProvider("tensorrt");
-    gpu_device_info->SetAllocator(nullptr);
   }
   device_list->push_back(gpu_device_info);
 }

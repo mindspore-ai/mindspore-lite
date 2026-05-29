@@ -25,7 +25,6 @@
 #include "include/api/data_type.h"
 #include "src/litert/delegate/parameter_cache/embedding_cache.h"
 #include "src/litert/delegate/parameter_cache/load_host_cache_model.h"
-#include "src/litert/delegate/tensorrt/distribution/distribution_base.h"
 
 namespace mindspore {
 namespace cache {
