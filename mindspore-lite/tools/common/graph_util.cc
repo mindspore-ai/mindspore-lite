@@ -51,7 +51,6 @@ constexpr size_t kSecondIndex = 1;
 constexpr size_t kInvalidSize = SIZE_MAX;
 constexpr auto kMakeTuple = "MakeTuple";
 constexpr auto kMakeList = "make_list";
-constexpr size_t kEncMaxLen = 16;
 }  // namespace
 
 static STATUS GetAbstractfromSequenceCodeGetItem(const CNodePtr &cnode, AbstractBasePtr *abstract, size_t *idx) {
@@ -755,22 +754,5 @@ int TransferMetaGraph(const schema::MetaGraphT &graph, void **model_buf, size_t 
   return memcpy_s(*model_buf, *size, content, *size);
 }
 
-int InitEncryptKey(const std::shared_ptr<ConverterPara> &param, unsigned char *encKey, size_t *keyLen) {
-  if (!param->enable_encryption) {
-    return RET_OK;
-  }
-  if (param->encrypt_key.empty()) {
-    MS_LOG(ERROR) << "param->encrypt_key is empty.";
-    return RET_INPUT_PARAM_INVALID;
-  }
-  *keyLen = lite::Hex2ByteArray(param->encrypt_key, encKey, kEncMaxLen);
-  if (*keyLen != kEncMaxLen) {
-    MS_LOG(ERROR) << "enc_key must expressed in hexadecimal characters "
-                  << " and only support AES-GCM method and the key length is " << kEncMaxLen;
-    return RET_INPUT_PARAM_INVALID;
-  }
-
-  return RET_OK;
-}
 }  // namespace lite
 }  // namespace mindspore

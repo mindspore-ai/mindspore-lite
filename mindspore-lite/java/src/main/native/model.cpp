@@ -101,53 +101,7 @@ extern "C" JNIEXPORT bool JNICALL Java_com_mindspore_Model_buildByBuffer(JNIEnv 
     return false;
   }
   auto context = std::make_shared<mindspore::Context>(*c_context_ptr);
-  mindspore::Status status;
-  if (key_str != NULL) {
-    auto key_len = static_cast<size_t>(env->GetArrayLength(key_str));
-    char *dec_key_data = new (std::nothrow) char[key_len];
-    if (dec_key_data == nullptr) {
-      MS_LOG(ERROR) << "Dec key new failed";
-      return false;
-    }
-    jboolean is_copy;
-    jchar *key_array = env->GetCharArrayElements(key_str, &is_copy);
-    if (key_array == nullptr) {
-      MS_LOG(ERROR) << "key_array is nullptr.";
-      std::memset(dec_key_data, 0, key_len);
-      delete[] dec_key_data;
-      dec_key_data = nullptr;
-      key_len = 0;
-      return false;
-    }
-    for (size_t i = 0; i < key_len; i++) {
-      dec_key_data[i] = key_array[i];
-    }
-    if (is_copy == JNI_TRUE) {
-      std::memset(key_array, 0, key_len * sizeof(jchar));
-    }
-    env->ReleaseCharArrayElements(key_str, key_array, JNI_ABORT);
-    mindspore::Key dec_key{dec_key_data, key_len};
-    if (cropto_lib_path == nullptr || dec_mod == nullptr) {
-      MS_LOG(ERROR) << "crypto_lib_path or dec_mod from java is nullptr.";
-      std::memset(dec_key_data, 0, key_len);
-      delete[] dec_key_data;
-      dec_key_data = nullptr;
-      key_len = 0;
-      return false;
-    }
-    auto c_dec_mod = env->GetStringUTFChars(dec_mod, JNI_FALSE);
-    auto c_cropto_lib_path = env->GetStringUTFChars(cropto_lib_path, JNI_FALSE);
-    status = lite_model_ptr->Build(model_buf, buffer_len, c_model_type, context, dec_key, c_dec_mod, c_cropto_lib_path);
-    std::memset(dec_key.key, 0, dec_key.max_key_len);
-    env->ReleaseStringUTFChars(cropto_lib_path, c_cropto_lib_path);
-    env->ReleaseStringUTFChars(dec_mod, c_dec_mod);
-    std::memset(dec_key_data, 0, key_len);
-    delete[] dec_key_data;
-    dec_key_data = nullptr;
-    key_len = 0;
-  } else {
-    status = lite_model_ptr->Build(model_buf, buffer_len, c_model_type, context);
-  }
+  mindspore::Status status = lite_model_ptr->Build(model_buf, buffer_len, c_model_type, context);
   if (status != mindspore::kSuccess) {
     MS_LOG(ERROR) << "Error status " << static_cast<int>(status) << " during build of model";
     return false;
@@ -179,58 +133,7 @@ extern "C" JNIEXPORT bool JNICALL Java_com_mindspore_Model_buildByPath(JNIEnv *e
     return false;
   }
   auto context = std::make_shared<mindspore::Context>(*c_context_ptr);
-  mindspore::Status status;
-  if (key_str != NULL) {
-    auto key_len = static_cast<size_t>(env->GetArrayLength(key_str));
-    char *dec_key_data = new (std::nothrow) char[key_len];
-    if (dec_key_data == nullptr) {
-      MS_LOG(ERROR) << "Dec key new failed";
-      env->ReleaseStringUTFChars(model_path, c_model_path);
-      return false;
-    }
-
-    jboolean is_copy;
-    jchar *key_array = env->GetCharArrayElements(key_str, &is_copy);
-    if (key_array == nullptr) {
-      MS_LOG(ERROR) << "GetCharArrayElements failed.";
-      std::memset(dec_key_data, 0, key_len);
-      delete[] dec_key_data;
-      dec_key_data = nullptr;
-      key_len = 0;
-      env->ReleaseStringUTFChars(model_path, c_model_path);
-      return jlong(nullptr);
-    }
-    for (size_t i = 0; i < key_len; i++) {
-      dec_key_data[i] = key_array[i];
-    }
-    if (is_copy == JNI_TRUE) {
-      std::memset(key_array, 0, key_len * sizeof(jchar));
-    }
-    env->ReleaseCharArrayElements(key_str, key_array, JNI_ABORT);
-    mindspore::Key dec_key{dec_key_data, key_len};
-
-    if (dec_mod == nullptr || cropto_lib_path == nullptr) {
-      MS_LOG(ERROR) << "dec_mod, crypto_lib_path from java is nullptr.";
-      std::memset(dec_key_data, 0, key_len);
-      delete[] dec_key_data;
-      dec_key_data = nullptr;
-      key_len = 0;
-      env->ReleaseStringUTFChars(model_path, c_model_path);
-      return jlong(nullptr);
-    }
-    auto c_dec_mod = env->GetStringUTFChars(dec_mod, JNI_FALSE);
-    auto c_cropto_lib_path = env->GetStringUTFChars(cropto_lib_path, JNI_FALSE);
-    status = lite_model_ptr->Build(c_model_path, c_model_type, context, dec_key, c_dec_mod, c_cropto_lib_path);
-    std::memset(dec_key.key, 0, dec_key.max_key_len);
-    env->ReleaseStringUTFChars(dec_mod, c_dec_mod);
-    env->ReleaseStringUTFChars(cropto_lib_path, c_cropto_lib_path);
-    std::memset(dec_key_data, 0, key_len);
-    delete[] dec_key_data;
-    dec_key_data = nullptr;
-    key_len = 0;
-  } else {
-    status = lite_model_ptr->Build(c_model_path, c_model_type, context);
-  }
+  mindspore::Status status = lite_model_ptr->Build(c_model_path, c_model_type, context);
   env->ReleaseStringUTFChars(model_path, c_model_path);
   if (status != mindspore::kSuccess) {
     MS_LOG(ERROR) << "Error status " << static_cast<int>(status) << " during build of model";

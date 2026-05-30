@@ -27,7 +27,6 @@
 #include "include/errorcode.h"
 #include "include/securec.h"
 #include "src/common/file_utils.h"
-#include "src/common/decrypt.h"
 
 namespace mindspore::lite {
 namespace {
@@ -187,10 +186,7 @@ bool MetaGraphSerializer::ExtraAndSerializeModelWeight(const schema::MetaGraphT 
   return true;
 }
 
-bool MetaGraphSerializer::SerializeModelAndUpdateWeight(const schema::MetaGraphT &meta_graphT, const Byte *key,
-                                                        const size_t key_len, const std::string &enc_mode,
-                                                        size_t *size) {
-  MS_CHECK_TRUE_MSG(key != nullptr, false, "key is nullptr!");
+bool MetaGraphSerializer::SerializeModelAndUpdateWeight(const schema::MetaGraphT &meta_graphT, size_t *size) {
   MS_CHECK_TRUE_MSG(size != nullptr, false, "size is nullptr!");
   // serialize model
   flatbuffers::FlatBufferBuilder builder(kFlatbuffersBuilderInitSize);
@@ -199,7 +195,7 @@ bool MetaGraphSerializer::SerializeModelAndUpdateWeight(const schema::MetaGraphT
   schema::FinishMetaGraphBuffer(builder, offset);
   *size = builder.GetSize();
   auto content = builder.GetBufferPointer();
-  if (!SerializeModel(content, *size, key, key_len, enc_mode)) {
+  if (!SerializeModel(content, *size)) {
     MS_LOG(ERROR) << "Serialize graph failed";
     return false;
   }
@@ -232,15 +228,13 @@ uint8_t *MetaGraphSerializer::GetMetaGraphPackedBuff(flatbuffers::FlatBufferBuil
   return builder->GetBufferPointer();
 }
 
-int MetaGraphSerializer::Save(const schema::MetaGraphT &graph, const std::string &output_path, const Byte *key,
-                              const size_t key_len, const std::string &enc_mode) {
+int MetaGraphSerializer::Save(const schema::MetaGraphT &graph, const std::string &output_path) {
   size_t size = 0;
-  auto ret = MetaGraphSerializer::Save(graph, output_path, &size, key, key_len, enc_mode);
+  auto ret = MetaGraphSerializer::Save(graph, output_path, &size);
   return ret;
 }
 
-int MetaGraphSerializer::Save(const schema::MetaGraphT &graph, const std::string &output_path, size_t *size,
-                              const Byte *key, const size_t key_len, const std::string &enc_mode) {
+int MetaGraphSerializer::Save(const schema::MetaGraphT &graph, const std::string &output_path, size_t *size) {
   MS_CHECK_TRUE_MSG(size != nullptr, lite::RET_NULL_PTR, "size is nullptr!");
   MetaGraphSerializer meta_graph_serializer;
   *size = 0;
@@ -261,7 +255,7 @@ int MetaGraphSerializer::Save(const schema::MetaGraphT &graph, const std::string
     return RET_ERROR;
   }
   if (save_together) {
-    if (!meta_graph_serializer.SerializeModel(buffer, *size, key, key_len, enc_mode)) {
+    if (!meta_graph_serializer.SerializeModel(buffer, *size)) {
       MS_LOG(ERROR) << "Serialize graph failed";
       return RET_ERROR;
     }
@@ -271,7 +265,7 @@ int MetaGraphSerializer::Save(const schema::MetaGraphT &graph, const std::string
       return RET_ERROR;
     }
     size_t model_size = 0;
-    if (!meta_graph_serializer.SerializeModelAndUpdateWeight(graph, key, key_len, enc_mode, &model_size)) {
+    if (!meta_graph_serializer.SerializeModelAndUpdateWeight(graph, &model_size)) {
       MS_LOG(ERROR) << "Serialize graph and adjust weight failed";
       return RET_ERROR;
     }
@@ -291,26 +285,14 @@ MetaGraphSerializer::~MetaGraphSerializer() {
   }
 }
 
-bool MetaGraphSerializer::SerializeModel(const void *content, size_t size, const Byte *key, const size_t key_len,
-                                         const std::string &enc_mode) {
+bool MetaGraphSerializer::SerializeModel(const void *content, size_t size) {
   MS_CHECK_TRUE_MSG(content != nullptr, false, "content is nullptr!");
   MS_CHECK_TRUE_MSG(model_fs_ != nullptr, false, "model_fs_ is nullptr!");
   if (size == 0 || content == nullptr) {
     MS_LOG(ERROR) << "Input meta graph buffer is nullptr";
     return false;
   }
-  if (key_len > 0) {
-    size_t encrypt_len;
-    auto encrypt_content = Encrypt(&encrypt_len, reinterpret_cast<const Byte *>(content), size, key, key_len, enc_mode);
-    if (encrypt_content == nullptr || encrypt_len == 0) {
-      MS_LOG(ERROR) << "Encrypt failed.";
-      model_fs_->close();
-      return false;
-    }
-    model_fs_->write(reinterpret_cast<const char *>(encrypt_content.get()), encrypt_len);
-  } else {
-    model_fs_->write((const char *)content, static_cast<int64_t>(size));
-  }
+  model_fs_->write((const char *)content, static_cast<int64_t>(size));
   if (model_fs_->bad()) {
     MS_LOG(ERROR) << "Write model file failed: " << save_model_path_;
     return false;

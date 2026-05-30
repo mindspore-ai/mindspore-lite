@@ -87,14 +87,6 @@ int main(int argc, const char **argv) {
       converter.SetInputDataType(flags.inputDataType);
       converter.SetOutputDataType(flags.outputDataType);
       converter.SetSaveType(flags.save_type);
-      converter.SetDecryptKey(flags.dec_key);
-      (void)memset_s(&flags.dec_key[0], flags.dec_key.size(), 0, flags.dec_key.size());
-      flags.dec_key.clear();
-      converter.SetDecryptMode(flags.dec_mode);
-      converter.SetEnableEncryption(flags.encryption);
-      converter.SetEncryptKey(flags.encKeyStr);
-      (void)memset_s(&flags.encKeyStr[0], flags.encKeyStr.size(), 0, flags.encKeyStr.size());
-      flags.encKeyStr.clear();
       converter.SetInfer(flags.infer);
       converter.SetTrainModel(flags.trainModel);
       converter.SetNoFusion(flags.disableFusion);

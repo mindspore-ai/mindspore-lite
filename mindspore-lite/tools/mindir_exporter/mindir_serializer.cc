@@ -21,7 +21,6 @@
 #include <set>
 #include <algorithm>
 #include <map>
-#include "utils/crypto.h"
 #include "tools/converter/ms_depend/utils.h"
 #include "tools/mindir_exporter/export_depend/dump_proto.h"
 #include "src/common/file_utils.h"
@@ -35,7 +34,6 @@
 #include "tools/converter/quantizer/quant_params.h"
 #include "tools/converter/quantizer/quantize_util.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_o.h"
-#include "src/common/decrypt.h"
 #include "src/extendrt/delegate/comm_group_info.h"
 #include "mindspore/core/include/ir/graph_utils.h"
 
@@ -45,7 +43,6 @@ namespace {
 constexpr const size_t TOTAL_SAVE = 1024 * 1024 * 1024;
 constexpr const size_t PARA_ROUND = 1024;
 constexpr const int64_t OFFSET = 64;
-constexpr size_t kEncMaxLen = 16;
 
 bool DeleteDirRecursively(const std::string &dir_name) {
   DIR *dir = opendir(dir_name.c_str());
@@ -713,59 +710,11 @@ int MindIRSerializer::SaveProtoToFile(mind_ir::ModelProto *model_proto, const st
     MS_LOG(ERROR) << "Open the file '" << realpath.value() << "' failed!" << ErrnoToString(errno);
     return RET_ERROR;
   }
-  unsigned char enc_key[kEncMaxLen] = {0};
-  size_t key_len = 0;
-  auto ret = InitEncryptKey(param, enc_key, &key_len);
-  if (ret != RET_OK) {
-    MS_LOG(ERROR) << "Init encrypt key failed";
+
+  if (!model_proto->SerializeToOstream(&fout)) {
+    MS_LOG(ERROR) << "Failed to write the mindir proto to file " << realpath.value();
     fout.close();
-    return ret;
-  }
-  if (key_len > 0) {
-    void *buffer = nullptr;
-    size_t size = 0;
-    ret = GetBuffAndSize(&buffer, &size);
-    if (ret != RET_OK) {
-      MS_LOG(ERROR) << "Get buffer and size failed";
-      memset(enc_key, 0, kEncMaxLen);
-      key_len = 0;
-      fout.close();
-      return ret;
-    }
-    size_t encrypt_len = 0;
-    auto encrypt_content =
-      Encrypt(&encrypt_len, reinterpret_cast<Byte *>(buffer), size, enc_key, key_len, param->encrypt_mode);
-    if (encrypt_content == nullptr || encrypt_len == 0) {
-      MS_LOG(ERROR) << "Encrypt failed.";
-      free(buffer);
-      buffer = nullptr;
-      memset(enc_key, 0, kEncMaxLen);
-      key_len = 0;
-      fout.close();
-      return RET_ERROR;
-    }
-    fout.write(reinterpret_cast<const char *>(encrypt_content.get()), encrypt_len);
-    if (fout.bad()) {
-      MS_LOG(ERROR) << "Write model file failed: " << save_model_path_;
-      free(buffer);
-      buffer = nullptr;
-      memset(enc_key, 0, kEncMaxLen);
-      key_len = 0;
-      fout.close();
-      return RET_ERROR;
-    }
-    free(buffer);
-    buffer = nullptr;
-    memset(enc_key, 0, kEncMaxLen);
-    key_len = 0;
-  } else {
-    memset(enc_key, 0, kEncMaxLen);
-    key_len = 0;
-    if (!model_proto->SerializeToOstream(&fout)) {
-      MS_LOG(ERROR) << "Failed to write the mindir proto to file " << realpath.value();
-      fout.close();
-      return RET_ERROR;
-    }
+    return RET_ERROR;
   }
 
   fout.close();
@@ -787,4 +736,5 @@ int MindIRSerializer::GetBuffAndSize(void **buff, size_t *size) {
   model_proto_.SerializeToArray(*buff, *size);
   return RET_OK;
 }
+
 }  // namespace mindspore::lite

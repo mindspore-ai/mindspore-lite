@@ -71,7 +71,6 @@ namespace mindspore::lite::quant {
 namespace {
 constexpr size_t kGatherAxisIndex = 3;
 constexpr int kDefaultThreadNum = 4;
-constexpr size_t kEncMaxLen = 16;
 constexpr size_t kModelSizeLimit = static_cast<size_t>(2) * 1024 * 1024 * 1024;
 constexpr int kFakeQuantMinIndex = 1;
 constexpr int kFakeQuantMaxIndex = 2;
@@ -267,9 +266,7 @@ Status LargeModelBuildModel(const schema::MetaGraphT &meta_graph, const std::sha
     MS_LOG(ERROR) << param->commonQuantParam.workspace << " is invalid path. Please check it again.";
     return kLiteError;
   }
-  unsigned char encKey[kEncMaxLen] = {0};
-  size_t keyLen = 0;
-  auto status = MetaGraphSerializer::Save(meta_graph, tmp_save_file_path, size, encKey, keyLen, param->encrypt_mode);
+  auto status = MetaGraphSerializer::Save(meta_graph, tmp_save_file_path, size);
   if (status != RET_OK) {
     MS_LOG(ERROR) << "Save Large Model Failed: " << status << " " << GetErrorInfo(status);
     return kLiteError;
@@ -311,11 +308,8 @@ int DumpGraph(const FuncGraphPtr &func_graph, const std::shared_ptr<ConverterPar
     delete meta_graph;
     return RET_ERROR;
   }
-
-  unsigned char encKey[kEncMaxLen] = {0};
-  size_t keyLen = 0;
   size_t size;
-  status = MetaGraphSerializer::Save(*meta_graph, save_path, &size, encKey, keyLen, param->encrypt_mode);
+  status = MetaGraphSerializer::Save(*meta_graph, save_path, &size);
   if (status != RET_OK) {
     MS_LOG(ERROR) << "Save Large Model Failed: " << status << " " << GetErrorInfo(status);
     return RET_ERROR;

@@ -63,13 +63,6 @@ Flags::Flags() {
           "true | false",
           "false");
 #endif
-  AddFlag(&Flags::dec_key, "decryptKey",
-          "The key used to decrypt the file, expressed in hexadecimal characters. Only valid when fmkIn is 'MINDIR'",
-          "");
-  AddFlag(&Flags::dec_mode, "decryptMode",
-          "Decryption method for the MindIR file. Only valid when dec_key is set."
-          "AES-GCM | AES-CBC",
-          "AES-GCM");
   AddFlag(&Flags::inTensorShape, "inputShape",
           "Set the dimension of the model input, the order of input dimensions is consistent with the original model. "
           "For some models, the model structure can be further optimized, but the transformed model may lose the "
@@ -283,18 +276,6 @@ int Flags::InitOptimize() {
   return RET_OK;
 }
 
-int Flags::InitEncrypt() {
-  if (this->encryptionStr == "true") {
-    this->encryption = true;
-  } else if (this->encryptionStr == "false") {
-    this->encryption = false;
-  } else {
-    std::cerr << "INPUT ILLEGAL: encryption must be true|false " << std::endl;
-    return RET_INPUT_PARAM_INVALID;
-  }
-  return RET_OK;
-}
-
 int Flags::InitSaveType() {
   std::map<std::string, ModelType> StrToEnumModelTypeMap = {{"MINDIR", kMindIR}, {"MINDIR_LITE", kMindIR_Lite}};
   if (StrToEnumModelTypeMap.find(this->saveTypeStr) != StrToEnumModelTypeMap.end()) {
@@ -379,12 +360,6 @@ int Flags::Init(int argc, const char **argv) {
   ret = InitGraphOutputFormat();
   if (ret != RET_OK) {
     std::cerr << "Init graph output format failed." << std::endl;
-    return RET_INPUT_PARAM_INVALID;
-  }
-
-  ret = InitEncrypt();
-  if (ret != RET_OK) {
-    std::cerr << "Init encrypt failed." << std::endl;
     return RET_INPUT_PARAM_INVALID;
   }
 

@@ -267,7 +267,7 @@ FuncGraphPtr ModelImpl::DispatchLoadGraph(const void *model_buff, size_t model_s
   bool build_from_buffer_model = weight_data == nullptr && weight_size == 0 && base_path.empty();
   bool build_from_buffer_model_weight = weight_data != nullptr && weight_size != 0 && base_path.empty();
   std::unique_lock<std::mutex> l(g_load_mindir_lock);
-  MindIRLoader mindir_loader(true, nullptr, 0, kDecModeAesGcm, false);
+  MindIRLoader mindir_loader;
   bool ret = false;
   if (build_from_file) {
     if (base_path.find("/") != std::string::npos) {
@@ -337,53 +337,14 @@ FuncGraphPtr ModelImpl::LoadGraphByBufferImpl(const void *model_buff, size_t mod
 FuncGraphPtr ModelImpl::LoadGraphByBufferImpl(const void *model_data, size_t model_size, ModelType model_type,
                                               const std::shared_ptr<Context> &model_context,
                                               const std::string &model_path, const CryptoInfo &cryptoInfo) {
-  if (model_type != kMindIR) {
-    MS_LOG(ERROR) << "Invalid model type";
-    return nullptr;
-  }
-  MS_CHECK_TRUE_MSG(model_context != nullptr, nullptr, "Invalid context pointers.");
-  auto status = UpdateSharingWorkspaceConfig(model_data, model_size, model_path);
-  if (status != kSuccess) {
-    MS_LOG(ERROR) << "UpdateSharingWorkspaceConfig failed!";
-    return nullptr;
-  }
-  auto mindir_path = GetConfig(lite::kConfigModelFileSection, lite::kConfigMindIRPathKey);
-  std::string weight_path = "./";
-  std::string base_path = "";
-  if (!mindir_path.empty()) {
-    base_path = mindir_path;
-  } else {
-    // user does not set mindir_path, convert from model_path
-    base_path = model_path;
-  }
-  if (base_path.find("/") != std::string::npos) {
-    weight_path = base_path.substr(0, base_path.rfind("/"));
-  }
-  auto dump_path = GetConfig(lite::kAscendContextSection, lite::kDumpPathKey);
-  if (!dump_path.empty()) {
-    auto dir_pos = model_path.find_last_of('/');
-    auto mindir_name = dir_pos != std::string::npos ? model_path.substr(dir_pos + 1) : model_path;
-    auto dot_pos = mindir_name.find_last_of('.');
-    auto model_name = mindir_name.substr(0, dot_pos);
-    (void)UpdateConfig(lite::kAscendContextSection,
-                       std::pair<std::string, std::string>(lite::kDumpModelNameKey, model_name));
-  }
-  FuncGraphPtr func_graph;
-  std::string user_info_string;
-  {
-    std::unique_lock<std::mutex> l(g_load_mindir_lock);
-    MindIRLoader mindir_loader(true, nullptr, 0, kDecModeAesGcm, false);
-    auto ret =
-      mindir_loader.LoadMindIR(model_data, model_size, weight_path, cryptoInfo, &func_graph, &user_info_string);
-    if (!ret || func_graph == nullptr) {
-      MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
-      return nullptr;
-    }
-    if (!user_info_string.empty()) {
-      SetModelInfo(lite::KModelUserInfo, user_info_string);
-    }
-  }
-  return func_graph;
+  MS_LOG(ERROR) << "This interface has been deprecated.";
+  (void)model_data;
+  (void)model_size;
+  (void)model_type;
+  (void)model_context;
+  (void)model_path;
+  (void)cryptoInfo;
+  return nullptr;
 }
 
 bool ModelImpl::IsEnableModelSharing(const std::string &model_path, ModelGroupFlag *model_group_flag) {
@@ -604,91 +565,6 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, c
   return kSuccess;
 }
 
-Status ModelImpl::BuildByBufferImpl(const void *model_data, size_t model_size, ModelType model_type,
-                                    const std::shared_ptr<Context> &model_context, const std::string &model_path,
-                                    const CryptoInfo &cryptoInfo) {
-  if (model_data == nullptr) {
-    MS_LOG(ERROR) << "The input model buffer is nullptr!";
-    return Status(kLiteFileError, "The input model buffer is nullptr!");
-  }
-  if (model_size == 0) {
-    MS_LOG(ERROR) << "The input model buffer size is 0!";
-    return Status(kLiteFileError, "The input model buffer size is 0!");
-  }
-  std::lock_guard<std::recursive_mutex> lock(mutex_);
-  if (session_) {
-    MS_LOG(ERROR) << "Model has been called Build!";
-    return Status(kLiteModelRebuild, "Model has been called Build!");
-  }
-  if (model_context == nullptr) {
-    MS_LOG(ERROR) << "Invalid context pointers!";
-    return Status(kLiteNullptr, "context is nullptr!");
-  }
-  for (auto &device_info : model_context->MutableDeviceInfo()) {
-    if (device_info == nullptr) {
-      MS_LOG(ERROR) << "There is nullptr device info in context!";
-      return Status(kLiteNullptr, "device_info is nullptr!");
-    }
-  }
-  SetMsContext();
-  auto thread_num = model_context->GetThreadNum();
-  if (thread_num < 0) {
-    MS_LOG(ERROR) << "Invalid thread num " << thread_num;
-    return Status(kLiteParamInvalid, "Invalid thread num!");
-  }
-  UpdateProvider();
-  auto status = UpdateSharingWorkspaceConfig(model_data, model_size, model_path);
-  if (status != kSuccess) {
-    MS_LOG(ERROR) << "UpdateSharingWorkspaceConfig failed!";
-    return status;
-  }
-  auto mindir_path = GetConfig(lite::kConfigModelFileSection, lite::kConfigMindIRPathKey);
-  if (mindir_path.empty()) {
-    (void)UpdateConfig(lite::kConfigModelFileSection,
-                       std::pair<std::string, std::string>(lite::kConfigMindIRPathKey, model_path));
-  }
-  session_ = InferSession::CreateSession(model_context, config_info_);
-  if (session_ == nullptr) {
-    MS_LOG(ERROR) << "Create session failed!";
-    return Status(kLiteError, "session_ is nullptr, Create session failed!");
-  }
-  Status ret;
-  if (model_type == kMindIR_Lite) {
-    ret = session_->CompileGraph(model_data, model_size, &graph_id_);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "compile graph failed!";
-      return ret;
-    }
-    return kSuccess;
-  }
-  // for model pool
-  FuncGraphPtr func_graph = FuncGraphReuseManager::GetInstance()->GetSharedFuncGraph(config_info_);
-  if (func_graph != nullptr) {
-    MS_LOG(INFO) << "the model buffer is the same as the last time. we can directly use the cached function graph.";
-    std::unique_lock<std::shared_mutex> build_lock(g_model_converter_lock);
-    return session_->CompileGraph(func_graph, nullptr, 0, &graph_id_);
-  }
-
-  func_graph = LoadGraphByBufferImpl(model_data, model_size, model_type, model_context, model_path, cryptoInfo);
-  if (func_graph == nullptr) {
-    MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
-    return Status(kLiteGraphFileError, "Failed to load MindIR model, please check the validity of the model.");
-  }
-  // convert and optimize func graph to infer
-  ret = ConvertGraphOnline(func_graph, model_context);
-  if (ret != kSuccess) {
-    MS_LOG(ERROR) << "convert graph failed!";
-    return ret;
-  }
-  ret = session_->CompileGraph(func_graph, nullptr, 0, &graph_id_);
-  if (ret != kSuccess) {
-    MS_LOG(ERROR) << "compile graph failed!";
-    return ret;
-  }
-  std::shared_lock<std::shared_mutex> build_lock(g_model_converter_lock);
-  return FuncGraphReuseManager::GetInstance()->StoreFuncGraph(func_graph, config_info_);
-}
-
 Status ModelImpl::Build(const FuncGraphPtr &func_graph, const std::shared_ptr<Context> &model_context) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (session_) {
@@ -746,12 +622,6 @@ Status ModelImpl::Build(const void *model_data, size_t data_size, const void *we
   return BuildByBufferImpl(model_data, data_size, weight_data, weight_size, model_type, model_context);
 }
 
-Status ModelImpl::Build(const void *model_data, size_t data_size, ModelType model_type,
-                        const std::shared_ptr<Context> &model_context, const std::string &model_path,
-                        const CryptoInfo &cryptoInfo) {
-  return BuildByBufferImpl(model_data, data_size, model_type, model_context, model_path, cryptoInfo);
-}
-
 Status ModelImpl::Build(const std::string &model_path, ModelType model_type,
                         const std::shared_ptr<Context> &model_context) {
   if (model_path.empty()) {
@@ -764,6 +634,32 @@ Status ModelImpl::Build(const std::string &model_path, ModelType model_type,
     return Status(kLiteFileError, "Failed to read buffer from model file!");
   }
   return BuildByBufferImpl(buffer.Data(), buffer.DataSize(), nullptr, 0, model_type, model_context, model_path);
+}
+
+Status ModelImpl::Build(const void *model_data, size_t data_size, ModelType model_type,
+                        const std::shared_ptr<Context> &model_context, const std::string &model_path,
+                        const CryptoInfo &cryptoInfo) {
+  MS_LOG(ERROR) << "This interface has been deprecated.";
+  (void)model_data;
+  (void)data_size;
+  (void)model_type;
+  (void)model_context;
+  (void)model_path;
+  (void)cryptoInfo;
+  return Status(kMEFailed, "This interface has been deprecated.");
+}
+
+Status ModelImpl::BuildByBufferImpl(const void *model_data, size_t model_size, ModelType model_type,
+                                    const std::shared_ptr<Context> &model_context, const std::string &model_path,
+                                    const CryptoInfo &cryptoInfo) {
+  MS_LOG(ERROR) << "This interface has been deprecated.";
+  (void)model_data;
+  (void)model_size;
+  (void)model_type;
+  (void)model_context;
+  (void)model_path;
+  (void)cryptoInfo;
+  return Status(kMEFailed, "This interface has been deprecated.");
 }
 
 Status ModelImpl::ConvertGraphOnline(const FuncGraphPtr &func_graph, const std::shared_ptr<Context> &model_context) {

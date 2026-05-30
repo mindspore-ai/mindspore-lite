@@ -3,7 +3,6 @@ project(SiteAi)
 
 ##disable external libs
 set(MSLITE_DEPS_PYBIND11 on CACHE INTERNAL "setting MSLITE_DEPS_PYBIND11 value")
-set(MSLITE_DEPS_OPENSSL off CACHE INTERNAL "setting MSLITE_DEPS_OPENSSL value")
 
 ##enable prune simplest cloud inferenc
 set(MSLITE_SIMPLEST_CLOUD_INFERENCE on CACHE INTERNAL "setting MSLITE_SIMPLEST_CLOUD_INFERENCE value")

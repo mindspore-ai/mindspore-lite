@@ -187,43 +187,33 @@ ModelType Converter::GetSaveType() const {
 }
 
 void Converter::SetDecryptKey(const std::vector<char> &key) {
-  if (data_ != nullptr) {
-    data_->decrypt_key = CharToString(key);
-  }
+  MS_LOG(ERROR) << "This interface has been deprecated.";
+  (void)key;
 }
 
 void Converter::SetDecryptMode(const std::vector<char> &mode) {
-  if (data_ != nullptr) {
-    data_->decrypt_mode = CharToString(mode);
-  }
+  MS_LOG(ERROR) << "This interface has been deprecated.";
+  (void)mode;
 }
 
 std::vector<char> Converter::GetDecryptModeChar() const {
-  std::string decrypt_mode = "";
-  if (data_ != nullptr) {
-    decrypt_mode = data_->decrypt_mode;
-  }
-  return StringToChar(decrypt_mode);
+  MS_LOG(ERROR) << "This interface has been deprecated.";
+  return std::vector<char>();
 }
 
 void Converter::SetEnableEncryption(bool encryption) {
-  if (data_ != nullptr) {
-    data_->enable_encryption = encryption;
-  }
+  MS_LOG(ERROR) << "This interface has been deprecated.";
+  (void)encryption;
 }
 
 bool Converter::GetEnableEncryption() const {
-  if (data_ != nullptr) {
-    return data_->enable_encryption;
-  } else {
-    return false;
-  }
+  MS_LOG(ERROR) << "This interface has been deprecated.";
+  return false;
 }
 
 void Converter::SetEncryptKey(const std::vector<char> &key) {
-  if (data_ != nullptr) {
-    data_->encrypt_key = CharToString(key);
-  }
+  MS_LOG(ERROR) << "This interface has been deprecated.";
+  (void)key;
 }
 
 void Converter::SetInfer(bool infer) {
@@ -353,10 +343,6 @@ std::vector<char> Converter::GetChipNameChar() {
 Status Converter::Convert() {
   if (data_ != nullptr) {
     Status ret = Status(static_cast<StatusCode>(lite::RunConverter(data_, nullptr, nullptr, false)));
-    (void)memset_s(&data_->decrypt_key[0], data_->decrypt_key.size(), 0, data_->decrypt_key.size());
-    data_->decrypt_key.clear();  // clear key
-    (void)memset_s(&data_->encrypt_key[0], data_->encrypt_key.size(), 0, data_->encrypt_key.size());
-    data_->encrypt_key.clear();  // clear key
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "Convert model failed, ret=" << ret;
     }
@@ -370,10 +356,6 @@ void *Converter::Convert(size_t *data_size) {
   void *model_data = nullptr;
   if (data_ != nullptr) {
     Status ret = Status(static_cast<StatusCode>(lite::RunConverter(data_, &model_data, data_size, true)));
-    (void)memset_s(&data_->decrypt_key[0], data_->decrypt_key.size(), 0, data_->decrypt_key.size());
-    data_->decrypt_key.clear();  // clear key
-    (void)memset_s(&data_->encrypt_key[0], data_->encrypt_key.size(), 0, data_->encrypt_key.size());
-    data_->encrypt_key.clear();  // clear key
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "Convert model failed, ret=" << ret;
     }

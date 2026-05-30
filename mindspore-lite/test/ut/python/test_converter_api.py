@@ -112,41 +112,6 @@ def test_converter_save_type_type_error():
     assert "save_type must be ModelType" in str(raise_info.value)
 
 
-def test_converter_decrypt_key_type_error():
-    with pytest.raises(TypeError) as raise_info:
-        converter = mslite.Converter()
-        converter.decrypt_key = 1
-    assert "decrypt_key must be str" in str(raise_info.value)
-
-
-def test_converter_decrypt_mode_type_error():
-    with pytest.raises(TypeError) as raise_info:
-        converter = mslite.Converter()
-        converter.decrypt_mode = 1
-    assert "decrypt_mode must be str" in str(raise_info.value)
-
-
-def test_converter_decrypt_mode_value_error():
-    with pytest.raises(ValueError) as raise_info:
-        converter = mslite.Converter()
-        converter.decrypt_mode = "1"
-    assert "decrypt_mode must be in" in str(raise_info.value)
-
-
-def test_converter_enable_encryption_type_error():
-    with pytest.raises(TypeError) as raise_info:
-        converter = mslite.Converter()
-        converter.enable_encryption = ""
-    assert "enable_encryption must be bool" in str(raise_info.value)
-
-
-def test_converter_encrypt_key_type_error():
-    with pytest.raises(TypeError) as raise_info:
-        converter = mslite.Converter()
-        converter.encrypt_key = 1
-    assert "encrypt_key must be str" in str(raise_info.value)
-
-
 def test_converter_infer_type_error():
     with pytest.raises(TypeError) as raise_info:
         converter = mslite.Converter()

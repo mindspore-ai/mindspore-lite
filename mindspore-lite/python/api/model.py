@@ -232,23 +232,11 @@ class Model(BaseModel):
             model_type_ = _c_lite_wrapper.ModelType.kMindIR
 
         self._apply_config(config_path, config_dict)
-
+        del dec_mode
+        del dec_num_parallel
         if dec_key:
-            check_isinstance("dec_key", dec_key, bytes)
-            check_isinstance("dec_mode", dec_mode, str)
-            check_isinstance("dec_num_parallel", dec_num_parallel, int)
-            check_empty_string("dec_mode", dec_mode)
-            ret = self._model.build_from_file_with_decrypt(
-                self.model_path_,
-                model_type_,
-                context._inner_context,
-                dec_key,
-                len(dec_key),
-                dec_mode,
-                dec_num_parallel,
-            )
-        else:
-            ret = self._model.build_from_file(self.model_path_, model_type_, context._inner_context)
+            raise RuntimeError("Encryption and decryption are unavailable for this function in the current version.")
+        ret = self._model.build_from_file(self.model_path_, model_type_, context._inner_context)
         if not ret.IsOk():
             raise RuntimeError(f"build_from_file failed! Error is {ret.ToString()}")
 

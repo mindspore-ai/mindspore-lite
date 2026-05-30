@@ -78,11 +78,6 @@ struct ConverterPara {
 #else
   ModelType save_type = kMindIR_Lite;
 #endif
-  std::string decrypt_key;
-  std::string decrypt_mode = "AES-GCM";
-  std::string encrypt_key;
-  std::string encrypt_mode = "AES-GCM";  // inner
-  bool enable_encryption = false;
   bool pre_infer = false;
   bool train_model = false;
   bool no_fusion = false;

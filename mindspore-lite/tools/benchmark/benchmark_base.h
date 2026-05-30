@@ -70,8 +70,6 @@ constexpr int kNumPrintMin = 5;
 constexpr const char *DELIM_COLON = ":";
 constexpr const char *DELIM_COMMA = ",";
 constexpr const char *DELIM_SLASH = "/";
-constexpr size_t kEncMaxLen = 16;
-
 extern const std::unordered_map<int, std::string> kTypeIdMap;
 extern const std::unordered_map<mindspore::Format, std::string> kTensorFormatMap;
 
@@ -153,12 +151,6 @@ class MS_API BenchmarkFlags : public virtual FlagParser {
     AddFlag(&BenchmarkFlags::device_id_, "deviceId", "Set device id for distributed inference", -1);
     AddFlag(&BenchmarkFlags::rank_id_, "rankId", "Set rank id for distributed inference", -1);
 #endif
-    // Decrypt and Crypte
-    AddFlag(&BenchmarkFlags::decrypt_key_str_, "decryptKey",
-            "The key used to decrypt the file, expressed in hexadecimal characters. Only support AES-GCM and the key "
-            "length is 16.",
-            "");
-    AddFlag(&BenchmarkFlags::crypto_lib_path_, "cryptoLibPath", "Pass the crypto library path.", "");
     AddFlag(&BenchmarkFlags::enable_parallel_predict_, "enableParallelPredict", "Enable model parallel : true | false",
             false);
     AddFlag(&BenchmarkFlags::parallel_num_, "parallelNum", "parallel num of parallel predict", 2);
@@ -231,9 +223,6 @@ class MS_API BenchmarkFlags : public virtual FlagParser {
   std::string perf_event_ = "CYCLE";
   bool dump_tensor_data_ = false;
   bool print_tensor_data_ = false;
-  std::string decrypt_key_str_;
-  std::string dec_mode_ = "AES-GCM";
-  std::string crypto_lib_path_;
   std::string delegate_mode_;
   bool enable_shared_thread_pool_ = false;
   std::string thread_num_limit_per_worker_;

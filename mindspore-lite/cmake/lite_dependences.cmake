@@ -51,7 +51,3 @@ if(MSLITE_DEPS_PYBIND11)
         message(FATAL_ERROR "Cannot find python3 development")
     endif()
 endif()
-
-if(MSLITE_DEPS_OPENSSL)
-    include(${TOP_DIR}/cmake/external_libs/openssl.cmake)
-endif()

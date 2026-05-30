@@ -176,10 +176,6 @@ FuncGraphPtr ConverterFuncGraph::Load3rdModelToFuncgraph(const std::shared_ptr<C
     MS_LOG(ERROR) << "Unsupported to converter models with fmk: " << param->fmk_type;
     return nullptr;
   }
-  if (!param->decrypt_key.empty()) {
-    MS_LOG(ERROR) << "The 3rd model do not support decrypt.";
-    return nullptr;
-  }
   converter::ConverterParameters converter_parameters;
   converter_parameters.fmk = param->fmk_type;
   converter_parameters.save_type = param->save_type;
@@ -206,22 +202,8 @@ FuncGraphPtr ConverterFuncGraph::Load3rdModelToFuncgraph(const std::shared_ptr<C
 
 FuncGraphPtr ConverterFuncGraph::Load(const std::shared_ptr<ConverterPara> &param) {
   FuncGraphPtr func_graph;
-  if (!param->decrypt_key.empty()) {
-    unsigned char key[32];
-    const size_t key_len = Hex2ByteArray(param->decrypt_key, key, 32);
-    if (key_len == 0) {
-      return nullptr;
-    }
-    MindIRLoader mindir_loader(false, key, key_len, param->decrypt_mode, false);
-    func_graph = mindir_loader.LoadMindIR(param->model_file);
-    auto ret = memset_s(key, sizeof(key), 0, key_len);
-    if (ret != 0) {
-      MS_LOG(EXCEPTION) << "memset_s error";
-    }
-  } else {
-    MindIRLoader mindir_loader;
-    func_graph = mindir_loader.LoadMindIR(param->model_file);
-  }
+  MindIRLoader mindir_loader;
+  func_graph = mindir_loader.LoadMindIR(param->model_file);
   if (func_graph == nullptr) {
     MS_LOG(ERROR) << "Load MindIR file failed. Please check model file and decrypt key.";
     return nullptr;

@@ -16,8 +16,6 @@ mindspore_lite.Converter
     .. note::
         请先构造Converter类，再通过执行Converter.convert()方法生成模型。
 
-        加解密功能仅在编译时设置为 `MSLITE_ENABLE_MODEL_ENCRYPTION=on` 时生效，并且仅支持Linux x86平台。其中密钥为十六进制表示的字符串，Linux平台用户可以使用 `xxd` 工具对字节表示的密钥进行十六进制表达转换。需要注意的是，加解密算法在1.7版本进行了更新，导致新版的Python接口不支持对1.6及其之前版本的MindSpore Lite加密导出的模型进行转换。
-
     .. py:method:: convert(fmk_type, model_file, output_file, weight_file="", config_file="")
 
         执行转换，将第三方模型转换为MindSpore模型或MindSpore Lite模型。
@@ -52,10 +50,11 @@ mindspore_lite.Converter
     .. py:method:: decrypt_mode
         :property:
 
-        获取加载密文MindIR的模式。
+        .. warning::
+            此功能在当前版本中不支持。
 
         返回：
-            str，加载密文MindIR的模式。只在设置了 `decryptKey` 时有效。选项有 ``"AES-GCM"`` 、 ``"AES-CBC"`` 。
+            None
 
     .. py:method:: device
         :property:
@@ -76,10 +75,11 @@ mindspore_lite.Converter
     .. py:method:: enable_encryption
         :property:
 
-        获取导出模型时是否加密的状态。
+        .. warning::
+            此功能在当前版本中不支持。
 
         返回：
-            bool，导出模型时是否加密。导出加密可保护模型完整性，但会增加运行时初始化时间。
+            None
 
     .. py:method:: encrypt_key
         :property:

@@ -931,16 +931,6 @@ if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
     endif()
 endif()
 
-# In core/CMakelists, core link mindspore::crypto, and crypto need the OPENSSL lib,
-# So before enter into core/CMakelists, you need to set MSLITE_DEPS_OPENSSL on to contain the OPENSSL lib,
-# Such as when MSLITE_ENABLE_CONVERTER is on or MSLITE_ENABLE_KERNEL_EXECUTOR is on.
-if((${CMAKE_SYSTEM_NAME} MATCHES "Linux" OR APPLE) AND (
-    MSLITE_ENABLE_CONVERTER OR (MSLITE_ENABLE_KERNEL_EXECUTOR AND NOT TARGET_AOS_ARM)))
-    if(NOT MSLITE_TARGET_SITEAI)
-        set(MSLITE_DEPS_OPENSSL on)
-    endif()
-endif()
-
 include(${LITE_DIR}/cmake/lite_dependences.cmake)
 
 if(MSLITE_GPU_BACKEND STREQUAL opencl AND NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))

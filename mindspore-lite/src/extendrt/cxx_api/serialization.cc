@@ -24,7 +24,6 @@
 #include "extendrt/cxx_api/dlutils.h"
 #endif
 #include "extendrt/cxx_api/file_utils.h"
-#include "src/common/crypto.h"
 
 namespace mindspore {
 static Status RealPath(const std::string &file, std::string *realpath_str) {
@@ -134,34 +133,17 @@ Status Serialization::Load(const void *model_data, size_t data_size, ModelType m
     MS_LOG(ERROR) << err_msg.str();
     return Status(kMEInvalidInput, err_msg.str());
   }
+  if (dec_key.len > 0) {
+    err_msg << "Encrypted model is not supported.";
+    MS_LOG(ERROR) << err_msg.str();
+    return Status(kMEInvalidInput, err_msg.str());
+  }
   if (model_type == kMindIR) {
     FuncGraphPtr anf_graph = nullptr;
     try {
-      if (dec_key.len > dec_key.max_key_len) {
-        err_msg << "The key length exceeds maximum length: " << dec_key.max_key_len;
-        MS_LOG(ERROR) << err_msg.str();
-        return Status(kMEInvalidInput, err_msg.str());
-      } else if (dec_key.len == 0) {
-        if (IsCipherFile(reinterpret_cast<const unsigned char *>(model_data))) {
-          err_msg << "Load model failed. The model_data may be encrypted, please pass in correct key.";
-          MS_LOG(ERROR) << err_msg.str();
-          return Status(kMEInvalidInput, err_msg.str());
-        } else {
-          anf_graph = ConvertStreamToFuncGraph(reinterpret_cast<const char *>(model_data), data_size, true);
-        }
-      } else {
-        size_t plain_data_size;
-        auto plain_data = lite::Decrypt(&plain_data_size, reinterpret_cast<const unsigned char *>(model_data),
-                                        data_size, dec_key.key, dec_key.len, CharToString(dec_mode));
-        if (plain_data == nullptr) {
-          err_msg << "Load model failed. Please check the valid of dec_key and dec_mode.";
-          MS_LOG(ERROR) << err_msg.str();
-          return Status(kMEInvalidInput, err_msg.str());
-        }
-        anf_graph = ConvertStreamToFuncGraph(reinterpret_cast<const char *>(plain_data.get()), plain_data_size, true);
-      }
+      anf_graph = ConvertStreamToFuncGraph(reinterpret_cast<const char *>(model_data), data_size, true);
     } catch (const std::exception &e) {
-      err_msg << "Load model failed. Please check the valid of dec_key and dec_mode." << e.what();
+      err_msg << "Load model failed." << e.what();
       MS_LOG(ERROR) << err_msg.str();
       return Status(kMEInvalidInput, err_msg.str());
     }
@@ -180,7 +162,40 @@ Status Serialization::Load(const void *model_data, size_t data_size, ModelType m
 
 Status Serialization::Load(const std::vector<char> &file, ModelType model_type, Graph *graph) {
   MS_CHECK_TRUE_RET(graph != nullptr, kLiteNullptr);
-  return Load(file, model_type, graph, Key{}, StringToChar(kDecModeAesGcm));
+  std::stringstream err_msg;
+
+  std::string file_path;
+  auto status = RealPath(CharToString(file), &file_path);
+  if (status != kSuccess) {
+    MS_LOG(ERROR) << status.GetErrDescription();
+    return status;
+  }
+
+  if (model_type == kMindIR) {
+    MindIRLoader mindir_loader;
+    auto anf_graph = mindir_loader.LoadMindIR(file_path);
+    if (anf_graph == nullptr) {
+      err_msg << "Load model failed.";
+      MS_LOG(ERROR) << err_msg.str();
+      return Status(kMEInvalidInput, err_msg.str());
+    }
+    auto graph_data = std::make_shared<Graph::GraphData>(anf_graph, kMindIR);
+    *graph = Graph(graph_data);
+    return kSuccess;
+  } else if (model_type == kOM) {
+    Buffer data = ReadFile(file_path);
+    if (data.Data() == nullptr) {
+      err_msg << "Read file " << file_path << " failed.";
+      MS_LOG(ERROR) << err_msg.str();
+      return Status(kMEInvalidInput, err_msg.str());
+    }
+    *graph = Graph(std::make_shared<Graph::GraphData>(data, kOM));
+    return kSuccess;
+  }
+
+  err_msg << "Unsupported ModelType " << model_type;
+  MS_LOG(ERROR) << err_msg.str();
+  return Status(kMEInvalidInput, err_msg.str());
 }
 
 Status Serialization::Load(const std::vector<char> &file, ModelType model_type, Graph *graph, const Key &dec_key,
@@ -198,20 +213,15 @@ Status Serialization::Load(const std::vector<char> &file, ModelType model_type, 
     return status;
   }
 
+  if (dec_key.len > 0) {
+    err_msg << "Encrypted model is not supported.";
+    MS_LOG(ERROR) << err_msg.str();
+    return Status(kMEInvalidInput, err_msg.str());
+  }
+
   if (model_type == kMindIR) {
-    FuncGraphPtr anf_graph;
-    if (dec_key.len > dec_key.max_key_len) {
-      err_msg << "The key length exceeds maximum length: " << dec_key.max_key_len;
-      MS_LOG(ERROR) << err_msg.str();
-      return Status(kMEInvalidInput, err_msg.str());
-    } else if (dec_key.len == 0 && IsCipherFile(file_path)) {
-      err_msg << "Load model failed. The file may be encrypted, please pass in correct key.";
-      MS_LOG(ERROR) << err_msg.str();
-      return Status(kMEInvalidInput, err_msg.str());
-    }
-    MindIRLoader mindir_loader(true, dec_key.len == 0 ? nullptr : dec_key.key, dec_key.len, CharToString(dec_mode),
-                               false);
-    anf_graph = mindir_loader.LoadMindIR(file_path);
+    MindIRLoader mindir_loader;
+    auto anf_graph = mindir_loader.LoadMindIR(file_path);
     if (anf_graph == nullptr) {
       err_msg << "Load model failed.";
       MS_LOG(ERROR) << err_msg.str();
@@ -244,9 +254,15 @@ Status Serialization::Load(const std::vector<std::vector<char>> &files, ModelTyp
     return Status(kMEInvalidInput, "Output args graph is nullptr.");
   }
 
+  if (dec_key.len > 0) {
+    err_msg << "Encrypted model is not supported.";
+    MS_LOG(ERROR) << err_msg.str();
+    return Status(kMEInvalidInput, err_msg.str());
+  }
+
   if (files.size() == 1) {
     std::vector<Graph> result(files.size());
-    auto ret = Load(files[0], model_type, &result[0], dec_key, dec_mode);
+    auto ret = Load(files[0], model_type, &result[0]);
     *graphs = std::move(result);
     return ret;
   }
@@ -263,13 +279,7 @@ Status Serialization::Load(const std::vector<std::vector<char>> &files, ModelTyp
   }
 
   if (model_type == kMindIR) {
-    if (dec_key.len > dec_key.max_key_len) {
-      err_msg << "The key length exceeds maximum length: " << dec_key.max_key_len;
-      MS_LOG(ERROR) << err_msg.str();
-      return Status(kMEInvalidInput, err_msg.str());
-    }
-    MindIRLoader mindir_loader(true, dec_key.len == 0 ? nullptr : dec_key.key, dec_key.len, CharToString(dec_mode),
-                               true);
+    MindIRLoader mindir_loader;
     auto anf_graphs = mindir_loader.LoadMindIRs(files_path);
     if (anf_graphs.size() != files_path.size()) {
       err_msg << "Load model failed, " << files_path.size() << " files got " << anf_graphs.size() << " graphs.";
@@ -291,11 +301,7 @@ Status Serialization::Load(const std::vector<std::vector<char>> &files, ModelTyp
     std::vector<Graph> results;
     for (size_t i = 0; i < anf_graphs.size(); ++i) {
       if (anf_graphs[i] == nullptr) {
-        if (dec_key.len == 0 && IsCipherFile(files_path[i])) {
-          err_msg << "Load model failed. The file " << files_path[i] << " be encrypted, please pass in correct key.";
-        } else {
-          err_msg << "Load model " << files_path[i] << " failed.";
-        }
+        err_msg << "Load model " << files_path[i] << " failed.";
         MS_LOG(ERROR) << err_msg.str();
         return Status(kMEInvalidInput, err_msg.str());
       }

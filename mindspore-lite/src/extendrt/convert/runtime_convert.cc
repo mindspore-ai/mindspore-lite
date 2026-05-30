@@ -165,7 +165,6 @@ int RuntimeConvert(const mindspore::api::FuncGraphPtr &graph, const std::shared_
   param->weight_fp16 = false;
   param->train_model = false;
   param->save_type = mindspore::kMindIR;
-  param->enable_encryption = false;
   param->is_runtime_converter = true;
 
   auto device_list = context->MutableDeviceInfo();
