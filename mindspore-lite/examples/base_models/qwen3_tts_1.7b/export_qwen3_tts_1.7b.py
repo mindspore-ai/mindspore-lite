@@ -10,7 +10,6 @@ import os
 import sys
 import types
 from collections import Counter
-from dataclasses import asdict, dataclass
 from functools import lru_cache
 from typing import Any
 
@@ -42,8 +41,6 @@ _TORCH = _optional_module("torch")
 _ONNX = _optional_module("onnx")
 
 _TORCH_NPU = None
-if os.environ.get("QWEN3_TTS_ENABLE_TORCH_NPU", "0") == "1":
-    _TORCH_NPU = _optional_module("torch_npu")
 
 if _TORCH is None:
 
@@ -148,6 +145,78 @@ class CustomIncreFlashAttention(_AutogradFunction):
         )
 
 
+class CustomPromptFlashAttention(_AutogradFunction):
+    """Custom prompt flash attention operator for ONNX export."""
+
+    @staticmethod
+    def forward(
+        ctx: Any,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        atten_mask: torch.Tensor,
+        num_heads: int,
+        scale_value: float,
+        input_layout: str = "BNSD",
+        num_key_value_heads: int = 0,
+        pre_tokens: int = 0,
+        next_tokens: int = 0,
+        sparse_mode: int = 0,
+        inner_precise: int = 0,
+    ):
+        """Fallback forward used during tracing and shape inference."""
+        del ctx, key, value, atten_mask, num_heads, scale_value, input_layout, num_key_value_heads
+        del pre_tokens, next_tokens, sparse_mode, inner_precise
+        return query
+
+    @staticmethod
+    def symbolic(
+        g: torch.Graph,
+        query,
+        key,
+        value,
+        atten_mask,
+        num_heads: int,
+        scale_value: float,
+        input_layout: str = "BNSD",
+        num_key_value_heads: int = 0,
+        pre_tokens: int = 0,
+        next_tokens: int = 0,
+        sparse_mode: int = 0,
+        inner_precise: int = 0,
+    ):
+        """Build the PromptFlashAttention Custom node for ONNX export."""
+        input_names = [
+            "query",
+            "key",
+            "value",
+            "atten_mask",
+        ]
+        optional_input_names = [
+            "atten_mask",
+        ]
+        return g.op(
+            "Custom",
+            query,
+            key,
+            value,
+            atten_mask,
+            input_index_i=[0, 1, 2, 3],
+            input_names_s=input_names,
+            optional_input_names_s=optional_input_names,
+            output_names_s=["attention_out"],
+            type_s="PromptFlashAttention",
+            num_heads_i=int(num_heads),
+            scale_value_f=float(scale_value),
+            input_layout_s=str(input_layout),
+            num_key_value_heads_i=int(num_key_value_heads),
+            pre_tokens_i=int(pre_tokens),
+            next_tokens_i=int(next_tokens),
+            sparse_mode_i=int(sparse_mode),
+            inner_precise_i=int(inner_precise),
+        )
+
+
 class CustomAddRmsNorm(_AutogradFunction):
     """Custom fused Add + RMSNorm operator for ONNX export."""
 
@@ -159,10 +228,8 @@ class CustomAddRmsNorm(_AutogradFunction):
         gamma: torch.Tensor,
         epsilon: float = 1e-6,
     ):
-        """Compute Add + RMSNorm with an optional NPU fused kernel."""
+        """Compute Add + RMSNorm (export uses Custom symbolic)."""
         del ctx
-        if _TORCH_NPU is not None and x1.device.type == "npu":
-            return _TORCH_NPU.npu_add_rms_norm(x1, x2, gamma, epsilon=float(epsilon))
         x = x1 + x2
         rstd = torch.rsqrt(x.to(torch.float32).pow(2).mean(dim=-1, keepdim=True) + float(epsilon))
         y = (x.to(torch.float32) * rstd).to(x.dtype) * gamma
@@ -199,16 +266,6 @@ class CustomScatterUpdate(_AutogradFunction):
     ):
         """Update a single cache position along the given axis."""
         del ctx
-        if _TORCH_NPU is not None and var.device.type == "npu":
-            out = var.clone()
-            _TORCH_NPU.scatter_update_(
-                out,
-                indices.to(torch.int64),
-                updates.to(out.dtype),
-                axis=int(axis),
-            )
-            return out
-
         cache_total = int(var.size(int(axis)))
         pos = indices.reshape(-1)[0].to(torch.int64)
         e = torch.nn.functional.one_hot(pos, num_classes=cache_total).to(var.dtype)
@@ -237,13 +294,12 @@ def _kv_cache_update(
     past: torch.Tensor,
     update: torch.Tensor,
     cache_pos: torch.Tensor,
+    *,
+    use_custom: bool,
 ) -> torch.Tensor:
     """Update KV cache at cache_pos and return the updated tensor."""
-    if _TORCH_NPU is not None and past.device.type == "npu":
-        if torch.is_tensor(cache_pos):
-            indices = cache_pos.reshape(-1)[:1].to(torch.int64)
-        else:
-            indices = torch.tensor([int(cache_pos)], dtype=torch.int64, device=past.device)
+    if bool(use_custom):
+        indices = _to_cache_indices(cache_pos, past.device)
         return CustomScatterUpdate.apply(past, indices, update, 2)
 
     cache_total = int(past.size(2))
@@ -252,6 +308,13 @@ def _kv_cache_update(
     e_bt11 = e.view(-1, 1, cache_total, 1)
     old = torch.matmul(past.transpose(2, 3), e_bt11).transpose(2, 3)
     return past + e_bt11 * (update.to(past.dtype) - old.to(past.dtype))
+
+
+def _to_cache_indices(cache_pos: Any, device: Any) -> torch.Tensor:
+    """Convert cache_pos to a 1D int64 tensor with exactly one element."""
+    if torch.is_tensor(cache_pos):
+        return cache_pos.reshape(-1)[:1].to(torch.int64)
+    return torch.tensor([int(cache_pos)], dtype=torch.int64, device=device)
 
 
 class CustomSwiGlu(_AutogradFunction):
@@ -1105,24 +1168,6 @@ def _causal_mask_2d(
     neg = torch.full((b, 1, s, s), float(mask_value), device=device, dtype=torch.float32)
     return torch.where(allowed, zero, neg)
 
-
-@dataclass
-class TalkerKVMeta:
-    """Metadata saved alongside exported talker KV ONNX models."""
-
-    model: str
-    export_seq_len: int
-    hidden_size: int
-    num_layers: int
-    num_attention_heads: int
-    num_key_value_heads: int
-    head_dim: int
-    vocab_size: int
-    codec_eos_token_id: int
-    opset: int
-    dtype: str
-
-
 def _repeat_kv(x: torch.Tensor, num_key_value_groups: int) -> torch.Tensor:
     if num_key_value_groups == 1:
         return x
@@ -1228,12 +1273,9 @@ class TalkerPrefillKVWrapper(_NNModule):
         return out, k, v
 
     def _rms_norm_custom(self, norm_mod, x: torch.Tensor) -> torch.Tensor:
-        if self.use_ascend_fused_ops and _TORCH_NPU is not None and x.device.type == "npu":
-            y, _ = _TORCH_NPU.npu_rms_norm(
-                x,
-                norm_mod.weight,
-                epsilon=float(norm_mod.variance_epsilon),
-            )
+        if self.use_ascend_fused_ops:
+            eps = float(getattr(norm_mod, "variance_epsilon", 1e-6))
+            y, _, _ = CustomAddRmsNorm.apply(x, torch.zeros_like(x), norm_mod.weight, eps)
             return y
         return norm_mod(x)
 
@@ -1403,14 +1445,16 @@ class TalkerStepKVWrapper(_NNModule):
                 self._mlp_gateup_b.append(getattr(self, f"_mlp_gateup_b_{li}"))
 
     def _rms_norm(self, norm_mod, x: torch.Tensor) -> torch.Tensor:
-        if self.use_ascend_fused_ops and _TORCH_NPU is not None and x.device.type == "npu":
-            y, _ = _TORCH_NPU.npu_rms_norm(x, norm_mod.weight, epsilon=float(norm_mod.variance_epsilon))
+        if self.use_ascend_fused_ops:
+            eps = float(getattr(norm_mod, "variance_epsilon", 1e-6))
+            y, _, _ = CustomAddRmsNorm.apply(x, torch.zeros_like(x), norm_mod.weight, eps)
             return y
         return norm_mod(x)
 
     def _rms_norm_custom(self, norm_mod, x: torch.Tensor) -> torch.Tensor:
-        if _TORCH_NPU is not None and x.device.type == "npu":
-            y, _ = _TORCH_NPU.npu_rms_norm(x, norm_mod.weight, epsilon=float(norm_mod.variance_epsilon))
+        if self.use_ascend_fused_ops:
+            eps = float(getattr(norm_mod, "variance_epsilon", 1e-6))
+            y, _, _ = CustomAddRmsNorm.apply(x, torch.zeros_like(x), norm_mod.weight, eps)
             return y
         return norm_mod(x)
 
@@ -1486,8 +1530,8 @@ class TalkerStepKVWrapper(_NNModule):
             q = _rotary_mul_plain(q, cos, sin)
             k = _rotary_mul_plain(k, cos, sin)
 
-        k_full = _kv_cache_update(past_k, k, cache_pos)
-        v_full = _kv_cache_update(past_v, v, cache_pos)
+        k_full = _kv_cache_update(past_k, k, cache_pos, use_custom=bool(self.use_ascend_fused_ops))
+        v_full = _kv_cache_update(past_v, v, cache_pos, use_custom=bool(self.use_ascend_fused_ops))
 
         if self.use_ascend_fused_ops:
             q_bnsd = q.contiguous()
@@ -1638,10 +1682,9 @@ def export_talker_kv(
     export_seq_len: int,
     device: str = "cpu",
     ascend_fused_ops: bool = False,
-    export_custom_op: bool = False,
     custom_rope: bool = False,
 ) -> None:
-    """Export talker prefill/step ONNX models and write meta.json."""
+    """Export talker prefill/step ONNX models."""
     dt = _torch_dtype(dtype)
     os.makedirs(output_dir, exist_ok=True)
     model = _load_qwen3_tts_model(model_path, dtype=dt).to(device)
@@ -1668,24 +1711,8 @@ def export_talker_kv(
         dt=dt,
         device=str(device),
         ascend_fused_ops=bool(ascend_fused_ops),
-        export_custom_op=bool(export_custom_op),
         custom_rope=bool(custom_rope),
     )
-    meta = TalkerKVMeta(
-        model=str(model_path),
-        export_seq_len=int(export_seq_len),
-        hidden_size=int(info["hidden_size"]),
-        num_layers=int(info["num_layers"]),
-        num_attention_heads=int(info["num_attention_heads"]),
-        num_key_value_heads=int(info["num_key_value_heads"]),
-        head_dim=int(info["head_dim"]),
-        vocab_size=int(info["vocab_size"]),
-        codec_eos_token_id=int(info["eos_id"]),
-        opset=int(opset),
-        dtype=str(dtype),
-    )
-    with open(os.path.join(output_dir, "meta.json"), "w", encoding="utf-8") as file:
-        json.dump(asdict(meta), file, ensure_ascii=False, indent=2)
 
 
 def _collect_talker_kv_export_info(model: Any, talker: Any) -> dict[str, int]:
@@ -1751,10 +1778,9 @@ def _export_talker_prefill_kv_onnx(
             "past_v": {1: "batch"},
             "prompt_len": {0: "batch"},
         },
-        allow_custom_ops=bool(ascend_fused_ops),
+        allow_custom_ops=bool(ascend_fused_ops or custom_rope),
     )
     _rewrite_talker_prefill_kv_to_fixed_len(prefill_onnx, fixed_len=512)
-    _rewrite_talker_step_to_custom_ops(src_onnx=prefill_onnx, dst_onnx=prefill_onnx)
 
 
 def _export_talker_step_kv_onnx(
@@ -1765,10 +1791,9 @@ def _export_talker_step_kv_onnx(
     dt: Any,
     device: str,
     ascend_fused_ops: bool,
-    export_custom_op: bool,
     custom_rope: bool,
 ) -> None:
-    """Export talker_step.onnx and optionally rewrite Custom ops."""
+    """Export talker_step.onnx."""
     num_layers = int(talker.model.config.num_hidden_layers)
     hidden_size = int(talker.config.hidden_size)
     num_attention_heads = int(talker.config.num_attention_heads)
@@ -1807,46 +1832,6 @@ def _export_talker_step_kv_onnx(
         output_names=["logits_last", "hidden_last", "past_k_out", "past_v_out"],
         allow_custom_ops=bool(ascend_fused_ops or custom_rope),
     )
-    _maybe_rewrite_step_custom_ops(
-        output_dir=output_dir,
-        step_onnx=step_onnx,
-        device=device,
-        ascend_fused_ops=bool(ascend_fused_ops),
-        export_custom_op=bool(export_custom_op),
-    )
-
-
-def _maybe_rewrite_step_custom_ops(
-    *,
-    output_dir: str,
-    step_onnx: str,
-    device: str,
-    ascend_fused_ops: bool,
-    export_custom_op: bool,
-) -> None:
-    """Rewrite talker_step.onnx to Custom nodes for Ascend when enabled."""
-    if not (ascend_fused_ops and (device or "").lower() == "npu" and _TORCH_NPU is not None):
-        return
-    if export_custom_op:
-        step_npu_onnx = os.path.join(output_dir, "talker_step.npu.onnx")
-        step_npu_data = os.path.join(output_dir, "talker_step.npu.data")
-        step_data = os.path.join(output_dir, "talker_step.data")
-        if os.path.exists(step_npu_onnx):
-            os.remove(step_npu_onnx)
-        if os.path.exists(step_npu_data):
-            os.remove(step_npu_data)
-        if os.path.exists(step_data):
-            os.remove(step_data)
-        if os.path.exists(step_onnx):
-            os.replace(step_onnx, step_npu_onnx)
-        if os.path.exists(step_data):
-            os.replace(step_data, step_npu_data)
-        _rewrite_talker_step_to_custom_ops(src_onnx=step_npu_onnx, dst_onnx=step_onnx)
-        return
-    _rewrite_talker_step_to_custom_ops(
-        src_onnx=step_onnx,
-        dst_onnx=os.path.join(output_dir, "talker_step.custom.onnx"),
-    )
 
 
 def _count_control_flow_nodes(onnx_path: str) -> dict[str, int]:
@@ -1880,6 +1865,7 @@ def export_talker_kv_onnx(
     dtype: str = "float32",
     export_seq_len: int = 512,
     device: str = "cpu",
+    export_custom_ops: bool = False,
     strip_control_flow: bool = True,
 ) -> None:
     """Export talker KV ONNX models suitable for ONNX Runtime."""
@@ -1890,45 +1876,208 @@ def export_talker_kv_onnx(
         dtype=str(dtype),
         export_seq_len=int(export_seq_len),
         device=str(device),
-        ascend_fused_ops=False,
-        export_custom_op=False,
+        ascend_fused_ops=bool(export_custom_ops),
+        custom_rope=bool(export_custom_ops),
     )
     if strip_control_flow:
         _strip_talker_prefill_control_flow(output_dir=str(output_dir))
 
 
+def _postprocess_speech_decoder_onnx(output_path: str) -> None:
+    """Patch exported speech_decoder.onnx for better converter/runtime compatibility."""
+    onnx_mod = _require_module("onnx")
+    helper = onnx_mod.helper
+    tensor_proto = onnx_mod.TensorProto
+
+    model = onnx_mod.load(output_path, load_external_data=True)
+    graph = model.graph
+
+    counter = 0
+
+    def _unique(prefix: str) -> str:
+        nonlocal counter
+        counter += 1
+        return f"{prefix}_{counter}"
+
+    def _make_const_int64(values: list[int], name_prefix: str):
+        out = _unique(f"{name_prefix}_out")
+        tensor = helper.make_tensor(
+            name=_unique(f"{name_prefix}_tensor"),
+            data_type=tensor_proto.INT64,
+            dims=[len(values)],
+            vals=values,
+        )
+        node = helper.make_node(
+            "Constant",
+            inputs=[],
+            outputs=[out],
+            name=_unique(f"{name_prefix}_const"),
+            value=tensor,
+        )
+        return node, out
+
+    def _attr_int(node, key: str) -> int | None:
+        for attr in node.attribute:
+            if attr.name == key:
+                return int(attr.i)
+        return None
+
+    new_nodes = []
+    for node in list(graph.node):
+        if node.op_type in ("IsNaN", "IsNan"):
+            inp = node.input[0]
+            out = node.output[0]
+            equal_out = _unique("equal_out")
+            equal_node = helper.make_node(
+                "Equal",
+                inputs=[inp, inp],
+                outputs=[equal_out],
+                name=_unique("equal"),
+            )
+            not_node = helper.make_node(
+                "Not",
+                inputs=[equal_out],
+                outputs=[out],
+                name=_unique("not"),
+            )
+            new_nodes.extend((equal_node, not_node))
+            continue
+
+        if node.op_type == "ConvTranspose":
+            attrs = []
+            for attr in node.attribute:
+                if attr.name in ("pads", "output_padding"):
+                    vals = list(attr.ints)
+                    if vals and all(int(v) == 0 for v in vals):
+                        continue
+                attrs.append(attr)
+            if len(attrs) != len(node.attribute):
+                node.ClearField("attribute")
+                node.attribute.extend(attrs)
+            new_nodes.append(node)
+            continue
+
+        if node.op_type == "Shape":
+            start = _attr_int(node, "start")
+            end = _attr_int(node, "end")
+            full_end = 9223372036854775807
+            start_val = 0 if start is None else int(start)
+            end_val = full_end if end is None else int(end)
+            if start_val == 0 and end_val == full_end:
+                new_nodes.append(node)
+                continue
+
+            shape_full_out = _unique("shape_full")
+            orig_out = node.output[0]
+            node.output[0] = shape_full_out
+            attrs = [a for a in node.attribute if a.name not in ("start", "end")]
+            if len(attrs) != len(node.attribute):
+                node.ClearField("attribute")
+                node.attribute.extend(attrs)
+            new_nodes.append(node)
+
+            starts_node, starts_out = _make_const_int64([start_val], "slice_starts")
+            ends_node, ends_out = _make_const_int64([end_val], "slice_ends")
+            axes_node, axes_out = _make_const_int64([0], "slice_axes")
+            steps_node, steps_out = _make_const_int64([1], "slice_steps")
+            slice_node = helper.make_node(
+                "Slice",
+                inputs=[shape_full_out, starts_out, ends_out, axes_out, steps_out],
+                outputs=[orig_out],
+                name=_unique("slice"),
+            )
+            new_nodes.extend((starts_node, ends_node, axes_node, steps_node, slice_node))
+            continue
+
+        new_nodes.append(node)
+
+    graph.ClearField("node")
+    graph.node.extend(new_nodes)
+    onnx_mod.checker.check_model(model)
+    onnx_mod.save(model, output_path)
+
+
+def _patch_causal_convnet_pad_to_cat(root: Any) -> int:
+    """Patch tokenizer causal convnet padding op to use explicit concat instead of pad."""
+    patched = 0
+
+    def _cat_pad_forward(self: Any, hidden_state: Any):
+        extra_padding = self._get_extra_padding_for_conv1d(hidden_state)
+        left_pad = int(getattr(self, "padding", 0) or 0)
+        right_pad = int(extra_padding or 0)
+        batch, channels, _ = hidden_state.shape
+        if left_pad > 0:
+            left = hidden_state.new_zeros((batch, channels, left_pad))
+            hidden_state = torch.cat((left, hidden_state), dim=-1)
+        if right_pad > 0:
+            right = hidden_state.new_zeros((batch, channels, right_pad))
+            hidden_state = torch.cat((hidden_state, right), dim=-1)
+        return self.conv(hidden_state).contiguous()
+
+    for mod in root.modules():
+        if mod.__class__.__name__ != "Qwen3TTSTokenizerV2CausalConvNet":
+            continue
+        mod.forward = types.MethodType(_cat_pad_forward, mod)
+        patched += 1
+    return patched
+
+
+def _patch_causal_transconvnet_trim_to_gather(root: Any) -> int:
+    """Patch tokenizer causal transconvnet trimming to use index_select (gather-like) slicing."""
+    patched = 0
+
+    def _gather_trim_forward(self: Any, hidden_state: Any):
+        out = self.conv(hidden_state)
+        left_pad = int(getattr(self, "left_pad", 0) or 0)
+        right_pad = int(getattr(self, "right_pad", 0) or 0)
+        if left_pad != 0 or right_pad != 0:
+            end = out.shape[-1] - right_pad
+            idx = torch.arange(left_pad, end, device=out.device)
+            out = out.index_select(-1, idx)
+        return out.contiguous()
+
+    for mod in root.modules():
+        if mod.__class__.__name__ != "Qwen3TTSTokenizerV2CausalTransConvNet":
+            continue
+        mod.forward = types.MethodType(_gather_trim_forward, mod)
+        patched += 1
+    return patched
+
+
 class SpeechTokenizerV2DecoderOnnxWrapper(_NNModule):
-    """Wrapper to export speech decoder as a standalone ONNX model."""
+    """Speech tokenizer V2 decoder wrapper for exporting an ONNX-friendly forward."""
 
     def __init__(self, decoder_model: Any) -> None:
+        """Create wrapper with the given decoder_model."""
         super().__init__()
         self.decoder_model = decoder_model
 
     @staticmethod
-    def _causal_mask(bsz: int, seq_len: int, window: int, dtype: Any, device: Any) -> Any:
-        """Build causal masks for full and sliding-window attention."""
-        del bsz
+    def _causal_mask(seq_len: Any, window: int, dtype: Any, device: Any) -> Any:
+        """Build causal attention mask (optionally sliding window) as additive mask."""
         mask_value = torch.finfo(torch.float32).min
-        q = torch.arange(seq_len, device=device).view(1, seq_len, 1)
-        kv = torch.arange(seq_len, device=device).view(1, 1, seq_len)
+        idx = torch.arange(seq_len, device=device)
+        q = idx.view(-1, 1)
+        kv = idx.view(1, -1)
         allow = kv <= q
         if int(window) > 0:
             start = q - int(window) + 1
             allow = allow & (kv >= start)
-        mask = torch.full((1, 1, seq_len, seq_len), mask_value, device=device, dtype=torch.float32)
-        mask = mask.masked_fill(allow.view(1, 1, seq_len, seq_len), 0.0)
+        zero = torch.zeros((), device=device, dtype=torch.float32)
+        neg = torch.full((), float(mask_value), device=device, dtype=torch.float32)
+        mask = torch.where(allow, zero, neg).unsqueeze(0).unsqueeze(0)
         return mask.to(dtype)
 
     def forward(self, codes: Any) -> Any:
-        """Decode codec codes to waveform tensor."""
+        """Decode codes into waveform using the tokenizer decoder subgraph."""
         hidden = self.decoder_model.quantizer.decode(codes)
         hidden = self.decoder_model.pre_conv(hidden).transpose(1, 2)
 
-        _, t, _ = hidden.shape
+        t = torch.onnx.operators.shape_as_tensor(hidden)[1]
         device = hidden.device
-        mask_full = self._causal_mask(bsz=1, seq_len=int(t), window=0, dtype=hidden.dtype, device=device)
+        mask_full = self._causal_mask(seq_len=t, window=0, dtype=hidden.dtype, device=device)
         sliding = int(getattr(self.decoder_model.pre_transformer.config, "sliding_window", 0) or 0)
-        mask_sliding = self._causal_mask(bsz=1, seq_len=int(t), window=sliding, dtype=hidden.dtype, device=device)
+        mask_sliding = self._causal_mask(seq_len=t, window=sliding, dtype=hidden.dtype, device=device)
         attn_mask = {"full_attention": mask_full, "sliding_attention": mask_sliding}
 
         hidden = self.decoder_model.pre_transformer(inputs_embeds=hidden, attention_mask=attn_mask).last_hidden_state
@@ -1962,6 +2111,8 @@ def export_speech_decoder_onnx(
     speech_tokenizer = model.model.speech_tokenizer
     decoder_model = speech_tokenizer.model.decoder
     decoder_model.eval()
+    _patch_causal_convnet_pad_to_cat(decoder_model)
+    _patch_causal_transconvnet_trim_to_gather(decoder_model)
     try:
         setattr(decoder_model.pre_transformer.config, "_attn_implementation", "eager")
     except (AttributeError, TypeError):
@@ -1977,7 +2128,6 @@ def export_speech_decoder_onnx(
         size=(1, num_quantizers, int(example_seq_len)),
         device=torch_mod.device("cpu"),
     )
-    codes = codes.to(dtype=_torch_dtype(dtype))
 
     output_path = os.path.join(output_dir, "speech_decoder.onnx")
     with torch_mod.no_grad():
@@ -1997,6 +2147,7 @@ def export_speech_decoder_onnx(
                 "wav": {0: "batch_size", 2: "output_seq_len"},
             },
         )
+    _postprocess_speech_decoder_onnx(output_path)
     return output_path
 
 
@@ -2045,7 +2196,276 @@ class GenerateProcessAndStepEmbedWrapper(_NNModule):
         last_id_hidden: torch.Tensor,
         trailing_step: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Run generate process and compute step embedding."""
+        """Return concatenated codec ids and the accumulated step embedding."""
+        sequences = self.gen(inputs_embeds).to(torch.long)
+        next_id = next_id.to(torch.long)
+        codec_ids = torch.cat([next_id, sequences], dim=1)
+
+        acc = last_id_hidden.to(torch.float32)
+        for i in range(int(sequences.shape[1])):
+            e = self.codec_embedding[i](sequences[:, i]).to(torch.float32).unsqueeze(1)
+            acc = acc + e
+        step_embed = acc + trailing_step.to(torch.float32)
+        return codec_ids, step_embed
+
+
+class GenerateProcessWrapper(_NNModule):
+    """Generate-process wrapper that returns predicted codec token ids."""
+
+    def __init__(self, code_predictor: Any) -> None:
+        super().__init__()
+        self.code_predictor = code_predictor
+        self.num_code_groups = int(getattr(getattr(code_predictor, "config", None), "num_code_groups", 16))
+
+    def forward(self, inputs_embeds: torch.Tensor) -> torch.Tensor:
+        """Greedy-generate codec token ids (excluding next_id) in the same way as code_predictor.generate()."""
+        cp = self.code_predictor
+
+        out = cp(
+            inputs_embeds=inputs_embeds,
+            use_cache=True,
+            output_hidden_states=False,
+            return_dict=True,
+        )
+        gen_steps = int(getattr(out, "generation_steps", 1))
+        past = getattr(out, "past_key_values", None)
+        logits0 = out.logits[:, -1, :]
+        tok0 = torch.argmax(logits0, dim=-1, keepdim=True).to(torch.long)
+        tokens = [tok0]
+
+        for _ in range(max(self.num_code_groups - 2, 0)):
+            out = cp(
+                input_ids=tokens[-1],
+                use_cache=True,
+                past_key_values=past,
+                generation_steps=gen_steps,
+                output_hidden_states=False,
+                return_dict=True,
+            )
+            gen_steps = int(getattr(out, "generation_steps", gen_steps + 1))
+            past = getattr(out, "past_key_values", past)
+            logits = out.logits[:, -1, :]
+            tok = torch.argmax(logits, dim=-1, keepdim=True).to(torch.long)
+            tokens.append(tok)
+
+        if tokens:
+            return torch.cat(tokens, dim=1).to(torch.int64)
+        return torch.empty((inputs_embeds.shape[0], 0), dtype=torch.int64, device=inputs_embeds.device)
+
+
+class CodePredictorPrefillCustomWrapper(_NNModule):
+    """Code predictor model wrapper exporting a custom-op friendly prefill path."""
+
+    def __init__(self, model: Any, *, use_custom_ops: bool, use_custom_rope: bool) -> None:
+        super().__init__()
+        self.model = model
+        cfg = model.config
+        self.hidden_size = int(cfg.hidden_size)
+        self.num_attention_heads = int(cfg.num_attention_heads)
+        self.num_key_value_heads = int(cfg.num_key_value_heads)
+        self.head_dim = int(getattr(cfg, "head_dim", self.hidden_size // self.num_attention_heads))
+        self.num_key_value_groups = int(self.num_attention_heads // self.num_key_value_heads)
+        self.scaling = float(self.head_dim) ** -0.5
+        self.use_custom_ops = bool(use_custom_ops)
+        self.use_custom_rope = bool(use_custom_rope)
+        try:
+            setattr(self.model.config, "_attn_implementation", "eager")
+        except (AttributeError, TypeError):
+            pass
+        self._mlp_gateup_w: list[torch.Tensor] = []
+        self._mlp_gateup_b: list[torch.Tensor | None] = []
+        layers = list(self.model.layers)
+        for li, layer in enumerate(layers):
+            mlp = layer.mlp
+            w = torch.cat([mlp.gate_proj.weight, mlp.up_proj.weight], dim=0).detach()
+            self.register_buffer(f"_mlp_gateup_w_{li}", w)
+            self._mlp_gateup_w.append(getattr(self, f"_mlp_gateup_w_{li}"))
+            bg = mlp.gate_proj.bias
+            if bg is None:
+                self._mlp_gateup_b.append(None)
+            else:
+                b = torch.cat([bg, mlp.up_proj.bias], dim=0).detach()
+                self.register_buffer(f"_mlp_gateup_b_{li}", b)
+                self._mlp_gateup_b.append(getattr(self, f"_mlp_gateup_b_{li}"))
+
+    def _rms_norm_custom(self, norm_mod: Any, x: torch.Tensor) -> torch.Tensor:
+        """Apply RMSNorm and optionally map to a Custom op for ONNX export."""
+        if self.use_custom_ops:
+            eps = float(getattr(norm_mod, "variance_epsilon", 1e-6))
+            y, _, _ = CustomAddRmsNorm.apply(x, torch.zeros_like(x), norm_mod.weight, eps)
+            return y
+        return norm_mod(x)
+
+    def _mlp(
+        self,
+        mlp_mod: Any,
+        x: torch.Tensor,
+        gateup_w: torch.Tensor,
+        gateup_b: torch.Tensor | None,
+    ) -> torch.Tensor:
+        """Run MLP and optionally use Custom SwiGLU path for ONNX export."""
+        if not self.use_custom_ops:
+            return mlp_mod(x)
+        act = getattr(mlp_mod, "act_fn", None)
+        act_class = getattr(act, "__class__", None)
+        act_class_name = getattr(act_class, "__name__", "") if act_class is not None else ""
+        act_name = str(getattr(act, "__name__", "") or act_class_name or "").lower()
+        if act is not None and ("silu" not in act_name and "swish" not in act_name):
+            return mlp_mod(x)
+        gate_up = torch.nn.functional.linear(x, gateup_w, gateup_b)
+        y = CustomSwiGlu.apply(gate_up, -1)
+        return mlp_mod.down_proj(y)
+
+    def _attention_prefill(
+        self,
+        attn_mod: Any,
+        hidden_states: torch.Tensor,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+        attention_mask_4d: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute attention output for prefill and optionally map to a Custom op path."""
+        b, s, d = hidden_states.shape
+        q = attn_mod.q_proj(hidden_states).view(b, s, self.num_attention_heads, self.head_dim)
+        q = self._rms_norm_custom(attn_mod.q_norm, q).transpose(1, 2)
+        k = attn_mod.k_proj(hidden_states).view(b, s, self.num_key_value_heads, self.head_dim)
+        k = self._rms_norm_custom(attn_mod.k_norm, k).transpose(1, 2)
+        v = attn_mod.v_proj(hidden_states).view(b, s, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+
+        cos_u = cos.unsqueeze(1)
+        sin_u = sin.unsqueeze(1)
+        if self.use_custom_rope:
+            q = CustomRoatryMul.apply(q, cos_u, sin_u)
+            k = CustomRoatryMul.apply(k, cos_u, sin_u)
+        else:
+            q = _rotary_mul_plain(q, cos_u, sin_u)
+            k = _rotary_mul_plain(k, cos_u, sin_u)
+
+        if self.use_custom_ops:
+            attn_mask = attention_mask_4d != 0
+            out = CustomPromptFlashAttention.apply(
+                q,
+                k,
+                v,
+                attn_mask,
+                int(self.num_attention_heads),
+                float(self.scaling),
+                "BNSD",
+                int(self.num_key_value_heads),
+                0,
+                0,
+                0,
+                0,
+            )
+            if int(out.dim()) == 4:
+                out = out.transpose(1, 2).contiguous().view(b, s, int(self.num_attention_heads * self.head_dim))
+            return attn_mod.o_proj(out)
+
+        k_for_attn = _repeat_kv(k, self.num_key_value_groups)
+        v_for_attn = _repeat_kv(v, self.num_key_value_groups)
+        scores = torch.matmul(q, k_for_attn.transpose(-2, -1))
+        scores = scores * self.scaling
+        scores = scores + attention_mask_4d
+        probs = torch.softmax(scores, dim=-1).to(v_for_attn.dtype)
+        out = torch.matmul(probs, v_for_attn)
+        out = out.transpose(1, 2).contiguous().view(b, s, d)
+        return attn_mod.o_proj(out)
+
+    def forward(self, inputs_embeds: torch.Tensor) -> torch.Tensor:
+        """Compute code predictor transformer hidden states for generate_process export."""
+        b, s, _ = inputs_embeds.shape
+        device = inputs_embeds.device
+        attention_mask = torch.ones((b, s), device=device, dtype=torch.int64)
+        position_ids = torch.arange(s, device=device, dtype=torch.int64).view(1, -1).expand(b, -1)
+        cos, sin = self.model.rotary_emb(inputs_embeds, position_ids)
+
+        layers = list(self.model.layers)
+        residual = inputs_embeds
+        if self.use_custom_ops:
+            hidden_states = self._rms_norm_custom(layers[0].input_layernorm, residual)
+        else:
+            hidden_states = residual
+
+        for li, layer in enumerate(layers):
+            if not self.use_custom_ops:
+                residual = hidden_states
+                hidden_states = layer.input_layernorm(hidden_states)
+            window = getattr(layer.self_attn, "sliding_window", None)
+            mask_value = float(torch.finfo(torch.float32).min)
+            attn4d = _causal_mask_2d(attention_mask, window_size=window, mask_value=mask_value).to(hidden_states.dtype)
+            attn_out = self._attention_prefill(layer.self_attn, hidden_states, cos, sin, attn4d)
+            if self.use_custom_ops:
+                eps = float(getattr(layer.post_attention_layernorm, "variance_epsilon", 1e-6))
+                y, _, x = CustomAddRmsNorm.apply(residual, attn_out, layer.post_attention_layernorm.weight, eps)
+                residual = x
+                hidden_states = y
+            else:
+                hidden_states = residual + attn_out
+                residual = hidden_states
+                hidden_states = layer.post_attention_layernorm(hidden_states)
+
+            mlp_out = self._mlp(layer.mlp, hidden_states, self._mlp_gateup_w[li], self._mlp_gateup_b[li])
+            if self.use_custom_ops and li + 1 < len(layers):
+                next_layer = layers[li + 1]
+                eps_in = float(getattr(next_layer.input_layernorm, "variance_epsilon", 1e-6))
+                y2, _, x2 = CustomAddRmsNorm.apply(residual, mlp_out, next_layer.input_layernorm.weight, eps_in)
+                residual = x2
+                hidden_states = y2
+            else:
+                hidden_states = residual + mlp_out
+                residual = hidden_states
+
+        if self.use_custom_ops:
+            hidden_states = self._rms_norm_custom(self.model.norm, residual)
+        else:
+            hidden_states = self.model.norm(hidden_states)
+        return hidden_states
+
+
+class GenerateProcessWrapperCustom(_NNModule):
+    """Generate-process wrapper that uses Custom nodes for CANN fusion."""
+
+    def __init__(self, code_predictor: Any, *, use_custom_ops: bool, use_custom_rope: bool) -> None:
+        super().__init__()
+        self.input_projection = code_predictor.small_to_mtp_projection
+        self.transformer = CodePredictorPrefillCustomWrapper(
+            code_predictor.model,
+            use_custom_ops=bool(use_custom_ops),
+            use_custom_rope=bool(use_custom_rope),
+        )
+        self.lm_heads = code_predictor.lm_head
+
+    def forward(self, inputs_embeds: torch.Tensor) -> torch.Tensor:
+        inputs_embeds = self.input_projection(inputs_embeds)
+        hidden_states = self.transformer(inputs_embeds)
+        last_hidden = hidden_states[:, -1, :]
+        logits_list = []
+        for head in self.lm_heads:
+            logits_list.append(head(last_hidden))
+        logits = torch.stack(logits_list, dim=1)
+        return torch.argmax(logits, dim=-1).to(torch.int64)
+
+
+class GenerateProcessAndStepEmbedWrapperCustom(_NNModule):
+    """Wrapper that exports both codec ids and the next step embedding using Custom ops."""
+
+    def __init__(self, code_predictor: Any, *, use_custom_ops: bool, use_custom_rope: bool) -> None:
+        super().__init__()
+        self.gen = GenerateProcessWrapperCustom(
+            code_predictor,
+            use_custom_ops=use_custom_ops,
+            use_custom_rope=use_custom_rope,
+        )
+        self.codec_embedding = code_predictor.model.codec_embedding
+
+    def forward(
+        self,
+        inputs_embeds: torch.Tensor,
+        next_id: torch.Tensor,
+        last_id_hidden: torch.Tensor,
+        trailing_step: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Export helper that returns codec ids and the next step embedding."""
         sequences = self.gen(inputs_embeds)
         base_embed = last_id_hidden.to(torch.float32)
         pred_embeds = [
@@ -2056,28 +2476,6 @@ class GenerateProcessAndStepEmbedWrapper(_NNModule):
         step_embed = codec_hiddens.sum(1, keepdim=True) + trailing_step
         codec_ids = torch.cat([next_id.to(torch.int64), sequences.to(torch.int64)], dim=1)
         return codec_ids, step_embed
-
-
-class GenerateProcessWrapper(_NNModule):
-    """Generate-process wrapper that returns predicted codec token ids."""
-
-    def __init__(self, code_predictor: Any) -> None:
-        super().__init__()
-        self.code_predictor = code_predictor
-        self.projection = code_predictor.small_to_mtp_projection
-        self.transformer = code_predictor.model
-        self.lm_heads = code_predictor.lm_head
-
-    def forward(self, inputs_embeds: torch.Tensor) -> torch.Tensor:
-        """Predict next codec token ids given inputs_embeds."""
-        model_output = self.transformer(inputs_embeds=inputs_embeds, use_cache=True, output_hidden_states=True)
-        last_hidden = model_output.last_hidden_state[:, -1, :]
-        last_hidden = self.projection(last_hidden)
-        logits_list = []
-        for head in self.lm_heads:
-            logits_list.append(head(last_hidden))
-        logits = torch.stack(logits_list, dim=1)
-        return torch.argmax(logits, dim=-1).to(torch.int64)
 
 
 def _torch_dtype(name: str) -> torch.dtype:
@@ -2095,7 +2493,7 @@ def export_generate_process_onnx(
     output_dir: str,
     opset: int = 17,
     checkpoint_path: str | None = None,
-    use_custom_rope: bool = False,
+    export_custom_ops: bool = False,
 ) -> str:
     """Export code predictor generate_process.onnx."""
     torch_mod = _require_module("torch")
@@ -2105,14 +2503,15 @@ def export_generate_process_onnx(
     code_cfg_cls = getattr(cfg_mod, "Qwen3TTSTalkerCodePredictorConfig")
     code_model_cls = getattr(modeling_mod, "Qwen3TTSTalkerCodePredictorModelForConditionalGeneration")
     talker_config = talker_cfg_cls.from_pretrained(model_path)
-    cfg = code_cfg_cls(
-        hidden_size=talker_config.hidden_size,
-        num_hidden_layers=talker_config.num_hidden_layers,
-        num_attention_heads=talker_config.num_attention_heads,
-        num_key_value_heads=talker_config.num_key_value_heads,
-        intermediate_size=talker_config.intermediate_size,
-        vocab_size=talker_config.vocab_size,
-    )
+    cp_cfg = getattr(talker_config, "code_predictor_config", None)
+    if cp_cfg is None:
+        cfg = code_cfg_cls()
+    elif isinstance(cp_cfg, code_cfg_cls):
+        cfg = cp_cfg
+    elif isinstance(cp_cfg, dict):
+        cfg = code_cfg_cls(**cp_cfg)
+    else:
+        cfg = code_cfg_cls(**getattr(cp_cfg, "to_dict")())
     code_predictor = code_model_cls(cfg, talker_config)
     code_predictor.eval()
 
@@ -2123,11 +2522,28 @@ def export_generate_process_onnx(
     checkpoint = load_file(checkpoint_path)
 
     filtered: dict[str, torch.Tensor] = {}
+    prefixes = (
+        "model.talker.code_predictor.",
+        "talker.code_predictor.",
+        "model.talker.code_predictor.model.",
+        "talker.code_predictor.model.",
+        "model.code_predictor.",
+        "code_predictor.",
+    )
     for key, value in checkpoint.items():
-        if not key.startswith("model.talker.code_predictor."):
-            continue
-        new_key = key.replace("model.talker.code_predictor.", "")
-        filtered[new_key] = value
+        k = str(key)
+        if k.startswith("module."):
+            k = k[len("module.") :]
+        for p in prefixes:
+            if k.startswith(p):
+                filtered[k[len(p) :]] = value
+                break
+    if not filtered:
+        sample = ", ".join(list(checkpoint.keys())[:5])
+        raise RuntimeError(
+            "No code_predictor weights matched known prefixes. "
+            f"checkpoint={checkpoint_path!r}, sample_keys=[{sample}]"
+        )
     code_predictor.load_state_dict(filtered, strict=True)
     code_predictor.eval()
 
@@ -2136,12 +2552,20 @@ def export_generate_process_onnx(
     except (AttributeError, TypeError):
         pass
 
-    if use_custom_rope:
+    allow_custom_rope = bool(export_custom_ops)
+    if allow_custom_rope:
         modeling_mod.apply_rotary_pos_emb = _apply_rotary_pos_emb_custom
     else:
         modeling_mod.apply_rotary_pos_emb = _apply_rotary_pos_emb_plain
 
-    wrapper = GenerateProcessAndStepEmbedWrapper(code_predictor).eval()
+    if export_custom_ops:
+        wrapper = GenerateProcessAndStepEmbedWrapperCustom(
+            code_predictor,
+            use_custom_ops=True,
+            use_custom_rope=allow_custom_rope,
+        ).eval()
+    else:
+        wrapper = GenerateProcessAndStepEmbedWrapper(code_predictor).eval()
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, "generate_process.onnx")
 
@@ -2155,16 +2579,14 @@ def export_generate_process_onnx(
 
     with torch_mod.no_grad():
         _ = wrapper(inputs_embeds, next_id, last_id_hidden, trailing_step)
-        torch_mod.onnx.export(
+        _export_onnx(
             wrapper,
             (inputs_embeds, next_id, last_id_hidden, trailing_step),
             output_path,
+            opset=int(opset),
             input_names=["inputs_embeds", "next_id", "last_id_hidden", "trailing_step"],
             output_names=["codec_ids", "step_embed"],
-            opset_version=int(opset),
-            do_constant_folding=True,
-            training=torch_mod.onnx.TrainingMode.EVAL,
-            dynamo=False,
+            allow_custom_ops=bool(export_custom_ops),
         )
     return output_path
 
@@ -2175,70 +2597,209 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model_path", type=str, default="../Qwen3-TTS-12Hz-1.7B-CustomVoice")
     parser.add_argument("--output_root", type=str, default=".")
     parser.add_argument("--opset", type=int, default=17)
-    parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--export_custom_ops", action="store_true")
     parser.add_argument("--talker_dtype", type=str, default="float32", choices=["float32", "float16", "bfloat16"])
     parser.add_argument("--talker_export_seq_len", type=int, default=512)
     parser.add_argument("--strip_talker_control_flow", action="store_true")
-    parser.add_argument("--talker_output_dir", type=str, default="onnx_models_talker_core_kv_transpose")
-    parser.add_argument("--speech_output_dir", type=str, default="onnx_models_speech_tokenizer")
+    parser.add_argument("--talker_output_dir", type=str, default="onnx_models_v2")
+    parser.add_argument("--speech_output_dir", type=str, default="onnx_models_v2")
     parser.add_argument("--speech_dtype", type=str, default="float32", choices=["float32", "float16", "bfloat16"])
     parser.add_argument("--speech_example_seq_len", type=int, default=100)
-    parser.add_argument("--code_predictor_output_dir", type=str, default="onnx_models_talker_core")
+    parser.add_argument("--code_predictor_output_dir", type=str, default="onnx_models_v2")
     parser.add_argument("--code_predictor_checkpoint", type=str, default="")
-    parser.add_argument("--code_predictor_custom_rope", action="store_true")
     parser.add_argument("--export_talker", action="store_true")
     parser.add_argument("--export_speech", action="store_true")
     parser.add_argument("--export_code_predictor", action="store_true")
     return parser.parse_args(argv)
 
 
+def _export_talker_if_enabled(args: argparse.Namespace, output_root: str, *, selected: bool) -> None:
+    """Export talker models if enabled by args."""
+    do_talker = bool(args.export_talker) or not bool(selected)
+    if not do_talker:
+        return
+    out_dir = os.path.join(output_root, str(args.talker_output_dir))
+    export_talker_kv_onnx(
+        model_path=str(args.model_path),
+        output_dir=out_dir,
+        opset=int(args.opset),
+        dtype=str(args.talker_dtype),
+        export_seq_len=int(args.talker_export_seq_len),
+        device="cpu",
+        export_custom_ops=bool(args.export_custom_ops),
+        strip_control_flow=bool(args.strip_talker_control_flow),
+    )
+    print(os.path.join(out_dir, "talker_prefill.onnx"))
+    print(os.path.join(out_dir, "talker_step.onnx"))
+
+
+def _export_speech_if_enabled(args: argparse.Namespace, output_root: str, *, selected: bool) -> None:
+    """Export speech decoder if enabled by args."""
+    do_speech = bool(args.export_speech) or not bool(selected)
+    if not do_speech:
+        return
+    out_dir = os.path.join(output_root, str(args.speech_output_dir))
+    out = export_speech_decoder_onnx(
+        model_path=str(args.model_path),
+        output_dir=out_dir,
+        opset=int(args.opset),
+        dtype=str(args.speech_dtype),
+        device="cpu",
+        example_seq_len=int(args.speech_example_seq_len),
+    )
+    print(out)
+
+
+def _load_talker_configs(model_path: str) -> tuple[Any, Any, int]:
+    """Load talker config objects for code predictor export."""
+    cfg_mod = _require_module("qwen_tts.core.models.configuration_qwen3_tts")
+    modeling_mod = _require_module("qwen_tts.core.models.modeling_qwen3_tts")
+    talker_cfg_cls = getattr(modeling_mod, "Qwen3TTSTalkerConfig")
+    code_cfg_cls = getattr(cfg_mod, "Qwen3TTSTalkerCodePredictorConfig")
+
+    config_path = os.path.join(str(model_path), "config.json")
+    with open(config_path, "r", encoding="utf-8") as f:
+        full_config = json.load(f)
+    talker_config_dict = full_config["talker_config"]
+    code_predictor_config = code_cfg_cls(**talker_config_dict["code_predictor_config"])
+    talker_config = talker_cfg_cls(**talker_config_dict)
+    talker_hidden_size = int(talker_config.hidden_size)
+    return talker_config, code_predictor_config, talker_hidden_size
+
+
+def _filter_checkpoint_state_dict(checkpoint: dict[str, Any], prefix: str) -> dict[str, Any]:
+    """Filter safetensors state_dict by prefix and strip wrappers like module."""
+    filtered: dict[str, Any] = {}
+    for key, value in checkpoint.items():
+        k = str(key)
+        if k.startswith("module."):
+            k = k[len("module.") :]
+        if k.startswith(prefix):
+            filtered[k[len(prefix) :]] = value
+    return filtered
+
+
+def _load_code_predictor_weights(ckpt_path: str, prefix: str) -> dict[str, Any]:
+    """Load safetensors checkpoint and return filtered code predictor weights."""
+    safetensors_torch = _require_module("safetensors.torch")
+    load_file = getattr(safetensors_torch, "load_file")
+    checkpoint = load_file(str(ckpt_path))
+    filtered = _filter_checkpoint_state_dict(checkpoint, prefix)
+    if not filtered:
+        sample = ", ".join(list(checkpoint.keys())[:5])
+        message = (
+            f"No code_predictor weights matched prefix {prefix!r}. "
+            f"checkpoint={str(ckpt_path)!r}, sample_keys=[{sample}]"
+        )
+        raise RuntimeError(message)
+    return filtered
+
+
+def _build_generate_process_wrapper(code_predictor: Any, *, export_custom_ops: bool, use_custom_rope: bool) -> Any:
+    """Build generate_process wrapper for ONNX export."""
+    modeling_mod = _require_module("qwen_tts.core.models.modeling_qwen3_tts")
+    if bool(use_custom_rope):
+        modeling_mod.apply_rotary_pos_emb = _apply_rotary_pos_emb_custom
+    else:
+        modeling_mod.apply_rotary_pos_emb = _apply_rotary_pos_emb_plain
+
+    if bool(export_custom_ops):
+        return GenerateProcessAndStepEmbedWrapperCustom(
+            code_predictor,
+            use_custom_ops=True,
+            use_custom_rope=bool(use_custom_rope),
+        ).eval()
+    return GenerateProcessAndStepEmbedWrapper(code_predictor).eval()
+
+
+def _export_generate_process_onnx(
+    wrapper: Any,
+    output_path: str,
+    *,
+    opset: int,
+    export_custom_ops: bool,
+    talker_hidden_size: int,
+) -> None:
+    """Export generate_process ONNX."""
+    torch_mod = _require_module("torch")
+    batch_size = 1
+    initial_seq_len = 2
+    inputs_embeds = torch_mod.randn(batch_size, initial_seq_len, int(talker_hidden_size))
+    next_id = torch_mod.zeros((batch_size, 1), dtype=torch_mod.int64)
+    last_id_hidden = torch_mod.randn(batch_size, 1, int(talker_hidden_size), dtype=torch_mod.float32)
+    trailing_step = torch_mod.randn(batch_size, 1, int(talker_hidden_size), dtype=torch_mod.float32)
+
+    with torch_mod.no_grad():
+        _ = wrapper(inputs_embeds, next_id, last_id_hidden, trailing_step)
+        export_kwargs: dict[str, Any] = {}
+        if "dynamo" in inspect.signature(torch_mod.onnx.export).parameters:
+            export_kwargs["dynamo"] = False
+        if bool(export_custom_ops):
+            export_kwargs["operator_export_type"] = torch_mod.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
+        torch_mod.onnx.export(
+            wrapper,
+            (inputs_embeds, next_id, last_id_hidden, trailing_step),
+            str(output_path),
+            input_names=["inputs_embeds", "next_id", "last_id_hidden", "trailing_step"],
+            output_names=["codec_ids", "step_embed"],
+            opset_version=int(opset),
+            do_constant_folding=True,
+            training=torch_mod.onnx.TrainingMode.EVAL,
+            **export_kwargs,
+        )
+
+
+def _export_code_predictor_if_enabled(args: argparse.Namespace, output_root: str, *, selected: bool) -> None:
+    """Export code predictor generate_process if enabled by args."""
+    do_code = bool(args.export_code_predictor) or not bool(selected)
+    if not do_code:
+        return
+    out_dir = os.path.join(output_root, str(args.code_predictor_output_dir))
+    ckpt = str(args.code_predictor_checkpoint).strip() or os.path.join(str(args.model_path), "model.safetensors")
+    prefix = "talker.code_predictor."
+    talker_config, code_predictor_config, talker_hidden_size = _load_talker_configs(str(args.model_path))
+    modeling_mod = _require_module("qwen_tts.core.models.modeling_qwen3_tts")
+    code_model_cls = getattr(modeling_mod, "Qwen3TTSTalkerCodePredictorModelForConditionalGeneration")
+    code_predictor = code_model_cls(code_predictor_config, talker_config).eval()
+
+    filtered_checkpoint = _load_code_predictor_weights(ckpt, prefix)
+    code_predictor.load_state_dict(filtered_checkpoint, strict=True)
+    code_predictor.eval()
+
+    try:
+        code_predictor.model.config._attn_implementation = "eager"
+    except Exception:
+        pass
+
+    use_custom_rope = bool(args.export_custom_ops)
+    wrapper = _build_generate_process_wrapper(
+        code_predictor,
+        export_custom_ops=bool(args.export_custom_ops),
+        use_custom_rope=bool(use_custom_rope),
+    )
+
+    os.makedirs(out_dir, exist_ok=True)
+    output_path = os.path.join(out_dir, "generate_process.onnx")
+    _export_generate_process_onnx(
+        wrapper,
+        output_path,
+        opset=int(args.opset),
+        export_custom_ops=bool(args.export_custom_ops),
+        talker_hidden_size=int(talker_hidden_size),
+    )
+    print(output_path)
+
+
 def main(argv: list[str] | None = None) -> int:
+    """Entry point for exporting Qwen3-TTS ONNX models."""
     args = _parse_args(argv)
     output_root = os.path.abspath(args.output_root)
     os.makedirs(output_root, exist_ok=True)
 
     selected = any([args.export_talker, args.export_speech, args.export_code_predictor])
-    do_talker = args.export_talker or not selected
-    do_speech = args.export_speech or not selected
-    do_code = args.export_code_predictor or not selected
-
-    if do_talker:
-        out_dir = os.path.join(output_root, args.talker_output_dir)
-        export_talker_kv_onnx(
-            model_path=args.model_path,
-            output_dir=out_dir,
-            opset=int(args.opset),
-            dtype=str(args.talker_dtype),
-            export_seq_len=int(args.talker_export_seq_len),
-            device=str(args.device),
-            strip_control_flow=bool(args.strip_talker_control_flow),
-        )
-        print(os.path.join(out_dir, "talker_prefill.onnx"))
-        print(os.path.join(out_dir, "talker_step.onnx"))
-
-    if do_speech:
-        out_dir = os.path.join(output_root, args.speech_output_dir)
-        out = export_speech_decoder_onnx(
-            model_path=args.model_path,
-            output_dir=out_dir,
-            opset=int(args.opset),
-            dtype=str(args.speech_dtype),
-            device=str(args.device),
-            example_seq_len=int(args.speech_example_seq_len),
-        )
-        print(out)
-
-    if do_code:
-        out_dir = os.path.join(output_root, args.code_predictor_output_dir)
-        ckpt = str(args.code_predictor_checkpoint).strip() or None
-        out = export_generate_process_onnx(
-            model_path=args.model_path,
-            output_dir=out_dir,
-            opset=int(args.opset),
-            checkpoint_path=ckpt,
-            use_custom_rope=bool(args.code_predictor_custom_rope),
-        )
-        print(out)
+    _export_talker_if_enabled(args, output_root, selected=bool(selected))
+    _export_speech_if_enabled(args, output_root, selected=bool(selected))
+    _export_code_predictor_if_enabled(args, output_root, selected=bool(selected))
 
     return 0
 

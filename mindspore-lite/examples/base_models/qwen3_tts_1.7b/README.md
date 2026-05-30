@@ -19,14 +19,14 @@ Qwen3-TTS 是一个端到端的语音生成大模型。在本工程端到端推�
 
 | 软件包            | 版本     |
 |----------------|--------|
-| Python         | >=3.9  |
-| torch          | >=2.0.0|
-| transformers   | >=4.57.3|
-| onnx           | >=1.17.0|
-| onnxruntime    | >=1.17.0|
-| soundfile      | >=0.12.1|
-| qwen3-tts      | >=0.1.1|
-| mindspore-lite | 2.8.0  |
+| Python         | 3.12.0 |
+| torch          | 2.12.0+cu130 |
+| transformers   | 4.57.3 |
+| onnx           | 1.21.0 |
+| onnxruntime    | 1.26.0 |
+| soundfile      | 0.13.1 |
+| qwen3-tts      | 0.1.1 |
+| mindspore-lite | 2.8.0 |
 
 > **注意**：Ascend 推理需要正确配置 CANN 环境变量，并安装 mindspore-lite 对应版本。
 
@@ -36,21 +36,26 @@ Qwen3-TTS 是一个端到端的语音生成大模型。在本工程端到端推�
 
 ### 导出命令
 
-使用 `export_qwen3_ttts_1.7b.py` 脚本导出所有子模型（默认启用 Custom 算子以优化 Ascend 性能）：
+使用 `export_qwen3_ttts_1.7b.py` 脚本导出所有子模型。通过 `--export_custom_ops` 控制是否导出带 Ascend Custom 算子的 ONNX：
 
 ```bash
-# 需在 NPU 环境下，并开启 QWEN3_TTS_ENABLE_TORCH_NPU=1
-QWEN3_TTS_ENABLE_TORCH_NPU=1 python export_qwen3_ttts_1.7b.py \
+# 导出纯净 ONNX（不含 Custom），可用于 CPU/CUDA 上 ONNX Runtime 验证
+python export_qwen3_ttts_1.7b.py \
   --model_path ../Qwen3-TTS-12Hz-1.7B-CustomVoice \
   --output_root . \
-  --device npu \
   --talker_dtype float32 \
-  --speech_dtype float32 \
-  --code_predictor_custom_rope
+  --speech_dtype float32
+
+# 导出带 Ascend Custom 算子的 ONNX（用于转换 MindIR 在 Ascend 部署）
+python export_qwen3_ttts_1.7b.py \
+  --export_custom_ops \
+  --model_path ../Qwen3-TTS-12Hz-1.7B-CustomVoice \
+  --output_root . \
+  --talker_dtype float32 \
+  --speech_dtype float32
 ```
 
-> **注意**：上述命令导出的 `talker_step.onnx` 及 `generate_process.onnx` 包含了 Ascend Custom 算子，这类模型**无法使用 CPU/CUDA 上的 ONNX Runtime 进行推理验证**（即无法运行 `infer_qwen3_tts_1.7b_onnx.py`），它们仅用于通过 `converter_lite` 转换为 MindIR 后在 Ascend 部署。
-> 如果你需要使用 `infer_qwen3_tts_1.7b_onnx.py` 在 CPU/CUDA 上验证推理，请去除 `--device npu` 与 `--code_predictor_custom_rope` 参数，且不要开启 `QWEN3_TTS_ENABLE_TORCH_NPU` 环境变量，以导出非 Custom 版本的纯净 ONNX。
+> **注意**：开启 `--export_custom_ops` 后导出的 `talker_step.onnx` 及 `generate_process.onnx` 包含 Ascend Custom 算子，这类模型**无法使用 CPU/CUDA 上的 ONNX Runtime 进行推理验证**（即无法运行 `infer_qwen3_tts_1.7b_onnx.py`）。它们仅用于通过 `converter_lite` 转换为 MindIR 后在 Ascend 部署。
 > 如需单独导出某一类模型，可追加 `--export_talker`、`--export_speech` 或 `--export_code_predictor`。
 
 ### 参数说明
@@ -59,7 +64,7 @@ QWEN3_TTS_ENABLE_TORCH_NPU=1 python export_qwen3_ttts_1.7b.py \
 |----------------------------|------------------------------------|----------------------------------------|
 | `--model_path`             | 模型路径（HuggingFace 格式或本地目录）      | `../Qwen3-TTS-12Hz-1.7B-CustomVoice`   |
 | `--output_root`            | 输出根目录                           | `.`                                    |
-| `--device`                 | 导出设备（cpu/npu）。导出 Custom 算子（`--talker_custom_rope` / `--code_predictor_custom_rope`）时必须指定 `--device npu`，因为 Custom 算子依赖 npu 算子 | `cpu`                                  |
+| `--export_custom_ops`      | 是否导出带 Ascend Custom 算子的 ONNX      | 关闭                                     |
 | `--talker_dtype`           | Talker 模型导出精度（float32/float16）  | `float32`                              |
 | `--talker_export_seq_len`  | Prefill 导出序列长度示例               | `512`                                  |
 | `--speech_dtype`           | Speech Decoder 导出精度              | `float32`                              |
@@ -155,7 +160,7 @@ $Convert --modelFile=./onnx_models_talker_core/generate_process.onnx --fmk=ONNX 
 [acl_build_options]
 input_format="ND"
 input_shape="codes:1,16,-1"
-ge.dynamicDims="2;3;4;6;8;10;12;14;16;18;20;22;24;26;28;30;32;34;36;38;40;42;44;46;48;50;52;54;56;58;60"  # 动态分档挡位，表示输入序列长度（即 codes 的第 3 维 -1 对应的实际值）
+ge.dynamicDims="2;3;4;6;8;10;12;14;16;18;20;22;24;26;28;30;32;34;36;38;40;42;44;46;48;50;52;54;56;58;60"
 
 [acl_init_options]
 ge.exec.precision_mode=force_fp32
@@ -179,10 +184,10 @@ mindir/
 
 ### 推理命令
 
-使用 `infer_qwen3_tts_1.7b_mindir.py` 在 Ascend 设备上进行端到端推理：
+使用 `infer_qwen3_tts_1_7b_mindir.py` 在 Ascend 设备上进行端到端推理：
 
 ```bash
-python infer_qwen3_tts_1.7b_mindir.py \
+python infer_qwen3_tts_1_7b_mindir.py \
   --mode infer \
   --model_path ../Qwen3-TTS-12Hz-1.7B-CustomVoice \
   --mindir_dir ./mindir \
@@ -210,13 +215,22 @@ python infer_qwen3_tts_1.7b_mindir.py \
 
 *(实际性能数据请以具体环境的 Benchmark 测试结果为准)*
 
-| 模型 | 输入形状（示例） | Atlas 300I Duo Avg (ms) | Atlas 800I A2 Avg (ms) |
-|---|---|---:|---:|
-| `talker_prefill.mindir` | `inputs_embeds:1,50,2048;attention_mask:1,50` | 100.286 | 87 |
-| `talker_step.mindir` | 模型内置 shape | 68.672 | 60 |
-| `generate_process.mindir` | `inputs_embeds:1,2,2048;next_id:1,1;last_id_hidden:1,1,2048;trailing_step:1,1,2048` | 21.774 | 13 |
-| `speech_decoder.mindir` | `codes:1,16,60` | 159.388 | 32 |
+| 指标                       | Atlas 300I Duo Time     | Atlas 800I A2 Time     |
+|--------------------------|-------------------------|------------------------|
+| speech_decoder (ms)              | 157     | 8     |
+| Prefill (ms)             | 132     | 15     |
+| Total Decode (ms)        | 1659     | 480     |
+| **Avg decode step (ms)** | **27.65**| **8**|
+| Total generate_process (ms)        | 1377  | 780     |
+| **Avg generate_process step (ms)** | **22.9**| **13**|
+| Total (ms)               | 3548     | 1283     |
+| **Throughput (tok/s)**   | **17.1**| **46.8**|
 
+| 端到端指标 | Atlas 300I Duo | Atlas 800I A2 |
+|---|---:|---:|
+| RTF | 0.875     | 0.34     |
+
+> **RTF 含义**：Real-Time Factor，端到端生成 1 秒音频所消耗的推理时间与 1 秒的比值。RTF < 1 表示实时或快于实时，RTF = 0.875 表示生成 1 秒音频耗时约 0.875 秒。
 > **提示**：可使用 mindspore-lite 提供的 `benchmark` 工具直接评测 `.mindir` 的吞吐与耗时。
 
 ---
@@ -233,7 +247,7 @@ python infer_qwen3_tts_1.7b_mindir.py \
 
 ### Q3: ONNXRuntime 与 MindSpore Lite 生成的音频不一致
 
-因为生成过程存在自回归与采样（如 `repetition_penalty`、温度等参数），即使底层算子有极小的精度差异（FP32 vs Ascend 计算单元底层的浮点实现），也会导致生成出的 Token 或 Codec ID 产生分岔。可使用 `infer_qwen3_tts_1.7b_mindir.py --mode compare` 对单步推理模块进行精度比对。
+因为生成过程存在自回归与采样（如 `repetition_penalty`、温度等参数），即使底层算子有极小的精度差异（FP32 vs Ascend 计算单元底层的浮点实现），也会导致生成出的 Token 或 Codec ID 产生分岔。可使用 `infer_qwen3_tts_1_7b_mindir.py --mode compare` 对单步推理模块进行精度比对。
 
 ---
 
