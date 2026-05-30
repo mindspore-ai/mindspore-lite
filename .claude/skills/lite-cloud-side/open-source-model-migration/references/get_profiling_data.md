@@ -219,3 +219,13 @@ The data ... has been analyzed. Parsing phase will be skipped.
 ```bash
 rm -rf profiling
 ```
+
+### 6.6 profiling 采集可能出现二次失败
+
+现象：
+
+- 一次 profiling 导出完成后，后续又出现 `Running profiling failed`。
+
+处理建议：
+
+- 以生成的 `profiling/PROF_*` 与 `mindstudio_profiler_output/*.csv` 为准，存在即可重命名并打包；必要时单独开目录只跑一次采集。

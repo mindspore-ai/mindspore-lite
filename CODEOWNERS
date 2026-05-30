@@ -103,12 +103,10 @@
 
 /.claude/ @jjfeing
 /.claude/skills/lite-build/ @jjfeing
-/.claude/skills/lite-cloud-side-infer/ @YeFeng_24
-/.claude/skills/lite-code-quality/ @jjfeing
-/.claude/skills/lite-converter/ @fatmouse007fatmouse007 @YeFeng_24
-/.claude/skills/lite-debug-test/ @fatmouse007fatmouse007 @YeFeng_24
-/.claude/skills/lite-device-side-infer/ @fatmouse007fatmouse007
-/.claude/skills/lite-kernel-dev/ @fatmouse007fatmouse007 @YeFeng_24
+/.claude/lite-cloud-side.md @jjfeing @YeFeng_24
+/.claude/skills/lite-cloud-side/ @jjfeing @YeFeng_24
+/.claude/lite-device-side.md @jjfeing @fatmouse007fatmouse007
+/.claude/skills/lite-device-side/ @jjfeing @fatmouse007fatmouse007
 
 /.gitcode/  @jjfeing @YeFeng_24
 /.jenkins/  @nicholas_yhr @jjfeing
