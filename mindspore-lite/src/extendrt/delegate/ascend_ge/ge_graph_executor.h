@@ -139,6 +139,10 @@ class GeGraphExecutor : public LiteGraphExecutor {
   void GetGeSessionOptions(std::map<std::string, std::string> *ge_options);
   void GetGeSessionOptionsFromAscendContext(const std::map<std::string, std::string> &config,
                                             std::map<std::string, std::string> *ge_options_ptr);
+  void SetGeDumpOptions(const std::map<std::string, std::string> &config,
+                        std::map<std::string, std::string> *ge_options_ptr);
+  void SetGeProfilingOptions(const std::map<std::string, std::string> &config,
+                             std::map<std::string, std::string> *ge_options_ptr);
   bool CreateSession(const std::map<std::string, std::string> &extra_options);
   int64_t GetSessionId();
   void GetParams(const FuncGraphPtr &anf_graph, backend::ge_backend::TensorOrderMap *param_tensors);

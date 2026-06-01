@@ -47,35 +47,35 @@ constexpr size_t kSize_3 = 3;
 constexpr size_t kSize_4 = 4;
 }  // namespace
 
-std::shared_ptr<CNode> Conv2DFusionMapper::CreateTransQuantParamV2(const FuncGraphPtr &func_graph,
-                                                                   const CNodePtr &cnode) {
-  MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
-  MS_CHECK_TRUE_RET(cnode != nullptr, nullptr);
+bool Conv2DFusionMapper::ValidateQuantParams(const CNodePtr &cnode, float *scale_x1,
+                                             std::vector<schema::QuantParamT> *quant_params_x2) {
   auto quant_param_holder = mindspore::lite::GetCNodeQuantHolder(cnode);
-  MS_CHECK_TRUE_RET(quant_param_holder != nullptr, nullptr);
+  MS_CHECK_TRUE_RET(quant_param_holder != nullptr, false);
   auto quant_params_vec = quant_param_holder->get_input_quant_params();
   if (quant_params_vec.empty()) {
-    return nullptr;
+    return false;
   }
-  auto quant_params_x1 = quant_params_vec.at(kNumIndex0);
-  if (quant_params_x1.size() != kSize_1) {
+  auto params_x1 = quant_params_vec.at(kNumIndex0);
+  if (params_x1.size() != kSize_1) {
     MS_LOG(ERROR) << "For active quantization, only per_tensor mode is currently supported."
-                  << " Scale size should be 1, but get scale size is: " << quant_params_x1.size();
-    return nullptr;
+                  << " Scale size should be 1, but get scale size is: " << params_x1.size();
+    return false;
   }
-  auto quant_param_x1 = quant_params_x1.front();
-  auto scale_x1 = quant_param_x1.scale;
-  auto zero_point_x1 = quant_param_x1.zeroPoint;
-  if (zero_point_x1 != 0) {
-    MS_LOG(ERROR) << "Only support zero_point = 0! zero_point_x1 is: " << zero_point_x1;
-    return nullptr;
+  auto quant_param_x1 = params_x1.front();
+  if (quant_param_x1.zeroPoint != 0) {
+    MS_LOG(ERROR) << "Only support zero_point = 0! zero_point_x1 is: " << quant_param_x1.zeroPoint;
+    return false;
   }
-  auto quant_params_x2 = quant_params_vec.at(kNumIndex1);
-  if (quant_params_x2.empty()) {
-    return nullptr;
+  *scale_x1 = quant_param_x1.scale;
+  *quant_params_x2 = quant_params_vec.at(kNumIndex1);
+  if (quant_params_x2->empty()) {
+    return false;
   }
-  auto per_channel_size = quant_params_x2.size();
-  std::vector<int64_t> shape_vector = {static_cast<int64_t>(per_channel_size)};
+  return true;
+}
+
+std::unique_ptr<float[]> Conv2DFusionMapper::CalculatePerChannelScales(
+  float scale_x1, const std::vector<schema::QuantParamT> &quant_params_x2, size_t per_channel_size) {
   auto buf = std::make_unique<float[]>(per_channel_size);
   MS_CHECK_TRUE_RET(buf != nullptr, nullptr);
   for (uint64_t i = 0; i < per_channel_size; i++) {
@@ -85,6 +85,22 @@ std::shared_ptr<CNode> Conv2DFusionMapper::CreateTransQuantParamV2(const FuncGra
       return nullptr;
     }
   }
+  return buf;
+}
+
+std::shared_ptr<CNode> Conv2DFusionMapper::CreateTransQuantParamV2(const FuncGraphPtr &func_graph,
+                                                                   const CNodePtr &cnode) {
+  MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
+  MS_CHECK_TRUE_RET(cnode != nullptr, nullptr);
+  float scale_x1 = 0.0f;
+  std::vector<schema::QuantParamT> quant_params_x2;
+  if (!ValidateQuantParams(cnode, &scale_x1, &quant_params_x2)) {
+    return nullptr;
+  }
+  auto per_channel_size = quant_params_x2.size();
+  std::vector<int64_t> shape_vector = {static_cast<int64_t>(per_channel_size)};
+  auto buf = CalculatePerChannelScales(scale_x1, quant_params_x2, per_channel_size);
+  MS_CHECK_TRUE_RET(buf != nullptr, nullptr);
   auto tensor_info = lite::CreateTensorInfo(buf.get(), per_channel_size * sizeof(float), shape_vector,
                                             mindspore::TypeId::kNumberTypeFloat32);
   MS_CHECK_TRUE_RET(tensor_info != nullptr, nullptr);
@@ -93,7 +109,6 @@ std::shared_ptr<CNode> Conv2DFusionMapper::CreateTransQuantParamV2(const FuncGra
   MS_CHECK_TRUE_RET(scale_param_node != nullptr, nullptr);
   MS_CHECK_TRUE_RET(cnode->abstract() != nullptr, nullptr);
   scale_param_node->set_abstract(cnode->abstract()->Clone());
-  // insert TransQuantParamV2
   auto trans_quant_param_prim = std::make_shared<mindspore::lite::acl::TransQuantParamV2>();
   MS_CHECK_TRUE_RET(trans_quant_param_prim != nullptr, nullptr);
   std::vector<AnfNodePtr> trans_quant_param_inputs = {NewValueNode(trans_quant_param_prim), scale_param_node};

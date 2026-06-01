@@ -123,31 +123,9 @@ class MS_API BenchmarkFlags : public virtual FlagParser {
     AddFlag(&BenchmarkFlags::device_, "device", "CPU | GPU | NPU | Ascend | DSP | Auto", "CPU");
     AddFlag(&BenchmarkFlags::provider_, "provider", "device provider litert | mindrt", "litert");
     AddFlag(&BenchmarkFlags::cpu_bind_mode_, "cpuBindMode", "Input 0 for NO_BIND, 1 for HIGHER_CPU, 2 for MID_CPU.", 1);
-    // MarkPerformance
-    AddFlag(&BenchmarkFlags::loop_count_, "loopCount", "Run loop count", 10);
-    AddFlag(&BenchmarkFlags::num_threads_, "numThreads", "Run threads number", 2);
-    AddFlag(&BenchmarkFlags::enable_fp16_, "enableFp16", "Enable float16", false);
-    AddFlag(&BenchmarkFlags::enable_parallel_, "enableParallel", "Enable subgraph parallel : true | false", false);
-    AddFlag(&BenchmarkFlags::warm_up_loop_count_, "warmUpLoopCount", "Run warm up loop", 3);
-    AddFlag(&BenchmarkFlags::time_profiling_, "timeProfiling", "Run time profiling", false);
-    AddFlag(&BenchmarkFlags::perf_profiling_, "perfProfiling",
-            "Perf event profiling(only instructions statics enabled currently)", false);
-    AddFlag(&BenchmarkFlags::perf_event_, "perfEvent", "CYCLE|CACHE|STALL", "CYCLE");
-    // MarkAccuracy
-    AddFlag(&BenchmarkFlags::benchmark_data_file_, "benchmarkDataFile", "Benchmark data file path", "");
-    AddFlag(&BenchmarkFlags::benchmark_data_type_, "benchmarkDataType",
-            "Benchmark data type. FLOAT | INT32 | INT8 | UINT8", "FLOAT");
-    AddFlag(&BenchmarkFlags::accuracy_threshold_, "accuracyThreshold", "Threshold of accuracy", 0.5);
-    AddFlag(&BenchmarkFlags::cosine_distance_threshold_, "cosineDistanceThreshold", "cosine distance threshold", -1.1);
-    AddFlag(&BenchmarkFlags::resize_dims_in_, "inputShapes",
-            "Shape of input data, the format should be NHWC. e.g. 1,32,32,32:1,1,32,32,1", "");
-    AddFlag(&BenchmarkFlags::resize_dims_in_v2_, "inputShape",
-            "Shape of input data. Specify input names followed by their shapes. Wrap the whole string in "
-            "double-quotes(\"\"). e.g. "
-            "\"inTensor1:1,32,32,32;inTensor2:1,1,32,32,4\"",
-            "");
+    AddBenchmarkPerformanceFlags();
+    AddBenchmarkAccuracyFlags();
 #ifdef ENABLE_CLOUD_FUSION_INFERENCE
-    // Distributed Infer
     AddFlag(&BenchmarkFlags::device_id_, "deviceId", "Set device id for distributed inference", -1);
     AddFlag(&BenchmarkFlags::rank_id_, "rankId", "Set rank id for distributed inference", -1);
 #endif
@@ -160,6 +138,7 @@ class MS_API BenchmarkFlags : public virtual FlagParser {
     AddFlag(&BenchmarkFlags::core_list_str_, "cpuCoreList", "The core id of the bundled core, e.g. 0,1,2,3", "");
     AddFlag(&BenchmarkFlags::inter_op_parallel_num_, "interOpParallelNum", "parallel number of operators in predict",
             1);
+    AddBenchmarkParallelFlags();
     AddFlag(&BenchmarkFlags::enable_gl_texture_, "enableGLTexture", "Enable GlTexture2D", false);
     AddFlag(&BenchmarkFlags::delegate_mode_, "delegateMode", "set the delegate mode: CoreML", "");
     AddFlag(&BenchmarkFlags::enable_shared_thread_pool_, "enableSharedThreadPool", "Enable shared thread pool", false);
@@ -227,6 +206,46 @@ class MS_API BenchmarkFlags : public virtual FlagParser {
   bool enable_shared_thread_pool_ = false;
   std::string thread_num_limit_per_worker_;
   std::string thread_num_remaining_per_worker_;
+
+ private:
+  void AddBenchmarkPerformanceFlags() {
+    AddFlag(&BenchmarkFlags::loop_count_, "loopCount", "Run loop count", 10);
+    AddFlag(&BenchmarkFlags::num_threads_, "numThreads", "Run threads number", 2);
+    AddFlag(&BenchmarkFlags::enable_fp16_, "enableFp16", "Enable float16", false);
+    AddFlag(&BenchmarkFlags::enable_parallel_, "enableParallel", "Enable subgraph parallel : true | false", false);
+    AddFlag(&BenchmarkFlags::warm_up_loop_count_, "warmUpLoopCount", "Run warm up loop", 3);
+    AddFlag(&BenchmarkFlags::time_profiling_, "timeProfiling", "Run time profiling", false);
+    AddFlag(&BenchmarkFlags::perf_profiling_, "perfProfiling",
+            "Perf event profiling(only instructions statics enabled currently)", false);
+    AddFlag(&BenchmarkFlags::perf_event_, "perfEvent", "CYCLE|CACHE|STALL", "CYCLE");
+  }
+
+  void AddBenchmarkAccuracyFlags() {
+    AddFlag(&BenchmarkFlags::benchmark_data_file_, "benchmarkDataFile", "Benchmark data file path", "");
+    AddFlag(&BenchmarkFlags::benchmark_data_type_, "benchmarkDataType",
+            "Benchmark data type. FLOAT | INT32 | INT8 | UINT8", "FLOAT");
+    AddFlag(&BenchmarkFlags::accuracy_threshold_, "accuracyThreshold", "Threshold of accuracy", 0.5);
+    AddFlag(&BenchmarkFlags::cosine_distance_threshold_, "cosineDistanceThreshold", "cosine distance threshold", -1.1);
+    AddFlag(&BenchmarkFlags::resize_dims_in_, "inputShapes",
+            "Shape of input data, the format should be NHWC. e.g. 1,32,32,32:1,1,32,32,1", "");
+    AddFlag(&BenchmarkFlags::resize_dims_in_v2_, "inputShape",
+            "Shape of input data. Specify input names followed by their shapes. Wrap the whole string in "
+            "double-quotes(\"\"). e.g. "
+            "\"inTensor1:1,32,32,32;inTensor2:1,1,32,32,4\"",
+            "");
+  }
+
+  void AddBenchmarkParallelFlags() {
+    AddFlag(&BenchmarkFlags::enable_parallel_predict_, "enableParallelPredict", "Enable model parallel : true | false",
+            false);
+    AddFlag(&BenchmarkFlags::parallel_num_, "parallelNum", "parallel num of parallel predict", 2);
+    AddFlag(&BenchmarkFlags::parallel_task_num_, "parallelTaskNum",
+            "parallel task num of parallel predict, unlimited number of tasks when the value is -1", 2);
+    AddFlag(&BenchmarkFlags::workers_num_, "workersNum", "works num of parallel predict", 2);
+    AddFlag(&BenchmarkFlags::core_list_str_, "cpuCoreList", "The core id of the bundled core, e.g. 0,1,2,3", "");
+    AddFlag(&BenchmarkFlags::inter_op_parallel_num_, "interOpParallelNum", "parallel number of operators in predict",
+            1);
+  }
 };
 
 class MS_API BenchmarkBase {
@@ -504,6 +523,22 @@ class MS_API BenchmarkBase {
   int CheckModelValid();
 
   int VerifyDeviceType();
+
+  void CalculateColumnWidths(const std::map<std::string, std::pair<int, float>> &result,
+                             std::vector<size_t> *columnLenMax, std::vector<std::vector<std::string>> *rows);
+
+  void PrintResultTable(const std::vector<std::string> &title, std::vector<size_t> &columnLenMax,
+                        const std::vector<std::vector<std::string>> &rows);
+
+#ifdef ENABLE_ARM64
+  void CalculatePerfColumnWidths(const std::map<std::string, std::pair<int, struct PerfCount>> &result,
+                                 std::vector<size_t> *columnLenMax, std::vector<std::vector<std::string>> *rows);
+
+  void PrintPerfResultTable(const std::vector<std::string> &title, std::vector<size_t> &columnLenMax,
+                            const std::vector<std::vector<std::string>> &rows);
+#endif
+
+  int ParseDumpJsonConfig(std::ifstream *ifs);
 
  protected:
   BenchmarkFlags *flags_;

@@ -753,65 +753,61 @@ int BenchmarkUnifiedApi::CompareOutputByCosineDistance(float cosine_distance_thr
   return RET_OK;
 }
 
+float BenchmarkUnifiedApi::CompareDataFloat16(const std::string &name, mindspore::MSTensor *tensor,
+                                              void *mutable_data) {
+  size_t shapeSize = 1;
+  for (int64_t dim : tensor->Shape()) {
+    if (dim <= 0) {
+      MS_LOG(ERROR) << "The shape of output " << name << " should be great than 0 after inference, got "
+                    << tensor->Shape();
+      return RET_ERROR;
+    }
+    MS_CHECK_FALSE_MSG(SIZE_MUL_OVERFLOW(shapeSize, static_cast<size_t>(dim)), RET_ERROR, "mul overflow");
+    shapeSize *= static_cast<size_t>(dim);
+  }
+  auto *floatArr = new float[shapeSize];
+  for (size_t i = 0; i < shapeSize; ++i) {
+    uint16_t tmpInt = reinterpret_cast<uint16_t *>(mutable_data)[i];
+    floatArr[i] = ShortToFloat32(tmpInt);
+  }
+  float bias = CompareData<float, int64_t>(name, tensor->Shape(), floatArr);
+  delete[] floatArr;
+  return bias;
+}
+
+float BenchmarkUnifiedApi::CompareDataByType(const std::string &name, mindspore::MSTensor *tensor, void *mutable_data,
+                                             float relative_tolerance, float absolute_tolerance) {
+  switch (static_cast<int>(tensor->DataType())) {
+    case TypeId::kNumberTypeFloat:
+    case TypeId::kNumberTypeFloat32:
+      return CompareData<float, int64_t>(name, tensor->Shape(), mutable_data, relative_tolerance, absolute_tolerance);
+    case TypeId::kNumberTypeInt8:
+      return CompareData<int8_t, int64_t>(name, tensor->Shape(), mutable_data, relative_tolerance, absolute_tolerance);
+    case TypeId::kNumberTypeUInt8:
+      return CompareData<uint8_t, int64_t>(name, tensor->Shape(), mutable_data, relative_tolerance, absolute_tolerance);
+    case TypeId::kNumberTypeInt32:
+      return CompareData<int32_t, int64_t>(name, tensor->Shape(), mutable_data, relative_tolerance, absolute_tolerance);
+    case TypeId::kNumberTypeInt16:
+      return CompareData<int16_t, int64_t>(name, tensor->Shape(), mutable_data, relative_tolerance, absolute_tolerance);
+    case TypeId::kNumberTypeBool:
+      return CompareData<bool, int64_t>(name, tensor->Shape(), mutable_data, relative_tolerance, absolute_tolerance);
+    case TypeId::kNumberTypeFloat16:
+      return CompareDataFloat16(name, tensor, mutable_data);
+    default:
+      MS_LOG(ERROR) << "Datatype " << static_cast<int>(tensor->DataType()) << " is not supported.";
+      return RET_ERROR;
+  }
+}
+
 int BenchmarkUnifiedApi::CompareDataGetTotalBiasAndSize(const std::string &name, mindspore::MSTensor *tensor,
                                                         float *total_bias, int *total_size, float relative_tolerance,
                                                         float absolute_tolerance) {
-  float bias = 0;
   auto mutableData = tensor->MutableData();
   if (mutableData == nullptr) {
     MS_LOG(ERROR) << "mutableData is nullptr.";
     return RET_ERROR;
   }
-  switch (static_cast<int>(tensor->DataType())) {
-    case TypeId::kNumberTypeFloat:
-    case TypeId::kNumberTypeFloat32: {
-      bias = CompareData<float, int64_t>(name, tensor->Shape(), mutableData, relative_tolerance, absolute_tolerance);
-      break;
-    }
-    case TypeId::kNumberTypeInt8: {
-      bias = CompareData<int8_t, int64_t>(name, tensor->Shape(), mutableData, relative_tolerance, absolute_tolerance);
-      break;
-    }
-    case TypeId::kNumberTypeUInt8: {
-      bias = CompareData<uint8_t, int64_t>(name, tensor->Shape(), mutableData, relative_tolerance, absolute_tolerance);
-      break;
-    }
-    case TypeId::kNumberTypeInt32: {
-      bias = CompareData<int32_t, int64_t>(name, tensor->Shape(), mutableData, relative_tolerance, absolute_tolerance);
-      break;
-    }
-    case TypeId::kNumberTypeInt16: {
-      bias = CompareData<int16_t, int64_t>(name, tensor->Shape(), mutableData, relative_tolerance, absolute_tolerance);
-      break;
-    }
-    case TypeId::kNumberTypeBool: {
-      bias = CompareData<bool, int64_t>(name, tensor->Shape(), mutableData, relative_tolerance, absolute_tolerance);
-      break;
-    }
-    case TypeId::kNumberTypeFloat16: {
-      size_t shapeSize = 1;
-      for (int64_t dim : tensor->Shape()) {
-        if (dim <= 0) {
-          MS_LOG(ERROR) << "The shape of output " << name << " should be great than 0 after inference, got "
-                        << tensor->Shape();
-          return RET_ERROR;
-        }
-        MS_CHECK_FALSE_MSG(SIZE_MUL_OVERFLOW(shapeSize, static_cast<size_t>(dim)), RET_ERROR, "mul overflow");
-        shapeSize *= static_cast<size_t>(dim);
-      }
-      auto *floatArr = new float[shapeSize];
-      for (size_t i = 0; i < shapeSize; ++i) {
-        uint16_t tmpInt = reinterpret_cast<uint16_t *>(mutableData)[i];
-        floatArr[i] = ShortToFloat32(tmpInt);
-      }
-      bias = CompareData<float, int64_t>(name, tensor->Shape(), floatArr);
-      delete[] floatArr;
-      break;
-    }
-    default:
-      MS_LOG(ERROR) << "Datatype " << static_cast<int>(tensor->DataType()) << " is not supported.";
-      return RET_ERROR;
-  }
+  float bias = CompareDataByType(name, tensor, mutableData, relative_tolerance, absolute_tolerance);
   if (bias < 0) {
     MS_LOG(ERROR) << "CompareData failed, name: " << name;
     return RET_ERROR;

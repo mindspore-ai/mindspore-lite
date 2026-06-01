@@ -79,6 +79,11 @@ class Flags : public virtual mindspore::lite::FlagParser {
   std::string chip_name;
   std::string optimizeTransformerStr;
   bool optimizeTransformer = false;
+
+ private:
+  int InitModelFormat();
+  int InitInputOutputConfig();
+  int InitOptimizationConfig();
 };
 }  // namespace converter
 }  // namespace mindspore

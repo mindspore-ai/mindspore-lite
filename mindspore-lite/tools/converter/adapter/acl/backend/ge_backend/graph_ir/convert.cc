@@ -924,58 +924,64 @@ void DfGraphConvertor::InitParamWithData(const TensorOrderMap &tensors) {
   }
 }
 
+OperatorPtr DfGraphConvertor::CreateRefDataFromParameter(const AnfNodePtr &param) {
+  auto para = param->cast<ParameterPtr>();
+  MS_EXCEPTION_IF_NULL(para);
+  auto abs = para->abstract();
+  MS_EXCEPTION_IF_NULL(abs);
+  if (!abs->isa<abstract::AbstractRefTensor>()) {
+    return nullptr;
+  }
+  MS_EXCEPTION_IF_NULL(abs->BuildShape());
+  MS_EXCEPTION_IF_NULL(abs->BuildType());
+  auto shape = abs->BuildShape()->GetShapeVector();
+  auto type = abs->BuildType()->type_id();
+  if (type == kObjectTypeTensorType) {
+    type = dyn_cast<TensorType>(abs->BuildType())->element()->type_id();
+  }
+  auto name = para->name();
+  if (name.empty()) {
+    name = "RefData_NULL_" + std::to_string(refdata_null_idx++);
+  }
+  auto ref_data = std::make_shared<RefData>(name);
+  MS_EXCEPTION_IF_NULL(ref_data);
+  auto desc = device::ascend::TransformUtil::GetGeTensorDesc(shape, type, SelectParamOriFormat(graph_manager_, para));
+  if (!desc) {
+    MS_LOG(ERROR) << "Create ge node desc failed, node name:" << name << ", shape: " << shape << ", type: " << type;
+    return nullptr;
+  }
+  (void)ref_data->update_output_desc_y(*desc);
+  (void)ref_data->update_input_desc_x(*desc);
+  (void)ref_data->set_attr_index(SizeToInt(ref_datas_.size()));
+  (void)ref_datas_.emplace_back(ref_data);
+  ref_data_names_.emplace_back(name);
+  MS_LOG(INFO) << "Change no default param: " << name << " to ref data. ";
+  return ref_data;
+}
+
 void DfGraphConvertor::ReplaceAllParameterToRefData() {
   MS_EXCEPTION_IF_NULL(anf_graph_);
-  if (ref_mode_ && (ref_mode_type_ == RefModeFlag::kRefModeAll) && !export_air_) {
-    MS_LOG(INFO) << "Graph abs ref tenor to ref data, " << anf_graph_->ToString();
-    auto parameters = anf_graph_->parameters();
-    for (const auto &param : parameters) {
-      MS_EXCEPTION_IF_NULL(param);
-      auto op_itor = op_cache_.find(param.get());
-      if (op_itor == op_cache_.end()) {
-        MS_LOG(INFO) << "Cannot find this param in op cache: " << param->fullname_with_scope();
-        continue;
-      }
-      if (op_itor->second->GetOpType() == kTypeRefData) {
-        MS_LOG(DEBUG) << "This process param has default, have been change to RefData: "
-                      << param->fullname_with_scope();
-        continue;
-      }
-      auto para = param->cast<ParameterPtr>();
-      MS_EXCEPTION_IF_NULL(para);
-      auto abs = para->abstract();
-      MS_EXCEPTION_IF_NULL(abs);
-      if (!abs->isa<abstract::AbstractRefTensor>()) {
-        continue;
-      }
-      MS_EXCEPTION_IF_NULL(abs->BuildShape());
-      MS_EXCEPTION_IF_NULL(abs->BuildType());
-      auto shape = abs->BuildShape()->GetShapeVector();
-      auto type = abs->BuildType()->type_id();
-      if (type == kObjectTypeTensorType) {
-        type = dyn_cast<TensorType>(abs->BuildType())->element()->type_id();
-      }
-      auto name = para->name();
-      if (name.empty()) {
-        name = "RefData_NULL_" + std::to_string(refdata_null_idx++);
-      }
-      auto ref_data = std::make_shared<RefData>(name);
-      MS_EXCEPTION_IF_NULL(ref_data);
-      auto desc =
-        device::ascend::TransformUtil::GetGeTensorDesc(shape, type, SelectParamOriFormat(graph_manager_, para));
-      if (!desc) {
-        MS_LOG(ERROR) << "Create ge node desc failed, node name:" << name << ", shape: " << shape << ", type: " << type;
-        continue;
-      }
-      (void)ref_data->update_output_desc_y(*desc);
-      (void)ref_data->update_input_desc_x(*desc);
-      (void)ref_data->set_attr_index(SizeToInt(ref_datas_.size()));
-      (void)ref_datas_.emplace_back(ref_data);
-      ref_data_names_.emplace_back(name);
-      // do not use read ref_data while ref_data sink
-      MS_LOG(INFO) << "Change no default param: " << name << " to ref data. ";
+  if (!(ref_mode_ && (ref_mode_type_ == RefModeFlag::kRefModeAll) && !export_air_)) {
+    return;
+  }
+  MS_LOG(INFO) << "Graph abs ref tenor to ref data, " << anf_graph_->ToString();
+  auto parameters = anf_graph_->parameters();
+  for (const auto &param : parameters) {
+    MS_EXCEPTION_IF_NULL(param);
+    auto op_itor = op_cache_.find(param.get());
+    if (op_itor == op_cache_.end()) {
+      MS_LOG(INFO) << "Cannot find this param in op cache: " << param->fullname_with_scope();
+      continue;
+    }
+    if (op_itor->second->GetOpType() == kTypeRefData) {
+      MS_LOG(DEBUG) << "This process param has default, have been change to RefData: " << param->fullname_with_scope();
+      continue;
+    }
+    auto ref_data = CreateRefDataFromParameter(param);
+    if (ref_data != nullptr) {
       op_itor->second = ref_data;  // replace parameter with ref_data
-      vars_[name] = ref_data;      // prevent the ref_data operator from being freed
+      auto para = param->cast<ParameterPtr>();
+      vars_[para->name()] = ref_data;  // prevent the ref_data operator from being freed
     }
   }
 }
@@ -1394,18 +1400,10 @@ void DfGraphConvertor::ConvertWhileBody(const AnfNodePtr &node) {
   return;
 }
 
-void DfGraphConvertor::GetWhileUsedInputIndex(const std::vector<AnfNodePtr> &graphs) {
-  if (!while_used_input_index_.empty()) {
-    return;
-  }
-
-  auto cond_graph_node = graphs.at(0);
-  auto graph = cond_graph_node->func_graph();
-  MS_EXCEPTION_IF_NULL(graph);
-  const auto &cond_params = graph->parameters();
-  auto nodes = GetOrderedCNodes(graph, cond_graph_node);
-
-  std::set<size_t> used_params_index;
+void DfGraphConvertor::AnalyzeConditionParams(const AnfNodePtr &cond_graph_node,
+                                              const std::vector<AnfNodePtr> &cond_params,
+                                              std::set<size_t> *used_params_index) {
+  auto nodes = GetOrderedCNodes(cond_graph_node->func_graph(), cond_graph_node);
   for (auto &n : nodes) {
     if (!n->isa<CNode>()) {
       continue;
@@ -1418,23 +1416,25 @@ void DfGraphConvertor::GetWhileUsedInputIndex(const std::vector<AnfNodePtr> &gra
         continue;
       }
       auto idx_cond = std::find(cond_params.begin(), cond_params.end(), i) - cond_params.begin();
-      (void)used_params_index.insert(idx_cond);
+      (void)used_params_index->insert(idx_cond);
     }
   }
+}
 
+void DfGraphConvertor::AnalyzeBodyParams(const std::vector<AnfNodePtr> &graphs,
+                                         const std::vector<AnfNodePtr> &cond_params,
+                                         std::set<size_t> *used_params_index) {
   auto body_graph_node_in_cond = graphs.at(1)->cast<CNodePtr>();
   auto body_graph_node = body_graph_node_in_cond->input(1)->cast<ValueNodePtr>();
   MS_EXCEPTION_IF_NULL(body_graph_node);
-  graph = body_graph_node->value()->cast<FuncGraphPtr>();
+  auto graph = body_graph_node->value()->cast<FuncGraphPtr>();
   const auto &body_params = graph->parameters();
-
   auto real_ret = graph->get_return()->input(1);
   while (real_ret->isa<CNode>() &&
          device::ascend::GetCNodeTargetFuncName(real_ret->cast<CNodePtr>()) == prim::kPrimDepend->name()) {
     real_ret = real_ret->cast<CNodePtr>()->input(1);
   }
-
-  nodes = GetOrderedCNodes(graph);
+  auto nodes = GetOrderedCNodes(graph);
   for (auto &n : nodes) {
     if (!n->isa<CNode>()) {
       continue;
@@ -1452,9 +1452,21 @@ void DfGraphConvertor::GetWhileUsedInputIndex(const std::vector<AnfNodePtr> &gra
       auto idx_body = std::find(body_params.begin(), body_params.end(), i) - body_params.begin();
       auto p = body_graph_node_in_cond->input(static_cast<size_t>(idx_body + kInputOffset));
       auto idx_cond = std::find(cond_params.begin(), cond_params.end(), p) - cond_params.begin();
-      (void)used_params_index.insert(idx_cond);
+      (void)used_params_index->insert(idx_cond);
     }
   }
+}
+
+void DfGraphConvertor::GetWhileUsedInputIndex(const std::vector<AnfNodePtr> &graphs) {
+  if (!while_used_input_index_.empty()) {
+    return;
+  }
+  auto cond_graph_node = graphs.at(0);
+  auto graph = cond_graph_node->func_graph();
+  MS_EXCEPTION_IF_NULL(graph);
+  std::set<size_t> used_params_index;
+  AnalyzeConditionParams(cond_graph_node, graph->parameters(), &used_params_index);
+  AnalyzeBodyParams(graphs, graph->parameters(), &used_params_index);
   while_used_input_index_ = used_params_index;
 }
 
@@ -1729,6 +1741,49 @@ void DfGraphConvertor::BuildCallSubGraphs(const AnfNodePtr &node) {
   MS_LOG(INFO) << "build call subgraph end.";
 }
 
+void DfGraphConvertor::ProcessBranchSubgraph(const AnfNodePtr &node, const CNodePtr &cnode) {
+  MS_LOG(DEBUG) << "Start to set if/case's sub graph.";
+  auto df_branches = BuildBranchGraphs(cnode);
+  if (op_cache_.find(node.get()) == op_cache_.end()) {
+    return;
+  }
+  if (!is_kernel_graph_ && !cnode->input(0)->isa<CNode>()) {
+    auto node_inputs = cnode->inputs();
+    node_inputs.erase(node_inputs.begin() + kIndex1, node_inputs.begin() + kIndex4);
+    cnode->set_inputs(node_inputs);
+  }
+  auto adpt = device::ascend::FindAdapter(node, training_);
+  if (adpt == nullptr) {
+    MS_LOG(DEBUG) << "Not found adapter";
+    return;
+  }
+  auto op = Convert(node);
+  bool is_case = device::ascend::IsCaseNode(node);
+  if (is_case) {
+    adpt->setSubgraph(op, 0, df_branches);
+  } else {
+    adpt->setSubgraph(op, df_branches);
+  }
+  MS_LOG(DEBUG) << "Set if/case's sub graph end.";
+}
+
+void DfGraphConvertor::ProcessCallSubgraph(const AnfNodePtr &node) {
+  MS_LOG(DEBUG) << "Start to set call's sub graph.";
+  BuildCallSubGraphs(node);
+  if (op_cache_.find(node.get()) == op_cache_.end()) {
+    return;
+  }
+  auto adpt = device::ascend::FindAdapter(node, training_);
+  if (adpt == nullptr) {
+    MS_LOG(EXCEPTION) << "Not found adapter";
+    return;
+  }
+  auto op = Convert(node);
+  auto df_graphs = call_dfgraph_cache_[node];
+  adpt->setSubgraph(op, df_graphs);
+  MS_LOG(DEBUG) << "Set call's sub graph end.";
+}
+
 void DfGraphConvertor::SetSubgraph(const AnfNodePtr &node) {
   MS_EXCEPTION_IF_NULL(node);
   if (!node->isa<CNode>()) {
@@ -1743,51 +1798,12 @@ void DfGraphConvertor::SetSubgraph(const AnfNodePtr &node) {
     return;
   }
   if (IsBranchNode(cnode)) {
-    MS_LOG(DEBUG) << "Start to set if/case's sub graph.";
-    std::shared_ptr<std::vector<DfGraph>> df_branches = BuildBranchGraphs(cnode);
-    if (op_cache_.find(node.get()) == op_cache_.end()) {
-      return;
-    }
-
-    if (!is_kernel_graph_ && !cnode->input(0)->isa<CNode>()) {
-      auto node_inputs = cnode->inputs();
-      node_inputs.erase(node_inputs.begin() + kIndex1, node_inputs.begin() + kIndex4);
-      cnode->set_inputs(node_inputs);
-    }
-    OpAdapterPtr adpt = device::ascend::FindAdapter(node, training_);
-    if (adpt == nullptr) {
-      MS_LOG(DEBUG) << "Not found adapter";
-      return;
-    }
-
-    OperatorPtr op = Convert(node);
-    bool is_case = device::ascend::IsCaseNode(node);
-    if (is_case) {
-      adpt->setSubgraph(op, 0, df_branches);
-    } else {
-      adpt->setSubgraph(op, df_branches);
-    }
-    MS_LOG(DEBUG) << "Set if/case's sub graph end.";
+    ProcessBranchSubgraph(node, cnode);
     return;
   }
-
   if (device::ascend::IsCallNode(cnode)) {
-    MS_LOG(DEBUG) << "Start to set call's sub graph.";
-    BuildCallSubGraphs(node);
-    if (op_cache_.find(node.get()) == op_cache_.end()) {
-      return;
-    }
-    OpAdapterPtr adpt = device::ascend::FindAdapter(node, training_);
-    if (adpt == nullptr) {
-      MS_LOG(EXCEPTION) << "Not found adapter";
-      return;
-    }
-    OperatorPtr op = Convert(node);
-    auto df_graphs = call_dfgraph_cache_[node];
-    adpt->setSubgraph(op, df_graphs);
-    MS_LOG(DEBUG) << "Set call's sub graph end.";
+    ProcessCallSubgraph(node);
   }
-  return;
 }
 
 void DfGraphConvertor::GetBranchNodeInput(const CNodePtr node) {

@@ -424,21 +424,10 @@ int BenchmarkBase::VerifyDeviceType() {
   return RET_ERROR;
 }
 
-int BenchmarkBase::InitDumpConfigFromJson(const char *path) {
+int BenchmarkBase::ParseDumpJsonConfig(std::ifstream *ifs) {
 #ifndef BENCHMARK_CLIP_JSON
-  auto real_path = RealPath(path);
-  std::ifstream ifs(real_path);
-  if (!ifs.good()) {
-    MS_LOG(ERROR) << "file: " << real_path << " is not exist";
-    return RET_ERROR;
-  }
-  if (!ifs.is_open()) {
-    MS_LOG(ERROR) << "file: " << real_path << " open failed";
-    return RET_ERROR;
-  }
-
   try {
-    dump_cfg_json_ = nlohmann::json::parse(ifs);
+    dump_cfg_json_ = nlohmann::json::parse(*ifs);
   } catch (const nlohmann::json::parse_error &error) {
     MS_LOG(ERROR) << "parse json file failed, please check your file.";
     return RET_ERROR;
@@ -467,6 +456,27 @@ int BenchmarkBase::InitDumpConfigFromJson(const char *path) {
       MS_LOG(ERROR) << R"("dump_mode" should be 1 when "kernels" isn't empty.)";
       return RET_ERROR;
     }
+  }
+#endif
+  return RET_OK;
+}
+
+int BenchmarkBase::InitDumpConfigFromJson(const char *path) {
+#ifndef BENCHMARK_CLIP_JSON
+  auto real_path = RealPath(path);
+  std::ifstream ifs(real_path);
+  if (!ifs.good()) {
+    MS_LOG(ERROR) << "file: " << real_path << " is not exist";
+    return RET_ERROR;
+  }
+  if (!ifs.is_open()) {
+    MS_LOG(ERROR) << "file: " << real_path << " open failed";
+    return RET_ERROR;
+  }
+
+  auto ret = ParseDumpJsonConfig(&ifs);
+  if (ret != RET_OK) {
+    return ret;
   }
 
   auto abs_path = dump_cfg_json_[dump::kSettings][dump::kPath].get<std::string>();
@@ -617,123 +627,105 @@ int BenchmarkBase::Init() {
   return RET_OK;
 }
 
+void BenchmarkBase::CalculateColumnWidths(const std::map<std::string, std::pair<int, float>> &result,
+                                          std::vector<size_t> *columnLenMax,
+                                          std::vector<std::vector<std::string>> *rows) {
+  for (auto &iter : result) {
+    char stringBuf[kPrintColNum][kPrintRowLenMax] = {};
+    std::vector<std::string> columns;
+    size_t len = 0;
+    int index = 0;
+    len = iter.first.size();
+    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
+    columns.push_back(iter.first);
+    index++;
+    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%f",
+                   iter.second.second / static_cast<float>(flags_->loop_count_));
+    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
+    columns.emplace_back(stringBuf[index]);
+    index++;
+    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%f", iter.second.second / op_cost_total_);
+    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
+    columns.emplace_back(stringBuf[index]);
+    index++;
+    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%d", iter.second.first);
+    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
+    columns.emplace_back(stringBuf[index]);
+    index++;
+    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%f", iter.second.second);
+    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
+    columns.emplace_back(stringBuf[index]);
+    rows->push_back(columns);
+  }
+}
+
+void BenchmarkBase::PrintResultTable(const std::vector<std::string> &title, std::vector<size_t> &columnLenMax,
+                                     const std::vector<std::vector<std::string>> &rows) {
+  printf("-------------------------------------------------------------------------\n");
+  for (int i = 0; i < kPrintColNum; i++) {
+    auto printBuf = title[i];
+    if (printBuf.size() > columnLenMax.at(i)) {
+      columnLenMax.at(i) = printBuf.size();
+    }
+    printBuf.resize(columnLenMax.at(i), ' ');
+    printf("%s\t", printBuf.c_str());
+  }
+  printf("\n");
+  for (auto &row : rows) {
+    for (int j = 0; j < kPrintColNum; j++) {
+      auto printBuf = row[j];
+      printBuf.resize(columnLenMax.at(j), ' ');
+      printf("%s\t", printBuf.c_str());
+    }
+    printf("\n");
+  }
+}
+
 int BenchmarkBase::PrintResult(const std::vector<std::string> &title,
                                const std::map<std::string, std::pair<int, float>> &result) {
   std::vector<size_t> columnLenMax(kPrintColNum);
   std::vector<std::vector<std::string>> rows;
-
-  for (auto &iter : result) {
-    char stringBuf[kPrintColNum][kPrintRowLenMax] = {};
-    std::vector<std::string> columns;
-    size_t len = 0;
-    int index = 0;
-    len = iter.first.size();
-    if (len > columnLenMax.at(index)) {
-      columnLenMax.at(index) = len + kColumnLen;
-    }
-    columns.push_back(iter.first);
-
-    index++;
-    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%f",
-                   iter.second.second / static_cast<float>(flags_->loop_count_));
-    if (len > columnLenMax.at(index)) {
-      columnLenMax.at(index) = len + kColumnLen;
-    }
-    columns.emplace_back(stringBuf[index]);
-
-    index++;
-    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%f", iter.second.second / op_cost_total_);
-    if (len > columnLenMax.at(index)) {
-      columnLenMax.at(index) = len + kColumnLen;
-    }
-    columns.emplace_back(stringBuf[index]);
-
-    index++;
-    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%d", iter.second.first);
-    if (len > columnLenMax.at(index)) {
-      columnLenMax.at(index) = len + kColumnLen;
-    }
-    columns.emplace_back(stringBuf[index]);
-
-    index++;
-    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%f", iter.second.second);
-    if (len > columnLenMax.at(index)) {
-      columnLenMax.at(index) = len + kColumnLen;
-    }
-    columns.emplace_back(stringBuf[index]);
-
-    rows.push_back(columns);
-  }
-
-  printf("-------------------------------------------------------------------------\n");
-  for (int i = 0; i < kPrintColNum; i++) {
-    auto printBuf = title[i];
-    if (printBuf.size() > columnLenMax.at(i)) {
-      columnLenMax.at(i) = printBuf.size();
-    }
-    printBuf.resize(columnLenMax.at(i), ' ');
-    printf("%s\t", printBuf.c_str());
-  }
-  printf("\n");
-  for (auto &row : rows) {
-    for (int j = 0; j < kPrintColNum; j++) {
-      auto printBuf = row[j];
-      printBuf.resize(columnLenMax.at(j), ' ');
-      printf("%s\t", printBuf.c_str());
-    }
-    printf("\n");
-  }
+  CalculateColumnWidths(result, &columnLenMax, &rows);
+  PrintResultTable(title, columnLenMax, rows);
   return RET_OK;
 }
 
 #ifdef ENABLE_ARM64
-int BenchmarkBase::PrintPerfResult(const std::vector<std::string> &title,
-                                   const std::map<std::string, std::pair<int, struct PerfCount>> &result) {
-  std::vector<size_t> columnLenMax(kPrintColNum);
-  std::vector<std::vector<std::string>> rows;
-
+void BenchmarkBase::CalculatePerfColumnWidths(const std::map<std::string, std::pair<int, struct PerfCount>> &result,
+                                              std::vector<size_t> *columnLenMax,
+                                              std::vector<std::vector<std::string>> *rows) {
   for (auto &iter : result) {
     char stringBuf[kPrintColNum][kPrintRowLenMax] = {};
     std::vector<std::string> columns;
     size_t len = 0;
     int index = 0;
     len = iter.first.size();
-    if (len > columnLenMax.at(index)) {
-      columnLenMax.at(index) = len + kColumnLen;
-    }
+    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
     columns.push_back(iter.first);
     index++;
     float tmp = float_t(flags_->num_threads_) * iter.second.second.value[0] / float_t(flags_->loop_count_) / kFloatMSEC;
     len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%.2f", tmp);
-    if (len > columnLenMax.at(index)) {
-      columnLenMax.at(index) = len + kColumnLen;
-    }
+    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
     columns.emplace_back(stringBuf[index]);
     index++;
     len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%f", iter.second.second.value[0] / op_cost_total_);
-    if (len > columnLenMax.at(index)) {
-      columnLenMax.at(index) = len + kColumnLen;
-    }
+    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
     columns.emplace_back(stringBuf[index]);
-
     index++;
     tmp = float_t(flags_->num_threads_) * iter.second.second.value[1] / float_t(flags_->loop_count_) / kFloatMSEC;
     len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%.2f", tmp);
-    if (len > columnLenMax.at(index)) {
-      columnLenMax.at(index) = len + kColumnLen;
-    }
+    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
     columns.emplace_back(stringBuf[index]);
-
     index++;
     len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%f", iter.second.second.value[1] / op_cost2_total_);
-    if (len > columnLenMax.at(index)) {
-      columnLenMax.at(index) = len + kColumnLen;
-    }
+    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
     columns.emplace_back(stringBuf[index]);
-
-    rows.push_back(columns);
+    rows->push_back(columns);
   }
+}
 
+void BenchmarkBase::PrintPerfResultTable(const std::vector<std::string> &title, std::vector<size_t> &columnLenMax,
+                                         const std::vector<std::vector<std::string>> &rows) {
   printf("-------------------------------------------------------------------------\n");
   for (int i = 0; i < kPrintColNum; i++) {
     auto printBuf = title[i];
@@ -752,6 +744,14 @@ int BenchmarkBase::PrintPerfResult(const std::vector<std::string> &title,
     }
     printf("\n");
   }
+}
+
+int BenchmarkBase::PrintPerfResult(const std::vector<std::string> &title,
+                                   const std::map<std::string, std::pair<int, struct PerfCount>> &result) {
+  std::vector<size_t> columnLenMax(kPrintColNum);
+  std::vector<std::vector<std::string>> rows;
+  CalculatePerfColumnWidths(result, &columnLenMax, &rows);
+  PrintPerfResultTable(title, columnLenMax, rows);
   return RET_OK;
 }
 #endif

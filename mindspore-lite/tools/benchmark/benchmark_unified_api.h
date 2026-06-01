@@ -128,6 +128,9 @@ class MS_API BenchmarkUnifiedApi : public BenchmarkBase {
  private:
   void UpdateConfigInfo();
   std::vector<std::vector<int64_t>> ParseGraphInputShapeMap(const std::vector<MSTensor> &inputs);
+  float CompareDataByType(const std::string &name, mindspore::MSTensor *tensor, void *mutable_data,
+                          float relative_tolerance, float absolute_tolerance);
+  float CompareDataFloat16(const std::string &name, mindspore::MSTensor *tensor, void *mutable_data);
 
  private:
   mindspore::OpenGL::OpenGLRuntime gl_runtime_;
