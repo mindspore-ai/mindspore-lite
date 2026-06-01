@@ -37,6 +37,7 @@ class MSLiteModel:
         self.model_path = model_path
         context = mslite.Context()
         context.target = ["ascend"]
+        context.ascend.device_id = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
         # self.model = mslite.Model()
         self.model = mslite.ModelParallelRunner()
         self.model.build_from_file(model_path, context)

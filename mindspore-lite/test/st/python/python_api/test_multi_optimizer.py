@@ -20,7 +20,7 @@ import os
 import mindspore_lite as mslite
 import numpy as np
 
-DEVICE_ID = 0
+DEVICE_ID = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
 
 def test_optimizer_01_convert_none(mindir_dir, output_dir):
     '''

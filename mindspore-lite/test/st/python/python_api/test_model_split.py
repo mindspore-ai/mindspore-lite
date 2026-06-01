@@ -52,7 +52,7 @@ def test_graph_split_02_build(output_dir):
     }
     context = mslite.Context()
     context.target = ["ascend"]
-    context.ascend.devcie_id = 0
+    context.ascend.device_id = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
     try:
         runner = mslite.MultiModelRunner()
         model_path = output_dir + 'graph_split.mindir'

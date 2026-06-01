@@ -21,6 +21,7 @@ import pathlib
 import mindspore_lite as mslite
 
 MODEL_FILE = "./single_matmul_model.onnx"
+DEVICE_ID = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
 
 
 def test_converter_with_dump_graph_ir_without_dump_graph():
@@ -28,6 +29,7 @@ def test_converter_with_dump_graph_ir_without_dump_graph():
     test MindSpore Lite converter model without dump graph ir.
     """
     converter = mslite.Converter()
+    converter.device_id = DEVICE_ID
     converter.input_shape = {"input": [1, 4]}
     converter.optimize = "ascend_oriented"
     converter.save_type = mslite.ModelType.MINDIR
@@ -42,6 +44,7 @@ def test_converter_with_dump_graph_ir_with_level1():
     """
     os.environ['MSLITE_DUMP_GRAPH_LEVEL'] = '1'
     converter = mslite.Converter()
+    converter.device_id = DEVICE_ID
     converter.input_shape = {"input": [1, 4]}
     converter.optimize = "ascend_oriented"
     converter.save_type = mslite.ModelType.MINDIR
@@ -61,6 +64,7 @@ def test_converter_with_dump_graph_ir_with_level1_and_path():
     if not folder:
         os.makedirs(dump_path)
     converter = mslite.Converter()
+    converter.device_id = DEVICE_ID
     converter.input_shape = {"input": [1, 4]}
     converter.optimize = "ascend_oriented"
     converter.save_type = mslite.ModelType.MINDIR

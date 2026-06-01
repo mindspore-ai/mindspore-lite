@@ -16,9 +16,13 @@
 Test for MindSpore Lite MSTensor
 """
 
+import os
+
 import pytest
 import mindspore_lite as mslite
 import numpy as np
+
+DEVICE_ID = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
 
 
 # DeviceTensor
@@ -29,22 +33,26 @@ def test_runtime_general_device_tensor_func_001():
 
 
 def test_runtime_general_device_tensor_func_002():
-    tensor = mslite.Tensor(shape=[1, 2], dtype=mslite.DataType.FLOAT32, device="ascend:0")
-    assert tensor.device == "ascend:0"
+    tensor = mslite.Tensor(shape=[1, 2], dtype=mslite.DataType.FLOAT32, device=f"ascend:{DEVICE_ID}")
+    assert tensor.device == f"ascend:{DEVICE_ID}"
 
 
 def test_runtime_general_device_tensor_func_003():
+    """
+    Feature: test runtime general device tensor
+    Description: test device tensor with numpy data and host-device conversion
+    """
     data = np.array([1, 2, 3]).astype(np.float32)
-    device_tensor = mslite.Tensor(data, dtype=mslite.DataType.FLOAT32, device="ascend:0")
-    assert device_tensor.device == "ascend:0"
+    device_tensor = mslite.Tensor(data, dtype=mslite.DataType.FLOAT32, device=f"ascend:{DEVICE_ID}")
+    assert device_tensor.device == f"ascend:{DEVICE_ID}"
     host_tensor = mslite.Tensor(device_tensor)  # D2H
     assert host_tensor.device == "None:-1"
     assert (device_tensor.get_data_to_numpy() == host_tensor.get_data_to_numpy()).all()
 
     host_tensor_1 = mslite.Tensor(data, dtype=mslite.DataType.FLOAT32)
     assert host_tensor_1.device == "None:-1"
-    device_tensor_1 = mslite.Tensor(host_tensor_1, device="ascend:0")
-    assert device_tensor_1.device == "ascend:0"
+    device_tensor_1 = mslite.Tensor(host_tensor_1, device=f"ascend:{DEVICE_ID}")
+    assert device_tensor_1.device == f"ascend:{DEVICE_ID}"
     assert (host_tensor_1.get_data_to_numpy() == device_tensor_1.get_data_to_numpy()).all()
 
 

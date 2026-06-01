@@ -103,12 +103,16 @@ def _fill_model_build_args(obj, output_dir, device_id):
 
 @pytest.fixture(scope="module", autouse=True)
 def module_setup_and_teardown_fixture(so_path, mindir_dir, output_dir):
-    """
-    module setup
-    convert bert model
-    """
-    # setup
-    # convert bert model
+    """Convert bert_model.onnx if needed (skip when already present)."""
+    acl_output = Path(output_dir) / "bert_model.onnx.mindir"
+    cpu_output = Path(output_dir) / "bert_model.onnx.cpu.mindir"
+    if acl_output.exists() and cpu_output.exists():
+        empty_mindir = Path(output_dir) / "emptyfile"
+        empty_mindir.unlink(missing_ok=True)
+        empty_mindir.touch()
+        yield
+        return
+
     fmk = "ONNX"
     model_path = Path(mindir_dir) / "bert_model.onnx"
     acl_output_path = Path(output_dir) / "bert_model.onnx"

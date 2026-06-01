@@ -16,11 +16,12 @@
 Test for MindSpore Lite Base Inference
 """
 
+import os
 import pytest
 import mindspore_lite as mslite
 
 MODEL_FILE = "./sd1.5_unet.onnx_graph.mindir"
-DEVICE_ID = 0
+DEVICE_ID = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
 
 
 # ----------- config file -----------
@@ -30,6 +31,10 @@ DEVICE_ID = 0
 # ge.dynamicDims="64,64;96,96"
 
 def test_runtime_general_model_info_func_ascend_001():
+    """
+    Feature: test runtime general model info
+    Description: test get_model_info with input_shape
+    """
     context = mslite.Context()
     context.target = ["ascend"]
     context.ascend.device_id = DEVICE_ID

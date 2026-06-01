@@ -16,6 +16,8 @@
 Test for MindSpore Lite Model
 """
 
+import os
+
 import pytest
 import mindspore_lite as mslite
 import numpy as np
@@ -27,7 +29,8 @@ import numpy as np
 # ge.dynamicDims="64,64;96,96"
 
 MODEL_FILE = "./sd1.5_unet.onnx_graph.mindir"
-DEVICE_ID = 0
+# Read device_id from environment set by conftest.py pytest_configure
+DEVICE_ID = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
 
 
 def test_python_api_func_parallel_001():
@@ -36,6 +39,7 @@ def test_python_api_func_parallel_001():
     """
     context = mslite.Context()
     context.target = ["ascend"]
+    context.ascend.device_id = DEVICE_ID
     context.parallel.workers_num = 2
     runner = mslite.ModelParallelRunner()
     runner.build_from_file(model_path=MODEL_FILE, context=context)
@@ -53,6 +57,7 @@ def test_python_api_fi_parallel_003():
     with pytest.raises(RuntimeError) as raise_info:
         context = mslite.Context()
         context.target = ["ascend"]
+        context.ascend.device_id = DEVICE_ID
         context.parallel.workers_num = 2
         runner = mslite.ModelParallelRunner()
         runner.build_from_file(model_path="xxx", context=context)
@@ -66,6 +71,7 @@ def test_python_api_fi_parallel_005():
     with pytest.raises(RuntimeError) as raise_info:
         context = mslite.Context()
         context.target = ["ascend"]
+        context.ascend.device_id = DEVICE_ID
         context.parallel.workers_num = 2
         runner = mslite.ModelParallelRunner()
         runner.build_from_file(model_path=MODEL_FILE, context=context)
@@ -80,6 +86,7 @@ def test_python_api_fi_parallel_006():
     with pytest.raises(RuntimeError) as raise_info:
         context = mslite.Context()
         context.target = ["ascend"]
+        context.ascend.device_id = DEVICE_ID
         context.parallel.workers_num = 2
         runner = mslite.ModelParallelRunner()
         inputs = runner.get_inputs()
