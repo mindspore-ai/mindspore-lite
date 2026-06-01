@@ -15,7 +15,20 @@
 """
 Pytest ST configuration
 """
+import os
+
 import pytest
+
+
+def pytest_configure(config):
+    """
+    Configure hook - runs before test collection.
+    Set ASCEND_DEVICE_ID from --device_id option for both Python tests and subprocess tools.
+    """
+    device_ids = sorted(set(config.getoption("device_id")))
+    assigned_id = device_ids[0] if device_ids else 0
+    os.environ['ASCEND_DEVICE_ID'] = str(assigned_id)
+    print(f"\n[pytest] assigned device_id={assigned_id}")
 
 
 def pytest_addoption(parser):

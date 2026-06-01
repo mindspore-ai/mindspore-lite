@@ -78,12 +78,13 @@ def build_in_loop(loop, *args, **kwargs):
 
 @pytest.fixture(scope="module", autouse=True)
 def module_setup_and_teardown_fixture(so_path, mindir_dir, output_dir):
-    """
-    module setup
-    convert bert model
-    """
-    # setup
-    # convert bert model
+    """Convert bert_model.onnx if needed (skip when already present)."""
+    acl_output = Path(output_dir) / "bert_model.onnx.mindir"
+    cpu_output = Path(output_dir) / "bert_model.onnx.cpu.mindir"
+    if acl_output.exists() and cpu_output.exists():
+        yield
+        return
+
     fmk = "ONNX"
     model_path = Path(mindir_dir) / "bert_model.onnx"
     acl_output_path = Path(output_dir) / "bert_model.onnx"

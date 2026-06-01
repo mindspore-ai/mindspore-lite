@@ -16,46 +16,63 @@
 
 source ./scripts/base_functions.sh
 
-# Run converter with graph_kernel
-function Run_Converter() {
-    echo "Start converting models"
-    cd ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch} || exit 1
-    echo "current dir is:$(pwd)"
+# Shared result table format (Device 18 + Category 14 + Testcase 80 + Result 10 = 125 visible chars)
+RESULT_FMT="%-18s %-14s %-80s %-10s\n"
+RESULT_SEP="-----------------------------------------------------------------------------------------------------------------------------"
+# Parallel execution constants (single source of truth)
+NUM_CARDS=${NUM_PARALLEL_CARDS:-8}
+START_CARD=${START_CARD_ID:-0}
 
-    cp tools/converter/converter/converter_lite ./ || exit 1
-    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:./tools/converter/lib/:./tools/converter/third_party/glog/lib
-    rm -rf ${ms_models_path}
-    mkdir -p ${ms_models_path}
-    echo "convert model cfg: "${models_server_inference_cfg_file_list[*]}
-    for cfg_file in ${models_server_inference_cfg_file_list[*]}; do
-        if [ ! -f ${cfg_file} ]; then
-            echo "can not find model config file: ${cfg_file}"
-            return 1
+# Split a cfg file into N sub-config files using round-robin allocation
+function Split_Config() {
+    local cfg_file=$1
+    local num_cards=$2
+    local output_prefix=$3
+    local lines=()
+    if [[ ! -f "$cfg_file" ]]; then
+        echo "ERROR: Config file not found: ${cfg_file}"
+        return 1
+    fi
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*# || -z "${line// }" ]]; then
+            continue
         fi
+        lines+=("$line")
+    done < "$cfg_file"
+    local total=${#lines[@]}
+    echo "Split_Config: ${cfg_file} has ${total} models, splitting into ${num_cards} cards"
+    for ((card = 0; card < num_cards; card++)); do
+        local sub_cfg="${output_prefix}_card${card}.cfg"
+        true > "$sub_cfg"
+        for ((i = card; i < total; i += num_cards)); do
+            echo "${lines[$i]}" >> "$sub_cfg"
+        done
     done
-    # Convert models:
-    # $1:cfgFileList; $2:inModelPath; $3:outModelPath; $4:logFile; $5:resultFile;
-    Convert "${models_server_inference_cfg_file_list[*]}" $models_path $ms_models_path $run_converter_log_file $run_converter_result_file $run_fail_not_return
-    return $?
 }
 
-# Run on CPU or ACL
-function Run_Benchmark() {
+# Run benchmark with specified cfg list and log/result files
+# $1: cfg_file_list; $2: log_file; $3: result_file
+function Run_Benchmark_With_Cfg() {
+    local cfg_file_list=$1
+    local bench_log_file=$2
+    local bench_result_file=$3
     echo "Start running benchmark models"
-    cd ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ || exit 1
+    cd ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ || return 1
     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./runtime/lib:./tools/converter/lib/
     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./runtime/third_party/glog
     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./runtime/third_party/dnnl
-    cp tools/benchmark/benchmark ./ || exit 1
+    # Copy benchmark binary if not already present (may be pre-copied in parallel mode)
+    if [[ ! -f ./benchmark ]]; then
+        cp tools/benchmark/benchmark ./ || return 1
+    fi
 
     echo "benchmark model cfg list:"
-    echo ${models_server_inference_cfg_file_list[*]}
+    echo ${cfg_file_list}
 
     local line_info model_info spec_acc_limit model_name input_num input_shapes \
         mode model_file input_files output_file data_path acc_limit enableFp16 \
         run_result
-    # Prepare the config file list
-    for cfg_file in ${models_server_inference_cfg_file_list[*]}; do
+    for cfg_file in "${cfg_file_list[@]}"; do
         while read line; do
             line_info=${line}
             if [[ $line_info == \#* || $line_info == "" ]]; then
@@ -95,7 +112,7 @@ function Run_Benchmark() {
             if [[ ${mode} =~ "parallel_predict" ]]; then
                 use_parallel_predict="true"
             fi
-            echo "Benchmarking ${model_name} ......"
+            echo "Benchmarking ${model_name} on device ${ASCEND_DEVICE_ID} ......"
             model_file=${ms_models_path}'/'${model_name}'.mindir'
             if [[ ${mode} == "large_model" ]]; then
               model_file=${ms_models_path}'/'${model_name}'_graph.mindir'
@@ -125,6 +142,7 @@ function Run_Benchmark() {
                 enableFp16="true"
             fi
             echo "cfg_file: ${cfg_file}"
+            benchmark_config_file=""
             if [[ ${cfg_file} =~ "ge_with_config" ]]; then
               input_files=""
               benchmark_config_file="${benchmark_test_path}/${model_name}.mindir.ge.config"
@@ -138,23 +156,23 @@ function Run_Benchmark() {
               output_file=${data_path}'output/'${model_name}'.mindir.out'
             fi
             echo './benchmark --enableParallelPredict='${use_parallel_predict}' --modelFile='${model_file}' --inputShape='${spec_shapes}' --inDataFile='${input_files}' --benchmarkDataFile='${output_file}' --enableFp16='${enableFp16}' --accuracyThreshold='${acc_limit}' --device='${benchmark_device}' --configFile='${benchmark_config_file}
-            ./benchmark --enableParallelPredict=${use_parallel_predict} --modelFile=${model_file} --inputShape="${spec_shapes}" --inDataFile=${input_files} --benchmarkDataFile=${output_file} --enableFp16=${enableFp16} --accuracyThreshold=${acc_limit} --device=${benchmark_device} --configFile=${benchmark_config_file} >> "${run_benchmark_log_file}"
+            ./benchmark --enableParallelPredict=${use_parallel_predict} --modelFile=${model_file} --inputShape="${spec_shapes}" --inDataFile=${input_files} --benchmarkDataFile=${output_file} --enableFp16=${enableFp16} --accuracyThreshold=${acc_limit} --device=${benchmark_device} --configFile=${benchmark_config_file} >> "${bench_log_file}"
             if [ $? = 0 ]; then
                 if [[ ${mode} =~ "parallel_predict" ]]; then
                     run_result="${benchmark_device}: ${model_name} parallel_pass"
-                    echo ${run_result} >>${run_benchmark_result_file}
+                    echo ${run_result} >>${bench_result_file}
                 else
                     run_result="${benchmark_device}: ${model_name} pass"
-                    echo ${run_result} >>${run_benchmark_result_file}
+                    echo ${run_result} >>${bench_result_file}
                 fi
             else
                 if [[ ${mode} =~ "parallel_predict" ]]; then
                     run_result="${benchmark_device}: ${model_name} parallel_failed"
-                    echo ${run_result} >>${run_benchmark_result_file}
+                    echo ${run_result} >>${bench_result_file}
                     return 1
                 else
                     run_result="${benchmark_device}: ${model_name} failed"
-                    echo ${run_result} >>${run_benchmark_result_file}
+                    echo ${run_result} >>${bench_result_file}
                     return 1
                 fi
             fi
@@ -163,44 +181,352 @@ function Run_Benchmark() {
     done
 }
 
-function Run_Benchmark_GE() {
-    echo "Start running benchmark ge backend"
+# Run GE benchmark with specified cfg list and log/result files
+# $1: ge_cfg_file_list; $2: log_file; $3: result_file; $4: skip_model_cp (optional "true")
+function Run_Benchmark_GE_With_Cfg() {
+    local ge_cfg_list=$1
+    local ge_log_file=$2
+    local ge_result_file=$3
+    local skip_model_cp=${4:-"false"}
+    echo "Start running benchmark ge backend on device ${ASCEND_DEVICE_ID}"
     export ASCEND_BACK_POLICY="ge"
-    cd ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ || exit 1
-    rm -rf ${ms_models_path}
+    cd ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ || return 1
     mkdir -p ${ms_models_path}
-    models_server_inference_cfg_file_list=${models_ge_cfg_file_list}
-    echo ${models_server_inference_cfg_file_list}
-    for cfg_file in ${models_server_inference_cfg_file_list[*]}; do
-        while read line; do
-            line_info=${line}
-            if [[ ${line_info} == \#* || ${line_info} == "" ]]; then
-              echo ${line_info}
-              continue
-            fi
-            model_info=$(echo ${line_info} | awk -F ' ' '{print $1}')
-            model_name=$(echo ${model_info} | awk -F ';' '{print $1}')
-            echo "${models_path}/${model_name}.mindir"
-            cp "${models_path}/${model_name}.mindir" $ms_models_path/ || exit 1
-        done <${cfg_file}
-    done
+    # Copy GE models unless pre-copied by caller (parallel mode)
+    if [[ ${skip_model_cp} != "true" ]]; then
+        echo ${ge_cfg_list}
+        for cfg_file in "${ge_cfg_list[@]}"; do
+            while read line; do
+                line_info=${line}
+                if [[ ${line_info} == \#* || ${line_info} == "" ]]; then
+                  echo ${line_info}
+                  continue
+                fi
+                model_info=$(echo ${line_info} | awk -F ' ' '{print $1}')
+                model_name=$(echo ${model_info} | awk -F ';' '{print $1}')
+                echo "${models_path}/${model_name}.mindir"
+                cp "${models_path}/${model_name}.mindir" $ms_models_path/ || return 1
+            done <${cfg_file}
+        done
+    fi
     # Empty config file is allowed, but warning message will be shown
     if [[ $(Exist_File_In_Path ${ms_models_path} ".mindir") != "true" ]]; then
-        echo "No ms model found in ${ms_models_path}, please check if ge config files are empty!"
-        exit 0
+        echo "No ms model found in ${ms_models_path}, ge config may be empty"
+        return 0
     fi
     # add config file path for ge
-    Run_Benchmark
+    Run_Benchmark_With_Cfg "${ge_cfg_list}" "${ge_log_file}" "${ge_result_file}"
     return $?
 }
 
-function Print_Benchmark_Result() {
-    MS_PRINT_TESTCASE_START_MSG
-    while read line; do
-        arr=("${line}")
-        printf "%-20s %-100s %-7s\n" ${arr[0]} ${arr[1]} ${arr[2]}
-    done <$1
-    MS_PRINT_TESTCASE_END_MSG
+# Prepend "Ascend:<dev_id> <category>" to each non-empty result line, stripping any leading "Ascend: " from the raw line
+# $1: input result file; $2: device_id; $3: category; $4: output file
+function Append_Result_With_Device() {
+    local input_file=$1
+    local dev_id=$2
+    local category=$3
+    local output_file=$4
+    local stripped testcase result
+    while IFS= read -r line; do
+        [[ -z "${line// }" ]] && continue
+        stripped="${line#Ascend: }"
+        testcase="${stripped% *}"
+        result="${stripped##* }"
+        printf "$RESULT_FMT" "Ascend:${dev_id}" "${category}" "${testcase}" "${result}" >> "${output_file}"
+    done < "${input_file}"
+}
+
+# Print a unified stage result table with Device + Category columns
+# $1: result file; $2: stage name
+function Print_Stage_Result() {
+    local result_file=$1
+    local stage_name=$2
+    if [[ ! -s "${result_file}" ]]; then
+        echo "No results for ${stage_name}"
+        return
+    fi
+    echo ""
+    echo "$RESULT_SEP"
+    printf "$RESULT_FMT" "Device" "Category" "Testcase" "Result"
+    echo "$RESULT_SEP"
+    echo "${stage_name} RESULT PRINT BEGIN"
+    cat "${result_file}"
+    echo "${stage_name} RESULT PRINT END"
+    echo "$RESULT_SEP"
+    rm -f "${result_file}"
+}
+
+# Run a shell function with timeout, killing its process tree on expiry.
+# Returns 124 on timeout, otherwise the command's exit code.
+# $1: timeout seconds; $2...: command + args
+function Run_With_Watchdog() {
+    local timeout_sec=$1; shift
+    "$@" &
+    local cmd_pid=$!
+    (
+        sleep ${timeout_sec}
+        pkill -9 -P ${cmd_pid} 2>/dev/null
+        kill -9 ${cmd_pid} 2>/dev/null
+    ) &
+    local watchdog_pid=$!
+    wait ${cmd_pid}
+    local cmd_exit=$?
+    kill ${watchdog_pid} 2>/dev/null
+    wait ${watchdog_pid} 2>/dev/null
+    if [ ${cmd_exit} -eq 137 ]; then
+        return 124
+    fi
+    return ${cmd_exit}
+}
+
+# Run full pipeline (converter + benchmark ACL + benchmark GE) on a single card
+# $1: card_idx; $2: card_id (physical device id)
+# Requires: pkg_dir, ms_models_path to be set by caller
+function Run_Single_Card() {
+    local card_idx=$1
+    local card_id=$2
+    export ASCEND_DEVICE_ID=${card_id}
+    local sub_acl="${benchmark_test_path}/models_with_large_model_acl_with_config_cloud_ascend_sub_card${card_idx}.cfg"
+    local sub_ge="${benchmark_test_path}/models_with_large_model_ge_with_config_cloud_ascend_sub_card${card_idx}.cfg"
+    local card_conv_log="${benchmark_test_path}/run_converter_log_card${card_idx}.txt"
+    local card_conv_result="${benchmark_test_path}/run_converter_result_card${card_idx}.txt"
+    local card_bench_log="${benchmark_test_path}/run_benchmark_log_card${card_idx}.txt"
+    local card_bench_acl_result="${benchmark_test_path}/run_benchmark_acl_result_card${card_idx}.txt"
+    local card_bench_ge_result="${benchmark_test_path}/run_benchmark_ge_result_card${card_idx}.txt"
+
+    echo "run ${benchmark_device} benchmark logs on card ${card_id}: " > ${card_bench_log}
+    true > ${card_conv_log}
+    true > ${card_conv_result}
+    true > ${card_bench_acl_result}
+    true > ${card_bench_ge_result}
+
+    # 1. Converter for models assigned to this card
+    #    Use per-card working directory to isolate fifo_file/fail_file created by Convert()
+    if [[ -s ${sub_acl} ]]; then
+        echo "Card ${card_id}: Start converter" >> "${card_bench_log}"
+        local card_work_dir="${benchmark_test_path}/card_work_${card_idx}"
+        mkdir -p ${card_work_dir}
+        cd ${card_work_dir} || return 1
+        # Symlink converter_lite so it can be found as ./converter_lite in card_work_dir
+        ln -sf ${pkg_dir}/converter_lite ./
+        export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${pkg_dir}/tools/converter/lib/:${pkg_dir}/tools/converter/third_party/glog/lib
+        Convert "${sub_acl}" $models_path $ms_models_path $card_conv_log $card_conv_result $run_fail_not_return
+        local conv_status=$?
+        if [[ ${conv_status} != 0 ]]; then
+            echo "Card ${card_id}: Converter failed" >> "${card_bench_log}"
+            return 1
+        fi
+        echo "Card ${card_id}: Converter success" >> "${card_bench_log}"
+    fi
+
+    # 2. Benchmark ACL — cd to pkg_dir (Run_Benchmark_With_Cfg also cd's there)
+    if [[ -s ${sub_acl} ]]; then
+        echo "Card ${card_id}: Start benchmark ACL" >> "${card_bench_log}"
+        Run_Benchmark_With_Cfg "${sub_acl}" "${card_bench_log}" "${card_bench_acl_result}"
+        local acl_status=$?
+        if [[ ${acl_status} != 0 ]]; then
+            echo "Card ${card_id}: Benchmark ACL failed" >> "${card_bench_log}"
+            return 1
+        fi
+        echo "Card ${card_id}: Benchmark ACL success" >> "${card_bench_log}"
+    fi
+
+    # 3. Benchmark GE — GE models are pre-copied by Run_Parallel_All
+    if [[ -s ${sub_ge} ]]; then
+        echo "Card ${card_id}: Start benchmark GE" >> "${card_bench_log}"
+        Run_Benchmark_GE_With_Cfg "${sub_ge}" "${card_bench_log}" "${card_bench_ge_result}" "true"
+        local ge_status=$?
+        unset ASCEND_BACK_POLICY
+        if [[ ${ge_status} != 0 ]]; then
+            echo "Card ${card_id}: Benchmark GE failed" >> "${card_bench_log}"
+            return 1
+        fi
+        echo "Card ${card_id}: Benchmark GE success" >> "${card_bench_log}"
+    fi
+
+    echo "Card ${card_id}: All done" >> "${card_bench_log}"
+    return 0
+}
+
+# Run parallel converter + benchmark across multiple cards
+# Globals: NUM_CARDS (default 8), START_CARD (default 0)
+function Run_Parallel_All() {
+    local num_cards=${NUM_CARDS}
+    local start_card=${START_CARD}
+    local pids=()
+    pkg_dir="${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}"
+
+    echo "Run_Parallel_All: splitting configs into ${num_cards} parts"
+    # Split ACL cfg - keep "acl_with_config" in filename for Run_Benchmark_With_Cfg pattern matching
+    Split_Config "${models_server_inference_cfg_file_list}" $num_cards "${benchmark_test_path}/models_with_large_model_acl_with_config_cloud_ascend_sub" || return 1
+    # Split GE cfg - keep "ge_with_config" in filename for Run_Benchmark_With_Cfg pattern matching
+    Split_Config "${models_ge_cfg_file_list}" $num_cards "${benchmark_test_path}/models_with_large_model_ge_with_config_cloud_ascend_sub" || return 1
+
+    # Pre-copy binaries before fork to avoid concurrent cp conflict
+    cd ${pkg_dir} || return 1
+    cp tools/converter/converter/converter_lite ./ || return 1
+    cp tools/benchmark/benchmark ./ || return 1
+
+    # Pre-copy GE models to ms_models_path before fork to avoid concurrent cp conflict
+    mkdir -p ${ms_models_path}
+    for cfg_file in "${models_ge_cfg_file_list[@]}"; do
+        while read line; do
+            line_info=${line}
+            if [[ ${line_info} == \#* || ${line_info} == "" ]]; then
+                continue
+            fi
+            model_info=$(echo ${line_info} | awk -F ' ' '{print $1}')
+            model_name=$(echo ${model_info} | awk -F ';' '{print $1}')
+            if [[ -f "${models_path}/${model_name}.mindir" ]]; then
+                cp "${models_path}/${model_name}.mindir" $ms_models_path/ || return 1
+            else
+                echo "WARNING: GE model ${models_path}/${model_name}.mindir not found, skipped"
+            fi
+        done <${cfg_file}
+    done
+
+    for ((i = 0; i < num_cards; i++)); do
+        (
+            Run_With_Watchdog 3600 Run_Single_Card $i $((start_card + i))
+            exit $?
+        ) &
+        pids+=($!)
+    done
+
+    local fail=0
+    local timeout_card_indices=()
+    for ((i = 0; i < num_cards; i++)); do
+        pid="${pids[$i]}"
+        wait $pid
+        ec=$?
+        if [ ${ec} -eq 124 ]; then
+            timeout_card_indices+=("${i}")
+            fail=1
+        elif [ ${ec} -ne 0 ]; then
+            fail=1
+        fi
+    done
+
+    # Merge results with device identification into separate stage files
+    local stage_conv_result="${benchmark_test_path}/stage_converter_result.txt"
+    local stage_bench_acl_result="${benchmark_test_path}/stage_benchmark_acl_result.txt"
+    local stage_bench_ge_result="${benchmark_test_path}/stage_benchmark_ge_result.txt"
+    true > "${stage_conv_result}"
+    true > "${stage_bench_acl_result}"
+    true > "${stage_bench_ge_result}"
+    for ((i = 0; i < num_cards; i++)); do
+        local dev_id=$((start_card + i))
+        Append_Result_With_Device "${benchmark_test_path}/run_converter_result_card${i}.txt" "${dev_id}" "converter" "${stage_conv_result}"
+        Append_Result_With_Device "${benchmark_test_path}/run_benchmark_acl_result_card${i}.txt" "${dev_id}" "benchmark" "${stage_bench_acl_result}"
+        Append_Result_With_Device "${benchmark_test_path}/run_benchmark_ge_result_card${i}.txt" "${dev_id}" "benchmark_ge" "${stage_bench_ge_result}"
+    done
+    # Append TIMEOUT rows for timed-out cards to stages that have no results
+    for tidx in "${timeout_card_indices[@]}"; do
+        local tdev=$((start_card + tidx))
+        if [[ ! -s ${benchmark_test_path}/run_converter_result_card${tidx}.txt ]]; then
+            printf "$RESULT_FMT" "Ascend:${tdev}" "converter" "(timed_out)" "TIMEOUT" >> "${stage_conv_result}"
+        fi
+        if [[ ! -s ${benchmark_test_path}/run_benchmark_acl_result_card${tidx}.txt ]]; then
+            printf "$RESULT_FMT" "Ascend:${tdev}" "benchmark" "(timed_out)" "TIMEOUT" >> "${stage_bench_acl_result}"
+        fi
+        if [[ ! -s ${benchmark_test_path}/run_benchmark_ge_result_card${tidx}.txt ]]; then
+            printf "$RESULT_FMT" "Ascend:${tdev}" "benchmark_ge" "(timed_out)" "TIMEOUT" >> "${stage_bench_ge_result}"
+        fi
+    done
+    # Merge detailed logs
+    cat ${benchmark_test_path}/run_benchmark_log_card*.txt > ${run_benchmark_log_file}
+    cat ${benchmark_test_path}/run_converter_log_card*.txt > ${run_converter_log_file}
+    # Append timeout notices to merged log so they are persisted
+    for tidx in "${timeout_card_indices[@]}"; do
+        echo "[conv/bench] Ascend:$((start_card + tidx)) timed out after 3600s" >> "${run_benchmark_log_file}"
+    done
+
+    # Clean up per-card work dirs
+    rm -rf ${benchmark_test_path}/card_work_*
+
+    return $fail
+}
+
+# Run python benchmark in parallel across multiple cards
+function Run_Python_Benchmark_Parallel() {
+    local num_cards=${NUM_CARDS}
+    local start_card=${START_CARD}
+    local pids=()
+    local card_ids=()
+    local result_files=()
+
+    echo "Run_Python_Benchmark_Parallel: splitting python config into ${num_cards} parts"
+    Split_Config "${benchmark_test_path}/models_cloud_ascend_a2.cfg" $num_cards "${benchmark_test_path}/python_sub" || return 1
+
+    for ((i = 0; i < num_cards; i++)); do
+        local sub_python_cfg="${benchmark_test_path}/python_sub_card${i}.cfg"
+        if [[ ! -s ${sub_python_cfg} ]]; then
+            continue
+        fi
+        local card_id=$((start_card + i))
+        local result_file="${benchmark_test_path}/pybench_card${i}.log"
+        result_files+=("${result_file}")
+        card_ids+=("${card_id}")
+        (
+            export ASCEND_DEVICE_ID=${card_id}
+            timeout 3600 python3 run_python_benchmark.py ${models_path}/ ${ms_models_path} ${basepath}/../${config_folder}/ascend/ ${sub_python_cfg} ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ ${card_id}
+        ) > "${result_file}" 2>&1 &
+        pids+=($!)
+    done
+
+    # Wait for all cards and collect exit codes
+    local exit_codes=()
+    for ((j=0; j<${#pids[@]}; j++)); do
+        wait "${pids[$j]}"
+        local ec=$?
+        exit_codes+=("${ec}")
+        echo "Python benchmark card ${card_ids[$j]} finished (exit ${ec})"
+    done
+
+    # Aggregate results and print table
+    local pybench_result_file=${benchmark_test_path}/stage_python_benchmark_result.txt
+    local pybench_log_file=${benchmark_test_path}/run_python_benchmark_log.txt
+    true > "${pybench_result_file}"
+    true > "${pybench_log_file}"
+    local fail=0
+    for ((i=0; i<${#result_files[@]}; i++)); do
+        local rf="${result_files[$i]}"
+        local cid="${card_ids[$i]}"
+        local status="${exit_codes[$i]}"
+        # Collect detailed output into merged log
+        echo "--- Python Benchmark Ascend:${cid} ---" >> "${pybench_log_file}"
+        cat "${rf}" >> "${pybench_log_file}"
+        if [ "${status}" -eq 124 ]; then
+            printf "$RESULT_FMT" "Ascend:${cid}" "python_benchmark" "(timeout)" "timeout" >> "${pybench_result_file}"
+            fail=1
+        elif [ "${status}" -ne 0 ]; then
+            printf "$RESULT_FMT" "Ascend:${cid}" "python_benchmark" "(failed)" "failed" >> "${pybench_result_file}"
+            fail=1
+        else
+            # Parse per-model results from run_python_benchmark.py PrintResult output
+            # Format: model_name  build_time  predict_time  accuracy  pass/failed  (fields are {:<30} padded, so allow trailing spaces)
+            local card_had_results=0
+            local _grep_tmp
+            _grep_tmp=$(mktemp)
+            grep -E '\S+\s+\S+\s+\S+\s+\S+\s+(pass|failed)\s*$' "$rf" > "$_grep_tmp" 2>/dev/null
+            while IFS= read -r line; do
+                read -r model_name _ _ _ result <<< "${line}"
+                printf "$RESULT_FMT" "Ascend:${cid}" "python_benchmark" "${model_name}" "${result}" >> "${pybench_result_file}"
+                card_had_results=1
+            done < "$_grep_tmp"
+            rm -f "$_grep_tmp"
+            # Fallback: if no per-model lines parsed for this card, write a card-level summary
+            if [[ ${card_had_results} -eq 0 ]]; then
+                printf "$RESULT_FMT" "Ascend:${cid}" "python_benchmark" "(no per-model results parsed)" "pass" >> "${pybench_result_file}"
+            fi
+        fi
+    done
+
+    cat "${pybench_log_file}"
+    Print_Stage_Result "${pybench_result_file}" "PYTHON BENCHMARK"
+    rm -f "${pybench_log_file}"
+    rm -f "${result_files[@]}"
+    return $fail
 }
 
 function ConfigAscend() {
@@ -296,7 +622,7 @@ ConfigAscend
 
 # get release package path and version
 ms_models_path=${benchmark_test_path}/ms_models
-cd $release_package_path
+cd $release_package_path || exit 1
 release_file=$(ls *-linux-*.tar.gz)
 release_file_path="$release_package_path/$release_file"
 IFS="-" read -r -a file_name_array <<<"$release_file"
@@ -304,7 +630,7 @@ version=${file_name_array[2]}
 
 echo "installing mslite whl..."
 python3 -m pip uninstall -y mindspore_lite || exit 1
-python3 -m pip install *.whl 
+python3 -m pip install *.whl
 echo "install mslite success !"
 
 echo "Running MSLite Large Model on ${backend}, release file path is $release_file_path, working dir is: $benchmark_test_path"
@@ -316,26 +642,29 @@ tar -zxf $release_file_path  || exit 1
 
 # Write converter result to temp file
 run_converter_log_file=${benchmark_test_path}/run_converter_log.txt
-echo ' ' >${run_converter_log_file}
+true >${run_converter_log_file}
 
-run_converter_result_file=${benchmark_test_path}/run_converter_result.txt
-echo ' ' >${run_converter_result_file}
+# Run converter + benchmark in parallel across multiple cards
+echo "Running in parallel with ${NUM_CARDS} cards, start_card_id=${START_CARD}"
 
-# Run converter
-echo "Start run converter with Graph Kernel Fusion ..."
-Run_Converter
-Run_converter_status=$?
+echo "Start parallel converter + benchmark ..."
+run_benchmark_log_file=${benchmark_test_path}/run_benchmark_log.txt
+echo "run ${benchmark_device} benchmark logs: " > ${run_benchmark_log_file}
 
-# Check converter result and return value
-if [[ ${Run_converter_status}  != 0 ]]; then
-    echo "Run converter failed"
-    cat ${run_converter_log_file}
-    Print_Converter_Result $run_converter_result_file
-    exit $Run_converter_status
-else
-    echo "Run converter success"
-    Print_Converter_Result $run_converter_result_file
+Run_Parallel_All
+Run_parallel_status=$?
+# Print detailed logs (always)
+cat ${run_converter_log_file}
+cat ${run_benchmark_log_file}
+# Print per-stage result tables (always, regardless of success/failure)
+Print_Stage_Result "${benchmark_test_path}/stage_converter_result.txt" "CONVERTER"
+Print_Stage_Result "${benchmark_test_path}/stage_benchmark_acl_result.txt" "BENCHMARK ACL"
+Print_Stage_Result "${benchmark_test_path}/stage_benchmark_ge_result.txt" "BENCHMARK GE"
+if [[ ${Run_parallel_status} != 0 ]]; then
+    echo "Run_Parallel_All failed"
+    exit ${Run_parallel_status}
 fi
+echo "Run_Parallel_All success"
 
 # Empty config file is allowed, but warning message will be shown
 if [[ $(Exist_File_In_Path ${ms_models_path} ".mindir") != "true" ]]; then
@@ -343,40 +672,12 @@ if [[ $(Exist_File_In_Path ${ms_models_path} ".mindir") != "true" ]]; then
     exit 0
 fi
 
-####################  run models
-# Run converter
-echo "Start run benchmark with large model ..."
-run_benchmark_log_file=${benchmark_test_path}/run_benchmark_log.txt
-echo "run ${benchmark_device} benchmark logs: " > ${run_benchmark_log_file}
-run_benchmark_result_file=${benchmark_test_path}/run_graph_kernel_result_files.txt
-echo "Running in ${benchmark_device} on device ${device_id} ..."
-Run_Benchmark
-Run_benchmark_status=$?
-if [[ ${Run_benchmark_status} != 0 ]]; then
-    echo "Run_Benchmark failed"
-    cat ${run_benchmark_log_file}
-    Print_Benchmark_Result $run_benchmark_result_file
-    exit ${Run_benchmark_status}
-fi
-echo "run acl model end, start run ge model"
-# run ge backend
-Run_Benchmark_GE
-Run_benchmark_ge_status=$?
-unset ASCEND_BACK_POLICY
-if [[ ${Run_benchmark_ge_status} != 0 ]]; then
-    echo "Run_Benchmark_GE failed"
-    cat ${run_benchmark_log_file}
-    Print_Benchmark_Result $run_benchmark_result_file
-    exit ${Run_benchmark_ge_status}
-fi
-echo "Run_Benchmark success"
-Print_Benchmark_Result $run_benchmark_result_file
 #---------------------------------------------------------
-# run converter and predict by python api
+# run converter and predict by python api in parallel
 echo "basepath: ${basepath}"
 cd ${basepath}/python/benchmark/
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/tools/converter/lib/:${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/tools/converter/third_party/glog/lib:${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/runtime/lib
-python run_python_benchmark.py ${models_path}/ ${ms_models_path} ${basepath}/../${config_folder}/ascend/ ${benchmark_test_path}/models_cloud_ascend_a2.cfg ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ ${device_id}
+Run_Python_Benchmark_Parallel
 run_python_status=$?
 if [[ ${run_python_status} != 0 ]]; then
     echo "run python benchmark failed"
@@ -385,7 +686,7 @@ fi
 
 # run python api test
 echo "---------- Run MindSpore Lite API ----------"
-cd ${basepath}/python/python_api/  || exit 1 
+cd ${basepath}/python/python_api/  || exit 1
 cp -r ${ms_models_path}/sd1.5_unet.onnx* . || exit 1 # for Model Predict ST
 cp -r ${ms_models_path}/single_matmul_model.onnx.mindir . || exit 1 # for Update weights ST
 cp -r ${ms_models_path}/deepaudio.onnx* . || exit 1 # for ModelParallelRunner 'for-loop' Predict ST
@@ -399,9 +700,121 @@ if [[ "${MSLITE_ENABLE_COVERAGE}" == "on" || "${MSLITE_ENABLE_COVERAGE}" == "ON"
     echo "MSLITE_ENABLE_COVERAGE: ${MSLITE_ENABLE_COVERAGE}, MSLITE_COVERAGE_FILE: ${MSLITE_COVERAGE_FILE}"
     MSLITE_COVERAGE_ARGS="-m coverage run --rcfile=${MSLITE_COVERAGE_FILE}"
 fi
-python3 ${MSLITE_COVERAGE_ARGS} -m pytest . --dist=loadfile -n 1 -q -rA --forked --device_id ${device_id} --mindir_dir=${models_path}/ --so_path=${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ --output_dir=${ms_models_path}/ --config_dir=${basepath}/../${config_folder}/ascend/ || exit 1
+# File-level parallel distribution across NPU cards with xdist + --forked per-test isolation.
+# Test files are split round-robin across cards to avoid concurrent converter
+# output conflicts (tests in the same file share converter output directory).
+# xdist -n 1 --dist=loadfile provides clean subprocess isolation per file group,
+# within which pytest-forked provides per-test isolation.
+PYTEST_ARGS="--mindir_dir=${models_path}/ --so_path=${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ --config_dir=${basepath}/../${config_folder}/ascend/"
+# Collect all test files
+test_files_list=$(ls test_*.py *_test.py 2>/dev/null)
+total_files=$(echo "${test_files_list}" | wc -w)
+if [ "${total_files}" -eq 0 ]; then
+    echo "ERROR: No test files found"
+    exit 1
+fi
+echo "Distributing ${total_files} test files across ${NUM_CARDS} cards (xdist + --forked per-test isolation)"
+# Launch one pytest process per card, each with xdist -n 1 + --forked
+pids=()
+result_files=()
+card_ids_for_result=()
+file_index=0
+for test_file in ${test_files_list}; do
+    card=$((file_index % NUM_CARDS))
+    card_id=$((START_CARD + card))
+    # Append file to card's file list
+    eval "card_${card}_files=\"\${card_${card}_files} ${test_file}\""
+    file_index=$((file_index + 1))
+done
+# Copy pre-existing models to per-card output directories to avoid concurrent
+# converter_lite writes (from module-scoped pytest fixtures) racing on the same files.
+for ((card=0; card<NUM_CARDS; card++)); do
+    card_id=$((START_CARD + card))
+    card_output_dir=${ms_models_path}/${card_id}
+    mkdir -p ${card_output_dir}
+    cp -r -l ${ms_models_path}/* ${card_output_dir}/ 2>/dev/null || true
+done
+
+for ((card=0; card<NUM_CARDS; card++)); do
+    eval "files=\${card_${card}_files}"
+    if [ -z "${files}" ]; then
+        continue
+    fi
+    card_id=$((START_CARD + card))
+    result_file=$(mktemp)
+    result_files+=("${result_file}")
+    card_ids_for_result+=("${card_id}")
+    (
+        timeout 3600 python3 ${MSLITE_COVERAGE_ARGS} -m pytest ${files} -n 1 --dist=loadfile --forked \
+            --device_id ${card_id} --output_dir=${ms_models_path}/${card_id}/ ${PYTEST_ARGS} -q -rA
+    ) > "${result_file}" 2>&1 &
+    pids+=($!)
+done
+# Wait for all cards, tracking exit codes and timeouts
+failed=0
+pytest_timeout_cards=()
+for ((i=0; i<${#pids[@]}; i++)); do
+    pid="${pids[$i]}"
+    cid="${card_ids_for_result[$i]}"
+    wait "${pid}"
+    ec=$?
+    if [ ${ec} -eq 124 ]; then
+        pytest_timeout_cards+=("${cid}")
+        failed=1
+    elif [ ${ec} -ne 0 ]; then
+        failed=1
+    fi
+done
+# Collect raw pytest output per card into merged log
+pytest_log_file=${benchmark_test_path}/run_pytest_log.txt
+true > "${pytest_log_file}"
+echo "" >> "${pytest_log_file}"
+for ((i=0; i<${#result_files[@]}; i++)); do
+    rf="${result_files[$i]}"
+    cid="${card_ids_for_result[$i]}"
+    echo "--- Ascend:${cid} pytest output ---" >> "${pytest_log_file}"
+    cat "${rf}" >> "${pytest_log_file}"
+done
+for cid in "${pytest_timeout_cards[@]}"; do
+    echo "[pytest] Ascend:${cid} timed out after 3600s, partial results above" >> "${pytest_log_file}"
+done
+# Aggregate pytest results into summary file for table printing
+pytest_result_file=${benchmark_test_path}/stage_pytest_result.txt
+true > "${pytest_result_file}"
+total_passed=0
+total_failed=0
+for ((i=0; i<${#result_files[@]}; i++)); do
+    rf="${result_files[$i]}"
+    cid="${card_ids_for_result[$i]}"
+    # Parse individual test results from short test summary
+    _grep_tmp=$(mktemp)
+    grep -E "^(PASSED|FAILED) " "$rf" > "$_grep_tmp" 2>/dev/null
+    while IFS= read -r line; do
+        status="${line%% *}"
+        testcase="${line#* }"
+        printf "$RESULT_FMT" "Ascend:${cid}" "pytest" "${testcase}" "${status}" >> "${pytest_result_file}"
+        case "$status" in
+            PASSED) total_passed=$((total_passed + 1)) ;;
+            FAILED) total_failed=$((total_failed + 1)) ;;
+        esac
+    done < "$_grep_tmp"
+    rm -f "$_grep_tmp"
+    rm -f "${rf}"
+done
+# Print detailed pytest logs
+cat "${pytest_log_file}"
+# Print aggregated pytest result table
+Print_Stage_Result "${pytest_result_file}" "PYTEST"
+# Print summary statistics
+echo "PYTEST SUMMARY: ${total_failed} failed, ${total_passed} passed"
+rm -f "${pytest_log_file}"
+
+if [ "${failed}" -ne 0 ]; then
+    exit 1
+fi
 echo "---------- Run MindSpore Lite API SUCCESS ----------"
 #---------------------------------------------------------
 
 echo "success"
 exit 0
+

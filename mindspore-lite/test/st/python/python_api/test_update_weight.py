@@ -22,7 +22,7 @@ import mindspore_lite as mslite
 import numpy as np
 
 MODEL_FILE = "./single_matmul_model.onnx.mindir"
-DEVICE_ID = 0
+DEVICE_ID = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
 
 
 def test_update_weight_resul_change():

@@ -16,6 +16,7 @@
 Test for MindSpore Lite Model
 """
 
+import os
 import mindspore_lite as mslite
 import numpy as np
 
@@ -26,7 +27,7 @@ import numpy as np
 # ge.dynamicDims="64,64;96,96"
 
 MODEL_FILE = "./sd1.5_unet.onnx_graph.mindir"
-DEVICE_ID = 0
+DEVICE_ID = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
 OUTPUT_SHAPE_RANGE_1 = (2, 4, 64, 64)
 OUTPUT_SHAPE_RANGE_2 = (2, 4, 96, 96)
 

@@ -16,12 +16,14 @@
 Test for MindSpore Lite MSTensor
 """
 
+import os
+
 import mindspore_lite as mslite
 import numpy as np
 
 MODEL_FILE_1 = "./sd1.5_unet.onnx_graph.mindir"
 MODEL_FILE_2 = "./sd1.5_unet.onnx_graph.mindir"
-DEVICE_ID = 0
+DEVICE_ID = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
 
 
 def model_infer(model_path):

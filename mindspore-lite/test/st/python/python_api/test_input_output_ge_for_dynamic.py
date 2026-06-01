@@ -16,6 +16,7 @@
 """
 Test lite python API.
 """
+import os
 import time
 import subprocess
 from pathlib import Path
@@ -31,7 +32,7 @@ DIM_IN = [[100,77], [100,16,128], [1]]
 DIM_OUT = [[100,128], [100]]
 
 
-DEVICE_ID = 0
+DEVICE_ID = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
 ResultList = List[List[np.ndarray]]
 
 def _convert_onnx_to_mindir(model_name: str, so_path: Path, mindir_dir: Path, output_dir: Path)-> Path:

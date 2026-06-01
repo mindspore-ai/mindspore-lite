@@ -22,7 +22,7 @@ import mindspore_lite as mslite
 import numpy as np
 
 MODEL_FILE = "./ge_test_mul.mindir"
-DEVICE_ID = 0
+DEVICE_ID = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
 
 
 # For Model Resize

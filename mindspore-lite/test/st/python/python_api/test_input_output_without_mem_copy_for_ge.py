@@ -16,6 +16,7 @@
 """
 Test lite python API.
 """
+import os
 import subprocess
 from pathlib import Path
 from typing import List
@@ -35,7 +36,7 @@ MODEL_PATH3: str = ""
 DIM_IN3 = [1, 3, 512, 512]
 DIM_OUT3 = [1, 3, 512, 512]
 
-DEVICE_ID = 0
+DEVICE_ID = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
 ResultList = List[List[np.ndarray]]
 
 

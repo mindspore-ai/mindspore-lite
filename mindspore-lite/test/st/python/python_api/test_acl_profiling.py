@@ -28,7 +28,7 @@ import numpy as np
 # ge.dynamicDims="64,64;96,96"
 
 MODEL_FILE = "./sd1.5_unet.onnx_graph.mindir"
-DEVICE_ID = 0
+DEVICE_ID = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
 
 
 def test_acl_profiling_with_config_file():

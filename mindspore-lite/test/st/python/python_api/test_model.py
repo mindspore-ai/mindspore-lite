@@ -16,6 +16,7 @@
 Test for MindSpore Lite Model
 """
 
+import os
 import pytest
 import mindspore_lite as mslite
 import numpy as np
@@ -29,7 +30,7 @@ import numpy as np
 MODEL_FILE = "./sd1.5_unet.onnx_graph.mindir"
 MODEL_STATIC_FILE = "./single_matmul_model.onnx.mindir"
 MODEL_DYNAMIC_FILE = "./resize.onnx.mindir"
-DEVICE_ID = 0
+DEVICE_ID = int(os.environ.get('ASCEND_DEVICE_ID', '0'))
 
 
 # For Model Resize
