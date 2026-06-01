@@ -26,18 +26,19 @@ Qwen3-VL-2B-Instruct 是一个同时处理图像与文本的多模态大模型�
 
 ## 环境依赖
 
-### Python 环境
+### 依赖版本
 
-```bash
-pip install -U "transformers>=4.50" torch onnx onnxscript pillow numpy
-pip install -U onnxruntime
-```
-
-如需 GPU 加速：
-
-```bash
-pip install -U onnxruntime-gpu
-```
+| 软件包            | 版本 |
+|----------------|------|
+| Python         | 3.12.0 |
+| torch          | 2.12.0+cu130 |
+| transformers   | 5.4.0 |
+| onnx           | 1.21.0 |
+| onnxruntime    | 1.26.0 |
+| onnxscript     | 0.7.0 |
+| numpy          | 2.4.4 |
+| pillow         | 12.2.0 |
+| mindspore-lite | 2.8.0 |
 
 ### 模型访问
 
@@ -57,6 +58,17 @@ python export_qwen3_vl_2b_instruct_onnx.py \
     --vision-image-size 128
 ```
 
+### 参数说明
+
+| 参数 | 说明 | 默认值 |
+|---|---|---|
+| `--model-id` | HuggingFace 模型路径或本地目录 | `./Qwen3-VL-2B-Instruct` |
+| `--output-dir` | 导出输出目录 | `./qwen3_vl_2b_instruct_onnx` |
+| `--device` | 导出设备（cpu/cuda） | `cpu` |
+| `--vision-image-size` | Vision 导出图像尺寸（正方形输入时为边长） | `128` |
+| `--kv-cache-len` | KV cache 固定长度（decode 导出固定 shape） | `512` |
+| `--no-custom-op` | 禁用导出 Custom 融合算子节点 | `False` |
+
 导出产物：
 
 - `qwen3_vl_vision.onnx`：Vision Tower
@@ -65,37 +77,21 @@ python export_qwen3_vl_2b_instruct_onnx.py \
 
 - `qwen3_vl_llm_decode.onnx` + `.data`：LLM Decode
 
-### 2. 运行 ONNX 推理
-
-端到端推理示例：
-
-```bash
-python infer_qwen3_vl_2b_instruct_onnx.py \
-    --vision qwen3_vl_2b_instruct_onnx/qwen3_vl_vision.onnx \
-    --prefill qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_prefill.onnx \
-    --decode qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_decode.onnx \
-    --processor Qwen/Qwen3-VL-2B-Instruct \
-    --image ./your_image.jpg \
-    --prompt "Describe this image." \
-    --max-new-tokens 128 \
-    --device cpu
-```
-
 ## 模型 I/O 说明
 
 ### Vision 模型
 
 **输入：**
 
-- `pixel_values`：`float16`，形状 `(seq_len, 1536)`
-
-- `grid_thw`：`int64`，形状 `(1, 3)`，分别表示 `t/h/w` 网格维度（可选；部分导出变体会把它固化进模型）
+- `pixel_values`：`float16`，形状 `(seq_len, 1536)`  
+  其中 `seq_len = grid_h * grid_w`，`grid_h = ceil(image_h / patch_size)`，`grid_w = ceil(image_w / patch_size)`。  
+  注意：当前导出脚本会把 `grid_thw` 固化在模型内部，因此 Vision ONNX 仅有一个输入。
 
 **输出：**
 
-- `image_embeds`：`float16`，形状 `(num_image_tokens, hidden_size)`
+- `image_embeds`：`float32`，形状 `(num_image_tokens, 2048)`
 
-- `deepstack_embeds`：`float16`，形状 `(num_deepstack, num_image_tokens, hidden_size)`
+- `deepstack_embeds`：`float32`，形状 `(3, num_image_tokens, 2048)`
 
 ### LLM Prefill 模型
 
@@ -113,27 +109,30 @@ python infer_qwen3_vl_2b_instruct_onnx.py \
 
 **输出：**
 
-- `logits`：`float16/float32`，形状 `(batch, seq_len, vocab_size)`
+- `logits`：`float16`，形状 `(batch, seq_len, vocab_size)`
 
-- `present_key_values`：`float16`，形状 `(2*num_layers, batch, num_kv_heads, seq_len, head_dim)`
+- `present_key_values`：`float16`，形状 `(2*num_layers, batch, num_kv_heads, seq_len, head_dim)`  
+  以 Qwen3-VL-2B-Instruct 为例：`2*num_layers=56`、`num_kv_heads=8`、`head_dim=128`。
 
 ### LLM Decode 模型
 
 **输入：**
 
-- `input_ids`：`int64`，形状 `(batch, 1)`（单 token）
+- `input_ids`：`int64`，形状 `(1, 1)`（单 token，固定 batch=1）
 
-- `attention_mask`：`int64`，形状 `(batch, total_seq_len)`
+- `attention_mask`：`int64`，形状 `(1, 512)`（固定 max_seq_len=512）
 
-- `position_ids`：`int64`，形状 `(4, batch, 1)`
+- `position_ids`：`int64`，形状 `(4, 1, 1)`
 
-- `past_key_values`：`float16`，形状 `(2*num_layers, batch, num_kv_heads, past_seq_len, head_dim)`
+- `past_key_values`：`float16`，形状 `(56, 1, 8, 512, 128)`（固定 cache）
+
+- `cache_pos`：`int64`，形状 `(1,)`（当前有效 cache 长度/位置）
 
 **输出：**
 
-- `logits`：`float16/float32`，形状 `(batch, 1, vocab_size)`
+- `logits`：`float16`，形状 `(1, 1, vocab_size)`
 
-- `present_key_values`：`float16`，形状 `(2*num_layers, batch, num_kv_heads, total_seq_len, head_dim)`
+- `present_key_values`：`float16`，形状 `(56, 1, 8, 512, 128)`
 
 ## MindSpore Lite 集成（可选）
 
@@ -146,7 +145,8 @@ converter_lite \
     --modelFile=./qwen3_vl_2b_instruct_onnx/qwen3_vl_vision.onnx \
     --outputFile=./qwen3_vl_2b_instruct_onnx/qwen3_vl_vision \
     --optimize=ascend_oriented \
-    --saveType=MINDIR
+    --saveType=MINDIR \
+    --configFile=./configs/config.ini
 
 # 转换 Prefill 模型
 converter_lite \
@@ -154,7 +154,8 @@ converter_lite \
     --modelFile=./qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_prefill.onnx \
     --outputFile=./qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_prefill \
     --optimize=ascend_oriented \
-    --saveType=MINDIR
+    --saveType=MINDIR \
+    --configFile=./configs/config.ini
 
 # 转换 Decode 模型
 converter_lite \
@@ -162,7 +163,17 @@ converter_lite \
     --modelFile=./qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_decode.onnx \
     --outputFile=./qwen3_vl_2b_instruct_onnx/qwen3_vl_llm_decode \
     --optimize=ascend_oriented \
-    --saveType=MINDIR
+    --saveType=MINDIR \
+    --configFile=./configs/config.ini
+```
+
+### config 文件示例
+
+#### `./configs/config.ini`
+
+```ini
+[acl_init_options]
+ge.exec.precision_mode = force_fp32
 ```
 
 随后用 MindSpore Lite 推理：
@@ -180,12 +191,53 @@ python infer_qwen3_vl_2b_instruct_mslite.py \
     --device-id 0
 ```
 
+### 推理参数说明
+
+| 参数 | 说明 | 默认值 |
+|---|---|---|
+| `--vision-model` | Vision MindIR 路径 | 必填 |
+| `--prefill-model` | Prefill MindIR 路径 | 必填 |
+| `--decode-model` | Decode MindIR 路径 | 必填 |
+| `--processor` | Processor 模型路径或目录 | `./Qwen3-VL-2B-Instruct` |
+| `--image` | 图片路径或 URL | `https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg` |
+| `--prompt` | 文本 prompt | `Describe this image.` |
+| `--max-new-tokens` | 最大生成 token 数 | `128` |
+| `--image-size` | Processor 图像尺寸 | `128` |
+| `--no-pad-to-square` | 禁用推理前将图片 pad 成正方形 | `False` |
+| `--device` | MindSpore Lite 设备（ascend/cpu） | `ascend` |
+| `--device-id` | Ascend device id | `0` |
+
+### 性能数据
+
+#### 性能测试结果
+
+测试模型：Qwen3-VL-2B-Instruct  
+测试条件：输出128 token
+测试环境：昇腾Atlas 300I Duo，CANN 8.5.0，MindSpore Lite 2.8.0
+
+| 指标                       | time |
+|--------------------------|------------|
+| Vision (ms)              | 12.895      |
+| Prefill (ms)             | 121.855      |
+| Total Decode (ms)        | 3863.855     |
+| **Avg decode step (ms)** | **30.42** |
+| Total (ms)               | 3998.605     |
+| E2E (ms)                 | 4354.784     |
+| **Throughput (tok/s)**   | **33.13** |
+
+#### 推理结果
+
+Input Prompt: Describe this image.  
+Generated Response: This is a photograph capturing a tender moment between a woman and a dog in the ocean at sunset.
+
+- **Setting**: The scene is set on a beach, with the ocean and a calm horizon visible in the background. The sun is low on the horizon, casting a warm, golden light across the water and the subjects.
+- **Subjects**: A woman with long, light brown hair is sitting on the sand, holding a small, dark-colored dog. The dog is wearing a light-colored, possibly beige or tan, harness. They are both facing each other, and the woman is holding a small, dark object, possibly a piece of
+
 ## 目录结构
 
 ```Shell
 qwen3_vl_2b_instruct/
 ├── export_qwen3_vl_2b_instruct_onnx.py          # ONNX 导出脚本（3 段模型）
-├── infer_qwen3_vl_2b_instruct_onnx.py           # ONNX 端到端推理脚本
 ├── infer_qwen3_vl_2b_instruct_mslite.py         # MindSpore Lite 推理脚本
 ├── README.md                        # 本说明
 └── qwen3_vl_2b_instruct_onnx/       # 导出模型目录

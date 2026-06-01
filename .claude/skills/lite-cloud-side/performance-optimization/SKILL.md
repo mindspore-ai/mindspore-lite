@@ -100,6 +100,49 @@ description: 基于Ascend硬件后端的自定义算子适配对接的性能优�
    - 固定输入 shape 多轮统计（warmup + measure）
    - 记录时延、吞吐、内存峰值
 
+## MindSpore Lite 推理免拷贝（Ascend）
+
+目标：降低 Host↔Device 拷贝与重复分配开销。免拷贝不仅适用于 Decoder/KV cache，自任何“模型输出会被下一阶段继续使用”的场景都适用，包括：
+
+- 多模型流水线：Model A 的输出作为 Model B 的输入（例如 vision → prefill → decode）
+- 自回归/迭代：同一模型的输出在下一步作为输入的一部分（例如 KV cache、状态量、循环 buffer）
+- 多分支融合：同一中间张量被多处复用（避免反复 `get_data_to_numpy()`）
+
+### 核心做法
+
+1. 全链路尽量用 Ascend 侧 Tensor 传递中间结果
+
+- 输入与输出尽量使用 `mslite.Tensor(shape=[...], dtype=..., device="ascend:<id>")` 创建并复用。
+- `Model.predict(inputs, outputs=...)` 使用预分配的输出 buffer，减少输出分配与拷贝。
+- 大张量（如特征、KV cache）尽量保持在 device，避免落到 numpy 后再回传。
+
+2. 复用 buffer / ping-pong
+
+- 当某个输出会成为下一步输入时，优先直接复用返回的 device Tensor。
+- 若希望配合 `outputs=` 固定输出 buffer，可用双 buffer 交替复用（ping-pong）避免覆盖：
+  - 第 N 次：`in=A`，`out=B`
+  - 第 N+1 次：`in=B`，`out=A`
+
+3. 仅对必须在 CPU 侧处理的数据回拷
+
+- 小张量（例如单步 logits、少量标量）可以 `get_data_to_numpy()` 之后在 CPU 做 `argmax/后处理`。
+- 大张量不回拷：将后处理尽量下沉到下一模型或后端算子。
+
+### 实施步骤（建议模板）
+
+1. 找出关键“中间大张量”（从 A 输出到 B 输入 / 下一步循环输入），把它们改成 device Tensor 传递。
+2. 预创建并缓存输入/输出 Tensor（按固定 shape/dtype），循环内只做 `set_data_from_numpy()` 更新小输入。
+3. 对照优化前后统计：
+   - 单阶段耗时（尤其是循环阶段的 avg step）
+   - 端到端耗时
+   - Host↔Device 拷贝次数（可通过日志/Profiling 侧面验证）
+
+### 注意事项
+
+- 运行前必须正确加载 Ascend/CANN 环境（例如 `source set_env.sh`，确保 `libgraph.so` 等可用），否则 Ascend device Tensor 分配会失败。
+- `Tensor(shape=..., dtype=..., device=...)` 是推荐构造方式；`Tensor(numpy_obj, device=...)` 依赖 Ascend 插件完成 device 内存分配，环境不完整时更容易失败。
+- 跨模型传递 Tensor 时需确保 dtype/shape/布局与下游模型输入严格匹配；不匹配时宁可显式做一次转换，也不要隐式回拷导致性能退化。
+
 ## 常见故障排障手册
 
 - `Cannot find input:  of node`
@@ -130,4 +173,3 @@ description: 基于Ascend硬件后端的自定义算子适配对接的性能优�
 3. 转换成功且产物可加载
 4. 推理功能可用，关键场景无回归
 5. 性能收益明确且可重复
-
