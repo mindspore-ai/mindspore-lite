@@ -22,7 +22,6 @@
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "pybind11/functional.h"
-#include "src/common/crypto.h"
 #include "include/api/multi_model_runner.h"
 
 namespace mindspore::lite {
@@ -129,27 +128,6 @@ Status PyModelUpdateWeights(Model *model, const std::vector<std::vector<MSTensor
   if (!model->UpdateWeights(new_weights).IsOk()) {
     return kLiteError;
   }
-  return kSuccess;
-}
-
-Status PyModelBuild(Model *model, const std::string &model_path, ModelType model_type,
-                    const std::shared_ptr<Context> &model_context, char *key, size_t key_len,
-                    const std::string &dec_mode, size_t num_parallel) {
-  size_t decrypt_len;
-  auto decrypt_data = Decrypt(&decrypt_len, model_path, reinterpret_cast<unsigned char *>(key), key_len, dec_mode);
-  if (decrypt_data == nullptr) {
-    MS_LOG(ERROR) << "Decrypt failed!";
-    (void)memset_s(key, key_len, 0, key_len);
-    return kLiteFileError;
-  }
-  CryptoInfo cryptoInfo{Key(key, key_len), dec_mode, num_parallel};
-  Status ret = model->impl()->Build(decrypt_data.get(), decrypt_len, model_type, model_context, model_path, cryptoInfo);
-  (void)memset_s(cryptoInfo.key.key, cryptoInfo.key.max_key_len, 0, cryptoInfo.key.max_key_len);
-  if (ret != kSuccess) {
-    (void)memset_s(key, key_len, 0, key_len);
-    return ret;
-  }
-  (void)memset_s(key, key_len, 0, key_len);
   return kSuccess;
 }
 
@@ -292,10 +270,6 @@ void ModelPyBind(const py::module &m) {
     .def("build_from_file",
          py::overload_cast<const std::string &, ModelType, const std::shared_ptr<Context> &>(&Model::Build),
          py::call_guard<py::gil_scoped_release>())
-    .def("build_from_buff_with_decrypt",
-         py::overload_cast<const void *, size_t, ModelType, const std::shared_ptr<Context> &, const Key &,
-                           const std::string &, const std::string &>(&Model::Build))
-    .def("build_from_file_with_decrypt", &PyModelBuild, py::call_guard<py::gil_scoped_release>())
     .def("load_config", py::overload_cast<const std::string &>(&Model::LoadConfig))
     .def("update_config", &PyModelUpdateConfig)
     .def("resize", &PyModelResize)

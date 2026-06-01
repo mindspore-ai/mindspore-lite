@@ -21,7 +21,6 @@
 #include <string>
 #include "flatbuffers/flatbuffers.h"
 #include "schema/inner/model_generated.h"
-#include "utils/crypto.h"
 
 namespace mindspore::lite {
 class MetaGraphSerializer {
@@ -31,10 +30,8 @@ class MetaGraphSerializer {
                                          size_t *data_size);
 
   // save serialized fb model
-  static int Save(const schema::MetaGraphT &graph, const std::string &output_path, const Byte *key = {},
-                  const size_t key_len = 0, const std::string &enc_mode = "");
-  static int Save(const schema::MetaGraphT &graph, const std::string &output_path, size_t *size, const Byte *key = {},
-                  const size_t key_len = 0, const std::string &enc_mode = "");
+  static int Save(const schema::MetaGraphT &graph, const std::string &output_path);
+  static int Save(const schema::MetaGraphT &graph, const std::string &output_path, size_t *size);
 
  private:
   MetaGraphSerializer() = default;
@@ -49,11 +46,9 @@ class MetaGraphSerializer {
 
   bool ExtraAndSerializeModelWeight(const schema::MetaGraphT &graph);
 
-  bool SerializeModelAndUpdateWeight(const schema::MetaGraphT &meta_graphT, const Byte *key, const size_t key_len,
-                                     const std::string &enc_mode, size_t *size = 0);
+  bool SerializeModelAndUpdateWeight(const schema::MetaGraphT &meta_graphT, size_t *size = 0);
 
-  bool SerializeModel(const void *content, size_t size, const Byte *key, const size_t key_len,
-                      const std::string &enc_mode);
+  bool SerializeModel(const void *content, size_t size);
 
   int64_t cur_offset_ = 0;
   std::string save_path_;

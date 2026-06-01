@@ -99,13 +99,6 @@ class Converter:
         Please construct the `Converter` class first, and then generate the model by executing the Converter.convert()
         method.
 
-        The encryption and decryption function is only valid when it is set to `MSLITE_ENABLE_MODEL_ENCRYPTION=on` at
-        compile time, and only supports Linux x86 platforms. `decrypt_key` and `encrypt_key` are string expressed in
-        hexadecimal. Linux platform users can use the `xxd` tool to convert the
-        key expressed in bytes into hexadecimal expressions. It should be noted that the encryption and decryption
-        algorithm has been updated in version 1.7, resulting in the new Python interface does not support the conversion
-        of MindSpore Lite's encryption exported models in version 1.6 and earlier.
-
     Examples:
         >>> # testcase based on cloud inference package.
         >>> import mindspore_lite as mslite
@@ -117,10 +110,6 @@ class Converter:
         >>> converter.input_data_type = mslite.DataType.FLOAT32
         >>> converter.output_data_type = mslite.DataType.FLOAT32
         >>> converter.save_type = mslite.ModelType.MINDIR
-        >>> converter.decrypt_key = "******"
-        >>> converter.decrypt_mode = "AES-GCM"
-        >>> converter.enable_encryption = True
-        >>> converter.encrypt_key = "******"
         >>> converter.infer = True
         >>> converter.optimize = "general"
         >>> converter.device = "Ascend"
@@ -137,7 +126,6 @@ class Converter:
         input_data_type: DataType.FLOAT32,
         output_data_type: DataType.FLOAT32,
         save_type: ModelType.MINDIR,
-        enable_encryption: True,
         infer: True,
         optimize: general,
         device: Ascend.
@@ -156,7 +144,6 @@ class Converter:
             f"input_data_type: {self.input_data_type},\n"
             f"output_data_type: {self.output_data_type},\n"
             f"save_type: {self.save_type},\n"
-            f"enable_encryption: {self.enable_encryption},\n"
             f"infer: {self.infer},\n"
             f"optimize: {self.optimize},\n"
             f"device: {self.device}."
@@ -177,46 +164,37 @@ class Converter:
     @decrypt_key.setter
     def decrypt_key(self, decrypt_key):
         """
-        Set the key used to decrypt the encrypted MindIR file
+        .. warning::
+            This function is not supported in the current version.
 
-        Args:
-            decrypt_key (str): Set the key used to decrypt the encrypted MindIR file, expressed in hexadecimal
-                characters. Only valid when fmk_type is FmkType.MINDIR.
-
-        Raises:
-            TypeError: `decrypt_key` is not a str.
+        Returns:
+            None.
         """
-        check_isinstance("decrypt_key", decrypt_key, str)
-        self._converter.set_decrypt_key(decrypt_key)
+        del decrypt_key
+        raise RuntimeError("This function is not supported in the current version!")
 
     @property
     def decrypt_mode(self):
         """
-        Get decryption mode for the encrypted MindIR file.
+        .. warning::
+            This function is not supported in the current version.
 
         Returns:
-            str, decryption mode for the encrypted MindIR file. Only valid when dec_key is set.
-            Options are ``"AES-GCM"``, ``"AES-CBC"``.
+            None.
         """
-        return self._converter.get_decrypt_mode()
+        raise RuntimeError("This function is not supported in the current version!")
 
     @decrypt_mode.setter
     def decrypt_mode(self, decrypt_mode):
         """
-        Set decryption mode for the encrypted MindIR file.
+        .. warning::
+            This function is not supported in the current version.
 
-        Args:
-            decrypt_mode (str): Set decryption mode for the encrypted MindIR file. Only valid when dec_key is set.
-                Options are "AES-GCM" | "AES-CBC".
-
-        Raises:
-            TypeError: `decrypt_mode` is not a str.
-            ValueError: `decrypt_mode` is neither "AES-GCM" nor "AES-CBC" when it is a str.
+        Returns:
+            None.
         """
-        check_isinstance("decrypt_mode", decrypt_mode, str)
-        if decrypt_mode not in ["AES-GCM", "AES-CBC"]:
-            raise ValueError(f"decrypt_mode must be in [AES-GCM, AES-CBC], but got {decrypt_mode}.")
-        self._converter.set_decrypt_mode(decrypt_mode)
+        del decrypt_mode
+        raise RuntimeError("This function is not supported in the current version!")
 
     @property
     def device(self):
@@ -254,28 +232,25 @@ class Converter:
     @property
     def enable_encryption(self):
         """
-        Get the status whether to encrypt the model when exporting.
+        .. warning::
+            This function is not supported in the current version.
 
         Returns:
-            bool, whether to encrypt the model when exporting. Export encryption can protect the integrity of the model,
-            but it will increase the initialization time at runtime.
+            None.
         """
-        return self._converter.get_enable_encryption()
+        raise RuntimeError("This function is not supported in the current version!")
 
     @enable_encryption.setter
     def enable_encryption(self, enable_encryption):
         """
-        Set whether to encrypt the model when exporting.
+        .. warning::
+            This function is not supported in the current version.
 
-        Args:
-            enable_encryption (bool): Whether to encrypt the model when exporting. Export encryption can protect the
-                integrity of the model, but it will increase the initialization time at runtime.
-
-        Raises:
-            TypeError: `enable_encryption` is not a bool.
+        Returns:
+            None.
         """
-        check_isinstance("enable_encryption", enable_encryption, bool)
-        self._converter.set_enable_encryption(enable_encryption)
+        del enable_encryption
+        raise RuntimeError("This function is not supported in the current version!")
 
     @property
     def encrypt_key(self):
@@ -291,17 +266,14 @@ class Converter:
     @encrypt_key.setter
     def encrypt_key(self, encrypt_key):
         """
-        Set the key used to encrypt the model when exporting, expressed in hexadecimal characters.
+        .. warning::
+            This function is not supported in the current version.
 
-        Args:
-            encrypt_key (str): Set the key used to encrypt the model when exporting, expressed in hexadecimal
-                characters. Only support when `decrypt_mode` is "AES-GCM", the key length is 16.
-
-        Raises:
-            TypeError: `encrypt_key` is not a str.
+        Returns:
+            None.
         """
-        check_isinstance("encrypt_key", encrypt_key, str)
-        self._converter.set_encrypt_key(encrypt_key)
+        del encrypt_key
+        raise RuntimeError("This function is not supported in the current version!")
 
     @property
     def infer(self):

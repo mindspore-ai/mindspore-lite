@@ -120,7 +120,6 @@ set(LITE_SRC ${API_SRC}
         ${SRC_DIR}/common/log.cc
         ${SRC_DIR}/common/prim_util.cc
         ${SRC_DIR}/common/tensor_util.cc
-        ${SRC_DIR}/common/decrypt.cc
         ${SRC_DIR}/litert/allocator.cc
         ${SRC_DIR}/litert/inner_allocator.cc
         ${SRC_DIR}/litert/runtime_allocator.cc

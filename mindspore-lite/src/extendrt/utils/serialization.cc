@@ -22,10 +22,7 @@
 #if !defined(_WIN32) && !defined(_WIN64)
 #include "extendrt/cxx_api/dlutils.h"
 #endif
-#include "utils/crypto.h"
 #include "extendrt/cxx_api/file_utils.h"
-#include "include/api/types.h"
-#include "src/common/crypto.h"
 
 namespace mindspore::infer {
 static mindspore::Status RealPath(const std::string &file, std::string *realpath_str) {
@@ -101,34 +98,15 @@ mindspore::Status Serialization::Load(const void *model_data, size_t data_size, 
     MS_LOG(ERROR) << err_msg.str();
     return mindspore::Status(kMEInvalidInput, err_msg.str());
   }
+  if (dec_key.len > 0) {
+    err_msg << "Encrypted model is not supported.";
+    MS_LOG(ERROR) << err_msg.str();
+    return mindspore::Status(kMEInvalidInput, err_msg.str());
+  }
   if (model_type == kMindIR) {
     mindspore::FuncGraphPtr anf_graph = nullptr;
     try {
-      if (dec_key.len > dec_key.max_key_len) {
-        err_msg << "The key length exceeds maximum length: " << dec_key.max_key_len;
-        MS_LOG(ERROR) << err_msg.str();
-        return mindspore::Status(kMEInvalidInput, err_msg.str());
-      } else if (dec_key.len == 0) {
-        if (mindspore::IsCipherFile(reinterpret_cast<const unsigned char *>(model_data))) {
-          err_msg << "Load model failed. The model_data may be encrypted, please pass in correct key.";
-          MS_LOG(ERROR) << err_msg.str();
-          return mindspore::Status(kMEInvalidInput, err_msg.str());
-        } else {
-          anf_graph =
-            ConvertStreamToFuncGraph(reinterpret_cast<const char *>(model_data), data_size, true, mindir_path);
-        }
-      } else {
-        size_t plain_data_size;
-        auto plain_data = lite::Decrypt(&plain_data_size, reinterpret_cast<const unsigned char *>(model_data),
-                                        data_size, dec_key.key, dec_key.len, dec_mode);
-        if (plain_data == nullptr) {
-          err_msg << "Load model failed. Please check the valid of dec_key and dec_mode.";
-          MS_LOG(ERROR) << err_msg.str();
-          return mindspore::Status(kMEInvalidInput, err_msg.str());
-        }
-        anf_graph = ConvertStreamToFuncGraph(reinterpret_cast<const char *>(plain_data.get()), plain_data_size, true,
-                                             mindir_path);
-      }
+      anf_graph = ConvertStreamToFuncGraph(reinterpret_cast<const char *>(model_data), data_size, true, mindir_path);
     } catch (const std::exception &e) {
       err_msg << "Failed to load model, model type: MindIR, model path: " << mindir_path << ", exception: " << e.what();
       MS_LOG(ERROR) << err_msg.str();

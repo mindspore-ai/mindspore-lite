@@ -100,8 +100,7 @@ public class Model {
         if (!isValid) {
             return false;
         }
-        return this.buildByBuffer(modelPtr, buffer, modelType, context.getMSContextPtr(), decKey, decMode,
-                                  croptoLibPath);
+        return false;
     }
 
     /**
@@ -138,8 +137,7 @@ public class Model {
         if (!isValid) {
             return false;
         }
-        return this.buildByPath(modelPtr, modelPath, modelType, context.getMSContextPtr(), decKey, decMode,
-                                croptoLibPath);
+        return false;
     }
 
     /**

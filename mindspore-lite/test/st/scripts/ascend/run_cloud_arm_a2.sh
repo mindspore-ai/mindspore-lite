@@ -391,7 +391,7 @@ cp -r ${ms_models_path}/single_matmul_model.onnx.mindir . || exit 1 # for Update
 cp -r ${ms_models_path}/deepaudio.onnx* . || exit 1 # for ModelParallelRunner 'for-loop' Predict ST
 cp -r ${ms_models_path}/resize.onnx.mindir . || exit 1 # for Model ST
 cp -r ${basepath}/../${config_folder}/ascend/prof.json . || exit 1 # for test profiling
-cp -r ${models_path}/single_matmul_model.onnx . || exit 1 # for Encrypt And Decrypt ST
+cp -r ${models_path}/single_matmul_model.onnx . || exit 1 # for dump graph ir ST
 cp -r ${models_path}/ge_test_mul.mindir . || exit 1 # for GE ST
 #for code coverage in A2
 MSLITE_COVERAGE_ARGS=""

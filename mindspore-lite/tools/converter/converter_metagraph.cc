@@ -31,7 +31,6 @@ namespace mindspore {
 namespace lite {
 namespace {
 constexpr size_t kFlatbuffersBuilderInitSize = 1024;
-constexpr size_t kEncMaxLen = 16;
 }  // namespace
 
 STATUS ConverterToMetaGraph::UpdateMetaGraphOutputName(schema::MetaGraphT *meta_graph,
@@ -133,22 +132,7 @@ STATUS ConverterToMetaGraph::Save(schema::MetaGraphT *meta_graph, const std::sha
     }
     *model_data = buffer;
   } else {
-    unsigned char encKey[kEncMaxLen] = {0};
-    size_t keyLen = 0;
-    auto status = InitEncryptKey(param, encKey, &keyLen);
-    if (status != RET_OK) {
-      if (memset_s(encKey, kEncMaxLen, 0, kEncMaxLen) != EOK) {
-        MS_LOG(ERROR) << "memset_s failed!";
-      }
-      MS_LOG(ERROR) << "check encryption failed!ret = " << status;
-      return status;
-    }
-
-    status = MetaGraphSerializer::Save(*meta_graph, param->output_file, encKey, keyLen, param->encrypt_mode);
-    if (memset_s(encKey, kEncMaxLen, 0, kEncMaxLen) != EOK) {
-      MS_LOG(ERROR) << "memset_s failed!";
-      return RET_ERROR;
-    }
+    auto status = MetaGraphSerializer::Save(*meta_graph, param->output_file);
     if (status != RET_OK) {
       MS_LOG(ERROR) << "SAVE GRAPH FAILED:" << status << " " << GetErrorInfo(status);
       return status;

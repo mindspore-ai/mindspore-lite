@@ -75,7 +75,6 @@ namespace {
 constexpr size_t kMaxNum1024 = 1024;
 constexpr size_t kPluginPathMaxNum = 10;
 constexpr int kPathLengthUpperLimit = 1024;
-constexpr size_t kEncMaxLen = 16;
 constexpr size_t kMaxInputShapeLen = 1e6;
 constexpr auto kFmk = "fmk";
 constexpr auto kModelFile = "modelFile";
@@ -84,8 +83,6 @@ constexpr auto kWeightFile = "weightFile";
 constexpr auto kFp16 = "fp16";
 constexpr auto kInputshape = "inputShape";
 constexpr auto kInputDataFormat = "inputDataFormat";
-constexpr auto kEncryptKey = "encryptKey";
-constexpr auto kEncryption = "encryption";
 constexpr auto kInputDataType = "inputDataType";
 constexpr auto kOutputDataType = "outputDataType";
 constexpr auto kInfer = "infer";
@@ -314,10 +311,6 @@ STATUS StoreConverterParameters(const std::shared_ptr<ConverterPara> &param) {
   conver_param_maps[mindspore::converter::KConverterParam][kFp16] = weight_fp16_ss.str();
   conver_param_maps[mindspore::converter::KConverterParam][kInputshape] = param_input_shape;
   conver_param_maps[mindspore::converter::KConverterParam][kInputDataFormat] = std::to_string(param->input_format);
-  conver_param_maps[mindspore::converter::KConverterParam][kEncryptKey] = param->encrypt_key;
-  std::stringstream encryption_ss;
-  encryption_ss << std::boolalpha << param->enable_encryption;
-  conver_param_maps[mindspore::converter::KConverterParam][kEncryption] = encryption_ss.str();
   conver_param_maps[mindspore::converter::KConverterParam][kInputDataType] =
     std::to_string(static_cast<int>(param->input_data_type));
   conver_param_maps[mindspore::converter::KConverterParam][kOutputDataType] =
@@ -822,19 +815,6 @@ int CheckSaveType(const std::shared_ptr<ConverterPara> &param) {
   return RET_OK;
 }
 
-int CheckEncrypt(const std::shared_ptr<ConverterPara> &param) {
-  if (param != nullptr) {
-    if (param->enable_encryption) {
-      if (param->encrypt_key.empty()) {
-        MS_LOG(ERROR) << "encryption param is true and encrypt_key param must be set. If you don't "
-                         "need to use model encryption, please set encryption param to false.";
-        return RET_INPUT_PARAM_INVALID;
-      }
-    }
-  }
-  return RET_OK;
-}
-
 int CheckTrainModel(const std::shared_ptr<ConverterPara> &param) {
   if (param != nullptr) {
     if (param->train_model) {
@@ -915,12 +895,6 @@ int CheckValueParam(const std::shared_ptr<ConverterPara> &param, bool is_multi_m
   ret = CheckSaveType(param);
   if (ret != RET_OK) {
     MS_LOG(ERROR) << "Check value of save_type failed.";
-    return RET_INPUT_PARAM_INVALID;
-  }
-
-  ret = CheckEncrypt(param);
-  if (ret != RET_OK) {
-    MS_LOG(ERROR) << "Check value of encrypt failed.";
     return RET_INPUT_PARAM_INVALID;
   }
 

@@ -36,7 +36,6 @@ class Flags : public virtual mindspore::lite::FlagParser {
   int InitInTensorShape() const;
   int InitGraphInputFormat();
   int InitGraphOutputFormat();
-  int InitEncrypt();
   int InitPreInference();
   int InitSaveFP16();
   int InitOptimize();
@@ -63,14 +62,10 @@ class Flags : public virtual mindspore::lite::FlagParser {
   bool trainModel = false;
   std::string inTensorShape;
   mutable std::map<std::string, std::vector<int64_t>> graph_input_shape_map;
-  std::string dec_key = "";
-  std::string dec_mode = "AES-GCM";
   std::string graphInputFormatStr;
   mindspore::Format graphInputFormat = mindspore::DEFAULT_FORMAT;
   std::string graphOutputFormatStr;
   mindspore::Format graphOutputFormat = mindspore::DEFAULT_FORMAT;
-  std::string encKeyStr;
-  std::string encMode = "AES-GCM";
   std::string inferStr;
   bool infer = false;
   std::string saveTypeStr;
@@ -80,8 +75,6 @@ class Flags : public virtual mindspore::lite::FlagParser {
   ModelType save_type = kMindIR_Lite;
 #endif
   std::string optimizeStr;
-  std::string encryptionStr = "false";
-  bool encryption = false;
   std::string device;
   std::string chip_name;
   std::string optimizeTransformerStr;
