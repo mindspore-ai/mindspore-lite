@@ -158,11 +158,11 @@ Status ModelImpl::BuildAndRun() {
 
 bool ModelImpl::IsEnablePreInference() {
   if (config_info_.find(kCommonSection) == config_info_.end()) {
-    return true;
+    return false;
   }
   auto common_config = config_info_.at(kCommonSection);
   if (common_config.find(kEnablePreInferenceKey) == common_config.end()) {
-    return true;
+    return false;
   }
   return common_config.at(kEnablePreInferenceKey) == kEnablePreInferenceValue;
 }

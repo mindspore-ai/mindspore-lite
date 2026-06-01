@@ -134,6 +134,7 @@ fi
 ./lite-test --gtest_filter=DepthToSpaceInt8Test.*
 ./lite-test --gtest_filter=SpaceToDepthInt8Test*
 ./lite-test --gtest_filter=AddInt8Test.*
+./lite-test --gtest_filter=SpaceToBatchInt8Test.*
 
 # test cases of generic api
 ./lite-test --gtest_filter="GenericApiTest*"
