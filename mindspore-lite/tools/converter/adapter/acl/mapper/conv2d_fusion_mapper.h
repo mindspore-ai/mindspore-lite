@@ -35,6 +35,10 @@ class Conv2DFusionMapper : public ConvBaseMapper {
 
  private:
   std::shared_ptr<CNode> CreateTransQuantParamV2(const FuncGraphPtr &func_graph, const CNodePtr &cnode);
+  bool ValidateQuantParams(const CNodePtr &cnode, float *scale_x1, std::vector<schema::QuantParamT> *quant_params_x2);
+  std::unique_ptr<float[]> CalculatePerChannelScales(float scale_x1,
+                                                     const std::vector<schema::QuantParamT> &quant_params_x2,
+                                                     size_t per_channel_size);
   CNodePtr InsertAdd(const FuncGraphPtr &func_graph, const CNodePtr &qaunt_conv_cnode, const AnfNodePtr &bias);
   int ReplaceConvToQuantConv(const FuncGraphPtr &func_graph, const CNodePtr &mm_cnode);
   int QuantConvMapper(const CNodePtr &cnode);

@@ -98,19 +98,50 @@ aclError ModelProcess::AclrtMemcpy(void *dst, size_t destMax, const void *src, s
   return ret;
 }
 
-Status ModelProcess::PreInitModelResource() {
-  model_desc_ = CALL_ASCEND_API(aclmdlCreateDesc);
-  aclError acl_ret = CALL_ASCEND_API(aclmdlGetDesc, model_desc_, infer_id_);
-  if (acl_ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "Read model desc failed, ret = " << acl_ret;
-    return Status(kLiteAclInitFailed, "Get model description information failed!");
-  }
+Status ModelProcess::InitDynamicShapeConfig() {
   dynamic_shape_options_.batch_size = GetDynamicBatch();
   dynamic_shape_options_.image_size = GetDynamicImage();
   dynamic_shape_options_.dynamic_dims = GetDynamicDims();
   auto status = CheckAndSetDynFlag();
   if (status != kSuccess) {
     MS_LOG(ERROR) << "Check and set dynamic flag failed";
+  }
+  return status;
+}
+
+Status ModelProcess::InitModelStream() {
+  auto &stream_sync_timeout = options_->model_exec_config.stream_sync_timeout;
+  if (stream_sync_timeout.Value() == lite::kModelExecStreamSyncTimeoutIgnoreValue) {
+    return kSuccess;
+  }
+  if (!CheckModelExecuteV2Support()) {
+    MS_LOG(WARNING) << "The current CANN version does not support specify stream_sync_timeout, please upgrade CANN.";
+    return kSuccess;
+  }
+  auto acl_ret = CALL_ASCEND_API(aclrtCreateStream, &stream_);
+  if (acl_ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Create stream failed.";
+    return Status(kLiteAclInitFailed, "Create stream failed.");
+  }
+  exec_config_handle_ = CALL_ASCEND_API(aclmdlCreateExecConfigHandle);
+  acl_ret = CALL_ASCEND_API(aclmdlSetExecConfigOpt, exec_config_handle_, ACL_MDL_STREAM_SYNC_TIMEOUT,
+                            &stream_sync_timeout.Value(), stream_sync_timeout.Size());
+  if (acl_ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Set stream sync timeout failed.";
+    return Status(kLiteAclInitFailed, "Set stream sync timeout failed.");
+  }
+  return kSuccess;
+}
+
+Status ModelProcess::PreInitModelResource() {
+  model_desc_ = CALL_ASCEND_API(aclmdlCreateDesc);
+  auto acl_ret = CALL_ASCEND_API(aclmdlGetDesc, model_desc_, infer_id_);
+  if (acl_ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Read model desc failed, ret = " << acl_ret;
+    return Status(kLiteAclInitFailed, "Get model description information failed!");
+  }
+  auto status = InitDynamicShapeConfig();
+  if (status != kSuccess) {
     return status;
   }
   status = InitInputsBuffer();
@@ -123,24 +154,9 @@ Status ModelProcess::PreInitModelResource() {
     MS_LOG(ERROR) << "Create output buffer failed.";
     return status;
   }
-  auto &stream_sync_timeout = options_->model_exec_config.stream_sync_timeout;
-  if (stream_sync_timeout.Value() != lite::kModelExecStreamSyncTimeoutIgnoreValue) {
-    if (CheckModelExecuteV2Support()) {
-      acl_ret = CALL_ASCEND_API(aclrtCreateStream, &stream_);
-      if (acl_ret != ACL_SUCCESS) {
-        MS_LOG(ERROR) << "Create stream failed.";
-        return Status(kLiteAclInitFailed, "Create stream failed.");
-      }
-      exec_config_handle_ = CALL_ASCEND_API(aclmdlCreateExecConfigHandle);
-      acl_ret = CALL_ASCEND_API(aclmdlSetExecConfigOpt, exec_config_handle_, ACL_MDL_STREAM_SYNC_TIMEOUT,
-                                &stream_sync_timeout.Value(), stream_sync_timeout.Size());
-      if (acl_ret != ACL_SUCCESS) {
-        MS_LOG(ERROR) << "Set stream sync timeout failed.";
-        return Status(kLiteAclInitFailed, "Set stream sync timeout failed.");
-      }
-    } else {
-      MS_LOG(WARNING) << "The current CANN version does not support specify stream_sync_timeout, please upgrade CANN.";
-    }
+  status = InitModelStream();
+  if (status != kSuccess) {
+    return status;
   }
   if (is_dynamic_input_) {
     data_input_num_ = input_infos_.size();
@@ -150,16 +166,9 @@ Status ModelProcess::PreInitModelResource() {
   if (IsDynamicShape() && data_input_num_ > 0) {
     data_input_num_ -= 1;
   }
-
   dynamic_shape_options_.input_format = GetInputFormat();
   dynamic_shape_options_.input_shapes = GetInputShape();
-
-  status = dyn_shape_proc_.Init(dynamic_shape_options_);
-  if (status != kSuccess) {
-    MS_LOG(ERROR) << "Init DynShapeProcess failed.";
-    return status;
-  }
-  return kSuccess;
+  return dyn_shape_proc_.Init(dynamic_shape_options_);
 }
 
 std::set<uint64_t> ModelProcess::GetDynamicBatch() {
@@ -332,8 +341,45 @@ Status ModelProcess::CheckAndSetDynFlag() {
   return kSuccess;
 }
 
-Status ModelProcess::InitInputsBuffer() {
+Status ModelProcess::InitSingleInput(size_t i) {
   aclError ret;
+  aclmdlIODims dims;
+  if (is_dynamic_output_) {
+    ret = CALL_ASCEND_API(aclmdlGetInputDims, model_desc_, i, &dims);
+  } else {
+    ret = CALL_ASCEND_API(aclmdlGetInputDimsV2, model_desc_, i, &dims);
+  }
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Get input shape failed, ret = " << ret;
+    return Status(kLiteAclInitFailed, "Get input shape failed!");
+  }
+  auto buffer_size = CALL_ASCEND_API(aclmdlGetInputSizeByIndex, model_desc_, i);
+  void *data_mem_buffer = nullptr;
+  auto data_type = CALL_ASCEND_API(aclmdlGetInputDataType, model_desc_, i);
+  if (data_type == aclDataType::ACL_DT_UNDEFINED) {
+    MS_LOG(ERROR) << "ModelProcess InitInputsBuffer ERROR" << data_type;
+    return Status(kLiteAclInitFailed, "Get model input data type is invalid.");
+  }
+  if (!is_dynamic_input_) {
+    auto status = CreateDataBuffer(&data_mem_buffer, buffer_size, inputs_);
+    if (status != kSuccess) {
+      MS_LOG(ERROR) << "Add input data buffer failed, buffer size " << buffer_size;
+      return status;
+    }
+    auto input_format = CALL_ASCEND_API(aclmdlGetInputFormat, model_desc_, i);
+    auto *desc = CALL_ASCEND_API(aclCreateTensorDesc, data_type, dims.dimCount, dims.dims, input_format);
+    CALL_ASCEND_API(aclmdlSetDatasetTensorDesc, inputs_, desc, i);
+    (void)CALL_ASCEND_API(aclDestroyTensorDesc, desc);
+  }
+  auto input_name = CALL_ASCEND_API(aclmdlGetInputNameByIndex, model_desc_, i);
+  MS_LOG(INFO) << "Name of input " << i << " is " << input_name;
+  std::vector<int64_t> shape(dims.dims, dims.dims + dims.dimCount);
+  input_infos_.emplace_back(
+    AclTensorInfo{data_mem_buffer, data_mem_buffer, buffer_size, buffer_size, data_type, shape, input_name});
+  return kSuccess;
+}
+
+Status ModelProcess::InitInputsBuffer() {
   inputs_ = CALL_ASCEND_API(aclmdlCreateDataset);
   if (inputs_ == nullptr) {
     MS_LOG(ERROR) << "Create input dataset failed";
@@ -342,49 +388,10 @@ Status ModelProcess::InitInputsBuffer() {
   size_t input_size = CALL_ASCEND_API(aclmdlGetNumInputs, model_desc_);
   MS_LOG(INFO) << "input_size = " << input_size;
   for (size_t i = 0; i < input_size; ++i) {
-    aclmdlIODims dims;
-    // To get correct dims with static AIPP configured, same result as aclmdlGetInputDims without static AIPP
-    if (is_dynamic_output_) {  // There is a bug for aclmdlGetInputDimsV2 when output is dynamic shape.
-      ret = CALL_ASCEND_API(aclmdlGetInputDims, model_desc_, i, &dims);
-    } else {
-      ret = CALL_ASCEND_API(aclmdlGetInputDimsV2, model_desc_, i, &dims);
+    auto status = InitSingleInput(i);
+    if (status != kSuccess) {
+      return status;
     }
-    if (ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "Get input shape failed, ret = " << ret;
-      return Status(kLiteAclInitFailed, "Get input shape failed!");
-    }
-    auto buffer_size = CALL_ASCEND_API(aclmdlGetInputSizeByIndex, model_desc_, i);
-    void *data_mem_buffer = nullptr;
-    if (!is_dynamic_input_) {
-      auto status = CreateDataBuffer(&data_mem_buffer, buffer_size, inputs_);
-      if (status != kSuccess) {
-        MS_LOG(ERROR) << "Add input data buffer failed, buffer size " << buffer_size;
-        return status;
-      }
-    }
-    aclDataType data_type = CALL_ASCEND_API(aclmdlGetInputDataType, model_desc_, i);
-    if (data_type == aclDataType::ACL_DT_UNDEFINED) {
-      MS_LOG(ERROR) << "ModelProcess InitInputsBuffer ERROR" << data_type;
-      return Status(kLiteAclInitFailed, "Get model input data type is invalid.");
-    }
-    std::vector<int64_t> shape(dims.dims, dims.dims + dims.dimCount);
-    std::string input_name = CALL_ASCEND_API(aclmdlGetInputNameByIndex, model_desc_, i);
-    if (!is_dynamic_input_) {
-      aclFormat input_format = CALL_ASCEND_API(aclmdlGetInputFormat, model_desc_, i);
-      aclTensorDesc *desc = CALL_ASCEND_API(aclCreateTensorDesc, data_type, dims.dimCount, dims.dims, input_format);
-      ret = CALL_ASCEND_API(aclmdlSetDatasetTensorDesc, inputs_, desc, i);
-      (void)CALL_ASCEND_API(aclDestroyTensorDesc, desc);
-      if (ret != ACL_SUCCESS) {
-        MS_LOG(ERROR) << "aclmdlSetDatasetTensorDesc failed, ret = " << ret;
-        return Status(kLiteAclInitFailed, "aclmdlSetDatasetTensorDesc failed!");
-      }
-    }
-    if (input_name.empty()) {
-      MS_LOG(WARNING) << "Get name of input " << i << " failed.";
-    }
-    MS_LOG(INFO) << "Name of input " << i << " is " << input_name;
-    input_infos_.emplace_back(
-      AclTensorInfo{data_mem_buffer, data_mem_buffer, buffer_size, buffer_size, data_type, shape, input_name});
   }
   MS_LOG(INFO) << "Create model inputs success";
   return kSuccess;
@@ -443,35 +450,36 @@ Status ModelProcess::InitOutputsBuffer() {
   return kSuccess;
 }
 
+Status ModelProcess::AllocDataBufferMem(void **data_mem_buffer, size_t buffer_size) {
+  aclError ret;
+  if (buffer_size == 0) {
+    return kSuccess;
+  }
+  if (!is_run_on_device_) {
+    ret = CALL_ASCEND_API(aclrtMalloc, data_mem_buffer, buffer_size, ACL_MEM_MALLOC_HUGE_FIRST);
+    std::string error_msg = "Malloc device buffer failed, buffer size " + std::to_string(buffer_size);
+    MS_CHECK_TRUE_MSG(ret == ACL_SUCCESS, Status(kLiteDeviceDataError, "Malloc device buffer failed!"),
+                      error_msg.c_str());
+  } else {
+    ret = CALL_ASCEND_API(aclrtMallocHost, data_mem_buffer, buffer_size);
+    std::string error_msg = "Malloc host buffer failed, buffer size " + std::to_string(buffer_size);
+    MS_CHECK_TRUE_MSG(ret == ACL_SUCCESS, Status(kLiteHostDataError, "Malloc host buffer failed!"), error_msg.c_str());
+  }
+  is_weight_input_from_external_device_mem_ = false;
+  return kSuccess;
+}
+
 Status ModelProcess::CreateDataBuffer(void **data_mem_buffer, size_t buffer_size, aclmdlDataset *dataset,
                                       bool use_existing_mem) {
-  aclError ret;
-  auto free_data_buffer = [this](void *dataMemBuffer) {
-    if (!is_run_on_device_) {
-      (void)CALL_ASCEND_API(aclrtFree, dataMemBuffer);
-    } else {
-      (void)CALL_ASCEND_API(aclrtFreeHost, dataMemBuffer);
-    }
+  MS_CHECK_TRUE_MSG(data_mem_buffer != nullptr, Status(kLiteNullptr, "Data mem buffer is nullptr!"),
+                    "Data mem buffer is nullptr!");
+  auto free_data_buffer = [this](void *buf) {
+    (void)(is_run_on_device_ ? CALL_ASCEND_API(aclrtFreeHost, buf) : CALL_ASCEND_API(aclrtFree, buf));
   };
-
-  if (data_mem_buffer == nullptr) {
-    MS_LOG(ERROR) << "Data mem buffer is nullptr.";
-    return Status(kLiteNullptr, "Data mem buffer is nullptr!");
-  }
   if (!use_existing_mem) {
-    if (buffer_size != 0) {
-      if (!is_run_on_device_) {
-        ret = CALL_ASCEND_API(aclrtMalloc, data_mem_buffer, buffer_size, ACL_MEM_MALLOC_HUGE_FIRST);
-        std::string error_msg = "Malloc device buffer failed, buffer size " + std::to_string(buffer_size);
-        MS_CHECK_TRUE_MSG(ret == ACL_SUCCESS, Status(kLiteDeviceDataError, "Malloc device buffer failed!"),
-                          error_msg.c_str());
-      } else {
-        ret = CALL_ASCEND_API(aclrtMallocHost, data_mem_buffer, buffer_size);
-        std::string error_msg = "Malloc host buffer failed, buffer size " + std::to_string(buffer_size);
-        MS_CHECK_TRUE_MSG(ret == ACL_SUCCESS, Status(kLiteHostDataError, "Malloc host buffer failed!"),
-                          error_msg.c_str());
-      }
-      is_weight_input_from_external_device_mem_ = false;
+    auto status = AllocDataBufferMem(data_mem_buffer, buffer_size);
+    if (status != kSuccess) {
+      return status;
     }
   } else {
     if (*data_mem_buffer == nullptr) {
@@ -489,7 +497,7 @@ Status ModelProcess::CreateDataBuffer(void **data_mem_buffer, size_t buffer_size
     }
     return Status(kLiteAclInitFailed, "Create Data Buffer failed");
   }
-  ret = CALL_ASCEND_API(aclmdlAddDatasetBuffer, dataset, data_buffer);
+  auto ret = CALL_ASCEND_API(aclmdlAddDatasetBuffer, dataset, data_buffer);
   if (ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "add data buffer failed, ret: " << ret;
     if (!use_existing_mem && *data_mem_buffer != nullptr) {
@@ -498,7 +506,6 @@ Status ModelProcess::CreateDataBuffer(void **data_mem_buffer, size_t buffer_size
     CALL_ASCEND_API(aclDestroyDataBuffer, data_buffer);
     return Status(kLiteAclInitFailed, "aclmdlAddDatasetBuffer failed.");
   }
-
   return kSuccess;
 }
 
@@ -569,6 +576,42 @@ Status ModelProcess::CreateModelOutputs() {
   return kSuccess;
 }
 
+bool ModelProcess::AllocAndMapPhysicalMemory(size_t alloc_size) {
+  aclrtMemLocation location = {static_cast<uint32_t>(options_->device_id), ACL_MEM_LOCATION_TYPE_DEVICE};
+  aclrtPhysicalMemProp prop = {ACL_MEM_HANDLE_TYPE_NONE, ACL_MEM_ALLOCATION_TYPE_PINNED, ACL_HBM_MEM_HUGE, location};
+  auto ret = CALL_ASCEND_API(aclrtMallocPhysical, &shareable_phy_addr_, alloc_size, &prop, 0);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "aclrtMallocPhysical failed! ret:" << ret;
+    return false;
+  }
+  ret = CALL_ASCEND_API(aclrtMemExportToShareableHandle, shareable_phy_addr_, ACL_MEM_HANDLE_TYPE_NONE, 0,
+                        &sharable_handle_);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "aclrtMemExportToShareableHandle failed! ret:" << ret;
+    return false;
+  }
+  std::vector<int> pids = lite::ConvertStringToIntVector(options_->pids);
+  MS_CHECK_TRUE_MSG(!pids.empty(), false, "pids is empty!");
+  ret = CALL_ASCEND_API(aclrtMemSetPidToShareableHandle, sharable_handle_, pids.data(), pids.size());
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Set pid to shareable_handle failed! ret:" << ret;
+    return false;
+  }
+  size_t alignment = 0;
+  ret = CALL_ASCEND_API(aclrtReserveMemAddress, &multiprocess_weight_ptr_, alloc_size, alignment, nullptr, 1);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "aclrtReserveMemAddress failed! ret:" << ret;
+    return false;
+  }
+  size_t offset = 0;
+  ret = CALL_ASCEND_API(aclrtMapMem, multiprocess_weight_ptr_, alloc_size, offset, shareable_phy_addr_, 0);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "aclrtmapmem failed! ret:" << ret;
+    return false;
+  }
+  return true;
+}
+
 bool ModelProcess::MainProcess(const void *om_data, size_t om_data_size) {
   size_t work_size = 0;
   size_t weight_size = 0;
@@ -578,38 +621,8 @@ bool ModelProcess::MainProcess(const void *om_data, size_t om_data_size) {
     return false;
   }
   size_t alloc_size = ((weight_size / kGranularitySize) + 1) * kGranularitySize;
-  aclrtMemLocation location = {static_cast<uint32_t>(options_->device_id), ACL_MEM_LOCATION_TYPE_DEVICE};
-  aclrtPhysicalMemProp prop = {ACL_MEM_HANDLE_TYPE_NONE, ACL_MEM_ALLOCATION_TYPE_PINNED, ACL_HBM_MEM_HUGE, location};
-  auto ret = CALL_ASCEND_API(aclrtMallocPhysical, &shareable_phy_addr_, alloc_size, &prop, 0);
-  if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "aclrtMallocPhysical failed! ret:" << ret;
-    return lite::RET_ERROR;
-  }
-  ret = CALL_ASCEND_API(aclrtMemExportToShareableHandle, shareable_phy_addr_, ACL_MEM_HANDLE_TYPE_NONE, 0,
-                        &sharable_handle_);
-  if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "aclrtMemExportToShareableHandle failed! ret:" << ret;
-    return lite::RET_ERROR;
-  }
-  std::vector<int> pids = lite::ConvertStringToIntVector(options_->pids);
-  MS_CHECK_TRUE_MSG(!pids.empty(), false, "pids is empty!");
-
-  ret = CALL_ASCEND_API(aclrtMemSetPidToShareableHandle, sharable_handle_, pids.data(), pids.size());
-  if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "Set pid to shareable_handle failed! ret:" << ret;
-    return lite::RET_ERROR;
-  }
-  size_t alignment = 0;
-  ret = CALL_ASCEND_API(aclrtReserveMemAddress, &multiprocess_weight_ptr_, alloc_size, alignment, nullptr, 1);
-  if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "aclrtReserveMemAddress failed! ret:" << ret;
-    return lite::RET_ERROR;
-  }
-  size_t offset = 0;
-  ret = CALL_ASCEND_API(aclrtMapMem, multiprocess_weight_ptr_, alloc_size, offset, shareable_phy_addr_, 0);
-  if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "aclrtmapmem failed! ret:" << ret;
-    return lite::RET_ERROR;
+  if (!AllocAndMapPhysicalMemory(alloc_size)) {
+    return false;
   }
   if (work_size == 0) {
     work_ptr_ = nullptr;
@@ -625,8 +638,7 @@ bool ModelProcess::MainProcess(const void *om_data, size_t om_data_size) {
   acl_ret = CALL_ASCEND_API(aclmdlLoadFromMemWithMem, om_data, om_data_size, &model_id_, work_ptr_, work_size,
                             multiprocess_weight_ptr_, weight_size);
   auto end_time = lite::GetTimeUs();
-  auto cost = end_time - start_time;
-  MS_LOG(INFO) << "[init time] call aclmdlLoadFromMemWithMem cost " << cost << " us";
+  MS_LOG(INFO) << "[init time] call aclmdlLoadFromMemWithMem cost " << (end_time - start_time) << " us";
   if (acl_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Call aclmdlLoadFromMemWithMem failed, ret = " << acl_ret;
     return false;
@@ -763,64 +775,62 @@ Status ModelProcess::LoadModelForUpdateWeight(const void *om_data, size_t om_dat
   return kSuccess;
 }
 
+Status ModelProcess::LoadModelByMode(const void *om_data, size_t om_data_size) {
+  MS_LOG(INFO) << "options->pids:" << options_->pids << ",options_->sharable_handle:" << options_->sharable_handle;
+  if (options_->is_bundle_model) {
+    auto status = LoadModelForUpdateWeight(om_data, om_data_size);
+    if (status != kSuccess) {
+      MS_LOG(ERROR) << "LoadModelForUpdateWeight failed.";
+    }
+    return status;
+  }
+  if (options_->pids != "") {
+    if (!MainProcess(om_data, om_data_size)) {
+      MS_LOG(ERROR) << "Main process failed!";
+      return Status(kLiteError, "Main process failed!");
+    }
+    return kSuccess;
+  }
+  if (options_->sharable_handle != 0) {
+    if (!SubProcess(om_data, om_data_size)) {
+      MS_LOG(ERROR) << "Sub process failed!";
+      return Status(kLiteError, "Sub process failed!");
+    }
+    return kSuccess;
+  }
+  auto start_time = lite::GetTimeUs();
+  auto acl_ret = CALL_ASCEND_API(aclmdlLoadFromMem, om_data, om_data_size, &model_id_);
+  auto end_time = lite::GetTimeUs();
+  MS_LOG(INFO) << "[init time] call aclmdlLoadFromMem cost " << (end_time - start_time) << " us";
+  if (acl_ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Call aclmdlLoadFromMem failed, ret = " << acl_ret;
+    return Status(kLiteAclInitFailed, "Call aclmdlLoadFromMem failed.");
+  }
+  infer_id_ = model_id_;
+  return kSuccess;
+}
+
 Status ModelProcess::Load(const void *om_data, size_t om_data_size) {
   if (loaded_) {
-    MS_LOG(INFO) << "Model has been loaded";
     return kSuccess;
   }
-  // model load model
-  MS_LOG(INFO) << "multi_model_sharing_mem_prepare: " << options_->multi_model_sharing_mem_prepare;
-  MS_LOG(INFO) << "multi_model_sharing_mem: " << options_->multi_model_sharing_mem;
+  MS_LOG(INFO) << "multi_model_sharing_mem_prepare: " << options_->multi_model_sharing_mem_prepare
+               << ", multi_model_sharing_mem: " << options_->multi_model_sharing_mem;
   if (options_->multi_model_sharing_mem_prepare) {
-    MS_CHECK_TRUE_MSG(options_->is_bundle_model == false,
-                      Status(kLiteError, "Update weight model don't support mem share!"),
+    MS_CHECK_TRUE_MSG(!options_->is_bundle_model, Status(kLiteError, "Update weight model don't support mem share!"),
                       "Update weight model don't support mem share!");
     auto status = AclSharedMemoryManager::GetInstance().PrepareMutiModelShare(om_data, om_data_size, options_);
-    if (status != kSuccess) {
-      MS_LOG(ERROR) << "PrepareMutiModelShare failed.";
-      return status;
+    if (status == kSuccess) {
+      MS_LOG(DEBUG) << "shared memory prepare success.";
     }
-    MS_LOG(DEBUG) << "shared memory prepare success.";
-    return kSuccess;
-  } else if (options_->multi_model_sharing_mem) {
-    auto status = ShareMemProcess(om_data, om_data_size);
-    if (status != kSuccess) {
-      MS_LOG(ERROR) << "ShareMemProcess failed!";
-      return status;
-    }
-  } else {
-    MS_LOG(INFO) << "options->pids:" << options_->pids << ",options_->sharable_handle:" << options_->sharable_handle;
-    if (options_->is_bundle_model) {
-      auto status = LoadModelForUpdateWeight(om_data, om_data_size);
-      if (status != kSuccess) {
-        MS_LOG(ERROR) << "LoadModelForUpdateWeight failed.";
-        return status;
-      }
-    } else if (options_->pids != "") {
-      if (!MainProcess(om_data, om_data_size)) {
-        MS_LOG(ERROR) << "Main process failed!";
-        return Status(kLiteError, "Main process failed!");
-      }
-    } else if (options_->sharable_handle != 0) {
-      if (!SubProcess(om_data, om_data_size)) {
-        MS_LOG(ERROR) << "Sub process failed!";
-        return Status(kLiteError, "Sub process failed!");
-      }
-    } else {
-      auto start_time = lite::GetTimeUs();
-      auto acl_ret = CALL_ASCEND_API(aclmdlLoadFromMem, om_data, om_data_size, &model_id_);
-      auto end_time = lite::GetTimeUs();
-      auto cost = end_time - start_time;
-      MS_LOG(INFO) << "[init time] call aclmdlLoadFromMem cost " << cost << " us";
-      if (acl_ret != ACL_SUCCESS) {
-        MS_LOG(ERROR) << "Call aclmdlLoadFromMem failed, ret = " << acl_ret;
-        return Status(kLiteAclInitFailed, "Call aclmdlLoadFromMem failed.");
-      }
-      infer_id_ = model_id_;
-    }
+    return status;
   }
-  // model init model resource
-  auto status = PreInitModelResource();
+  Status status =
+    options_->multi_model_sharing_mem ? ShareMemProcess(om_data, om_data_size) : LoadModelByMode(om_data, om_data_size);
+  if (status != kSuccess) {
+    return status;
+  }
+  status = PreInitModelResource();
   if (status != kSuccess) {
     (void)CALL_ASCEND_API(aclmdlUnload, model_id_);
     MS_LOG(ERROR) << "Pre init model resource failed.";
@@ -836,30 +846,7 @@ Status ModelProcess::Load(const void *om_data, size_t om_data_size) {
   return kSuccess;
 }
 
-Status ModelProcess::UnLoad() {
-  if (!loaded_) {
-    MS_LOG(INFO) << "Model has not been loaded or has been unloaded";
-    return kSuccess;
-  }
-  loaded_ = false;
-  aclError ret = ACL_SUCCESS;
-  if (options_->is_bundle_model) {
-    ret = CALL_ASCEND_API(aclmdlBundleUnload, model_id_);
-  } else {
-    ret = CALL_ASCEND_API(aclmdlUnload, model_id_);
-  }
-  if (ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "Unload model failed, ret = " << ret;
-    return Status(kLiteAclInitFailed, "Unload model failed!");
-  }
-  if (model_desc_ != nullptr) {
-    ret = CALL_ASCEND_API(aclmdlDestroyDesc, model_desc_);
-    if (ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "Unload model failed, ret = " << ret;
-      return Status(kLiteAclInitFailed, "Unload model failed!");
-    }
-    model_desc_ = nullptr;
-  }
+void ModelProcess::ReleaseModelResources() {
   DestroyInputsBuffer();
   DestroyOutputsBuffer();
   DestoryUpdateWeightBuffer();
@@ -880,6 +867,29 @@ Status ModelProcess::UnLoad() {
     CALL_ASCEND_API(aclrtFreePhysical, shareable_phy_addr_);
     shareable_phy_addr_ = nullptr;
   }
+}
+
+Status ModelProcess::UnLoad() {
+  if (!loaded_) {
+    MS_LOG(INFO) << "Model has not been loaded or has been unloaded";
+    return kSuccess;
+  }
+  loaded_ = false;
+  auto ret = options_->is_bundle_model ? CALL_ASCEND_API(aclmdlBundleUnload, model_id_)
+                                       : CALL_ASCEND_API(aclmdlUnload, model_id_);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Unload model failed, ret = " << ret;
+    return Status(kLiteAclInitFailed, "Unload model failed!");
+  }
+  if (model_desc_ != nullptr) {
+    ret = CALL_ASCEND_API(aclmdlDestroyDesc, model_desc_);
+    if (ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Unload model failed, ret = " << ret;
+      return Status(kLiteAclInitFailed, "Unload model failed!");
+    }
+    model_desc_ = nullptr;
+  }
+  ReleaseModelResources();
   if (stream_ != nullptr) {
     ret = CALL_ASCEND_API(aclrtDestroyStream, stream_);
     if (ret != ACL_SUCCESS) {
@@ -1102,6 +1112,54 @@ Status ModelProcess::ResizeDynamicInputShapeRange(const std::vector<ShapeVector>
   MS_LOG(INFO) << "Resize dynamic input shape range success";
   return kSuccess;
 }
+Status ModelProcess::SetDynamicBatchConfig(size_t index) {
+  int32_t batch_size = 0;
+  auto status = dyn_shape_proc_.CheckAndGetBatchSize(cur_input_shapes_, &batch_size);
+  if (status != kSuccess) {
+    MS_LOG(ERROR) << "Failed to check batch size";
+    return status;
+  }
+  MS_LOG(INFO) << "Set Batch size(" << batch_size << ") of input " << index << ".";
+  auto ret = CALL_ASCEND_API(aclmdlSetDynamicBatchSize, infer_id_, inputs_, index, batch_size);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Set dynamic batch size failed, model_id is " << infer_id_;
+    return Status(kLiteInputParamInvalid, "aclmdlSetDynamicBatchSize failed.");
+  }
+  return kSuccess;
+}
+
+Status ModelProcess::SetDynamicImageConfig(size_t index) {
+  int32_t height = 0;
+  int32_t width = 0;
+  auto status = dyn_shape_proc_.CheckAndGetImageSize(cur_input_shapes_, &height, &width);
+  if (status != kSuccess) {
+    MS_LOG(ERROR) << "Failed to check image size";
+    return status;
+  }
+  MS_LOG(INFO) << "Set Image size(" << height << "," << width << ") of input " << index << ".";
+  auto ret = CALL_ASCEND_API(aclmdlSetDynamicHWSize, infer_id_, inputs_, index, height, width);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Set Image size(H, W) of input " << index << " failed, model_id is " << infer_id_;
+    return Status(kLiteInputParamInvalid, "aclmdlSetDynamicHWSize failed.");
+  }
+  return kSuccess;
+}
+
+Status ModelProcess::SetDynamicDimsConfig(size_t index) {
+  aclmdlIODims dynamic_dims;
+  auto status = dyn_shape_proc_.CheckAndGetDynamicDims(cur_input_shapes_, &dynamic_dims);
+  if (status != kSuccess) {
+    MS_LOG(ERROR) << "CheckAndGetDynamicDims failed.";
+    return status;
+  }
+  auto ret = CALL_ASCEND_API(aclmdlSetInputDynamicDims, infer_id_, inputs_, index, &dynamic_dims);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "aclmdlSetInputDynamicDims failed.";
+    return Status(kLiteInputParamInvalid, "aclmdlSetInputDynamicDims failed.");
+  }
+  return kSuccess;
+}
+
 Status ModelProcess::ResizeDynamicBatchAndImageSize(const std::vector<ShapeVector> &new_shapes) {
   MS_CHECK_TRUE_MSG(model_desc_ != nullptr && inputs_ != nullptr, Status(kLiteNullptr, "Model desc is nullptr."),
                     "Model desc is nullptr.");
@@ -1111,50 +1169,22 @@ Status ModelProcess::ResizeDynamicBatchAndImageSize(const std::vector<ShapeVecto
     MS_LOG(ERROR) << "Get index of dynamic tensor failed";
     return Status(kLiteAclInitFailed, "aclmdlGetInputIndexByName failed.");
   }
+  cur_input_shapes_ = new_shapes;
+  Status status;
   if (IsDynamicBatchSize()) {
-    int32_t batch_size = 0;
-    auto status = dyn_shape_proc_.CheckAndGetBatchSize(new_shapes, &batch_size);
-    if (status != kSuccess) {
-      MS_LOG(ERROR) << "Failed to check batch size";
-      return status;
-    }
-    MS_LOG(INFO) << "Set Batch size(" << batch_size << ") of input " << index << ".";
-    ret = CALL_ASCEND_API(aclmdlSetDynamicBatchSize, infer_id_, inputs_, index, batch_size);
-    if (ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "Set dynamic batch size failed, model_id is " << infer_id_;
-      return Status(kLiteInputParamInvalid, "aclmdlSetDynamicBatchSize failed.");
-    }
+    status = SetDynamicBatchConfig(index);
   } else if (IsDynamicImageSize()) {
-    int32_t height = 0;
-    int32_t width = 0;
-    auto status = dyn_shape_proc_.CheckAndGetImageSize(new_shapes, &height, &width);
-    if (status != kSuccess) {
-      MS_LOG(ERROR) << "Failed to check image size";
-      return status;
-    }
-    MS_LOG(INFO) << "Set Image size(" << height << "," << width << ") of input " << index << ".";
-    ret = CALL_ASCEND_API(aclmdlSetDynamicHWSize, infer_id_, inputs_, index, height, width);
-    if (ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "Set Image size(H, W) of input " << index << " failed, model_id is " << infer_id_;
-      return Status(kLiteInputParamInvalid, "aclmdlSetDynamicHWSize failed.");
-    }
+    status = SetDynamicImageConfig(index);
   } else if (IsDynamicDims()) {
-    aclmdlIODims dynamic_dims;
-    auto status = dyn_shape_proc_.CheckAndGetDynamicDims(new_shapes, &dynamic_dims);
-    if (status != kSuccess) {
-      MS_LOG(ERROR) << "CheckAndGetDynamicDims failed.";
-      return status;
-    }
-    ret = CALL_ASCEND_API(aclmdlSetInputDynamicDims, infer_id_, inputs_, index, &dynamic_dims);
-    if (ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "aclmdlSetInputDynamicDims failed.";
-      return Status(kLiteInputParamInvalid, "aclmdlSetInputDynamicDims failed.");
-    }
+    status = SetDynamicDimsConfig(index);
   } else {
     MS_LOG(ERROR) << "Not support dynamic input";
     return Status(kLiteInputParamInvalid, "Not support dynamic input.");
   }
-  auto status = ResetInputSize(new_shapes);
+  if (status != kSuccess) {
+    return status;
+  }
+  status = ResetInputSize(new_shapes);
   if (status != kSuccess) {
     MS_LOG(ERROR) << "Reset input size failed";
     return status;
@@ -1162,9 +1192,8 @@ Status ModelProcess::ResizeDynamicBatchAndImageSize(const std::vector<ShapeVecto
   status = ResetOutputSize();
   if (status != kSuccess) {
     MS_LOG(ERROR) << "Reset output size failed";
-    return status;
   }
-  return kSuccess;
+  return status;
 }
 
 Status ModelProcess::CheckInputTensors(const std::vector<MSTensor> &input_tensors) {
@@ -1208,56 +1237,55 @@ Status ModelProcess::CheckInputTensors(const std::vector<MSTensor> &input_tensor
   return kSuccess;
 }
 
+void *ModelProcess::GetInputBuffer(size_t i, const MSTensor &input) {
+  auto &info = input_infos_[i];
+  auto device_data_addr = static_cast<MSTensor>(input).GetDeviceData();
+  auto host_data_addr = const_cast<void *>(input.Data().get());
+  if (device_data_addr != nullptr) {
+    auto input_device_id = input.GetDeviceId();
+    if (input_device_id == static_cast<int>(device_id_)) {
+      return device_data_addr;
+    }
+    auto data_copy_size = input.DataSize();
+    auto copy_result = allocator_->CopyDeviceDataToDevice(device_data_addr, info.device_data, data_copy_size,
+                                                          info.buffer_size, input_device_id, device_id_);
+    MS_CHECK_TRUE_MSG(copy_result == kSuccess, nullptr, "Copy input data from device to current device failed.");
+    return info.device_data;
+  }
+  auto data = host_data_addr;
+  auto size = input.DataSize();
+  if (!is_run_on_device_) {
+    auto ret = AclrtMemcpy(info.device_data, info.buffer_size, data, size, ACL_MEMCPY_HOST_TO_DEVICE);
+    if (ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Acl memcpy input " << i << " data to device failed, src input size: " << size
+                    << ", dst device buffer size: " << info.buffer_size;
+      return nullptr;
+    }
+    return info.device_data;
+  }
+  return data;
+}
+
 Status ModelProcess::CheckAndInitInput(const std::vector<MSTensor> &inputs) {
   MS_CHECK_TRUE_MSG(allocator_ != nullptr, Status(kLiteNullptr, "allocator_ is nullptr!"), "allocator_ is nullptr!");
-  // check inputs
   auto status = CheckInputTensors(inputs);
   if (status != kSuccess) {
     MS_LOG(ERROR) << "Check input tensor failed.";
     return status;
   }
-  aclError ret;
-  // copy inputs
   for (size_t i = 0; i < inputs.size(); ++i) {
     auto &info = input_infos_[i];
     auto input = inputs[i];
-    void *input_buffer = nullptr;
-    auto device_data_addr = static_cast<MSTensor>(input).GetDeviceData();
-    auto host_data_addr = const_cast<void *>(input.Data().get());
-    if (device_data_addr != nullptr) {
-      auto input_device_id = input.GetDeviceId();
-      if (input_device_id == static_cast<int>(device_id_)) {
-        input_buffer = device_data_addr;
-      } else {
-        // memcpy device data from src device to current device.
-        auto data_copy_size = input.DataSize();
-        auto copy_result = allocator_->CopyDeviceDataToDevice(device_data_addr, info.device_data, data_copy_size,
-                                                              info.buffer_size, input_device_id, device_id_);
-        MS_CHECK_TRUE_MSG(copy_result == kSuccess, kLiteMemoryFailed,
-                          "Copy input data from device to current device failed.");
-        input_buffer = info.device_data;
-      }
-    } else {
-      auto data = host_data_addr;
-      auto size = input.DataSize();
-      if (!is_run_on_device_) {
-        ret = AclrtMemcpy(info.device_data, info.buffer_size, data, size, ACL_MEMCPY_HOST_TO_DEVICE);
-        if (ret != ACL_SUCCESS) {
-          MS_LOG(ERROR) << "Acl memcpy input " << i << " data to device failed, src input size: " << size
-                        << ", dst device buffer size: " << info.buffer_size;
-          return Status(kLiteDataSizeError, "input data size is wrong!");
-        }
-        input_buffer = info.device_data;
-      } else {
-        input_buffer = data;
-      }
+    auto *input_buffer = GetInputBuffer(i, input);
+    if (input_buffer == nullptr) {
+      return Status(kLiteDataSizeError, "input data size is wrong!");
     }
     auto data_buffer = CALL_ASCEND_API(aclmdlGetDatasetBuffer, inputs_, i);
     if (data_buffer == nullptr) {
       MS_LOG(ERROR) << "Failed to get dataset buffer of input " << i;
       return Status(kLiteDeviceDataError, "Failed to get dataset buffer");
     }
-    ret = CALL_ASCEND_API(aclUpdateDataBuffer, data_buffer, input_buffer, info.buffer_size);
+    auto ret = CALL_ASCEND_API(aclUpdateDataBuffer, data_buffer, input_buffer, info.buffer_size);
     if (ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "Failed to update Data Buffer of input " << i << ", buffer size: " << info.buffer_size
                     << ", input shape: " << input.Shape();
@@ -1368,6 +1396,44 @@ Status ModelProcess::ExecuteModel(uint32_t model_id, aclmdlDataset *input, aclmd
   return kSuccess;
 }
 
+Status ModelProcess::ExecuteWithTiming() {
+  uint64_t start_time = 0;
+  auto env = std::getenv("GLOG_v");
+  bool print_time = (env != nullptr && (env[0] == kINFOLogLevel || env[0] == kDEBUGLogLevel));
+  if (print_time) {
+    start_time = lite::GetTimeUs();
+  }
+  if (is_sharing_workspace_) {
+    MS_LOG(DEBUG) << "Need to lock before aclmdlExecute.";
+    AclSharedMemoryManager::GetInstance().Lock(options_->device_id);
+  }
+  auto model_ret = ExecuteModel(infer_id_, inputs_, outputs_);
+  if (is_sharing_workspace_) {
+    MS_LOG(DEBUG) << "Unlock after aclmdlExecute.";
+    AclSharedMemoryManager::GetInstance().Unlock(options_->device_id);
+  }
+  if (print_time) {
+    auto end_time = lite::GetTimeUs();
+    MS_LOG(INFO) << "Model execute in " << end_time - start_time << " us";
+  }
+  return model_ret;
+}
+
+Status ModelProcess::ProcessPredictOutputs(const std::vector<MSTensor> *outputs) {
+  if (is_dynamic_output_) {
+    return ResetDynamicOutputTensor(outputs);
+  }
+  FreeResourceOutput(&output_infos_, outputs);
+  for (size_t i = 0; i < output_infos_.size(); ++i) {
+    auto &output_info = output_infos_[i];
+    auto *data_buffer = CALL_ASCEND_API(aclmdlGetDatasetBuffer, outputs_, i);
+    void *acl_device_data = CALL_ASCEND_API(aclGetDataBufferAddr, data_buffer);
+    output_info.device_data = acl_device_data;
+    output_info.cur_device_data = acl_device_data;
+  }
+  return kSuccess;
+}
+
 Status ModelProcess::PredictFromHost(const std::vector<MSTensor> &inputs, const std::vector<MSTensor> *outputs) {
   if (!loaded_) {
     MS_LOG(ERROR) << "Model has not been loaded";
@@ -1383,57 +1449,60 @@ Status ModelProcess::PredictFromHost(const std::vector<MSTensor> &inputs, const 
     MS_LOG(ERROR) << "Check output tensor failed";
     return status;
   }
-
-  uint64_t start_time = 0;
-  auto env = std::getenv("GLOG_v");
-  bool print_time = (env != nullptr && (env[0] == kINFOLogLevel || env[0] == kDEBUGLogLevel));
-  if (print_time) {
-    start_time = lite::GetTimeUs();
-  }
-
-  if (is_sharing_workspace_) {
-    MS_LOG(DEBUG) << "Need to lock before aclmdlExecute.";
-    AclSharedMemoryManager::GetInstance().Lock(options_->device_id);
-  }
-  auto model_ret = ExecuteModel(infer_id_, inputs_, outputs_);
-  if (is_sharing_workspace_) {
-    MS_LOG(DEBUG) << "Unlock after aclmdlExecute.";
-    AclSharedMemoryManager::GetInstance().Unlock(options_->device_id);
-  }
-
-  if (print_time) {
-    auto end_time = lite::GetTimeUs();
-    MS_LOG(INFO) << "Model execute in " << end_time - start_time << " us";
-  }
-
+  auto model_ret = ExecuteWithTiming();
   if (model_ret != kSuccess) {
     MS_LOG(ERROR) << "Execute Model Failed";
     return model_ret;
   }
-  if (is_dynamic_output_) {
-    status = ResetDynamicOutputTensor(outputs);
-    if (status != kSuccess) {
-      return status;
-    }
-  } else {
-    FreeResourceOutput(&output_infos_, outputs);
-    for (size_t i = 0; i < output_infos_.size(); ++i) {
-      auto &output_info = output_infos_[i];
-      aclDataBuffer *data_buffer = CALL_ASCEND_API(aclmdlGetDatasetBuffer, outputs_, i);
-      void *acl_device_data = CALL_ASCEND_API(aclGetDataBufferAddr, data_buffer);
-      output_info.device_data = acl_device_data;
-      output_info.cur_device_data = acl_device_data;
-    }
+  status = ProcessPredictOutputs(outputs);
+  if (status != kSuccess) {
+    return status;
   }
   status = GetOutputs(outputs);
   if (status != kSuccess) {
     MS_LOG(ERROR) << "Get outputs failed";
     return status;
   }
-  // The device_data is malloced by acl, user need to free the addr
   FreeResourceOutput(&output_infos_, outputs);
-
   return kSuccess;
+}
+
+void *ModelProcess::GetWeightInputBuffer(size_t i, MSTensor &kernel_input) {
+  auto &info = weight_input_infos_[i];
+  auto device_data_addr = kernel_input.GetDeviceData();
+  auto host_data_addr = kernel_input.Data().get();
+  if (device_data_addr != nullptr) {
+    auto input_device_id = kernel_input.GetDeviceId();
+    if (input_device_id == static_cast<int>(device_id_)) {
+      return device_data_addr;
+    }
+    auto data_copy_size = kernel_input.DataSize();
+    auto copy_result = allocator_->CopyDeviceDataToDevice(device_data_addr, info.device_data, data_copy_size,
+                                                          info.buffer_size, input_device_id, device_id_);
+    MS_CHECK_TRUE_MSG(copy_result == kSuccess, nullptr, "Copy input data from device to current device failed!");
+    return info.device_data;
+  }
+  auto data = host_data_addr;
+  auto size = kernel_input.DataSize();
+  if (size != info.buffer_size) {
+    MS_LOG(ERROR) << "Buffer size: " << info.buffer_size << "!= input size: " << size
+                  << ", current only support data type fp16!";
+    return nullptr;
+  }
+  if (data == nullptr) {
+    MS_LOG(ERROR) << "Input data is null!";
+    return nullptr;
+  }
+  if (!is_run_on_device_) {
+    auto acl_ret = AclrtMemcpy(info.device_data, info.buffer_size, data, size, ACL_MEMCPY_HOST_TO_DEVICE);
+    if (acl_ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Acl memcpy input " << i << " data to device failed, src size: " << size
+                    << ", dst buffer size: " << info.buffer_size << "!";
+      return nullptr;
+    }
+    return info.device_data;
+  }
+  return const_cast<void *>(data);
 }
 
 bool ModelProcess::CreateWeightsInput(const std::vector<MSTensor> &kernel_inputs) {
@@ -1449,44 +1518,9 @@ bool ModelProcess::CreateWeightsInput(const std::vector<MSTensor> &kernel_inputs
   for (size_t i = 0; i < kernel_inputs.size(); ++i) {
     auto kernel_input = kernel_inputs.at(i);
     auto &info = weight_input_infos_[i];
-    void *input_buffer = nullptr;
-    auto device_data_addr = kernel_input.GetDeviceData();
-    auto host_data_addr = kernel_input.Data().get();
-    if (device_data_addr != nullptr) {
-      auto input_device_id = kernel_input.GetDeviceId();
-      if (input_device_id == static_cast<int>(device_id_)) {
-        input_buffer = device_data_addr;
-      } else {
-        // memcpy device data from src device to current device.
-        auto data_copy_size = kernel_input.DataSize();
-        auto copy_result = allocator_->CopyDeviceDataToDevice(device_data_addr, info.device_data, data_copy_size,
-                                                              info.buffer_size, input_device_id, device_id_);
-        MS_CHECK_TRUE_MSG(copy_result == kSuccess, false, "Copy input data from device to current device failed!");
-        input_buffer = info.device_data;
-      }
-    } else {
-      auto data = host_data_addr;
-      auto size = kernel_input.DataSize();
-      if (size != info.buffer_size) {
-        MS_LOG(ERROR) << "Buffer size: " << info.buffer_size << "!="
-                      << "input size :" << size << ", current only support data type fp16!";
-        return false;
-      }
-      if (data == nullptr) {
-        MS_LOG(ERROR) << "Input data is null!";
-        return false;
-      }
-      if (!is_run_on_device_) {
-        auto acl_ret = AclrtMemcpy(info.device_data, info.buffer_size, data, size, ACL_MEMCPY_HOST_TO_DEVICE);
-        if (acl_ret != ACL_SUCCESS) {
-          MS_LOG(ERROR) << "Acl memcpy input " << i << " data to device failed, src input size: " << size
-                        << ", dst device buffer size: " << info.buffer_size << "!";
-          return false;
-        }
-        input_buffer = info.device_data;
-      } else {
-        input_buffer = const_cast<void *>(data);
-      }
+    auto *input_buffer = GetWeightInputBuffer(i, kernel_input);
+    if (input_buffer == nullptr) {
+      return false;
     }
     auto data_buffer = CALL_ASCEND_API(aclmdlGetDatasetBuffer, weight_inputs_, i);
     if (data_buffer == nullptr) {

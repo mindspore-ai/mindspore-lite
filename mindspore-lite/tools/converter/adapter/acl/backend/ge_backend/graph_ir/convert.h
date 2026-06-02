@@ -263,6 +263,8 @@ class BACKEND_EXPORT DfGraphConvertor {
   void SetNodeInput(AnfNodePtr node);
   void UpdateOpDesc(AnfNodePtr node);
   void SetSubgraph(const AnfNodePtr &node);
+  void ProcessBranchSubgraph(const AnfNodePtr &node, const CNodePtr &cnode);
+  void ProcessCallSubgraph(const AnfNodePtr &node);
   void ProcessSubgraph(const AnfNodePtr &node, const AnfNodePtr &branch_node, ParamIndexMap &branch_to_parent_node_map);
   void BuildSaveCheckpointGraph();
   void DrawCNode(const CNodePtr node, const OpAdapterPtr adpt);
@@ -297,6 +299,10 @@ class BACKEND_EXPORT DfGraphConvertor {
   bool IsNormalGraph() const { return graph_type_ == GraphType::kNormal; }
   void SetParamIndexMap(const std::vector<AnfNodePtr> &graphs);
   void SetWhileOutputHandle(const OperatorPtr &prev_while_op);
+  void AnalyzeConditionParams(const AnfNodePtr &cond_graph_node, const std::vector<AnfNodePtr> &cond_params,
+                              std::set<size_t> *used_params_index);
+  void AnalyzeBodyParams(const std::vector<AnfNodePtr> &graphs, const std::vector<AnfNodePtr> &cond_params,
+                         std::set<size_t> *used_params_index);
   void GetWhileUsedInputIndex(const std::vector<AnfNodePtr> &graphs);
 
   bool IsDataInput(const AnfNodePtr &node, const AnfNodePtr &input, size_t input_index);
@@ -332,6 +338,7 @@ class BACKEND_EXPORT DfGraphConvertor {
   void JudgeParamTransType(const bool &node_will_update, bool *as_ref_data, bool *as_constant) const;
   OperatorPtr SetGraphInputsForNotVar(const AnfNodePtr &it, int64_t *index, std::vector<Operator> *inputs);
   void GenFakeGraphInRefMode();
+  OperatorPtr CreateRefDataFromParameter(const AnfNodePtr &param);
   void ReplaceAllParameterToRefData();
 
   std::shared_ptr<AnfGraph> anf_graph_{nullptr};

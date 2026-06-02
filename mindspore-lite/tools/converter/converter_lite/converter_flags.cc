@@ -320,73 +320,80 @@ int Flags::PreInit(int argc, const char **argv) {
   return RET_OK;
 }
 
-int Flags::Init(int argc, const char **argv) {
+int Flags::InitModelFormat() {
   auto ret = InitSaveFP16();
   if (ret != RET_OK) {
     std::cerr << "Init save fp16 failed." << std::endl;
     return RET_INPUT_PARAM_INVALID;
   }
-
-  ret = InitInputOutputDataType();
-  if (ret != RET_OK) {
-    std::cerr << "Init input output datatype failed." << std::endl;
-    return RET_INPUT_PARAM_INVALID;
-  }
-
   ret = InitFmk();
   if (ret != RET_OK) {
     std::cerr << "Init fmk failed." << std::endl;
     return RET_INPUT_PARAM_INVALID;
   }
-
-  ret = InitTrainModel();
-  if (ret != RET_OK) {
-    std::cerr << "Init train model failed." << std::endl;
-    return RET_INPUT_PARAM_INVALID;
-  }
-
-  ret = InitInTensorShape();
-  if (ret != RET_OK) {
-    std::cerr << "Init input tensor shape failed." << std::endl;
-    return RET_INPUT_PARAM_INVALID;
-  }
-
-  ret = InitGraphInputFormat();
-  if (ret != RET_OK) {
-    std::cerr << "Init graph input format failed." << std::endl;
-    return RET_INPUT_PARAM_INVALID;
-  }
-
-  ret = InitGraphOutputFormat();
-  if (ret != RET_OK) {
-    std::cerr << "Init graph output format failed." << std::endl;
-    return RET_INPUT_PARAM_INVALID;
-  }
-
-  ret = InitOptimizeTransformer();
-  if (ret != RET_OK) {
-    std::cerr << "Init optimize transformers failed." << std::endl;
-    return RET_INPUT_PARAM_INVALID;
-  }
-
-  ret = InitPreInference();
-  if (ret != RET_OK) {
-    std::cerr << "Init pre inference failed." << std::endl;
-    return RET_INPUT_PARAM_INVALID;
-  }
-
   ret = InitSaveType();
   if (ret != RET_OK) {
     std::cerr << "Init save type failed." << std::endl;
     return RET_INPUT_PARAM_INVALID;
   }
+  ret = InitTrainModel();
+  if (ret != RET_OK) {
+    std::cerr << "Init train model failed." << std::endl;
+    return RET_INPUT_PARAM_INVALID;
+  }
+  return RET_OK;
+}
 
+int Flags::InitInputOutputConfig() {
+  auto ret = InitInputOutputDataType();
+  if (ret != RET_OK) {
+    std::cerr << "Init input output datatype failed." << std::endl;
+    return RET_INPUT_PARAM_INVALID;
+  }
+  ret = InitInTensorShape();
+  if (ret != RET_OK) {
+    std::cerr << "Init input tensor shape failed." << std::endl;
+    return RET_INPUT_PARAM_INVALID;
+  }
+  ret = InitGraphInputFormat();
+  if (ret != RET_OK) {
+    std::cerr << "Init graph input format failed." << std::endl;
+    return RET_INPUT_PARAM_INVALID;
+  }
+  ret = InitGraphOutputFormat();
+  if (ret != RET_OK) {
+    std::cerr << "Init graph output format failed." << std::endl;
+    return RET_INPUT_PARAM_INVALID;
+  }
+  return RET_OK;
+}
+
+int Flags::InitOptimizationConfig() {
+  auto ret = InitOptimizeTransformer();
+  if (ret != RET_OK) {
+    std::cerr << "Init optimize transformers failed." << std::endl;
+    return RET_INPUT_PARAM_INVALID;
+  }
+  ret = InitPreInference();
+  if (ret != RET_OK) {
+    std::cerr << "Init pre inference failed." << std::endl;
+    return RET_INPUT_PARAM_INVALID;
+  }
   ret = InitOptimize();
   if (ret != RET_OK) {
     std::cerr << "Init optimize failed" << std::endl;
     return RET_INPUT_PARAM_INVALID;
   }
+  return RET_OK;
+}
 
+int Flags::Init(int argc, const char **argv) {
+  auto ret = InitModelFormat();
+  if (ret != RET_OK) return ret;
+  ret = InitInputOutputConfig();
+  if (ret != RET_OK) return ret;
+  ret = InitOptimizationConfig();
+  if (ret != RET_OK) return ret;
   return RET_OK;
 }
 }  // namespace mindspore::converter

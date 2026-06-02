@@ -297,6 +297,7 @@ class ModelImpl {
   bool IsEnableModelSharing(const std::pair<const void *, size_t> &model_buff);
 
   Status UpdateSharingWorkspaceConfig(const void *model_buff, size_t model_size, const std::string &model_path);
+  Status SetSharingMemoryConfig(const std::string &model_path, ModelGroupFlag model_group_flag);
   void UpdateProvider();
   FuncGraphPtr DispatchLoadGraph(const void *model_buff, size_t model_size, const void *weight_data, size_t weight_size,
                                  const std::string &model_path);

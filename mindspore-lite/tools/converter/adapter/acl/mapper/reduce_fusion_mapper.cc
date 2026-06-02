@@ -167,19 +167,59 @@ STATUS GetAxes(const CNodePtr &cnode, int64_t mode, std::vector<int64_t> *axes, 
   return lite::RET_OK;
 }
 
+STATUS ReduceFusionMapper::HandleReduceProdCase(const CNodePtr &cnode, const PrimitivePtr &prim) {
+  auto axes_ptr = prim->GetAttr(ops::kAxes);
+  if (axes_ptr != nullptr) {
+    auto axes = GetValue<std::vector<int32_t>>(axes_ptr);
+    if (axes.empty()) {
+      auto new_inputs = {cnode->input(0), cnode->input(1)};
+      cnode->set_inputs(new_inputs);
+    }
+  }
+  return lite::RET_OK;
+}
+
+STATUS ReduceFusionMapper::ProcessAxesParam(const CNodePtr &cnode, const PrimitivePtr &prim, int64_t mode) {
+  auto axes_input = cnode->input(kNameReduceInputNum - 1);
+  CHECK_NULL_RETURN(axes_input);
+  if (!utils::isa<ParameterPtr>(axes_input)) {
+    MS_LOG(ERROR) << "The reduce node is not parameter.";
+    return lite::RET_ERROR;
+  }
+  ParameterPtr axes_param = axes_input->cast<ParameterPtr>();
+  CHECK_NULL_RETURN(axes_param);
+  DataInfo data_info;
+  if (FetchFromDefaultParam(axes_param, converter::kFmkTypeMs, &data_info, true) != RET_OK) {
+    MS_LOG(ERROR) << "fetch information from default param failed!";
+    return lite::RET_ERROR;
+  }
+  std::vector<int64_t> axes;
+  auto ret = GetAxes(cnode, mode, &axes, axes_param, data_info);
+  if (ret != lite::RET_OK) {
+    MS_LOG(ERROR) << "Get axes failed! ret:" << ret << "!";
+    return ret;
+  }
+  if (mode == static_cast<int64_t>(ReduceMode::Reduce_L2) || mode == static_cast<int64_t>(ReduceMode::Reduce_L1)) {
+    prim->AddAttr(ops::kAxis, MakeValue<std::vector<int64_t>>(axes));
+  }
+  ValueNodePtr value_node = NewValueNode<std::vector<int64_t>>(axes);
+  std::vector<int64_t> shape_vec_shape = {};
+  auto abstract = std::make_shared<abstract::AbstractTensor>(kInt64, shape_vec_shape);
+  value_node->set_abstract(abstract);
+  CHECK_NULL_RETURN(value_node);
+  cnode->set_input(kNameReduceInputNum - 1, value_node);
+  return lite::RET_OK;
+}
+
 STATUS ReduceFusionMapper::AdjustInput(const CNodePtr &cnode, const PrimitivePtr &prim) {
   MS_ASSERT(cnode != nullptr && prim != nullptr);
   auto attr_val = prim->GetAttr(ops::kMode);
   CHECK_NULL_RETURN(attr_val);
   int64_t mode = GetValue<int64_t>(attr_val);
   if (cnode->size() == kNameReduceInputNum && mode == static_cast<int64_t>(ReduceMode::Reduce_Prod)) {
-    auto axes_ptr = prim->GetAttr(ops::kAxes);
-    if (axes_ptr != nullptr) {
-      auto axes = GetValue<std::vector<int32_t>>(axes_ptr);
-      if (axes.empty()) {
-        auto new_inputs = {cnode->input(0), cnode->input(1)};
-        cnode->set_inputs(new_inputs);
-      }
+    auto ret = HandleReduceProdCase(cnode, prim);
+    if (ret != lite::RET_OK) {
+      return ret;
     }
   }
   if (cnode->size() == kNameReduceMinInputNum) {
@@ -195,38 +235,7 @@ STATUS ReduceFusionMapper::AdjustInput(const CNodePtr &cnode, const PrimitivePtr
     }
     return lite::RET_OK;
   }
-
-  auto axes_input = cnode->input(kNameReduceInputNum - 1);
-  CHECK_NULL_RETURN(axes_input);
-  if (!utils::isa<ParameterPtr>(axes_input)) {
-    MS_LOG(ERROR) << "The reduce node is not parameter.";
-    return lite::RET_ERROR;
-  }
-  ParameterPtr axes_param = axes_input->cast<ParameterPtr>();
-  CHECK_NULL_RETURN(axes_param);
-  DataInfo data_info;
-  if (FetchFromDefaultParam(axes_param, converter::kFmkTypeMs, &data_info, true) != RET_OK) {
-    MS_LOG(ERROR) << "fetch information from default param failed!";
-    return lite::RET_ERROR;
-  }
-
-  std::vector<int64_t> axes;
-  auto ret = GetAxes(cnode, mode, &axes, axes_param, data_info);
-  if (ret != lite::RET_OK) {
-    MS_LOG(ERROR) << "Get axes failed! ret:" << ret << "!";
-    return ret;
-  }
-  if (mode == static_cast<int64_t>(ReduceMode::Reduce_L2) || mode == static_cast<int64_t>(ReduceMode::Reduce_L1)) {
-    prim->AddAttr(ops::kAxis, MakeValue<std::vector<int64_t>>(axes));
-  }
-
-  ValueNodePtr value_node = NewValueNode<std::vector<int64_t>>(axes);
-  std::vector<int64_t> shape_vec_shape = {};
-  auto abstract = std::make_shared<abstract::AbstractTensor>(kInt64, shape_vec_shape);
-  value_node->set_abstract(abstract);
-  CHECK_NULL_RETURN(value_node);
-  cnode->set_input(kNameReduceInputNum - 1, value_node);
-  return lite::RET_OK;
+  return ProcessAxesParam(cnode, prim, mode);
 }
 
 REGISTER_PRIMITIVE_MAPPER(kNameReduceFusion, ReduceFusionMapper)

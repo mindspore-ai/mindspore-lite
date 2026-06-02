@@ -1291,7 +1291,7 @@ bool AnfAlgo::IsParameterWeight(const ParameterPtr &node) {
   return node->has_default();
 }
 
-bool AnfAlgo::IsOneOfOperator(const std::string &name) {
+static const std::set<std::string> &GetOptOperatorSet() {
   static const std::set<std::string> kOptOperatorSet = {kMomentumOpName,
                                                         kApplyMomentumOpName,
                                                         kApplyMomentumDOpName,
@@ -1354,9 +1354,11 @@ bool AnfAlgo::IsOneOfOperator(const std::string &name) {
                                                         kSparseApplyProximalAdagradDOpName,
                                                         kAdaptiveMaxPool2dOpName,
                                                         kApplyKerasMomentumDOpName};
+  return kOptOperatorSet;
+}
 
-  auto iter = kOptOperatorSet.find(name);
-  return iter != kOptOperatorSet.end();
+bool AnfAlgo::IsOneOfOperator(const std::string &name) {
+  return GetOptOperatorSet().find(name) != GetOptOperatorSet().end();
 }
 
 bool AnfAlgo::IsUpdateParameterKernel(const CNodePtr &node) {
@@ -2332,67 +2334,147 @@ TypeId AnfAlgo::GetSparseTypeIdAt(const AnfNodePtr &node, size_t idx) {
                              << node->abstract()->ToString();
 }
 
+template <typename T>
+static void FormatTensorDataImpl(const void *data, size_t data_size, const tensor::TensorPtr &tensor,
+                                 std::ostringstream &buf) {
+  auto addr = reinterpret_cast<const T *>(data);
+  buf << "v";
+  for (size_t i = 0; i < data_size; ++i) {
+    buf << *(addr + i) << ",";
+  }
+  buf << "s" << tensor::ShapeToString(tensor->shape());
+}
+
+static bool FormatSignedIntTensorData(TypeId tid, const void *data, size_t data_size, const tensor::TensorPtr &tensor,
+                                      std::ostringstream &buf) {
+  switch (tid) {
+    case kNumberTypeBool:
+      FormatTensorDataImpl<bool>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeInt:
+      FormatTensorDataImpl<int>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeInt8:
+      FormatTensorDataImpl<int8_t>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeInt16:
+      FormatTensorDataImpl<int16_t>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeInt32:
+      FormatTensorDataImpl<int32_t>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeInt64:
+      FormatTensorDataImpl<int64_t>(data, data_size, tensor, buf);
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool FormatUnsignedIntTensorData(TypeId tid, const void *data, size_t data_size, const tensor::TensorPtr &tensor,
+                                        std::ostringstream &buf) {
+  switch (tid) {
+    case kNumberTypeUInt8:
+      FormatTensorDataImpl<uint8_t>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeUInt16:
+      FormatTensorDataImpl<uint16_t>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeUInt32:
+      FormatTensorDataImpl<uint32_t>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeUInt64:
+      FormatTensorDataImpl<uint64_t>(data, data_size, tensor, buf);
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool FormatFloatTensorData(TypeId tid, const void *data, size_t data_size, const tensor::TensorPtr &tensor,
+                                  std::ostringstream &buf) {
+  switch (tid) {
+    case kNumberTypeFloat16:
+      FormatTensorDataImpl<float16>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeFloat64:
+      FormatTensorDataImpl<double>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeFloat:
+    case kNumberTypeFloat32:
+      FormatTensorDataImpl<float>(data, data_size, tensor, buf);
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool FormatExtFloatTensorData(TypeId tid, const void *data, size_t data_size, const tensor::TensorPtr &tensor,
+                                     std::ostringstream &buf) {
+  switch (tid) {
+    case kNumberTypeBFloat16:
+      FormatTensorDataImpl<bfloat16>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeHiFloat8:
+      FormatTensorDataImpl<hifloat8>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeFloat8E5M2:
+      FormatTensorDataImpl<float8_e5m2>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeFloat8E4M3FN:
+      FormatTensorDataImpl<float8_e4m3fn>(data, data_size, tensor, buf);
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool FormatComplexTensorData(TypeId tid, const void *data, size_t data_size, const tensor::TensorPtr &tensor,
+                                    std::ostringstream &buf) {
+  switch (tid) {
+    case kNumberTypeComplex64:
+      FormatTensorDataImpl<complex64>(data, data_size, tensor, buf);
+      return true;
+    case kNumberTypeComplex128:
+      FormatTensorDataImpl<complex128>(data, data_size, tensor, buf);
+      return true;
+    default:
+      return false;
+  }
+}
+
+static void FormatTensorDataByType(const tensor::TensorPtr &tensor, const TypePtr &dtype,
+                                   const std::ostringstream &buf_ref) {
+  auto cpu_tensor = tensor->cpu();
+  auto data = cpu_tensor->data_c();
+  auto data_size = tensor->DataSize();
+  std::ostringstream &buf = const_cast<std::ostringstream &>(buf_ref);
+  auto tid = dtype->type_id();
+
+  if (FormatSignedIntTensorData(tid, data, data_size, tensor, buf)) {
+    return;
+  }
+  if (FormatUnsignedIntTensorData(tid, data, data_size, tensor, buf)) {
+    return;
+  }
+  if (FormatFloatTensorData(tid, data, data_size, tensor, buf)) {
+    return;
+  }
+  if (FormatExtFloatTensorData(tid, data, data_size, tensor, buf)) {
+    return;
+  }
+  if (FormatComplexTensorData(tid, data, data_size, tensor, buf)) {
+    return;
+  }
+  MS_LOG(INTERNAL_EXCEPTION) << "The dtype of the constant input is " << dtype->ToString();
+}
+
 std::string AnfAlgo::GetTensorValueString(const tensor::TensorPtr &tensor) {
   MS_EXCEPTION_IF_NULL(tensor);
   auto dtype = tensor->Dtype();
   MS_EXCEPTION_IF_NULL(dtype);
-  size_t data_size = tensor->DataSize();
-  auto shape = tensor->shape();
   std::ostringstream buf;
-  auto fn = [&buf, data_size, &shape](auto addr) {
-    // Tensor value.
-    buf << "v";
-    for (size_t i = 0; i < data_size; ++i) {
-      buf << *(addr + i) << ",";
-    }
-    // Tensor shape is necessary.
-    // For example, the value of ones[3x4] and ones[4x3] are the same, but the shape is different.
-    buf << "s" << tensor::ShapeToString(shape);
-  };
-
-  auto cpu_tensor = tensor->cpu();
-
-  if (dtype->type_id() == kNumberTypeBool) {
-    fn(reinterpret_cast<bool *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeInt) {
-    fn(reinterpret_cast<int *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeInt8) {
-    fn(reinterpret_cast<int8_t *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeUInt8) {
-    fn(reinterpret_cast<uint8_t *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeInt16) {
-    fn(reinterpret_cast<int16_t *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeUInt16) {
-    fn(reinterpret_cast<uint16_t *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeInt32) {
-    fn(reinterpret_cast<int32_t *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeUInt32) {
-    fn(reinterpret_cast<uint32_t *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeInt64) {
-    fn(reinterpret_cast<int64_t *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeUInt64) {
-    fn(reinterpret_cast<uint64_t *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeFloat16) {
-    fn(reinterpret_cast<float16 *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeFloat64) {
-    fn(reinterpret_cast<double *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeFloat || dtype->type_id() == kNumberTypeFloat32) {
-    fn(reinterpret_cast<float *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeBFloat16) {
-    fn(reinterpret_cast<bfloat16 *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeHiFloat8) {
-    fn(reinterpret_cast<hifloat8 *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeFloat8E5M2) {
-    fn(reinterpret_cast<float8_e5m2 *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeFloat8E4M3FN) {
-    fn(reinterpret_cast<float8_e4m3fn *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeComplex64) {
-    fn(reinterpret_cast<complex64 *>(cpu_tensor->data_c()));
-  } else if (dtype->type_id() == kNumberTypeComplex128) {
-    fn(reinterpret_cast<complex128 *>(cpu_tensor->data_c()));
-  } else {
-    MS_LOG(INTERNAL_EXCEPTION) << "The dtype of the constant input is " << dtype->ToString();
-  }
+  FormatTensorDataByType(tensor, dtype, buf);
   return buf.str();
 }
 

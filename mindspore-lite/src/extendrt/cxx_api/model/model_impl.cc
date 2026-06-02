@@ -380,6 +380,40 @@ bool ModelImpl::IsEnableModelSharing(const std::pair<const void *, size_t> &mode
   return (model_buff_set.find(model_buff) != model_buff_set.end());
 }
 
+Status ModelImpl::SetSharingMemoryConfig(const std::string &model_path, ModelGroupFlag model_group_flag) {
+  MS_LOG(INFO) << "model_sharing_flag: true";
+  auto ret = UpdateConfig(lite::kInnerCommon, std::make_pair(lite::kInnerSharingWorkspace, "true"));
+  if (ret != kSuccess) {
+    MS_LOG(ERROR) << "UpdateConfig failed.";
+    return ret;
+  }
+  ret = UpdateConfig(lite::kInnerCommon, std::make_pair(lite::kInnerModelPath, model_path));
+  if (ret != kSuccess) {
+    MS_LOG(ERROR) << "UpdateConfig failed.";
+    return ret;
+  }
+  if (model_group_flag == ModelGroupFlag::kShareWeight) {
+    ret = UpdateConfig(lite::kInnerCommon, std::make_pair(lite::kInnerWeightspace, "true"));
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "UpdateConfig " << lite::kInnerCommon << " " << lite::kInnerWeightspace << " failed!";
+      return ret;
+    }
+  } else if (model_group_flag == ModelGroupFlag::kShareWorkspace) {
+    ret = UpdateConfig(lite::kInnerCommon, std::make_pair(lite::kInnerWorkspace, "true"));
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "UpdateConfig " << lite::kInnerCommon << " " << lite::kInnerWorkspace << " failed!";
+      return ret;
+    }
+  } else if (model_group_flag == ModelGroupFlag::kShareWeightAndWorkspace) {
+    ret = UpdateConfig(lite::kInnerCommon, std::make_pair(lite::kInnerWeightspaceWorkspace, "true"));
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "UpdateConfig " << lite::kInnerCommon << " " << lite::kInnerWeightspaceWorkspace << " failed!";
+      return ret;
+    }
+  }
+  return kSuccess;
+}
+
 Status ModelImpl::UpdateSharingWorkspaceConfig(const void *model_buff, size_t model_size,
                                                const std::string &model_path) {
   bool model_sharing_flag = false;
@@ -390,35 +424,9 @@ Status ModelImpl::UpdateSharingWorkspaceConfig(const void *model_buff, size_t mo
     model_sharing_flag = IsEnableModelSharing(std::make_pair(model_buff, model_size));
   }
   if (model_sharing_flag) {
-    MS_LOG(INFO) << "model_sharing_flag: " << model_sharing_flag;
-    auto ret = UpdateConfig(lite::kInnerCommon, std::make_pair(lite::kInnerSharingWorkspace, "true"));
+    auto ret = SetSharingMemoryConfig(model_path, model_group_flag);
     if (ret != kSuccess) {
-      MS_LOG(ERROR) << "UpdateConfig failed.";
       return ret;
-    }
-    ret = UpdateConfig(lite::kInnerCommon, std::make_pair(lite::kInnerModelPath, model_path));
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "UpdateConfig failed.";
-      return ret;
-    }
-    if (model_group_flag == ModelGroupFlag::kShareWeight) {
-      ret = UpdateConfig(lite::kInnerCommon, std::make_pair(lite::kInnerWeightspace, "true"));
-      if (ret != kSuccess) {
-        MS_LOG(ERROR) << "UpdateConfig " << lite::kInnerCommon << " " << lite::kInnerWeightspace << " failed!";
-        return ret;
-      }
-    } else if (model_group_flag == ModelGroupFlag::kShareWorkspace) {
-      ret = UpdateConfig(lite::kInnerCommon, std::make_pair(lite::kInnerWorkspace, "true"));
-      if (ret != kSuccess) {
-        MS_LOG(ERROR) << "UpdateConfig " << lite::kInnerCommon << " " << lite::kInnerWorkspace << " failed!";
-        return ret;
-      }
-    } else if (model_group_flag == ModelGroupFlag::kShareWeightAndWorkspace) {
-      ret = UpdateConfig(lite::kInnerCommon, std::make_pair(lite::kInnerWeightspaceWorkspace, "true"));
-      if (ret != kSuccess) {
-        MS_LOG(ERROR) << "UpdateConfig " << lite::kInnerCommon << " " << lite::kInnerWeightspaceWorkspace << " failed!";
-        return ret;
-      }
     }
   }
   auto pids = GetConfig(lite::kAscendContextSection, lite::kShareableWeightPidList);

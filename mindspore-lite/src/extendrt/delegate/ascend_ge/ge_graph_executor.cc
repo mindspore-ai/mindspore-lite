@@ -522,49 +522,65 @@ bool GeGraphExecutor::SetOfflineBuildModelCacheDir(std::map<std::string, std::st
   return true;
 }
 
+void GeGraphExecutor::SetGeDumpOptions(const std::map<std::string, std::string> &config,
+                                       std::map<std::string, std::string> *ge_options_ptr) {
+  MS_EXCEPTION_IF_NULL(ge_options_ptr);
+  auto &ge_options = *ge_options_ptr;
+  auto option_id = config.find(lite::kDumpPathKey);
+  if (option_id == config.end()) {
+    return;
+  }
+  auto dump_path = option_id->second;
+  auto real_path = lite::RealPath(dump_path.c_str());
+  std::ifstream ifs(real_path);
+  if (!ifs.good() || !ifs.is_open()) {
+    MS_LOG(EXCEPTION) << "The dump config file is not exit or open failed.";
+  }
+  nlohmann::json dump_cfg_json;
+  try {
+    dump_cfg_json = nlohmann::json::parse(ifs);
+  } catch (const nlohmann::json::parse_error &error) {
+    MS_LOG(EXCEPTION) << "parse json failed, please check the file.";
+  }
+  if (dump_cfg_json[kDump] != nullptr && dump_cfg_json[kDump][kDumpMode] != nullptr) {
+    ge_options["ge.exec.enableDump"] = "1";
+    ge_options["ge.exec.dumpMode"] = dump_cfg_json[kDump][kDumpMode].get<std::string>();
+  }
+}
+
+void GeGraphExecutor::SetGeProfilingOptions(const std::map<std::string, std::string> &config,
+                                            std::map<std::string, std::string> *ge_options_ptr) {
+  MS_EXCEPTION_IF_NULL(ge_options_ptr);
+  auto &ge_options = *ge_options_ptr;
+  auto option_id = config.find(lite::kProfilingPathKey);
+  if (option_id == config.end()) {
+    return;
+  }
+  auto profiling_path = option_id->second;
+  auto real_path = lite::RealPath(profiling_path.c_str());
+  std::ifstream ifs(real_path);
+  if (!ifs.good() || !ifs.is_open()) {
+    MS_LOG(EXCEPTION) << "The profiling_path config file is not exit or open failed.";
+  }
+  nlohmann::json profiling_cfg_json;
+  try {
+    profiling_cfg_json = nlohmann::json::parse(ifs);
+  } catch (const nlohmann::json::parse_error &error) {
+    MS_LOG(EXCEPTION) << "parse json failed, please check the file.";
+  }
+  if (profiling_cfg_json[kProfiling] != nullptr) {
+    ge_options["ge.exec.profilingMode"] = "1";
+    ge_options["ge.exec.profilingOptions"] = profiling_cfg_json[kProfiling].dump();
+  }
+}
+
 void GeGraphExecutor::GetGeSessionOptionsFromAscendContext(const std::map<std::string, std::string> &config,
                                                            std::map<std::string, std::string> *ge_options_ptr) {
   MS_EXCEPTION_IF_NULL(ge_options_ptr);
   auto &ge_options = *ge_options_ptr;
-  auto option_id = config.find(lite::kDumpPathKey);
-  if (option_id != config.end()) {
-    auto dump_path = option_id->second;
-    auto real_path = lite::RealPath(dump_path.c_str());
-    std::ifstream ifs(real_path);
-    if (!ifs.good() || !ifs.is_open()) {
-      MS_LOG(EXCEPTION) << "The dump config file is not exit or open failed.";
-    }
-    nlohmann::json dump_cfg_json;
-    try {
-      dump_cfg_json = nlohmann::json::parse(ifs);
-    } catch (const nlohmann::json::parse_error &error) {
-      MS_LOG(EXCEPTION) << "parse json failed, please check the file.";
-    }
-    if (dump_cfg_json[kDump] != nullptr && dump_cfg_json[kDump][kDumpMode] != nullptr) {
-      ge_options["ge.exec.enableDump"] = "1";
-      ge_options["ge.exec.dumpMode"] = dump_cfg_json[kDump][kDumpMode].get<std::string>();
-    }
-  }
-  option_id = config.find(lite::kProfilingPathKey);
-  if (option_id != config.end()) {
-    auto profiling_path = option_id->second;
-    auto real_path = lite::RealPath(profiling_path.c_str());
-    std::ifstream ifs(real_path);
-    if (!ifs.good() || !ifs.is_open()) {
-      MS_LOG(EXCEPTION) << "The profiling_path config file is not exit or open failed.";
-    }
-    nlohmann::json profiling_cfg_json;
-    try {
-      profiling_cfg_json = nlohmann::json::parse(ifs);
-    } catch (const nlohmann::json::parse_error &error) {
-      MS_LOG(EXCEPTION) << "parse json failed, please check the file.";
-    }
-    if (profiling_cfg_json[kProfiling] != nullptr) {
-      ge_options["ge.exec.profilingMode"] = "1";
-      ge_options["ge.exec.profilingOptions"] = profiling_cfg_json[kProfiling].dump();
-    }
-  }
-  option_id = config.find(lite::kGeVariableMemoryMaxSize);
+  SetGeDumpOptions(config, ge_options_ptr);
+  SetGeProfilingOptions(config, ge_options_ptr);
+  auto option_id = config.find(lite::kGeVariableMemoryMaxSize);
   if (option_id != config.end()) {
     ge_options["ge.variableMemoryMaxSize"] = option_id->second;
   }

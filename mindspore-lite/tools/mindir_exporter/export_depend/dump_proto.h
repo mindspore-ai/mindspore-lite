@@ -190,6 +190,11 @@ class IrExportBuilder {
   std::string GetPrimitiveUniqueName(const PrimitivePtr &primitive_ptr);
   bool BuildPrimitives();
   bool BuildPrimitivesByMap(std::map<PrimitivePtr, std::string> *primitives);
+  bool BuildModelParams(const FuncGraphPtr &root_graph, const std::vector<FuncGraphPtr> &child_graphs);
+  bool SetIntTypeToAttributeProto(const ValuePtr &value, mind_ir::TensorProto *tensor_proto);
+  bool SetFloatTypeToAttributeProto(const ValuePtr &value, mind_ir::TensorProto *tensor_proto);
+  bool SetIrsIntTypeToAttributeProto(const ValuePtr &value, mind_ir::AttributeProto *const attr_proto);
+  bool SetIrsFloatTypeToAttributeProto(const ValuePtr &value, mind_ir::AttributeProto *const attr_proto);
 
   ModelProtoPtr model_;
   mind_ir::NodeProto *last_node_{nullptr};

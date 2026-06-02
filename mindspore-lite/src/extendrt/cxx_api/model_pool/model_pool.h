@@ -121,6 +121,24 @@ class ModelPool {
 
   Status ParseDeviceIds(const std::shared_ptr<RunnerConfig> &runner_config, ModelPoolConfig *model_pool_config);
 
+  Status ValidateNumaNodes(int thread_num);
+  Status AssignNumaCoresForWorker(size_t bind_numa_id, int thread_num, std::vector<int> *physical_index,
+                                  std::vector<int> *logical_index, std::vector<int> *worker_bind_list);
+  Status SelectCoresForWorkers(int thread_num, const std::vector<int> &all_core_list,
+                               std::vector<std::vector<int>> *all_model_bind_list, std::vector<int> *numa_node_id);
+  Status BuildCoreList(const std::vector<int> &physical_core_list, const std::vector<int> &logical_core_list,
+                       std::vector<int> *all_core_list);
+  Status SetupCpuAllocator(int numa_id, const std::shared_ptr<Context> &context);
+  Status CreateSingleWorkerConfig(size_t worker_index, const std::shared_ptr<RunnerConfig> &runner_config,
+                                  const std::shared_ptr<Context> &init_context,
+                                  const std::vector<std::vector<int>> &all_worker_bind_list,
+                                  const std::vector<int> &numa_node_id, std::shared_ptr<WorkerConfig> *out_config);
+  Status SetWorkerModelConfig(std::shared_ptr<WorkerConfig> *worker_config);
+  Status InitNumaAndResources(const std::shared_ptr<RunnerConfig> &runner_config);
+  Status InitTaskQueue();
+  Status InitTaskPool();
+  void LogModelPoolConfig(const ModelPoolConfig &model_pool_config);
+
  private:
   // different workers get tasks from different task queues.
   // currently task queues are distinguished according to different numa node numbers.

@@ -122,6 +122,22 @@ class ModelProcess {
   MSTensor CreateOutputTensor(size_t index);
   Status ExecuteModel(uint32_t model_id, aclmdlDataset *inputs, aclmdlDataset *outputs);
 
+  // Helper methods for refactoring
+  Status InitDynamicShapeConfig();
+  Status InitModelStream();
+  Status InitSingleInput(size_t index);
+  Status AllocDataBufferMem(void **data_mem_buffer, size_t buffer_size);
+  bool AllocAndMapPhysicalMemory(size_t alloc_size);
+  Status LoadModelByMode(const void *om_data, size_t om_data_size);
+  void ReleaseModelResources();
+  Status SetDynamicBatchConfig(size_t index);
+  Status SetDynamicImageConfig(size_t index);
+  Status SetDynamicDimsConfig(size_t index);
+  void *GetInputBuffer(size_t i, const MSTensor &input);
+  Status ExecuteWithTiming();
+  Status ProcessPredictOutputs(const std::vector<MSTensor> *outputs);
+  void *GetWeightInputBuffer(size_t i, MSTensor &kernel_input);
+
   std::shared_ptr<AclModelOptions> options_;
   uint32_t model_id_ = UINT32_MAX;
   // if run one device(AICPU), there is no need to alloc device memory and copy inputs to(/outputs from) device
