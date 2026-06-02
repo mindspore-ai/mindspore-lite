@@ -28,13 +28,13 @@ else()
         set(flatbuffers_USE_STATIC_LIBS ON)
     endif()
     if(ENABLE_GITEE_EULER)
-        set(GIT_REPOSITORY "https://gitee.com/src-openeuler/flatbuffers.git")
+        set(GIT_REPOSITORY "https://atomgit.com/src-openeuler/flatbuffers.git")
         set(GIT_TAG "openEuler-22.03-LTS")
-        set(SHA256 "d94ef2fb0c22198c7ffe2a6044e864bd467ca70b8cfdc52720dc94313321777b")
+        set(SHA256 "6d45acd08897f141ccc2edff1d6717d6e48128fce79e547b01ddfbbcf8605bf7")
         set(FLATBUFFER_SRC "${CMAKE_BINARY_DIR}/_deps/flatbuffers-src")
-        set(FLATBUFFER_DIR "${FLATBUFFER_SRC}/flatbuffers-25.9.23")
+        set(FLATBUFFER_DIR "${FLATBUFFER_SRC}/flatbuffers-25.12.19")
         __download_pkg_with_git(flatbuffers ${GIT_REPOSITORY} ${GIT_TAG} ${SHA256})
-        execute_process(COMMAND tar -xf ${FLATBUFFER_SRC}/v25.9.23.tar.gz WORKING_DIRECTORY ${FLATBUFFER_SRC})
+        execute_process(COMMAND tar -xf ${FLATBUFFER_SRC}/v25.12.19.tar.gz WORKING_DIRECTORY ${FLATBUFFER_SRC})
 
         foreach(_SUBMODULE_FILE ${PKG_SUBMODULES})
             STRING(REGEX REPLACE "(.+)_(.+)" "\\1" _SUBMODEPATH ${_SUBMODULE_FILE})
@@ -44,11 +44,11 @@ else()
         endforeach()
     else()
     if(ENABLE_GITEE)
-        set(REQ_URL "https://gitee.com/mirrors/flatbuffers/repository/archive/v25.9.23.tar.gz")
-        set(SHA256 "d1dabbad1fbe86da23c630115139d02ea4e8d77b16710582197586432fc5758d")
+        set(REQ_URL "https://gitee.com/mirrors/flatbuffers/repository/archive/v25.12.19.tar.gz")
+        set(SHA256 "7b0c4d72021ccd9f0c221b8f9f2d385a2e8784895ad5bcd8eb883bf1cae56dd9")
     else()
-        set(REQ_URL "https://github.com/google/flatbuffers/archive/v25.9.23.tar.gz")
-        set(SHA256 "9102253214dea6ae10c2ac966ea1ed2155d22202390b532d1dea64935c518ada")
+        set(REQ_URL "https://github.com/google/flatbuffers/archive/v25.12.19.tar.gz")
+        set(SHA256 "f81c3162b1046fe8b84b9a0dbdd383e24fdbcf88583b9cb6028f90d04d90696a")
     endif()
     endif()
 
@@ -57,7 +57,7 @@ else()
     endif()
     if(APPLE)
         mindspore_add_pkg(flatbuffers
-                VER 25.9.23
+                VER 25.12.19
                 LIBS flatbuffers
                 EXE flatc
                 URL ${REQ_URL}
@@ -66,7 +66,7 @@ else()
     else()
         if(TARGET_AOS_ARM)
             mindspore_add_pkg(flatbuffers
-                    VER 25.9.23
+                    VER 25.12.19
                     LIBS flatbuffers
                     EXE flatc
                     URL ${REQ_URL}
@@ -75,7 +75,7 @@ else()
                     -DFLATBUFFERS_BUILD_TESTS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release)
         else()
             mindspore_add_pkg(flatbuffers
-                    VER 25.9.23
+                    VER 25.12.19
                     LIBS flatbuffers
                     EXE flatc
                     URL ${REQ_URL}
