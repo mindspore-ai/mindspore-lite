@@ -205,7 +205,7 @@ FuncGraphPtr ConverterFuncGraph::Load(const std::shared_ptr<ConverterPara> &para
   MindIRLoader mindir_loader;
   func_graph = mindir_loader.LoadMindIR(param->model_file);
   if (func_graph == nullptr) {
-    MS_LOG(ERROR) << "Load MindIR file failed. Please check model file and decrypt key.";
+    MS_LOG(ERROR) << "Load MindIR file failed. Please check model file.";
     return nullptr;
   }
   if (CvtFp64ModelToFp32(func_graph) != kSuccess) {

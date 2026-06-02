@@ -38,24 +38,6 @@ mindspore_lite.Converter
             - **RuntimeError** - 当 `config_file` 不是 ``""`` 时， `config_file` 文件路径不存在。
             - **RuntimeError** - 转换模型失败。
 
-    .. py:method:: decrypt_key
-        :property:
-
-        .. warning::
-            此功能在当前版本中不支持。
-
-        返回：
-            None
-
-    .. py:method:: decrypt_mode
-        :property:
-
-        .. warning::
-            此功能在当前版本中不支持。
-
-        返回：
-            None
-
     .. py:method:: device
         :property:
 
@@ -71,24 +53,6 @@ mindspore_lite.Converter
 
         返回：
             int，转换模型时的目标设备。仅对Ascend设备有效。
-
-    .. py:method:: enable_encryption
-        :property:
-
-        .. warning::
-            此功能在当前版本中不支持。
-
-        返回：
-            None
-
-    .. py:method:: encrypt_key
-        :property:
-
-        .. warning::
-            此功能在当前版本中不支持。
-
-        返回：
-            None
 
     .. py:method:: get_config_info()
 

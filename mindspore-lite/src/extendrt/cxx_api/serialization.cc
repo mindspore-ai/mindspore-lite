@@ -107,34 +107,12 @@ std::vector<std::string> ReadFileNames(const std::string &dir) {
   return files;
 }
 
-Key::Key(const char *dec_key, size_t key_len) {
-  len = 0;
-  if (key_len > max_key_len) {
-    MS_LOG(ERROR) << "Invalid key len " << key_len << " is more than max key len " << max_key_len;
-    return;
-  }
-
-  auto sec_ret = memcpy_s(key, max_key_len, dec_key, key_len);
-  if (sec_ret != EOK) {
-    MS_LOG(ERROR) << "memcpy_s failed, src_len = " << key_len << ", dst_len = " << max_key_len << ", ret = " << sec_ret;
-    return;
-  }
-
-  len = key_len;
-}
-
-Status Serialization::Load(const void *model_data, size_t data_size, ModelType model_type, Graph *graph,
-                           const Key &dec_key, const std::vector<char> &dec_mode) {
+Status Serialization::Load(const void *model_data, size_t data_size, ModelType model_type, Graph *graph) {
   MS_CHECK_TRUE_RET(model_data != nullptr, kLiteNullptr);
   MS_CHECK_TRUE_RET(graph != nullptr, kLiteNullptr);
   std::stringstream err_msg;
   if (graph == nullptr) {
     err_msg << "Output args graph is nullptr.";
-    MS_LOG(ERROR) << err_msg.str();
-    return Status(kMEInvalidInput, err_msg.str());
-  }
-  if (dec_key.len > 0) {
-    err_msg << "Encrypted model is not supported.";
     MS_LOG(ERROR) << err_msg.str();
     return Status(kMEInvalidInput, err_msg.str());
   }
@@ -198,66 +176,12 @@ Status Serialization::Load(const std::vector<char> &file, ModelType model_type, 
   return Status(kMEInvalidInput, err_msg.str());
 }
 
-Status Serialization::Load(const std::vector<char> &file, ModelType model_type, Graph *graph, const Key &dec_key,
-                           const std::vector<char> &dec_mode) {
-  std::stringstream err_msg;
-  if (graph == nullptr) {
-    MS_LOG(ERROR) << "Output args graph is nullptr.";
-    return Status(kMEInvalidInput, "Output args graph is nullptr.");
-  }
-
-  std::string file_path;
-  auto status = RealPath(CharToString(file), &file_path);
-  if (status != kSuccess) {
-    MS_LOG(ERROR) << status.GetErrDescription();
-    return status;
-  }
-
-  if (dec_key.len > 0) {
-    err_msg << "Encrypted model is not supported.";
-    MS_LOG(ERROR) << err_msg.str();
-    return Status(kMEInvalidInput, err_msg.str());
-  }
-
-  if (model_type == kMindIR) {
-    MindIRLoader mindir_loader;
-    auto anf_graph = mindir_loader.LoadMindIR(file_path);
-    if (anf_graph == nullptr) {
-      err_msg << "Load model failed.";
-      MS_LOG(ERROR) << err_msg.str();
-      return Status(kMEInvalidInput, err_msg.str());
-    }
-    auto graph_data = std::make_shared<Graph::GraphData>(anf_graph, kMindIR);
-    *graph = Graph(graph_data);
-    return kSuccess;
-  } else if (model_type == kOM) {
-    Buffer data = ReadFile(file_path);
-    if (data.Data() == nullptr) {
-      err_msg << "Read file " << file_path << " failed.";
-      MS_LOG(ERROR) << err_msg.str();
-      return Status(kMEInvalidInput, err_msg.str());
-    }
-    *graph = Graph(std::make_shared<Graph::GraphData>(data, kOM));
-    return kSuccess;
-  }
-
-  err_msg << "Unsupported ModelType " << model_type;
-  MS_LOG(ERROR) << err_msg.str();
-  return Status(kMEInvalidInput, err_msg.str());
-}
-
 Status Serialization::Load(const std::vector<std::vector<char>> &files, ModelType model_type,
-                           std::vector<Graph> *graphs, const Key &dec_key, const std::vector<char> &dec_mode) {
+                           std::vector<Graph> *graphs) {
   std::stringstream err_msg;
   if (graphs == nullptr) {
     MS_LOG(ERROR) << "Output args graph is nullptr.";
     return Status(kMEInvalidInput, "Output args graph is nullptr.");
-  }
-
-  if (dec_key.len > 0) {
-    err_msg << "Encrypted model is not supported.";
-    MS_LOG(ERROR) << err_msg.str();
-    return Status(kMEInvalidInput, err_msg.str());
   }
 
   if (files.size() == 1) {

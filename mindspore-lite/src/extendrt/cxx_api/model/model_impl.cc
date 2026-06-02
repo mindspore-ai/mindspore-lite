@@ -334,19 +334,6 @@ FuncGraphPtr ModelImpl::LoadGraphByBufferImpl(const void *model_buff, size_t mod
   return func_graph;
 }
 
-FuncGraphPtr ModelImpl::LoadGraphByBufferImpl(const void *model_data, size_t model_size, ModelType model_type,
-                                              const std::shared_ptr<Context> &model_context,
-                                              const std::string &model_path, const CryptoInfo &cryptoInfo) {
-  MS_LOG(ERROR) << "This interface has been deprecated.";
-  (void)model_data;
-  (void)model_size;
-  (void)model_type;
-  (void)model_context;
-  (void)model_path;
-  (void)cryptoInfo;
-  return nullptr;
-}
-
 bool ModelImpl::IsEnableModelSharing(const std::string &model_path, ModelGroupFlag *model_group_flag) {
   const std::map<std::string, ModelGroupFlag> &model_path_set = ModelManager::GetInstance().GetModelPath();
   auto it = model_path_set.find(model_path);
@@ -642,32 +629,6 @@ Status ModelImpl::Build(const std::string &model_path, ModelType model_type,
     return Status(kLiteFileError, "Failed to read buffer from model file!");
   }
   return BuildByBufferImpl(buffer.Data(), buffer.DataSize(), nullptr, 0, model_type, model_context, model_path);
-}
-
-Status ModelImpl::Build(const void *model_data, size_t data_size, ModelType model_type,
-                        const std::shared_ptr<Context> &model_context, const std::string &model_path,
-                        const CryptoInfo &cryptoInfo) {
-  MS_LOG(ERROR) << "This interface has been deprecated.";
-  (void)model_data;
-  (void)data_size;
-  (void)model_type;
-  (void)model_context;
-  (void)model_path;
-  (void)cryptoInfo;
-  return Status(kMEFailed, "This interface has been deprecated.");
-}
-
-Status ModelImpl::BuildByBufferImpl(const void *model_data, size_t model_size, ModelType model_type,
-                                    const std::shared_ptr<Context> &model_context, const std::string &model_path,
-                                    const CryptoInfo &cryptoInfo) {
-  MS_LOG(ERROR) << "This interface has been deprecated.";
-  (void)model_data;
-  (void)model_size;
-  (void)model_type;
-  (void)model_context;
-  (void)model_path;
-  (void)cryptoInfo;
-  return Status(kMEFailed, "This interface has been deprecated.");
 }
 
 Status ModelImpl::ConvertGraphOnline(const FuncGraphPtr &func_graph, const std::shared_ptr<Context> &model_context) {

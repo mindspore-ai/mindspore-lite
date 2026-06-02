@@ -81,17 +81,10 @@ static Buffer ReadFile(const std::string &file) {
   return buffer;
 }
 
-Status Serialization::Load(const void *model_data, size_t data_size, ModelType model_type, Graph *graph,
-                           const Key &dec_key, const std::vector<char> &dec_mode) {
+Status Serialization::Load(const void *model_data, size_t data_size, ModelType model_type, Graph *graph) {
   std::stringstream err_msg;
   if (graph == nullptr) {
     err_msg << "Output args graph is nullptr.";
-    MS_LOG(ERROR) << err_msg.str();
-    return Status(kMEInvalidInput, err_msg.str());
-  }
-
-  if (dec_key.len > 0) {
-    err_msg << "Encrypted model is not supported.";
     MS_LOG(ERROR) << err_msg.str();
     return Status(kMEInvalidInput, err_msg.str());
   }
@@ -160,34 +153,17 @@ Status Serialization::Load(const std::vector<char> &file, ModelType model_type, 
   return Status(kMEInvalidInput, err_msg.str());
 }
 
-Status Serialization::Load(const std::vector<char> &file, ModelType model_type, Graph *graph, const Key &dec_key,
-                           const std::vector<char> &dec_mode) {
-  MS_LOG(ERROR) << "This interface has been deprecated.";
-  (void)file;
-  (void)model_type;
-  (void)graph;
-  (void)dec_key;
-  (void)dec_mode;
-  return Status(kMEFailed, "This interface has been deprecated.");
-}
-
 Status Serialization::Load(const std::vector<std::vector<char>> &files, ModelType model_type,
-                           std::vector<Graph> *graphs, const Key &dec_key, const std::vector<char> &dec_mode) {
+                           std::vector<Graph> *graphs) {
   std::stringstream err_msg;
   if (graphs == nullptr) {
     MS_LOG(ERROR) << "Output args graph is nullptr.";
     return Status(kMEInvalidInput, "Output args graph is nullptr.");
   }
 
-  if (dec_key.len > 0) {
-    err_msg << "Encrypted model is not supported.";
-    MS_LOG(ERROR) << err_msg.str();
-    return Status(kMEInvalidInput, err_msg.str());
-  }
-
   if (files.size() == 1) {
     std::vector<Graph> result(files.size());
-    auto ret = Load(files[0], model_type, &result[0], dec_key, dec_mode);
+    auto ret = Load(files[0], model_type, &result[0]);
     *graphs = std::move(result);
     return ret;
   }

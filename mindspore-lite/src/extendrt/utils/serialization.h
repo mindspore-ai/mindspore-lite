@@ -31,8 +31,7 @@ namespace mindspore::infer {
 class Serialization {
  public:
   static mindspore::Status Load(const void *model_data, size_t data_size, mindspore::ModelType model_type,
-                                mindspore::Graph *graph, const mindspore::Key &dec_key = {},
-                                const std::string &dec_mode = kDecModeAesGcm, const std::string &mindir_path = "");
+                                mindspore::Graph *graph, const std::string &mindir_path = "");
 
  private:
   static mindspore::FuncGraphPtr ConvertStreamToFuncGraph(const char *buf, const size_t buf_size, bool is_lite,

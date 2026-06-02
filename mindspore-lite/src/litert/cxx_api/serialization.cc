@@ -27,24 +27,7 @@
 #include "src/litert/lite_session.h"
 
 namespace mindspore {
-Key::Key(const char *dec_key, size_t key_len) {
-  len = 0;
-  if (key_len >= max_key_len) {
-    MS_LOG(ERROR) << "Invalid key len " << key_len << " is more than max key len " << max_key_len;
-    return;
-  }
-
-  (void)memcpy(key, dec_key, key_len);
-  len = key_len;
-}
-
-Status Serialization::Load(const void *model_data, size_t data_size, ModelType model_type, Graph *graph,
-                           const Key &dec_key, const std::vector<char> &dec_mode) {
-  if (dec_key.len != 0 || CharToString(dec_mode) != kDecModeAesGcm) {
-    MS_LOG(ERROR) << "Unsupported Feature.";
-    return kLiteError;
-  }
-
+Status Serialization::Load(const void *model_data, size_t data_size, ModelType model_type, Graph *graph) {
   if (model_data == nullptr) {
     MS_LOG(ERROR) << "model data is nullptr.";
     return kLiteNullptr;
@@ -85,13 +68,7 @@ Status Serialization::Load(const void *model_data, size_t data_size, ModelType m
   return kSuccess;
 }
 
-Status Serialization::Load(const std::vector<char> &file, ModelType model_type, Graph *graph, const Key &dec_key,
-                           const std::vector<char> &dec_mode) {
-  if (dec_key.len != 0 || CharToString(dec_mode) != kDecModeAesGcm) {
-    MS_LOG(ERROR) << "Unsupported Feature.";
-    return kLiteError;
-  }
-
+Status Serialization::Load(const std::vector<char> &file, ModelType model_type, Graph *graph) {
   if (graph == nullptr) {
     MS_LOG(ERROR) << "graph is nullptr.";
     return kLiteNullptr;
@@ -134,7 +111,7 @@ Status Serialization::Load(const std::vector<char> &file, ModelType model_type, 
 }
 
 Status Serialization::Load(const std::vector<std::vector<char>> &files, ModelType model_type,
-                           std::vector<Graph> *graphs, const Key &dec_key, const std::vector<char> &dec_mode) {
+                           std::vector<Graph> *graphs) {
   MS_LOG(ERROR) << "Unsupported Feature.";
   return kLiteError;
 }

@@ -136,9 +136,6 @@ class Model(BaseModel):
             context=None,
             config_path="",
             config_dict: dict = None,
-            dec_key=None,
-            dec_mode="AES-GCM",
-            dec_num_parallel=0,
     ):
         """
         Load and build a model from file.
@@ -180,26 +177,16 @@ class Model(BaseModel):
                     config_dict = {"ascend_context" : {"rank_table_file" : "path_b"}}
 
                 The the path_b from the config_dict will be used to compile the model.
-            dec_key (Bytes, optional) - key for decrypting model file.
-                Default: ``None``.
-            dec_mode (str, optional) - decryption mode, currently support ``"AES-GCM"``, ``"AES-CBC"``, ``"SM4-CBC"``.
-                Default: ``"AES-GCM"``.
-            dec_num_parallel (int, optional) - Number of threads used during decryption, limited to 0~64.
-                Default: ``0``.
 
         Raises:
             TypeError: `model_path` is not a str.
             TypeError: `model_type` is not a ModelType.
             TypeError: `context` is neither a Context nor ``None``.
             TypeError: `config_path` is not a str.
-            TypeError: `dec_key` is not Bytes.
-            TypeError: `dec_mode` is not str.
-            TypeError: `dec_num_parallel` is not int.
             RuntimeError: `model_path` does not exist.
             RuntimeError: `config_path` does not exist.
             RuntimeError: load configuration by `config_path` failed.
             RuntimeError: build from file failed.
-            RuntimeError: `dec_mode` is an empty string.
 
         Examples:
             >>> # Testcase 1: build from file with default cpu context.
@@ -232,10 +219,6 @@ class Model(BaseModel):
             model_type_ = _c_lite_wrapper.ModelType.kMindIR
 
         self._apply_config(config_path, config_dict)
-        del dec_mode
-        del dec_num_parallel
-        if dec_key:
-            raise RuntimeError("Encryption and decryption are unavailable for this function in the current version.")
         ret = self._model.build_from_file(self.model_path_, model_type_, context._inner_context)
         if not ret.IsOk():
             raise RuntimeError(f"build_from_file failed! Error is {ret.ToString()}")
