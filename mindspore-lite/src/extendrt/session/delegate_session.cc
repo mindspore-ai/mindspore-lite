@@ -445,7 +445,7 @@ static std::shared_ptr<InferSession> DelegateSessionCreator(const std::shared_pt
   auto device_type = device_contexts.at(0)->GetDeviceType();
   auto provider = device_contexts.at(0)->GetProvider();
   if (device_type == DeviceType::kAscend) {
-    if (lite::IsGe(provider)) {
+    if (provider == "ge") {
       if (!lite::AscendGeExecutorPlugin::GetInstance().Register()) {
         MS_LOG(WARNING) << "Failed to register AscendGe plugin";
         return nullptr;
