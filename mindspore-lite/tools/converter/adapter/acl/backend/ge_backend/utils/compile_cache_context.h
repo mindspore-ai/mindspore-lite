@@ -21,11 +21,11 @@
 
 #include <string>
 #include <map>
-#include <unordered_map>
 #include <vector>
-#include <unordered_set>
 
 #include "include/utils/visible.h"
+#include "utils/hash_map.h"
+#include "utils/hash_set.h"
 #include "utils/log_adapter.h"
 #include "base/base.h"
 
@@ -58,14 +58,12 @@ class COMMON_EXPORT CompileCacheContext {
   CompileCacheContext(const CompileCacheContext &) = delete;
   CompileCacheContext &operator=(const CompileCacheContext &) = delete;
   static CompileCacheContext &GetInstance() noexcept;
-  void SetFrontNameToFrontNode(const std::unordered_map<std::string, AnfNodePtr> &map) {
-    front_name_to_front_node_ = map;
-  }
+  void SetFrontNameToFrontNode(const HashMap<std::string, AnfNodePtr> &map) { front_name_to_front_node_ = map; }
   AnfNodePtr FindFrontNodeByFrontName(const std::string &name) const;
   void ClearFrontNameToFrontNode() { front_name_to_front_node_.clear(); }
   void InsertFrontNameToFrontNode(const std::string &name, const AnfNodePtr &node);
 
-  void SetBackNameToBackNode(const std::unordered_map<std::string, AnfNodePtr> &map) { back_name_to_back_node_ = map; }
+  void SetBackNameToBackNode(const HashMap<std::string, AnfNodePtr> &map) { back_name_to_back_node_ = map; }
   AnfNodePtr FindBackNodeByBackName(const std::string &name) const;
   void ClearBackNameToBackNode() { back_name_to_back_node_.clear(); }
   void InsertBackNameToBackNode(const std::string &name, const AnfNodePtr &node);
@@ -119,8 +117,8 @@ class COMMON_EXPORT CompileCacheContext {
   CompileCacheContext() = default;
   ~CompileCacheContext() = default;
   // name is unique for node here.
-  std::unordered_map<std::string, AnfNodePtr> front_name_to_front_node_;
-  std::unordered_map<std::string, AnfNodePtr> back_name_to_back_node_;
+  HashMap<std::string, AnfNodePtr> front_name_to_front_node_;
+  HashMap<std::string, AnfNodePtr> back_name_to_back_node_;
 
   // The number of front-end and back-end graphs is one-to-many per compile.
   FuncGraphPtr front_graph_;
@@ -128,11 +126,11 @@ class COMMON_EXPORT CompileCacheContext {
   bool fusion_op_build_info_flag_{false};
   // key is parent funcgarph, values is child funcgraph.
   std::vector<FuncGraphPtr> child_graphs_;
-  std::unordered_map<FuncGraphPtr, FuncGraph *> backend_graph_to_frontend_graph_;
-  std::unordered_map<FuncGraphPtr, std::string> front_graph_to_backend_graph_cache_path_;
+  HashMap<FuncGraphPtr, FuncGraph *> backend_graph_to_frontend_graph_;
+  HashMap<FuncGraphPtr, std::string> front_graph_to_backend_graph_cache_path_;
   std::map<std::string, CachedIOSizeInfo> fullname_io_size;
   // param is a backend node but we can find its correspond frontend param.
-  std::unordered_set<AnfNodePtr> backend_param_gen_from_frontend_param_;
+  mindspore::HashSet<AnfNodePtr> backend_param_gen_from_frontend_param_;
   bool restricted_scenarios_{false};
   std::string compile_cache_dep_files_hash_ = "";
   bool has_cached_queue_name_{false};

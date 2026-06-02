@@ -39,7 +39,7 @@ class SessionRegistry {
                                            const ConfigInfos &);
 
  private:
-  std::unordered_map<SessionType, InferSessionRegFunc> session_map_;
+  mindspore::HashMap<SessionType, InferSessionRegFunc> session_map_;
 };
 
 class SessionRegistrar {

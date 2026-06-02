@@ -26,7 +26,6 @@
 #include <map>
 #include <set>
 #include <unordered_set>
-#include <unordered_map>
 #include <vector>
 #include <string>
 #include <utility>
@@ -36,6 +35,7 @@
 
 #include "utils/config_manager.h"
 #include "primitive/structure_ops.h"
+#include "utils/hash_map.h"
 #include "utils/ms_context.h"
 #include "utils/phase.h"
 #include "ir/anf.h"
@@ -80,7 +80,7 @@ class GeOpConvertor {
                                                      const std::string &dev_format, const ShapeVector &ori_shape,
                                                      const std::string &ori_format);
 
-  static std::unordered_map<std::string, std::string> GetNeedAddInput(const AnfNodePtr &node, const bool training);
+  static mindspore::HashMap<std::string, std::string> GetNeedAddInput(const AnfNodePtr &node, const bool training);
 
   static bool IsDynamicInput(const AnfNodePtr &node, const size_t idx);
 
@@ -229,7 +229,7 @@ class BACKEND_EXPORT DfGraphConvertor {
   std::ostringstream init_sout_;
   std::ostringstream checkpoint_sout_;
   std::ostringstream restore_checkpoint_sout_;
-  std::unordered_map<AnfNode *, std::string> op_draw_name_;
+  mindspore::HashMap<AnfNode *, std::string> op_draw_name_;
   std::map<std::string, std::string> param_format_;
 
   OutHandler GetHandler(const AnfNodePtr &node);
@@ -316,10 +316,10 @@ class BACKEND_EXPORT DfGraphConvertor {
   std::vector<OutHandler> GetInputHandles(const AnfNodePtr &node, const AnfNodePtr &input);
   void FillEmptyInputsWithNoInputOp(std::vector<Operator> *);
   bool IsDynamicInputBeforeNormalInput(const OpAdapterPtr &adpt, int *ge_input_size,
-                                       std::unordered_map<int, int> *ge_input_to_ms_input);
+                                       mindspore::HashMap<int, int> *ge_input_to_ms_input);
   void SetDynamicInputBeforeNormalInput(const OpAdapterPtr &adpt, const CNodePtr &node,
                                         const std::vector<AnfNodePtr> &inputs, const int &ge_input_size,
-                                        const std::unordered_map<int, int> &ge_input_to_ms_input,
+                                        const mindspore::HashMap<int, int> &ge_input_to_ms_input,
                                         std::vector<int64_t> *dyn_input_sizes);
 
   // Identity Optimization
@@ -355,15 +355,15 @@ class BACKEND_EXPORT DfGraphConvertor {
   std::shared_ptr<DfGraph> save_ckp_graph_{nullptr};
   std::shared_ptr<DfGraph> restore_ckp_graph_{nullptr};
   std::shared_ptr<DfGraph> broadcast_graph_{nullptr};
-  std::unordered_map<AnfNode *, DfGraph> branches_map_;
-  std::unordered_map<AnfNode *, OperatorPtr> op_cache_;
+  mindspore::HashMap<AnfNode *, DfGraph> branches_map_;
+  mindspore::HashMap<AnfNode *, OperatorPtr> op_cache_;
   /* record "getnext"<->"out_handler" mapping */
-  std::unordered_map<AnfNode *, OutHandler> out_handle_cache_;
+  mindspore::HashMap<AnfNode *, OutHandler> out_handle_cache_;
   /* record "value tuple"<->"out_handler vector" mapping */
-  std::unordered_map<AnfNode *, std::shared_ptr<std::vector<OutHandler>>> tuple_out_handle_cache_;
-  std::unordered_map<AnfNode *, std::shared_ptr<std::vector<AnfNodePtr>>> branch_input_handle_cache_;
-  std::unordered_map<std::string, AnfNodePtr> params_;
-  std::unordered_map<std::string, OperatorPtr> vars_;
+  mindspore::HashMap<AnfNode *, std::shared_ptr<std::vector<OutHandler>>> tuple_out_handle_cache_;
+  mindspore::HashMap<AnfNode *, std::shared_ptr<std::vector<AnfNodePtr>>> branch_input_handle_cache_;
+  mindspore::HashMap<std::string, AnfNodePtr> params_;
+  mindspore::HashMap<std::string, OperatorPtr> vars_;
   std::vector<OperatorPtr> ref_datas_;
   std::vector<std::pair<::ge::Operator, std::string>> graph_outputs_;
   std::vector<AnfNodePtr> graph_anf_outputs_;
@@ -381,33 +381,33 @@ class BACKEND_EXPORT DfGraphConvertor {
   bool dynamic_shape_inputs_ = false;
 
   AnfNodePtr while_cond_node_ = nullptr;
-  std::unordered_map<AnfNodePtr, std::shared_ptr<std::vector<DfGraph>>> while_dfgraph_cache_;
-  std::unordered_map<AnfNodePtr, std::shared_ptr<std::vector<DfGraph>>> call_dfgraph_cache_;
+  mindspore::HashMap<AnfNodePtr, std::shared_ptr<std::vector<DfGraph>>> while_dfgraph_cache_;
+  mindspore::HashMap<AnfNodePtr, std::shared_ptr<std::vector<DfGraph>>> call_dfgraph_cache_;
   CNodePtr cur_while_node_ = nullptr;
   size_t cur_while_node_out_size_ = 0;
-  std::unordered_map<size_t, OutHandler> while_const_input_index_;
-  std::unordered_map<size_t, OutHandler> prev_while_const_input_index_;
-  std::unordered_map<size_t, size_t> prev_cond_to_while_out_index_;
-  std::unordered_map<OperatorPtr, std::shared_ptr<tensor::Tensor>> const_op_to_value_;
+  mindspore::HashMap<size_t, OutHandler> while_const_input_index_;
+  mindspore::HashMap<size_t, OutHandler> prev_while_const_input_index_;
+  mindspore::HashMap<size_t, size_t> prev_cond_to_while_out_index_;
+  mindspore::HashMap<OperatorPtr, std::shared_ptr<tensor::Tensor>> const_op_to_value_;
   AnfNodePtr prev_while_node_ = nullptr;
   size_t prev_while_node_out_size_ = 0;
 
-  std::unordered_map<AnfNodePtr, std::vector<AnfNodePtr>> while_graph_cache_;
-  std::unordered_map<AnfNodePtr, std::shared_ptr<std::vector<OutHandler>>> call_input_handle_cache_;
-  std::unordered_map<AnfNodePtr, std::shared_ptr<std::vector<OutHandler>>> while_output_handle_cache_;
+  mindspore::HashMap<AnfNodePtr, std::vector<AnfNodePtr>> while_graph_cache_;
+  mindspore::HashMap<AnfNodePtr, std::shared_ptr<std::vector<OutHandler>>> call_input_handle_cache_;
+  mindspore::HashMap<AnfNodePtr, std::shared_ptr<std::vector<OutHandler>>> while_output_handle_cache_;
   AnfNodePtr call_node_in_while_body_ = nullptr;
   GraphType graph_type_ = GraphType::kNormal;
 
   ParamIndexMap body_cond_map_;
   ParamIndexMap after_cond_map_;
   ParamIndexMap prev_after_cond_map_;
-  std::unordered_map<size_t, OperatorPtr> subgraph_input_cache_;
+  mindspore::HashMap<size_t, OperatorPtr> subgraph_input_cache_;
 
   std::set<size_t> while_used_input_index_;
   std::set<size_t> prev_while_used_input_index_;
 
-  std::unordered_map<size_t, OutHandler> bypass_node_prev_handle_cache_;
-  std::unordered_map<size_t, OutHandler> bypass_node_handle_cache_;
+  mindspore::HashMap<size_t, OutHandler> bypass_node_prev_handle_cache_;
+  mindspore::HashMap<size_t, OutHandler> bypass_node_handle_cache_;
   size_t case_call_input_size_ = 0;
   bool is_kernel_graph_ = false;
 

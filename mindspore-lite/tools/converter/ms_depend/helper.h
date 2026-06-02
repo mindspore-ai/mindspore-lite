@@ -21,7 +21,6 @@
 #include <utility>
 #include <string>
 #include <set>
-#include <unordered_set>
 #include "base/base.h"
 #include "ir/func_graph.h"
 #include "utils/ms_utils.h"
@@ -191,7 +190,7 @@ BACKEND_COMMON_EXPORT AbstractBasePtr CppInferShapeAndType(const PrimitivePtr &p
 BACKEND_COMMON_EXPORT bool IsConstant(const BaseRef &n);
 
 // Get custom operator attr input indexes
-BACKEND_COMMON_EXPORT void GetCustomOpAttrIndex(const PrimitivePtr &primitive, std::unordered_set<size_t> *indexes);
+BACKEND_COMMON_EXPORT void GetCustomOpAttrIndex(const PrimitivePtr &primitive, mindspore::HashSet<size_t> *indexes);
 
 BACKEND_COMMON_EXPORT size_t GetInputNodeIndex(const AnfNodePtr &input, const CNodePtr &user_node);
 

@@ -24,7 +24,7 @@
 #include <map>
 #include <memory>
 
-#include <unordered_map>
+#include "utils/hash_map.h"
 #include "ir/anf.h"
 #include "ir/tensor.h"
 #include "graph/tensor.h"
@@ -49,7 +49,7 @@ using Operator = ::ge::Operator;
 using OperatorPtr = std::shared_ptr<::ge::Operator>;
 using DfGraph = ::ge::Graph;
 using DfGraphPtr = std::shared_ptr<DfGraph>;
-using TensorMap = std::unordered_map<std::string, std::shared_ptr<MeTensor>>;
+using TensorMap = mindspore::HashMap<std::string, std::shared_ptr<MeTensor>>;
 using OptionMap = std::map<std::string, std::string>;
 using TensorOrderMap = std::map<std::string, std::shared_ptr<tensor::Tensor>>;
 using GeAllocatorPtr = ::ge::AllocatorPtr;
