@@ -91,10 +91,9 @@ std::string WeightBufferParamsDisplayStr(const void *weight_data, size_t weight_
 
 }  // namespace
 
-Status ModelImpl::BuildAndRun(const void *model_data, size_t data_size, ModelType model_type,
-                              const std::shared_ptr<Context> &model_context) {
+Status ModelImpl::BuildAndRunCore(const std::function<Status()> &build_fn) {
 #if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
-  Status ret = this->Build(model_data, data_size, model_type, model_context);
+  Status ret = build_fn();
   if (ret != kSuccess) {
     return ret;
   }
@@ -102,8 +101,17 @@ Status ModelImpl::BuildAndRun(const void *model_data, size_t data_size, ModelTyp
   if (ret != kSuccess) {
     return ret;
   }
+#else
+  (void)build_fn;
 #endif
   return kSuccess;
+}
+
+Status ModelImpl::BuildAndRun(const void *model_data, size_t data_size, ModelType model_type,
+                              const std::shared_ptr<Context> &model_context) {
+  return BuildAndRunCore([this, model_data, data_size, model_type, &model_context]() {
+    return this->Build(model_data, data_size, model_type, model_context);
+  });
 }
 
 Status ModelImpl::InferWithRandomData() {
@@ -128,61 +136,45 @@ Status ModelImpl::InferWithRandomData() {
 
 Status ModelImpl::BuildAndRun(const std::string &model_path, ModelType model_type,
                               const std::shared_ptr<Context> &model_context) {
+  return BuildAndRunCore(
+    [this, &model_path, model_type, &model_context]() { return this->Build(model_path, model_type, model_context); });
+}
+
+Status ModelImpl::PreInferCore(const std::function<Status()> &build_and_run_fn) {
 #if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
-  Status ret = this->Build(model_path, model_type, model_context);
-  if (ret != kSuccess) {
-    return ret;
+  if (lite::GetNumThreads() == lite::kSingleThread && IsEnablePreInference()) {
+    pid_t pid = fork();
+    if (pid < 0) {
+      return kLiteError;
+    } else if (pid == 0) {
+      auto ret = build_and_run_fn();
+      int ret_code = ret == kSuccess ? lite::kProcessSuccess : lite::kProcessFailed;
+      exit(ret_code);
+    }
+    auto ret = lite::CheckPidStatus(pid);
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "PreBuild or PreInference failed!";
+      return ret;
+    }
   }
-  ret = InferWithRandomData();
-  if (ret != kSuccess) {
-    return ret;
-  }
+#else
+  (void)build_and_run_fn;
 #endif
   return kSuccess;
 }
 
 Status ModelImpl::PreInfer(const std::string &model_path, ModelType model_type,
                            const std::shared_ptr<Context> &model_context) {
-#if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
-  if (lite::GetNumThreads() == lite::kSingleThread && IsEnablePreInference()) {
-    pid_t pid = fork();
-    if (pid < 0) {
-      return kLiteError;
-    } else if (pid == 0) {
-      auto ret = this->BuildAndRun(model_path, model_type, model_context);
-      int ret_code = ret == kSuccess ? lite::kProcessSuccess : lite::kProcessFailed;
-      exit(ret_code);
-    }
-    auto ret = lite::CheckPidStatus(pid);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "PreBuild or PreInference failed!";
-      return ret;
-    }
-  }
-#endif
-  return kSuccess;
+  return PreInferCore([this, &model_path, model_type, &model_context]() {
+    return this->BuildAndRun(model_path, model_type, model_context);
+  });
 }
 
 Status ModelImpl::PreInfer(const void *model_data, size_t data_size, ModelType model_type,
                            const std::shared_ptr<Context> &model_context) {
-#if defined(ENABLE_PRE_INFERENCE) && defined(__linux__) && !defined(Debug)
-  if (lite::GetNumThreads() == lite::kSingleThread && IsEnablePreInference()) {
-    pid_t pid = fork();
-    if (pid < 0) {
-      return kLiteError;
-    } else if (pid == 0) {
-      auto ret = this->BuildAndRun(model_data, data_size, model_type, model_context);
-      int ret_code = ret == kSuccess ? lite::kProcessSuccess : lite::kProcessFailed;
-      exit(ret_code);
-    }
-    auto ret = lite::CheckPidStatus(pid);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "PreBuild or PreInference failed!";
-      return ret;
-    }
-  }
-#endif
-  return kSuccess;
+  return PreInferCore([this, model_data, data_size, model_type, &model_context]() {
+    return this->BuildAndRun(model_data, data_size, model_type, model_context);
+  });
 }
 
 bool ModelImpl::IsEnablePreInference() {
@@ -473,18 +465,7 @@ Status ModelImpl::CheckBuildFromBuffer(ModelType model_type, const void *weight_
   }
   return kSuccess;
 }
-Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, const void *weight_data,
-                                    size_t weight_size, ModelType model_type,
-                                    const std::shared_ptr<Context> &model_context, const std::string &model_path) {
-  MS_CHECK_TRUE_MSG(model_buff != nullptr, Status(kLiteFileError, "The input model buffer is nullptr!"),
-                    "The input model buffer is nullptr!");
-  MS_CHECK_TRUE_MSG(model_size != 0, Status(kLiteFileError, "The input model buffer size is 0!"),
-                    "The input model buffer size is 0!");
-  MS_CHECK_TRUE_MSG(model_context != nullptr, Status(kLiteNullptr, "context is nullptr!"), "Invalid context pointers!");
-  auto ret = CheckBuildFromBuffer(model_type, weight_data, weight_size);
-  if (ret != kSuccess) {
-    return ret;
-  }
+Status ModelImpl::InitBuildSession(const std::shared_ptr<Context> &model_context) {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (session_) {
     MS_LOG(ERROR) << "Model has been called Build!";
@@ -507,6 +488,30 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, c
     return Status(kLiteParamInvalid, "Invalid thread num!");
   }
   UpdateProvider();
+  session_ = InferSession::CreateSession(model_context, config_info_);
+  if (session_ == nullptr) {
+    MS_LOG(ERROR) << "Create session failed!";
+    return Status(kLiteNullptr, "session is nullptr, Create session failed!");
+  }
+  return kSuccess;
+}
+
+Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, const void *weight_data,
+                                    size_t weight_size, ModelType model_type,
+                                    const std::shared_ptr<Context> &model_context, const std::string &model_path) {
+  MS_CHECK_TRUE_MSG(model_buff != nullptr, Status(kLiteFileError, "The input model buffer is nullptr!"),
+                    "The input model buffer is nullptr!");
+  MS_CHECK_TRUE_MSG(model_size != 0, Status(kLiteFileError, "The input model buffer size is 0!"),
+                    "The input model buffer size is 0!");
+  MS_CHECK_TRUE_MSG(model_context != nullptr, Status(kLiteNullptr, "context is nullptr!"), "Invalid context pointers!");
+  auto ret = CheckBuildFromBuffer(model_type, weight_data, weight_size);
+  if (ret != kSuccess) {
+    return ret;
+  }
+  ret = InitBuildSession(model_context);
+  if (ret != kSuccess) {
+    return ret;
+  }
   auto status = UpdateSharingWorkspaceConfig(model_buff, model_size, model_path);
   if (status != kSuccess) {
     MS_LOG(ERROR) << "UpdateSharingWorkspaceConfig failed!";
@@ -516,11 +521,6 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, c
   if (mindir_path.empty()) {
     (void)UpdateConfig(lite::kConfigModelFileSection,
                        std::pair<std::string, std::string>(lite::kConfigMindIRPathKey, model_path));
-  }
-  session_ = InferSession::CreateSession(model_context, config_info_);
-  if (session_ == nullptr) {
-    MS_LOG(ERROR) << "Create session failed!";
-    return Status(kLiteNullptr, "session is nullptr, Create session failed!");
   }
 
   if (model_type == kMindIR_Lite) {
@@ -574,39 +574,16 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, c
 }
 
 Status ModelImpl::Build(const FuncGraphPtr &func_graph, const std::shared_ptr<Context> &model_context) {
-  std::lock_guard<std::recursive_mutex> lock(mutex_);
-  if (session_) {
-    MS_LOG(ERROR) << "Model has been called Build!";
-    return kLiteModelRebuild;
-  }
-  if (model_context == nullptr) {
-    MS_LOG(ERROR) << "Invalid context pointers!";
-    return kLiteError;
-  }
-  for (auto &device_info : model_context->MutableDeviceInfo()) {
-    if (device_info == nullptr) {
-      MS_LOG(ERROR) << "There is nullptr device info in context!";
-      return kLiteError;
-    }
-  }
-  SetMsContext();
-  auto thread_num = model_context->GetThreadNum();
-  if (thread_num < 0) {
-    MS_LOG(ERROR) << "Invalid thread num " << thread_num;
-    return kLiteError;
-  }
-  UpdateProvider();
-  session_ = InferSession::CreateSession(model_context, config_info_);
-  if (session_ == nullptr) {
-    MS_LOG(ERROR) << "Create session failed!";
-    return kLiteError;
+  auto ret = InitBuildSession(model_context);
+  if (ret != kSuccess) {
+    return ret;
   }
   // get func_graph
   if (func_graph == nullptr) {
     MS_LOG(ERROR) << "Input func graph is nullptr!";
     return kLiteError;
   }
-  auto ret = ConvertGraphOnline(func_graph, model_context);
+  ret = ConvertGraphOnline(func_graph, model_context);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "convert graph failed!ret = " << ret;
     return ret;

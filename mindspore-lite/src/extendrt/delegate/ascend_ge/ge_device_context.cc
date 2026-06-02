@@ -126,6 +126,25 @@ bool InitHcclExec(const std::string &rank_table_path, const std::string &identif
   return true;
 }
 
+static std::string ParseRankTableFile(const ConfigInfos &config_info) {
+  std::string rank_table_file = "";
+  if (config_info.empty() || config_info.find(lite::kAscendContextSection) == config_info.end()) {
+    MS_LOG(INFO) << "There is no ascend context info in config file.";
+  } else {
+    auto config_info_ascend = config_info.at(lite::kAscendContextSection);
+    if (config_info_ascend.find(lite::kRankTableFilePathKey) == config_info_ascend.end()) {
+      MS_LOG(INFO)
+        << "There is no rank table file in Ascend section of config file, distributed inference is not enabled."
+        << " If using distributed inference, make sure rank_table_file in the config file,"
+        << " device_id and rank_id are set in AscendDeviceInfo.";
+    } else {
+      rank_table_file = config_info_ascend[lite::kRankTableFilePathKey];
+      MS_LOG(INFO) << "Distributed inference is enabled, rank table file: " << rank_table_file;
+    }
+  }
+  return rank_table_file;
+}
+
 bool FinalizeHcclExec() {
   if (!init_hccl_exec_) {
     return true;
@@ -234,21 +253,7 @@ Status GeDeviceContext::InitHccl(const std::shared_ptr<Context> &context, const 
     return kCoreFailed;
   }
   uint32_t device_id = ascend_info->GetDeviceID();
-  std::string rank_table_file = "";
-  if (config_info.empty() || config_info.find(lite::kAscendContextSection) == config_info.end()) {
-    MS_LOG(INFO) << "There is no ascend context info in config file.";
-  } else {
-    auto config_info_ascend = config_info.at(lite::kAscendContextSection);
-    if (config_info_ascend.find(lite::kRankTableFilePathKey) == config_info_ascend.end()) {
-      MS_LOG(INFO)
-        << "There is no rank table file in Ascend section of config file, distributed inference is not enabled."
-        << " If using distributed inference, make sure rank_table_file in the config file,"
-        << " device_id and rank_id are set in AscendDeviceInfo.";
-    } else {
-      rank_table_file = config_info_ascend[lite::kRankTableFilePathKey];
-      MS_LOG(INFO) << "Distributed inference is enabled, rank table file: " << rank_table_file;
-    }
-  }
+  std::string rank_table_file = ParseRankTableFile(config_info);
   auto device_id_s = std::to_string(device_id);
   InitHcclExec(rank_table_file, device_id_s);
 
@@ -352,24 +357,9 @@ void GeDeviceContext::SetHcclOptions(const std::shared_ptr<Context> &context,
     MS_LOG(ERROR) << "Failed to Get AscendDeviceInfo from context";
     return;
   }
-  std::string rank_table_file = "";
+  std::string rank_table_file = ParseRankTableFile(config_info);
   uint32_t device_id = ascend_info->GetDeviceID();
   uint32_t rank_id = ascend_info->GetRankID();
-
-  if (config_info.empty() || config_info.find(lite::kAscendContextSection) == config_info.end()) {
-    MS_LOG(INFO) << "There is no ascend context info in config file.";
-  } else {
-    auto config_info_ascend = config_info.at(lite::kAscendContextSection);
-    if (config_info_ascend.find(lite::kRankTableFilePathKey) == config_info_ascend.end()) {
-      MS_LOG(INFO)
-        << "There is no rank table file in Ascend section of config file, distributed inference is not enabled."
-        << " If using distributed inference, make sure rank_table_file in the config file,"
-        << " device_id and rank_id are set in AscendDeviceInfo.";
-    } else {
-      rank_table_file = config_info_ascend[lite::kRankTableFilePathKey];
-      MS_LOG(INFO) << "Distributed inference is enabled, rank table file: " << rank_table_file;
-    }
-  }
 
   MS_LOG(INFO) << "Set ge_options for rank table file " << rank_table_file << " device id " << device_id << " rank id "
                << rank_id;

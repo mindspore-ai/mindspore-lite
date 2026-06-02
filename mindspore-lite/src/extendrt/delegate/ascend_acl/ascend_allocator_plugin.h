@@ -59,6 +59,8 @@ class MS_API AscendAllocatorPlugin {
   AscendAllocatorPlugin();
   ~AscendAllocatorPlugin();
 
+  bool CheckRegistered(const void *data) const;
+
   std::string plugin_path_;
   void *handle_ = nullptr;
   bool is_registered_ = false;

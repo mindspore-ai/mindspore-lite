@@ -117,6 +117,9 @@ class ModelProcess {
   Status CreateModelOutputs();
   bool MainProcess(const void *om_data, size_t om_data_size);
   bool SubProcess(const void *om_data, size_t om_data_size);
+  bool QueryModelSizeFromMem(const void *om_data, size_t om_data_size, size_t *work_size, size_t *weight_size);
+  bool AllocWorkMemory(size_t work_size);
+  bool LoadModelFromMemWithMem(const void *om_data, size_t om_data_size, size_t work_size, size_t weight_size);
   Status ShareMemProcess(const void *om_data, size_t om_data_size);
   MSTensor GetOutputWithZeroCopy(const std::vector<MSTensor> *outputs, size_t index);
   MSTensor CreateOutputTensor(size_t index);

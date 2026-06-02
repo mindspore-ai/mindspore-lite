@@ -42,6 +42,7 @@ class DynShapeProcess {
   Status CheckBatchSize(const std::vector<ShapeVector> &new_shapes);
   Status CheckDynamicDims(const std::vector<ShapeVector> &new_shapes);
   Status CheckImageSize(const std::vector<ShapeVector> &new_shapes);
+  Status CheckShapeCompatible(const std::vector<int64_t> &cur_shape, const std::vector<int64_t> &original_shape);
   Status GetRealBatchSize(const std::vector<ShapeVector> &new_shapes, int32_t *batch_size);
   Status GetRealDynamicDims(const std::vector<ShapeVector> &new_shapes, aclmdlIODims *dynamic_dims);
   Status GetRealImageSize(const std::vector<ShapeVector> &new_shapes, int32_t *height, int32_t *width);

@@ -217,6 +217,26 @@ Status AclGraphExecutor::GetOutputTensors(const std::vector<std::string> &output
   return kSuccess;
 }
 
+Status AclGraphExecutor::CreateAndInitModelInfer(const std::shared_ptr<AclModelOptions> &acl_options, const void *data,
+                                                 size_t size) {
+  model_infer_ = std::make_shared<ModelInfer>(acl_options);
+  if (model_infer_ == nullptr) {
+    MS_LOG(ERROR) << "Create ModelInfer failed.";
+    return Status(kLiteNullptr, "Create ModelInfer failed.");
+  }
+  auto status = model_infer_->Init();
+  if (status != kSuccess) {
+    MS_LOG(ERROR) << "Model infer init failed.";
+    return status;
+  }
+  status = model_infer_->Load(data, size);
+  if (status != kSuccess) {
+    MS_LOG(ERROR) << "Load om data failed.";
+    return status;
+  }
+  return kSuccess;
+}
+
 Status AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
                                       uint32_t *graph_id) {
   auto start_time = lite::GetTimeUs();
@@ -272,20 +292,8 @@ Status AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<
     MS_LOG(ERROR) << "Generate acl options failed.";
     return Status(kLiteNullptr, "Generate acl options failed.");
   }
-
-  model_infer_ = std::make_shared<ModelInfer>(acl_options);
-  if (model_infer_ == nullptr) {
-    MS_LOG(ERROR) << "Create ModelInfer failed.";
-    return Status(kLiteNullptr, "Create ModelInfer failed.");
-  }
-  auto status = model_infer_->Init();
+  auto status = CreateAndInitModelInfer(acl_options, om_data, om_data_size);
   if (status != kSuccess) {
-    MS_LOG(ERROR) << "Model infer init failed.";
-    return status;
-  }
-  status = model_infer_->Load(om_data, om_data_size);
-  if (status != kSuccess) {
-    MS_LOG(ERROR) << "Load om data failed.";
     return status;
   }
   std::vector<MSTensor> output_tensors;
@@ -323,19 +331,8 @@ Status AclGraphExecutor::CompileGraph(const void *model_data, size_t data_size,
   }
   input_names_.insert(input_names_.end(), acl_options->input_names.begin(), acl_options->input_names.end());
   output_names_.insert(output_names_.end(), acl_options->output_names.begin(), acl_options->output_names.end());
-  model_infer_ = std::make_shared<ModelInfer>(acl_options);
-  if (model_infer_ == nullptr) {
-    MS_LOG(ERROR) << "Create ModelInfer failed.";
-    return Status(kLiteNullptr, "Create ModelInfer failed.");
-  }
-  auto status = model_infer_->Init();
+  auto status = CreateAndInitModelInfer(acl_options, model_data, data_size);
   if (status != kSuccess) {
-    MS_LOG(ERROR) << "Model infer init failed.";
-    return status;
-  }
-  status = model_infer_->Load(model_data, data_size);
-  if (status != kSuccess) {
-    MS_LOG(ERROR) << "Load om data failed.";
     return status;
   }
   AclEnvGuard::AddModel(model_infer_);

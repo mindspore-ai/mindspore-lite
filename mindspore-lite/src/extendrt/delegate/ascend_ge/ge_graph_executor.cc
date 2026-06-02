@@ -17,6 +17,8 @@
 #include "extendrt/delegate/ascend_ge/ge_graph_executor.h"
 
 #include <algorithm>
+#include <fstream>
+#include <future>
 #include <utility>
 #include <nlohmann/json.hpp>
 #include "extendrt/delegate/factory.h"

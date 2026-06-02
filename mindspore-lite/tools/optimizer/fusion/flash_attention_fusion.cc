@@ -1586,11 +1586,12 @@ CNodePtr FlashAttentionFusion::CreatePromptFlashAttentionCnodeForBNSDWithPse(
   return prompt_flash_attention_cnode;
 }
 
-CNodePtr FlashAttentionFusion::CreatePromptFlashAttentionCnodeForBSH(
+CNodePtr FlashAttentionFusion::CreatePromptFlashAttentionCnodeForLayout(
   const FuncGraphPtr &func_graph, const AnfNodePtr &node, const AnfNodePtr &q, const AnfNodePtr &k, const AnfNodePtr &v,
   const AnfNodePtr &atten_mask, int64_t num_heads, int64_t next_token, float scale_value,
-  const std::shared_ptr<FlashAttentionParm> &fa_parm) const {
-  MS_LOG(INFO) << "CreatePromptFlashAttentionCnodeForBSH";
+  const std::shared_ptr<FlashAttentionParm> &fa_parm, int64_t layout_mode, const std::string &layout_name,
+  const std::string &cnode_suffix) const {
+  MS_LOG(INFO) << "CreatePromptFlashAttentionCnodeForLayout: " << layout_name;
   MS_LOG(INFO) << "input Q name: " << q->fullname_with_scope() << " ,input K name: " << k->fullname_with_scope()
                << " ,input V name: " << v->fullname_with_scope();
   // create op
@@ -1605,16 +1606,15 @@ CNodePtr FlashAttentionFusion::CreatePromptFlashAttentionCnodeForBSH(
   }
   // add attr
   prompt_flash_attention_prim->AddAttr("num_heads", api::MakeValue(num_heads));
-  prompt_flash_attention_prim->AddAttr(
-    "input_layout",
-    api::MakeValue(static_cast<mindspore::ops::FASInputLayoutMode>(mindspore::ops::FASInputLayoutMode::BSH)));
+  prompt_flash_attention_prim->AddAttr("input_layout",
+                                       api::MakeValue(static_cast<mindspore::ops::FASInputLayoutMode>(layout_mode)));
   prompt_flash_attention_prim->AddAttr("next_tokens", api::MakeValue(next_token));
   prompt_flash_attention_prim->AddAttr("scale_value", api::MakeValue(scale_value));
   prompt_flash_attention_prim->AddAttr("num_key_value_heads", api::MakeValue(num_heads));
   prompt_flash_attention_prim->AddAttr("inner_precise", api::MakeValue(fa_parm->inner_precise));
   prompt_flash_attention_prim->AddAttr("sparse_mode", api::MakeValue(fa_parm->sparse_mode));
 
-  MS_LOG(INFO) << "num heads: " << num_heads << ", input layout: BSH, next tokens: " << next_token
+  MS_LOG(INFO) << "num heads: " << num_heads << ", input layout: " << layout_name << ", next tokens: " << next_token
                << ", scale value: " << scale_value;
   auto fa_prim_c = prompt_flash_attention_prim->GetPrim();
   CNodePtr prompt_flash_attention_cnode = nullptr;
@@ -1627,7 +1627,7 @@ CNodePtr FlashAttentionFusion::CreatePromptFlashAttentionCnodeForBSH(
     MS_LOG(ERROR) << "new cnode failed.";
     return nullptr;
   }
-  prompt_flash_attention_cnode->set_fullname_with_scope(node->fullname_with_scope() + "_prompt_flash_attention_bsh");
+  prompt_flash_attention_cnode->set_fullname_with_scope(node->fullname_with_scope() + cnode_suffix);
   if (node->abstract() != nullptr) {
     prompt_flash_attention_cnode->set_abstract(node->abstract()->Clone());
   }
@@ -1635,53 +1635,47 @@ CNodePtr FlashAttentionFusion::CreatePromptFlashAttentionCnodeForBSH(
   return prompt_flash_attention_cnode;
 }
 
+CNodePtr FlashAttentionFusion::CreatePromptFlashAttentionCnodeForBSH(
+  const FuncGraphPtr &func_graph, const AnfNodePtr &node, const AnfNodePtr &q, const AnfNodePtr &k, const AnfNodePtr &v,
+  const AnfNodePtr &atten_mask, int64_t num_heads, int64_t next_token, float scale_value,
+  const std::shared_ptr<FlashAttentionParm> &fa_parm) const {
+  return CreatePromptFlashAttentionCnodeForLayout(func_graph, node, q, k, v, atten_mask, num_heads, next_token,
+                                                  scale_value, fa_parm, mindspore::ops::FASInputLayoutMode::BSH, "BSH",
+                                                  "_prompt_flash_attention_bsh");
+}
+
 CNodePtr FlashAttentionFusion::CreatePromptFlashAttentionCnodeForBNSDBSND(
   const FuncGraphPtr &func_graph, const AnfNodePtr &node, const AnfNodePtr &q, const AnfNodePtr &k, const AnfNodePtr &v,
   const AnfNodePtr &atten_mask, int64_t num_heads, int64_t next_token, float scale_value,
   const std::shared_ptr<FlashAttentionParm> &fa_parm) const {
-  MS_LOG(INFO) << "CreatePromptFlashAttentionCnodeForBNSDBSND";
-  MS_LOG(INFO) << "input Q name: " << q->fullname_with_scope() << " ,input K name: " << k->fullname_with_scope()
-               << " ,input V name: " << v->fullname_with_scope();
-  // create op
-  auto prompt_flash_attention_prim = std::make_shared<ops::PromptFlashAttention>();
-  if (prompt_flash_attention_prim == nullptr) {
-    MS_LOG(ERROR) << "incre_flash_attention_prim is nullptr.";
-    return nullptr;
-  }
-  if (fa_parm == nullptr) {
-    MS_LOG(WARNING) << "FA parameter is null, please check";
-    return nullptr;
-  }
-  // add attr
-  prompt_flash_attention_prim->AddAttr("num_heads", api::MakeValue(num_heads));
-  prompt_flash_attention_prim->AddAttr(
-    "input_layout",
-    api::MakeValue(static_cast<mindspore::ops::FASInputLayoutMode>(mindspore::ops::FASInputLayoutMode::BNSD_BSND)));
-  prompt_flash_attention_prim->AddAttr("next_tokens", api::MakeValue(next_token));
-  prompt_flash_attention_prim->AddAttr("scale_value", api::MakeValue(scale_value));
-  prompt_flash_attention_prim->AddAttr("num_key_value_heads", api::MakeValue(num_heads));
-  prompt_flash_attention_prim->AddAttr("inner_precise", api::MakeValue(fa_parm->inner_precise));
-  prompt_flash_attention_prim->AddAttr("sparse_mode", api::MakeValue(fa_parm->sparse_mode));
+  return CreatePromptFlashAttentionCnodeForLayout(func_graph, node, q, k, v, atten_mask, num_heads, next_token,
+                                                  scale_value, fa_parm, mindspore::ops::FASInputLayoutMode::BNSD_BSND,
+                                                  "BNSD_BSND", "_prompt_flash_attention_bsh");
+}
 
-  MS_LOG(INFO) << "num heads: " << num_heads << ", input layout: BNSD_BSND, next tokens: " << next_token
-               << ", scale value: " << scale_value;
-  auto fa_prim_c = prompt_flash_attention_prim->GetPrim();
-  CNodePtr prompt_flash_attention_cnode = nullptr;
-  if (atten_mask != nullptr) {
-    prompt_flash_attention_cnode = func_graph->NewCNode(fa_prim_c, {q, k, v, atten_mask});
-  } else {
-    prompt_flash_attention_cnode = func_graph->NewCNode(fa_prim_c, {q, k, v});
-  }
-  if (prompt_flash_attention_cnode == nullptr) {
-    MS_LOG(ERROR) << "new cnode failed.";
+CNodePtr FlashAttentionFusion::CreateFAForBNSDFromInputs(const FuncGraphPtr &func_graph, const AnfNodePtr &node,
+                                                         const AnfNodePtr &q, const AnfNodePtr &k, const AnfNodePtr &v,
+                                                         const CNodePtr &atten_mask,
+                                                         const std::vector<int64_t> &q_shape,
+                                                         const std::vector<int64_t> &k_shape,
+                                                         const std::shared_ptr<FlashAttentionParm> &fa_parm) const {
+  // check input shape
+  if (q_shape[kNumIndex3] <= 0 || q_shape[kNumIndex1] <= 0) {
+    MS_LOG(ERROR) << "D is -1";
     return nullptr;
   }
-  prompt_flash_attention_cnode->set_fullname_with_scope(node->fullname_with_scope() + "_prompt_flash_attention_bsh");
-  if (node->abstract() != nullptr) {
-    prompt_flash_attention_cnode->set_abstract(node->abstract()->Clone());
+  float scale_value = 1 / (pow(q_shape[kNumIndex3], kNumPowerHalf));
+  int64_t seq_len = q_shape[kNumIndex2];
+  int64_t num_key_value_heads = k_shape[kNumIndex1];
+  if (seq_len != 1) {
+    return CreateFlashAttentionCnodeForBNSD(func_graph, node, q, k, v, atten_mask, q_shape[kNumIndex1], 0, scale_value,
+                                            fa_parm, num_key_value_heads);
+  } else {
+    MS_LOG(INFO) << "seq len is 1, incre flash attention.";
+    return CreateIncreFlashAttentionCnodeForBNSD(func_graph, node, q, k, v, atten_mask, q_shape[kNumIndex1],
+                                                 scale_value, num_key_value_heads);
   }
-  MS_LOG(INFO) << "create PromptFlashAttention success.";
-  return prompt_flash_attention_cnode;
+  return nullptr;
 }
 
 CNodePtr FlashAttentionFusion::CreateFAForBNSDWithAttenMask(const FuncGraphPtr &func_graph, const AnfNodePtr &node,
@@ -1722,23 +1716,8 @@ CNodePtr FlashAttentionFusion::CreateFAForBNSDWithAttenMask(const FuncGraphPtr &
                << ", atten mask name: " << atten_mask->fullname_with_scope();
   MS_LOG(INFO) << "q shape: " << input_tensor_q_shape << ", k shape: " << input_tensor_k_shape
                << ", v shape: " << input_tensor_v_shape << ", atten mask name: " << atten_mask_input_shape;
-  // check input shape
-  if (input_tensor_q_shape[kNumIndex3] <= 0 || input_tensor_q_shape[kNumIndex1] <= 0) {
-    MS_LOG(ERROR) << "D is -1";
-    return nullptr;
-  }
-  float scale_value = 1 / (pow(input_tensor_q_shape[kNumIndex3], kNumPowerHalf));
-  int64_t seq_len = input_tensor_q_shape[kNumIndex2];
-  int64_t num_key_value_heads = input_tensor_k_shape[1];
-  if (seq_len != 1) {
-    return CreateFlashAttentionCnodeForBNSD(func_graph, node, q, k, v, atten_mask, input_tensor_q_shape[kNumIndex1], 0,
-                                            scale_value, fa_parm, num_key_value_heads);
-  } else {
-    MS_LOG(INFO) << "seq len is 1, incre flash attention.";
-    return CreateIncreFlashAttentionCnodeForBNSD(func_graph, node, q, k, v, atten_mask,
-                                                 input_tensor_q_shape[kNumIndex1], scale_value, num_key_value_heads);
-  }
-  return nullptr;
+  return CreateFAForBNSDFromInputs(func_graph, node, q, k, v, atten_mask, input_tensor_q_shape, input_tensor_k_shape,
+                                   fa_parm);
 }
 
 CNodePtr FlashAttentionFusion::CreateGQACNodeForBNSD(const FuncGraphPtr &func_graph, const AnfNodePtr &node,
@@ -1793,23 +1772,8 @@ CNodePtr FlashAttentionFusion::CreateGQACNodeForBNSD(const FuncGraphPtr &func_gr
                << ", atten mask name: " << atten_mask->fullname_with_scope();
   MS_LOG(INFO) << "q shape: " << input_tensor_q_shape << ", k shape: " << input_tensor_k_shape
                << ", v shape: " << input_tensor_v_shape << ", atten mask shape: " << atten_mask_input_shape;
-  // check input shape
-  if (input_tensor_q_shape[kNumIndex3] <= 0 || input_tensor_q_shape[kNumIndex1] <= 0) {
-    MS_LOG(ERROR) << "D is -1";
-    return nullptr;
-  }
-  float scale_value = 1 / (pow(input_tensor_q_shape[kNumIndex3], kNumPowerHalf));
-  int64_t seq_len = input_tensor_q_shape[kNumIndex2];
-  int64_t num_key_value_heads = input_tensor_k_shape[1];
-  if (seq_len != 1) {
-    return CreateFlashAttentionCnodeForBNSD(func_graph, node, q, k, v, atten_mask, input_tensor_q_shape[kNumIndex1], 0,
-                                            scale_value, fa_parm, num_key_value_heads);
-  } else {
-    MS_LOG(INFO) << "seq len is 1, incre flash attention.";
-    return CreateIncreFlashAttentionCnodeForBNSD(func_graph, node, q, k, v, atten_mask,
-                                                 input_tensor_q_shape[kNumIndex1], scale_value, num_key_value_heads);
-  }
-  return nullptr;
+  return CreateFAForBNSDFromInputs(func_graph, node, q, k, v, atten_mask, input_tensor_q_shape, input_tensor_k_shape,
+                                   fa_parm);
 }
 
 CNodePtr FlashAttentionFusion::CreateIncreFlashAttentionCnodeForBNSD(
@@ -2210,6 +2174,50 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForMsSD21(
   return nullptr;
 }
 
+CNodePtr FlashAttentionFusion::CreateSDFlashAttentionNode(const FuncGraphPtr &func_graph, const AnfNodePtr &node,
+                                                          const AnfNodePtr &q_trans, const AnfNodePtr &k_trans,
+                                                          const AnfNodePtr &v_trans, const AnfNodePtr &mul_const_input,
+                                                          const std::vector<int64_t> &q_shape,
+                                                          const std::vector<int64_t> &k_shape,
+                                                          const std::vector<int64_t> &v_shape,
+                                                          const std::shared_ptr<FlashAttentionParm> &fa_parm) const {
+  float scale_value = 0;
+  int64_t num_head = 0;
+  int64_t next_tokens = kNumMaxNextTokenSize;
+  int64_t d_value = 0;
+
+  if (q_shape.size() != kNumShapeSize4) {
+    scale_value = GetScaleValueForDynamicShape(mul_const_input);
+    d_value = 1 / pow(scale_value, kNumPowerTwo);
+    // process bnsd shape
+    MS_LOG(INFO) << "get flash attention param for dynamic shape, scale value is " << scale_value;
+    std::vector<int32_t> new_shape = {0, 0, -1};
+    auto shape_node = BuildIntVecParameterNode(func_graph, new_shape, node->fullname_with_scope() + "_new_shape");
+    auto output_shape_node = node->cast<CNodePtr>();
+    output_shape_node->set_input(kNumIndex2, shape_node);
+    auto q_trans_reshape = q_trans->cast<CNodePtr>()->input(kNumIndex1);
+    num_head = GetNumHeadForSD(q_trans_reshape);
+  } else if (q_shape.size() == kNumShapeSize4) {
+    MS_LOG(INFO) << "get flash attention param for static shape.";
+    // for static shape: get scale value
+    scale_value = 1 / (pow(q_shape[kNumIndex3], kNumPowerHalf));
+    num_head = q_shape[kNumIndex1];
+    d_value = q_shape[kNumIndex3];
+  } else {
+    MS_LOG(WARNING) << "need check Q input tensor shape: " << q_shape;
+    return nullptr;
+  }
+  if (!PFACheckShape(scale_value, q_shape, k_shape, v_shape, fa_parm->seq_threshold)) {
+    return nullptr;
+  }
+  if (d_value == kNumDValue) {
+    return CreateFAForSD15(func_graph, node, q_trans, k_trans, v_trans, num_head, next_tokens, scale_value, fa_parm);
+  } else {
+    return CreateFlashAttentionCnodeForBNSD(func_graph, node, q_trans, k_trans, v_trans, nullptr, num_head, next_tokens,
+                                            scale_value, fa_parm, num_head);
+  }
+}
+
 CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForVideoComposer(
   const std::string &pattern_name, const FuncGraphPtr &func_graph, const AnfNodePtr &node, const EquivPtr &equiv,
   const std::shared_ptr<FlashAttentionParm> &fa_parm) const {
@@ -2250,49 +2258,13 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForVideoComposer(
   auto input_tensor_q_shape = GetTensorShape(q_reshape, 1);
   auto input_tensor_k_shape = GetTensorShape(k_reshape, 1);
   auto input_tensor_v_shape = GetTensorShape(v_reshape, 1);
+  auto mul_const_input = mul->input(kNumIndex2);
 
   MS_LOG(INFO) << "q shape: " << input_tensor_q_shape << " , k shape: " << input_tensor_k_shape
                << " , v shape: " << input_tensor_v_shape;
 
-  float scale_value = 0;
-  int64_t num_head = 0;
-  int64_t next_tokens = kNumMaxNextTokenSize;
-  int64_t d_value = 0;
-  auto mul_const_input = mul->input(kNumIndex2);
-
-  if (input_tensor_q_shape.size() != kNumShapeSize4) {
-    scale_value = GetScaleValueForDynamicShape(mul_const_input);
-    d_value = 1 / pow(scale_value, kNumPowerTwo);
-    MS_LOG(INFO) << "d_value: " << d_value;
-    // process bnsd shape
-    MS_LOG(INFO) << "get flash attention param for dynamic shape, scale value is " << scale_value;
-    std::vector<int32_t> new_shape = {0, 0, -1};
-    auto shape_node = BuildIntVecParameterNode(func_graph, new_shape, node->fullname_with_scope() + "_new_shape");
-    auto output_shape_node = node->cast<CNodePtr>();
-    output_shape_node->set_input(kNumIndex2, shape_node);
-    auto q_trans_reshape = q_trans->cast<CNodePtr>()->input(kNumIndex1);
-    num_head = GetNumHeadForSD(q_trans_reshape);
-  } else if (input_tensor_q_shape.size() == kNumShapeSize4) {
-    MS_LOG(INFO) << "get flash attention param for static shape.";
-    // for static shape: get scale value
-    scale_value = 1 / (pow(input_tensor_q_shape[kNumIndex3], kNumPowerHalf));
-    num_head = input_tensor_q_shape[kNumIndex1];
-    d_value = input_tensor_q_shape[kNumIndex3];
-  } else {
-    MS_LOG(WARNING) << "need check Q input tensor shape: " << input_tensor_q_shape;
-    return nullptr;
-  }
-  CNodePtr fa_node = nullptr;
-  if (!PFACheckShape(scale_value, input_tensor_q_shape, input_tensor_k_shape, input_tensor_v_shape,
-                     fa_parm->seq_threshold)) {
-    return nullptr;
-  }
-  if (d_value == kNumDValue) {
-    fa_node = CreateFAForSD15(func_graph, node, q_trans, k_trans, v_trans, num_head, next_tokens, scale_value, fa_parm);
-  } else {
-    fa_node = CreateFlashAttentionCnodeForBNSD(func_graph, node, q_trans, k_trans, v_trans, nullptr, num_head,
-                                               next_tokens, scale_value, fa_parm, num_head);
-  }
+  auto fa_node = CreateSDFlashAttentionNode(func_graph, node, q_trans, k_trans, v_trans, mul_const_input,
+                                            input_tensor_q_shape, input_tensor_k_shape, input_tensor_v_shape, fa_parm);
   if (fa_node == nullptr) {
     return nullptr;
   }
@@ -2342,47 +2314,12 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForSD(const std::string &
   auto input_tensor_q_shape = GetTensorShape(q_reshape, kNumIndex1);
   auto input_tensor_k_shape = GetTensorShape(k_reshape, kNumIndex1);
   auto input_tensor_v_shape = GetTensorShape(v_reshape, kNumIndex1);
+  auto mul_const_input = mul->input(kNumIndex2);
   MS_LOG(INFO) << "q shape: " << input_tensor_q_shape << " , k shape: " << input_tensor_k_shape
                << " , v shape: " << input_tensor_v_shape;
 
-  float scale_value = 0;
-  int64_t num_head = 0;
-  int64_t next_tokens = kNumMaxNextTokenSize;
-  int64_t d_value = 0;
-  auto mul_const_input = mul->input(kNumIndex2);
-
-  if (input_tensor_q_shape.size() != kNumShapeSize4) {
-    scale_value = GetScaleValueForDynamicShape(mul_const_input);
-    d_value = 1 / pow(scale_value, kNumPowerTwo);
-    // process bnsd shape
-    MS_LOG(INFO) << "get flash attention param for dynamic shape, scale value is " << scale_value;
-    std::vector<int32_t> new_shape = {0, 0, -1};
-    auto shape_node = BuildIntVecParameterNode(func_graph, new_shape, node->fullname_with_scope() + "_new_shape");
-    auto output_shape_node = node->cast<CNodePtr>();
-    output_shape_node->set_input(kNumIndex2, shape_node);
-    auto q_trans_reshape = q_trans->cast<CNodePtr>()->input(kNumIndex1);
-    num_head = GetNumHeadForSD(q_trans_reshape);
-  } else if (input_tensor_q_shape.size() == kNumShapeSize4) {
-    MS_LOG(INFO) << "get flash attention param for static shape.";
-    // for static shape: get scale value
-    scale_value = 1 / (pow(input_tensor_q_shape[kNumIndex3], kNumPowerHalf));
-    num_head = input_tensor_q_shape[kNumIndex1];
-    d_value = input_tensor_q_shape[kNumIndex3];
-  } else {
-    MS_LOG(WARNING) << "need check Q input tensor shape: " << input_tensor_q_shape;
-    return nullptr;
-  }
-  CNodePtr fa_node = nullptr;
-  if (!PFACheckShape(scale_value, input_tensor_q_shape, input_tensor_k_shape, input_tensor_v_shape,
-                     fa_parm->seq_threshold)) {
-    return nullptr;
-  }
-  if (d_value == kNumDValue) {
-    fa_node = CreateFAForSD15(func_graph, node, q_trans, k_trans, v_trans, num_head, next_tokens, scale_value, fa_parm);
-  } else {
-    fa_node = CreateFlashAttentionCnodeForBNSD(func_graph, node, q_trans, k_trans, v_trans, nullptr, num_head,
-                                               next_tokens, scale_value, fa_parm, num_head);
-  }
+  auto fa_node = CreateSDFlashAttentionNode(func_graph, node, q_trans, k_trans, v_trans, mul_const_input,
+                                            input_tensor_q_shape, input_tensor_k_shape, input_tensor_v_shape, fa_parm);
   if (fa_node == nullptr) {
     return nullptr;
   }
@@ -2799,48 +2736,12 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForSDEinsum(
   auto input_tensor_q_shape = GetTensorShape(q_reshape, kNumIndex1);
   auto input_tensor_k_shape = GetTensorShape(k_reshape, kNumIndex1);
   auto input_tensor_v_shape = GetTensorShape(v_reshape, kNumIndex1);
+  auto mul_const_input = mul->input(kNumIndex2);
   MS_LOG(INFO) << "q shape: " << input_tensor_q_shape << " , k shape: " << input_tensor_k_shape
                << " , v shape: " << input_tensor_v_shape;
 
-  float scale_value = 0;
-  int64_t num_head = 0;
-  int64_t next_tokens = kNumMaxNextTokenSize;
-  int64_t d_value = 0;
-  auto mul_const_input = mul->input(kNumIndex2);
-
-  if (input_tensor_q_shape.size() != kNumShapeSize4) {
-    scale_value = GetScaleValueForDynamicShape(mul_const_input);
-    d_value = 1 / pow(scale_value, kNumPowerTwo);
-    // process bnsd shape
-    MS_LOG(INFO) << "get flash attention param for dynamic shape, scale value is " << scale_value;
-    std::vector<int32_t> new_shape = {0, 0, -1};
-    auto shape_node = BuildIntVecParameterNode(func_graph, new_shape, node->fullname_with_scope() + "_new_shape");
-    auto output_shape_node = node->cast<CNodePtr>();
-    output_shape_node->set_input(kNumIndex2, shape_node);
-    auto q_trans_reshape = q_trans->cast<CNodePtr>()->input(kNumIndex1);
-    num_head = GetNumHeadForSD(q_trans_reshape);
-  } else if (input_tensor_q_shape.size() == kNumShapeSize4) {
-    MS_LOG(INFO) << "get flash attention param for static shape.";
-    // for static shape: get scale value
-    scale_value = 1 / (pow(input_tensor_q_shape[kNumIndex3], kNumPowerHalf));
-    num_head = input_tensor_q_shape[kNumIndex1];
-    d_value = input_tensor_q_shape[kNumIndex3];
-  } else {
-    MS_LOG(WARNING) << "need check Q input tensor shape: " << input_tensor_q_shape;
-    return nullptr;
-  }
-  CNodePtr fa_node = nullptr;
-  if (!PFACheckShape(scale_value, input_tensor_q_shape, input_tensor_k_shape, input_tensor_v_shape,
-                     fa_parm->seq_threshold)) {
-    return nullptr;
-  }
-
-  if (d_value == kNumDValue) {
-    fa_node = CreateFAForSD15(func_graph, node, q_trans, k_trans, v_trans, num_head, next_tokens, scale_value, fa_parm);
-  } else {
-    fa_node = CreateFlashAttentionCnodeForBNSD(func_graph, node, q_trans, k_trans, v_trans, nullptr, num_head,
-                                               next_tokens, scale_value, fa_parm, num_head);
-  }
+  auto fa_node = CreateSDFlashAttentionNode(func_graph, node, q_trans, k_trans, v_trans, mul_const_input,
+                                            input_tensor_q_shape, input_tensor_k_shape, input_tensor_v_shape, fa_parm);
   if (fa_node == nullptr) {
     return nullptr;
   }

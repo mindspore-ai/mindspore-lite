@@ -91,6 +91,14 @@ class FlashAttentionFusion : public MultiplePatternProcessPass {
                                                          const std::shared_ptr<FlashAttentionParm> &fa_parm,
                                                          int64_t num_key_value_heads = 1) const;
 
+  CNodePtr CreatePromptFlashAttentionCnodeForLayout(const FuncGraphPtr &func_graph, const AnfNodePtr &node,
+                                                    const AnfNodePtr &q, const AnfNodePtr &k, const AnfNodePtr &v,
+                                                    const AnfNodePtr &atten_mask, int64_t num_heads, int64_t next_token,
+                                                    float scale_value,
+                                                    const std::shared_ptr<FlashAttentionParm> &fa_parm,
+                                                    int64_t layout_mode, const std::string &layout_name,
+                                                    const std::string &cnode_suffix) const;
+
   CNodePtr CreatePromptFlashAttentionCnodeForBSH(const FuncGraphPtr &func_graph, const AnfNodePtr &node,
                                                  const AnfNodePtr &q, const AnfNodePtr &k, const AnfNodePtr &v,
                                                  const AnfNodePtr &atten_mask, int64_t num_heads, int64_t next_token,
@@ -166,6 +174,11 @@ class FlashAttentionFusion : public MultiplePatternProcessPass {
                                  const AnfNodePtr &k_trans, const AnfNodePtr &v_trans, const AnfNodePtr &pse,
                                  int64_t num_head, int64_t next_token, float scale_value,
                                  const std::shared_ptr<FlashAttentionParm> &fa_parm) const;
+  CNodePtr CreateSDFlashAttentionNode(const FuncGraphPtr &func_graph, const AnfNodePtr &node, const AnfNodePtr &q_trans,
+                                      const AnfNodePtr &k_trans, const AnfNodePtr &v_trans,
+                                      const AnfNodePtr &mul_const_input, const std::vector<int64_t> &q_shape,
+                                      const std::vector<int64_t> &k_shape, const std::vector<int64_t> &v_shape,
+                                      const std::shared_ptr<FlashAttentionParm> &fa_parm) const;
   CNodePtr CreateGQACNodeForBNSD(const FuncGraphPtr &func_graph, const AnfNodePtr &node, const CNodePtr &matmul_1,
                                  const CNodePtr &matmul_2, const CNodePtr &attention_mask_mul,
                                  const std::shared_ptr<FlashAttentionParm> &fa_parm) const;
@@ -173,6 +186,10 @@ class FlashAttentionFusion : public MultiplePatternProcessPass {
                                         const CNodePtr &qk_matmul, const CNodePtr &v_matmul,
                                         const CNodePtr &attention_mask_mul,
                                         const std::shared_ptr<FlashAttentionParm> &fa_parm) const;
+  CNodePtr CreateFAForBNSDFromInputs(const FuncGraphPtr &func_graph, const AnfNodePtr &node, const AnfNodePtr &q,
+                                     const AnfNodePtr &k, const AnfNodePtr &v, const CNodePtr &atten_mask,
+                                     const std::vector<int64_t> &q_shape, const std::vector<int64_t> &k_shape,
+                                     const std::shared_ptr<FlashAttentionParm> &fa_parm) const;
 
   CNodePtr CreateFACNodeWithoutAttenMask(const FuncGraphPtr &func_graph, const AnfNodePtr &node,
                                          const CNodePtr &qk_matmul, const CNodePtr &v_matmul,

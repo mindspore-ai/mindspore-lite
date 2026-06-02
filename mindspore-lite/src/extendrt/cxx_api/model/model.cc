@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "include/api/model.h"
+#include <functional>
 #include <map>
 #include <utility>
 #include <memory>
@@ -33,6 +34,55 @@ extern void mindspore_log_init();
 }
 #endif
 std::mutex g_log_lock;
+
+// Shared null-check + try-catch wrapper for Status-returning methods.
+// Used by Resize, Predict, etc. to eliminate duplicate error handling.
+Status TryExecute(const std::shared_ptr<ModelImpl> &impl, const std::function<Status()> &exec_fn) {
+  if (impl == nullptr) {
+    MS_LOG(ERROR) << "Model implement is null.";
+    return Status(kLiteNullptr, "Model implement is nullptr.");
+  }
+  try {
+    return exec_fn();
+  } catch (const std::exception &exe) {
+    MS_LOG(ERROR) << "Catch exception: " << exe.what();
+    return kCoreFailed;
+  }
+}
+
+// Try-catch wrapper for Build methods with timing.
+Status TryBuildWithTiming(const std::function<Status()> &build_fn) {
+  try {
+    auto start_time = lite::GetTimeUs();
+    auto ret = build_fn();
+    if (ret != kSuccess) {
+      MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
+      return ret;
+    }
+    auto end_time = lite::GetTimeUs();
+    auto cost = end_time - start_time;
+    MS_LOG(INFO) << "[init time] model build cost " << cost << " us";
+    return kSuccess;
+  } catch (const std::exception &exe) {
+    MS_LOG(ERROR) << "Catch exception: " << exe.what();
+    return kCoreFailed;
+  }
+}
+
+// Null-check + try-catch wrapper for tensor getter methods.
+std::vector<MSTensor> TryGetTensors(const std::shared_ptr<ModelImpl> &impl,
+                                    const std::function<std::vector<MSTensor>()> &get_fn) {
+  if (impl == nullptr) {
+    MS_LOG(ERROR) << "Model implement is null.";
+    return {};
+  }
+  try {
+    return get_fn();
+  } catch (const std::exception &exe) {
+    MS_LOG(ERROR) << "Catch exception: " << exe.what();
+    return {};
+  }
+}
 }  // namespace
 
 Model::Model() {
@@ -63,26 +113,12 @@ Status Model::Build(const void *model_data, size_t data_size, ModelType model_ty
   MS_CHECK_TRUE_MSG(model_data != nullptr, Status(kLiteNullptr, "model_data is nullptr!"), "model_data is nullptr!");
   MS_CHECK_TRUE_MSG(model_context != nullptr, Status(kLiteNullptr, "model_context is nullptr!"),
                     "model_context is nullptr!");
-  try {
-    auto ret = impl_->PreInfer(model_data, data_size, model_type, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "PreInfer failed!";
-      return ret;
-    }
-    auto start_time = lite::GetTimeUs();
-    ret = impl_->Build(model_data, data_size, model_type, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
-      return ret;
-    }
-    auto end_time = lite::GetTimeUs();
-    auto cost = end_time - start_time;
-    MS_LOG(INFO) << "[init time] model build cost " << cost << " us";
-    return kSuccess;
-  } catch (const std::exception &exe) {
-    MS_LOG(ERROR) << "Catch exception: " << exe.what();
-    return kCoreFailed;
+  auto ret = impl_->PreInfer(model_data, data_size, model_type, model_context);
+  if (ret != kSuccess) {
+    MS_LOG(ERROR) << "PreInfer failed!";
+    return ret;
   }
+  return TryBuildWithTiming([=]() { return impl_->Build(model_data, data_size, model_type, model_context); });
 }
 
 Status Model::Build(const void *model_data, size_t data_size, const void *weight_data, size_t weight_size,
@@ -91,21 +127,8 @@ Status Model::Build(const void *model_data, size_t data_size, const void *weight
     MS_LOG(ERROR) << "Model implement is null.";
     return kLiteNullptr;
   }
-  try {
-    auto start_time = lite::GetTimeUs();
-    Status ret = impl_->Build(model_data, data_size, weight_data, weight_size, model_type, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
-      return ret;
-    }
-    auto end_time = lite::GetTimeUs();
-    auto cost = end_time - start_time;
-    MS_LOG(INFO) << "[init time] model build cost " << cost << " us";
-    return kSuccess;
-  } catch (const std::exception &exe) {
-    MS_LOG(ERROR) << "Catch exception: " << exe.what();
-    return kCoreFailed;
-  }
+  return TryBuildWithTiming(
+    [=]() { return impl_->Build(model_data, data_size, weight_data, weight_size, model_type, model_context); });
 }
 
 Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
@@ -113,26 +136,13 @@ Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
   MS_CHECK_TRUE_MSG(impl_ != nullptr, Status(kLiteNullptr, "Model implement is nullptr!"),
                     "Model implement is nullptr!");
   MS_CHECK_TRUE_MSG(model_context != nullptr, Status(kLiteNullptr, "context is nullptr!"), "context is nullptr!");
-  try {
-    auto ret = impl_->PreInfer(CharToString(model_path), model_type, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "PreInfer failed!";
-      return ret;
-    }
-    auto start_time = lite::GetTimeUs();
-    ret = impl_->Build(CharToString(model_path), model_type, model_context);
-    if (ret != kSuccess) {
-      MS_LOG(ERROR) << "impl_->Build failed! ret = " << ret;
-      return ret;
-    }
-    auto end_time = lite::GetTimeUs();
-    auto cost = end_time - start_time;
-    MS_LOG(INFO) << "[init time] model build cost " << cost << " us";
-    return kSuccess;
-  } catch (const std::exception &exe) {
-    MS_LOG(ERROR) << "Catch exception: " << exe.what();
-    return kCoreFailed;
+  auto ret = impl_->PreInfer(CharToString(model_path), model_type, model_context);
+  if (ret != kSuccess) {
+    MS_LOG(ERROR) << "PreInfer failed!";
+    return ret;
   }
+  auto model_path_str = CharToString(model_path);
+  return TryBuildWithTiming([=]() { return impl_->Build(model_path_str, model_type, model_context); });
 }
 
 Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
@@ -162,16 +172,7 @@ Status BuildTransferLearning(GraphCell backbone, GraphCell head, const std::shar
 }
 
 Status Model::Resize(const std::vector<MSTensor> &inputs, const std::vector<std::vector<int64_t>> &dims) {
-  if (impl_ == nullptr) {
-    MS_LOG(ERROR) << "Model implement is null.";
-    return Status(kLiteNullptr, "Model implement is nullptr.");
-  }
-  try {
-    return impl_->Resize(inputs, dims);
-  } catch (const std::exception &exe) {
-    MS_LOG(ERROR) << "Catch exception: " << exe.what();
-    return kCoreFailed;
-  }
+  return TryExecute(impl_, [this, &inputs, &dims]() { return impl_->Resize(inputs, dims); });
 }
 
 Status Model::RunStep(const MSKernelCallBack &before, const MSKernelCallBack &after) {
@@ -186,16 +187,8 @@ Status Model::RunStep(const MSKernelCallBack &before, const MSKernelCallBack &af
 
 Status Model::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTensor> *outputs,
                       const MSKernelCallBack &before, const MSKernelCallBack &after) {
-  if (impl_ == nullptr) {
-    MS_LOG(ERROR) << "Model implement is null.";
-    return Status(kLiteNullptr, "Model implement is nullptr!");
-  }
-  try {
-    return impl_->Predict(inputs, outputs, before, after);
-  } catch (const std::exception &exe) {
-    MS_LOG(ERROR) << "Catch exception: " << exe.what();
-    return kCoreFailed;
-  }
+  return TryExecute(
+    impl_, [this, &inputs, outputs, &before, &after]() { return impl_->Predict(inputs, outputs, before, after); });
 }
 
 Status Model::Predict(const MSKernelCallBack &before, const MSKernelCallBack &after) {
@@ -220,29 +213,11 @@ bool Model::HasPreprocess() {
 }
 
 std::vector<MSTensor> Model::GetInputs() {
-  if (impl_ == nullptr) {
-    MS_LOG(ERROR) << "Model implement is null.";
-    return {};
-  }
-  try {
-    return impl_->GetInputs();
-  } catch (const std::exception &exe) {
-    MS_LOG(ERROR) << "Catch exception: " << exe.what();
-    return {};
-  }
+  return TryGetTensors(impl_, [this]() { return impl_->GetInputs(); });
 }
 
 std::vector<MSTensor> Model::GetOutputs() {
-  if (impl_ == nullptr) {
-    MS_LOG(ERROR) << "Model implement is null.";
-    return {};
-  }
-  try {
-    return impl_->GetOutputs();
-  } catch (const std::exception &exe) {
-    MS_LOG(ERROR) << "Catch exception: " << exe.what();
-    return {};
-  }
+  return TryGetTensors(impl_, [this]() { return impl_->GetOutputs(); });
 }
 
 MSTensor Model::GetInputByTensorName(const std::vector<char> &name) {

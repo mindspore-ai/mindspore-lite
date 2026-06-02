@@ -16,6 +16,7 @@
 
 #include "src/extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"
 #include <memory>
+#include "src/common/log_adapter.h"
 #if !defined(_WIN32)
 #include "src/extendrt/cxx_api/dlutils.h"
 #endif
@@ -49,6 +50,21 @@ AscendAllocatorPlugin &AscendAllocatorPlugin::GetInstance() {
 #endif
   static AscendAllocatorPlugin instance;
   return instance;
+}
+
+bool AscendAllocatorPlugin::CheckRegistered(const void *data) const {
+  if (!is_registered_) {
+    MS_LOG(ERROR) << "AscendAllocatorPlugin is not registered.";
+    return false;
+  }
+  if (data == nullptr) {
+    MS_LOG(INFO) << "device data is nullptr.";
+    return false;
+  }
+  if (ascend_allocator_plugin_impl_ == nullptr) {
+    return false;
+  }
+  return true;
 }
 
 bool AscendAllocatorPlugin::Register() {
@@ -197,15 +213,7 @@ void AscendAllocatorPlugin::FreeHost(void *host_data) {
 Status AscendAllocatorPlugin::CopyDeviceDataToHost(void *device_data, void *host_data, size_t data_size,
                                                    int device_id) {
 #if !defined(_WIN32)
-  if (!is_registered_) {
-    MS_LOG(ERROR) << "AscendAllocatorPlugin is not registered.";
-    return kLiteMemoryFailed;
-  }
-  if (device_data == nullptr) {
-    MS_LOG(INFO) << "device data is nullptr.";
-    return kLiteMemoryFailed;
-  }
-  if (ascend_allocator_plugin_impl_ == nullptr) {
+  if (!CheckRegistered(device_data)) {
     return kLiteMemoryFailed;
   }
   return ascend_allocator_plugin_impl_->CopyDeviceDataToHost(device_data, host_data, data_size, device_id);
@@ -239,15 +247,7 @@ Status AscendAllocatorPlugin::CopyDeviceDataToDevice(void *src_device, void *dst
 
 Status AscendAllocatorPlugin::CopyHostDataToDevice(void *host_data, void *device_data, size_t data_size) {
 #if !defined(_WIN32)
-  if (!is_registered_) {
-    MS_LOG(ERROR) << "AscendAllocatorPlugin is not registered.";
-    return kLiteMemoryFailed;
-  }
-  if (device_data == nullptr) {
-    MS_LOG(INFO) << "device data is nullptr.";
-    return kLiteMemoryFailed;
-  }
-  if (ascend_allocator_plugin_impl_ == nullptr) {
+  if (!CheckRegistered(device_data)) {
     return kLiteMemoryFailed;
   }
   return ascend_allocator_plugin_impl_->CopyHostDataToDevice(host_data, device_data, data_size);
