@@ -16,29 +16,17 @@
 """
 Model adapter registry for ParallelManager.
 
-Each supported model registers its class name here.  Pipeline wrapper
-classes (e.g. WanT2V) can also be registered so that ParallelManager
-works when passed a pipeline object directly.
-
-To add a new model:
-1. Create a directory under model/ (e.g. model/my_model/)
-2. Implement boost_xxx(target) in model/my_model/boost.py
-3. Add model/pipeline class name to SUPPORTED_MODELS
-4. Add dispatch entry to _BOOST_REGISTRY
+Wan-series models (class name starts with 'Wan') are auto-detected:
+  - class in _WAN22_CLASSES or has low_noise_model → wan2_2
+  - otherwise → wan2_1
 """
 import importlib
 
-# Class name → adapter key.
-# For WanModel the default is wan2_2; the 'vace' model_type routes
-# to wan2_1 via a runtime check in detect_model_type().
-SUPPORTED_MODELS = {
-    'WanModel':         'wan2_2',
-    'VaceWanModel':     'wan2_1',
-    'WanT2V':           'wan2_2',
-    'WanTI2V':          'wan2_2',
-    'WanI2V':           'wan2_2',
-    'WanS2V':           'wan2_2',
-}
+# Wan2.2-specific attribute: some Wan2.2 pipelines have low_noise_model.
+_WAN22_MARKER_ATTR = 'low_noise_model'
+
+# Wan2.2 classes that do NOT have low_noise_model (e.g. WanTI2V, WanS2V).
+_WAN22_CLASSES = frozenset({'WanTI2V', 'WanS2V'})
 
 _BOOST_REGISTRY = {
     'wan2_1': ('.wan2_1.boost', 'boost_wan2_1'),
@@ -47,28 +35,22 @@ _BOOST_REGISTRY = {
 
 
 def detect_model_type(model) -> str:
-    """Detect model class name and map to adapter key."""
+    """Detect model type for Wan-series models."""
     cls_name = model.__class__.__name__
 
-    # Wan2.1 VACE: WanModel with model_type='vace' routes to wan2_1
-    if cls_name == 'WanModel' and getattr(model, 'model_type', None) == 'vace':
-        return 'wan2_1'
-
-    try:
-        return SUPPORTED_MODELS[cls_name]
-    except KeyError:
+    if not cls_name.startswith('Wan'):
         raise ValueError(
             f"Unsupported model type: {cls_name}. "
-            f"Supported: {list(SUPPORTED_MODELS.keys())}"
-        ) from None
+            f"Expected a Wan-series pipeline or model."
+        )
+
+    if cls_name in _WAN22_CLASSES or hasattr(model, _WAN22_MARKER_ATTR):
+        return 'wan2_2'
+    return 'wan2_1'
 
 
 def setup_model(model):
-    """Dispatch model setup based on detected model type.
-
-    Returns:
-        model: The same model instance, modified in-place.
-    """
+    """Dispatch model setup based on detected model type."""
     module_key = detect_model_type(model)
     pkg, fn = _BOOST_REGISTRY[module_key]
     mod = importlib.import_module(pkg, package=__name__)
