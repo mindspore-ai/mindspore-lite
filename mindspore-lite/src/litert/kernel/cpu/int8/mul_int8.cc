@@ -17,6 +17,8 @@
 #include "src/litert/kernel/cpu/int8/mul_int8.h"
 #include "include/errorcode.h"
 #include "src/litert/kernel_registry.h"
+#include "nnacl_c/op_base.h"
+#include "include/api/format.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;
@@ -76,15 +78,41 @@ int MulInt8CPUKernel::Prepare() {
 }
 
 void MulInt8CPUKernel::CheckSameShapeSize(std::vector<int> in_tensor0_shape, std::vector<int> in_tensor1_shape) {
-  bool condition1 = in_tensor0_shape[kNHWC_N] == in_tensor1_shape[kNHWC_N];
-  bool condition2 = in_tensor0_shape[kNHWC_H] == 1;
-  bool condition3 = in_tensor0_shape[kNHWC_W] == 1;
-  bool condition4 = in_tensor0_shape[kNHWC_C] == in_tensor1_shape[kNHWC_C];
-  bool condition5 = in_tensor1_shape[kNHWC_H] == 1;
-  bool condition6 = in_tensor1_shape[kNHWC_W] == 1;
+  // Use format-aware indices to correctly handle both NHWC and NCHW
+  // The output tensor determines the format for the operation
+  auto out_tensor = out_tensors_.front();
+  mindspore::Format format = static_cast<mindspore::Format>(out_tensor->format());
+
+  // Select dimension indices based on format
+  // NHWC: [N, H, W, C] -> indices [0, 1, 2, 3]
+  // NCHW: [N, C, H, W] -> indices [0, 1, 2, 3]
+  int n_idx = 0;  // Batch is always at index 0
+  int h_idx, w_idx, c_idx;
+
+  if (format == mindspore::NCHW) {
+    // NCHW: [N, C, H, W]
+    h_idx = 2;  // H is at index 2
+    w_idx = 3;  // W is at index 3
+    c_idx = 1;  // C is at index 1
+  } else {
+    // NHWC (default): [N, H, W, C]
+    h_idx = 1;  // H is at index 1
+    w_idx = 2;  // W is at index 2
+    c_idx = 3;  // C is at index 3
+  }
+
+  bool condition1 = in_tensor0_shape[n_idx] == in_tensor1_shape[n_idx];
+  bool condition2 = in_tensor0_shape[h_idx] == 1;
+  bool condition3 = in_tensor0_shape[w_idx] == 1;
+  bool condition4 = in_tensor0_shape[c_idx] == in_tensor1_shape[c_idx];
+  bool condition5 = in_tensor1_shape[h_idx] == 1;
+  bool condition6 = in_tensor1_shape[w_idx] == 1;
+
   if (condition1 && condition2 && condition3 && condition4) {
+    // input0 broadcasts: [N,1,1,C] * [N,H,W,C]
     fast_hw_broadcast_ = true;
   } else if (condition1 && condition4 && condition5 && condition6) {
+    // input1 broadcasts: [N,H,W,C] * [N,1,1,C]
     fast_hw_broadcast_ = true;
     input1_hw_broadcast_ = true;
   }
@@ -95,18 +123,34 @@ void MulInt8CPUKernel::CheckIfFastImpl() {
   auto in_tensor1 = in_tensors_.at(1);
   MS_CHECK_TRUE_RET_VOID(in_tensors_.at(0)->ElementsNum() > 0);
   MS_CHECK_TRUE_RET_VOID(in_tensors_.at(1)->ElementsNum() > 0);
+
+  // Get format-aware dimension indices from output tensor
+  auto out_tensor = out_tensors_.front();
+  mindspore::Format format = static_cast<mindspore::Format>(out_tensor->format());
+
+  int h_idx, w_idx, c_idx;
+  if (format == mindspore::NCHW) {
+    h_idx = 2;  // NCHW: [N, C, H, W]
+    w_idx = 3;
+    c_idx = 1;
+  } else {
+    h_idx = 1;  // NHWC: [N, H, W, C]
+    w_idx = 2;
+    c_idx = 3;
+  }
+
   if (in_tensor0->ElementsNum() != in_tensor1->ElementsNum()) {
     if (in_tensor0->shape().size() == COMM_SHAPE_SIZE && in_tensor1->shape().size() == COMM_SHAPE_SIZE) {
       CheckSameShapeSize(in_tensor0->shape(), in_tensor1->shape());
     } else if (in_tensor0->shape().size() == 1 && in_tensor1->shape().size() == COMM_SHAPE_SIZE) {
-      if (in_tensor0->ElementsNum() == in_tensor1->shape()[kNHWC_C]) {
+      // 1D tensor * 4D tensor: check if 1D size matches Channel dimension
+      if (in_tensor0->ElementsNum() == in_tensor1->shape()[c_idx]) {
         fast_hw_broadcast_ = true;
       }
     } else if (in_tensor0->shape().size() == COMM_SHAPE_SIZE && in_tensor1->shape().size() == 1) {
-      // Fix: Only use fast broadcast path when input0 has shape [N,1,1,C]
-      // This ensures FastDoExecute's assumption about data layout is valid
-      if (in_tensor0->shape()[kNHWC_H] == 1 && in_tensor0->shape()[kNHWC_W] == 1 &&
-          in_tensor1->ElementsNum() == in_tensor0->shape()[kNHWC_C]) {
+      // 4D tensor * 1D tensor: only use fast path when input0 has [N,1,1,C] shape
+      if (in_tensor0->shape()[h_idx] == 1 && in_tensor0->shape()[w_idx] == 1 &&
+          in_tensor1->ElementsNum() == in_tensor0->shape()[c_idx]) {
         fast_hw_broadcast_ = true;
         input1_hw_broadcast_ = true;
       }
@@ -169,7 +213,7 @@ int MulInt8CPUKernel::Run() {
   MS_ASSERT(output_data_);
 
   CheckIfFastImpl();
-  // can implement fast broadcast mul
+  // Fast broadcast mul implementation
   if (fast_hw_broadcast_) {
     elements_num_ = out_tensors_.front()->Batch() * out_tensors_.front()->Height() * out_tensors_.front()->Width();
     count_unit_ = thread_count_ > 1 ? UP_DIV(elements_num_, thread_count_) : elements_num_;
@@ -225,13 +269,20 @@ void MulInt8CPUKernel::FastDoExecute(int task_id) {
   if (real_dst_count <= 0) {
     return;
   }
+
+  // Fast broadcast path supports both NHWC and NCHW formats
+  // The key is using Tensor::Channel()/Height()/Width() which automatically
+  // return correct dimension values based on the tensor's format
+  // Broadcasting pattern: one input is [N,1,1,C], other is [N,H,W,C]
   int8_t *cur_input0_data = input0_data_;
   int8_t *cur_input1_data = input1_data_ + task_id * count_unit_ * depth;
   int8_t *cur_output_data = output_data_ + task_id * count_unit_ * depth;
+
   if (input1_hw_broadcast_) {
     cur_input0_data = input1_data_;
     cur_input1_data = input0_data_ + task_id * count_unit_ * depth;
   }
+
   FastMul(cur_input0_data, cur_input1_data, cur_output_data, depth, real_dst_count, input1_hw_broadcast_, quant_args_);
 }
 
