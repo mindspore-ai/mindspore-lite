@@ -16,39 +16,9 @@
 
 source ./scripts/base_functions.sh
 
-# Shared result table format (Device 18 + Category 14 + Testcase 80 + Result 10 = 125 visible chars)
-RESULT_FMT="%-18s %-14s %-80s %-10s\n"
-RESULT_SEP="-----------------------------------------------------------------------------------------------------------------------------"
 # Parallel execution constants (single source of truth)
 NUM_CARDS=${NUM_PARALLEL_CARDS:-8}
 START_CARD=${START_CARD_ID:-0}
-
-# Split a cfg file into N sub-config files using round-robin allocation
-function Split_Config() {
-    local cfg_file=$1
-    local num_cards=$2
-    local output_prefix=$3
-    local lines=()
-    if [[ ! -f "$cfg_file" ]]; then
-        echo "ERROR: Config file not found: ${cfg_file}"
-        return 1
-    fi
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^[[:space:]]*# || -z "${line// }" ]]; then
-            continue
-        fi
-        lines+=("$line")
-    done < "$cfg_file"
-    local total=${#lines[@]}
-    echo "Split_Config: ${cfg_file} has ${total} models, splitting into ${num_cards} cards"
-    for ((card = 0; card < num_cards; card++)); do
-        local sub_cfg="${output_prefix}_card${card}.cfg"
-        true > "$sub_cfg"
-        for ((i = card; i < total; i += num_cards)); do
-            echo "${lines[$i]}" >> "$sub_cfg"
-        done
-    done
-}
 
 # Run benchmark with specified cfg list and log/result files
 # $1: cfg_file_list; $2: log_file; $3: result_file
@@ -219,66 +189,6 @@ function Run_Benchmark_GE_With_Cfg() {
     return $?
 }
 
-# Prepend "Ascend:<dev_id> <category>" to each non-empty result line, stripping any leading "Ascend: " from the raw line
-# $1: input result file; $2: device_id; $3: category; $4: output file
-function Append_Result_With_Device() {
-    local input_file=$1
-    local dev_id=$2
-    local category=$3
-    local output_file=$4
-    local stripped testcase result
-    while IFS= read -r line; do
-        [[ -z "${line// }" ]] && continue
-        stripped="${line#Ascend: }"
-        testcase="${stripped% *}"
-        result="${stripped##* }"
-        printf "$RESULT_FMT" "Ascend:${dev_id}" "${category}" "${testcase}" "${result}" >> "${output_file}"
-    done < "${input_file}"
-}
-
-# Print a unified stage result table with Device + Category columns
-# $1: result file; $2: stage name
-function Print_Stage_Result() {
-    local result_file=$1
-    local stage_name=$2
-    if [[ ! -s "${result_file}" ]]; then
-        echo "No results for ${stage_name}"
-        return
-    fi
-    echo ""
-    echo "$RESULT_SEP"
-    printf "$RESULT_FMT" "Device" "Category" "Testcase" "Result"
-    echo "$RESULT_SEP"
-    echo "${stage_name} RESULT PRINT BEGIN"
-    cat "${result_file}"
-    echo "${stage_name} RESULT PRINT END"
-    echo "$RESULT_SEP"
-    rm -f "${result_file}"
-}
-
-# Run a shell function with timeout, killing its process tree on expiry.
-# Returns 124 on timeout, otherwise the command's exit code.
-# $1: timeout seconds; $2...: command + args
-function Run_With_Watchdog() {
-    local timeout_sec=$1; shift
-    "$@" &
-    local cmd_pid=$!
-    (
-        sleep ${timeout_sec}
-        pkill -9 -P ${cmd_pid} 2>/dev/null
-        kill -9 ${cmd_pid} 2>/dev/null
-    ) &
-    local watchdog_pid=$!
-    wait ${cmd_pid}
-    local cmd_exit=$?
-    kill ${watchdog_pid} 2>/dev/null
-    wait ${watchdog_pid} 2>/dev/null
-    if [ ${cmd_exit} -eq 137 ]; then
-        return 124
-    fi
-    return ${cmd_exit}
-}
-
 # Run full pipeline (converter + benchmark ACL + benchmark GE) on a single card
 # $1: card_idx; $2: card_id (physical device id)
 # Requires: pkg_dir, ms_models_path to be set by caller
@@ -307,37 +217,45 @@ function Run_Single_Card() {
         local card_work_dir="${benchmark_test_path}/card_work_${card_idx}"
         mkdir -p ${card_work_dir}
         cd ${card_work_dir} || return 1
-        # Symlink converter_lite so it can be found as ./converter_lite in card_work_dir
         ln -sf ${pkg_dir}/converter_lite ./
         export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${pkg_dir}/tools/converter/lib/:${pkg_dir}/tools/converter/third_party/glog/lib
-        Convert "${sub_acl}" $models_path $ms_models_path $card_conv_log $card_conv_result $run_fail_not_return
+        Run_With_Watchdog ${WATCHDOG_TIMEOUT_SEC} Convert "${sub_acl}" $models_path $ms_models_path $card_conv_log $card_conv_result $run_fail_not_return
         local conv_status=$?
-        if [[ ${conv_status} != 0 ]]; then
+        if [[ ${conv_status} -eq 124 ]]; then
+            echo "Card ${card_id}: Converter timed out" >> "${card_bench_log}"
+            return 1
+        elif [[ ${conv_status} != 0 ]]; then
             echo "Card ${card_id}: Converter failed" >> "${card_bench_log}"
             return 1
         fi
         echo "Card ${card_id}: Converter success" >> "${card_bench_log}"
     fi
 
-    # 2. Benchmark ACL — cd to pkg_dir (Run_Benchmark_With_Cfg also cd's there)
+    # 2. Benchmark ACL
     if [[ -s ${sub_acl} ]]; then
         echo "Card ${card_id}: Start benchmark ACL" >> "${card_bench_log}"
-        Run_Benchmark_With_Cfg "${sub_acl}" "${card_bench_log}" "${card_bench_acl_result}"
+        Run_With_Watchdog ${WATCHDOG_TIMEOUT_SEC} Run_Benchmark_With_Cfg "${sub_acl}" "${card_bench_log}" "${card_bench_acl_result}"
         local acl_status=$?
-        if [[ ${acl_status} != 0 ]]; then
+        if [[ ${acl_status} -eq 124 ]]; then
+            echo "Card ${card_id}: Benchmark ACL timed out" >> "${card_bench_log}"
+            return 1
+        elif [[ ${acl_status} != 0 ]]; then
             echo "Card ${card_id}: Benchmark ACL failed" >> "${card_bench_log}"
             return 1
         fi
         echo "Card ${card_id}: Benchmark ACL success" >> "${card_bench_log}"
     fi
 
-    # 3. Benchmark GE — GE models are pre-copied by Run_Parallel_All
+    # 3. Benchmark GE
     if [[ -s ${sub_ge} ]]; then
         echo "Card ${card_id}: Start benchmark GE" >> "${card_bench_log}"
-        Run_Benchmark_GE_With_Cfg "${sub_ge}" "${card_bench_log}" "${card_bench_ge_result}" "true"
+        Run_With_Watchdog ${WATCHDOG_TIMEOUT_SEC} Run_Benchmark_GE_With_Cfg "${sub_ge}" "${card_bench_log}" "${card_bench_ge_result}" "true"
         local ge_status=$?
         unset ASCEND_BACK_POLICY
-        if [[ ${ge_status} != 0 ]]; then
+        if [[ ${ge_status} -eq 124 ]]; then
+            echo "Card ${card_id}: Benchmark GE timed out" >> "${card_bench_log}"
+            return 1
+        elif [[ ${ge_status} != 0 ]]; then
             echo "Card ${card_id}: Benchmark GE failed" >> "${card_bench_log}"
             return 1
         fi
@@ -387,7 +305,7 @@ function Run_Parallel_All() {
 
     for ((i = 0; i < num_cards; i++)); do
         (
-            Run_With_Watchdog 3600 Run_Single_Card $i $((start_card + i))
+            Run_Single_Card $i $((start_card + i))
             exit $?
         ) &
         pids+=($!)
@@ -403,6 +321,7 @@ function Run_Parallel_All() {
             timeout_card_indices+=("${i}")
             fail=1
         elif [ ${ec} -ne 0 ]; then
+            echo "Card $((start_card + i)) failed (exit ${ec})"
             fail=1
         fi
     done
@@ -438,7 +357,7 @@ function Run_Parallel_All() {
     cat ${benchmark_test_path}/run_converter_log_card*.txt > ${run_converter_log_file}
     # Append timeout notices to merged log so they are persisted
     for tidx in "${timeout_card_indices[@]}"; do
-        echo "[conv/bench] Ascend:$((start_card + tidx)) timed out after 3600s" >> "${run_benchmark_log_file}"
+        echo "[conv/bench] Ascend:$((start_card + tidx)) timed out after ${WATCHDOG_TIMEOUT_SEC}s" >> "${run_benchmark_log_file}"
     done
 
     # Clean up per-card work dirs
@@ -469,7 +388,7 @@ function Run_Python_Benchmark_Parallel() {
         card_ids+=("${card_id}")
         (
             export ASCEND_DEVICE_ID=${card_id}
-            timeout 3600 python3 run_python_benchmark.py ${models_path}/ ${ms_models_path} ${basepath}/../${config_folder}/ascend/ ${sub_python_cfg} ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ ${card_id}
+            timeout ${WATCHDOG_TIMEOUT_SEC} python3 run_python_benchmark.py ${models_path}/ ${ms_models_path} ${basepath}/../${config_folder}/ascend/ ${sub_python_cfg} ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ ${card_id}
         ) > "${result_file}" 2>&1 &
         pids+=($!)
     done
@@ -745,7 +664,7 @@ for ((card=0; card<NUM_CARDS; card++)); do
     result_files+=("${result_file}")
     card_ids_for_result+=("${card_id}")
     (
-        timeout 3600 python3 ${MSLITE_COVERAGE_ARGS} -m pytest ${files} -n 1 --dist=loadfile --forked \
+        timeout ${WATCHDOG_TIMEOUT_SEC} python3 ${MSLITE_COVERAGE_ARGS} -m pytest ${files} -n 1 --dist=loadfile --forked \
             --device_id ${card_id} --output_dir=${ms_models_path}/${card_id}/ ${PYTEST_ARGS} -q -rA
     ) > "${result_file}" 2>&1 &
     pids+=($!)
@@ -776,7 +695,7 @@ for ((i=0; i<${#result_files[@]}; i++)); do
     cat "${rf}" >> "${pytest_log_file}"
 done
 for cid in "${pytest_timeout_cards[@]}"; do
-    echo "[pytest] Ascend:${cid} timed out after 3600s, partial results above" >> "${pytest_log_file}"
+    echo "[pytest] Ascend:${cid} timed out after ${WATCHDOG_TIMEOUT_SEC}s, partial results above" >> "${pytest_log_file}"
 done
 # Aggregate pytest results into summary file for table printing
 pytest_result_file=${benchmark_test_path}/stage_pytest_result.txt

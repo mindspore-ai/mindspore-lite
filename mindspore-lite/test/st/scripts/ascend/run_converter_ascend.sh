@@ -41,6 +41,7 @@ backend=$1
 device_id=$2
 arch=$3
 ascend_fail_not_return=$4
+skip_benchmark=$5
 user_name=${USER}
 echo "Current user is ${USER}"
 benchmark_test=/home/${user_name}/benchmark_test/${device_id}
@@ -99,7 +100,11 @@ else
     exit 1
 fi
 
-# Run Benchmark
+# Run Benchmark (skip when called from parallel flow — benchmark is handled externally)
+if [[ ${skip_benchmark} == "skip_benchmark" ]]; then
+    echo "Skip benchmark (parallel mode), converter done"
+    exit 0
+fi
 source ${benchmark_test}/run_benchmark_ascend.sh -v $version -b $backend -d $device_id -a ${arch} -c ${compile_type} -p ${ascend_fail_not_return}
 Run_Benchmark_status=$?
 exit ${Run_Benchmark_status}

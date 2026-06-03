@@ -17,7 +17,7 @@
 source ${benchmark_test}/run_benchmark_python.sh
 
 # Example:sh run_remote_ascend.sh -v version -b backend
-while getopts "v:b:d:a:c:" opt; do
+while getopts "v:b:d:a:c:s:" opt; do
     case ${opt} in
         v)
             version=${OPTARG}
@@ -38,6 +38,9 @@ while getopts "v:b:d:a:c:" opt; do
         c)
             compile_type=${OPTARG}
             echo "compile type is ${compile_type}"
+            ;;
+        s)
+            skip_benchmark=${OPTARG}
             ;;
         ?)
         echo "unknown para"
@@ -259,6 +262,12 @@ if [[ ${Run_java_status} = 0 ]];then
 else
     echo "Run java benchmark failed"
     exit 1
+fi
+
+# When sourced with skip_benchmark, only Java runs — C++ benchmark is handled externally
+if [[ ${skip_benchmark} == "skip_benchmark" ]]; then
+    echo "Skip cloud C++ benchmark (parallel mode)"
+    return ${Run_java_status}
 fi
 
 Run_Benchmark
