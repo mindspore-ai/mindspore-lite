@@ -24,6 +24,9 @@ Supports two scoring modes:
 When the number of documents exceeds the context window, the listwise mode
 automatically splits documents into blocks and fuses query embeddings with
 weighted averaging, matching the original model's behavior.
+
+Note: ONNX Runtime can only run the non-fuse ONNX. If you exported ONNX with
+fused Custom ops enabled, re-export with --disable-fusion-opt.
 """
 
 import argparse
@@ -53,8 +56,8 @@ def _parse_args():
     parser.add_argument(
         "--model-path",
         type=str,
-        default="./onnx/jina_reranker_v3_listwise.onnx",
-        help="Path to ONNX model",
+        default="./onnx/non_fuse/jina_reranker_v3_listwise.onnx",
+        help="Path to non-fuse ONNX model (runnable by ONNX Runtime)",
     )
     parser.add_argument(
         "--tokenizer",
@@ -241,21 +244,29 @@ def _split_into_blocks(doc_lengths, docs, query_length, max_length, max_doc_leng
     Returns:
         block_docs_list: list of blocks, each block is a list of doc strings
     """
+    del max_doc_length
     block_size = 125
-    length_capacity = max_length - 2 * query_length
+    total_capacity = max_length - 2 * query_length
     block_docs_list = []
     current_block = []
+    current_used = 0
 
     for length, doc in zip(doc_lengths, docs):
-        current_block.append(doc)
-        length_capacity -= length
+        length = int(length)
+        if not current_block:
+            current_block = [doc]
+            current_used = length
+            continue
 
-        if len(current_block) >= block_size or length_capacity <= max_doc_length:
+        if len(current_block) >= block_size or (current_used + length) > total_capacity:
             block_docs_list.append(current_block)
-            current_block = []
-            length_capacity = max_length - 2 * query_length
+            current_block = [doc]
+            current_used = length
+        else:
+            current_block.append(doc)
+            current_used += length
 
-    if len(current_block) > 0:
+    if current_block:
         block_docs_list.append(current_block)
 
     return block_docs_list
@@ -279,7 +290,7 @@ def _score_block(session, tokenizer, query, block_docs, max_length):
     prompt = _format_listwise_prompt(query, block_docs)
     encoded = tokenizer(
         prompt,
-        padding=True,
+        padding="max_length",
         truncation=True,
         max_length=max_length,
         return_tensors="np",
@@ -376,7 +387,7 @@ def rerank_pointwise(session, tokenizer, query, documents, max_length=8192):
         prompt = _format_listwise_prompt(query, [doc])
         encoded = tokenizer(
             prompt,
-            padding=True,
+            padding="max_length",
             truncation=True,
             max_length=max_length,
             return_tensors="np",

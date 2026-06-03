@@ -51,6 +51,55 @@ THINK_OPEN = "\u003cthink\u003e"
 THINK_CLOSE = "\u003c/think\u003e"
 NO_THINK_SUFFIX = THINK_OPEN + "\n\n" + THINK_CLOSE + "\n\n"
 
+_PERF = {
+    "tokenizer_load_s": 0.0,
+    "model_build_s": 0.0,
+    "tokenize_s": 0.0,
+    "resize_s": 0.0,
+    "predict_s": 0.0,
+    "postprocess_s": 0.0,
+}
+_RUN_INFO = {
+    "mode": None,
+    "model_max_length": None,
+    "io_shapes": None,
+}
+_WARMED_UP_SEQ_LENS = set()
+
+
+def _sec_to_ms(v):
+    return float(v) * 1000.0
+
+
+def _print_perf_tables(mode, model_max_length, io_shapes):
+    """Print markdown tables for IO shapes and end-to-end performance metrics."""
+    print("\n### MSLite 推理输入输出（本次运行）")
+    print("\n| 项目 | 值 |")
+    print("|---|---|")
+    print(f"| mode | `{mode}` |")
+    print(f"| max_length(bucket) | `{int(model_max_length)}` |")
+    for k, v in io_shapes.items():
+        print(f"| {k} | `{v}` |")
+
+    total_s = (
+        _PERF["tokenizer_load_s"]
+        + _PERF["model_build_s"]
+        + _PERF["tokenize_s"]
+        + _PERF["resize_s"]
+        + _PERF["predict_s"]
+        + _PERF["postprocess_s"]
+    )
+    print("\n### 端到端推理性能（本次运行）")
+    print("\n| 指标 | 耗时 (ms) |")
+    print("|---|---:|")
+    print(f"| Tokenizer load | {_sec_to_ms(_PERF['tokenizer_load_s']):.2f} |")
+    print(f"| Model build | {_sec_to_ms(_PERF['model_build_s']):.2f} |")
+    print(f"| Tokenize + pad | {_sec_to_ms(_PERF['tokenize_s']):.2f} |")
+    print(f"| Model resize | {_sec_to_ms(_PERF['resize_s']):.2f} |")
+    print(f"| Model predict | {_sec_to_ms(_PERF['predict_s']):.2f} |")
+    print(f"| Postprocess | {_sec_to_ms(_PERF['postprocess_s']):.2f} |")
+    print(f"| **总耗时** | **{_sec_to_ms(total_s):.2f}** |")
+
 
 def _parse_args():
     """
@@ -104,6 +153,7 @@ def _load_tokenizer(tokenizer_id):
     Load tokenizer from specified model ID or path.
     """
     print(f"Loading tokenizer from {tokenizer_id}")
+    t0 = time.perf_counter()
     tokenizer = AutoTokenizer.from_pretrained(
         tokenizer_id,
         trust_remote_code=True,
@@ -111,6 +161,7 @@ def _load_tokenizer(tokenizer_id):
     tokenizer.padding_side = "left"
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    _PERF["tokenizer_load_s"] += time.perf_counter() - t0
     return tokenizer
 
 
@@ -126,9 +177,32 @@ def _load_mslite_model(args):
         context.ascend.device_id = args.device_id
 
     print(f"Loading model from {args.model_path}...")
+    t0 = time.perf_counter()
     model = mslite.Model()
     model.build_from_file(args.model_path, mslite.ModelType.MINDIR, context)
+    _PERF["model_build_s"] += time.perf_counter() - t0
     return model
+
+
+def _resolve_model_max_length(model, fallback_max_length):
+    """
+    Resolve the fixed `max_length` required by the compiled MindIR.
+
+    For Ascend-oriented MindIR, the GE graph is compiled for a fixed input shape.
+    If the model input shape is static and exposes a positive `seq_len`, prefer it.
+    Otherwise, fall back to the user-provided `--max-length`.
+    """
+    inputs = model.get_inputs()
+    for inp in inputs:
+        if inp.name == "input_ids":
+            shape = getattr(inp, "shape", None)
+            if shape is None or len(shape) != 2:
+                break
+            seq_len = int(shape[1])
+            if seq_len > 0:
+                return seq_len
+            break
+    return int(fallback_max_length)
 
 
 def _format_listwise_prompt(query, docs):
@@ -202,12 +276,18 @@ def _build_mslite_inputs(model, input_ids_np, attention_mask_np,
         "query_token_index": query_token_index_np.astype(np.int32),
     }
 
+    dims = []
+    for inp in inputs:
+        if inp.name not in feed:
+            raise ValueError(f"Unknown model input: {inp.name}")
+        dims.append(list(feed[inp.name].shape))
+    t0 = time.perf_counter()
+    model.resize(inputs, dims)
+    _PERF["resize_s"] += time.perf_counter() - t0
+
     mslite_inputs = []
     for inp in inputs:
-        if inp.name in feed:
-            mslite_inputs.append(mslite.Tensor(feed[inp.name]))
-        else:
-            raise ValueError(f"Unknown model input: {inp.name}")
+        mslite_inputs.append(mslite.Tensor(feed[inp.name]))
 
     return mslite_inputs
 
@@ -267,7 +347,13 @@ def _compute_block_scores(model, input_ids_np, attention_mask_np):
         model, input_ids_np, attention_mask_np,
         doc_token_indices, query_token_index,
     )
+    seq_len = int(input_ids_np.shape[1])
+    if seq_len not in _WARMED_UP_SEQ_LENS:
+        model.predict(mslite_inputs)
+        _WARMED_UP_SEQ_LENS.add(seq_len)
+    t0 = time.perf_counter()
     outputs = model.predict(mslite_inputs)
+    _PERF["predict_s"] += time.perf_counter() - t0
     scores = outputs[0].get_data_to_numpy()
 
     return scores[0, :num_docs]
@@ -290,21 +376,29 @@ def _split_into_blocks(doc_lengths, docs, query_length, max_length, max_doc_leng
     Returns:
         block_docs_list: list of blocks, each block is a list of doc strings
     """
+    del max_doc_length
     block_size = 125
-    length_capacity = max_length - 2 * query_length
+    total_capacity = max_length - 2 * query_length
     block_docs_list = []
     current_block = []
+    current_used = 0
 
     for length, doc in zip(doc_lengths, docs):
-        current_block.append(doc)
-        length_capacity -= length
+        length = int(length)
+        if not current_block:
+            current_block = [doc]
+            current_used = length
+            continue
 
-        if len(current_block) >= block_size or length_capacity <= max_doc_length:
+        if len(current_block) >= block_size or (current_used + length) > total_capacity:
             block_docs_list.append(current_block)
-            current_block = []
-            length_capacity = max_length - 2 * query_length
+            current_block = [doc]
+            current_used = length
+        else:
+            current_block.append(doc)
+            current_used += length
 
-    if len(current_block) > 0:
+    if current_block:
         block_docs_list.append(current_block)
 
     return block_docs_list
@@ -326,13 +420,26 @@ def _score_block(model, tokenizer, query, block_docs, max_length):
         block_weight: float weight for cross-block fusion
     """
     prompt = _format_listwise_prompt(query, block_docs)
+    t0 = time.perf_counter()
     encoded = tokenizer(
         prompt,
-        padding=True,
+        padding="max_length",
         truncation=True,
         max_length=max_length,
         return_tensors="np",
     )
+    _PERF["tokenize_s"] += time.perf_counter() - t0
+
+    if _RUN_INFO["io_shapes"] is None:
+        _RUN_INFO["mode"] = "listwise"
+        _RUN_INFO["model_max_length"] = int(max_length)
+        _RUN_INFO["io_shapes"] = {
+            "input_ids Shape": encoded["input_ids"].shape,
+            "attention_mask Shape": encoded["attention_mask"].shape,
+            "doc_token_indices Shape": (1, MAX_DOCS),
+            "query_token_index Shape": (1, 1),
+            "scores Shape": (1, len(block_docs)),
+        }
     scores = _compute_block_scores(
         model, encoded["input_ids"], encoded["attention_mask"]
     )
@@ -382,6 +489,7 @@ def rerank_listwise(model, tokenizer, query, documents, max_length=8192,
         block_weights.append(block_weight)
 
     final_scores = np.array(all_scores)
+    t0 = time.perf_counter()
 
     sorted_indices = np.argsort(final_scores)[::-1]
 
@@ -398,7 +506,7 @@ def rerank_listwise(model, tokenizer, query, documents, max_length=8192,
             "relevance_score": float(final_scores[idx]),
             "index": int(idx),
         })
-
+    _PERF["postprocess_s"] += time.perf_counter() - t0
     return results
 
 
@@ -427,13 +535,26 @@ def rerank_pointwise(model, tokenizer, query, documents, max_length=8192):
         list of dicts with keys: document, relevance_score, index
     """
     prompts = [_format_listwise_prompt(query, [doc]) for doc in documents]
+    t0 = time.perf_counter()
     encoded = tokenizer(
         prompts,
-        padding=True,
+        padding="max_length",
         truncation=True,
         max_length=max_length,
         return_tensors="np",
     )
+    _PERF["tokenize_s"] += time.perf_counter() - t0
+
+    if _RUN_INFO["io_shapes"] is None:
+        _RUN_INFO["mode"] = "pointwise"
+        _RUN_INFO["model_max_length"] = int(max_length)
+        _RUN_INFO["io_shapes"] = {
+            "input_ids Shape": encoded["input_ids"][0:1].shape,
+            "attention_mask Shape": encoded["attention_mask"][0:1].shape,
+            "doc_token_indices Shape": (1, MAX_DOCS),
+            "query_token_index Shape": (1, 1),
+            "scores Shape": (1, 1),
+        }
 
     scores = []
     for i in range(len(documents)):
@@ -445,6 +566,7 @@ def rerank_pointwise(model, tokenizer, query, documents, max_length=8192):
         scores.append(float(block_scores[0]))
 
     scores = np.array(scores)
+    t0 = time.perf_counter()
     sorted_indices = np.argsort(scores)[::-1]
 
     results = []
@@ -455,7 +577,7 @@ def rerank_pointwise(model, tokenizer, query, documents, max_length=8192):
             "relevance_score": float(scores[idx]),
             "index": int(idx),
         })
-
+    _PERF["postprocess_s"] += time.perf_counter() - t0
     return results
 
 
@@ -466,6 +588,7 @@ def main():
     args = _parse_args()
     tokenizer = _load_tokenizer(args.tokenizer)
     model = _load_mslite_model(args)
+    model_max_length = _resolve_model_max_length(model, args.max_length)
 
     query = "What are the health benefits of green tea?"
     documents = [
@@ -484,18 +607,18 @@ def main():
     ]
 
     print(f"\nRunning inference in {args.mode} mode...")
-    start_time = time.time()
+    start_time = time.perf_counter()
 
     if args.mode == "listwise":
         results = rerank_listwise(
-            model, tokenizer, query, documents, max_length=args.max_length
+            model, tokenizer, query, documents, max_length=model_max_length
         )
     else:
         results = rerank_pointwise(
-            model, tokenizer, query, documents, max_length=args.max_length
+            model, tokenizer, query, documents, max_length=model_max_length
         )
 
-    elapsed = time.time() - start_time
+    elapsed = time.perf_counter() - start_time
 
     print(f"\nReranking results ({args.mode} mode):")
     for i, result in enumerate(results):
@@ -503,6 +626,13 @@ def main():
         print(f"Document: {result['document'][:100]}...")
 
     print(f"\nInference time: {elapsed:.3f}s")
+
+    if _RUN_INFO["io_shapes"] is not None:
+        _print_perf_tables(
+            _RUN_INFO["mode"] or args.mode,
+            _RUN_INFO["model_max_length"] or model_max_length,
+            _RUN_INFO["io_shapes"],
+        )
     print("=" * 60)
     print("Higher scores indicate better relevance to the query.")
     print("=" * 60)
