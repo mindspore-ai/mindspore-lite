@@ -32,20 +32,9 @@ pip install transformers==4.57.0 torch==2.10.0 onnx==1.19.1 onnxruntime==1.24.2 
 ```bash
 cd examples/base_models/jina_reranker_v3
 
-# 1) fuse（用于 MSLite/Ascend 性能；ONNX Runtime 通常无法直接执行）
 python export_jina_reranker_v3_onnx.py \
-  --model-id /path/to/jina-reranker-v3 \
+  --model-id ./weights/jina-reranker-v3 \
   --output-dir ./onnx/fuse \
-  --disable_rmsnorm_fusion \
-  --max-length 4096 \
-  --device cpu
-
-# 2) non-fuse（用于 ONNX Runtime 精度基线）
-python export_jina_reranker_v3_onnx.py \
-  --model-id /path/to/jina-reranker-v3 \
-  --output-dir ./onnx/non_fuse \
-  --disable-fusion-opt \
-  --max-length 4096 \
   --device cpu
 ```
 
@@ -60,18 +49,18 @@ python export_jina_reranker_v3_onnx.py \
 |----------------|---------------------------|------------------------|
 | `--model-id`   | HuggingFace 模型路径或本地目录     | `jinaai/jina-reranker-v3` |
 | `--output-dir` | 输出目录                      | `./onnx`               |
-| `--max-length` | 最大序列长度                    | `8192`                 |
-| `--device`     | 导出设备（cpu/cuda）            | `cpu`                  |
-| `--disable-fusion-opt` / `--disable_fusion_opt` | 导出 non-fuse ONNX（用于 ONNX Runtime 推理） | 默认关闭 |
-
-说明：默认导出融合 ONNX；如需 ONNX Runtime 推理，必须加 `--disable-fusion-opt` 导出 non-fuse ONNX。
+| `--device`     | 导出设备                      | `cpu`                  |
+| `--disable-fusion-opt` | 禁用融合导出，生成 non-fuse ONNX（用于 ONNX Runtime 推理） | 默认关闭（未使能） |
+| `--enable_bmm2mm_fusion` | 使能 BMM->MMv2 优化：Linear 走 2D MatMulV2 Custom（仅融合导出有效） | 默认关闭（未使能） |
+| `--enable_rmsnorm_fusion` | 使能 RmsNorm/AddRmsNorm 融合 Custom 算子 | 默认关闭（未使能） |
+| `--enable_qk_merge` | 使能 QK merge：合并 q_proj+k_proj 为一个 Linear（仅融合导出有效） | 默认关闭（未使能） |
 
 ### 产出
 
 ```log
 onnx/fuse/
-├── jina_reranker_v3_listwise.onnx
-└── jina_reranker_v3_listwise.onnx.data
+├── jina_reranker_v3.onnx
+└── jina_reranker_v3.onnx.data
 ```
 
 ### 模型架构说明
@@ -116,8 +105,8 @@ onnx/fuse/
 
 ```bash
 python infer_jina_reranker_v3_onnx.py \
-  --model-path ./onnx/non_fuse/jina_reranker_v3_listwise.onnx \
-  --tokenizer /path/to/jina-reranker-v3 \
+  --model-path onnx/non_fuse/jina_reranker_v3.onnx \
+  --tokenizer ./weights/jina-reranker-v3 \
   --max-length 1280 \
   --mode listwise \
   --device CPU
@@ -126,40 +115,43 @@ python infer_jina_reranker_v3_onnx.py \
 **执行日志：**
 
 ```log
-Loading tokenizer from jina-reranker-v3
-Loading ONNX model from ./onnx/jina_reranker_v3_listwise.onnx
+onnxruntime cpuid_info warning: Unknown CPU vendor. cpuinfo_vendor value: 15
+Loading tokenizer from ./weights/jina-reranker-v3
+Loading ONNX model from onnx/non_fuse/jina_reranker_v3.onnx
 
 Running inference in listwise mode...
 
 Reranking results (listwise mode):
 
-[1] Score: 0.2978
+[1] Score: 0.2986
 Document: Green tea contains antioxidants called catechins that may help reduce inflammation and protect cells...
 
-[2] Score: 0.2246
+[2] Score: 0.2247
 Document: 绿茶富含儿茶素等抗氧化剂，可以降低心脏病风险，还有助于控制体重。...
 
-[3] Score: 0.1897
+[3] Score: 0.1901
 Document: Studies show that drinking green tea regularly can improve brain function and boost metabolism....
 
-[4] Score: 0.1619
+[4] Score: 0.1519
 Document: Le thé vert est riche en antioxydants et peut améliorer la function cérébrale....
 
-[5] Score: -0.1606
+[5] Score: -0.1604
 Document: El precio del café ha aumentado un 20% este año debido a problemas en la cadena de suministro....
 
-[6] Score: -0.1701
+[6] Score: -0.1702
 Document: Basketball is one of the most popular sports in the United States....
 
-Inference time: 3.232s
+============================================================
+Higher scores indicate better relevance to the query.
+============================================================
 ```
 
 ### Pointwise 模式推理
 
 ```bash
 python infer_jina_reranker_v3_onnx.py \
-  --model-path ./onnx/non_fuse/jina_reranker_v3_listwise.onnx \
-  --tokenizer /path/to/jina-reranker-v3 \
+  --model-path onnx/non_fuse/jina_reranker_v3.onnx \
+  --tokenizer ./weights/jina-reranker-v3 \
   --max-length 1280 \
   --mode pointwise \
   --device CPU
@@ -168,8 +160,9 @@ python infer_jina_reranker_v3_onnx.py \
 **执行日志：**
 
 ```log
-Loading tokenizer from jina-reranker-v3
-Loading ONNX model from ./onnx/jina_reranker_v3_listwise.onnx
+onnxruntime cpuid_info warning: Unknown CPU vendor. cpuinfo_vendor value: 15
+Loading tokenizer from ./weights/jina-reranker-v3
+Loading ONNX model from onnx/non_fuse/jina_reranker_v3.onnx
 
 Running inference in pointwise mode...
 
@@ -184,7 +177,7 @@ Document: 绿茶富含儿茶素等抗氧化剂，可以降低心脏病风险，�
 [3] Score: 0.3152
 Document: Studies show that drinking green tea regularly can improve brain function and boost metabolism....
 
-[4] Score: 0.2508
+[4] Score: 0.2499
 Document: Le thé vert est riche en antioxydants et peut améliorer la function cérébrale....
 
 [5] Score: -0.1041
@@ -193,18 +186,20 @@ Document: El precio del café ha aumentado un 20% este año debido a problemas e
 [6] Score: -0.1387
 Document: Basketball is one of the most popular sports in the United States....
 
-Inference time: 23.823s
+============================================================
+Higher scores indicate better relevance to the query.
+============================================================
 ```
 
 ### 参数说明
 
 | 参数             | 说明                       | 默认值                              |
 |----------------|--------------------------|----------------------------------|
-| `--model-path` | ONNX 模型路径               | `./onnx/non_fuse/jina_reranker_v3_listwise.onnx` |
-| `--tokenizer`  | HuggingFace tokenizer 路径 | `jinaai/jina-reranker-v3`        |
-| `--max-length` | 最大序列长度                  | `8192`                           |
+| `--model-path` | ONNX 模型路径               | `./onnx/non_fuse/jina_reranker_v3.onnx` |
+| `--tokenizer`  | HuggingFace tokenizer 路径 | `./weights/jina-reranker-v3`        |
+| `--max-length` | 最大序列长度                  | `4096`                           |
 | `--mode`       | 打分模式：listwise / pointwise | `listwise`                       |
-| `--device`     | 推理设备（CPU/CUDA）          | `CPU`                            |
+| `--device`     | 推理设备（CPU）          | `CPU`                            |
 
 ---
 
@@ -213,16 +208,13 @@ Inference time: 23.823s
 ### 转换命令
 
 ```bash
-Converter=path-to-mindspore-lite/tools/converter/converter/converter_lite
-
 # 动态分档：batch=1，seq_len=256~4096（stride=128，共 31 档）
 $Convert --fmk=ONNX \
-  --modelFile=onnx/fuse/jina_reranker_v3_listwise.onnx \
-  --outputFile=out_bucket_4096/jina_reranker_v3_listwise \
+  --modelFile=./onnx/fuse/jina_reranker_v3.onnx \
+  --outputFile=./onnx/fuse/jina_reranker_v3 \
   --saveType=MINDIR \
   --optimize=ascend_oriented \
-  --configFile=config.ini \
-  --device=Ascend
+  --configFile=./config.ini \
 ```
 
 ### 参数说明
@@ -254,17 +246,15 @@ plugin_custom_ops=BatchMatmulToMatmul
 
 此配置用于避免 FP16 精度下 attention mask 溢出问题（详见常见问题 Q2）。
 
-**注意：** `force_fp32` 与 `enforce_fp32` 是不同的配置项。`enforce_fp32` 仅限制算子输入为 FP32，但中间计算仍可能使用 FP16；`force_fp32` 强制所有计算使用 FP32，确保精度一致性。对于 attention mask 溢出问题，应使用 `force_fp32`。
-
 ### 产出
 
 模型文件超过 2GB 时，会分成 `*_graph.mindir` 和 `*_variables/` 目录：
 
 ```log
-onnx/
-├── jina_reranker_v3_listwise_graph.mindir      # MindIR 图定义
-├── jina_reranker_v3_listwise_variables/data_0   # 权重数据
-└── jina_reranker_v3_listwise.onnx               # 原始 ONNX 模型
+onnx/fuse
+├── jina_reranker_v3_graph.mindir      # MindIR 图定义
+├── jina_reranker_v3_variables/data_0   # 权重数据
+└── jina_reranker_v3.onnx               # 原始 ONNX 模型
 ```
 
 ---
@@ -280,9 +270,9 @@ onnx/
 
 ```bash
 python infer_jina_reranker_v3_mslite.py \
-  --model-path /path/to/out_mindir/jina_reranker_v3_listwise_graph.mindir \
-  --tokenizer /path/to/jina-reranker-v3 \
-  --max-length 4096 \
+  --model-path onnx/fuse/jina_reranker_v3_graph.mindir \
+  --tokenizer ./weights/jina-reranker-v3 \
+  --max-length 1280 \
   --device ascend \
   --device-id 0 \
   --mode listwise
@@ -291,43 +281,78 @@ python infer_jina_reranker_v3_mslite.py \
 **执行日志：**
 
 ```log
-Loading tokenizer from jina-reranker-v3
-Initializing MindSpore Lite context for ascend...
-Loading model from ./onnx/jina_reranker_v3_listwise_graph.mindir...
 WARNING:root:Ascend custom operator path not found
+Loading tokenizer from ./weights/jina-reranker-v3
+Initializing MindSpore Lite context for ascend...
+Loading model from onnx/fuse/jina_reranker_v3_graph.mindir...
 
 Running inference in listwise mode...
 
 Reranking results (listwise mode):
 
-[1] Score: 0.2978
+[1] Score: 0.2985
 Document: Green tea contains antioxidants called catechins that may help reduce inflammation and protect cells...
 
-[2] Score: 0.2246
+[2] Score: 0.2254
 Document: 绿茶富含儿茶素等抗氧化剂，可以降低心脏病风险，还有助于控制体重。...
 
-[3] Score: 0.1897
+[3] Score: 0.1893
 Document: Studies show that drinking green tea regularly can improve brain function and boost metabolism....
 
-[4] Score: 0.1619
+[4] Score: 0.1516
 Document: Le thé vert est riche en antioxydants et peut améliorer la function cérébrale....
 
-[5] Score: -0.1606
+[5] Score: -0.1604
 Document: El precio del café ha aumentado un 20% este año debido a problemas en la cadena de suministro....
 
 [6] Score: -0.1701
 Document: Basketball is one of the most popular sports in the United States....
 
-Inference time: 0.856s
+### MSLite 推理输入输出（本次运行）
+
+| 项目 | 值 |
+|---|---|
+| mode | `listwise` |
+| max_length(bucket) | `1280` |
+| input_ids Shape | `(1, 1280)` |
+| attention_mask Shape | `(1, 1280)` |
+| doc_token_indices Shape | `(1, 64)` |
+| query_token_index Shape | `(1, 1)` |
+| scores Shape | `(1, 6)` |
+
+### 端到端推理性能（本次运行）
+
+| 指标 | 耗时 (ms) |
+|---|---:|
+| Tokenize + pad | 2.50 |
+| Model resize | 0.37 |
+| Model predict | 108.32 |
+| Postprocess | 0.13 |
+| **总耗时** | **111.32** |
+============================================================
+Higher scores indicate better relevance to the query.
+============================================================
 ```
+
+#### 性能数据(300I DUO)
+
+端到端推理性能（listwise mode）
+
+| 指标 | 耗时 (ms) |
+|---|---:|
+| Tokenize + pad | 2.50 |
+| Model resize | 0.37 |
+| Model predict | 108.32 |
+| Postprocess | 0.13 |
+| **总耗时** | **111.32** |
 
 ### Pointwise 模式推理
 
 ```bash
 python infer_jina_reranker_v3_mslite.py \
-  --model-path /path/to/out_mindir/jina_reranker_v3_listwise_graph.mindir \
-  --tokenizer /path/to/jina-reranker-v3 \
-  --max-length 4096 \
+  --model-path onnx/fuse/jina_reranker_v3_graph.mindir \
+  --tokenizer ./weights/jina-reranker-v3 \
+  --max-length 1280 \
   --device ascend \
   --device-id 0 \
   --mode pointwise
@@ -336,43 +361,90 @@ python infer_jina_reranker_v3_mslite.py \
 **执行日志：**
 
 ```log
-Loading tokenizer from jina-reranker-v3
-Initializing MindSpore Lite context for ascend...
-Loading model from ./onnx/jina_reranker_v3_listwise_graph.mindir...
 WARNING:root:Ascend custom operator path not found
+Loading tokenizer from ./weights/jina-reranker-v3
+Initializing MindSpore Lite context for ascend...
+Loading model from onnx/fuse/jina_reranker_v3_graph.mindir...
 
 Running inference in pointwise mode...
 
 Reranking results (pointwise mode):
 
-[1] Score: 0.3453
+[1] Score: 0.3455
 Document: Green tea contains antioxidants called catechins that may help reduce inflammation and protect cells...
 
-[2] Score: 0.3386
+[2] Score: 0.3388
 Document: 绿茶富含儿茶素等抗氧化剂，可以降低心脏病风险，还有助于控制体重。...
 
-[3] Score: 0.3150
+[3] Score: 0.3147
 Document: Studies show that drinking green tea regularly can improve brain function and boost metabolism....
 
-[4] Score: 0.2507
+[4] Score: 0.2504
 Document: Le thé vert est riche en antioxydants et peut améliorer la function cérébrale....
 
-[5] Score: -0.1041
+[5] Score: -0.1039
 Document: El precio del café ha aumentado un 20% este año debido a problemas en la cadena de suministro....
 
-[6] Score: -0.1386
+[6] Score: -0.1387
 Document: Basketball is one of the most popular sports in the United States....
 
-Inference time: 0.740s
+### MSLite 推理输入输出（本次运行）
+
+| 项目 | 值 |
+|---|---|
+| mode | `pointwise` |
+| max_length(bucket) | `1280` |
+| input_ids Shape | `(1, 1280)` |
+| attention_mask Shape | `(1, 1280)` |
+| doc_token_indices Shape | `(1, 64)` |
+| query_token_index Shape | `(1, 1)` |
+| scores Shape | `(1, 1)` |
+
+### 端到端推理性能（本次运行）
+
+| 指标 | 耗时 (ms) |
+|---|---:|
+| Tokenize + pad | 9.44 |
+| Model resize | 0.71 |
+| Model predict | 642.88 |
+| Postprocess | 0.09 |
+| **总耗时** | **653.12** |
+============================================================
+Higher scores indicate better relevance to the query.
+============================================================
 ```
+
+#### 性能数据(300I DUO)
+
+端到端推理性能（pointwise mode）
+
+| 指标 | 耗时 (ms) |
+|---|---:|
+| Tokenize + pad | 9.44 |
+| Model resize | 0.71 |
+| Model predict | 642.88 |
+| Postprocess | 0.09 |
+| **总耗时** | **653.12** |
+
+### 性能数据说明
+
+> 注：不同设备、不同 CANN 版本、不同 doc 长度分布都会影响性能。本表用于提供可复现实验入口与对比口径。
+>
+> Listwise 与 pointwise 的差异：
+> - Listwise：把 query + N 篇 doc 按顺序写进同一条输入序列里（`batch=1, seq=max_length`），一次前向输出 N 个分数（shape 为 `(1, N)`）。实现上：每篇 doc 末尾插入 `<|embed_token|>`，并用 `doc_token_indices` 记录这些 token 在序列中的位置；推理时从 `hidden_states` 里取出每篇 doc 的 embedding，再与 query embedding 计算 cosine 得分。
+> - Pointwise：每次只输入 query + 1 篇 doc（输出 shape 为 `(1, 1)`），要对 N 篇 doc 打分就需要跑 N 次前向，因此总耗时通常近似 N 倍（再叠加少量调度/框架开销）。
+>
+> `max_length` 说明：
+> - 本 README 的对比用例为了口径一致，listwise/pointwise 都使用 `--max-length=1280`（1280 只是一个示例 bucket）。
+> - pointwise 通常可以选比listwise更短的 `max_length` 来提速：保证能容纳 query+doc，并把输入向上 pad 到 128 对齐的 bucket（例如 512/768/1024/1280）即可。
 
 ### 参数说明
 
 | 参数             | 说明                                    | 默认值                     |
 |----------------|---------------------------------------|-------------------------|
 | `--model-path` | MindIR 模型路径（`*_graph.mindir`）         | 必填                      |
-| `--tokenizer`  | HuggingFace tokenizer 路径              | `jinaai/jina-reranker-v3` |
-| `--max-length` | 最大序列长度                                | `8192`                  |
+| `--tokenizer`  | HuggingFace tokenizer 路径              | `./weights/jina-reranker-v3` |
+| `--max-length` | 最大序列长度                                | `4096`                  |
 | `--device`     | 推理设备（ascend/cpu）                      | `cpu`                   |
 | `--device-id`  | Ascend 设备 ID                          | `0`                     |
 | `--mode`       | 打分模式：listwise / pointwise             | `listwise`              |
@@ -388,59 +460,7 @@ Inference time: 0.740s
 
 ---
 
-## 6. 性能数据(300I DUO)
-
-### 端到端推理性能（infer_jina_reranker_v3_mslite.py 输出示例）
-
-示例命令（动态分档：想命中 1280 档位就传 `--max-length 1280`）：
-
-```bash
-python infer_jina_reranker_v3_mslite.py \
-  --model-path /path/to/out_mindir/jina_reranker_v3_listwise_graph.mindir \
-  --tokenizer /path/to/jina-reranker-v3 \
-  --max-length 1280 \
-  --device ascend \
-  --device-id 0 \
-  --mode listwise
-```
-
-脚本会在日志末尾打印两张表（可直接复制到文档）：
-
-| 项目 | 值 |
-|---|---|
-| mode | `listwise` |
-| max_length(bucket) | `1280` |
-| input_ids Shape | `(1, 1280)` |
-| attention_mask Shape | `(1, 1280)` |
-| doc_token_indices Shape | `(1, 64)` |
-| query_token_index Shape | `(1, 1)` |
-| scores Shape | `(1, 6)` |
-
-| 指标 | 耗时 (ms) |
-|---|---:|
-| Tokenize + pad | 4.60 |
-| Model resize | 0.42 |
-| Model predict | 126.23 |
-| Postprocess | 0.22 |
-| **总耗时** | **131.47** |
-
-### 单模型性能测试结果（Ascend Benchmark，GLOG_v=1）
-
-以下为本仓已保存日志的汇总（重点看 `AvgRunTime` 与稳定段的 `Model execute in xxx us`；首条 execute 往往包含首次编译/缓存开销）：
-
-| 模式 | 输入 shape | AvgRunTime |
-|---|---:|---:|
-| 纯动态 | (1,1280) | 336 ms |
-| 纯动态 + 算子融合 | (1,1280) | 222 ms |
-| 动态分档 + 算子融合 | (1,1280) | 189 ms |
-| 动态分档 + 算子融合 + GQA + `input_layout=BNSD_BSND` | (1,1280) | 184.094 ms |
-| 动态分档 + 算子融合 + GQA + `input_layout=BNSD_BSND` + `--disable_rmsnorm_fusion` | (1,1280) | 126.135 ms |
-
-> 注：不同设备、不同 CANN 版本、不同 doc 长度分布都会影响性能。本表用于提供可复现实验入口与对比口径。
-
----
-
-## 7. 常见问题
+## 6. 常见问题
 
 ### Q1: ONNX 导出时报 `IndexError: tuple index out of range`
 
@@ -518,18 +538,18 @@ python infer_jina_reranker_v3_mslite.py \
 
 ---
 
-## 8. PFA 融合问题定位与修复总结（已验证跑通）
+## 7. PFA 融合问题定位与修复总结（已验证跑通）
 
 本节总结PromptFlashAttention融合过程中遇到的关键问题、触发条件与最终修复方案。
 
-### 8.1 现象
+### 7.1 现象
 
 融合导出的 listwise 模型（`seq_len=1201`）可导出、可转换，但 Benchmark 阶段会进入 `aclnnPromptFlashAttentionV3` 并报错，典型报错包括：
 
 - `attention mask must be NULL, when Qs,Kvs is unAlign ... Qs = 1201, Kvs = 1201`
 - 或在错误映射场景下：`attenMask should not be null when sparse_mode is 4`
 
-### 8.2 触发条件（归因结论）
+### 7.2 触发条件（归因结论）
 
 结论：是否进入 `aclnnPromptFlashAttentionV3` 主要由 **Custom(PromptFlashAttention) 的输入形态 + 序列长度对齐约束** 共同决定，而不是 fp16/fp32。
 
@@ -542,7 +562,7 @@ python infer_jina_reranker_v3_mslite.py \
 
 - PFA 约束说明（摘录）：Atlas 推理系列加速卡上，`Q_S` 或 `KV_S` 非 128 对齐时不支持配置 `atten_mask`。
 
-### 8.3 最终修复方案（仅重写 PFA 融合）
+### 7.3 最终修复方案（仅重写 PFA 融合）
 
 目标：保持模型外部 `seq_len=1201` 不变，在 PFA 融合内部做 128 对齐 padding，使得可以合法传入 `atten_mask` 并跑通 Benchmark。
 
@@ -553,7 +573,7 @@ python infer_jina_reranker_v3_mslite.py \
 - PFA 输出后 slice 回原始 `seq_len`，再继续后续算子。
 - PFA Custom 的导出属性采用最小集合（对齐单算子可跑通的形式），避免 `input_index/sparse_mode/optional_input_names/num_key_value_heads` 等配置导致映射/约束冲突。
 
-### 8.5 动态分档验证（batch=1，seq_len=256~4096，stride=128，共 31 档）
+### 7.5 动态分档验证（batch=1，seq_len=256~4096，stride=128，共 31 档）
 
 关键点：
 
@@ -563,7 +583,7 @@ python infer_jina_reranker_v3_mslite.py \
 
 ---
 
-## 9. 参考资源
+## 8. 参考资源
 
 - [MindSpore Lite 文档](https://www.mindspore.cn/lite)
 - [Jina Reranker V3 官方文档](https://huggingface.co/jinaai/jina-reranker-v3)
@@ -571,6 +591,6 @@ python infer_jina_reranker_v3_mslite.py \
 
 ---
 
-## 10. 许可证
+## 9. 许可证
 
 本教程遵循 Apache 2.0 许可证。模型权重遵循 CC BY-NC 4.0 许可证。
