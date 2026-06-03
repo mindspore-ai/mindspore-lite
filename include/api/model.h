@@ -84,37 +84,6 @@ class MS_API Model {
   /// \return Status. kSuccess: build success, kLiteModelRebuild: build model repeatedly, Other: other types of errors.
   inline Status Build(const std::string &model_path, ModelType model_type,
                       const std::shared_ptr<Context> &model_context = nullptr);
-  /// \brief Build a model from model buffer so that it can run on a device.
-  ///
-  /// \param[in] model_data Define the buffer read from a model file.
-  /// \param[in] data_size Define bytes number of model buffer.
-  /// \param[in] model_type Define The type of model file. Options: ModelType::kMindIR, ModelType::kMindIR_Lite. Only
-  /// ModelType::kMindIR_Lite is valid for Device-side Inference. Cloud-side Inference supports options
-  /// ModelType::kMindIR and ModelType::kMindIR_Lite, but option odelType::kMindIR_Lite will be removed in future
-  /// iterations. \param[in] model_context Define the context used to store options during execution. \param[in] dec_key
-  /// Define the key used to decrypt the ciphertext model. The key length is 16. \param[in] dec_mode Define the
-  /// decryption mode. Options: AES-GCM. \param[in] cropto_lib_path Define the openssl library path.
-  ///
-  /// \return Status. kSuccess: build success, kLiteModelRebuild: build model repeatedly, Other: other types of errors.
-  inline Status Build(const void *model_data, size_t data_size, ModelType model_type,
-                      const std::shared_ptr<Context> &model_context, const Key &dec_key, const std::string &dec_mode,
-                      const std::string &cropto_lib_path);
-
-  /// \brief Load and build a model from model buffer so that it can run on a device.
-  ///
-  /// \param[in] model_path Define the model path.
-  /// \param[in] model_type Define The type of model file. Options: ModelType::kMindIR, ModelType::kMindIR_Lite. Only
-  /// ModelType::kMindIR_Lite is valid for Device-side Inference. Cloud-side Inference supports options
-  /// ModelType::kMindIR and ModelType::kMindIR_Lite, but option odelType::kMindIR_Lite will be removed in future
-  /// iterations. \param[in] model_context Define the context used to store options during execution. \param[in] dec_key
-  /// Define the key used to decrypt the ciphertext model. The key length is 16. \param[in] dec_mode Define the
-  /// decryption mode. Options: AES-GCM. \param[in] cropto_lib_path Define the openssl library path.
-  ///
-  /// \return Status. kSuccess: build success, kLiteModelRebuild: build model repeatedly, Other: other types of errors.
-  inline Status Build(const std::string &model_path, ModelType model_type,
-                      const std::shared_ptr<Context> &model_context, const Key &dec_key, const std::string &dec_mode,
-                      const std::string &cropto_lib_path);
-
   /// \brief Build a model
   ///
   /// \param[in] graph GraphCell is a derivative of Cell. Cell is not available currently. GraphCell can be constructed
@@ -389,11 +358,6 @@ class MS_API Model {
   Status UpdateConfig(const std::vector<char> &section, const std::pair<std::vector<char>, std::vector<char>> &config);
   Status Build(const std::vector<char> &model_path, ModelType model_type,
                const std::shared_ptr<Context> &model_context);
-  Status Build(const void *model_data, size_t data_size, ModelType model_type,
-               const std::shared_ptr<Context> &model_context, const Key &dec_key, const std::vector<char> &dec_mode,
-               const std::vector<char> &cropto_lib_path);
-  Status Build(const std::vector<char> &model_path, ModelType model_type, const std::shared_ptr<Context> &model_context,
-               const Key &dec_key, const std::vector<char> &dec_mode, const std::vector<char> &cropto_lib_path);
   std::vector<char> GetModelInfo(const std::vector<char> &key);
   std::shared_ptr<ModelImpl> impl_;
 };
@@ -418,19 +382,6 @@ Status Model::UpdateConfig(const std::string &section, const std::pair<std::stri
   std::pair<std::vector<char>, std::vector<char>> config_pair = {StringToChar(config.first),
                                                                  StringToChar(config.second)};
   return UpdateConfig(StringToChar(section), config_pair);
-}
-
-Status Model::Build(const void *model_data, size_t data_size, ModelType model_type,
-                    const std::shared_ptr<Context> &model_context, const Key &dec_key, const std::string &dec_mode,
-                    const std::string &cropto_lib_path) {
-  return Build(model_data, data_size, model_type, model_context, dec_key, StringToChar(dec_mode),
-               StringToChar(cropto_lib_path));
-}
-
-Status Model::Build(const std::string &model_path, ModelType model_type, const std::shared_ptr<Context> &model_context,
-                    const Key &dec_key, const std::string &dec_mode, const std::string &cropto_lib_path) {
-  return Build(StringToChar(model_path), model_type, model_context, dec_key, StringToChar(dec_mode),
-               StringToChar(cropto_lib_path));
 }
 
 Status Model::Build(const std::string &model_path, ModelType model_type,

@@ -85,27 +85,6 @@ public class Model {
     /**
      * Build model.
      *
-     * @param buffer          model buffer.
-     * @param modelType       model type.
-     * @param context         model build context.
-     * @param decKey         define the key used to decrypt the ciphertext model. The key length is 16.
-     * @param decMode        define the decryption mode. Options: AES-GCM.
-     * @param croptoLibPath   define the openssl library path.
-     * @return model build status.
-     */
-    public boolean build(final MappedByteBuffer buffer, int modelType, MSContext context, char[] decKey, String decMode,
-                         String croptoLibPath) {
-        boolean isValid = (context != null && buffer != null && decKey != null && decMode != null
-                           && croptoLibPath != null);
-        if (!isValid) {
-            return false;
-        }
-        return false;
-    }
-
-    /**
-     * Build model.
-     *
      * @param buffer    model buffer.
      * @param modelType model type.
      * @param context   model build context.
@@ -115,30 +94,9 @@ public class Model {
         if (context == null || buffer == null) {
             return false;
         }
-        return this.buildByBuffer(modelPtr, buffer, modelType, context.getMSContextPtr(), null, "", "");
+        return this.buildByBuffer(modelPtr, buffer, modelType, context.getMSContextPtr());
     }
 
-
-    /**
-     * Build model.
-     *
-     * @param modelPath       model path.
-     * @param modelType       model type.
-     * @param context         model build context.
-     * @param decKey          define the key used to decrypt the ciphertext model. The key length is 16.
-     * @param decMode         define the decryption mode. Options: AES-GCM.
-     * @param croptoLibPath   define the openssl library path.
-     * @return model build status.
-     */
-    public boolean build(String modelPath, int modelType, MSContext context, char[] decKey, String decMode,
-                         String croptoLibPath) {
-        boolean isValid = (context != null && modelPath != null && decKey != null && decMode != null
-                           && croptoLibPath != null);
-        if (!isValid) {
-            return false;
-        }
-        return false;
-    }
 
     /**
      * Build model.
@@ -152,7 +110,7 @@ public class Model {
         if (context == null || modelPath == null) {
             return false;
         }
-        return this.buildByPath(modelPtr, modelPath, modelType, context.getMSContextPtr(), null, "", "");
+        return this.buildByPath(modelPtr, modelPath, modelType, context.getMSContextPtr());
     }
 
     /**
@@ -457,11 +415,9 @@ public class Model {
 
     private native boolean buildByGraph(long modelPtr, long graphPtr, long contextPtr, long cfgPtr);
 
-    private native boolean buildByPath(long modelPtr, String modelPath, int modelType, long contextPtr,
-                                    char[] dec_key, String dec_mod, String cropto_lib_path);
+    private native boolean buildByPath(long modelPtr, String modelPath, int modelType, long contextPtr);
 
-    private native boolean buildByBuffer(long modelPtr, MappedByteBuffer buffer, int modelType, long contextPtr,
-                                      char[] dec_key, String dec_mod, String cropto_lib_path);
+    private native boolean buildByBuffer(long modelPtr, MappedByteBuffer buffer, int modelType, long contextPtr);
 
     private native List<Long> getInputs(long modelPtr);
 

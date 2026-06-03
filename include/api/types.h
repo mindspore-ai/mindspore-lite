@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef MINDSPORE_INCLUDE_API_TYPES_H
-#define MINDSPORE_INCLUDE_API_TYPES_H
+#ifndef MINDSPORE_LITE_INCLUDE_API_TYPES_H
+#define MINDSPORE_LITE_INCLUDE_API_TYPES_H
 
 #include <cstddef>
 #include <string>
@@ -59,16 +59,6 @@ struct QuantParam {
   double min;          ///< Quantization min value
   double max;          ///< Quantization max value
 };
-
-using Key = struct MS_API Key {
-  size_t max_key_len = 32;
-  size_t len = 0;
-  unsigned char key[32] = {0};
-  Key() : len(0) {}
-  explicit Key(const char *dec_key, size_t key_len);
-};
-
-constexpr char kDecModeAesGcm[] = "AES-GCM";
 
 class Allocator;
 /// \brief The MSTensor class defines a tensor in MindSpore.

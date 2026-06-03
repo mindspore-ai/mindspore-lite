@@ -90,16 +90,10 @@ mindspore::FuncGraphPtr Serialization::ConvertStreamToFuncGraph(const char *buf,
 }
 
 mindspore::Status Serialization::Load(const void *model_data, size_t data_size, mindspore::ModelType model_type,
-                                      mindspore::Graph *graph, const mindspore::Key &dec_key,
-                                      const std::string &dec_mode, const std::string &mindir_path) {
+                                      mindspore::Graph *graph, const std::string &mindir_path) {
   std::stringstream err_msg;
   if (graph == nullptr) {
     err_msg << "Output args graph is nullptr.";
-    MS_LOG(ERROR) << err_msg.str();
-    return mindspore::Status(kMEInvalidInput, err_msg.str());
-  }
-  if (dec_key.len > 0) {
-    err_msg << "Encrypted model is not supported.";
     MS_LOG(ERROR) << err_msg.str();
     return mindspore::Status(kMEInvalidInput, err_msg.str());
   }

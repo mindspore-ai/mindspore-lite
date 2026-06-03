@@ -60,13 +60,6 @@ bool VerifyDeviceInfo(const std::shared_ptr<Context> &model_context) {
 }
 
 Status Model::Build(const void *model_data, size_t data_size, ModelType model_type,
-                    const std::shared_ptr<Context> &model_context, const Key &dec_key,
-                    const std::vector<char> &dec_mode, const std::vector<char> &cropto_lib_path) {
-  MS_LOG(ERROR) << "This interface has been deprecated.";
-  return kLiteNotSupport;
-}
-
-Status Model::Build(const void *model_data, size_t data_size, ModelType model_type,
                     const std::shared_ptr<Context> &model_context) {
   if (impl_ == nullptr) {
     MS_LOG(ERROR) << "Model implement is null.";
@@ -111,13 +104,6 @@ Status Model::Build(const void *model_data, size_t data_size, const void *weight
                     ModelType model_type, const std::shared_ptr<Context> &model_context) {
   MS_LOG(ERROR) << "Build with weight buffer is only support for mindspore_lite's ascend backend.";
   return kLiteError;
-}
-
-Status Model::Build(const std::vector<char> &model_path, ModelType model_type,
-                    const std::shared_ptr<Context> &model_context, const Key &dec_key,
-                    const std::vector<char> &dec_mode, const std::vector<char> &cropto_lib_path) {
-  MS_LOG(ERROR) << "This interface has been deprecated.";
-  return kLiteNotSupport;
 }
 
 Status Model::Build(const std::vector<char> &model_path, ModelType model_type,

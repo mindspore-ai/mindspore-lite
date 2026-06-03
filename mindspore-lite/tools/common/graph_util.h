@@ -102,8 +102,6 @@ STATUS GetShapeVectorAndIdxFromCNode(const CNodePtr &cnode, std::vector<int64_t>
 STATUS GetShapeVectorFromParameter(const mindspore::ParameterPtr &param_node, std::vector<int64_t> *shape_vector);
 
 STATUS GetCNodeOrParameterShapeVec(const AnfNodePtr &anf_node, std::vector<int> *shape);
-
-int InitEncryptKey(const std::shared_ptr<ConverterPara> &param, unsigned char *encKey, size_t *keyLen);
 }  // namespace lite
 }  // namespace mindspore
 

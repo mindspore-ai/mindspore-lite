@@ -186,36 +186,6 @@ ModelType Converter::GetSaveType() const {
   }
 }
 
-void Converter::SetDecryptKey(const std::vector<char> &key) {
-  MS_LOG(ERROR) << "This interface has been deprecated.";
-  (void)key;
-}
-
-void Converter::SetDecryptMode(const std::vector<char> &mode) {
-  MS_LOG(ERROR) << "This interface has been deprecated.";
-  (void)mode;
-}
-
-std::vector<char> Converter::GetDecryptModeChar() const {
-  MS_LOG(ERROR) << "This interface has been deprecated.";
-  return std::vector<char>();
-}
-
-void Converter::SetEnableEncryption(bool encryption) {
-  MS_LOG(ERROR) << "This interface has been deprecated.";
-  (void)encryption;
-}
-
-bool Converter::GetEnableEncryption() const {
-  MS_LOG(ERROR) << "This interface has been deprecated.";
-  return false;
-}
-
-void Converter::SetEncryptKey(const std::vector<char> &key) {
-  MS_LOG(ERROR) << "This interface has been deprecated.";
-  (void)key;
-}
-
 void Converter::SetInfer(bool infer) {
   if (data_ != nullptr) {
     data_->pre_infer = infer;

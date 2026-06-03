@@ -32,7 +32,6 @@
 #include "src/common/config_infos.h"
 #include "mindapi/ir/common.h"
 #include "include/api/model_group.h"
-#include "utils/crypto.h"
 
 #ifndef _WIN32
 #include <dlfcn.h>
@@ -84,21 +83,6 @@ class ModelImpl {
   /// \return Status.
   Status Build(const void *model_data, size_t data_size, const void *weight_data, size_t weight_size,
                ModelType model_type, const std::shared_ptr<Context> &model_context);
-
-  /// \brief Build a model from a encrypted weight file and a graph buffer so that it can run on a device.
-  ///
-  /// \param[in] model_data Define the buffer of the loaded mindir_graph
-  /// \param[in] data_size Define bytes number of model buffer.
-  /// \param[in] model_type Define The type of model file. Options: ModelType::kMindIR, ModelType::kMindIR_Lite.
-  /// Only ModelType::kMindIR is valid for Lite.
-  /// \param[in] model_context Define the context used to store options during execution.
-  /// \param[in] model_path Define the path of weight file
-  /// \param[in] cryptoInfo Define the decryption information
-  ///
-  /// \return Status.
-  Status Build(const void *model_data, size_t data_size, ModelType model_type,
-               const std::shared_ptr<Context> &model_context, const std::string &model_path,
-               const CryptoInfo &cryptoInfo);
 
   /// \brief Build a model from model file path so that it can run on a device.
   ///
@@ -257,27 +241,9 @@ class ModelImpl {
                            ModelType model_type, const std::shared_ptr<Context> &model_context,
                            const std::string &model_path = "");
 
-  /// \brief Model build by buffer implementation for encrypted file, unified model build flow.
-  ///
-  /// \param[in] model_data Define the buffer read from a model file.
-  /// \param[in] data_size Define bytes number of model buffer.
-  /// \param[in] model_type Define The type of model file. Options: ModelType::kMindIR, ModelType::kMindIR_Lite.
-  /// Only ModelType::kMindIR is valid for Lite. \param[in] model_context Define the context used to store options
-  /// during execution. \param[in] model_path Define the model_path, this param is used for net and weight divided case.
-  /// \param[in] cryptoInfo Define the decryption information
-  ///
-  /// \return value of config as string type.
-  Status BuildByBufferImpl(const void *model_data, size_t model_size, ModelType model_type,
-                           const std::shared_ptr<Context> &model_context, const std::string &model_path,
-                           const CryptoInfo &cryptoInfo);
-
   FuncGraphPtr LoadGraphByBufferImpl(const void *model_data, size_t data_size, const void *weight_data,
                                      size_t weight_size, ModelType model_type,
                                      const std::shared_ptr<Context> &model_context, const std::string &model_path);
-
-  FuncGraphPtr LoadGraphByBufferImpl(const void *model_data, size_t model_size, ModelType model_type,
-                                     const std::shared_ptr<Context> &model_context, const std::string &model_path,
-                                     const CryptoInfo &cryptoInfo);
 
   /// \brief Compare and optimize model online.
   ///

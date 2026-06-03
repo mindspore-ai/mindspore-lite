@@ -151,52 +151,6 @@ class Converter:
         return res
 
     @property
-    def decrypt_key(self):
-        """
-        .. warning::
-            This function is not supported in the current version.
-
-        Returns:
-            None.
-        """
-        raise TypeError("decrypt_key is write-only.")
-
-    @decrypt_key.setter
-    def decrypt_key(self, decrypt_key):
-        """
-        .. warning::
-            This function is not supported in the current version.
-
-        Returns:
-            None.
-        """
-        del decrypt_key
-        raise RuntimeError("This function is not supported in the current version!")
-
-    @property
-    def decrypt_mode(self):
-        """
-        .. warning::
-            This function is not supported in the current version.
-
-        Returns:
-            None.
-        """
-        raise RuntimeError("This function is not supported in the current version!")
-
-    @decrypt_mode.setter
-    def decrypt_mode(self, decrypt_mode):
-        """
-        .. warning::
-            This function is not supported in the current version.
-
-        Returns:
-            None.
-        """
-        del decrypt_mode
-        raise RuntimeError("This function is not supported in the current version!")
-
-    @property
     def device(self):
         """
         Get target device when converter model.
@@ -228,52 +182,6 @@ class Converter:
         if device not in ["Ascend"]:
             raise ValueError(f"device must be in [Ascend], but got {device}.")
         self._converter.set_device(device)
-
-    @property
-    def enable_encryption(self):
-        """
-        .. warning::
-            This function is not supported in the current version.
-
-        Returns:
-            None.
-        """
-        raise RuntimeError("This function is not supported in the current version!")
-
-    @enable_encryption.setter
-    def enable_encryption(self, enable_encryption):
-        """
-        .. warning::
-            This function is not supported in the current version.
-
-        Returns:
-            None.
-        """
-        del enable_encryption
-        raise RuntimeError("This function is not supported in the current version!")
-
-    @property
-    def encrypt_key(self):
-        """
-        .. warning::
-            This function is not supported in the current version.
-
-        Returns:
-            None.
-        """
-        raise TypeError("encrypt_key is write-only.")
-
-    @encrypt_key.setter
-    def encrypt_key(self, encrypt_key):
-        """
-        .. warning::
-            This function is not supported in the current version.
-
-        Returns:
-            None.
-        """
-        del encrypt_key
-        raise RuntimeError("This function is not supported in the current version!")
 
     @property
     def infer(self):
