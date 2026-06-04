@@ -318,22 +318,25 @@ AclTensor *ConvertType(const at::Tensor &at_tensor) {
     storage_dims.push_back(at_tensor.storage().nbytes() / item_size);
   }
 
-  const auto dim_num = at_tensor.sizes().size();
   aclFormat format = ACL_FORMAT_ND;
-  switch (dim_num) {
-    case DIM_NUM_3D:
-      format = ACL_FORMAT_NCL;
-      break;
-    case DIM_NUM_4D:
-      format = ACL_FORMAT_NCHW;
-      break;
-    case DIM_NUM_5D:
-      format = ACL_FORMAT_NCDHW;
-      break;
-    default:
-      format = ACL_FORMAT_ND;
+  if (at_tensor.is_contiguous()) {
+    format = static_cast<aclFormat>(at_npu::native::get_npu_format(at_tensor));
+  } else {
+    const auto dim_num = at_tensor.sizes().size();
+    switch (dim_num) {
+      case DIM_NUM_3D:
+        format = ACL_FORMAT_NCL;
+        break;
+      case DIM_NUM_4D:
+        format = ACL_FORMAT_NCHW;
+        break;
+      case DIM_NUM_5D:
+        format = ACL_FORMAT_NCDHW;
+        break;
+      default:
+        format = ACL_FORMAT_ND;
+    }
   }
-
   if (at_tensor.unsafeGetTensorImpl()->is_wrapped_number()) {
     c10::Scalar exp_scalar = ConvertTensorToScalar(at_tensor);
     at::Tensor acl_input = CopyScalarToDevice(exp_scalar, scalar_data_type);

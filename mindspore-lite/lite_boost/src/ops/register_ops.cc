@@ -16,6 +16,7 @@
 
 #include <torch/library.h>
 #include "plugin/rain_fusion_attention.h"
+#include "plugin/recurrent_gated_delta_rule.h"
 
 // RainFusionAttention
 TORCH_LIBRARY(lite_boost, m) {
@@ -40,8 +41,26 @@ TORCH_LIBRARY(lite_boost, m) {
       int block_size=0
     ) -> (Tensor, Tensor)
   )str");
+
+  // RecurrentGatedDeltaRule
+  m.def(R"str(
+    recurrent_gated_delta_rule(
+      Tensor query,
+      Tensor key,
+      Tensor value,
+      Tensor beta,
+      Tensor state,
+      Tensor actual_seq_lengths,
+      Tensor ssm_state_indices,
+      Tensor g,
+      Tensor gk,
+      Tensor num_accepted_tokens,
+      float scale_value=1.0
+    ) -> (Tensor, Tensor)
+  )str");
 }
 
 TORCH_LIBRARY_IMPL(lite_boost, PrivateUse1, m) {
   m.impl("rain_fusion_attention", &RainFusionAttentionLiteBoostImplNPU);
+  m.impl("recurrent_gated_delta_rule", &RecurrentGatedDeltaRuleLiteBoostImplNPU);
 }
