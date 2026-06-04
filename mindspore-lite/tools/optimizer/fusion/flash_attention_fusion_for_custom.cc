@@ -39,6 +39,31 @@ namespace {
 constexpr size_t kNumInputSize1 = 1;
 constexpr size_t kNumInputSize2 = 2;
 constexpr size_t kNumInputSize3 = 3;
+
+// Build the common prefix pattern: transpose -> matmul_1 -> mul
+// Returns the mul VectorRef. The transpose_input Var is returned via output parameter for caller access.
+VectorRef BuildTransposeMatmulMulPattern(VarPtr &transpose_input) {
+  transpose_input = std::make_shared<Var>();  // input K
+  MS_CHECK_TRUE_RET(transpose_input != nullptr, {});
+  auto is_transpose_param = std::make_shared<CondVar>(IsParamNode);
+  MS_CHECK_TRUE_RET(is_transpose_param != nullptr, {});
+  auto is_transpose = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimTranspose>);
+  MS_CHECK_TRUE_RET(is_transpose != nullptr, {});
+  auto transpose = VectorRef({is_transpose, transpose_input, is_transpose_param});
+  // matmul fusion
+  auto matmul_1_input = std::make_shared<Var>();  // input Q
+  MS_CHECK_TRUE_RET(matmul_1_input != nullptr, {});
+  auto is_matmul_1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMatMulFusion>);
+  MS_CHECK_TRUE_RET(is_matmul_1 != nullptr, {});
+  auto matmul_1 = VectorRef({is_matmul_1, matmul_1_input, transpose});
+  // mul
+  auto is_mul_param = std::make_shared<CondVar>(IsParamNode);
+  MS_CHECK_TRUE_RET(is_mul_param != nullptr, {});
+  auto is_mul = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
+  MS_CHECK_TRUE_RET(is_mul != nullptr, {});
+  auto mul = VectorRef({is_mul, matmul_1, is_mul_param});
+  return mul;
+}
 }  // namespace
 bool FlashAttentionFusionForCustom::InitVar() const {
   input_0_batchmm_qk_ = std::make_shared<Var>();  // tensor Q / sqrt(d)
@@ -96,26 +121,11 @@ const VectorRef FlashAttentionFusionForCustom::DefineFlashAttentionPattern1() co
 }
 
 const VectorRef FlashAttentionFusionForCustom::DefineFlashAttentionPattern2() const {
-  // transpose
-  auto transpose_input = std::make_shared<Var>();  // input K
-  MS_CHECK_TRUE_RET(transpose_input != nullptr, {});
-  auto is_transpose_param = std::make_shared<CondVar>(IsParamNode);
-  MS_CHECK_TRUE_RET(is_transpose_param != nullptr, {});
-  auto is_transpose = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimTranspose>);
-  MS_CHECK_TRUE_RET(is_transpose != nullptr, {});
-  auto transpose = VectorRef({is_transpose, transpose_input, is_transpose_param});
-  // matmul fusion
-  auto matmul_1_input = std::make_shared<Var>();  // input Q
-  MS_CHECK_TRUE_RET(matmul_1_input != nullptr, {});
-  auto is_matmul_1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMatMulFusion>);
-  MS_CHECK_TRUE_RET(is_matmul_1 != nullptr, {});
-  auto matmul_1 = VectorRef({is_matmul_1, matmul_1_input, transpose});
-  // mul
-  auto is_mul_param = std::make_shared<CondVar>(IsParamNode);
-  MS_CHECK_TRUE_RET(is_mul_param != nullptr, {});
-  auto is_mul = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
-  MS_CHECK_TRUE_RET(is_mul != nullptr, {});
-  auto mul = VectorRef({is_mul, matmul_1, is_mul_param});
+  VarPtr transpose_input;
+  auto mul = BuildTransposeMatmulMulPattern(transpose_input);
+  if (mul.empty()) {
+    return {};
+  }
   // cast
   auto is_cast_1_param = std::make_shared<CondVar>(IsParamNode);
   MS_CHECK_TRUE_RET(is_cast_1_param != nullptr, {});
@@ -142,26 +152,11 @@ const VectorRef FlashAttentionFusionForCustom::DefineFlashAttentionPattern2() co
 }
 
 const VectorRef FlashAttentionFusionForCustom::DefineFlashAttentionPattern3() const {
-  // transpose
-  auto transpose_input = std::make_shared<Var>();  // input K
-  MS_CHECK_TRUE_RET(transpose_input != nullptr, {});
-  auto is_transpose_param = std::make_shared<CondVar>(IsParamNode);
-  MS_CHECK_TRUE_RET(is_transpose_param != nullptr, {});
-  auto is_transpose = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimTranspose>);
-  MS_CHECK_TRUE_RET(is_transpose != nullptr, {});
-  auto transpose = VectorRef({is_transpose, transpose_input, is_transpose_param});
-  // matmul fusion
-  auto matmul_1_input = std::make_shared<Var>();  // input Q
-  MS_CHECK_TRUE_RET(matmul_1_input != nullptr, {});
-  auto is_matmul_1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMatMulFusion>);
-  MS_CHECK_TRUE_RET(is_matmul_1 != nullptr, {});
-  auto matmul_1 = VectorRef({is_matmul_1, matmul_1_input, transpose});
-  // mul
-  auto is_mul_param = std::make_shared<CondVar>(IsParamNode);
-  MS_CHECK_TRUE_RET(is_mul_param != nullptr, {});
-  auto is_mul = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
-  MS_CHECK_TRUE_RET(is_mul != nullptr, {});
-  auto mul = VectorRef({is_mul, matmul_1, is_mul_param});
+  VarPtr transpose_input;
+  auto mul = BuildTransposeMatmulMulPattern(transpose_input);
+  if (mul.empty()) {
+    return {};
+  }
   // softmax
   auto is_softmax = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimSoftmax>);
   MS_CHECK_TRUE_RET(is_softmax != nullptr, {});

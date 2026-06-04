@@ -21,17 +21,32 @@
 #include "src/extendrt/signal_handler.h"
 #endif
 namespace mindspore {
-namespace {
-constexpr size_t kMaxSectionNum = 100;
-constexpr size_t kMaxConfigNumPerSection = 1000;
-}  // namespace
 #ifdef USE_GLOG
 extern "C" {
 extern void mindspore_log_init();
 }
 #endif
 
+namespace {
+constexpr size_t kMaxSectionNum = 100;
+constexpr size_t kMaxConfigNumPerSection = 1000;
 std::mutex g_model_parallel_runner_mutex;
+
+Status EnsureRunnerImpl(std::shared_ptr<ModelParallelRunnerImpl> *impl) {
+  std::lock_guard<std::mutex> l(g_model_parallel_runner_mutex);
+#ifdef USE_GLOG
+  mindspore::mindspore_log_init();
+#endif
+  if (*impl == nullptr) {
+    *impl = std::make_shared<ModelParallelRunnerImpl>();
+    if (*impl == nullptr) {
+      MS_LOG(ERROR) << "new model pool failed, model pool is nullptr.";
+      return Status(kLiteNullptr, "model_parallel_runner_impl_ is nullptr, new model pool failed.");
+    }
+  }
+  return kSuccess;
+}
+}  // namespace
 
 RunnerConfig::RunnerConfig() : data_(std::make_shared<Data>()) {}
 
@@ -137,36 +152,18 @@ ModelParallelRunner::~ModelParallelRunner() {}
 
 Status ModelParallelRunner::Init(const std::vector<char> &model_path,
                                  const std::shared_ptr<RunnerConfig> &runner_config) {
-  {
-    std::lock_guard<std::mutex> l(g_model_parallel_runner_mutex);
-#ifdef USE_GLOG
-    mindspore::mindspore_log_init();
-#endif
-    if (model_parallel_runner_impl_ == nullptr) {
-      model_parallel_runner_impl_ = std::make_shared<ModelParallelRunnerImpl>();
-      if (model_parallel_runner_impl_ == nullptr) {
-        MS_LOG(ERROR) << "new model pool failed, model pool is nullptr.";
-        return Status(kLiteNullptr, "model_parallel_runner_impl_ is nullptr, new model pool failed.");
-      }
-    }
+  auto ret = EnsureRunnerImpl(&model_parallel_runner_impl_);
+  if (ret != kSuccess) {
+    return ret;
   }
   return model_parallel_runner_impl_->Init(CharToString(model_path), runner_config);
 }
 
 Status ModelParallelRunner::Init(const void *model_data, size_t data_size,
                                  const std::shared_ptr<RunnerConfig> &runner_config) {
-  {
-    std::lock_guard<std::mutex> l(g_model_parallel_runner_mutex);
-#ifdef USE_GLOG
-    mindspore::mindspore_log_init();
-#endif
-    if (model_parallel_runner_impl_ == nullptr) {
-      model_parallel_runner_impl_ = std::make_shared<ModelParallelRunnerImpl>();
-      if (model_parallel_runner_impl_ == nullptr) {
-        MS_LOG(ERROR) << "new model pool failed, model pool is nullptr.";
-        return kLiteNullptr;
-      }
-    }
+  auto ret = EnsureRunnerImpl(&model_parallel_runner_impl_);
+  if (ret != kSuccess) {
+    return ret;
   }
   return model_parallel_runner_impl_->Init(model_data, data_size, runner_config);
 }

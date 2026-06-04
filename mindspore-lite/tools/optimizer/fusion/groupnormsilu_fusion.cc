@@ -57,6 +57,41 @@ std::vector<int64_t> GetTensorShape(CNodePtr cnode, size_t input_index) {
   return shape;
 }
 
+// Build the common sub-pattern: reshape_1 -> instance_norm -> reshape_2 -> mul_1 -> add
+// reshape_1_input_1 is the first input to reshape_1 (either a Var for the data, or a prior node like cast)
+VectorRef BuildInstanceNormMulAddPattern(const VectorRef &reshape_1) {
+  // instanceNormalization
+  auto instance_norm_input_2 = std::make_shared<Var>();
+  MS_CHECK_TRUE_RET(instance_norm_input_2 != nullptr, {});
+  auto instance_norm_input_3 = std::make_shared<Var>();
+  MS_CHECK_TRUE_RET(instance_norm_input_3 != nullptr, {});
+  auto is_instance_norm = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimInstanceNorm>);
+  MS_CHECK_TRUE_RET(is_instance_norm != nullptr, {});
+  auto instance_norm = VectorRef({is_instance_norm, reshape_1, instance_norm_input_2, instance_norm_input_3});
+
+  // reshape
+  auto reshape_2_input_2 = std::make_shared<Var>();
+  MS_CHECK_TRUE_RET(reshape_2_input_2 != nullptr, {});
+  auto is_reshape_2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimReshape>);
+  MS_CHECK_TRUE_RET(is_reshape_2 != nullptr, {});
+  auto reshape_2 = VectorRef({is_reshape_2, instance_norm, reshape_2_input_2});
+
+  // mul
+  auto mul_1_input_2 = std::make_shared<Var>();
+  MS_CHECK_TRUE_RET(mul_1_input_2 != nullptr, {});
+  auto is_mul_1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
+  MS_CHECK_TRUE_RET(is_mul_1 != nullptr, {});
+  auto mul_1 = VectorRef({is_mul_1, reshape_2, mul_1_input_2});
+
+  // add
+  auto add_input_2 = std::make_shared<CondVar>(IsParamNode);
+  MS_CHECK_TRUE_RET(add_input_2 != nullptr, {});
+  auto is_add = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
+  MS_CHECK_TRUE_RET(is_add != nullptr, {});
+  auto add = VectorRef({is_add, mul_1, add_input_2});
+  return add;
+}
+
 int64_t GetInstanceNormGroups(const AnfNodePtr &instance_norm_node) {
   auto instance_norm_cnode = instance_norm_node->cast<CNodePtr>();
   if (instance_norm_cnode == nullptr) {
@@ -103,35 +138,10 @@ const VectorRef GroupNormSiluFusion::DefineGroupNormSiluPatternForSD15() const {
   MS_CHECK_TRUE_RET(is_reshape_1 != nullptr, {});
   auto reshape_1 = VectorRef({is_reshape_1, reshape_1_input_1, reshape_1_input_2});
 
-  // instanceNormalization
-  auto instance_norm_input_2 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(instance_norm_input_2 != nullptr, {});
-  auto instance_norm_input_3 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(instance_norm_input_3 != nullptr, {});
-  auto is_instance_norm = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimInstanceNorm>);
-  MS_CHECK_TRUE_RET(is_instance_norm != nullptr, {});
-  auto instance_norm = VectorRef({is_instance_norm, reshape_1, instance_norm_input_2, instance_norm_input_3});
-
-  // reshape
-  auto reshape_2_input_2 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(reshape_2_input_2 != nullptr, {});
-  auto is_reshape_2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimReshape>);
-  MS_CHECK_TRUE_RET(is_reshape_2 != nullptr, {});
-  auto reshape_2 = VectorRef({is_reshape_2, instance_norm, reshape_2_input_2});
-
-  // mul
-  auto mul_1_input_2 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(mul_1_input_2 != nullptr, {});
-  auto is_mul_1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
-  MS_CHECK_TRUE_RET(is_mul_1 != nullptr, {});
-  auto mul_1 = VectorRef({is_mul_1, reshape_2, mul_1_input_2});
-
-  // add
-  auto add_input_2 = std::make_shared<CondVar>(IsParamNode);
-  MS_CHECK_TRUE_RET(add_input_2 != nullptr, {});
-  auto is_add = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
-  MS_CHECK_TRUE_RET(is_add != nullptr, {});
-  auto add = VectorRef({is_add, mul_1, add_input_2});
+  auto add = BuildInstanceNormMulAddPattern(reshape_1);
+  if (add.empty()) {
+    return {};
+  }
 
   // sigmoid
   auto is_sigmoid = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimActivation>);
@@ -162,35 +172,10 @@ const VectorRef GroupNormSiluFusion::DefineGroupNormSiluPatternForSDWithCast() c
   MS_CHECK_TRUE_RET(is_reshape_1 != nullptr, {});
   auto reshape_1 = VectorRef({is_reshape_1, cast_1, reshape_1_input_2});
 
-  // instanceNormalization
-  auto instance_norm_input_2 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(instance_norm_input_2 != nullptr, {});
-  auto instance_norm_input_3 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(instance_norm_input_3 != nullptr, {});
-  auto is_instance_norm = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimInstanceNorm>);
-  MS_CHECK_TRUE_RET(is_instance_norm != nullptr, {});
-  auto instance_norm = VectorRef({is_instance_norm, reshape_1, instance_norm_input_2, instance_norm_input_3});
-
-  // reshape
-  auto reshape_2_input_2 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(reshape_2_input_2 != nullptr, {});
-  auto is_reshape_2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimReshape>);
-  MS_CHECK_TRUE_RET(is_reshape_2 != nullptr, {});
-  auto reshape_2 = VectorRef({is_reshape_2, instance_norm, reshape_2_input_2});
-
-  // mul
-  auto mul_1_input_2 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(mul_1_input_2 != nullptr, {});
-  auto is_mul_1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
-  MS_CHECK_TRUE_RET(is_mul_1 != nullptr, {});
-  auto mul_1 = VectorRef({is_mul_1, reshape_2, mul_1_input_2});
-
-  // add
-  auto add_input_2 = std::make_shared<CondVar>(IsParamNode);
-  MS_CHECK_TRUE_RET(add_input_2 != nullptr, {});
-  auto is_add = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
-  MS_CHECK_TRUE_RET(is_add != nullptr, {});
-  auto add = VectorRef({is_add, mul_1, add_input_2});
+  auto add = BuildInstanceNormMulAddPattern(reshape_1);
+  if (add.empty()) {
+    return {};
+  }
 
   // cast
   auto is_cast_2_param = std::make_shared<Var>();
@@ -221,37 +206,7 @@ const VectorRef GroupNormSiluFusion::DefineGroupNormSiluPatternForSDWithoutSilu(
   MS_CHECK_TRUE_RET(is_reshape_1 != nullptr, {});
   auto reshape_1 = VectorRef({is_reshape_1, reshape_1_input_1, reshape_1_input_2});
 
-  // instanceNormalization
-  auto instance_norm_input_2 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(instance_norm_input_2 != nullptr, {});
-  auto instance_norm_input_3 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(instance_norm_input_3 != nullptr, {});
-  auto is_instance_norm = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimInstanceNorm>);
-  MS_CHECK_TRUE_RET(is_instance_norm != nullptr, {});
-  auto instance_norm = VectorRef({is_instance_norm, reshape_1, instance_norm_input_2, instance_norm_input_3});
-
-  // reshape
-  auto reshape_2_input_2 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(reshape_2_input_2 != nullptr, {});
-  auto is_reshape_2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimReshape>);
-  MS_CHECK_TRUE_RET(is_reshape_2 != nullptr, {});
-  auto reshape_2 = VectorRef({is_reshape_2, instance_norm, reshape_2_input_2});
-
-  // mul
-  auto mul_1_input_2 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(mul_1_input_2 != nullptr, {});
-  auto is_mul_1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
-  MS_CHECK_TRUE_RET(is_mul_1 != nullptr, {});
-  auto mul_1 = VectorRef({is_mul_1, reshape_2, mul_1_input_2});
-
-  // add
-  auto add_input_2 = std::make_shared<CondVar>(IsParamNode);
-  MS_CHECK_TRUE_RET(add_input_2 != nullptr, {});
-  auto is_add = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
-  MS_CHECK_TRUE_RET(is_add != nullptr, {});
-  auto add = VectorRef({is_add, mul_1, add_input_2});
-
-  return add;
+  return BuildInstanceNormMulAddPattern(reshape_1);
 }
 
 const VectorRef GroupNormSiluFusion::DefineGroupNormSiluPatternForGroupNorm() const {

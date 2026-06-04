@@ -269,12 +269,20 @@ class ModelImpl {
                                  const std::string &model_path);
   Status CheckBuildFromBuffer(ModelType model_type, const void *weight_data, size_t weight_size);
 
+  // Shared session initialization and context validation for Build methods.
+  Status InitBuildSession(const std::shared_ptr<Context> &model_context);
+
   Status BuildAndRun(const std::string &model_path, ModelType model_type,
                      const std::shared_ptr<Context> &model_context);
 
   Status BuildAndRun(const void *model_data, size_t data_size, ModelType model_type,
                      const std::shared_ptr<Context> &model_context);
 
+  // Core build+infer logic shared by both BuildAndRun overloads.
+  Status BuildAndRunCore(const std::function<Status()> &build_fn);
+
+  // Core fork-exec logic shared by both PreInfer overloads.
+  Status PreInferCore(const std::function<Status()> &build_and_run_fn);
   Status InferWithRandomData();
   bool IsEnablePreInference();
   friend class Model;

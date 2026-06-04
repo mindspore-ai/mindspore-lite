@@ -42,6 +42,80 @@ constexpr size_t kNumIndex1 = 1;
 constexpr size_t kNumIndex2 = 2;
 constexpr size_t kNumIndex3 = 3;
 
+struct FFNPatternPrefix {
+  std::vector<CondVarPtr> params;
+  size_t index;
+  VectorRef add1_ref;
+};
+
+bool BuildFFNPatternPrefix(FFNPatternPrefix *result) {
+  const size_t param_num = 8;
+  result->params.resize(param_num);
+  for (size_t i = 0; i < result->params.size(); ++i) {
+    result->params[i] = std::make_shared<CondVar>(IsParamNode);
+    MS_CHECK_TRUE_RET(result->params[i] != nullptr, false);
+  }
+  result->index = 0;
+  auto input_x = std::make_shared<Var>();
+  MS_CHECK_TRUE_RET(input_x != nullptr, false);
+  auto matmul1 = std::make_shared<Var>();
+  MS_CHECK_TRUE_RET(matmul1 != nullptr, false);
+  auto is_matmul1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMatMulFusion>);
+  MS_CHECK_TRUE_RET(is_matmul1 != nullptr, false);
+  VectorRef matmul1_ref({is_matmul1, input_x, matmul1});
+
+  auto add1 = std::make_shared<Var>();
+  MS_CHECK_TRUE_RET(add1 != nullptr, false);
+  auto is_add1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
+  MS_CHECK_TRUE_RET(is_add1 != nullptr, false);
+  result->add1_ref = VectorRef({is_add1, add1, matmul1_ref});
+  return true;
+}
+
+VectorRef BuildFFNPatternSuffix(const VectorRef &stridedslice1_ref, const VectorRef &stridedslice2_ref) {
+  auto div2 = std::make_shared<Var>();
+  MS_CHECK_TRUE_RET(div2 != nullptr, {});
+  auto is_div2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimDivFusion>);
+  MS_CHECK_TRUE_RET(is_div2 != nullptr, {});
+  VectorRef div2_ref({is_div2, stridedslice2_ref, div2});
+
+  auto is_erf = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimErf>);
+  MS_CHECK_TRUE_RET(is_erf != nullptr, {});
+  VectorRef erf_ref({is_erf, div2_ref});
+
+  auto add3 = std::make_shared<Var>();
+  MS_CHECK_TRUE_RET(add3 != nullptr, {});
+  auto is_add3 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
+  MS_CHECK_TRUE_RET(is_add3 != nullptr, {});
+  VectorRef add3_ref({is_add3, erf_ref, add3});
+
+  auto is_mul3 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
+  MS_CHECK_TRUE_RET(is_mul3 != nullptr, {});
+  VectorRef mul3_ref({is_mul3, stridedslice2_ref, add3_ref});
+
+  auto mul4 = std::make_shared<Var>();
+  MS_CHECK_TRUE_RET(mul4 != nullptr, {});
+  auto is_mul4 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
+  MS_CHECK_TRUE_RET(is_mul4 != nullptr, {});
+  VectorRef mul4_ref({is_mul4, mul3_ref, mul4});
+
+  auto is_mul5 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
+  MS_CHECK_TRUE_RET(is_mul5 != nullptr, {});
+  VectorRef mul5_ref({is_mul5, stridedslice1_ref, mul4_ref});
+
+  auto matmul2 = std::make_shared<Var>();
+  MS_CHECK_TRUE_RET(matmul2 != nullptr, {});
+  auto is_matmul2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMatMulFusion>);
+  MS_CHECK_TRUE_RET(is_matmul2 != nullptr, {});
+  VectorRef matmul2_ref({is_matmul2, mul5_ref, matmul2});
+
+  auto add4 = std::make_shared<Var>();
+  MS_CHECK_TRUE_RET(add4 != nullptr, {});
+  auto is_add4 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
+  MS_CHECK_TRUE_RET(is_add4 != nullptr, {});
+  VectorRef add4_ref({is_add4, add4, matmul2_ref});
+  return add4_ref;
+}
 }  // namespace
 
 static std::vector<int64_t> GetTensorShape(const CNodePtr &cnode, size_t input_index) {
@@ -120,26 +194,13 @@ bool FFNCustomPass::CheckInputShpae(const CNodePtr &input_x, const AnfNodePtr &w
 static const VectorRef DefineFFNPatterbForSD() {
   // reshape
   MS_LOG(INFO) << "Start define FFN fusion pattern for dynamic.";
-  const size_t param_num = 8;
-  std::vector<CondVarPtr> params(param_num);
-  for (size_t i = 0; i < params.size(); ++i) {
-    params[i] = std::make_shared<CondVar>(IsParamNode);
-    MS_CHECK_TRUE_RET(params[i] != nullptr, {});
+  FFNPatternPrefix prefix;
+  if (!BuildFFNPatternPrefix(&prefix)) {
+    return {};
   }
-  size_t index = 0;
-  auto input_x = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(input_x != nullptr, {});
-  auto matmul1 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(matmul1 != nullptr, {});
-  auto is_matmul1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMatMulFusion>);
-  MS_CHECK_TRUE_RET(is_matmul1 != nullptr, {});
-  VectorRef matmul1_ref({is_matmul1, input_x, matmul1});
-
-  auto add1 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(add1 != nullptr, {});
-  auto is_add1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
-  MS_CHECK_TRUE_RET(is_add1 != nullptr, {});
-  VectorRef add1_ref({is_add1, add1, matmul1_ref});
+  auto &params = prefix.params;
+  auto &index = prefix.index;
+  auto &add1_ref = prefix.add1_ref;
 
   auto is_shape = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimShape>);
   MS_CHECK_TRUE_RET(is_shape != nullptr, {});
@@ -184,75 +245,20 @@ static const VectorRef DefineFFNPatterbForSD() {
   MS_CHECK_TRUE_RET(is_stridedslice2 != nullptr, {});
   VectorRef stridedslice2_ref({is_stridedslice2, add1_ref, mul1_ref, mul2_ref, params[index++], params[index++]});
 
-  auto div2 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(div2 != nullptr, {});
-  auto is_div2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimDivFusion>);
-  MS_CHECK_TRUE_RET(is_div2 != nullptr, {});
-  VectorRef div2_ref({is_div2, stridedslice2_ref, div2});
-
-  auto is_erf = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimErf>);
-  MS_CHECK_TRUE_RET(is_erf != nullptr, {});
-  VectorRef erf_ref({is_erf, div2_ref});
-
-  auto add3 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(add3 != nullptr, {});
-  auto is_add3 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
-  MS_CHECK_TRUE_RET(is_add3 != nullptr, {});
-  VectorRef add3_ref({is_add3, erf_ref, add3});
-
-  auto is_mul3 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
-  MS_CHECK_TRUE_RET(is_mul3 != nullptr, {});
-  VectorRef mul3_ref({is_mul3, stridedslice2_ref, add3_ref});
-
-  auto mul4 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(mul4 != nullptr, {});
-  auto is_mul4 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
-  MS_CHECK_TRUE_RET(is_mul4 != nullptr, {});
-  VectorRef mul4_ref({is_mul4, mul3_ref, mul4});
-
-  auto is_mul5 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
-  MS_CHECK_TRUE_RET(is_mul5 != nullptr, {});
-  VectorRef mul5_ref({is_mul5, stridedslice1_ref, mul4_ref});
-
-  auto matmul2 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(matmul2 != nullptr, {});
-  auto is_matmul2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMatMulFusion>);
-  MS_CHECK_TRUE_RET(is_matmul2 != nullptr, {});
-  VectorRef matmul2_ref({is_matmul2, mul5_ref, matmul2});
-
-  auto add4 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(add4 != nullptr, {});
-  auto is_add4 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
-  MS_CHECK_TRUE_RET(is_add4 != nullptr, {});
-  VectorRef add4_ref({is_add4, add4, matmul2_ref});
-
   MS_LOG(INFO) << "Finish define FFN fusion pattern for dynamic.";
-  return add4_ref;
+  return BuildFFNPatternSuffix(stridedslice1_ref, stridedslice2_ref);
 }
 
 static const VectorRef DefineFFNPatterbForSDConst() {
   // reshape
   MS_LOG(INFO) << "Start define FFN fusion pattern for const.";
-  const size_t param_num = 8;
-  std::vector<CondVarPtr> params(param_num);
-  for (size_t i = 0; i < params.size(); ++i) {
-    params[i] = std::make_shared<CondVar>(IsParamNode);
-    MS_CHECK_TRUE_RET(params[i] != nullptr, {});
+  FFNPatternPrefix prefix;
+  if (!BuildFFNPatternPrefix(&prefix)) {
+    return {};
   }
-  size_t index = 0;
-  auto input_x = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(input_x != nullptr, {});
-  auto matmul1 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(matmul1 != nullptr, {});
-  auto is_matmul1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMatMulFusion>);
-  MS_CHECK_TRUE_RET(is_matmul1 != nullptr, {});
-  VectorRef matmul1_ref({is_matmul1, input_x, matmul1});
-
-  auto add1 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(add1 != nullptr, {});
-  auto is_add1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
-  MS_CHECK_TRUE_RET(is_add1 != nullptr, {});
-  VectorRef add1_ref({is_add1, add1, matmul1_ref});
+  auto &params = prefix.params;
+  auto &index = prefix.index;
+  auto &add1_ref = prefix.add1_ref;
 
   auto is_stridedslice1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimStridedSlice>);
   MS_CHECK_TRUE_RET(is_stridedslice1 != nullptr, {});
@@ -264,50 +270,8 @@ static const VectorRef DefineFFNPatterbForSDConst() {
   VectorRef stridedslice2_ref(
     {is_stridedslice2, add1_ref, params[index++], params[index++], params[index++], params[index++]});
 
-  auto div2 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(div2 != nullptr, {});
-  auto is_div2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimDivFusion>);
-  MS_CHECK_TRUE_RET(is_div2 != nullptr, {});
-  VectorRef div2_ref({is_div2, stridedslice2_ref, div2});
-
-  auto is_erf = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimErf>);
-  MS_CHECK_TRUE_RET(is_erf != nullptr, {});
-  VectorRef erf_ref({is_erf, div2_ref});
-
-  auto add3 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(add3 != nullptr, {});
-  auto is_add3 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
-  MS_CHECK_TRUE_RET(is_add3 != nullptr, {});
-  VectorRef add3_ref({is_add3, erf_ref, add3});
-
-  auto is_mul3 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
-  MS_CHECK_TRUE_RET(is_mul3 != nullptr, {});
-  VectorRef mul3_ref({is_mul3, stridedslice2_ref, add3_ref});
-
-  auto mul4 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(mul4 != nullptr, {});
-  auto is_mul4 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
-  MS_CHECK_TRUE_RET(is_mul4 != nullptr, {});
-  VectorRef mul4_ref({is_mul4, mul3_ref, mul4});
-
-  auto is_mul5 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
-  MS_CHECK_TRUE_RET(is_mul5 != nullptr, {});
-  VectorRef mul5_ref({is_mul5, stridedslice1_ref, mul4_ref});
-
-  auto matmul2 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(matmul2 != nullptr, {});
-  auto is_matmul2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMatMulFusion>);
-  MS_CHECK_TRUE_RET(is_matmul2 != nullptr, {});
-  VectorRef matmul2_ref({is_matmul2, mul5_ref, matmul2});
-
-  auto add4 = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(add4 != nullptr, {});
-  auto is_add4 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
-  MS_CHECK_TRUE_RET(is_add4 != nullptr, {});
-  VectorRef add4_ref({is_add4, add4, matmul2_ref});
-
   MS_LOG(INFO) << "Finish define FFN fusion pattern for const.";
-  return add4_ref;
+  return BuildFFNPatternSuffix(stridedslice1_ref, stridedslice2_ref);
 }
 
 CNodePtr FFNCustomPass::CreateFFNFusionNode(const FuncGraphPtr &func_graph, const AnfNodePtr &node,

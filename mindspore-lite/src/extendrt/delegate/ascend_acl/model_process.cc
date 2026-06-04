@@ -612,31 +612,35 @@ bool ModelProcess::AllocAndMapPhysicalMemory(size_t alloc_size) {
   return true;
 }
 
-bool ModelProcess::MainProcess(const void *om_data, size_t om_data_size) {
-  size_t work_size = 0;
-  size_t weight_size = 0;
-  auto acl_ret = CALL_ASCEND_API(aclmdlQuerySizeFromMem, om_data, om_data_size, &work_size, &weight_size);
+bool ModelProcess::QueryModelSizeFromMem(const void *om_data, size_t om_data_size, size_t *work_size,
+                                         size_t *weight_size) {
+  auto acl_ret = CALL_ASCEND_API(aclmdlQuerySizeFromMem, om_data, om_data_size, work_size, weight_size);
   if (acl_ret != ACL_SUCCESS) {
     MS_LOG(ERROR) << "Call aclmdlQuerySizeFromMem failed, ret = " << acl_ret;
     return false;
   }
-  size_t alloc_size = ((weight_size / kGranularitySize) + 1) * kGranularitySize;
-  if (!AllocAndMapPhysicalMemory(alloc_size)) {
-    return false;
-  }
+  return true;
+}
+
+bool ModelProcess::AllocWorkMemory(size_t work_size) {
   if (work_size == 0) {
     work_ptr_ = nullptr;
   } else {
-    acl_ret = CALL_ASCEND_API(aclrtMalloc, &(work_ptr_), work_size, ACL_MEM_MALLOC_HUGE_FIRST);
+    auto acl_ret = CALL_ASCEND_API(aclrtMalloc, &(work_ptr_), work_size, ACL_MEM_MALLOC_HUGE_FIRST);
     if (acl_ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "Call aclrtMalloc failed, err_code = " << acl_ret;
       return false;
     }
   }
+  return true;
+}
+
+bool ModelProcess::LoadModelFromMemWithMem(const void *om_data, size_t om_data_size, size_t work_size,
+                                           size_t weight_size) {
   options_->share_weightspace = true;
   auto start_time = lite::GetTimeUs();
-  acl_ret = CALL_ASCEND_API(aclmdlLoadFromMemWithMem, om_data, om_data_size, &model_id_, work_ptr_, work_size,
-                            multiprocess_weight_ptr_, weight_size);
+  auto acl_ret = CALL_ASCEND_API(aclmdlLoadFromMemWithMem, om_data, om_data_size, &model_id_, work_ptr_, work_size,
+                                 multiprocess_weight_ptr_, weight_size);
   auto end_time = lite::GetTimeUs();
   MS_LOG(INFO) << "[init time] call aclmdlLoadFromMemWithMem cost " << (end_time - start_time) << " us";
   if (acl_ret != ACL_SUCCESS) {
@@ -647,12 +651,26 @@ bool ModelProcess::MainProcess(const void *om_data, size_t om_data_size) {
   return true;
 }
 
+bool ModelProcess::MainProcess(const void *om_data, size_t om_data_size) {
+  size_t work_size = 0;
+  size_t weight_size = 0;
+  if (!QueryModelSizeFromMem(om_data, om_data_size, &work_size, &weight_size)) {
+    return false;
+  }
+  size_t alloc_size = ((weight_size / kGranularitySize) + 1) * kGranularitySize;
+  if (!AllocAndMapPhysicalMemory(alloc_size)) {
+    return false;
+  }
+  if (!AllocWorkMemory(work_size)) {
+    return false;
+  }
+  return LoadModelFromMemWithMem(om_data, om_data_size, work_size, weight_size);
+}
+
 bool ModelProcess::SubProcess(const void *om_data, size_t om_data_size) {
   size_t work_size = 0;
   size_t weight_size = 0;
-  auto acl_ret = CALL_ASCEND_API(aclmdlQuerySizeFromMem, om_data, om_data_size, &work_size, &weight_size);
-  if (acl_ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "Call aclmdlQuerySizeFromMem failed, ret = " << acl_ret;
+  if (!QueryModelSizeFromMem(om_data, om_data_size, &work_size, &weight_size)) {
     return false;
   }
   size_t alloc_size = ((weight_size / kGranularitySize) + 1) * kGranularitySize;
@@ -671,28 +689,10 @@ bool ModelProcess::SubProcess(const void *om_data, size_t om_data_size) {
     MS_LOG(ERROR) << "aclrtmapmem failed! weight size:" << alloc_size;
     return lite::RET_ERROR;
   }
-  if (work_size == 0) {
-    work_ptr_ = nullptr;
-  } else {
-    acl_ret = CALL_ASCEND_API(aclrtMalloc, &(work_ptr_), work_size, ACL_MEM_MALLOC_HUGE_FIRST);
-    if (acl_ret != ACL_SUCCESS) {
-      MS_LOG(ERROR) << "Call aclrtMalloc failed, err_code = " << acl_ret;
-      return false;
-    }
-  }
-  options_->share_weightspace = true;
-  auto start_time = lite::GetTimeUs();
-  acl_ret = CALL_ASCEND_API(aclmdlLoadFromMemWithMem, om_data, om_data_size, &model_id_, work_ptr_, work_size,
-                            multiprocess_weight_ptr_, weight_size);
-  auto end_time = lite::GetTimeUs();
-  auto cost = end_time - start_time;
-  MS_LOG(INFO) << "[init time] call aclmdlLoadFromMemWithMem cost " << cost << " us";
-  if (acl_ret != ACL_SUCCESS) {
-    MS_LOG(ERROR) << "Call aclmdlLoadFromMemWithMem failed, ret = " << acl_ret;
+  if (!AllocWorkMemory(work_size)) {
     return false;
   }
-  infer_id_ = model_id_;
-  return true;
+  return LoadModelFromMemWithMem(om_data, om_data_size, work_size, weight_size);
 }
 
 Status ModelProcess::ShareMemProcess(const void *om_data, size_t om_data_size) {

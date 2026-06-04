@@ -107,25 +107,7 @@ AclEnvGuard::AclEnvGuard(std::string_view cfg_file) : errno_(AclInitAdapter::Get
   MS_LOG(INFO) << "Execute aclInit success.";
 }
 
-std::shared_ptr<AclEnvGuard> AclEnvGuard::GetAclEnv() {
-  std::shared_ptr<AclEnvGuard> acl_env;
-
-  std::lock_guard<std::mutex> lock(global_acl_env_mutex_);
-  acl_env = global_acl_env_;
-  if (acl_env != nullptr) {
-    MS_LOG(INFO) << "Acl has been initialized, skip.";
-  } else {
-    acl_env = std::make_shared<AclEnvGuard>();
-    aclError ret = acl_env->GetErrno();
-    if (ret != ACL_SUCCESS && ret != ACL_ERROR_REPEAT_INITIALIZE) {
-      MS_LOG(ERROR) << "Execute aclInit failed.";
-      return nullptr;
-    }
-    global_acl_env_ = acl_env;
-    MS_LOG(INFO) << "Execute aclInit success.";
-  }
-  return acl_env;
-}
+std::shared_ptr<AclEnvGuard> AclEnvGuard::GetAclEnv() { return GetAclEnv(""); }
 
 std::shared_ptr<AclEnvGuard> AclEnvGuard::GetAclEnv(std::string_view cfg_file) {
   std::shared_ptr<AclEnvGuard> acl_env;
