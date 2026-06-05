@@ -41,6 +41,12 @@ float ShortToFloat32(uint16_t src_value) {
   return o.f;
 }
 
+float Bf16ToFloat32(uint16_t src_value) {
+  float32_bits o;
+  o.u = (unsigned int)src_value << 16;
+  return o.f;
+}
+
 uint16_t Float32ToShort(float src_value) {
   float32_bits src_value_bits;
   src_value_bits.f = src_value;

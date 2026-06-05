@@ -113,6 +113,7 @@ static const int BITS_SHIFT_SIZE_23 = 23;
 static const int BITS_SHIFT_SIZE_31 = 31;
 float ShortToFloat32(uint16_t src_value);
 uint16_t Float32ToShort(float src_value);
+float Bf16ToFloat32(uint16_t src_value);
 
 #ifdef __cplusplus
 }
