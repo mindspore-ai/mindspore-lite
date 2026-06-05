@@ -45,6 +45,8 @@
 #include "tools/converter/parser/onnx/onnx_quantize_linear_adjust.h"
 #include "tools/converter/parser/onnx/onnx_deform_conv2d_adjust.h"
 #include "tools/converter/parser/onnx/onnx_custom_op_adjust.h"
+#include "tools/converter/parser/onnx/onnx_shape_adjust.h"
+#include "tools/converter/parser/onnx/onnx_isnan_adjust.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/converter/parser/unify_format.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
@@ -73,6 +75,16 @@ int Onnx2AnfAdjust(const std::set<FuncGraphPtr> &all_func_graphs, const converte
     }
     if (!OnnxInputAdjust::Adjust(func_graph, flag)) {
       MS_LOG(ERROR) << "onnx adjust failed.";
+      ReturnCode::GetSingleReturnCode()->UpdateReturnCode(RET_ERROR);
+      return RET_ERROR;
+    }
+    if (!OnnxShapeAdjust::Adjust(func_graph)) {
+      MS_LOG(ERROR) << "onnx shape adjust failed.";
+      ReturnCode::GetSingleReturnCode()->UpdateReturnCode(RET_ERROR);
+      return RET_ERROR;
+    }
+    if (!OnnxIsNanAdjust::Adjust(func_graph)) {
+      MS_LOG(ERROR) << "onnx isnan adjust failed.";
       ReturnCode::GetSingleReturnCode()->UpdateReturnCode(RET_ERROR);
       return RET_ERROR;
     }
