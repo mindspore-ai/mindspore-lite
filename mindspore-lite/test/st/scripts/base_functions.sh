@@ -617,3 +617,129 @@ function Print_Benchmark_Result() {
     echo "BENCHMARK RESULT PRINT END"
     MS_PRINT_TESTCASE_END_MSG
 }
+
+# Run a shell function with timeout, using sentinel file for reliable detection.
+# Returns 124 on timeout, otherwise the command's exit code.
+# Override WATCHDOG_TIMEOUT_SEC to adjust per-platform; defaults to 1800s (30 min).
+WATCHDOG_TIMEOUT_SEC=${WATCHDOG_TIMEOUT_SEC:-1800}
+function Run_With_Watchdog() {
+    local timeout_sec=$1; shift
+    local sentinel=$(mktemp /tmp/watchdog_XXXXXX)
+    rm -f "${sentinel}"
+    "$@" &
+    local cmd_pid=$!
+    (
+        sleep ${timeout_sec}
+        touch "${sentinel}"
+        kill -9 -${cmd_pid} 2>/dev/null
+        kill -9 ${cmd_pid} 2>/dev/null
+    ) &
+    local watchdog_pid=$!
+    wait ${cmd_pid}
+    local cmd_exit=$?
+    kill ${watchdog_pid} 2>/dev/null
+    wait ${watchdog_pid} 2>/dev/null
+    if [[ -f "${sentinel}" ]]; then
+        rm -f "${sentinel}"
+        return 124
+    fi
+    rm -f "${sentinel}"
+    return ${cmd_exit}
+}
+
+# Split a cfg file into N sub-config files using round-robin allocation.
+function Split_Config() {
+    local cfg_file=$1
+    local num_cards=$2
+    local output_prefix=$3
+    local lines=()
+    if [[ ! -f "$cfg_file" ]]; then
+        echo "ERROR: Config file not found: ${cfg_file}"
+        return 1
+    fi
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*# || -z "${line// }" ]]; then
+            continue
+        fi
+        lines+=("$line")
+    done < "$cfg_file"
+    local total=${#lines[@]}
+    echo "Split_Config: ${cfg_file} has ${total} models, splitting into ${num_cards} cards"
+    for ((card = 0; card < num_cards; card++)); do
+        local sub_cfg="${output_prefix}_card${card}.cfg"
+        true > "$sub_cfg"
+        for ((i = card; i < total; i += num_cards)); do
+            echo "${lines[$i]}" >> "$sub_cfg"
+        done
+    done
+}
+
+# Execute benchmark for a single model. All path arguments must be pre-computed by the caller.
+# Sets MODEL_ELAPSED_TIME global with the elapsed seconds string.
+# $1: model_file  $2: input_files  $3: output_file  $4: acc_limit
+# $5: enableFp16  $6: ascend_device  $7: use_parallel_predict  $8: input_shape
+# $9: log_file
+# Returns: benchmark exit code (0=success). Caller handles result writing.
+function Run_Benchmark_Model() {
+    local model_file=$1
+    local input_files=$2
+    local output_file=$3
+    local acc_limit=$4
+    local enableFp16=$5
+    local ascend_device=$6
+    local use_parallel_predict=$7
+    local input_shape=$8
+    local log_file=$9
+
+    echo './benchmark --enableParallelPredict='${use_parallel_predict}' --modelFile='${model_file}' --inputShape="'${input_shape}'" --inDataFile='${input_files}' --benchmarkDataFile='${output_file}' --enableFp16='${enableFp16}' --accuracyThreshold='${acc_limit}' --device='${ascend_device} >> "${log_file}"
+
+    MODEL_ELAPSED_TIME=$(date +%s.%N)
+    ./benchmark --enableParallelPredict=${use_parallel_predict} --modelFile=${model_file} --inputShape="${input_shape}" \
+        --inDataFile=${input_files} --benchmarkDataFile=${output_file} \
+        --enableFp16=${enableFp16} --accuracyThreshold=${acc_limit} \
+        --device=${ascend_device} >> "${log_file}"
+    local ret=$?
+    MODEL_ELAPSED_TIME=$(printf %.2f "$(echo "$(date +%s.%N) - $MODEL_ELAPSED_TIME" | bc)")
+    return ${ret}
+}
+
+# Shared result table format (Device 18 + Category 14 + Testcase 80 + Result 10 = 125 visible chars)
+RESULT_FMT="%-18s %-14s %-80s %-10s\n"
+RESULT_SEP="-----------------------------------------------------------------------------------------------------------------------------"
+
+# Prepend "Ascend:<dev_id> <category>" to each non-empty result line, stripping any leading "Ascend: " from the raw line
+# $1: input result file; $2: device_id; $3: category; $4: output file
+function Append_Result_With_Device() {
+    local input_file=$1
+    local dev_id=$2
+    local category=$3
+    local output_file=$4
+    local stripped testcase result
+    while IFS= read -r line; do
+        [[ -z "${line// }" ]] && continue
+        stripped="${line#Ascend: }"
+        testcase="${stripped% *}"
+        result="${stripped##* }"
+        printf "$RESULT_FMT" "Ascend:${dev_id}" "${category}" "${testcase}" "${result}" >> "${output_file}"
+    done < "${input_file}"
+}
+
+# Print a unified stage result table with Device + Category columns
+# $1: result file; $2: stage name
+function Print_Stage_Result() {
+    local result_file=$1
+    local stage_name=$2
+    if [[ ! -s "${result_file}" ]]; then
+        echo "No results for ${stage_name}"
+        return
+    fi
+    echo ""
+    echo "$RESULT_SEP"
+    printf "$RESULT_FMT" "Device" "Category" "Testcase" "Result"
+    echo "$RESULT_SEP"
+    echo "${stage_name} RESULT PRINT BEGIN"
+    cat "${result_file}"
+    echo "${stage_name} RESULT PRINT END"
+    echo "$RESULT_SEP"
+    rm -f "${result_file}"
+}

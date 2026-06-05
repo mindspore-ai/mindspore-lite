@@ -172,22 +172,21 @@ function Run_Benchmark() {
             enableFp16="true"
         fi
 
-        echo './benchmark --enableParallelPredict='${use_parallel_predict}' --modelFile='${model_file}' --inputShape="'${spec_shapes}'" --inDataFile='${input_files}' --benchmarkDataFile='${output_file}' --enableFp16='${enableFp16}' --accuracyThreshold='${acc_limit}' --device='${ascend_device} >> "${run_ascend_log_file}"
-        elapsed_time=$(date +%s.%N)
-        ./benchmark --enableParallelPredict=${use_parallel_predict} --modelFile=${model_file} --inputShape="${spec_shapes}" --inDataFile=${input_files} --benchmarkDataFile=${output_file} --enableFp16=${enableFp16} --accuracyThreshold=${acc_limit} --device=${ascend_device} >> ${run_ascend_log_file}
+        Run_Benchmark_Model "${model_file}" "${input_files}" "${output_file}" \
+            "${acc_limit}" "${enableFp16}" "${ascend_device}" \
+            "${use_parallel_predict}" "${spec_shapes}" "${run_ascend_log_file}"
         ret=$?
-        elapsed_time=$(printf %.2f "$(echo "$(date +%s.%N) - $elapsed_time" | bc)")
         if [ ${ret} = 0 ]; then
           if [[ ${extra_info} =~ "parallel_predict" ]]; then
-            run_result=${backend}': '${model_name}' '${elapsed_time}' parallel_pass'; echo ${run_result} >> ${run_benchmark_result_file}
+            run_result=${backend}': '${model_name}' '${MODEL_ELAPSED_TIME}' parallel_pass'; echo ${run_result} >> ${run_benchmark_result_file}
           else
-            run_result=${backend}': '${model_name}' '${elapsed_time}' pass'; echo ${run_result} >> ${run_benchmark_result_file}
+            run_result=${backend}': '${model_name}' '${MODEL_ELAPSED_TIME}' pass'; echo ${run_result} >> ${run_benchmark_result_file}
           fi
         else
           if [[ ${extra_info} =~ "parallel_predict" ]]; then
-            run_result=${backend}': '${model_name}' '${elapsed_time}' parallel_failed'; echo ${run_result} >> ${run_benchmark_result_file}
+            run_result=${backend}': '${model_name}' '${MODEL_ELAPSED_TIME}' parallel_failed'; echo ${run_result} >> ${run_benchmark_result_file}
           else
-            run_result=${backend}': '${model_name}' '${elapsed_time}' failed'; echo ${run_result} >> ${run_benchmark_result_file}
+            run_result=${backend}': '${model_name}' '${MODEL_ELAPSED_TIME}' failed'; echo ${run_result} >> ${run_benchmark_result_file}
           fi
             if [[ ${ascend_fail_not_return} != "ON" ]]; then
                 return 1
