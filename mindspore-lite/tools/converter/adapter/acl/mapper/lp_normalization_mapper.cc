@@ -60,12 +60,14 @@ STATUS LpNormalizationMapper::Mapper(const CNodePtr &cnode) {
   CHECK_NULL_RETURN(func_graph);
   ops::LpNorm lp_norm_op;
   auto axes_ptr = src_prim->GetAttr(ops::kAxis);
+  std::vector<int64_t> axes_vec;
   if (axes_ptr != nullptr) {
     int64_t axis_val = GetValue<int64_t>(axes_ptr);
-    std::vector<int64_t> axes_vec;
     axes_vec.push_back(axis_val);
-    lp_norm_op.set_axis(axes_vec);
+  } else {
+    axes_vec.push_back(-1);
   }
+  lp_norm_op.set_axis(axes_vec);
   auto p_ptr = src_prim->GetAttr(ops::kP);
   if (p_ptr != nullptr) {
     int64_t p = GetValue<int64_t>(p_ptr);
