@@ -114,6 +114,7 @@ class MSLiteModel():
         self.predict_result[RES_KEY_MODEL_NAME] = self.model_name
         self.predict_result[RES_KEY_BUILD_TIME] = "failed"
         self.predict_result[RES_KEY_PREDICT_TIME] = "failed"
+        self.predict_result[RES_KEY_ACCURACY_THRESHOLD] = "failed"
         self.predict_result[RES_KEY_RESULT] = "failed"
 
     def CreateInputTensors(self):

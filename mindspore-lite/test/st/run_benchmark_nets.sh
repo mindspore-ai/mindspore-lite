@@ -56,7 +56,7 @@ if [[ $backend == "all" || $backend == "mslite_large_model_inference_arm_ascend9
   echo "Run model in Atlas 800I A2 .."
   sh ${cur_path}/scripts/ascend/run_cloud_arm_a2.sh -r ${release_path} -m ${models_path} -e ${backend} -l ${level} -d ${device_id}
   ascend_status=$?
-  if [[ ascend_status -ne 0 ]]; then
+  if [[ ${ascend_status} -ne 0 ]]; then
     echo "Run ${backend} failed"
     exit 1
   fi
@@ -205,7 +205,7 @@ if [[ $backend == "all" || $backend =~ "x86_ascend310" || $backend =~ "x86_ascen
       $backend =~ "ascend310_ge" ]]; then
     sh $cur_path/scripts/ascend/run_ascend.sh -r $release_path -m $models_path -d $device_id -e $backend -l $level -p $fail_not_return
     ascend_status=$?
-    if [[ ascend_status -ne 0 ]]; then
+    if [[ ${ascend_status} -ne 0 ]]; then
       echo "Run ${backend} failed"
       exit 1
     fi
@@ -266,7 +266,7 @@ fi
 if [[ $backend == "all" || $backend == "mslite_large_model_cloud_infer" ]]; then
   sh $cur_path/scripts/ascend/run_large_models_cloud_infer.sh -r $release_path -m $models_path -e $backend -l $level
   ascend_status=$?
-  if [[ ascend_status -ne 0 ]]; then
+  if [[ ${ascend_status} -ne 0 ]]; then
     echo "Run ${backend} failed"
     exit 1
   fi

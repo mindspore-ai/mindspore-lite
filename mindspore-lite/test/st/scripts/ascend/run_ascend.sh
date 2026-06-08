@@ -34,6 +34,7 @@ function Run_Benchmark_Card() {
     local log_file=$7
     local ascend_device=$8
     local compile_type=${9:-"cloud"}
+    local _fail=0
 
     if [[ ! -s "${sub_cfg_file}" ]]; then
         return 0
@@ -180,12 +181,11 @@ function Run_Benchmark_Card() {
             else
                 echo "${backend}: ${model_name} ${MODEL_ELAPSED_TIME} failed" >> ${result_file}
             fi
-            if [[ ${ascend_fail_not_return} != "ON" ]]; then
-                return 1
-            fi
+            _fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         fi
     done < ${sub_cfg_file}
-    return 0
+    return ${_fail}
 }
 
 # Per-card cloud benchmark runner — runs cloud mindir models from dataset path.
@@ -200,6 +200,7 @@ function Run_Cloud_Benchmark_Card() {
     local result_file=$6
     local log_file=$7
     local ascend_device=$8
+    local _fail=0
 
     if [[ ! -s "${sub_cfg_file}" ]]; then
         return 0
@@ -286,12 +287,11 @@ function Run_Cloud_Benchmark_Card() {
             echo "${backend}: ${model_name} ${MODEL_ELAPSED_TIME} pass" >> ${result_file}
         else
             echo "${backend}: ${model_name} ${MODEL_ELAPSED_TIME} failed" >> ${result_file}
-            if [[ ${ascend_fail_not_return} != "ON" ]]; then
-                return 1
-            fi
+            _fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         fi
     done < ${sub_cfg_file}
-    return 0
+    return ${_fail}
 }
 
 function PrePareLocal() {
@@ -646,10 +646,19 @@ function Run_Parallel_Benchmark() {
         ec=$?
         if [ ${ec} -eq 124 ]; then
             echo "Benchmark card $((start_card + i)) timed out after ${WATCHDOG_TIMEOUT_SEC}s"
+            if [[ -f "${log_files[$i]}" ]]; then
+                echo "--- Card $((start_card + i)) log (timeout) ---"
+                cat "${log_files[$i]}"
+            fi
             timeout_cards+=("${i}")
             fail=1
         elif [ ${ec} -ne 0 ]; then
-            echo "Benchmark card $((start_card + i)) failed (exit ${ec})"
+            local failed_card=$((start_card + i))
+            echo "Benchmark card ${failed_card} failed (exit ${ec})"
+            if [[ -f "${log_files[$i]}" ]]; then
+                echo "--- Card ${failed_card} log ---"
+                cat "${log_files[$i]}"
+            fi
             fail=1
         fi
     done
@@ -683,6 +692,7 @@ function Run_Post_Steps() {
     local model_data_path=/home/workspace/mindspore_dataset/mslite
     local models_path=${model_data_path}/models/hiai
     local ascend_device="Ascend"
+    local _post_fail=0
 
     cd ${benchmark_test_path} || exit 1
     export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${pkg_dir}/runtime/lib:${pkg_dir}/tools/converter/lib/
@@ -702,10 +712,12 @@ function Run_Post_Steps() {
         local java_ret=$?
         if [ ${java_ret} -eq 124 ]; then
             echo "Cloud fusion Java benchmark timed out after ${WATCHDOG_TIMEOUT_SEC}s"
-            return 1
+            _post_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         elif [ ${java_ret} -ne 0 ]; then
             echo "Cloud fusion Java benchmark failed"
-            return 1
+            _post_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         fi
 
         # Phase 2: C++ cloud benchmark (18 models) — parallel across cards
@@ -747,10 +759,19 @@ function Run_Post_Steps() {
                 local ec=$?
                 if [ ${ec} -eq 124 ]; then
                     echo "Cloud benchmark card $((START_CARD + i)) timed out after ${WATCHDOG_TIMEOUT_SEC}s"
+                    if [[ -f "${cloud_log_files[$i]}" ]]; then
+                        echo "--- Cloud card $((START_CARD + i)) log (timeout) ---"
+                        cat "${cloud_log_files[$i]}"
+                    fi
                     cloud_timeout_cards+=("${i}")
                     cloud_fail=1
                 elif [ ${ec} -ne 0 ]; then
-                    echo "Cloud benchmark card $((START_CARD + i)) failed (exit ${ec})"
+                    local cfail_card=$((START_CARD + i))
+                    echo "Cloud benchmark card ${cfail_card} failed (exit ${ec})"
+                    if [[ -f "${cloud_log_files[$i]}" ]]; then
+                        echo "--- Cloud card ${cfail_card} log ---"
+                        cat "${cloud_log_files[$i]}"
+                    fi
                     cloud_fail=1
                 fi
             done
@@ -778,7 +799,8 @@ function Run_Post_Steps() {
             if [ ${cloud_fail} -ne 0 ]; then
                 echo "Cloud fusion C++ benchmark failed"
                 Print_Benchmark_Result ${benchmark_test_path}/run_benchmark_result.txt
-                return 1
+                _post_fail=1
+                [[ ${ascend_fail_not_return} == "ON" ]] || return 1
             fi
         fi
         Print_Benchmark_Result ${benchmark_test_path}/run_benchmark_result.txt
@@ -794,20 +816,40 @@ function Run_Post_Steps() {
         local py_ret=$?
         if [ ${py_ret} -eq 124 ]; then
             echo "Python ST (Ascend) timed out after ${WATCHDOG_TIMEOUT_SEC}s"
-            return 1
+            if [[ -f ${benchmark_test_path}/python/result_python_log.txt ]]; then
+                echo "Python ST (Ascend) completed models:"
+                cat ${benchmark_test_path}/python/result_python_log.txt
+            fi
+            _post_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         elif [ ${py_ret} -ne 0 ]; then
             echo "Python ST (Ascend) failed"
-            return 1
+            if [[ -f ${benchmark_test_path}/python/result_python_log.txt ]]; then
+                echo "Python ST (Ascend) completed models:"
+                cat ${benchmark_test_path}/python/result_python_log.txt
+            fi
+            _post_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         fi
         Run_With_Watchdog ${WATCHDOG_TIMEOUT_SEC} Run_python_ST ${benchmark_test_path} ${benchmark_test_path} ${ms_models} \
             ${model_data_path}'/models/hiai' "${models_python_config}" "Ascend_Model_Group"
         py_ret=$?
         if [ ${py_ret} -eq 124 ]; then
             echo "Python ST (Ascend_Model_Group) timed out after ${WATCHDOG_TIMEOUT_SEC}s"
-            return 1
+            if [[ -f ${benchmark_test_path}/python/result_python_log.txt ]]; then
+                echo "Python ST (Ascend_Model_Group) completed models:"
+                cat ${benchmark_test_path}/python/result_python_log.txt
+            fi
+            _post_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         elif [ ${py_ret} -ne 0 ]; then
             echo "Python ST (Ascend_Model_Group) failed"
-            return 1
+            if [[ -f ${benchmark_test_path}/python/result_python_log.txt ]]; then
+                echo "Python ST (Ascend_Model_Group) completed models:"
+                cat ${benchmark_test_path}/python/result_python_log.txt
+            fi
+            _post_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         fi
     fi
 
@@ -821,16 +863,18 @@ function Run_Post_Steps() {
         local cpp_ret=$?
         if [ ${cpp_ret} -eq 124 ]; then
             echo "Run device example timed out after ${WATCHDOG_TIMEOUT_SEC}s"
-            return 1
+            _post_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         elif [ ${cpp_ret} -ne 0 ]; then
             echo "Run device example failed"
             cat ${benchmark_test_path}/run_device_mem_test.log
-            return 1
+            _post_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         fi
         echo "Run device example success"
     fi
 
-    return 0
+    return ${_post_fail}
 }
 
 while getopts "r:m:d:e:l:p:" opt; do
@@ -856,14 +900,19 @@ while getopts "r:m:d:e:l:p:" opt; do
             echo "level is ${OPTARG}"
             ;;
         p)
-            ascend_fail_not_return=${OPTARG}
-            echo "ascend_fail_not_return is ${OPTARG}"
+            ascend_fail_not_return_cmdline=${OPTARG}
+            echo "ascend_fail_not_return_cmdline is ${OPTARG}"
             ;;
         ?)
         echo "unknown para"
         exit 1;;
     esac
 done
+
+# ascend_fail_not_return priority: base_functions.sh global switch > -p parameter
+if [[ ${ascend_fail_not_return} != "ON" ]]; then
+    ascend_fail_not_return=${ascend_fail_not_return_cmdline:-OFF}
+fi
 
 if [[ ${backend} =~ "x86" ]]; then
   arch="x64"
@@ -939,9 +988,12 @@ echo "----------------------------------------------------"
 Run_Converter_Parallel ${NUM_CARDS} ${START_CARD}
 Run_conv_status=$?
 if [[ ${Run_conv_status} != 0 ]]; then
-    echo "Converter failed"
+    echo "Converter failed" | tee -a ${run_ascend_result_file}
     Print_Converter_Result ${benchmark_test_path}/run_converter_result.txt
-    exit 1
+    if [[ ${ascend_fail_not_return} != "ON" ]]; then
+        exit 1
+    fi
+    echo "Debug mode ON: continue to benchmark despite converter failures"
 fi
 echo "Converter success"
 Print_Converter_Result ${benchmark_test_path}/run_converter_result.txt
@@ -967,7 +1019,7 @@ Run_post_status=$?
 
 # Determine overall status
 Run_ascend_status=0
-if [[ ${Run_bench_status} != 0 || ${Run_post_status} != 0 ]]; then
+if [[ ${Run_conv_status} != 0 || ${Run_bench_status} != 0 || ${Run_post_status} != 0 ]]; then
     Run_ascend_status=1
 fi
 
@@ -975,6 +1027,27 @@ if [[ ${Run_ascend_status} = 0 ]]; then
     run_result="run in ${backend} pass"; echo ${run_result} >> ${run_ascend_result_file};
 else
     run_result="run in ${backend} failed"; echo ${run_result} >> ${run_ascend_result_file};
+fi
+
+# Debug mode: print failures summary
+if [[ ${ascend_fail_not_return} == "ON" && ${Run_ascend_status} != 0 ]]; then
+    echo ""
+    echo "================================================"
+    echo "  DEBUG MODE FAILURES SUMMARY"
+    echo "================================================"
+    for _f in "${benchmark_test_path}/run_converter_result.txt" \
+              "${benchmark_test_path}/run_benchmark_parallel_result.txt" \
+              "${benchmark_test_path}/run_benchmark_result.txt"; do
+        if [[ -s "$_f" ]]; then
+            echo "--- $(basename $_f) ---"
+            grep "failed\|TIMEOUT" "$_f" || true
+        fi
+    done
+    if [[ -f ${benchmark_test_path}/python/result_python_log.txt ]]; then
+        echo "--- Python ST result_python_log.txt ---"
+        grep "failed" ${benchmark_test_path}/python/result_python_log.txt
+    fi
+    echo "================================================"
 fi
 
 # Copy result files back to basepath
