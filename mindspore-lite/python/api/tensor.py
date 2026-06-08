@@ -25,6 +25,24 @@ from mindspore_lite._checkparam import check_tensor_input_param, check_isinstanc
 
 __all__ = ['TensorMeta', 'DataType', 'Format', 'Tensor']
 
+try:
+    import ml_dtypes as mldtypes
+except ImportError:
+    mldtypes = None
+
+
+def _require_mldtypes():
+    if mldtypes is None:
+        raise ImportError("ml_dtypes is required for bfloat16. Please install it via `pip install ml_dtypes`.")
+    return mldtypes
+
+
+def _is_numpy_bfloat16_dtype(np_dtype):
+    try:
+        return np_dtype.name == "bfloat16"
+    except AttributeError:
+        return False
+
 
 class TensorMeta:
     """
@@ -71,6 +89,7 @@ class DataType(Enum):
     `DataType.FLOAT16`           16-bit floating-point number.
     `DataType.FLOAT32`           32-bit floating-point number.
     `DataType.FLOAT64`           64-bit floating-point number.
+    `DataType.BFLOAT16`          Brain floating-point number, 16-bit.
     `DataType.INVALID`           The maximum threshold value of DataType to prevent invalid types.
     ===========================  ==================================================================
 
@@ -98,6 +117,7 @@ class DataType(Enum):
     FLOAT16 = 42
     FLOAT32 = 43
     FLOAT64 = 44
+    BFLOAT16 = 45
     INVALID = 2147483647  # INT32_MAX
 
 
@@ -179,6 +199,7 @@ data_type_py_cxx_map = {
     DataType.FLOAT16: _c_lite_wrapper.DataType.kNumberTypeFloat16,
     DataType.FLOAT32: _c_lite_wrapper.DataType.kNumberTypeFloat32,
     DataType.FLOAT64: _c_lite_wrapper.DataType.kNumberTypeFloat64,
+    DataType.BFLOAT16: _c_lite_wrapper.DataType.kNumberTypeBFloat16,
     DataType.INVALID: _c_lite_wrapper.DataType.kInvalidType,
 }
 
@@ -196,6 +217,7 @@ data_type_cxx_py_map = {
     _c_lite_wrapper.DataType.kNumberTypeFloat16: DataType.FLOAT16,
     _c_lite_wrapper.DataType.kNumberTypeFloat32: DataType.FLOAT32,
     _c_lite_wrapper.DataType.kNumberTypeFloat64: DataType.FLOAT64,
+    _c_lite_wrapper.DataType.kNumberTypeBFloat16: DataType.BFLOAT16,
     _c_lite_wrapper.DataType.kInvalidType: DataType.INVALID,
 }
 
@@ -214,6 +236,9 @@ numpy_data_type_map = {
     numpy.float64: DataType.FLOAT64,
 }
 
+if mldtypes is not None:
+    numpy_data_type_map[mldtypes.bfloat16] = DataType.BFLOAT16
+
 ms_to_numpy_data_type_map = {
     DataType.BOOL: numpy.bool_,
     DataType.INT8: numpy.int8,
@@ -228,6 +253,9 @@ ms_to_numpy_data_type_map = {
     DataType.FLOAT32: numpy.float32,
     DataType.FLOAT64: numpy.float64,
 }
+
+if mldtypes is not None:
+    ms_to_numpy_data_type_map[DataType.BFLOAT16] = mldtypes.bfloat16
 
 format_py_cxx_map = {
     Format.DEFAULT: _c_lite_wrapper.Format.DEFAULT_FORMAT,
@@ -327,57 +355,71 @@ class Tensor:
     def __init__(self, tensor=None, shape=None, dtype=None, device=None):
         # check shape, dtype and device
         check_tensor_input_param(shape, device)
-        device_type = ""
-        device_id = -1
-        if device is not None:
-            device_type = device.split(":")[0]
-            if len(device.split(":")) == 2:
-                device_id = int(device.split(":")[1])
+        device_type, device_id = self._parse_device_string(device)
         check_isinstance("dtype", dtype, DataType, True)
         if tensor is not None:
-            # use tensor to init tensor
             if isinstance(tensor, _c_lite_wrapper.TensorBind):
                 self._tensor = tensor
             elif isinstance(tensor, Tensor):
-                tensor_shape = tensor.shape
-                if shape is not None and list(shape) != list(tensor_shape):
-                    raise TypeError(
-                        f"user set shape is not equal numpy shape, user's shape: {shape}, "
-                        f"tensor shape is: {tensor_shape}.")
-                tensor_dtype = tensor.dtype
-                if dtype is not None and tensor_dtype != dtype:
-                    raise TypeError(
-                        f"user set dtype is not equal tensor dtype, user's dtype: {dtype}, "
-                        f"tensor dtype is: {tensor_dtype}.")
-                numpy_data = tensor.get_data_to_numpy()
-                self._tensor = _c_lite_wrapper.create_tensor_by_numpy(numpy_data, device_type, device_id)
-            # use numpy to init tensor
+                self._tensor = self._create_tensor_from_tensor(tensor, shape, dtype, device_type, device_id)
             elif isinstance(tensor, numpy.ndarray):
-                if not tensor.flags['FORC']:
-                    tensor = numpy.ascontiguousarray(tensor)
-                numpy_shape = tensor.shape
-                numpy_dtype = tensor.dtype
-                if numpy_dtype.type not in numpy_data_type_map:
-                    raise TypeError(f"Unsupported numpy dtype value {numpy_dtype}")
-                ms_dtype = numpy_data_type_map.get(numpy_dtype.type)
-                if shape is not None and list(shape) != list(numpy_shape):
-                    raise TypeError(
-                        f"user set shape is not equal numpy shape, user shape: {shape}, "
-                        f"numpy shape is: {numpy_shape}.")
-                if dtype is not None and ms_dtype != dtype:
-                    raise TypeError(
-                        f"user set dtype is not equal numpy dtype, user dtype: {dtype}, "
-                        f"numpy dtype is: {numpy_dtype}.")
-                self._tensor = _c_lite_wrapper.create_tensor_by_numpy(tensor, device_type, device_id)
+                self._tensor = self._create_tensor_from_numpy(tensor, shape, dtype, device_type, device_id)
             else:
                 raise TypeError(
                     f"tensor must be MindSpore Lite's Tensor._tensor or numpy ndarray, but got {type(tensor)}.")
+        elif dtype is not None and shape is not None:
+            self._tensor = _c_lite_wrapper.create_tensor(data_type_py_cxx_map.get(dtype), shape, device_type,
+                                                         device_id)
         else:
-            if dtype is not None and shape is not None:
-                self._tensor = _c_lite_wrapper.create_tensor(data_type_py_cxx_map.get(dtype), shape, device_type,
-                                                             device_id)
-            else:
-                self._tensor = _c_lite_wrapper.create_tensor(data_type_py_cxx_map.get(DataType.FLOAT32), (), "", -1)
+            self._tensor = _c_lite_wrapper.create_tensor(data_type_py_cxx_map.get(DataType.FLOAT32), (), "", -1)
+
+    @staticmethod
+    def _parse_device_string(device):
+        """Parse device string into (device_type, device_id)."""
+        if device is None:
+            return "", -1
+        parts = device.split(":")
+        device_type = parts[0]
+        device_id = int(parts[1]) if len(parts) == 2 else -1
+        return device_type, device_id
+
+    def _create_tensor_from_tensor(self, tensor, shape, dtype, device_type, device_id):
+        """Create tensor from another Tensor object."""
+        self._validate_shape_and_dtype(shape, dtype, tensor.shape, tensor.dtype, "tensor")
+        numpy_data = tensor.get_data_to_numpy()
+        return _c_lite_wrapper.create_tensor_by_numpy(numpy_data, device_type, device_id)
+
+    def _create_tensor_from_numpy(self, tensor, shape, dtype, device_type, device_id):
+        """Create tensor from a numpy ndarray."""
+        if not tensor.flags['FORC']:
+            tensor = numpy.ascontiguousarray(tensor)
+        numpy_shape = tensor.shape
+        numpy_dtype = tensor.dtype
+        ms_dtype = self._numpy_dtype_to_ms_dtype(numpy_dtype)
+        self._validate_shape_and_dtype(shape, dtype, numpy_shape, ms_dtype, "numpy")
+        return _c_lite_wrapper.create_tensor_by_numpy(tensor, device_type, device_id)
+
+    @staticmethod
+    def _numpy_dtype_to_ms_dtype(numpy_dtype):
+        """Convert numpy dtype to MindSpore Lite DataType."""
+        if _is_numpy_bfloat16_dtype(numpy_dtype):
+            _require_mldtypes()
+            return DataType.BFLOAT16
+        if numpy_dtype.type not in numpy_data_type_map:
+            raise TypeError(f"Unsupported numpy dtype value {numpy_dtype}")
+        return numpy_data_type_map.get(numpy_dtype.type)
+
+    @staticmethod
+    def _validate_shape_and_dtype(user_shape, user_dtype, actual_shape, actual_dtype, kind):
+        """Validate that user-provided shape and dtype match the actual values."""
+        if user_shape is not None and list(user_shape) != list(actual_shape):
+            raise TypeError(
+                f"user set shape is not equal {kind} shape, user's shape: {user_shape}, "
+                f"{kind} shape is: {actual_shape}.")
+        if user_dtype is not None and user_dtype != actual_dtype:
+            raise TypeError(
+                f"user set dtype is not equal {kind} dtype, user's dtype: {user_dtype}, "
+                f"{kind} dtype is: {actual_dtype}.")
 
     def __str__(self):
         res = f"name: {self.name},\n" \
@@ -541,7 +583,11 @@ class Tensor:
               [[ 8.  9.]
                [ 10. 11.]]]]
         """
-        return self._tensor.get_data_to_numpy()
+        numpy_obj = self._tensor.get_data_to_numpy()
+        if self.dtype == DataType.BFLOAT16:
+            _require_mldtypes()
+            return numpy_obj.view(mldtypes.bfloat16)
+        return numpy_obj
 
     def set_data_from_numpy(self, numpy_obj):
         """
@@ -593,9 +639,14 @@ class Tensor:
             raise TypeError(f"numpy_obj must be numpy.ndarray, but got {type(numpy_obj)}.")
         if not numpy_obj.flags['FORC']:
             numpy_obj = numpy.ascontiguousarray(numpy_obj)
-        if numpy_obj.dtype.type not in numpy_data_type_map:
-            raise TypeError(f"Unsupported numpy dtype value {numpy_obj.dtype}")
-        if numpy_data_type_map.get(numpy_obj.dtype.type) != self.dtype:
+        if _is_numpy_bfloat16_dtype(numpy_obj.dtype):
+            _require_mldtypes()
+            numpy_obj_dtype = DataType.BFLOAT16
+        else:
+            if numpy_obj.dtype.type not in numpy_data_type_map:
+                raise TypeError(f"Unsupported numpy dtype value {numpy_obj.dtype}")
+            numpy_obj_dtype = numpy_data_type_map.get(numpy_obj.dtype.type)
+        if numpy_obj_dtype != self.dtype:
             raise RuntimeError(
                 f"data type not equal! Numpy type: {numpy_obj.dtype.type}, Tensor type: {self.dtype}")
         if numpy_obj.nbytes != self.data_size:

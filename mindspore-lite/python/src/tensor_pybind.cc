@@ -36,6 +36,21 @@ bool IsCContiguous(const py::array &input) {
   auto flags = static_cast<unsigned int>(input.flags());
   return (flags & pybind11::detail::npy_api::NPY_ARRAY_C_CONTIGUOUS_) != 0;
 }
+
+bool IsBFloat16(const py::array &input) {
+  const auto dtype_name = py::str(input.dtype().attr("name"));
+  return static_cast<std::string>(dtype_name) == "bfloat16";
+}
+
+bool IsUInt16(const py::array &input) {
+  const auto dtype_name = py::str(input.dtype().attr("name"));
+  return static_cast<std::string>(dtype_name) == "uint16";
+}
+
+py::array AsUInt16View(const py::array &input) {
+  py::module np = py::module::import("numpy");
+  return input.attr("view")(np.attr("uint16")).cast<py::array>();
+}
 }  // namespace
 
 namespace py = pybind11;
@@ -158,13 +173,21 @@ MSTensorPtr create_tensor_by_tensor(const MSTensor &tensor, const std::string &d
 }
 
 MSTensorPtr create_tensor_by_numpy(const py::array &input, const std::string &device_type, int32_t device_id) {
+  py::array buffer_input = input;
+  DataType py_data_type = DataType::kTypeUnknown;
+  if (IsBFloat16(input)) {
+    buffer_input = AsUInt16View(input);
+    py_data_type = DataType::kNumberTypeBFloat16;
+  }
   // Check format.
-  if (!IsCContiguous(input)) {
+  if (!IsCContiguous(buffer_input)) {
     MS_LOG(ERROR) << "Numpy array is not C Contiguous";
     return nullptr;
   }
-  auto py_buffer_info = input.request();
-  auto py_data_type = TensorNumpyImpl::GetDataType(py_buffer_info);
+  auto py_buffer_info = buffer_input.request();
+  if (py_data_type == DataType::kTypeUnknown) {
+    py_data_type = TensorNumpyImpl::GetDataType(py_buffer_info);
+  }
   auto py_data_size = py_buffer_info.size * py_buffer_info.itemsize;
   auto py_shape = py_buffer_info.shape;
   auto data_size = mindspore::CalTensorDataSize(py_shape, py_data_type);
@@ -172,7 +195,7 @@ MSTensorPtr create_tensor_by_numpy(const py::array &input, const std::string &de
     MS_LOG(ERROR) << "Expect data size " << data_size << ", but got " << py_data_size;
     return nullptr;
   }
-  auto tensor_impl = std::make_shared<TensorNumpyImpl>("", std::move(py_buffer_info), py_shape);
+  auto tensor_impl = std::make_shared<TensorNumpyImpl>("", std::move(py_buffer_info), py_shape, py_data_type);
   tensor_impl->SetDevice(device_type);
   tensor_impl->SetDeviceId(device_id);
   auto numpy_tensor = std::make_shared<MSTensor>(tensor_impl);
@@ -240,13 +263,25 @@ std::string GetPyTypeFormat(DataType data_type) {
 bool SetTensorNumpyData(const MSTensorPtr &tensor_ptr, const py::array &input) {
   MS_CHECK_TRUE_RET(tensor_ptr != nullptr, false);
   auto &tensor = *tensor_ptr;
+  py::array buffer_input = input;
+  DataType py_data_type = DataType::kTypeUnknown;
+  if (tensor.DataType() == DataType::kNumberTypeBFloat16) {
+    if (IsBFloat16(input)) {
+      buffer_input = AsUInt16View(input);
+      py_data_type = tensor.DataType();
+    } else if (IsUInt16(input)) {
+      py_data_type = tensor.DataType();
+    }
+  }
   // Check format.
-  if (!IsCContiguous(input)) {
+  if (!IsCContiguous(buffer_input)) {
     MS_LOG(ERROR) << "Numpy array is not C Contiguous";
     return false;
   }
-  auto py_buffer_info = input.request();
-  auto py_data_type = TensorNumpyImpl::GetDataType(py_buffer_info);
+  auto py_buffer_info = buffer_input.request();
+  if (py_data_type == DataType::kTypeUnknown) {
+    py_data_type = TensorNumpyImpl::GetDataType(py_buffer_info);
+  }
   if (py_data_type != tensor.DataType()) {
     MS_LOG(ERROR) << "Expect data type " << static_cast<int>(tensor.DataType()) << ", but got "
                   << static_cast<int>(py_data_type);
@@ -270,7 +305,8 @@ bool SetTensorNumpyData(const MSTensorPtr &tensor_ptr, const py::array &input) {
     return true;
   }
 #endif
-  auto tensor_impl = std::make_shared<TensorNumpyImpl>(tensor.Name(), std::move(py_buffer_info), tensor.Shape());
+  auto tensor_impl =
+    std::make_shared<TensorNumpyImpl>(tensor.Name(), std::move(py_buffer_info), tensor.Shape(), tensor.DataType());
   MS_CHECK_TRUE_RET(tensor_impl != nullptr, false);
   tensor = MSTensor(tensor_impl);
   return true;

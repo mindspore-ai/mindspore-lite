@@ -755,23 +755,45 @@ int BenchmarkUnifiedApi::CompareOutputByCosineDistance(float cosine_distance_thr
 
 float BenchmarkUnifiedApi::CompareDataFloat16(const std::string &name, mindspore::MSTensor *tensor,
                                               void *mutable_data) {
-  size_t shapeSize = 1;
+  size_t shape_size = 1;
   for (int64_t dim : tensor->Shape()) {
     if (dim <= 0) {
       MS_LOG(ERROR) << "The shape of output " << name << " should be great than 0 after inference, got "
                     << tensor->Shape();
       return RET_ERROR;
     }
-    MS_CHECK_FALSE_MSG(SIZE_MUL_OVERFLOW(shapeSize, static_cast<size_t>(dim)), RET_ERROR, "mul overflow");
-    shapeSize *= static_cast<size_t>(dim);
+    MS_CHECK_FALSE_MSG(SIZE_MUL_OVERFLOW(shape_size, static_cast<size_t>(dim)), RET_ERROR, "mul overflow");
+    shape_size *= static_cast<size_t>(dim);
   }
-  auto *floatArr = new float[shapeSize];
-  for (size_t i = 0; i < shapeSize; ++i) {
-    uint16_t tmpInt = reinterpret_cast<uint16_t *>(mutable_data)[i];
-    floatArr[i] = ShortToFloat32(tmpInt);
+  auto *float_arr = new float[shape_size];
+  for (size_t i = 0; i < shape_size; ++i) {
+    uint16_t tmp_int = reinterpret_cast<uint16_t *>(mutable_data)[i];
+    float_arr[i] = ShortToFloat32(tmp_int);
   }
-  float bias = CompareData<float, int64_t>(name, tensor->Shape(), floatArr);
-  delete[] floatArr;
+  float bias = CompareData<float, int64_t>(name, tensor->Shape(), float_arr);
+  delete[] float_arr;
+  return bias;
+}
+
+float BenchmarkUnifiedApi::CompareDataBFloat16(const std::string &name, mindspore::MSTensor *tensor,
+                                               void *mutable_data) {
+  size_t shape_size = 1;
+  for (int64_t dim : tensor->Shape()) {
+    if (dim <= 0) {
+      MS_LOG(ERROR) << "The shape of output " << name << " should be great than 0 after inference, got "
+                    << tensor->Shape();
+      return RET_ERROR;
+    }
+    MS_CHECK_FALSE_MSG(SIZE_MUL_OVERFLOW(shape_size, static_cast<size_t>(dim)), RET_ERROR, "mul overflow");
+    shape_size *= static_cast<size_t>(dim);
+  }
+  auto *float_arr = new float[shape_size];
+  for (size_t i = 0; i < shape_size; ++i) {
+    uint16_t tmp_int = reinterpret_cast<uint16_t *>(mutable_data)[i];
+    float_arr[i] = Bf16ToFloat32(tmp_int);
+  }
+  float bias = CompareData<float, int64_t>(name, tensor->Shape(), float_arr);
+  delete[] float_arr;
   return bias;
 }
 
@@ -793,6 +815,8 @@ float BenchmarkUnifiedApi::CompareDataByType(const std::string &name, mindspore:
       return CompareData<bool, int64_t>(name, tensor->Shape(), mutable_data, relative_tolerance, absolute_tolerance);
     case TypeId::kNumberTypeFloat16:
       return CompareDataFloat16(name, tensor, mutable_data);
+    case TypeId::kNumberTypeBFloat16:
+      return CompareDataBFloat16(name, tensor, mutable_data);
     default:
       MS_LOG(ERROR) << "Datatype " << static_cast<int>(tensor->DataType()) << " is not supported.";
       return RET_ERROR;
@@ -1041,6 +1065,10 @@ int BenchmarkUnifiedApi::PrintInputData() {
       MS_LOG(INFO) << "DataType: " << TypeId::kNumberTypeFloat16;
       continue;
     }
+    if (tensor_data_type == TypeId::kNumberTypeBFloat16) {
+      MS_LOG(INFO) << "DataType: " << TypeId::kNumberTypeBFloat16;
+      continue;
+    }
     if (tensor_data_type == TypeId::kObjectTypeString) {
       std::vector<std::string> output_strings = MSTensor::TensorToStrings(input);
       size_t print_num = std::min(output_strings.size(), static_cast<size_t>(20));
@@ -1258,6 +1286,10 @@ int BenchmarkUnifiedApi::PrintOutputData() {
     std::cout << "OutData " << i << ": ";
     if (tensor_data_type == TypeId::kNumberTypeFloat16) {
       MS_LOG(INFO) << "DataType: " << TypeId::kNumberTypeFloat16;
+      continue;
+    }
+    if (tensor_data_type == TypeId::kNumberTypeBFloat16) {
+      MS_LOG(INFO) << "DataType: " << TypeId::kNumberTypeBFloat16;
       continue;
     }
     if (tensor_data_type == TypeId::kObjectTypeString) {

@@ -131,6 +131,7 @@ class MS_API BenchmarkUnifiedApi : public BenchmarkBase {
   float CompareDataByType(const std::string &name, mindspore::MSTensor *tensor, void *mutable_data,
                           float relative_tolerance, float absolute_tolerance);
   float CompareDataFloat16(const std::string &name, mindspore::MSTensor *tensor, void *mutable_data);
+  float CompareDataBFloat16(const std::string &name, mindspore::MSTensor *tensor, void *mutable_data);
 
  private:
   mindspore::OpenGL::OpenGLRuntime gl_runtime_;

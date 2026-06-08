@@ -19,6 +19,7 @@ import os
 import time
 import numpy as np
 import mindspore_lite as mslite
+import ml_dtypes
 
 WARM_UP = 3
 LOOP_COUNT = 10
@@ -130,6 +131,9 @@ class MSLiteModel():
                     data = np.fromfile(self.in_data_file_list[i], dtype=np.int32).reshape(self.input_shapes[i])
                 elif model_inputs[i].dtype == mslite.DataType.FLOAT16:
                     data = np.fromfile(self.in_data_file_list[i], dtype=np.float16).reshape(self.input_shapes[i])
+                elif model_inputs[i].dtype == mslite.DataType.BFLOAT16:
+                    data = np.fromfile(self.in_data_file_list[i],
+                                       dtype=ml_dtypes.bfloat16).reshape(self.input_shapes[i])
                 else:
                     raise RuntimeError("not support input dtype: ", model_inputs[i].dtype)
                 model_inputs[i].shape = self.input_shapes[i]
@@ -144,6 +148,8 @@ class MSLiteModel():
                     data = np.random.random(self.input_shapes[i]).astype(np.int32)
                 elif model_inputs[i].dtype == mslite.DataType.FLOAT16:
                     data = np.random.random(self.input_shapes[i]).astype(np.float16)
+                elif model_inputs[i].dtype == mslite.DataType.BFLOAT16:
+                    data = np.random.random(self.input_shapes[i]).astype(ml_dtypes.bfloat16)
                 model_inputs[i].shape = self.input_shapes[i]
                 model_inputs[i].set_data_from_numpy(data)
                 inputs.append(model_inputs[i])
