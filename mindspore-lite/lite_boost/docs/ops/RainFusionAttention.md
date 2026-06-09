@@ -2,12 +2,10 @@
 
 RainFusionAttention 是 lite_boost 组件中面向华为昇腾 NPU 的高性能融合注意力算子体系，提供两层接口：
 
-| 接口 | 层级 | 说明 |
-|------|------|------|
-| `rain_fusion_attention` | 底层算子 | 直接封装 NPU 原生 `aclnnRainFusionAttention` 算子，提供块级稀疏融合注意力计算 |
-| `sparse_attention` | 上层封装 | 在 `rain_fusion_attention` 基础上补充了完整的 token 重排、块级池化、稀疏 mask 生成和逆重排等前后处理逻辑 |
-
-> API 使用请参见 [RainFusionAttention API 参考](../api/ops/RainFusionAttention.md)。
+| 接口                        | 层级 | 说明 |
+|---------------------------|------|------|
+| [rain_fusion_attention](https://atomgit.com/mindspore/mindspore-lite/blob/master/mindspore-lite/lite_boost/docs/api/lite_boost_api_python/lite_boost/lite_boost.ops.rain_fusion_attention.rst) | 底层算子 | 直接封装 NPU 原生 `aclnnRainFusionAttention` 算子，提供块级稀疏融合注意力计算 |
+| [sparse_attention](https://atomgit.com/mindspore/mindspore-lite/blob/master/mindspore-lite/lite_boost/docs/api/lite_boost_api_python/lite_boost/lite_boost.ops.sparse_attention.rst)      | 上层封装 | 在 `rain_fusion_attention` 基础上补充了完整的 token 重排、块级池化、稀疏 mask 生成和逆重排等前后处理逻辑 |
 
 ---
 
