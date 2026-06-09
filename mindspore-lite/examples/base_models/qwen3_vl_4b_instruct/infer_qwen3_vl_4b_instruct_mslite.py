@@ -56,6 +56,18 @@ def _pad_to_square(image: Image.Image) -> Image.Image:
 
 
 def _get_vision_position_ids(start_position, grid_thw, spatial_merge_size, device):
+    """
+    Get vision position ids for Qwen3-VL-4B-Instruct.
+
+    Args:
+        start_position (int): Start position for vision position ids.
+        grid_thw (torch.Tensor): Grid size (t, h, w) for vision position ids.
+        spatial_merge_size (int): Spatial merge size for vision position ids.
+        device (torch.device): Device for vision position ids.
+
+    Returns:
+        torch.Tensor: Vision position ids.
+    """
     import torch
 
     llm_grid_t = int(grid_thw[0].item())
@@ -77,6 +89,19 @@ def _get_vision_position_ids(start_position, grid_thw, spatial_merge_size, devic
 def _get_rope_index(
     input_ids, mm_token_type_ids, image_grid_thw, attention_mask, spatial_merge_size
 ):
+    """
+    Get rope index for Qwen3-VL-4B-Instruct.
+
+    Args:
+        input_ids (torch.Tensor): Input ids.
+        mm_token_type_ids (torch.Tensor): MM token type ids.
+        image_grid_thw (torch.Tensor): Image grid (t, h, w) for rope index.
+        attention_mask (torch.Tensor): Attention mask for rope index.
+        spatial_merge_size (int): Spatial merge size for rope index.
+
+    Returns:
+        torch.Tensor: Rope index.
+    """
     import torch
 
     bsz, seq_len = input_ids.shape
@@ -149,6 +174,19 @@ def _get_rope_index(
 def _build_position_ids(
     cfg, input_ids, attention_mask, mm_token_type_ids, image_grid_thw
 ):
+    """
+    Build position ids for Qwen3-VL-4B-Instruct.
+
+    Args:
+        cfg (Qwen3VLConfig): Qwen3-VL-4B-Instruct configuration.
+        input_ids (torch.Tensor): Input ids.
+        attention_mask (torch.Tensor): Attention mask.
+        mm_token_type_ids (torch.Tensor): MM token type ids.
+        image_grid_thw (torch.Tensor): Image grid (t, h, w) for position ids.
+
+    Returns:
+        torch.Tensor: Position ids.
+    """
     import torch
 
     position_ids_3, rope_deltas = _get_rope_index(
@@ -166,7 +204,7 @@ def _build_position_ids(
     return position_ids_4, rope_deltas
 
 
-def _force_processor_image_size(processor, image_size):
+def _force_processor_image_size(processor, image_size: int):
     if hasattr(processor, "image_processor") and hasattr(
         processor.image_processor, "size"
     ):
@@ -196,6 +234,7 @@ def _mslite_tensor(np_array: np.ndarray) -> mslite.Tensor:
 
 
 def _np_dtype_to_mslite(dtype: np.dtype):
+    """Map a numpy dtype to the corresponding MindSpore Lite DataType."""
     dt = np.dtype(dtype)
     if dt == np.dtype(np.float16):
         return mslite.DataType.FLOAT16
@@ -209,6 +248,17 @@ def _np_dtype_to_mslite(dtype: np.dtype):
 
 
 def _build_mslite_inputs(model: mslite.Model, feed_dict, preferred_order=None):
+    """
+    Build MindSpore Lite inputs for Qwen3-VL-4B-Instruct.
+
+    Args:
+        model (mslite.Model): MindSpore Lite model.
+        feed_dict (dict): Feed dictionary.
+        preferred_order (list, optional): Preferred order of inputs. Defaults to None.
+
+    Returns:
+        list: MindSpore Lite tensors.
+    """
     inputs = model.get_inputs()
     if not inputs:
         if preferred_order:
@@ -248,6 +298,9 @@ class Qwen3VLInferencer:
         image_size = 128,
         pad_to_square: bool = True,
     ):
+        """
+        Initialize Qwen3-VL-4B-Instruct inferencer.
+        """
         if device not in ["cpu", "ascend"]:
             raise ValueError("device must be cpu or ascend")
 
@@ -386,6 +439,16 @@ class Qwen3VLInferencer:
         return self._decode_io_cache
 
     def _prepare_inputs(self, image_path_or_url: str, prompt: str):
+        """
+        Prepare inputs for Qwen3-VL-4B-Instruct.
+
+        Args:
+            image_path_or_url (str): Path or URL to the image.
+            prompt (str): Prompt for the image.
+
+        Returns:
+            tuple: Input ids, attention mask, mm token type ids, pixel values, image grid thw.
+        """
         import torch
 
         image = _load_image(image_path_or_url)
@@ -421,6 +484,7 @@ class Qwen3VLInferencer:
         )
 
     def _run_vision_encoder(self, pixel_values_np, image_grid_thw_np):
+        """Run the vision model and return image_embeds, deepstack_embeds and elapsed ms."""
         vision_inputs = self.vision_model.get_inputs()
         if len(vision_inputs) == 1:
             feed = {"pixel_values": pixel_values_np}
@@ -449,6 +513,7 @@ class Qwen3VLInferencer:
 
     def _run_decode_loop(self, generated, past_kv_fixed, attn_mask_fixed, cache_pos,
                          rope_deltas_np, eos_token_id, max_new_tokens):
+        """Run the autoregressive decode loop and return total decode ms and step count."""
         t_decode_ms = 0.0
         decode_steps = 0
         max_seq_len = attn_mask_fixed.shape[1]
@@ -528,6 +593,7 @@ class Qwen3VLInferencer:
     def infer(
         self, image_path_or_url: str, text_prompt: str, max_new_tokens: int = 128
     ):
+        """Run the full vision + prefill + decode pipeline and return the decoded text."""
         t_e2e_start = time.perf_counter()
         input_ids, attention_mask, mm_token_type_ids, pixel_values, image_grid_thw = (
             self._prepare_inputs(image_path_or_url, text_prompt)
@@ -615,6 +681,9 @@ class Qwen3VLInferencer:
 
 
 def main():
+    """
+    Main function for Qwen3-VL-4B-Instruct inference on Ascend with MindSpore Lite.
+    """
     parser = argparse.ArgumentParser(
         description="Qwen3-VL-4B-Instruct MindSpore Lite inference (vision + prefill + decode)"
     )
