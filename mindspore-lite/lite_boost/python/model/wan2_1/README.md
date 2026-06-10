@@ -31,13 +31,13 @@ from lite_boost.parallel import initialize_usp, ParallelManager
 initialize_usp()
 
 # 2. 加载模型
-model = WanModel.from_pretrained(checkpoint_dir)
+wan_t2v = wan.WanT2V(config)
 
 # 3. 一键替换为 USP 版本（原地修改）
-ParallelManager(model)
+ParallelManager(wan_t2v)
 
 # 4. 正常推理
-output = model(x, t, context, seq_len)
+output = wan_t2v.generate(*args)
 ```
 
 `ParallelManager` 会自动完成以下替换：
@@ -46,8 +46,7 @@ output = model(x, t, context, seq_len)
 ParallelManager(model)
 ├── 替换 flash_attention       → NPU 兼容版本
 ├── 替换 self_attn.forward     → usp_attn_forward（含 all_to_all 通信）
-├── 替换 model.forward         → usp_dit_forward（含序列分片 / 聚合）
-└── VACE 模型额外替换 vace_blocks 和 forward_vace
+└── 替换 model.forward         → usp_dit_forward（含序列分片 / 聚合）
 ```
 
 ### 2. 推理入口迁移
@@ -57,17 +56,20 @@ ParallelManager(model)
 ```python
 # generate.py脚本
 import torch.distributed as dist
-torch.npu.set_device(local_rank)
-dist.init_process_group(backend="nccl", init_method="env://", ...)
-from xfuser.core.distributed import init_distributed_environment, initialize_model_parallel
-init_distributed_environment(...)
-initialize_model_parallel(...)
 
-# wan/text2video.py脚本
-from .distributed.xdit_context_parallel import usp_attn_forward, usp_dit_forward
-for block in self.model.blocks:
-    block.self_attn.forward = types.MethodType(usp_attn_forward, block.self_attn)
-self.model.forward = types.MethodType(usp_dit_forward, self.model)
+if world_size > 1:
+    torch.npu.set_device(local_rank)
+    dist.init_process_group(backend="nccl", init_method="env://", ...)
+    from xfuser.core.distributed import init_distributed_environment, initialize_model_parallel
+    init_distributed_environment(...)
+    initialize_model_parallel(...)
+
+# pipeline 中：
+if use_usp:
+    from .distributed.xdit_context_parallel import usp_attn_forward, usp_dit_forward
+    for block in self.model.blocks:
+        block.self_attn.forward = types.MethodType(usp_attn_forward, block.self_attn)
+    self.model.forward = types.MethodType(usp_dit_forward, self.model)
 ```
 
 **修改后**（lite_boost + HCCL）：
@@ -75,14 +77,16 @@ self.model.forward = types.MethodType(usp_dit_forward, self.model)
 ```python
 from lite_boost.parallel import initialize_usp, ParallelManager
 
-# generate.py脚本
 if world_size > 1:
-    initialize_usp()  # HCCL backend, 自动读取 RANK/WORLD_SIZE/MASTER_ADDR/MASTER_PORT
-
-# wan/text2video.py脚本
-if use_usp:
-    ParallelManager(self.model)
-    self.sp_size = dist.get_world_size()
+    initialize_usp()  # HCCL backend, 自动读 RANK/WORLD_SIZE/MASTER_ADDR/MASTER_PORT
+    from lite_boost.parallel import ParallelManager
+    ParallelManager(wan_t2v)
+# pipeline 中：
+# if use_usp:
+#     from .distributed.xdit_context_parallel import usp_attn_forward, usp_dit_forward
+#     for block in self.model.blocks:
+#         block.self_attn.forward = types.MethodType(usp_attn_forward, block.self_attn)
+#     self.model.forward = types.MethodType(usp_dit_forward, self.model)
 ```
 
 另外推理入口需添加：

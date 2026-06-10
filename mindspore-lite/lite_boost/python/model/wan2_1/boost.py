@@ -16,7 +16,8 @@
 """
 Model-specific adaptation for Wan2.1 Ulysses Sequence Parallel on NPU.
 
-Called by model.setup_model() to patch the model in-place.
+Called by model.setup_model() to patch the pipeline in-place.
+Accepts Wan2.1 pipeline objects: WanT2V, WanI2V, WanVace, WanVaceMP.
 """
 import types
 
@@ -26,9 +27,11 @@ from lite_boost.layers.attention import flash_attention as lite_flash_attention
 from . import usp_attn_forward, usp_dit_forward
 
 
-def boost_wan2_1(model):
+def boost_wan2_1(pipe):
     """
-    Patch a WanModel (or VaceWanModel) in-place for NPU Ulysses SP.
+    Patch a Wan2.1 pipeline in-place for NPU Ulysses SP.
+
+    The WanModel is extracted from pipe.model.
 
     Operations:
     1. Replace flash_attention in wan.modules with NPU-compatible version
@@ -36,6 +39,7 @@ def boost_wan2_1(model):
     3. Replace model.forward → usp_dit_forward
     4. If VACE model: replace vace_blocks and forward_vace
     """
+    model = pipe.model
     world_size = dist.get_world_size()
 
     if model.num_heads % world_size != 0:
