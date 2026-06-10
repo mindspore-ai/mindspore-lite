@@ -17,5 +17,6 @@
 lite_boost package
 """
 from .rain_fusion import rain_fusion_attention, sparse_attention
+from .recurrent_gated_delta_rule import recurrent_gated_delta_rule
 
-__all__ = ["rain_fusion_attention", "sparse_attention"]
+__all__ = ["rain_fusion_attention", "sparse_attention", "recurrent_gated_delta_rule"]

@@ -24,3 +24,4 @@ Operators
 
     lite_boost.ops.rain_fusion_attention
     lite_boost.ops.sparse_attention
+    lite_boost.ops.recurrent_gated_delta_rule

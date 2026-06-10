@@ -190,8 +190,8 @@ void ReleaseConvertTypes(Tuple &t) {
 }
 
 template <typename... Ts>
-constexpr auto ConvertTypes(Ts &...args) {
-  return std::make_tuple(ConvertType(args)...);
+constexpr auto ConvertTypes(Ts &&...args) {
+  return std::make_tuple(ConvertType(std::forward<Ts>(args))...);
 }
 
 template <typename Function, typename Tuple, size_t... I>
