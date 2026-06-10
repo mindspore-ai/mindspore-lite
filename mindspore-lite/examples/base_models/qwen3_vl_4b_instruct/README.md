@@ -6,9 +6,9 @@
 
 ## 架构拆分
 
-1. **Vision Tower**（`qwen3_vl_vision.onnx`）：对图像进行编码，输出视觉特征
-2. **LLM Prefill**（`qwen3_vl_llm_prefill.onnx`）：一次性处理完整 prompt（文本 + 图像 token），输出 logits 与 KV cache
-3. **LLM Decode**（`qwen3_vl_llm_decode.onnx`）：基于 KV cache 做自回归增量生成
+1. **Vision Tower**（`vision/qwen3_vl_vision.onnx`）：对图像进行编码，输出视觉特征
+2. **LLM Prefill**（`prefill/qwen3_vl_llm_prefill.onnx`）：一次性处理完整 prompt（文本 + 图像 token），输出 logits 与 KV cache
+3. **LLM Decode**（`decode/qwen3_vl_llm_decode.onnx`）：基于固定长度 KV cache 做自回归增量生成，通过 scatter 更新
 
 ## 环境依赖
 
@@ -27,30 +27,33 @@ pip install -U onnxruntime
 
 ## 快速开始
 
-### 1. 导出 ONNX
+### 1. 导出 ONNX（opset 17）
 
 ```bash
 python export_qwen3_vl_4b_instruct_onnx.py \
-    --model-id ./Qwen/Qwen3-VL-4B-Instruct \
+    --model-id ../Qwen/Qwen3-VL-4B-Instruct \
     --output-dir ./qwen3_vl_4b_instruct_onnx \
     --device cpu \
     --vision-image-size 128
 ```
 
-导出产物在 `qwen3_vl_4b_instruct_onnx/` 下：
+导出产物：
 
-- `qwen3_vl_vision.onnx`
-- `qwen3_vl_llm_prefill.onnx`
-- `qwen3_vl_llm_decode.onnx`
+```text
+qwen3_vl_4b_instruct_onnx/
+├── vision/qwen3_vl_vision.onnx
+├── prefill/qwen3_vl_llm_prefill.onnx
+└── decode/qwen3_vl_llm_decode.onnx
+```
 
 ### 2. ONNX 推理（CPU）
 
 ```bash
 python infer_qwen3_vl_4b_instruct_onnx.py \
-    --vision qwen3_vl_4b_instruct_onnx/qwen3_vl_vision.onnx \
-    --prefill qwen3_vl_4b_instruct_onnx/qwen3_vl_llm_prefill.onnx \
-    --decode qwen3_vl_4b_instruct_onnx/qwen3_vl_llm_decode.onnx \
-    --processor ./Qwen/Qwen3-VL-4B-Instruct \
+    --vision qwen3_vl_4b_instruct_onnx/vision/qwen3_vl_vision.onnx \
+    --prefill qwen3_vl_4b_instruct_onnx/prefill/qwen3_vl_llm_prefill.onnx \
+    --decode qwen3_vl_4b_instruct_onnx/decode/qwen3_vl_llm_decode.onnx \
+    --processor ../Qwen/Qwen3-VL-4B-Instruct \
     --image https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg \
     --prompt "Describe this image." \
     --max-new-tokens 128 \
@@ -59,50 +62,49 @@ python infer_qwen3_vl_4b_instruct_onnx.py \
 
 ### 3. ONNX → MindIR 转换（Ascend）
 
-使用 MindSpore Lite 2.9.0 converter，必须加 `--optimize=ascend_oriented`：
+使用 MindSpore Lite 2.9.0 converter，加 `--optimize=ascend_oriented`：
 
 ```bash
 export LD_LIBRARY_PATH=/data/chenyh/miniconda3/envs/ms-py311/lib:$LD_LIBRARY_PATH
 CONVERTER=/data/chenyh/ms/2.9.0/mindspore-lite-2.9.0-linux-aarch64/tools/converter/converter/converter_lite
 ONNX_DIR=./qwen3_vl_4b_instruct_onnx
 
-# 转换 Vision（权重内嵌，产物为 .mindir 单文件）
-$CONVERTER --fmk=ONNX --modelFile=$ONNX_DIR/qwen3_vl_vision.onnx \
-    --outputFile=$ONNX_DIR/qwen3_vl_vision \
-    --optimize=ascend_oriented --saveType=MINDIR --configFile=config.ini
+# Vision（权重内嵌，产物为 .mindir 单文件）
+$CONVERTER --fmk=ONNX --modelFile=$ONNX_DIR/vision/qwen3_vl_vision.onnx \
+    --outputFile=$ONNX_DIR/vision/qwen3_vl_vision \
+    --optimize=ascend_oriented --configFile=./configs/config.ini --saveType=MINDIR
 
-# 转换 Prefill（大模型权重外置，产物为 _graph.mindir + _variables/）
-$CONVERTER --fmk=ONNX --modelFile=$ONNX_DIR/qwen3_vl_llm_prefill.onnx \
-    --outputFile=$ONNX_DIR/qwen3_vl_llm_prefill \
-    --optimize=ascend_oriented --saveType=MINDIR  --configFile=config.ini
+# Prefill（大模型权重外置，产物为 _graph.mindir + _variables/）
+$CONVERTER --fmk=ONNX --modelFile=$ONNX_DIR/prefill/qwen3_vl_llm_prefill.onnx \
+    --outputFile=$ONNX_DIR/prefill/qwen3_vl_llm_prefill \
+    --optimize=ascend_oriented --configFile=./configs/config.ini --saveType=MINDIR
 
-# 转换 Decode
-$CONVERTER --fmk=ONNX --modelFile=$ONNX_DIR/qwen3_vl_llm_decode.onnx \
-    --outputFile=$ONNX_DIR/qwen3_vl_llm_decode \
-    --optimize=ascend_oriented --saveType=MINDIR --configFile=config.ini
+# Decode
+$CONVERTER --fmk=ONNX --modelFile=$ONNX_DIR/decode/qwen3_vl_llm_decode.onnx \
+    --outputFile=$ONNX_DIR/decode/qwen3_vl_llm_decode \
+    --optimize=ascend_oriented --configFile=./configs/config.ini --saveType=MINDIR
 ```
 
-config.ini 内容如下：
-
-```text
-[acl_init_options]
-ge.exec.precision_mode=force_fp32
-```
+> **config.ini 内容**（`configs/config.ini`）：
+> ```ini
+> [acl_init_options]
+> ge.exec.precision_mode = force_fp32
+> ```
 
 转换产物：
 
-- `qwen3_vl_vision.mindir`
-- `qwen3_vl_llm_prefill_graph.mindir` + `qwen3_vl_llm_prefill_variables/`
-- `qwen3_vl_llm_decode_graph.mindir` + `qwen3_vl_llm_decode_variables/`
+- `vision/qwen3_vl_vision.mindir`
+- `prefill/qwen3_vl_llm_prefill_graph.mindir` + `prefill/qwen3_vl_llm_prefill_variables/`
+- `decode/qwen3_vl_llm_decode_graph.mindir` + `decode/qwen3_vl_llm_decode_variables/`
 
 ### 4. MindSpore Lite Ascend 推理
 
 ```bash
 python infer_qwen3_vl_4b_instruct_mslite.py \
-    --vision-model ./qwen3_vl_4b_instruct_onnx/qwen3_vl_vision.mindir \
-    --prefill-model ./qwen3_vl_4b_instruct_onnx/qwen3_vl_llm_prefill_graph.mindir \
-    --decode-model ./qwen3_vl_4b_instruct_onnx/qwen3_vl_llm_decode_graph.mindir \
-    --processor ./Qwen/Qwen3-VL-4B-Instruct \
+    --vision-model ./qwen3_vl_4b_instruct_onnx/vision/qwen3_vl_vision.mindir \
+    --prefill-model ./qwen3_vl_4b_instruct_onnx/prefill/qwen3_vl_llm_prefill_graph.mindir \
+    --decode-model ./qwen3_vl_4b_instruct_onnx/decode/qwen3_vl_llm_decode_graph.mindir \
+    --processor ../Qwen/Qwen3-VL-4B-Instruct \
     --image https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg \
     --prompt "Describe this image." \
     --max-new-tokens 128 \
@@ -121,47 +123,48 @@ image size 128; max-new-tokens 128
 
 输入图片会被resize成128x128, 输出128token
 
-| 指标             | Time      |
-|----------------|-----------|
-| vision (ms)    | 10        |
-| prefill (ms)   | 85        |
-| decode (ms)    | 84        |
-| **Total (ms)** | **10970** |
+| 指标             | Time        |
+|----------------|-------------|
+| vision (ms)    | 8           |
+| prefill (ms)   | 69.64       |
+| decode (ms)    | 14.392      |
+| **Total (ms)** | **2139.95** |
 
 ## 模型 I/O 说明
 
-### Vision 模型
+### Vision 模型（固定 shape，128×128 图像）
 
 | | 名称 | dtype | 形状 |
 |------|------|-------|------|
-| 输入 | `pixel_values` | float32 | `(seq_len, 1536)` |
-| 输出 | `image_embeds` | float32 | `(num_image_tokens, hidden_size)` |
-| 输出 | `deepstack_embeds` | float32 | `(num_deepstack, num_image_tokens, hidden_size)` |
+| 输入 | `pixel_values` | float16 | `(64, 1536)` |
+| 输出 | `image_embeds` | float16 | `(16, 2560)` |
+| 输出 | `deepstack_embeds` | float16 | `(3, 16, 2560)` |
 
-### LLM Prefill 模型
+### LLM Prefill 模型（动态 batch/seq_len）
 
-| | 名称 | dtype | 形状 |
+| | 名称 | dtype | 形状（以 batch=1, seq_len=30 为例） |
 |------|------|-------|------|
 | 输入 | `input_ids` | int64 | `(batch, seq_len)` |
 | 输入 | `attention_mask` | int64 | `(batch, seq_len)` |
 | 输入 | `position_ids` | int64 | `(4, batch, seq_len)` |
-| 输入 | `image_embeds` | float32 | `(num_image_tokens, hidden_size)` |
-| 输入 | `deepstack_embeds` | float32 | `(num_deepstack, num_image_tokens, hidden_size)` |
-| 输出 | `logits` | float32 | `(batch, seq_len, vocab_size)` |
-| 输出 | `present_key_values` | float32 | `(2*num_layers, batch, num_kv_heads, seq_len, head_dim)` |
+| 输入 | `image_embeds` | float16 | `(num_image_tokens, 2560)` |
+| 输入 | `deepstack_embeds` | float16 | `(3, num_image_tokens, 2560)` |
+| 输出 | `logits` | float16 | `(batch, seq_len, 151936)` |
+| 输出 | `present_key_values` | float16 | `(72, batch, 8, seq_len, 128)` |
 
-### LLM Decode 模型
+### LLM Decode 模型（固定 KV cache 512）
 
 | | 名称 | dtype | 形状 |
 |------|------|-------|------|
-| 输入 | `input_ids` | int64 | `(batch, 1)` |
-| 输入 | `attention_mask` | int64 | `(batch, total_seq_len)` |
-| 输入 | `position_ids` | int64 | `(4, batch, 1)` |
-| 输入 | `past_key_values` | float32 | `(2*num_layers, batch, num_kv_heads, past_seq_len, head_dim)` |
-| 输出 | `logits` | float32 | `(batch, 1, vocab_size)` |
-| 输出 | `present_key_values` | float32 | `(2*num_layers, batch, num_kv_heads, total_seq_len, head_dim)` |
+| 输入 | `input_ids` | int64 | `(1, 1)` |
+| 输入 | `attention_mask` | int64 | `(1, 512)` |
+| 输入 | `position_ids` | int64 | `(4, 1, 1)` |
+| 输入 | `past_key_values` | float16 | `(72, 1, 8, 512, 128)` |
+| 输入 | `cache_pos` | int64 | `(1,)` |
+| 输出 | `logits` | float16 | `(1, 1, 151936)` |
+| 输出 | `present_key_values` | float16 | `(72, 1, 8, 512, 128)` |
 
-> **注意**：Ascend 推理时，MSLite 自动将 int64 输入转换为 int32，float32 保持不变。
+> **注意**：Ascend 推理时，MSLite 自动将 int64 输入转换为 int32，float16 保持不变。
 
 ## 模型规格
 
@@ -181,28 +184,45 @@ image size 128; max-new-tokens 128
 
 ```text
 qwen3_vl_4b_instruct/
-├── export_qwen3_vl_4b_instruct_onnx.py    # ONNX 导出脚本（3 段模型）
+├── export_qwen3_vl_4b_instruct_onnx.py    # ONNX 导出脚本（3 段模型 + Custom 算子）
 ├── infer_qwen3_vl_4b_instruct_onnx.py     # ONNX Runtime CPU 推理脚本
 ├── infer_qwen3_vl_4b_instruct_mslite.py   # MindSpore Lite Ascend 推理脚本
+├── configs/
+│   └── config.ini                         # converter 配置文件（force_fp32）
 ├── README.md
-└── qwen3_vl_4b_instruct_onnx/             # 导出模型目录
-    ├── qwen3_vl_vision.onnx / .mindir
-    ├── qwen3_vl_llm_prefill.onnx / _graph.mindir + _variables/
-    └── qwen3_vl_llm_decode.onnx / _graph.mindir + _variables/
+└── qwen3_vl_4b_instruct_onnx/
+    ├── vision/
+    │   └── qwen3_vl_vision.onnx / .mindir
+    ├── prefill/
+    │   └── qwen3_vl_llm_prefill.onnx / _graph.mindir + _variables/
+    └── decode/
+        └── qwen3_vl_llm_decode.onnx / _graph.mindir + _variables/
 ```
 
 ## 关键点
 
-### Prefill / Decode 拆分
+### Custom 融合算子
 
-- **Prefill**：一次性处理完整 prompt（含图像 token）
-- **Decode**：利用 KV cache 增量生成，避免每步重复计算历史 token
+导出脚本默认启用 CANN 融合算子（`_USE_CUSTOM_OP = True`），包括：
+
+- **RMSNorm**：替换 LayerNorm
+- **RotaryMul**：RoPE 旋转位置编码
+- **SwiGlu**：SwiGLU 激活函数
+- **PromptFlashAttention**：Prefill 阶段 FlashAttention
+- **IncreFlashAttention**：Decode 阶段增量 FlashAttention
+- **Scatter**：KV cache 定点更新
+
+可通过 `--no-custom-op` 禁用，回退到标准 ONNX 算子。
+
+### Decode 固定 KV Cache
+
+Decode 模型使用固定长度 KV cache（默认 512）。Prefill 输出被 pad 到 512 长度，decode 阶段通过 scatter 方式在指定位置更新 KV cache，避免 `Concat` 导致的动态 shape 变化。
 
 ### Ascend 推理注意事项
 
-- **int64 → int32**：MSLite 转换时自动将 ONNX 的 int64 输入转为 int32，推理脚本需传入 int32 数据
-- **precision_mode**：2.9.0 必须用 `enforce_fp16`（不支持 `preferred_fp16`）
-- **converter 产物命名**：`--outputFile=xxx` 产生 `xxx_graph.mindir`，部署时需用完整的 `_graph.mindir` 文件名
+- **int64 → int32**：推理脚本传入 int32 数据
+- **converter 产物命名**：`--outputFile=xxx` 产生 `xxx_graph.mindir` + `xxx_variables/`
+- **config.ini**：2B 模型可用 `force_fp32`，4B 模型（36 层）内存过大建议去掉 config
 
 ## 常见问题
 
@@ -215,7 +235,7 @@ qwen3_vl_4b_instruct/
 ### MindIR 转换失败
 
 - 确保 converter 和 Python wheel 版本一致（2.9.0）
-- 某些模型可能需要先 `onnxsim` 简化再转换
+- vision, prefill, decode 导出的onnx路径需要分开。不然外置权重文件可能重名，导致转换失败
 - 查看 converter 日志中的 `ERROR` 定位失败节点
 
 ### MSLite 推理报错
@@ -223,8 +243,7 @@ qwen3_vl_4b_instruct/
 | 错误 | 解决 |
 |------|------|
 | `Input data type is wrong` | int64 改 int32 |
-| `precision_mode` ValueError | `preferred_fp16` 改 `enforce_fp16` |
-| `build_from_file failed` | 检查 mindir 文件路径和 `_variables/` 目录是否在同级目录 |
+| `build_from_file failed` | 检查 mindir 路径和 `_variables/` 目录 |
 
 ### image_embeds 长度不匹配
 
