@@ -189,7 +189,7 @@ AbstractBasePtr MakeListPass::ConvertToAbstractTuple(const AbstractBasePtr &abs,
     const auto &seq_elements = abs_seq->elements();
     // First we check if elements should be converted,
     // changed_elements maps old element to new element.
-    std::unordered_map<AbstractBasePtr, AbstractBasePtr> changed_elements;
+    mindspore::HashMap<AbstractBasePtr, AbstractBasePtr> changed_elements;
     for (const auto &element : seq_elements) {
       auto new_element = ConvertToAbstractTuple(element, depth + 1);
       if (new_element != nullptr) {

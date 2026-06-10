@@ -29,7 +29,7 @@ void DelegateRegistry<T>::RegDelegate(const mindspore::DeviceType &device_type, 
                                       DelegateCreator<T> *creator) {
   auto it = creator_map_.find(device_type);
   if (it == creator_map_.end()) {
-    std::unordered_map<std::string, DelegateCreator<T> *> map;
+    HashMap<std::string, DelegateCreator<T> *> map;
     map[provider] = creator;
     creator_map_[device_type] = map;
     return;

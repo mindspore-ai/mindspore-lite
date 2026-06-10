@@ -108,8 +108,8 @@ constexpr auto kIsFreeVariable = "_is_free_variable";
 
 namespace {
 const std::map<TypeId, TypeId> kReduceRaiseMap = {{kNumberTypeInt64, kNumberTypeInt32}};
-std::unordered_map<std::string, size_t> branches_repeat_times = {};
-std::unordered_map<std::string, size_t> call_subgraphs_repeat_times = {};
+mindspore::HashMap<std::string, size_t> branches_repeat_times = {};
+mindspore::HashMap<std::string, size_t> call_subgraphs_repeat_times = {};
 // {node name | {{input_index, dst_type}...}}
 const std::map<std::string, std::vector<std::pair<size_t, TypeId>>> kTransInputDTypeMap = {
   {kResizeNearestNeighborGradOpName, {{2, kNumberTypeInt32}}},
@@ -350,7 +350,7 @@ std::string SelectParamOriFormat(const FuncGraphManagerPtr &manager, const AnfNo
   return kOpFormat_DEFAULT;
 }
 
-std::vector<int> GetGeTensorOrders(const std::unordered_map<int, int> &ge_input_to_ms_input,
+std::vector<int> GetGeTensorOrders(const mindspore::HashMap<int, int> &ge_input_to_ms_input,
                                    const std::vector<int64_t> &dyn_input_sizes, const int &ge_input_size,
                                    std::vector<int64_t> *new_dyn_input_sizes) {
   std::vector<int> ge_tensor_orders(ge_input_size, -1);
@@ -1296,7 +1296,7 @@ void DfGraphConvertor::SetNodeControlInput(const AnfNodePtr &node, const AnfNode
 }
 
 bool DfGraphConvertor::IsDynamicInputBeforeNormalInput(const OpAdapterPtr &adpt, int *ge_input_size,
-                                                       std::unordered_map<int, int> *ge_input_to_ms_input) {
+                                                       mindspore::HashMap<int, int> *ge_input_to_ms_input) {
   MS_EXCEPTION_IF_NULL(adpt);
   const auto &input_map = adpt->getInputMap();
   const auto &dyn_input_map = adpt->getDynInputMap();
@@ -1331,7 +1331,7 @@ bool DfGraphConvertor::IsDynamicInputBeforeNormalInput(const OpAdapterPtr &adpt,
 
 void DfGraphConvertor::SetDynamicInputBeforeNormalInput(const OpAdapterPtr &adpt, const CNodePtr &node,
                                                         const std::vector<AnfNodePtr> &inputs, const int &ge_input_size,
-                                                        const std::unordered_map<int, int> &ge_input_to_ms_input,
+                                                        const mindspore::HashMap<int, int> &ge_input_to_ms_input,
                                                         std::vector<int64_t> *dyn_input_sizes) {
   //  If dynamic input is ahead of the normal input, use 'create_dynamic_input_by_index_name' to create dynamic input,
   //  and this func must be called before set normal input.
@@ -1447,7 +1447,7 @@ void DfGraphConvertor::SetOpInput(const OpAdapterPtr &adpt, const CNodePtr &node
   }
 
   int ge_input_size = 1;
-  std::unordered_map<int, int> ge_input_to_ms_input;
+  mindspore::HashMap<int, int> ge_input_to_ms_input;
   if (IsDynamicInputBeforeNormalInput(adpt, &ge_input_size, &ge_input_to_ms_input)) {
     SetDynamicInputBeforeNormalInput(adpt, node, inputs, ge_input_size, ge_input_to_ms_input, &dyn_input_sizes);
     return;
@@ -2257,20 +2257,18 @@ void DfGraphConvertor::ConvertConv2D(const CNodePtr &node) {
     pad_mode = GetValue<std::string>(pad_value);
   } else if (auto value = primitive->GetAttr("pad_mode"); value != nullptr) {
     // Get 'pad_mode' attr and set it to 'padding' attr for ge
-    const std::unordered_map<int64_t, std::string> pad_mode_map{{1, "SAME"}, {2, "VALID"}};
+    const mindspore::HashMap<int64_t, std::string> pad_mode_map{{1, "SAME"}, {2, "VALID"}};
     if (value->isa<StringImm>()) {
       pad_mode = GetValue<std::string>(value);
       (void)std::transform(pad_mode.cbegin(), pad_mode.cend(), pad_mode.begin(), toupper);
       if (pad_mode != "SAME" && pad_mode != "VALID") {
         return;
       }
+    } else if (auto it = pad_mode_map.find(GetValue<int64_t>(value)); it != pad_mode_map.cend()) {
+      // 'pad_mode' attr could be an enumeration
+      pad_mode = it->second;
     } else {
-      const auto it = pad_mode_map.find(GetValue<int64_t>(value));
-      if (it != pad_mode_map.cend()) {
-        pad_mode = it->second;
-      } else {
-        return;
-      }
+      return;
     }
   } else {
     MS_LOG(INFO) << "Node: " << node->fullname_with_scope() << " has no 'padding' or 'pad_mode' attr";
@@ -2307,7 +2305,7 @@ bool DfGraphConvertor::CheckCNode(const std::string &name, const CNodePtr node) 
     return false;
   }
 
-  const std::unordered_map<std::string, std::function<void(decltype(this), const CNodePtr &)>>
+  const mindspore::HashMap<std::string, std::function<void(decltype(this), const CNodePtr &)>>
     auxiliary_node_converters{
       // Convert TopK second input from int64 to int32.
       {prim::kPrimTopK->name(), &DfGraphConvertor::ConvertTopK},
@@ -2336,8 +2334,7 @@ bool DfGraphConvertor::CheckCNode(const std::string &name, const CNodePtr node) 
       {prim::kPrimAllGatherMatmul->name(), &DfGraphConvertor::ConvertHcclNode},
     };
 
-  const auto it = auxiliary_node_converters.find(name);
-  if (it != auxiliary_node_converters.cend()) {
+  if (const auto it = auxiliary_node_converters.find(name); it != auxiliary_node_converters.cend()) {
     it->second(this, node);
   }
   if (common::AnfAlgo::HasNodeAttr(kParallelGroup, node)) {

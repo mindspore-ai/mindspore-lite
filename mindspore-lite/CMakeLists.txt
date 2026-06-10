@@ -49,6 +49,7 @@ set(MSLITE_MICRO_PLATFORM "auto" CACHE STRING "Platform of micro static library 
     currently supported : cortex-m7/cortex-m4/cortex-m33/auto")
 option(MSLITE_ENABLE_CONVERT_PYTORCH_MODEL "enable to convert pytorch model" off)
 option(MSLITE_ENABLE_MODEL_OBF "enable model obfuscation" off)
+option(MSLITE_ENABLE_FAST_HASH_TABLE "enable fast hash table" ON)
 option(MSLITE_ENABLE_CROPPER "enable cropper" on)
 
 # pre/post process
@@ -281,8 +282,16 @@ endif()
 if(DEFINED ENV{MSLITE_ENABLE_GITEE_MIRROR})
     set(MSLITE_ENABLE_GITEE_MIRROR $ENV{MSLITE_ENABLE_GITEE_MIRROR})
 endif()
+# MSLITE_ENABLE_FAST_HASH_TABLE
+if(DEFINED ENV{MSLITE_ENABLE_FAST_HASH_TABLE})
+    set(MSLITE_ENABLE_FAST_HASH_TABLE $ENV{MSLITE_ENABLE_FAST_HASH_TABLE})
+endif()
 if(MSLITE_ENABLE_GITEE_MIRROR)
     set(ENABLE_GITEE ON)
+endif()
+
+if(DEFINED ENV{ENABLE_FAST_HASH_TABLE})
+    add_compile_definitions(ENABLE_FAST_HASH_TABLE)
 endif()
 
 if(DEFINED ENV{MSLITE_ENABLE_MODEL_OBF})
@@ -579,6 +588,7 @@ message(STATUS "\tMSLITE_ENABLE_PACKAGE_WHEEL                = \t${MSLITE_ENABLE
 message(STATUS "\tMSLITE_ENABLE_OPENCV                       = \t${MSLITE_ENABLE_OPENCV}")
 message(STATUS "\tMSLITE_TARGET_SITEAI                       = \t${MSLITE_TARGET_SITEAI}")
 message(STATUS "\tMSLITE_ENABLE_W_NO_ERROR                   = \t${MSLITE_ENABLE_W_NO_ERROR}")
+message(STATUS "\tMSLITE_ENABLE_FAST_HASH_TABLE              = \t${MSLITE_ENABLE_FAST_HASH_TABLE}")
 message(STATUS "\tMSLITE_TARGET_RISCV                        = \t${MSLITE_TARGET_RISCV}")
 message(STATUS "\tMSLITE_ENABLE_CROPPER                      = \t${MSLITE_ENABLE_CROPPER}")
 
@@ -809,6 +819,12 @@ set(MSLITE_DEPS_FLATBUFFERS on)
 
 if(MSLITE_GPU_BACKEND STREQUAL opencl)
     set(MSLITE_DEPS_OPENCL on)
+endif()
+
+if(MSLITE_ENABLE_FAST_HASH_TABLE AND (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
+    set(ENABLE_FAST_HASH_TABLE ON)
+    add_definitions(-DENABLE_FAST_HASH_TABLE)
+    include(${TOP_DIR}/mindspore/cmake/external_libs/robin.cmake)
 endif()
 
 if(MSLITE_ENABLE_COREML)

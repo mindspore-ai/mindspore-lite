@@ -48,7 +48,7 @@ class BACKEND_COMMON_EXPORT NodePass : public Pass {
 };
 void GenIndex(const FuncGraphPtr &func_graph, const FuncGraphIndexPtr &func_graph_index);
 void ModifyOutputAndCallerToMap(const CNodePtr &cnode, const FuncGraphPtr &fg,
-                                std::unordered_map<AnfNodePtr, std::set<AnfNodePtr>> *out_caller_map,
+                                mindspore::HashMap<AnfNodePtr, std::set<AnfNodePtr>> *out_caller_map,
                                 bool is_add = true);
 std::string GetCNodeKey(const AnfNodePtr &node);
 }  // namespace opt
