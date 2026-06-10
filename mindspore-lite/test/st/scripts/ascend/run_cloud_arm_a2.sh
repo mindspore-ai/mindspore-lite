@@ -26,6 +26,7 @@ function Run_Benchmark_With_Cfg() {
     local cfg_file_list=$1
     local bench_log_file=$2
     local bench_result_file=$3
+    local _bench_fail=0
     echo "Start running benchmark models"
     cd ${benchmark_test_path}/mindspore-lite-${version}-linux-${arch}/ || return 1
     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./runtime/lib:./tools/converter/lib/
@@ -139,16 +140,19 @@ function Run_Benchmark_With_Cfg() {
                 if [[ ${mode} =~ "parallel_predict" ]]; then
                     run_result="${benchmark_device}: ${model_name} parallel_failed"
                     echo ${run_result} >>${bench_result_file}
-                    return 1
+                    _bench_fail=1
+                    [[ ${ascend_fail_not_return} == "ON" ]] || return 1
                 else
                     run_result="${benchmark_device}: ${model_name} failed"
                     echo ${run_result} >>${bench_result_file}
-                    return 1
+                    _bench_fail=1
+                    [[ ${ascend_fail_not_return} == "ON" ]] || return 1
                 fi
             fi
 
         done <${cfg_file}
     done
+    return ${_bench_fail}
 }
 
 # Run GE benchmark with specified cfg list and log/result files
@@ -195,6 +199,7 @@ function Run_Benchmark_GE_With_Cfg() {
 function Run_Single_Card() {
     local card_idx=$1
     local card_id=$2
+    local _card_fail=0
     export ASCEND_DEVICE_ID=${card_id}
     local sub_acl="${benchmark_test_path}/models_with_large_model_acl_with_config_cloud_ascend_sub_card${card_idx}.cfg"
     local sub_ge="${benchmark_test_path}/models_with_large_model_ge_with_config_cloud_ascend_sub_card${card_idx}.cfg"
@@ -219,14 +224,16 @@ function Run_Single_Card() {
         cd ${card_work_dir} || return 1
         ln -sf ${pkg_dir}/converter_lite ./
         export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${pkg_dir}/tools/converter/lib/:${pkg_dir}/tools/converter/third_party/glog/lib
-        Run_With_Watchdog ${WATCHDOG_TIMEOUT_SEC} Convert "${sub_acl}" $models_path $ms_models_path $card_conv_log $card_conv_result $run_fail_not_return
+        Run_With_Watchdog ${WATCHDOG_TIMEOUT_SEC} Convert "${sub_acl}" $models_path $ms_models_path $card_conv_log $card_conv_result $ascend_fail_not_return
         local conv_status=$?
         if [[ ${conv_status} -eq 124 ]]; then
             echo "Card ${card_id}: Converter timed out" >> "${card_bench_log}"
-            return 1
+            _card_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         elif [[ ${conv_status} != 0 ]]; then
             echo "Card ${card_id}: Converter failed" >> "${card_bench_log}"
-            return 1
+            _card_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         fi
         echo "Card ${card_id}: Converter success" >> "${card_bench_log}"
     fi
@@ -238,10 +245,12 @@ function Run_Single_Card() {
         local acl_status=$?
         if [[ ${acl_status} -eq 124 ]]; then
             echo "Card ${card_id}: Benchmark ACL timed out" >> "${card_bench_log}"
-            return 1
+            _card_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         elif [[ ${acl_status} != 0 ]]; then
             echo "Card ${card_id}: Benchmark ACL failed" >> "${card_bench_log}"
-            return 1
+            _card_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         fi
         echo "Card ${card_id}: Benchmark ACL success" >> "${card_bench_log}"
     fi
@@ -254,16 +263,18 @@ function Run_Single_Card() {
         unset ASCEND_BACK_POLICY
         if [[ ${ge_status} -eq 124 ]]; then
             echo "Card ${card_id}: Benchmark GE timed out" >> "${card_bench_log}"
-            return 1
+            _card_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         elif [[ ${ge_status} != 0 ]]; then
             echo "Card ${card_id}: Benchmark GE failed" >> "${card_bench_log}"
-            return 1
+            _card_fail=1
+            [[ ${ascend_fail_not_return} == "ON" ]] || return 1
         fi
         echo "Card ${card_id}: Benchmark GE success" >> "${card_bench_log}"
     fi
 
     echo "Card ${card_id}: All done" >> "${card_bench_log}"
-    return 0
+    return ${_card_fail}
 }
 
 # Run parallel converter + benchmark across multiple cards
@@ -412,14 +423,26 @@ function Run_Python_Benchmark_Parallel() {
         local rf="${result_files[$i]}"
         local cid="${card_ids[$i]}"
         local status="${exit_codes[$i]}"
-        # Collect detailed output into merged log
-        echo "--- Python Benchmark Ascend:${cid} ---" >> "${pybench_log_file}"
-        cat "${rf}" >> "${pybench_log_file}"
         if [ "${status}" -eq 124 ]; then
-            printf "$RESULT_FMT" "Ascend:${cid}" "python_benchmark" "(timeout)" "timeout" >> "${pybench_result_file}"
+            printf "$PY_BENCH_FMT" "Ascend:${cid}" "(timeout)" "-" "-" "-" "timeout" >> "${pybench_result_file}"
+            echo "--- Python Benchmark Ascend:${cid} (timeout) ---" >> "${pybench_log_file}"
+            cat "${rf}" >> "${pybench_log_file}"
             fail=1
         elif [ "${status}" -ne 0 ]; then
-            printf "$RESULT_FMT" "Ascend:${cid}" "python_benchmark" "(failed)" "failed" >> "${pybench_result_file}"
+            # Parse per-model results (both succeeded and the failed one) from output
+            local _grep_tmp
+            _grep_tmp=$(mktemp)
+            grep -E '\S+\s+\S+\s+\S+\s+\S+\s+(pass|failed)\s*$' "$rf" > "$_grep_tmp" 2>/dev/null
+            while IFS= read -r line; do
+                read -r model_name build_time predict_time accuracy result <<< "${line}"
+                [[ "${build_time}" =~ ^[0-9] ]] && build_time=$(printf "%.2f" "${build_time}")
+                [[ "${predict_time}" =~ ^[0-9] ]] && predict_time=$(printf "%.2f" "${predict_time}")
+                local acc_num="${accuracy%\%}"; [[ "${acc_num}" =~ ^[0-9] ]] && accuracy=$(printf "%.4f" "${acc_num}")%
+                printf "$PY_BENCH_FMT" "Ascend:${cid}" "${model_name}" "${build_time}" "${predict_time}" "${accuracy}" "${result}" >> "${pybench_result_file}"
+            done < "$_grep_tmp"
+            rm -f "$_grep_tmp"
+            echo "--- Python Benchmark Ascend:${cid} (failed) ---" >> "${pybench_log_file}"
+            cat "${rf}" >> "${pybench_log_file}"
             fail=1
         else
             # Parse per-model results from run_python_benchmark.py PrintResult output
@@ -429,20 +452,26 @@ function Run_Python_Benchmark_Parallel() {
             _grep_tmp=$(mktemp)
             grep -E '\S+\s+\S+\s+\S+\s+\S+\s+(pass|failed)\s*$' "$rf" > "$_grep_tmp" 2>/dev/null
             while IFS= read -r line; do
-                read -r model_name _ _ _ result <<< "${line}"
-                printf "$RESULT_FMT" "Ascend:${cid}" "python_benchmark" "${model_name}" "${result}" >> "${pybench_result_file}"
+                read -r model_name build_time predict_time accuracy result <<< "${line}"
+                [[ "${build_time}" =~ ^[0-9] ]] && build_time=$(printf "%.2f" "${build_time}")
+                [[ "${predict_time}" =~ ^[0-9] ]] && predict_time=$(printf "%.2f" "${predict_time}")
+                local acc_num="${accuracy%\%}"; [[ "${acc_num}" =~ ^[0-9] ]] && accuracy=$(printf "%.4f" "${acc_num}")%
+                printf "$PY_BENCH_FMT" "Ascend:${cid}" "${model_name}" "${build_time}" "${predict_time}" "${accuracy}" "${result}" >> "${pybench_result_file}"
                 card_had_results=1
             done < "$_grep_tmp"
             rm -f "$_grep_tmp"
             # Fallback: if no per-model lines parsed for this card, write a card-level summary
             if [[ ${card_had_results} -eq 0 ]]; then
-                printf "$RESULT_FMT" "Ascend:${cid}" "python_benchmark" "(no per-model results parsed)" "pass" >> "${pybench_result_file}"
+                printf "$PY_BENCH_FMT" "Ascend:${cid}" "(no per-model results parsed)" "-" "-" "-" "pass" >> "${pybench_result_file}"
             fi
         fi
     done
 
-    cat "${pybench_log_file}"
-    Print_Stage_Result "${pybench_result_file}" "PYTHON BENCHMARK"
+    # Only print detailed logs when there are failures
+    if [[ ${fail} -eq 1 && -s "${pybench_log_file}" ]]; then
+        cat "${pybench_log_file}"
+    fi
+    Print_Python_Benchmark_Result "${pybench_result_file}" "PYTHON BENCHMARK"
     rm -f "${pybench_log_file}"
     rm -f "${result_files[@]}"
     return $fail
@@ -514,7 +543,6 @@ while getopts "r:m:d:e:l:" opt; do
     esac
 done
 
-run_fail_not_return="OFF"
 basepath=$(pwd)
 
 # default working dir is benchmark_test_path
@@ -570,6 +598,9 @@ echo "Start parallel converter + benchmark ..."
 run_benchmark_log_file=${benchmark_test_path}/run_benchmark_log.txt
 echo "run ${benchmark_device} benchmark logs: " > ${run_benchmark_log_file}
 
+# Track overall status for debug mode
+overall_status=0
+
 Run_Parallel_All
 Run_parallel_status=$?
 # Print detailed logs (always)
@@ -581,7 +612,11 @@ Print_Stage_Result "${benchmark_test_path}/stage_benchmark_acl_result.txt" "BENC
 Print_Stage_Result "${benchmark_test_path}/stage_benchmark_ge_result.txt" "BENCHMARK GE"
 if [[ ${Run_parallel_status} != 0 ]]; then
     echo "Run_Parallel_All failed"
-    exit ${Run_parallel_status}
+    if [[ ${ascend_fail_not_return} != "ON" ]]; then
+        exit ${Run_parallel_status}
+    fi
+    overall_status=1
+    echo "Debug mode ON: continue to Python benchmark despite C++ failures"
 fi
 echo "Run_Parallel_All success"
 
@@ -600,7 +635,11 @@ Run_Python_Benchmark_Parallel
 run_python_status=$?
 if [[ ${run_python_status} != 0 ]]; then
     echo "run python benchmark failed"
-    exit ${run_python_status}
+    if [[ ${ascend_fail_not_return} != "ON" ]]; then
+        exit ${run_python_status}
+    fi
+    overall_status=1
+    echo "Debug mode ON: continue to pytest despite Python benchmark failures"
 fi
 
 # run python api test
@@ -730,11 +769,17 @@ echo "PYTEST SUMMARY: ${total_failed} failed, ${total_passed} passed"
 rm -f "${pytest_log_file}"
 
 if [ "${failed}" -ne 0 ]; then
-    exit 1
+    if [[ ${ascend_fail_not_return} != "ON" ]]; then
+        exit 1
+    fi
+    overall_status=1
 fi
 echo "---------- Run MindSpore Lite API SUCCESS ----------"
 #---------------------------------------------------------
 
+if [[ ${ascend_fail_not_return} == "ON" && ${overall_status} -ne 0 ]]; then
+    echo "Debug mode ON: completed with failures (overall_status=${overall_status})"
+fi
 echo "success"
-exit 0
+exit ${overall_status}
 

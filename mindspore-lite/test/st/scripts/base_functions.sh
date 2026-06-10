@@ -257,18 +257,14 @@ function Convert() {
                 echo "${output_file} " model size is " ${model_size} " and calib size is " ${calib_size}"
                 converter_result='compare_size '${model_type}''${quant_type}' '${output_file##*/}' '${elapsed_time}' failed';echo ${converter_result} >> $5
                 rm -rf ${output_file}
-                if [[ $6 != "ON" ]]; then
-                  echo 1 > $fail_file
-                fi
+                echo 1 > $fail_file
               else
                 converter_result='compare_size '${model_type}''${quant_type}' '${output_file##*/}' '${elapsed_time}' pass';echo ${converter_result} >> $5
               fi
             fi
         else
             converter_result='converter '${model_type}''${quant_type}' '${model_name}' '${elapsed_time}' failed';echo ${converter_result} >> $5
-            if [[ $6 != "ON" ]]; then
-              echo 1 > $fail_file
-            fi
+            echo 1 > $fail_file
         fi
         echo >&6
       } &
@@ -622,6 +618,11 @@ function Print_Benchmark_Result() {
 # Returns 124 on timeout, otherwise the command's exit code.
 # Override WATCHDOG_TIMEOUT_SEC to adjust per-platform; defaults to 1800s (30 min).
 WATCHDOG_TIMEOUT_SEC=${WATCHDOG_TIMEOUT_SEC:-1800}
+
+# Debug mode: set to "ON" to collect all errors without exiting.
+# When ON, every phase (converter → benchmark → post-steps) continues
+# on failure and prints per-card logs for failed cards.
+ascend_fail_not_return="OFF"
 function Run_With_Watchdog() {
     local timeout_sec=$1; shift
     local sentinel=$(mktemp /tmp/watchdog_XXXXXX)
@@ -707,6 +708,11 @@ function Run_Benchmark_Model() {
 RESULT_FMT="%-18s %-14s %-80s %-10s\n"
 RESULT_SEP="-----------------------------------------------------------------------------------------------------------------------------"
 
+# Python benchmark result format with dedicated metric columns
+# (Device 12 + Model 55 + Build 18 + Predict 18 + Accuracy 20 + Result 8 = 136)
+PY_BENCH_FMT="%-12s %-55s %-18s %-18s %-20s %-8s\n"
+PY_BENCH_SEP="----------------------------------------------------------------------------------------------------------------------------------------"
+
 # Prepend "Ascend:<dev_id> <category>" to each non-empty result line, stripping any leading "Ascend: " from the raw line
 # $1: input result file; $2: device_id; $3: category; $4: output file
 function Append_Result_With_Device() {
@@ -741,5 +747,25 @@ function Print_Stage_Result() {
     cat "${result_file}"
     echo "${stage_name} RESULT PRINT END"
     echo "$RESULT_SEP"
+    rm -f "${result_file}"
+}
+
+# Print python benchmark stage result table with dedicated metric columns
+# $1: result file; $2: stage name
+function Print_Python_Benchmark_Result() {
+    local result_file=$1
+    local stage_name=$2
+    if [[ ! -s "${result_file}" ]]; then
+        echo "No results for ${stage_name}"
+        return
+    fi
+    echo ""
+    echo "$PY_BENCH_SEP"
+    printf "$PY_BENCH_FMT" "Device" "Model Name" "Build Time(ms)" "Predict Time(ms)" "Accuracy(%)" "Result"
+    echo "$PY_BENCH_SEP"
+    echo "${stage_name} RESULT PRINT BEGIN"
+    cat "${result_file}"
+    echo "${stage_name} RESULT PRINT END"
+    echo "$PY_BENCH_SEP"
     rm -f "${result_file}"
 }
