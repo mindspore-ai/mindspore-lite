@@ -44,6 +44,7 @@ class MS_API MixPrecisionCfg {
     this->keep_batchnorm_fp32_ = rhs.keep_batchnorm_fp32_;
     this->num_of_not_nan_iter_th_ = rhs.num_of_not_nan_iter_th_;
   }
+  MixPrecisionCfg &operator=(const MixPrecisionCfg &rhs) = default;
   /// \brief Destructor of mix precision config.
   ~MixPrecisionCfg() = default;
 

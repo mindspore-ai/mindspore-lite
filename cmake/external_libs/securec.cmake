@@ -82,3 +82,7 @@ mindspore_add_pkg(securec
 include_directories(${securec_INC})
 include_directories(${securec_INC}/../)
 add_library(mindspore::securec ALIAS securec::securec)
+
+if(WIN32 AND NOT MSVC)
+    add_compile_definitions(SECUREC_ENABLE_WCHAR_FUNC=0)
+endif()

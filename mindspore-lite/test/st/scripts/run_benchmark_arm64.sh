@@ -102,7 +102,7 @@ file_name=$(ls ./*-linux-x64.tar.gz)
 IFS="-" read -r -a file_name_array <<< "$file_name"
 version=${file_name_array[2]}
 export MSLITE_PACKAGE_PATH=${x86_path}/mindspore-lite-${version}-linux-x64/
-export LD_LIBRARY_PATH=${MSLITE_PACKAGE_PATH}/runtime/lib:${MSLITE_PACKAGE_PATH}/tools/converter/lib;${MSLITE_PACKAGE_PATH}/runtime/third_party/dnnl:${LD_LIBRARY_PATH}
+export LD_LIBRARY_PATH=${MSLITE_PACKAGE_PATH}/runtime/lib:${MSLITE_PACKAGE_PATH}/tools/converter/lib:${MSLITE_PACKAGE_PATH}/runtime/third_party/dnnl:${LD_LIBRARY_PATH}
 
 # Set models config filepath
 config_folder="config_level0"

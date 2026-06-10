@@ -11,6 +11,7 @@ file(GLOB PROTO_FILE ""
         )
 ms_protobuf_generate(PROTO_SRCS PROTO_HDRS ${PROTO_FILE})
 add_library(mindir_proto_mid OBJECT ${PROTO_SRCS})
+target_compile_options(mindir_proto_mid PRIVATE "-Wno-array-bounds")
 
 add_compile_definitions(MINDIR_EXPORT_TENSOR_LAYOUT_CLIP)
 add_compile_definitions(COMMON_DLL)
