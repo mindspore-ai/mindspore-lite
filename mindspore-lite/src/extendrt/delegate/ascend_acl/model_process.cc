@@ -1698,15 +1698,15 @@ void ModelProcess::FreeResourceInput(std::vector<AclTensorInfo> acl_tensor_info)
 void ModelProcess::FreeResourceOutput(std::vector<AclTensorInfo> *acl_tensor_info,
                                       const std::vector<MSTensor> *outputs) {
   for (size_t i = 0; i < acl_tensor_info->size(); i++) {
-    bool user_device_data = false;
+    void *user_device_data = nullptr;
     if (outputs->size() > i) {
       auto &user_output = const_cast<std::vector<MSTensor> *>(outputs)->at(i);
-      if (user_output.GetDeviceId() == device_id_ && user_output.GetDeviceData()) {
-        user_device_data = true;
+      if (user_output.GetDeviceId() == device_id_ && user_output.GetDeviceData() != nullptr) {
+        user_device_data = user_output.GetDeviceData();
       }
     }
     auto &item = (*acl_tensor_info)[i];
-    if (item.device_data != nullptr && !user_device_data) {
+    if (item.device_data != nullptr && user_device_data != item.device_data) {
       MS_LOG(DEBUG) << "freeing device buffer at addr: " << item.device_data;
       if (!is_run_on_device_) {
         CALL_ASCEND_API(aclrtFree, item.device_data);
