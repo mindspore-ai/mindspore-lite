@@ -69,7 +69,7 @@ STATUS GetConvChannel(const onnx::GraphProto &onnx_graph, const onnx::NodeProto 
     auto iter = std::find_if((*node_iter).attribute().begin(), (*node_iter).attribute().end(),
                              [](const onnx::AttributeProto &attr) { return attr.name() == "shape"; });
     if (iter != (*node_iter).attribute().end()) {
-      if (iter->ints().begin() == nullptr || iter->ints().end() == nullptr) {
+      if (iter->ints_size() == 0) {
         MS_LOG(ERROR) << "dims insert failed";
         return RET_ERROR;
       }

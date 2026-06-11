@@ -404,6 +404,7 @@ target_link_libraries(mindspore_converter
         mslite_converter_plugin
         mindspore::glog
         mindspore::protobuf
+        $<$<TARGET_EXISTS:utf8_range::utf8_range>:utf8_range::utf8_range>
         preprocess_mid
         config_parser_mid
         coder_mid

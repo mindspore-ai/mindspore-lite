@@ -15,8 +15,10 @@
  */
 
 #include "tools/common/protobuf_utils.h"
+#include <cstdint>
 #include <fstream>
 #include <string>
+#include <type_traits>
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include "google/protobuf/text_format.h"
 #include "google/protobuf/io/coded_stream.h"
@@ -26,6 +28,26 @@ namespace mindspore {
 namespace lite {
 static const int PROTO_READ_BYTES_LIMIT = INT_MAX;  // Max size of 2 GB minus 1 byte.
 static const int WARNING_THRESHOLD = 536870912 * 2;
+
+namespace {
+template <typename Stream>
+auto SetTotalBytesLimitImpl(Stream *coded_stream, int total_bytes_limit, int warning_threshold,
+                            int) -> decltype(coded_stream->SetTotalBytesLimit(total_bytes_limit, warning_threshold),
+                                             void()) {
+  coded_stream->SetTotalBytesLimit(total_bytes_limit, warning_threshold);
+}
+
+template <typename Stream>
+auto SetTotalBytesLimitImpl(Stream *coded_stream, int total_bytes_limit, int,
+                            int64_t) -> decltype(coded_stream->SetTotalBytesLimit(total_bytes_limit), void()) {
+  coded_stream->SetTotalBytesLimit(total_bytes_limit);
+}
+
+void SetTotalBytesLimitCompat(google::protobuf::io::CodedInputStream *coded_stream, int total_bytes_limit,
+                              int warning_threshold) {
+  SetTotalBytesLimitImpl(coded_stream, total_bytes_limit, warning_threshold, 0);
+}
+}  // namespace
 
 bool ReadProtoFromCodedInputStream(google::protobuf::io::CodedInputStream *coded_stream,
                                    google::protobuf::Message *proto) {
@@ -38,7 +60,7 @@ bool ReadProtoFromCodedInputStream(google::protobuf::io::CodedInputStream *coded
     return false;
   }
 
-  coded_stream->SetTotalBytesLimit(PROTO_READ_BYTES_LIMIT, WARNING_THRESHOLD);
+  SetTotalBytesLimitCompat(coded_stream, PROTO_READ_BYTES_LIMIT, WARNING_THRESHOLD);
   return proto->ParseFromCodedStream(coded_stream);
 }
 
