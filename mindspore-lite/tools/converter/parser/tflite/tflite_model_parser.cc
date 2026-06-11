@@ -365,10 +365,19 @@ STATUS TfliteModelParser::ConvertOps(const std::unique_ptr<tflite::SubGraphT> &t
 STATUS TfliteModelParser::ProcessControlFlowOp(const std::unique_ptr<tflite::OperatorT> &op, const CNodePtr &anf_node,
                                                const std::string &op_type) {
   MS_ASSERT(op != nullptr && anf_node != nullptr);
+  auto subgraph_count = static_cast<int32_t>(tflite_model_->subgraphs.size());
   if (op_type == "WHILE") {
     const auto &tflite_attr = op->builtin_options.AsWhileOptions();
     if (tflite_attr == nullptr) {
       MS_LOG(ERROR) << "get While attr failed";
+      return RET_ERROR;
+    }
+    if (tflite_attr->cond_subgraph_index < 0 || tflite_attr->cond_subgraph_index >= subgraph_count) {
+      MS_LOG(ERROR) << "invalid cond_subgraph_index " << tflite_attr->cond_subgraph_index;
+      return RET_ERROR;
+    }
+    if (tflite_attr->body_subgraph_index < 0 || tflite_attr->body_subgraph_index >= subgraph_count) {
+      MS_LOG(ERROR) << "invalid body_subgraph_index " << tflite_attr->body_subgraph_index;
       return RET_ERROR;
     }
     auto cnode = anf_node->cast<CNodePtr>();
@@ -378,6 +387,14 @@ STATUS TfliteModelParser::ProcessControlFlowOp(const std::unique_ptr<tflite::Ope
     const auto &tflite_attr = op->builtin_options.AsIfOptions();
     if (tflite_attr == nullptr) {
       MS_LOG(ERROR) << "get If attr failed";
+      return RET_ERROR;
+    }
+    if (tflite_attr->then_subgraph_index < 0 || tflite_attr->then_subgraph_index >= subgraph_count) {
+      MS_LOG(ERROR) << "invalid then_subgraph_index " << tflite_attr->then_subgraph_index;
+      return RET_ERROR;
+    }
+    if (tflite_attr->else_subgraph_index < 0 || tflite_attr->else_subgraph_index >= subgraph_count) {
+      MS_LOG(ERROR) << "invalid else_subgraph_index " << tflite_attr->else_subgraph_index;
       return RET_ERROR;
     }
     auto cnode = anf_node->cast<CNodePtr>();

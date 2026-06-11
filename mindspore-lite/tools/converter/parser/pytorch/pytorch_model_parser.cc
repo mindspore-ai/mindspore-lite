@@ -269,8 +269,7 @@ STATUS CopyDataFromTorchTensor(char *dst_data, const at::Tensor &torch_tensor, T
   auto data_shape = torch_tensor.sizes().vec();
   auto stride = torch_tensor.strides().vec();
   if (data_shape.empty()) {
-    auto data_size = torch_tensor.numel() * ele_size;
-    data_shape.push_back(data_size);
+    data_shape.push_back(1);
     stride.push_back(1);
   }
   char *data_ptr = reinterpret_cast<char *>(torch_tensor.data_ptr());

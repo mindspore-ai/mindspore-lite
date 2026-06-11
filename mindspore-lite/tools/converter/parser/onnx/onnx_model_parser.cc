@@ -289,8 +289,13 @@ STATUS BuildParameterNode(const ParameterPtr &parameter_node, const onnx::Tensor
     tensor_info = tensor::from_spec(data_type, shape_vector, device::DeviceType::kCPU);
     MS_CHECK_TRUE_MSG(tensor_info != nullptr, RET_NULL_PTR, "create tensor_info return nullptr");
     std::vector<int> shape;
-    std::transform(shape_vector.begin(), shape_vector.end(), std::back_inserter(shape),
-                   [](const int64_t &value) { return static_cast<int>(value); });
+    for (const auto &dim : shape_vector) {
+      if (dim > static_cast<int64_t>(INT_MAX) || dim < static_cast<int64_t>(INT_MIN)) {
+        MS_LOG(ERROR) << "Shape dimension " << dim << " out of int32 range";
+        return RET_ERROR;
+      }
+      shape.push_back(static_cast<int>(dim));
+    }
     auto status = OnnxNodeParser::LoadOnnxExternalTensorData(tensor, tensor_info, model_file, external_datas);
     if (status != RET_OK) {
       MS_LOG(ERROR) << "load external data failed.";
@@ -713,6 +718,13 @@ api::FuncGraphPtr OnnxModelParser::Parse(const converter::ConverterParameters &f
   }
   MS_ASSERT(onnx_root_graph_ != nullptr);
 
+  auto depth_status = CheckOnnxSubgraphDepth(onnx_root_graph_, 0);
+  if (depth_status != RET_OK) {
+    ReturnCode::GetSingleReturnCode()->UpdateReturnCode(depth_status);
+    MS_LOG(ERROR) << "onnx model subgraph depth check failed.";
+    return nullptr;
+  }
+
   status = ConvertOnnxGraph(onnx_root_graph_, graph, &anf_nodes_map_, {}, "root_node");
   if (RET_OK != status) {
     ReturnCode::GetSingleReturnCode()->UpdateReturnCode(status);
@@ -764,6 +776,10 @@ STATUS OnnxModelParser::InitOriginModel(const std::string &model_file) {
     ReturnCode::GetSingleReturnCode()->UpdateReturnCode(status);
     return status;
   }
+  if (onnx_model_.opset_import_size() == 0) {
+    MS_LOG(ERROR) << "ONNX model has no opset_import";
+    return RET_ERROR;
+  }
   OnnxNodeParser::set_opset_version(onnx_model_.opset_import().Get(0).version());
   OnnxNodeParser::SetOnnxModelFile(model_file);
   onnx_root_graph_ = onnx_model_.graph();
@@ -771,6 +787,34 @@ STATUS OnnxModelParser::InitOriginModel(const std::string &model_file) {
   CHECK_NULL_RETURN(fmk_value_node);
   MS_CHECK_TRUE_RET(res_graph != nullptr, RET_NULL_PTR);
   res_graph->set_attr("fmk", fmk_value_node);
+  return RET_OK;
+}
+
+STATUS OnnxModelParser::CheckOnnxSubgraphDepth(const onnx::GraphProto &onnx_graph, int current_depth) const {
+  // Based on mainstream TFLite framework usage, the nesting depth of subgraphs in most models is less than 10.
+  // Set 10 as the upper limit to balance model compatibility and recursion depth protection.
+  constexpr int kMaxSubgraphDepth = 10;
+  if (current_depth > kMaxSubgraphDepth) {
+    MS_LOG(ERROR) << "Subgraph nesting depth exceeds limit " << kMaxSubgraphDepth;
+    return RET_ERROR;
+  }
+  for (const auto &node : onnx_graph.node()) {
+    for (const auto &attr : node.attribute()) {
+      if (attr.type() == onnx::AttributeProto::GRAPH) {
+        auto status = CheckOnnxSubgraphDepth(attr.g(), current_depth + 1);
+        if (status != RET_OK) {
+          return status;
+        }
+      } else if (attr.type() == onnx::AttributeProto::GRAPHS) {
+        for (const auto &sub_graph : attr.graphs()) {
+          auto status = CheckOnnxSubgraphDepth(sub_graph, current_depth + 1);
+          if (status != RET_OK) {
+            return status;
+          }
+        }
+      }
+    }
+  }
   return RET_OK;
 }
 

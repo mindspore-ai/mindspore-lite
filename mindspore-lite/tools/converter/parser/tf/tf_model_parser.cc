@@ -361,6 +361,12 @@ STATUS TFModelParser::SetInt64TensorToInt64Tensor(const tensorflow::TensorProto 
       MS_LOG(ERROR) << "new data failed";
       return RET_ERROR;
     }
+    auto element_count = tensor_info_int64->ElementsNum();
+    if (tensor_proto.int64_val_size() > element_count) {
+      MS_LOG(ERROR) << "int64_val_size " << tensor_proto.int64_val_size() << " exceeds tensor element count "
+                    << element_count;
+      return RET_ERROR;
+    }
     const auto &origin_data = tensor_proto.int64_val();
     for (int i = 0; i < tensor_proto.int64_val_size(); ++i) {
       tensor_int64_data[i] = origin_data[i];

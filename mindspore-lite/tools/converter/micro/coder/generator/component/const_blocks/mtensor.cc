@@ -243,7 +243,7 @@ MSTensorHandle MSTensorClone(MSTensorHandle tensor) {
   }
   memcpy(clone_shape,micro_tensor->shape,shape_data_size);
   clone_tensor->shape = clone_shape;
-  char* clone_name = malloc(strlen(micro_tensor->name));
+  char* clone_name = malloc(strlen(micro_tensor->name) + 1);
   if (clone_name == NULL) {
     free(clone_shape);
     free(clone_tensor->data);

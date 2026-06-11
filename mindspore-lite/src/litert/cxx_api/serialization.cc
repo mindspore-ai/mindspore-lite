@@ -50,7 +50,7 @@ Status Serialization::Load(const void *model_data, size_t data_size, ModelType m
     MS_LOG(ERROR) << "Invalid model_buf";
     return kLiteNullptr;
   }
-  auto model = std::shared_ptr<lite::Model>(lite::Model::Import(static_cast<const char *>(lite_buf), data_size));
+  auto model = std::shared_ptr<lite::Model>(lite::Model::Import(static_cast<const char *>(lite_buf), lite_buf_size));
   if (model == nullptr) {
     MS_LOG(ERROR) << "New model failed.";
     return kLiteNullptr;
