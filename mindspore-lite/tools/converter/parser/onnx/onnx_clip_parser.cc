@@ -26,56 +26,55 @@ constexpr int kClipInputIndex1 = 1;
 constexpr int kClipInputIndex2 = 2;
 }  // namespace
 
-STATUS ParseAttr(const google::protobuf::internal::RepeatedPtrIterator<const onnx::TensorProto> node_iter,
-                 float *value) {
+STATUS ParseAttr(const onnx::TensorProto &tensor_proto, float *value) {
   if (value == nullptr) {
     MS_LOG(ERROR) << "parameter is null.";
     return RET_ERROR;
   }
 
   size_t element_size;
-  switch (node_iter->data_type()) {
+  switch (tensor_proto.data_type()) {
     case onnx::TensorProto_DataType_FLOAT:
-      if (node_iter->float_data_size() > 0) {
-        *value = node_iter->float_data(0);
+      if (tensor_proto.float_data_size() > 0) {
+        *value = tensor_proto.float_data(0);
       } else {
-        element_size = node_iter->raw_data().size() / sizeof(float);
+        element_size = tensor_proto.raw_data().size() / sizeof(float);
         if (element_size != 1) {
           MS_LOG(ERROR) << "element size is incorrect.";
           return RET_ERROR;
         }
-        CHECK_NULL_RETURN(node_iter->raw_data().data());
-        *value = *reinterpret_cast<const float *>(node_iter->raw_data().data());
+        CHECK_NULL_RETURN(tensor_proto.raw_data().data());
+        *value = *reinterpret_cast<const float *>(tensor_proto.raw_data().data());
       }
       break;
     case onnx::TensorProto_DataType_INT32:
-      if (node_iter->int32_data_size() > 0) {
-        *value = static_cast<float>(node_iter->int32_data(0));
+      if (tensor_proto.int32_data_size() > 0) {
+        *value = static_cast<float>(tensor_proto.int32_data(0));
       } else {
-        element_size = node_iter->raw_data().size() / sizeof(int32_t);
+        element_size = tensor_proto.raw_data().size() / sizeof(int32_t);
         if (element_size != 1) {
           MS_LOG(ERROR) << "element size is incorrect.";
           return RET_ERROR;
         }
-        CHECK_NULL_RETURN(node_iter->raw_data().data());
-        *value = static_cast<float>(*reinterpret_cast<const int32_t *>(node_iter->raw_data().data()));
+        CHECK_NULL_RETURN(tensor_proto.raw_data().data());
+        *value = static_cast<float>(*reinterpret_cast<const int32_t *>(tensor_proto.raw_data().data()));
       }
       break;
     case onnx::TensorProto_DataType_INT64:
-      if (node_iter->int64_data_size() > 0) {
-        *value = static_cast<float>(node_iter->int64_data(0));
+      if (tensor_proto.int64_data_size() > 0) {
+        *value = static_cast<float>(tensor_proto.int64_data(0));
       } else {
-        element_size = node_iter->raw_data().size() / sizeof(int64_t);
+        element_size = tensor_proto.raw_data().size() / sizeof(int64_t);
         if (element_size != 1) {
           MS_LOG(ERROR) << "element size is incorrect.";
           return RET_ERROR;
         }
-        CHECK_NULL_RETURN(node_iter->raw_data().data());
-        *value = static_cast<float>(*reinterpret_cast<const int64_t *>(node_iter->raw_data().data()));
+        CHECK_NULL_RETURN(tensor_proto.raw_data().data());
+        *value = static_cast<float>(*reinterpret_cast<const int64_t *>(tensor_proto.raw_data().data()));
       }
       break;
     default:
-      MS_LOG(ERROR) << "do not support data_type: " << node_iter->data_type();
+      MS_LOG(ERROR) << "do not support data_type: " << tensor_proto.data_type();
       return RET_ERROR;
   }
   return RET_OK;
@@ -103,7 +102,7 @@ PrimitiveCPtr OnnxClipParser::Parse(const onnx::GraphProto &onnx_graph, const on
       return prim->GetPrim();
     }
     float value = 0.0;
-    if (ParseAttr(node_iter, &value) != RET_OK) {
+    if (ParseAttr(*node_iter, &value) != RET_OK) {
       MS_LOG(ERROR) << "parse attr failed.";
       return nullptr;
     }
