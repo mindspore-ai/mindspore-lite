@@ -24,6 +24,16 @@ namespace lite {
 PrimitiveCPtr OnnxShapeParser::Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) {
   auto prim = std::make_unique<ops::Shape>();
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
+  auto prim_c = prim->GetPrim();
+  MS_CHECK_TRUE_RET(prim_c != nullptr, nullptr);
+  for (const auto &onnx_node_attr : onnx_node.attribute()) {
+    const auto &attribute_name = onnx_node_attr.name();
+    if (attribute_name == "start") {
+      (void)prim_c->AddAttr("start", MakeValue(static_cast<int64_t>(onnx_node_attr.i())));
+    } else if (attribute_name == "end") {
+      (void)prim_c->AddAttr("end", MakeValue(static_cast<int64_t>(onnx_node_attr.i())));
+    }
+  }
   return prim->GetPrim();
 }
 
