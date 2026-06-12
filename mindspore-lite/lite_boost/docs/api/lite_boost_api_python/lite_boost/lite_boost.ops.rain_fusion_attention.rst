@@ -27,10 +27,10 @@ lite_boost.ops.rain_fusion_attention
         - **block_size** (int, 可选) - Block size。 ``0`` 表示自动推断。默认值： ``0`` 。
 
     返回：
-        tuple[Tensor, Tensor]:
+        tuple[Tensor, Tensor]
 
-            - **attention_out** (Tensor) - 注意力计算结果，shape与 ``query`` 相同。
-            - **softmax_lse** (Tensor) - Softmax log-sum-exp值，shape为 ``[T, N, H]`` ，用于调试和梯度回传。
+        - **attention_out** (Tensor) - 注意力计算结果，shape与 ``query`` 相同。
+        - **softmax_lse** (Tensor) - Softmax log-sum-exp值，shape为 ``[T, N, H]`` ，用于调试和梯度回传。
 
     异常：
         - **TypeError** - ``query`` 、 ``key`` 、 ``value`` 、 ``select_idx`` 或 ``select_num_idx`` 不是Tensor时抛出。

@@ -123,11 +123,11 @@ def rain_fusion_attention(
         block_size (int, optional): Block size. ``0`` for automatic inference. Default: ``0``.
 
     Returns:
-        tuple[Tensor, Tensor]:
+        tuple[Tensor, Tensor]
 
-            - **attention_out** (Tensor) — Attention output, same shape as ``query``.
-            - **softmax_lse** (Tensor) — Softmax log-sum-exp values with shape ``[T, N, H]``,
-              for debugging and gradient backpropagation.
+        - **attention_out** (Tensor) — Attention output, same shape as ``query``.
+        - **softmax_lse** (Tensor) — Softmax log-sum-exp values with shape ``[T, N, H]``,
+          for debugging and gradient backpropagation.
 
     Raises:
         TypeError: If ``query``, ``key``, ``value``, ``select_idx`` or ``select_num_idx`` is not a Tensor.
