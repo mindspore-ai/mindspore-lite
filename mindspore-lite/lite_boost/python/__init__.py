@@ -16,3 +16,14 @@
 """
 lite_boost package
 """
+
+# Lazily install the AscendC custom-op .run packages shipped in this wheel into
+# $ASCEND_HOME_PATH on first use (stamp-guarded, idempotent; shares the stamp with
+# the mindspore_lite wheel since both bundle the same .run). Wrapped so any failure
+# leaves `import lite_boost` fully functional. Self-contained: must not import
+# mindspore_lite.
+try:
+    from lite_boost._ascend_custom_ops import ensure_installed as _ensure_ascend_ops
+    _ensure_ascend_ops()
+except Exception:  # pylint: disable=broad-except
+    pass

@@ -34,9 +34,12 @@ def _get_package_data():
     """ get package data"""
     pkg_data = [
         '__init__.py', '_checkparam.py', 'base_model.py', 'context.py', 'converter.py', 'model.py', 'tensor.py',
-        '_check_ascend.py', 'lib/*.so*', '.commit_id', 'include/api/*', 'include/api/callback/*',
-        'include/api/metrics/*', 'include/mindapi/base/*', 'include/registry/converter_context.h',
-        'include/converter.h'
+        '_check_ascend.py', '_ascend_custom_ops.py', 'lib/*.so*', '.commit_id', 'include/api/*',
+        'include/api/callback/*', 'include/api/metrics/*', 'include/mindapi/base/*',
+        'include/registry/converter_context.h', 'include/converter.h',
+        # AscendC custom-op vendor tarballs (one per SoC); lazily installed on first
+        # import via _ascend_custom_ops.ensure_installed(). Absent for non-Ascend builds.
+        'custom_kernels/*.tar.gz'
     ]
     if os.getenv('MSLITE_ENABLE_CLOUD_INFERENCE') == "on":
         pkg_data.append('lite_infer.py')

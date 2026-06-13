@@ -141,6 +141,12 @@ fi
 cmake "${CMAKE_ARGS[@]}" ..
 make -j"${THREAD_NUM}" ${VERBOSE_FLAG}
 
+# Build the AscendC custom operators and stage their vendor tarballs so they can
+# be bundled into the lite_boost wheel. Fails fast: a compile error here aborts
+# the whole lite_boost build (set -e) rather than shipping a wheel without the op.
+# CANN presence is already guaranteed by check_env above.
+bash "${TOP_DIR}/../tools/custom_kernels/ascend_ops/build_all_ops.sh" "${BUILD_DIR}/custom_ops"
+
 cd "${PYTHON_DIR}"
 rm -rf "${DIST_DIR}"
 python setup.py bdist_wheel "${TOP_DIR}"
