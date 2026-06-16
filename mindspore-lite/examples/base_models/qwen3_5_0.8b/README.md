@@ -209,12 +209,18 @@ python infer_qwen3_5_0.8b_mslite.py \
 | `--prefill-model`  | Prefill MindIR 模型路径（`*_graph.mindir`） | 必填                      |
 | `--decode-model`   | Decode MindIR 模型路径（`*_graph.mindir`）  | 必填                      |
 | `--processor`      | HuggingFace processor 路径              | `./Qwen3.5-0.8B`        |
-| `--image`          | 输入图像路径或 URL                          | Qwen VL demo 图片        |
+| `--image`          | 输入图像路径或 URL                          | `./demo.jpeg`            |
 | `--prompt`         | 输入文本                                  | `"Describe this image."` |
 | `--max-new-tokens` | 最大生成 token 数                          | `128`                   |
 | `--image-size`     | 图像尺寸（必须与导出 `--vision-image-size` 一致） | `128`                   |
 | `--device`         | 推理设备（ascend/cpu）                      | `ascend`                |
 | `--device-id`      | Ascend 设备 ID                          | `0`                     |
+
+### 外部资源说明
+
+- README 示例中使用 Qwen 官方 demo 图片：`https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg`。
+- 该 URL 仅用于示例推理和性能测试，运行时会从网络读取图片；离线环境或网络受限环境请显式传入本地图片路径。
+- 权重和 processor 路径通过 `--model-id` / `--processor` 参数传入，推理/导出代码未硬编码权重或图片下载 URL。
 
 ### 推理示例输出
 

@@ -439,8 +439,8 @@ def main():
                         default="./Qwen3.5-4B",
                         help="Processor ID or local path")
     parser.add_argument("--image", type=str,
-                        default="https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg",
-                        help="Image URL or path")
+                        default="./demo.jpeg",
+                        help="Image path or URL")
     parser.add_argument("--prompt", type=str, default="Describe this image.", help="Text prompt")
     parser.add_argument("--max-new-tokens", type=int, default=128)
     parser.add_argument("--image-size", type=int, default=128,

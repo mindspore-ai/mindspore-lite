@@ -45,7 +45,7 @@ try:
 except ImportError:
     print("Error: transformers package not found or version too low.")
     print(
-        "Please install the latest version: pip install git+https://github.com/huggingface/transformers"
+        "Please install or upgrade transformers, for example: pip install --upgrade transformers"
     )
     sys.exit(1)
 
