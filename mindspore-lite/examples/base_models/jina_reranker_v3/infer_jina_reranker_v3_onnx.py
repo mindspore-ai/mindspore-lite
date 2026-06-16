@@ -30,7 +30,6 @@ fused Custom ops enabled, re-export with --disable-fusion-opt.
 """
 
 import argparse
-import time
 
 import numpy as np
 import onnxruntime as ort
@@ -56,7 +55,7 @@ def _parse_args():
     parser.add_argument(
         "--model-path",
         type=str,
-        default="./onnx/non_fuse/jina_reranker_v3_listwise.onnx",
+        default="./onnx/non_fuse/jina_reranker_v3.onnx",
         help="Path to non-fuse ONNX model (runnable by ONNX Runtime)",
     )
     parser.add_argument(
@@ -437,7 +436,6 @@ def main():
     ]
 
     print(f"\nRunning inference in {args.mode} mode...")
-    start_time = time.time()
 
     if args.mode == "listwise":
         results = rerank_listwise(
@@ -448,17 +446,10 @@ def main():
             session, tokenizer, query, documents, max_length=args.max_length
         )
 
-    elapsed = time.time() - start_time
-
     print(f"\nReranking results ({args.mode} mode):")
     for i, result in enumerate(results):
         print(f"\n[{i + 1}] Score: {result['relevance_score']:.4f}")
         print(f"Document: {result['document'][:100]}...")
-
-    print(f"\nInference time: {elapsed:.3f}s")
-    print("=" * 60)
-    print("Higher scores indicate better relevance to the query.")
-    print("=" * 60)
 
 
 if __name__ == "__main__":

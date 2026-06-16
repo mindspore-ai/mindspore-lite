@@ -33,8 +33,6 @@ for Ascend backend performance. Use --disable-fusion-opt to export a pure ONNX
 model for ONNX Runtime inference.
 
 The fused Custom operators include:
-  - RmsNorm:     Pow+ReduceMean+Add+Rsqrt+Mul  -> Custom(RmsNorm)
-  - AddRmsNorm:  Add+RmsNorm                   -> Custom(AddRmsNorm)
   - RotaryMul:   rotate_half + cos/sin multiply -> Custom(RotaryMul)
   - PromptFlashAttention: QK^T+softmax+V        -> Custom(PromptFlashAttention)
   - SwiGlu:      SiLU(gate)*up                  -> Custom(SwiGlu)
@@ -65,17 +63,18 @@ NO_THINK_SUFFIX = THINK_OPEN + "\n\n" + THINK_CLOSE + "\n\n"
 # CANN Custom Op implementations for ONNX export
 # ---------------------------------------------------------------------------
 
+
 class _CannRmsNorm(torch.autograd.Function):
     """torch.autograd.Function for exporting a CANN RmsNorm Custom op to ONNX."""
 
     @staticmethod
     def forward(ctx, x, gamma, epsilon):
-        """Run a numerically-stable RMSNorm reference implementation for tracing."""
         del ctx
         eps = float(epsilon)
-        denom = torch.rsqrt(x.to(torch.float32).pow(2).mean(dim=-1, keepdim=True) + eps)
-        y = (x.to(torch.float32) * denom).to(x.dtype) * gamma
-        return y, denom
+        x_fp32 = x.to(torch.float32)
+        rstd = torch.rsqrt(x_fp32.pow(2).mean(dim=-1, keepdim=True) + eps)
+        y = (x_fp32 * rstd) * gamma.to(torch.float32)
+        return y.to(x.dtype), rstd
 
     @staticmethod
     def symbolic(g, x, gamma, epsilon):
@@ -113,12 +112,15 @@ class _CannRmsNorm(torch.autograd.Function):
 
 
 class CannRmsNorm(torch.nn.Module):
+    """Module wrapper that applies the CANN RmsNorm Custom op."""
+
     def __init__(self, weight, epsilon):
         super().__init__()
         self.weight = weight
         self.epsilon = float(epsilon)
 
     def forward(self, x):
+        """Apply fused RmsNorm to the input tensor."""
         y, _ = _CannRmsNorm.apply(x, self.weight, self.epsilon)
         return y
 
@@ -128,13 +130,13 @@ class _CannAddRmsNorm(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, x1, x2, gamma, epsilon):
-        """Run Add+RMSNorm reference implementation for tracing."""
         del ctx
         eps = float(epsilon)
         x = x1 + x2
-        rstd = torch.rsqrt(x.to(torch.float32).pow(2).mean(dim=-1, keepdim=True) + eps)
-        y = (x.to(torch.float32) * rstd).to(x.dtype) * gamma
-        return y, rstd, x
+        x_fp32 = x.to(torch.float32)
+        rstd = torch.rsqrt(x_fp32.pow(2).mean(dim=-1, keepdim=True) + eps)
+        y = (x_fp32 * rstd) * gamma.to(torch.float32)
+        return y.to(x.dtype), rstd, x
 
     @staticmethod
     def symbolic(g, x1, x2, gamma, epsilon):
@@ -303,7 +305,7 @@ class _CannSwiGlu(torch.autograd.Function):
 
 
 class _CannMatMulV2(torch.autograd.Function):
-    """Export-time MatMul wrapper mapping to CANN `Custom(MatMulV2)`."""
+    """torch.autograd.Function for exporting a CANN MatMulV2 Custom op to ONNX."""
 
     @staticmethod
     def forward(ctx, x1, x2):
@@ -312,7 +314,7 @@ class _CannMatMulV2(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x1, x2):
-        """ONNX symbolic for CANN `Custom(MatMulV2)` operator."""
+        """Export the fused MatMulV2 Custom op node."""
         x1_sizes = x1.type().sizes()
         x2_sizes = x2.type().sizes()
         if x1_sizes is None or x2_sizes is None:
@@ -343,56 +345,20 @@ class _CannMatMulV2(torch.autograd.Function):
 
 
 # ---------------------------------------------------------------------------
-# Helper: get RMSNorm epsilon from a module
-# ---------------------------------------------------------------------------
-
-def _get_rmsnorm_epsilon(norm_mod):
-    """Extract epsilon value from an RMSNorm-like module."""
-    for attr in ("variance_epsilon", "eps", "epsilon"):
-        val = getattr(norm_mod, attr, None)
-        if val is not None:
-            return float(val)
-    return 1e-6
-
-
-# ---------------------------------------------------------------------------
-# Replace RMSNorm modules with CANN fused version
-# ---------------------------------------------------------------------------
-
-def _replace_rmsnorm_with_cann(model):
-    """Replace Qwen3 RMSNorm modules with CannRmsNorm for fused export."""
-    try:
-        from transformers.models.qwen3.modeling_qwen3 import Qwen3RMSNorm
-    except Exception:
-        return
-
-    for layer in model.model.layers:
-        for name in ["input_layernorm", "post_attention_layernorm"]:
-            mod = getattr(layer, name, None)
-            if isinstance(mod, Qwen3RMSNorm) and hasattr(mod, "weight"):
-                setattr(layer, name, CannRmsNorm(mod.weight, _get_rmsnorm_epsilon(mod)))
-        attn = getattr(layer, "self_attn", None)
-        if attn is not None:
-            for name in ["q_norm", "k_norm"]:
-                mod = getattr(attn, name, None)
-                if isinstance(mod, Qwen3RMSNorm) and hasattr(mod, "weight"):
-                    setattr(attn, name, CannRmsNorm(mod.weight, _get_rmsnorm_epsilon(mod)))
-    mod = getattr(model.model, "norm", None)
-    if isinstance(mod, Qwen3RMSNorm) and hasattr(mod, "weight"):
-        model.model.norm = CannRmsNorm(mod.weight, _get_rmsnorm_epsilon(mod))
-
-
-# ---------------------------------------------------------------------------
 # CANN-fused forward helpers
 # ---------------------------------------------------------------------------
 
 def _cann_rotary_mul(x, cos, sin):
-    if cos.dim() != x.dim():
-        while cos.dim() < x.dim():
-            cos = cos.unsqueeze(1)
-        while sin.dim() < x.dim():
-            sin = sin.unsqueeze(1)
     return _CannRotaryMul.apply(x, cos, sin)
+
+
+def _expand_rotary_cos_sin(cos, sin, target_dim):
+    if cos.dim() != int(target_dim):
+        while cos.dim() < int(target_dim):
+            cos = cos.unsqueeze(1)
+        while sin.dim() < int(target_dim):
+            sin = sin.unsqueeze(1)
+    return cos, sin
 
 
 def _cann_apply_rotary_pos_emb(query, key, cos, sin):
@@ -454,7 +420,7 @@ def _apply_projector(projector, x, enable_bmm2mm_fusion):
 
 
 def _qwen3_rotary_emb_matmul2d(rotary_emb, x, position_ids):
-    """Compute rotary embedding (cos, sin) tables via matmul for ONNX export."""
+    """Compute Qwen3 rotary embeddings with matmul-friendly tensor shapes."""
     if "dynamic" in getattr(rotary_emb, "rope_type", ""):
         seq_len = torch.max(position_ids) + 1
         if seq_len > rotary_emb.max_seq_len_cached:
@@ -549,22 +515,54 @@ def _make_additive_causal_mask(attention_mask, q_len, k_len, past_len, dtype):
     return causal + padding
 
 
-def _cann_attn_forward(attn_mod, hidden_states, position_embeddings, attention_mask, seq_len, enable_bmm2mm_fusion):
+def _prepare_pfa_mask(attention_mask, seq_len):
+    if _ONNX_DYNAMIC_EXPORT:
+        return _make_bool_causal_mask_dynamic(attention_mask).to(torch.bool), 0, int(seq_len)
+    padded_len = ((int(seq_len) + 127) // 128) * 128
+    pad_len = int(padded_len - seq_len)
+    bool_mask = _make_bool_causal_mask_padded(attention_mask, seq_len, padded_len).to(torch.bool)
+    return bool_mask, pad_len, padded_len
+
+
+def _cann_attn_forward(
+    attn_mod,
+    hidden_states,
+    position_embeddings,
+    seq_len,
+    enable_bmm2mm_fusion,
+    bool_mask,
+    pad_len,
+    padded_len,
+):
     """Attention forward that routes the core softmax to CANN PromptFlashAttention Custom op."""
+    del padded_len
     input_shape = hidden_states.shape[:-1]
     orig_dtype = hidden_states.dtype
     head_dim = attn_mod.head_dim
     num_heads = attn_mod.config.num_attention_heads
     num_kv_heads = attn_mod.config.num_key_value_heads
     hidden_shape = (*input_shape, -1, head_dim)
+    hidden_states_fp16 = hidden_states.to(torch.float16)
 
-    query_states = _linear(attn_mod.q_proj, hidden_states, enable_bmm2mm_fusion).view(hidden_shape)
-    key_states = _linear(attn_mod.k_proj, hidden_states, enable_bmm2mm_fusion).view(hidden_shape)
-    value_states = _linear(attn_mod.v_proj, hidden_states, enable_bmm2mm_fusion).view(hidden_shape)
+    value_states = _linear(attn_mod.v_proj, hidden_states_fp16, enable_bmm2mm_fusion).view(hidden_shape)
+    if hasattr(attn_mod, "qk_proj"):
+        qk_states = _linear(attn_mod.qk_proj, hidden_states_fp16, enable_bmm2mm_fusion)
+        q_size = int(num_heads) * int(head_dim)
+        k_size = int(num_kv_heads) * int(head_dim)
+        query_states, key_states = torch.split(qk_states, [q_size, k_size], dim=-1)
+        query_states = query_states.view(hidden_shape)
+        key_states = key_states.view(hidden_shape)
+    else:
+        query_states = _linear(attn_mod.q_proj, hidden_states_fp16, enable_bmm2mm_fusion).view(hidden_shape)
+        key_states = _linear(attn_mod.k_proj, hidden_states_fp16, enable_bmm2mm_fusion).view(hidden_shape)
     if hasattr(attn_mod, "q_norm"):
         query_states = attn_mod.q_norm(query_states)
     if hasattr(attn_mod, "k_norm"):
         key_states = attn_mod.k_norm(key_states)
+
+    query_states = query_states.to(torch.float16)
+    key_states = key_states.to(torch.float16)
+    value_states = value_states.to(torch.float16)
 
     query_states = query_states.transpose(1, 2)
     key_states = key_states.transpose(1, 2)
@@ -573,22 +571,11 @@ def _cann_attn_forward(attn_mod, hidden_states, position_embeddings, attention_m
     cos, sin = position_embeddings
     query_states, key_states = _cann_apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
-    query_states = query_states.to(torch.float16)
-    key_states = key_states.to(torch.float16)
-    value_states = value_states.to(torch.float16)
-
-    if _ONNX_DYNAMIC_EXPORT:
-        bool_mask = _make_bool_causal_mask_dynamic(attention_mask).to(torch.bool)
-    else:
-        padded_len = ((int(seq_len) + 127) // 128) * 128
-        pad_len = int(padded_len - seq_len)
-        if pad_len > 0:
-            pad_4d = (0, 0, 0, pad_len, 0, 0, 0, 0)
-            query_states = torch.nn.functional.pad(query_states, pad_4d, value=0)
-            key_states = torch.nn.functional.pad(key_states, pad_4d, value=0)
-            value_states = torch.nn.functional.pad(value_states, pad_4d, value=0)
-
-        bool_mask = _make_bool_causal_mask_padded(attention_mask, seq_len, padded_len).to(torch.bool)
+    if not _ONNX_DYNAMIC_EXPORT and int(pad_len) > 0:
+        pad_4d = (0, 0, 0, int(pad_len), 0, 0, 0, 0)
+        query_states = torch.nn.functional.pad(query_states, pad_4d, value=0)
+        key_states = torch.nn.functional.pad(key_states, pad_4d, value=0)
+        value_states = torch.nn.functional.pad(value_states, pad_4d, value=0)
 
     scaling = getattr(attn_mod, "scaling", 1.0 / (head_dim ** 0.5))
 
@@ -601,7 +588,7 @@ def _cann_attn_forward(attn_mod, hidden_states, position_embeddings, attention_m
         int(num_kv_heads),
         float(scaling),
     )
-    if not _ONNX_DYNAMIC_EXPORT and pad_len > 0:
+    if not _ONNX_DYNAMIC_EXPORT and int(pad_len) > 0:
         attn_output = attn_output[:, :seq_len, :, :]
     attn_output = attn_output.to(orig_dtype)
     attn_output = attn_output.reshape(*input_shape, -1).contiguous()
@@ -620,6 +607,38 @@ def _cann_mlp_forward(mlp_mod, hidden_states, enable_bmm2mm_fusion):
     )
     gate_up = _CannSwiGlu.apply(gate_up, -1)
     return _linear(mlp_mod.down_proj, gate_up, enable_bmm2mm_fusion)
+
+
+def _get_rmsnorm_epsilon(norm_mod):
+    for attr in ("variance_epsilon", "eps", "epsilon"):
+        val = getattr(norm_mod, attr, None)
+        if val is not None:
+            return float(val)
+    return 1e-6
+
+
+def _replace_rmsnorm_with_cann(model):
+    """Replace Qwen3 RMSNorm modules with CANN-exportable wrappers."""
+    try:
+        from transformers.models.qwen3.modeling_qwen3 import Qwen3RMSNorm
+    except Exception:
+        return
+
+    for layer in model.model.layers:
+        for name in ("input_layernorm", "post_attention_layernorm"):
+            mod = getattr(layer, name, None)
+            if isinstance(mod, Qwen3RMSNorm) and hasattr(mod, "weight"):
+                setattr(layer, name, CannRmsNorm(mod.weight, _get_rmsnorm_epsilon(mod)))
+        attn = getattr(layer, "self_attn", None)
+        if attn is not None:
+            for name in ("q_norm", "k_norm"):
+                mod = getattr(attn, name, None)
+                if isinstance(mod, Qwen3RMSNorm) and hasattr(mod, "weight"):
+                    setattr(attn, name, CannRmsNorm(mod.weight, _get_rmsnorm_epsilon(mod)))
+
+    mod = getattr(model.model, "norm", None)
+    if isinstance(mod, Qwen3RMSNorm) and hasattr(mod, "weight"):
+        model.model.norm = CannRmsNorm(mod.weight, _get_rmsnorm_epsilon(mod))
 
 
 def _cann_add_rms_norm(residual, hidden_states, norm_mod, enable_rmsnorm_fusion):
@@ -686,11 +705,17 @@ class JinaRerankerV3FusedWrapper(torch.nn.Module):
     Wrapper for Jina Reranker V3 listwise ONNX export with CANN fused ops.
 
     Manually unrolls the Qwen3Model forward pass so that each subgraph
-    (RmsNorm, AddRmsNorm, RotaryMul, PromptFlashAttention, SwiGlu) is
-    replaced by the corresponding CANN Custom operator.
+    (RotaryMul, PromptFlashAttention, SwiGlu) is replaced by the corresponding
+    CANN Custom operator.
     """
 
-    def __init__(self, model, enable_bmm2mm_fusion, enable_rmsnorm_fusion):
+    def __init__(
+        self,
+        model,
+        enable_bmm2mm_fusion,
+        enable_rmsnorm_fusion,
+        enable_qk_merge,
+    ):
         super().__init__()
         self.embed_tokens = model.model.embed_tokens
         self.layers = model.model.layers
@@ -699,6 +724,40 @@ class JinaRerankerV3FusedWrapper(torch.nn.Module):
         self.projector = model.projector
         self.enable_bmm2mm_fusion = bool(enable_bmm2mm_fusion)
         self.enable_rmsnorm_fusion = bool(enable_rmsnorm_fusion)
+        self.enable_qk_merge = bool(enable_qk_merge)
+        if self.enable_qk_merge:
+            self._enable_qk_merge()
+
+    def _enable_qk_merge(self):
+        """Merge query and key projection weights for fused export."""
+        for layer in self.layers:
+            attn = layer.self_attn
+            if not (hasattr(attn, "q_proj") and hasattr(attn, "k_proj")):
+                continue
+            q_weight = attn.q_proj.weight
+            k_weight = attn.k_proj.weight
+            out_features = int(q_weight.shape[0] + k_weight.shape[0])
+            in_features = int(q_weight.shape[1])
+
+            bias_tensors = [attn.q_proj.bias, attn.k_proj.bias]
+            use_bias = any(b is not None for b in bias_tensors)
+            qk_proj = torch.nn.Linear(in_features, out_features, bias=use_bias).to(
+                device=q_weight.device, dtype=q_weight.dtype
+            )
+
+            with torch.no_grad():
+                qk_proj.weight.copy_(torch.cat([q_weight, k_weight], dim=0))
+                if use_bias:
+                    merged_bias = []
+                    for w, b in zip([q_weight, k_weight], bias_tensors):
+                        if b is None:
+                            merged_bias.append(
+                                torch.zeros(w.shape[0], device=w.device, dtype=w.dtype)
+                            )
+                        else:
+                            merged_bias.append(b.to(dtype=w.dtype, device=w.device))
+                    qk_proj.bias.copy_(torch.cat(merged_bias, dim=0))
+            attn.qk_proj = qk_proj
 
     def forward(self, input_ids, attention_mask, doc_token_indices, query_token_index):
         """Compute listwise scores with CANN fused Custom ops."""
@@ -714,14 +773,22 @@ class JinaRerankerV3FusedWrapper(torch.nn.Module):
         hidden_states = self.layers[0].input_layernorm(hidden_states)
 
         num_layers = len(self.layers)
+        cos, sin = position_embeddings
+        cos, sin = _expand_rotary_cos_sin(cos, sin, 4)
+        cos = cos.to(torch.float16)
+        sin = sin.to(torch.float16)
+        position_embeddings = (cos, sin)
+        bool_mask, pad_len, padded_len = _prepare_pfa_mask(attention_mask, seq_len)
         for i, layer in enumerate(self.layers):
             attn_out = _cann_attn_forward(
                 layer.self_attn,
                 hidden_states,
                 position_embeddings,
-                attention_mask,
                 seq_len,
                 self.enable_bmm2mm_fusion,
+                bool_mask,
+                pad_len,
+                padded_len,
             )
             hidden_states, residual = _cann_add_rms_norm(
                 residual, attn_out, layer.post_attention_layernorm, self.enable_rmsnorm_fusion
@@ -753,7 +820,6 @@ class JinaRerankerV3FusedWrapper(torch.nn.Module):
 
         query_embeds_expanded = query_embeds.expand_as(doc_embeds)
         scores = F.cosine_similarity(doc_embeds, query_embeds_expanded, dim=-1)
-
         return scores
 
 
@@ -779,12 +845,6 @@ def _parse_args():
         help="Output directory for ONNX model",
     )
     parser.add_argument(
-        "--max-length",
-        type=int,
-        default=8192,
-        help="Maximum sequence length",
-    )
-    parser.add_argument(
         "--device",
         type=str,
         default="cpu",
@@ -804,9 +864,17 @@ def _parse_args():
         help="Enable BMM->MMv2 optimization: route Linear through 2D MatMulV2 Custom op. Default: disabled.",
     )
     parser.add_argument(
-        "--disable_rmsnorm_fusion",
+        "--enable_rmsnorm_fusion",
         action="store_true",
-        help="Disable RmsNorm/AddRmsNorm fusion Custom ops (keep other fusions). Default: enabled.",
+        help="Enable RmsNorm/AddRmsNorm fusion Custom ops. Default: disabled.",
+    )
+    parser.add_argument(
+        "--enable_qk_merge",
+        action="store_true",
+        help=(
+            "Enable QK merge optimization: merge q_proj+k_proj into a single Linear "
+            "(fused export only). Default: disabled."
+        ),
     )
     return parser.parse_args()
 
@@ -858,8 +926,9 @@ def _format_listwise_prompt(query, docs):
     return prefix + prompt + suffix
 
 
-def _create_dummy_inputs(args, tokenizer):
+def _create_dummy_inputs(tokenizer):
     """Create a small listwise prompt and its tensor inputs for ONNX export."""
+    dummy_max_length = 1280
     query = "What is the capital of China?"
     docs = [
         "The capital of China is Beijing.",
@@ -872,7 +941,7 @@ def _create_dummy_inputs(args, tokenizer):
         prompt,
         padding="max_length",
         truncation=True,
-        max_length=args.max_length,
+        max_length=int(dummy_max_length),
         return_tensors="pt",
     )
 
@@ -933,9 +1002,9 @@ def _export_to_onnx(model, output_path, dummy_inputs, use_fusion):
         "attention_mask": {0: "batch_size", 1: "sequence"},
         "doc_token_indices": {0: "batch_size", 1: "num_docs"},
         "query_token_index": {0: "batch_size"},
-        "scores": {0: "batch_size", 1: "num_docs"},
     }
     input_names = ["input_ids", "attention_mask", "doc_token_indices", "query_token_index"]
+    dynamic_axes["scores"] = {0: "batch_size", 1: "num_docs"}
     output_names = ["scores"]
 
     print(f"Exporting model to {output_path}")
@@ -1050,6 +1119,7 @@ def _print_onnx_custom_stats(onnx_path, label=""):
 
 
 def main():
+    """Run model loading, wrapping, and ONNX export."""
     args = _parse_args()
     model, tokenizer = _load_model_and_tokenizer(args)
 
@@ -1057,7 +1127,7 @@ def main():
 
     if use_fusion:
         print("Enabling CANN fusion optimizations...")
-        enable_rmsnorm_fusion = not bool(args.disable_rmsnorm_fusion)
+        enable_rmsnorm_fusion = bool(getattr(args, "enable_rmsnorm_fusion", False))
         if enable_rmsnorm_fusion:
             _replace_rmsnorm_with_cann(model)
         print("Preparing fused model for export...")
@@ -1065,27 +1135,28 @@ def main():
             model,
             enable_bmm2mm_fusion=bool(args.enable_bmm2mm_fusion),
             enable_rmsnorm_fusion=enable_rmsnorm_fusion,
+            enable_qk_merge=bool(getattr(args, "enable_qk_merge", False)),
         ).to(args.device).eval()
     else:
         print("Preparing model for export (no fusion)...")
         wrapper = JinaRerankerV3ListwiseWrapper(model).to(args.device).eval()
 
     print("Creating dummy inputs with listwise prompt format...")
-    dummy_inputs = _create_dummy_inputs(args, tokenizer)
+    dummy_inputs = _create_dummy_inputs(tokenizer)
     dummy_input_ids = dummy_inputs[0].to(args.device)
     dummy_attention_mask = dummy_inputs[1].to(args.device)
     dummy_doc_indices = dummy_inputs[2].to(args.device)
     dummy_query_idx = dummy_inputs[3].to(args.device)
     dummy_inputs_device = (dummy_input_ids, dummy_attention_mask, dummy_doc_indices, dummy_query_idx)
 
-    output_path = os.path.join(args.output_dir, "jina_reranker_v3_listwise.onnx")
+    output_path = os.path.join(args.output_dir, "jina_reranker_v3.onnx")
     _export_to_onnx(wrapper, output_path, dummy_inputs_device, use_fusion)
 
     print("Optimizing ONNX model...")
     onnx_model = onnx.load(output_path, load_external_data=True)
     onnx_model = _optimize_onnx_model(onnx_model)
 
-    onnx_path = os.path.join(args.output_dir, "jina_reranker_v3_listwise.onnx")
+    onnx_path = os.path.join(args.output_dir, "jina_reranker_v3.onnx")
     data_path = onnx_path + ".data"
     if os.path.exists(data_path):
         os.remove(data_path)
@@ -1094,7 +1165,7 @@ def main():
         onnx_path,
         save_as_external_data=True,
         all_tensors_to_one_file=True,
-        location="jina_reranker_v3_listwise.onnx.data",
+        location="jina_reranker_v3.onnx.data",
         size_threshold=1024,
         convert_attribute=True,
     )
@@ -1104,7 +1175,6 @@ def main():
 
     print("\nExport completed successfully!")
     print(f"ONNX model saved to: {output_path}")
-    print(f"Max sequence length: {args.max_length}")
     print(f"Max documents per query: {MAX_DOCS}")
     print(f"Fusion optimizations: {'ENABLED' if use_fusion else 'DISABLED'}")
 

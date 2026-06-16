@@ -72,7 +72,7 @@ def _sec_to_ms(v):
 
 
 def _print_perf_tables(mode, model_max_length, io_shapes):
-    """Print markdown tables for IO shapes and end-to-end performance metrics."""
+    """Print input/output shape and latency tables for the current run."""
     print("\n### MSLite 推理输入输出（本次运行）")
     print("\n| 项目 | 值 |")
     print("|---|---|")
@@ -82,9 +82,7 @@ def _print_perf_tables(mode, model_max_length, io_shapes):
         print(f"| {k} | `{v}` |")
 
     total_s = (
-        _PERF["tokenizer_load_s"]
-        + _PERF["model_build_s"]
-        + _PERF["tokenize_s"]
+        _PERF["tokenize_s"]
         + _PERF["resize_s"]
         + _PERF["predict_s"]
         + _PERF["postprocess_s"]
@@ -92,13 +90,12 @@ def _print_perf_tables(mode, model_max_length, io_shapes):
     print("\n### 端到端推理性能（本次运行）")
     print("\n| 指标 | 耗时 (ms) |")
     print("|---|---:|")
-    print(f"| Tokenizer load | {_sec_to_ms(_PERF['tokenizer_load_s']):.2f} |")
-    print(f"| Model build | {_sec_to_ms(_PERF['model_build_s']):.2f} |")
     print(f"| Tokenize + pad | {_sec_to_ms(_PERF['tokenize_s']):.2f} |")
     print(f"| Model resize | {_sec_to_ms(_PERF['resize_s']):.2f} |")
     print(f"| Model predict | {_sec_to_ms(_PERF['predict_s']):.2f} |")
     print(f"| Postprocess | {_sec_to_ms(_PERF['postprocess_s']):.2f} |")
     print(f"| **总耗时** | **{_sec_to_ms(total_s):.2f}** |")
+
 
 
 def _parse_args():
@@ -607,7 +604,6 @@ def main():
     ]
 
     print(f"\nRunning inference in {args.mode} mode...")
-    start_time = time.perf_counter()
 
     if args.mode == "listwise":
         results = rerank_listwise(
@@ -618,14 +614,10 @@ def main():
             model, tokenizer, query, documents, max_length=model_max_length
         )
 
-    elapsed = time.perf_counter() - start_time
-
     print(f"\nReranking results ({args.mode} mode):")
     for i, result in enumerate(results):
         print(f"\n[{i + 1}] Score: {result['relevance_score']:.4f}")
         print(f"Document: {result['document'][:100]}...")
-
-    print(f"\nInference time: {elapsed:.3f}s")
 
     if _RUN_INFO["io_shapes"] is not None:
         _print_perf_tables(
