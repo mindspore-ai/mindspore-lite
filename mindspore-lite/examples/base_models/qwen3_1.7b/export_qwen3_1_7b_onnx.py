@@ -19,18 +19,38 @@ Export Qwen3-1.7B model to ONNX format.
 
 import argparse
 import gc
+import json
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
 KV_CACHE_LEN = 512
+TORCH_PTQ_INT8 = True
+TORCH_PTQ_CALIB_JSONL = ""
+TORCH_PTQ_MAX_SAMPLES = 32
+TORCH_PTQ_MAX_DECODE_STEPS = 32
+SMOOTH_ALPHA = 0.5
+WEIGHT_CLIP_RATIO = 0.0
 
 try:
     import torch._dynamo
 
     torch._dynamo.disable()
+except Exception:
+    pass
+
+try:
+    from torch.fx import wrap as _fx_wrap
+
+    _fx_wrap("rotary_mul")
+    _fx_wrap("apply_rotary_pos_emb_custom")
+    _fx_wrap("rms_norm")
+    _fx_wrap("incre_flash_attention")
+    _fx_wrap("swiglu")
+    _fx_wrap("scatter")
 except Exception:
     pass
 
@@ -62,17 +82,16 @@ def _rotate_half(x):
 
 
 class _RotaryMulCustom(torch.autograd.Function):
-    """Custom RotaryMul op for ONNX export."""
+    """Custom rotary multiplication for ONNX export."""
 
     @staticmethod
+    # pylint: disable=unused-argument
     def forward(ctx, x, cos4, sin4):
-        """Forward for RotaryMul (eager fallback)."""
-        del ctx
         return (x * cos4) + (_rotate_half(x) * sin4)
 
     @staticmethod
     def symbolic(g, x, cos4, sin4):
-        """ONNX symbolic for RotaryMul."""
+        """ONNX symbolic for RotaryMul custom op."""
         y = g.op(
             "Custom",
             x,
@@ -90,17 +109,18 @@ class _RotaryMulCustom(torch.autograd.Function):
 
 
 def rotary_mul(x, cos4, sin4):
+    """Apply rotary multiplication using custom ONNX op."""
     return _RotaryMulCustom.apply(x, cos4, sin4)
 
 
 
 class _ApplyRotaryPosEmbCustom(torch.autograd.Function):
-    """Custom ApplyRotaryPosEmb op for ONNX export."""
+    """Custom ApplyRotaryPosEmb for ONNX export."""
 
     @staticmethod
+    # pylint: disable=unused-argument
     def forward(ctx, query, key, cos, sin, layout: int, rotary_mode: str):
-        """Forward for rotary position embedding (eager fallback)."""
-        del ctx, rotary_mode
+        """Apply rotary position embedding in custom op."""
         if apply_rotary_pos_emb is not None:
             if int(layout) == 1:
                 q_bnsd = query.permute(0, 2, 1, 3)
@@ -119,7 +139,7 @@ class _ApplyRotaryPosEmbCustom(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, query, key, cos, sin, layout: int, rotary_mode: str):
-        """ONNX symbolic for rotary position embedding."""
+        """ONNX symbolic for ApplyRotaryPosEmb custom op."""
         axis = 2 if int(layout) == 1 else 1
         cos4 = g.op("Unsqueeze", cos, axes_i=[axis])
         sin4 = g.op("Unsqueeze", sin, axes_i=[axis])
@@ -149,12 +169,11 @@ def apply_rotary_pos_emb_custom(query, key, cos, sin, layout: int = 3, rotary_mo
 
 
 class _RmsNormCustom(torch.autograd.Function):
-    """Custom RMSNorm op for ONNX export."""
+    """Custom RmsNorm for ONNX export."""
 
     @staticmethod
+    # pylint: disable=unused-argument
     def forward(ctx, x, gamma, epsilon: float):
-        """Forward for RMSNorm (eager fallback)."""
-        del ctx
         x_fp32 = x.to(torch.float32)
         var = (x_fp32 * x_fp32).mean(dim=-1, keepdim=True)
         rstd = torch.rsqrt(var + float(epsilon))
@@ -163,7 +182,7 @@ class _RmsNormCustom(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x, gamma, epsilon: float):
-        """ONNX symbolic for RMSNorm."""
+        """ONNX symbolic for RmsNorm custom op."""
         y, rstd = g.op(
             "Custom",
             x,
@@ -195,9 +214,10 @@ def _make_flash_attn_mask(attention_mask, q_len, k_len, past_len):
 
 
 class _IncreFlashAttentionCustom(torch.autograd.Function):
-    """Custom IncreFlashAttention op for ONNX export."""
+    """Custom IncreFlashAttention for ONNX export."""
 
     @staticmethod
+    # pylint: disable=unused-argument
     def forward(
         ctx,
         query,
@@ -211,8 +231,7 @@ class _IncreFlashAttentionCustom(torch.autograd.Function):
         block_size: int,
         inner_precise: int,
     ):
-        """Forward for incremental flash attention (eager fallback)."""
-        del ctx, block_size, inner_precise
+        """Incremental flash attention forward (fallback to manual matmul)."""
         q = query
         k = key
         v = value
@@ -251,7 +270,7 @@ class _IncreFlashAttentionCustom(torch.autograd.Function):
         block_size: int,
         inner_precise: int,
     ):
-        """ONNX symbolic for incremental flash attention."""
+        """ONNX symbolic for IncreFlashAttention custom op."""
         if atten_mask is None:
             y = g.op(
                 "Custom",
@@ -307,7 +326,7 @@ def incre_flash_attention(
     block_size: int = 0,
     inner_precise: int = 1,
 ):
-    """Functional wrapper for incremental flash attention."""
+    """Incremental flash attention using custom ONNX op."""
     return _IncreFlashAttentionCustom.apply(
         query,
         key,
@@ -324,9 +343,10 @@ def incre_flash_attention(
 
 
 class _PromptFlashAttentionCustom(torch.autograd.Function):
-    """Custom prompt flash attention op for ONNX export."""
+    """Custom PromptFlashAttention for ONNX export."""
 
     @staticmethod
+    # pylint: disable=unused-argument
     def forward(
         ctx,
         query,
@@ -342,8 +362,7 @@ class _PromptFlashAttentionCustom(torch.autograd.Function):
         pre_tokens: int,
         next_tokens: int,
     ):
-        """Forward for prompt flash attention (eager fallback)."""
-        del ctx, inner_precise, pre_tokens, next_tokens
+        """Prompt flash attention forward (fallback to manual matmul)."""
         q = query
         k = key
         v = value
@@ -392,7 +411,7 @@ class _PromptFlashAttentionCustom(torch.autograd.Function):
         pre_tokens: int,
         next_tokens: int,
     ):
-        """ONNX symbolic for prompt flash attention."""
+        """ONNX symbolic for PromptFlashAttention custom op."""
         if atten_mask is None:
             y = g.op(
                 "Custom",
@@ -454,7 +473,7 @@ def prompt_flash_attention(
     pre_tokens: int = 214748647,
     next_tokens: int = 0,
 ):
-    """Functional wrapper for prompt flash attention."""
+    """Prompt flash attention using custom ONNX op."""
     return _PromptFlashAttentionCustom.apply(
         query,
         key,
@@ -472,12 +491,11 @@ def prompt_flash_attention(
 
 
 class _SwiGluCustom(torch.autograd.Function):
-    """Custom SwiGLU op for ONNX export."""
+    """Custom SwiGLU for ONNX export."""
 
     @staticmethod
+    # pylint: disable=unused-argument
     def forward(ctx, x, dim: int):
-        """Forward for SwiGLU (eager fallback)."""
-        del ctx
         d = int(dim)
         if d < 0:
             d = x.dim() + d
@@ -486,7 +504,7 @@ class _SwiGluCustom(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x, dim: int):
-        """ONNX symbolic for SwiGLU."""
+        """ONNX symbolic for SwiGlu custom op."""
         y = g.op(
             "Custom",
             x,
@@ -503,16 +521,17 @@ class _SwiGluCustom(torch.autograd.Function):
 
 
 def swiglu(x, dim: int = -1):
+    """SwiGLU activation using custom ONNX op."""
     return _SwiGluCustom.apply(x, int(dim))
 
 
 class _ScatterCustom(torch.autograd.Function):
-    """Custom scatter op for ONNX export."""
+    """Custom Scatter for ONNX export."""
 
     @staticmethod
+    # pylint: disable=unused-argument
     def forward(ctx, var, indices, updates, reduce: str, axis: int):
-        """Forward for scatter (eager fallback)."""
-        del ctx
+        """Scatter forward (fallback to manual indexing)."""
         if str(reduce) != "update":
             raise RuntimeError("Only reduce='update' is supported.")
         ax = int(axis)
@@ -539,7 +558,7 @@ class _ScatterCustom(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, var, indices, updates, reduce: str, axis: int):
-        """ONNX symbolic for scatter."""
+        """ONNX symbolic for Scatter custom op."""
         y = g.op(
             "Custom",
             var,
@@ -559,7 +578,187 @@ class _ScatterCustom(torch.autograd.Function):
 
 
 def scatter(var, indices, updates, reduce: str = "update", axis: int = -2):
+    """Scatter update using custom ONNX op."""
     return _ScatterCustom.apply(var, indices, updates, str(reduce), int(axis))
+
+
+def _onnx_cast_to_i_from_dtype(dtype: torch.dtype) -> int:
+    if dtype == torch.float16:
+        return 10
+    if dtype == torch.float32:
+        return 1
+    if dtype == torch.bfloat16:
+        return 16
+    raise RuntimeError(f"Unsupported dtype for ONNX Cast: {dtype}")
+
+
+def _compute_smooth_quant_scale(max_act_per_ch, max_w_per_col, alpha=0.5, eps=1e-8):
+    """Compute SmoothQuant smoothing factor per input channel.
+    s[channel] = max_act[channel]^alpha / max_w[channel]^(1-alpha)
+
+    Args:
+        max_act_per_ch: per-channel activation max [in_features]
+        max_w_per_col:  per-column weight max [in_features]
+        alpha: smoothing strength (0.5 = equal smoothing)
+    Returns:
+        s: smoothing factor [in_features]
+    """
+    max_act = max_act_per_ch.clamp_min(eps)
+    max_w = max_w_per_col.clamp_min(eps)
+    s = (max_act ** alpha) / (max_w ** (1.0 - alpha))
+    # Clamp to avoid extreme values
+    s = s.clamp(1e-4, 1e4)
+    return s.detach()
+
+
+def _quantize_weight_symmetric_int8(
+    weight_fp: torch.Tensor, eps: float = 1e-8, per_channel: bool = True, clip_ratio: float = 0.0,
+):
+    """Quantize weight to int8, optionally clipping weight outliers.
+
+    Args:
+        weight_fp: FP32 weight tensor
+        per_channel: per-channel quantization
+        clip_ratio: if > 0, clip top clip_ratio extreme values before quant.
+                    0.01 = clip top 1% of outliers.
+    """
+    weight = weight_fp.detach()
+    if clip_ratio > 0 and weight.numel() > 100:
+        # Clip extreme weight outliers to improve quantization quality.
+        # A few outlier weights can dominate the scale factor.
+        flat = weight.abs().view(-1)
+        k = max(1, int(flat.numel() * clip_ratio))
+        threshold, _ = flat.topk(k)
+        threshold = threshold[-1].clamp_min(eps)
+        weight = weight.clamp(-threshold, threshold)
+
+    if per_channel:
+        # Per-channel: one scale per output channel (dim=0).
+        # weight shape: [out_features, in_features]
+        maxabs = weight.abs().max(dim=1, keepdim=True).values.clamp_min(float(eps))
+        w_scale = (maxabs / 127.0).to(dtype=torch.float32)  # [out_features, 1]
+        w_q = torch.clamp(torch.round(weight / w_scale), -127, 127).to(torch.int8)
+        return w_q, w_scale.view(-1)  # [out_features]
+    # Per-tensor (original behavior)
+    maxabs = weight.abs().max().clamp_min(float(eps))
+    w_scale = (maxabs / 127.0).to(dtype=torch.float32)
+    w_q = torch.clamp(torch.round(weight / w_scale), -127, 127).to(torch.int8)
+    return w_q, w_scale
+
+
+class _QuantLinearSymInt8(torch.autograd.Function):
+    """Custom quantized linear (int8) for ONNX export."""
+
+    @staticmethod
+    # pylint: disable=unused-argument
+    def forward(
+        ctx, x, weight_fp, bias_fp, x_scale_f: float, w_q, correction,
+        w_scale_mean: float, smooth_scale, out_to_i: int,
+    ):
+        # Forward uses FP32 weight for correct tracing; the ONNX graph
+        # (via symbolic) uses int8 weight + per-channel dequant + smoothquant.
+        return F.linear(x, weight_fp, bias_fp)
+
+    @staticmethod
+    # pylint: disable=unused-argument
+    def symbolic(
+        g, x, weight_fp, bias_fp, x_scale_f: float, w_q, correction,
+        w_scale_mean: float, smooth_scale, out_to_i: int,
+    ):
+        """ONNX symbolic for quantized linear (int8) custom op."""
+        import struct
+
+        x_scale_f = float(x_scale_f)
+        w_scale_mean = float(w_scale_mean)
+        per_channel = correction is not None
+
+        # SmoothQuant: divide input by s before quantization
+        if smooth_scale is not None:
+            # smooth_scale is a pre-computed constant tensor [in_features]
+            x = g.op("Div", x, smooth_scale)
+
+        # AscendQuant: quantize activation to int8.
+        ascend_scale = 1.0 / max(x_scale_f, 1e-8)
+        x_i8 = g.op(
+            "Custom", x,
+            type_s="AscendQuant",
+            input_names_s=_as_list_str(["x"]),
+            optional_input_names_s=_as_list_str([]),
+            output_names_s=_as_list_str(["y"]),
+            output_num_i=1,
+            input_index_i=[0],
+            src_t_i=1,  # kNumberTypeFloat32
+            dst_t_i=3,  # kNumberTypeInt8
+            scale_f=float(ascend_scale),
+            offset_f=0.0,
+        )
+
+        # Pack x_scale * w_scale_mean into uint64.
+        combined_scale = x_scale_f * w_scale_mean
+        scale_bits = struct.unpack("<I", struct.pack("<f", combined_scale))[0]
+        packed_scale = scale_bits
+        scale_tensor = torch.tensor([packed_scale], dtype=torch.int64)
+        scale_const = g.op("Constant", value_t=scale_tensor)
+
+        # QuantBatchMatmul: int8 x int8 with combined (mean) scale.
+        y = g.op(
+            "Custom", x_i8, w_q, scale_const,
+            type_s="QuantBatchMatmul",
+            input_names_s=_as_list_str(
+                ["x1", "x2", "scale", "offset", "bias", "pertoken_scale"]),
+            optional_input_names_s=_as_list_str(
+                ["offset", "bias", "pertoken_scale"]),
+            output_names_s=_as_list_str(["y"]),
+            output_num_i=1,
+            input_index_i=[0, 1, 2],
+            transpose_x1_s="false",
+            transpose_x2_s="true",
+            dtype_i=1,  # Force float32 intermediate for per-channel Mul
+        )
+
+        # Per-channel correction: Mul by (w_scale / w_scale_mean)
+        if per_channel:
+            y = g.op("Mul", y, correction)
+
+        # Bias
+        y = g.op("Add", y, bias_fp)
+
+        # Cast to target dtype
+        y = g.op("Cast", y, to_i=int(out_to_i))
+        y.setType(x.type())
+        return y
+
+
+def quant_linear_symmetric_int8(x, weight_fp, bias_fp, x_scale, w_q, w_scale, smooth_scale=None):
+    """Quantized linear with symmetric int8, supporting per-channel and SmoothQuant."""
+    # w_scale can be a 1D per-channel tensor [out_features] or a scalar
+    # smooth_scale: optional 1D tensor [in_features] for SmoothQuant
+    out_to_i = int(_onnx_cast_to_i_from_dtype(x.dtype))
+    x_scale_f = float(x_scale)
+
+    if smooth_scale is not None:
+        # Cast smooth_scale to match the model's export dtype so that the
+        # ONNX Constant node inserted for the Div operand has the same dtype
+        # as the input (matching --dtype specified at export time).
+        smooth_scale = smooth_scale.to(x.dtype)
+
+    if isinstance(w_scale, torch.Tensor) and w_scale.dim() == 1:
+        # Per-channel: pre-compute correction factor and mean scale
+        w_scale_np = w_scale.detach().cpu().numpy()
+        w_scale_mean = float(w_scale_np.mean())
+        correction = (w_scale_np / w_scale_mean).astype(np.float32)
+        correction = torch.from_numpy(correction)
+    else:
+        # Per-tensor fallback
+        if isinstance(w_scale, torch.Tensor):
+            w_scale_mean = float(w_scale.cpu().item())
+        else:
+            w_scale_mean = float(w_scale)
+        correction = None
+
+    return _QuantLinearSymInt8.apply(
+        x, weight_fp, bias_fp, x_scale_f, w_q, correction, w_scale_mean, smooth_scale, out_to_i,
+    )
 
 
 
@@ -578,18 +777,24 @@ def _make_additive_causal_mask(attention_mask, q_len, k_len, past_len, dtype):
     return causal + padding
 
 
-def _text_attn_forward(
-    attn_mod, hidden_states, cos4, sin4, attention_mask, cache_pos, past_key, past_value
-):
-    """
-    Text attention forward function for Qwen3-1.7B inference.
-    """
-    input_shape = hidden_states.shape[:-1]
-    head_dim = attn_mod.head_dim
-    num_heads = attn_mod.config.num_attention_heads
-    num_kv_heads = attn_mod.config.num_key_value_heads
-    hidden_shape = (*input_shape, -1, head_dim)
+# pylint: disable=protected-access
+def _track_qkv_ptq_obs(attn_mod, hidden_states):
+    """Track PTQ activation observer for QKV merged linear if enabled."""
+    if TORCH_PTQ_INT8 and hasattr(attn_mod, "_ptq_qkv_act_obs"):
+        attn_mod._ptq_qkv_act_obs(hidden_states.detach())
+        flat_h = hidden_states.detach().reshape(-1, hidden_states.shape[-1])
+        per_ch = flat_h.abs().max(dim=0).values
+        if not hasattr(attn_mod, "_ptq_qkv_act_per_ch_max") or attn_mod._ptq_qkv_act_per_ch_max is None:
+            attn_mod._ptq_qkv_act_per_ch_max = per_ch
+        else:
+            attn_mod._ptq_qkv_act_per_ch_max = torch.maximum(
+                attn_mod._ptq_qkv_act_per_ch_max, per_ch
+            )
 
+
+# pylint: disable=protected-access
+def _compute_qkv_ptq_aware(attn_mod, hidden_states):
+    """Compute QKV projection with optional PTQ int8 quantization."""
     q_w = attn_mod.q_proj.weight
     k_w = attn_mod.k_proj.weight
     v_w = attn_mod.v_proj.weight
@@ -605,10 +810,94 @@ def _text_attn_forward(
 
     q_out_features = int(q_w.shape[0])
     kv_out_features = int(k_w.shape[0])
-    qkv = F.linear(hidden_states, w, b)
+
+    if TORCH_PTQ_INT8 and hasattr(attn_mod, "_ptq_qkv_w_q"):
+        if b is None:
+            b = hidden_states.new_zeros((w.shape[0],))
+        qkv_smooth = getattr(attn_mod, "_ptq_qkv_smooth_scale", None)
+        qkv = quant_linear_symmetric_int8(
+            hidden_states, w, b,
+            attn_mod._ptq_qkv_x_scale, attn_mod._ptq_qkv_w_q,
+            attn_mod._ptq_qkv_w_scale, smooth_scale=qkv_smooth,
+        )
+    else:
+        qkv = F.linear(hidden_states, w, b)
+
     q_lin = qkv[..., :q_out_features]
-    k_lin = qkv[..., q_out_features : q_out_features + kv_out_features]
-    v_lin = qkv[..., q_out_features + kv_out_features :]
+    k_lin = qkv[..., q_out_features: q_out_features + kv_out_features]
+    v_lin = qkv[..., q_out_features + kv_out_features:]
+    return q_lin, k_lin, v_lin, q_out_features, kv_out_features
+
+
+def _compute_prefill_attention(query_states, key_states, value_states, attention_mask,
+                                num_heads, num_kv_heads, scaling, input_shape):
+    """Compute prefill (prompt) attention with causal masking."""
+    q = query_states.permute(0, 2, 1, 3)
+    k = key_states.permute(0, 2, 1, 3)
+    v = value_states.permute(0, 2, 1, 3)
+    if 0 < num_kv_heads < num_heads:
+        rep = num_heads // num_kv_heads
+        k = k.repeat_interleave(rep, dim=1)
+        v = v.repeat_interleave(rep, dim=1)
+    attn = torch.matmul(q, k.transpose(2, 3)) * float(scaling)
+    q_len, k_len = attn.shape[-2], attn.shape[-1]
+    flash_mask = _make_flash_attn_mask(attention_mask, q_len, k_len, 0)
+    if flash_mask.dim() == 4 and flash_mask.shape[1] == 1:
+        flash_mask = flash_mask.expand(attn.shape[0], attn.shape[1], flash_mask.shape[2], flash_mask.shape[3])
+    attn = attn.masked_fill(flash_mask.to(torch.bool), torch.finfo(attn.dtype).min)
+    attn = F.softmax(attn, dim=-1, dtype=torch.float32).to(q.dtype)
+    attn_output = torch.matmul(attn, v).permute(0, 2, 1, 3)
+    attn_output = attn_output.reshape(*input_shape, -1)
+    key_states = key_states.transpose(1, 2)
+    value_states = value_states.transpose(1, 2)
+    return attn_output, key_states, value_states
+
+
+def _compute_decode_attention(query_states, key_states, value_states, attention_mask,
+                               num_heads, num_kv_heads, scaling, input_shape):
+    """Compute decode (token-by-token) flash attention."""
+    pad_mask = attention_mask[:, None, None, :].to(torch.bool).logical_not()
+    attn_output = incre_flash_attention(
+        query_states, key_states, value_states, pad_mask,
+        num_heads=num_heads, scale_value=float(scaling),
+        input_layout="BNSD", num_key_value_heads=num_kv_heads, inner_precise=1,
+    )
+    attn_output = attn_output.transpose(1, 2).reshape(*input_shape, -1)
+    return attn_output
+
+
+# pylint: disable=protected-access
+def _compute_output_proj_ptq_aware(attn_mod, attn_output):
+    """Compute output projection with optional PTQ int8 quantization."""
+    if TORCH_PTQ_INT8 and hasattr(attn_mod.o_proj, "_ptq_w_q"):
+        b = attn_mod.o_proj.bias
+        if b is None:
+            b = attn_output.new_zeros((attn_mod.o_proj.weight.shape[0],))
+        o_smooth = getattr(attn_mod.o_proj, "_ptq_smooth_scale", None)
+        return quant_linear_symmetric_int8(
+            attn_output, attn_mod.o_proj.weight, b,
+            attn_mod.o_proj._ptq_x_scale, attn_mod.o_proj._ptq_w_q,
+            attn_mod.o_proj._ptq_w_scale, smooth_scale=o_smooth,
+        )
+    return attn_mod.o_proj(attn_output)
+
+
+def _text_attn_forward(
+    attn_mod, hidden_states, cos4, sin4, attention_mask, cache_pos, past_key, past_value
+):
+    """
+    Text attention forward function for Qwen3-1.7B inference.
+    Supports both prefill (past_key=None) and decode (past_key=not None) modes.
+    """
+    input_shape = hidden_states.shape[:-1]
+    head_dim = attn_mod.head_dim
+    num_heads = attn_mod.config.num_attention_heads
+    num_kv_heads = attn_mod.config.num_key_value_heads
+    hidden_shape = (*input_shape, -1, head_dim)
+    scaling = getattr(attn_mod, "scaling", 1.0 / (head_dim ** 0.5))
+
+    _track_qkv_ptq_obs(attn_mod, hidden_states)
+    q_lin, k_lin, v_lin, _, _ = _compute_qkv_ptq_aware(attn_mod, hidden_states)
 
     query_states = q_lin.view(hidden_shape)
     key_states = k_lin.view(hidden_shape)
@@ -616,72 +905,31 @@ def _text_attn_forward(
         query_states = _rms_norm_layer(attn_mod.q_norm, query_states)
     if hasattr(attn_mod, "k_norm"):
         key_states = _rms_norm_layer(attn_mod.k_norm, key_states)
-
     value_states = v_lin.view(hidden_shape)
+
     if past_key is not None:
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
 
-    if past_key is None:
-        query_states = rotary_mul(query_states, cos4, sin4)
-        key_states = rotary_mul(key_states, cos4, sin4)
-    else:
-        query_states = rotary_mul(query_states, cos4, sin4)
-        key_states = rotary_mul(key_states, cos4, sin4)
+    query_states = rotary_mul(query_states, cos4, sin4)
+    key_states = rotary_mul(key_states, cos4, sin4)
 
     if past_key is not None:
-        pos = cache_pos
-        if pos is None:
-            raise RuntimeError("cache_pos is required when past_key_values is provided.")
-        if pos.dim() == 2:
-            pos = pos[:, -1]
-        key_cache = scatter(past_key, pos, key_states, reduce="update", axis=-2)
-        value_cache = scatter(past_value, pos, value_states, reduce="update", axis=-2)
-        key_states = key_cache
-        value_states = value_cache
-
-    scaling = getattr(attn_mod, "scaling", 1.0 / (head_dim**0.5))
-    if past_key is None:
-        q = query_states
-        k = key_states
-        v = value_states
-        q = q.permute(0, 2, 1, 3)
-        k = k.permute(0, 2, 1, 3)
-        v = v.permute(0, 2, 1, 3)
-        if 0 < num_kv_heads < num_heads:
-            rep = num_heads // num_kv_heads
-            k = k.repeat_interleave(rep, dim=1)
-            v = v.repeat_interleave(rep, dim=1)
-        attn = torch.matmul(q, k.transpose(2, 3)) * float(scaling)
-        q_len = attn.shape[-2]
-        k_len = attn.shape[-1]
-        flash_mask = _make_flash_attn_mask(attention_mask, q_len, k_len, 0)
-        if flash_mask.dim() == 4 and flash_mask.shape[1] == 1:
-            flash_mask = flash_mask.expand(attn.shape[0], attn.shape[1], flash_mask.shape[2], flash_mask.shape[3])
-        attn = attn.masked_fill(flash_mask.to(torch.bool), torch.finfo(attn.dtype).min)
-        attn = F.softmax(attn, dim=-1, dtype=torch.float32).to(q.dtype)
-        attn_output = torch.matmul(attn, v).permute(0, 2, 1, 3)
-        key_states = key_states.transpose(1, 2)
-        value_states = value_states.transpose(1, 2)
-    else:
-        pad_mask = attention_mask[:, None, None, :].to(torch.bool).logical_not()
-        attn_output = incre_flash_attention(
-            query_states,
-            key_states,
-            value_states,
-            pad_mask,
-            num_heads=num_heads,
-            scale_value=float(scaling),
-            input_layout="BNSD",
-            num_key_value_heads=num_kv_heads,
-            inner_precise=1,
+        pos = cache_pos[:, -1]
+        key_states = scatter(past_key, pos, key_states, reduce="update", axis=-2)
+        value_states = scatter(past_value, pos, value_states, reduce="update", axis=-2)
+        attn_output = _compute_decode_attention(
+            query_states, key_states, value_states, attention_mask,
+            num_heads, num_kv_heads, scaling, input_shape,
         )
-    if past_key is None:
-        attn_output = attn_output.reshape(*input_shape, -1)
     else:
-        attn_output = attn_output.transpose(1, 2).reshape(*input_shape, -1)
-    attn_output = attn_mod.o_proj(attn_output)
+        attn_output, key_states, value_states = _compute_prefill_attention(
+            query_states, key_states, value_states, attention_mask,
+            num_heads, num_kv_heads, scaling, input_shape,
+        )
+
+    attn_output = _compute_output_proj_ptq_aware(attn_mod, attn_output)
     return attn_output, key_states, value_states
 
 
@@ -692,10 +940,9 @@ def _rms_norm_layer(norm_mod, x):
     return y
 
 
+# pylint: disable=protected-access
 def _mlp_gate_up_linear(mlp_mod, x):
-    """
-    Merge gate_proj and up_proj into a single linear and split outputs.
-    """
+    """MLP gate/up merged linear with optional PTQ int8."""
     gate_w = mlp_mod.gate_proj.weight
     up_w = mlp_mod.up_proj.weight
     gate_b = mlp_mod.gate_proj.bias
@@ -705,7 +952,30 @@ def _mlp_gate_up_linear(mlp_mod, x):
         b = None
     else:
         b = torch.cat([gate_b, up_b], dim=0)
-    y = F.linear(x, w, b)
+    if TORCH_PTQ_INT8 and hasattr(mlp_mod, "_ptq_gate_up_act_obs"):
+        mlp_mod._ptq_gate_up_act_obs(x.detach())
+        # Track per-channel activation max for SmoothQuant
+        flat_x_gate = x.detach().reshape(-1, x.shape[-1])
+        per_ch_g = flat_x_gate.abs().max(dim=0).values
+        if not hasattr(mlp_mod, "_ptq_gate_up_act_per_ch_max") or mlp_mod._ptq_gate_up_act_per_ch_max is None:
+            mlp_mod._ptq_gate_up_act_per_ch_max = per_ch_g
+        else:
+            mlp_mod._ptq_gate_up_act_per_ch_max = torch.maximum(mlp_mod._ptq_gate_up_act_per_ch_max, per_ch_g)
+    if TORCH_PTQ_INT8 and hasattr(mlp_mod, "_ptq_gate_up_w_q"):
+        if b is None:
+            b = x.new_zeros((w.shape[0],))
+        gu_smooth = getattr(mlp_mod, "_ptq_gate_up_smooth_scale", None)
+        y = quant_linear_symmetric_int8(
+            x,
+            w,
+            b,
+            mlp_mod._ptq_gate_up_x_scale,
+            mlp_mod._ptq_gate_up_w_q,
+            mlp_mod._ptq_gate_up_w_scale,
+            smooth_scale=gu_smooth,
+        )
+    else:
+        y = F.linear(x, w, b)
     gate_out_features = int(gate_w.shape[0])
     gate = y[..., :gate_out_features]
     up = y[..., gate_out_features:]
@@ -723,6 +993,7 @@ class Qwen3LlmPrefill(torch.nn.Module):
         self.model = model.model
         self.lm_head = lm_head
 
+    # pylint: disable=protected-access
     def forward(self, input_ids, attention_mask, position_ids):
         """
         Prefill forward function for Qwen3-1.7B inference.
@@ -764,7 +1035,23 @@ class Qwen3LlmPrefill(torch.nn.Module):
             if hasattr(mlp, "gate_proj") and hasattr(mlp, "up_proj") and hasattr(mlp, "down_proj"):
                 gate, up = _mlp_gate_up_linear(mlp, hidden_states)
                 x = torch.cat([gate, up], dim=-1)
-                mlp_out = mlp.down_proj(swiglu(x, dim=-1))
+                sw = swiglu(x, dim=-1)
+                if TORCH_PTQ_INT8 and hasattr(mlp.down_proj, "_ptq_w_q"):
+                    b = mlp.down_proj.bias
+                    if b is None:
+                        b = sw.new_zeros((mlp.down_proj.weight.shape[0],))
+                    down_smooth = getattr(mlp.down_proj, "_ptq_smooth_scale", None)
+                    mlp_out = quant_linear_symmetric_int8(
+                        sw,
+                        mlp.down_proj.weight,
+                        b,
+                        mlp.down_proj._ptq_x_scale,
+                        mlp.down_proj._ptq_w_q,
+                        mlp.down_proj._ptq_w_scale,
+                        smooth_scale=down_smooth,
+                    )
+                else:
+                    mlp_out = mlp.down_proj(sw)
                 hidden_states = residual + mlp_out
             else:
                 hidden_states = residual + mlp(hidden_states)
@@ -772,7 +1059,21 @@ class Qwen3LlmPrefill(torch.nn.Module):
             present_v.append(pv)
 
         hidden_states = _rms_norm_layer(self.model.norm, hidden_states)
-        logits = self.lm_head(hidden_states)
+        if TORCH_PTQ_INT8 and hasattr(self.lm_head, "_ptq_w_q"):
+            b = getattr(self.lm_head, "bias", None)
+            if b is None:
+                b = hidden_states.new_zeros((self.lm_head.weight.shape[0],))
+            logits = quant_linear_symmetric_int8(
+                hidden_states,
+                self.lm_head.weight,
+                b,
+                self.lm_head._ptq_x_scale,
+                self.lm_head._ptq_w_q,
+                self.lm_head._ptq_w_scale,
+                smooth_scale=getattr(self.lm_head, "_ptq_smooth_scale", None),
+            )
+        else:
+            logits = self.lm_head(hidden_states)
         present_k = torch.stack(present_k, dim=0)
         present_v = torch.stack(present_v, dim=0)
         return logits, present_k, present_v
@@ -789,6 +1090,7 @@ class Qwen3LlmDecode(torch.nn.Module):
         self.model = model.model
         self.lm_head = lm_head
 
+    # pylint: disable=protected-access
     def forward(self, input_ids, attention_mask, position_ids, past_key_cache, past_value_cache):
         """
         Decode forward function for Qwen3-1.7B inference.
@@ -796,8 +1098,8 @@ class Qwen3LlmDecode(torch.nn.Module):
         inputs_embeds = self.model.embed_tokens(input_ids)
 
         cos, sin = self.model.rotary_emb(inputs_embeds, position_ids)
-        cos4 = cos.unsqueeze(1) if cos.dim() == 3 else cos
-        sin4 = sin.unsqueeze(1) if sin.dim() == 3 else sin
+        cos4 = cos.unsqueeze(1)
+        sin4 = sin.unsqueeze(1)
         hidden_states = inputs_embeds
         present_k = []
         present_v = []
@@ -827,7 +1129,23 @@ class Qwen3LlmDecode(torch.nn.Module):
             if hasattr(mlp, "gate_proj") and hasattr(mlp, "up_proj") and hasattr(mlp, "down_proj"):
                 gate, up = _mlp_gate_up_linear(mlp, hidden_states)
                 x = torch.cat([gate, up], dim=-1)
-                mlp_out = mlp.down_proj(swiglu(x, dim=-1))
+                sw = swiglu(x, dim=-1)
+                if TORCH_PTQ_INT8 and hasattr(mlp.down_proj, "_ptq_w_q"):
+                    b = mlp.down_proj.bias
+                    if b is None:
+                        b = sw.new_zeros((mlp.down_proj.weight.shape[0],))
+                    down_smooth = getattr(mlp.down_proj, "_ptq_smooth_scale", None)
+                    mlp_out = quant_linear_symmetric_int8(
+                        sw,
+                        mlp.down_proj.weight,
+                        b,
+                        mlp.down_proj._ptq_x_scale,
+                        mlp.down_proj._ptq_w_q,
+                        mlp.down_proj._ptq_w_scale,
+                        smooth_scale=down_smooth,
+                    )
+                else:
+                    mlp_out = mlp.down_proj(sw)
                 hidden_states = residual + mlp_out
             else:
                 hidden_states = residual + mlp(hidden_states)
@@ -835,7 +1153,21 @@ class Qwen3LlmDecode(torch.nn.Module):
             present_v.append(pv)
 
         hidden_states = _rms_norm_layer(self.model.norm, hidden_states)
-        logits = self.lm_head(hidden_states)
+        if TORCH_PTQ_INT8 and hasattr(self.lm_head, "_ptq_w_q"):
+            b = getattr(self.lm_head, "bias", None)
+            if b is None:
+                b = hidden_states.new_zeros((self.lm_head.weight.shape[0],))
+            logits = quant_linear_symmetric_int8(
+                hidden_states,
+                self.lm_head.weight,
+                b,
+                self.lm_head._ptq_x_scale,
+                self.lm_head._ptq_w_q,
+                self.lm_head._ptq_w_scale,
+                smooth_scale=getattr(self.lm_head, "_ptq_smooth_scale", None),
+            )
+        else:
+            logits = self.lm_head(hidden_states)
         present_k = torch.stack(present_k, dim=0)
         present_v = torch.stack(present_v, dim=0)
         return logits, present_k, present_v
@@ -878,7 +1210,10 @@ def _prepare_output_paths(output_dir):
     prefill_dir.mkdir(parents=True, exist_ok=True)
     decode_dir.mkdir(parents=True, exist_ok=True)
     prefill_path = prefill_dir / "qwen3_1_7b_llm_prefill.onnx"
-    decode_path = decode_dir / "qwen3_1_7b_llm_decode.onnx"
+    decode_name = "qwen3_1_7b_llm_decode.onnx"
+    if TORCH_PTQ_INT8:
+        decode_name = "qwen3_1_7b_llm_decode_ptq_int8.onnx"
+    decode_path = decode_dir / decode_name
     return prefill_path, decode_path
 
 
@@ -926,7 +1261,6 @@ def _export_prefill_onnx(prefill, prefill_path: Path, dummy_inputs, use_dynamo: 
 
 def _create_decode_dummy_inputs(
     device: str,
-    dummy_seq: int,
     num_layers: int,
     num_kv_heads: int,
     head_dim: int,
@@ -935,7 +1269,6 @@ def _create_decode_dummy_inputs(
     """
     Create dummy inputs for Qwen3-1.7B decode.
     """
-    del dummy_seq
     dummy_step = 1
     dummy_past_len = int(KV_CACHE_LEN)
     dummy_input_ids_step = torch.randint(
@@ -995,6 +1328,270 @@ def _export_decode_onnx(decode, decode_path: Path, dummy_inputs, use_dynamo: boo
     print("LLM decode exported successfully.")
 
 
+def _load_calib_records_jsonl(path: str, max_samples: int):
+    """Load calibration records from JSONL file."""
+    records = []
+    if not path:
+        return records
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            records.append(json.loads(line))
+            if len(records) >= int(max_samples):
+                break
+    return records
+
+
+def _make_synthetic_calib_records(num_samples: int, seq_len: int):
+    """Create synthetic calibration records for PTQ when no real data provided."""
+    records = []
+    seq_len = int(seq_len)
+    for _ in range(int(num_samples)):
+        input_ids = torch.randint(0, 1000, (1, seq_len), dtype=torch.int64).tolist()
+        attention_mask = torch.ones(1, seq_len, dtype=torch.int64).tolist()
+        position_ids = torch.arange(seq_len, dtype=torch.int64).view(1, -1).tolist()
+        gen_len = max(4, min(64, seq_len))
+        generated_ids = torch.randint(0, 1000, (gen_len,), dtype=torch.int64).tolist()
+        records.append(
+            {
+                "prefill_input_ids": input_ids,
+                "prefill_attention_mask": attention_mask,
+                "prefill_position_ids": position_ids,
+                "generated_ids": generated_ids,
+            }
+        )
+    return records
+
+
+def _setup_linear_hooks(decode, device):
+    """Register PTQ activation observers on all Linear modules."""
+    from torch.ao.quantization.observer import MinMaxObserver
+
+    hooks = []
+    linear_modules = []
+    for m in decode.modules():
+        if isinstance(m, torch.nn.Linear):
+            linear_modules.append(m)
+            obs = MinMaxObserver(dtype=torch.qint8, qscheme=torch.per_tensor_symmetric).to(device)
+            m._ptq_act_obs = obs
+
+            def _make_pre_hook():
+                def _pre_hook(mod, inputs):
+                    x = inputs[0]
+                    mod._ptq_act_obs(x.detach())
+                    flat_x = x.detach().reshape(-1, x.shape[-1])
+                    per_ch = flat_x.abs().max(dim=0).values
+                    if not hasattr(mod, "_ptq_act_per_ch_max") or mod._ptq_act_per_ch_max is None:
+                        mod._ptq_act_per_ch_max = per_ch
+                    else:
+                        mod._ptq_act_per_ch_max = torch.maximum(mod._ptq_act_per_ch_max, per_ch)
+                return _pre_hook
+
+            hooks.append(m.register_forward_pre_hook(_make_pre_hook()))
+    return hooks, linear_modules
+
+
+def _setup_qkv_ptq_observers(decode, device):
+    """Register PTQ observers for merged QKV linear (attached to attention modules)."""
+    from torch.ao.quantization.observer import MinMaxObserver
+
+    for layer in decode.model.layers:
+        attn = layer.self_attn
+        obs = MinMaxObserver(dtype=torch.qint8, qscheme=torch.per_tensor_symmetric).to(device)
+        attn._ptq_qkv_act_obs = obs
+
+
+# pylint: disable=protected-access
+def _setup_gate_up_ptq_observers(decode, device):
+    """Register PTQ observers for merged MLP gate/up linear."""
+    from torch.ao.quantization.observer import MinMaxObserver
+
+    for layer in decode.model.layers:
+        mlp = layer.mlp
+        if hasattr(mlp, "gate_proj") and hasattr(mlp, "up_proj"):
+            obs = MinMaxObserver(dtype=torch.qint8, qscheme=torch.per_tensor_symmetric).to(device)
+            mlp._ptq_gate_up_act_obs = obs
+
+
+def _run_calibration_loop(prefill, decode, device, calib_records, max_decode_steps):
+    """Run calibration by replaying prefill+decode steps."""
+    with torch.no_grad():
+        for rec in calib_records:
+            prefill_input_ids = rec.get("prefill_input_ids", None)
+            prefill_attention_mask = rec.get("prefill_attention_mask", None)
+            prefill_position_ids = rec.get("prefill_position_ids", None)
+            gen_ids = rec.get("generated_ids", None)
+            if prefill_input_ids is None or prefill_attention_mask is None or prefill_position_ids is None:
+                continue
+
+            input_ids = torch.tensor(prefill_input_ids, dtype=torch.int64, device=device)
+            attention_mask = torch.tensor(prefill_attention_mask, dtype=torch.int64, device=device)
+            position_ids = torch.tensor(prefill_position_ids, dtype=torch.int64, device=device)
+            _, past_k, past_v = prefill(input_ids, attention_mask, position_ids)
+
+            actual_len = int(attention_mask[0].sum().item())
+            cur_attention_mask = torch.zeros((1, int(KV_CACHE_LEN)), dtype=torch.int64, device=device)
+            if actual_len > 0:
+                cur_attention_mask[0, :actual_len] = 1
+            valid_len = int(actual_len)
+
+            if not gen_ids:
+                continue
+            gen_ids = [int(x) for x in gen_ids]
+            steps = min(int(max_decode_steps), max(len(gen_ids) - 1, 1))
+            for t in range(steps):
+                if valid_len >= int(KV_CACHE_LEN):
+                    break
+                token_id = gen_ids[t]
+                next_input_ids = torch.tensor([[token_id]], dtype=torch.int64, device=device)
+                cur_attention_mask[0, valid_len] = 1
+                next_position_ids = torch.tensor([[valid_len]], dtype=torch.int64, device=device)
+                _, past_k, past_v = decode(
+                    next_input_ids, cur_attention_mask, next_position_ids, past_k, past_v
+                )
+                valid_len += 1
+
+
+def _quantize_one_weight(m, maxabs, per_ch_max, device):
+    """Quantize one Linear module weight with optional SmoothQuant."""
+    w = m.weight.detach()
+    if per_ch_max is not None and w.dim() >= 2:
+        max_w_per_col = w.abs().max(dim=0).values
+        smooth_scale = _compute_smooth_quant_scale(per_ch_max, max_w_per_col, alpha=SMOOTH_ALPHA)
+        smooth_scale = smooth_scale.to(device=device, dtype=torch.float32)
+        w_smoothed = w * smooth_scale.unsqueeze(0)
+        max_act_smoothed = (per_ch_max / smooth_scale).max().clamp_min(1e-8)
+        x_scale_smoothed = float((max_act_smoothed / 127.0).cpu().item())
+        w_q, w_scale = _quantize_weight_symmetric_int8(w_smoothed, per_channel=True, clip_ratio=WEIGHT_CLIP_RATIO)
+        m._ptq_smooth_scale = smooth_scale.detach().cpu()
+        m._ptq_x_scale = x_scale_smoothed
+    else:
+        x_scale = float((maxabs / 127.0).to(dtype=torch.float32).cpu().item())
+        w_q, w_scale = _quantize_weight_symmetric_int8(w, per_channel=True, clip_ratio=WEIGHT_CLIP_RATIO)
+        m._ptq_x_scale = x_scale
+    m._ptq_w_q = w_q
+    m._ptq_w_scale = w_scale
+
+
+def _quantize_linear_modules(linear_modules, device):
+    """Quantize all individual Linear modules after calibration."""
+    for m in linear_modules:
+        obs = getattr(m, "_ptq_act_obs", None)
+        if obs is None or obs.max_val is None or obs.min_val is None:
+            maxabs = torch.tensor(1.0, device=device, dtype=torch.float32)
+            per_ch_max = None
+        else:
+            maxabs = torch.maximum(obs.max_val.abs(), obs.min_val.abs()).to(torch.float32)
+            maxabs = maxabs.clamp_min(1e-8)
+            per_ch_max = getattr(m, "_ptq_act_per_ch_max", None)
+        if int(m.weight.t().shape[-1]) > 0x7FFFFFFF:
+            if hasattr(m, "_ptq_act_obs"):
+                delattr(m, "_ptq_act_obs")
+            continue
+
+        _quantize_one_weight(m, maxabs, per_ch_max, device)
+        for attr in ["_ptq_act_obs", "_ptq_act_per_ch_max"]:
+            if hasattr(m, attr):
+                delattr(m, attr)
+
+
+def _quantize_merged_weights_by_name(decode, device, obs_attr,
+                                      per_ch_attr, merged_name):
+    """Generic quantizer for merged weights (QKV or MLP gate/up)."""
+    for layer in decode.model.layers:
+        target = getattr(layer, merged_name[0], None) if len(merged_name) == 1 else \
+                 getattr(getattr(layer, merged_name[0], None), merged_name[1], None) if len(merged_name) == 2 else None
+        if target is None:
+            continue
+        if merged_name == ("mlp",):
+            if not (hasattr(target, "gate_proj") and hasattr(target, "up_proj")):
+                continue
+            w = torch.cat([target.gate_proj.weight, target.up_proj.weight], dim=0)
+        elif hasattr(target, "q_proj"):
+            w = torch.cat([target.q_proj.weight, target.k_proj.weight, target.v_proj.weight], dim=0)
+        else:
+            continue
+
+        obs = getattr(target, obs_attr, None)
+        if obs is None or obs.max_val is None or obs.min_val is None:
+            maxabs = torch.tensor(1.0, device=device, dtype=torch.float32)
+            per_ch_max = None
+        else:
+            maxabs = torch.maximum(obs.max_val.abs(), obs.min_val.abs()).to(torch.float32).clamp_min(1e-8)
+            per_ch_max = getattr(target, per_ch_attr, None)
+
+        if int(w.t().shape[-1]) > 0x7FFFFFFF:
+            for attr in [obs_attr, per_ch_attr]:
+                if hasattr(target, attr):
+                    delattr(target, attr)
+            continue
+
+        if per_ch_max is not None:
+            max_w_per_col = w.abs().max(dim=0).values
+            smooth_scale = _compute_smooth_quant_scale(per_ch_max, max_w_per_col, alpha=SMOOTH_ALPHA)
+            smooth_scale = smooth_scale.to(device=device, dtype=torch.float32)
+            w_smoothed = w * smooth_scale.unsqueeze(0)
+            max_act_smoothed = (per_ch_max / smooth_scale).max().clamp_min(1e-8)
+            x_scale_smoothed = float((max_act_smoothed / 127.0).cpu().item())
+            w_q, w_scale = _quantize_weight_symmetric_int8(w_smoothed, per_channel=True, clip_ratio=WEIGHT_CLIP_RATIO)
+            smooth_attr = obs_attr.replace("_act_obs", "_smooth_scale")
+            x_scale_attr = obs_attr.replace("_act_obs", "_x_scale")
+            target.__setattr__(smooth_attr, smooth_scale.detach().cpu())
+            target.__setattr__(x_scale_attr, x_scale_smoothed)
+        else:
+            x_scale = float((maxabs / 127.0).to(dtype=torch.float32).cpu().item())
+            x_scale_attr = obs_attr.replace("_act_obs", "_x_scale")
+            w_q, w_scale = _quantize_weight_symmetric_int8(w, per_channel=True, clip_ratio=WEIGHT_CLIP_RATIO)
+            target.__setattr__(x_scale_attr, x_scale)
+        w_q_attr = obs_attr.replace("_act_obs", "_w_q")
+        w_scale_attr = obs_attr.replace("_act_obs", "_w_scale")
+        target.__setattr__(w_q_attr, w_q)
+        target.__setattr__(w_scale_attr, w_scale)
+        for attr in [obs_attr, per_ch_attr]:
+            if hasattr(target, attr):
+                delattr(target, attr)
+
+
+def _torch_ptq_static_int8_quantize_decode(
+    prefill,
+    decode,
+    device: torch.device,
+    calib_records,
+    decode_example_inputs,
+    max_decode_steps: int,
+):
+    """PTQ static int8 quantization for decode model using SmoothQuant."""
+    _ = decode_example_inputs
+    decode.eval()
+    prefill.eval()
+
+    hooks, linear_modules = _setup_linear_hooks(decode, device)
+    _setup_qkv_ptq_observers(decode, device)
+    _setup_gate_up_ptq_observers(decode, device)
+    _run_calibration_loop(prefill, decode, device, calib_records, max_decode_steps)
+
+    for h in hooks:
+        h.remove()
+
+    _quantize_linear_modules(linear_modules, device)
+
+    # Quantize merged QKV weights per layer with SmoothQuant.
+    _quantize_merged_weights_by_name(decode, device,
+                                     obs_attr="_ptq_qkv_act_obs",
+                                     per_ch_attr="_ptq_qkv_act_per_ch_max",
+                                     merged_name=("self_attn",))
+
+    # Quantize merged MLP gate/up weights per layer with SmoothQuant.
+    _quantize_merged_weights_by_name(decode, device,
+                                     obs_attr="_ptq_gate_up_act_obs",
+                                     per_ch_attr="_ptq_gate_up_act_per_ch_max",
+                                     merged_name=("mlp",))
+
+    return decode
+
+
 def export_llm_prefill_decode(
     model, output_dir, device="cpu", dummy_seq_len=8, use_dynamo=False
 ):
@@ -1018,12 +1615,28 @@ def export_llm_prefill_decode(
 
     decode_dummy_inputs = _create_decode_dummy_inputs(
         device=device,
-        dummy_seq=dummy_seq,
         num_layers=num_layers,
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
         kv_dtype=kv_dtype,
     )
+    if TORCH_PTQ_INT8:
+        calib_records = _load_calib_records_jsonl(
+            TORCH_PTQ_CALIB_JSONL, TORCH_PTQ_MAX_SAMPLES
+        )
+        if not calib_records:
+            calib_records = _make_synthetic_calib_records(
+                num_samples=min(4, int(TORCH_PTQ_MAX_SAMPLES)),
+                seq_len=max(8, int(dummy_seq_len)),
+            )
+        decode = _torch_ptq_static_int8_quantize_decode(
+            prefill=prefill,
+            decode=decode,
+            device=torch.device(device),
+            calib_records=calib_records,
+            decode_example_inputs=decode_dummy_inputs,
+            max_decode_steps=TORCH_PTQ_MAX_DECODE_STEPS,
+        )
     _export_decode_onnx(
         decode=decode,
         decode_path=decode_path,
@@ -1032,42 +1645,56 @@ def export_llm_prefill_decode(
     )
 
 
-def main():
-    """
-    Main function to export Qwen3-1.7B model to ONNX format.
-    """
+def _parse_args_and_config():
+    """Parse CLI arguments and update global configuration."""
     parser = argparse.ArgumentParser(description="Export Qwen3-1.7B to ONNX")
-    parser.add_argument(
-        "--model-id",
-        type=str,
-        default="./Qwen3-1.7B",
-        help="HuggingFace model ID or local path",
-    )
-    parser.add_argument(
-        "--output-dir", type=str, default="./qwen3_1_7b_onnx", help="Output directory"
-    )
-    parser.add_argument(
-        "--device", type=str, default="cpu", help="Device for export (cpu or cuda)"
-    )
-    parser.add_argument(
-        "--dummy-seq-len", type=int, default=8, help="Dummy sequence length for export"
-    )
-    parser.add_argument(
-        "--dtype",
-        type=str,
-        default="fp16",
-        choices=["fp16", "bf16", "fp32"],
-        help="Export dtype",
-    )
-    parser.add_argument(
-        "--use-dynamo", action="store_true", help="Use torch dynamo exporter path"
-    )
+    parser.add_argument("--model-id", type=str, default="./Qwen3-1.7B",
+                        help="HuggingFace model ID or local path")
+    parser.add_argument("--output-dir", type=str, default="./qwen3_1_7b_onnx",
+                        help="Output directory")
+    parser.add_argument("--device", type=str, default="cpu",
+                        help="Device for export (cpu or cuda)")
+    parser.add_argument("--dummy-seq-len", type=int, default=8,
+                        help="Dummy sequence length for export")
+    parser.add_argument("--kv-cache-len", type=int, default=512,
+                        help="Fixed KV cache sequence length for export")
+    parser.add_argument("--dtype", type=str, default="fp32",
+                        choices=["fp16", "bf16", "fp32"], help="Export dtype")
+    parser.add_argument("--use-dynamo", action="store_true",
+                        help="Use torch dynamo exporter path")
+    parser.add_argument("--disable-torch-ptq-int8", action="store_true",
+                        help="Disable PTQ static int8 quantization.")
+    parser.add_argument("--torch-ptq-calib-jsonl", type=str, default="calib.jsonl",
+                        help="Calibration JSONL from infer_qwen3_1_7b_mslite.py --dump-calib.")
+    parser.add_argument("--torch-ptq-max-samples", type=int, default=32,
+                        help="Max calibration samples to load from JSONL.")
+    parser.add_argument("--torch-ptq-max-decode-steps", type=int, default=32,
+                        help="Max decode steps per sample during calibration.")
+    parser.add_argument("--smooth-alpha", type=float, default=0.65,
+                        help="SmoothQuant alpha (0.0-1.0). Lower = more activation smoothing.")
+    parser.add_argument("--weight-clip-ratio", type=float, default=0.0,
+                        help="Clip weight outliers before quantization (0.01 = top 1%).")
     args = parser.parse_args()
 
+    global KV_CACHE_LEN
+    KV_CACHE_LEN = int(args.kv_cache_len)
+    global TORCH_PTQ_INT8, TORCH_PTQ_CALIB_JSONL, TORCH_PTQ_MAX_SAMPLES, TORCH_PTQ_MAX_DECODE_STEPS
+    global SMOOTH_ALPHA, WEIGHT_CLIP_RATIO
+    TORCH_PTQ_INT8 = not args.disable_torch_ptq_int8
+    TORCH_PTQ_CALIB_JSONL = str(args.torch_ptq_calib_jsonl or "")
+    TORCH_PTQ_MAX_SAMPLES = int(args.torch_ptq_max_samples)
+    TORCH_PTQ_MAX_DECODE_STEPS = int(args.torch_ptq_max_decode_steps)
+    SMOOTH_ALPHA = float(args.smooth_alpha)
+    WEIGHT_CLIP_RATIO = float(args.weight_clip_ratio)
+    print(f"  SmoothQuant alpha={SMOOTH_ALPHA:.2f}, weight_clip={WEIGHT_CLIP_RATIO:.4f}")
+    return args
+
+
+def _load_export_model(args):
+    """Load model from HuggingFace and run export."""
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\nLoading model {args.model_id} for export (dtype={args.dtype})...")
     if args.dtype == "fp16":
         torch_dtype = torch.float16
     elif args.dtype == "bf16":
@@ -1075,20 +1702,14 @@ def main():
     else:
         torch_dtype = torch.float32
     device = torch.device(args.device)
+
+    print(f"\nLoading model {args.model_id} for export (dtype={args.dtype})...")
     model = AutoModelForCausalLM.from_pretrained(
-        args.model_id,
-        torch_dtype=torch_dtype,
-        low_cpu_mem_usage=False,
-        attn_implementation="eager",
+        args.model_id, torch_dtype=torch_dtype,
+        low_cpu_mem_usage=False, attn_implementation="eager",
     ).to(device)
 
-    export_llm_prefill_decode(
-        model,
-        output_dir,
-        str(device),
-        args.dummy_seq_len,
-        args.use_dynamo,
-    )
+    export_llm_prefill_decode(model, output_dir, str(device), args.dummy_seq_len, args.use_dynamo)
 
     print("Clearing memory after export...")
     del model
@@ -1097,6 +1718,12 @@ def main():
         torch.cuda.empty_cache()
 
     print(f"\nExport finished. Files saved in {args.output_dir}")
+
+
+def main():
+    """Main function to export Qwen3-1.7B model to ONNX format."""
+    args = _parse_args_and_config()
+    _load_export_model(args)
 
 
 if __name__ == "__main__":
