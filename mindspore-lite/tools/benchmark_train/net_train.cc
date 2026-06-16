@@ -553,35 +553,68 @@ int NetTrain::InitDumpTensorDataCallbackParameter() {
   return RET_OK;
 }
 
+bool NetTrain::BeforeTimeProfilingCallback(const std::vector<mindspore::MSTensor> &before_inputs,
+                                           const std::vector<mindspore::MSTensor> &before_outputs,
+                                           const mindspore::MSCallBackParam &callParam) {
+  if (before_inputs.empty()) {
+    MS_LOG(INFO) << "The num of beforeInputs is empty";
+  }
+  if (before_outputs.empty()) {
+    MS_LOG(INFO) << "The num of beforeOutputs is empty";
+  }
+  if (op_times_by_type_.find(callParam.node_type) == op_times_by_type_.end()) {
+    op_times_by_type_.insert(std::make_pair(callParam.node_type, std::make_pair(0, 0.0f)));
+  }
+  if (op_times_by_name_.find(callParam.node_name) == op_times_by_name_.end()) {
+    op_times_by_name_.insert(std::make_pair(callParam.node_name, std::make_pair(0, 0.0f)));
+  }
+  op_call_times_total_++;
+  op_begin_ = GetTimeUs();
+  if ((callParam.node_type == "Adam") || (callParam.node_type == "Assign") || callParam.node_type == "SGD") {
+    for (auto tensor : before_outputs) {
+      std::fill(reinterpret_cast<int8_t *>(tensor.MutableData()),
+                reinterpret_cast<int8_t *>(tensor.MutableData()) + tensor.DataSize(), 0);
+    }
+  }
+  return true;
+}
+
+bool NetTrain::AfterTimeProfilingCallback(const std::vector<mindspore::MSTensor> &after_inputs,
+                                          const std::vector<mindspore::MSTensor> &after_outputs,
+                                          const mindspore::MSCallBackParam &call_param) {
+  uint64_t opEnd = GetTimeUs();
+  if (after_inputs.empty()) {
+    MS_LOG(INFO) << "The num of after inputs is empty";
+  }
+  if (after_outputs.empty()) {
+    MS_LOG(INFO) << "The num of after outputs is empty";
+  }
+  float cost = static_cast<float>(opEnd - op_begin_) / 1000.0f;
+  op_cost_total_ += cost;
+  op_times_by_type_[call_param.node_type].first++;
+  op_times_by_type_[call_param.node_type].second += cost;
+  op_times_by_name_[call_param.node_name].first++;
+  op_times_by_name_[call_param.node_name].second += cost;
+  if (flags_->layer_checksum_) {
+    for (size_t i = 0; i < after_inputs.size(); i++) {
+      auto ms_tensor = after_inputs.at(i);
+      CheckSum(&ms_tensor, call_param.node_type, i, "in");
+    }
+    for (size_t i = 0; i < after_outputs.size(); i++) {
+      auto ms_tensor = after_outputs.at(i);
+      CheckSum(&ms_tensor, call_param.node_type, i, "out");
+    }
+    std::cout << std::endl;
+  }
+  return true;
+}
+
 int NetTrain::InitTimeProfilingCallbackParameter() {
-  // before callback
   before_call_back_ = [&](const std::vector<mindspore::MSTensor> &before_inputs,
                           const std::vector<mindspore::MSTensor> &before_outputs,
                           const mindspore::MSCallBackParam &callParam) {
-    if (before_inputs.empty()) {
-      MS_LOG(INFO) << "The num of beforeInputs is empty";
-    }
-    if (before_outputs.empty()) {
-      MS_LOG(INFO) << "The num of beforeOutputs is empty";
-    }
-    if (op_times_by_type_.find(callParam.node_type) == op_times_by_type_.end()) {
-      op_times_by_type_.insert(std::make_pair(callParam.node_type, std::make_pair(0, 0.0f)));
-    }
-    if (op_times_by_name_.find(callParam.node_name) == op_times_by_name_.end()) {
-      op_times_by_name_.insert(std::make_pair(callParam.node_name, std::make_pair(0, 0.0f)));
-    }
-    op_call_times_total_++;
-    op_begin_ = GetTimeUs();
-    if ((callParam.node_type == "Adam") || (callParam.node_type == "Assign") || callParam.node_type == "SGD") {
-      for (auto tensor : before_outputs) {
-        std::fill(reinterpret_cast<int8_t *>(tensor.MutableData()),
-                  reinterpret_cast<int8_t *>(tensor.MutableData()) + tensor.DataSize(), 0);
-      }
-    }
-    return true;
+    return BeforeTimeProfilingCallback(before_inputs, before_outputs, callParam);
   };
-
-  // after callback
   after_call_back_ = [&](const std::vector<mindspore::MSTensor> &after_inputs,
                          const std::vector<mindspore::MSTensor> &after_outputs,
                          const mindspore::MSCallBackParam &call_param) {
@@ -614,53 +647,53 @@ int NetTrain::InitTimeProfilingCallbackParameter() {
   return RET_OK;
 }
 
-int NetTrain::PrintResult(const std::vector<std::string> &title,
-                          const std::map<std::string, std::pair<int, float>> &result) {
-  std::vector<size_t> columnLenMax(kFieldsToPrint);
-  std::vector<std::vector<std::string>> rows;
-
+void NetTrain::BuildPrintRows(const std::map<std::string, std::pair<int, float>> &result,
+                              std::vector<size_t> *columnLenMax, std::vector<std::vector<std::string>> *rows) {
   for (auto &iter : result) {
     std::string stringBuf[kFieldsToPrint];
     std::vector<std::string> columns;
     size_t len;
 
     len = iter.first.size();
-    if (len > columnLenMax.at(kField0)) {
-      columnLenMax.at(kField0) = len + kPrintOffset;
+    if (len > columnLenMax->at(kField0)) {
+      columnLenMax->at(kField0) = len + kPrintOffset;
     }
     columns.push_back(iter.first);
 
     stringBuf[kField1] = std::to_string(iter.second.second / flags_->epochs_);
     len = stringBuf[kField1].length();
-    if (len > columnLenMax.at(kField1)) {
-      columnLenMax.at(kField1) = len + kPrintOffset;
+    if (len > columnLenMax->at(kField1)) {
+      columnLenMax->at(kField1) = len + kPrintOffset;
     }
     columns.emplace_back(stringBuf[kField1]);
 
     stringBuf[kField2] = std::to_string(iter.second.second / op_cost_total_);
     len = stringBuf[kField2].length();
-    if (len > columnLenMax.at(kField2)) {
-      columnLenMax.at(kField2) = len + kPrintOffset;
+    if (len > columnLenMax->at(kField2)) {
+      columnLenMax->at(kField2) = len + kPrintOffset;
     }
     columns.emplace_back(stringBuf[kField2]);
 
     stringBuf[kField3] = std::to_string(iter.second.first);
     len = stringBuf[kField3].length();
-    if (len > columnLenMax.at(kField3)) {
-      columnLenMax.at(kField3) = len + kPrintOffset;
+    if (len > columnLenMax->at(kField3)) {
+      columnLenMax->at(kField3) = len + kPrintOffset;
     }
     columns.emplace_back(stringBuf[kField3]);
 
     stringBuf[kField4] = std::to_string(iter.second.second);
     len = stringBuf[kField4].length();
-    if (len > columnLenMax.at(kField4)) {
-      columnLenMax.at(kField4) = len + kPrintOffset;
+    if (len > columnLenMax->at(kField4)) {
+      columnLenMax->at(kField4) = len + kPrintOffset;
     }
     columns.emplace_back(stringBuf[kField4]);
 
-    rows.push_back(columns);
+    rows->push_back(columns);
   }
+}
 
+void NetTrain::PrintFormattedTable(const std::vector<std::string> &title, std::vector<size_t> &columnLenMax,
+                                   const std::vector<std::vector<std::string>> &rows) {
   printf("-------------------------------------------------------------------------\n");
   for (int i = 0; i < kFieldsToPrint; i++) {
     auto printBuf = title[i];
@@ -679,6 +712,14 @@ int NetTrain::PrintResult(const std::vector<std::string> &title,
     }
     printf("\n");
   }
+}
+
+int NetTrain::PrintResult(const std::vector<std::string> &title,
+                          const std::map<std::string, std::pair<int, float>> &result) {
+  std::vector<size_t> columnLenMax(kFieldsToPrint);
+  std::vector<std::vector<std::string>> rows;
+  BuildPrintRows(result, &columnLenMax, &rows);
+  PrintFormattedTable(title, columnLenMax, rows);
   return RET_OK;
 }
 }  // namespace lite

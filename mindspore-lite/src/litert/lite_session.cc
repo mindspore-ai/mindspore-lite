@@ -441,6 +441,45 @@ void LiteSession::InitGraphInOutTensorsMap(const lite::Model *model) {
   InitGraphOutputTensorMap(model);
 }
 
+void LiteSession::ReplaceSubgraphTensor(Tensor *src_tensor, Tensor *new_tensor) {
+  for (auto subgraph : kernels_) {
+    auto in_size = subgraph->in_tensors().size();
+    for (size_t i = 0; i < in_size; ++i) {
+      if (subgraph->in_tensors()[i] == src_tensor) {
+        subgraph->set_in_tensor(new_tensor, i);
+      }
+    }
+    auto out_size = subgraph->out_tensors().size();
+    for (size_t i = 0; i < out_size; ++i) {
+      if (subgraph->out_tensors()[i] == src_tensor) {
+        subgraph->set_out_tensor(new_tensor, i);
+      }
+    }
+    if (subgraph->desc().arch == kernel::kDelegate) {
+      continue;
+    }
+    /* node input and output */
+    auto nodes = reinterpret_cast<kernel::SubGraphKernel *>(subgraph)->nodes();
+    auto nodes_size = nodes.size();
+    for (size_t i = 0; i < nodes_size; ++i) {
+      auto node = nodes[i];
+      out_size = node->out_tensors().size();
+      for (size_t j = 0; j < out_size; ++j) {
+        if (node->out_tensors()[j] == src_tensor) {
+          node->set_out_tensor(new_tensor, j);
+          break;
+        }
+      }
+      in_size = node->in_tensors().size();
+      for (size_t j = 0; j < in_size; ++j) {
+        if (node->in_tensors()[j] == src_tensor) {
+          node->set_in_tensor(new_tensor, j);
+        }
+      }
+    }
+  }
+}
+
 int LiteSession::IsolateOutputTensor() {
   for (Tensor *src_tensor : outputs_) {
     if (src_tensor->IsGraphInput()) {
@@ -452,61 +491,20 @@ int LiteSession::IsolateOutputTensor() {
       MS_LOG(ERROR) << "duplicate new output failed.";
       return RET_NULL_PTR;
     }
-    new_tensor->set_allocator(src_tensor->allocator()); /* GPU use opencl allocator */
+    new_tensor->set_allocator(src_tensor->allocator());
     new_tensor->set_tensor_name(src_tensor->tensor_name() + "_duplicate");
     for (LiteQuantParam quant : src_tensor->quant_params()) {
       new_tensor->AddQuantParam(quant);
     }
     new_tensor->set_init_ref_count(src_tensor->init_ref_count());
-
     /* src tensor set for graph calculate */
     if (src_tensor->data_type() == kNumberTypeFloat16) {
       src_tensor->set_data_type(kNumberTypeFloat32);
     }
     src_tensor->set_ref_count(1);
-
     isolate_graph_output_map_.insert(std::make_pair(new_tensor, src_tensor));
-
-    /* set new tensor for calculate */
-    for (auto subgraph : kernels_) {
-      /* subgraph input and output */
-      auto in_size = subgraph->in_tensors().size();
-      for (size_t i = 0; i < in_size; ++i) {
-        if (subgraph->in_tensors()[i] == src_tensor) {
-          subgraph->set_in_tensor(new_tensor, i);
-        }
-      }
-      auto out_size = subgraph->out_tensors().size();
-      for (size_t i = 0; i < out_size; ++i) {
-        if (subgraph->out_tensors()[i] == src_tensor) {
-          subgraph->set_out_tensor(new_tensor, i);
-        }
-      }
-      if (subgraph->desc().arch == kernel::kDelegate) {
-        continue;
-      }
-      /* node input and output */
-      auto nodes = reinterpret_cast<kernel::SubGraphKernel *>(subgraph)->nodes();
-      auto nodes_size = nodes.size();
-      for (size_t i = 0; i < nodes_size; ++i) {
-        auto node = nodes[i];
-        out_size = node->out_tensors().size();
-        for (size_t j = 0; j < out_size; ++j) {
-          if (node->out_tensors()[j] == src_tensor) {
-            node->set_out_tensor(new_tensor, j);
-            break;
-          }
-        }
-        in_size = node->in_tensors().size();
-        for (size_t j = 0; j < in_size; ++j) {
-          if (node->in_tensors()[j] == src_tensor) {
-            node->set_in_tensor(new_tensor, j);
-          }
-        }
-      }
-    }
+    ReplaceSubgraphTensor(src_tensor, new_tensor);
   }
-
   UpdateLinkInfoForIsolateOutput();
   return RET_OK;
 }
@@ -686,65 +684,59 @@ int LiteSession::SetAllocatorForDelegateKernels(const kernel::KernelExec *kernel
   return RET_OK;
 }
 
-int LiteSession::DrawGraph(kernel::SubGraphKernel *graph) {
-  if (graph == nullptr) {
-    return RET_NULL_PTR;
+namespace {
+void WriteShapeToDotFile(std::ofstream &dotfile, const std::vector<int32_t> &shapes) {
+  for (auto iter = shapes.begin(); iter != shapes.end(); iter++) {
+    if (iter == shapes.end() - 1) {
+      dotfile << *iter;
+    } else {
+      dotfile << *iter << "*";
+    }
   }
-  // create and open .dot file
-  std::ofstream dotfile;
-  dotfile.open("./graph.dot", std::ios::out | std::ios::trunc);
-  if (!dotfile.is_open()) {
-    MS_LOG(ERROR) << "create or open dotfile failed.";
-    return RET_ERROR;
-  }
-  // write data to .dot file
-  dotfile << "digraph " << graph->name() << " {\n";
-  for (auto node : graph->nodes()) {
+}
+
+void WriteNodesToDotFile(std::ofstream &dotfile, const std::vector<kernel::KernelExec *> &nodes) {
+  for (auto node : nodes) {
     std::replace(node->name().begin(), node->name().end(), '/', '-');
     // first node
     if (node->in_kernels().empty()) {
       dotfile << "\tinput->" << node->name();
       dotfile << "[label=\"";
-      std::vector<int> input_shapes = node->in_tensors().front()->shape();
-      for (auto iter = input_shapes.begin(); iter != input_shapes.end(); iter++) {
-        if (iter == input_shapes.end() - 1) {
-          dotfile << *iter;
-        } else {
-          dotfile << *iter << "*";
-        }
-      }
+      auto input_shapes = node->in_tensors().front()->shape();
+      WriteShapeToDotFile(dotfile, input_shapes);
       dotfile << "\"]\n";
       continue;
     }
-
     for (size_t i = 0; i < node->in_kernels().size(); ++i) {
       dotfile << "\t" << node->in_kernels()[i]->name() << "->" << node->name() << "[label=\"";
-      std::vector<int32_t> in_kernel_shapes = node->in_tensors()[i]->shape();
-
-      for (auto iter = in_kernel_shapes.begin(); iter != in_kernel_shapes.end(); iter++) {
-        if (iter == in_kernel_shapes.end() - 1) {
-          dotfile << *iter;
-        } else {
-          dotfile << *iter << "*";
-        }
-      }
+      auto in_kernel_shapes = node->in_tensors()[i]->shape();
+      WriteShapeToDotFile(dotfile, in_kernel_shapes);
       dotfile << "\"]\n";
     }
     // last node
     if (node->out_kernels().empty()) {
       dotfile << "\t" << node->name() << "->output";
       dotfile << "[label=\"";
-      std::vector<int32_t> out_shapes = node->out_tensors().front()->shape();
-      for (auto iter = out_shapes.begin(); iter != out_shapes.end(); iter++) {
-        if (iter == out_shapes.end() - 1) {
-          dotfile << *iter;
-        } else {
-          dotfile << *iter << "*";
-        }
-      }
+      auto out_shapes = node->out_tensors().front()->shape();
+      WriteShapeToDotFile(dotfile, out_shapes);
       dotfile << "\"]\n";
     }
   }
+}
+}  // namespace
+
+int LiteSession::DrawGraph(kernel::SubGraphKernel *graph) {
+  if (graph == nullptr) {
+    return RET_NULL_PTR;
+  }
+  std::ofstream dotfile;
+  dotfile.open("./graph.dot", std::ios::out | std::ios::trunc);
+  if (!dotfile.is_open()) {
+    MS_LOG(ERROR) << "create or open dotfile failed.";
+    return RET_ERROR;
+  }
+  dotfile << "digraph " << graph->name() << " {\n";
+  WriteNodesToDotFile(dotfile, graph->nodes());
   dotfile.close();
   return RET_OK;
 }
@@ -1137,17 +1129,7 @@ void LiteSession::BindThread(bool if_bind) {
   return;
 }
 
-LiteSession::~LiteSession() {
-  delegate_.reset();
-  bool expected = false;
-  if (!is_running_.compare_exchange_strong(expected, true)) {
-    MS_LOG(ERROR) << "Not support multi-threading";
-    return;
-  }
-  for (auto *kernel : kernels_) {
-    delete kernel;
-    kernel = nullptr;
-  }
+void LiteSession::CleanupTensors() {
   for (auto tensor : tensors_) {
     if (tensor == nullptr) {
       continue;
@@ -1157,7 +1139,6 @@ LiteSession::~LiteSession() {
     if (tensor->IsConst() && !tensor->own_data()) {
       tensor->set_data(nullptr);
     }
-
     /* situation : user set graph-output-tensor data */
     if (tensor->IsGraphOutput() && tensor->allocator() == nullptr) {
       tensor->set_data(nullptr);
@@ -1165,28 +1146,26 @@ LiteSession::~LiteSession() {
     delete tensor;
     tensor = nullptr;
   }
-
   for (auto item : isolate_graph_output_map_) {
     auto isolate_output_tensor = item.first;
     isolate_output_tensor->set_data(nullptr);
     delete isolate_output_tensor;
     isolate_output_tensor = nullptr;
   }
-
   for (auto map : isolate_input_map_) {
     auto isolate_input_tensor = map.first;
     isolate_input_tensor->set_data(nullptr);
     delete isolate_input_tensor;
   }
+}
 
-  // Tensor * in input_map output_map are freed in tensors
+void LiteSession::CleanupResources() {
   input_map_.clear();
   input_shape_map_.clear();
   output_node_map_.clear();
   output_tensor_map_.clear();
   input_vec_.clear();
   isolate_graph_output_map_.clear();
-
   delete this->executor_;
   this->executor_ = nullptr;
 #ifdef GPU_OPENCL
@@ -1208,6 +1187,21 @@ LiteSession::~LiteSession() {
   }
   delete (model_);
   model_ = nullptr;
+}
+
+LiteSession::~LiteSession() {
+  delegate_.reset();
+  bool expected = false;
+  if (!is_running_.compare_exchange_strong(expected, true)) {
+    MS_LOG(ERROR) << "Not support multi-threading";
+    return;
+  }
+  for (auto *kernel : kernels_) {
+    delete kernel;
+    kernel = nullptr;
+  }
+  CleanupTensors();
+  CleanupResources();
   is_running_.store(false);
 }
 

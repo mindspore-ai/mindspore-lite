@@ -103,6 +103,9 @@ class SearchSubGraph {
   void SearchMultyInNodes(std::vector<uint32_t> *multy_in_nodes);
   void InitMiddleSubgraph(const std::vector<uint32_t> *multy_in_nodes);
   void InsertNodeByMid(uint32_t node_index, Subgraph *subgraph, uint32_t last_index);
+  void InsertMultyInNode(uint32_t node_index, Subgraph *subgraph,
+                         std::unordered_map<uint32_t, std::vector<Subgraph>>::iterator subs_iter);
+  void SearchNextNodesForMid(uint32_t node_index, Subgraph *subgraph, const std::vector<uint32_t> &inputs);
   void InsertHeadNode(uint32_t index, Subgraph *subgraph);
   void OptimizeAfterFusion(std::vector<Subgraph> *sub_graphs, uint32_t root_node_index);
 

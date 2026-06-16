@@ -194,6 +194,8 @@ class FusionEltwiseOpenCLKernel : public OpenCLKernel {
  public:
   std::string Codegen();
   std::string CodegenCore(FusionEltwiseParameter *param, const std::string &out_name = "out", int degree = 0);
+  std::string CodegenActivation(EltwiseOperator op, const std::string &cl_prefix, const std::string &out_name,
+                                const std::string &var0);
   std::string GetFormatVarName(std::string name = "");
   int GetTensorIdx(lite::Tensor *in_tensor);
 

@@ -44,6 +44,8 @@ class WinogradOpenCLKernel : public Conv2DOpenCLKernel {
   int BuildKernel() override;
   int InitFilter() override;
   int AllocateMemory();
+  size_t AllocateFilterMem();
+  int WriteFilterData(size_t size);
 
   cl::Kernel kernel_4x4to36_;
   cl::Kernel kernel_36to4x4_;

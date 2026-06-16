@@ -121,37 +121,25 @@ int WinogradOpenCLKernel::BuildKernel() {
   return RET_OK;
 }
 
-int WinogradOpenCLKernel::InitFilter() {
-  if (packed_filter_ != nullptr) {
-    MS_LOG(DEBUG) << "filter is already inited";
-    return RET_OK;
-  }
-
+size_t WinogradOpenCLKernel::AllocateFilterMem() {
   auto allocator = ocl_runtime_->GetAllocator();
-
-  // allocate opencl memory: buffer or image2d
-  size_t size = 0;
   int Ogroup = 2;
+  size_t size = 0;
   if (filter_type_ == MemType::IMG) {
     size_t width = F43_OH * F43_OW * UP_ROUND(CI_, CI_TILE);
     size_t height = static_cast<size_t>(CO_SLICES_);
     size_t dtype = use_fp16_ ? CL_HALF_FLOAT : CL_FLOAT;
     size = width * height * CO_TILE * sizeof_FLT_;
     packed_filter_ = allocator->Malloc({width, height, dtype});
-    if (packed_filter_ == nullptr) {
-      MS_LOG(ERROR) << "Malloc failed.";
-      return RET_ERROR;
-    }
   } else {
     size = UP_DIV(CO_SLICES_, Ogroup) * F43_OH * F43_OW * CI_SLICES_ * Ogroup * CI_TILE * CO_TILE * sizeof_FLT_;
     packed_filter_ = allocator->Malloc(size, MemType::BUF);
-    if (packed_filter_ == nullptr) {
-      MS_LOG(ERROR) << "Malloc failed.";
-      return RET_ERROR;
-    }
   }
+  return size;
+}
 
-  // rearrange filter
+int WinogradOpenCLKernel::WriteFilterData(size_t size) {
+  auto allocator = ocl_runtime_->GetAllocator();
   auto filter_tensor = in_tensors_.at(1);
   void *src_filter_data = stored_filter_ == nullptr ? filter_tensor->data() : stored_filter_;
   MS_ASSERT(src_filter_data);
@@ -161,18 +149,19 @@ int WinogradOpenCLKernel::InitFilter() {
   if (ret != RET_OK) {
     return ret;
   }
-  void *src_data = winograd_filter.data();
 
   auto src_dtype = kNumberTypeFloat32;
   auto dst_dtype = use_fp16_ ? kNumberTypeFloat16 : kNumberTypeFloat32;
   std::vector<char> tmp(size, 0);
   if (filter_type_ == MemType::IMG) {
-    ConvertFilter(src_data, tmp.data(), src_dtype, dst_dtype, OHWI, OHWIOgroupI4O4, CO_, F43_OH, F43_OW, CI_);
+    ConvertFilter(winograd_filter.data(), tmp.data(), src_dtype, dst_dtype, OHWI, OHWIOgroupI4O4, CO_, F43_OH, F43_OW,
+                  CI_);
   } else {
-    ConvertFilter(src_data, tmp.data(), src_dtype, dst_dtype, OHWI, OHWIOgroupI4O4, CO_, F43_OH, F43_OW, CI_, Ogroup);
+    int Ogroup = 2;
+    ConvertFilter(winograd_filter.data(), tmp.data(), src_dtype, dst_dtype, OHWI, OHWIOgroupI4O4, CO_, F43_OH, F43_OW,
+                  CI_, Ogroup);
   }
 
-  // unmap
   if (filter_type_ == MemType::IMG) {
     ocl_runtime_->WriteImage(packed_filter_, tmp.data());
   } else {
@@ -188,6 +177,20 @@ int WinogradOpenCLKernel::InitFilter() {
   }
   FreeStoredData(stored_filter_);
   return RET_OK;
+}
+
+int WinogradOpenCLKernel::InitFilter() {
+  if (packed_filter_ != nullptr) {
+    MS_LOG(DEBUG) << "filter is already inited";
+    return RET_OK;
+  }
+
+  auto size = AllocateFilterMem();
+  if (packed_filter_ == nullptr) {
+    MS_LOG(ERROR) << "Malloc failed.";
+    return RET_ERROR;
+  }
+  return WriteFilterData(size);
 }
 
 int WinogradOpenCLKernel::AllocateMemory() {

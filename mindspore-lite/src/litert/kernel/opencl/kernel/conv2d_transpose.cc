@@ -103,27 +103,10 @@ int Conv2dTransposeOpenCLKernel::SetGlobalLocal() {
   return RET_OK;
 }
 
-int Conv2dTransposeOpenCLKernel::SetConstArgs() {
-  int arg_cnt = 2;
+int Conv2dTransposeOpenCLKernel::SetKernelArgs(int arg_cnt, const cl_int2 &kernel_size, const cl_int2 &stride,
+                                               const cl_int2 &padding, const cl_int4 &src_size,
+                                               const cl_int4 &dst_size) {
   auto *param = reinterpret_cast<ConvParameter *>(op_parameter_);
-  int ci = in_tensors_[0]->shape()[3];
-  int co = out_tensors_[0]->shape()[3];
-  int kh = param->kernel_h_;
-  int kw = param->kernel_w_;
-  int pad_h = param->pad_u_;
-  int pad_w = param->pad_l_;
-  int stride_h = param->stride_h_;
-  int stride_w = param->stride_w_;
-  int oh = out_tensors_[0]->shape()[1];
-  int ow = out_tensors_[0]->shape()[2];
-  int n = in_tensors_[0]->shape()[0];
-  int h = in_tensors_[0]->shape()[1];
-  int w = in_tensors_[0]->shape()[2];
-  cl_int2 kernel_size = {kh, kw};
-  cl_int2 stride = {stride_h, stride_w};
-  cl_int2 padding = {pad_h, pad_w};
-  cl_int4 src_size = {h, w, UP_DIV(ci, C4NUM), n};
-  cl_int4 dst_size = {oh, ow, UP_DIV(co, C4NUM), n};
   if (ocl_runtime_->SetKernelArg(kernel_, arg_cnt++, padWeight_, true) != CL_SUCCESS) {
     MS_LOG(ERROR) << "SetKernelArg failed.";
     return RET_ERROR;
@@ -157,6 +140,29 @@ int Conv2dTransposeOpenCLKernel::SetConstArgs() {
     return RET_ERROR;
   }
   return RET_OK;
+}
+
+int Conv2dTransposeOpenCLKernel::SetConstArgs() {
+  auto *param = reinterpret_cast<ConvParameter *>(op_parameter_);
+  int ci = in_tensors_[0]->shape()[3];
+  int co = out_tensors_[0]->shape()[3];
+  int kh = param->kernel_h_;
+  int kw = param->kernel_w_;
+  int pad_h = param->pad_u_;
+  int pad_w = param->pad_l_;
+  int stride_h = param->stride_h_;
+  int stride_w = param->stride_w_;
+  int oh = out_tensors_[0]->shape()[1];
+  int ow = out_tensors_[0]->shape()[2];
+  int n = in_tensors_[0]->shape()[0];
+  int h = in_tensors_[0]->shape()[1];
+  int w = in_tensors_[0]->shape()[2];
+  cl_int2 kernel_size = {kh, kw};
+  cl_int2 stride = {stride_h, stride_w};
+  cl_int2 padding = {pad_h, pad_w};
+  cl_int4 src_size = {h, w, UP_DIV(ci, C4NUM), n};
+  cl_int4 dst_size = {oh, ow, UP_DIV(co, C4NUM), n};
+  return SetKernelArgs(2, kernel_size, stride, padding, src_size, dst_size);
 }
 
 int Conv2dTransposeOpenCLKernel::InitWeights() {

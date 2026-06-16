@@ -116,6 +116,10 @@ class Scheduler {
   int ScheduleSubGraphToKernels(size_t subgraph_index, std::vector<kernel::KernelExec *> *dst_kernels,
                                 std::vector<lite::Tensor *> *in_tensors, std::vector<lite::Tensor *> *out_tensors,
                                 TypeId prefer_data_type = kTypeUnknown);
+  int ScheduleNodesInSubGraph(size_t subgraph_index, const LiteGraph::SubGraph *subgraph,
+                              std::vector<kernel::KernelExec *> *dst_kernels, TypeId prefer_data_type);
+  void CopySubGraphInOutTensors(const LiteGraph::SubGraph *subgraph, std::vector<lite::Tensor *> *in_tensors,
+                                std::vector<lite::Tensor *> *out_tensors);
   // vector<KernelExec/SubGraphKernel> --> vector<SubGraphKernel>
   int ConstructNormalSubGraphs(const std::vector<kernel::KernelExec *> &src_kernel,
                                std::vector<kernel::KernelExec *> *dst_kernel,
@@ -149,6 +153,8 @@ class Scheduler {
 #ifndef DELEGATE_CLIP
   /* delegate related */
   int ReplaceDelegateKernels(std::vector<kernel::KernelExec *> *dst_kernels);
+  int ReplaceInnerDelegateKernels(std::vector<kernel::KernelExec *> *dst_kernels,
+                                  std::vector<kernel::KernelExec *> *src_kernels);
   int InitDelegateKernels(std::vector<kernel::KernelExec *> *dst_kernels);
 #else
   int InitDelegateKernels(std::vector<kernel::KernelExec *> *dst_kernels) { return RET_OK; }

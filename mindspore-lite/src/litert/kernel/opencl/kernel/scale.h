@@ -34,6 +34,8 @@ class ScaleOpenCLKernel : public OpenCLKernel {
 
  private:
   void Image2dGetWorkGroupSize();
+  int DetermineKernelName(std::string *kernel_name);
+  int SetScalarArgs(int *arg_idx);
   int SetKernelArg(int *idx);
   bool weight_vector_flag_{true};
   bool broadcast_flag_{false};
