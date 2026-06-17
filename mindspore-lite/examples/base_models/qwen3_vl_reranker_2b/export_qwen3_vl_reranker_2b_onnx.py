@@ -28,14 +28,11 @@ from __future__ import annotations
 
 import argparse
 import gc
-import os
 import sys
 from pathlib import Path
 from typing import Optional, Tuple
 
 import torch
-
-os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 try:
     import torch._dynamo  # type: ignore

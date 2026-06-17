@@ -29,7 +29,7 @@ Usage:
         --prefill-model ./qwen3_vl_4b_thinking_onnx/qwen3_vl_llm_prefill_graph.mindir \
         --decode-model ./qwen3_vl_4b_thinking_onnx/qwen3_vl_llm_decode_graph.mindir \
         --processor ./Qwen/Qwen3-VL-4B-Thinking \
-        --image https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg \
+        --image ./demo.jpeg \
         --prompt "Describe this image." \
         --max-new-tokens 512 \
         --device ascend \
@@ -899,8 +899,8 @@ def _parse_args():
     parser.add_argument(
         "--image",
         type=str,
-        default="https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg",
-        help="Image URL or path (http/https or local path)",
+        default="./demo.jpeg",
+        help="Image path or URL (http/https or local path)",
     )
     parser.add_argument(
         "--prompt", type=str, default="Describe this image.", help="Text prompt"

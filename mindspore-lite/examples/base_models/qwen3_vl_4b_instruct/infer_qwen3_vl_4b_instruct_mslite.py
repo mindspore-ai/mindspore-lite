@@ -711,8 +711,8 @@ def main():
     parser.add_argument(
         "--image",
         type=str,
-        default="https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg",
-        help="Image URL or path (http/https or local path)",
+        default="./demo.jpeg",
+        help="Image path or URL (http/https or local path)",
     )
     parser.add_argument(
         "--prompt", type=str, default="Describe this image.", help="Text prompt"

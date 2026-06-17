@@ -188,13 +188,19 @@ python infer_qwen2_5_vl_3b_instruct_mslite.py \
 | `--prefill-model` | Prefill MindIR 路径 | 必填 |
 | `--decode-model` | Decode MindIR 路径 | 必填 |
 | `--processor` | Processor 模型路径或目录 | `./Qwen2.5-VL-3B-Instruct` |
-| `--image` | 图片路径或 URL | `https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg` |
+| `--image` | 图片路径或 URL | `./demo.jpeg` |
 | `--prompt` | 文本 prompt | `Describe this image.` |
 | `--max-new-tokens` | 最大生成 token 数 | `128` |
 | `--image-size` | Processor 图像尺寸 | `128` |
 | `--no-pad-to-square` | 禁用推理前将图片 pad 成正方形 | `False` |
 | `--device` | MindSpore Lite 设备（ascend/cpu） | `ascend` |
 | `--device-id` | Ascend device id | `0` |
+
+### 外部资源说明
+
+- README 示例中的 `--image` 使用 Qwen 官方 demo 图片：`https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg`。
+- 该 URL 仅用于示例推理和性能测试，运行时会从网络读取图片；离线环境或网络受限环境请显式传入本地图片路径，例如 `--image ./your_image.jpg`。
+- 权重和 processor 路径通过 `--model-id` / `--processor` 参数传入，推理/导出代码未硬编码权重或图片下载 URL。
 
 ## 实测性能数据
 

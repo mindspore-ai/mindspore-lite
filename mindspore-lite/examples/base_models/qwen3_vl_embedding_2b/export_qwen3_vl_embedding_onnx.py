@@ -17,14 +17,11 @@
 Export Qwen3 VL Embedding 2B model to ONNX format.
 """
 
-import os
 import sys
 import argparse
 import gc
 from pathlib import Path
 import torch
-
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 try:
     import torch._dynamo

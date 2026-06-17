@@ -309,6 +309,8 @@ git clone https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B
 python export_qwen3_vl_embedding_onnx.py --model-id ./Qwen3-VL-Embedding-2B
 ```
 
+> **外部资源说明**：`HF_ENDPOINT=https://hf-mirror.com` 和 `git clone https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B` 仅作为模型下载失败时的手动下载示例；导出脚本本身未硬编码权重下载 URL，生产或离线环境可直接传入本地权重目录。
+
 ### 3. ONNX 导出失败
 
 **错误信息**:

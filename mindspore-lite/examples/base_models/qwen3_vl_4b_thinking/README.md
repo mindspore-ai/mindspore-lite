@@ -228,6 +228,12 @@ python infer_qwen3_vl_4b_thinking_mslite.py \
 | `--device` | MindSpore Lite 设备（ascend/cpu） | `ascend` |
 | `--device-id` | Ascend device id | `0` |
 
+### 外部资源说明
+
+- README 示例中使用 Qwen 官方 demo 图片：`https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg`。
+- 该 URL 仅用于示例推理和性能测试，运行时会从网络读取图片；离线环境或网络受限环境请显式传入本地图片路径。
+- 权重和 processor 路径通过 `--model-id` / `--processor` 参数传入，推理/导出代码未硬编码权重或图片下载 URL。
+
 ## 性能数据
 
 ### 性能测试结果
