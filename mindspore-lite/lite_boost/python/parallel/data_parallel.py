@@ -346,14 +346,18 @@ def dp_temporal_process(
 
     # 3. Process local chunks — first real chunk determines output shape
     local_results: list = []
+    # output_shape: spatial shape of chunk_fn output, e.g. (C, H, W).
+    # out_per_chunk: length of chunk_fn output along the temporal axis t_dim.
+    # output_dtype: dtype of chunk_fn output, inferred from first real chunk.
     output_shape = None
     out_per_chunk = None
+    output_dtype = None
 
     for ch in local_chunks:
         if ch.is_padding:
             if output_shape is not None:
                 local_results.append(
-                    torch.zeros(output_shape, dtype=torch.float32, device=device))
+                    torch.zeros(output_shape, dtype=output_dtype, device=device))
             continue
 
         slc = [slice(None)] * tensor.dim()
@@ -363,15 +367,32 @@ def dp_temporal_process(
         if output_shape is None:
             output_shape = tuple(out.shape)
             out_per_chunk = out.shape[t_dim]
+            output_dtype = out.dtype
 
         local_results.append(out)
+
+    if world_size > 1:
+        # Ranks with zero real chunks have output_shape=None and would
+        # otherwise skip gather_and_concat, leaving the all_gather
+        # collective hanging on other ranks.  Broadcast output_shape /
+        # out_per_chunk / output_dtype from rank 0 (always has real
+        # chunks) so every rank can construct zero-placeholder tensors
+        # and participate.
+        shape_info = [output_shape, out_per_chunk, output_dtype]
+        dist.broadcast_object_list(shape_info, src=0)
+        if output_shape is None:
+            output_shape, out_per_chunk, output_dtype = shape_info
+            local_results = [
+                torch.zeros(output_shape, dtype=output_dtype, device=device)
+                for _ in range(max_count)
+            ]
 
     if output_shape is None:
         return chunk_fn(tensor)
 
     while len(local_results) < max_count:
         local_results.append(
-            torch.zeros(output_shape, dtype=torch.float32, device=device))
+            torch.zeros(output_shape, dtype=output_dtype, device=device))
 
     # 4. Derive overlap_out and target_len from first chunk
     overlap_out = overlap_frames * out_per_chunk // chunk_frames
