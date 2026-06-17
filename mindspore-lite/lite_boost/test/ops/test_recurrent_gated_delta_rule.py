@@ -264,6 +264,7 @@ class TestRecurrentGatedDeltaRule:
             self.device,
         )
 
+    @pytest.mark.ascend_a2
     @pytest.mark.L0
     def test_accuracy_vs_reference(self):
         """
@@ -323,6 +324,7 @@ class TestRecurrentGatedDeltaRule:
         ), f"State max diff {max_diff_state:.6f} exceeds threshold 0.05"
 
 
+    @pytest.mark.ascend_a2
     @pytest.mark.L0
     def test_performance(self):
         """

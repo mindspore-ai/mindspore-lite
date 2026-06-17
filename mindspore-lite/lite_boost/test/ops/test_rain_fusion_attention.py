@@ -88,6 +88,7 @@ class TestRainFusionAttention:
 
         return select_idx, select_num_idx
 
+    @pytest.mark.ascend_a2
     @pytest.mark.L0
     def test_rainfusionattention_vs_fusionattention(self):
         """
@@ -125,6 +126,7 @@ class TestRainFusionAttention:
         print("rain_fusion_attention shape:", ra.shape)
         print("fusion_attention shape:", fascore.shape)
 
+    @pytest.mark.ascend_a2
     @pytest.mark.L0
     def test_sparse_attention_rf_v2(self):
         """

@@ -82,3 +82,12 @@ __all__.extend(context.__all__)
 __all__.extend(converter.__all__)
 __all__.extend(model.__all__)
 __all__.extend(tensor.__all__)
+
+# Lazily install the AscendC custom-op .run packages shipped in this wheel into
+# $ASCEND_HOME_PATH on first use (stamp-guarded, idempotent). Wrapped so any
+# failure leaves `import mindspore_lite` fully functional.
+try:
+    from mindspore_lite._ascend_custom_ops import ensure_installed as _ensure_ascend_ops
+    _ensure_ascend_ops()
+except Exception:  # pylint: disable=broad-except
+    pass

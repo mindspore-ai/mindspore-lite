@@ -193,15 +193,21 @@ echo "开始执行 lite_boost 测试用例 (level=${level})..."
 echo "------------------------------------------------------------------"
 
 # 根据用例级别设置 pytest 的过滤表达式
+#
+# 默认硬件筛选: ascend_a2（Atlas 800I A2 / ascend910b）。与级别标记做"与"筛选，
+# 即默认只跑该硬件上对应级别的用例（test_chunk_gated_delta_rule 标的是
+# ascend_300iduo，默认不会被选中，需要时单独 `pytest -m ascend_300iduo` 触发）。
+default_hardware="ascend_a2"
+
 if [ "${level}" == "level0" ]; then
-    # level0 级别: 仅执行标记为 L0 的用例
-    pytest_mark_expr="L0"
-    echo "当前运行模式: level0 - 仅执行基础功能验证用例。"
+    # level0 级别: 仅执行标记为 L0 的用例（且为默认硬件 ascend_a2）
+    pytest_mark_expr="L0 and ${default_hardware}"
+    echo "当前运行模式: level0 - 仅执行基础功能验证用例 (硬件: ${default_hardware})。"
 elif [ "${level}" == "level1" ]; then
-    # level1 级别: 执行 L0 + L1 的全部用例
-    # pytest -m 支持逻辑表达式，"L0 or L1" 表示同时匹配两种标记
-    pytest_mark_expr="L0 or L1"
-    echo "当前运行模式: level1 - 执行全部用例（包含 level0 + level1）。"
+    # level1 级别: 执行 L0 + L1 的全部用例（且为默认硬件 ascend_a2）
+    # pytest -m 支持逻辑表达式，"(L0 or L1) and ascend_a2" 同时匹配级别与硬件
+    pytest_mark_expr="(L0 or L1) and ${default_hardware}"
+    echo "当前运行模式: level1 - 执行全部用例 (硬件: ${default_hardware})。"
 fi
 
 # 执行 pytest

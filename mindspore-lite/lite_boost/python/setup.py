@@ -69,11 +69,35 @@ def _find_shared_libraries(top_dir: str) -> list[str]:
     return matches
 
 
+def _vendor_package_data() -> list[str]:
+    """AscendC vendor folders (one per SoC) staged by build_all_ops.sh under
+    build/custom_ops/<unit>/mslite_custom_ops/. Listed explicitly (setuptools
+    package_data has no recursive '**' glob) so the whole tree ships in the wheel.
+    Empty when the op build was skipped (non-Ascend/CI)."""
+    data = []
+    root = os.path.join(TOP_DIR, "build", "custom_ops")
+    if os.path.isdir(root):
+        for unit in sorted(os.listdir(root)):
+            unit_dir = os.path.join(root, unit)
+            if not os.path.isdir(unit_dir):
+                continue
+            for dirpath, _, files in os.walk(unit_dir):
+                for fname in files:
+                    rel = os.path.relpath(os.path.join(dirpath, fname), root)
+                    data.append(os.path.join("custom_ops_vendor", rel))
+    return data
+
+
 def _get_package_data() -> list[str]:
     """
     Get package data.
     """
-    return ["lib/*.so*"]
+    return [
+        "lib/*.so*",
+        # AscendC custom-op vendor folders (one per SoC); the import hook points
+        # ASCEND_CUSTOM_OPP_PATH at the matching one (no install to $ASCEND_HOME_PATH).
+        *_vendor_package_data(),
+    ]
 
 
 class BuildPy(_build_py):
@@ -96,6 +120,21 @@ class BuildPy(_build_py):
         os.makedirs(dst_dir, exist_ok=True)
         for lib in libs:
             shutil.copy2(lib, os.path.join(dst_dir, os.path.basename(lib)))
+
+        # Stage the AscendC vendor folders (one per SoC) produced by build.sh.
+        # Shipped as folders; the import hook points ASCEND_CUSTOM_OPP_PATH at the
+        # matching SoC's folder (no extraction, no install to $ASCEND_HOME_PATH).
+        vendor_src = os.path.join(TOP_DIR, "build", "custom_ops")
+        vendor_dst = os.path.join(self.build_lib, "lite_boost", "custom_ops_vendor")
+        if os.path.isdir(vendor_src):
+            for unit in os.listdir(vendor_src):
+                unit_src = os.path.join(vendor_src, unit)
+                if not os.path.isdir(unit_src):
+                    continue
+                unit_dst = os.path.join(vendor_dst, unit)
+                if os.path.exists(unit_dst):
+                    shutil.rmtree(unit_dst)
+                shutil.copytree(unit_src, unit_dst)
 
 
 if _bdist_wheel is not None:
