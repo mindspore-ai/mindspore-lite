@@ -13,3 +13,13 @@ MindSpore Lite推理框架主要包含两种推理形式，分别为：
 > 注意：MindSpore Lite的两种推理场景，用户在使用的时候，必须明确指定是云侧推理还是端侧推理，否则会导致推理失败。
 
 此外，MindSpore Lite提供了完全独立的加速组件[Lite Boost](mindspore-lite/lite_boost/README.md)，用于提升基于PyTorch接口的云侧推理的推理性能，有关Lite Boost的详细说明，请参考[Lite Boost](mindspore-lite/lite_boost/CLAUDE.md)章节。
+
+## 提交规范
+
+写 commit 时遵守以下约定（commit-msg hook 强制执行）：
+
+- **不要** `Co-Authored-By:` 行（任何 AI 工具/助手的署名都不要）
+- **不要** 在 commit message 中贴源码片段或 diff 内容
+- 描述「为什么改」而非「改了什么」——diff 已经说明了 what
+
+Hook 配置：`git config core.hooksPath scripts/pre_commit/githooks`（同时启用 pre-push 和 commit-msg）。
