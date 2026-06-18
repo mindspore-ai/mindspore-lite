@@ -30,6 +30,9 @@
 #include <cfloat>
 #include <utility>
 #include <atomic>
+#ifdef ENABLE_ARM64
+#include <linux/perf_event.h>
+#endif
 #ifndef BENCHMARK_CLIP_JSON
 #include <nlohmann/json.hpp>
 #endif
@@ -121,6 +124,9 @@ class MS_API BenchmarkUnifiedApi : public BenchmarkBase {
 
   int MarkAccuracy();
 
+  int PrintOrDisplayInputs();
+  int ValidateOutputs();
+
   int GetBenchmarkResult();
 
   void UpdateDistributionName(const std::shared_ptr<mindspore::Context> &context, std::string *name);
@@ -132,6 +138,42 @@ class MS_API BenchmarkUnifiedApi : public BenchmarkBase {
                           float relative_tolerance, float absolute_tolerance);
   float CompareDataFloat16(const std::string &name, mindspore::MSTensor *tensor, void *mutable_data);
   float CompareDataBFloat16(const std::string &name, mindspore::MSTensor *tensor, void *mutable_data);
+  int InitBenchmarkContext(mindspore::ModelType *model_type, std::shared_ptr<mindspore::Context> *context);
+  int LoadModelConfig(const std::string &model_name);
+  int CompileAndLoadModel(mindspore::ModelType model_type, const std::shared_ptr<Context> &context,
+                          const std::string &model_name);
+  void SetupParallelTimeProfilingCallbacks();
+  void SetupParallelBeforeCallback();
+  void SetupParallelAfterCallback();
+  void SetupNonParallelTimeProfilingCallbacks();
+  int ExecuteWarmUp();
+  int ExecuteBenchmarkLoops(uint64_t *time_min, uint64_t *time_max, uint64_t *time_avg);
+  void PrintProfilingResult();
+  int CompareSingleOutput(const std::string &tensor_name, mindspore::MSTensor &tensor, CheckTensor *calib_tensor,
+                          float *total_bias, int *total_size);
+  float ComputeCosineDistanceBias(const std::string &name, mindspore::MSTensor *tensor, void *mutable_data, int *res);
+  float ComputeFloat16CosineBias(const std::string &name, mindspore::MSTensor *tensor, void *mutable_data, int *res);
+  int GenerateParallelInputData();
+  int GenerateNonParallelInputData();
+  int ReadParallelInputFiles();
+  int ReadNonParallelInputFiles();
+  int PrintTensorDataByType(int tensor_data_type, const void *data, size_t print_num);
+#ifdef ENABLE_ARM64
+  void InitPerfEventAttributes(perf_event_attr *pe, perf_event_attr *pe2);
+  void CreatePerfBeforeCallback();
+  void CreatePerfAfterCallback();
+#endif
+  void SetupDumpBeforeCallback();
+  void SetupDumpAfterCallback();
+#ifndef BENCHMARK_CLIP_JSON
+  std::string GenerateOutputFileName(mindspore::MSTensor *tensor, const std::string &op_name,
+                                     const std::string &file_type, const size_t &idx);
+#endif
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
+  int InitParallelRunner(const std::shared_ptr<mindspore::Context> &context, uint64_t *model_init_cost);
+  int LoadParallelInputsAndCalibData();
+  int RunParallelWarmUpAndBenchmark(float *all_run_time_cost);
+#endif
 
  private:
   mindspore::OpenGL::OpenGLRuntime gl_runtime_;
