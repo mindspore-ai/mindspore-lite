@@ -191,25 +191,53 @@ bool MindirModelLoader::ConvertTensors(const mind_ir::GraphProto &graph_proto, L
   return true;
 }
 
+bool MindirModelLoader::ConvertConstantNode(const mind_ir::NodeProto &node_proto, LiteGraph::SubGraph *sub_graph) {
+  for (int j = 0; j < node_proto.attribute_size(); j++) {
+    auto attribute_proto = node_proto.attribute(j);
+    if (attribute_proto.type() == mind_ir::AttributeProto_AttributeType_TENSORS) {
+      const mind_ir::TensorProto &tensor_proto = attribute_proto.tensors(0);
+      TensorProtoWrap tensor_wrap(node_proto.name(), tensor_proto);
+      this->model_->all_mindir_tensors_.push_back(tensor_wrap);
+      this->tensor_index_map_[node_proto.name()] = this->tensor_count_;
+      if (sub_graph != nullptr) {
+        sub_graph->tensor_indices_.push_back(this->tensor_count_);
+      }
+      this->tensor_count_++;
+    }
+  }
+  return true;
+}
+
+void MindirModelLoader::ResolveNodeInputs(const mind_ir::NodeProto &node_proto, LiteGraph::Node *node) {
+  for (int j = 0; j < node_proto.input_size(); j++) {
+    std::string input_name = node_proto.input(j);
+    auto it = this->tensor_index_map_.find(input_name);
+    if (it == this->tensor_index_map_.end()) {
+      MS_LOG(WARNING) << "MindirModelLoader: Convert nodes failed, cannot find input index with " << input_name;
+      continue;
+    }
+    node->input_indices_.push_back(it->second);
+  }
+}
+
+void MindirModelLoader::ResolveNodeOutputs(const mind_ir::NodeProto &node_proto, LiteGraph::Node *node) {
+  for (int j = 0; j < node_proto.output_size(); j++) {
+    std::string output_name = node_proto.output(j);
+    auto it = this->tensor_index_map_.find(output_name);
+    if (it == this->tensor_index_map_.end()) {
+      MS_LOG(WARNING) << "MindirModelLoader: Convert nodes failed, cannot find output index with " << output_name;
+      continue;
+    }
+    node->output_indices_.push_back(it->second);
+  }
+}
+
 bool MindirModelLoader::ConvertNodes(const mind_ir::GraphProto &graph_proto, LiteGraph::SubGraph *sub_graph,
                                      bool is_main_graph) {
   for (int i = 0; i < graph_proto.node_size(); i++) {
     auto node_proto = graph_proto.node(i);
     if (node_proto.op_type() == kNodeTypeConstant) {
-      // Constant node, convert to tensor
-      for (int j = 0; j < node_proto.attribute_size(); j++) {
-        auto attribute_proto = node_proto.attribute(j);
-        if (attribute_proto.type() == mind_ir::AttributeProto_AttributeType_TENSORS) {
-          const mind_ir::TensorProto &tensor_proto = attribute_proto.tensors(0);
-          TensorProtoWrap tensor_wrap(node_proto.name(), tensor_proto);
-          this->model_->all_mindir_tensors_.push_back(tensor_wrap);
-          this->tensor_index_map_[node_proto.name()] = this->tensor_count_;
-          if (sub_graph != nullptr) {
-            sub_graph->tensor_indices_.push_back(this->tensor_count_);
-          }
-          this->tensor_count_++;
-        }
-      }
+      ConvertConstantNode(node_proto, sub_graph);
       continue;
     }
     auto *node = new (std::nothrow) LiteGraph::Node();
@@ -222,27 +250,8 @@ bool MindirModelLoader::ConvertNodes(const mind_ir::GraphProto &graph_proto, Lit
     auto base_operator = std::reinterpret_pointer_cast<ops::BaseOperator>(node->base_operator_);
     node->op_type_ = base_operator->GetPrim()->instance_name();
 
-    // solve input
-    for (int j = 0; j < node_proto.input_size(); j++) {
-      std::string input_name = node_proto.input(j);
-      auto it = this->tensor_index_map_.find(input_name);
-      if (it == this->tensor_index_map_.end()) {
-        MS_LOG(WARNING) << "MindirModelLoader: Convert nodes failed, cannot find input index with " << input_name;
-        continue;
-      }
-      node->input_indices_.push_back(it->second);
-    }
-
-    // solve output
-    for (int j = 0; j < node_proto.output_size(); j++) {
-      std::string output_name = node_proto.output(j);
-      auto it = this->tensor_index_map_.find(output_name);
-      if (it == this->tensor_index_map_.end()) {
-        MS_LOG(WARNING) << "MindirModelLoader: Convert nodes failed, cannot find output index with " << output_name;
-        continue;
-      }
-      node->output_indices_.push_back(it->second);
-    }
+    ResolveNodeInputs(node_proto, node);
+    ResolveNodeOutputs(node_proto, node);
 
     this->model_->graph_.all_nodes_.push_back(node);
     if (sub_graph != nullptr) {

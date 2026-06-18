@@ -344,62 +344,83 @@ static bool CheckDynamicDims(const std::vector<int64_t> &dynamic_batch_size,
   return true;
 }
 
+static bool ApplyDynamicDimsValues(const std::vector<std::vector<int64_t>> &dynamic_dims,
+                                   const std::string &input_shape_str,
+                                   std::vector<std::pair<std::string, ShapeVector>> *real_shapes_ptr) {
+  auto &real_shapes = *real_shapes_ptr;
+  size_t dyn_count = 0;
+  for (auto &input_shape : real_shapes) {
+    for (auto &dim : input_shape.second) {
+      if (dim == -1) {
+        if (dyn_count >= dynamic_dims[0].size()) {
+          MS_LOG(ERROR) << "Invalid dynamic_dims " << dynamic_dims << " while dynamic dims in input_shape is more than "
+                        << (dyn_count + 1) << ", input shape: " << input_shape_str;
+          return false;
+        }
+        dim = dynamic_dims[0][dyn_count];
+        dyn_count++;
+      }
+    }
+  }
+  return true;
+}
+
+static bool ApplyDynamicImageSizeValues(const std::vector<std::vector<int64_t>> &dynamic_image_size,
+                                        const std::string &input_shape_str,
+                                        std::vector<std::pair<std::string, ShapeVector>> *real_shapes_ptr) {
+  auto &real_shapes = *real_shapes_ptr;
+  for (auto &input_shape : real_shapes) {
+    size_t dyn_count = 0;
+    for (auto &dim : input_shape.second) {
+      if (dim == -1) {
+        if (dyn_count >= dynamic_image_size[0].size()) {
+          MS_LOG(ERROR) << "Invalid dynamic_image_size " << dynamic_image_size
+                        << " while dynamic dims in input_shape is more than " << (dyn_count + 1)
+                        << ", input shape: " << input_shape_str;
+          return false;
+        }
+        dim = dynamic_image_size[0][dyn_count];
+        dyn_count++;
+      }
+    }
+  }
+  return true;
+}
+
+static bool ApplyDynamicBatchSizeValues(const std::vector<int64_t> &dynamic_batch_size,
+                                        const std::string &input_shape_str,
+                                        std::vector<std::pair<std::string, ShapeVector>> *real_shapes_ptr) {
+  auto &real_shapes = *real_shapes_ptr;
+  for (auto &input_shape : real_shapes) {
+    size_t dyn_count = 0;
+    for (auto &dim : input_shape.second) {
+      if (dim == -1) {
+        if (dyn_count >= 1) {
+          MS_LOG(ERROR) << "Invalid dynamic_batch_size " << dynamic_batch_size
+                        << " while dynamic dims in input_shape is more than " << (dyn_count + 1)
+                        << ", input shape: " << input_shape_str;
+          return false;
+        }
+        dim = dynamic_batch_size[0];
+        dyn_count++;
+      }
+    }
+  }
+  return true;
+}
+
 static bool SetDynamicDimsRealValue(const std::vector<int64_t> &dynamic_batch_size,
                                     const std::vector<std::vector<int64_t>> &dynamic_image_size,
                                     const std::vector<std::vector<int64_t>> &dynamic_dims,
                                     const std::string &input_shape_str,
                                     std::vector<std::pair<std::string, ShapeVector>> *real_shapes_ptr) {
-  auto &real_shapes = *real_shapes_ptr;
   if (!dynamic_dims.empty()) {
-    size_t dyn_count = 0;
-    for (auto &input_shape : real_shapes) {
-      for (auto &dim : input_shape.second) {
-        if (dim == -1) {
-          if (dyn_count >= dynamic_dims[0].size()) {
-            MS_LOG(ERROR) << "Invalid dynamic_dims " << dynamic_dims
-                          << " while dynamic dims in input_shape is more than " << (dyn_count + 1)
-                          << ", input shape: " << input_shape_str;
-            return false;
-          }
-          dim = dynamic_dims[0][dyn_count];
-          dyn_count++;
-        }
-      }
-    }
+    return ApplyDynamicDimsValues(dynamic_dims, input_shape_str, real_shapes_ptr);
   } else if (!dynamic_image_size.empty()) {
-    for (auto &input_shape : real_shapes) {
-      size_t dyn_count = 0;
-      for (auto &dim : input_shape.second) {
-        if (dim == -1) {
-          if (dyn_count >= dynamic_image_size[0].size()) {
-            MS_LOG(ERROR) << "Invalid dynamic_image_size " << dynamic_image_size
-                          << " while dynamic dims in input_shape is more than " << (dyn_count + 1)
-                          << ", input shape: " << input_shape_str;
-            return false;
-          }
-          dim = dynamic_image_size[0][dyn_count];
-          dyn_count++;
-        }
-      }
-    }
+    return ApplyDynamicImageSizeValues(dynamic_image_size, input_shape_str, real_shapes_ptr);
   } else {  // dynamic_batch_size
-    for (auto &input_shape : real_shapes) {
-      size_t dyn_count = 0;
-      for (auto &dim : input_shape.second) {
-        if (dim == -1) {
-          if (dyn_count >= 1) {
-            MS_LOG(ERROR) << "Invalid dynamic_batch_size " << dynamic_batch_size
-                          << " while dynamic dims in input_shape is more than " << (dyn_count + 1)
-                          << ", input shape: " << input_shape_str;
-            return false;
-          }
-          dim = dynamic_batch_size[0];
-          dyn_count++;
-        }
-      }
-    }
+    return ApplyDynamicBatchSizeValues(dynamic_batch_size, input_shape_str, real_shapes_ptr);
   }
-  return true;
 }
 
 bool GeDynamicUtils::GetGraphOneRealShapes(const std::shared_ptr<mindspore::Context> &context,

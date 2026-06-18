@@ -63,6 +63,8 @@ class LiteRTGraphExecutor : public LiteGraphExecutor {
  private:
   bool ExtractTensorData(mindspore::schema::MetaGraphT *meta_graph_t);
   bool IsNeedExtractTensorData(mindspore::schema::MetaGraphT *meta_graph_t);
+  schema::MetaGraphT *BuildMetaGraph(const FuncGraphPtr &graph);
+  bool BuildFbModelCache(schema::MetaGraphT *meta_graph, size_t *data_size);
 
  private:
   const std::shared_ptr<mindspore::Context> context_;

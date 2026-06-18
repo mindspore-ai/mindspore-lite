@@ -78,6 +78,8 @@ class ModelPool {
                              int thread_num);
   Status SetBindStrategy(std::vector<std::vector<int>> *all_model_bind_list, std::vector<int> *numa_node_id,
                          int thread_num);
+  Status BuildAvailableCoreList(const std::vector<int> &physical_core_list, const std::vector<int> &logical_core_list,
+                                std::vector<int> *all_core_list);
 
   std::shared_ptr<ModelWorker> GetMaxWaitWorkerNum(int *max_wait_worker_node_id, int *max_wait_worker_num);
 
@@ -103,6 +105,16 @@ class ModelPool {
   Status CreateWorkers(const char *graph_buf, size_t size, const ModelPoolConfig &model_pool_config, bool copy_model,
                        ModelType model_type);
 
+  void InitWorkerConfig(const std::shared_ptr<WorkerConfig> &worker_config, size_t worker_idx, bool copy_model);
+
+  void InitModelPoolIO(const std::shared_ptr<ModelWorker> &model_worker);
+
+  Status CreateAndInitWorker(const char *graph_buf, size_t size, const std::shared_ptr<WorkerConfig> &worker_config,
+                             size_t worker_idx, bool copy_model, ModelType model_type,
+                             std::shared_ptr<ModelWorker> *out_model_worker);
+
+  Status WaitForAllWorkers();
+
   Status CheckAffinityCoreList(const std::shared_ptr<RunnerConfig> &runner_config);
 
   Status CanUseAllPhysicalResources();
@@ -124,20 +136,12 @@ class ModelPool {
   Status ValidateNumaNodes(int thread_num);
   Status AssignNumaCoresForWorker(size_t bind_numa_id, int thread_num, std::vector<int> *physical_index,
                                   std::vector<int> *logical_index, std::vector<int> *worker_bind_list);
-  Status SelectCoresForWorkers(int thread_num, const std::vector<int> &all_core_list,
-                               std::vector<std::vector<int>> *all_model_bind_list, std::vector<int> *numa_node_id);
-  Status BuildCoreList(const std::vector<int> &physical_core_list, const std::vector<int> &logical_core_list,
-                       std::vector<int> *all_core_list);
   Status SetupCpuAllocator(int numa_id, const std::shared_ptr<Context> &context);
-  Status CreateSingleWorkerConfig(size_t worker_index, const std::shared_ptr<RunnerConfig> &runner_config,
-                                  const std::shared_ptr<Context> &init_context,
-                                  const std::vector<std::vector<int>> &all_worker_bind_list,
-                                  const std::vector<int> &numa_node_id, std::shared_ptr<WorkerConfig> *out_config);
   Status SetWorkerModelConfig(std::shared_ptr<WorkerConfig> *worker_config);
   Status InitNumaAndResources(const std::shared_ptr<RunnerConfig> &runner_config);
   Status InitTaskQueue();
-  Status InitTaskPool();
   void LogModelPoolConfig(const ModelPoolConfig &model_pool_config);
+  Status InitTaskPool();
 
  private:
   // different workers get tasks from different task queues.

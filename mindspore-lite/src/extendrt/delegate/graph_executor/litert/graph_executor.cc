@@ -108,6 +108,47 @@ Status LiteRTGraphExecutor::CompileGraph(const void *model_data, size_t data_siz
   return kSuccess;
 }
 
+schema::MetaGraphT *LiteRTGraphExecutor::BuildMetaGraph(const FuncGraphPtr &graph) {
+  auto param = std::make_shared<ConverterPara>();
+  param->fmk_type = converter::kFmkTypeMs;
+  param->save_type = kMindIR;
+  auto mutable_graph = std::const_pointer_cast<FuncGraph>(graph);
+  auto *meta_graph = lite::ConverterToMetaGraph::Build(param, mutable_graph);
+  if (meta_graph == nullptr) {
+    MS_LOG(ERROR) << "func graph convert to meta graph failed.";
+    return nullptr;
+  }
+  if (this->IsNeedExtractTensorData(meta_graph)) {
+    if (!this->ExtractTensorData(meta_graph)) {
+      MS_LOG(ERROR) << "Compile Large Graph failed, extract tensor data error.";
+      return nullptr;
+    }
+  }
+  return meta_graph;
+}
+
+bool LiteRTGraphExecutor::BuildFbModelCache(schema::MetaGraphT *meta_graph, size_t *data_size) {
+  flatbuffers::FlatBufferBuilder builder(kBufferSize);
+  auto buffer = lite::MetaGraphSerializer::GetMetaGraphPackedBuff(&builder, *meta_graph, data_size);
+  if (data_size == nullptr || *data_size == 0 || *data_size > kOnlineExtractDataSize) {
+    MS_LOG(ERROR) << "Invalid fb model data size: " << (data_size == nullptr ? 0 : *data_size);
+    return false;
+  }
+  fb_model_buf_ = malloc(*data_size);
+  if (fb_model_buf_ == nullptr) {
+    MS_LOG(ERROR) << "malloc fb model buf failed.";
+    return false;
+  }
+  if (memcpy_s(fb_model_buf_, *data_size, buffer, *data_size) != EOK) {
+    MS_LOG(ERROR) << "memcpy_s fb model buf failed.";
+    free(fb_model_buf_);
+    fb_model_buf_ = nullptr;
+    return false;
+  }
+  FuncGraphReuseManager::GetInstance()->StoreFbModelBuf(fb_model_buf_, *data_size, helpers_, config_infos_);
+  return true;
+}
+
 Status LiteRTGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<string, string> &compile_options,
                                          uint32_t *graph_id) {
   MS_EXCEPTION_IF_NULL(graph);
@@ -124,26 +165,14 @@ Status LiteRTGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::m
   helpers_ = pair_result.second;
   schema::MetaGraphT *meta_graph = nullptr;
   if (fb_model_buf_ == nullptr) {
-    auto param = std::make_shared<ConverterPara>();
-    param->fmk_type = converter::kFmkTypeMs;
-    param->save_type = kMindIR;
-    auto mutable_graph = std::const_pointer_cast<FuncGraph>(graph);
-    meta_graph = lite::ConverterToMetaGraph::Build(param, mutable_graph);
+    meta_graph = BuildMetaGraph(graph);
     if (meta_graph == nullptr) {
-      MS_LOG(ERROR) << "func graph convert to meta graph failed.";
       return kLiteError;
     }
-    if (this->IsNeedExtractTensorData(meta_graph)) {
-      if (!this->ExtractTensorData(meta_graph)) {
-        MS_LOG(ERROR) << "Compile Large Graph failed, extract tensor data error.";
-        return kLiteError;
-      }
+    if (!BuildFbModelCache(meta_graph, &data_size)) {
+      delete meta_graph;
+      return kLiteError;
     }
-    flatbuffers::FlatBufferBuilder builder(kBufferSize);
-    auto buffer = lite::MetaGraphSerializer::GetMetaGraphPackedBuff(&builder, *meta_graph, &data_size);
-    fb_model_buf_ = malloc(data_size);
-    memcpy(fb_model_buf_, buffer, data_size);
-    FuncGraphReuseManager::GetInstance()->StoreFbModelBuf(fb_model_buf_, data_size, helpers_, config_infos_);
   } else {
     MS_LOG(INFO) << "the graph is the same as the last time. We do not need to convert, and we can directly use the "
                     "cached model buf.";
