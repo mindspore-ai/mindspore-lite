@@ -224,50 +224,52 @@ int BenchmarkUnifiedApi::LoadInput() {
   return RET_OK;
 }
 
-int BenchmarkUnifiedApi::GenerateInputData() {
+int BenchmarkUnifiedApi::GenerateParallelInputData() {
 #ifdef MSLITE_ENABLE_CLOUD_INFERENCE
-  if (flags_->enable_parallel_predict_) {
-    std::vector<void *> inputs;
-    for (size_t i = 0; i < ms_inputs_for_api_.size(); i++) {
-      auto tensor_name = ms_inputs_for_api_[i].Name();
-      size_t size;
-      if (ms_inputs_for_api_[i].DataType() == static_cast<enum DataType>(kNumberTypeFloat32)) {
-        size = sizeof(float);
-      } else if (ms_inputs_for_api_[i].DataType() == static_cast<enum DataType>(kNumberTypeInt32)) {
-        size = sizeof(int32_t);
-      } else {
-        MS_LOG(ERROR) << "not support in model pool.";
-        return RET_ERROR;
-      }
-      for (size_t j = 0; j < flags_->resize_dims_[i].size(); j++) {
-        size *= flags_->resize_dims_[i][j];
-      }
-      void *input_data = new (std::nothrow) char[size];
-      if (input_data == nullptr) {
-        MS_LOG(ERROR) << "new input_data failed";
-        for (auto &data : inputs) {
-          auto buf = static_cast<char *>(data);
-          delete[] buf;
-          data = nullptr;
-        }
-        return RET_ERROR;
-      }
-      inputs.push_back(input_data);
-      int status = GenerateRandomData(size, input_data, static_cast<int>(ms_inputs_for_api_[i].DataType()));
-      if (status != RET_OK) {
-        MS_LOG(ERROR) << "GenerateRandomData for inTensor failed:" << status;
-        for (auto &data : inputs) {
-          auto buf = static_cast<char *>(data);
-          delete[] buf;
-          data = nullptr;
-        }
-        return status;
-      }
+  std::vector<void *> inputs;
+  for (size_t i = 0; i < ms_inputs_for_api_.size(); i++) {
+    size_t size;
+    if (ms_inputs_for_api_[i].DataType() == static_cast<enum DataType>(kNumberTypeFloat32)) {
+      size = sizeof(float);
+    } else if (ms_inputs_for_api_[i].DataType() == static_cast<enum DataType>(kNumberTypeInt32)) {
+      size = sizeof(int32_t);
+    } else {
+      MS_LOG(ERROR) << "not support in model pool.";
+      return RET_ERROR;
     }
-    all_inputs_data_.push_back(inputs);
-    return RET_OK;
+    for (size_t j = 0; j < flags_->resize_dims_[i].size(); j++) {
+      size *= flags_->resize_dims_[i][j];
+    }
+    void *input_data = new (std::nothrow) char[size];
+    if (input_data == nullptr) {
+      MS_LOG(ERROR) << "new input_data failed";
+      for (auto &data : inputs) {
+        auto buf = static_cast<char *>(data);
+        delete[] buf;
+        data = nullptr;
+      }
+      return RET_ERROR;
+    }
+    inputs.push_back(input_data);
+    int status = GenerateRandomData(size, input_data, static_cast<int>(ms_inputs_for_api_[i].DataType()));
+    if (status != RET_OK) {
+      MS_LOG(ERROR) << "GenerateRandomData for inTensor failed:" << status;
+      for (auto &data : inputs) {
+        auto buf = static_cast<char *>(data);
+        delete[] buf;
+        data = nullptr;
+      }
+      return status;
+    }
   }
+  all_inputs_data_.push_back(inputs);
+  return RET_OK;
+#else
+  return RET_OK;
 #endif
+}
+
+int BenchmarkUnifiedApi::GenerateNonParallelInputData() {
   for (auto &tensor : ms_inputs_for_api_) {
     if (static_cast<int>(tensor.DataType()) == kObjectTypeString) {
       MSTensor *input = MSTensor::StringsToTensor(tensor.Name(), {"you're the best."});
@@ -295,6 +297,15 @@ int BenchmarkUnifiedApi::GenerateInputData() {
   return RET_OK;
 }
 
+int BenchmarkUnifiedApi::GenerateInputData() {
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
+  if (flags_->enable_parallel_predict_) {
+    return GenerateParallelInputData();
+  }
+#endif
+  return GenerateNonParallelInputData();
+}
+
 void BenchmarkUnifiedApi::UpdateConfigInfo() {
 #define WIPE_DEEP_CONFIG_ENV '0'
 #define WIPE_DEEP_CONFIG_VOCAB_SIZE "100"
@@ -311,28 +322,31 @@ void BenchmarkUnifiedApi::UpdateConfigInfo() {
   return;
 }
 
-int BenchmarkUnifiedApi::ReadInputFile() {
+int BenchmarkUnifiedApi::ReadParallelInputFiles() {
 #ifdef MSLITE_ENABLE_CLOUD_INFERENCE
-  if (flags_->enable_parallel_predict_) {
-    std::vector<void *> inputs;
-    for (size_t i = 0; i < ms_inputs_for_api_.size(); i++) {
-      size_t size;
-      char *bin_buf = ReadFile(flags_->input_data_list_[i].c_str(), &size);
-      if (bin_buf == nullptr) {
-        MS_LOG(ERROR) << "ReadFile return nullptr";
-        for (auto &data : inputs) {
-          auto buf = static_cast<char *>(data);
-          delete[] buf;
-          data = nullptr;
-        }
-        return RET_ERROR;
+  std::vector<void *> inputs;
+  for (size_t i = 0; i < ms_inputs_for_api_.size(); i++) {
+    size_t size;
+    char *bin_buf = ReadFile(flags_->input_data_list_[i].c_str(), &size);
+    if (bin_buf == nullptr) {
+      MS_LOG(ERROR) << "ReadFile return nullptr";
+      for (auto &data : inputs) {
+        auto buf = static_cast<char *>(data);
+        delete[] buf;
+        data = nullptr;
       }
-      inputs.push_back(bin_buf);
+      return RET_ERROR;
     }
-    all_inputs_data_.push_back(inputs);
-    return RET_OK;
+    inputs.push_back(bin_buf);
   }
+  all_inputs_data_.push_back(inputs);
+  return RET_OK;
+#else
+  return RET_OK;
 #endif
+}
+
+int BenchmarkUnifiedApi::ReadNonParallelInputFiles() {
   if (ms_inputs_for_api_.empty()) {
     return RET_OK;
   }
@@ -340,46 +354,54 @@ int BenchmarkUnifiedApi::ReadInputFile() {
   if (this->flags_->in_data_type_ == kImage) {
     MS_LOG(ERROR) << "Not supported image input";
     return RET_ERROR;
-  } else {
-    for (size_t i = 0; i < flags_->input_data_list_.size(); i++) {
-      auto &cur_tensor = ms_inputs_for_api_.at(i);
-      size_t size;
-      char *bin_buf = ReadFile(flags_->input_data_list_[i].c_str(), &size);
-      if (bin_buf == nullptr) {
-        MS_LOG(ERROR) << "ReadFile return nullptr";
+  }
+  for (size_t i = 0; i < flags_->input_data_list_.size(); i++) {
+    auto &cur_tensor = ms_inputs_for_api_.at(i);
+    size_t size;
+    char *bin_buf = ReadFile(flags_->input_data_list_[i].c_str(), &size);
+    if (bin_buf == nullptr) {
+      MS_LOG(ERROR) << "ReadFile return nullptr";
+      return RET_ERROR;
+    }
+    if (static_cast<int>(cur_tensor.DataType()) == kObjectTypeString) {
+      std::string str(bin_buf, size);
+      MSTensor *input = MSTensor::StringsToTensor(cur_tensor.Name(), {str});
+      if (input == nullptr) {
+        std::cerr << "StringsToTensor failed" << std::endl;
+        MS_LOG(ERROR) << "StringsToTensor failed";
+        delete[] bin_buf;
         return RET_ERROR;
       }
-      if (static_cast<int>(cur_tensor.DataType()) == kObjectTypeString) {
-        std::string str(bin_buf, size);
-        MSTensor *input = MSTensor::StringsToTensor(cur_tensor.Name(), {str});
-        if (input == nullptr) {
-          std::cerr << "StringsToTensor failed" << std::endl;
-          MS_LOG(ERROR) << "StringsToTensor failed";
-          delete[] bin_buf;
-          return RET_ERROR;
-        }
-        cur_tensor = *input;
-      } else {
-        auto tensor_data_size = cur_tensor.DataSize();
-        if (size != tensor_data_size) {
-          std::cerr << "Input binary file size error, required: " << tensor_data_size << ", in fact: " << size
-                    << std::endl;
-          MS_LOG(ERROR) << "Input binary file size error, required: " << tensor_data_size << ", in fact: " << size;
-          delete[] bin_buf;
-          return RET_ERROR;
-        }
-        auto input_data = cur_tensor.MutableData();
-        if (input_data == nullptr) {
-          MS_LOG(ERROR) << "input_data is nullptr.";
-          delete[] bin_buf;
-          return RET_ERROR;
-        }
-        memcpy(input_data, bin_buf, tensor_data_size);
+      cur_tensor = *input;
+    } else {
+      auto tensor_data_size = cur_tensor.DataSize();
+      if (size != tensor_data_size) {
+        std::cerr << "Input binary file size error, required: " << tensor_data_size << ", in fact: " << size
+                  << std::endl;
+        MS_LOG(ERROR) << "Input binary file size error, required: " << tensor_data_size << ", in fact: " << size;
+        delete[] bin_buf;
+        return RET_ERROR;
       }
-      delete[] bin_buf;
+      auto input_data = cur_tensor.MutableData();
+      if (input_data == nullptr) {
+        MS_LOG(ERROR) << "input_data is nullptr.";
+        delete[] bin_buf;
+        return RET_ERROR;
+      }
+      memcpy(input_data, bin_buf, tensor_data_size);
     }
+    delete[] bin_buf;
   }
   return RET_OK;
+}
+
+int BenchmarkUnifiedApi::ReadInputFile() {
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
+  if (flags_->enable_parallel_predict_) {
+    return ReadParallelInputFiles();
+  }
+#endif
+  return ReadNonParallelInputFiles();
 }
 
 int BenchmarkUnifiedApi::GetDataTypeByTensorName(const std::string &tensor_name) {
@@ -628,6 +650,48 @@ bool VectorValueCompare(const std::vector<T> &vec1, const std::vector<T> &vec2) 
 }
 }  // namespace
 
+int BenchmarkUnifiedApi::CompareSingleOutput(const std::string &tensor_name, mindspore::MSTensor &tensor,
+                                             CheckTensor *calib_tensor, float *total_bias, int *total_size) {
+  int ret;
+  if (static_cast<int>(tensor.DataType()) == kObjectTypeString) {
+    std::vector<std::string> output_strings = MSTensor::TensorToStrings(tensor);
+    ret = CompareStringData(tensor_name, calib_tensor->strings_data, output_strings);
+  } else if (flags_->enable_gl_texture_) {
+    auto *gltexture_id = reinterpret_cast<GLuint *>(tensor.MutableData());
+    if (gltexture_id == nullptr) {
+      MS_LOG(ERROR) << "get gltexture_id failed";
+      return RET_ERROR;
+    }
+    auto tmp = gl_runtime_.CopyDeviceTextureToHost(*gltexture_id);
+    if (tmp == nullptr) {
+      MS_LOG(ERROR) << "CopyDeviceTextureToHost failed";
+      return RET_ERROR;
+    }
+    float *hostptr = reinterpret_cast<float *>(tmp);
+
+    auto tensor_shape = tensor.Shape();
+    auto data_len = std::accumulate(tensor_shape.begin(), tensor_shape.end(), sizeof(float), std::multiplies<size_t>());
+    auto *new_tensor = new (std::nothrow)
+      MSTensor(tensor_name, mindspore::DataType::kNumberTypeFloat32, tensor_shape, hostptr, data_len);
+    MS_CHECK_TRUE_MSG(new_tensor != nullptr, RET_ERROR, "new tensor failed");
+    if (new_tensor->MutableData() == nullptr) {
+      MS_LOG(ERROR) << "CopyDeviceTextureToHost failed";
+      delete new_tensor;
+      return RET_ERROR;
+    }
+    ret = CompareDataGetTotalBiasAndSize(tensor_name, new_tensor, total_bias, total_size);
+    delete new_tensor;
+  } else {
+    ret = CompareDataGetTotalBiasAndSize(tensor_name, &tensor, total_bias, total_size);
+  }
+  if (ret != RET_OK) {
+    MS_LOG(ERROR) << "Error in CompareData";
+    std::cerr << "Error in CompareData" << std::endl;
+    std::cout << "=======================================================" << std::endl << std::endl;
+  }
+  return ret;
+}
+
 int BenchmarkUnifiedApi::CompareOutput() {
   std::cout << "================ Comparing Output data ================" << std::endl;
   float total_bias = 0;
@@ -644,45 +708,8 @@ int BenchmarkUnifiedApi::CompareOutput() {
       MS_LOG(ERROR) << "Get tensor failed, tensor name: " << tensor_name;
       return RET_ERROR;
     }
-    int ret;
-    if (static_cast<int>(tensor.DataType()) == kObjectTypeString) {
-      std::vector<std::string> output_strings = MSTensor::TensorToStrings(tensor);
-      ret = CompareStringData(tensor_name, calib_tensor.second->strings_data, output_strings);
-    } else {
-      if (flags_->enable_gl_texture_) {
-        auto *gltexture_id = reinterpret_cast<GLuint *>(tensor.MutableData());
-        if (gltexture_id == nullptr) {
-          MS_LOG(ERROR) << "get gltexture_id failed";
-          return RET_ERROR;
-        }
-        auto tmp = gl_runtime_.CopyDeviceTextureToHost(*gltexture_id);
-        if (tmp == nullptr) {
-          MS_LOG(ERROR) << "CopyDeviceTextureToHost failed";
-          return RET_ERROR;
-        }
-        float *hostptr = reinterpret_cast<float *>(tmp);
-
-        auto tensor_shape = tensor.Shape();
-        auto data_len =
-          std::accumulate(tensor_shape.begin(), tensor_shape.end(), sizeof(float), std::multiplies<size_t>());
-        auto *new_tensor = new (std::nothrow)
-          MSTensor(tensor_name, mindspore::DataType::kNumberTypeFloat32, tensor_shape, hostptr, data_len);
-        MS_CHECK_TRUE_MSG(new_tensor != nullptr, RET_ERROR, "new tensor failed");
-        if (new_tensor->MutableData() == nullptr) {
-          MS_LOG(ERROR) << "CopyDeviceTextureToHost failed";
-          delete new_tensor;
-          return RET_ERROR;
-        }
-        ret = CompareDataGetTotalBiasAndSize(tensor_name, new_tensor, &total_bias, &total_size);
-        delete new_tensor;
-      } else {
-        ret = CompareDataGetTotalBiasAndSize(tensor_name, &tensor, &total_bias, &total_size);
-      }
-    }
+    auto ret = CompareSingleOutput(tensor_name, tensor, calib_tensor.second, &total_bias, &total_size);
     if (ret != RET_OK) {
-      MS_LOG(ERROR) << "Error in CompareData";
-      std::cerr << "Error in CompareData" << std::endl;
-      std::cout << "=======================================================" << std::endl << std::endl;
       return ret;
     }
   }
@@ -840,6 +867,72 @@ int BenchmarkUnifiedApi::CompareDataGetTotalBiasAndSize(const std::string &name,
   *total_size += 1;
   return RET_OK;
 }
+float BenchmarkUnifiedApi::ComputeFloat16CosineBias(const std::string &name, mindspore::MSTensor *tensor,
+                                                    void *mutable_data, int *res) {
+  size_t shapeSize = 1;
+  for (int64_t dim : tensor->Shape()) {
+    if (dim <= 0) {
+      MS_LOG(ERROR) << "Invalid shape.";
+      *res = RET_ERROR;
+      return 0;
+    }
+    if (SIZE_MUL_OVERFLOW(shapeSize, static_cast<size_t>(dim))) {
+      MS_LOG(ERROR) << "mul overflow";
+      *res = RET_ERROR;
+      return 0;
+    }
+    shapeSize *= static_cast<size_t>(dim);
+  }
+  std::vector<float> float_arr(shapeSize);
+  for (size_t i = 0; i < shapeSize; ++i) {
+    uint16_t tmpInt = reinterpret_cast<uint16_t *>(mutable_data)[i];
+    Convert2Float32(&float_arr[i], tmpInt);
+    reinterpret_cast<float *>(mutable_data)[i] = float_arr[i];
+  }
+  return CompareData<float, int64_t>(name, tensor->Shape(), mutable_data);
+}
+
+float BenchmarkUnifiedApi::ComputeCosineDistanceBias(const std::string &name, mindspore::MSTensor *tensor,
+                                                     void *mutable_data, int *res) {
+  float bias = 0;
+  switch (static_cast<int>(tensor->DataType())) {
+    case TypeId::kNumberTypeFloat:
+    case TypeId::kNumberTypeFloat32: {
+      *res = CompareDatabyCosineDistance<float>(name, tensor->Shape(), mutable_data, &bias);
+      break;
+    }
+    case TypeId::kNumberTypeFloat16: {
+      bias = ComputeFloat16CosineBias(name, tensor, mutable_data, res);
+      break;
+    }
+    case TypeId::kNumberTypeInt8: {
+      *res = CompareDatabyCosineDistance<int8_t>(name, tensor->Shape(), mutable_data, &bias);
+      break;
+    }
+    case TypeId::kNumberTypeUInt8: {
+      *res = CompareDatabyCosineDistance<uint8_t>(name, tensor->Shape(), mutable_data, &bias);
+      break;
+    }
+    case TypeId::kNumberTypeInt32: {
+      *res = CompareDatabyCosineDistance<int32_t>(name, tensor->Shape(), mutable_data, &bias);
+      break;
+    }
+    case TypeId::kNumberTypeInt16: {
+      *res = CompareDatabyCosineDistance<int16_t>(name, tensor->Shape(), mutable_data, &bias);
+      break;
+    }
+    case TypeId::kNumberTypeBool: {
+      *res = CompareDatabyCosineDistance<bool>(name, tensor->Shape(), mutable_data, &bias);
+      break;
+    }
+    default:
+      MS_LOG(ERROR) << "Datatype " << static_cast<int>(tensor->DataType()) << " is not supported.";
+      *res = RET_ERROR;
+      return 0;
+  }
+  return bias;
+}
+
 int BenchmarkUnifiedApi::CompareDataGetTotalCosineDistanceAndSize(const std::string &name, mindspore::MSTensor *tensor,
                                                                   float *total_cosine_distance, int *total_size) {
   if (tensor == nullptr) {
@@ -854,63 +947,13 @@ int BenchmarkUnifiedApi::CompareDataGetTotalCosineDistanceAndSize(const std::str
     MS_LOG(ERROR) << "total_size is nullptr.";
     return RET_ERROR;
   }
-  float bias = 0;
   auto mutableData = tensor->MutableData();
   if (mutableData == nullptr) {
     MS_LOG(ERROR) << "mutableData is nullptr.";
     return RET_ERROR;
   }
   int res = RET_OK;
-  switch (static_cast<int>(tensor->DataType())) {
-    case TypeId::kNumberTypeFloat:
-    case TypeId::kNumberTypeFloat32: {
-      res = CompareDatabyCosineDistance<float>(name, tensor->Shape(), mutableData, &bias);
-      break;
-    }
-    case TypeId::kNumberTypeFloat16: {
-      size_t shapeSize = 1;
-      for (int64_t dim : tensor->Shape()) {
-        if (dim <= 0) {
-          MS_LOG(ERROR) << "Invalid shape.";
-          return RET_ERROR;
-        }
-        MS_CHECK_FALSE_MSG(SIZE_MUL_OVERFLOW(shapeSize, static_cast<size_t>(dim)), RET_ERROR, "mul overflow");
-        shapeSize *= static_cast<size_t>(dim);
-      }
-      float *floatArr = new float[shapeSize];
-      for (size_t i = 0; i < shapeSize; ++i) {
-        uint16_t tmpInt = reinterpret_cast<uint16_t *>(mutableData)[i];
-        Convert2Float32(&floatArr[i], tmpInt);
-        reinterpret_cast<float *>(mutableData)[i] = floatArr[i];
-      }
-      delete[] floatArr;
-      bias = CompareData<float, int64_t>(name, tensor->Shape(), mutableData);
-      break;
-    }
-    case TypeId::kNumberTypeInt8: {
-      res = CompareDatabyCosineDistance<int8_t>(name, tensor->Shape(), mutableData, &bias);
-      break;
-    }
-    case TypeId::kNumberTypeUInt8: {
-      res = CompareDatabyCosineDistance<uint8_t>(name, tensor->Shape(), mutableData, &bias);
-      break;
-    }
-    case TypeId::kNumberTypeInt32: {
-      res = CompareDatabyCosineDistance<int32_t>(name, tensor->Shape(), mutableData, &bias);
-      break;
-    }
-    case TypeId::kNumberTypeInt16: {
-      res = CompareDatabyCosineDistance<int16_t>(name, tensor->Shape(), mutableData, &bias);
-      break;
-    }
-    case TypeId::kNumberTypeBool: {
-      res = CompareDatabyCosineDistance<bool>(name, tensor->Shape(), mutableData, &bias);
-      break;
-    }
-    default:
-      MS_LOG(ERROR) << "Datatype " << static_cast<int>(tensor->DataType()) << " is not supported.";
-      return RET_ERROR;
-  }
+  float bias = ComputeCosineDistanceBias(name, tensor, mutableData, &res);
   if (res != RET_OK) {
     MS_LOG(ERROR) << "CompareData failed, name: " << name;
     return RET_ERROR;
@@ -920,7 +963,7 @@ int BenchmarkUnifiedApi::CompareDataGetTotalCosineDistanceAndSize(const std::str
   return RET_OK;
 }
 
-int BenchmarkUnifiedApi::MarkPerformance() {
+int BenchmarkUnifiedApi::ExecuteWarmUp() {
   MS_LOG(INFO) << "Running warm up loops...";
   std::cout << "Running warm up loops..." << std::endl;
   std::vector<MSTensor> outputs;
@@ -933,12 +976,16 @@ int BenchmarkUnifiedApi::MarkPerformance() {
       return RET_ERROR;
     }
   }
+  return RET_OK;
+}
 
+int BenchmarkUnifiedApi::ExecuteBenchmarkLoops(uint64_t *time_min, uint64_t *time_max, uint64_t *time_avg) {
   MS_LOG(INFO) << "Running benchmark loops...";
   std::cout << "Running benchmark loops..." << std::endl;
-  uint64_t time_min = UINT64_MAX;
-  uint64_t time_max = 0;
-  uint64_t time_avg = 0;
+  *time_min = UINT64_MAX;
+  *time_max = 0;
+  *time_avg = 0;
+  std::vector<MSTensor> outputs;
 
   for (int i = 0; i < flags_->loop_count_; i++) {
     auto inputs = ms_model_.GetInputs();
@@ -956,11 +1003,14 @@ int BenchmarkUnifiedApi::MarkPerformance() {
 
     auto end = GetTimeUs();
     auto time = end - start;
-    time_min = std::min(time_min, time);
-    time_max = std::max(time_max, time);
-    time_avg += time;
+    *time_min = std::min(*time_min, time);
+    *time_max = std::max(*time_max, time);
+    *time_avg += time;
   }
+  return RET_OK;
+}
 
+void BenchmarkUnifiedApi::PrintProfilingResult() {
   if (flags_->time_profiling_) {
     const std::vector<std::string> per_op_name = {"opName", "avg(ms)", "percent", "calledTimes", "opTotalTime"};
     const std::vector<std::string> per_op_type = {"opType", "avg(ms)", "percent", "calledTimes", "opTotalTime"};
@@ -988,6 +1038,23 @@ int BenchmarkUnifiedApi::MarkPerformance() {
     }
 #endif
   }
+}
+
+int BenchmarkUnifiedApi::MarkPerformance() {
+  auto status = ExecuteWarmUp();
+  if (status != RET_OK) {
+    return status;
+  }
+
+  uint64_t time_min = 0;
+  uint64_t time_max = 0;
+  uint64_t time_avg = 0;
+  status = ExecuteBenchmarkLoops(&time_min, &time_max, &time_avg);
+  if (status != RET_OK) {
+    return status;
+  }
+
+  PrintProfilingResult();
 
   if (flags_->loop_count_ > 0) {
     time_avg /= static_cast<size_t>(flags_->loop_count_);
@@ -1001,11 +1068,7 @@ int BenchmarkUnifiedApi::MarkPerformance() {
   return RET_OK;
 }
 
-int BenchmarkUnifiedApi::MarkAccuracy() {
-  MS_LOG(INFO) << "MarkAccuracy";
-  std::cout << "MarkAccuracy" << std::endl;
-
-  int status = 0;
+int BenchmarkUnifiedApi::PrintOrDisplayInputs() {
   if (flags_->enable_gl_texture_) {
     for (auto in_tensor : ms_inputs_for_api_) {
       auto *input = reinterpret_cast<GLuint *>(in_tensor.MutableData());
@@ -1018,21 +1081,18 @@ int BenchmarkUnifiedApi::MarkAccuracy() {
       gl_runtime_.PrintImage2DData(hostptr, 1, 1, print_num);
     }
   } else {
-    status = PrintInputData();
+    auto status = PrintInputData();
     if (status != RET_OK) {
       MS_LOG(ERROR) << "PrintInputData error " << status;
       std::cerr << "PrintInputData error " << status << std::endl;
       return status;
     }
   }
-  std::vector<MSTensor> outputs;
-  auto ret = ms_model_.Predict(ms_inputs_for_api_, &outputs, ms_before_call_back_, ms_after_call_back_);
-  if (ret != kSuccess) {
-    MS_LOG(ERROR) << "Inference error ";
-    std::cerr << "Inference error " << std::endl;
-    return RET_ERROR;
-  }
-  status = ReadCalibData();
+  return RET_OK;
+}
+
+int BenchmarkUnifiedApi::ValidateOutputs() {
+  int status = ReadCalibData();
   if (status != RET_OK) {
     MS_LOG(ERROR) << "Read calib data error " << status;
     std::cerr << "Read calib data error " << status << std::endl;
@@ -1052,6 +1112,47 @@ int BenchmarkUnifiedApi::MarkAccuracy() {
       return status;
     }
   }
+  return RET_OK;
+}
+
+int BenchmarkUnifiedApi::MarkAccuracy() {
+  MS_LOG(INFO) << "MarkAccuracy";
+  std::cout << "MarkAccuracy" << std::endl;
+
+  int status = PrintOrDisplayInputs();
+  if (status != RET_OK) {
+    return status;
+  }
+  std::vector<MSTensor> outputs;
+  auto ret = ms_model_.Predict(ms_inputs_for_api_, &outputs, ms_before_call_back_, ms_after_call_back_);
+  if (ret != kSuccess) {
+    MS_LOG(ERROR) << "Inference error ";
+    std::cerr << "Inference error " << std::endl;
+    return RET_ERROR;
+  }
+  return ValidateOutputs();
+}
+
+int BenchmarkUnifiedApi::PrintTensorDataByType(int tensor_data_type, const void *data, size_t print_num) {
+  for (size_t j = 0; j < print_num; j++) {
+    if (tensor_data_type == TypeId::kNumberTypeFloat32 || tensor_data_type == TypeId::kNumberTypeFloat) {
+      std::cout << static_cast<const float *>(data)[j] << " ";
+    } else if (tensor_data_type == TypeId::kNumberTypeInt8) {
+      std::cout << static_cast<const int8_t *>(data)[j] << " ";
+    } else if (tensor_data_type == TypeId::kNumberTypeUInt8) {
+      std::cout << static_cast<const uint8_t *>(data)[j] << " ";
+    } else if (tensor_data_type == TypeId::kNumberTypeInt32) {
+      std::cout << static_cast<const int32_t *>(data)[j] << " ";
+    } else if (tensor_data_type == TypeId::kNumberTypeInt64) {
+      std::cout << static_cast<const int64_t *>(data)[j] << " ";
+    } else if (tensor_data_type == TypeId::kNumberTypeBool) {
+      std::cout << static_cast<const bool *>(data)[j] << " ";
+    } else {
+      MS_LOG(ERROR) << "Datatype: " << tensor_data_type << " is not supported.";
+      return RET_ERROR;
+    }
+  }
+  std::cout << std::endl;
   return RET_OK;
 }
 
@@ -1083,26 +1184,10 @@ int BenchmarkUnifiedApi::PrintInputData() {
       MS_LOG(ERROR) << "in_data is nullptr.";
       return RET_ERROR;
     }
-
-    for (size_t j = 0; j < print_num; j++) {
-      if (tensor_data_type == TypeId::kNumberTypeFloat32 || tensor_data_type == TypeId::kNumberTypeFloat) {
-        std::cout << static_cast<const float *>(in_data)[j] << " ";
-      } else if (tensor_data_type == TypeId::kNumberTypeInt8) {
-        std::cout << static_cast<const int8_t *>(in_data)[j] << " ";
-      } else if (tensor_data_type == TypeId::kNumberTypeUInt8) {
-        std::cout << static_cast<const uint8_t *>(in_data)[j] << " ";
-      } else if (tensor_data_type == TypeId::kNumberTypeInt32) {
-        std::cout << static_cast<const int32_t *>(in_data)[j] << " ";
-      } else if (tensor_data_type == TypeId::kNumberTypeInt64) {
-        std::cout << static_cast<const int64_t *>(in_data)[j] << " ";
-      } else if (tensor_data_type == TypeId::kNumberTypeBool) {
-        std::cout << static_cast<const bool *>(in_data)[j] << " ";
-      } else {
-        MS_LOG(ERROR) << "Datatype: " << tensor_data_type << " is not supported.";
-        return RET_ERROR;
-      }
+    auto ret = PrintTensorDataByType(tensor_data_type, in_data, print_num);
+    if (ret != RET_OK) {
+      return ret;
     }
-    std::cout << std::endl;
   }
   return RET_OK;
 }
@@ -1192,39 +1277,8 @@ int BenchmarkUnifiedApi::AddConfigInfo(const std::shared_ptr<RunnerConfig> &runn
   return RET_OK;
 }
 
-int BenchmarkUnifiedApi::ParallelInference(std::shared_ptr<mindspore::Context> context) {
-  if (flags_->warm_up_loop_count_ > kMaxRequestNum || flags_->parallel_num_ > kMaxRequestNum) {
-    MS_LOG(WARNING) << "in parallel predict warm up loop count should less than" << kMaxRequestNum;
-  }
-
-  // model runner init
-  auto runner_config = std::make_shared<RunnerConfig>();
-  runner_config->SetContext(context);
-  runner_config->SetWorkersNum(flags_->workers_num_);
-  auto status = AddConfigInfo(runner_config);
-  MS_CHECK_FALSE_MSG(status != kSuccess, RET_ERROR, "add config info for parallel predict failed.");
-  auto model_init_start = GetTimeUs();
-  auto ret = model_runner_.Init(flags_->model_file_, runner_config);
-  MS_CHECK_FALSE_MSG(ret != kSuccess, RET_ERROR, "model pool init failed.");
-  auto model_init_end = GetTimeUs();
-
-  // load data
-  ms_inputs_for_api_ = model_runner_.GetInputs();
-  MS_CHECK_FALSE_MSG(ms_inputs_for_api_.empty(), RET_ERROR, "model pool input is empty.");
-  ms_outputs_for_api_ = model_runner_.GetOutputs();
-  MS_CHECK_FALSE_MSG(ms_outputs_for_api_.empty(), RET_ERROR, "model pool output is empty.");
-
-  if (!flags_->graph_input_shape_map_.empty()) {
-    // parse model input shapes from --inputShape flag
-    std::vector<std::vector<int64_t>> resize_dims = ParseGraphInputShapeMap(model_runner_.GetInputs());
-    MS_CHECK_FALSE_MSG(resize_dims.empty(), RET_ERROR, "resize dims empty.");
-    (void)std::transform(resize_dims.begin(), resize_dims.end(), std::back_inserter(resize_dims_),
-                         [&](const auto &shapes) { return shapes; });
-  } else {
-    (void)std::transform(flags_->resize_dims_.begin(), flags_->resize_dims_.end(), std::back_inserter(resize_dims_),
-                         [&](auto &shapes) { return this->ConverterToInt64Vector<int>(shapes); });
-  }
-
+int BenchmarkUnifiedApi::LoadParallelInputsAndCalibData() {
+  auto status = RET_OK;
   for (int i = 0; i < flags_->parallel_num_ + flags_->warm_up_loop_count_; i++) {
     status = LoadInput();
     MS_CHECK_FALSE_MSG(status != RET_OK, status, "Generate input data error");
@@ -1242,7 +1296,43 @@ int BenchmarkUnifiedApi::ParallelInference(std::shared_ptr<mindspore::Context> c
     status = ReadCalibData();
     MS_CHECK_FALSE_MSG(status != RET_OK, status, "ReadCalibData error ");
   }
+  return status;
+}
 
+int BenchmarkUnifiedApi::InitParallelRunner(const std::shared_ptr<mindspore::Context> &context,
+                                            uint64_t *model_init_cost) {
+  if (flags_->warm_up_loop_count_ > kMaxRequestNum || flags_->parallel_num_ > kMaxRequestNum) {
+    MS_LOG(WARNING) << "in parallel predict warm up loop count should less than" << kMaxRequestNum;
+  }
+
+  auto runner_config = std::make_shared<RunnerConfig>();
+  runner_config->SetContext(context);
+  runner_config->SetWorkersNum(flags_->workers_num_);
+  auto status = AddConfigInfo(runner_config);
+  MS_CHECK_FALSE_MSG(status != kSuccess, RET_ERROR, "add config info for parallel predict failed.");
+  auto model_init_start = GetTimeUs();
+  auto ret = model_runner_.Init(flags_->model_file_, runner_config);
+  MS_CHECK_FALSE_MSG(ret != kSuccess, RET_ERROR, "model pool init failed.");
+  *model_init_cost = GetTimeUs() - model_init_start;
+
+  ms_inputs_for_api_ = model_runner_.GetInputs();
+  MS_CHECK_FALSE_MSG(ms_inputs_for_api_.empty(), RET_ERROR, "model pool input is empty.");
+  ms_outputs_for_api_ = model_runner_.GetOutputs();
+  MS_CHECK_FALSE_MSG(ms_outputs_for_api_.empty(), RET_ERROR, "model pool output is empty.");
+
+  if (!flags_->graph_input_shape_map_.empty()) {
+    std::vector<std::vector<int64_t>> dims = ParseGraphInputShapeMap(model_runner_.GetInputs());
+    MS_CHECK_FALSE_MSG(dims.empty(), RET_ERROR, "resize dims empty.");
+    (void)std::transform(dims.begin(), dims.end(), std::back_inserter(resize_dims_),
+                         [&](const auto &shapes) { return shapes; });
+  } else {
+    (void)std::transform(flags_->resize_dims_.begin(), flags_->resize_dims_.end(), std::back_inserter(resize_dims_),
+                         [&](auto &shapes) { return this->ConverterToInt64Vector<int>(shapes); });
+  }
+  return LoadParallelInputsAndCalibData();
+}
+
+int BenchmarkUnifiedApi::RunParallelWarmUpAndBenchmark(float *all_run_time_cost) {
   // warm up
   std::vector<std::thread> model_thread_warm_up;
   for (int i = 0; i < flags_->warm_up_loop_count_; i++) {
@@ -1255,6 +1345,7 @@ int BenchmarkUnifiedApi::ParallelInference(std::shared_ptr<mindspore::Context> c
     return RET_ERROR;
   }
   std::cout << "=============== end warm up ===============\n";
+
   // do loop count
   std::vector<std::thread> model_thread_run;
   for (int parallel_num_idx = 0; parallel_num_idx < flags_->parallel_num_; parallel_num_idx++) {
@@ -1270,9 +1361,27 @@ int BenchmarkUnifiedApi::ParallelInference(std::shared_ptr<mindspore::Context> c
   if (model_parallel_runner_ret_failed_) {
     return RET_ERROR;
   }
+  if (all_run_time_cost != nullptr) {
+    *all_run_time_cost = (end_run_time - start_run_time) / kFloatMSEC;
+  }
+  return RET_OK;
+}
+
+int BenchmarkUnifiedApi::ParallelInference(std::shared_ptr<mindspore::Context> context) {
+  uint64_t model_init_cost = 0;
+  auto status = InitParallelRunner(context, &model_init_cost);
+  if (status != RET_OK) {
+    return status;
+  }
+
+  float all_run_time_cost = 0;
+  status = RunParallelWarmUpAndBenchmark(&all_run_time_cost);
+  if (status != RET_OK) {
+    return status;
+  }
   std::cout << "=================================" << std::endl;
-  std::cout << "parallel predict init time: " << (model_init_end - model_init_start) / kFloatMSEC << " ms\n";
-  std::cout << "parallel predict all run time: " << (end_run_time - start_run_time) / kFloatMSEC << " ms\n";
+  std::cout << "parallel predict init time: " << model_init_cost / kFloatMSEC << " ms\n";
+  std::cout << "parallel predict all run time: " << all_run_time_cost << " ms\n";
   std::cout << "=================================" << std::endl;
   return RET_OK;
 }
@@ -1306,26 +1415,10 @@ int BenchmarkUnifiedApi::PrintOutputData() {
       MS_LOG(ERROR) << "out_data is nullptr.";
       return RET_ERROR;
     }
-
-    for (size_t j = 0; j < print_num; j++) {
-      if (tensor_data_type == TypeId::kNumberTypeFloat32 || tensor_data_type == TypeId::kNumberTypeFloat) {
-        std::cout << static_cast<const float *>(in_data)[j] << " ";
-      } else if (tensor_data_type == TypeId::kNumberTypeInt8) {
-        std::cout << static_cast<const int8_t *>(in_data)[j] << " ";
-      } else if (tensor_data_type == TypeId::kNumberTypeUInt8) {
-        std::cout << static_cast<const uint8_t *>(in_data)[j] << " ";
-      } else if (tensor_data_type == TypeId::kNumberTypeInt32) {
-        std::cout << static_cast<const int32_t *>(in_data)[j] << " ";
-      } else if (tensor_data_type == TypeId::kNumberTypeInt64) {
-        std::cout << static_cast<const int64_t *>(in_data)[j] << " ";
-      } else if (tensor_data_type == TypeId::kNumberTypeBool) {
-        std::cout << static_cast<const bool *>(in_data)[j] << " ";
-      } else {
-        MS_LOG(ERROR) << "Datatype: " << tensor_data_type << " is not supported.";
-        return RET_ERROR;
-      }
+    auto ret = PrintTensorDataByType(tensor_data_type, in_data, print_num);
+    if (ret != RET_OK) {
+      return ret;
     }
-    std::cout << std::endl;
   }
   return RET_OK;
 }
@@ -1334,8 +1427,8 @@ int BenchmarkUnifiedApi::CompileGraph(mindspore::ModelType model_type, const std
                                       const std::string &model_name) {
   Status ret = ms_model_.Build(flags_->model_file_, model_type, context);
   if (ret != kSuccess) {
-    MS_LOG(ERROR) << "ms_model_.Build failed while running ", model_name.c_str();
-    std::cout << "ms_model_.Build failed while running ", model_name.c_str();
+    MS_LOG(ERROR) << "ms_model_.Build failed while running " << model_name.c_str();
+    std::cout << "ms_model_.Build failed while running " << model_name.c_str();
     return RET_ERROR;
   }
   return RET_OK;
@@ -1382,9 +1475,26 @@ int BenchmarkUnifiedApi::RunParallelBenchmark(std::shared_ptr<mindspore::Context
 }
 #endif
 
-int BenchmarkUnifiedApi::RunBenchmark() {
-  auto start_prepare_time = GetTimeUs();
+int BenchmarkUnifiedApi::LoadModelConfig(const std::string &model_name) {
+  if (!flags_->config_file_.empty()) {
+    auto config_ret = ms_model_.LoadConfig(flags_->config_file_);
+    if (config_ret != kSuccess) {
+      MS_LOG(ERROR) << "ms_model_.LoadConfig failed while running " << model_name.c_str();
+      std::cout << "ms_model_.LoadConfig failed while running " << model_name.c_str();
+    }
+  }
+  if (flags_->model_type_ == "MindIR") {
+    UpdateConfigInfo();
+  } else if (flags_->model_type_ != "MindIR_Lite") {
+    MS_LOG(ERROR) << "Model type " << flags_->model_type_ << " is not valid.";
+    std::cerr << "Model type " << flags_->model_type_ << " is not valid." << std::endl;
+    return RET_ERROR;
+  }
+  return RET_OK;
+}
 
+int BenchmarkUnifiedApi::InitBenchmarkContext(mindspore::ModelType *model_type,
+                                              std::shared_ptr<mindspore::Context> *context) {
   if (flags_->enable_gl_texture_) {
     if (!gl_runtime_.Init()) {
       MS_LOG(ERROR) << "opengl runtime init failed ";
@@ -1393,7 +1503,6 @@ int BenchmarkUnifiedApi::RunBenchmark() {
     }
   }
 
-  // Load graph
   std::string model_name = flags_->model_file_.substr(flags_->model_file_.find_last_of(DELIM_SLASH) + 1);
   auto iter = ModelTypeMap.find(flags_->model_type_);
   if (iter == ModelTypeMap.end()) {
@@ -1401,51 +1510,35 @@ int BenchmarkUnifiedApi::RunBenchmark() {
     std::cerr << "model_type " << flags_->model_type_ << " is invalid.";
     return RET_ERROR;
   }
-  mindspore::ModelType model_type = iter->second;
+  *model_type = iter->second;
 
   MS_LOG(INFO) << "start unified benchmark run";
   std::cout << "start unified benchmark run" << std::endl;
 
-  auto context = std::make_shared<mindspore::Context>();
-  if (context == nullptr) {
+  *context = std::make_shared<mindspore::Context>();
+  if (*context == nullptr) {
     MS_LOG(ERROR) << "New context failed while running " << model_name.c_str();
     std::cerr << "New context failed while running " << model_name.c_str() << std::endl;
     return RET_ERROR;
   }
 
-  auto status = InitMSContext(context);
+  auto status = InitMSContext(*context);
   if (status != RET_OK) {
     MS_LOG(ERROR) << "InitMSContext failed while running " << model_name.c_str();
     std::cout << "InitMSContext failed while running " << model_name.c_str();
     return RET_ERROR;
   }
 
-  (void)UpdateDistributionName(context, &flags_->model_file_);
-  (void)UpdateDistributionName(context, &flags_->benchmark_data_file_);
-  (void)UpdateDistributionName(context, &flags_->config_file_);
+  (void)UpdateDistributionName(*context, &flags_->model_file_);
+  (void)UpdateDistributionName(*context, &flags_->benchmark_data_file_);
+  (void)UpdateDistributionName(*context, &flags_->config_file_);
 
-  if (!flags_->config_file_.empty()) {
-    auto config_ret = ms_model_.LoadConfig(flags_->config_file_);
-    if (config_ret != kSuccess) {
-      MS_LOG(ERROR) << "ms_model_.LoadConfig failed while running ", model_name.c_str();
-      std::cout << "ms_model_.LoadConfig failed while running ", model_name.c_str();
-    }
-  }
-  if (flags_->model_type_ == "MindIR") {
-    UpdateConfigInfo();
-  } else if (flags_->model_type_ != "MindIR" && flags_->model_type_ != "MindIR_Lite") {
-    MS_LOG(ERROR) << "Model type " << flags_->model_type_ << " is not valid.";
-    std::cerr << "Model type " << flags_->model_type_ << " is not valid." << std::endl;
-    return RET_ERROR;
-  }
-#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
-  if (flags_->enable_parallel_predict_) {
-    MS_CHECK_FALSE_MSG(RunParallelBenchmark(context) != RET_OK, RET_ERROR, "run model pool failed.");
-    return RET_OK;
-  }
-#endif
+  return LoadModelConfig(model_name);
+}
 
-  status = CompileGraph(model_type, context, model_name);
+int BenchmarkUnifiedApi::CompileAndLoadModel(mindspore::ModelType model_type, const std::shared_ptr<Context> &context,
+                                             const std::string &model_name) {
+  auto status = CompileGraph(model_type, context, model_name);
   MS_CHECK_FALSE_MSG(status != RET_OK, status, "Compile graph failed.");
   if (!flags_->graph_input_shape_map_.empty()) {
     std::vector<std::vector<int64_t>> resize_dims = ParseGraphInputShapeMap(ms_model_.GetInputs());
@@ -1471,11 +1564,36 @@ int BenchmarkUnifiedApi::RunBenchmark() {
 
   ms_inputs_for_api_ = ms_model_.GetInputs();
   ms_outputs_for_api_ = ms_model_.GetOutputs();
+  return RET_OK;
+}
+
+int BenchmarkUnifiedApi::RunBenchmark() {
+  auto start_prepare_time = GetTimeUs();
+
+  mindspore::ModelType model_type;
+  std::shared_ptr<mindspore::Context> context;
+  auto status = InitBenchmarkContext(&model_type, &context);
+  if (status != RET_OK) {
+    return status;
+  }
+
+#ifdef MSLITE_ENABLE_CLOUD_INFERENCE
+  if (flags_->enable_parallel_predict_) {
+    MS_CHECK_FALSE_MSG(RunParallelBenchmark(context) != RET_OK, RET_ERROR, "run model pool failed.");
+    return RET_OK;
+  }
+#endif
+
+  std::string model_name = flags_->model_file_.substr(flags_->model_file_.find_last_of(DELIM_SLASH) + 1);
+  status = CompileAndLoadModel(model_type, context, model_name);
+  if (status != RET_OK) {
+    return status;
+  }
+
   auto end_prepare_time = GetTimeUs();
   MS_LOG(INFO) << "PrepareTime = " << ((end_prepare_time - start_prepare_time) / kFloatMSEC) << " ms";
   std::cout << "PrepareTime = " << ((end_prepare_time - start_prepare_time) / kFloatMSEC) << " ms" << std::endl;
 
-  // Load input
   MS_LOG(INFO) << "start generate input data";
   status = LoadInput();
   if (status != RET_OK) {
@@ -1515,95 +1633,46 @@ int BenchmarkUnifiedApi::GetBenchmarkResult() {
   return RET_OK;
 }
 
-int BenchmarkUnifiedApi::InitTimeProfilingCallbackParameter() {
-  if (flags_->inter_op_parallel_num_ > 1) {
-    // before callback
-    ms_before_call_back_ = [&, this](const std::vector<mindspore::MSTensor> &before_inputs,
-                                     const std::vector<mindspore::MSTensor> &before_outputs,
-                                     const MSCallBackParam &call_param) {
-      if (before_inputs.empty()) {
-        MS_LOG(INFO) << "The num of beforeInputs is empty";
-      }
-      if (before_outputs.empty()) {
-        MS_LOG(INFO) << "The num of beforeOutputs is empty";
-      }
-      {
-        std::lock_guard<std::mutex> _l(op_times_mutex_);
-        if (op_times_by_type_.find(call_param.node_type) == op_times_by_type_.end()) {
-          op_times_by_type_.insert(std::make_pair(call_param.node_type, std::make_pair(0, 0.0f)));
-        }
-        if (op_times_by_name_.find(call_param.node_name) == op_times_by_name_.end()) {
-          op_times_by_name_.insert(std::make_pair(call_param.node_name, std::make_pair(0, 0.0f)));
-        }
-        op_start_times_by_name_[call_param.node_name] = GetTimeUs();
-        op_call_times_total_++;
-      }
-      return true;
-    };
-
-    // after callback
-    ms_after_call_back_ = [&, this](const std::vector<mindspore::MSTensor> &after_inputs,
-                                    const std::vector<mindspore::MSTensor> &after_outputs,
-                                    const MSCallBackParam &call_param) {
-      uint64_t opEnd = GetTimeUs();
-
-      if (after_inputs.empty()) {
-        MS_LOG(INFO) << "The num of after inputs is empty";
-      }
-      if (after_outputs.empty()) {
-        MS_LOG(INFO) << "The num of after outputs is empty";
-      }
-      {
-        std::lock_guard<std::mutex> _l(op_times_mutex_);
-        float cost = static_cast<float>(opEnd - op_start_times_by_name_[call_param.node_name]) / kFloatMSEC;
-        if (flags_->device_ == "GPU") {
-          cost = static_cast<float>(call_param.execute_time);
-        }
-        op_cost_total_ += cost;
-        op_times_by_type_[call_param.node_type].first++;
-        op_times_by_type_[call_param.node_type].second += cost;
-        op_times_by_name_[call_param.node_name].first++;
-        op_times_by_name_[call_param.node_name].second += cost;
-      }
-      return true;
-    };
-  } else {
-    // before callback
-    ms_before_call_back_ = [&, this](const std::vector<mindspore::MSTensor> &before_inputs,
-                                     const std::vector<mindspore::MSTensor> &before_outputs,
-                                     const MSCallBackParam &call_param) {
-      if (before_inputs.empty()) {
-        MS_LOG(INFO) << "The num of beforeInputs is empty";
-      }
-      if (before_outputs.empty()) {
-        MS_LOG(INFO) << "The num of beforeOutputs is empty";
-      }
+void BenchmarkUnifiedApi::SetupParallelBeforeCallback() {
+  ms_before_call_back_ = [&, this](const std::vector<mindspore::MSTensor> &before_inputs,
+                                   const std::vector<mindspore::MSTensor> &before_outputs,
+                                   const MSCallBackParam &call_param) {
+    if (before_inputs.empty()) {
+      MS_LOG(INFO) << "The num of beforeInputs is empty";
+    }
+    if (before_outputs.empty()) {
+      MS_LOG(INFO) << "The num of beforeOutputs is empty";
+    }
+    {
+      std::lock_guard<std::mutex> _l(op_times_mutex_);
       if (op_times_by_type_.find(call_param.node_type) == op_times_by_type_.end()) {
         op_times_by_type_.insert(std::make_pair(call_param.node_type, std::make_pair(0, 0.0f)));
       }
       if (op_times_by_name_.find(call_param.node_name) == op_times_by_name_.end()) {
         op_times_by_name_.insert(std::make_pair(call_param.node_name, std::make_pair(0, 0.0f)));
       }
-
+      op_start_times_by_name_[call_param.node_name] = GetTimeUs();
       op_call_times_total_++;
-      op_begin_ = GetTimeUs();
-      return true;
-    };
+    }
+    return true;
+  };
+}
 
-    // after callback
-    ms_after_call_back_ = [&, this](const std::vector<mindspore::MSTensor> &after_inputs,
-                                    const std::vector<mindspore::MSTensor> &after_outputs,
-                                    const MSCallBackParam &call_param) {
-      uint64_t opEnd = GetTimeUs();
+void BenchmarkUnifiedApi::SetupParallelAfterCallback() {
+  ms_after_call_back_ = [&, this](const std::vector<mindspore::MSTensor> &after_inputs,
+                                  const std::vector<mindspore::MSTensor> &after_outputs,
+                                  const MSCallBackParam &call_param) {
+    uint64_t op_end = GetTimeUs();
 
-      if (after_inputs.empty()) {
-        MS_LOG(INFO) << "The num of after inputs is empty";
-      }
-      if (after_outputs.empty()) {
-        MS_LOG(INFO) << "The num of after outputs is empty";
-      }
-
-      float cost = static_cast<float>(opEnd - op_begin_) / kFloatMSEC;
+    if (after_inputs.empty()) {
+      MS_LOG(INFO) << "The num of after inputs is empty";
+    }
+    if (after_outputs.empty()) {
+      MS_LOG(INFO) << "The num of after outputs is empty";
+    }
+    {
+      std::lock_guard<std::mutex> _l(op_times_mutex_);
+      float cost = static_cast<float>(op_end - op_start_times_by_name_[call_param.node_name]) / kFloatMSEC;
       if (flags_->device_ == "GPU") {
         cost = static_cast<float>(call_param.execute_time);
       }
@@ -1612,56 +1681,106 @@ int BenchmarkUnifiedApi::InitTimeProfilingCallbackParameter() {
       op_times_by_type_[call_param.node_type].second += cost;
       op_times_by_name_[call_param.node_name].first++;
       op_times_by_name_[call_param.node_name].second += cost;
-      return true;
-    };
+    }
+    return true;
+  };
+}
+
+void BenchmarkUnifiedApi::SetupParallelTimeProfilingCallbacks() {
+  SetupParallelBeforeCallback();
+  SetupParallelAfterCallback();
+}
+
+void BenchmarkUnifiedApi::SetupNonParallelTimeProfilingCallbacks() {
+  // before callback
+  ms_before_call_back_ = [&, this](const std::vector<mindspore::MSTensor> &before_inputs,
+                                   const std::vector<mindspore::MSTensor> &before_outputs,
+                                   const MSCallBackParam &call_param) {
+    if (before_inputs.empty()) {
+      MS_LOG(INFO) << "The num of beforeInputs is empty";
+    }
+    if (before_outputs.empty()) {
+      MS_LOG(INFO) << "The num of beforeOutputs is empty";
+    }
+    if (op_times_by_type_.find(call_param.node_type) == op_times_by_type_.end()) {
+      op_times_by_type_.insert(std::make_pair(call_param.node_type, std::make_pair(0, 0.0f)));
+    }
+    if (op_times_by_name_.find(call_param.node_name) == op_times_by_name_.end()) {
+      op_times_by_name_.insert(std::make_pair(call_param.node_name, std::make_pair(0, 0.0f)));
+    }
+
+    op_call_times_total_++;
+    op_begin_ = GetTimeUs();
+    return true;
+  };
+
+  // after callback
+  ms_after_call_back_ = [&, this](const std::vector<mindspore::MSTensor> &after_inputs,
+                                  const std::vector<mindspore::MSTensor> &after_outputs,
+                                  const MSCallBackParam &call_param) {
+    uint64_t op_end = GetTimeUs();
+
+    if (after_inputs.empty()) {
+      MS_LOG(INFO) << "The num of after inputs is empty";
+    }
+    if (after_outputs.empty()) {
+      MS_LOG(INFO) << "The num of after outputs is empty";
+    }
+
+    float cost = static_cast<float>(op_end - op_begin_) / kFloatMSEC;
+    if (flags_->device_ == "GPU") {
+      cost = static_cast<float>(call_param.execute_time);
+    }
+    op_cost_total_ += cost;
+    op_times_by_type_[call_param.node_type].first++;
+    op_times_by_type_[call_param.node_type].second += cost;
+    op_times_by_name_[call_param.node_name].first++;
+    op_times_by_name_[call_param.node_name].second += cost;
+    return true;
+  };
+}
+
+int BenchmarkUnifiedApi::InitTimeProfilingCallbackParameter() {
+  if (flags_->inter_op_parallel_num_ > 1) {
+    SetupParallelTimeProfilingCallbacks();
+  } else {
+    SetupNonParallelTimeProfilingCallbacks();
   }
   return RET_OK;
 }
 
-int BenchmarkUnifiedApi::InitPerfProfilingCallbackParameter() {
-#ifndef ENABLE_ARM64
-  MS_LOG(ERROR) << "Only support perf_profiling on arm64.";
-  return RET_ERROR;
-#else
-  struct perf_event_attr pe, pe2;
-  memset(&pe, 0, sizeof(struct perf_event_attr));
-  memset(&pe2, 0, sizeof(struct perf_event_attr));
-  pe.type = PERF_TYPE_HARDWARE;
-  pe2.type = PERF_TYPE_HARDWARE;
-  pe.size = sizeof(struct perf_event_attr);
-  pe2.size = sizeof(struct perf_event_attr);
-  pe.disabled = 1;
-  pe2.disabled = 1;
-  pe.exclude_kernel = 1;   // don't count kernel
-  pe2.exclude_kernel = 1;  // don't count kernel
-  pe.exclude_hv = 1;       // don't count hypervisor
-  pe2.exclude_hv = 1;      // don't count hypervisor
-  pe.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
-  pe2.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
+#ifdef ENABLE_ARM64
+void BenchmarkUnifiedApi::InitPerfEventAttributes(perf_event_attr *pe, perf_event_attr *pe2) {
+  memset(pe, 0, sizeof(struct perf_event_attr));
+  memset(pe2, 0, sizeof(struct perf_event_attr));
+  pe->type = PERF_TYPE_HARDWARE;
+  pe2->type = PERF_TYPE_HARDWARE;
+  pe->size = sizeof(struct perf_event_attr);
+  pe2->size = sizeof(struct perf_event_attr);
+  pe->disabled = 1;
+  pe2->disabled = 1;
+  pe->exclude_kernel = 1;
+  pe2->exclude_kernel = 1;
+  pe->exclude_hv = 1;
+  pe2->exclude_hv = 1;
+  pe->read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
+  pe2->read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
   if (flags_->perf_event_ == "CACHE") {
-    pe.config = PERF_COUNT_HW_CACHE_REFERENCES;
-    pe2.config = PERF_COUNT_HW_CACHE_MISSES;
+    pe->config = PERF_COUNT_HW_CACHE_REFERENCES;
+    pe2->config = PERF_COUNT_HW_CACHE_MISSES;
   } else if (flags_->perf_event_ == "STALL") {
-    pe.config = PERF_COUNT_HW_STALLED_CYCLES_FRONTEND;
-    pe2.config = PERF_COUNT_HW_STALLED_CYCLES_BACKEND;
+    pe->config = PERF_COUNT_HW_STALLED_CYCLES_FRONTEND;
+    pe2->config = PERF_COUNT_HW_STALLED_CYCLES_BACKEND;
   } else {
-    pe.config = PERF_COUNT_HW_CPU_CYCLES;
-    pe2.config = PERF_COUNT_HW_INSTRUCTIONS;
+    pe->config = PERF_COUNT_HW_CPU_CYCLES;
+    pe2->config = PERF_COUNT_HW_INSTRUCTIONS;
   }
-  perf_fd = syscall(__NR_perf_event_open, pe, 0, -1, -1, 0);
-  if (perf_fd == -1) {
-    MS_LOG(ERROR) << "Failed to open perf event " << pe.config;
-    return RET_ERROR;
-  }
-  perf_fd2 = syscall(__NR_perf_event_open, pe2, 0, -1, perf_fd, 0);
-  if (perf_fd2 == -1) {
-    MS_LOG(ERROR) << "Failed to open perf event " << pe2.config;
-    return RET_ERROR;
-  }
+}
+
+void BenchmarkUnifiedApi::CreatePerfBeforeCallback() {
   struct PerfCount zero;
   zero.value[0] = 0;
   zero.value[1] = 0;
-  // before callback
   ms_before_call_back_ = [&](const std::vector<mindspore::MSTensor> &before_inputs,
                              const std::vector<mindspore::MSTensor> &before_outputs,
                              const MSCallBackParam &call_param) {
@@ -1683,8 +1802,9 @@ int BenchmarkUnifiedApi::InitPerfProfilingCallbackParameter() {
     ioctl(perf_fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);
     return true;
   };
+}
 
-  // after callback
+void BenchmarkUnifiedApi::CreatePerfAfterCallback() {
   ms_after_call_back_ = [&](const std::vector<mindspore::MSTensor> &after_inputs,
                             const std::vector<mindspore::MSTensor> &after_outputs, const MSCallBackParam &call_param) {
     struct PerfResult res;
@@ -1712,8 +1832,32 @@ int BenchmarkUnifiedApi::InitPerfProfilingCallbackParameter() {
     op_perf_by_name_[call_param.node_name].second.value[1] += cost2;
     return true;
   };
+}
 #endif
+
+int BenchmarkUnifiedApi::InitPerfProfilingCallbackParameter() {
+#ifndef ENABLE_ARM64
+  MS_LOG(ERROR) << "Only support perf_profiling on arm64.";
+  return RET_ERROR;
+#else
+  struct perf_event_attr pe, pe2;
+  InitPerfEventAttributes(&pe, &pe2);
+
+  perf_fd = syscall(__NR_perf_event_open, pe, 0, -1, -1, 0);
+  if (perf_fd == -1) {
+    MS_LOG(ERROR) << "Failed to open perf event " << pe.config;
+    return RET_ERROR;
+  }
+  perf_fd2 = syscall(__NR_perf_event_open, pe2, 0, -1, perf_fd, 0);
+  if (perf_fd2 == -1) {
+    MS_LOG(ERROR) << "Failed to open perf event " << pe2.config;
+    return RET_ERROR;
+  }
+
+  CreatePerfBeforeCallback();
+  CreatePerfAfterCallback();
   return RET_OK;
+#endif
 }
 
 namespace {
@@ -1763,9 +1907,11 @@ std::string DumpMSTensor(mindspore::MSTensor *tensor) {
   }
   return oss.str();
 }
+}  // namespace
+
 #ifndef BENCHMARK_CLIP_JSON
-std::string GenerateOutputFileName(mindspore::MSTensor *tensor, const std::string &op_name,
-                                   const std::string &file_type, const size_t &idx) {
+std::string BenchmarkUnifiedApi::GenerateOutputFileName(mindspore::MSTensor *tensor, const std::string &op_name,
+                                                        const std::string &file_type, const size_t &idx) {
   std::string file_name = op_name;
   auto pos = file_name.find_first_of('/');
   while (pos != std::string::npos) {
@@ -1785,11 +1931,9 @@ std::string GenerateOutputFileName(mindspore::MSTensor *tensor, const std::strin
   } else {
     file_name += +".bin";
   }
-
   return file_name;
 }
 #endif
-}  // namespace
 
 int BenchmarkUnifiedApi::InitPrintTensorDataCallbackParameter() {
   // before callback
@@ -1815,9 +1959,8 @@ int BenchmarkUnifiedApi::InitPrintTensorDataCallbackParameter() {
   };
   return RET_OK;
 }
-int BenchmarkUnifiedApi::InitDumpTensorDataCallbackParameter() {
+void BenchmarkUnifiedApi::SetupDumpBeforeCallback() {
 #ifndef BENCHMARK_CLIP_JSON
-  // before callback
   ms_before_call_back_ = [&](const std::vector<mindspore::MSTensor> &before_inputs,
                              const std::vector<mindspore::MSTensor> &before_outputs,
                              const MSCallBackParam &call_param) {
@@ -1830,7 +1973,7 @@ int BenchmarkUnifiedApi::InitDumpTensorDataCallbackParameter() {
           auto ms_tensor = before_inputs.at(i);
           auto file_name = GenerateOutputFileName(&ms_tensor, call_param.node_name, "input", i);
           auto abs_file_path = dump_file_output_dir_ + "/" + file_name;
-          if (WriteToBin(abs_file_path, ms_tensor.MutableData(), ms_tensor.DataSize()) != RET_OK) {  // save to file
+          if (WriteToBin(abs_file_path, ms_tensor.MutableData(), ms_tensor.DataSize()) != RET_OK) {
             MS_LOG(ERROR) << "write tensor data to file failed.";
             return false;
           }
@@ -1839,8 +1982,11 @@ int BenchmarkUnifiedApi::InitDumpTensorDataCallbackParameter() {
     }
     return true;
   };
+#endif
+}
 
-  // after callback
+void BenchmarkUnifiedApi::SetupDumpAfterCallback() {
+#ifndef BENCHMARK_CLIP_JSON
   ms_after_call_back_ = [&](const std::vector<mindspore::MSTensor> &after_inputs,
                             const std::vector<mindspore::MSTensor> &after_outputs, const MSCallBackParam &call_param) {
     auto dump_mode = dump_cfg_json_[dump::kSettings][dump::kMode].get<int>();
@@ -1853,7 +1999,7 @@ int BenchmarkUnifiedApi::InitDumpTensorDataCallbackParameter() {
           auto ms_tensor = after_outputs.at(i);
           auto file_name = GenerateOutputFileName(&ms_tensor, call_param.node_name, "output", i);
           auto abs_file_path = dump_file_output_dir_ + "/" + file_name;
-          if (WriteToBin(abs_file_path, ms_tensor.MutableData(), ms_tensor.DataSize()) != RET_OK) {  // save to file
+          if (WriteToBin(abs_file_path, ms_tensor.MutableData(), ms_tensor.DataSize()) != RET_OK) {
             MS_LOG(ERROR) << "write tensor data to file failed.";
             return false;
           }
@@ -1863,6 +2009,11 @@ int BenchmarkUnifiedApi::InitDumpTensorDataCallbackParameter() {
     return true;
   };
 #endif
+}
+
+int BenchmarkUnifiedApi::InitDumpTensorDataCallbackParameter() {
+  SetupDumpBeforeCallback();
+  SetupDumpAfterCallback();
   return RET_OK;
 }
 
