@@ -27,6 +27,7 @@
 #include "ir/anf.h"
 #include "tools/converter/quantizer/quantizer.h"
 #include "tools/converter/converter_context.h"
+#include "tools/optimizer/parallel/split_strategy.h"
 
 namespace mindspore {
 namespace lite {
@@ -51,6 +52,12 @@ class AnfTransform {
 
   static int RunConstFoldPass(const FuncGraphPtr &olde_graph, const std::shared_ptr<ConverterPara> &param);
 
+  static int DetermineSplitStrategy(const FuncGraphPtr &old_graph, const std::shared_ptr<ConverterPara> &param,
+                                    opt::SplitMode *split_mode,
+                                    std::unordered_map<std::string, opt::SplitStrategy> *split_strategys);
+  static int RunParallelOptimization(const FuncGraphPtr &old_graph,
+                                     const std::unordered_map<std::string, opt::SplitStrategy> &split_strategys,
+                                     const std::shared_ptr<ConverterPara> &param);
   static int RunParallelPass(const FuncGraphPtr &old_graph, const std::shared_ptr<ConverterPara> &param);
 
   static int DoQuantize(const FuncGraphPtr &old_graph, const std::shared_ptr<ConverterPara> &param);

@@ -553,6 +553,45 @@ Tensor *Tensor::CreateTensor(const std::string &name, TypeId type, const std::ve
   return tensor.release();
 }
 
+void *Tensor::AllocateTensorData(const void *data, size_t data_len) {
+  void *new_data = malloc(data_len);
+  if (new_data == nullptr) {
+    MS_LOG(ERROR) << "Failed to malloc data.";
+    return nullptr;
+  }
+  if (data != nullptr) {
+    if (memcpy_s(new_data, data_len, data, data_len) != EOK) {
+      MS_LOG(ERROR) << "Failed to copy data.";
+      free(new_data);
+      return nullptr;
+    }
+  }
+  return new_data;
+}
+
+std::vector<int> Tensor::ComputeShapeOrTruncate(const std::vector<int> &shape, size_t data_len, size_t data_type_size) {
+  size_t shape_size = 1;
+  if (shape.empty()) {
+    shape_size = 1;
+  } else {
+    for (size_t i = 0; i < shape.size(); ++i) {
+      if (shape[i] < 0) {
+        return {};
+      }
+      auto dim = static_cast<size_t>(shape[i]);
+      if (shape_size != 0 && SIZE_MAX / shape_size < dim) {
+        MS_LOG(ERROR) << "Shape multiply overflow at dim " << i << ".";
+        return {};
+      }
+      shape_size *= dim;
+    }
+  }
+  if (data_len != shape_size * data_type_size) {
+    return {static_cast<int>(data_len)};
+  }
+  return shape;
+}
+
 Tensor *Tensor::CreateTensorByDeepCopy(const std::string &name, TypeId type, const std::vector<int> &shape,
                                        const void *data, size_t data_len) {
   auto tensor = std::make_unique<lite::Tensor>();
@@ -576,34 +615,22 @@ Tensor *Tensor::CreateTensorByDeepCopy(const std::string &name, TypeId type, con
   } else if (data_len == 0 && data == nullptr) {
     tensor->set_data(const_cast<void *>(data));
   } else {
-    void *new_data = malloc(data_len);
+    auto *new_data = AllocateTensorData(data, data_len);
     if (new_data == nullptr) {
-      MS_LOG(ERROR) << "Failed to malloc data.";
       return nullptr;
-    }
-    if (data != nullptr) {
-      (void)memcpy(new_data, data, data_len);
     }
     tensor->set_data(const_cast<void *>(new_data));
   }
 
-  size_t shape_size = 1;
-  if (shape.empty()) {
-    shape_size = 1;
-  } else {
-    for (size_t i = 0; i < shape.size(); ++i) {
-      if (shape[i] < 0) {
-        return nullptr;
-      }
-      shape_size *= static_cast<size_t>(shape[i]);
+  auto final_shape = ComputeShapeOrTruncate(shape, data_len, data_type_size);
+  if (final_shape.empty() && !shape.empty()) {
+    if (data_len > 0) {
+      free(tensor->data());
+      tensor->set_data(nullptr);
     }
+    return nullptr;
   }
-  if (data_len != shape_size * data_type_size) {
-    std::vector<int> truncate_shape = {static_cast<int>(data_len)};
-    tensor->set_shape(truncate_shape);
-  } else {
-    tensor->set_shape(shape);
-  }
+  tensor->set_shape(final_shape);
   tensor->set_tensor_name(name);
   tensor->set_data_type(type);
   tensor->set_category(data != nullptr ? (shape.empty() ? CONST_SCALAR : CONST_TENSOR) : VAR);

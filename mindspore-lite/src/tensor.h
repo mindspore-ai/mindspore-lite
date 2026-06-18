@@ -290,6 +290,9 @@ class Tensor {
   TensorC *ConvertToTensorC() { return &tensor_c_; }
 
  private:
+  static void *AllocateTensorData(const void *data, size_t data_len);
+  static std::vector<int> ComputeShapeOrTruncate(const std::vector<int> &shape, size_t data_len, size_t data_type_size);
+
   template <typename T>
   std::string DataToString(void *data, size_t data_number, size_t print_len = 40) const {
     if (data == nullptr) {

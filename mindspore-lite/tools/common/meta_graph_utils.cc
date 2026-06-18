@@ -242,13 +242,13 @@ STATUS IsolateNode(schema::MetaGraphT *graphT, schema::CNodeT *node) {
   auto inDataTensorIdx = inputTensorIdxes.front();
   auto outDataTensorIdx = outputTensorIdxes.front();
 
-  MS_ASSERT(graphT->allTensors.size() > inDataTensorIdx);
+  MS_CHECK_TRUE_RET(graphT->allTensors.size() > inDataTensorIdx, RET_ERROR);
   ReplaceOutput(outDataTensorIdx, inDataTensorIdx, graphT);
 
   // find poseNode
   auto postNodeIdxes = GetOutputNodeIdx(*graphT, nodeIdx, 0);
   for (auto postNodeIdx : postNodeIdxes) {
-    MS_ASSERT(graphT->nodes.size() > postNodeIdx);
+    MS_CHECK_TRUE_RET(graphT->nodes.size() > postNodeIdx, RET_ERROR);
     auto &postNode = graphT->nodes.at(postNodeIdx);
     MS_CHECK_TRUE_MSG(postNode != nullptr, RET_NULL_PTR, "postNode is nullptr");
     for (auto iter = postNode->inputIndex.begin(); iter != postNode->inputIndex.end(); iter++) {
@@ -261,6 +261,24 @@ STATUS IsolateNode(schema::MetaGraphT *graphT, schema::CNodeT *node) {
   RemoveTensor(graphT, outputTensorIdxes);
   node->inputIndex.clear();
   node->outputIndex.clear();
+  return RET_OK;
+}
+
+static STATUS RewirePostNodes(schema::MetaGraphT *graphT, size_t nodeIdx, uint32_t outDataTensorIdx,
+                              uint32_t inDataTensorIdx) {
+  MS_CHECK_TRUE_RET(graphT != nullptr, RET_ERROR);
+  auto postNodeIdxes = GetOutputNodeIdx(*graphT, nodeIdx, 0);
+  for (auto postNodeIdx : postNodeIdxes) {
+    MS_CHECK_TRUE_RET(graphT->nodes.size() > postNodeIdx, RET_ERROR);
+    auto &postNode = graphT->nodes.at(postNodeIdx);
+    MS_CHECK_TRUE_MSG(postNode != nullptr, RET_NULL_PTR, "postNode is nullptr");
+    for (auto iter = postNode->inputIndex.begin(); iter != postNode->inputIndex.end(); iter++) {
+      if (*iter == outDataTensorIdx) {
+        *iter = inDataTensorIdx;
+        break;
+      }
+    }
+  }
   return RET_OK;
 }
 
@@ -293,18 +311,9 @@ STATUS IsolateOneWayNode(schema::MetaGraphT *graphT, size_t nodeIdx, bool remove
     MS_ASSERT(graphT->allTensors.at(inDataTensorIdx) != nullptr);
     ReplaceOutput(outDataTensorIdx, inDataTensorIdx, graphT);
 
-    // find poseNode
-    auto postNodeIdxes = GetOutputNodeIdx(*graphT, nodeIdx, 0);
-    for (auto postNodeIdx : postNodeIdxes) {
-      MS_ASSERT(graphT->nodes.size() > postNodeIdx);
-      auto &postNode = graphT->nodes.at(postNodeIdx);
-      MS_CHECK_TRUE_MSG(postNode != nullptr, RET_NULL_PTR, "postNode is nullptr");
-      for (auto iter = postNode->inputIndex.begin(); iter != postNode->inputIndex.end(); iter++) {
-        if (*iter == outDataTensorIdx) {
-          *iter = inDataTensorIdx;
-          break;
-        }
-      }
+    auto ret = RewirePostNodes(graphT, nodeIdx, outDataTensorIdx, inDataTensorIdx);
+    if (ret != RET_OK) {
+      return ret;
     }
   }
   if (removeTensor) {

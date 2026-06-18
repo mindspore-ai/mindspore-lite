@@ -558,11 +558,7 @@ int CpuFp16SubGraph::PreProcess() {
   return RET_OK;
 }
 
-int CpuFp16SubGraph::PostProcess() {
-  if (!support_fp16_) {
-    MS_LOG(ERROR) << "Unsupported fp16 in this devices";
-    return RET_ERROR;
-  }
+int CpuFp16SubGraph::ConvertOutputTensorsFromFp16ToFp32() {
   for (auto tensor : this->out_tensors()) {
     MS_ASSERT(tensor != nullptr);
     if (tensor->data_type() == kNumberTypeFloat16) {
@@ -591,6 +587,10 @@ int CpuFp16SubGraph::PostProcess() {
       tensor->set_allocator(nullptr);
     }
   }
+  return RET_OK;
+}
+
+int CpuFp16SubGraph::RestoreInputTensorsFromFp16ToFp32() {
   MS_ASSERT(this->origin_input_data_.size() == this->in_tensors().size());
   for (size_t i = 0; i < this->in_tensors().size(); i++) {
     auto tensor = in_tensors().at(i);
@@ -609,6 +609,18 @@ int CpuFp16SubGraph::PostProcess() {
   }
   this->FreeOriginInputData();
   return RET_OK;
+}
+
+int CpuFp16SubGraph::PostProcess() {
+  if (!support_fp16_) {
+    MS_LOG(ERROR) << "Unsupported fp16 in this devices";
+    return RET_ERROR;
+  }
+  auto ret = ConvertOutputTensorsFromFp16ToFp32();
+  if (ret != RET_OK) {
+    return ret;
+  }
+  return RestoreInputTensorsFromFp16ToFp32();
 }
 #endif
 

@@ -86,6 +86,11 @@ class ArithmeticDynamicFP16Coder final : public OperatorCoder {
   int ExecuteCode(const std::string &input0, const std::string &input1, const std::string &output,
                   const std::string size, CoderContext *const context, NNaclFp32Serializer *const code);
 
+  int BroadcastInput0(NNaclFp32Serializer *const code, const std::vector<std::string> &in0_shape,
+                      const std::vector<std::string> &out_shape);
+  int BroadcastInput1(NNaclFp32Serializer *const code, const std::vector<std::string> &in1_shape,
+                      const std::vector<std::string> &out_shape);
+
   int DoBroadcast(NNaclFp32Serializer *const code);
 
   std::vector<ARITHMETIC_FUNC_INFO_FP16> fun_table_;

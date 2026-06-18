@@ -87,19 +87,17 @@ std::string MatMulFP16BaseCoder::InitBiasData(NNaclFp32Serializer *const init_co
   return bias_str;
 }
 
-std::string MatMulFP16BaseCoder::InitMatrixA(NNaclFp32Serializer *const code, NNaclFp32Serializer *const init_code,
-                                             CoderContext *const context, size_t *w_buf) {
-  if (vec_matmul_) {
-    return allocator_->GetRuntimeAddr(input_tensor_, input_tensor_->IsConst());
-  }
-  std::string input_a_str = allocator_->GetRuntimeAddr(input_tensor_);
-  std::string input_a_pack_str = allocator_->GetRuntimeAddr(static_cast<float16 *>(a_pack_ptr_));
+void MatMulFP16BaseCoder::InitMatrixAPackBuffer(NNaclFp32Serializer *const init_code, CoderContext *const context,
+                                                size_t *w_buf) {
   if (params_.a_const_) {
     init_code->CodeBufferOffsetExpression(a_pack_ptr_, context->weight_name(), context->weight_offset_name(),
                                           context->weight_size_name(), a_pack_ptr_size_);
     *w_buf = *w_buf + a_pack_ptr_size_;
   }
-  NNaclFp32Serializer &pack_code = params_.a_const_ ? *init_code : *code;
+}
+
+void MatMulFP16BaseCoder::GeneratePackACode(NNaclFp32Serializer &pack_code, const std::string &input_a_str,
+                                            const std::string &input_a_pack_str) {
   if (params_.a_batch_ == 1) {
     if (params_.a_transpose_) {
       if (target_ == kARM64) {
@@ -138,6 +136,18 @@ std::string MatMulFP16BaseCoder::InitMatrixA(NNaclFp32Serializer *const code, NN
     }
     pack_code << "  }\n";
   }
+}
+
+std::string MatMulFP16BaseCoder::InitMatrixA(NNaclFp32Serializer *const code, NNaclFp32Serializer *const init_code,
+                                             CoderContext *const context, size_t *w_buf) {
+  if (vec_matmul_) {
+    return allocator_->GetRuntimeAddr(input_tensor_, input_tensor_->IsConst());
+  }
+  std::string input_a_str = allocator_->GetRuntimeAddr(input_tensor_);
+  std::string input_a_pack_str = allocator_->GetRuntimeAddr(static_cast<float16 *>(a_pack_ptr_));
+  InitMatrixAPackBuffer(init_code, context, w_buf);
+  NNaclFp32Serializer &pack_code = params_.a_const_ ? *init_code : *code;
+  GeneratePackACode(pack_code, input_a_str, input_a_pack_str);
   return input_a_pack_str;
 }
 

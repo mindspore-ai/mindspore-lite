@@ -225,18 +225,9 @@ void ArithmeticDynamicFP16Coder::ComputeStrides(const std::vector<std::string> &
   }
 }
 
-int ArithmeticDynamicFP16Coder::DoBroadcast(NNaclFp32Serializer *const code) {
-  auto in0_shape = shape_info_container_->GetTemplateShape(input_tensor_);
-  std::vector<std::string> in1_shape;
-  if (filter_tensor_->IsConst()) {
-    auto tensor_shape = filter_tensor_->shape();
-    (void)std::transform(tensor_shape.begin(), tensor_shape.end(), std::back_inserter(in1_shape),
-                         [](const auto &dim) { return std::to_string(dim); });
-  } else {
-    in1_shape = shape_info_container_->GetTemplateShape(filter_tensor_);
-  }
-  auto out_shape = shape_info_container_->GetTemplateShape(output_tensor_);
-  broadcast_info_.output_shape_size_ = static_cast<int>(out_shape_.size());
+int ArithmeticDynamicFP16Coder::BroadcastInput0(NNaclFp32Serializer *const code,
+                                                const std::vector<std::string> &in0_shape,
+                                                const std::vector<std::string> &out_shape) {
   if (in0_shape != out_shape) {
     broadcast_info_.input_shape_size_ = static_cast<int>(in0_shape.size());
     dynamic_shape_info_.input_shape_ = dynamic_param_.in_shape0_;
@@ -245,6 +236,12 @@ int ArithmeticDynamicFP16Coder::DoBroadcast(NNaclFp32Serializer *const code) {
     code->CodeFunction("BroadcastToSize16", input0_ptr_str_, "&in0_broadcast_info", output_ptr_str_);
     input0_ptr_str_ = output_ptr_str_;
   }
+  return RET_OK;
+}
+
+int ArithmeticDynamicFP16Coder::BroadcastInput1(NNaclFp32Serializer *const code,
+                                                const std::vector<std::string> &in1_shape,
+                                                const std::vector<std::string> &out_shape) {
   MS_CHECK_TRUE_RET(in1_shape != out_shape, RET_OK);
   broadcast_info_.input_shape_size_ = static_cast<int>(in1_shape.size());
   dynamic_shape_info_.input_shape_ = dynamic_param_.in_shape1_;
@@ -277,6 +274,23 @@ int ArithmeticDynamicFP16Coder::DoBroadcast(NNaclFp32Serializer *const code) {
   code->CodeFunction("BroadcastToSize16", input1_ptr_str_, "&in1_broadcast_info", temp);
   input1_ptr_str_ = temp;
   return RET_OK;
+}
+
+int ArithmeticDynamicFP16Coder::DoBroadcast(NNaclFp32Serializer *const code) {
+  auto in0_shape = shape_info_container_->GetTemplateShape(input_tensor_);
+  std::vector<std::string> in1_shape;
+  if (filter_tensor_->IsConst()) {
+    auto tensor_shape = filter_tensor_->shape();
+    (void)std::transform(tensor_shape.begin(), tensor_shape.end(), std::back_inserter(in1_shape),
+                         [](const auto &dim) { return std::to_string(dim); });
+  } else {
+    in1_shape = shape_info_container_->GetTemplateShape(filter_tensor_);
+  }
+  auto out_shape = shape_info_container_->GetTemplateShape(output_tensor_);
+  broadcast_info_.output_shape_size_ = static_cast<int>(out_shape_.size());
+  auto ret = BroadcastInput0(code, in0_shape, out_shape);
+  MS_CHECK_TRUE_RET(ret == RET_OK, ret);
+  return BroadcastInput1(code, in1_shape, out_shape);
 }
 
 int ArithmeticDynamicFP16Coder::ExecuteCode(const std::string &input0, const std::string &input1,

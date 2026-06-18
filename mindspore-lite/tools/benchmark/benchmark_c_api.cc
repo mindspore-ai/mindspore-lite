@@ -440,8 +440,8 @@ bool TimeBeforeCallback(const MSTensorHandleArray inputs, const MSTensorHandleAr
 
 bool TimeAfterCallback(const MSTensorHandleArray inputs, const MSTensorHandleArray outputs,
                        const MSCallBackParamC kernel_Info) {
-  uint64_t opEnd = mindspore::lite::GetTimeUs();
-  float cost = static_cast<float>(opEnd - g_op_begin_) / mindspore::lite::kFloatMSEC;
+  uint64_t op_end = mindspore::lite::GetTimeUs();
+  float cost = static_cast<float>(op_end - g_op_begin_) / mindspore::lite::kFloatMSEC;
   g_op_cost_total_ += cost;
   g_op_times_by_type_[kernel_Info.node_type].first++;
   g_op_times_by_type_[kernel_Info.node_type].second += cost;
