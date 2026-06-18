@@ -42,28 +42,45 @@ python -c "import torch, transformers, onnx, onnxruntime, mindspore_lite; print(
 
 ### 导出脚本说明
 
-导出脚本会将 Qwen3-1.7B 拆分为两个 ONNX 子图：
+导出脚本会将 Qwen3-1.7B 拆分为两个 ONNX 子图，并支持 PTQ（Post-Training Quantization）静态 int8 量化与 SmoothQuant 算法：
 
 1. **LLM Prefill** (`qwen3_1_7b_llm_prefill.onnx`)：处理输入 prompt，输出 `logits`、`present_key_cache`、`present_value_cache`
-2. **LLM Decode** (`qwen3_1_7b_llm_decode.onnx`)：单 token 递归生成，输入 `past_key_cache`、`past_value_cache`，输出更新后的 cache
+2. **LLM Decode** (`qwen3_1_7b_llm_decode_ptq_int8.onnx`)：单 token 递归生成，输入 `past_key_cache`、`past_value_cache`，输出更新后的 cache。默认启用 INT8 量化（Weight Only + Activation Quantization + SmoothQuant），以精度换性能。可通过 `--disable-torch-ptq-int8` 关闭量化，输出文件名为 `qwen3_1_7b_llm_decode.onnx`。
 
 ### 导出命令
 
 ```bash
 cd ./mindspore-lite/examples/base_models/qwen3_1.7b
 
-# 使用本地权重目录导出（FP16）
+# 默认导出（PTQ INT8 量化 + SmoothQuant + FP32 权重）
 python export_qwen3_1_7b_onnx.py \
   --model-id ./Qwen3-1.7B \
   --output-dir ./qwen3_1_7b_onnx \
   --device cpu
 
-# 可选：导出 FP32（用于降低数值误差）
+# 关闭量化，导出纯 FP32 模型
 python export_qwen3_1_7b_onnx.py \
   --model-id ./Qwen3-1.7B \
-  --output-dir ./qwen3_1_7b_onnx_fp32 \
+  --output-dir ./qwen3_1_7b_onnx \
   --device cpu \
-  --dtype fp32
+  --disable-torch-ptq-int8
+
+# 使用自定义校准数据导出
+python export_qwen3_1_7b_onnx.py \
+  --model-id ./Qwen3-1.7B \
+  --output-dir ./qwen3_1_7b_onnx \
+  --device cpu \
+  --torch-ptq-calib-jsonl ./calib.jsonl \
+  --torch-ptq-max-samples 32 \
+  --smooth-alpha 0.65
+
+# 导出 FP32（关闭量化，降低数值误差）
+python export_qwen3_1_7b_onnx.py \
+  --model-id ./Qwen3-1.7B \
+  --output-dir ./qwen3_1_7b_onnx \
+  --device cpu \
+  --dtype fp32 \
+  --disable-torch-ptq-int8
 ```
 
 ### 参数说明
@@ -75,13 +92,21 @@ python export_qwen3_1_7b_onnx.py \
 | `--device` | 导出设备（cpu/cuda） | `cpu` |
 | `--dummy-seq-len` | 导出用 dummy 序列长度 | `8` |
 | `--kv-cache-len` | KV cache 固定长度（prefill 输出与 decode 输入） | `512` |
-| `--dtype` | 导出精度（fp16/fp32） | `fp16` |
+| `--dtype` | 导出精度（fp16/bf16/fp32） | `fp32` |
 | `--use-dynamo` | 启用新 ONNX dynamo 导出路径 | `False` |
+| `--disable-torch-ptq-int8` | 关闭 PTQ int8 量化（默认启用量化，加上此标志则关闭） | `False`（不关闭） |
+| `--torch-ptq-calib-jsonl` | 校准数据 JSONL 文件路径 | `calib.jsonl` |
+| `--torch-ptq-max-samples` | 最大校准样本数 | `32` |
+| `--torch-ptq-max-decode-steps` | 每样本最大 decode 步数 | `32` |
+| `--smooth-alpha` | SmoothQuant alpha 系数（0.0-1.0，越小激活值越平滑） | `0.65` |
+| `--weight-clip-ratio` | 量化前裁剪权重离群值比例（如 0.01 = 裁剪 top 1%） | `0.0` |
 
 说明：
 
 - Prefill 模型输入为动态长度（seq_len 动态），用于处理 prompt。
 - Decode 模型为固定 shape（单 token + 固定 KV cache length），用于逐 token 生成。
+- **PTQ Int8 量化（默认启用）**：通过校准数据统计激活值范围，对权重和激活值做对称 int8 量化，并可选使用 SmoothQuant 算法平滑激活值，降低量化精度损失。加上 `--disable-torch-ptq-int8` 标志可**关闭**量化。
+- 校准数据可由 `infer_qwen3_1_7b_mslite.py --dump-calib` 导出为 JSONL 格式。
 
 ### 导出输出
 
@@ -93,48 +118,10 @@ qwen3_1_7b_onnx/
 │   ├── qwen3_1_7b_llm_prefill.onnx
 │   └── onnx__* / model.* (external data)
 └── decode/
-    ├── qwen3_1_7b_llm_decode.onnx
+    ├── qwen3_1_7b_llm_decode_ptq_int8.onnx   （量化启用时）
+    ├── qwen3_1_7b_llm_decode.onnx              （关闭量化时，--disable-torch-ptq-int8）
     └── onnx__* / model.* (external data)
 ```
-
----
-
-## 3. ONNX 推理
-
-### ONNX Runtime 推理
-
-推理脚本执行流程：
-
-1. Prefill 处理输入 prompt
-2. Decode 循环生成 token
-3. 维护 KV cache，并在 `eos_token` 时提前停止
-
-```bash
-cd ./mindspore-lite/examples/base_models/qwen3_1.7b
-
-python infer_qwen3_1_7b_onnx.py \
-  --prefill ./qwen3_1_7b_onnx/prefill/qwen3_1_7b_llm_prefill.onnx \
-  --decode ./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode.onnx \
-  --tokenizer ./Qwen3-1.7B \
-  --prompt "你好，请用一句话介绍 MindSpore Lite。" \
-  --max-new-tokens 512 \
-  --device cpu
-```
-
-### 参数说明
-
-| 参数 | 说明 | 默认值 |
-|---|---|---|
-| `--prefill` | Prefill ONNX 模型路径 | 必填 |
-| `--decode` | Decode ONNX 模型路径 | 必填 |
-| `--tokenizer` | tokenizer 路径 | `./Qwen3-1.7B` |
-| `--prompt` | 输入提示词 | `"你好，请介绍一下你自己。"` |
-| `--max-new-tokens` | 最大生成 token 数 | `512` |
-| `--device` | 推理设备（cpu/cuda） | `cpu` |
-| `--no-chat-template` | 关闭 chat template | `False` |
-| `--low-mem` | 低内存 Session 配置 | `False` |
-
----
 
 ## 4. MindSpore Lite 转换
 
@@ -154,11 +141,12 @@ cd ./mindspore-lite/examples/base_models/qwen3_1.7b
   --saveType=MINDIR \
   --configFile=./configs/qwen3_1_7b_llm_prefill.config
 
-# Decode
+# Decode（量化启用时，使用 ptq_int8 版本）
+export KEEP_ORIGIN_DTYPE=1
 ./converter_lite \
   --fmk=ONNX \
-  --modelFile=./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode.onnx \
-  --outputFile=./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode \
+  --modelFile=./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode_ptq_int8.onnx \
+  --outputFile=./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode_ptq_int8 \
   --inputShape="input_ids:1,1;attention_mask:1,512;position_ids:1,1;past_key_cache:28,1,8,512,128;past_value_cache:28,1,8,512,128" \
   --optimize=ascend_oriented \
   --saveType=MINDIR \
@@ -212,7 +200,7 @@ cd ./mindspore-lite/examples/base_models/qwen3_1.7b
 
 python infer_qwen3_1_7b_mslite.py \
   --prefill-model ./qwen3_1_7b_onnx/prefill/qwen3_1_7b_llm_prefill_graph.mindir \
-  --decode-model ./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode_graph.mindir \
+  --decode-model ./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode_ptq_int8_graph.mindir \
   --tokenizer ./Qwen3-1.7B \
   --prompt "你好，请用一句话介绍 MindSpore Lite。" \
   --max-new-tokens 512 \
@@ -242,18 +230,18 @@ python infer_qwen3_1_7b_mslite.py \
 ### 性能测试结果
 
 测试模型：Qwen3-1.7B
-测试条件：输入 128 tokens，输出 128 tokens
+测试条件：默认 PTQ INT8 量化 Decode + FP16 Prefill，输入约 128 tokens，输出约 128 tokens
 测试环境：CANN 8.5.0，MindSpore Lite 2.8.0
 
-| 指标                       | 300I Duo time     | 800I A2 time     |
-|--------------------------|------------|------------|
-| Prefill (ms)             | 55.88      | 20.49      |
-| Total Decode (ms)        | 6087.42     | 2109.44     |
-| **Avg decode step (ms)** | **47.56** | **16.48** |
-| Total (ms)               | 6170.95     | 2129.93     |
-| **Throughput (tok/s)**   | **21.03** | **60.6** |
+| 指标                       | **PTQ INT8 (300I Duo)** | **非量化 FP32 (300I Duo)** | **PTQ INT8 (800I A2)** | **非量化 FP32 (800I A2)** |
+|--------------------------|----------------------|------------------------|----------------------|------------------------|
+| Prefill (ms)             | 38.99                | 38.76                  | 14.36                | 14.28                  |
+| Total Decode (ms)        | **2250.83**          | **3504.32**            | 766.30               | 1065.59                |
+| **Avg decode step (ms)** | **17.72**            | **27.59**              | **6.03**             | **8.37**               |
+| Total (ms)               | **2289.82**          | **3543.07**            | 780.66                  | **1079.87**            |
+| **Throughput (tok/s)**   | **56.42**            | **36.24**              | **165.73**           | **119.18**             |
 
-> 注意：Avg decode step 为单次 decode 推理的耗时。性能数据为 3 次 warmup 后取 5 次测量的平均值。
+> 注意：Avg decode step 为单次 decode 推理的耗时。Prefill 使用非量化 FP32 模型。
 
 ---
 

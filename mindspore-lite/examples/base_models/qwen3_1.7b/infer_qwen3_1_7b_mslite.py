@@ -18,7 +18,9 @@ Infer Qwen3-1.7B with MindSpore Lite using split MindIR (prefill + decode).
 """
 
 import argparse
+import json
 import sys
+import time
 
 import numpy as np
 
@@ -35,6 +37,18 @@ PREFILL_GEAR_MIN = 10
 PREFILL_GEAR_MAX = 200
 PREFILL_GEAR_STEP = 10
 
+# Map numpy dtype -> mslite.DataType
+_NP_TO_MSLITE_DTYPE = {
+    np.dtype(np.float32): mslite.DataType.FLOAT32,
+    np.dtype(np.float16): mslite.DataType.FLOAT16,
+    np.dtype(np.int32): mslite.DataType.INT32,
+    np.dtype(np.int64): mslite.DataType.INT64,
+}
+
+
+def _np_dtype_to_mslite(dt):
+    return _NP_TO_MSLITE_DTYPE.get(np.dtype(dt), mslite.DataType.FLOAT32)
+
 
 def _compute_position_ids(attention_mask):
     """
@@ -43,41 +57,6 @@ def _compute_position_ids(attention_mask):
     position_ids = np.cumsum(attention_mask.astype(np.int32), axis=-1) - 1
     position_ids = np.where(attention_mask > 0, position_ids, 0)
     return position_ids.astype(np.int32)
-
-
-def _mslite_tensor(np_array):
-    """
-    Convert numpy array to MindSpore Lite tensor.
-    """
-    return mslite.Tensor(np_array)
-
-
-def _build_mslite_inputs(model: mslite.Model, feed_dict, preferred_order=None):
-    """
-    Build MindSpore Lite model inputs.
-    """
-    inputs = model.get_inputs()
-    if not inputs:
-        if preferred_order:
-            return [_mslite_tensor(feed_dict[k]) for k in preferred_order]
-        return [_mslite_tensor(v) for v in feed_dict.values()]
-
-    ok_by_name = True
-    for t in inputs:
-        name = getattr(t, "name", None)
-        if name is None or name not in feed_dict:
-            ok_by_name = False
-            break
-    if ok_by_name:
-        return [_mslite_tensor(feed_dict[t.name]) for t in inputs]
-
-    if preferred_order:
-        return [_mslite_tensor(feed_dict[k]) for k in preferred_order]
-
-    raise RuntimeError(
-        f"input mismatch. model inputs={[getattr(x, 'name', '') for x in inputs]} "
-        f"feed keys={list(feed_dict.keys())}"
-    )
 
 
 class Qwen317BInferencer:
@@ -102,6 +81,7 @@ class Qwen317BInferencer:
         print(f"Initializing MindSpore Lite context for {device}...")
         self.context = mslite.Context()
         self.context.target = [device]
+        self._dev = f"{device}:{device_id}" if device == "ascend" else "cpu"
         if device == "ascend":
             self.context.ascend.device_id = device_id
 
@@ -124,6 +104,42 @@ class Qwen317BInferencer:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.eos_token_id = self.tokenizer.eos_token_id
+
+        # Zero-copy buffers (lazily initialized after first decode predict)
+        self._zc_inputs = None   # [input_ids, attn_mask, pos_ids, past_k, past_v] (device)
+        self._zc_outputs = None  # [logits, present_k, present_v] (device)
+        # KV dtype (detected from model, can be float16 or float32)
+        self._kv_np_dtype = np.float32
+
+    def _zc_setup(self, kv_shape, logits_shape, kv_np_dtype):
+        """Create all device tensors for zero-copy decode. Call after 1st predict."""
+        dev = self._dev
+        self._kv_np_dtype = np.dtype(kv_np_dtype)
+        # Small inputs — updated via set_data_from_numpy each step
+        t_input_ids = mslite.Tensor(
+            shape=[1, 1], dtype=mslite.DataType.INT32, device=dev)
+        t_attention_mask = mslite.Tensor(
+            shape=[1, KV_CACHE_LEN], dtype=mslite.DataType.INT32, device=dev)
+        t_position_ids = mslite.Tensor(
+            shape=[1, 1], dtype=mslite.DataType.INT32, device=dev)
+
+        # KV cache ping-pong buffers (two pairs: in_K/V, out_K/V)
+        kv_mslite_dtype = _np_dtype_to_mslite(self._kv_np_dtype)
+        t_in_k = mslite.Tensor(shape=kv_shape, dtype=kv_mslite_dtype, device=dev)
+        t_in_v = mslite.Tensor(shape=kv_shape, dtype=kv_mslite_dtype, device=dev)
+        t_out_k = mslite.Tensor(shape=kv_shape, dtype=kv_mslite_dtype, device=dev)
+        t_out_v = mslite.Tensor(shape=kv_shape, dtype=kv_mslite_dtype, device=dev)
+
+        # Output buffer: logits on device (only D2H copy for argmax)
+        dtype_logits = kv_mslite_dtype
+        t_logits = mslite.Tensor(
+            shape=list(logits_shape), dtype=dtype_logits, device=dev)
+
+        # Input order: input_ids, attention_mask, position_ids, past_key_cache, past_value_cache
+        self._zc_inputs = [t_input_ids, t_attention_mask, t_position_ids,
+                           t_in_k, t_in_v]
+        # Output order: logits, present_key_cache, present_value_cache
+        self._zc_outputs = [t_logits, t_out_k, t_out_v]
 
     def _select_prefill_gear(self, seq_len: int) -> int:
         seq_len = int(seq_len)
@@ -177,9 +193,7 @@ class Qwen317BInferencer:
         return input_ids, attention_mask, position_ids
 
     def _stream_print_delta(self, generated_ids, prev_text: str):
-        """
-        Print incremental decoded text delta in stream mode.
-        """
+        """Print streaming delta between previous text and current decode."""
         new_text = self.tokenizer.decode(
             generated_ids,
             skip_special_tokens=True,
@@ -199,37 +213,132 @@ class Qwen317BInferencer:
             print(delta, end="", flush=True)
         return new_text
 
+    def _run_prefill(self, input_ids, attention_mask, position_ids):
+        """Run prefill inference with warmup. Returns (logits_np, kv_k_dev, kv_v_dev, elapsed_ms)."""
+        dev = self._dev
+
+        def _make_inputs():
+            return [
+                mslite.Tensor(input_ids),
+                mslite.Tensor(attention_mask),
+                mslite.Tensor(position_ids),
+            ]
+
+        # Warmup: trigger Ascend graph compilation
+        warmup_out = self.prefill_model.predict(_make_inputs())
+
+        # Pre-allocate output device tensors for KV cache (from warmup output shapes)
+        kv_k_dev_out = mslite.Tensor(
+            shape=list(warmup_out[1].shape),
+            dtype=warmup_out[1].dtype,
+            device=dev,
+        )
+        kv_v_dev_out = mslite.Tensor(
+            shape=list(warmup_out[2].shape),
+            dtype=warmup_out[2].dtype,
+            device=dev,
+        )
+        # Logits output buffer (on device, but will be read to CPU for argmax)
+        logits_dev_out = mslite.Tensor(
+            shape=list(warmup_out[0].shape),
+            dtype=warmup_out[0].dtype,
+            device=dev,
+        )
+
+        # Timed inference with pre-allocated output buffers
+        start = time.perf_counter()
+        self.prefill_model.predict(_make_inputs(), outputs=[logits_dev_out, kv_k_dev_out, kv_v_dev_out])
+        elapsed = (time.perf_counter() - start) * 1000.0
+
+        logits_np = logits_dev_out.get_data_to_numpy()
+        return logits_np, kv_k_dev_out, kv_v_dev_out, elapsed
+
+    def _prime_decode(self, token_id, cur_attention_mask, valid_len, kv_k_dev, kv_v_dev):
+        """Run one decode step to determine output shapes and dtype. KV inputs are device Tensors."""
+        # Determine KV dtype from decode model
+        decode_model_inputs = self.decode_model.get_inputs()
+        kv_np_dtype = np.float32
+        for t in decode_model_inputs:
+            if getattr(t, "name", "") == "past_key_cache":
+                kv_np_dtype = np.float16 if t.dtype == mslite.DataType.FLOAT16 else np.float32
+                break
+
+        input_ids_np = np.array([[token_id]], dtype=np.int32)
+        position_ids_np = np.array([[valid_len]], dtype=np.int32)
+
+        # Build input list directly: use device tensors for KV cache
+        prime_inputs = []
+        for t in decode_model_inputs:
+            name = getattr(t, "name", "")
+            if name == "input_ids":
+                prime_inputs.append(mslite.Tensor(input_ids_np))
+            elif name == "attention_mask":
+                prime_inputs.append(mslite.Tensor(cur_attention_mask))
+            elif name == "position_ids":
+                prime_inputs.append(mslite.Tensor(position_ids_np))
+            elif name == "past_key_cache":
+                prime_inputs.append(kv_k_dev)
+            elif name == "past_value_cache":
+                prime_inputs.append(kv_v_dev)
+
+        prime_out = self.decode_model.predict(prime_inputs)
+        logits_shape = prime_out[0].shape
+        kv_shape = list(prime_out[1].shape)
+        return kv_shape, logits_shape, kv_np_dtype
+
+    def _print_perf_summary(self, prefill_ms, decode_times):
+        """Print performance summary."""
+        total_decode_ms = sum(decode_times) if decode_times else 0.0
+        avg_decode_ms = total_decode_ms / len(decode_times) if decode_times else 0.0
+        total_ms = prefill_ms + total_decode_ms
+        throughput = len(decode_times) / (total_decode_ms / 1000.0) if total_decode_ms > 0 else 0.0
+        print(f"\n{'='*60}")
+        print("Performance Summary (zero-copy + ping-pong):")
+        print(f"  Device:                    {self._dev}")
+        print(f"  Prefill (ms):              {prefill_ms:<12.2f}")
+        print(f"  Total Decode (ms):         {total_decode_ms:<12.2f}")
+        print(f"  Num decode steps:          {len(decode_times)}")
+        print(f"  Avg decode step (ms):      {avg_decode_ms:<12.2f}")
+        print(f"  Total (ms):                {total_ms:<12.2f}")
+        print(f"  Throughput (tok/s):        {throughput:<12.2f}")
+        print(f"{'='*60}")
+
+    def _dump_calib(self, path, text, input_ids, attention_mask, position_ids, generated_ids):
+        """Dump one calibration record to JSONL file."""
+        record = {
+            "ts": int(time.time()),
+            "prompt": text,
+            "prefill_input_ids": input_ids.astype(np.int64).tolist(),
+            "prefill_attention_mask": attention_mask.astype(np.int64).tolist(),
+            "prefill_position_ids": position_ids.astype(np.int64).tolist(),
+            "generated_ids": [int(x) for x in generated_ids],
+            "kv_cache_len": int(KV_CACHE_LEN),
+        }
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
     def generate(
         self,
         text: str,
         max_new_tokens: int = 128,
         max_length: int = 4096,
         stream: bool = True,
+        dump_calib_path=None,
     ):
         """
         Generate text using Qwen3-1.7B.
         """
         input_ids, attention_mask, position_ids = self._prepare_inputs(text, max_length)
 
-        prefill_feed = {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "position_ids": position_ids,
-        }
-        inputs = _build_mslite_inputs(
-            self.prefill_model,
-            prefill_feed,
-            preferred_order=["input_ids", "attention_mask", "position_ids"],
+        # ── Prefill (zero-copy: KV cache stays on device) ──
+        logits, kv_k_dev, kv_v_dev, prefill_ms = self._run_prefill(
+            input_ids, attention_mask, position_ids
         )
-        prefill_outputs = self.prefill_model.predict(inputs)
-        logits = prefill_outputs[0].get_data_to_numpy()
-        past_k = prefill_outputs[1].get_data_to_numpy()
-        past_v = prefill_outputs[2].get_data_to_numpy()
 
         actual_len = int(attention_mask[0].sum())
-        if int(past_k.shape[3]) != KV_CACHE_LEN or int(past_v.shape[3]) != KV_CACHE_LEN:
+        if int(list(kv_k_dev.shape)[3]) != KV_CACHE_LEN or int(list(kv_v_dev.shape)[3]) != KV_CACHE_LEN:
             raise RuntimeError(
-                f"prefill cache len mismatch, expected {KV_CACHE_LEN}, got k={past_k.shape}, v={past_v.shape}"
+                f"prefill cache len mismatch, expected {KV_CACHE_LEN}, got k={kv_k_dev.shape}, v={kv_v_dev.shape}"
             )
 
         cur_attention_mask = np.zeros((1, KV_CACHE_LEN), dtype=np.int32)
@@ -242,6 +351,22 @@ class Qwen317BInferencer:
             streamed_text = self._stream_print_delta(generated_ids, streamed_text)
         valid_len = int(actual_len)
 
+        # ── Prime: one decode step to determine shapes and dtype ──
+        kv_shape, logits_shape, kv_np_dtype = self._prime_decode(
+            generated_ids[-1], cur_attention_mask, valid_len, kv_k_dev, kv_v_dev
+        )
+
+        # ── Create device tensors for zero-copy decode ──
+        self._zc_setup(kv_shape, logits_shape, kv_np_dtype)
+        # Swap prefill KV device tensors directly into decode inputs (no numpy copy)
+        self._zc_inputs[3] = kv_k_dev
+        self._zc_inputs[4] = kv_v_dev
+
+        # ── Zero-copy decode loop with ping-pong KV cache ──
+        decode_inputs = self._zc_inputs
+        decode_outputs = self._zc_outputs
+        decode_times = []
+
         for _ in range(max_new_tokens - 1):
             if self.eos_token_id is not None and generated_ids[-1] == int(
                 self.eos_token_id
@@ -250,32 +375,22 @@ class Qwen317BInferencer:
             if valid_len >= KV_CACHE_LEN:
                 break
 
-            next_input_ids = np.array([[generated_ids[-1]]], dtype=np.int32)
             cur_attention_mask[0, valid_len] = 1
-            next_position_ids = np.array([[valid_len]], dtype=np.int32)
+            decode_inputs[0].set_data_from_numpy(
+                np.array([[generated_ids[-1]]], dtype=np.int32))
+            decode_inputs[1].set_data_from_numpy(cur_attention_mask)
+            decode_inputs[2].set_data_from_numpy(
+                np.array([[valid_len]], dtype=np.int32))
 
-            decode_feed = {
-                "input_ids": next_input_ids,
-                "attention_mask": cur_attention_mask,
-                "position_ids": next_position_ids,
-                "past_key_cache": past_k,
-                "past_value_cache": past_v,
-            }
-            inputs = _build_mslite_inputs(
-                self.decode_model,
-                decode_feed,
-                preferred_order=[
-                    "input_ids",
-                    "attention_mask",
-                    "position_ids",
-                    "past_key_cache",
-                    "past_value_cache",
-                ],
-            )
-            decode_outputs = self.decode_model.predict(inputs)
-            logits = decode_outputs[0].get_data_to_numpy()
-            past_k = decode_outputs[1].get_data_to_numpy()
-            past_v = decode_outputs[2].get_data_to_numpy()
+            decode_start = time.perf_counter()
+            outputs = self.decode_model.predict(decode_inputs, outputs=decode_outputs)
+            decode_step_ms = (time.perf_counter() - decode_start) * 1000.0
+            decode_times.append(decode_step_ms)
+
+            logits = outputs[0].get_data_to_numpy()
+            decode_inputs[3], decode_outputs[1] = decode_outputs[1], decode_inputs[3]
+            decode_inputs[4], decode_outputs[2] = decode_outputs[2], decode_inputs[4]
+
             valid_len += 1
             generated_ids.append(int(np.argmax(logits[0, -1])))
             if stream:
@@ -283,6 +398,11 @@ class Qwen317BInferencer:
 
         if stream:
             print()
+
+        self._print_perf_summary(prefill_ms, decode_times)
+
+        if dump_calib_path:
+            self._dump_calib(dump_calib_path, text, input_ids, attention_mask, position_ids, generated_ids)
 
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
@@ -307,6 +427,12 @@ def main():
     parser.add_argument("--max-new-tokens", type=int, default=128)
     parser.add_argument("--max-length", type=int, default=4096)
     parser.add_argument(
+        "--dump-calib",
+        type=str,
+        default="",
+        help="Append one JSONL record for PTQ calibration (input_ids/mask/pos + generated_ids).",
+    )
+    parser.add_argument(
         "--device", type=str, default="ascend", choices=["cpu", "ascend"]
     )
     parser.add_argument("--device-id", type=int, default=0)
@@ -328,6 +454,7 @@ def main():
         args.prompt,
         max_new_tokens=args.max_new_tokens,
         max_length=args.max_length,
+        dump_calib_path=(args.dump_calib or None),
     )
     print("=" * 60)
 
