@@ -1,5 +1,5 @@
 /**
- * Copyright 2025 Huawei Technologies Co., Ltd
+ * Copyright 2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,18 +19,26 @@
 
 #include <vector>
 #include <string>
+#include <map>
 #include "src/litert/kernel/dsp/dsp_kernel.h"
+#include "src/litert/kernel/cpu/nnacl_c/arithmetic_parameter.h"
 
 namespace mindspore::kernel {
 
 class SubDSPKernel : public DSPKernel {
  public:
-  using DSPKernel::DSPKernel;
-
+  SubDSPKernel(OpParameter *parameter, const std::vector<lite::Tensor *> &inputs,
+               const std::vector<lite::Tensor *> &outputs, const lite::InnerContext *ctx)
+      : DSPKernel(parameter, inputs, outputs, ctx) {
+    param_ = reinterpret_cast<ArithmeticParameter *>(parameter);
+  }
   ~SubDSPKernel() override = default;
   int Prepare() override;
   int CheckSpecs() override;
   int Run() override;
+
+ protected:
+  ArithmeticParameter *param_{nullptr};
 };
 }  // namespace mindspore::kernel
 #endif  // MINDSPORE_LITE_SRC_RUNTIME_KERNEL_DSP_KERNEL_SUB_H_

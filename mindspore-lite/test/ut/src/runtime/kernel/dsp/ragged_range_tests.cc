@@ -180,159 +180,6 @@ TEST_F(TestDSP_RaggedRange, RaggedRange_Int32) {
   delete kernel;
 }
 
-#ifdef SUPPORT_FT04
-TEST_F(TestDSP_RaggedRange, RaggedRange_Fp16) {
-  InitDSPRuntime();
-  std::vector<lite::Tensor *> inputs_;
-  std::vector<lite::Tensor *> outputs_;
-  // Larger dataset with fp32 inputs and fp16 outputs
-  std::vector<int> vec3 = {3};
-  auto t_starts = new lite::Tensor(kNumberTypeFloat32, vec3, mindspore::NHWC, lite::Category::CONST_TENSOR);
-  t_starts->MallocData(allocator_);
-  auto t_limits = new lite::Tensor(kNumberTypeFloat32, vec3, mindspore::NHWC, lite::Category::CONST_TENSOR);
-  t_limits->MallocData(allocator_);
-  auto t_deltas = new lite::Tensor(kNumberTypeFloat32, vec3, mindspore::NHWC, lite::Category::CONST_TENSOR);
-  t_deltas->MallocData(allocator_);
-  inputs_.push_back(t_starts);
-  inputs_.push_back(t_limits);
-  inputs_.push_back(t_deltas);
-
-  auto starts_f = reinterpret_cast<float *>(t_starts->MutableData());
-  auto limits_f = reinterpret_cast<float *>(t_limits->MutableData());
-  auto deltas_f = reinterpret_cast<float *>(t_deltas->MutableData());
-  float starts_host[3] = {-10.f, 0.f, 1.5f};
-  float limits_host[3] = {0.f, 50.f, 6.f};
-  float deltas_host[3] = {0.5f, 1.f, 1.25f};
-  std::memcpy(starts_f, starts_host, sizeof(starts_host));
-  std::memcpy(limits_f, limits_host, sizeof(limits_host));
-  std::memcpy(deltas_f, deltas_host, sizeof(deltas_host));
-
-  // outputs
-  auto t_splits = new lite::Tensor(kNumberTypeInt32, {4}, mindspore::NHWC, lite::Category::CONST_TENSOR);
-  t_splits->MallocData(allocator_);
-  auto t_values = new lite::Tensor(kNumberTypeFloat16, {200}, mindspore::NHWC, lite::Category::CONST_TENSOR);
-  t_values->MallocData(allocator_);
-  outputs_.push_back(t_splits);
-  outputs_.push_back(t_values);
-
-  std::fill_n(reinterpret_cast<int32_t *>(t_splits->MutableData()), 4, 0);
-  std::memset(t_values->MutableData(), 0, 200 * sizeof(uint16_t));
-
-  auto ctx = new lite::InnerContext;
-  ASSERT_EQ(lite::RET_OK, ctx->Init());
-
-  kernel::KernelKey key = {kernel::KERNEL_ARCH::kDSP, kNumberTypeFloat16, NHWC, schema::PrimitiveType_RaggedRange};
-  auto creator = KernelRegistry::GetInstance()->GetCreator(key);
-  auto *param = new OpParameter();
-  param->type_ = static_cast<int>(schema::PrimitiveType_RaggedRange);
-  auto kernel = creator(inputs_, outputs_, reinterpret_cast<OpParameter *>(param), ctx, key);
-  auto ret = kernel->Prepare();
-  EXPECT_EQ(0, ret);
-  ret = kernel->Run();
-  EXPECT_EQ(0, ret);
-
-  // expected
-  std::vector<int32_t> expect_splits(4, 0);
-  std::vector<float> expect_values;
-  int32_t acc = 0;
-  for (int r = 0; r < 3; ++r) {
-    expect_splits[r] = acc;
-    for (float v = starts_host[r]; v < limits_host[r]; v += deltas_host[r]) {
-      expect_values.push_back(v);
-    }
-    acc = static_cast<int32_t>(expect_values.size());
-  }
-  expect_splits[3] = acc;
-
-  ASSERT_EQ(0, CompareOutputData(reinterpret_cast<int32_t *>(outputs_[0]->MutableData()), expect_splits.data(), 4));
-
-  auto out_fp16 = reinterpret_cast<uint16_t *>(outputs_[1]->MutableData());
-  std::vector<float> actual(acc);
-  for (int i = 0; i < acc; ++i) actual[i] = Fp16ToFp32(out_fp16[i]);
-  std::vector<float> correct(acc);
-  for (int i = 0; i < acc; ++i) correct[i] = Fp16ToFp32(Fp32ToFp16(expect_values[i]));
-  ASSERT_EQ(0, CompareOutputData(actual.data(), correct.data(), acc, 1e-3));
-
-  UninitDSPRuntime();
-  delete ctx;
-  for (auto t : inputs_) delete t;
-  for (auto t : outputs_) delete t;
-  delete kernel;
-}
-
-TEST_F(TestDSP_RaggedRange, RaggedRange_Int16) {
-  InitDSPRuntime();
-  std::vector<lite::Tensor *> inputs_;
-  std::vector<lite::Tensor *> outputs_;
-  // Larger dataset with int32 inputs and int16 outputs
-  std::vector<int> vec3 = {3};
-  auto t_starts = new lite::Tensor(kNumberTypeInt32, vec3, mindspore::NHWC, lite::Category::CONST_TENSOR);
-  t_starts->MallocData(allocator_);
-  auto t_limits = new lite::Tensor(kNumberTypeInt32, vec3, mindspore::NHWC, lite::Category::CONST_TENSOR);
-  t_limits->MallocData(allocator_);
-  auto t_deltas = new lite::Tensor(kNumberTypeInt32, vec3, mindspore::NHWC, lite::Category::CONST_TENSOR);
-  t_deltas->MallocData(allocator_);
-  inputs_.push_back(t_starts);
-  inputs_.push_back(t_limits);
-  inputs_.push_back(t_deltas);
-
-  auto starts_d32 = reinterpret_cast<int32_t *>(t_starts->MutableData());
-  auto limits_d32 = reinterpret_cast<int32_t *>(t_limits->MutableData());
-  auto deltas_d32 = reinterpret_cast<int32_t *>(t_deltas->MutableData());
-  int32_t starts_host[3] = {-10, 0, 100};
-  int32_t limits_host[3] = {10, 100, 110};
-  int32_t deltas_host[3] = {2, 3, 1};
-  std::memcpy(starts_d32, starts_host, sizeof(starts_host));
-  std::memcpy(limits_d32, limits_host, sizeof(limits_host));
-  std::memcpy(deltas_d32, deltas_host, sizeof(deltas_host));
-
-  auto t_splits = new lite::Tensor(kNumberTypeInt32, {4}, mindspore::NHWC, lite::Category::CONST_TENSOR);
-  t_splits->MallocData(allocator_);
-  auto t_values = new lite::Tensor(kNumberTypeInt16, {300}, mindspore::NHWC, lite::Category::CONST_TENSOR);
-  t_values->MallocData(allocator_);
-  outputs_.push_back(t_splits);
-  outputs_.push_back(t_values);
-
-  std::fill_n(reinterpret_cast<int32_t *>(t_splits->MutableData()), 4, 0);
-  std::fill_n(reinterpret_cast<int16_t *>(t_values->MutableData()), 300, 0);
-
-  auto ctx = new lite::InnerContext;
-  ASSERT_EQ(lite::RET_OK, ctx->Init());
-
-  kernel::KernelKey key = {kernel::KERNEL_ARCH::kDSP, kNumberTypeInt16, NHWC, schema::PrimitiveType_RaggedRange};
-  auto creator = KernelRegistry::GetInstance()->GetCreator(key);
-  auto *param = new OpParameter();
-  param->type_ = static_cast<int>(schema::PrimitiveType_RaggedRange);
-  auto kernel = creator(inputs_, outputs_, reinterpret_cast<OpParameter *>(param), ctx, key);
-  auto ret = kernel->Prepare();
-  EXPECT_EQ(0, ret);
-  ret = kernel->Run();
-  EXPECT_EQ(0, ret);
-
-  std::vector<int32_t> expect_splits(4, 0);
-  std::vector<int16_t> expect_values;
-  int32_t acc = 0;
-  for (int r = 0; r < 3; ++r) {
-    expect_splits[r] = acc;
-    for (int32_t v = starts_host[r]; v < limits_host[r]; v += deltas_host[r]) {
-      expect_values.push_back(static_cast<int16_t>(v));
-    }
-    acc = static_cast<int32_t>(expect_values.size());
-  }
-  expect_splits[3] = acc;
-
-  ASSERT_EQ(0, CompareOutputData(reinterpret_cast<int32_t *>(outputs_[0]->MutableData()), expect_splits.data(), 4));
-  ASSERT_EQ(0, CompareOutputData(reinterpret_cast<int16_t *>(outputs_[1]->MutableData()), expect_values.data(), acc));
-
-  UninitDSPRuntime();
-  delete ctx;
-  for (auto t : inputs_) delete t;
-  for (auto t : outputs_) delete t;
-  delete kernel;
-}
-#endif
-
-#ifdef SUPPORT_FT78
 TEST_F(TestDSP_RaggedRange, RaggedRange_Int16) {
   InitDSPRuntime();
   std::vector<lite::Tensor *> inputs_;
@@ -348,22 +195,22 @@ TEST_F(TestDSP_RaggedRange, RaggedRange_Int16) {
   inputs_.push_back(t_limits);
   inputs_.push_back(t_deltas);
 
-  int16_t starts_host[3] = {-12, 0, 90};
-  int16_t limits_host[3] = {-2, 30, 100};
-  int16_t deltas_host[3] = {3, 5, 2};
+  int16_t starts_host[3] = {-10, 0, 100};
+  int16_t limits_host[3] = {10, 100, 110};
+  int16_t deltas_host[3] = {2, 3, 1};
   std::memcpy(t_starts->MutableData(), starts_host, sizeof(starts_host));
   std::memcpy(t_limits->MutableData(), limits_host, sizeof(limits_host));
   std::memcpy(t_deltas->MutableData(), deltas_host, sizeof(deltas_host));
 
   auto t_splits = new lite::Tensor(kNumberTypeInt32, {4}, mindspore::NHWC, lite::Category::CONST_TENSOR);
   t_splits->MallocData(allocator_);
-  auto t_values = new lite::Tensor(kNumberTypeInt16, {256}, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  auto t_values = new lite::Tensor(kNumberTypeInt16, {300}, mindspore::NHWC, lite::Category::CONST_TENSOR);
   t_values->MallocData(allocator_);
   outputs_.push_back(t_splits);
   outputs_.push_back(t_values);
 
   std::fill_n(reinterpret_cast<int32_t *>(t_splits->MutableData()), 4, 0);
-  std::fill_n(reinterpret_cast<int16_t *>(t_values->MutableData()), 256, static_cast<int16_t>(0));
+  std::fill_n(reinterpret_cast<int16_t *>(t_values->MutableData()), 300, static_cast<int16_t>(0));
 
   auto ctx = new lite::InnerContext;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
@@ -402,6 +249,91 @@ TEST_F(TestDSP_RaggedRange, RaggedRange_Int16) {
   delete kernel;
 }
 
+#ifdef SUPPORT_FT04
+TEST_F(TestDSP_RaggedRange, RaggedRange_Fp16) {
+  InitDSPRuntime();
+  std::vector<lite::Tensor *> inputs_;
+  std::vector<lite::Tensor *> outputs_;
+  // fp16 inputs and fp16 outputs, matching HP test pattern
+  std::vector<int> vec3 = {3};
+  auto t_starts = new lite::Tensor(kNumberTypeFloat16, vec3, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  t_starts->MallocData(allocator_);
+  auto t_limits = new lite::Tensor(kNumberTypeFloat16, vec3, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  t_limits->MallocData(allocator_);
+  auto t_deltas = new lite::Tensor(kNumberTypeFloat16, vec3, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  t_deltas->MallocData(allocator_);
+  inputs_.push_back(t_starts);
+  inputs_.push_back(t_limits);
+  inputs_.push_back(t_deltas);
+
+  float starts_host[3] = {-10.f, 0.f, 1.5f};
+  float limits_host[3] = {0.f, 50.f, 6.f};
+  float deltas_host[3] = {0.5f, 1.f, 1.25f};
+  auto starts_h = reinterpret_cast<uint16_t *>(t_starts->MutableData());
+  auto limits_h = reinterpret_cast<uint16_t *>(t_limits->MutableData());
+  auto deltas_h = reinterpret_cast<uint16_t *>(t_deltas->MutableData());
+  for (int i = 0; i < 3; ++i) {
+    starts_h[i] = Fp32ToFp16(starts_host[i]);
+    limits_h[i] = Fp32ToFp16(limits_host[i]);
+    deltas_h[i] = Fp32ToFp16(deltas_host[i]);
+  }
+
+  // outputs
+  auto t_splits = new lite::Tensor(kNumberTypeInt32, {4}, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  t_splits->MallocData(allocator_);
+  auto t_values = new lite::Tensor(kNumberTypeFloat16, {200}, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  t_values->MallocData(allocator_);
+  outputs_.push_back(t_splits);
+  outputs_.push_back(t_values);
+
+  std::fill_n(reinterpret_cast<int32_t *>(t_splits->MutableData()), 4, 0);
+  std::memset(t_values->MutableData(), 0, 200 * sizeof(uint16_t));
+
+  auto ctx = new lite::InnerContext;
+  ASSERT_EQ(lite::RET_OK, ctx->Init());
+
+  kernel::KernelKey key = {kernel::KERNEL_ARCH::kDSP, kNumberTypeFloat16, NHWC, schema::PrimitiveType_RaggedRange};
+  auto creator = KernelRegistry::GetInstance()->GetCreator(key);
+  auto *param = new OpParameter();
+  param->type_ = static_cast<int>(schema::PrimitiveType_RaggedRange);
+  auto kernel = creator(inputs_, outputs_, reinterpret_cast<OpParameter *>(param), ctx, key);
+  auto ret = kernel->Prepare();
+  EXPECT_EQ(0, ret);
+  ret = kernel->Run();
+  EXPECT_EQ(0, ret);
+
+  // expected: compute in fp32, then convert to fp16 for reference
+  std::vector<int32_t> expect_splits(4, 0);
+  std::vector<float> expect_values;
+  int32_t acc = 0;
+  for (int r = 0; r < 3; ++r) {
+    expect_splits[r] = acc;
+    for (float v = starts_host[r]; v < limits_host[r]; v += deltas_host[r]) {
+      expect_values.push_back(v);
+    }
+    acc = static_cast<int32_t>(expect_values.size());
+  }
+  expect_splits[3] = acc;
+
+  ASSERT_EQ(0, CompareOutputData(reinterpret_cast<int32_t *>(outputs_[0]->MutableData()), expect_splits.data(), 4));
+
+  auto out_fp16 = reinterpret_cast<uint16_t *>(outputs_[1]->MutableData());
+  std::vector<float> actual(acc);
+  for (int i = 0; i < acc; ++i) actual[i] = Fp16ToFp32(out_fp16[i]);
+  std::vector<float> correct(acc);
+  for (int i = 0; i < acc; ++i) correct[i] = Fp16ToFp32(Fp32ToFp16(expect_values[i]));
+  ASSERT_EQ(0, CompareOutputData(actual.data(), correct.data(), acc, 1e-3));
+
+  UninitDSPRuntime();
+  delete ctx;
+  for (auto t : inputs_) delete t;
+  for (auto t : outputs_) delete t;
+  delete kernel;
+}
+
+#endif
+
+#ifdef SUPPORT_FT78
 TEST_F(TestDSP_RaggedRange, RaggedRange_Fp64) {
   InitDSPRuntime();
   std::vector<lite::Tensor *> inputs_;
