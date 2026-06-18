@@ -90,6 +90,7 @@ class LiteOpActor : public OpActor<lite::Tensor> {
     const std::unordered_map<void *, std::set<std::pair<AID, size_t>>> &receivers_map);
   int IsolateInputData(std::vector<std::shared_ptr<LiteOpActor>> *actors,
                        std::unordered_map<Tensor *, Tensor *> *input_map);
+  int CreateDuplicateTensor(size_t tensor_index, Tensor *old_tensor);
   virtual int PrepareOutputData();
   virtual int UpdateActorOutput();
 

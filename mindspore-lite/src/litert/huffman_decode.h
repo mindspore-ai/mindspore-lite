@@ -53,6 +53,8 @@ class HuffmanDecode {
 
   static STATUS RebuildHuffmanTree(std::string key, std::string code, const HuffmanNodePtr &root);
 
+  static STATUS BuildTreeNode(int key, const std::string &code, const HuffmanNodePtr &root);
+
   static STATUS DoHuffmanDecompress(HuffmanNodePtr root, std::string encoded_data, std::string *decoded_str);
 
   static std::vector<std::string> Str2Vec(std::string s) {

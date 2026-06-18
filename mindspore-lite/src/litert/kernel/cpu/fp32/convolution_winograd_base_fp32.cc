@@ -241,20 +241,11 @@ int ConvolutionWinogradBaseCPUKernel::Run() {
   return ret;
 }
 
-int ConvolutionWinogradBaseCPUKernel::MallocWeightBiasData() {
+int ConvolutionWinogradBaseCPUKernel::MallocWeightData() {
   auto filter_tensor = in_tensors_.at(kWeightIndex);
+  CHECK_NULL_RETURN(filter_tensor);
   int in_channel = filter_tensor->Channel();
-  if (in_channel < 0) {
-    MS_LOG(ERROR) << "get channel from filter tensor failed.";
-    return RET_ERROR;
-  }
   int out_channel = filter_tensor->Batch();
-  if (out_channel < 0) {
-    MS_LOG(ERROR) << "get batch from filter tensor failed.";
-    return RET_ERROR;
-  }
-  conv_param_->input_channel_ = in_channel;
-  conv_param_->output_channel_ = out_channel;
 
   // set data
   auto trans_matrix_data_size =
@@ -269,23 +260,11 @@ int ConvolutionWinogradBaseCPUKernel::MallocWeightBiasData() {
       }
     }
   }
+  return RET_OK;
+}
 
-  float matrix_a[64];
-  float matrix_at[64];
-  float matrix_b[64];
-  float matrix_bt[64];
-  float coef = 1.0f;
-  if (input_unit_ == CONV_INPUT_UNIT_SIZE) {
-    coef = 0.5f;
-  }
-  auto ret =
-    CookToomFilter(matrix_a, matrix_at, matrix_b, matrix_bt, matrix_g_, matrix_gt_, coef, output_unit_, kernel_unit_);
-  if (ret != RET_OK) {
-    MS_LOG(ERROR) << "get matrix g from CookToomFilter failed.";
-    return ret;
-  }
-
-  // init bias
+int ConvolutionWinogradBaseCPUKernel::MallocBiasData() {
+  int out_channel = conv_param_->output_channel_;
   size_t new_bias_size = static_cast<size_t>(UP_ROUND(out_channel, C4NUM)) * sizeof(float);
   if (bias_data_ == nullptr) {
     CHECK_LESS_RETURN(MAX_MALLOC_SIZE, new_bias_size);
@@ -296,6 +275,49 @@ int ConvolutionWinogradBaseCPUKernel::MallocWeightBiasData() {
     }
   }
   memset(bias_data_, 0, new_bias_size);
+  return RET_OK;
+}
+
+int ConvolutionWinogradBaseCPUKernel::MallocWeightBiasData() {
+  auto filter_tensor = in_tensors_.at(kWeightIndex);
+  CHECK_NULL_RETURN(filter_tensor);
+  int in_channel = filter_tensor->Channel();
+  if (in_channel < 0) {
+    MS_LOG(ERROR) << "get channel from filter tensor failed.";
+    return RET_ERROR;
+  }
+  int out_channel = filter_tensor->Batch();
+  if (out_channel < 0) {
+    MS_LOG(ERROR) << "get batch from filter tensor failed.";
+    return RET_ERROR;
+  }
+  conv_param_->input_channel_ = in_channel;
+  conv_param_->output_channel_ = out_channel;
+
+  auto ret = MallocWeightData();
+  if (ret != RET_OK) {
+    return ret;
+  }
+
+  float matrix_a[64];
+  float matrix_at[64];
+  float matrix_b[64];
+  float matrix_bt[64];
+  float coef = 1.0f;
+  if (input_unit_ == CONV_INPUT_UNIT_SIZE) {
+    coef = 0.5f;
+  }
+  ret =
+    CookToomFilter(matrix_a, matrix_at, matrix_b, matrix_bt, matrix_g_, matrix_gt_, coef, output_unit_, kernel_unit_);
+  if (ret != RET_OK) {
+    MS_LOG(ERROR) << "get matrix g from CookToomFilter failed.";
+    return ret;
+  }
+
+  ret = MallocBiasData();
+  if (ret != RET_OK) {
+    return ret;
+  }
   return RET_OK;
 }
 

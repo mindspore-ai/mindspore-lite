@@ -26,6 +26,9 @@
 #include "src/control_flow/control_actor_creator.h"
 
 namespace mindspore::lite {
+namespace {
+constexpr auto kDuplicateTensorSuffix = "_duplicate_";
+}  // namespace
 void LiteOpActor::RunOpData(OpData<lite::Tensor> *inputs, OpContext<lite::Tensor> *context) {
   if (inputs == nullptr || context == nullptr) {
     MS_LOG(ERROR) << "param is nullptr.";
@@ -104,6 +107,46 @@ int LiteOpActor::PreInit(std::vector<std::shared_ptr<LiteOpActor>> *actors,
 }
 int LiteOpActor::PostInit() { return PrepareOutputData(); }
 
+int LiteOpActor::CreateDuplicateTensor(size_t tensor_index, Tensor *old_tensor) {
+  MS_CHECK_TRUE_RET(old_tensor != nullptr, RET_ERROR);
+  MS_CHECK_TRUE_RET(kernel_ != nullptr, RET_ERROR);
+  TypeId new_data_type = GetSubgraphInTensorDataType(kernel_, old_tensor);
+  Tensor *new_tensor =
+    new (std::nothrow) Tensor(new_data_type, old_tensor->shape(), old_tensor->format(), old_tensor->category());
+  if (new_tensor == nullptr) {
+    MS_LOG(ERROR) << "new Tensor failed.";
+    return RET_NULL_PTR;
+  }
+  new_tensor->set_allocator(old_tensor->allocator());
+  if (new_tensor->allocator() == nullptr && kernel_->Context() != nullptr &&
+      kernel_->desc().arch != kernel::kDelegate) {
+    new_tensor->set_allocator(kernel_->Context()->allocator);
+  }
+
+  new_tensor->set_tensor_name(kernel_->name() + kDuplicateTensorSuffix + old_tensor->tensor_name());
+  for (LiteQuantParam quant : old_tensor->quant_params()) {
+    new_tensor->AddQuantParam(quant);
+  }
+  isolate_input_map_->insert(std::make_pair(new_tensor, old_tensor));
+  auto ret = kernel::KernelExecUtil::ReplaceSubGraphNodesInTensor(kernel_, old_tensor, new_tensor);
+  if (ret != RET_OK) {
+    MS_LOG(ERROR) << "ReplaceSubGraphNodesInTensor failed.";
+    isolate_input_map_->erase(new_tensor);
+    delete new_tensor;
+    return ret;
+  }
+
+  // for case that subgraph input is subgraph output, replace old_tensor with new_tensor
+  ctx_->ReplaceLinkInfoSenderWithNewOne(new_tensor, old_tensor);
+
+  // keep new link info for isolate input data case.
+  ctx_->SetLinkInfo(old_tensor, new_tensor);
+
+  /* set subgraph input for copy data */
+  kernel_->set_in_tensor(new_tensor, tensor_index);
+  return RET_OK;
+}
+
 int LiteOpActor::IsolateInputData(std::vector<std::shared_ptr<LiteOpActor>> *actors,
                                   std::unordered_map<Tensor *, Tensor *> *input_map) {
   if (actors == nullptr || input_map == nullptr) {
@@ -130,38 +173,10 @@ int LiteOpActor::IsolateInputData(std::vector<std::shared_ptr<LiteOpActor>> *act
       continue;
     }
 
-    TypeId new_data_type = GetSubgraphInTensorDataType(kernel_, old_tensor);
-    Tensor *new_tensor =
-      new (std::nothrow) Tensor(new_data_type, old_tensor->shape(), old_tensor->format(), old_tensor->category());
-    if (new_tensor == nullptr) {
-      MS_LOG(ERROR) << "new Tensor failed.";
-      return RET_NULL_PTR;
-    }
-    new_tensor->set_allocator(old_tensor->allocator());
-    if (new_tensor->allocator() == nullptr && kernel_->Context() != nullptr &&
-        kernel_->desc().arch != kernel::kDelegate) {
-      new_tensor->set_allocator(kernel_->Context()->allocator);
-    }
-
-    new_tensor->set_tensor_name(kernel_->name() + "_duplicate_" + old_tensor->tensor_name());
-    for (LiteQuantParam quant : old_tensor->quant_params()) {
-      new_tensor->AddQuantParam(quant);
-    }
-    isolate_input_map_->insert(std::make_pair(new_tensor, old_tensor));
-    auto ret = kernel::KernelExecUtil::ReplaceSubGraphNodesInTensor(kernel_, old_tensor, new_tensor);
+    auto ret = CreateDuplicateTensor(i, old_tensor);
     if (ret != RET_OK) {
-      MS_LOG(ERROR) << "ReplaceSubGraphNodesInTensor failed.";
       return ret;
     }
-
-    // for case that subgraph input is subgraph output, replace old_tensor with new_tensor
-    ctx_->ReplaceLinkInfoSenderWithNewOne(new_tensor, old_tensor);
-
-    // keep new link info for isolate input data case.
-    ctx_->SetLinkInfo(old_tensor, new_tensor);
-
-    /* set subgraph input for copy data */
-    kernel_->set_in_tensor(new_tensor, i);
   }
 
   for (auto &item : *isolate_input_map_) {

@@ -61,6 +61,9 @@ class ScaleInt8CPUKernel : public LiteKernel {
   ScaleQuantParameter quant_;
 
   int InitQuantArgs();
+  int PrepareBroadcastInputs();
+  void FreeBroadcastInputs();
+  int PrepareSameShapeInputs();
 };
 }  // namespace mindspore::kernel
 

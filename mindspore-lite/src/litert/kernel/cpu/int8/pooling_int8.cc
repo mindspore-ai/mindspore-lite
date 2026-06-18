@@ -55,16 +55,16 @@ int PoolingInt8CPUKernel::SetQuantParam() {
     return RET_MEMORY_FAILED;
   }
   auto *input_tensor = in_tensors_.at(kInputIndex);
-  auto in_quant_arg = input_tensor->quant_params();
   MS_CHECK_TRUE_MSG(input_tensor != nullptr, RET_ERROR, "input_tensor is nullptr.");
+  auto in_quant_arg = input_tensor->quant_params();
   if (in_quant_arg.empty()) {
     MS_LOG(ERROR) << "input tensor quant_params() return empty vector.";
     FreeQuantParam();
     return RET_ERROR;
   }
   auto *out_tensor = out_tensors_.at(kOutputIndex);
-  auto out_quant_arg = out_tensor->quant_params();
   MS_CHECK_TRUE_MSG(out_tensor != nullptr, RET_ERROR, "out_tensor is nullptr.");
+  auto out_quant_arg = out_tensor->quant_params();
   if (out_quant_arg.empty()) {
     MS_LOG(ERROR) << "output tensor quant_params() return empty vector.";
     FreeQuantParam();

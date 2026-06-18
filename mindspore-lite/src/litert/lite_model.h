@@ -259,30 +259,13 @@ class MS_API LiteModel : public Model {
     return RET_OK;
   }
 
-  template <typename T = schema::MetaGraph, typename U = schema::CNode>
-  int GenerateModel(const T &meta_graph) {
-    if (meta_graph.name() != nullptr) {
-      this->graph_.name_ = meta_graph.name()->c_str();
-    }
-    if (meta_graph.version() != nullptr) {
-      this->graph_.version_ = meta_graph.version()->c_str();
-    }
-    if (!ConvertNodes<T, U>(meta_graph)) {
-      MS_LOG(ERROR) << "convert node failed";
-      return RET_ERROR;
-    }
-    if (!ConvertTensors<T>(meta_graph)) {
-      MS_LOG(ERROR) << "convert tensor failed";
-      return RET_ERROR;
-    }
-
+  template <typename T = schema::MetaGraph>
+  int ConvertInputOutput(const T &meta_graph) {
     if (meta_graph.inputIndex() == nullptr || meta_graph.outputIndex() == nullptr ||
         meta_graph.allTensors() == nullptr) {
       MS_LOG(ERROR) << "meta_graph is invalid, please check your model file.";
       return RET_ERROR;
     }
-
-    // converterInputOutput
     auto in_count = meta_graph.inputIndex()->size();
     for (uint32_t i = 0; i < in_count; ++i) {
       this->graph_.input_indices_.push_back(meta_graph.inputIndex()->Get(i));
@@ -291,7 +274,11 @@ class MS_API LiteModel : public Model {
     for (uint32_t i = 0; i < out_count; ++i) {
       this->graph_.output_indices_.push_back(meta_graph.outputIndex()->Get(i));
     }
+    return RET_OK;
+  }
 
+  template <typename T = schema::MetaGraph>
+  int ConvertSubGraphs(const T &meta_graph) {
     if (meta_graph.subGraph() == nullptr) {
       int ret = MetaGraphMappingSubGraph<T>(meta_graph);
       if (ret != RET_OK) {
@@ -313,6 +300,33 @@ class MS_API LiteModel : public Model {
           return ret;
         }
       }
+    }
+    return RET_OK;
+  }
+
+  template <typename T = schema::MetaGraph, typename U = schema::CNode>
+  int GenerateModel(const T &meta_graph) {
+    if (meta_graph.name() != nullptr) {
+      this->graph_.name_ = meta_graph.name()->c_str();
+    }
+    if (meta_graph.version() != nullptr) {
+      this->graph_.version_ = meta_graph.version()->c_str();
+    }
+    if (!ConvertNodes<T, U>(meta_graph)) {
+      MS_LOG(ERROR) << "convert node failed";
+      return RET_ERROR;
+    }
+    if (!ConvertTensors<T>(meta_graph)) {
+      MS_LOG(ERROR) << "convert tensor failed";
+      return RET_ERROR;
+    }
+    int ret = ConvertInputOutput<T>(meta_graph);
+    if (ret != RET_OK) {
+      return ret;
+    }
+    ret = ConvertSubGraphs<T>(meta_graph);
+    if (ret != RET_OK) {
+      return ret;
     }
     return RET_OK;
   }
