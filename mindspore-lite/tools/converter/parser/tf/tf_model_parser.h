@@ -29,6 +29,7 @@
 #include "schema/inner/model_generated.h"
 #include "include/securec.h"
 #include "tools/common/tensor_util.h"
+#include "tools/lite_exporter/fetch_content.h"
 #include "include/registry/model_parser.h"
 #include "include/registry/model_parser_registry.h"
 #include "ops/primitive_c.h"
@@ -74,6 +75,10 @@ class TFModelParser : public converter::ModelParser {
                                     const std::map<std::string, const tensorflow::NodeDef *> &tf_node_map,
                                     const std::unordered_map<std::string, AnfNodePtr> &anf_node_map);
   STATUS ProcessControlFlowOp(const CNodePtr &anf_node, const string &op_type, const tensorflow::NodeDef &node_def);
+
+  int FetchIfConditionData(const CNodePtr &anf_node, lite::DataInfo *if_cond_info);
+  bool CheckIneffectiveBranch(const CNodePtr &anf_node, const tensorflow::NodeDef &node_def,
+                              const lite::DataInfo &if_cond_info);
 
   bool IsIneffectiveIfOp(const CNodePtr &anf_node, const string &op_type, const tensorflow::NodeDef &node_def);
 

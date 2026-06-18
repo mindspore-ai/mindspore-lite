@@ -406,57 +406,73 @@ STATUS BuildOpInputs(const torch::jit::Node *torch_node, std::vector<AnfNodePtr>
   return RET_OK;
 }
 
-STATUS BuildOpOutputs(const torch::jit::Node *torch_node, const FuncGraphPtr &anf_graph,
-                      std::unordered_map<std::string, AnfNodePtr> *anf_nodes_map, const CNodePtr &cnode) {
-  MS_ASSERT(torch_node != nullptr && anf_graph != nullptr && cnode != nullptr && anf_nodes_map != nullptr);
-  if (torch_node->outputs().size() == 1) {
+STATUS BuildSingleOutput(const torch::jit::Node *torch_node, std::unordered_map<std::string, AnfNodePtr> *anf_nodes_map,
+                         const CNodePtr &cnode) {
+  auto abstract_tensor = CreateTensorAbstract({}, kNumberTypeFloat32);
+  if (abstract_tensor == nullptr) {
+    MS_LOG(ERROR) << "Create tensor abstarct failed";
+    return RET_ERROR;
+  }
+  cnode->set_abstract(abstract_tensor);
+  anf_nodes_map->emplace(torch_node->output()->debugName(), cnode);
+  return RET_OK;
+}
+
+STATUS BuildMultiOutput(const torch::jit::Node *torch_node, const FuncGraphPtr &anf_graph,
+                        std::unordered_map<std::string, AnfNodePtr> *anf_nodes_map, const CNodePtr &cnode) {
+  AbstractBasePtrList abstract_list;
+  int op_idx = 0;
+  for (const auto &output : torch_node->outputs()) {
     auto abstract_tensor = CreateTensorAbstract({}, kNumberTypeFloat32);
     if (abstract_tensor == nullptr) {
       MS_LOG(ERROR) << "Create tensor abstarct failed";
       return RET_ERROR;
     }
-    cnode->set_abstract(abstract_tensor);
-    anf_nodes_map->emplace(torch_node->output()->debugName(), cnode);
-  } else {
-    AbstractBasePtrList abstract_list;
-    int op_idx = 0;
-    for (const auto &output : torch_node->outputs()) {
-      auto abstract_tensor = CreateTensorAbstract({}, kNumberTypeFloat32);
-      if (abstract_tensor == nullptr) {
-        MS_LOG(ERROR) << "Create tensor abstarct failed";
-        return RET_ERROR;
-      }
-      abstract_list.emplace_back(abstract_tensor);
-      auto tuple_get_item_prim_ptr = std::make_shared<ops::TupleGetItem>();
-      if (tuple_get_item_prim_ptr == nullptr) {
-        MS_LOG(ERROR) << "new TupleGetItem failed";
-        return RET_NULL_PTR;
-      }
-      auto tuple_get_item_prim = tuple_get_item_prim_ptr->GetPrim();
-      MS_CHECK_TRUE_MSG(tuple_get_item_prim != nullptr, RET_NULL_PTR, "get prim return nullptr");
-      auto tuple_get_item = NewValueNode(tuple_get_item_prim);
-      MS_CHECK_TRUE_MSG(tuple_get_item != nullptr, RET_NULL_PTR, "create ValueNode return nullptr");
-      auto get_item_value = NewValueNode(MakeValue<int64_t>(op_idx));
-      MS_CHECK_TRUE_MSG(get_item_value != nullptr, RET_NULL_PTR, "create ValueNode return nullptr");
-      std::vector<AnfNodePtr> inputs{tuple_get_item, cnode, get_item_value};
-      CNodePtr get_item_cnode = anf_graph->NewCNode(inputs);
-      if (get_item_cnode == nullptr) {
-        MS_LOG(ERROR) << "new cnode error";
-        return RET_ERROR;
-      }
-      get_item_cnode->set_fullname_with_scope(cnode->fullname_with_scope() + "_getitem_" + std::to_string(op_idx));
-      auto get_item_abstract = CreateTensorAbstract({}, kNumberTypeFloat32);
-      if (get_item_abstract == nullptr) {
-        MS_LOG(ERROR) << "Create tensor abstarct failed";
-        return RET_ERROR;
-      }
-      get_item_cnode->set_abstract(get_item_abstract);
-      anf_nodes_map->emplace(output->debugName(), get_item_cnode);
-      op_idx++;
+    abstract_list.emplace_back(abstract_tensor);
+    auto tuple_get_item_prim_ptr = std::make_shared<ops::TupleGetItem>();
+    if (tuple_get_item_prim_ptr == nullptr) {
+      MS_LOG(ERROR) << "new TupleGetItem failed";
+      return RET_NULL_PTR;
     }
-    auto new_abstract_list = std::make_shared<abstract::AbstractTuple>(abstract_list);
-    CHECK_NULL_RETURN(new_abstract_list);
-    cnode->set_abstract(new_abstract_list);
+    auto tuple_get_item_prim = tuple_get_item_prim_ptr->GetPrim();
+    MS_CHECK_TRUE_MSG(tuple_get_item_prim != nullptr, RET_NULL_PTR, "get prim return nullptr");
+    auto tuple_get_item = NewValueNode(tuple_get_item_prim);
+    MS_CHECK_TRUE_MSG(tuple_get_item != nullptr, RET_NULL_PTR, "create ValueNode return nullptr");
+    auto get_item_value = NewValueNode(MakeValue<int64_t>(op_idx));
+    MS_CHECK_TRUE_MSG(get_item_value != nullptr, RET_NULL_PTR, "create ValueNode return nullptr");
+    std::vector<AnfNodePtr> inputs{tuple_get_item, cnode, get_item_value};
+    CNodePtr get_item_cnode = anf_graph->NewCNode(inputs);
+    if (get_item_cnode == nullptr) {
+      MS_LOG(ERROR) << "new cnode error";
+      return RET_ERROR;
+    }
+    get_item_cnode->set_fullname_with_scope(cnode->fullname_with_scope() + "_getitem_" + std::to_string(op_idx));
+    auto get_item_abstract = CreateTensorAbstract({}, kNumberTypeFloat32);
+    if (get_item_abstract == nullptr) {
+      MS_LOG(ERROR) << "Create tensor abstarct failed";
+      return RET_ERROR;
+    }
+    get_item_cnode->set_abstract(get_item_abstract);
+    anf_nodes_map->emplace(output->debugName(), get_item_cnode);
+    op_idx++;
+  }
+  auto new_abstract_list = std::make_shared<abstract::AbstractTuple>(abstract_list);
+  CHECK_NULL_RETURN(new_abstract_list);
+  cnode->set_abstract(new_abstract_list);
+  return RET_OK;
+}
+
+STATUS BuildOpOutputs(const torch::jit::Node *torch_node, const FuncGraphPtr &anf_graph,
+                      std::unordered_map<std::string, AnfNodePtr> *anf_nodes_map, const CNodePtr &cnode) {
+  MS_ASSERT(torch_node != nullptr && anf_graph != nullptr && cnode != nullptr && anf_nodes_map != nullptr);
+  if (torch_node->outputs().size() == 1) {
+    if (BuildSingleOutput(torch_node, anf_nodes_map, cnode) != RET_OK) {
+      return RET_ERROR;
+    }
+  } else {
+    if (BuildMultiOutput(torch_node, anf_graph, anf_nodes_map, cnode) != RET_OK) {
+      return RET_ERROR;
+    }
   }
   anf_nodes_map->emplace(torch_node->kind().toUnqualString(), cnode);
   return RET_OK;
