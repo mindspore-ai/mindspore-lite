@@ -269,13 +269,10 @@ static int GenerateCvData(mindspore::MSTensor *tensor) {
 }
 #endif
 
-int ParameterOptimizer::OriginModelInference(const FuncGraphPtr &func_graph,
-                                             const std::shared_ptr<ConverterPara> &param,
-                                             const std::shared_ptr<mindspore::Model> &origin_model,
-                                             size_t *origin_model_size) {
-  CHECK_NULL_RETURN(param);
-  CHECK_NULL_RETURN(origin_model);
-  CHECK_NULL_RETURN(origin_model_size);
+int ParameterOptimizer::PrepareOriginModel(const FuncGraphPtr &func_graph, const std::shared_ptr<ConverterPara> &param,
+                                           const std::shared_ptr<mindspore::Model> &origin_model,
+                                           size_t *origin_model_size, std::vector<mindspore::MSTensor> *origin_inputs) {
+  CHECK_NULL_RETURN(origin_inputs);
   FuncGraphPtr func_graph_bak;
   auto ret = CloneFuncGraph(func_graph, param, &func_graph_bak);
   if (ret != RET_OK) {
@@ -289,15 +286,20 @@ int ParameterOptimizer::OriginModelInference(const FuncGraphPtr &func_graph,
     MS_LOG(ERROR) << "build model failed!";
     return RET_ERROR;
   }
-  auto origin_inputs = origin_model->GetInputs();
+  *origin_inputs = origin_model->GetInputs();
   if ((param->dataPreProcessParam.calibrate_size == 0) && (param->mixedBitWeightQuantParam.use_cv_data)) {
-    if (ExtendBatchSize(origin_model, &origin_inputs, kNumOfCalibrationImages) != kSuccess) {
+    if (ExtendBatchSize(origin_model, origin_inputs, kNumOfCalibrationImages) != kSuccess) {
       MS_LOG(ERROR) << "Resize session for CV calibration failed!";
       return RET_ERROR;
     }
   }
+  return RET_OK;
+}
 
+int ParameterOptimizer::FillOriginInputs(const std::shared_ptr<ConverterPara> &param,
+                                         const std::vector<mindspore::MSTensor> &origin_inputs) {
   for (auto input : origin_inputs) {
+    int ret = RET_OK;
     if (param->dataPreProcessParam.calibrate_size > 0) {
       ret = preprocess::PreProcess(param->dataPreProcessParam, input.Name(), 0, &input);
     } else {
@@ -314,10 +316,28 @@ int ParameterOptimizer::OriginModelInference(const FuncGraphPtr &func_graph,
       }
     }
     if (ret != RET_OK) {
-      MS_LOG(ERROR) << input.Name() << ":"
-                    << "Generate random data failed.";
+      MS_LOG(ERROR) << input.Name() << ":" << "Generate random data failed.";
       return ret;
     }
+  }
+  return RET_OK;
+}
+
+int ParameterOptimizer::OriginModelInference(const FuncGraphPtr &func_graph,
+                                             const std::shared_ptr<ConverterPara> &param,
+                                             const std::shared_ptr<mindspore::Model> &origin_model,
+                                             size_t *origin_model_size) {
+  CHECK_NULL_RETURN(param);
+  CHECK_NULL_RETURN(origin_model);
+  CHECK_NULL_RETURN(origin_model_size);
+  std::vector<mindspore::MSTensor> origin_inputs;
+  auto ret = PrepareOriginModel(func_graph, param, origin_model, origin_model_size, &origin_inputs);
+  if (ret != RET_OK) {
+    return ret;
+  }
+  ret = FillOriginInputs(param, origin_inputs);
+  if (ret != RET_OK) {
+    return ret;
   }
   auto origin_outputs = origin_model->GetOutputs();
   auto model_status = origin_model->Predict(origin_inputs, &origin_outputs);

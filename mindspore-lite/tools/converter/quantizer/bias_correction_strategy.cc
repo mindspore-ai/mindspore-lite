@@ -518,55 +518,77 @@ int BiasCorrectionStrategy::AddBiasToFp32Tensor(const CNodePtr &cnode, const ten
   return RET_OK;
 }
 
+int BiasCorrectionStrategy::CorrectExistingBias(const CNodePtr &cnode, bool int32_bias,
+                                                const std::vector<float> &bias_diff) {
+  auto op_name = cnode->fullname_with_scope();
+  auto bias = cnode->input(THIRD_INPUT + 1);
+  auto bias_parameter_ptr = bias->cast<ParameterPtr>();
+  CHECK_NULL_RETURN(bias_parameter_ptr);
+  auto bias_default_param = bias_parameter_ptr->default_param();
+  CHECK_NULL_RETURN(bias_default_param);
+  auto bias_tensor = bias_default_param->cast<tensor::TensorPtr>();
+  if (int32_bias) {
+    if (bias_tensor == nullptr) {
+      MS_LOG(ERROR) << " bias_tensor is nullptr";
+      return RET_ERROR;
+    }
+    if (bias_tensor->quant_params().empty()) {
+      MS_LOG(ERROR) << bias->fullname_with_scope() << " bias tesnor quant param Not exist.";
+      return RET_ERROR;
+    }
+    auto bias_quant_params = quant::ConvertQuantizationParamToQuantParamT(bias_tensor->quant_params().front());
+    auto status = AddBiasToInt32Tensor(cnode, bias_tensor, bias_quant_params, bias_diff);
+    if (status != RET_OK) {
+      MS_LOG(ERROR) << op_name << " Add bias to int32 tensor failed.";
+      return RET_ERROR;
+    }
+  } else {
+    auto status = AddBiasToFp32Tensor(cnode, bias_tensor, bias_diff);
+    if (status != RET_OK) {
+      MS_LOG(ERROR) << op_name << " Add bias to int32 tensor failed.";
+      return RET_ERROR;
+    }
+  }
+  return RET_OK;
+}
+
+int BiasCorrectionStrategy::AddNewBiasInput(const FuncGraphPtr &quant_func_graph, const CNodePtr &cnode,
+                                            bool int32_bias, const std::vector<float> &bias_diff) {
+  auto op_name = cnode->fullname_with_scope();
+  MS_LOG(INFO) << op_name << " add bias input";
+  // need to add bias input
+  auto bias_parameter = quant_func_graph->add_parameter();
+  auto status = CreateFp32BiasTensor(quant_func_graph, cnode, bias_parameter, bias_diff);
+  if (status != RET_OK) {
+    MS_LOG(ERROR) << op_name << " Create fp32 bias tensor failed.";
+    return RET_ERROR;
+  }
+  if (int32_bias) {
+    FixedBitWeightQuantization fixed_bit_quant;
+    auto weight_parameter = cnode->input(SECOND_INPUT + kPrimOffset)->cast<ParameterPtr>();
+    auto active_quant_params = quant::GetInputNodeQuantParam(cnode, FIRST_INPUT + kPrimOffset);
+    status = fixed_bit_quant.QuantBias(weight_parameter, bias_parameter, active_quant_params);
+    if (status != RET_OK) {
+      MS_LOG(ERROR) << op_name << " Do bias quant failed.";
+      return RET_ERROR;
+    }
+  }
+  return RET_OK;
+}
+
 int BiasCorrectionStrategy::DoCNodeBiasCorrection(const FuncGraphPtr &quant_func_graph, const CNodePtr &cnode,
                                                   bool int32_bias) {
   auto op_name = cnode->fullname_with_scope();
   const auto &bias_diff = op_bias_diff_sum_map_[op_name];
   if (cnode->size() == kHasBiasTensorSize) {
-    auto bias = cnode->input(THIRD_INPUT + 1);
-    auto bias_parameter_ptr = bias->cast<ParameterPtr>();
-    auto bias_default_param = bias_parameter_ptr->default_param();
-    auto bias_tensor = bias_default_param->cast<tensor::TensorPtr>();
-    if (int32_bias) {
-      if (bias_tensor == nullptr) {
-        MS_LOG(ERROR) << " bias_tensor is nullptr";
-        return RET_ERROR;
-      }
-      if (bias_tensor->quant_params().empty()) {
-        MS_LOG(ERROR) << bias->fullname_with_scope() << " bias tesnor quant param Not exist.";
-        return RET_ERROR;
-      }
-      auto bias_quant_params = quant::ConvertQuantizationParamToQuantParamT(bias_tensor->quant_params().front());
-      auto status = AddBiasToInt32Tensor(cnode, bias_tensor, bias_quant_params, bias_diff);
-      if (status != RET_OK) {
-        MS_LOG(ERROR) << op_name << " Add bias to int32 tensor failed.";
-        return RET_ERROR;
-      }
-    } else {
-      auto status = AddBiasToFp32Tensor(cnode, bias_tensor, bias_diff);
-      if (status != RET_OK) {
-        MS_LOG(ERROR) << op_name << " Add bias to int32 tensor failed.";
-        return RET_ERROR;
-      }
+    auto status = CorrectExistingBias(cnode, int32_bias, bias_diff);
+    if (status != RET_OK) {
+      return status;
     }
   } else if (cnode->size() == kHasBiasTensorSize - kPrimOffset) {
-    MS_LOG(INFO) << op_name << " add bias input";
-    // need to add bias input
-    auto bias_parameter = quant_func_graph->add_parameter();
-    auto status = CreateFp32BiasTensor(quant_func_graph, cnode, bias_parameter, bias_diff);
+    auto status = AddNewBiasInput(quant_func_graph, cnode, int32_bias, bias_diff);
     if (status != RET_OK) {
-      MS_LOG(ERROR) << op_name << " Create fp32 bias tensor failed.";
-      return RET_ERROR;
-    }
-    if (int32_bias) {
-      FixedBitWeightQuantization fixed_bit_quant;
-      auto weight_parameter = cnode->input(SECOND_INPUT + kPrimOffset)->cast<ParameterPtr>();
-      auto active_quant_params = quant::GetInputNodeQuantParam(cnode, FIRST_INPUT + kPrimOffset);
-      status = fixed_bit_quant.QuantBias(weight_parameter, bias_parameter, active_quant_params);
-      if (status != RET_OK) {
-        MS_LOG(ERROR) << op_name << " Do bias quant failed.";
-        return RET_ERROR;
-      }
+      return status;
     }
   } else {
     MS_LOG(WARNING) << op_name << " unexpected size: " << cnode->size();
