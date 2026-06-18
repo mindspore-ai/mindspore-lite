@@ -30,6 +30,9 @@ class RemoveUnusedTransposeOpPass : public Pass {
   bool Run(const FuncGraphPtr &graph) override;
 
  private:
+  bool HandleTransposeAfterConv(const FuncGraphManagerPtr &manager, const CNodePtr &transpose_cnode);
+  bool HandleTransposeBeforeConv(const FuncGraphManagerPtr &manager, const CNodePtr &conv_node);
+
   FmkType fmk_type = converter::kFmkTypeTf;
 };
 }  // namespace mindspore::opt

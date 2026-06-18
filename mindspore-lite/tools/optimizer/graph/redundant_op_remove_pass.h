@@ -48,6 +48,8 @@ class RemoveRedundantOpPass : public Pass {
 
  private:
   int GetConstDataFromInputNode(const CNodePtr &cnode, lite::DataInfo *data_info);
+  bool IsPadDataAllZero(const lite::DataInfo &data_info);
+  int IsPadPrimAllZero(const mindspore::PrimitivePtr &primitive);
   int RemoveRedundantOp(const FuncGraphPtr &func_graph, const FuncGraphManagerPtr &manager, const AnfNodePtr &node);
   bool is_train_model_ = false;
   bool remove_side_effect_ = false;

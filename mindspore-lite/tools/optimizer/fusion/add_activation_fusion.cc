@@ -68,6 +68,14 @@ const AnfNodePtr AddActivationFusion::Process(const FuncGraphPtr &func_graph, co
   auto act_primitive = GetValueNode<PrimitivePtr>(act_cnode->input(0));
   MS_CHECK_TRUE_RET(add_primitive != nullptr, nullptr);
   MS_CHECK_TRUE_RET(act_primitive != nullptr, nullptr);
+  auto ret = CopyOutputQuantParams(act_primitive, add_primitive);
+  MS_CHECK_TRUE_RET(ret != nullptr, nullptr);
+
+  return add_cnode;
+}
+
+const PrimitivePtr AddActivationFusion::CopyOutputQuantParams(const PrimitivePtr &act_primitive,
+                                                              const PrimitivePtr &add_primitive) {
   auto act_quant_params_valueptr = act_primitive->GetAttr("quant_params");
   if (act_quant_params_valueptr != nullptr) {
     auto act_quant_param_holder = act_quant_params_valueptr->cast<lite::QuantParamHolderPtr>();
@@ -95,7 +103,7 @@ const AnfNodePtr AddActivationFusion::Process(const FuncGraphPtr &func_graph, co
     MS_CHECK_TRUE_MSG(quantization_param_value != nullptr, nullptr, "quantization_param_value is nullptr.");
     add_primitive->AddAttr(lite::quant::kQuantParam, quantization_param_value);
   }
-  return add_cnode;
+  return add_primitive;
 }
 
 bool AddActivationFusion::CheckPattern(const FuncGraphPtr &func_graph, const CNodePtr &act_cnode,

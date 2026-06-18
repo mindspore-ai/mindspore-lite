@@ -128,9 +128,63 @@ static bool IsNotSequenceOfTensor(const abstract::AbstractBasePtr &abs) {
   return true;
 }
 
+STATUS ConcatOpPass::CollectPlantInputs(const FuncGraphPtr &graph, const CNodePtr &cnode_ptr,
+                                        std::vector<AnfNodePtr> *plant_inputs, std::vector<int64_t> *dyn_input_sizes) {
+  MS_CHECK_TRUE_RET(cnode_ptr != nullptr, RET_ERROR);
+  MS_CHECK_TRUE_RET(graph != nullptr, RET_ERROR);
+  MS_CHECK_TRUE_RET(plant_inputs != nullptr, RET_ERROR);
+  MS_CHECK_TRUE_RET(dyn_input_sizes != nullptr, RET_ERROR);
+  size_t input_num = cnode_ptr->size() - 1;
+  for (size_t i = 0; i < input_num; ++i) {
+    auto input_node = lite::common::AnfAlgo::GetInputNode(cnode_ptr, i);
+    MS_EXCEPTION_IF_NULL(input_node);
+    bool output_is_tuple = lite::common::AnfAlgo::IsTupleOutput(input_node);
+    if (output_is_tuple) {
+      int64_t dyn_input_size;
+      if (IsNotSequenceOfTensor(input_node->abstract())) {
+        dyn_input_size = 0;
+      } else {
+        dyn_input_size = SplitTupleInputs(graph, input_node, plant_inputs);
+      }
+      if (dyn_input_size == 0) {
+        dyn_input_sizes->push_back(-1);
+        plant_inputs->push_back(input_node);
+      } else {
+        (void)dyn_input_sizes->emplace_back(dyn_input_size);
+      }
+    } else {
+      dyn_input_sizes->push_back(-1);
+      plant_inputs->push_back(input_node);
+    }
+  }
+  // Input Axis may be converted into an attribute, and when execed in convert.cc, Axis may be converted back as input.
+  dyn_input_sizes->push_back(-1);
+  return RET_OK;
+}
+
+AnfNodePtr ConcatOpPass::BuildReplacedCNode(const FuncGraphPtr &graph, const CNodePtr &cnode_ptr,
+                                            const std::vector<AnfNodePtr> &plant_inputs,
+                                            const std::vector<int64_t> &dyn_input_sizes) {
+  MS_CHECK_TRUE_RET(graph != nullptr, nullptr);
+  MS_CHECK_TRUE_RET(cnode_ptr != nullptr, nullptr);
+  MS_LOG(INFO) << "Concat op pass attr dyn_input_sizes: " << dyn_input_sizes;
+  MS_LOG(INFO) << "Step into concat set attr";
+  auto new_cnode = graph->NewCNode(plant_inputs);
+  MS_CHECK_TRUE_RET(new_cnode != nullptr, nullptr);
+  new_cnode->set_abstract(cnode_ptr->abstract());
+  new_cnode->set_scope(cnode_ptr->scope());
+  new_cnode->set_primal_attrs(cnode_ptr->primal_attrs());
+  new_cnode->set_attrs(cnode_ptr->attrs());
+  new_cnode->set_fullname_with_scope(cnode_ptr->fullname_with_scope() + "-plant_input");
+  lite::common::AnfAlgo::SetNodeAttr(kAttrDynInputSizes, MakeValue(dyn_input_sizes), new_cnode);
+  return new_cnode;
+}
+
 AnfNodePtr ConcatOpPass::ConvertMakeTupleInputToPlantInputs(const FuncGraphPtr &graph, const CNodePtr &cnode_ptr) {
-  MS_EXCEPTION_IF_NULL(cnode_ptr);
-  MS_EXCEPTION_IF_NULL(graph);
+  if (cnode_ptr == nullptr || graph == nullptr) {
+    MS_LOG(ERROR) << "cnode_ptr or graph is nullptr.";
+    return nullptr;
+  }
 
   if (lite::common::AnfAlgo::HasDynamicTupleInput(cnode_ptr)) {
     MS_LOG(INFO) << "Node " << cnode_ptr->fullname_with_scope()
@@ -144,44 +198,13 @@ AnfNodePtr ConcatOpPass::ConvertMakeTupleInputToPlantInputs(const FuncGraphPtr &
     MS_LOG(ERROR) << "Node " << cnode_ptr->fullname_with_scope() << " input_size is 0";
     return nullptr;
   }
-  size_t input_num = cnode_ptr->size() - 1;
-  for (size_t i = 0; i < input_num; ++i) {
-    auto input_node = lite::common::AnfAlgo::GetInputNode(cnode_ptr, i);
-    MS_EXCEPTION_IF_NULL(input_node);
-    bool output_is_tuple = lite::common::AnfAlgo::IsTupleOutput(input_node);
-    if (output_is_tuple) {
-      int64_t dyn_input_size;
-      if (IsNotSequenceOfTensor(input_node->abstract())) {
-        dyn_input_size = 0;
-      } else {
-        dyn_input_size = SplitTupleInputs(graph, input_node, &plant_inputs);
-      }
-      if (dyn_input_size == 0) {
-        dyn_input_sizes.push_back(-1);
-        plant_inputs.push_back(input_node);
-      } else {
-        (void)dyn_input_sizes.emplace_back(dyn_input_size);
-      }
-    } else {
-      dyn_input_sizes.push_back(-1);
-      plant_inputs.push_back(input_node);
-    }
+  if (CollectPlantInputs(graph, cnode_ptr, &plant_inputs, &dyn_input_sizes) != RET_OK) {
+    MS_LOG(ERROR) << "Collect plant inputs failed.";
+    return nullptr;
   }
-  // Input Axis may be converted into an attribute, and when execed in convert.cc, Axis may be converted back as input.
-  dyn_input_sizes.push_back(-1);
-  MS_LOG(INFO) << "Concat op pass attr dyn_input_sizes: " << dyn_input_sizes;
   // If there is dynamic input, set the dyn_input_sizes as an attribute and update the inputs.
   if (std::any_of(dyn_input_sizes.begin(), dyn_input_sizes.end(), [](int64_t s) { return s >= 0; })) {
-    MS_LOG(INFO) << "Step into concat set attr";
-    auto new_cnode = graph->NewCNode(plant_inputs);
-    MS_EXCEPTION_IF_NULL(new_cnode);
-    new_cnode->set_abstract(cnode_ptr->abstract());
-    new_cnode->set_scope(cnode_ptr->scope());
-    new_cnode->set_primal_attrs(cnode_ptr->primal_attrs());
-    new_cnode->set_attrs(cnode_ptr->attrs());
-    new_cnode->set_fullname_with_scope(cnode_ptr->fullname_with_scope() + "-plant_input");
-    lite::common::AnfAlgo::SetNodeAttr(kAttrDynInputSizes, MakeValue(dyn_input_sizes), new_cnode);
-    return new_cnode;
+    return BuildReplacedCNode(graph, cnode_ptr, plant_inputs, dyn_input_sizes);
   }
   return nullptr;
 }
@@ -216,7 +239,7 @@ STATUS ConcatOpPass::RunInsertSizeAttrPass(const FuncGraphPtr &func_graph, const
 }
 
 bool ConcatOpPass::Run(const FuncGraphPtr &func_graph) {
-  MS_ASSERT(func_graph != nullptr);
+  MS_CHECK_TRUE_RET(func_graph != nullptr, false);
   auto manager = func_graph->manager();
   MS_CHECK_TRUE_RET(manager != nullptr, false);
   auto status = RunInsertSizeAttrPass(func_graph, manager);

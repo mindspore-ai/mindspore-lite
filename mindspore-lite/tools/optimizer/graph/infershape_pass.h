@@ -44,6 +44,10 @@ class InferShapePass : public Pass {
   STATUS SetSubGraphInput(const CNodePtr &cnode, const FuncGraphPtr &sub_graph);
   STATUS SetSubGraphOutput(const FuncGraphPtr &sub_graph);
   STATUS SetSubGraphAbstract(const CNodePtr &cnode, const FuncGraphPtr &sub_graph);
+  STATUS CollectBranchAbstracts(const CNodePtr &cnode, const CNodePtr &return_node, AbstractBasePtrList *abstract_list,
+                                std::vector<bool> *infer_infos);
+  STATUS SetCNodeAbstract(const CNodePtr &cnode, const AbstractBasePtrList &abstract_list,
+                          const std::vector<bool> &infer_infos);
   int ResetSubGraphInput();
 
  protected:

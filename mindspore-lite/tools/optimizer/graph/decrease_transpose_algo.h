@@ -52,6 +52,8 @@ class DecreaseTransposeAlgo : public Pass {
                               std::set<CNodePtr> *visit_transposes);
   STATUS InsertPreTransNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode, TransTypePair *trans_insert_info);
   STATUS DoPreInsert(const FuncGraphPtr &func_graph, const CNodePtr &cnode, FormatTransNodeType trans_type);
+  STATUS HandlePreInsertForInput(const FuncGraphPtr &func_graph, const CNodePtr &cnode, size_t index,
+                                 FormatTransNodeType trans_type);
   STATUS InsertPreTransForNonTransInOut(const FuncGraphPtr &func_graph, const AnfNodeIndexSet &not_trans_in_nodes,
                                         const AnfNodeIndexSet &not_trans_out_nodes, TransTypePair trans_info);
   int SetSubGraphInput(const CNodePtr &cnode, const FuncGraphPtr &sub_graph);

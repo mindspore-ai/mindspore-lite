@@ -28,6 +28,10 @@ class TransposeMatMulFusion : public Pass {
   TransposeMatMulFusion() : Pass("TransposeMatMulFusion") {}
   ~TransposeMatMulFusion() override = default;
   bool Run(const FuncGraphPtr &func_graph) override;
+
+ private:
+  bool FuseTransposeInput(const FuncGraphPtr &func_graph, const CNodePtr &cnode, size_t input_index,
+                          size_t cnode_input_index);
 };
 }  // namespace opt
 }  // namespace mindspore

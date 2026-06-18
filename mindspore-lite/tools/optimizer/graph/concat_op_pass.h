@@ -30,6 +30,11 @@ class ConcatOpPass : public Pass {
 
  private:
   AnfNodePtr ConvertMakeTupleInputToPlantInputs(const FuncGraphPtr &graph, const CNodePtr &cnode_ptr);
+  STATUS CollectPlantInputs(const FuncGraphPtr &graph, const CNodePtr &cnode_ptr, std::vector<AnfNodePtr> *plant_inputs,
+                            std::vector<int64_t> *dyn_input_sizes);
+  AnfNodePtr BuildReplacedCNode(const FuncGraphPtr &graph, const CNodePtr &cnode_ptr,
+                                const std::vector<AnfNodePtr> &plant_inputs,
+                                const std::vector<int64_t> &dyn_input_sizes);
   STATUS AddDynamicInputSizeAttrForNode(const AnfNodePtr &anf_node);
   STATUS RunInsertSizeAttrPass(const FuncGraphPtr &func_graph, const FuncGraphManagerPtr &manager);
 };

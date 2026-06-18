@@ -94,7 +94,8 @@ namespace {
 bool CalSplitOutputShape(int64_t splited_axis_value, const SplitInfo *split_info,
                          std::vector<int64_t> *split_axis_out_shape,
                          std::vector<int64_t> *split_axis_reduce_out_shape) {
-  MS_ASSERT(split_info != nullptr && split_axis_out_shape != nullptr && split_axis_reduce_out_shape != nullptr);
+  MS_CHECK_TRUE_RET(split_info != nullptr && split_axis_out_shape != nullptr && split_axis_reduce_out_shape != nullptr,
+                    false);
   // ori ratio
   int64_t split_num = split_info->out_num;
   int64_t split_len = 0;
@@ -104,7 +105,7 @@ bool CalSplitOutputShape(int64_t splited_axis_value, const SplitInfo *split_info
   if (split_len > splited_axis_value) {
     return false;
   }
-  // out-shape after splited
+  // out-shape after split
   int64_t tmp_value = 0;
   MS_CHECK_TRUE_MSG(split_num > 0, false, "out_num of split_info should be greater than zero");
   MS_CHECK_TRUE_MSG(split_len > 0, false, "split_len should be greater than zero");
@@ -123,33 +124,42 @@ bool CalSplitOutputShape(int64_t splited_axis_value, const SplitInfo *split_info
   return true;
 }
 
-bool CalSplitInShape(const std::vector<std::vector<ShapeVector>> &node_in_out_shapes, const SplitInfo *split_info,
-                     const api::SharedPtr<ops::Conv2DFusion> &ori_conv_prim, size_t index_node,
-                     std::vector<std::vector<int64_t>> *split_axis_inputs_shape,
-                     std::vector<std::vector<int64_t>> *split_axis_reduce_inputs_shape) {
-  MS_ASSERT(split_info != nullptr && ori_conv_prim != nullptr && split_axis_inputs_shape != nullptr &&
-            split_axis_reduce_inputs_shape != nullptr);
-  MS_ASSERT(node_in_out_shapes.size() > index_node);
+bool ValidateSplitInputParams(const std::vector<std::vector<ShapeVector>> &node_in_out_shapes,
+                              const api::SharedPtr<ops::Conv2DFusion> &ori_conv_prim, size_t index_node,
+                              int64_t *input_h, int64_t *input_w) {
+  MS_CHECK_TRUE_RET(ori_conv_prim != nullptr && input_h != nullptr && input_w != nullptr, false);
+  MS_CHECK_TRUE_RET(node_in_out_shapes.size() > index_node, false);
   auto in_out_shape = node_in_out_shapes.at(index_node);
-  MS_ASSERT(!in_out_shape.empty());
+  MS_CHECK_TRUE_RET(!in_out_shape.empty(), false);
   auto in_shape = in_out_shape.front();
   if (in_shape.size() < kAxisW) {
     MS_LOG(DEBUG) << "out of in_shape range";
     return false;
   }
-  int64_t input_h = in_shape.at(kAxisH);
-  int64_t input_w = in_shape.at(kAxisW);
-  auto new_pad_list = GetSplitPadList(ori_conv_prim, input_h, input_w);
-  ori_conv_prim->set_pad_list(new_pad_list);
+  *input_h = in_shape.at(kAxisH);
+  *input_w = in_shape.at(kAxisW);
+  return true;
+}
+
+struct SplitDimsCtx {
+  size_t index_node;
+  const std::vector<std::vector<int64_t>> *split_axis_inputs_shape;
+  const std::vector<std::vector<int64_t>> *split_axis_reduce_inputs_shape;
+  std::vector<int64_t> *split_axis_shape;
+  std::vector<int64_t> *split_axis_reduce_shape;
+};
+
+bool ComputeSplitDims(const SplitInfo *split_info, const api::SharedPtr<ops::Conv2DFusion> &ori_conv_prim,
+                      const SplitDimsCtx &ctx) {
+  MS_CHECK_TRUE_RET(split_info != nullptr && ori_conv_prim != nullptr, false);
+  MS_CHECK_TRUE_RET(ctx.split_axis_inputs_shape != nullptr && ctx.split_axis_reduce_inputs_shape != nullptr &&
+                      ctx.split_axis_shape != nullptr && ctx.split_axis_reduce_shape != nullptr,
+                    false);
   int64_t split_num = split_info->out_num;
   int64_t tmp = 0;
-  std::vector<int64_t> split_axis_shape;
-  std::vector<int64_t> split_axis_reduce_shape;
-  // iter splited_num
   for (int64_t index = 0; index < split_num; index++) {
-    // shape
     auto stride_h = ori_conv_prim->get_stride()[kIndexH];
-    auto split_axis_dim = (*split_axis_inputs_shape)[index_node][index] - 1;
+    auto split_axis_dim = (*ctx.split_axis_inputs_shape)[ctx.index_node][index] - 1;
     if (INT_MUL_OVERFLOW_THRESHOLD(stride_h, split_axis_dim, INT64_MAX)) {
       MS_LOG(ERROR) << "int mul overflow";
       return false;
@@ -165,10 +175,10 @@ bool CalSplitInShape(const std::vector<std::vector<ShapeVector>> &node_in_out_sh
         tmp = stride_h * split_axis_dim + ori_conv_prim->get_kernel_size()[kIndexH];
       }
     }
-    split_axis_shape.push_back(tmp);
+    ctx.split_axis_shape->push_back(tmp);
 
     // reduce shape
-    auto split_axis_reduce_dim = (*split_axis_reduce_inputs_shape)[index_node][index] - 1;
+    auto split_axis_reduce_dim = (*ctx.split_axis_reduce_inputs_shape)[ctx.index_node][index] - 1;
     if (split_info->axis == CuttingStragedy::CUT_H) {  // H
       if (index == split_num - 1) {
         tmp = stride_h * split_axis_reduce_dim - ori_conv_prim->get_pad_list()[kPadDown] -
@@ -178,7 +188,31 @@ bool CalSplitInShape(const std::vector<std::vector<ShapeVector>> &node_in_out_sh
               ori_conv_prim->get_kernel_size()[kIndexH];
       }
     }
-    split_axis_reduce_shape.push_back(tmp);
+    ctx.split_axis_reduce_shape->push_back(tmp);
+  }
+  return true;
+}
+
+bool CalSplitInShape(const std::vector<std::vector<ShapeVector>> &node_in_out_shapes, const SplitInfo *split_info,
+                     const api::SharedPtr<ops::Conv2DFusion> &ori_conv_prim, size_t index_node,
+                     std::vector<std::vector<int64_t>> *split_axis_inputs_shape,
+                     std::vector<std::vector<int64_t>> *split_axis_reduce_inputs_shape) {
+  MS_CHECK_TRUE_RET(split_info != nullptr && ori_conv_prim != nullptr && split_axis_inputs_shape != nullptr &&
+                      split_axis_reduce_inputs_shape != nullptr,
+                    false);
+  int64_t input_h = 0;
+  int64_t input_w = 0;
+  if (!ValidateSplitInputParams(node_in_out_shapes, ori_conv_prim, index_node, &input_h, &input_w)) {
+    return false;
+  }
+  auto new_pad_list = GetSplitPadList(ori_conv_prim, input_h, input_w);
+  ori_conv_prim->set_pad_list(new_pad_list);
+  std::vector<int64_t> split_axis_shape;
+  std::vector<int64_t> split_axis_reduce_shape;
+  SplitDimsCtx dims_ctx{index_node, split_axis_inputs_shape, split_axis_reduce_inputs_shape, &split_axis_shape,
+                        &split_axis_reduce_shape};
+  if (!ComputeSplitDims(split_info, ori_conv_prim, dims_ctx)) {
+    return false;
   }
   split_axis_inputs_shape->push_back(split_axis_shape);
   split_axis_reduce_inputs_shape->push_back(split_axis_reduce_shape);
@@ -265,7 +299,7 @@ bool UpdateSplitInfo(const FuncGraphPtr &func_graph, const std::vector<AnfNodePt
   if (!CalSplitOutputShape(splited_axis_value, split_info, &split_axis_out_shape, &split_axis_reduce_out_shape)) {
     return false;
   }
-  // infer in-shape after splited
+  // infer in-shape after split
   std::vector<std::vector<int64_t>> split_axis_inputs_shape{split_axis_out_shape};
   std::vector<std::vector<int64_t>> split_axis_reduce_inputs_shape{split_axis_reduce_out_shape};
   index_node = 0;
