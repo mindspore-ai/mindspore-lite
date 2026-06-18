@@ -377,8 +377,47 @@ STATUS UnifyFormatToNHWC::ResizeNodeProcess(const FuncGraphPtr &func_graph, cons
   return RET_OK;
 }
 
-bool UnifyFormatToNHWC::ProcessResizeAndFormat(const FuncGraphPtr &func_graph) {
-  MS_ASSERT(func_graph != nullptr);
+PrimitivePtr UnifyFormatToNHWC::GetCNodePrimitive(const CNodePtr &cnode, bool *error) {
+  *error = false;
+  auto anf_node = cnode->input(0);
+  if (anf_node == nullptr) {
+    MS_LOG(ERROR) << "anf_node is nullptr.";
+    *error = true;
+    return nullptr;
+  }
+  auto value_node = anf_node->cast<ValueNodePtr>();
+  if (value_node == nullptr) {
+    if (anf_node->cast<CNodePtr>() != nullptr) {
+      return nullptr;
+    }
+    MS_LOG(ERROR) << "cnode first input is invalid.";
+    *error = true;
+    return nullptr;
+  }
+  return GetValueNode<PrimitivePtr>(anf_node);
+}
+
+bool UnifyFormatToNHWC::ProcessControlFlowSubGraphs(const CNodePtr &cnode) {
+  auto sub_func_graph = GetValueNode<FuncGraphPtr>(cnode->input(kNumIndex_1));
+  if (sub_func_graph == nullptr) {
+    lite::ReturnCode::GetSingleReturnCode()->UpdateReturnCode(lite::RET_NULL_PTR);
+    return false;
+  }
+  (void)ProcessResizeNodes(sub_func_graph);
+  sub_func_graph = GetValueNode<FuncGraphPtr>(cnode->input(kNumIndex_2));
+  if (sub_func_graph == nullptr) {
+    lite::ReturnCode::GetSingleReturnCode()->UpdateReturnCode(lite::RET_NULL_PTR);
+    return false;
+  }
+  (void)ProcessResizeNodes(sub_func_graph);
+  return true;
+}
+
+bool UnifyFormatToNHWC::ProcessResizeNodes(const FuncGraphPtr &func_graph) {
+  if (func_graph == nullptr) {
+    MS_LOG(ERROR) << "func_graph is nullptr.";
+    return false;
+  }
   manager_->AddFuncGraph(func_graph);
   auto node_list = TopoSort(func_graph->get_return());
   int status;
@@ -387,37 +426,25 @@ bool UnifyFormatToNHWC::ProcessResizeAndFormat(const FuncGraphPtr &func_graph) {
       continue;
     }
     auto cnode = node->cast<CNodePtr>();
-    MS_ASSERT(cnode != nullptr);
+    if (cnode == nullptr) {
+      MS_LOG(ERROR) << "Cast node to CNodePtr failed.";
+      return false;
+    }
     if (opt::IsSpecialType(cnode)) {
       continue;
     }
-    auto anf_node = cnode->input(0);
-    MS_CHECK_TRUE_MSG(anf_node != nullptr, false, "anf_node is nullptr.");
-    auto value_node = anf_node->cast<ValueNodePtr>();
-    if (value_node == nullptr) {
-      if (anf_node->cast<CNodePtr>() != nullptr) {
-        continue;
-      }
-      MS_LOG(ERROR) << "cnode first input is invalid.";
+    bool prim_error = false;
+    auto prim = GetCNodePrimitive(cnode, &prim_error);
+    if (prim_error) {
       return false;
     }
-    auto prim = GetValueNode<PrimitivePtr>(anf_node);
     if (prim == nullptr) {
       continue;
     }
     if (opt::CheckPrimitiveType(node, prim::kPrimIf) || opt::CheckPrimitiveType(node, prim::kPrimWhile)) {
-      auto sub_func_graph = GetValueNode<FuncGraphPtr>(cnode->input(kNumIndex_1));
-      if (sub_func_graph == nullptr) {
-        lite::ReturnCode::GetSingleReturnCode()->UpdateReturnCode(lite::RET_NULL_PTR);
+      if (!ProcessControlFlowSubGraphs(cnode)) {
         return false;
       }
-      (void)ProcessResizeAndFormat(sub_func_graph);
-      sub_func_graph = GetValueNode<FuncGraphPtr>(cnode->input(kNumIndex_2));
-      if (sub_func_graph == nullptr) {
-        lite::ReturnCode::GetSingleReturnCode()->UpdateReturnCode(lite::RET_NULL_PTR);
-        return false;
-      }
-      (void)ProcessResizeAndFormat(sub_func_graph);
       continue;
     }
     if (opt::CheckPrimitiveType(node, prim::kPrimResize)) {
@@ -437,8 +464,8 @@ bool UnifyFormatToNHWC::Run(const FuncGraphPtr &func_graph) {
     MS_LOG(ERROR) << "manager is nullptr.";
     return false;
   }
-  if (!ProcessResizeAndFormat(func_graph)) {
-    MS_LOG(ERROR) << "ProcessResizeAndFormat failed.";
+  if (!ProcessResizeNodes(func_graph)) {
+    MS_LOG(ERROR) << "ProcessResizeNodes failed.";
     return false;
   }
   if (!opt::ToFormatBase::Run(func_graph)) {

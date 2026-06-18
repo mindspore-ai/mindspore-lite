@@ -24,6 +24,33 @@
 #include "tools/optimizer/common/gllo_utils.h"
 
 namespace mindspore::lite {
+void OnnxConv2dAddParser::ParseNodeAttrs(const onnx::NodeProto &onnx_node, std::vector<int64_t> *dilations,
+                                         std::vector<int64_t> *strides, std::vector<int64_t> *pads) {
+  for (const auto &onnx_node_attr : onnx_node.attribute()) {
+    const auto &attribute_name = onnx_node_attr.name();
+    if (attribute_name == kAttrDilations) {
+      if (onnx_node_attr.ints_size() == opt::kInputSizeTwo) {
+        dilations->push_back(onnx_node_attr.ints(opt::kInputIndexZero));
+        dilations->push_back(onnx_node_attr.ints(opt::kInputIndexOne));
+      }
+    }
+    if (attribute_name == kAttrStrides) {
+      if (onnx_node_attr.ints_size() == opt::kInputSizeTwo) {
+        strides->push_back(onnx_node_attr.ints(opt::kInputIndexZero));
+        strides->push_back(onnx_node_attr.ints(opt::kInputIndexOne));
+      }
+    }
+    if (attribute_name == kAttrPads) {
+      if (onnx_node_attr.ints_size() == opt::kInputSizeFour) {
+        pads->push_back(onnx_node_attr.ints(opt::kInputIndexZero));
+        pads->push_back(onnx_node_attr.ints(opt::kInputIndexTwo));
+        pads->push_back(onnx_node_attr.ints(opt::kInputIndexOne));
+        pads->push_back(onnx_node_attr.ints(opt::kInputIndexThree));
+      }
+    }
+  }
+}
+
 PrimitiveCPtr OnnxConv2dAddParser::Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) {
   auto prim = std::make_unique<ops::Custom>();
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
@@ -36,29 +63,7 @@ PrimitiveCPtr OnnxConv2dAddParser::Parse(const onnx::GraphProto &onnx_graph, con
   std::vector<int64_t> dilations;
   std::vector<int64_t> strides;
   std::vector<int64_t> pads;
-  for (const auto &onnx_node_attr : onnx_node.attribute()) {
-    const auto &attribute_name = onnx_node_attr.name();
-    if (attribute_name == kAttrDilations) {
-      if (onnx_node_attr.ints_size() == opt::kInputSizeTwo) {
-        dilations.push_back(onnx_node_attr.ints(opt::kInputIndexZero));
-        dilations.push_back(onnx_node_attr.ints(opt::kInputIndexOne));
-      }
-    }
-    if (attribute_name == kAttrStrides) {
-      if (onnx_node_attr.ints_size() == opt::kInputSizeTwo) {
-        strides.push_back(onnx_node_attr.ints(opt::kInputIndexZero));
-        strides.push_back(onnx_node_attr.ints(opt::kInputIndexOne));
-      }
-    }
-    if (attribute_name == kAttrPads) {
-      if (onnx_node_attr.ints_size() == opt::kInputSizeFour) {
-        pads.push_back(onnx_node_attr.ints(opt::kInputIndexZero));
-        pads.push_back(onnx_node_attr.ints(opt::kInputIndexTwo));
-        pads.push_back(onnx_node_attr.ints(opt::kInputIndexOne));
-        pads.push_back(onnx_node_attr.ints(opt::kInputIndexThree));
-      }
-    }
-  }
+  ParseNodeAttrs(onnx_node, &dilations, &strides, &pads);
   if (dilations.empty()) {
     MS_LOG(ERROR) << "Cannot get Attr dilations from ONNX!";
     return nullptr;

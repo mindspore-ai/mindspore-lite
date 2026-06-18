@@ -267,25 +267,44 @@ STATUS ReplaceTransposeWithGraphInput(const FuncGraphPtr &func_graph, const CNod
   return lite::RET_OK;
 }
 
+ParameterPtr BuildAxesParamNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode, bool keep_origin_dtype,
+                                int32_t size) {
+  if (keep_origin_dtype) {
+    std::vector<int64_t> axes;
+    for (int i = 0; i < size; ++i) {
+      axes.push_back(i);
+    }
+    return opt::BuildInt64VecParameterNode(func_graph, axes, cnode->fullname_with_scope() + "_axises");
+  }
+  std::vector<int> axes;
+  for (int i = 0; i < size; ++i) {
+    axes.push_back(i);
+  }
+  return opt::BuildIntVecParameterNode(func_graph, axes, cnode->fullname_with_scope() + "_axises");
+}
+
+ParameterPtr BuildStepsParamNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode, bool keep_origin_dtype,
+                                 int32_t size) {
+  if (keep_origin_dtype) {
+    std::vector<int64_t> steps;
+    for (int i = 0; i < size; ++i) {
+      steps.push_back(1);
+    }
+    return opt::BuildInt64VecParameterNode(func_graph, steps, cnode->fullname_with_scope() + "_steps");
+  }
+  std::vector<int> steps;
+  for (int i = 0; i < size; ++i) {
+    steps.push_back(1);
+  }
+  return opt::BuildIntVecParameterNode(func_graph, steps, cnode->fullname_with_scope() + "_steps");
+}
+
 STATUS FullFillParam(const FuncGraphPtr &func_graph, const CNodePtr &cnode, bool keep_origin_dtype, int32_t size) {
   auto manager = func_graph->manager();
   MS_CHECK_TRUE_MSG(manager != nullptr, RET_ERROR, "funcgraph has no manager");
   switch (cnode->size()) {
     case opt::kInputSizeFour: {
-      ParameterPtr new_param_node = nullptr;
-      if (keep_origin_dtype) {
-        std::vector<int64_t> axes;
-        for (int i = 0; i < size; ++i) {
-          axes.push_back(i);
-        }
-        new_param_node = opt::BuildInt64VecParameterNode(func_graph, axes, cnode->fullname_with_scope() + "_axises");
-      } else {
-        std::vector<int> axes;
-        for (int i = 0; i < size; ++i) {
-          axes.push_back(i);
-        }
-        new_param_node = opt::BuildIntVecParameterNode(func_graph, axes, cnode->fullname_with_scope() + "_axises");
-      }
+      auto new_param_node = BuildAxesParamNode(func_graph, cnode, keep_origin_dtype, size);
       if (new_param_node == nullptr) {
         MS_LOG(ERROR) << "new a parameter node failed!";
         return lite::RET_ERROR;
@@ -294,20 +313,7 @@ STATUS FullFillParam(const FuncGraphPtr &func_graph, const CNodePtr &cnode, bool
       // fall through
     }
     case opt::kInputSizeFive: {
-      ParameterPtr new_param_node = nullptr;
-      if (keep_origin_dtype) {
-        std::vector<int64_t> steps;
-        for (int i = 0; i < size; ++i) {
-          steps.push_back(1);
-        }
-        new_param_node = opt::BuildInt64VecParameterNode(func_graph, steps, cnode->fullname_with_scope() + "_steps");
-      } else {
-        std::vector<int> steps;
-        for (int i = 0; i < size; ++i) {
-          steps.push_back(1);
-        }
-        new_param_node = opt::BuildIntVecParameterNode(func_graph, steps, cnode->fullname_with_scope() + "_steps");
-      }
+      auto new_param_node = BuildStepsParamNode(func_graph, cnode, keep_origin_dtype, size);
       if (new_param_node == nullptr) {
         MS_LOG(ERROR) << "new a parameter node failed!";
         return lite::RET_ERROR;
@@ -633,6 +639,41 @@ STATUS AdjustOneHot(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
   }
   return RET_OK;
 }
+
+int DispatchNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode, const converter::ConverterParameters &flag,
+                 bool keep_origin_dtype, bool *need_update_manager) {
+  if (opt::CheckPrimitiveType(cnode, prim::kPrimConstant)) {
+    return ReplaceConstant(func_graph, cnode, keep_origin_dtype);
+  }
+  if (opt::CheckPrimitiveType(cnode, prim::kPrimTranspose) && flag.save_type != kMindIR) {
+    return ReplaceTransposeWithGraphInput(func_graph, cnode);
+  }
+  if (opt::CheckPrimitiveType(cnode, prim::kPrimStridedSlice)) {
+    return AdjustStridedSlice(func_graph, cnode, keep_origin_dtype);
+  }
+  if (opt::CheckPrimitiveType(cnode, prim::kPrimResize)) {
+    return AdjustResize(need_update_manager, cnode);
+  }
+  if (opt::CheckPrimitiveType(cnode, prim::kPrimRandomNormal)) {
+    return AdjustRandomNormal(func_graph, cnode);
+  }
+  if (opt::CheckPrimitiveType(cnode, prim::kPrimGatherD)) {
+    return AdjustGatherD(func_graph, cnode);
+  }
+  if (opt::CheckPrimitiveType(cnode, prim::kPrimUnsqueeze)) {
+    return AdjustUnsqueeze(need_update_manager, cnode);
+  }
+  if (opt::CheckPrimitiveType(cnode, prim::kPrimROIAlign)) {
+    return AdjustROIAlign(func_graph, cnode);
+  }
+  if (opt::CheckPrimitiveType(cnode, prim::kPrimMultinomial)) {
+    return AdjustMultinomial(func_graph, cnode, need_update_manager);
+  }
+  if (opt::CheckPrimitiveType(cnode, prim::kPrimOneHot)) {
+    return AdjustOneHot(func_graph, cnode);
+  }
+  return RET_OK;
+}
 }  // namespace
 
 bool OnnxInputAdjust::Adjust(const FuncGraphPtr &func_graph, const converter::ConverterParameters &flag) {
@@ -664,27 +705,7 @@ bool OnnxInputAdjust::Adjust(const FuncGraphPtr &func_graph, const converter::Co
       MS_LOG(DEBUG) << "node is not cnode.";
       continue;
     }
-    if (opt::CheckPrimitiveType(node, prim::kPrimConstant)) {
-      status = ReplaceConstant(func_graph, cnode, keep_origin_dtype);
-    } else if (opt::CheckPrimitiveType(node, prim::kPrimTranspose) && flag.save_type != kMindIR) {
-      status = ReplaceTransposeWithGraphInput(func_graph, cnode);
-    } else if (opt::CheckPrimitiveType(node, prim::kPrimStridedSlice)) {
-      status = AdjustStridedSlice(func_graph, cnode, keep_origin_dtype);
-    } else if (opt::CheckPrimitiveType(node, prim::kPrimResize)) {
-      status = AdjustResize(&need_update_manager, cnode);
-    } else if (opt::CheckPrimitiveType(node, prim::kPrimRandomNormal)) {
-      status = AdjustRandomNormal(func_graph, cnode);
-    } else if (opt::CheckPrimitiveType(node, prim::kPrimGatherD)) {
-      status = AdjustGatherD(func_graph, cnode);
-    } else if (opt::CheckPrimitiveType(node, prim::kPrimUnsqueeze)) {
-      status = AdjustUnsqueeze(&need_update_manager, cnode);
-    } else if (opt::CheckPrimitiveType(node, prim::kPrimROIAlign)) {
-      status = AdjustROIAlign(func_graph, cnode);
-    } else if (opt::CheckPrimitiveType(node, prim::kPrimMultinomial)) {
-      status = AdjustMultinomial(func_graph, cnode, &need_update_manager);
-    } else if (opt::CheckPrimitiveType(node, prim::kPrimOneHot)) {
-      status = AdjustOneHot(func_graph, cnode);
-    }
+    status = DispatchNode(func_graph, cnode, flag, keep_origin_dtype, &need_update_manager);
     if (status != lite::RET_OK && status != lite::RET_NO_CHANGE) {
       MS_LOG(ERROR) << "adjust input pass is failed.";
       return false;

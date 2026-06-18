@@ -31,7 +31,9 @@ class UnifyFormatToNHWC : public opt::ToFormatBase {
   bool Run(const FuncGraphPtr &func_graph) override;
 
  private:
-  bool ProcessResizeAndFormat(const FuncGraphPtr &func_graph);
+  PrimitivePtr GetCNodePrimitive(const CNodePtr &cnode, bool *error);
+  bool ProcessControlFlowSubGraphs(const CNodePtr &cnode);
+  bool ProcessResizeNodes(const FuncGraphPtr &func_graph);
   STATUS ResizeNodeProcess(const FuncGraphPtr &func_graph, const CNodePtr &cnode);
   STATUS ConvertOnnxResizeForConstShape(const FuncGraphPtr &func_graph, const CNodePtr &cnode);
   STATUS ConvertOnnxResizeForVariableShape(const FuncGraphPtr &func_graph, const CNodePtr &cnode);
