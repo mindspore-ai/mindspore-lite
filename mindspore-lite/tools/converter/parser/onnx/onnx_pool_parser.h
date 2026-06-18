@@ -41,6 +41,8 @@ class OnnxMaxPoolParser : public OnnxNodeParser {
  private:
   int GetKernelSize(const onnx::NodeProto &onnx_node) const;
   PrimitiveCPtr ParseMaxPool1D(const onnx::NodeProto &onnx_node, std::unique_ptr<ops::MaxPoolFusion> &prim);
+  bool ParseMaxPool2DAttrs(const onnx::NodeProto &onnx_node, std::unique_ptr<ops::MaxPoolFusion> &prim,
+                           std::vector<int64_t> *strides, std::vector<int64_t> *pads, mindspore::RoundMode *round_mode);
   PrimitiveCPtr ParseMaxPool2D(const onnx::NodeProto &onnx_node, std::unique_ptr<ops::MaxPoolFusion> &prim);
 };
 }  // namespace lite

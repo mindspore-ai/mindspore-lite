@@ -108,6 +108,52 @@ bool OnnxQuantizeLinearParser::SetScaleAttr(const onnx::GraphProto &onnx_graph, 
   return true;
 }
 
+bool OnnxQuantizeLinearParser::SetZeroPointFromSingleElement(const tensor::TensorPtr &onnx_zero_point_tensor,
+                                                             const std::unique_ptr<QuantizeLinear> &prim) {
+  MS_LOG(INFO) << "element size is: " << onnx_zero_point_tensor->ElementsNum();
+  TypeId zp_data_type = onnx_zero_point_tensor->Dtype()->type_id();
+  void *zp_data = onnx_zero_point_tensor->data_c();
+  MS_CHECK_TRUE_RET(zp_data != nullptr, false);
+  int zero_point = 0;
+  if (zp_data_type == mindspore::kNumberTypeUInt8) {
+    zero_point = *(static_cast<const uint8_t *>(zp_data)) - kUint8MeanValue;
+  } else if (zp_data_type == mindspore::kNumberTypeInt8) {
+    auto zero_point_int8 = *(static_cast<const int8_t *>(zp_data));
+    zero_point = static_cast<const int32_t>(zero_point_int8);
+  } else {
+    MS_LOG(INFO) << "Invalid zero point data type: " << zp_data_type << ", zero_point value is " << zero_point;
+    prim->AddAttr(kAttrZeroPoint, MakeValue(zero_point));
+    return false;
+  }
+  prim->AddAttr(kAttrZeroPoint, MakeValue(zero_point));
+  return true;
+}
+
+bool OnnxQuantizeLinearParser::SetZeroPointFromVector(const tensor::TensorPtr &onnx_zero_point_tensor,
+                                                      const std::unique_ptr<QuantizeLinear> &prim) {
+  MS_LOG(INFO) << "element size is: " << onnx_zero_point_tensor->ElementsNum();
+  std::vector<int8_t> point_vec = {};
+  TypeId zp_data_type = onnx_zero_point_tensor->Dtype()->type_id();
+  void *zp_data = onnx_zero_point_tensor->data_c();
+  MS_CHECK_TRUE_RET(zp_data != nullptr, false);
+  if (zp_data_type == mindspore::kNumberTypeUInt8) {
+    auto zero_point = static_cast<const uint8_t *>(zp_data);
+    for (size_t i = 0; i < static_cast<size_t>(onnx_zero_point_tensor->ElementsNum()); i++) {
+      point_vec.push_back(static_cast<int8_t>(zero_point[i] - kUint8MeanValue));
+    }
+  } else if (zp_data_type == mindspore::kNumberTypeInt8) {
+    auto zero_point_int8 = static_cast<const int8_t *>(zp_data);
+    for (size_t i = 0; i < static_cast<size_t>(onnx_zero_point_tensor->ElementsNum()); i++) {
+      point_vec.push_back(zero_point_int8[i]);
+    }
+  } else {
+    MS_LOG(ERROR) << "Invalid zero point data type";
+    return false;
+  }
+  prim->AddAttr(kAttrZeroPointVec, MakeValue(point_vec));
+  return true;
+}
+
 bool OnnxQuantizeLinearParser::SetZeroPointAttr(const onnx::GraphProto &onnx_graph,
                                                 const string &onnx_quantize_zero_point,
                                                 const std::unique_ptr<QuantizeLinear> &prim) {
@@ -120,44 +166,10 @@ bool OnnxQuantizeLinearParser::SetZeroPointAttr(const onnx::GraphProto &onnx_gra
       return false;
     }
     prim->AddAttr(kAttrZeroPointVec, MakeValue(point_vec));
-  } else if (onnx_zero_point_tensor != nullptr && onnx_zero_point_tensor->ElementsNum() == kONNXTensorElementNum) {
-    MS_LOG(INFO) << "element size is: " << onnx_zero_point_tensor->ElementsNum();
-    TypeId zp_data_type = onnx_zero_point_tensor->Dtype()->type_id();
-    void *zp_data = onnx_zero_point_tensor->data_c();
-    MS_CHECK_TRUE_RET(zp_data != nullptr, false);
-    int zero_point = 0;
-    if (zp_data_type == mindspore::kNumberTypeUInt8) {
-      zero_point = *(static_cast<const uint8_t *>(zp_data)) - kUint8MeanValue;
-    } else if (zp_data_type == mindspore::kNumberTypeInt8) {
-      auto zero_point_int8 = *(static_cast<const int8_t *>(zp_data));
-      zero_point = static_cast<const int32_t>(zero_point_int8);
-    } else {
-      MS_LOG(INFO) << "Invalid zero point data type: " << zp_data_type << ", zero_point value is " << zero_point;
-      prim->AddAttr(kAttrZeroPoint, MakeValue(zero_point));
-      return false;
-    }
-    prim->AddAttr(kAttrZeroPoint, MakeValue(zero_point));
-  } else if (onnx_zero_point_tensor != nullptr && onnx_zero_point_tensor->ElementsNum() != kONNXTensorElementNum) {
-    MS_LOG(INFO) << "element size is: " << onnx_zero_point_tensor->ElementsNum();
-    std::vector<int8_t> point_vec = {};
-    TypeId zp_data_type = onnx_zero_point_tensor->Dtype()->type_id();
-    void *zp_data = onnx_zero_point_tensor->data_c();
-    MS_CHECK_TRUE_RET(zp_data != nullptr, false);
-    if (zp_data_type == mindspore::kNumberTypeUInt8) {
-      auto zero_point = static_cast<const uint8_t *>(zp_data);
-      for (size_t i = 0; i < static_cast<size_t>(onnx_zero_point_tensor->ElementsNum()); i++) {
-        point_vec.push_back(static_cast<int8_t>(zero_point[i] - kUint8MeanValue));
-      }
-    } else if (zp_data_type == mindspore::kNumberTypeInt8) {
-      auto zero_point_int8 = static_cast<const int8_t *>(zp_data);
-      for (size_t i = 0; i < static_cast<size_t>(onnx_zero_point_tensor->ElementsNum()); i++) {
-        point_vec.push_back(zero_point_int8[i]);
-      }
-    } else {
-      MS_LOG(ERROR) << "Invalid zero point data type";
-      return false;
-    }
-    prim->AddAttr(kAttrZeroPointVec, MakeValue(point_vec));
+  } else if (onnx_zero_point_tensor->ElementsNum() == kONNXTensorElementNum) {
+    return SetZeroPointFromSingleElement(onnx_zero_point_tensor, prim);
+  } else if (onnx_zero_point_tensor->ElementsNum() != kONNXTensorElementNum) {
+    return SetZeroPointFromVector(onnx_zero_point_tensor, prim);
   } else {
     MS_LOG(ERROR) << "Parse zero point param failed.";
     return false;

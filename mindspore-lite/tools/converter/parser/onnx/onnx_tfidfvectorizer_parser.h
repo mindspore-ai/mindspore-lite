@@ -18,6 +18,7 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_PARSER_ONNX_ONNX_TFIDFVECTORIZER_PARSER_H_
 
 #include "tools/converter/parser/onnx/onnx_node_parser.h"
+#include "tools/converter/ops/ops_def.h"
 #include "tools/converter/parser/onnx/onnx_node_parser_registry.h"
 
 namespace mindspore {
@@ -28,6 +29,10 @@ class OnnxTfIdfVectorizerParser : public OnnxNodeParser {
   ~OnnxTfIdfVectorizerParser() override = default;
 
   PrimitiveCPtr Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) override;
+
+ private:
+  void ParseScalarAttrs(const onnx::NodeProto &onnx_node, const std::unique_ptr<lite::TfIdfVectorizer> &prim);
+  void ParseVectorAttrs(const onnx::NodeProto &onnx_node, const std::unique_ptr<lite::TfIdfVectorizer> &prim);
 };
 }  // namespace lite
 }  // namespace mindspore

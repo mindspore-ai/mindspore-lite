@@ -26,58 +26,68 @@ constexpr int kClipInputIndex1 = 1;
 constexpr int kClipInputIndex2 = 2;
 }  // namespace
 
+STATUS ParseFloatAttr(const onnx::TensorProto &tensor, float *value) {
+  if (tensor.float_data_size() > 0) {
+    *value = tensor.float_data(0);
+  } else {
+    size_t element_size = tensor.raw_data().size() / sizeof(float);
+    if (element_size != 1) {
+      MS_LOG(ERROR) << "element size is incorrect.";
+      return RET_ERROR;
+    }
+    CHECK_NULL_RETURN(tensor.raw_data().data());
+    *value = *reinterpret_cast<const float *>(tensor.raw_data().data());
+  }
+  return RET_OK;
+}
+
+STATUS ParseInt32Attr(const onnx::TensorProto &tensor, float *value) {
+  if (tensor.int32_data_size() > 0) {
+    *value = static_cast<float>(tensor.int32_data(0));
+  } else {
+    size_t element_size = tensor.raw_data().size() / sizeof(int32_t);
+    if (element_size != 1) {
+      MS_LOG(ERROR) << "element size is incorrect.";
+      return RET_ERROR;
+    }
+    CHECK_NULL_RETURN(tensor.raw_data().data());
+    *value = static_cast<float>(*reinterpret_cast<const int32_t *>(tensor.raw_data().data()));
+  }
+  return RET_OK;
+}
+
+STATUS ParseInt64Attr(const onnx::TensorProto &tensor, float *value) {
+  if (tensor.int64_data_size() > 0) {
+    *value = static_cast<float>(tensor.int64_data(0));
+  } else {
+    size_t element_size = tensor.raw_data().size() / sizeof(int64_t);
+    if (element_size != 1) {
+      MS_LOG(ERROR) << "element size is incorrect.";
+      return RET_ERROR;
+    }
+    CHECK_NULL_RETURN(tensor.raw_data().data());
+    *value = static_cast<float>(*reinterpret_cast<const int64_t *>(tensor.raw_data().data()));
+  }
+  return RET_OK;
+}
+
 STATUS ParseAttr(const onnx::TensorProto &tensor_proto, float *value) {
   if (value == nullptr) {
     MS_LOG(ERROR) << "parameter is null.";
     return RET_ERROR;
   }
 
-  size_t element_size;
   switch (tensor_proto.data_type()) {
     case onnx::TensorProto_DataType_FLOAT:
-      if (tensor_proto.float_data_size() > 0) {
-        *value = tensor_proto.float_data(0);
-      } else {
-        element_size = tensor_proto.raw_data().size() / sizeof(float);
-        if (element_size != 1) {
-          MS_LOG(ERROR) << "element size is incorrect.";
-          return RET_ERROR;
-        }
-        CHECK_NULL_RETURN(tensor_proto.raw_data().data());
-        *value = *reinterpret_cast<const float *>(tensor_proto.raw_data().data());
-      }
-      break;
+      return ParseFloatAttr(tensor_proto, value);
     case onnx::TensorProto_DataType_INT32:
-      if (tensor_proto.int32_data_size() > 0) {
-        *value = static_cast<float>(tensor_proto.int32_data(0));
-      } else {
-        element_size = tensor_proto.raw_data().size() / sizeof(int32_t);
-        if (element_size != 1) {
-          MS_LOG(ERROR) << "element size is incorrect.";
-          return RET_ERROR;
-        }
-        CHECK_NULL_RETURN(tensor_proto.raw_data().data());
-        *value = static_cast<float>(*reinterpret_cast<const int32_t *>(tensor_proto.raw_data().data()));
-      }
-      break;
+      return ParseInt32Attr(tensor_proto, value);
     case onnx::TensorProto_DataType_INT64:
-      if (tensor_proto.int64_data_size() > 0) {
-        *value = static_cast<float>(tensor_proto.int64_data(0));
-      } else {
-        element_size = tensor_proto.raw_data().size() / sizeof(int64_t);
-        if (element_size != 1) {
-          MS_LOG(ERROR) << "element size is incorrect.";
-          return RET_ERROR;
-        }
-        CHECK_NULL_RETURN(tensor_proto.raw_data().data());
-        *value = static_cast<float>(*reinterpret_cast<const int64_t *>(tensor_proto.raw_data().data()));
-      }
-      break;
+      return ParseInt64Attr(tensor_proto, value);
     default:
       MS_LOG(ERROR) << "do not support data_type: " << tensor_proto.data_type();
       return RET_ERROR;
   }
-  return RET_OK;
 }
 
 PrimitiveCPtr OnnxClipParser::Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) {

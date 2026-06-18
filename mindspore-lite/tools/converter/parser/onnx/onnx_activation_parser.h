@@ -20,6 +20,7 @@
 
 #include "tools/converter/parser/onnx/onnx_node_parser.h"
 #include "tools/converter/parser/onnx/onnx_node_parser_registry.h"
+#include "src/common/ops/primitive/prelu_fusion.h"
 
 namespace mindspore {
 namespace lite {
@@ -45,6 +46,9 @@ class OnnxPReluParser : public OnnxNodeParser {
   ~OnnxPReluParser() override = default;
 
   PrimitiveCPtr Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) override;
+
+ private:
+  bool SetSlopeFromTensor(const std::unique_ptr<ops::PReLUFusion> &prim, const onnx::TensorProto &slope_data);
 };
 
 class OnnxEluParser : public OnnxNodeParser {

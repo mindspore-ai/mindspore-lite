@@ -53,6 +53,41 @@ PrimitiveCPtr OnnxLeakyReluParser::Parse(const onnx::GraphProto &onnx_graph, con
   return prim->GetPrim();
 }
 
+bool OnnxPReluParser::SetSlopeFromTensor(const std::unique_ptr<ops::PReLUFusion> &prim,
+                                         const onnx::TensorProto &slope_data) {
+  std::vector<float> slope;
+  if (slope_data.float_data_size() > 0) {
+    const int64_t slope_size = slope_data.float_data_size();
+    for (int64_t i = 0; i < slope_size; i++) {
+      slope.emplace_back(slope_data.float_data(i));
+    }
+    prim->set_slope(slope);
+    prim->set_channel_shared(slope_size == 1);
+  } else {
+    const auto slope_raw_data = reinterpret_cast<const float *>(slope_data.raw_data().data());
+    MS_CHECK_TRUE_RET(slope_raw_data != nullptr, false);
+    const int64_t slope_size = slope_data.raw_data().size() / sizeof(float);
+    slope.resize(slope_size);
+    bool channel_shared = false;
+    if (slope_size == 1) {
+      slope.push_back(*slope_raw_data);
+      channel_shared = true;
+    } else {
+      if (INT_MUL_OVERFLOW_THRESHOLD(slope_size, sizeof(float), SIZE_MAX)) {
+        MS_LOG(ERROR) << "data_size overflow";
+        return false;
+      }
+      if (memcpy_s(slope.data(), slope_size * sizeof(float), slope_raw_data, slope_data.raw_data().size()) != EOK) {
+        MS_LOG(ERROR) << "memcpy_s failed";
+        return false;
+      }
+    }
+    prim->set_slope(slope);
+    prim->set_channel_shared(channel_shared);
+  }
+  return true;
+}
+
 PrimitiveCPtr OnnxPReluParser::Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) {
   auto prim = std::make_unique<ops::PReLUFusion>();
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
@@ -68,40 +103,8 @@ PrimitiveCPtr OnnxPReluParser::Parse(const onnx::GraphProto &onnx_graph, const o
   }
 
   if (!params.empty()) {
-    const onnx::TensorProto *slope_data = &params[0];
-    if (slope_data == nullptr) {
-      MS_LOG(ERROR) << "input error: params[0] is null";
+    if (!SetSlopeFromTensor(prim, params[0])) {
       return nullptr;
-    }
-    std::vector<float> slope;
-    if (slope_data->float_data_size() > 0) {
-      const int64_t slope_size = slope_data->float_data_size();
-      for (int64_t i = 0; i < slope_size; i++) {
-        slope.emplace_back(slope_data->float_data(i));
-      }
-      prim->set_slope(slope);
-      prim->set_channel_shared(slope_size == 1);
-    } else {
-      const auto slope_raw_data = reinterpret_cast<const float *>(slope_data->raw_data().data());
-      MS_CHECK_TRUE_RET(slope_raw_data != nullptr, nullptr);
-      const int64_t slope_size = slope_data->raw_data().size() / sizeof(float);
-      slope.resize(slope_size);
-      bool channel_shared = false;
-      if (slope_size == 1) {
-        slope.push_back(*slope_raw_data);
-        channel_shared = true;
-      } else {
-        if (INT_MUL_OVERFLOW_THRESHOLD(slope_size, sizeof(float), SIZE_MAX)) {
-          MS_LOG(ERROR) << "data_size overflow";
-          return nullptr;
-        }
-        if (memcpy_s(slope.data(), slope_size * sizeof(float), slope_raw_data, slope_data->raw_data().size()) != EOK) {
-          MS_LOG(ERROR) << "memcpy_s failed";
-          return nullptr;
-        }
-      }
-      prim->set_slope(slope);
-      prim->set_channel_shared(channel_shared);
     }
   } else {
     MS_LOG(WARNING) << "The slope pf prelu is null, which may cause errors.";

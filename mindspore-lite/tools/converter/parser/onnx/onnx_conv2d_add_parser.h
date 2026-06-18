@@ -28,6 +28,10 @@ class OnnxConv2dAddParser : public OnnxNodeParser {
   ~OnnxConv2dAddParser() override = default;
 
   PrimitiveCPtr Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) override;
+
+ private:
+  void ParseNodeAttrs(const onnx::NodeProto &onnx_node, std::vector<int64_t> *dilations, std::vector<int64_t> *strides,
+                      std::vector<int64_t> *pads);
 };
 }  // namespace lite
 }  // namespace mindspore

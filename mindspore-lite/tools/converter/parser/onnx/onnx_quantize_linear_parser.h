@@ -43,6 +43,10 @@ class OnnxQuantizeLinearParser : public OnnxNodeParser {
   bool SetScaleAttr(const onnx::GraphProto &onnx_graph, const string &onnx_quantize_scale,
                     const std::unique_ptr<QuantizeLinear> &prim);
 
+  bool SetZeroPointFromSingleElement(const tensor::TensorPtr &onnx_zero_point_tensor,
+                                     const std::unique_ptr<QuantizeLinear> &prim);
+  bool SetZeroPointFromVector(const tensor::TensorPtr &onnx_zero_point_tensor,
+                              const std::unique_ptr<QuantizeLinear> &prim);
   bool SetZeroPointAttr(const onnx::GraphProto &onnx_graph, const string &onnx_quantize_zero_point,
                         const std::unique_ptr<QuantizeLinear> &prim);
 };

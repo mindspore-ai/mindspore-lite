@@ -52,56 +52,54 @@ STATUS ParseKernelSize(std::vector<int64_t> *kernel_size, const onnx::GraphProto
   return RET_OK;
 }
 
+STATUS ParseDilationAttr(const onnx::AttributeProto &onnx_node_attr, std::vector<int64_t> *dilation) {
+  if (onnx_node_attr.ints().size() < DIMENSION_2D) {
+    MS_LOG(ERROR) << "Parse dilation failed!";
+    return RET_ERROR;
+  }
+  dilation->push_back(onnx_node_attr.ints(0));
+  dilation->push_back(onnx_node_attr.ints(1));
+  return RET_OK;
+}
+
+STATUS ParsePaddingAttr(const onnx::AttributeProto &onnx_node_attr, std::vector<int64_t> *padding) {
+  if (onnx_node_attr.ints().size() < DIMENSION_2D) {
+    MS_LOG(ERROR) << "Parse padding failed!";
+    return RET_ERROR;
+  }
+  padding->push_back(onnx_node_attr.ints(0));
+  padding->push_back(onnx_node_attr.ints(0));
+  padding->push_back(onnx_node_attr.ints(1));
+  padding->push_back(onnx_node_attr.ints(1));
+  return RET_OK;
+}
+
+STATUS ParseStrideAttr(const onnx::AttributeProto &onnx_node_attr, std::vector<int64_t> *strides) {
+  if (onnx_node_attr.ints().size() < DIMENSION_2D) {
+    MS_LOG(ERROR) << "Parse stride failed!";
+    return RET_ERROR;
+  }
+  strides->push_back(onnx_node_attr.ints(0));
+  strides->push_back(onnx_node_attr.ints(1));
+  return RET_OK;
+}
+
 STATUS ParseVecAttr(const onnx::NodeProto &onnx_node, std::vector<int64_t> *strides, std::vector<int64_t> *dilation,
                     std::vector<int64_t> *padding) {
   MS_CHECK_TRUE_RET(strides != nullptr && dilation != nullptr && padding != nullptr, RET_NULL_PTR);
   for (const auto &onnx_node_attr : onnx_node.attribute()) {
-    if (onnx_node_attr.name() == "dilations") {
-      if (onnx_node_attr.ints().size() < DIMENSION_2D) {
-        MS_LOG(ERROR) << "Parse dilations failed!";
+    if (onnx_node_attr.name() == "dilations" || onnx_node_attr.name() == "dilation") {
+      if (ParseDilationAttr(onnx_node_attr, dilation) != RET_OK) {
         return RET_ERROR;
       }
-      dilation->push_back(onnx_node_attr.ints(0));
-      dilation->push_back(onnx_node_attr.ints(1));
-    } else if (onnx_node_attr.name() == "dilation") {
-      if (onnx_node_attr.ints().size() < DIMENSION_2D) {
-        MS_LOG(ERROR) << "Parse dilation failed!";
+    } else if (onnx_node_attr.name() == "padding" || onnx_node_attr.name() == "paddings") {
+      if (ParsePaddingAttr(onnx_node_attr, padding) != RET_OK) {
         return RET_ERROR;
       }
-      dilation->push_back(onnx_node_attr.ints(0));
-      dilation->push_back(onnx_node_attr.ints(1));
-    } else if (onnx_node_attr.name() == "padding") {
-      if (onnx_node_attr.ints().size() < DIMENSION_2D) {
-        MS_LOG(ERROR) << "Parse padding failed!";
+    } else if (onnx_node_attr.name() == "stride" || onnx_node_attr.name() == "strides") {
+      if (ParseStrideAttr(onnx_node_attr, strides) != RET_OK) {
         return RET_ERROR;
       }
-      padding->push_back(onnx_node_attr.ints(0));
-      padding->push_back(onnx_node_attr.ints(0));
-      padding->push_back(onnx_node_attr.ints(1));
-      padding->push_back(onnx_node_attr.ints(1));
-    } else if (onnx_node_attr.name() == "paddings") {
-      if (onnx_node_attr.ints().size() < DIMENSION_2D) {
-        MS_LOG(ERROR) << "Parse paddings failed!";
-        return RET_ERROR;
-      }
-      padding->push_back(onnx_node_attr.ints(0));
-      padding->push_back(onnx_node_attr.ints(0));
-      padding->push_back(onnx_node_attr.ints(1));
-      padding->push_back(onnx_node_attr.ints(1));
-    } else if (onnx_node_attr.name() == "stride") {
-      if (onnx_node_attr.ints().size() < DIMENSION_2D) {
-        MS_LOG(ERROR) << "Parse stride failed!";
-        return RET_ERROR;
-      }
-      strides->push_back(onnx_node_attr.ints(0));
-      strides->push_back(onnx_node_attr.ints(1));
-    } else if (onnx_node_attr.name() == "strides") {
-      if (onnx_node_attr.ints().size() < DIMENSION_2D) {
-        MS_LOG(ERROR) << "Parse strides failed!";
-        return RET_ERROR;
-      }
-      strides->push_back(onnx_node_attr.ints(0));
-      strides->push_back(onnx_node_attr.ints(1));
     }
   }
   return RET_OK;
