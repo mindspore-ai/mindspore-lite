@@ -27,50 +27,60 @@
 
 namespace torch {
 namespace jit {
-void OutputsUnpack(Graph *graph) {
-  std::function<void(Node * tuple, std::vector<Node *> &, std::vector<Value *> &)> flattenTuple =
-    [&flattenTuple](Node *tuple, std::vector<Node *> &tuples, std::vector<Value *> &values) -> void {
-    tuples.push_back(tuple);
-    for (auto input : tuple->inputs()) {
-      auto node = input->node();
-      if (node->kind() == prim::TupleConstruct) {
-        flattenTuple(node, tuples, values);
-      } else {
-        values.push_back(input);
-      }
+void FlattenTupleConstruct(Node *tuple, std::vector<Node *> &tuples, std::vector<Value *> &values) {
+  tuples.push_back(tuple);
+  for (auto input : tuple->inputs()) {
+    auto node = input->node();
+    if (node->kind() == prim::TupleConstruct) {
+      FlattenTupleConstruct(node, tuples, values);
+    } else {
+      values.push_back(input);
     }
-  };
+  }
+}
+
+void UnpackTupleOutput(Graph *graph, Node *node, size_t output_index) {
+  std::vector<Node *> tuples;
+  std::vector<Value *> values;
+  FlattenTupleConstruct(node, tuples, values);
+  for (auto realOutput : values) {
+    graph->registerOutput(realOutput);
+  }
+  graph->eraseOutput(output_index);
+  for (auto tuple : tuples) {
+    if (!tuple->hasUses()) {
+      tuple->destroy();
+    }
+  }
+}
+
+void UnpackNonTupleOutput(Graph *graph, Node *node, size_t output_index) {
+  if (node->kind() == prim::DictConstruct) {
+    graph->registerOutput(node->input(1));
+    graph->eraseOutput(output_index);
+    node->destroy();
+  } else if (node->kind() == prim::ListConstruct) {
+    for (size_t j = 0; j < node->inputs().size(); j++) {
+      graph->registerOutput(node->input(j));
+    }
+    graph->eraseOutput(output_index);
+    node->destroy();
+  } else {
+    MS_LOG(INFO) << "skip " << mindspore::lite::PytorchNodeParser::GetTorchNodeType(node);
+  }
+}
+
+void OutputsUnpack(Graph *graph) {
   for (size_t i = 0; i < graph->outputs().size(); i++) {
     auto node = graph->outputs()[i]->node();
-    // unpack output
     switch (node->kind()) {
       case prim::TupleConstruct: {
-        std::vector<Node *> tuples;
-        std::vector<Value *> values;
-        flattenTuple(node, tuples, values);
-        for (auto realOutput : values) {
-          graph->registerOutput(realOutput);
-        }
-        graph->eraseOutput(i);
-        for (auto tuple : tuples) {
-          if (!tuple->hasUses()) {
-            tuple->destroy();
-          }
-        }
+        UnpackTupleOutput(graph, node, i);
         break;
       }
-      case prim::DictConstruct: {
-        graph->registerOutput(node->input(1));
-        graph->eraseOutput(i);
-        node->destroy();
-        break;
-      }
+      case prim::DictConstruct:
       case prim::ListConstruct: {
-        for (size_t j = 0; i < node->inputs().size(); j++) {
-          graph->registerOutput(node->input(j));
-        }
-        graph->eraseOutput(i);
-        node->destroy();
+        UnpackNonTupleOutput(graph, node, i);
         break;
       }
       default: {

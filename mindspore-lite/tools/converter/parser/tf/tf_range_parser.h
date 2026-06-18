@@ -20,6 +20,7 @@
 #include <map>
 #include <vector>
 #include "tools/converter/parser/tf/tf_node_parser.h"
+#include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 
 namespace mindspore {
 namespace lite {
@@ -31,6 +32,19 @@ class TFRangeParser : public TFNodeParser {
   PrimitiveCPtr Parse(const tensorflow::NodeDef &tf_op,
                       const std::map<string, const tensorflow::NodeDef *> &tf_node_map,
                       std::vector<std::string> *inputs, int *output_size) override;
+
+ private:
+  struct RangeAttrMapping {
+    std::string tf_attr_name;
+    int input_index;
+    std::string prim_attr_name;
+  };
+  bool ParseRangeAttrFromNodeOrInput(const tensorflow::NodeDef &tf_op,
+                                     const std::map<string, const tensorflow::NodeDef *> &tf_node_map,
+                                     const RangeAttrMapping &mapping, const std::unique_ptr<ops::Range> &prim);
+  bool ParseRangeDeltaAttr(const tensorflow::NodeDef &tf_op,
+                           const std::map<string, const tensorflow::NodeDef *> &tf_node_map,
+                           const std::unique_ptr<ops::Range> &prim, tensorflow::AttrValue *attr_value);
 };
 }  // namespace lite
 }  // namespace mindspore

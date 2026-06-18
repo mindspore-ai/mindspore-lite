@@ -1188,62 +1188,70 @@ bool TFModelParser::IsEmptyTfFunction(const CNodePtr &anf_node, std::string bran
   return false;
 }  // namespace lite
 
+int TFModelParser::FetchIfConditionData(const CNodePtr &anf_node, lite::DataInfo *if_cond_info) {
+  auto if_cond = anf_node->input(1);
+  if (if_cond == nullptr) {
+    return lite::RET_ERROR;
+  }
+  int status = lite::RET_ERROR;
+  if (if_cond->isa<Parameter>()) {
+    status = lite::FetchDataFromParameterNode(anf_node, 1, converter::kFmkTypeMs, if_cond_info, true);
+  } else if (utils::isa<CNodePtr>(if_cond)) {
+    auto input_cnode = if_cond->cast<CNodePtr>();
+    if (input_cnode == nullptr) {
+      return lite::RET_ERROR;
+    }
+    if (!opt::CheckPrimitiveType(input_cnode, prim::kPrimConstant)) {
+      return lite::RET_ERROR;
+    }
+    auto input_cnode_in1 = input_cnode->input(1);
+    if (input_cnode_in1 == nullptr) {
+      return lite::RET_ERROR;
+    }
+    if (input_cnode_in1->isa<Parameter>()) {
+      status = lite::FetchDataFromParameterNode(input_cnode, 1, converter::kFmkTypeMs, if_cond_info, true);
+    } else if (input_cnode_in1->isa<ValueNode>()) {
+      status = lite::FetchDataFromValueNode(input_cnode, 1, converter::kFmkTypeMs, false, if_cond_info, true);
+    }
+  }
+  return status;
+}
+
+bool TFModelParser::CheckIneffectiveBranch(const CNodePtr &anf_node, const tensorflow::NodeDef &node_def,
+                                           const lite::DataInfo &if_cond_info) {
+  if (static_cast<TypeId>(if_cond_info.data_type_) != kNumberTypeBool || if_cond_info.data_.size() != 1) {
+    return false;
+  }
+  tensorflow::AttrValue attr_value;
+  if (static_cast<bool>(if_cond_info.data_[0])) {
+    if (TensorFlowUtils::FindAttrValue(node_def, "then_branch", &attr_value)) {
+      auto then_name = attr_value.func().name();
+      if (IsEmptyTfFunction(anf_node, then_name)) {
+        return true;
+      }
+    }
+  } else {
+    if (TensorFlowUtils::FindAttrValue(node_def, "else_branch", &attr_value)) {
+      auto else_name = attr_value.func().name();
+      if (IsEmptyTfFunction(anf_node, else_name)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 bool TFModelParser::IsIneffectiveIfOp(const CNodePtr &anf_node, const string &op_type,
                                       const tensorflow::NodeDef &node_def) {
   if (op_type != "If") {
     return false;
   }
   lite::DataInfo if_cond_info;
-  auto if_cond = anf_node->input(1);
-  if (if_cond == nullptr) {
-    return false;
-  }
-  int status = lite::RET_ERROR;
-  if (if_cond->isa<Parameter>()) {
-    status = lite::FetchDataFromParameterNode(anf_node, 1, converter::kFmkTypeMs, &if_cond_info, true);
-  } else if (utils::isa<CNodePtr>(if_cond)) {
-    auto input_cnode = if_cond->cast<CNodePtr>();
-    if (input_cnode == nullptr) {
-      return false;
-    }
-    if (!opt::CheckPrimitiveType(input_cnode, prim::kPrimConstant)) {
-      return false;
-    }
-
-    auto input_cnode_in1 = input_cnode->input(1);
-    if (input_cnode_in1 == nullptr) {
-      return false;
-    }
-    if (input_cnode_in1->isa<Parameter>()) {
-      status = lite::FetchDataFromParameterNode(input_cnode, 1, converter::kFmkTypeMs, &if_cond_info, true);
-    } else if (input_cnode_in1->isa<ValueNode>()) {
-      status = lite::FetchDataFromValueNode(input_cnode, 1, converter::kFmkTypeMs, false, &if_cond_info, true);
-    }
-  }
-
+  int status = FetchIfConditionData(anf_node, &if_cond_info);
   if (status != lite::RET_OK) {
     return false;
   }
-  if (static_cast<TypeId>(if_cond_info.data_type_) == kNumberTypeBool && if_cond_info.data_.size() == 1) {
-    tensorflow::AttrValue attr_value;
-    if (static_cast<bool>(if_cond_info.data_[0])) {
-      if (TensorFlowUtils::FindAttrValue(node_def, "then_branch", &attr_value)) {
-        auto then_name = attr_value.func().name();
-        if (IsEmptyTfFunction(anf_node, then_name)) {
-          return true;
-        }
-      }
-    } else {
-      if (TensorFlowUtils::FindAttrValue(node_def, "else_branch", &attr_value)) {
-        auto else_name = attr_value.func().name();
-        if (IsEmptyTfFunction(anf_node, else_name)) {
-          return true;
-        }
-      }
-    }
-  }
-
-  return false;
+  return CheckIneffectiveBranch(anf_node, node_def, if_cond_info);
 }
 
 STATUS TFModelParser::ProcessControlFlowOp(const CNodePtr &anf_node, const string &op_type,
