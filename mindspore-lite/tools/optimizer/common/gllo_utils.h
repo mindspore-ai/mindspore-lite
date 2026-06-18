@@ -19,6 +19,7 @@
 #ifndef USE_DEPRECATED_API
 #define USE_DEPRECATED_API
 #endif
+#include <fstream>
 #include <memory>
 #include <string>
 #include <utility>
@@ -113,6 +114,10 @@ STATUS TransFilterFormat(const tensor::TensorPtr &tensor, schema::Format src_for
 ParameterPtr BuildParameterNode(const FuncGraphPtr &func_graph, const tensor::TensorPtr &tensor_info,
                                 const std::string &node_name, bool keep_origin_dtype = false);
 
+TypeId ResolveTensorDataType(const tensor::TensorPtr &tensor_info, bool keep_origin_dtype);
+
+int ComputeDataCount(const std::vector<int64_t> &shape);
+
 ParameterPtr BuildBoolValueParameterNode(const FuncGraphPtr &func_graph, const bool &data, const std::string &node_name,
                                          bool empty_shape = false);
 
@@ -199,6 +204,8 @@ bool IsTrainOp(const CNodePtr &cnode);
 
 bool IsMarkedTrainOp(const CNodePtr &cnode);
 
+ShapeVector GetShapeFromTupleShape(const abstract::BaseShapePtr &base_shape, const AnfNodePtr &node, size_t output_idx);
+
 ShapeVector GetAnfNodeOutputShape(const AnfNodePtr &node, size_t output_idx);
 
 int GetDataTypeFromAnfNode(const AnfNodePtr &anf_node, TypeId *type_id);
@@ -217,6 +224,12 @@ bool CheckAndGetCnodeIndex(const CNodePtr &cnode, size_t *index, const Primitive
 
 void PrintFuncGraph(const FuncGraphPtr &func_graph, const std::string &output_file);
 
+std::string GetAnfNodeTypeName(const AnfNodePtr &anf_node);
+
+void PrintCNodeDetails(std::ofstream &fp, const CNodePtr &cnode);
+
+void PrintFuncGraphNodes(std::ofstream &fp, const std::vector<AnfNodePtr> &nodes);
+
 std::vector<KernelWithIndex> GetNodeInputs(const AnfNodePtr &anf_node);
 
 bool IsReduceModeMeetOutEqualIn(const PrimitivePtr &prim);
@@ -231,6 +244,9 @@ inline bool IsSpecifiedNode(const BaseRef &n) {
   }
   return false;
 }
+
+CNodePtr BuildMakeTupleCNode(const FuncGraphPtr &anf_graph, const std::vector<AnfNodePtr> &return_inputs,
+                             AbstractBasePtr *abstract);
 
 Status BuildReturnNode(const FuncGraphPtr &anf_graph, const std::vector<AnfNodePtr> &return_inputs);
 tensor::TensorPtr GetTensorFromParameterNode(const EquivPtr &equiv, const VarPtr &input);
