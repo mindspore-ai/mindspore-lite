@@ -21,13 +21,12 @@ Pipeline:
   2. LLM Decode   : speech_id + kv_cache  -> logits + kv_cache  (autoregressive)
   3. Flow Encoder : speech_tokens + embedding + prompt_feat -> mu, spks, cond, mask
   4. Flow Estimator (CFM) : mu + spks + cond + mask -> mel
-  5. HiFT (PyTorch CPU) : mel -> waveform
+  5. HiFT Vocoder (MindSpore Lite on Ascend) : mel -> waveform
 
 Usage:
   python infer_cosyvoice2_mslite.py \
     --mindir-dir ./cosyvoice2_mindir \
     --model-dir /path/to/CosyVoice2-0.5B \
-    --model-code-dir /path/to/CosyVoice \
     --text "你好，很高兴认识你" \
     --output output.wav
 """
@@ -168,31 +167,38 @@ def _build_session(path, providers):
 
 
 class CosyVoice2MsliteInferencer:
-    """Run CosyVoice2-0.5B with MindSpore Lite + PyTorch HiFT vocoder."""
+    """Run CosyVoice2-0.5B entirely with MindSpore Lite on Ascend."""
+
+    # LLM Decode dynamic-bucket gears (past_seq_len). Model compiled for these
+    # two gears; infer-side pads the actual past_kv up to the next gear.
+    LLM_DECODE_GEARS = (256, 512)
+    # Flow Estimator dynamic-bucket gears (mel seq_len). Model compiled for these
+    # four gears; infer-side pads x/mask/mu/cond up to the next gear.
+    FLOW_EST_GEARS = (128, 256, 512, 1024)
 
     def __init__(
         self,
         mindir_dir,
         model_dir,
-        model_code_dir,
         device="ascend",
         device_id=0,
         seed: int = 0,
         flow_cfg_rate: float = 0.7,
         flow_steps: int = 10,
         decode_mode: str = "ras",
+        dump_tokens_path=None,
     ):
         self.model_dir = model_dir
-        self.model_code_dir = model_code_dir
         self.device = device
         self.sample_rate = 24000
         self.flow_cfg_rate = float(flow_cfg_rate)
         self.flow_steps = int(flow_steps)
         self.decode_mode = str(decode_mode)
+        self.dump_tokens_path = dump_tokens_path
         self.rng = np.random.default_rng(int(seed))
 
         self._load_models(mindir_dir, device, device_id)
-        self._load_hift(model_dir, model_code_dir)
+        self._load_hift_mslite(mindir_dir, device, device_id)
         self._load_tokenizer(model_dir)
         self._load_speech_tokenizer(model_dir)
 
@@ -230,31 +236,34 @@ class CosyVoice2MsliteInferencer:
         self.flow_est_model.build_from_file(flow_est_path, mslite.ModelType.MINDIR, context)
         _describe_model_io(self.flow_est_model, "Flow Estimator")
 
-    def _load_hift(self, model_dir, model_code_dir):
-        """Load PyTorch HiFT vocoder from CosyVoice source + weights."""
-        sys.path.insert(0, str(model_code_dir))
-        sys.path.insert(0, str(Path(model_code_dir) / "third_party" / "Matcha-TTS"))
-        from cosyvoice.hifigan.generator import HiFTGenerator
-        from cosyvoice.hifigan.f0_predictor import ConvRNNF0Predictor
+    def _load_hift_mslite(self, mindir_dir, device, device_id):
+        """Load the single pure-dynamic HiFT MindIR.
 
-        f0_predictor = ConvRNNF0Predictor(num_class=1, in_channels=80, cond_channels=512)
-        self.hift = HiFTGenerator(
-            in_channels=80, base_channels=512, nb_harmonics=8,
-            sampling_rate=24000, nsf_alpha=0.1, nsf_sigma=0.003,
-            nsf_voiced_threshold=10, upsample_rates=[8, 5, 3],
-            upsample_kernel_sizes=[16, 11, 7],
-            istft_params={"n_fft": 16, "hop_len": 4},
-            resblock_kernel_sizes=[3, 7, 11],
-            resblock_dilation_sizes=[[1, 3, 5], [1, 3, 5], [1, 3, 5]],
-            source_resblock_kernel_sizes=[7, 7, 11],
-            source_resblock_dilation_sizes=[[1, 3, 5], [1, 3, 5], [1, 3, 5]],
-            lrelu_slope=0.1, audio_limit=0.99, f0_predictor=f0_predictor,
-        )
-        hift_path = Path(model_dir) / "hift.pt"
-        hift_sd = {k.replace("generator.", ""): v for k, v in
-                   torch.load(hift_path, map_location="cpu", weights_only=True).items()}
-        self.hift.load_state_dict(hift_sd, strict=True)
-        self.hift.float().eval()
+        HiFT uses 纯动态 (pure dynamic) — one MindIR with T_mel as a dynamic axis.
+        Inference time calls model.resize([mel], [actual T_mel shape]) before each
+        predict, so we never pad and never bucket.
+        """
+        mindir_dir = Path(mindir_dir)
+        context = mslite.Context()
+        context.target = [device]
+        if device == "ascend":
+            context.ascend.device_id = device_id
+            context.ascend.precision_mode = "enforce_fp32"
+
+        candidates = [
+            mindir_dir / "cosyvoice2_hift_graph.mindir",
+            mindir_dir / "cosyvoice2_hift.mindir",
+        ]
+        path = next((p for p in candidates if p.exists()), None)
+        if path is None:
+            raise RuntimeError(
+                f"HiFT MindIR not found in {mindir_dir}. "
+                f"Expected cosyvoice2_hift.mindir (pure-dynamic)."
+            )
+        print(f"Loading HiFT (pure dynamic) from {path}...")
+        self.hift_model = mslite.Model()
+        self.hift_model.build_from_file(str(path), mslite.ModelType.MINDIR, context)
+        _describe_model_io(self.hift_model, "HiFT Vocoder")
 
     def _load_tokenizer(self, model_dir):
         """Load HuggingFace tokenizer from weights directory."""
@@ -363,49 +372,116 @@ class CosyVoice2MsliteInferencer:
         return prefill_inputs, total_len, max_len, min_len, pad_empty_speech
 
     def _run_llm_prefill(self, prefill_inputs):
-        """Run LLM prefill stage and return logits, past_kv, and elapsed ms."""
+        """Run LLM prefill stage and return logits, past_kv (mslite.Tensor), and elapsed ms.
+
+        past_kv is kept as a device Tensor to avoid host↔device copy in the decode loop.
+        """
         t0 = time.perf_counter()
         prefill_out = self.prefill_model.predict(prefill_inputs)
         prefill_ms = (time.perf_counter() - t0) * 1000.0
         logits = prefill_out[0].get_data_to_numpy()
-        past_kv = prefill_out[1].get_data_to_numpy()
-        return logits, past_kv, prefill_ms
+        past_kv_tensor = prefill_out[1]  # keep as mslite.Tensor
+        return logits, past_kv_tensor, prefill_ms
 
-    def _run_llm_decode_step(self, next_token, cur_pos, past_kv, step, min_len):
-        """Run a single LLM decode step and return updated logits, past_kv, and timing."""
+    def _pick_llm_decode_gear(self, past_seq_len_actual: int) -> int:
+        """Pick the smallest gear >= past_seq_len_actual; fall back to max gear."""
+        for g in self.LLM_DECODE_GEARS:
+            if g >= past_seq_len_actual:
+                return g
+        return self.LLM_DECODE_GEARS[-1]
+
+    def _run_llm_decode_step(self, next_token, cur_pos, past_kv_input, step, min_len):
+        """Run a single LLM decode step using the 256/512 dynamic-bucket MindIR.
+
+        Strategy:
+          1. Actual past_seq_len = cur_pos (positions 0..cur_pos-1 in past_kv).
+             Pick the smallest gear >= cur_pos.
+          2. Pad attention_mask from (1, cur_pos+1) to (1, gear+1).
+          3. Pad past_kv from (48, 1, 2, cur_pos, 64) to (48, 1, 2, gear, 64)
+             with zeros on the trailing positions.
+          4. resize + predict.
+          5. Unpad: logits = output[:, -1] (q_len=1, so already correct);
+             past_kv = output past_kv sliced back to (48, 1, 2, cur_pos+1, 64).
+
+        past_kv_input can be a numpy array or an mslite.Tensor.
+        Returns: (step_logits, past_kv_tensor_or_np, decode_ms).
+        """
+        past_seq_actual = int(cur_pos)
+        gear = self._pick_llm_decode_gear(past_seq_actual)
+
         speech_id_np = np.array([[next_token]], dtype=np.int32)
-        cur_attention_mask = np.ones((1, cur_pos + 1), dtype=np.int32)
         cur_pos_ids = np.array([[cur_pos]], dtype=np.int32)
 
-        decode_inputs = _build_mslite_inputs(self.decode_model, {
-            "speech_id": speech_id_np,
-            "attention_mask": cur_attention_mask,
-            "position_ids": cur_pos_ids,
-            "past_key_values": past_kv,
-        }, preferred_order=["speech_id", "attention_mask", "position_ids", "past_key_values"])
+        # attention_mask: actual is (1, past_seq_actual + 1); pad to (1, gear + 1).
+        attn_actual_len = past_seq_actual + 1
+        attn_gear_len = gear + 1
+        if attn_gear_len == attn_actual_len:
+            attn_np = np.ones((1, attn_gear_len), dtype=np.int32)
+        else:
+            attn_np = np.zeros((1, attn_gear_len), dtype=np.int32)
+            attn_np[:, :attn_actual_len] = 1
+
+        # past_kv: convert to numpy first if it's an mslite.Tensor.
+        if isinstance(past_kv_input, mslite.Tensor):
+            past_kv_np = past_kv_input.get_data_to_numpy()
+        else:
+            past_kv_np = past_kv_input
+
+        if gear == past_seq_actual:
+            past_kv_padded = past_kv_np
+        else:
+            shape = list(past_kv_np.shape)  # (48, 1, 2, past_seq_actual, 64)
+            shape[3] = gear
+            past_kv_padded = np.zeros(shape, dtype=past_kv_np.dtype)
+            past_kv_padded[..., :past_seq_actual, :] = past_kv_np
+
+        decode_inputs = [
+            mslite.Tensor(speech_id_np),
+            mslite.Tensor(attn_np),
+            mslite.Tensor(cur_pos_ids),
+            mslite.Tensor(np.ascontiguousarray(past_kv_padded)),
+        ]
+
+        # resize to gear shape: attention_mask=attn_gear_len, past_kv past_seq_len=gear.
+        model_inputs = self.decode_model.get_inputs()
+        if model_inputs:
+            dims = [
+                list(speech_id_np.shape),
+                list(attn_np.shape),
+                list(cur_pos_ids.shape),
+                list(past_kv_padded.shape),
+            ]
+            self.decode_model.resize(model_inputs, dims)
 
         t1 = time.perf_counter()
         decode_out = self.decode_model.predict(decode_inputs)
         decode_ms = (time.perf_counter() - t1) * 1000.0
-        logits = decode_out[0].get_data_to_numpy()
-        past_kv = decode_out[1].get_data_to_numpy()
 
-        step_logits = logits[0, -1].astype(np.float32, copy=False)
+        logits_np = decode_out[0].get_data_to_numpy()  # (1, 1, vocab)
+        past_kv_out_np = decode_out[1].get_data_to_numpy()  # (48, 1, 2, gear+1, 64)
+
+        # Unpad past_kv back to (48, 1, 2, past_seq_actual + 1, 64).
+        actual_new_len = past_seq_actual + 1
+        if past_kv_out_np.shape[3] != actual_new_len:
+            past_kv_out_np = past_kv_out_np[..., :actual_new_len, :]
+
+        step_logits = logits_np[0, -1].astype(np.float32, copy=False)
         if step < min_len:
             step_logits = step_logits.copy()
             step_logits[EOS_TOKEN:EOS_TOKEN + 3] = -1.0e10
-        return step_logits, past_kv, decode_ms
+        # Return numpy (not mslite.Tensor) since we already copied to host for unpading.
+        return step_logits, past_kv_out_np, decode_ms
 
     def _run_llm(self, text_ids, speech_ids):
         """LLM prefill + decode loop to generate speech tokens."""
         prefill_inputs, total_len, max_len, min_len, pad_empty_speech = self._prepare_llm_inputs(
             text_ids, speech_ids)
 
-        logits, past_kv, prefill_ms = self._run_llm_prefill(prefill_inputs)
+        logits, past_kv_tensor, prefill_ms = self._run_llm_prefill(prefill_inputs)
 
         if pad_empty_speech:
             logits = logits[:, :-1, :]
-            past_kv = past_kv[:, :, :, :-1, :]
+            past_kv_tensor = self._slice_kv_tensor(past_kv_tensor, drop_last=True)
             total_len = total_len - 1
 
         generated: list[int] = []
@@ -425,8 +501,8 @@ class CosyVoice2MsliteInferencer:
             if step >= min_len and next_token in STOP_TOKENS:
                 break
 
-            step_logits, past_kv, step_ms = self._run_llm_decode_step(
-                next_token, cur_pos, past_kv, step, min_len)
+            step_logits, past_kv_tensor, step_ms = self._run_llm_decode_step(
+                next_token, cur_pos, past_kv_tensor, step, min_len)
             decode_ms_total += step_ms
             decode_steps += 1
 
@@ -440,6 +516,9 @@ class CosyVoice2MsliteInferencer:
                 print(f"  LLM generated {len(generated)} tokens...")
 
         print(f"  LLM finished: {len(generated)} speech tokens")
+        if self.dump_tokens_path is not None:
+            np.save(self.dump_tokens_path, np.array(generated, dtype=np.int64))
+            print(f"  Dumped tokens to {self.dump_tokens_path}")
         perf = {
             "prefill_ms": prefill_ms,
             "decode_ms_total": decode_ms_total,
@@ -452,6 +531,21 @@ class CosyVoice2MsliteInferencer:
         if self.decode_mode == "greedy":
             return int(np.argmax(logits_1d))
         return _ras_sample(self.rng, logits_1d.astype(np.float32, copy=False), decoded_tokens=decoded)
+
+    @staticmethod
+    def _slice_kv_tensor(kv_tensor, drop_last: bool = False):
+        """Drop the last position from KV cache when speech padding was added.
+
+        When we padded empty speech_ids with a dummy token during prefill, the resulting
+        KV cache contains one extra position that should be dropped before decode. Doing
+        this slice in numpy is the safest way because mslite.Tensor doesn't expose a
+        cheap slice API and the extra row only matters for correctness, not performance
+        (it happens once after prefill, outside the hot decode loop).
+        """
+        kv_np = kv_tensor.get_data_to_numpy()
+        if drop_last:
+            kv_np = kv_np[:, :, :, :-1, :]
+        return kv_np
 
     def _run_flow_encoder(self, speech_tokens, embedding, prompt_feat):
         """Flow Encoder inference (speech tokens -> mu/spks/cond/mask)."""
@@ -489,8 +583,22 @@ class CosyVoice2MsliteInferencer:
         mask = enc_out[3].get_data_to_numpy()
         return mu, spks, cond, mask, enc_ms
 
+    def _pick_flow_est_gear(self, mel_len_actual: int) -> int:
+        """Pick the smallest Flow Estimator gear >= mel_len_actual; fall back to max."""
+        for g in self.FLOW_EST_GEARS:
+            if g >= mel_len_actual:
+                return g
+        return self.FLOW_EST_GEARS[-1]
+
     def _run_flow_estimator(self, mu, spks, cond, mask, n_timesteps: int):
-        """Flow Estimator (CFM) sampling with CFG. Returns mel and elapsed ms."""
+        """Flow Estimator (CFM) sampling with CFG, dynamic-bucket MindIR.
+
+        MindIR is compiled for batch=2 with seq_len in {128, 256, 512, 1024}.
+        Each Euler step pads x/mask/mu/cond to the next gear, calls resize +
+        predict, then slices the result back to the actual mel_len before the
+        next z update. CFG is always on (batch=2 path); when self.flow_cfg_rate
+        is 0 the math still reduces to the conditional output.
+        """
         t_span = np.linspace(0, 1, n_timesteps + 1, dtype=np.float32)
         t_span = 1.0 - np.cos(t_span * 0.5 * np.pi)
 
@@ -500,49 +608,58 @@ class CosyVoice2MsliteInferencer:
         mask = mask.astype(np.float32, copy=False)
 
         mel_len = int(mu.shape[2])
+        gear = self._pick_flow_est_gear(mel_len)
+
         z = self.rng.standard_normal((1, 80, mel_len), dtype=np.float32)
         cfg = float(self.flow_cfg_rate)
 
+        # Batch=2 inputs (CFG path). We always run batch=2 even when cfg=0
+        # because the MindIR is compiled for that batch size; the math reduces
+        # to the conditional branch when cfg=0.
+        def _pad_to_gear(arr_3d: np.ndarray) -> np.ndarray:
+            if gear == mel_len:
+                return arr_3d
+            out = np.zeros((arr_3d.shape[0], arr_3d.shape[1], gear), dtype=arr_3d.dtype)
+            out[..., :mel_len] = arr_3d
+            return out
+
+        mask_in = np.concatenate([mask, mask], axis=0)  # (2, 1, mel_len)
+        mask_padded = _pad_to_gear(mask_in)
+        mu_in = np.zeros((2, 80, mel_len), dtype=np.float32)
+        mu_in[0:1] = mu
+        mu_padded = _pad_to_gear(mu_in)
+        spks_in = np.zeros((2, spks.shape[1]), dtype=np.float32)
+        spks_in[0:1] = spks
+        cond_in = np.zeros((2, 80, mel_len), dtype=np.float32)
+        cond_in[0:1] = cond
+        cond_padded = _pad_to_gear(cond_in)
+
+        model_inputs = self.flow_est_model.get_inputs()
         t0 = time.perf_counter()
 
         for i in range(n_timesteps):
             t_cur = float(t_span[i])
             dt = float(t_span[i + 1] - t_span[i])
 
-            if cfg == 0.0:
-                est_inputs = _build_mslite_inputs(self.flow_est_model, {
-                    "x": z,
-                    "mask": mask,
-                    "mu": mu,
-                    "t": np.array([t_cur], dtype=np.float32),
-                    "spks": spks,
-                    "cond": cond,
-                }, preferred_order=["x", "mask", "mu", "t", "spks", "cond"])
-                est_out = self.flow_est_model.predict(est_inputs)
-                dphi_dt = est_out[0].get_data_to_numpy()
-            else:
-                # Batch=2: [conditional, unconditional]
-                x_in = np.concatenate([z, z], axis=0)
-                mask_in = np.concatenate([mask, mask], axis=0)
-                mu_in = np.zeros((2, 80, mel_len), dtype=np.float32)
-                mu_in[0:1] = mu
-                spks_in = np.zeros((2, spks.shape[1]), dtype=np.float32)
-                spks_in[0:1] = spks
-                cond_in = np.zeros((2, 80, mel_len), dtype=np.float32)
-                cond_in[0:1] = cond
-                t_in = np.array([t_cur, t_cur], dtype=np.float32)
+            x_in = np.concatenate([z, z], axis=0)  # (2, 80, mel_len)
+            x_padded = _pad_to_gear(x_in)
+            t_in = np.array([t_cur, t_cur], dtype=np.float32)
 
-                est_inputs = _build_mslite_inputs(self.flow_est_model, {
-                    "x": x_in,
-                    "mask": mask_in,
-                    "mu": mu_in,
-                    "t": t_in,
-                    "spks": spks_in,
-                    "cond": cond_in,
-                }, preferred_order=["x", "mask", "mu", "t", "spks", "cond"])
-                est_out = self.flow_est_model.predict(est_inputs)
-                dphi_dt_all = est_out[0].get_data_to_numpy()
-                dphi_dt = (1.0 + cfg) * dphi_dt_all[0:1] - cfg * dphi_dt_all[1:2]
+            est_inputs = [
+                mslite.Tensor(np.ascontiguousarray(x_padded)),
+                mslite.Tensor(np.ascontiguousarray(mask_padded)),
+                mslite.Tensor(np.ascontiguousarray(mu_padded)),
+                mslite.Tensor(t_in),
+                mslite.Tensor(spks_in),
+                mslite.Tensor(np.ascontiguousarray(cond_padded)),
+            ]
+            if model_inputs:
+                self.flow_est_model.resize(model_inputs, [list(t.shape) for t in est_inputs])
+
+            est_out = self.flow_est_model.predict(est_inputs)
+            dphi_dt_all = est_out[0].get_data_to_numpy()  # (2, 80, gear)
+            dphi_dt_all = dphi_dt_all[..., :mel_len]  # unpad to actual mel_len
+            dphi_dt = (1.0 + cfg) * dphi_dt_all[0:1] - cfg * dphi_dt_all[1:2]
 
             z = z + dphi_dt * dt
 
@@ -550,11 +667,30 @@ class CosyVoice2MsliteInferencer:
         return z.astype(np.float32), est_ms
 
     def _run_hift(self, mel_np):
-        """HiFT vocoder inference (mel -> waveform) using PyTorch on CPU."""
-        mel_tensor = torch.from_numpy(mel_np).float()
-        with torch.no_grad():
-            speech, _ = self.hift.inference(mel_tensor)
-        return speech.cpu().numpy()
+        """HiFT vocoder inference (mel -> waveform) using MSLite on Ascend.
+
+        Pure-dynamic MindIR: call model.resize() with the actual T_mel before
+        predict. No bucketing, no padding.
+
+        Input mel_np is channels-first (B, 80, T_mel); we transpose to
+        channels-last (B, T_mel, 80) to match the HiFT MindIR input layout.
+        """
+        # mel_np: (B=1, 80, T_mel)  → transpose to (B, T_mel, 80)
+        mel_cl = np.ascontiguousarray(np.transpose(mel_np, (0, 2, 1))).astype(np.float32, copy=False)
+        T_mel_actual = int(mel_cl.shape[1])
+        UP = 480
+        T_wav_actual = T_mel_actual * UP
+
+        mel_tensor = mslite.Tensor(mel_cl)
+        inputs = self.hift_model.get_inputs()
+        if inputs:
+            self.hift_model.resize(inputs, [list(mel_cl.shape)])
+        outputs = self.hift_model.predict([mel_tensor])
+        wav = outputs[0].get_data_to_numpy()  # (1, 1, T_wav)
+        # Slice exactly to T_wav_actual (model output length should already match
+        # since we didn't pad; slice is defensive against off-by-N from ISTFT).
+        wav = wav[:, 0, :T_wav_actual]
+        return wav
 
     def _prepare_prompt_features(self, prompt_wav_path):
         """Extract prompt features from wav file for voice cloning."""
@@ -679,9 +815,6 @@ def main():
     parser.add_argument("--model-dir", type=str,
                         default="/Users/apple/git/models/models_weights/CosyVoice2-0.5B",
                         help="Path to CosyVoice2-0.5B weights")
-    parser.add_argument("--model-code-dir", type=str,
-                        default="/Users/apple/git/models/models_code/CosyVoice",
-                        help="Path to CosyVoice source code")
     parser.add_argument("--device", type=str, default="ascend",
                         choices=["cpu", "ascend"],
                         help="Device for inference")
@@ -702,18 +835,20 @@ def main():
                         help="Flow classifier-free guidance rate")
     parser.add_argument("--flow-steps", type=int, default=10,
                         help="Flow Euler steps (n_timesteps)")
+    parser.add_argument("--dump-tokens", type=str, default=None,
+                        help="(debug) dump generated LLM speech tokens to this .npy path")
     args = parser.parse_args()
 
     inferencer = CosyVoice2MsliteInferencer(
         mindir_dir=args.mindir_dir,
         model_dir=args.model_dir,
-        model_code_dir=args.model_code_dir,
         device=args.device,
         device_id=args.device_id,
         seed=args.seed,
         flow_cfg_rate=args.flow_cfg,
         flow_steps=args.flow_steps,
         decode_mode=args.decode_mode,
+        dump_tokens_path=args.dump_tokens,
     )
     inferencer.synthesize(
         text=args.text,
