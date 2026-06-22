@@ -17,9 +17,9 @@ Test for MindSpore Lite MSTensor
 """
 
 import os
-
-import mindspore_lite as mslite
+import subprocess
 import numpy as np
+import mindspore_lite as mslite
 
 MODEL_FILE_1 = "./sd1.5_unet.onnx_graph.mindir"
 MODEL_FILE_2 = "./sd1.5_unet.onnx_graph.mindir"
@@ -57,6 +57,18 @@ def test_model_group_for_shared_work_space():
     model_group.add_model([MODEL_FILE_1, MODEL_FILE_2])
     model_group.cal_max_size_of_workspace(mslite.ModelType.MINDIR, model_group_context)
     # model inference
+    context = mslite.Context()
+    context.target = ["ascend"]
+    context.ascend.device_id = DEVICE_ID
+    model1 = mslite.Model()
+    model1.build_from_file(MODEL_FILE_1, mslite.ModelType.MINDIR, context)
+    model2 = mslite.Model()
+    model2.build_from_file(MODEL_FILE_1, mslite.ModelType.MINDIR, context)
+    _, num = subprocess.getstatusoutput("npu-smi info | sed -n '/Process memory/='")
+    cmd = f"npu-smi info | sed -n {(DEVICE_ID + 1) * 2 + (int(num))}p" + " | awk '{print $9}'"
+    _, ret = subprocess.getstatusoutput(cmd)
+    memory_cost = int(ret)
+    assert 2412<memory_cost<4824
     model_infer(MODEL_FILE_1)
     model_infer(MODEL_FILE_2)
 
@@ -69,9 +81,21 @@ def test_model_group_for_shared_weight_space():
     model_group_context = mslite.Context()
     model_group_context.target = ["ascend"]
     model_group_context.ascend.device_id = DEVICE_ID
-    model_group = mslite.ModelGroup(mslite.ModelGroupFlag.SHARE_WEIGHT_WORKSPACE)
+    model_group = mslite.ModelGroup(mslite.ModelGroupFlag.SHARE_WEIGHT)
     model_group.add_model([MODEL_FILE_1, MODEL_FILE_2])
     model_group.cal_max_size_of_workspace(mslite.ModelType.MINDIR, model_group_context)
     # model inference
+    context = mslite.Context()
+    context.target = ["ascend"]
+    context.ascend.device_id = DEVICE_ID
+    model1 = mslite.Model()
+    model1.build_from_file(MODEL_FILE_1, mslite.ModelType.MINDIR, context)
+    model2 = mslite.Model()
+    model2.build_from_file(MODEL_FILE_1, mslite.ModelType.MINDIR, context)
+    _, num = subprocess.getstatusoutput("npu-smi info | sed -n '/Process memory/='")
+    cmd = f"npu-smi info | sed -n {(DEVICE_ID + 1) * 2 + (int(num))}p" + " | awk '{print $9}'"
+    _, ret = subprocess.getstatusoutput(cmd)
+    memory_cost = int(ret)
+    assert 2412<memory_cost<4824
     model_infer(MODEL_FILE_1)
     model_infer(MODEL_FILE_2)

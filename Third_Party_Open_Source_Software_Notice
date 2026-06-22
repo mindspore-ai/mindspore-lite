@@ -2968,7 +2968,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 For more information, please refer to <http://unlicense.org>
 
-Software: google/protobuf 3.13.0
+Software: google/protobuf 6.33.1
 Copyright 2008 Google Inc. All rights reserved.
 Copyright 2008 Google Inc. All rights reserved.
 Copyright 2007-2010 Baptiste Lepilleur Distributed under MIT license, or public domain if desired and recognized in your jurisdiction.
@@ -4524,7 +4524,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-Software: abseil-cpp 20210324.2
+Software: abseil-cpp 20250512.1
 Copyright notice:
 Copyright 2016 Google Inc. All Rights Reserved.
 Copyright 2017 Google Inc. All Rights Reserved.
@@ -4532,6 +4532,11 @@ Copyright 2017 The Abseil Authors.
 Copyright 2018 The Abseil Authors.
 Copyright 2019 The Abseil Authors.
 Copyright 2020 The Abseil Authors.
+Copyright 2021 The Abseil Authors.
+Copyright 2022 The Abseil Authors.
+Copyright 2023 The Abseil Authors.
+Copyright 2024 The Abseil Authors.
+Copyright 2025 The Abseil Authors.
 
 Apache License
                            Version 2.0, January 2004
