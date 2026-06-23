@@ -29,10 +29,18 @@ function Run_Build() {
 
   export MINDSPORE_LITE_PKG_ROOT_PATH=${open_source_ms_path}/output/mindspore-lite-${version}-linux-${platform}
   # install rapidjson manually.
+  # Must use master: Triton's prebuilt libtritonbackendutils.a expects the
+  # thread_local fix in GenericValue::operator[] which only exists on master
+  # (no release tag since v1.1.0). Pinning to v1.1.0 causes a TLS/non-TLS
+  # linker mismatch against the prebuilt library.
   mkdir -p ${open_source_ms_path}/mindspore-lite/tools/providers/triton/backend/third_party
   cd ${open_source_ms_path}/mindspore-lite/tools/providers/triton/backend/third_party
   if [ ! -d "RapidJSON" ]; then
-    git clone https://gitee.com/Tencent/RapidJSON.git || exit 1
+    curl -sSL -o rapidjson.tar.gz \
+      https://gitee.com/Tencent/RapidJSON/repository/archive/master.tar.gz || exit 1
+    mkdir -p RapidJSON
+    tar -xzf rapidjson.tar.gz --strip-components=1 -C RapidJSON || exit 1
+    rm -f rapidjson.tar.gz
   fi
 
   # compile triton mslite backend
