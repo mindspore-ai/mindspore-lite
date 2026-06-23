@@ -542,7 +542,7 @@ void LiteSession::MarkSharedWeight(const std::vector<kernel::KernelExec *> &kern
   for (auto *kernel : kernels) {
     MS_ASSERT(kernel != nullptr);
     if (kernel->subgraph_type() == kernel::kNotSubGraph) {
-      if (IsPackedOp(static_cast<int>(kernel::SchemaType(kernel->type())))) {
+      if (IsPackedOp(static_cast<int>(kernel::SchemaType(kernel->type()))) && kernel->desc().arch != kernel::kDSP) {
         continue;
       }
     } else {

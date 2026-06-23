@@ -15,13 +15,16 @@
  */
 
 #include "src/litert/kernel/dsp/dsp_subgraph.h"
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include "include/errorcode.h"
+#include "include/securec.h"
 #include "src/common/utils.h"
 
 namespace mindspore::kernel {
@@ -30,6 +33,67 @@ using mindspore::lite::RET_OK;
 using mindspore::lite::dsp::MemType;
 
 DspSubGraph::~DspSubGraph() { UnInit(); }
+
+int DspSubGraph::UploadConstTensor(lite::Tensor *tensor) {
+  CHECK_NULL_RETURN(tensor);
+  CHECK_NULL_RETURN(allocator_);
+  void *old_data = tensor->data();
+  if (old_data == nullptr) {
+    return RET_OK;
+  }
+  size_t data_size = tensor->Size();
+  if (data_size == 0) {
+    MS_LOG(ERROR) << "Cannot upload empty const tensor to DSP, tensor: " << tensor->tensor_name();
+    return RET_ERROR;
+  }
+  void *new_data = allocator_->Malloc(data_size);
+  if (new_data == nullptr) {
+    MS_LOG(ERROR) << "Malloc DSP memory for const tensor failed, tensor: " << tensor->tensor_name()
+                  << ", size: " << data_size;
+    return RET_ERROR;
+  }
+  if (memcpy_s(new_data, data_size, old_data, data_size) != EOK) {
+    MS_LOG(ERROR) << "Copy const tensor data to DSP memory failed, tensor: " << tensor->tensor_name()
+                  << ", size: " << data_size;
+    allocator_->Free(new_data);
+    return RET_ERROR;
+  }
+
+  tensor->FreeData();
+  tensor->set_allocator(nullptr);
+  tensor->set_data(nullptr, false);
+  tensor->set_allocator(allocator_);
+  tensor->set_data(new_data, true);
+  MS_LOG(DEBUG) << "Uploaded const tensor to DSP memory, tensor: " << tensor->tensor_name() << ", size: " << data_size
+                << ", host ptr: " << new_data;
+  return RET_OK;
+}
+
+int DspSubGraph::UploadConstInputs() {
+  CHECK_NULL_RETURN(allocator_);
+  std::unordered_set<lite::Tensor *> handled_tensors;
+  for (auto *node : nodes_) {
+    if (node == nullptr) {
+      MS_LOG(ERROR) << "node in Subgraph is nullptr";
+      return RET_ERROR;
+    }
+    for (auto *tensor : node->in_tensors()) {
+      CHECK_NULL_RETURN(tensor);
+      if (!handled_tensors.insert(tensor).second || !tensor->IsConst() || tensor->data() == nullptr) {
+        continue;
+      }
+      if (allocator_->HasDeviceMemPtr(tensor->data())) {
+        tensor->set_allocator(allocator_);
+        continue;
+      }
+      auto ret = UploadConstTensor(tensor);
+      if (ret != RET_OK) {
+        return ret;
+      }
+    }
+  }
+  return RET_OK;
+}
 
 void DspSubGraph::GetInOutNodes() {
   this->in_nodes_.clear();
@@ -61,11 +125,15 @@ int DspSubGraph::Prepare() {
     MS_ASSERT(tensor);
     tensor->set_allocator(allocator_);
   }
-  for (auto node : this->nodes_) {
-    if (node == nullptr) {
-      MS_LOG(ERROR) << "node in Subgraph is nullptr";
-      return mindspore::lite::RET_NULL_PTR;
-    }
+  if (std::any_of(nodes_.begin(), nodes_.end(), [](const auto *node) { return node == nullptr; })) {
+    MS_LOG(ERROR) << "node in Subgraph is nullptr";
+    return mindspore::lite::RET_NULL_PTR;
+  }
+  auto ret = UploadConstInputs();
+  if (ret != RET_OK) {
+    return ret;
+  }
+  for (auto *node : nodes_) {
     for (const auto tensor : node->out_tensors()) {
       CHECK_NULL_RETURN(tensor);
       MS_CHECK_TRUE_RET(tensor->data() == nullptr, RET_ERROR);
