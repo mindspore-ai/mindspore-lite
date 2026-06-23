@@ -45,7 +45,7 @@ void LiteModel::Free() {
     this->buf = nullptr;
   }
   if (this->buf != nullptr && !this->model_buf_by_mmap_) {
-    delete[](this->buf);
+    delete[] (this->buf);
     this->buf = nullptr;
   }
   auto nodes_size = this->graph_.all_nodes_.size();
@@ -473,7 +473,8 @@ int LiteModel::ConstructModel(const char *model_buf, size_t size, bool take_buf)
     return ret;
   }
 
-  flatbuffers::Verifier verify((const uint8_t *)this->buf, this->buf_size_, INT32_MAX, INT32_MAX);
+  flatbuffers::Verifier verify((const uint8_t *)this->buf, this->buf_size_, FLATBUFFERS_MAX_DEPTH,
+                               FLATBUFFERS_MAX_TABLES);
   schema_version_ = VersionVerify(&verify);
   if (schema_version_ == SCHEMA_INVALID) {
     MS_LOG(ERROR) << "The model buffer is invalid and fail to create graph.";
