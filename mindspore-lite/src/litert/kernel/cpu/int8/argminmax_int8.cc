@@ -111,10 +111,16 @@ int ArgMinMaxInt8CPUKernel::ReSize() {
   }
   compute_param_->topk_ = MSMIN(param->topk_, in_shape.at(axis));
   CHECK_NULL_RETURN(in_shape.data());
-  ComputeStrides(in_shape.data(), compute_param_->in_strides_, in_shape.size());
+  int ret = ComputeStrides(in_shape.data(), compute_param_->in_strides_, in_shape.size());
+  if (ret != NNACL_OK) {
+    return RET_ERROR;
+  }
   auto out_shape = out_tensors_.at(0)->shape();
   CHECK_NULL_RETURN(out_shape.data());
-  ComputeStrides(out_shape.data(), compute_param_->out_strides_, out_shape.size());
+  ret = ComputeStrides(out_shape.data(), compute_param_->out_strides_, out_shape.size());
+  if (ret != NNACL_OK) {
+    return RET_ERROR;
+  }
   return RET_OK;
 }
 

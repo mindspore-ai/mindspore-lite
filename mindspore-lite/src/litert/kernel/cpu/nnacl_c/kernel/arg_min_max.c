@@ -45,11 +45,17 @@ int ArgMinMaxResize(KernelBase *self) {
 
   TensorC *input_tensor = self->in_[FIRST_INPUT];
   NNACL_CHECK_NULL_RETURN_ERR(input_tensor);
-  ComputeStrides(input_tensor->shape_, compute->in_strides_, input_tensor->shape_size_);
+  int ret = ComputeStrides(input_tensor->shape_, compute->in_strides_, input_tensor->shape_size_);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
 
   TensorC *output_tensor = self->out_[OUTPUT_INDEX];
   NNACL_CHECK_NULL_RETURN_ERR(output_tensor);
-  ComputeStrides(output_tensor->shape_, compute->out_strides_, output_tensor->shape_size_);
+  ret = ComputeStrides(output_tensor->shape_, compute->out_strides_, output_tensor->shape_size_);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
 
   compute->dims_size_ = (int)input_tensor->shape_size_;
   compute->axis_ = compute->axis_ < 0 ? compute->axis_ + compute->dims_size_ : compute->axis_;

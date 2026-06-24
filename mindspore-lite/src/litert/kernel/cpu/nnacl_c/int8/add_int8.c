@@ -258,7 +258,10 @@ int ElementAddInt8(const int8_t *in0, const int8_t *in1, int8_t *out, int size) 
 
 int BroadcastAddInt8(const int8_t *in0, const int8_t *in1, int8_t *tile_in0, int8_t *tile_in1, int8_t *out, int size,
                      ArithmeticParameter *param) {
-  TileDimensionsInt8(in0, in1, tile_in0, tile_in1, param);
+  int ret = TileDimensionsInt8(in0, in1, tile_in0, tile_in1, param);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
   return ElementAddInt8(tile_in0, tile_in1, out, size);
 }
 

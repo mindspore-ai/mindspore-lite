@@ -26,8 +26,8 @@
 extern "C" {
 #endif
 
-void CalcMultiplesAndStrides(ArithmeticParameter *param);
-void CalcStructMultiplesAndStrides(ArithmeticStruct *arithmetic);
+int CalcMultiplesAndStrides(ArithmeticParameter *param);
+int CalcStructMultiplesAndStrides(ArithmeticStruct *arithmetic);
 
 #ifdef __cplusplus
 }

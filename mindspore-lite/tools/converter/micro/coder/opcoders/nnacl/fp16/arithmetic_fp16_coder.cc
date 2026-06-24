@@ -17,6 +17,7 @@
 #include "coder/opcoders/file_collector.h"
 #include "coder/log.h"
 #include "nnacl_c/broadcast_to_parameter.h"
+#include "nnacl_c/errorcode.h"
 #include "base/float16.h"
 
 namespace mindspore::lite::micro::nnacl {
@@ -68,7 +69,10 @@ int ArithmeticFP16Coder::Prepare(CoderContext *const context) {
 }
 
 int ArithmeticFP16Coder::ReSize(CoderContext *const context) {
-  CalcMultiplesAndStrides(arithmetic_parameter_);
+  int ret = CalcMultiplesAndStrides(arithmetic_parameter_);
+  if (ret != NNACL_OK) {
+    return RET_ERROR;
+  }
   if (input_tensor_->shape() != output_tensor_->shape() && filter_tensor_->shape() != output_tensor_->shape()) {
     broadcast_temp_ = allocator_->Malloc(kNumberTypeFloat16, output_tensor_->Size(), kWorkspace);
     MS_CHECK_TRUE_MSG(broadcast_temp_ != nullptr, RET_NULL_PTR, "malloc broadcast temp data failed");

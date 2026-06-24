@@ -16,10 +16,16 @@
 
 #include "nnacl_c/fp32/reverse_sequence_fp32.h"
 
-void ReverseSequence(const float *input0, const void *input1, float *output, ReverseSequenceParameter *para) {
+int ReverseSequence(const float *input0, const void *input1, float *output, ReverseSequenceParameter *para) {
   (void)memcpy(output, input0, para->total_data_size_);
-  ComputeStrides(para->input_shape0_, para->input_stride_, para->ndim_);
-  ComputeStrides(para->output_shape_, para->output_stride_, para->ndim_);
+  int ret = ComputeStrides(para->input_shape0_, para->input_stride_, para->ndim_);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
+  ret = ComputeStrides(para->output_shape_, para->output_stride_, para->ndim_);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
   for (int i = 0; i < para->outer_count_; ++i) {
     const float *in = input0 + i * para->outer_stride_;
     float *out = output + i * para->outer_stride_;
@@ -27,7 +33,9 @@ void ReverseSequence(const float *input0, const void *input1, float *output, Rev
       const float *in_batch = in + batch * para->input_stride_[para->batch_axis_];
       float *out_batch = out + batch * para->output_stride_[para->batch_axis_];
       int32_t seq_length = para->is_seq_length_int32_ ? *((int32_t *)input1 + batch) : *((int64_t *)input1 + batch);
-      NNACL_CHECK_TRUE_RET_VOID(seq_length <= para->input_shape0_[para->seq_axis_]);
+      if (seq_length > para->input_shape0_[para->seq_axis_]) {
+        return NNACL_ERR;
+      }
       for (int n = 0; n < seq_length; ++n) {
         const float *in_seq = in_batch + (seq_length - 1 - n) * para->input_stride_[para->seq_axis_];
         float *out_seq = out_batch + n * para->output_stride_[para->seq_axis_];
@@ -37,4 +45,5 @@ void ReverseSequence(const float *input0, const void *input1, float *output, Rev
       }
     }
   }
+  return NNACL_OK;
 }

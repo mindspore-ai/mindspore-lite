@@ -19,6 +19,7 @@
 #include "src/litert/kernel_registry.h"
 #include "nnacl_c/op_base.h"
 #include "include/api/format.h"
+#include "nnacl_c/errorcode.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;
@@ -239,8 +240,14 @@ int MulInt8CPUKernel::Run() {
       ctx_->allocator->Free(input0_data_);
       return RET_ERROR;
     }
-    TileDimensionsInt8(static_cast<int8_t *>(in_tensors_.at(0)->MutableData()),
-                       static_cast<int8_t *>(in_tensors_.at(1)->MutableData()), input0_data_, input1_data_, tile_para);
+    int tile_ret = TileDimensionsInt8(static_cast<int8_t *>(in_tensors_.at(0)->MutableData()),
+                                      static_cast<int8_t *>(in_tensors_.at(1)->MutableData()), input0_data_,
+                                      input1_data_, tile_para);
+    if (tile_ret != NNACL_OK) {
+      ctx_->allocator->Free(input0_data_);
+      ctx_->allocator->Free(input1_data_);
+      return RET_ERROR;
+    }
     ret = ParallelLaunch(this->ms_context_, MulInt8Run, this, thread_count_);
     ctx_->allocator->Free(input0_data_);
     ctx_->allocator->Free(input1_data_);

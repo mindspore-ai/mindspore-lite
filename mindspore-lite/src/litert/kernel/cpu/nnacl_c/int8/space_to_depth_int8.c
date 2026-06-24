@@ -31,8 +31,14 @@ int SpaceToDepthForNHWCInt8(const int8_t *input, int8_t *output, const int32_t *
   int block_size = param->block_size_;
   int in_strides[C4NUM];
   int out_strides[C4NUM];
-  ComputeStrides(in_shape, in_strides, shape_size);
-  ComputeStrides(out_shape, out_strides, shape_size);
+  int ret = ComputeStrides(in_shape, in_strides, shape_size);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
+  ret = ComputeStrides(out_shape, out_strides, shape_size);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
 
   const float output_inverse_scale = 1.f / out_quant_arg->scale_;
   float scale = in_quant_arg->scale_ * output_inverse_scale;

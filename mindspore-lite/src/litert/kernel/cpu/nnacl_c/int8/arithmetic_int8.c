@@ -38,13 +38,17 @@ void TileOneDimensionInt8(const int8_t *inData, int8_t *outData, int dim, size_t
   }
 }
 
-void TileDimensionsInt8(const int8_t *data0, const int8_t *data1, int8_t *tile_data0, int8_t *tile_data1,
-                        ArithmeticParameter *param) {
-  CalcMultiplesAndStrides(param);
+int TileDimensionsInt8(const int8_t *data0, const int8_t *data1, int8_t *tile_data0, int8_t *tile_data1,
+                       ArithmeticParameter *param) {
+  int ret = CalcMultiplesAndStrides(param);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
   TileOneDimensionInt8(data0, tile_data0, 0, param->ndim_, param->in_shape0_, param->in_strides0_, param->out_strides_,
                        param->multiples0_);
   TileOneDimensionInt8(data1, tile_data1, 0, param->ndim_, param->in_shape1_, param->in_strides1_, param->out_strides_,
                        param->multiples1_);
+  return NNACL_OK;
 }
 
 #define ACCURACY_DATA 0.00000001

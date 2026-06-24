@@ -17,7 +17,7 @@
 #include "nnacl_c/base/arithmetic_base.h"
 #include "nnacl_c/kernel/arithmetic.h"
 
-void CalcMultiplesAndStrides(ArithmeticParameter *param) {
+int CalcMultiplesAndStrides(ArithmeticParameter *param) {
   for (size_t i = 0; i < param->ndim_; i++) {
     if (param->in_shape0_[i] != 0) {
       param->multiples0_[i] = param->out_shape_[i] / param->in_shape0_[i];
@@ -27,12 +27,18 @@ void CalcMultiplesAndStrides(ArithmeticParameter *param) {
     }
   }
   // cal strides
-  ComputeStrides(param->in_shape0_, param->in_strides0_, param->ndim_);
-  ComputeStrides(param->in_shape1_, param->in_strides1_, param->ndim_);
-  ComputeStrides(param->out_shape_, param->out_strides_, param->ndim_);
+  int ret = ComputeStrides(param->in_shape0_, param->in_strides0_, param->ndim_);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
+  ret = ComputeStrides(param->in_shape1_, param->in_strides1_, param->ndim_);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
+  return ComputeStrides(param->out_shape_, param->out_strides_, param->ndim_);
 }
 
-void CalcStructMultiplesAndStrides(ArithmeticStruct *arithmetic) {
+int CalcStructMultiplesAndStrides(ArithmeticStruct *arithmetic) {
   for (size_t i = 0; i < arithmetic->ndim_; i++) {
     if (arithmetic->in_shape0_[i] != 0) {
       arithmetic->multiples0_[i] = arithmetic->out_shape_[i] / arithmetic->in_shape0_[i];
@@ -42,7 +48,13 @@ void CalcStructMultiplesAndStrides(ArithmeticStruct *arithmetic) {
     }
   }
   // cal strides
-  ComputeStrides(arithmetic->in_shape0_, arithmetic->in_strides0_, arithmetic->ndim_);
-  ComputeStrides(arithmetic->in_shape1_, arithmetic->in_strides1_, arithmetic->ndim_);
-  ComputeStrides(arithmetic->out_shape_, arithmetic->out_strides_, arithmetic->ndim_);
+  int ret = ComputeStrides(arithmetic->in_shape0_, arithmetic->in_strides0_, arithmetic->ndim_);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
+  ret = ComputeStrides(arithmetic->in_shape1_, arithmetic->in_strides1_, arithmetic->ndim_);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
+  return ComputeStrides(arithmetic->out_shape_, arithmetic->out_strides_, arithmetic->ndim_);
 }

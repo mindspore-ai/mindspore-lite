@@ -23,6 +23,7 @@
 #include "coder/opcoders/serializers/nnacl_serializer/nnacl_int8_serializer.h"
 #include "coder/utils/common.h"
 #include "mindspore/ops/op_def/array_ops.h"
+#include "nnacl_c/errorcode.h"
 #include "nnacl_c/int8/quantize.h"
 
 using mindspore::schema::PrimitiveType_AddFusion;
@@ -146,9 +147,18 @@ int AddInt8Coder::ReSize() {
       }
     }
 
-    ComputeStrides(arith_para_->in_shape0_, arith_para_->in_strides0_, arith_para_->ndim_);
-    ComputeStrides(arith_para_->in_shape1_, arith_para_->in_strides1_, arith_para_->ndim_);
-    ComputeStrides(arith_para_->out_shape_, arith_para_->out_strides_, arith_para_->ndim_);
+    int ret = ComputeStrides(arith_para_->in_shape0_, arith_para_->in_strides0_, arith_para_->ndim_);
+    if (ret != NNACL_OK) {
+      return RET_ERROR;
+    }
+    ret = ComputeStrides(arith_para_->in_shape1_, arith_para_->in_strides1_, arith_para_->ndim_);
+    if (ret != NNACL_OK) {
+      return RET_ERROR;
+    }
+    ret = ComputeStrides(arith_para_->out_shape_, arith_para_->out_strides_, arith_para_->ndim_);
+    if (ret != NNACL_OK) {
+      return RET_ERROR;
+    }
   }
   return RET_OK;
 }

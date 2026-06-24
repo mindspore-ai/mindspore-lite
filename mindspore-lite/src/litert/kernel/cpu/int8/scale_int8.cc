@@ -15,6 +15,7 @@
  */
 
 #include "src/litert/kernel/cpu/int8/scale_int8.h"
+#include "nnacl_c/errorcode.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
@@ -46,7 +47,10 @@ ScaleInt8CPUKernel::~ScaleInt8CPUKernel() {
 }
 
 int ScaleInt8CPUKernel::InitScaleOffset() {
-  CalcMultiplesAndStrides(tile_para);
+  int ret = CalcMultiplesAndStrides(tile_para);
+  if (ret != NNACL_OK) {
+    return RET_ERROR;
+  }
   const_scale_ = false;
   auto *scale_ptr = reinterpret_cast<int8_t *>(in_tensors_.at(1)->data());
   // scale may be const value ,can be processed in prepare stage

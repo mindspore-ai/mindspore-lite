@@ -36,13 +36,19 @@ int DepthToSpaceInt8Coder::Prepare(CoderContext *const context) {
   MS_CHECK_TRUE_MSG(out_shape.size() == DIMENSION_4D, RET_PARAM_INVALID, "output must be 4D.");
 
   int32_t in_strides[DIMENSION_4D] = {0};
-  ComputeStrides(in_shape.data(), in_strides, DIMENSION_4D);
+  int ret = ComputeStrides(in_shape.data(), in_strides, DIMENSION_4D);
+  if (ret != NNACL_OK) {
+    return RET_ERROR;
+  }
   args_.in_stride_dim0_ = in_strides[Index0];
   args_.in_stride_dim1_ = in_strides[Index1];
   args_.in_stride_dim2_ = in_strides[Index2];
 
   int32_t out_strides[DIMENSION_4D] = {0};
-  ComputeStrides(out_shape.data(), out_strides, DIMENSION_4D);
+  ret = ComputeStrides(out_shape.data(), out_strides, DIMENSION_4D);
+  if (ret != NNACL_OK) {
+    return RET_ERROR;
+  }
   args_.out_stride_dim0_ = out_strides[Index0];
   args_.out_stride_dim1_ = out_strides[Index1];
   args_.out_stride_dim2_ = out_strides[Index2];

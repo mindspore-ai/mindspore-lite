@@ -18,6 +18,7 @@
 #include "src/litert/kernel/cpu/int8/add_int8.h"
 #include "src/litert/kernel/cpu/int8/mul_int8.h"
 #include "nnacl_c/arithmetic_parameter.h"
+#include "nnacl_c/errorcode.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
@@ -177,7 +178,14 @@ int ArithmeticInt8CPUKernel::Run() {
       ms_context_->allocator->Free(tile_data0_);
       return RET_ERROR;
     }
-    TileDimensionsInt8(input_data0, input_data1, tile_data0_, tile_data1_, param);
+    int tile_ret = TileDimensionsInt8(input_data0, input_data1, tile_data0_, tile_data1_, param);
+    if (tile_ret != NNACL_OK) {
+      ms_context_->allocator->Free(tile_data0_);
+      ms_context_->allocator->Free(tile_data1_);
+      tile_data0_ = nullptr;
+      tile_data1_ = nullptr;
+      return RET_ERROR;
+    }
   }
   auto ret = ParallelLaunch(this->ms_context_, ArithmeticsInt8Launch, this, op_parameter_->thread_num_);
   if (param->broadcasting_) {

@@ -38,6 +38,8 @@ class SubInt8CPUKernel : public LiteKernel {
   int DoExecute(int task_id);
 
  private:
+  int InitBroadcastTileData();
+  void FreeTileData();
   SubQuantArg *quant_param_ = nullptr;
   int8_t *tile0_data_ = nullptr;
   int8_t *tile1_data_ = nullptr;

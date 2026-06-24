@@ -86,6 +86,8 @@ class ArithmeticBaseCPUKernel : public LiteKernel {
   // horizon: {[2, 3, 4], [1, 1, 1]} -> {[24], [1]}, vertical: {[2, 3, 4], [3, 4]} -> {[2, 12], [12]}
   int OptimizeShape();
   int UpdateParameter();
+  int BroadCastInputConstTensor(int input_index, MatricInfo *matric, int64_t *elements_num, int *input_shape,
+                                int *input_strides, bool prefer_explicit_broadcast, bool *exist_broadcast);
   int BroadCastConstTensor();
   int ComputeOfflineInfo();
   int ChooseThreadCuttingStrategy();

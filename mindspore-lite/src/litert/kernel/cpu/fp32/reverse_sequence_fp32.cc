@@ -17,6 +17,7 @@
 #include "src/litert/kernel/cpu/fp32/reverse_sequence_fp32.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
+#include "nnacl_c/errorcode.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;
@@ -108,8 +109,8 @@ int ReverseSequenceCPUKernel::Run() {
     MS_LOG(ERROR) << "seq_axis and batch_axis can't be the same.";
     return RET_ERROR;
   }
-  ReverseSequence(input0, input1, output, param);
-  return RET_OK;
+  int ret = ReverseSequence(input0, input1, output, param);
+  return ret == NNACL_OK ? RET_OK : RET_ERROR;
 }
 
 REG_KERNEL(kCPU, kNumberTypeFloat32, PrimitiveType_ReverseSequence, LiteKernelCreator<ReverseSequenceCPUKernel>)

@@ -397,10 +397,45 @@ int CheckDivDataInvalid(ArithmeticStruct *arithmetic) {
   return NNACL_OK;
 }
 
+static int ArithmeticBroadCastInput(ArithmeticStruct *arithmetic, int input_index, ArithmeticMatrixInfo *matrix,
+                                    int *elements_num, int *input_shape, int *input_strides,
+                                    bool prefer_explicit_broadcast, bool *exist_broadcast) {
+  if (!matrix->is_const_) {
+    return NNACL_OK;
+  }
+  NNACL_CHECK_NULL_RETURN_ERR(arithmetic->base_.in_[input_index]->data_);
+  if (input_index == SECOND_INPUT) {
+    int ret = CheckDivDataInvalid(arithmetic);
+    if (ret != NNACL_OK) {
+      return ret;
+    }
+  }
+  if (*elements_num == arithmetic->out_elements_num_ || !prefer_explicit_broadcast) {
+    return NNACL_OK;
+  }
+  int buffer_size = NNACLGetElementNum(arithmetic->base_.out_[OUTPUT_INDEX]) * arithmetic->in_data_size_;
+  matrix->data_ = arithmetic->base_.env_->Alloc(arithmetic->base_.env_->allocator_, buffer_size);
+  NNACL_MALLOC_CHECK_NULL_RETURN_ERR(matrix->data_);
+  arithmetic->broadcast_buffer_[input_index] = matrix->data_;
+  ArithmeticDoBroadcast(arithmetic, arithmetic->base_.in_[input_index]->data_, matrix->data_, input_index);
+  *elements_num = arithmetic->out_elements_num_;
+  for (size_t i = 0; i < arithmetic->ndim_; ++i) {
+    input_shape[i] = arithmetic->out_shape_[i];
+    input_strides[i] = arithmetic->out_strides_[i];
+  }
+  memcpy(matrix->shape_, arithmetic->c_matrix_.shape_, arithmetic->ndim_ * sizeof(int));
+  matrix->is_valid_ = true;
+  *exist_broadcast = true;
+  return NNACL_OK;
+}
+
 int ArithmeticBroadCastConstTensor(ArithmeticStruct *arithmetic) {
   NNACL_CHECK_NULL_RETURN_ERR(arithmetic);
 
-  CalcStructMultiplesAndStrides(arithmetic);
+  int ret = CalcStructMultiplesAndStrides(arithmetic);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
 
 #ifdef MSLITE_ENABLE_CLOUD_INFERENCE
   bool prefer_explicit_broadcast = false;
@@ -411,53 +446,17 @@ int ArithmeticBroadCastConstTensor(ArithmeticStruct *arithmetic) {
     prefer_explicit_broadcast && (arithmetic->base_.in_[FIRST_INPUT]->data_type_ != kNumberTypeBool);
 
   bool exist_broadcast_ = false;
-  int buffer_size = NNACLGetElementNum(arithmetic->base_.out_[OUTPUT_INDEX]) * arithmetic->in_data_size_;
-  if (arithmetic->a_matrix_.is_const_) {
-    NNACL_CHECK_NULL_RETURN_ERR(arithmetic->base_.in_[FIRST_INPUT]->data_);
-    if (arithmetic->in_elements_num0_ != arithmetic->out_elements_num_ && prefer_explicit_broadcast) {
-      exist_broadcast_ = true;
-
-      arithmetic->a_matrix_.data_ = arithmetic->base_.env_->Alloc(arithmetic->base_.env_->allocator_, buffer_size);
-      NNACL_MALLOC_CHECK_NULL_RETURN_ERR(arithmetic->a_matrix_.data_);
-      arithmetic->broadcast_buffer_[Index0] = arithmetic->a_matrix_.data_;
-
-      ArithmeticDoBroadcast(arithmetic, arithmetic->base_.in_[FIRST_INPUT]->data_, arithmetic->a_matrix_.data_, Index0);
-      arithmetic->in_elements_num0_ = arithmetic->out_elements_num_;
-
-      // shape must be equal to out
-      for (size_t i = 0; i < arithmetic->ndim_; ++i) {
-        arithmetic->in_shape0_[i] = arithmetic->out_shape_[i];
-        arithmetic->in_strides0_[i] = arithmetic->out_strides_[i];
-      }
-      memcpy(arithmetic->a_matrix_.shape_, arithmetic->c_matrix_.shape_, arithmetic->ndim_ * sizeof(int));
-      arithmetic->a_matrix_.is_valid_ = true;
-    }
+  ret = ArithmeticBroadCastInput(arithmetic, FIRST_INPUT, &arithmetic->a_matrix_, &arithmetic->in_elements_num0_,
+                                 arithmetic->in_shape0_, arithmetic->in_strides0_, prefer_explicit_broadcast,
+                                 &exist_broadcast_);
+  if (ret != NNACL_OK) {
+    return ret;
   }
-
-  if (arithmetic->b_matrix_.is_const_) {
-    NNACL_CHECK_NULL_RETURN_ERR(arithmetic->base_.in_[SECOND_INPUT]->data_);
-    int ret = CheckDivDataInvalid(arithmetic);
-    if (ret != NNACL_OK) {
-      return ret;
-    }
-    if (arithmetic->in_elements_num1_ != arithmetic->out_elements_num_ && prefer_explicit_broadcast) {
-      exist_broadcast_ = true;
-
-      arithmetic->b_matrix_.data_ = arithmetic->base_.env_->Alloc(arithmetic->base_.env_->allocator_, buffer_size);
-      NNACL_MALLOC_CHECK_NULL_RETURN_ERR(arithmetic->b_matrix_.data_);
-      arithmetic->broadcast_buffer_[Index1] = arithmetic->b_matrix_.data_;
-
-      ArithmeticDoBroadcast(arithmetic, arithmetic->base_.in_[Index1]->data_, arithmetic->b_matrix_.data_, Index1);
-      arithmetic->in_elements_num1_ = arithmetic->out_elements_num_;
-      // shape must be equal to out
-      for (size_t i = 0; i < arithmetic->ndim_; ++i) {
-        arithmetic->in_shape1_[i] = arithmetic->out_shape_[i];
-        arithmetic->in_strides1_[i] = arithmetic->out_strides_[i];
-      }
-
-      memcpy(arithmetic->b_matrix_.shape_, arithmetic->c_matrix_.shape_, arithmetic->ndim_ * sizeof(int));
-      arithmetic->b_matrix_.is_valid_ = true;
-    }
+  ret = ArithmeticBroadCastInput(arithmetic, SECOND_INPUT, &arithmetic->b_matrix_, &arithmetic->in_elements_num1_,
+                                 arithmetic->in_shape1_, arithmetic->in_strides1_, prefer_explicit_broadcast,
+                                 &exist_broadcast_);
+  if (ret != NNACL_OK) {
+    return ret;
   }
   if (!exist_broadcast_) {
     return NNACL_OK;

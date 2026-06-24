@@ -21,7 +21,10 @@
 
 int BroadcastAddFp16(const float16_t *in0, const float16_t *in1, float16_t *tile_in0, float16_t *tile_in1,
                      float16_t *out, int size, ArithmeticParameter *param) {
-  TileDimensionsFp16(in0, in1, tile_in0, tile_in1, param);
+  int ret = TileDimensionsFp16(in0, in1, tile_in0, tile_in1, param);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
   return ElementAddFp16(tile_in0, tile_in1, out, size);
 }
 
@@ -46,13 +49,17 @@ void TileOneDimensionFp16(const void *input, void *output, int dim, size_t ndim,
   }
 }
 
-void TileDimensionsFp16(const float16_t *data0, const float16_t *data1, float16_t *tile_data0, float16_t *tile_data1,
-                        ArithmeticParameter *param) {
-  CalcMultiplesAndStrides(param);
+int TileDimensionsFp16(const float16_t *data0, const float16_t *data1, float16_t *tile_data0, float16_t *tile_data1,
+                       ArithmeticParameter *param) {
+  int ret = CalcMultiplesAndStrides(param);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
   TileOneDimensionFp16(data0, tile_data0, 0, param->ndim_, param->in_shape0_, param->in_strides0_, param->out_strides_,
                        param->multiples0_);
   TileOneDimensionFp16(data1, tile_data1, 0, param->ndim_, param->in_shape1_, param->in_strides1_, param->out_strides_,
                        param->multiples1_);
+  return NNACL_OK;
 }
 
 int ElementMulFp16(const float16_t *input0, const float16_t *input1, float16_t *output, int element_size) {

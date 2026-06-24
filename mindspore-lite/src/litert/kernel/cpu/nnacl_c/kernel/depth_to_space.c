@@ -28,14 +28,20 @@ int DepthToSpaceResize(KernelBase *self) {
 
   TensorC *input = self->in_[FIRST_INPUT];
   int32_t in_strides[DIMENSION_4D] = {0};
-  ComputeStrides(input->shape_, in_strides, input->shape_size_);
+  int ret = ComputeStrides(input->shape_, in_strides, input->shape_size_);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
   args->in_stride_dim0_ = in_strides[Index0];
   args->in_stride_dim1_ = in_strides[Index1];
   args->in_stride_dim2_ = in_strides[Index2];
 
   TensorC *output = self->out_[OUTPUT_INDEX];
   int32_t out_strides[DIMENSION_4D] = {0};
-  ComputeStrides(output->shape_, out_strides, output->shape_size_);
+  ret = ComputeStrides(output->shape_, out_strides, output->shape_size_);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
   args->out_stride_dim0_ = out_strides[Index0];
   args->out_stride_dim1_ = out_strides[Index1];
   args->out_stride_dim2_ = out_strides[Index2];

@@ -18,6 +18,8 @@
 #define NNACL_NNACL_COMMON_H_
 
 #include <stdint.h>
+#include <limits.h>
+#include "nnacl_c/errorcode.h"
 #include "nnacl_c/op_base.h"
 
 #ifdef __cplusplus
@@ -65,12 +67,44 @@ static inline size_t DataTypeCSize(TypeIdC type) {
   }
 }
 
-static inline void ComputeStrides(const int *shape, int *strides, const int ndim) {
-  int stride = 1;
-  for (int i = ndim - 1; i >= 0; i--) {
-    strides[i] = stride;
-    stride *= shape[i];
+static inline int ComputeStrideOverflowCheck(int dim, int64_t stride) {
+  int stride_overflow = stride > INT_MAX || stride < INT_MIN;
+  int dynamic_shape = dim == -1 || stride < 0;
+  int mul_overflow = !dynamic_shape && dim != 0 && stride > INT_MAX / dim;
+  if (stride_overflow || mul_overflow) {
+    return NNACL_ERRCODE_MUL_OVERFLOW;
   }
+  return NNACL_OK;
+}
+
+static inline int ComputeStrideCheck(const int *shape, int index, int64_t stride) {
+  int dim = shape[index];
+  if (dim < -1) {
+    return NNACL_ERR;
+  }
+  return ComputeStrideOverflowCheck(dim, stride);
+}
+
+static inline int ComputeStrideByIndex(const int *shape, int *strides, int index, int64_t *stride) {
+  int ret = ComputeStrideCheck(shape, index, *stride);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
+  strides[index] = (int)(*stride);
+  *stride *= shape[index];
+  return NNACL_OK;
+}
+
+static inline int ComputeStrides(const int *shape, int *strides, const int ndim) {
+  if (shape == NULL || strides == NULL || ndim < 0) {
+    return NNACL_ERR;
+  }
+  int64_t stride = 1;
+  int ret = NNACL_OK;
+  for (int i = ndim - 1; i >= 0 && ret == NNACL_OK; i--) {
+    ret = ComputeStrideByIndex(shape, strides, i, &stride);
+  }
+  return ret;
 }
 
 static inline void ComputeAxisDims(const int *shape, int shape_size, int axis, int *out_count, int *axis_count,

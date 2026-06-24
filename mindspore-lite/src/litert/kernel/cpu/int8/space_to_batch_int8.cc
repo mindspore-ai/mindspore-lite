@@ -15,6 +15,7 @@
  */
 #include "src/litert/kernel/cpu/int8/space_to_batch_int8.h"
 #include "src/litert/kernel_registry.h"
+#include "nnacl_c/errorcode.h"
 #include "nnacl_c/fp32/space_to_batch_fp32.h"
 #include "nnacl_c/int8/space_to_batch_int8.h"
 
@@ -43,7 +44,9 @@ int SpaceToBatchInt8CPUKernel::Run() {
   if (param->need_paddings_) {
     DoSpaceToBatchPaddingNHWCInt8(input_ptr, output_ptr, param, quant_arg.zeroPoint);
   } else {
-    DoSpaceToBatchNHWCInt8(input_ptr, output_ptr, param->block_sizes_, param->input_shape_, param->output_shape_);
+    int ret =
+      DoSpaceToBatchNHWCInt8(input_ptr, output_ptr, param->block_sizes_, param->input_shape_, param->output_shape_);
+    return ret == NNACL_OK ? RET_OK : RET_ERROR;
   }
   return RET_OK;
 }
