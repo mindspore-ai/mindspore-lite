@@ -70,12 +70,8 @@ int StridedSliceGradInferShape(const TensorC *const *inputs, size_t inputs_size,
   if (inferflag) {
     ShapeSet(in_shape_, &in_shape_size, input->shape_, input->shape_size_);
   }
-  int begins_[MAX_SHAPE_SIZE] = {0};
-  size_t begins_size = 0;
-  int ends_[MAX_SHAPE_SIZE] = {0};
-  size_t ends_size = 0;
-  int strides_[MAX_SHAPE_SIZE] = {0};
-  size_t strides_size = 0;
+  int begins_[MAX_SHAPE_SIZE] = {0}, ends_[MAX_SHAPE_SIZE] = {0}, strides_[MAX_SHAPE_SIZE] = {0};
+  size_t begins_size = 0, ends_size = 0, strides_size = 0;
 
   if (!StridedSliceCheckInputs(inputs, inputs_size)) {
     return NNACL_INFER_INVALID;
@@ -155,6 +151,15 @@ int StridedSliceGradInferShape(const TensorC *const *inputs, size_t inputs_size,
   }
   for (int i = 0; i < output_size; i++) {
     ShapePush(output_shape, &output_shape_size, ((int *)(inputs[1]->data_))[i]);
+  }
+  for (size_t i = 0; i < ndim_; ++i) {
+    int begin_val = begins_[i];
+    if (begin_val < 0) {
+      begin_val += in_shape_[i];
+    }
+    if (begin_val >= output_shape[i]) {
+      return NNACL_INFER_INVALID;
+    }
   }
   SetShapeArray(outputs[0], output_shape, output_shape_size);
   return NNACL_OK;

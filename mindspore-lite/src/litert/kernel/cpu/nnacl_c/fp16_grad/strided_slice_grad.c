@@ -43,6 +43,11 @@ int DoStridedSliceFp16Grad(const float16_t *inputs, float16_t *output, const int
     size *= param->in_shape_[i];
   }
 
+  size_t output_size = 1;
+  for (int i = 0; i < DIMENSION_7D; i++) {
+    output_size *= (size_t)dx_shape[i];
+  }
+
   for (size_t pos = 0; pos < size; pos++) {
     size_t i = CalcIndex(param->in_shape_, C6NUM, C0NUM, pos);
     size_t j = CalcIndex(param->in_shape_, C5NUM, C1NUM, pos);
@@ -61,6 +66,9 @@ int DoStridedSliceFp16Grad(const float16_t *inputs, float16_t *output, const int
       (l * s[C3NUM] + b[C3NUM]) * dx_shape[C4NUM] * dx_shape[C5NUM] * dx_shape[C6NUM] +
       (m * s[C4NUM] + b[C4NUM]) * dx_shape[C5NUM] * dx_shape[C6NUM] + (n * s[C5NUM] + b[C5NUM]) * dx_shape[C6NUM] +
       (o * s[C6NUM] + b[C6NUM]);
+    if (input_idx >= output_size) {
+      return NNACL_ERRCODE_INDEX_OUT_OF_RANGE;
+    }
     output[input_idx] = inputs[pos];
   }
   return NNACL_OK;
