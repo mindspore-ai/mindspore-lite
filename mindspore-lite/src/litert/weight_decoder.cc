@@ -249,6 +249,20 @@ STATUS WeightDecoder::SparseDecompress(const SchemaTensorWrapper &src_tensor, Te
   std::vector<size_t> unique_value_index_vec;
   auto elem_cnt = dst_tensor->ElementsNum();
   size_t unique_value_bit = static_cast<size_t>(ceil(log2(unique_value_cnt)));
+
+  // Validate nz_cnt semantic upper bound
+  if (nz_cnt > static_cast<size_t>(elem_cnt)) {
+    MS_LOG(ERROR) << "Invalid sparse data: nz_cnt (" << nz_cnt << ") > elem_cnt (" << elem_cnt << ")";
+    return RET_ERROR;
+  }
+  // Validate bitstream capacity is sufficient
+  size_t bits_required = nz_cnt * (unique_value_bit + coor_best_bit);
+  if (index + bits_required > bit_vec.size()) {
+    MS_LOG(ERROR) << "Invalid sparse data: need " << bits_required << " bits but only " << (bit_vec.size() - index)
+                  << " remain";
+    return RET_ERROR;
+  }
+
   for (size_t i = 0; i < nz_cnt; i++) {
     size_t unique_value_index = 0;
     for (size_t j = 0; j < unique_value_bit; j++) {
@@ -344,6 +358,15 @@ STATUS WeightDecoder::IndexingDecompress(const SchemaTensorWrapper &src_tensor, 
   std::vector<size_t> unique_value_index_vec;
   auto elem_cnt = dst_tensor->ElementsNum();
   size_t unique_value_bit = static_cast<size_t>(ceil(log2(unique_value_cnt)));
+
+  // Validate bitstream capacity is sufficient
+  size_t bits_required = static_cast<size_t>(elem_cnt) * unique_value_bit;
+  if (index + bits_required > bit_vec.size()) {
+    MS_LOG(ERROR) << "Invalid indexing data: need " << bits_required << " bits but only " << (bit_vec.size() - index)
+                  << " remain";
+    return RET_ERROR;
+  }
+
   for (int i = 0; i < elem_cnt; i++) {
     size_t unique_value_index = 0;
     for (size_t j = 0; j < unique_value_bit; j++) {
