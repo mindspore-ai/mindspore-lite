@@ -65,12 +65,18 @@ int SparseToDenseFp16(int *indices_vec, const float16_t *sparse_values, float16_
     for (int i = begin; i < end; i++) {
       int *indices = indices_vec + i * DIMENSION_4D;
       int index = stride0 * indices[0] + stride1 * indices[1] + stride2 * indices[2] + indices[3];
+      if (index < 0 || index >= param->output_num) {
+        return NNACL_ERR;
+      }
       output[index] = sparse_values[0];
     }
   } else {
     for (int i = begin; i < end; i++) {
       int *indices = indices_vec + i * DIMENSION_4D;
       int index = stride0 * indices[0] + stride1 * indices[1] + stride2 * indices[2] + indices[3];
+      if (index < 0 || index >= param->output_num) {
+        return NNACL_ERR;
+      }
       output[index] = sparse_values[i];
     }
   }

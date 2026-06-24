@@ -129,6 +129,12 @@ void ConvertTensorsQuantParam(const schema::Tensor *src_tensor, lite::Tensor *ds
         quant_arg.min = quant_param->min();
         quant_arg.max = quant_param->max();
       }
+      if (dst_tensor->data_type() == kNumberTypeInt8 && quant_arg.inited &&
+          (quant_arg.zeroPoint < INT8_MIN || quant_arg.zeroPoint > INT8_MAX)) {
+        MS_LOG(ERROR) << "Invalid zeroPoint " << quant_arg.zeroPoint << " for int8 tensor, clamping to [" << INT8_MIN
+                      << ", " << INT8_MAX << "]";
+        quant_arg.zeroPoint = std::max(INT8_MIN, std::min(INT8_MAX, quant_arg.zeroPoint));
+      }
       dst_tensor->AddQuantParam(quant_arg);
     }
   }

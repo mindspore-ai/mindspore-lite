@@ -185,6 +185,28 @@ int SparseToDenseCPUKernel::GenerateIndices() {
       return RET_ERROR;
     }
   }
+
+  return ValidateIndices();
+}
+
+int SparseToDenseCPUKernel::ValidateIndices() {
+  auto output = out_tensors_[kOutputIndex];
+  int output_dim = static_cast<int>(output->shape().size());
+  int expand_shape[4] = {1, 1, 1, 1};
+  for (int i = 0; i < DIMENSION_4D; i++) {
+    int pad_dims = DIMENSION_4D - output_dim;
+    expand_shape[i] = i >= pad_dims ? output->DimensionSize(i - pad_dims) : 1;
+  }
+  for (int i = 0; i < param_->index_num; i++) {
+    for (int j = 0; j < DIMENSION_4D; j++) {
+      int component = indices_vec_[i * DIMENSION_4D + j];
+      if (component < 0 || component >= expand_shape[j]) {
+        MS_LOG(ERROR) << "sparse_indices[" << i << "][" << j << "] = " << component
+                      << " out of bounds, valid range: [0, " << expand_shape[j] << ")";
+        return RET_ERROR;
+      }
+    }
+  }
   return RET_OK;
 }
 

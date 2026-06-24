@@ -128,7 +128,7 @@ int GatherNdInt8CPUKernel::InitOffset() {
     for (int k = 0; k < idx_lastshape; ++k) {
       int tmp = static_cast<int>(
         round((indices_ptr[j * idx_stride + k] - ind_quant_args.front().zeroPoint) * ind_quant_args.front().scale));
-      if (tmp < in_shape[k]) {
+      if (tmp >= 0 && tmp < in_shape[k]) {
         in_offset_[j] += tmp * in_stride[k];
       } else {
         MS_LOG(ERROR) << name() << " indices value invalid!";

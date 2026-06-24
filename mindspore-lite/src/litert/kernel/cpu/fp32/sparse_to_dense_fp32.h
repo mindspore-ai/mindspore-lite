@@ -41,6 +41,7 @@ class SparseToDenseCPUKernel : public LiteKernel {
 
  private:
   int GenerateIndices();
+  int ValidateIndices();
   void FreeRunBuff();
   SparseToDenseParameter *param_;
   int *indices_vec_ = nullptr;

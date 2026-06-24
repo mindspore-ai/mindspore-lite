@@ -44,7 +44,7 @@ int ROIPooling(const float *in_ptr, float *out_ptr, const float *roi, float *max
   int roi_ind_st = roi_st * roi_stride;
   for (int i = roi_st; i < roi_end; ++i) {
     int roi_batch_ind = (int)roi[roi_ind_st];  // batch_index
-    if (roi_batch_ind >= batch_size) {
+    if (roi_batch_ind < 0 || roi_batch_ind >= batch_size) {
       return NNACL_ERRCODE_INDEX_OUT_OF_RANGE;
     }
     int roi_start_h = (int)roundf(roi[roi_ind_st + 1] * scale);  // top-left x1
