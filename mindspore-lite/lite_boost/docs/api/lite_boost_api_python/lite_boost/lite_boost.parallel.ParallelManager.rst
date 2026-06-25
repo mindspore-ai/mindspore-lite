@@ -14,10 +14,8 @@ lite_boost.parallel.ParallelManager
 
     模型在原地修改后原样返回，因此所有已有的属性和方法（ ``.to`` 、``.cpu`` 、``.eval`` 等）均可正常使用。
 
-    内部的补丁替换由 :func:`lite_boost.model.setup_model` 分发执行，该函数自动检测模型类型并应用对应的适配器（例如，将 ``flash_attention`` 替换为NPU兼容版本，在注意力层前后插入 ``all_to_all`` 通信对，以及将DP时间切片绑定到VAE的encode/decode方法）。
-
     参数：
-        - **target** (object) – 需要并行化的支持流水线对象，模型类型通过 :func:`lite_boost.model.setup_model` 自动检测，支持的类包括 ``WanT2V`` 和 ``WanTI2V`` 。
+        - **target** (object) - 需要并行化的支持流水线对象，支持的类包括 ``WanT2V`` 和 ``WanTI2V`` 。
 
     返回：
         object，与输入相同的实例，已原地修改为USP补丁后的forward和注意力方法（DiT）以及DP补丁后的encode/decode方法（VAE）。

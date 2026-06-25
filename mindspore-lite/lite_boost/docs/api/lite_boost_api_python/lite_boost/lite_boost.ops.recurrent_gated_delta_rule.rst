@@ -9,10 +9,10 @@ lite_boost.ops.recurrent_gated_delta_rule
 
     算法流程（对每个batch中的每个token依次执行）：
 
-        1. 状态衰减：  S = S * exp(g) * exp(gk)
-        2. 记忆检索：  kv_mem = S^T @ k
-        3. Delta更新：S = S + k^T @ ((v - kv_mem) * beta)
-        4. 输出计算：  o = S^T @ q
+    1. 状态衰减：  S = S * exp(g) * exp(gk)
+    2. 记忆检索：  kv_mem = S^T @ k
+    3. Delta更新：S = S + k^T @ ((v - kv_mem) * beta)
+    4. 输出计算：  o = S^T @ q
 
     其中S是递推状态矩阵 ``[H, D_k, D_v]`` ，存储了线性注意力的key-value关联信息。
 
@@ -30,47 +30,17 @@ lite_boost.ops.recurrent_gated_delta_rule
         - **scale_value** (float, 可选) - 注意力缩放因子。通常设为 ``1.0 / sqrt(D_k)`` ，与标准注意力缩放一致。query在计算前会乘以此缩放因子。默认值： ``1.0`` 。
 
     返回：
-        tuple[Tensor, Tensor]:
+        tuple[Tensor, Tensor]
 
-            - **out** (Tensor) - 注意力输出，shape ``[B, H_v, T, D_v]`` ，dtype=bfloat16。每个token位置的线性注意力计算结果。
-            - **state_out** (Tensor) - 更新后的递推状态，shape ``[B, H_v, D_k, D_v]`` ，dtype=bfloat16。需在下一步递推时作为 ``state`` 输入传入，形成状态传递链。
+        - **out** (Tensor) - 注意力输出，shape ``[B, H_v, T, D_v]`` ，dtype=bfloat16。每个token位置的线性注意力计算结果。
+        - **state_out** (Tensor) - 更新后的递推状态，shape ``[B, H_v, D_k, D_v]`` ，dtype=bfloat16。需在下一步递推时作为 ``state`` 输入传入，形成状态传递链。
 
     异常：
         - **RuntimeError** - 输入张量形状、dtype或设备不符合要求，或CANN算子执行失败时抛出。
 
-    注：：
+    .. note::
+
         - 本算子仅支持 **decode阶段** （逐token推理），序列长度T不应超过8。Prefill阶段的并行计算请使用chunk-level算子。
         - 支持GQA (Grouped Query Attention) / MQA (Multi-Query Attention)模式，即H_q可以大于H_v，多个查询头共享同一组key/value头。
         - 所有输入张量必须在同一NPU设备上。
         - CANN算子内部状态存储为 ``[B, H_v, D_v, D_k]`` 布局（value维度在前），本函数会自动进行布局转换。
-
-    样例::
-
-        import torch
-        import lite_boost.ops as lite_ops
-
-        # Qwen3.5-2B decode配置
-        B, H, T, Dk, Dv = 1, 64, 1, 64, 512
-
-        # 初始化输入（需满足CANN算子约束）
-        query  = torch.randn(B, H, T, Dk, device="npu:0", dtype=torch.bfloat16)
-        key    = torch.randn(B, H, T, Dk, device="npu:0", dtype=torch.bfloat16)
-        value  = torch.randn(B, H, T, Dv, device="npu:0", dtype=torch.bfloat16)
-        beta   = torch.rand(B, H, T, device="npu:0", dtype=torch.bfloat16) * 0.9 + 0.05
-        state  = torch.zeros(B, H, Dk, Dv, device="npu:0", dtype=torch.bfloat16)
-        g      = -(torch.rand(B, H, T, device="npu:0") + 0.01)       # 负值
-        gk     = -(torch.rand(B, H, T, Dk, device="npu:0") + 0.01)   # 负值
-
-        actual_seq_lengths    = torch.tensor([T], dtype=torch.int32, device="npu:0")
-        ssm_state_indices     = torch.tensor([0], dtype=torch.int32, device="npu:0")
-        num_accepted_tokens   = torch.tensor([T], dtype=torch.int32, device="npu:0")
-
-        # 执行递推推理
-        output, state_out = lite_ops.recurrent_gated_delta_rule(
-            query, key, value, beta, state,
-            actual_seq_lengths, ssm_state_indices,
-            g, gk, num_accepted_tokens,
-            scale_value=1.0 / (Dk ** 0.5),
-        )
-        # output:    [1, 64, 1, 512]  -- 当前token的注意力输出
-        # state_out: [1, 64, 64, 512] -- 更新后的递推状态，传给下一步推理

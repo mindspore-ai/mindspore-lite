@@ -60,9 +60,10 @@ def chunk_gated_delta_rule(
         scale_value (float):    attention scale; default 1/sqrt(D_k).
 
     Returns:
-        (out, final_state):
-            out         [B, H_v, T, D_v]   float16 attention output.
-            final_state [B, H_v, D_k, D_v] float16 updated recurrent state.
+        tuple[Tensor, Tensor]
+
+        - **out** (Tensor) — Attention output of shape ``[B, H_v, T, D_v]``, dtype=float16.
+        - **final_state** (Tensor) — Updated recurrent state of shape ``[B, H_v, D_k, D_v]``, dtype=float16.
     """
     batch_size = query.shape[0]
     num_heads_q = query.shape[1]
