@@ -51,6 +51,8 @@ class DspSubGraph : public SubGraphKernel {
  private:
   void UnInit();
   void GetInOutNodes();
+  int UploadConstInputs();
+  int UploadConstTensor(lite::Tensor *tensor);
 
  private:
   std::shared_ptr<lite::dsp::DSPAllocator> allocator_{nullptr};

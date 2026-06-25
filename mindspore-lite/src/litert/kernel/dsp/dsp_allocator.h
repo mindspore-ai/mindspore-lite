@@ -55,6 +55,7 @@ class DSPAllocator : public mindspore::Allocator {
 
   void Clear();
   MemType GetMemType(void *host_ptr);
+  bool HasDeviceMemPtr(void *buffer);
   uint64_t GetDeviceMemPtr(void *buffer);
   void *Prepare(void *ptr) override { return ptr; }
 

@@ -191,12 +191,26 @@ size_t DSPAllocator::TotalSize() {
 }
 
 uint64_t DSPAllocator::GetDeviceMemPtr(void *buffer) {
+  Lock();
   auto it = allocated_list_.find(buffer);
   if (it != allocated_list_.end()) {
-    return it->second->device_ptr_;
+    auto device_ptr = it->second->device_ptr_;
+    UnLock();
+    return device_ptr;
   }
+  UnLock();
   MS_LOG(ERROR) << "Can not found device ptr!";
   return 0;
+}
+
+bool DSPAllocator::HasDeviceMemPtr(void *buffer) {
+  if (buffer == nullptr) {
+    return false;
+  }
+  Lock();
+  bool found = allocated_list_.find(buffer) != allocated_list_.end();
+  UnLock();
+  return found;
 }
 
 template <typename T>
