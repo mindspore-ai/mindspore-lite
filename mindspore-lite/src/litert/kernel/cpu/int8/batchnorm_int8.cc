@@ -94,6 +94,10 @@ int BatchnormInt8CPUKernel::InitConstTensor() {
     MS_LOG(ERROR) << "Buffer overflow error.";
     return RET_ERROR;
   }
+  if (channel_ > mean->ElementsNum()) {
+    MS_LOG(ERROR) << "channel_ " << channel_ << " exceeds mean tensor size " << mean->ElementsNum();
+    return RET_ERROR;
+  }
   for (int i = 0; i < channel_; ++i) {
     float tmp = s_out * sqrt(eps + s_var * (var_ptr[i] - zp_var));
     float tmp_a = s_in / tmp;
@@ -162,6 +166,22 @@ int BatchnormInt8CPUKernel::InitFusedConstTensor() {
   float mul_12 = s_in * s_scale;
   float mul_24 = s_scale * s_mean;
   float div_36 = s_offset / s_out;
+  if (channel_ > mean->ElementsNum()) {
+    MS_LOG(ERROR) << "channel_ " << channel_ << " exceeds mean tensor size " << mean->ElementsNum();
+    return RET_ERROR;
+  }
+  if (channel_ > variance->ElementsNum()) {
+    MS_LOG(ERROR) << "channel_ " << channel_ << " exceeds variance tensor size " << variance->ElementsNum();
+    return RET_ERROR;
+  }
+  if (channel_ > scale->ElementsNum()) {
+    MS_LOG(ERROR) << "channel_ " << channel_ << " exceeds scale tensor size " << scale->ElementsNum();
+    return RET_ERROR;
+  }
+  if (channel_ > offset->ElementsNum()) {
+    MS_LOG(ERROR) << "channel_ " << channel_ << " exceeds offset tensor size " << offset->ElementsNum();
+    return RET_ERROR;
+  }
   for (int i = 0; i < channel_; ++i) {
     float tmp = s_out * sqrt(eps + s_var * (var_ptr[i] - zp_var));
     float tmp_a = (mul_12 * (scale_ptr[i] - zp_scale)) / tmp;

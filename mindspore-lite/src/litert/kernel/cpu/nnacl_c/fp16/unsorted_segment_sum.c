@@ -27,7 +27,11 @@ int UnsortedSegmentSumFp16(const float16_t *input, int unit_num, int input_dim1,
     if (index < 0 || index >= output_dim0) {
       continue;
     }
+    NNACL_CHECK_INT_MUL_NOT_OVERFLOW(index, output_dim1, NNACL_ERRCODE_INDEX_OUT_OF_RANGE);
     int output_index = index * output_dim1 + k;
+    if (output_index < 0 || output_index >= output_dim0 * output_dim1) {
+      return NNACL_ERRCODE_INDEX_OUT_OF_RANGE;
+    }
     output[output_index] += input[i];
   }
   return NNACL_OK;

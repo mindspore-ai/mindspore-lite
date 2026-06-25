@@ -17,6 +17,7 @@
 #include "src/litert/kernel/cpu/fp16/unsorted_segment_sum_fp16.h"
 #include <vector>
 #include <algorithm>
+#include <climits>
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "nnacl_c/fp16/unsorted_segment_sum.h"
@@ -53,6 +54,10 @@ int UnsortedSegmentSumCPUKernelFp16::Prepare() {
   output_dim1_ = 1;
   for (size_t j = 1; j < output_shape.size(); j++) {
     output_dim1_ *= output_shape[j];
+  }
+  if (output_dim1_ > INT_MAX) {
+    MS_LOG(ERROR) << "output_dim1_ " << output_dim1_ << " exceeds INT_MAX";
+    return RET_ERROR;
   }
   return RET_OK;
 }
