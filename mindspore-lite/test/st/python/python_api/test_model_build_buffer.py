@@ -203,7 +203,7 @@ def test_build_from_buffer_correct(args: ModelArgs, output_dir: str, device_id: 
                 None,
             ),
             RuntimeError,
-            "build_from_buffer failed! Error is Common error code.",
+            "build_from_buffer failed! Error is func_graph is nullptr, failed to load MindIR model!",
         ),
         (
             ModelArgs(
