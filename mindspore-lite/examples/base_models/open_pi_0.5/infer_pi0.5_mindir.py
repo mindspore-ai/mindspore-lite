@@ -107,13 +107,7 @@ class LiteTokenizer:
             tokenizer_path = self._find_tokenizer()
         if tokenizer_path is None:
             raise FileNotFoundError(
-                "PaliGemma tokenizer not found.\n"
-                "Download it with:\n"
-                "  pip install gcsfs\n"
-                "  python -c \"import gcsfs; gcsfs.GCSFileSystem(token='anon')\n"
-                "    .get('gs://big_vision/paligemma_tokenizer.model',\n"
-                "          'paligemma_tokenizer.model')\"\n"
-                "Or use the openpi download utility, or set --tokenizer_path explicitly."
+                "PaliGemma tokenizer model not found.\n"
             )
         import sentencepiece
         self._sp = sentencepiece.SentencePieceProcessor(model_file=tokenizer_path)
@@ -191,7 +185,7 @@ def preprocess_image(image: np.ndarray) -> np.ndarray:
     resized = resize_with_pad(image, IMAGE_RESOLUTION[0], IMAGE_RESOLUTION[1])
     # HWC -> NCHW
     nchw = np.transpose(resized, (2, 0, 1))[np.newaxis, ...]
-    return nchw.astype(np.float32)
+    return nchw.astype(np.float16)
 
 
 # ---------------------------------------------------------------------------
@@ -352,12 +346,32 @@ class ZeroCopyKVCachePolicy:
         self.prefix_seq_len = 3 * PATCHES_PER_IMAGE + max_token_len  # 968
         self.norm_stats = norm_stats
         self.tokenizer = LiteTokenizer(max_token_len, tokenizer_path)
+        self.mslite = self.prefix_model.msl
+
+        # Pre-allocate output tensors on device, dtype derived from template
+        ms_outputs = self.prefix_model.model.get_outputs()
+        self.kv_device_outputs = []
+        for out_template in ms_outputs:
+            dtype_str = str(out_template.dtype)
+            if "BOOL" in dtype_str:
+                dt = self.mslite.DataType.BOOL
+            elif "FLOAT16" in dtype_str:
+                dt = self.mslite.DataType.FLOAT16
+            else:
+                dt = self.mslite.DataType.FLOAT32
+
+            kv_tensor = self.mslite.Tensor(
+                shape=out_template.shape,
+                dtype=dt,
+                device=self.prefix_model.device_str,
+            )
+            self.kv_device_outputs.append(kv_tensor)
 
     def preprocess(self, obs: dict) -> dict:
         """Preprocess raw observation into model inputs."""
-        state = np.asarray(obs.get("state", np.zeros(self.action_dim, dtype=np.float32)))
+        state = np.asarray(obs.get("state", np.zeros(self.action_dim, dtype=np.float16)))
         if state.ndim == 1:
-            state = state.astype(np.float32)
+            state = state.astype(np.float16)
 
         if self.norm_stats and "state" in self.norm_stats:
             state = normalize_quantile(state, self.norm_stats["state"])
@@ -371,7 +385,7 @@ class ZeroCopyKVCachePolicy:
                 images[key] = preprocess_image(np.asarray(raw))
                 image_masks[key] = np.array([True])
             else:
-                images[key] = np.zeros((1, 3, 224, 224), dtype=np.float32)
+                images[key] = np.zeros((1, 3, 224, 224), dtype=np.float16)
                 image_masks[key] = np.array([False])
 
         prompt = obs.get("prompt", "")
@@ -391,48 +405,33 @@ class ZeroCopyKVCachePolicy:
         Output device Tensors are allocated with the dtype reported by the
         model's output template (FLOAT16 for fp16 models).
         """
-        inputs = [
+        input_data = [
             preprocessed["images"]["base_0_rgb"],
             preprocessed["images"]["left_wrist_0_rgb"],
             preprocessed["images"]["right_wrist_0_rgb"],
             preprocessed["image_masks"]["base_0_rgb"],
             preprocessed["image_masks"]["left_wrist_0_rgb"],
             preprocessed["image_masks"]["right_wrist_0_rgb"],
-            preprocessed["lang_tokens"].reshape(1, -1),
+            preprocessed["lang_tokens"].reshape(1, -1).astype(np.int32),
             preprocessed["lang_masks"].reshape(1, -1),
         ]
 
-        msl = self.prefix_model.msl
-        ms_inputs = self.prefix_model.model.get_inputs()
-        for i, arr in enumerate(inputs):
-            target = ms_inputs[i]
-            arr = cast_numpy_to_tensor_dtype(arr, str(target.dtype))
-            target.set_data_from_numpy(arr)
-
-        # Pre-allocate output tensors on device, dtype derived from template
-        ms_outputs = self.prefix_model.model.get_outputs()
-        kv_device_outputs = []
-        for out_template in ms_outputs:
-            dtype_str = str(out_template.dtype)
-            if "BOOL" in dtype_str:
-                dt = msl.DataType.BOOL
-            elif "FLOAT16" in dtype_str:
-                dt = msl.DataType.FLOAT16
+        model_inputs = self.prefix_model.model.get_inputs()
+        if len(model_inputs) != len(input_data):
+            raise RuntimeError("input data size is not equal model input size!")
+        for i, model_input in enumerate(model_inputs):
+            if isinstance(input_data[i], np.ndarray):
+                model_input.set_data_from_numpy(input_data[i])
+            elif isinstance(input_data[i], self.mslite.Tensor):
+                model_inputs[i] = input_data[i]
             else:
-                dt = msl.DataType.FLOAT32
-
-            kv_tensor = msl.Tensor(
-                shape=out_template.shape,
-                dtype=dt,
-                device=self.prefix_model.device_str,
-            )
-            kv_device_outputs.append(kv_tensor)
+                raise RuntimeError("data obj not support!")
 
         # Run with device output tensors
-        outputs = self.prefix_model.model.predict(ms_inputs, outputs=kv_device_outputs)
+        outputs = self.prefix_model.model.predict(model_inputs, outputs=self.kv_device_outputs)
 
-        # First output is prefix_pad_masks (small, copy to host)
-        prefix_pad_masks = outputs[0].get_data_to_numpy()
+        # First output is prefix_pad_masks
+        prefix_pad_masks = outputs[0]
 
         # Remaining 36 outputs are KV cache (stay on device)
         kv_device = outputs[1:]
@@ -446,40 +445,6 @@ class ZeroCopyKVCachePolicy:
                     len(kv_device), total_mb, str(kv_device[0].dtype))
         return prefix_pad_masks, kv_device
 
-    def create_kv_cache_device_tensors(self, kv_cache_numpy: list[np.ndarray]) -> list:
-        """Create device Tensors for KV cache — keeps them on Ascend device.
-
-        dtype follows the denoise model's KV input template, so fp16 models
-        get FLOAT16 tensors.
-        """
-        msl = self.denoise_model.msl
-        ms_inputs = self.denoise_model.model.get_inputs()
-        # KV inputs start at index 3 (after x_t, timestep, prefix_pad_masks)
-        kv_device = []
-        for i, kv_np in enumerate(kv_cache_numpy):
-            target = ms_inputs[3 + i]
-            dtype_str = str(target.dtype)
-            if "FLOAT16" in dtype_str:
-                dt = msl.DataType.FLOAT16
-            else:
-                dt = msl.DataType.FLOAT32
-            kv_tensor = msl.Tensor(
-                shape=kv_np.shape,
-                dtype=dt,
-                device=self.denoise_model.device_str,
-            )
-            kv_tensor.set_data_from_numpy(cast_numpy_to_tensor_dtype(kv_np, dtype_str))
-            kv_device.append(kv_tensor)
-
-        total_mb = sum(
-            int(np.prod(t.shape)) * dtype_bytes(str(t.dtype)) / 1024 / 1024
-            for t in kv_device
-        )
-        logger.info("Created %s KV cache device Tensors "
-                    "(~%.1f MB on device, dtype=%s)",
-                    len(kv_device), total_mb, str(kv_device[0].dtype))
-        return kv_device
-
     def run_denoise_step_with_device_kv(self, x_t, timestep, prefix_pad_masks, kv_device):
         """Run single denoising step using device KV cache Tensors.
 
@@ -487,19 +452,21 @@ class ZeroCopyKVCachePolicy:
         Only x_t, timestep, prefix_pad_masks are sent from host (small overhead).
         dtype of host inputs is cast to the denoise model's input template.
         """
-        ms_inputs = self.denoise_model.model.get_inputs()
+        model_inputs = self.denoise_model.model.get_inputs()
 
         # Set numpy inputs (x_t, timestep, prefix_pad_masks) with proper dtype
-        host_inputs = [x_t, timestep.reshape(1), prefix_pad_masks]
-        for i, arr in enumerate(host_inputs):
-            target = ms_inputs[i]
-            arr = cast_numpy_to_tensor_dtype(arr, str(target.dtype))
-            target.set_data_from_numpy(arr)
+        input_data = [x_t.astype(np.float16), timestep.reshape(1).astype(np.float16), prefix_pad_masks] + kv_device
+        if len(model_inputs) != len(input_data):
+            raise RuntimeError("input data size is not equal model input size!")
+        for i, model_input in enumerate(model_inputs):
+            if isinstance(input_data[i], np.ndarray):
+                model_input.set_data_from_numpy(input_data[i])
+            elif isinstance(input_data[i], self.mslite.Tensor):
+                model_inputs[i] = input_data[i]
+            else:
+                raise RuntimeError("data obj not support!")
 
-        # Use device KV tensors directly (no copy)
-        denoise_inputs = ms_inputs[:3] + kv_device
-
-        outputs = self.denoise_model.model.predict(denoise_inputs)
+        outputs = self.denoise_model.model.predict(model_inputs)
         return outputs[0].get_data_to_numpy()  # v_t
 
     def infer(self, obs: dict, noise=None) -> dict:
