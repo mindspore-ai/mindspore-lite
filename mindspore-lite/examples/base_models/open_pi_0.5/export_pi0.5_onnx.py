@@ -37,28 +37,22 @@ import torch
 from torch import nn
 from torch.autograd import Function
 
-class _NullTypecheckCtx:
-    """No-op context manager used to stub out openpi typechecking at import time."""
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return None
-
-
-def _identity(fn):
-    """Identity decorator used to stub openpi's typecheck decorator."""
-    return fn
-
-
 # Add project src to path
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))
 
+def _identity(x):
+    """Return the argument unchanged; used to satisfy mock attribute callables."""
+    return x
+
+
 # Mock heavy dependencies that are only needed for JAX training, not PyTorch export.
 def _mock_module(name, attrs=None):
-    """Create a lightweight stub module and register it in sys.modules."""
+    """Create a lightweight mock module registered in sys.modules.
+
+    Heavy JAX/Flax dependencies are not needed for PyTorch export; this stubs
+    them out so openpi.models_pytorch imports cleanly.
+    """
     import importlib
     mod = types.ModuleType(name)
     mod.__path__ = []
@@ -77,21 +71,39 @@ _mock_module("flax.linen", {"Module": object})
 _mock_module("flax.traverse_util")
 _mock_module("jax")
 _mock_module("jax.numpy", {"float32": np.float32, "int32": np.int32, "bool_": np.bool_, "uint8": np.uint8})
-_mock_module("jax.random", {"key": lambda x: x, "split": lambda x: (x, x)})
+_mock_module("jax.random", {"key": _identity, "split": lambda x: (x, x)})
 _mock_module("jaxlib")
 _mock_module("jaxtyping")
 _mock_module("chex")
 _mock_module("optax")
 _mock_module("orbax")
 _mock_module("orbax.checkpoint")
-_mock_module("ml_collections", {"FieldReference": lambda x: x})
+_mock_module("ml_collections", {"FieldReference": _identity})
 _mock_module("openpi.shared")
-_mock_module("openpi.shared.array_typing", {
-    "KeyArrayLike": object,
-    "disable_typechecking": _NullTypecheckCtx,
-    "typecheck": _identity,
-})
-_mock_module("openpi.shared.nnx_utils", {"PathRegex": lambda x: x})
+class _DisableTypechecking:
+    """No-op context manager that mocks beartype's disable_typechecking()."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return None
+
+
+def _disable_typechecking():
+    """Return a fresh no-op context manager instance."""
+    return _DisableTypechecking()
+
+
+_mock_module(
+    "openpi.shared.array_typing",
+    {
+        "KeyArrayLike": object,
+        "disable_typechecking": _disable_typechecking,
+        "typecheck": _identity,
+    },
+)
+_mock_module("openpi.shared.nnx_utils", {"PathRegex": _identity})
 _mock_module("openpi.shared.sharding", {})
 _mock_module("openpi.training", {})
 _mock_module("openpi.training.sharding", {})
@@ -124,7 +136,7 @@ _mock_module("openpi.models.gemma", {
 
 # Mock image_tools with torch-only resize
 def _resize_with_pad_torch(image, height, width):
-    """Resize an NHWC image tensor with aspect-ratio-preserving zero padding."""
+    """Resize image preserving aspect ratio, then center-pad to (height, width)."""
     import torch.nn.functional as F
     b, h, w, c = image.shape
     scale = min(width / w, height / h)
@@ -138,6 +150,7 @@ def _resize_with_pad_torch(image, height, width):
     return result.permute(0, 2, 3, 1)
 
 _mock_module("openpi.shared.image_tools", {"resize_with_pad_torch": _resize_with_pad_torch})
+
 # Now import the PyTorch model - it will use the mocked JAX/Flax modules
 from openpi.models_pytorch import pi0_pytorch
 
@@ -202,7 +215,6 @@ class RotaryMulONNX(Function):
 
     @staticmethod
     def forward(_ctx, x, cos, sin):
-        """Compute fused rotary embedding rotation for concatenated [q, k]."""
         def rotate_half(t):
             x1 = t[..., : t.shape[-1] // 2]
             x2 = t[..., t.shape[-1] // 2 :]
@@ -246,8 +258,9 @@ class FusedGemmaAttention(nn.Module):
         self.o_proj = original_attn.o_proj
 
     def forward(self, hidden_states, position_embeddings, attention_mask=None,
-                past_key_value=None, cache_position=None, use_cache=False, **_kwargs):
-        """Run self-attention with CANN RotaryMul fusion on the concatenated [q, k] pair."""
+                past_key_value=None, cache_position=None, use_cache=False, **kwargs):
+        """Run attention with CANN RotaryMul fusion on concatenated [q, k]."""
+        del kwargs  # transformers passes extra kwargs (output_attentions etc.) we don't use
         input_shape = hidden_states.shape[:-1]
         hidden_shape = (*input_shape, -1, self.head_dim)
 
@@ -317,6 +330,97 @@ def patch_denoise_expert_for_rope_fusion(model):
 
 
 # ---------------------------------------------------------------------------
+# FusedGelu: erf-based GELU expansion matching rewrite_prefix_gelu.py.
+# Custom::Gelu and Custom::GeluV2 both produced accuracy regressions on this
+# graph, so we fall back to the post-export rewriter's approach: emit standard
+# ONNX Mul/Erf/Add ops and let CANN's graph-fusion pass collapse them into a
+# single Gelu kernel during MindIR conversion.
+# ---------------------------------------------------------------------------
+class FusedGelu(nn.Module):
+    """GELU activation exported as a standard ONNX Erf-based expansion.
+
+    Computes the erf-precision form:
+        out = 0.5 * x * (1 + erf(x / sqrt(2)))
+
+    This is mathematically identical to rewrite_prefix_gelu.py's replacement
+    body (7 nodes: 3 Constants + Mul/Erf/Add/Mul/Mul). PyTorch tracing emits
+    the same op family; CANN's graph-fusion pass then fuses them into one
+    Gelu kernel during MindIR conversion.
+
+    Replaces PyTorch's gelu_pytorch_tanh (tanh approximation). Accuracy drift
+    vs tanh-gelu is ~1.2e-4 in fp16 per layer — empirically stable where both
+    Custom::Gelu and Custom::GeluV2 mis-compiled.
+    """
+
+    INV_SQRT2 = 0.7071067811865476  # 1/sqrt(2)
+
+    def forward(self, x):
+        # x.new_tensor guarantees the constant inherits x's dtype (fp16), so
+        # exported ONNX Constants match rewrite_prefix_gelu.py's
+        # TensorProto.FLOAT16 scalars exactly.
+        inv_sqrt2 = x.new_tensor(self.INV_SQRT2)
+        return 0.5 * x * (1.0 + torch.erf(x * inv_sqrt2))
+
+
+def _patch_gelu_fusion(root):
+    """Patch all GELU activation modules under root with FusedGelu (erf-based).
+
+    Walks root.named_modules() and replaces every transformers GELU-family
+    activation class with FusedGelu. Returns the count of patched modules.
+    """
+    patch_count = 0
+
+    # transformers activation classes that produce a GELU family function.
+    # All variants are replaced with the erf-based FusedGelu expansion,
+    # matching rewrite_prefix_gelu.py (CANN auto-fuses the Erf subgraph).
+    GELU_CLASS_NAMES = {
+        "PytorchGELUTanh",
+        "GELUActivation",
+        "NewGELUActivation",
+        "FastGELUActivation",
+    }
+
+    for name, module in root.named_modules():
+        if module.__class__.__name__ in GELU_CLASS_NAMES:
+            parent_name = name.rsplit('.', 1)[0]
+            child_name = name.rsplit('.', 1)[-1]
+
+            if parent_name:
+                parent = dict(root.named_modules())[parent_name]
+            else:
+                parent = root
+
+            setattr(parent, child_name, FusedGelu())
+            patch_count += 1
+
+    return patch_count
+
+
+def patch_prefix_encoder_for_gelu_fusion(model):
+    """Patch all GELU activation modules in the prefix encoder (SigLIP + PaliGemma
+    LLM) with the erf-based FusedGelu expansion.
+
+    Targets submodules of model.paligemma_with_expert.paligemma.
+
+    Returns the count of patched GELU modules.
+    """
+    return _patch_gelu_fusion(model.paligemma_with_expert.paligemma)
+
+
+def patch_denoise_expert_for_gelu_fusion(model):
+    """Patch all GELU activation modules in the Action Expert (denoise path)
+    with the erf-based FusedGelu expansion.
+
+    Targets submodules of model.paligemma_with_expert.gemma_expert. Same
+    expansion as the prefix encoder patch — CANN auto-fuses the Erf subgraph
+    into a single Gelu kernel during MindIR conversion.
+
+    Returns the count of patched GELU modules.
+    """
+    return _patch_gelu_fusion(model.paligemma_with_expert.gemma_expert)
+
+
+# ---------------------------------------------------------------------------
 # Prefix Encoder Wrapper
 # ---------------------------------------------------------------------------
 class PrefixEncoderWrapper(nn.Module):
@@ -338,7 +442,7 @@ class PrefixEncoderWrapper(nn.Module):
         lang_tokens: torch.Tensor,
         lang_masks: torch.Tensor,
     ):
-        """Run prefix encoder: images + language tokens -> per-layer KV cache tensors."""
+        """Embed images+lang, run PaliGemma, return pad mask + per-layer KV cache."""
         images = [image_0, image_1, image_2]
         img_masks = [img_mask_0, img_mask_1, img_mask_2]
 
@@ -387,7 +491,7 @@ class DenoiseStepWrapper(nn.Module):
         prefix_pad_masks: torch.Tensor,
         *kv_tensors: torch.Tensor,
     ):
-        """Run a single denoise step: state + x_t + timestep + KV cache -> velocity v_t."""
+        """Embed suffix, run Action Expert with prefix KV cache, return velocity v_t."""
         kv_pairs = []
         for i in range(self.num_layers):
             key = kv_tensors[2 * i]
@@ -573,7 +677,7 @@ def main():
     )
     parser.add_argument(
         "--output_dir",
-        default=os.path.join(os.path.dirname(__file__), "onnx_output_0611_fp16"),
+        default=os.path.join(os.path.dirname(__file__), "onnx_output_fp16"),
         help="Output directory for ONNX files",
     )
     args = parser.parse_args()
@@ -594,29 +698,39 @@ def main():
     prefix_path = os.path.join(args.output_dir, "prefix_encoder.onnx")
     denoise_path = os.path.join(args.output_dir, "denoise_step.onnx")
 
-    # Export prefix encoder (no RotaryMul fusion — uses original attention)
+    # Patch prefix encoder GELU activations -> erf-based expansion (CANN auto-fuses)
+    logger.info("Patching prefix encoder GELU -> FusedGelu (erf-based)")
+    gelu_count = patch_prefix_encoder_for_gelu_fusion(model)
+    logger.info("erf-based GELU applied to prefix encoder: %s GELU modules patched", gelu_count)
+
+    # Export prefix encoder (with erf-based GELU; no RotaryMul fusion — uses original attention)
     export_prefix_encoder(model, prefix_path, config)
+
+    # Patch Action Expert GELU -> erf-based expansion (same as prefix encoder)
+    logger.info("Patching Action Expert GELU -> FusedGelu (erf-based)")
+    denoise_gelu_count = patch_denoise_expert_for_gelu_fusion(model)
+    logger.info("erf-based GELU applied to Action Expert: %s GELU modules patched", denoise_gelu_count)
 
     # Patch ONLY Action Expert attention with RotaryMul fusion for denoise step
     logger.info("Patching Action Expert attention -> FusedGemmaAttention for CANN RotaryMul fusion")
     patch_count = patch_denoise_expert_for_rope_fusion(model)
     logger.info("RotaryMul fusion applied to Action Expert: %s attention modules patched", patch_count)
 
-    # Export denoise step (with RotaryMul fusion)
+    # Export denoise step (with erf-based GELU + RotaryMul fusion)
     export_denoise_step(model, denoise_path, config, prefix_seq_len)
 
     # Note: ONNX export may create external data files (model.*) in the output directory.
     # These are required for the ONNX models to load. Do NOT delete them.
     # They will be embedded into the MindIR during conversion.
 
-    prefix_mb = os.path.getsize(prefix_path) / (1024 * 1024)
-    denoise_mb = os.path.getsize(denoise_path) / (1024 * 1024)
+    prefix_size_mb = os.path.getsize(prefix_path) / (1024 * 1024)
+    denoise_size_mb = os.path.getsize(denoise_path) / (1024 * 1024)
     logger.info("=" * 60)
     logger.info("ONNX Export Complete (float16)!")
-    logger.info("  Prefix encoder: %s (%.1f MB) [float16, no RotaryMul]",
-                prefix_path, prefix_mb)
-    logger.info("  Denoise step:   %s (%.1f MB) [float16, RotaryMul x%s]",
-                denoise_path, denoise_mb, patch_count)
+    logger.info("  Prefix encoder: %s (%.1f MB) [float16, ErfGelu x%s]",
+                prefix_path, prefix_size_mb, gelu_count)
+    logger.info("  Denoise step:   %s (%.1f MB) [float16, ErfGelu x%s, RotaryMul x%s]",
+                denoise_path, denoise_size_mb, denoise_gelu_count, patch_count)
     logger.info("=" * 60)
 
 

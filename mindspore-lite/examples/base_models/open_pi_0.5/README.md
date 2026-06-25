@@ -156,7 +156,7 @@ onnx_output_fp16/
 
 ### 配置文件
 
-创建 `config.ini`：
+创建 `./configs/config.ini`：
 
 ```ini
 # config.ini
@@ -180,15 +180,17 @@ ge.exec.modify_mixlist="./op_fp32.json"
 使用 `converter_lite` 命令：
 
 ```bash
+# 创建mindir_output用于保存转换后的mindir模型
+mkdir mindir_output
 Convert=mindspore-lite-2.8.0-linux-aarch64/tools/converter/converter/converter_lite
 
-# Prefix Encoder 转换
+# Prefix Encoder 转换（使用混合精度）
 $Convert --fmk=ONNX \
   --modelFile=./onnx_output_fp16/prefix_encoder.onnx \
   --outputFile=./mindir_output/prefix_encoder \
   --saveType=MINDIR \
   --optimize=ascend_oriented \
-  --configFile=config.ini
+  --configFile=./configs/config.ini
 
 # Denoise Step 转换
 $Convert --fmk=ONNX \
@@ -285,41 +287,42 @@ python infer_pi0.5_mindir.py \
 ### 推理示例输出
 
 ```text
-Loaded MINDIR model: ./prefix_encoder_graph.mindir
-Loaded MINDIR model: ./denoise_step.mindir
+Loaded MINDIR model: ./prefix_encoder_mix_fp16_gelu_graph.mindir
+Loaded MINDIR model: ./denoise_step_fp16_gelu.mindir
 Loaded tokenizer from ./paligemma_tokenizer.model
-Starting MindIR inference...
-  Prefix encoder: 224.0 ms
-  Step 0/10: 10.6 ms, v_t range=[-4.6055, 5.2188]
-  Step 1/10: 10.2 ms, v_t range=[-4.2109, 4.6523]
-  Step 2/10: 10.2 ms, v_t range=[-3.9277, 4.3594]
-  Step 3/10: 10.2 ms, v_t range=[-3.7324, 4.1914]
-  Step 4/10: 10.2 ms, v_t range=[-3.6074, 4.1406]
-  Step 5/10: 10.2 ms, v_t range=[-3.5645, 4.1367]
-  Step 6/10: 10.2 ms, v_t range=[-3.5508, 4.1719]
-  Step 7/10: 10.2 ms, v_t range=[-3.5469, 4.2070]
-  Step 8/10: 10.2 ms, v_t range=[-3.5078, 4.2305]
-  Step 9/10: 10.3 ms, v_t range=[-3.3887, 3.9902]
+Starting MindIR inference with zero-copy KV cache (float16)...
+Prefix encoder: KV cache on device directly (36 tensors, ~17.0 MB, dtype=DataType.FLOAT16)
+  Prefix encoder: 162.6 ms
+  Step 0/10: 11.6 ms, v_t range=[-4.6055, 5.2227]
+  Step 1/10: 10.1 ms, v_t range=[-4.2109, 4.6523]
+  Step 2/10: 9.8 ms, v_t range=[-3.9277, 4.3594]
+  Step 3/10: 9.9 ms, v_t range=[-3.7305, 4.1953]
+  Step 4/10: 10.1 ms, v_t range=[-3.6094, 4.1406]
+  Step 5/10: 9.9 ms, v_t range=[-3.5605, 4.1367]
+  Step 6/10: 9.9 ms, v_t range=[-3.5508, 4.1719]
+  Step 7/10: 9.8 ms, v_t range=[-3.5469, 4.2109]
+  Step 8/10: 9.7 ms, v_t range=[-3.5098, 4.2266]
+  Step 9/10: 9.7 ms, v_t range=[-3.3887, 3.9863]
 ============================================================
 TIMING SUMMARY
 ============================================================
-  Preprocess:                  4.4 ms
-  Prefix Encoder:            224.0 ms
-  Denoise Loop (total):      102.4 ms  (10 steps x 10.2 ms/step)
-  Postprocess:                 0.0 ms
+  Preprocess:                       7.1 ms
+  Prefix Encoder:                 162.6 ms
+  Denoise Loop (total):           100.5 ms  (10 steps x 10.0 ms/step)
+  Postprocess:                      0.0 ms
 ------------------------------------------------------------
-  Model inference total:     326.5 ms
-  End-to-end total:          330.9 ms
+  Model inference total:          263.1 ms
+  End-to-end total:               270.2 ms
 ============================================================
 Actions shape: (1, 50, 32)
 Actions sample (first 3 steps, first 8 dims):
-[[ 0.46178082  0.41199815  0.27574795 -0.14939451  0.7073139  -0.42656553
-   0.4221083   0.4055339 ]
- [ 0.46550667  0.426481    0.277089   -0.10103166  0.7013563  -0.40498257
-   0.47161865  0.3927345 ]
- [ 0.44944292  0.3882835   0.28481665 -0.13697004  0.69005096 -0.41897684
-   0.44563365  0.36890817]]
-Actions range: [-0.7558, 0.8881]
+[[ 0.46174708  0.41178453  0.27532262 -0.14957762  0.70670354 -0.4259094
+   0.42204726  0.4033562 ]
+ [ 0.4657508   0.42654204  0.277089   -0.10103166  0.7008375  -0.40461636
+   0.47210693  0.390789  ]
+ [ 0.44961077  0.3882835   0.28475562 -0.13684797  0.68957794 -0.41835123
+   0.44557405  0.36658883]]
+Actions range: [-0.7562, 0.8884]
 Results saved to ./mindir_inference_result.npy
 ```
 
@@ -343,7 +346,7 @@ Results saved to ./mindir_inference_result.npy
 |------|-----|
 | 输入 | 3 × (1, 3, 224, 224) 图像 + (1, 200) 文本 tokens |
 | 输出 | 1 × prefix_pad_masks + 36 × KV cache tensors |
-| 耗时 | **224.0 ms** |
+| 耗时 | **162.6 ms** |
 
 **Denoise Step（单步）**
 
@@ -351,18 +354,18 @@ Results saved to ./mindir_inference_result.npy
 |------|-----|
 | 输入 | x_t (1, 50, 32) + timestep (1,) + prefix_pad_masks (1, 968) + 36 × KV tensors |
 | 输出 | v_t (1, 50, 32) |
-| 平均单步耗时 | **10.2 ms** |
+| 平均单步耗时 | **10.0 ms** |
 
 ### 端到端推理性能（10 步去噪）
 
 | 指标 | 耗时 (ms) |
 |------|----------|
-| Preprocess | 4.4 |
-| Prefix Encoder | 224.0 |
-| Denoise Loop（10 steps） | 102.4 |
+| Preprocess | 7.1 |
+| Prefix Encoder | 162.6 |
+| Denoise Loop（10 steps） | 100.5 |
 | Postprocess | 0.0 |
-| **模型推理总耗时** | **326.5** |
-| **端到端总耗时** | **330.9** |
+| **模型推理总耗时** | **263.1** |
+| **端到端总耗时** | **270.2** |
 
 ## 6. 常见问题 FAQ
 
