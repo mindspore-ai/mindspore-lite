@@ -64,6 +64,12 @@ int SpaceToBatchCPUKernel::ReSize() {
   if (in_tensors_.size() == DIMENSION_3D) {
     if (in_tensors_.at(SECOND_INPUT) != nullptr && in_tensors_.at(SECOND_INPUT)->IsConst() &&
         in_tensors_.at(THIRD_INPUT) != nullptr && in_tensors_.at(THIRD_INPUT)->IsConst()) {
+      if (in_tensors_.at(SECOND_INPUT)->ElementsNum() > static_cast<int>(COMM_SHAPE_SIZE) ||
+          in_tensors_.at(THIRD_INPUT)->ElementsNum() > static_cast<int>(COMM_SHAPE_SIZE)) {
+        MS_LOG(ERROR) << "SpaceToBatch invalid input size, block_shape: " << in_tensors_.at(SECOND_INPUT)->ElementsNum()
+                      << ", paddings: " << in_tensors_.at(THIRD_INPUT)->ElementsNum();
+        return RET_ERROR;
+      }
       ProcessInput();
     }
   }
@@ -95,6 +101,12 @@ int SpaceToBatchCPUKernel::Run() {
   CHECK_NULL_RETURN(output_ptr_);
   if (in_tensors_.size() == DIMENSION_3D) {
     if (!in_tensors_.at(SECOND_INPUT)->IsConst() || !in_tensors_.at(THIRD_INPUT)->IsConst()) {
+      if (in_tensors_.at(SECOND_INPUT)->ElementsNum() > static_cast<int>(COMM_SHAPE_SIZE) ||
+          in_tensors_.at(THIRD_INPUT)->ElementsNum() > static_cast<int>(COMM_SHAPE_SIZE)) {
+        MS_LOG(ERROR) << "SpaceToBatch invalid input size, block_shape: " << in_tensors_.at(SECOND_INPUT)->ElementsNum()
+                      << ", paddings: " << in_tensors_.at(THIRD_INPUT)->ElementsNum();
+        return RET_ERROR;
+      }
       ProcessInput();
     }
   }

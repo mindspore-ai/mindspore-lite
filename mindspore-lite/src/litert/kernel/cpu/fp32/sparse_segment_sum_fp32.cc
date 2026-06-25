@@ -33,6 +33,36 @@ const uint32_t kInput_data = 0;
 const uint32_t kInput_indices = 1;
 const uint32_t kInput_segment_ids = 2;
 const uint32_t kOutput_data = 0;
+
+int ValidateInputs(int segment_ids_num, int indices_num, int input_dim0, const int32_t *in_segment_ids_ptr,
+                   const int32_t *in_indcie_ptr, const std::string &kernel_name) {
+  if (segment_ids_num <= 0 || indices_num <= 0 || segment_ids_num != indices_num) {
+    MS_LOG(ERROR) << "For '" << kernel_name << "', segment_ids and indices must be 1D, positive, and equal length.";
+    return RET_ERROR;
+  }
+  if (in_segment_ids_ptr[0] != 0) {
+    MS_LOG(ERROR) << "For '" << kernel_name << "', segment_ids must start from 0.";
+    return RET_ERROR;
+  }
+  int32_t prev_id = in_segment_ids_ptr[0];
+  for (int i = 1; i < segment_ids_num; i++) {
+    int32_t cur_id = in_segment_ids_ptr[i];
+    if (cur_id < prev_id) {
+      MS_LOG(ERROR) << "For '" << kernel_name << "', segment_ids must be non-decreasing at index " << i;
+      return RET_ERROR;
+    }
+    prev_id = cur_id;
+  }
+  for (int i = 0; i < indices_num; i++) {
+    int32_t idx = in_indcie_ptr[i];
+    if (idx < 0 || idx >= input_dim0) {
+      MS_LOG(ERROR) << "For '" << kernel_name << "', indices[" << i << "]=" << idx << " out of range [0, " << input_dim0
+                    << ").";
+      return RET_ERROR;
+    }
+  }
+  return RET_OK;
+}
 }  // namespace
 int SparseSegmentSumCPUKernel::PreProcess() { return RET_OK; }
 
@@ -46,11 +76,16 @@ int SparseSegmentSumCPUKernel::Run() {
   std::vector<int> out_data_shape;
 
   auto in_segment_ids_ptr = reinterpret_cast<int32_t *>(in_tensors_[kInput_segment_ids]->data());
-  if (in_segment_ids_ptr[0] != 0) {
-    MS_LOG(ERROR) << "For '" << this->name_ << "', indices should start from 0.";
-    return RET_OK;
+  auto in_indcie_ptr = reinterpret_cast<int32_t *>(in_tensors_[kInput_indices]->data());
+  const auto segment_ids_num = in_segment_ids_shape[0];
+  const auto indices_num = in_indcie_shape[0];
+  const auto input_dim0 = in_data_shape[0];
+  if (ValidateInputs(segment_ids_num, indices_num, input_dim0, in_segment_ids_ptr, in_indcie_ptr, this->name_) !=
+      RET_OK) {
+    return RET_ERROR;
   }
-  out_data_shape.emplace_back(in_segment_ids_ptr[in_segment_ids_shape[0] - 1] + 1);
+
+  out_data_shape.emplace_back(in_segment_ids_ptr[segment_ids_num - 1] + 1);
   for (size_t i = 1; i < in_data_shape.size(); i++) {
     out_data_shape.emplace_back(in_data_shape[i]);
   }
@@ -65,7 +100,6 @@ int SparseSegmentSumCPUKernel::Run() {
     std::accumulate(in_segment_ids_shape.begin(), in_segment_ids_shape.end(), kMultiply, std::multiplies<int>());
   int oldindex = -1;
 
-  auto in_indcie_ptr = reinterpret_cast<int32_t *>(in_tensors_[kInput_indices]->data());
   int32_t *in_data_ptr_int32 = nullptr;
   int32_t *out_data_ptr_int32 = nullptr;
   float *in_data_ptr_fp32 = nullptr;
