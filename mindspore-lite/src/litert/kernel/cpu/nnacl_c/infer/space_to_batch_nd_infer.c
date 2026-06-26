@@ -71,6 +71,9 @@ int SpaceSetOutputShapeFromInput(const TensorC *const *inputs, size_t inputs_siz
   if (input->shape_size_ != 4) {
     return NNACL_ERR;
   }
+  if (NNACLGetElementNum(inputs[1]) > COMM_SHAPE_SIZE) {
+    return NNACL_ERR;
+  }
   if (NNACLGetElementNum(inputs[2]) != 4) {
     return NNACL_ERR;
   }
