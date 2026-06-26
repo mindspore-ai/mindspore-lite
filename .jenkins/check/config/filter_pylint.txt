@@ -28,3 +28,9 @@
 "mindspore-lite/mindspore-lite/examples/base_models"                                                          "invalid-name"
 "mindspore-lite/mindspore-lite/examples/base_models/open_pi_0.5/export_pi0.5_onnx.py"                         "wrong-import-position"
 "mindspore-lite/mindspore-lite/lite_boost"                                                                    "broad-exception-caught"
+
+# lite_boost
+"mindspore-lite/mindspore-lite/lite_boost/python/ops/sparse_attention.py"                                     "unused-argument"
+"mindspore-lite/mindspore-lite/lite_boost/test/ops/test_recurrent_gated_delta_rule.py"                        "class-attribute-defined-outside-init"
+"mindspore-lite/mindspore-lite/lite_boost/test/ops/test_chunk_gated_delta_rule.py"                            "class-attribute-defined-outside-init"
+"mindspore-lite/mindspore-lite/lite_boost/test/ops/test_rain_fusion_attention.py"                             "class-attribute-defined-outside-init"

@@ -41,10 +41,12 @@ CANN operator constraints:
 """
 
 import time
+import logging
 
 import pytest
 import torch
 import lite_boost.ops as lite_ops
+logging.basicConfig(level=logging.INFO, format='%(message)s')
 
 
 def _l2norm(x, dim=-1, eps=1e-6):
@@ -100,6 +102,7 @@ class TestChunkGatedDeltaRule:
     """Verify chunk_gated_delta_rule: shapes/dtypes, chunk_size self-consistency, perf."""
 
     def setup_method(self):
+        """Setup test fixtures: device, tensor dimensions and test data."""
         self.device = torch.device("npu:0")
         torch.npu.set_device(self.device)
         # T=64; chunk_size divisors used by the self-consistency case.
@@ -108,7 +111,8 @@ class TestChunkGatedDeltaRule:
         self.data = _generate_test_data(
             self.batch_size, self.num_heads, self.seq_len, self.dk, self.dv, self.device)
 
-    def _run(self, d, chunk_size):
+    @staticmethod
+    def _run(d, chunk_size):
         out, final_state = lite_ops.chunk_gated_delta_rule(
             d["query"].bfloat16(), d["key"].bfloat16(), d["value"].bfloat16(),
             d["g"].bfloat16(), d["beta"].bfloat16(), d["state"].bfloat16(),
@@ -132,15 +136,16 @@ class TestChunkGatedDeltaRule:
     @pytest.mark.L0
     def test_self_consistency(self):
         """Accuracy: result is identical for every chunk_size divisor of T
-        (chunk_size is internal tiling only)."""
+        (chunk_size is internal tiling only).
+        """
         ref_out, ref_state = self._run(self.data, chunk_size=64)
         max_out, max_state = 0.0, 0.0
         for cs in (32, 16, 8):
             out, state = self._run(self.data, chunk_size=cs)
             max_out = max(max_out, (out - ref_out).abs().max().item())
             max_state = max(max_state, (state - ref_state).abs().max().item())
-        print(f"\n[self-consistency vs chunk_size=64] out max diff={max_out:.6f}  "
-              f"state max diff={max_state:.6f}", flush=True)
+        logging.info("[self-consistency vs chunk_size=64] out max diff=%.6f  state max diff=%.6f",
+                     max_out, max_state)
         # fp16 epsilon-level (observed ~2.4e-4); 5e-3 is a comfortable bound.
         assert max_out < 5e-3, f"out differs across chunk_size: {max_out}"
         assert max_state < 5e-3, f"state differs across chunk_size: {max_state}"
@@ -176,13 +181,13 @@ class TestChunkGatedDeltaRule:
         ref_n = 3
         t0 = time.time()
         for _ in range(ref_n):
-            _pytorch_recurrent_baseline(
+            _ = _pytorch_recurrent_baseline(
                 cpu(d["query"]), cpu(d["key"]), cpu(d["value"]),
                 cpu(d["g"]), cpu(d["beta"]), cpu(d["state"]), scale=d["scale"])
         ref_ms = (time.time() - t0) / ref_n * 1000
         speedup = ref_ms / cann_ms if cann_ms > 0 else float("inf")
-        print(f"\n[perf] chunk op {cann_ms:.3f} ms  |  naive baseline {ref_ms:.3f} ms  |  "
-              f"speedup {speedup:.1f}x", flush=True)
+        logging.info("[perf] chunk op %.3f ms  |  naive baseline %.3f ms  |  speedup %.1fx",
+                     cann_ms, ref_ms, speedup)
         assert cann_ms < ref_ms, (
             f"chunk op ({cann_ms:.3f} ms) not faster than naive baseline ({ref_ms:.3f} ms)")
         assert speedup >= 2.0, f"speedup {speedup:.1f}x below the 2.0x threshold"
@@ -192,8 +197,8 @@ if __name__ == "__main__":
     t = TestChunkGatedDeltaRule()
     t.setup_method()
     t.test_shapes_and_dtypes()
-    print("shapes_and_dtypes: PASS")
+    logging.info("shapes_and_dtypes: PASS")
     t.test_self_consistency()
-    print("self_consistency:   PASS")
+    logging.info("self_consistency:   PASS")
     t.test_performance()
-    print("performance:        PASS")
+    logging.info("performance:        PASS")

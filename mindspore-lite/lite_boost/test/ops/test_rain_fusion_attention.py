@@ -17,10 +17,13 @@ lite_boost test rain_fusion_attention
 """
 
 import math
+import logging
+
 import pytest
 import torch
 import torch_npu
 import lite_boost.ops as lite_ops
+logging.basicConfig(level=logging.INFO, format='%(message)s')
 
 
 class TestRainFusionAttention:
@@ -28,9 +31,6 @@ class TestRainFusionAttention:
     Test rain fusion attention.
     """
 
-    # 注意: pytest 不会收集带 __init__ 构造函数的测试类。
-    # 必须使用 setup_method(self) 作为测试前置初始化方法，
-    # pytest 在每个测试方法执行前自动调用 setup_method 完成实例属性初始化。
     def setup_method(self):
         """
         Setup test fixtures before each test method.
@@ -63,8 +63,9 @@ class TestRainFusionAttention:
             q_blocknum, self.head, kv_blocknum, ratio=1.0
         )
 
+    @staticmethod
     def _generate_sparse_mask(
-        self, q_blocknum, head, kv_blocknum, device="npu", ratio=1.0
+        q_blocknum, head, kv_blocknum, device="npu", ratio=1.0
     ):
         """
         Generate sparse mask.
@@ -123,8 +124,8 @@ class TestRainFusionAttention:
             next_tockens=2147483647,
             head_num=self.head,
         )[0]
-        print("rain_fusion_attention shape:", ra.shape)
-        print("fusion_attention shape:", fascore.shape)
+        logging.info("rain_fusion_attention shape: %s", ra.shape)
+        logging.info("fusion_attention shape: %s", fascore.shape)
 
     @pytest.mark.ascend_a2
     @pytest.mark.L0
@@ -158,10 +159,10 @@ class TestRainFusionAttention:
             next_tockens=2147483647,
             head_num=self.head,
         )[0]
-        print("sparse_attention (rf_v2) shape:", out_sparse.shape)
-        print("fusion_attention (dense) shape:", out_dense.shape)
+        logging.info("sparse_attention (rf_v2) shape: %s", out_sparse.shape)
+        logging.info("fusion_attention (dense) shape: %s", out_dense.shape)
         max_diff = (out_sparse - out_dense).abs().max().item()
-        print("max diff:", max_diff)
+        logging.info("max diff: %s", max_diff)
 
 
 if __name__ == "__main__":
