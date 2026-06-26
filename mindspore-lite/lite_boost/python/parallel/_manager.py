@@ -120,17 +120,9 @@ class ParallelManager:
     attributes and methods (``.to``, ``.cpu``, ``.eval``, etc.) continue
     to work normally.
 
-    The internal patching is dispatched by :func:`lite_boost.model.setup_model`,
-    which detects the model type and applies the corresponding adapter
-    (e.g., replacing ``flash_attention`` with an NPU-compatible version,
-    inserting ``all_to_all`` communication pairs around the attention layers,
-    and binding DP temporal tiling to the VAE encode/decode).
-
     Args:
         target (object): A supported pipeline object to be parallelized.
-            The model type is auto-detected via
-            :func:`lite_boost.model.setup_model`. Supported classes include
-            ``WanT2V`` and ``WanTI2V``.
+            Supported classes include ``WanT2V`` and ``WanTI2V``.
 
     Returns:
         object, the same instance modified in-place with USP-patched

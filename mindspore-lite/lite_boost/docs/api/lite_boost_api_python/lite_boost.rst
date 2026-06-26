@@ -20,3 +20,4 @@ LiteBoost是MindSpore Lite面向昇腾硬件的推理加速工具包，提供高
 
     lite_boost.ops.rain_fusion_attention
     lite_boost.ops.sparse_attention
+    lite_boost.ops.recurrent_gated_delta_rule

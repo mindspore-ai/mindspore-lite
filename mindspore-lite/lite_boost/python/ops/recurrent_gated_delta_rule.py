@@ -40,7 +40,8 @@ def recurrent_gated_delta_rule(
     num_accepted_tokens,
     scale_value=1.0,
 ):
-    """Recurrent GatedDeltaRule operator — CANN aclnn-backed recurrent linear attention decode.
+    r"""
+    Recurrent GatedDeltaRule operator — CANN aclnn-backed recurrent linear attention decode.
 
     Implements the token-by-token recurrent forward pass of the Gated Delta Rule,
     updating the recurrent state matrix and producing the attention output.
@@ -49,10 +50,10 @@ def recurrent_gated_delta_rule(
 
     Algorithm flow (executed sequentially for each token in each batch):
 
-        1. State decay:   S = S * exp(g) * exp(gk)
-        2. Memory retrieval: kv_mem = S^T @ k
-        3. Delta update:  S = S + k^T @ ((v - kv_mem) * beta)
-        4. Output:        o = S^T @ q
+    1. State decay:   S = S * exp(g) * exp(gk)
+    2. Memory retrieval: kv_mem = S^T @ k
+    3. Delta update:  S = S + k^T @ ((v - kv_mem) * beta)
+    4. Output:        o = S^T @ q
 
     where S is the recurrent state matrix ``[H, D_k, D_v]`` storing the key-value
     associations of linear attention.
@@ -98,12 +99,13 @@ def recurrent_gated_delta_rule(
             The query is multiplied by this scale factor before computation.
 
     Returns:
-        tuple[torch.Tensor, torch.Tensor]:
-            - **out** (torch.Tensor): Attention output of shape ``[B, H_v, T, D_v]``, dtype=bfloat16.
-              The linear attention result at each token position.
-            - **state_out** (torch.Tensor): Updated recurrent state of shape ``[B, H_v, D_k, D_v]``,
-              dtype=bfloat16. Must be passed as ``state`` input in the next recurrent step to
-              form a state-passing chain.
+        tuple[Tensor, Tensor]
+
+        - **out** (Tensor) — Attention output of shape ``[B, H_v, T, D_v]``, dtype=bfloat16.
+          The linear attention result at each token position.
+        - **state_out** (Tensor) — Updated recurrent state of shape ``[B, H_v, D_k, D_v]``,
+          dtype=bfloat16. Must be passed as ``state`` input in the next recurrent step to
+          form a state-passing chain.
 
     Raises:
         RuntimeError: If input tensor shapes, dtypes, or devices are invalid, or if the
@@ -120,36 +122,26 @@ def recurrent_gated_delta_rule(
         - The CANN operator stores state internally as ``[B, H_v, D_v, D_k]`` layout
           (value dimension first). This function automatically performs the layout conversion.
 
-    Example::
-
-        import torch
-        import lite_boost.ops as lite_ops
-
-        # Qwen3.5-2B decode configuration
-        B, H, T, Dk, Dv = 1, 64, 1, 64, 512
-
-        # Initialize inputs (must satisfy CANN operator constraints)
-        query  = torch.randn(B, H, T, Dk, device="npu:0", dtype=torch.bfloat16)
-        key    = torch.randn(B, H, T, Dk, device="npu:0", dtype=torch.bfloat16)
-        value  = torch.randn(B, H, T, Dv, device="npu:0", dtype=torch.bfloat16)
-        beta   = torch.rand(B, H, T, device="npu:0", dtype=torch.bfloat16) * 0.9 + 0.05
-        state  = torch.zeros(B, H, Dk, Dv, device="npu:0", dtype=torch.bfloat16)
-        g      = -(torch.rand(B, H, T, device="npu:0") + 0.01)       # negative
-        gk     = -(torch.rand(B, H, T, Dk, device="npu:0") + 0.01)   # negative
-
-        actual_seq_lengths    = torch.tensor([T], dtype=torch.int32, device="npu:0")
-        ssm_state_indices     = torch.tensor([0], dtype=torch.int32, device="npu:0")
-        num_accepted_tokens   = torch.tensor([T], dtype=torch.int32, device="npu:0")
-
-        # Execute recurrent inference
-        output, state_out = lite_ops.recurrent_gated_delta_rule(
-            query, key, value, beta, state,
-            actual_seq_lengths, ssm_state_indices,
-            g, gk, num_accepted_tokens,
-            scale_value=1.0 / (Dk ** 0.5),
-        )
-        # output:    [1, 64, 1, 512]  -- attention output for the current token
-        # state_out: [1, 64, 64, 512] -- updated recurrent state, passed to next step
+    Examples:
+        >>> import torch
+        >>> import lite_boost.ops as lite_ops
+        >>> device = torch.device("npu:0")
+        >>> B, H, T, Dk, Dv = 1, 64, 1, 64, 512
+        >>> query  = torch.randn(B, H, T, Dk, device=device, dtype=torch.bfloat16)
+        >>> key    = torch.randn(B, H, T, Dk, device=device, dtype=torch.bfloat16)
+        >>> value  = torch.randn(B, H, T, Dv, device=device, dtype=torch.bfloat16)
+        >>> beta   = torch.rand(B, H, T, device=device, dtype=torch.bfloat16) * 0.9 + 0.05
+        >>> state  = torch.zeros(B, H, Dk, Dv, device=device, dtype=torch.bfloat16)
+        >>> g      = -(torch.rand(B, H, T, device=device) + 0.01)
+        >>> gk     = -(torch.rand(B, H, T, Dk, device=device) + 0.01)
+        >>> actual_seq_lengths  = torch.tensor([T], dtype=torch.int32, device=device)
+        >>> ssm_state_indices   = torch.tensor([0], dtype=torch.int32, device=device)
+        >>> num_accepted_tokens = torch.tensor([T], dtype=torch.int32, device=device)
+        >>> output, state_out = lite_ops.recurrent_gated_delta_rule(
+        ...     query, key, value, beta, state,
+        ...     actual_seq_lengths, ssm_state_indices,
+        ...     g, gk, num_accepted_tokens,
+        ...     scale_value=1.0 / (Dk ** 0.5))
     """
     # =========================================================================
     # 1. Extract dimensions from the BNSD (Batch, Num_heads, Seq_len, Dim) layout
