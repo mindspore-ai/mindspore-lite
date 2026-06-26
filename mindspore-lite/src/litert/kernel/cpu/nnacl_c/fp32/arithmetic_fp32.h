@@ -33,8 +33,8 @@ extern "C" {
 #endif
 void TileOneDimensionFp32(const void *inData, void *outData, int dim, size_t ndim, const int32_t *inShape,
                           const int32_t *inStrides, const int32_t *outStrides, const int32_t *multiple);
-void TileDimensionsFp32(const float *data0, const float *data1, float *tile_data0, float *tile_data1,
-                        ArithmeticParameter *param);
+int TileDimensionsFp32(const float *data0, const float *data1, float *tile_data0, float *tile_data1,
+                       ArithmeticParameter *param);
 /* logical and */
 int ElementLogicalAnd(const float *in0, const float *in1, float *out, int size);
 int ElementOptLogicalAnd(const float *in0, const float *in1, float *out, int size, bool first_scalar);

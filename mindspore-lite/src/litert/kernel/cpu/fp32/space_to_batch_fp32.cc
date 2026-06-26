@@ -16,6 +16,7 @@
 #include "src/litert/kernel/cpu/fp32/space_to_batch_fp32.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
+#include "nnacl_c/errorcode.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;
@@ -73,8 +74,14 @@ int SpaceToBatchCPUKernel::ReSize() {
     param_->output_shape_[i] = output_tensor->shape().at(i);
   }
 
-  ComputeStrides(param_->input_shape_, param_->in_stride_, DIMENSION_4D);
-  ComputeStrides(param_->output_shape_, param_->out_stride_, DIMENSION_4D);
+  int ret = ComputeStrides(param_->input_shape_, param_->in_stride_, DIMENSION_4D);
+  if (ret != NNACL_OK) {
+    return RET_ERROR;
+  }
+  ret = ComputeStrides(param_->output_shape_, param_->out_stride_, DIMENSION_4D);
+  if (ret != NNACL_OK) {
+    return RET_ERROR;
+  }
   param_->need_paddings_ = (param_->paddings_[0] | param_->paddings_[1] | param_->paddings_[2] | param_->paddings_[3]);
   return RET_OK;
 }

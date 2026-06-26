@@ -35,6 +35,8 @@ class DivInt8CPUKernel : public LiteKernel {
   int DivScalarDoExecute(int task_id);
 
  private:
+  int InitBroadcastTileData();
+  void FreeTileData();
   DivQuantArg *quant_args_ = nullptr;
   int8_t *tile0_data_ = nullptr;
   int8_t *tile1_data_ = nullptr;

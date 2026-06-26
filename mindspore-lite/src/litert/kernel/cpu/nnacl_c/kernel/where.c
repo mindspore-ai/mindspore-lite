@@ -53,73 +53,71 @@ int WhereRun(void *cdata, int task_id, float l, float r) {
   return WhereExcute(where, task_id);
 }
 
-int WhereRunWithSingleInput(WhereStruct *where) {
-  TensorC *input = where->base_.in_[FIRST_INPUT];
-  int32_t *int32_condition = NULL;
-  float *fp32_condition = NULL;
-  bool *bool_condition = NULL;
-  switch (where->data_type_) {
+static int WhereGetConditionData(TensorC *input, int data_type, void **condition_data) {
+  switch (data_type) {
     case kNumberTypeInt32:
-      int32_condition = (int32_t *)input->data_;
-      NNACL_CHECK_NULL_RETURN_ERR(int32_condition);
-      break;
     case kNumberTypeFloat32:
-      fp32_condition = (float *)input->data_;
-      NNACL_CHECK_NULL_RETURN_ERR(fp32_condition);
-      break;
     case kNumberTypeBool:
-      bool_condition = (bool *)input->data_;
-      NNACL_CHECK_NULL_RETURN_ERR(bool_condition);
-      break;
+      *condition_data = input->data_;
+      NNACL_CHECK_NULL_RETURN_ERR(*condition_data);
+      return NNACL_OK;
     default:
       return NNACL_WHERE_CONDITION_DATA_TYPE_ERROR;
   }
-  WhereArgs *where_args = &where->args_;
-  where_args->condition_num_ = NNACLGetElementNum(input);
-  where_args->rank_ = input->shape_size_;
-  int strides[MAX_SHAPE_SIZE];
-  ComputeStrides(input->shape_, strides, where_args->rank_);
-  NNACL_CHECK_INT_MUL_NOT_OVERFLOW(where_args->condition_num_, where_args->rank_, NNACL_ERR);
-  int data_num_int = where_args->condition_num_ * where_args->rank_;
-  NNACL_CHECK_TRUE_RET(data_num_int >= 0, NNACL_ERR);
-  size_t result_size = (size_t)data_num_int * sizeof(int32_t);
-  int32_t *result = where->base_.env_->Alloc(where->base_.env_->allocator_, result_size);
-  NNACL_MALLOC_CHECK_NULL_RETURN_ERR(result);
+}
 
-  int result_index = 0;
-  int true_num = 0;
-  for (int index = 0; index < where_args->condition_num_; index++) {
-    bool condition = false;
-    switch (where->data_type_) {
-      case kNumberTypeInt32:
-        condition = (bool)int32_condition[index];
-        break;
-      case kNumberTypeFloat32:
-        condition = (bool)fp32_condition[index];
-        break;
-      case kNumberTypeBool:
-        condition = (bool)bool_condition[index];
-        break;
-      default:
-        return NNACL_WHERE_CONDITION_DATA_TYPE_ERROR;
-    }
-    if (condition) {
-      true_num++;
-      int dim = index;
-      for (int j = 0; j < where_args->rank_; j++) {
-        NNACL_CHECK_ZERO_RETURN_ERR(strides[j]);
-        result[result_index++] = dim / strides[j];
-        dim %= strides[j];
-      }
-    }
+static int WhereGetConditionValue(int data_type, const void *condition_data, int index, bool *condition) {
+  switch (data_type) {
+    case kNumberTypeInt32:
+      *condition = (bool)(((int32_t *)condition_data)[index]);
+      return NNACL_OK;
+    case kNumberTypeFloat32:
+      *condition = (bool)(((float *)condition_data)[index]);
+      return NNACL_OK;
+    case kNumberTypeBool:
+      *condition = ((bool *)condition_data)[index];
+      return NNACL_OK;
+    default:
+      return NNACL_WHERE_CONDITION_DATA_TYPE_ERROR;
+  }
+}
+
+static int WhereFillResult(WhereStruct *where, TensorC *input, const int *strides, int32_t *result, int *true_num) {
+  void *condition_data = NULL;
+  int ret = WhereGetConditionData(input, where->data_type_, &condition_data);
+  if (ret != NNACL_OK) {
+    return ret;
   }
 
+  int result_index = 0;
+  *true_num = 0;
+  for (int index = 0; index < where->args_.condition_num_; index++) {
+    bool condition = false;
+    ret = WhereGetConditionValue(where->data_type_, condition_data, index, &condition);
+    if (ret != NNACL_OK) {
+      return ret;
+    }
+    if (!condition) {
+      continue;
+    }
+    (*true_num)++;
+    int dim = index;
+    for (int j = 0; j < where->args_.rank_; j++) {
+      NNACL_CHECK_ZERO_RETURN_ERR(strides[j]);
+      result[result_index++] = dim / strides[j];
+      dim %= strides[j];
+    }
+  }
+  return NNACL_OK;
+}
+
+static void WhereUpdateOutput(WhereStruct *where, int32_t *result, int true_num) {
   TensorC *output = where->base_.out_[OUTPUT_INDEX];
   if (output->data_ != NULL) {
     /* the data should be nullptr */
     where->base_.env_->Free(where->base_.env_->allocator_, output->data_);
   }
-  int output_shape[] = {true_num, where_args->rank_};
+  int output_shape[] = {true_num, where->args_.rank_};
   output->shape_changed_ = ShapeEqual(output->shape_, output->shape_size_, output_shape, Num2);
   output->shape_size_ = Num2;
   memcpy(output->shape_, output_shape, Num2 * sizeof(int));
@@ -127,6 +125,37 @@ int WhereRunWithSingleInput(WhereStruct *where) {
   if (true_num > 0) {
     output->data_ = result;
   }
+}
+
+int WhereRunWithSingleInput(WhereStruct *where) {
+  TensorC *input = where->base_.in_[FIRST_INPUT];
+  void *condition_data = NULL;
+  int ret = WhereGetConditionData(input, where->data_type_, &condition_data);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
+  WhereArgs *where_args = &where->args_;
+  where_args->condition_num_ = NNACLGetElementNum(input);
+  where_args->rank_ = input->shape_size_;
+  int strides[MAX_SHAPE_SIZE];
+  ret = ComputeStrides(input->shape_, strides, where_args->rank_);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
+  NNACL_CHECK_INT_MUL_NOT_OVERFLOW(where_args->condition_num_, where_args->rank_, NNACL_ERR);
+  int data_num_int = where_args->condition_num_ * where_args->rank_;
+  NNACL_CHECK_TRUE_RET(data_num_int >= 0, NNACL_ERR);
+  size_t result_size = (size_t)data_num_int * sizeof(int32_t);
+  int32_t *result = where->base_.env_->Alloc(where->base_.env_->allocator_, result_size);
+  NNACL_MALLOC_CHECK_NULL_RETURN_ERR(result);
+
+  int true_num = 0;
+  ret = WhereFillResult(where, input, strides, result, &true_num);
+  if (ret != NNACL_OK) {
+    where->base_.env_->Free(where->base_.env_->allocator_, result);
+    return ret;
+  }
+  WhereUpdateOutput(where, result, true_num);
   return NNACL_OK;
 }
 

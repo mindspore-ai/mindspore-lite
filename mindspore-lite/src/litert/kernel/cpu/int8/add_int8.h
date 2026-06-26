@@ -39,6 +39,8 @@ class QuantizedAddCPUKernel : public LiteKernel {
   int DoExecute(int tId);
 
  private:
+  int InitBroadcastTileData();
+  void FreeTileData();
   int BroadcastRun(int task_id);
 
  private:

@@ -461,13 +461,17 @@ void TileOneDimensionFp32(const void *inPtr, void *outPtr, int dim, size_t ndim,
   }
 }
 
-void TileDimensionsFp32(const float *data0, const float *data1, float *tile_data0, float *tile_data1,
-                        ArithmeticParameter *param) {
-  CalcMultiplesAndStrides(param);
+int TileDimensionsFp32(const float *data0, const float *data1, float *tile_data0, float *tile_data1,
+                       ArithmeticParameter *param) {
+  int ret = CalcMultiplesAndStrides(param);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
   TileOneDimensionFp32(data0, tile_data0, 0, param->ndim_, param->in_shape0_, param->in_strides0_, param->out_strides_,
                        param->multiples0_);
   TileOneDimensionFp32(data1, tile_data1, 0, param->ndim_, param->in_shape1_, param->in_strides1_, param->out_strides_,
                        param->multiples1_);
+  return NNACL_OK;
 }
 
 void AssignSubOpt(float *in0, const float *in1, size_t size) {

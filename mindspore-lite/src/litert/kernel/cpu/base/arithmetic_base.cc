@@ -15,6 +15,8 @@
  */
 
 #include "src/litert/kernel/cpu/base/arithmetic_base.h"
+#include <cstdint>
+#include <limits>
 #include <map>
 #include <utility>
 #include <vector>
@@ -224,8 +226,54 @@ int ArithmeticBaseCPUKernel::UpdateParameter() {
   return RET_OK;
 }
 
+int ArithmeticBaseCPUKernel::BroadCastInputConstTensor(int input_index, MatricInfo *matric, int64_t *elements_num,
+                                                       int *input_shape, int *input_strides,
+                                                       bool prefer_explicit_broadcast, bool *exist_broadcast) {
+  if (!matric->is_const) {
+    return RET_OK;
+  }
+  CHECK_NULL_RETURN(in_tensors_[input_index]->data());
+  if (*elements_num == param_->out_elements_num_ || !prefer_explicit_broadcast) {
+    return RET_OK;
+  }
+  const int64_t element_num = out_tensors_.front()->ElementsNum();
+  if (element_num <= 0 || in_data_size_ <= 0) {
+    MS_LOG(ERROR) << "malloc broadcast buffer size is invalid, element_num: " << element_num
+                  << ", data size: " << in_data_size_;
+    return RET_ERROR;
+  }
+  const auto element_count = static_cast<uint64_t>(element_num);
+  const auto data_size = static_cast<uint64_t>(in_data_size_);
+  const auto max_buffer_size = static_cast<uint64_t>(std::numeric_limits<size_t>::max());
+  if (element_count > max_buffer_size / data_size) {
+    MS_LOG(ERROR) << "malloc broadcast buffer size overflow, element_num: " << element_num
+                  << ", data size: " << in_data_size_;
+    return RET_ERROR;
+  }
+  const auto buffer_size = static_cast<size_t>(element_count * data_size);
+  matric->data = ms_context_->allocator->Malloc(buffer_size);
+  if (matric->data == nullptr) {
+    MS_LOG(ERROR) << "malloc broadcast buffer failed";
+    return RET_ERROR;
+  }
+  broadcast_buffer_.push_back(matric->data);
+  DoBroadcast(matric->data, input_index);
+  *elements_num = param_->out_elements_num_;
+  for (size_t i = 0; i < param_->ndim_; ++i) {
+    input_shape[i] = param_->out_shape_[i];
+    input_strides[i] = param_->out_strides_[i];
+  }
+  matric->shape = c_matric_.shape;
+  matric->is_valid = true;
+  *exist_broadcast = true;
+  return RET_OK;
+}
+
 int ArithmeticBaseCPUKernel::BroadCastConstTensor() {
-  CalcMultiplesAndStrides(param_);
+  int ret = CalcMultiplesAndStrides(param_);
+  if (ret != NNACL_OK) {
+    return RET_ERROR;
+  }
 #ifdef MSLITE_ENABLE_CLOUD_INFERENCE
   bool prefer_explicit_broadcast = false;
 #else
@@ -233,55 +281,15 @@ int ArithmeticBaseCPUKernel::BroadCastConstTensor() {
 #endif
   prefer_explicit_broadcast = prefer_explicit_broadcast && (in_tensors_.front()->data_type() != kNumberTypeBool);
   bool exist_broadcast_{false};
-  if (a_matric_.is_const) {
-    CHECK_NULL_RETURN(in_tensors_[FIRST_INPUT]->data());
-    if (param_->in_elements_num0_ != param_->out_elements_num_ && prefer_explicit_broadcast) {
-      if (out_tensors_.front()->ElementsNum() * in_data_size_ == 0) {
-        MS_LOG(ERROR) << "malloc broadcast buffer size is 0";
-        return RET_ERROR;
-      }
-      a_matric_.data = ms_context_->allocator->Malloc(out_tensors_.front()->ElementsNum() * in_data_size_);
-      if (a_matric_.data == nullptr) {
-        MS_LOG(ERROR) << "malloc broadcast buffer for input-0 failed";
-        return RET_ERROR;
-      }
-      broadcast_buffer_.push_back(a_matric_.data);
-      DoBroadcast(a_matric_.data, FIRST_INPUT);
-      param_->in_elements_num0_ = param_->out_elements_num_;
-      // shape must be equal to out
-      for (size_t i = 0; i < param_->ndim_; ++i) {
-        param_->in_shape0_[i] = param_->out_shape_[i];
-        param_->in_strides0_[i] = param_->out_strides_[i];
-      }
-      a_matric_.shape = c_matric_.shape;
-      a_matric_.is_valid = true;
-      exist_broadcast_ = true;
-    }
+  ret = BroadCastInputConstTensor(FIRST_INPUT, &a_matric_, &param_->in_elements_num0_, param_->in_shape0_,
+                                  param_->in_strides0_, prefer_explicit_broadcast, &exist_broadcast_);
+  if (ret != RET_OK) {
+    return ret;
   }
-  if (b_matric_.is_const) {
-    CHECK_NULL_RETURN(in_tensors_[SECOND_INPUT]->data());
-    if (param_->in_elements_num1_ != param_->out_elements_num_ && prefer_explicit_broadcast) {
-      if (out_tensors_.front()->ElementsNum() * in_data_size_ == 0) {
-        MS_LOG(ERROR) << "malloc broadcast buffer size is 0";
-        return RET_ERROR;
-      }
-      b_matric_.data = ms_context_->allocator->Malloc(out_tensors_.front()->ElementsNum() * in_data_size_);
-      if (b_matric_.data == nullptr) {
-        MS_LOG(ERROR) << "malloc broadcast buffer for input-1 failed";
-        return RET_ERROR;
-      }
-      broadcast_buffer_.push_back(b_matric_.data);
-      DoBroadcast(b_matric_.data, SECOND_INPUT);
-      param_->in_elements_num1_ = param_->out_elements_num_;
-      // shape must be equal to out
-      for (size_t i = 0; i < param_->ndim_; ++i) {
-        param_->in_shape1_[i] = param_->out_shape_[i];
-        param_->in_strides1_[i] = param_->out_strides_[i];
-      }
-      b_matric_.shape = c_matric_.shape;
-      b_matric_.is_valid = true;
-      exist_broadcast_ = true;
-    }
+  ret = BroadCastInputConstTensor(SECOND_INPUT, &b_matric_, &param_->in_elements_num1_, param_->in_shape1_,
+                                  param_->in_strides1_, prefer_explicit_broadcast, &exist_broadcast_);
+  if (ret != RET_OK) {
+    return ret;
   }
   if (!exist_broadcast_) {
     return RET_OK;

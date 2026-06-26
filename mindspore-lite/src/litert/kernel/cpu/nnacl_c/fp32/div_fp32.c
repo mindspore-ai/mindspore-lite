@@ -100,7 +100,10 @@ int ElementOptDivInt(const int32_t *in0, const int32_t *in1, int32_t *out, int s
 
 int BroadcastDiv(const float *in0, const float *in1, float *tile_in0, float *tile_in1, float *out, int size,
                  ArithmeticParameter *param) {
-  TileDimensionsFp32(in0, in1, tile_in0, tile_in1, param);
+  int ret = TileDimensionsFp32(in0, in1, tile_in0, tile_in1, param);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
   return ElementDiv(tile_in0, tile_in1, out, size);
 }
 

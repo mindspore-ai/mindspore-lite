@@ -31,8 +31,14 @@ int SpaceToDepthForNHWC(const void *input, void *output, const int *in_shape, co
   int block_size = param->block_size_;
   int in_strides[C4NUM];
   int out_strides[C4NUM];
-  ComputeStrides(in_shape, in_strides, shape_size);
-  ComputeStrides(out_shape, out_strides, shape_size);
+  int ret = ComputeStrides(in_shape, in_strides, shape_size);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
+  ret = ComputeStrides(out_shape, out_strides, shape_size);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
   for (int i = 0; i < out_shape[0]; ++i) {
     int64_t in_offset_n = i * in_strides[0];
     int64_t out_offset_n = i * out_strides[0];

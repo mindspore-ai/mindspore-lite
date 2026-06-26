@@ -42,14 +42,20 @@ DepthToSpaceInt8CPUKernel::~DepthToSpaceInt8CPUKernel() {
 int DepthToSpaceInt8CPUKernel::ReSize() {
   TensorC *input = in_tensors_[0]->ConvertToTensorC();
   int32_t in_strides[DIMENSION_4D] = {0};
-  ComputeStrides(input->shape_, in_strides, input->shape_size_);
+  int ret = ComputeStrides(input->shape_, in_strides, input->shape_size_);
+  if (ret != NNACL_OK) {
+    return RET_ERROR;
+  }
   args_.in_stride_dim0_ = in_strides[Index0];
   args_.in_stride_dim1_ = in_strides[Index1];
   args_.in_stride_dim2_ = in_strides[Index2];
 
   TensorC *output = out_tensors_[0]->ConvertToTensorC();
   int32_t out_strides[DIMENSION_4D] = {0};
-  ComputeStrides(output->shape_, out_strides, output->shape_size_);
+  ret = ComputeStrides(output->shape_, out_strides, output->shape_size_);
+  if (ret != NNACL_OK) {
+    return RET_ERROR;
+  }
   args_.out_stride_dim0_ = out_strides[Index0];
   args_.out_stride_dim1_ = out_strides[Index1];
   args_.out_stride_dim2_ = out_strides[Index2];

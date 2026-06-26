@@ -15,6 +15,7 @@
  */
 
 #include "src/litert/kernel/cpu/int8/add_int8.h"
+#include "nnacl_c/errorcode.h"
 #include "nnacl_c/int8/quantize.h"
 #include "nnacl_c/int8/arithmetic_int8.h"
 #include "src/litert/kernel_registry.h"
@@ -32,6 +33,54 @@ namespace mindspore::kernel {
 namespace {
 constexpr size_t kBaseShift = 20;
 constexpr size_t kMaxShapeSize = 10;
+
+int UpdateAddInputShape(const lite::Tensor *tensor, int *shape, const char *tensor_name) {
+  auto tensor_shape = tensor->shape();
+  if (tensor_shape.size() > kMaxShapeSize) {
+    MS_LOG(ERROR) << tensor_name << " shape size " << tensor_shape.size() << " > max shape size " << kMaxShapeSize;
+    return RET_ERROR;
+  }
+  for (size_t i = 0; i < tensor_shape.size(); i++) {
+    if (shape[i] == -1) {
+      memcpy(shape, tensor_shape.data(), tensor_shape.size() * sizeof(int));
+      break;
+    }
+  }
+  return RET_OK;
+}
+
+int ComputeAddStrides(ArithmeticParameter *param) {
+  int ret = ComputeStrides(param->in_shape0_, param->in_strides0_, param->ndim_);
+  if (ret != NNACL_OK) {
+    return RET_ERROR;
+  }
+  ret = ComputeStrides(param->in_shape1_, param->in_strides1_, param->ndim_);
+  if (ret != NNACL_OK) {
+    return RET_ERROR;
+  }
+  ret = ComputeStrides(param->out_shape_, param->out_strides_, param->ndim_);
+  return ret == NNACL_OK ? RET_OK : RET_ERROR;
+}
+
+int UpdateAddBroadcastInfo(ArithmeticParameter *param, int *in_size, int *out_size) {
+  size_t break_pos = 0;
+  for (int i = static_cast<int>(param->ndim_) - 1; i >= 0; --i) {
+    if (param->in_shape0_[i] != param->in_shape1_[i]) {
+      break_pos = i;
+      break;
+    }
+  }
+  *in_size = 1;
+  *out_size = 1;
+  for (size_t i = 0; i < param->ndim_; i++) {
+    if (i > break_pos) {
+      *in_size *= param->out_shape_[i];
+    } else {
+      *out_size *= param->out_shape_[i];
+    }
+  }
+  return ComputeAddStrides(param);
+}
 }  // namespace
 
 QuantizedAddCPUKernel::~QuantizedAddCPUKernel() {
@@ -130,58 +179,21 @@ int QuantizedAddCPUKernel::ReSize() {
   arith_para_->in_elements_num1_ = in_tensors_[1]->ElementsNum();
   arith_para_->out_elements_num_ = out_tensors_[0]->ElementsNum();
 
-  if (input0->shape().size() > kMaxShapeSize) {
-    MS_LOG(ERROR) << "input0->shape().size() " << input0->shape().size() << " > max shape size " << kMaxShapeSize;
-    return RET_ERROR;
+  int ret = UpdateAddInputShape(input0, arith_para_->in_shape0_, "input0");
+  if (ret != RET_OK) {
+    return ret;
   }
-  for (size_t i = 0; i < in_tensors_[0]->shape().size(); i++) {
-    if (arith_para_->in_shape0_[i] == -1) {
-      memcpy(arith_para_->in_shape0_, input0->shape().data(), input0->shape().size() * sizeof(int));
-      break;
-    }
+  ret = UpdateAddInputShape(input1, arith_para_->in_shape1_, "input1");
+  if (ret != RET_OK) {
+    return ret;
   }
-  if (input1->shape().size() > kMaxShapeSize) {
-    MS_LOG(ERROR) << "input1->shape().size() " << input1->shape().size() << " > max shape size " << kMaxShapeSize;
-    return RET_ERROR;
-  }
-  for (size_t i = 0; i < in_tensors_[1]->shape().size(); i++) {
-    if (arith_para_->in_shape1_[i] == -1) {
-      memcpy(arith_para_->in_shape1_, input1->shape().data(), input1->shape().size() * sizeof(int));
-      break;
-    }
-  }
-  if (output->shape().size() > kMaxShapeSize) {
-    MS_LOG(ERROR) << "output->shape().size() " << output->shape().size() << " > max shape size " << kMaxShapeSize;
-    return RET_ERROR;
-  }
-  for (size_t i = 0; i < out_tensors_[0]->shape().size(); i++) {
-    if (arith_para_->out_shape_[i] == -1) {
-      memcpy(arith_para_->out_shape_, output->shape().data(), output->shape().size() * sizeof(int));
-      break;
-    }
+  ret = UpdateAddInputShape(output, arith_para_->out_shape_, "output");
+  if (ret != RET_OK) {
+    return ret;
   }
 
   if (arith_para_->broadcasting_) {
-    size_t break_pos_ = 0;
-    for (int i = static_cast<int>(arith_para_->ndim_) - 1; i >= 0; --i) {
-      if (arith_para_->in_shape0_[i] != arith_para_->in_shape1_[i]) {
-        break_pos_ = i;
-        break;
-      }
-    }
-    in_size_ = 1;
-    out_size_ = 1;
-    for (size_t i = 0; i < arith_para_->ndim_; i++) {
-      if (i > break_pos_) {
-        in_size_ *= arith_para_->out_shape_[i];
-      } else {
-        out_size_ *= arith_para_->out_shape_[i];
-      }
-    }
-
-    ComputeStrides(arith_para_->in_shape0_, arith_para_->in_strides0_, arith_para_->ndim_);
-    ComputeStrides(arith_para_->in_shape1_, arith_para_->in_strides1_, arith_para_->ndim_);
-    ComputeStrides(arith_para_->out_shape_, arith_para_->out_strides_, arith_para_->ndim_);
+    return UpdateAddBroadcastInfo(arith_para_, &in_size_, &out_size_);
   }
   return RET_OK;
 }
@@ -241,6 +253,32 @@ int QuantizedAddCPUKernel::DoExecute(int task_id) {
   return RET_OK;
 }
 
+void QuantizedAddCPUKernel::FreeTileData() {
+  this->ms_context_->allocator->Free(tile0_data_);
+  this->ms_context_->allocator->Free(tile1_data_);
+  tile0_data_ = nullptr;
+  tile1_data_ = nullptr;
+}
+
+int QuantizedAddCPUKernel::InitBroadcastTileData() {
+  MS_CHECK_GT(in_tensors_.at(0)->ElementsNum(), 0, RET_ERROR);
+  MS_CHECK_GT(in_tensors_.at(1)->ElementsNum(), 0, RET_ERROR);
+  MS_CHECK_GT(out_tensors_.at(0)->Size(), 0, RET_ERROR);
+  tile0_data_ = static_cast<int8_t *>(this->ms_context_->allocator->Malloc(out_tensors_.at(0)->Size()));
+  tile1_data_ = static_cast<int8_t *>(this->ms_context_->allocator->Malloc(out_tensors_.at(0)->Size()));
+  if (tile0_data_ == nullptr || tile1_data_ == nullptr) {
+    MS_LOG(ERROR) << "malloc tile data failed.";
+    FreeTileData();
+    return RET_ERROR;
+  }
+  int tile_ret = TileDimensionsInt8(input0_data_, input1_data_, tile0_data_, tile1_data_, arith_para_);
+  if (tile_ret != NNACL_OK) {
+    FreeTileData();
+    return RET_ERROR;
+  }
+  return RET_OK;
+}
+
 int QuantizedAddCPUKernel::Run() {
   input0_data_ = static_cast<int8_t *>(in_tensors_.at(0)->data());
   MSLITE_CHECK_PTR(input0_data_);
@@ -253,39 +291,17 @@ int QuantizedAddCPUKernel::Run() {
   elements_num_ = out_tensors_.at(0)->ElementsNum();
 
   int ret = RET_ERROR;
-  // Reference: Div-INT8 implementation (div_int8.cc:159-218)
-  // Allocate tile_data_ buffers for broadcasting
   if (arith_para_->broadcasting_) {
-    MS_CHECK_GT(in_tensors_.at(0)->ElementsNum(), 0, RET_ERROR);
-    MS_CHECK_GT(in_tensors_.at(1)->ElementsNum(), 0, RET_ERROR);
-    MS_CHECK_GT(out_tensors_.at(0)->Size(), 0, RET_ERROR);
-
-    tile0_data_ = static_cast<int8_t *>(this->ms_context_->allocator->Malloc(out_tensors_.at(0)->Size()));
-    if (tile0_data_ == nullptr) {
-      MS_LOG(ERROR) << "malloc tile0_data_ failed.";
-      return RET_ERROR;
+    ret = InitBroadcastTileData();
+    if (ret != RET_OK) {
+      return ret;
     }
-    tile1_data_ = static_cast<int8_t *>(this->ms_context_->allocator->Malloc(out_tensors_.at(0)->Size()));
-    if (tile1_data_ == nullptr) {
-      MS_LOG(ERROR) << "malloc tile1_data_ failed.";
-      this->ms_context_->allocator->Free(tile0_data_);
-      tile0_data_ = nullptr;
-      return RET_ERROR;
-    }
-
-    // Perform dual-direction broadcasting using TileDimensionsInt8
-    TileDimensionsInt8(input0_data_, input1_data_, tile0_data_, tile1_data_, arith_para_);
   }
 
-  // Execute addition (DoExecute will choose between tile_data_ and input_data_ based on broadcasting_ flag)
   ret = ParallelLaunch(this->ms_context_, AddInt8Run, this, thread_count_);
 
-  // Free tile_data_ buffers after computation
   if (arith_para_->broadcasting_) {
-    this->ms_context_->allocator->Free(tile0_data_);
-    this->ms_context_->allocator->Free(tile1_data_);
-    tile0_data_ = nullptr;
-    tile1_data_ = nullptr;
+    FreeTileData();
   }
 
   return ret;

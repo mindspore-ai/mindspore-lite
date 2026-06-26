@@ -16,6 +16,7 @@
 #include "coder/opcoders/nnacl/fp32/arithmetic_fp32_coder.h"
 #include <string>
 #include "coder/opcoders/file_collector.h"
+#include "nnacl_c/errorcode.h"
 #include "nnacl_c/fp32/arithmetic_fp32.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/log.h"
@@ -92,7 +93,10 @@ void ArithmeticFP32Coder::InitRunFunction(int primitive_type) {
 }
 
 int ArithmeticFP32Coder::ReSize(CoderContext *const context) {
-  CalcMultiplesAndStrides(arithmetic_parameter_);
+  int stride_ret = CalcMultiplesAndStrides(arithmetic_parameter_);
+  if (stride_ret != NNACL_OK) {
+    return RET_ERROR;
+  }
   if (arithmetic_parameter_->broadcasting_) {
     outside_ = 1;
     int resize_n_index = static_cast<int>(arithmetic_parameter_->ndim_) - 1;

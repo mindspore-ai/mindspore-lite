@@ -16,8 +16,8 @@
 #include "nnacl_c/int8/space_to_batch_int8.h"
 #include "nnacl_c/common_func.h"
 
-void DoSpaceToBatchNHWCInt8(const int8_t *input, int8_t *output, const int32_t *block_sizes, const int32_t *in_shape,
-                            const int32_t *out_shape) {
+int DoSpaceToBatchNHWCInt8(const int8_t *input, int8_t *output, const int32_t *block_sizes, const int32_t *in_shape,
+                           const int32_t *out_shape) {
   int out_dim0 = out_shape[0];
   int out_dim1 = out_shape[1];
   int out_dim2 = out_shape[2];
@@ -25,14 +25,21 @@ void DoSpaceToBatchNHWCInt8(const int8_t *input, int8_t *output, const int32_t *
   int block_w = block_sizes[1];
   int block_h = block_sizes[0];
   int in_strides[4] = {0};
-  ComputeStrides(in_shape, in_strides, 4);
+  int ret = ComputeStrides(in_shape, in_strides, 4);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
   int out_strides[4] = {0};
-  ComputeStrides(out_shape, out_strides, 4);
+  ret = ComputeStrides(out_shape, out_strides, 4);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
   size_t copy_size = copy_num * sizeof(int8_t);
   size_t out_offset = 0;
 
-  NNACL_CHECK_ZERO_RETURN(in_shape[0]);
-  NNACL_CHECK_ZERO_RETURN(block_w);
+  if (in_shape[0] == 0 || block_w == 0) {
+    return NNACL_ERR;
+  }
   for (int n = 0; n < out_dim0; ++n) {
     int in_n = n % in_shape[0];
     int32_t stride_w = (n / in_shape[0]) % block_w;
@@ -47,6 +54,7 @@ void DoSpaceToBatchNHWCInt8(const int8_t *input, int8_t *output, const int32_t *
       }
     }
   }
+  return NNACL_OK;
 }
 
 void DoSpaceToBatchPaddingNHWCInt8(const int8_t *input, int8_t *output, SpaceToBatchParameter *param, int32_t zp) {

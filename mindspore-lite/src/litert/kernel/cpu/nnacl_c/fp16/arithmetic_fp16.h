@@ -27,8 +27,8 @@ extern "C" {
 
 void TileOneDimensionFp16(const void *input, void *output, int dim, size_t ndim, const int *inShape,
                           const int *inStrides, const int *outStrides, const int *multiple);
-void TileDimensionsFp16(const float16_t *data0, const float16_t *data1, float16_t *tile_data0, float16_t *tile_data1,
-                        ArithmeticParameter *param);
+int TileDimensionsFp16(const float16_t *data0, const float16_t *data1, float16_t *tile_data0, float16_t *tile_data1,
+                       ArithmeticParameter *param);
 
 int ElementOptMulFp16(const float16_t *input0, const float16_t *input1, float16_t *output, int element_size,
                       bool first_scalar);

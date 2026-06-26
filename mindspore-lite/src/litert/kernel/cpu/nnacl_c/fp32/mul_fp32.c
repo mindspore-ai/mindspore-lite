@@ -20,7 +20,10 @@
 
 int BroadcastMul(const float *in0, const float *in1, float *tile_in0, float *tile_in1, float *out, int size,
                  ArithmeticParameter *param) {
-  TileDimensionsFp32(in0, in1, tile_in0, tile_in1, param);
+  int ret = TileDimensionsFp32(in0, in1, tile_in0, tile_in1, param);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
   return ElementMul(tile_in0, tile_in1, out, size);
 }
 

@@ -17,6 +17,7 @@
 #include "src/litert/kernel/cpu/int8/div_int8.h"
 #include <limits>
 #include <algorithm>
+#include "nnacl_c/errorcode.h"
 #include "nnacl_c/int8/arithmetic_int8.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
@@ -25,6 +26,21 @@ using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;
 using mindspore::schema::PrimitiveType_DivFusion;
+
+namespace {
+int FillTileInputShape(const std::vector<int> &out_shape, const std::vector<int> &in_shape, int *tile_shape,
+                       const char *error_msg) {
+  MS_CHECK_TRUE_MSG(out_shape.size() >= in_shape.size(), RET_ERROR, error_msg);
+  size_t offset = out_shape.size() - in_shape.size();
+  for (size_t i = 0; i < offset; ++i) {
+    tile_shape[i] = 1;
+  }
+  for (size_t i = 0; i < in_shape.size(); ++i) {
+    tile_shape[i + offset] = in_shape[i];
+  }
+  return RET_OK;
+}
+}  // namespace
 
 namespace mindspore::kernel {
 DivInt8CPUKernel::~DivInt8CPUKernel() {
@@ -156,6 +172,47 @@ int DivScalarInt8Run(void *cdata, int task_id, float, float) {
   return ret;
 }
 
+void DivInt8CPUKernel::FreeTileData() {
+  ms_context_->allocator->Free(tile0_data_);
+  ms_context_->allocator->Free(tile1_data_);
+  tile0_data_ = nullptr;
+  tile1_data_ = nullptr;
+}
+
+int DivInt8CPUKernel::InitBroadcastTileData() {
+  ArithmeticParameter tile_para;
+  auto out_shape = out_tensors_[FIRST_INPUT]->shape();
+  tile_para.ndim_ = out_shape.size();
+  int ret = FillTileInputShape(out_shape, in_tensors_[FIRST_INPUT]->shape(), tile_para.in_shape0_,
+                               "Div first-input shape size is larger than out.");
+  if (ret != RET_OK) {
+    return ret;
+  }
+  ret = FillTileInputShape(out_shape, in_tensors_[SECOND_INPUT]->shape(), tile_para.in_shape1_,
+                           "Div second-input shape size is larger than out.");
+  if (ret != RET_OK) {
+    return ret;
+  }
+  for (size_t i = 0; i < out_shape.size(); ++i) {
+    tile_para.out_shape_[i] = out_shape[i];
+  }
+  tile0_data_ = static_cast<int8_t *>(ms_context_->allocator->Malloc(out_tensors_.at(0)->Size()));
+  tile1_data_ = static_cast<int8_t *>(ms_context_->allocator->Malloc(out_tensors_.at(0)->Size()));
+  if (tile0_data_ == nullptr || tile1_data_ == nullptr) {
+    MS_LOG(ERROR) << "Memory allocation failed";
+    FreeTileData();
+    return RET_ERROR;
+  }
+  int tile_ret = TileDimensionsInt8(
+    static_cast<int8_t *>(in_tensors_.at(0)->MutableData()), static_cast<int8_t *>(in_tensors_.at(1)->MutableData()),
+    reinterpret_cast<int8_t *>(tile0_data_), reinterpret_cast<int8_t *>(tile1_data_), &tile_para);
+  if (tile_ret != NNACL_OK) {
+    FreeTileData();
+    return RET_ERROR;
+  }
+  return RET_OK;
+}
+
 int DivInt8CPUKernel::Run() {
   if (div_scalar_) {
     auto ret = ParallelLaunch(this->ms_context_, DivScalarInt8Run, this, op_parameter_->thread_num_);
@@ -166,50 +223,14 @@ int DivInt8CPUKernel::Run() {
   }
 
   if (broadcast_) {
-    ArithmeticParameter tile_para;
-    auto out_shape = out_tensors_[FIRST_INPUT]->shape();
-    tile_para.ndim_ = out_shape.size();
-    auto in_shape0 = in_tensors_[FIRST_INPUT]->shape();
-    MS_CHECK_TRUE_MSG(out_shape.size() >= in_shape0.size(), RET_ERROR,
-                      "Sub first-input shape size is larger than out.");
-    for (size_t i = 0; i < out_shape.size() - in_shape0.size(); ++i) {
-      tile_para.in_shape0_[i] = 1;
+    int ret = InitBroadcastTileData();
+    if (ret != RET_OK) {
+      return ret;
     }
-    for (size_t i = 0; i < in_shape0.size(); ++i) {
-      tile_para.in_shape0_[i + out_shape.size() - in_shape0.size()] = in_shape0[i];
-    }
-    auto in_shape1 = in_tensors_[SECOND_INPUT]->shape();
-    MS_CHECK_TRUE_MSG(out_shape.size() >= in_shape1.size(), RET_ERROR,
-                      "Sub second-input shape size is larger than out.");
-    for (size_t i = 0; i < out_shape.size() - in_shape1.size(); ++i) {
-      tile_para.in_shape1_[i] = 1;
-    }
-    for (size_t i = 0; i < in_shape1.size(); ++i) {
-      tile_para.in_shape1_[i + out_shape.size() - in_shape1.size()] = in_shape1[i];
-    }
-    for (size_t i = 0; i < out_shape.size(); ++i) {
-      tile_para.out_shape_[i] = out_shape[i];
-    }
-    tile0_data_ = static_cast<int8_t *>(ms_context_->allocator->Malloc(out_tensors_.at(0)->Size()));
-    tile1_data_ = static_cast<int8_t *>(ms_context_->allocator->Malloc(out_tensors_.at(0)->Size()));
-    if (tile0_data_ == nullptr || tile1_data_ == nullptr) {
-      MS_LOG(ERROR) << "Memory allocation failed";
-      ms_context_->allocator->Free(tile0_data_);
-      ms_context_->allocator->Free(tile1_data_);
-      tile0_data_ = nullptr;
-      tile1_data_ = nullptr;
-      return RET_ERROR;
-    }
-    TileDimensionsInt8(static_cast<int8_t *>(in_tensors_.at(0)->MutableData()),
-                       static_cast<int8_t *>(in_tensors_.at(1)->MutableData()), reinterpret_cast<int8_t *>(tile0_data_),
-                       reinterpret_cast<int8_t *>(tile1_data_), &tile_para);
   }
   auto ret = ParallelLaunch(this->ms_context_, DivInt8Run, this, op_parameter_->thread_num_);
   if (broadcast_) {
-    ms_context_->allocator->Free(tile0_data_);
-    ms_context_->allocator->Free(tile1_data_);
-    tile0_data_ = nullptr;
-    tile1_data_ = nullptr;
+    FreeTileData();
   }
   if (ret != RET_OK) {
     MS_LOG(ERROR) << "DivInt8Run function error error_code[" << ret << "]";

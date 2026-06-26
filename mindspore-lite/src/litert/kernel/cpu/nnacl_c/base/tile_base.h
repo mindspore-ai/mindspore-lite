@@ -23,7 +23,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-void Tile(void *input_data, void *output_data, const TileStruct *tile);
+int Tile(void *input_data, void *output_data, const TileStruct *tile);
 void TileSimple(void *input_data, void *output_data, size_t begin, size_t end, const TileStruct *tile);
 #ifdef __cplusplus
 }
