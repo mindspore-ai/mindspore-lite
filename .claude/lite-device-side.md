@@ -107,6 +107,11 @@ This project provides the following Claude Code skills:
 | `lite-converter` | Model conversion, parser, optimizer, quantization |
 | `lite-debug-test` | Debugging, testing, benchmarking, profiling |
 | `lite-device-side-infer` | Device-side inference (LiteRT), Android/iOS, Micro, training |
-| `lite-code-quality` | Code standards, security checks, CI |
+
+**Cross-cutting skill (`.claude/skills/common/`):**
+
+| Skill | Description |
+|-------|-------------|
+| `clean-code-check` | C++/Python/Shell/CMake clean code checks, CI 8-tool gate, design principles, common PR issues |
 
 Use these skills when the task matches their description. Each skill provides detailed context and code examples for its domain.
