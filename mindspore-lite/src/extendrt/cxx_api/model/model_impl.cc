@@ -531,9 +531,6 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, c
       LoadGraphByBufferImpl(model_buff, model_size, weight_data, weight_size, model_type, model_context, model_path);
     if (func_graph == nullptr) {
       MS_LOG(ERROR) << "Failed to load MindIR model, please check the validity of the model.";
-      if (weight_data == nullptr && weight_size == 0 && model_path.empty()) {
-        return kLiteError;
-      }
       return Status(kLiteNullptr, "func_graph is nullptr, failed to load MindIR model!");
     }
     // convert and optimize func graph to infer
