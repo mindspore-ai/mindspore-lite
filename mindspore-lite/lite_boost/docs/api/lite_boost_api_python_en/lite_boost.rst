@@ -15,7 +15,7 @@ Parallel
     lite_boost.parallel.ParallelManager
 
 Operators
---------
+------------
 
 .. autosummary::
     :toctree: lite_boost
