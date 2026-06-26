@@ -21,11 +21,14 @@ using namespace ge;   // NOLINT(build/namespaces)
 using namespace gert;  // NOLINT(build/namespaces)
 
 namespace {
+// out is rank-3 [T, Hv, Dv]; the head-dim axis is the last of the [T, H, D] layouts.
+constexpr uint32_t kOutputRank = 3;
+constexpr int32_t kHeadDimAxis = 2;
+
 static uint32_t ChunkGatedDeltaRuleInferShape(InferShapeContext *context) {
     auto queryShape = context->GetInputShape(0);
     auto valueShape = context->GetInputShape(2);
     auto initialStateShape = context->GetInputShape(5);
-
     if (queryShape == nullptr || valueShape == nullptr || initialStateShape == nullptr) {
         return ge::GRAPH_FAILED;
     }
@@ -33,14 +36,14 @@ static uint32_t ChunkGatedDeltaRuleInferShape(InferShapeContext *context) {
     // query: [T, Hqk, Dk], value: [T, Hv, Dv]
     int64_t T = queryShape->GetDim(0);
     int64_t Hv = valueShape->GetDim(1);
-    int64_t Dv = valueShape->GetDim(2);
+    int64_t Dv = valueShape->GetDim(kHeadDimAxis);
 
     // out: [T, Hv, Dv]
     auto outShape = context->GetOutputShape(0);
-    outShape->SetDimNum(3);
+    outShape->SetDimNum(kOutputRank);
     outShape->SetDim(0, T);
     outShape->SetDim(1, Hv);
-    outShape->SetDim(2, Dv);
+    outShape->SetDim(kHeadDimAxis, Dv);
 
     // final_state: [B, Hv, Dv, Dk] — same shape as initial_state
     auto finalStateShape = context->GetOutputShape(1);
@@ -52,13 +55,13 @@ static uint32_t ChunkGatedDeltaRuleInferShape(InferShapeContext *context) {
 
     return ge::GRAPH_SUCCESS;
 }
-}  // namespace
 
-static uint32_t ChunkGatedDeltaRuleInferDataType(InferDataTypeContext *context) {
+uint32_t ChunkGatedDeltaRuleInferDataType(InferDataTypeContext *context) {
     context->SetOutputDataType(0, ge::DT_FLOAT16);
     context->SetOutputDataType(1, ge::DT_FLOAT16);
     return ge::GRAPH_SUCCESS;
 }
+}  // namespace
 
 IMPL_OP_INFERSHAPE(ChunkGatedDeltaRule)
     .InferShape(ChunkGatedDeltaRuleInferShape)

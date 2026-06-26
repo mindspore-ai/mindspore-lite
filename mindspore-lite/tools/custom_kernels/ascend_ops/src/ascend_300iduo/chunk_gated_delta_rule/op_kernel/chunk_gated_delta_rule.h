@@ -21,10 +21,14 @@
 #include "chunk_gated_delta_rule_tiling_data.h"  // NOLINT(build/include_subdir)
 
 using namespace AscendC;  // NOLINT(build/namespaces)
+
+namespace cgdr {
 constexpr uint64_t BUFFER_NUM = 1;
 constexpr uint64_t FP16_NUM_PER_BLOCK = 16;
 constexpr uint64_t FP32_NUM_PER_BLOCK = 8;
 constexpr int64_t BLOCK_BYTES = 32;
+// Number of Taylor-series terms used by ScalarExp to approximate exp on a scalar.
+constexpr int kExpTaylorTerms = 12;
 
 template <typename T>
 __aicore__ inline void CopyToGm(GlobalTensor<T> dstGm, LocalTensor<T> inLocal, DataCopyExtParams copyParamsIn) {
@@ -87,7 +91,9 @@ class CGDR {
   __aicore__ inline void Init(const CGDRInitParams &initParams, TPipe *pipe) {
     uint64_t blockDim = GetBlockNum();
     blockIdx_ = GetBlockIdx();
-    if (blockIdx_ >= blockDim) return;
+    if (blockIdx_ >= blockDim) {
+      return;
+    }
     pipe_ = pipe;
     SetGlobalTensors(initParams);
     InitLocalBuffers();
@@ -220,7 +226,7 @@ class CGDR {
     }
     float result = 1.0f;
     float term = 1.0f;
-    for (int i = 1; i <= 12; i++) {
+    for (int i = 1; i <= kExpTaylorTerms; i++) {
       term *= reduced / static_cast<float>(i);
       result += term;
     }
@@ -623,5 +629,6 @@ class CGDR {
   float scale_;
   uint64_t blockIdx_;
 };
+}  // namespace cgdr
 
 #endif  // CHUNK_GATED_DELTA_RULE_KERNEL_H_
