@@ -346,6 +346,17 @@ std::vector<std::vector<int>> ConvertVec2DToInt(const ValuePtr &value, TypeId da
   return result_value;
 }
 
+// Helper: create a 1D tensor info from contiguous data.
+tensor::TensorPtr BuildVecTensorInfo(const void *data, size_t element_count, size_t element_size, TypeId type_id) {
+  std::vector<int64_t> shape_vector{static_cast<int64_t>(element_count)};
+  auto tensor_info = lite::CreateTensorInfo(data, element_count * element_size, shape_vector, type_id);
+  if (tensor_info == nullptr) {
+    MS_LOG(ERROR) << "Create tensor info failed";
+    return nullptr;
+  }
+  return tensor_info;
+}
+
 }  // namespace
 
 bool CheckInputs(const CNodePtr &cnode) {
@@ -709,7 +720,11 @@ bool IsParamOrValueNodeWithData(const BaseRef &n) {
 
 PrimitivePtr GetPrimitiveFromAnfNode(const AnfNodePtr &anf_node) {
   if (utils::isa<CNodePtr>(anf_node)) {
-    return GetValueNode<PrimitivePtr>(anf_node->cast<CNodePtr>()->input(kAnfPrimitiveIndex));
+    auto cnode = anf_node->cast<CNodePtr>();
+    if (cnode == nullptr) {
+      return nullptr;
+    }
+    return GetValueNode<PrimitivePtr>(cnode->input(kAnfPrimitiveIndex));
   }
   if (utils::isa<ValueNodePtr>(anf_node)) {
     return GetValueNode<PrimitivePtr>(anf_node);
@@ -996,12 +1011,8 @@ ParameterPtr BuildVecParameterNodeFromData(const FuncGraphPtr &func_graph, const
   auto param_node = func_graph->add_parameter();
   MS_CHECK_TRUE_RET(param_node != nullptr, nullptr);
   param_node->set_name(node_name);
-  std::vector<int64_t> shape_vector{static_cast<int64_t>(element_count)};
-  auto tensor_info = lite::CreateTensorInfo(data, element_count * element_size, shape_vector, type_id);
-  if (tensor_info == nullptr) {
-    MS_LOG(ERROR) << "Create tensor info failed";
-    return nullptr;
-  }
+  auto tensor_info = BuildVecTensorInfo(data, element_count, element_size, type_id);
+  MS_CHECK_TRUE_RET(tensor_info != nullptr, nullptr);
   auto status = lite::InitParameterFromTensorInfo(param_node, tensor_info);
   if (status != RET_OK) {
     MS_LOG(ERROR) << "init parameter from tensor info failed";
@@ -1536,7 +1547,11 @@ bool IsMarkedTrainOp(const CNodePtr &cnode) {
 AbstractBasePtr ResolveAbstractFromNode(const AnfNodePtr &anf_node) {
   AbstractBasePtr abstract_base;
   if (CheckPrimitiveType(anf_node, prim::kPrimTupleGetItem)) {
-    abstract_base = anf_node->cast<CNodePtr>()->input(1)->abstract();
+    auto cnode = anf_node->cast<CNodePtr>();
+    if (cnode == nullptr) {
+      return abstract_base;
+    }
+    abstract_base = cnode->input(1)->abstract();
   } else {
     abstract_base = anf_node->abstract();
   }
