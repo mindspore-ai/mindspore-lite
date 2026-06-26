@@ -24,24 +24,23 @@
 namespace mindspore::lite::micro::nnacl {
 constexpr auto kInt8Range = 256;
 
+// Apply the ELu transform: y = x > 0 ? x : alpha * (exp(x) - 1), then quantize to int8.
+int8_t QuantizeEluValue(int input, const float input_scale, const int32_t input_zp, const float output_scale,
+                        const int32_t output_zp, const float alpha) {
+  constexpr int32_t min_value = std::numeric_limits<int8_t>::min();
+  constexpr int32_t max_value = std::numeric_limits<int8_t>::max();
+  const float real_input = input_scale * (input - input_zp);
+  const float transformed = real_input > 0.0f ? real_input : alpha * std::expm1(real_input);
+  const int32_t quantized = static_cast<int32_t>(std::round(transformed / output_scale) + output_zp);
+  return static_cast<int8_t>(std::max(std::min(quantized, max_value), min_value));
+}
+
 void CalculateEluTableList(int8_t *table, const float input_scale, const int32_t input_zp, const float output_scale,
                            const int32_t output_zp, const float alpha) {
   constexpr int32_t min_value = std::numeric_limits<int8_t>::min();
   constexpr int32_t max_value = std::numeric_limits<int8_t>::max();
-
   for (int i = min_value; i <= max_value; ++i) {
-    const float real_input = input_scale * (i - input_zp);
-    // Apply ELu transform: y = x > 0 ? x : alpha * (exp(x) - 1)
-    float transformed;
-    if (real_input > 0.0f) {
-      transformed = real_input;
-    } else {
-      transformed = alpha * std::expm1(real_input);
-    }
-    const int32_t quantized = static_cast<int32_t>(std::round(transformed / output_scale) + output_zp);
-    auto out_value = static_cast<int8_t>(std::max(std::min(quantized, max_value), min_value));
-    auto index = static_cast<uint8_t>(i);
-    table[index] = out_value;
+    table[static_cast<uint8_t>(i)] = QuantizeEluValue(i, input_scale, input_zp, output_scale, output_zp, alpha);
   }
 }
 

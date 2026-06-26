@@ -37,19 +37,19 @@ using NodeUsedListPtr = std::shared_ptr<std::vector<std::pair<AnfNodePtr, int>>>
 struct SliceReshapeInfo {
   const std::vector<int64_t> &shape_in;
   const std::vector<int64_t> &shape_out;
-  int64_t abnormal_axe_in = 0;
+  int64_t abnormal_axis_in = 0;
   int64_t abnormal_index_out = 0;
   bool slice_at_front = false;
 };
 
 struct AbnormalSliceParams {
-  int64_t count_sliced_axe_in = 0;
-  int64_t count_sliced_axe_front = 0;
-  int64_t count_sliced_axe_rear = 0;
-  int64_t count_sliced_abnormal_axe = 0;
+  int64_t count_sliced_axis_in = 0;
+  int64_t count_sliced_axis_front = 0;
+  int64_t count_sliced_axis_rear = 0;
+  int64_t count_sliced_abnormal_axis = 0;
   int64_t outer_size_in = 1;
   int64_t outer_size_out = 1;
-  int64_t abnormal_axe_out = 0;
+  int64_t abnormal_axis_out = 0;
   bool slice_at_front = false;
 };
 
@@ -78,9 +78,9 @@ class SlicePreposePass : public Pass {
   static CNodePtr CreateReshapeCNode(const FuncGraphPtr &graph, const std::vector<int64_t> &shape,
                                      const AbstractBasePtr &abstract, const CNodePtr &preceed_cnode);
   static bool SiblingsAreSameSlice(const NodeUsedListPtr &output_node_list, const std::vector<int64_t> &ref_shape = {});
-  static int64_t GetReshapeAbnormalAxeIn(const std::vector<int64_t> &shape_in, const std::vector<int64_t> &shape_out,
-                                         std::vector<int64_t> *mapped_axe);
-  static int64_t GetReshapeAbnormalIndexOut(const CNodePtr &slice_cnode, const std::vector<int64_t> &mapped_axe,
+  static int64_t GetReshapeAbnormalAxisIn(const std::vector<int64_t> &shape_in, const std::vector<int64_t> &shape_out,
+                                          std::vector<int64_t> *mapped_axis);
+  static int64_t GetReshapeAbnormalIndexOut(const CNodePtr &slice_cnode, const std::vector<int64_t> &mapped_axis,
                                             const std::vector<int64_t> &shape_out, std::vector<int64_t> *shape_out_copy,
                                             bool *is_normal_mode, bool *support_abnormal_mode);
   static bool UpdateReshapeShapeParam(const FuncGraphPtr &graph, const CNodePtr &reshape_cnode,
@@ -88,9 +88,9 @@ class SlicePreposePass : public Pass {
   static bool PreposeWithNormalReshape(const FuncGraphPtr &graph, const CNodePtr &slice_cnode,
                                        const CNodePtr &reshape_cnode, const std::vector<int64_t> &shape_in,
                                        const std::vector<int64_t> &shape_out_copy,
-                                       const std::vector<int64_t> &mapped_axe);
+                                       const std::vector<int64_t> &mapped_axis);
   static CNodePtr CreateSlice1ForReshapePrepose(const FuncGraphPtr &graph, const CNodePtr &slice_cnode,
-                                                const CNodePtr &matmul_cnode, int64_t count_sliced_axe_in,
+                                                const CNodePtr &matmul_cnode, int64_t count_sliced_axis_in,
                                                 const SliceReshapeInfo &info);
   static CNodePtr CreateSlice2ForReshapePrepose(const FuncGraphPtr &graph, const CNodePtr &slice_cnode,
                                                 const CNodePtr &new_reshape1_cnode,
@@ -115,7 +115,7 @@ class SlicePreposePass : public Pass {
                                                const std::vector<int> &size, const std::vector<int64_t> &matmul_shape,
                                                int dims, bool *prepose_to_left, bool *prepose_to_right);
   static bool MapFcOutputAxesToInput(const std::vector<int64_t> &shape_in, const std::vector<int64_t> &shape_out,
-                                     std::vector<int64_t> *mapped_axe);
+                                     std::vector<int64_t> *mapped_axis);
   static bool ValidateFcSliceAxes(const CNodePtr &slice_cnode, const std::vector<int64_t> &shape_out);
   static bool BuildFcSliceParams(const CNodePtr &slice_cnode, const std::vector<int64_t> &shape_in,
                                  const std::vector<int64_t> &shape_out, std::vector<int64_t> *new_axes,
@@ -131,7 +131,7 @@ class SlicePreposePass : public Pass {
   static void MergeSliceAxesParams(const std::vector<int64_t> &axes_slice1, const std::vector<int> &begin_slice1,
                                    const std::vector<int> &size_slice1, const std::vector<int64_t> &axes_slice2,
                                    const std::vector<int> &begin_slice2, const std::vector<int> &size_slice2,
-                                   int64_t axe_max, std::vector<int> *begin_new, std::vector<int> *size_new);
+                                   int64_t axis_max, std::vector<int> *begin_new, std::vector<int> *size_new);
   static bool UpdateMergedSliceParams(const FuncGraphPtr &graph, const CNodePtr &slice2_cnode,
                                       const std::vector<int64_t> &axes_new, const std::vector<int> &begin_new,
                                       const std::vector<int> &size_new);
