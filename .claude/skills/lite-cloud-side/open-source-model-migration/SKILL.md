@@ -260,6 +260,7 @@ ge.exec.precision_mode=force_fp32
 3. **图像预处理使用 `AutoImageProcessor(..., use_fast=False)`** — 慢版 processor 支持 `return_tensors="np"`
 4. **多模态图像 token 用字符串构建** — 如 `<|vision_start|><|image_pad|>...<|vision_end|>`，不依赖 processor 的图像处理
 5. **不在代码中指定 `context.ascend.precision_mode`** — 精度模式由 `converter_lite` 转换时的 `config.ini`（如 `force_fp32`）控制，推理脚本中不应重复设置，避免与转换配置冲突
+6. **`Model.predict` 返回值直接取用，无需类型校验** — `mslite.Model.predict()` 返回值一定是 `MSTensor` 列表，每个元素必然具备 `get_data_to_numpy()` 方法。直接调用 `outputs[0].get_data_to_numpy()` 取 numpy 数组即可，不要写 `hasattr(outputs[0], "get_data_to_numpy")` 之类的分支判断，也不要保留 `np.array(outputs[0])` 回退——MindSpore Lite 接口不会返回 numpy 类型，此类校验属于无效代码
 
 ### 5.2 输入 dtype 对齐
 
