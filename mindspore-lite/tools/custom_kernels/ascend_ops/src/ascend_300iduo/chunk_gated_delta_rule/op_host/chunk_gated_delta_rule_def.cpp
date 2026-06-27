@@ -17,6 +17,8 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
+// Default chunk size (tokens per chunk) for the gated Delta rule.
+constexpr int64_t kDefaultChunkSize = 64;
 class ChunkGatedDeltaRule : public OpDef {
  public:
     explicit ChunkGatedDeltaRule(const char* name) : OpDef(name) {
@@ -72,7 +74,7 @@ class ChunkGatedDeltaRule : public OpDef {
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Attr("chunk_size")
             .AttrType(OPTIONAL)
-            .Int(64);
+            .Int(kDefaultChunkSize);
         this->Attr("scale_value")
             .AttrType(OPTIONAL)
             .Float(1.0);

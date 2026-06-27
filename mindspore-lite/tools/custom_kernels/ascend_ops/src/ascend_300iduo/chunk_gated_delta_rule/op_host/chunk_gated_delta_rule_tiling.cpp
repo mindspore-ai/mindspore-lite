@@ -25,6 +25,15 @@ namespace {
 
 constexpr uint32_t FP16_NUM_PER_BLOCK = 16;
 constexpr uint32_t FP32_NUM_PER_BLOCK = 8;
+// Default chunk size (tokens per chunk) when the op attr is unset.
+constexpr uint32_t kDefaultChunkSize = 64;
+// Axis index of the head-dim within the [T, H, D] query/value layouts.
+constexpr int32_t kHeadDimAxis = 2;
+// chunkKFp32 & kCumdecayFp32 (and chunkVFp32 & chunkAttnOutFp32) each share the
+// same layout, so their byte cost is counted twice when sizing tmpBuff.
+constexpr uint32_t kPairedTileCount = 2;
+// Fixed workspace size requested for the op (32 MiB).
+constexpr uint64_t kWorkspaceBytes = 32ULL * 1024 * 1024;
 
 uint32_t CeilAlign(uint32_t val, uint32_t align) {
     return (val + align - 1) / align * align;
@@ -70,15 +79,15 @@ bool ParseShapeDims(TilingContext *context, ShapeDims &dims) {
     const auto &vDims = valueShape->GetStorageShape();
     dims.t = qDims.GetDim(0);
     dims.hqk = qDims.GetDim(1);
-    dims.dk = qDims.GetDim(2);
+    dims.dk = qDims.GetDim(kHeadDimAxis);
     dims.hv = vDims.GetDim(1);
-    dims.dv = vDims.GetDim(2);
+    dims.dv = vDims.GetDim(kHeadDimAxis);
     return true;
 }
 
 // Read optional attrs chunk_size (idx 0) and scale_value (idx 1), falling back to defaults.
 void ParseAttrs(TilingContext *context, int64_t &chunkSizeAttr, float &scaleValueAttr) {
-    chunkSizeAttr = 64;
+    chunkSizeAttr = kDefaultChunkSize;
     scaleValueAttr = 1.0f;
     auto attrs = context->GetAttrs();
     if (attrs == nullptr || attrs->GetAttrNum() == 0) {
@@ -112,7 +121,8 @@ uint32_t ComputeTmpBuffBytes(uint32_t vs, uint32_t chunkSize, uint32_t dk, uint3
     uint32_t tScores = cs * cs * sizeof(float);           // chunkScoresFp32 (attn matrix)
     uint32_t tState = dk * avStepAligned * sizeof(float);  // stateInFp32 [DK, vStep]
     uint32_t tOverlap = (tScores > tState) ? tScores : tState;
-    return 2 * kTileBytes + tDecay + 2 * vTileBytes + tGcum + tDelta + tExpGcum + tOverlap;
+    return kPairedTileCount * kTileBytes + tDecay + kPairedTileCount * vTileBytes + tGcum + tDelta + tExpGcum +
+           tOverlap;
 }
 
 // stateOutQueue bytes: max of the state tile [dk, avStepAligned] and the chunk attn output [cs, avFp32].
@@ -228,7 +238,7 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
 
     size_t *ws = context->GetWorkspaceSizes(1);
     if (ws != nullptr) {
-        ws[0] = 32ULL << 20;
+        ws[0] = kWorkspaceBytes;
     }
     return GRAPH_SUCCESS;
 }
