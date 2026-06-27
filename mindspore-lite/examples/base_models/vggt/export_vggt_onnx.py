@@ -33,7 +33,7 @@ import torch
 import torch.nn as nn
 from onnx import TensorProto, helper, numpy_helper
 
-VGGT_REPO_PATH = os.environ.get("VGGT_REPO_PATH", "/home/BYD/VGGT/vggt")
+VGGT_REPO_PATH = os.environ.get("VGGT_REPO_PATH", "/VGGT/vggt")
 sys.path.insert(0, VGGT_REPO_PATH)
 
 from vggt.layers.rope import PositionGetter  # noqa: E402
@@ -187,7 +187,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="/home/BYD/VGGT/model/vggt_1B_commercial.pt",
+        default="/VGGT/model/vggt_1B_commercial.pt",
         help="Path to VGGT checkpoint file",
     )
     parser.add_argument(
