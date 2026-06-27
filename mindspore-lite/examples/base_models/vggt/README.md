@@ -40,7 +40,7 @@ cd vggt && pip install -e .
 说明：
 
 - `MODEL_WEIGHTS` 为权重文件路径（`vggt_1B_commercial.pt`，约 4.7 GB）。
-- `VGGT_REPO_PATH` 为上游源码目录，导出脚本通过环境变量 `VGGT_REPO_PATH` 指定（默认 `/home/BYD/VGGT/vggt`）。
+- `VGGT_REPO_PATH` 为上游源码目录，导出脚本通过环境变量 `VGGT_REPO_PATH` 指定（默认 `/VGGT/vggt`）。
 
 ---
 
@@ -72,12 +72,12 @@ VGGT 由以下模块组成，导出为单一 ONNX 文件：
 ### 导出命令
 
 ```bash
-cd /home/BYD/VGGT/mslite_repos/vggt
+cd /VGGT/mslite_repos/vggt
 
-export VGGT_REPO_PATH=/home/BYD/VGGT/vggt
+export VGGT_REPO_PATH=/VGGT/vggt
 
 python export_vggt_onnx.py \
-  --checkpoint /home/BYD/VGGT/model/vggt_1B_commercial.pt \
+  --checkpoint /VGGT/model/vggt_1B_commercial.pt \
   --output models/vggt_1b.onnx \
   --num-frames 2 \
   --img-size 518 \
@@ -88,7 +88,7 @@ python export_vggt_onnx.py \
 
 | 参数 | 说明 | 默认值 |
 | --- | --- | --- |
-| `--checkpoint` | 权重文件路径 | `/home/BYD/VGGT/model/vggt_1B_commercial.pt` |
+| `--checkpoint` | 权重文件路径 | `/VGGT/model/vggt_1B_commercial.pt` |
 | `--output` | 输出 ONNX 路径 | `models/vggt_1b.onnx` |
 | `--num-frames` | 输入帧数（序列长度 S） | `2` |
 | `--img-size` | 图像尺寸（正方形，须为 14 的倍数） | `518` |
