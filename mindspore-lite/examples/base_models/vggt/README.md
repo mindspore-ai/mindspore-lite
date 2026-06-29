@@ -1,6 +1,6 @@
 # VGGT ONNX 模型导出与 MindSpore Lite 推理部署教程
 
-本教程介绍如何将 VGGT（Visual Geometry Grounded Transformer）导出为 ONNX，使用 ONNX Runtime 验证推理结果，并将 ONNX 转换为 MindSpore Lite MindIR 后在 Ascend 310P3 上推理与测速。
+本教程介绍如何将 VGGT（Visual Geometry Grounded Transformer）导出为 ONNX，使用 ONNX Runtime 验证推理结果，并将 ONNX 转换为 MindSpore Lite MindIR 后在 Ascend 300I Duo 上推理与测速。
 
 VGGT 是 CVPR 2025 Best Paper，从一张或多张图像前馈预测 3D 场景信息（相机位姿、深度图、3D 点云）。本教程导出完整模型（Aggregator + CameraHead + DepthHead + PointHead），TrackHead 因需要额外查询点输入而禁用。
 
@@ -19,7 +19,7 @@ VGGT 是 CVPR 2025 Best Paper，从一张或多张图像前馈预测 3D 场景�
 | onnxruntime | 1.27.0 |
 | numpy | 1.26.4 |
 | pillow | 12.2.0 |
-| CANN | 24.1.rc3 |
+| CANN | 8.5.1 |
 | mindspore-lite | 2.9.0 |
 
 ```bash
@@ -113,7 +113,7 @@ models/
 3. **`make_sincos_pos_embed` 使用 float64**：原实现使用 `torch.double` 计算 omega，导致 ONNX Einsum 混合类型错误。替换为 `float32`，精度足够。
 4. **`F.scaled_dot_product_attention` 兼容性**：设置所有注意力层的 `fused_attn=False`，使用手动 matmul+softmax+matmul 实现，确保最大兼容性。
 5. **`interpolate_antialias` 不支持**：禁用 DINOv2 patch embedding 中的 `interpolate_antialias`（在默认 518×518 尺寸下无影响，因为不触发位置编码插值）。
-6. **GatherV2 算子替换**：导出后自动将标量索引的 Gather 算子替换为 `Slice + Squeeze`，解决 Ascend 310P3 上 GatherV2 内核 Aicore trap 问题（详见第 7 节常见问题）。
+6. **GatherV2 算子替换**：导出后自动将标量索引的 Gather 算子替换为 `Slice + Squeeze`，解决 Ascend 300I Duo 上 GatherV2 内核 Aicore trap 问题（详见第 7 节常见问题）。
 
 ---
 
@@ -317,7 +317,7 @@ python infer_vggt_mslite.py \
 
 ## 6. 性能数据
 
-测试环境：Ascend Atlas 300I Duo（310P3），CANN 24.1.rc3，MindSpore Lite 2.9.0
+测试环境：Ascend Atlas 300I Duo（300I Duo），CANN 8.5.1，MindSpore Lite 2.9.0
 
 输入：2 帧 518×518 随机图像（seed=42）
 
@@ -344,7 +344,7 @@ python infer_vggt_mslite.py \
 
 1. 现象：MindIR 推理报错 `Aicore kernel execute failed`，错误指向 `GatherV2` 算子
 
-   - 原因：Ascend 310P3 的 GatherV2 内核在处理标量 int 索引对数据张量进行 Gather 时触发 Aicore trap（timeout or trap error）
+   - 原因：Ascend 300I Duo 的 GatherV2 内核在处理标量 int 索引对数据张量进行 Gather 时触发 Aicore trap（timeout or trap error）
    - 解决方案：导出脚本已集成 `replace_gather_with_slice` 后处理步骤，将标量索引 Gather 替换为等价的 `Slice + Squeeze` 操作。该替换数学等价，不影响推理精度
 
 2. 现象：ONNX 导出报错 `Unsupported operator: cartesian_prod`

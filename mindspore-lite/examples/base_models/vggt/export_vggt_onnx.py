@@ -238,7 +238,7 @@ def parse_args() -> argparse.Namespace:
 def replace_gather_with_slice(onnx_path):
     """Replace scalar-index Gather ops with Slice+Squeeze for Ascend compatibility.
 
-    Ascend 310P3 GatherV2 kernel fails (Aicore trap) when gathering from data
+    Ascend 300I Duo GatherV2 kernel fails (Aicore trap) when gathering from data
     tensors with scalar int indices. Slice+Squeeze is mathematically equivalent
     and runs reliably on Ascend.
 
