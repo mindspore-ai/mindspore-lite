@@ -29,7 +29,7 @@
 #include "op_proto/inc/save_ops.h"
 #include "op_proto/inc/state_ops.h"
 #include "include/utils/ir_dump/anf_ir_dump_interface.h"
-#include "tools/converter/adapter/acl/backend/ge_backend/utils/anfalgo.h"
+#include "tools/converter/ms_depend/anfalgo.h"
 #include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/infer_need_update_para_names.h"
 #include "utils/config_manager.h"
 #include "include/utils/utils.h"
@@ -2201,7 +2201,7 @@ void DfGraphConvertor::FillEmptyInputsWithNoInputOp(std::vector<Operator> *input
     if (!it->isa<CNode>()) {
       continue;
     }
-    std::string name = common::AnfAlgo::GetCNodeName(it);
+    std::string name = lite::common::AnfAlgo::GetCNodeName(it);
     if (name == prim::kPrimSwitch->name() || name == prim::kPrimSwitchLayer->name() ||
         name == prim::kPrimPartial->name()) {
       continue;
@@ -2376,7 +2376,13 @@ DfGraphConvertor &DfGraphConvertor::BuildGraph(const std::string &name) {
   MS_LOG(INFO) << "Set graph input num: " << inputs.size();
   (void)df_graph_->SetInputs(inputs);
 
-  SetGraphOutputs(true);
+  if (IsUpdateGraph()) {
+    graph_outputs_.clear();
+    MS_LOG(INFO) << "clear graph outptus";
+  } else {
+    SetGraphOutputs(true);
+    MS_LOG(INFO) << "set graph outptus";
+  }
   (void)df_graph_->SetOutputs(graph_outputs_);
 
   IdentityOptimization();
@@ -2757,7 +2763,7 @@ std::vector<OutHandler> DfGraphConvertor::GetInputHandles(const AnfNodePtr &node
     std::vector<OutHandler> return_handles;
     CNodePtr cnode = node->cast<CNodePtr>();
     MS_EXCEPTION_IF_NULL(cnode);
-    size_t tuplegetitem_idx = common::AnfAlgo::GetTupleGetItemOutIndex(cnode);
+    size_t tuplegetitem_idx = lite::common::AnfAlgo::GetTupleGetItemOutIndex(cnode);
     if (tuplegetitem_idx >= handles.size()) {
       MS_LOG_WITH_NODE(EXCEPTION, input) << "Node output index " << tuplegetitem_idx << " is out of range [0,"
                                          << handles.size() << "), node: " << node->fullname_with_scope()
@@ -3034,8 +3040,8 @@ void DfGraphConvertor::SetOpInput(const OpAdapterPtr &adpt, const CNodePtr &node
   }
   bool is_call = device::ascend::IsCallNode(node);
   std::vector<int64_t> dyn_input_sizes;
-  if (common::AnfAlgo::HasNodeAttr(kAttrDynInputSizes, node)) {
-    dyn_input_sizes = common::AnfAlgo::GetNodeAttr<std::vector<int64_t>>(node, kAttrDynInputSizes);
+  if (lite::common::AnfAlgo::HasNodeAttr(kAttrDynInputSizes, node)) {
+    dyn_input_sizes = lite::common::AnfAlgo::GetNodeAttr<std::vector<int64_t>>(node, kAttrDynInputSizes);
   }
 
   int ge_input_size = 1;
@@ -3309,16 +3315,20 @@ void DfGraphConvertor::RemoveIdentity(::ge::GNode identity_node) {
   }
 }
 
-bool DfGraphConvertor::IsIdentityInUpdateGraph(const ::ge::GNode &node) const {
+bool DfGraphConvertor::IsUpdateGraph() const {
   MS_EXCEPTION_IF_NULL(anf_graph_);
-  auto node_type = GetGNodeType(node);
-  auto is_identity = (node_type == kTypeIdentityN || node_type == kTypeIdentity);
   auto is_update_graph_attr = anf_graph_->get_attr("is_update_graph");
   bool is_update_graph = false;
   if (is_update_graph_attr != nullptr) {
     is_update_graph = GetValue<bool>(is_update_graph_attr);
   }
-  return is_update_graph && is_identity;
+  return is_update_graph;
+}
+
+bool DfGraphConvertor::IsIdentityInUpdateGraph(const ::ge::GNode &node) const {
+  auto node_type = GetGNodeType(node);
+  auto is_identity = (node_type == kTypeIdentityN || node_type == kTypeIdentity);
+  return IsUpdateGraph() && is_identity;
 }
 
 void DfGraphConvertor::IdentityOptimization() {
@@ -3567,7 +3577,7 @@ void DfGraphConvertor::ConvertTopK(const CNodePtr &node) {
   if (value_ptr == nullptr) {
     // input is not const valuenode, cannot convert to int32, throw exception when input k is int64 since cann
     // has precision problem, can be deleted after cann support int64 for input k
-    if (common::AnfAlgo::GetPrevNodeOutputInferDataType(node, kIndex1) == kNumberTypeInt64) {
+    if (lite::common::AnfAlgo::GetPrevNodeOutputInferDataType(node, kIndex1) == kNumberTypeInt64) {
       MS_LOG_WITH_NODE(EXCEPTION, node) << "Op TopK(" << node->fullname_with_scope()
                                         << ")'s second input k is an int64 mutable "
                                         << "tensor/scalar, which is not supported in ascend, please use int32.";
@@ -3692,7 +3702,7 @@ void DfGraphConvertor::TransAttrDataType(const CNodePtr &node, const std::string
   }
   MS_EXCEPTION_IF_NULL(node);
   MS_LOG(DEBUG) << "Trans attr data type of node:" << node->DebugString();
-  auto prim = common::AnfAlgo::GetCNodePrimitive(node);
+  auto prim = lite::common::AnfAlgo::GetCNodePrimitive(node);
   MS_EXCEPTION_IF_NULL(prim);
   for (auto &item : iter->second) {
     std::string attr_name = item.first;
@@ -3786,7 +3796,7 @@ void DfGraphConvertor::ConvertDynamicStitch(const CNodePtr &node) {
 }
 
 void DfGraphConvertor::ConvertParallelGroupToHcom(const CNodePtr &node) {
-  auto group_name = common::AnfAlgo::GetNodeAttr<std::string>(node, kParallelGroup);
+  auto group_name = lite::common::AnfAlgo::GetNodeAttr<std::string>(node, kParallelGroup);
   OpAdapterPtr adpt = device::ascend::FindAdapter(node, training_);
   if (adpt == nullptr) {
     return;
@@ -3937,11 +3947,11 @@ void DfGraphConvertor::AddCommAttrForHcclNode(const CNodePtr &node, const Operat
     MS_EXCEPTION_IF_NULL(value_node);
     group = GetValue<std::string>(value_node->value());
   } else {
-    if (!common::AnfAlgo::HasNodeAttr(kAttrGroup, node)) {
+    if (!lite::common::AnfAlgo::HasNodeAttr(kAttrGroup, node)) {
       MS_LOG(WARNING) << "Node " << node->fullname_with_scope() << " does not have attr " << kAttrGroup << ", skip.";
       return;
     }
-    group = common::AnfAlgo::GetNodeAttr<std::string>(node, kAttrGroup);
+    group = lite::common::AnfAlgo::GetNodeAttr<std::string>(node, kAttrGroup);
   }
   (void)converted_op->SetAttr("group", group);
 }
@@ -4065,7 +4075,7 @@ bool DfGraphConvertor::CheckCNode(const std::string &name, const CNodePtr node) 
   if (const auto it = auxiliary_node_converters.find(name); it != auxiliary_node_converters.cend()) {
     it->second(this, node);
   }
-  if (common::AnfAlgo::HasNodeAttr(kParallelGroup, node)) {
+  if (lite::common::AnfAlgo::HasNodeAttr(kParallelGroup, node)) {
     ConvertParallelGroupToHcom(node);
   }
   if (node->HasAttr(kParallelGroupId)) {

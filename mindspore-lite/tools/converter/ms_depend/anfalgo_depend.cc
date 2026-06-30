@@ -16,7 +16,6 @@
 #include "tools/converter/ms_depend/anfalgo.h"
 
 #include <algorithm>
-#include <complex>
 #include <map>
 #include <memory>
 #include <numeric>
@@ -65,8 +64,6 @@ using abstract::AbstractTuple;
 namespace {
 constexpr size_t kNopNodeRealInputIndex = 1;
 constexpr int64_t kAll2AllSize = 262144;
-using complex64 = std::complex<float>;
-using complex128 = std::complex<double>;
 
 const PrimitiveSet expand_prims = {prim::kPrimMakeTuple};
 const std::set<std::string> kNodeTupleOutSet = {kMakeTupleOpName, kGetNextOpName};
@@ -2963,5 +2960,6 @@ bool AnfAlgo::IsGraphOutputValueNodeOrParameter(const AnfNodePtr &graph_output, 
   }
   return false;
 }
+
 }  // namespace common
 }  // namespace mindspore::lite

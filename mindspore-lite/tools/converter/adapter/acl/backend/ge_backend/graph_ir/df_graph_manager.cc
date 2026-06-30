@@ -20,10 +20,8 @@
 #include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/df_graph_manager.h"
 #include <sstream>
 #include <set>
-#include "utils/file_utils.h"
 #include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/aoe_util.h"
 #include "utils/ms_context.h"
-#include "tools/converter/adapter/acl/backend/ge_backend/utils/compile_cache_context.h"
 #include "include/utils/utils.h"
 
 namespace mindspore::backend::ge_backend {
@@ -68,22 +66,6 @@ Status DfGraphManager::AddGraph(const std::string &name, const DfGraphPtr &graph
 
   int id = GenerateId();
   OptionMap new_options = graph_config.options_;
-  auto &compile_cache_context = CompileCacheContext::GetInstance();
-  auto init_compile_cache = compile_cache_context.init_compile_cache();
-  auto dep_files_hash = compile_cache_context.CompileCacheDepFilesHash();
-  if (CompileCacheEnable() && init_compile_cache) {
-    auto ge_graph_key = name;
-    if (!dep_files_hash.empty()) {
-      ge_graph_key = dep_files_hash + "_" + ge_graph_key;
-    }
-    ge_graph_key = NormalizeString(ge_graph_key);
-    new_options.insert_or_assign(kGeGraphKey, ge_graph_key);
-    auto ge_cache_path = compile_cache_context.GetCompilerCachePath() + kGeCache;
-    (void)mindspore::FileUtils::CreateNotExistDirs(ge_cache_path, true);
-    new_options.insert_or_assign(kGeGraphCompilerCacheDir, ge_cache_path);
-    MS_LOG(INFO) << "Use GE graph compile cache, GE graph compile cache dir: " << ge_cache_path
-                 << ", the ge.graph_key is " << ge_graph_key;
-  }
 
   DfGraphWrapperPtr wrap_ptr = std::make_shared<DfGraphWrapper>(name, id, graph_ptr, new_options);
   wrap_ptr->export_air_ = graph_config.export_air_;
