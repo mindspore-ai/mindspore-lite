@@ -136,6 +136,7 @@ Status ModelImpl::InferWithRandomData() {
 
 Status ModelImpl::BuildAndRun(const std::string &model_path, ModelType model_type,
                               const std::shared_ptr<Context> &model_context) {
+  MS_LOG(INFO) << "Enable preinference.";
   return BuildAndRunCore(
     [this, &model_path, model_type, &model_context]() { return this->Build(model_path, model_type, model_context); });
 }
