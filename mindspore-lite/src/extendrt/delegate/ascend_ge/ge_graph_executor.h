@@ -165,6 +165,9 @@ class GeGraphExecutor : public LiteGraphExecutor {
                              InOutBufferInfo *buffer_info);
   bool InitInputDataTensor(const std::vector<mindspore::MSTensor> &inputs, std::vector<::ge::Tensor> *ge_inputs,
                            std::vector<::ge::Tensor> *ge_outputs);
+  bool PrepareInputTensors(const std::vector<mindspore::MSTensor> &inputs, std::vector<::ge::Tensor> *ge_inputs);
+  bool PrepareRefDataInputs(std::vector<::ge::Tensor> *ge_inputs);
+  bool PrepareOutputTensors(std::vector<::ge::Tensor> *ge_outputs);
   bool InitMemoryContextManager();
 
   bool BuildGraphRefMode(const FuncGraphPtr &anf_graph, uint32_t graph_id);

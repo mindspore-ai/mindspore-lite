@@ -42,6 +42,9 @@ class MindirModelLoader : public ModelLoader {
                     bool is_main_graph = false);
   bool ConvertTensors(const mind_ir::GraphProto &graph_proto, LiteGraph::SubGraph *sub_graph = nullptr,
                       bool is_main_graph = false);
+  bool ConvertConstantNode(const mind_ir::NodeProto &node_proto, LiteGraph::SubGraph *sub_graph);
+  void ResolveNodeInputs(const mind_ir::NodeProto &node_proto, LiteGraph::Node *node);
+  void ResolveNodeOutputs(const mind_ir::NodeProto &node_proto, LiteGraph::Node *node);
   std::shared_ptr<void> MakePrimitiveC(const std::string &node_type);
 
  private:

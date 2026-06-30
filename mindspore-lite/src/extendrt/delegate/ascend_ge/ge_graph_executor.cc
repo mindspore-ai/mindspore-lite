@@ -1368,16 +1368,8 @@ bool GeGraphExecutor::RunGeGraphAsync(uint32_t graph_id, const std::vector<::ge:
   return is_finished;
 }
 
-bool GeGraphExecutor::InitInputDataTensor(const std::vector<mindspore::MSTensor> &inputs,
-                                          std::vector<::ge::Tensor> *ge_inputs, std::vector<::ge::Tensor> *ge_outputs) {
-  if (inputs_buffer_infos_.size() != inputs.size()) {
-    MS_LOG(ERROR) << "Input data info size " << inputs_buffer_infos_.size() << " != inputs size " << inputs.size();
-    return false;
-  }
-  if (memory_manager_ == nullptr) {
-    MS_LOG(ERROR) << "Memory manager or context manager is nullptr";
-    return false;
-  }
+bool GeGraphExecutor::PrepareInputTensors(const std::vector<mindspore::MSTensor> &inputs,
+                                          std::vector<::ge::Tensor> *ge_inputs) {
   for (size_t i = 0; i < inputs.size(); i++) {
     auto &input = inputs[i];
     MS_LOG(INFO) << "Input " << i << " shape " << tensor::ShapeToString(input.Shape()) << ", datatype "
@@ -1397,6 +1389,14 @@ bool GeGraphExecutor::InitInputDataTensor(const std::vector<mindspore::MSTensor>
     SetGeTensorShape(&input_info.ge_tensor, input.Shape());
     ge_inputs->push_back(input_info.ge_tensor);
   }
+  return true;
+}
+
+bool GeGraphExecutor::PrepareRefDataInputs(std::vector<::ge::Tensor> *ge_inputs) {
+  if (ge_inputs == nullptr) {
+    MS_LOG(ERROR) << "ge_inputs is nullptr.";
+    return false;
+  }
   for (auto &item : ref_data_infos_) {
     if (dyn_kv_cache_info_.dynamic_kv_cache) {
       ShapeVector ref_real_shape =
@@ -1407,6 +1407,10 @@ bool GeGraphExecutor::InitInputDataTensor(const std::vector<mindspore::MSTensor>
     }
     ge_inputs->push_back(item.ge_tensor);
   }
+  return true;
+}
+
+bool GeGraphExecutor::PrepareOutputTensors(std::vector<::ge::Tensor> *ge_outputs) {
   if (!dyn_kv_cache_info_.is_ge_graph_static_) {
     ge_outputs->resize(outputs_buffer_infos_.size());
     for (auto &ge_tensor : *ge_outputs) {
@@ -1420,6 +1424,28 @@ bool GeGraphExecutor::InitInputDataTensor(const std::vector<mindspore::MSTensor>
     for (auto &output : outputs_buffer_infos_) {
       ge_outputs->push_back(output.ge_tensor);
     }
+  }
+  return true;
+}
+
+bool GeGraphExecutor::InitInputDataTensor(const std::vector<mindspore::MSTensor> &inputs,
+                                          std::vector<::ge::Tensor> *ge_inputs, std::vector<::ge::Tensor> *ge_outputs) {
+  if (inputs_buffer_infos_.size() != inputs.size()) {
+    MS_LOG(ERROR) << "Input data info size " << inputs_buffer_infos_.size() << " != inputs size " << inputs.size();
+    return false;
+  }
+  if (memory_manager_ == nullptr) {
+    MS_LOG(ERROR) << "Memory manager or context manager is nullptr";
+    return false;
+  }
+  if (!PrepareInputTensors(inputs, ge_inputs)) {
+    return false;
+  }
+  if (!PrepareRefDataInputs(ge_inputs)) {
+    return false;
+  }
+  if (!PrepareOutputTensors(ge_outputs)) {
+    return false;
   }
   return true;
 }
