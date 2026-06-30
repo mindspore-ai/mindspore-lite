@@ -454,7 +454,6 @@ Status ModelImpl::CheckBuildFromBuffer(ModelType model_type, const void *weight_
   return kSuccess;
 }
 Status ModelImpl::InitBuildSession(const std::shared_ptr<Context> &model_context) {
-  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (session_) {
     MS_LOG(ERROR) << "Model has been called Build!";
     return Status(kLiteModelRebuild, "Model has been called build!");
@@ -501,6 +500,7 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, c
     MS_LOG(ERROR) << "UpdateSharingWorkspaceConfig failed!";
     return status;
   }
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   ret = InitBuildSession(model_context);
   if (ret != kSuccess) {
     return ret;
@@ -562,6 +562,7 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, c
 }
 
 Status ModelImpl::Build(const FuncGraphPtr &func_graph, const std::shared_ptr<Context> &model_context) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   auto ret = InitBuildSession(model_context);
   if (ret != kSuccess) {
     return ret;
