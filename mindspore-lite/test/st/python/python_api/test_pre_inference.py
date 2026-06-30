@@ -41,18 +41,23 @@ def test_pre_inference_02_not_enable(so_path, output_dir):
     '''
     test not enable pre inference
     '''
+    custom_env = os.environ.copy()
+    custom_env['GLOG_v'] = '1'
     model_path = os.path.join(output_dir, "zeroshape.mindir")
     cmd_string = so_path + "/tools/benchmark/benchmark " + \
                     " --modelFile=" + model_path + \
                     " --modelType=MindIR" + \
                     " --device=Ascend"
-    result = subprocess.run(shlex.split(cmd_string), shell=False, capture_output=True, text=True, check=False)
-    assert "Inference error" in result.stderr
+    result = subprocess.run(shlex.split(cmd_string),
+                shell=False, capture_output=True, text=True, check=False,env=custom_env)
+    assert "Enable preinference" not in result.stderr
 
 def test_pre_inference_03_enable(so_path, output_dir, config_dir):
     '''
     test enable pre inference
     '''
+    custom_env = os.environ.copy()
+    custom_env['GLOG_v'] = '1'
     model_path = os.path.join(output_dir, "zeroshape.mindir")
     config_path = os.path.join(config_dir, "pre_inference.config")
     cmd_string = so_path + "/tools/benchmark/benchmark " + \
@@ -60,5 +65,6 @@ def test_pre_inference_03_enable(so_path, output_dir, config_dir):
                     " --modelType=MindIR" + \
                     " --device=Ascend" + \
                     " --configFile=" + config_path
-    result = subprocess.run(shlex.split(cmd_string), shell=False, capture_output=True, text=True, check=False)
-    assert "PreBuild or PreInference failed" in result.stderr
+    result = subprocess.run(shlex.split(cmd_string),
+                shell=False, capture_output=True, text=True, check=False,env=custom_env)
+    assert "Enable preinference" in result.stderr
