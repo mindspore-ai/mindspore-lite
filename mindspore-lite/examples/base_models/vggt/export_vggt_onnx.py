@@ -30,14 +30,14 @@ from pathlib import Path
 
 import onnx
 import torch
-import torch.nn as nn
+import torch as nn
 from onnx import TensorProto, helper, numpy_helper
+from vggt.layers.rope import PositionGetter
+from vggt.models.vggt import VGGT
+import vggt.heads.utils as _head_utils
 
 VGGT_REPO_PATH = os.environ.get("VGGT_REPO_PATH", "/VGGT/vggt")
 sys.path.insert(0, VGGT_REPO_PATH)
-
-from vggt.layers.rope import PositionGetter  # noqa: E402
-from vggt.models.vggt import VGGT  # noqa: E402
 
 
 def _patched_position_getter_call(self, batch_size, height, width, device):
@@ -68,7 +68,6 @@ torch.expm1 = lambda x: torch.exp(x) - 1.0
 # Monkey-patch make_sincos_pos_embed to use float32 instead of double
 # The original uses torch.double for omega, which causes mixed-type Einsum
 # errors in ONNX. float32 is sufficient for positional embeddings.
-import vggt.heads.utils as _head_utils  # noqa: E402
 
 _original_make_sincos = _head_utils.make_sincos_pos_embed
 

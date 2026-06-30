@@ -32,19 +32,18 @@ import time
 
 import onnx
 import torch
-import torch.nn as nn
+import torch as nn
 import torch.nn.functional as F
 from torch import Tensor
+from vggt_omega.models import VGGTOmega
+from vggt_omega.models.layers.block import SelfAttentionBlock
+from vggt_omega.models.layers.rope_position_encoding import RopePositionEmbedding
+import vggt_omega.models.heads.dense_head as dense_head_mod
+import vggt_omega.models.heads.utils as head_utils
 
 _DEFAULT_UPSTREAM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vggt-omega")
 if _DEFAULT_UPSTREAM not in sys.path:
     sys.path.insert(0, _DEFAULT_UPSTREAM)
-
-from vggt_omega.models import VGGTOmega  # noqa: E402
-from vggt_omega.models.layers.block import SelfAttentionBlock  # noqa: E402
-from vggt_omega.models.layers.rope_position_encoding import RopePositionEmbedding  # noqa: E402
-import vggt_omega.models.heads.dense_head as dense_head_mod  # noqa: E402
-import vggt_omega.models.heads.utils as head_utils  # noqa: E402
 
 
 class VGGTOmegaExport(nn.Module):

@@ -34,8 +34,8 @@ except ImportError:
     sys.exit(1)
 
 
-RESNET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(1, 1, 3, 1, 1)
-RESNET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(1, 1, 3, 1, 1)
+RESNET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape((1, 1, 3, 1, 1))
+RESNET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape((1, 1, 3, 1, 1))
 
 OUTPUT_NAMES = ["pose_enc", "depth", "depth_conf", "world_points", "world_points_conf"]
 
