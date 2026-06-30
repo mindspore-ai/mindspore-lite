@@ -242,3 +242,4 @@ mindspore-lite/mindspore-lite/src/litert/kernel/cpu/nnacl_c/fp32/matmul_avx512_m
 
 # lite_boost
 mindspore-lite/mindspore-lite/lite_boost/python/ops/sparse_attention.py:sparse_attention
+mindspore-lite/mindspore-lite/lite_boost/python/ops/rain_fusion.py:rain_fusion_attention

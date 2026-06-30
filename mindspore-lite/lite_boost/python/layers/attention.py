@@ -29,21 +29,24 @@ import torch
 
 try:
     import flash_attn_interface
-    FLASH_ATTN_3_AVAILABLE = True
 except ModuleNotFoundError:
     FLASH_ATTN_3_AVAILABLE = False
+else:
+    FLASH_ATTN_3_AVAILABLE = True
 
 try:
     import flash_attn
-    FLASH_ATTN_2_AVAILABLE = True
 except ModuleNotFoundError:
     FLASH_ATTN_2_AVAILABLE = False
+else:
+    FLASH_ATTN_2_AVAILABLE = True
 
 try:
     import torch_npu
-    NPU_FUSION_ATTENTION_AVAILABLE = hasattr(torch_npu, 'npu_prompt_flash_attention')
 except (ModuleNotFoundError, AttributeError):
     NPU_FUSION_ATTENTION_AVAILABLE = False
+else:
+    NPU_FUSION_ATTENTION_AVAILABLE = hasattr(torch_npu, 'npu_prompt_flash_attention')
 
 __all__ = ['flash_attention']
 
@@ -131,8 +134,13 @@ def flash_attention(
 ):
     """Flash attention with NPU fallback (FA3 → FA2 → NPU)."""
     half_dtypes = (torch.float16, torch.bfloat16, torch.float32)
-    assert dtype in half_dtypes
-    assert q.device.type == 'npu' and q.size(-1) <= 256
+    if dtype not in half_dtypes:
+        raise ValueError(
+            f"dtype must be one of {half_dtypes}, but got {dtype}.")
+    if q.device.type != 'npu' or q.size(-1) > 256:
+        raise ValueError(
+            f"q must be on 'npu' device with head_dim <= 256, "
+            f"but got device={q.device.type}, head_dim={q.size(-1)}.")
 
     b, lq, lk, out_dtype = q.size(0), q.size(1), k.size(1), q.dtype
 
