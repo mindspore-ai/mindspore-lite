@@ -520,6 +520,7 @@ enum PrimType {
   PrimType_Custom = 191,
   PrimType_CumSum = 192,
   PrimType_SplitWithOverlap = 193,
+  // @deprecated since 2.10, kept for backward compatibility
   PrimType_GenOP = 194,
   PrimType_RaggedRange = 195,
   PrimType_GLU = 196,

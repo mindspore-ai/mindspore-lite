@@ -3,7 +3,6 @@ include(CMakePackageConfigHelpers)
 set(RUNTIME_PKG_NAME ${PKG_NAME_PREFIX}-${RUNTIME_COMPONENT_NAME})
 
 set(CONVERTER_ROOT_DIR ${RUNTIME_PKG_NAME}/tools/converter)
-set(OBFUSCATOR_ROOT_DIR ${RUNTIME_PKG_NAME}/tools/obfuscator)
 set(CROPPER_ROOT_DIR ${RUNTIME_PKG_NAME}/tools/cropper)
 set(BUILD_DIR ${TOP_DIR}/build)
 set(TEST_CASE_DIR ${TOP_DIR}/mindspore-lite/test/build)
@@ -281,10 +280,6 @@ if(PLATFORM_ARM64)
                     DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
     endif()
-    if(MSLITE_ENABLE_MODEL_OBF)
-        install(FILES ${TOP_DIR}/mindspore-lite/tools/obfuscator/lib/android-aarch64/libmsdeobfuscator-lite.so
-                DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
-    endif()
     install(FILES ${TOP_DIR}/mindspore/mindspore/core/include/ir/dtype/type_id.h DESTINATION ${RUNTIME_INC_DIR}/ir/dtype
             COMPONENT ${RUNTIME_COMPONENT_NAME})
     install(FILES
@@ -529,10 +524,6 @@ elseif(PLATFORM_ARM32)
                     DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
     endif()
-    if(MSLITE_ENABLE_MODEL_OBF)
-        install(FILES ${TOP_DIR}/mindspore-lite/tools/obfuscator/lib/android-aarch32/libmsdeobfuscator-lite.so
-                DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
-    endif()
     install(FILES ${TOP_DIR}/mindspore/mindspore/core/include/ir/dtype/type_id.h DESTINATION ${RUNTIME_INC_DIR}/ir/dtype
             COMPONENT ${RUNTIME_COMPONENT_NAME})
     install(FILES
@@ -738,13 +729,6 @@ else()
             install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_acl/libascend_acl_plugin.so
                     DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
-    endif()
-    if(MSLITE_ENABLE_MODEL_OBF)
-        install(FILES ${TOP_DIR}/mindspore-lite/tools/obfuscator/bin/linux-x64/msobfuscator
-                DESTINATION ${OBFUSCATOR_ROOT_DIR} PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
-                GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE COMPONENT ${RUNTIME_COMPONENT_NAME})
-        install(FILES ${TOP_DIR}/mindspore-lite/tools/obfuscator/lib/linux-x64/libmsdeobfuscator-lite.so
-                DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
     endif()
     if(MSLITE_ENABLE_RUNTIME_GLOG)
         install(FILES ${glog_LIBPATH}/${glog_name} DESTINATION ${GLOG_DIR} RENAME libmindspore_glog.so.0

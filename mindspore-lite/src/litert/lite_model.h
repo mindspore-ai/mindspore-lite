@@ -29,9 +29,6 @@
 #include "src/litert/schema_tensor_wrapper.h"
 #include "nnacl_c/op_base.h"
 #include "src/common/prim_util.h"
-#ifdef ENABLE_MODEL_OBF
-#include "tools/obfuscator/include/deobfuscator.h"
-#endif
 #include "include/api/types.h"
 #ifdef ENABLE_LITE_HELPER
 #include "src/common/helper/infer_helpers.h"
@@ -147,38 +144,7 @@ class MS_API LiteModel : public Model {
       auto c_node = meta_graph.nodes()->template GetAs<U>(i);
       MS_CHECK_TRUE_MSG(c_node != nullptr, false, "get as cnode fail!");
       node->node_type_ = GetPrimitiveType(c_node->primitive(), schema_version_);
-#ifdef ENABLE_MODEL_OBF
-      auto src_prim = reinterpret_cast<const schema::Primitive *>(c_node->primitive());
-      if (src_prim == nullptr) {
-        delete node;
-        return false;
-      }
-      auto src_prim_type = src_prim->value_type();
-      unsigned char *dst_prim = nullptr;
-      if (src_prim_type == schema::PrimitiveType_GenOP) {
-        if (i >= this->graph_.all_nodes_stat_.size() || i >= this->graph_.all_prims_type_.size()) {
-          delete node;
-          return false;
-        }
-        auto src_node_stat = this->graph_.all_nodes_stat_[i];
-        auto dst_prim_type = this->graph_.all_prims_type_[i];
-        auto ret = DeObfuscatePrimitive(src_prim, src_node_stat, &dst_prim, schema::PrimitiveType(dst_prim_type));
-        if (!ret) {
-          MS_LOG(ERROR) << "Deobfuscate primitive failed!";
-          delete node;
-          return false;
-        }
-        if (dst_prim == nullptr) {
-          this->graph_.all_nodes_.push_back(node);
-          continue;
-        }
-        this->graph_.deobf_prims_.push_back(dst_prim);
-        src_prim = reinterpret_cast<const schema::Primitive *>(flatbuffers::GetRoot<schema::Primitive>(dst_prim));
-      }
-      node->primitive_ = const_cast<schema::Primitive *>(src_prim);
-#else
       node->primitive_ = c_node->primitive();
-#endif
       auto status = SetQuantType(meta_graph, c_node, node);
       if (status == RET_ERROR) {
         return false;

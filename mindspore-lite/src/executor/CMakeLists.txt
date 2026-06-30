@@ -258,7 +258,4 @@ if(NOT MSLITE_SIMPLEST_CLOUD_INFERENCE)
         target_link_libraries(lite-unified-executor dl)
     endif()
 
-    if(ENABLE_MODEL_OBF)
-        target_link_libraries(lite-unified-executor ${OBF_LIB_DIR}/libmsdeobfuscator-lite.so)
-    endif()
 endif()

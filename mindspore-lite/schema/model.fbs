@@ -115,7 +115,9 @@ table MetaGraph {
     nodes: [CNode];
     allTensors: [Tensor]; // weight + input + output
     subGraph : [SubGraph];
+    // deprecated: model obfuscation is no longer supported since MindSpore Lite 2.10
     obfuscate: bool = false;
+    // deprecated: model obfuscation is no longer supported since MindSpore Lite 2.10
     obfMetaData: [ubyte];
 }
 
