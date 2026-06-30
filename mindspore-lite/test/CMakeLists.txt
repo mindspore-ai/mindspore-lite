@@ -25,6 +25,7 @@ else()
             ${TEST_DIR}/ut/src/infer_test.cc
             ${TEST_DIR}/ut/src/utils_test.cc
             ${TEST_DIR}/ut/src/scheduler_test.cc
+            ${TEST_DIR}/ut/src/model_obfuscation_deprecated_test.cc
             ${TEST_DIR}/ut/src/runtime/dynamic_mem_manager_test.cc
             ${TEST_DIR}/ut/src/registry/registry_test.cc
             ${TEST_DIR}/ut/src/registry/registry_custom_op_test.cc
@@ -286,9 +287,6 @@ if(MSLITE_ENABLE_CONVERTER AND NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLI
                                     onnx_parser_mid tf_parser_mid)
 endif()
 
-if(MSLITE_ENABLE_MODEL_OBF)
-    target_link_libraries(lite-test ${OBF_LIB_DIR}/libmsdeobfuscator-lite.so)
-endif()
 
 if(MSLITE_ENABLE_KERNEL_EXECUTOR)
     target_link_libraries(lite-test kernel_executor)

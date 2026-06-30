@@ -69,13 +69,6 @@ void LiteModel::Free() {
     delete schema_tensor_wrapper;
   }
   inner_all_tensors_.clear();
-
-#ifdef ENABLE_MODEL_OBF
-  for (auto &prim : graph_.deobf_prims_) {
-    free(prim);
-  }
-  graph_.deobf_prims_.resize(0);
-#endif
 }
 
 void LiteModel::Destroy() {
@@ -400,32 +393,16 @@ int LiteModel::GenerateModelByVersion() {
     return RET_ERROR;
   }
   int status = RET_ERROR;
-#ifdef ENABLE_MODEL_OBF
-  DeObfuscator *model_deobf = nullptr;
-#endif
   if (schema_version_ == SCHEMA_VERSION::SCHEMA_CUR) {
-#ifdef ENABLE_MODEL_OBF
-    if (IsMetaGraphObfuscated<schema::MetaGraph>(*reinterpret_cast<const schema::MetaGraph *>(meta_graph))) {
-      model_deobf = GetModelDeObfuscator<schema::MetaGraph>(*reinterpret_cast<const schema::MetaGraph *>(meta_graph),
-                                                            this, this->buf_size_);
-      this->graph_.model_obfuscated_ = true;
-      if (model_deobf == nullptr) {
-        return RET_ERROR;
-      }
+    const auto &graph = *reinterpret_cast<const schema::MetaGraph *>(meta_graph);
+    if (graph.obfuscate() || (graph.obfMetaData() != nullptr && graph.obfMetaData()->size() > 0)) {
+      MS_LOG(ERROR) << "Model obfuscation is no longer supported since MindSpore Lite 2.10. "
+                    << "This model appears to contain obfuscation metadata (obfuscate=" << graph.obfuscate()
+                    << "). Please use an unobfuscated model or a version that supports obfuscation.";
+      return RET_ERROR;
     }
-#endif
-    status = GenerateModel<schema::MetaGraph, schema::CNode>(*reinterpret_cast<const schema::MetaGraph *>(meta_graph));
+    status = GenerateModel<schema::MetaGraph, schema::CNode>(graph);
   }
-#ifdef ENABLE_MODEL_OBF
-  if (this->graph_.model_obfuscated_) {
-    status = DeObfuscateModel(this, model_deobf);
-    if (status != RET_OK) {
-      MS_LOG(ERROR) << "deobfuscate model wrong!";
-      std::cerr << "deobfuscate model wrong!" << std::endl;
-    }
-    delete (model_deobf);
-  }
-#endif
   if (IsVersionGreaterThan(GetShortVersionStr(this->graph_.version_), GetShortVersionStr(Version()))) {
     MS_LOG(WARNING) << "The current model version " << this->graph_.version_
                     << " is later than the inference engine version " << Version()

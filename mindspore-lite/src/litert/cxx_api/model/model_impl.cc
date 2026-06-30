@@ -51,11 +51,6 @@ constexpr size_t kMaxConfigNumPerSection = 1000;
 constexpr auto kSharingWorkspaceSection = "inner_common";  // don't support external user configuration
 constexpr auto kSharingWorkspaceKey = "inner_sharing_workspace";
 constexpr auto kSharingWorkspaceValue = "true";
-constexpr auto kBuildSection = "build_session";
-constexpr auto kObfRatioKey = "obf_ratio";
-constexpr auto kObfNodeName = "obf_op-obf_mul";
-constexpr size_t kFloatSize = 4;
-constexpr int kDataIndex = 1;
 constexpr float FloatMSEC = 1000.0f;
 constexpr int DSPTid = 20;
 constexpr int PNNATid = 60;
@@ -291,11 +286,6 @@ Status ModelImpl::Build() {
     if (session != nullptr) {
       session_ = session;
       MS_LOG(DEBUG) << "Build model success.";
-      auto ret_obf = ModelDeObfuscate();
-      if (ret_obf != RET_OK) {
-        MS_LOG(ERROR) << "Model deobfuscate failed.";
-        return kLiteError;
-      }
       return kSuccess;
     }
   }
@@ -339,11 +329,6 @@ Status ModelImpl::Build() {
   model->buf = model_buf;
   session_.swap(session);
   MS_LOG(DEBUG) << "Build model success.";
-  auto ret_obf = ModelDeObfuscate();
-  if (ret_obf != RET_OK) {
-    MS_LOG(ERROR) << "Model deobfuscate failed.";
-    return kLiteError;
-  }
   return kSuccess;
 }
 
@@ -1132,76 +1117,4 @@ lite::LiteSession *ModelImpl::CreateLiteSession(const std::shared_ptr<lite::Inne
   return session;
 }
 
-bool ModelImpl::IsValidDoubleNum(const std::string &num_str) {
-  if (num_str.empty()) {
-    return false;
-  }
-  std::istringstream iss(num_str);
-  double d;
-  iss >> std::noskipws >> d;
-  return iss.eof() && !iss.fail();
-}
-
-int ModelImpl::ModelDeObfuscate() {
-  float obf_ratio = -1.0;
-  auto iter = config_info_.find(kBuildSection);
-  if (iter != config_info_.end()) {
-    auto item_runner = iter->second.find(kObfRatioKey);
-    if (item_runner != iter->second.end()) {
-      if (IsValidDoubleNum(iter->second.at(kObfRatioKey))) {
-        float candidate_obf_ratio = std::stof(iter->second.at(kObfRatioKey));
-        if (!lite::FloatCompare(candidate_obf_ratio, 1.0) && !lite::FloatCompare(candidate_obf_ratio, 0.0)) {
-          // obtain legal obf_ratio
-          obf_ratio = candidate_obf_ratio;
-        }
-      } else {
-        MS_LOG(ERROR) << "Obfuscate ratio should be float but got " << iter->second.at(kObfRatioKey);
-        return RET_ERROR;
-      }
-    }
-  } else {
-    MS_LOG(INFO) << "No obfuscate key find in config file";
-  }
-  if (obf_ratio > 50.0) {
-    MS_LOG(ERROR) << "Obf ratio is greater than 50. Please set it within the range of (0, 50]";
-    return RET_ERROR;
-  }
-
-  auto model = graph_->graph_data_->lite_model();
-  std::string tensor_name = "";
-  for (auto node : model->graph_.all_nodes_) {
-    if (node->name_.find(kObfNodeName) != std::string::npos) {
-      auto idx = node->input_indices_[kDataIndex];
-      auto *tensor = model->graph_.all_tensors_[idx];
-      if (tensor == nullptr) {
-        MS_LOG(ERROR) << "Obfuscate tensor is null.";
-        return RET_ERROR;
-      }
-      if (tensor->name() != nullptr) {
-        tensor_name = tensor->name()->str();
-      }
-    }
-  }
-  if (tensor_name.empty()) {
-    MS_LOG(INFO) << "Could not find corresponding tensor of the obfuscate value";
-    return RET_OK;
-  }
-  MS_LOG(DEBUG) << "Find obfuscate value in tensor " << tensor_name;
-
-  float data[1] = {obf_ratio};
-  auto new_tensor =
-    MSTensor::CreateTensor(tensor_name, mindspore::DataType::kNumberTypeFloat32, {1, 1}, data, kFloatSize);
-  if (new_tensor == nullptr) {
-    MS_LOG(ERROR) << "Create tensor failed";
-    return RET_ERROR;
-  }
-  std::vector<mindspore::MSTensor> modify_tensors;
-  modify_tensors.emplace_back(*new_tensor);
-  auto ret = this->UpdateWeights(modify_tensors);
-  if (ret != kSuccess) {
-    MS_LOG(ERROR) << "UpdateWeights failed.";
-    return RET_ERROR;
-  }
-  return RET_OK;
-}
 }  // namespace mindspore
