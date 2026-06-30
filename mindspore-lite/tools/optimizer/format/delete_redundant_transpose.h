@@ -35,6 +35,10 @@ class DeleteRedundantTranspose : public Pass {
   STATUS UpdateNodeFormat(const CNodePtr &node);
   STATUS DoTransTransFusion(const FuncGraphPtr &func_graph, const CNodePtr &node);
   STATUS CopyQuantParam(const CNodePtr &cnode, const CNodePtr &pre_cnode, const AnfNodeIndexSet &node_users);
+  STATUS CopyQuantParamToPostNodes(const PrimitivePtr &cnode_primitive, const PrimitivePtr &pre_cnode_primitive,
+                                   const AnfNodeIndexSet &node_users);
+  STATUS CopyQuantParamToInputCNode(const AnfNodePtr &input_node, const PrimitivePtr &cnode_primitive,
+                                    const PrimitivePtr &pre_cnode_primitive);
 
   FuncGraphManagerPtr manager_{nullptr};
 };

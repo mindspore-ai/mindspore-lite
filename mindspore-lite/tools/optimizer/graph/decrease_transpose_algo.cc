@@ -377,6 +377,25 @@ STATUS DecreaseTransposeAlgo::InsertPreTransNode(const FuncGraphPtr &func_graph,
   return lite::RET_OK;
 }
 
+STATUS DecreaseTransposeAlgo::HandlePreInsertForInput(const FuncGraphPtr &func_graph, const CNodePtr &cnode,
+                                                      size_t index, FormatTransNodeType trans_type) {
+  MS_CHECK_TRUE_RET(func_graph != nullptr && cnode != nullptr, RET_ERROR);
+  STATUS ret;
+  auto before_perm = trans_type == kNHWC2NCHW ? kNH2NC : kNC2NH;
+  if (IsNeedGenNewInput(func_graph, cnode, index)) {
+    ret = GenNewInput(func_graph, cnode, before_perm, true, index);
+    if (ret != lite::RET_OK) {
+      MS_LOG(ERROR) << "GenNewInput failed";
+    }
+  } else {
+    ret = ConvertTensorToNCOrNH(func_graph, cnode, index, fmk_type_, train_flag_, trans_type);
+    if (ret != lite::RET_OK) {
+      MS_LOG(ERROR) << "ConvertTensorToNCOrNH faileded";
+    }
+  }
+  return ret;
+}
+
 STATUS DecreaseTransposeAlgo::DoPreInsert(const FuncGraphPtr &func_graph, const CNodePtr &cnode,
                                           FormatTransNodeType trans_type) {
   MS_ASSERT(func_graph != nullptr && cnode != nullptr);
@@ -390,23 +409,6 @@ STATUS DecreaseTransposeAlgo::DoPreInsert(const FuncGraphPtr &func_graph, const 
     abstract = abstract_list.front();
     MS_CHECK_TRUE_RET(abstract != nullptr, lite::RET_NULL_PTR);
   }
-  auto HandleFunc = [this](const FuncGraphPtr &func_graph, const CNodePtr &cnode, size_t index,
-                           FormatTransNodeType trans_type) -> STATUS {
-    STATUS ret = lite::RET_OK;
-    auto before_perm = trans_type == kNHWC2NCHW ? kNH2NC : kNC2NH;
-    if (IsNeedGenNewInput(func_graph, cnode, index)) {
-      ret = GenNewInput(func_graph, cnode, before_perm, true, index);
-      if (ret != lite::RET_OK) {
-        MS_LOG(ERROR) << "GenNewInput failed";
-      }
-    } else {
-      ret = ConvertTensorToNCOrNH(func_graph, cnode, index, fmk_type_, train_flag_, trans_type);
-      if (ret != lite::RET_OK) {
-        MS_LOG(ERROR) << "ConvertTensorToNCOrNH faileded";
-      }
-    }
-    return ret;
-  };
   for (size_t i = 1; i < cnode->size(); ++i) {
     MS_CHECK_TRUE_RET(cnode->input(i) != nullptr, lite::RET_NULL_PTR);
     if (IsMonadNode(cnode->input(i))) {
@@ -418,14 +420,14 @@ STATUS DecreaseTransposeAlgo::DoPreInsert(const FuncGraphPtr &func_graph, const 
       MS_CHECK_TRUE_RET(input_make_tuple != nullptr, lite::RET_NULL_PTR);
       for (size_t j = 1; j < input_make_tuple->size(); ++j) {
         MS_CHECK_TRUE_RET(input_make_tuple->input(j) != nullptr, lite::RET_NULL_PTR);
-        if (HandleFunc(func_graph, input_make_tuple, j, trans_type) != lite::RET_OK) {
+        if (HandlePreInsertForInput(func_graph, input_make_tuple, j, trans_type) != lite::RET_OK) {
           MS_LOG(ERROR) << "handle pre insert failed.";
           return lite::RET_ERROR;
         }
       }
       continue;
     }
-    if (HandleFunc(func_graph, cnode, i, trans_type) != lite::RET_OK) {
+    if (HandlePreInsertForInput(func_graph, cnode, i, trans_type) != lite::RET_OK) {
       MS_LOG(ERROR) << "handle pre insert failed.";
       return lite::RET_ERROR;
     }

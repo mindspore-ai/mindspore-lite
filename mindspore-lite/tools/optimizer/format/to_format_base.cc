@@ -92,7 +92,7 @@ STATUS ToFormatBase::ModifyCNode(const CNodePtr &cnode) {
     if (prim->HasAttr(opt::kOutputsFormat)) {
       auto org_format = CastToInt(prim->GetAttr(opt::kOutputsFormat));
       std::vector<int64_t> outputs_format(org_format.size(), format_);
-      (void)prim->AddAttr(kOutputsFormat, MakeValue(outputs_format));
+      prim->AddAttr(kOutputsFormat, MakeValue(outputs_format));
     }
   }
   auto abstract_base = cnode->abstract();
@@ -377,7 +377,7 @@ STATUS ToFormatBase::DealConv2dTransposeFusionNode(const FuncGraphPtr &func_grap
 }
 
 void SetCNodeFormat(const CNodePtr &cnode, mindspore::Format dst_format) {
-  MS_ASSERT(cnode != nullptr);
+  MS_CHECK_TRUE_RET_VOID(cnode != nullptr);
   // update the format of cnode.
   auto prim = GetValueNode<PrimitivePtr>(cnode->input(0));
   MS_CHECK_TRUE_RET_VOID(prim != nullptr);
@@ -385,7 +385,7 @@ void SetCNodeFormat(const CNodePtr &cnode, mindspore::Format dst_format) {
   if (prim->GetAttr(ops::kFormat) == nullptr && format_value != nullptr) {
     auto format = GetValue<int64_t>(format_value);
     if (format == dst_format) {
-      (void)prim->AddAttr(ops::kFormat, format_value);
+      prim->AddAttr(ops::kFormat, format_value);
     }
   }
   return;
@@ -485,6 +485,17 @@ bool ToFormatBase::BasicProcess(const FuncGraphPtr &func_graph, bool main_graph)
   return true;
 }
 
+STATUS ToFormatBase::TransformConvWeightFormat(const FuncGraphPtr &graph, const CNodePtr &cnode,
+                                               schema::Format src_format, schema::Format dst_format,
+                                               std::set<AnfNodePtr> *has_visited) {
+  auto status = lite::UnifyConvWeightFormat(graph, cnode, src_format, dst_format, has_visited);
+  if (status != lite::RET_OK) {
+    MS_LOG(ERROR) << "unify conv weight failed, current node name is " << cnode->fullname_with_scope();
+    return status;
+  }
+  return lite::RET_OK;
+}
+
 STATUS ToFormatBase::ConvWeightFormatTrans(const FuncGraphPtr &graph, std::set<AnfNodePtr> *has_visited) {
   MS_ERROR_IF_NULL_W_RET_VAL(graph, lite::RET_ERROR);
   MS_ERROR_IF_NULL_W_RET_VAL(has_visited, lite::RET_ERROR);
@@ -530,10 +541,8 @@ STATUS ToFormatBase::ConvWeightFormatTrans(const FuncGraphPtr &graph, std::set<A
       MS_LOG(ERROR) << "weight's src format and dst format get failed.";
       return lite::RET_ERROR;
     }
-    auto status = lite::UnifyConvWeightFormat(graph, cnode, src_format, dst_format, has_visited);
-    if (status != lite::RET_OK) {
-      MS_LOG(ERROR) << "unify conv weight failed, current node name is " << cnode->fullname_with_scope();
-      return status;
+    if (TransformConvWeightFormat(graph, cnode, src_format, dst_format, has_visited) != lite::RET_OK) {
+      return lite::RET_ERROR;
     }
   }
   return lite::RET_OK;

@@ -406,39 +406,47 @@ int RemoveRedundantOpPass::RemoveInvalidPadOp(const AnfNodePtr &anf_node, const 
       MS_LOG(ERROR) << "Get pad data failed.";
       return lite::RET_ERROR;
     }
-    if (!data_info.data_.empty()) {
-      auto pad_data = reinterpret_cast<int *>(data_info.data_.data());
-      size_t num = data_info.data_.size() / sizeof(int);
-      for (size_t i = 0; i < num; ++i) {
-        if (pad_data[i] != 0) {
-          is_invalid = false;
-          break;
-        }
-      }
-    } else {
-      is_invalid = false;
-    }
+    is_invalid = IsPadDataAllZero(data_info);
   } else {
-    auto pad_prim = api::MakeShared<mindspore::ops::PadFusion>(primitive);
-    MS_CHECK_TRUE_RET(pad_prim != nullptr, lite::RET_ERROR);
-    MS_CHECK_TRUE_RET(pad_prim->GetAttr(ops::kPaddings) != nullptr, lite::RET_ERROR);
-    auto pad_data = pad_prim->get_paddings();
-    for (size_t i = 0; i < pad_data.size(); i++) {
-      for (size_t j = 0; j < pad_data[i].size(); j++) {
-        if (pad_data[i][j] != 0) {
-          is_invalid = false;
-          break;
-        }
-      }
-      if (!is_invalid) {
-        break;
-      }
+    auto prim_status = IsPadPrimAllZero(primitive);
+    if (prim_status == lite::RET_ERROR) {
+      return lite::RET_ERROR;
     }
+    is_invalid = (prim_status == lite::RET_NO_CHANGE);
   }
   if (is_invalid) {
     return ReplaceOp(anf_node, manager);
   }
   return lite::RET_OK;
+}
+
+bool RemoveRedundantOpPass::IsPadDataAllZero(const lite::DataInfo &data_info) {
+  if (data_info.data_.empty()) {
+    return false;
+  }
+  auto pad_data = reinterpret_cast<const int *>(data_info.data_.data());
+  size_t num = data_info.data_.size() / sizeof(int);
+  for (size_t i = 0; i < num; ++i) {
+    if (pad_data[i] != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+int RemoveRedundantOpPass::IsPadPrimAllZero(const mindspore::PrimitivePtr &primitive) {
+  auto pad_prim = api::MakeShared<mindspore::ops::PadFusion>(primitive);
+  MS_CHECK_TRUE_RET(pad_prim != nullptr, lite::RET_ERROR);
+  MS_CHECK_TRUE_RET(pad_prim->GetAttr(ops::kPaddings) != nullptr, lite::RET_ERROR);
+  auto pad_data = pad_prim->get_paddings();
+  for (size_t i = 0; i < pad_data.size(); i++) {
+    for (size_t j = 0; j < pad_data[i].size(); j++) {
+      if (pad_data[i][j] != 0) {
+        return lite::RET_OK;
+      }
+    }
+  }
+  return lite::RET_NO_CHANGE;
 }
 
 int RemoveRedundantOpPass::RemoveInvalidTransposeOp(const AnfNodePtr &anf_node, const FuncGraphManagerPtr &manager) {

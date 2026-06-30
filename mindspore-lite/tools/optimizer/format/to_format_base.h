@@ -63,6 +63,8 @@ class ToFormatBase : public Pass {
                      size_t index = 0);
   STATUS ModifyCNode(const CNodePtr &cnode);
   STATUS ConvWeightFormatTrans(const FuncGraphPtr &graph, std::set<AnfNodePtr> *has_visited);
+  STATUS TransformConvWeightFormat(const FuncGraphPtr &graph, const CNodePtr &cnode, schema::Format src_format,
+                                   schema::Format dst_format, std::set<AnfNodePtr> *has_visited);
   STATUS DealConv2dTransposeFusionNode(const FuncGraphPtr &func_graph, const CNodePtr &node,
                                        const std::vector<int> &perm);
 

@@ -36,7 +36,7 @@ const std::vector<int> kPermNHWC{0, 2, 3, 1};
 void RemoveUnusedTransposeOpPass::SetFmkType(FmkType type) { this->fmk_type = type; }
 
 std::vector<int> GetTransposePerm(const CNodePtr &node) {
-  MS_ASSERT(node != nullptr);
+  MS_CHECK_TRUE_RET(node != nullptr, {});
   std::vector<int> perm;
   if (!CheckPrimitiveType(node, prim::kPrimTranspose)) {
     return perm;
@@ -65,14 +65,51 @@ std::vector<int> GetTransposePerm(const CNodePtr &node) {
   return perm;
 }
 
+bool RemoveUnusedTransposeOpPass::HandleTransposeAfterConv(const FuncGraphManagerPtr &manager,
+                                                           const CNodePtr &transpose_cnode) {
+  MS_CHECK_TRUE_RET(manager != nullptr, false);
+  MS_CHECK_TRUE_RET(transpose_cnode != nullptr, false);
+  if (!CheckPrimitiveType(transpose_cnode->input(kTransposeInput), prim::kPrimConv2DFusion)) {
+    return true;
+  }
+  if (transpose_cnode->size() != kTransposeInputNum) {
+    MS_LOG(ERROR) << "transpose node need have 2 inputs.";
+    return false;
+  }
+  auto perm = GetTransposePerm(transpose_cnode);
+  if (perm == kPermNCHW) {
+    manager->Replace(transpose_cnode, transpose_cnode->input(1));
+  }
+  return true;
+}
+
+bool RemoveUnusedTransposeOpPass::HandleTransposeBeforeConv(const FuncGraphManagerPtr &manager,
+                                                            const CNodePtr &conv_node) {
+  MS_CHECK_TRUE_RET(manager != nullptr, false);
+  MS_CHECK_TRUE_RET(conv_node != nullptr, false);
+  if (!CheckPrimitiveType(conv_node->input(kTransposeInput), prim::kPrimTranspose)) {
+    return true;
+  }
+  auto transpose_cnode = conv_node->input(kTransposeInput)->cast<CNodePtr>();
+  if (transpose_cnode == nullptr) {
+    MS_LOG(ERROR) << "transpose_cnode is nullptr.";
+    return false;
+  }
+  auto perm = GetTransposePerm(transpose_cnode);
+  if (perm == kPermNHWC) {
+    manager->Replace(transpose_cnode, transpose_cnode->input(1));
+  }
+  return true;
+}
+
 bool RemoveUnusedTransposeOpPass::Run(const FuncGraphPtr &func_graph) {
   if (this->fmk_type != converter::kFmkTypeOnnx) {
     MS_LOG(ERROR) << "The framework type of model should be onnx.";
     return false;
   }
-  MS_ASSERT(func_graph != nullptr);
+  MS_CHECK_TRUE_RET(func_graph != nullptr, false);
   auto manager = func_graph->manager();
-  MS_ASSERT(manager != nullptr);
+  MS_CHECK_TRUE_RET(manager != nullptr, false);
   auto node_list = TopoSort(func_graph->get_return());
   for (auto &node : node_list) {
     if (!utils::isa<CNodePtr>(node)) {
@@ -84,16 +121,8 @@ bool RemoveUnusedTransposeOpPass::Run(const FuncGraphPtr &func_graph) {
         MS_LOG(ERROR) << "transpose_cnode is nullptr.";
         return false;
       }
-      if (!CheckPrimitiveType(transpose_cnode->input(kTransposeInput), prim::kPrimConv2DFusion)) {
-        continue;
-      }
-      if (transpose_cnode->size() != kTransposeInputNum) {
-        MS_LOG(ERROR) << "transpose node need have 2 inputs.";
+      if (!HandleTransposeAfterConv(manager, transpose_cnode)) {
         return false;
-      }
-      auto perm = GetTransposePerm(transpose_cnode);
-      if (perm == kPermNCHW) {
-        manager->Replace(transpose_cnode, transpose_cnode->input(1));
       }
     } else if (CheckPrimitiveType(node, prim::kPrimConv2DFusion)) {
       auto conv_node = node->cast<CNodePtr>();
@@ -101,17 +130,8 @@ bool RemoveUnusedTransposeOpPass::Run(const FuncGraphPtr &func_graph) {
         MS_LOG(ERROR) << "conv_node is nullptr.";
         return false;
       }
-      if (!CheckPrimitiveType(conv_node->input(kTransposeInput), prim::kPrimTranspose)) {
-        continue;
-      }
-      auto transpose_cnode = conv_node->input(kTransposeInput)->cast<CNodePtr>();
-      if (transpose_cnode == nullptr) {
-        MS_LOG(ERROR) << "transpose_cnode is nullptr.";
+      if (!HandleTransposeBeforeConv(manager, conv_node)) {
         return false;
-      }
-      auto perm = GetTransposePerm(transpose_cnode);
-      if (perm == kPermNHWC) {
-        manager->Replace(transpose_cnode, transpose_cnode->input(1));
       }
     } else {
       continue;

@@ -38,6 +38,7 @@ class AddActivationFusion : public LitePatternProcessPass {
   const AnfNodePtr Process(const FuncGraphPtr &func_graph, const AnfNodePtr &node, const EquivPtr &) const override;
 
  private:
+  static const PrimitivePtr CopyOutputQuantParams(const PrimitivePtr &act_primitive, const PrimitivePtr &add_primitive);
   bool CheckPattern(const FuncGraphPtr &func_graph, const CNodePtr &act_cnode,
                     const std::set<int64_t> support_act_types) const;
 };

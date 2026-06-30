@@ -64,6 +64,37 @@ bool CheckInputTransposeNode(const FuncGraphPtr &func_graph, const CNodePtr &cno
 }
 }  // namespace
 
+bool TransposeMatMulFusion::FuseTransposeInput(const FuncGraphPtr &func_graph, const CNodePtr &cnode,
+                                               size_t input_index, size_t cnode_input_index) {
+  MS_CHECK_TRUE_RET(func_graph != nullptr && cnode != nullptr, false);
+  auto matmul_prim = ops::GetOperator<mindspore::ops::MatMul>(cnode->input(0));
+  MS_CHECK_TRUE_RET(matmul_prim != nullptr, false);
+  auto manager = func_graph->manager();
+  MS_CHECK_TRUE_RET(manager != nullptr, false);
+
+  if (input_index == FIRST_INPUT) {
+    if (matmul_prim->GetAttr(ops::kTransposeA) == nullptr) {
+      matmul_prim->set_transpose_a(true);
+    } else {
+      auto org_transpose_a = matmul_prim->get_transpose_a();
+      matmul_prim->set_transpose_a(!org_transpose_a);
+    }
+  } else {
+    if (matmul_prim->GetAttr(ops::kTransposeB) == nullptr) {
+      matmul_prim->set_transpose_b(true);
+    } else {
+      auto org_transpose_b = matmul_prim->get_transpose_b();
+      matmul_prim->set_transpose_b(!org_transpose_b);
+    }
+  }
+  auto trans_cnode = cnode->input(cnode_input_index)->cast<CNodePtr>();
+  MS_CHECK_TRUE_RET(trans_cnode != nullptr, false);
+  MS_CHECK_TRUE_RET(trans_cnode->size() == kInputSizeThree, false);
+  auto pre_node = trans_cnode->input(SECOND_INPUT);
+  (void)manager->SetEdge(cnode, cnode_input_index, pre_node);
+  return true;
+}
+
 bool TransposeMatMulFusion::Run(const FuncGraphPtr &func_graph) {
   MS_ASSERT(func_graph != nullptr);
   auto node_list = TopoSort(func_graph->get_return());
@@ -84,36 +115,12 @@ bool TransposeMatMulFusion::Run(const FuncGraphPtr &func_graph) {
     if (!CheckInputTransposeNode(func_graph, cnode, indices_need_fuse, sizeof(bool) * DIMENSION_2D)) {
       continue;
     }
-    auto matmul_prim = ops::GetOperator<mindspore::ops::MatMul>(cnode->input(0));
-    MS_ASSERT(matmul_prim != nullptr);
-    auto manager = func_graph->manager();
-    MS_ASSERT(manager != nullptr);
 
     if (indices_need_fuse[FIRST_INPUT]) {
-      if (matmul_prim->GetAttr(ops::kTransposeA) == nullptr) {
-        matmul_prim->set_transpose_a(true);
-      } else {
-        auto org_transpose_a = matmul_prim->get_transpose_a();
-        matmul_prim->set_transpose_a(!org_transpose_a);
-      }
-      auto left_trans_cnode = cnode->input(SECOND_INPUT)->cast<CNodePtr>();
-      MS_CHECK_TRUE_RET(left_trans_cnode != nullptr, false);
-      MS_CHECK_TRUE_RET(left_trans_cnode->size() == kInputSizeThree, false);
-      auto left_pre_node = left_trans_cnode->input(SECOND_INPUT);
-      (void)manager->SetEdge(cnode, SECOND_INPUT, left_pre_node);
+      MS_CHECK_TRUE_RET(FuseTransposeInput(func_graph, cnode, FIRST_INPUT, SECOND_INPUT), false);
     }
     if (indices_need_fuse[SECOND_INPUT]) {
-      if (matmul_prim->GetAttr(ops::kTransposeB) == nullptr) {
-        matmul_prim->set_transpose_b(true);
-      } else {
-        auto org_transpose_b = matmul_prim->get_transpose_b();
-        matmul_prim->set_transpose_b(!org_transpose_b);
-      }
-      auto right_trans_cnode = cnode->input(THIRD_INPUT)->cast<CNodePtr>();
-      MS_CHECK_TRUE_RET(right_trans_cnode != nullptr, false);
-      MS_CHECK_TRUE_RET(right_trans_cnode->size() == kInputSizeThree, false);
-      auto right_pre_node = right_trans_cnode->input(SECOND_INPUT);
-      (void)manager->SetEdge(cnode, THIRD_INPUT, right_pre_node);
+      MS_CHECK_TRUE_RET(FuseTransposeInput(func_graph, cnode, SECOND_INPUT, THIRD_INPUT), false);
     }
   }
   return false;
