@@ -30,7 +30,7 @@ from pathlib import Path
 
 import onnx
 import torch
-import torch.nn as nn
+from torch import nn
 from onnx import TensorProto, helper, numpy_helper
 from vggt.layers.rope import PositionGetter
 from vggt.models.vggt import VGGT
