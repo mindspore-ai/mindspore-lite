@@ -1737,8 +1737,10 @@ MSTensor ModelProcess::GetOutputWithZeroCopy(const std::vector<MSTensor> *output
       MS_CHECK_TRUE_MSG(ret == kSuccess, MSTensor(nullptr), "Copy output data from device to current device failed!");
     }
   } else if (user_output.Data() != nullptr) {
+    MS_CHECK_TRUE_MSG(user_output.DataSize() >= output_info.buffer_size, MSTensor(nullptr),
+                      "Memcpy output failed, user buffer size is less than output size.");
     aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;
-    auto ret = AclrtMemcpy(user_output.MutableData(), output_info.buffer_size, output_info.cur_device_data,
+    auto ret = AclrtMemcpy(user_output.MutableData(), user_output.DataSize(), output_info.cur_device_data,
                            output_info.buffer_size, kind);
     if (ret != ACL_SUCCESS) {
       MS_LOG(ERROR) << "Memcpy output " << index << " from device to host failed, memory size "

@@ -24,6 +24,7 @@
 #include "include/api/dual_abi_helper.h"
 #include "mindspore/core/include/ir/graph_utils.h"
 #include "include/api/types.h"
+#include "ir/tensor.h"
 #include "src/extendrt/delegate/ascend_acl/ascend_allocator_plugin.h"
 namespace mindspore {
 namespace {
@@ -104,9 +105,10 @@ Status GetDeviceIdFromContext(const std::shared_ptr<Context> &model_context, int
   return kSuccess;
 }
 
-Status GetOmInfoFromCnode(const CNodePtr &cnode, void **om_data, size_t *om_size) {
+Status GetOmInfoFromCnode(const CNodePtr &cnode, void **om_data, size_t *om_size, tensor::TensorPtr *om_tensor) {
   MS_CHECK_TRUE_MSG(om_data != nullptr, kLiteNullptr, "om_data is nullptr!");
   MS_CHECK_TRUE_MSG(om_size != nullptr, kLiteNullptr, "om_size is nullptr!");
+  MS_CHECK_TRUE_MSG(om_tensor != nullptr, kLiteNullptr, "om_tensor is nullptr!");
   std::vector<mindspore::AnfWithOutIndex> inputs;
   std::vector<mindspore::AnfWithOutIndex> outputs;
   auto ret = mindspore::FuncGraphUtils::GetCNodeInputsOutputs(cnode, &inputs, &outputs);
@@ -120,6 +122,7 @@ Status GetOmInfoFromCnode(const CNodePtr &cnode, void **om_data, size_t *om_size
     MS_LOG(ERROR) << "tensor_data is nullptr!";
     return kLiteError;
   }
+  *om_tensor = tensor_data;
   *om_data = tensor_data->data_c();
   *om_size = tensor_data->Size();
   return kSuccess;
@@ -159,6 +162,7 @@ Status BuildModels(const FuncGraphPtr &func_graph, const std::vector<std::vector
   size_t cnode_count = 0;
   std::vector<void *> om_datas;
   std::vector<size_t> om_sizes;
+  std::vector<tensor::TensorPtr> om_tensors;
   for (const auto &node : nodes) {
     auto cnode = node->cast<CNodePtr>();
     if (!cnode || !mindspore::AnfUtils::IsRealKernel(cnode)) {
@@ -178,13 +182,15 @@ Status BuildModels(const FuncGraphPtr &func_graph, const std::vector<std::vector
     }
     void *om_data = nullptr;
     size_t om_size = 0;
-    auto ret = GetOmInfoFromCnode(cnode, &om_data, &om_size);
+    tensor::TensorPtr om_tensor = nullptr;
+    auto ret = GetOmInfoFromCnode(cnode, &om_data, &om_size, &om_tensor);
     if (ret != kSuccess) {
       MS_LOG(ERROR) << "GetOmInfo From Cnode failed!";
       return ret;
     }
     om_datas.push_back(om_data);
     om_sizes.push_back(om_size);
+    om_tensors.push_back(om_tensor);
     auto model_impl_ptr = std::make_shared<ModelImpl>();
     MS_CHECK_TRUE_MSG(model_impl_ptr != nullptr, kLiteError, "model_impl_ptr is nullptr");
     // share work space
