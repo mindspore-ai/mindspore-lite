@@ -37,6 +37,50 @@ SqueezeInt8CPUKernel::~SqueezeInt8CPUKernel() {
   }
 }
 
+int SqueezeInt8CPUKernel::InitInputQuantParam() {
+  quant_squeeze_param_->in_quant_args_ = reinterpret_cast<QuantArg *>(malloc(sizeof(QuantArg)));
+  if (quant_squeeze_param_->in_quant_args_ == nullptr) {
+    MS_LOG(ERROR) << "Null pointer reference: quant_squeeze_param_->in_quant_args_.";
+    if (quant_squeeze_param_ != nullptr) {
+      delete (quant_squeeze_param_);
+      quant_squeeze_param_ = nullptr;
+    }
+    return RET_ERROR;
+  }
+  auto in_quant_args = in_tensors_.front()->quant_params();
+  if (in_quant_args.empty()) {
+    MS_LOG(ERROR) << "Input quant_params cannot be empty.";
+    free(quant_squeeze_param_->in_quant_args_);
+    quant_squeeze_param_->in_quant_args_ = nullptr;
+    return RET_ERROR;
+  }
+
+  quant_squeeze_param_->in_quant_args_->scale_ = static_cast<float>(in_quant_args.front().scale);
+  quant_squeeze_param_->in_quant_args_->zp_ = in_quant_args.front().zeroPoint;
+  return RET_OK;
+}
+
+int SqueezeInt8CPUKernel::InitOutputQuantParam() {
+  auto out_quant_params = out_tensors_.front()->quant_params();
+  MS_CHECK_TRUE_MSG(!out_quant_params.empty(), RET_ERROR, "Output quant_params cannot be empty.");
+  quant_squeeze_param_->out_quant_args_ = reinterpret_cast<QuantArg *>(malloc(sizeof(QuantArg)));
+  if (quant_squeeze_param_->out_quant_args_ == nullptr) {
+    MS_LOG(ERROR) << "malloc QuantArg failed";
+    if (quant_squeeze_param_ != nullptr) {
+      if (quant_squeeze_param_->in_quant_args_ != nullptr) {
+        free(quant_squeeze_param_->in_quant_args_);
+        quant_squeeze_param_->in_quant_args_ = nullptr;
+      }
+      delete (quant_squeeze_param_);
+      quant_squeeze_param_ = nullptr;
+    }
+    return RET_ERROR;
+  }
+  quant_squeeze_param_->out_quant_args_->scale_ = static_cast<float>(out_quant_params.front().scale);
+  quant_squeeze_param_->out_quant_args_->zp_ = out_quant_params.front().zeroPoint;
+  return RET_OK;
+}
+
 int SqueezeInt8CPUKernel::Prepare() {
   CHECK_LESS_RETURN(in_tensors_.size(), C1NUM);
   CHECK_LESS_RETURN(out_tensors_.size(), C1NUM);
@@ -56,38 +100,14 @@ int SqueezeInt8CPUKernel::Prepare() {
   quant_squeeze_param_->in_quant_args_ = nullptr;
   quant_squeeze_param_->out_quant_args_ = nullptr;
 
-  quant_squeeze_param_->in_quant_args_ = reinterpret_cast<QuantArg *>(malloc(sizeof(QuantArg)));
-  if (quant_squeeze_param_->in_quant_args_ == nullptr) {
-    MS_LOG(ERROR) << "Null pointer reference: quant_squeeze_param_->in_quant_args_.";
-    if (quant_squeeze_param_ != nullptr) {
-      delete (quant_squeeze_param_);
-      quant_squeeze_param_ = nullptr;
-    }
-    return RET_ERROR;
+  auto ret = InitInputQuantParam();
+  if (ret != RET_OK) {
+    return ret;
   }
-  auto in_quant_args = in_tensors_.front()->quant_params();
-  MS_CHECK_TRUE_MSG(!in_quant_args.empty(), RET_ERROR, "Input quant_params cannot be empty.");
-
-  quant_squeeze_param_->in_quant_args_->scale_ = static_cast<float>(in_quant_args.front().scale);
-  quant_squeeze_param_->in_quant_args_->zp_ = in_quant_args.front().zeroPoint;
-
-  auto out_quant_params = out_tensors_.front()->quant_params();
-  MS_CHECK_TRUE_MSG(!out_quant_params.empty(), RET_ERROR, "Output quant_params cannot be empty.");
-  quant_squeeze_param_->out_quant_args_ = reinterpret_cast<QuantArg *>(malloc(sizeof(QuantArg)));
-  if (quant_squeeze_param_->out_quant_args_ == nullptr) {
-    MS_LOG(ERROR) << "malloc QuantArg failed";
-    if (quant_squeeze_param_ != nullptr) {
-      if (quant_squeeze_param_->in_quant_args_ != nullptr) {
-        free(quant_squeeze_param_->in_quant_args_);
-        quant_squeeze_param_->in_quant_args_ = nullptr;
-      }
-      delete (quant_squeeze_param_);
-      quant_squeeze_param_ = nullptr;
-    }
-    return RET_ERROR;
+  ret = InitOutputQuantParam();
+  if (ret != RET_OK) {
+    return ret;
   }
-  quant_squeeze_param_->out_quant_args_->scale_ = static_cast<float>(out_quant_params.front().scale);
-  quant_squeeze_param_->out_quant_args_->zp_ = out_quant_params.front().zeroPoint;
   if (!InferShapeDone()) {
     return RET_OK;
   }

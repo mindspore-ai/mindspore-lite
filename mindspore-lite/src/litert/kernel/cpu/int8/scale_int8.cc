@@ -291,6 +291,58 @@ int ScaleRunInt8(void *cdata, int task_id, float, float) {
   return RET_OK;
 }
 
+int ScaleInt8CPUKernel::PrepareBroadcastInputs() {
+  // scale is passed by previous node, need do broadcasting online
+  if (!const_scale_) {
+    input1_data_ = reinterpret_cast<int8_t *>(ctx_->allocator->Malloc(out_tensors_.at(0)->Size()));
+    if (input1_data_ == nullptr) {
+      MS_LOG(ERROR) << "malloc input1_data_  failed.";
+      return RET_ERROR;
+    }
+    TileOneDimensionInt8(reinterpret_cast<int8_t *>(in_tensors_.at(1)->data()),
+                         reinterpret_cast<int8_t *>(input1_data_), 0, tile_para->ndim_, tile_para->in_shape1_,
+                         tile_para->in_strides1_, tile_para->out_strides_, tile_para->multiples1_);
+  }
+
+  // If has bias, bias is passed by previous node case, need do broadcasting online
+  if (has_bias_ && !const_offset_) {
+    input2_data_ = reinterpret_cast<int8_t *>(ctx_->allocator->Malloc(out_tensors_.at(0)->Size()));
+    if (input2_data_ == nullptr) {
+      MS_LOG(ERROR) << "malloc input2_data_  failed.";
+      ctx_->allocator->Free(input1_data_);
+      input1_data_ = nullptr;
+      return RET_ERROR;
+    }
+    TileOneDimensionInt8(reinterpret_cast<int8_t *>(in_tensors_.at(kOffsetIndex)->data()),
+                         reinterpret_cast<int8_t *>(input2_data_), 0, tile_para->ndim_, tile_para->in_shape1_,
+                         tile_para->in_strides1_, tile_para->out_strides_, tile_para->multiples1_);
+  }
+  return RET_OK;
+}
+
+void ScaleInt8CPUKernel::FreeBroadcastInputs() {
+  // free memory malloced from memory pool
+  if (!const_scale_) {
+    ctx_->allocator->Free(input1_data_);
+    input1_data_ = nullptr;
+  }
+  if (has_bias_ && !const_offset_) {
+    ctx_->allocator->Free(input2_data_);
+    input2_data_ = nullptr;
+  }
+}
+
+int ScaleInt8CPUKernel::PrepareSameShapeInputs() {
+  // input1 has the same shape with input0 situation
+  if (input1_data_ == nullptr) {
+    input1_data_ = reinterpret_cast<int8_t *>(in_tensors_.at(1)->data());
+  }
+  if (has_bias_ && !const_offset_) {
+    input2_data_ = reinterpret_cast<int8_t *>(in_tensors_.at(kOffsetIndex)->data());
+  }
+  return RET_OK;
+}
+
 int ScaleInt8CPUKernel::Run() {
   elements_num_ = out_tensors_.at(0)->ElementsNum();
   count_unit_ = thread_count_ > 1 ? UP_DIV(elements_num_, thread_count_) : elements_num_;
@@ -299,51 +351,19 @@ int ScaleInt8CPUKernel::Run() {
   int ret = RET_ERROR;
   // need broadcasting
   if (in_tensors_.at(0)->ElementsNum() != in_tensors_.at(1)->ElementsNum()) {
-    // scale is passed by previous node, need do broadcasting online
-    if (!const_scale_) {
-      input1_data_ = reinterpret_cast<int8_t *>(ctx_->allocator->Malloc(out_tensors_.at(0)->Size()));
-      if (input1_data_ == nullptr) {
-        MS_LOG(ERROR) << "malloc input1_data_  failed.";
-        return RET_ERROR;
-      }
-      TileOneDimensionInt8(reinterpret_cast<int8_t *>(in_tensors_.at(1)->data()),
-                           reinterpret_cast<int8_t *>(input1_data_), 0, tile_para->ndim_, tile_para->in_shape1_,
-                           tile_para->in_strides1_, tile_para->out_strides_, tile_para->multiples1_);
-    }
-
-    // If has bias, bias is passed by previous node case, need do broadcasting online
-    if (has_bias_ && !const_offset_) {
-      input2_data_ = reinterpret_cast<int8_t *>(ctx_->allocator->Malloc(out_tensors_.at(0)->Size()));
-      if (input2_data_ == nullptr) {
-        MS_LOG(ERROR) << "malloc input2_data_  failed.";
-        ctx_->allocator->Free(input1_data_);
-        input1_data_ = nullptr;
-        return RET_ERROR;
-      }
-      TileOneDimensionInt8(reinterpret_cast<int8_t *>(in_tensors_.at(kOffsetIndex)->data()),
-                           reinterpret_cast<int8_t *>(input2_data_), 0, tile_para->ndim_, tile_para->in_shape1_,
-                           tile_para->in_strides1_, tile_para->out_strides_, tile_para->multiples1_);
+    ret = PrepareBroadcastInputs();
+    if (ret != RET_OK) {
+      return ret;
     }
 
     ret = ParallelLaunch(this->ms_context_, ScaleRunInt8, this, op_parameter_->thread_num_);
-    // free memory malloced from memory pool
-    if (!const_scale_) {
-      ctx_->allocator->Free(input1_data_);
-      input1_data_ = nullptr;
-    }
-    if (has_bias_ && !const_offset_) {
-      ctx_->allocator->Free(input2_data_);
-      input2_data_ = nullptr;
-    }
+    FreeBroadcastInputs();
     return ret;
   }
 
-  // input1 has the same shape with input0 situation
-  if (input1_data_ == nullptr) {
-    input1_data_ = reinterpret_cast<int8_t *>(in_tensors_.at(1)->data());
-  }
-  if (has_bias_ && !const_offset_) {
-    input2_data_ = reinterpret_cast<int8_t *>(in_tensors_.at(kOffsetIndex)->data());
+  ret = PrepareSameShapeInputs();
+  if (ret != RET_OK) {
+    return ret;
   }
   ret = ParallelLaunch(this->ms_context_, ScaleRunInt8, this, op_parameter_->thread_num_);
   if (ret != RET_OK) {

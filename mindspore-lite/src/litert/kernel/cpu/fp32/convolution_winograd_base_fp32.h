@@ -49,6 +49,8 @@ class ConvolutionWinogradBaseCPUKernel : public ConvolutionBaseCPUKernel {
 
  private:
   int MallocWeightBiasData() override;
+  int MallocWeightData();
+  int MallocBiasData();
   void PackWeight() override;
   void FreeTmpBuffer() {
     if (trans_input_ != nullptr) {

@@ -75,60 +75,75 @@ STATUS HuffmanDecode::DoHuffmanDecode(const std::string &input_str, void *decode
   return RET_OK;
 }
 
-STATUS HuffmanDecode::RebuildHuffmanTree(std::string keys, std::string codes, const HuffmanNodePtr &root) {
+STATUS HuffmanDecode::BuildTreeNode(int key, const std::string &code, const HuffmanNodePtr &root) {
   CHECK_NULL_RETURN(root);
-  HuffmanNodePtr cur_node;
+  if (code.empty()) {
+    MS_LOG(ERROR) << "huffman code is empty, cannot build tree node.";
+    return RET_ERROR;
+  }
+  HuffmanNodePtr cur_node = root;
   HuffmanNodePtr tmp_node;
   HuffmanNodePtr new_node;
+  auto code_len = code.length();
+
+  for (size_t j = 0; j < code_len; ++j) {
+    if (code[j] == '0') {
+      tmp_node = cur_node->left;
+    } else if (code[j] == '1') {
+      tmp_node = cur_node->right;
+    } else {
+      MS_LOG(ERROR) << "find huffman code is not 0 or 1";
+      return RET_ERROR;
+    }
+
+    if (tmp_node == nullptr) {
+      new_node = new (std::nothrow) HuffmanNode();
+      if (new_node == nullptr) {
+        MS_LOG(ERROR) << "new HuffmanNode failed.";
+        return RET_MEMORY_FAILED;
+      }
+      new_node->left = nullptr;
+      new_node->right = nullptr;
+      new_node->parent = cur_node;
+
+      if (j == code_len - 1) {
+        new_node->key = key;
+        new_node->code = code;
+      }
+
+      if (code[j] == '0') {
+        cur_node->left = new_node;
+      } else {
+        cur_node->right = new_node;
+      }
+
+      tmp_node = new_node;
+    } else if (j == code_len - 1) {
+      MS_LOG(ERROR) << "the huffman code is incomplete.";
+      return RET_ERROR;
+    } else if (tmp_node->left == nullptr && tmp_node->right == nullptr) {
+      MS_LOG(ERROR) << "the huffman code is incomplete";
+      return RET_ERROR;
+    }
+    cur_node = tmp_node;
+  }
+  return RET_OK;
+}
+
+STATUS HuffmanDecode::RebuildHuffmanTree(std::string keys, std::string codes, const HuffmanNodePtr &root) {
+  CHECK_NULL_RETURN(root);
 
   auto huffman_keys = Str2Vec(std::move(keys));
   auto huffman_codes = Str2Vec(std::move(codes));
+  MS_CHECK_TRUE_MSG(huffman_codes.size() == huffman_keys.size(), RET_ERROR,
+                    "huffman codes size must be equal to keys size");
 
   for (size_t i = 0; i < huffman_codes.size(); ++i) {
     auto key = stoi(huffman_keys[i]);
     auto code = huffman_codes[i];
-    auto code_len = code.length();
-    cur_node = root;
-    for (size_t j = 0; j < code_len; ++j) {
-      if (code[j] == '0') {
-        tmp_node = cur_node->left;
-      } else if (code[j] == '1') {
-        tmp_node = cur_node->right;
-      } else {
-        MS_LOG(ERROR) << "find huffman code is not 0 or 1";
-        return RET_ERROR;
-      }
-
-      if (tmp_node == nullptr) {
-        new_node = new (std::nothrow) HuffmanNode();
-        if (new_node == nullptr) {
-          MS_LOG(ERROR) << "new HuffmanNode failed.";
-          return RET_MEMORY_FAILED;
-        }
-        new_node->left = nullptr;
-        new_node->right = nullptr;
-        new_node->parent = cur_node;
-
-        if (j == code_len - 1) {
-          new_node->key = key;
-          new_node->code = code;
-        }
-
-        if (code[j] == '0') {
-          cur_node->left = new_node;
-        } else {
-          cur_node->right = new_node;
-        }
-
-        tmp_node = new_node;
-      } else if (j == code_len - 1) {
-        MS_LOG(ERROR) << "the huffman code is incomplete.";
-        return RET_ERROR;
-      } else if (tmp_node->left == nullptr && tmp_node->right == nullptr) {
-        MS_LOG(ERROR) << "the huffman code is incomplete";
-        return RET_ERROR;
-      }
-      cur_node = tmp_node;
+    auto status = BuildTreeNode(key, code, root);
+    if (status != RET_OK) {
+      return status;
     }
   }
   return RET_OK;

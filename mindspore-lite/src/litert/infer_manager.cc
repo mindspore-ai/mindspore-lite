@@ -87,14 +87,10 @@ bool InferCheckerOutput(const std::vector<Tensor *> &inputs, const std::vector<T
   return !std::any_of(shape.begin(), shape.end(), [](const int dim) { return dim < 0; });
 }
 
-int KernelInferShape(const std::vector<lite::Tensor *> &inputs, const std::vector<lite::Tensor *> &outputs,
-                     const void *primitive, std::set<std::string> &&providers, int schema_version,
-                     const kernel::Kernel *kernel) {
+std::shared_ptr<kernel::KernelInterface> GetKernelInterfaceForNode(const void *primitive,
+                                                                   const std::set<std::string> &providers,
+                                                                   int schema_version, const kernel::Kernel *kernel) {
 #ifndef CUSTOM_KERNEL_REGISTRY_CLIP
-  if (primitive == nullptr && kernel == nullptr) {
-    return RET_NOT_SUPPORT;
-  }
-  std::shared_ptr<kernel::KernelInterface> kernel_interface = nullptr;
   bool is_custom_node = false;
   if (kernel == nullptr) {
     if (IsCustomNode(primitive, schema_version)) {
@@ -103,6 +99,7 @@ int KernelInferShape(const std::vector<lite::Tensor *> &inputs, const std::vecto
   } else if (kernel->type() == schema::PrimitiveType_Custom) {
     is_custom_node = true;
   }
+  std::shared_ptr<kernel::KernelInterface> kernel_interface;
   if (is_custom_node) {
     kernel_interface = registry::RegisterKernelInterface::GetKernelInterface(
       "", static_cast<const schema::Primitive *>(primitive), kernel);
@@ -115,6 +112,20 @@ int KernelInferShape(const std::vector<lite::Tensor *> &inputs, const std::vecto
       }
     }
   }
+  return kernel_interface;
+#else
+  return nullptr;
+#endif
+}
+
+int KernelInferShape(const std::vector<lite::Tensor *> &inputs, const std::vector<lite::Tensor *> &outputs,
+                     const void *primitive, std::set<std::string> &&providers, int schema_version,
+                     const kernel::Kernel *kernel) {
+#ifndef CUSTOM_KERNEL_REGISTRY_CLIP
+  if (primitive == nullptr && kernel == nullptr) {
+    return RET_NOT_SUPPORT;
+  }
+  auto kernel_interface = GetKernelInterfaceForNode(primitive, providers, schema_version, kernel);
 
   if (kernel_interface == nullptr) {
     return RET_NOT_SUPPORT;
@@ -146,6 +157,7 @@ int KernelInferShape(const std::vector<lite::Tensor *> &inputs, const std::vecto
 
 int CheckInfershapeResult(int result, const std::vector<lite::Tensor *> &inputs,
                           const std::vector<lite::Tensor *> &outputs, OpParameter *parameter) {
+  CHECK_NULL_RETURN(parameter);
   if (result == NNACL_INFER_INVALID) {
     return RET_INFER_INVALID;
   } else if (result != NNACL_OK) {

@@ -39,6 +39,8 @@ class SqueezeInt8CPUKernel : public LiteKernel {
 
  private:
   SqueezeQuantArg *quant_squeeze_param_{nullptr};
+  int InitInputQuantParam();
+  int InitOutputQuantParam();
 };
 
 int SqueezeInt8Run(void *cdata, int task_id, float, float);
