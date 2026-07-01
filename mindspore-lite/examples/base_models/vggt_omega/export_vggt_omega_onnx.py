@@ -32,7 +32,7 @@ import time
 
 import onnx
 import torch
-import torch as nn
+import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from vggt_omega.models import VGGTOmega
