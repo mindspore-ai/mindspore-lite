@@ -5,6 +5,7 @@ set(PYBIND11_CPP_STANDARD -std=c++17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-function -Wl,-rpath,$ORIGIN/")
 
 find_package(Python3 COMPONENTS Interpreter Development)
+include(${TOP_DIR}/cmake/external_libs/pybind11.cmake)
 
 if(Python3_FOUND)
   find_package(Python3 COMPONENTS NumPy Development)

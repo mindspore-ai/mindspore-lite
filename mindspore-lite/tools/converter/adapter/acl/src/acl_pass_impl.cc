@@ -76,7 +76,6 @@
 #include "tools/converter/adapter/acl/common/acl_types_utils.h"
 #include "tools/optimizer/graph/redundant_op_remove_pass.h"
 #include "src/common/common.h"
-#include "frontend/jit/ps/parse/resolve.h"
 #include "tools/optimizer/graph/scalar_op_pass.h"
 #include "tools/optimizer/graph/make_list_pass.h"
 #include "tools/optimizer/fusion/add_layernorm_fusion.h"
@@ -560,25 +559,6 @@ static void UpdateMakeListAbstracts(const FuncGraphPtr &func_graph) {
   for (const auto &node : nodes) {
     const auto &abs = node->abstract();
     if (abs == nullptr) {
-      continue;
-    }
-    bool is_interpret_dict = false;
-    // Do not convert the abstract of Interpret node(AbstractDictionary) to AbstractSequence.
-    if (abs->isa<abstract::AbstractDictionary>()) {
-      abstract::AbstractDictionaryPtr abs_dict = abs->cast<abstract::AbstractDictionaryPtr>();
-      auto &dict_elements = abs_dict->elements();
-      for (auto &element : dict_elements) {
-        TypePtr type = element.second->GetTypeTrack();
-        MS_EXCEPTION_IF_NULL(type);
-        auto value = element.second->BuildValue();
-        MS_EXCEPTION_IF_NULL(value);
-        if (type->type_id() == kMetaTypeExternal && value->isa<parse::InterpretedObject>()) {
-          is_interpret_dict = true;
-          break;
-        }
-      }
-    }
-    if (is_interpret_dict) {
       continue;
     }
     // Call abstract converter.
