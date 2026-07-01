@@ -1,6 +1,18 @@
-# CosyVoice2-0.5B ONNX 模型导出与 MindSpore Lite 推理部署教程
+# CosyVoice2-0.5B ONNX 导出与 MindSpore Lite 推理部署教程
 
-本教程介绍如何将 CosyVoice2-0.5B 拆分导出为 ONNX，使用 ONNX Runtime 端到端验证（输出音频），并将 ONNX 转换为 MindSpore Lite MindIR 后在 Ascend 上推理（输出 mel 特征与性能数据）。
+本教程介绍如何将 CosyVoice2-0.5B 拆分为 5 个子模型导出为 ONNX，转换为 MindSpore Lite MindIR，
+并在 Ascend NPU 上完成端到端文本→语音合成推理。
+
+CosyVoice2-0.5B 是阿里通义实验室的 0.5B 参数语音合成模型，支持零样本语音克隆、跨语言合成、
+自然语言控制等功能。本目录把模型按推理流程拆分为 5 个 ONNX：
+
+1. **LLM Prefill**（`cosyvoice2_llm_prefill.onnx`）：一次性处理文本 token + 可选 prompt speech token，
+   输出首个 speech token 的 logits 与初始 KV cache
+2. **LLM Decode**（`cosyvoice2_llm_decode.onnx`）：基于 past KV cache 自回归生成后续 speech token
+3. **Flow Encoder**（`cosyvoice2_flow_encoder.onnx`）：把 speech token 解码为 Flow 匹配的初始条件
+   （`mu` / `spks` / `cond` / `mask`）
+4. **Flow Estimator**（`cosyvoice2_flow_estimator.onnx`）：CFM 10 步欧拉采样，把随机噪声变成 mel
+5. **HiFT Vocoder**（`cosyvoice2_hift.onnx`）：mel → 波形
 
 ---
 
@@ -18,7 +30,7 @@
 | numpy          | 1.26.4 |
 | CANN           | 9.0    |
 | mindspore-lite | 2.8.0  |
-| matcha-tts | 0.0.7.2  |
+| matcha-tts     | 0.0.7.2 |
 
 ```bash
 pip install transformers==5.6.2 torch==2.10.0 onnx==1.19.1 onnxruntime==1.24.2 numpy==1.26.4 mindspore-lite qwen-asr==0.0.6
@@ -26,16 +38,14 @@ pip install transformers==5.6.2 torch==2.10.0 onnx==1.19.1 onnxruntime==1.24.2 n
 
 ### 获取模型权重与源码
 
-> **注意**：本示例依赖 CosyVoice 源码（HiFT 声码器），需要单独获取。
+> **注意**：CosyVoice 源码仅在 **ONNX 导出** 阶段被 import（用于加载 `Qwen2LM` / `HiFTGenerator` / Flow 等模型定义）；推理阶段完全基于 MindIR，不需要源码。
 
 ```bash
-# CosyVoice 源码（HiFT 声码器 PyTorch 推理需要从中导入）
+# CosyVoice 源码（仅导出 ONNX 时需要）
 git clone https://github.com/FunAudioLLM/CosyVoice.git
 
 # CosyVoice2-0.5B 权重（参考 CosyVoice 项目文档下载）
 ```
-
-> 说明：`--model-dir` 为权重目录（含 `llm.pt`、`flow.pt`、`hift.pt`、可选 `campplus.onnx`、`speech_tokenizer_v1.onnx` 等），`--model-code-dir` 为 CosyVoice 源码目录。
 
 ---
 
@@ -49,9 +59,10 @@ cd mindspore-lite/examples/base_models/cosyvoice2_0.5b
 python export_cosyvoice2_onnx.py \
   --model-dir /path/to/CosyVoice2-0.5B \
   --model-code-dir /path/to/CosyVoice \
-  --output-dir ./cosyvoice2_onnx \
-  --device cpu
+  --output-dir ./pfa_fused/cosyvoice2_onnx
 ```
+
+可用 `--skip-llm` / `--skip-flow` / `--skip-hift` 单独跳过某个子模型。
 
 ### 参数说明
 
@@ -59,185 +70,227 @@ python export_cosyvoice2_onnx.py \
 |---|---|---|
 | `--model-dir` | CosyVoice2-0.5B 权重目录 | 见脚本默认值 |
 | `--model-code-dir` | CosyVoice 源码目录 | 见脚本默认值 |
-| `--output-dir` | ONNX 输出目录 | `./cosyvoice2_onnx` |
-| `--device` | 导出设备（cpu/cuda） | `cpu` |
+| `--output-dir` | ONNX 输出目录 | `./pfa_fused/cosyvoice2_onnx` |
+| `--device` | 导出设备（cpu） | `cpu` |
 | `--skip-llm` | 跳过 LLM 导出 | `False` |
 | `--skip-flow` | 跳过 Flow 导出 | `False` |
+| `--skip-hift` | 跳过 HiFT 声码器导出 | `False` |
+| `--disable-fusion` | 关闭 LLM Decode attention 的 `Custom(PromptFlashAttention)` 融合 | `False` |
+| `--disable-fusion-estimator` | 关闭 Flow Estimator attention 融合（monkey-patch diffusers） | `False` |
 
-### 产出文件
+### 产出
 
-```log
-cosyvoice2_onnx/
-├── cosyvoice2_llm_prefill.onnx
-├── cosyvoice2_llm_decode.onnx
-├── cosyvoice2_flow_encoder.onnx
-└── cosyvoice2_flow_estimator.onnx
+```text
+pfa_fused/cosyvoice2_onnx/
+├── cosyvoice2_llm_prefill.onnx       # LLM Prefill 模型 (~1.9 GB)
+├── cosyvoice2_llm_decode.onnx        # LLM Decode 模型  (~1.4 GB)
+├── cosyvoice2_flow_encoder.onnx      # Flow Encoder    (~178 MB)
+├── cosyvoice2_flow_estimator.onnx    # Flow Estimator  (~274 MB)
+└── cosyvoice2_hift.onnx              # HiFT Vocoder    (~80 MB, T_mel 纯动态)
 ```
+
+### ONNX 模型输入输出 Shape
+
+**LLM Prefill** — `cosyvoice2_llm_prefill.onnx`
+
+| 方向 | 名称 | Shape | Dtype | 说明 |
+|---|---|---|---|---|
+| 输入 | `text_ids` | `(batch, text_len)` | int32 | 文本 token |
+| 输入 | `speech_ids` | `(batch, speech_len)` | int32 | prompt speech token（可为 0） |
+| 输入 | `attention_mask` | `(batch, total_len)` | int32 | 注意力掩码 |
+| 输入 | `position_ids` | `(batch, total_len)` | int32 | 位置 ID |
+| 输出 | `logits` | `(batch, total_len, 6564)` | float32 | 下一个 speech token 预测 |
+| 输出 | `present_key_values` | `(48, batch, 2, total_len, 64)` | float32 | 初始 KV cache |
+
+> `48 = 24 层 × 2 (Q/KV)`，`num_kv_heads=2`，`head_dim=64`。Qwen2-0.5B 配置：
+> `num_attention_heads=14`、`num_key_value_heads=2`、`hidden_size=896`。
+
+**LLM Decode** — `cosyvoice2_llm_decode.onnx`（动态分档 256/512）
+
+| 方向 | 名称 | Shape | Dtype | 说明 |
+|---|---|---|---|---|
+| 输入 | `speech_id` | `(1, 1)` | int32 | 单步 speech token |
+| 输入 | `attention_mask` | `(1, total_seq+1)` | int32 | 累积掩码（动态维） |
+| 输入 | `position_ids` | `(1, 1)` | int32 | 单步位置 |
+| 输入 | `past_key_values` | `(48, 1, 2, past_seq, 64)` | float32 | KV cache（动态维） |
+| 输出 | `logits` | `(1, 1, 6564)` | float32 | 单步 logits |
+| 输出 | `present_key_values` | `(48, 1, 2, total_seq+1, 64)` | float32 | 更新后 KV cache |
+
+> 档位定义：`ge.dynamicDims="257,256;513,512"`。第一列是 `attention_mask` 长度（past_seq+1），
+> 第二列是 `past_key_values` 的 seq_len。档位选择逻辑见 `infer_cosyvoice2_mslite.py::_pick_llm_decode_gear`。
+
+**Flow Encoder** — `cosyvoice2_flow_encoder.onnx`
+
+| 方向 | 名称 | Shape | Dtype | 说明 |
+|---|---|---|---|---|
+| 输入 | `token` | `(batch, token_len)` | int32 | speech token 序列 |
+| 输入 | `token_len` | `(batch,)` | int32 | 实际长度 |
+| 输入 | `embedding` | `(batch, 192)` | float32 | prompt 音色 embedding |
+| 输入 | `prompt_feat` | `(batch, prompt_len, 80)` | float32 | prompt mel 特征 |
+| 输出 | `mu` / `spks` / `cond` / `mask` | — | float32 | Flow Estimator 初始条件 |
+
+**Flow Estimator** — `cosyvoice2_flow_estimator.onnx`（动态分档 128/256/512/1024）
+
+| 方向 | 名称 | Shape | Dtype | 说明 |
+|---|---|---|---|---|
+| 输入 | `x` | `(2, 80, mel_len)` | float32 | 噪声（batch=2 因 CFG） |
+| 输入 | `mask` | `(2, 1, mel_len)` | float32 | mel mask |
+| 输入 | `mu` | `(2, 80, mel_len)` | float32 | Flow 目标 |
+| 输入 | `t` | `(2,)` | float32 | CFM 时间步 |
+| 输入 | `spks` | `(2, 80)` | float32 | 音色 |
+| 输入 | `cond` | `(2, 80, mel_len)` | float32 | 条件 |
+| 输出 | `estimator_out` | `(2, 80, mel_len)` | float32 | 速度场估计 |
+
+> batch=2 是 CFG（Classifier Free Guidance）始终开启导致。档位定义：
+> `ge.dynamicDims="128,128,128,128;256,256,256,256;512,512,512,512;1024,1024,1024,1024"`，
+> 对应 4 个 `-1` 维（`x`/`mask`/`mu`/`cond` 的 mel_len）。
+
+**HiFT Vocoder** — `cosyvoice2_hift.onnx`（纯动态）
+
+| 方向 | 名称 | Shape | Dtype | 说明 |
+|---|---|---|---|---|
+| 输入 | `mel` | `(1, T_mel, 80)` | float32 | mel 特征（T_mel 动态） |
+| 输出 | `wav` | `(1, 1, T_wav)` | float32 | 波形（T_wav = T_mel × 480） |
+
+> HiFT 纯动态通过 `patch_conv_transpose1d_dynamic` 把 `F.conv_transpose1d` 替换为等价的
+> `Conv1d-on-dilated-input` 实现，绕过 Ascend `te_conv2dtranspose` 动态 shape 崩溃 bug。
 
 ### 导出注意事项
 
-- **LLM Prefill 的 dummy `speech_len` 必须设为 `0`**：因为实际推理时经常没有 prompt 音频（`speech_ids` 为空），如果导出时用 `speech_len > 0` 的 dummy，MSLite Ascend runtime 无法处理 size=0 的 tensor。详见常见问题第 6 条。
+- **LLM Prefill 的 dummy `speech_len` 必须设为 `0`**：实际推理经常没有 prompt 音频（`speech_ids` 为空），
+  导出时若用 `speech_len > 0` 的 dummy，MSLite Ascend runtime 无法处理 size=0 的 tensor。
 
 ---
 
-## 3. ONNX 推理
+## 3. ONNX 转 MindIR
 
-### 推理命令
+### 转换命令
+
+> **重要**：所有子模型转换时都必须指定对应的 `--configFile`，配置 `force_fp32` 避免 FP16 下
+> attention mask 极小值带来的数值问题。
 
 ```bash
-python infer_cosyvoice2_onnx.py \
-  --onnx-dir ./cosyvoice2_onnx \
-  --model-dir /path/to/CosyVoice2-0.5B \
-  --model-code-dir /path/to/CosyVoice \
-  --text "你好，很高兴认识你" \
-  --output output.wav \
-  --seed 0
-```
+Convert=mindspore-lite-2.8.0-linux-aarch64/tools/converter/converter/converter_lite
 
-**执行日志：**
+# LLM Prefill（纯动态，config.ini 仅设 force_fp32）
+$Convert --fmk=ONNX \
+  --modelFile=pfa_fused/cosyvoice2_onnx/cosyvoice2_llm_prefill.onnx \
+  --outputFile=pfa_fused/cosyvoice2_mindir/cosyvoice2_llm_prefill \
+  --optimize=ascend_oriented --saveType=MINDIR \
+  --configFile=config.ini
 
-```log
-Input text: 你好， 很高兴认识你
+# LLM Decode（动态分档 256/512）
+$Convert --fmk=ONNX \
+  --modelFile=pfa_fused/cosyvoice2_onnx/cosyvoice2_llm_decode.onnx \
+  --outputFile=pfa_fused/cosyvoice2_mindir/cosyvoice2_llm_decode \
+  --optimize=ascend_oriented --saveType=MINDIR \
+  --configFile=llm_decode.ini
 
-[1/4] Running LLM (Prefill + Decode)...
-  LLM generated 50 tokens...
-  LLM finished: 83 speech tokens
+# Flow Encoder（纯动态）
+$Convert --fmk=ONNX \
+  --modelFile=pfa_fused/cosyvoice2_onnx/cosyvoice2_flow_encoder.onnx \
+  --outputFile=pfa_fused/cosyvoice2_mindir/cosyvoice2_flow_encoder \
+  --optimize=ascend_oriented --saveType=MINDIR \
+  --configFile=config.ini
 
-[2/4] Running Flow Encoder...
+# Flow Estimator（动态分档 128/256/512/1024）
+$Convert --fmk=ONNX \
+  --modelFile=pfa_fused/cosyvoice2_onnx/cosyvoice2_flow_estimator.onnx \
+  --outputFile=pfa_fused/cosyvoice2_mindir/cosyvoice2_flow_estimator \
+  --optimize=ascend_oriented --saveType=MINDIR \
+  --configFile=flow_estimator.ini
 
-[3/4] Running Flow Estimator...
-
-[4/4] Running HiFT vocoder...
-
-Saved to test.wav (3.32s)
+# HiFT Vocoder（纯动态）
+$Convert --fmk=ONNX \
+  --modelFile=pfa_fused/cosyvoice2_onnx/cosyvoice2_hift.onnx \
+  --outputFile=pfa_fused/cosyvoice2_mindir/cosyvoice2_hift \
+  --optimize=ascend_oriented --saveType=MINDIR \
+  --configFile=hift.ini
 ```
 
 ### 参数说明
 
-| 参数 | 说明 | 默认值 |
-|---|---|---|
-| `--onnx-dir` | ONNX 模型目录 | `./cosyvoice2_onnx` |
-| `--model-dir` | 权重目录 | 见脚本默认值 |
-| `--model-code-dir` | CosyVoice 源码目录 | 见脚本默认值 |
-| `--text` | 待合成文本 | `你好，很高兴认识你。` |
-| `--prompt-wav` | 可选提示音频（语音克隆） | `None` |
-| `--output` | 输出 wav 路径 | `output.wav` |
-| `--seed` | 随机种子（影响采样与 flow 初始噪声） | `0` |
-| `--flow-cfg` | Flow CFG 系数 | `0.7` |
-| `--flow-steps` | Flow Euler 步数 | `10` |
-| `--decode-mode` | LLM 解码模式（greedy/ras） | `ras` |
-
-> **注意**：`greedy` 模式用于调试时与 ONNX 对比中间输出（deterministic），`ras` 模式遵循 CosyVoice2 原始采样行为（更自然）。
-
----
-
-## 4. MindSpore Lite 转换（ONNX → MindIR）
-
-### 转换命令
-
-> LLM 子模型建议配置 `force_fp32`，避免 FP16 下 attention mask 极小值带来的数值问题。
-
-```bash
-Converter=/path/to/mindspore-lite/tools/converter/converter_lite
-
-# LLM Prefill
-$Converter --fmk=ONNX \
-  --modelFile=cosyvoice2_onnx/cosyvoice2_llm_prefill.onnx \
-  --outputFile=cosyvoice2_mindir/cosyvoice2_llm_prefill \
-  --optimize=ascend_oriented \
-  --saveType=MINDIR \
-  --configFile=config.ini
-
-# LLM Decode
-$Converter --fmk=ONNX \
-  --modelFile=cosyvoice2_onnx/cosyvoice2_llm_decode.onnx \
-  --outputFile=cosyvoice2_mindir/cosyvoice2_llm_decode \
-  --optimize=ascend_oriented \
-  --saveType=MINDIR \
-  --configFile=config.ini
-
-# Flow Encoder
-$Converter --fmk=ONNX \
-  --modelFile=cosyvoice2_onnx/cosyvoice2_flow_encoder.onnx \
-  --outputFile=cosyvoice2_mindir/cosyvoice2_flow_encoder \
-  --optimize=ascend_oriented \
-  --saveType=MINDIR
-
-# Flow Estimator
-$Converter --fmk=ONNX \
-  --modelFile=cosyvoice2_onnx/cosyvoice2_flow_estimator.onnx \
-  --outputFile=cosyvoice2_mindir/cosyvoice2_flow_estimator \
-  --optimize=ascend_oriented \
-  --saveType=MINDIR
-```
-
-> **Flow Encoder**：请用本目录最新 `export_cosyvoice2_onnx.py` 重新导出。旧 ONNX 里 `Upsample1D` 会在 `/encoder/up_layer/Resize` 产生 **3 维** 输入，Ascend GE 要求 **4 维**，`converter_lite` 会报 `The dim of input x is not 4`（见 `convert.log` 与常见问题第 5 条）。
+| 参数 | 说明 |
+|---|---|
+| `--fmk` | 输入模型格式（ONNX） |
+| `--modelFile` | 输入 ONNX 模型路径 |
+| `--outputFile` | 输出 MindIR 路径（不带扩展名） |
+| `--optimize` | 优化模式，必须指定 `ascend_oriented` |
+| `--saveType` | 输出格式（MINDIR） |
+| `--configFile` | 配置文件路径（指定 input_shape / ge.dynamicDims / force_fp32） |
 
 ### 配置文件
 
-`config.ini`：
+**`config.ini`** — 纯动态子模型共用（LLM Prefill、Flow Encoder）：
 
 ```ini
 [acl_init_options]
 ge.exec.precision_mode=force_fp32
 ```
 
-### 产出说明
+**`llm_decode.ini`** — LLM Decode 动态分档（256/512）：
 
-模型超过 2GB 时，MindIR 会拆分为 `*_graph.mindir` + `*_variables/` 目录，推理时使用 `*_graph.mindir` 加载。
+```ini
+[acl_build_options]
+input_format="ND"
+input_shape="speech_id:1,1;attention_mask:1,-1;position_ids:1,1;past_key_values:48,1,2,-1,64"
+ge.dynamicDims="257,256;513,512"
+
+[acl_init_options]
+ge.exec.precision_mode=force_fp32
+```
+
+**`flow_estimator.ini`** — Flow Estimator 动态分档（128/256/512/1024，CFG batch=2）：
+
+```ini
+[acl_build_options]
+input_format="ND"
+input_shape="x:2,80,-1;mask:2,1,-1;mu:2,80,-1;t:2;spks:2,80;cond:2,80,-1"
+ge.dynamicDims="128,128,128,128;256,256,256,256;512,512,512,512;1024,1024,1024,1024"
+
+[acl_init_options]
+ge.exec.precision_mode=force_fp32
+```
+
+**`hift.ini`** — HiFT 纯动态：
+
+```ini
+[acl_build_options]
+input_format="ND"
+input_shape="mel:1,-1,80"
+
+[acl_init_options]
+ge.exec.precision_mode=force_fp32
+```
+
+### 产出
+
+模型超过 2GB 时，MindIR 会拆分为 `*_graph.mindir` + `*_variables/` 目录：
+
+```text
+pfa_fused/cosyvoice2_mindir/
+├── cosyvoice2_llm_prefill_graph.mindir        # Prefill 图定义 (~1.9 KB)
+├── cosyvoice2_llm_prefill_variables/          # Prefill 权重数据 (~2.7 GB)
+├── cosyvoice2_llm_decode.mindir               # Decode 单文件 (~735 MB)
+├── cosyvoice2_flow_encoder.mindir             # Flow Encoder (~204 MB)
+├── cosyvoice2_flow_estimator.mindir           # Flow Estimator (~210 MB)
+└── cosyvoice2_hift.mindir                     # HiFT Vocoder (~120 MB)
+```
 
 ---
 
-## 5. MindSpore Lite 推理
+## 4. MindSpore Lite 推理
 
 ### 推理命令
 
 ```bash
 python infer_cosyvoice2_mslite.py \
-  --mindir-dir ./cosyvoice2_mindir \
+  --mindir-dir ./pfa_fused/cosyvoice2_mindir \
   --model-dir /path/to/CosyVoice2-0.5B \
-  --model-code-dir /path/to/CosyVoice \
-  --device ascend \
-  --device-id 0 \
-  --text "你好，很高兴认识你" \
+  --device ascend --device-id 0 \
+  --text "你好，很高兴认识你。" \
   --output output.wav \
   --seed 0
-```
-
-**执行日志：**
-
-```log
-Input text: 你好，很高兴认识你
-
-[1/4] Running LLM (Prefill + Decode)...
-  LLM generated 50 tokens...
-  LLM finished: 60 speech tokens
-  LLM prefill: 601.15 ms
-  LLM decode : 1223.60 ms (steps=60, avg_step=20.39 ms)
-  LLM total  : 1824.75 ms
-
-[2/4] Running Flow Encoder...
-  Flow Encoder: 30.40 ms
-
-[3/4] Running Flow Estimator (CFM)...
-  Flow Estimator (10 steps, cfg=0.7): 350.97 ms
-
-[4/4] Running HiFT vocoder...
-  HiFT vocoder: 1218.97 ms
-
-Saved to output.wav (2.40s)
-Total time: 3521.43 ms (RTF: 1.467)
-
-[Performance Markdown]
-| 指标 | 耗时 (ms) |
-|---|---:|
-| LLM Prefill | 601.15 |
-| LLM Total Decode | 1223.60 |
-| Avg Decode Step | 20.39 |
-| Flow Encoder | 30.40 |
-| Flow Estimator | 350.97 |
-| HiFT Vocoder | 1218.97 |
-| **Total** | **3521.43** |
 ```
 
 ### 参数说明
@@ -245,8 +298,7 @@ Total time: 3521.43 ms (RTF: 1.467)
 | 参数 | 说明 | 默认值 |
 |---|---|---|
 | `--mindir-dir` | MindIR 模型目录 | `./cosyvoice2_mindir` |
-| `--model-dir` | 权重目录 | 见脚本默认值 |
-| `--model-code-dir` | CosyVoice 源码目录（HiFT 需要） | 见脚本默认值 |
+| `--model-dir` | CosyVoice2-0.5B 权重目录（用于加载 tokenizer、speech_tokenizer 等附属资源） | 见脚本默认值 |
 | `--device` | 推理设备（cpu/ascend） | `ascend` |
 | `--device-id` | Ascend 设备 ID | `0` |
 | `--text` | 待合成文本 | `你好，很高兴认识你。` |
@@ -257,140 +309,133 @@ Total time: 3521.43 ms (RTF: 1.467)
 | `--flow-steps` | Flow Euler 步数 | `10` |
 | `--decode-mode` | LLM 解码模式（greedy/ras） | `ras` |
 
-### 说明
+### 动态 shape 调度逻辑
 
-- `infer_cosyvoice2_mslite.py` 支持 **端到端 wav 输出**。
-- LLM + Flow 使用 MindSpore Lite 推理，HiFT vocoder 使用 PyTorch CPU（cosyvoice 源码）。
-- 如需提示音频（语音克隆），直接通过 `--prompt-wav` 传入 wav 文件。
+`infer_cosyvoice2_mslite.py` 内部按子模型分别处理 resize / pad：
+
+| 子模型 | 函数 | 调度逻辑 |
+|---|---|---|
+| LLM Prefill | `_run_llm_prefill` | 每次按实际 shape `resize` |
+| LLM Decode | `_run_llm_decode_step` + `_pick_llm_decode_gear` | 按 `past_seq_len` 选 256/512 档，pad `attention_mask` 和 `past_key_values` 到档位 |
+| Flow Encoder | `_run_flow_encoder` | 每次按实际 shape `resize` |
+| Flow Estimator | `_run_flow_estimator` + `_pick_flow_est_gear` | 按 `mel_len` 选 128/256/512/1024 档，pad `x`/`mask`/`mu`/`cond` 到档位 |
+| HiFT Vocoder | `_run_hift_mslite` | 每次按实际 `T_mel` `resize`，无 padding |
+
+档位常量定义在 `infer_cosyvoice2_mslite.py:175,178`：
+
+```python
+LLM_DECODE_GEARS = (256, 512)
+FLOW_EST_GEARS = (128, 256, 512, 1024)
+```
+
+### 推理示例输出
+
+输入文本 `你好，很高兴认识你。`（seed=0）：
+
+```text
+Initializing MindSpore Lite context for Ascend...
+Loading LLM Prefill from pfa_fused/cosyvoice2_mindir/cosyvoice2_llm_prefill_graph.mindir...
+Loading LLM Decode from pfa_fused/cosyvoice2_mindir/cosyvoice2_llm_decode.mindir...
+Loading Flow Encoder from pfa_fused/cosyvoice2_mindir/cosyvoice2_flow_encoder.mindir...
+Loading Flow Estimator from pfa_fused/cosyvoice2_mindir/cosyvoice2_flow_estimator.mindir...
+Loading HiFT (pure dynamic) from pfa_fused/cosyvoice2_mindir/cosyvoice2_hift.mindir...
+Input text: 你好，很高兴认识你。
+
+[1/4] Running LLM (Prefill + Decode)...
+  LLM generated 77 tokens...
+  LLM finished: 78 speech tokens
+  LLM prefill: 95.34 ms
+  LLM decode : 878.10 ms (steps=78, avg_step=11.26 ms)
+  LLM total  : 973.44 ms
+
+[2/4] Running Flow Encoder...
+  Flow Encoder: 39.88 ms
+
+[3/4] Running Flow Estimator (CFM)...
+  Flow Estimator (10 steps, cfg=0.7): 189.03 ms
+
+[4/4] Running HiFT vocoder...
+  HiFT vocoder: 36.00 ms
+
+Saved to output.wav (2.68s)
+Total time: 1220.38 ms (RTF: 0.455)
+```
+
+如需语音克隆，加上 `--prompt-wav /path/to/reference.wav`。
 
 ---
 
-## 6. 性能数据
+## 5. 性能数据
 
-### 性能测试结果（Atlas 800I A2）
+### 测试环境
 
-测试模型：CosyVoice2-0.5B
-测试条件：输入文本"你好，很高兴认识你"，Ascend 推理
+| 项目 | 配置 |
+|---|---|
+| 硬件 | Atlas 300I Duo |
+| 模型 | CosyVoice2-0.5B |
+| 精度 | force_fp32（所有子模型） |
+| CANN | 8.5.0 |
+| MindSpore Lite | 2.9.0 |
 
-| 指标 | 耗时 (ms) |
-|---|---:|
-| LLM Prefill | 601.15 |
-| LLM Decode | 1223.60(Total), 20.39(Avg Step) |
-| Flow Encoder | 30.40 |
-| Flow Estimator | 350.97 |
-| HiFT Vocoder | 1218.97 |
-| **Total** | **3521.43** |
+### 各子模型性能（输入 `你好，很高兴认识你。`，输出 ~2.7s 音频）
 
-| 指标 | 值 |
-|---|---:|
-| Audio Duration | 2.40 s |
-| RTF | 1.467 |
+| 阶段 | Shape 策略 | 实际档位 | 耗时 (ms) |
+|---|---|---|---:|
+| LLM Prefill | 纯动态 | — | 95.34 |
+| LLM Decode (78 步) | 动态分档 256/512 | 256 (past_seq ≤ 256) | 878.10 (avg 11.26/step) |
+| Flow Encoder | 纯动态 | — | 39.88 |
+| Flow Estimator (10 步) | 动态分档 128/256/512/1024 | 256 (mel_len=134) | 189.03 |
+| HiFT Vocoder | 纯动态 | — | 36.00 |
+| **Total** | — | — | **1220.38** |
+| **RTF** | — | — | **0.455** |
 
-> **注意**：本性能测试依赖 CosyVoice 源码（HiFT 声码器部分）。RTF (Real-Time Factor) 为总推理时间与音频时长之比，值越小表示实时性越好。RTF < 1 表示快于实时。HiFT Vocoder模型使用torch cpu计算，暂未导出为onnx。
+> RTF (Real-Time Factor) = 总推理时间 / 音频时长。RTF < 1 表示快于实时。
 
 ---
 
-## 7. 常见问题
+## 6. 常见问题
 
 **1. 导出时报 `GuardOnDataDependentSymNode`**
 
-- **现象**：`torch.onnx.export` 导出失败。
-- **原因**：新导出器内部走 `torch.export`，不支持数据依赖控制流。
-- **解决方案**：导出时使用 legacy 导出器（脚本已通过 `dynamo=False` 固定）。
+- **现象**：`torch.onnx.export` 导出失败
+- **原因**：新导出器内部走 `torch.export`，不支持数据依赖控制流
+- **解决**：导出时使用 legacy 导出器（脚本已通过 `dynamo=False` 固定）
 
-**2. 导出 Flow Encoder 后，ONNX 推理”首句清晰，后续全是噪声”**
+**2. 导出 Flow Encoder 后，ONNX 推理"首句清晰，后续全是噪声"**
 
-- **现象**：生成音频只有最前面（例如”你好”）清晰，后面变成噪声。
-- **根因**：Flow Encoder 导出时 `mask` 被错误地固定为 dummy 导出长度，导致真实推理时后半段 mel 帧被 mask 掉，Flow Estimator 不更新这些帧，最终保留随机噪声。
-- **如何确认**：在 ONNX 推理日志中打印 `flow_mask.mean()`，会出现明显小于 1 的值（例如约 0.37，代表只有 ~40/108 帧有效）。
-- **解决方案**：
-    - 在 `export_cosyvoice2_onnx.py` 的 Flow Encoder wrapper 中，**不要**用 `torch.tensor([mel_len])` 构造 mask（legacy exporter 可能把它 trace 成常量）。
-    - 直接用动态 shape 构造全 1 mask：`attn_mask = h.new_ones((h.shape[0], 1, mel_len))`。
-    - 重新导出 ONNX，并重新转换为 MindIR。
+- **现象**：生成音频只有最前面（例如"你好"）清晰，后面变成噪声
+- **根因**：Flow Encoder 导出时 `mask` 被错误地固定为 dummy 导出长度，导致真实推理时后半段 mel 帧被 mask 掉
+- **解决**：在 `export_cosyvoice2_onnx.py` 的 Flow Encoder wrapper 中，用动态 shape 构造全 1 mask：
+  `attn_mask = h.new_ones((h.shape[0], 1, mel_len))`
 
 **3. MSLite 推理输出恒为常数**
 
-- **现象**：LLM logits 全相同/输出异常。
-- **原因**：FP16 下 attention mask 极小值参与计算导致数值问题。
-- **解决方案**：对 LLM 子模型转换时使用 `config.ini` 配置 `force_fp32`。
+- **现象**：LLM logits 全相同/输出异常
+- **原因**：FP16 下 attention mask 极小值参与计算导致数值问题
+- **解决**：所有子模型转换时使用 `config*.ini` 配置 `force_fp32`
 
-**4. MSLite 输入 dtype 不匹配**
+**4. HiFT 转换时报 `input x shape should be 4D` 或 `If node`**
 
-- **现象**：报错 `required xx, given yy`。
-- **原因**：MindIR 期望 `int32`，传入了 `int64`。
-- **解决方案**：推理脚本中显式 `.astype(np.int32)`（本目录脚本已处理）。
+- **现象**：`converter_lite` 报 `i: 3 out of range: 3, cnode: If`
+- **根因**：`ManualISTFT.forward` 用了 `y.squeeze(1)`，ONNX tracer 会发射控制流 `If` 节点
+- **解决**：用 `y[:, 0]` 替代 `squeeze(1)`（脚本已修复）
 
-**5. converter_lite 转换 `cosyvoice2_flow_encoder.onnx` 失败：`Resize` / `ResizeNearestNeighborV2` 维度错误**
+**5. HiFT 推理报 `op[/ups.0/Mul] shape cannot broadcast`**
 
-- **现象**：日志类似 `OpName:[/encoder/up_layer/Resize] "The dim of input x is not 4”`（见本目录 `convert.log`）。
-- **原因**：CosyVoice `UpsampleConformerEncoder` 中 `Upsample1D` 对 `(B, C, T)` 使用 `F.interpolate(..., scale_factor=stride)`，ONNX 导出为 **3 维** `Resize`；Ascend GE 上该算子要求 **4 维** 输入。
-- **解决方案**：使用本仓库更新后的 `export_cosyvoice2_onnx.py` 重新导出 Flow Encoder（脚本在构建 Flow 前对 `Upsample1D.forward` 做了等价改写：`unsqueeze(-1)` → `(B, C, T, 1)` 上 `scale_factor=(stride, 1)` 的 `interpolate` → `squeeze(-1)`，使图中 `Resize` 为 4 维），再执行 `converter_lite`。
+- **现象**：纯动态 HiFT 推理时 aicore 异常
+- **根因**：`F.conv_transpose1d` 替换实现里 `(input.unsqueeze(-1) * mask)` 的 broadcast 在 Ascend 上被融合后无法推导动态 shape
+- **解决**：用 `repeat_interleave(S) + arange/mod mask` 构造同形 mul（见 `patch_conv_transpose1d_dynamic`）
 
-**6. MSLite 推理时报错：`Acl memcpy input X data to device failed, src input size: 0`**
+**6. LLM Prefill 推理报 size=0 tensor 错误**
 
-- **现象**：MSLite 推理时报错，日志显示 `src input size: 0, dst device buffer size: 0`，通常发生在 LLM Prefill 阶段。
-- **原因**：导出 ONNX 时使用的 `speech_len > 0`（例如 dummy 值为 6），但实际推理时 `speech_len = 0`（无 prompt 音频）。MSLite Ascend runtime 无法处理 size=0 的空 tensor，而 ONNX Runtime 可以。
-- **解决方案**：在 `export_cosyvoice2_onnx.py` 中，将 LLM Prefill 导出的 dummy `speech_len` 改为 `0`（或确保 dummy 输入覆盖实际推理的最小值，包括空数组情况），重新导出 ONNX 并转换 MindIR。
-    - 修改位置：`export_cosyvoice2_onnx.py` 中 `_export_llm()` 函数
-    - 修改前：`speech_len = 6`
-    - 修改后：`speech_len = 0`
-- **通用经验**：导出 ONNX 时，dummy 输入的各维度应覆盖实际推理时的所有可能范围，特别是最小值（包括 0）。对于可选输入（如 prompt speech tokens），必须用空 dummy（长度 0）验证。
-
-**7. CosyVoice2 MSLite 推理音频内容错误且时长异常**
-
-- **现象**：ONNX 推理音频正常（时长约 2.1s），MSLite 推理生成音频”瞎说”（能听出是汉语但内容错误）且时长异常（约 6.72s）。
-- **根因**：
-    - 当 `speech_len=0`（无 prompt 音频）时，MSLite Ascend runtime 无法处理空 tensor。
-    - ONNX 导出时部分维度 `dim_value=0`（如空 speech 输入），MindIR 转换后这些零维可能被错误处理。
-    - 导致 prefill 阶段 KV cache 维度错误，后续 decode 生成的 token 序列异常。
-- **解决方案**：
-
-  **推理侧**：当 `speech_len == 0` 时，padding 为 `[0]` token（`speech_ids = [[0]]`），推理后从输出中移除 padding：
-
-  ```python
-  pad_empty_speech = (speech_len == 0)
-  if pad_empty_speech:
-      speech_ids_np = np.array([[0]], dtype=np.int64)
-      speech_len = 1
-  # ... run inference ...
-  if pad_empty_speech:
-      logits = logits[:, :-1, :]
-      past_kv = past_kv[:, :, :, :-1, :]
-      total_len = total_len - 1
-  ```
-
-  **导出侧**：添加 `_sanitize_onnx_zero_dims()` 函数，将 `dim_value=0` 转为 `dim_param`（动态维度）：
-
-  ```python
-  def _sanitize_onnx_zero_dims(onnx_path: Path) -> None:
-      model = onnx.load(str(onnx_path))
-      def sanitize_value_info(vi):
-          if not vi.type.HasField("tensor_type"):
-              return
-          tt = vi.type.tensor_type
-          if not tt.HasField("shape"):
-              return
-          for i, d in enumerate(tt.shape.dim):
-              if d.HasField("dim_value") and int(d.dim_value) == 0 and not d.HasField("dim_param"):
-                  d.dim_param = f"{vi.name}_dim{i}"
-                  d.ClearField("dim_value")
-      for vi in list(model.graph.input) + list(model.graph.output) + list(model.graph.value_info):
-          sanitize_value_info(vi)
-      onnx.save(model, str(onnx_path))
-  ```
-
-- **验证方法**：添加 `--decode-mode greedy` 选项，使 ONNX/MSLite 均使用确定性采样，便于对比中间输出（logits/KV cache）定位精度差异。
+- **现象**：无 prompt 音频时崩溃
+- **解决**：导出 LLM Prefill 时 dummy `speech_len` 必须设为 `0`
 
 ---
 
-## 8. 参考资源
+## 7. 参考资源
 
+- [MindSpore Lite 文档](https://www.mindspore.cn/lite)
 - [CosyVoice GitHub](https://github.com/FunAudioLLM/CosyVoice)
-- [MindSpore Lite 文档](https://www.mindspore.cn/lite/docs/zh-CN/master/index.html)
-
----
-
-## 9. 许可证
-
-CosyVoice2-0.5B 模型遵循 Apache License 2.0。
-
+- [CosyVoice2 技术报告](https://funaudiollm.github.io/cosyvoice2/)
+- [ONNX Runtime 文档](https://onnxruntime.ai/docs/)
