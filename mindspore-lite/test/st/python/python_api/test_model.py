@@ -17,6 +17,7 @@ Test for MindSpore Lite Model
 """
 
 import os
+import threading
 import pytest
 import mindspore_lite as mslite
 import numpy as np
@@ -185,3 +186,47 @@ def test_python_api_func_resize_random_shape_002():
     # predict for shape of 96
     model.resize(model.get_inputs(), [[2, 4, 96, 96], [1], [2, 77, 768]])
     model.predict([input_1_data_2, input_2_data_2, input_3_data_2])
+
+class _ModelThread(threading.Thread):
+    """A thread that runs inference on a shared Model object."""
+    def __init__(self, thread_id, model):
+        threading.Thread.__init__(self)
+        self.thread_id = thread_id
+        self.model = model
+        self.exception = None
+
+    def run(self):
+        try:
+            inputs = self.model.get_inputs()
+            inputs[0].set_data_from_numpy(np.random.rand(1, 4).astype(np.float32))
+            outputs = self.model.predict(inputs)
+            assert len(outputs) > 0
+        except (RuntimeError, TypeError, ValueError) as e:
+            self.exception = e
+
+def test_python_api_multi_thread_predict_001():
+    """
+    Test multi-thread inference on a single Model object.
+    Multiple threads share the same Model and call predict() concurrently.
+    This test guards against deadlocks caused by pybind11 + numpy 2.x
+    incompatibility in multi-threaded scenarios.
+    """
+    context = mslite.Context()
+    context.target = ["ascend"]
+    context.ascend.device_id = DEVICE_ID
+    model = mslite.Model()
+    model.build_from_file(model_path=MODEL_STATIC_FILE, model_type=mslite.ModelType.MINDIR, context=context)
+
+    thread_num = 10
+    threads = [_ModelThread(i, model) for i in range(thread_num)]
+
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join(timeout=60)
+        if th.is_alive():
+            raise RuntimeError(f"Thread {th.thread_id} timed out, possible deadlock!")
+
+    for th in threads:
+        if th.exception is not None:
+            raise th.exception
