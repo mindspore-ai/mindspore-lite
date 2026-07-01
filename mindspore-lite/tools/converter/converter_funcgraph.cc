@@ -488,11 +488,11 @@ STATUS ConverterFuncGraph::OptimizeForGE(const std::shared_ptr<ConverterPara> &p
   return RET_OK;
 }
 
-STATUS ConverterFuncGraph::RunGeOfflineConvert(const std::shared_ptr<ConverterPara> &param, FuncGraphPtr func_graph) {
-  if (param->is_runtime_converter) {
-    MS_LOG(INFO) << "Call from Model::Build, skip AOE optimize and GE offline convert";
-    return RET_OK;
-  }
+STATUS ConverterFuncGraph::PrepareGeOfflineContext(const std::shared_ptr<ConverterPara> &param,
+                                                   std::shared_ptr<mindspore::Context> *context, bool *run_aoe) {
+  MS_CHECK_TRUE_RET(param != nullptr, RET_NULL_PTR);
+  MS_CHECK_TRUE_RET(context != nullptr, RET_NULL_PTR);
+  MS_CHECK_TRUE_RET(run_aoe != nullptr, RET_NULL_PTR);
   if (param->device.find("Ascend") == std::string::npos) {
     MS_LOG(ERROR) << "Converter optimize should be ascend_oriented when provider is ge";
     return RET_ERROR;
@@ -501,23 +501,30 @@ STATUS ConverterFuncGraph::RunGeOfflineConvert(const std::shared_ptr<ConverterPa
     MS_LOG(ERROR) << "Failed to register ge pass plugin";
     return RET_ERROR;
   }
-  auto context = lite::acl::AsModelContext(param->aclModelOptionCfgParam, param->provider);
-  if (context == nullptr) {
+  *context = lite::acl::AsModelContext(param->aclModelOptionCfgParam, param->provider);
+  if (*context == nullptr) {
     MS_LOG(ERROR) << "Failed to converter ascend options to Model Context";
     return RET_ERROR;
   }
-  bool run_aoe = !param->aclModelOptionCfgParam.aoe_mode.empty();
-  if (!run_aoe) {
+  *run_aoe = !param->aclModelOptionCfgParam.aoe_mode.empty();
+  if (!(*run_aoe)) {
     auto sec_it = param->config_infos.find(kAoeGlobalOptionsSection);
     if (sec_it != param->config_infos.end()) {
       auto &options = sec_it->second;
       auto option_it = options.find("job_type");
       if (option_it != options.end()) {
-        run_aoe = true;
+        *run_aoe = true;
       }
     }
   }
   param->config_infos[lite::kConverterParams][lite::kConverterOutputFile] = param->output_file;
+  return RET_OK;
+}
+
+STATUS ConverterFuncGraph::ExecuteGeConvertOrAoe(const std::shared_ptr<ConverterPara> &param, FuncGraphPtr func_graph,
+                                                 const std::shared_ptr<mindspore::Context> &context, bool run_aoe) {
+  MS_CHECK_TRUE_RET(param != nullptr, RET_NULL_PTR);
+  MS_CHECK_TRUE_RET(func_graph != nullptr, RET_NULL_PTR);
   if (!run_aoe) {
     if (param->config_infos.find(kAscendContextSection) == param->config_infos.end() ||
         param->config_infos[kAscendContextSection].find(kParameterAsRefData) ==
@@ -539,6 +546,24 @@ STATUS ConverterFuncGraph::RunGeOfflineConvert(const std::shared_ptr<ConverterPa
     }
   }
   return RET_OK;
+}
+
+STATUS ConverterFuncGraph::RunGeOfflineConvert(const std::shared_ptr<ConverterPara> &param, FuncGraphPtr func_graph) {
+  if (param->is_runtime_converter) {
+    MS_LOG(INFO) << "Call from Model::Build, skip AOE optimize and GE offline convert";
+    return RET_OK;
+  }
+  std::shared_ptr<mindspore::Context> context = nullptr;
+  bool run_aoe = false;
+  auto ret = PrepareGeOfflineContext(param, &context, &run_aoe);
+  if (ret != RET_OK) {
+    return ret;
+  }
+  if (context == nullptr) {
+    MS_LOG(ERROR) << "GE offline convert context is null.";
+    return RET_ERROR;
+  }
+  return ExecuteGeConvertOrAoe(param, func_graph, context, run_aoe);
 }
 
 STATUS ConverterFuncGraph::CheckFuncGraph(const std::shared_ptr<ConverterPara> &param, FuncGraphPtr func_graph) {

@@ -273,6 +273,8 @@ class CpuFp16SubGraph : public CpuSubGraph {
 #if !defined(ENABLE_MINDRT)
   int PreProcess();
   int PostProcess();
+  int ConvertOutputTensorsFromFp16ToFp32();
+  int RestoreInputTensorsFromFp16ToFp32();
   void FreeOriginInputData();
   std::vector<DataStore *> origin_input_data_{};
 #endif

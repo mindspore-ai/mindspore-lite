@@ -41,6 +41,9 @@ class MatMulFP16BaseCoder : public MatMulFP32BaseCoder {
  private:
   int InitBufferForBias() override;
   std::string InitBiasData(NNaclFp32Serializer *const init_code, CoderContext *const context, size_t *w_buf);
+  void InitMatrixAPackBuffer(NNaclFp32Serializer *const init_code, CoderContext *const context, size_t *w_buf);
+  void GeneratePackACode(NNaclFp32Serializer &pack_code, const std::string &input_a_str,
+                         const std::string &input_a_pack_str);
   std::string InitMatrixA(NNaclFp32Serializer *const code, NNaclFp32Serializer *const init_code,
                           CoderContext *const context, size_t *w_buf);
   std::string InitMatrixB(NNaclFp32Serializer *const code, NNaclFp32Serializer *const init_code,

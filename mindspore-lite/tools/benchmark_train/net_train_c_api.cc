@@ -665,8 +665,8 @@ bool TimeProfilingBeforeCallback(const MSTensorHandleArray inputs, const MSTenso
 
 bool TimeProfilingAfterCallback(const MSTensorHandleArray inputs, const MSTensorHandleArray outputs,
                                 const MSCallBackParamC kernel_Info) {
-  uint64_t opEnd = mindspore::lite::GetTimeUs();
-  float cost = static_cast<float>(opEnd - g_op_begin_) / 1000.0f;
+  uint64_t op_end = mindspore::lite::GetTimeUs();
+  float cost = static_cast<float>(op_end - g_op_begin_) / 1000.0f;
   g_op_cost_total_ += cost;
   g_c_op_times_by_type_[kernel_Info.node_type].first++;
   g_c_op_times_by_type_[kernel_Info.node_type].second += cost;

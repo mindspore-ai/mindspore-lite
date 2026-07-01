@@ -57,6 +57,10 @@ class ConverterFuncGraph {
   static void ClearBuiltinPass();
   static STATUS OptimizeForGE(const std::shared_ptr<ConverterPara> &param, FuncGraphPtr func_graph);
   static STATUS RunGeOfflineConvert(const std::shared_ptr<ConverterPara> &param, FuncGraphPtr func_graph);
+  static STATUS PrepareGeOfflineContext(const std::shared_ptr<ConverterPara> &param,
+                                        std::shared_ptr<mindspore::Context> *context, bool *run_aoe);
+  static STATUS ExecuteGeConvertOrAoe(const std::shared_ptr<ConverterPara> &param, FuncGraphPtr func_graph,
+                                      const std::shared_ptr<mindspore::Context> &context, bool run_aoe);
   static STATUS RunVariableOptimize(const std::shared_ptr<ConverterPara> &param, FuncGraphPtr func_graph);
 
   static STATUS CheckFuncGraph(const std::shared_ptr<ConverterPara> &param, FuncGraphPtr func_graph);

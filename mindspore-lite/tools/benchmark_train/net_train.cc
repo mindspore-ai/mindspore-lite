@@ -585,14 +585,14 @@ int NetTrain::InitTimeProfilingCallbackParameter() {
   after_call_back_ = [&](const std::vector<mindspore::MSTensor> &after_inputs,
                          const std::vector<mindspore::MSTensor> &after_outputs,
                          const mindspore::MSCallBackParam &call_param) {
-    uint64_t opEnd = GetTimeUs();
+    uint64_t op_end = GetTimeUs();
     if (after_inputs.empty()) {
       MS_LOG(INFO) << "The num of after inputs is empty";
     }
     if (after_outputs.empty()) {
       MS_LOG(INFO) << "The num of after outputs is empty";
     }
-    float cost = static_cast<float>(opEnd - op_begin_) / 1000.0f;
+    float cost = static_cast<float>(op_end - op_begin_) / 1000.0f;
     op_cost_total_ += cost;
     op_times_by_type_[call_param.node_type].first++;
     op_times_by_type_[call_param.node_type].second += cost;

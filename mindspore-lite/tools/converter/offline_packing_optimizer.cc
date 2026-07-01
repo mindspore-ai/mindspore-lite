@@ -134,11 +134,10 @@ TypeId GetDataType(const CNodePtr &cnode, const std::vector<Tensor *> &in_tensor
   return data_type;
 }
 
-STATUS CreateLiteTensor(const CNodePtr &cnode, std::vector<Tensor *> *in_tensors, std::vector<Tensor *> *out_tensors) {
+STATUS CreateInputTensors(const CNodePtr &cnode, std::vector<Tensor *> *in_tensors) {
   std::vector<int> shape(0);
   mindspore::TypeId type_id = TypeId::kTypeUnknown;
 
-  // Generate input tensor.
   for (size_t i = kPrimIndex + 1; i < cnode->size(); i++) {
     if (opt::GetDataTypeFromAnfNode(cnode->input(i), &type_id) != RET_OK) {
       MS_LOG(ERROR) << "Cannot get data type from " << cnode->input(i)->fullname_with_scope();
@@ -177,8 +176,13 @@ STATUS CreateLiteTensor(const CNodePtr &cnode, std::vector<Tensor *> *in_tensors
     shape.clear();
     type_id = TypeId::kTypeUnknown;
   }
+  return RET_OK;
+}
 
-  // Generate output tensor.
+STATUS CreateOutputTensors(const CNodePtr &cnode, std::vector<Tensor *> *out_tensors) {
+  std::vector<int> shape(0);
+  mindspore::TypeId type_id = TypeId::kTypeUnknown;
+
   MS_CHECK_TRUE_MSG(GetCNodeOrParameterShapeVec(cnode, &shape) == RET_OK, RET_ERROR,
                     "Infer shape must be done when using offline packing.");
   MS_CHECK_TRUE_MSG(!shape.empty(), RET_ERROR, "Infer shape must be done when using offline packing.");
@@ -189,6 +193,18 @@ STATUS CreateLiteTensor(const CNodePtr &cnode, std::vector<Tensor *> *in_tensors
   auto out_tensor = new (std::nothrow) Tensor(type_id, shape);
   MS_CHECK_TRUE_MSG(out_tensor != nullptr, RET_ERROR, "Create output tensor failed.");
   (void)out_tensors->emplace_back(out_tensor);
+  return RET_OK;
+}
+
+STATUS CreateLiteTensor(const CNodePtr &cnode, std::vector<Tensor *> *in_tensors, std::vector<Tensor *> *out_tensors) {
+  auto ret = CreateInputTensors(cnode, in_tensors);
+  if (ret != RET_OK) {
+    return ret;
+  }
+  ret = CreateOutputTensors(cnode, out_tensors);
+  if (ret != RET_OK) {
+    return ret;
+  }
 
   if (in_tensors->size() != cnode->size() - 1 || out_tensors->empty()) {
     MS_LOG(ERROR) << "Failed to populate input tensors for " << cnode->fullname_with_scope() << ".";
