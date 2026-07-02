@@ -45,8 +45,14 @@ def all_to_all_4d(
     if world_size == 1:
         return x
 
-    assert scatter_idx in (1, 2) and gather_idx in (1, 2)
-    assert scatter_idx != gather_idx
+    if scatter_idx not in (1, 2) or gather_idx not in (1, 2):
+        raise ValueError(
+            f"scatter_idx and gather_idx must be in (1, 2), "
+            f"but got scatter_idx={scatter_idx}, gather_idx={gather_idx}.")
+    if scatter_idx == gather_idx:
+        raise ValueError(
+            f"scatter_idx must not equal gather_idx, "
+            f"but got scatter_idx={scatter_idx}, gather_idx={gather_idx}.")
 
     # Step 1: split scatter dim into [P, scatter_dim/P]
     x = x.unflatten(scatter_idx, (world_size, -1))
