@@ -77,6 +77,7 @@ class OnnxModelParser : public converter::ModelParser {
   STATUS ConvertIfSubgraph(const onnx::GraphProto &onnx_graph, const FuncGraphPtr &anf_graph,
                            const std::string &subgrah_name, const std::string &if_node_name,
                            const std::string &root_node_name, std::vector<AnfNodePtr> *subgraph_extra_inputs);
+  STATUS CheckOnnxSubgraphDepth(const onnx::GraphProto &onnx_graph, int current_depth) const;
 
   onnx::ModelProto onnx_model_{};
   onnx::GraphProto onnx_root_graph_{};

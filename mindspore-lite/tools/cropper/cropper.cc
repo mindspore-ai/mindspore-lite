@@ -24,6 +24,19 @@ namespace cropper {
 const char *kDelimComma = ",";
 constexpr int kBufSize = 1024;
 
+std::string EscapeShellSingleQuote(const std::string &s) {
+  std::string out;
+  out.reserve(s.size());
+  for (char c : s) {
+    if (c == '\'') {
+      out += "'\\''";
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
+
 int Cropper::ReadPackage() {
   std::ifstream in_file(this->flags_->package_file_);
   if (ValidFile(in_file, this->flags_->package_file_) == RET_OK) {
@@ -35,7 +48,7 @@ int Cropper::ReadPackage() {
       MS_LOG(ERROR) << "real_path is invalid.";
       return RET_ERROR;
     }
-    std::string cmd = "ar -t " + real_path;
+    std::string cmd = "ar -t '" + EscapeShellSingleQuote(real_path) + "'";
     MS_LOG(DEBUG) << cmd;
 
     FILE *p_file = popen(cmd.c_str(), "r");
@@ -149,7 +162,12 @@ int Cropper::GetModelFiles() {
   }
   // get models from folder
   if (!this->flags_->model_folder_path_.empty()) {
-    std::string cmd = "find " + this->flags_->model_folder_path_ + " -name '*.ms'";
+    std::string real_model_folder = RealPath(this->flags_->model_folder_path_.c_str());
+    if (real_model_folder.empty()) {
+      MS_LOG(ERROR) << "model_folder_path is invalid: " << this->flags_->model_folder_path_;
+      return RET_INPUT_PARAM_INVALID;
+    }
+    std::string cmd = "find '" + EscapeShellSingleQuote(real_model_folder) + "' -name '*.ms'";
     MS_LOG(DEBUG) << cmd;
 
     char buf[kBufSize];
@@ -241,13 +259,15 @@ int Cropper::GetDiscardFileList() {
   return RET_OK;
 }
 int Cropper::CutPackage() {
-  std::string copy_bak_cmd = "cp " + this->flags_->package_file_ + " " + this->flags_->package_file_ + ".bak";
-  std::string ar_cmd = "ar -d " + this->flags_->package_file_ + ".bak ";
+  std::string pkg = EscapeShellSingleQuote(this->flags_->package_file_);
+  std::string output_file = EscapeShellSingleQuote(this->flags_->output_file_);
+  std::string copy_bak_cmd = "cp '" + pkg + "' '" + pkg + ".bak'";
+  std::string ar_cmd = "ar -d '" + pkg + ".bak' ";
   for (const auto &file : this->discard_files_) {
-    ar_cmd.append(file).append(" ");
+    ar_cmd.append("'").append(EscapeShellSingleQuote(file)).append("' ");
   }
-  std::string copy_to_output_cmd = "cp " + this->flags_->package_file_ + ".bak " + this->flags_->output_file_;
-  std::string rm_bak_cmd = "rm " + this->flags_->package_file_ + ".bak";
+  std::string copy_to_output_cmd = "cp '" + pkg + ".bak' '" + output_file + "'";
+  std::string rm_bak_cmd = "rm '" + pkg + ".bak'";
   int status;
   status = system(copy_bak_cmd.c_str());
   if (status != 0) {

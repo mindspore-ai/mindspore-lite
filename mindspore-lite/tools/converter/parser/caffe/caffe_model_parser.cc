@@ -391,6 +391,10 @@ STATUS CaffeModelParser::ConvertGraphInputsOfDim() {
     }
     if (shape.empty()) {
       if (caffe_model_.input_dim_size() > default_input_dim_size) {
+        if (caffe_model_.input_size() == 0) {
+          MS_LOG(ERROR) << "input_size is zero";
+          return RET_ERROR;
+        }
         int step = caffe_model_.input_dim_size() / caffe_model_.input_size();
         for (int j = i * step; j < (i + 1) * step; j++) {
           shape.push_back(caffe_model_.input_dim(j));
@@ -438,6 +442,10 @@ STATUS CaffeModelParser::ConvertGraphInputs() {
 STATUS CaffeModelParser::ConvertGraphOutputs() {
   CaffeInspector caffeInspector;
   caffeInspector.InspectModel(caffe_model_);
+  if (caffeInspector.GetGraphOutput().empty()) {
+    MS_LOG(ERROR) << "Caffe model has no graph output.";
+    return RET_ERROR;
+  }
   if (caffeInspector.GetGraphOutput().size() > 1) {
     std::vector<AnfNodePtr> make_tuple_inputs;
     auto make_tuple_prim_ptr = std::make_shared<ops::MakeTuple>();
@@ -687,8 +695,15 @@ std::string CaffeModelParser::GetOriginLayerName(const std::string &layer_name) 
   if (layer.type() == "Dropout" && layer.bottom(0) == layer.top(0)) {
     return layer_name;
   }
+  std::set<string> visited;
+  visited.insert(layer_name);
   while (layer.type() == "Split" || layer.type() == "Dropout") {
     string input_name = layer.bottom(0);
+    if (visited.count(input_name) > 0) {
+      MS_LOG(ERROR) << "Detect cycle in caffe layer graph, layer: " << input_name;
+      return layer_name;
+    }
+    visited.insert(input_name);
     if (caffe_layers_.find(input_name) == caffe_layers_.end()) {
       return input_name;
     }

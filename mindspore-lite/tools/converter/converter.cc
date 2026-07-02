@@ -550,7 +550,12 @@ int ConverterImpl::InitExtendedIntegrationInfo(const std::shared_ptr<ConverterPa
       return RET_INPUT_PARAM_INVALID;
     }
     for (auto &i : relative_path) {
-      param->plugins_path.push_back(lite::RealPath(i.c_str()));
+      auto real_path = lite::RealPath(i.c_str());
+      if (real_path.empty()) {
+        MS_LOG(ERROR) << "Invalid plugin path: " << i;
+        return RET_INPUT_PARAM_INVALID;
+      }
+      param->plugins_path.push_back(real_path);
     }
   }
 

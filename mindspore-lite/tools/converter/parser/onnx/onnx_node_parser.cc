@@ -171,25 +171,42 @@ TypeId OnnxNodeParser::GetDataTypeFromOnnx(onnx::TensorProto_DataType onnx_type)
   return iter->second;
 }
 
-void OnnxNodeParser::SetTypeAndValueForBFloat(const onnx::TensorProto &onnx_tensor, std::vector<float> *value,
-                                              size_t data_count) {
+STATUS OnnxNodeParser::SetTypeAndValueForBFloat(const onnx::TensorProto &onnx_tensor, std::vector<float> *value,
+                                                size_t data_count) {
+  if (data_count > onnx_tensor.raw_data().size() / sizeof(bfloat16)) {
+    MS_LOG(ERROR) << "raw_data size " << onnx_tensor.raw_data().size() << " < expected "
+                  << (data_count * sizeof(bfloat16));
+    return RET_ERROR;
+  }
   for (size_t i = 0; i < data_count; i++) {
     value->push_back(static_cast<float>(reinterpret_cast<const bfloat16 *>(onnx_tensor.raw_data().data())[i]));
   }
+  return RET_OK;
 }
 
-void OnnxNodeParser::SetTypeAndValueForFloat(const onnx::TensorProto &onnx_tensor, std::vector<float> *value,
-                                             size_t data_count) {
+STATUS OnnxNodeParser::SetTypeAndValueForFloat(const onnx::TensorProto &onnx_tensor, std::vector<float> *value,
+                                               size_t data_count) {
+  if (data_count > onnx_tensor.raw_data().size() / sizeof(float16)) {
+    MS_LOG(ERROR) << "raw_data size " << onnx_tensor.raw_data().size() << " < expected "
+                  << (data_count * sizeof(float16));
+    return RET_ERROR;
+  }
   for (size_t i = 0; i < data_count; i++) {
     value->push_back(static_cast<float>(reinterpret_cast<const float16 *>(onnx_tensor.raw_data().data())[i]));
   }
+  return RET_OK;
 }
 
-void OnnxNodeParser::SetTypeAndValueForBool(const onnx::TensorProto &onnx_tensor, std::vector<float> *value,
-                                            size_t data_count) {
+STATUS OnnxNodeParser::SetTypeAndValueForBool(const onnx::TensorProto &onnx_tensor, std::vector<float> *value,
+                                              size_t data_count) {
+  if (data_count > onnx_tensor.raw_data().size() / sizeof(bool)) {
+    MS_LOG(ERROR) << "raw_data size " << onnx_tensor.raw_data().size() << " < expected " << (data_count * sizeof(bool));
+    return RET_ERROR;
+  }
   for (size_t i = 0; i < data_count; i++) {
     value->push_back(static_cast<float>(reinterpret_cast<const bool *>(onnx_tensor.raw_data().data())[i]));
   }
+  return RET_OK;
 }
 
 STATUS OnnxNodeParser::SetDataTypeAndValue(const onnx::TensorProto &onnx_tensor, std::vector<float> *value,
@@ -202,6 +219,11 @@ STATUS OnnxNodeParser::SetDataTypeAndValue(const onnx::TensorProto &onnx_tensor,
           value->push_back(onnx_tensor.float_data(i));
         }
       } else {
+        if (data_count > onnx_tensor.raw_data().size() / sizeof(float)) {
+          MS_LOG(ERROR) << "raw_data size " << onnx_tensor.raw_data().size() << " < expected "
+                        << (data_count * sizeof(float));
+          return RET_ERROR;
+        }
         for (size_t i = 0; i < data_count; i++) {
           value->push_back(reinterpret_cast<const float *>(onnx_tensor.raw_data().data())[i]);
         }
@@ -214,6 +236,11 @@ STATUS OnnxNodeParser::SetDataTypeAndValue(const onnx::TensorProto &onnx_tensor,
           value->push_back(onnx_tensor.int32_data(i));
         }
       } else {
+        if (data_count > onnx_tensor.raw_data().size() / sizeof(int32_t)) {
+          MS_LOG(ERROR) << "raw_data size " << onnx_tensor.raw_data().size() << " < expected "
+                        << (data_count * sizeof(int32_t));
+          return RET_ERROR;
+        }
         for (size_t i = 0; i < data_count; i++) {
           value->push_back(static_cast<float>(reinterpret_cast<const int32_t *>(onnx_tensor.raw_data().data())[i]));
         }
@@ -226,6 +253,11 @@ STATUS OnnxNodeParser::SetDataTypeAndValue(const onnx::TensorProto &onnx_tensor,
           value->push_back(onnx_tensor.int64_data(i));
         }
       } else {
+        if (data_count > onnx_tensor.raw_data().size() / sizeof(int64_t)) {
+          MS_LOG(ERROR) << "raw_data size " << onnx_tensor.raw_data().size() << " < expected "
+                        << (data_count * sizeof(int64_t));
+          return RET_ERROR;
+        }
         for (size_t i = 0; i < data_count; i++) {
           value->push_back(static_cast<float>(reinterpret_cast<const int64_t *>(onnx_tensor.raw_data().data())[i]));
         }
@@ -233,15 +265,15 @@ STATUS OnnxNodeParser::SetDataTypeAndValue(const onnx::TensorProto &onnx_tensor,
       break;
     case onnx::TensorProto_DataType_FLOAT16:
       *type = GetDataTypeFromOnnx(onnx::TensorProto_DataType_FLOAT16);
-      SetTypeAndValueForFloat(onnx_tensor, value, data_count);
+      MS_CHECK_TRUE_RET(SetTypeAndValueForFloat(onnx_tensor, value, data_count) == RET_OK, RET_ERROR);
       break;
     case onnx::TensorProto_DataType_BOOL:
       *type = GetDataTypeFromOnnx(onnx::TensorProto_DataType_BOOL);
-      SetTypeAndValueForBool(onnx_tensor, value, data_count);
+      MS_CHECK_TRUE_RET(SetTypeAndValueForBool(onnx_tensor, value, data_count) == RET_OK, RET_ERROR);
       break;
     case onnx::TensorProto_DataType_BFLOAT16:
       *type = GetDataTypeFromOnnx(onnx::TensorProto_DataType_BFLOAT16);
-      SetTypeAndValueForBFloat(onnx_tensor, value, data_count);
+      MS_CHECK_TRUE_RET(SetTypeAndValueForBFloat(onnx_tensor, value, data_count) == RET_OK, RET_ERROR);
       break;
     default:
       MS_LOG(ERROR) << "The data type is not supported.";
@@ -438,6 +470,22 @@ const void *OnnxNodeParser::LoadOnnxRawData(const onnx::TensorProto &onnx_const_
 #else
     std::string external_data_file = external_tensor_dir + "/" + data_path;
 #endif
+    // Resolve canonical paths and verify the file is inside the model directory to
+    // prevent path traversal. A naive ".." substring check is both too strict
+    // (rejects legitimate names like "weights..bin") and too loose (misses absolute
+    // paths like "/etc/passwd" or symlink-based escapes).
+    auto real_base = RealPath(external_tensor_dir.c_str());
+    auto real_file = RealPath(external_data_file.c_str());
+    if (real_base.empty() || real_file.empty()) {
+      MS_LOG(ERROR) << "Invalid external data path, cannot resolve: " << data_path;
+      return nullptr;
+    }
+    bool is_inside = real_file.size() > real_base.size() && real_file.compare(0, real_base.size(), real_base) == 0 &&
+                     (real_file[real_base.size()] == '/' || real_file[real_base.size()] == '\\');
+    if (!is_inside) {
+      MS_LOG(ERROR) << "Invalid external data path, path traversal detected: " << data_path;
+      return nullptr;
+    }
     external_data = reinterpret_cast<uint8_t *>(ReadFile(external_data_file.c_str(), &external_data_size));
     if (external_data == nullptr || external_data_size == 0) {
       MS_LOG(ERROR) << "Failed to read external tensor file " << external_data_file;
