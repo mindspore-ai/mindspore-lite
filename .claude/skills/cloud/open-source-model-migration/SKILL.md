@@ -1,6 +1,6 @@
 ---
-name: "adapt-model-to-mslite"
-description: "Adapts open-source models to MindSpore Lite by generating export/infer scripts and README. Invoke when user wants to port a new model to MSLite deployment pipeline."
+name: open-source-model-migration
+description: 把开源算法模型适配到 MindSpore Lite 部署管线：按网络结构拆分导出 ONNX、ONNX Runtime 推理验证、ONNX→MindIR 转换、MindSpore Lite 推理实现，并交付文档与常见问题。用户想把某个开源模型迁移到 MSLite 部署时调用。
 ---
 
 # Adapt Open-Source Model to MindSpore Lite
