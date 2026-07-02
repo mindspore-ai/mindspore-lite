@@ -14,7 +14,7 @@
 | CANN | 8.5 及以上 |
 | torch | ≥ 2.8.0 |
 | torch_npu | ≥ 2.8.0 |
-| lite_boost | 0.0.1 |
+| lite_boost | 0.1.0 |
 
 > Wan2.2 原始依赖列表见：[requirements.txt](https://github.com/Wan-Video/Wan2.2/blob/main/requirements.txt)
 
