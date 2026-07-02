@@ -1385,15 +1385,21 @@ bool IrExportBuilder::SetTensorTypeToAttributeProto(const ValuePtr &value, mind_
 bool IrExportBuilder::SetIntTypeToAttributeProto(const ValuePtr &value, mind_ir::TensorProto *tensor_proto) {
   tensor_proto->set_name("value0");
   if (value->isa<Int>()) {
-    auto data_type = GetMindirDataBitsIntType(value->cast<IntPtr>()->nbits());
+    auto int_ptr = value->cast<IntPtr>();
+    if (int_ptr == nullptr) return false;
+    auto data_type = GetMindirDataBitsIntType(int_ptr->nbits());
     if (data_type == mind_ir::TensorProto_DataType_UNDEFINED) return false;
     tensor_proto->set_data_type(data_type);
   } else if (value->isa<UInt>()) {
-    auto data_type = GetMindirDataBitsUIntType(value->cast<UIntPtr>()->nbits());
+    auto uint_ptr = value->cast<UIntPtr>();
+    if (uint_ptr == nullptr) return false;
+    auto data_type = GetMindirDataBitsUIntType(uint_ptr->nbits());
     if (data_type == mind_ir::TensorProto_DataType_UNDEFINED) return false;
     tensor_proto->set_data_type(data_type);
   } else if (value->isa<Complex>()) {
-    auto data_type = GetMindirDataBitsComplexType(value->cast<ComplexPtr>()->nbits());
+    auto complex_ptr = value->cast<ComplexPtr>();
+    if (complex_ptr == nullptr) return false;
+    auto data_type = GetMindirDataBitsComplexType(complex_ptr->nbits());
     if (data_type == mind_ir::TensorProto_DataType_UNDEFINED) return false;
     tensor_proto->set_data_type(data_type);
   } else {
@@ -1405,11 +1411,15 @@ bool IrExportBuilder::SetIntTypeToAttributeProto(const ValuePtr &value, mind_ir:
 bool IrExportBuilder::SetFloatTypeToAttributeProto(const ValuePtr &value, mind_ir::TensorProto *tensor_proto) {
   tensor_proto->set_name("value0");
   if (value->isa<Float>()) {
-    auto data_type = GetMindirDataBitsFloatType(value->cast<FloatPtr>()->nbits());
+    auto float_ptr = value->cast<FloatPtr>();
+    if (float_ptr == nullptr) return false;
+    auto data_type = GetMindirDataBitsFloatType(float_ptr->nbits());
     if (data_type == mind_ir::TensorProto_DataType_UNDEFINED) return false;
     tensor_proto->set_data_type(data_type);
   } else if (value->isa<BFloat>()) {
-    auto data_type = GetMindirDataBitsBFloatType(value->cast<BFloatPtr>()->nbits());
+    auto bfloat_ptr = value->cast<BFloatPtr>();
+    if (bfloat_ptr == nullptr) return false;
+    auto data_type = GetMindirDataBitsBFloatType(bfloat_ptr->nbits());
     if (data_type == mind_ir::TensorProto_DataType_UNDEFINED) return false;
     tensor_proto->set_data_type(data_type);
   } else {
@@ -1584,11 +1594,15 @@ bool IrExportBuilder::SetIrsIntTypeToAttributeProto(const ValuePtr &value, mind_
   attr_proto->set_type(mind_ir::AttributeProto_AttributeType_TENSORS);
   mind_ir::TensorProto *tensor_proto = attr_proto->add_tensors();
   if (value->isa<Int>()) {
-    auto data_type = GetMindirDataBitsIntType(value->cast<IntPtr>()->nbits());
+    auto int_ptr = value->cast<IntPtr>();
+    if (int_ptr == nullptr) return false;
+    auto data_type = GetMindirDataBitsIntType(int_ptr->nbits());
     if (data_type == mind_ir::TensorProto_DataType_UNDEFINED) return false;
     tensor_proto->set_data_type(data_type);
   } else if (value->isa<UInt>()) {
-    auto data_type = GetMindirDataBitsUIntType(value->cast<UIntPtr>()->nbits());
+    auto uint_ptr = value->cast<UIntPtr>();
+    if (uint_ptr == nullptr) return false;
+    auto data_type = GetMindirDataBitsUIntType(uint_ptr->nbits());
     if (data_type == mind_ir::TensorProto_DataType_UNDEFINED) return false;
     tensor_proto->set_data_type(data_type);
   } else {
@@ -1602,11 +1616,15 @@ bool IrExportBuilder::SetIrsFloatTypeToAttributeProto(const ValuePtr &value,
   attr_proto->set_type(mind_ir::AttributeProto_AttributeType_TENSORS);
   mind_ir::TensorProto *tensor_proto = attr_proto->add_tensors();
   if (value->isa<Float>()) {
-    auto data_type = GetMindirDataBitsFloatType(value->cast<FloatPtr>()->nbits());
+    auto float_ptr = value->cast<FloatPtr>();
+    if (float_ptr == nullptr) return false;
+    auto data_type = GetMindirDataBitsFloatType(float_ptr->nbits());
     if (data_type == mind_ir::TensorProto_DataType_UNDEFINED) return false;
     tensor_proto->set_data_type(data_type);
   } else if (value->isa<BFloat>()) {
-    auto data_type = GetMindirDataBitsBFloatType(value->cast<BFloatPtr>()->nbits());
+    auto bfloat_ptr = value->cast<BFloatPtr>();
+    if (bfloat_ptr == nullptr) return false;
+    auto data_type = GetMindirDataBitsBFloatType(bfloat_ptr->nbits());
     if (data_type == mind_ir::TensorProto_DataType_UNDEFINED) return false;
     tensor_proto->set_data_type(data_type);
   } else {

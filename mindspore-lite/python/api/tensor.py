@@ -387,6 +387,8 @@ class Tensor:
         """Create tensor from another Tensor object."""
         self._validate_shape_and_dtype(shape, dtype, tensor.shape, tensor.dtype, "tensor")
         numpy_data = tensor.get_data_to_numpy()
+        if numpy_data is None:
+            raise RuntimeError("Failed to get numpy data from tensor.")
         return _c_lite_wrapper.create_tensor_by_numpy(numpy_data, device_type, device_id)
 
     def _create_tensor_from_numpy(self, tensor, shape, dtype, device_type, device_id):
@@ -584,6 +586,8 @@ class Tensor:
                [ 10. 11.]]]]
         """
         numpy_obj = self._tensor.get_data_to_numpy()
+        if numpy_obj is None:
+            raise RuntimeError("Failed to get numpy data from tensor.")
         if self.dtype == DataType.BFLOAT16:
             _require_mldtypes()
             return numpy_obj.view(mldtypes.bfloat16)
@@ -652,7 +656,8 @@ class Tensor:
         if numpy_obj.nbytes != self.data_size:
             raise RuntimeError(
                 f"data size not equal! Numpy size: {numpy_obj.nbytes}, Tensor size: {self.data_size}")
-        self._tensor.set_data_from_numpy(numpy_obj)
+        if not self._tensor.set_data_from_numpy(numpy_obj):
+            raise RuntimeError("Failed to set data from numpy.")
 
     @property
     def device(self):
