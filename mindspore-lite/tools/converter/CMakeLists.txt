@@ -411,9 +411,6 @@ target_link_libraries(mindspore_converter
         mindir_serializer_mid
         mslite_primitive_mid
         )
-if(PYTHON_VERSION MATCHES "3.11" OR PYTHON_VERSION MATCHES "3.12")
-  target_link_libraries(mindspore_converter ${PYTHON_LIBRARIES})
-endif()
 
 if(NOT MSLITE_SIMPLEST_CLOUD_INFERENCE)
     target_link_libraries(mindspore_converter decomposer_mid)
