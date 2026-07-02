@@ -119,7 +119,7 @@ def get_mask_index(mask):
 # ---------------------------------------------------------------------------
 # get_blockwise_mask — generate block-sparse mask from pooled QKV
 # ---------------------------------------------------------------------------
-def get_blockwise_mask(  # pylint: disable=unused-argument
+def get_blockwise_mask(
     qkv_pool,
     txt_len, sparsity, scale, pool_size,
     latent_shape_q, latent_shape_k=None,
@@ -188,7 +188,6 @@ def get_blockwise_mask(  # pylint: disable=unused-argument
 # rearrange_with_remaining — spatial token reordering (native torch, no einops)
 # ---------------------------------------------------------------------------
 def rearrange_with_remaining(tensor, latent_shape_q, latent_shape_k=None, input_layout=None):
-    # pylint: disable=unused-argument
     """Rearrange tokens from (frame, h, w) order to block-interleaved (hn, wn, hb, wb).
 
     Transforms:
@@ -311,7 +310,6 @@ def rearrange_with_remaining(tensor, latent_shape_q, latent_shape_k=None, input_
 # inv_rearrange_with_remaining — inverse spatial token reordering (v3-style)
 # ---------------------------------------------------------------------------
 def inv_rearrange_with_remaining(tensor, latent_shape_q, latent_shape_k=None, input_layout=None):
-    # pylint: disable=unused-argument
     """Inverse of rearrange_with_remaining: block-interleaved -> (frame, h, w) order.
 
     Transforms:
@@ -521,7 +519,7 @@ def check_params(input_layout, sparse_type):
 # ---------------------------------------------------------------------------
 # sparse_attention — main entry point
 # ---------------------------------------------------------------------------
-def sparse_attention(  # pylint: disable=unused-argument
+def sparse_attention(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,

@@ -27,10 +27,12 @@ CANN operator constraints (from official documentation):
 """
 
 import time
+import logging
 
 import pytest
 import torch
 import lite_boost.ops as lite_ops
+logging.basicConfig(level=logging.INFO, format='%(message)s')
 
 
 # ---------------------------------------------------------------------------
@@ -121,16 +123,16 @@ def _print_accuracy_comparison(tag, out_cann, out_ref, state_cann, state_ref):
     out_diff = (out_cann.float() - out_ref.float()).abs()
     state_diff = (state_cann.float() - state_ref.float()).abs()
 
-    print(f"\n{'=' * 60}")
-    print(f"  [{tag}] Accuracy comparison: Optimized (CANN op) vs Baseline (PyTorch ref)")
-    print(f"{'=' * 60}")
-    print(f"  Output  shape: {out_cann.shape}")
-    print(f"    Max Absolute Diff:  {out_diff.max().item():.6f}")
-    print(f"    Mean Absolute Diff: {out_diff.mean().item():.6f}")
-    print(f"  State   shape: {state_cann.shape}")
-    print(f"    Max Absolute Diff:  {state_diff.max().item():.6f}")
-    print(f"    Mean Absolute Diff: {state_diff.mean().item():.6f}")
-    print(f"{'=' * 60}")
+    logging.info("=" * 60)
+    logging.info("  [%s] Accuracy comparison: Optimized (CANN op) vs Baseline (PyTorch ref)", tag)
+    logging.info("=" * 60)
+    logging.info("  Output  shape: %s", out_cann.shape)
+    logging.info("    Max Absolute Diff:  %.6f", out_diff.max().item())
+    logging.info("    Mean Absolute Diff: %.6f", out_diff.mean().item())
+    logging.info("  State   shape: %s", state_cann.shape)
+    logging.info("    Max Absolute Diff:  %.6f", state_diff.max().item())
+    logging.info("    Mean Absolute Diff: %.6f", state_diff.mean().item())
+    logging.info("=" * 60)
 
 
 def _print_performance_comparison(tag, cann_time, ref_time):
@@ -142,13 +144,13 @@ def _print_performance_comparison(tag, cann_time, ref_time):
         ref_time:  PyTorch reference average time in ms.
     """
     speedup = ref_time / cann_time if cann_time > 0 else float("inf")
-    print(f"\n{'=' * 60}")
-    print(f"  [{tag}] Performance comparison: Optimized (CANN op) vs Baseline (PyTorch ref)")
-    print(f"{'=' * 60}")
-    print(f"  Optimized (CANN op)    Avg time: {cann_time:.3f} ms")
-    print(f"  Baseline (PyTorch ref) Avg time: {ref_time:.3f} ms")
-    print(f"  Speedup: {speedup:.2f}x")
-    print(f"{'=' * 60}")
+    logging.info("=" * 60)
+    logging.info("  [%s] Performance comparison: Optimized (CANN op) vs Baseline (PyTorch ref)", tag)
+    logging.info("=" * 60)
+    logging.info("  Optimized (CANN op)    Avg time: %.3f ms", cann_time)
+    logging.info("  Baseline (PyTorch ref) Avg time: %.3f ms", ref_time)
+    logging.info("  Speedup: %.2fx", speedup)
+    logging.info("=" * 60)
 
 
 def _generate_test_data(batch_size, num_heads, seq_len, k_head_dim, v_head_dim, device):
@@ -373,7 +375,7 @@ class TestRecurrentGatedDeltaRule:
 
         # Benchmark PyTorch reference
         for _ in range(num_warmup):
-            _pytorch_recurrent_gated_delta_rule(
+            _ = _pytorch_recurrent_gated_delta_rule(
                 d["query_f32_bthd"],
                 d["key_f32_bthd"],
                 d["value_f32_bthd"],
@@ -387,7 +389,7 @@ class TestRecurrentGatedDeltaRule:
 
         start = time.time()
         for _ in range(num_iters):
-            _pytorch_recurrent_gated_delta_rule(
+            _ = _pytorch_recurrent_gated_delta_rule(
                 d["query_f32_bthd"],
                 d["key_f32_bthd"],
                 d["value_f32_bthd"],
