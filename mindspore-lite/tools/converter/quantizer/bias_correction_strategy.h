@@ -64,6 +64,11 @@ class BiasCorrectionStrategy {
 
   int DoCNodeBiasCorrection(const FuncGraphPtr &quant_func_graph, const CNodePtr &cnode, bool int32_bias);
 
+  int CorrectExistingBias(const CNodePtr &cnode, bool int32_bias, const std::vector<float> &bias_diff);
+
+  int AddNewBiasInput(const FuncGraphPtr &quant_func_graph, const CNodePtr &cnode, bool int32_bias,
+                      const std::vector<float> &bias_diff);
+
   int Int8Inference(const MSKernelCallBack &before_call_back, const MSKernelCallBack &after_call_back,
                     const FuncGraphPtr &quant_func_graph);
 

@@ -54,6 +54,13 @@ class ParameterOptimizer {
   int OriginModelInference(const FuncGraphPtr &func_graph, const std::shared_ptr<ConverterPara> &param,
                            const std::shared_ptr<mindspore::Model> &origin_model, size_t *origin_model_size);
 
+  int PrepareOriginModel(const FuncGraphPtr &func_graph, const std::shared_ptr<ConverterPara> &param,
+                         const std::shared_ptr<mindspore::Model> &origin_model, size_t *origin_model_size,
+                         std::vector<mindspore::MSTensor> *origin_inputs);
+
+  int FillOriginInputs(const std::shared_ptr<ConverterPara> &param,
+                       const std::vector<mindspore::MSTensor> &origin_inputs);
+
   int CopyDataAndRun(const std::shared_ptr<mindspore::Model> &origin_model,
                      const std::shared_ptr<mindspore::Model> &quant_model);
 };

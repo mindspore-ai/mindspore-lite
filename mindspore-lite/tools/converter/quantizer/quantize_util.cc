@@ -981,6 +981,42 @@ int RemoveInputNodeQuantParam(const CNodePtr &cnode, size_t index) {
   return RET_OK;
 }
 
+namespace {
+std::vector<schema::QuantParamT> GetGraphInputQuantParam(const AnfNodePtr &input_node,
+                                                         const PrimitivePtr &cnode_primitive) {
+  auto quantization_param_value = cnode_primitive->GetAttr(quant::kGraphInputQuantParam);
+  if (quantization_param_value == nullptr) {
+    MS_LOG(WARNING) << input_node->fullname_with_scope() << " quant param Not exist.";
+    return {};
+  }
+  auto quantization_param = quantization_param_value->cast<mindspore::QuantizationParamPtr>();
+  MS_CHECK_TRUE_MSG(quantization_param != nullptr, {}, "Graph input quant param Not exist.");
+  return quant::ConvertQuantizationParamToQuantParamT(quantization_param);
+}
+
+std::vector<schema::QuantParamT> GetCNodeInputQuantParam(const AnfNodePtr &input_node, size_t multi_ouput_index) {
+  auto input_cnode = input_node->cast<mindspore::CNodePtr>();
+  MS_CHECK_TRUE_MSG(input_cnode != nullptr, {}, "Cast input node to CNodePtr failed.");
+  auto input_cnode_primitive = GetValueNode<PrimitivePtr>(input_cnode->input(0));
+  MS_CHECK_TRUE_MSG(input_cnode_primitive != nullptr, {}, "Primitive is nullptr.");
+  if (!input_cnode_primitive->HasAttr(quant::kQuantParam)) {
+    MS_LOG(WARNING) << input_node->fullname_with_scope() << " dont have quant param.";
+    return {};
+  }
+  auto quantization_param_value = input_cnode_primitive->GetAttr(quant::kQuantParam);
+  MS_CHECK_TRUE_MSG(quantization_param_value != nullptr, {}, "quantization_param_value is nullptr.");
+  auto quantization_param_list = GetValue<std::vector<QuantizationParamPtr>>(quantization_param_value);
+  if (quantization_param_list.size() <= multi_ouput_index) {
+    MS_LOG(WARNING) << "This node's input node: " << input_cnode->fullname_with_scope()
+                    << "'s output quant_params size: " << quantization_param_list.size()
+                    << ", but index: " << multi_ouput_index;
+    return {};
+  }
+  // multi-output
+  return quant::ConvertQuantizationParamToQuantParamT(quantization_param_list.at(multi_ouput_index));
+}
+}  // namespace
+
 std::vector<schema::QuantParamT> GetInputNodeQuantParam(const CNodePtr &cnode, size_t index, size_t multi_ouput_index) {
   if (cnode->size() <= index) {
     MS_LOG(WARNING) << "index out of range, cnode input size is: " << cnode->size() << ", but index: " << index;
@@ -991,33 +1027,9 @@ std::vector<schema::QuantParamT> GetInputNodeQuantParam(const CNodePtr &cnode, s
   auto cnode_primitive = GetValueNode<PrimitivePtr>(cnode->input(0));
   MS_CHECK_TRUE_MSG(cnode_primitive != nullptr, {}, "Primitive is nullptr.");
   if (IsGraphInput(input_node)) {
-    auto quantization_param_value = cnode_primitive->GetAttr(quant::kGraphInputQuantParam);
-    if (quantization_param_value == nullptr) {
-      MS_LOG(WARNING) << input_node->fullname_with_scope() << " quant param Not exist.";
-      return {};
-    }
-    auto quantization_param = quantization_param_value->cast<mindspore::QuantizationParamPtr>();
-    MS_CHECK_TRUE_MSG(quantization_param != nullptr, {}, "Graph input quant param Not exist.");
-    return quant::ConvertQuantizationParamToQuantParamT(quantization_param);
+    return GetGraphInputQuantParam(input_node, cnode_primitive);
   } else if (input_node->isa<mindspore::CNode>()) {
-    auto input_cnode = input_node->cast<mindspore::CNodePtr>();
-    auto input_cnode_primitive = GetValueNode<PrimitivePtr>(input_cnode->input(0));
-    MS_CHECK_TRUE_MSG(input_cnode_primitive != nullptr, {}, "Primitive is nullptr.");
-    if (!input_cnode_primitive->HasAttr(quant::kQuantParam)) {
-      MS_LOG(WARNING) << input_node->fullname_with_scope() << " dont have quant param.";
-      return {};
-    }
-    auto quantization_param_value = input_cnode_primitive->GetAttr(quant::kQuantParam);
-    MS_CHECK_TRUE_MSG(quantization_param_value != nullptr, {}, "quantization_param_value is nullptr.");
-    auto quantization_param_list = GetValue<std::vector<QuantizationParamPtr>>(quantization_param_value);
-    if (quantization_param_list.size() <= multi_ouput_index) {
-      MS_LOG(WARNING) << "This node's input node: " << input_cnode->fullname_with_scope()
-                      << "'s output quant_params size: " << quantization_param_list.size()
-                      << ", but index: " << multi_ouput_index;
-      return {};
-    }
-    // multi-output
-    return quant::ConvertQuantizationParamToQuantParamT(quantization_param_list.at(multi_ouput_index));
+    return GetCNodeInputQuantParam(input_node, multi_ouput_index);
   } else if (input_node->isa<mindspore::Parameter>() || input_node->isa<mindspore::ValueNode>()) {
     tensor::TensorPtr input_tensor = quant::GetNodeTensor(input_node);
     MS_CHECK_TRUE_MSG(input_tensor != nullptr, {}, "Get node tensor failed.");
