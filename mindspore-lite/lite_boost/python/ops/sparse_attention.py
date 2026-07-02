@@ -589,7 +589,7 @@ def sparse_attention(  # pylint: disable=unused-argument
         **_kwargs: Additional keyword arguments (reserved for future use).
 
     Returns:
-        Tensor: Attention output with same shape as input ``q``.
+        Tensor, Attention output with same shape as input ``q``.
 
     Raises:
         ValueError: If ``input_layout`` is not ``"BSND"`` or ``"BNSD"``.
