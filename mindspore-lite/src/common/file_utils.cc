@@ -99,11 +99,15 @@ char *ReadFileSegment(const std::string &file, int64_t offset, int64_t len) {
   if (len <= 0) {
     return nullptr;
   }
+  MS_CHECK_TRUE_MSG(static_cast<int64_t>(static_cast<size_t>(len)) == len, nullptr,
+                    "ReadFileSegment len truncation detected failed.");
   auto len_pos = static_cast<size_t>(len);
   if (offset < 0) {
     MS_LOG(DEBUG) << "offset is invalid, offset: " << offset;
     return nullptr;
   }
+  MS_CHECK_TRUE_MSG(static_cast<int64_t>(static_cast<size_t>(offset)) == offset, nullptr,
+                    "ReadFileSegment offset truncation detected failed.");
   auto offset_pos = static_cast<size_t>(offset);
   std::string real_path = lite::RealPath(file.c_str());
   if (lite::AccessFile(real_path, R_OK) != 0) {
@@ -202,6 +206,17 @@ char *ReadFile(const char *file, size_t *size, std::shared_ptr<Allocator> alloca
 
   ifs->seekg(0, std::ios::beg);
   ifs->read(model_buf, *size);
+  if (static_cast<size_t>(ifs->gcount()) != *size) {
+    MS_LOG(ERROR) << "Read file failed, expected " << *size << " bytes but got " << ifs->gcount() << " bytes";
+    ifs->close();
+    delete ifs;
+    if (allocator != nullptr) {
+      allocator->Free(model_buf);
+    } else {
+      delete[] model_buf;
+    }
+    return nullptr;
+  }
   ifs->close();
   delete ifs;
   return model_buf;

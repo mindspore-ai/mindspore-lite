@@ -236,8 +236,8 @@ TRITONSERVER_Error *ModelInstanceState::ProcessOutputs(TRITONBACKEND_Request **r
                          std::string("The output data type is invalid."));
     auto data = output.MutableData();
     RETURN_ERROR_IF_TRUE(data == nullptr, TRITONSERVER_ERROR_INTERNAL, std::string("The output data is nullptr."));
-    responder.ProcessTensor(output.Name(), TRITONSERVER_TYPE_FP32, shape, reinterpret_cast<char *>(data),
-                            TRITONSERVER_MEMORY_CPU, 0);
+    responder.ProcessTensor(output.Name(), data_type, shape, reinterpret_cast<char *>(data), TRITONSERVER_MEMORY_CPU,
+                            0);
   }
   responder.Finalize();
   return nullptr;  // success

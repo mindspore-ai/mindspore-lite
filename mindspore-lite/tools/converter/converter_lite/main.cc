@@ -15,6 +15,7 @@
  */
 
 #if defined(__linux__) && !defined(Debug)
+#include <unistd.h>
 #include <csignal>
 #endif
 #define USE_DEPRECATED_API
@@ -26,8 +27,10 @@
 
 #if defined(__linux__) && !defined(Debug)
 void SignalHandler(int sig) {
-  printf("encounter an unknown error, please verify the input model file or build the debug version\n");
-  exit(1);
+  const char msg[] = "encounter an unknown error, please verify the input model file or build the debug version\n";
+  ssize_t ret = write(STDERR_FILENO, msg, sizeof(msg) - 1);
+  (void)ret;
+  _exit(128 + sig);
 }
 #endif
 
