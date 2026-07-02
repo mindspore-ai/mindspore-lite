@@ -123,7 +123,7 @@ STATUS AdjustRandomUniformLike(const FuncGraphPtr &func_graph, const CNodePtr &c
                                    cnode->fullname_with_scope() + "_uniform");
   MS_CHECK_TRUE_RET(uniform_op_cnode != nullptr, RET_ERROR);
   if (kernel_ptr->HasAttr(ops::kSeed)) {
-    uniform_op->set_seed(GetValue<float>(kernel_ptr->GetAttr(ops::kSeed)));
+    uniform_op->set_seed(static_cast<int64_t>(GetValue<float>(kernel_ptr->GetAttr(ops::kSeed))));
   }
   if (!kernel_ptr->HasAttr("high") && !kernel_ptr->HasAttr("low")) {
     auto manager = Manage(func_graph, true);

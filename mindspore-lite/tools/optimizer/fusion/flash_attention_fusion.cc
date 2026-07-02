@@ -2188,14 +2188,23 @@ CNodePtr FlashAttentionFusion::CreateSDFlashAttentionNode(const FuncGraphPtr &fu
 
   if (q_shape.size() != kNumShapeSize4) {
     scale_value = GetScaleValueForDynamicShape(mul_const_input);
-    d_value = 1 / pow(scale_value, kNumPowerTwo);
+    d_value = static_cast<int64_t>(1.0 / pow(scale_value, kNumPowerTwo));
     // process bnsd shape
     MS_LOG(INFO) << "get flash attention param for dynamic shape, scale value is " << scale_value;
     std::vector<int32_t> new_shape = {0, 0, -1};
     auto shape_node = BuildIntVecParameterNode(func_graph, new_shape, node->fullname_with_scope() + "_new_shape");
     auto output_shape_node = node->cast<CNodePtr>();
+    if (output_shape_node == nullptr) {
+      MS_LOG(ERROR) << "output_shape_node is nullptr, cast failed.";
+      return nullptr;
+    }
     output_shape_node->set_input(kNumIndex2, shape_node);
-    auto q_trans_reshape = q_trans->cast<CNodePtr>()->input(kNumIndex1);
+    auto q_trans_cnode = q_trans->cast<CNodePtr>();
+    if (q_trans_cnode == nullptr) {
+      MS_LOG(ERROR) << "q_trans cast to CNodePtr failed.";
+      return nullptr;
+    }
+    auto q_trans_reshape = q_trans_cnode->input(kNumIndex1);
     num_head = GetNumHeadForSD(q_trans_reshape);
   } else if (q_shape.size() == kNumShapeSize4) {
     MS_LOG(INFO) << "get flash attention param for static shape.";

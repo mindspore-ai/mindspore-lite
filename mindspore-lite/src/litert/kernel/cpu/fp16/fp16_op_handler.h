@@ -25,6 +25,9 @@
 extern "C" {
 #endif
 static inline void Float32ToFloat16_fp16_handler(const void *input, void *output, int number, bool support_fp16) {
+  if (input == nullptr || output == nullptr) {
+    return;
+  }
 #if defined(ENABLE_ARM) && defined(ENABLE_FP16)
   if (support_fp16) {
     Float32ToFloat16(reinterpret_cast<const float *>(input), reinterpret_cast<float16_t *>(output), number);

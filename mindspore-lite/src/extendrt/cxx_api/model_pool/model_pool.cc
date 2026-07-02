@@ -100,12 +100,13 @@ Status ModelPool::ValidateNumaNodes(int thread_num) {
 
 Status ModelPool::AssignNumaCoresForWorker(size_t bind_numa_id, int thread_num, std::vector<int> *physical_index,
                                            std::vector<int> *logical_index, std::vector<int> *worker_bind_list) {
-  if (physical_index->at(bind_numa_id) + static_cast<size_t>(thread_num) <= numa_physical_cores_[bind_numa_id].size()) {
+  if (static_cast<size_t>(physical_index->at(bind_numa_id)) + static_cast<size_t>(thread_num) <=
+      numa_physical_cores_[bind_numa_id].size()) {
     worker_bind_list->insert(
       worker_bind_list->begin(), numa_physical_cores_[bind_numa_id].begin() + physical_index->at(bind_numa_id),
       numa_physical_cores_[bind_numa_id].begin() + physical_index->at(bind_numa_id) + thread_num);
     physical_index->at(bind_numa_id) += thread_num;
-  } else if (logical_index->at(bind_numa_id) + static_cast<size_t>(thread_num) <=
+  } else if (static_cast<size_t>(logical_index->at(bind_numa_id)) + static_cast<size_t>(thread_num) <=
              numa_logical_cores_[bind_numa_id].size()) {
     worker_bind_list->insert(worker_bind_list->begin(),
                              numa_logical_cores_[bind_numa_id].begin() + logical_index->at(bind_numa_id),

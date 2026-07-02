@@ -27,6 +27,17 @@ using mindspore::lite::RET_OK;
 using mindspore::schema::PrimitiveType_MulFusion;
 
 namespace mindspore::kernel {
+namespace {
+// Dimension indices for NCHW layout: [N, C, H, W]
+constexpr int kNchwHeight = 2;
+constexpr int kNchwWidth = 3;
+constexpr int kNchwChannel = 1;
+// Dimension indices for NHWC layout: [N, H, W, C]
+constexpr int kNhwcHeight = 1;
+constexpr int kNhwcWidth = 2;
+constexpr int kNhwcChannel = 3;
+}  // namespace
+
 MulInt8CPUKernel::~MulInt8CPUKernel() {
   if (quant_args_ != nullptr) {
     free(quant_args_);
@@ -88,18 +99,20 @@ void MulInt8CPUKernel::CheckSameShapeSize(std::vector<int> in_tensor0_shape, std
   // NHWC: [N, H, W, C] -> indices [0, 1, 2, 3]
   // NCHW: [N, C, H, W] -> indices [0, 1, 2, 3]
   int n_idx = 0;  // Batch is always at index 0
-  int h_idx, w_idx, c_idx;
+  int h_idx;
+  int w_idx;
+  int c_idx;
 
   if (format == mindspore::NCHW) {
     // NCHW: [N, C, H, W]
-    h_idx = 2;  // H is at index 2
-    w_idx = 3;  // W is at index 3
-    c_idx = 1;  // C is at index 1
+    h_idx = kNchwHeight;
+    w_idx = kNchwWidth;
+    c_idx = kNchwChannel;
   } else {
     // NHWC (default): [N, H, W, C]
-    h_idx = 1;  // H is at index 1
-    w_idx = 2;  // W is at index 2
-    c_idx = 3;  // C is at index 3
+    h_idx = kNhwcHeight;
+    w_idx = kNhwcWidth;
+    c_idx = kNhwcChannel;
   }
 
   bool condition1 = in_tensor0_shape[n_idx] == in_tensor1_shape[n_idx];
@@ -129,15 +142,17 @@ void MulInt8CPUKernel::CheckIfFastImpl() {
   auto out_tensor = out_tensors_.front();
   mindspore::Format format = static_cast<mindspore::Format>(out_tensor->format());
 
-  int h_idx, w_idx, c_idx;
+  int h_idx;
+  int w_idx;
+  int c_idx;
   if (format == mindspore::NCHW) {
-    h_idx = 2;  // NCHW: [N, C, H, W]
-    w_idx = 3;
-    c_idx = 1;
+    h_idx = kNchwHeight;
+    w_idx = kNchwWidth;
+    c_idx = kNchwChannel;
   } else {
-    h_idx = 1;  // NHWC: [N, H, W, C]
-    w_idx = 2;
-    c_idx = 3;
+    h_idx = kNhwcHeight;
+    w_idx = kNhwcWidth;
+    c_idx = kNhwcChannel;
   }
 
   if (in_tensor0->ElementsNum() != in_tensor1->ElementsNum()) {

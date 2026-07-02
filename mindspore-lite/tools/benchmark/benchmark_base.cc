@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 #include <cstdio>
+#include <sstream>
+#include <iomanip>
 #include <algorithm>
 #include <utility>
 #include <regex>
@@ -50,7 +52,6 @@ constexpr int kThreadNumMin = 1;
 constexpr int kParallelThreadNumMin = 1;
 constexpr int kColumnLen = 4;
 constexpr int kPrintColNum = 5;
-constexpr int kPrintRowLenMax = 100;
 
 constexpr float kInputDataFloatMin = 0.1f;
 constexpr float kInputDataFloatMax = 1.0f;
@@ -69,6 +70,9 @@ constexpr int16_t kInputDataUint8Max = 254;
 #ifdef SUPPORT_NNIE
 constexpr int kNNIEMaxPoolCnt = 2;
 constexpr int kNNIEBlkSize = 768 * 576 * 2;
+#endif
+#ifdef ENABLE_ARM64
+constexpr int kPrintRowLenMax = 100;
 #endif
 
 const std::unordered_map<int, std::string> kTypeIdMap{
@@ -631,30 +635,53 @@ void BenchmarkBase::CalculateColumnWidths(const std::map<std::string, std::pair<
                                           std::vector<size_t> *columnLenMax,
                                           std::vector<std::vector<std::string>> *rows) {
   for (auto &iter : result) {
-    char stringBuf[kPrintColNum][kPrintRowLenMax] = {};
     std::vector<std::string> columns;
-    size_t len = 0;
+    int len = 0;
     int index = 0;
-    len = iter.first.size();
-    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
+    len = static_cast<int>(iter.first.size());
+    if (static_cast<size_t>(len) > columnLenMax->at(index))
+      columnLenMax->at(index) = static_cast<size_t>(len) + kColumnLen;
     columns.push_back(iter.first);
     index++;
-    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%f",
-                   iter.second.second / static_cast<float>(flags_->loop_count_));
-    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
-    columns.emplace_back(stringBuf[index]);
+    {
+      std::ostringstream oss;
+      oss << std::fixed << std::setprecision(6) << iter.second.second / static_cast<float>(flags_->loop_count_);
+      std::string str = oss.str();
+      len = static_cast<int>(str.size());
+      if (static_cast<size_t>(len) > columnLenMax->at(index))
+        columnLenMax->at(index) = static_cast<size_t>(len) + kColumnLen;
+      columns.push_back(std::move(str));
+    }
     index++;
-    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%f", iter.second.second / op_cost_total_);
-    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
-    columns.emplace_back(stringBuf[index]);
+    {
+      std::ostringstream oss;
+      oss << std::fixed << std::setprecision(6) << iter.second.second / op_cost_total_;
+      std::string str = oss.str();
+      len = static_cast<int>(str.size());
+      if (static_cast<size_t>(len) > columnLenMax->at(index))
+        columnLenMax->at(index) = static_cast<size_t>(len) + kColumnLen;
+      columns.push_back(std::move(str));
+    }
     index++;
-    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%d", iter.second.first);
-    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
-    columns.emplace_back(stringBuf[index]);
+    {
+      std::ostringstream oss;
+      oss << iter.second.first;
+      std::string str = oss.str();
+      len = static_cast<int>(str.size());
+      if (static_cast<size_t>(len) > columnLenMax->at(index))
+        columnLenMax->at(index) = static_cast<size_t>(len) + kColumnLen;
+      columns.push_back(std::move(str));
+    }
     index++;
-    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%f", iter.second.second);
-    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
-    columns.emplace_back(stringBuf[index]);
+    {
+      std::ostringstream oss;
+      oss << std::fixed << std::setprecision(6) << iter.second.second;
+      std::string str = oss.str();
+      len = static_cast<int>(str.size());
+      if (static_cast<size_t>(len) > columnLenMax->at(index))
+        columnLenMax->at(index) = static_cast<size_t>(len) + kColumnLen;
+      columns.push_back(std::move(str));
+    }
     rows->push_back(columns);
   }
 }
@@ -697,28 +724,56 @@ void BenchmarkBase::CalculatePerfColumnWidths(const std::map<std::string, std::p
   for (auto &iter : result) {
     char stringBuf[kPrintColNum][kPrintRowLenMax] = {};
     std::vector<std::string> columns;
-    size_t len = 0;
+    int len = 0;
     int index = 0;
-    len = iter.first.size();
-    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
+    len = static_cast<int>(iter.first.size());
+    if (static_cast<size_t>(len) > columnLenMax->at(index))
+      columnLenMax->at(index) = static_cast<size_t>(len) + kColumnLen;
     columns.push_back(iter.first);
     index++;
-    float tmp = float_t(flags_->num_threads_) * iter.second.second.value[0] / float_t(flags_->loop_count_) / kFloatMSEC;
-    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%.2f", tmp);
-    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
-    columns.emplace_back(stringBuf[index]);
+    {
+      float tmp =
+        float_t(flags_->num_threads_) * iter.second.second.value[0] / float_t(flags_->loop_count_) / kFloatMSEC;
+      std::ostringstream oss;
+      oss << std::fixed << std::setprecision(2) << tmp;
+      std::string str = oss.str();
+      len = static_cast<int>(str.size());
+      if (static_cast<size_t>(len) > columnLenMax->at(index))
+        columnLenMax->at(index) = static_cast<size_t>(len) + kColumnLen;
+      columns.push_back(std::move(str));
+    }
     index++;
-    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%f", iter.second.second.value[0] / op_cost_total_);
-    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
-    columns.emplace_back(stringBuf[index]);
+    {
+      std::ostringstream oss;
+      oss << std::fixed << std::setprecision(6) << iter.second.second.value[0] / op_cost_total_;
+      std::string str = oss.str();
+      len = static_cast<int>(str.size());
+      if (static_cast<size_t>(len) > columnLenMax->at(index))
+        columnLenMax->at(index) = static_cast<size_t>(len) + kColumnLen;
+      columns.push_back(std::move(str));
+    }
     index++;
-    tmp = float_t(flags_->num_threads_) * iter.second.second.value[1] / float_t(flags_->loop_count_) / kFloatMSEC;
-    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%.2f", tmp);
-    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
-    columns.emplace_back(stringBuf[index]);
+    {
+      float tmp =
+        float_t(flags_->num_threads_) * iter.second.second.value[1] / float_t(flags_->loop_count_) / kFloatMSEC;
+      std::ostringstream oss;
+      oss << std::fixed << std::setprecision(2) << tmp;
+      std::string str = oss.str();
+      len = static_cast<int>(str.size());
+      if (static_cast<size_t>(len) > columnLenMax->at(index))
+        columnLenMax->at(index) = static_cast<size_t>(len) + kColumnLen;
+      columns.push_back(std::move(str));
+    }
     index++;
-    len = snprintf(stringBuf[index], sizeof(stringBuf[index]), "%f", iter.second.second.value[1] / op_cost2_total_);
-    if (len > columnLenMax->at(index)) columnLenMax->at(index) = len + kColumnLen;
+    {
+      std::ostringstream oss;
+      oss << std::fixed << std::setprecision(6) << iter.second.second.value[1] / op_cost2_total_;
+      std::string str = oss.str();
+      len = static_cast<int>(str.size());
+      if (static_cast<size_t>(len) > columnLenMax->at(index))
+        columnLenMax->at(index) = static_cast<size_t>(len) + kColumnLen;
+      columns.push_back(std::move(str));
+    }
     columns.emplace_back(stringBuf[index]);
     rows->push_back(columns);
   }

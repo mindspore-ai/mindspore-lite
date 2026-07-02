@@ -21,73 +21,69 @@ namespace ops {
 constexpr int64_t kDefaultChunkSize = 64;
 class ChunkGatedDeltaRule : public OpDef {
  public:
-    explicit ChunkGatedDeltaRule(const char* name) : OpDef(name) {
-        this->Input("query")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("key")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("value")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("g")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("beta")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("initial_state")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("cu_seqlens")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("ssm_state_indices")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Output("out")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Output("final_state")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Attr("chunk_size")
-            .AttrType(OPTIONAL)
-            .Int(kDefaultChunkSize);
-        this->Attr("scale_value")
-            .AttrType(OPTIONAL)
-            .Float(1.0);
+  explicit ChunkGatedDeltaRule(const char *name) : OpDef(name) {
+    this->Input("query")
+      .ParamType(REQUIRED)
+      .DataType({ge::DT_FLOAT16})
+      .Format({ge::FORMAT_ND})
+      .UnknownShapeFormat({ge::FORMAT_ND});
+    this->Input("key")
+      .ParamType(REQUIRED)
+      .DataType({ge::DT_FLOAT16})
+      .Format({ge::FORMAT_ND})
+      .UnknownShapeFormat({ge::FORMAT_ND});
+    this->Input("value")
+      .ParamType(REQUIRED)
+      .DataType({ge::DT_FLOAT16})
+      .Format({ge::FORMAT_ND})
+      .UnknownShapeFormat({ge::FORMAT_ND});
+    this->Input("g")
+      .ParamType(REQUIRED)
+      .DataType({ge::DT_FLOAT16})
+      .Format({ge::FORMAT_ND})
+      .UnknownShapeFormat({ge::FORMAT_ND});
+    this->Input("beta")
+      .ParamType(REQUIRED)
+      .DataType({ge::DT_FLOAT16})
+      .Format({ge::FORMAT_ND})
+      .UnknownShapeFormat({ge::FORMAT_ND});
+    this->Input("initial_state")
+      .ParamType(REQUIRED)
+      .DataType({ge::DT_FLOAT16})
+      .Format({ge::FORMAT_ND})
+      .UnknownShapeFormat({ge::FORMAT_ND});
+    this->Input("cu_seqlens")
+      .ParamType(REQUIRED)
+      .DataType({ge::DT_INT32})
+      .Format({ge::FORMAT_ND})
+      .UnknownShapeFormat({ge::FORMAT_ND});
+    this->Input("ssm_state_indices")
+      .ParamType(REQUIRED)
+      .DataType({ge::DT_INT32})
+      .Format({ge::FORMAT_ND})
+      .UnknownShapeFormat({ge::FORMAT_ND});
+    this->Output("out")
+      .ParamType(REQUIRED)
+      .DataType({ge::DT_FLOAT16})
+      .Format({ge::FORMAT_ND})
+      .UnknownShapeFormat({ge::FORMAT_ND});
+    this->Output("final_state")
+      .ParamType(REQUIRED)
+      .DataType({ge::DT_FLOAT16})
+      .Format({ge::FORMAT_ND})
+      .UnknownShapeFormat({ge::FORMAT_ND});
+    this->Attr("chunk_size").AttrType(OPTIONAL).Int(kDefaultChunkSize);
+    this->Attr("scale_value").AttrType(OPTIONAL).Float(1.0);
 
-        OpAICoreConfig aicConfig;
-        aicConfig.DynamicCompileStaticFlag(true)
-                .DynamicFormatFlag(true)
-                .DynamicRankSupportFlag(true)
-                .DynamicShapeSupportFlag(true)
-                .NeedCheckSupportFlag(false)
-                .ExtendCfgInfo("softsync.flag", "true");
-        this->AICore().AddConfig("ascend310p", aicConfig);
-    }
+    OpAICoreConfig aicConfig;
+    aicConfig.DynamicCompileStaticFlag(true)
+      .DynamicShapeSupportFlag(true)
+      .NeedCheckSupportFlag(false)
+      .DynamicFormatFlag(true)
+      .DynamicRankSupportFlag(true)
+      .ExtendCfgInfo("softsync.flag", "true");
+    this->AICore().AddConfig("ascend310p", aicConfig);
+  }
 };
 
 OP_ADD(ChunkGatedDeltaRule);

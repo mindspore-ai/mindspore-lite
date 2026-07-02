@@ -88,7 +88,13 @@ int SpaceToBatchCPUKernel::ReSize() {
   if (ret != NNACL_OK) {
     return RET_ERROR;
   }
-  param_->need_paddings_ = (param_->paddings_[0] | param_->paddings_[1] | param_->paddings_[2] | param_->paddings_[3]);
+  param_->need_paddings_ = false;
+  for (size_t i = 0; i < DIMENSION_4D; i++) {
+    if (param_->paddings_[i] != 0) {
+      param_->need_paddings_ = true;
+      break;
+    }
+  }
   return RET_OK;
 }
 
