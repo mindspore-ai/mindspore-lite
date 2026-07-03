@@ -40,7 +40,7 @@ void *ReadFileByMmap(const std::string &file, size_t *size) {
     return nullptr;
   }
   *size = static_cast<size_t>(fd_stat.st_size);
-  auto mmap_buffers = mmap(nullptr, *size, PROT_READ, MAP_SHARED | MAP_POPULATE, fd, 0);
+  auto mmap_buffers = mmap(nullptr, *size, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
   (void)close(fd);
   if (mmap_buffers == MAP_FAILED) {
     MS_LOG(ERROR) << "Model mmap failed.";

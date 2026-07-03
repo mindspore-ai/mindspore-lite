@@ -407,6 +407,7 @@ public class Model {
             this.inputTensors = null;
         }
         this.free(modelPtr, isModelSharePtr);
+        this.modelPtr = POINTER_DEFAULT_VALUE;
     }
 
     private native long createModel();

@@ -68,7 +68,7 @@ int BenchmarkCApi::RunBenchmark() {
     std::transform(flags_->resize_dims_.begin(), flags_->resize_dims_.end(), std::back_inserter(shape_infos),
                    [&](auto &shapes) {
                      MSShapeInfo shape_info;
-                     shape_info.shape_num = shapes.size();
+                     shape_info.shape_num = std::min(shapes.size(), static_cast<size_t>(MS_MAX_SHAPE_NUM));
                      for (size_t i = 0; i < shape_info.shape_num; i++) {
                        shape_info.shape[i] = shapes[i];
                      }
