@@ -21,7 +21,8 @@
 using namespace ge;    // NOLINT(build/namespaces)
 using namespace gert;  // NOLINT(build/namespaces)
 
-using cgdr::ChunkGatedDeltaRuleTilingData;
+// ChunkGatedDeltaRuleTilingData is global (see chunk_gated_delta_rule_tiling.h),
+// so no using-declaration is needed here.
 
 namespace {
 
