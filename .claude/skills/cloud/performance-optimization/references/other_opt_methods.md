@@ -20,13 +20,15 @@ description: "MindSpore Lite/Ascend 性能优化攻略与命令模板。做基�
 
 ### A. 固定口径（不统一口径就不要开始优化）
 
-- 固定输入 shape（例如 `(1,1280)`），固定 `$Benchmark --warmUpLoopCount/--loopCount`。
-- 每次尝试必须保留 4 份产物：
-  - 导出日志（export）
-  - 转换日志（convert）
-  - 性能日志（benchmark）
-  - 精度对齐日志（accuracy）
-- profiling 只用于解释“为什么”，不能替代 benchmark 的口径。
+优化前先固定三类口径（具体命令与指标见 §1/§2/§3）：
+
+- **性能口径**：固定输入 shape（如 `(1,1280)`）与 `$Benchmark` 的 `warmUpLoopCount/loopCount`；开 `GLOG_v=1` 抓 `Model execute / H2D / D2H`（详见 §1）。
+- **profiling 口径**：`msprof` 包裹 `$Benchmark`，固定 `--warmUpLoopCount=0 --loopCount=1`（详见 §2）。
+- **精度口径**：同一组 query/docs，比 `max_abs_diff/mean_abs_diff/rmse/cosine` 并确认 top-k 排序一致（详见 §3）。
+
+每次尝试必须保留 4 份产物：导出日志（export）、转换日志（convert）、性能日志（benchmark）、精度对齐日志（accuracy）。
+
+> profiling 只用于解释“为什么”，不能替代 benchmark 的口径。
 
 ### B. “一次一改”闭环
 
@@ -38,16 +40,6 @@ description: "MindSpore Lite/Ascend 性能优化攻略与命令模板。做基�
 4) 精度对齐（推荐 non-fuse ONNXRuntime CPU 作为基线）
 5)（可选但建议）`msprof` profiling 导出 `op_statistic/op_summary`，定位瓶颈与副作用
 6) 更新尝试表（包含 MindIR 路径、日志路径、profiling 包路径）
-
-## 固定口径（先统一，再开始优化）
-
-- 性能口径：开启 `GLOG_v=1` 后，从日志抓取：
-  - `PredictFromHost] Model execute in ... us`
-  - `AclrtMemcpy] [H2D] Host to Device copy in ... us`
-  - `AclrtMemcpy] [D2H] Device to Host copy in ... us`
-  固定输入 shape（例如 `(1,1280)`），固定 `LoopCount/WarmUpLoopCount`。
-- profiling 口径：用 `msprof` 包裹 `$Benchmark`，并固定 `--warmUpLoopCount=0 --loopCount=1`，避免 count 倍增干扰。
-- 精度口径：同一组 query/docs，比较两端输出 score 向量的 `max_abs_diff/mean_abs_diff/rmse/cosine`，同时确认 top-k 排序一致。
 
 ## 0. 环境与目录规范
 
@@ -309,13 +301,16 @@ PY
   - 图变大、算子变多；必须精度对齐（norm 对精度敏感）。
 
 ### 4.7 免拷贝
-待补充...
+
+已独立成细化文档 [zero_copy_inference.md](zero_copy_inference.md)：多模型流水线 / 自回归 decode / KV cache 场景下的 Host↔Device 免拷贝、预分配 device Tensor 与 ping-pong buffer 复用。
 
 ### 4.8 量化
-待补充...
+
+已独立成细化文档 [torch_ptq_int8.md](torch_ptq_int8.md)：Torch 静态 PTQ int8 → 含 `AscendQuant` / `QuantBatchMatmul` 的量化 ONNX 导出六步法（含校准数据采集、SmoothQuant、per-channel 补偿）。
 
 ### 4.9 KV Cache
-待补充...
+
+KV cache 的零拷贝传递与 ping-pong buffer 复用见 [zero_copy_inference.md](zero_copy_inference.md) 的 Qwen3-VL decode 示例；KV cache 相关的图结构改写（如 paged / cache-aware attention）仍待补充。
 
 ### 4.10 AOE
 待补充...
@@ -343,6 +338,6 @@ PY
 - `op_statistic/op_summary` 的路径或 tar.gz 包路径
 
 
-## 8. 项目内参考资料（建议 Agent 先读）
+## 7. 项目内参考资料（建议 Agent 先读）
 
 - [`get_profiling_data.md`](../../open-source-model-migration/references/get_profiling_data.md)：msprof 采集、export summary、打包归档的标准流程

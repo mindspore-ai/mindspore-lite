@@ -11,6 +11,22 @@ MindSpore Lite 是以 C++ 为主的推理框架项目，包含 Python/C++/Java �
   - mindspore-lite/python/** Python 接口目录
   - include/api/** C++ 接口文件目录
 
+## 端到端流程（Pipeline）
+
+云侧推理部署是一条完整链路。先定位当前任务处于哪个阶段，再调用对应 Skill（动手前先 `Read` 该 Skill 的 SKILL.md 及其 references/）：
+
+```
+模型迁移/导出 ONNX ─► ONNX→MindIR 转换 + 部署推理 ─► 性能优化
+```
+
+| 阶段 | 做什么 | 对应 Skill |
+|------|--------|-----------|
+| ① 模型迁移/导出 | 开源模型按网络结构拆分导出 ONNX、ONNX Runtime 精度对齐、生成推理脚本与 README | [open-source-model-migration](.claude/skills/cloud/open-source-model-migration/SKILL.md) |
+| ② 转换与部署推理 | ONNX→MindIR（固定 shape / 动态分档 / 纯动态 shape）+ Ascend 离线优化；MindIR 加载、Ascend 推理验证与部署注意事项 | [onnx-model-conversion-and-deployment](.claude/skills/cloud/onnx-model-conversion-and-deployment/SKILL.md) |
+| ③ 性能优化 | 基线/profiling、融合算子改写、推理免拷贝、PTQ int8 量化、精度对齐与归档 | [performance-optimization](.claude/skills/cloud/performance-optimization/SKILL.md) |
+
+> 典型顺序：①→② 跑通后，再用 ③ 做性能优化（每步都需精度+性能验证，见各 Skill）。
+
 ## 环境要求
 
 - CMake 3.22.3
@@ -71,7 +87,12 @@ bash scripts/format_source_code.sh -l
 
 ## 常用技能（Skill）
 
-当任务匹配时优先使用对应 Skill：
-- [onnx-model-conversion-and-deployment](skills/lite-cloud-side/onnx-model-conversion-and-deployment/SKILL.md)：ONNX模型转换与推理部署
-- [open-source-model-migration](skills/lite-cloud-side/open-source-model-migration/SKILL.md)：开源模型迁移Ascend硬件推理部署
-- [performance-optimization](skills/lite-cloud-side/performance-optimization/SKILL.md)：通过自定义算子优化推理性能
+当任务匹配时优先使用对应 Skill（详见上方「端到端流程」的阶段对照）：
+
+- [onnx-model-conversion-and-deployment](.claude/skills/cloud/onnx-model-conversion-and-deployment/SKILL.md)：ONNX→MindIR 转换（固定 shape / 动态分档 / 纯动态 shape）与推理部署
+- [open-source-model-migration](.claude/skills/cloud/open-source-model-migration/SKILL.md)：开源模型迁移到 MindSpore Lite 部署管线（按结构拆分导出 ONNX、精度对齐、生成推理脚本与 README）
+- [performance-optimization](.claude/skills/cloud/performance-optimization/SKILL.md)：模型性能优化总攻略——基线/profiling、融合算子改写、推理免拷贝、PTQ int8 量化、精度对齐与归档（细化策略见 references/）
+
+## 通用技能（跨侧共享）
+
+- [clean-code-check](.claude/skills/common/clean-code-check/SKILL.md)：C++/Python/Shell/CMake 代码质量检查与 CI 门禁工具。云侧 C++ 改动同样适用，改完或 review 时调用。
