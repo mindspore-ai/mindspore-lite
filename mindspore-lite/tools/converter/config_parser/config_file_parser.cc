@@ -284,6 +284,11 @@ int ParseDynamicDimTemplate(const std::string &dims_template, std::set<std::stri
       }
       auto start = std::stoi(continuous_dim[0]);
       auto end = std::stoi(continuous_dim[1]);
+      MS_CHECK_TRUE_MSG(start <= end, RET_INPUT_PARAM_INVALID,
+                        "the dynamic_dim_params start value must not be greater than end value");
+      constexpr int kMaxDynamicDimRange = 1000;
+      MS_CHECK_TRUE_MSG(end - start <= kMaxDynamicDimRange, RET_INPUT_PARAM_INVALID,
+                        "the dynamic_dim_params range exceeds the maximum allowed range size.");
       for (auto i = start; i <= end; ++i) {
         micro_param_string->dynamic_symbols_map[symbol].emplace_back(i);
       }

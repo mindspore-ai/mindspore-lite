@@ -42,6 +42,7 @@ public class MSTensor {
 
     private long tensorPtr;
     private Object buffer;
+    private boolean isValid = true;
 
     /**
      * MSTensor construct function.
@@ -108,6 +109,10 @@ public class MSTensor {
      * @return A array of int as the shape of the MindSpore MSTensor.
      */
     public int[] getShape() {
+        if (!isValid) {
+            LOGGER.severe("MSTensor is invalid, cannot getShape.");
+            return new int[0];
+        }
         return this.getShape(this.tensorPtr);
     }
 
@@ -117,6 +122,10 @@ public class MSTensor {
      * @return The MindSpore data type of the MindSpore MSTensor class.
      */
     public int getDataType() {
+        if (!isValid) {
+            LOGGER.severe("MSTensor is invalid, cannot getDataType.");
+            return -1;
+        }
         return this.getDataType(this.tensorPtr);
     }
 
@@ -126,6 +135,10 @@ public class MSTensor {
      * @return The byte array containing all MSTensor output data.
      */
     public Object getData() {
+        if (!isValid) {
+            LOGGER.severe("MSTensor is invalid, cannot getData.");
+            return null;
+        }
         Object ret = null;
         if (this.buffer != null) {
             return this.buffer;
@@ -362,6 +375,10 @@ public class MSTensor {
      * @return The size of the data in MSTensor in bytes.
      */
     public long size() {
+        if (!isValid) {
+            LOGGER.severe("MSTensor is invalid, cannot get size.");
+            return 0;
+        }
         return this.size(this.tensorPtr);
     }
 
@@ -375,12 +392,24 @@ public class MSTensor {
     }
 
     /**
+     * Invalidate the tensor. After invalidation, method calls will fail safely.
+     * This is called by Model.free() before the native pointer is freed.
+     */
+    public void invalidate() {
+        this.isValid = false;
+    }
+
+    /**
      * Free all temporary memory in MindSpore MSTensor.
      */
     public void free() {
+        if (!isValid) {
+            return;
+        }
         this.free(this.tensorPtr);
         this.tensorPtr = POINTER_DEFAULT_VALUE;
         this.buffer = null;
+        this.isValid = false;
     }
 
     /**
