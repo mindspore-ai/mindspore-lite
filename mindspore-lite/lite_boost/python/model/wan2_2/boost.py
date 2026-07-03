@@ -201,4 +201,4 @@ def apply_vae_dp(
 
 def _boost_vae(vae):
     """Patch VAE encode/decode in-place for DP temporal tiling."""
-    apply_vae_dp(vae)
+    return apply_vae_dp(vae)

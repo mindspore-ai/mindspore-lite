@@ -17,7 +17,7 @@
 lite_boost layers module
 """
 
+__all__ = ["rope_apply", "flash_attention"]
+
 from .rope import rope_apply
 from .attention import flash_attention
-
-__all__ = ["rope_apply", "flash_attention"]
