@@ -25,7 +25,7 @@
 #include <string>
 #include <ctime>
 #include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/utils.h"
-#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/df_graph_converter.h"
+#include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/convert.h"
 #include "graph/graph_buffer.h"
 #include "graph/graph.h"
 #include "cxx_api/model/aoe/auto_tune_process.h"
@@ -166,8 +166,8 @@ backend::ge_backend::DfGraphPtr ModelConverter::ConvertFuncGraphToAIR(const Func
   }
   bool is_control_model = HasSubgraph(anf_graph);
   if (!is_control_model) {
-    auto converter = std::make_shared<lite::backend::ge_backend::DfGraphConvertor>(
-      anf_graph, "", lite::backend::ge_backend::RefModeFlag::kRefModeNone, std::vector<std::string>{}, nullptr, true);
+    auto converter = std::make_shared<backend::ge_backend::DfGraphConvertor>(
+      anf_graph, "", backend::ge_backend::RefModeFlag::kRefModeNone, std::vector<std::string>{}, nullptr, true);
     MS_CHECK_TRUE_MSG(converter != nullptr, nullptr, "Create converter failed.");
     converter->ConvertAllNode().InitParam(GetParams(anf_graph)).BuildGraph(compute_graph_name);
     return converter->GetComputeGraph();

@@ -5,8 +5,6 @@ add_subdirectory(${TOP_DIR}/mindspore/mindspore/ccsrc/plugin/ascend/res_manager/
     _mindspore_ascend_op_adapter_obj)
 add_subdirectory(${TOP_DIR}/mindspore/mindspore/ccsrc/plugin/ascend/res_manager/symbol_interface
     _mindspore_ascend_symbol_obj)
-list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../utils/anfalgo.cc")
-list(APPEND _TRANSFORM_SRC_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../utils/compile_cache_context.cc")
 
 add_library(mindspore_graph_ir SHARED ${_TRANSFORM_SRC_LIST} $<TARGET_OBJECTS:_mindspore_ascend_symbol_obj>
     $<TARGET_OBJECTS:_mindspore_ascend_op_adapter_obj>)

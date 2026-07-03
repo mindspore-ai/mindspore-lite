@@ -32,7 +32,6 @@
 #include "primitive/array_ops.h"
 #include "primitive/framework_ops.h"
 #include "primitive/structure_ops.h"
-#include "include/utils/compile_cache_context.h"
 #include "tools/converter/ms_depend/utils.h"
 #include "ir/graph_utils.h"
 #include "primitive/auto_generate/gen_ops_primitive_f.h"

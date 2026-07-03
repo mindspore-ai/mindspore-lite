@@ -157,8 +157,6 @@ class COMMON_EXPORT AnfAlgo {
   static bool IsNodeInGraphKernel(const AnfNodePtr &node);
   // check parameter is weight or data
   static bool IsParameterWeight(const ParameterPtr &node);
-  // Check whether the cnode update parameter
-  static bool IsUpdateParameterKernel(const CNodePtr &node);
   static AnfNodePtr GetInputNode(const CNodePtr &node, size_t index);
   // Return true if it is either compute communication fusion operator or pure communication operator
   static bool IsCommunicationOp(const std::string &prim_name);
@@ -178,7 +176,6 @@ class COMMON_EXPORT AnfAlgo {
   static bool IsScalarInput(const CNodePtr &cnode, size_t index);
   static bool IsScalarOutput(const CNodePtr &cnode, size_t index);
   static void ReorderExecList(NotNull<std::vector<CNodePtr> *> node_list);
-  static void ReorderPosteriorExecList(NotNull<std::vector<CNodePtr> *> node_list);
 
   static std::string GetMoveToDstStr(const AnfNodePtr &node);
   static bool IsNodeInputDynamicShape(const CNodePtr &anf_node_ptr);
@@ -291,8 +288,6 @@ class COMMON_EXPORT AnfAlgo {
   static bool CheckAbsSparseTensor(const AnfNodePtr &node);
   static bool CheckAbsSparseTensor(const abstract::AbstractBasePtr &abs);
   static TypeId GetSparseTypeIdAt(const AnfNodePtr &node, size_t idx);
-
-  static std::string GetTensorValueString(const tensor::TensorPtr &tensor);
 
   static bool IsNodeMutableScalar(const AnfNodePtr &node);
   static bool IsDynamicSequence(const AnfNodePtr &node);

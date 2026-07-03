@@ -21,7 +21,7 @@
 #include "tools/converter/adapter/acl/backend/ge_backend/graph_ir/df_graph_manager.h"
 #include "plugin/ascend/res_manager/op_adapter/op_adapter_desc.h"
 #include "plugin/ascend/res_manager/op_adapter/transform_util.h"
-#include "tools/converter/adapter/acl/backend/ge_backend/utils/anfalgo.h"
+#include "tools/converter/ms_depend/anfalgo.h"
 #include "primitive/auto_generate/gen_ops_primitive_i.h"
 
 namespace mindspore::backend::ge_backend {
