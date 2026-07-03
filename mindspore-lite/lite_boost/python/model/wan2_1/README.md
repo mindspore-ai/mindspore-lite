@@ -12,7 +12,7 @@ Wan2.1 模型的 NPU 多卡 Ulysses Sequence Parallel 适配器，基于 `lite_b
 | torch_npu | 2.9.0 |
 | Wan2.1 | [T2V-1.3B](https://github.com/Wan-Video/Wan2.1) |
 | CANN | ≥ 8.5 |
-| lite_boost | 0.0.1 |
+| lite_boost | 0.1.0 |
 
 > 硬件要求：华为昇腾 NPU（Ascend atlas 800I A2 及以上），已安装 HCCL 通信库。
 
