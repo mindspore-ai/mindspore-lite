@@ -19,7 +19,12 @@
 
 #include "kernel_operator.h"  // NOLINT(build/include_subdir)
 
-namespace cgdr {
+// ChunkGatedDeltaRuleTilingData MUST stay in the global namespace (not under a
+// user namespace). CANN's REGISTER_TILING_DEFAULT / GET_TILING_DATA autogen emit
+// the tiling key and reference this struct from global scope; namespacing it makes
+// those symbols <ns>::-qualified ("cgdr::ChunkGatedDeltaRuleTilingData",
+// "cgdr::chunk_gated_delta_rule_0_tilingkey") and they fail to resolve, aborting
+// the device-kernel compile. Mirrored by op_host/chunk_gated_delta_rule_tiling.h.
 #pragma pack(push, 8)
 struct alignas(8) ChunkGatedDeltaRuleTilingData {
   uint32_t vectorCoreNum;
@@ -40,6 +45,5 @@ struct alignas(8) ChunkGatedDeltaRuleTilingData {
   uint32_t debug;  // debug print flag
 };
 #pragma pack(pop)
-}  // namespace cgdr
 
 #endif  // CHUNK_GATED_DELTA_RULE_TILING_DATA_H
