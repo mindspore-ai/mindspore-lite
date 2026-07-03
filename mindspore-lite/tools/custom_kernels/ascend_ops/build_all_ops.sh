@@ -42,13 +42,25 @@ TEMPLATE_DIR=""
 # -----------------------------------------------------------------------------
 resolve_cann()
 {
+  # Prefer the explicit CANN env vars; fall back to ASCEND_PATH (set by the
+  # MindSpore Lite build env on CI hosts where ASCEND_HOME_PATH is unset) and
+  # standard install locations, so the script self-locates CANN in more envs.
   if [[ -n "${ASCEND_HOME_PATH}" && -d "${ASCEND_HOME_PATH}" ]]; then
     ASCEND_CANN_PACKAGE_PATH="${ASCEND_HOME_PATH}"
   elif [[ -n "${ASCEND_TOOLKIT_HOME}" && -d "${ASCEND_TOOLKIT_HOME}" ]]; then
     ASCEND_CANN_PACKAGE_PATH="${ASCEND_TOOLKIT_HOME}"
+  elif [[ -n "${ASCEND_PATH}" && -d "${ASCEND_PATH}" ]]; then
+    ASCEND_CANN_PACKAGE_PATH="${ASCEND_PATH}"
   else
-    echo "[ERROR] CANN toolchain not found. Set ASCEND_HOME_PATH or ASCEND_TOOLKIT_HOME." >&2
-    return 1
+    local cand
+    for cand in /usr/local/Ascend/ascend-toolkit/latest /usr/local/Ascend/cann; do
+      [[ -d "${cand}" ]] && ASCEND_CANN_PACKAGE_PATH="${cand}" && break
+    done
+    if [[ -z "${ASCEND_CANN_PACKAGE_PATH}" ]]; then
+      echo "[ERROR] CANN toolchain not found. Set one of ASCEND_HOME_PATH," >&2
+      echo "        ASCEND_TOOLKIT_HOME, ASCEND_PATH, or install CANN under /usr/local/Ascend/." >&2
+      return 1
+    fi
   fi
   # Best-effort: ensure the CANN compiler/opbuild environment is active when run
   # standalone (the full MindSpore Lite build already sources it).
@@ -125,11 +137,24 @@ build_one_soc()
 
   # 2. Merge every operator under this SoC into op_host/ and op_kernel/ at the
   #    workspace root (symlinks; the CANN tooling requires them there).
+  #    CUSTOM_OPS_SKIP (space-separated dir basenames) excludes WIP / not-yet-
+  #    compiling ops from the merged build. This is required because the CANN
+  #    op project builds every op in ONE merged workspace, so a single failing
+  #    op aborts the whole `binary` target — and that also prevents the aggregate
+  #    binary_info_config.json from being written, which silently breaks (at
+  #    runtime, "does not support opType") even the ops that DID compile. Skipping
+  #    a broken op here lets the rest ship a complete, valid vendor. Source of a
+  #    skipped op is left untouched; unlist it once it compiles.
   local op_count=0
   shopt -s nullglob
   local op_dirs=("${soc_dir}"/*/)
   shopt -u nullglob
   for op_dir in "${op_dirs[@]}"; do
+    local op_base; op_base="$(basename "${op_dir}")"
+    if [[ " ${CUSTOM_OPS_SKIP:-} " == *" ${op_base} "* ]]; then
+      echo "  skip op (CUSTOM_OPS_SKIP): ${op_base}"
+      continue
+    fi
     if [[ -d "${op_dir}/op_host" ]]; then
       ln -s "${op_dir}"/op_host/* "${ws}/op_host/" 2>/dev/null || true
     fi
@@ -137,7 +162,7 @@ build_one_soc()
       ln -s "${op_dir}"/op_kernel/* "${ws}/op_kernel/" 2>/dev/null || true
     fi
     op_count=$((op_count + 1))
-    echo "  include op: $(basename "${op_dir}")"
+    echo "  include op: ${op_base}"
   done
   if [[ ${op_count} -eq 0 ]]; then
     echo "[WARN] no operator found under ${soc_dir}, skip."
