@@ -33,7 +33,8 @@ from lite_boost.layers.rope import rope_apply
 
 
 def _sinusoidal_embedding_1d(dim, position):
-    assert dim % 2 == 0
+    if dim % 2 != 0:
+        raise ValueError(f"dim must be even, but got {dim}.")
     half = dim // 2
     position = position.float()
     sinusoid = torch.outer(
@@ -125,7 +126,9 @@ def _prepare_usp_dit_inputs(self, x, t, context, clip_fea, y, seq_len):
         [torch.tensor(u.shape[2:], dtype=torch.long) for u in x])
     x = [u.flatten(2).transpose(1, 2) for u in x]
     seq_lens = torch.tensor([u.size(1) for u in x], dtype=torch.long)
-    assert seq_lens.max() <= seq_len
+    if seq_lens.max() > seq_len:
+        raise ValueError(
+            f"max seq_len ({seq_lens.max()}) must not exceed seq_len ({seq_len}).")
     x = torch.cat([
         torch.cat([u, u.new_zeros(1, seq_len - u.size(1), u.size(2))], dim=1)
         for u in x
@@ -136,7 +139,9 @@ def _prepare_usp_dit_inputs(self, x, t, context, clip_fea, y, seq_len):
         e = self.time_embedding(
             _sinusoidal_embedding_1d(self.freq_dim, t).float())
         e0 = self.time_projection(e).unflatten(1, (6, self.dim))
-        assert e.dtype == torch.float32 and e0.dtype == torch.float32
+        if e.dtype != torch.float32 or e0.dtype != torch.float32:
+            raise RuntimeError(
+                f"time embedding must be float32, got e.dtype={e.dtype}, e0.dtype={e0.dtype}.")
 
     # context
     context = self.text_embedding(
@@ -174,7 +179,9 @@ def usp_dit_forward(
 ):
     """Ulysses Sequence Parallel DiT forward."""
     if self.model_type == 'i2v':
-        assert clip_fea is not None and y is not None
+        if clip_fea is None or y is None:
+            raise ValueError(
+                "clip_fea and y must not be None for 'i2v' model_type.")
 
     x, grid_sizes, e, kwargs = _prepare_usp_dit_inputs(
         self, x, t, context, clip_fea, y, seq_len)
