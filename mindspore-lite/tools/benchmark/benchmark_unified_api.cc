@@ -388,7 +388,7 @@ int BenchmarkUnifiedApi::ReadNonParallelInputFiles() {
         delete[] bin_buf;
         return RET_ERROR;
       }
-      memcpy(input_data, bin_buf, tensor_data_size);
+      std::copy_n(static_cast<const char *>(bin_buf), tensor_data_size, static_cast<char *>(input_data));
     }
     delete[] bin_buf;
   }
@@ -1751,8 +1751,8 @@ int BenchmarkUnifiedApi::InitTimeProfilingCallbackParameter() {
 
 #ifdef ENABLE_ARM64
 void BenchmarkUnifiedApi::InitPerfEventAttributes(perf_event_attr *pe, perf_event_attr *pe2) {
-  memset(pe, 0, sizeof(struct perf_event_attr));
-  memset(pe2, 0, sizeof(struct perf_event_attr));
+  *pe = {};
+  *pe2 = {};
   pe->type = PERF_TYPE_HARDWARE;
   pe2->type = PERF_TYPE_HARDWARE;
   pe->size = sizeof(struct perf_event_attr);

@@ -62,9 +62,9 @@ struct CGDRInitParams {
 };
 
 template <typename inType, typename outType>
-class CGDR {
+class ChunkGatedDeltaRule {
  public:
-  __aicore__ inline explicit CGDR(const ChunkGatedDeltaRuleTilingData *tilingData) {
+  __aicore__ inline explicit ChunkGatedDeltaRule(const ChunkGatedDeltaRuleTilingData *tilingData) {
     B_ = tilingData->b;
     T_ = tilingData->t;
     NK_ = tilingData->hqk;
@@ -186,7 +186,9 @@ class CGDR {
       int32_t seq0 = cuSeqlensGm_.GetValue(batch_i);
       int32_t seq1 = cuSeqlensGm_.GetValue(batch_i + 1);
       int32_t seqLen = seq1 - seq0;
-      if (seqLen <= 0) continue;
+      if (seqLen <= 0) {
+        continue;
+      }
 
       for (uint64_t head_i = 0; head_i < NV_; head_i++) {
         if (!IsCurrentBlock(seqLen)) continue;

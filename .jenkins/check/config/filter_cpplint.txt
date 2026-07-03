@@ -50,3 +50,8 @@
 # ACL
 "mindspore-lite/mindspore-lite/src/extendrt/delegate/ascend_acl/model_infer.cc"                         "whitespace/indent_namespace"
 "mindspore-lite/mindspore-lite/src/extendrt/delegate/ascend_acl/model_process.cc"                       "whitespace/newline"
+
+# Ascend kernel registration macros (must have external linkage, cannot be in anonymous namespace)
+"mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/chunk_gated_delta_rule/op_host/chunk_gated_delta_rule_def.cpp"    "build/namespaces"
+"mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/chunk_gated_delta_rule/op_host/chunk_gated_delta_rule_tiling.cpp"    "build/namespaces"
+"mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/chunk_gated_delta_rule/op_host/chunk_gated_delta_rule_infershape.cpp" "build/namespaces"

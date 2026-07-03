@@ -113,10 +113,10 @@ int QuantizedAddCPUKernel::Prepare() {
   auto *output = out_tensors_.at(0);
 
   const auto &input0_params = input0->quant_params();
-  const auto &input1_params = input1->quant_params();
-  const auto &output_params = output->quant_params();
   MS_CHECK_TRUE_MSG(!input0_params.empty(), RET_ERROR, "Input 0 quant param cannot be empty.");
+  const auto &input1_params = input1->quant_params();
   MS_CHECK_TRUE_MSG(!input1_params.empty(), RET_ERROR, "Input 1 quant param cannot be empty.");
+  const auto &output_params = output->quant_params();
   MS_CHECK_TRUE_MSG(!output_params.empty(), RET_ERROR, "Output quant param cannot be empty.");
 
   para_->in0_args_.zp_ = input0_params.front().zeroPoint * -1;

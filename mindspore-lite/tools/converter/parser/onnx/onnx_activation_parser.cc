@@ -66,7 +66,7 @@ bool OnnxPReluParser::SetSlopeFromTensor(const std::unique_ptr<ops::PReLUFusion>
   } else {
     const auto slope_raw_data = reinterpret_cast<const float *>(slope_data.raw_data().data());
     MS_CHECK_TRUE_RET(slope_raw_data != nullptr, false);
-    const int64_t slope_size = slope_data.raw_data().size() / sizeof(float);
+    const int64_t slope_size = static_cast<int64_t>(slope_data.raw_data().size() / sizeof(float));
     slope.resize(slope_size);
     bool channel_shared = false;
     if (slope_size == 1) {
