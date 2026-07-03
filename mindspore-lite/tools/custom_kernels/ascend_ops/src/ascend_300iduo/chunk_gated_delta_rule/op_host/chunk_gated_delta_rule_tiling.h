@@ -19,6 +19,7 @@
 
 #include <cstdint>
 
+namespace cgdr {
 #pragma pack(push, 8)
 struct alignas(8) ChunkGatedDeltaRuleTilingData {
   uint32_t vectorCoreNum;
@@ -39,5 +40,6 @@ struct alignas(8) ChunkGatedDeltaRuleTilingData {
   uint32_t debug;
 };
 #pragma pack(pop)
+}  // namespace cgdr
 
 #endif  // CHUNK_GATED_DELTA_RULE_TILING_H

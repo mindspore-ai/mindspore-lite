@@ -273,6 +273,10 @@ size_t Tensor::Size() const {
       MS_LOG(DEBUG) << "Element number of tensor should large than 0 : " << element_num << ", shape: " << shape;
       return 0;
     }
+    if (element_size > SIZE_MAX / static_cast<size_t>(element_num)) {
+      MS_LOG(ERROR) << "Data size overflow: element_size=" << element_size << ", element_num=" << element_num;
+      return 0;
+    }
     return element_size * static_cast<size_t>(element_num);
   }
 }

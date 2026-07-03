@@ -46,6 +46,9 @@ namespace {
 const int kArithmeticInputNum = 2;
 const int SliceBeginIndex = 2;
 const int SliceSizeIndex = 3;
+const int kMatmulWeightInput = 2;
+const int kSecondLastDimIndex = 2;
+const int kReshapeInputSize = 3;
 int node_name_index = 0;
 std::vector<int> GetSliceBeginAndSize(const CNodePtr &cnode, const int index) {
   MS_ASSERT(cnode != nullptr);
@@ -954,7 +957,8 @@ bool SlicePreposePass::ValidateReshapeShapes(const CNodePtr &slice_cnode, const 
     MS_LOG(DEBUG) << "Reshape can't be preposed if either input or output shape is unknown";
     return false;
   }
-  if (reshape_cnode->size() == 3 && utils::isa<ParameterPtr>(reshape_cnode->input(2))) {
+  if (reshape_cnode->size() == kReshapeInputSize &&
+      utils::isa<ParameterPtr>(reshape_cnode->input(kMatmulWeightInput))) {
     auto reshape_input_shape = utils::cast<ParameterPtr>(reshape_cnode->input(2));
     MS_CHECK_TRUE_MSG(reshape_input_shape != nullptr, false, "reshape_input_shape is nullptr");
     if (!reshape_input_shape->has_default()) {
@@ -1065,7 +1069,7 @@ void SlicePreposePass::DetermineMatmulPreposeDirections(const std::vector<int64_
     if (begin[i] != 0 || (size[i] != -1 && size[i] != matmul_shape[axes[i]])) {
       if (axes[i] != dims - 1) {
         *prepose_to_left = true;
-      } else if (axes[i] != dims - 2) {
+      } else if (axes[i] != dims - kSecondLastDimIndex) {
         *prepose_to_right = true;
       }
     }
@@ -1098,15 +1102,18 @@ bool SlicePreposePass::PreposeWithMatmul(const FuncGraphPtr &graph, const CNodeP
   auto node_users = manager->node_users()[slice_cnode];
   bool changed = false;
   if (prepose_to_left) {
-    auto left_begin = begin, left_size = size;
+    auto left_begin = begin;
+    auto left_size = size;
     if (!InsertMatmulSlice(graph, slice_cnode, matmul_cnode, 1, axes, &left_begin, &left_size, dims - 1, tr)) {
       return false;
     }
     changed = true;
   }
   if (prepose_to_right) {
-    auto right_begin = begin, right_size = size;
-    if (!InsertMatmulSlice(graph, slice_cnode, matmul_cnode, 2, axes, &right_begin, &right_size, dims - 2, tr)) {
+    auto right_begin = begin;
+    auto right_size = size;
+    if (!InsertMatmulSlice(graph, slice_cnode, matmul_cnode, kMatmulWeightInput, axes, &right_begin, &right_size,
+                           dims - kSecondLastDimIndex, tr)) {
       return false;
     }
     changed = true;
@@ -1202,7 +1209,8 @@ bool SlicePreposePass::PreposeWithFullConnection(const FuncGraphPtr &graph, cons
     return false;
   }
   std::vector<int64_t> new_axes;
-  std::vector<int> new_begin, new_size;
+  std::vector<int> new_begin;
+  std::vector<int> new_size;
   if (!BuildFcSliceParams(slice_cnode, shape_in, shape_out, &new_axes, &new_begin, &new_size)) {
     return false;
   }

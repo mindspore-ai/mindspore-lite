@@ -2448,7 +2448,6 @@ static void FormatTensorDataByType(const tensor::TensorPtr &tensor, const TypePt
   auto data_size = tensor->DataSize();
   std::ostringstream &buf = const_cast<std::ostringstream &>(buf_ref);
   auto tid = dtype->type_id();
-
   if (FormatSignedIntTensorData(tid, data, data_size, tensor, buf)) {
     return;
   }

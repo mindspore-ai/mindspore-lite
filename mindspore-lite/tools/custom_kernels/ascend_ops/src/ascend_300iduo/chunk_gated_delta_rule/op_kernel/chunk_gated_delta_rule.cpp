@@ -17,19 +17,19 @@
 #include "chunk_gated_delta_rule.h"  // NOLINT(build/include_subdir)
 
 using namespace AscendC;  // NOLINT(build/namespaces)
-using namespace cgdr;     // NOLINT(build/namespaces)
 
-extern "C" __global__ __aicore__ void
-chunk_gated_delta_rule(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR g, GM_ADDR beta,
-                       GM_ADDR initialState, GM_ADDR cuSeqlens, GM_ADDR ssmStateIndices,
-                       GM_ADDR out, GM_ADDR finalState, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
-    REGISTER_TILING_DEFAULT(ChunkGatedDeltaRuleTilingData);
-    GET_TILING_DATA(tilingData, tilingGM);
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    CGDRInitParams initParams{query, key, value, g, beta, initialState, cuSeqlens,
-                              ssmStateIndices, out, finalState};
-    TPipe pipe;
-    CGDR<half, half> op(&tilingData);
-    op.Init(initParams, &pipe);
-    op.Process();
+namespace cgdr {
+extern "C" __global__ __aicore__ void chunk_gated_delta_rule(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR g,
+                                                             GM_ADDR beta, GM_ADDR initialState, GM_ADDR cuSeqlens,
+                                                             GM_ADDR ssmStateIndices, GM_ADDR out, GM_ADDR finalState,
+                                                             GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+  REGISTER_TILING_DEFAULT(ChunkGatedDeltaRuleTilingData);
+  GET_TILING_DATA(tilingData, tilingGM);
+  KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+  CGDRInitParams initParams{query, key, value, g, beta, initialState, cuSeqlens, ssmStateIndices, out, finalState};
+  TPipe pipe;
+  ChunkGatedDeltaRule<half, half> op(&tilingData);
+  op.Init(initParams, &pipe);
+  op.Process();
 }
+}  // namespace cgdr

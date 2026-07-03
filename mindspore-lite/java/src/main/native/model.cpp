@@ -16,6 +16,7 @@
 
 #include <jni.h>
 #include <cstring>
+#include <algorithm>
 #include "include/api/model.h"
 #include "common/log_adapter.h"
 #include "include/api/serialization.h"
@@ -382,7 +383,7 @@ static bool CopyInputsFromJava(JNIEnv *env, jlongArray inputs, jobjectArray buff
       release_ptr_to_java(env, *ptr_array, *jarr_inputs);
       return false;
     }
-    std::memcpy(local_data, java_data, ms_tensor.DataSize());
+    std::copy_n(static_cast<const char *>(java_data), ms_tensor.DataSize(), static_cast<char *>(local_data));
   }
   env->ReleaseLongArrayElements(inputs, input_data, JNI_ABORT);
   return true;
@@ -554,25 +555,34 @@ static std::map<std::string, std::string> ParseJavaHashMap(JNIEnv *env, jobject 
   while (env->CallBooleanMethod(iteratorObject, hasNextMethodID)) {
     jobject objectEntry = env->CallObjectMethod(iteratorObject, nextMethodID);
     auto keyObjectMethod = (jstring)env->CallObjectMethod(objectEntry, keyMethodID);
-    if (keyObjectMethod == nullptr) { env->DeleteLocalRef(objectEntry); continue; }
+    if (keyObjectMethod == nullptr) {
+      env->DeleteLocalRef(objectEntry);
+      continue;
+    }
     auto c_keyConfigInfo = env->GetStringUTFChars(keyObjectMethod, nullptr);
     std::string str_keyConfigInfo(c_keyConfigInfo, env->GetStringLength(keyObjectMethod));
     auto valueObjectMethod = (jstring)env->CallObjectMethod(objectEntry, valueMethodID);
     if (valueObjectMethod == nullptr) {
       env->ReleaseStringUTFChars(keyObjectMethod, c_keyConfigInfo);
-      env->DeleteLocalRef(keyObjectMethod); env->DeleteLocalRef(objectEntry); continue;
+      env->DeleteLocalRef(keyObjectMethod);
+      env->DeleteLocalRef(objectEntry);
+      continue;
     }
     auto c_valueConfigInfo = env->GetStringUTFChars(valueObjectMethod, nullptr);
     std::string str_valueConfigInfo(c_valueConfigInfo, env->GetStringLength(valueObjectMethod));
     configInfo.insert(std::make_pair(str_keyConfigInfo, str_valueConfigInfo));
     env->ReleaseStringUTFChars(keyObjectMethod, c_keyConfigInfo);
     env->ReleaseStringUTFChars(valueObjectMethod, c_valueConfigInfo);
-    env->DeleteLocalRef(objectEntry); env->DeleteLocalRef(keyObjectMethod);
+    env->DeleteLocalRef(objectEntry);
+    env->DeleteLocalRef(keyObjectMethod);
     env->DeleteLocalRef(valueObjectMethod);
   }
-  env->DeleteLocalRef(classHashMap); env->DeleteLocalRef(objectMethodSet);
-  env->DeleteLocalRef(ClassSet); env->DeleteLocalRef(iteratorObject);
-  env->DeleteLocalRef(classIterator); env->DeleteLocalRef(classMapEntry);
+  env->DeleteLocalRef(classHashMap);
+  env->DeleteLocalRef(objectMethodSet);
+  env->DeleteLocalRef(ClassSet);
+  env->DeleteLocalRef(iteratorObject);
+  env->DeleteLocalRef(classIterator);
+  env->DeleteLocalRef(classMapEntry);
   return configInfo;
 }
 
