@@ -17,8 +17,17 @@
 #include "chunk_gated_delta_rule.h"  // NOLINT(build/include_subdir)
 
 using namespace AscendC;  // NOLINT(build/namespaces)
+// CGDR class is in the global namespace (see chunk_gated_delta_rule.h) — no
+// using-directive needed, and avoiding one keeps the CANN autogen from emitting
+// tiling symbols under a user namespace.
 
-namespace cgdr {
+// The kernel entry MUST stay at global scope. REGISTER_TILING_DEFAULT /
+// GET_TILING_DATA expand inside this function, and if a user namespace (e.g.
+// namespace cgdr) is open around it, the CANN autogen emits the tiling-data type
+// and tiling-key as <ns>::-qualified symbols ("cgdr::ChunkGatedDeltaRuleTilingData",
+// "cgdr::chunk_gated_delta_rule_0_tilingkey") that then fail to resolve —
+// "unknown type" / "undeclared identifier" — and abort the device-kernel compile.
+// (Reproduces on both CANN 8.5.0 and 9.1.0.) Keep the entry unwrapped.
 extern "C" __global__ __aicore__ void chunk_gated_delta_rule(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR g,
                                                              GM_ADDR beta, GM_ADDR initialState, GM_ADDR cuSeqlens,
                                                              GM_ADDR ssmStateIndices, GM_ADDR out, GM_ADDR finalState,
@@ -32,4 +41,3 @@ extern "C" __global__ __aicore__ void chunk_gated_delta_rule(GM_ADDR query, GM_A
   op.Init(initParams, &pipe);
   op.Process();
 }
-}  // namespace cgdr

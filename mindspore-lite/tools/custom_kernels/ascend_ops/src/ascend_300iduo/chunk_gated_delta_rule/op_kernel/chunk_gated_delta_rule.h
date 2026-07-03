@@ -22,7 +22,15 @@
 
 using namespace AscendC;  // NOLINT(build/namespaces)
 
-namespace cgdr {
+// NOTE: CGDR + helpers intentionally live in the GLOBAL namespace (not a user
+// namespace). On some CANN toolchains the op-kernel autogen expands the tiling
+// macros (REGISTER_TILING_DEFAULT / GET_TILING_DATA) and, when a user namespace
+// is open, emits the tiling-data type / tiling-key as <ns>::-qualified symbols
+// that then fail to resolve ("unknown type 'ChunkGatedDeltaRuleTilingData'",
+// "undeclared identifier '..._tilingkey'") and abort the device-kernel compile.
+// Keeping everything global matches the CANN sample-operator convention and
+// removes the namespace as an autogen variable. Each op is its own translation
+// unit, so global symbols here do not collide with other ops.
 constexpr uint64_t BUFFER_NUM = 1;
 constexpr uint64_t FP16_NUM_PER_BLOCK = 16;
 constexpr uint64_t FP32_NUM_PER_BLOCK = 8;
@@ -631,6 +639,5 @@ class ChunkGatedDeltaRule {
   float scale_;
   uint64_t blockIdx_;
 };
-}  // namespace cgdr
 
 #endif  // CHUNK_GATED_DELTA_RULE_KERNEL_H_
