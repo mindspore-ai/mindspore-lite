@@ -26,7 +26,7 @@ OUTPUT_NAME = "seg_logits"
 def parse_args():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Export ConvNeXt-UperNet to ONNX")
-    parser.add_argument("--weight", default="/convnext/weight/upernet_convnext_tiny_1k_512x512.pth",
+    parser.add_argument("--weight", default="upernet_convnext_tiny_1k_512x512.pth",
                         help="path to the .pth checkpoint")
     parser.add_argument("--output-dir", default="./outputs", help="ONNX output directory")
     parser.add_argument("--opset", type=int, default=OPSET, help="ONNX opset version")

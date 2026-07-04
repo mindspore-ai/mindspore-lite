@@ -39,7 +39,7 @@ git clone https://github.com/facebookresearch/ConvNeXt
 
 说明：
 
-- `weight/upernet_convnext_tiny_1k_512x512.pth`：mmseg 0.11.0 格式 checkpoint，包含 `backbone`（ConvNeXt-Tiny）与 `decode_head`（UperNet）权重；`auxiliary_head`（FCN，仅训练用）在推理时跳过。
+- `upernet_convnext_tiny_1k_512x512.pth`：mmseg 0.11.0 格式 checkpoint，包含 `backbone`（ConvNeXt-Tiny）与 `decode_head`（UperNet）权重；`auxiliary_head`（FCN，仅训练用）在推理时跳过。
 - 适配脚本 `convnext_model.py` 以纯 PyTorch 重新实现了 ConvNeXt backbone + UperNet decode head，不依赖 mmseg / mmcv / timm，可直接加载原始权重。
 
 ---
