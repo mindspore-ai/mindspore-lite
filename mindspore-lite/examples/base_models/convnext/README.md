@@ -49,10 +49,9 @@ git clone https://github.com/facebookresearch/ConvNeXt
 ### 导出命令
 
 ```bash
-cd agent/convnext
 
 python export_convnext_onnx.py \
-  --weight /convnext/weight/upernet_convnext_tiny_1k_512x512.pth \
+  --weight upernet_convnext_tiny_1k_512x512.pth \
   --output-dir ./outputs \
   --opset 17
 ```
