@@ -47,7 +47,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="ConvNeXt-UperNet ONNX inference")
     parser.add_argument("--onnx", default="./outputs/upernet_convnext_tiny.onnx",
                         help="path to the ONNX model")
-    parser.add_argument("--input", default="/tmp/opencode/test_ade20k.jpg",
+    parser.add_argument("--input", default="./test_ade20k.jpg",
                         help="path to the input image")
     parser.add_argument("--output", default="./outputs/seg_onnx.png",
                         help="path to save the colour segmentation mask")

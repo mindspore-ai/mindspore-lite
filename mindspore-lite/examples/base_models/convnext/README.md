@@ -34,12 +34,12 @@ pip install torch==2.3.1 onnx==1.22.0 onnxruntime==1.27.0 numpy==1.26.4 pillow==
 git clone https://github.com/facebookresearch/ConvNeXt
 
 # 模型权重（放置到 weight/ 目录）
-# upernet_convnext_tiny_1k_512x512.pth
+# weight/upernet_convnext_tiny_1k_512x512.pth
 ```
 
 说明：
 
-- `upernet_convnext_tiny_1k_512x512.pth`：mmseg 0.11.0 格式 checkpoint，包含 `backbone`（ConvNeXt-Tiny）与 `decode_head`（UperNet）权重；`auxiliary_head`（FCN，仅训练用）在推理时跳过。
+- `weight/upernet_convnext_tiny_1k_512x512.pth`：mmseg 0.11.0 格式 checkpoint，包含 `backbone`（ConvNeXt-Tiny）与 `decode_head`（UperNet）权重；`auxiliary_head`（FCN，仅训练用）在推理时跳过。
 - 适配脚本 `convnext_model.py` 以纯 PyTorch 重新实现了 ConvNeXt backbone + UperNet decode head，不依赖 mmseg / mmcv / timm，可直接加载原始权重。
 
 ---
@@ -51,7 +51,7 @@ git clone https://github.com/facebookresearch/ConvNeXt
 ```bash
 
 python export_convnext_onnx.py \
-  --weight upernet_convnext_tiny_1k_512x512.pth \
+  --weight weight/upernet_convnext_tiny_1k_512x512.pth \
   --output-dir ./outputs \
   --opset 17
 ```
@@ -60,7 +60,7 @@ python export_convnext_onnx.py \
 
 | 参数 | 说明 | 默认值 |
 | --- | --- | --- |
-| `--weight` | mmseg checkpoint (.pth) 路径 | `.../upernet_convnext_tiny_1k_512x512.pth` |
+| `--weight` | mmseg checkpoint (.pth) 路径 | `weight/upernet_convnext_tiny_1k_512x512.pth` |
 | `--output-dir` | ONNX 输出目录 | `./outputs` |
 | `--opset` | ONNX opset 版本 | `17` |
 
