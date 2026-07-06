@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,10 +26,6 @@
 using mindspore::schema::PrimitiveType_Resize;
 
 namespace mindspore::lite::micro::nnacl {
-namespace {
-constexpr unsigned int OFFSET_BASE = 10;
-constexpr float HALF_PIXEL_OFFSET = 0.5;
-}  // namespace
 
 ResizeInt8Coder::~ResizeInt8Coder() { FreeArgs(); }
 
@@ -90,37 +86,9 @@ int ResizeInt8Coder::ReSize() {
 
 int ResizeInt8Coder::InitResizeQuantArg() {
   auto out_shape = output_tensors_.front()->shape();
-  resize_quant_arg_.x_axis_index_ = reinterpret_cast<int32_t *>(malloc(out_shape.at(kNHWC_W) * sizeof(int32_t)));
-  if (resize_quant_arg_.x_axis_index_ == nullptr) {
-    MS_LOG(ERROR) << "malloc x axis index array failed.";
-    return RET_ERROR;
-  }
-  resize_quant_arg_.x_axis_lower_ = reinterpret_cast<int32_t *>(malloc(out_shape.at(kNHWC_W) * sizeof(int32_t)));
-  if (resize_quant_arg_.x_axis_lower_ == nullptr) {
-    MS_LOG(ERROR) << "malloc x_axis_lower_ array failed.";
-    return RET_ERROR;
-  }
-  resize_quant_arg_.x_axis_upper_ = reinterpret_cast<int32_t *>(malloc(out_shape.at(kNHWC_W) * sizeof(int32_t)));
-  if (resize_quant_arg_.x_axis_upper_ == nullptr) {
-    MS_LOG(ERROR) << "malloc x_axis_upper_ array failed.";
-    return RET_ERROR;
-  }
-  resize_quant_arg_.y_axis_index_ = reinterpret_cast<int32_t *>(malloc(out_shape.at(kNHWC_H) * sizeof(int32_t)));
-  if (resize_quant_arg_.y_axis_index_ == nullptr) {
-    MS_LOG(ERROR) << "malloc y_axis_index_ array failed.";
-    return RET_ERROR;
-  }
-  resize_quant_arg_.y_axis_lower_ = reinterpret_cast<int32_t *>(malloc(out_shape.at(kNHWC_H) * sizeof(int32_t)));
-  if (resize_quant_arg_.y_axis_lower_ == nullptr) {
-    MS_LOG(ERROR) << "malloc y_axis_lower_ array failed.";
-    return RET_ERROR;
-  }
-  resize_quant_arg_.y_axis_upper_ = reinterpret_cast<int32_t *>(malloc(out_shape.at(kNHWC_H) * sizeof(int32_t)));
-  if (resize_quant_arg_.y_axis_upper_ == nullptr) {
-    MS_LOG(ERROR) << "malloc y_axis_upper_ array failed.";
-    return RET_ERROR;
-  }
-  return RET_OK;
+  return InitResizeQuantArgCommon(resize_quant_arg_.x_axis_index_, resize_quant_arg_.x_axis_lower_,
+                                  resize_quant_arg_.x_axis_upper_, resize_quant_arg_.y_axis_index_,
+                                  resize_quant_arg_.y_axis_lower_, resize_quant_arg_.y_axis_upper_, out_shape.data());
 }
 
 int ResizeInt8Coder::CalRatio() {
@@ -134,69 +102,26 @@ int ResizeInt8Coder::CalRatio() {
   auto out_tensor = output_tensors_.front();
   auto out_width = out_tensor->Width();
   auto out_height = out_tensor->Height();
-  resize_quant_arg_.ratio_x_ = ((1 << OFFSET_BASE) * in_width + out_width / C2NUM) / out_width;
-  resize_quant_arg_.ratio_y_ = ((1 << OFFSET_BASE) * in_height + out_height / C2NUM) / out_height;
-  bool align_corners = coordinate_transform_mode_ == schema::CoordinateTransformMode_ALIGN_CORNERS;
-  if (align_corners && out_width > 1) {
-    resize_quant_arg_.ratio_x_ = ((1 << OFFSET_BASE) * (in_width - 1) + (out_width - 1) / C2NUM) / (out_width - 1);
-  }
-  if (align_corners && out_height > 1) {
-    resize_quant_arg_.ratio_y_ = ((1 << OFFSET_BASE) * (in_height - 1) + (out_height - 1) / C2NUM) / (out_height - 1);
-  }
-  return RET_OK;
+  return CalRatioCommon(resize_quant_arg_.ratio_x_, resize_quant_arg_.ratio_y_, in_width, in_height, out_width,
+                        out_height, static_cast<schema::CoordinateTransformMode>(coordinate_transform_mode_));
 }
 
 int ResizeInt8Coder::CalInterpolationRange() {
-  for (int i = 0; i < output_tensors_.front()->Height(); ++i) {
-    int32_t scaled_index = i * resize_quant_arg_.ratio_y_;
-    resize_quant_arg_.y_axis_index_[i] = scaled_index;
-    resize_quant_arg_.y_axis_lower_[i] = std::max(scaled_index / (1 << OFFSET_BASE), 0);
-    resize_quant_arg_.y_axis_upper_[i] =
-      std::min(scaled_index / (1 << OFFSET_BASE) + 1, input_tensors_.front()->Height() - 1);
-  }
-  for (int i = 0; i < output_tensors_.front()->Width(); ++i) {
-    int32_t scaled_index = i * resize_quant_arg_.ratio_x_;
-    resize_quant_arg_.x_axis_index_[i] = scaled_index;
-    resize_quant_arg_.x_axis_lower_[i] = std::max(scaled_index / (1 << OFFSET_BASE), 0);
-    resize_quant_arg_.x_axis_upper_[i] =
-      std::min(scaled_index / (1 << OFFSET_BASE) + 1, input_tensors_.front()->Width() - 1);
-  }
-  return RET_OK;
+  auto in_tensor = input_tensors_.front();
+  auto out_tensor = output_tensors_.front();
+  return CalInterpolationRangeCommon(resize_quant_arg_.x_axis_index_, resize_quant_arg_.x_axis_lower_,
+                                     resize_quant_arg_.x_axis_upper_, resize_quant_arg_.y_axis_index_,
+                                     resize_quant_arg_.y_axis_lower_, resize_quant_arg_.y_axis_upper_,
+                                     resize_quant_arg_.ratio_x_, resize_quant_arg_.ratio_y_, in_tensor->Height(),
+                                     in_tensor->Width(), out_tensor->Height(), out_tensor->Width());
 }
 
 int ResizeInt8Coder::InitResizeFloatQuantArg() {
   auto out_shape = output_tensors_.front()->shape();
-  resize_float_quant_arg_.x_axis_index_ = reinterpret_cast<float *>(malloc(out_shape[kNHWC_W] * sizeof(float)));
-  if (resize_float_quant_arg_.x_axis_index_ == nullptr) {
-    MS_LOG(ERROR) << "malloc x axis index array failed.";
-    return RET_ERROR;
-  }
-  resize_float_quant_arg_.x_axis_lower_ = reinterpret_cast<int32_t *>(malloc(out_shape[kNHWC_W] * sizeof(int32_t)));
-  if (resize_float_quant_arg_.x_axis_lower_ == nullptr) {
-    MS_LOG(ERROR) << "malloc x_axis_lower_ array failed.";
-    return RET_ERROR;
-  }
-  resize_float_quant_arg_.x_axis_upper_ = reinterpret_cast<int32_t *>(malloc(out_shape[kNHWC_W] * sizeof(int32_t)));
-  if (resize_float_quant_arg_.x_axis_upper_ == nullptr) {
-    MS_LOG(ERROR) << "malloc x_axis_upper_ array failed.";
-    return RET_ERROR;
-  }
-  resize_float_quant_arg_.y_axis_index_ = reinterpret_cast<float *>(malloc(out_shape[kNHWC_H] * sizeof(float)));
-  if (resize_float_quant_arg_.y_axis_index_ == nullptr) {
-    MS_LOG(ERROR) << "malloc y_axis_index_ array failed.";
-    return RET_ERROR;
-  }
-  resize_float_quant_arg_.y_axis_lower_ = reinterpret_cast<int32_t *>(malloc(out_shape[kNHWC_H] * sizeof(int32_t)));
-  if (resize_float_quant_arg_.y_axis_lower_ == nullptr) {
-    MS_LOG(ERROR) << "malloc y_axis_lower_ array failed.";
-    return RET_ERROR;
-  }
-  resize_float_quant_arg_.y_axis_upper_ = reinterpret_cast<int32_t *>(malloc(out_shape[kNHWC_H] * sizeof(int32_t)));
-  if (resize_float_quant_arg_.y_axis_upper_ == nullptr) {
-    MS_LOG(ERROR) << "malloc y_axis_upper_ array failed.";
-    return RET_ERROR;
-  }
-  return RET_OK;
+  return InitResizeFloatQuantArgCommon(resize_float_quant_arg_.x_axis_index_, resize_float_quant_arg_.x_axis_lower_,
+                                       resize_float_quant_arg_.x_axis_upper_, resize_float_quant_arg_.y_axis_index_,
+                                       resize_float_quant_arg_.y_axis_lower_, resize_float_quant_arg_.y_axis_upper_,
+                                       out_shape.data());
 }
 
 int ResizeInt8Coder::CalFloatRatio() {
@@ -210,53 +135,21 @@ int ResizeInt8Coder::CalFloatRatio() {
   auto out_tensor = output_tensors_.front();
   auto out_width = out_tensor->Width();
   auto out_height = out_tensor->Height();
-  resize_float_quant_arg_.ratio_x_ = static_cast<float>(in_width) / out_width;
-  resize_float_quant_arg_.ratio_y_ = static_cast<float>(in_height) / out_height;
-  bool align_corners = coordinate_transform_mode_ == schema::CoordinateTransformMode_ALIGN_CORNERS;
-  if (align_corners && out_width > 1) {
-    resize_float_quant_arg_.ratio_x_ = static_cast<float>(in_width - 1) / (out_width - 1);
-  }
-  if (align_corners && out_height > 1) {
-    resize_float_quant_arg_.ratio_y_ = static_cast<float>(in_height - 1) / (out_height - 1);
-  }
-  return RET_OK;
+  return CalFloatRatioCommon(resize_float_quant_arg_.ratio_x_, resize_float_quant_arg_.ratio_y_, in_width, in_height,
+                             out_width, out_height,
+                             static_cast<schema::CoordinateTransformMode>(coordinate_transform_mode_));
 }
 
 int ResizeInt8Coder::CalFloatInterpolationRange() {
   MS_CHECK_TRUE_MSG(!output_tensors_.empty(), RET_ERROR, "Out tensors cannot be empty.");
-  for (int i = 0; i < output_tensors_.front()->Height(); ++i) {
-    float scaled_index = 0;
-    if (coordinate_transform_mode_ == schema::CoordinateTransformMode_ASYMMETRIC ||
-        coordinate_transform_mode_ == schema::CoordinateTransformMode_ALIGN_CORNERS) {
-      scaled_index = i * resize_float_quant_arg_.ratio_y_;
-    } else if (coordinate_transform_mode_ == schema::CoordinateTransformMode_HALF_PIXEL) {
-      scaled_index = (i + HALF_PIXEL_OFFSET) * resize_float_quant_arg_.ratio_y_ - HALF_PIXEL_OFFSET;
-    } else {
-      MS_LOG(ERROR) << "coordinate_transform_mode_ is invalid." << coordinate_transform_mode_;
-      return RET_ERROR;
-    }
-    int lower_index = static_cast<int>(std::floor(scaled_index));
-    resize_float_quant_arg_.y_axis_index_[i] = scaled_index;
-    resize_float_quant_arg_.y_axis_lower_[i] = std::max(lower_index, 0);
-    resize_float_quant_arg_.y_axis_upper_[i] = std::min(lower_index + 1, input_tensors_.front()->Height() - 1);
-  }
-  for (int i = 0; i < output_tensors_.front()->Width(); ++i) {
-    float scaled_index = 0;
-    if (coordinate_transform_mode_ == schema::CoordinateTransformMode_ASYMMETRIC ||
-        coordinate_transform_mode_ == schema::CoordinateTransformMode_ALIGN_CORNERS) {
-      scaled_index = i * resize_float_quant_arg_.ratio_x_;
-    } else if (coordinate_transform_mode_ == schema::CoordinateTransformMode_HALF_PIXEL) {
-      scaled_index = (i + HALF_PIXEL_OFFSET) * resize_float_quant_arg_.ratio_x_ - HALF_PIXEL_OFFSET;
-    } else {
-      MS_LOG(ERROR) << "coordinate_transform_mode_ is invalid." << coordinate_transform_mode_;
-      return RET_ERROR;
-    }
-    int lower_index = static_cast<int>(std::floor(scaled_index));
-    resize_float_quant_arg_.x_axis_index_[i] = scaled_index;
-    resize_float_quant_arg_.x_axis_lower_[i] = std::max(lower_index, 0);
-    resize_float_quant_arg_.x_axis_upper_[i] = std::min(lower_index + 1, input_tensors_.front()->Width() - 1);
-  }
-  return RET_OK;
+  auto in_tensor = input_tensors_.front();
+  auto out_tensor = output_tensors_.front();
+  return CalFloatInterpolationRangeCommon(
+    resize_float_quant_arg_.x_axis_index_, resize_float_quant_arg_.x_axis_lower_, resize_float_quant_arg_.x_axis_upper_,
+    resize_float_quant_arg_.y_axis_index_, resize_float_quant_arg_.y_axis_lower_, resize_float_quant_arg_.y_axis_upper_,
+    resize_float_quant_arg_.ratio_x_, resize_float_quant_arg_.ratio_y_, in_tensor->Height(), in_tensor->Width(),
+    out_tensor->Height(), out_tensor->Width(),
+    static_cast<schema::CoordinateTransformMode>(coordinate_transform_mode_));
 }
 
 int ResizeInt8Coder::InitResizeBiLinear() {

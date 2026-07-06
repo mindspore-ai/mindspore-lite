@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 
 #include "src/litert/kernel/cpu/fp16/lstm_mindir_fp16.h"
+#include "src/litert/kernel/cpu/lstm_mindir_utils.h"
 #include "nnacl_c/fp16/lstm_fp16.h"
 
 namespace mindspore::kernel {
@@ -42,39 +43,12 @@ int LstmMindirFp16CPUKernel::ReSize() {
     return lite::RET_ERROR;
   }
   // determine FB origin
-  gpu_orig_state_ = false;
   auto weight_t = in_tensors_.at(kWeightsIndex);
-  MS_CHECK_INT_MUL_NOT_OVERFLOW(lstm_param_->hidden_size_, lstm_param_->input_size_, lite::RET_ERROR);
-  int hi_unit_size = lstm_param_->hidden_size_ * lstm_param_->input_size_;
-  MS_CHECK_INT_MUL_NOT_OVERFLOW(weight_segment_num_, hi_unit_size, lite::RET_ERROR);
-  int hi_whole_size = weight_segment_num_ * hi_unit_size;
-  MS_CHECK_INT_MUL_NOT_OVERFLOW(lstm_param_->hidden_size_, lstm_param_->output_size_, lite::RET_ERROR);
-  int hh_unit_size = lstm_param_->hidden_size_ * lstm_param_->output_size_;
-  MS_CHECK_INT_MUL_NOT_OVERFLOW(weight_segment_num_, hh_unit_size, lite::RET_ERROR);
-  int hh_whole_size = weight_segment_num_ * hh_unit_size;
-  int scale = lstm_param_->bidirectional_ ? C2NUM : C1NUM;
-  MS_CHECK_INT_MUL_NOT_OVERFLOW(lstm_param_->hidden_size_, lstm_param_->project_size_, lite::RET_ERROR);
-  int hp_unit_size = lstm_param_->hidden_size_ * lstm_param_->project_size_;
-  MS_CHECK_INT_MUL_NOT_OVERFLOW(scale, hp_unit_size, lite::RET_ERROR);
-  int hp_whole_size = scale * hp_unit_size;
-  MS_CHECK_INT_MUL_NOT_OVERFLOW(weight_segment_num_ * C2NUM, lstm_param_->hidden_size_, lite::RET_ERROR);
-  int bias_whole_size = weight_segment_num_ * C2NUM * lstm_param_->hidden_size_;
-  auto whole_size = weight_t->ElementsNum();
-  bool has_bias = (hi_whole_size + hh_whole_size + hp_whole_size < whole_size) ? true : false;
-  // if bias exist we can determine the gpu_orig_state_
-  if (has_bias) {
-    gpu_orig_state_ = (hi_whole_size + hh_whole_size + hp_whole_size + bias_whole_size == whole_size) ? true : false;
-  } else {
-    bias_whole_size = 0;
-  }
-  if (gpu_orig_state_) {
-    return lite::RET_OK;
-  }
-  bias_whole_size /= C2NUM;
-  if (hi_whole_size + hh_whole_size + hp_whole_size + bias_whole_size != whole_size) {
-    MS_LOG(ERROR) << "LstmMindir is invalid when original model exports from CPU.";
+  auto check_result = CheckGpuOriginAndValidateWeights(weight_t, lstm_param_, weight_segment_num_);
+  if (!check_result.is_valid) {
     return lite::RET_INPUT_TENSOR_ERROR;
   }
+  gpu_orig_state_ = check_result.gpu_orig_state;
   if (running_pack_) {
     return lite::RET_OK;
   }

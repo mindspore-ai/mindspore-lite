@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2022 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,92 @@ constexpr int kInputIndexOne = 1;
 constexpr int kInputIndexTwo = 2;
 constexpr int kInputIndexThree = 3;
 constexpr int kInputSizeTwo = 2;
+
+// Train populate helpers (single-file usage, merged from train_populate_parameter_utils.h).
+ConvParameter *PopulateConvGradParameterCommon(const void *prim, size_t param_size, const char *param_name) {
+  auto *param = reinterpret_cast<ConvParameter *>(malloc(sizeof(ConvParameter)));
+  if (param == nullptr) {
+    MS_LOG(ERROR) << "malloc Param for " << param_name << " failed.";
+    return nullptr;
+  }
+  auto ret = memset_s(param, sizeof(ConvParameter), 0, sizeof(ConvParameter));
+  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
+  auto primitive = static_cast<const schema::Primitive *>(prim);
+  MS_ASSERT(primitive != nullptr);
+  param->op_parameter_.type_ = primitive->value_type();
+  return param;
+}
+
+template <typename T>
+void SetConvFusionAttrs(ConvParameter *param, const T *value, int input_index_one, int input_index_two,
+                        int input_index_three) {
+  param->kernel_h_ = value->kernel_size()->Get(0);
+  param->kernel_w_ = value->kernel_size()->Get(1);
+  param->stride_h_ = value->stride()->Get((value->stride()->size()) - input_index_two);
+  param->stride_w_ = value->stride()->Get((value->stride()->size()) - input_index_one);
+  param->dilation_h_ = value->dilation()->Get(0);
+  param->dilation_w_ = value->dilation()->Get(1);
+  param->pad_u_ = value->pad_list()->Get(0);
+  param->pad_d_ = value->pad_list()->Get(1);
+  param->pad_l_ = value->pad_list()->Get(input_index_two);
+  param->pad_r_ = value->pad_list()->Get(input_index_three);
+  param->group_ = value->group();
+  param->act_type_ = ActType_No;
+
+  // Set activation type
+  switch (value->activation_type()) {
+    case schema::ActivationType_RELU:
+      param->act_type_ = ActType_Relu;
+      break;
+    case schema::ActivationType_RELU6:
+      param->act_type_ = ActType_Relu6;
+      break;
+    default:
+      break;
+  }
+
+  // Set pad mode
+  switch (value->pad_mode()) {
+    case schema::PadMode_SAME:
+      param->pad_mode_ = Pad_same;
+      break;
+    case schema::PadMode_VALID:
+      param->pad_mode_ = Pad_valid;
+      break;
+    default:
+      param->pad_mode_ = Pad_pad;
+      break;
+  }
+}
+
+template <typename T>
+LstmGradParameter *PopulateLstmGradParameterCommon(const void *prim, const T *value) {
+  auto primitive = static_cast<const schema::Primitive *>(prim);
+  MS_ASSERT(primitive != nullptr);
+
+  if (value == nullptr) {
+    MS_LOG(ERROR) << "value is nullptr.";
+    return nullptr;
+  }
+
+  auto *param = reinterpret_cast<LstmGradParameter *>(malloc(sizeof(LstmGradParameter)));
+  if (param == nullptr) {
+    MS_LOG(ERROR) << "malloc LstmGradParameter failed.";
+    return nullptr;
+  }
+  auto ret = memset_s(param, sizeof(LstmGradParameter), 0, sizeof(LstmGradParameter));
+  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
+
+  param->op_parameter_.type_ = primitive->value_type();
+  param->bidirectional_ = value->bidirectional();
+  param->zoneout_cell_ = value->zoneout_cell();
+  param->zoneout_hidden_ = value->zoneout_hidden();
+  param->input_size_ = value->input_size();
+  param->has_bias_ = static_cast<int>(value->has_bias());
+  param->hidden_size_ = value->hidden_size();
+
+  return param;
+}
 }  // namespace
 OpParameter *PopulateSmoothL1LossParameter(const void *prim) {
   SmoothL1LossParameter *p = reinterpret_cast<SmoothL1LossParameter *>(malloc(sizeof(SmoothL1LossParameter)));
@@ -305,102 +391,26 @@ OpParameter *PopulateActivationGradParameter(const void *prim) {
 }
 
 OpParameter *PopulateConvolutionGradFilterParameter(const void *prim) {
-  ConvParameter *param = reinterpret_cast<ConvParameter *>(malloc(sizeof(ConvParameter)));
+  auto *param = PopulateConvGradParameterCommon(prim, sizeof(ConvParameter), "conv grad filter");
   if (param == nullptr) {
-    MS_LOG(ERROR) << "malloc Param for conv grad filter failed.";
     return nullptr;
   }
-  auto ret = memset_s(param, sizeof(ConvParameter), 0, sizeof(ConvParameter));
-  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
   auto primitive = static_cast<const schema::Primitive *>(prim);
   auto value = primitive->value_as_Conv2DBackpropFilterFusion();
   MS_ASSERT(value != nullptr);
-  param->op_parameter_.type_ = primitive->value_type();
-
-  param->kernel_h_ = value->kernel_size()->Get(0);
-  param->kernel_w_ = value->kernel_size()->Get(1);
-  param->stride_h_ = value->stride()->Get((value->stride()->size()) - kInputIndexTwo);
-  param->stride_w_ = value->stride()->Get((value->stride()->size()) - kInputIndexOne);
-  param->dilation_h_ = value->dilation()->Get(0);
-  param->dilation_w_ = value->dilation()->Get(1);
-  param->pad_u_ = value->pad_list()->Get(0);
-  param->pad_d_ = value->pad_list()->Get(1);
-  param->pad_l_ = value->pad_list()->Get(kInputIndexTwo);
-  param->pad_r_ = value->pad_list()->Get(kInputIndexThree);
-  param->group_ = value->group();
-  param->act_type_ = ActType_No;
-  switch (value->activation_type()) {
-    case schema::ActivationType_RELU:
-      param->act_type_ = ActType_Relu;
-      break;
-    case schema::ActivationType_RELU6:
-      param->act_type_ = ActType_Relu6;
-      break;
-    default:
-      break;
-  }
-  switch (value->pad_mode()) {
-    case schema::PadMode_SAME:
-      param->pad_mode_ = Pad_same;
-      break;
-    case schema::PadMode_VALID:
-      param->pad_mode_ = Pad_valid;
-      break;
-    default:
-      param->pad_mode_ = Pad_pad;
-      break;
-  }
-
+  SetConvFusionAttrs(param, value, kInputIndexOne, kInputIndexTwo, kInputIndexThree);
   return reinterpret_cast<OpParameter *>(param);
 }
 
 OpParameter *PopulateConvolutionGradInputParameter(const void *prim) {
-  ConvParameter *param = reinterpret_cast<ConvParameter *>(malloc(sizeof(ConvParameter)));
+  auto *param = PopulateConvGradParameterCommon(prim, sizeof(ConvParameter), "conv grad input");
   if (param == nullptr) {
-    MS_LOG(ERROR) << "malloc Param for conv grad filter failed.";
     return nullptr;
   }
-  auto ret = memset_s(param, sizeof(ConvParameter), 0, sizeof(ConvParameter));
-  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
   auto primitive = static_cast<const schema::Primitive *>(prim);
   auto value = primitive->value_as_Conv2DBackpropInputFusion();
   MS_ASSERT(value != nullptr);
-  param->op_parameter_.type_ = primitive->value_type();
-
-  param->kernel_h_ = value->kernel_size()->Get(0);
-  param->kernel_w_ = value->kernel_size()->Get(1);
-  param->stride_h_ = value->stride()->Get((value->stride()->size()) - kInputIndexTwo);
-  param->stride_w_ = value->stride()->Get((value->stride()->size()) - kInputIndexOne);
-  param->dilation_h_ = value->dilation()->Get(0);
-  param->dilation_w_ = value->dilation()->Get(1);
-  param->pad_u_ = value->pad_list()->Get(0);
-  param->pad_d_ = value->pad_list()->Get(1);
-  param->pad_l_ = value->pad_list()->Get(kInputIndexTwo);
-  param->pad_r_ = value->pad_list()->Get(kInputIndexThree);
-  param->group_ = value->group();
-  param->act_type_ = ActType_No;
-  switch (value->activation_type()) {
-    case schema::ActivationType_RELU:
-      param->act_type_ = ActType_Relu;
-      break;
-    case schema::ActivationType_RELU6:
-      param->act_type_ = ActType_Relu6;
-      break;
-    default:
-      break;
-  }
-  switch (value->pad_mode()) {
-    case schema::PadMode_SAME:
-      param->pad_mode_ = Pad_same;
-      break;
-    case schema::PadMode_VALID:
-      param->pad_mode_ = Pad_valid;
-      break;
-    default:
-      param->pad_mode_ = Pad_pad;
-      break;
-  }
-
+  SetConvFusionAttrs(param, value, kInputIndexOne, kInputIndexTwo, kInputIndexThree);
   return reinterpret_cast<OpParameter *>(param);
 }
 
@@ -552,27 +562,7 @@ OpParameter *PopulateLstmGradParameter(const void *prim) {
   auto primitive = static_cast<const schema::Primitive *>(prim);
   MS_ASSERT(primitive != nullptr);
   auto value = primitive->value_as_LSTMGrad();
-  if (value == nullptr) {
-    MS_LOG(ERROR) << "value is nullptr.";
-    return nullptr;
-  }
-
-  auto *param = reinterpret_cast<LstmGradParameter *>(malloc(sizeof(LstmGradParameter)));
-  if (param == nullptr) {
-    MS_LOG(ERROR) << "malloc LstmGradParameter failed.";
-    return nullptr;
-  }
-  auto ret = memset_s(param, sizeof(LstmGradParameter), 0, sizeof(LstmGradParameter));
-  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
-
-  param->op_parameter_.type_ = primitive->value_type();
-  param->bidirectional_ = value->bidirectional();
-  param->zoneout_cell_ = value->zoneout_cell();
-  param->zoneout_hidden_ = value->zoneout_hidden();
-  param->input_size_ = value->input_size();
-  param->has_bias_ = static_cast<int>(value->has_bias());
-  param->hidden_size_ = value->hidden_size();
-
+  auto *param = PopulateLstmGradParameterCommon(prim, value);
   return reinterpret_cast<OpParameter *>(param);
 }
 
@@ -580,26 +570,7 @@ OpParameter *PopulateLstmGradDataParameter(const void *prim) {
   auto primitive = static_cast<const schema::Primitive *>(prim);
   MS_ASSERT(primitive != nullptr);
   auto value = primitive->value_as_LSTMGradData();
-  if (value == nullptr) {
-    MS_LOG(ERROR) << "value is nullptr.";
-    return nullptr;
-  }
-
-  auto *param = reinterpret_cast<LstmGradParameter *>(malloc(sizeof(LstmGradParameter)));
-  if (param == nullptr) {
-    MS_LOG(ERROR) << "malloc LstmGradParameter failed.";
-    return nullptr;
-  }
-  auto ret = memset_s(param, sizeof(LstmGradParameter), 0, sizeof(LstmGradParameter));
-  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
-
-  param->op_parameter_.type_ = primitive->value_type();
-  param->bidirectional_ = value->bidirectional();
-  param->zoneout_cell_ = value->zoneout_cell();
-  param->zoneout_hidden_ = value->zoneout_hidden();
-  param->input_size_ = value->input_size();
-  param->has_bias_ = static_cast<int>(value->has_bias());
-  param->hidden_size_ = value->hidden_size();
+  auto *param = PopulateLstmGradParameterCommon(prim, value);
   return reinterpret_cast<OpParameter *>(param);
 }
 
@@ -607,26 +578,7 @@ OpParameter *PopulateLstmGradWeightParameter(const void *prim) {
   auto primitive = static_cast<const schema::Primitive *>(prim);
   MS_ASSERT(primitive != nullptr);
   auto value = primitive->value_as_LSTMGradWeight();
-  if (value == nullptr) {
-    MS_LOG(ERROR) << "value is nullptr.";
-    return nullptr;
-  }
-
-  auto *param = reinterpret_cast<LstmGradParameter *>(malloc(sizeof(LstmGradParameter)));
-  if (param == nullptr) {
-    MS_LOG(ERROR) << "malloc LstmGradParameter failed.";
-    return nullptr;
-  }
-  auto ret = memset_s(param, sizeof(LstmGradParameter), 0, sizeof(LstmGradParameter));
-  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
-
-  param->op_parameter_.type_ = primitive->value_type();
-  param->input_size_ = value->input_size();
-  param->hidden_size_ = value->hidden_size();
-  param->bidirectional_ = value->bidirectional();
-  param->zoneout_cell_ = value->zoneout_cell();
-  param->zoneout_hidden_ = value->zoneout_hidden();
-  param->has_bias_ = static_cast<int>(value->has_bias());
+  auto *param = PopulateLstmGradParameterCommon(prim, value);
   return reinterpret_cast<OpParameter *>(param);
 }
 
