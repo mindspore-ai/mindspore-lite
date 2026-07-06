@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,8 +62,9 @@ class FixedBitWeightQuantization {
       return RET_ERROR;
     }
     std::vector<T> quant_data(elem_count);
-    auto status = FixedBitStatisticsFilter<T>(weight, quant_type, quant_max, quant_min, bit_num, weight_quant_type,
-                                              preferred_dim, &quant_data, symmetric, narrow_range, bias_correction);
+    bool cal_gain = (quant_type == QUANT_WEIGHT) && bias_correction;
+    auto status = DoStatisticsQuantAndSetParams<T>(weight, nullptr, quant_max, quant_min, bit_num, weight_quant_type,
+                                                   preferred_dim, &quant_data, symmetric, narrow_range, cal_gain, 0);
     if (status == RET_NO_CHANGE) {
       return status;
     } else if (status != RET_OK) {
@@ -88,46 +89,9 @@ class FixedBitWeightQuantization {
                                std::vector<T> *quant_data, bool symmetric = false, bool narrow_range = false,
                                bool bias_correction = true) {
     MS_ASSERT(weight != nullptr);
-    auto dims = weight->shape();
-    if (weight_quant_type == FIXED_BIT_PER_CHANNEL) {
-      if (dims.size() <= 1) {
-        MS_LOG(WARNING) << "dims is " << dims.size() << " can not per_channel";
-        weight_quant_type = FIXED_BIT_PER_LAYER;
-      }
-    }
-    if (weight->data_type_c() != kNumberTypeFloat32) {
-      MS_LOG(ERROR) << "data type is not Float32.";
-      return RET_ERROR;
-    }
-
-    std::vector<schema::QuantParamT> quant_params;
-    int ret = RET_OK;
-    bool cal_gain = (quant_type == QUANT_WEIGHT) && bias_correction ? true : false;
-    if (weight_quant_type == FIXED_BIT_PER_CHANNEL) {
-      ret = DoPerChannelQuant<T>(static_cast<float *>(weight->data_c()), weight->DataSize(), &quant_params, quant_max,
-                                 quant_min, bit_num, quant_data, ConvertShapeVectorToInt32(dims), preferred_dim,
-                                 cal_gain, symmetric, narrow_range);
-      if (ret == RET_NO_CHANGE) {
-        return ret;
-      } else if (ret != RET_OK) {
-        MS_LOG(ERROR) << "Do per channel quant failed.";
-        return ret;
-      }
-    } else if (weight_quant_type == FIXED_BIT_PER_LAYER) {
-      ret = DoPerLayerQuant<T>(static_cast<float *>(weight->data_c()), weight->DataSize(), &quant_params, quant_max,
-                               quant_min, bit_num, quant_data, symmetric, narrow_range, cal_gain);
-      if (ret != RET_OK) {
-        MS_LOG(ERROR) << "Do per layer quant failed.";
-        return ret;
-      }
-    } else {
-      MS_LOG(ERROR) << "Unsupported weight quant type:" << weight_quant_type;
-      return RET_ERROR;
-    }
-    auto quantization_ptr = quant::ConvertQuantParamTToQuantizationParam(quant_params);
-    CHECK_NULL_RETURN(quantization_ptr);
-    weight->set_quant_param(std::vector<std::shared_ptr<mindspore::QuantizationParam>>{quantization_ptr});
-    return ret;
+    bool cal_gain = (quant_type == QUANT_WEIGHT) && bias_correction;
+    return DoStatisticsQuantAndSetParams<T>(weight, nullptr, quant_max, quant_min, bit_num, weight_quant_type,
+                                            preferred_dim, quant_data, symmetric, narrow_range, cal_gain, 0);
   }
 };
 }  // namespace mindspore::lite::quant

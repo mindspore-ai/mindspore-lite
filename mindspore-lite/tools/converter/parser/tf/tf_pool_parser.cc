@@ -18,6 +18,7 @@
 #include <memory>
 #include <map>
 #include <vector>
+#include "include/errorcode.h"
 #include "tools/converter/parser/tf/tf_node_parser_registry.h"
 #include "tools/converter/parser/tf/tf_util.h"
 #include "src/common/ops/primitive/avg_pool_fusion.h"
@@ -25,16 +26,16 @@
 
 namespace mindspore {
 namespace lite {
+namespace {
 constexpr int kTfPoolStrideListSize = 4;
 constexpr int kTfPoolKernelListSize = 4;
-PrimitiveCPtr TFMaxPoolParser::Parse(const tensorflow::NodeDef &tf_op,
-                                     const std::map<string, const tensorflow::NodeDef *> &tf_node_map,
-                                     std::vector<std::string> *inputs, int *output_size) {
-  auto prim = std::make_unique<ops::MaxPoolFusion>();
-  MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
-  auto prim_c = prim->GetPrim();
-  MS_CHECK_TRUE_RET(prim_c != nullptr, nullptr);
+
+template <typename T>
+STATUS ParseTfPoolCommonAttrs(const tensorflow::NodeDef &tf_op, T *prim) {
+  MS_ASSERT(prim != nullptr);
   tensorflow::AttrValue attr_value;
+
+  // Parse padding attribute
   if (TensorFlowUtils::FindAttrValue(tf_op, "padding", &attr_value)) {
     if (attr_value.s() == "VALID") {
       prim->set_pad_mode(mindspore::PadMode::VALID);
@@ -43,12 +44,15 @@ PrimitiveCPtr TFMaxPoolParser::Parse(const tensorflow::NodeDef &tf_op,
     }
   }
 
+  // Parse format and set as attribute
   auto format = TensorFlowUtils::ParseNodeFormat(tf_op);
+  auto prim_c = prim->GetPrim();
   (void)prim_c->AddAttr(mindspore::ops::kOriginalFormat, MakeValue<int64_t>(format));
 
+  // Parse strides attribute
   if (TensorFlowUtils::FindAttrValue(tf_op, "strides", &attr_value)) {
     const auto &stride_list = attr_value.list();
-    MS_CHECK_TRUE_RET(stride_list.i_size() >= kTfPoolStrideListSize, nullptr);
+    MS_CHECK_TRUE_RET(stride_list.i_size() >= kTfPoolStrideListSize, lite::RET_ERROR);
     if (format == mindspore::Format::NCHW) {
       prim->set_strides({stride_list.i(2), stride_list.i(3)});
     } else {
@@ -56,15 +60,26 @@ PrimitiveCPtr TFMaxPoolParser::Parse(const tensorflow::NodeDef &tf_op,
     }
   }
 
+  // Parse kernel size attribute
   if (TensorFlowUtils::FindAttrValue(tf_op, "ksize", &attr_value)) {
     const auto &kernel_list = attr_value.list();
-    MS_CHECK_TRUE_RET(kernel_list.i_size() >= kTfPoolKernelListSize, nullptr);
+    MS_CHECK_TRUE_RET(kernel_list.i_size() >= kTfPoolKernelListSize, lite::RET_ERROR);
     if (format == mindspore::Format::NCHW) {
       prim->set_kernel_size({kernel_list.i(2), kernel_list.i(3)});
     } else {
       prim->set_kernel_size({kernel_list.i(1), kernel_list.i(2)});
     }
   }
+
+  return lite::RET_OK;
+}
+}  // namespace
+PrimitiveCPtr TFMaxPoolParser::Parse(const tensorflow::NodeDef &tf_op,
+                                     const std::map<string, const tensorflow::NodeDef *> &tf_node_map,
+                                     std::vector<std::string> *inputs, int *output_size) {
+  auto prim = std::make_unique<ops::MaxPoolFusion>();
+  MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
+  MS_CHECK_TRUE_RET(ParseTfPoolCommonAttrs(tf_op, prim.get()) == lite::RET_OK, nullptr);
 
   *output_size = 1;
   for (int i = 0; i < tf_op.input_size(); i++) {
@@ -79,39 +94,7 @@ PrimitiveCPtr TFAvgPoolParser::Parse(const tensorflow::NodeDef &tf_op,
                                      std::vector<std::string> *inputs, int *output_size) {
   auto prim = std::make_unique<ops::AvgPoolFusion>();
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
-  auto prim_c = prim->GetPrim();
-  MS_CHECK_TRUE_RET(prim_c != nullptr, nullptr);
-  tensorflow::AttrValue attr_value;
-  if (TensorFlowUtils::FindAttrValue(tf_op, "padding", &attr_value)) {
-    if (attr_value.s() == "VALID") {
-      prim->set_pad_mode(mindspore::PadMode::VALID);
-    } else if (attr_value.s() == "SAME") {
-      prim->set_pad_mode(mindspore::PadMode::SAME);
-    }
-  }
-
-  auto format = TensorFlowUtils::ParseNodeFormat(tf_op);
-  (void)prim_c->AddAttr(mindspore::ops::kOriginalFormat, MakeValue<int64_t>(format));
-
-  if (TensorFlowUtils::FindAttrValue(tf_op, "strides", &attr_value)) {
-    const auto &stride_list = attr_value.list();
-    MS_CHECK_TRUE_RET(stride_list.i_size() >= kTfPoolStrideListSize, nullptr);
-    if (format == mindspore::Format::NCHW) {
-      prim->set_strides({stride_list.i(2), stride_list.i(3)});
-    } else {
-      prim->set_strides({stride_list.i(1), stride_list.i(2)});
-    }
-  }
-
-  if (TensorFlowUtils::FindAttrValue(tf_op, "ksize", &attr_value)) {
-    const auto &kernel_list = attr_value.list();
-    MS_CHECK_TRUE_RET(kernel_list.i_size() >= kTfPoolKernelListSize, nullptr);
-    if (format == mindspore::Format::NCHW) {
-      prim->set_kernel_size({kernel_list.i(2), kernel_list.i(3)});
-    } else {
-      prim->set_kernel_size({kernel_list.i(1), kernel_list.i(2)});
-    }
-  }
+  MS_CHECK_TRUE_RET(ParseTfPoolCommonAttrs(tf_op, prim.get()) == lite::RET_OK, nullptr);
 
   *output_size = 1;
   for (int i = 0; i < tf_op.input_size(); i++) {
