@@ -22,6 +22,7 @@
 #include "include/errorcode.h"
 #include "src/common/file_utils.h"
 #include "src/common/log_util.h"
+#include "include/securec.h"
 
 using mindspore::lite::KernelRegistrar;
 using mindspore::lite::RET_ERROR;
@@ -42,7 +43,12 @@ int UpdateAddInputShape(const lite::Tensor *tensor, int *shape, const char *tens
   }
   for (size_t i = 0; i < tensor_shape.size(); i++) {
     if (shape[i] == -1) {
-      memcpy(shape, tensor_shape.data(), tensor_shape.size() * sizeof(int));
+      auto cp_ret =
+        memcpy_s(shape, kMaxShapeSize * sizeof(int), tensor_shape.data(), tensor_shape.size() * sizeof(int));
+      if (cp_ret != EOK) {
+        MS_LOG(ERROR) << tensor_name << " memcpy shape failed, ret=" << cp_ret;
+        return RET_ERROR;
+      }
       break;
     }
   }
@@ -66,7 +72,7 @@ int UpdateAddBroadcastInfo(ArithmeticParameter *param, int *in_size, int *out_si
   size_t break_pos = 0;
   for (int i = static_cast<int>(param->ndim_) - 1; i >= 0; --i) {
     if (param->in_shape0_[i] != param->in_shape1_[i]) {
-      break_pos = i;
+      break_pos = static_cast<size_t>(i);
       break;
     }
   }
@@ -162,8 +168,6 @@ int QuantizedAddCPUKernel::ReSize() {
   MS_CHECK_GT(input0->ElementsNum(), 0, RET_ERROR);
   MS_CHECK_GT(input1->ElementsNum(), 0, RET_ERROR);
   support_opt_add_ = (input0->ElementsNum() == 1) || (input1->ElementsNum() == 1);
-
-  // Set broadcasting flag based on shape comparison
   if (!support_opt_add_) {
     auto input0_shape = input0->shape();
     auto input1_shape = input1->shape();

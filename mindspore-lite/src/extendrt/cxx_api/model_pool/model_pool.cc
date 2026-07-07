@@ -582,7 +582,7 @@ Status ModelPool::CreateSingleWorkerConfig(size_t worker_index, const std::share
     worker_config->config_path = runner_config->GetConfigPath();
   }
   worker_config->context = context;
-  worker_config->worker_id = worker_index;
+  worker_config->worker_id = static_cast<int>(worker_index);
   auto status = SetWorkerModelConfig(&worker_config);
   if (status != kSuccess) {
     return status;

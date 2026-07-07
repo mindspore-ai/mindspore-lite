@@ -26,11 +26,16 @@
 #include "include/securec.h"
 
 #if defined(__linux__) && !defined(Debug)
+namespace {
+// POSIX convention: processes terminated by a signal report exit status 128 + signal number.
+constexpr int kSignalExitBase = 128;
+}  // namespace
+
 void SignalHandler(int sig) {
   const char msg[] = "encounter an unknown error, please verify the input model file or build the debug version\n";
   ssize_t ret = write(STDERR_FILENO, msg, sizeof(msg) - 1);
   (void)ret;
-  _exit(128 + sig);
+  _exit(kSignalExitBase + sig);
 }
 #endif
 

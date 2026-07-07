@@ -15,6 +15,7 @@
 """
 lite_boost test rain_fusion_attention
 """
+# pylint: disable=attribute-defined-outside-init
 
 import math
 import logging

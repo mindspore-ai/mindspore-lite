@@ -119,12 +119,12 @@ def get_mask_index(mask):
 # ---------------------------------------------------------------------------
 # get_blockwise_mask — generate block-sparse mask from pooled QKV
 # ---------------------------------------------------------------------------
-def get_blockwise_mask(
+def get_blockwise_mask(  # pylint: disable=unused-argument
     qkv_pool,
     txt_len, sparsity, scale, pool_size,
     latent_shape_q, latent_shape_k=None,
     input_layout=None, return_binary=False,
-    protect_first_frame=True):
+    protect_first_frame=True):  # pylint: disable=too-many-locals
     """Generate block-sparse attention mask via top-k thresholding on softmax scores.
 
     Args:
@@ -187,7 +187,7 @@ def get_blockwise_mask(
 # ---------------------------------------------------------------------------
 # rearrange_with_remaining — spatial token reordering (native torch, no einops)
 # ---------------------------------------------------------------------------
-def rearrange_with_remaining(tensor, latent_shape_q, latent_shape_k=None, input_layout=None):
+def rearrange_with_remaining(tensor, latent_shape_q, latent_shape_k=None, input_layout=None):  # pylint: disable=unused-argument
     """Rearrange tokens from (frame, h, w) order to block-interleaved (hn, wn, hb, wb).
 
     Transforms:
@@ -309,7 +309,7 @@ def rearrange_with_remaining(tensor, latent_shape_q, latent_shape_k=None, input_
 # ---------------------------------------------------------------------------
 # inv_rearrange_with_remaining — inverse spatial token reordering (v3-style)
 # ---------------------------------------------------------------------------
-def inv_rearrange_with_remaining(tensor, latent_shape_q, latent_shape_k=None, input_layout=None):
+def inv_rearrange_with_remaining(tensor, latent_shape_q, latent_shape_k=None, input_layout=None):  # pylint: disable=unused-argument
     """Inverse of rearrange_with_remaining: block-interleaved -> (frame, h, w) order.
 
     Transforms:
@@ -539,7 +539,7 @@ def sparse_attention(
     cdf_threshold: float = 1.0,
     sparsity: float = 0.0,
     **_kwargs
-):
+):  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements,too-many-branches,unused-argument
     r"""
     High-level sparse attention entry point.
 

@@ -131,6 +131,7 @@ int AffineInt8Coder::PrepareFullMatmulOp(CoderContext *const context) {
                          .data_type(kNumberTypeInt8)
                          .build(schema_version_);
   delete (node_);
+  MS_CHECK_PTR(full_matmul_coder_);
   MS_CHECK_RET_CODE(full_matmul_coder_->Prepare(context), "full matmul coder prepare failed.");
   previous_output_ = reinterpret_cast<int8_t *>(
     allocator_->MallocWeightTensor(kNumberTypeInt8, output_tensor_->ElementsNum() * sizeof(int8_t), kWorkspace));

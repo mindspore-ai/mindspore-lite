@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-# modified from
-# https://github.com/Wan-Video/Wan2.1/blob/main/wan/modules/attention.py
-# Copyright 2024-2025 The Alibaba Wan Team Authors
 # Copyright 2026 Huawei Technologies Co., Ltd
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,13 +13,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+#
+# Third-party code attribution:
+#
+#   File structure derived from Wan2.1 (Apache 2.0):
+#     https://github.com/Wan-Video/Wan2.1/blob/main/wan/modules/attention.py
+#     Copyright 2024-2025 The Alibaba Wan Team Authors.
+#
+#   The varlen flash-attention API call pattern (cu_seqlens construction +
+#   flash_attn_varlen_func invocation) derived from flash-attention:
+#     https://github.com/Dao-AILab/flash-attention
+#     Copyright (c) 2022, Intelligent Systems Lab Org.
+#     Copyright (c) 2020, Alexey.
+#     Copyright (c) 2019, Intel ISL (Intel Intelligent Systems Lab).
+#
+#   See the LICENSE files in those projects for full notices.
 """
-reference from wan2.1
 Flash attention with NPU fallback.
 
 Supports FA3, FA2, and NPU (npu_prompt_flash_attention) backends,
-auto-selected based on availability.
+auto-selected according to availability.
 """
+
+__all__ = ['flash_attention']
+
 import warnings
 
 import torch
@@ -47,8 +61,6 @@ except (ModuleNotFoundError, AttributeError):
     NPU_FUSION_ATTENTION_AVAILABLE = False
 else:
     NPU_FUSION_ATTENTION_AVAILABLE = hasattr(torch_npu, 'npu_prompt_flash_attention')
-
-__all__ = ['flash_attention']
 
 
 def _half(x, half_dtypes, dtype):
