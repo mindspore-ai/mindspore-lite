@@ -26,18 +26,34 @@ using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;
 using mindspore::schema::PrimitiveType_MulFusion;
 
-namespace mindspore::kernel {
 namespace {
-// Dimension indices for NCHW layout: [N, C, H, W]
-constexpr int kNchwHeight = 2;
-constexpr int kNchwWidth = 3;
-constexpr int kNchwChannel = 1;
-// Dimension indices for NHWC layout: [N, H, W, C]
-constexpr int kNhwcHeight = 1;
-constexpr int kNhwcWidth = 2;
-constexpr int kNhwcChannel = 3;
+constexpr int kBatchIndex = 0;
+constexpr int kNchwHIndex = 2;
+constexpr int kNchwWIndex = 3;
+constexpr int kNchwCIndex = 1;
+constexpr int kNhwcHIndex = 1;
+constexpr int kNhwcWIndex = 2;
+constexpr int kNhwcCIndex = 3;
+
+// Dimension indices for a 4D tensor according to its data format.
+struct DimIndices {
+  int n_idx = kBatchIndex;
+  int h_idx;
+  int w_idx;
+  int c_idx;
+};
+
+DimIndices GetDimIndices(mindspore::Format format) {
+  if (format == mindspore::NCHW) {
+    // NCHW: [N, C, H, W]
+    return {kBatchIndex, kNchwHIndex, kNchwWIndex, kNchwCIndex};
+  }
+  // NHWC (default): [N, H, W, C]
+  return {kBatchIndex, kNhwcHIndex, kNhwcWIndex, kNhwcCIndex};
+}
 }  // namespace
 
+namespace mindspore::kernel {
 MulInt8CPUKernel::~MulInt8CPUKernel() {
   if (quant_args_ != nullptr) {
     free(quant_args_);
@@ -90,37 +106,17 @@ int MulInt8CPUKernel::Prepare() {
 }
 
 void MulInt8CPUKernel::CheckSameShapeSize(std::vector<int> in_tensor0_shape, std::vector<int> in_tensor1_shape) {
-  // Use format-aware indices to correctly handle both NHWC and NCHW
-  // The output tensor determines the format for the operation
+  // Use format-aware indices to correctly handle both NHWC and NCHW.
+  // The output tensor determines the format for the operation.
   auto out_tensor = out_tensors_.front();
-  mindspore::Format format = static_cast<mindspore::Format>(out_tensor->format());
+  auto idx = GetDimIndices(static_cast<mindspore::Format>(out_tensor->format()));
 
-  // Select dimension indices based on format
-  // NHWC: [N, H, W, C] -> indices [0, 1, 2, 3]
-  // NCHW: [N, C, H, W] -> indices [0, 1, 2, 3]
-  int n_idx = 0;  // Batch is always at index 0
-  int h_idx;
-  int w_idx;
-  int c_idx;
-
-  if (format == mindspore::NCHW) {
-    // NCHW: [N, C, H, W]
-    h_idx = kNchwHeight;
-    w_idx = kNchwWidth;
-    c_idx = kNchwChannel;
-  } else {
-    // NHWC (default): [N, H, W, C]
-    h_idx = kNhwcHeight;
-    w_idx = kNhwcWidth;
-    c_idx = kNhwcChannel;
-  }
-
-  bool condition1 = in_tensor0_shape[n_idx] == in_tensor1_shape[n_idx];
-  bool condition2 = in_tensor0_shape[h_idx] == 1;
-  bool condition3 = in_tensor0_shape[w_idx] == 1;
-  bool condition4 = in_tensor0_shape[c_idx] == in_tensor1_shape[c_idx];
-  bool condition5 = in_tensor1_shape[h_idx] == 1;
-  bool condition6 = in_tensor1_shape[w_idx] == 1;
+  bool condition1 = in_tensor0_shape[idx.n_idx] == in_tensor1_shape[idx.n_idx];
+  bool condition2 = in_tensor0_shape[idx.h_idx] == 1;
+  bool condition3 = in_tensor0_shape[idx.w_idx] == 1;
+  bool condition4 = in_tensor0_shape[idx.c_idx] == in_tensor1_shape[idx.c_idx];
+  bool condition5 = in_tensor1_shape[idx.h_idx] == 1;
+  bool condition6 = in_tensor1_shape[idx.w_idx] == 1;
 
   if (condition1 && condition2 && condition3 && condition4) {
     // input0 broadcasts: [N,1,1,C] * [N,H,W,C]
@@ -140,33 +136,20 @@ void MulInt8CPUKernel::CheckIfFastImpl() {
 
   // Get format-aware dimension indices from output tensor
   auto out_tensor = out_tensors_.front();
-  mindspore::Format format = static_cast<mindspore::Format>(out_tensor->format());
-
-  int h_idx;
-  int w_idx;
-  int c_idx;
-  if (format == mindspore::NCHW) {
-    h_idx = kNchwHeight;
-    w_idx = kNchwWidth;
-    c_idx = kNchwChannel;
-  } else {
-    h_idx = kNhwcHeight;
-    w_idx = kNhwcWidth;
-    c_idx = kNhwcChannel;
-  }
+  auto idx = GetDimIndices(static_cast<mindspore::Format>(out_tensor->format()));
 
   if (in_tensor0->ElementsNum() != in_tensor1->ElementsNum()) {
     if (in_tensor0->shape().size() == COMM_SHAPE_SIZE && in_tensor1->shape().size() == COMM_SHAPE_SIZE) {
       CheckSameShapeSize(in_tensor0->shape(), in_tensor1->shape());
     } else if (in_tensor0->shape().size() == 1 && in_tensor1->shape().size() == COMM_SHAPE_SIZE) {
       // 1D tensor * 4D tensor: check if 1D size matches Channel dimension
-      if (in_tensor0->ElementsNum() == in_tensor1->shape()[c_idx]) {
+      if (in_tensor0->ElementsNum() == in_tensor1->shape()[idx.c_idx]) {
         fast_hw_broadcast_ = true;
       }
     } else if (in_tensor0->shape().size() == COMM_SHAPE_SIZE && in_tensor1->shape().size() == 1) {
       // 4D tensor * 1D tensor: only use fast path when input0 has [N,1,1,C] shape
-      if (in_tensor0->shape()[h_idx] == 1 && in_tensor0->shape()[w_idx] == 1 &&
-          in_tensor1->ElementsNum() == in_tensor0->shape()[c_idx]) {
+      if (in_tensor0->shape()[idx.h_idx] == 1 && in_tensor0->shape()[idx.w_idx] == 1 &&
+          in_tensor1->ElementsNum() == in_tensor0->shape()[idx.c_idx]) {
         fast_hw_broadcast_ = true;
         input1_hw_broadcast_ = true;
       }
