@@ -41,6 +41,12 @@
 namespace mindspore {
 namespace opt {
 namespace {
+// Build a CondVar that matches a node of the specified primitive type.
+template <const PrimitivePtr *prim>
+CondVarPtr NewCondVar() {
+  return std::make_shared<CondVar>(IsSpecifiedNode<prim>);
+}
+
 STATUS GetReduceAxes(const BaseRef &n, std::vector<int> *axes) {
   MS_ASSERT(axes != nullptr);
   if (utils::isa<ParameterPtr>(n)) {
@@ -95,38 +101,55 @@ bool IsReduceNode(const EquivPtr &equiv, const VarPtr &input_prim, const VarPtr 
   return true;
 }
 
+// Build the variance sub-chain: (input - mean1)^2 -> mean -> +epsilon -> sqrt.
+// Returns sqrt(mean2 + epsilon) as a VectorRef, or an empty VectorRef on allocation failure.
+VectorRef BuildLayerNormSqrtRef(const VarPtr &input, const VectorRef &mean1_ref, const VarPtr &mean2,
+                                const VarPtr &mean2_axes, const VarPtr &epsilon) {
+  auto is_sub2 = NewCondVar<&prim::kPrimSubFusion>();
+  if (is_sub2 == nullptr) {
+    return {};
+  }
+  VectorRef sub2_ref = VectorRef({is_sub2, input, mean1_ref});
+  auto is_pow = NewCondVar<&prim::kPrimPowFusion>();
+  if (is_pow == nullptr) {
+    return {};
+  }
+  auto is_var = std::make_shared<Var>();
+  if (is_var == nullptr) {
+    return {};
+  }
+  VectorRef pow_ref = VectorRef({is_pow, sub2_ref, is_var});
+  VectorRef mean2_ref = VectorRef({mean2, pow_ref, mean2_axes});
+  auto is_add1 = NewCondVar<&prim::kPrimAddFusion>();
+  if (is_add1 == nullptr) {
+    return {};
+  }
+  VectorRef add1_ref = VectorRef({is_add1, mean2_ref, epsilon});
+  auto is_sqrt = NewCondVar<&prim::kPrimSqrt>();
+  if (is_sqrt == nullptr) {
+    return {};
+  }
+  return VectorRef({is_sqrt, add1_ref});
+}
+
 BaseRef BuildOnnxLayerNormPattern(const VarPtr &input, const VarPtr &mean1, const VarPtr &mean1_axes,
                                   const VarPtr &mean2, const VarPtr &mean2_axes, const VarPtr &gamma,
                                   const VarPtr &beta, const VarPtr &epsilon, bool gamma_before_div) {
   VectorRef mean1_ref = VectorRef({mean1, input, mean1_axes});
-  auto is_sub1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimSubFusion>);
+  auto is_sub1 = NewCondVar<&prim::kPrimSubFusion>();
   MS_CHECK_TRUE_RET(is_sub1 != nullptr, {});
   VectorRef sub1_ref = VectorRef({is_sub1, input, mean1_ref});
-  auto is_sub2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimSubFusion>);
-  MS_CHECK_TRUE_RET(is_sub2 != nullptr, {});
-  VectorRef sub2_ref = VectorRef({is_sub2, input, mean1_ref});
-  auto is_pow = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimPowFusion>);
-  MS_CHECK_TRUE_RET(is_pow != nullptr, {});
-  auto is_var = std::make_shared<Var>();
-  MS_CHECK_TRUE_RET(is_var != nullptr, {});
-  VectorRef pow_ref = VectorRef({is_pow, sub2_ref, is_var});
-  VectorRef mean2_ref = VectorRef({mean2, pow_ref, mean2_axes});
-  auto is_add1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
-  MS_CHECK_TRUE_RET(is_add1 != nullptr, {});
-  VectorRef add1_ref = VectorRef({is_add1, mean2_ref, epsilon});
-  auto is_sqrt = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimSqrt>);
-  MS_CHECK_TRUE_RET(is_sqrt != nullptr, {});
-  VectorRef sqrt_ref = VectorRef({is_sqrt, add1_ref});
-  auto is_div = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimDivFusion>);
+  auto sqrt_ref = BuildLayerNormSqrtRef(input, mean1_ref, mean2, mean2_axes, epsilon);
+  MS_CHECK_TRUE_RET(!sqrt_ref.empty(), {});
+  auto is_div = NewCondVar<&prim::kPrimDivFusion>();
   MS_CHECK_TRUE_RET(is_div != nullptr, {});
   VectorRef div_ref = VectorRef({is_div, sub1_ref, sqrt_ref});
-  auto is_mul = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimMulFusion>);
+  auto is_mul = NewCondVar<&prim::kPrimMulFusion>();
   MS_CHECK_TRUE_RET(is_mul != nullptr, {});
   VectorRef mul_ref = gamma_before_div ? VectorRef({is_mul, gamma, div_ref}) : VectorRef({is_mul, div_ref, gamma});
-  auto is_add2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
+  auto is_add2 = NewCondVar<&prim::kPrimAddFusion>();
   MS_CHECK_TRUE_RET(is_add2 != nullptr, {});
-  VectorRef add2_ref = VectorRef({is_add2, mul_ref, beta});
-  return add2_ref;
+  return VectorRef({is_add2, mul_ref, beta});
 }
 }  // namespace
 

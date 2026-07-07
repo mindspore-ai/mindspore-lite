@@ -50,11 +50,29 @@ constexpr int kInvalidDim = -1;
 constexpr int kAdditionalOutIdx = 3;
 constexpr int kStructureNum = 2;
 
+// Build a CondVar that matches a node of the specified primitive type.
+template <const PrimitivePtr *prim>
+CondVarPtr NewCondVar() {
+  return std::make_shared<CondVar>(IsSpecifiedNode<prim>);
+}
+
 // Struct to hold results from the common LayerNormV3 pattern prefix builder.
 struct LayerNormV3PrefixResult {
   VectorRef sub_ref;
   VectorRef div_ref;
 };
+
+// Build the variance sub-chain of the common prefix: pow -> reduce_2 -> add_2 -> sqrt.
+// Returns sqrt(reduce_2(pow) + add_2_b) as a VectorRef.
+VectorRef BuildLayerNormV3SqrtRef(const VectorRef &pow_ref, const VarPtr &reduce_2_axis_var,
+                                  const VarPtr &add_2_b_var) {
+  auto is_reduce_2 = NewCondVar<&prim::kPrimReduceFusion>();
+  VectorRef reduce_2_ref({is_reduce_2, pow_ref, reduce_2_axis_var});
+  auto is_add_2 = NewCondVar<&prim::kPrimAddFusion>();
+  VectorRef add_2_ref({is_add_2, reduce_2_ref, add_2_b_var});
+  auto is_sqrt = NewCondVar<&prim::kPrimSqrt>();
+  return VectorRef({is_sqrt, add_2_ref});
+}
 
 // Build the common prefix: reduce_1 -> sub -> pow -> reduce_2 -> add_2 -> sqrt -> div
 LayerNormV3PrefixResult BuildLayerNormV3Prefix(int index, const std::vector<VarPtr> &reduce_1_x,
@@ -62,25 +80,18 @@ LayerNormV3PrefixResult BuildLayerNormV3Prefix(int index, const std::vector<VarP
                                                const std::vector<VarPtr> &pow_y,
                                                const std::vector<VarPtr> &reduce_2_axis,
                                                const std::vector<VarPtr> &add_2_b) {
-  auto is_reduce_1 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimReduceFusion>);
+  auto is_reduce_1 = NewCondVar<&prim::kPrimReduceFusion>();
   VectorRef reduce_1_ref({is_reduce_1, reduce_1_x[index], reduce_1_axis[index]});
 
-  auto is_sub = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimSubFusion>);
+  auto is_sub = NewCondVar<&prim::kPrimSubFusion>();
   VectorRef sub_ref({is_sub, reduce_1_x[index], reduce_1_ref});
 
-  auto is_pow = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimPowFusion>);
+  auto is_pow = NewCondVar<&prim::kPrimPowFusion>();
   VectorRef pow_ref({is_pow, sub_ref, pow_y[index]});
 
-  auto is_reduce_2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimReduceFusion>);
-  VectorRef reduce_2_ref({is_reduce_2, pow_ref, reduce_2_axis[index]});
+  auto sqrt_ref = BuildLayerNormV3SqrtRef(pow_ref, reduce_2_axis[index], add_2_b[index]);
 
-  auto is_add_2 = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimAddFusion>);
-  VectorRef add_2_ref({is_add_2, reduce_2_ref, add_2_b[index]});
-
-  auto is_sqrt = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimSqrt>);
-  VectorRef sqrt_ref({is_sqrt, add_2_ref});
-
-  auto is_div = std::make_shared<CondVar>(IsSpecifiedNode<&prim::kPrimDivFusion>);
+  auto is_div = NewCondVar<&prim::kPrimDivFusion>();
   VectorRef div_ref({is_div, sub_ref, sqrt_ref});
 
   return {sub_ref, div_ref};

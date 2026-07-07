@@ -190,6 +190,22 @@ std::vector<int> GetTransposePerm(const CNodePtr &node) {
   return perm;
 }
 
+// Resolve a slice size against a reference shape: a negative size means "to the end".
+int64_t ResolveSliceSize(int slice_size, int64_t ref_dim_size, int slice_begin) {
+  return slice_size > 0 ? static_cast<int64_t>(slice_size) : ref_dim_size - slice_begin;
+}
+
+// Find the index of target_axis in axes, or axes.size() if not found.
+size_t FindAxisIndex(const std::vector<int64_t> &axes, int64_t target_axis) {
+  size_t k = 0;
+  for (; k < axes.size(); ++k) {
+    if (axes[k] == target_axis) {
+      break;
+    }
+  }
+  return k;
+}
+
 bool CompareSliceWithFirst(const api::SharedPtr<mindspore::ops::SliceFusion> &slice, const std::vector<int> &begin,
                            const std::vector<int> &size, const std::vector<int64_t> &first_axes,
                            const std::vector<int> &first_begin, const std::vector<int> &first_size,
@@ -201,31 +217,27 @@ bool CompareSliceWithFirst(const api::SharedPtr<mindspore::ops::SliceFusion> &sl
     return false;
   }
   for (size_t j = 0; j < axes.size(); ++j) {
-    auto axe = axes[j];
-    if (!ref_shape.empty() && axe >= static_cast<int>(ref_shape.size())) {
+    auto axis = axes[j];
+    if (!ref_shape.empty() && axis >= static_cast<int>(ref_shape.size())) {
       return false;
     }
-    size_t k = 0;
-    for (; k < first_axes.size(); ++k) {
-      if (first_axes[k] == axe) {
-        break;
-      }
-    }
+    size_t k = FindAxisIndex(first_axes, axis);
     if (k == first_axes.size()) {
       return false;
     }
     if (begin[j] != first_begin[k]) {
       return false;
     }
-    if (size[j] != first_size[k]) {
-      if (ref_shape.empty()) {
-        return false;
-      }
-      auto actual_size = size[j] > 0 ? size[j] : ref_shape[axe] - begin[j];
-      auto actual_first_size = first_size[k] > 0 ? first_size[k] : ref_shape[axe] - first_begin[k];
-      if (actual_size != actual_first_size) {
-        return false;
-      }
+    if (size[j] == first_size[k]) {
+      continue;
+    }
+    if (ref_shape.empty()) {
+      return false;
+    }
+    auto actual_size = ResolveSliceSize(size[j], ref_shape[axis], begin[j]);
+    auto actual_first_size = ResolveSliceSize(first_size[k], ref_shape[axis], first_begin[k]);
+    if (actual_size != actual_first_size) {
+      return false;
     }
   }
   return true;
@@ -336,22 +348,22 @@ STATUS SlicePreposePass::VerifySliceAttrs(const CNodePtr &slice_cnode, const int
 
   std::set<int64_t> unique_axes(axes.begin(), axes.end());
   if (axes.empty() || unique_axes.size() != axes.size()) {
-    MS_LOG(DEBUG) << "Invalid slice axe attribute";
+    MS_LOG(DEBUG) << "Invalid slice axis attribute";
     return RET_ERROR;
   }
   MS_CHECK_TRUE_MSG(begin.size() <= axes.size(), RET_ERROR, "begin size is wrong");
   MS_CHECK_TRUE_MSG(size.size() <= axes.size(), RET_ERROR, "size.size() is wrong");
   for (size_t i = 0; i < axes.size(); ++i) {
-    auto axe = axes[i];
-    if (dim > -1 && axe >= dim) {
-      MS_LOG(ERROR) << "Invalid slice axe attribute";
+    auto axis = axes[i];
+    if (dim > -1 && axis >= dim) {
+      MS_LOG(ERROR) << "Invalid slice axis attribute";
       return RET_ERROR;
     }
-    if (axe < 0) {
-      MS_LOG(ERROR) << "Invalid slice axe attribute";
+    if (axis < 0) {
+      MS_LOG(ERROR) << "Invalid slice axis attribute";
       return RET_ERROR;
     }
-    if (begin[i] < 0) {  //  we not require begin[i] < ref_shape[axe], cause there may be broadcast
+    if (begin[i] < 0) {  //  we not require begin[i] < ref_shape[axis], cause there may be broadcast
       MS_LOG(ERROR) << "Invalid begin input! begin[" << i << "]=" << begin[i];
       return RET_ERROR;
     }
@@ -503,14 +515,14 @@ bool SlicePreposePass::SiblingsAreSameSlice(const NodeUsedListPtr &output_node_l
   return true;
 }
 
-int64_t SlicePreposePass::GetReshapeAbnormalAxeIn(const std::vector<int64_t> &shape_in,
-                                                  const std::vector<int64_t> &shape_out,
-                                                  std::vector<int64_t> *mapped_axe) {
-  // find shape_out's correspond axe in shape_in
-  // when there are such as 3x1x1x4 => 3x1x4, mapped_axe[1] == 2
+int64_t SlicePreposePass::GetReshapeAbnormalAxisIn(const std::vector<int64_t> &shape_in,
+                                                   const std::vector<int64_t> &shape_out,
+                                                   std::vector<int64_t> *mapped_axis) {
+  // find shape_out's correspond axis in shape_in
+  // when there are such as 3x1x1x4 => 3x1x4, mapped_axis[1] == 2
   int64_t inner_size_in = 1;
-  int64_t abnormal_axe_in = -1;
-  MS_CHECK_TRUE_MSG(mapped_axe->size() >= shape_out.size(), abnormal_axe_in, "mapped_axe.size() is wrong");
+  int64_t abnormal_axis_in = -1;
+  MS_CHECK_TRUE_MSG(mapped_axis->size() >= shape_out.size(), abnormal_axis_in, "mapped_axis.size() is wrong");
   for (size_t i = 0; i < shape_in.size(); ++i) {
     inner_size_in *= shape_in[i];
     int64_t inner_size_out = 1;
@@ -518,19 +530,19 @@ int64_t SlicePreposePass::GetReshapeAbnormalAxeIn(const std::vector<int64_t> &sh
     for (j = 0; j < shape_out.size(); ++j) {
       inner_size_out *= shape_out[j];
       if (shape_out[j] == shape_in[i] && inner_size_out == inner_size_in) {
-        mapped_axe->at(j) = i;
+        mapped_axis->at(j) = i;
         break;
       }
     }
-    if (j == shape_out.size() && abnormal_axe_in == -1) {
-      abnormal_axe_in = static_cast<int64_t>(i);
+    if (j == shape_out.size() && abnormal_axis_in == -1) {
+      abnormal_axis_in = static_cast<int64_t>(i);
     }
   }
-  return abnormal_axe_in;
+  return abnormal_axis_in;
 }
 
 int64_t SlicePreposePass::GetReshapeAbnormalIndexOut(const CNodePtr &slice_cnode,
-                                                     const std::vector<int64_t> &mapped_axe,
+                                                     const std::vector<int64_t> &mapped_axis,
                                                      const std::vector<int64_t> &shape_out,
                                                      std::vector<int64_t> *shape_out_copy, bool *is_normal_mode,
                                                      bool *support_abnormal_mode) {
@@ -561,14 +573,14 @@ int64_t SlicePreposePass::GetReshapeAbnormalIndexOut(const CNodePtr &slice_cnode
     MS_CHECK_TRUE_MSG(static_cast<int>(slice_begin.size()) > index, abnormal_index_out, "slice_begin.size() is wrong");
     MS_CHECK_TRUE_MSG(static_cast<int>(slice_size.size()) > index, abnormal_index_out, "slice_size.size() is wrong");
     if (slice_begin[index] != 0 || (slice_size[index] != -1 && slice_size[index] != shape_out[j])) {
-      if (mapped_axe[j] == -1) {
+      if (mapped_axis[j] == -1) {
         if (*is_normal_mode) {
           *is_normal_mode = false;
           abnormal_index_out = static_cast<int64_t>(index);
         } else {
           *support_abnormal_mode = false;
         }
-      } else {  // if there is matched axe sliced, not support abnormal mode
+      } else {  // if there is matched axis sliced, not support abnormal mode
         shape_out_copy->at(j) =
           (slice_size[index] == -1 ? shape_out[j] - slice_begin[index] : static_cast<int64_t>(slice_size[index]));
         *support_abnormal_mode = false;
@@ -602,7 +614,7 @@ bool SlicePreposePass::UpdateReshapeShapeParam(const FuncGraphPtr &graph, const 
 bool SlicePreposePass::PreposeWithNormalReshape(const FuncGraphPtr &graph, const CNodePtr &slice_cnode,
                                                 const CNodePtr &reshape_cnode, const std::vector<int64_t> &shape_in,
                                                 const std::vector<int64_t> &shape_out_copy,
-                                                const std::vector<int64_t> &mapped_axe) {
+                                                const std::vector<int64_t> &mapped_axis) {
   MS_ASSERT(graph != nullptr);
   MS_ASSERT(slice_cnode != nullptr);
   MS_ASSERT(reshape_cnode != nullptr);
@@ -617,15 +629,15 @@ bool SlicePreposePass::PreposeWithNormalReshape(const FuncGraphPtr &graph, const
   std::iota(new_axes.begin(), new_axes.end(), 0);
   std::vector<int> new_begin(shape_in.size(), 0);
   std::vector<int> new_size(shape_in.size(), -1);
-  MS_CHECK_TRUE_MSG(slice_begin.size() >= mapped_axe.size(), false, "slice_begin.size() is wrong");
-  MS_CHECK_TRUE_MSG(slice_size.size() >= mapped_axe.size(), false, "slice_size.size() is wrong");
-  for (size_t i = 0; i < mapped_axe.size(); ++i) {
-    auto axe_in = mapped_axe[i];
-    if (axe_in == -1) {
+  MS_CHECK_TRUE_MSG(slice_begin.size() >= mapped_axis.size(), false, "slice_begin.size() is wrong");
+  MS_CHECK_TRUE_MSG(slice_size.size() >= mapped_axis.size(), false, "slice_size.size() is wrong");
+  for (size_t i = 0; i < mapped_axis.size(); ++i) {
+    auto axis_in = mapped_axis[i];
+    if (axis_in == -1) {
       continue;
     }
-    new_begin[axe_in] = slice_begin[i];
-    new_size[axe_in] = slice_size[i];
+    new_begin[axis_in] = slice_begin[i];
+    new_size[axis_in] = slice_size[i];
   }
   if (!UpdateReshapeShapeParam(graph, reshape_cnode, shape_out_copy)) {
     return false;
@@ -650,7 +662,7 @@ bool SlicePreposePass::PreposeWithNormalReshape(const FuncGraphPtr &graph, const
 
 CNodePtr SlicePreposePass::CreateSlice1ForReshapePrepose(const FuncGraphPtr &graph, const CNodePtr &slice_cnode,
                                                          const CNodePtr &matmul_cnode,
-                                                         const int64_t count_sliced_axe_in,
+                                                         const int64_t count_sliced_axis_in,
                                                          const SliceReshapeInfo &info) {
   MS_ASSERT(graph != nullptr);
   MS_ASSERT(slice_cnode != nullptr);
@@ -660,9 +672,9 @@ CNodePtr SlicePreposePass::CreateSlice1ForReshapePrepose(const FuncGraphPtr &gra
   std::vector<int> new_begin1(info.shape_in.size(), 0);
   std::vector<int> new_size1(info.shape_in.size(), -1);
   if (info.slice_at_front) {
-    new_begin1[info.abnormal_axe_in] = static_cast<int>(count_sliced_axe_in);
+    new_begin1[info.abnormal_axis_in] = static_cast<int>(count_sliced_axis_in);
   } else {
-    new_size1[info.abnormal_axe_in] = static_cast<int>(info.shape_in[info.abnormal_axe_in] - count_sliced_axe_in);
+    new_size1[info.abnormal_axis_in] = static_cast<int>(info.shape_in[info.abnormal_axis_in] - count_sliced_axis_in);
   }
   auto new_slice1 = CreateSliceValueNode(new_axes1);
   if (new_slice1 == nullptr) {
@@ -693,18 +705,18 @@ CNodePtr SlicePreposePass::CreateSlice2ForReshapePrepose(const FuncGraphPtr &gra
                                                          const int64_t count_sliced2, const SliceReshapeInfo &info) {
   MS_ASSERT(graph != nullptr);
   MS_ASSERT(slice_cnode != nullptr);
-  std::vector<int64_t> new_axes2(info.abnormal_axe_in + 1);
+  std::vector<int64_t> new_axes2(info.abnormal_axis_in + 1);
   std::iota(new_axes2.begin(), new_axes2.end(), 0);
-  std::vector<int> new_begin2(info.abnormal_axe_in + 1, 0);
-  std::vector<int> new_size2(info.abnormal_axe_in + 1, -1);
-  if (count_sliced2 > new_shape1[info.abnormal_axe_in]) {
+  std::vector<int> new_begin2(info.abnormal_axis_in + 1, 0);
+  std::vector<int> new_size2(info.abnormal_axis_in + 1, -1);
+  if (count_sliced2 > new_shape1[info.abnormal_axis_in]) {
     MS_LOG(WARNING) << "calculation error";
     return nullptr;
   }
   if (info.slice_at_front) {
-    new_begin2[info.abnormal_axe_in] = static_cast<int>(new_shape1[info.abnormal_axe_in] - count_sliced2);
+    new_begin2[info.abnormal_axis_in] = static_cast<int>(new_shape1[info.abnormal_axis_in] - count_sliced2);
   } else {
-    new_size2[info.abnormal_axe_in] = static_cast<int>(count_sliced2);
+    new_size2[info.abnormal_axis_in] = static_cast<int>(count_sliced2);
   }
   auto new_slice2 = CreateSliceValueNode(new_axes2);
   if (new_slice2 == nullptr) {
@@ -747,39 +759,40 @@ bool SlicePreposePass::CalcAbnormalSliceParams(const CNodePtr &slice_cnode, cons
   MS_CHECK_TRUE_MSG(static_cast<int>(slice_axes.size()) > info.abnormal_index_out, false, "slice_axes.size() is wrong");
   auto slice_begin = GetSliceBeginAndSize(slice_cnode, SliceBeginIndex);
   auto slice_size = GetSliceBeginAndSize(slice_cnode, SliceSizeIndex);
-  params->abnormal_axe_out = slice_axes[info.abnormal_index_out];
-  auto inter_size_in = CalcPartialProduct(info.shape_in, 0, info.abnormal_axe_in);
-  auto inter_size_out = CalcPartialProduct(info.shape_out, 0, params->abnormal_axe_out);
+  params->abnormal_axis_out = slice_axes[info.abnormal_index_out];
+  auto inter_size_in = CalcPartialProduct(info.shape_in, 0, info.abnormal_axis_in);
+  auto inter_size_out = CalcPartialProduct(info.shape_out, 0, params->abnormal_axis_out);
   if (inter_size_in != inter_size_out) {
     MS_LOG(DEBUG) << "not support prepose now";
     return false;
   }
-  params->outer_size_in = CalcPartialProduct(info.shape_in, info.abnormal_axe_in + 1, info.shape_in.size());
-  params->outer_size_out = CalcPartialProduct(info.shape_out, params->abnormal_axe_out + 1, info.shape_out.size());
+  params->outer_size_in = CalcPartialProduct(info.shape_in, info.abnormal_axis_in + 1, info.shape_in.size());
+  params->outer_size_out = CalcPartialProduct(info.shape_out, params->abnormal_axis_out + 1, info.shape_out.size());
   MS_CHECK_TRUE_MSG(static_cast<int>(slice_begin.size()) > info.abnormal_index_out, false,
                     "slice_begin.size() is wrong");
-  params->count_sliced_axe_front = slice_begin[info.abnormal_index_out];
+  params->count_sliced_axis_front = slice_begin[info.abnormal_index_out];
   MS_CHECK_TRUE_MSG(static_cast<int>(slice_size.size()) > info.abnormal_index_out, false, "slice_size.size() is wrong");
   MS_CHECK_TRUE_MSG(static_cast<int>(info.shape_out.size()) > info.abnormal_index_out, false,
                     "shape_out.size() is wrong");
-  params->count_sliced_axe_rear = slice_size[info.abnormal_index_out] == -1
-                                    ? 0
-                                    : (info.shape_out[params->abnormal_axe_out] - slice_size[info.abnormal_index_out]);
-  if (params->count_sliced_axe_front * params->count_sliced_axe_rear > 0) {
-    MS_LOG(DEBUG) << "not border slice at abnormal axe, prepose with reshape failed";
+  params->count_sliced_axis_rear =
+    slice_size[info.abnormal_index_out] == -1
+      ? 0
+      : (info.shape_out[params->abnormal_axis_out] - slice_size[info.abnormal_index_out]);
+  if (params->count_sliced_axis_front * params->count_sliced_axis_rear > 0) {
+    MS_LOG(DEBUG) << "not border slice at abnormal axis, prepose with reshape failed";
     return false;
   }
-  params->slice_at_front = params->count_sliced_axe_front > 0;
-  auto count_sliced_out = (params->count_sliced_axe_front + params->count_sliced_axe_rear) * params->outer_size_out;
+  params->slice_at_front = params->count_sliced_axis_front > 0;
+  auto count_sliced_out = (params->count_sliced_axis_front + params->count_sliced_axis_rear) * params->outer_size_out;
   MS_CHECK_TRUE_MSG(params->outer_size_in != 0, false, "div zero");
-  params->count_sliced_axe_in = count_sliced_out / params->outer_size_in;
-  MS_CHECK_TRUE_MSG(static_cast<int>(info.shape_in.size()) > info.abnormal_axe_in, false, "shape_in.size() is wrong");
-  if (params->count_sliced_axe_in <= 0 || params->count_sliced_axe_in > info.shape_in[info.abnormal_axe_in]) {
+  params->count_sliced_axis_in = count_sliced_out / params->outer_size_in;
+  MS_CHECK_TRUE_MSG(static_cast<int>(info.shape_in.size()) > info.abnormal_axis_in, false, "shape_in.size() is wrong");
+  if (params->count_sliced_axis_in <= 0 || params->count_sliced_axis_in > info.shape_in[info.abnormal_axis_in]) {
     MS_LOG(DEBUG) << "amount of sliced out tensor is illegal";
     return false;
   }
-  params->count_sliced_abnormal_axe =
-    info.shape_out[params->abnormal_axe_out] - (params->count_sliced_axe_front + params->count_sliced_axe_rear);
+  params->count_sliced_abnormal_axis =
+    info.shape_out[params->abnormal_axis_out] - (params->count_sliced_axis_front + params->count_sliced_axis_rear);
   return true;
 }
 
@@ -794,26 +807,26 @@ bool SlicePreposePass::PreposeWithAbnormalReshape(const FuncGraphPtr &graph, con
     return false;
   }
   // new_slice1
-  SliceReshapeInfo slice1_info{info.shape_in, info.shape_out, info.abnormal_axe_in, info.abnormal_index_out,
+  SliceReshapeInfo slice1_info{info.shape_in, info.shape_out, info.abnormal_axis_in, info.abnormal_index_out,
                                params.slice_at_front};
   auto new_slice1_cnode =
-    CreateSlice1ForReshapePrepose(graph, slice_cnode, matmul_cnode, params.count_sliced_axe_in, slice1_info);
+    CreateSlice1ForReshapePrepose(graph, slice_cnode, matmul_cnode, params.count_sliced_axis_in, slice1_info);
   if (new_slice1_cnode == nullptr) {
     return false;
   }
   // new_reshape1
-  std::vector<int64_t> new_shape1(info.abnormal_axe_in + 1);
-  for (int i = 0; i < info.abnormal_axe_in; ++i) {
+  std::vector<int64_t> new_shape1(info.abnormal_axis_in + 1);
+  for (int i = 0; i < info.abnormal_axis_in; ++i) {
     new_shape1[i] = info.shape_in[i];
   }
-  new_shape1[info.abnormal_axe_in] =
-    params.outer_size_in * (info.shape_in[info.abnormal_axe_in] - params.count_sliced_axe_in);
+  new_shape1[info.abnormal_axis_in] =
+    params.outer_size_in * (info.shape_in[info.abnormal_axis_in] - params.count_sliced_axis_in);
   auto new_reshape1_cnode = CreateReshapeCNode(graph, new_shape1, slice_cnode->abstract()->Clone(), new_slice1_cnode);
   if (new_reshape1_cnode == nullptr) {
     return false;
   }
   // new_slice2
-  const int64_t count_sliced2 = params.count_sliced_abnormal_axe * params.outer_size_out;
+  const int64_t count_sliced2 = params.count_sliced_abnormal_axis * params.outer_size_out;
   auto new_slice2_cnode =
     CreateSlice2ForReshapePrepose(graph, slice_cnode, new_reshape1_cnode, new_shape1, count_sliced2, slice1_info);
   if (new_slice2_cnode == nullptr) {
@@ -821,7 +834,7 @@ bool SlicePreposePass::PreposeWithAbnormalReshape(const FuncGraphPtr &graph, con
   }
   // new_reshape2
   std::vector<int64_t> new_shape2(info.shape_out.begin(), info.shape_out.end());
-  new_shape2[params.abnormal_axe_out] = params.count_sliced_abnormal_axe;
+  new_shape2[params.abnormal_axis_out] = params.count_sliced_abnormal_axis;
   auto new_reshape2_cnode = CreateReshapeCNode(graph, new_shape2, slice_cnode->abstract()->Clone(), new_slice2_cnode);
   if (new_reshape2_cnode == nullptr) {
     return false;
@@ -890,10 +903,8 @@ bool SlicePreposePass::IsSoftmaxAxisNotSliced(const CNodePtr &slice_cnode, const
         return false;
       }
       if (slice_size[i] != -1) {
-        if (lite::JudgeDynamicShape(shape) || slice_axes[i] >= static_cast<int>(shape.size())) {
-          return false;
-        }
-        if (slice_size[i] < shape[slice_axes[i]]) {
+        if (lite::JudgeDynamicShape(shape) || slice_axes[i] >= static_cast<int>(shape.size()) ||
+            slice_size[i] < shape[slice_axes[i]]) {
           return false;
         }
       }
@@ -945,7 +956,7 @@ bool SlicePreposePass::PreposeWithSoftmax(const FuncGraphPtr &graph, const CNode
  *  when reshape is normal(memory view is not changed, such as 4x5 reshaped to 4x1x5), can always prepose
  *  when reshape is abnormal(such as 4x5 reshaped to 5x4), can prepose under some constraint
  * For abnormal mode:
- *  we only support border(not slice at center) slice at first mismatch axe,
+ *  we only support border(not slice at center) slice at first mismatch axis,
  *  and we only support matmul->reshape->slice => matmul->slice->reshape*->slice*(drop "dead" data)->reshape now,
  *  cause the performance influence introduced by additional (reshape*->slice*) has not been fully evaluated.
  */
@@ -1000,18 +1011,18 @@ bool SlicePreposePass::PreposeWithReshape(const FuncGraphPtr &graph, const CNode
     return false;
   }
   auto shape_out_copy = shape_out;
-  std::vector<int64_t> mapped_axe(shape_out.size(), -1);
-  int64_t abnormal_axe_in = GetReshapeAbnormalAxeIn(shape_in, shape_out, &mapped_axe);
+  std::vector<int64_t> mapped_axis(shape_out.size(), -1);
+  int64_t abnormal_axis_in = GetReshapeAbnormalAxisIn(shape_in, shape_out, &mapped_axis);
   bool is_normal_mode = true;
   bool support_abnormal_mode = true;
-  int64_t abnormal_index_out = GetReshapeAbnormalIndexOut(slice_cnode, mapped_axe, shape_out, &shape_out_copy,
+  int64_t abnormal_index_out = GetReshapeAbnormalIndexOut(slice_cnode, mapped_axis, shape_out, &shape_out_copy,
                                                           &is_normal_mode, &support_abnormal_mode);
   if (abnormal_index_out == -1) {
     MS_LOG(ERROR) << "GetReshapeAbnormalIndexOut failed.";
     return false;
   }
   if (is_normal_mode) {
-    return PreposeWithNormalReshape(graph, slice_cnode, reshape_cnode, shape_in, shape_out_copy, mapped_axe);
+    return PreposeWithNormalReshape(graph, slice_cnode, reshape_cnode, shape_in, shape_out_copy, mapped_axis);
   }
   if (!support_abnormal_mode) {
     return false;
@@ -1020,7 +1031,7 @@ bool SlicePreposePass::PreposeWithReshape(const FuncGraphPtr &graph, const CNode
   if (matmul_cnode == nullptr) {
     return false;
   }
-  SliceReshapeInfo info{shape_in, shape_out, abnormal_axe_in, abnormal_index_out, false};
+  SliceReshapeInfo info{shape_in, shape_out, abnormal_axis_in, abnormal_index_out, false};
   return PreposeWithAbnormalReshape(graph, slice_cnode, matmul_cnode, info);
 }
 
@@ -1131,10 +1142,11 @@ bool SlicePreposePass::PreposeWithMatmul(const FuncGraphPtr &graph, const CNodeP
 /*
  * Prepose condition:
  *  require shape info
- *  only support slice at first output axe now, and useAxis must be false
+ *  only support slice at first output axis now, and useAxis must be false
  */
 bool SlicePreposePass::MapFcOutputAxesToInput(const std::vector<int64_t> &shape_in,
-                                              const std::vector<int64_t> &shape_out, std::vector<int64_t> *mapped_axe) {
+                                              const std::vector<int64_t> &shape_out,
+                                              std::vector<int64_t> *mapped_axis) {
   int64_t inner_size_in = 1;
   for (size_t i = 0; i < shape_in.size(); ++i) {
     inner_size_in *= shape_in[i];
@@ -1142,13 +1154,13 @@ bool SlicePreposePass::MapFcOutputAxesToInput(const std::vector<int64_t> &shape_
     for (size_t j = 0; j < shape_out.size(); ++j) {
       inner_size_out *= shape_out[j];
       if (shape_out[j] == shape_in[i] && inner_size_out == inner_size_in) {
-        mapped_axe->at(j) = static_cast<int64_t>(i);
+        mapped_axis->at(j) = static_cast<int64_t>(i);
         break;
       }
     }
   }
-  if (mapped_axe->at(0) == -1) {
-    MS_LOG(DEBUG) << "first axe in output can't find correspond input axe, can't do prepose";
+  if (mapped_axis->at(0) == -1) {
+    MS_LOG(DEBUG) << "first axis in output can't find correspond input axis, can't do prepose";
     return false;
   }
   return true;
@@ -1165,7 +1177,7 @@ bool SlicePreposePass::ValidateFcSliceAxes(const CNodePtr &slice_cnode, const st
   for (size_t i = 0; i < axes.size(); ++i) {
     if (axes[i] == 1) {
       if (begin[i] != 0 || (size[i] != -1 && size[i] != shape_out[1])) {
-        MS_LOG(DEBUG) << "prepose with fc only support first output axe is sliced currently";
+        MS_LOG(DEBUG) << "prepose with fc only support first output axis is sliced currently";
         return false;
       }
     }
@@ -1176,8 +1188,8 @@ bool SlicePreposePass::ValidateFcSliceAxes(const CNodePtr &slice_cnode, const st
 bool SlicePreposePass::BuildFcSliceParams(const CNodePtr &slice_cnode, const std::vector<int64_t> &shape_in,
                                           const std::vector<int64_t> &shape_out, std::vector<int64_t> *new_axes,
                                           std::vector<int> *new_begin, std::vector<int> *new_size) {
-  std::vector<int64_t> mapped_axe(shape_out.size(), -1);
-  if (!MapFcOutputAxesToInput(shape_in, shape_out, &mapped_axe)) {
+  std::vector<int64_t> mapped_axis(shape_out.size(), -1);
+  if (!MapFcOutputAxesToInput(shape_in, shape_out, &mapped_axis)) {
     return false;
   }
   auto begin = GetSliceBeginAndSize(slice_cnode, SliceBeginIndex);
@@ -1186,8 +1198,8 @@ bool SlicePreposePass::BuildFcSliceParams(const CNodePtr &slice_cnode, const std
   std::iota(new_axes->begin(), new_axes->end(), 0);
   new_begin->assign(shape_in.size(), 0);
   new_size->assign(shape_in.size(), -1);
-  (*new_begin)[mapped_axe[0]] = begin[0];
-  (*new_size)[mapped_axe[0]] = size[0];
+  (*new_begin)[mapped_axis[0]] = begin[0];
+  (*new_size)[mapped_axis[0]] = size[0];
   return true;
 }
 
@@ -1250,15 +1262,16 @@ bool SlicePreposePass::RemapSliceAxesByPerm(const std::vector<int> &perm, const 
   MS_CHECK_TRUE_RET(slice_begin != nullptr && slice_size != nullptr, false);
   // perm is random shuffle of [0...n-1] according to ops/transpose.cc
   for (size_t i = 0; i < perm.size(); ++i) {
-    if (perm[i] != static_cast<int>(i)) {
-      for (size_t j = 0; j < old_axes.size(); ++j) {
-        if (old_axes[j] == static_cast<int>(i)) {
-          MS_CHECK_TRUE_MSG(static_cast<int>(slice_begin->size()) > perm[i], false, "slice_begin.size() is wrong");
-          MS_CHECK_TRUE_MSG(static_cast<int>(slice_size->size()) > perm[i], false, "slice_size.size() is wrong");
-          (*slice_begin)[perm[i]] = old_begin[j];
-          (*slice_size)[perm[i]] = old_size[j];
-          break;
-        }
+    if (perm[i] == static_cast<int>(i)) {
+      continue;
+    }
+    for (size_t j = 0; j < old_axes.size(); ++j) {
+      if (old_axes[j] == static_cast<int>(i)) {
+        MS_CHECK_TRUE_MSG(static_cast<int>(slice_begin->size()) > perm[i], false, "slice_begin.size() is wrong");
+        MS_CHECK_TRUE_MSG(static_cast<int>(slice_size->size()) > perm[i], false, "slice_size.size() is wrong");
+        (*slice_begin)[perm[i]] = old_begin[j];
+        (*slice_size)[perm[i]] = old_size[j];
+        break;
       }
     }
   }
@@ -1446,8 +1459,19 @@ void SlicePreposePass::MergeSliceAxesParams(const std::vector<int64_t> &axes_sli
                                             const std::vector<int> &begin_slice1, const std::vector<int> &size_slice1,
                                             const std::vector<int64_t> &axes_slice2,
                                             const std::vector<int> &begin_slice2, const std::vector<int> &size_slice2,
-                                            int64_t axe_max, std::vector<int> *begin_new, std::vector<int> *size_new) {
-  for (int i = 0; i <= axe_max; ++i) {
+                                            int64_t axis_max, std::vector<int> *begin_new, std::vector<int> *size_new) {
+  // Merge a sequential slice's begin/size onto an accumulated one for a single axis.
+  // cur_size == -1 means "to the end".
+  auto merge_size = [](int cur_size, int extra_begin, int extra_size) {
+    if (cur_size == -1) {
+      return extra_size;
+    }
+    if (extra_size == -1) {
+      return std::max(cur_size - extra_begin, 0);
+    }
+    return std::max(std::min(cur_size - extra_begin, extra_size), 0);
+  };
+  for (int i = 0; i <= axis_max; ++i) {
     for (size_t j = 0; j < axes_slice2.size(); ++j) {
       if (axes_slice2[j] == i) {
         (*begin_new)[i] = begin_slice2[j];
@@ -1456,19 +1480,12 @@ void SlicePreposePass::MergeSliceAxesParams(const std::vector<int64_t> &axes_sli
       }
     }
     for (size_t j = 0; j < axes_slice1.size(); ++j) {
-      if (axes_slice1[j] == i) {
-        (*begin_new)[i] = (*begin_new)[i] + begin_slice1[j];
-        if ((*size_new)[i] == -1) {
-          (*size_new)[i] = size_slice1[j];
-        } else {
-          if (size_slice1[j] == -1) {
-            (*size_new)[i] = std::max((*size_new)[i] - begin_slice1[j], 0);
-          } else {
-            (*size_new)[i] = std::max(std::min((*size_new)[i] - begin_slice1[j], size_slice1[j]), 0);
-          }
-        }
-        break;
+      if (axes_slice1[j] != i) {
+        continue;
       }
+      (*begin_new)[i] = (*begin_new)[i] + begin_slice1[j];
+      (*size_new)[i] = merge_size((*size_new)[i], begin_slice1[j], size_slice1[j]);
+      break;
     }
   }
 }
@@ -1513,18 +1530,18 @@ bool SlicePreposePass::MergeSequentialSlice(const FuncGraphPtr &graph, const CNo
   auto manager = graph->manager();
   MS_ASSERT(manager != nullptr);
   auto node_users = manager->node_users()[slice1_cnode];
-  int64_t axe_max = std::max(*std::max_element(axes_slice1.begin(), axes_slice1.end()),
-                             *std::max_element(axes_slice2.begin(), axes_slice2.end()));
+  int64_t axis_max = std::max(*std::max_element(axes_slice1.begin(), axes_slice1.end()),
+                              *std::max_element(axes_slice2.begin(), axes_slice2.end()));
   auto axes_new = slice2_node->get_axes();
-  axes_new.resize(axe_max + 1);
+  axes_new.resize(axis_max + 1);
   std::iota(axes_new.begin(), axes_new.end(), 0);
-  std::vector<int> begin_new(axe_max + 1, 0);
-  std::vector<int> size_new(axe_max + 1, -1);
+  std::vector<int> begin_new(axis_max + 1, 0);
+  std::vector<int> size_new(axis_max + 1, -1);
   MS_CHECK_TRUE_MSG(begin_slice2.size() >= axes_slice2.size(), false, "begin_slice2.size() is wrong");
   MS_CHECK_TRUE_MSG(size_slice2.size() >= axes_slice2.size(), false, "size_slice2.size() is wrong");
   MS_CHECK_TRUE_MSG(size_slice1.size() >= axes_slice1.size(), false, "size_slice1.size() is wrong");
   MS_CHECK_TRUE_MSG(begin_slice1.size() >= axes_slice1.size(), false, "begin_slice1.size() is wrong");
-  MergeSliceAxesParams(axes_slice1, begin_slice1, size_slice1, axes_slice2, begin_slice2, size_slice2, axe_max,
+  MergeSliceAxesParams(axes_slice1, begin_slice1, size_slice1, axes_slice2, begin_slice2, size_slice2, axis_max,
                        &begin_new, &size_new);
   slice2_node->set_axes(axes_new);
   if (!UpdateMergedSliceParams(graph, slice2_cnode, axes_new, begin_new, size_new)) {
