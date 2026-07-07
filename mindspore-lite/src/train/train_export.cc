@@ -663,6 +663,50 @@ int TrainExport::SaveToBuffer() {
   model_buffer_->SetData(content, size);
   return RET_OK;
 }
+int TrainExport::WriteTensorShape(std::ofstream &weights, const std::unique_ptr<schema::TensorT> &tensor,
+                                  const std::vector<std::string> &changeable_weights_name) {
+  if (std::find(changeable_weights_name.begin(), changeable_weights_name.end(), tensor->name) !=
+      changeable_weights_name.end()) {
+    auto shape = tensor->dims;
+    weights.write(reinterpret_cast<const char *>(shape.data()), shape.size() * sizeof(uint32_t));
+    if (weights.fail()) {
+      MS_LOG(ERROR) << "Write tensor " << tensor->name << " shape failed";
+      return RET_ERROR;
+    }
+  }
+  return RET_OK;
+}
+
+int TrainExport::WriteTensorData(std::ofstream &weights, const std::unique_ptr<schema::TensorT> &tensor,
+                                 bool enable_fp16) {
+  if (!enable_fp16 || tensor->dataType != kNumberTypeFloat32) {
+    weights.write(reinterpret_cast<const char *>(tensor->data.data()), tensor->data.size());
+    if (weights.fail()) {
+      MS_LOG(ERROR) << "Write tensor " << tensor->name << " data failed";
+      return RET_ERROR;
+    }
+    return RET_OK;
+  }
+  std::vector<uint16_t> data_fp16(tensor->data.size() / sizeof(float));
+#ifndef ENABLE_ARM
+  auto fp32_data = reinterpret_cast<const float *>(tensor->data.data());
+  auto fp16_data = reinterpret_cast<float16 *>(data_fp16.data());
+  CHECK_NULL_RETURN(fp32_data);
+  CHECK_NULL_RETURN(fp16_data);
+  for (size_t j = 0; j < data_fp16.size(); ++j) {
+    fp16_data[j] = float16(fp32_data[j]);
+  }
+#else
+  Float32ToFloat16_fp16_handler(tensor->data.data(), data_fp16.data(), data_fp16.size(), true);
+#endif
+  weights.write(reinterpret_cast<const char *>(data_fp16.data()), data_fp16.size() * sizeof(uint16_t));
+  if (weights.fail()) {
+    MS_LOG(ERROR) << "Write tensor " << tensor->name << " data failed";
+    return RET_ERROR;
+  }
+  return RET_OK;
+}
+
 int TrainExport::SaveWeightsToFile(bool enable_fp16, const std::vector<std::string> &changeable_weights_name) {
   const auto &all_tensors = meta_graph_->allTensors;
   std::ofstream weights(file_name_, std::ios::out | std::ios::trunc | std::ios::binary);
@@ -675,42 +719,15 @@ int TrainExport::SaveWeightsToFile(bool enable_fp16, const std::vector<std::stri
     if (tensor->data.empty()) {
       continue;
     }
-    if (std::find(changeable_weights_name.begin(), changeable_weights_name.end(), tensor->name) !=
-        changeable_weights_name.end()) {
-      auto shape = tensor->dims;
-      weights.write(reinterpret_cast<const char *>(shape.data()), shape.size() * sizeof(uint32_t));
-      if (weights.fail()) {
-        MS_LOG(ERROR) << "Write tensor " << tensor->name << " shape failed";
-        weights.close();
-        return RET_ERROR;
-      }
+    auto ret = WriteTensorShape(weights, tensor, changeable_weights_name);
+    if (ret != RET_OK) {
+      weights.close();
+      return ret;
     }
-    if (!enable_fp16 || tensor->dataType != kNumberTypeFloat32) {
-      weights.write(reinterpret_cast<const char *>(tensor->data.data()), tensor->data.size());
-      if (weights.fail()) {
-        MS_LOG(ERROR) << "Write tensor " << tensor->name << " data failed";
-        weights.close();
-        return RET_ERROR;
-      }
-    } else {
-      std::vector<uint16_t> data_fp16(tensor->data.size() / sizeof(float));
-#ifndef ENABLE_ARM
-      auto fp32_data = reinterpret_cast<const float *>(tensor->data.data());
-      auto fp16_data = reinterpret_cast<float16 *>(data_fp16.data());
-      CHECK_NULL_RETURN(fp32_data);
-      CHECK_NULL_RETURN(fp16_data);
-      for (size_t j = 0; j < data_fp16.size(); ++j) {
-        fp16_data[j] = float16(fp32_data[j]);
-      }
-#else
-      Float32ToFloat16_fp16_handler(tensor->data.data(), data_fp16.data(), data_fp16.size(), true);
-#endif
-      weights.write(reinterpret_cast<const char *>(data_fp16.data()), data_fp16.size() * sizeof(uint16_t));
-      if (weights.fail()) {
-        MS_LOG(ERROR) << "Write tensor " << tensor->name << " data failed";
-        weights.close();
-        return RET_ERROR;
-      }
+    ret = WriteTensorData(weights, tensor, enable_fp16);
+    if (ret != RET_OK) {
+      weights.close();
+      return ret;
     }
   }
   weights.close();

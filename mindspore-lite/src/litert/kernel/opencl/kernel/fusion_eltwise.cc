@@ -516,6 +516,32 @@ std::string FusionEltwiseOpenCLKernel::Codegen() {
   return code.str();
 }
 
+std::string FusionEltwiseOpenCLKernel::CodegenActivation(EltwiseOperator op, const std::string &cl_prefix,
+                                                         const std::string &out_name, const std::string &var0) {
+  std::stringstream code;
+  if (op == Operator_Act_NO_ACTIVATION) {
+    code << cl_prefix << "FLT4 " << out_name << " = " << var0 << ";\n";
+  } else if (op == Operator_Act_RELU) {
+    code << cl_prefix << "FLT4 " << out_name << " =  max(" << var0 << ", (FLT4)(0.0f));\n";
+  } else if (op == Operator_Act_SIGMOID) {
+    code << cl_prefix << "FLT4 " << out_name << " =  (FLT4)(1.f) / ((FLT4)(1.f) + exp(-" << var0 << "));\n";
+  } else if (op == Operator_Act_RELU6) {
+    code << cl_prefix << "FLT4 " << out_name << " =  clamp(" << var0 << ", (FLT4)(0.0f), (FLT4)(6.0f));\n";
+  } else if (op == Operator_Act_LEAKY_RELU) {
+  } else if (op == Operator_Act_RELU1) {
+    code << cl_prefix << "FLT4 " << out_name << " =  clamp(" << var0 << ", (FLT4)(0.0f), (FLT4)(1.0f));\n";
+  } else if (op == Operator_Act_TANH) {
+    std::string exp0 = GetFormatVarName();
+    std::string exp1 = GetFormatVarName();
+    code << cl_prefix << var0 + " = clamp(" + var0 + ", (FLT)(-10.0f), (FLT)(10.0f));\n";
+    code << cl_prefix << "FLT4 " << exp0 << " =  exp(" + var0 + ");\n";
+    code << cl_prefix << "FLT4 " << exp1 << " =  exp(-" + var0 + ");\n";
+    code << cl_prefix << "FLT4 " << out_name << " =  (" << exp0 << " - " << exp1 << ") / (" << exp0 << " + " << exp1
+         << ");\n";
+  }
+  return code.str();
+}
+
 std::string FusionEltwiseOpenCLKernel::CodegenCore(FusionEltwiseParameter *param, const std::string &out_name,
                                                    int degree) {
   std::stringstream code;
@@ -551,29 +577,10 @@ std::string FusionEltwiseOpenCLKernel::CodegenCore(FusionEltwiseParameter *param
     code << cl_prefix << "FLT4 " << out_name << " = -" << var0 << ";\n";
   } else if (param->operator_ == Operator_Scale) {
     const std::string &var1 = input_names.at(1);
-    const std::string &var2 = input_names.at(2);  // 2 : second input
+    const std::string &var2 = input_names.at(2);
     code << cl_prefix << "FLT4 " << out_name << " = " << var0 << " * " << var1 << " + " << var2 << ";\n";
   } else {
-    if (param->operator_ == Operator_Act_NO_ACTIVATION) {
-      code << cl_prefix << "FLT4 " << out_name << " = " << var0 << ";\n";
-    } else if (param->operator_ == Operator_Act_RELU) {
-      code << cl_prefix << "FLT4 " << out_name << " =  max(" << var0 << ", (FLT4)(0.0f));\n";
-    } else if (param->operator_ == Operator_Act_SIGMOID) {
-      code << cl_prefix << "FLT4 " << out_name << " =  (FLT4)(1.f) / ((FLT4)(1.f) + exp(-" << var0 << "));\n";
-    } else if (param->operator_ == Operator_Act_RELU6) {
-      code << cl_prefix << "FLT4 " << out_name << " =  clamp(" << var0 << ", (FLT4)(0.0f), (FLT4)(6.0f));\n";
-    } else if (param->operator_ == Operator_Act_LEAKY_RELU) {
-    } else if (param->operator_ == Operator_Act_RELU1) {
-      code << cl_prefix << "FLT4 " << out_name << " =  clamp(" << var0 << ", (FLT4)(0.0f), (FLT4)(1.0f));\n";
-    } else if (param->operator_ == Operator_Act_TANH) {
-      std::string exp0 = GetFormatVarName();
-      std::string exp1 = GetFormatVarName();
-      code << cl_prefix << var0 + " = clamp(" + var0 + ", (FLT)(-10.0f), (FLT)(10.0f));\n";
-      code << cl_prefix << "FLT4 " << exp0 << " =  exp(" + var0 + ");\n";
-      code << cl_prefix << "FLT4 " << exp1 << " =  exp(-" + var0 + ");\n";
-      code << cl_prefix << "FLT4 " << out_name << " =  (" << exp0 << " - " << exp1 << ") / (" << exp0 << " + " << exp1
-           << ");\n";
-    }
+    code << CodegenActivation(param->operator_, cl_prefix, out_name, var0);
   }
 
   return code.str();
@@ -590,8 +597,7 @@ std::string FusionEltwiseOpenCLKernel::GetFormatVarName(std::string name) {
       if (c != '_' && !std::isalpha(c)) {
         name = '_' + name;
       }
-      std::replace_if(
-        name.begin(), name.end(), [](char c) { return !std::isalnum(c); }, '_');
+      std::replace_if(name.begin(), name.end(), [](char c) { return !std::isalnum(c); }, '_');
     }
     auto new_name = "tmp_" + name + "_" + std::to_string(var_names_.size());
     var_names_.emplace(name, new_name);

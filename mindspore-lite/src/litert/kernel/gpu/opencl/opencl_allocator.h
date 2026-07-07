@@ -86,9 +86,22 @@ class OpenCLAllocator : public mindspore::Allocator {
   bool IsOverSize() { return is_oversize_; }
 
  private:
+  struct MemBuf {
+    std::atomic_int ref_count_ = 0;
+    size_t size_{0};
+    void *device_ptr_{nullptr};
+    void *host_ptr_{nullptr};
+    void *image_ptr_{nullptr};
+    MemType mem_type_{MemType::BUF};
+    ImageSize img_size_;
+    bool map_flags_{false};
+  };
+
   void Lock();
   void UnLock();
   void *MinimumFit(MemType mem_type, size_t size, const ImageSize &img_size);
+  void *MapBufferSVM(void *host_ptr, int flags, void *command_queue, bool sync);
+  void *PerformMapBuffer(MemBuf *mem_buf, int flags, bool sync);
   void *_Malloc(MemType mem_type, void *data, size_t size = 0, const ImageSize &img_size = ImageSize());
   void *CreateBuffer(size_t size, void *data, size_t flags, cl::Buffer **buffer);
   int CreateImage2D(size_t size, const ImageSize &img_size, void *data, size_t flags, bool is_map, cl::Buffer **buffer,
@@ -101,16 +114,6 @@ class OpenCLAllocator : public mindspore::Allocator {
  private:
   OpenCLRuntime *ocl_runtime_{nullptr};
   std::mutex lock;
-  struct MemBuf {
-    std::atomic_int ref_count_ = 0;
-    size_t size_{0};
-    void *device_ptr_{nullptr};
-    void *host_ptr_{nullptr};
-    void *image_ptr_{nullptr};
-    MemType mem_type_{MemType::BUF};
-    ImageSize img_size_;
-    bool map_flags_{false};
-  };
 
   // <membuf->buf, membuf>
   std::unordered_map<void *, MemBuf *> allocated_list_;

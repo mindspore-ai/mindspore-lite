@@ -130,6 +130,12 @@ class MS_API WeightDecoder {
 
   static std::vector<bool> StringToBitVector(const std::string &str);
 
+  static size_t ParseUniqueValueCnt(const std::vector<bool> &bit_vec, int bit_num, size_t *index);
+  static std::vector<int> ParseUniqueValues(const std::vector<bool> &bit_vec, int bit_num, size_t unique_value_cnt,
+                                            size_t *index);
+  static STATUS ParseAndUnIndex(Tensor *dst_tensor, int bit_num, const std::vector<bool> &bit_vec, size_t index,
+                                size_t unique_value_cnt, const std::vector<int> &unique_values);
+
   static STATUS IndexingDecompress(const SchemaTensorWrapper &src_tensor, Tensor *dst_tensor);
 
   static bool IsChannelFirst(int index, const OpParameter *op_parameter);
@@ -239,6 +245,7 @@ class MS_API WeightDecoder {
     return param->axis_;
   }
 
+  static int SetDequantDataToTensor(lite::Tensor *input_tensor, void *new_const_data, TypeId dst_data_type);
   static int DequantWeight(lite::Tensor *input_tensor, int preferred_dim, TypeId dst_data_type = kNumberTypeFloat32);
 
   static int DecodeKMeansWeight(lite::Tensor *tensor, TypeId dst_data_type);

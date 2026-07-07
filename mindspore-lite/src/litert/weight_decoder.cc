@@ -22,6 +22,15 @@
 
 namespace mindspore::lite {
 #ifndef WEIGHT_DECODE_CLIP
+int WeightDecoder::SetDequantDataToTensor(lite::Tensor *input_tensor, void *new_const_data, TypeId dst_data_type) {
+  CHECK_NULL_RETURN(new_const_data);
+  input_tensor->FreeData();
+  input_tensor->set_data(new_const_data);
+  input_tensor->set_own_data(true);
+  input_tensor->set_data_type(dst_data_type);
+  return RET_OK;
+}
+
 int WeightDecoder::DequantWeight(lite::Tensor *input_tensor, int preferred_dim, TypeId dst_data_type) {
   MS_ASSERT(input_tensor != nullptr);
   if (input_tensor->quant_params().empty()) {
@@ -29,56 +38,34 @@ int WeightDecoder::DequantWeight(lite::Tensor *input_tensor, int preferred_dim, 
     return RET_ERROR;
   }
   if (input_tensor->data_type() == kNumberTypeInt16 && dst_data_type == kNumberTypeFloat32) {
-    auto new_const_data = DequantData<int16_t, float>(input_tensor, preferred_dim);
-    CHECK_NULL_RETURN(new_const_data);
-    input_tensor->FreeData();
-    input_tensor->set_data(new_const_data);
-    input_tensor->set_own_data(true);
-    input_tensor->set_data_type(dst_data_type);
+    return SetDequantDataToTensor(input_tensor, DequantData<int16_t, float>(input_tensor, preferred_dim),
+                                  dst_data_type);
   } else if (input_tensor->data_type() == kNumberTypeInt16 && dst_data_type == kNumberTypeFloat16) {
 #if defined(ENABLE_ARM) && defined(ENABLE_FP16)
-    auto new_const_data = DequantData<int16_t, float16_t>(input_tensor, preferred_dim);
-    CHECK_NULL_RETURN(new_const_data);
-    input_tensor->FreeData();
-    input_tensor->set_data(new_const_data);
-    input_tensor->set_own_data(true);
-    input_tensor->set_data_type(dst_data_type);
+    return SetDequantDataToTensor(input_tensor, DequantData<int16_t, float16_t>(input_tensor, preferred_dim),
+                                  dst_data_type);
 #else
     MS_LOG(ERROR) << "Float16 is not supported";
     return RET_NOT_SUPPORT;
 #endif
   } else if (input_tensor->data_type() == kNumberTypeInt8 && dst_data_type == kNumberTypeFloat32) {
-    auto new_const_data = DequantData<int8_t, float>(input_tensor, preferred_dim);
-    CHECK_NULL_RETURN(new_const_data);
-    input_tensor->FreeData();
-    input_tensor->set_data(new_const_data);
-    input_tensor->set_own_data(true);
-    input_tensor->set_data_type(dst_data_type);
+    return SetDequantDataToTensor(input_tensor, DequantData<int8_t, float>(input_tensor, preferred_dim), dst_data_type);
   } else if (input_tensor->data_type() == kNumberTypeInt8 && dst_data_type == kNumberTypeFloat16) {
 #if defined(ENABLE_ARM) && defined(ENABLE_FP16)
-    auto new_const_data = DequantData<int8_t, float16_t>(input_tensor, preferred_dim);
-    CHECK_NULL_RETURN(new_const_data);
-    input_tensor->FreeData();
-    input_tensor->set_data(new_const_data);
-    input_tensor->set_own_data(true);
-    input_tensor->set_data_type(dst_data_type);
+    return SetDequantDataToTensor(input_tensor, DequantData<int8_t, float16_t>(input_tensor, preferred_dim),
+                                  dst_data_type);
 #else
     MS_LOG(ERROR) << "Float16 is not supported";
     return RET_NOT_SUPPORT;
 #endif
   } else if (input_tensor->data_type() == kNumberTypeInt32 && dst_data_type == kNumberTypeFloat32) {
-    auto new_const_data = DequantData<int32_t, float>(input_tensor, preferred_dim);
-    CHECK_NULL_RETURN(new_const_data);
-    input_tensor->FreeData();
-    input_tensor->set_data(new_const_data);
-    input_tensor->set_own_data(true);
-    input_tensor->set_data_type(dst_data_type);
+    return SetDequantDataToTensor(input_tensor, DequantData<int32_t, float>(input_tensor, preferred_dim),
+                                  dst_data_type);
   } else {
     MS_LOG(ERROR) << "Unsupported dequant from data_type(" << (input_tensor->data_type()) << ") to data_type("
                   << dst_data_type << ")";
     return RET_NOT_SUPPORT;
   }
-  return RET_OK;
 }
 
 int WeightDecoder::DecodeKMeansWeight(lite::Tensor *tensor, TypeId dst_data_type = kNumberTypeFloat32) {
@@ -321,40 +308,35 @@ std::vector<bool> WeightDecoder::StringToBitVector(const std::string &str) {
   return vec;
 }
 
-STATUS WeightDecoder::IndexingDecompress(const SchemaTensorWrapper &src_tensor, Tensor *dst_tensor) {
-  MS_ASSERT(src_tensor.handler() != nullptr);
-  MS_ASSERT(src_tensor.data() != nullptr);
-  MS_LOG(DEBUG) << "un-index weight";
-  MS_CHECK_TRUE_MSG(src_tensor.handler()->quantParams() != nullptr, RET_ERROR, "quant params is nullptr");
-  MS_CHECK_TRUE_MSG((*src_tensor.handler()->quantParams()).size() > 0, RET_ERROR,
-                    "quant params size need bigger than 0");
-  MS_CHECK_TRUE_MSG(src_tensor.handler()->quantParams()->Get(0) != nullptr, RET_ERROR, "quant param is nullptr");
-  auto bit_num = src_tensor.handler()->quantParams()->Get(0)->numBits();
-
-  std::string str(static_cast<const char *>(src_tensor.data()), src_tensor.length());
-  auto bit_vec = StringToBitVector(str);
-  size_t index = 0;
-  // parse unique_value_cnt
+size_t WeightDecoder::ParseUniqueValueCnt(const std::vector<bool> &bit_vec, int bit_num, size_t *index) {
   size_t unique_value_cnt = 0;
   for (int i = 0; i < bit_num; i++) {
-    bool bit = bit_vec[index++];
+    bool bit = bit_vec[(*index)++];
     unique_value_cnt |= bit << static_cast<size_t>((bit_num - i - 1));
   }
   if (unique_value_cnt == 0) {
     unique_value_cnt = 1u << bit_num;
   }
-  // parse unique_value_set
+  return unique_value_cnt;
+}
+
+std::vector<int> WeightDecoder::ParseUniqueValues(const std::vector<bool> &bit_vec, int bit_num,
+                                                  size_t unique_value_cnt, size_t *index) {
   std::vector<int> unique_values;
   for (size_t i = 0; i < unique_value_cnt; i++) {
     int unique_value = 0;
     for (int j = 0; j < bit_num; j++) {
-      bool bit = bit_vec[index++];
+      bool bit = bit_vec[(*index)++];
       unique_value |= bit << static_cast<size_t>((bit_num - j - 1));
     }
     // unsigned to signed
     unique_values.push_back(unique_value - (1u << static_cast<size_t>((bit_num - 1))));
   }
-  // parse index
+  return unique_values;
+}
+
+STATUS WeightDecoder::ParseAndUnIndex(Tensor *dst_tensor, int bit_num, const std::vector<bool> &bit_vec, size_t index,
+                                      size_t unique_value_cnt, const std::vector<int> &unique_values) {
   std::vector<size_t> unique_value_index_vec;
   auto elem_cnt = dst_tensor->ElementsNum();
   size_t unique_value_bit = static_cast<size_t>(ceil(log2(unique_value_cnt)));
@@ -393,6 +375,24 @@ STATUS WeightDecoder::IndexingDecompress(const SchemaTensorWrapper &src_tensor, 
     return RET_ERROR;
   }
   return RET_OK;
+}
+
+STATUS WeightDecoder::IndexingDecompress(const SchemaTensorWrapper &src_tensor, Tensor *dst_tensor) {
+  MS_ASSERT(src_tensor.handler() != nullptr);
+  MS_ASSERT(src_tensor.data() != nullptr);
+  MS_LOG(DEBUG) << "un-index weight";
+  MS_CHECK_TRUE_MSG(src_tensor.handler()->quantParams() != nullptr, RET_ERROR, "quant params is nullptr");
+  MS_CHECK_TRUE_MSG((*src_tensor.handler()->quantParams()).size() > 0, RET_ERROR,
+                    "quant params size need bigger than 0");
+  MS_CHECK_TRUE_MSG(src_tensor.handler()->quantParams()->Get(0) != nullptr, RET_ERROR, "quant param is nullptr");
+  auto bit_num = src_tensor.handler()->quantParams()->Get(0)->numBits();
+
+  std::string str(static_cast<const char *>(src_tensor.data()), src_tensor.length());
+  auto bit_vec = StringToBitVector(str);
+  size_t index = 0;
+  auto unique_value_cnt = ParseUniqueValueCnt(bit_vec, bit_num, &index);
+  auto unique_values = ParseUniqueValues(bit_vec, bit_num, unique_value_cnt, &index);
+  return ParseAndUnIndex(dst_tensor, bit_num, bit_vec, index, unique_value_cnt, unique_values);
 }
 
 int WeightDecoder::DequantTensor(Tensor *tensor, int preferred_dim, TypeId dst_data_type) {

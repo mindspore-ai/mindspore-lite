@@ -412,7 +412,7 @@ int Scheduler::Schedule(std::vector<kernel::KernelExec *> *dst_kernels) {
 
   ret = InitDelegateKernels(dst_kernels);
   if (ret != RET_OK) {
-    MS_LOG(ERROR) << "Repalce delegate kernels failed.";
+    MS_LOG(ERROR) << "Replace delegate kernels failed.";
     return ret;
   }
 
@@ -584,36 +584,15 @@ int Scheduler::ReplaceDelegateKernels(std::vector<kernel::KernelExec *> *dst_ker
   return RET_OK;
 }
 
-int Scheduler::InitDelegateKernels(std::vector<kernel::KernelExec *> *dst_kernels) {
-  /* no delegate valid */
-  if (delegate_ == nullptr) {
-    return RET_OK;
-  }
-
-  /* set delegate spin count */
-  context_->thread_pool_->SetSpinCountMinValue();
-
-  /* external delegate */
-  if (delegate_device_type_ == -1) {
-    auto ret = ReplaceDelegateKernels(dst_kernels);
-    if (ret != RET_OK) {
-      MS_LOG(ERROR) << "external delegate init failed.";
-      return ret;
-    }
-  }
-
-  /* Inner delegate  :  check Priority */
-  std::vector<kernel::KernelExec *> src_kernels = *dst_kernels;
-  dst_kernels->clear();
-
-  while (!src_kernels.empty()) {
+int Scheduler::ReplaceInnerDelegateKernels(std::vector<kernel::KernelExec *> *dst_kernels,
+                                           std::vector<kernel::KernelExec *> *src_kernels) {
+  while (!src_kernels->empty()) {
     std::vector<kernel::KernelExec *> tmp_kernels;
     kernel::KernelExec *remain_kernel = nullptr;
-
     /* Loop for inner delegate npu subgraph */
-    while (!src_kernels.empty()) {
-      auto kernel = src_kernels.front();
-      VectorErase(&src_kernels, kernel);
+    while (!src_kernels->empty()) {
+      auto kernel = src_kernels->front();
+      VectorErase(src_kernels, kernel);
       bool priority_ret =
         DeviceTypePriority(context_, delegate_device_type_, KernelArchToDeviceType(kernel->desc().arch));
       if (priority_ret == true) {
@@ -623,18 +602,16 @@ int Scheduler::InitDelegateKernels(std::vector<kernel::KernelExec *> *dst_kernel
         break;
       }
     }
-
     /* start current NPU-kernels replace */
     if (tmp_kernels.empty()) {
       if (remain_kernel != nullptr) {
         dst_kernels->push_back(remain_kernel);
-        remain_kernel = nullptr;
       }
       continue;
     }
     auto ret = ReplaceDelegateKernels(&tmp_kernels);
     if (ret != RET_OK) {
-      dst_kernels->insert(dst_kernels->end(), src_kernels.begin(), src_kernels.end());
+      dst_kernels->insert(dst_kernels->end(), src_kernels->begin(), src_kernels->end());
       dst_kernels->insert(dst_kernels->end(), tmp_kernels.begin(), tmp_kernels.end());
       if (remain_kernel != nullptr) {
         dst_kernels->push_back(remain_kernel);
@@ -642,16 +619,33 @@ int Scheduler::InitDelegateKernels(std::vector<kernel::KernelExec *> *dst_kernel
       MS_LOG(ERROR) << "Inner delegate replace delegate kernels failed.";
       return ret;
     }
-
     dst_kernels->insert(dst_kernels->end(), tmp_kernels.begin(), tmp_kernels.end());
-    tmp_kernels.clear();
     if (remain_kernel != nullptr) {
       dst_kernels->push_back(remain_kernel);
-      remain_kernel = nullptr;
     }
   }
-
   return RET_OK;
+}
+
+int Scheduler::InitDelegateKernels(std::vector<kernel::KernelExec *> *dst_kernels) {
+  /* no delegate valid */
+  if (delegate_ == nullptr) {
+    return RET_OK;
+  }
+  /* set delegate spin count */
+  context_->thread_pool_->SetSpinCountMinValue();
+  /* external delegate */
+  if (delegate_device_type_ == -1) {
+    auto ret = ReplaceDelegateKernels(dst_kernels);
+    if (ret != RET_OK) {
+      MS_LOG(ERROR) << "external delegate init failed.";
+      return ret;
+    }
+  }
+  /* Inner delegate  :  check Priority */
+  std::vector<kernel::KernelExec *> src_kernels = *dst_kernels;
+  dst_kernels->clear();
+  return ReplaceInnerDelegateKernels(dst_kernels, &src_kernels);
 }
 #endif
 
@@ -1598,16 +1592,8 @@ int Scheduler::ScheduleGraphToKernels(std::vector<kernel::KernelExec *> *dst_ker
   return RET_OK;
 }
 
-int Scheduler::ScheduleSubGraphToKernels(size_t subgraph_index, std::vector<kernel::KernelExec *> *dst_kernels,
-                                         std::vector<lite::Tensor *> *in_tensors,
-                                         std::vector<lite::Tensor *> *out_tensors, TypeId prefer_data_type) {
-  MS_ASSERT(src_model_ != nullptr);
-  MS_ASSERT(!src_model_->graph_.sub_graphs_.empty());
-  MS_ASSERT(src_model_->graph_.sub_graphs_.size() > subgraph_index);
-  MS_ASSERT(dst_kernels != nullptr);
-  MS_ASSERT(dst_kernels->empty());
-  auto subgraph = src_model_->graph_.sub_graphs_.at(subgraph_index);
-  auto ret = RET_OK;
+int Scheduler::ScheduleNodesInSubGraph(size_t subgraph_index, const lite::LiteGraph::SubGraph *subgraph,
+                                       std::vector<kernel::KernelExec *> *dst_kernels, TypeId prefer_data_type) {
   for (auto node_index : subgraph->node_indices_) {
     auto node = src_model_->graph_.all_nodes_[node_index];
     MS_ASSERT(node != nullptr);
@@ -1638,7 +1624,7 @@ int Scheduler::ScheduleSubGraphToKernels(size_t subgraph_index, std::vector<kern
     } else {
       kernel = ScheduleNodeToKernel(node, prefer_data_type);
     }
-    if (kernel == nullptr || ret != RET_OK) {
+    if (kernel == nullptr) {
       MS_LOG(ERROR) << "schedule node return nullptr, name: " << node->name_
                     << ", type: " << GetPrimitiveTypeName(primitive, context_->get_schema_version());
       return RET_ERROR;
@@ -1652,6 +1638,12 @@ int Scheduler::ScheduleSubGraphToKernels(size_t subgraph_index, std::vector<kern
     }
     primitives_.emplace(litert_kernel, static_cast<const schema::Primitive *>(primitive));
   }
+  return RET_OK;
+}
+
+void Scheduler::CopySubGraphInOutTensors(const lite::LiteGraph::SubGraph *subgraph,
+                                         std::vector<lite::Tensor *> *in_tensors,
+                                         std::vector<lite::Tensor *> *out_tensors) {
   if (in_tensors != nullptr) {
     std::transform(subgraph->input_indices_.begin(), subgraph->input_indices_.end(), std::back_inserter(*in_tensors),
                    [&](const uint32_t index) { return this->src_tensors_->at(index); });
@@ -1660,6 +1652,22 @@ int Scheduler::ScheduleSubGraphToKernels(size_t subgraph_index, std::vector<kern
     std::transform(subgraph->output_indices_.begin(), subgraph->output_indices_.end(), std::back_inserter(*out_tensors),
                    [&](const uint32_t index) { return this->src_tensors_->at(index); });
   }
+}
+
+int Scheduler::ScheduleSubGraphToKernels(size_t subgraph_index, std::vector<kernel::KernelExec *> *dst_kernels,
+                                         std::vector<lite::Tensor *> *in_tensors,
+                                         std::vector<lite::Tensor *> *out_tensors, TypeId prefer_data_type) {
+  MS_ASSERT(src_model_ != nullptr);
+  MS_ASSERT(!src_model_->graph_.sub_graphs_.empty());
+  MS_ASSERT(src_model_->graph_.sub_graphs_.size() > subgraph_index);
+  MS_ASSERT(dst_kernels != nullptr);
+  MS_ASSERT(dst_kernels->empty());
+  auto subgraph = src_model_->graph_.sub_graphs_.at(subgraph_index);
+  auto ret = ScheduleNodesInSubGraph(subgraph_index, subgraph, dst_kernels, prefer_data_type);
+  if (ret != RET_OK) {
+    return ret;
+  }
+  CopySubGraphInOutTensors(subgraph, in_tensors, out_tensors);
   return RET_OK;
 }
 

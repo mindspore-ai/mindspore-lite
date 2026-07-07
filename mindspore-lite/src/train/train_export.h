@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <fstream>
 #include <map>
 #include <unordered_map>
 #include <utility>
@@ -92,6 +93,9 @@ class TrainExport {
   std::unique_ptr<schema::TensorT> CreateTransformTensor(size_t id);
   std::unique_ptr<schema::TensorT> CreateTransformConst(size_t last_id);
   int AddTransform();
+  int WriteTensorShape(std::ofstream &weights, const std::unique_ptr<schema::TensorT> &tensor,
+                       const std::vector<std::string> &changeable_weights_name);
+  int WriteTensorData(std::ofstream &weights, const std::unique_ptr<schema::TensorT> &tensor, bool enable_fp16);
   bool NeedQuantization(const mindspore::lite::Tensor *tensor, const int tensor_quant_type);
   int FindSchemaTensorByName(const std::vector<uint32_t> &search_indices, const std::string &search_name,
                              size_t *target_index);

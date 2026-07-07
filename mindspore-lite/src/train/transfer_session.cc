@@ -272,22 +272,15 @@ int TransferSession::Export(Buffer *model_buffer, ModelType model_type, Quantiza
   return ExportInner<Buffer *>(model_buffer, model_type, quant_type, format, out_put_tensor_name);
 }
 
-lite::LiteSession *CreateTransferSessionInt(const char *model_buf_backbone, size_t size_backbone,
-                                            const char *model_buf_head, size_t size_head,
-                                            const std::shared_ptr<InnerContext> &context, bool train_mode,
-                                            const lite::TrainCfg *cfg) {
-  auto ValidModelSize = [](size_t size) -> bool {
-    constexpr size_t MaxModelSize = 1024 * 1024 * 1024ULL;  // 1G B
-    return size < MaxModelSize && size > 0;
-  };
-  if (!ValidModelSize(size_backbone)) {
-    MS_LOG(ERROR) << "size_backbone too large: " << size_backbone;
-    return nullptr;
-  }
-  if (!ValidModelSize(size_head)) {
-    MS_LOG(ERROR) << "size_head too large: " << size_head;
-    return nullptr;
-  }
+namespace {
+bool IsValidModelSize(size_t size) {
+  constexpr size_t kMaxModelSize = 1024 * 1024 * 1024ULL;  // 1G B
+  return size < kMaxModelSize && size > 0;
+}
+
+lite::TransferSession *CreateAndInitTransferSession(const char *model_buf_backbone, size_t size_backbone,
+                                                    const std::shared_ptr<InnerContext> &context,
+                                                    const lite::TrainCfg *cfg) {
   auto session = new (std::nothrow) lite::TransferSession(model_buf_backbone, size_backbone, context);
   if (session == nullptr) {
     MS_LOG(ERROR) << "create transfer session failed";
@@ -304,6 +297,49 @@ lite::LiteSession *CreateTransferSessionInt(const char *model_buf_backbone, size
     delete session;
     return nullptr;
   }
+  return session;
+}
+
+int CompileAndSwitchMode(lite::TransferSession *session, const std::shared_ptr<lite::Model> &model, bool train_mode) {
+  auto ret = session->CompileTrainGraph(model);
+  if (ret != lite::RET_OK) {
+    MS_LOG(ERROR) << "Compiling Train Graph failed";
+    return ret;
+  }
+  ret = session->CompileTransferGraph();
+  if (ret != lite::RET_OK) {
+    MS_LOG(ERROR) << "Compiling Transfer Graph failed";
+    return ret;
+  }
+  if (train_mode) {
+    ret = session->Train();
+  } else {
+    ret = session->Eval();
+  }
+  if (ret != lite::RET_OK) {
+    MS_LOG(ERROR) << "Could not switch to Train Mode " << train_mode;
+    return ret;
+  }
+  return lite::RET_OK;
+}
+}  // namespace
+
+lite::LiteSession *CreateTransferSessionInt(const char *model_buf_backbone, size_t size_backbone,
+                                            const char *model_buf_head, size_t size_head,
+                                            const std::shared_ptr<InnerContext> &context, bool train_mode,
+                                            const lite::TrainCfg *cfg) {
+  if (!IsValidModelSize(size_backbone)) {
+    MS_LOG(ERROR) << "size_backbone too large: " << size_backbone;
+    return nullptr;
+  }
+  if (!IsValidModelSize(size_head)) {
+    MS_LOG(ERROR) << "size_head too large: " << size_head;
+    return nullptr;
+  }
+  auto *session = CreateAndInitTransferSession(model_buf_backbone, size_backbone, context, cfg);
+  if (session == nullptr) {
+    return nullptr;
+  }
 
   auto model = std::shared_ptr<lite::Model>(lite::Model::Import(model_buf_head, size_head));
   if (model == nullptr) {
@@ -312,26 +348,8 @@ lite::LiteSession *CreateTransferSessionInt(const char *model_buf_backbone, size
     return nullptr;
   }
 
-  ret = session->CompileTrainGraph(model);
+  auto ret = CompileAndSwitchMode(session, model, train_mode);
   if (ret != lite::RET_OK) {
-    MS_LOG(ERROR) << "Compiling Train Graph failed";
-    delete session;
-    return nullptr;
-  }
-  ret = session->CompileTransferGraph();
-  if (ret != lite::RET_OK) {
-    MS_LOG(ERROR) << "Compiling Transfer Graph failed";
-    delete session;
-    return nullptr;
-  }
-
-  if (train_mode) {
-    ret = session->Train();
-  } else {
-    ret = session->Eval();
-  }
-  if (ret != lite::RET_OK) {
-    MS_LOG(ERROR) << "Could not switch to Train Mode " << train_mode;
     delete session;
     return nullptr;
   }

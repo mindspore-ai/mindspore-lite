@@ -39,6 +39,8 @@ class Conv2dTransposeOpenCLKernel : public OpenCLKernel {
   int StoreConstData() override;
 
  private:
+  int SetKernelArgs(int arg_cnt, const cl_int2 &kernel_size, const cl_int2 &stride, const cl_int2 &padding,
+                    const cl_int4 &src_size, const cl_int4 &dst_size);
   void *padWeight_{nullptr};
   void *bias_{nullptr};
   void *stored_weight_{nullptr};

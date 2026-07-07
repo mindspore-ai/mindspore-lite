@@ -100,6 +100,17 @@ class MS_API NetTrain : public NetTrainBase {
   int CompareOutput() override;
   int SaveModels() override;
 
+  bool BeforeTimeProfilingCallback(const std::vector<mindspore::MSTensor> &before_inputs,
+                                   const std::vector<mindspore::MSTensor> &before_outputs,
+                                   const mindspore::MSCallBackParam &callParam);
+  bool AfterTimeProfilingCallback(const std::vector<mindspore::MSTensor> &after_inputs,
+                                  const std::vector<mindspore::MSTensor> &after_outputs,
+                                  const mindspore::MSCallBackParam &call_param);
+  void BuildPrintRows(const std::map<std::string, std::pair<int, float>> &result, std::vector<size_t> *columnLenMax,
+                      std::vector<std::vector<std::string>> *rows);
+  void PrintFormattedTable(const std::vector<std::string> &title, std::vector<size_t> &columnLenMax,
+                           const std::vector<std::vector<std::string>> &rows);
+
   // callback parameters
   uint64_t op_begin_ = 0;
   int op_call_times_total_ = 0;

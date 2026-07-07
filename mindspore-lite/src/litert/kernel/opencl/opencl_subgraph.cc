@@ -405,22 +405,7 @@ void OpenCLSubGraph::GetInOutNodes() {
   }
 }
 
-int OpenCLSubGraph::Prepare() {
-  ocl_runtime_->SetFp16Enable(subgraph_type() == kGpuFp16SubGraph);
-
-  for (const auto tensor : in_tensors()) {
-    MS_ASSERT(tensor);
-    tensor->set_allocator(allocator_);
-  }
-  for (const auto tensor : out_tensors()) {
-    MS_ASSERT(tensor);
-    tensor->set_allocator(allocator_);
-  }
-  executor_ = new (std::nothrow) lite::opencl::OpenCLExecutor();
-  if (executor_ == nullptr) {
-    MS_LOG(ERROR) << "Create OpenCLExecutor fail";
-    return RET_ERROR;
-  }
+int OpenCLSubGraph::PrepareNodes() {
   for (auto node : this->nodes_) {
     if (node == nullptr) {
       MS_LOG(ERROR) << "node in Subgraph is nullptr";
@@ -450,10 +435,32 @@ int OpenCLSubGraph::Prepare() {
       }
     }
   }
+  return RET_OK;
+}
+
+int OpenCLSubGraph::Prepare() {
+  ocl_runtime_->SetFp16Enable(subgraph_type() == kGpuFp16SubGraph);
+  for (const auto tensor : in_tensors()) {
+    MS_ASSERT(tensor);
+    tensor->set_allocator(allocator_);
+  }
+  for (const auto tensor : out_tensors()) {
+    MS_ASSERT(tensor);
+    tensor->set_allocator(allocator_);
+  }
+  executor_ = new (std::nothrow) lite::opencl::OpenCLExecutor();
+  if (executor_ == nullptr) {
+    MS_LOG(ERROR) << "Create OpenCLExecutor fail";
+    return RET_ERROR;
+  }
+  auto ret = PrepareNodes();
+  if (ret != RET_OK) {
+    return ret;
+  }
   if (all_kernels_infer_done_) {
     auto opencl_exec = reinterpret_cast<lite::opencl::OpenCLExecutor *>(executor_);
     // If tuning_mode is DEFAULT, just malloc memory for reuse.
-    auto ret = opencl_exec->RunOrTune(in_tensors(), out_tensors(), nodes_, nullptr, nullptr, true);
+    ret = opencl_exec->RunOrTune(in_tensors(), out_tensors(), nodes_, nullptr, nullptr, true);
     if (ret != RET_OK) {
       MS_LOG(ERROR) << "Run opencl Tuning failed: " << ret;
       return ret;

@@ -58,6 +58,7 @@ class OpenCLSubGraph : public SubGraphKernel {
 
  private:
   void UnInit();
+  int PrepareNodes();
   int UpdateTensorDataTypePass();
   void ReplaceOutTensorAndKernelToConvert(const lite::Tensor *in_tensor,
                                           const std::vector<kernel::KernelExec *> &in_kernels, lite::Tensor *new_tensor,

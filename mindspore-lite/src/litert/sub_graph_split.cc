@@ -507,58 +507,68 @@ void SearchSubGraph::InsertHeadNode(uint32_t head_node_index, Subgraph *subgraph
   return;
 }
 
+void SearchSubGraph::InsertMultyInNode(uint32_t node_index, Subgraph *subgraph,
+                                       std::unordered_map<uint32_t, std::vector<Subgraph>>::iterator subs_iter) {
+  std::vector<Subgraph> &subs = subs_iter->second;
+  /* insert nodes */
+  subgraph->nodes_.push_back(node_index);
+  for (Subgraph &sub : subs) {
+    subgraph->nodes_.insert(subgraph->nodes_.end(), sub.nodes_.begin(), sub.nodes_.end());
+  }
+  /* insert heads */
+  std::set<uint32_t> subs_head;
+  subs_head.insert(node_index);
+  for (Subgraph &sub : subs) {
+    for (uint32_t head : sub.heads_) {
+      subs_head.insert(head);
+    }
+  }
+  std::set<uint32_t> subs_head_baklist = subs_head;
+  for (uint32_t head_node : subs_head) {
+    std::vector<uint32_t> head_input_tensors = model_->graph_.all_nodes_[head_node]->input_indices_;
+    RemoveConstNode(&head_input_tensors);
+    if (head_input_tensors.size() != 1) continue;
+    std::vector<uint32_t> input_nodes = tensors_.at(head_input_tensors.at(0)).out_nodes_;
+    if (input_nodes.size() != 1) continue;
+    uint32_t input_node = input_nodes.at(0);
+    if (!IsNodeSubGraphHead(input_node, subgraph->nodes_)) {
+      InsertNodeByMid(input_node, subgraph, head_node);
+      subs_head_baklist.erase(head_node);
+    }
+  }
+  for (auto head : subs_head_baklist) {
+    subgraph->heads_.push_back(head);
+  }
+  node_sub_map_.erase(node_index);
+}
+
+void SearchSubGraph::SearchNextNodesForMid(uint32_t node_index, Subgraph *subgraph,
+                                           const std::vector<uint32_t> &inputs) {
+  subgraph->nodes_.insert(subgraph->nodes_.begin(), node_index);
+  node_list_.at(node_index) = nullptr;
+  for (uint32_t in : inputs) {
+    auto next_nodes = tensors_[in].out_nodes_;
+    if (next_nodes.size() == 0) {
+      if (!subgraph->nodes_.empty()) subgraph->heads_.push_back(subgraph->nodes_.front());
+    } else {
+      for (uint32_t next_node : next_nodes) {
+        InsertNodeByMid(next_node, subgraph, node_index);
+      }
+    }
+  }
+}
+
 void SearchSubGraph::InsertNodeByMid(uint32_t node_index, Subgraph *subgraph, uint32_t last_index) {
   LiteGraph::Node *node = node_list_.at(node_index);
   MS_CHECK_PTR_IF_NULL(node);
 
   auto subs_iter = node_sub_map_.find(node_index);
   if (subs_iter != node_sub_map_.end()) {
-    /* node is multy-in node , already searched before */
-
     if (IsNodeSubGraphHead(node_index, subgraph->nodes_)) {
-      /* this node can not be included in this subgraph */
       if (!subgraph->nodes_.empty()) subgraph->heads_.push_back(last_index);
       return;
     }
-
-    /* include this multy-in-unit in current subgraph */
-    std::vector<Subgraph> &subs = subs_iter->second;
-
-    /* insert nodes */
-    subgraph->nodes_.push_back(node_index);
-    for (Subgraph &sub : subs) {
-      subgraph->nodes_.insert(subgraph->nodes_.end(), sub.nodes_.begin(), sub.nodes_.end());
-    }
-
-    /* insert heads */
-    std::set<uint32_t> subs_head;
-    subs_head.insert(node_index);
-    for (Subgraph &sub : subs) {
-      for (uint32_t head : sub.heads_) {
-        subs_head.insert(head);
-      }
-    }
-
-    std::set<uint32_t> subs_head_baklist = subs_head;
-    for (uint32_t head_node : subs_head) {
-      std::vector<uint32_t> head_input_tensors = model_->graph_.all_nodes_[head_node]->input_indices_;
-      RemoveConstNode(&head_input_tensors);
-      if (head_input_tensors.size() != 1) continue;
-      std::vector<uint32_t> input_nodes = tensors_.at(head_input_tensors.at(0)).out_nodes_;
-      if (input_nodes.size() != 1) continue;
-
-      uint32_t input_node = input_nodes.at(0);
-      if (!IsNodeSubGraphHead(input_node, subgraph->nodes_)) {
-        InsertNodeByMid(input_node, subgraph, head_node);
-        subs_head_baklist.erase(head_node);
-      }
-    }
-
-    /* stop search  */
-    for (auto head : subs_head_baklist) {
-      subgraph->heads_.push_back(head);
-    }
-    node_sub_map_.erase(node_index);
+    InsertMultyInNode(node_index, subgraph, subs_iter);
     return;
   }
 
@@ -574,21 +584,7 @@ void SearchSubGraph::InsertNodeByMid(uint32_t node_index, Subgraph *subgraph, ui
     return;
   }
 
-  subgraph->nodes_.insert(subgraph->nodes_.begin(), node_index);
-  node_list_.at(node_index) = nullptr;
-
-  /* search for next node */
-  for (uint32_t in : inputs) {
-    auto next_nodes = tensors_[in].out_nodes_;
-    if (next_nodes.size() == 0) {
-      if (!subgraph->nodes_.empty()) subgraph->heads_.push_back(subgraph->nodes_.front());
-    } else {
-      for (uint32_t next_node : next_nodes) {
-        InsertNodeByMid(next_node, subgraph, node_index);
-      }
-    }
-  }
-  return;
+  SearchNextNodesForMid(node_index, subgraph, inputs);
 }
 
 void SearchSubGraph::InitMiddleSubgraph(const std::vector<uint32_t> *multy_in_nodes) {

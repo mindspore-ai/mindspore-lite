@@ -186,9 +186,12 @@ class MS_API LiteSession {
   int InitDSPRuntime();
   int InitSharedThreadPool();
   int ReshapeWeightTensor(lite::Tensor *orig_tensor, lite::Tensor *new_tensor);
+  void CleanupTensors();
+  void CleanupResources();
 
  private:
   int IsolateOutputTensor();
+  void ReplaceSubgraphTensor(Tensor *src_tensor, Tensor *new_tensor);
   bool IsIsolatedSubGraph(const kernel::KernelExec *kernel);
   void UpdateGraphOutputMap(const std::vector<kernel::KernelExec *> &kernel);
   void UpdateLinkInfoForIsolateOutput();
