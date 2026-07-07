@@ -25,8 +25,11 @@
 // those symbols <ns>::-qualified ("cgdr::ChunkGatedDeltaRuleTilingData",
 // "cgdr::chunk_gated_delta_rule_0_tilingkey") and they fail to resolve, aborting
 // the device-kernel compile. Mirrored by op_host/chunk_gated_delta_rule_tiling.h.
+// kTilingDataAlign is the 8-byte packing CANN assumes for the host->device tiling
+// byte stream; both #pragma pack and alignas must use the same value.
+constexpr int kTilingDataAlign = 8;
 #pragma pack(push, 8)
-struct alignas(8) ChunkGatedDeltaRuleTilingData {
+struct alignas(kTilingDataAlign) ChunkGatedDeltaRuleTilingData {
   uint32_t vectorCoreNum;
   uint32_t ubCalSize;
   uint32_t ubRestBytes;

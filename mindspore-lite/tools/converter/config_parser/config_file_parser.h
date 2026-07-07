@@ -187,6 +187,14 @@ class ConfigFileParser {
   STATUS ParseCustomPattern(const std::shared_ptr<mindspore::ConverterPara> &param, std::string custom_pattern_str);
   int ParseOMConverterString(const std::map<std::string, std::map<std::string, std::string>> &maps);
   bool CheckPluginCustomOps(const std::vector<std::string> &plugin_custom_ops);
+  void SetAclStringOptions(const std::shared_ptr<mindspore::ConverterPara> &param,
+                           const std::map<std::string, std::string> &ascend_map);
+  bool ParsePluginAndFusionOps(const std::shared_ptr<mindspore::ConverterPara> &param,
+                               const std::map<std::string, std::string> &ascend_map);
+  bool ParseOpAttrsConfig(const std::shared_ptr<mindspore::ConverterPara> &param,
+                          const std::map<std::string, std::string> &ascend_map);
+  bool ParseTypedScalarOptions(const std::shared_ptr<mindspore::ConverterPara> &param,
+                               const std::map<std::string, std::string> &ascend_map);
 
  private:
   DataPreProcessString data_pre_process_string_;

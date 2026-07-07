@@ -297,7 +297,9 @@ bool MatchPattern(const std::string &input) {
 
 TypeId GetVec2DIntDataType(const ValuePtr &value) {
   MS_CHECK_TRUE_RET(value != nullptr, kTypeUnknown);
-  auto layer0_seq_val = value->cast<ValueSequencePtr>()->value();
+  auto layer0_seq = value->cast<ValueSequencePtr>();
+  MS_CHECK_TRUE_RET(layer0_seq != nullptr, kTypeUnknown);
+  auto layer0_seq_val = layer0_seq->value();
   if (layer0_seq_val.empty()) {
     MS_LOG(ERROR) << "Layer0 sequence length is 0";
     return kTypeUnknown;
@@ -311,7 +313,9 @@ TypeId GetVec2DIntDataType(const ValuePtr &value) {
     MS_LOG(ERROR) << "Layer0 element 0 is not a ValueSequence, got type " << layer0_elem0->type_name();
     return kTypeUnknown;
   }
-  auto layer1_seq_val = layer0_elem0->cast<ValueSequencePtr>()->value();
+  auto layer1_seq = layer0_elem0->cast<ValueSequencePtr>();
+  MS_CHECK_TRUE_RET(layer1_seq != nullptr, kTypeUnknown);
+  auto layer1_seq_val = layer1_seq->value();
   if (layer1_seq_val.empty()) {
     MS_LOG(ERROR) << "Layer1 sequence length is 0";
     return kTypeUnknown;

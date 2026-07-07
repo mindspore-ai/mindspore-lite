@@ -39,7 +39,7 @@ def recurrent_gated_delta_rule(
     gk,
     num_accepted_tokens,
     scale_value=1.0,
-):
+):  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     r"""
     Recurrent GatedDeltaRule operator — CANN aclnn-backed recurrent linear attention decode.
 

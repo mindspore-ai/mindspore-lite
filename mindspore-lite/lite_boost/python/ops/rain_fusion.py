@@ -19,13 +19,13 @@ lite_boost custom ops
 - sparse_attention
 """
 
+__all__ = ["rain_fusion_attention", "sparse_attention"]
+
 import os
 from pathlib import Path
 from typing import Optional, Tuple
 import torch
 from .sparse_attention import sparse_attention  # pylint: disable=unused-import
-
-__all__ = ["rain_fusion_attention", "sparse_attention"]
 
 _LOADED = False
 
