@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,38 +33,10 @@ using mindspore::lite::RET_OK;
 using mindspore::lite::KernelRegistrar;
 
 namespace mindspore::kernel {
-namespace {
-constexpr unsigned int OFFSET_BASE = 10;
-}  // namespace
-void ResizeInt8CPUKernel::FreeResizeBiLinear() {
-  free(resize_quant_arg_.x_axis_index_);
-  resize_quant_arg_.x_axis_index_ = nullptr;
-  free(resize_quant_arg_.x_axis_lower_);
-  resize_quant_arg_.x_axis_lower_ = nullptr;
-  free(resize_quant_arg_.x_axis_upper_);
-  resize_quant_arg_.x_axis_upper_ = nullptr;
-  free(resize_quant_arg_.y_axis_index_);
-  resize_quant_arg_.y_axis_index_ = nullptr;
-  free(resize_quant_arg_.y_axis_lower_);
-  resize_quant_arg_.y_axis_lower_ = nullptr;
-  free(resize_quant_arg_.y_axis_upper_);
-  resize_quant_arg_.y_axis_upper_ = nullptr;
-}
 
-void ResizeInt8CPUKernel::FreeFloatResizeBiLinear() {
-  free(resize_float_quant_arg_.x_axis_index_);
-  resize_float_quant_arg_.x_axis_index_ = nullptr;
-  free(resize_float_quant_arg_.x_axis_lower_);
-  resize_float_quant_arg_.x_axis_lower_ = nullptr;
-  free(resize_float_quant_arg_.x_axis_upper_);
-  resize_float_quant_arg_.x_axis_upper_ = nullptr;
-  free(resize_float_quant_arg_.y_axis_index_);
-  resize_float_quant_arg_.y_axis_index_ = nullptr;
-  free(resize_float_quant_arg_.y_axis_lower_);
-  resize_float_quant_arg_.y_axis_lower_ = nullptr;
-  free(resize_float_quant_arg_.y_axis_upper_);
-  resize_float_quant_arg_.y_axis_upper_ = nullptr;
-}
+void ResizeInt8CPUKernel::FreeResizeBiLinear() { FreeResizeBiLinearCommon(resize_quant_arg_); }
+
+void ResizeInt8CPUKernel::FreeFloatResizeBiLinear() { FreeResizeBiLinearCommon(resize_float_quant_arg_); }
 
 ResizeInt8CPUKernel::~ResizeInt8CPUKernel() {
   if (method_ == schema::ResizeMethod_LINEAR) {
@@ -125,37 +97,7 @@ int ResizeInt8CPUKernel::Prepare() {
 
 int ResizeInt8CPUKernel::InitResizeQuantArg() {
   auto out_shape = out_tensors_.front()->shape();
-  resize_quant_arg_.x_axis_index_ = reinterpret_cast<int32_t *>(malloc(out_shape.at(kNHWC_W) * sizeof(int32_t)));
-  if (resize_quant_arg_.x_axis_index_ == nullptr) {
-    MS_LOG(ERROR) << "malloc x axis index array failed.";
-    return RET_ERROR;
-  }
-  resize_quant_arg_.x_axis_lower_ = reinterpret_cast<int32_t *>(malloc(out_shape.at(kNHWC_W) * sizeof(int32_t)));
-  if (resize_quant_arg_.x_axis_lower_ == nullptr) {
-    MS_LOG(ERROR) << "malloc x_axis_lower_ array failed.";
-    return RET_ERROR;
-  }
-  resize_quant_arg_.x_axis_upper_ = reinterpret_cast<int32_t *>(malloc(out_shape.at(kNHWC_W) * sizeof(int32_t)));
-  if (resize_quant_arg_.x_axis_upper_ == nullptr) {
-    MS_LOG(ERROR) << "malloc x_axis_upper_ array failed.";
-    return RET_ERROR;
-  }
-  resize_quant_arg_.y_axis_index_ = reinterpret_cast<int32_t *>(malloc(out_shape.at(kNHWC_H) * sizeof(int32_t)));
-  if (resize_quant_arg_.y_axis_index_ == nullptr) {
-    MS_LOG(ERROR) << "malloc y_axis_index_ array failed.";
-    return RET_ERROR;
-  }
-  resize_quant_arg_.y_axis_lower_ = reinterpret_cast<int32_t *>(malloc(out_shape.at(kNHWC_H) * sizeof(int32_t)));
-  if (resize_quant_arg_.y_axis_lower_ == nullptr) {
-    MS_LOG(ERROR) << "malloc y_axis_lower_ array failed.";
-    return RET_ERROR;
-  }
-  resize_quant_arg_.y_axis_upper_ = reinterpret_cast<int32_t *>(malloc(out_shape.at(kNHWC_H) * sizeof(int32_t)));
-  if (resize_quant_arg_.y_axis_upper_ == nullptr) {
-    MS_LOG(ERROR) << "malloc y_axis_upper_ array failed.";
-    return RET_ERROR;
-  }
-  return RET_OK;
+  return InitResizeQuantArgCommon(this, resize_quant_arg_, out_shape.data());
 }
 
 int ResizeInt8CPUKernel::CalRatio() {
@@ -165,69 +107,22 @@ int ResizeInt8CPUKernel::CalRatio() {
   auto out_tensor = out_tensors_.front();
   auto out_width = out_tensor->Width();
   auto out_height = out_tensor->Height();
-  resize_quant_arg_.ratio_x_ = ((1 << OFFSET_BASE) * in_width + out_width / 2) / out_width;
-  resize_quant_arg_.ratio_y_ = ((1 << OFFSET_BASE) * in_height + out_height / 2) / out_height;
-  bool align_corners = coordinate_transform_mode_ == schema::CoordinateTransformMode_ALIGN_CORNERS;
-  if (align_corners && out_width > 1) {
-    resize_quant_arg_.ratio_x_ = ((1 << OFFSET_BASE) * (in_width - 1) + (out_width - 1) / 2) / (out_width - 1);
-  }
-  if (align_corners && out_height > 1) {
-    resize_quant_arg_.ratio_y_ = ((1 << OFFSET_BASE) * (in_height - 1) + (out_height - 1) / 2) / (out_height - 1);
-  }
-  return RET_OK;
+  return CalRatioCommon(resize_quant_arg_, in_width, in_height, out_width, out_height, coordinate_transform_mode_);
 }
 
 int ResizeInt8CPUKernel::CalInterpolationRange() {
-  for (int i = 0; i < out_tensors_.front()->Height(); ++i) {
-    int32_t scaled_index = i * resize_quant_arg_.ratio_y_;
-    resize_quant_arg_.y_axis_index_[i] = scaled_index;
-    resize_quant_arg_.y_axis_lower_[i] = std::max(scaled_index / (1 << OFFSET_BASE), 0);
-    resize_quant_arg_.y_axis_upper_[i] =
-      std::min(scaled_index / (1 << OFFSET_BASE) + 1, in_tensors_.front()->Height() - 1);
-  }
-  for (int i = 0; i < out_tensors_.front()->Width(); ++i) {
-    int32_t scaled_index = i * resize_quant_arg_.ratio_x_;
-    resize_quant_arg_.x_axis_index_[i] = scaled_index;
-    resize_quant_arg_.x_axis_lower_[i] = std::max(scaled_index / (1 << OFFSET_BASE), 0);
-    resize_quant_arg_.x_axis_upper_[i] =
-      std::min(scaled_index / (1 << OFFSET_BASE) + 1, in_tensors_.front()->Width() - 1);
-  }
-  return RET_OK;
+  struct TensorAccessor {
+    lite::Tensor *tensor_;
+    int Width() const { return tensor_->Width(); }
+    int Height() const { return tensor_->Height(); }
+  } in_accessor{in_tensors_.front()};
+  auto out_tensor = out_tensors_.front();
+  return CalInterpolationRangeCommon(resize_quant_arg_, in_accessor, out_tensor->Height(), out_tensor->Width());
 }
 
 int ResizeInt8CPUKernel::InitResizeFloatQuantArg() {
   auto out_shape = out_tensors_.front()->shape();
-  resize_float_quant_arg_.x_axis_index_ = reinterpret_cast<float *>(malloc(out_shape[kNHWC_W] * sizeof(float)));
-  if (resize_float_quant_arg_.x_axis_index_ == nullptr) {
-    MS_LOG(ERROR) << "malloc x axis index array failed.";
-    return RET_ERROR;
-  }
-  resize_float_quant_arg_.x_axis_lower_ = reinterpret_cast<int32_t *>(malloc(out_shape[kNHWC_W] * sizeof(int32_t)));
-  if (resize_float_quant_arg_.x_axis_lower_ == nullptr) {
-    MS_LOG(ERROR) << "malloc x_axis_lower_ array failed.";
-    return RET_ERROR;
-  }
-  resize_float_quant_arg_.x_axis_upper_ = reinterpret_cast<int32_t *>(malloc(out_shape[kNHWC_W] * sizeof(int32_t)));
-  if (resize_float_quant_arg_.x_axis_upper_ == nullptr) {
-    MS_LOG(ERROR) << "malloc x_axis_upper_ array failed.";
-    return RET_ERROR;
-  }
-  resize_float_quant_arg_.y_axis_index_ = reinterpret_cast<float *>(malloc(out_shape[kNHWC_H] * sizeof(float)));
-  if (resize_float_quant_arg_.y_axis_index_ == nullptr) {
-    MS_LOG(ERROR) << "malloc y_axis_index_ array failed.";
-    return RET_ERROR;
-  }
-  resize_float_quant_arg_.y_axis_lower_ = reinterpret_cast<int32_t *>(malloc(out_shape[kNHWC_H] * sizeof(int32_t)));
-  if (resize_float_quant_arg_.y_axis_lower_ == nullptr) {
-    MS_LOG(ERROR) << "malloc y_axis_lower_ array failed.";
-    return RET_ERROR;
-  }
-  resize_float_quant_arg_.y_axis_upper_ = reinterpret_cast<int32_t *>(malloc(out_shape[kNHWC_H] * sizeof(int32_t)));
-  if (resize_float_quant_arg_.y_axis_upper_ == nullptr) {
-    MS_LOG(ERROR) << "malloc y_axis_upper_ array failed.";
-    return RET_ERROR;
-  }
-  return RET_OK;
+  return InitResizeFloatQuantArgCommon(this, resize_float_quant_arg_, out_shape.data());
 }
 
 int ResizeInt8CPUKernel::CalFloatRatio() {
@@ -237,34 +132,19 @@ int ResizeInt8CPUKernel::CalFloatRatio() {
   auto out_tensor = out_tensors_.front();
   auto out_width = out_tensor->Width();
   auto out_height = out_tensor->Height();
-  resize_float_quant_arg_.ratio_x_ = static_cast<float>(in_width) / out_width;
-  resize_float_quant_arg_.ratio_y_ = static_cast<float>(in_height) / out_height;
-  bool align_corners = coordinate_transform_mode_ == schema::CoordinateTransformMode_ALIGN_CORNERS;
-  if (align_corners && out_width > 1) {
-    resize_float_quant_arg_.ratio_x_ = static_cast<float>(in_width - 1) / (out_width - 1);
-  }
-  if (align_corners && out_height > 1) {
-    resize_float_quant_arg_.ratio_y_ = static_cast<float>(in_height - 1) / (out_height - 1);
-  }
-  return RET_OK;
+  return CalFloatRatioCommon(resize_float_quant_arg_, in_width, in_height, out_width, out_height,
+                             coordinate_transform_mode_);
 }
 
 int ResizeInt8CPUKernel::CalFloatInterpolationRange() {
-  for (int i = 0; i < out_tensors_.front()->Height(); ++i) {
-    float scaled_index = i * resize_float_quant_arg_.ratio_y_;
-    int lower_index = std::floor(scaled_index);
-    resize_float_quant_arg_.y_axis_index_[i] = scaled_index;
-    resize_float_quant_arg_.y_axis_lower_[i] = std::max(lower_index, 0);
-    resize_float_quant_arg_.y_axis_upper_[i] = std::min(lower_index + 1, in_tensors_.front()->Height() - 1);
-  }
-  for (int i = 0; i < out_tensors_.front()->Width(); ++i) {
-    float scaled_index = i * resize_float_quant_arg_.ratio_x_;
-    int lower_index = std::floor(scaled_index);
-    resize_float_quant_arg_.x_axis_index_[i] = scaled_index;
-    resize_float_quant_arg_.x_axis_lower_[i] = std::max(lower_index, 0);
-    resize_float_quant_arg_.x_axis_upper_[i] = std::min(lower_index + 1, in_tensors_.front()->Width() - 1);
-  }
-  return RET_OK;
+  struct TensorAccessor {
+    lite::Tensor *tensor_;
+    int Width() const { return tensor_->Width(); }
+    int Height() const { return tensor_->Height(); }
+  } in_accessor{in_tensors_.front()};
+  auto out_tensor = out_tensors_.front();
+  return CalFloatInterpolationRangeCommon(resize_float_quant_arg_, in_accessor, out_tensor->Height(),
+                                          out_tensor->Width(), coordinate_transform_mode_);
 }
 
 int ResizeInt8CPUKernel::InitResizeBiLinear() {

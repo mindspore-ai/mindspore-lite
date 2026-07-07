@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@
 #include "nnacl_c/fp32/matmul_fp32.h"
 #include "src/litert/kernel/cpu/fp32/matmul_fp32_base.h"
 #include "src/litert/kernel/cpu/fp32/matmul_fp32.h"
+#include "src/litert/kernel/cpu/fp32/matmul_base_mixin.h"
 
 namespace mindspore::kernel {
 class ConvolutionSW1x1CPUKernel : public LiteKernel {
@@ -78,18 +79,9 @@ class ConvolutionSW1x1CPUKernel : public LiteKernel {
   }
 
   // Train API
-  int Train() override {
-    (void)LiteKernel::Train();
-    return matmul_base_->Train();
-  }
-  void SetTrainable(bool trainable) override {
-    LiteKernel::SetTrainable(trainable);
-    return matmul_base_->SetTrainable(trainable);
-  }
-  size_t workspace_size() override {
-    (void)LiteKernel::workspace_size();
-    return matmul_base_->workspace_size();
-  }
+  int Train() override { return matmul_base_utils::Train(this, matmul_base_); }
+  void SetTrainable(bool trainable) override { return matmul_base_utils::SetTrainable(this, matmul_base_, trainable); }
+  size_t workspace_size() override { return matmul_base_utils::WorkspaceSize(this, matmul_base_); }
 
  private:
   MatmulFp32BaseCPUKernel *matmul_base_ = nullptr;
