@@ -21,7 +21,7 @@ echo "Running mslite test script : run_benchmark_x86.sh"
 function Run_Converter() {
     # Unzip x86 runtime and converter
     cd ${x86_path} || exit 1
-    if [[ $backend != "linux_arm64_tflite" ]]; then
+    if [[ $backend != "linux_arm64_tflite" && $backend != "linux_arm64_kleidiai" ]]; then
       tar -zxf ${x86_path}/avx/mindspore-lite-${version}-linux-x64.tar.gz || exit 1
     fi
     tar -zxf mindspore-lite-${version}-linux-*.tar.gz || exit 1
@@ -287,6 +287,8 @@ done
 
 if [[ $backend == "linux_arm64_tflite" ]]; then
   x86_path=${release_path}/linux_aarch64/
+elif [[ $backend == "linux_arm64_kleidiai" ]]; then
+  x86_path=${release_path}/linux_aarch64_kleidiai/
 else
   x86_path=${release_path}/centos_x86
 fi
@@ -321,7 +323,7 @@ models_process_only_config=${basepath}/../${config_folder}/models_process_only.c
 
 # Prepare the config file list
 x86_cfg_file_list=()
-if [[ $backend == "x86_tflite" || $backend == "x86_avx512_tflite" || $backend == "linux_arm64_tflite" ]]; then
+if [[ $backend == "x86_tflite" || $backend == "x86_avx512_tflite" || $backend == "linux_arm64_tflite" || $backend == "linux_arm64_kleidiai" ]]; then
   x86_cfg_file_list=("$models_tflite_config" "$models_tflite_awaretraining_config")
 elif [[ $backend == "x86_tf" || $backend == "x86_avx512_tf" ]]; then
   x86_cfg_file_list=("$models_tf_config")
@@ -397,7 +399,8 @@ backend=${backend:-"all"}
 isFailed=0
 
 if [[ $backend == "all" || $backend == "x86-all" || $backend == "x86" || $backend == "x86_onnx" || $backend == "x86_tf" || \
-      $backend == "x86_tflite" || $backend == "x86_caffe" || $backend == "x86_mindir" || $backend == "linux_arm64_tflite" ]]; then
+      $backend == "x86_tflite" || $backend == "x86_caffe" || $backend == "x86_mindir" || $backend == "linux_arm64_tflite" || \
+      $backend == "linux_arm64_kleidiai" ]]; then
     # Run on x86
     echo "start Run x86 $backend..."
     Run_x86 &
@@ -444,7 +447,8 @@ if [[ $backend == "all" || $backend == "x86-all" || $backend == "x86_parallel_sp
 fi
 
 if [[ $backend == "all" || $backend == "x86-all" || $backend == "x86" || $backend == "x86_onnx" || $backend == "x86_tf" || \
-      $backend == "x86_tflite" || $backend == "x86_caffe" || $backend == "x86_mindir" || $backend == "linux_arm64_tflite" ]]; then
+      $backend == "x86_tflite" || $backend == "x86_caffe" || $backend == "x86_mindir" || $backend == "linux_arm64_tflite" || \
+      $backend == "linux_arm64_kleidiai" ]]; then
     wait ${Run_x86_PID}
     Run_x86_status=$?
     # Check benchmark result and return value
