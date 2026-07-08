@@ -24,17 +24,29 @@
 namespace mindspore::lite::micro::nnacl {
 constexpr auto kInt8Range = 256;
 
-// Apply the ELu transform: y = x > 0 ? x : alpha * (exp(x) - 1), then quantize to int8.
-int8_t QuantizeEluValue(int input, const float input_scale, const int32_t input_zp, const float output_scale,
-                        const int32_t output_zp, const float alpha) {
+// Compute the real-valued ELu output: identity on the positive side, alpha*(exp(x)-1) on the negative side.
+float ComputeEluActivation(float real_input, float alpha) {
+  constexpr float kZeroThreshold = 0.0f;
+  return real_input > kZeroThreshold ? real_input : alpha * std::expm1(real_input);
+}
+
+// Clamp the quantized int32 result into the int8 representable range.
+int8_t ClampToInt8(int32_t quantized) {
   constexpr int32_t min_value = std::numeric_limits<int8_t>::min();
   constexpr int32_t max_value = std::numeric_limits<int8_t>::max();
-  const float real_input = input_scale * (input - input_zp);
-  const float transformed = real_input > 0.0f ? real_input : alpha * std::expm1(real_input);
-  const int32_t quantized = static_cast<int32_t>(std::round(transformed / output_scale) + output_zp);
   return static_cast<int8_t>(std::max(std::min(quantized, max_value), min_value));
 }
 
+// Apply the ELu transform to a single quantized input and quantize back to int8.
+int8_t QuantizeEluValue(int input, const float input_scale, const int32_t input_zp, const float output_scale,
+                        const int32_t output_zp, const float alpha) {
+  const float real_input = input_scale * (input - input_zp);
+  const float transformed = ComputeEluActivation(real_input, alpha);
+  const int32_t quantized = static_cast<int32_t>(std::round(transformed / output_scale) + output_zp);
+  return ClampToInt8(quantized);
+}
+
+// Build the int8 lookup table covering the full int8 input range.
 void CalculateEluTableList(int8_t *table, const float input_scale, const int32_t input_zp, const float output_scale,
                            const int32_t output_zp, const float alpha) {
   constexpr int32_t min_value = std::numeric_limits<int8_t>::min();

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+# pylint: disable=attribute-defined-outside-init
 """
 lite_boost test recurrent_gated_delta_rule
 
@@ -47,6 +48,7 @@ def _l2norm(x, dim=-1, eps=1e-6):
 def _pytorch_recurrent_gated_delta_rule(
     query, key, value, g, gk, beta, initial_state, scale=1.0
 ):
+    # pylint: disable=too-many-locals
     """Reference PyTorch implementation of recurrent GatedDeltaRule for decode.
 
     Args:
@@ -153,6 +155,7 @@ def _print_performance_comparison(tag, cann_time, ref_time):
     logging.info("=" * 60)
 
 
+# pylint: disable=too-many-locals
 def _generate_test_data(batch_size, num_heads, seq_len, k_head_dim, v_head_dim, device):
     """Generate test data satisfying CANN operator constraints.
 

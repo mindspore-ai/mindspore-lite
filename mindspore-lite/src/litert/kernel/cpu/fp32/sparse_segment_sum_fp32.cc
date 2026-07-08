@@ -34,12 +34,15 @@ const uint32_t kInput_indices = 1;
 const uint32_t kInput_segment_ids = 2;
 const uint32_t kOutput_data = 0;
 
-int ValidateInputs(int segment_ids_num, int indices_num, int input_dim0, const int32_t *in_segment_ids_ptr,
-                   const int32_t *in_indcie_ptr, const std::string &kernel_name) {
+int ValidateShape(int segment_ids_num, int indices_num, const std::string &kernel_name) {
   if (segment_ids_num <= 0 || indices_num <= 0 || segment_ids_num != indices_num) {
     MS_LOG(ERROR) << "For '" << kernel_name << "', segment_ids and indices must be 1D, positive, and equal length.";
     return RET_ERROR;
   }
+  return RET_OK;
+}
+
+int ValidateSegmentIds(int segment_ids_num, const int32_t *in_segment_ids_ptr, const std::string &kernel_name) {
   if (in_segment_ids_ptr[0] != 0) {
     MS_LOG(ERROR) << "For '" << kernel_name << "', segment_ids must start from 0.";
     return RET_ERROR;
@@ -53,6 +56,10 @@ int ValidateInputs(int segment_ids_num, int indices_num, int input_dim0, const i
     }
     prev_id = cur_id;
   }
+  return RET_OK;
+}
+
+int ValidateIndices(int indices_num, int input_dim0, const int32_t *in_indcie_ptr, const std::string &kernel_name) {
   for (int i = 0; i < indices_num; i++) {
     int32_t idx = in_indcie_ptr[i];
     if (idx < 0 || idx >= input_dim0) {
@@ -80,8 +87,13 @@ int SparseSegmentSumCPUKernel::Run() {
   const auto segment_ids_num = in_segment_ids_shape[0];
   const auto indices_num = in_indcie_shape[0];
   const auto input_dim0 = in_data_shape[0];
-  if (ValidateInputs(segment_ids_num, indices_num, input_dim0, in_segment_ids_ptr, in_indcie_ptr, this->name_) !=
-      RET_OK) {
+  if (ValidateShape(segment_ids_num, indices_num, this->name_) != RET_OK) {
+    return RET_ERROR;
+  }
+  if (ValidateSegmentIds(segment_ids_num, in_segment_ids_ptr, this->name_) != RET_OK) {
+    return RET_ERROR;
+  }
+  if (ValidateIndices(indices_num, input_dim0, in_indcie_ptr, this->name_) != RET_OK) {
     return RET_ERROR;
   }
 

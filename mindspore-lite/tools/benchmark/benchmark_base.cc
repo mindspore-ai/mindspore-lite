@@ -52,6 +52,8 @@ constexpr int kThreadNumMin = 1;
 constexpr int kParallelThreadNumMin = 1;
 constexpr int kColumnLen = 4;
 constexpr int kPrintColNum = 5;
+// Precision (digits after decimal point) for cost-time output.
+constexpr int kCostTimePrecision = 6;
 
 constexpr float kInputDataFloatMin = 0.1f;
 constexpr float kInputDataFloatMax = 1.0f;
@@ -645,7 +647,8 @@ void BenchmarkBase::CalculateColumnWidths(const std::map<std::string, std::pair<
     index++;
     {
       std::ostringstream oss;
-      oss << std::fixed << std::setprecision(6) << iter.second.second / static_cast<float>(flags_->loop_count_);
+      oss << std::fixed << std::setprecision(kCostTimePrecision)
+          << iter.second.second / static_cast<float>(flags_->loop_count_);
       std::string str = oss.str();
       len = static_cast<int>(str.size());
       if (static_cast<size_t>(len) > columnLenMax->at(index))
@@ -655,7 +658,7 @@ void BenchmarkBase::CalculateColumnWidths(const std::map<std::string, std::pair<
     index++;
     {
       std::ostringstream oss;
-      oss << std::fixed << std::setprecision(6) << iter.second.second / op_cost_total_;
+      oss << std::fixed << std::setprecision(kCostTimePrecision) << iter.second.second / op_cost_total_;
       std::string str = oss.str();
       len = static_cast<int>(str.size());
       if (static_cast<size_t>(len) > columnLenMax->at(index))
@@ -675,7 +678,7 @@ void BenchmarkBase::CalculateColumnWidths(const std::map<std::string, std::pair<
     index++;
     {
       std::ostringstream oss;
-      oss << std::fixed << std::setprecision(6) << iter.second.second;
+      oss << std::fixed << std::setprecision(kCostTimePrecision) << iter.second.second;
       std::string str = oss.str();
       len = static_cast<int>(str.size());
       if (static_cast<size_t>(len) > columnLenMax->at(index))
@@ -721,6 +724,9 @@ int BenchmarkBase::PrintResult(const std::vector<std::string> &title,
 void BenchmarkBase::CalculatePerfColumnWidths(const std::map<std::string, std::pair<int, struct PerfCount>> &result,
                                               std::vector<size_t> *columnLenMax,
                                               std::vector<std::vector<std::string>> *rows) {
+  // Precision for perf ratio / utilization output (ARM64-only perf counters).
+  constexpr int kPerfRatioPrecision = 6;
+  constexpr int kPerfUtilizationPrecision = 2;
   for (auto &iter : result) {
     char stringBuf[kPrintColNum][kPrintRowLenMax] = {};
     std::vector<std::string> columns;
@@ -735,7 +741,7 @@ void BenchmarkBase::CalculatePerfColumnWidths(const std::map<std::string, std::p
       float tmp =
         float_t(flags_->num_threads_) * iter.second.second.value[0] / float_t(flags_->loop_count_) / kFloatMSEC;
       std::ostringstream oss;
-      oss << std::fixed << std::setprecision(2) << tmp;
+      oss << std::fixed << std::setprecision(kPerfUtilizationPrecision) << tmp;
       std::string str = oss.str();
       len = static_cast<int>(str.size());
       if (static_cast<size_t>(len) > columnLenMax->at(index))
@@ -745,7 +751,7 @@ void BenchmarkBase::CalculatePerfColumnWidths(const std::map<std::string, std::p
     index++;
     {
       std::ostringstream oss;
-      oss << std::fixed << std::setprecision(6) << iter.second.second.value[0] / op_cost_total_;
+      oss << std::fixed << std::setprecision(kPerfRatioPrecision) << iter.second.second.value[0] / op_cost_total_;
       std::string str = oss.str();
       len = static_cast<int>(str.size());
       if (static_cast<size_t>(len) > columnLenMax->at(index))
@@ -757,7 +763,7 @@ void BenchmarkBase::CalculatePerfColumnWidths(const std::map<std::string, std::p
       float tmp =
         float_t(flags_->num_threads_) * iter.second.second.value[1] / float_t(flags_->loop_count_) / kFloatMSEC;
       std::ostringstream oss;
-      oss << std::fixed << std::setprecision(2) << tmp;
+      oss << std::fixed << std::setprecision(kPerfUtilizationPrecision) << tmp;
       std::string str = oss.str();
       len = static_cast<int>(str.size());
       if (static_cast<size_t>(len) > columnLenMax->at(index))
@@ -767,7 +773,7 @@ void BenchmarkBase::CalculatePerfColumnWidths(const std::map<std::string, std::p
     index++;
     {
       std::ostringstream oss;
-      oss << std::fixed << std::setprecision(6) << iter.second.second.value[1] / op_cost2_total_;
+      oss << std::fixed << std::setprecision(kPerfRatioPrecision) << iter.second.second.value[1] / op_cost2_total_;
       std::string str = oss.str();
       len = static_cast<int>(str.size());
       if (static_cast<size_t>(len) > columnLenMax->at(index))

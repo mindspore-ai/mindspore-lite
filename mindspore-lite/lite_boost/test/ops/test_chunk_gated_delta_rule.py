@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+# pylint: disable=attribute-defined-outside-init
 """
 lite_boost verification test for chunk_gated_delta_rule.
 
@@ -54,6 +55,7 @@ def _l2norm(x, dim=-1, eps=1e-6):
 
 
 def _pytorch_recurrent_baseline(query, key, value, g, beta, initial_state, scale=1.0):
+    # pylint: disable=too-many-locals
     """Naive token-by-token Gated Delta Rule (no key-gate gk).
 
     Used only as a *performance* baseline (an unoptimized implementation the fused

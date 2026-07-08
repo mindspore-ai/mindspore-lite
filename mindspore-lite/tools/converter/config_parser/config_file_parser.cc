@@ -402,7 +402,34 @@ STATUS ConfigFileParser::ParseCustomPattern(const std::shared_ptr<mindspore::Con
 
 bool ConfigFileParser::SetParamByConfigfile(const std::shared_ptr<mindspore::ConverterPara> &param,
                                             const std::map<std::string, std::string> &ascend_map) {
-  std::string ascend_string = "";
+  SetAclStringOptions(param, ascend_map);
+
+  auto enable_tiling_generation_str = FindInAscendMap("enable_tiling_generation", ascend_map);
+  if (!enable_tiling_generation_str.empty()) {
+    bool enable_tiling_generation = true;
+    if (!ConvertBool(enable_tiling_generation_str, &enable_tiling_generation)) {
+      MS_LOG(ERROR) << "Parse enable_tiling_generation failed, val: " << enable_tiling_generation_str
+                    << ", accepted values: true/false";
+      return false;
+    }
+    param->aclModelOptionCfgParam.enable_tiling_generation = enable_tiling_generation;
+  }
+
+  if (!ParsePluginAndFusionOps(param, ascend_map)) {
+    return false;
+  }
+  if (!ParseOpAttrsConfig(param, ascend_map)) {
+    return false;
+  }
+  if (!ParseTypedScalarOptions(param, ascend_map)) {
+    return false;
+  }
+  SetVariableParams(param, ascend_map);
+  return SetDynParams(param, ascend_map);
+}
+
+void ConfigFileParser::SetAclStringOptions(const std::shared_ptr<mindspore::ConverterPara> &param,
+                                           const std::map<std::string, std::string> &ascend_map) {
   auto set_option = [&ascend_map](const std::string &key, std::string *option) {
     auto it = ascend_map.find(key);
     if (it != ascend_map.end() && !it->second.empty()) {
@@ -419,18 +446,11 @@ bool ConfigFileParser::SetParamByConfigfile(const std::shared_ptr<mindspore::Con
   set_option("aoe_mode", &param->aclModelOptionCfgParam.aoe_mode);
   set_option(kDumpModelNameKey, &param->aclModelOptionCfgParam.dump_model_name);
   set_option("provider", &param->provider);
+}
 
-  auto enable_tiling_generation_str = FindInAscendMap("enable_tiling_generation", ascend_map);
-  if (!enable_tiling_generation_str.empty()) {
-    bool enable_tiling_generation = true;
-    if (!ConvertBool(enable_tiling_generation_str, &enable_tiling_generation)) {
-      MS_LOG(ERROR) << "Parse enable_tiling_generation failed, val: " << enable_tiling_generation_str
-                    << ", accepted values: true/false";
-      return false;
-    }
-    param->aclModelOptionCfgParam.enable_tiling_generation = enable_tiling_generation;
-  }
-
+bool ConfigFileParser::ParsePluginAndFusionOps(const std::shared_ptr<mindspore::ConverterPara> &param,
+                                               const std::map<std::string, std::string> &ascend_map) {
+  std::string ascend_string;
   auto plugin_custom_ops_str = FindInAscendMap(kPluginCustomOps, ascend_map);
   std::vector<std::string> plugin_custom_ops_vec = {};
   if (!plugin_custom_ops_str.empty()) {
@@ -456,13 +476,15 @@ bool ConfigFileParser::SetParamByConfigfile(const std::shared_ptr<mindspore::Con
                       "or: "
                       "custom_fusion_pattern=Fusion_op_type:node_name_1,node_name_2:disable");
   }
+  return true;
+}
 
+bool ConfigFileParser::ParseOpAttrsConfig(const std::shared_ptr<mindspore::ConverterPara> &param,
+                                          const std::map<std::string, std::string> &ascend_map) {
   auto op_attrs_str = FindInAscendMap(kOpAttrs, ascend_map);
-  std::vector<std::string> op_attrs_vec = {};
   if (!op_attrs_str.empty()) {
     MS_LOG(INFO) << "op_attrs_str: " << op_attrs_str;
-    op_attrs_vec = mindspore::lite::SplitStringToVector(op_attrs_str, ";");
-    std::map<std::string, std::string> attr;
+    auto op_attrs_vec = mindspore::lite::SplitStringToVector(op_attrs_str, ";");
     for (auto op_attr_str : op_attrs_vec) {
       MS_LOG(INFO) << "op_attr: " << op_attr_str;
       auto op_attr = mindspore::lite::SplitStringToVector(op_attr_str, ":");
@@ -482,7 +504,11 @@ bool ConfigFileParser::SetParamByConfigfile(const std::shared_ptr<mindspore::Con
       MS_LOG(INFO) << "op type: " << item.first << ", key: " << attr.first << ", value: " << attr.second;
     }
   }
+  return true;
+}
 
+bool ConfigFileParser::ParseTypedScalarOptions(const std::shared_ptr<mindspore::ConverterPara> &param,
+                                               const std::map<std::string, std::string> &ascend_map) {
   auto it = ascend_map.find("input_shape");
   if (it != ascend_map.end()) {
     param->aclModelOptionCfgParam.input_shape = RemoveInputShapeBrackets(it->second);
@@ -513,8 +539,7 @@ bool ConfigFileParser::SetParamByConfigfile(const std::shared_ptr<mindspore::Con
       MS_LOG(WARNING) << "Unsupported or invalid output_type, using default type";
     }
   }
-  SetVariableParams(param, ascend_map);
-  return SetDynParams(param, ascend_map);
+  return true;
 }
 
 int ConfigFileParser::ParseConfigFile(const std::string &config_file_path,
