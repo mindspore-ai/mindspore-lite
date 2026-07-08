@@ -163,8 +163,10 @@ Status PyModelBuildFromBuffer(Model *model, py::bytes model_bytes, py::object we
   }
 
   py::gil_scoped_release release;
-  auto ret = model->Build(model_ptr, model_size, weight_ptr, weight_size, model_type, model_context);
-  return ret;
+  if (weight_ptr == nullptr && weight_size == 0) {
+    return model->Build(model_ptr, model_size, model_type, model_context);
+  }
+  return model->Build(model_ptr, model_size, weight_ptr, weight_size, model_type, model_context);
 }
 
 std::vector<MSTensorPtr> PyExecGetInputs(ModelExecutor *executor) {
