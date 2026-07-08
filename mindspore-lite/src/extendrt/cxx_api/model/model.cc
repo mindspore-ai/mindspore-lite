@@ -127,6 +127,16 @@ Status Model::Build(const void *model_data, size_t data_size, const void *weight
     MS_LOG(ERROR) << "Model implement is null.";
     return kLiteNullptr;
   }
+  MS_CHECK_TRUE_MSG(
+    (weight_data != nullptr && weight_size != 0),
+    Status(kLiteParamInvalid,
+           "The pointer to the model's independent weight file provided by the current user is null, and the model "
+           "weight size is zero. Please check whether the relevant parameters are correctly passed. If the user's "
+           "model architecture and weights are in a single MindIR file, please use other Build interfaces; this "
+           "interface is not recommended."),
+    "The pointer to the model's independent weight file provided by the current user is null, and the model weight "
+    "size is zero. Please check whether the relevant parameters are correctly passed. If the user's model architecture "
+    "and weights are in a single MindIR file, please use other Build interfaces; this interface is not recommended.");
   return TryBuildWithTiming(
     [=]() { return impl_->Build(model_data, data_size, weight_data, weight_size, model_type, model_context); });
 }
