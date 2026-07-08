@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,8 +30,10 @@ extern "C" {
 #endif
 void Mul(const int8_t *input0_data, const int8_t *input1_data, int8_t *output_data, int64_t real_dst_count,
          const MulQuantArg *quant_arg);
-void FastMul(const int8_t *input0_data, const int8_t *input1_data, int8_t *output_data, int depth,
-             int64_t real_dst_count, bool input1_broad, const MulQuantArg *quant_arg);
+void FastMulNHWC(const int8_t *input0_data, const int8_t *input1_data, int8_t *output_data, int depth,
+                 int64_t real_dst_count, bool input1_broad, const MulQuantArg *quant_arg);
+void FastMulNCHW(const int8_t *src, const int8_t *full, int8_t *output_data, int64_t nc_count, int hw, bool swap_zp,
+                 const MulQuantArg *quant_arg);
 #ifdef __cplusplus
 }
 #endif
