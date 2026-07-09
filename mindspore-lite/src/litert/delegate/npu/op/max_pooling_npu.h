@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2021 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,32 +18,36 @@
 #define MINDSPORE_LITE_SRC_RUNTIME_DELEGATE_NPU_OP_MAX_POOLING_NPU_H_
 #include <vector>
 #include <string>
-#include "src/litert/delegate/npu/op/convolution_base_npu.h"
+#include "src/litert/delegate/npu/op/pooling_npu.h"
+
 namespace mindspore::lite {
-class MaxPoolingNPUOp : public ConvolutionBaseNPUOp {
+/**
+ * @brief Max Pooling NPU operation class
+ * Inherits from PoolingNPUOp template base class with NPUPoolingType::MAX
+ * SetPoolingParam() and Init() common logic is extracted to the base class
+ */
+class MaxPoolingNPUOp : public PoolingNPUOp<NPUPoolingType::MAX> {
  public:
   MaxPoolingNPUOp(const schema::Primitive *primitive, const std::vector<mindspore::MSTensor> &in_tensors,
                   const std::vector<mindspore::MSTensor> &out_tensors, std::string name)
-      : ConvolutionBaseNPUOp(primitive, in_tensors, out_tensors, name) {}
+      : PoolingNPUOp<NPUPoolingType::MAX>(primitive, in_tensors, out_tensors, name) {}
 
-  ~MaxPoolingNPUOp() override;
+  ~MaxPoolingNPUOp() override = default;  // Base class handles destructor
 
   int IsSupport(const schema::Primitive *primitive, const std::vector<mindspore::MSTensor> &in_tensors,
                 const std::vector<mindspore::MSTensor> &out_tensors) override;
 
-  int Init(const schema::Primitive *primitive, const std::vector<mindspore::MSTensor> &in_tensors,
-           const std::vector<mindspore::MSTensor> &out_tensors) override;
+  // Init(), SetNPUInputs(), GetNPUOp() are implemented by base class
 
-  int SetNPUInputs(const std::vector<mindspore::MSTensor> &in_tensors,
-                   const std::vector<mindspore::MSTensor> &out_tensors,
-                   const std::vector<ge::Operator *> &npu_inputs) override;
+ protected:
+  const void *GetPoolingPrimitive(const schema::Primitive *primitive) const override {
+    return primitive->value_as_MaxPoolFusion();
+  }
 
-  ge::Operator *GetNPUOp() override;
-
- private:
-  int SetPoolingParam(const schema::MaxPoolFusion *pooling_prim);
-  schema::ActivationType act_type_ = schema::ActivationType_NO_ACTIVATION;
-  hiai::op::PoolingD *pooling_ = nullptr;
+  schema::ActivationType GetActivationType(const void *pooling_prim) const override {
+    auto *prim = static_cast<const schema::MaxPoolFusion *>(pooling_prim);
+    return prim->activation_type();
+  }
 };
 }  // namespace mindspore::lite
 #endif  // MINDSPORE_LITE_SRC_RUNTIME_DELEGATE_NPU_OP_MAX_POOLING_NPU_H_

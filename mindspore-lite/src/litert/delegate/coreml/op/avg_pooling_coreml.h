@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,17 +20,24 @@
 #include <string>
 #include <utility>
 #include <unordered_map>
-#include "src/litert/delegate/coreml/op/coreml_op.h"
+#include "src/litert/delegate/coreml/op/pooling_coreml.h"
+
 namespace mindspore::lite {
-class AvgPoolingCoreMLOp : public CoreMLOp {
+/**
+ * @brief Average Pooling CoreML operation class
+ * Inherits from PoolingCoreMLOp template base class with PoolingType::AVERAGE
+ * BuildLayer() common logic is extracted to the base class
+ */
+class AvgPoolingCoreMLOp : public PoolingCoreMLOp<PoolingType::AVERAGE> {
  public:
   AvgPoolingCoreMLOp(const schema::Primitive *primitive, const std::vector<mindspore::MSTensor> &in_tensors,
                      const std::vector<mindspore::MSTensor> &out_tensors, std::string name)
-      : CoreMLOp(primitive, in_tensors, out_tensors, name) {}
+      : PoolingCoreMLOp<PoolingType::AVERAGE>(primitive, in_tensors, out_tensors, name) {}
 
   int InitParams() override;
 
-  int BuildLayer() override;
+ protected:
+  const void *GetPoolingPrimitive() const override { return pooling_prim_; }
 
  private:
   const schema::AvgPoolFusion *pooling_prim_ = nullptr;

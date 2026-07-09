@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2023 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@
 #include <functional>
 #include "ir/anf.h"
 #include "src/tensor.h"
+#include "src/common/quant_utils.h"
 #include "include/api/model.h"
 #include "include/errorcode.h"
 #include "tools/converter/cxx_api/converter_para.h"
@@ -191,6 +192,77 @@ T QuantDeQuantData(float origin_data, const schema::QuantParamT *quant_param, in
       return static_cast<T>(scale * (quant_data - zero_point));
     }
   }();
+}
+
+// Fixed-bit weight statistics quantization shared by FixedBitWeightQuantization and
+// FixedBitWeightQuantizationWithHolder. When primitive == nullptr, quant params are stored directly
+// on the weight tensor; otherwise they are stored via QuantParamHolder.
+template <typename T>
+int DoStatisticsQuantAndSetParams(const tensor::TensorPtr &weight, const PrimitivePtr &primitive, int quant_max,
+                                  int quant_min, size_t bit_num, WeightQuantType weight_quant_type, int preferred_dim,
+                                  std::vector<T> *quant_data, bool symmetric, bool narrow_range, bool cal_gain,
+                                  int index) {
+  MS_ASSERT(weight != nullptr);
+
+  std::vector<schema::QuantParamT> quant_params;
+  auto dims = weight->shape();
+
+  if (weight_quant_type == FIXED_BIT_PER_CHANNEL) {
+    if (dims.size() <= 1) {
+      MS_LOG(WARNING) << "dims is " << dims.size() << " can not per_channel";
+      weight_quant_type = FIXED_BIT_PER_LAYER;
+    }
+  }
+
+  if (weight->data_type_c() != kNumberTypeFloat32) {
+    MS_LOG(ERROR) << "data type is not Float32.";
+    return RET_ERROR;
+  }
+
+  int ret = RET_OK;
+  bool cal_gain_param = cal_gain;
+
+  if (weight_quant_type == FIXED_BIT_PER_CHANNEL) {
+    ret = DoPerChannelQuant<T>(static_cast<float *>(weight->data_c()), weight->DataSize(), &quant_params, quant_max,
+                               quant_min, bit_num, quant_data, ConvertShapeVectorToInt32(dims), preferred_dim,
+                               cal_gain_param, symmetric, narrow_range);
+    if (ret == RET_NO_CHANGE) {
+      return ret;
+    } else if (ret != RET_OK) {
+      MS_LOG(ERROR) << "Do per channel quant failed.";
+      return ret;
+    }
+  } else if (weight_quant_type == FIXED_BIT_PER_LAYER) {
+    ret = DoPerLayerQuant<T>(static_cast<float *>(weight->data_c()), weight->DataSize(), &quant_params, quant_max,
+                             quant_min, bit_num, quant_data, symmetric, narrow_range, cal_gain_param);
+    if (ret != RET_OK) {
+      MS_LOG(ERROR) << "Do per layer quant failed.";
+      return ret;
+    }
+  } else {
+    MS_LOG(ERROR) << "Unsupported weight quant type:" << weight_quant_type;
+    return RET_ERROR;
+  }
+
+  if (primitive == nullptr) {
+    if (quant_params.empty()) {
+      MS_LOG(ERROR) << "quant_params empty";
+      return RET_ERROR;
+    }
+    auto quantization_ptr = ConvertQuantParamTToQuantizationParam(quant_params);
+    CHECK_NULL_RETURN(quantization_ptr);
+    weight->set_quant_param(std::vector<std::shared_ptr<mindspore::QuantizationParam>>{quantization_ptr});
+  } else {
+    if (quant_params.empty()) {
+      MS_LOG(ERROR) << "quant_params empty";
+      return RET_ERROR;
+    }
+    auto quant_param_holder = GetCNodeQuantHolder(primitive);
+    CHECK_NULL_RETURN(quant_param_holder);
+    quant_param_holder->set_input_quant_param(index, quant_params);
+  }
+
+  return ret;
 }
 }  // namespace mindspore::lite::quant
 #endif  // MINDSPORE_LITE_TOOLS_CONVERTER_QUANTIZER_QUANTIZE_UTIL_H_
