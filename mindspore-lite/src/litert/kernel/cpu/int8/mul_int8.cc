@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -119,12 +119,14 @@ void MulInt8CPUKernel::CheckSameShapeSize(std::vector<int> in_tensor0_shape, std
   bool condition6 = in_tensor1_shape[idx.w_idx] == 1;
 
   if (condition1 && condition2 && condition3 && condition4) {
-    // input0 broadcasts: [N,1,1,C] * [N,H,W,C]
+    // input0 broadcasts: NHWC [N,1,1,C]*[N,H,W,C] or NCHW [N,C,1,1]*[N,C,H,W]
     fast_hw_broadcast_ = true;
+    src_is_1d_ = false;
   } else if (condition1 && condition4 && condition5 && condition6) {
-    // input1 broadcasts: [N,H,W,C] * [N,1,1,C]
+    // input1 broadcasts: reverse direction
     fast_hw_broadcast_ = true;
     input1_hw_broadcast_ = true;
+    src_is_1d_ = false;
   }
 }
 
@@ -133,6 +135,11 @@ void MulInt8CPUKernel::CheckIfFastImpl() {
   auto in_tensor1 = in_tensors_.at(1);
   MS_CHECK_TRUE_RET_VOID(in_tensors_.at(0)->ElementsNum() > 0);
   MS_CHECK_TRUE_RET_VOID(in_tensors_.at(1)->ElementsNum() > 0);
+
+  // Re-evaluate fast-path flags on every Run to avoid stale state from the previous run
+  fast_hw_broadcast_ = false;
+  input1_hw_broadcast_ = false;
+  src_is_1d_ = false;
 
   // Get format-aware dimension indices from output tensor
   auto out_tensor = out_tensors_.front();
@@ -145,6 +152,7 @@ void MulInt8CPUKernel::CheckIfFastImpl() {
       // 1D tensor * 4D tensor: check if 1D size matches Channel dimension
       if (in_tensor0->ElementsNum() == in_tensor1->shape()[idx.c_idx]) {
         fast_hw_broadcast_ = true;
+        src_is_1d_ = true;
       }
     } else if (in_tensor0->shape().size() == COMM_SHAPE_SIZE && in_tensor1->shape().size() == 1) {
       // 4D tensor * 1D tensor: only use fast path when input0 has [N,1,1,C] shape
@@ -152,6 +160,7 @@ void MulInt8CPUKernel::CheckIfFastImpl() {
           in_tensor1->ElementsNum() == in_tensor0->shape()[idx.c_idx]) {
         fast_hw_broadcast_ = true;
         input1_hw_broadcast_ = true;
+        src_is_1d_ = true;
       }
     }
   }
@@ -214,7 +223,18 @@ int MulInt8CPUKernel::Run() {
   CheckIfFastImpl();
   // Fast broadcast mul implementation
   if (fast_hw_broadcast_) {
-    elements_num_ = out_tensors_.front()->Batch() * out_tensors_.front()->Height() * out_tensors_.front()->Width();
+    auto out_tensor = out_tensors_.front();
+    // NHWC: outer unit = N*H*W (spatial), depth=C is the innermost contiguous dim;
+    // NCHW: outer unit = N*C (channel rows), innermost is a contiguous H*W block per row
+    // Guard the int32 outer-count product (N*C / N*H*W) against overflow before the int64 assignment.
+    if (static_cast<mindspore::Format>(out_tensor->format()) == mindspore::NCHW) {
+      MS_CHECK_INT_MUL_NOT_OVERFLOW(out_tensor->Batch(), out_tensor->Channel(), RET_ERROR);
+      elements_num_ = out_tensor->Batch() * out_tensor->Channel();
+    } else {
+      MS_CHECK_INT_MUL_NOT_OVERFLOW(out_tensor->Batch(), out_tensor->Height(), RET_ERROR);
+      MS_CHECK_INT_MUL_NOT_OVERFLOW(out_tensor->Batch() * out_tensor->Height(), out_tensor->Width(), RET_ERROR);
+      elements_num_ = out_tensor->Batch() * out_tensor->Height() * out_tensor->Width();
+    }
     count_unit_ = thread_count_ > 1 ? UP_DIV(elements_num_, thread_count_) : elements_num_;
     return ParallelLaunch(this->ms_context_, FastHWBroadcastMulInt8Run, this, thread_count_);
   }
@@ -269,26 +289,49 @@ int MulInt8Run(void *cdata, int task_id, float, float) {
 }
 
 void MulInt8CPUKernel::FastDoExecute(int task_id) {
-  int depth = out_tensors_.front()->Channel();
-  int64_t real_dst_count = MSMIN(elements_num_ - task_id * count_unit_, count_unit_);
+  auto out_tensor = out_tensors_.front();
+  int depth = out_tensor->Channel();
+  int64_t start = task_id * count_unit_;
+  int64_t real_dst_count = MSMIN(elements_num_ - start, count_unit_);
   if (real_dst_count <= 0) {
     return;
   }
 
-  // Fast broadcast path supports both NHWC and NCHW formats
-  // The key is using Tensor::Channel()/Height()/Width() which automatically
-  // return correct dimension values based on the tensor's format
-  // Broadcasting pattern: one input is [N,1,1,C], other is [N,H,W,C]
-  int8_t *cur_input0_data = input0_data_;
-  int8_t *cur_input1_data = input1_data_ + task_id * count_unit_ * depth;
-  int8_t *cur_output_data = output_data_ + task_id * count_unit_ * depth;
+  // Broadcast source = the [.,1,1,C]/[N,C,1,1] side; full = the other (full) tensor
+  int8_t *src_base = input1_hw_broadcast_ ? input1_data_ : input0_data_;
+  int8_t *full_base = input1_hw_broadcast_ ? input0_data_ : input1_data_;
 
-  if (input1_hw_broadcast_) {
-    cur_input0_data = input1_data_;
-    cur_input1_data = input0_data_ + task_id * count_unit_ * depth;
+  if (static_cast<mindspore::Format>(out_tensor->format()) == mindspore::NCHW) {
+    // NCHW: scalar src per (n,c) row x contiguous H*W block; elements_num_ = N*C (channel rows).
+    int hw = out_tensor->Height() * out_tensor->Width();
+    int64_t period = src_is_1d_ ? depth : elements_num_;
+    for (int64_t g = start; g < start + real_dst_count;) {
+      int64_t c0 = g % period;
+      int64_t chunk = MSMIN(period - c0, start + real_dst_count - g);
+      FastMulNCHW(src_base + c0, full_base + g * hw, output_data_ + g * hw, chunk, hw, input1_hw_broadcast_,
+                  quant_args_);
+      g += chunk;
+    }
+    return;
   }
 
-  FastMul(cur_input0_data, cur_input1_data, cur_output_data, depth, real_dst_count, input1_hw_broadcast_, quant_args_);
+  // NHWC [N,1,1,C]*[N,H,W,C]: depth=C is the innermost contiguous dim; elements_num_ = N*H*W (spatial)
+  int64_t hw = out_tensor->Height() * out_tensor->Width();
+  int64_t end = start + real_dst_count;
+  if (src_is_1d_) {
+    // 1D source [C]: a single C-vector reused across all spatial positions (correct for any N)
+    FastMulNHWC(src_base, full_base + start * depth, output_data_ + start * depth, depth, real_dst_count,
+                input1_hw_broadcast_, quant_args_);
+  } else {
+    // 4D source [N,1,1,C]: slice per batch (every H*W spatial), advance source by b*depth; fixes N>1
+    for (int64_t p = start; p < end;) {
+      int64_t b = p / hw;
+      int64_t slice_end = MSMIN(end, (b + 1) * hw);
+      FastMulNHWC(src_base + b * depth, full_base + p * depth, output_data_ + p * depth, depth, slice_end - p,
+                  input1_hw_broadcast_, quant_args_);
+      p = slice_end;
+    }
+  }
 }
 
 void MulInt8CPUKernel::DoExecute(int task_id) {

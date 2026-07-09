@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -104,8 +104,8 @@ void MulInt8NEON(const int8_t *input0_data, const int8_t *input1_data, int8_t *o
 }
 #endif
 
-void FastMul(const int8_t *input0_data, const int8_t *input1_data, int8_t *output_data, int depth,
-             int64_t real_dst_count, bool input1_broad, const MulQuantArg *quant_arg) {
+void FastMulNHWC(const int8_t *input0_data, const int8_t *input1_data, int8_t *output_data, int depth,
+                 int64_t real_dst_count, bool input1_broad, const MulQuantArg *quant_arg) {
   // input0 need broadcast
   int32_t zp1 = quant_arg->in0_quant_args_.zp_;
   int32_t zp2 = quant_arg->in1_quant_args_.zp_;
@@ -209,6 +209,32 @@ void FastMul(const int8_t *input0_data, const int8_t *input1_data, int8_t *outpu
       mul_result = mul_result > quant_arg->output_activation_min_ ? mul_result : quant_arg->output_activation_min_;
       output_data[0] = (int8_t)mul_result;
       input1_data++;
+      output_data++;
+    }
+  }
+  return;
+}
+
+void FastMulNCHW(const int8_t *src, const int8_t *full, int8_t *output_data, int64_t nc_count, int hw, bool swap_zp,
+                 const MulQuantArg *quant_arg) {
+  // NCHW broadcast [N,C,1,1] * [N,C,H,W]: each (n,c) is a scalar src[nc] times a contiguous H*W block.
+  // Caller passes pointers offset by the task start: src length = nc_count, full/output length = nc_count*hw.
+  // swap_zp == true means the broadcast source is the original input1 (same semantics as FastMulNHWC's input1_broad).
+  int32_t zp_s = swap_zp ? quant_arg->in1_quant_args_.zp_ : quant_arg->in0_quant_args_.zp_;
+  int32_t zp_f = swap_zp ? quant_arg->in0_quant_args_.zp_ : quant_arg->in1_quant_args_.zp_;
+  for (int64_t nc = 0; nc < nc_count; ++nc) {
+    const int32_t src_val = zp_s + src[nc];
+    for (int q_i = 0; q_i < hw; ++q_i) {
+      const int32_t full_val = zp_f + full[0];
+      int32_t mul_result = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(src_val * full_val * (1 << (size_t)quant_arg->shift_left_),
+                                          quant_arg->output_multiplier_),
+        quant_arg->shift_right_);
+      mul_result += quant_arg->out_quant_arg_.zp_;
+      mul_result = mul_result < quant_arg->output_activation_max_ ? mul_result : quant_arg->output_activation_max_;
+      mul_result = mul_result > quant_arg->output_activation_min_ ? mul_result : quant_arg->output_activation_min_;
+      output_data[0] = (int8_t)mul_result;
+      full++;
       output_data++;
     }
   }
