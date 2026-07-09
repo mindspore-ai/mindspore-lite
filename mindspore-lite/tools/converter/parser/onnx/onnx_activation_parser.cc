@@ -117,6 +117,7 @@ PrimitiveCPtr OnnxEluParser::Parse(const onnx::GraphProto &onnx_graph, const onn
   auto prim = std::make_unique<ops::Activation>();
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
   prim->set_activation_type(mindspore::ActivationType::ELU);
+  prim->set_alpha(1.0f);
   for (const auto &onnx_node_attr : onnx_node.attribute()) {
     const auto &attribute_name = onnx_node_attr.name();
     if (attribute_name == kAttrAlpha) {

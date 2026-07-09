@@ -114,6 +114,7 @@ fi
 ./lite-test --gtest_filter=DepthToSpaceFp32Test.*
 ./lite-test --gtest_filter=SpaceToDepthFp32Test.*
 ./lite-test --gtest_filter=BroadcastFp32Test.*
+./lite-test --gtest_filter=ArgMinFp32Test.*
 
 # test cases of INT8 OP
 ./lite-test --gtest_filter=TestBatchnormInt8.*
