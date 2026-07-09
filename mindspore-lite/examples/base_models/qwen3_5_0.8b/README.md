@@ -45,7 +45,7 @@ pip install transformers==5.6.2 torch==2.10.0 onnx==1.19.1 onnxruntime==1.24.2 n
 ### 导出命令
 
 ```bash
-python export_qwen3_5_0.8b_onnx.py \
+python export_qwen3_5_0_8b_onnx.py \
   --model-id ./Qwen3.5-0.8B \
   --output-dir ./qwen3_5_0.8b_onnx \
   --device cpu \
