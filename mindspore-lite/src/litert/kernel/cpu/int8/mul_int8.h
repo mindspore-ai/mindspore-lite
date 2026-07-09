@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,6 +48,7 @@ class MulInt8CPUKernel : public LiteKernel {
   MulQuantArg *quant_args_ = nullptr;
   bool fast_hw_broadcast_ = false;
   bool input1_hw_broadcast_ = false;
+  bool src_is_1d_ = false;  // broadcast source is 1D ([C]): single C-vector reused globally; else advanced per batch
   int thread_count_ = 1;
   int64_t elements_num_ = 0;
   int64_t count_unit_ = 0;
