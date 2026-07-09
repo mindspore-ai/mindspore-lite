@@ -272,6 +272,3 @@ if(NOT WIN32)
     target_link_libraries(msplugin-ge-litert dl)
 endif()
 
-if(ENABLE_MODEL_OBF)
-    target_link_libraries(msplugin-ge-litert ${OBF_LIB_DIR}/libmsdeobfuscator-lite.so)
-endif()
