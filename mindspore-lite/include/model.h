@@ -59,12 +59,6 @@ struct MS_API LiteGraph {
   std::vector<mindspore::schema::Tensor *> all_tensors_;
   std::vector<Node *> all_nodes_;
   std::vector<SubGraph *> sub_graphs_;
-#ifdef ENABLE_MODEL_OBF
-  std::vector<uint32_t> all_prims_type_;
-  std::vector<uint32_t> all_nodes_stat_;
-  bool model_obfuscated_ = false;
-  std::vector<unsigned char *> deobf_prims_;
-#endif
 };
 struct MS_API Model {
   LiteGraph graph_;

@@ -46,7 +46,6 @@ option(MSLITE_ENABLE_KERNEL_EXECUTOR "enable kernel executor" off)
 option(MSLITE_ENABLE_GITEE_MIRROR "enable download third_party from gitee mirror" off)
 option(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE "enable cloud and device fusion inference architecture" off)
 option(MSLITE_ENABLE_CLOUD_INFERENCE "alias to MSLITE_ENABLE_CLOUD_FUSION_INFERENCE" off)
-option(MSLITE_ENABLE_MODEL_OBF "enable model obfuscation" off)
 
 #Option that can be configured through manually
 option(ENABLE_VERBOSE "" off)
@@ -180,9 +179,6 @@ if(DEFINED ENV{MSLITE_ENABLE_CLOUD_INFERENCE})
     set(MSLITE_ENABLE_CLOUD_INFERENCE $ENV{MSLITE_ENABLE_CLOUD_INFERENCE})
 endif()
 
-if(DEFINED ENV{MSLITE_ENABLE_MODEL_OBF})
-    set(MSLITE_ENABLE_MODEL_OBF $ENV{MSLITE_ENABLE_MODEL_OBF})
-endif()
 
 if(TOOLCHAIN_NAME STREQUAL "himix200")
     set(TARGET_HIMIX on)
@@ -368,4 +364,3 @@ message(STATUS "\tMSLITE_ENABLE_EXPERIMENTAL_KERNEL          = \t${MSLITE_ENABLE
 message(STATUS "\tMSLITE_ENABLE_KERNEL_EXECUTOR              = \t${MSLITE_ENABLE_KERNEL_EXECUTOR}")
 message(STATUS "\tMSLITE_ENABLE_CLOUD_FUSION_INFERENCE       = \t${MSLITE_ENABLE_CLOUD_FUSION_INFERENCE}")
 message(STATUS "\tMSLITE_ENABLE_CLOUD_INFERENCE              = \t${MSLITE_ENABLE_CLOUD_INFERENCE}")
-message(STATUS "\tMSLITE_ENABLE_MODEL_OBF                    = \t${MSLITE_ENABLE_MODEL_OBF}")
