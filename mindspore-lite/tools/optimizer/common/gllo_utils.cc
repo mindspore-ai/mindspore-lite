@@ -24,6 +24,7 @@
 #include <fstream>
 #include <memory>
 #include <regex>
+#include "src/common/ops/anf_utils.h"
 #include "mindspore/ops/op_def/structure_ops.h"
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "mindspore/ops/op_def/conv_pool_ops.h"
@@ -2104,6 +2105,128 @@ lite::STATUS ParseVariableNode(std::string file_path, std::set<std::string> *var
     variable_nodes->insert(variable_para_name);
   }
   file.close();
+  return RET_OK;
+}
+
+STATUS GetNormAxes(const BaseRef &n, std::vector<int> *axes) {
+  if (axes == nullptr) {
+    return RET_ERROR;
+  }
+  if (utils::isa<ParameterPtr>(n)) {
+    auto axes_param = utils::cast<ParameterPtr>(n);
+    if (!axes_param->has_default() || axes_param->default_param() == nullptr) {
+      return lite::RET_NOT_SUPPORT;
+    }
+    auto axes_value = axes_param->default_param()->cast<tensor::TensorPtr>();
+    if (axes_value == nullptr) {
+      return RET_ERROR;
+    }
+    if (axes_value->data_type() != kNumberTypeInt && axes_value->data_type() != kNumberTypeInt32) {
+      MS_LOG(ERROR) << "reduce's axes should be integer, now is " << axes_value->data_type();
+      return RET_ERROR;
+    }
+    if (axes_value->data_c() == nullptr) {
+      return RET_ERROR;
+    }
+    if (axes_value->shape().size() > 1) {
+      return RET_ERROR;
+    }
+    axes->resize(1);
+    if (!axes_value->shape().empty()) {
+      MS_CHECK_GE(axes_value->shape()[0], 0, RET_ERROR);
+      axes->resize(static_cast<size_t>(axes_value->shape()[0]));
+    }
+    if (memcpy_s(axes->data(), axes->size() * sizeof(int), axes_value->data_c(), axes_value->Size()) == EOK) {
+      return RET_OK;
+    }
+  }
+  if (utils::isa<ValueNodePtr>(n)) {
+    auto axes_value_node = utils::cast<ValueNodePtr>(n);
+    *axes = CastToInt(axes_value_node->value());
+    return RET_OK;
+  }
+  return RET_ERROR;
+}
+
+bool IsTupleHasDynamicSequence(const abstract::AbstractBasePtr &abstract) {
+  if (abstract == nullptr) {
+    return false;
+  }
+  if (!abstract->isa<abstract::AbstractSequence>()) {
+    return false;
+  }
+  const auto &sequence_abs = abstract->cast<abstract::AbstractSequencePtr>();
+  if (sequence_abs == nullptr) {
+    return false;
+  }
+  if (sequence_abs->dynamic_len() || sequence_abs->dynamic_len_element_abs() != nullptr) {
+    return true;
+  }
+  return std::any_of(sequence_abs->elements().begin(), sequence_abs->elements().end(),
+                     [](const abstract::AbstractBasePtr &abs) { return IsTupleHasDynamicSequence(abs); });
+}
+
+size_t GetOutputElementNum(const AnfNodePtr &node) {
+#if !defined(_WIN32) && !defined(_WIN64)
+  if (node->abstract() != nullptr && IsTupleHasDynamicSequence(node->abstract())) {
+    return lite::common::AnfAlgo::GetOutputNumByAbstract(node->abstract());
+  }
+#endif
+  return AnfUtils::GetOutputTensorNum(node);
+}
+
+CNodePtr CreateTupleGetItemNode(const FuncGraphPtr &func_graph, const AnfNodePtr &node, size_t output_idx) {
+  if (func_graph == nullptr) {
+    return nullptr;
+  }
+  auto idx = NewValueNode(SizeToLong(output_idx));
+  if (idx == nullptr) {
+    return nullptr;
+  }
+  auto imm = std::make_shared<Int64Imm>(SizeToLong(output_idx));
+  if (imm == nullptr) {
+    return nullptr;
+  }
+  auto abstract_scalar = std::make_shared<abstract::AbstractScalar>(imm);
+  if (abstract_scalar == nullptr) {
+    return nullptr;
+  }
+  idx->set_abstract(abstract_scalar);
+  CNodePtr tuple_getitem = func_graph->NewCNode({NewValueNode(prim::kPrimTupleGetItem), node, idx});
+  if (tuple_getitem == nullptr) {
+    return nullptr;
+  }
+  tuple_getitem->set_scope(node->scope());
+  auto abs = node->abstract()->cast<abstract::AbstractTuplePtr>();
+  if (abs == nullptr) {
+    return nullptr;
+  }
+  auto abs_i = abs->elements()[output_idx];
+  if (abs_i == nullptr) {
+    return nullptr;
+  }
+  tuple_getitem->set_abstract(abs_i);
+  return tuple_getitem;
+}
+
+int JudgeControlFlowCertainOutputHasInferred(const CNodePtr &return_cnode, size_t index, bool *infer_info) {
+  MS_CHECK_TRUE_RET(return_cnode != nullptr, RET_ERROR);
+  MS_CHECK_TRUE_RET(infer_info != nullptr, RET_ERROR);
+  MS_CHECK_TRUE_MSG(index < return_cnode->size(), RET_ERROR, "input index is out of range.");
+  *infer_info = true;
+  auto abstract_base = GetCNodeInputAbstract(return_cnode, index);
+  MS_CHECK_TRUE_MSG(abstract_base != nullptr, RET_ERROR, "anfnode has no abstract.");
+  ShapeVector shape;
+  auto ret = FetchShapeFromAbstract(abstract_base, &shape);
+  MS_CHECK_TRUE_MSG(ret == lite::RET_OK, RET_ERROR, "fetch shape from abstract failed.");
+  if (std::find(shape.begin(), shape.end(), -1) != shape.end()) {
+    *infer_info = false;
+    return RET_OK;
+  }
+  if (utils::isa<CNodePtr>(return_cnode->input(index))) {
+    ret = DetermineCertainVarInputHasInferred(return_cnode, index, infer_info);
+    MS_CHECK_TRUE_MSG(ret == lite::RET_OK, RET_ERROR, "determine infer flag failed.");
+  }
   return RET_OK;
 }
 

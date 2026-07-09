@@ -47,44 +47,6 @@ CondVarPtr NewCondVar() {
   return std::make_shared<CondVar>(IsSpecifiedNode<prim>);
 }
 
-STATUS GetReduceAxes(const BaseRef &n, std::vector<int> *axes) {
-  MS_ASSERT(axes != nullptr);
-  if (utils::isa<ParameterPtr>(n)) {
-    auto axes_param = utils::cast<ParameterPtr>(n);
-    if (!axes_param->has_default() || axes_param->default_param() == nullptr) {
-      return lite::RET_NOT_SUPPORT;
-    }
-    auto axes_value = axes_param->default_param()->cast<tensor::TensorPtr>();
-    if (axes_value == nullptr) {
-      return lite::RET_ERROR;
-    }
-    if (axes_value->data_type() != kNumberTypeInt && axes_value->data_type() != kNumberTypeInt32) {
-      MS_LOG(ERROR) << "reduce's axes should be integer, now is " << axes_value->data_type();
-      return lite::RET_ERROR;
-    }
-    if (axes_value->data_c() == nullptr) {
-      return lite::RET_ERROR;
-    }
-    if (axes_value->shape().size() > 1) {
-      return lite::RET_ERROR;
-    }
-    axes->resize(1);
-    if (!axes_value->shape().empty()) {
-      MS_CHECK_GE(axes_value->shape()[0], 0, lite::RET_ERROR);
-      axes->resize(static_cast<size_t>(axes_value->shape()[0]));
-    }
-    if (memcpy_s(axes->data(), axes->size() * sizeof(int), axes_value->data_c(), axes_value->Size()) == EOK) {
-      return lite::RET_OK;
-    }
-  }
-  if (utils::isa<ValueNodePtr>(n)) {
-    auto axes_value_node = utils::cast<ValueNodePtr>(n);
-    *axes = CastToInt(axes_value_node->value());
-    return lite::RET_OK;
-  }
-  return lite::RET_ERROR;
-}
-
 bool IsReduceNode(const EquivPtr &equiv, const VarPtr &input_prim, const VarPtr &input_axes, std::vector<int> *axes) {
   MS_ASSERT(equiv != nullptr && input_prim != nullptr && input_axes != nullptr && axes != nullptr);
   auto reduce_value = utils::cast<AnfNodePtr>((*equiv)[input_prim]);
@@ -95,7 +57,7 @@ bool IsReduceNode(const EquivPtr &equiv, const VarPtr &input_prim, const VarPtr 
   if (mean2_primitive_c->GetAttr(ops::kMode) == nullptr || mean2_primitive->get_mode() != mindspore::Reduce_Mean) {
     return false;
   }
-  if (GetReduceAxes((*equiv)[input_axes], axes) != lite::RET_OK) {
+  if (GetNormAxes((*equiv)[input_axes], axes) != lite::RET_OK) {
     return false;
   }
   return true;
