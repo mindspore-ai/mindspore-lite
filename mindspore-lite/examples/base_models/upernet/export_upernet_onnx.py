@@ -14,9 +14,9 @@ import os
 import sys
 
 import torch
+from upernet_model import build_model
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from upernet_model import build_model  # noqa: E402
 
 
 def export_onnx(weights_dir, output_path, input_size=512, opset=17):
@@ -42,7 +42,7 @@ def export_onnx(weights_dir, output_path, input_size=512, opset=17):
     # Verify forward pass works
     with torch.no_grad():
         outputs = model(dummy_input)
-    print(f'Torch forward OK:')
+    print('Torch forward OK:')
     for name, out in zip(['scene', 'object', 'part', 'material'], outputs):
         print(f'  {name}: {out.shape}')
 

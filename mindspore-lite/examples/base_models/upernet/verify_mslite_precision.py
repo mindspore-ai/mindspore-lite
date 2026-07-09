@@ -15,9 +15,9 @@ import sys
 
 import numpy as np
 import torch
+from upernet_model import build_model
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from upernet_model import build_model  # noqa: E402
 
 
 def cosine_similarity(a, b):

@@ -9,7 +9,7 @@ replaced with standard nn.BatchNorm2d (equivalent in eval mode).
 import math
 
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
 
 
@@ -119,10 +119,14 @@ class ResNetEncoder(nn.Module):
         x = self.maxpool(x)
 
         conv_out = []
-        x = self.layer1(x); conv_out.append(x)
-        x = self.layer2(x); conv_out.append(x)
-        x = self.layer3(x); conv_out.append(x)
-        x = self.layer4(x); conv_out.append(x)
+        x = self.layer1(x)
+        conv_out.append(x)
+        x = self.layer2(x)
+        conv_out.append(x)
+        x = self.layer3(x)
+        conv_out.append(x)
+        x = self.layer4(x)
+        conv_out.append(x)
         return conv_out
 
 

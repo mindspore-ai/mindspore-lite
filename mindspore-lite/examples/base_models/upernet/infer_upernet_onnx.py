@@ -159,13 +159,13 @@ def main():
 
     preds, timing = run_inference(args.model, args.image, args.input_size)
 
-    print(f'\n=== UPerNet ONNX Inference Results ===')
+    print('\n=== UPerNet ONNX Inference Results ===')
     print(f'Scene top-5: {preds["scene_top5"]}')
     print(f'Object pred unique: {np.unique(preds["object_pred"])}')
     print(f'Part pred unique: {np.unique(preds["part_pred"])}')
     print(f'Material pred unique: {np.unique(preds["material_pred"])}')
 
-    print(f'\n=== Timing ===')
+    print('\n=== Timing ===')
     print(f'Preprocess:  {timing["preprocess_ms"]:.2f} ms')
     print(f'Inference:   {timing["inference_ms"]:.2f} ms')
     print(f'Postprocess: {timing["postprocess_ms"]:.2f} ms')
