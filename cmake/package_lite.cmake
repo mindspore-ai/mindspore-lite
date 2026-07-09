@@ -31,6 +31,7 @@ set(MSLITE_PROPOSAL_LIB_NAME libmslite_proposal)
 set(MICRO_NNIE_LIB_NAME libmicro_nnie)
 set(DPICO_ACL_ADAPTER_LIB_NAME libdpico_acl_adapter)
 set(BENCHMARK_ROOT_DIR ${RUNTIME_PKG_NAME}/tools/benchmark)
+set(CUSTOM_KERNELS_ROOT_DIR ${RUNTIME_PKG_NAME}/tools/custom_kernels)
 
 set(MINDSPORE_LITE_TRAIN_LIB_NAME libmindspore-lite-train)
 set(BENCHMARK_TRAIN_NAME benchmark_train)
@@ -267,6 +268,38 @@ if(PLATFORM_ARM64)
                 install(FILES ${BUILD_DIR}/src/extendrt/delegate/ascend_ge/libascend_ge_plugin.so
                         DESTINATION ${RUNTIME_LIB_DIR} COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
+            # AscendC custom-op vendor (one folder per SoC) + source-style activator.
+            # Built by build_all_ops.sh into ${BUILD_DIR}/custom_ops_out AFTER cmake
+            # configure and BEFORE `make package` (see build_lite.sh), so the existence
+            # check MUST run at install time (CPack preinstall), not configure time. A
+            # configure-time if(EXISTS) is always false here (the dir is created only
+            # later), which silently drops tools/custom_kernels from the tar while the
+            # wheel (a bash cp at build_all_ops time) still gets it. install(CODE) runs
+            # during cmake --install, when the vendor is already built. Mirrors the
+            # wheel's custom_ops_vendor/ tree (python/setup.py).
+            # NOTE: COMPONENT ${RUNTIME_COMPONENT_NAME} is mandatory here. Without
+            # it, install(CODE) falls into CMake's default "Unspecified" component,
+            # while every other rule is in ${RUNTIME_COMPONENT_NAME} ("linux-aarch64").
+            # CPack (CPACK_COMPONENTS_ALL = "linux-aarch64", set by user) only installs
+            # that component during `make package`, so an untagged install(CODE) is
+            # silently skipped -- the tar ships without tools/custom_kernels even though
+            # the wheel (a plain bash cp) does. Mirrors the COMPONENT on the surrounding
+            # install() rules so CPack picks it up.
+            install(CODE "
+                if(IS_DIRECTORY \"${BUILD_DIR}/custom_ops_out\")
+                    message(STATUS \"[custom_kernels] install AscendC vendor + install.sh\")
+                    file(INSTALL \"${BUILD_DIR}/custom_ops_out/\"
+                        DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${CUSTOM_KERNELS_ROOT_DIR}\"
+                        USE_SOURCE_PERMISSIONS)
+                    file(INSTALL \"${TOP_DIR}/mindspore-lite/tools/custom_kernels/ascend_ops/install.sh\"
+                        DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${CUSTOM_KERNELS_ROOT_DIR}\"
+                        PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+                            GROUP_READ GROUP_EXECUTE
+                            WORLD_READ WORLD_EXECUTE)
+                else()
+                    message(STATUS \"[custom_kernels] no vendor at ${BUILD_DIR}/custom_ops_out; skipping\")
+                endif()
+            " COMPONENT ${RUNTIME_COMPONENT_NAME})
         endif()
         install(DIRECTORY ${TOP_DIR}/mindspore-lite/include/api DESTINATION ${RUNTIME_INC_DIR}/api
             COMPONENT ${RUNTIME_COMPONENT_NAME} FILES_MATCHING PATTERN "*.h")

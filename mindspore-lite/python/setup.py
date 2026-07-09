@@ -21,72 +21,106 @@ import sys
 from setuptools import setup, find_packages
 
 TOP_DIR = sys.argv[-1]
-sys.argv = sys.argv[: -1]
+sys.argv = sys.argv[:-1]
 
 
 def _read_file(filename):
     file_realpath = os.path.realpath(filename)
-    with open(file_realpath, encoding='UTF-8') as f:
+    with open(file_realpath, encoding="UTF-8") as f:
         return f.read()
 
 
+def _vendor_package_data():
+    """AscendC custom-op vendor folders (one per SoC) staged by build_lite.sh
+    under package/mindspore_lite/custom_ops_vendor/. Listed explicitly
+    (setuptools package_data has no recursive '**' glob) so the whole tree
+    ships in the wheel. Empty when the op build was skipped (non-Ascend/CI).
+
+    At wheel-pack time setup.py runs inside the package/ staging dir, so this
+    scans <setup_dir>/mindspore_lite/custom_ops_vendor/ and returns paths
+    relative to the mindspore_lite package dir (e.g. custom_ops_vendor/<unit>/...).
+    """
+    data = []
+    setup_dir = os.path.dirname(os.path.abspath(__file__))
+    vendor_root = os.path.join(setup_dir, "mindspore_lite", "custom_ops_vendor")
+    if os.path.isdir(vendor_root):
+        pkg_root = os.path.join(setup_dir, "mindspore_lite")
+        for dirpath, _, files in os.walk(vendor_root):
+            for fname in files:
+                data.append(os.path.relpath(os.path.join(dirpath, fname), pkg_root))
+    return data
+
+
 def _get_package_data():
-    """ get package data"""
+    """get package data"""
     pkg_data = [
-        '__init__.py', '_checkparam.py', 'base_model.py', 'context.py', 'converter.py', 'model.py', 'tensor.py',
-        '_check_ascend.py', '_ascend_custom_ops.py', 'lib/*.so*', '.commit_id', 'include/api/*',
-        'include/api/callback/*', 'include/api/metrics/*', 'include/mindapi/base/*',
-        'include/registry/converter_context.h', 'include/converter.h',
-        # AscendC custom-op vendor tarballs (one per SoC); lazily installed on first
-        # import via _ascend_custom_ops.ensure_installed(). Absent for non-Ascend builds.
-        'custom_kernels/*.tar.gz'
+        "__init__.py",
+        "_checkparam.py",
+        "base_model.py",
+        "context.py",
+        "converter.py",
+        "model.py",
+        "tensor.py",
+        "_check_ascend.py",
+        "_ascend_custom_ops.py",
+        "lib/*.so*",
+        ".commit_id",
+        "include/api/*",
+        "include/api/callback/*",
+        "include/api/metrics/*",
+        "include/mindapi/base/*",
+        "include/registry/converter_context.h",
+        "include/converter.h",
+        # AscendC custom-op vendor folders (one per SoC); the import hook points
+        # ASCEND_CUSTOM_OPP_PATH at the matching SoC's folder (no install to $ASCEND_HOME_PATH).
+        *_vendor_package_data(),
     ]
-    if os.getenv('MSLITE_ENABLE_CLOUD_INFERENCE') == "on":
-        pkg_data.append('lite_infer.py')
+    if os.getenv("MSLITE_ENABLE_CLOUD_INFERENCE") == "on":
+        pkg_data.append("lite_infer.py")
     return pkg_data
 
 
-version = _read_file(TOP_DIR + '/version.txt').replace("\n", "")
-readme = _read_file(TOP_DIR + '/README.md')
+version = _read_file(TOP_DIR + "/version.txt").replace("\n", "")
+readme = _read_file(TOP_DIR + "/README.md")
 
 setup(
     name="mindspore_lite",
     version=version,
-    author='The MindSpore Authors',
-    author_email='contact@mindspore.cn',
-    url='https://www.mindspore.cn',
-    download_url='https://github.com/mindspore-ai/mindspore/tags',
+    author="The MindSpore Authors",
+    author_email="contact@mindspore.cn",
+    url="https://www.mindspore.cn",
+    download_url="https://github.com/mindspore-ai/mindspore/tags",
     project_urls={
-        'Sources': 'https://github.com/mindspore-ai/mindspore',
-        'Issue Tracker': 'https://github.com/mindspore-ai/mindspore/issues',
+        "Sources": "https://github.com/mindspore-ai/mindspore",
+        "Issue Tracker": "https://github.com/mindspore-ai/mindspore/issues",
     },
-    description='MindSpore is a new open source deep learning training/inference '
-                'framework that could be used for mobile, edge and cloud scenarios.',
+    description="MindSpore is a new open source deep learning training/inference "
+    "framework that could be used for mobile, edge and cloud scenarios.",
     long_description=readme,
     long_description_content_type="text/markdown",
     packages=find_packages(),
-    package_data={'': _get_package_data()},
+    package_data={"": _get_package_data()},
     include_package_data=True,
     cmdclass={},
     entry_points={},
-    python_requires='>=3.7',
-    install_requires=['numpy >= 1.17.0'],
+    python_requires=">=3.7",
+    install_requires=["numpy >= 1.17.0"],
     classifiers=[
-        'Development Status :: 4 - Beta',
-        'Environment :: Console',
-        'Intended Audience :: Science/Research',
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: Apache Software License',
-        'Programming Language :: Python :: 3 :: Only',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: C++',
-        'Topic :: Scientific/Engineering',
-        'Topic :: Scientific/Engineering :: Artificial Intelligence',
-        'Topic :: Software Development',
-        'Topic :: Software Development :: Libraries',
-        'Topic :: Software Development :: Libraries :: Python Modules',
+        "Development Status :: 4 - Beta",
+        "Environment :: Console",
+        "Intended Audience :: Science/Research",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python :: 3 :: Only",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: C++",
+        "Topic :: Scientific/Engineering",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        "Topic :: Software Development",
+        "Topic :: Software Development :: Libraries",
+        "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-    license='Apache 2.0',
-    keywords='mindspore lite',
+    license="Apache 2.0",
+    keywords="mindspore lite",
 )
