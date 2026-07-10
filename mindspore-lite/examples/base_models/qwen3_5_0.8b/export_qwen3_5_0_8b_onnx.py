@@ -33,14 +33,15 @@ import torch
 import torch.nn.functional as F
 
 try:
-    import torch._dynamo
-
-    torch._dynamo.disable()
-except Exception:
+    getattr(torch, "_dynamo").disable()
+except (ImportError, AttributeError):
     pass
 
 try:
-    from transformers import Qwen3_5ForConditionalGeneration
+    try:
+        from transformers import Qwen3_5ForConditionalGeneration as QwenForConditionalGeneration
+    except ImportError:
+        from transformers import Qwen3VLForConditionalGeneration as QwenForConditionalGeneration
 except ImportError:
     print("Error: transformers package not found or version too low.")
     print("Please install: pip install --upgrade transformers")
@@ -138,6 +139,96 @@ def _chunk_gated_delta_rule(query, key, value, g, beta, chunk_size=64, initial_s
     return core_attn_out, last_recurrent_state
 
 
+class CustomChunkGatedDeltaRule(torch.autograd.Function):
+    """Custom ONNX operator for ChunkGatedDeltaRule prefill kernel."""
+
+    @staticmethod
+    def forward(
+        ctx,
+        query,
+        key,
+        value,
+        g,
+        beta,
+        initial_state,
+        cu_seqlens,
+        ssm_state_indices,
+        chunk_size: int,
+        scale_value,
+    ):
+        """Forward pass: invoke ChunkGatedDeltaRule kernel via torch simulation."""
+        del ctx, cu_seqlens, ssm_state_indices, scale_value
+        batch_size = initial_state.shape[0]
+        total_tokens = query.shape[0]
+        seq_len = total_tokens // batch_size
+        query_4d = query.reshape(batch_size, seq_len, *query.shape[1:])
+        key_4d = key.reshape(batch_size, seq_len, *key.shape[1:])
+        value_4d = value.reshape(batch_size, seq_len, *value.shape[1:])
+        g_3d = g.reshape(batch_size, seq_len, *g.shape[1:])
+        beta_3d = beta.reshape(batch_size, seq_len, *beta.shape[1:])
+        out, final_state = _chunk_gated_delta_rule(
+            query_4d,
+            key_4d,
+            value_4d,
+            g=g_3d,
+            beta=beta_3d,
+            chunk_size=int(chunk_size),
+            initial_state=initial_state.to(dtype=torch.float32),
+            output_final_state=True,
+            use_qk_l2norm_in_kernel=False,
+        )
+        out = out.reshape(total_tokens, out.shape[2], out.shape[3]).contiguous()
+        final_state = final_state.to(dtype=torch.float16)
+        return out, final_state
+
+    @staticmethod
+    def symbolic(
+        g,
+        query,
+        key,
+        value,
+        g_in,
+        beta,
+        initial_state,
+        cu_seqlens,
+        ssm_state_indices,
+        chunk_size: int,
+        scale_value: float,
+    ):
+        """Define ONNX custom op representation for ChunkGatedDeltaRule."""
+        out, final_state = g.op(
+            "Custom",
+            query,
+            key,
+            value,
+            g_in,
+            beta,
+            initial_state,
+            cu_seqlens,
+            ssm_state_indices,
+            type_s="ChunkGatedDeltaRule",
+            chunk_size_i=int(chunk_size),
+            scale_value_f=float(scale_value),
+            input_names_s=[
+                "query",
+                "key",
+                "value",
+                "g",
+                "beta",
+                "initial_state",
+                "cu_seqlens",
+                "ssm_state_indices",
+            ],
+            output_names_s=["out", "final_state"],
+            output_num_i=2,
+            input_index_i=list(range(8)),
+            outputs=2,
+        )
+        out.setType(value.type())
+        final_state.setType(initial_state.type())
+        return out, final_state
+
+
 def _recurrent_gated_delta_rule(query, key, value, g, beta, initial_state,
                                 output_final_state=False, use_qk_l2norm_in_kernel=False):
     """Torch implementation of recurrent gated delta rule for decode."""
@@ -179,7 +270,14 @@ def _recurrent_gated_delta_rule(query, key, value, g, beta, initial_state,
     return core_attn_out, last_recurrent_state
 
 
-def _linear_attn_prefill(layer, hidden_states, attention_mask):
+def _linear_attn_prefill(
+    layer,
+    hidden_states,
+    attention_mask,
+    use_cgdr_custom: bool = True,
+    actual_seq_lengths=None,
+    ssm_state_indices=None,
+):
     """Forward pass for GatedDeltaNet layer during prefill."""
     batch_size, seq_len, _ = hidden_states.shape
     hidden_states_input = hidden_states
@@ -223,11 +321,54 @@ def _linear_attn_prefill(layer, hidden_states, attention_mask):
         query = query.repeat_interleave(layer.num_v_heads // layer.num_k_heads, dim=2)
         key = key.repeat_interleave(layer.num_v_heads // layer.num_k_heads, dim=2)
 
-    core_attn_out, last_recurrent_state = _chunk_gated_delta_rule(
-        query, key, value, g=g, beta=beta,
-        initial_state=None, output_final_state=True,
-        use_qk_l2norm_in_kernel=True,
+    query = _l2norm(query.to(dtype=torch.float32), dim=-1, eps=1e-6).to(dtype=query.dtype)
+    key = _l2norm(key.to(dtype=torch.float32), dim=-1, eps=1e-6).to(dtype=key.dtype)
+
+    state0 = torch.zeros(
+        batch_size, query.shape[2], layer.head_k_dim, layer.head_v_dim,
+        device=query.device, dtype=torch.float16,
     )
+    if actual_seq_lengths is None:
+        seq_lens = attention_mask.to(dtype=torch.int32).sum(dim=1)
+        actual_seq_lengths = torch.zeros((batch_size + 1,), device=query.device, dtype=torch.int32)
+        actual_seq_lengths[1:] = torch.cumsum(seq_lens, dim=0)
+    if ssm_state_indices is None:
+        ssm_state_indices = torch.arange(batch_size, device=query.device, dtype=torch.int32)
+    scale_value = 1.0 / (layer.head_k_dim ** 0.5)
+    q_3d = query.to(dtype=torch.float16).reshape(-1, query.shape[2], query.shape[3])
+    k_3d = key.to(dtype=torch.float16).reshape(-1, key.shape[2], key.shape[3])
+    v_3d = value.to(dtype=torch.float16).reshape(-1, value.shape[2], value.shape[3])
+    beta_2d = beta.to(dtype=torch.float16).reshape(-1, beta.shape[-1])
+    g_2d = g.to(dtype=torch.float16).reshape(-1, g.shape[-1])
+    if use_cgdr_custom:
+        core_attn_out_3d, last_recurrent_state = CustomChunkGatedDeltaRule.apply(
+            q_3d,
+            k_3d,
+            v_3d,
+            g_2d,
+            beta_2d,
+            state0,
+            actual_seq_lengths,
+            ssm_state_indices,
+            64,
+            scale_value,
+        )
+        core_attn_out = core_attn_out_3d.reshape(
+            batch_size, seq_len, core_attn_out_3d.shape[1], core_attn_out_3d.shape[2]
+        )
+    else:
+        core_attn_out, last_recurrent_state = _chunk_gated_delta_rule(
+            query,
+            key,
+            value,
+            g=g,
+            beta=beta,
+            chunk_size=64,
+            initial_state=state0,
+            output_final_state=True,
+            use_qk_l2norm_in_kernel=False,
+        )
+        last_recurrent_state = last_recurrent_state.to(dtype=torch.float16)
 
     core_attn_out = core_attn_out.reshape(-1, layer.head_v_dim)
     z = z.reshape(-1, layer.head_v_dim)
@@ -361,12 +502,13 @@ class VisionTowerWrapper(torch.nn.Module):
 class Qwen35LlmPrefill(torch.nn.Module):
     """Qwen3.5-0.8B LLM Prefill model for ONNX export."""
 
-    def __init__(self, text_model, lm_head, image_token_id):
+    def __init__(self, text_model, lm_head, image_token_id, use_cgdr_custom: bool = True):
         super().__init__()
         self.text_model = text_model
         self.lm_head = lm_head
         self.image_token_id = int(image_token_id)
         self.config = text_model.config
+        self.use_cgdr_custom = bool(use_cgdr_custom)
 
     def forward(self, input_ids, attention_mask, position_ids, image_embeds):
         """Run prefill forward pass with image embeddings."""
@@ -392,6 +534,10 @@ class Qwen35LlmPrefill(torch.nn.Module):
             attention_mask, q_len, k_len, 0, inputs_embeds.dtype
         )
         linear_attn_mask = attention_mask
+        seq_lens = linear_attn_mask.to(dtype=torch.int32).sum(dim=1)
+        actual_seq_lengths = torch.zeros((input_ids.shape[0] + 1,), device=input_ids.device, dtype=torch.int32)
+        actual_seq_lengths[1:] = torch.cumsum(seq_lens, dim=0)
+        ssm_state_indices = torch.arange(input_ids.shape[0], device=input_ids.device, dtype=torch.int32)
 
         hidden_states = inputs_embeds
         present_conv = []
@@ -404,7 +550,12 @@ class Qwen35LlmPrefill(torch.nn.Module):
 
             if layer.layer_type == "linear_attention":
                 attn_out, conv_s, rec_s = _linear_attn_prefill(
-                    layer.linear_attn, hidden_states, linear_attn_mask
+                    layer.linear_attn,
+                    hidden_states,
+                    linear_attn_mask,
+                    self.use_cgdr_custom,
+                    actual_seq_lengths,
+                    ssm_state_indices,
                 )
                 hidden_states = residual + attn_out
                 present_conv.append(conv_s)
@@ -456,13 +607,7 @@ class Qwen35LlmDecode(torch.nn.Module):
 
         position_embeddings = self.text_model.rotary_emb(inputs_embeds, mm_position_ids)
 
-        past_len = 0
-        kv_idx = 0
-        for layer in self.text_model.layers:
-            if layer.layer_type == "full_attention":
-                if kv_idx == 0 and past_kv_cache.shape[0] > 0:
-                    past_len = past_kv_cache[0].shape[2]
-                break
+        past_len = past_kv_cache[0].shape[2] if past_kv_cache.shape[0] > 0 else 0
 
         k_len = past_len + q_len
         attn_mask = _make_additive_causal_mask(
@@ -701,7 +846,7 @@ def _export_llm_decode(decode, meta, output_dir, device, dummy_seq):
 
 
 def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq=8,
-                              dummy_num_img_tokens=16):
+                             dummy_num_img_tokens=16, use_cgdr_custom: bool = True):
     """Export Qwen3.5-0.8B LLM prefill and decode models to ONNX."""
     meta = _get_model_meta(model)
     text_model = meta["text_model"]
@@ -713,7 +858,9 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq=8,
     text_model.to(device)
     lm_head.to(device)
 
-    prefill = Qwen35LlmPrefill(text_model, lm_head, image_token_id).to(device).eval()
+    prefill = Qwen35LlmPrefill(
+        text_model, lm_head, image_token_id, use_cgdr_custom=use_cgdr_custom
+    ).to(device).eval()
     decode = Qwen35LlmDecode(text_model, lm_head).to(device).eval()
 
     _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_tokens)
@@ -725,7 +872,7 @@ def main():
     parser = argparse.ArgumentParser(description="Export Qwen3.5-0.8B to ONNX")
     parser.add_argument(
         "--model-id", type=str,
-        default="/Users/apple/git/models/models_weights/Qwen3.5-0.8B",
+        default="./Qwen3.5-0.8B",
         help="HuggingFace model ID or local path",
     )
     parser.add_argument(
@@ -744,6 +891,12 @@ def main():
         "--dummy-seq-len", type=int, default=8,
         help="Dummy sequence length for LLM export",
     )
+    parser.add_argument(
+        "--use-cgdr-custom",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable ChunkGatedDeltaRule custom op in prefill linear attention",
+    )
 
     args = parser.parse_args()
 
@@ -751,16 +904,22 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\nLoading model {args.model_id} in FP16 for export...")
-    model = Qwen3_5ForConditionalGeneration.from_pretrained(
+    model = QwenForConditionalGeneration.from_pretrained(
         args.model_id,
         torch_dtype=torch.float16,
-        device_map=args.device,
         low_cpu_mem_usage=True,
         attn_implementation="eager",
     )
+    model.to(args.device)
 
     export_vision_tower(model, output_dir, args.device, args.vision_image_size)
-    export_llm_prefill_decode(model, output_dir, args.device, args.dummy_seq_len)
+    export_llm_prefill_decode(
+        model,
+        output_dir,
+        args.device,
+        args.dummy_seq_len,
+        use_cgdr_custom=args.use_cgdr_custom,
+    )
 
     print("Clearing memory after export...")
     del model
