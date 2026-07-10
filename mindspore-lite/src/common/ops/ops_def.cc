@@ -304,7 +304,7 @@ OP_SCHEMA_DEF_END(ArgMaxFusion)
 
 OP_SCHEMA_DEF(ArgMinFusion)
 OP_ATTR(axis, long)
-OP_ATTR(top_k, long)
+OP_ATTR_WITH_VALUE(top_k, long, 1)
 OP_ATTR(keep_dims, bool)
 OP_ATTR(out_max_value, bool)
 OP_SCHEMA_DEF_END(ArgMinFusion)
