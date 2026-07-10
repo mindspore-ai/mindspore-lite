@@ -213,13 +213,25 @@ PY
 
 #### 4.2.2 PFA layout（减少 Transpose/TransData）
 
-- 目的：减少 layout 转换与 transpose。
+- 目的：减少 layout 转换与 transpose。Qwen/Llama 类模型每个 decoder layer 在 PFA 前后通常有 3-6 个 transpose（BNSD↔BSH/BSND 互转），多层累计可观。
+- 工具链约束（改 layout 前必须先查清）：
+  - MindSpore Lite 2.9.0 的 PFA Custom 仅支持 `input_layout_s ∈ {BSH, BNSD, BNSD_BSND}`，**不支持 `BSND` / `BSND_BSND`**（Infershape 阶段直接拒绝：`Invalid input layout: BSND_BSND, not support!`）。改 layout 前先确认目标值在支持列表内。
 - 改动方式：
-  - `Custom(PromptFlashAttention)` 设置 `input_layout_s`，并同步调整 PFA 输出后处理（slice/reshape 顺序）。
+  - 改 `Custom(PromptFlashAttention)` 的 `input_layout_s`，同时必须**同步调整以下三处**（缺一都会引入隐性劣化或转换失败）：
+    1. PFA 前的 forward 计算：输入是 3D BSH 还是 4D BNSD/BSND；BSH 形态下 RotaryMul 应在 BSND 上做、reshape 成 3D 进 PFA。
+    2. RotaryMul 的 cos/sin 的 unsqueeze 位置：BNSD 时 `unsqueeze(1)`，BSND 时 `unsqueeze(2)`。
+    3. **同层共享 hidden_states 的其它 Custom op 的 `output_shapes_s` 动态维标记**：动态维是序列长度 S，BNSD 时 `dims[2] = -1`，BSND/BSH 时 `dims[1] = -1`。RotaryMul / RmsNorm / AddRmsNorm / SwiGlu 等 Custom op 都要同步改，否则 Custom parser 会按错误的动态维度出图，轻则算子被 fallback 拆解（如 RmsNorm 被拆回 Pow+Square+ReduceMean+RealDiv+Mul），重则 infershape 错乱。
 - 验证方式：
-  - profiling 对比 `Transpose/TransData` 的 Count 与 TotalTime。
+  - profiling 对比 `Transpose/TransData` 的 Count 与 TotalTime（每层应有 3 个 transpose 消失）。
+  - 检查是否仍有意料外的算子被拆解（如出现大量 `Square`/`Pow` 节点说明 RmsNorm Custom 没真正融合）。
+  - 精度对齐：layout 改写本身不改数学语义，scores 应几乎完全一致（`max_abs_diff < 1e-3`）。
 - 常见副作用：
+  - 若只改 PFA layout 不改同层其它 Custom op 的 `output_shapes_s`，会引入隐性劣化（transpose 数没减少，只是看似改了 layout；或 RmsNorm 被静默拆解）。
   - layout 变化会影响后续算子选型；必须逐步验证，必要时回退。
+- 经验备注（jina_reranker_v3，28L Qwen3-0.6B，Ascend 300I DUO，2026-07）：
+  - 默认导出走 `BNSD_BSND`（输入是 4D BNSD），每层 PFA 前后 3 个 transpose（q/k/v `.transpose(1, 2)`）。
+  - 改成 `BSH`（输入 3D）：28 层 × 3 = 84 个 transpose 消除，execute 108.0ms → 102.7ms（**-5.3ms / -4.9%**），scores 完全一致。
+  - 想试 `BSND_BSND` 更激进，被工具链拒掉；`BSH` 是 MSLite 2.9.0 当前可用的「最激进」选项。
 
 #### 4.2.3 PFA num_heads 拆分（经验：收益不稳定/通常无收益）
 
@@ -270,17 +282,31 @@ PY
 
 ### 4.5 精度策略类（混合精度 / fp16）
 
-#### 4.5.1 allow_mix_precision + mixlist（推荐的“可控”路径）
+#### 4.5.1 allow_mix_precision + mixlist（推荐的"可控"路径）
 
 - 目的：只让少数热点下沉 fp16，同时保护归一化/softmax 等敏感链路为 fp32。
 - 改动方式：
   - converter 配置：`ge.exec.precision_mode=allow_mix_precision`
   - 指定 mixlist：`ge.exec.modify_mixlist=...json`
+  - 黑名单 JSON 结构：`{"black-list":{"to-add":["Op1","Op2"]}}`，`to-add` 是**追加**到内置黑名单，没有 `to-remove`；要剔除某个 op，直接重写整个文件即可。
+- **战术：单点剔除（surgical removal），而非全开/全关**
+  - RmsNorm 链路默认会把 `RealDiv / Square / SquareSumV1` 三个 op 全部黑名单（保护 fp32）。但三者对精度的贡献不同，全部保留往往保守。**逐个移除做 A/B 对比**，常能再挤出 1-3ms：
+    | 移除项 | 典型结果 |
+    |---|---|
+    | 只移除 `Square`（保留 `SquareSumV1 + RealDiv`） | 通常安全；Cast 链路收缩，拿到 1-3ms 收益 |
+    | 同时移除 `Square + SquareSumV1` | **通常破坏精度**（scores 放大 ~10×）；`SquareSumV1` 是真正的精度锚点 |
+    | 黑名单清空（等价 force_fp16） | 精度必崩 |
+  - 注意：即使把 `Square` 从黑名单移除，GE 对某些大张量（如 RmsNorm 作用于 hidden_states `(1,1280,1024)`）仍可能自动保留 fp32；mixlist 是"上限"不是"强制"。小张量（如 q_norm/k_norm 作用于 `(1,1280,16,128)`）则通常顺利下沉 fp16。
 - 验证方式：
-  - 精度必须严查：score 是否越界（如 cosine similarity > 1/< -1）、排序是否改变。
-  - profiling 必看：`Cast/TransData` 是否爆炸性增长。
+  - 精度必须严查：score 是否越界（如 cosine similarity > 1/< -1）、排序是否改变。**只要 score 出现整体数量级偏移（如 0.3 → 2.6），就是精度锚点被误删，立刻回退**。
+  - profiling 必看：`Cast/TransData` 是否爆炸性增长（移除 mixlist 反而涨 Cast 是常见副作用，说明 GE 自动决策把更多算子保留 fp32）。
 - 常见副作用：
   - 归一化链路（ReduceMean/Sqrt/Rsqrt/Reciprocal/RealDiv/Square 等）若下沉 fp16，可能导致数值崩坏。
+- 经验备注（jina_reranker_v3，28L Qwen3-0.6B，Ascend 300I DUO，2026-07）：
+  - 默认 mixlist 全保留（RealDiv+Square+SquareSumV1）：execute ~102.7ms。
+  - 只移除 `Square`：execute ~101.7ms（**-1ms**），scores 偏差 < 1.3e-3，Cast 总耗时 25ms → 8ms。
+  - 同时移除 `Square + SquareSumV1`：scores 立刻放大 10×（0.3 → 2.6）。
+  - 结论：`SquareSumV1` 是真正的精度锚点，`Square` 是"伪锚点"可安全下沉 fp16。
 
 #### 4.5.2 force_fp16（不推荐作为默认基线）
 
@@ -289,7 +315,9 @@ PY
 - 验证方式：精度对齐通常更难通过，且可能出现整体偏移/越界。
 - 常见副作用：精度不通过时不应继续叠加其他优化点，必须先收敛精度策略。
 
-### 4.6 融合/解融合类（用于“极限探测”与“意外收益”）
+### 4.6 融合/解融合类（用于"极限探测"与"意外收益"）
+
+> ⚠️ **重要心态**：融合算子不必然更快。融合算子可能因为引入额外的 `cat`/`slice`/`TransData` 反而变慢（典型：SwiGlu/GeGlu 的 `cat([gate, up])` 会强制 FRACTAL_NZ→ND 转换，见 4.6.2）。本节两类解融合都是「实测有收益」的案例，**遇到融合激活/归一化类算子，默认都应做一次 fused vs unfused 的端到端 benchmark 对比**——这呼应 SKILL.md 第 7 条通用原则。
 
 #### 4.6.1 禁用某类融合（例：RmsNorm/AddRmsNorm）
 
@@ -299,6 +327,37 @@ PY
   - benchmark 直接对比；profiling 看 RmsNorm/归一化链路总耗时变化。
 - 常见副作用：
   - 图变大、算子变多；必须精度对齐（norm 对精度敏感）。
+
+#### 4.6.2 MLP 激活解融合：cat([gate, up]) + SwiGlu → silu(gate) * up 直接计算
+
+- 目的：消除融合激活算子引入的隐式数据搬运（FRACTAL_NZ ↔ ND 的 `TransData`）。
+- 假设（counter-intuitive）：融合激活算子（SwiGlu/GeGlu）单算子本身确实更优，但其输入形态要求（要求 gate/up 在最后一维 concat 成单 tensor）会强制把前面 `BatchMatMul` 输出的 `FRACTAL_NZ` 张量转成 `ND` 再 cat，**这个 `TransData` 的代价可能超过融合本身的收益**。
+- 改动方式：
+  ```python
+  # Before (fused, cat forces TransData):
+  gate_up = torch.cat([
+      gate_linear(h),    # BatchMatMul output is FRACTAL_NZ
+      up_linear(h),      # BatchMatMul output is FRACTAL_NZ
+  ], dim=-1)             # cat requires ND → TransData on both
+  out = SwiGlu(gate_up, dim=-1)   # split + silu + mul fused
+
+  # After (unfused, no cat — TransData eliminated):
+  gate = gate_linear(h)
+  up   = up_linear(h)
+  out  = F.silu(gate) * up        # elementwise, accepts FRACTAL_NZ directly
+  ```
+- 验证方式：
+  - profiling 对比 `TransData` 的 Count 与 TotalTime（每层应消除 ~2 个 TransData）。
+  - 同时对比 SwiGlu（消失）和新增 `Mul`/`Silu` 的总耗时：**净下降才是真收益**。
+  - 精度对齐：`silu(gate) * up` 与 `SwiGlu(cat([gate, up]))` 数学等价，scores 应几乎一致（`max_abs_diff < 5e-4`）。
+- 常见副作用：
+  - 新增 `silu` 和 `mul` 算子（每层各 1 个），但避免了 2 个 `TransData`（每层数百 us），净收益通常 > 0。
+  - 图节点数轻微上涨，编译/转换时间几乎不变。
+- 经验备注（jina_reranker_v3，28L Qwen3-0.6B，Ascend 300I DUO，2026-07）：
+  - `TransData` 总耗时：102.97ms → 10.35ms（**-92.6ms / 13 iter ≈ -7.1ms/iter**）。
+  - `SwiGlu` 消失（-7.2ms/iter），新增 `Mul`（+4.2ms/iter），`BatchMatMul` 略涨（+2.3ms/iter，因 cast 路径变化）。
+  - 净收益 execute：101.7ms → 93.8ms（**-7.9ms / -7.8%**，单点最大收益，超过 PFA layout + mixlist 两项之和）。
+  - **教训**：融合算子不是必然更快。融合激活类算子（SwiGlu/GeGlu/...）在引入 cat 的同时引入格式搬运，必须实际对比 fused vs unfused 的端到端耗时，**不能凭直觉跳过**——这是 SKILL.md 第 7 条通用原则的现实案例。
 
 ### 4.7 免拷贝
 

@@ -2,7 +2,6 @@
     "black-list":{
         "to-add":[
             "RealDiv",
-            "Square",
             "SquareSumV1"
         ]
     }
