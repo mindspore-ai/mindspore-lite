@@ -211,7 +211,11 @@ def test_build_from_buffer_correct(args: ModelArgs, output_dir: str, device_id: 
                 "{output_dir}/emptyfile",
             ),
             RuntimeError,
-            "build_from_buffer failed! Error is func_graph is nullptr, failed to load MindIR model!",
+            "build_from_buffer failed! Error is The pointer to the model's independent weight file " \
+            "provided by the current user is null, and the model weight size is zero. " \
+            "Please check whether the relevant parameters are correctly passed. If the user's " \
+            "model architecture and weights are in a single MindIR file, please use other Build interfaces; " \
+            "this interface is not recommended.",
         ),
         (
             ModelArgs(
