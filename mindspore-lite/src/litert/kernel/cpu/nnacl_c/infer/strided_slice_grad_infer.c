@@ -152,13 +152,15 @@ int StridedSliceGradInferShape(const TensorC *const *inputs, size_t inputs_size,
   for (int i = 0; i < output_size; i++) {
     ShapePush(output_shape, &output_shape_size, ((int *)(inputs[1]->data_))[i]);
   }
-  for (size_t i = 0; i < ndim_; ++i) {
+  size_t check_size = ndim_ < output_shape_size ? ndim_ : output_shape_size;
+  for (size_t i = 0; i < check_size; ++i) {
     int begin_val = begins_[i];
     if (begin_val < 0) {
       begin_val += in_shape_[i];
     }
     if (begin_val >= output_shape[i]) {
-      return NNACL_INFER_INVALID;
+      param->begins_[i] = 0;
+      param->ends_[i] = 0;
     }
   }
   SetShapeArray(outputs[0], output_shape, output_shape_size);
