@@ -28,6 +28,7 @@ description: MindSpore Lite（Ascend）模型性能优化总攻略。做基线/p
 4. **不破坏图语义**：任何融合/替换/量化都要做功能一致性验证（max abs / cosine / top-k 排序）。
 5. **可用性优先于激进优化**：先“能转 + 能跑 + 精度达标”，再追求更深优化；激进手段叠加在不稳定基础上只会更难定位。
 6. **产物可复现**：每次尝试保留导出/转换/性能/精度四份日志，并记录对应模型与 profiling 路径。
+7. **融合不必然更快，必须实测**：融合算子（SwiGlu/GeGlu/Add+Norm/RmsNorm 等）看似省算子数，但常因引入额外的 `cat`/`slice`/`TransData` 反而变慢。**遇到融合激活/归一化类算子，默认都应做一次 fused vs unfused 的端到端 benchmark 对比**，不能凭直觉跳过。详见 [references/other_opt_methods.md](references/other_opt_methods.md) §4.6。
 
 ## 性能优化策略总览
 

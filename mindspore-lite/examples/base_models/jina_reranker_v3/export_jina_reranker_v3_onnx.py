@@ -78,7 +78,7 @@ class _CannRmsNorm(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x, gamma, epsilon):
-        """Export the fused RmsNorm Custom op node."""
+        """Export the fused RmsNorm Custom op node. BSND layout: dynamic dim is 1."""
         sizes = x.type().sizes()
         if sizes is None:
             out_shapes = ""
@@ -89,7 +89,7 @@ class _CannRmsNorm(torch.autograd.Function):
                 dims[1] = -1
             elif len(dims) == 4:
                 dims[0] = -1
-                dims[2] = -1
+                dims[1] = -1
             out_shapes = ",".join([str(len(dims))] + [str(i) for i in dims])
 
         y, rstd = g.op(
@@ -140,7 +140,7 @@ class _CannAddRmsNorm(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x1, x2, gamma, epsilon):
-        """Export the fused AddRmsNorm Custom op node."""
+        """Export the fused AddRmsNorm Custom op node. BSND layout: dynamic dim is 1."""
         sizes = x1.type().sizes()
         if sizes is None:
             out_shapes = ""
@@ -151,7 +151,7 @@ class _CannAddRmsNorm(torch.autograd.Function):
                 dims[1] = -1
             elif len(dims) == 4:
                 dims[0] = -1
-                dims[2] = -1
+                dims[1] = -1
             out_shapes = ",".join([str(len(dims))] + [str(i) for i in dims])
 
         y, rstd, x = g.op(
@@ -199,7 +199,7 @@ class _CannRotaryMul(torch.autograd.Function):
             dims = [int(d) if d is not None else -1 for d in list(sizes)]
             if len(dims) == 4:
                 dims[0] = -1
-                dims[2] = -1
+                dims[1] = -1
             out_shapes = ",".join([str(len(dims))] + [str(i) for i in dims])
 
         y = g.op(
@@ -224,14 +224,19 @@ class _CannPromptFlashAttention(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, query, key, value, atten_mask, num_heads, num_key_value_heads, scale_value):
-        """Run PromptFlashAttention reference implementation for tracing."""
+        """Run PromptFlashAttention reference implementation for tracing. BSH 3D input."""
         del ctx
+        B, S, H_q = query.shape
+        head_dim = H_q // int(num_heads)
+        q = query.view(B, S, int(num_heads), head_dim).transpose(1, 2)
+        k = key.view(B, S, int(num_key_value_heads), head_dim).transpose(1, 2)
+        v = value.view(B, S, int(num_key_value_heads), head_dim).transpose(1, 2)
         if int(num_key_value_heads) != int(num_heads):
             repeat = int(num_heads) // int(num_key_value_heads)
-            key = key.repeat_interleave(repeat, dim=1)
-            value = value.repeat_interleave(repeat, dim=1)
+            k = k.repeat_interleave(repeat, dim=1)
+            v = v.repeat_interleave(repeat, dim=1)
         scale = float(scale_value)
-        attn = torch.matmul(query, key.transpose(2, 3)) * scale
+        attn = torch.matmul(q, k.transpose(-2, -1)) * scale
         if atten_mask is not None:
             if atten_mask.dtype == torch.bool:
                 mask_value = torch.finfo(query.dtype).min
@@ -239,11 +244,12 @@ class _CannPromptFlashAttention(torch.autograd.Function):
             else:
                 attn = attn + atten_mask
         attn = torch.nn.functional.softmax(attn, dim=-1, dtype=torch.float32).to(query.dtype)
-        return torch.matmul(attn, value)
+        out = torch.matmul(attn, v)
+        return out.transpose(1, 2).reshape(B, S, H_q)
 
     @staticmethod
     def symbolic(g, query, key, value, atten_mask, num_heads, num_key_value_heads, scale_value):
-        """Export the fused PromptFlashAttention Custom op node."""
+        """Export the fused PromptFlashAttention Custom op node. BSH layout (3D)."""
         y = g.op(
             "Custom",
             query,
@@ -256,7 +262,7 @@ class _CannPromptFlashAttention(torch.autograd.Function):
             num_heads_i=int(num_heads),
             num_key_value_heads_i=int(num_key_value_heads),
             scale_value_f=float(scale_value),
-            input_layout_s="BNSD_BSND",
+            input_layout_s="BSH",
             inner_precise_i=1,
         )
         y.setType(query.type())
@@ -355,9 +361,9 @@ def _cann_rotary_mul(x, cos, sin):
 def _expand_rotary_cos_sin(cos, sin, target_dim):
     if cos.dim() != int(target_dim):
         while cos.dim() < int(target_dim):
-            cos = cos.unsqueeze(1)
+            cos = cos.unsqueeze(2)
         while sin.dim() < int(target_dim):
-            sin = sin.unsqueeze(1)
+            sin = sin.unsqueeze(2)
     return cos, sin
 
 
@@ -564,10 +570,6 @@ def _cann_attn_forward(
     key_states = key_states.to(torch.float16)
     value_states = value_states.to(torch.float16)
 
-    query_states = query_states.transpose(1, 2)
-    key_states = key_states.transpose(1, 2)
-    value_states = value_states.transpose(1, 2)
-
     cos, sin = position_embeddings
     query_states, key_states = _cann_apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
@@ -579,34 +581,50 @@ def _cann_attn_forward(
 
     scaling = getattr(attn_mod, "scaling", 1.0 / (head_dim ** 0.5))
 
+    query_3d = query_states.reshape(*input_shape, -1)
+    key_3d = key_states.reshape(*input_shape, -1)
+    value_3d = value_states.reshape(*input_shape, -1)
+
     attn_output = _CannPromptFlashAttention.apply(
-        query_states,
-        key_states,
-        value_states,
+        query_3d,
+        key_3d,
+        value_3d,
         bool_mask,
         int(num_heads),
         int(num_kv_heads),
         float(scaling),
     )
     if not _ONNX_DYNAMIC_EXPORT and int(pad_len) > 0:
-        attn_output = attn_output[:, :seq_len, :, :]
+        attn_output = attn_output[:, :seq_len, :]
     attn_output = attn_output.to(orig_dtype)
-    attn_output = attn_output.reshape(*input_shape, -1).contiguous()
     attn_output = _linear(attn_mod.o_proj, attn_output, enable_bmm2mm_fusion)
     return attn_output
 
 
-def _cann_mlp_forward(mlp_mod, hidden_states, enable_bmm2mm_fusion):
-    """MLP forward that routes the SwiGlu activation to CANN SwiGlu Custom op."""
-    gate_up = torch.cat(
-        [
-            _linear(mlp_mod.gate_proj, hidden_states, enable_bmm2mm_fusion),
-            _linear(mlp_mod.up_proj, hidden_states, enable_bmm2mm_fusion),
-        ],
-        dim=-1,
-    )
-    gate_up = _CannSwiGlu.apply(gate_up, -1)
-    return _linear(mlp_mod.down_proj, gate_up, enable_bmm2mm_fusion)
+def _cann_mlp_forward(mlp_mod, hidden_states, enable_bmm2mm_fusion, enable_swiglu_fusion=False):
+    """MLP forward.
+
+    Default (enable_swiglu_fusion=False): compute silu(gate)*up directly without
+    cat([gate, up]). This avoids the FRACTAL_NZ→ND TransData that cat would force,
+    and is faster end-to-end than the fused SwiGlu path on Ascend 300I DUO.
+
+    When enable_swiglu_fusion=True: fall back to cat([gate, up]) + Custom(SwiGlu).
+    Useful for A/B comparison.
+    """
+    if enable_swiglu_fusion:
+        gate_up = torch.cat(
+            [
+                _linear(mlp_mod.gate_proj, hidden_states, enable_bmm2mm_fusion),
+                _linear(mlp_mod.up_proj, hidden_states, enable_bmm2mm_fusion),
+            ],
+            dim=-1,
+        )
+        gate_up = _CannSwiGlu.apply(gate_up, -1)
+        return _linear(mlp_mod.down_proj, gate_up, enable_bmm2mm_fusion)
+    gate = _linear(mlp_mod.gate_proj, hidden_states, enable_bmm2mm_fusion)
+    up = _linear(mlp_mod.up_proj, hidden_states, enable_bmm2mm_fusion)
+    out = torch.nn.functional.silu(gate) * up
+    return _linear(mlp_mod.down_proj, out, enable_bmm2mm_fusion)
 
 
 def _get_rmsnorm_epsilon(norm_mod):
@@ -705,8 +723,12 @@ class JinaRerankerV3FusedWrapper(torch.nn.Module):
     Wrapper for Jina Reranker V3 listwise ONNX export with CANN fused ops.
 
     Manually unrolls the Qwen3Model forward pass so that each subgraph
-    (RotaryMul, PromptFlashAttention, SwiGlu) is replaced by the corresponding
-    CANN Custom operator.
+    (RotaryMul, PromptFlashAttention, MLP activation) is replaced by the
+    corresponding CANN Custom operator or equivalent fast lowering.
+
+    MLP activation: defaults to direct silu(gate)*up (no cat) which avoids
+    FRACTAL_NZ→ND TransData; pass enable_swiglu_fusion=True to fall back to
+    cat([gate,up]) + Custom(SwiGlu) for A/B comparison.
     """
 
     def __init__(
@@ -715,6 +737,7 @@ class JinaRerankerV3FusedWrapper(torch.nn.Module):
         enable_bmm2mm_fusion,
         enable_rmsnorm_fusion,
         enable_qk_merge,
+        enable_swiglu_fusion=False,
     ):
         super().__init__()
         self.embed_tokens = model.model.embed_tokens
@@ -725,6 +748,7 @@ class JinaRerankerV3FusedWrapper(torch.nn.Module):
         self.enable_bmm2mm_fusion = bool(enable_bmm2mm_fusion)
         self.enable_rmsnorm_fusion = bool(enable_rmsnorm_fusion)
         self.enable_qk_merge = bool(enable_qk_merge)
+        self.enable_swiglu_fusion = bool(enable_swiglu_fusion)
         if self.enable_qk_merge:
             self._enable_qk_merge()
 
@@ -794,7 +818,9 @@ class JinaRerankerV3FusedWrapper(torch.nn.Module):
                 residual, attn_out, layer.post_attention_layernorm, self.enable_rmsnorm_fusion
             )
 
-            mlp_out = _cann_mlp_forward(layer.mlp, hidden_states, self.enable_bmm2mm_fusion)
+            mlp_out = _cann_mlp_forward(
+                layer.mlp, hidden_states, self.enable_bmm2mm_fusion, self.enable_swiglu_fusion
+            )
             if i < num_layers - 1:
                 hidden_states, residual = _cann_add_rms_norm(
                     residual,
@@ -874,6 +900,15 @@ def _parse_args():
         help=(
             "Enable QK merge optimization: merge q_proj+k_proj into a single Linear "
             "(fused export only). Default: disabled."
+        ),
+    )
+    parser.add_argument(
+        "--enable_swiglu_fusion",
+        action="store_true",
+        help=(
+            "Enable SwiGlu fusion: route MLP activation through cat([gate,up]) + "
+            "Custom(SwiGlu). Default: disabled (uses direct silu(gate)*up which avoids "
+            "the cat-forced FRACTAL_NZ→ND TransData and is faster end-to-end on Ascend)."
         ),
     )
     return parser.parse_args()
@@ -1136,6 +1171,7 @@ def main():
             enable_bmm2mm_fusion=bool(args.enable_bmm2mm_fusion),
             enable_rmsnorm_fusion=enable_rmsnorm_fusion,
             enable_qk_merge=bool(getattr(args, "enable_qk_merge", False)),
+            enable_swiglu_fusion=bool(getattr(args, "enable_swiglu_fusion", False)),
         ).to(args.device).eval()
     else:
         print("Preparing model for export (no fusion)...")

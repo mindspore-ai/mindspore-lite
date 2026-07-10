@@ -54,6 +54,7 @@ python export_jina_reranker_v3_onnx.py \
 | `--enable_bmm2mm_fusion` | 使能 BMM->MMv2 优化：Linear 走 2D MatMulV2 Custom（仅融合导出有效） | 默认关闭（未使能） |
 | `--enable_rmsnorm_fusion` | 使能 RmsNorm/AddRmsNorm 融合 Custom 算子 | 默认关闭（未使能） |
 | `--enable_qk_merge` | 使能 QK merge：合并 q_proj+k_proj 为一个 Linear（仅融合导出有效） | 默认关闭（未使能） |
+| `--enable_swiglu_fusion` | 使能 SwiGlu 融合 Custom 算子（cat+silu*up）。 | 默认关闭（未使能） |
 
 ### 产出
 
@@ -238,13 +239,23 @@ input_shape="input_ids:1,-1;attention_mask:1,-1;doc_token_indices:1,64;query_tok
 ge.dynamicDims="256,256;384,384;512,512;640,640;768,768;896,896;1024,1024;1152,1152;1280,1280;1408,1408;1536,1536;1664,1664;1792,1792;1920,1920;2048,2048;2176,2176;2304,2304;2432,2432;2560,2560;2688,2688;2816,2816;2944,2944;3072,3072;3200,3200;3328,3328;3456,3456;3584,3584;3712,3712;3840,3840;3968,3968;4096,4096"
 
 [acl_init_options]
-ge.exec.precision_mode=force_fp32
+ge.exec.precision_mode=allow_mix_precision
+ge.exec.modify_mixlist="./op_fp32.json"
 
 [ascend_context]
 plugin_custom_ops=BatchMatmulToMatmul
 ```
 
-此配置用于避免 FP16 精度下 attention mask 溢出问题（详见常见问题 Q2）。
+```json
+{
+    "black-list":{
+        "to-add":[
+            "RealDiv",
+            "SquareSumV1"
+        ]
+    }
+}
+```
 
 ### 产出
 
@@ -290,22 +301,22 @@ Running inference in listwise mode...
 
 Reranking results (listwise mode):
 
-[1] Score: 0.2985
+[1] Score: 0.2984
 Document: Green tea contains antioxidants called catechins that may help reduce inflammation and protect cells...
 
-[2] Score: 0.2254
+[2] Score: 0.2250
 Document: 绿茶富含儿茶素等抗氧化剂，可以降低心脏病风险，还有助于控制体重。...
 
-[3] Score: 0.1893
+[3] Score: 0.1889
 Document: Studies show that drinking green tea regularly can improve brain function and boost metabolism....
 
-[4] Score: 0.1516
+[4] Score: 0.1512
 Document: Le thé vert est riche en antioxydants et peut améliorer la function cérébrale....
 
 [5] Score: -0.1604
 Document: El precio del café ha aumentado un 20% este año debido a problemas en la cadena de suministro....
 
-[6] Score: -0.1701
+[6] Score: -0.1700
 Document: Basketball is one of the most popular sports in the United States....
 
 ### MSLite 推理输入输出（本次运行）
@@ -326,9 +337,9 @@ Document: Basketball is one of the most popular sports in the United States....
 |---|---:|
 | Tokenize + pad | 2.50 |
 | Model resize | 0.37 |
-| Model predict | 108.32 |
+| Model predict | 92.90 |
 | Postprocess | 0.13 |
-| **总耗时** | **111.32** |
+| **总耗时** | **95.90** |
 ============================================================
 Higher scores indicate better relevance to the query.
 ============================================================
@@ -342,9 +353,9 @@ Higher scores indicate better relevance to the query.
 |---|---:|
 | Tokenize + pad | 2.50 |
 | Model resize | 0.37 |
-| Model predict | 108.32 |
+| Model predict | 92.90 |
 | Postprocess | 0.13 |
-| **总耗时** | **111.32** |
+| **总耗时** | **95.90** |
 
 ### Pointwise 模式推理
 
@@ -370,22 +381,22 @@ Running inference in pointwise mode...
 
 Reranking results (pointwise mode):
 
-[1] Score: 0.3455
+[1] Score: 0.3456
 Document: Green tea contains antioxidants called catechins that may help reduce inflammation and protect cells...
 
 [2] Score: 0.3388
 Document: 绿茶富含儿茶素等抗氧化剂，可以降低心脏病风险，还有助于控制体重。...
 
-[3] Score: 0.3147
+[3] Score: 0.3151
 Document: Studies show that drinking green tea regularly can improve brain function and boost metabolism....
 
-[4] Score: 0.2504
+[4] Score: 0.2502
 Document: Le thé vert est riche en antioxydants et peut améliorer la function cérébrale....
 
-[5] Score: -0.1039
+[5] Score: -0.1040
 Document: El precio del café ha aumentado un 20% este año debido a problemas en la cadena de suministro....
 
-[6] Score: -0.1387
+[6] Score: -0.1388
 Document: Basketball is one of the most popular sports in the United States....
 
 ### MSLite 推理输入输出（本次运行）
@@ -406,9 +417,9 @@ Document: Basketball is one of the most popular sports in the United States....
 |---|---:|
 | Tokenize + pad | 9.44 |
 | Model resize | 0.71 |
-| Model predict | 642.88 |
+| Model predict | 559.39 |
 | Postprocess | 0.09 |
-| **总耗时** | **653.12** |
+| **总耗时** | **569.63** |
 ============================================================
 Higher scores indicate better relevance to the query.
 ============================================================
@@ -422,9 +433,9 @@ Higher scores indicate better relevance to the query.
 |---|---:|
 | Tokenize + pad | 9.44 |
 | Model resize | 0.71 |
-| Model predict | 642.88 |
+| Model predict | 559.39 |
 | Postprocess | 0.09 |
-| **总耗时** | **653.12** |
+| **总耗时** | **569.63** |
 
 ### 性能数据说明
 
@@ -476,7 +487,7 @@ Higher scores indicate better relevance to the query.
 
 **原因：** FP16 精度下 attention mask 的极小值溢出
 
-**解决方案：** 转换时使用 `config.ini` 配置 `force_fp32`（注意不是 `enforce_fp32`，后者仅限制输入精度，中间计算仍可能 FP16）
+**解决方案：** 当前 `config.ini` 采用 `allow_mix_precision` + `op_fp32.json` mixlist 方案，把 `RealDiv`、`SquareSumV1` 等 RmsNorm 链路上的关键算子锁定 FP32，在保持精度的同时获得更优性能（详见第 8 节优化记录）。
 
 ### Q3: 动态分档不会自动 pad 命中档位
 
