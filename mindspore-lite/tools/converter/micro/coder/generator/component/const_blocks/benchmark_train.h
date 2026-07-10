@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,6 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_CONST_BLOCKS_BENCHMARK_TRAIN_H_
 
 namespace mindspore::lite::micro {
-extern const char benchmark_train_source[];
+extern const char *benchmark_train_source;
 }  // namespace mindspore::lite::micro
 #endif  // MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_CONST_BLOCKS_BENCHMARK_TRAIN_H_

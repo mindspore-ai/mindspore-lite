@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -91,38 +91,13 @@ int DetectionPostProcessInt8CPUKernel::GetInputData() {
 }
 
 void DetectionPostProcessInt8CPUKernel::FreeAllocatedBuffer() {
-  if (params_->decoded_boxes_ != nullptr) {
-    ms_context_->allocator->Free(params_->decoded_boxes_);
-    params_->decoded_boxes_ = nullptr;
-  }
-  if (params_->nms_candidate_ != nullptr) {
-    ms_context_->allocator->Free(params_->nms_candidate_);
-    params_->nms_candidate_ = nullptr;
-  }
-  if (params_->indexes_ != nullptr) {
-    ms_context_->allocator->Free(params_->indexes_);
-    params_->indexes_ = nullptr;
-  }
-  if (params_->scores_ != nullptr) {
-    ms_context_->allocator->Free(params_->scores_);
-    params_->scores_ = nullptr;
-  }
-  if (params_->all_class_indexes_ != nullptr) {
-    ms_context_->allocator->Free(params_->all_class_indexes_);
-    params_->all_class_indexes_ = nullptr;
-  }
-  if (params_->all_class_scores_ != nullptr) {
-    ms_context_->allocator->Free(params_->all_class_scores_);
-    params_->all_class_scores_ = nullptr;
-  }
-  if (params_->single_class_indexes_ != nullptr) {
-    ms_context_->allocator->Free(params_->single_class_indexes_);
-    params_->single_class_indexes_ = nullptr;
-  }
-  if (params_->selected_ != nullptr) {
-    ms_context_->allocator->Free(params_->selected_);
-    params_->selected_ = nullptr;
-  }
+  // Call parent class method to free common members
+  DetectionPostProcessBaseCPUKernel::FreeAllocatedBuffer();
+
+  // Free int8-specific members. input_boxes_/input_scores_ are allocator-owned (via Dequantize),
+  // must be freed here (NOT in base, since fp32 subclass points them at tensor data that must not be freed).
+  // data_int8_ points at tensor->data() (not allocator-owned) and data_fp32_ aliases input_scores_
+  // (already freed above), so neither must be freed here.
   if (input_boxes_ != nullptr) {
     ms_context_->allocator->Free(input_boxes_);
     input_boxes_ = nullptr;

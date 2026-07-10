@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -101,7 +101,12 @@ int DetectionPostProcessBaseCPUKernel::Prepare() {
   return RET_OK;
 }
 
-DetectionPostProcessBaseCPUKernel::~DetectionPostProcessBaseCPUKernel() { delete[](params_->anchors_); }
+DetectionPostProcessBaseCPUKernel::~DetectionPostProcessBaseCPUKernel() {
+  if (params_ != nullptr && params_->anchors_ != nullptr) {
+    delete[] (params_->anchors_);
+    params_->anchors_ = nullptr;
+  }
+}
 
 int DetectionPostProcessBaseCPUKernel::ReSize() { return RET_OK; }
 

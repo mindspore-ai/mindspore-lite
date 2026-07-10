@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2022 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,14 +28,6 @@ class NPUInsertTransformPass : public NPUBasePass {
   int Run(NPUGraph *subgraph) override;
 
  private:
-  InsertState GetInsertState(NPUOp *op);
-  int InsertPreNodes(NPUOp *op, std::vector<NPUOp *> *trans_ops);
-  int InsertPostNodes(NPUOp *op, std::vector<NPUOp *> *trans_ops);
-  int InsertTransNode(NPUOp *op, NPUOp *post_op, const mindspore::MSTensor &trans_in_tensor,
-                      std::vector<NPUOp *> *trans_ops);
-
- private:
-  int total = 0;
   std::vector<NPUOp *> *all_ops_ = nullptr;
   std::vector<mindspore::MSTensor *> *all_tensors_ = nullptr;
 };
