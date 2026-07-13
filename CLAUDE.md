@@ -28,12 +28,13 @@ Hook 配置：`git config core.hooksPath scripts/pre_commit/githooks`（同时�
 
 > 云侧推理（Ascend / X86 / Arm 服务侧）任务，先按下表定位阶段 → `Read` 对应 SKILL.md（及其 `references/`）再动手。
 
-| 阶段 | 做什么 | 对应 Skill |
-|------|--------|-----------|
+| 阶段        | 做什么 | 对应 Skill |
+|-----------|--------|-----------|
 | ① 模型迁移/导出 | 开源模型按网络结构拆分导出 ONNX、ONNX Runtime 精度对齐、生成推理脚本与 README | [open-source-model-migration](.claude/skills/cloud/open-source-model-migration/SKILL.md) |
 | ② 转换与部署推理 | ONNX→MindIR（固定 shape / 动态分档 / 纯动态 shape）+ Ascend 离线优化；MindIR 加载、Ascend 推理验证与部署注意事项 | [onnx-model-conversion-and-deployment](.claude/skills/cloud/onnx-model-conversion-and-deployment/SKILL.md) |
-| ③ 性能优化 | 基线/profiling、融合算子改写、推理免拷贝、PTQ int8 量化、精度对齐与归档 | [performance-optimization](.claude/skills/cloud/performance-optimization/SKILL.md) |
-| ④ 多卡张量并行 | Megatron 权重分片导出、Custom(AllReduce) 通信算子、多进程 HCCL 推理（1p/2p/4p）、300I Duo vs 800I A2 差异 | [tensor-parallel-deployment](.claude/skills/cloud/tensor-parallel-deployment/SKILL.md) |
+| ③ 性能优化    | 基线/profiling、融合算子改写、推理免拷贝、PTQ int8 量化、精度对齐与归档 | [performance-optimization](.claude/skills/cloud/performance-optimization/SKILL.md) |
+| ④ 多卡张量并行  | Megatron 权重分片导出、Custom(AllReduce) 通信算子、多进程 HCCL 推理（1p/2p/4p）、300I Duo vs 800I A2 差异 | [tensor-parallel-deployment](.claude/skills/cloud/tensor-parallel-deployment/SKILL.md) |
+| ⑤ 精度问题定位  | CANN Profiling 对比分析定位可疑算子、配置算子 Dump、对比 Dump 数据确定精度差异根因 | [precision-troubleshooting](.claude/skills/cloud/precision-troubleshooting/SKILL.md) |
 
 通用（跨侧共享）：[clean-code-check](.claude/skills/common/clean-code-check/SKILL.md) — C++/Python/Shell/CMake 代码质量与 CI 门禁，改完或 review 时调用。
 
