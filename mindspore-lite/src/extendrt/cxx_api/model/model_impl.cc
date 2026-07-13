@@ -505,6 +505,7 @@ Status ModelImpl::BuildByBufferImpl(const void *model_buff, size_t model_size, c
   if (ret != kSuccess) {
     return ret;
   }
+  MS_CHECK_TRUE_MSG(session_ != nullptr, Status(kLiteNullptr, "session is nullptr!"), "session is nullptr!");
   auto mindir_path = GetConfig(lite::kConfigModelFileSection, lite::kConfigMindIRPathKey);
   if (mindir_path.empty()) {
     (void)UpdateConfig(lite::kConfigModelFileSection,

@@ -107,7 +107,7 @@ class Context:
     @property
     def _inner_context(self):
         """Get the inner context used to bind Python API to C++ API."""
-        return self._context._inner_context
+        return self._context._inner_context  # pylint: disable=protected-access
 
     def __str__(self):
         res = f"target: {self.target}."
@@ -277,7 +277,7 @@ class Context:
 
         In the pipeline parallel scenario, different stage device nodes are in different communication groups. When
         exporting the model, set the `group_ckpt_save_file` parameter in interface
-        `mindspore.set_auto_parallel_context <https://www.mindspore.cn/docs/en/master/api_python/mindspore/mindspore.set_auto_parallel_context.html>`_ 
+        `mindspore.set_auto_parallel_context <https://www.mindspore.cn/docs/en/master/api_python/mindspore/mindspore.set_auto_parallel_context.html>`_
         to export the group file information. In addition, in non pipeline parallel scenarios, if there
         are communication operators involving local communication groups, the group file information also needs to be
         exported through the 'group_ckpt_save_file' parameter.
@@ -365,7 +365,7 @@ class _InnerContext:
     def append_device_info(self, target):
         """Append one user-defined target device info to the context."""
         check_isinstance("target", target, _Target)
-        self._inner_context.append_device_info(target._device_info)
+        self._inner_context.append_device_info(target._device_info)  # pylint: disable=protected-access
 
     @property
     def group_info_file(self):

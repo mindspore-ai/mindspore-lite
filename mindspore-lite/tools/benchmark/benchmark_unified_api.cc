@@ -244,8 +244,7 @@ int BenchmarkUnifiedApi::GenerateParallelInputData() {
     if (input_data == nullptr) {
       MS_LOG(ERROR) << "new input_data failed";
       for (auto &data : inputs) {
-        auto buf = static_cast<char *>(data);
-        delete[] buf;
+        delete[] static_cast<char *>(data);  // NOLINT(readability/casting): raw byte buffer
         data = nullptr;
       }
       return RET_ERROR;
@@ -255,8 +254,7 @@ int BenchmarkUnifiedApi::GenerateParallelInputData() {
     if (status != RET_OK) {
       MS_LOG(ERROR) << "GenerateRandomData for inTensor failed:" << status;
       for (auto &data : inputs) {
-        auto buf = static_cast<char *>(data);
-        delete[] buf;
+        delete[] static_cast<char *>(data);  // NOLINT(readability/casting): raw byte buffer
         data = nullptr;
       }
       return status;
@@ -327,12 +325,11 @@ int BenchmarkUnifiedApi::ReadParallelInputFiles() {
   std::vector<void *> inputs;
   for (size_t i = 0; i < ms_inputs_for_api_.size(); i++) {
     size_t size;
-    char *bin_buf = ReadFile(flags_->input_data_list_[i].c_str(), &size);
+    auto bin_buf = ReadFile(flags_->input_data_list_[i].c_str(), &size);
     if (bin_buf == nullptr) {
       MS_LOG(ERROR) << "ReadFile return nullptr";
       for (auto &data : inputs) {
-        auto buf = static_cast<char *>(data);
-        delete[] buf;
+        delete[] static_cast<char *>(data);  // NOLINT(readability/casting): raw byte buffer from external API
         data = nullptr;
       }
       return RET_ERROR;
@@ -358,7 +355,7 @@ int BenchmarkUnifiedApi::ReadNonParallelInputFiles() {
   for (size_t i = 0; i < flags_->input_data_list_.size(); i++) {
     auto &cur_tensor = ms_inputs_for_api_.at(i);
     size_t size;
-    char *bin_buf = ReadFile(flags_->input_data_list_[i].c_str(), &size);
+    auto bin_buf = ReadFile(flags_->input_data_list_[i].c_str(), &size);
     if (bin_buf == nullptr) {
       MS_LOG(ERROR) << "ReadFile return nullptr";
       return RET_ERROR;
@@ -388,7 +385,8 @@ int BenchmarkUnifiedApi::ReadNonParallelInputFiles() {
         delete[] bin_buf;
         return RET_ERROR;
       }
-      std::copy_n(static_cast<const char *>(bin_buf), tensor_data_size, static_cast<char *>(input_data));
+      std::copy_n(static_cast<const char *>(bin_buf), tensor_data_size,
+                  static_cast<char *>(input_data));  // NOLINT(readability/casting): raw byte buffer
     }
     delete[] bin_buf;
   }
@@ -1967,17 +1965,21 @@ void BenchmarkUnifiedApi::SetupDumpBeforeCallback() {
     auto dump_mode = dump_cfg_json_[dump::kSettings][dump::kMode].get<int>();
     auto input_output_mode = dump_cfg_json_[dump::kSettings][dump::kInputOutput].get<int>();
     auto kernels = dump_cfg_json_[dump::kSettings][dump::kKernels].get<std::vector<std::string>>();
-    if (dump_mode == 0 || std::find(kernels.begin(), kernels.end(), call_param.node_name) != kernels.end()) {
-      if (input_output_mode == 0 || input_output_mode == 1) {
-        for (size_t i = 0; i < before_inputs.size(); i++) {
-          auto ms_tensor = before_inputs.at(i);
-          auto file_name = GenerateOutputFileName(&ms_tensor, call_param.node_name, "input", i);
-          auto abs_file_path = dump_file_output_dir_ + "/" + file_name;
-          if (WriteToBin(abs_file_path, ms_tensor.MutableData(), ms_tensor.DataSize()) != RET_OK) {
-            MS_LOG(ERROR) << "write tensor data to file failed.";
-            return false;
-          }
-        }
+    // Reverse early-return: skip when neither the global dump mode nor the kernel allowlist
+    // selects the current node, avoiding deep nesting in the per-tensor write loop below.
+    if (dump_mode != 0 && std::find(kernels.begin(), kernels.end(), call_param.node_name) == kernels.end()) {
+      return true;
+    }
+    if (input_output_mode != 0 && input_output_mode != 1) {
+      return true;
+    }
+    for (size_t i = 0; i < before_inputs.size(); i++) {
+      auto ms_tensor = before_inputs.at(i);
+      auto file_name = GenerateOutputFileName(&ms_tensor, call_param.node_name, "input", i);
+      auto abs_file_path = dump_file_output_dir_ + "/" + file_name;
+      if (WriteToBin(abs_file_path, ms_tensor.MutableData(), ms_tensor.DataSize()) != RET_OK) {
+        MS_LOG(ERROR) << "write tensor data to file failed.";
+        return false;
       }
     }
     return true;
@@ -1992,18 +1994,22 @@ void BenchmarkUnifiedApi::SetupDumpAfterCallback() {
     auto dump_mode = dump_cfg_json_[dump::kSettings][dump::kMode].get<int>();
     auto input_output_mode = dump_cfg_json_[dump::kSettings][dump::kInputOutput].get<int>();
     auto kernels = dump_cfg_json_[dump::kSettings][dump::kKernels].get<std::vector<std::string>>();
-    if (dump_mode == kDumpInputsAndOutputs ||
-        std::find(kernels.begin(), kernels.end(), call_param.node_name) != kernels.end()) {
-      if (input_output_mode == kDumpInputsAndOutputs || input_output_mode == kDumpOutputs) {
-        for (size_t i = 0; i < after_outputs.size(); i++) {
-          auto ms_tensor = after_outputs.at(i);
-          auto file_name = GenerateOutputFileName(&ms_tensor, call_param.node_name, "output", i);
-          auto abs_file_path = dump_file_output_dir_ + "/" + file_name;
-          if (WriteToBin(abs_file_path, ms_tensor.MutableData(), ms_tensor.DataSize()) != RET_OK) {
-            MS_LOG(ERROR) << "write tensor data to file failed.";
-            return false;
-          }
-        }
+    // Reverse early-return: skip when neither the global dump mode nor the kernel allowlist
+    // selects the current node, avoiding deep nesting in the per-tensor write loop below.
+    if (dump_mode != kDumpInputsAndOutputs &&
+        std::find(kernels.begin(), kernels.end(), call_param.node_name) == kernels.end()) {
+      return true;
+    }
+    if (input_output_mode != kDumpInputsAndOutputs && input_output_mode != kDumpOutputs) {
+      return true;
+    }
+    for (size_t i = 0; i < after_outputs.size(); i++) {
+      auto ms_tensor = after_outputs.at(i);
+      auto file_name = GenerateOutputFileName(&ms_tensor, call_param.node_name, "output", i);
+      auto abs_file_path = dump_file_output_dir_ + "/" + file_name;
+      if (WriteToBin(abs_file_path, ms_tensor.MutableData(), ms_tensor.DataSize()) != RET_OK) {
+        MS_LOG(ERROR) << "write tensor data to file failed.";
+        return false;
       }
     }
     return true;

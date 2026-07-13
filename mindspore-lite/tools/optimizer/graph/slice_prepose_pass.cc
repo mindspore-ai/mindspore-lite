@@ -530,7 +530,7 @@ int64_t SlicePreposePass::GetReshapeAbnormalAxisIn(const std::vector<int64_t> &s
     for (j = 0; j < shape_out.size(); ++j) {
       inner_size_out *= shape_out[j];
       if (shape_out[j] == shape_in[i] && inner_size_out == inner_size_in) {
-        mapped_axis->at(j) = i;
+        mapped_axis->at(j) = static_cast<int64_t>(i);
         break;
       }
     }
@@ -539,6 +539,28 @@ int64_t SlicePreposePass::GetReshapeAbnormalAxisIn(const std::vector<int64_t> &s
     }
   }
   return abnormal_axis_in;
+}
+
+// Update abnormal-index bookkeeping for one sliced output axis.
+// When the slice touches an axis that has no mapping in the input shape (mapped_axis[j]==-1),
+// we either start tracking it (in normal mode) or fall back to disabling abnormal mode.
+// Returns the new abnormal index (previous value when not applicable).
+static int64_t UpdateAbnormalIndexForUnmapped(int64_t abnormal_index_out, int index, bool *is_normal_mode,
+                                              bool *support_abnormal_mode) {
+  if (*is_normal_mode) {
+    *is_normal_mode = false;
+    return static_cast<int64_t>(index);
+  }
+  *support_abnormal_mode = false;
+  return abnormal_index_out;
+}
+
+// Project a slice on a reshape-mapped output axis back onto the input shape: the original
+// reshape must drop the sliced tail, so adjust shape_out_copy and disable abnormal mode.
+static void DisableAbnormalForMapped(int64_t slice_begin_at, int64_t slice_size_at, int64_t out_dim, size_t axis_j,
+                                     std::vector<int64_t> *shape_out_copy, bool *support_abnormal_mode) {
+  shape_out_copy->at(axis_j) = (slice_size_at == -1 ? out_dim - slice_begin_at : static_cast<int64_t>(slice_size_at));
+  *support_abnormal_mode = false;
 }
 
 int64_t SlicePreposePass::GetReshapeAbnormalIndexOut(const CNodePtr &slice_cnode,
@@ -572,19 +594,16 @@ int64_t SlicePreposePass::GetReshapeAbnormalIndexOut(const CNodePtr &slice_cnode
     }
     MS_CHECK_TRUE_MSG(static_cast<int>(slice_begin.size()) > index, abnormal_index_out, "slice_begin.size() is wrong");
     MS_CHECK_TRUE_MSG(static_cast<int>(slice_size.size()) > index, abnormal_index_out, "slice_size.size() is wrong");
-    if (slice_begin[index] != 0 || (slice_size[index] != -1 && slice_size[index] != shape_out[j])) {
-      if (mapped_axis[j] == -1) {
-        if (*is_normal_mode) {
-          *is_normal_mode = false;
-          abnormal_index_out = static_cast<int64_t>(index);
-        } else {
-          *support_abnormal_mode = false;
-        }
-      } else {  // if there is matched axis sliced, not support abnormal mode
-        shape_out_copy->at(j) =
-          (slice_size[index] == -1 ? shape_out[j] - slice_begin[index] : static_cast<int64_t>(slice_size[index]));
-        *support_abnormal_mode = false;
-      }
+    // Skip axes that are not actually shrunk by this slice.
+    if (slice_begin[index] == 0 && (slice_size[index] == -1 || slice_size[index] == shape_out[j])) {
+      continue;
+    }
+    if (mapped_axis[j] == -1) {
+      abnormal_index_out =
+        UpdateAbnormalIndexForUnmapped(abnormal_index_out, index, is_normal_mode, support_abnormal_mode);
+    } else {  // if there is matched axis sliced, not support abnormal mode
+      DisableAbnormalForMapped(slice_begin[index], slice_size[index], shape_out[j], j, shape_out_copy,
+                               support_abnormal_mode);
     }
   }
   return abnormal_index_out;
@@ -881,6 +900,20 @@ bool SlicePreposePass::GetArithmeticInputInfo(const CNodePtr &arithmetic_cnode, 
   return true;
 }
 
+// Check whether slice at axis index `axis_idx` keeps the full dimension: begin==0 and size covers the whole axis.
+// Returns false when the slice shrinks the axis (which would alter the softmax input shape).
+static bool IsAxisFullyRetained(const std::vector<int> &slice_begin, const std::vector<int> &slice_size,
+                                size_t axis_idx, int64_t axis, const std::vector<int64_t> &shape) {
+  if (slice_begin[axis_idx] != 0) {
+    return false;
+  }
+  if (slice_size[axis_idx] == -1) {
+    return true;
+  }
+  return !lite::JudgeDynamicShape(shape) && axis < static_cast<int64_t>(shape.size()) &&
+         slice_size[axis_idx] >= shape[axis];
+}
+
 /*
  * Prepose condition:
  *  the softmax axis is not sliced
@@ -898,16 +931,11 @@ bool SlicePreposePass::IsSoftmaxAxisNotSliced(const CNodePtr &slice_cnode, const
   MS_CHECK_TRUE_MSG(slice_size.size() >= slice_axes.size(), false, "slice_size.size() is wrong");
   MS_CHECK_TRUE_MSG(slice_begin.size() >= slice_axes.size(), false, "slice_begin.size() is wrong");
   for (size_t i = 0; i < slice_axes.size(); ++i) {
-    if (slice_axes[i] == softmax_axis.front()) {
-      if (slice_begin[i] != 0) {
-        return false;
-      }
-      if (slice_size[i] != -1) {
-        if (lite::JudgeDynamicShape(shape) || slice_axes[i] >= static_cast<int>(shape.size()) ||
-            slice_size[i] < shape[slice_axes[i]]) {
-          return false;
-        }
-      }
+    if (slice_axes[i] != softmax_axis.front()) {
+      continue;
+    }
+    if (!IsAxisFullyRetained(slice_begin, slice_size, i, slice_axes[i], shape)) {
+      return false;
     }
   }
   return true;

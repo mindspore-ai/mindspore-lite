@@ -23,8 +23,11 @@
 // chunk_gated_delta_rule_tiling_data.h): the two structs must be byte-identical
 // and the CANN tiling macros require a global struct. The byte stream the host
 // writes here is read by the device via GET_TILING_DATA.
+// kTilingDataAlign mirrors the device-side constant; both #pragma pack and
+// alignas must use the same value.
+constexpr int kTilingDataAlign = 8;
 #pragma pack(push, 8)
-struct alignas(8) ChunkGatedDeltaRuleTilingData {
+struct alignas(kTilingDataAlign) ChunkGatedDeltaRuleTilingData {
   uint32_t vectorCoreNum;
   uint32_t ubCalSize;
   uint32_t ubRestBytes;

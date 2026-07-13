@@ -409,7 +409,7 @@ class Tensor:
             return DataType.BFLOAT16
         if numpy_dtype.type not in numpy_data_type_map:
             raise TypeError(f"Unsupported numpy dtype value {numpy_dtype}")
-        return numpy_data_type_map.get(numpy_dtype.type)
+        return numpy_data_type_map[numpy_dtype.type]
 
     @staticmethod
     def _validate_shape_and_dtype(user_shape, user_dtype, actual_shape, actual_dtype, kind):
@@ -585,7 +585,10 @@ class Tensor:
               [[ 8.  9.]
                [ 10. 11.]]]]
         """
-        numpy_obj = self._tensor.get_data_to_numpy()
+        try:
+            numpy_obj = self._tensor.get_data_to_numpy()
+        except Exception as e:
+            raise RuntimeError(f"Failed to get numpy data from tensor: {e}") from e
         if numpy_obj is None:
             raise RuntimeError("Failed to get numpy data from tensor.")
         if self.dtype == DataType.BFLOAT16:
@@ -656,8 +659,13 @@ class Tensor:
         if numpy_obj.nbytes != self.data_size:
             raise RuntimeError(
                 f"data size not equal! Numpy size: {numpy_obj.nbytes}, Tensor size: {self.data_size}")
-        if not self._tensor.set_data_from_numpy(numpy_obj):
-            raise RuntimeError("Failed to set data from numpy.")
+        try:
+            if not self._tensor.set_data_from_numpy(numpy_obj):
+                raise RuntimeError("Failed to set data from numpy.")
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Failed to set data from numpy: {e}") from e
 
     @property
     def device(self):
