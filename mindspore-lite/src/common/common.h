@@ -47,8 +47,8 @@ static constexpr int kNHWCDimNumber = 4;
 static constexpr int TENSOR_MAX_REFCOUNT = 999;
 
 // FlatBuffers verifier security limits
-static constexpr int FLATBUFFERS_MAX_DEPTH = 64;        // Prevent recursive stack overflow
-static constexpr int FLATBUFFERS_MAX_TABLES = 1000000;  // Prevent CPU exhaustion
+static constexpr int FLATBUFFERS_MAX_DEPTH = 64;         // Prevent recursive stack overflow
+static constexpr int FLATBUFFERS_MAX_TABLES = 10000000;  // Prevent CPU exhaustion
 
 // quantization relative
 static const char QUANTIZED_UINT8[] = "QUANTIZED_UINT8";
