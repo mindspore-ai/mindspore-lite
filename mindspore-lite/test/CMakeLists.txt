@@ -23,6 +23,7 @@ else()
             ${TEST_DIR}/main.cc
             ${TEST_DIR}/common/common_test.cc
             ${TEST_DIR}/ut/src/infer_test.cc
+            ${TEST_DIR}/ut/src/flatbuffers_verifier_test.cc
             ${TEST_DIR}/ut/src/utils_test.cc
             ${TEST_DIR}/ut/src/scheduler_test.cc
             ${TEST_DIR}/ut/src/model_obfuscation_deprecated_test.cc
