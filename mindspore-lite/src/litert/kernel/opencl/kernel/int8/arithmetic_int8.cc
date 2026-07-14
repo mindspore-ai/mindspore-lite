@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "src/litert/kernel/opencl/utils.h"
+#include "src/litert/kernel/opencl/kernel/common/arithmetic_utils.h"
 #include "src/litert/kernel/opencl/cl/int8/arithmetic.cl.inc"
 #include "nnacl_c/arithmetic_parameter.h"
 
@@ -44,6 +45,7 @@ using mindspore::schema::PrimitiveType_SubFusion;
 
 namespace mindspore::kernel {
 int ArithmeticInt8OpenCLKernel::CheckSpecs() {
+  // Check data types specific to INT8
   for (auto &tensor : in_tensors_) {
     if (tensor->data_type() != kNumberTypeInt8) {
       MS_LOG(WARNING) << "ArithmeticInt8OpenCLKernel only support int8 input";
@@ -57,29 +59,8 @@ int ArithmeticInt8OpenCLKernel::CheckSpecs() {
     }
   }
 
-  if (in_tensors_.size() != INPUT_TENSOR_SIZE_2 || out_tensors_.size() != OUTPUT_TENSOR_SIZE_1) {
-    MS_LOG(WARNING) << "in size: " << in_tensors_.size() << ", out size: " << out_tensors_.size();
-    return RET_ERROR;
-  }
-  auto *param = reinterpret_cast<const ArithmeticParameter *>(op_parameter_);
-  CHECK_NULL_RETURN(param);
-  if (!IsArithmetic(type())) {
-    MS_LOG(WARNING) << "UnSupported Operator: " << schema::EnumNamePrimitiveType(type());
-    return RET_ERROR;
-  }
-  if (type() == schema::PrimitiveType_Eltwise) {
-    auto mode = param->eltwise_mode_;
-    if (mode != EltwiseMode_PROD && mode != EltwiseMode_SUM && mode != EltwiseMode_MAXIMUM) {
-      MS_LOG(WARNING) << "Eltwise mode not support, mode:" << mode;
-      return RET_ERROR;
-    }
-  }
-  if (!(param->activation_type_ == ActivationType_NO_ACTIVATION || param->activation_type_ == ActivationType_RELU ||
-        param->activation_type_ == ActivationType_RELU6)) {
-    MS_LOG(WARNING) << "Unsupported activation type " << param->activation_type_;
-    return RET_ERROR;
-  }
-  return RET_OK;
+  // Use common validation logic
+  return ValidateArithmeticSpecs(in_tensors_, out_tensors_, op_parameter_, type());
 }
 
 int ArithmeticInt8OpenCLKernel::SetGlobalLocal() {

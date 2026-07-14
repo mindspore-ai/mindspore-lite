@@ -33,11 +33,8 @@ class GroupedMatmulOpPass : public Pass {
  private:
   STATUS RunInsertSizeAttrPass(const FuncGraphPtr &func_graph, const FuncGraphManagerPtr &manager);
   STATUS RunInsertGroupListCastPass(const FuncGraphPtr &func_graph, const FuncGraphManagerPtr &manager);
-  bool IsTupleHasDynamicSequence(const abstract::AbstractBasePtr &abstract);
-  size_t GetOutputElementNum(const AnfNodePtr &node);
   CNodePtr NewCNode(const std::vector<AnfNodePtr> &inputs, const FuncGraphPtr &fg,
                     const std::vector<AnfNodePtr> &orig_nodes);
-  CNodePtr CreateTupleGetItemNode(const FuncGraphPtr &func_graph, const AnfNodePtr &node, size_t output_idx);
   void UseEmptyNodeReplaceNone(const FuncGraphPtr &graph, const std::string &cnode_name, const size_t input_idx,
                                std::vector<int64_t> *dyn_input_sizes, std::vector<AnfNodePtr> *plant_inputs);
   int64_t SplitTupleInputs(const FuncGraphPtr &graph, const AnfNodePtr &tuple_input,

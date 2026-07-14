@@ -17,59 +17,22 @@
 #define USE_DEPRECATED_API
 #include "tools/optimizer/fusion/groupnorm_fusion.h"
 #include <algorithm>
-#include <vector>
 #include <memory>
+#include <vector>
+#include "include/securec.h"
 #include "mindspore/ops/op_def/lite_ops.h"
+#include "nnacl_c/op_base.h"
+#include "ops_utils/op_utils.h"
+#include "src/common/ops/ops_utils.h"
 #include "src/common/ops/primitive/groupnorm_fusion.h"
 #include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "include/securec.h"
-#include "nnacl_c/op_base.h"
-#include "src/common/ops/ops_utils.h"
-#include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 
 namespace mindspore {
 namespace opt {
 namespace {
-STATUS GetAxis(const BaseRef &n, std::vector<int> *axes) {
-  MS_ASSERT(axes != nullptr);
-  if (utils::isa<ParameterPtr>(n)) {
-    auto axes_param = utils::cast<ParameterPtr>(n);
-    if (!axes_param->has_default() || axes_param->default_param() == nullptr) {
-      return lite::RET_NOT_SUPPORT;
-    }
-    auto axes_value = axes_param->default_param()->cast<tensor::TensorPtr>();
-    if (axes_value == nullptr) {
-      return lite::RET_ERROR;
-    }
-    if (axes_value->data_type() != kNumberTypeInt && axes_value->data_type() != kNumberTypeInt32) {
-      MS_LOG(ERROR) << "reduce's axes should be integer, now is " << axes_value->data_type();
-      return lite::RET_ERROR;
-    }
-    if (axes_value->data_c() == nullptr) {
-      return lite::RET_ERROR;
-    }
-    if (axes_value->shape().size() > 1) {
-      return lite::RET_ERROR;
-    }
-    axes->resize(1);
-    if (!axes_value->shape().empty()) {
-      MS_CHECK_GE(axes_value->shape()[0], 0, lite::RET_ERROR);
-      axes->resize(static_cast<size_t>(axes_value->shape()[0]));
-    }
-    if (memcpy_s(axes->data(), axes->size() * sizeof(int), axes_value->data_c(), axes_value->Size()) == EOK) {
-      return lite::RET_OK;
-    }
-  }
-  if (utils::isa<ValueNodePtr>(n)) {
-    auto axes_value_node = utils::cast<ValueNodePtr>(n);
-    *axes = CastToInt(axes_value_node->value());
-    return lite::RET_OK;
-  }
-  return lite::RET_ERROR;
-}
 
 bool IsReduceSumNode(const EquivPtr &equiv, const VarPtr &input_prim, const VarPtr &input_axes,
                      std::vector<int> *axes) {
@@ -82,7 +45,7 @@ bool IsReduceSumNode(const EquivPtr &equiv, const VarPtr &input_prim, const VarP
   if (mean2_primitive_c->GetAttr(ops::kMode) == nullptr || mean2_primitive->get_mode() != mindspore::Reduce_Sum) {
     return false;
   }
-  if (GetAxis((*equiv)[input_axes], axes) != lite::RET_OK) {
+  if (GetNormAxes((*equiv)[input_axes], axes) != lite::RET_OK) {
     return false;
   }
   return true;
@@ -99,7 +62,7 @@ bool IsReduceMeanNode(const EquivPtr &equiv, const VarPtr &input_prim, const Var
   if (mean2_primitive_c->GetAttr(ops::kMode) == nullptr || mean2_primitive->get_mode() != mindspore::Reduce_Mean) {
     return false;
   }
-  if (GetAxis((*equiv)[input_axes], axes) != lite::RET_OK) {
+  if (GetNormAxes((*equiv)[input_axes], axes) != lite::RET_OK) {
     return false;
   }
   return true;
@@ -218,7 +181,7 @@ bool GroupNormFusion::CheckPattern(const EquivPtr &equiv, int *num_groups, float
     return false;
   }
   std::vector<int> reshape1_axes;
-  if (GetAxis((*equiv)[reshape1_axis_], &reshape1_axes) != lite::RET_OK) {
+  if (GetNormAxes((*equiv)[reshape1_axis_], &reshape1_axes) != lite::RET_OK) {
     return false;
   }
   if (reshape1_axes.size() != C3NUM) {

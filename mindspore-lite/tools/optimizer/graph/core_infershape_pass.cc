@@ -34,26 +34,6 @@
 namespace mindspore {
 namespace opt {
 namespace {
-int JudgeControlFlowCertainOutputHasInferred(const CNodePtr &return_cnode, size_t index, bool *infer_info) {
-  MS_ASSERT(return_cnode != nullptr && infer_info != nullptr);
-  MS_CHECK_TRUE_MSG(index < return_cnode->size(), RET_ERROR, "input index is out of range.");
-  *infer_info = true;
-  auto abstract_base = GetCNodeInputAbstract(return_cnode, index);
-  MS_CHECK_TRUE_MSG(abstract_base != nullptr, RET_ERROR, "anfnode has no abstract.");
-  ShapeVector shape;
-  auto ret = FetchShapeFromAbstract(abstract_base, &shape);
-  MS_CHECK_TRUE_MSG(ret == lite::RET_OK, RET_ERROR, "fetch shape from abstract failed.");
-  if (std::find(shape.begin(), shape.end(), -1) != shape.end()) {
-    *infer_info = false;
-    return RET_OK;
-  }
-  if (utils::isa<CNodePtr>(return_cnode->input(index))) {
-    ret = DetermineCertainVarInputHasInferred(return_cnode, index, infer_info);
-    MS_CHECK_TRUE_MSG(ret == RET_OK, RET_ERROR, "determine infer flag failed.");
-  }
-  return RET_OK;
-}
-
 int ModifyWhileBodyGraphInputs(const CNodePtr &cnode, const FuncGraphPtr &sub_graph, const ParameterPtr &graph_input,
                                size_t input_index) {
   MS_ASSERT(cnode != nullptr && sub_graph != nullptr && graph_input != nullptr);

@@ -1,5 +1,5 @@
 /**
- * Copyright 2021-2022 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_w.h"
 #include "mindspore/core/include/ir/graph_utils.h"
+#include "tools/optimizer/common/gllo_utils.h"
 
 namespace mindspore {
 namespace opt {
@@ -79,27 +80,6 @@ int ModifySubGraphInputCNodeFormat(const FuncGraphPtr &sub_graph, const Paramete
     primitive->AddAttr(ops::kFormat, MakeValue<int64_t>(format));
   }
   return lite::RET_OK;
-}
-
-int JudgeControlFlowCertainOutputHasInferred(const CNodePtr &return_cnode, size_t index, bool *infer_info) {
-  MS_CHECK_TRUE_RET(return_cnode != nullptr, RET_ERROR);
-  MS_CHECK_TRUE_RET(infer_info != nullptr, RET_ERROR);
-  MS_CHECK_TRUE_MSG(index < return_cnode->size(), RET_ERROR, "input index is out of range.");
-  *infer_info = true;
-  auto abstract_base = GetCNodeInputAbstract(return_cnode, index);
-  MS_CHECK_TRUE_MSG(abstract_base != nullptr, RET_ERROR, "anfnode has no abstract.");
-  ShapeVector shape;
-  auto ret = FetchShapeFromAbstract(abstract_base, &shape);
-  MS_CHECK_TRUE_MSG(ret == lite::RET_OK, RET_ERROR, "fetch shape from abstract failed.");
-  if (std::find(shape.begin(), shape.end(), -1) != shape.end()) {
-    *infer_info = false;
-    return RET_OK;
-  }
-  if (utils::isa<CNodePtr>(return_cnode->input(index))) {
-    ret = DetermineCertainVarInputHasInferred(return_cnode, index, infer_info);
-    MS_CHECK_TRUE_MSG(ret == RET_OK, RET_ERROR, "determine infer flag failed.");
-  }
-  return RET_OK;
 }
 
 int ModifyWhileBodyGraphInputs(const CNodePtr &cnode, const FuncGraphPtr &sub_graph, const ParameterPtr &graph_input,

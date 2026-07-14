@@ -255,6 +255,11 @@ const int GetIntParameterValue(const EquivPtr &equiv, const VarPtr &input);
 STATUS GetPrimFromCnode(const CNodePtr &cnode, PrimitivePtr *prim_ptr);
 STATUS ParseVariableNode(std::string file_path, std::set<std::string> *variable_nodes,
                          std::vector<std::string> *node_name_list);
+STATUS GetNormAxes(const BaseRef &n, std::vector<int> *axes);
+bool IsTupleHasDynamicSequence(const abstract::AbstractBasePtr &abstract);
+size_t GetOutputElementNum(const AnfNodePtr &node);
+CNodePtr CreateTupleGetItemNode(const FuncGraphPtr &func_graph, const AnfNodePtr &node, size_t output_idx);
+int JudgeControlFlowCertainOutputHasInferred(const CNodePtr &return_cnode, size_t index, bool *infer_info);
 }  // namespace opt
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_TOOLS_OPTIMIZER_COMMON_GLLO_UTILS_H_

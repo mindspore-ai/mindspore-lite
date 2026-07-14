@@ -32,47 +32,6 @@
 namespace mindspore::opt {
 
 #if !defined(_WIN32) && !defined(_WIN64)
-CNodePtr CreateTupleGetItemNode(const FuncGraphPtr &func_graph, const AnfNodePtr &node, size_t output_idx) {
-  MS_EXCEPTION_IF_NULL(func_graph);
-  auto idx = NewValueNode(SizeToLong(output_idx));
-  MS_EXCEPTION_IF_NULL(idx);
-  auto imm = std::make_shared<Int64Imm>(SizeToLong(output_idx));
-  auto abstract_scalar = std::make_shared<abstract::AbstractScalar>(imm);
-  idx->set_abstract(abstract_scalar);
-  CNodePtr tuple_getitem = func_graph->NewCNode({NewValueNode(prim::kPrimTupleGetItem), node, idx});
-  MS_EXCEPTION_IF_NULL(tuple_getitem);
-  tuple_getitem->set_scope(node->scope());
-  auto abs = node->abstract()->cast<abstract::AbstractTuplePtr>();
-  MS_EXCEPTION_IF_NULL(abs);
-  auto abs_i = abs->elements()[output_idx];
-  MS_EXCEPTION_IF_NULL(abs_i);
-  tuple_getitem->set_abstract(abs_i);
-  return tuple_getitem;
-}
-
-bool IsTupleHasDynamicSequence(const abstract::AbstractBasePtr &abstract) {
-  MS_EXCEPTION_IF_NULL(abstract);
-  if (!abstract->isa<abstract::AbstractSequence>()) {
-    return false;
-  }
-  const auto &sequence_abs = abstract->cast<abstract::AbstractSequencePtr>();
-  MS_EXCEPTION_IF_NULL(sequence_abs);
-  if (sequence_abs->dynamic_len() || sequence_abs->dynamic_len_element_abs() != nullptr) {
-    return true;
-  }
-  if (std::any_of(sequence_abs->elements().begin(), sequence_abs->elements().end(),
-                  [](const abstract::AbstractBasePtr &abs) { return IsTupleHasDynamicSequence(abs); })) {
-    return true;
-  }
-  return false;
-}
-
-size_t GetOutputElementNum(const AnfNodePtr &node) {
-  if (node->abstract() != nullptr && IsTupleHasDynamicSequence(node->abstract())) {
-    return lite::common::AnfAlgo::GetOutputNumByAbstract(node->abstract());
-  }
-  return AnfUtils::GetOutputTensorNum(node);
-}
 
 int64_t SplitTupleInputs(const FuncGraphPtr &graph, const AnfNodePtr &tuple_input,
                          std::vector<AnfNodePtr> *plant_inputs) {
@@ -105,6 +64,10 @@ int64_t SplitTupleInputs(const FuncGraphPtr &graph, const AnfNodePtr &tuple_inpu
   }
   for (size_t index = 0; index < input_size; ++index) {
     auto dynamic_input_node = CreateTupleGetItemNode(graph, tuple_input, index);
+    if (dynamic_input_node == nullptr) {
+      MS_LOG(ERROR) << "CreateTupleGetItemNode failed, index: " << index;
+      return -1;
+    }
     (void)plant_inputs->emplace_back(dynamic_input_node);
   }
   return input_size;
