@@ -76,7 +76,8 @@ if [[ "${MSLITE_ENABLE_CLOUD_FUSION_INFERENCE}" == "on" || "${MSLITE_ENABLE_CLOU
   exit 0
 fi
 
-
+echo 'run flatbuffers verifier ut test'
+./lite-test --gtest_filter="FlatBuffersVerifierTest.RejectModelExceedingTableLimit"
 
 # test cases of Converter
 ## ./lite-test --gtest_filter="TestTfliteParser*"
