@@ -22,10 +22,8 @@
 
 namespace mindspore {
 namespace lite {
-// `symmetric` == true -> q range is [-127 , 127];
-//  abs_max = max(abs(r_min),abs(r_max)); r_min = -abs_max and r_max = abs_max.
-//  `symmetric` == false q range is [-128 , 127]. r_min or r_max keep the original value.
-// `narrow_range` is used to adjust q_min, and symmetric is always true.
+// quant_min here is always computed with symmetric=false (hardcoded below),
+// regardless of the `symmetric` parameter.
 int CalQuantizationParams(schema::QuantParamT *quant_param, double real_min, double real_max, int num_bits,
                           bool symmetric, bool narrow_range) {
   CHECK_NULL_RETURN(quant_param);

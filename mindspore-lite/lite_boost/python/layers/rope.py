@@ -79,6 +79,7 @@ def _get_rope_cos_sin(freqs, grid_sizes, s_local):
 @amp.autocast(enabled=False)
 def rope_apply(x, grid_sizes, freqs):
     """
+    Apply RoPE.
     x:          [B, s, N, D] where D = head_dim, s = padded_seq_len / sp_size
     grid_sizes: [B, 3] with (F, H, W) per sample
     freqs:      [1024, D//2] complex (polar form)

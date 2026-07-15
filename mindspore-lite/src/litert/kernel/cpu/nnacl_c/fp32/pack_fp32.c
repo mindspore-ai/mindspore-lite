@@ -1755,7 +1755,6 @@ void TransposeFp32(const void *src, void *dst, int batches, int channel, int pla
   int m_blk = channel / C8NUM;
   int n_blk = plane / C8NUM;
   int b_stride = plane * channel;
-  //  printf("channel, plane: %d, %d\n", channel, plane);
   int b = 0, m = 0, n = 0;
   // To make write dst consecutively, (m,n):(0,0)->(1,0)->...->(0,1)->(1,1)->...
   offset_to_index_init(start, 6, &m, m_pad, &n, n_pad, &b, batches);
