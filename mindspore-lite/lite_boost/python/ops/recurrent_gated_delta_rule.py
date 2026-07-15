@@ -175,8 +175,6 @@ def recurrent_gated_delta_rule(
     # Conversion rule for 3D tensors:
     #   [B, H, T] --transpose(1,2)--> [B, T, H] --reshape(-1,H)--> [B*T, H]
     #
-    # Note: value uses num_heads_q instead of num_heads_v for reshape,
-    # because the CANN operator internally handles GQA mapping via the Nv/Nk ratio.
     # =========================================================================
 
     # query: [B, H_q, T, D_k] -> [T_total, H_q, D_k]
@@ -188,8 +186,8 @@ def recurrent_gated_delta_rule(
 
     # value: [B, H_v, T, D_v] -> [T_total, H_q, D_v]
     # Note: reshape uses num_heads_q (query head count) instead of num_heads_v (value head count),
-    # because the CANN operator expects consistent head dimensions for query/key/value in TND layout.
-    # The GQA head mapping is handled internally by the CANN operator via the Nv/Nk ratio.
+    # because CANN expects consistent head dimensions for query/key/value in TND layout,
+    # and handles GQA mapping internally via the Nv/Nk ratio.
     value_tnd = value.transpose(1, 2).reshape(-1, num_heads_q, dv).contiguous()
 
     # beta: [B, H_v, T] -> [T_total, H_v]

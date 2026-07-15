@@ -99,7 +99,6 @@ def _pytorch_recurrent_gated_delta_rule(
 
         last_recurrent_state = last_recurrent_state * g_i
         last_recurrent_state = last_recurrent_state * gk_i
-        # k_gated = k_i * gk_i                                    # [B, H, D_k]
         kv_mem = (last_recurrent_state * k_i.unsqueeze(-1)).sum(dim=-2)  # [B, H, D_v]
         delta = (v_i - kv_mem) * beta_i  # [B, H, D_v]
         last_recurrent_state = last_recurrent_state + k_i.unsqueeze(
