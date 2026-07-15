@@ -688,13 +688,19 @@ STATUS GetTensorInfoFromAbstract(tensor::TensorPtr *const tensor_info, const CNo
     return RET_ERROR;
   }
   auto abstract_tensor = utils::cast<abstract::AbstractTensorPtr>(abstract);
-  if (!utils::isa<tensor::TensorPtr>(abstract_tensor->GetValueTrack())) {  // input node not complete infershape
-    MS_LOG(DEBUG) << "Value of abstract is not tensor::Tensor, indicate that infershape has failed";
-    return RET_ERROR;
+  if (utils::isa<tensor::TensorPtr>(abstract_tensor->GetValueTrack())) {
+    *tensor_info = utils::cast<tensor::TensorPtr>(abstract_tensor->GetValueTrack());
+  } else {
+    auto input = cnode->input(index);
+    if (input != nullptr && utils::isa<ParameterPtr>(input)) {
+      auto param = input->cast<ParameterPtr>();
+      if (param->has_default() && param->default_param() != nullptr) {
+        *tensor_info = param->default_param()->cast<tensor::TensorPtr>();
+      }
+    }
   }
-  *tensor_info = utils::cast<tensor::TensorPtr>(abstract_tensor->GetValueTrack());
   if (*tensor_info == nullptr) {
-    MS_LOG(ERROR) << "tensor::Tensor of abstract is nullptr";
+    MS_LOG(ERROR) << "Value of abstract is not tensor::Tensor, indicate that infershape has failed";
     return RET_ERROR;
   }
   return RET_OK;

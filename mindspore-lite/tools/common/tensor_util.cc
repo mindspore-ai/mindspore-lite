@@ -107,14 +107,14 @@ tensor::TensorPtr CreateTensorInfo(const void *data, size_t data_size, const std
 }
 
 AbstractBasePtr CreateTensorAbstract(const std::vector<int64_t> &shape, TypeId data_type) {
-  auto tensor_info = CreateTensorInfo(nullptr, 0, shape, data_type);
-  if (tensor_info == nullptr) {
-    MS_LOG(ERROR) << "Create tensor info failed";
+  auto dtype = TypeIdToType(data_type);
+  if (dtype == nullptr) {
+    MS_LOG(ERROR) << "Convert type_id to type failed, type_id: " << data_type;
     return nullptr;
   }
-  auto abstract = tensor_info->ToAbstract();
+  auto abstract = std::make_shared<abstract::AbstractTensor>(dtype, shape);
   if (abstract == nullptr) {
-    MS_LOG(ERROR) << "Create tensor abstarct failed";
+    MS_LOG(ERROR) << "Create tensor abstract failed";
     return nullptr;
   }
   return abstract;

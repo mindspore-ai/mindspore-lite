@@ -389,13 +389,6 @@ int ConvertAbstractFormatShape(const AbstractBasePtr &abstract, FormatTransNodeT
     MS_LOG(DEBUG) << "shape don't need to modify.";
     return lite::RET_OK;
   }
-  auto shape_value = abstract->BuildValue();
-  if (!shape_value->isa<tensor::Tensor>()) {
-    MS_LOG(INFO) << "abstract must be a tensor, but got: " << shape_value->ToString() << ".";
-    return RET_ERROR;
-  }
-  auto input_tensor = shape_value->cast<tensor::TensorPtr>();
-  MS_CHECK_FALSE(input_tensor == nullptr, RET_ERROR);
   if (perm == kNHWC2NCHW) {
     ShapeVector transfer_shape = shape;
     size_t shape_size = shape.size();
