@@ -36,6 +36,7 @@ class ReduceFusionMapper : public PrimitiveMapper {
   STATUS AdjustInput(const CNodePtr &cnode, const PrimitivePtr &prim);
   STATUS HandleReduceProdCase(const CNodePtr &cnode, const PrimitivePtr &prim);
   STATUS ProcessAxesParam(const CNodePtr &cnode, const PrimitivePtr &prim, int64_t mode);
+  void CheckAndSetNoopWithEmptyAxes(const PrimitivePtr &src_prim, const PrimitivePtr &dst_prim);
 };
 }  // namespace lite
 }  // namespace mindspore
