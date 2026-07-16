@@ -39,6 +39,8 @@ PrimitiveCPtr OnnxReduceParser::Parse(const onnx::GraphProto &onnx_graph, const 
     } else if (attribute_name == "keepdims") {
       prim->set_keep_dims(static_cast<bool>(onnx_node_attr.i()));
     } else if (attribute_name == "noop_with_empty_axes") {
+      MS_LOG(INFO) << "The noop_with_empty_axes attribute for reduction‑type operators in the latest ONNX release "
+                      "controls behavior when axes is omitted or empty (default: false).";
       prim->set_skip_mode(static_cast<bool>(onnx_node_attr.i()));
     }
   }

@@ -115,6 +115,7 @@ STATUS ReduceFusionMapper::Mapper(const CNodePtr &cnode) {
   dst_prim->SetAttrs(src_prim->attrs());
   value_node->set_value(dst_prim);
   if (mode == static_cast<int64_t>(ReduceMode::Reduce_Mean)) {
+    CheckAndSetNoopWithEmptyAxes(src_prim, dst_prim);
     return lite::RET_OK;
   }
   if (AdjustInput(cnode, dst_prim) != RET_OK) {
@@ -122,6 +123,18 @@ STATUS ReduceFusionMapper::Mapper(const CNodePtr &cnode) {
     return lite::RET_ERROR;
   }
   return RET_OK;
+}
+
+void ReduceFusionMapper::CheckAndSetNoopWithEmptyAxes(const PrimitivePtr &src_prim, const PrimitivePtr &dst_prim) {
+  auto axes_ptr = src_prim->GetAttr(ops::kAxes);
+  if (axes_ptr == nullptr) {
+    dst_prim->AddAttr("noop_with_empty_axes", MakeValue<bool>(false));
+  } else {
+    auto axes = GetValue<std::vector<int32_t>>(axes_ptr);
+    if (axes.empty()) {
+      dst_prim->AddAttr("noop_with_empty_axes", MakeValue<bool>(false));
+    }
+  }
 }
 
 STATUS GetAxes(const CNodePtr &cnode, int64_t mode, std::vector<int64_t> *axes, ParameterPtr axes_param,
