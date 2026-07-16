@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ TEST_F(SpaceToBatchTestFp32, SpaceToBatchTest4) {
 
 TEST_F(SpaceToBatchTestFp32, SpaceToBatchTest5) {
   std::vector<float> input = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-  size_t kOutSize = 16;
+  constexpr size_t kOutSize = 16;
   std::vector<float> expect_out = {1, 3, 5, 7, 9, 11, 13, 15, 2, 4, 6, 8, 10, 12, 14, 16};
   float out[kOutSize];
 
@@ -69,7 +69,7 @@ TEST_F(SpaceToBatchTestFp32, SpaceToBatchTest5) {
 
 TEST_F(SpaceToBatchTestFp32, SpaceToBatchTest6) {
   std::vector<float> input = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-  size_t kOutSize = 16;
+  constexpr size_t kOutSize = 16;
   std::vector<float> expect_out = {1, 3, 9, 11, 2, 4, 10, 12, 5, 7, 13, 15, 6, 8, 14, 16};
   float out[kOutSize];
 

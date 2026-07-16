@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,16 @@
  */
 
 #include "coder/generator/component/const_blocks/benchmark_train.h"
+#include "coder/generator/component/const_blocks/benchmark_common.h"
 
 namespace mindspore::lite::micro {
-const char benchmark_train_source[] = R"RAW(/**
- * Copyright 2022 Huawei Technologies Co., Ltd
+
+// Training benchmark main function
+static std::string GetBenchmarkTrainSourceStr() {
+  return std::string(R"RAW(/**
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the Apache License, Version 2.0 (the "License)");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -33,17 +37,9 @@ const char benchmark_train_source[] = R"RAW(/**
  * limitations under the License.
  */
 
-#include "load_input.h"
-#include "calib_output.h"
-#include "c_api/types_c.h"
-#include "c_api/model_c.h"
-#include "c_api/context_c.h"
-#include "src/tensor.h"
-#include <time.h>
-#include <inttypes.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+)RAW")
+    .append(benchmark_common::GetBenchmarkIncludes())
+    .append(R"RAW(
 
 #define kMaxThreadNum 4
 
@@ -61,74 +57,12 @@ void usage() {
     "args[8]: cosine distance threshold, default is 0.9999\n\n");
 }
 
-uint64_t GetTimeUs() {
-  const int USEC = 1000000;
-  const int MSEC = 1000;
-  struct timespec ts = {0, 0};
-  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-    return 0;
-  }
-  uint64_t retval = (uint64_t)((ts.tv_sec * USEC) + (ts.tv_nsec / MSEC));
-  return retval;
-}
-
-void PrintTensorHandle(MSTensorHandle tensor) {
-  if (tensor == NULL) {
-    printf("input tensor is null");
-    return;
-  }
-  printf("name: %s, ", MSTensorGetName(tensor));
-  MSDataType data_type = MSTensorGetDataType(tensor);
-  printf("DataType: %d, ", data_type);
-  size_t element_num = (size_t)(MSTensorGetElementNum(tensor));
-  printf("Elements: %zu, ", element_num);
-  printf("Shape: [");
-  size_t shape_num = 0;
-  const int64_t *dims = MSTensorGetShape(tensor, &shape_num);
-  for (size_t i = 0; i < shape_num; i++) {
-    printf("%d ", (int)dims[i]);
-  }
-  printf("], Data: \n");
-  void *data = MSTensorGetMutableData(tensor);
-  const size_t MAX_ELEMENT_NUM = 10;
-  element_num = element_num > MAX_ELEMENT_NUM ? MAX_ELEMENT_NUM : element_num;
-  switch (data_type) {
-    case kMSDataTypeNumberTypeFloat32: {
-      for (size_t i = 0; i < element_num; i++) {
-        printf("%.6f, ", ((float *)data)[i]);
-      }
-      printf("\n");
-    } break;
-    case kMSDataTypeNumberTypeFloat16:
-    case kMSDataTypeNumberTypeInt16: {
-      for (size_t i = 0; i < element_num; i++) {
-        printf("%" PRId16, ((int16_t *)data)[i]);
-      }
-      printf("\n");
-    } break;
-    case kMSDataTypeNumberTypeInt32: {
-      for (size_t i = 0; i < element_num; i++) {
-        printf("%" PRId32, ((int32_t *)data)[i]);
-      }
-      printf("\n");
-    } break;
-    case kMSDataTypeNumberTypeInt8: {
-      for (size_t i = 0; i < element_num; i++) {
-        printf("%" PRIi8, ((int8_t *)data)[i]);
-      }
-      printf("\n");
-    } break;
-    case kMSDataTypeNumberTypeUInt8: {
-      for (size_t i = 0; i < element_num; i++) {
-        printf("%u", ((uint8_t *)data)[i]);
-      }
-      printf("\n");
-    } break;
-    default:
-      printf("Unsupported data type to print");
-      break;
-  }
-}
+)RAW")
+    .append(benchmark_common::GetGetTimeUs())
+    .append(R"RAW(
+)RAW")
+    .append(benchmark_common::GetPrintTensorHandle(false))
+    .append(R"RAW(
 
 int main(int argc, const char **argv) {
   if (argc < 2) {
@@ -160,51 +94,12 @@ int main(int argc, const char **argv) {
     printf("context: ThreadNum: %d, BindMode: %d\n", thread_num, bind_mode);
   }
 
-  void *model_buffer = NULL;
-  int model_size = 0;
-  // read .bin file by ReadBinaryFile;
-  if (argc >= 3) {
-    model_buffer = ReadInputData(argv[2], &model_size);
-  }
-  MSModelHandle model_handle = MSModelCreate();
-  int ret = MSModelBuild(model_handle, model_buffer, model_size, kMSModelTypeMindIR, ms_context_handle);
-  MSContextDestroy(&ms_context_handle);
-  if (ret != kMSStatusSuccess) {
-    printf("MSModelBuildFromFile failed, ret: %d\n", ret);
-    free(model_buffer);
-    model_buffer = NULL;
-    return ret;
-  }
-  if (model_buffer) {
-    free(model_buffer);
-    model_buffer = NULL;
-  }
-  // set model inputs tensor data
-  MSTensorHandleArray inputs_handle = MSModelGetInputs(model_handle);
-  if (inputs_handle.handle_list == NULL) {
-    printf("MSModelGetInputs failed, ret: %d", ret);
-    return ret;
-  }
-  size_t inputs_num = inputs_handle.handle_num;
-  void *inputs_binbuf[inputs_num];
-  int inputs_size[inputs_num];
-  for (size_t i = 0; i < inputs_num; ++i) {
-    MSTensorHandle tensor = inputs_handle.handle_list[i];
-    inputs_size[i] = (int)MSTensorGetDataSize(tensor);
-  }
-  ret = ReadInputsFile((char *)(argv[1]), inputs_binbuf, inputs_size, (int)inputs_num);
-  if (ret != 0) {
-    MSModelDestroy(&model_handle);
-    return ret;
-  }
-  for (size_t i = 0; i < inputs_num; ++i) {
-    void *input_data = MSTensorGetMutableData(inputs_handle.handle_list[i]);
-    memcpy(input_data, inputs_binbuf[i], inputs_size[i]);
-    free(inputs_binbuf[i]);
-    inputs_binbuf[i] = NULL;
-  }
-
-  MSTensorHandleArray outputs_handle = MSModelGetOutputs(model_handle);
+)RAW")
+    .append(benchmark_common::GetModelLoadLogic("file"))
+    .append(R"RAW(
+)RAW")
+    .append(benchmark_common::GetInputsLoadLogic())
+    .append(R"RAW(  MSTensorHandleArray outputs_handle = MSModelGetOutputs(model_handle);
   if (!outputs_handle.handle_list) {
     printf("MSModelGetOutputs failed, ret: %d", ret);
     return ret;
@@ -280,27 +175,9 @@ int main(int argc, const char **argv) {
     MSTensorHandle output = outputs_handle.handle_list[i];
     PrintTensorHandle(output);
   }
-
-  if (argc >= 5) {
-    CalibTensor *calib_tensors;
-    int calib_num = 0;
-    ret = ReadCalibData(argv[4], &calib_tensors, &calib_num);
-    if (ret != kMSStatusSuccess) {
-      MSModelDestroy(&model_handle);
-      return ret;
-    }
-    float cosine_distance_threshold = 0.9999;
-    if (argc >= 9) {
-      cosine_distance_threshold = atof(argv[8]);
-    }
-    ret = CompareOutputs(outputs_handle, &calib_tensors, calib_num, cosine_distance_threshold);
-    if (ret != kMSStatusSuccess) {
-      MSModelDestroy(&model_handle);
-      return ret;
-    }
-    FreeCalibTensors(&calib_tensors, calib_num);
-  }
-
+)RAW")
+    .append(benchmark_common::GetCalibrationLogic())
+    .append(R"RAW(
   ret = MSModelExportWeight(model_handle, "./export.bin");
   if (ret != kMSStatusSuccess) {
     MSModelDestroy(&model_handle);
@@ -313,5 +190,12 @@ int main(int argc, const char **argv) {
   MSModelDestroy(&model_handle);
   return kMSStatusSuccess;
 }
-)RAW";
+)RAW");
+}
+
+const char *benchmark_train_source = []() {
+  static std::string s = GetBenchmarkTrainSourceStr();
+  return s.c_str();
+}();
+
 }  // namespace mindspore::lite::micro
