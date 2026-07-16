@@ -2844,10 +2844,6 @@ bool ParseAttrSparseMode(const std::string &attr_value, FlashAttentionParm *fa_p
 
 std::shared_ptr<FlashAttentionParm> FlashAttentionFusion::ParseFAParam() const {
   FlashAttentionParm fa_param;
-  //  op_attrs=FlashAttention:input_layout:BSH;
-  //           FlashAttention:seq_threshold:1024;
-  //           FlashAttention:inner_precise:1;
-  //           FlashAttention:sparse_mode:0
   std::map<std::string, bool (*)(const std::string &attr_value, FlashAttentionParm *fa_param)> parse_attr_funcs = {
     {"input_layout", ParseAttrInputLayout},
     {"seq_threshold", ParseAttrSeqThreshold},

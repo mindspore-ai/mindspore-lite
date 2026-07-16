@@ -578,6 +578,7 @@ Status ModelImpl::Build(const FuncGraphPtr &func_graph, const std::shared_ptr<Co
     MS_LOG(ERROR) << "convert graph failed!ret = " << ret;
     return ret;
   }
+  MS_CHECK_TRUE_MSG(session_ != nullptr, Status(kLiteNullptr, "session is nullptr!"), "session is nullptr!");
   ret = session_->CompileGraph(func_graph, nullptr, 0, &graph_id_);
   if (ret != kSuccess) {
     MS_LOG(ERROR) << "compile graph failed!ret = " << ret;
