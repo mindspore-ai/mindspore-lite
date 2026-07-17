@@ -127,6 +127,11 @@ class BACKEND_EXPORT DfGraphConvertor {
     }
     if (is_training) {
       training_ = true;
+    } else if (offline_convert_) {
+      // Lite offline inference: AnfGraph may carry a residual training flag from
+      // training-time export. Force inference mode so parameters route through Const
+      // instead of Variable/init-subgraph.
+      training_ = false;
     } else {
       training_ = anf_graph->has_flag("training");
     }
