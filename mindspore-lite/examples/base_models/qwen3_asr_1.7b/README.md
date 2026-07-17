@@ -12,7 +12,7 @@
 |----------------|--------|
 | Python         | 3.11   |
 | torch          | 2.10.0 |
-| transformers   | 5.6.2  |
+| transformers   | 4.57.6 |
 | onnx           | 1.19.1 |
 | onnxruntime    | 1.24.2 |
 | numpy          | 1.26.4 |
@@ -21,7 +21,7 @@
 | qwen-asr       | 0.0.6  |
 
 ```bash
-pip install transformers==5.6.2 torch==2.10.0 onnx==1.19.1 onnxruntime==1.24.2 numpy==1.26.4 mindspore-lite qwen-asr==0.0.6
+pip install transformers==4.57.6 torch==2.10.0 onnx==1.19.1 onnxruntime==1.24.2 numpy==1.26.4 mindspore-lite qwen-asr==0.0.6
 ```
 
 ---
@@ -36,7 +36,8 @@ cd ./mindspore-lite/examples/base_models/qwen3_asr_1.7b
 python export_qwen3_asr_1.7b_onnx.py \
   --model-path ./Qwen3-ASR-1.7B \
   --output-dir ./onnx \
-  --opset 17
+  --kv-cache-len 1024 \
+  --dtype fp32
 ```
 
 ### 参数说明
@@ -45,112 +46,103 @@ python export_qwen3_asr_1.7b_onnx.py \
 |---|---|---|
 | `--model-path` | HuggingFace 模型路径或本地目录 | `./Qwen3-ASR-1.7B` |
 | `--output-dir` | 输出目录 | `./onnx` |
-| `--opset` | ONNX opset 版本 | `17` |
+| `--opset` | ONNX opset 版本 | `18` |
+| `--kv-cache-len` | KV cache 最大长度（音频 token + 模板 + 生成余量） | `1024` |
+| `--dtype` | 导出精度。`fp32` 必选：FP16 权重在 Ascend matmul 上会溢出 | `fp32` |
 
 ### 产出
 
 ```log
 onnx/
-├── qwen3_asr_audio_encoder_fp32.onnx
-├── qwen3_asr_text_decoder_fp32.onnx
-└── *.onnx_data / *.data (external data)
+├── audio_encoder/
+│   └── qwen3_asr_audio_encoder_fp32.onnx
+├── prefill/
+│   └── qwen3_asr_text_prefill_fp32.onnx   (+ external data)
+└── decode/
+    └── qwen3_asr_text_decode_fp32.onnx    (+ external data)
 ```
 
 ---
 
-## 3. ONNX 推理
-
-### ONNX Runtime 推理
-
-```bash
-python infer_qwen3_asr_1.7b_onnx.py \
-  --model-path ./Qwen3-ASR-1.7B \
-  --onnx-dir ./onnx \
-  --audio asr_zh.wav \
-  --max-new-tokens 256 \
-  --language Chinese
-```
-
-### 执行日志
-
-```log
-Chinese
-甚至出现交易几乎停滞的情况。
-
-English
-Hmm. Oh yeah, yeah. He wasn't even that big when I started listening to him, but and his solo music didn't do overly well. But he did very well when he started writing for other people.
-```
-
-### 参数说明
-
-| 参数 | 说明 | 默认值 |
-|---|---|---|
-| `--model-path` | HuggingFace tokenizer / feature extractor 路径 | `./Qwen3-ASR-1.7B` |
-| `--onnx-dir` | ONNX 模型目录（包含 audio encoder / text decoder） | `./onnx` |
-| `--audio` | 音频文件路径（支持常见音频格式） | 必填 |
-| `--context` | 上下文提示词（可选，用于提升领域词识别） | `""` |
-| `--language` | 指定语言（可选，不指定则自动识别） | `None` |
-| `--max-chunk-sec` | 长音频分段长度（秒） | `30.0` |
-| `--max-new-tokens` | 每段最大生成 token 数 | `256` |
-
----
-
-## 4. MindSpore Lite 转换
+## 3. MindSpore Lite 转换
 
 ### 转换命令
 
 ```bash
 Converter=mindspore-lite-2.8.0-linux-aarch64/tools/converter/converter/converter_lite
 
-# Audio Encoder 转换
+# Audio Encoder 转换（force_fp32）
 $Converter --fmk=ONNX \
-  --modelFile=onnx/qwen3_asr_audio_encoder_fp32.onnx \
-  --outputFile=onnx/qwen3_asr_audio_encoder_fp32.onnx \
+  --modelFile=onnx/audio_encoder/qwen3_asr_audio_encoder_fp32.onnx \
+  --outputFile=onnx/audio_encoder/qwen3_asr_audio_encoder_fp32_graph \
   --optimize=ascend_oriented \
-  --configFile=utils/config.ini
+  --configFile=configs/qwen3_asr_audio_encoder.config
 
-# Text Decoder 转换
+# Text Prefill 转换（动态分档 + lm_head 入图，force_fp32）
 $Converter --fmk=ONNX \
-  --modelFile=onnx/qwen3_asr_text_decoder_fp32.onnx \
-  --outputFile=onnx/qwen3_asr_text_decoder_fp32.onnx \
+  --modelFile=onnx/prefill/qwen3_asr_text_prefill_fp32.onnx \
+  --outputFile=onnx/prefill/qwen3_asr_text_prefill_fp32_graph \
   --optimize=ascend_oriented \
-  --configFile=utils/config.ini
+  --configFile=configs/qwen3_asr_text_prefill.config
+
+# Text Decode 转换（固定 shape + KV cache + lm_head 入图，force_fp32）
+$Converter --fmk=ONNX \
+  --modelFile=onnx/decode/qwen3_asr_text_decode_fp32.onnx \
+  --outputFile=onnx/decode/qwen3_asr_text_decode_fp32_graph \
+  --optimize=ascend_oriented \
+  --configFile=configs/qwen3_asr_text_decode.config
 ```
 
-### 参数说明
-
-| 参数 | 说明 |
-|---|---|
-| `--fmk` | 输入模型格式（ONNX） |
-| `--modelFile` | 输入 ONNX 模型路径 |
-| `--outputFile` | 输出 MindIR 路径（不带扩展名） |
-| `--optimize` | 优化模式，必须指定 `ascend_oriented` |
-| `--configFile` | 配置文件路径 |
+> 转换日志会打印 `ge.proto.ModelDef exceeded maximum protobuf size of 2GB`——这是 CANN 内部告警（prefill 图体积约 8GB），**不影响最终结果**。只要结尾出现 `CONVERT RESULT SUCCESS:0` 即成功。
 
 ### 配置文件
 
-`utils/config.ini`:
+`configs/qwen3_asr_audio_encoder.config`（音频编码器，固定 shape）:
 
 ```ini
 [acl_init_options]
 ge.exec.precision_mode=force_fp32
 ```
 
-### 产出
+`configs/qwen3_asr_text_prefill.config`（Prefill，动态分档；`audio_features` 静态 390）:
 
-模型文件超过 2GB 时，会分成 `*_graph.mindir` 和 `*_variables/` 目录：
+```ini
+[acl_build_options]
+input_format="ND"
+input_shape="input_ids:1,-1;audio_features:1,390,2048;attention_mask:1,-1;position_ids:3,1,-1"
+ge.dynamicDims="512,512,512;640,640,640;768,768,768"
+
+[acl_init_options]
+ge.exec.precision_mode=force_fp32
+```
+
+`configs/qwen3_asr_text_decode.config`（Decode，固定 shape + KV cache）:
+
+```ini
+[acl_build_options]
+input_format="ND"
+input_shape="input_ids:1,1;attention_mask:1,1024;position_ids:3,1,1;past_key_cache:28,1,8,1024,128;past_value_cache:28,1,8,1024,128"
+
+[acl_init_options]
+ge.exec.precision_mode=force_fp32
+```
+
+> `past_key_cache` 第一维 `28` = 文本 decoder 层数（全部层在单模型内）。
+
+### 产出
 
 ```log
 onnx/
-├── qwen3_asr_audio_encoder_fp32.onnx.mindir
-├── qwen3_asr_text_decoder_fp32.onnx_graph.mindir
-└── qwen3_asr_text_decoder_fp32.onnx_variables/
-    └── data_0
+├── audio_encoder/qwen3_asr_audio_encoder_fp32_graph.mindir
+├── prefill/
+│   └── qwen3_asr_text_prefill_fp32_graph.mindir
+└── decode/
+    └── qwen3_asr_text_decode_fp32_graph.mindir
 ```
 
 ---
 
-## 5. MindSpore Lite 推理
+## 4. MindSpore Lite 推理
 
 ### 推理命令
 
@@ -169,11 +161,9 @@ python infer_qwen3_asr_1.7b_mslite.py \
 ```log
 Chinese
 甚至出现交易几乎停滞的情况。
-Perf: AudioEncoder(ms) mean=24.49, min=24.49, max=24.49; DecodeStep(ms) mean=452.10, min=371.07, max=990.81; Throughput(tok/s)=2.21; TokenLength=390
 
 English
 Hmm. Oh yeah, yeah. He wasn't even that big when I started listening to him, but and his solo music didn't do overly well. But he did very well when he started writing for other people.
-Perf: AudioEncoder(ms) mean=26.22, min=26.22, max=26.22; DecodeStep(ms) mean=387.90, min=370.34, max=995.17; Throughput(tok/s)=2.58; TokenLength=390
 ```
 
 ### 参数说明
@@ -181,46 +171,63 @@ Perf: AudioEncoder(ms) mean=26.22, min=26.22, max=26.22; DecodeStep(ms) mean=387
 | 参数 | 说明 | 默认值 |
 |---|---|---|
 | `--model-path` | HuggingFace tokenizer / feature extractor 路径 | `./Qwen3-ASR-1.7B` |
-| `--mindir-dir` | MindIR 模型目录 | `./mindir` |
+| `--mindir-dir` | MindIR 模型目录（包含 audio_encoder/ prefill/ decode/ 子目录） | `./onnx` |
 | `--audio` | 音频文件路径（支持常见音频格式） | 必填 |
 | `--context` | 上下文提示词（可选，用于提升领域词识别） | `""` |
 | `--language` | 指定语言（可选，不指定则自动识别） | `None` |
 | `--max-chunk-sec` | 长音频分段长度（秒） | `30.0` |
-| `--max-new-tokens` | 每段最大生成 token 数 | `64` |
-| `--device-id` | Ascend 设备 ID | `1` |
-| `--config-path` | MindSpore Lite 配置文件路径 | `""` |
-| `--precision-mode` | 可选精度模式（如 `force_fp32`） | `None` |
+| `--max-new-tokens` | 每段最大生成 token 数 | `256` |
+| `--device-id` | Ascend 设备 ID | `0` |
 
 ---
 
-## 6. 性能数据
+## 5. 性能数据
 
-### 性能测试结果（Atlas 800I A2）
+### 端到端推理性能
 
-测试模型：Qwen3-ASR-1.7B
+测试模型：Qwen3-ASR-1.7B。音频 token 长度 390（30 秒音频 → 特征提取 3000 帧 → 按 `chunk_size = n_window * 2 = 200` 切 15 chunk → 每 chunk CNN 后 26 token → `15 × 26 = 390`）。
 
-本用例音频 token 长度为 390。计算方式为读取音频编码器输出的序列长度 `audio_features.shape[1]`；默认 30 秒音频会被特征提取为 3000 帧，按 `chunk_size = n_window * 2 = 200` 切成 15 个 chunk，每个 chunk 经过 CNN 后得到 26 个音频 token，因此 `15 * 26 = 390`。
+#### Atlas 800I A2
 
-| 指标 | Chinese音频 | English音频 |
+| 指标 | Chinese (ms) | English (ms) |
 |---|---:|---:|
-| Audio Token Length | 390 | 390 |
-| Audio Encoder (ms) | 24.49 | 26.22 |
-| Text Decoder / step (ms) | 452.10 | 387.90 |
-| Throughput (tok/s) | 2.21 | 2.58 |
+| FeatureExt (CPU) | 56.98 | 51.33 |
+| AudioEncoder | 24.99 | 23.41 |
+| Prefill | 31.80 | 30.70 |
+| Decode (7 / 44 steps) | 45.50 | 270.16 |
+| Host (argmax + D2H + detokenize) | 240.27 | 276.24 |
+| **总耗时** | **399.54** | **651.84** |
+| **Avg decode step** | **6.50** | **6.14** |
+| **吞吐量** | **17.52 tok/s** | **67.50 tok/s** |
+| **生成 token 数** | **7** | **44** |
 
-> 说明：运行 `infer_qwen3_asr_1.7b_mslite.py` 后，会在末尾额外打印一行 `Perf:`，包含表格所需的 Mean、吞吐与 TokenLength 数据，可直接填入上述表格。
+#### Atlas 300I Duo
+
+| 指标 | Chinese (ms) | English (ms) |
+|---|---:|---:|
+| FeatureExt (CPU) | 56.98 | 67.16 |
+| AudioEncoder | 41.92 | 43.23 |
+| Prefill | 143.99 | 145.31 |
+| Decode (7 / 47 steps) | 232.26 | 1443.84 |
+| Host (argmax + D2H + detokenize) | 653.95 | 654.86 |
+| **总耗时** | **1129.10** | **2354.40** |
+| **Avg decode step** | **33.18** | **30.72** |
+| **吞吐量** | **6.20 tok/s** | **19.96 tok/s** |
+| **生成 token 数** | **7** | **47** |
+
+> **两套硬件独立对比**：Atlas 800I A2 与 Atlas 300I Duo 算力差距大（FP32 算力约 5 倍），跨硬件比较耗时无意义。
 
 ---
 
-## 7. 参考资源
+## 6. 参考资源
 
 - [MindSpore Lite 文档](https://www.mindspore.cn/lite)
-- [Transformers 文档](https://huggingface.co/docs/transformers)
+- [Transformers 文档](https://huggingface.com/docs/transformers)
 - [ONNX Runtime 文档](https://onnxruntime.ai/docs/)
 - [Qwen3-ASR-1.7B 模型](https://huggingface.co/Qwen/Qwen3-ASR-1.7B)
 
 ---
 
-## 8. 许可证
+## 7. 许可证
 
 本教程遵循 Qwen3-ASR-1.7B 模型的许可证。
