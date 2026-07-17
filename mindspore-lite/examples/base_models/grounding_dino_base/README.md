@@ -67,6 +67,7 @@ python export_grounding_dino_base_onnx.py \
 | `--output-dir`| 输出目录                                                                    | `./outputs`                                          |
 | `--name`      | 输出 ONNX 文件名                                                             | `grounding_dino_base.onnx`                           |
 | `--opset`     | ONNX opset 版本                                                            | `17`                                                 |
+| `--disable-msda-fusion` | 禁用 MSDA 融合算子导出，回退到 GridSample 路径（Atlas 300I Duo 需要开启） | `False` |
 
 ### 产出
 
@@ -86,7 +87,10 @@ Grounding-DINO-Base 的整体结构：
   - 6 层 decoder，每层包含 self-attention + cross-attention MSDA（decoder 侧 numQueries=900）
 - **检测头**：输出 900 个 query 的 `logits`（2562 类，含 no-object 类）与 `pred_boxes`（cx, cy, w, h，归一化坐标）
 
-MSDA 在导出时通过热补丁（monkey-patch）将上游 C++ CUDA 算子替换为 `grid_sample` 路径（纯 PyTorch 实现），导出的 ONNX 图中共 48 个 GridSample 节点（12 层 × 4 个特征层），无需导出后再修改 ONNX 图。
+MSDA 支持两种导出形态：
+
+- **non-fuse（GridSample）**：导出 ONNX 图中包含 48 个 GridSample（12 次 MSDA × 4 个特征层），兼容性最好。
+- **fuse（MSDA）**：导出 ONNX 图中包含 12 个 `MultiScaleDeformableAttnFunction`（每层 MSDA 1 个融合节点），用于支持融合算子的硬件/后端加速。
 
 ### ONNX 模型输入输出 Shape
 
@@ -108,7 +112,9 @@ MSDA 在导出时通过热补丁（monkey-patch）将上游 C++ CUDA 算子替�
 
 ### 导出关键点
 
-- **MSDA 通过热补丁替换为 `grid_sample`**：transformers 内置 `MultiScaleDeformableAttention.forward` 调用 C++ CUDA 算子，导出 ONNX 时不可追踪；本仓库在导出前通过 monkey-patch 将其替换为纯 PyTorch（`grid_sample`）实现，导出的 ONNX 图仅包含标准算子，ONNX Runtime 与 MindSpore Lite 都能直接执行，无需导出后再修改 ONNX 图。
+- **按硬件选择 MSDA 导出形态**：
+  - Atlas 300I Duo（不支持 MSDA 融合算子）：导出时加 `--disable-msda-fusion`，得到 non-fuse（GridSample）ONNX，保证可转换/可运行。
+  - Atlas 800I A2（支持 MSDA 融合算子）：导出时不加该参数（默认开启融合节点导出），ONNX 中会出现 `MultiScaleDeformableAttnFunction`，用于后端选取融合 MSDA 内核。
 - **文本 mask 与 position_ids 必须外部预计算**：`generate_masks_with_special_tokens_and_transfer_map` 混用 `torch.eye`（导出为不支持的 `EyeLike`）与数据依赖循环，wrapper 显式接收这两个张量作为输入。
 
 ---
@@ -156,8 +162,6 @@ plugin_custom_ops=All
 [acl_init_options]
 ge.exec.precision_mode=force_fp32
 ```
-
-> `plugin_custom_ops=All` 启用 GridSampler 等 CANN 算子融合；固定 shape 是 `ascend_oriented` 编译 GE 图的前提，与 §2 中的输入输出 Shape 一一对应。
 
 ### 产出
 
@@ -210,6 +214,7 @@ python infer_grounding_dino_base_mslite.py \
 使用 COCO val2017 示例图（[000000039769.jpg](http://images.cocodataset.org/val2017/000000039769.jpg)，2 只猫 + 3 个遥控器）：
 
 ```text
+[Atlas 300I Duo | non-fuse(GridSample)]
 [batch 0] detected 6 objects
   label='a remote control' score=0.3621 box=[39.09, 70.94, 175.85, 116.31]
   label='a cat' score=0.3757 box=[344.67, 22.33, 636.72, 376.42]
@@ -218,57 +223,83 @@ python infer_grounding_dino_base_mslite.py \
   label='a cat' score=0.3643 box=[10.26, 51.48, 317.04, 469.04]
   label='remote' score=0.2515 box=[319.5, 65.69, 383.2, 198.43]
 Perf:
-  warmup: 2 runs: 5
-  input_build_ms_mean:  102.791  (image resize/normalize/pad + text tokenization)
-  inference_ms_mean:    2779.789  (model forward on Ascend)
-  postprocess_ms_mean:    5.123  (sigmoid + thresholding + phrase extraction)
-  e2e_ms_mean:          2887.671
+  warmup: 3 runs: 10
+  preprocess_ms_mean: 102.791
+  inference_ms_mean:  2779.789
+  e2e_ms_mean:        2887.671
+
+[Atlas 800I A2 | fuse(MSDA)]
+WARNING:root:Ascend custom operator path not found
+[batch 0] detected 6 objects
+  label='a remote control' score=0.3485 box=[38.49, 70.53, 176.29, 116.84]
+  label='a cat' score=0.3590 box=[343.5, 21.97, 635.68, 378.66]
+  label='a remote control' score=0.3391 box=[332.42, 74.02, 370.4, 187.45]
+  label='a remote control' score=0.3042 box=[31.24, 59.36, 182.78, 127.5]
+  label='a cat' score=0.3313 box=[11.24, 50.4, 317.01, 471.19]
+  label='a remote control' score=0.3138 box=[320.99, 66.26, 381.58, 197.63]
+Perf:
+  warmup: 3 runs: 10
+  preprocess_ms_mean: 81.828
+  inference_ms_mean:  499.090
+  e2e_ms_mean:        586.998
 ```
 
-> 说明：所有输入固定为 batch=1、文本长度=256、图像 canvas=800×1333；推理脚本内部完成按比例缩放与 zero-pad，输出 boxes 会按原图 (height, width) 反缩放，直接对应原图坐标。MindSpore Lite 推理脚本为纯 numpy/PIL 实现（无 `import torch`）。性能计时分为三段：**Input Build**（图像预处理 + 文本 tokenization）、**Inference**（Ascend NPU 前向推理）、**Postprocess**（sigmoid + 阈值过滤 + phrase 提取）。
+> 说明：所有输入固定为 batch=1、文本长度=256、图像 canvas=800×1333；推理脚本内部完成按比例缩放与 zero-pad，输出 boxes 会按原图 (height, width) 反缩放，直接对应原图坐标。MindSpore Lite 推理脚本为纯 numpy/PIL 实现（无 `import torch`）。性能计时分为三段：**Preprocess**（图像预处理 + 文本 tokenization）、**Inference**（Ascend NPU 前向推理）、**E2E**（包含后处理与脚本框架开销）。
 
 ---
 
 ## 5. 性能数据
 
-### 测试环境
+### 5.1 统一测试口径（两台机器一致）
 
-| 项目   | 配置                                                    |
-|------|-------------------------------------------------------|
-| 硬件   | Atlas 300I Duo（Ascend NPU）                            |
-| 模型   | grounding-dino-base                                   |
-| 图片   | COCO val2017 [000000039769.jpg](http://images.cocodataset.org/val2017/000000039769.jpg) |
-| 图像尺寸 | 800 × 1333（COCO 风格短长边）                                |
-| 文本   | `"a cat, a remote control"`（9 token + zero-pad 到 256） |
-| 数据类型   | force_fp32（config.ini）                                |
+| 项目   | 配置 |
+|------|------|
+| 模型   | grounding-dino-base |
+| 图片   | sample.jpg（COCO val2017 000000039769.jpg） |
+| 图像尺寸 | 800 × 1333 |
+| 文本   | "a cat, a remote control" |
+| 推理参数 | threshold=0.25, text-threshold=0.25, device-id=0, warmup=3, runs=10 |
 
-### 模型推理输入 Shape 与性能
+### 5.2 Atlas 300I Duo（non-fuse / GridSample）
 
-**Grounding-DINO-Base**
+Atlas 300I Duo 不支持 MSDA 融合算子，需导出 non-fuse（GridSample）ONNX：
 
-| 项目                              | 值                                                                                                |
-|---------------------------------|--------------------------------------------------------------------------------------------------|
-| 输入名称                            | `pixel_values`, `pixel_mask`, `input_ids`, `token_type_ids`, `attention_mask`, `text_self_attention_masks`, `text_position_ids` |
-| pixel_values Shape              | `(1, 3, 800, 1333)`                                                                              |
-| pixel_mask Shape                | `(1, 800, 1333)`                                                                                 |
-| input_ids Shape                 | `(1, 256)`                                                                                       |
-| text_self_attention_masks Shape | `(1, 256, 256)`                                                                                  |
-| 输出 logits Shape                 | `(1, 900, 2562)`                                                                                 |
-| 输出 pred_boxes Shape             | `(1, 900, 4)`                                                                                    |
-| Input Build 耗时                 | 102.79 ms                                                                                        |
-| Inference 耗时                    | 2779.79 ms                                                                                       |
-| Postprocess 耗时                  | 5.12 ms                                                                                          |
+```bash
+python export_grounding_dino_base_onnx.py \
+  --model-dir ./grounding-dino-base \
+  --output-dir ./outputs \
+  --name grounding_dino_base.onnx \
+  --opset 17 \
+  --disable-msda-fusion
+```
 
-### 端到端推理性能
+端到端性能（mean）：
 
-| 指标              | 耗时 (ms)    | 说明                                                   |
-|-----------------|------------|------------------------------------------------------|
-| Input Build     | 102.79     | 图像 resize/normalize/pad + 文本 tokenization            |
-| Inference       | 2779.79    | 模型前向推理（Ascend NPU）                                  |
-| Postprocess     | 5.12       | sigmoid + 阈值过滤 + phrase 提取                           |
-| **端到端 (mean)**  | **2887.67**|                                                      |
+| 指标 | 耗时 (ms) |
+|---|---:|
+| Preprocess | 102.791 |
+| Inference | 2779.789 |
+| E2E | 2887.671 |
 
-> 说明：MSLite 检测到主目标（2 只猫 + 3 个遥控器），box 坐标与置信度与原始 PyTorch 模型对齐。MSLite 多保留了一个置信度 0.25 的边界检测；阈值降到 0.24 时检出集合与原始模型一致。
+### 5.3 Atlas 800I A2（fuse / MSDA）
+
+Atlas 800I A2 支持 MSDA 融合算子，导出 fused（MSDA）ONNX：
+
+```bash
+python export_grounding_dino_base_onnx.py \
+  --model-dir ./grounding-dino-base \
+  --output-dir ./outputs \
+  --name grounding_dino_base.onnx \
+  --opset 17
+```
+
+端到端性能（mean）：
+
+| 指标 | 耗时 (ms) |
+|---|---:|
+| Preprocess | 81.828 |
+| Inference | 499.090 |
+| E2E | 586.998 |
 
 ---
 

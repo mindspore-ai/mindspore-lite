@@ -20,11 +20,13 @@ This script wraps :class:`transformers.GroundingDinoForObjectDetection` and
 exports it to ONNX with fixed input shapes that are friendly to Ascend GE
 compilation (``--optimize=ascend_oriented``).
 
-The multi-scale deformable attention (MSDA) layer is hot-patched to use
-``F.grid_sample`` instead of the upstream C++ CUDA kernel, so the exported
-ONNX graph contains only standard ops (GridSample) that both ONNX Runtime
-and the MindSpore Lite Ascend converter can execute directly — no post-export
-ONNX graph modification is needed.
+The multi-scale deformable attention (MSDA) layer can be exported in two ways:
+
+- non-fuse: hot-patch MSDA to use ``F.grid_sample`` so the ONNX contains only
+  standard ops (GridSample). This is the compatibility path.
+- fuse: emit ``MultiScaleDeformableAttnFunction`` directly in ONNX via a
+  custom symbolic, so the downstream converter/backend can select the fused
+  MSDA kernel when available.
 """
 
 import argparse
@@ -89,6 +91,75 @@ def msda_forward_pytorch(value, value_spatial_shapes,
     return output.transpose(1, 2).contiguous()
 
 
+def _patch_msda_fusion():
+    """Emit ``MultiScaleDeformableAttnFunction`` in ONNX via a custom symbolic."""
+    from transformers.models.grounding_dino import modeling_grounding_dino as gm
+    from torch.autograd import Function
+    from torch.onnx.symbolic_helper import _get_tensor_dim_size
+
+    class _MSDAFusionFn(Function):
+        """Autograd shim that emits a fused ``MultiScaleDeformableAttnFunction`` op.
+
+        The ``forward`` runs the reference PyTorch implementation so eager outputs
+        stay numerically correct, while ``symbolic`` rewrites the export to a
+        single custom ONNX op that downstream MSDA fusion can match against.
+        """
+
+        @staticmethod
+        def forward(ctx, value, value_spatial_shapes, value_level_start_index,
+                    sampling_locations, attention_weights):
+            del ctx, value_level_start_index
+            return msda_forward_pytorch(value, value_spatial_shapes,
+                                        sampling_locations, attention_weights)
+
+        @staticmethod
+        def symbolic(g, value, value_spatial_shapes, value_level_start_index,
+                     sampling_locations, attention_weights):
+            """Emit the custom MSDA op with an explicit output shape for tracing."""
+            y = g.op(
+                "MultiScaleDeformableAttnFunction",
+                value,
+                value_spatial_shapes,
+                value_level_start_index,
+                sampling_locations,
+                attention_weights,
+                input_names_s=[
+                    "value",
+                    "value_spatial_shapes",
+                    "value_level_start_index",
+                    "sampling_locations",
+                    "attention_weights",
+                ],
+                output_names_s=["output"],
+                type_s="MultiScaleDeformableAttnFunction",
+            )
+
+            value_sizes = value.type().sizes() or []
+            if len(value_sizes) >= 4:
+                bs = value_sizes[0]
+                num_query = _get_tensor_dim_size(sampling_locations, 1) or 0
+                num_heads = value_sizes[2]
+                embed_dims = value_sizes[3]
+                y.setType(value.type().with_sizes(
+                    [bs, num_query, num_heads * embed_dims]
+                ))
+            return y
+
+    def new_forward(self, value, value_spatial_shapes,
+                    value_spatial_shapes_list, level_start_index,
+                    sampling_locations, attention_weights, im2col_step):
+        del self, value_spatial_shapes_list, im2col_step
+        return _MSDAFusionFn.apply(
+            value,
+            value_spatial_shapes,
+            level_start_index,
+            sampling_locations,
+            attention_weights,
+        )
+
+    gm.MultiScaleDeformableAttention.forward = new_forward
+
+
 class GroundingDinoOnnxWrapper(torch.nn.Module):
     """Thin wrapper exposing the detection inputs/outputs as plain tensors.
 
@@ -141,7 +212,10 @@ def _patch_text_mask_generator():
 
 def export_onnx(model_dir: str, output_path: str, opset: int = OPSET_VERSION):
     """Load the HF model and export a single ONNX file at ``output_path``."""
-    _patch_msda_to_grid_sample()
+    if os.environ.get("GROUNDING_DINO_DISABLE_MSDA_FUSION", "0") == "1":
+        _patch_msda_to_grid_sample()
+    else:
+        _patch_msda_fusion()
     _patch_text_mask_generator()
     model = AutoModelForZeroShotObjectDetection.from_pretrained(model_dir)
     model.eval()
@@ -195,12 +269,19 @@ def _parse_args():
         "--name",
         default="grounding_dino_base.onnx",
         help="Output ONNX filename.")
+    parser.add_argument(
+        "--disable-msda-fusion",
+        action="store_true",
+        help="Disable MSDA fusion op emission and export the GridSample path.",
+    )
     return parser.parse_args()
 
 
 def main():
     args = _parse_args()
     output_path = str(Path(args.output_dir) / args.name)
+    if args.disable_msda_fusion:
+        os.environ["GROUNDING_DINO_DISABLE_MSDA_FUSION"] = "1"
     export_onnx(args.model_dir, output_path, opset=args.opset)
 
 
