@@ -32,7 +32,7 @@ int Int32Clip(const int32_t *src, int length, int32_t *dst, int min, int max);
 int LRelu(const float *src, int length, float *dst, float alpha);
 int Sigmoid(const float *src, int length, float *dst);
 int Tanh(const float *src, int length, float *dst);
-int HSigmoid(const float *src, int length, float *dst);
+int HSigmoid(const float *src, int length, float *dst, float alpha, float beta);
 int Swish(const float *src, int length, float *dst);
 int HSwish(const float *src, int length, float *dst);
 int HardTanh(const float *src, int length, float *dst, float min_val, float max_val);

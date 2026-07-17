@@ -61,7 +61,7 @@ int activation_fp32_run(ActivationStruct *activation, int task_id, int count, in
     case ActType_HSwish:
       return HSwish(input + task_id * stride, count, output + task_id * stride);
     case ActType_HSigmoid:
-      return HSigmoid(input + task_id * stride, count, output + task_id * stride);
+      return HSigmoid(input + task_id * stride, count, output + task_id * stride, param->alpha_, param->beta_);
     case ActType_HardTanh:
       return HardTanh(input + task_id * stride, count, output + task_id * stride, param->min_val_, param->max_val_);
     case ActType_Gelu:

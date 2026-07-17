@@ -286,7 +286,8 @@ void NNaclFp32Serializer::CodeStruct(const std::string &name, const GroupNormPar
 }
 void NNaclFp32Serializer::CodeStruct(const std::string &name, const ActivationParameter &activation_parameter) {
   CodeBaseStruct("ActivationParameter", name, activation_parameter.op_parameter_, activation_parameter.type_,
-                 activation_parameter.alpha_, activation_parameter.min_val_, activation_parameter.max_val_);
+                 activation_parameter.alpha_, activation_parameter.min_val_, activation_parameter.max_val_,
+                 activation_parameter.approximate_, activation_parameter.beta_);
 }
 
 void NNaclFp32Serializer::CodeStruct(const std::string &name, const OpParameter &op_param) {

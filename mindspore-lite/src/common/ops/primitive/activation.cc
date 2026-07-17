@@ -43,6 +43,10 @@ void Activation::set_activation_type(const ActivationType &activation_type) {
   (void)this->AddAttr(kActivationType, api::MakeValue(swi));
 }
 
+void Activation::set_approximate(bool approximate) { (void)this->AddAttr(kApproximate, api::MakeValue(approximate)); }
+
+void Activation::set_beta(const float beta) { (void)this->AddAttr(kBeta, api::MakeValue(beta)); }
+
 float Activation::get_alpha() const {
   auto value_ptr = this->GetAttr(kAlpha);
   return GetValue<float>(value_ptr);
@@ -63,20 +67,24 @@ ActivationType Activation::get_activation_type() const {
   return ActivationType(GetValue<int64_t>(value_ptr));
 }
 
-void Activation::set_approximate(bool approximate) { (void)this->AddAttr(kApproximate, api::MakeValue(approximate)); }
-
 bool Activation::get_approximate() const {
   auto value_ptr = this->GetAttr(kApproximate);
   return value_ptr != nullptr && GetValue<bool>(value_ptr);
 }
 
+float Activation::get_beta() const {
+  auto value_ptr = this->GetAttr(kBeta);
+  return GetValue<float>(value_ptr);
+}
+
 void Activation::Init(const float alpha, const float min_val, const float max_val,
-                      const ActivationType &activation_type, bool approximate) {
+                      const ActivationType &activation_type, bool approximate, const float beta) {
   this->set_alpha(alpha);
   this->set_min_val(min_val);
   this->set_max_val(max_val);
   this->set_activation_type(activation_type);
   this->set_approximate(approximate);
+  this->set_beta(beta);
 }
 
 class ActivationInfer : public abstract::OpInferBase {

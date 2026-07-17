@@ -166,10 +166,22 @@ PrimitiveCPtr OnnxHardSigmoidParser::Parse(const onnx::GraphProto &onnx_graph, c
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
   prim->set_activation_type(mindspore::ActivationType::HSIGMOID);
 
+  bool has_alpha = false;
+  bool has_beta = false;
   for (const auto &onnx_node_attr : onnx_node.attribute()) {
     if (onnx_node_attr.name() == kAttrAlpha) {
       prim->set_alpha(onnx_node_attr.f());
+      has_alpha = true;
+    } else if (onnx_node_attr.name() == "beta") {
+      prim->set_beta(onnx_node_attr.f());
+      has_beta = true;
     }
+  }
+  if (!has_alpha) {
+    prim->set_alpha(0.2f);
+  }
+  if (!has_beta) {
+    prim->set_beta(0.5f);
   }
   return prim->GetPrim();
 }

@@ -31,6 +31,7 @@
 using mindspore::ops::kActivationType;
 using mindspore::ops::kAlpha;
 using mindspore::ops::kApproximate;
+using mindspore::ops::kBeta;
 using mindspore::ops::kMaxVal;
 using mindspore::ops::kMinVal;
 using mindspore::ops::kNameActivation;
@@ -83,6 +84,10 @@ OpParameter *PopulateActivationOpParameter(const BaseOperatorPtr &base_operator)
   mindspore::ValuePtr alpha = base_operator->GetPrim()->GetAttr(kAlpha);
   if (alpha != nullptr) {
     param->alpha_ = GetValue<float>(alpha);
+  }
+  mindspore::ValuePtr beta = base_operator->GetPrim()->GetAttr(kBeta);
+  if (beta != nullptr) {
+    param->beta_ = GetValue<float>(beta);
   }
   mindspore::ValuePtr min_val = base_operator->GetPrim()->GetAttr(kMinVal);
   if (min_val != nullptr) {
