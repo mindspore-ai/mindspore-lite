@@ -153,3 +153,5 @@ If you wish to further learn and use MindSpore Lite, please refer to the followi
 - [Mindyolo](https://atomgit.com/mindspore/mindyolo)
 
 - [OpenHarmony](https://atomgit.com/openharmony/third_party_mindspore)
+
+- [GraphEngine](https://gitcode.com/cann/ge)
