@@ -154,3 +154,5 @@ MindSpore Lite针对AIGC、语音类算法以及CV类模型推理，实现推理
 - [Mindyolo](https://atomgit.com/mindspore/mindyolo)
 
 - [OpenHarmony](https://atomgit.com/openharmony/third_party_mindspore)
+
+- [GraphEngine](https://gitcode.com/cann/ge)
