@@ -2,7 +2,8 @@
 
 本教程介绍如何将 BEVDet 完整模型（含自定义 BEVPoolV3 算子）导出为 ONNX 格式，并转换为 MindSpore Lite MindIR 格式进行推理部署。
 
-> **注意：** 导出的 ONNX 模型中包含自定义算子 `Custom::BEVPoolV3`，因此**不支持 ONNX Runtime 推理**。需要通过 MindSpore Lite 转换为 MindIR 格式后在 Ascend NPU 上运行。
+> **注意：**
+> 1. 导出的 ONNX 模型中包含自定义算子 `BEVPoolV3`，因此**不支持 ONNX Runtime 推理**。需要通过 MindSpore Lite 转换为 MindIR 格式后在 Ascend NPU 上运行。`BEVPoolV3` 算子的安装和使能可以[参考链接](https://atomgit.com/Ascend/DrivingSDK/blob/master/README.md)。
 
 ## 1. 环境准备
 
@@ -65,21 +66,26 @@ pip install -v -e . --no-build-isolation
 | -------------------- | ---------------------------- |
 | Image Backbone       | ResNet-50，输入6张相机图像           |
 | Image Neck           | CustomFPN，融合多尺度特征            |
-| LSS View Transformer | depth\_net + CustomBEVPoolV3 |
-| BEV Encoder          | CustomResNet + FPN\_LSS      |
+| LSS View Transformer | depth_net + CustomBEVPoolV3 |
+| BEV Encoder          | CustomResNet + FPN_LSS      |
 | Detection Head       | CenterHead，输出10类3D检测结果       |
 
 ### 输入输出
 
-| 类型 | 名称      | Shape                    | 说明                 |
-| -- | ------- | ------------------------ | ------------------ |
-| 输入 | img     | \[batch, 6, 3, 256, 704] | 6张相机图像，每张256x704像素 |
-| 输出 | reg     | \[batch, 2, H/2, W/2]    | 中心点偏移 (x, y)       |
-| 输出 | height  | \[batch, 1, H/2, W/2]    | Z 坐标               |
-| 输出 | dim     | \[batch, 3, H/2, W/2]    | 3D 尺寸 (长, 宽, 高)    |
-| 输出 | rot     | \[batch, 2, H/2, W/2]    | 偏航角 (sin, cos)     |
-| 输出 | vel     | \[batch, 2, H/2, W/2]    | 速度 (vx, vy)        |
-| 输出 | heatmap | \[batch, 10, H/2, W/2]   | 10 类热力图            |
+| 类型 | 名称           | Shape                    | 说明                                       |
+| -- | ------------ | ------------------------ | ---------------------------------------- |
+| 输入 | img          | [batch, 6, 3, 256, 704] | 6 张相机图像，每张 256x704 像素                    |
+| 输入 | ranks_depth  | [N_Points]              | 每个有效点在 `depth.reshape(-1)` 中的扁平索引（host 侧算） |
+| 输入 | ranks_feat   | [N_Points]              | 每个有效点在 `feat.reshape(-1, C)` 中的扁平索引（host 侧算） |
+| 输入 | ranks_bev    | [N_Points]              | 每个有效点在 BEV 输出中的扁平索引（host 侧算）            |
+| 输出 | reg          | [batch, 2, H/2, W/2]    | 中心点偏移 (x, y)                             |
+| 输出 | height       | [batch, 1, H/2, W/2]    | Z 坐标                                     |
+| 输出 | dim          | [batch, 3, H/2, W/2]    | 3D 尺寸 (长, 宽, 高)                          |
+| 输出 | rot          | [batch, 2, H/2, W/2]    | 偏航角 (sin, cos)                           |
+| 输出 | vel          | [batch, 2, H/2, W/2]    | 速度 (vx, vy)                              |
+| 输出 | heatmap      | [batch, 10, H/2, W/2]   | 10 类热力图                                  |
+
+> **N_Points** 是动态维度（约 20 万，随相机参数变化），通过 `dynamic_axes` 标记为 `n_points`。ranks 三个张量共享同一个 N_Points 维度。
 
 ### 检测目标类别（10类）
 
@@ -87,92 +93,113 @@ pip install -v -e . --no-build-isolation
 | -- | --------------------- | -- | ------------- |
 | 0  | car                   | 5  | barrier       |
 | 1  | truck                 | 6  | motorcycle    |
-| 2  | construction\_vehicle | 7  | bicycle       |
+| 2  | construction_vehicle | 7  | bicycle       |
 | 3  | bus                   | 8  | pedestrian    |
-| 4  | trailer               | 9  | traffic\_cone |
+| 4  | trailer               | 9  | traffic_cone |
 
 ***
 
 ## 3. 自定义 BEVPoolV3 算子
 
-原始 BEVDet 使用 CUDA 自定义算子 `TRTBEVPoolv2`，在 CPU 环境下无法使用。本教程使用 `CustomBEVPoolV3` 昇腾融合算子替代，其定义在 `bev_pool_v3_ops.py` 中：
+原始 BEVDet 使用 CUDA 自定义算子 `TRTBEVPoolv2`，在 CPU/Ascend 环境下无法使用。本教程使用 `BEVPoolV3` 昇腾融合算子替代，定义在 `export_bevdet_onnx.py` 中。
 
 ### 算子接口
 
 ```python
 class CustomBEVPoolV3(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, depth, feat, ranks_bev, with_depth, b, d, h, w, c):
+    def forward(ctx, depth, feat, ranks_depth, ranks_feat, ranks_bev,
+                with_depth, b, d, h, w, c):
+        # 纯 torch 实现：先按 ranks_bev 排序，用 cumsum 分段求和，
+        # 数学等价于 CUDA bev_pool_v2 / QuickCumsumCuda
+        B, Z, Y, X, C = b, d, h, w, c
+        depth_flat = depth.reshape(-1)
+        feat_flat = feat.reshape(-1, C)
+        contrib = depth_flat[ranks_depth.long()].unsqueeze(-1) * \
+            feat_flat[ranks_feat.long()]
+
+        sorted_idx = torch.argsort(ranks_bev)
+        sorted_ranks = ranks_bev[sorted_idx].long()
+        sorted_contrib = contrib[sorted_idx]
+
+        N = sorted_contrib.shape[0]
+        cumsum = sorted_contrib.cumsum(dim=0)
+        cumsum_padded = torch.cat(
+            [torch.zeros(1, C, dtype=cumsum.dtype), cumsum], dim=0
+        )
+        changes = sorted_ranks[1:] != sorted_ranks[:-1]
+        starts = torch.cat([torch.zeros(1, dtype=torch.long),
+                            torch.nonzero(changes).squeeze(-1) + 1])
+        ends = torch.cat([starts[1:], torch.tensor([N])])
+
+        seg_sums = cumsum_padded[ends] - cumsum_padded[starts]
+        unique_ranks = sorted_ranks[starts]
+
+        out = torch.zeros(B * Z * Y * X, C, device=depth.device, dtype=depth.dtype)
+        out.scatter_(0, unique_ranks.unsqueeze(-1).expand(-1, C), seg_sums)
+        return out.view(B, Z, Y, X, C).contiguous()
 
     @staticmethod
-    def symbolic(g, depth, feat, ranks_bev, with_depth, b, d, h, w, c):
-        return g.op("Custom", depth, feat, ranks_bev,
+    def symbolic(g, depth, feat, ranks_depth, ranks_feat, ranks_bev,
+                 with_depth, b, d, h, w, c):
+        return g.op("Custom", depth, feat, ranks_depth, ranks_feat, ranks_bev,
                     with_depth_s=with_depth, b_i=b, d_i=d, h_i=h, w_i=w, c_i=c,
                     input_names_s=["depth", "feat", "ranks_depth", "ranks_feat", "ranks_bev"],
                     optional_input_names_s=["depth", "ranks_depth", "ranks_feat"],
                     type_s="BEVPoolV3",
-                    input_index_i=[0, 1, 4],
+                    input_index_i=[0, 1, 2, 3, 4],
                     output_names_s=["out"])
 ```
 
 ### 关键说明
 
-- `g.op("Custom", ...)` 使用自定义算子域
-- `ranks_depth`、`ranks_feat` 作为可选输入（optional\_input\_names\_s）
-- `input_index_i=[0, 1, 4]` 对应 depth、feat、ranks\_bev 三个 Tensor 输入
-- ONNX 导出时使用 `operator_export_type=ONNX_FALLTHROUGH` 跳过 Custom 算子注册检查
+- **forward 按 ranks_bev 排序后分段求和**：数学等价于原版 CUDA `bev_pool_v2`，在 PyTorch eager 下也能跑出正确数值（可用于精度对齐验证）
+- **symbolic 注册为 `BEVPoolV3`**：ONNX 导出时该节点是 opaque，实际计算由 DrivingSDK 仓侧注册的 BEVPoolV3 C++ 算子完成
+- **`input_index_i=[0, 1, 2, 3, 4]`**：部署侧 C++ 算子必须接受 **5 个 Tensor 输入**（depth, feat, ranks_depth, ranks_feat, ranks_bev）。
+- **ONNX 导出使用 `ONNX_FALLTHROUGH`** 跳过 Custom 算子注册检查
 
-### 2D 输入接口
+### 5D 输入接口
 
-BEVPoolV3 算子接受 2D 张量作为输入，这些张量是从原始的 5D 张量通过索引展平得到的：
+Custom BEVPoolV3 直接接收 5D 张量 + 3 个 ranks 索引：
 
-**原始 5D 张量：**
+| 张量           | Shape                       | 说明                                   |
+| ------------ | --------------------------- | ------------------------------------ |
+| depth        | [B, N, D, H_feat, W_feat]  | softmax 后的深度概率分布                     |
+| feat         | [B, N, H_feat, W_feat, C]  | 特征向量（已 permute 把 C 放最后一维）            |
+| ranks_depth  | [N_Points] int             | 每个有效点在 `depth.reshape(-1)` 中的扁平索引   |
+| ranks_feat   | [N_Points] int             | 每个有效点在 `feat.reshape(-1, C)` 中的扁平索引 |
+| ranks_bev    | [N_Points] int             | 每个有效点在 BEV 输出中的扁平索引                  |
 
-- `depth_5d`: `[B, N, D_depth, H_feat, W_feat]` = `[1, 6, 59, 16, 44]`
-- `tran_feat_5d`: `[B, N, H_feat, W_feat, C]` = `[1, 6, 16, 44, 64]`
+**实际 Shape**（bevdet-r50，B=1）：
 
-**展平为 2D 张量：**
+| 张量         | Shape              |
+| ---------- | ------------------ |
+| depth      | [1, 6, 59, 16, 44] |
+| feat       | [1, 6, 16, 44, 64] |
+| ranks_*    | [N_Points]（约 20 万，动态） |
 
-```python
-# depth 展平
-depth_flat = depth_5d.reshape(-1)  # [B*N*D_depth*H_feat*W_feat]
-base_idx = (ranks_depth.long() // D) * D
-depth_2d = torch.stack([torch.gather(depth_flat, 0, base_idx + d) for d in range(D)], dim=1)
-# depth_2d.shape: [N_RANKS, D_depth] = [120, 59]
-
-# feat 展平
-feat_flat = tran_feat_5d.reshape(-1, C)  # [B*N*H_feat*W_feat, C]
-feat_2d = torch.gather(feat_flat, 0, ranks_feat.long().unsqueeze(-1).expand(-1, C))
-# feat_2d.shape: [N_RANKS, C] = [120, 64]
-```
-
-**实际输入 Shape（以当前配置为例）：**
-
-| 张量         | Shape           | 说明               |
-| ---------- | --------------- | ---------------- |
-| depth\_2d  | \[N\_RANKS, 59] | 每个有效点的所有深度bin概率值 |
-| feat\_2d   | \[N\_RANKS, 64] | 每个有效点的所有通道特征值    |
-| ranks\_bev | \[N\_RANKS]     | 每个有效点在BEV空间中的索引  |
-
-其中 N\_RANKS ≈ 120（根据相机内外参和BEV网格配置计算得出的有效点数）。
+> **ranks 是 ONNX 的动态输入**（不再是固化的 buffer），由 host 侧通过 `model.get_bev_pool_input(camera_params)` 实时计算。一份 ONNX 适配任意相机布局/车型。
 
 ### 参数含义
 
-| 参数 | 说明                   | 默认值                |
-| -- | -------------------- | ------------------ |
-| b  | Batch size           | int(B)，动态获取        |
-| d  | BEV空间Z轴高度维度 (bev\_z) | 1（从grid\_config计算） |
-| h  | BEV Height           | 128                |
-| w  | BEV Width            | 128                |
-| c  | BEV Channels         | 64                 |
+| 参数          | 说明                   | 取值                                   |
+| ----------- | -------------------- | ------------------------------------ |
+| b           | Batch size           | int(B)，trace 时固化为 1（已知限制）             |
+| d           | BEV Z 维大小 (bev_z)   | 1（grid_config['z'] 计算）             |
+| h           | BEV Y 维大小 (bev_h)   | 128                                  |
+| w           | BEV X 维大小 (bev_w)   | 128                                  |
+| c           | BEV 通道数 (bev_c)     | 64                                   |
+| with_depth  | 是否传入depth张量            | "true"                               |
 
-其中 `h=128`, `w=128` 来源于 `grid_config` 的 x,y 范围计算：
+`d/h/w/c` 来源于 `grid_config` 和模型架构（**与输入数据、相机参数无关，是模型常量**）：
 
 ```python
 grid_config = {
-    'x': [-51.2, 51.2, 0.8],   # (51.2 - (-51.2)) / 0.8 = 128
-    'y': [-51.2, 51.2, 0.8],   # (51.2 - (-51.2)) / 0.8 = 128
+    'x': [-51.2, 51.2, 0.8],   # (51.2 - (-51.2)) / 0.8 = 128  → bev_w
+    'y': [-51.2, 51.2, 0.8],   # 128                              → bev_h
+    'z': [-5, 3, 8],           # (3 - (-5)) / 8 = 1              → bev_z
 }
+numC_Trans = 64                                                  → bev_c
 ```
 
 ***
@@ -183,41 +210,40 @@ grid_config = {
 
 ```bash
 cd examples/base_models/bevdet
+mkdir bevdet_onnx
 
 python export_bevdet_onnx.py \
   --config BEVDet/configs/bevdet/bevdet-r50.py \
   --checkpoint bevdet-dev2.1/bevdet-r50.pth \
   --device cpu \
-  --output bevdet_onnx/bevdet_r50_all.onnx
+  --output bevdet_onnx/bevdet_r50.onnx
 ```
 
 ### 参数说明
 
-| 参数             | 说明            | 默认值                                   |
-| -------------- | ------------- | ------------------------------------- |
-| `--config`     | BEVDet 配置文件路径 | `BEVDet/configs/bevdet/bevdet-r50.py` |
-| `--checkpoint` | 权重文件路径        | `bevdet-dev2.1/bevdet-r50.pth`        |
-| `--device`     | 设备类型          | `cpu`                                 |
-| `--output`     | 输出 ONNX 路径    | `bevdet_onnx/bevdet_r50_all.onnx`     |
-| `--opset`      | ONNX opset 版本 | `17`                                  |
-| `--ncams`      | 相机数量          | `6`                                   |
-| `--img_h`      | 图像高度          | `256`                                 |
-| `--img_w`      | 图像宽度          | `704`                                 |
+| 参数             | 说明            | 默认值                                       |
+| -------------- | ------------- | ----------------------------------------- |
+| `--config`     | BEVDet 配置文件路径 | `BEVDet/configs/bevdet/bevdet-r50.py`     |
+| `--checkpoint` | 权重文件路径        | `bevdet-dev2.1/bevdet-r50.pth`            |
+| `--device`     | 设备类型          | `cpu`                                     |
+| `--output`     | 输出 ONNX 路径    | `bevdet_onnx/bevdet_r50.onnx` |
+| `--opset`      | ONNX opset 版本 | `17`                                      |
 
 > **注意：** [BEVDet代码仓和权重下载链接](https://github.com/HuangJunJie2017/BEVDet)
 
 ### 关键技术细节
 
-1. **禁用 with\_cp**：ResNet-50 的梯度检查点 (`with_cp=True`) 不兼容 ONNX 导出，需要在构建模型时设为 `False`
-2. **跳过 ONNX checker**：由于 Custom 算子不在标准 ONNX opset 中，使用 `operator_export_type=OperatorExportTypes.ONNX_FALLTHROUGH` 跳过注册检查
-3. **预计算 BEV Pool 索引**：通过 `model.get_bev_pool_input()` 预计算 `ranks_bev`、`ranks_depth`、`ranks_feat`、`interval_starts`、`interval_lengths`
+1. **禁用 with_cp**：ResNet-50 的梯度检查点 (`with_cp=True`) 不兼容 ONNX 导出，构建模型时设为 `False`
+2. **跳过 ONNX checker**：Custom 算子不在标准 ONNX opset 中，使用 `operator_export_type=OperatorExportTypes.ONNX_FALLTHROUGH` 跳过注册检查
+3. **ranks 作为动态输入导出**：导出阶段通过 `load_first_sample()` 加载一条真实 NuScenes 数据作为 trace 的形状示例；导出后 ranks 成为 ONNX 的 4 个动态输入之一（img + 3 ranks），不再固化为 buffer
+4. **collapse_z 对齐 BEVDet**：用 `torch.cat(x.unbind(dim=2), 1)` 替代 `view`，保证 Z>1 时通道顺序（Z 外 C 内）和 BEVDet 仓一致
 
 ### 产出
 
 ```log
 bevdet/
 ├── bevdet_onnx/
-│   └── bevdet_r50_all.onnx         # ONNX 模型 (~169MB)
+│   └── bevdet_r50.onnx    # ONNX 模型（含 BEVPoolV3 节点）
 ├── bevdet-dev2.1/
 │   └── bevdet-r50.pth              # 原始权重文件
 └── BEVDet/                         # BEVDet 源码
@@ -229,11 +255,14 @@ bevdet/
 
 ### 配置文件
 
-创建 `config.ini`：
+创建 `configs/config.ini`：
 
 ```ini
 [acl_init_options]
 ge.exec.precision_mode=force_fp32
+[acl_build_options]
+input_format="ND"
+input_shape="img:1,6,3,256,704;ranks_depth:-1;ranks_feat:-1;ranks_bev:-1"
 ```
 
 ### 转换命令
@@ -242,10 +271,10 @@ ge.exec.precision_mode=force_fp32
 Converter=mindspore-lite-2.9.0-linux-aarch64/tools/converter/converter/converter_lite
 
 $Converter --fmk=ONNX \
-  --modelFile=./bevdet_onnx/bevdet_r50_all.onnx \
-  --outputFile=./bevdet_onnx/bevdet_r50_all_ascend \
+  --modelFile=./bevdet_onnx/bevdet_r50.onnx \
+  --outputFile=./bevdet_onnx/bevdet_r50_ascend \
   --optimize=ascend_oriented \
-  --configFile=config.ini
+  --configFile=./configs/config.ini
 ```
 
 ### 参数说明
@@ -262,86 +291,149 @@ $Converter --fmk=ONNX \
 
 ```log
 bevdet_onnx/
-├── bevdet_r50_all.onnx                     # ONNX 模型
-└── bevdet_r50_all_ascend.mindir            # Ascend 优化版 MindIR
+├── bevdet_r50.onnx                     # ONNX 模型
+└── bevdet_r50_ascend.mindir            # Ascend 优化版 MindIR
 ```
 
 ***
 
 ## 6. MindSpore Lite 推理
 
-### 使用随机输入测试（本教程使用随机数测试）
+推理脚本 `infer_bevdet_mindir.py` 是**自包含的部署脚本**，包含：相机参数解析（支持 NuScenes pkl 四元数 / 矩阵两种格式自动探测）、完整 BEVDet 测试模式图像预处理（PIL + ImageNet 归一化 + post_rot/post_tran）、host 侧 ranks 计算、MindSpore Lite 推理 + 性能 benchmark。
 
-```bash
-cd examples/base_models/bevdet
+### 推理流程
 
-python mindir_infer_bevdet.py \
-  --model bevdet_onnx/bevdet_r50_all_ascend.mindir \
-  --device ascend
+```log
+[NuScenes pkl + 6 张图像]
+        ↓
+1. 构建 BEVDet 模型（用于算 ranks）
+2. 加载 NuScenes 样本：
+   ├── 6 相机 PIL 加载 + resize/crop + ImageNet norm → imgs
+   ├── pkl 自动探测（四元数/矩阵） → sensor2egos, ego2globals
+   ├── cam_intrinsic → intrins
+   └── post_rot/post_tran 计算
+3. compute_ranks：model.get_bev_pool_input(camera_params)
+                                  → ranks_depth, ranks_feat, ranks_bev
+4. MindSpore Lite 推理（4 个输入：img + 3 ranks）
+                                  → 6 个检测头输出
 ```
 
 ### 使用 NuScenes 验证集真实数据
 
 ```bash
-python mindir_infer_bevdet.py \
-  --model bevdet_onnx/bevdet_r50_all_ascend.mindir \
+cd examples/base_models/bevdet
+cd BEVDet
+# # 从 NuScenes 官网下载开源数据集 Full dataset (v1.0) Mini
+tar -zxvf v1.0-mini.tgz
+mv v1.0-mini ./data/nuscenes
+# # 运行 create_data_bevdet.py 之前需要修改 tools/create_data_bevdet.py 的 main 函数中 version = 'v1.0-mini'
+python tools/create_data_bevdet.py
+cd ..
+ln -s BEVDet/data data
+
+python infer_bevdet_mindir.py \
+  --model bevdet_onnx/bevdet_r50_ascend.mindir \
+  --config BEVDet/configs/bevdet/bevdet-r50.py \
+  --checkpoint bevdet-dev2.1/bevdet-r50.pth \
   --device ascend \
   --ann-file data/nuscenes/bevdetv3-nuscenes_infos_val.pkl \
-  --data-root data/nuscenes/ \
-  --sample-idx 0
+  --data-root . \
+  --sample-idx 0 \
+  --postproc
 ```
 
 ### 参数说明
 
-| 参数             | 说明              | 默认值            |
-| -------------- | --------------- | -------------- |
-| `--model`      | MindIR 模型路径     | 必填             |
-| `--device`     | 设备类型            | `cpu`          |
-| `--device-id`  | Ascend 设备ID     | `0`            |
-| `--batch`      | 批大小             | `1`            |
-| `--warmup`     | 预热次数            | `5`            |
-| `--runs`       | 测试次数            | `50`           |
-| `--ann-file`   | NuScenes 标注文件路径 | `None`（使用随机输入） |
-| `--data-root`  | NuScenes 数据根目录  | `None`         |
-| `--sample-idx` | 样本索引            | `0`            |
+| 参数             | 说明                                | 默认值                                       |
+| -------------- | --------------------------------- | ----------------------------------------- |
+| `--model`      | MindIR 模型路径                       | 必填                                        |
+| `--config`     | BEVDet 配置（用于 host 侧构建模型算 ranks）   | `BEVDet/configs/bevdet/bevdet-r50.py`     |
+| `--checkpoint` | BEVDet 权重（同上）                     | `bevdet-dev2.1/bevdet-r50.pth`            |
+| `--device`     | 设备类型                              | `ascend`                                  |
+| `--device-id`  | Ascend 设备 ID                      | `0`                                       |
+| `--batch`      | 批大小（仅随机模式生效）                      | `1`                                       |
+| `--num-cams`   | 相机数量                              | `6`                                       |
+| `--imH`        | 图像高度                              | `256`                                     |
+| `--imW`        | 图像宽度                              | `704`                                     |
+| `--seed`       | 随机输入种子（仅随机模式生效）                   | `1024`                                    |
+| `--warmup`     | 预热次数                              | `5`                                       |
+| `--runs`       | 测试次数                              | `50`                                      |
+| `--ann-file`   | NuScenes 标注文件路径                   | `None`（使用随机输入）                            |
+| `--data-root`  | NuScenes 数据根目录                    | `None`                                    |
+| `--sample-idx` | 样本索引                              | `0`                                       |
+| `--postproc`   | 启用后处理解码（result_deserialize → get_bboxes → bbox3d2result） | `False`（不启用） |
 
-### 执行日志（随机输入数据）
+> **注意：**
+> bevdetv3-nuscenes_infos_val.pkl 数据集是由 [NuScenes 开源数据集 Full dataset (v1.0) Mini](https://www.nuscenes.org/nuscenes#download) 经过 BEVDet 代码仓中步骤 step 3. 处理得到。
+
+### 执行日志（NuScenes 真实数据）
+
+1、使用 NuScenes 验证集 sample 0 的实测结果：
 
 ```log
-=== BEVDet All-in-One MindIR Inference ===
-Model: bevdet_onnx/bevdet_r50_all_ascend.mindir
-Device: ascend
-Using random input for testing
-Input shape: (1, 6, 3, 256, 704)
-Seed: 1024
+=== BEVDet MindIR Inference ===
+  Model:      bevdet_r50_ascend.mindir
+  Config:     BEVDet/configs/bevdet/bevdet-r50.py
+  Checkpoint: bevdet-dev2.1/bevdet-r50.pth
+  Device:     ascend
+  Data mode:  NuScenes (ann_file=data/nuscenes/bevdetv3-nuscenes_infos_val.pkl, sample_idx=0)
 
---- Performance Benchmark (50 runs, warmup=5) ---
-  Mean latency: 11.18 ms
-  Min latency:  11.14 ms
-  Max latency:  11.61 ms
+[1/4] Building BEVDet model (for ranks + postproc) ...
+  task_heads: 1
+[2/4] Preparing inputs ...
+  Mode:       NuScenes
+  imgs shape: (1, 6, 3, 256, 704)
+  Sample idx: 0
+[3/4] Computing ranks from camera params ...
+  ranks N_Points: 179832
+[4/4] MindSpore Lite inference (warmup=5, runs=50) ...
+  Mean latency: 16.69 ms
+  Min latency:  16.49 ms
+  Max latency:  18.04 ms
 
---- Detection Output Shapes ---
-  reg: (1, 2, 128, 64)
-  height: (1, 1, 128, 64)
-  dim: (1, 3, 128, 64)
-  rot: (1, 2, 128, 64)
-  vel: (1, 2, 128, 64)
-  heatmap: (1, 10, 128, 64)
+--- Raw Output Shapes ---
+  task0_reg: (1, 2, 128, 128)
+  task0_height: (1, 1, 128, 128)
+  task0_dim: (1, 3, 128, 128)
+  task0_rot: (1, 2, 128, 128)
+  task0_vel: (1, 2, 128, 128)
+  task0_heatmap: (1, 10, 128, 128)
+
+--- Postprocessing Results ---
+  Task 0: 387 boxes
+    [pedestrian] score=1.000
+    [pedestrian] score=1.000
+    [pedestrian] score=0.981
+    [pedestrian] score=0.976
+    [pedestrian] score=0.969
 ```
+
+2、整个nuscenes mini数据集Ascend与GPU的精度对比结果：
+
+| 设备(模型类型)            | Ascend(mindir model) | GPU(TRT model) |
+| ------------- | --------- | --------- |
+| mAp | 0.2735     | 0.2805     |
+| mATE | 0.8068     | 0.8022     |
+| mASE | 0.4763     | 0.4738    |
+| mAOE | 0.7853     | 0.8016      |
+| mAVE | 1.1006     | 1.0282     |
+| mAAE | 0.3994    | 0.3967    |
+| NDS | 0.2900     | 0.2928      |
+
+> **注意**：当前MindIR模型在Atlas 800I A2服务器上运行nuscenes mini的81个数据上输出的误差指标相比于GPU会劣化一些。
 
 ***
 
 ## 7. 性能数据
 
-### 性能测试结果（Atlas 800 A2（313T）、Atals 300I Duo）
+### 性能测试结果
 
 测试模型：BEVDet 整网\
-测试条件：输入形状 (1, 6, 3, 256, 704)，固定随机种子 1024，50 次运行取平均
+测试条件：输入形状 (1, 6, 3, 256, 704)，NuScenes 验证集真实数据 sample_idx=0，50 次运行取平均
 
-| 设备                      | 平均延迟 (ms) |
-| ----------------------- | --------- |
-| Atlas 800 A2（313T） | 11.18       |
-| Atals 300I Duo | 18.28       |
+| 设备            | 平均延迟 (ms) | 最小延迟 (ms) | 最大延迟 (ms) |
+| ------------- | --------- | --------- | --------- |
+| Atlas 800I A2 | 16.69     | 16.49     | 18.04     |
 
 ***
 
@@ -357,7 +449,7 @@ onnxruntime.capi.onnxruntime_pybind11_state.InvalidGraph:
 ```
 
 **原因：**
-导出的 ONNX 模型中包含自定义算子 `Custom::BEVPoolV3`，ONNX Runtime 无法识别该算子。
+导出的 ONNX 模型中包含自定义算子 `BEVPoolV3`，ONNX Runtime 无法识别该算子。
 
 **解决方案：**
 需要通过 MindSpore Lite 的 `converter_lite` 工具将 ONNX 模型转换为 MindIR 格式，然后在 Ascend NPU 上运行。
@@ -459,6 +551,7 @@ ext_modules=[],  # 移除 CUDA 扩展
 - [BEVDet 项目](https://github.com/HuangJunJie2017/BEVDet)
 - [mmdet3d 文档](https://mmdetection3d.readthedocs.io/)
 - [CANN 文档](https://support.huaweicloud.com/cann/index.html)
+- [NuScenes 数据集下载](https://www.nuscenes.org/nuscenes#download)
 
 ***
 
