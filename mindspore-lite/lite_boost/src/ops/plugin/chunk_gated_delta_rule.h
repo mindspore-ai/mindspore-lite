@@ -16,20 +16,25 @@
 
 /**
  * @file chunk_gated_delta_rule.h
- * @brief ChunkGatedDeltaRule operator — CANN aclnn-backed chunked (prefill) linear attention.
+ * @brief ChunkGatedDeltaRule operator — CANN aclnn-backed chunked (prefill) Gated Delta Rule.
  *
- * Wraps the AscendC `aclnnChunkGatedDeltaRule` for parallel chunk-level computation of the
- * Gated Delta Rule (the prefill counterpart of the token-by-token recurrent op). Inputs use
- * TND (Time-first) layout; the Python binding handles BNSD<->TND conversion.
+ * Wraps the AscendC `aclnnChunkGatedDeltaRule` shipped under ascend_a2 (ascend910b). The op
+ * implements the chunked Gated Delta Rule (the prefill counterpart of the token-by-token
+ * recurrent op). Interface mirrors the ascend_a2 op prototype verbatim (TND layout):
  *
- * TND layout:
- *   query         [T, Hqk, Dk]      value         [T, Hv, Dv]
- *   key           [T, Hqk, Dk]      g             [T, Hv]          (float16, < 0)
- *   beta          [T, Hv]           initial_state [B, Hv, Dv, Dk]  (CANN: Dv first)
- *   cu_seqlens    [B+1] (int32)     ssm_state_indices [B] (int32)
- * Outputs:
- *   out           [T, Hv, Dv]       final_state   [B, Hv, Dv, Dk]
- * Attrs: chunk_size (int, default 64), scale_value (float, default 1/sqrt(Dk))
+ *   query             [T, Nk, Dk]   bf16
+ *   key               [T, Nk, Dk]   bf16
+ *   value             [T, Nv, Dv]   bf16
+ *   beta              [T, Nv]       bf16
+ *   initial_state     [B, Nv, Dv, Dk]  bf16   (Dv-first, matches op storage)
+ *   actual_seq_lengths [B]          int32   (T = sum(actual_seq_lengths))
+ *   g (optional)      [T, Nv]       float32 (< 0); absent -> no decay gate (hasGamma=0)
+ *   out               [T, Nv, Dv]   bf16
+ *   final_state       [B, Nv, Dv, Dk] bf16
+ *   attr scale_value  float (default 1.0)
+ *
+ * The Python binding handles BNSD<->TND conversion and the (Dk,Dv)<->(Dv,Dk) state transpose.
+ * Targets ascend910b only — the op-def is single-SoC and tiling rejects fp16 / FP32-state.
  */
 
 #ifndef LITE_BOOST_OPS_PLUGIN_CHUNK_GATED_DELTA_RULE_H_
@@ -37,14 +42,21 @@
 
 #include <tuple>
 #include "ATen/Tensor.h"
+#include "c10/util/Optional.h"
 
 /**
- * @brief NPU implementation of ChunkGatedDeltaRule.
- * @returns (out [T,Hv,Dv], final_state [B,Hv,Dv,Dk]) — both float16.
+ * @brief NPU implementation of ChunkGatedDeltaRule (ascend910b / ascend_a2 op spec).
+ *
+ * Tensors are passed in TND layout (the Python binding converts from BNSD). `g` is optional:
+ * pass c10::nullopt (or an empty at::Tensor) to take the no-decay-gate path.
+ *
+ * @returns (out [T,Nv,Dv] bf16, final_state [B,Nv,Dv,Dk] bf16)
  */
-std::tuple<at::Tensor, at::Tensor> ChunkGatedDeltaRuleLiteBoostImplNPU(
-  const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &g, const at::Tensor &beta,
-  const at::Tensor &initial_state, const at::Tensor &cu_seqlens, const at::Tensor &ssm_state_indices,
-  int64_t chunk_size, double scale_value);
+std::tuple<at::Tensor, at::Tensor> ChunkGatedDeltaRuleLiteBoostImplNPU(const at::Tensor &query, const at::Tensor &key,
+                                                                       const at::Tensor &value, const at::Tensor &beta,
+                                                                       const at::Tensor &initial_state,
+                                                                       const at::Tensor &actual_seq_lengths,
+                                                                       const c10::optional<at::Tensor> &g,
+                                                                       double scale_value);
 
 #endif  // LITE_BOOST_OPS_PLUGIN_CHUNK_GATED_DELTA_RULE_H_

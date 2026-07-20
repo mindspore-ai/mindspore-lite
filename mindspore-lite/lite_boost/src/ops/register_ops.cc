@@ -60,18 +60,17 @@ TORCH_LIBRARY(lite_boost, m) {
     ) -> (Tensor, Tensor)
   )str");
 
-  // ChunkGatedDeltaRule (prefill / chunk-level)
+  // ChunkGatedDeltaRule (prefill / chunk-level) — ascend_a2 (ascend910b) op spec.
+  // TND layout; bf16 q/k/v/beta/state, float32 g (optional), int32 actual_seq_lengths.
   m.def(R"str(
     chunk_gated_delta_rule(
       Tensor query,
       Tensor key,
       Tensor value,
-      Tensor g,
       Tensor beta,
       Tensor initial_state,
-      Tensor cu_seqlens,
-      Tensor ssm_state_indices,
-      int chunk_size=64,
+      Tensor actual_seq_lengths,
+      Tensor? g=None,
       float scale_value=1.0
     ) -> (Tensor, Tensor)
   )str");
