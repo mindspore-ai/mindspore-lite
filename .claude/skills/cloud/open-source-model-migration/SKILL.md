@@ -103,6 +103,7 @@ description: 把开源算法模型适配到 MindSpore Lite 部署管线：按网
 - 显式指定 `opset_version`（优先 14/17/18，结合转换器能力）
 - `dynamic_axes` 覆盖 batch 与核心动态维度
 - 推理模式：`eval()` + `torch.no_grad()`
+- 如涉及自定义（Custom）算子接入，必须在导出阶段通过 torch 自定义算子（`torch.autograd.Function` + `symbolic()` 或 `torch.onnx.register_custom_op_symbolic`）直接导出 ONNX 中的 Custom 节点；禁止“先导出普通 ONNX，再通过 onnx.load/graph.node 遍历把节点替换成 Custom”这种后处理方案
 
 ### 2.2 导出器选择
 
