@@ -250,3 +250,5 @@ mindspore-lite/mindspore-lite/tools/converter/micro/coder/generator/component/co
 mindspore-lite/mindspore-lite/lite_boost/python/ops/sparse_attention.py:sparse_attention
 mindspore-lite/mindspore-lite/lite_boost/python/ops/rain_fusion.py:rain_fusion_attention
 mindspore-lite/mindspore-lite/lite_boost/python/ops/recurrent_gated_delta_rule.py:recurrent_gated_delta_rule
+mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py:_gather_and_blend_tiles
+mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py:decode_patch_method

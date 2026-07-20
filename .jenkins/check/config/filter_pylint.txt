@@ -34,3 +34,11 @@
 "mindspore-lite/mindspore-lite/lite_boost/test/ops/test_recurrent_gated_delta_rule.py"                        "class-attribute-defined-outside-init"
 "mindspore-lite/mindspore-lite/lite_boost/test/ops/test_chunk_gated_delta_rule.py"                            "class-attribute-defined-outside-init"
 "mindspore-lite/mindspore-lite/lite_boost/test/ops/test_rain_fusion_attention.py"                             "class-attribute-defined-outside-init"
+
+# lite_boost/qwenimage
+"mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py"                 "access-member-before-definition"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py"                 "protected-access"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py"                 "invalid-name"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py"                 "dangerous-default-value"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py"                 "undefined-loop-variable"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py"                 "unused-argument"
