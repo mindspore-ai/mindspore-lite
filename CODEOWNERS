@@ -102,11 +102,11 @@
 /mindspore-lite/test/ut/src/runtime/kernel/dsp/  @fatmouse007fatmouse007 @yhwang-ftdsp
 
 /.claude/ @jjfeing
-/.claude/skills/lite-build/ @jjfeing
-/.claude/lite-cloud-side.md @jjfeing @YeFeng_24
-/.claude/skills/lite-cloud-side/ @jjfeing @YeFeng_24
-/.claude/lite-device-side.md @jjfeing @fatmouse007fatmouse007
-/.claude/skills/lite-device-side/ @jjfeing @fatmouse007fatmouse007
+/.claude/skills/device/lite-build/ @jjfeing
+/.claude/cloud.md @jjfeing @YeFeng_24
+/.claude/skills/cloud/ @jjfeing @YeFeng_24
+/.claude/device.md @jjfeing @fatmouse007fatmouse007
+/.claude/skills/device/ @jjfeing @fatmouse007fatmouse007
 
 /.gitcode/  @jjfeing @YeFeng_24
 /.jenkins/  @liuchongming74 @jjfeing

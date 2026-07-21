@@ -24,7 +24,7 @@
 3. 按“收益/风险比”排序：
    - 高收益低风险：Attention、Norm、Add+Norm、激活融合
    - 高收益高风险：Rope 组合、多算子大融合
-4. 当前可以融合的算子有：Attention、Norm、Add+Norm、激活融合、Rope 组合、多算子大融合；MSDA 融合案例见 [msda_fusion_guide.md](msda_fusion_guide.md)。
+4. 当前可以融合的算子有：Attention、Norm、Add+Norm、激活融合、Rope 组合、多算子大融合；MSDA 融合案例见 [multiscale_deformable_attn_function_fusion_guide.md](multiscale_deformable_attn_function_fusion_guide.md)。
 
 ## Custom 改写标准流程
 
