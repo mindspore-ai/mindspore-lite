@@ -223,7 +223,15 @@ fi
 #   -s    : 不捕获 stdout/stderr，允许测试中的 print 输出直接显示在终端
 #   -m    : 按 pytest marker 过滤，只运行符合级别要求的用例
 #   --tb=short : 简化失败时的 traceback 输出，保持可读性
-python3 -m pytest -v -ra -s -m "${pytest_mark_expr}" --tb=short "${SCRIPT_DIR}"
+
+#for code coverage in lite_boost
+MSLITE_COVERAGE_ARGS=""
+if [[ "${MSLITE_ENABLE_COVERAGE}" == "on" || "${MSLITE_ENABLE_COVERAGE}" == "ON" ]]; then
+    echo "MSLITE_ENABLE_COVERAGE: ${MSLITE_ENABLE_COVERAGE}, MSLITE_COVERAGE_FILE: ${MSLITE_COVERAGE_FILE}"
+    MSLITE_COVERAGE_ARGS="-m coverage run --rcfile=${MSLITE_COVERAGE_FILE}"
+fi
+
+python3 ${MSLITE_COVERAGE_ARGS} -m pytest -v -ra -s -m "${pytest_mark_expr}" --tb=short "${SCRIPT_DIR}"
 
 # 保存 pytest 的退出码
 # 0 表示全部用例通过，非 0 表示有失败或错误
