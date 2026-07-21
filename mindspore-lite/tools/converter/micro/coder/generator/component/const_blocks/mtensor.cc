@@ -192,6 +192,9 @@ void MSTensorDestroy(MSTensorHandle *tensor) {
   if (micro_tensor->data != NULL && micro_tensor->owned) {
     free(micro_tensor->data);
   }
+  if (micro_tensor->name != NULL) {
+    free(micro_tensor->name);
+  }
   free(micro_tensor);
   *tensor = NULL;
 }
@@ -230,7 +233,7 @@ MSTensorHandle MSTensorClone(MSTensorHandle tensor) {
   }
   clone_tensor->owned = true;
   memcpy(clone_tensor->data,micro_tensor->data,tensor_data_size);
-  clone_tensor->name = micro_tensor->name;
+  clone_tensor->name = NULL;
   clone_tensor->type = micro_tensor->type;
   clone_tensor->ndim = micro_tensor->ndim;
   size_t shape_data_size = sizeof(int64_t) * micro_tensor->ndim;
@@ -243,15 +246,21 @@ MSTensorHandle MSTensorClone(MSTensorHandle tensor) {
   }
   memcpy(clone_shape,micro_tensor->shape,shape_data_size);
   clone_tensor->shape = clone_shape;
-  char* clone_name = malloc(strlen(micro_tensor->name) + 1);
-  if (clone_name == NULL) {
-    free(clone_shape);
-    free(clone_tensor->data);
-    free(clone_tensor);
-    printf("MSTensorClone failed, clone_name is NULL.");
-    return NULL;
+  if (micro_tensor->name == NULL) {
+    clone_tensor->name = NULL;
+  } else {
+    size_t name_len = strlen(micro_tensor->name) + 1;
+    char* clone_name = malloc(name_len);
+    if (clone_name == NULL) {
+      free(clone_shape);
+      free(clone_tensor->data);
+      free(clone_tensor);
+      printf("MSTensorClone failed, clone_name is NULL.");
+      return NULL;
+    }
+    memcpy(clone_name, micro_tensor->name, name_len);
+    clone_tensor->name = clone_name;
   }
-  strcpy(clone_name,micro_tensor->name);
   clone_tensor->format = kMSFormatNHWC;
   return clone_tensor;
 }

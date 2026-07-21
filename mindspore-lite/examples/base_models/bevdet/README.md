@@ -299,17 +299,19 @@ bevdet_onnx/
 
 ## 6. MindSpore Lite 推理
 
-推理脚本 `infer_bevdet_mindir.py` 是**自包含的部署脚本**，包含：相机参数解析（支持 NuScenes pkl 四元数 / 矩阵两种格式自动探测）、完整 BEVDet 测试模式图像预处理（PIL + ImageNet 归一化 + post_rot/post_tran）、host 侧 ranks 计算、MindSpore Lite 推理 + 性能 benchmark。
+推理脚本 `infer_bevdet_mindir.py` 是**自包含的部署脚本**，包含：相机参数解析（支持 NuScenes 四元数 / 矩阵两种格式自动探测）、完整 BEVDet 测试模式图像预处理（PIL + ImageNet 归一化 + post_rot/post_tran）、host 侧 ranks 计算、MindSpore Lite 推理 + 性能 benchmark。
+
+> **安全说明：** 脚本本身不包含 `pickle.load()`。用户需先运行下方「数据预处理」的 Python 代码，将 NuScenes 标注 pkl 文件转换为安全的 npz 格式（纯数值数组，无代码执行风险），再传给推理脚本。
 
 ### 推理流程
 
 ```log
-[NuScenes pkl + 6 张图像]
+[预处理后的 NuScenes npz + 6 张图像]
         ↓
 1. 构建 BEVDet 模型（用于算 ranks）
 2. 加载 NuScenes 样本：
    ├── 6 相机 PIL 加载 + resize/crop + ImageNet norm → imgs
-   ├── pkl 自动探测（四元数/矩阵） → sensor2egos, ego2globals
+   ├── npz 文件解析（四元数/矩阵） → sensor2egos, ego2globals
    ├── cam_intrinsic → intrins
    └── post_rot/post_tran 计算
 3. compute_ranks：model.get_bev_pool_input(camera_params)
@@ -317,6 +319,94 @@ bevdet_onnx/
 4. MindSpore Lite 推理（4 个输入：img + 3 ranks）
                                   → 6 个检测头输出
 ```
+
+### 数据预处理：将 pkl 转换为安全 npz 格式
+
+`infer_bevdet_mindir.py` **不包含** `pickle.load()`。用户需先自行将 NuScenes 标注 pkl 文件中的单条样本提取为安全的 npz 文件，再传给推理脚本。
+
+运行以下 Python 代码完成转换（将 unsafe 的 `pickle.load` 限制在此一步）：
+
+```python
+import pickle
+import numpy as np
+from pathlib import Path
+
+
+def quat_to_rotation(quat) -> np.ndarray:
+    """Quaternion (w, x, y, z) → 3x3 rotation matrix."""
+    w, x, y, z = quat
+    return np.array([
+        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w),     2 * (x * z + y * w)],
+        [2 * (x * y + z * w),     1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+        [2 * (x * z - y * w),     2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]
+    ], dtype=np.float32)
+
+
+def assemble_transform_from_quat(quat, tran) -> np.ndarray:
+    """4x4 homogeneous transform from quaternion + 3-vec translation."""
+    T = np.eye(4, dtype=np.float32)
+    T[:3, :3] = quat_to_rotation(quat)
+    T[:3, 3] = np.asarray(tran, dtype=np.float32)
+    return T
+
+
+# 修改为实际路径
+ann_file = "data/nuscenes/bevdetv3-nuscenes_infos_val.pkl"
+sample_idx = 0
+output_path = "sample_0.npz"
+
+cam_order = [
+    "CAM_FRONT_LEFT", "CAM_FRONT", "CAM_FRONT_RIGHT",
+    "CAM_BACK_LEFT", "CAM_BACK", "CAM_BACK_RIGHT",
+]
+
+with open(ann_file, "rb") as f:
+    data = pickle.load(f)  # unsafe — 仅限此预处理步骤
+infos = data.get("infos", []) if isinstance(data, dict) else data
+sample = infos[sample_idx]
+
+cam_names, data_paths = [], []
+cam_intrinsics, sensor2egos, ego2globals = [], [], []
+
+for cam_name in cam_order:
+    cam = sample["cams"][cam_name]
+    cam_names.append(cam_name)
+    data_paths.append(cam["data_path"])
+    cam_intrinsics.append(np.asarray(cam["cam_intrinsic"], dtype=np.float32))
+    # Build 4x4 transform matrices
+    if "sensor2ego_rotation" in cam:
+        sensor2ego = assemble_transform_from_quat(
+            cam["sensor2ego_rotation"],
+            cam["sensor2ego_translation"])
+        ego2global = assemble_transform_from_quat(
+            cam["ego2global_rotation"],
+            cam["ego2global_translation"])
+    elif "sensor2ego" in cam:
+        sensor2ego = np.asarray(cam["sensor2ego"], dtype=np.float32)
+        ego2global = np.asarray(cam["ego2global"], dtype=np.float32)
+    else:
+        raise KeyError(f"Unknown transform format for cam '{cam_name}'")
+    sensor2egos.append(sensor2ego)
+    ego2globals.append(ego2global)
+
+np.savez(output_path,
+         cam_names=np.array(cam_names, dtype=str),
+         data_paths=np.array(data_paths, dtype=str),
+         cam_intrinsics=np.stack(cam_intrinsics),
+         sensor2egos=np.stack(sensor2egos),
+         ego2globals=np.stack(ego2globals))
+print(f"Saved to {output_path}")
+```
+
+| 变量             | 说明                         |
+| -------------- | --------------------------- |
+| `ann_file`     | NuScenes 标注 pkl 路径          |
+| `sample_idx`   | 提取的样本索引                    |
+| `output_path`  | 输出 npz 路径                  |
+
+> **注意：** 上述代码内部使用 `pickle.load()`，但这仅限于此一步数据预处理。输出的 npz 文件只包含 numpy 数值数组，不携带任意代码执行风险，可安全地用于后续推理。
+>
+> `bevdetv3-nuscenes_infos_val.pkl` 数据集是由 [NuScenes 开源数据集 Full dataset (v1.0) Mini](https://www.nuscenes.org/nuscenes#download) 经过 BEVDet 代码仓中步骤 step 3. 处理得到。
 
 ### 使用 NuScenes 验证集真实数据
 
@@ -331,14 +421,15 @@ python tools/create_data_bevdet.py
 cd ..
 ln -s BEVDet/data data
 
+# 1. 预处理 pkl → npz（使用上方「数据预处理」小节的 Python 代码）
+# 2. 推理
 python infer_bevdet_mindir.py \
   --model bevdet_onnx/bevdet_r50_ascend.mindir \
   --config BEVDet/configs/bevdet/bevdet-r50.py \
   --checkpoint bevdet-dev2.1/bevdet-r50.pth \
   --device ascend \
-  --ann-file data/nuscenes/bevdetv3-nuscenes_infos_val.pkl \
+  --sample-npz sample_0.npz \
   --data-root . \
-  --sample-idx 0 \
   --postproc
 ```
 
@@ -358,13 +449,12 @@ python infer_bevdet_mindir.py \
 | `--seed`       | 随机输入种子（仅随机模式生效）                   | `1024`                                    |
 | `--warmup`     | 预热次数                              | `5`                                       |
 | `--runs`       | 测试次数                              | `50`                                      |
-| `--ann-file`   | NuScenes 标注文件路径                   | `None`（使用随机输入）                            |
+| `--sample-npz` | 预处理后的 NuScenes 样本 npz（需先通过上方数据预处理步骤生成） | `None`（使用随机输入） |
 | `--data-root`  | NuScenes 数据根目录                    | `None`                                    |
-| `--sample-idx` | 样本索引                              | `0`                                       |
 | `--postproc`   | 启用后处理解码（result_deserialize → get_bboxes → bbox3d2result） | `False`（不启用） |
 
 > **注意：**
-> bevdetv3-nuscenes_infos_val.pkl 数据集是由 [NuScenes 开源数据集 Full dataset (v1.0) Mini](https://www.nuscenes.org/nuscenes#download) 经过 BEVDet 代码仓中步骤 step 3. 处理得到。
+> 预处理步骤将 pkl 中的单条样本提取为 npz，后续推理不再依赖 pkl 文件。如果只需随机输入进行功能测试，可省略预处理步骤直接运行推理脚本（`--sample-npz` 默认为 `None`，自动使用随机输入）。
 
 ### 执行日志（NuScenes 真实数据）
 
@@ -376,14 +466,14 @@ python infer_bevdet_mindir.py \
   Config:     BEVDet/configs/bevdet/bevdet-r50.py
   Checkpoint: bevdet-dev2.1/bevdet-r50.pth
   Device:     ascend
-  Data mode:  NuScenes (ann_file=data/nuscenes/bevdetv3-nuscenes_infos_val.pkl, sample_idx=0)
+  Data mode:  NuScenes (sample_npz=sample_0.npz)
 
 [1/4] Building BEVDet model (for ranks + postproc) ...
   task_heads: 1
 [2/4] Preparing inputs ...
   Mode:       NuScenes
   imgs shape: (1, 6, 3, 256, 704)
-  Sample idx: 0
+  Sample npz: sample_0.npz
 [3/4] Computing ranks from camera params ...
   ranks N_Points: 179832
 [4/4] MindSpore Lite inference (warmup=5, runs=50) ...
