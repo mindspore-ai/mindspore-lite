@@ -16,7 +16,6 @@
 """Export bevdet to ONNX model."""
 import argparse
 from pathlib import Path
-from typing import Tuple
 
 import torch
 from torch import nn
@@ -30,6 +29,8 @@ try:
     from mmdet3d.models import build_model
 except ImportError:
     from mmdet3d.utils import compat_cfg
+
+from mmdet3d.datasets import build_dataloader, build_dataset
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,19 +48,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output",
-        default="bevdet_onnx/bevdet_r50_all.onnx",
+        default="bevdet_onnx/bevdet_r50.onnx",
         help="output onnx file path",
     )
     parser.add_argument("--opset", type=int, default=17)
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--ncams", type=int, default=6)
-    parser.add_argument("--img_h", type=int, default=256)
-    parser.add_argument("--img_w", type=int, default=704)
     return parser.parse_args()
 
 
-def build_bevdet_trt_model(cfg_path: str, checkpoint_path: str, device: str) -> torch.nn.Module:
-    """build bevdet trt model"""
+def build_bevdet_trt_model(cfg_path: str, checkpoint_path: str, device: str):
+    """build bevdet trt model and return (model, cfg)"""
     cfg = Config.fromfile(cfg_path)
     cfg.model.pretrained = None
     cfg.model.type = cfg.model.type + "TRT"
@@ -71,99 +69,87 @@ def build_bevdet_trt_model(cfg_path: str, checkpoint_path: str, device: str) -> 
     load_checkpoint(model, checkpoint_path, map_location="cpu")
     model.to(device)
     model.eval()
-    return model
+    return model, cfg
 
 
-def build_dummy_inputs(device: str, ncams: int, img_h: int, img_w: int):
-    """build dummy inputs"""
-    b = 1
-    imgs = torch.randn(b, ncams, 3, img_h, img_w, device=device, dtype=torch.float32)
-    sensor2egos = torch.eye(4, device=device, dtype=torch.float32).view(1, 1, 4, 4)
-    sensor2egos = sensor2egos.expand(b, ncams, 4, 4).contiguous()
-    ego2globals = torch.eye(4, device=device, dtype=torch.float32).view(1, 1, 4, 4)
-    ego2globals = ego2globals.expand(b, ncams, 4, 4).contiguous()
-    intrins = torch.eye(3, device=device, dtype=torch.float32).view(1, 1, 3, 3)
-    intrins = intrins.expand(b, ncams, 3, 3).contiguous()
-    post_rots = torch.eye(3, device=device, dtype=torch.float32).view(1, 1, 3, 3)
-    post_rots = post_rots.expand(b, ncams, 3, 3).contiguous()
-    post_trans = torch.zeros(b, ncams, 3, device=device, dtype=torch.float32)
-    bda = torch.eye(4, device=device, dtype=torch.float32).view(1, 4, 4).expand(b, 4, 4)
+def load_first_sample(cfg, device: str):
+    """Load the first real sample from the nuScenes test set, mirroring
+    BEVDet/tools/analysis_tools/benchmark_trt.py.
 
-    return imgs, [imgs, sensor2egos, ego2globals, intrins, post_rots, post_trans, bda]
+    Returns:
+        img:         [1, N, 3, H, W] tensor on `device` (kept with batch dim
+                     so the wrapper's forward sees B,N,C,H,W).
+        img_inputs:  list of the 7 img_inputs tensors (img + extrinsics/
+                     intrinsics/post-*/bda), each moved to `device`. This is
+                     the structure expected by model.get_bev_pool_input().
+    """
+    assert cfg.data.test.test_mode
+    test_dataloader_default_args = {
+        "samples_per_gpu": 1, "workers_per_gpu": 0,
+        "dist": False, "shuffle": False}
+    test_loader_cfg = {
+        **test_dataloader_default_args,
+        **cfg.data.get('test_dataloader', {})
+    }
+    dataset = build_dataset(cfg.data.test)
+    data_loader = build_dataloader(dataset, **test_loader_cfg)
 
-
-_bev_pool_ctx = {}
-
+    data = next(iter(data_loader))
+    img_inputs = [t.to(device) for t in data['img_inputs'][0]]
+    img = img_inputs[0]
+    return img, img_inputs
 
 class CustomBEVPoolV3(torch.autograd.Function):
     """CustomBEVPoolV3"""
 
     @staticmethod
-    def forward(ctx, depth, feat, ranks_bev, with_depth, b, d, h, w, c):
-        """
-        Args:
-            depth: [N_RANKS, D_depth] 2维深度张量
-            feat: [N_RANKS, C] 2维特征张量
-            ranks_bev: [N_RANKS] BEV索引
-        """
-        del ctx, with_depth, c
-        C = feat.shape[1]
-        B = b
-        D_z = d
+    def forward(_ctx, depth, feat, ranks_depth, ranks_feat, ranks_bev, _with_depth, b, d, h, w, c):
+        """Pure-torch equivalent of CUDA bev_pool_v2 / QuickCumsumCuda."""
+        B, Z, Y, X, C = b, d, h, w, c
+        depth_flat = depth.reshape(-1)
+        feat_flat = feat.reshape(-1, C)
+        contrib = depth_flat[ranks_depth.long()].unsqueeze(-1) * \
+            feat_flat[ranks_feat.long()]
 
-        out = torch.zeros(B, C, D_z, h, w, device=depth.device, dtype=depth.dtype)
+        sorted_idx = torch.argsort(ranks_bev)
+        sorted_ranks = ranks_bev[sorted_idx].long()
+        sorted_contrib = contrib[sorted_idx]
 
-        interval_starts = _bev_pool_ctx['interval_starts']
-        interval_lengths = _bev_pool_ctx['interval_lengths']
+        N = sorted_contrib.shape[0]
+        cumsum = sorted_contrib.cumsum(dim=0)
+        cumsum_padded = torch.cat(
+            [torch.zeros(1, C, dtype=cumsum.dtype), cumsum], dim=0
+        )
 
-        start = int(interval_starts[0].item())
-        end = int(interval_starts[-1].item()) + int(interval_lengths[-1].item())
+        changes = sorted_ranks[1:] != sorted_ranks[:-1]
+        starts = torch.cat([torch.zeros(1, dtype=torch.long),
+                            torch.nonzero(changes).squeeze(-1) + 1])
+        ends = torch.cat([starts[1:], torch.tensor([N])])
 
-        idx = ranks_bev[start:end].long()
-        bev_size = h * w
+        seg_sums = cumsum_padded[ends] - cumsum_padded[starts]
+        unique_ranks = sorted_ranks[starts]
 
-        for i in range(end - start):
-            bi = idx[i].item()
+        out = torch.zeros(B * Z * Y * X, C, device=depth.device, dtype=depth.dtype)
+        out.scatter_(0, unique_ranks.unsqueeze(-1).expand(-1, C), seg_sums)
+        return out.view(B, Z, Y, X, C).contiguous()
 
-            b_out = bi // (D_z * bev_size)
-            bev_offset = bi % (D_z * bev_size)
-            d_out = bev_offset // bev_size
-            hw_out = bev_offset % bev_size
-
-            if b_out < B and d_out < D_z:
-                depth_val = depth[start + i]  # [D_depth]
-                feat_val = feat[start + i]    # [C]
-                weighted = feat_val * depth_val.mean()  # 简化处理
-                out[b_out, :, d_out, hw_out // w, hw_out % w] += weighted
-
-        return out.contiguous()
     @staticmethod
-    def symbolic(g, depth, feat, ranks_bev, with_depth, b, d, h, w, c):
-        return g.op("Custom", depth, feat, ranks_bev,
+    def symbolic(g, depth, feat, ranks_depth, ranks_feat, ranks_bev, with_depth, b, d, h, w, c):
+        return g.op("Custom", depth, feat, ranks_depth, ranks_feat, ranks_bev,
                     with_depth_s=with_depth, b_i=b, d_i=d, h_i=h, w_i=w, c_i=c,
                     input_names_s=["depth", "feat", "ranks_depth", "ranks_feat", "ranks_bev"],
                     optional_input_names_s=["depth", "ranks_depth", "ranks_feat"],
                     type_s="BEVPoolV3",
-                    input_index_i=[0, 1, 4],
+                    input_index_i=[0, 1, 2, 3, 4],
                     output_names_s=["out"])
 
 
 class BEVDetAllInOneWrapper(nn.Module):
     """BEVDetAllInOneWrapper"""
 
-    def __init__(self, model: nn.Module, bev_pool_meta: Tuple):
+    def __init__(self, model: nn.Module):
         super().__init__()
         self.model = model
-        ranks_bev, ranks_depth, ranks_feat, interval_starts, interval_lengths = bev_pool_meta
-
-        self.register_buffer('ranks_bev_buf', ranks_bev)
-
-        global _bev_pool_ctx
-        _bev_pool_ctx = {}
-        _bev_pool_ctx['ranks_depth'] = ranks_depth
-        _bev_pool_ctx['ranks_feat'] = ranks_feat
-        _bev_pool_ctx['interval_starts'] = interval_starts
-        _bev_pool_ctx['interval_lengths'] = interval_lengths
 
         grid_size = getattr(model.img_view_transformer, "grid_size", None)
         if grid_size is None:
@@ -183,52 +169,30 @@ class BEVDetAllInOneWrapper(nn.Module):
                 outs_.append(out[0][key])
         return outs_
 
-    def forward(self, img):
-        """forward"""
-        B, N, C, H, W = img.shape
-        x = img.view(B * N, C, H, W)
+    def forward(self, img, ranks_depth, ranks_feat, ranks_bev):
+        """forward — Option A: ranks are dynamic inputs."""
+        B, N, C_in, H, W = img.shape
+        x = img.view(B * N, C_in, H, W)
         x = self.model.img_backbone(x)
         x = self.model.img_neck(x)
 
-        _, C_new, H_feat, W_feat = x.shape
-        x = x.view(B, N, C_new, H_feat, W_feat)
-
-        x_4d = x.view(B * N, C_new, H_feat, W_feat)
-        print("x_4d.shape : ", x_4d.shape)
-        x_4d = self.model.img_view_transformer.depth_net(x_4d)
-
-        depth_5d = x_4d[:, :self.model.img_view_transformer.D] \
-                   .softmax(dim=1) \
-                   .view(B, N, self.model.img_view_transformer.D, H_feat, W_feat)
-        tran_feat_5d = x_4d[:, self.model.img_view_transformer.D:(
-            self.model.img_view_transformer.D +
-            self.model.img_view_transformer.out_channels)] \
-            .view(B, N, self.model.img_view_transformer.out_channels, H_feat, W_feat)
-        tran_feat_5d = tran_feat_5d.permute(0, 1, 3, 4, 2).contiguous()
-
-        ranks_depth = _bev_pool_ctx['ranks_depth']
-        ranks_feat = _bev_pool_ctx['ranks_feat']
+        _, _, H_feat, W_feat = x.shape
+        x_4d = self.model.img_view_transformer.depth_net(x)
 
         D = self.model.img_view_transformer.D
-        C = self.model.img_view_transformer.out_channels
-
-        depth_flat = depth_5d.reshape(-1)
-        base_idx = (ranks_depth.long() // D) * D
-        depth_2d = torch.stack([torch.gather(depth_flat, 0, base_idx + d) for d in range(D)], dim=1)
-
-        feat_flat = tran_feat_5d.reshape(-1, C)
-        feat_2d = torch.gather(feat_flat, 0, ranks_feat.long().unsqueeze(-1).expand(-1, C))
-
+        C_out = self.model.img_view_transformer.out_channels
+        depth_5d = x_4d[:, :D].softmax(dim=1).view(B, N, D, H_feat, W_feat)
+        tran_feat_5d = x_4d[:, D:D + C_out].view(B, N, C_out, H_feat, W_feat)
+        tran_feat_5d = tran_feat_5d.permute(0, 1, 3, 4, 2).contiguous()
         x = CustomBEVPoolV3.apply(
-            depth_2d, feat_2d,
-            self.ranks_bev_buf,
-            "false",
+            depth_5d, tran_feat_5d,
+            ranks_depth, ranks_feat, ranks_bev,
+            "true",
             int(B), self.bev_z, self.bev_h, self.bev_w, self.bev_c
         )
 
-        B_out, C_out, D_out, H_out, W_out = x.shape
-        x = x.permute(0, 1, 3, 4, 2).contiguous()
-        x = x.view(B_out, C_out * D_out, H_out, W_out)
+        x = x.permute(0, 4, 1, 2, 3).contiguous()
+        x = torch.cat(x.unbind(dim=2), 1)
 
         bev_feat = self.model.bev_encoder(x)
         outs = self.model.pts_bbox_head([bev_feat])
@@ -241,18 +205,20 @@ def main() -> None:
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    model = build_bevdet_trt_model(args.config, args.checkpoint, args.device)
-    img, bev_pool_inputs = build_dummy_inputs(args.device, args.ncams, args.img_h, args.img_w)
+    model, cfg = build_bevdet_trt_model(args.config, args.checkpoint, args.device)
+    img, bev_pool_inputs = load_first_sample(cfg, args.device)
 
+    # Compute example ranks for trace. Values are irrelevant post-export
+    # (ranks become dynamic inputs); only shape matters during trace.
     with torch.no_grad():
         metas = model.get_bev_pool_input(list(bev_pool_inputs))
 
     if metas[0] is None:
-        raise RuntimeError("bev_pool meta is None; dummy extrinsics may be invalid")
+        raise RuntimeError("bev_pool meta is None; first sample may have invalid extrinsics")
 
-    ranks_bev, ranks_depth, ranks_feat, interval_starts, interval_lengths = metas
+    ranks_bev, ranks_depth, ranks_feat, _, _ = metas
 
-    wrapper = BEVDetAllInOneWrapper(model, (ranks_bev, ranks_depth, ranks_feat, interval_starts, interval_lengths))
+    wrapper = BEVDetAllInOneWrapper(model)
     wrapper.to(args.device)
     wrapper.eval()
 
@@ -260,25 +226,24 @@ def main() -> None:
     print(f"  Config: {args.config}")
     print(f"  Checkpoint: {args.checkpoint}")
     print(f"  Device: {args.device}")
-    print(f"  Input image shape: ({args.ncams}, 3, {args.img_h}, {args.img_w})")
-    print(f"  BEV pool intervals: {interval_starts.shape[0]}")
+    print(f"  Input image shape: {tuple(img.shape)}")
+    print(f"  Example ranks N_Points (for trace): {ranks_bev.shape[0]}")
 
     dynamic_axes = {
-        "img": {0: "batch"},
-        "reg": {0: "batch"},
-        "height": {0: "batch"},
-        "dim": {0: "batch"},
-        "rot": {0: "batch"},
-        "vel": {0: "batch"},
-        "heatmap": {0: "batch"},
+        "ranks_depth": {0: "n_points"},
+        "ranks_feat": {0: "n_points"},
+        "ranks_bev": {0: "n_points"},
     }
-    print("img.shape : ", img.shape)
+
     torch.onnx.export(
         wrapper,
-        img.float().contiguous(),
+        (img.float().contiguous(),
+         ranks_depth.contiguous(),
+         ranks_feat.contiguous(),
+         ranks_bev.contiguous()),
         str(output_path),
         opset_version=args.opset,
-        input_names=["img"],
+        input_names=["img", "ranks_depth", "ranks_feat", "ranks_bev"],
         output_names=["reg", "height", "dim", "rot", "vel", "heatmap"],
         dynamic_axes=dynamic_axes,
         operator_export_type=torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH,
