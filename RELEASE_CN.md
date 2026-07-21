@@ -2,6 +2,43 @@
 
 [View English](./RELEASE.md)
 
+## MindSpore Lite 2.10.0 Release Notes
+
+### 主要特性及增强
+
+#### 云侧推理
+
+- `ascend_context` 配置新增 `enable_tiling_generation` 开关，可选值有"true"和"false"，默认"true"。开启后模型导出时会携带 tiling 信息，提升模型兼容性；设为"false"时不保存tiling信息。
+
+- Python 接口 `Model.Predict` 支持 bfloat16 类型输入数据的推理。
+
+- 新增云侧推理加速组件 LiteBoost，基于该组件支持 wan2.1 模型的 NPU 并行推理加速；在 LiteBoost 之上新增 Rainfusion 稀疏算子。
+
+- 移除 OpenSSL 三方件依赖以及加解密相关功能。
+
+#### 端侧推理
+
+- 支持 OHOS 交叉编译，以及 CPU 推理与端侧训练。
+
+- MindSpore Lite Micro 新增支持 DepthToSpace、SpaceToDepth、Elu、Erf 算子。
+
+- 扩展 MindSpore Lite Micro 的 NNACL 算子，泛化支持多维度广播。
+
+- 移除模型混淆模块。
+
+#### 开源组件升级
+
+- coreml：4.1 -> 9.0
+- Flatbuffers：2.0.0 -> 25.12.19
+- tensorflow/TFLite：2.4.1 -> 2.20.0
+- protobuf：3.13.0 -> 6.33.1
+- openmpi 移除依赖
+- openssl 移除依赖
+
+### 贡献者
+
+liuchengji3, lilinjie11, YeFeng_24, xiong-pan, qll1998, chenyihang5, LinHaier, gupengcheng0401, m0_51742343, liuf9, liujie, cheng_xiaoli, yhwang-ftdsp, aldq, jjfeing, zhuguodong, lujiale, toolsmanhehe, ccsuzzh, yiguangzheng, wanghao-dev, nepdada, LiWanpeng, 徐子康, yangyingchun, yanghaoran, Hanshize
+
 ## MindSpore Lite 2.9.0 Release Notes
 
 ### 主要特性及增强
