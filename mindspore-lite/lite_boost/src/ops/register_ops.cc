@@ -18,6 +18,7 @@
 #include "plugin/rain_fusion_attention.h"
 #include "plugin/recurrent_gated_delta_rule.h"
 #include "plugin/chunk_gated_delta_rule.h"
+#include "plugin/quant_matmul_w4a8.h"
 
 // RainFusionAttention
 TORCH_LIBRARY(lite_boost, m) {
@@ -74,10 +75,16 @@ TORCH_LIBRARY(lite_boost, m) {
       float scale_value=1.0
     ) -> (Tensor, Tensor)
   )str");
+
+  // QuantMatmulW4a8: INT4×INT8→BF16 matmul
+  m.def(R"str(quant_matmul_w4a8(
+    Tensor act, Tensor weight, Tensor scale,
+    Tensor bias, Tensor x_scale, Tensor output_bias) -> (Tensor))str");
 }
 
 TORCH_LIBRARY_IMPL(lite_boost, PrivateUse1, m) {
   m.impl("rain_fusion_attention", &RainFusionAttentionLiteBoostImplNPU);
   m.impl("recurrent_gated_delta_rule", &RecurrentGatedDeltaRuleLiteBoostImplNPU);
   m.impl("chunk_gated_delta_rule", &ChunkGatedDeltaRuleLiteBoostImplNPU);
+  m.impl("quant_matmul_w4a8", &QuantMatmulW4a8LiteBoostImplNPU);
 }
