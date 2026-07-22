@@ -9,7 +9,7 @@
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR WARRANTIES OF CONDITIONS OF ANY KIND, either express or implied.
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
@@ -110,6 +110,34 @@ soc_to_compute_unit()
   esac
 }
 
+# Run a cmake --build target with the repetitive per-binary CANN opbuild/install log spam
+# filtered out. Suppressed (printed once per kernel binary -- 128x for this op under
+# DataTypeList + DynamicFormat):
+#   [soc] Generating <Op>_<hash> ...   /   [soc] Generating <Op>_<hash> Done
+#   Opc tool start working now, please wait for a moment.
+#   -- Installing: ...   /   -- Up-to-date: ...   /   -- Set runtime path of ...
+# Errors, warnings, cmake progress ([n%]) and status lines are preserved. The function
+# forwards cmake's own exit code (via PIPESTATUS[0]); set +e around the pipe so grep exiting
+# 1 when ALL output is filtered does not trip errexit. CUSTOM_OPS_VERBOSE=1 bypasses the filter.
+_run_build_target() {
+  local build_dir="$1" target="$2" jobs="$3"
+  if [[ "${CUSTOM_OPS_VERBOSE:-0}" == "1" ]]; then
+    cmake --build "${build_dir}" --target "${target}" -j"${jobs}"
+    return $?
+  fi
+  set +e
+  cmake --build "${build_dir}" --target "${target}" -j"${jobs}" 2>&1 \
+    | grep -vE -e '^\[[^]]*\] Generating .* \.\.\.$' \
+              -e '^\[[^]]*\] Generating .* Done$' \
+              -e '^Opc tool start working now' \
+              -e '^-- Installing: ' \
+              -e '^-- Up-to-date: ' \
+              -e '^-- Set runtime path of '
+  local rc=${PIPESTATUS[0]}
+  set -e
+  return "${rc}"
+}
+
 build_one_soc()
 {
   local soc_dir="$1"
@@ -195,9 +223,9 @@ build_one_soc()
 
   local jobs="${ASCEND_CUSTOM_THREADS:-$(nproc)}"
   echo "build target: binary (-j${jobs})"
-  cmake --build "${build_dir}" --target binary -j"${jobs}"
+  _run_build_target "${build_dir}" binary "${jobs}"
   echo "build target: install"
-  cmake --build "${build_dir}" --target install -j"${jobs}"
+  _run_build_target "${build_dir}" install "${jobs}"
 
   # 5. Copy the (dereferenced) vendor folder into a per-SoC output dir. The wheel
   #    ships this folder as-is; the import hook points ASCEND_CUSTOM_OPP_PATH at it

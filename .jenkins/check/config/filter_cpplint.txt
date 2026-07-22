@@ -55,3 +55,7 @@
 "mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/chunk_gated_delta_rule/op_host/chunk_gated_delta_rule_def.cpp"    "build/namespaces"
 "mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/chunk_gated_delta_rule/op_host/chunk_gated_delta_rule_tiling.cpp"    "build/namespaces"
 "mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/chunk_gated_delta_rule/op_host/chunk_gated_delta_rule_infershape.cpp" "build/namespaces"
+
+"mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/chunk_gated_delta_rule/op_host/"    "build/include_subdir"
+"mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/chunk_gated_delta_rule/op_kernel/"    "build/include_subdir"
+"mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/chunk_gated_delta_rule/op_kernel/"    "build/namespaces"
