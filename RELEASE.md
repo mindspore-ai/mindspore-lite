@@ -2,6 +2,43 @@
 
 [查看中文](./RELEASE_CN.md)
 
+## MindSpore Lite 2.10.0 Release Notes
+
+### Key Features and Enhancements
+
+#### Cloud-side inference
+
+- Added the `enable_tiling_generation` option to `ascend_context`. Options are "true" and "false", default is "true". When enabled (default), tiling information is embedded into the exported model, which improves model compatibility. When set to "false", tiling information is not saved.
+
+- The Python `Model.Predict` API now supports inference with bfloat16 inputs.
+
+- Introduced the LiteBoost component, enabling NPU parallel inference acceleration for wan2.1. Added Rainfusion sparse operators on top of LiteBoost.
+
+- Removed the OpenSSL dependency along with the related encryption and decryption features.
+
+#### Device-side inference
+
+- Added OHOS cross-compilation support for CPU inference and on-device training.
+
+- MindSpore Lite Micro now supports the DepthToSpace, SpaceToDepth, Elu, and Erf operators.
+
+- Extended the NNACL operators of MindSpore Lite Micro to support generalized multi-dimensional broadcasting.
+
+- Removed the model obfuscation module.
+
+#### Open-source Component Upgrades
+
+- coreml: 4.1 -> 9.0
+- Flatbuffers: 2.0.0 -> 25.12.19
+- tensorflow/TFLite: 2.4.1 -> 2.20.0
+- protobuf: 3.13.0 -> 6.33.1
+- Removed the openmpi dependency
+- Removed the openssl dependency
+
+### Contributors
+
+liuchengji3, lilinjie11, YeFeng_24, xiong-pan, qll1998, chenyihang5, LinHaier, gupengcheng0401, m0_51742343, liuf9, liujie, cheng_xiaoli, yhwang-ftdsp, aldq, jjfeing, zhuguodong, lujiale, toolsmanhehe, ccsuzzh, yiguangzheng, wanghao-dev, nepdada, LiWanpeng, 徐子康, yangyingchun, yanghaoran, Hanshize
+
 ## MindSpore Lite 2.9.0 Release Notes
 
 ### Key Features and Enhancements
