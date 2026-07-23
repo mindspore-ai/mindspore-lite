@@ -36,6 +36,7 @@
 #include "cxx_api/graph/acl/acl_convert_init_adapter.h"
 #include "mindspore/core/include/ir/func_graph.h"
 #include "ir/graph_utils.h"
+#include "tools/converter/parser/parser_utils.h"
 
 namespace mindspore {
 namespace {
@@ -151,6 +152,33 @@ bool HasSubgraph(const FuncGraphPtr &func_graph) {
     }
   }
   return false;
+}
+
+void ReleaseWeightTensors(const FuncGraphPtr &func_graph) {
+  MS_EXCEPTION_IF_NULL(func_graph);
+  // Covers weights in nested control-flow subgraphs too.
+  std::set<FuncGraphPtr> all_func_graphs;
+  lite::GetAllFuncGraph(func_graph, &all_func_graphs);
+  for (const auto &fg : all_func_graphs) {
+    for (auto &item : fg->parameters()) {
+      auto para = item->cast<ParameterPtr>();
+      if (para == nullptr || !para->has_default()) {
+        continue;
+      }
+      // has_default_ is decoupled from default_param_; value may be null.
+      auto value = para->default_param();
+      if (value == nullptr) {
+        continue;
+      }
+      auto old_tensor = value->cast<std::shared_ptr<tensor::Tensor>>();
+      if (old_tensor == nullptr) {
+        continue;
+      }
+      // nullptr data_: no alloc; data_c()/Size() is UB; safe, no caller derefs the placeholder.
+      auto empty_tensor = std::make_shared<tensor::Tensor>(old_tensor->data_type(), old_tensor->shape_c(), nullptr);
+      para->set_default_param(empty_tensor);
+    }
+  }
 }
 }  // namespace
 
@@ -335,6 +363,10 @@ Buffer ModelConverter::LoadMindIR(const FuncGraphPtr &func_graph) {
     MS_LOG(ERROR) << "Convert FuncGraph to AscendIR failed.";
     return buffer_ret;
   }
+  // Weight data has been captured by the DfGraph; release func_graph's hold
+  // here to reduce peak memory during BuildAirModel (Buffer model copy).
+  ReleaseWeightTensors(func_graph);
+
   ge::GraphBuffer model_data;
   auto ge_ret = df_graph->SaveToMem(model_data);
   if (ge_ret != ge::SUCCESS) {
