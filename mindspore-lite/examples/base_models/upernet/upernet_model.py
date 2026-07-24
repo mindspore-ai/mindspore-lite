@@ -1,3 +1,18 @@
+#!/usr/bin/env python3
+# Copyright 2026 Huawei Technologies Co., Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
 """Standalone UPerNet model definition for ONNX export and MindSpore Lite deployment.
 
 This module reimplements the UPerNet (Unified Perceptual Parsing) architecture
@@ -305,8 +320,8 @@ def build_model(weights_encoder_path, weights_decoder_path):
     """
     model = UPerNetModel(nr_classes=NR_CLASSES, fc_dim=2048, fpn_dim=512)
 
-    enc_state = torch.load(weights_encoder_path, map_location='cpu')
-    dec_state = torch.load(weights_decoder_path, map_location='cpu')
+    enc_state = torch.load(weights_encoder_path, map_location='cpu', weights_only=True)
+    dec_state = torch.load(weights_decoder_path, map_location='cpu', weights_only=True)
 
     # strict=False to ignore SyncBN extra keys (_tmp_running_mean, etc.)
     model.encoder.load_state_dict(enc_state, strict=False)

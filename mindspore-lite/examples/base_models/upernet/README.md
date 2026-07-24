@@ -30,7 +30,6 @@ pip install torch==2.3.1 onnx==1.22.0 onnxruntime==1.27.0 numpy==1.26.4 opencv-p
 ```bash
 # 模型权重目录结构
 # weights_dir/
-#   upernet/
 #     encoder_epoch_40.pth   # ResNet-50 编码器权重
 #     decoder_epoch_40.pth   # UPerNet 解码器权重
 
