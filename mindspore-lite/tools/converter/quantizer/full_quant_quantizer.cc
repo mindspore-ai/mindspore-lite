@@ -1,5 +1,5 @@
 /**
- * Copyright 2019-2022 Huawei Technologies Co., Ltd
+ * Copyright 2019-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -505,6 +505,8 @@ void FullQuantQuantizer::InitCpuConfig() {
     (void)support_int8_ops_.emplace(prim::kPrimErf);
     (void)support_int8_ops_.emplace(prim::kPrimDepthToSpace);
     (void)support_int8_ops_.emplace(prim::kPrimSpaceToDepth);
+    (void)support_int8_ops_.emplace(prim::kPrimTriu);
+    (void)support_int8_ops_.emplace(prim::kPrimTril);
   }
   skip_check_dtype_ops_ = {prim::kPrimTupleGetItem, prim::kPrimShape};
   per_channel_ops_ = {prim::kPrimConv2DFusion, prim::kPrimConv2dTransposeFusion, prim::kPrimMatMulFusion,
