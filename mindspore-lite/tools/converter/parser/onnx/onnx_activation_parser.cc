@@ -15,6 +15,7 @@
  */
 
 #include "tools/converter/parser/onnx/onnx_activation_parser.h"
+#include <algorithm>
 #include <memory>
 #include <vector>
 #include "include/securec.h"
@@ -132,6 +133,17 @@ PrimitiveCPtr OnnxGeluParser::Parse(const onnx::GraphProto &onnx_graph, const on
   auto prim = std::make_unique<ops::Activation>();
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
   prim->set_activation_type(mindspore::ActivationType::GELU);
+  bool approximate = false;
+  // ONNX Gelu `approximate` is a string attribute: "none" (default, erf) or "tanh".
+  // Map it onto the Activation primitive's approximate flag so the erf/tanh dispatch
+  // downstream (fp32 runtime Gelu(), int8 LUT) honours the model's declared mode.
+  for (const auto &onnx_node_attr : onnx_node.attribute()) {
+    const auto &attribute_name = onnx_node_attr.name();
+    if (attribute_name == "approximate") {
+      approximate = onnx_node_attr.s() == "tanh";
+    }
+  }
+  prim->set_approximate(approximate);
   return prim->GetPrim();
 }
 

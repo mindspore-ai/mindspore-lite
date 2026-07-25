@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@
 #include "src/common/version_manager.h"
 #include "coder/opcoders/nnacl/int8/leaky_relu_int8_coder.h"
 #include "coder/opcoders/nnacl/int8/elu_int8_coder.h"
+#include "coder/opcoders/nnacl/int8/gelu_int8_coder.h"
 
 using mindspore::schema::PrimitiveType_Activation;
 
@@ -69,6 +70,9 @@ std::unique_ptr<OperatorCoder> CPUActivationINT8CoderCreator(const std::vector<T
       break;
     case schema::ActivationType_ELU:
       coder = CPUOpCoderCreator<EluInt8Coder>(in_tensors, out_tensors, node, node_index, target, schema_version);
+      break;
+    case schema::ActivationType_GELU:
+      coder = CPUOpCoderCreator<GeluInt8Coder>(in_tensors, out_tensors, node, node_index, target, schema_version);
       break;
     default:
       break;

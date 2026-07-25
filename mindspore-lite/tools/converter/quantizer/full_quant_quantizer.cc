@@ -517,6 +517,7 @@ void FullQuantQuantizer::InitCpuConfig() {
   };
   if (param_->fullQuantParam.enable_all_ops) {
     (void)support_activation_.emplace(ELU);
+    (void)support_activation_.emplace(GELU);
   }
 }
 

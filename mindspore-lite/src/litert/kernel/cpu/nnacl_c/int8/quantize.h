@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -175,6 +175,14 @@ typedef struct EluQuantArg {
   int element_num;
   int thread_num_;
 } EluQuantArg;
+
+typedef struct GeluQuantArg {
+  QuantArg in_args_;
+  QuantArg out_args_;
+  int input_dim_;
+  int element_num;
+  int thread_num_;
+} GeluQuantArg;
 
 typedef struct ResizeQuantArg {
   int32_t ratio_x_;

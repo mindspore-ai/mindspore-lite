@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,6 +71,9 @@ int ActivationFP32Coder::DoCode(CoderContext *const context) {
       break;
     case schema::ActivationType_ELU:
       code.CodeFunction("Elu", input_tensor_, count, output_tensor_, activation_parameter->alpha_);
+      break;
+    case schema::ActivationType_GELU:
+      code.CodeFunction("Gelu", input_tensor_, count, output_tensor_, activation_parameter->approximate_);
       break;
     default:
       MS_LOG(ERROR) << "Activation type error";
