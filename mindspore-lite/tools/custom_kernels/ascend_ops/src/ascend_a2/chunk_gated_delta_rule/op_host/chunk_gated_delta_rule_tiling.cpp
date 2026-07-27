@@ -37,6 +37,12 @@
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "../op_kernel/chunk_gated_delta_rule_tiling_key.h"
+#include "version/cann_version.h"
+#if CANN_VERSION_NUM < 80600000
+#define SOC_VERSION_IS_NOT_950 true
+#else
+#define SOC_VERSION_IS_NOT_950 (socVersion_ != platform_ascendc::SocVersion::ASCEND950)
+#endif
 
 namespace optiling {
 
@@ -149,7 +155,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling() {
   tilingData_.interWorkspaceSz += sizeLow * nv * s * c;   // qkt (BF16)
   if (tilingData_.stateIsFp32) {
     tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk;  // stateBf16Wk (BF16, arch35)
-  } else if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+  } else if (SOC_VERSION_IS_NOT_950) {
     // arch22: kernel unconditionally advances offset
     tilingData_.interWorkspaceSz += sizeHigh * tilingData_.b * nv * dv * dk;  // highState_
   }
@@ -401,10 +407,10 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::CheckStateDtype() {
     return ge::GRAPH_FAILED;
   }
   // FP32 state is supported only on ascend950; on 910b state must follow the low dtype.
-  if (stateDtype == ge::DT_FLOAT && socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+  if (stateDtype == ge::DT_FLOAT && SOC_VERSION_IS_NOT_950) {
     return ge::GRAPH_FAILED;
   }
-  if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+  if (SOC_VERSION_IS_NOT_950) {
     auto expectedStateDtype = tilingData_.isFp16 ? ge::DT_FLOAT16 : ge::DT_BF16;
     if (stateDtype != expectedStateDtype) {
       return ge::GRAPH_FAILED;
