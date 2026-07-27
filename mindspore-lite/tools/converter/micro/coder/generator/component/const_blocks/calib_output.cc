@@ -111,12 +111,21 @@ int ReadCalibData(const char *calib_data_path, CalibTensor **calib_tensor_pointe
       int j = 0;
       int dims = 0;
       p = strtok(line, " ");
-      char* tensor_name = (char *)malloc(strlen(p)+1);
-      if(tensor_name == NULL) {
-        printf("Malloc tensor name failed.");
+      if (p == NULL) {
+        printf("Invalid calibration data: empty tensor name.\n");
+        FreeCalibTensors(&calib_tensors, *calib_num);
+        fclose(file);
         return kMSStatusLiteError;
       }
-      (void)strcpy(tensor_name, p);
+      size_t tensor_name_len = strlen(p) + 1;
+      char* tensor_name = (char *)malloc(tensor_name_len);
+      if(tensor_name == NULL) {
+        printf("Malloc tensor name failed.");
+        FreeCalibTensors(&calib_tensors, *calib_num);
+        fclose(file);
+        return kMSStatusLiteError;
+      }
+      memcpy(tensor_name, p, tensor_name_len);
       calib_tensors[*calib_num].tensor_name = tensor_name;
       while (p != NULL) {
         if (j == 1) {
@@ -137,6 +146,9 @@ int ReadCalibData(const char *calib_data_path, CalibTensor **calib_tensor_pointe
       float *data = (float *)malloc(elements * sizeof(float));
       if(data == NULL) {
         printf("Malloc tensor data failed.");
+        free(calib_tensors[*calib_num].tensor_name);
+        FreeCalibTensors(&calib_tensors, *calib_num);
+        fclose(file);
         return kMSStatusLiteError;
       }
       p = strtok(line, " ");

@@ -17,14 +17,13 @@
 
 Pipeline (mirrors BEVDet/tools/analysis_tools/benchmark_trt.py):
   1. Build BEVDet TRT model (for ranks computation + postprocessing head)
-  2. Load real NuScenes sample via pkl + image preprocessing, or random inputs
+  2. Load real NuScenes sample via pre-processed npz + image preprocessing, or random inputs
   3. Compute ranks via model.get_bev_pool_input
   4. MindSpore Lite inference with 4 inputs: img + 3 ranks
   5. (Optional) Postprocessing: result_deserialize -> get_bboxes -> bbox3d2result
 """
 
 import argparse
-import pickle
 import sys
 import time
 from pathlib import Path
@@ -367,23 +366,28 @@ def compute_ranks(model: torch.nn.Module, inputs: dict):
 
 
 # ============================================================================
-# NuScenes pkl loader
+# NuScenes npz loader
 # ============================================================================
 
-def load_nuscenes_sample(ann_file: str, sample_idx: int = 0) -> dict:
-    """Load a sample from NuScenes validation pkl."""
-    with open(ann_file, 'rb') as f:
-        data = pickle.load(f)
-    if isinstance(data, dict):
-        infos = data.get('infos', [])
-    elif isinstance(data, list):
-        infos = data
-    else:
-        raise ValueError(f"Unexpected annotation file format: {type(data)}")
-    if sample_idx >= len(infos):
-        raise ValueError(
-            f"Sample index {sample_idx} out of range (total: {len(infos)})")
-    return infos[sample_idx]
+def load_nuscenes_sample_from_npz(npz_path: str) -> dict:
+    """Load a pre-processed NuScenes sample from npz (safe, no pickle).
+
+    The npz must have been created by the data pre-processing step in README.
+    It contains pre-built 4x4 (sensor2ego, ego2global) matrices so that
+    downstream get_sensor_transforms can use them directly (matrix path),
+    avoiding redundant quaternion→matrix conversion and precision loss.
+    """
+    data = np.load(npz_path)
+    cams = {}
+    for i in range(len(data['cam_names'])):
+        name = str(data['cam_names'][i])
+        cams[name] = {
+            'data_path': str(data['data_paths'][i]),
+            'cam_intrinsic': data['cam_intrinsics'][i],
+            'sensor2ego': data['sensor2egos'][i],
+            'ego2global': data['ego2globals'][i],
+        }
+    return {'cams': cams}
 
 
 # ============================================================================
@@ -395,12 +399,12 @@ def prepare_inputs(args):
 
     Returns (inputs_dict, mode_str) where mode_str is 'NuScenes' or 'random'.
     """
-    if args.ann_file and Path(args.ann_file).exists():
-        info = load_nuscenes_sample(args.ann_file, args.sample_idx)
+    if args.sample_npz and Path(args.sample_npz).exists():
+        info = load_nuscenes_sample_from_npz(args.sample_npz)
         inputs = load_sample_images_and_params(info, args.data_root)
         return inputs, "NuScenes"
-    if args.ann_file:
-        print(f"  Warning: ann_file not found ({args.ann_file}), using random input")
+    if args.sample_npz:
+        print(f"  Warning: sample npz not found ({args.sample_npz}), using random input")
     inputs = generate_random_inputs(args.batch, args.num_cams, 3,
                                     args.imH, args.imW, seed=args.seed)
     return inputs, "random"
@@ -418,11 +422,11 @@ def add_data_args(parser: argparse.ArgumentParser):
     parser.add_argument("--imW", type=int, default=704)
     parser.add_argument("--seed", type=int, default=SEED,
                         help="Random seed for smoke-test inputs")
-    parser.add_argument("--ann-file", type=str, default=None,
-                        help="NuScenes val pkl (e.g., bevdetv3-nuscenes_infos_val.pkl)")
+    parser.add_argument("--sample-npz", type=str, default=None,
+                        help="Pre-processed NuScenes sample npz "
+                             "(convert pkl via the data pre-processing step in README)")
     parser.add_argument("--data-root", type=str, default=None,
                         help="NuScenes data root (e.g., data/nuscenes/)")
-    parser.add_argument("--sample-idx", type=int, default=0)
     return parser
 
 
@@ -547,9 +551,8 @@ def main():
     print(f"  Config:     {args.config}")
     print(f"  Checkpoint: {args.checkpoint}")
     print(f"  Device:     {args.device}")
-    if args.ann_file:
-        print(f"  Data mode:  NuScenes (ann_file={args.ann_file}, "
-              f"sample_idx={args.sample_idx})")
+    if args.sample_npz:
+        print(f"  Data mode:  NuScenes (sample_npz={args.sample_npz})")
     else:
         print(f"  Data mode:  random (seed={args.seed})")
     print()
@@ -566,7 +569,7 @@ def main():
     print(f"  Mode:       {mode}")
     print(f"  imgs shape: {tuple(inputs['imgs'].shape)}")
     if mode == "NuScenes":
-        print(f"  Sample idx: {args.sample_idx}")
+        print(f"  Sample npz: {args.sample_npz}")
 
     # ---- 3. Compute ranks ----
     if mode == "NuScenes":

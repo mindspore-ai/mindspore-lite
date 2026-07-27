@@ -94,11 +94,11 @@ int CustomCoder::TransformTensors(Serializer *code, std::string array_name, cons
       MS_LOG(ERROR) << "tensor name is too long: " << tensors[i]->tensor_name();
       return RET_ERROR;
     }
+    size_t tensor_name_len = tensors[i]->tensor_name().length() + 1;
     (*code) << "\t\t" << array_name << "[" << i << "].name_ = "
-            << "malloc(" << tensors[i]->tensor_name().length() + 1 << ");\n";
-    (*code) << "\t\tstrcpy(" << array_name << "[" << i << "].name_, "
-            << "\"" << tensors[i]->tensor_name() << "\""
-            << ");\n";
+            << "malloc(" << tensor_name_len << ");\n";
+    (*code) << "\t\tmemcpy(" << array_name << "[" << i << "].name_, "
+            << "\"" << tensors[i]->tensor_name() << "\", " << tensor_name_len << ");\n";
   }
 
   return RET_OK;
@@ -111,27 +111,27 @@ int CustomCoder::TransformParams(Serializer *code, std::string var_name) {
   }
 
   (*code) << "\t\tCustomParameter " << var_name << ";\n";
-  if (type_.size() > MAX_STR_LEN) {
+  if (type_.size() >= MAX_STR_LEN) {
     MS_LOG(ERROR) << "type name is too long: " << type_;
     return RET_ERROR;
   }
-  (*code) << "\t\tstrcpy(" << var_name << ".type, "
-          << "\"" << type_ << "\""
-          << ");\n";
+  (*code) << "\t\tstrncpy(" << var_name << ".type, "
+          << "\"" << type_ << "\", MAX_STR_LEN);\n";
+  (*code) << "\t\t" << var_name << ".type[MAX_STR_LEN - 1] = '\\0';\n";
   int i = 0;
   for (auto iter = attrs_.begin(); iter != attrs_.end(); ++iter) {
-    if (iter->first.size() > MAX_STR_LEN) {
+    if (iter->first.size() >= MAX_STR_LEN) {
       MS_LOG(ERROR) << "attr name is too long: " << iter->first;
       return RET_ERROR;
     }
-    (*code) << "\t\tstrcpy(" << var_name << ".attr_name[" << i << "], "
-            << "\"" << iter->first << "\""
-            << ");\n";
+    (*code) << "\t\tstrncpy(" << var_name << ".attr_name[" << i << "], "
+            << "\"" << iter->first << "\", MAX_STR_LEN);\n";
+    (*code) << "\t\t" << var_name << ".attr_name[" << i << "][MAX_STR_LEN - 1] = '\\0';\n";
+    size_t attr_data_len = iter->second.size() + 1;
     (*code) << "\t\t" << var_name << ".attr_data[" << i << "] = "
-            << "malloc(" << iter->second.size() + 1 << ");\n";
-    (*code) << "\t\tstrcpy(" << var_name << ".attr_data[" << i++ << "], "
-            << "\"" << iter->second << "\""
-            << ");\n";
+            << "malloc(" << attr_data_len << ");\n";
+    (*code) << "\t\tmemcpy(" << var_name << ".attr_data[" << i++ << "], "
+            << "\"" << iter->second << "\", " << attr_data_len << ");\n";
   }
   (*code) << "\t\t" << var_name << ".attr_num = " << attrs_.size() << ";\n";
   return RET_OK;
