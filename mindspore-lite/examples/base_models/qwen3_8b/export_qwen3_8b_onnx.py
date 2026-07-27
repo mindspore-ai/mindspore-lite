@@ -14,7 +14,21 @@
 # limitations under the License.
 # ============================================================================
 """
-Export Qwen3-8B model to ONNX format.
+Export Qwen3-8B to ONNX as split prefill + decode subgraphs, with optional
+tensor-parallel (TP) sharding for 1p / 2p / 4p inference.
+
+The export produces two ONNX models per rank:
+- Prefill: processes the full input prompt, outputs logits + decode-compatible KV cache.
+- Decode: generates one token at a time using the past KV cache.
+
+TP (--tp-size > 1) inserts Custom(AllReduce) after o_proj / down_proj / lm_head
+(column-parallel QKV, row-parallel o_proj/down_proj/lm_head). Each rank exports
+its own shard; convert with --optimize=none and run with provider=ge + HCCL.
+
+Qwen3-8B has 8 KV heads, so under TP=4 each rank holds 2 KV heads
+(num_kv_heads_local >= 2 for every TP size). IncreFlashAttention's native GQA
+path handles this directly -- unlike Qwen2.5-7B TP=4 (1 KV head/rank), no manual
+kv-head repeat-to-MHA workaround is needed.
 """
 
 import argparse
@@ -25,7 +39,26 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
-KV_CACHE_LEN = 512
+KV_CACHE_LEN = 256
+
+# Tensor-parallel config (set from --tp-size / --rank before exporting each
+# subgraph). TP_SIZE=1 reproduces the single-shard export.
+TP_SIZE = 1
+TP_RANK = 0
+# Debug: when True, the decode wrapper emits layer-0 intermediate hidden states
+# (post-attention, post-mlp) as extra outputs. TP=4 (36 layers) can hit a GE
+# graph-optimization miscompile that dampens decode logits; emitting these taps
+# forces GE to materialize the intermediates, which blocks the bad optimization
+# and restores correct precision. Taps alias existing intermediates -> negligible
+# overhead; the infer script allocates the extra output buffers and ignores them.
+DEBUG_TAP = False
+# Replicate lm_head (full logits per rank, no AllReduce) instead of row-parallel
+# shard+AllReduce. Needed at TP=4: the large-vocab (151936) AllReduce corrupts
+# (manual partial-sum != AllReduce, diff 1.8M) on the 2-ranks-per-card x 2-card
+# topology. Hidden is already full+identical on every rank (layer AllReduces
+# work), so replicating lm_head is correct. Enabled for tp_size>=4 in main().
+REPLICATE_LM_HEAD = False
+_TAP_RAW_OUT = []  # collected raw attention outputs (before o_proj) per layer when DEBUG_TAP
 
 try:
     import torch._dynamo
@@ -50,25 +83,51 @@ except Exception:
         apply_rotary_pos_emb = None
 
 
+# ---------------------------------------------------------------------------
+# Utility helpers
+# ---------------------------------------------------------------------------
+
+
 def _as_list_str(items):
-    """Convert items to a list of string representations."""
+    """Convert a list of items to a list of strings for ONNX custom op attributes."""
     return [str(x) for x in items]
 
 
 def _rotate_half(x):
-    """Rotate half the hidden dims of the input tensor for rotary embedding."""
+    """Rotate the second half of the last dimension to the front, negated.
+
+    Used by Rotary Position Embedding (RoPE).
+    """
     d = x.shape[-1]
     x1 = x[..., : d // 2]
     x2 = x[..., d // 2 :]
     return torch.cat([-x2, x1], dim=-1)
 
 
+def _make_flash_attn_mask(attention_mask, q_len, k_len, past_len):
+    """Build a boolean causal + padding mask for prefill attention.
+
+    Returns shape (batch, 1, q_len, k_len).
+    """
+    ar_q = torch.arange(q_len, device=attention_mask.device)
+    ar_k = torch.arange(k_len, device=attention_mask.device)
+    causal = ar_k[None, :] > (past_len + ar_q[:, None])
+    causal = causal[None, None, :, :].expand(attention_mask.shape[0], 1, q_len, k_len)
+    padding = attention_mask[:, None, None, :].to(torch.bool).logical_not()
+    return (causal | padding).to(torch.bool)
+
+
+# ---------------------------------------------------------------------------
+# Custom ONNX ops – functional wrappers
+# ---------------------------------------------------------------------------
+
+
 class _RotaryMulCustom(torch.autograd.Function):
-    """Custom RotaryMul op for ONNX export."""
+    """Custom RotaryMul op for ONNX export — applies rotary position embedding multiplication."""
 
     @staticmethod
     def forward(ctx, x, cos4, sin4):
-        """Eager forward for RotaryMul."""
+        """Eager fallback: (x * cos) + (rotate_half(x) * sin)."""
         del ctx
         return (x * cos4) + (_rotate_half(x) * sin4)
 
@@ -89,7 +148,7 @@ class _RotaryMulCustom(torch.autograd.Function):
 
 
 def rotary_mul(x, cos4, sin4):
-    """Apply rotary position embedding multiplication (custom op wrapper)."""
+    """Apply rotary position embedding multiplication via custom op."""
     return _RotaryMulCustom.apply(x, cos4, sin4)
 
 
@@ -98,7 +157,7 @@ class _ApplyRotaryPosEmbCustom(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, query, key, cos, sin, layout: int, rotary_mode: str):
-        """Eager forward for rotary position embedding."""
+        """Eager fallback: apply rotary position embedding to query and key."""
         del ctx, rotary_mode
         if apply_rotary_pos_emb is not None:
             if int(layout) == 1:
@@ -106,8 +165,7 @@ class _ApplyRotaryPosEmbCustom(torch.autograd.Function):
                 k_bnsd = key.permute(0, 2, 1, 3)
                 q2, k2 = apply_rotary_pos_emb(q_bnsd, k_bnsd, cos, sin)
                 return q2.permute(0, 2, 1, 3), k2.permute(0, 2, 1, 3)
-            q, k = apply_rotary_pos_emb(query, key, cos, sin)
-            return q, k
+            return apply_rotary_pos_emb(query, key, cos, sin)
 
         axis = 2 if int(layout) == 1 else 1
         cos4 = cos.unsqueeze(axis) if cos.dim() == 3 else cos
@@ -140,7 +198,7 @@ class _ApplyRotaryPosEmbCustom(torch.autograd.Function):
 
 
 def apply_rotary_pos_emb_custom(query, key, cos, sin, layout: int = 3, rotary_mode: str = "half"):
-    """Apply rotary position embedding with custom op (wrapper)."""
+    """Apply rotary position embedding via custom op."""
     return _ApplyRotaryPosEmbCustom.apply(query, key, cos, sin, int(layout), str(rotary_mode))
 
 
@@ -149,7 +207,7 @@ class _RmsNormCustom(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, x, gamma, epsilon: float):
-        """Eager forward for RMSNorm."""
+        """Eager fallback: RMS normalization."""
         del ctx
         x_fp32 = x.to(torch.float32)
         var = (x_fp32 * x_fp32).mean(dim=-1, keepdim=True)
@@ -176,176 +234,198 @@ class _RmsNormCustom(torch.autograd.Function):
 
 
 def rms_norm(x, gamma, epsilon: float = 1e-6):
-    """Apply RMS normalization (custom op wrapper)."""
+    """Apply RMS normalization via custom op."""
     return _RmsNormCustom.apply(x, gamma, float(epsilon))
 
 
-def _make_flash_attn_mask(attention_mask, q_len, k_len, past_len):
-    """Create boolean causal + padding mask for flash attention."""
-    ar_q = torch.arange(q_len, device=attention_mask.device)
-    ar_k = torch.arange(k_len, device=attention_mask.device)
-    causal = ar_k[None, :] > (past_len + ar_q[:, None])
-    causal = causal[None, None, :, :].expand(attention_mask.shape[0], 1, q_len, k_len)
-    padding = attention_mask[:, None, None, :].to(torch.bool).logical_not()
-    return (causal | padding).to(torch.bool)
+def _rms_norm_layer(norm_mod, x):
+    """Apply RMS normalization using a HuggingFace RMSNorm module's weight.
+
+    For per-head norms (q_norm/k_norm, gamma shape [heads, head_dim]) under TP,
+    slice the head axis to this rank. Regular norms (gamma shape [hidden]) are
+    replicated.
+    """
+    gamma = norm_mod.weight
+    eps = getattr(norm_mod, "variance_epsilon", 1e-6)
+    if TP_SIZE > 1 and gamma.dim() > 1:
+        g_per = int(gamma.shape[0]) // TP_SIZE
+        gamma = gamma[TP_RANK * g_per:(TP_RANK + 1) * g_per]
+    y, _ = rms_norm(x, gamma, eps)
+    return y
 
 
-def _expand_gqa_kv(k, v, num_heads, num_kv_heads):
-    """Expand GQA key/value tensors to match num_heads via repeat_interleave."""
+# ---------------------------------------------------------------------------
+# Flash-attention custom ops
+# ---------------------------------------------------------------------------
+
+
+def _eager_attn_forward(query, key, value, num_heads, num_kv_heads, scale, layout):
+    """Run eager (non-optimized) multi-head attention with GQA support.
+
+    Handles layout conversion (BSND<->BNSD) and key/value head repetition.
+    Returns (q, k, v, raw attention scores).
+    """
+    q, k, v = query, key, value
+    if layout in ("BSND", "SBND"):
+        q, k, v = q.permute(0, 2, 1, 3), k.permute(0, 2, 1, 3), v.permute(0, 2, 1, 3)
     if 0 < num_kv_heads < num_heads:
         rep = num_heads // num_kv_heads
         k = k.repeat_interleave(rep, dim=1)
         v = v.repeat_interleave(rep, dim=1)
-    return k, v
+    attn = torch.matmul(q, k.transpose(2, 3)) * float(scale)
+    return q, k, v, attn
 
 
-def _apply_attn_mask(attn, atten_mask):
-    """Apply boolean attention mask to attention scores."""
-    if atten_mask is not None:
-        m = atten_mask.to(torch.bool)
-        if m.dim() == 4 and m.shape[1] == 1:
-            m = m.expand(attn.shape[0], attn.shape[1], m.shape[2], m.shape[3])
-        attn = attn.masked_fill(m, torch.finfo(attn.dtype).min)
-    return attn
-
-
-def _maybe_transpose_bsnd(tensor, layout):
-    """Permute tensor from BNSD to BSND layout if needed."""
-    if str(layout).upper() in ("BSND", "SBND"):
-        return tensor.permute(0, 2, 1, 3)
-    return tensor
+def _eager_attn_finalize(q, attn, v, layout):
+    """Compute softmax, weighted sum, and restore original layout."""
+    attn = F.softmax(attn, dim=-1, dtype=torch.float32).to(q.dtype)
+    out = torch.matmul(attn, v)
+    if layout in ("BSND", "SBND"):
+        out = out.permute(0, 2, 1, 3)
+    return out
 
 
 class _IncreFlashAttentionCustom(torch.autograd.Function):
-    """Custom IncreFlashAttention op for ONNX export."""
+    """Custom IncreFlashAttention op for ONNX export — single-token decode attention."""
 
     @staticmethod
     def forward(ctx, query, key, value, atten_mask, num_heads, scale_value,
                 input_layout, num_key_value_heads, block_size, inner_precise):
-        """Eager forward for incremental flash attention."""
+        """Eager fallback for incremental flash attention."""
         del ctx, block_size, inner_precise
-        q = _maybe_transpose_bsnd(query, input_layout)
-        k = _maybe_transpose_bsnd(key, input_layout)
-        v = _maybe_transpose_bsnd(value, input_layout)
-        k, v = _expand_gqa_kv(k, v, num_heads, num_key_value_heads)
-        attn = torch.matmul(q, k.transpose(2, 3)) * float(scale_value)
-        attn = _apply_attn_mask(attn, atten_mask)
-        attn = F.softmax(attn, dim=-1, dtype=torch.float32).to(q.dtype)
-        out = torch.matmul(attn, v)
-        return _maybe_transpose_bsnd(out, input_layout)
+        layout = str(input_layout).upper()
+        q, _k, v, attn = _eager_attn_forward(
+            query, key, value, num_heads, num_key_value_heads, scale_value, layout)
+        del _k
+        if atten_mask is not None:
+            m = atten_mask.to(torch.bool)
+            if m.dim() == 4 and m.shape[1] == 1:
+                m = m.expand(attn.shape[0], attn.shape[1], m.shape[2], m.shape[3])
+            attn = attn.masked_fill(m, torch.finfo(attn.dtype).min)
+        return _eager_attn_finalize(q, attn, v, layout)
 
     @staticmethod
     def symbolic(g, query, key, value, atten_mask, num_heads, scale_value,
                  input_layout, num_key_value_heads, block_size, inner_precise):
         """ONNX symbolic for incremental flash attention."""
-        base_attrs = {
-            "type_s": "IncreFlashAttention",
-            "input_names_s": _as_list_str(["query", "key", "value", "atten_mask"]),
-            "optional_input_names_s": _as_list_str(["atten_mask"]),
-            "output_names_s": _as_list_str(["attention_out"]),
-            "output_num_i": 1,
-            "num_heads_i": int(num_heads),
-            "scale_value_f": float(scale_value),
-            "input_layout_s": str(input_layout),
-            "num_key_value_heads_i": int(num_key_value_heads),
-            "block_size_i": int(block_size),
-            "inner_precise_i": int(inner_precise),
-        }
-        if atten_mask is None:
-            y = g.op("Custom", query, key, value, input_index_i=[0, 1, 2], **base_attrs)
-        else:
-            y = g.op("Custom", query, key, value, atten_mask,
-                      input_index_i=[0, 1, 2, 3], **base_attrs)
+        base_inputs = [query, key, value]
+        base_index = [0, 1, 2]
+        if atten_mask is not None:
+            base_inputs.append(atten_mask)
+            base_index.append(3)
+        y = g.op(
+            "Custom", *base_inputs,
+            type_s="IncreFlashAttention",
+            input_names_s=_as_list_str(["query", "key", "value", "atten_mask"]),
+            optional_input_names_s=_as_list_str(["atten_mask"]),
+            output_names_s=_as_list_str(["attention_out"]),
+            output_num_i=1,
+            input_index_i=base_index,
+            num_heads_i=int(num_heads),
+            scale_value_f=float(scale_value),
+            input_layout_s=str(input_layout),
+            num_key_value_heads_i=int(num_key_value_heads),
+            block_size_i=int(block_size),
+            inner_precise_i=int(inner_precise),
+        )
         y.setType(query.type())
         return y
 
 
-def incre_flash_attention(query, key, value, atten_mask, num_heads: int,
-                          scale_value: float, input_layout: str,
-                          num_key_value_heads: int, block_size: int = 0,
-                          inner_precise: int = 1):
-    """Apply incremental flash attention (custom op wrapper)."""
+def incre_flash_attention(query, key, value, atten_mask, num_heads, scale_value,
+                          input_layout, num_key_value_heads, block_size=0, inner_precise=1):
+    """Functional wrapper for incremental flash attention."""
     return _IncreFlashAttentionCustom.apply(
         query, key, value, atten_mask,
         int(num_heads), float(scale_value), str(input_layout),
-        int(num_key_value_heads), int(block_size), int(inner_precise),
-    )
+        int(num_key_value_heads), int(block_size), int(inner_precise))
 
 
 class _PromptFlashAttentionCustom(torch.autograd.Function):
-    """Custom prompt flash attention op for ONNX export."""
+    """Custom PromptFlashAttention op for ONNX export — full-sequence prefill attention."""
 
     @staticmethod
     def forward(ctx, query, key, value, atten_mask, num_heads, scale_value,
-                input_layout, num_key_value_heads, sparse_mode,
-                inner_precise, pre_tokens, next_tokens):
-        """Eager forward for prompt flash attention."""
+                input_layout, num_key_value_heads, sparse_mode, inner_precise,
+                pre_tokens, next_tokens):
+        """Eager fallback for prompt flash attention."""
         del ctx, inner_precise, pre_tokens, next_tokens
-        q = _maybe_transpose_bsnd(query, input_layout)
-        k = _maybe_transpose_bsnd(key, input_layout)
-        v = _maybe_transpose_bsnd(value, input_layout)
-        k, v = _expand_gqa_kv(k, v, num_heads, num_key_value_heads)
-        attn = torch.matmul(q, k.transpose(2, 3)) * float(scale_value)
-        attn = _apply_attn_mask(attn, atten_mask)
-        if atten_mask is None and int(sparse_mode) in (2, 3):
-            q_len, k_len = attn.shape[-2], attn.shape[-1]
-            causal = torch.arange(k_len, device=attn.device)[None, :] > \
-                     torch.arange(q_len, device=attn.device)[:, None]
-            causal = causal[None, None].expand(attn.shape[0], attn.shape[1], q_len, k_len)
-            attn = attn.masked_fill(causal, torch.finfo(attn.dtype).min)
-        attn = F.softmax(attn, dim=-1, dtype=torch.float32).to(q.dtype)
-        out = torch.matmul(attn, v)
-        return _maybe_transpose_bsnd(out, input_layout)
+        layout = str(input_layout).upper()
+        q, _k, v, attn = _eager_attn_forward(
+            query, key, value, num_heads, num_key_value_heads, scale_value, layout)
+        del _k
+        if atten_mask is not None:
+            m = atten_mask.to(torch.bool)
+            if m.dim() == 4 and m.shape[1] == 1:
+                m = m.expand(attn.shape[0], attn.shape[1], m.shape[2], m.shape[3])
+            attn = attn.masked_fill(m, torch.finfo(attn.dtype).min)
+        elif int(sparse_mode) in (2, 3):
+            attn = _apply_causal_mask(attn)
+        return _eager_attn_finalize(q, attn, v, layout)
 
     @staticmethod
     def symbolic(g, query, key, value, atten_mask, num_heads, scale_value,
-                 input_layout, num_key_value_heads, sparse_mode,
-                 inner_precise, pre_tokens, next_tokens):
+                 input_layout, num_key_value_heads, sparse_mode, inner_precise,
+                 pre_tokens, next_tokens):
         """ONNX symbolic for prompt flash attention."""
-        base_attrs = {
-            "type_s": "PromptFlashAttention",
-            "input_names_s": _as_list_str(["query", "key", "value", "atten_mask"]),
-            "optional_input_names_s": _as_list_str(["atten_mask"]),
-            "output_names_s": _as_list_str(["attention_out"]),
-            "output_num_i": 1,
-            "num_heads_i": int(num_heads),
-            "scale_value_f": float(scale_value),
-            "pre_tokens_i": int(pre_tokens),
-            "next_tokens_i": int(next_tokens),
-            "input_layout_s": str(input_layout),
-            "num_key_value_heads_i": int(num_key_value_heads),
-            "sparse_mode_i": int(sparse_mode),
-            "inner_precise_i": int(inner_precise),
-        }
-        if atten_mask is None:
-            y = g.op("Custom", query, key, value, input_index_i=[0, 1, 2], **base_attrs)
-        else:
-            y = g.op("Custom", query, key, value, atten_mask,
-                      input_index_i=[0, 1, 2, 3], **base_attrs)
+        base_inputs = [query, key, value]
+        base_index = [0, 1, 2]
+        if atten_mask is not None:
+            base_inputs.append(atten_mask)
+            base_index.append(3)
+        y = g.op(
+            "Custom", *base_inputs,
+            type_s="PromptFlashAttention",
+            input_names_s=_as_list_str(["query", "key", "value", "atten_mask"]),
+            optional_input_names_s=_as_list_str(["atten_mask"]),
+            output_names_s=_as_list_str(["attention_out"]),
+            output_num_i=1,
+            input_index_i=base_index,
+            num_heads_i=int(num_heads),
+            scale_value_f=float(scale_value),
+            pre_tokens_i=int(pre_tokens),
+            next_tokens_i=int(next_tokens),
+            input_layout_s=str(input_layout),
+            num_key_value_heads_i=int(num_key_value_heads),
+            sparse_mode_i=int(sparse_mode),
+            inner_precise_i=int(inner_precise),
+        )
         y.setType(query.type())
         return y
 
 
-def prompt_flash_attention(query, key, value, atten_mask, num_heads: int,
-                           scale_value: float, input_layout: str,
-                           num_key_value_heads: int, sparse_mode: int = 0,
-                           inner_precise: int = 1, pre_tokens: int = 214748647,
-                           next_tokens: int = 0):
-    """Apply prompt flash attention (custom op wrapper)."""
+def _apply_causal_mask(attn):
+    """Apply causal mask to attention scores for sparse modes 2/3."""
+    q_len, k_len = attn.shape[-2], attn.shape[-1]
+    ar_q = torch.arange(q_len, device=attn.device)
+    ar_k = torch.arange(k_len, device=attn.device)
+    causal = ar_k[None, :] > ar_q[:, None]
+    causal = causal[None, None, :, :].expand(attn.shape[0], attn.shape[1], q_len, k_len)
+    return attn.masked_fill(causal, torch.finfo(attn.dtype).min)
+
+
+def prompt_flash_attention(query, key, value, atten_mask, num_heads, scale_value,
+                           input_layout, num_key_value_heads, sparse_mode=0,
+                           inner_precise=1, pre_tokens=214748647, next_tokens=0):
+    """Functional wrapper for prompt flash attention."""
     return _PromptFlashAttentionCustom.apply(
         query, key, value, atten_mask,
         int(num_heads), float(scale_value), str(input_layout),
         int(num_key_value_heads), int(sparse_mode), int(inner_precise),
-        int(pre_tokens), int(next_tokens),
-    )
+        int(pre_tokens), int(next_tokens))
+
+
+# ---------------------------------------------------------------------------
+# SwiGLU and Scatter custom ops
+# ---------------------------------------------------------------------------
 
 
 class _SwiGluCustom(torch.autograd.Function):
-    """Custom SwiGLU op for ONNX export."""
+    """Custom SwiGLU op for ONNX export — fused SiLU-gate activation."""
 
     @staticmethod
     def forward(ctx, x, dim: int):
-        """Eager forward for SwiGLU."""
+        """Eager fallback: silu(first_half) * second_half."""
         del ctx
         d = int(dim)
         if d < 0:
@@ -371,16 +451,16 @@ class _SwiGluCustom(torch.autograd.Function):
 
 
 def swiglu(x, dim: int = -1):
-    """Apply SwiGLU activation (custom op wrapper)."""
+    """Apply SwiGLU activation: silu(x[...,:d]) * x[...,d:] via custom op."""
     return _SwiGluCustom.apply(x, int(dim))
 
 
 class _ScatterCustom(torch.autograd.Function):
-    """Custom scatter op for ONNX export."""
+    """Custom Scatter op for ONNX export — update KV cache at a specific position."""
 
     @staticmethod
     def forward(ctx, var, indices, updates, reduce: str, axis: int):
-        """Eager forward for scatter update on 4D tensor at axis=2."""
+        """Eager fallback: scatter updates into var at indices along axis."""
         del ctx
         if str(reduce) != "update":
             raise RuntimeError("Only reduce='update' is supported.")
@@ -389,7 +469,8 @@ class _ScatterCustom(torch.autograd.Function):
             ax = var.dim() + ax
         if var.dim() != 4 or ax != 2:
             raise RuntimeError("Only 4D var with axis=-2/2 is supported.")
-        out, _ = _scatter_fwd_impl(var, indices, updates)
+        out = var.clone()
+        _scatter_update(out, indices, updates)
         return out
 
     @staticmethod
@@ -410,8 +491,8 @@ class _ScatterCustom(torch.autograd.Function):
         return y
 
 
-def _scatter_fwd_impl(var, indices, updates):
-    """Perform scatter update on 4D var at axis=2, return (output, squeezed_updates)."""
+def _scatter_update(var, indices, updates):
+    """In-place scatter updates for 4D tensor at axis=2 using batch indices."""
     bsz, num_heads, _, _ = var.shape
     pos = indices
     if pos.dim() == 2 and pos.shape[-1] == 1:
@@ -420,276 +501,427 @@ def _scatter_fwd_impl(var, indices, updates):
     upd = updates
     if upd.dim() == 4 and upd.shape[2] == 1:
         upd = upd[:, :, 0, :]
-    out = var.clone()
-    b = torch.arange(bsz, device=out.device).view(bsz, 1).expand(bsz, num_heads)
-    h = torch.arange(num_heads, device=out.device).view(1, num_heads).expand(bsz, num_heads)
+    b = torch.arange(bsz, device=var.device).view(bsz, 1).expand(bsz, num_heads)
+    h = torch.arange(num_heads, device=var.device).view(1, num_heads).expand(bsz, num_heads)
     s = pos.view(bsz, 1).expand(bsz, num_heads)
-    out[b, h, s, :] = upd
-    return out, upd
+    var[b, h, s, :] = upd
 
 
 def scatter(var, indices, updates, reduce: str = "update", axis: int = -2):
-    """Apply scatter update (custom op wrapper)."""
+    """Scatter updates into variable at given indices via custom op."""
     return _ScatterCustom.apply(var, indices, updates, str(reduce), int(axis))
 
 
-def _make_additive_causal_mask(attention_mask, q_len, k_len, past_len, dtype):
-    """Create additive causal + padding mask with dtype-appropriate min value."""
-    mask_value = torch.finfo(dtype).min
-    ar_q = torch.arange(q_len, device=attention_mask.device)
-    ar_k = torch.arange(k_len, device=attention_mask.device)
-    causal = ar_k[None, :] > (past_len + ar_q[:, None])
-    causal = causal.to(dtype) * mask_value
-    causal = causal[None, None, :, :].expand(attention_mask.shape[0], 1, q_len, k_len)
-    padding = (1.0 - attention_mask.to(dtype)) * mask_value
-    padding = padding[:, None, None, :]
-    return causal + padding
+class _AllReduceCustom(torch.autograd.Function):
+    """Custom AllReduce(sum) op for ONNX export.
+
+    Eager fallback is identity (shape-preserving) -- only used during trace; the
+    real cross-rank sum happens at runtime where the plugin lowers the Custom
+    (type=AllReduce, op=sum, group=hccl_world_group, rank_size, fusion) node to a
+    GE HcomAllReduce. Requires the convert.cc group-injection fix + fusion attr set.
+
+    Each AllReduce gets a UNIQUE fusion_id > 0 (via _ALLREDUCE_FUSION_ID), routing
+    it through GE's 'fusion-by-id' code path. The default fusion_i=0 ('no-fusion'
+    path) mis-batches/mis-routes AllReduces in deep TP=4 graphs → silent precision
+    corruption (verified: 4p emits random garbage tokens with fusion_i=0).
+    """
+
+    # Per-export fusion-id counter. Reset to 0 at the start of each export so all
+    # ranks assign matching ids in the same order (correct cross-rank grouping).
+    _ALLREDUCE_FUSION_ID = [0]
+
+    @staticmethod
+    def forward(ctx, x):
+        del ctx
+        return x
+
+    @staticmethod
+    def symbolic(g, x):
+        """Emit ONNX Custom(AllReduce) node with a unique fusion id; GE lowers to HcomAllReduce."""
+        _AllReduceCustom._ALLREDUCE_FUSION_ID[0] += 1
+        y = g.op(
+            "Custom", x,
+            type_s="AllReduce",
+            input_names_s=_as_list_str(["x"]),
+            optional_input_names_s=_as_list_str([]),
+            output_names_s=_as_list_str(["y"]),
+            output_num_i=1,
+            input_index_i=[0],
+            op_s="sum",
+            group_s="hccl_world_group",
+            rank_size_i=int(TP_SIZE),
+            fusion_i=_AllReduceCustom._ALLREDUCE_FUSION_ID[0],
+        )
+        y.setType(x.type())
+        return y
 
 
-def _compute_qkv_linear(hidden_states, attn_mod):
-    """Compute fused QKV linear projection and return (query, key, value) states."""
-    q_w, k_w, v_w = attn_mod.q_proj.weight, attn_mod.k_proj.weight, attn_mod.v_proj.weight
+def allreduce_sum(x):
+    """AllReduce-sum across the TP group (no-op when TP_SIZE == 1)."""
+    if TP_SIZE <= 1:
+        return x
+    return _AllReduceCustom.apply(x)
+
+
+# Chunk size for the lm_head AllReduce. The full vocab (151936 elements fp16)
+# AllReduce corrupts at TP=4 on the 300I Duo (2×2 topology). Chunking into
+# smaller pieces (~32K each) avoids the corruption — the layer AllReduces
+# (4096 elements) work fine, so ~32K is safely under whatever threshold
+# triggers the bug.
+LM_HEAD_AR_CHUNK = 32768
+
+
+def _allreduce_lm_head(lh_partial):
+    """AllReduce the lm_head partial logits, chunked to avoid large-tensor corruption.
+
+    At TP=4, a single AllReduce on the full vocab tensor (151936 fp16 elements)
+    produces garbage (values beyond fp16 range — memory corruption, not a sum
+    error). Chunking into ~32K-element AllReduces sidesteps the bug while keeping
+    the model lightweight (same compute as the original sharded approach).
+    """
+    if TP_SIZE <= 1:
+        return lh_partial.float()
+    v = lh_partial.shape[-1]
+    # Only chunk at TP>=4 (the large-tensor corruption is 4-rank-specific;
+    # 2p single AllReduce works fine, so preserve it for efficiency).
+    if TP_SIZE < 4 or v <= LM_HEAD_AR_CHUNK:
+        return allreduce_sum(lh_partial).float()
+    chunks = []
+    for start in range(0, v, LM_HEAD_AR_CHUNK):
+        end = min(start + LM_HEAD_AR_CHUNK, v)
+        chunks.append(allreduce_sum(lh_partial[..., start:end]))
+    return torch.cat(chunks, dim=-1).float()
+
+
+# ---------------------------------------------------------------------------
+# QKV projection and attention dispatch
+# ---------------------------------------------------------------------------
+
+
+def _compute_qkv(attn_mod, hidden_states):
+    """Compute fused QKV projection and reshape to (batch, seq, heads, head_dim).
+
+    Applies q_norm / k_norm (per-head RMSNorm, TP-sliced) when present.
+    Returns (query_states, key_states, value_states, input_shape).
+    """
+    input_shape = hidden_states.shape[:-1]
+    head_dim = attn_mod.head_dim
+    hidden_shape = (*input_shape, -1, head_dim)
+
+    # TP: column-parallel QKV -- each rank holds num_heads/TP q-heads and
+    # num_kv_heads/TP kv-heads (slice the output/row axis of each projection).
+    q_w = attn_mod.q_proj.weight
+    k_w = attn_mod.k_proj.weight
+    v_w = attn_mod.v_proj.weight
+    q_per = int(q_w.shape[0]) // TP_SIZE
+    kv_per = int(k_w.shape[0]) // TP_SIZE
+    qs, qe = TP_RANK * q_per, (TP_RANK + 1) * q_per
+    ks, ke = TP_RANK * kv_per, (TP_RANK + 1) * kv_per
+    w = torch.cat([q_w[qs:qe], k_w[ks:ke], v_w[ks:ke]], dim=0)
     q_b, k_b, v_b = attn_mod.q_proj.bias, attn_mod.k_proj.bias, attn_mod.v_proj.bias
-    w = torch.cat([q_w, k_w, v_w], dim=0)
-    b = None if q_b is None else torch.cat([q_b, k_b, v_b], dim=0)
-    q_out = int(q_w.shape[0])
-    kv_out = int(k_w.shape[0])
+    if q_b is None:
+        b = None
+    else:
+        b = torch.cat([q_b[qs:qe], k_b[ks:ke], v_b[ks:ke]], dim=0)
+
+    q_out = q_per
+    kv_out = kv_per
     qkv = F.linear(hidden_states, w, b)
-    return qkv[..., :q_out], qkv[..., q_out:q_out + kv_out], qkv[..., q_out + kv_out:]
+
+    query = qkv[..., :q_out].view(hidden_shape)
+    key = qkv[..., q_out:q_out + kv_out].view(hidden_shape)
+    value = qkv[..., q_out + kv_out:].view(hidden_shape)
+    if hasattr(attn_mod, "q_norm"):
+        query = _rms_norm_layer(attn_mod.q_norm, query)
+    if hasattr(attn_mod, "k_norm"):
+        key = _rms_norm_layer(attn_mod.k_norm, key)
+    return query, key, value, input_shape
 
 
-def _apply_rotary_and_cache(cos4, sin4, query_states, key_states, value_states,
-                            cache_pos, past_key, past_value):
-    """Apply rotary embedding and scatter KV cache updates if past_key is provided."""
-    query_states = rotary_mul(query_states, cos4, sin4)
-    key_states = rotary_mul(key_states, cos4, sin4)
+def _run_prefill_attention(query, key, value, attention_mask, num_heads, num_kv_heads, scaling):
+    """Run prefill-path attention via PromptFlashAttention (BSND, manual GQA→MHA).
+
+    query/key/value are (batch, seq, heads, head_dim) = BSND. Manually repeats kv
+    heads to num_heads (BSND dim 2) then calls PFA with num_key_value_heads ==
+    num_heads (pure MHA) -- bypasses PFA's native GQA path, which produces wrong
+    partials at small per-rank KV-head counts (diagnosed: 4p prefill logits
+    cosine 0.23 vs 1p with native GQA; AllReduce is consistent so the per-rank
+    partials are the source). KV returned to the cache is the ORIGINAL (un-
+    repeated) per-rank shard, matching decode's past_key_cache layout.
+    """
+    q_len, k_len = query.shape[1], key.shape[1]
+    flash_mask = _make_flash_attn_mask(attention_mask, q_len, k_len, 0)
+    k_pfa, v_pfa, n_kv_pfa = key, value, num_kv_heads
+    if 0 < num_kv_heads < num_heads:
+        rep = num_heads // num_kv_heads
+        b, s, _, d = key.shape
+        k_pfa = key.unsqueeze(3).expand(b, s, num_kv_heads, rep, d).reshape(b, s, num_heads, d)
+        v_pfa = value.unsqueeze(3).expand(b, s, num_kv_heads, rep, d).reshape(b, s, num_heads, d)
+        n_kv_pfa = num_heads
+    attn_output = prompt_flash_attention(
+        query, k_pfa, v_pfa, atten_mask=flash_mask,
+        num_heads=num_heads, scale_value=float(scaling),
+        input_layout="BSND", num_key_value_heads=n_kv_pfa,
+        sparse_mode=0, inner_precise=1)
+    # cache: original (un-repeated) kv, BNSD fp16 (matches decode past_key_cache)
+    return attn_output, key.permute(0, 2, 1, 3), value.permute(0, 2, 1, 3)
+
+
+def _run_decode_attention(query, key, value, attention_mask, attn_mod, num_heads, num_kv_heads):
+    """Run decode-path attention via IncreFlashAttention (BNSD, manual GQA→MHA).
+
+    Manually repeats kv heads to num_heads first (expand+reshape), then calls
+    IncreFlash with num_key_value_heads == num_heads (pure MHA). This bypasses
+    the kernel's GQA path, which is unreliable for small per-rank KV-head counts
+    -- verified: native GQA gives random garbage at TP=4 (2 KV heads/rank) and
+    the same repeat→MHA fix the 7B used for its num_kv_heads==1 case restores
+    correct output. expand+reshape (not repeat_interleave) is used because
+    repeat_interleave exports as a Split op that GE can't compile.
+    Returns attn_output in BNSD layout.
+    """
+    scaling = getattr(attn_mod, "scaling", 1.0 / (attn_mod.head_dim ** 0.5))
+    if 0 < num_kv_heads < num_heads:
+        rep = num_heads // num_kv_heads
+        b, _, length, d = key.shape
+        key = key.unsqueeze(2).expand(b, num_kv_heads, rep, length, d).reshape(b, num_heads, length, d)
+        value = value.unsqueeze(2).expand(b, num_kv_heads, rep, length, d).reshape(b, num_heads, length, d)
+        num_kv_heads = num_heads  # now MHA: every q head has its own (repeated) kv head
+    pad_mask = attention_mask[:, None, None, :].to(torch.bool).logical_not()
+    return incre_flash_attention(
+        query, key, value, pad_mask,
+        num_heads=num_heads, scale_value=float(scaling),
+        input_layout="BNSD", num_key_value_heads=num_kv_heads, inner_precise=1)
+
+
+def _text_attn_forward(attn_mod, hidden_states, cos4, sin4, attention_mask,
+                       cache_pos, past_key, past_value):
+    """Dispatch attention computation to prefill or decode path.
+
+    Prefill: PromptFlashAttention (BSND) with causal+padding mask.
+    Decode: IncreFlashAttention (BNSD, native GQA) with KV cache scatter update.
+    """
+    num_heads = attn_mod.config.num_attention_heads
+    num_kv_heads = attn_mod.config.num_key_value_heads
+
+    query, key, value, input_shape = _compute_qkv(attn_mod, hidden_states)
+
+    if past_key is not None:
+        query, key, value = query.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
+
+    query = rotary_mul(query, cos4, sin4)
+    key = rotary_mul(key, cos4, sin4)
+
     if past_key is not None:
         pos = cache_pos
         if pos is None:
             raise RuntimeError("cache_pos is required when past_key_values is provided.")
         if pos.dim() == 2:
             pos = pos[:, -1]
-        key_states = scatter(past_key, pos, key_states, reduce="update", axis=-2)
-        value_states = scatter(past_value, pos, value_states, reduce="update", axis=-2)
-    return query_states, key_states, value_states
+        key = scatter(past_key, pos, key, reduce="update", axis=-2)
+        value = scatter(past_value, pos, value, reduce="update", axis=-2)
 
-
-def _prefill_attn(query_states, key_states, value_states, attention_mask, scaling,
-                  num_heads, num_kv_heads):
-    """Compute prefill-phase attention using PromptFlashAttention custom op."""
-    q = query_states.permute(0, 2, 1, 3)
-    k = key_states.permute(0, 2, 1, 3)
-    v = value_states.permute(0, 2, 1, 3)
-    # Build an explicit causal + padding mask (True == masked out). PromptFlash
-    # Attention runs with sparse_mode=0 (apply ONLY the supplied mask), so the
-    # mask must encode BOTH:
-    #   * causal triangle -- future keys (j > i) masked, else the prefill leaks
-    #     future tokens and degrades to near-immediate EOS;
-    #   * padding keys -- attention_mask==0 positions masked.
-    # The mask's Q axis must equal sQ too, or the ascend op's tiling rejects it
-    # (CheckAttenMaskShape: attenMask Q_S must be >= sQ).
-    q_len, kv_len = q.shape[2], k.shape[2]
-    ar_q = torch.arange(q_len, device=q.device)
-    ar_k = torch.arange(kv_len, device=k.device)
-    causal = ar_k[None, :] > ar_q[:, None]                       # (q, k) future
-    pad = attention_mask.to(torch.bool).logical_not()            # (b, k) padding
-    full_mask = causal[None, None, :, :] | pad[:, None, None, :]
-    attn_output = prompt_flash_attention(
-        q, k, v, full_mask,
-        num_heads=num_heads, scale_value=float(scaling),
-        input_layout="BNSD", num_key_value_heads=num_kv_heads,
-        sparse_mode=0, inner_precise=1,
-    )
-    return attn_output.permute(0, 2, 1, 3)
-
-
-def _text_attn_forward(attn_mod, hidden_states, cos4, sin4, attention_mask,
-                       cache_pos, past_key, past_value):
-    """Run text attention: QKV projection, rotary embedding, attention, output projection."""
-    input_shape = hidden_states.shape[:-1]
-    head_dim = attn_mod.head_dim
-    num_heads = attn_mod.config.num_attention_heads
-    num_kv_heads = attn_mod.config.num_key_value_heads
-    hidden_shape = (*input_shape, -1, head_dim)
-
-    q_lin, k_lin, v_lin = _compute_qkv_linear(hidden_states, attn_mod)
-    query_states = q_lin.view(hidden_shape)
-    key_states = k_lin.view(hidden_shape)
-    if hasattr(attn_mod, "q_norm"):
-        query_states = _rms_norm_layer(attn_mod.q_norm, query_states)
-    if hasattr(attn_mod, "k_norm"):
-        key_states = _rms_norm_layer(attn_mod.k_norm, key_states)
-    value_states = v_lin.view(hidden_shape)
-    if past_key is not None:
-        query_states = query_states.transpose(1, 2)
-        key_states = key_states.transpose(1, 2)
-        value_states = value_states.transpose(1, 2)
-
-    query_states, key_states, value_states = _apply_rotary_and_cache(
-        cos4, sin4, query_states, key_states, value_states, cache_pos, past_key, past_value)
-
-    scaling = getattr(attn_mod, "scaling", 1.0 / (head_dim ** 0.5))
+    num_heads_local = num_heads // TP_SIZE
+    num_kv_heads_local = num_kv_heads // TP_SIZE
     if past_key is None:
-        attn_output = _prefill_attn(query_states, key_states, value_states, attention_mask, scaling,
-                                   num_heads, num_kv_heads)
-        key_states = key_states.transpose(1, 2)
-        value_states = value_states.transpose(1, 2)
+        attn_output, key, value = _run_prefill_attention(
+            query, key, value, attention_mask, num_heads_local, num_kv_heads_local,
+            getattr(attn_mod, "scaling", 1.0 / (attn_mod.head_dim ** 0.5)))
+        out = attn_output.reshape(*input_shape, -1)
     else:
-        pad_mask = attention_mask[:, None, None, :].to(torch.bool).logical_not()
-        attn_output = incre_flash_attention(
-            query_states, key_states, value_states, pad_mask,
-            num_heads=num_heads, scale_value=float(scaling),
-            input_layout="BNSD", num_key_value_heads=num_kv_heads, inner_precise=1)
+        # Decode: IncreFlash in native GQA mode (num_kv_heads_local >= 2 for all
+        # TP sizes, so the kernel's GQA path is correct).
+        attn_output = _run_decode_attention(
+            query, key, value, attention_mask, attn_mod, num_heads_local, num_kv_heads_local)
+        out = attn_output.transpose(1, 2).reshape(*input_shape, -1)
 
-    if past_key is None:
-        attn_output = attn_output.reshape(*input_shape, -1)
+    if DEBUG_TAP:
+        _TAP_RAW_OUT.append(out)  # raw attention output (heads concatenated), before o_proj
+
+    # o_proj: row-parallel under TP (input dim = local q-heads * head_dim), then AllReduce.
+    if TP_SIZE > 1:
+        q_dim_local = num_heads_local * attn_mod.head_dim
+        o_w = attn_mod.o_proj.weight[:, TP_RANK * q_dim_local:(TP_RANK + 1) * q_dim_local]
+        out_proj = allreduce_sum(F.linear(out, o_w, attn_mod.o_proj.bias))
     else:
-        attn_output = attn_output.transpose(1, 2).reshape(*input_shape, -1)
-    attn_output = attn_mod.o_proj(attn_output)
-    return attn_output, key_states, value_states
+        out_proj = attn_mod.o_proj(out)
+    return out_proj, key, value
 
 
-def _rms_norm_layer(norm_mod, x):
-    """Apply RMS normalization using the custom RmsNorm op."""
-    gamma = norm_mod.weight
-    eps = getattr(norm_mod, "variance_epsilon", 1e-6)
-    y, _ = rms_norm(x, gamma, eps)
-    return y
+# ---------------------------------------------------------------------------
+# MLP helpers
+# ---------------------------------------------------------------------------
 
 
 def _mlp_gate_up_linear(mlp_mod, x):
-    """Merge gate_proj and up_proj into a single linear, return (gate, up)."""
+    """Merge gate_proj and up_proj into a single linear, then split outputs.
+
+    TP: column-parallel -- each rank holds intermediate/TP rows of gate and up.
+    """
     gate_w = mlp_mod.gate_proj.weight
     up_w = mlp_mod.up_proj.weight
     gate_b = mlp_mod.gate_proj.bias
     up_b = mlp_mod.up_proj.bias
-    w = torch.cat([gate_w, up_w], dim=0)
-    b = None if gate_b is None else torch.cat([gate_b, up_b], dim=0)
+    g_per = int(gate_w.shape[0]) // TP_SIZE
+    gs, ge = TP_RANK * g_per, (TP_RANK + 1) * g_per
+    w = torch.cat([gate_w[gs:ge], up_w[gs:ge]], dim=0)
+    b = None if gate_b is None else torch.cat([gate_b[gs:ge], up_b[gs:ge]], dim=0)
     y = F.linear(x, w, b)
-    gate_out = int(gate_w.shape[0])
+    gate_out = g_per
     return y[..., :gate_out], y[..., gate_out:]
 
 
-def _run_layer_forward(layer, hidden_states, cos4, sin4, attention_mask,
-                       cache_pos, past_key, past_value):
-    """Run a single transformer layer: attention + residual + MLP + residual."""
-    residual = hidden_states
-    hidden_states = _rms_norm_layer(layer.input_layernorm, hidden_states)
-    if past_key is None:
-        normed = hidden_states
-    else:
-        normed = layer.input_layernorm(residual)
-        hidden_states = normed
-    attn_out, pk, pv = _text_attn_forward(
-        layer.self_attn, hidden_states, cos4, sin4, attention_mask,
-        cache_pos, past_key, past_value)
-    hidden_states = residual + attn_out
-    residual = hidden_states
-    hidden_states = _rms_norm_layer(layer.post_attention_layernorm, hidden_states)
+def _run_mlp(layer, hidden_states):
+    """Run MLP forward pass with fused gate+up projection and SwiGLU activation."""
     mlp = layer.mlp
     if hasattr(mlp, "gate_proj") and hasattr(mlp, "up_proj") and hasattr(mlp, "down_proj"):
         gate, up = _mlp_gate_up_linear(mlp, hidden_states)
-        mlp_out = mlp.down_proj(swiglu(torch.cat([gate, up], dim=-1), dim=-1))
-        hidden_states = residual + mlp_out
-    else:
-        hidden_states = residual + mlp(hidden_states)
-    return hidden_states, pk, pv
+        act = swiglu(torch.cat([gate, up], dim=-1), dim=-1)
+        if TP_SIZE > 1:
+            # down_proj row-parallel: input dim = intermediate/TP, then AllReduce.
+            d_w = mlp.down_proj.weight
+            in_per = int(d_w.shape[1]) // TP_SIZE
+            d_w_local = d_w[:, TP_RANK * in_per:(TP_RANK + 1) * in_per]
+            return allreduce_sum(F.linear(act, d_w_local, mlp.down_proj.bias))
+        return mlp.down_proj(act)
+    return mlp(hidden_states)
 
 
-def _run_mlp(layer, hidden_states, residual):
-    """Run MLP sub-layer with SwiGlu activation, return output hidden states."""
-    mlp = layer.mlp
-    if hasattr(mlp, "gate_proj") and hasattr(mlp, "up_proj") and hasattr(mlp, "down_proj"):
-        gate, up = _mlp_gate_up_linear(mlp, hidden_states)
-        mlp_out = mlp.down_proj(swiglu(torch.cat([gate, up], dim=-1), dim=-1))
-        return residual + mlp_out
-    return residual + mlp(hidden_states)
+def _pad_kv_to_cache_len(kv_tensor):
+    """Pad a KV cache tensor (batch, heads, seq, dim) to KV_CACHE_LEN along dim 2."""
+    pad_len = KV_CACHE_LEN - kv_tensor.shape[2]
+    if pad_len <= 0:
+        return kv_tensor[:, :, :KV_CACHE_LEN, :]
+    zeros = kv_tensor.new_zeros(kv_tensor.shape[0], kv_tensor.shape[1], pad_len, kv_tensor.shape[3])
+    return torch.cat([kv_tensor, zeros], dim=2)[:, :, :KV_CACHE_LEN, :]
+
+
+# ---------------------------------------------------------------------------
+# Prefill / Decode wrapper modules
+# ---------------------------------------------------------------------------
 
 
 class Qwen3LlmPrefill(torch.nn.Module):
-    """Qwen3-8B LLM Prefill wrapper: processes full prompt sequence."""
+    """Qwen3-8B LLM Prefill wrapper — processes full prompt and outputs padded KV cache."""
 
     def __init__(self, model, lm_head):
-        """Initialize prefill wrapper with backbone model and lm_head."""
+        """Initialize prefill wrapper with shared model and lm_head."""
         super().__init__()
         self.model = model.model
         self.lm_head = lm_head
 
     def forward(self, input_ids, attention_mask, position_ids):
-        """Run prefill: embed → rotary → per-layer attention+MLP → norm → logits."""
+        """Run prefill: embed tokens, process all layers, output logits + KV cache."""
         inputs_embeds = self.model.embed_tokens(input_ids)
         cos, sin = self.model.rotary_emb(inputs_embeds, position_ids)
         cos4 = cos.unsqueeze(2) if cos.dim() == 3 else cos
         sin4 = sin.unsqueeze(2) if sin.dim() == 3 else sin
-        hidden_states = inputs_embeds
-        present_k, present_v = [], []
 
+        present_k, present_v = [], []
+        hidden_states = inputs_embeds
         for layer in self.model.layers:
             residual = hidden_states
+            # Prefill uses Custom RmsNorm (_rms_norm_layer): in the multi-layer TP
+            # PREFILL graph the native HF RMSNorm can get miscompiled, while the
+            # Custom RmsNorm stays correct. (Decode uses native RMSNorm for the
+            # layer norms -- the opposite.)
             hidden_states = _rms_norm_layer(layer.input_layernorm, hidden_states)
             attn_out, pk, pv = _text_attn_forward(
-                layer.self_attn, hidden_states, cos4, sin4, attention_mask, None, None, None)
-            pk = _pad_kv_cache(pk)
-            pv = _pad_kv_cache(pv)
+                layer.self_attn, hidden_states, cos4, sin4, attention_mask,
+                None, None, None)
+            pk, pv = _pad_kv_to_cache_len(pk), _pad_kv_to_cache_len(pv)
             hidden_states = residual + attn_out
             residual = hidden_states
             hidden_states = _rms_norm_layer(layer.post_attention_layernorm, hidden_states)
-            hidden_states = _run_mlp(layer, hidden_states, residual)
+            hidden_states = residual + _run_mlp(layer, hidden_states)
             present_k.append(pk)
             present_v.append(pv)
 
         hidden_states = _rms_norm_layer(self.model.norm, hidden_states)
-        logits = self.lm_head(hidden_states)
+        if TP_SIZE > 1:
+            h_per = hidden_states.shape[-1] // TP_SIZE
+            hs, he = TP_RANK * h_per, (TP_RANK + 1) * h_per
+            lh_w = self.lm_head.weight[:, hs:he]
+            lh_partial = F.linear(hidden_states[..., hs:he], lh_w, self.lm_head.bias)
+            logits = _allreduce_lm_head(lh_partial)
+        else:
+            logits = self.lm_head(hidden_states)
         return logits, torch.stack(present_k, dim=0), torch.stack(present_v, dim=0)
 
 
-def _pad_kv_cache(kv_tensor):
-    """Pad KV cache tensor along dim=2 to KV_CACHE_LEN and truncate."""
-    pad = kv_tensor.new_zeros(kv_tensor.shape[0], kv_tensor.shape[1], KV_CACHE_LEN, kv_tensor.shape[3])
-    return torch.cat([kv_tensor, pad], dim=2)[:, :, :KV_CACHE_LEN, :]
-
-
 class Qwen3LlmDecode(torch.nn.Module):
-    """Qwen3-8B LLM Decode wrapper: generates one token per step using KV cache."""
+    """Qwen3-8B LLM Decode wrapper — single-token generation with KV cache update."""
 
     def __init__(self, model, lm_head):
-        """Initialize decode wrapper with backbone model and lm_head."""
+        """Initialize decode wrapper with shared model and lm_head."""
         super().__init__()
         self.model = model.model
         self.lm_head = lm_head
 
-    def forward(self, input_ids, attention_mask, position_ids,
-                past_key_cache, past_value_cache):
-        """Run decode: embed → rotary → per-layer attention+MLP → norm → logits."""
+    def forward(self, input_ids, attention_mask, position_ids, past_key_cache, past_value_cache):
+        """Run decode: embed token, update KV cache per layer, output logits + new cache."""
         inputs_embeds = self.model.embed_tokens(input_ids)
         cos, sin = self.model.rotary_emb(inputs_embeds, position_ids)
         cos4 = cos.unsqueeze(1) if cos.dim() == 3 else cos
         sin4 = sin.unsqueeze(1) if sin.dim() == 3 else sin
-        hidden_states = inputs_embeds
+
+        # NOTE: unbind(0) exports as a single Split with N outputs that GE can
+        # miscompile in deep TP graphs (silent precision corruption). Index each
+        # layer separately instead -> N independent Slice ops, which compile
+        # correctly.
+        num_layers = len(self.model.layers)
+        past_k_layers = [past_key_cache[i] for i in range(num_layers)]
+        past_v_layers = [past_value_cache[i] for i in range(num_layers)]
         present_k, present_v = [], []
-        past_k_layers = past_key_cache.unbind(0)
-        past_v_layers = past_value_cache.unbind(0)
+        hidden_states = inputs_embeds
+        tap_attn_out = tap_post_attn = tap_post_mlp = None  # only set when DEBUG_TAP and i==0
+        global _TAP_RAW_OUT
+        if DEBUG_TAP:
+            _TAP_RAW_OUT = []
 
         for i, layer in enumerate(self.model.layers):
             residual = hidden_states
-            hidden_states = layer.input_layernorm(hidden_states)
+            # Use Custom RmsNorm for ALL norms (fused Ascend C op, much faster than
+            # native Pow/ReduceMean/Sqrt/Div on Vector). The TP=4 GE miscompile concern
+            # does not apply to 1p/2p. For TP=4, DEBUG_TAP already works around it.
+            hidden_states = _rms_norm_layer(layer.input_layernorm, hidden_states)
             attn_out, pk, pv = _text_attn_forward(
-                layer.self_attn, hidden_states, cos4, sin4,
-                attention_mask, position_ids, past_k_layers[i], past_v_layers[i])
+                layer.self_attn, hidden_states, cos4, sin4, attention_mask,
+                position_ids, past_k_layers[i], past_v_layers[i])
             hidden_states = residual + attn_out
+            if DEBUG_TAP and i == 0:
+                tap_attn_out = attn_out  # layer-0 attention output (post o_proj AllReduce)
+                tap_post_attn = hidden_states  # embed + attn_out_0 (before MLP)
             residual = hidden_states
-            hidden_states = layer.post_attention_layernorm(hidden_states)
-            hidden_states = _run_mlp(layer, hidden_states, residual)
+            hidden_states = _rms_norm_layer(layer.post_attention_layernorm, hidden_states)
+            hidden_states = residual + _run_mlp(layer, hidden_states)
+            if DEBUG_TAP and i == 0:
+                tap_post_mlp = hidden_states  # layer-0 full output
             present_k.append(pk)
             present_v.append(pv)
 
         hidden_states = _rms_norm_layer(self.model.norm, hidden_states)
-        logits = self.lm_head(hidden_states)
+        if TP_SIZE > 1:
+            # lm_head row-parallel: slice the hidden input dim, then AllReduce full-vocab logits.
+            h_per = hidden_states.shape[-1] // TP_SIZE
+            hs, he = TP_RANK * h_per, (TP_RANK + 1) * h_per
+            lh_w = self.lm_head.weight[:, hs:he]
+            lh_partial = F.linear(hidden_states[..., hs:he], lh_w, self.lm_head.bias)
+            logits = _allreduce_lm_head(lh_partial)
+        else:
+            logits = self.lm_head(hidden_states)
+        if DEBUG_TAP:
+            return logits, torch.stack(present_k, dim=0), torch.stack(present_v, dim=0), \
+                tap_attn_out, tap_post_attn, tap_post_mlp, _TAP_RAW_OUT[0]
         return logits, torch.stack(present_k, dim=0), torch.stack(present_v, dim=0)
 
 
+# ---------------------------------------------------------------------------
+# Export orchestration
+# ---------------------------------------------------------------------------
+
+
 def _prepare_llm_modules(model, device: str):
-    """Build and return (prefill, decode, lm_head) modules ready for export."""
+    """Create prefill and decode wrappers, move to device, set eval mode."""
     lm_head = model.lm_head
     model.eval()
     lm_head.eval()
@@ -701,7 +933,7 @@ def _prepare_llm_modules(model, device: str):
 
 
 def _get_kv_cache_config(model):
-    """Return (num_layers, num_kv_heads, head_dim) from model config."""
+    """Extract (num_layers, num_kv_heads, head_dim) from model config."""
     num_layers = model.config.num_hidden_layers
     num_kv_heads = model.config.num_key_value_heads
     head_dim = getattr(
@@ -720,7 +952,7 @@ def _prepare_output_paths(output_dir):
 
 
 def _create_prefill_dummy_inputs(device: str, dummy_seq_len: int):
-    """Create dummy (input_ids, attention_mask, position_ids) for prefill export."""
+    """Create random dummy inputs for prefill model export."""
     seq = int(dummy_seq_len)
     ids = torch.randint(0, 1000, (1, seq), dtype=torch.int64, device=device)
     mask = torch.ones(1, seq, dtype=torch.int64, device=device)
@@ -728,75 +960,127 @@ def _create_prefill_dummy_inputs(device: str, dummy_seq_len: int):
     return seq, ids, mask, pos
 
 
-def _export_prefill_onnx(prefill, prefill_path: Path, dummy_inputs, use_dynamo: bool):
-    """Export prefill sub-graph to ONNX with dynamic sequence axis."""
+def _export_prefill_onnx(prefill, prefill_path: Path, dummy_inputs, use_dynamo: bool, static: bool = False):
+    """Export prefill subgraph to ONNX.
+
+    static=True -> no dynamic_axes (fixed seq + batch=1). Required for the TP
+    prefill (online path doesn't resolve dynamic dims).
+    """
     print(f"Exporting LLM prefill to {prefill_path}...")
+    dynamic = None
+    if not static:
+        dynamic = {"input_ids": {0: "batch", 1: "seq"},
+                   "attention_mask": {0: "batch", 1: "seq"},
+                   "position_ids": {0: "batch", 1: "seq"},
+                   "logits": {0: "batch", 1: "seq"},
+                   "present_key_cache": {1: "batch"},
+                   "present_value_cache": {1: "batch"}}
+    pf_out_names = ["logits", "present_key_cache", "present_value_cache"]
     with torch.no_grad():
         torch.onnx.export(
             prefill, dummy_inputs, str(prefill_path),
             input_names=["input_ids", "attention_mask", "position_ids"],
-            output_names=["logits", "present_key_cache", "present_value_cache"],
+            output_names=pf_out_names,
             opset_version=18, do_constant_folding=True, dynamo=use_dynamo,
-            dynamic_axes={
-                "input_ids": {0: "batch", 1: "seq"},
-                "attention_mask": {0: "batch", 1: "seq"},
-                "position_ids": {0: "batch", 1: "seq"},
-                "logits": {0: "batch", 1: "seq"},
-                "present_key_cache": {1: "batch"},
-                "present_value_cache": {1: "batch"},
-            })
+            dynamic_axes=dynamic)
     print("LLM prefill exported successfully.")
 
 
-def _create_decode_dummy_inputs(device, dummy_seq, num_layers, num_kv_heads,
-                                head_dim, kv_dtype):
-    """Create dummy inputs for decode export including zero KV caches."""
-    del dummy_seq
-    step = 1
+def _create_decode_dummy_inputs(device, num_layers, num_kv_heads, head_dim, kv_dtype):
+    """Create dummy inputs for decode model export with fixed KV cache length."""
     past_len = int(KV_CACHE_LEN)
-    ids = torch.randint(0, 1000, (1, step), dtype=torch.int64, device=device)
+    ids = torch.randint(0, 1000, (1, 1), dtype=torch.int64, device=device)
     mask = torch.ones(1, past_len, dtype=torch.int64, device=device)
     pos = torch.tensor([[past_len - 1]], dtype=torch.int64, device=device)
+    # TP: each rank holds num_kv_heads/TP KV heads.
+    num_kv_heads = num_kv_heads // TP_SIZE
     k = torch.zeros(num_layers, 1, num_kv_heads, past_len, head_dim, dtype=kv_dtype, device=device)
-    v = torch.zeros(num_layers, 1, num_kv_heads, past_len, head_dim, dtype=kv_dtype, device=device)
+    v = torch.zeros_like(k)
     return ids, mask, pos, k, v
 
 
-def _export_decode_onnx(decode, decode_path: Path, dummy_inputs, use_dynamo: bool):
-    """Export decode sub-graph to ONNX with fixed KV cache shape."""
+def _export_decode_onnx(decode, decode_path: Path, dummy_inputs, use_dynamo: bool, static: bool = False):
+    """Export decode subgraph to ONNX.
+
+    static=True -> no dynamic_axes (fixed batch=1). Required for the TP decode which
+    is converted with --optimize=none (online): the online path does not resolve a
+    dynamic batch dim, leaving the output shape as -1 and breaking output size checks.
+    """
     print(f"Exporting LLM decode to {decode_path}...")
+    dynamic = None
+    if not static:
+        dynamic = {"input_ids": {0: "batch"}, "attention_mask": {0: "batch"},
+                   "position_ids": {0: "batch"}, "logits": {0: "batch"},
+                   "past_key_cache": {1: "batch"}, "past_value_cache": {1: "batch"},
+                   "present_key_cache": {1: "batch"}, "present_value_cache": {1: "batch"}}
+    out_names = ["logits", "present_key_cache", "present_value_cache"]
+    if DEBUG_TAP:
+        out_names += ["tap_attn_out", "tap_post_attn", "tap_post_mlp", "tap_raw_out"]
     with torch.no_grad():
         torch.onnx.export(
             decode, dummy_inputs, str(decode_path),
             input_names=["input_ids", "attention_mask", "position_ids",
-                         "past_key_cache", "past_value_cache"],
-            output_names=["logits", "present_key_cache", "present_value_cache"],
+                          "past_key_cache", "past_value_cache"],
+            output_names=out_names,
             opset_version=18, do_constant_folding=True, dynamo=use_dynamo,
-            dynamic_axes={
-                "input_ids": {0: "batch"}, "attention_mask": {0: "batch"},
-                "position_ids": {0: "batch"}, "logits": {0: "batch"},
-                "past_key_cache": {1: "batch"}, "past_value_cache": {1: "batch"},
-                "present_key_cache": {1: "batch"}, "present_value_cache": {1: "batch"},
-            })
+            dynamic_axes=dynamic)
     print("LLM decode exported successfully.")
 
 
-def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq_len=8,
-                              use_dynamo=False):
-    """Export Qwen3-8B as separate prefill and decode ONNX sub-graphs."""
+def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq_len=8, use_dynamo=False):
+    """Export Qwen3-8B as two ONNX subgraphs (prefill + decode)."""
     prefill, decode, _ = _prepare_llm_modules(model, device=device)
     kv_dtype = next(model.parameters()).dtype
     num_layers, num_kv_heads, head_dim = _get_kv_cache_config(model)
     prefill_path, decode_path = _prepare_output_paths(output_dir)
 
-    dummy_seq, dummy_ids, dummy_mask, dummy_pos = _create_prefill_dummy_inputs(
-        device=device, dummy_seq_len=dummy_seq_len)
-    _export_prefill_onnx(prefill, prefill_path,
-                         (dummy_ids, dummy_mask, dummy_pos), use_dynamo)
+    _, ids, mask, pos = _create_prefill_dummy_inputs(device=device, dummy_seq_len=dummy_seq_len)
+    _export_prefill_onnx(prefill, prefill_path, (ids, mask, pos), use_dynamo)
 
-    decode_inputs = _create_decode_dummy_inputs(
-        device, dummy_seq, num_layers, num_kv_heads, head_dim, kv_dtype)
+    decode_inputs = _create_decode_dummy_inputs(device, num_layers, num_kv_heads, head_dim, kv_dtype)
     _export_decode_onnx(decode, decode_path, decode_inputs, use_dynamo)
+
+
+def export_tp_decode(model, output_dir, rank, tp_size, device="cpu", use_dynamo=False, static=True):
+    """Export the TP-sharded decode subgraph for one rank.
+
+    static=True (TP>=2): no dynamic axes, for online (optimize=none) convert.
+    static=False (TP=1): dynamic batch/seq axes, for offline (ascend_oriented) convert.
+    """
+    global TP_SIZE, TP_RANK
+    TP_SIZE = int(tp_size)
+    TP_RANK = int(rank)
+    _AllReduceCustom._ALLREDUCE_FUSION_ID[0] = 0  # reset so every rank matches
+    print(f"Exporting decode rank={rank}/{tp_size} (static={static})...")
+    _, decode, _ = _prepare_llm_modules(model, device=device)
+    kv_dtype = next(model.parameters()).dtype
+    num_layers, num_kv_heads, head_dim = _get_kv_cache_config(model)
+    decode_dir = Path(output_dir) / "decode"
+    decode_dir.mkdir(parents=True, exist_ok=True)
+    decode_path = decode_dir / f"qwen3_8b_llm_decode_rank{rank}.onnx"
+    decode_inputs = _create_decode_dummy_inputs(str(device), num_layers, num_kv_heads, head_dim, kv_dtype)
+    _export_decode_onnx(decode, decode_path, decode_inputs, use_dynamo, static=static)
+    TP_SIZE, TP_RANK = 1, 0
+
+
+def export_tp_prefill(model, output_dir, rank, tp_size, device="cpu", dummy_seq_len=64, use_dynamo=False, static=True):
+    """Export the TP-sharded prefill subgraph for one rank.
+
+    static=True (TP>=2): no dynamic axes, for online (optimize=none) convert.
+    static=False (TP=1): dynamic batch/seq axes, for offline (ascend_oriented) convert.
+    """
+    global TP_SIZE, TP_RANK
+    TP_SIZE = int(tp_size)
+    TP_RANK = int(rank)
+    _AllReduceCustom._ALLREDUCE_FUSION_ID[0] = 0  # reset so every rank matches
+    print(f"Exporting prefill rank={rank}/{tp_size} (static={static})...")
+    prefill, _, _ = _prepare_llm_modules(model, device=device)
+    prefill_dir = Path(output_dir) / "prefill"
+    prefill_dir.mkdir(parents=True, exist_ok=True)
+    prefill_path = prefill_dir / f"qwen3_8b_llm_prefill_rank{rank}.onnx"
+    _, ids, mask, pos = _create_prefill_dummy_inputs(device=device, dummy_seq_len=dummy_seq_len)
+    _export_prefill_onnx(prefill, prefill_path, (ids, mask, pos), use_dynamo, static=static)
+    TP_SIZE, TP_RANK = 1, 0
 
 
 def _parse_export_args():
@@ -814,28 +1098,61 @@ def _parse_export_args():
                         choices=["fp16", "bf16", "fp32"], help="Export dtype")
     parser.add_argument("--use-dynamo", action="store_true",
                         help="Use torch dynamo exporter path")
+    parser.add_argument("--tp-size", type=int, default=1,
+                        help="Tensor-parallel size; >1 exports a TP-sharded prefill+decode "
+                             "per rank. Custom(AllReduce) is inserted after o_proj/"
+                             "down_proj/lm_head; convert with --optimize=none, run with provider=ge.")
+    parser.add_argument("--num-layers", type=int, default=0,
+                        help="If >0, slice the model to N layers (debugging; 0 = all 36).")
+    parser.add_argument("--kv-cache-len", type=int, default=0,
+                        help="Override KV_CACHE_LEN (default 256). Set >=1024 to enable prefill "
+                             "seq > 128 for long-prompt perf sweep (perf-only; decode KV cache grows "
+                             "proportionally). 0 = keep default 256.")
     return parser.parse_args()
 
 
-def _load_model_for_export(model_id, device, dtype_str):
-    """Load AutoModelForCausalLM on the target device with specified dtype."""
-    dtype_map = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": torch.float32}
-    torch_dtype = dtype_map[dtype_str]
-    device_obj = torch.device(device)
-    return AutoModelForCausalLM.from_pretrained(
-        model_id, torch_dtype=torch_dtype,
-        low_cpu_mem_usage=False, attn_implementation="eager").to(device_obj)
-
-
 def main():
-    """Parse args, load model, export prefill+decode ONNX, clean up."""
+    """Load Qwen3-8B model and export to ONNX prefill + decode subgraphs."""
     args = _parse_export_args()
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    if args.kv_cache_len and args.kv_cache_len > 0:
+        global KV_CACHE_LEN
+        KV_CACHE_LEN = int(args.kv_cache_len)
+        print(f"[kv-cache-len] override KV_CACHE_LEN = {KV_CACHE_LEN}")
+
+    dtype_map = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": torch.float32}
+    torch_dtype = dtype_map[args.dtype]
+    device = torch.device(args.device)
+
     print(f"\nLoading model {args.model_id} for export (dtype={args.dtype})...")
-    model = _load_model_for_export(args.model_id, args.device, args.dtype)
-    export_llm_prefill_decode(model, output_dir, args.device, args.dummy_seq_len, args.use_dynamo)
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=False,
+        attn_implementation="eager").to(device)
+
+    if args.num_layers and args.num_layers > 0:
+        model.model.layers = model.model.layers[:args.num_layers]  # type: ignore[attr-defined]
+        model.config.num_hidden_layers = args.num_layers  # type: ignore[attr-defined]
+        print(f"Sliced model to {args.num_layers} layers (debug)")
+
+    if args.tp_size > 1:
+        # TP=4 (36 layers, 4 ranks / 2 cards) can hit a GE graph-optimization
+        # miscompile that dampens decode logits. Exporting the decode with
+        # layer-0 intermediate output taps (DEBUG_TAP) forces GE to materialize
+        # those intermediates, which blocks the bad optimization and restores
+        # correct precision. Taps are extra outputs of existing intermediates ->
+        # negligible overhead; the infer allocates the extra output buffers and
+        # ignores them.
+        global DEBUG_TAP
+        DEBUG_TAP = args.tp_size >= 4
+        for rank in range(args.tp_size):
+            export_tp_prefill(model, output_dir, rank, args.tp_size, str(device), 64, args.use_dynamo)
+            export_tp_decode(model, output_dir, rank, args.tp_size, str(device), args.use_dynamo)
+    else:
+        # tp_size=1: single-shard (rank0), dynamic axes for offline ascend_oriented convert
+        export_tp_prefill(model, output_dir, 0, 1, str(device), 64, args.use_dynamo, static=False)
+        export_tp_decode(model, output_dir, 0, 1, str(device), args.use_dynamo, static=False)
 
     print("Clearing memory after export...")
     del model

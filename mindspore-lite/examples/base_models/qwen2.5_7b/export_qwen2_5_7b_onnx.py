@@ -31,6 +31,25 @@ import torch.nn.functional as F
 
 KV_CACHE_LEN = 512
 
+# When True, always use matmul attention for decode (skip IncreFlashAttention).
+# For testing: verify matmul decode correctness without needing TP=4 (which requires
+# num_kv_heads_local < 2). Set to False for production (IncreFlashAttention is faster).
+FORCE_MATMUL_ATTN = False
+
+# Tensor-parallel config (set from --tp-size / --rank before exporting the decode
+# subgraph). TP_SIZE=1 reproduces the original single-shard export.
+TP_SIZE = 1
+TP_RANK = 0
+# Debug: when True, the decode wrapper emits layer-0 intermediate hidden states
+# (post-attention, post-mlp) as extra outputs to localize graph-miscompilation.
+DEBUG_TAP = False
+_TAP_RAW_OUT = []  # collected raw attention outputs (before o_proj) per layer when DEBUG_TAP
+# AllReduce fusion id: 0 = no fusion (default, each AR its own collective); >0 = all
+# Custom(AllReduce) nodes share this fusion_id, activating GE's fusion channel so
+# HcomAllReduce ops are batched into one fused communication stream (fewer per-AR
+# launch/sync overhead, potential AR/compute overlap). 2p AR is correct under both.
+AR_FUSION_ID = 0
+
 try:
     import torch._dynamo
 
@@ -223,9 +242,17 @@ def rms_norm(x, gamma, epsilon: float = 1e-6):
 
 
 def _rms_norm_layer(norm_mod, x):
-    """Apply RMS normalization using a HuggingFace RMSNorm module's weight."""
+    """Apply RMS normalization using a HuggingFace RMSNorm module's weight.
+
+    For per-head norms (q_norm/k_norm, gamma shape [heads, head_dim]) under TP,
+    slice the head axis to this rank. Regular layernorms (gamma shape [hidden])
+    are replicated.
+    """
     gamma = norm_mod.weight
     eps = getattr(norm_mod, "variance_epsilon", 1e-6)
+    if TP_SIZE > 1 and gamma.dim() > 1:
+        g_per = int(gamma.shape[0]) // TP_SIZE
+        gamma = gamma[TP_RANK * g_per:(TP_RANK + 1) * g_per]
     y, _ = rms_norm(x, gamma, eps)
     return y
 
@@ -483,9 +510,133 @@ def _scatter_update(var, indices, updates):
     var[b, h, s, :] = upd
 
 
-def scatter(var, indices, updates, reduce: str = "update", axis: int = -2):
-    """Scatter updates into variable at given indices via custom op."""
-    return _ScatterCustom.apply(var, indices, updates, str(reduce), int(axis))
+def scatter(var, indices, updates):
+    """Scatter updates into KV cache at a given position.
+
+    Uses native PyTorch torch.scatter (exports as ONNX ScatterElements) instead of
+    a Custom op — the Custom Scatter op in the 28-layer TP=4 decode graph triggers a
+    GE graph-optimization miscompile of the downstream o_proj AllReduce, producing
+    garbage. Native ScatterElements avoids this.
+    """
+    out = var.clone()
+    pos = indices
+    if pos.dim() == 2 and pos.shape[-1] == 1:
+        pos = pos.squeeze(-1)
+    pos = pos.to(torch.long)
+    upd = updates
+    if upd.dim() == 4 and upd.shape[2] == 1:
+        upd = upd[:, :, 0, :]  # (B, H, D)
+    bsz, num_heads, _, head_dim = out.shape
+    # Build index: (B, H, 1, D) filled with pos[b] for each batch
+    idx = pos.view(bsz, 1, 1, 1).expand(bsz, num_heads, 1, head_dim)
+    src = upd.unsqueeze(2)  # (B, H, 1, D)
+    out = torch.scatter(out, dim=2, index=idx, src=src)
+    return out
+
+
+class _AllReduceCustom(torch.autograd.Function):
+    """Custom AllReduce(sum) op for ONNX export.
+
+    Eager fallback is identity (shape-preserving) -- only used during trace; the
+    real cross-rank sum happens at runtime where the plugin lowers the Custom
+    (type=AllReduce, op=sum, group=hccl_world_group, rank_size, fusion=0) node to a
+    GE HcomAllReduce. Requires the convert.cc group-injection fix + fusion attr set.
+    """
+
+    @staticmethod
+    def forward(ctx, x):
+        del ctx
+        return x
+
+    @staticmethod
+    def symbolic(g, x):
+        """Emit ONNX Custom(AllReduce) node; GE lowers to HcomAllReduce."""
+        y = g.op(
+            "Custom", x,
+            type_s="AllReduce",
+            input_names_s=_as_list_str(["x"]),
+            optional_input_names_s=_as_list_str([]),
+            output_names_s=_as_list_str(["y"]),
+            output_num_i=1,
+            input_index_i=[0],
+            op_s="sum",
+            group_s="hccl_world_group",
+            rank_size_i=int(TP_SIZE),
+            fusion_i=int(AR_FUSION_ID),
+        )
+        y.setType(x.type())
+        return y
+
+
+def allreduce_sum(x):
+    """AllReduce-sum across the TP group (no-op when TP_SIZE == 1)."""
+    if TP_SIZE <= 1:
+        return x
+    return _AllReduceCustom.apply(x)
+
+
+class _MatmulAllReduceCustom(torch.autograd.Function):
+    """Custom MatmulAllReduce op: fused MatMul + AllReduce(sum) for TP row-parallel lines.
+
+    Replaces the ``allreduce_sum(F.linear(x, w, b))`` pattern (MatMul + a separate
+    HcomAllReduce) with a single aclnnMatmulAllReduce node, cutting the per-step op
+    count by ~56 (28 layers x 2 row-parallel projections + lm_head). Eager fallback
+    is plain F.linear (AR is identity during trace); the real cross-rank sum happens
+    at runtime where the plugin lowers Custom(type=MatmulAllReduce, group, reduce_op,
+    comm_turn) to aclnnMatmulAllReduce. mslite's convert.cc routes any Custom op
+    carrying a ``group`` attr through the collective handler, injecting group/fusion
+    onto the GE node (same path as AllReduce). Requires 300I Duo transformer op set.
+    """
+
+    @staticmethod
+    def forward(ctx, x, weight, bias, group, reduce_op):
+        del ctx, group, reduce_op
+        return F.linear(x, weight, bias)
+
+    @staticmethod
+    def symbolic(g, x, weight, bias, group, reduce_op):
+        """Emit ONNX Custom(MatmulAllReduce) node; GE lowers to aclnnMatmulAllReduce."""
+        # nn.Linear weight is (out, in); set is_trans_b=true so MatmulAllReduce
+        # computes x @ weight.T (== F.linear). mslite's onnx_custom_parser maps
+        # string "true"/"false" to a bool attr (SetAttrString), so BOOL-typed GE
+        # op attributes are expressed via the _s suffix.
+        base_inputs = [x, weight]
+        base_index = [0, 1]
+        if bias is not None:
+            base_inputs.append(bias)
+            base_index.append(2)
+        y = g.op(
+            "Custom", *base_inputs,
+            type_s="MatmulAllReduce",
+            input_names_s=_as_list_str(["x1", "x2", "bias"]),
+            optional_input_names_s=_as_list_str(["bias"]),
+            output_names_s=_as_list_str(["y"]),
+            output_num_i=1,
+            input_index_i=base_index,
+            group_s=str(group),
+            reduce_op_s=str(reduce_op),
+            comm_turn_i=0,
+            fusion_i=0,
+            is_trans_a_s="false",
+            is_trans_b_s="true",
+        )
+        y.setType(x.type())
+        return y
+
+
+def matmul_all_reduce(x, weight, bias=None, group="hccl_world_group", reduce_op="sum"):
+    """Fused MatMul + AllReduce-sum for TP row-parallel (no-op when TP_SIZE == 1)."""
+    if TP_SIZE <= 1:
+        return F.linear(x, weight, bias)
+    return _MatmulAllReduceCustom.apply(x, weight, bias, group, reduce_op)
+
+
+# Module-level counter giving each AllReduce a unique fusion id. With fusion_i=0
+# all AllReduces share GE's "no-fusion" path; in large 28-layer TP=4 decode graphs
+# that path appears to mis-batch/mis-route the o_proj AllReduce (silent precision
+# corruption). Unique fusion ids (>0) route through GE's "fusion-by-id" path where
+# each lives in its own group, which sidesteps the bug.
+_ALLREDUCE_COUNTER = [0]
 
 
 # ---------------------------------------------------------------------------
@@ -502,12 +653,24 @@ def _compute_qkv(attn_mod, hidden_states):
     head_dim = attn_mod.head_dim
     hidden_shape = (*input_shape, -1, head_dim)
 
-    w = torch.cat([attn_mod.q_proj.weight, attn_mod.k_proj.weight, attn_mod.v_proj.weight], dim=0)
+    # TP: column-parallel QKV -- each rank holds num_heads/TP q-heads and
+    # num_kv_heads/TP kv-heads (slice the output/row axis of each projection).
+    q_w = attn_mod.q_proj.weight
+    k_w = attn_mod.k_proj.weight
+    v_w = attn_mod.v_proj.weight
+    q_per = int(q_w.shape[0]) // TP_SIZE
+    kv_per = int(k_w.shape[0]) // TP_SIZE
+    qs, qe = TP_RANK * q_per, (TP_RANK + 1) * q_per
+    ks, ke = TP_RANK * kv_per, (TP_RANK + 1) * kv_per
+    w = torch.cat([q_w[qs:qe], k_w[ks:ke], v_w[ks:ke]], dim=0)
     q_b, k_b, v_b = attn_mod.q_proj.bias, attn_mod.k_proj.bias, attn_mod.v_proj.bias
-    b = None if q_b is None else torch.cat([q_b, k_b, v_b], dim=0)
+    if q_b is None:
+        b = None
+    else:
+        b = torch.cat([q_b[qs:qe], k_b[ks:ke], v_b[ks:ke]], dim=0)
 
-    q_out = int(attn_mod.q_proj.weight.shape[0])
-    kv_out = int(attn_mod.k_proj.weight.shape[0])
+    q_out = q_per
+    kv_out = kv_per
     qkv = F.linear(hidden_states, w, b)
 
     query = qkv[..., :q_out].view(hidden_shape)
@@ -520,34 +683,68 @@ def _compute_qkv(attn_mod, hidden_states):
     return query, key, value, input_shape
 
 
-def _run_prefill_attention(query, key, value, attention_mask, num_heads, num_kv_heads, scaling):
-    """Run prefill-path attention using standard matmul with causal mask.
+def _run_decode_attention_matmul(query, key, value, attention_mask, num_heads, num_kv_heads):
+    """Standard matmul attention for decode (no IncreFlashAttention).
 
-    Returns (attn_output, key_states, value_states) with shapes for KV cache.
+    Used when num_kv_heads_local == 1 (e.g. TP=4) where the IncreFlashAttention
+    plugin may not support single KV head. q is (1, H, 1, D), k/v are (1, kv_H, L, D).
     """
-    q = query.permute(0, 2, 1, 3)
-    k = key.permute(0, 2, 1, 3)
-    v = value.permute(0, 2, 1, 3)
+    scaling = 1.0 / (query.shape[-1] ** 0.5)
+    q = query  # (1, H, 1, D)
+    k = key    # (1, kv_H, L, D)
+    v = value
     if 0 < num_kv_heads < num_heads:
         rep = num_heads // num_kv_heads
-        k = k.repeat_interleave(rep, dim=1)
-        v = v.repeat_interleave(rep, dim=1)
-    attn = torch.matmul(q, k.transpose(2, 3)) * float(scaling)
-    flash_mask = _make_flash_attn_mask(attention_mask, attn.shape[-2], attn.shape[-1], 0)
-    if flash_mask.dim() == 4 and flash_mask.shape[1] == 1:
-        flash_mask = flash_mask.expand(attn.shape[0], attn.shape[1], flash_mask.shape[2], flash_mask.shape[3])
-    attn = attn.masked_fill(flash_mask.to(torch.bool), torch.finfo(attn.dtype).min)
+        # Use expand+reshape instead of repeat_interleave (which exports as Split op that GE can't compile)
+        b, _, l, d = k.shape
+        k = k.unsqueeze(2).expand(b, num_kv_heads, rep, l, d).reshape(b, num_heads, l, d)
+        v = v.unsqueeze(2).expand(b, num_kv_heads, rep, l, d).reshape(b, num_heads, l, d)
+    attn = torch.matmul(q, k.transpose(2, 3)) * float(scaling)  # (1, H, 1, L)
+    # Padding mask: attention_mask is (batch, L), 1=valid, 0=pad
+    pad_mask = attention_mask[:, None, None, :].to(torch.bool)  # (B, 1, 1, L)
+    pad_mask = pad_mask.expand(attn.shape[0], attn.shape[1], 1, attn.shape[3])
+    attn = attn.masked_fill(~pad_mask, torch.finfo(attn.dtype).min)
     attn = F.softmax(attn, dim=-1, dtype=torch.float32).to(q.dtype)
-    attn_output = torch.matmul(attn, v).permute(0, 2, 1, 3)
-    return attn_output, k.transpose(1, 2), v.transpose(1, 2)
+    output = torch.matmul(attn, v)  # (1, H, 1, D)
+    return output
+
+
+def _run_prefill_attention(query, key, value, attention_mask, num_heads, num_kv_heads, scaling):
+    """Run prefill-path attention via fused PromptFlashAttention (BSND, GQA fused).
+
+    query/key/value arrive as (batch, seq, heads, head_dim) = BSND. PFA handles
+    GQA internally (num_key_value_heads < num_heads), removing the manual
+    repeat_interleave + matmul + softmax split. Returns (attn_output, k, v) with
+    KV in BNSD fp16 to match decode past_key_cache.
+    """
+    q_len, k_len = query.shape[1], key.shape[1]
+    flash_mask = _make_flash_attn_mask(attention_mask, q_len, k_len, 0)
+    attn_output = prompt_flash_attention(
+        query, key, value, atten_mask=flash_mask,
+        num_heads=num_heads, scale_value=float(scaling),
+        input_layout="BSND", num_key_value_heads=num_kv_heads,
+        sparse_mode=0, inner_precise=1)
+    # KV fp16 BNSD (matches decode past_key_cache)
+    return attn_output, key.permute(0, 2, 1, 3), value.permute(0, 2, 1, 3)
 
 
 def _run_decode_attention(query, key, value, attention_mask, attn_mod, num_heads, num_kv_heads):
-    """Run decode-path attention using IncreFlashAttention custom op.
+    """Run decode-path attention using IncreFlashAttention custom op (MHA mode).
 
-    Returns attn_output in BNSD layout reshaped to (batch, 1, hidden).
+    Manually repeats kv heads to num_heads first (expand+reshape), then calls
+    IncreFlash with num_key_value_heads == num_heads (pure MHA). This bypasses
+    the kernel's GQA path, which mis-computes when num_key_value_heads == 1
+    (the TP=4 case: 4 KV heads / 4 ranks = 1 KV head/rank). Returns attn_output
+    in BNSD layout.
     """
     scaling = getattr(attn_mod, "scaling", 1.0 / (attn_mod.head_dim ** 0.5))
+    if 0 < num_kv_heads < num_heads:
+        rep = num_heads // num_kv_heads
+        b, _, l, d = key.shape
+        # expand+reshape (not repeat_interleave) -- repeat_interleave exports as Split that GE can't compile
+        key = key.unsqueeze(2).expand(b, num_kv_heads, rep, l, d).reshape(b, num_heads, l, d)
+        value = value.unsqueeze(2).expand(b, num_kv_heads, rep, l, d).reshape(b, num_heads, l, d)
+        num_kv_heads = num_heads  # now MHA: every q head has its own (repeated) kv head
     pad_mask = attention_mask[:, None, None, :].to(torch.bool).logical_not()
     return incre_flash_attention(
         query, key, value, pad_mask,
@@ -579,20 +776,40 @@ def _text_attn_forward(attn_mod, hidden_states, cos4, sin4, attention_mask,
             raise RuntimeError("cache_pos is required when past_key_values is provided.")
         if pos.dim() == 2:
             pos = pos[:, -1]
-        key = scatter(past_key, pos, key, reduce="update", axis=-2)
-        value = scatter(past_value, pos, value, reduce="update", axis=-2)
+        key = scatter(past_key, pos, key)
+        value = scatter(past_value, pos, value)
 
+    num_heads_local = num_heads // TP_SIZE
+    num_kv_heads_local = num_kv_heads // TP_SIZE
     if past_key is None:
         attn_output, key, value = _run_prefill_attention(
-            query, key, value, attention_mask, num_heads, num_kv_heads,
+            query, key, value, attention_mask, num_heads_local, num_kv_heads_local,
             getattr(attn_mod, "scaling", 1.0 / (attn_mod.head_dim ** 0.5)))
         out = attn_output.reshape(*input_shape, -1)
+    elif FORCE_MATMUL_ATTN:
+        # Escape-hatch fallback: plain matmul attention (has a known unbind(0)→GE Split
+        # compile issue in the multi-layer graph; normally unused).
+        attn_output = _run_decode_attention_matmul(
+            query, key, value, attention_mask, num_heads_local, num_kv_heads_local)
+        out = attn_output.transpose(1, 2).reshape(*input_shape, -1)
     else:
+        # Default: IncreFlash in MHA mode after manual GQA repeat (handles
+        # num_kv_heads_local==1 for TP=4 where the kernel's own GQA path is wrong).
         attn_output = _run_decode_attention(
-            query, key, value, attention_mask, attn_mod, num_heads, num_kv_heads)
+            query, key, value, attention_mask, attn_mod, num_heads_local, num_kv_heads_local)
         out = attn_output.transpose(1, 2).reshape(*input_shape, -1)
 
-    return attn_mod.o_proj(out), key, value
+    if DEBUG_TAP:
+        _TAP_RAW_OUT.append(out)  # raw attention output (heads concatenated), before o_proj
+
+    # o_proj: row-parallel under TP (input dim = local q-heads * head_dim), then AllReduce.
+    if TP_SIZE > 1:
+        q_dim_local = num_heads_local * attn_mod.head_dim
+        o_w = attn_mod.o_proj.weight[:, TP_RANK * q_dim_local:(TP_RANK + 1) * q_dim_local]
+        out_proj = allreduce_sum(F.linear(out, o_w, attn_mod.o_proj.bias))
+    else:
+        out_proj = attn_mod.o_proj(out)
+    return out_proj, key, value
 
 
 # ---------------------------------------------------------------------------
@@ -601,15 +818,20 @@ def _text_attn_forward(attn_mod, hidden_states, cos4, sin4, attention_mask,
 
 
 def _mlp_gate_up_linear(mlp_mod, x):
-    """Merge gate_proj and up_proj into a single linear, then split outputs."""
+    """Merge gate_proj and up_proj into a single linear, then split outputs.
+
+    TP: column-parallel -- each rank holds intermediate/TP rows of gate and up.
+    """
     gate_w = mlp_mod.gate_proj.weight
     up_w = mlp_mod.up_proj.weight
     gate_b = mlp_mod.gate_proj.bias
     up_b = mlp_mod.up_proj.bias
-    w = torch.cat([gate_w, up_w], dim=0)
-    b = None if gate_b is None else torch.cat([gate_b, up_b], dim=0)
+    g_per = int(gate_w.shape[0]) // TP_SIZE
+    gs, ge = TP_RANK * g_per, (TP_RANK + 1) * g_per
+    w = torch.cat([gate_w[gs:ge], up_w[gs:ge]], dim=0)
+    b = None if gate_b is None else torch.cat([gate_b[gs:ge], up_b[gs:ge]], dim=0)
     y = F.linear(x, w, b)
-    gate_out = int(gate_w.shape[0])
+    gate_out = g_per
     return y[..., :gate_out], y[..., gate_out:]
 
 
@@ -618,7 +840,14 @@ def _run_mlp(layer, hidden_states):
     mlp = layer.mlp
     if hasattr(mlp, "gate_proj") and hasattr(mlp, "up_proj") and hasattr(mlp, "down_proj"):
         gate, up = _mlp_gate_up_linear(mlp, hidden_states)
-        return mlp.down_proj(swiglu(torch.cat([gate, up], dim=-1), dim=-1))
+        act = swiglu(torch.cat([gate, up], dim=-1), dim=-1)
+        if TP_SIZE > 1:
+            # down_proj row-parallel: input dim = intermediate/TP, then AllReduce.
+            d_w = mlp.down_proj.weight
+            in_per = int(d_w.shape[1]) // TP_SIZE
+            d_w_local = d_w[:, TP_RANK * in_per:(TP_RANK + 1) * in_per]
+            return allreduce_sum(F.linear(act, d_w_local, mlp.down_proj.bias))
+        return mlp.down_proj(act)
     return mlp(hidden_states)
 
 
@@ -656,6 +885,9 @@ class Qwen2_5LlmPrefill(torch.nn.Module):
         hidden_states = inputs_embeds
         for layer in self.model.layers:
             residual = hidden_states
+            # Prefill uses Custom RmsNorm (_rms_norm_layer): in the 28-layer TP=4 PREFILL
+            # graph the native HF RMSNorm gets miscompiled (wrong first token), while the
+            # Custom RmsNorm is correct. (Decode is the opposite — it uses native RMSNorm.)
             hidden_states = _rms_norm_layer(layer.input_layernorm, hidden_states)
             attn_out, pk, pv = _text_attn_forward(
                 layer.self_attn, hidden_states, cos4, sin4, attention_mask,
@@ -669,30 +901,40 @@ class Qwen2_5LlmPrefill(torch.nn.Module):
             present_v.append(pv)
 
         hidden_states = _rms_norm_layer(self.model.norm, hidden_states)
-        logits = self.lm_head(hidden_states)
-        return logits, torch.stack(present_k, dim=0), torch.stack(present_v, dim=0)
+        if TP_SIZE > 1:
+            h_per = hidden_states.shape[-1] // TP_SIZE
+            hs, he = TP_RANK * h_per, (TP_RANK + 1) * h_per
+            lh_w = self.lm_head.weight[:, hs:he]
+            logits = allreduce_sum(F.linear(hidden_states[..., hs:he], lh_w, self.lm_head.bias))
+            logits = logits.float()
+        else:
+            logits = self.lm_head(hidden_states)
+        return logits[:, -1:, :], torch.stack(present_k, dim=0), torch.stack(present_v, dim=0)
 
 
 class Qwen2_5LlmDecode(torch.nn.Module):
-    """Qwen2.5-7B LLM Decode wrapper — single-token generation with KV cache update."""
+    """Qwen2.5-7B LLM Decode wrapper — single-token generation with KV cache update.
+    Used for TP=1/2 (single model, no chunking). TP=4 uses Qwen2_5LlmDecodeChunk."""
 
     def __init__(self, model, lm_head):
-        """Initialize decode wrapper with shared model and lm_head."""
         super().__init__()
         self.model = model.model
         self.lm_head = lm_head
 
     def forward(self, input_ids, attention_mask, position_ids, past_key_cache, past_value_cache):
-        """Run decode: embed token, update KV cache per layer, output logits + new cache."""
+        """Run single-token decode over all layers; return logits + stacked KV."""
         inputs_embeds = self.model.embed_tokens(input_ids)
         cos, sin = self.model.rotary_emb(inputs_embeds, position_ids)
         cos4 = cos.unsqueeze(1) if cos.dim() == 3 else cos
         sin4 = sin.unsqueeze(1) if sin.dim() == 3 else sin
 
-        past_k_layers = past_key_cache.unbind(0)
-        past_v_layers = past_value_cache.unbind(0)
+        num_layers = len(self.model.layers)
+        past_k_layers = [past_key_cache[i] for i in range(num_layers)]
+        past_v_layers = [past_value_cache[i] for i in range(num_layers)]
         present_k, present_v = [], []
         hidden_states = inputs_embeds
+        barriers = []
+        BARRIER_INTERVAL = 4
 
         for i, layer in enumerate(self.model.layers):
             residual = hidden_states
@@ -706,10 +948,92 @@ class Qwen2_5LlmDecode(torch.nn.Module):
             hidden_states = residual + _run_mlp(layer, hidden_states)
             present_k.append(pk)
             present_v.append(pv)
+            if TP_SIZE >= 4 and (i + 1) % BARRIER_INTERVAL == 0:
+                barriers.append(hidden_states)
 
         hidden_states = _rms_norm_layer(self.model.norm, hidden_states)
-        logits = self.lm_head(hidden_states)
-        return logits, torch.stack(present_k, dim=0), torch.stack(present_v, dim=0)
+        if TP_SIZE > 1:
+            h_per = hidden_states.shape[-1] // TP_SIZE
+            hs, he = TP_RANK * h_per, (TP_RANK + 1) * h_per
+            lh_w = self.lm_head.weight[:, hs:he]
+            logits = allreduce_sum(F.linear(hidden_states[..., hs:he], lh_w, self.lm_head.bias))
+            logits = logits.float()
+        else:
+            logits = self.lm_head(hidden_states)
+        outputs = [logits[:, -1:, :], torch.stack(present_k, dim=0), torch.stack(present_v, dim=0)]
+        if barriers:
+            outputs.append(torch.stack(barriers, dim=0))
+        return tuple(outputs)
+
+
+class Qwen2_5LlmDecodeChunk(torch.nn.Module):
+    """Decode sub-model for a chunk of layers (split-decode for TP=4).
+
+    Processes a contiguous range of transformer layers. The first chunk also
+    does token embedding; the last chunk also applies final norm + lm_head.
+    Each chunk is compiled as a separate MindIR so GE's graph optimizer
+    never sees more than CHUNK_SIZE layers worth of AllReduce nodes at once
+    (threshold: >4 layers → miscompile for TP=4).
+    """
+
+    def __init__(self, model, lm_head, layer_start, layer_end, is_first, is_last):
+        super().__init__()
+        self.model = model.model
+        self.lm_head = lm_head
+        self.layer_start = layer_start
+        self.layer_end = layer_end
+        self.is_first = is_first
+        self.is_last = is_last
+        self.num_chunk_layers = layer_end - layer_start
+
+    def forward(self, input_ids_or_hidden, attention_mask, position_ids,
+                past_key_cache, past_value_cache):
+        """Run decode over a chunk of layers; first chunk embeds, last emits logits."""
+        if self.is_first:
+            hidden_states = self.model.embed_tokens(input_ids_or_hidden)
+        else:
+            hidden_states = input_ids_or_hidden
+        cos, sin = self.model.rotary_emb(hidden_states, position_ids)
+        cos4 = cos.unsqueeze(1) if cos.dim() == 3 else cos
+        sin4 = sin.unsqueeze(1) if sin.dim() == 3 else sin
+
+        present_k, present_v = [], []
+        for idx in range(self.num_chunk_layers):
+            i = self.layer_start + idx
+            residual = hidden_states
+            hidden_states = self.model.layers[i].input_layernorm(hidden_states)
+            attn_out, pk, pv = _text_attn_forward(
+                self.model.layers[i].self_attn, hidden_states, cos4, sin4,
+                attention_mask, position_ids,
+                past_key_cache[idx], past_value_cache[idx])
+            hidden_states = residual + attn_out
+            residual = hidden_states
+            hidden_states = self.model.layers[i].post_attention_layernorm(hidden_states)
+            hidden_states = residual + _run_mlp(self.model.layers[i], hidden_states)
+            present_k.append(pk)
+            present_v.append(pv)
+
+        if self.is_last:
+            hidden_states = _rms_norm_layer(self.model.norm, hidden_states)
+            if TP_SIZE > 1:
+                h_per = hidden_states.shape[-1] // TP_SIZE
+                hs, he = TP_RANK * h_per, (TP_RANK + 1) * h_per
+                lh_w = self.lm_head.weight[:, hs:he]
+                logits = allreduce_sum(F.linear(hidden_states[..., hs:he], lh_w, self.lm_head.bias))
+                return logits.float(), torch.stack(present_k, dim=0), torch.stack(present_v, dim=0)
+            return self.lm_head(hidden_states), torch.stack(present_k, dim=0), torch.stack(present_v, dim=0)
+        # Intermediate chunk: output hidden state (not logits) + KV cache.
+        # No explicit Cast — let PyTorch/ONNX use the model's native fp16 dtype.
+        # GE's HcomAllReduce outputs fp32 internally but GE inserts Cast(fp32→fp16)
+        # before the output node to match the MindIR-declared fp16 output type.
+        return hidden_states, torch.stack(present_k, dim=0), torch.stack(present_v, dim=0)
+
+
+# Chunk size for split-decode. Historically <=4 to work around a *suspected* GE
+# hccl_graph_optimizer miscompile for >4-layer 4-rank decode graphs; REPORT.md §4.2
+# has since traced the 4p accuracy breakage to 4-rank AllReduce itself (not a
+# miscompile), so the chunk workaround is no longer needed. 999 = full decode.
+DECODE_CHUNK_SIZE = 999
 
 
 # ---------------------------------------------------------------------------
@@ -757,15 +1081,21 @@ def _create_prefill_dummy_inputs(device: str, dummy_seq_len: int):
     return seq, ids, mask, pos
 
 
-def _export_prefill_onnx(prefill, prefill_path: Path, dummy_inputs, use_dynamo: bool):
-    """Export prefill subgraph to ONNX with dynamic sequence length."""
+def _export_prefill_onnx(prefill, prefill_path: Path, dummy_inputs, use_dynamo: bool, static: bool = False):
+    """Export prefill subgraph to ONNX.
+
+    static=True -> no dynamic_axes (fixed seq + batch=1). Required for the TP
+    prefill (online path doesn't resolve dynamic dims).
+    """
     print(f"Exporting LLM prefill to {prefill_path}...")
-    dynamic = {"input_ids": {0: "batch", 1: "seq"},
-               "attention_mask": {0: "batch", 1: "seq"},
-               "position_ids": {0: "batch", 1: "seq"},
-               "logits": {0: "batch", 1: "seq"},
-               "present_key_cache": {1: "batch"},
-               "present_value_cache": {1: "batch"}}
+    dynamic = None
+    if not static:
+        dynamic = {"input_ids": {0: "batch", 1: "seq"},
+                   "attention_mask": {0: "batch", 1: "seq"},
+                   "position_ids": {0: "batch", 1: "seq"},
+                   "logits": {0: "batch", 1: "seq"},
+                   "present_key_cache": {1: "batch"},
+                   "present_value_cache": {1: "batch"}}
     with torch.no_grad():
         torch.onnx.export(
             prefill, dummy_inputs, str(prefill_path),
@@ -782,24 +1112,34 @@ def _create_decode_dummy_inputs(device, num_layers, num_kv_heads, head_dim, kv_d
     ids = torch.randint(0, 1000, (1, 1), dtype=torch.int64, device=device)
     mask = torch.ones(1, past_len, dtype=torch.int64, device=device)
     pos = torch.tensor([[past_len - 1]], dtype=torch.int64, device=device)
+    # TP: each rank holds num_kv_heads/TP KV heads.
+    num_kv_heads = num_kv_heads // TP_SIZE
     k = torch.zeros(num_layers, 1, num_kv_heads, past_len, head_dim, dtype=kv_dtype, device=device)
     v = torch.zeros_like(k)
     return ids, mask, pos, k, v
 
 
-def _export_decode_onnx(decode, decode_path: Path, dummy_inputs, use_dynamo: bool):
-    """Export decode subgraph to ONNX with fixed shapes."""
+def _export_decode_onnx(decode, decode_path: Path, dummy_inputs, use_dynamo: bool, static: bool = False):
+    """Export decode subgraph to ONNX.
+
+    static=True -> no dynamic_axes (fixed batch=1). Required for the TP decode which
+    is converted with --optimize=none (online): the online path does not resolve a
+    dynamic batch dim, leaving the output shape as -1 and breaking output size checks.
+    """
     print(f"Exporting LLM decode to {decode_path}...")
-    dynamic = {"input_ids": {0: "batch"}, "attention_mask": {0: "batch"},
-               "position_ids": {0: "batch"}, "logits": {0: "batch"},
-               "past_key_cache": {1: "batch"}, "past_value_cache": {1: "batch"},
-               "present_key_cache": {1: "batch"}, "present_value_cache": {1: "batch"}}
+    dynamic = None
+    if not static:
+        dynamic = {"input_ids": {0: "batch"}, "attention_mask": {0: "batch"},
+                   "position_ids": {0: "batch"}, "logits": {0: "batch"},
+                   "past_key_cache": {1: "batch"}, "past_value_cache": {1: "batch"},
+                   "present_key_cache": {1: "batch"}, "present_value_cache": {1: "batch"}}
+    out_names = ["output", "present_key_cache", "present_value_cache"]
     with torch.no_grad():
         torch.onnx.export(
             decode, dummy_inputs, str(decode_path),
             input_names=["input_ids", "attention_mask", "position_ids",
                           "past_key_cache", "past_value_cache"],
-            output_names=["logits", "present_key_cache", "present_value_cache"],
+            output_names=out_names,
             opset_version=18, do_constant_folding=True, dynamo=use_dynamo,
             dynamic_axes=dynamic)
     print("LLM decode exported successfully.")
@@ -819,6 +1159,107 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq_len=8, 
     _export_decode_onnx(decode, decode_path, decode_inputs, use_dynamo)
 
 
+def export_prefill_only(model, output_dir, device="cpu", dummy_seq_len=8, use_dynamo=False):
+    """Export only the single-shard prefill subgraph (TP decode reuses it on dev0)."""
+    global TP_SIZE, TP_RANK
+    TP_SIZE, TP_RANK = 1, 0
+    prefill, _, _ = _prepare_llm_modules(model, device=device)
+    prefill_path, _ = _prepare_output_paths(output_dir)
+    _, ids, mask, pos = _create_prefill_dummy_inputs(device=device, dummy_seq_len=dummy_seq_len)
+    _export_prefill_onnx(prefill, prefill_path, (ids, mask, pos), use_dynamo)
+
+
+def export_tp_decode(model, output_dir, rank, tp_size, device="cpu", use_dynamo=False, static=True):
+    """Export the TP-sharded decode subgraph for one rank.
+
+    For TP>=4: exports as split-decode chunks (each <= DECODE_CHUNK_SIZE layers).
+    For TP<=2: exports as a single decode model (no miscompile at this scale).
+    """
+    global TP_SIZE, TP_RANK
+    TP_SIZE = int(tp_size)
+    TP_RANK = int(rank)
+    num_layers, num_kv_heads, head_dim = _get_kv_cache_config(model)
+    kv_dtype = next(model.parameters()).dtype
+    lm_head = model.lm_head
+
+    if tp_size >= 4 and num_layers > DECODE_CHUNK_SIZE:
+        _export_split_decode(model, lm_head, output_dir, rank, tp_size, num_layers,
+                             num_kv_heads, head_dim, kv_dtype, device, use_dynamo)
+    else:
+        print(f"Exporting decode rank={rank}/{tp_size} (single, static={static})...")
+        _, decode, _ = _prepare_llm_modules(model, device=device)
+        decode_dir = Path(output_dir) / "decode"
+        decode_dir.mkdir(parents=True, exist_ok=True)
+        decode_path = decode_dir / f"qwen2_5_7b_llm_decode_rank{rank}.onnx"
+        decode_inputs = _create_decode_dummy_inputs(str(device), num_layers, num_kv_heads, head_dim, kv_dtype)
+        _export_decode_onnx(decode, decode_path, decode_inputs, use_dynamo, static=static)
+    TP_SIZE, TP_RANK = 1, 0
+
+
+def _export_split_decode(model, lm_head, output_dir, rank, tp_size, num_layers,
+                         num_kv_heads, head_dim, kv_dtype, device, use_dynamo):
+    """Export decode as multiple chunk sub-models for TP>=4 split-decode."""
+    chunk = DECODE_CHUNK_SIZE
+    num_chunks = (num_layers + chunk - 1) // chunk
+    kv_per = num_kv_heads // tp_size
+    print(f"Exporting split-decode rank={rank}/{tp_size}: {num_chunks} chunks × {chunk} layers...")
+
+    for ci in range(num_chunks):
+        ls = ci * chunk
+        le = min(ls + chunk, num_layers)
+        is_first = ci == 0
+        is_last = ci == num_chunks - 1
+        n_chunk_layers = le - ls
+
+        chunk_module = Qwen2_5LlmDecodeChunk(model, lm_head, ls, le, is_first, is_last)
+        chunk_module = chunk_module.to(device).eval()
+        chunk_dir = Path(output_dir) / "decode"
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+        chunk_path = chunk_dir / f"qwen2_5_7b_llm_decode_rank{rank}_chunk{ci}.onnx"
+
+        # Dummy inputs for this chunk
+        if is_first:
+            d_ids = torch.randint(0, 1000, (1, 1), dtype=torch.int64, device=device)
+        else:
+            d_ids = torch.randn(1, 1, 3584, dtype=kv_dtype, device=device)
+        d_mask = torch.ones(1, KV_CACHE_LEN, dtype=torch.int64, device=device)
+        d_pos = torch.tensor([[KV_CACHE_LEN - 1]], dtype=torch.int64, device=device)
+        d_k = torch.zeros(n_chunk_layers, 1, kv_per, KV_CACHE_LEN, head_dim, dtype=kv_dtype, device=device)
+        d_v = torch.zeros_like(d_k)
+
+        out_names = ["output", "present_key_cache", "present_value_cache"]
+        with torch.no_grad():
+            torch.onnx.export(
+                chunk_module, (d_ids, d_mask, d_pos, d_k, d_v), str(chunk_path),
+                input_names=["input_ids_or_hidden", "attention_mask", "position_ids",
+                              "past_key_cache", "past_value_cache"],
+                output_names=out_names,
+                opset_version=18, do_constant_folding=True, dynamo=use_dynamo,
+                dynamic_axes=None)
+        print(f"  chunk{ci} (layers {ls}-{le-1}, {'first' if is_first else 'mid'}, "
+              f"{'last' if is_last else 'mid'}) → {chunk_path.name}")
+
+
+
+def export_tp_prefill(model, output_dir, rank, tp_size, device="cpu", dummy_seq_len=64, use_dynamo=False, static=True):
+    """Export the TP-sharded prefill subgraph for one rank.
+
+    static=True (TP>=2): no dynamic axes, for online (optimize=none) convert.
+    static=False (TP=1): dynamic batch/seq axes, for offline (ascend_oriented) convert.
+    """
+    global TP_SIZE, TP_RANK
+    TP_SIZE = int(tp_size)
+    TP_RANK = int(rank)
+    print(f"Exporting prefill rank={rank}/{tp_size} (static={static})...")
+    prefill, _, _ = _prepare_llm_modules(model, device=device)
+    prefill_dir = Path(output_dir) / "prefill"
+    prefill_dir.mkdir(parents=True, exist_ok=True)
+    prefill_path = prefill_dir / f"qwen2_5_7b_llm_prefill_rank{rank}.onnx"
+    _, ids, mask, pos = _create_prefill_dummy_inputs(device=device, dummy_seq_len=dummy_seq_len)
+    _export_prefill_onnx(prefill, prefill_path, (ids, mask, pos), use_dynamo, static=static)
+    TP_SIZE, TP_RANK = 1, 0
+
+
 def _parse_export_args():
     """Parse command-line arguments for the export script."""
     parser = argparse.ArgumentParser(description="Export Qwen2.5-7B to ONNX")
@@ -834,6 +1275,23 @@ def _parse_export_args():
                         choices=["fp16", "bf16", "fp32"], help="Export dtype")
     parser.add_argument("--use-dynamo", action="store_true",
                         help="Use torch dynamo exporter path")
+    parser.add_argument("--tp-size", type=int, default=1,
+                        help="Tensor-parallel size; >1 exports a TP-sharded decode per rank "
+                             "(+ single-shard prefill). Custom(AllReduce) is inserted after o_proj/"
+                             "down_proj/lm_head; convert with --optimize=none, run with provider=ge.")
+    parser.add_argument("--num-layers", type=int, default=0,
+                        help="If >0, slice the model to N layers (debugging; 0 = all 28).")
+    parser.add_argument("--kv-cache-len", type=int, default=0,
+                        help="Override KV_CACHE_LEN (default 512). Set >=1024 to enable prefill "
+                             "seq > 512 for long-prompt perf sweep. 0 = keep default 512.")
+    parser.add_argument("--ar-fusion-id", type=int, default=0,
+                        help="AllReduce fusion id (0=no fusion default; >0 activates GE fusion "
+                             "channel to batch HcomAllReduce ops — 2p decode optimization).")
+    parser.add_argument("--seq-list", type=str, default="",
+                        help="Comma-sep prefill seq lengths for per-seq static export (TP>=2 only; "
+                             "online GE dynamic prefill fails with aicore error, so per-seq static "
+                             "is required). Each seq → separate OUT_DIR_seqN. E.g. '32,64,128,512,1024'. "
+                             "Empty (default) = single export at --dummy-seq-len.")
     return parser.parse_args()
 
 
@@ -842,6 +1300,15 @@ def main():
     args = _parse_export_args()
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.kv_cache_len and args.kv_cache_len > 0:
+        global KV_CACHE_LEN
+        KV_CACHE_LEN = int(args.kv_cache_len)
+        print(f"[kv-cache-len] override KV_CACHE_LEN = {KV_CACHE_LEN}")
+    if args.ar_fusion_id and args.ar_fusion_id > 0:
+        global AR_FUSION_ID
+        AR_FUSION_ID = int(args.ar_fusion_id)
+        print(f"[ar-fusion-id] AR_FUSION_ID = {AR_FUSION_ID} (GE fusion channel on)")
 
     dtype_map = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": torch.float32}
     torch_dtype = dtype_map[args.dtype]
@@ -852,7 +1319,34 @@ def main():
         args.model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=False,
         attn_implementation="eager").to(device)
 
-    export_llm_prefill_decode(model, output_dir, str(device), args.dummy_seq_len, args.use_dynamo)
+    if args.num_layers and args.num_layers > 0:
+        model.model.layers = model.model.layers[:args.num_layers]  # type: ignore[attr-defined]
+        model.config.num_hidden_layers = args.num_layers  # type: ignore[attr-defined]
+        print(f"Sliced model to {args.num_layers} layers (debug)")
+
+    # TP>=2 prefill is static-per-seq (online GE dynamic prefill fails with
+    # aicore error). --seq-list exports one model per seq to OUT_DIR_seqN.
+    # TP=1 prefill is dynamic (ascend_oriented offline supports dynamicDims).
+    if args.tp_size > 1:
+        if args.seq_list:
+            seq_list = [int(x) for x in args.seq_list.split(",") if x.strip()]
+        else:
+            seq_list = [args.dummy_seq_len]
+        for seq in seq_list:
+            seq_out = output_dir if len(seq_list) == 1 else output_dir.parent / f"{output_dir.name}_seq{seq}"
+            seq_out = Path(seq_out)
+            seq_out.mkdir(parents=True, exist_ok=True)
+            print(f"\n--- TP={args.tp_size} seq={seq} -> {seq_out} ---")
+            for rank in range(args.tp_size):
+                export_tp_prefill(model, seq_out, rank, args.tp_size, str(device),
+                                  seq, args.use_dynamo, static=True)
+                export_tp_decode(model, seq_out, rank, args.tp_size, str(device),
+                                 args.use_dynamo, static=True)
+    else:
+        # tp_size=1: single-shard (rank0), dynamic axes for offline ascend_oriented convert
+        export_tp_prefill(model, output_dir, 0, 1, str(device), args.dummy_seq_len,
+                          args.use_dynamo, static=False)
+        export_tp_decode(model, output_dir, 0, 1, str(device), args.use_dynamo, static=False)
 
     print("Clearing memory after export...")
     del model

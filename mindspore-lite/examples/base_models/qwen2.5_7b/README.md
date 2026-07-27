@@ -1,6 +1,6 @@
-# Qwen2.5-7B-Instruct ONNX 模型导出与 MindSpore Lite 推理部署教程
+# Qwen2.5-7B-Instruct ONNX 导出与 MindSpore Lite 推理部署教程
 
-本教程详细介绍如何将 `Qwen2.5-7B-Instruct` 模型导出为 ONNX 格式，转换为 MindSpore Lite MindIR 格式，并完成端到端推理与精度对齐验证。
+本教程介绍如何将 `Qwen2.5-7B-Instruct` 导出为 ONNX、转换为 MindIR，并在 Ascend 上完成端到端推理。支持**单卡（1p）、双芯张量并行（2p）、四芯张量并行（4p）**三种部署模式。
 
 ---
 
@@ -9,279 +9,220 @@
 ### 系统要求
 
 - Python 3.11
-- Linux 系统（推荐 Ubuntu 22.04）
-- 昇腾环境（用于 MindIR 推理，需安装 MindSpore Lite 与 Ascend 驱动）
+- 昇腾环境（MindSpore Lite 2.10 + CANN 9.0.1）
 
-### 依赖版本（建议）
+### 依赖
 
 | 软件包            | 版本 |
 |----------------|------|
 | Python         | 3.11 |
-| torch          | 2.8.0 |
+| torch          | 2.8.0（仅导出时需要） |
 | transformers   | 4.51.0 |
+| accelerate     | ≥ 0.26 |
 | onnx           | 1.21.0 |
 | onnxruntime    | 1.24.0 |
-| mindspore-lite | 2.8.0 |
-| CANN           | 8.5.0 |
-
-### 安装命令
+| mindspore-lite | 2.10.0 |
+| CANN           | 9.0.1 |
 
 ```bash
-pip install torch==2.8.0 transformers==4.51.0 onnx==1.21.0 onnxruntime==1.24.0 mindspore-lite==2.8.0
-```
-
-### 验证安装
-
-```bash
-python -c "import torch, transformers, onnx, onnxruntime, mindspore_lite; print('All dependencies installed successfully!')"
+pip install torch==2.8.0 transformers==4.51.0 accelerate onnx==1.21.0 onnxruntime==1.24.0
 ```
 
 ---
 
-## 2. 模型架构参数
+## 2. 部署模式总览
 
-| 参数 | 值 |
-|------|------|
-| hidden_size | 3584 |
-| num_attention_heads | 28 |
-| num_hidden_layers | 28 |
-| num_key_value_heads | 4 |
-| head_dim | 128 |
-| intermediate_size | 18944 |
-| max_position_embeddings | 32768 |
-| vocab_size | 152064 |
-| rms_norm_eps | 1e-06 |
-| torch_dtype | bfloat16 |
-| 架构 | Qwen2ForCausalLM |
+| 模式 | 命令 | 设备 | 适用场景 |
+|------|------|------|----------|
+| **1p 单卡** | `infer.sh 0` | 1 芯 | 基础部署、功能验证 |
+| **2p 双芯** | `infer.sh 0,1` | 2 芯（同卡 HCCS） | 性能优化 |
+| **4p 四芯** | `infer.sh 0,1,2,3` | 4 芯（跨 2 卡 PCIe） | 极致性能（带宽分摊最多） |
 
 ---
 
-## 3. 模型导出 ONNX
+## 3. 代码结构
 
-### 导出脚本说明
+```text
+qwen2.5_7b/
+├── Qwen2.5-7B-Instruct/          # HF 权重
+├── export_qwen2_5_7b_onnx.py     # 统一导出脚本（--tp-size 1/2/4，--kv-cache-len）
+├── infer_qwen2_5_7b_mslite.py    # 统一推理脚本（1p 零拷贝 + 2p/4p 多进程 TP，含 bench 模式）
+├── export_and_convert.sh         # 导出+转换入口（1p/2p/4p）
+├── infer.sh                      # 推理入口（infer.sh <device_ids>）
+├── configs/                      # 1p 离线转换配置（dynamicDims 32/64/128，KV=256）
+└── README.md                     # 本文件
+```
 
-导出脚本会将 Qwen2.5-7B 拆分为两个 ONNX 子图：
-
-1. **LLM Prefill** (`qwen2_5_7b_llm_prefill.onnx`)：处理输入 prompt，输出 `logits`、`present_key_cache`、`present_value_cache`
-2. **LLM Decode** (`qwen2_5_7b_llm_decode.onnx`)：单 token 递归生成，输入 `past_key_cache`、`past_value_cache`，输出更新后的 cache
-
-### 导出命令
+### 快速使用
 
 ```bash
 cd ./mindspore-lite/examples/base_models/qwen2.5_7b
 
-# 使用本地权重目录导出 FP32 onnx 模型（用于降低数值误差）
-python export_qwen2_5_7b_onnx.py \
-  --model-id ./Qwen2.5-7B-Instruct \
-  --output-dir ./qwen2_5_7b_onnx \
-  --device cpu \
-  --dtype fp32
+# ① 导出 + 转换
+bash export_and_convert.sh 1p    # 单卡（离线 acl，ascend_oriented）
+bash export_and_convert.sh 2p    # 双芯（GE online，optimize=none）
+bash export_and_convert.sh 4p    # 四芯（GE online，optimize=none）
+
+# ② 推理
+bash infer.sh 0                  # 1p 单卡
+bash infer.sh 0,1                # 2p 双芯（同卡 HCCS）
+bash infer.sh 2,3,4,5            # 4p 四芯（跨 2 卡）
 ```
 
-### 参数说明
+---
+
+## 4. 模型导出
+
+### 4.1 导出原理
+
+导出脚本将 Qwen2.5-7B 拆分为 prefill + decode 两个 ONNX 子图：
+
+- **Prefill**：处理完整 prompt，输出 logits + KV cache
+- **Decode**：逐 token 生成，输入 past KV cache，输出更新后的 cache + logits
+
+**张量并行（TP）分片**
+
+| 组件 | 分片策略 |
+|------|---------|
+| QKV / gate_up | 列并行（output dim 切分） |
+| o_proj / down_proj / lm_head | 行并行 + AllReduce |
+| RMSNorm / rotary / embed | 复制（不切分） |
+| KV cache | 按 KV head 切分（4 heads → TP=2 每 rank 2 head, TP=4 每 rank 1 head） |
+
+### 4.2 导出命令
+
+由 `export_and_convert.sh` 统一处理：
+
+```bash
+# 脚本内部调用（用户只需 bash export_and_convert.sh 1p/2p/4p）
+python3 export_qwen2_5_7b_onnx.py \
+  --model-id ./Qwen2.5-7B-Instruct \
+  --output-dir <OUT_DIR> \
+  --device cpu --dtype fp16 \
+  --tp-size <1|2|4>
+```
+
+### 4.3 参数说明
 
 | 参数 | 说明 | 默认值 |
 |---|---|---|
-| `--model-id` | HuggingFace 模型路径或本地目录 | `./Qwen2.5-7B-Instruct` |
-| `--output-dir` | 导出输出目录 | `./qwen2_5_7b_onnx` |
-| `--device` | 导出设备（cpu/cuda） | `cpu` |
-| `--dummy-seq-len` | 导出用 dummy 序列长度 | `8` |
-| `--kv-cache-len` | KV cache 固定长度（prefill 输出与 decode 输入） | `512` |
-| `--dtype` | 导出精度（fp16/fp32/bf16） | `fp16` |
-| `--use-dynamo` | 启用新 ONNX dynamo 导出路径 | `False` |
+| `--model-id` | HF 模型路径 | `./Qwen2.5-7B-Instruct` |
+| `--output-dir` | 输出目录 | `./qwen2_5_7b_onnx` |
+| `--dtype` | fp16 / bf16 / fp32（推荐 fp16） | `fp16` |
+| `--tp-size` | 张量并行度（1=单卡, 2=双芯, 4=四芯） | `1` |
+| `--num-layers` | 调试：截断为 N 层（0=全部 28 层） | `0` |
 
-### 导出输出
+---
 
-导出目录采用分目录结构，避免 external data 命名冲突：
+## 5. ONNX → MindIR 转换
+
+### 5.1 转换路径
+
+| 模式 | 转换方式 | 说明 |
+|------|---------|------|
+| **1p** | `--optimize=ascend_oriented` + configFile | 离线编译，权重外部化到 `_variables/` |
+| **2p/4p** | `--optimize=none` | online GE 路径，运行时编译 |
+
+### 5.2 产物路径
 
 ```text
-qwen2_5_7b_onnx/
-├── prefill/
-│   ├── qwen2_5_7b_llm_prefill.onnx
-│   └── onnx__* / model.* (external data)
-└── decode/
-    ├── qwen2_5_7b_llm_decode.onnx
-    └── onnx__* / model.* (external data)
+# 1p
+qwen2_5_7b_onnx/{prefill,decode}/*_rank0_graph.mindir + _variables/
+
+# 2p
+qwen2_5_7b_tp_onnx/{prefill,decode}/*_rank{0,1}_graph.mindir
+
+# 4p
+qwen2_5_7b_tp4_onnx/{prefill,decode}/*_rank{0..3}_graph.mindir
 ```
 
 ---
 
-## 4. MindSpore Lite 转换
+## 6. 推理
 
-```bash
-cd ./mindspore-lite/examples/base_models/qwen2.5_7b
+### 6.1 推理架构
 
-# Prefill（Ascend 优化，动态形状）
-converter_lite \
-  --fmk=ONNX \
-  --modelFile=./qwen2_5_7b_onnx/prefill/qwen2_5_7b_llm_prefill.onnx \
-  --outputFile=./qwen2_5_7b_onnx/prefill/qwen2_5_7b_llm_prefill \
-  --optimize=ascend_oriented \
-  --saveType=MINDIR \
-  --configFile=./configs/qwen2_5_7b_llm_prefill.config
-```
-
-### Decode 转换命令
-
-```bash
-cd ./mindspore-lite/examples/base_models/qwen2.5_7b
-
-# Decode（Ascend 优化）
-converter_lite \
-  --fmk=ONNX \
-  --modelFile=./qwen2_5_7b_onnx/decode/qwen2_5_7b_llm_decode.onnx \
-  --outputFile=./qwen2_5_7b_onnx/decode/qwen2_5_7b_llm_decode \
-  --inputShape="input_ids:1,1;attention_mask:1,512;position_ids:1,1;past_key_cache:28,1,4,512,128;past_value_cache:28,1,4,512,128" \
-  --optimize=ascend_oriented \
-  --saveType=MINDIR \
-  --configFile=./configs/qwen2_5_7b_llm_decode.config
-```
-
-### config 文件示例
-
-#### `./configs/qwen2_5_7b_llm_prefill.config`
-
-```ini
-[acl_build_options]
-input_format="ND"
-input_shape="input_ids:1,-1;attention_mask:1,-1;position_ids:1,-1"
-ge.dynamicDims="64,64,64;128,128,128;256,256,256"
-
-[acl_init_options]
-ge.exec.precision_mode=force_fp32
-
-[ascend_context]
-plugin_custom_ops=All
-```
-
-#### `./configs/qwen2_5_7b_llm_decode.config`
-
-```ini
-[acl_build_options]
-input_format="ND"
-input_shape="input_ids:1,1;attention_mask:1,512;position_ids:1,1;past_key_cache:28,1,4,512,128;past_value_cache:28,1,4,512,128"
-
-[acl_init_options]
-ge.exec.precision_mode=force_fp32
-
-[ascend_context]
-plugin_custom_ops=All
-```
-
-> 注：
-> - Qwen2.5-7B 有 28 层（`num_hidden_layers=28`），4 个 KV 头（`num_key_value_heads=4`），head_dim=128。
-> - Decode 的 KV cache shape 为 `28,1,4,512,128`。
-
----
-
-## 5. MindSpore Lite 推理
-
-### 推理架构
-
-由于 7B 模型超过 protobuf 限制，推理采用混合方案：
-
-- **Prefill**：PyTorch 原生模型（CPU）— 处理输入 prompt，提取 KV cache
-- **Decode**：MindSpore Lite MindIR（Ascend）— 硬件加速的逐 token 生成
-
-### 推理命令
-
-```bash
-cd ./mindspore-lite/examples/base_models/qwen2.5_7b
-
-python infer_qwen2_5_7b_mslite.py \
-  --model-id ./Qwen2.5-7B-Instruct \
-  --decode-model ./qwen2_5_7b_onnx/decode/qwen2_5_7b_llm_decode_graph.mindir \
-  --prompt "你好，请用一句话介绍一下你自己" \
-  --max-new-tokens 128 \
-  --device ascend \
-  --device-id 0
-```
-
-### 参数说明
-
-| 参数 | 说明 | 默认值 |
-|---|---|---|
-| `--model-id` | PyTorch 模型路径（用于 prefill） | `./Qwen2.5-7B-Instruct` |
-| `--decode-model` | Decode MindIR 路径 | 必填 |
-| `--tokenizer` | tokenizer 路径 | 同 model-id |
-| `--prompt` | 输入提示词 | `"你好，请用一句话介绍一下你自己"` |
-| `--max-new-tokens` | 最大生成 token 数 | `128` |
-| `--max-length` | 最大序列长度 | `4096` |
-| `--device` | 推理设备（ascend/cpu） | `ascend` |
-| `--device-id` | 昇腾设备 ID | `0` |
-| `--torch-dtype` | PyTorch 模型精度 | `float16` |
-
----
-
-## 6. 性能数据
-
-### 性能测试结果
+#### 1p 单卡（零拷贝 decode）
 
 ```text
-============================================================
+[Prefill MindIR] → first_token + KV device tensors
+                          ↓ (同芯片零拷贝 swap)
+[Decode MindIR] ← KV buffers（全程不过 host）
+```
+
+- KV cache 常驻 device，每步只搬 logits（~0.6MB）
+- prefill→decode KV 交接：同芯片直接 swap（零拷贝）
+
+#### 2p/4p 张量并行（多进程 + HCCL）
+
+```text
+Driver process
+  ├── Worker rank0: [Prefill rank0] → KV → [Decode rank0] ←→ HcomAllReduce
+  ├── Worker rank1: [Prefill rank1] → KV → [Decode rank1] ←→ HcomAllReduce
+  └── (4p: rank2, rank3 同理)
+```
+
+- 每 rank 一个进程，同一 HCCL group
+- 图内 Custom(AllReduce) → GE HcomAllReduce 做跨 rank 求和
+
+### 6.2 推理命令
+
+```bash
+# 1p 单卡
+bash infer.sh 0
+
+# 2p 双芯（同卡）
+bash infer.sh 0,1
+
+# 4p 四芯（跨 2 卡）
+bash infer.sh 2,3,4,5
+```
+
+`infer.sh` 自动根据设备数量选择模式，并生成 rank_table.json + config_file.ini。
+
+---
+
+## 7. 性能数据（KV=256，prefill 档 32/64/128）
+
+| 配置 | 设备数 | 互联拓扑 | Prefill (ms) | Decode (ms/step) | 吞吐 (tok/s) | 精度 |
+|------|--------|---------|:---:|:---:|:---:|:---:|
+| **1p 单卡** | 1 芯 | — | 97 | **92** | 10.9 |
+| **2p 双芯** | 2 芯 | 卡内 HCCS 60GB/s | 67 | **65** | 15.4 |
+| **4p 四芯** | 4 芯 | 卡间 PCIe 16GB/s | 46 | **38** | 26.1 |
+
+### 示例输出（2p 双芯）
+
+```text
 Input Prompt: 你好，请用一句话介绍一下你自己
-============================================================
-Generated Response: [Prefill done: 35 input tokens, 11.260s]
-你好，我叫Qwen，是来自阿里云的大规模语言模型，可以帮你回答问题、创作文字等。
-============================================================
-
---- Performance ---
-  Input tokens:     35
-  Output tokens:    26
-  Prefill (PyTorch CPU): 11260.29 ms
-  Total Decode (Ascend): 2632.73 ms
-  Avg decode step:  105.31 ms
-  Total time:       13893.02 ms
-  Decode throughput: 9.5 tok/s
+Generated Response: 你好，我叫Qwen，是来自阿里云的大规模语言模型，
+                  可以帮你回答问题、创作文字，还能完成各种文本生成任务。
 ```
 
-| 指标                       | 300I Duo time |
-|--------------------------|------------|
-| Prefill (PyTorch CPU, ms) | 11260.29   |
-| Total Decode (Ascend, ms) | 2632.73   |
-| **Avg decode step (ms)** | **105.31** |
-| Total (ms)               | 13893.02   |
-| **Decode Throughput (tok/s)** | **9.5** |
+---
 
-> 注意：
-> - Avg decode step 为单次 decode 推理的耗时。
-> - 性能数据为 3 次 warmup 后取 5 次测量的平均值。
+## 8. 多卡张量并行说明
+
+### 硬件拓扑（Atlas 300I Duo）
+
+| 拓扑 | 带宽 | 适用 |
+|------|------|------|
+| 卡内 HCCS（2 芯） | ~60 GB/s | TP=2 |
+| 卡间 PCIe（跨卡） | ~16 GB/s | TP=4 |
+| LPDDR4X 内存 | 204 GB/s/chip | decode BW-bound |
+
+### TP 机制
+
+MindSpore Lite 2.10 的 TP 是**导出时分片**（非运行时拆分）：每 rank 导出独立的 MindIR，推理时图内 Custom(AllReduce) 经 GE lower 为 HcomAllReduce 做跨 rank 通信。
 
 ---
 
-## 7. 常见问题
-
-### 1) Prefill 转换报 protobuf 超过 2GB 限制
-
-Qwen2.5-7B 的 Prefill ONNX 模型约 15GB，超过 GE protobuf 的 2GB 硬限制。这是 7B+ 参数模型的已知限制。解决方案是使用 PyTorch 原生模型在 CPU 上执行 prefill，Decode 使用 MindIR 在 Ascend 上执行。
-
-### 2) `apply_chat_template` 返回类型不一致
-
-不同 tokenizer 版本可能返回 `BatchEncoding`、`dict` 或 `ndarray`，推理脚本已兼容多种返回格式。
-
-### 3) ONNX Runtime 报 external data 越界
-
-通常由多个 ONNX 导出到同一目录导致 external data 文件重名冲突。请使用本教程的 `prefill/`、`decode/` 分目录导出方式。
-
-### 4) 输出"被截断"
-
-可能由以下原因导致：
-
-- `--max-new-tokens` 达到上限
-- 提前生成 `eos_token`
-- KV cache 长度达到上限（512 tokens）
-
----
-
-## 8. 参考资源
+## 9. 参考资源
 
 - [MindSpore Lite 文档](https://www.mindspore.cn/lite)
-- [Qwen2.5-7B-Instruct 模型页](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct)
-- [Transformers 文档](https://huggingface.co/docs/transformers)
-- [ONNX Runtime 文档](https://onnxruntime.ai/docs/)
+- [Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct)
 
 ---
 
-## 9. 许可证
+## 10. 许可证
 
 本教程遵循 Qwen2.5-7B-Instruct 模型及相关依赖的许可证要求。
