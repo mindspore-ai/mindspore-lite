@@ -1,338 +1,295 @@
-# Qwen3-0.6B ONNX 导出与推理完整教程
+# Qwen3-0.6B ONNX 导出与 MindSpore Lite 推理部署教程
 
-本教程详细介绍如何将 Qwen3-0.6B 纯文本模型导出为 ONNX 格式，并使用 ONNX Runtime 进行推理，最后转换为 MindSpore Lite 格式。
+本教程详细介绍如何将 Qwen3-0.6B 纯文本模型导出为 ONNX 格式，转换为 MindSpore Lite MindIR 格式，并在 Ascend NPU 上完成端到端推理部署。
 
-## 目录
+Qwen3-0.6B 是 Qwen 系列中体积最小的对话模型，适合作为轻量级对话 / 抬头组件部署在 Atlas 300I Duo 等 NPU 上。模型在导出时被拆分为两个 ONNX：
 
-1. [环境准备](#环境准备)
-2. [依赖安装](#依赖安装)
-3. [模型导出](#模型导出)
-4. [ONNX 推理](#onnx-推理)
-5. [MindSpore Lite 转换](#mindspore-lite-转换)
-6. [常见问题](#常见问题)
+1. **LLM Prefill**（`qwen3_llm_prefill.onnx`）：一次性处理完整 prompt，输出首 token logits 与初始 KV cache
+2. **LLM Decode**（`qwen3_llm_decode.onnx`）：基于 KV cache 做自回归增量生成
 
-## 环境准备
+## 模型架构
 
-### 系统要求
+Qwen3-0.6B 是一个 28 层的 decoder-only Transformer：
 
-- Python 3.11
+| 项目                | 值     |
+|-------------------|-------|
+| 层数                | 28    |
+| num_attention_heads | 16    |
+| num_key_value_heads | 8（GQA）|
+| head_dim          | 128   |
+| hidden_size       | 1024  |
+| vocab_size        | 151936 |
 
-- Linux 系统（推荐 Ubuntu 20.04+）
+---
 
-## 依赖安装
+## 1. 环境准备
 
-### 检查现有依赖
+### 依赖版本
+
+| 软件包            | 版本     |
+|----------------|--------|
+| Python         | 3.11   |
+| torch          | 2.10.0 |
+| transformers   | 4.51.3 |
+| onnx           | 1.19.1 |
+| onnxruntime    | 1.24.2 |
+| numpy          | 1.26.4 |
+| CANN           | 8.5    |
+| mindspore-lite | 2.9.0  |
 
 ```bash
-python -c "import transformers; print(transformers.__version__)"
-python -c "import torch; print(torch.__version__)"
+pip install transformers==4.51.3 torch==2.10.0 onnx==1.19.1 onnxruntime==1.24.2 numpy==1.26.4
 ```
 
-### 安装缺失的依赖
+### 权重准备
 
-```bash
-pip install onnx onnxruntime
-```
+从 HuggingFace 下载 [Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B) 权重，解压后放到本地目录（本文以 `./Qwen3-0.6B` 为例）。
 
-### 验证安装
+---
 
-```bash
-python -c "import torch; import transformers; import onnx; import onnxruntime; print('All dependencies installed successfully!')"
-```
-
-## 模型导出
-
-### 导出脚本说明
-
-导出脚本将 Qwen3-0.6B 模型拆分为两个 ONNX 文件：
-
-1. **LLM Prefill** (`qwen3_llm_prefill.onnx`): 处理预填充阶段（处理输入 prompt）
-
-2. **LLM Decode** (`qwen3_llm_decode.onnx`): 处理解码阶段（自回归生成）
+## 2. 模型导出 ONNX
 
 ### 导出命令
 
 ```bash
-cd ./mindspore-lite/examples/base_models/qwen3_0.6b
-
-python export_qwen3_onnx.py
-
 python export_qwen3_onnx.py \
-  --model-id Qwen/Qwen3-0.6B \
+  --model-id ./Qwen3-0.6B \
   --output-dir ./qwen3_onnx \
   --device cpu
 ```
 
 ### 参数说明
 
-- `--model-id`: HuggingFace 模型 ID（默认：Qwen/Qwen3-0.6B）
+| 参数            | 说明                  | 默认值                  |
+|---------------|-----------------------|------------------------|
+| `--model-id`  | HuggingFace 模型路径或本地目录 | `Qwen/Qwen3-0.6B`     |
+| `--output-dir`| 输出目录                | `./qwen3_onnx`         |
+| `--device`    | 导出设备（cpu / cuda）    | `cpu`                  |
 
-- `--output-dir`: 输出目录（默认：./qwen3_onnx）
+### 产出
 
-- `--device`: 导出设备（cpu 或 cuda，默认：cpu）
-
-### 导出输出
-
-成功导出后，输出目录将包含以下文件：
-
-```bash
+```text
 qwen3_onnx/
-├── qwen3_llm_prefill.onnx     # LLM Prefill
-└── qwen3_llm_decode.onnx      # LLM Decode
+├── qwen3_llm_prefill.onnx   # Prefill（一次性处理 prompt）
+└── qwen3_llm_decode.onnx    # Decode（自回归增量生成）
 ```
 
-### 导出过程说明
+### ONNX 模型输入输出 Shape
 
-导出过程：
+**LLM Prefill** — `qwen3_llm_prefill.onnx`
 
-1. **加载模型**: 从 HuggingFace 加载 Qwen3-0.6B 模型
+| 方向  | 名称               | Shape                  | Dtype   | 说明               |
+|-----|------------------|------------------------|---------|------------------|
+| 输入 | `input_ids`      | `(batch, seq_len)`     | int64   | 输入 token IDs     |
+| 输入 | `attention_mask` | `(batch, seq_len)`     | int64   | 注意力掩码           |
+| 输入 | `position_ids`   | `(batch, seq_len)`     | int64   | 位置 ID            |
+| 输出 | `logits`         | `(batch, seq_len, 151936)` | float32 | 下一个 token 预测 logits |
+| 输出 | `past_kv`        | `(56, batch, 8, seq_len, 128)` | float32 | 初始 KV cache（56 = 28 × 2） |
 
-2. **Prefill 导出**: 导出处理输入 prompt 的模型
+**LLM Decode** — `qwen3_llm_decode.onnx`
 
-3. **Decode 导出**: 导出自回归生成的模型
+| 方向  | 名称               | Shape                          | Dtype   | 说明                     |
+|-----|------------------|--------------------------------|---------|------------------------|
+| 输入 | `input_ids`      | `(batch, 1)`                   | int64   | 单步 token               |
+| 输入 | `attention_mask` | `(batch, total_seq_len)`       | int64   | 累积注意力掩码              |
+| 输入 | `position_ids`   | `(batch, 1)`                   | int64   | 单步位置 ID              |
+| 输入 | `past_key_values` | `(56, batch, 8, past_seq_len, 128)` | float32 | 上一步 KV cache          |
+| 输出 | `logits`         | `(batch, 1, 151936)`           | float32 | 单步 logits             |
+| 输出 | `past_kv`        | `(56, batch, 8, past_seq_len+1, 128)` | float32 | 更新后的 KV cache        |
 
-这种分步导出方式可以减少内存占用，并支持流式推理。
+---
 
-## ONNX 推理
+## 3. ONNX 转 MindIR
 
-### 推理脚本说明
-
-推理脚本实现了完整的端到端推理流程：
-
-1. 使用 LLM Prefill 处理输入 prompt
-
-2. 使用 LLM Decode 进行自回归生成
-
-3. 支持 KV cache 管理
-
-### 推理命令
+### 转换命令
 
 ```bash
-cd ./mindspore-lite/examples/base_models/qwen3_0.6b
+Convert=mindspore-lite-2.9.0-linux-aarch64/tools/converter/converter/converter_lite
 
-python infer_qwen3_onnx.py \
-  --prefill ./qwen3_onnx/qwen3_llm_prefill.onnx \
-  --decode ./qwen3_onnx/qwen3_llm_decode.onnx \
-  --prompt "Hello, how are you?"
+# Prefill 转换（动态 shape，无需分档）
+$Convert --fmk=ONNX \
+  --modelFile=./qwen3_onnx/qwen3_llm_prefill.onnx \
+  --outputFile=./qwen3_onnx/qwen3_llm_prefill \
+  --optimize=ascend_oriented \
+  --saveType=MINDIR \
+  --configFile=./qwen3_0.6b_prefill.ini
 
-python infer_qwen3_onnx.py \
-  --prefill ./qwen3_onnx/qwen3_llm_prefill.onnx \
-  --decode ./qwen3_onnx/qwen3_llm_decode.onnx \
-  --tokenizer ./Qwen3-0.6B \
-  --prompt "Write a short story about a robot." \
-  --max-new-tokens 256 \
-  --device cpu
+# Decode 转换（KV cache 13 档分档）
+$Convert --fmk=ONNX \
+  --modelFile=./qwen3_onnx/qwen3_llm_decode.onnx \
+  --outputFile=./qwen3_onnx/qwen3_llm_decode \
+  --optimize=ascend_oriented \
+  --saveType=MINDIR \
+  --configFile=./qwen3_0.6b_decode.ini
 ```
 
 ### 参数说明
 
-- `--prefill`: Prefill ONNX 模型路径
-- `--decode`: Decode ONNX 模型路径
-- `--tokenizer`: HuggingFace tokenizer 路径（默认：Qwen/Qwen3-0.6B）
-- `--prompt`: 输入文本提示（默认："Hello, how are you?"）
-- `--max-new-tokens`: 最大生成 token 数（默认：128）
-- `--device`: 推理设备（cpu 或 cuda，默认：cpu）
+| 参数             | 说明                          |
+|----------------|-----------------------------|
+| `--fmk`        | 输入模型格式（ONNX）                |
+| `--modelFile`  | 输入 ONNX 模型路径                |
+| `--outputFile` | 输出 MindIR 路径（不带扩展名）         |
+| `--optimize`   | 优化模式，必须指定 `ascend_oriented` |
+| `--saveType`   | 输出格式（MINDIR）                |
+| `--configFile` | 配置文件路径（**所有模型都必须指定**）    |
 
-### 推理示例
+### 配置文件
 
-```bash
-python infer_qwen3_onnx.py \
-  --prefill ./qwen3_onnx/qwen3_llm_prefill.onnx \
-  --decode ./qwen3_onnx/qwen3_llm_decode.onnx \
-  --prompt "What is the capital of France?"
+`qwen3_0.6b_prefill.ini`（Prefill 用）：
 
-python infer_qwen3_onnx.py \
-  --prefill ./qwen3_onnx/qwen3_llm_prefill.onnx \
-  --decode ./qwen3_onnx/qwen3_llm_decode.onnx \
-  --prompt "Write a Python function to calculate factorial:" \
-  --max-new-tokens 200
-
-python infer_qwen3_onnx.py \
-  --prefill ./qwen3_onnx/qwen3_llm_prefill.onnx \
-  --decode ./qwen3_onnx/qwen3_llm_decode.onnx \
-  --prompt "Summarize the following text in one sentence: [your text here]" \
-  --max-new-tokens 100
+```ini
+[acl_init_options]
+ge.exec.precision_mode=force_fp32
 ```
 
-## MindSpore Lite 转换
+`qwen3_0.6b_decode.ini`（Decode 用，13 档）：
 
-### 转换 ONNX 模型
-
-```bash
-./output/bin/converter_lite \
-  --fmk=ONNX \
-  --modelFile=./qwen3_onnx/qwen3_llm_prefill.onnx \
-  --outputFile=./qwen3_onnx/qwen3_llm_prefill \
-  --optimize=ascend_oriented \
-  --saveType=MINDIR
-
-./output/bin/converter_lite \
-  --fmk=ONNX \
-  --modelFile=./qwen3_onnx/qwen3_llm_decode.onnx \
-  --outputFile=./qwen3_onnx/qwen3_llm_decode \
-  --optimize=ascend_oriented \
-  --saveType=MINDIR
+```ini
+[acl_init_options]
+ge.exec.precision_mode=force_fp32
+[acl_build_options]
+input_format="ND"
+input_shape="input_ids:1,1;attention_mask:1,-1;position_ids:1,1;past_key_values:56,1,8,-1,128"
+ge.dynamicDims="17,16;33,32;65,64;97,96;129,128;193,192;257,256;385,384;513,512;769,768;1025,1024;1537,1536;2049,2048"
 ```
 
-### 转换参数说明
+- `past_key_values:56,1,8,-1,128`：56 = 28 层 × 2（K+V），1 = batch，8 = num_kv_heads，-1 = 动态 KV 长度，128 = head_dim
+- `ge.dynamicDims`：13 个分档对应 `past_kv_len ∈ {16, 32, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048}`，覆盖 16 到 2048 的 KV cache 长度
 
-- `--fmk`: 输入模型格式（ONNX）
-- `--modelFile`: 输入 ONNX 模型路径
-- `--outputFile`: 输出 MINDIR 模型路径（不带扩展名）
-- `--optimize`: 优化模式（ascend_oriented），昇腾硬件，必须指定ascend_oriented
-- `--saveType`: 保存类型（MINDIR）
+### 产出
 
-### 转换输出
+模型文件超过 2GB 时，会分成 `*_graph.mindir` 和 `*_variables/` 目录：
 
-成功转换后，输出目录将包含：
-
-```bash
+```text
 qwen3_onnx/
-├── qwen3_llm_prefill.onnx
-├── qwen3_llm_prefill.mindir
-├── qwen3_llm_decode.onnx
-└── qwen3_llm_decode.mindir
+├── qwen3_llm_prefill_graph.mindir           # Prefill 主图
+├── qwen3_llm_prefill_variables/             # Prefill 权重
+│   └── data_0
+├── qwen3_llm_decode_graph.mindir            # Decode 主图（含 13 档）
+└── qwen3_llm_decode_variables/              # Decode 权重
+    └── data_0
 ```
 
-## 常见问题
+---
 
-### 1. transformers 版本过低
+## 4. MindSpore Lite 推理
 
-**错误信息**:
+### 推理命令
 
 ```bash
-ImportError: cannot import name 'AutoModelForCausalLM' from 'transformers'
+python infer_qwen3_0.6b_mindir.py \
+  --prefill-model ./qwen3_onnx/qwen3_llm_prefill_graph.mindir \
+  --decode-model ./qwen3_onnx/qwen3_llm_decode_graph.mindir \
+  --tokenizer ./Qwen3-0.6B \
+  --prompt "你好，请介绍一下你自己。" \
+  --max-new-tokens 128 \
+  --decode-buckets "16,32,64,96,128,192,256,384,512,768,1024,1536,2048" \
+  --device ascend \
+  --device-id 0
 ```
 
-**解决方案**:
+### 参数说明
 
-```bash
-python -c "import transformers; print(transformers.__version__)"
+| 参数                 | 说明                                    | 默认值                     |
+|--------------------|---------------------------------------|---------------------------|
+| `--prefill-model`  | Prefill MindIR 模型路径（`*_graph.mindir`） | 必填                       |
+| `--decode-model`   | Decode MindIR 模型路径（`*_graph.mindir`）  | 必填                       |
+| `--tokenizer`      | HuggingFace tokenizer 路径              | `Qwen/Qwen3-0.6B-Instruct` |
+| `--prompt`         | 输入文本                                  | `"你好，请介绍一下你自己。"`   |
+| `--max-new-tokens` | 最大生成 token 数                          | `128`                     |
+| `--max-length`     | 模型最大上下文长度                            | `2048`                    |
+| `--decode-buckets` | Decode 模型的 KV cache 分档列表（逗号分隔） | `16,32,64,...,2048`（13 档） |
+| `--no-chat-template` | 关闭 chat template，进入 raw completion 模式 | 关闭                       |
+| `--device`         | 推理设备（ascend/cpu）                    | `ascend`                  |
+| `--device-id`      | Ascend 设备 ID                          | `0`                       |
+| `--force-no-pre-alloc` | 关闭输出 buffer 预分配（部分精度模式下需要）     | 关闭                       |
 
-pip install --upgrade transformers
+> `--decode-buckets` 必须与转换时 `ge.dynamicDims` 中的 `past_kv_len` 列表**完全一致**，否则会触发 `aclmdlSetInputDynamicDims failed`。脚本会自动把 `past_kv` 与 `attention_mask` 补零到下一档边界，并在每步把模型追加在分档尾部的 K/V 切回真实长度。
 
-pip install transformers==4.40.0
+### 推理示例输出
+
+```text
+Initializing MindSpore Lite context for ascend...
+Loading prefill model from ./qwen3_onnx/qwen3_llm_prefill_graph.mindir...
+Loading decode model from ./qwen3_onnx/qwen3_llm_decode_graph.mindir...
+Loading tokenizer from ./Qwen3-0.6B...
+[zero-copy] pre-allocated outputs: enabled (probe OK)
+
+============================================================
+Input Prompt: 你好，请介绍一下你自己。
+============================================================
+
+Running LLM prefill...
+Prefill time: 123.90 ms
+Running LLM decode...
+Total decode time: 1497.49 ms, avg decode step: 11.79 ms, steps: 127
+Total time: 1621.39 ms, throughput: 78.94 tok/s
+
+============================================================
+Generated Response: <think>
+好的，用户问我的介绍。我需要先确认用户的需求是什么。可能他们想了解我的功能，或者想进行互动。我应该保持友好和专业的态度，同时提供有用的信息。
+
+首先，我应该简要介绍我的功能，比如处理各种请求、提供帮助等。然后，可以
+============================================================
 ```
 
-### 2. 内存不足
+---
 
-**错误信息**:
+## 5. 性能数据
 
-```bash
-RuntimeError: CUDA out of memory
-```
+### 测试环境
 
-**解决方案**:
+| 项目   | 配置                     |
+|------|------------------------|
+| 硬件   | Atlas 300I Duo（Ascend NPU） |
+| 模型   | Qwen3-0.6B（28 层，8 KV head，head_dim=128） |
+| 精度   | force_fp32              |
+| Decode 分档 | 13 档（16, 32, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048） |
+| 推理脚本 | `infer_qwen3_0.6b_mindir.py`（zero-copy + 预分配输出 buffer） |
 
-```bash
-python export_qwen3_onnx.py --device cpu
-```
+### 各阶段推理输入 Shape 与性能
 
-### 3. 模型下载失败
+**LLM Prefill**
 
-**错误信息**:
+| 项目           | 值                               |
+|--------------|----------------------------------|
+| 输入名称        | `input_ids`, `attention_mask`, `position_ids` |
+| input_ids Shape  | `(1, seq_len)`                |
+| 输出 logits Shape | `(1, seq_len, 151936)`        |
+| 输出 past_kv Shape | `(56, 1, 8, seq_len, 128)`    |
+| 推理耗时        | **123.90 ms**                    |
 
-```bash
-OSError: Can't load model from 'Qwen/Qwen3-0.6B'
-```
+**LLM Decode（单步）**
 
-**解决方案**:
+| 项目           | 值                               |
+|--------------|----------------------------------|
+| 输入名称        | `input_ids`, `attention_mask`, `position_ids`, `past_key_values` |
+| input_ids Shape  | `(1, 1)`                        |
+| attention_mask Shape | `(1, past_kv_len+1)`         |
+| past_key_values Shape | `(56, 1, 8, past_kv_len, 128)` |
+| 输出 logits Shape | `(1, 1, 151936)`               |
+| 单步平均耗时      | **11.79 ms**                     |
 
-```bash
-export HF_ENDPOINT=https://hf-mirror.com
+### 端到端推理性能（128 tokens 生成）
 
-git clone https://huggingface.co/Qwen/Qwen3-0.6B
-python export_qwen3_onnx.py --model-id ./Qwen3-0.6B
-```
+| 场景                          | Prefill (ms) | Avg decode (ms) | Total (ms) | 吞吐 (tok/s) |
+|-----------------------------|--------------|-----------------|------------|--------------|
+| 中文对话：你好，请介绍一下你自己。           | 123.90       | 11.79           | 1621.39    | **78.94**    |
+| 英文 QA：What is the capital of France? | 140.56       | 11.90           | 1652.16    | **77.47**    |
+| 代码生成：Write a short Python function that reverses a string. | 195.91       | 19.32           | 2649.09    | **48.32**    |
 
-### 4. ONNX 导出失败
+---
 
-**错误信息**:
-
-```bash
-RuntimeError: Failed to export LLM prefill
-```
-
-**解决方案**:
-
-```bash
-pip install --upgrade transformers
-
-python -c "import torch; print(torch.__version__)"
-```
-
-### 5. 推理结果不正确
-
-**可能原因**:
-
-1. tokenizer 版本不匹配
-2. KV cache 维度不正确
-3. 模型精度问题，如果精度存在问题，建议使用fp32进行推理
-
-**解决方案**:
-
-```bash
-python infer_qwen3_onnx.py \
-  --tokenizer Qwen/Qwen3-0.6B \
-  ...
-```
-
-### 6. MindSpore Lite 转换失败
-
-**错误信息**:
-
-```bash
-Error: Unsupported operator
-```
-
-**解决方案**:
-
-可以在MindSpore Lite官方社区提交相关issue进行反馈，等待官方修复
-
-## 性能优化建议
-
-### 1. 导出优化
-
-- 使用 FP16 精度减少模型大小（默认已使用）
-- 使用 GPU 加速导出过程（如果有 CUDA）
-- 调整 dummy_seq 参数以匹配实际使用场景
-
-### 2. 推理优化
-
-- 使用 ONNX Runtime GPU 加速
-- 批量处理多个 prompt
-- 调整 max-new-tokens 参数
-
-### 3. 部署优化
-
-- 使用 MindSpore Lite 进行量化
-- 针对目标设备优化模型
-- 使用异步推理提高吞吐量
-
-## 文件结构
-
-```bash
-qwen3_0.6B/
-├── export_qwen3_onnx.py          # ONNX 导出脚本
-├── infer_qwen3_onnx.py           # ONNX 推理脚本
-├── README.md                     # 本教程文档
-└── qwen3_onnx/                   # 导出输出目录
-    ├── qwen3_llm_prefill.onnx    # Prefill 模型
-    ├── qwen3_llm_decode.onnx     # Decode 模型
-    ├── qwen3_llm_prefill.mindir  # Prefill MINDIR（转换后）
-    └── qwen3_llm_decode.mindir   # Decode MINDIR（转换后）
-```
-
-## 参考资源
+## 6. 参考资源
 
 - [MindSpore Lite 文档](https://www.mindspore.cn/lite)
-
 - [Qwen3-0.6B 官方文档](https://huggingface.co/Qwen/Qwen3-0.6B)
-
 - [Transformers 文档](https://huggingface.co/docs/transformers)
-
 - [ONNX Runtime 文档](https://onnxruntime.ai/docs/)
 
-## 许可证
+---
+
+## 7. 许可证
 
 本教程遵循 Qwen3-0.6B 模型的许可证。
