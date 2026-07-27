@@ -321,7 +321,7 @@ Overall: ALL PASSED
 
 ## 8. 参考资源
 
-- 上游模型仓库：<https://github.com/unifiedperceptualparsing/unifiedparsing>
+- 上游模型仓库：<https://github.com/CSAILVision/unifiedparsing>
 - 论文：Unified Perceptual Parsing for Scene Understanding (ECCV 2018) <https://arxiv.org/abs/1807.10221>
 - MindSpore Lite 文档：<https://www.mindspore.cn/lite>
 - ONNX Runtime 文档：<https://onnxruntime.ai>
