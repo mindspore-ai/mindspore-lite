@@ -36,11 +36,8 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 from PIL import Image
+import mindspore_lite as mslite
 
-try:
-    import mindspore_lite as mslite
-except Exception:
-    mslite = None  # type: ignore
 
 IMAGE_SIZE = 1008
 CONTEXT_LENGTH = 32
@@ -59,7 +56,7 @@ _DTYPE_MAP = {
 
 def _mslite_dtype_to_np(dtype) -> np.dtype:
     """Convert mslite DataType to numpy dtype."""
-    key = str(dtype).split(".")[-1] if "." in str(dtype) else str(dtype)
+    key = str(dtype).rsplit('.', maxsplit=1)[-1]
     return np.dtype(_DTYPE_MAP.get(key, np.float32))
 
 
@@ -233,7 +230,7 @@ def postprocess(
 
     keep = scores > conf_threshold
     results = []
-    for i in range(len(keep)):
+    for i, _ in enumerate(keep):
         if not keep[i]:
             continue
         cx, cy, w, h = pred_boxes[0, i]

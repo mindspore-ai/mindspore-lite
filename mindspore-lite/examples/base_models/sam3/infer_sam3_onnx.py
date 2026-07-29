@@ -178,7 +178,7 @@ def postprocess(
 
     keep = scores > conf_threshold
     results = []
-    for i in range(len(keep)):
+    for i, _ in enumerate(keep):
         if not keep[i]:
             continue
         cx, cy, w, h = pred_boxes[0, i]

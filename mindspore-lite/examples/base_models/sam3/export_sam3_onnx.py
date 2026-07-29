@@ -30,11 +30,9 @@ Usage:
 
 import argparse
 import os
-from pathlib import Path
-from typing import List
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 IMAGE_SIZE = 1008
 CONTEXT_LENGTH = 32
@@ -120,7 +118,7 @@ class DecoderWrapper(nn.Module):
         self.dot_prod_scoring = model.dot_prod_scoring
         self.num_feature_levels = model.num_feature_levels
 
-    def _encode_prompt(self, text_features, text_mask, img_feats, img_pos_embeds, vis_feat_sizes):
+    def _encode_prompt(self, text_features, text_mask):
         """Encode text and geometry prompts into a combined prompt tensor."""
         txt_feats = text_features
         txt_masks = text_mask
@@ -152,7 +150,7 @@ class DecoderWrapper(nn.Module):
         bs = memory.shape[1]
         query_embed = decoder.query_embed.weight
         tgt = query_embed.unsqueeze(1).repeat(1, bs, 1)
-        hs, reference_boxes, dec_presence_out, dec_presence_feats = decoder(
+        hs, reference_boxes, dec_presence_out, _ = decoder(
             tgt=tgt,
             memory=memory,
             memory_key_padding_mask=src_mask,
@@ -172,13 +170,11 @@ class DecoderWrapper(nn.Module):
             dec_presence_out = dec_presence_out.transpose(1, 2)
         return hs, reference_boxes, dec_presence_out
 
-    def _update_scores_and_boxes(self, hs, reference_boxes, prompt, prompt_mask, dec_presence_out):
+    def _update_scores_and_boxes(self, hs, reference_boxes, prompt, prompt_mask):
         """Compute detection scores and bounding boxes from decoder hidden states."""
-        from sam3.model.box_ops import box_cxcywh_to_xyxy
         from sam3.model.model_misc import inverse_sigmoid
 
         num_o2o = hs.size(2)
-        queries = hs[-1][:, :num_o2o]
         outputs_class = self.dot_prod_scoring(hs, prompt, prompt_mask)
         box_head = self.transformer.decoder.bbox_embed
         anchor_box_offsets = box_head(hs)
