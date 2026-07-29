@@ -93,7 +93,7 @@ def tokenize_text(text: str) -> np.ndarray:
     bpe_path = pkg_resources.resource_filename("sam3", "assets/bpe_simple_vocab_16e6.txt.gz")
     tokenizer = SimpleTokenizer(bpe_path=bpe_path)
     tokens = tokenizer(text, context_length=CONTEXT_LENGTH)
-    return tokens.numpy().astype(np.int32)
+    return tokens.numpy().astype(np.int64)
 
 
 def _load_model(mindir_path: str) -> mslite.Model:
@@ -105,8 +105,6 @@ def _load_model(mindir_path: str) -> mslite.Model:
     Returns:
         Built mslite.Model ready for inference.
     """
-    if mslite is None:
-        raise RuntimeError("mindspore_lite is not available")
     context = mslite.Context()
     context.target = ["ascend"]
     model = mslite.Model()
@@ -114,35 +112,9 @@ def _load_model(mindir_path: str) -> mslite.Model:
     return model
 
 
-def _get_model_inputs(model: mslite.Model) -> List[mslite.Tensor]:
-    """Return the input tensors of a model."""
-    return model.get_inputs()
-
-
 def _set_input(tensor: mslite.Tensor, data: np.ndarray) -> None:
     """Set numpy data into an mslite input tensor."""
     tensor.set_data_from_numpy(data)
-
-
-def _run_model(model: mslite.Model, feed_dict: Dict[str, np.ndarray]) -> List[np.ndarray]:
-    """Run a model with name-based input matching.
-
-    Args:
-        model: Built mslite.Model.
-        feed_dict: Dictionary mapping input names to numpy arrays.
-
-    Returns:
-        List of numpy output arrays.
-    """
-    inputs = model.get_inputs()
-    for inp in inputs:
-        if inp.name in feed_dict:
-            data = feed_dict[inp.name]
-            if data.dtype != _mslite_dtype_to_np(inp.dtype):
-                data = data.astype(inp.dtype)
-            _set_input(inp, data)
-    outputs = model.predict(inputs)
-    return [out.get_data_to_numpy() for out in outputs]
 
 
 def run_full_pipeline(
@@ -187,7 +159,7 @@ def run_full_pipeline(
         else:
             raise KeyError(f"Cannot find input '{inp.name}' in encoder outputs")
         if data.dtype != _mslite_dtype_to_np(inp.dtype):
-            data = data.astype(inp.dtype)
+            data = data.astype(_mslite_dtype_to_np(inp.dtype))
         _set_input(inp, data)
     dec_outputs = dec_model.predict(dec_inputs)
     dec_results = [out.get_data_to_numpy() for out in dec_outputs]
@@ -317,6 +289,8 @@ def align_check(mindir_dir: str, onnx_dir: str) -> None:
             dec_feed[inp.name] = img_onnx_map[inp.name]
         elif inp.name in lang_onnx_map:
             dec_feed[inp.name] = lang_onnx_map[inp.name]
+        else:
+            raise KeyError(f"Cannot find ONNX input '{inp.name}' in encoder outputs")
     dec_onnx = dec_sess.run(None, dec_feed)
 
     print("Running MindIR inference...")

@@ -254,6 +254,8 @@ def align_check(onnx_dir: str, checkpoint_path: str) -> None:
             dec_feed[inp.name] = img_out_map[inp.name]
         elif inp.name in lang_out_map:
             dec_feed[inp.name] = lang_out_map[inp.name]
+        else:
+            raise KeyError(f"Cannot find ONNX input '{inp.name}' in encoder outputs")
     dec_onnx = dec_sess.run(None, dec_feed)
 
     print("\n=== Image Encoder Alignment ===")
