@@ -368,7 +368,7 @@ def main():
     parser = argparse.ArgumentParser(description="Export SAM3 to three ONNX models")
     parser.add_argument(
         "--checkpoint", type=str,
-        default="/home/BYD/SAM3/weight/sam3.1_multiplex.pt",
+        default="sam3.1_multiplex.pt",
         help="Path to SAM3 checkpoint",
     )
     parser.add_argument(

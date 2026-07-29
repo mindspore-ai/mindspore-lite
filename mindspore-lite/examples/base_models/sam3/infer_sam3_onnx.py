@@ -304,7 +304,7 @@ def main():
     parser.add_argument("--conf-threshold", type=float, default=CONF_THRESHOLD)
     parser.add_argument("--align-check", action="store_true")
     parser.add_argument("--checkpoint", type=str,
-                        default="/home/BYD/SAM3/weight/sam3.1_multiplex.pt")
+                        default="sam3.1_multiplex.pt")
     args = parser.parse_args()
 
     if args.align_check:

@@ -2,7 +2,7 @@
 
 ## 模型概述
 
-SAM3 (Segment Anything Model 3) 是 Meta 发布的统一分割基础模型，支持通过文本或视觉提示（点、框、掩码）进行图像和视频中的目标检测、分割与跟踪。本方案适配 SAM3.1 图像模型（`sam3.1_multiplex.pt`），将其拆分为三个子模型并导出为 ONNX，再转换为 MindIR，在 Ascend 硬件上通过 MindSpore Lite 进行推理。
+SAM3 (Segment Anything Model 3) 是 Meta 发布的统一分割基础模型，支持通过文本或视觉提示（点、框、掩码）进行图像和视频中的目标检测、分割与跟踪。本方案适配 SAM3.1 图像模型（`sam3.1_multiplex.pt`），将其拆分为三个子模型并导出为 ONNX，再转换为 MindIR，在 Ascend 300I DUO硬件上通过 MindSpore Lite 进行推理。
 
 | 属性 | 值 |
 |------|-----|
@@ -28,9 +28,9 @@ SAM3 图像模型由 ViT 视觉骨干、CLIP 文本编码器和 DETR 检测器�
 ## 环境准备
 
 ```bash
-source /home/BYD/env.sh
-pip install -e /home/BYD/SAM3/code/sam3
-pip install pycocotools triton
+git clone https://github.com/facebookresearch/sam3.git
+cd sam3
+pip install -e .
 ```
 
 ## 文件结构
@@ -40,9 +40,10 @@ sam3/
 ├── export_sam3_onnx.py          # ONNX 导出脚本（三模块）
 ├── infer_sam3_onnx.py           # ONNX Runtime 推理脚本
 ├── infer_sam3_mslite.py         # MindSpore Lite 推理脚本
-├── config_image_encoder.ini     # 图像编码器转换配置
-├── config_language_encoder.ini  # 文本编码器转换配置
-├── config_decoder.ini           # 解码器转换配置
+├── config/
+│   ├── config_image_encoder.ini     # 图像编码器转换配置
+│   ├── config_language_encoder.ini  # 文本编码器转换配置
+│   └── config_decoder.ini           # 解码器转换配置
 ├── onnx/                        # 导出的 ONNX 模型
 │   ├── sam3_image_encoder.onnx
 │   ├── sam3_language_encoder.onnx
@@ -58,9 +59,8 @@ sam3/
 ### 1. ONNX 导出
 
 ```bash
-cd /home/BYD/SAM3/outputs/sam3
 python export_sam3_onnx.py \
-    --checkpoint /home/BYD/SAM3/weight/sam3.1_multiplex.pt \
+    --checkpoint /path/to/sam3.1_multiplex.pt \
     --output-dir ./onnx
 ```
 
@@ -112,11 +112,11 @@ converter_lite --fmk=ONNX \
 ```bash
 # 精度对齐验证（torch vs ONNX）
 python infer_sam3_onnx.py --onnx-dir ./onnx --align-check \
-    --checkpoint /home/BYD/SAM3/weight/sam3.1_multiplex.pt
+    --checkpoint /path/to/sam3.1_multiplex.pt
 
 # 图像推理
 python infer_sam3_onnx.py --onnx-dir ./onnx \
-    --image path/to/image.jpg --prompt "a dog"
+    --image /path/to/image.jpg --prompt "a dog"
 ```
 
 ### 4. MindSpore Lite 推理
@@ -127,7 +127,7 @@ python infer_sam3_mslite.py --mindir-dir ./mindir --onnx-dir ./onnx --align-chec
 
 # 图像推理
 python infer_sam3_mslite.py --mindir-dir ./mindir \
-    --image path/to/image.jpg --prompt "a dog"
+    --image /path/to/image.jpg --prompt "a dog"
 ```
 
 ## 精度对齐结果
