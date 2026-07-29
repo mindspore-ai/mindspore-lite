@@ -35,7 +35,7 @@ pip install -e .
 
 ## 文件结构
 
-```
+```text
 sam3/
 ├── export_sam3_onnx.py          # ONNX 导出脚本（三模块）
 ├── infer_sam3_onnx.py           # ONNX Runtime 推理脚本
