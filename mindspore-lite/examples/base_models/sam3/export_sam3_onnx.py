@@ -174,7 +174,6 @@ class DecoderWrapper(nn.Module):
         """Compute detection scores and bounding boxes from decoder hidden states."""
         from sam3.model.model_misc import inverse_sigmoid
 
-        num_o2o = hs.size(2)
         outputs_class = self.dot_prod_scoring(hs, prompt, prompt_mask)
         box_head = self.transformer.decoder.bbox_embed
         anchor_box_offsets = box_head(hs)
@@ -213,7 +212,7 @@ class DecoderWrapper(nn.Module):
         img_pos_embeds = [x[img_ids].flatten(2).permute(2, 0, 1) for x in enc_pos]
 
         prompt, prompt_mask = self._encode_prompt(
-            language_features, language_mask, img_feats, img_pos_embeds, vis_feat_sizes
+            language_features, language_mask
         )
 
         memory_out = self._run_encoder(
@@ -233,7 +232,7 @@ class DecoderWrapper(nn.Module):
         )
 
         outputs_class, outputs_coord = self._update_scores_and_boxes(
-            hs, reference_boxes, prompt, prompt_mask, dec_presence_out
+            hs, reference_boxes, prompt, prompt_mask
         )
 
         seg_outputs = self._run_segmentation(
