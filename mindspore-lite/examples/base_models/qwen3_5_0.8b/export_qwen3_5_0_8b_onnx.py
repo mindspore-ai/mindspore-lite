@@ -24,13 +24,30 @@ the model into three ONNX files:
   - LLM Decode (with recurrent states + KV cache input)
 """
 
+import os
 import sys
 import argparse
 import gc
+import importlib.util
 from pathlib import Path
+from typing import Any
 
 import torch
 import torch.nn.functional as F
+
+# Disable torch_npu auto-load to avoid libhccl.so error
+os.environ.setdefault("TORCH_DEVICE_BACKEND_AUTOLOAD", "0")
+
+# Patch find_spec to hide torch_npu so transformers won't try to load it
+# (torch_npu is installed but requires CANN/libhccl which is absent)
+_orig_find_spec = importlib.util.find_spec
+
+def _skip_torch_npu_find_spec(name, *args, **kwargs):
+    if name == "torch_npu":
+        return None
+    return _orig_find_spec(name, *args, **kwargs)
+
+importlib.util.find_spec = _skip_torch_npu_find_spec
 
 try:
     getattr(torch, "_dynamo").disable()
@@ -48,22 +65,180 @@ except ImportError:
     sys.exit(1)
 
 
+_cgdr_config = {
+    "enabled": False,
+    "nk":16,
+    "nv":16,
+    "dk":128,
+    "dv":128,
+    "scale_value":1.0/(128**0.5)
+}
+
+def _set_cgdr_config(enabled = False, nk = 16, nv = 16, dk = 128, dv = 128):
+    _cgdr_config["enabled"] = enabled
+    _cgdr_config["nk"] = nk
+    _cgdr_config["nv"] = nv
+    _cgdr_config["dk"] = dk
+    _cgdr_config["dv"] = dv
+    _cgdr_config["scale_value"] = 1.0 / (dk**0.5)
+
+
+class _CustomPromptFlashAttention(torch.autograd.Function):
+    """CANN PromptFlashAttention for prefill full attention layers (with mask + GQA)."""
+    @staticmethod
+    def forward(ctx, query, key, value, attn_mask, num_heads, num_key_value_heads, scale_value):
+        """Forward pass: CANN PromptFlashAttention simulation via torch."""
+        del ctx
+        if num_key_value_heads < num_heads:
+            key_states_for_attn = key.repeat_interleave(num_heads // num_key_value_heads, dim=1)
+            value_states_for_attn = value.repeat_interleave(num_heads // num_key_value_heads, dim=1)
+        else:
+            key_states_for_attn = key
+            value_states_for_attn = value
+        attn_weights = torch.matmul(query, key_states_for_attn.transpose(2, 3)) * scale_value
+        if attn_mask is not None:
+            attn_weights = attn_weights + attn_mask
+        attn_weights = F.softmax(attn_weights, dim=-1,dtype=torch.float32).to(query.dtype)
+        attn_output = torch.matmul(attn_weights, value_states_for_attn)
+        attn_output = attn_output.transpose(1,2)
+        return attn_output
+
+    @staticmethod
+    def symbolic(g,query,key,value,attn_mask,num_heads,num_key_value_heads,scale_value):
+        """Define ONNX custom op for PromptFlashAttention."""
+        y = g.op(
+                "Custom",
+                query,
+                key,
+                value,
+                attn_mask,
+                type_s="PromptFlashAttention",
+                input_names_s=["query", "key", "value", "atten_mask"],
+                optional_input_names_s=["atten_mask"],
+                output_names_s= ["attention_out"],
+                output_num_i=1,
+                input_index_i=[0, 1, 2, 4],
+                num_heads_i=int(num_heads),
+                num_key_value_heads_i=int(num_key_value_heads),
+                scale_value_f=float(scale_value),
+                input_layout_s="BNSD_BSND",
+                inner_precise_i=1,
+            )
+        y.setType(query.type())
+        return y
+
+
+def _cann_pfa(query,key,value,attn_mask,num_heads,num_key_value_heads,scale_value):
+    return _CustomPromptFlashAttention.apply(query,key,value,attn_mask,num_heads,num_key_value_heads,scale_value)
+
+
+class _ChunkGatedDeltaRuleOp(torch.autograd.Function):
+    """CGDR custom op (prefill_cgdr version) using _cgdr_config for ONNX export."""
+    @staticmethod
+    def forward(ctx, query, key, value, beta, g, initial_state, actual_seq_lengths):
+        """Forward pass for _ChunkGatedDeltaRuleOp."""
+        del ctx, actual_seq_lengths
+        core_attn_out, final_state = _chunk_gated_delta_rule(
+            query, key, value, g=g, beta=beta,
+            initial_state=initial_state, output_final_state=True,
+            use_qk_l2norm_in_kernel=True,
+        )
+        return core_attn_out, final_state.to(torch.float32)
+
+    @staticmethod
+    def symbolic(g, query, key, value, beta, g_in, initial_state, actual_seq_lengths):
+        """Define ONNX custom op for ChunkGatedDeltaRule (prefill_cgdr)."""
+        del initial_state
+        nk = _cgdr_config["nk"]
+        nv = _cgdr_config["nv"]
+        dk = _cgdr_config["dk"]
+        dv = _cgdr_config["dv"]
+        scale_value = _cgdr_config["scale_value"]
+        bfloat16_val = 16
+        float16_val = 10
+        float32_val = 1
+
+        eps_const = g.op('Constant', value_t=torch.tensor(1e-6, dtype=torch.float16))
+        one_const = g.op('Constant', value_t=torch.tensor(1.0, dtype=torch.float16))
+        axes_const = g.op('Constant', value_t=torch.tensor([-1], dtype=torch.int64))
+
+        q_sq = g.op("Mul", query, query)
+        q_sq_sum = g.op("ReduceSum", q_sq, axes_const, keepdims_i=1)
+        q_sq_sum_eps = g.op("Add", q_sq_sum, eps_const)
+        q_norm = g.op("Sqrt", q_sq_sum_eps)
+        q_inv_norm = g.op("Div", one_const, q_norm)
+        q_normed = g.op("Mul", query, q_inv_norm)
+
+        k_sq = g.op('Mul', key, key)
+        k_sq_sum = g.op('ReduceSum', k_sq, axes_const, keepdims_i=1)
+        k_sq_sum_eps = g.op('Add', k_sq_sum, eps_const)
+        k_norm = g.op('Sqrt', k_sq_sum_eps)
+        k_inv_norm = g.op('Div', one_const, k_norm)
+        k_normed = g.op('Mul', key, k_inv_norm)
+
+        q_bf16 = g.op("Cast", q_normed, to_i=bfloat16_val)
+        k_bf16 = g.op("Cast", k_normed, to_i=bfloat16_val)
+        v_bf16 = g.op("Cast", value, to_i=bfloat16_val)
+        beta_bf16 = g.op("Cast", beta, to_i=bfloat16_val)
+
+        shape_qk = g.op('Constant', value_t=torch.tensor([-1, nk, dk], dtype=torch.int64))
+        shape_v = g.op('Constant', value_t=torch.tensor([-1, nv, dv], dtype=torch.int64))
+        shape_bg = g.op('Constant', value_t=torch.tensor([-1, nv], dtype=torch.int64))
+
+        q_tnd = g.op("Reshape", q_bf16, shape_qk)
+        k_tnd = g.op("Reshape", k_bf16, shape_qk)
+        v_tnd = g.op("Reshape", v_bf16, shape_v)
+        beta_tnd = g.op("Reshape", beta_bf16, shape_bg)
+        g_tnd = g.op("Reshape", g_in, shape_bg)
+
+        init_fp16 = g.op("Constant", value_t=torch.zeros([1, nv, dv, dk], dtype=torch.float16))
+        init_state_bf16 = g.op("Cast", init_fp16, to_i=bfloat16_val)
+
+        out, final_state = g.op(
+            "Custom",
+            q_tnd, k_tnd, v_tnd, beta_tnd, init_state_bf16, actual_seq_lengths, g_tnd,
+            outputs=2,
+            type_s="ChunkGatedDeltaRule",
+            input_names_s=["query", "key", "value", "beta", "initial_state", "actual_seq_lengths", "g"],
+            optional_input_names_s=["g"],
+            output_names_s=["out", "final_state"],
+            output_num_i=2,
+            scale_value_f=scale_value,
+        )
+
+        out_fp16 = g.op("Cast", out, to_i=float16_val)
+        final_fp32 = g.op("Cast", final_state, to_i=float32_val)
+
+        out_shape = g.op("Constant", value_t=torch.tensor([1, -1, nv, dv], dtype=torch.int64))
+        out_bnds = g.op("Reshape", out_fp16, out_shape)
+        final_transposed = g.op("Transpose", final_fp32, perm_i=[0, 1, 3, 2])
+        return out_bnds, final_transposed
+
+
 def _l2norm(x, dim=-1, eps=1e-6):
     inv_norm = torch.rsqrt((x * x).sum(dim=dim, keepdim=True) + eps)
     return x * inv_norm
 
 
-def _make_additive_causal_mask(attention_mask, q_len, k_len, past_len, dtype):
-    """Make additive causal mask for full attention layers."""
-    mask_value = torch.finfo(dtype).min
-    ar_q = torch.arange(q_len, device=attention_mask.device)
-    ar_k = torch.arange(k_len, device=attention_mask.device)
+def _rotate_half(x):
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def _make_additive_causal_mask(attention_mask, q_len, k_len, past_len):
+    """Make boolean causal mask for CANN PromptFlashAttention ops.
+
+    Returns a boolean mask (True = masked position) suitable for CANN
+    PromptFlashAttention ops that accept boolean attention masks.
+    """
+    device = attention_mask.device
+    ar_q = torch.arange(q_len, device=device)
+    ar_k = torch.arange(k_len, device=device)
     causal = ar_k[None, :] > (past_len + ar_q[:, None])
-    causal = causal.to(dtype) * mask_value
-    causal = causal[None, None, :, :].expand(attention_mask.shape[0], 1, q_len, k_len)
-    padding = (1.0 - attention_mask.to(dtype)) * mask_value
-    padding = padding[:, None, None, :]
-    return causal + padding
+    padding = ~attention_mask.to(torch.bool)
+    mask = causal[None, None, :, :].expand(attention_mask.shape[0], 1, q_len, k_len) | padding[:, None, None, :]
+    return mask
 
 
 def _chunk_gated_delta_rule(query, key, value, g, beta, chunk_size=64, initial_state=None,
@@ -139,95 +314,6 @@ def _chunk_gated_delta_rule(query, key, value, g, beta, chunk_size=64, initial_s
     return core_attn_out, last_recurrent_state
 
 
-class CustomChunkGatedDeltaRule(torch.autograd.Function):
-    """Custom ONNX operator for ChunkGatedDeltaRule prefill kernel."""
-
-    @staticmethod
-    def forward(
-        ctx,
-        query,
-        key,
-        value,
-        g,
-        beta,
-        initial_state,
-        cu_seqlens,
-        ssm_state_indices,
-        chunk_size: int,
-        scale_value,
-    ):
-        """Forward pass: invoke ChunkGatedDeltaRule kernel via torch simulation."""
-        del ctx, cu_seqlens, ssm_state_indices, scale_value
-        batch_size = initial_state.shape[0]
-        total_tokens = query.shape[0]
-        seq_len = total_tokens // batch_size
-        query_4d = query.reshape(batch_size, seq_len, *query.shape[1:])
-        key_4d = key.reshape(batch_size, seq_len, *key.shape[1:])
-        value_4d = value.reshape(batch_size, seq_len, *value.shape[1:])
-        g_3d = g.reshape(batch_size, seq_len, *g.shape[1:])
-        beta_3d = beta.reshape(batch_size, seq_len, *beta.shape[1:])
-        out, final_state = _chunk_gated_delta_rule(
-            query_4d,
-            key_4d,
-            value_4d,
-            g=g_3d,
-            beta=beta_3d,
-            chunk_size=int(chunk_size),
-            initial_state=initial_state.to(dtype=torch.float32),
-            output_final_state=True,
-            use_qk_l2norm_in_kernel=False,
-        )
-        out = out.reshape(total_tokens, out.shape[2], out.shape[3]).contiguous()
-        final_state = final_state.to(dtype=torch.float16)
-        return out, final_state
-
-    @staticmethod
-    def symbolic(
-        g,
-        query,
-        key,
-        value,
-        g_in,
-        beta,
-        initial_state,
-        cu_seqlens,
-        ssm_state_indices,
-        chunk_size: int,
-        scale_value: float,
-    ):
-        """Define ONNX custom op representation for ChunkGatedDeltaRule."""
-        out, final_state = g.op(
-            "Custom",
-            query,
-            key,
-            value,
-            g_in,
-            beta,
-            initial_state,
-            cu_seqlens,
-            ssm_state_indices,
-            type_s="ChunkGatedDeltaRule",
-            chunk_size_i=int(chunk_size),
-            scale_value_f=float(scale_value),
-            input_names_s=[
-                "query",
-                "key",
-                "value",
-                "g",
-                "beta",
-                "initial_state",
-                "cu_seqlens",
-                "ssm_state_indices",
-            ],
-            output_names_s=["out", "final_state"],
-            output_num_i=2,
-            input_index_i=list(range(8)),
-            outputs=2,
-        )
-        out.setType(value.type())
-        final_state.setType(initial_state.type())
-        return out, final_state
-
 
 def _recurrent_gated_delta_rule(query, key, value, g, beta, initial_state,
                                 output_final_state=False, use_qk_l2norm_in_kernel=False):
@@ -270,15 +356,107 @@ def _recurrent_gated_delta_rule(query, key, value, g, beta, initial_state,
     return core_attn_out, last_recurrent_state
 
 
+class CustomRecurrentGatedDeltaRule(torch.autograd.Function):
+    """RecurrentGatedDeltaRule: CANN custom op for decode-step linear attention.
+
+    CANN interface (aclnnRecurrentGatedDeltaRule):
+      Inputs:  query(T,Nk,Dk)BF16, key(T,Nk,Dk)BF16, value(T,Nv,Dv)BF16,
+               beta(T,Nv)BF16, stateRef(BN,Nv,Dv,Dk)BF16 [in-out],
+               actualSeqLengths(B,)INT32, ssmStateIndices(T,)INT32,
+               g(T,Nv)FP32 [opt], gk(T,Nv,Dk)FP32 [opt],
+               numAcceptedTokens(B,)INT32
+      Outputs: out(T,Nv,Dv)BF16, stateRef(BN,Nv,Dv,Dk)BF16 (modified in-place)
+    """
+
+    @staticmethod
+    def forward(ctx, query, key, value, beta, initial_state,
+                cu_seqlens, ssm_state_indices, g, num_accepted_tokens):
+        """Forward pass: invoke RecurrentGatedDeltaRule kernel via torch simulation."""
+        del ctx, cu_seqlens, ssm_state_indices, num_accepted_tokens
+        batch_size = initial_state.shape[0]
+        total_tokens = query.shape[0]
+        seq_len = total_tokens // batch_size
+        query_4d = query.reshape(batch_size, seq_len, *query.shape[1:])
+        key_4d = key.reshape(batch_size, seq_len, *key.shape[1:])
+        value_4d = value.reshape(batch_size, seq_len, *value.shape[1:])
+        beta_3d = beta.reshape(batch_size, seq_len, beta.shape[-1])
+        g_3d = g.reshape(batch_size, seq_len, *g.shape[1:])
+        out, final_state = _recurrent_gated_delta_rule(
+            query_4d, key_4d, value_4d, g=g_3d, beta=beta_3d,
+            initial_state=initial_state.to(dtype=torch.float32),
+            output_final_state=True, use_qk_l2norm_in_kernel=False,
+        )
+        out = out.reshape(total_tokens, out.shape[2], out.shape[3]).contiguous()
+        final_state = final_state.to(dtype=torch.float32)
+        return out, final_state
+
+    @staticmethod
+    def symbolic(g, query, key, value, beta, initial_state,
+                 cu_seqlens, ssm_state_indices, g_opt, num_accepted_tokens):
+        """Define ONNX custom op matching CANN aclnnRecurrentGatedDeltaRule.
+
+        Input order (matching CANN C API signature):
+          0: query, 1: key, 2: value, 3: beta, 4: stateRef [in-out],
+          5: actualSeqLengths, 6: ssmStateIndices, 7: g (opt),
+          8: gk (opt, nullptr), 9: numAcceptedTokens
+        """
+        # Build inputs list: required + g + gk(nullptr) + numAcceptedTokens
+        head_k_dim = (
+            query.type().sizes()[-1]
+            if query.type().sizes() and len(query.type().sizes()) >= 3
+            else 128
+        )
+        scale_value = 1.0 / (float(head_k_dim) ** 0.5)
+
+        # All inputs in CANN order: 0-6 required, 7 g, 8 gk (not provided),
+        # 9 numAcceptedTokens
+        can_inputs = [
+            query, key, value, beta, initial_state,
+            cu_seqlens, ssm_state_indices, g_opt,
+        ]
+        can_input_names = [
+            "query", "key", "value", "beta", "state",
+            "actual_seq_lengths", "ssm_state_indices", "g",
+        ]
+
+        # numAcceptedTokens is required (non-optional) per CANN spec
+        can_inputs.append(num_accepted_tokens)
+        can_input_names.append("num_accepted_tokens")
+
+        # gk is optional — not provided (nullptr behavior)
+        # Add gk to input_names_s / optional_input_names_s for schema completeness
+        can_input_names.append("gk")
+
+        # input_index_i: indices of CANN inputs that have non-null tensors
+        # 0-6: required, 7: g (always provided), 9: numAcceptedTokens (always provided)
+        # 8: gk (not provided, excluded from input_index_i)
+        input_index = [0, 1, 2, 3, 4, 5, 6, 7, 9]
+
+        out, final_state = g.op(
+            "Custom", *can_inputs,
+            type_s="RecurrentGatedDeltaRule",
+            scale_value_f=float(scale_value),
+            input_names_s=can_input_names,
+            optional_input_names_s=["gk"],
+            output_names_s=["out", "state"],
+            output_num_i=2,
+            input_index_i=input_index,
+            outputs=2,
+        )
+        out.setType(value.type())
+        final_state.setType(initial_state.type())
+        return out, final_state
+
+
 def _linear_attn_prefill(
     layer,
     hidden_states,
     attention_mask,
-    use_cgdr_custom: bool = True,
     actual_seq_lengths=None,
     ssm_state_indices=None,
 ):
-    """Forward pass for GatedDeltaNet layer during prefill."""
+    """Forward pass for GatedDeltaNet layer during prefill (CGDR custom op)."""
+    del actual_seq_lengths, ssm_state_indices
     batch_size, seq_len, _ = hidden_states.shape
     hidden_states_input = hidden_states
     if attention_mask is not None and attention_mask.shape[1] > 1 and attention_mask.shape[0] > 1:
@@ -321,55 +499,17 @@ def _linear_attn_prefill(
         query = query.repeat_interleave(layer.num_v_heads // layer.num_k_heads, dim=2)
         key = key.repeat_interleave(layer.num_v_heads // layer.num_k_heads, dim=2)
 
-    query = _l2norm(query.to(dtype=torch.float32), dim=-1, eps=1e-6).to(dtype=query.dtype)
-    key = _l2norm(key.to(dtype=torch.float32), dim=-1, eps=1e-6).to(dtype=key.dtype)
-
+    # _ChunkGatedDeltaRuleOp (prefill_cgdr version) does l2norm internally in symbolic,
+    # so skip external l2norm here.
     state0 = torch.zeros(
-        batch_size, query.shape[2], layer.head_k_dim, layer.head_v_dim,
-        device=query.device, dtype=torch.float16,
+        1, layer.num_v_heads, layer.head_v_dim, layer.head_k_dim,
+        device=query.device, dtype=torch.float32,
     )
-    if actual_seq_lengths is None:
-        seq_lens = attention_mask.to(dtype=torch.int32).sum(dim=1)
-        actual_seq_lengths = torch.zeros((batch_size + 1,), device=query.device, dtype=torch.int32)
-        actual_seq_lengths[1:] = torch.cumsum(seq_lens, dim=0)
-    if ssm_state_indices is None:
-        ssm_state_indices = torch.arange(batch_size, device=query.device, dtype=torch.int32)
-    scale_value = 1.0 / (layer.head_k_dim ** 0.5)
-    q_3d = query.to(dtype=torch.float16).reshape(-1, query.shape[2], query.shape[3])
-    k_3d = key.to(dtype=torch.float16).reshape(-1, key.shape[2], key.shape[3])
-    v_3d = value.to(dtype=torch.float16).reshape(-1, value.shape[2], value.shape[3])
-    beta_2d = beta.to(dtype=torch.float16).reshape(-1, beta.shape[-1])
-    g_2d = g.to(dtype=torch.float16).reshape(-1, g.shape[-1])
-    if use_cgdr_custom:
-        core_attn_out_3d, last_recurrent_state = CustomChunkGatedDeltaRule.apply(
-            q_3d,
-            k_3d,
-            v_3d,
-            g_2d,
-            beta_2d,
-            state0,
-            actual_seq_lengths,
-            ssm_state_indices,
-            64,
-            scale_value,
-        )
-        core_attn_out = core_attn_out_3d.reshape(
-            batch_size, seq_len, core_attn_out_3d.shape[1], core_attn_out_3d.shape[2]
-        )
-    else:
-        core_attn_out, last_recurrent_state = _chunk_gated_delta_rule(
-            query,
-            key,
-            value,
-            g=g,
-            beta=beta,
-            chunk_size=64,
-            initial_state=state0,
-            output_final_state=True,
-            use_qk_l2norm_in_kernel=False,
-        )
-        last_recurrent_state = last_recurrent_state.to(dtype=torch.float16)
-
+    shape = torch.onnx.operators.shape_as_tensor(hidden_states)
+    cgdr_actual_seq_lengths = shape[1:2]
+    core_attn_out, last_recurrent_state = _ChunkGatedDeltaRuleOp.apply(
+        query, key, value, beta, g, state0, cgdr_actual_seq_lengths,
+    )
     core_attn_out = core_attn_out.reshape(-1, layer.head_v_dim)
     z = z.reshape(-1, layer.head_v_dim)
     core_attn_out = layer.norm(core_attn_out, z)
@@ -379,8 +519,13 @@ def _linear_attn_prefill(
     return output, conv_state, last_recurrent_state
 
 
-def _linear_attn_decode(layer, hidden_states, conv_state_in, recurrent_state_in):
-    """Forward pass for GatedDeltaNet layer during decode (single token)."""
+def _linear_attn_decode(layer, hidden_states, conv_state_in, recurrent_state_in,
+                        use_rgdr_custom: bool = True):
+    """Forward pass for GatedDeltaNet layer during decode (single token).
+
+    Args:
+        use_rgdr_custom: If True, use RecurrentGatedDeltaRule custom op for ONNX export.
+    """
     batch_size, seq_len, _ = hidden_states.shape
 
     mixed_qkv = layer.in_proj_qkv(hidden_states)
@@ -415,14 +560,58 @@ def _linear_attn_decode(layer, hidden_states, conv_state_in, recurrent_state_in)
     g = -layer.A_log.float().exp() * F.softplus(a.float() + layer.dt_bias)
 
     if layer.num_v_heads // layer.num_k_heads > 1:
+        # Save pre-repeated q/k for CANN custom op path (expects Nk heads)
+        q_nk = query  # (B, seq, Nk, Dk)
+        k_nk = key
         query = query.repeat_interleave(layer.num_v_heads // layer.num_k_heads, dim=2)
         key = key.repeat_interleave(layer.num_v_heads // layer.num_k_heads, dim=2)
+    else:
+        q_nk, k_nk = query, key
 
-    core_attn_out, last_recurrent_state = _recurrent_gated_delta_rule(
-        query, key, value, g=g, beta=beta,
-        initial_state=recurrent_state_in, output_final_state=True,
-        use_qk_l2norm_in_kernel=True,
-    )
+    if use_rgdr_custom:
+        # CANN aclnnRecurrentGatedDeltaRule expects:
+        #   query/key: (T, Nk, Dk) — original key heads, NOT expanded to Nv
+        #   value:     (T, Nv, Dv)
+        #   state:     (BlockNum, Nv, Dv, Dk) — Nv states
+        # The op handles Nk→Nv expansion internally via ssmStateIndices.
+        eps = 1e-6
+        nk = layer.num_k_heads
+        q_3d = q_nk[:, :, :nk, :].to(dtype=torch.float32).reshape(
+            -1, nk, layer.head_k_dim)
+        k_3d = k_nk[:, :, :nk, :].to(dtype=torch.float32).reshape(
+            -1, nk, layer.head_k_dim)
+        v_3d = value.to(dtype=torch.float32).reshape(
+            -1, value.shape[2], value.shape[3])
+        beta_2d = beta.to(dtype=torch.float32).reshape(-1, beta.shape[-1])
+        g_2d = g.to(dtype=torch.float32).reshape(-1, g.shape[-1])
+        # L2 normalize q/k to match non-custom path
+        q_3d = q_3d / (q_3d.norm(dim=-1, keepdim=True) + eps)
+        k_3d = k_3d / (k_3d.norm(dim=-1, keepdim=True) + eps)
+        # actual_seq_lengths: (B,) — per CANN spec, each element = effective seq len
+        # For single-token decode, each batch has seq_len=1
+        actual_seq_lengths = torch.ones(
+            batch_size, device=hidden_states.device, dtype=torch.int32
+        )
+        ssm_state_indices = torch.arange(
+            batch_size, device=hidden_states.device, dtype=torch.int32
+        )
+        # num_accepted_tokens: (B,) — per CANN spec, required input
+        num_accepted_tokens = torch.ones(
+            batch_size, device=hidden_states.device, dtype=torch.int32
+        )
+        core_attn_out_3d, last_recurrent_state = CustomRecurrentGatedDeltaRule.apply(
+            q_3d, k_3d, v_3d, beta_2d, recurrent_state_in.to(dtype=torch.float32),
+            actual_seq_lengths, ssm_state_indices, g_2d, num_accepted_tokens,
+        )
+        core_attn_out = core_attn_out_3d.reshape(
+            batch_size, seq_len, -1, layer.head_v_dim
+        )
+    else:
+        core_attn_out, last_recurrent_state = _recurrent_gated_delta_rule(
+            query, key, value, g=g, beta=beta,
+            initial_state=recurrent_state_in, output_final_state=True,
+            use_qk_l2norm_in_kernel=True,
+        )
 
     core_attn_out = core_attn_out.reshape(-1, layer.head_v_dim)
     z = z.reshape(-1, layer.head_v_dim)
@@ -435,7 +624,7 @@ def _linear_attn_decode(layer, hidden_states, conv_state_in, recurrent_state_in)
 
 def _full_attn_forward(layer, hidden_states, position_embeddings, attention_mask,
                        past_key=None, past_value=None):
-    """Forward pass for full attention layer with optional KV cache."""
+    """Forward pass for full attention layer using CANN PromptFlashAttention."""
     input_shape = hidden_states.shape[:-1]
     head_dim = layer.head_dim
     num_heads = layer.config.num_attention_heads
@@ -458,68 +647,703 @@ def _full_attn_forward(layer, hidden_states, position_embeddings, attention_mask
         key_states = torch.cat([past_key, key_states], dim=2)
         value_states = torch.cat([past_value, value_states], dim=2)
 
-    key_states_for_attn = key_states
-    value_states_for_attn = value_states
-    if num_kv_heads < num_heads:
-        key_states_for_attn = key_states.repeat_interleave(num_heads // num_kv_heads, dim=1)
-        value_states_for_attn = value_states.repeat_interleave(num_heads // num_kv_heads, dim=1)
-
     scaling = getattr(layer, "scaling", 1.0 / (head_dim ** 0.5))
-    attn_weights = torch.matmul(query_states, key_states_for_attn.transpose(2, 3)) * scaling
-    if attention_mask is not None:
-        attn_weights = attn_weights + attention_mask
-    attn_weights = F.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-    attn_output = torch.matmul(attn_weights, value_states_for_attn)
-    attn_output = attn_output.transpose(1, 2).reshape(*input_shape, -1).contiguous()
+
+    # CANN PromptFlashAttention handles GQA internally via num_key_value_heads
+    attn_output = _cann_pfa(
+        query_states, key_states, value_states,
+        attention_mask, num_heads, num_kv_heads, scaling,
+    )
+    attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+
     attn_output = attn_output * torch.sigmoid(gate)
     attn_output = layer.o_proj(attn_output)
     return attn_output, key_states, value_states
 
 
-class VisionTowerWrapper(torch.nn.Module):
-    """Wrapper for Qwen3.5 Vision Tower to cache position embeddings."""
+class _IncreFlashAttentionCustom(torch.autograd.Function):
+    """Custom IncreFlashAttention for ONNX export (decode step)."""
 
-    def __init__(self, vision_tower, dummy_grid_thw):
+    @staticmethod
+    # pylint: disable=unused-argument
+    def forward(
+        ctx,
+        query,
+        key,
+        value,
+        atten_mask,
+        num_heads: int,
+        scale_value: float,
+        input_layout: str,
+        num_key_value_heads: int,
+        block_size: int,
+        inner_precise: int,
+    ):
+        """Incremental flash attention forward (fallback to manual matmul)."""
+        q = query
+        k = key
+        v = value
+        layout = str(input_layout).upper()
+        if layout in ("BSND", "SBND"):
+            q = q.permute(0, 2, 1, 3)
+            k = k.permute(0, 2, 1, 3)
+            v = v.permute(0, 2, 1, 3)
+        if 0 < num_key_value_heads < num_heads:
+            rep = num_heads // num_key_value_heads
+            k = k.repeat_interleave(rep, dim=1)
+            v = v.repeat_interleave(rep, dim=1)
+        attn = torch.matmul(q, k.transpose(2, 3)) * float(scale_value)
+        if atten_mask is not None:
+            m = atten_mask.to(torch.bool)
+            if m.dim() == 4 and m.shape[1] == 1:
+                m = m.expand(attn.shape[0], attn.shape[1], m.shape[2], m.shape[3])
+            attn = attn.masked_fill(m, torch.finfo(attn.dtype).min)
+        attn = F.softmax(attn, dim=-1, dtype=torch.float32).to(q.dtype)
+        out = torch.matmul(attn, v)
+        if layout in ("BSND", "SBND"):
+            out = out.permute(0, 2, 1, 3)
+        return out
+
+    @staticmethod
+    def symbolic(
+        g,
+        query,
+        key,
+        value,
+        atten_mask,
+        num_heads: int,
+        scale_value: float,
+        input_layout: str,
+        num_key_value_heads: int,
+        block_size: int,
+        inner_precise: int,
+    ):
+        """ONNX symbolic for IncreFlashAttention custom op."""
+        if atten_mask is None:
+            y = g.op(
+                "Custom",
+                query, key, value,
+                type_s="IncreFlashAttention",
+                input_names_s=["query", "key", "value", "atten_mask"],
+                optional_input_names_s=["atten_mask"],
+                output_names_s=["attention_out"],
+                output_num_i=1,
+                input_index_i=[0, 1, 2],
+                num_heads_i=int(num_heads),
+                scale_value_f=float(scale_value),
+                input_layout_s=str(input_layout),
+                num_key_value_heads_i=int(num_key_value_heads),
+                block_size_i=int(block_size),
+                inner_precise_i=int(inner_precise),
+            )
+        else:
+            y = g.op(
+                "Custom",
+                query, key, value, atten_mask,
+                type_s="IncreFlashAttention",
+                input_names_s=["query", "key", "value", "atten_mask"],
+                optional_input_names_s=["atten_mask"],
+                output_names_s=["attention_out"],
+                output_num_i=1,
+                input_index_i=[0, 1, 2, 3],
+                num_heads_i=int(num_heads),
+                scale_value_f=float(scale_value),
+                input_layout_s=str(input_layout),
+                num_key_value_heads_i=int(num_key_value_heads),
+                block_size_i=int(block_size),
+                inner_precise_i=int(inner_precise),
+            )
+        y.setType(query.type())
+        return y
+
+
+def incre_flash_attention(
+    query,
+    key,
+    value,
+    atten_mask,
+    num_heads: int,
+    scale_value: float,
+    input_layout: str,
+    num_key_value_heads: int,
+    block_size: int = 0,
+    inner_precise: int = 1,
+):
+    """Incremental flash attention using custom ONNX op."""
+    return _IncreFlashAttentionCustom.apply(
+        query, key, value, atten_mask,
+        int(num_heads), float(scale_value), str(input_layout),
+        int(num_key_value_heads), int(block_size), int(inner_precise),
+    )
+
+
+class _PromptFlashAttentionCustom(torch.autograd.Function):
+    """Custom PromptFlashAttention for ONNX export (full bidir attention).
+
+    Fuses: MatMul(Q, K^T) -> Scale -> Softmax -> MatMul(attn, V)
+    into a single Custom node, matching CANN PromptFlashAttention op.
+
+    Input layout: BNSD [B, N, S, D] for all of Q, K, V.
+    No atten_mask needed for bidirectional vision attention.
+    """
+
+    @staticmethod
+    def forward(ctx, query, key, value, num_heads, scale_value, input_layout):
+        """Full attention forward (bidirectional, no causal mask)."""
+        del ctx, num_heads
+        q = query
+        k = key
+        v = value
+        layout = str(input_layout).upper()
+        # Support BNSD input, permute to BNSD if BSND
+        if layout == "BSND":
+            q = q.permute(0, 2, 1, 3)
+            k = k.permute(0, 2, 1, 3)
+            v = v.permute(0, 2, 1, 3)
+        attn = torch.matmul(q, k.transpose(-2, -1)) * float(scale_value)
+        attn = torch.softmax(attn.float(), dim=-1).to(q.dtype)
+        out = torch.matmul(attn, v)
+        if layout == "BSND":
+            out = out.permute(0, 2, 1, 3)
+        return out
+
+    @staticmethod
+    def symbolic(g, query, key, value, num_heads, scale_value, input_layout):
+        """ONNX symbolic for PromptFlashAttention custom op."""
+        y = g.op(
+            "Custom", query, key, value,
+            type_s="PromptFlashAttention",
+            input_names_s=["query", "key", "value"],
+            output_names_s=["attention_out"],
+            output_num_i=1,
+            input_index_i=[0, 1, 2],
+            num_heads_i=int(num_heads),
+            num_key_value_heads_i=int(num_heads),
+            scale_value_f=float(scale_value),
+            input_layout_s=str(input_layout),
+            next_tokens_i=65536,
+            inner_precise_i=1,
+        )
+        y.setType(query.type())
+        return y
+
+
+def prompt_flash_attention(query, key, value, num_heads, scale_value, input_layout="BNSD"):
+    """Full bidirectional flash attention via CANN PromptFlashAttention.
+
+    Q/K/V in BNSD layout [B, N, S, D].
+    """
+    return _PromptFlashAttentionCustom.apply(
+        query, key, value,
+        int(num_heads), float(scale_value), str(input_layout),
+    )
+
+
+class _CannRotaryMul(torch.autograd.Function):
+    """CANN RotaryMul: fused RoPE computation.
+
+    y = x * r1 + rotate_half(x) * r2
+    rotate_half(x) = cat([-x[..., half:], x[..., :half]], dim=-1)
+    """
+
+    @staticmethod
+    def forward(ctx, x, r1, r2):
+        """Forward: reference RoPE implementation for tracing."""
+        del ctx
+        half = x.shape[-1] // 2
+        x1 = x[..., :half]
+        x2 = x[..., half:]
+        rotated = torch.cat([-x2, x1], dim=-1)
+        return (x * r1) + (rotated * r2)
+
+    @staticmethod
+    def symbolic(g, x, r1, r2):
+        """ONNX symbolic for RotaryMul custom op."""
+        return g.op(
+            "Custom", x, r1, r2,
+            input_names_s=["x", "r1", "r2"],
+            output_names_s=["y"],
+            type_s="RotaryMul",
+        )
+
+
+def rotary_mul(x, r1, r2):
+    """Apply RoPE via CANN RotaryMul custom op."""
+    return _CannRotaryMul.apply(x, r1, r2)
+
+
+
+class _VisionFlashAttentionCustom(torch.autograd.Function):
+    """Custom VisionFlashAttention for ONNX export (full bidir attention).
+
+    Fuses: MatMul(Q, K^T) -> Scale -> Softmax -> MatMul(attn, V)
+    into a single Custom node, matching CANN aclnnFlashAttention API.
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        query,
+        key,
+        value,
+        num_heads: int,
+        scale_value: float,
+        input_layout: str,
+    ):
+        """Full attention forward (bidirectional, no causal mask)."""
+        del ctx, num_heads
+        q = query
+        k = key
+        v = value
+        layout = str(input_layout).upper()
+        # Always work in BNSD internally
+        if layout == "BSND":
+            q = q.permute(0, 2, 1, 3)
+            k = k.permute(0, 2, 1, 3)
+            v = v.permute(0, 2, 1, 3)
+        attn = torch.matmul(q, k.transpose(-2, -1)) * float(scale_value)
+        attn = torch.softmax(attn.float(), dim=-1).to(q.dtype)
+        out = torch.matmul(attn, v)
+        if layout == "BSND":
+            out = out.permute(0, 2, 1, 3)
+        return out
+
+    @staticmethod
+    def symbolic(
+        g,
+        query,
+        key,
+        value,
+        num_heads: int,
+        scale_value: float,
+        input_layout: str,
+    ):
+        """ONNX symbolic for VisionFlashAttention custom op."""
+        y = g.op(
+            "Custom",
+            query, key, value,
+            type_s="VisionFlashAttention",
+            input_names_s=["query", "key", "value"],
+            output_names_s=["attention_out"],
+            output_num_i=1,
+            input_index_i=[0, 1, 2],
+            num_heads_i=int(num_heads),
+            scale_value_f=float(scale_value),
+            input_layout_s=str(input_layout),
+        )
+        y.setType(query.type())
+        return y
+
+
+def vision_flash_attention(
+    query,
+    key,
+    value,
+    num_heads: int,
+    scale_value: float,
+    input_layout: str = "BNSD",
+):
+    """Full bidirectional flash attention using custom ONNX op.
+
+    Fuses MatMul-Scale-Softmax-MatMul for vision transformer blocks.
+    Q/K/V must be in BNSD layout [B, N, S, D].
+    """
+    return _VisionFlashAttentionCustom.apply(
+        query, key, value,
+        int(num_heads), float(scale_value), str(input_layout),
+    )
+
+
+class _VisionRoPEFlashAttentionCustom(torch.autograd.Function):
+    """Custom op fusing: RoPE → BNSD transpose → MatMul(Q,K^T) → Scale → Softmax → MatMul(attn,V).
+
+    Input layout (pre-RoPE):
+        query:  [seq_len, num_heads, head_dim]
+        key:    [seq_len, num_heads, head_dim]
+        value:  [seq_len, num_heads, head_dim]
+        cos:    [seq_len, 2*head_dim]
+        sin:    [seq_len, 2*head_dim]
+    Output layout:
+        attention_out: [1, num_heads, seq_len, head_dim] (BNSD)
+    """
+
+    @staticmethod
+    def forward(ctx, query, key, value, cos, sin, num_heads, scale_value):
+        """Full attention with internal RoPE (bidirectional, no causal mask)."""
+        del ctx, num_heads
+        q_dtype, k_dtype, v_dtype = query.dtype, key.dtype, value.dtype
+
+        # Step 1: Apply RoPE (cos/sin shape: [seq, head_dim] per empirical check)
+        q = query.float()
+        k = key.float()
+        cos_2d = cos.unsqueeze(-2).float()   # [seq, 1, head_dim]
+        sin_2d = sin.unsqueeze(-2).float()
+        q_rope = (q * cos_2d) + (_rotate_half(q) * sin_2d)
+        k_rope = (k * cos_2d) + (_rotate_half(k) * sin_2d)
+
+        # Step 2: Transpose to BNSD [1, N, S, D]
+        q_bnsd = q_rope.transpose(0, 1).unsqueeze(0).to(q_dtype)
+        k_bnsd = k_rope.transpose(0, 1).unsqueeze(0).to(k_dtype)
+        v_bnsd = value.transpose(0, 1).unsqueeze(0).to(v_dtype)
+
+        # Step 3: Attention core (MatMul → Scale → Softmax → MatMul)
+        scale = float(scale_value)
+        attn = torch.matmul(q_bnsd, k_bnsd.transpose(-2, -1)) * scale
+        attn = torch.softmax(attn.float(), dim=-1).to(q_bnsd.dtype)
+        out = torch.matmul(attn, v_bnsd)
+        return out
+
+    @staticmethod
+    def symbolic(g, query, key, value, cos, sin, num_heads, scale_value):
+        """ONNX symbolic for VisionRoPEFlashAttention custom op."""
+        y = g.op(
+            "Custom",
+            query, key, value, cos, sin,
+            type_s="VisionRoPEFlashAttention",
+            input_names_s=["query", "key", "value", "cos", "sin"],
+            output_names_s=["attention_out"],
+            output_num_i=1,
+            input_index_i=[0, 1, 2, 3, 4],
+            num_heads_i=int(num_heads),
+            scale_value_f=float(scale_value),
+        )
+        y.setType(query.type())
+        return y
+
+
+def vision_rope_attention(query, key, value, cos, sin, num_heads, scale_value):
+    """Full bidirectional attention with internal RoPE via custom ONNX op.
+
+    Q/K/V in [seq, n_heads, head_dim] layout (pre-RoPE).
+    Output in BNSD [1, n_heads, seq, head_dim].
+    """
+    return _VisionRoPEFlashAttentionCustom.apply(
+        query, key, value, cos, sin,
+        int(num_heads), float(scale_value),
+    )
+
+
+class CustomScatterUpdate(torch.autograd.Function):
+    """Custom scatter update operator for KV cache update."""
+
+    @staticmethod
+    def forward(
+        ctx: Any,
+        var: torch.Tensor,
+        indices: torch.Tensor,
+        updates: torch.Tensor,
+        axis: int = 0,
+    ):
+        """Update cache position(s) along the given axis.
+        axis=2 → BNSD [B, n_kv, S, D];  axis=1 → BSND [B, S, n_kv, D].
+        
+        Uses scatter_() for exact numerical precision during tracing
+        (symbolic generates Custom Scatter op for ONNX)."""
+        del ctx
+        ax = int(axis)
+        result = var.clone()
+        pos = indices.to(torch.int64).reshape(-1)
+        if ax == 2:   # BNSD [B, n_kv, S, D]
+            idx = pos.reshape(-1, 1, 1, 1).expand(
+                updates.size(0), updates.size(1), 1, updates.size(3)
+            )
+            result.scatter_(ax, idx, updates.to(var.dtype))
+        elif ax == 1:  # BSND [B, S, n_kv, D]
+            idx = pos.reshape(-1, 1, 1, 1).expand(
+                updates.size(0), 1, updates.size(2), updates.size(3)
+            )
+            result.scatter_(ax, idx, updates.to(var.dtype))
+        else:
+            raise ValueError(f"Unsupported axis={ax} for ScatterUpdate")
+        return result
+
+    @staticmethod
+    def symbolic(g: torch.Graph, var, indices, updates, axis: int = 0):
+        return g.op(
+            "Custom",
+            var,
+            indices,
+            updates,
+            input_index_i=[0, 1, 2],
+            input_names_s=["var", "indices", "updates"],
+            optional_input_names_s=[],
+            output_names_s=["var"],
+            type_s="Scatter",
+            reduce_s="update",
+            axis_i=int(axis),
+        )
+
+
+def _to_cache_indices(cache_pos: Any, device: Any) -> torch.Tensor:
+    """Convert cache_pos to a 1D int64 tensor with batch-sized indices."""
+    if torch.is_tensor(cache_pos):
+        return cache_pos.reshape(-1).to(torch.int64)
+    return torch.tensor([int(cache_pos)], dtype=torch.int64, device=device)
+
+
+def _kv_cache_update(
+    past: torch.Tensor,
+    update: torch.Tensor,
+    cache_pos: torch.Tensor,
+    *,
+    use_custom: bool,
+) -> torch.Tensor:
+    """Update KV cache at cache_pos and return the updated tensor."""
+    if bool(use_custom):
+        indices = _to_cache_indices(cache_pos, past.device)
+        return CustomScatterUpdate.apply(past, indices, update, 2)
+
+    pos = cache_pos.to(torch.int64).reshape(-1, 1, 1, 1)
+    index = pos.expand(update.size(0), update.size(1), 1, update.size(3))
+    result = past.clone()
+    result.scatter_(2, index, update.to(past.dtype))
+    return result
+
+
+class _VisionMlpBlockCustom(torch.autograd.Function):
+    """Custom op fusing: LayerNorm -> Linear(768->3072) -> GELUTanh -> Linear(3072->768) -> Add(residual).
+
+    Takes hidden_states + all weight matrices as inputs, so the ONNX Custom node
+    can be matched by CANN Norm+MLP fusion kernel.
+    """
+
+    @staticmethod
+    def forward(ctx, hidden_states, norm_weight, norm_bias,
+                fc1_weight, fc1_bias, fc2_weight, fc2_bias):
+        """Forward: full MLP block with GELU(tanh) activation."""
+        del ctx
+        ndim = hidden_states.shape[-1]
+        normed = torch.nn.functional.layer_norm(
+            hidden_states, (ndim,), norm_weight, norm_bias, 1e-6
+        )
+        fc1 = torch.nn.functional.linear(normed, fc1_weight, fc1_bias)
+        act = torch.nn.functional.gelu(fc1, approximate='tanh')
+        fc2 = torch.nn.functional.linear(act, fc2_weight, fc2_bias)
+        return hidden_states + fc2
+
+    @staticmethod
+    def symbolic(g, hidden_states, norm_weight, norm_bias,
+                 fc1_weight, fc1_bias, fc2_weight, fc2_bias):
+        """ONNX symbolic for VisionMlpBlock custom op."""
+        y = g.op(
+            "Custom", hidden_states, norm_weight, norm_bias,
+            fc1_weight, fc1_bias, fc2_weight, fc2_bias,
+            type_s="VisionMlpBlock",
+            input_names_s=["hidden_states", "norm_weight", "norm_bias",
+                           "fc1_weight", "fc1_bias", "fc2_weight", "fc2_bias"],
+            output_names_s=["output"],
+            output_num_i=1,
+            input_index_i=[0, 1, 2, 3, 4, 5, 6],
+        )
+        y.setType(hidden_states.type())
+        return y
+
+
+def vision_mlp_block(hidden_states, norm_weight, norm_bias,
+                     fc1_weight, fc1_bias, fc2_weight, fc2_bias):
+    """Fused MLP block: LayerNorm -> Linear -> GELUTanh -> Linear -> ResidualAdd.
+
+    Args:
+        hidden_states: input tensor (also used as residual)
+        norm_weight/bias: LayerNorm parameters
+        fc1_weight/bias: first Linear (up-projection)
+        fc2_weight/bias: second Linear (down-projection)
+    Returns:
+        hidden_states + fc2(gelu(fc1(norm(hidden_states))))
+    """
+    return _VisionMlpBlockCustom.apply(
+        hidden_states, norm_weight, norm_bias,
+        fc1_weight, fc1_bias, fc2_weight, fc2_bias,
+    )
+
+
+class VisionTowerWrapper(torch.nn.Module):
+    """Wrapper for Qwen3.5 Vision Tower with runtime positional encodings.
+
+    The upstream implementation converts ``grid_thw`` to Python lists and caches
+    positional encodings, which makes the exported ONNX graph effectively static.
+    For the current deployment path we only need a single square image input, so
+    we rebuild the position / rotary embeddings from ``pixel_values.shape[0]``.
+    """
+
+    def __init__(self, vision_tower):
         super().__init__()
         self.vision_tower = vision_tower
-        self.dummy_grid_thw = dummy_grid_thw
-        with torch.no_grad():
-            cached_pos_embeds = vision_tower.fast_pos_embed_interpolate(dummy_grid_thw)
-            cached_rot_pos_emb = vision_tower.rot_pos_emb(dummy_grid_thw)
-        vision_tower.fast_pos_embed_interpolate = lambda x: cached_pos_embeds
-        vision_tower.rot_pos_emb = lambda x: cached_rot_pos_emb
+        self.num_grid_per_side = int(vision_tower.num_grid_per_side)
+        self.spatial_merge_size = int(vision_tower.spatial_merge_size)
+
+    @staticmethod
+    def _shape_as_tensor(x):
+        from torch.onnx import operators as onnx_operators
+
+        return onnx_operators.shape_as_tensor(x)
+
+    def _seq_len_and_grid(self, pixel_values):
+        seq_len = self._shape_as_tensor(pixel_values)[0].to(torch.int64)
+        grid = torch.sqrt(seq_len.to(torch.float32))
+        grid = torch.round(grid).to(torch.int64)
+        return seq_len, grid
+
+    def _interp_axis(self, grid, device):
+        """Interpolate position embedding axis."""
+        coord = torch.arange(grid, device=device, dtype=torch.float32)
+        if self.num_grid_per_side <= 1:
+            coord = torch.zeros_like(coord)
+        else:
+            denom = torch.clamp(grid.to(torch.float32) - 1.0, min=1.0)
+            coord = coord * float(self.num_grid_per_side - 1) / denom
+        floor = torch.floor(coord).to(torch.long)
+        ceil = torch.clamp(floor + 1, max=self.num_grid_per_side - 1)
+        frac = coord - floor.to(coord.dtype)
+        return floor, ceil, frac
+
+    def _pos_embeds(self, hidden_states, pixel_values):
+        """Compute position embeddings for vision tower."""
+        seq_len, grid = self._seq_len_and_grid(pixel_values)
+        floor, ceil, frac = self._interp_axis(grid, hidden_states.device)
+        pos_weight = self.vision_tower.pos_embed.weight.to(hidden_states.dtype)
+        num_side = self.num_grid_per_side
+
+        row_floor = floor[:, None]
+        row_ceil = ceil[:, None]
+        col_floor = floor[None, :]
+        col_ceil = ceil[None, :]
+
+        idx00 = (row_floor * num_side + col_floor).reshape(-1)
+        idx01 = (row_floor * num_side + col_ceil).reshape(-1)
+        idx10 = (row_ceil * num_side + col_floor).reshape(-1)
+        idx11 = (row_ceil * num_side + col_ceil).reshape(-1)
+
+        frac_row = frac[:, None]
+        frac_col = frac[None, :]
+        w00 = ((1.0 - frac_row) * (1.0 - frac_col)).reshape(-1, 1).to(hidden_states.dtype)
+        w01 = ((1.0 - frac_row) * frac_col).reshape(-1, 1).to(hidden_states.dtype)
+        w10 = (frac_row * (1.0 - frac_col)).reshape(-1, 1).to(hidden_states.dtype)
+        w11 = (frac_row * frac_col).reshape(-1, 1).to(hidden_states.dtype)
+
+        pos_embeds = (
+            pos_weight.index_select(0, idx00) * w00
+            + pos_weight.index_select(0, idx01) * w01
+            + pos_weight.index_select(0, idx10) * w10
+            + pos_weight.index_select(0, idx11) * w11
+        )
+        pos_embeds = pos_embeds.reshape(floor.shape[0], floor.shape[0], hidden_states.shape[1])
+
+        merge = self.spatial_merge_size
+        merged_grid = floor.shape[0] // merge
+        pos_embeds = pos_embeds.reshape(
+            1, merged_grid, merge, merged_grid, merge, hidden_states.shape[1]
+        )
+        pos_embeds = pos_embeds.permute(0, 1, 3, 2, 4, 5).reshape(seq_len, hidden_states.shape[1])
+        return pos_embeds
+
+    def _rotary_embeddings(self, hidden_states, pixel_values):
+        """Compute rotary embeddings for vision tower."""
+        _, grid = self._seq_len_and_grid(pixel_values)
+        merge = self.spatial_merge_size
+        merged_grid = grid // merge
+        device = hidden_states.device
+        rotary_dtype = self.vision_tower.rotary_pos_emb.inv_freq.dtype
+
+        block_rows = torch.arange(merged_grid, device=device, dtype=torch.long)
+        block_cols = torch.arange(merged_grid, device=device, dtype=torch.long)
+        intra_row = torch.arange(merge, device=device, dtype=torch.long)
+        intra_col = torch.arange(merge, device=device, dtype=torch.long)
+
+        row_idx = block_rows[:, None, None, None] * merge + intra_row[None, None, :, None]
+        col_idx = block_cols[None, :, None, None] * merge + intra_col[None, None, None, :]
+        row_idx = row_idx.expand(merged_grid, merged_grid, merge, merge).reshape(-1)
+        col_idx = col_idx.expand(merged_grid, merged_grid, merge, merge).reshape(-1)
+
+        seq = torch.arange(grid, device=device, dtype=rotary_dtype)
+        inv_freq = self.vision_tower.rotary_pos_emb.inv_freq.to(device=device, dtype=rotary_dtype)
+        freq_table = torch.outer(seq, inv_freq)
+        pos_ids = torch.stack((row_idx, col_idx), dim=-1).reshape(-1)
+        rotary = freq_table.index_select(0, pos_ids).reshape(hidden_states.shape[0], 2, -1)
+        rotary = rotary.reshape(hidden_states.shape[0], -1).to(hidden_states.dtype)
+        rotary = torch.cat((rotary, rotary), dim=-1)
+        return rotary.cos(), rotary.sin()
+
+    def _vision_attention(self, attn, hidden_states, position_embeddings):
+        """Run vision attention layer using CANN custom ops."""
+        seq_length = hidden_states.shape[0]
+        qkv = attn.qkv(hidden_states).reshape(seq_length, 3, attn.num_heads, attn.head_dim)
+        query_states, key_states, value_states = qkv.permute(1, 0, 2, 3).unbind(0)
+
+        # Transpose to BNSD [1, n_heads, seq, head_dim]
+        q_bnsd = query_states.transpose(0, 1).unsqueeze(0)
+        k_bnsd = key_states.transpose(0, 1).unsqueeze(0)
+        v_bnsd = value_states.transpose(0, 1).unsqueeze(0)
+
+        # RotaryMul: y = x * cos + rotate_half(x) * sin (4D BNSD)
+        cos, sin = position_embeddings
+        cos_4d = cos.unsqueeze(0).unsqueeze(1)  # [1, 1, seq, head_dim]
+        sin_4d = sin.unsqueeze(0).unsqueeze(1)
+        q_bnsd = rotary_mul(q_bnsd, cos_4d, sin_4d)
+        k_bnsd = rotary_mul(k_bnsd, cos_4d, sin_4d)
+
+        # Use CANN built-in PromptFlashAttention for full bidir attention
+        attn_output = prompt_flash_attention(
+            q_bnsd, k_bnsd, v_bnsd,
+            num_heads=attn.num_heads,
+            scale_value=float(attn.scaling),
+            input_layout="BNSD",
+        )
+        attn_output = attn_output[0].transpose(0, 1).reshape(seq_length, -1).contiguous()
+        return attn.proj(attn_output)
 
     def forward(self, pixel_values):
-        outputs = self.vision_tower(
-            pixel_values, grid_thw=self.dummy_grid_thw, return_dict=True
-        )
-        image_embeds = outputs.pooler_output
+        """Encode pixel values to image embeddings for LLM prefill."""
+        # Replace Conv3d(3→768, kernel=(2,16,16)) with equivalent Linear(1536→768)
+        # Conv3d kernel covers full T×H×W patch extent, so it's mathematically equivalent
+        pe = self.vision_tower.patch_embed
+        weight = pe.proj.weight.reshape(pe.embed_dim, -1)
+        hidden_states = torch.nn.functional.linear(pixel_values, weight, pe.proj.bias)
+        hidden_states = hidden_states + self._pos_embeds(hidden_states, pixel_values)
+        position_embeddings = self._rotary_embeddings(hidden_states, pixel_values)
+
+        for blk in self.vision_tower.blocks:
+            attn_input = blk.norm1(hidden_states)
+            hidden_states = hidden_states + self._vision_attention(
+                blk.attn, attn_input, position_embeddings
+            )
+            hidden_states = hidden_states + blk.mlp(blk.norm2(hidden_states))
+
+        image_embeds = self.vision_tower.merger(hidden_states)
         if isinstance(image_embeds, (list, tuple)):
             image_embeds = torch.cat(image_embeds, dim=0)
         return image_embeds
 
-
 class Qwen35LlmPrefill(torch.nn.Module):
     """Qwen3.5-0.8B LLM Prefill model for ONNX export."""
 
-    def __init__(self, text_model, lm_head, image_token_id, use_cgdr_custom: bool = True):
+    def __init__(self, text_model, lm_head, image_token_id,
+                 max_seq_len: int = 2048):
         super().__init__()
         self.text_model = text_model
         self.lm_head = lm_head
         self.image_token_id = int(image_token_id)
         self.config = text_model.config
-        self.use_cgdr_custom = bool(use_cgdr_custom)
+        self.max_seq_len = int(max_seq_len)
 
     def forward(self, input_ids, attention_mask, position_ids, image_embeds):
-        """Run prefill forward pass with image embeddings."""
-        inputs_embeds = self.text_model.embed_tokens(input_ids)
-        image_mask = input_ids == self.image_token_id
-        image_mask = image_mask.unsqueeze(-1).expand_as(inputs_embeds)
-        inputs_embeds = inputs_embeds.masked_scatter(
-            image_mask,
-            image_embeds.to(device=inputs_embeds.device, dtype=inputs_embeds.dtype),
-        )
+        """Run prefill forward pass with image embeddings.
 
+        Uses cumsum+gather+where instead of masked_scatter to avoid
+        closed loops in the ONNX graph during dynamic shape export.
+
+        Uses CANN PromptFlashAttention for full attention layers and the
+        CGDR custom op for linear attention.
+        """
+        inputs_embeds = self.text_model.embed_tokens(input_ids)
+        image_mask = input_ids == self.image_token_id  # (B, S)
+        # Scatter image_embeds into the correct positions using traceable ops:
+        # cumsum → gather → where (no masked_scatter which creates graph loops)
+        img_idx = image_mask.long().cumsum(dim=1).clamp(min=1) - 1  # (B, S), indices into image_embeds
+        image_embeds_4d = image_embeds[img_idx]  # (B, S, D) — gather from (N, D)
+        inputs_embeds = torch.where(
+            image_mask.unsqueeze(-1), image_embeds_4d, inputs_embeds
+        )
         q_len = input_ids.shape[1]
         if position_ids.ndim == 2:
             position_ids = position_ids[None, ...].expand(4, position_ids.shape[0], -1)
@@ -530,14 +1354,15 @@ class Qwen35LlmPrefill(torch.nn.Module):
 
         position_embeddings = self.text_model.rotary_emb(inputs_embeds, mm_position_ids)
         k_len = q_len
-        attn_mask = _make_additive_causal_mask(
-            attention_mask, q_len, k_len, 0, inputs_embeds.dtype
-        )
+
+        # CANN PFA expects boolean mask (True = masked positions)
+        attn_mask = _make_additive_causal_mask(attention_mask, q_len, k_len, 0)
+
         linear_attn_mask = attention_mask
         seq_lens = linear_attn_mask.to(dtype=torch.int32).sum(dim=1)
-        actual_seq_lengths = torch.zeros((input_ids.shape[0] + 1,), device=input_ids.device, dtype=torch.int32)
+        actual_seq_lengths = torch.zeros((inputs_embeds.shape[0] + 1,), device=inputs_embeds.device, dtype=torch.int32)
         actual_seq_lengths[1:] = torch.cumsum(seq_lens, dim=0)
-        ssm_state_indices = torch.arange(input_ids.shape[0], device=input_ids.device, dtype=torch.int32)
+        ssm_state_indices = torch.arange(inputs_embeds.shape[0], device=inputs_embeds.device, dtype=torch.int32)
 
         hidden_states = inputs_embeds
         present_conv = []
@@ -553,9 +1378,8 @@ class Qwen35LlmPrefill(torch.nn.Module):
                     layer.linear_attn,
                     hidden_states,
                     linear_attn_mask,
-                    self.use_cgdr_custom,
-                    actual_seq_lengths,
-                    ssm_state_indices,
+                    actual_seq_lengths=actual_seq_lengths,
+                    ssm_state_indices=ssm_state_indices,
                 )
                 hidden_states = residual + attn_out
                 present_conv.append(conv_s)
@@ -574,29 +1398,44 @@ class Qwen35LlmPrefill(torch.nn.Module):
             hidden_states = residual + layer.mlp(hidden_states)
 
         hidden_states = self.text_model.norm(hidden_states)
-        logits = self.lm_head(hidden_states)
+        # Only compute lm_head for the last position to reduce matmul
+        last_hidden = hidden_states[:, -1:, :]
+        logits = self.lm_head(last_hidden)
+        next_token_id = logits.argmax(dim=-1, keepdim=True).to(torch.int32)
 
         present_conv_stack = torch.stack(present_conv, dim=0) if present_conv else torch.zeros(0)
         present_recurrent_stack = torch.stack(present_recurrent, dim=0) if present_recurrent else torch.zeros(0)
         present_kv_stack = torch.stack(present_kv, dim=0) if present_kv else torch.zeros(0)
+        # Pad present_kv_cache seq_len dimension to fixed max_seq_len
+        if present_kv_stack.dim() >= 4 and present_kv_stack.shape[3] < self.max_seq_len:
+            pad_size = self.max_seq_len - present_kv_stack.shape[3]
+            present_kv_stack = F.pad(present_kv_stack, (0, 0, 0, pad_size))
 
-        return logits, present_conv_stack, present_recurrent_stack, present_kv_stack
+        return next_token_id, present_conv_stack, present_recurrent_stack, present_kv_stack
 
 
 class Qwen35LlmDecode(torch.nn.Module):
     """Qwen3.5-0.8B LLM Decode model for ONNX export."""
 
-    def __init__(self, text_model, lm_head):
+    def __init__(self, text_model, lm_head, use_rgdr_custom: bool = True):
         super().__init__()
         self.text_model = text_model
         self.lm_head = lm_head
         self.config = text_model.config
+        self.use_rgdr_custom = bool(use_rgdr_custom)
 
     def forward(self, input_ids, attention_mask, position_ids,
                 past_conv_states, past_recurrent_states, past_kv_cache):
-        """Run decode forward pass with past states."""
+        """Run decode forward pass with fixed-shape KV cache (scatter-based update).
+
+        past_kv_cache: (12, 1, 2, MAX_SEQ_LEN, 256) — pre-allocated full-sized cache
+        attention_mask: (1, MAX_SEQ_LEN) — 1 for valid tokens, 0 for padding
+        The actual past length is derived from attention_mask sum.
+        New key/value are scattered into the cache at position ``past_len``.
+        """
         inputs_embeds = self.text_model.embed_tokens(input_ids)
         q_len = input_ids.shape[1]
+        max_seq_len = past_kv_cache.shape[3]
 
         if position_ids.ndim == 2:
             position_ids = position_ids[None, ...].expand(4, position_ids.shape[0], -1)
@@ -607,12 +1446,17 @@ class Qwen35LlmDecode(torch.nn.Module):
 
         position_embeddings = self.text_model.rotary_emb(inputs_embeds, mm_position_ids)
 
-        past_len = past_kv_cache[0].shape[2] if past_kv_cache.shape[0] > 0 else 0
+        # ---- Fixed-shape: extract valid lengths ----
+        # past_len = number of valid tokens in cache (= total_valid_1s - q_len)
+        total_valid_1s = attention_mask.sum(dim=1, keepdim=True)  # (B, 1)
+        past_len = (total_valid_1s - q_len).reshape(())  # scalar
+        cache_pos = past_len  # position to write new KV into the cache
 
-        k_len = past_len + q_len
-        attn_mask = _make_additive_causal_mask(
-            attention_mask, q_len, k_len, past_len, inputs_embeds.dtype
-        )
+        # Build IFA boolean mask (covers full max_seq_len, True = masked position)
+        kv_range = torch.arange(max_seq_len, device=inputs_embeds.device, dtype=torch.int64)
+        allow = kv_range.view(1, max_seq_len) <= cache_pos.view(-1, 1)
+        allow = allow & attention_mask.to(torch.bool)
+        ifa_attn_mask = (~allow).view(-1, 1, 1, max_seq_len)
 
         hidden_states = inputs_embeds
         present_conv = []
@@ -621,7 +1465,7 @@ class Qwen35LlmDecode(torch.nn.Module):
         linear_idx = 0
         kv_idx = 0
 
-        for layer in self.text_model.layers:
+        for _, layer in enumerate(self.text_model.layers):
             residual = hidden_states
             hidden_states = layer.input_layernorm(hidden_states)
 
@@ -629,22 +1473,66 @@ class Qwen35LlmDecode(torch.nn.Module):
                 conv_s_in = past_conv_states[linear_idx]
                 rec_s_in = past_recurrent_states[linear_idx]
                 attn_out, conv_s_out, rec_s_out = _linear_attn_decode(
-                    layer.linear_attn, hidden_states, conv_s_in, rec_s_in
+                    layer.linear_attn, hidden_states, conv_s_in, rec_s_in,
+                    use_rgdr_custom=self.use_rgdr_custom,
                 )
                 hidden_states = residual + attn_out
                 present_conv.append(conv_s_out)
                 present_recurrent.append(rec_s_out)
                 linear_idx += 1
             else:
-                pk_in = past_kv_cache[kv_idx]
-                pv_in = past_kv_cache[kv_idx + 1]
-                attn_out, pk, pv = _full_attn_forward(
-                    layer.self_attn, hidden_states, position_embeddings, attn_mask,
-                    pk_in, pv_in,
+                # Fetch per-layer KV cache from the full-sized input
+                pk_in = past_kv_cache[kv_idx]       # (1, 2, 2048, 256)
+                pv_in = past_kv_cache[kv_idx + 1]   # (1, 2, 2048, 256)
+
+                # ---- IFA fused path ----
+                input_shape = hidden_states.shape[:-1]
+                head_dim = layer.self_attn.head_dim
+                hidden_shape = (*input_shape, -1, head_dim)
+                num_heads = int(layer.self_attn.config.num_attention_heads)
+                num_kv_heads = int(layer.self_attn.config.num_key_value_heads)
+                scaling = getattr(layer.self_attn, "scaling", head_dim ** -0.5)
+
+                qkv = layer.self_attn.q_proj(hidden_states).view(
+                    *input_shape, -1, head_dim * 2)
+                query_states, gate = torch.chunk(qkv, 2, dim=-1)
+                gate = gate.reshape(*input_shape, -1)
+
+                query_states = layer.self_attn.q_norm(
+                    query_states.view(hidden_shape)).transpose(1, 2)
+                key_states = layer.self_attn.k_norm(
+                    layer.self_attn.k_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
+                value_states = layer.self_attn.v_proj(
+                    hidden_states).view(hidden_shape).transpose(1, 2)
+
+                cos, sin = position_embeddings
+                from transformers.models.qwen3_5.modeling_qwen3_5 import apply_rotary_pos_emb
+                query_states, key_states = apply_rotary_pos_emb(
+                    query_states, key_states, cos, sin)
+
+                k_full = _kv_cache_update(pk_in, key_states, cache_pos, use_custom=True)
+                v_full = _kv_cache_update(pv_in, value_states, cache_pos, use_custom=True)
+
+                q_bnsd = query_states.contiguous()
+                k_bnsd = k_full.contiguous()
+                v_bnsd = v_full.contiguous()
+
+                attn_out = incre_flash_attention(
+                    q_bnsd, k_bnsd, v_bnsd, ifa_attn_mask,
+                    num_heads=num_heads, scale_value=float(scaling),
+                    input_layout="BNSD", num_key_value_heads=num_kv_heads,
+                    inner_precise=1,
                 )
+                if attn_out.dim() == 4:
+                    attn_out = attn_out.transpose(1, 2).reshape(*input_shape, -1)
+
+                attn_out = attn_out * torch.sigmoid(gate)
+                attn_out = layer.self_attn.o_proj(attn_out)
                 hidden_states = residual + attn_out
-                present_kv.append(pk)
-                present_kv.append(pv)
+
+                present_kv.append(k_full)  # (1, 2, 2048, 256)
+                present_kv.append(v_full)
+
                 kv_idx += 2
 
             residual = hidden_states
@@ -684,6 +1572,11 @@ def _get_model_meta(model):
     conv_dim = key_dim * 2 + value_dim
     conv_kernel_size = config.linear_conv_kernel_dim
 
+    nk = linear_num_value_heads
+    nv = linear_num_value_heads
+    dk = linear_key_head_dim
+    dv = linear_value_head_dim
+
     return {
         "text_model": text_model,
         "lm_head": lm_head,
@@ -699,11 +1592,16 @@ def _get_model_meta(model):
         "linear_num_value_heads": linear_num_value_heads,
         "conv_dim": conv_dim,
         "conv_kernel_size": conv_kernel_size,
+        "hidden_size": config.hidden_size,
+        "nk": nk,
+        "nv": nv,
+        "dk": dk,
+        "dv": dv,
     }
 
 
-def export_vision_tower(model, output_dir, device="cpu", vision_image_size=128):
-    """Export Qwen3.5 Vision Tower to ONNX."""
+def export_vision_tower(model, output_dir, device="cpu", vision_image_size=1024):
+    """Export Qwen3.5 Vision Tower to ONNX with dynamic patch count."""
     output_path = Path(output_dir) / "qwen3_5_vision.onnx"
     print(f"Exporting Vision Tower to {output_path}...")
 
@@ -714,20 +1612,16 @@ def export_vision_tower(model, output_dir, device="cpu", vision_image_size=128):
     patch_size = model.config.vision_config.patch_size
     grid_h = int(vision_image_size) // int(patch_size)
     grid_w = int(vision_image_size) // int(patch_size)
-    dummy_grid_thw = torch.tensor([[1, grid_h, grid_w]], dtype=torch.int64).to(device)
-    dummy_seq_len = int(
-        dummy_grid_thw[0, 0].item() * dummy_grid_thw[0, 1].item() * dummy_grid_thw[0, 2].item()
-    )
+    dummy_seq_len = int(grid_h * grid_w)
     in_channels = model.config.vision_config.in_channels
     temporal_patch_size = model.config.vision_config.temporal_patch_size
     patch_dim = in_channels * temporal_patch_size * patch_size * patch_size
-    dummy_pixel_values = torch.randn(dummy_seq_len, patch_dim, device=device, dtype=torch.float16)
+    dummy_pixel_values = torch.randn(dummy_seq_len, patch_dim, device=device, dtype=torch.float32)
 
-    wrapper = VisionTowerWrapper(vision_tower, dummy_grid_thw)
+    wrapper = VisionTowerWrapper(vision_tower)
     wrapper.eval()
 
     from torch.onnx import utils as onnx_utils
-
     with torch.no_grad():
         onnx_utils.export(
             wrapper,
@@ -737,33 +1631,36 @@ def export_vision_tower(model, output_dir, device="cpu", vision_image_size=128):
             output_names=["image_embeds"],
             opset_version=14,
             do_constant_folding=True,
+            dynamic_axes={"pixel_values": {0: "num_image_tokens"}},
         )
     print("Vision Tower exported successfully.")
 
 
 def _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_tokens):
     """Export LLM prefill model to ONNX."""
-    prefill_path = Path(output_dir) / "qwen3_5_llm_prefill.onnx"
+    output_name = "qwen3_5_llm_prefill.onnx"
+    prefill_path = Path(output_dir) / "prefill" / output_name
+    prefill_path.parent.mkdir(parents=True, exist_ok=True)
     dummy_input_ids = torch.randint(0, 1000, (1, dummy_seq), dtype=torch.int64, device=device)
     dummy_attention_mask = torch.ones(1, dummy_seq, dtype=torch.int64, device=device)
     base_pos = torch.arange(dummy_seq, device=device, dtype=torch.int64).view(1, -1)
     dummy_position_ids = base_pos.unsqueeze(0).expand(4, 1, dummy_seq)
     dummy_image_embeds = torch.randn(
         dummy_num_img_tokens, prefill.config.hidden_size,
-        device=device, dtype=torch.float16,
+        device=device, dtype=torch.float32,
     )
     input_names = ["input_ids", "attention_mask", "position_ids", "image_embeds"]
-    output_names = ["logits", "present_conv_states", "present_recurrent_states",
+    output_names = ["next_token_id", "present_conv_states", "present_recurrent_states",
                     "present_kv_cache"]
     dynamic_axes = {
         "input_ids": {0: "batch", 1: "seq_len"},
         "attention_mask": {0: "batch", 1: "seq_len"},
         "position_ids": {1: "batch", 2: "seq_len"},
         "image_embeds": {0: "num_image_tokens"},
-        "logits": {0: "batch", 1: "seq_len"},
+        # next_token_id: (batch, 1) — fixed shape
         "present_conv_states": {1: "batch"},
         "present_recurrent_states": {1: "batch"},
-        "present_kv_cache": {1: "batch", 3: "seq_len"},
+        # present_kv_cache: seq_len fixed to max_seq_len (no dynamic axis)
     }
     from torch.onnx import utils as onnx_utils
     print(f"Exporting LLM prefill to {prefill_path}...")
@@ -778,17 +1675,22 @@ def _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_to
     print("LLM prefill exported successfully.")
 
 
-def _export_llm_decode(decode, meta, output_dir, device, dummy_seq):
-    """Export LLM decode model to ONNX."""
-    decode_path = Path(output_dir) / "qwen3_5_llm_decode.onnx"
+def _export_llm_decode(decode, meta, output_dir, device, dummy_seq, max_seq_len=2048):
+    """Export LLM decode model to ONNX with FIXED shape (padded to max_seq_len).
+
+    All seq-related dimensions (attention_mask, past_kv_cache, present_kv_cache)
+    are fixed to ``max_seq_len`` so converter_lite produces a static-shape MindIR.
+    """
+    decode_path = Path(output_dir) / "decoder" / "qwen3_5_llm_decode.onnx"
+    decode_path.parent.mkdir(parents=True, exist_ok=True)
     dummy_step = 1
     dummy_past_len = dummy_seq
     dummy_input_ids_step = torch.randint(
         0, 1000, (1, dummy_step), dtype=torch.int64, device=device
     )
-    dummy_attention_mask_step = torch.ones(
-        1, dummy_past_len + dummy_step, dtype=torch.int64, device=device
-    )
+    # attention_mask: fixed shape (1, max_seq_len), first (dummy_past_len + step) entries = 1
+    dummy_attention_mask_step = torch.zeros(1, max_seq_len, dtype=torch.int64, device=device)
+    dummy_attention_mask_step[:, :dummy_past_len + dummy_step] = 1
     step_pos = torch.tensor([[dummy_past_len]], dtype=torch.int64, device=device)
     dummy_position_ids_step = step_pos.unsqueeze(0).expand(4, 1, dummy_step)
 
@@ -804,35 +1706,24 @@ def _export_llm_decode(decode, meta, output_dir, device, dummy_seq):
 
     dummy_past_conv = torch.zeros(
         num_linear, 1, conv_dim, conv_kernel_size - 1,
-        dtype=torch.float16, device=device,
+        dtype=torch.float32, device=device,
     )
     dummy_past_recurrent = torch.zeros(
         num_linear, 1, num_v_heads, k_head_dim, v_head_dim,
         dtype=torch.float32, device=device,
     )
+    # past_kv_cache: fixed shape (2*num_full, 1, num_kv_heads, max_seq_len, head_dim)
     dummy_past_kv = torch.zeros(
-        2 * num_full, 1, num_kv_heads, dummy_past_len, head_dim,
-        dtype=torch.float16, device=device,
+        2 * num_full, 1, num_kv_heads, max_seq_len, head_dim,
+        dtype=torch.float32, device=device,
     )
 
     input_names = ["input_ids", "attention_mask", "position_ids",
                    "past_conv_states", "past_recurrent_states", "past_kv_cache"]
     output_names = ["logits", "present_conv_states", "present_recurrent_states",
                     "present_kv_cache"]
-    dynamic_axes = {
-        "input_ids": {0: "batch", 1: "step"},
-        "attention_mask": {0: "batch", 1: "total_seq_len"},
-        "position_ids": {1: "batch", 2: "step"},
-        "past_conv_states": {1: "batch"},
-        "past_recurrent_states": {1: "batch"},
-        "past_kv_cache": {1: "batch", 3: "past_seq_len"},
-        "logits": {0: "batch", 1: "step"},
-        "present_conv_states": {1: "batch"},
-        "present_recurrent_states": {1: "batch"},
-        "present_kv_cache": {1: "batch", 3: "total_seq_len"},
-    }
     from torch.onnx import utils as onnx_utils
-    print(f"Exporting LLM decode to {decode_path}...")
+    print(f"Exporting LLM decode to {decode_path} (max_seq_len={max_seq_len})...")
     with torch.no_grad():
         onnx_utils.export(
             decode,
@@ -840,18 +1731,29 @@ def _export_llm_decode(decode, meta, output_dir, device, dummy_seq):
              dummy_past_conv, dummy_past_recurrent, dummy_past_kv),
             str(decode_path),
             input_names=input_names, output_names=output_names,
-            opset_version=14, do_constant_folding=True, dynamic_axes=dynamic_axes,
+            opset_version=14, do_constant_folding=True,
         )
     print("LLM decode exported successfully.")
 
 
 def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq=8,
-                             dummy_num_img_tokens=16, use_cgdr_custom: bool = True):
+                             dummy_num_img_tokens=16,
+                             use_rgdr_custom: bool = True,
+                             max_seq_len: int = 2048):
     """Export Qwen3.5-0.8B LLM prefill and decode models to ONNX."""
     meta = _get_model_meta(model)
     text_model = meta["text_model"]
     lm_head = meta["lm_head"]
     image_token_id = meta["image_token_id"]
+
+    _set_cgdr_config(enabled=True, nk=meta.get('nk', meta['linear_num_value_heads']),
+                     nv=meta.get('nv', meta['linear_num_value_heads']),
+                     dk=meta.get('dk', meta['linear_key_head_dim']),
+                     dv=meta.get('dv', meta['linear_value_head_dim']))
+    print(f"[CGDR] CGDR enabled: NK={meta['linear_num_value_heads']}, "
+          f"NV={meta['linear_num_value_heads']}, DK={meta['linear_key_head_dim']}, "
+          f"DV={meta['linear_value_head_dim']}, "
+          f"scale={1.0/(meta['linear_key_head_dim']**0.5):.6f}")
 
     text_model.eval()
     lm_head.eval()
@@ -859,9 +1761,12 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq=8,
     lm_head.to(device)
 
     prefill = Qwen35LlmPrefill(
-        text_model, lm_head, image_token_id, use_cgdr_custom=use_cgdr_custom
+        text_model, lm_head, image_token_id,
+        max_seq_len=max_seq_len,
     ).to(device).eval()
-    decode = Qwen35LlmDecode(text_model, lm_head).to(device).eval()
+    decode = Qwen35LlmDecode(
+        text_model, lm_head, use_rgdr_custom=use_rgdr_custom,
+    ).to(device).eval()
 
     _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_tokens)
     _export_llm_decode(decode, meta, output_dir, device, dummy_seq)
@@ -876,7 +1781,7 @@ def main():
         help="HuggingFace model ID or local path",
     )
     parser.add_argument(
-        "--output-dir", type=str, default="./qwen3_5_onnx",
+        "--output-dir", type=str, default="./qwen3_5_onnx_static",
         help="Output directory",
     )
     parser.add_argument(
@@ -884,7 +1789,7 @@ def main():
         help="Device for export (cpu or cuda)",
     )
     parser.add_argument(
-        "--vision-image-size", type=int, default=128,
+        "--vision-image-size", type=int, default=1024,
         help="Image size for vision tower export",
     )
     parser.add_argument(
@@ -892,21 +1797,24 @@ def main():
         help="Dummy sequence length for LLM export",
     )
     parser.add_argument(
-        "--use-cgdr-custom",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Enable ChunkGatedDeltaRule custom op in prefill linear attention",
+        "--max-seq-len", type=int, default=2048,
+        help="Maximum sequence length for fixed-shape KV cache padding",
     )
-
+    parser.add_argument(
+        "--use-rgdr-custom",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable RecurrentGatedDeltaRule custom op in decode linear attention",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\nLoading model {args.model_id} in FP16 for export...")
+    print(f"\nLoading model {args.model_id} in FP32 for export...")
     model = QwenForConditionalGeneration.from_pretrained(
         args.model_id,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.float32,
         low_cpu_mem_usage=True,
         attn_implementation="eager",
     )
@@ -918,7 +1826,8 @@ def main():
         output_dir,
         args.device,
         args.dummy_seq_len,
-        use_cgdr_custom=args.use_cgdr_custom,
+        use_rgdr_custom=args.use_rgdr_custom,
+        max_seq_len=args.max_seq_len,
     )
 
     print("Clearing memory after export...")
