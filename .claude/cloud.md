@@ -16,7 +16,7 @@ MindSpore Lite 是以 C++ 为主的推理框架项目，包含 Python/C++/Java �
 云侧推理部署是一条完整链路。先定位当前任务处于哪个阶段，再调用对应 Skill（动手前先 `Read` 该 Skill 的 SKILL.md 及其 references/）：
 
 ```
-模型迁移/导出 ONNX ─► ONNX→MindIR 转换 + 部署推理 ─► 性能优化
+模型迁移/导出 ONNX ─► ONNX→MindIR 转换 + 部署推理 ─► 性能优化 ─► 精度问题定位
 ```
 
 | 阶段 | 做什么 | 对应 Skill |
@@ -24,8 +24,9 @@ MindSpore Lite 是以 C++ 为主的推理框架项目，包含 Python/C++/Java �
 | ① 模型迁移/导出 | 开源模型按网络结构拆分导出 ONNX、ONNX Runtime 精度对齐、生成推理脚本与 README | [open-source-model-migration](.claude/skills/cloud/open-source-model-migration/SKILL.md) |
 | ② 转换与部署推理 | ONNX→MindIR（固定 shape / 动态分档 / 纯动态 shape）+ Ascend 离线优化；MindIR 加载、Ascend 推理验证与部署注意事项 | [onnx-model-conversion-and-deployment](.claude/skills/cloud/onnx-model-conversion-and-deployment/SKILL.md) |
 | ③ 性能优化 | 基线/profiling、融合算子改写、推理免拷贝、PTQ int8 量化、精度对齐与归档 | [performance-optimization](.claude/skills/cloud/performance-optimization/SKILL.md) |
+| ④ 精度问题定位 | CANN Profiling 对比分析定位可疑算子、配置算子 Dump、对比 Dump 数据确定精度差异根因 | [precision-troubleshooting](.claude/skills/cloud/precision-troubleshooting/SKILL.md) |
 
-> 典型顺序：①→② 跑通后，再用 ③ 做性能优化（每步都需精度+性能验证，见各 Skill）。
+> 典型顺序：①→② 跑通后，再用 ③ 做性能优化；若发现精度问题则进入 ④ 定位（每步都需精度+性能验证，见各 Skill）。
 
 ## 环境要求
 
@@ -92,6 +93,7 @@ bash scripts/format_source_code.sh -l
 - [onnx-model-conversion-and-deployment](.claude/skills/cloud/onnx-model-conversion-and-deployment/SKILL.md)：ONNX→MindIR 转换（固定 shape / 动态分档 / 纯动态 shape）与推理部署
 - [open-source-model-migration](.claude/skills/cloud/open-source-model-migration/SKILL.md)：开源模型迁移到 MindSpore Lite 部署管线（按结构拆分导出 ONNX、精度对齐、生成推理脚本与 README）
 - [performance-optimization](.claude/skills/cloud/performance-optimization/SKILL.md)：模型性能优化总攻略——基线/profiling、融合算子改写、推理免拷贝、PTQ int8 量化、精度对齐与归档（细化策略见 references/）
+- [precision-troubleshooting](.claude/skills/cloud/precision-troubleshooting/SKILL.md)：MindIR 模型精度问题定位——CANN Profiling 对比定位可疑算子、配置算子 Dump、对比 Dump 数据确定精度差异根因
 
 ## 通用技能（跨侧共享）
 
