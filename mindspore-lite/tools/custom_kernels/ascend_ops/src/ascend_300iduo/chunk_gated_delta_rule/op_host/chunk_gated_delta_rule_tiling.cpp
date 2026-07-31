@@ -28,7 +28,7 @@ namespace {
 
 constexpr uint32_t FP16_NUM_PER_BLOCK = 16;
 constexpr uint32_t FP32_NUM_PER_BLOCK = 8;
-// Default chunk size (tokens per chunk) when the op attr is unset.
+// Chunk size is an internal implementation detail, matching the 910B operator.
 constexpr uint32_t kDefaultChunkSize = 64;
 // Axis index of the head-dim within the [T, H, D] query/value layouts.
 constexpr int32_t kHeadDimAxis = 2;
@@ -40,6 +40,8 @@ constexpr uint64_t kWorkspaceBytes = 32ULL * 1024 * 1024;
 // Input indices for the CGDR operator.
 constexpr uint32_t kQueryInput = 0;
 constexpr uint32_t kValueInput = 2;
+constexpr uint32_t kInitialStateInput = 4;
+constexpr uint32_t kGammaInput = 6;
 // Shape dimension indices within the [T, H, D] layout.
 constexpr uint32_t kDimT = 0;
 constexpr uint32_t kDimH = 1;
@@ -49,14 +51,16 @@ constexpr uint32_t kMinBlockDim = 1;
 constexpr uint32_t kWorkspaceCount = 1;
 
 uint32_t CeilAlign(uint32_t val, uint32_t align) { return (val + align - 1) / align * align; }
+uint32_t DivCeil(uint32_t val, uint32_t divisor) { return (val + divisor - 1) / divisor; }
 
 // Collected query/value shape dimensions used across the tiling helpers.
 struct ShapeDims {
-  uint32_t t;    // total sequence length
-  uint32_t hqk;  // number of q/k heads
-  uint32_t dk;   // key head dim
-  uint32_t hv;   // number of value heads
-  uint32_t dv;   // value head dim
+  uint32_t t;      // total sequence length
+  uint32_t hqk;    // number of q/k heads
+  uint32_t dk;     // key head dim
+  uint32_t hv;     // number of value heads
+  uint32_t dv;     // value head dim
+  uint32_t batch;  // batch size from initial_state
 };
 
 // Query the platform for the AIV core count and UB size. Returns false on any null handle.
@@ -83,91 +87,111 @@ bool GetPlatformInfo(TilingContext *context, uint32_t &aivNum, int64_t &ubSize) 
 bool ParseShapeDims(TilingContext *context, ShapeDims &dims) {
   auto queryShape = context->GetInputShape(kQueryInput);
   auto valueShape = context->GetInputShape(kValueInput);
-  if (queryShape == nullptr || valueShape == nullptr) {
+  auto initialStateShape = context->GetInputShape(kInitialStateInput);
+  if (queryShape == nullptr || valueShape == nullptr || initialStateShape == nullptr) {
     return false;
   }
   const auto &qDims = queryShape->GetStorageShape();
   const auto &vDims = valueShape->GetStorageShape();
+  const auto &stateDims = initialStateShape->GetStorageShape();
   dims.t = qDims.GetDim(kDimT);
   dims.hqk = qDims.GetDim(kDimH);
   dims.dk = qDims.GetDim(kHeadDimAxis);
   dims.hv = vDims.GetDim(kDimH);
   dims.dv = vDims.GetDim(kHeadDimAxis);
+  dims.batch = stateDims.GetDim(kDimT);
   return true;
 }
 
-// Read optional attrs chunk_size (idx 0) and scale_value (idx 1), falling back to defaults.
-void ParseAttrs(TilingContext *context, int64_t &chunkSizeAttr, float &scaleValueAttr) {
-  chunkSizeAttr = kDefaultChunkSize;
+// Read the optional scale_value attr (idx 0), falling back to the public default.
+void ParseAttrs(TilingContext *context, float &scaleValueAttr) {
   scaleValueAttr = 1.0f;
   auto attrs = context->GetAttrs();
   if (attrs == nullptr || attrs->GetAttrNum() == 0) {
     return;
   }
-  const int64_t *chunkPtr = attrs->GetAttrPointer<int64_t>(0);
-  if (chunkPtr != nullptr) {
-    chunkSizeAttr = *chunkPtr;
-  }
-  if (attrs->GetAttrNum() > 1) {
-    const float *scalePtr = attrs->GetAttrPointer<float>(1);
-    if (scalePtr != nullptr) {
-      scaleValueAttr = *scalePtr;
-    }
+  const float *scalePtr = attrs->GetAttrPointer<float>(0);
+  if (scalePtr != nullptr) {
+    scaleValueAttr = *scalePtr;
   }
 }
 
-// Total tmpBuff bytes (all FP32 tiles) for a candidate vStep. chunkKFp32 & kCumdecayFp32
-// share the [cs, alignK] layout; chunkVFp32 & chunkAttnOutFp32 share [cs, avFp32] — each
-// counted twice. chunkScoresFp32 and stateInFp32 overlap, so only the max is reserved.
-uint32_t ComputeTmpBuffBytes(uint32_t vs, uint32_t chunkSize, uint32_t dk, uint32_t alignK, uint32_t avFp32) {
+bool HasGamma(TilingContext *context) {
+  return context->GetOptionalInputDesc(kGammaInput) != nullptr &&
+         context->GetOptionalInputTensor(kGammaInput) != nullptr &&
+         context->GetOptionalInputShape(kGammaInput) != nullptr;
+}
+
+// Total tmpBuff bytes for a candidate vStep. V temporaries are compact tiles.
+// With head*V-tile core splitting, each core handles only one tile, so scores
+// are dead before that tile loads state and the two buffers may overlap.
+uint32_t ComputeTmpBuffBytes(uint32_t vs, uint32_t dv, uint32_t chunkSize, uint32_t dk, uint32_t alignK,
+                             bool allowScoresStateOverlap) {
   uint32_t avStepAligned = CeilAlign(vs, FP32_NUM_PER_BLOCK);
   uint32_t cs = chunkSize;
-  uint32_t kTileBytes = cs * alignK * sizeof(float);  // chunkKFp32 + kCumdecayFp32
-  uint32_t vTileBytes = cs * avFp32 * sizeof(float);  // chunkVFp32 + chunkAttnOutFp32
-  uint32_t tDecay = cs * cs * sizeof(float);          // decayMaskFp32
-  uint32_t tGcum = cs * sizeof(float);                // gCumsumFp32
-  uint32_t stateStrideK = CeilAlign(dk, FP16_NUM_PER_BLOCK);
-  uint32_t tDelta = ((stateStrideK > cs) ? stateStrideK : cs) * sizeof(float);  // deltaFp32
-  uint32_t tExpGcum = cs * sizeof(float);                                       // expGCumFp32
-  uint32_t tScores = cs * cs * sizeof(float);                                   // chunkScoresFp32 (attn matrix)
-  uint32_t tState = dk * avStepAligned * sizeof(float);                         // stateInFp32 [DK, vStep]
-  uint32_t tOverlap = (tScores > tState) ? tScores : tState;
-  return kPairedTileCount * kTileBytes + tDecay + kPairedTileCount * vTileBytes + tGcum + tDelta + tExpGcum + tOverlap;
+  uint32_t kTileBytes = cs * alignK * sizeof(float);         // chunkKFp32 + kCumdecayFp32
+  uint32_t vTileBytes = cs * avStepAligned * sizeof(float);  // chunkVFp32 + chunkAttnOutFp32
+  uint32_t tDecay = cs * cs * sizeof(float);                 // decayMaskFp32
+  uint32_t tGcum = cs * sizeof(float);                       // gCumsumFp32
+  uint32_t stateStrideK = CeilAlign(dk, FP32_NUM_PER_BLOCK);
+  uint32_t dotProductElem = (stateStrideK > cs) ? stateStrideK : cs;
+  uint32_t deltaElem = (dotProductElem > avStepAligned) ? dotProductElem : avStepAligned;
+  uint32_t tDelta = deltaElem * sizeof(float);                     // deltaFp32
+  uint32_t tDotProduct = dotProductElem * sizeof(float);           // dotProductFp32
+  uint32_t tExpGcum = cs * sizeof(float);                          // expGCumFp32
+  uint32_t tScores = cs * cs * sizeof(float);                      // chunkScoresFp32 (attn matrix)
+  uint32_t tState = stateStrideK * avStepAligned * sizeof(float);  // stateInFp32 [DK, vStep]
+  bool overlapScoresState = vs >= dv || allowScoresStateOverlap;
+  uint32_t tScoresState = overlapScoresState ? ((tScores > tState) ? tScores : tState) : (tScores + tState);
+  return kPairedTileCount * kTileBytes + tDecay + kPairedTileCount * vTileBytes + tGcum + tDelta + tDotProduct +
+         tExpGcum + tScoresState;
 }
 
-// stateOutQueue bytes: max of the state tile [dk, avStepAligned] and the chunk attn output [cs, avFp32].
-uint32_t ComputeOutQueueBytes(uint32_t vs, uint32_t dk, uint32_t chunkSize, uint32_t avFp32) {
+// stateOutQueue bytes: max of the state tile and compact chunk output.
+uint32_t ComputeOutQueueBytes(uint32_t vs, uint32_t dk, uint32_t chunkSize) {
   uint32_t avStepAligned = CeilAlign(vs, FP32_NUM_PER_BLOCK);
-  uint32_t stateBytes = dk * avStepAligned * sizeof(uint16_t);
-  uint32_t chunkBytes = chunkSize * avFp32 * sizeof(uint16_t);
+  uint32_t stateStrideK = CeilAlign(dk, FP32_NUM_PER_BLOCK);
+  uint32_t stateBytes = stateStrideK * avStepAligned * sizeof(uint16_t);
+  uint32_t chunkBytes = chunkSize * avStepAligned * sizeof(uint16_t);
   return (stateBytes > chunkBytes) ? stateBytes : chunkBytes;
 }
 
 // Find the largest vStep (FP32-block aligned, <= dv) whose tmpBuff + outQueue fits in UB.
 // Also returns the resulting buffer sizes for tiling/debug.
-void SolveVStep(uint32_t dv, int64_t ubSize, uint32_t chunkSize, uint32_t dk, uint32_t alignK, uint32_t avFp32,
-                uint32_t &vStepVal, uint32_t &tbufTotal, uint32_t &outQueueMax, uint32_t &restBytes) {
+bool SolveVStep(uint32_t dv, int64_t ubSize, uint32_t chunkSize, uint32_t dk, uint32_t alignK,
+                bool allowScoresStateOverlap, uint32_t &vStepVal, uint32_t &tbufTotal, uint32_t &outQueueMax,
+                uint32_t &restBytes) {
+  if (ubSize <= 0) {
+    return false;
+  }
   uint32_t maxVStep = CeilAlign(dv, FP16_NUM_PER_BLOCK);
-  vStepVal = FP16_NUM_PER_BLOCK;
+  bool found = false;
   for (uint32_t vs = maxVStep; vs >= FP16_NUM_PER_BLOCK; vs -= FP16_NUM_PER_BLOCK) {
-    if (ComputeTmpBuffBytes(vs, chunkSize, dk, alignK, avFp32) + ComputeOutQueueBytes(vs, dk, chunkSize, avFp32) <=
-        static_cast<uint32_t>(ubSize)) {
+    uint64_t requiredBytes =
+      static_cast<uint64_t>(ComputeTmpBuffBytes(vs, dv, chunkSize, dk, alignK, allowScoresStateOverlap)) +
+      ComputeOutQueueBytes(vs, dk, chunkSize);
+    if (requiredBytes <= static_cast<uint64_t>(ubSize)) {
       vStepVal = vs;
+      found = true;
       break;
     }
+  }
+  if (!found) {
+    return false;
   }
   if (vStepVal > dv) {
     vStepVal = CeilAlign(dv, FP16_NUM_PER_BLOCK);
   }
-  tbufTotal = ComputeTmpBuffBytes(vStepVal, chunkSize, dk, alignK, avFp32);
-  outQueueMax = ComputeOutQueueBytes(vStepVal, dk, chunkSize, avFp32);
+  tbufTotal = ComputeTmpBuffBytes(vStepVal, dv, chunkSize, dk, alignK, allowScoresStateOverlap);
+  outQueueMax = ComputeOutQueueBytes(vStepVal, dk, chunkSize);
   restBytes = (ubSize > static_cast<int64_t>(outQueueMax)) ? static_cast<uint32_t>(ubSize - outQueueMax) : 0;
+  return true;
 }
 
 // Write the resolved scalar parameters into the device-visible tiling struct.
 void FillTilingData(ChunkGatedDeltaRuleTilingData *td, const ShapeDims &dims, uint32_t aivNum, int64_t ubSize,
                     uint32_t chunkSize, uint32_t numChunks, uint32_t padSize, float scaleValue, uint32_t vStepVal,
-                    uint32_t restBytes) {
+                    uint32_t restBytes, bool hasGamma) {
   td->vectorCoreNum = aivNum;
   td->ubCalSize = static_cast<uint32_t>(ubSize);
   td->ubRestBytes = restBytes;
@@ -178,9 +202,9 @@ void FillTilingData(ChunkGatedDeltaRuleTilingData *td, const ShapeDims &dims, ui
   td->dv = dims.dv;
   td->chunkSize = chunkSize;
   td->numChunks = numChunks;
-  td->b = 1;
+  td->b = dims.batch;
   td->padSize = padSize;
-  td->hasInitialState = 1;
+  td->hasGamma = hasGamma ? 1 : 0;
   td->scaleValue = scaleValue;
   td->vStep = vStepVal;
   td->debug = 0;
@@ -213,31 +237,42 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
     return GRAPH_FAILED;
   }
 
-  int64_t chunkSizeAttr = 0;
   float scaleValueAttr = 1.0f;
-  ParseAttrs(context, chunkSizeAttr, scaleValueAttr);
-  uint32_t chunkSize = static_cast<uint32_t>(chunkSizeAttr);
+  ParseAttrs(context, scaleValueAttr);
+  uint32_t chunkSize = kDefaultChunkSize;
+  bool hasGamma = HasGamma(context);
 
   // Pad T up to a multiple of chunkSize and pre-compute the FP16/FP32 block alignments.
   uint32_t padSize = (chunkSize - dims.t % chunkSize) % chunkSize;
   uint32_t numChunks = (dims.t + padSize) / chunkSize;
   uint32_t alignK = CeilAlign(dims.dk, FP16_NUM_PER_BLOCK);
-  uint32_t avFp32 = CeilAlign(dims.dv, FP32_NUM_PER_BLOCK);
 
   uint32_t vStepVal = 0;
   uint32_t tbufTotal = 0;
   uint32_t outQueueMax = 0;
   uint32_t restBytes = 0;
-  SolveVStep(dims.dv, ubSize, chunkSize, dims.dk, alignK, avFp32, vStepVal, tbufTotal, outQueueMax, restBytes);
+  bool allowScoresStateOverlap = dims.hv < aivNum;
+  if (!SolveVStep(dims.dv, ubSize, chunkSize, dims.dk, alignK, allowScoresStateOverlap, vStepVal, tbufTotal,
+                  outQueueMax, restBytes)) {
+    return GRAPH_FAILED;
+  }
 
   auto td = context->GetTilingData<ChunkGatedDeltaRuleTilingData>();
   if (td == nullptr) {
     return GRAPH_FAILED;
   }
-  FillTilingData(td, dims, aivNum, ubSize, chunkSize, numChunks, padSize, scaleValueAttr, vStepVal, restBytes);
+  FillTilingData(td, dims, aivNum, ubSize, chunkSize, numChunks, padSize, scaleValueAttr, vStepVal, restBytes,
+                 hasGamma);
 
-  // One block per value head (b=1); cap at the available AIV cores.
-  uint32_t blockDim = (dims.hv < aivNum) ? dims.hv : aivNum;
+  // Normally one work item is one value head. When the number of heads cannot
+  // fill the AIV cores and V already needs multiple tiles, expose head*V-tile
+  // work items; tiles write disjoint output/state ranges.
+  uint32_t workItems = dims.hv;
+  uint32_t vTileCount = DivCeil(dims.dv, vStepVal);
+  if (dims.hv < aivNum && vTileCount > 1) {
+    workItems = dims.hv * vTileCount;
+  }
+  uint32_t blockDim = (workItems < aivNum) ? workItems : aivNum;
   if (blockDim == 0) {
     blockDim = kMinBlockDim;
   }
@@ -248,7 +283,10 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
 
   size_t *ws = context->GetWorkspaceSizes(kWorkspaceCount);
   if (ws != nullptr) {
-    ws[0] = kWorkspaceBytes;
+    uint64_t workspaceStrideV = CeilAlign(dims.dv, FP32_NUM_PER_BLOCK);
+    uint64_t stateWorkspaceBytes =
+      static_cast<uint64_t>(dims.batch) * dims.hv * dims.dk * workspaceStrideV * sizeof(float);
+    ws[0] = (stateWorkspaceBytes > kWorkspaceBytes) ? stateWorkspaceBytes : kWorkspaceBytes;
   }
   return GRAPH_SUCCESS;
 }
