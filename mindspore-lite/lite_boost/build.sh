@@ -138,6 +138,16 @@ if [[ -n "${ENABLE_GLIBCXX:-}" ]]; then
   CMAKE_ARGS+=(-DENABLE_GLIBCXX="${ENABLE_GLIBCXX}")
 fi
 
+# Inject GCC coverage instrumentation for the C++ adapters when MSLITE_ENABLE_COVERAGE is on.
+# AscendC custom ops (build_all_ops.sh) are intentionally excluded — see note below.
+if [[ "${MSLITE_ENABLE_COVERAGE}" == "on" || "${MSLITE_ENABLE_COVERAGE}" == "ON" ]]; then
+  echo "MSLITE_ENABLE_COVERAGE: ${MSLITE_ENABLE_COVERAGE} — enabling GCC coverage flags"
+  CMAKE_ARGS+=(
+    -DCMAKE_C_FLAGS="-g --coverage -fprofile-arcs -ftest-coverage -lgcov"
+    -DCMAKE_CXX_FLAGS="-g --coverage -fprofile-arcs -ftest-coverage -lgcov"
+  )
+fi
+
 cmake "${CMAKE_ARGS[@]}" ..
 make -j"${THREAD_NUM}" ${VERBOSE_FLAG}
 
@@ -145,6 +155,12 @@ make -j"${THREAD_NUM}" ${VERBOSE_FLAG}
 # be bundled into the lite_boost wheel. Fails fast: a compile error here aborts
 # the whole lite_boost build (set -e) rather than shipping a wheel without the op.
 # CANN presence is already guaranteed by check_env above.
+#
+# Note: GCC coverage flags (-fprofile-arcs -ftest-coverage -lgcov) are NOT
+# forwarded to build_all_ops.sh. AscendC kernel/op_host sources are compiled by
+# the CANN toolchain (Bisheng/clang-based) for the NPU target, where GCC
+# instrumentation is not applicable. Coverage for the C++ adapters is handled
+# above via CMAKE_C_FLAGS/CMAKE_CXX_FLAGS.
 bash "${TOP_DIR}/../tools/custom_kernels/ascend_ops/build_all_ops.sh" "${BUILD_DIR}/custom_ops"
 
 cd "${PYTHON_DIR}"
