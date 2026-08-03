@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,13 +80,14 @@ int UnstackCPUKernel::Run() {
   }
   auto para = reinterpret_cast<UnstackParameter *>(op_parameter_);
   para->num_ = static_cast<int>(out_num);
-  int data_type_len = in_tensors_.front()->data_type() == kNumberTypeFloat16 ? FP16_DATA_TYPE_LEN : sizeof(float);
+  int data_type_len = static_cast<int>(lite::DataTypeSize(in_tensors_.front()->data_type()));
   Unstack(input_data, output_addr_array_, para, data_type_len);
   return RET_OK;
 }
 
 REG_KERNEL(kCPU, kNumberTypeFloat32, PrimitiveType_Unstack, LiteKernelCreator<UnstackCPUKernel>)
 REG_KERNEL(kCPU, kNumberTypeInt32, PrimitiveType_Unstack, LiteKernelCreator<UnstackCPUKernel>)
+REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_Unstack, LiteKernelCreator<UnstackCPUKernel>)
 #ifdef ENABLE_FP16
 REG_KERNEL(kCPU, kNumberTypeFloat16, PrimitiveType_Unstack, LiteKernelCreator<UnstackCPUKernel>)
 #endif
