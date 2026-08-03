@@ -14,221 +14,305 @@
 # ============================================================================
 # pylint: disable=attribute-defined-outside-init
 """
-lite_boost verification test for chunk_gated_delta_rule (ascend_a2 / ascend910b op).
+LiteBoost verification tests for the common ChunkGatedDeltaRule interface.
 
-The wrapped AscendC op implements the *chunked* Gated Delta Rule (prefill). Its interface
-matches the ascend_a2 op prototype verbatim: TND layout, q/k/v/beta/state/out/final_state each
-accept BOTH bf16 and fp16 (DataTypeList), float32 optional gate ``g``, int32
-``actual_seq_lengths``, ``scale_value`` attr (no cu_seqlens / ssm_state_indices / chunk_size —
-those belong to the ascend_300iduo op).
-
-The functional cases are parametrised over dtype in {bf16, fp16} so both low-dtype paths are
-exercised. The wrapper auto-detects the low dtype from the query tensor.
-
-Accuracy approach
------------------
-A closed-form reference exists for the degenerate ``beta = 0, g = None`` case: with no
-state update (beta=0) and no decay gate, the recurrent state stays at ``initial_state`` for
-every step and the intra-chunk attention contribution vanishes, so the output collapses to
-the pure inter-chunk term ``out_t = scale * (q_t @ S_0^T)`` for all t. This is checked against
-a plain ``torch.einsum`` reference at the low dtype's tolerance.
-
-Cases:
-  - test_shapes_and_dtypes : output shape/dtype/finite (with g), bf16 + fp16.
-  - test_optional_g        : the g=None (hasGamma=0) path runs and is well-formed, bf16 + fp16.
-  - test_accuracy_beta_zero: closed-form reference (beta=0, g=None), bf16 + fp16.
-  - test_performance       : fused op vs a naive token-by-token PyTorch baseline (bf16).
-
-Runs on ascend910b only (``-m "ascend_a2"``).
+Both ascend_a2 and ascend_300iduo use the same public signature:
+query, key, value, beta, initial_state, actual_seq_lengths, optional g, and
+scale_value. Ascend 310P exercises float16; Ascend 910B additionally exercises
+bfloat16. Accuracy is checked against an independent token-by-token CPU
+reference, while performance is guarded by latency baselines measured on 310P.
 """
 
-import time
 import logging
+import time
 
 import pytest
 import torch
-import lite_boost.ops as lite_ops
-logging.basicConfig(level=logging.INFO, format='%(message)s')
 
-# Both low dtypes the 910B op accepts.
-LOW_DTYPES = [torch.bfloat16, torch.float16]
+import lite_boost.ops as lite_ops
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+LOW_DTYPES = (torch.float16, torch.bfloat16)
+PERF_REGRESSION_TOLERANCE = 0.50
+# Baselines are median LiteBoost end-to-end latencies measured on Ascend 310P3
+# with CANN 8.5. Each measurement uses 5 warmup calls followed by 20 synchronized
+# iterations, and the median of 3 measurements is recorded. The 50% tolerance
+# absorbs shared-machine and runtime variation while still detecting regressions.
+PERFORMANCE_CASES_310P = (
+    pytest.param(1, 8, 64, 64, 64, 1.242, id="small"),
+    pytest.param(1, 16, 128, 128, 128, 7.241, id="representative"),
+    pytest.param(1, 1, 128, 128, 256, 3.616, id="low_head_dv256"),
+    pytest.param(2, 8, 512, 128, 128, 25.145, id="long_t512_batch2"),
+    pytest.param(1, 16, 1024, 128, 128, 49.211, id="long_t1024"),
+    pytest.param(1, 16, 2048, 128, 128, 97.188, id="long_t2048"),
+)
+_DEFAULT_G = object()
 
 
 def _l2norm(x, dim=-1, eps=1e-6):
     return x * torch.rsqrt((x * x).sum(dim=dim, keepdim=True) + eps)
 
 
-def _pytorch_recurrent_baseline(query, key, value, g, beta, initial_state, scale=1.0):
-    # pylint: disable=too-many-locals
-    """Naive token-by-token Gated Delta Rule (no key-gate gk).
+def _is_310p():
+    return "310P" in torch.npu.get_device_name(0).upper()
 
-    Used only as a *performance* baseline (an unoptimized implementation the fused op should
-    beat). It is NOT an accuracy ground truth for the chunked op — see module docstring.
-    """
-    q = query * scale
-    state = initial_state.clone()  # [B, H, Dk, Dv]
-    batch, n_head, seq_len, d_v = value.shape
-    out = torch.zeros(batch, n_head, seq_len, d_v, dtype=torch.float32, device=query.device)
-    for i in range(seq_len):
-        gi = torch.exp(g[:, :, i]) if g is not None else 1.0
-        state = state * (gi[..., None, None] if g is not None else 1.0)
-        ki, vi, qi = key[:, :, i, :], value[:, :, i, :], q[:, :, i, :]
-        beta_i = beta[:, :, i]
-        kv_mem = torch.einsum("bhdv,bhd->bhv", state, ki)
-        delta = (vi - kv_mem) * beta_i[..., None]
-        state = state + torch.einsum("bhd,bhv->bhdv", ki, delta)
-        out[:, :, i, :] = torch.einsum("bhdv,bhd->bhv", state, qi)
+
+def _pytorch_recurrent_baseline(query, key, value, g, beta, initial_state, scale=1.0):
+    """Naive token-by-token FP32 CPU reference for Gated Delta Rule."""
+    query = query * scale
+    state = initial_state.clone()
+    batch_size, num_heads, seq_len, dv = value.shape
+    out = torch.zeros(
+        batch_size,
+        num_heads,
+        seq_len,
+        dv,
+        dtype=torch.float32,
+        device=query.device,
+    )
+    for token_idx in range(seq_len):
+        if g is not None:
+            decay = torch.exp(g[:, :, token_idx])
+            state = state * decay[..., None, None]
+        key_token = key[:, :, token_idx, :]
+        value_token = value[:, :, token_idx, :]
+        query_token = query[:, :, token_idx, :]
+        beta_token = beta[:, :, token_idx]
+        value_memory = torch.einsum("bhkv,bhk->bhv", state, key_token)
+        delta = (value_token - value_memory) * beta_token[..., None]
+        state = state + torch.einsum("bhk,bhv->bhkv", key_token, delta)
+        out[:, :, token_idx, :] = torch.einsum(
+            "bhkv,bhk->bhv", state, query_token
+        )
     return out, state
 
 
+def _accuracy_metrics(actual, expected):
+    """Return max absolute error, cosine similarity, and normalized RMSE."""
+    actual = actual.float().reshape(-1)
+    expected = expected.float().reshape(-1)
+    max_diff = (actual - expected).abs().max().item()
+    cosine = (
+        torch.sum(actual * expected)
+        / (
+            torch.sqrt(torch.sum(actual * actual))
+            * torch.sqrt(torch.sum(expected * expected))
+        ).clamp_min(1e-12)
+    ).item()
+    nrmse = (
+        torch.sqrt(torch.mean((actual - expected) ** 2))
+        / torch.sqrt(torch.mean(expected ** 2)).clamp_min(1e-12)
+    ).item()
+    return max_diff, cosine, nrmse
+
+
 def _generate_test_data(batch_size, num_heads, seq_len, dk, dv, device):
-    """Build BNSD test inputs (fp32 on device). ``num_heads`` is used for both Nk and Nv."""
-    q_f32 = _l2norm(torch.randn(batch_size, seq_len, num_heads, dk, device=device), dim=-1)
-    k_f32 = _l2norm(torch.randn(batch_size, seq_len, num_heads, dk, device=device), dim=-1)
-    v_f32 = torch.randn(batch_size, seq_len, num_heads, dv, device=device)
-    beta_f32 = torch.randn(batch_size, seq_len, num_heads, device=device).sigmoid()
-    g_f32 = -(torch.rand(batch_size, num_heads, seq_len, dtype=torch.float32, device=device) + 0.01)
-    state_f32 = torch.randn(batch_size, num_heads, dk, dv, device=device)
+    """Build BNSD inputs; the LiteBoost wrapper converts them to TND."""
+    query = _l2norm(torch.randn(batch_size, seq_len, num_heads, dk, device=device), dim=-1)
+    key = _l2norm(torch.randn(batch_size, seq_len, num_heads, dk, device=device), dim=-1)
+    value = torch.randn(batch_size, seq_len, num_heads, dv, device=device)
+    beta = torch.randn(batch_size, seq_len, num_heads, device=device).sigmoid()
+    g = -(torch.rand(batch_size, num_heads, seq_len, dtype=torch.float32, device=device) + 0.01)
+    state = torch.randn(batch_size, num_heads, dk, dv, device=device)
     return {
-        "query": q_f32.transpose(1, 2).contiguous(),          # [B, H, T, Dk]
-        "key": k_f32.transpose(1, 2).contiguous(),
-        "value": v_f32.transpose(1, 2).contiguous(),
-        "g": g_f32,                                            # [B, H, T]
-        "beta": beta_f32.transpose(1, 2).contiguous(),        # [B, H, T]
-        "state": state_f32,                                    # [B, H, Dk, Dv]
-        "actual_seq_lengths": torch.tensor([seq_len] * batch_size, dtype=torch.int32, device=device),
-        "scale": 1.0,
+        "query": query.transpose(1, 2).contiguous(),
+        "key": key.transpose(1, 2).contiguous(),
+        "value": value.transpose(1, 2).contiguous(),
+        "beta": beta.transpose(1, 2).contiguous(),
+        "state": state,
+        "actual_seq_lengths": torch.tensor(
+            [seq_len] * batch_size, dtype=torch.int32, device=device
+        ),
+        "g": g,
+        "scale": 1.0 / (dk ** 0.5),
     }
 
 
+def _run_op(data, dtype, g=_DEFAULT_G, beta=None):
+    g_input = data["g"] if g is _DEFAULT_G else g
+    beta_input = data["beta"] if beta is None else beta
+    return lite_ops.chunk_gated_delta_rule(
+        data["query"].to(dtype),
+        data["key"].to(dtype),
+        data["value"].to(dtype),
+        beta_input.to(dtype),
+        data["state"].to(dtype),
+        data["actual_seq_lengths"],
+        g=g_input,
+        scale_value=data["scale"],
+    )
+
+
+def _measure_latency_ms(data, dtype, warmup=5, repeats=20):
+    for _ in range(warmup):
+        _run_op(data, dtype)
+    torch.npu.synchronize()
+    start = time.perf_counter()
+    for _ in range(repeats):
+        _run_op(data, dtype)
+    torch.npu.synchronize()
+    return (time.perf_counter() - start) * 1000 / repeats
+
+
+@pytest.mark.ascend_a2
+@pytest.mark.ascend_300iduo
 class TestChunkGatedDeltaRule:
-    """Verify chunk_gated_delta_rule against the ascend_a2 op spec (bf16 + fp16)."""
+    """Verify the shared interface, optional input, accuracy, and latency."""
 
     def setup_method(self):
-        """Setup test fixtures: device, tensor dimensions and test data."""
         self.device = torch.device("npu:0")
         torch.npu.set_device(self.device)
-        # T=64; Nk=Nv=8 (no GQA); Dk=Dv=64.
         self.batch_size, self.num_heads, self.seq_len = 1, 8, 64
         self.dk, self.dv = 64, 64
         self.data = _generate_test_data(
-            self.batch_size, self.num_heads, self.seq_len, self.dk, self.dv, self.device)
+            self.batch_size, self.num_heads, self.seq_len, self.dk, self.dv, self.device
+        )
 
     @staticmethod
-    def _run(d, dtype, g=None, scale=None):
-        """Run one chunk_gated_delta_rule forward and return (out, final_state)."""
-        # Cast q/k/v/beta/state to the target low dtype; the wrapper auto-detects it.
-        # g stays float32 (op dtype for g is FLOAT).
-        g_in = (g if g is not None else d["g"])
-        if g_in is not None:
-            g_in = g_in.float()
-        out, final_state = lite_ops.chunk_gated_delta_rule(
-            d["query"].to(dtype), d["key"].to(dtype), d["value"].to(dtype),
-            d["beta"].to(dtype), d["state"].to(dtype),
-            d["actual_seq_lengths"], g=g_in,
-            scale_value=d["scale"] if scale is None else scale)
-        torch.npu.synchronize()
-        return out.float().cpu(), final_state.float().cpu()
+    def _skip_unsupported_dtype(dtype):
+        if dtype == torch.bfloat16 and _is_310p():
+            pytest.skip("Ascend 310P ChunkGatedDeltaRule supports float16 only")
 
-    @pytest.mark.ascend_a2
     @pytest.mark.L0
     @pytest.mark.parametrize("dtype", LOW_DTYPES)
     def test_shapes_and_dtypes(self, dtype):
-        """Output shapes/dtypes are correct and results are finite (with g)."""
-        out, final_state = self._run(self.data, dtype)
+        """Outputs preserve the public BNSD shapes and low dtype."""
+        self._skip_unsupported_dtype(dtype)
+        out, final_state = _run_op(self.data, dtype)
+        torch.npu.synchronize()
         assert out.shape == (self.batch_size, self.num_heads, self.seq_len, self.dv)
         assert final_state.shape == (self.batch_size, self.num_heads, self.dk, self.dv)
+        assert out.dtype == dtype
+        assert final_state.dtype == dtype
         assert torch.isfinite(out).all(), f"out has NaN/Inf ({dtype})"
         assert torch.isfinite(final_state).all(), f"final_state has NaN/Inf ({dtype})"
 
-    @pytest.mark.ascend_a2
     @pytest.mark.L0
     @pytest.mark.parametrize("dtype", LOW_DTYPES)
     def test_optional_g(self, dtype):
-        """The g=None (hasGamma=0) path runs and produces well-formed output."""
-        out, final_state = self._run(self.data, dtype, g=None)
+        """The optional g input can be omitted on both backends."""
+        self._skip_unsupported_dtype(dtype)
+        out, final_state = _run_op(self.data, dtype, g=None)
+        torch.npu.synchronize()
         assert out.shape == (self.batch_size, self.num_heads, self.seq_len, self.dv)
         assert final_state.shape == (self.batch_size, self.num_heads, self.dk, self.dv)
-        assert torch.isfinite(out).all(), f"out (g=None) has NaN/Inf ({dtype})"
-        assert torch.isfinite(final_state).all(), f"final_state (g=None) has NaN/Inf ({dtype})"
+        assert torch.isfinite(out).all(), f"out has NaN/Inf with g=None ({dtype})"
+        assert torch.isfinite(final_state).all(), f"final_state has NaN/Inf with g=None ({dtype})"
 
-    @pytest.mark.ascend_a2
     @pytest.mark.L0
     @pytest.mark.parametrize("dtype", LOW_DTYPES)
     def test_accuracy_beta_zero(self, dtype):
-        """Closed-form check: with beta=0 and g=None the state is frozen and
-        out_t = scale * (q_t @ S_0^T) for every t (intra-chunk attn vanishes).
-        """
-        scale = 1.0
-        d = self.data
-        beta_zero = torch.zeros_like(d["beta"])
-        out, _ = lite_ops.chunk_gated_delta_rule(
-            d["query"].to(dtype), d["key"].to(dtype), d["value"].to(dtype),
-            beta_zero.to(dtype), d["state"].to(dtype),
-            d["actual_seq_lengths"], g=None, scale_value=scale)
+        """With beta=0 and g=None, state is frozen and out=q@state."""
+        self._skip_unsupported_dtype(dtype)
+        beta_zero = torch.zeros_like(self.data["beta"])
+        out, final_state = _run_op(self.data, dtype, g=None, beta=beta_zero)
         torch.npu.synchronize()
-        out = out.float().cpu()
 
-        # Reference from the SAME low-dtype values the op actually sees.
-        q_low = d["query"].to(dtype).float().cpu()             # [B, H, T, Dk]
-        state_low = d["state"].to(dtype).float().cpu()          # [B, H, Dk, Dv]
-        out_ref = scale * torch.einsum("bhkv,bhtk->bhtv", state_low, q_low)  # [B, H, T, Dv]
+        query = self.data["query"].to(dtype).float().cpu()
+        initial_state = self.data["state"].to(dtype).float().cpu()
+        out_ref = self.data["scale"] * torch.einsum("bhkv,bhtk->bhtv", initial_state, query)
+        state_ref = initial_state
+        out_diff = (out.float().cpu() - out_ref).abs().max().item()
+        state_diff = (final_state.float().cpu() - state_ref).abs().max().item()
+        logging.info(
+            "[beta=0 / g=None / %s] out max diff %.6f, state max diff %.6f",
+            dtype,
+            out_diff,
+            state_diff,
+        )
+        assert out_diff < 5e-2, f"output diverges from reference ({dtype}): {out_diff}"
+        assert state_diff < 5e-3, f"final_state diverges from input ({dtype}): {state_diff}"
 
-        max_diff = (out - out_ref).abs().max().item()
-        logging.info("[beta=0 / g=None / %s] out max diff vs einsum ref = %.6f", dtype, max_diff)
-        # bf16/fp16, Dk=64 accumulation -> ~1e-2; 5e-2 is the project's standard tolerance.
-        assert max_diff < 5e-2, f"beta=0 output diverges from reference ({dtype}): {max_diff}"
-
-    @pytest.mark.ascend_a2
     @pytest.mark.L0
-    def test_performance(self):
-        """The fused AscendC op beats a naive token-by-token PyTorch baseline (bf16)."""
-        dtype = torch.bfloat16
-        d = self.data
-        for _ in range(5):  # warmup
-            lite_ops.chunk_gated_delta_rule(
-                d["query"].to(dtype), d["key"].to(dtype), d["value"].to(dtype),
-                d["beta"].to(dtype), d["state"].to(dtype),
-                d["actual_seq_lengths"], g=d["g"].float(), scale_value=d["scale"])
+    @pytest.mark.parametrize("dtype", LOW_DTYPES)
+    def test_accuracy_recurrent_reference(self, dtype):
+        """Normal beta/g path matches an independent FP32 CPU recurrence."""
+        self._skip_unsupported_dtype(dtype)
+        data = _generate_test_data(2, 2, 64, 32, 32, self.device)
+        out, final_state = _run_op(data, dtype)
         torch.npu.synchronize()
-        op_n = 20
-        t0 = time.time()
-        for _ in range(op_n):
-            lite_ops.chunk_gated_delta_rule(
-                d["query"].to(dtype), d["key"].to(dtype), d["value"].to(dtype),
-                d["beta"].to(dtype), d["state"].to(dtype),
-                d["actual_seq_lengths"], g=d["g"].float(), scale_value=d["scale"])
+
+        def cpu_low(tensor):
+            return tensor.to(dtype).float().cpu()
+
+        out_ref, state_ref = _pytorch_recurrent_baseline(
+            cpu_low(data["query"]),
+            cpu_low(data["key"]),
+            cpu_low(data["value"]),
+            data["g"].float().cpu(),
+            cpu_low(data["beta"]),
+            cpu_low(data["state"]),
+            scale=data["scale"],
+        )
+        out_metrics = _accuracy_metrics(out.float().cpu(), out_ref)
+        state_metrics = _accuracy_metrics(final_state.float().cpu(), state_ref)
+        logging.info(
+            "[recurrent ref / %s] out(max=%.6f cos=%.9f nrmse=%.6f), "
+            "state(max=%.6f cos=%.9f nrmse=%.6f)",
+            dtype,
+            *out_metrics,
+            *state_metrics,
+        )
+        assert out_metrics[1] >= 0.999 and out_metrics[2] <= 0.02, (
+            f"output diverges from CPU recurrence ({dtype}): "
+            f"cosine={out_metrics[1]}, nrmse={out_metrics[2]}"
+        )
+        assert state_metrics[1] >= 0.999 and state_metrics[2] <= 0.02, (
+            f"final_state diverges from CPU recurrence ({dtype}): "
+            f"cosine={state_metrics[1]}, nrmse={state_metrics[2]}"
+        )
+
+    @pytest.mark.L0
+    @pytest.mark.parametrize("dtype", LOW_DTYPES)
+    def test_non_multiple_reduce_width(self, dtype):
+        """A non-64-aligned dk matches the mathematically equivalent padded input."""
+        self._skip_unsupported_dtype(dtype)
+        dk, padded_dk = 80, 128
+        data = _generate_test_data(1, 2, 32, dk, 32, self.device)
+        padded_data = dict(data)
+        padded_data["query"] = torch.nn.functional.pad(data["query"], (0, padded_dk - dk))
+        padded_data["key"] = torch.nn.functional.pad(data["key"], (0, padded_dk - dk))
+        padded_data["state"] = torch.nn.functional.pad(data["state"], (0, 0, 0, padded_dk - dk))
+
+        out, final_state = _run_op(data, dtype)
+        padded_out, padded_final_state = _run_op(padded_data, dtype)
         torch.npu.synchronize()
-        cann_ms = (time.time() - t0) / op_n * 1000
 
-        # Naive recurrent baseline on CPU fp32; a few iterations are enough to show the
-        # op's acceleration.
-        def cpu(tensor):
-            return tensor.detach().float().cpu()
-        ref_n = 3
-        t0 = time.time()
-        for _ in range(ref_n):
-            _ = _pytorch_recurrent_baseline(
-                cpu(d["query"]), cpu(d["key"]), cpu(d["value"]),
-                cpu(d["g"]), cpu(d["beta"]), cpu(d["state"]), scale=d["scale"])
-        ref_ms = (time.time() - t0) / ref_n * 1000
-        speedup = ref_ms / cann_ms if cann_ms > 0 else float("inf")
-        logging.info("[perf / %s] chunk op %.3f ms  |  naive baseline %.3f ms  |  speedup %.1fx",
-                     dtype, cann_ms, ref_ms, speedup)
-        assert cann_ms < ref_ms, (
-            f"chunk op ({cann_ms:.3f} ms) not faster than naive baseline ({ref_ms:.3f} ms)")
-        assert speedup >= 2.0, f"speedup {speedup:.1f}x below the 2.0x threshold"
+        out_diff = (out.float() - padded_out.float()).abs().max().item()
+        state_diff = (
+            final_state.float() - padded_final_state[:, :, :dk, :].float()
+        ).abs().max().item()
+        assert out_diff < 5e-2, f"tail reduction output mismatch ({dtype}): {out_diff}"
+        assert state_diff < 5e-2, f"tail reduction state mismatch ({dtype}): {state_diff}"
 
-
-if __name__ == "__main__":
-    t = TestChunkGatedDeltaRule()
-    t.setup_method()
-    for dt in LOW_DTYPES:
-        t.test_shapes_and_dtypes(dt)
-        logging.info("shapes_and_dtypes [%s]: PASS", dt)
-        t.test_optional_g(dt)
-        logging.info("optional_g [%s]:        PASS", dt)
-        t.test_accuracy_beta_zero(dt)
-        logging.info("accuracy_beta_zero [%s]:PASS", dt)
-    t.test_performance()
-    logging.info("performance:       PASS")
+    @pytest.mark.L0
+    @pytest.mark.parametrize(
+        "batch_size,num_heads,seq_len,dk,dv,baseline_ms",
+        PERFORMANCE_CASES_310P,
+    )
+    def test_performance_regression_310p(
+        self, batch_size, num_heads, seq_len, dk, dv, baseline_ms
+    ):
+        """310P latency may vary by at most 50% above its verified baseline."""
+        if not _is_310p():
+            pytest.skip("310P-specific performance baseline")
+        data = _generate_test_data(
+            batch_size, num_heads, seq_len, dk, dv, self.device
+        )
+        latency_ms = _measure_latency_ms(data, torch.float16)
+        limit_ms = baseline_ms * (1.0 + PERF_REGRESSION_TOLERANCE)
+        logging.info(
+            "[perf %dx%dx%dx%dx%d] %.3f ms, limit %.3f ms",
+            batch_size,
+            num_heads,
+            seq_len,
+            dk,
+            dv,
+            latency_ms,
+            limit_ms,
+        )
+        assert latency_ms <= limit_ms, (
+            f"performance regression: {latency_ms:.3f} ms exceeds "
+            f"{limit_ms:.3f} ms (baseline {baseline_ms:.3f} ms + 50%)"
+        )

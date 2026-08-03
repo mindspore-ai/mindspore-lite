@@ -27,7 +27,7 @@ constexpr int32_t kHeadDimAxis = 2;
 // Input indices for the CGDR operator.
 constexpr uint32_t kQueryInput = 0;
 constexpr uint32_t kValueInput = 2;
-constexpr uint32_t kInitialStateInput = 5;
+constexpr uint32_t kInitialStateInput = 4;
 // Shape dimension indices within the [T, H, D] layout.
 constexpr uint32_t kDimT = 0;
 constexpr uint32_t kDimH = 1;
@@ -73,8 +73,8 @@ static uint32_t ChunkGatedDeltaRuleInferShape(InferShapeContext *context) {
 }
 
 uint32_t ChunkGatedDeltaRuleInferDataType(InferDataTypeContext *context) {
-  context->SetOutputDataType(kOutShapeIndex, ge::DT_FLOAT16);
-  context->SetOutputDataType(kFinalStateOutIndex, ge::DT_FLOAT16);
+  context->SetOutputDataType(kOutShapeIndex, context->GetInputDataType(kQueryInput));
+  context->SetOutputDataType(kFinalStateOutIndex, context->GetInputDataType(kInitialStateInput));
   return ge::GRAPH_SUCCESS;
 }
 }  // namespace
