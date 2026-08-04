@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -108,6 +108,17 @@ class TfliteEluParser : public TfliteNodeParser {
   TfliteEluParser() : TfliteNodeParser("Elu") {}
 
   ~TfliteEluParser() override = default;
+
+  PrimitiveCPtr Parse(const std::unique_ptr<tflite::OperatorT> &tflite_op,
+                      const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph,
+                      const std::unique_ptr<tflite::ModelT> &tflite_model) override;
+};
+
+class TfliteGeluParser : public TfliteNodeParser {
+ public:
+  TfliteGeluParser() : TfliteNodeParser("Gelu") {}
+
+  ~TfliteGeluParser() override = default;
 
   PrimitiveCPtr Parse(const std::unique_ptr<tflite::OperatorT> &tflite_op,
                       const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph,

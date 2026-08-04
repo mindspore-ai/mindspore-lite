@@ -113,6 +113,24 @@ PrimitiveCPtr TfliteEluParser::Parse(const std::unique_ptr<tflite::OperatorT> &t
   return prim->GetPrim();
 }
 
+PrimitiveCPtr TfliteGeluParser::Parse(const std::unique_ptr<tflite::OperatorT> &tflite_op,
+                                      const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph,
+                                      const std::unique_ptr<tflite::ModelT> &tflite_model) {
+  auto prim = std::make_unique<ops::Activation>();
+  MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
+  prim->set_activation_type(mindspore::ActivationType::GELU);
+  bool approximate = false;
+  // TFLite GELU carries an `approximate` bool option (GeluOptions). Map it onto the
+  // Activation primitive's approximate flag so erf/tanh dispatch honours the model's mode.
+  const auto &tflite_attr = tflite_op->builtin_options.AsGeluOptions();
+  if (tflite_attr != nullptr) {
+    approximate = tflite_attr->approximate;
+  }
+  prim->set_approximate(approximate);
+
+  return prim->GetPrim();
+}
+
 TfliteNodeRegister g_TfliteReluParser(tflite::BuiltinOperator_RELU, new TfliteReluParser());
 TfliteNodeRegister g_TfliteRelu6Parser(tflite::BuiltinOperator_RELU6, new TfliteRelu6Parser());
 TfliteNodeRegister g_TflitePReLUParser(tflite::BuiltinOperator_PRELU, new TflitePReLUParser());
@@ -121,5 +139,6 @@ TfliteNodeRegister g_TfliteTanhParser(tflite::BuiltinOperator_TANH, new TfliteTa
 TfliteNodeRegister g_TfliteSwishParser(tflite::BuiltinOperator_HARD_SWISH, new TfliteHardSwishParser());
 TfliteNodeRegister g_tfliteLogisticParser(tflite::BuiltinOperator_LOGISTIC, new TfliteLogisticParser());
 TfliteNodeRegister g_tfliteEluParser(tflite::BuiltinOperator_ELU, new TfliteEluParser());
+TfliteNodeRegister g_tfliteGeluParser(tflite::BuiltinOperator_GELU, new TfliteGeluParser());
 }  // namespace lite
 }  // namespace mindspore

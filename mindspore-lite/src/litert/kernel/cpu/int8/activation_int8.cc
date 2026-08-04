@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@
 #include "src/litert/kernel/cpu/int8/tanh_int8.h"
 #include "src/litert/kernel/cpu/int8/leaky_relu_int8.h"
 #include "src/litert/kernel/cpu/int8/elu_int8.h"
+#include "src/litert/kernel/cpu/int8/gelu_int8.h"
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 #include "include/errorcode.h"
@@ -62,6 +63,9 @@ kernel::LiteKernel *CpuActivationInt8KernelCreator(const std::vector<lite::Tenso
       break;
     case schema::ActivationType_TANH:
       kernel = new (std::nothrow) TanhInt8CPUKernel(parameter, inputs, outputs, ctx);
+      break;
+    case schema::ActivationType_GELU:
+      kernel = new (std::nothrow) GeluInt8CPUKernel(parameter, inputs, outputs, ctx);
       break;
     default:
       break;
