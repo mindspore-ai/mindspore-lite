@@ -131,6 +131,7 @@ add_library(lite_boost_ops SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ops/plugin/rain_fusion_attention.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ops/plugin/recurrent_gated_delta_rule.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ops/plugin/chunk_gated_delta_rule.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ops/plugin/quant_matmul_w4a8.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ops/plugin/pytorch_npu_helper.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ops/register_ops.cc
 )

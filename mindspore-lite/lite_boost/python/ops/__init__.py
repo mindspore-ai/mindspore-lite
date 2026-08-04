@@ -17,8 +17,9 @@
 lite_boost package
 """
 __all__ = ["rain_fusion_attention", "sparse_attention", "recurrent_gated_delta_rule",
-           "chunk_gated_delta_rule"]
+           "chunk_gated_delta_rule", "quant_matmul_w4a8"]
 
 from .rain_fusion import rain_fusion_attention, sparse_attention
 from .recurrent_gated_delta_rule import recurrent_gated_delta_rule
 from .chunk_gated_delta_rule import chunk_gated_delta_rule
+from .quant_matmul_w4a8 import quant_matmul_w4a8

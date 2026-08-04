@@ -59,3 +59,8 @@
 "mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/chunk_gated_delta_rule/op_host/"    "build/include_subdir"
 "mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/chunk_gated_delta_rule/op_kernel/"    "build/include_subdir"
 "mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/chunk_gated_delta_rule/op_kernel/"    "build/namespaces"
+
+"mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/quant_matmul_w4a8/op_host/"    "build/include_subdir"
+"mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/quant_matmul_w4a8/op_host/"    "whitespace/indent_namespace"
+"mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/quant_matmul_w4a8/op_kernel/"    "build/include_subdir"
+"mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/quant_matmul_w4a8/op_kernel/"    "build/namespaces"
