@@ -4074,6 +4074,14 @@ bool DfGraphConvertor::CheckCNode(const std::string &name, const CNodePtr node) 
 
   if (const auto it = auxiliary_node_converters.find(name); it != auxiliary_node_converters.cend()) {
     it->second(this, node);
+  } else if (name == prim::kPrimCustom->name() && lite::common::AnfAlgo::HasNodeAttr(kAttrGroup, node)) {
+    // A Custom op that aliases a GE Hcom collective op (e.g. a Custom type=AllReduce) carries
+    // a "group" attr. The table above is keyed on primitive name and misses "Custom", so the
+    // HCCL attr injection (group/fusion via ConvertHcomFusionId -> AddCommAttrForHcclNode) is
+    // skipped and hccl_graph_optimizer later aborts with get attr "group" failed. Route such
+    // Custom nodes through the same collective handler so group/fusion are injected onto the GE
+    // node. (Requires the export to set a "fusion" attr, else ConvertHcomFusionId returns early.)
+    ConvertHcomFusionId(node);
   }
   if (lite::common::AnfAlgo::HasNodeAttr(kParallelGroup, node)) {
     ConvertParallelGroupToHcom(node);
