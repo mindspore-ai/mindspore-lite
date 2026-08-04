@@ -272,7 +272,7 @@ def main():
     parser = argparse.ArgumentParser(description="Export SAM2 to two ONNX models")
     parser.add_argument(
         "--ckpt", type=str,
-        default="/home/SAM2/weight/sam2.1_hiera_base_plus.pt",
+        default="/path/to/sam2.1_hiera_base_plus.pt",
         help="Path to SAM2 checkpoint",
     )
     parser.add_argument(
