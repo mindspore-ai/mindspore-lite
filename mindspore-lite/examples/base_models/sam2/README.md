@@ -36,19 +36,9 @@ pip install torch==2.13.0 torchvision==0.28.0 onnx==1.22.0 onnxruntime==1.28.0 \
 
 ### 获取模型权重与源码
 
-- 模型源码目录 `MODEL_CODE_DIR`：`/home/SAM2/code/sam2`（上游 <https://github.com/facebookresearch/sam2>），已 `pip install -e .` 安装为 `sam2` 包。
-- 模型权重目录 `MODEL_DIR`：`/home/SAM2/weight`，包含：
+- 模型源码目录`/path/to/sam2`（上游 <https://github.com/facebookresearch/sam2>），已 `pip install -e .` 安装为 `sam2` 包。
+- 模型权重目录`/path/to/weight`，包含：
   - `sam2.1_hiera_base_plus.pt`（约 308 MB 权重）
-  - `sam2.1_hiera_b+.yaml`（模型结构配置）
-  - `config.json` / `preprocessor_config.json` 等
-
-### 初始化环境
-
-```bash
-source /home/env.sh
-```
-
-该脚本设置 Ascend toolkit 环境变量与 MindSpore Lite 库路径。
 
 ---
 
@@ -59,22 +49,19 @@ source /home/env.sh
 需要在 SAM2 源码目录下执行（脚本依赖 `sam2` 包与 hydra 配置 `configs/sam2.1/sam2.1_hiera_b+.yaml`）：
 
 ```bash
-cd /home/SAM2/code/sam2
-
-python /home/SAM2/outputs/sam2/export_sam2_onnx.py \
-  --ckpt /home/SAM2/weight/sam2.1_hiera_base_plus.pt \
-  --config configs/sam2.1/sam2.1_hiera_b+.yaml \
-  --output-dir /home/SAM2/outputs/sam2/onnx
+python export_sam2_onnx.py \
+  --ckpt /path/to/weight/sam2.1_hiera_base_plus.pt \
+  --config /path/to/sam2/sam2/configs/sam2.1/sam2.1_hiera_b+.yaml \
+  --output-dir /path/to/onnx
 ```
 
 ### 参数说明
 
-| 参数 | 说明 | 默认值 |
-| --- | --- | --- |
-| `--ckpt` | SAM2 权重路径 | `/home/SAM2/weight/sam2.1_hiera_base_plus.pt` |
-| `--config` | hydra 配置名 | `configs/sam2.1/sam2.1_hiera_b+.yaml` |
-| `--output-dir` | ONNX 输出目录 | `./onnx` |
-| `--opset` | ONNX opset 版本 | `17` |
+| 参数 | 说明 |
+| --- | --- |
+| `--ckpt` | SAM2 权重路径 |
+| `--config` | hydra 配置名 |
+| `--output-dir` | ONNX 输出目录 |
 
 ### 模块说明
 
@@ -86,7 +73,7 @@ python /home/SAM2/outputs/sam2/export_sam2_onnx.py \
 ### 产出文件
 
 ```text
-/home/SAM2/outputs/sam2/onnx/
+/path/to/onnx/
 ├── sam2_encoder.onnx   # 约 293 MB
 └── sam2_decoder.onnx   # 约 16 MB
 ```
@@ -116,16 +103,14 @@ python /home/SAM2/outputs/sam2/export_sam2_onnx.py \
 ### 推理命令
 
 ```bash
-cd /home/SAM2/code/sam2
-
-python /home/SAM2/outputs/sam2/infer_sam2_onnx.py \
-  --encoder /home/SAM2/outputs/sam2/onnx/sam2_encoder.onnx \
-  --decoder /home/SAM2/outputs/sam2/onnx/sam2_decoder.onnx \
-  --image /home/SAM2/code/sam2/notebooks/images/truck.jpg \
+python infer_sam2_onnx.py \
+  --encoder /path/to/onnx/sam2_encoder.onnx \
+  --decoder /path/to/onnx/sam2_decoder.onnx \
+  --image /path/to/sam2/notebooks/images/truck.jpg \
   --point 500 375 \
-  --ckpt /home/SAM2/weight/sam2.1_hiera_base_plus.pt \
-  --config configs/sam2.1/sam2.1_hiera_b+.yaml \
-  --output /home/SAM2/outputs/sam2/mask_onnx.png
+  --ckpt /path/to/weight/sam2.1_hiera_base_plus.pt \
+  --config /path/to/sam2/sam2/configs/sam2.1/sam2.1_hiera_b+.yaml \
+  --output ./output/mask_onnx.png
 ```
 
 ### 参数说明
@@ -171,11 +156,9 @@ python /home/SAM2/outputs/sam2/infer_sam2_onnx.py \
 使用 MindSpore Lite Python `Converter` API（`convert_sam2_to_mindir.py`）：
 
 ```bash
-cd /home/SAM2/outputs/sam2
-
 python convert_sam2_to_mindir.py \
-  --onnx-dir ./onnx \
-  --output-dir ./mindir
+  --onnx-dir /path/to/onnx \
+  --output-dir /path/to/mindir
 ```
 
 等价于对每个模型执行：
@@ -194,13 +177,11 @@ c.convert(FmkType.ONNX, "onnx/sam2_encoder.onnx", "mindir/sam2_encoder")
 | --- | --- |
 | `--onnx-dir` | ONNX 输入目录 |
 | `--output-dir` | MindIR 输出目录 |
-| `optimize=ascend_oriented` | Ascend 定向优化（编译为 OM） |
-| `saveType=MINDIR` | 输出 MindIR 格式 |
 
 ### 产出文件
 
 ```text
-/home/SAM2/outputs/sam2/mindir/
+/path/to/mindir/
 ├── sam2_encoder.mindir   # 约 229 MB
 └── sam2_decoder.mindir   # 约 14 MB
 ```
@@ -231,16 +212,15 @@ CONVERT RESULT SUCCESS:0
 ### 推理命令
 
 ```bash
-cd /home/SAM2/outputs/sam2
 
 python infer_sam2_mslite.py \
-  --encoder ./mindir/sam2_encoder.mindir \
-  --decoder ./mindir/sam2_decoder.mindir \
-  --image /home/SAM2/code/sam2/notebooks/images/truck.jpg \
+  --encoder /path/to/mindir/sam2_encoder.mindir \
+  --decoder /path/to/mindir/sam2_decoder.mindir \
+  --image /path/to/sam2/notebooks/images/truck.jpg \
   --point 500 375 \
-  --encoder-onnx ./onnx/sam2_encoder.onnx \
-  --decoder-onnx ./onnx/sam2_decoder.onnx \
-  --output ./mask_mslite.png \
+  --encoder-onnx /path/to/onnx/sam2_encoder.onnx \
+  --decoder-onnx /path/to/onnx/sam2_decoder.onnx \
+  --output ./output/mask_mslite.png \
   --device ascend --device-id 0
 ```
 
@@ -257,9 +237,6 @@ python infer_sam2_mslite.py \
 | `--encoder-onnx` | ONNX 参考（精度对齐用） | `None` |
 | `--decoder-onnx` | ONNX 参考（精度对齐用） | `None` |
 | `--output` | 掩码叠加图保存路径 | `None` |
-| `--runs` | 性能测试轮数 | `10` |
-| `--zero-copy` | 零拷贝：encoder→decoder device tensor 直传 | `True` |
-| `--no-zero-copy` | 禁用零拷贝（强制 Host 往返） | - |
 
 ### 执行日志
 
@@ -342,7 +319,7 @@ Ascend GE 编译（`ascend_oriented`）自动将 fp32 权重转 fp16 计算，�
 
 1. **转换报 `Convert model failed ... NULL pointer returned`，plog 显示 `AclBuildInit failed`**
    - 原因：CANN TBE 编译器依赖 `decorator`/`attrs`/`cloudpickle`/`psutil`/`scipy`/`tornado` 等 Python 包缺失。
-   - 解决方案：`pip install decorator attrs cloudpickle psutil scipy tornado`，并 `source /home/env.sh`。
+   - 解决方案：`pip install decorator attrs cloudpickle psutil scipy tornado`。
 
 2. **转换报 `i: 3 out of range: 3, cnode: ... ValueNode<If>`**
    - 原因：ONNX 图含 `If` 控制流节点，来自 `F.scaled_dot_product_attention` 的路径选择与 `Hiera._get_pos_embed` 的 `.tile()` 守卫。
