@@ -267,12 +267,12 @@ def main():
     # Pre-allocate device tensors for fixed inputs (eliminates repeated H2D)
     # Auto-adapt dtype to each model's declared input dtype
     use_prealloc = args.zero_copy and args.device == "ascend"
+    dec_ins = {inp.name: inp for inp in dec.get_inputs()}
+    pc_name = "point_coords_fp16" if "point_coords_fp16" in dec_ins else "point_coords"
     if use_prealloc:
         enc_in0 = enc.get_inputs()[0]
         img_tensor = make_device_tensor(
             image.astype(_mslite_to_np_dtype(enc_in0.dtype)), args.device_id)
-        dec_ins = {inp.name: inp for inp in dec.get_inputs()}
-        pc_name = "point_coords_fp16" if "point_coords_fp16" in dec_ins else "point_coords"
         pc_tensor = make_device_tensor(
             point_coords.astype(_mslite_to_np_dtype(dec_ins[pc_name].dtype)),
             args.device_id)
