@@ -46,7 +46,7 @@ pip install setuptools==59.5.0
 pip install yapf==0.40.1
 
 cd Path_to_FlashOcc
-git clone git@github.com:Yzichen/FlashOCC.git
+git clone git@github.com:Yzichen/FlashOCC.git FlashOcc
 
 cd Path_to_FlashOcc/FlashOcc
 git clone https://github.com/open-mmlab/mmdetection3d.git

@@ -186,7 +186,7 @@ class FlashOCCSegSumWrapper(nn.Module):
     def forward_with_argmax(self, img, ranks_depth, ranks_feat, ranks_bev):
         """forward_ori then argmax over occ logits -> per-voxel class label."""
         outs = self.forward_ori(img, ranks_depth, ranks_feat, ranks_bev)
-        pred_occ_label = outs[0].argmax(-1)
+        pred_occ_label = outs[-1].argmax(-1)
         return pred_occ_label
 
     def forward(self, img, ranks_depth, ranks_feat, ranks_bev):
@@ -262,12 +262,14 @@ def _build_test_loader(cfg):
     return dataset, data_loader
 
 def _build_model(cfg, args):
+    """Build model, load checkpoint, set to eval mode."""
     cfg.model.train_cfg = None
     model = build_model(cfg.model, test_cfg=cfg.get('test_cfg'))
     if os.path.exists(args.checkpoint):
         load_checkpoint(model, args.checkpoint, map_location='cpu')
     else:
         print(args.checkpoint, " does not exist!")
+        raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint}")
     model.to(args.device)
     model.eval()
     return model
