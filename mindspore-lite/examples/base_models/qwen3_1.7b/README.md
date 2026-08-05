@@ -2,6 +2,18 @@
 
 本教程详细介绍如何将 `Qwen3-1.7B` 模型导出为 ONNX 格式，转换为 MindSpore Lite MindIR 格式，并完成端到端推理与精度对齐验证。
 
+## 目录内容
+
+| 文件 / 目录 | 说明 |
+|---|---|
+| `export_qwen3_1_7b_onnx.py` | 一键导出 LLM Prefill / Decode 的 ONNX 模型（含 PTQ int8 量化 + SmoothQuant） |
+| `infer_qwen3_1_7b_mslite.py` | MindSpore Lite 端到端推理（prefill + decode，zero-copy + ping-pong KV） |
+| `configs/` | `converter_lite` 转换配置文件（prefill 动态分档 / decode 固定 shape） |
+| `calib.jsonl` | PTQ int8 量化校准数据（导出 Decode 时默认使用） |
+| `README.md` | 本教程 |
+
+> **注意**：本工程导出/推理的 ONNX 包含 Ascend Custom 算子（如 `RotaryMul`、`Scatter`、`IncreFlashAttention`、`PromptFlashAttention`、`AscendQuant`、`QuantBatchMatmul` 等），**无法使用 CPU/CUDA 上的 ONNX Runtime 直接推理**，仅用于通过 `converter_lite` 转换为 MindIR 后在 Ascend 部署。
+
 ---
 
 ## 1. 环境准备
@@ -64,23 +76,6 @@ python export_qwen3_1_7b_onnx.py \
   --output-dir ./qwen3_1_7b_onnx \
   --device cpu \
   --disable-torch-ptq-int8
-
-# 使用自定义校准数据导出
-python export_qwen3_1_7b_onnx.py \
-  --model-id ./Qwen3-1.7B \
-  --output-dir ./qwen3_1_7b_onnx \
-  --device cpu \
-  --torch-ptq-calib-jsonl ./calib.jsonl \
-  --torch-ptq-max-samples 32 \
-  --smooth-alpha 0.65
-
-# 导出 FP32（关闭量化，降低数值误差）
-python export_qwen3_1_7b_onnx.py \
-  --model-id ./Qwen3-1.7B \
-  --output-dir ./qwen3_1_7b_onnx \
-  --device cpu \
-  --dtype fp32 \
-  --disable-torch-ptq-int8
 ```
 
 ### 参数说明
@@ -123,7 +118,7 @@ qwen3_1_7b_onnx/
     └── onnx__* / model.* (external data)
 ```
 
-## 4. MindSpore Lite 转换
+## 3. MindSpore Lite 转换
 
 ### 转换命令
 
@@ -161,7 +156,7 @@ export KEEP_ORIGIN_DTYPE=1
 [acl_build_options]
 input_format="ND"
 input_shape="input_ids:1,-1;attention_mask:1,-1;position_ids:1,-1"
-ge.dynamicDims="10,10,10;20,20,20"
+ge.dynamicDims="10,10,10;20,20,20;30,30,30"
 
 [acl_init_options]
 ge.exec.precision_mode=force_fp32
@@ -174,7 +169,6 @@ plugin_custom_ops=All
 
 ```ini
 [acl_build_options]
-input_format="ND"
 input_shape="input_ids:1,1;attention_mask:1,512;position_ids:1,1;past_key_cache:28,1,8,512,128;past_value_cache:28,1,8,512,128"
 
 [acl_init_options]
@@ -191,7 +185,7 @@ plugin_custom_ops=All
 
 ---
 
-## 5. MindSpore Lite 推理
+## 4. MindSpore Lite 推理
 
 ### 推理命令
 
@@ -218,19 +212,22 @@ python infer_qwen3_1_7b_mslite.py \
 | `--decode-model` | Decode MindIR 路径 | 必填 |
 | `--tokenizer` | tokenizer 路径 | `./Qwen3-1.7B` |
 | `--prompt` | 输入提示词 | `"你好，请介绍一下你自己。"` |
-| `--max-new-tokens` | 最大生成 token 数 | `512` |
+| `--max-new-tokens` | 最大生成 token 数 | `128` |
 | `--max-length` | 最大序列长度 | `4096` |
+| `--dump-calib` | 追加一条 PTQ 校准记录到 JSONL 文件（供导出量化使用） | 空 |
 | `--device` | 推理设备（ascend/cpu） | `ascend` |
 | `--device-id` | 昇腾设备 ID | `0` |
 
+> **校准数据导出**：推理时加上 `--dump-calib ./calib.jsonl`，会以 JSONL 格式追加一条校准记录（`prefill_input_ids` / `prefill_attention_mask` / `prefill_position_ids` / `generated_ids`），可作为 `export_qwen3_1_7b_onnx.py --torch-ptq-calib-jsonl` 的输入，用于 PTQ int8 量化校准。
+
 ---
 
-## 6. 性能数据
+## 5. 性能数据
 
 ### 性能测试结果
 
 测试模型：Qwen3-1.7B
-测试条件：默认 PTQ INT8 量化 Decode + FP16 Prefill，输入约 128 tokens，输出约 128 tokens
+测试条件：默认 PTQ INT8 量化 Decode + FP32 Prefill，输入约 128 tokens，输出约 128 tokens
 测试环境：CANN 8.5.0，MindSpore Lite 2.8.0
 
 | 指标                       | **PTQ INT8 (300I Duo)** | **非量化 FP32 (300I Duo)** | **PTQ INT8 (800I A2)** | **非量化 FP32 (800I A2)** |
@@ -245,7 +242,7 @@ python infer_qwen3_1_7b_mslite.py \
 
 ---
 
-## 7. 常见问题
+## 6. 常见问题
 
 ### 1) `apply_chat_template` 返回类型不一致
 
@@ -267,13 +264,13 @@ python infer_qwen3_1_7b_mslite.py \
 建议逐项尝试：
 
 - 使用 `--dtype fp32` 导出
-- 使用 `--torch-dtype fp32` 做对齐评估
+- 对比量化（`--disable-torch-ptq-int8` 关闭）与未量化导出的输出
 - 检查 tokenizer 与权重目录是否一致
 - 固定相同 prompt 与 decode step 后再对比
 
 ---
 
-## 8. 参考资源
+## 7. 参考资源
 
 - [MindSpore Lite 文档](https://www.mindspore.cn/lite)
 - [Qwen3-1.7B 模型页](https://huggingface.co/Qwen/Qwen3-1.7B)
@@ -282,6 +279,6 @@ python infer_qwen3_1_7b_mslite.py \
 
 ---
 
-## 9. 许可证
+## 8. 许可证
 
 本教程遵循 Qwen3-1.7B 模型及相关依赖的许可证要求。
