@@ -261,14 +261,10 @@ class MindIRModel:
         context = msl.Context()
         if device == "Ascend":
             context.target = ["ascend"]
-            context.ascend.device_id = 5
-            self.device_str = "ascend:5"
-        elif device == "GPU":
-            context.target = ["gpu"]
-            self.device_str = "gpu"
+            context.ascend.device_id = 0
+            self.device_str = "ascend:0"
         else:
-            context.target = ["cpu"]
-            self.device_str = "cpu"
+            raise RuntimeError(device + " is not supported.")
 
         self.model.build_from_file(model_path, msl.ModelType.MINDIR, context)
         logger.info("Loaded MINDIR model: %s", model_path)
@@ -572,7 +568,7 @@ def main():
                         default=os.path.join(os.path.dirname(__file__),
                                              "mindir_output_fp16", "denoise_step.mindir"),
                         help="Path to denoise_step MindIR")
-    parser.add_argument("--device", default="Ascend", choices=["Ascend", "GPU", "CPU"])
+    parser.add_argument("--device", default="Ascend", choices=["Ascend"])
     parser.add_argument("--prompt", default="pick up the cup", help="Task prompt")
     parser.add_argument("--num_steps", type=int, default=10, help="Number of denoising steps")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
