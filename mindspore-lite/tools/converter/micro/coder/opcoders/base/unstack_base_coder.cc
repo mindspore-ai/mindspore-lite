@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,8 +68,15 @@ int UnstackBaseCoder::DoCode(CoderContext *ctx) {
 
   size_t out_num = output_tensors_.size();
   unstack_parameter_->num_ = static_cast<int>(out_num);
-  int data_type_len = input_tensor_->data_type() == kNumberTypeFloat16 ? sizeof(float16) : sizeof(float);
+  // The nnacl `Unstack` kernel is a `void*` byte-copy (signature:
+  // Unstack(const void *input, void **output, const UnstackParameter *para, int data_size)); the
+  // dtype is carried only by `data_type_len` in bytes. So UnstackBaseCoder is dtype-agnostic and
+  // serves float32/int8/int32/float16 with identical codegen (same pattern as ReshapeBaseCoder);
+  // there is no int8-specific path.
+  int data_type_len = static_cast<int>(lite::DataTypeSize(input_tensor_->data_type()));
 
+  // NNaclFp32Serializer is used ONLY for CodeStruct (serializing UnstackParameter); it inherits
+  // from the base Serializer and never casts the data pointer to float, so it is safe for int8.
   nnacl::NNaclFp32Serializer code;
   code.CodeStruct("unstack_parameter", *unstack_parameter_);
   code << "    void* output_addr_array[" << out_num << "] = {";
@@ -84,6 +91,7 @@ int UnstackBaseCoder::DoCode(CoderContext *ctx) {
 }
 
 REG_OPERATOR_CODER(kAllTargets, kNumberTypeFloat32, PrimitiveType_Unstack, CPUOpCoderCreator<UnstackBaseCoder>)
+REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_Unstack, CPUOpCoderCreator<UnstackBaseCoder>)
 REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt32, PrimitiveType_Unstack, CPUOpCoderCreator<UnstackBaseCoder>)
 REG_OPERATOR_CODER(kARM32, kNumberTypeFloat16, PrimitiveType_Unstack, CPUOpCoderCreator<UnstackBaseCoder>)
 REG_OPERATOR_CODER(kARM64, kNumberTypeFloat16, PrimitiveType_Unstack, CPUOpCoderCreator<UnstackBaseCoder>)

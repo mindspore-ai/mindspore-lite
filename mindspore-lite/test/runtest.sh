@@ -112,6 +112,8 @@ echo 'run flatbuffers verifier ut test'
 ./lite-test --gtest_filter=LstmFp32Test.*
 ./lite-test --gtest_filter=EluFp32Test.*
 ./lite-test --gtest_filter=ErfFp32Test.*
+./lite-test --gtest_filter=StackFp32Test.*
+./lite-test --gtest_filter=UnstackFp32Test.*
 ./lite-test --gtest_filter=GeluFp32Test.*
 ./lite-test --gtest_filter=TriuTrilFp32Test.*
 ./lite-test --gtest_filter=DepthToSpaceFp32Test.*
@@ -135,6 +137,8 @@ echo 'run flatbuffers verifier ut test'
 ./lite-test --gtest_filter=SubInt8Test.*
 ./lite-test --gtest_filter=EluInt8Test.*
 ./lite-test --gtest_filter=ErfInt8Test.*
+./lite-test --gtest_filter=StackInt8Test.*
+./lite-test --gtest_filter=UnstackInt8Test.*
 ./lite-test --gtest_filter=GeluInt8Test.*
 ./lite-test --gtest_filter=TriuTrilInt8Test.*
 ./lite-test --gtest_filter=DepthToSpaceInt8Test.*

@@ -218,6 +218,12 @@ int AnfExporter::ConvertInputQuantParams(const std::unique_ptr<schema::MetaGraph
     auto activate_index = dst_node->inputIndex[i];
     MS_CHECK_TRUE_MSG(meta_graph->allTensors.size() > activate_index, RET_ERROR, "allTensors size is wrong.");
     auto tensor_input = meta_graph->allTensors[activate_index].get();
+    if (i + quant::kPrimOffset >= cnode->size()) {
+      MS_LOG(WARNING) << "[input][" << i << "] node: " << dst_node->name
+                      << " has no matching cnode input (cnode size=" << cnode->size()
+                      << "), skip setting input quant param.";
+      continue;
+    }
     auto input_node = cnode->input(i + quant::kPrimOffset);
     auto status = SetInputQuantParamToTensorT(primitive, input_node, tensor_input);
     if (status != RET_NO_CHANGE && status != RET_OK) {

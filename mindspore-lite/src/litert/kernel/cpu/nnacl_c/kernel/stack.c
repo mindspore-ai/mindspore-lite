@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Huawei Technologies Co., Ltd
+ * Copyright 2023-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -136,3 +136,4 @@ KernelBase *CreateStack(OpParameter *param, int data_type) {
 
 REG_KERNEL_CREATOR(PrimType_Stack, kNumberTypeFloat32, CreateStack)
 REG_KERNEL_CREATOR(PrimType_Stack, kNumberTypeInt32, CreateStack)
+REG_KERNEL_CREATOR(PrimType_Stack, kNumberTypeInt8, CreateStack)

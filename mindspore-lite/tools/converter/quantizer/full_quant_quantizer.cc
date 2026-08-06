@@ -430,10 +430,20 @@ int FullQuantQuantizer::QuantNode(const FuncGraphPtr &func_graph) {
       MS_LOG(ERROR) << "infos is empty.";
       return RET_ERROR;
     }
+    // For self-infer ops (e.g. Unstack), all outputs share the input's quant params.
+    static const std::set<PrimitivePtr> kSelfInferOps = {prim::kPrimUnstack};
+    bool is_self_infer = CheckNodeInSet(cnode, kSelfInferOps);
+    std::vector<schema::QuantParamT> self_infer_params;
+    if (is_self_infer) {
+      auto &input_infos = (*inputs_diverg_info)[op_name];
+      if (!input_infos.empty() && input_infos.begin()->second != nullptr) {
+        self_infer_params = GetQuantParam(cnode, input_infos.begin()->second);
+      }
+    }
+
     std::vector<ValuePtr> quantization_list;
     for (size_t index = 0; index < infos.size(); index++) {
-      auto &info = infos.at(index);
-      auto quant_params = GetQuantParam(cnode, info);
+      auto quant_params = is_self_infer ? self_infer_params : GetQuantParam(cnode, infos.at(index));
       auto quantization_ptr = quant::ConvertQuantParamTToQuantizationParam(quant_params);
       if (quantization_ptr != nullptr) {
         quantization_list.push_back(quantization_ptr);
@@ -505,6 +515,8 @@ void FullQuantQuantizer::InitCpuConfig() {
     (void)support_int8_ops_.emplace(prim::kPrimErf);
     (void)support_int8_ops_.emplace(prim::kPrimDepthToSpace);
     (void)support_int8_ops_.emplace(prim::kPrimSpaceToDepth);
+    (void)support_int8_ops_.emplace(prim::kPrimStack);
+    (void)support_int8_ops_.emplace(prim::kPrimUnstack);
     (void)support_int8_ops_.emplace(prim::kPrimTriu);
     (void)support_int8_ops_.emplace(prim::kPrimTril);
   }
