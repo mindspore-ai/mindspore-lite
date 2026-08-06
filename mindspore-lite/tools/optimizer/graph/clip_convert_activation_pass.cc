@@ -92,7 +92,7 @@ bool ClipConvertActivationPass::Run(const FuncGraphPtr &graph) {
     MS_ASSERT(manager != nullptr);
     auto primitive_c = std::make_shared<mindspore::ops::Activation>();
     MS_CHECK_TRUE_MSG(primitive_c != nullptr, false, "primitive_c is nullptr");
-    primitive_c->Init(0, min, max, mindspore::HARD_TANH);
+    primitive_c->Init(0, min, max, mindspore::HARD_TANH, false, 0);
     if (is_relu6) {
       primitive_c->set_activation_type(mindspore::RELU6);
     }

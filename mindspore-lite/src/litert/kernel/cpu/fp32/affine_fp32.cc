@@ -33,6 +33,9 @@ namespace mindspore::kernel {
 int AffineFp32CPUKernel::DoActivation(lite::Tensor *tensor) {
   auto data = static_cast<float *>(tensor->MutableData());
   int length = tensor->ElementsNum();
+  // keep original default alpha is 1/6, beta is 1/2.
+  const float hsigmoid_alpha = 1.0f / 6.0f;
+  const float hsigmoid_beta = 0.5f;
   switch (schema::ActivationType(affine_parameter_->activation_type_)) {
     case schema::ActivationType_RELU:
       return Fp32Relu(data, length, data);
@@ -47,7 +50,7 @@ int AffineFp32CPUKernel::DoActivation(lite::Tensor *tensor) {
     case schema::ActivationType_HSWISH:
       return HSwish(data, length, data);
     case schema::ActivationType_HSIGMOID:
-      return HSigmoid(data, length, data);
+      return HSigmoid(data, length, data, hsigmoid_alpha, hsigmoid_beta);
     case schema::ActivationType_SOFTPLUS:
       return Softplus(data, length, data);
     default:

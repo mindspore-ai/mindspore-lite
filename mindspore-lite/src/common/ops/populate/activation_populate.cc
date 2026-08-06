@@ -44,6 +44,7 @@ OpParameter *PopulateRelu6Parameter(const void *prim) {
   param->min_val_ = value->min_val();
   param->max_val_ = value->max_val();
   param->approximate_ = value->approximate();
+  param->beta_ = value->beta();
 
   std::set<int> activation_types = {
     schema::ActivationType_RELU,    schema::ActivationType_RELU6,    schema::ActivationType_LEAKY_RELU,

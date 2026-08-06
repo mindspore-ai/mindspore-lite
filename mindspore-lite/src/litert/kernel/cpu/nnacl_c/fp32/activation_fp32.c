@@ -158,14 +158,13 @@ int HSwish(const float *src, int length, float *dst) {
   return NNACL_OK;
 }
 
-int HSigmoid(const float *src, int length, float *dst) {
+int HSigmoid(const float *src, int length, float *dst, float alpha, float beta) {
   int i = 0;
 
-  SIMD_RUN_NO_SCALAR(HSigmoid, i, src, length, dst);
+  SIMD_RUN_NO_SCALAR(HSigmoid, i, src, length, dst, alpha, beta);
 
   for (; i < length; ++i) {
-    float relu6 = MSMIN(MSMAX(src[i] + C3NUM, 0), C6NUM);
-    dst[i] = relu6 / C6NUM;
+    dst[i] = MSMIN(MSMAX(alpha * src[i] + beta, 0.0f), 1.0f);
   }
   return NNACL_OK;
 }

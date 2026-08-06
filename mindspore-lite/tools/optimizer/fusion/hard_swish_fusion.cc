@@ -76,7 +76,7 @@ const AnfNodePtr HardSwishFusion::Process(const FuncGraphPtr &func_graph, const 
   // create new node
   auto hard_swish_primitive = std::make_shared<ops::Activation>();
   MS_CHECK_TRUE_RET(hard_swish_primitive != nullptr, nullptr);
-  hard_swish_primitive->Init(0, 0, FLT_MAX, mindspore::HSWISH);
+  hard_swish_primitive->Init(0, 0, FLT_MAX, mindspore::HSWISH, false, 0);
   auto hard_swish_primitive_c = hard_swish_primitive->GetPrim();
   MS_CHECK_TRUE_RET(hard_swish_primitive_c != nullptr, nullptr);
 

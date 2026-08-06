@@ -15,6 +15,7 @@
  */
 
 #include "coder/opcoders/nnacl/int8/sigmoid_int8_coder.h"
+#include "coder/opcoders/nnacl/int8/hsigmoid_int8_coder.h"
 #include "coder/opcoders/nnacl/int8/relux_int8_coder.h"
 #include "coder/opcoders/nnacl/int8/tanh_int8_coder.h"
 #include "src/common/ops/populate/populate_register.h"
@@ -64,6 +65,10 @@ std::unique_ptr<OperatorCoder> CPUActivationINT8CoderCreator(const std::vector<T
       break;
     case schema::ActivationType_TANH:
       coder = CPUOpCoderCreator<TanhInt8Coder>(in_tensors, out_tensors, node, node_index, target, schema_version);
+      break;
+    case schema::ActivationType_HSIGMOID:
+      coder =
+        CPUOpCoderCreator<HardSigmoidInt8Coder>(in_tensors, out_tensors, node, node_index, target, schema_version);
       break;
     case schema::ActivationType_LEAKY_RELU:
       coder = CPUOpCoderCreator<LeakyReluInt8Coder>(in_tensors, out_tensors, node, node_index, target, schema_version);

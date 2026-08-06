@@ -250,6 +250,7 @@ OP_ATTR(alpha, float)
 OP_ATTR(min_val, float)
 OP_ATTR(max_val, float)
 OP_ATTR_WITH_VALUE(approximate, bool, false)
+OP_ATTR(beta, float)
 OP_SCHEMA_DEF_END(Activation)
 
 OP_SCHEMA_DEF(ActivationGrad)

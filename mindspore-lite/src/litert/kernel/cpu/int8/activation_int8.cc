@@ -16,6 +16,7 @@
 
 #include "src/litert/kernel/cpu/int8/relux_int8.h"
 #include "src/litert/kernel/cpu/int8/hswish_int8.h"
+#include "src/litert/kernel/cpu/int8/hsigmoid_int8.h"
 #include "src/litert/kernel/cpu/int8/sigmoid_int8.h"
 #include "src/litert/kernel/cpu/int8/tanh_int8.h"
 #include "src/litert/kernel/cpu/int8/leaky_relu_int8.h"
@@ -51,6 +52,9 @@ kernel::LiteKernel *CpuActivationInt8KernelCreator(const std::vector<lite::Tenso
       break;
     case schema::ActivationType_HSWISH:
       kernel = new (std::nothrow) HswishInt8CPUKernel(parameter, inputs, outputs, ctx);
+      break;
+    case schema::ActivationType_HSIGMOID:
+      kernel = new (std::nothrow) HardSigmoidInt8CPUKernel(parameter, inputs, outputs, ctx);
       break;
     case schema::ActivationType_SIGMOID:
       kernel = new (std::nothrow) SigmoidInt8CPUKernel(parameter, inputs, outputs, ctx);

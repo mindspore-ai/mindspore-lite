@@ -37,8 +37,9 @@ class OPS_API Activation : public BaseOperator {
   /// \param[in] activation_type Define the activation type.
   /// \param[in] approximate Define a boolean value to decide whether to use an approximate algorithm, only useful for
   ///            GELU.
+  /// \param[in] beta Define an offset factor. Kept as the last argument for compatibility with existing call sites.
   void Init(const float alpha = 0.2, const float min_val = -1.0, const float max_val = 1.0,
-            const ActivationType &activation_type = NO_ACTIVATION, bool approximate = false);
+            const ActivationType &activation_type = NO_ACTIVATION, bool approximate = false, const float beta = 0.5);
 
   /// \brief Method to set alpha attribute.
   ///
@@ -60,6 +61,17 @@ class OPS_API Activation : public BaseOperator {
   /// \param[in] activation_type Define the activation type.
   void set_activation_type(const ActivationType &activation_type);
 
+  /// \brief Method to set approximate attribute.
+  ///
+  /// \param[in] approximate Define a boolean value to decide whether to use an approximate algorithm, only useful for
+  ///            GELU.
+  void set_approximate(bool approximate);
+
+  /// \brief Method to set beta attribute.
+  ///
+  /// \param[in] beta Define an offset factor.
+  void set_beta(const float beta);
+
   /// \brief Method to get alpha attribute.
   ///
   /// \return alpha attribute.
@@ -80,16 +92,15 @@ class OPS_API Activation : public BaseOperator {
   /// \return activation type.
   ActivationType get_activation_type() const;
 
-  /// \brief Method to set approximate attribute.
-  ///
-  /// \param[in] approximate Define a boolean value to decide whether to use an approximate algorithm, only useful for
-  ///            GELU.
-  void set_approximate(bool approximate);
-
   /// \brief Method to get approximate attribute.
   ///
   /// \return approximate attribute.
   bool get_approximate() const;
+
+  /// \brief Method to get beta attribute.
+  ///
+  /// \return beta attribute.
+  float get_beta() const;
 };
 }  // namespace ops
 }  // namespace mindspore

@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,18 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef NNACL_ACTIVATION_PARAMETER_H_
-#define NNACL_ACTIVATION_PARAMETER_H_
+#ifndef NNACL_INT8_HARDSIGMOID_INT8_H_
+#define NNACL_INT8_HARDSIGMOID_INT8_H_
 
 #include "nnacl_c/op_base.h"
-typedef struct ActivationParameter {
-  OpParameter op_parameter_;
-  int type_;
-  float alpha_;
-  float min_val_;
-  float max_val_;
-  bool approximate_;
-  float beta_;
-} ActivationParameter;
 
-#endif  // NNACL_ACTIVATION_PARAMETER_H_
+#ifdef __cplusplus
+extern "C" {
+#endif
+int HardSigmoidInt8InitLUT(float input_scale, int32_t input_zp, float output_scale, int32_t output_zp, float alpha,
+                           float beta, int8_t *table);
+int HardSigmoidInt8(const int8_t *src, int length, int8_t *dst, const int8_t *table);
+#ifdef __cplusplus
+}
+#endif
+
+#endif  // NNACL_INT8_HARDSIGMOID_INT8_H_
