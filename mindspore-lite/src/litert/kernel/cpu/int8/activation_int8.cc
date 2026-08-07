@@ -20,6 +20,7 @@
 #include "src/litert/kernel/cpu/int8/sigmoid_int8.h"
 #include "src/litert/kernel/cpu/int8/tanh_int8.h"
 #include "src/litert/kernel/cpu/int8/leaky_relu_int8.h"
+#include "src/litert/kernel/cpu/int8/celu_int8.h"
 #include "src/litert/kernel/cpu/int8/elu_int8.h"
 #include "src/litert/kernel/cpu/int8/gelu_int8.h"
 #include "schema/model_generated.h"
@@ -64,6 +65,9 @@ kernel::LiteKernel *CpuActivationInt8KernelCreator(const std::vector<lite::Tenso
       break;
     case schema::ActivationType_ELU:
       kernel = new (std::nothrow) EluInt8CPUKernel(parameter, inputs, outputs, ctx);
+      break;
+    case schema::ActivationType_CELU:
+      kernel = new (std::nothrow) CeluInt8CPUKernel(parameter, inputs, outputs, ctx);
       break;
     case schema::ActivationType_TANH:
       kernel = new (std::nothrow) TanhInt8CPUKernel(parameter, inputs, outputs, ctx);

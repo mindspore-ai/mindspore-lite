@@ -531,6 +531,7 @@ void FullQuantQuantizer::InitCpuConfig() {
     (void)support_activation_.emplace(ELU);
     (void)support_activation_.emplace(GELU);
     (void)support_activation_.emplace(HSIGMOID);
+    (void)support_activation_.emplace(CELU);
   }
 }
 

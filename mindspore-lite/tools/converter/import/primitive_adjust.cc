@@ -88,6 +88,7 @@ using mindspore::ops::kNameArgmax;
 using mindspore::ops::kNameArgmin;
 using mindspore::ops::kNameAvgPool;
 using mindspore::ops::kNameAvgPoolGrad;
+using mindspore::ops::kNameCeLU;
 using mindspore::ops::kNameConv2D;
 using mindspore::ops::kNameConv2DBackpropFilter;
 using mindspore::ops::kNameConv2DBackpropInput;
@@ -170,6 +171,7 @@ std::map<std::string, mindspore::ActivationType> activation_map = {{ops::kNameEl
                                                                    {kNameHSigmoid, mindspore::HSIGMOID},
                                                                    {kNameHSigmoidGrad, mindspore::HSIGMOID},
                                                                    {kNameHSwish, mindspore::HSWISH},
+                                                                   {kNameCeLU, mindspore::CELU},
                                                                    {kNameHSwishGrad, mindspore::HSWISH},
                                                                    {kNameReluGrad, mindspore::RELU},
                                                                    {kNameReLU6Grad, mindspore::RELU6},
@@ -712,6 +714,7 @@ REGIST_PRIMITIVE_ADJUST(kNameArgmin, MoveAttrMapCommon<ops::ArgMinFusion>)
 REGIST_PRIMITIVE_ADJUST(kNameArgMinWithValue, MoveAttrMapCommon<ops::ArgMinFusion>)
 REGIST_PRIMITIVE_ADJUST(kNameAvgPool, MoveAttrPool)
 REGIST_PRIMITIVE_ADJUST(kNameAvgPoolGrad, MoveAttrPoolGrad)
+REGIST_PRIMITIVE_ADJUST(kNameCeLU, MoveAttrMapActivation)
 REGIST_PRIMITIVE_ADJUST(kNameAvgPoolGradGpu, MoveAttrPoolGrad)
 REGIST_PRIMITIVE_ADJUST(kNameAvgPoolGradCpu, MoveAttrPoolGrad)
 REGIST_PRIMITIVE_ADJUST(kNameBatchMatMul, MoveAttrMapCommon<ops::MatMulFusion>)

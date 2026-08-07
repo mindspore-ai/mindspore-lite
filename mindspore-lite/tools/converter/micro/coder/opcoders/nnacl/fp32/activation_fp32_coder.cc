@@ -76,6 +76,9 @@ int ActivationFP32Coder::DoCode(CoderContext *const context) {
     case schema::ActivationType_GELU:
       code.CodeFunction("Gelu", input_tensor_, count, output_tensor_, activation_parameter->approximate_);
       break;
+    case schema::ActivationType_CELU:
+      code.CodeFunction("Celu", input_tensor_, count, output_tensor_, activation_parameter->alpha_);
+      break;
     default:
       MS_LOG(ERROR) << "Activation type error";
       return RET_ERROR;

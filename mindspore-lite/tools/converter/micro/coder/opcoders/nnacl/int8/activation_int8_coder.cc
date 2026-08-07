@@ -23,6 +23,7 @@
 #include "schema/model_generated.h"
 #include "src/common/version_manager.h"
 #include "coder/opcoders/nnacl/int8/leaky_relu_int8_coder.h"
+#include "coder/opcoders/nnacl/int8/celu_int8_coder.h"
 #include "coder/opcoders/nnacl/int8/elu_int8_coder.h"
 #include "coder/opcoders/nnacl/int8/gelu_int8_coder.h"
 
@@ -78,6 +79,9 @@ std::unique_ptr<OperatorCoder> CPUActivationINT8CoderCreator(const std::vector<T
       break;
     case schema::ActivationType_GELU:
       coder = CPUOpCoderCreator<GeluInt8Coder>(in_tensors, out_tensors, node, node_index, target, schema_version);
+      break;
+    case schema::ActivationType_CELU:
+      coder = CPUOpCoderCreator<CeluInt8Coder>(in_tensors, out_tensors, node, node_index, target, schema_version);
       break;
     default:
       break;

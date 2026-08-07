@@ -247,7 +247,7 @@ int Elu(const float *src, int length, float *dst, float alpha) {
   return NNACL_OK;
 }
 
-void Celu(const float *src, int length, float *dst, float alpha) {
+int Celu(const float *src, int length, float *dst, float alpha) {
   int i = 0;
 
   SIMD_RUN_NO_SCALAR(Celu, i, src, length, dst, alpha);
@@ -255,7 +255,7 @@ void Celu(const float *src, int length, float *dst, float alpha) {
   for (; i < length; ++i) {
     dst[i] = src[i] > 0 ? src[i] : (expm1(src[i] / alpha) * alpha);
   }
-  return;
+  return NNACL_OK;
 }
 
 int HardShrink(const float *src, int length, float *dst, float lambd) {
