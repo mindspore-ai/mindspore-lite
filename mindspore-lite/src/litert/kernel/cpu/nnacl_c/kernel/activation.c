@@ -70,6 +70,9 @@ int activation_fp32_run(ActivationStruct *activation, int task_id, int count, in
       return Softplus(input + task_id * stride, count, output + task_id * stride);
     case ActType_Elu:
       return Elu(input + task_id * stride, count, output + task_id * stride, param->alpha_);
+    case ActType_Celu:
+      Celu(input + task_id * stride, count, output + task_id * stride, param->alpha_);
+      return NNACL_OK;
     default:
       return NNACL_ACTIVATION_TYPE_INVALID;
   }
@@ -171,7 +174,8 @@ KernelBase *CreateActivation(OpParameter *param, int data_type) {
   if (data_type == kNumberTypeFloat32 || data_type == kNumberTypeFloat16) {
     if (type != ActType_Relu && type != ActType_Relu6 && type != ActType_LeakyRelu && type != ActType_Sigmoid &&
         type != ActType_Tanh && type != ActType_HSwish && type != ActType_Swish && type != ActType_HardTanh &&
-        type != ActType_Gelu && type != ActType_HSigmoid && type != ActType_Softplus && type != ActType_Elu) {
+        type != ActType_Gelu && type != ActType_HSigmoid && type != ActType_Softplus && type != ActType_Elu &&
+        type != ActType_Celu) {
       return NULL;
     }
   }

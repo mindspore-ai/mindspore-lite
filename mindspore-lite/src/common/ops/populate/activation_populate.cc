@@ -50,7 +50,8 @@ OpParameter *PopulateRelu6Parameter(const void *prim) {
     schema::ActivationType_RELU,    schema::ActivationType_RELU6,    schema::ActivationType_LEAKY_RELU,
     schema::ActivationType_SIGMOID, schema::ActivationType_TANH,     schema::ActivationType_SWISH,
     schema::ActivationType_HSWISH,  schema::ActivationType_HSIGMOID, schema::ActivationType_HARD_TANH,
-    schema::ActivationType_GELU,    schema::ActivationType_SOFTPLUS, schema::ActivationType_ELU};
+    schema::ActivationType_GELU,    schema::ActivationType_SOFTPLUS, schema::ActivationType_ELU,
+    schema::ActivationType_CELU};
   if (activation_types.find(param->type_) == activation_types.end()) {
     MS_LOG(ERROR) << "invalid activation type: " << param->type_;
     free(param);

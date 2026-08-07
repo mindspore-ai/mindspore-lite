@@ -184,6 +184,15 @@ typedef struct GeluQuantArg {
   int thread_num_;
 } GeluQuantArg;
 
+typedef struct CeluQuantArg {
+  QuantArg in_args_;
+  QuantArg out_args_;
+  float alpha_;
+  int input_dim_;
+  int element_num;
+  int thread_num_;
+} CeluQuantArg;
+
 typedef struct ResizeQuantArg {
   int32_t ratio_x_;
   int32_t ratio_y_;

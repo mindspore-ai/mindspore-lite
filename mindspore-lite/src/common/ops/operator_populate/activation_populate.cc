@@ -21,6 +21,7 @@
 #include "infer/ops_func_impl/hswish.h"
 #include "infer/softplus.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
+#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_e.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_g.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_h.h"
@@ -35,6 +36,7 @@ using mindspore::ops::kBeta;
 using mindspore::ops::kMaxVal;
 using mindspore::ops::kMinVal;
 using mindspore::ops::kNameActivation;
+using mindspore::ops::kNameCeLU;
 using mindspore::ops::kNameElu;
 using mindspore::ops::kNameGeLU;
 using mindspore::ops::kNameHSigmoid;
@@ -58,8 +60,8 @@ OpParameter *PopulateActivationOpParameter(const BaseOperatorPtr &base_operator)
   mindspore::ValuePtr attr = base_operator->GetPrim()->GetAttr(kActivationType);
   if (attr != nullptr) {
     auto activation_type = ActivationType(GetValue<int64_t>(attr));
-    static const std::set<ActivationType> activation_types = {RELU,   RELU6,    LEAKY_RELU, SIGMOID, TANH,     SWISH,
-                                                              HSWISH, HSIGMOID, HARD_TANH,  GELU,    SOFTPLUS, ELU};
+    static const std::set<ActivationType> activation_types = {
+      RELU, RELU6, LEAKY_RELU, SIGMOID, TANH, SWISH, HSWISH, HSIGMOID, HARD_TANH, GELU, SOFTPLUS, ELU, CELU};
     if (activation_types.find(activation_type) == activation_types.end()) {
       MS_LOG(ERROR) << "invalid activation type: " << activation_type;
       free(param);
@@ -69,9 +71,10 @@ OpParameter *PopulateActivationOpParameter(const BaseOperatorPtr &base_operator)
   } else {
     auto type_name = base_operator->name();
     static const std::map<std::string, ActivationType> op_type_map = {
-      {kNameReLU, RELU},         {kNameReLU6, RELU6},   {kNameLeakyRelu, LEAKY_RELU}, {kNameSigmoid, SIGMOID},
-      {kNameTanh, TANH},         {kNameHSwish, HSWISH}, {kNameHSigmoid, HSIGMOID},    {kNameGeLU, GELU},
-      {kNameSoftplus, SOFTPLUS}, {kNameElu, ELU}};
+      {kNameReLU, RELU},         {kNameReLU6, RELU6}, {kNameLeakyRelu, LEAKY_RELU},
+      {kNameSigmoid, SIGMOID},   {kNameTanh, TANH},   {kNameHSwish, HSWISH},
+      {kNameHSigmoid, HSIGMOID}, {kNameGeLU, GELU},   {kNameSoftplus, SOFTPLUS},
+      {kNameElu, ELU},           {kNameCeLU, CELU}};
     auto iter = op_type_map.find(type_name);
     if (iter == op_type_map.end()) {
       MS_LOG(ERROR) << "invalid activation type: " << type_name;
@@ -116,5 +119,6 @@ REG_OPERATOR_POPULATE(kNameHSigmoid, PrimitiveType_Activation, PopulateActivatio
 REG_OPERATOR_POPULATE(kNameGeLU, PrimitiveType_Activation, PopulateActivationOpParameter)
 REG_OPERATOR_POPULATE(kNameSoftplus, PrimitiveType_Activation, PopulateActivationOpParameter)
 REG_OPERATOR_POPULATE(kNameElu, PrimitiveType_Activation, PopulateActivationOpParameter)
+REG_OPERATOR_POPULATE(kNameCeLU, PrimitiveType_Activation, PopulateActivationOpParameter)
 }  // namespace lite
 }  // namespace mindspore

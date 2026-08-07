@@ -39,7 +39,7 @@ int HardTanh(const float *src, int length, float *dst, float min_val, float max_
 int Gelu(const float *src, int length, float *dst, bool approximate);
 int Softplus(const float *src, int length, float *dst);
 int Elu(const float *src, int length, float *dst, float alpha);
-void Celu(const float *src, int length, float *dst, float alpha);
+int Celu(const float *src, int length, float *dst, float alpha);
 float TanhOpt(float src);
 int HardShrink(const float *src, int length, float *dst, float lambd);
 int SoftShrink(const float *src, int length, float *dst, float lambd);
