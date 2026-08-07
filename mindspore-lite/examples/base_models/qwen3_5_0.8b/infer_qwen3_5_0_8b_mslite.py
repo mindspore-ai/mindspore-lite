@@ -288,13 +288,12 @@ class Qwen35Inferencer:
                 mslite.Tensor(shape=shape, dtype=t.dtype, device=self.device_str)
             )
 
-        # ── Pre-allocate vision output device tensor (image_size fixed) ──
+        # ── Vision output meta (dynamic shape; tensor allocated per inference) ──
         vis_out_meta = self.vision_model.get_outputs()
-        vis_shape = [int(x) if int(x) > 0 else 1 for x in vis_out_meta[0].shape]
-        print(f"  Vision output: shape={vis_shape}, dtype={vis_out_meta[0].dtype}")
-        self.t_vision_out = mslite.Tensor(
-            shape=vis_shape, dtype=vis_out_meta[0].dtype, device=self.device_str,
-        )
+        print(f"  Vision output: shape={[int(x) for x in vis_out_meta[0].shape]}, "
+              f"dtype={vis_out_meta[0].dtype}")
+        self.vis_out_meta = vis_out_meta[0]
+        self.t_vision_out = None
 
         print(f"Loading processor from {processor_id}...")
         self.cfg = AutoConfig.from_pretrained(processor_id)
@@ -437,10 +436,26 @@ class Qwen35Inferencer:
 
         print("Running vision tower...")
         t0 = time.time()
-        vision_feed = {"pixel_values": pixel_values.astype(np.float32)}
+        # Vision model inputs (dynamic grid): grid_h / grid_w are 1-D dummy
+        # tensors whose LENGTH encodes the grid dimension (from grid_thw).
+        grid_thw = image_grid_thw[0]  # [t, h, w]
+        grid_h_val = int(grid_thw[1])
+        grid_w_val = int(grid_thw[2])
+        merge = int(self.cfg.vision_config.spatial_merge_size)
+        n_out_tokens = (grid_h_val // merge) * (grid_w_val // merge)
+        # Output dim0 is dynamic (merged tokens); dim1.. are static from meta.
+        vis_shape = [n_out_tokens] + [int(x) for x in self.vis_out_meta.shape[1:]]
+        self.t_vision_out = mslite.Tensor(
+            shape=vis_shape, dtype=self.vis_out_meta.dtype, device=self.device_str,
+        )
+        vision_feed = {
+            "pixel_values": pixel_values.astype(np.float32),
+            "grid_h": np.zeros((grid_h_val,), dtype=np.float32),
+            "grid_w": np.zeros((grid_w_val,), dtype=np.float32),
+        }
         vision_out = self.vision_model.predict(
             _build_mslite_inputs(self.vision_model, vision_feed,
-                                 preferred_order=["pixel_values"]),
+                                 preferred_order=["pixel_values", "grid_h", "grid_w"]),
             outputs=[self.t_vision_out],
         )
         # Vision output is now on device → pass directly to prefill (zero-copy)

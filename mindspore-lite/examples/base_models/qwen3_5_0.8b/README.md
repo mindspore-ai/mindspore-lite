@@ -2,6 +2,17 @@
 
 本教程详细介绍如何将 Qwen3.5-0.8B 模型导出为 ONNX 格式，转换为 MindSpore Lite MindIR 格式，并在 Ascend NPU 上完成端到端推理部署。
 
+## 目录内容
+
+| 文件 / 目录 | 说明 |
+|---|---|
+| `export_qwen3_5_0_8b_onnx.py` | 一键导出 Vision Tower / LLM Prefill / LLM Decode 的 ONNX 模型 |
+| `infer_qwen3_5_0_8b_mslite.py` | MindSpore Lite 端到端推理（vision + prefill + decode） |
+| `configs/` | `converter_lite` 转换配置文件（vision / prefill / decoder 各一份，**转换时必须全部指定**） |
+| `README.md` | 本教程 |
+
+> **注意**：本工程导出/推理的 ONNX 包含 Ascend Custom 算子（如 `ChunkGatedDeltaRule`、`RecurrentGatedDeltaRule`、`IncreFlashAttention`、`VisionFlashAttention`、`PromptFlashAttention` 等），**无法使用 CPU/CUDA 上的 ONNX Runtime 直接推理**，仅用于通过 `converter_lite` 转换为 MindIR 后在 Ascend 部署。
+
 Qwen3.5-0.8B 是一个同时处理图像与文本的多模态大模型，采用混合线性注意力（GatedDeltaNet）与全注意力架构。模型被拆分为 3 个 ONNX 文件：
 
 1. **Vision Tower**（`qwen3_5_vision.onnx`）：对图像进行编码，输出视觉特征
@@ -52,7 +63,7 @@ python export_qwen3_5_0_8b_onnx.py \
   --vision-image-size 1024
 ```
 
-> 注：导出时始终启用以下自定义算子：ChunkGatedDeltaRule（prefill 线性注意力）、RecurrentGatedDeltaRule（decode 线性注意力，由 `--use-rgdr-custom` 控制）、IncreFlashAttention（decode 全注意力）、VisionFlashAttention（vision 注意力）、PromptFlashAttention（prefill 全注意力）。
+> 注：导出时始终启用以下自定义算子：ChunkGatedDeltaRule（prefill 线性注意力）、IncreFlashAttention（decode 全注意力）、VisionFlashAttention（vision 注意力）、PromptFlashAttention（prefill 全注意力）；RecurrentGatedDeltaRule（decode 线性注意力）默认**关闭**，需通过 `--use-rgdr-custom` 启用。
 
 ### 参数说明
 
@@ -172,13 +183,16 @@ $Convert --fmk=ONNX \
 **`configs/config_vision.ini`**
 
 ```ini
+[acl_init_options]
+ge.exec.precision_mode=force_fp32
+
 [ascend_context]
 plugin_custom_ops=All
 
 [acl_build_options]
-input_format='ND'
-input_shape="pixel_values:-1,1536"
-ge.dynamicDims="256;4096"
+input_format="ND"
+input_shape="pixel_values:-1,1536;grid_h:-1;grid_w:-1"
+ge.dynamicDims="256,16,16;4096,64,64"
 ```
 
 **`configs/config_prefill.ini`**
@@ -249,7 +263,7 @@ python infer_qwen3_5_0_8b_mslite.py \
 | `--image`          | 输入图像路径或 URL                          | `https://hbr.org/resources/images/article_assets/2018/03/mar18_9_824179306.jpg`          |
 | `--prompt`         | 输入文本                                  | `"Describe this image."` |
 | `--max-new-tokens` | 最大生成 token 数                          | `128`                   |
-| `--image-size`     | 图像尺寸（必须与导出 `--vision-image-size` 一致） | `None`（默认 1024）      |
+| `--image-size`     | 图像尺寸 | `256`                   |
 | `--device`         | 推理设备（ascend/cpu）                      | `ascend`                |
 | `--device-id`      | Ascend 设备 ID                          | `0`                     |
 

@@ -1158,12 +1158,12 @@ def vision_mlp_block(hidden_states, norm_weight, norm_bias,
 
 
 class VisionTowerWrapper(torch.nn.Module):
-    """Wrapper for Qwen3.5 Vision Tower with runtime positional encodings.
+    """Wrapper for Qwen3.5 Vision Tower with dynamic grid_h / grid_w inputs.
 
-    The upstream implementation converts ``grid_thw`` to Python lists and caches
-    positional encodings, which makes the exported ONNX graph effectively static.
-    For the current deployment path we only need a single square image input, so
-    we rebuild the position / rotary embeddings from ``pixel_values.shape[0]``.
+    ``grid_h`` and ``grid_w`` are 1-D dummy tensors whose LENGTH encodes the
+    grid dimension (e.g. ``grid_h = torch.zeros(64)`` means 64 rows).  This
+    lets the Ascend compiler infer all internal shapes from input shape
+    dimensions rather than from runtime tensor values.
     """
 
     def __init__(self, vision_tower):
@@ -1178,11 +1178,9 @@ class VisionTowerWrapper(torch.nn.Module):
 
         return onnx_operators.shape_as_tensor(x)
 
-    def _seq_len_and_grid(self, pixel_values):
-        seq_len = self._shape_as_tensor(pixel_values)[0].to(torch.int64)
-        grid = torch.sqrt(seq_len.to(torch.float32))
-        grid = torch.round(grid).to(torch.int64)
-        return seq_len, grid
+    def _grid_val(self, grid_tensor):
+        """Extract the grid dimension from a dummy 1-D tensor's shape[0]."""
+        return self._shape_as_tensor(grid_tensor)[0].to(torch.int64)
 
     def _interp_axis(self, grid, device):
         """Interpolate position embedding axis."""
@@ -1197,25 +1195,28 @@ class VisionTowerWrapper(torch.nn.Module):
         frac = coord - floor.to(coord.dtype)
         return floor, ceil, frac
 
-    def _pos_embeds(self, hidden_states, pixel_values):
+    def _pos_embeds(self, hidden_states, grid_h, grid_w):
         """Compute position embeddings for vision tower."""
-        seq_len, grid = self._seq_len_and_grid(pixel_values)
-        floor, ceil, frac = self._interp_axis(grid, hidden_states.device)
+        gh = self._grid_val(grid_h)
+        gw = self._grid_val(grid_w)
+        seq_len = gh * gw
+        floor_h, ceil_h, frac_h = self._interp_axis(gh, hidden_states.device)
+        floor_w, ceil_w, frac_w = self._interp_axis(gw, hidden_states.device)
         pos_weight = self.vision_tower.pos_embed.weight.to(hidden_states.dtype)
         num_side = self.num_grid_per_side
 
-        row_floor = floor[:, None]
-        row_ceil = ceil[:, None]
-        col_floor = floor[None, :]
-        col_ceil = ceil[None, :]
+        row_floor = floor_h[:, None]      # (gh, 1)
+        row_ceil = ceil_h[:, None]
+        col_floor = floor_w[None, :]      # (1, gw)
+        col_ceil = ceil_w[None, :]
 
         idx00 = (row_floor * num_side + col_floor).reshape(-1)
         idx01 = (row_floor * num_side + col_ceil).reshape(-1)
         idx10 = (row_ceil * num_side + col_floor).reshape(-1)
         idx11 = (row_ceil * num_side + col_ceil).reshape(-1)
 
-        frac_row = frac[:, None]
-        frac_col = frac[None, :]
+        frac_row = frac_h[:, None]
+        frac_col = frac_w[None, :]
         w00 = ((1.0 - frac_row) * (1.0 - frac_col)).reshape(-1, 1).to(hidden_states.dtype)
         w01 = ((1.0 - frac_row) * frac_col).reshape(-1, 1).to(hidden_states.dtype)
         w10 = (frac_row * (1.0 - frac_col)).reshape(-1, 1).to(hidden_states.dtype)
@@ -1227,35 +1228,41 @@ class VisionTowerWrapper(torch.nn.Module):
             + pos_weight.index_select(0, idx10) * w10
             + pos_weight.index_select(0, idx11) * w11
         )
-        pos_embeds = pos_embeds.reshape(floor.shape[0], floor.shape[0], hidden_states.shape[1])
+        pos_embeds = pos_embeds.reshape(gh, gw, hidden_states.shape[1])
 
         merge = self.spatial_merge_size
-        merged_grid = floor.shape[0] // merge
+        merged_h = gh // merge
+        merged_w = gw // merge
         pos_embeds = pos_embeds.reshape(
-            1, merged_grid, merge, merged_grid, merge, hidden_states.shape[1]
+            1, merged_h, merge, merged_w, merge, hidden_states.shape[1]
         )
-        pos_embeds = pos_embeds.permute(0, 1, 3, 2, 4, 5).reshape(seq_len, hidden_states.shape[1])
+        pos_embeds = pos_embeds.permute(0, 1, 3, 2, 4, 5).reshape(
+            seq_len, hidden_states.shape[1]
+        )
         return pos_embeds
 
-    def _rotary_embeddings(self, hidden_states, pixel_values):
+    def _rotary_embeddings(self, hidden_states, grid_h, grid_w):
         """Compute rotary embeddings for vision tower."""
-        _, grid = self._seq_len_and_grid(pixel_values)
+        gh = self._grid_val(grid_h)
+        gw = self._grid_val(grid_w)
         merge = self.spatial_merge_size
-        merged_grid = grid // merge
+        merged_h = gh // merge
+        merged_w = gw // merge
         device = hidden_states.device
         rotary_dtype = self.vision_tower.rotary_pos_emb.inv_freq.dtype
 
-        block_rows = torch.arange(merged_grid, device=device, dtype=torch.long)
-        block_cols = torch.arange(merged_grid, device=device, dtype=torch.long)
+        block_rows = torch.arange(merged_h, device=device, dtype=torch.long)
+        block_cols = torch.arange(merged_w, device=device, dtype=torch.long)
         intra_row = torch.arange(merge, device=device, dtype=torch.long)
         intra_col = torch.arange(merge, device=device, dtype=torch.long)
 
         row_idx = block_rows[:, None, None, None] * merge + intra_row[None, None, :, None]
         col_idx = block_cols[None, :, None, None] * merge + intra_col[None, None, None, :]
-        row_idx = row_idx.expand(merged_grid, merged_grid, merge, merge).reshape(-1)
-        col_idx = col_idx.expand(merged_grid, merged_grid, merge, merge).reshape(-1)
+        row_idx = row_idx.expand(merged_h, merged_w, merge, merge).reshape(-1)
+        col_idx = col_idx.expand(merged_h, merged_w, merge, merge).reshape(-1)
 
-        seq = torch.arange(grid, device=device, dtype=rotary_dtype)
+        max_hw = torch.max(gh, gw)
+        seq = torch.arange(max_hw, device=device, dtype=rotary_dtype)
         inv_freq = self.vision_tower.rotary_pos_emb.inv_freq.to(device=device, dtype=rotary_dtype)
         freq_table = torch.outer(seq, inv_freq)
         pos_ids = torch.stack((row_idx, col_idx), dim=-1).reshape(-1)
@@ -1292,15 +1299,15 @@ class VisionTowerWrapper(torch.nn.Module):
         attn_output = attn_output[0].transpose(0, 1).reshape(seq_length, -1).contiguous()
         return attn.proj(attn_output)
 
-    def forward(self, pixel_values):
+    def forward(self, pixel_values, grid_h, grid_w):
         """Encode pixel values to image embeddings for LLM prefill."""
         # Replace Conv3d(3→768, kernel=(2,16,16)) with equivalent Linear(1536→768)
         # Conv3d kernel covers full T×H×W patch extent, so it's mathematically equivalent
         pe = self.vision_tower.patch_embed
         weight = pe.proj.weight.reshape(pe.embed_dim, -1)
         hidden_states = torch.nn.functional.linear(pixel_values, weight, pe.proj.bias)
-        hidden_states = hidden_states + self._pos_embeds(hidden_states, pixel_values)
-        position_embeddings = self._rotary_embeddings(hidden_states, pixel_values)
+        hidden_states = hidden_states + self._pos_embeds(hidden_states, grid_h, grid_w)
+        position_embeddings = self._rotary_embeddings(hidden_states, grid_h, grid_w)
 
         for blk in self.vision_tower.blocks:
             attn_input = blk.norm1(hidden_states)
@@ -1617,6 +1624,8 @@ def export_vision_tower(model, output_dir, device="cpu", vision_image_size=1024)
     temporal_patch_size = model.config.vision_config.temporal_patch_size
     patch_dim = in_channels * temporal_patch_size * patch_size * patch_size
     dummy_pixel_values = torch.randn(dummy_seq_len, patch_dim, device=device, dtype=torch.float32)
+    dummy_grid_h = torch.zeros(grid_h, device=device, dtype=torch.float32)
+    dummy_grid_w = torch.zeros(grid_w, device=device, dtype=torch.float32)
 
     wrapper = VisionTowerWrapper(vision_tower)
     wrapper.eval()
@@ -1625,13 +1634,17 @@ def export_vision_tower(model, output_dir, device="cpu", vision_image_size=1024)
     with torch.no_grad():
         onnx_utils.export(
             wrapper,
-            (dummy_pixel_values,),
+            (dummy_pixel_values, dummy_grid_h, dummy_grid_w),
             str(output_path),
-            input_names=["pixel_values"],
+            input_names=["pixel_values", "grid_h", "grid_w"],
             output_names=["image_embeds"],
             opset_version=14,
             do_constant_folding=True,
-            dynamic_axes={"pixel_values": {0: "num_image_tokens"}},
+            dynamic_axes={
+                "pixel_values": {0: "num_image_tokens"},
+                "grid_h": {0: "grid_h_dim"},
+                "grid_w": {0: "grid_w_dim"},
+            },
         )
     print("Vision Tower exported successfully.")
 
