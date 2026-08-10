@@ -216,14 +216,13 @@ PrimitiveCPtr OnnxAvgPoolParser::Parse(const onnx::GraphProto &onnx_graph, const
 
 /// MaxPool
 namespace {
-bool ParseKernelShapeAttr1D(const onnx::AttributeProto &onnx_node_attr, std::vector<int64_t> *kernel_shape,
+bool ParseKernelShapeAttr1D(const onnx::AttributeProto &onnx_node_attr,
                             const std::unique_ptr<ops::MaxPoolFusion> &prim) {
   if (onnx_node_attr.ints_size() != kNumShapeSize1) {
     MS_LOG(ERROR) << "kernel_shape must be of size 1 for MaxPool1D";
     return false;
   }
-  *kernel_shape = {onnx_node_attr.ints(0)};
-  prim->set_kernel_size(*kernel_shape);
+  prim->set_kernel_size({1, onnx_node_attr.ints(0)});
   return true;
 }
 
@@ -232,7 +231,7 @@ bool ParseStridesAttr1D(const onnx::AttributeProto &onnx_node_attr, std::vector<
     MS_LOG(ERROR) << "strides must be of size 1 for MaxPool1D";
     return false;
   }
-  *strides = {onnx_node_attr.ints(0)};
+  *strides = {1, onnx_node_attr.ints(0)};
   return true;
 }
 
@@ -243,7 +242,7 @@ bool ParsePadsAttr1D(const onnx::AttributeProto &onnx_node_attr, const std::uniq
     return false;
   }
   prim->set_pad_mode(mindspore::PadMode::PAD);
-  *pads = {onnx_node_attr.ints(0), onnx_node_attr.ints(1)};
+  *pads = {0, 0, onnx_node_attr.ints(0), onnx_node_attr.ints(1)};
   return true;
 }
 
@@ -259,19 +258,17 @@ bool ParseDilationsAttr1D(const onnx::AttributeProto &onnx_node_attr) {
 PrimitiveCPtr OnnxMaxPoolParser::ParseMaxPool1D(const onnx::NodeProto &onnx_node,
                                                 std::unique_ptr<ops::MaxPoolFusion> &prim) {
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
-  prim->set_kernel_size({1});
   auto prim_c = prim->GetPrim();
   MS_CHECK_TRUE_RET(prim_c != nullptr, nullptr);
   (void)prim_c->AddAttr(mindspore::ops::kOriginalFormat, MakeValue<int64_t>(mindspore::Format::NCW));
   prim->set_kernel_size({1, 1});
   mindspore::RoundMode round_mode = mindspore::RoundMode::FLOOR;
-  std::vector<int64_t> kernel_shape;
-  std::vector<int64_t> strides = {1};
-  std::vector<int64_t> pads = {0, 0};
+  std::vector<int64_t> strides = {1, 1};
+  std::vector<int64_t> pads = {0, 0, 0, 0};
   for (const auto &onnx_node_attr : onnx_node.attribute()) {
     const auto &attribute_name = onnx_node_attr.name();
     if (attribute_name == "kernel_shape") {
-      if (!ParseKernelShapeAttr1D(onnx_node_attr, &kernel_shape, prim)) {
+      if (!ParseKernelShapeAttr1D(onnx_node_attr, prim)) {
         return nullptr;
       }
     } else if (attribute_name == "strides") {
