@@ -1305,6 +1305,7 @@ class AutoencoderKLQwenImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
             rank = dist.get_rank()
             my_positions = tile_positions[rank::world_size]
         else:
+            world_size = 0
             my_positions = tile_positions
 
         my_tiles = {}

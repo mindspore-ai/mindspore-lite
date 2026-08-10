@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+# Copyright 2026 Huawei Technologies Co., Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+"""
+Model-specific adaptation for Qwen-Image-Edit Ulysses Sequence Parallel on NPU.
+
+Called by model.setup_model() to patch the pipeline in-place.
+Accepts QwenImageEditPlusPipeline objects.
+"""
+import types
+
+import torch
+import torch.distributed as dist
+
+from . import USPQwenDoubleStreamAttnProcessor, usp_dit_forward, patch_eager_sdpa
+
+
+def boost_qwen_image_edit(pipe, *, world_size=None, enable_vae_parallel=True):
+    """
+    Patch a QwenImageEditPlusPipeline in-place for NPU multi-card USP.
+
+    Operations:
+    1. Globally replace F.scaled_dot_product_attention with an eager
+       implementation (NPU fusion SDPA op is unsupported).
+    2. Replace each transformer block's attention processor with the USP
+       joint-attention processor (text replication + head slicing, image
+       latent sequence split via all_to_all).
+    3. Replace transformer.forward -> usp_dit_forward (sequence split/gather).
+    4. Optionally replace the VAE with the parallel tiled encode/decode
+       version (``enable_vae_parallel=False`` keeps the original VAE so the
+       output matches the single-card pipeline bit-for-bit).
+
+    ``pipe`` may be a QwenImageEditPlusPipeline or the raw
+    QwenImageTransformer2DModel (in which case only the DiT is patched).
+    """
+    transformer = pipe.transformer if hasattr(pipe, "transformer") else pipe
+    is_pipeline = transformer is not pipe
+
+    world_size = world_size or dist.get_world_size()
+
+    num_heads = transformer.config.num_attention_heads
+    if num_heads % world_size != 0:
+        raise ValueError(
+            f"num_attention_heads ({num_heads}) must be divisible by "
+            f"world_size ({world_size})"
+        )
+
+    patch_eager_sdpa()
+
+    if world_size > 1:
+        for block in transformer.transformer_blocks:
+            block.attn.processor = USPQwenDoubleStreamAttnProcessor()
+        transformer.forward = types.MethodType(usp_dit_forward, transformer)
+
+    if is_pipeline and enable_vae_parallel:
+        _patch_vae_edit(pipe)
+        restore_fp16_params(pipe.vae, dtype=pipe.vae.dtype)
+
+    return pipe
+
+
+def _patch_vae_edit(pipe):
+    """Swap the VAE for the parallel tiled encode/decode implementation."""
+    from lite_boost.model.qwenimage import AutoencoderKLQwenImage as ParallelVAE
+
+    vae = pipe.vae
+    if isinstance(vae, ParallelVAE):
+        new_vae = vae
+    else:
+        new_vae = ParallelVAE.from_config(vae.config)
+        new_vae.load_state_dict(vae.state_dict())
+        new_vae.to(device=vae.device, dtype=vae.dtype)
+        pipe.vae = new_vae
+    new_vae.enable_tiling()
+
+
+def restore_fp16_params(module, dtype=torch.float16):
+    """torch_npu casts some low-bit params (4D conv weights, norm gammas) back
+    to fp32 during .to("npu"); restore every fp32 param to the target dtype."""
+    for p in module.parameters():
+        if p.dtype == torch.float32:
+            p.data = p.data.to(dtype)
