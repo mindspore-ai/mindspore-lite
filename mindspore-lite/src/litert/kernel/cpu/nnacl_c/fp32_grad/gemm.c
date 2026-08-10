@@ -50,6 +50,8 @@ int MatSizeTotal(int row, int col, int deep, int stride) {
   const int num0 = C4NUM;
 #elif ENABLE_AVX
   const int num0 = C6NUM;
+#elif ENABLE_SSE
+  const int num0 = C4NUM;
 #else
   const int num0 = C12NUM;
 #endif
@@ -63,7 +65,7 @@ int MatSizeTotal(int row, int col, int deep, int stride) {
   if (stride > 0) res += row * stride;
   return res;
 }
-#ifdef ENABLE_ARM32
+#if defined(ENABLE_ARM32) || (defined(ENABLE_SSE) && !defined(ENABLE_AVX))
 static void RowMajor2Row4MajorStride(const float *src_ptr, float *dst_ptr, int row, int col, int lead) {
   for (int r = 0; r < row; r++) {
     const float *src = src_ptr + r * lead;
@@ -145,7 +147,7 @@ static void RowMajor2Col12MajorStrideArm64(const float *src_c, float *dst_c, int
     "st1 {v28.4s, v29.4s, v30.4s, v31.4s}, [x11], #64\n"
 
     :
-    : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ stride ] "r"(stride)
+    : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [stride] "r"(stride)
     : "x10", "x11", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
       "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30",
       "v31");
@@ -206,7 +208,7 @@ void RowMajor2Col12MajorStrideArm32(const float *src_c, float *dst_c, int lead) 
     "vst1.32 {q14, q15}, [r12]!\n"
 
     :
-    : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ stride ] "r"(stride)
+    : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [stride] "r"(stride)
     : "r10", "r12", "q0", "q1", "q2", "q3", "q8", "q9", "q10", "q11", "q12", "q13", "q14", "q15");
 }
 #endif  // ENABLE_ARM32
@@ -355,7 +357,7 @@ static void RowMajor2Col8MajorStrideArm64(const float *src_c, float *dst_c, int 
     "st1 {v23.4s}, [x11], #16\n"
 
     :
-    : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ stride ] "r"(stride)
+    : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [stride] "r"(stride)
     : "x10", "x11", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
       "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30",
       "v31");
@@ -403,7 +405,7 @@ static void RowMajor2Col8MajorStrideArm32(const float *src_c, float *dst_c, size
     "vst1.32 {q6, q7}, [r11]!\n"
 
     :
-    : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ stride ] "r"(stride)
+    : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [stride] "r"(stride)
     : "r10", "r11", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7");
 }
 
@@ -447,7 +449,7 @@ static void RowMajor2Col8MajorStrideArm32Nnie(const float *src_c, float *dst_c, 
     "vst1.32 {q6, q7}, [r7]!\n"
 
     :
-    : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ stride ] "r"(stride)
+    : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [stride] "r"(stride)
     : "r10", "r7", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7");
 }
 #endif  // SUPPORT_NNIE
@@ -507,7 +509,7 @@ void RowMajor2Col8MajorStride(const float *src_ptr, float *dst_ptr, size_t row, 
   }
   return;
 }
-#ifdef ENABLE_ARM32
+#if defined(ENABLE_ARM32) || (defined(ENABLE_SSE) && !defined(ENABLE_AVX))
 static void RowMajor2Col4MajorStride(const float *src_ptr, float *dst_ptr, size_t row, size_t col, int lead) {
   size_t row8 = row / C4NUM * C4NUM;
   size_t col4 = col / C4NUM * C4NUM;
@@ -547,7 +549,7 @@ static void RowMajor2Col4MajorStride(const float *src_ptr, float *dst_ptr, size_
         "vst1.32 {q3}, [r12]!\n"
 
         :
-        : [ dst_c ] "r"(dst_c), [ src_c ] "r"(src_c), [ stride ] "r"(stride)
+        : [dst_c] "r"(dst_c), [src_c] "r"(src_c), [stride] "r"(stride)
         : "r10", "r12", "q0", "q1", "q2", "q3");
 #else
       for (int tr = 0; tr < C4NUM; tr++) {
@@ -793,6 +795,9 @@ void GemmMatmulPlus(int ta, int tb, int M, int N, int K, float alpha, const floa
 #elif ENABLE_AVX
   const int num = C6NUM;
   const int num1 = C16NUM;
+#elif ENABLE_SSE
+  const int num = C4NUM;
+  const int num1 = C8NUM;
 #else
   const int num = C12NUM;
   const int num1 = C8NUM;
@@ -811,6 +816,8 @@ void GemmMatmulPlus(int ta, int tb, int M, int N, int K, float alpha, const floa
       RowMajor2Row4MajorStride(mat_a, mat_a_input, K, M, lda);
 #elif ENABLE_AVX
       RowMajor2Row6MajorStride(mat_a, mat_a_input, K, M, lda);
+#elif ENABLE_SSE
+      RowMajor2Row4MajorStride(mat_a, mat_a_input, K, M, lda);
 #else
       RowMajor2Row12MajorStride(mat_a, mat_a_input, K, M, lda);
 #endif
@@ -820,6 +827,8 @@ void GemmMatmulPlus(int ta, int tb, int M, int N, int K, float alpha, const floa
       RowMajor2Col4MajorStride(mat_a, mat_a_input, M, K, lda);
 #elif ENABLE_AVX
       RowMajor2Col6MajorStride(mat_a, mat_a_input, M, K, lda);
+#elif ENABLE_SSE
+      RowMajor2Col4MajorStride(mat_a, mat_a_input, M, K, lda);
 #else
       RowMajor2Col12MajorStride(mat_a, mat_a_input, M, K, lda);
 #endif
