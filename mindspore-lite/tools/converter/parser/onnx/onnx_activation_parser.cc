@@ -211,7 +211,8 @@ PrimitiveCPtr OnnxCeluParser::Parse(const onnx::GraphProto &onnx_graph, const on
       prim->set_alpha(onnx_node_attr.f());
     }
   }
-
+  float celu_alpha = prim->get_alpha();
+  MS_CHECK_TRUE_MSG(celu_alpha > 0, nullptr, "Activation CELU alpha must be greater than 0.");
   return prim->GetPrim();
 }
 
