@@ -33,8 +33,9 @@ git clone https://github.com/urchade/GLiNER.git models/model_code/GLiNER
 pip install -e models/model_code/GLiNER
 
 # 模型权重（HuggingFace 下载）
-huggingface-cli download urchade/gliner_large-v2.5 \
-  --local-dir models/model_weight/gliner_large-v2.5
+mkdir -p models/model_weight
+cd models/model_weight
+git clone https://huggingface.co/gliner-community/gliner_large-v2.5
 ```
 
 说明：
@@ -51,7 +52,7 @@ huggingface-cli download urchade/gliner_large-v2.5 \
 ```bash
 cd mindspore-lite/examples/base_models/gliner_large-v2.5
 
-python export_gliner_large_v2.5_onnx.py \
+python export_gliner_large-v2.5_onnx.py \
   --model-dir models/model_weight/gliner_large-v2.5 \
   --save-dir ./onnx \
   --opset 17
@@ -80,7 +81,7 @@ python export_gliner_large_v2.5_onnx.py \
 
 ### 导出注意事项（实际踩坑点）
 
-GLiNER 上游依赖三处 Ascend 不友好的实现，导出脚本在 `model.export_to_onnx(...)` 调用前对源码做了 monkey patch（均在 `export_gliner_large_v2.5_onnx.py` 中）：
+GLiNER 上游依赖三处 Ascend 不友好的实现，导出脚本在 `model.export_to_onnx(...)` 调用前对源码做了 monkey patch（均在 `export_gliner_large-v2.5_onnx.py` 中）：
 
 1. **`_SmallOpLSTM` → 原生 `nn.LSTM`**：上游 `LstmSeq2SeqEncoder` 用 `_SmallOpLSTM`，其 `_run_direction` 是 Python `for t in range(seq_len)` 循环，JIT trace 会把 `seq_len` 烧成常量（dummy batch 是 5 words）。脚本从 checkpoint 中读取 `rnn.lstm.*_ih/_hh` 权重，重建为 `nn.LSTM` 并替换；同时 patch `LstmSeq2SeqEncoder.forward` 去掉 `lengths=` kwarg + 预分配静态 `h0/c0`。
 2. **DeBERTa 的 `make_log_bucket_position`**：用 `@torch.jit.script` 包装，内部用 `torch.sign` 产生 Sign 算子，Ascend 不支持。脚本预计算 `(_REL_POS_MAX_SEQ × _REL_POS_MAX_SEQ)` 的 bucketed 相对位置矩阵作为常量，运行时只做切片。
@@ -157,7 +158,7 @@ CONVERT RESULT SUCCESS:0
 ### 推理命令
 
 ```bash
-python infer_gliner_large_v2.5_mslite.py \
+python infer_gliner_large-v2.5_mslite.py \
   --model-dir models/model_weight/gliner_large-v2.5 \
   --mindir-path ./onnx/model.mindir \
   --text "Cristiano Ronaldo plays for Al-Nassr FC and captains Portugal." \
@@ -193,6 +194,7 @@ WARNING:root:Ascend custom operator path not found
   - 'Portugal' [country] score=0.9993 chars=(71, 79)
   - 'Al-Nassr FC' [organization] score=0.9944 chars=(46, 57)
   - 'Cristiano Ronaldo dos Santos Aveiro' [person] score=0.9910 chars=(0, 35)
+[infer] 模型推理: 15.82 ms | 端到端: 16.52 ms
 ```
 
 说明（ascend_oriented 固定 shape 约束）：
@@ -207,13 +209,13 @@ WARNING:root:Ascend custom operator path not found
 
 测试环境：Atlas 300I Duo
 
-固定文本 `"Cristiano Ronaldo dos Santos Aveiro plays for Al-Nassr FC and captains Portugal."`，3 标签，50 次平均（3 次 warmup 后）：
+固定文本（"Cristiano Ronaldo dos Santos Aveiro plays for Al-Nassr FC and captains Portugal."），50 次平均（3 次 warmup 后）：
 
 | 指标 | MindSpore Lite (Ascend fp16) |
 | --- | ---: |
-| 模型推理 | 15.83 ms |
-| 端到端（含预处理） | 16.49 ms |
-| **吞吐量** | **60.7 req/s** |
+| 模型推理 | 15.82 ms |
+| 端到端（含预处理） | 16.52 ms |
+| **吞吐量** | **60.6 req/s** |
 
 ---
 
@@ -240,7 +242,7 @@ WARNING:root:Ascend custom operator path not found
 ## 7. 参考资源
 
 - 上游模型仓库：https://github.com/urchade/GLiNER
-- HuggingFace 权重：https://huggingface.co/urchade/gliner_large-v2.5
+- HuggingFace 权重：https://huggingface.co/gliner-community/gliner_large-v2.5
 - MindSpore Lite 文档：https://www.mindspore.cn/lite
 
 ---
