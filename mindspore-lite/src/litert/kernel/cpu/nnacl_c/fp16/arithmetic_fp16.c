@@ -19,6 +19,11 @@
 #include "nnacl_c/common_func.h"
 #include "nnacl_c/nnacl_utils.h"
 
+#ifdef ENABLE_NEON
+// NEON comparison produces 0xFFFF for true; shifting by 15 normalizes it to 1.
+static inline uint8x8_t NeonBoolMaskToUInt8(uint16x8_t mask) { return vmovn_u16(vshrq_n_u16(mask, 15)); }
+#endif
+
 int BroadcastAddFp16(const float16_t *in0, const float16_t *in1, float16_t *tile_in0, float16_t *tile_in1,
                      float16_t *out, int size, ArithmeticParameter *param) {
   int ret = TileDimensionsFp16(in0, in1, tile_in0, tile_in1, param);
@@ -1032,7 +1037,7 @@ int ElementNotEqualFp16(const float16_t *input0, const float16_t *input1, uint8_
   for (; index <= element_size - 8; index += C8NUM) {
     float16x8_t vin0 = vld1q_f16(input0 + index);
     float16x8_t vin1 = vld1q_f16(input1 + index);
-    uint8x8_t vout = vmovn_u16(vceqq_f16(vin0, vin1));
+    uint8x8_t vout = NeonBoolMaskToUInt8(vmvnq_u16(vceqq_f16(vin0, vin1)));
     vst1_u8(output + index, vout);
   }
 #endif
@@ -1053,7 +1058,7 @@ int ElementOptNotEqualFp16(const float16_t *input0, const float16_t *input1, uin
 #ifdef ENABLE_NEON
     for (; index <= element_size - 8; index += C8NUM) {
       float16x8_t vin1 = vld1q_f16(input1 + index);
-      uint8x8_t vout = vmovn_u16(vceqq_f16(vin0_opt, vin1));
+      uint8x8_t vout = NeonBoolMaskToUInt8(vmvnq_u16(vceqq_f16(vin0_opt, vin1)));
       vst1_u8(output + index, vout);
     }
 #endif
@@ -1064,7 +1069,7 @@ int ElementOptNotEqualFp16(const float16_t *input0, const float16_t *input1, uin
 #ifdef ENABLE_NEON
     for (; index <= element_size - 8; index += C8NUM) {
       float16x8_t vin0 = vld1q_f16(input0 + index);
-      uint8x8_t vout = vmovn_u16(vceqq_f16(vin0, vin1_opt));
+      uint8x8_t vout = NeonBoolMaskToUInt8(vmvnq_u16(vceqq_f16(vin0, vin1_opt)));
       vst1_u8(output + index, vout);
     }
 #endif
@@ -1081,7 +1086,7 @@ int ElementEqualFp16(const float16_t *input0, const float16_t *input1, uint8_t *
   for (; index <= element_size - 8; index += C8NUM) {
     float16x8_t vin0 = vld1q_f16(input0 + index);
     float16x8_t vin1 = vld1q_f16(input1 + index);
-    uint8x8_t vout = vmovn_u16(vceqq_f16(vin0, vin1));
+    uint8x8_t vout = NeonBoolMaskToUInt8(vceqq_f16(vin0, vin1));
     vst1_u8(output + index, vout);
   }
 #endif
@@ -1102,7 +1107,7 @@ int ElementOptEqualFp16(const float16_t *input0, const float16_t *input1, uint8_
 #ifdef ENABLE_NEON
     for (; index <= element_size - 8; index += C8NUM) {
       float16x8_t vin1 = vld1q_f16(input1 + index);
-      uint8x8_t vout = vmovn_u16(vceqq_f16(vin0_opt, vin1));
+      uint8x8_t vout = NeonBoolMaskToUInt8(vceqq_f16(vin0_opt, vin1));
       vst1_u8(output + index, vout);
     }
 #endif
@@ -1113,7 +1118,7 @@ int ElementOptEqualFp16(const float16_t *input0, const float16_t *input1, uint8_
 #ifdef ENABLE_NEON
     for (; index <= element_size - 8; index += C8NUM) {
       float16x8_t vin0 = vld1q_f16(input0 + index);
-      uint8x8_t vout = vmovn_u16(vceqq_f16(vin0, vin1_opt));
+      uint8x8_t vout = NeonBoolMaskToUInt8(vceqq_f16(vin0, vin1_opt));
       vst1_u8(output + index, vout);
     }
 #endif
@@ -1130,7 +1135,7 @@ int ElementLessFp16(const float16_t *input0, const float16_t *input1, uint8_t *o
   for (; index <= element_size - 8; index += C8NUM) {
     float16x8_t vin0 = vld1q_f16(input0 + index);
     float16x8_t vin1 = vld1q_f16(input1 + index);
-    uint8x8_t vout = vmovn_u16(vcltq_f16(vin0, vin1));
+    uint8x8_t vout = NeonBoolMaskToUInt8(vcltq_f16(vin0, vin1));
     vst1_u8(output + index, vout);
   }
 #endif
@@ -1151,7 +1156,7 @@ int ElementOptLessFp16(const float16_t *input0, const float16_t *input1, uint8_t
 #ifdef ENABLE_NEON
     for (; index <= element_size - 8; index += C8NUM) {
       float16x8_t vin1 = vld1q_f16(input1 + index);
-      uint8x8_t vout = vmovn_u16(vcltq_f16(vin0_opt, vin1));
+      uint8x8_t vout = NeonBoolMaskToUInt8(vcltq_f16(vin0_opt, vin1));
       vst1_u8(output + index, vout);
     }
 #endif
@@ -1162,7 +1167,7 @@ int ElementOptLessFp16(const float16_t *input0, const float16_t *input1, uint8_t
 #ifdef ENABLE_NEON
     for (; index <= element_size - 8; index += C8NUM) {
       float16x8_t vin0 = vld1q_f16(input0 + index);
-      uint8x8_t vout = vmovn_u16(vcltq_f16(vin0, vin1_opt));
+      uint8x8_t vout = NeonBoolMaskToUInt8(vcltq_f16(vin0, vin1_opt));
       vst1_u8(output + index, vout);
     }
 #endif
@@ -1179,7 +1184,7 @@ int ElementLessEqualFp16(const float16_t *input0, const float16_t *input1, uint8
   for (; index <= element_size - 8; index += C8NUM) {
     float16x8_t vin0 = vld1q_f16(input0 + index);
     float16x8_t vin1 = vld1q_f16(input1 + index);
-    uint8x8_t vout = vmovn_u16(vcleq_f16(vin0, vin1));
+    uint8x8_t vout = NeonBoolMaskToUInt8(vcleq_f16(vin0, vin1));
     vst1_u8(output + index, vout);
   }
 #endif
@@ -1200,7 +1205,7 @@ int ElementOptLessEqualFp16(const float16_t *input0, const float16_t *input1, ui
 #ifdef ENABLE_NEON
     for (; index <= element_size - 8; index += C8NUM) {
       float16x8_t vin1 = vld1q_f16(input1 + index);
-      uint8x8_t vout = vmovn_u16(vcleq_f16(vin0_opt, vin1));
+      uint8x8_t vout = NeonBoolMaskToUInt8(vcleq_f16(vin0_opt, vin1));
       vst1_u8(output + index, vout);
     }
 #endif
@@ -1211,7 +1216,7 @@ int ElementOptLessEqualFp16(const float16_t *input0, const float16_t *input1, ui
 #ifdef ENABLE_NEON
     for (; index <= element_size - 8; index += C8NUM) {
       float16x8_t vin0 = vld1q_f16(input0 + index);
-      uint8x8_t vout = vmovn_u16(vcleq_f16(vin0, vin1_opt));
+      uint8x8_t vout = NeonBoolMaskToUInt8(vcleq_f16(vin0, vin1_opt));
       vst1_u8(output + index, vout);
     }
 #endif
@@ -1228,7 +1233,7 @@ int ElementGreaterFp16(const float16_t *input0, const float16_t *input1, uint8_t
   for (; index <= element_size - 8; index += C8NUM) {
     float16x8_t vin0 = vld1q_f16(input0 + index);
     float16x8_t vin1 = vld1q_f16(input1 + index);
-    uint8x8_t vout = vmovn_u16(vcgtq_f16(vin0, vin1));
+    uint8x8_t vout = NeonBoolMaskToUInt8(vcgtq_f16(vin0, vin1));
     vst1_u8(output + index, vout);
   }
 #endif
@@ -1249,7 +1254,7 @@ int ElementOptGreaterFp16(const float16_t *input0, const float16_t *input1, uint
 #ifdef ENABLE_NEON
     for (; index <= element_size - 8; index += C8NUM) {
       float16x8_t vin1 = vld1q_f16(input1 + index);
-      uint8x8_t vout = vmovn_u16(vcgtq_f16(vin0_opt, vin1));
+      uint8x8_t vout = NeonBoolMaskToUInt8(vcgtq_f16(vin0_opt, vin1));
       vst1_u8(output + index, vout);
     }
 #endif
@@ -1260,7 +1265,7 @@ int ElementOptGreaterFp16(const float16_t *input0, const float16_t *input1, uint
 #ifdef ENABLE_NEON
     for (; index <= element_size - 8; index += C8NUM) {
       float16x8_t vin0 = vld1q_f16(input0 + index);
-      uint8x8_t vout = vmovn_u16(vcgtq_f16(vin0, vin1_opt));
+      uint8x8_t vout = NeonBoolMaskToUInt8(vcgtq_f16(vin0, vin1_opt));
       vst1_u8(output + index, vout);
     }
 #endif
@@ -1277,7 +1282,7 @@ int ElementGreaterEqualFp16(const float16_t *input0, const float16_t *input1, ui
   for (; index <= element_size - 8; index += C8NUM) {
     float16x8_t vin0 = vld1q_f16(input0 + index);
     float16x8_t vin1 = vld1q_f16(input1 + index);
-    uint8x8_t vout = vmovn_u16(vcgeq_f16(vin0, vin1));
+    uint8x8_t vout = NeonBoolMaskToUInt8(vcgeq_f16(vin0, vin1));
     vst1_u8(output + index, vout);
   }
 #endif
@@ -1298,7 +1303,7 @@ int ElementOptGreaterEqualFp16(const float16_t *input0, const float16_t *input1,
 #ifdef ENABLE_NEON
     for (; index <= element_size - 8; index += C8NUM) {
       float16x8_t vin1 = vld1q_f16(input1 + index);
-      uint8x8_t vout = vmovn_u16(vcgeq_f16(vin0_opt, vin1));
+      uint8x8_t vout = NeonBoolMaskToUInt8(vcgeq_f16(vin0_opt, vin1));
       vst1_u8(output + index, vout);
     }
 #endif
@@ -1309,7 +1314,7 @@ int ElementOptGreaterEqualFp16(const float16_t *input0, const float16_t *input1,
 #ifdef ENABLE_NEON
     for (; index <= element_size - 8; index += C8NUM) {
       float16x8_t vin0 = vld1q_f16(input0 + index);
-      uint8x8_t vout = vmovn_u16(vcgeq_f16(vin0, vin1_opt));
+      uint8x8_t vout = NeonBoolMaskToUInt8(vcgeq_f16(vin0, vin1_opt));
       vst1_u8(output + index, vout);
     }
 #endif
