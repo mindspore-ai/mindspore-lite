@@ -23,9 +23,9 @@
 
 namespace mindspore {
 namespace {
-const char model_path[] = "./matmul_ops_for_ut.static.mindir";           // static model
-const char invalid_model_path[] = "./test_invalid_model.mindir";         // exist but no data
-const char model_dynamic_path[] = "./matmul_ops_for_ut.dynamic.mindir";  // dynamic model
+const char model_path[] = "./matmul_ops_for_ut.static.onnx.mindir";           // static model
+const char invalid_model_path[] = "./test_invalid_model.mindir";              // exist but no data
+const char model_dynamic_path[] = "./matmul_ops_for_ut.dynamic.onnx.mindir";  // dynamic model
 const char config_file_path[] = "./config.ini";
 const char invalid_config_file_path[] = "./invalid_config.ini";
 
