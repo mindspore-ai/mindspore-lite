@@ -37,6 +37,13 @@ constexpr int32_t kHeadDimAxis = 2;
 constexpr uint32_t kPairedTileCount = 2;
 // Fixed workspace size requested for the op (32 MiB).
 constexpr uint64_t kWorkspaceBytes = 32ULL * 1024 * 1024;
+constexpr uint32_t kMatmulM = 64;
+constexpr uint32_t kMatmulK = 128;
+constexpr uint32_t kMatmulN = 128;
+constexpr uint32_t kDk80 = 80;
+constexpr uint32_t kCubeStageSlotCount = 2;
+constexpr uint64_t kRawMatmulStageBytesPerCore =
+  kCubeStageSlotCount * static_cast<uint64_t>(2 * kMatmulM * kMatmulK + kMatmulK * kMatmulN) * sizeof(uint16_t);
 // Input indices for the CGDR operator.
 constexpr uint32_t kQueryInput = 0;
 constexpr uint32_t kValueInput = 2;
@@ -139,12 +146,13 @@ uint32_t ComputeTmpBuffBytes(uint32_t vs, uint32_t dv, uint32_t chunkSize, uint3
   uint32_t tDelta = deltaElem * sizeof(float);                     // deltaFp32
   uint32_t tDotProduct = dotProductElem * sizeof(float);           // dotProductFp32
   uint32_t tExpGcum = cs * sizeof(float);                          // expGCumFp32
+  uint32_t tBeta = cs * sizeof(float);                             // betaFp32
   uint32_t tScores = cs * cs * sizeof(float);                      // chunkScoresFp32 (attn matrix)
   uint32_t tState = stateStrideK * avStepAligned * sizeof(float);  // stateInFp32 [DK, vStep]
   bool overlapScoresState = vs >= dv || allowScoresStateOverlap;
   uint32_t tScoresState = overlapScoresState ? ((tScores > tState) ? tScores : tState) : (tScores + tState);
   return kPairedTileCount * kTileBytes + tDecay + kPairedTileCount * vTileBytes + tGcum + tDelta + tDotProduct +
-         tExpGcum + tScoresState;
+         tExpGcum + tBeta + tScoresState;
 }
 
 // stateOutQueue bytes: max of the state tile and compact chunk output.
@@ -159,14 +167,27 @@ uint32_t ComputeOutQueueBytes(uint32_t vs, uint32_t dk, uint32_t chunkSize) {
 // Find the largest vStep (FP32-block aligned, <= dv) whose tmpBuff + outQueue fits in UB.
 // Also returns the resulting buffer sizes for tiling/debug.
 bool SolveVStep(uint32_t dv, int64_t ubSize, uint32_t chunkSize, uint32_t dk, uint32_t alignK,
-                bool allowScoresStateOverlap, uint32_t &vStepVal, uint32_t &tbufTotal, uint32_t &outQueueMax,
-                uint32_t &restBytes) {
+                bool allowScoresStateOverlap, uint32_t preferredVStep, uint32_t &vStepVal, uint32_t &tbufTotal,
+                uint32_t &outQueueMax, uint32_t &restBytes) {
   if (ubSize <= 0) {
     return false;
   }
   uint32_t maxVStep = CeilAlign(dv, FP16_NUM_PER_BLOCK);
   bool found = false;
-  for (uint32_t vs = maxVStep; vs >= FP16_NUM_PER_BLOCK; vs -= FP16_NUM_PER_BLOCK) {
+  // The fixed Cube path is 64x{64,128}x128. For Dv < 128, padding the V tile
+  // to 128 is substantially faster than falling back to the scalar/Vector
+  // implementation. Try that exact tile first and retain the generic search
+  // when the UB cannot hold it.
+  if (preferredVStep > maxVStep) {
+    uint64_t preferredBytes =
+      static_cast<uint64_t>(ComputeTmpBuffBytes(preferredVStep, dv, chunkSize, dk, alignK, allowScoresStateOverlap)) +
+      ComputeOutQueueBytes(preferredVStep, dk, chunkSize);
+    if (preferredBytes <= static_cast<uint64_t>(ubSize)) {
+      vStepVal = preferredVStep;
+      found = true;
+    }
+  }
+  for (uint32_t vs = maxVStep; !found && vs >= FP16_NUM_PER_BLOCK; vs -= FP16_NUM_PER_BLOCK) {
     uint64_t requiredBytes =
       static_cast<uint64_t>(ComputeTmpBuffBytes(vs, dv, chunkSize, dk, alignK, allowScoresStateOverlap)) +
       ComputeOutQueueBytes(vs, dk, chunkSize);
@@ -178,9 +199,6 @@ bool SolveVStep(uint32_t dv, int64_t ubSize, uint32_t chunkSize, uint32_t dk, ui
   }
   if (!found) {
     return false;
-  }
-  if (vStepVal > dv) {
-    vStepVal = CeilAlign(dv, FP16_NUM_PER_BLOCK);
   }
   tbufTotal = ComputeTmpBuffBytes(vStepVal, dv, chunkSize, dk, alignK, allowScoresStateOverlap);
   outQueueMax = ComputeOutQueueBytes(vStepVal, dk, chunkSize);
@@ -251,9 +269,24 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
   uint32_t tbufTotal = 0;
   uint32_t outQueueMax = 0;
   uint32_t restBytes = 0;
-  bool allowScoresStateOverlap = dims.hv < aivNum;
-  if (!SolveVStep(dims.dv, ubSize, chunkSize, dims.dk, alignK, allowScoresStateOverlap, vStepVal, tbufTotal,
-                  outQueueMax, restBytes)) {
+  // A V tile is an independent work item. Once the attention matrix has been
+  // staged for its Cube product, the state tile can safely reuse the same UB
+  // region, including when a head spans multiple V tiles.
+  bool allowScoresStateOverlap = true;
+  uint32_t preferredVStep = 0;
+  if (chunkSize == kMatmulM) {
+    if (dims.dk == kMatmulK) {
+      preferredVStep = kMatmulN;
+    } else if (dims.dk == kMatmulK / 2) {
+      preferredVStep = kMatmulN / 2;
+    } else if (dims.dk == kDk80) {
+      // Dk=80 has a dedicated 64x80 Cube path. Pad narrow Dv tiles to 80 so
+      // the UB scratch can also hold the 64x80 NZ result without a fallback.
+      preferredVStep = kDk80;
+    }
+  }
+  if (!SolveVStep(dims.dv, ubSize, chunkSize, dims.dk, alignK, allowScoresStateOverlap, preferredVStep, vStepVal,
+                  tbufTotal, outQueueMax, restBytes)) {
     return GRAPH_FAILED;
   }
 
@@ -264,20 +297,28 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
   FillTilingData(td, dims, aivNum, ubSize, chunkSize, numChunks, padSize, scaleValueAttr, vStepVal, restBytes,
                  hasGamma);
 
-  // Normally one work item is one value head. When the number of heads cannot
-  // fill the AIV cores and V already needs multiple tiles, expose head*V-tile
-  // work items; tiles write disjoint output/state ranges.
-  uint32_t workItems = dims.hv;
+  // One work item is one (batch, value-head, V-tile) tuple. V tiles write
+  // disjoint output/state ranges, and exposing batch here also fills all cores
+  // for small-head multi-batch inputs.
   uint32_t vTileCount = DivCeil(dims.dv, vStepVal);
-  if (dims.hv < aivNum && vTileCount > 1) {
-    workItems = dims.hv * vTileCount;
-  }
+  uint64_t totalWorkItems = static_cast<uint64_t>(dims.batch) * dims.hv * vTileCount;
+  uint32_t workItems = (totalWorkItems > UINT32_MAX) ? UINT32_MAX : static_cast<uint32_t>(totalWorkItems);
   uint32_t blockDim = (workItems < aivNum) ? workItems : aivNum;
   if (blockDim == 0) {
     blockDim = kMinBlockDim;
   }
   context->SetBlockDim(blockDim);
-  context->SetTilingKey(0);
+  // Keep exactly three compiled kernels: key 0 is the dense Dk=80 Cube path,
+  // key 2 is the fixed Dk=128 path, and key 1 handles both Dk=64 and generic
+  // shapes. Avoiding a fourth kernel also avoids a measurable launch overhead
+  // on small generic shapes.
+  uint32_t tilingKey = 1;
+  if (dims.dk == kDk80) {
+    tilingKey = 0;
+  } else if (dims.dk == kMatmulK) {
+    tilingKey = 2;
+  }
+  context->SetTilingKey(tilingKey);
 
   LogTiling(dims, chunkSize, numChunks, scaleValueAttr, ubSize, vStepVal, blockDim, outQueueMax, tbufTotal, restBytes);
 
@@ -286,7 +327,8 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
     uint64_t workspaceStrideV = CeilAlign(dims.dv, FP32_NUM_PER_BLOCK);
     uint64_t stateWorkspaceBytes =
       static_cast<uint64_t>(dims.batch) * dims.hv * dims.dk * workspaceStrideV * sizeof(float);
-    ws[0] = (stateWorkspaceBytes > kWorkspaceBytes) ? stateWorkspaceBytes : kWorkspaceBytes;
+    uint64_t requiredWorkspace = stateWorkspaceBytes + static_cast<uint64_t>(blockDim) * kRawMatmulStageBytesPerCore;
+    ws[0] = (requiredWorkspace > kWorkspaceBytes) ? requiredWorkspace : kWorkspaceBytes;
   }
   return GRAPH_SUCCESS;
 }

@@ -25,12 +25,22 @@ extern "C" __global__ __aicore__ void chunk_gated_delta_rule(GM_ADDR query, GM_A
                                                              GM_ADDR workspaceGM, GM_ADDR tilingGM) {
   REGISTER_TILING_DEFAULT(ChunkGatedDeltaRuleTilingData);
   GET_TILING_DATA(tilingData, tilingGM);
-  KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+  KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
   GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
   CGDRInitParams initParams{query,     key, value,      beta,         initialState, actualSeqLengths,
                             gOptional, out, finalState, userWorkspace};
   TPipe pipe;
-  ChunkGatedDeltaRule<half, half> op(&tilingData);
-  op.Init(initParams, &pipe);
-  op.Process();
+  if (TILING_KEY_IS(0)) {
+    ChunkGatedDeltaRule<half, half, 80> op(&tilingData);
+    op.Init(initParams, &pipe);
+    op.Process();
+  } else if (TILING_KEY_IS(1)) {
+    ChunkGatedDeltaRule<half, half, 64> op(&tilingData);
+    op.Init(initParams, &pipe);
+    op.Process();
+  } else if (TILING_KEY_IS(2)) {
+    ChunkGatedDeltaRule<half, half, 128> op(&tilingData);
+    op.Init(initParams, &pipe);
+    op.Process();
+  }
 }
