@@ -56,25 +56,22 @@ PI0.5 Base 采用双 Transformer 架构，模型被拆分为 2 个 ONNX 文件�
 | 软件包            | 版本       |
 | -------------- | -------- |
 | Python         |  3.11     |
-| torch          | >= 2.0   |
-| torchvision    | 0.15.0   |
+| torch          | 2.12.0   |
 | transformers    | 4.53.2   |
-| safetensors    | >= 0.4   |
-| sentencepiece    | >= 0.1   |
-| opencv-python    | >= 4.5   |
+| safetensors    | 0.7.0   |
+| sentencepiece    | 0.2.1   |
 | numpy          | 2.2.6     |
-| onnx           | >= 1.15   |
-| onnxruntime    | 1.23.2   |
+| onnx           | 1.20.1   |
 | CANN           | 8.5.0    |
 | mindspore-lite | 2.8.0    |
 
 ### 1.2 环境安装
 
 ```bash
-pip install torch transformers safetensors sentencepiece onnx opencv-python
-# 安装[open pi](https://github.com/Physical-Intelligence/openpi)项目依赖（用于加载模型结构）
-pip install -e .
+pip install torch==2.12.0 transformers==4.53.2 safetensors==0.7.0 onnx==1.20.1 sentencepiece==0.2.1
 ```
+
+> **注意**：[mindspore-lite](https://www.mindspore.cn/lite/docs/zh-CN/stable/use/downloads.html#2-8-0)和[CANN版本](https://www.hiascend.com/cann)安装包需要从对应的官网上进行下载并安装。
 
 ### 1.3 使能昇腾CANN环境
 
@@ -84,6 +81,15 @@ pip install -e .
 source /path/to/Ascend/set_env.sh
 ```
 
+### 1.4 下载open pi0.5源码和权重
+
+```bash
+# 下载模型源码
+git clone https://github.com/Physical-Intelligence/openpi
+# 模型权重下载链接
+https://www.modelscope.cn/models/lerobot/pi05_base
+```
+
 ---
 
 ## 2. 模型导出 ONNX
@@ -91,6 +97,9 @@ source /path/to/Ascend/set_env.sh
 ### 导出命令
 
 ```bash
+# 以下相关路径根据实际情况进行修改
+export PYTHONPATH=/path/to/openpi/src:.:$PYTHONPATH
+cp -r /path/to/openpi/src/openpi/models_pytorch/transformers_replace/* /path/to/site-packages/transformers/
 python export_pi0.5_onnx.py \
   --checkpoint_dir ./pi05_base \
   --output_dir ./onnx_output_fp16
@@ -163,6 +172,12 @@ onnx_output_fp16/
 [acl_build_options]
 ge.exec.precision_mode=allow_mix_precision_fp16
 ge.exec.modify_mixlist="./configs/op_fp32_for_prefix_encoder.json"
+# prefix_encoder 模型`首次转换`时可以添加AOE调优配置来对模型进行子图和算子调优，以此来提升mindir模型的性能。
+# AOE执行时间会很长，建议后续模型转换时注释以下配置。
+[ascend_context]
+aoe_mode="subgraph tuning, operator tuning"
+[acl_init_options]
+ge.op_compiler_cache_mode="force"
 ```
 
 `op_fp32_for_prefix_encoder.json` 文件内容：
@@ -291,6 +306,8 @@ python infer_pi0.5_mindir.py \
   --seed 42
 ```
 
+> [paligemma_tokenizer下载链接](https://www.modelscope.cn/models/keithyc/paligemma_tokenizer)
+
 ### 参数说明
 
 | 参数 | 说明 | 默认值 |
@@ -301,7 +318,7 @@ python infer_pi0.5_mindir.py \
 | `--prompt` | 任务描述文本 | `"pick up the cup"` |
 | `--num_steps` | 去噪步数 | `10` |
 | `--seed` | 随机种子 | `42` |
-| `--tokenizer_path` | PaliGemma tokenizer 路径 | 自动搜索 |
+| `--tokenizer_path` | PaliGemma tokenizer 路径 | `./paligemma_tokenizer.model` |
 | `--output` | 输出文件路径 | `mindir_inference_result.npy` |
 
 ### 推理示例输出
@@ -327,12 +344,12 @@ Prefix encoder: KV cache on device directly (36 tensors, ~17.0 MB, dtype=DataTyp
 TIMING SUMMARY
 ============================================================
   Preprocess:                       6.0 ms
-  Prefix Encoder:                 175.1 ms
+  Prefix Encoder:                 167.2 ms
   Denoise Loop (total):           100.5 ms  (10 steps x 10.1 ms/step)
   Postprocess:                      0.0 ms
 ------------------------------------------------------------
-  Model inference total:          275.7 ms
-  End-to-end total:               281.7 ms
+  Model inference total:          267.7 ms
+  End-to-end total:               273.7 ms
 ============================================================
 Actions shape: (1, 50, 32)
 Actions sample (first 3 steps, first 8 dims):
@@ -366,7 +383,7 @@ Results saved to ./mindir_inference_result.npy
 |------|-----|
 | 输入 | 3 × (1, 3, 224, 224) 图像 + (1, 200) 文本 tokens |
 | 输出 | 1 × prefix_pad_masks + 36 × KV cache tensors |
-| 耗时 | **175.1 ms** |
+| 耗时 | **167.2 ms** |
 
 **Denoise Step（单步）**
 
@@ -381,11 +398,11 @@ Results saved to ./mindir_inference_result.npy
 | 指标 | 耗时 (ms) |
 |------|----------|
 | Preprocess | 6.0 |
-| Prefix Encoder | 175.1 |
+| Prefix Encoder | 167.2 |
 | Denoise Loop（10 steps） | 100.5 |
 | Postprocess | 0.0 |
-| **模型推理总耗时** | **275.7** |
-| **端到端总耗时** | **281.7** |
+| **模型推理总耗时** | **267.7** |
+| **端到端总耗时** | **273.7** |
 
 ## 6. 常见问题 FAQ
 
@@ -416,7 +433,7 @@ ValueError: transformers_replace is not installed correctly.
 openpi对transformer库做了适配，但是适配的代码没有拷贝到transformer库中相应的位置。
 
 **解决方案：**\
-将openpi代码仓中./src/models_pytorch/transformers_replace/目录下的所有东西拷贝到python中transformers库下。
+将openpi代码仓中./src/openpi/models_pytorch/transformers_replace/目录下的所有东西拷贝到python中transformers库下。
 
 ---
 
