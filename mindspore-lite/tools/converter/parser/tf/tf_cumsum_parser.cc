@@ -39,7 +39,7 @@ PrimitiveCPtr TFCumSumParser::Parse(const tensorflow::NodeDef &tf_op,
     MS_LOG(ERROR) << "The reverse attr should be specified.";
     return nullptr;
   }
-  prim->set_exclusive(attr_value.b());
+  prim->set_reverse(attr_value.b());
 
   *output_size = 1;
   if (AddOpInput(tf_op, 0, inputs) != RET_OK || AddOpInput(tf_op, 1, inputs) != RET_OK) {
