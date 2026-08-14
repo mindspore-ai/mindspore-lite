@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <memory>
 #include "mindspore/ops/op_def/random_ops.h"
+#include "infer/eltwise.h"
+#include "src/common/ops/primitive/add_fusion.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/nn_ops.h"
@@ -152,6 +154,51 @@ bool ValidParameterNode(const ParameterPtr &param_node) {
   auto tensor_info = std::dynamic_pointer_cast<tensor::Tensor>(param_node->default_param());
   MS_CHECK_TRUE_RET(tensor_info != nullptr, false);
   return tensor_info->Size() != 0;
+}
+
+STATUS SplitNarySum(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
+  MS_CHECK_TRUE_RET(func_graph != nullptr, RET_NULL_PTR);
+  MS_CHECK_TRUE_RET(cnode != nullptr, RET_NULL_PTR);
+  // Only split Eltwise SUM with >2 data inputs (input[0]=primitive, input[1..N]=data)
+  if (cnode->inputs().size() <= 3) {
+    return lite::RET_OK;
+  }
+  auto prim = GetValueNode<PrimitivePtr>(cnode->input(0));
+  if (prim == nullptr) {
+    return lite::RET_OK;
+  }
+  auto mode_attr = prim->GetAttr("mode");
+  if (mode_attr != nullptr && GetValue<int64_t>(mode_attr) != static_cast<int64_t>(mindspore::EltwiseMode::SUM)) {
+    return lite::RET_OK;
+  }
+  auto manager = func_graph->manager();
+  MS_CHECK_TRUE_RET(manager != nullptr, RET_NULL_PTR);
+
+  // Chain binary AddFusion: Add(Add(in1,in2), in3)...
+  auto inputs = cnode->inputs();
+  AnfNodePtr acc = inputs[1];
+  for (size_t i = 2; i < inputs.size(); ++i) {
+    auto add_prim = std::make_shared<ops::AddFusion>();
+    MS_CHECK_TRUE_RET(add_prim != nullptr, RET_ERROR);
+    auto add_prim_c = add_prim->GetPrim();
+    MS_CHECK_TRUE_RET(add_prim_c != nullptr, RET_ERROR);
+    auto value_node = NewValueNode(add_prim_c);
+    MS_CHECK_TRUE_RET(value_node != nullptr, RET_ERROR);
+    auto new_add = func_graph->NewCNode({value_node, acc, inputs[i]});
+    if (new_add == nullptr) {
+      MS_LOG(ERROR) << "Create add node failed.";
+      return RET_ERROR;
+    }
+    new_add->set_fullname_with_scope(cnode->fullname_with_scope() + "_Add" + std::to_string(i));
+    new_add->set_abstract(cnode->abstract());
+    acc = new_add;
+  }
+  if (!manager->Replace(cnode, acc)) {
+    MS_LOG(ERROR) << "Replace nary sum node failed.";
+    return RET_ERROR;
+  }
+  opt::UpdateManager(func_graph);
+  return lite::RET_OK;
 }
 
 STATUS ReplaceConstant(const FuncGraphPtr &func_graph, const CNodePtr &cnode, bool keep_origin_dtype) {
@@ -644,6 +691,9 @@ int DispatchNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode, const co
                  bool keep_origin_dtype, bool *need_update_manager) {
   if (opt::CheckPrimitiveType(cnode, prim::kPrimConstant)) {
     return ReplaceConstant(func_graph, cnode, keep_origin_dtype);
+  }
+  if (opt::CheckPrimitiveType(cnode, prim::kPrimEltwise)) {
+    return SplitNarySum(func_graph, cnode);
   }
   if (opt::CheckPrimitiveType(cnode, prim::kPrimTranspose) && flag.save_type != kMindIR) {
     return ReplaceTransposeWithGraphInput(func_graph, cnode);
