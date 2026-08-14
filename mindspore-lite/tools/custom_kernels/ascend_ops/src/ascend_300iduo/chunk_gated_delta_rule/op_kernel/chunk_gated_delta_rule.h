@@ -345,6 +345,7 @@ class ChunkGatedDeltaRule {
   }
 
   template <uint32_t kBlock>
+  // cppcheck-suppress unusedPrivateFunction
   __aicore__ inline void LoadMatmulBlockA(LocalTensor<half> a1Local, LocalTensor<half> a2Local,
                                           GlobalTensor<half> src) {
     DataCopy(a1Local, src, Nd2NzParams{1, kBlock, kBlock, 0, kBlock, kBlock, 1, 0});
@@ -357,6 +358,7 @@ class ChunkGatedDeltaRule {
   }
 
   template <uint32_t kBlock>
+  // cppcheck-suppress unusedPrivateFunction
   __aicore__ inline void LoadMatmulBlockB(LocalTensor<half> b1Local, LocalTensor<half> b2Local,
                                           GlobalTensor<half> src) {
     DataCopy(b1Local, src, Nd2NzParams{1, kBlock, kBlock, 0, kBlock, kBlock, 1, 0});
@@ -369,6 +371,7 @@ class ChunkGatedDeltaRule {
   }
 
   template <uint32_t kBlock>
+  // cppcheck-suppress unusedPrivateFunction
   __aicore__ inline void MmadMatmulBlock(LocalTensor<float> c1Local, LocalTensor<half> a2Local,
                                          LocalTensor<half> b2Local, bool init) {
     SetFlag<HardEvent::MTE1_M>(0);
@@ -383,6 +386,7 @@ class ChunkGatedDeltaRule {
   // every cross term keeps the block solve close to the original FP32
   // recurrence while moving the dense cross-block work off the scalar pipe.
   template <uint32_t kBlock>
+  // cppcheck-suppress unusedPrivateFunction
   __aicore__ inline void MatmulBlockFp32Compensated(LocalTensor<float> srcA, LocalTensor<float> srcB,
                                                     LocalTensor<float> residualA, LocalTensor<float> residualB,
                                                     LocalTensor<float> dst) {
@@ -926,6 +930,7 @@ class ChunkGatedDeltaRule {
   // Phase 4: attn = -((k_beta @ K^T) * decay_mask) (lower tri), recursive accumulation, identity
   // diagonal; then attn_i = (Q @ K^T) * decay_mask overwrites decayMaskFp32 (lower tri + diag).
   __aicore__ inline void ComputeAttnMatrix(uint64_t qkHead, int32_t t_start, uint32_t chunkLen) {
+    // #lizard forgives -- compile-time specialized branches keep the fast paths local and inlinable.
     uint32_t cs = chunkSize_;
     if constexpr (kSpecializedDk == 64) {
       if (likely(realK_ == 64 && chunkLen == 64 && vStepAligned_ >= 64 && CanCacheAttnQuery(chunkLen))) {
@@ -999,7 +1004,9 @@ class ChunkGatedDeltaRule {
   //   attn_i = (Q*scale) @ K^T * decay.
   // This replaces 4096 row-pair DotFp32 reductions on the fixed 64x128 path.
   template <uint32_t kMatmulK>
+  // cppcheck-suppress unusedPrivateFunction
   __aicore__ inline void ComputeAttnProductsCube() {
+    // #lizard forgives -- this fused Cube pipeline is intentionally kept in one inlinable device function.
     constexpr uint32_t kMatmulM = 64;
     constexpr uint32_t kMatmulN = 64;
     constexpr uint32_t kAElements = kMatmulM * kMatmulK;
@@ -1202,6 +1209,7 @@ class ChunkGatedDeltaRule {
   // Fixed-shape k_cumdecay = attn @ (k_beta * exp(g)) as one
   // 64x64x128 Cube product, replacing the lower-triangle Axpy nest.
   template <uint32_t kMatmulN>
+  // cppcheck-suppress unusedPrivateFunction
   __aicore__ inline void ComputeKCumdecayCube() {
     constexpr uint32_t kMatmulM = 64;
     constexpr uint32_t kMatmulK = 64;
@@ -1590,8 +1598,10 @@ class ChunkGatedDeltaRule {
   }
 
   template <uint32_t kStateK, uint32_t kMatmulN>
+  // cppcheck-suppress unusedPrivateFunction
   __aicore__ inline void ComputeValueAndVNewCube(uint64_t stateBaseOffset, uint64_t workspaceStateBaseOffset,
                                                  uint32_t v_i, uint32_t curV, uint32_t c) {
+    // #lizard forgives -- splitting the fused Cube/Vector sequence would break its explicit event pipeline.
     constexpr uint32_t kMatmulM = 64;
     constexpr uint32_t kAttnK = 64;
     constexpr uint32_t kAAttnElements = kMatmulM * kAttnK;
@@ -1913,7 +1923,9 @@ class ChunkGatedDeltaRule {
   }
 
   template <uint32_t kStateK, uint32_t kMatmulN>
+  // cppcheck-suppress unusedPrivateFunction
   __aicore__ inline void ComputeOutputCube(int32_t t_start, uint64_t qkHead) {
+    // #lizard forgives -- splitting the fused Cube/Vector sequence would break its explicit event pipeline.
     constexpr uint32_t kMatmulM = 64;
     constexpr uint32_t kAttnK = 64;
     constexpr uint32_t kAStateElements = kMatmulM * kStateK;
@@ -2103,7 +2115,9 @@ class ChunkGatedDeltaRule {
   }
 
   template <uint32_t kStateRows, uint32_t kMatmulN>
+  // cppcheck-suppress unusedPrivateFunction
   __aicore__ inline void ComputeStateUpdateCube(int32_t t_start, uint64_t qkHead) {
+    // #lizard forgives -- splitting the fused Cube/Vector sequence would break its explicit event pipeline.
     // The dedicated Dk=80 kernel fits the complete 80x64 A matrix and 80x80
     // result in L1/L0, so it avoids the old 64+16 M split. Dk=128 keeps the
     // conservative 64-row tiling.
@@ -2311,6 +2325,7 @@ class ChunkGatedDeltaRule {
   __aicore__ inline void UpdateAndWriteState(int32_t t_start, uint32_t chunkLen, uint32_t v_i, uint32_t curV,
                                              uint64_t qkHead, uint64_t stateBaseOffset,
                                              uint64_t workspaceStateBaseOffset, uint32_t avFp32, bool isLastChunk) {
+    // #lizard forgives -- fast/fallback paths and final-state layouts share synchronization state in this routine.
     if (likely(IsCubeFastPath(chunkLen, avFp32))) {
       ComputeStateUpdateCubeDispatch(t_start, qkHead);
     } else {

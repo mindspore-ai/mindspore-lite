@@ -146,7 +146,7 @@ uint32_t ComputeTmpBuffBytes(uint32_t vs, uint32_t dv, uint32_t chunkSize, uint3
   uint32_t tDelta = deltaElem * sizeof(float);                     // deltaFp32
   uint32_t tDotProduct = dotProductElem * sizeof(float);           // dotProductFp32
   uint32_t tExpGcum = cs * sizeof(float);                          // expGCumFp32
-  uint32_t tBeta = cs * sizeof(float);                             // betaFp32
+  uint32_t tBeta = tExpGcum;                                       // betaFp32
   uint32_t tScores = cs * cs * sizeof(float);                      // chunkScoresFp32 (attn matrix)
   uint32_t tState = stateStrideK * avStepAligned * sizeof(float);  // stateInFp32 [DK, vStep]
   bool overlapScoresState = vs >= dv || allowScoresStateOverlap;
@@ -274,16 +274,14 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
   // region, including when a head spans multiple V tiles.
   bool allowScoresStateOverlap = true;
   uint32_t preferredVStep = 0;
-  if (chunkSize == kMatmulM) {
-    if (dims.dk == kMatmulK) {
-      preferredVStep = kMatmulN;
-    } else if (dims.dk == kMatmulK / 2) {
-      preferredVStep = kMatmulN / 2;
-    } else if (dims.dk == kDk80) {
-      // Dk=80 has a dedicated 64x80 Cube path. Pad narrow Dv tiles to 80 so
-      // the UB scratch can also hold the 64x80 NZ result without a fallback.
-      preferredVStep = kDk80;
-    }
+  if (dims.dk == kMatmulK) {
+    preferredVStep = kMatmulN;
+  } else if (dims.dk == kMatmulK / 2) {
+    preferredVStep = kMatmulN / 2;
+  } else if (dims.dk == kDk80) {
+    // Dk=80 has a dedicated 64x80 Cube path. Pad narrow Dv tiles to 80 so
+    // the UB scratch can also hold the 64x80 NZ result without a fallback.
+    preferredVStep = kDk80;
   }
   if (!SolveVStep(dims.dv, ubSize, chunkSize, dims.dk, alignK, allowScoresStateOverlap, preferredVStep, vStepVal,
                   tbufTotal, outQueueMax, restBytes)) {
