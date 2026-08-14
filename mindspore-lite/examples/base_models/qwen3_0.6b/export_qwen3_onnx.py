@@ -231,69 +231,43 @@ class _CannPromptFlashAttention(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, query, key, value, atten_mask, num_heads, num_key_value_heads, scale_value):
-        """PyTorch reference impl of prompt flash attention (traced for ONNX export numerics)."""
+        """PyTorch reference impl (traced for ONNX export numerics).
+
+        Returns [B, S, N, D] (transposed) to match CANN PFA op output layout.
+        """
         del ctx
-        if int(num_key_value_heads) != int(num_heads):
-            repeat = int(num_heads) // int(num_key_value_heads)
-            key = key.repeat_interleave(repeat, dim=1)
-            value = value.repeat_interleave(repeat, dim=1)
+        if num_key_value_heads < num_heads:
+            key = key.repeat_interleave(num_heads // num_key_value_heads, dim=1)
+            value = value.repeat_interleave(num_heads // num_key_value_heads, dim=1)
         scale = float(scale_value)
         attn = torch.matmul(query, key.transpose(2, 3)) * scale
         if atten_mask is not None:
-            if atten_mask.dtype == torch.bool:
-                mask_value = torch.finfo(query.dtype).min
-                attn = torch.where(atten_mask, torch.full_like(attn, mask_value), attn)
-            else:
-                attn = attn + atten_mask
+            attn = attn + atten_mask
         attn = torch.nn.functional.softmax(attn, dim=-1, dtype=torch.float32).to(query.dtype)
-        return torch.matmul(attn, value)
+        attn_output = torch.matmul(attn, value)
+        return attn_output
 
     @staticmethod
     def symbolic(g, query, key, value, atten_mask, num_heads, num_key_value_heads, scale_value):
         """Emit ONNX Custom node mapping to the CANN PromptFlashAttention op."""
-        if atten_mask is None:
-            y = g.op(
-                "Custom",
-                query,
-                key,
-                value,
-                type_s="PromptFlashAttention",
-                input_names_s=["query", "key", "value", "atten_mask"],
-                optional_input_names_s=["atten_mask"],
-                output_names_s=["attention_out"],
-                output_num_i=1,
-                input_index_i=[0, 1, 2],
-                num_heads_i=int(num_heads),
-                num_key_value_heads_i=int(num_key_value_heads),
-                scale_value_f=float(scale_value),
-                pre_tokens_i=214748647,
-                next_tokens_i=0,
-                input_layout_s="BNSD_BSND",
-                sparse_mode_i=0,
-                inner_precise_i=1,
-            )
-        else:
-            y = g.op(
-                "Custom",
-                query,
-                key,
-                value,
-                atten_mask,
-                type_s="PromptFlashAttention",
-                input_names_s=["query", "key", "value", "atten_mask"],
-                optional_input_names_s=["atten_mask"],
-                output_names_s=["attention_out"],
-                output_num_i=1,
-                input_index_i=[0, 1, 2, 3],
-                num_heads_i=int(num_heads),
-                num_key_value_heads_i=int(num_key_value_heads),
-                scale_value_f=float(scale_value),
-                pre_tokens_i=214748647,
-                next_tokens_i=0,
-                input_layout_s="BNSD_BSND",
-                sparse_mode_i=0,
-                inner_precise_i=1,
-            )
+        y = g.op(
+            "Custom",
+            query,
+            key,
+            value,
+            atten_mask,
+            type_s="PromptFlashAttention",
+            input_names_s=["query", "key", "value", "atten_mask"],
+            optional_input_names_s=["atten_mask"],
+            output_names_s=["attention_out"],
+            output_num_i=1,
+            input_index_i=[0, 1, 2, 3],
+            num_heads_i=int(num_heads),
+            num_key_value_heads_i=int(num_key_value_heads),
+            scale_value_f=float(scale_value),
+            input_layout_s="BNSD",
+            inner_precise_i=0,
+        )
         y.setType(query.type())
         return y
 
@@ -795,16 +769,14 @@ def _qwen3_rotary_emb_matmul2d(rotary_emb, x, position_ids):
 
 
 def _make_bool_causal_mask(attention_mask, q_len, k_len, past_len):
-    """Boolean causal mask (True=allowed) with padding mask applied."""
-    batch_size = attention_mask.shape[0]
-    ar_q = torch.arange(q_len, device=attention_mask.device)
-    ar_k = torch.arange(k_len, device=attention_mask.device)
-    causal_mask = ar_k[None, :] <= (past_len + ar_q[:, None])
-    causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)
-    causal_mask = causal_mask.repeat(batch_size, 1, 1, 1)
-    padding_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-    padding_mask = padding_mask.expand(batch_size, 1, q_len, k_len)
-    return causal_mask & padding_mask.to(torch.bool)
+    """Boolean causal mask (True=masked) for CANN PromptFlashAttention."""
+    device = attention_mask.device
+    ar_q = torch.arange(q_len, device=device)
+    ar_k = torch.arange(k_len, device=device)
+    causal = ar_k[None, :] > (past_len + ar_q[:, None])
+    padding = ~attention_mask.to(torch.bool)
+    mask = causal[None, None, :, :].expand(attention_mask.shape[0], 1, q_len, k_len) | padding[:, None, None, :]
+    return mask
 
 
 def _make_additive_causal_mask(attention_mask, q_len, k_len, past_len, dtype):
@@ -958,26 +930,29 @@ def _cann_attn_forward(
             float(scaling),
         )
     else:
+        key_states_for_attn = key_states
+        value_states_for_attn = value_states
         if num_kv_heads < num_heads:
             rep = num_heads // num_kv_heads
-            key_states = key_states.repeat_interleave(rep, dim=1)
-            value_states = value_states.repeat_interleave(rep, dim=1)
+            key_states_for_attn = key_states.repeat_interleave(rep, dim=1)
+            value_states_for_attn = value_states.repeat_interleave(rep, dim=1)
         attn_weights = torch.matmul(
-            query_states, key_states.transpose(2, 3)
+            query_states, key_states_for_attn.transpose(2, 3)
         ) * scaling
         if bool_mask is not None:
             mask_value = torch.finfo(query_states.dtype).min
             additive = torch.where(
-                bool_mask, torch.zeros((), dtype=query_states.dtype),
-                torch.full((), mask_value, dtype=query_states.dtype),
+                bool_mask, torch.full((), mask_value, dtype=query_states.dtype),
+                torch.zeros((), dtype=query_states.dtype),
             )
             attn_weights = attn_weights + additive
         attn_weights = torch.nn.functional.softmax(
             attn_weights, dim=-1, dtype=torch.float32
         ).to(query_states.dtype)
-        attn_output = torch.matmul(attn_weights, value_states)
+        attn_output = torch.matmul(attn_weights, value_states_for_attn)
 
-    attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+    # Both paths return [B,N,S,D], need transpose to [B,S,N,D]
+    attn_output = attn_output.transpose(1, 2).reshape(*input_shape, -1).contiguous()
     attn_output = _linear(attn_mod.o_proj, attn_output, enable_bmm2mm)
     return attn_output, key_states, value_states
 
@@ -1166,7 +1141,7 @@ class Qwen3LlmDecode(torch.nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Fused wrappers (route RotaryMul / PFA / SwiGlu / RmsNorm / AddRmsNorm to CANN Custom ops)
+# Fused wrappers (route RotaryMul / PFA / SwiGlu / RmsNorm / AddRmsNorm / MatMulV2 to CANN Custom ops)
 # ---------------------------------------------------------------------------
 
 
@@ -1285,7 +1260,7 @@ class Qwen3LlmDecodeFused(torch.nn.Module):
                 pk_in,
                 pv_in,
                 self.flags["enable_rotarymul"],
-                self.flags["enable_pfa"],
+                False,  # decode 不使用 PFA（GQA 与 CANN PFA 不兼容）
                 self.flags["enable_bmm2mm"],
             )
             present.append(pk)
@@ -1331,8 +1306,8 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", flags=None):
     default_flags = {
         "enable_rmsnorm_replace": False,
         "enable_add_rmsnorm": False,
-        "enable_rotarymul": False,
-        "enable_pfa": False,
+        "enable_rotarymul": True,
+        "enable_pfa": True,
         "enable_swiglu": False,
         "enable_bmm2mm": False,
     }
@@ -1360,7 +1335,7 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", flags=None):
             _replace_rmsnorm_with_cann(model)
         prefill = Qwen3LlmPrefillFused(model, lm_head, flags).to(device).eval()
         decode = Qwen3LlmDecodeFused(model, lm_head, flags).to(device).eval()
-        suffix = "_fused"
+        suffix = ""
         enabled = [k for k, v in flags.items() if v]
         print(f"Fusion opt ON: {', '.join(enabled)}")
     else:
@@ -1516,12 +1491,24 @@ def main():
     parser.add_argument(
         "--enable-rotarymul",
         action="store_true",
-        help="Route RoPE through Custom(RotaryMul) inside fused wrapper.",
+        default=True,
+        help="Route RoPE through Custom(RotaryMul) inside fused wrapper (default: ON).",
     )
     parser.add_argument(
         "--enable-pfa",
         action="store_true",
-        help="Route QK^T+softmax+V through Custom(PromptFlashAttention).",
+        default=True,
+        help="Route QK^T+softmax+V through Custom(PromptFlashAttention) (default: ON).",
+    )
+    parser.add_argument(
+        "--enable-all-fusion",
+        action="store_true",
+        help="Convenience: turn on all per-op fusion switches.",
+    )
+    parser.add_argument(
+        "--disable-fusion",
+        action="store_true",
+        help="Disable all fusion (export non-fused baseline).",
     )
     parser.add_argument(
         "--enable-swiglu",
@@ -1532,11 +1519,6 @@ def main():
         "--enable-bmm2mm",
         action="store_true",
         help="Lower BatchMatMul to MatMulV2 (CANN Custom) for Linear layers.",
-    )
-    parser.add_argument(
-        "--enable-all-fusion",
-        action="store_true",
-        help="Convenience: turn on all of the above per-op fusion switches.",
     )
     parser.add_argument(
         "--torch-ptq-int8",
@@ -1576,14 +1558,24 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    flags = {
-        "enable_rmsnorm_replace": args.enable_rmsnorm_replace or args.enable_all_fusion,
-        "enable_add_rmsnorm": args.enable_add_rmsnorm or args.enable_all_fusion,
-        "enable_rotarymul": args.enable_rotarymul or args.enable_all_fusion,
-        "enable_pfa": args.enable_pfa or args.enable_all_fusion,
-        "enable_swiglu": args.enable_swiglu or args.enable_all_fusion,
-        "enable_bmm2mm": args.enable_bmm2mm or args.enable_all_fusion,
-    }
+    if args.disable_fusion:
+        flags = {
+            "enable_rmsnorm_replace": False,
+            "enable_add_rmsnorm": False,
+            "enable_rotarymul": False,
+            "enable_pfa": False,
+            "enable_swiglu": False,
+            "enable_bmm2mm": False,
+        }
+    else:
+        flags = {
+            "enable_rmsnorm_replace": args.enable_rmsnorm_replace or args.enable_all_fusion,
+            "enable_add_rmsnorm": args.enable_add_rmsnorm or args.enable_all_fusion,
+            "enable_rotarymul": args.enable_rotarymul or args.enable_all_fusion,
+            "enable_pfa": args.enable_pfa or args.enable_all_fusion,
+            "enable_swiglu": args.enable_swiglu or args.enable_all_fusion,
+            "enable_bmm2mm": args.enable_bmm2mm or args.enable_all_fusion,
+        }
 
     # Wire PTQ CLI args into module-level globals consumed by export_llm_prefill_decode.
     global TORCH_PTQ_INT8, TORCH_PTQ_CALIB_JSONL, TORCH_PTQ_MAX_SAMPLES

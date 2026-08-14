@@ -441,6 +441,8 @@ Higher scores indicate better relevance to the query.
 
 > 注：不同设备、不同 CANN 版本、不同 doc 长度分布都会影响性能。本表用于提供可复现实验入口与对比口径。
 >
+> 注：Tokenize + pad 在 CPU 上执行，受 CPU 负载影响波动较大；Pointwise 模式需对 N 个 prompt 一次性 batch tokenize + pad，数据量是 Listwise 的 N 倍，因此该项耗时显著高于 Listwise。
+>
 > Listwise 与 pointwise 的差异：
 > - Listwise：把 query + N 篇 doc 按顺序写进同一条输入序列里（`batch=1, seq=max_length`），一次前向输出 N 个分数（shape 为 `(1, N)`）。实现上：每篇 doc 末尾插入 `<|embed_token|>`，并用 `doc_token_indices` 记录这些 token 在序列中的位置；推理时从 `hidden_states` 里取出每篇 doc 的 embedding，再与 query embedding 计算 cosine 得分。
 > - Pointwise：每次只输入 query + 1 篇 doc（输出 shape 为 `(1, 1)`），要对 N 篇 doc 打分就需要跑 N 次前向，因此总耗时通常近似 N 倍（再叠加少量调度/框架开销）。

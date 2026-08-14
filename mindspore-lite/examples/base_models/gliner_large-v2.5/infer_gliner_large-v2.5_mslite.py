@@ -36,6 +36,7 @@ No ``torch`` import: pure numpy + transformers + mindspore_lite.
 import argparse
 import json
 import re
+import time as _time
 from pathlib import Path
 
 import numpy as np
@@ -215,6 +216,8 @@ def parse_args():
     parser.add_argument("--flat-ner", action="store_true", default=True,
                         help="Disallow overlapping spans (default True)")
     parser.add_argument("--device-id", type=int, default=0, help="Ascend device id")
+    parser.add_argument("--warmup", type=int, default=3,
+                        help="Number of warmup runs before timed inference (default 3, set 0 to disable)")
     return parser.parse_args()
 
 
@@ -254,20 +257,33 @@ def main():
             "The Eiffel Tower is located in Paris, France and was built in 1889.",
         ]
 
+    if args.warmup > 0:
+        warmup_feeds, _, _ = _prepare_inputs(
+            texts[0], labels, tokenizer, ent_token, sep_token)
+        print(f"[infer] warmup: {args.warmup} runs...", flush=True)
+        for _ in range(args.warmup):
+            model.predict(warmup_feeds)
+        print("[infer] warmup done", flush=True)
+
     for text in texts:
+        t_e2e = _time.perf_counter()
         feeds, words, num_body_words = _prepare_inputs(
             text, labels, tokenizer, ent_token, sep_token)
+        t_pre = _time.perf_counter()
         outputs = model.predict(feeds)
+        t_pred = _time.perf_counter()
         logits = outputs[0].get_data_to_numpy()
         spans = _decode(logits, num_body_words, labels, args.threshold, args.flat_ner)
         ents = _map_to_chars(spans, words)
+        t_e2e_end = _time.perf_counter()
         print(f"\n[infer] text: {text}", flush=True)
         print(f"[infer] words ({num_body_words}): {[w[0] for w in words]}", flush=True)
         print(f"[infer] seq_len: {feeds[0].shape[1]}, logits shape: {logits.shape}", flush=True)
         for ent in ents:
             print(f"  - {ent['text']!r} [{ent['label']}] score={ent['score']:.4f} "
                   f"chars=({ent['start']}, {ent['end']})", flush=True)
-
+        print(f"[infer] 模型推理: {(t_pred - t_pre) * 1000:.2f} ms | "
+              f"端到端: {(t_e2e_end - t_e2e) * 1000:.2f} ms", flush=True)
 
 if __name__ == "__main__":
     main()

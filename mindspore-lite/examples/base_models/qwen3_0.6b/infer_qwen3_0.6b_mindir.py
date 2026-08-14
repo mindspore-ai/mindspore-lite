@@ -57,6 +57,7 @@ class Qwen3InferencerZeroCopy:
         device: str = "ascend",
         device_id: int = 0,
         decode_buckets=None,
+        prefill_buckets=None,
     ):
         if device not in ["cpu", "ascend"]:
             raise ValueError("device must be cpu or ascend")
@@ -96,6 +97,9 @@ class Qwen3InferencerZeroCopy:
         self.eos_token_id = self.tokenizer.eos_token_id
         self.decode_buckets: list[int] = (
             sorted(int(b) for b in decode_buckets) if decode_buckets else []
+        )
+        self.prefill_buckets: list[int] = (
+            sorted(int(b) for b in prefill_buckets) if prefill_buckets else []
         )
 
         # Inspect decode model I/O to get output shapes per bucket
@@ -305,6 +309,44 @@ class Qwen3InferencerZeroCopy:
             text, max_length, use_chat_template
         )
 
+        # Pad prefill inputs to the nearest prefill bucket boundary. The bucketed
+        # MindIR is AOT-compiled for specific seq_lens; runtime only accepts
+        # shapes that match one of the ge.dynamicDims entries exactly.
+        actual_seq_len = int(input_ids.shape[1])
+        if self.prefill_buckets:
+            target_seq_len = actual_seq_len
+            for b in self.prefill_buckets:
+                if b >= actual_seq_len:
+                    target_seq_len = b
+                    break
+            if target_seq_len < actual_seq_len:
+                raise ValueError(
+                    f"prompt seq_len={actual_seq_len} exceeds max prefill "
+                    f"bucket {self.prefill_buckets[-1]}"
+                )
+            pad_len = target_seq_len - actual_seq_len
+            if pad_len > 0:
+                pad_token = int(self.tokenizer.pad_token_id)
+                input_ids = np.concatenate(
+                    [
+                        input_ids,
+                        np.full((1, pad_len), pad_token, dtype=np.int32),
+                    ],
+                    axis=1,
+                )
+                attention_mask = np.concatenate(
+                    [attention_mask, np.zeros((1, pad_len), dtype=np.int32)],
+                    axis=1,
+                )
+                position_ids = np.concatenate(
+                    [position_ids, np.zeros((1, pad_len), dtype=np.int32)],
+                    axis=1,
+                )
+            print(
+                f"[prefill] seq_len={actual_seq_len} → bucket={target_seq_len} "
+                f"(pad {pad_len})"
+            )
+
         # Prefill (host-side, single shot)
         prefill_inputs = [
             mslite.Tensor(input_ids),
@@ -319,11 +361,16 @@ class Qwen3InferencerZeroCopy:
         prefill_ms = (time.time() - t0) * 1000
         print(f"Prefill time: {prefill_ms:.2f} ms")
 
+        # When inputs were padded, slice outputs back to the actual seq_len so
+        # decode starts from the real prompt boundary, not the padding tail.
+        if actual_seq_len != int(input_ids.shape[1]):
+            past_kv = past_kv[:, :, :, :actual_seq_len, :]
+
         generated_ids = []
-        next_token = int(np.argmax(logits[0, -1]))
+        next_token = int(np.argmax(logits[0, actual_seq_len - 1]))
         generated_ids.append(next_token)
 
-        cur_pos = int(position_ids[0, -1])
+        cur_pos = int(position_ids[0, actual_seq_len - 1])
 
         print("Running LLM decode...")
         decode_times = []
@@ -439,6 +486,14 @@ def main():
         default="16,32,64,96,128,192,256,384,512,768,1024,1536,2048",
     )
     parser.add_argument(
+        "--prefill-buckets",
+        type=str,
+        default="",
+        help="Prefill seq_len buckets (comma-separated). Required when the "
+             "prefill MindIR is built with ge.dynamicDims (bucketed); empty "
+             "for pure-dynamic prefill MindIR.",
+    )
+    parser.add_argument(
         "--force-no-pre-alloc",
         action="store_true",
         help="Skip the pre-alloc probe; use plain predict (some mix-precision builds need this).",
@@ -446,6 +501,7 @@ def main():
     args = parser.parse_args()
 
     decode_buckets = [int(b) for b in args.decode_buckets.split(",") if b]
+    prefill_buckets = [int(b) for b in args.prefill_buckets.split(",") if b]
 
     inferencer = Qwen3InferencerZeroCopy(
         prefill_model_path=args.prefill_model,
@@ -454,6 +510,7 @@ def main():
         device=args.device,
         device_id=args.device_id,
         decode_buckets=decode_buckets,
+        prefill_buckets=prefill_buckets,
     )
     if args.force_no_pre_alloc:
         inferencer._use_pre_alloc = False

@@ -19,6 +19,7 @@ Grounding-DINO-Base 是一个开放词汇（open-vocabulary）目标检测模型
 | Python         | 3.11    |
 | torch          | 2.10.0  |
 | transformers   | 4.57.0  |
+| huggingface_hub| 0.36.2  |
 | onnx           | 1.19.1  |
 | onnxruntime    | 1.24.2  |
 | numpy          | 2.4.4   |
@@ -27,8 +28,9 @@ Grounding-DINO-Base 是一个开放词汇（open-vocabulary）目标检测模型
 | mindspore-lite | 2.9.0   |
 
 ```bash
-pip install torch==2.10.0 transformers==4.57.0 onnx==1.19.1 onnxruntime==1.24.2 \
-    numpy==2.4.4 pillow==12.2.0
+pip install torch==2.10.0 transformers==4.57.0 huggingface_hub==0.36.2 \
+    onnx==1.19.1 onnxruntime==1.24.2 \
+    numpy==2.4.4 pillow==12.2.0 scipy==1.17.1
 ```
 
 ### 获取模型权重
@@ -85,7 +87,7 @@ Grounding-DINO-Base 的整体结构：
 - **跨模态 Transformer**：
   - 6 层 encoder，每层用 MSDA 跨 4 个特征层做可变形采样（encoder 侧 numQueries=22223）
   - 6 层 decoder，每层包含 self-attention + cross-attention MSDA（decoder 侧 numQueries=900）
-- **检测头**：输出 900 个 query 的 `logits`（2562 类，含 no-object 类）与 `pred_boxes`（cx, cy, w, h，归一化坐标）
+- **检测头**：输出 900 个 query 的 `logits`（256 维 = 文本 token 数，pad 到 max_text_len）与 `pred_boxes`（cx, cy, w, h，归一化坐标）
 
 MSDA 支持两种导出形态：
 
@@ -99,16 +101,16 @@ MSDA 支持两种导出形态：
 | 方向   | 名称                          | Shape                | Dtype  | 说明                                              |
 |------|-----------------------------|----------------------|--------|-------------------------------------------------|
 | 输入  | `pixel_values`             | `(1, 3, 800, 1333)`  | float32 | 图像 RGB，按 ImageNet mean/std 归一化，zero-pad 到 800×1333 |
-| 输入  | `pixel_mask`               | `(1, 800, 1333)`     | int32   | 图像有效区域标记（pad 区域为 0）                            |
-| 输入  | `input_ids`                | `(1, 256)`           | int32   | 文本 token IDs（含 `[CLS]=101, [SEP]=102, .=1012, ?=1029`） |
-| 输入  | `token_type_ids`           | `(1, 256)`           | int32   | 段 ID                                            |
-| 输入  | `attention_mask`           | `(1, 256)`           | int32   | 文本注意力掩码                                        |
+| 输入  | `pixel_mask`               | `(1, 800, 1333)`     | int64   | 图像有效区域标记（pad 区域为 0）                            |
+| 输入  | `input_ids`                | `(1, 256)`           | int64   | 文本 token IDs（含 `[CLS]=101, [SEP]=102, .=1012, ?=1029`） |
+| 输入  | `token_type_ids`           | `(1, 256)`           | int64   | 段 ID                                            |
+| 输入  | `attention_mask`           | `(1, 256)`           | int64   | 文本注意力掩码                                        |
 | 输入  | `text_self_attention_masks`| `(1, 256, 256)`      | bool    | 文本自注意力掩码（块对角，phrase 之间互不可见）                    |
-| 输入  | `text_position_ids`        | `(1, 256)`           | int32   | 文本位置 ID（块内 0..k，每块重新计数）                        |
-| 输出  | `logits`                   | `(1, 900, 2562)`     | float32 | 900 query × 2562 类（含 no-object 类）              |
+| 输入  | `text_position_ids`        | `(1, 256)`           | int64   | 文本位置 ID（块内 0..k，每块重新计数）                        |
+| 输出  | `logits`                   | `(1, 900, 256)`     | float32 | 900 query × 256 文本 token（不足 pad 为 -inf）      |
 | 输出  | `pred_boxes`               | `(1, 900, 4)`        | float32 | (cx, cy, w, h)，归一化到 [0, 1]                      |
 
-> 2562 = 2561（config.num_labels）+ 1（no-object）；900 = num_queries；MSDA 每 query 在 4 个 level 各采 4 个点（num_levels=4, num_points=4）。
+> 256 = max_text_len（文本 token 数，不足部分 pad 为 `-inf`，无固定类别数）；900 = num_queries；MSDA 每 query 在 4 个 level 各采 4 个点（num_levels=4, num_points=4）。
 
 ### 导出关键点
 
@@ -211,7 +213,7 @@ python infer_grounding_dino_base_mslite.py \
 
 ### 推理示例输出
 
-使用 COCO val2017 示例图（[000000039769.jpg](http://images.cocodataset.org/val2017/000000039769.jpg)，2 只猫 + 3 个遥控器）：
+使用 COCO val2017 示例图（[000000039769.jpg](http://images.cocodataset.org/val2017/000000039769.jpg)，2 只猫 + 2 个遥控器）：
 
 ```text
 [Atlas 300I Duo | non-fuse(GridSample)]
@@ -229,22 +231,23 @@ Perf:
   e2e_ms_mean:        2887.671
 
 [Atlas 800I A2 | fuse(MSDA)]
-WARNING:root:Ascend custom operator path not found
+
 [batch 0] detected 6 objects
-  label='a remote control' score=0.3485 box=[38.49, 70.53, 176.29, 116.84]
-  label='a cat' score=0.3590 box=[343.5, 21.97, 635.68, 378.66]
-  label='a remote control' score=0.3391 box=[332.42, 74.02, 370.4, 187.45]
-  label='a remote control' score=0.3042 box=[31.24, 59.36, 182.78, 127.5]
-  label='a cat' score=0.3313 box=[11.24, 50.4, 317.01, 471.19]
-  label='a remote control' score=0.3138 box=[320.99, 66.26, 381.58, 197.63]
+  label='a remote control' score=0.3541 box=[37.45, 69.54, 176.83, 118.03]
+  label='a cat' score=0.3537 box=[340.78, 23.46, 633.63, 383.26]
+  label='a remote control' score=0.3446 box=[332.16, 72.15, 371.9, 188.84]
+  label='a remote control' score=0.3050 box=[30.4, 54.07, 181.06, 131.56]
+  label='a cat' score=0.3175 box=[11.36, 48.95, 317.09, 471.54]
+  label='a remote control' score=0.2939 box=[319.71, 59.61, 389.28, 195.66]
 Perf:
   warmup: 3 runs: 10
-  preprocess_ms_mean: 81.828
-  inference_ms_mean:  499.090
-  e2e_ms_mean:        586.998
+  preprocess_ms_mean: 70.743
+  inference_ms_mean:  132.648
+  e2e_ms_mean:        209.413
 ```
 
-> 说明：所有输入固定为 batch=1、文本长度=256、图像 canvas=800×1333；推理脚本内部完成按比例缩放与 zero-pad，输出 boxes 会按原图 (height, width) 反缩放，直接对应原图坐标。MindSpore Lite 推理脚本为纯 numpy/PIL 实现（无 `import torch`）。性能计时分为三段：**Preprocess**（图像预处理 + 文本 tokenization）、**Inference**（Ascend NPU 前向推理）、**E2E**（包含后处理与脚本框架开销）。
+> 检测出来2 只猫 + 4 个遥控器是因为score设置较低，推理的时候，将--threshold设置为0.3即可。
+> 所有输入固定为 batch=1、文本长度=256、图像 canvas=800×1333；推理脚本内部完成按比例缩放与 zero-pad，输出 boxes 会按原图 (height, width) 反缩放，直接对应原图坐标。MindSpore Lite 推理脚本为纯 numpy/PIL 实现（无 `import torch`）。性能计时分为三段：**Preprocess**（图像预处理 + 文本 tokenization）、**Inference**（Ascend NPU 前向推理）、**E2E**（包含后处理与脚本框架开销）。
 
 ---
 
@@ -297,9 +300,9 @@ python export_grounding_dino_base_onnx.py \
 
 | 指标 | 耗时 (ms) |
 |---|---:|
-| Preprocess | 81.828 |
-| Inference | 499.090 |
-| E2E | 586.998 |
+| Preprocess | 70.743 |
+| Inference | 132.648 |
+| E2E | 209.413 |
 
 ---
 

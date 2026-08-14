@@ -58,6 +58,20 @@ python export_qwen3_onnx.py \
   --device cpu
 ```
 
+> 默认开启 `RotaryMul` + `PromptFlashAttention`（PFA）融合：
+> - `RotaryMul`：把 RoPE 的 cos/sin 预计算与 apply 融合为 `Custom(RotaryMul)`，消除 AI_CPU 上的 MatMul 回退，Prefill 提速 ~20%。
+> - `PFA`：把 QK^T + softmax + V 融合为 `Custom(PromptFlashAttention)`，**仅用于 prefill**（decode 的 GQA 与 CANN PFA 不兼容，decode 使用非融合 matmul）。长 seq_len（≥128）场景有性能收益。
+>
+> **短 seq_len 场景（如 chat template 的 s=33）可关闭 PFA 融合以避免 128 对齐 padding 带来的计算膨胀：**
+> ```bash
+> python export_qwen3_onnx.py --model-id ./Qwen3-0.6B --output-dir ./qwen3_onnx --device cpu \
+>   --disable-fusion --enable-rotarymul
+> ```
+> 也可以完全关闭所有融合（导出 non-fused 基线）：
+> ```bash
+> python export_qwen3_onnx.py --model-id ./Qwen3-0.6B --output-dir ./qwen3_onnx --device cpu --disable-fusion
+> ```
+
 ### 参数说明
 
 | 参数            | 说明                  | 默认值                  |
@@ -65,6 +79,9 @@ python export_qwen3_onnx.py \
 | `--model-id`  | HuggingFace 模型路径或本地目录 | `Qwen/Qwen3-0.6B`     |
 | `--output-dir`| 输出目录                | `./qwen3_onnx`         |
 | `--device`    | 导出设备（cpu / cuda）    | `cpu`                  |
+| `--enable-rotarymul` | RoPE 走 `Custom(RotaryMul)` | **开启** |
+| `--enable-pfa` | QK^T+softmax+V 走 `Custom(PromptFlashAttention)` | **开启** |
+| `--disable-fusion` | 关闭所有融合（导出 non-fused 基线） | 关闭 |
 
 ### 产出
 
@@ -106,7 +123,7 @@ qwen3_onnx/
 ```bash
 Convert=mindspore-lite-2.9.0-linux-aarch64/tools/converter/converter/converter_lite
 
-# Prefill 转换（动态 shape，无需分档）
+# Prefill 转换（5 档动态分档）
 $Convert --fmk=ONNX \
   --modelFile=./qwen3_onnx/qwen3_llm_prefill.onnx \
   --outputFile=./qwen3_onnx/qwen3_llm_prefill \
@@ -136,9 +153,14 @@ $Convert --fmk=ONNX \
 
 ### 配置文件
 
-`qwen3_0.6b_prefill.ini`（Prefill 用）：
+`qwen3_0.6b_prefill.ini`（Prefill 用，5 档）：
 
 ```ini
+[acl_build_options]
+input_format="ND"
+input_shape="input_ids:1,-1;attention_mask:1,-1;position_ids:1,-1"
+ge.dynamicDims="33,33,33;128,128,128;256,256,256;512,512,512;1024,1024,1024"
+
 [acl_init_options]
 ge.exec.precision_mode=force_fp32
 ```
@@ -163,7 +185,7 @@ ge.dynamicDims="17,16;33,32;65,64;97,96;129,128;193,192;257,256;385,384;513,512;
 
 ```text
 qwen3_onnx/
-├── qwen3_llm_prefill_graph.mindir           # Prefill 主图
+├── qwen3_llm_prefill_graph.mindir           # Prefill 主图（含 5 档动态分档）
 ├── qwen3_llm_prefill_variables/             # Prefill 权重
 │   └── data_0
 ├── qwen3_llm_decode_graph.mindir            # Decode 主图（含 13 档）
@@ -184,6 +206,7 @@ python infer_qwen3_0.6b_mindir.py \
   --tokenizer ./Qwen3-0.6B \
   --prompt "你好，请介绍一下你自己。" \
   --max-new-tokens 128 \
+  --prefill-buckets "33,128,256,512,1024" \
   --decode-buckets "16,32,64,96,128,192,256,384,512,768,1024,1536,2048" \
   --device ascend \
   --device-id 0
@@ -200,12 +223,15 @@ python infer_qwen3_0.6b_mindir.py \
 | `--max-new-tokens` | 最大生成 token 数                          | `128`                     |
 | `--max-length`     | 模型最大上下文长度                            | `2048`                    |
 | `--decode-buckets` | Decode 模型的 KV cache 分档列表（逗号分隔） | `16,32,64,...,2048`（13 档） |
+| `--prefill-buckets` | Prefill seq_len 分档列表（**必须与转换 ini 的 `ge.dynamicDims` 完全一致**） | 无（bucketed 部署必填） |
 | `--no-chat-template` | 关闭 chat template，进入 raw completion 模式 | 关闭                       |
 | `--device`         | 推理设备（ascend/cpu）                    | `ascend`                  |
 | `--device-id`      | Ascend 设备 ID                          | `0`                       |
 | `--force-no-pre-alloc` | 关闭输出 buffer 预分配（部分精度模式下需要）     | 关闭                       |
 
 > `--decode-buckets` 必须与转换时 `ge.dynamicDims` 中的 `past_kv_len` 列表**完全一致**，否则会触发 `aclmdlSetInputDynamicDims failed`。脚本会自动把 `past_kv` 与 `attention_mask` 补零到下一档边界，并在每步把模型追加在分档尾部的 K/V 切回真实长度。
+>
+> `--prefill-buckets` 必须与 `qwen3_0.6b_prefill.ini` 中 `ge.dynamicDims` 的 `seq_len` 列表**完全一致**。脚本会把 prompt tokenization 后的实际 seq_len 向上 pad 到最近的 prefill bucket（补 `pad_token` + `attention_mask=0`），Prefill 后再把 `past_kv` 与 `logits` 切回真实 seq_len 传给 Decode。
 
 ### 推理示例输出
 
@@ -219,12 +245,12 @@ Loading tokenizer from ./Qwen3-0.6B...
 ============================================================
 Input Prompt: 你好，请介绍一下你自己。
 ============================================================
-
+[prefill] seq_len=13 → bucket=33 (pad 20)
 Running LLM prefill...
-Prefill time: 123.90 ms
+Prefill time: 68.74 ms
 Running LLM decode...
-Total decode time: 1497.49 ms, avg decode step: 11.79 ms, steps: 127
-Total time: 1621.39 ms, throughput: 78.94 tok/s
+Total decode time: 1406.61 ms, avg decode step: 11.44 ms, steps: 123
+Total time: 1475.35 ms, throughput: 84.05 tok/s
 
 ============================================================
 Generated Response: <think>
@@ -242,9 +268,10 @@ Generated Response: <think>
 
 | 项目   | 配置                     |
 |------|------------------------|
-| 硬件   | Atlas 300I Duo（Ascend NPU） |
-| 模型   | Qwen3-0.6B（28 层，8 KV head，head_dim=128） |
+| 硬件   | Atlas 300I Duo |
+| 模型   | Qwen3-0.6B（28 层，16 attn heads，8 KV heads GQA，head_dim=128） |
 | 精度   | force_fp32              |
+| Prefill 分档 | 5 档（33, 128, 256, 512, 1024）AOT 预编译 |
 | Decode 分档 | 13 档（16, 32, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048） |
 | 推理脚本 | `infer_qwen3_0.6b_mindir.py`（zero-copy + 预分配输出 buffer） |
 
@@ -255,10 +282,10 @@ Generated Response: <think>
 | 项目           | 值                               |
 |--------------|----------------------------------|
 | 输入名称        | `input_ids`, `attention_mask`, `position_ids` |
-| input_ids Shape  | `(1, seq_len)`                |
-| 输出 logits Shape | `(1, seq_len, 151936)`        |
-| 输出 past_kv Shape | `(56, 1, 8, seq_len, 128)`    |
-| 推理耗时        | **123.90 ms**                    |
+| input_ids Shape  | `(1, seq_len)`，运行时 pad 到最近 bucket 边界 |
+| 输出 logits Shape | `(1, seq_len_bucket, 151936)`        |
+| 输出 past_kv Shape | `(56, 1, 8, seq_len_bucket, 128)` |
+| 推理耗时（s=33 bucket） | **68.74 ms** |
 
 **LLM Decode（单步）**
 
@@ -269,15 +296,15 @@ Generated Response: <think>
 | attention_mask Shape | `(1, past_kv_len+1)`         |
 | past_key_values Shape | `(56, 1, 8, past_kv_len, 128)` |
 | 输出 logits Shape | `(1, 1, 151936)`               |
-| 单步平均耗时      | **11.79 ms**                     |
+| 单步平均耗时      | **11.44 ms**） |
 
 ### 端到端推理性能（128 tokens 生成）
 
-| 场景                          | Prefill (ms) | Avg decode (ms) | Total (ms) | 吞吐 (tok/s) |
-|-----------------------------|--------------|-----------------|------------|--------------|
-| 中文对话：你好，请介绍一下你自己。           | 123.90       | 11.79           | 1621.39    | **78.94**    |
-| 英文 QA：What is the capital of France? | 140.56       | 11.90           | 1652.16    | **77.47**    |
-| 代码生成：Write a short Python function that reverses a string. | 195.91       | 19.32           | 2649.09    | **48.32**    |
+| 场景                          | Prompt seq_len| Prefill (ms) | Avg decode (ms) | Total (ms) | 吞吐 (tok/s) |
+|-----------------------------|----------------|--------------|-----------------|------------|--------------|
+| 中文对话：你好，请介绍一下你自己。 | 13 | 68.74 | 11.44 | 1475.35 | **84.05** |
+| 英文 QA：What is the capital of France? | 15 | 68.53 | 11.43 | 1474.02 | **84.06** |
+| 代码生成：Write a short Python function that reverses a string. | 19 | 70.29 | 11.35 | 1464.04 | **84.64** |
 
 ---
 
