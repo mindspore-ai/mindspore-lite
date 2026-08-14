@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#include "recurrent_gated_delta_rule.h"
+#include "recurrent_gated_delta_rule.h"  // NOLINT(build/include_subdir)
 
-using namespace AscendC;
+using namespace AscendC;  // NOLINT(build/namespaces)
 
 extern "C" __global__ __aicore__ void recurrent_gated_delta_rule310_p(GM_ADDR query, GM_ADDR key, GM_ADDR value,
                                                                       GM_ADDR beta, GM_ADDR state, GM_ADDR cuSeqlens,

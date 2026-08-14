@@ -17,7 +17,7 @@
 #ifndef RECURRENT_GATED_DELTA_RULE_TILING_DATA_H
 #define RECURRENT_GATED_DELTA_RULE_TILING_DATA_H
 
-#include "kernel_operator.h"
+#include "kernel_operator.h"  // NOLINT(build/include_subdir)
 
 #pragma pack(push, 8)
 struct alignas(8) RecurrentGatedDeltaRuleTilingData {

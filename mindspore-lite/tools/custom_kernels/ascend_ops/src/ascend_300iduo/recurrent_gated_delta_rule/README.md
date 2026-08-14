@@ -2,7 +2,7 @@
 
 This directory provides the Ascend C implementation used when
 the built-in `aclnnRecurrentGatedDeltaRule` kernel is unavailable on
-Ascend 310P. It is registered as `RecurrentGatedDeltaRule310P` to avoid a
+Atlas 300I Duo. It is registered as `RecurrentGatedDeltaRule310P` to avoid a
 name collision with CANN's built-in operator metadata.
 
 ## Interface
@@ -30,10 +30,10 @@ tokens per batch.
 
 ## Implementation
 
-Work is split by `(batch, value_head)` across at most eight 310P AIV task
+Work is split by `(batch, value_head)` across at most eight AIV task
 slots. State tiles are accumulated in FP32 in Unified Buffer and written back
 as FP16. The output and recurrent state use separate queue buffers while
-respecting the 310P eight-queue limit.
+respecting the device eight-queue limit.
 
 ## Tests
 

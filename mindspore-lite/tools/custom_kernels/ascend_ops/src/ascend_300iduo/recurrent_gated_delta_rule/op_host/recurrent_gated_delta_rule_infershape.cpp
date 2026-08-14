@@ -17,8 +17,8 @@
 #include "register/op_def_registry.h"
 #include "exe_graph/runtime/infer_datatype_context.h"
 
-using namespace ge;
-using namespace gert;
+using namespace ge;    // NOLINT(build/namespaces)
+using namespace gert;  // NOLINT(build/namespaces)
 
 namespace {
 static uint32_t RecurrentGatedDeltaRuleInferShape(InferShapeContext *context) {

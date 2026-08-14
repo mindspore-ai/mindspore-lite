@@ -337,16 +337,16 @@ Qwen3.5 采用混合架构，部分层使用标准 Softmax 注意力，部分层
 
 ---
 
-## 11. Ascend 310P support
+## 11. Atlas 300I Duo support
 
-On Atlas 300I Duo (Ascend 310P), LiteBoost loads the
+On Atlas 300I Duo, LiteBoost loads the
 `mslite_custom_ops` implementation because CANN does not provide the native
-RGDR op on this product. The 310P path uses FP16 inputs, in-place FP16 state,
+RGDR op on this product. The custom path uses FP16 inputs, in-place FP16 state,
 and FP16 output. The A2 native path continues to use BF16.
 
 Qwen3.5-4B uses `Nk=16`, `Nv=32`, and `Dk=Dv=128` for recurrent
 attention. RGDR maps each key/query head to `Nv/Nk` consecutive value heads;
 therefore `Nv` must be divisible by `Nk`.
 
-The 310P test marker is `ascend_300iduo`. Its L0 cases cover the Qwen3.5-4B
+The product test marker is `ascend_300iduo`. Its L0 cases cover the Qwen3.5-4B
 single-token decode shape and batch size two.

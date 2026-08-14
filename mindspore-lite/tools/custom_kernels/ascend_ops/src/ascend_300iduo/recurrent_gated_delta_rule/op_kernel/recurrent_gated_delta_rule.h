@@ -17,10 +17,10 @@
 #ifndef RECURRENT_GATED_DELTA_RULE_KERNEL_H_
 #define RECURRENT_GATED_DELTA_RULE_KERNEL_H_
 
-#include "kernel_operator.h"
-#include "recurrent_gated_delta_rule_tiling_data.h"
+#include "kernel_operator.h"                         // NOLINT(build/include_subdir)
+#include "recurrent_gated_delta_rule_tiling_data.h"  // NOLINT(build/include_subdir)
 
-using namespace AscendC;
+using namespace AscendC;  // NOLINT(build/namespaces)
 constexpr uint64_t BUFFER_NUM = 1;
 constexpr uint32_t MAX_OUT_BUFFER_NUM = 2;
 constexpr uint64_t MAX_MTP = 8;
@@ -153,7 +153,8 @@ struct RGDRInitParams {
 template <typename inType, typename outType>
 class RGDR {
  public:
-  __aicore__ inline RGDR(const RecurrentGatedDeltaRuleTilingData *tilingData) {
+  __aicore__ inline explicit RGDR(const RecurrentGatedDeltaRuleTilingData *tilingData)
+      : pipe_(nullptr), gama_(1.0f), gamaK_(1.0f), beta_(0.0f), blockIdx(0) {
     B_ = tilingData->b;
     T_ = tilingData->t;
     NK_ = tilingData->nk;
@@ -247,7 +248,6 @@ class RGDR {
     if (hasGamaK_ && gamaKScalar_) {
       uint32_t gamaKScalarSize = Ceil(MAX_MTP * NV_, FP32_NUM_PER_BLOCK) * FP32_NUM_PER_BLOCK * sizeof(float);
       gamaKScalarInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(gamaKScalarSize), buffOffset);
-      buffOffset += gamaKScalarSize;
     }
   }
 
@@ -402,24 +402,6 @@ class RGDR {
     stateInQueue_.FreeTensor(stateLocal);
   }
 
-  __aicore__ inline void MatVecMul(const LocalTensor<float> &cubeTensor, const LocalTensor<float> &vecTensor,
-                                   LocalTensor<float> &dstTensor, uint32_t cols, bool isAdd) {
-    uint8_t repeatStride = alignK_ / FP32_NUM_PER_BLOCK;
-    for (uint32_t i = 0; i < alignK_; i += REPEAT_LENGTH) {
-      uint64_t mask = Std::min(REPEAT_LENGTH, alignK_ - i);
-      for (uint32_t j = 0; j < cols; j += MAX_REPEAT_TIME) {
-        uint64_t repeatTime = Std::min(MAX_REPEAT_TIME, cols - j);
-        if (isAdd) {
-          MulAddDst(dstTensor[j * alignK_ + i], cubeTensor[j * alignK_ + i], vecTensor[i], mask, repeatTime,
-                    {1, 1, 1, repeatStride, repeatStride, 0});
-        } else {
-          Mul(dstTensor[j * alignK_ + i], cubeTensor[j * alignK_ + i], vecTensor[i], mask, repeatTime,
-              {1, 1, 1, repeatStride, repeatStride, 0});
-        }
-      }
-    }
-  }
-
   __aicore__ inline float DotFp32(LocalTensor<float> lhsTensor, LocalTensor<float> rhsTensor) {
     Mul(broadTmpInUb, lhsTensor, rhsTensor, alignK_);
     constexpr uint32_t kReduceDstStride = FP32_NUM_PER_BLOCK;
@@ -541,75 +523,91 @@ class RGDR {
     WaitVectorToScalar();
   }
 
+  __aicore__ inline void ReleaseGamaKInput() {
+    if (hasGamaK_ && !gamaKScalar_) {
+      gamaKInQueue_.FreeTensor(gamaKInUb);
+    }
+  }
+
+  __aicore__ inline void QueueAttnOutput(uint64_t attnOffset, uint32_t curSingleV, uint64_t &pendingOffset,
+                                         bool &hasPending) {
+    if (attnOutBufferNum_ == BUFFER_NUM) {
+      CopyOutAttn(attnOffset, curSingleV);
+      return;
+    }
+    if (hasPending) {
+      CopyOutAttn(pendingOffset, curSingleV);
+    }
+    pendingOffset = attnOffset;
+    hasPending = true;
+  }
+
+  __aicore__ inline void QueueStateOutput(uint64_t stateOffset, uint32_t curSingleV, uint64_t &pendingOffset,
+                                          bool &hasPending) {
+    if (stateOutBufferNum_ == BUFFER_NUM) {
+      CopyOutState(stateOffset, curSingleV);
+      return;
+    }
+    if (hasPending) {
+      CopyOutState(pendingOffset, curSingleV);
+    }
+    pendingOffset = stateOffset;
+    hasPending = true;
+  }
+
+  __aicore__ inline void ProcessSequenceChunk(int32_t seq0, int32_t seq1, uint64_t head_i, uint64_t v_i,
+                                              uint32_t curSingleV) {
+    uint64_t pendingAttnOffset = 0;
+    uint64_t pendingStateOffset = 0;
+    bool hasPendingAttn = false;
+    bool hasPendingState = false;
+    for (uint64_t seq_i = seq0; seq_i < seq1; seq_i++) {
+      uint64_t gbOffset = head_i + (seq_i - seq0) * NV_;
+      uint64_t curQKOffset = (seq_i - seq0) * alignK_;
+      uint64_t curVOffset = (seq_i - seq0) * alignV_ + v_i;
+      uint64_t attnOffset = (seq_i * NV_ + head_i) * realV_ + v_i;
+      uint64_t curStateOutOffset =
+        (static_cast<uint64_t>(GetSsmStateIndex(seq_i)) * NV_ + head_i) * static_cast<uint64_t>(realK_) * realV_ +
+        v_i * static_cast<uint64_t>(realK_);
+      gama_ = hasGama_ ? gamaInUb.GetValue(gbOffset) : 1;
+      beta_ = betaInUb.GetValue(gbOffset);
+      gamaK_ = (hasGamaK_ && gamaKScalar_) ? gamaKScalarInUb.GetValue(gbOffset) : 1;
+      Compute(curSingleV, curQKOffset, curVOffset);
+      QueueAttnOutput(attnOffset, curSingleV, pendingAttnOffset, hasPendingAttn);
+      QueueStateOutput(curStateOutOffset, curSingleV, pendingStateOffset, hasPendingState);
+    }
+    if (hasPendingAttn) {
+      CopyOutAttn(pendingAttnOffset, curSingleV);
+    }
+    if (hasPendingState) {
+      CopyOutState(pendingStateOffset, curSingleV);
+    }
+  }
+
   __aicore__ inline void ProcessHead(int32_t seq0, int32_t seq1, uint64_t head_i, uint64_t stateOffset) {
     uint64_t vOffset = (seq0 * NV_ + head_i) * realV_;
     uint64_t qkOffset = (seq0 * NK_ + head_i / (NV_ / NK_)) * realK_;
     CopyInQKV(vOffset, qkOffset, seq1 - seq0);
     if (realV_ == 0) {
-      if (hasGamaK_ && !gamaKScalar_) {
-        gamaKInQueue_.FreeTensor(gamaKInUb);
-      }
+      ReleaseGamaKInput();
       return;
     }
-    uint64_t nextVOffset = 0;
     uint32_t nextSingleV = realV_ > vStep_ ? vStep_ : realV_;
     uint64_t nextStateOffset = (stateOffset * NV_ + head_i) * static_cast<uint64_t>(realV_) * realK_;
     PrefetchState(nextStateOffset, nextSingleV);
     for (uint64_t v_i = 0; v_i < realV_; v_i += vStep_) {
       uint32_t curSingleV = v_i + vStep_ > realV_ ? realV_ - v_i : vStep_;
       LoadPrefetchedState(curSingleV);
-      nextVOffset = v_i + vStep_;
+      uint64_t nextVOffset = v_i + vStep_;
       if (nextVOffset < realV_) {
         nextSingleV = nextVOffset + vStep_ > realV_ ? realV_ - nextVOffset : vStep_;
         nextStateOffset = (stateOffset * NV_ + head_i) * static_cast<uint64_t>(realV_) * realK_ +
                           nextVOffset * static_cast<uint64_t>(realK_);
         PrefetchState(nextStateOffset, nextSingleV);
       }
-      uint64_t pendingAttnOffset = 0;
-      uint64_t pendingStateOffset = 0;
-      bool hasPendingAttn = false;
-      bool hasPendingState = false;
-      for (uint64_t seq_i = seq0; seq_i < seq1; seq_i++) {
-        uint64_t gbOffset = head_i + (seq_i - seq0) * NV_;
-        uint64_t curQKOffset = (seq_i - seq0) * alignK_;
-        uint64_t curVOffset = (seq_i - seq0) * alignV_ + v_i;
-        uint64_t attnOffset = (seq_i * NV_ + head_i) * realV_ + v_i;
-        uint64_t curStateOutOffset =
-          (static_cast<uint64_t>(GetSsmStateIndex(seq_i)) * NV_ + head_i) * static_cast<uint64_t>(realK_) * realV_ +
-          v_i * static_cast<uint64_t>(realK_);
-        gama_ = hasGama_ ? gamaInUb.GetValue(gbOffset) : 1;
-        beta_ = betaInUb.GetValue(gbOffset);
-        gamaK_ = (hasGamaK_ && gamaKScalar_) ? gamaKScalarInUb.GetValue(gbOffset) : 1;
-        Compute(curSingleV, curQKOffset, curVOffset);
-        if (attnOutBufferNum_ == BUFFER_NUM) {
-          CopyOutAttn(attnOffset, curSingleV);
-        } else {
-          if (hasPendingAttn) {
-            CopyOutAttn(pendingAttnOffset, curSingleV);
-          }
-          pendingAttnOffset = attnOffset;
-          hasPendingAttn = true;
-        }
-        if (stateOutBufferNum_ == BUFFER_NUM) {
-          CopyOutState(curStateOutOffset, curSingleV);
-        } else {
-          if (hasPendingState) {
-            CopyOutState(pendingStateOffset, curSingleV);
-          }
-          pendingStateOffset = curStateOutOffset;
-          hasPendingState = true;
-        }
-      }
-      if (hasPendingAttn) {
-        CopyOutAttn(pendingAttnOffset, curSingleV);
-      }
-      if (hasPendingState) {
-        CopyOutState(pendingStateOffset, curSingleV);
-      }
+      ProcessSequenceChunk(seq0, seq1, head_i, v_i, curSingleV);
     }
-    if (hasGamaK_ && !gamaKScalar_) {
-      gamaKInQueue_.FreeTensor(gamaKInUb);
-    }
+    ReleaseGamaKInput();
   }
 
  private:

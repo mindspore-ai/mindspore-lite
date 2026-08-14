@@ -475,6 +475,7 @@ class TestRecurrentGatedDeltaRule310P:
     @pytest.mark.L0
     @pytest.mark.parametrize("batch_size,seq_len", [(1, 1), (2, 1)])
     def test_qwen35_4b_accuracy(self, batch_size, seq_len):
+        """Compare the custom kernel with the FP32 reference at decode shapes."""
         device = torch.device("npu:0")
         torch.npu.set_device(device)
         torch.manual_seed(2026 + batch_size * 10 + seq_len)
