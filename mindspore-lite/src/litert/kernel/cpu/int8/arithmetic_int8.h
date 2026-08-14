@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,8 @@ namespace mindspore::kernel {
 class ArithmeticInt8CPUKernel : public LiteKernel {
   typedef int (*ArithmeticRunInt8)(int8_t *input0, int8_t *input1, uint8_t *output, int element_size,
                                    ArithmeticQuantArg *quant_arg);
+  typedef int (*ArithmeticRunInt8Out)(int8_t *input0, int8_t *input1, int8_t *output, int element_size,
+                                      ArithmeticQuantArg *quant_arg);
 
  public:
   ArithmeticInt8CPUKernel(OpParameter *parameter, const std::vector<lite::Tensor *> &inputs,
