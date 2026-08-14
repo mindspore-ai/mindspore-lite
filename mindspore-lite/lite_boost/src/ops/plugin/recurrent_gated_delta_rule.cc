@@ -23,22 +23,33 @@
 
 namespace {
 constexpr std::string_view kOpNameRecurrentGatedDeltaRule = "aclnnRecurrentGatedDeltaRule";
+constexpr std::string_view kOpNameRecurrentGatedDeltaRule310P = "aclnnRecurrentGatedDeltaRule310P";
+
+bool IsAscend310P() {
+  const char *soc_name = aclrtGetSocName();
+  return soc_name != nullptr && std::string_view(soc_name).find("310P") != std::string_view::npos;
+}
 }  // namespace
 
 std::tuple<at::Tensor, at::Tensor> RecurrentGatedDeltaRuleLiteBoostImplNPU(
   const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &beta,
   const at::Tensor &state, const at::Tensor &actual_seq_lengths, const at::Tensor &ssm_state_indices,
   const at::Tensor &g, const at::Tensor &gk, const at::Tensor &num_accepted_tokens, double scale_value) {
-  // Clone state to avoid in-place modification of the input tensor
-  at::Tensor state_out = state.clone();
-
   // Create output tensor with the same shape, dtype and NPU format as query
   auto out_size = value.sizes().vec();
   at::Tensor out = at_npu::native::empty_with_format(out_size, value.options(), at_npu::native::get_npu_format(value));
-
-  EXEC_NPU_CMD<kOpNameRecurrentGatedDeltaRule>(query, key, value, beta, state_out, actual_seq_lengths,
-                                               ssm_state_indices, g, gk, num_accepted_tokens,
-                                               static_cast<float>(scale_value), out);
+  at::Tensor state_out;
+  if (IsAscend310P()) {
+    state_out = state.clone();
+    EXEC_NPU_CMD<kOpNameRecurrentGatedDeltaRule310P>(query, key, value, beta, state_out, actual_seq_lengths,
+                                                     ssm_state_indices, g, gk, num_accepted_tokens, scale_value, out);
+  } else {
+    // The built-in CANN operator updates its state reference input in place.
+    state_out = state.clone();
+    EXEC_NPU_CMD<kOpNameRecurrentGatedDeltaRule>(query, key, value, beta, state_out, actual_seq_lengths,
+                                                 ssm_state_indices, g, gk, num_accepted_tokens,
+                                                 static_cast<float>(scale_value), out);
+  }
 
   return std::tuple<at::Tensor, at::Tensor>(out, state_out);
 }
