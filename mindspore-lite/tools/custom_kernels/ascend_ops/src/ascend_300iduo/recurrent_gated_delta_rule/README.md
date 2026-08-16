@@ -2,8 +2,8 @@
 
 This directory provides the Ascend C implementation used when
 the built-in `aclnnRecurrentGatedDeltaRule` kernel is unavailable on
-Atlas 300I Duo. It is registered as `RecurrentGatedDeltaRule310P` to avoid a
-name collision with CANN's built-in operator metadata.
+Atlas 300I Duo. It uses a product-specific registration name to avoid a name
+collision with CANN's built-in operator metadata.
 
 ## Interface
 
