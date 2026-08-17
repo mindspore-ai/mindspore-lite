@@ -2,7 +2,7 @@
 #    function_name1, function_name2
 # Scene2:
 #    file_path:function_name1, function_name2
-mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/chunk_gated_delta_rule/op_kernel/chunk_gated_delta_rule.h:ComputeAttnMatrix, ComputeAttnProductsCube, ComputeValueAndVNewCube, ComputeOutputCube, ComputeStateUpdateCube, UpdateAndWriteState
+mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/chunk_gated_delta_rule/op_kernel/chunk_gated_delta_rule.h:LoadPaddedRows, ComputeAttnMatrix, ComputeAttnProductsCube, ComputeValueAndVNewCube, ComputeOutputCube, ComputeStateUpdateCube, UpdateAndWriteState
 #
 
 # tools
