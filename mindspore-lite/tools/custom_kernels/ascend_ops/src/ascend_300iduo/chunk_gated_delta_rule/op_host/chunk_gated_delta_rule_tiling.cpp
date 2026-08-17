@@ -40,7 +40,9 @@ constexpr uint64_t kWorkspaceBytes = 32ULL * 1024 * 1024;
 constexpr uint32_t kMatmulM = 64;
 constexpr uint32_t kMatmulK = 128;
 constexpr uint32_t kMatmulN = 128;
-constexpr uint32_t kDk80 = 80;
+constexpr uint32_t kSmallCubeDk = 64;
+constexpr uint32_t kMediumCubeDk = 96;
+constexpr uint32_t kLargeCubeDk = 128;
 constexpr uint32_t kCubeStageSlotCount = 2;
 constexpr uint64_t kRawMatmulStageBytesPerCore =
   kCubeStageSlotCount * static_cast<uint64_t>(2 * kMatmulM * kMatmulK + kMatmulK * kMatmulN) * sizeof(uint16_t);
@@ -132,7 +134,7 @@ bool HasGamma(TilingContext *context) {
 // Total tmpBuff bytes for a candidate vStep. V temporaries are compact tiles.
 // With head*V-tile core splitting, each core handles only one tile, so scores
 // are dead before that tile loads state and the two buffers may overlap.
-uint32_t ComputeTmpBuffBytes(uint32_t vs, uint32_t dv, uint32_t chunkSize, uint32_t dk, uint32_t alignK,
+uint32_t ComputeTmpBuffBytes(uint32_t vs, uint32_t dv, uint32_t chunkSize, uint32_t alignK,
                              bool allowScoresStateOverlap) {
   uint32_t avStepAligned = CeilAlign(vs, FP32_NUM_PER_BLOCK);
   uint32_t cs = chunkSize;
@@ -140,7 +142,7 @@ uint32_t ComputeTmpBuffBytes(uint32_t vs, uint32_t dv, uint32_t chunkSize, uint3
   uint32_t vTileBytes = cs * avStepAligned * sizeof(float);  // chunkVFp32 + chunkAttnOutFp32
   uint32_t tDecay = cs * cs * sizeof(float);                 // decayMaskFp32
   uint32_t tGcum = cs * sizeof(float);                       // gCumsumFp32
-  uint32_t stateStrideK = CeilAlign(dk, FP32_NUM_PER_BLOCK);
+  uint32_t stateStrideK = alignK;
   uint32_t dotProductElem = (stateStrideK > cs) ? stateStrideK : cs;
   uint32_t deltaElem = (dotProductElem > avStepAligned) ? dotProductElem : avStepAligned;
   uint32_t tDelta = deltaElem * sizeof(float);                     // deltaFp32
@@ -156,9 +158,8 @@ uint32_t ComputeTmpBuffBytes(uint32_t vs, uint32_t dv, uint32_t chunkSize, uint3
 }
 
 // stateOutQueue bytes: max of the state tile and compact chunk output.
-uint32_t ComputeOutQueueBytes(uint32_t vs, uint32_t dk, uint32_t chunkSize) {
+uint32_t ComputeOutQueueBytes(uint32_t vs, uint32_t stateStrideK, uint32_t chunkSize) {
   uint32_t avStepAligned = CeilAlign(vs, FP32_NUM_PER_BLOCK);
-  uint32_t stateStrideK = CeilAlign(dk, FP32_NUM_PER_BLOCK);
   uint32_t stateBytes = stateStrideK * avStepAligned * sizeof(uint16_t);
   uint32_t chunkBytes = chunkSize * avStepAligned * sizeof(uint16_t);
   return (stateBytes > chunkBytes) ? stateBytes : chunkBytes;
@@ -166,22 +167,20 @@ uint32_t ComputeOutQueueBytes(uint32_t vs, uint32_t dk, uint32_t chunkSize) {
 
 // Find the largest vStep (FP32-block aligned, <= dv) whose tmpBuff + outQueue fits in UB.
 // Also returns the resulting buffer sizes for tiling/debug.
-bool SolveVStep(uint32_t dv, int64_t ubSize, uint32_t chunkSize, uint32_t dk, uint32_t alignK,
-                bool allowScoresStateOverlap, uint32_t preferredVStep, uint32_t &vStepVal, uint32_t &tbufTotal,
-                uint32_t &outQueueMax, uint32_t &restBytes) {
+bool SolveVStep(uint32_t dv, int64_t ubSize, uint32_t chunkSize, uint32_t alignK, bool allowScoresStateOverlap,
+                uint32_t preferredVStep, uint32_t &vStepVal, uint32_t &tbufTotal, uint32_t &outQueueMax,
+                uint32_t &restBytes) {
   if (ubSize <= 0) {
     return false;
   }
   uint32_t maxVStep = CeilAlign(dv, FP16_NUM_PER_BLOCK);
   bool found = false;
-  // The fixed Cube path is 64x{64,128}x128. For Dv < 128, padding the V tile
-  // to 128 is substantially faster than falling back to the scalar/Vector
-  // implementation. Try that exact tile first and retain the generic search
-  // when the UB cannot hold it.
-  if (preferredVStep > maxVStep) {
+  // Prefer the regular Cube width even when Dv needs several tiles. This keeps
+  // every full/tail tile on the same 64/96/128 fused implementation.
+  if (preferredVStep != 0) {
     uint64_t preferredBytes =
-      static_cast<uint64_t>(ComputeTmpBuffBytes(preferredVStep, dv, chunkSize, dk, alignK, allowScoresStateOverlap)) +
-      ComputeOutQueueBytes(preferredVStep, dk, chunkSize);
+      static_cast<uint64_t>(ComputeTmpBuffBytes(preferredVStep, dv, chunkSize, alignK, allowScoresStateOverlap)) +
+      ComputeOutQueueBytes(preferredVStep, alignK, chunkSize);
     if (preferredBytes <= static_cast<uint64_t>(ubSize)) {
       vStepVal = preferredVStep;
       found = true;
@@ -189,8 +188,8 @@ bool SolveVStep(uint32_t dv, int64_t ubSize, uint32_t chunkSize, uint32_t dk, ui
   }
   for (uint32_t vs = maxVStep; !found && vs >= FP16_NUM_PER_BLOCK; vs -= FP16_NUM_PER_BLOCK) {
     uint64_t requiredBytes =
-      static_cast<uint64_t>(ComputeTmpBuffBytes(vs, dv, chunkSize, dk, alignK, allowScoresStateOverlap)) +
-      ComputeOutQueueBytes(vs, dk, chunkSize);
+      static_cast<uint64_t>(ComputeTmpBuffBytes(vs, dv, chunkSize, alignK, allowScoresStateOverlap)) +
+      ComputeOutQueueBytes(vs, alignK, chunkSize);
     if (requiredBytes <= static_cast<uint64_t>(ubSize)) {
       vStepVal = vs;
       found = true;
@@ -200,10 +199,26 @@ bool SolveVStep(uint32_t dv, int64_t ubSize, uint32_t chunkSize, uint32_t dk, ui
   if (!found) {
     return false;
   }
-  tbufTotal = ComputeTmpBuffBytes(vStepVal, dv, chunkSize, dk, alignK, allowScoresStateOverlap);
-  outQueueMax = ComputeOutQueueBytes(vStepVal, dk, chunkSize);
+  tbufTotal = ComputeTmpBuffBytes(vStepVal, dv, chunkSize, alignK, allowScoresStateOverlap);
+  outQueueMax = ComputeOutQueueBytes(vStepVal, alignK, chunkSize);
   restBytes = (ubSize > static_cast<int64_t>(outQueueMax)) ? static_cast<uint32_t>(ubSize - outQueueMax) : 0;
   return true;
+}
+
+// Select the smallest compiled Cube tile that can hold Dk. The kernel pads
+// the tail to this width, so this is a shape-range policy rather than a
+// one-off specialization for a benchmark dimension.
+uint32_t SelectCubeDk(uint32_t dk) {
+  if (dk <= kSmallCubeDk) {
+    return kSmallCubeDk;
+  }
+  if (dk <= kMediumCubeDk) {
+    return kMediumCubeDk;
+  }
+  if (dk <= kLargeCubeDk) {
+    return kLargeCubeDk;
+  }
+  return 0;
 }
 
 // Write the resolved scalar parameters into the device-visible tiling struct.
@@ -263,7 +278,8 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
   // Pad T up to a multiple of chunkSize and pre-compute the FP16/FP32 block alignments.
   uint32_t padSize = (chunkSize - dims.t % chunkSize) % chunkSize;
   uint32_t numChunks = (dims.t + padSize) / chunkSize;
-  uint32_t alignK = CeilAlign(dims.dk, FP16_NUM_PER_BLOCK);
+  uint32_t cubeDk = SelectCubeDk(dims.dk);
+  uint32_t alignK = (cubeDk == 0) ? CeilAlign(dims.dk, FP16_NUM_PER_BLOCK) : cubeDk;
 
   uint32_t vStepVal = 0;
   uint32_t tbufTotal = 0;
@@ -273,18 +289,12 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
   // staged for its Cube product, the state tile can safely reuse the same UB
   // region, including when a head spans multiple V tiles.
   bool allowScoresStateOverlap = true;
-  uint32_t preferredVStep = 0;
-  if (dims.dk == kMatmulK) {
-    preferredVStep = kMatmulN;
-  } else if (dims.dk == kMatmulK / 2) {
-    preferredVStep = kMatmulN / 2;
-  } else if (dims.dk == kDk80) {
-    // Dk=80 has a dedicated 64x80 Cube path. Pad narrow Dv tiles to 80 so
-    // the UB scratch can also hold the 64x80 NZ result without a fallback.
-    preferredVStep = kDk80;
-  }
-  if (!SolveVStep(dims.dv, ubSize, chunkSize, dims.dk, alignK, allowScoresStateOverlap, preferredVStep, vStepVal,
-                  tbufTotal, outQueueMax, restBytes)) {
+  // Keep V and padded K on the same regular Cube tile. This enables the
+  // fused path for every Dk in the 64/96/128 ranges, including non-aligned
+  // dimensions whose valid tail is zero-padded by the kernel.
+  uint32_t preferredVStep = cubeDk;
+  if (!SolveVStep(dims.dv, ubSize, chunkSize, alignK, allowScoresStateOverlap, preferredVStep, vStepVal, tbufTotal,
+                  outQueueMax, restBytes)) {
     return GRAPH_FAILED;
   }
 
@@ -306,14 +316,12 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
     blockDim = kMinBlockDim;
   }
   context->SetBlockDim(blockDim);
-  // Keep exactly three compiled kernels: key 0 is the dense Dk=80 Cube path,
-  // key 2 is the fixed Dk=128 path, and key 1 handles both Dk=64 and generic
-  // shapes. Avoiding a fourth kernel also avoids a measurable launch overhead
-  // on small generic shapes.
+  // Keep exactly three compiled kernels for the 64/96/128 padded Cube tiles.
+  // Shapes above 128 use the generic fallback in the 96-wide kernel class.
   uint32_t tilingKey = 1;
-  if (dims.dk == kDk80) {
+  if (cubeDk == kSmallCubeDk) {
     tilingKey = 0;
-  } else if (dims.dk == kMatmulK) {
+  } else if (cubeDk == kLargeCubeDk) {
     tilingKey = 2;
   }
   context->SetTilingKey(tilingKey);

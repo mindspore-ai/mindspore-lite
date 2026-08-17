@@ -265,11 +265,17 @@ class TestChunkGatedDeltaRule:
 
     @pytest.mark.L0
     @pytest.mark.parametrize("dtype", LOW_DTYPES)
-    def test_non_multiple_reduce_width(self, dtype):
-        """A non-64-aligned dk matches the mathematically equivalent padded input."""
+    @pytest.mark.parametrize("dk", (63, 65, 80, 95, 97, 127))
+    def test_non_multiple_reduce_width(self, dtype, dk):
+        """Every 64/96/128 bucket tail matches an explicitly zero-padded input."""
         self._skip_unsupported_dtype(dtype)
-        dk, padded_dk = 80, 128
-        data = _generate_test_data(1, 2, 32, dk, 32, self.device)
+        if dk <= 64:
+            padded_dk = 64
+        elif dk <= 96:
+            padded_dk = 96
+        else:
+            padded_dk = 128
+        data = _generate_test_data(1, 2, 64, dk, 32, self.device)
         padded_data = dict(data)
         padded_data["query"] = torch.nn.functional.pad(data["query"], (0, padded_dk - dk))
         padded_data["key"] = torch.nn.functional.pad(data["key"], (0, padded_dk - dk))

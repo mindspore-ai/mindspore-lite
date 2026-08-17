@@ -34,3 +34,4 @@
 # custom ops
 "mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/chunk_gated_delta_rule/op_kernel/arch22/chunk_gated_delta_rule.h"         "syntaxError"
 "mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/quant_matmul_w4a8/op_kernel/quant_matmul_w4a8_msd.h"                      "syntaxError"
+"mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/chunk_gated_delta_rule/op_kernel/chunk_gated_delta_rule.h"  "unusedPrivateFunction"
