@@ -23,7 +23,6 @@
 
 namespace {
 constexpr std::string_view kOpNameRecurrentGatedDeltaRule = "aclnnRecurrentGatedDeltaRule";
-constexpr std::string_view kOpNameRecurrentGatedDeltaRule310P = "aclnnRecurrentGatedDeltaRule310P";
 
 bool IsAscend310P() {
   const char *soc_name = aclrtGetSocName();
@@ -38,14 +37,14 @@ std::tuple<at::Tensor, at::Tensor> RecurrentGatedDeltaRuleLiteBoostImplNPU(
   // Create output tensor with the same shape, dtype and NPU format as query
   auto out_size = value.sizes().vec();
   at::Tensor out = at_npu::native::empty_with_format(out_size, value.options(), at_npu::native::get_npu_format(value));
-  at::Tensor state_out;
+  // Both implementations update their state reference input in place and use the same
+  // ACLNN operator name. Their generated scalar ABI differs: the custom 310P API accepts
+  // a double scale attribute, while the built-in CANN API accepts a float.
+  at::Tensor state_out = state.clone();
   if (IsAscend310P()) {
-    state_out = state.clone();
-    EXEC_NPU_CMD<kOpNameRecurrentGatedDeltaRule310P>(query, key, value, beta, state_out, actual_seq_lengths,
-                                                     ssm_state_indices, g, gk, num_accepted_tokens, scale_value, out);
+    EXEC_NPU_CMD<kOpNameRecurrentGatedDeltaRule>(query, key, value, beta, state_out, actual_seq_lengths,
+                                                 ssm_state_indices, g, gk, num_accepted_tokens, scale_value, out);
   } else {
-    // The built-in CANN operator updates its state reference input in place.
-    state_out = state.clone();
     EXEC_NPU_CMD<kOpNameRecurrentGatedDeltaRule>(query, key, value, beta, state_out, actual_seq_lengths,
                                                  ssm_state_indices, g, gk, num_accepted_tokens,
                                                  static_cast<float>(scale_value), out);

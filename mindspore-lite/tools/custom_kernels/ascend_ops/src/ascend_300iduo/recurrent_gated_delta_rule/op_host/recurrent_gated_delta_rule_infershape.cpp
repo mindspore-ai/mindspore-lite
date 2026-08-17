@@ -59,6 +59,6 @@ static uint32_t RecurrentGatedDeltaRuleInferDataType(InferDataTypeContext *conte
 }
 }  // namespace
 
-IMPL_OP_INFERSHAPE(RecurrentGatedDeltaRule310P)
+IMPL_OP_INFERSHAPE(RecurrentGatedDeltaRule)
   .InferShape(RecurrentGatedDeltaRuleInferShape)
   .InferDataType(RecurrentGatedDeltaRuleInferDataType);

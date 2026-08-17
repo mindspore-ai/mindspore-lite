@@ -321,5 +321,5 @@ static uint32_t RecurrentGatedDeltaRuleTilingFunc(TilingContext *context) {
   return GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(RecurrentGatedDeltaRule310P)
+IMPL_OP_OPTILING(RecurrentGatedDeltaRule)
   .Tiling(RecurrentGatedDeltaRuleTilingFunc, sizeof(RecurrentGatedDeltaRuleTilingData));

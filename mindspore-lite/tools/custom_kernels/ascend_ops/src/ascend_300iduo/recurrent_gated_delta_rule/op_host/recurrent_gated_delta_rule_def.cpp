@@ -17,9 +17,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class RecurrentGatedDeltaRule310P : public OpDef {
+class RecurrentGatedDeltaRule : public OpDef {
  public:
-  explicit RecurrentGatedDeltaRule310P(const char *name) : OpDef(name) {
+  explicit RecurrentGatedDeltaRule(const char *name) : OpDef(name) {
     this->Input("query")
       .ParamType(REQUIRED)
       .DataType({ge::DT_FLOAT16})
@@ -95,5 +95,5 @@ class RecurrentGatedDeltaRule310P : public OpDef {
   }
 };
 
-OP_ADD(RecurrentGatedDeltaRule310P);
+OP_ADD(RecurrentGatedDeltaRule);
 }  // namespace ops
