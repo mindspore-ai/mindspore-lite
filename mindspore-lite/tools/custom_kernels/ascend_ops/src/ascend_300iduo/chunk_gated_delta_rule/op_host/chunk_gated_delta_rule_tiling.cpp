@@ -41,6 +41,7 @@ constexpr uint32_t kMatmulM = 64;
 constexpr uint32_t kMatmulK = 128;
 constexpr uint32_t kMatmulN = 128;
 constexpr uint32_t kSmallCubeDk = 64;
+constexpr uint32_t kMidSmallCubeDk = 80;
 constexpr uint32_t kMediumCubeDk = 96;
 constexpr uint32_t kLargeCubeDk = 128;
 constexpr uint32_t kCubeStageSlotCount = 2;
@@ -176,7 +177,7 @@ bool SolveVStep(uint32_t dv, int64_t ubSize, uint32_t chunkSize, uint32_t alignK
   uint32_t maxVStep = CeilAlign(dv, FP16_NUM_PER_BLOCK);
   bool found = false;
   // Prefer the regular Cube width even when Dv needs several tiles. This keeps
-  // every full/tail tile on the same 64/96/128 fused implementation.
+  // every full/tail tile on the same 64/80/96/128 fused implementation.
   if (preferredVStep != 0) {
     uint64_t preferredBytes =
       static_cast<uint64_t>(ComputeTmpBuffBytes(preferredVStep, dv, chunkSize, alignK, allowScoresStateOverlap)) +
@@ -211,6 +212,9 @@ bool SolveVStep(uint32_t dv, int64_t ubSize, uint32_t chunkSize, uint32_t alignK
 uint32_t SelectCubeDk(uint32_t dk) {
   if (dk <= kSmallCubeDk) {
     return kSmallCubeDk;
+  }
+  if (dk <= kMidSmallCubeDk) {
+    return kMidSmallCubeDk;
   }
   if (dk <= kMediumCubeDk) {
     return kMediumCubeDk;
@@ -290,7 +294,7 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
   // region, including when a head spans multiple V tiles.
   bool allowScoresStateOverlap = true;
   // Keep V and padded K on the same regular Cube tile. This enables the
-  // fused path for every Dk in the 64/96/128 ranges, including non-aligned
+  // fused path for every Dk in the 64/80/96/128 ranges, including non-aligned
   // dimensions whose valid tail is zero-padded by the kernel.
   uint32_t preferredVStep = cubeDk;
   if (!SolveVStep(dims.dv, ubSize, chunkSize, alignK, allowScoresStateOverlap, preferredVStep, vStepVal, tbufTotal,
@@ -316,13 +320,15 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
     blockDim = kMinBlockDim;
   }
   context->SetBlockDim(blockDim);
-  // Keep exactly three compiled kernels for the 64/96/128 padded Cube tiles.
+  // Keep four compiled kernels for the 64/80/96/128 padded Cube tiles.
   // Shapes above 128 use the generic fallback in the 96-wide kernel class.
-  uint32_t tilingKey = 1;
+  uint32_t tilingKey = 2;
   if (cubeDk == kSmallCubeDk) {
     tilingKey = 0;
+  } else if (cubeDk == kMidSmallCubeDk) {
+    tilingKey = 1;
   } else if (cubeDk == kLargeCubeDk) {
-    tilingKey = 2;
+    tilingKey = 3;
   }
   context->SetTilingKey(tilingKey);
 

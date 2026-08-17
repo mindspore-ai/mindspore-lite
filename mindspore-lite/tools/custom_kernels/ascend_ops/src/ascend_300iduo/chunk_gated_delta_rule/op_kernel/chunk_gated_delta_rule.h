@@ -265,27 +265,76 @@ class ChunkGatedDeltaRule {
     return IsCubeFastPath(chunkLen, avFp32);
   }
 
-  // Copy a row-major GM slab to a zero-padded UB matrix. DataCopyPad handles
-  // a non-32-byte valid tail; the destination stride skips the remaining
-  // zero-initialized part of the selected 64/96/128 Cube tile.
+  // Copy a row-major GM slab to a zero-padded UB matrix using dav-2002
+  // supported primitives. Aligned rows use one strided standard DataCopy;
+  // non-aligned rows copy complete 32-byte blocks and fill at most 15 tail
+  // elements through Scalar. The remaining 64/80/96/128 Cube tile stays zero.
   __aicore__ inline void LoadPaddedRows(LocalTensor<float> dst, LocalTensor<inType> staging, GlobalTensor<inType> src,
                                         uint64_t srcOffset, uint32_t rows, uint32_t gmRowElements) {
-    uint32_t naturallyAlignedK = Ceil(realK_, FP16_NUM_PER_BLOCK) * FP16_NUM_PER_BLOCK;
     Duplicate(staging, static_cast<inType>(0), rows * alignK_);
     PipeBarrier<PIPE_V>();
     event_t vectorToMte2 = static_cast<event_t>(pipe_->FetchEventID(HardEvent::V_MTE2));
     SetFlag<HardEvent::V_MTE2>(vectorToMte2);
     WaitFlag<HardEvent::V_MTE2>(vectorToMte2);
-    DataCopyExtParams copyParams{static_cast<uint16_t>(rows), static_cast<uint32_t>(realK_ * sizeof(inType)),
-                                 static_cast<uint32_t>((gmRowElements - realK_) * sizeof(inType)),
-                                 static_cast<uint32_t>((alignK_ - naturallyAlignedK) * sizeof(inType) / BLOCK_BYTES),
-                                 0};
-    DataCopyPadExtParams<inType> padParams{true, 0, static_cast<uint8_t>(naturallyAlignedK - realK_),
-                                           static_cast<inType>(0)};
-    DataCopyPad(staging, src[srcOffset], copyParams, padParams);
-    event_t mte2ToVector = static_cast<event_t>(pipe_->FetchEventID(HardEvent::MTE2_V));
-    SetFlag<HardEvent::MTE2_V>(mte2ToVector);
-    WaitFlag<HardEvent::MTE2_V>(mte2ToVector);
+
+    uint32_t fullBlocks = realK_ / FP16_NUM_PER_BLOCK;
+    uint32_t tailElements = realK_ % FP16_NUM_PER_BLOCK;
+    uint32_t srcRowBlocks = gmRowElements / FP16_NUM_PER_BLOCK;
+    uint32_t dstRowBlocks = alignK_ / FP16_NUM_PER_BLOCK;
+    bool canUseStridedFullBlocks = fullBlocks > 0 && gmRowElements % FP16_NUM_PER_BLOCK == 0 &&
+                                   alignK_ % FP16_NUM_PER_BLOCK == 0 && srcRowBlocks >= fullBlocks &&
+                                   dstRowBlocks >= fullBlocks && srcRowBlocks - fullBlocks <= 65535U &&
+                                   dstRowBlocks - fullBlocks <= 65535U;
+    if (likely(canUseStridedFullBlocks)) {
+      DataCopyParams copyParams{static_cast<uint16_t>(rows), static_cast<uint16_t>(fullBlocks),
+                                static_cast<uint16_t>(srcRowBlocks - fullBlocks),
+                                static_cast<uint16_t>(dstRowBlocks - fullBlocks)};
+      DataCopy(staging, src[srcOffset], copyParams);
+    } else if (fullBlocks > 0) {
+      DataCopyParams rowParams{1, static_cast<uint16_t>(fullBlocks), 0, 0};
+      for (uint32_t row = 0; row < rows; ++row) {
+        DataCopy(staging[row * alignK_], src[srcOffset + static_cast<uint64_t>(row) * gmRowElements], rowParams);
+      }
+    }
+
+    if (unlikely(tailElements != 0)) {
+      uint32_t tailOffset = fullBlocks * FP16_NUM_PER_BLOCK;
+      bool copyTailAsBlock = tailElements > FP16_NUM_PER_BLOCK / 2 && rows > 1 &&
+                             gmRowElements % FP16_NUM_PER_BLOCK == 0 && alignK_ % FP16_NUM_PER_BLOCK == 0 &&
+                             srcRowBlocks > 0 && dstRowBlocks > 0 && srcRowBlocks - 1 <= 65535U &&
+                             dstRowBlocks - 1 <= 65535U;
+      if (copyTailAsBlock) {
+        // Every row except the last one may safely read through the short tail
+        // into the following token/head. Clear those extra elements below.
+        DataCopyParams tailParams{static_cast<uint16_t>(rows - 1), 1, static_cast<uint16_t>(srcRowBlocks - 1),
+                                  static_cast<uint16_t>(dstRowBlocks - 1)};
+        DataCopy(staging[tailOffset], src[srcOffset + tailOffset], tailParams);
+      }
+      event_t mte2ToScalar = static_cast<event_t>(pipe_->FetchEventID(HardEvent::MTE2_S));
+      SetFlag<HardEvent::MTE2_S>(mte2ToScalar);
+      WaitFlag<HardEvent::MTE2_S>(mte2ToScalar);
+      uint32_t scalarStartRow = copyTailAsBlock ? rows - 1 : 0;
+      if (copyTailAsBlock) {
+        for (uint32_t row = 0; row + 1 < rows; ++row) {
+          for (uint32_t col = realK_; col < tailOffset + FP16_NUM_PER_BLOCK; ++col) {
+            staging.SetValue(row * alignK_ + col, static_cast<inType>(0));
+          }
+        }
+      }
+      for (uint32_t row = scalarStartRow; row < rows; ++row) {
+        uint64_t gmRowOffset = srcOffset + static_cast<uint64_t>(row) * gmRowElements;
+        for (uint32_t col = tailOffset; col < realK_; ++col) {
+          staging.SetValue(row * alignK_ + col, src.GetValue(gmRowOffset + col));
+        }
+      }
+      TQueSync<PIPE_S, PIPE_V> scalarToVector;
+      scalarToVector.SetFlag(0);
+      scalarToVector.WaitFlag(0);
+    } else {
+      event_t mte2ToVector = static_cast<event_t>(pipe_->FetchEventID(HardEvent::MTE2_V));
+      SetFlag<HardEvent::MTE2_V>(mte2ToVector);
+      WaitFlag<HardEvent::MTE2_V>(mte2ToVector);
+    }
     Cast(dst, staging, RoundMode::CAST_NONE, rows * alignK_);
     PipeBarrier<PIPE_V>();
   }
@@ -2039,7 +2088,7 @@ class ChunkGatedDeltaRule {
 
   // Fixed-shape state update:
   //   state = exp(g_last) * state + (K * exp(g_last - g))^T @ v_new.
-  // The weighted K^T @ v_new product uses Cube. The 64/96 buckets convert the
+  // The weighted K^T @ v_new product uses Cube. The 64/80/96 buckets convert the
   // complete NZ result to contiguous ND and use one wide Vector Add; the 128
   // bucket retains the segmented fallback.
   __aicore__ inline void ComputeStateUpdateCubeDispatch(int32_t t_start, uint64_t qkHead) {
@@ -2050,7 +2099,7 @@ class ChunkGatedDeltaRule {
 
   template <uint32_t kStateRows, uint32_t kMatmulN>
   __aicore__ inline void ComputeStateUpdateCube(int32_t t_start, uint64_t qkHead) {
-    // The 64/96 buckets fit one complete M tile in L0C; the 128 bucket keeps
+    // The 64/80/96 buckets fit one complete M tile in L0C; the 128 bucket keeps
     // the conservative 64-row split.
     constexpr uint32_t kTileM = (kSpecializedDk <= 96) ? kSpecializedDk : 64;
     constexpr uint32_t kMatmulK = 64;
@@ -2200,7 +2249,7 @@ class ChunkGatedDeltaRule {
       LocalTensor<float> cNz = chunkKFp32;
       if constexpr (kSpecializedDk <= 96) {
         // chunkK/kCumdecay/decayMask are dead after staging A. Their combined
-        // contiguous UB region holds the complete 64/96-bucket NZ result.
+        // contiguous UB region holds the complete 64/80/96-bucket NZ result.
         cNz = tmpBuff.GetWithOffset<float>(kStateElements, 0);
       }
       DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(curTileM / 16), 0, 0};

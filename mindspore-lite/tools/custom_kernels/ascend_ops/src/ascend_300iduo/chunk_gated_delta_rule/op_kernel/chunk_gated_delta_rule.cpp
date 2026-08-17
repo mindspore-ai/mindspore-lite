@@ -35,10 +35,14 @@ extern "C" __global__ __aicore__ void chunk_gated_delta_rule(GM_ADDR query, GM_A
     op.Init(initParams, &pipe);
     op.Process();
   } else if (TILING_KEY_IS(1)) {
-    ChunkGatedDeltaRule<half, half, 96> op(&tilingData);
+    ChunkGatedDeltaRule<half, half, 80> op(&tilingData);
     op.Init(initParams, &pipe);
     op.Process();
   } else if (TILING_KEY_IS(2)) {
+    ChunkGatedDeltaRule<half, half, 96> op(&tilingData);
+    op.Init(initParams, &pipe);
+    op.Process();
+  } else if (TILING_KEY_IS(3)) {
     ChunkGatedDeltaRule<half, half, 128> op(&tilingData);
     op.Init(initParams, &pipe);
     op.Process();

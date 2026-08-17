@@ -265,12 +265,14 @@ class TestChunkGatedDeltaRule:
 
     @pytest.mark.L0
     @pytest.mark.parametrize("dtype", LOW_DTYPES)
-    @pytest.mark.parametrize("dk", (63, 65, 80, 95, 97, 127))
+    @pytest.mark.parametrize("dk", (63, 65, 79, 80, 81, 95, 96, 97, 127))
     def test_non_multiple_reduce_width(self, dtype, dk):
         """Bucketed Cube tails match both zero padding and the CPU recurrence."""
         self._skip_unsupported_dtype(dtype)
         if dk <= 64:
             padded_dk = 64
+        elif dk <= 80:
+            padded_dk = 80
         elif dk <= 96:
             padded_dk = 96
         else:
