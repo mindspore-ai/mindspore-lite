@@ -265,11 +265,19 @@ class TestChunkGatedDeltaRule:
 
     @pytest.mark.L0
     @pytest.mark.parametrize("dtype", LOW_DTYPES)
-    def test_non_multiple_reduce_width(self, dtype):
-        """A non-64-aligned dk matches the mathematically equivalent padded input."""
+    @pytest.mark.parametrize("dk", (63, 65, 79, 80, 81, 95, 96, 97, 127))
+    def test_non_multiple_reduce_width(self, dtype, dk):
+        """Bucketed Cube tails match both zero padding and the CPU recurrence."""
         self._skip_unsupported_dtype(dtype)
-        dk, padded_dk = 80, 128
-        data = _generate_test_data(1, 2, 32, dk, 32, self.device)
+        if dk <= 64:
+            padded_dk = 64
+        elif dk <= 80:
+            padded_dk = 80
+        elif dk <= 96:
+            padded_dk = 96
+        else:
+            padded_dk = 128
+        data = _generate_test_data(1, 2, 64, dk, 32, self.device)
         padded_data = dict(data)
         padded_data["query"] = torch.nn.functional.pad(data["query"], (0, padded_dk - dk))
         padded_data["key"] = torch.nn.functional.pad(data["key"], (0, padded_dk - dk))
@@ -279,12 +287,35 @@ class TestChunkGatedDeltaRule:
         padded_out, padded_final_state = _run_op(padded_data, dtype)
         torch.npu.synchronize()
 
+        def cpu_low(tensor):
+            return tensor.to(dtype).float().cpu()
+
+        out_ref, state_ref = _pytorch_recurrent_baseline(
+            cpu_low(data["query"]),
+            cpu_low(data["key"]),
+            cpu_low(data["value"]),
+            data["g"].float().cpu(),
+            cpu_low(data["beta"]),
+            cpu_low(data["state"]),
+            scale=data["scale"],
+        )
+
         out_diff = (out.float() - padded_out.float()).abs().max().item()
         state_diff = (
             final_state.float() - padded_final_state[:, :, :dk, :].float()
         ).abs().max().item()
+        out_metrics = _accuracy_metrics(out.float().cpu(), out_ref)
+        state_metrics = _accuracy_metrics(final_state.float().cpu(), state_ref)
         assert out_diff < 5e-2, f"tail reduction output mismatch ({dtype}): {out_diff}"
         assert state_diff < 5e-2, f"tail reduction state mismatch ({dtype}): {state_diff}"
+        assert out_metrics[1] >= 0.999 and out_metrics[2] <= 0.02, (
+            f"tail output diverges from CPU recurrence ({dtype}, dk={dk}): "
+            f"cosine={out_metrics[1]}, nrmse={out_metrics[2]}"
+        )
+        assert state_metrics[1] >= 0.999 and state_metrics[2] <= 0.02, (
+            f"tail state diverges from CPU recurrence ({dtype}, dk={dk}): "
+            f"cosine={state_metrics[1]}, nrmse={state_metrics[2]}"
+        )
 
     @pytest.mark.L0
     @pytest.mark.parametrize(
