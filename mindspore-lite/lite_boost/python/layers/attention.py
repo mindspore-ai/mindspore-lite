@@ -114,9 +114,10 @@ def _flash_attn_npu(q, k, v, q_lens, k_lens, b, lq, lk, softmax_scale):
         v_4d = v.reshape(b, lk, num_heads, head_dim)
 
     scale = softmax_scale if softmax_scale is not None else (1.0 / (head_dim ** 0.5))
-    q_bnsd = q_4d.transpose(1, 2).contiguous().to(torch.float16)
-    k_bnsd = k_4d.transpose(1, 2).contiguous().to(torch.float16)
-    v_bnsd = v_4d.transpose(1, 2).contiguous().to(torch.float16)
+    compute_dtype = q_4d.dtype if q_4d.dtype in (torch.float16, torch.bfloat16) else torch.float16
+    q_bnsd = q_4d.transpose(1, 2).contiguous().to(compute_dtype)
+    k_bnsd = k_4d.transpose(1, 2).contiguous().to(compute_dtype)
+    v_bnsd = v_4d.transpose(1, 2).contiguous().to(compute_dtype)
 
     x = torch_npu.npu_prompt_flash_attention(
         q_bnsd, k_bnsd, v_bnsd,

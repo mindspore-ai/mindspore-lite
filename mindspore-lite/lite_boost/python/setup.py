@@ -168,6 +168,7 @@ setup(
         "lite_boost.model.wan2_1",
         "lite_boost.model.wan2_2",
         "lite_boost.model.qwenimage",
+        "lite_boost.model.qwen_image_edit",
     ],
     package_dir={
         "lite_boost": ".",
@@ -178,6 +179,7 @@ setup(
         "lite_boost.model.wan2_1": "model/wan2_1",
         "lite_boost.model.wan2_2": "model/wan2_2",
         "lite_boost.model.qwenimage": "model/qwenimage",
+        "lite_boost.model.qwen_image_edit": "model/qwen_image_edit",
     },
     package_data={"lite_boost": _get_package_data()},
     include_package_data=True,
