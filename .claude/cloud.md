@@ -17,6 +17,8 @@ MindSpore Lite 是以 C++ 为主的推理框架项目，包含 Python/C++/Java �
 
 ```
 模型迁移/导出 ONNX ─► ONNX→MindIR 转换 + 部署推理 ─► 性能优化 ─► 精度问题定位
+        │
+        └─► 第三方自定义算子对接（需要接入第三方算子包时）
 ```
 
 | 阶段 | 做什么 | 对应 Skill |
@@ -25,8 +27,9 @@ MindSpore Lite 是以 C++ 为主的推理框架项目，包含 Python/C++/Java �
 | ② 转换与部署推理 | ONNX→MindIR（固定 shape / 动态分档 / 纯动态 shape）+ Ascend 离线优化；MindIR 加载、Ascend 推理验证与部署注意事项 | [onnx-model-conversion-and-deployment](.claude/skills/cloud/onnx-model-conversion-and-deployment/SKILL.md) |
 | ③ 性能优化 | 基线/profiling、融合算子改写、推理免拷贝、PTQ int8 量化、精度对齐与归档 | [performance-optimization](.claude/skills/cloud/performance-optimization/SKILL.md) |
 | ④ 精度问题定位 | CANN Profiling 对比分析定位可疑算子、配置算子 Dump、对比 Dump 数据确定精度差异根因 | [precision-troubleshooting](.claude/skills/cloud/precision-troubleshooting/SKILL.md) |
+| ⑤ 第三方自定义算子对接 | 安装第三方算子包（非 CANN/非 MSLite 自研）、配置 ASCEND_CUSTOM_OPP_PATH、Custom 算子改写对接与验证 | [third-party-custom-operator-integration](.claude/skills/cloud/third-party-custom-operator-integration/SKILL.md) |
 
-> 典型顺序：①→② 跑通后，再用 ③ 做性能优化；若发现精度问题则进入 ④ 定位（每步都需精度+性能验证，见各 Skill）。
+> 典型顺序：①→② 跑通后，再用 ③ 做性能优化；若发现精度问题则进入 ④ 定位。⑤ 在 ① 模型导出阶段按需进入——需要在 ONNX 中构造 Custom 节点对接第三方算子包时使用（每步都需精度+性能验证，见各 Skill）。
 
 ## 环境要求
 
@@ -94,6 +97,7 @@ bash scripts/format_source_code.sh -l
 - [open-source-model-migration](.claude/skills/cloud/open-source-model-migration/SKILL.md)：开源模型迁移到 MindSpore Lite 部署管线（按结构拆分导出 ONNX、精度对齐、生成推理脚本与 README）
 - [performance-optimization](.claude/skills/cloud/performance-optimization/SKILL.md)：模型性能优化总攻略——基线/profiling、融合算子改写、推理免拷贝、PTQ int8 量化、精度对齐与归档（细化策略见 references/）
 - [precision-troubleshooting](.claude/skills/cloud/precision-troubleshooting/SKILL.md)：MindIR 模型精度问题定位——CANN Profiling 对比定位可疑算子、配置算子 Dump、对比 Dump 数据确定精度差异根因
+- [third-party-custom-operator-integration](.claude/skills/cloud/third-party-custom-operator-integration/SKILL.md)：第三方自定义算子包安装与 Custom 算子对接——算子包安装、ASCEND_CUSTOM_OPP_PATH 配置、算子定义确认、Custom 改写、转换验证与精度对齐
 
 ## 通用技能（跨侧共享）
 
