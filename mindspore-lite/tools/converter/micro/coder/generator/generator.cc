@@ -568,6 +568,9 @@ int Generator::CodeWeightFile() {
 
 void Generator::CodeCommonNetH(std::ofstream &ofs) {
   ofs << g_hwLicense;
+  // Execute() prototypes use bool; a minimal graph (e.g. a lone Reshape) collects no nnacl
+  // header that pulls stdbool in, so include it explicitly.
+  ofs << "#include <stdbool.h>\n\n";
   ofs << kExternCpp;
   CodeInputState(ofs, ctx_->GetCurModelIndex());
   if (is_get_quant_args_) {

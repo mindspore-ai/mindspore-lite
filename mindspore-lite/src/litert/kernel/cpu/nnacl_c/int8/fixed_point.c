@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <math.h>
+
 #include "nnacl_c/int8/fixed_point.h"
 
 #define C31NUM 31
@@ -74,6 +76,41 @@ int MultiplyByQuantizedMultiplierWithUpwardRounding(int32_t value, int32_t multi
 
 int MultiplyByMultiplierAndRightShift(int32_t value, int32_t multiplier, int32_t right_shift) {
   return RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(value, multiplier), right_shift);
+}
+
+int64_t SaturatingMulInt64(int64_t a, int64_t b) {
+  if (a == 0 || b == 0) {
+    return 0;
+  }
+  if (a > 0) {
+    if (b > 0) {
+      if (a > INT64_MAX / b) {
+        return INT64_MAX;
+      }
+    } else if (b < INT64_MIN / a) {
+      return INT64_MIN;
+    }
+  } else if (b > 0) {
+    if (a < INT64_MIN / b) {
+      return INT64_MIN;
+    }
+  } else if (b < INT64_MAX / a) {
+    return INT64_MAX;
+  }
+  return a * b;
+}
+
+int64_t MultiplyByQuantizedMultiplierInt64(int64_t value, int32_t multiplier, int32_t left_shift, int32_t right_shift) {
+  // ldexp keeps the whole exponent range representable; the double mantissa (53 bits)
+  // bounds the relative error at 2^-53, far below the int8 output resolution.
+  double scaled = ldexp((double)value * (double)multiplier, left_shift - right_shift - C31NUM);
+  if (scaled >= (double)INT64_MAX) {
+    return INT64_MAX;
+  }
+  if (scaled <= (double)INT64_MIN) {
+    return INT64_MIN;
+  }
+  return (int64_t)llround(scaled);
 }
 
 int FractionsBits(int integer_bits) { return 8 * (int)(sizeof(int32_t)) - 1 - integer_bits; }

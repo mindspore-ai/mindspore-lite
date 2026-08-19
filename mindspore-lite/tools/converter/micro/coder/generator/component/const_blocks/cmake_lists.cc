@@ -292,6 +292,9 @@ else()
 endif()
 
 function(create_library)
+    if("${OP_SRC}" STREQUAL "")
+        return()
+    endif()
     add_custom_command(TARGET net
             POST_BUILD
             COMMAND rm -rf tmp
@@ -342,6 +345,9 @@ include_directories(${MS_ROOT_DIR}/include)
 
 include(net.cmake)
 function(create_library)
+    if("${OP_SRC}" STREQUAL "")
+        return()
+    endif()
     add_custom_command(TARGET net
             POST_BUILD
             COMMAND rm -rf tmp

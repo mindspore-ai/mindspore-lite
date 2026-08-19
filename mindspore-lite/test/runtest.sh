@@ -194,6 +194,7 @@ echo 'run flatbuffers verifier ut test'
 ./lite-test --gtest_filter=CeluFp32Test.*
 ./lite-test --gtest_filter=ConstantOfShapeFp32Test.*
 ./lite-test --gtest_filter=ArithmeticFp32Test.*
+./lite-test --gtest_filter=ReduceFp32Test.*
 
 # test cases of INT8 OP
 ./lite-test --gtest_filter=TestBatchnormInt8.*
@@ -223,6 +224,7 @@ echo 'run flatbuffers verifier ut test'
 ./lite-test --gtest_filter=CeluInt8Test.*
 ./lite-test --gtest_filter=ConstantOfShapeInt8Test.*
 ./lite-test --gtest_filter=MaximumMinimumInt8Test.*
+./lite-test --gtest_filter=ReduceInt8Test.*
 
 # test cases of generic api
 ./lite-test --gtest_filter="GenericApiTest*"

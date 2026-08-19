@@ -451,31 +451,24 @@ int ReduceProdLastAxis(const int outer_size, const int inner_size, const int axi
     for (k = 0; k < inner_size; k++) {
       const int32_t *inner_src = outer_src + k;
       int8_t *inner_dst = outer_dst + k;
-      int32_t prod = 1;
+      // The product of quantized deltas overflows int32 quickly (128^5 > INT32_MAX), so it
+      // is accumulated in int64 with saturation instead of aborting the whole kernel.
+      int64_t prod = 1;
       for (i = 0; i < axis_size; i++) {
-        int32_t tmp = inner_src[i * inner_size] - quant->in_zp_;
-        if (isMulOverflow(prod, tmp)) {
-          return NNACL_ERRCODE_MUL_OVERFLOW;
-        }
-        prod *= tmp;
+        int64_t tmp = inner_src[i * inner_size] - quant->in_zp_;
+        prod = SaturatingMulInt64(prod, tmp);
       }
-      prod = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(prod * (1 << (unsigned int)quant->prod_left_shift_), quant->prod_multiplier_),
-        quant->prod_right_shift_);
-      int32_t prod_scaled =
-        RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(prod * (1 << (unsigned int)quant->in_out_left_shift_),
-                                                              quant->in_out_multiplier_),
-                            quant->in_out_right_shift_);
-      if (isAddOverflow(prod_scaled, quant->out_zp_)) {
-        return NNACL_ERRCODE_ADD_OVERFLOW;
-      }
-      prod = prod_scaled + quant->out_zp_;
-      if (prod > INT8_MAX) {
+      int64_t prod_scaled = MultiplyByQuantizedMultiplierInt64(prod, quant->prod_multiplier_, quant->prod_left_shift_,
+                                                               quant->prod_right_shift_);
+      prod_scaled = MultiplyByQuantizedMultiplierInt64(prod_scaled, quant->in_out_multiplier_,
+                                                       quant->in_out_left_shift_, quant->in_out_right_shift_);
+      int64_t prod_quant = prod_scaled + quant->out_zp_;
+      if (prod_quant > INT8_MAX) {
         *inner_dst = INT8_MAX;
-      } else if (prod < INT8_MIN) {
+      } else if (prod_quant < INT8_MIN) {
         *inner_dst = INT8_MIN;
       } else {
-        *inner_dst = (int8_t)prod;
+        *inner_dst = (int8_t)prod_quant;
       }
     }
   }
@@ -494,21 +487,20 @@ int ReduceProdInt8(const int outer_size, const int inner_size, const int axis_si
     for (k = 0; k < inner_size; k++) {
       const int32_t *inner_src = outer_src + k;
       int32_t *inner_dst = outer_dst + k;
-      int32_t prod = 1;
+      int64_t prod = 1;
       for (i = 0; i < axis_size; i++) {
-        int32_t tmp = inner_src[i * inner_size] - quant->in_zp_;
-        if (isMulOverflow(prod, tmp)) {
-          return NNACL_ERRCODE_MUL_OVERFLOW;
-        }
-        prod *= tmp;
+        int64_t tmp = inner_src[i * inner_size] - quant->in_zp_;
+        prod = SaturatingMulInt64(prod, tmp);
       }
-      prod = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(prod * (1 << (unsigned int)quant->prod_left_shift_), quant->prod_multiplier_),
-        quant->prod_right_shift_);
-      if (isAddOverflow(prod, quant->in_zp_)) {
-        return NNACL_ERRCODE_ADD_OVERFLOW;
+      int64_t prod_scaled = MultiplyByQuantizedMultiplierInt64(prod, quant->prod_multiplier_, quant->prod_left_shift_,
+                                                               quant->prod_right_shift_);
+      prod_scaled += quant->in_zp_;
+      if (prod_scaled > INT32_MAX) {
+        prod_scaled = INT32_MAX;
+      } else if (prod_scaled < INT32_MIN) {
+        prod_scaled = INT32_MIN;
       }
-      *inner_dst = prod + quant->in_zp_;
+      *inner_dst = (int32_t)prod_scaled;
     }
   }
   return NNACL_OK;
