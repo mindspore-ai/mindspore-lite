@@ -33,13 +33,16 @@ kv-head repeat-to-MHA workaround is needed.
 
 import argparse
 import gc
+import json
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
 KV_CACHE_LEN = 256
+MAX_OUTPUT_TOKENS = 512
 
 # Tensor-parallel config (set from --tp-size / --rank before exporting each
 # subgraph). TP_SIZE=1 reproduces the single-shard export.
@@ -61,10 +64,10 @@ REPLICATE_LM_HEAD = False
 _TAP_RAW_OUT = []  # collected raw attention outputs (before o_proj) per layer when DEBUG_TAP
 
 try:
-    import torch._dynamo
-
-    torch._dynamo.disable()
-except Exception:
+    torch_dynamo = getattr(torch, "_dynamo", None)
+    if torch_dynamo is not None:
+        torch_dynamo.disable()
+except (AttributeError, RuntimeError):
     pass
 
 try:
@@ -76,10 +79,10 @@ except ImportError:
 
 try:
     from transformers.models.qwen3.modeling_qwen3 import apply_rotary_pos_emb
-except Exception:
+except ImportError:
     try:
         from transformers.models.qwen2.modeling_qwen2 import apply_rotary_pos_emb
-    except Exception:
+    except ImportError:
         apply_rotary_pos_emb = None
 
 
@@ -107,14 +110,16 @@ def _rotate_half(x):
 def _make_flash_attn_mask(attention_mask, q_len, k_len, past_len):
     """Build a boolean causal + padding mask for prefill attention.
 
-    Returns shape (batch, 1, q_len, k_len).
+    Returns shape (batch, 1, q_len, k_len). Avoids redundant Cast ops:
+    uses == 0 instead of .to(torch.bool).logical_not() for the padding mask,
+    and skips the final .to(torch.bool) since | on bool tensors already yields bool.
     """
     ar_q = torch.arange(q_len, device=attention_mask.device)
     ar_k = torch.arange(k_len, device=attention_mask.device)
     causal = ar_k[None, :] > (past_len + ar_q[:, None])
     causal = causal[None, None, :, :].expand(attention_mask.shape[0], 1, q_len, k_len)
-    padding = attention_mask[:, None, None, :].to(torch.bool).logical_not()
-    return (causal | padding).to(torch.bool)
+    padding = attention_mask[:, None, None, :] == 0
+    return causal | padding
 
 
 # ---------------------------------------------------------------------------
@@ -294,9 +299,9 @@ class _IncreFlashAttentionCustom(torch.autograd.Function):
         """Eager fallback for incremental flash attention."""
         del ctx, block_size, inner_precise
         layout = str(input_layout).upper()
-        q, _k, v, attn = _eager_attn_forward(
+        q, k_val, v, attn = _eager_attn_forward(
             query, key, value, num_heads, num_key_value_heads, scale_value, layout)
-        del _k
+        del k_val
         if atten_mask is not None:
             m = atten_mask.to(torch.bool)
             if m.dim() == 4 and m.shape[1] == 1:
@@ -351,9 +356,9 @@ class _PromptFlashAttentionCustom(torch.autograd.Function):
         """Eager fallback for prompt flash attention."""
         del ctx, inner_precise, pre_tokens, next_tokens
         layout = str(input_layout).upper()
-        q, _k, v, attn = _eager_attn_forward(
+        q, k_val, v, attn = _eager_attn_forward(
             query, key, value, num_heads, num_key_value_heads, scale_value, layout)
-        del _k
+        del k_val
         if atten_mask is not None:
             m = atten_mask.to(torch.bool)
             if m.dim() == 4 and m.shape[1] == 1:
@@ -421,7 +426,14 @@ def prompt_flash_attention(query, key, value, atten_mask, num_heads, scale_value
 
 
 class _SwiGluCustom(torch.autograd.Function):
-    """Custom SwiGLU op for ONNX export — fused SiLU-gate activation."""
+    """Custom SwiGLU op for ONNX export — fused SiLU-gate activation.
+
+    Output shape = input shape with the target dim halved (chunk(2, dim) then
+    element-wise silu(gate) * up). The symbolic MUST emit the correct halved
+    dim explicitly (not `setType(x.type())`), otherwise downstream Reshape
+    nodes fail GE infershape because the actual tensor size is half the
+    declared size.
+    """
 
     @staticmethod
     def forward(ctx, x, dim: int):
@@ -435,7 +447,7 @@ class _SwiGluCustom(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x, dim: int):
-        """ONNX symbolic for SwiGLU."""
+        """ONNX symbolic for SwiGLU — correctly halves the target dim."""
         y = g.op(
             "Custom", x,
             type_s="SwiGlu",
@@ -446,7 +458,38 @@ class _SwiGluCustom(torch.autograd.Function):
             input_index_i=[0],
             dim_i=int(dim),
         )
-        y.setType(x.type())
+        # Build a TensorType that copies input dims but halves the target dim.
+        # For our call sites dim is always -1 and the last dim is static
+        # (fused MLP gate+up projection = 2*intermediate_size, always known).
+        try:
+            x_type = x.type()
+            x_rank = x_type.dim()
+            d = int(dim)
+            if d < 0:
+                d += x_rank
+            from torch.onnx import TensorType
+            new_type = TensorType()
+            for i in range(x_rank):
+                dim_i = x_type.dim(i)
+                if i == d:
+                    if dim_i.is_static and dim_i.dim_value > 0:
+                        new_type.add_dim(int(dim_i.dim_value) // 2)
+                    else:
+                        new_type.add_dim(dim_i.dim_param or "Dhalved")
+                else:
+                    if dim_i.is_static and dim_i.dim_value > 0:
+                        new_type.add_dim(int(dim_i.dim_value))
+                    else:
+                        new_type.add_dim(dim_i.dim_param or (f"D{i}" if dim_i.dim_param is None else dim_i.dim_param))
+            try:
+                new_type.set_scalar_type(x_type.scalar_type())
+            except (RuntimeError, TypeError, ValueError):
+                pass
+            y.setType(new_type)
+        except (RuntimeError, TypeError, ValueError):
+            # Fallback: downstream depends on actual op infershape, avoid
+            # declaring a 2x-wrong size that would guarantee Reshape failure.
+            pass
         return y
 
 
@@ -520,15 +563,24 @@ class _AllReduceCustom(torch.autograd.Function):
     (type=AllReduce, op=sum, group=hccl_world_group, rank_size, fusion) node to a
     GE HcomAllReduce. Requires the convert.cc group-injection fix + fusion attr set.
 
-    Each AllReduce gets a UNIQUE fusion_id > 0 (via _ALLREDUCE_FUSION_ID), routing
-    it through GE's 'fusion-by-id' code path. The default fusion_i=0 ('no-fusion'
-    path) mis-batches/mis-routes AllReduces in deep TP=4 graphs → silent precision
-    corruption (verified: 4p emits random garbage tokens with fusion_i=0).
+    Each AllReduce is emitted with fusion_i=0. This is REQUIRED for the converter's
+    ConvertHcomFusionId (convert.cc ~3855) to inject the `group` attr into the
+    MindIR — any non-zero fusion_id makes it early-return, leaving the node
+    without `group`, so GE's hccl_graph_optimizer aborts at PreRun
+    (`hcom_graph_optimizer get attr "group" failed`). Verified TP=2 is
+    token-identical with fusion_i=0. (The earlier unique-fusion-id scheme was a
+    workaround for a TP=4 precision bug; it breaks group injection on this
+    CANN/mslite and is incompatible with the current TP=2 path.)
     """
 
-    # Per-export fusion-id counter. Reset to 0 at the start of each export so all
-    # ranks assign matching ids in the same order (correct cross-rank grouping).
+    # Kept for backward compatibility with any caller referencing the counter;
+    # fusion_i is fixed at 0 now (see note above).
     _ALLREDUCE_FUSION_ID = [0]
+
+    @classmethod
+    def reset_fusion_id(cls):
+        """Reset the AllReduce fusion ID counter so every rank matches."""
+        cls._ALLREDUCE_FUSION_ID[0] = 0
 
     @staticmethod
     def forward(ctx, x):
@@ -537,8 +589,7 @@ class _AllReduceCustom(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x):
-        """Emit ONNX Custom(AllReduce) node with a unique fusion id; GE lowers to HcomAllReduce."""
-        _AllReduceCustom._ALLREDUCE_FUSION_ID[0] += 1
+        """Emit ONNX Custom(AllReduce) node; GE lowers to HcomAllReduce."""
         y = g.op(
             "Custom", x,
             type_s="AllReduce",
@@ -550,7 +601,7 @@ class _AllReduceCustom(torch.autograd.Function):
             op_s="sum",
             group_s="hccl_world_group",
             rank_size_i=int(TP_SIZE),
-            fusion_i=_AllReduceCustom._ALLREDUCE_FUSION_ID[0],
+            fusion_i=0,
         )
         y.setType(x.type())
         return y
@@ -594,8 +645,58 @@ def _allreduce_lm_head(lh_partial):
 
 
 # ---------------------------------------------------------------------------
-# QKV projection and attention dispatch
+# Linear projection dispatch (always 2D MatMul — see _proj_linear)
 # ---------------------------------------------------------------------------
+
+
+def _proj_linear(x, weight, bias=None):
+    """Linear projection x @ weight.T + bias, emitted as a 2D MatMul (always-on).
+
+    Reshape x from (..., in) to (M, in) and use `torch.matmul(x2d, weight.t())`
+    (NOT F.linear, which on 2D lowers to ONNX `Gemm`/transB and a slower kernel).
+    weight.t() folds to a pre-transposed constant. Output is reshaped back to
+    (*x.shape[:-1], out). Bit-identical to F.linear.
+
+    Note: after export, each MatMul node gets an allow_nz=true attribute (see
+    _set_allow_nz_on_matmul), letting GE's IsAllowNzMatmul allow MatMul to use the
+    FRACTAL_NZ format (under a full fp16 graph, a plain MatMul defaults to ND,
+    causing inefficient vector-unit data rearrangement; see heavy_format_propagation).
+    """
+    in_shape = x.shape
+    y = torch.matmul(x.reshape(-1, in_shape[-1]), weight.t())
+    if bias is not None:
+        y = y + bias
+    return y.reshape(*in_shape[:-1], -1)
+
+
+def _set_allow_nz_on_matmul(onnx_path):
+    """Add the allow_nz=true attribute to all MatMul/MatMulV2/BatchMatMulV2 nodes in an ONNX graph.
+
+    Corresponds to IsAllowNzMatmul in the GE source ops_kernel_common.cc:
+        bool allow_nz = false;
+        AttrUtils::GetBool(node->GetOpDesc(), "allow_nz", allow_nz);
+        return allow_nz;
+    Only MatMul nodes with allow_nz=true are permitted by heavy_format_propagation
+    to use FRACTAL_NZ. In ONNX, int 1 is used to represent bool true (the GE-side
+    GetBool is compatible with int values).
+    """
+    import onnx
+    from onnx import helper
+    m = onnx.load(onnx_path)
+    added = 0
+    for node in m.graph.node:
+        if node.op_type in ("MatMul", "MatMulV2", "BatchMatMulV2"):
+            # Skip if an allow_nz attribute already exists
+            if any(a.name == "allow_nz" for a in node.attribute):
+                continue
+            node.attribute.append(helper.make_attribute("allow_nz", 1))
+            added += 1
+    if added:
+        # Model weights are stored as external data (>2GB protobuf limit), so we must
+        # use save_model + save_as_external_data; otherwise SerializeToString exceeds the limit.
+        onnx.save_model(m, onnx_path, save_as_external_data=True,
+                        all_tensors_to_one_file=False, location=".")
+    print(f"[allow_nz] {onnx_path}: set allow_nz=true on {added} MatMul nodes")
 
 
 def _compute_qkv(attn_mod, hidden_states):
@@ -626,7 +727,7 @@ def _compute_qkv(attn_mod, hidden_states):
 
     q_out = q_per
     kv_out = kv_per
-    qkv = F.linear(hidden_states, w, b)
+    qkv = _proj_linear(hidden_states, w, b)
 
     query = qkv[..., :q_out].view(hidden_shape)
     key = qkv[..., q_out:q_out + kv_out].view(hidden_shape)
@@ -639,20 +740,21 @@ def _compute_qkv(attn_mod, hidden_states):
 
 
 def _run_prefill_attention(query, key, value, attention_mask, num_heads, num_kv_heads, scaling):
-    """Run prefill-path attention via PromptFlashAttention (BSND, manual GQA→MHA).
+    """Run prefill-path attention via PromptFlashAttention (BSND).
 
-    query/key/value are (batch, seq, heads, head_dim) = BSND. Manually repeats kv
-    heads to num_heads (BSND dim 2) then calls PFA with num_key_value_heads ==
-    num_heads (pure MHA) -- bypasses PFA's native GQA path, which produces wrong
-    partials at small per-rank KV-head counts (diagnosed: 4p prefill logits
-    cosine 0.23 vs 1p with native GQA; AllReduce is consistent so the per-rank
-    partials are the source). KV returned to the cache is the ORIGINAL (un-
-    repeated) per-rank shard, matching decode's past_key_cache layout.
+    query/key/value are (batch, seq, heads, head_dim) = BSND. For 1p/2p
+    (num_kv_heads >= 4), uses PFA's native GQA path directly -- no manual
+    Expand, saving 2 Expand ops/layer (72 total at 36 layers). For TP>=4
+    (2 KV heads/rank), manual expand+reshape is still used because PFA's
+    native GQA produces wrong partials at small per-rank KV-head counts
+    (diagnosed: 4p prefill logits cosine 0.23 vs 1p with native GQA).
+    KV returned to the cache is the ORIGINAL (un-repeated) per-rank shard,
+    matching decode's past_key_cache layout.
     """
     q_len, k_len = query.shape[1], key.shape[1]
     flash_mask = _make_flash_attn_mask(attention_mask, q_len, k_len, 0)
     k_pfa, v_pfa, n_kv_pfa = key, value, num_kv_heads
-    if 0 < num_kv_heads < num_heads:
+    if 0 < num_kv_heads < num_heads and TP_SIZE >= 4:
         rep = num_heads // num_kv_heads
         b, s, _, d = key.shape
         k_pfa = key.unsqueeze(3).expand(b, s, num_kv_heads, rep, d).reshape(b, s, num_heads, d)
@@ -668,25 +770,24 @@ def _run_prefill_attention(query, key, value, attention_mask, num_heads, num_kv_
 
 
 def _run_decode_attention(query, key, value, attention_mask, attn_mod, num_heads, num_kv_heads):
-    """Run decode-path attention via IncreFlashAttention (BNSD, manual GQA→MHA).
+    """Run decode-path attention via IncreFlashAttention (BNSD).
 
-    Manually repeats kv heads to num_heads first (expand+reshape), then calls
-    IncreFlash with num_key_value_heads == num_heads (pure MHA). This bypasses
-    the kernel's GQA path, which is unreliable for small per-rank KV-head counts
-    -- verified: native GQA gives random garbage at TP=4 (2 KV heads/rank) and
-    the same repeat→MHA fix the 7B used for its num_kv_heads==1 case restores
-    correct output. expand+reshape (not repeat_interleave) is used because
-    repeat_interleave exports as a Split op that GE can't compile.
-    Returns attn_output in BNSD layout.
+    For 1p/2p (num_kv_heads >= 4), uses IncreFlash's native GQA path directly --
+    no manual Expand, saving 2 Expand ops/layer (72 total at 36 layers). For
+    TP>=4 (2 KV heads/rank), manual expand+reshape is still used because the
+    kernel's GQA path is unreliable at small per-rank KV-head counts (verified:
+    native GQA gives random garbage at TP=4). expand+reshape (not
+    repeat_interleave) is used because repeat_interleave exports as a Split op
+    that GE can't compile. Returns attn_output in BNSD layout.
     """
     scaling = getattr(attn_mod, "scaling", 1.0 / (attn_mod.head_dim ** 0.5))
-    if 0 < num_kv_heads < num_heads:
+    if 0 < num_kv_heads < num_heads and TP_SIZE >= 4:
         rep = num_heads // num_kv_heads
         b, _, length, d = key.shape
         key = key.unsqueeze(2).expand(b, num_kv_heads, rep, length, d).reshape(b, num_heads, length, d)
         value = value.unsqueeze(2).expand(b, num_kv_heads, rep, length, d).reshape(b, num_heads, length, d)
         num_kv_heads = num_heads  # now MHA: every q head has its own (repeated) kv head
-    pad_mask = attention_mask[:, None, None, :].to(torch.bool).logical_not()
+    pad_mask = attention_mask[:, None, None, :] == 0
     return incre_flash_attention(
         query, key, value, pad_mask,
         num_heads=num_heads, scale_value=float(scaling),
@@ -728,8 +829,8 @@ def _text_attn_forward(attn_mod, hidden_states, cos4, sin4, attention_mask,
             getattr(attn_mod, "scaling", 1.0 / (attn_mod.head_dim ** 0.5)))
         out = attn_output.reshape(*input_shape, -1)
     else:
-        # Decode: IncreFlash in native GQA mode (num_kv_heads_local >= 2 for all
-        # TP sizes, so the kernel's GQA path is correct).
+        # Decode: IncreFlash with native GQA for 1p/2p (num_kv_heads >= 4),
+        # manual expand for TP>=4 (kernel GQA unreliable at 2 KV heads/rank).
         attn_output = _run_decode_attention(
             query, key, value, attention_mask, attn_mod, num_heads_local, num_kv_heads_local)
         out = attn_output.transpose(1, 2).reshape(*input_shape, -1)
@@ -741,9 +842,9 @@ def _text_attn_forward(attn_mod, hidden_states, cos4, sin4, attention_mask,
     if TP_SIZE > 1:
         q_dim_local = num_heads_local * attn_mod.head_dim
         o_w = attn_mod.o_proj.weight[:, TP_RANK * q_dim_local:(TP_RANK + 1) * q_dim_local]
-        out_proj = allreduce_sum(F.linear(out, o_w, attn_mod.o_proj.bias))
+        out_proj = allreduce_sum(_proj_linear(out, o_w, attn_mod.o_proj.bias))
     else:
-        out_proj = attn_mod.o_proj(out)
+        out_proj = _proj_linear(out, attn_mod.o_proj.weight, attn_mod.o_proj.bias)
     return out_proj, key, value
 
 
@@ -753,8 +854,12 @@ def _text_attn_forward(attn_mod, hidden_states, cos4, sin4, attention_mask,
 
 
 def _mlp_gate_up_linear(mlp_mod, x):
-    """Merge gate_proj and up_proj into a single linear, then split outputs.
+    """Fused gate+up projection -> returns the merged [gate | up] tensor directly.
 
+    The fused GEMM weight cat([gate_w, up_w]) makes the output [gate | up] in
+    gate-then-up order, which is EXACTLY what SwiGlu consumes (it chunks the last
+    dim in half internally). Returning the merged tensor AVOIDS a split-then-recat
+    pair (StridedSliceD + ConcatD) per layer that is a pure identity no-op.
     TP: column-parallel -- each rank holds intermediate/TP rows of gate and up.
     """
     gate_w = mlp_mod.gate_proj.weight
@@ -765,34 +870,46 @@ def _mlp_gate_up_linear(mlp_mod, x):
     gs, ge = TP_RANK * g_per, (TP_RANK + 1) * g_per
     w = torch.cat([gate_w[gs:ge], up_w[gs:ge]], dim=0)
     b = None if gate_b is None else torch.cat([gate_b[gs:ge], up_b[gs:ge]], dim=0)
-    y = F.linear(x, w, b)
-    gate_out = g_per
-    return y[..., :gate_out], y[..., gate_out:]
+    return _proj_linear(x, w, b)   # already [gate | up]; feed directly to SwiGlu
 
 
 def _run_mlp(layer, hidden_states):
     """Run MLP forward pass with fused gate+up projection and SwiGLU activation."""
     mlp = layer.mlp
     if hasattr(mlp, "gate_proj") and hasattr(mlp, "up_proj") and hasattr(mlp, "down_proj"):
-        gate, up = _mlp_gate_up_linear(mlp, hidden_states)
-        act = swiglu(torch.cat([gate, up], dim=-1), dim=-1)
+        gate_up = _mlp_gate_up_linear(mlp, hidden_states)   # [gate | up] fused
+        act = swiglu(gate_up, dim=-1)   # SwiGlu chunks in half internally; no cat needed
         if TP_SIZE > 1:
             # down_proj row-parallel: input dim = intermediate/TP, then AllReduce.
             d_w = mlp.down_proj.weight
             in_per = int(d_w.shape[1]) // TP_SIZE
             d_w_local = d_w[:, TP_RANK * in_per:(TP_RANK + 1) * in_per]
-            return allreduce_sum(F.linear(act, d_w_local, mlp.down_proj.bias))
-        return mlp.down_proj(act)
+            return allreduce_sum(_proj_linear(act, d_w_local, mlp.down_proj.bias))
+        return _proj_linear(act, mlp.down_proj.weight, mlp.down_proj.bias)
     return mlp(hidden_states)
 
 
-def _pad_kv_to_cache_len(kv_tensor):
-    """Pad a KV cache tensor (batch, heads, seq, dim) to KV_CACHE_LEN along dim 2."""
-    pad_len = KV_CACHE_LEN - kv_tensor.shape[2]
-    if pad_len <= 0:
-        return kv_tensor[:, :, :KV_CACHE_LEN, :]
-    zeros = kv_tensor.new_zeros(kv_tensor.shape[0], kv_tensor.shape[1], pad_len, kv_tensor.shape[3])
-    return torch.cat([kv_tensor, zeros], dim=2)[:, :, :KV_CACHE_LEN, :]
+def _pad_kv_by_output_tokens(kv_tensor, extra_len=MAX_OUTPUT_TOKENS):
+    """Pad KV cache tensor by a *fixed* number of extra KV slots on axis 2.
+
+    No longer called from the prefill graph — all paths (1p/2p/4p) now pad
+    KV on the host side instead, eliminating 72 ConcatD ops from the graph.
+    Kept for reference / potential future use.
+
+    Always append exactly `extra_len` (default MAX_OUTPUT_TOKENS=512) zero rows,
+    so the KV output length = current seq + 512 regardless of bucket. Since
+    `extra_len` is a pure python int constant baked into the ONNX concat-shape,
+    GE correctly specializes the final KV length per bucket when it recompiles
+    for a different input seq (ge.dynamicDims 6 buckets):
+
+        bucket seq=512  -> KV output len =  512 + 512 = 1024
+        bucket seq=3072 -> KV output len = 3072 + 512 = 3584
+    """
+    if extra_len <= 0:
+        return kv_tensor
+    zeros = kv_tensor.new_zeros(kv_tensor.shape[0], kv_tensor.shape[1],
+                                int(extra_len), kv_tensor.shape[3])
+    return torch.cat([kv_tensor, zeros], dim=2)
 
 
 # ---------------------------------------------------------------------------
@@ -801,7 +918,14 @@ def _pad_kv_to_cache_len(kv_tensor):
 
 
 class Qwen3LlmPrefill(torch.nn.Module):
-    """Qwen3-8B LLM Prefill wrapper — processes full prompt and outputs padded KV cache."""
+    """Qwen3-8B LLM Prefill wrapper — processes full prompt and outputs KV
+    cache of length seq. The inference script pads KV to seq + 512 on the
+    host side, eliminating 72 ConcatD ops from the graph.
+
+    3 inputs (input_ids, attention_mask, position_ids) — KV output dim is seq;
+    host-side padding to kv_len = seq + 512 is done by the inference script
+    (1p: infer_qwen3_8b_mslite_1p._prefill; 2p: _reconstruct_kv_tp; 4p: _tp_hybrid_prefill).
+    """
 
     def __init__(self, model, lm_head):
         """Initialize prefill wrapper with shared model and lm_head."""
@@ -810,7 +934,12 @@ class Qwen3LlmPrefill(torch.nn.Module):
         self.lm_head = lm_head
 
     def forward(self, input_ids, attention_mask, position_ids):
-        """Run prefill: embed tokens, process all layers, output logits + KV cache."""
+        """Run prefill: 3 inputs, 3 outputs (logits, K, V).
+
+        KV output dim = seq (no graph-side padding). The inference script
+        pads to kv_len = seq + 512 on the host side, eliminating 72 ConcatD
+        ops from the graph.
+        """
         inputs_embeds = self.model.embed_tokens(input_ids)
         cos, sin = self.model.rotary_emb(inputs_embeds, position_ids)
         cos4 = cos.unsqueeze(2) if cos.dim() == 3 else cos
@@ -820,15 +949,13 @@ class Qwen3LlmPrefill(torch.nn.Module):
         hidden_states = inputs_embeds
         for layer in self.model.layers:
             residual = hidden_states
-            # Prefill uses Custom RmsNorm (_rms_norm_layer): in the multi-layer TP
-            # PREFILL graph the native HF RMSNorm can get miscompiled, while the
-            # Custom RmsNorm stays correct. (Decode uses native RMSNorm for the
-            # layer norms -- the opposite.)
             hidden_states = _rms_norm_layer(layer.input_layernorm, hidden_states)
             attn_out, pk, pv = _text_attn_forward(
                 layer.self_attn, hidden_states, cos4, sin4, attention_mask,
                 None, None, None)
-            pk, pv = _pad_kv_to_cache_len(pk), _pad_kv_to_cache_len(pv)
+            # No graph-side KV padding — all paths pad on host side:
+            # 1p: infer_qwen3_8b_mslite_1p._prefill; 2p: _reconstruct_kv_tp; 4p: _tp_hybrid_prefill.
+            # This eliminates 72 ConcatD ops (36 layers × 2 K+V) from the graph.
             hidden_states = residual + attn_out
             residual = hidden_states
             hidden_states = _rms_norm_layer(layer.post_attention_layernorm, hidden_states)
@@ -837,15 +964,33 @@ class Qwen3LlmPrefill(torch.nn.Module):
             present_v.append(pv)
 
         hidden_states = _rms_norm_layer(self.model.norm, hidden_states)
+        # Sampling only needs logits[0, -1, :] (the real last token, considering right padding).
+        # Use attention_mask.sum-1 to locate the real last token, index it directly to 1D [hidden],
+        # then do matmul — compared with index_select keeping [1,1,hidden], this saves the final logits
+        # copy time and the extra 1x1 dimension transfer (output logits is 1D [vocab], downstream reshape compatible).
+        idx = attention_mask.sum(dim=1) - 1
+        hidden_states = hidden_states[0, idx[0], :]
         if TP_SIZE > 1:
             h_per = hidden_states.shape[-1] // TP_SIZE
             hs, he = TP_RANK * h_per, (TP_RANK + 1) * h_per
             lh_w = self.lm_head.weight[:, hs:he]
-            lh_partial = F.linear(hidden_states[..., hs:he], lh_w, self.lm_head.bias)
+            lh_partial = _proj_linear(hidden_states[hs:he], lh_w, self.lm_head.bias)
             logits = _allreduce_lm_head(lh_partial)
         else:
-            logits = self.lm_head(hidden_states)
-        return logits, torch.stack(present_k, dim=0), torch.stack(present_v, dim=0)
+            logits = _proj_linear(hidden_states, self.lm_head.weight, self.lm_head.bias).float()
+        # Pad the KV cache with 512 empty slots inside the graph: output kv_len = seq + 512,
+        # matching the decode past_key_cache / past_value_cache inputs
+        # (decode inputs kv_len = seq + MAX_OUTPUT_TOKENS), avoiding host-side padding.
+        k_out = torch.stack(present_k, dim=0)  # [L, B, H, seq, D]
+        v_out = torch.stack(present_v, dim=0)
+        if MAX_OUTPUT_TOKENS > 0:
+            k_pad = k_out.new_zeros(k_out.shape[0], k_out.shape[1], k_out.shape[2],
+                                    MAX_OUTPUT_TOKENS, k_out.shape[4])
+            v_pad = v_out.new_zeros(v_out.shape[0], v_out.shape[1], v_out.shape[2],
+                                    MAX_OUTPUT_TOKENS, v_out.shape[4])
+            k_out = torch.cat([k_out, k_pad], dim=3)
+            v_out = torch.cat([v_out, v_pad], dim=3)
+        return logits, k_out, v_out
 
 
 class Qwen3LlmDecode(torch.nn.Module):
@@ -905,10 +1050,10 @@ class Qwen3LlmDecode(torch.nn.Module):
             h_per = hidden_states.shape[-1] // TP_SIZE
             hs, he = TP_RANK * h_per, (TP_RANK + 1) * h_per
             lh_w = self.lm_head.weight[:, hs:he]
-            lh_partial = F.linear(hidden_states[..., hs:he], lh_w, self.lm_head.bias)
+            lh_partial = _proj_linear(hidden_states[..., hs:he], lh_w, self.lm_head.bias)
             logits = _allreduce_lm_head(lh_partial)
         else:
-            logits = self.lm_head(hidden_states)
+            logits = _proj_linear(hidden_states, self.lm_head.weight, self.lm_head.bias).float()
         if DEBUG_TAP:
             return logits, torch.stack(present_k, dim=0), torch.stack(present_v, dim=0), \
                 tap_attn_out, tap_post_attn, tap_post_mlp, _TAP_RAW_OUT[0]
@@ -932,6 +1077,16 @@ def _prepare_llm_modules(model, device: str):
     return prefill, decode, lm_head
 
 
+def _prepare_llm_prefill_wrapper(model, device: str):
+    """Build only the prefill wrapper."""
+    return _prepare_llm_modules(model, device)[0]
+
+
+def _prepare_llm_decode_wrapper(model, device: str):
+    """Build only the decode wrapper."""
+    return _prepare_llm_modules(model, device)[1]
+
+
 def _get_kv_cache_config(model):
     """Extract (num_layers, num_kv_heads, head_dim) from model config."""
     num_layers = model.config.num_hidden_layers
@@ -952,7 +1107,7 @@ def _prepare_output_paths(output_dir):
 
 
 def _create_prefill_dummy_inputs(device: str, dummy_seq_len: int):
-    """Create random dummy inputs for prefill model export."""
+    """Create random dummy inputs for prefill model export (3 inputs)."""
     seq = int(dummy_seq_len)
     ids = torch.randint(0, 1000, (1, seq), dtype=torch.int64, device=device)
     mask = torch.ones(1, seq, dtype=torch.int64, device=device)
@@ -961,20 +1116,21 @@ def _create_prefill_dummy_inputs(device: str, dummy_seq_len: int):
 
 
 def _export_prefill_onnx(prefill, prefill_path: Path, dummy_inputs, use_dynamo: bool, static: bool = False):
-    """Export prefill subgraph to ONNX.
+    """Export prefill subgraph to ONNX (3 inputs).
 
-    static=True -> no dynamic_axes (fixed seq + batch=1). Required for the TP
-    prefill (online path doesn't resolve dynamic dims).
+    1p GE multi-bucket (static=False): input seq dims + KV cache dim are
+    marked dynamic. KV padding appends a CONSTANT 512 extra slots, so
+    KV len = seq + 512 is automatically correct for every bucket when GE
+    recompiles via ge.dynamicDims.
     """
-    print(f"Exporting LLM prefill to {prefill_path}...")
+    print(f"Exporting LLM prefill to {prefill_path} (static={static})...")
     dynamic = None
     if not static:
-        dynamic = {"input_ids": {0: "batch", 1: "seq"},
-                   "attention_mask": {0: "batch", 1: "seq"},
-                   "position_ids": {0: "batch", 1: "seq"},
-                   "logits": {0: "batch", 1: "seq"},
-                   "present_key_cache": {1: "batch"},
-                   "present_value_cache": {1: "batch"}}
+        dynamic = {"input_ids": {1: "seq"},
+                   "attention_mask": {1: "seq"},
+                   "position_ids": {1: "seq"},
+                   "present_key_cache": {3: "kv_len"},
+                   "present_value_cache": {3: "kv_len"}}
     pf_out_names = ["logits", "present_key_cache", "present_value_cache"]
     with torch.no_grad():
         torch.onnx.export(
@@ -999,20 +1155,30 @@ def _create_decode_dummy_inputs(device, num_layers, num_kv_heads, head_dim, kv_d
     return ids, mask, pos, k, v
 
 
-def _export_decode_onnx(decode, decode_path: Path, dummy_inputs, use_dynamo: bool, static: bool = False):
+def _export_decode_onnx(decode, decode_path: Path, dummy_inputs, use_dynamo: bool, static: bool = False,
+                        dynamic_kv_only: bool = False):
     """Export decode subgraph to ONNX.
 
-    static=True -> no dynamic_axes (fixed batch=1). Required for the TP decode which
-    is converted with --optimize=none (online): the online path does not resolve a
-    dynamic batch dim, leaving the output shape as -1 and breaking output size checks.
+    static=True       -> no dynamic_axes (fixed batch=1, used by TP>=2 online convert).
+    static=False + dynamic_kv_only=True -> only KV-cache/attention-mask seq dims dynamic
+                        (used by 1p GE online convert for multi-bucket ge.dynamicDims;
+                        batch dims stay fixed at 1).
+    static=False + dynamic_kv_only=False -> all batch/seq dims dynamic (offline ACL).
     """
     print(f"Exporting LLM decode to {decode_path}...")
     dynamic = None
     if not static:
-        dynamic = {"input_ids": {0: "batch"}, "attention_mask": {0: "batch"},
-                   "position_ids": {0: "batch"}, "logits": {0: "batch"},
-                   "past_key_cache": {1: "batch"}, "past_value_cache": {1: "batch"},
-                   "present_key_cache": {1: "batch"}, "present_value_cache": {1: "batch"}}
+        if dynamic_kv_only:
+            # 1p GE: batch dims fixed (1), only KV seq dims dynamic for multi-bucket.
+            # attention_mask: [1, -1]; past/present_*_cache: [layers, 1, kv_heads, -1, head_dim]
+            dynamic = {"attention_mask": {1: "kv_len"},
+                       "past_key_cache": {3: "kv_len"}, "past_value_cache": {3: "kv_len"},
+                       "present_key_cache": {3: "kv_len"}, "present_value_cache": {3: "kv_len"}}
+        else:
+            dynamic = {"input_ids": {0: "batch"}, "attention_mask": {0: "batch"},
+                       "position_ids": {0: "batch"}, "logits": {0: "batch"},
+                       "past_key_cache": {1: "batch"}, "past_value_cache": {1: "batch"},
+                       "present_key_cache": {1: "batch"}, "present_value_cache": {1: "batch"}}
     out_names = ["logits", "present_key_cache", "present_value_cache"]
     if DEBUG_TAP:
         out_names += ["tap_attn_out", "tap_post_attn", "tap_post_mlp", "tap_raw_out"]
@@ -1041,46 +1207,149 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq_len=8, 
     _export_decode_onnx(decode, decode_path, decode_inputs, use_dynamo)
 
 
-def export_tp_decode(model, output_dir, rank, tp_size, device="cpu", use_dynamo=False, static=True):
+def export_tp_decode(model, output_dir, rank, tp_size, device="cpu", use_dynamo=False, static=True,
+                     dynamic_kv_only=False):
     """Export the TP-sharded decode subgraph for one rank.
 
     static=True (TP>=2): no dynamic axes, for online (optimize=none) convert.
-    static=False (TP=1): dynamic batch/seq axes, for offline (ascend_oriented) convert.
+    static=False + dynamic_kv_only=True (1p GE): only KV seq dims dynamic, batch=1 fixed.
     """
     global TP_SIZE, TP_RANK
     TP_SIZE = int(tp_size)
     TP_RANK = int(rank)
-    _AllReduceCustom._ALLREDUCE_FUSION_ID[0] = 0  # reset so every rank matches
-    print(f"Exporting decode rank={rank}/{tp_size} (static={static})...")
-    _, decode, _ = _prepare_llm_modules(model, device=device)
+    _AllReduceCustom.reset_fusion_id()  # reset so every rank matches
+    print(f"Exporting decode rank={rank}/{tp_size} (static={static}, dynamic_kv_only={dynamic_kv_only})...")
+    decode = _prepare_llm_decode_wrapper(model, device)
     kv_dtype = next(model.parameters()).dtype
     num_layers, num_kv_heads, head_dim = _get_kv_cache_config(model)
     decode_dir = Path(output_dir) / "decode"
     decode_dir.mkdir(parents=True, exist_ok=True)
     decode_path = decode_dir / f"qwen3_8b_llm_decode_rank{rank}.onnx"
     decode_inputs = _create_decode_dummy_inputs(str(device), num_layers, num_kv_heads, head_dim, kv_dtype)
-    _export_decode_onnx(decode, decode_path, decode_inputs, use_dynamo, static=static)
+    _export_decode_onnx(decode, decode_path, decode_inputs, use_dynamo, static=static,
+                        dynamic_kv_only=dynamic_kv_only)
     TP_SIZE, TP_RANK = 1, 0
 
 
 def export_tp_prefill(model, output_dir, rank, tp_size, device="cpu", dummy_seq_len=64, use_dynamo=False, static=True):
     """Export the TP-sharded prefill subgraph for one rank.
 
-    static=True (TP>=2): no dynamic axes, for online (optimize=none) convert.
-    static=False (TP=1): dynamic batch/seq axes, for offline (ascend_oriented) convert.
+    static=True (TP>=2): no dynamic axes, for online GE convert.
+    static=False (1p GE multi-bucket, 6 buckets): seq dims + KV len dim dynamic, KV padding
+        append 512 zeros (constant). KV len = seq + 512 auto per bucket.
     """
     global TP_SIZE, TP_RANK
     TP_SIZE = int(tp_size)
     TP_RANK = int(rank)
-    _AllReduceCustom._ALLREDUCE_FUSION_ID[0] = 0  # reset so every rank matches
+    _AllReduceCustom.reset_fusion_id()
     print(f"Exporting prefill rank={rank}/{tp_size} (static={static})...")
-    prefill, _, _ = _prepare_llm_modules(model, device=device)
+    prefill = _prepare_llm_prefill_wrapper(model, device)
     prefill_dir = Path(output_dir) / "prefill"
     prefill_dir.mkdir(parents=True, exist_ok=True)
     prefill_path = prefill_dir / f"qwen3_8b_llm_prefill_rank{rank}.onnx"
     _, ids, mask, pos = _create_prefill_dummy_inputs(device=device, dummy_seq_len=dummy_seq_len)
     _export_prefill_onnx(prefill, prefill_path, (ids, mask, pos), use_dynamo, static=static)
     TP_SIZE, TP_RANK = 1, 0
+
+
+def _save_reference_data(model, output_dir, device, dtype_str):
+    """Save torch reference inputs/outputs for MindIR accuracy comparison.
+
+    Uses seq=512 (first ge.dynamicDims bucket) for prefill and kv_len=1024
+    (first decode bucket) for decode. Prefill KV output feeds decode's
+    past_key_cache/past_value_cache, creating an end-to-end reference.
+    Only called for tp_size=1 (TP>1 AllReduce eager fallback is identity).
+    """
+    ref_dir = Path(output_dir) / "reference"
+    ref_dir.mkdir(parents=True, exist_ok=True)
+
+    prefill, decode, _ = _prepare_llm_modules(model, device)
+    num_layers, num_kv_heads, head_dim = _get_kv_cache_config(model)
+
+    seq = 512  # first ge.dynamicDims prefill bucket
+    kv_len = seq + MAX_OUTPUT_TOKENS  # 1024, first decode bucket
+
+    # --- Prefill reference ---
+    torch.manual_seed(42)  # reproducible random inputs
+    ids = torch.randint(0, 1000, (1, seq), dtype=torch.int64, device=device)
+    mask = torch.ones(1, seq, dtype=torch.int64, device=device)
+    pos = torch.arange(seq, device=device, dtype=torch.int64).view(1, -1)
+
+    with torch.no_grad():
+        pf_logits, pf_k, pf_v = prefill(ids, mask, pos)
+
+    np.save(ref_dir / "prefill_input_0_input_ids.npy", ids.cpu().numpy())
+    np.save(ref_dir / "prefill_input_1_attention_mask.npy", mask.cpu().numpy())
+    np.save(ref_dir / "prefill_input_2_position_ids.npy", pos.cpu().numpy())
+    np.save(ref_dir / "prefill_output_0_logits.npy", pf_logits.cpu().numpy())
+    np.save(ref_dir / "prefill_output_1_present_key_cache.npy", pf_k.cpu().numpy())
+    np.save(ref_dir / "prefill_output_2_present_value_cache.npy", pf_v.cpu().numpy())
+
+    # --- Decode reference ---
+    # Prefill model already pads KV to kv_len = seq + MAX_OUTPUT_TOKENS inside
+    # the graph (see Qwen3LlmPrefill.forward lines ~974-985), so pf_k/pf_v are
+    # already (L, 1, H, kv_len, D). No host-side padding needed.
+    pf_k_padded = pf_k
+    pf_v_padded = pf_v
+
+    # First decode step: position=seq, mask has seq+1 valid tokens
+    dec_ids = torch.tensor([[int(ids[0, -1].item())]], dtype=torch.int64, device=device)
+    dec_mask = torch.zeros(1, kv_len, dtype=torch.int64, device=device)
+    dec_mask[0, :seq + 1] = 1
+    dec_pos = torch.tensor([[seq]], dtype=torch.int64, device=device)
+
+    with torch.no_grad():
+        dec_logits, dec_k, dec_v = decode(dec_ids, dec_mask, dec_pos, pf_k_padded, pf_v_padded)
+
+    np.save(ref_dir / "decode_input_0_input_ids.npy", dec_ids.cpu().numpy())
+    np.save(ref_dir / "decode_input_1_attention_mask.npy", dec_mask.cpu().numpy())
+    np.save(ref_dir / "decode_input_2_position_ids.npy", dec_pos.cpu().numpy())
+    np.save(ref_dir / "decode_input_3_past_key_cache.npy", pf_k_padded.cpu().numpy())
+    np.save(ref_dir / "decode_input_4_past_value_cache.npy", pf_v_padded.cpu().numpy())
+    np.save(ref_dir / "decode_output_0_logits.npy", dec_logits.cpu().numpy())
+    np.save(ref_dir / "decode_output_1_present_key_cache.npy", dec_k.cpu().numpy())
+    np.save(ref_dir / "decode_output_2_present_value_cache.npy", dec_v.cpu().numpy())
+
+    # Save metadata
+    meta = {
+        "prefill": {
+            "seq": seq,
+            "inputs": ["input_ids", "attention_mask", "position_ids"],
+            "outputs": ["logits", "present_key_cache", "present_value_cache"],
+            "shapes": {
+                "input_ids": [1, seq],
+                "attention_mask": [1, seq],
+                "position_ids": [1, seq],
+                "logits": list(pf_logits.shape),
+                "present_key_cache": list(pf_k.shape),
+                "present_value_cache": list(pf_v.shape),
+            },
+        },
+        "decode": {
+            "kv_len": kv_len,
+            "inputs": ["input_ids", "attention_mask", "position_ids",
+                       "past_key_cache", "past_value_cache"],
+            "outputs": ["logits", "present_key_cache", "present_value_cache"],
+            "shapes": {
+                "input_ids": [1, 1],
+                "attention_mask": [1, kv_len],
+                "position_ids": [1, 1],
+                "past_key_cache": [num_layers, 1, num_kv_heads, kv_len, head_dim],
+                "past_value_cache": [num_layers, 1, num_kv_heads, kv_len, head_dim],
+                "logits": list(dec_logits.shape),
+                "present_key_cache": list(dec_k.shape),
+                "present_value_cache": list(dec_v.shape),
+            },
+        },
+        "dtype": dtype_str,
+        "num_layers": num_layers,
+        "num_kv_heads": num_kv_heads,
+        "head_dim": head_dim,
+    }
+    with open(ref_dir / "metadata.json", "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+
+    print(f"Reference data saved to {ref_dir}/ (prefill seq={seq}, decode kv_len={kv_len})")
 
 
 def _parse_export_args():
@@ -1108,6 +1377,12 @@ def _parse_export_args():
                         help="Override KV_CACHE_LEN (default 256). Set >=1024 to enable prefill "
                              "seq > 128 for long-prompt perf sweep (perf-only; decode KV cache grows "
                              "proportionally). 0 = keep default 256.")
+    parser.add_argument("--tp-dynamic", action="store_true",
+                        help="TP>=2 prefill: export with dynamic batch+seq axes (one ONNX serving "
+                             "multiple seq buckets via runtime online-GE ge.dynamicDims). Default off "
+                             "(static prefill — the current TP flow). Decode is always static. "
+                             "Requires runtime config with ge.inputShape (U-names) + ge.dynamicDims "
+                             "+ ge.dynamicNodeType=1 on the online-GE (provider=ge) path.")
     return parser.parse_args()
 
 
@@ -1146,13 +1421,46 @@ def main():
         # ignores them.
         global DEBUG_TAP
         DEBUG_TAP = args.tp_size >= 4
+        tp_prefill_static = not args.tp_dynamic
+        if not tp_prefill_static:
+            print("[tp-dynamic] TP prefill exported with dynamic seq axis AND decode "
+                  "exported with dynamic KV-len axis (dynamic_kv_only). Serve the 6 seq/KV "
+                  "buckets at runtime via online-GE ge.dynamicDims + ge.dynamicNodeType=1 "
+                  "(see configs/tp2/ge_{prefill,decode}.cfg).")
         for rank in range(args.tp_size):
-            export_tp_prefill(model, output_dir, rank, args.tp_size, str(device), 64, args.use_dynamo)
-            export_tp_decode(model, output_dir, rank, args.tp_size, str(device), args.use_dynamo)
+            export_tp_prefill(model, output_dir, rank, args.tp_size, str(device),
+                              args.dummy_seq_len, args.use_dynamo, static=tp_prefill_static)
+            # tp-dynamic: decode KV-len dim must be dynamic too so the same MindIR
+            # serves every decode KV bucket (1024..3584); otherwise decode is locked
+            # to the dummy KV len and ge.dynamicDims cannot re-specialize it.
+            export_tp_decode(model, output_dir, rank, args.tp_size, str(device), args.use_dynamo,
+                             static=tp_prefill_static,
+                             dynamic_kv_only=not tp_prefill_static)
     else:
-        # tp_size=1: single-shard (rank0), dynamic axes for offline ascend_oriented convert
-        export_tp_prefill(model, output_dir, 0, 1, str(device), 64, args.use_dynamo, static=False)
-        export_tp_decode(model, output_dir, 0, 1, str(device), args.use_dynamo, static=False)
+        # tp_size=1: single-shard (rank0). Multi-bucket GE flow:
+        #   * prefill: static=False -> seq dim + KV len dim dynamic for
+        #     ge.dynamicDims 6 buckets. KV padding = 512 constant zeros, so per
+        #     bucket KV len = seq + 512 automatically (GE re-specializes).
+        #   * decode:  static=False + dynamic_kv_only=True -> KV cache /
+        #     attention_mask dims dynamic for 6-bucket ge.dynamicDims, batch fixed.
+        export_tp_prefill(model, output_dir, 0, 1, str(device), 64, args.use_dynamo,
+                          static=False)
+        export_tp_decode(model, output_dir, 0, 1, str(device), args.use_dynamo,
+                         static=False, dynamic_kv_only=True)
+
+    # Save reference data for MindIR accuracy comparison (1p only;
+    # TP>1 AllReduce eager fallback is identity, so reference would be wrong)
+    if args.tp_size == 1:
+        _save_reference_data(model, args.output_dir, str(device), args.dtype)
+
+    # Add allow_nz=true to MatMul/MatMulV2/BatchMatMulV2 nodes in all exported ONNX files,
+    # allowing GE to use FRACTAL_NZ for fp16 MatMul (otherwise the whole graph falls to ND,
+    # causing inefficient vector-unit data rearrangement).
+    for sub in ("prefill", "decode"):
+        for r in range(args.tp_size):
+            onnx_path = Path(output_dir) / sub / f"qwen3_8b_llm_{sub}_rank{r}.onnx"
+            if onnx_path.exists():
+                _set_allow_nz_on_matmul(str(onnx_path))
 
     print("Clearing memory after export...")
     del model
