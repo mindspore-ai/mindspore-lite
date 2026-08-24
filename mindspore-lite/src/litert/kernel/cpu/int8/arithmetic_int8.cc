@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,8 @@ using mindspore::schema::PrimitiveType_Greater;
 using mindspore::schema::PrimitiveType_GreaterEqual;
 using mindspore::schema::PrimitiveType_Less;
 using mindspore::schema::PrimitiveType_LessEqual;
+using mindspore::schema::PrimitiveType_Maximum;
+using mindspore::schema::PrimitiveType_Minimum;
 using mindspore::schema::PrimitiveType_MulFusion;
 using mindspore::schema::PrimitiveType_NotEqual;
 
@@ -58,9 +60,10 @@ int ArithmeticInt8CPUKernel::Prepare() {
   CHECK_NULL_RETURN(in_tensors_[0]);
   CHECK_NULL_RETURN(in_tensors_[1]);
   CHECK_NULL_RETURN(out_tensors_[0]);
+  bool is_max_min = (op_parameter_->type_ == PrimitiveType_Maximum) || (op_parameter_->type_ == PrimitiveType_Minimum);
+  auto expected_out_type = is_max_min ? mindspore::kNumberTypeInt8 : mindspore::kNumberTypeUInt8;
   if (in_tensors_[0]->data_type() != mindspore::kNumberTypeInt8 ||
-      in_tensors_[1]->data_type() != mindspore::kNumberTypeInt8 ||
-      out_tensors_[0]->data_type() != mindspore::kNumberTypeUInt8) {
+      in_tensors_[1]->data_type() != mindspore::kNumberTypeInt8 || out_tensors_[0]->data_type() != expected_out_type) {
     MS_LOG(ERROR) << "Datatype error, input0 data_type is " << in_tensors_[0]->data_type() << ", input1 data_type is "
                   << in_tensors_[1]->data_type() << ", output data_type is " << out_tensors_[0]->data_type();
     return RET_ERROR;
@@ -88,6 +91,12 @@ int ArithmeticInt8CPUKernel::Prepare() {
       break;
     case PrimitiveType_GreaterEqual:
       arithmetic_run_ = ElementGreaterEqualInt8;
+      break;
+    case PrimitiveType_Maximum:
+      arithmetic_run_ = reinterpret_cast<ArithmeticRunInt8>(ElementMaximumInt8);
+      break;
+    case PrimitiveType_Minimum:
+      arithmetic_run_ = reinterpret_cast<ArithmeticRunInt8>(ElementMinimumInt8);
       break;
     default:
       MS_LOG(ERROR) << "Error Operator type " << op_parameter_->type_;
@@ -126,37 +135,49 @@ int ArithmeticInt8CPUKernel::DoArithmetic(int thread_id) {
   CHECK_NULL_RETURN(input0_data);
   auto input1_data = reinterpret_cast<int8_t *>(in_tensors_[1]->MutableData());
   CHECK_NULL_RETURN(input1_data);
-  auto output_data = reinterpret_cast<uint8_t *>(out_tensors_[0]->MutableData());
-  CHECK_NULL_RETURN(output_data);
   auto element_num = out_tensors_[0]->ElementsNum();
   MS_CHECK_GT(element_num, 0, RET_ERROR);
   auto param = reinterpret_cast<ArithmeticParameter *>(op_parameter_);
+  bool is_max_min = (op_parameter_->type_ == PrimitiveType_Maximum) || (op_parameter_->type_ == PrimitiveType_Minimum);
   int error_code;
-  if (param->broadcasting_ && arithmetic_run_ != nullptr) {
-    MS_ASSERT(op_parameter_->thread_num_ != 0);
-    auto stride = UP_DIV(element_num, op_parameter_->thread_num_);
-    auto count = MSMIN(stride, element_num - stride * thread_id);
-    if (count <= 0) {
-      return RET_OK;
-    }
-
-    error_code = arithmetic_run_(tile_data0_ + stride * thread_id, tile_data1_ + stride * thread_id,
-                                 output_data + stride * thread_id, count, &quant_args_);
-    if (error_code != RET_OK) {
-      MS_LOG(ERROR) << "Arithmetic run fail! ret: " << error_code;
-      return error_code;
-    }
-  } else if (arithmetic_run_ != nullptr) {
-    error_code = arithmetic_run_(input0_data, input1_data, output_data, element_num, &quant_args_);
-    if (error_code != RET_OK) {
-      MS_LOG(ERROR) << "Arithmetic run fail!ret: " << error_code;
-      return error_code;
+  if (is_max_min) {
+    auto output_data = reinterpret_cast<int8_t *>(out_tensors_[0]->MutableData());
+    CHECK_NULL_RETURN(output_data);
+    auto maxmin_run = reinterpret_cast<ArithmeticRunInt8Out>(arithmetic_run_);
+    if (param->broadcasting_ && maxmin_run != nullptr) {
+      MS_ASSERT(op_parameter_->thread_num_ != 0);
+      auto stride = UP_DIV(element_num, op_parameter_->thread_num_);
+      auto count = MSMIN(stride, element_num - stride * thread_id);
+      if (count <= 0) return RET_OK;
+      error_code = maxmin_run(tile_data0_ + stride * thread_id, tile_data1_ + stride * thread_id,
+                              output_data + stride * thread_id, count, &quant_args_);
+    } else if (maxmin_run != nullptr) {
+      error_code = maxmin_run(input0_data, input1_data, output_data, element_num, &quant_args_);
+    } else {
+      MS_LOG(ERROR) << "arithmetic_run function is nullptr!";
+      return RET_ERROR;
     }
   } else {
-    MS_LOG(ERROR) << "arithmetic_run function is nullptr!";
-    return RET_ERROR;
+    auto output_data = reinterpret_cast<uint8_t *>(out_tensors_[0]->MutableData());
+    CHECK_NULL_RETURN(output_data);
+    if (param->broadcasting_ && arithmetic_run_ != nullptr) {
+      MS_ASSERT(op_parameter_->thread_num_ != 0);
+      auto stride = UP_DIV(element_num, op_parameter_->thread_num_);
+      auto count = MSMIN(stride, element_num - stride * thread_id);
+      if (count <= 0) return RET_OK;
+      error_code = arithmetic_run_(tile_data0_ + stride * thread_id, tile_data1_ + stride * thread_id,
+                                   output_data + stride * thread_id, count, &quant_args_);
+    } else if (arithmetic_run_ != nullptr) {
+      error_code = arithmetic_run_(input0_data, input1_data, output_data, element_num, &quant_args_);
+    } else {
+      MS_LOG(ERROR) << "arithmetic_run function is nullptr!";
+      return RET_ERROR;
+    }
   }
-  return RET_OK;
+  if (error_code != RET_OK) {
+    MS_LOG(ERROR) << "Arithmetic run fail! ret: " << error_code;
+  }
+  return error_code;
 }
 
 int ArithmeticInt8CPUKernel::Run() {
@@ -227,4 +248,6 @@ REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_LessEqual, CpuArithmeticInt8Kern
 REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_Greater, CpuArithmeticInt8KernelCreator)
 REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_GreaterEqual, CpuArithmeticInt8KernelCreator)
 REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_Eltwise, CpuArithmeticInt8KernelCreator)
+REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_Maximum, CpuArithmeticInt8KernelCreator)
+REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_Minimum, CpuArithmeticInt8KernelCreator)
 }  // namespace mindspore::kernel
