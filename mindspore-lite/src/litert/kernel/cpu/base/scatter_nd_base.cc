@@ -15,6 +15,7 @@
  */
 
 #include "src/litert/kernel/cpu/base/scatter_nd_base.h"
+#include <algorithm>
 #include <cstring>
 #include <vector>
 #include "schema/model_generated.h"
@@ -83,11 +84,13 @@ int ScatterNDCPUKernel::ReSize() {
 
   // calculate offsets
   int out_stride = 1;
+  out_strides_.clear();
   out_strides_.push_back(1);
   for (int i = indice_unit_rank - C2NUM; i >= 0; i--) {
     out_stride *= shape_data[i + 1];
     out_strides_.push_back(out_stride);
   }
+  std::reverse(out_strides_.begin(), out_strides_.end());
 
   param_->num_unit = 1;
   param_->num_unit *= update_shape.at(indices_shape.size() - C2NUM);
@@ -114,6 +117,11 @@ int ScatterNDRun(void *cdata, int task_id, float, float) {
 }
 
 int ScatterNDCPUKernel::Run() {
+  auto output = out_tensors_[kOutputIndex];
+  CHECK_NULL_RETURN(output);
+  CHECK_NULL_RETURN(output->data());
+  (void)memset(output->data(), 0, output->Size());
+
   auto indices = in_tensors_[kScatterIndicesIndex];
   auto indices_shape = indices->shape();
   MS_CHECK_TRUE_MSG(!indices_shape.empty(), RET_ERROR, "indices_shape shouldn't be empty.");

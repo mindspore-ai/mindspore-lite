@@ -293,6 +293,16 @@ class TFAbsParser : public TFNodeParser {
                       const std::map<string, const tensorflow::NodeDef *> &tf_node_map,
                       std::vector<std::string> *inputs, int *output_size) override;
 };
+
+class TFErfParser : public TFNodeParser {
+ public:
+  TFErfParser() = default;
+  ~TFErfParser() override = default;
+
+  PrimitiveCPtr Parse(const tensorflow::NodeDef &tf_op,
+                      const std::map<string, const tensorflow::NodeDef *> &tf_node_map,
+                      std::vector<std::string> *inputs, int *output_size) override;
+};
 }  // namespace lite
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_TOOLS_CONVERTER_PARSER_TF_TF_ARITHMETIC_PARSER_H_

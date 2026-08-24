@@ -91,7 +91,7 @@ RegReduceOp(ReduceMean, float);
 RegReduceOp(ReduceMin, float);
 
 // ReduceMax
-#define ReduceMaxPreDeal float tmp = FLT_MIN;
+#define ReduceMaxPreDeal float tmp = -INFINITY;
 #define ReduceMaxMidCalc tmp = fmaxf(tmp, inner_src[i * inner_size]);
 #define ReduceMaxPostDeal outer_dst[k] = tmp;
 RegReduceOp(ReduceMax, float);

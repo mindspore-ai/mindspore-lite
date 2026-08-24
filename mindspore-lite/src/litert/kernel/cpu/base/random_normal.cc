@@ -68,6 +68,9 @@ int RandomNormalCPUKernel::Run() {
 
 REG_KERNEL(kCPU, kNumberTypeFloat32, PrimitiveType_RandomNormal, LiteKernelCreator<RandomNormalCPUKernel>)
 REG_KERNEL(kCPU, kNumberTypeFloat32, PrimitiveType_RandomStandardNormal, LiteKernelCreator<RandomNormalCPUKernel>)
+// RandomStandardNormal takes an int32 shape tensor as input. The scheduler selects a kernel by input data type, so an
+// int32 registration is required even though the generated output is float32.
+REG_KERNEL(kCPU, kNumberTypeInt32, PrimitiveType_RandomStandardNormal, LiteKernelCreator<RandomNormalCPUKernel>)
 #ifdef ENABLE_FP16
 REG_KERNEL(kCPU, kNumberTypeFloat16, PrimitiveType_RandomNormal, LiteKernelCreator<RandomNormalCPUKernel>)
 REG_KERNEL(kCPU, kNumberTypeFloat16, PrimitiveType_RandomStandardNormal, LiteKernelCreator<RandomNormalCPUKernel>)

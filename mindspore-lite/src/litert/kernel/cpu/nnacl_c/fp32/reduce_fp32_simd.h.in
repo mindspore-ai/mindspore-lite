@@ -77,7 +77,7 @@ static inline int64_t ReduceMax@SIMD_INSTRUCTION@(int64_t index, const float *ou
   int axis_size) {
   for (int block_max_size = inner_size - BLOCK_NUM + 1; index < block_max_size; index += BLOCK_NUM) {
     const float *inner_src = outer_src + index;
-    SIMD_F32 tmp = SIMD_MOV_F32(FLT_MIN);
+    SIMD_F32 tmp = SIMD_MOV_F32(-INFINITY);
     for (int i = 0; i < axis_size; i++) {
       tmp = SIMD_MAX_F32(tmp, SIMD_LD_F32(inner_src + i * inner_size));
     }

@@ -410,6 +410,20 @@ PrimitiveCPtr TFAbsParser::Parse(const tensorflow::NodeDef &tf_op,
   return prim->GetPrim();
 }
 
+PrimitiveCPtr TFErfParser::Parse(const tensorflow::NodeDef &tf_op,
+                                 const std::map<string, const tensorflow::NodeDef *> &tf_node_map,
+                                 std::vector<std::string> *inputs, int *output_size) {
+  auto prim = std::make_unique<ops::Erf>();
+  MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
+  *output_size = 1;
+  if (AddOpInput(tf_op, 0, inputs) != RET_OK) {
+    MS_LOG(ERROR) << "Add Op input failed.";
+    return nullptr;
+  }
+
+  return prim->GetPrim();
+}
+
 TFNodeRegistrar g_tfAddParser("Add", new TFAddParser());
 TFNodeRegistrar g_tfAddV2Parser("AddV2", new TFAddParser());
 TFNodeRegistrar g_tfSubParser("Sub", new TFSubParser());
@@ -440,5 +454,6 @@ TFNodeRegistrar g_tfLogParser("Log", new TFLogParser());
 TFNodeRegistrar g_tfSqrtParser("Sqrt", new TFSqrtParser());
 TFNodeRegistrar g_tfPowParser("Pow", new TFPowParser());
 TFNodeRegistrar g_tfAbsParser("Abs", new TFAbsParser());
+TFNodeRegistrar g_tfErfParser("Erf", new TFErfParser());
 }  // namespace lite
 }  // namespace mindspore
