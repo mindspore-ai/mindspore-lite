@@ -11,7 +11,6 @@ Ascend 300I Duo 单卡包含 2 个 NPU 芯（chip），因此：
 
 - **1p = 单卡单芯**：`infer_qwen3_8b_mslite_1p.py`，单 mindir + 单图 `ge.dynamicDims` 8 档，KV 8 头/卡
 - **2p = 单卡双芯**（卡内双芯 HCCS 互联，本机已验证）：`infer_qwen3_8b_mslite_tp.py`，HCCL 多进程，`ge.dynamicDims` 8 档，KV 4 头/rank
-- **4p = 双卡四芯**（跨卡 PCIe 互联，代码支持但本机未验证）：300I Duo 双卡 PCIe 拓扑下 4p HCCL 有已知精度问题
 
 ---
 

@@ -38,42 +38,32 @@ Note: the first predict of each bucket triggers GE profile lazy compilation (~5m
 """
 import argparse
 import gc
-import importlib
 import json
 import os
-import sys
 import time
+from typing import Literal
 
 import numpy as np
-import mindspore_lite as mslite
 from transformers import AutoTokenizer
+import mindspore_lite as mslite
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-_infer = importlib.import_module("infer_qwen3_8b_mslite_tp")
-MAX_OUTPUT_TOKENS = _infer.MAX_OUTPUT_TOKENS
-NUM_LAYERS = _infer.NUM_LAYERS
-NUM_KV_HEADS = _infer.NUM_KV_HEADS
-HEAD_DIM = _infer.HEAD_DIM
-VOCAB = _infer.VOCAB
-MS_DTYPE_TO_NP = _infer.MS_DTYPE_TO_NP
-build_mslite_inputs = _infer.build_mslite_inputs
-_npu_mem = importlib.import_module("_npu_mem")
-PeakSampler = _npu_mem.PeakSampler
+from infer_qwen3_8b_mslite import (
+    MAX_OUTPUT_TOKENS, NUM_LAYERS, NUM_KV_HEADS, HEAD_DIM, VOCAB,
+    _MS_DTYPE_TO_NP, _build_mslite_inputs,
+)
+from _npu_mem import PeakSampler
 
-# 1p perf buckets: add 896/2560 to the 6 buckets (matching the prof mode default buckets).
-# ge.dynamicNodeType=1 supports online re-specialization, so buckets not in ge.dynamicDims
-# can still run with the actual shape (only the first compile is slightly slower).
 BUCKET_SEQ_DIMS = (512, 896, 1024, 1664, 2048, 2560, 2816, 3072)
 
 TOK_PATH = "../Qwen3-8B"
 PREFILL_PATH = "./qwen3_8b_onnx/prefill/qwen3_8b_llm_prefill_rank0_graph.mindir"
 DECODE_PATH = "./qwen3_8b_onnx/decode/qwen3_8b_llm_decode_rank0_graph.mindir"
-PREFILL_CFG = "configs/ge_prefill.cfg"
-DECODE_CFG = "configs/ge_decode.cfg"
+PREFILL_CFG = "configs/qwen3_8b_llm_prefill.config"
+DECODE_CFG = "configs/qwen3_8b_llm_decode.config"
 
 
 def _pick_seq(real_len):
-    """Smallest bucket prefill dim >= real_len (8 buckets, including 896/2560)."""
+    """Smallest bucket prefill dim >= real_len (8 档, 含 896/2560)."""
     for dim in BUCKET_SEQ_DIMS:
         if dim >= real_len:
             return dim
@@ -96,7 +86,6 @@ class DynamicBucketRunner:
         ctx.target = ["ascend"]
         ctx.ascend.device_id = self.device_id
         ctx.ascend.provider = "ge"
-        # ctx.ascend.precision_mode = "enforce_fp32"
         t0 = time.perf_counter()
         if phase in ("both", "prefill"):
             self.prefill = mslite.Model()
@@ -117,54 +106,39 @@ class DynamicBucketRunner:
             self._mg.add_model([self.prefill, self.decode])
             print(f"[build] both graphs total={self._build_s:.1f}s (SHARE_WEIGHT)", flush=True)
 
-        # ---- Device-memory pre-allocation (sized for the max bucket, allocated once in init, no further allocation during inference) ----
-        # Max bucket: prefill seq=3072 -> kv_len=3584; decode input KV is also 3584.
-        # Device buffers are allocated at max size and resized to the actual bucket during inference;
-        # when the GE output <= buffer, min(src, dst) is copied (ge_graph_executor.cc is patched), so a max buffer is safe.
         self.max_seq = BUCKET_SEQ_DIMS[-1]
         self.max_kv_len = self.max_seq + MAX_OUTPUT_TOKENS
         dev = f"ascend:{self.device_id}"
 
-        # ---- Prefill output device buffers (one pre-allocated set per 8 buckets, reused per bucket during inference) ----
-        # The physical GE output KV length equals the current bucket's kv_len, so the output buffer must match it
-        # (otherwise D2H copy fails); therefore init pre-allocates one set per bucket and _prefill selects
-        # the matching one, avoiding allocation during inference.
         self._pf_kv_dtype = mslite.DataType.FLOAT16
-        self._pf_buffers = {}
-        for seq_val in BUCKET_SEQ_DIMS:
-            kv_val = seq_val + MAX_OUTPUT_TOKENS
-            self._pf_buffers[seq_val] = {
-                "logits": mslite.Tensor(shape=[VOCAB, ], dtype=mslite.DataType.FLOAT32, device=dev),
-                "k": mslite.Tensor(
-                    shape=[NUM_LAYERS, 1, NUM_KV_HEADS, kv_val, HEAD_DIM],
-                    dtype=self._pf_kv_dtype, device=dev),
-                "v": mslite.Tensor(
-                    shape=[NUM_LAYERS, 1, NUM_KV_HEADS, kv_val, HEAD_DIM],
-                    dtype=self._pf_kv_dtype, device=dev),
-            }
+        self.t_pf_logits = mslite.Tensor(
+            shape=[VOCAB], dtype=mslite.DataType.FLOAT32, device=dev)
+        self.t_pf_k = mslite.Tensor(
+            shape=[NUM_LAYERS, 1, NUM_KV_HEADS, self.max_kv_len, HEAD_DIM],
+            dtype=self._pf_kv_dtype, device=dev)
+        self.t_pf_v = mslite.Tensor(
+            shape=[NUM_LAYERS, 1, NUM_KV_HEADS, self.max_kv_len, HEAD_DIM],
+            dtype=self._pf_kv_dtype, device=dev)
+        if phase in ("both", "prefill"):
+            _ = self.t_pf_k.get_data_to_numpy()
+            _ = self.t_pf_v.get_data_to_numpy()
 
-        # ---- Decode input/output device buffers (one pre-allocated set per 8 buckets, reused per bucket during inference) ----
         if phase in ("both", "decode"):
             din = self.decode.get_inputs()
-            self._dc_ids_np = MS_DTYPE_TO_NP[din[0].dtype]
-            self._dc_attn_np = MS_DTYPE_TO_NP[din[1].dtype]
-            self._dc_pos_np = MS_DTYPE_TO_NP[din[2].dtype]
-            self._dc_kv_np = MS_DTYPE_TO_NP[din[3].dtype]
-            # One set per bucket: small inputs + dual KV buffers (ping-pong) + logits
-            self._dc_buffers = {}
-            for seq_val in BUCKET_SEQ_DIMS:
-                kv_val = seq_val + MAX_OUTPUT_TOKENS
-                kv_shape = [NUM_LAYERS, 1, NUM_KV_HEADS, kv_val, HEAD_DIM]
-                self._dc_buffers[kv_val] = {
-                    "ids": mslite.Tensor(shape=[1, 1], dtype=din[0].dtype, device=dev),
-                    "attn": mslite.Tensor(shape=[1, kv_val], dtype=din[1].dtype, device=dev),
-                    "pos": mslite.Tensor(shape=[1, 1], dtype=din[2].dtype, device=dev),
-                    "k_a": mslite.Tensor(shape=kv_shape, dtype=din[3].dtype, device=dev),
-                    "v_a": mslite.Tensor(shape=kv_shape, dtype=din[4].dtype, device=dev),
-                    "k_b": mslite.Tensor(shape=kv_shape, dtype=din[3].dtype, device=dev),
-                    "v_b": mslite.Tensor(shape=kv_shape, dtype=din[4].dtype, device=dev),
-                    "logits": mslite.Tensor(shape=[VOCAB, ], dtype=mslite.DataType.FLOAT32, device=dev),
-                }
+            self._dc_ids_np = _MS_DTYPE_TO_NP[din[0].dtype]
+            self._dc_attn_np = _MS_DTYPE_TO_NP[din[1].dtype]
+            self._dc_pos_np = _MS_DTYPE_TO_NP[din[2].dtype]
+            self._dc_kv_np = _MS_DTYPE_TO_NP[din[3].dtype]
+            kv_shape = [NUM_LAYERS, 1, NUM_KV_HEADS, self.max_kv_len, HEAD_DIM]
+            self.t_dc_ids = mslite.Tensor(shape=[1, 1], dtype=din[0].dtype, device=dev)
+            self.t_dc_attn = mslite.Tensor(shape=[1, self.max_kv_len], dtype=din[1].dtype, device=dev)
+            self.t_dc_pos = mslite.Tensor(shape=[1, 1], dtype=din[2].dtype, device=dev)
+            self.t_dc_k_a = mslite.Tensor(shape=kv_shape, dtype=din[3].dtype, device=dev)
+            self.t_dc_v_a = mslite.Tensor(shape=kv_shape, dtype=din[4].dtype, device=dev)
+            self.t_dc_k_b = mslite.Tensor(shape=kv_shape, dtype=din[3].dtype, device=dev)
+            self.t_dc_v_b = mslite.Tensor(shape=kv_shape, dtype=din[4].dtype, device=dev)
+            self.t_dc_logits = mslite.Tensor(
+                shape=[VOCAB], dtype=mslite.DataType.FLOAT32, device=dev)
 
     def _prep_inputs(self, text):
         """Tokenize and pad prompt → (padded, attn, pos, real, seq, kv_len)."""
@@ -184,24 +158,22 @@ class DynamicBucketRunner:
         return padded, attn, pos, real, seq, kv_len
 
     def _prefill(self, padded, attn, pos, seq, kv_len):
-        """Run prefill inference and return first token, KV caches, timing, and KV physical length."""
+        """Run prefill with preallocated device output buffers and return first token + KV tensors."""
         self.prefill.resize(self.prefill.get_inputs(), [[1, seq], [1, seq], [1, seq]])
-        feed = build_mslite_inputs(
+        feed = _build_mslite_inputs(
             self.prefill, {"input_ids": padded, "attention_mask": attn, "position_ids": pos},
             preferred_order=["input_ids", "attention_mask", "position_ids"])
 
-        # ---- prefill->decode KV: use the per-bucket output buffer pre-allocated in init ----
-        # The physical GE output KV = kv_len = seq + 512; init pre-allocated one set per 8 buckets,
-        # so here we reuse the set for the current seq bucket and avoid allocating memory during inference.
-        pf_buf = self._pf_buffers[seq]
-        t_pf_logits, t_pf_k, t_pf_v = pf_buf["logits"], pf_buf["k"], pf_buf["v"]
+        kv_shape = [NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM]
+        self.t_pf_k.shape = kv_shape
+        self.t_pf_v.shape = kv_shape
 
         t0 = time.perf_counter()
-        output = self.prefill.predict(feed, outputs=[t_pf_logits, t_pf_k, t_pf_v])
+        self.prefill.predict(feed, outputs=[self.t_pf_logits, self.t_pf_k, self.t_pf_v])
         pf_ms = (time.perf_counter() - t0) * 1000
 
-        # Small logits tensor copied D2H for argmax (only 0.6MB, negligible)
-        logits = output[0].get_data_to_numpy().astype(np.float32)
+        # logits 小张量 D2H 做 argmax
+        logits = self.t_pf_logits.get_data_to_numpy().astype(np.float32)
         flat = logits.reshape((-1, VOCAB))
         if flat.shape[0] > 1:
             real = int(attn.sum())
@@ -209,59 +181,47 @@ class DynamicBucketRunner:
         else:
             first = int(np.argmax(flat[0, :]))
 
-        # KV to host numpy (_decode uniformly H2Ds into the max-bucket buffer)
         kv_out_phys = kv_len
-        return first, output[1], output[2], pf_ms, kv_out_phys
+        return first, self.t_pf_k, self.t_pf_v, pf_ms, kv_out_phys
 
     def _decode(self, first, pf_k, pf_v, real_len, kv_len, max_new_tokens):
-        """Decode loop. pf_k/pf_v are tensors from prefill (device or host)."""
+        """Decode loop. pf_k/pf_v are device tensors from prefill."""
         din = self.decode.get_inputs()
-        # Resize to the current bucket: input/output device buffers were pre-allocated per 8 buckets in __init__,
-        # so select the buffer matching the current kv_len here.
         self.decode.resize(din, [[1, 1], [1, kv_len], [1, 1],
                                  [NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM],
                                  [NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM]])
-        ids_np = MS_DTYPE_TO_NP[din[0].dtype]
-        attn_np = MS_DTYPE_TO_NP[din[1].dtype]
-        pos_np = MS_DTYPE_TO_NP[din[2].dtype]
-        kv_np = MS_DTYPE_TO_NP[din[3].dtype]
         gen = [first]
         valid = real_len
-        # cur_attn is allocated for the current bucket (matching the pre-allocated t_attn shape); only valid positions are updated in the loop
-        cur_attn = np.zeros((1, kv_len), dtype=attn_np)
+        cur_attn = np.zeros((1, kv_len), dtype=self._dc_attn_np)
         cur_attn[0, :valid] = 1
         step_ms = []
         truncated = False
 
-        # ---- prefill->decode KV transfer (uniformly H2D into the per-bucket pre-allocated device buffer) ----
-        # Prefill output may be a device tensor (get_device_data is not guaranteed to work for abnormal shapes) or
-        # host numpy; uniformly convert to host numpy, normalize to 5D, truncate to kv_len, then write to the bucket buffer.
-        # Inside the decode loop KV stays on device with ping-pong, still zero-copy.
-        dc_buf = self._dc_buffers[kv_len]
-        t_ids, t_attn, t_pos = dc_buf["ids"], dc_buf["attn"], dc_buf["pos"]
-        t_k_a, t_v_a = dc_buf["k_a"], dc_buf["v_a"]
-        t_k_b, t_v_b = dc_buf["k_b"], dc_buf["v_b"]
-        t_logits = dc_buf["logits"]
+        kv_shape = [NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM]
+        self.t_dc_attn.shape = [1, kv_len]
+        self.t_dc_k_a.shape = kv_shape
+        self.t_dc_v_a.shape = kv_shape
+        self.t_dc_k_b.shape = kv_shape
+        self.t_dc_v_b.shape = kv_shape
 
-        k_buf = np.zeros([NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM], dtype=kv_np)
-        v_buf = np.zeros([NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM], dtype=kv_np)
+        k_buf = np.zeros(kv_shape, dtype=self._dc_kv_np)
+        v_buf = np.zeros(kv_shape, dtype=self._dc_kv_np)
         for src, dst in ((pf_k, k_buf), (pf_v, v_buf)):
             try:
                 arr = src.get_data_to_numpy() if hasattr(src, 'get_data_to_numpy') else np.asarray(src)
-            except (RuntimeError, ValueError, AttributeError):
+            except (RuntimeError, ValueError, TypeError):
                 arr = None
             if arr is None:
-                continue  # if D2H fails keep zeros (decode can run with zero KV, though results are invalid)
+                continue
             arr = np.asarray(arr)
-            # Normalize to 5D [L, B, H, len, D] (GE output may be 4D/5D or an unexpectedly low rank)
             while arr.ndim < 5:
                 arr = arr[np.newaxis, ...]
             phys = min(arr.shape[3], kv_len)
             dst[:, :, :, :phys, :] = arr[:, :, :, :phys, :]
-        t_k_a.set_data_from_numpy(np.ascontiguousarray(k_buf))
-        t_v_a.set_data_from_numpy(np.ascontiguousarray(v_buf))
-        k_in, k_out = t_k_a, t_k_b
-        v_in, v_out = t_v_a, t_v_b
+        self.t_dc_k_a.set_data_from_numpy(np.ascontiguousarray(k_buf))
+        self.t_dc_v_a.set_data_from_numpy(np.ascontiguousarray(v_buf))
+        k_in, k_out = self.t_dc_k_a, self.t_dc_k_b
+        v_in, v_out = self.t_dc_v_a, self.t_dc_v_b
 
         for _ in range(max_new_tokens - 1):
             if self.eos_token_id is not None and gen[-1] == int(self.eos_token_id):
@@ -270,17 +230,15 @@ class DynamicBucketRunner:
                 truncated = True
                 break
             cur_attn[0, valid] = 1
-            # Only small inputs are updated (written in place on device tensors); large KV tensors stay on device
-            t_ids.set_data_from_numpy(np.array([[gen[-1]]], dtype=ids_np))
-            t_attn.set_data_from_numpy(cur_attn.copy())
-            t_pos.set_data_from_numpy(np.array([[valid]], dtype=pos_np))
-            inputs = [t_ids, t_attn, t_pos, k_in, v_in]
-            outputs = [t_logits, k_out, v_out]
+            self.t_dc_ids.set_data_from_numpy(np.array([[gen[-1]]], dtype=self._dc_ids_np))
+            self.t_dc_attn.set_data_from_numpy(cur_attn.copy())
+            self.t_dc_pos.set_data_from_numpy(np.array([[valid]], dtype=self._dc_pos_np))
+            inputs = [self.t_dc_ids, self.t_dc_attn, self.t_dc_pos, k_in, v_in]
+            outputs = [self.t_dc_logits, k_out, v_out]
             t0 = time.perf_counter()
-            o = self.decode.predict(inputs, outputs=outputs)
+            self.decode.predict(inputs, outputs=outputs)
             step_ms.append((time.perf_counter() - t0) * 1000)
-            lg = o[0].get_data_to_numpy()
-            # ping-pong: this step's output KV buffer becomes the next step's input (zero Host<->Device copies)
+            lg = self.t_dc_logits.get_data_to_numpy()
             k_in, k_out = k_out, k_in
             v_in, v_out = v_out, v_in
             valid += 1
@@ -303,30 +261,26 @@ class DynamicBucketRunner:
         Returns perf dict.
         """
         din = self.decode.get_inputs()
-        # Resize to the current bucket (matching the per-bucket pre-allocated device buffer)
         self.decode.resize(din, [[1, 1], [1, kv_len], [1, 1],
                                  [NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM],
                                  [NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM]])
-        ids_np = MS_DTYPE_TO_NP[din[0].dtype]
-        attn_np = MS_DTYPE_TO_NP[din[1].dtype]
-        pos_np = MS_DTYPE_TO_NP[din[2].dtype]
-        kv_np = MS_DTYPE_TO_NP[din[3].dtype]
+        ids_np = _MS_DTYPE_TO_NP[din[0].dtype]
+        attn_np = _MS_DTYPE_TO_NP[din[1].dtype]
+        pos_np = _MS_DTYPE_TO_NP[din[2].dtype]
+        kv_np = _MS_DTYPE_TO_NP[din[3].dtype]
         first = 1
         valid = seq
-        # cur_attn is allocated for the current bucket (matching the pre-allocated t_attn shape)
         cur_attn = np.zeros((1, kv_len), dtype=attn_np)
         cur_attn[0, :valid] = 1
         gen = [first]
         step_ms = []
         truncated = False
 
-        # ---- Zero-copy: use the per-bucket device tensors pre-allocated in init (inputs + dual KV buffer ping-pong) ----
         dc_buf = self._dc_buffers[kv_len]
         t_ids, t_attn, t_pos = dc_buf["ids"], dc_buf["attn"], dc_buf["pos"]
         t_k_a, t_v_a = dc_buf["k_a"], dc_buf["v_a"]
         t_k_b, t_v_b = dc_buf["k_b"], dc_buf["v_b"]
         t_logits = dc_buf["logits"]
-        # Write dummy KV into this bucket's buffer (all zeros; decode only uses the leading kv_len)
         dummy_k = np.zeros([NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM], dtype=kv_np)
         dummy_v = np.zeros([NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM], dtype=kv_np)
         t_k_a.set_data_from_numpy(np.ascontiguousarray(dummy_k))
@@ -406,9 +360,6 @@ def main():
                     help="prof 模式: build + 3 warmup + 只跑 prefill 或 decode 1 次 (配合 msprof 分阶段采集)")
     args = ap.parse_args()
 
-    # The tokenizers library prints noisy warnings when it detects fork (PeakSampler triggers
-    # a fork every 0.15s via subprocess.run); the recommended way is to disable its parallelism
-    # notice before loading the tokenizer.
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     print(f"Loading tokenizer from {TOK_PATH}...", flush=True)
@@ -416,7 +367,6 @@ def main():
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
 
-    # ---- Single functional verification mode (used by infer.sh 0) ----
     if args.single_prompt is not None:
         sampler = PeakSampler(args.device_id, interval=0.15)
         sampler.start()
@@ -439,10 +389,9 @@ def main():
               f"truncated={perf['truncated']}")
         return
 
-    # ---- Per-process prof collection mode (msprof wrapper; runs prefill or decode only once) ----
     if args.prof_phase is not None:
         if args.buckets == "all":
-            buckets = list(BUCKET_SEQ_DIMS)
+            buckets = list[Literal[512, 896, 1024, 1664, 2048, 2560, 2816, 3072]](BUCKET_SEQ_DIMS)
         else:
             buckets = [int(x) for x in args.buckets.split(",")]
         seq = buckets[0]
@@ -459,14 +408,8 @@ def main():
                 s += base_text
             prompt = tok.decode(tok.encode(s)[:max(1, seq - 20)], skip_special_tokens=True)
 
-        # ---- Per-process prof collection mode (msprof wrapper) ----
-        # Key: prefill and decode must each run in a separate process (profiling is per-process);
-        # running both in the same process mixes the op data. So, according to args.prof_phase:
-        #   * prefill process: build only prefill; warmup/collection runs only prefill;
-        #   * decode process: build only decode; warmup/collection runs only decode (dummy KV, no prefill).
         runner = DynamicBucketRunner(args.device_id, tok, phase=args.prof_phase)
         if args.prof_phase == "prefill":
-            # 3 warmup rounds (prefill only) + 1 collection
             for _ in range(3):
                 runner.run_prefill(prompt)
             perf = runner.run_prefill(prompt)
@@ -474,7 +417,6 @@ def main():
                   f"prefill_ms={perf['prefill_ms']}ms", flush=True)
         else:
             kv_len = seq + MAX_OUTPUT_TOKENS
-            # 3 warmup rounds (decode only, dummy KV) + 1 collection
             for _ in range(3):
                 runner.run_decode_only(seq, kv_len, max_new_tokens=args.max_new_tokens)
             perf = runner.run_decode_only(seq, kv_len, max_new_tokens=args.max_new_tokens)
@@ -491,11 +433,8 @@ def main():
     else:
         buckets = [int(x) for x in args.buckets.split(",")]
 
-    # Build a prompt with repeated Chinese text to reach the target token count (fill each bucket's seq).
     base = "人工智能是研究开发用于模拟延伸和扩展人的智能的理论方法技术及应用系统的一门新的技术科学。"
-    # Real conversation prompt (normal output semantics, used to verify text quality for the short buckets).
-    # Only the 512 bucket uses a real prompt (token count < 512, falls into the 512 bucket); 1024+ buckets use
-    # make_prompt to generate seq-20 tokens, ensuring _pick_seq selects the target bucket.
+
     real_prompts = {
         512: "你好，请用一句话介绍一下你自己",
     }
@@ -512,8 +451,6 @@ def main():
 
     results = []
     for seq in buckets:
-        # Use a real conversation prompt for short buckets (normal output semantics); for long buckets use
-        # filler text that lands exactly in the bucket (actual token count = seq - 20, ensuring _pick selects seq).
         if seq in real_prompts:
             prompt = real_prompts[seq]
             target = len(tok.encode(prompt))
@@ -530,7 +467,6 @@ def main():
             print(f"[档 {seq} 轮{r}] {tag} prefill={perf['prefill_ms']}ms "
                   f"decode_first={perf['decode_first_ms']}ms decode_min={perf['decode_min_ms']}ms "
                   f"trunc={perf['truncated']}", flush=True)
-        # Steady state = starting from the 2nd round
         steady = perfs[1:] if len(perfs) > 1 else perfs
         avg_pf = sum(p["prefill_ms"] for p in steady) / len(steady)
         avg_dc = sum(p["decode_min_ms"] for p in steady) / len(steady)
