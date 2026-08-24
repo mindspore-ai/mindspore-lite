@@ -66,13 +66,19 @@ def _pytorch_recurrent_gated_delta_rule(
         output:       [B, T, H, D_v] float32
         final_state:  [B, H, D_k, D_v] float32
     """
-    batch_size, seq_len, num_heads, _ = query.shape
+    batch_size, seq_len, num_key_heads, _ = query.shape
+    num_value_heads = value.shape[2]
+    if num_value_heads % num_key_heads != 0:
+        raise ValueError("num_value_heads must be divisible by num_key_heads")
     v_head_dim = value.shape[-1]
 
     # Transpose to [B, H, T, D]
     q = query.transpose(1, 2)  # [B, H, T, D_k]
     k = key.transpose(1, 2)  # [B, H, T, D_k]
     v = value.transpose(1, 2)  # [B, H, T, D_v]
+    head_ratio = num_value_heads // num_key_heads
+    q = q.repeat_interleave(head_ratio, dim=1)
+    k = k.repeat_interleave(head_ratio, dim=1)
     g_t = g.transpose(1, 2)  # [B, H, T]
     gk_t = gk.transpose(1, 2)  # [B, H, T, D_k]
     beta_t = beta.transpose(1, 2)  # [B, H, T]
@@ -81,7 +87,7 @@ def _pytorch_recurrent_gated_delta_rule(
 
     core_attn_out = torch.zeros(
         batch_size,
-        num_heads,
+        num_value_heads,
         seq_len,
         v_head_dim,
         dtype=torch.float32,
@@ -230,6 +236,60 @@ def _generate_test_data(batch_size, num_heads, seq_len, k_head_dim, v_head_dim, 
         "num_accepted_tokens": torch.tensor(
             [seq_len] * batch_size, dtype=torch.int32, device=device
         ),
+        "scale": scale,
+    }
+
+
+def _generate_310p_test_data(batch_size, seq_len, device):
+    """Generate FP16 inputs using the Qwen3.5-4B recurrent-attention shape."""
+    num_key_heads, num_value_heads = 16, 32
+    k_head_dim = v_head_dim = 128
+    scale = 1.0 / (k_head_dim**0.5)
+    query = _l2norm(
+        torch.randn(batch_size, seq_len, num_key_heads, k_head_dim),
+        dim=-1,
+    )
+    key = _l2norm(
+        torch.randn(batch_size, seq_len, num_key_heads, k_head_dim),
+        dim=-1,
+    )
+    value = torch.randn(batch_size, seq_len, num_value_heads, v_head_dim) * 0.05
+    beta = torch.rand(batch_size, seq_len, num_value_heads) * 0.8 + 0.1
+    g = -(torch.rand(batch_size, seq_len, num_value_heads) + 0.01)
+    gk = -(torch.rand(batch_size, seq_len, num_value_heads, k_head_dim) + 0.01)
+    state = (
+        torch.randn(
+            batch_size,
+            num_value_heads,
+            k_head_dim,
+            v_head_dim,
+        )
+        * 0.05
+    )
+    return {
+        "query": query.transpose(1, 2).contiguous().half().to(device),
+        "key": key.transpose(1, 2).contiguous().half().to(device),
+        "value": value.transpose(1, 2).contiguous().half().to(device),
+        "beta": beta.transpose(1, 2).contiguous().half().to(device),
+        "state": state.half().to(device),
+        "g": g.transpose(1, 2).contiguous().to(device),
+        "gk": gk.permute(0, 2, 1, 3).contiguous().to(device),
+        "actual_seq_lengths": torch.full(
+            (batch_size,), seq_len, dtype=torch.int32, device=device
+        ),
+        "ssm_state_indices": torch.arange(batch_size, dtype=torch.int32)
+        .repeat_interleave(seq_len)
+        .to(device),
+        "num_accepted_tokens": torch.full(
+            (batch_size,), seq_len, dtype=torch.int32, device=device
+        ),
+        "query_ref": query.half().float(),
+        "key_ref": key.half().float(),
+        "value_ref": value.half().float(),
+        "beta_ref": beta.half().float(),
+        "state_ref": state.half().float(),
+        "g_ref": g,
+        "gk_ref": gk,
         "scale": scale,
     }
 
@@ -406,6 +466,51 @@ class TestRecurrentGatedDeltaRule:
 
         # Print performance comparison
         _print_performance_comparison("L0 Qwen3.5-2B decode", cann_time, ref_time)
+
+
+class TestRecurrentGatedDeltaRule310P:
+    """Validate the 310P custom kernel with Qwen3.5-4B GQA dimensions."""
+
+    @pytest.mark.ascend_300iduo
+    @pytest.mark.L0
+    @pytest.mark.parametrize("batch_size,seq_len", [(1, 1), (2, 1)])
+    def test_qwen35_4b_accuracy(self, batch_size, seq_len):
+        """Compare the custom kernel with the FP32 reference at decode shapes."""
+        device = torch.device("npu:0")
+        torch.npu.set_device(device)
+        torch.manual_seed(2026 + batch_size * 10 + seq_len)
+        data = _generate_310p_test_data(batch_size, seq_len, device)
+
+        out_npu, state_npu = lite_ops.recurrent_gated_delta_rule(
+            data["query"],
+            data["key"],
+            data["value"],
+            data["beta"],
+            data["state"],
+            data["actual_seq_lengths"],
+            data["ssm_state_indices"],
+            data["g"],
+            data["gk"],
+            data["num_accepted_tokens"],
+            scale_value=data["scale"],
+        )
+        out_ref, state_ref = _pytorch_recurrent_gated_delta_rule(
+            data["query_ref"],
+            data["key_ref"],
+            data["value_ref"],
+            data["g_ref"],
+            data["gk_ref"],
+            data["beta_ref"],
+            data["state_ref"],
+            scale=data["scale"],
+        )
+        out_npu = out_npu.cpu()
+        state_npu = state_npu.cpu()
+        out_ref = out_ref.permute(0, 2, 1, 3).contiguous().half()
+        state_ref = state_ref.half()
+
+        torch.testing.assert_close(out_npu, out_ref, rtol=1e-3, atol=1e-3)
+        torch.testing.assert_close(state_npu, state_ref, rtol=1e-3, atol=1e-3)
 
 
 if __name__ == "__main__":

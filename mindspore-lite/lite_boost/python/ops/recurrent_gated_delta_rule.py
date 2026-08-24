@@ -59,19 +59,19 @@ def recurrent_gated_delta_rule(
     associations of linear attention.
 
     Args:
-        query (torch.Tensor): Query tensor of shape ``[B, H_q, T, D_k]``, dtype=bfloat16.
+        query (torch.Tensor): Query tensor of shape ``[B, H_k, T, D_k]``, dtype=bfloat16.
             Must be L2-normalized (L2 norm of each head vector is 1, value range [0, 1]).
-            B=batch_size, H_q=num_query_heads, T=seq_len, D_k=key_dim.
-        key (torch.Tensor): Key tensor of shape ``[B, H_q, T, D_k]``, dtype=bfloat16.
-            Must be L2-normalized (same as query). In GQA/MQA scenarios, multiple query
-            heads share the same set of keys.
+            B=batch_size, H_k=num_key_heads, T=seq_len, D_k=key_dim.
+        key (torch.Tensor): Key tensor of shape ``[B, H_k, T, D_k]``, dtype=bfloat16.
+            Must be L2-normalized (same as query).
         value (torch.Tensor): Value tensor of shape ``[B, H_v, T, D_v]``, dtype=bfloat16.
-            H_v=num_value_heads (can differ from H_q to support GQA/MQA), D_v=value_dim.
+            H_v=num_value_heads, D_v=value_dim. H_v must be divisible by H_k.
         beta (torch.Tensor): Delta update step size of shape ``[B, H_v, T]``, dtype=bfloat16.
             Value range (0, 1). Controls the magnitude of each delta update: a larger beta
             causes new information to overwrite old memory more aggressively; a smaller
             beta tends to preserve existing memory.
-        state (torch.Tensor): Recurrent state matrix of shape ``[B, H_v, D_k, D_v]``,
+        state (torch.Tensor): Recurrent state pool of shape
+            ``[state_slots, H_v, D_k, D_v]``,
             dtype=bfloat16. Stores the cumulative key-value associations for linear attention.
             D_k is the key dimension (rows), D_v is the value dimension (columns).
             Can be initialized to zeros for the first call.
@@ -79,9 +79,8 @@ def recurrent_gated_delta_rule(
             Used for variable-length sequence inference. Each element represents the number
             of valid tokens in the corresponding batch.
             E.g., ``[4, 3, 5]`` means 3 batches with sequence lengths 4, 3, and 5.
-        ssm_state_indices (torch.Tensor): SSM state indices of shape ``[B]``, dtype=int32.
-            Indicates the index position of each batch item in the global state pool,
-            used for state management in multi-batch scenarios. Typically ``[0, 1, 2, ..., B-1]``.
+        ssm_state_indices (torch.Tensor): State-slot indices of shape ``[T_total]``,
+            dtype=int32. Each flattened token selects one entry in the global state pool.
         g (torch.Tensor): Global decay gate of shape ``[B, H_v, T]``, dtype=float32.
             **Must be negative**. ``exp(g)`` serves as the state decay factor with range (0, 1).
             The more negative ``g`` is, the faster historical information is forgotten.
@@ -103,7 +102,7 @@ def recurrent_gated_delta_rule(
 
         - **out** (Tensor) — Attention output of shape ``[B, H_v, T, D_v]``, dtype=bfloat16.
           The linear attention result at each token position.
-        - **state_out** (Tensor) — Updated recurrent state of shape ``[B, H_v, D_k, D_v]``,
+        - **state_out** (Tensor) — Updated recurrent state pool with the same shape as ``state``,
           dtype=bfloat16. Must be passed as ``state`` input in the next recurrent step to
           form a state-passing chain.
 
@@ -115,11 +114,10 @@ def recurrent_gated_delta_rule(
         - This operator only supports the **decode phase** (token-by-token inference),
           with sequence length T not exceeding 8. For parallel prefill computation,
           use the chunk-level operator.
-        - Supports GQA (Grouped Query Attention) / MQA (Multi-Query Attention) modes,
-          i.e., H_q can be greater than H_v, with multiple query heads sharing the same
-          set of key/value heads.
+        - Supports grouped recurrent heads where H_v is an integer multiple of H_k.
         - All input tensors must reside on the same NPU device.
-        - The CANN operator stores state internally as ``[B, H_v, D_v, D_k]`` layout
+        - The CANN operator stores state internally as
+          ``[state_slots, H_v, D_v, D_k]`` layout
           (value dimension first). This function automatically performs the layout conversion.
 
     Examples:
@@ -148,10 +146,10 @@ def recurrent_gated_delta_rule(
     # =========================================================================
     # BNSD layout: [Batch, Num_heads, Seq_len, Dim]
     # - B (batch_size):    batch size
-    # - H_q (num_heads_q): number of query heads (H_q >= H_v in GQA scenarios)
+    # - H_k (num_heads_q): number of key/query heads
     # - T (seq_len):       sequence length (typically 1~8 in decode phase)
     # - D_k (dk):          Key/Query attention head dimension
-    # - H_v (num_heads_v): number of value heads (can be less than H_q in GQA)
+    # - H_v (num_heads_v): number of value heads (a multiple of H_k)
     # - D_v (dv):          Value attention head dimension
     batch_size = query.shape[0]
     num_heads_q = query.shape[1]
@@ -160,6 +158,10 @@ def recurrent_gated_delta_rule(
     # Value head count may differ from query (GQA/MQA mode)
     num_heads_v = value.shape[1]
     dv = value.shape[3]
+    if num_heads_v < num_heads_q or num_heads_v % num_heads_q != 0:
+        raise ValueError("value heads must be an integer multiple of query/key heads")
+    if ssm_state_indices.numel() != batch_size * seq_len:
+        raise ValueError("ssm_state_indices must contain one state-slot index per token")
 
     # =========================================================================
     # 2. BNSD -> TND layout conversion
@@ -184,11 +186,10 @@ def recurrent_gated_delta_rule(
     # Shares the same head count and dimension as query (key-query symmetry in linear attention)
     key_tnd = key.transpose(1, 2).reshape(-1, num_heads_q, dk).contiguous()
 
-    # value: [B, H_v, T, D_v] -> [T_total, H_q, D_v]
-    # Note: reshape uses num_heads_q (query head count) instead of num_heads_v (value head count),
-    # because CANN expects consistent head dimensions for query/key/value in TND layout,
-    # and handles GQA mapping internally via the Nv/Nk ratio.
-    value_tnd = value.transpose(1, 2).reshape(-1, num_heads_q, dv).contiguous()
+    # value: [B, H_v, T, D_v] -> [T_total, H_v, D_v]
+    # Recurrent GDR maps each key/query head to Nv/Nk value heads in the
+    # kernel. Preserve H_v here; reshaping with H_q corrupts T_total for GQA.
+    value_tnd = value.transpose(1, 2).reshape(-1, num_heads_v, dv).contiguous()
 
     # beta: [B, H_v, T] -> [T_total, H_v]
     # Delta update step size, controls how much new information overwrites old memory
@@ -204,20 +205,12 @@ def recurrent_gated_delta_rule(
     gk_tnd = gk.transpose(1, 2).reshape(-1, num_heads_v, dk).contiguous()
 
     # =========================================================================
-    # 3. Build cumulative sequence length vector cu_seqlen
+    # 3. Prepare actual sequence lengths
     # =========================================================================
-    # cu_seqlen locates the start and end positions of each batch within the
-    # flattened T_total dimension.
-    #
-    # Example: actual_seq_lengths = [4, 3, 5] -> cu_seqlen = [0, 4, 7, 12]
-    #   - batch 0: tokens [0, 4)
-    #   - batch 1: tokens [4, 7)
-    #   - batch 2: tokens [7, 12)
+    # The ACLNN interface accepts one length per batch rather than a cumulative
+    # prefix vector.
     # =========================================================================
     seq_lengths_int = actual_seq_lengths.int().contiguous()
-    cu_seqlen = torch.zeros(batch_size + 1, dtype=torch.int32, device=query.device)
-    cu_seqlen[1:] = torch.cumsum(seq_lengths_int, dim=0)
-
     # =========================================================================
     # 4. Recurrent state matrix layout conversion
     # =========================================================================
@@ -243,13 +236,13 @@ def recurrent_gated_delta_rule(
     # handles workspace allocation and asynchronous execution.
     #
     # Input tensor summary (all in TND layout):
-    #   query_tnd:  [T_total, H_q, D_k]      - L2-normalized query
-    #   key_tnd:    [T_total, H_q, D_k]      - L2-normalized key
-    #   value_tnd:  [T_total, H_q, D_v]      - value
+    #   query_tnd:  [T_total, H_k, D_k]      - L2-normalized query
+    #   key_tnd:    [T_total, H_k, D_k]      - L2-normalized key
+    #   value_tnd:  [T_total, H_v, D_v]      - value
     #   beta_tnd:   [T_total, H_v]            - Delta update step size (0, 1)
-    #   state_cann: [B, H_v, D_v, D_k]       - recurrent state matrix
-    #   cu_seqlen:  [B+1]                     - cumulative sequence lengths
-    #   ssm_state_indices: [B]                - state pool indices
+    #   state_cann: [state_slots, H_v, D_v, D_k] - recurrent state pool
+    #   seq_lengths_int: [B]                 - actual sequence lengths
+    #   ssm_state_indices: [T_total]          - state pool indices
     #   g_tnd:      [T_total, H_v]            - global decay gate (negative)
     #   gk_tnd:     [T_total, H_v, D_k]      - key gate (negative)
     #   num_accepted_tokens: [B]              - accepted token counts
@@ -257,7 +250,7 @@ def recurrent_gated_delta_rule(
     #
     # Output tensors:
     #   out_tnd:        [T_total, H_v, D_v]   - attention output
-    #   state_out_cann: [B, H_v, D_v, D_k]    - updated recurrent state
+    #   state_out_cann: [state_slots, H_v, D_v, D_k] - updated recurrent state
     # =========================================================================
     out_tnd, state_out_cann = torch.ops.lite_boost.recurrent_gated_delta_rule(
         query_tnd,
@@ -280,7 +273,7 @@ def recurrent_gated_delta_rule(
     # BNSD layout.
     # =========================================================================
 
-    # state_out: CANN layout [B, H_v, D_v, D_k] -> Python layout [B, H_v, D_k, D_v]
+    # state_out: [state_slots, H_v, D_v, D_k] -> [state_slots, H_v, D_k, D_v]
     # Restore Python-side convention: key dimension first, value dimension second
     state_out = state_out_cann.transpose(-1, -2).contiguous()
     state_out = _ensure_nd_format(state_out)
