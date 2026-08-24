@@ -121,6 +121,10 @@ class GeGraphExecutor : public LiteGraphExecutor {
 
   std::shared_ptr<GeMemoryManager> memory_manager_ = nullptr;
   std::shared_ptr<GeContextManager> context_manager_ = nullptr;
+  // Cache of temporary device buffers for the zero-copy path (used by host inputs/outputs).
+  // Keyed by tensor name+size so that different tensors never share the same buffer.
+  // Reused across inferences; all buffers are released in the destructor.
+  std::map<std::string, std::pair<void *, size_t>> cached_temp_buffers_;
 
   std::shared_ptr<GeDeviceContext> ge_global_context_ = nullptr;
   std::string graph_name_;
@@ -130,6 +134,8 @@ class GeGraphExecutor : public LiteGraphExecutor {
   std::map<uint32_t, std::vector<mindspore::MSTensor>> graph_inputs_;
   std::map<uint32_t, std::vector<mindspore::MSTensor>> graph_outputs_;
   std::map<uint32_t, std::vector<MSTensorPtr>> original_graph_outputs_;
+  // Records whether the graph has dynamic input dimensions (-1) at compile time.
+  std::map<uint32_t, bool> graph_has_dynamic_dim_;
   DynKVCacheInfo dyn_kv_cache_info_;
 
   std::shared_ptr<AscendDeviceInfo> GetAscendDeviceInfo();
@@ -155,6 +161,36 @@ class GeGraphExecutor : public LiteGraphExecutor {
 
   bool RunGraphWithStreamAsync(uint32_t graph_id, void *stream, const std::vector<GeTensor> &inputs,
                                std::vector<GeTensor> *outputs);
+  // Sub-steps extracted from RunGraph (to keep cyclomatic complexity/function length in check):
+  //   RunGraphNormal: non-zero-copy path (input conversion + RunGeGraphAsync + output handling);
+  //   HandleNormalOutputs: non-zero-copy output copy (device/host buffer x GE placement);
+  //   RunGraphZeroCopy: zero-copy path (input/output device buffers + RunGraphWithStreamAsync);
+  //   BindZeroCopyOutputs: zero-copy output binding (device -> user buffer, host -> preallocated buffer).
+  Status RunGraphNormal(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                        std::vector<mindspore::MSTensor> *outputs, std::vector<GeTensor> *ge_outputs);
+  Status HandleNormalOutputs(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                             std::vector<mindspore::MSTensor> *outputs, std::vector<GeTensor> *ge_outputs);
+  // Check whether the graph supports zero-copy: dynamic-bucket (ge.dynamicNodeType=1)
+  // or static graphs are allowed; purely dynamic graphs are not.
+  bool IsDynamicBucketOrStatic(uint32_t graph_id) const;
+
+  Status RunGraphZeroCopy(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                          std::vector<mindspore::MSTensor> *outputs, std::vector<GeTensor> *ge_outputs);
+  // Prepare inputs for the zero-copy path: device inputs are bound to user buffers without copy,
+  // host inputs are copied H2D into temporary device buffers (RunGraphWithStreamAsync requires
+  // all-device inputs). The temporary buffers are released by the caller after execution.
+  bool PrepareZeroCopyInputs(const std::vector<mindspore::MSTensor> &inputs, std::vector<GeTensor> *ge_inputs);
+  // Get (or reuse) a cached device buffer for the given tensor name; allocates a new one
+  // if not yet cached or existing buffer is smaller than needed. Keyed by name so that
+  // different tensors never share the same buffer.
+  uint8_t *GetCachedDeviceBuffer(const std::string &name, size_t size);
+  // Prepare outputs for the zero-copy path: device outputs are bound to user buffers (GE writes
+  // directly), host outputs use cached temporary device buffers (D2H after GE writes). This is
+  // symmetric with the input side and does not depend on RefMode's outputs_buffer_infos_.
+  bool BindZeroCopyOutputs(std::vector<mindspore::MSTensor> *outputs, std::vector<GeTensor> *ge_outputs,
+                           std::vector<bool> *output_is_device);
+  Status HandleZeroCopyOutputs(uint32_t graph_id, std::vector<mindspore::MSTensor> *outputs,
+                               std::vector<GeTensor> *ge_outputs, const std::vector<bool> &output_is_device);
   bool InitRefDataList(const std::vector<std::pair<std::string, tensor::TensorPtr>> &ref_data_tensors);
   bool InitRefDataContext(const FuncGraphPtr &func_graph,
                           const std::vector<std::pair<std::string, tensor::TensorPtr>> &ref_data_tensors,
@@ -214,6 +250,7 @@ class GeGraphExecutor : public LiteGraphExecutor {
   bool InitOutputDeviceTensor(const FuncGraphPtr &anf_graph, uint32_t graph_id);
   std::shared_ptr<GeTensor> ConvertMSTensor(const std::shared_ptr<MSTensor> &tensor, const std::string &format,
                                             bool copy = true);
+  bool is_first_inference_ = true;
 };
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_EXTENDRT_DELEGATE_ASCEND_GE_GE_GRAPH_EXECUTOR_H_

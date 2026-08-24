@@ -39,7 +39,7 @@ bool CheckAttrs(const std::unique_ptr<ops::Custom> &prim, const std::vector<std:
     return false;
   }
   if (optional_input_names.empty()) {
-    MS_LOG(WARNING) << "optional_input_names is empty, please check whether the result meets the expectation!";
+    MS_LOG(INFO) << "optional_input_names is empty, please check whether the result meets the expectation!";
   }
   auto optional_name_value = prim->GetAttr(kAttrOptionalInputNames);
   if (optional_name_value != nullptr) {
