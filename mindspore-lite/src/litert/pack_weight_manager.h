@@ -31,7 +31,7 @@ namespace mindspore::lite {
 class PackWeightManager {
  public:
   static PackWeightManager *GetInstance();
-  ~PackWeightManager() = default;
+  ~PackWeightManager() { destroyed_.store(true); }
   STATUS InitPackWeightManager(const char *model_buf, size_t model_size, std::string *model_id, std::string *runner_id,
                                const std::map<std::string, std::map<std::string, std::string>> *config_info);
   char *GetSharedModelBuf(const char *model_buf, std::string model_id,
@@ -56,6 +56,7 @@ class PackWeightManager {
   std::mutex manager_mutex_;
   std::vector<std::string> model_ids_;
   size_t model_id_ = 1;
+  static std::atomic<bool> destroyed_;
 };
 }  // namespace mindspore::lite
 #endif  // MINDSPORE_LITE_SRC_RUNTIME_PACK_WEIGHT_MANAGER_H_
