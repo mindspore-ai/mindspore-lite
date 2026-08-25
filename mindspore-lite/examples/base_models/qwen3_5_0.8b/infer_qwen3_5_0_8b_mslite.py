@@ -288,12 +288,10 @@ class Qwen35Inferencer:
                 mslite.Tensor(shape=shape, dtype=t.dtype, device=self.device_str)
             )
 
-        # ── Vision output meta (dynamic shape; tensor allocated per inference) ──
         vis_out_meta = self.vision_model.get_outputs()
         print(f"  Vision output: shape={[int(x) for x in vis_out_meta[0].shape]}, "
               f"dtype={vis_out_meta[0].dtype}")
         self.vis_out_meta = vis_out_meta[0]
-        self.t_vision_out = None
 
         print(f"Loading processor from {processor_id}...")
         self.cfg = AutoConfig.from_pretrained(processor_id)
@@ -441,13 +439,13 @@ class Qwen35Inferencer:
         grid_thw = image_grid_thw[0]  # [t, h, w]
         grid_h_val = int(grid_thw[1])
         grid_w_val = int(grid_thw[2])
-        merge = int(self.cfg.vision_config.spatial_merge_size)
-        n_out_tokens = (grid_h_val // merge) * (grid_w_val // merge)
-        # Output dim0 is dynamic (merged tokens); dim1.. are static from meta.
-        vis_shape = [n_out_tokens] + [int(x) for x in self.vis_out_meta.shape[1:]]
-        self.t_vision_out = mslite.Tensor(
-            shape=vis_shape, dtype=self.vis_out_meta.dtype, device=self.device_str,
-        )
+        # 动态分档：推理前按实际 grid 档位 resize vision 模型
+        vision_dims = [
+            [int(pixel_values.shape[0]), int(pixel_values.shape[1])],
+            [grid_h_val],
+            [grid_w_val],
+        ]
+        self.vision_model.resize(self.vision_model.get_inputs(), vision_dims)
         vision_feed = {
             "pixel_values": pixel_values.astype(np.float32),
             "grid_h": np.zeros((grid_h_val,), dtype=np.float32),
@@ -455,8 +453,7 @@ class Qwen35Inferencer:
         }
         vision_out = self.vision_model.predict(
             _build_mslite_inputs(self.vision_model, vision_feed,
-                                 preferred_order=["pixel_values", "grid_h", "grid_w"]),
-            outputs=[self.t_vision_out],
+                                 preferred_order=["pixel_values", "grid_h", "grid_w"])
         )
         # Vision output is now on device → pass directly to prefill (zero-copy)
         image_embeds_tensor = vision_out[0]
@@ -465,6 +462,15 @@ class Qwen35Inferencer:
 
         print("Running LLM prefill...")
         t0 = time.time()
+        # 动态分档：推理前按实际输入 shape resize prefill 模型
+        prefill_dims = [
+            list(input_ids.shape),
+            list(attention_mask.shape),
+            list(position_ids_4.shape),
+            list(image_embeds_tensor.shape),
+        ]
+        self.prefill_model.resize(self.prefill_model.get_inputs(), prefill_dims)
+
         prefill_feed = {
             "input_ids": _mslite_tensor(input_ids.astype(np.int32)),
             "attention_mask": _mslite_tensor(attention_mask.astype(np.int32)),
