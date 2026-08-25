@@ -816,7 +816,8 @@ class ChunkGatedDeltaRule {
     bool offsetsReady = false;
     bool canUseBetaDma = slabElements <= slabCapacity && slabElements * sizeof(inType) % BLOCK_BYTES == 0;
     if (likely(canUseBetaDma)) {
-      LocalTensor<inType> betaLocal = chunkVFp32.template ReinterpretCast<inType>();
+      // Keep the FP16 source separate because an in-place widening Cast overwrites unread beta values.
+      LocalTensor<inType> betaLocal = chunkAttnOutFp32.template ReinterpretCast<inType>();
       event_t vectorToMte2 = static_cast<event_t>(pipe_->FetchEventID(HardEvent::V_MTE2));
       SetFlag<HardEvent::V_MTE2>(vectorToMte2);
       WaitFlag<HardEvent::V_MTE2>(vectorToMte2);

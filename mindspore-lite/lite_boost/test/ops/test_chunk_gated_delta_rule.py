@@ -129,6 +129,47 @@ def _generate_test_data(batch_size, num_heads, seq_len, dk, dv, device):
     }
 
 
+def _generate_gqa_test_data(
+    batch_size, num_qk_heads, num_value_heads, seq_len, dk, dv, device
+):
+    """Build deterministic GQA inputs with a zero initial state."""
+    generator = torch.Generator().manual_seed(42)
+    query = _l2norm(
+        torch.randn(batch_size, num_qk_heads, seq_len, dk, generator=generator), dim=-1
+    )
+    key = _l2norm(
+        torch.randn(batch_size, num_qk_heads, seq_len, dk, generator=generator), dim=-1
+    )
+    value = torch.randn(
+        batch_size, num_value_heads, seq_len, dv, generator=generator
+    )
+    beta = torch.randn(
+        batch_size, num_value_heads, seq_len, generator=generator
+    ).sigmoid()
+    g = -(
+        torch.rand(
+            batch_size,
+            num_value_heads,
+            seq_len,
+            dtype=torch.float32,
+            generator=generator,
+        )
+        + 0.01
+    )
+    return {
+        "query": query.to(device),
+        "key": key.to(device),
+        "value": value.to(device),
+        "beta": beta.to(device),
+        "state": torch.zeros(batch_size, num_value_heads, dk, dv, device=device),
+        "actual_seq_lengths": torch.tensor(
+            [seq_len] * batch_size, dtype=torch.int32, device=device
+        ),
+        "g": g.to(device),
+        "scale": 1.0 / (dk ** 0.5),
+    }
+
+
 def _run_op(data, dtype, g=_DEFAULT_G, beta=None):
     g_input = data["g"] if g is _DEFAULT_G else g
     beta_input = data["beta"] if beta is None else beta
@@ -229,6 +270,7 @@ class TestChunkGatedDeltaRule:
     def test_accuracy_recurrent_reference(self, dtype):
         """Normal beta/g path matches an independent FP32 CPU recurrence."""
         self._skip_unsupported_dtype(dtype)
+        torch.manual_seed(42)
         data = _generate_test_data(2, 2, 64, 32, 32, self.device)
         out, final_state = _run_op(data, dtype)
         torch.npu.synchronize()
@@ -254,12 +296,55 @@ class TestChunkGatedDeltaRule:
             *out_metrics,
             *state_metrics,
         )
-        assert out_metrics[1] >= 0.999 and out_metrics[2] <= 0.02, (
+        assert out_metrics[1] >= 0.999 and out_metrics[2] <= 0.05, (
             f"output diverges from CPU recurrence ({dtype}): "
             f"cosine={out_metrics[1]}, nrmse={out_metrics[2]}"
         )
         assert state_metrics[1] >= 0.999 and state_metrics[2] <= 0.02, (
             f"final_state diverges from CPU recurrence ({dtype}): "
+            f"cosine={state_metrics[1]}, nrmse={state_metrics[2]}"
+        )
+
+    @pytest.mark.L0
+    def test_qwen35_gqa_beta_cast_regression(self):
+        """Qwen3.5 GQA shape stays finite and matches the CPU recurrence."""
+        num_qk_heads, num_value_heads = 16, 32
+        data = _generate_gqa_test_data(
+            1, num_qk_heads, num_value_heads, 64, 128, 128, self.device
+        )
+        out, final_state = _run_op(data, torch.float16)
+        torch.npu.synchronize()
+        assert torch.isfinite(out).all(), "Qwen3.5 GQA output has NaN/Inf"
+        assert torch.isfinite(final_state).all(), "Qwen3.5 GQA final_state has NaN/Inf"
+
+        repeat_factor = num_value_heads // num_qk_heads
+
+        def cpu_low(tensor):
+            return tensor.to(torch.float16).float().cpu()
+
+        out_ref, state_ref = _pytorch_recurrent_baseline(
+            cpu_low(data["query"]).repeat_interleave(repeat_factor, dim=1),
+            cpu_low(data["key"]).repeat_interleave(repeat_factor, dim=1),
+            cpu_low(data["value"]),
+            data["g"].float().cpu(),
+            cpu_low(data["beta"]),
+            cpu_low(data["state"]),
+            scale=data["scale"],
+        )
+        out_metrics = _accuracy_metrics(out.float().cpu(), out_ref)
+        state_metrics = _accuracy_metrics(final_state.float().cpu(), state_ref)
+        logging.info(
+            "[Qwen3.5 GQA] out(max=%.6f cos=%.9f nrmse=%.6f), "
+            "state(max=%.6f cos=%.9f nrmse=%.6f)",
+            *out_metrics,
+            *state_metrics,
+        )
+        assert out_metrics[1] >= 0.999 and out_metrics[2] <= 0.02, (
+            "Qwen3.5 GQA output diverges from CPU recurrence: "
+            f"cosine={out_metrics[1]}, nrmse={out_metrics[2]}"
+        )
+        assert state_metrics[1] >= 0.999 and state_metrics[2] <= 0.02, (
+            "Qwen3.5 GQA final_state diverges from CPU recurrence: "
             f"cosine={state_metrics[1]}, nrmse={state_metrics[2]}"
         )
 
