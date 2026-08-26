@@ -471,10 +471,10 @@ class ChunkGatedDeltaRule {
     StageHalfWithResidual(srcB, residualB, bHiGm, bLoGm, kMatrixElements);
     PipeBarrier<PIPE_ALL>();
 
-    LocalMemAllocator<Hardware::L1> l1Allocator;
-    LocalMemAllocator<Hardware::L0A> l0aAllocator;
-    LocalMemAllocator<Hardware::L0B> l0bAllocator;
-    LocalMemAllocator<Hardware::L0C> l0cAllocator;
+    LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
+    LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
     LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kMatrixElements);
     LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kMatrixElements);
     LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kMatrixElements);
@@ -1068,10 +1068,10 @@ class ChunkGatedDeltaRule {
     StageHalfWithResidual(kCumdecayFp32, chunkVFp32, aStageGm, aResidualStageGm, kAElements);
     PipeBarrier<PIPE_ALL>();
 
-    LocalMemAllocator<Hardware::L1> l1Allocator;
-    LocalMemAllocator<Hardware::L0A> l0aAllocator;
-    LocalMemAllocator<Hardware::L0B> l0bAllocator;
-    LocalMemAllocator<Hardware::L0C> l0cAllocator;
+    LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
+    LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
     LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kAElements);
     LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kBElements);
     LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kAElements);
@@ -1240,10 +1240,10 @@ class ChunkGatedDeltaRule {
     StageHalf(kCumdecayFp32, bStageGm, kBElements);
     PipeBarrier<PIPE_ALL>();
 
-    LocalMemAllocator<Hardware::L1> l1Allocator;
-    LocalMemAllocator<Hardware::L0A> l0aAllocator;
-    LocalMemAllocator<Hardware::L0B> l0bAllocator;
-    LocalMemAllocator<Hardware::L0C> l0cAllocator;
+    LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
+    LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
     LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kAElements);
     LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kBElements);
     LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kAElements);
@@ -1633,10 +1633,10 @@ class ChunkGatedDeltaRule {
     StageHalf(chunkVFp32, bStageGm, kBAttnElements);
     PipeBarrier<PIPE_ALL>();
 
-    LocalMemAllocator<Hardware::L1> l1Allocator;
-    LocalMemAllocator<Hardware::L0A> l0aAllocator;
-    LocalMemAllocator<Hardware::L0B> l0bAllocator;
-    LocalMemAllocator<Hardware::L0C> l0cAllocator;
+    LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
+    LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
     LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kAStateElements);
     LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kBStateElements);
     LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kAStateElements);
@@ -1762,10 +1762,10 @@ class ChunkGatedDeltaRule {
     StageHalf(chunkVFp32, bStageGm, kBElements);
     PipeBarrier<PIPE_ALL>();
 
-    LocalMemAllocator<Hardware::L1> l1Allocator;
-    LocalMemAllocator<Hardware::L0A> l0aAllocator;
-    LocalMemAllocator<Hardware::L0B> l0bAllocator;
-    LocalMemAllocator<Hardware::L0C> l0cAllocator;
+    LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
+    LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
     LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kAElements);
     LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kBElements);
     LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kAElements);
@@ -1843,10 +1843,10 @@ class ChunkGatedDeltaRule {
     StageHalf(stateInFp32, bStageGm, kBElements);
     PipeBarrier<PIPE_ALL>();
 
-    LocalMemAllocator<Hardware::L1> l1Allocator;
-    LocalMemAllocator<Hardware::L0A> l0aAllocator;
-    LocalMemAllocator<Hardware::L0B> l0bAllocator;
-    LocalMemAllocator<Hardware::L0C> l0cAllocator;
+    LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
+    LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
     LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kAElements);
     LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kBElements);
     LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kAElements);
@@ -1954,10 +1954,10 @@ class ChunkGatedDeltaRule {
     StageHalfWithResidual(kCumdecayFp32, chunkAttnOutFp32, aStageGm, aResidualStageGm, kAStateElements);
     PipeBarrier<PIPE_ALL>();
 
-    LocalMemAllocator<Hardware::L1> l1Allocator;
-    LocalMemAllocator<Hardware::L0A> l0aAllocator;
-    LocalMemAllocator<Hardware::L0B> l0bAllocator;
-    LocalMemAllocator<Hardware::L0C> l0cAllocator;
+    LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
+    LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
     LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kAStateElements);
     LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kBStateElements);
     LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kAStateElements);
@@ -2192,10 +2192,10 @@ class ChunkGatedDeltaRule {
     StageHalf(chunkVFp32, bStageGm, kBElements);
     PipeBarrier<PIPE_ALL>();
 
-    LocalMemAllocator<Hardware::L1> l1Allocator;
-    LocalMemAllocator<Hardware::L0A> l0aAllocator;
-    LocalMemAllocator<Hardware::L0B> l0bAllocator;
-    LocalMemAllocator<Hardware::L0C> l0cAllocator;
+    LocalMemAllocator<AscendC::Hardware::L1> l1Allocator;
+    LocalMemAllocator<AscendC::Hardware::L0A> l0aAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0B> l0bAllocator;
+    LocalMemAllocator<AscendC::Hardware::L0C> l0cAllocator;
     LocalTensor<half> a1Local = l1Allocator.Alloc<TPosition::A1, half>(kATileElements);
     LocalTensor<half> b1Local = l1Allocator.Alloc<TPosition::B1, half>(kBElements);
     LocalTensor<half> a2Local = l0aAllocator.Alloc<TPosition::A2, half>(kATileElements);
