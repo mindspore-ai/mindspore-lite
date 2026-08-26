@@ -27,6 +27,8 @@ typedef struct ConstantOfShapeParameter {
   } value_;
   int data_type_;
   int element_size_;
+  int shape_[MAX_SHAPE_SIZE];
+  int shape_size_;
 } ConstantOfShapeParameter;
 
 #endif  // NNACL_CONSTANT_OF_SHAPE_PARAMETER_H_

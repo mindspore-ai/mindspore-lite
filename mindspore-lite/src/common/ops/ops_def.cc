@@ -471,6 +471,8 @@ OP_SCHEMA_DEF_END(Cos)
 OP_SCHEMA_DEF(ConstantOfShape)
 OP_ATTR(data_type, long)
 OP_ATTR(value, [float])
+OP_ATTR_RAW(element_size, int, element_size, int64_t)
+OP_ATTR_RAW_VEC(shape, [long], shape)
 OP_SCHEMA_DEF_END(ConstantOfShape)
 
 OP_SCHEMA_DEF(Crop)

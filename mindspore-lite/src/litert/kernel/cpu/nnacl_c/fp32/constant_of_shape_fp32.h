@@ -24,26 +24,10 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-inline int ConstantOfShapeInt32(int32_t *output, int start, int end, int32_t value) {
-  for (int i = start; i < end; i++) {
-    output[i] = value;
-  }
-  return NNACL_OK;
-}
-
-inline int ConstantOfShapeFp32(float *output, int start, int end, float value) {
-  for (int i = start; i < end; i++) {
-    output[i] = value;
-  }
-  return NNACL_OK;
-}
-
-inline int ConstantOfShapeBool(bool *output, int start, int end, bool value) {
-  for (int i = start; i < end; i++) {
-    output[i] = value;
-  }
-  return NNACL_OK;
-}
+int ConstantOfShapeInt32(int32_t *output, int start, int end, int32_t value);
+int ConstantOfShapeFp32(float *output, int start, int end, float value);
+int ConstantOfShapeBool(bool *output, int start, int end, bool value);
+int ConstantOfShapeInt8(int8_t *output, int start, int end, int8_t value);
 
 #ifdef __cplusplus
 }

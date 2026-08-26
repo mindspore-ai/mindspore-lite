@@ -1,4 +1,4 @@
-# Copyright 2025 Huawei Technologies Co., Ltd
+# Copyright 2025-2026 Huawei Technologies Co., Ltd
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,8 +54,8 @@ def test_constant_of_shape(output_dir):
 
     model.build_from_file(str(Path(output_dir) / "constant_of_shape.onnx.mindir"), mslite.ModelType.MINDIR, context)
 
-    input1 = np.array([5], dtype=np.int32)
-    input2 = np.array([6], dtype=np.int32)
+    input1 = np.array([5], dtype=np.int64)
+    input2 = np.array([6], dtype=np.int64)
 
     out1 = model.predict([input1])
     assert out1[0].shape == input1

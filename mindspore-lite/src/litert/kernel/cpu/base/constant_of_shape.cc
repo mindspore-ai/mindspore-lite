@@ -15,6 +15,7 @@
  */
 
 #include "src/litert/kernel/cpu/base/constant_of_shape.h"
+#include <cmath>
 #include "schema/model_generated.h"
 #include "src/litert/kernel_registry.h"
 
@@ -64,6 +65,9 @@ int ConstantOfShapeCPUKernel::DoExecute(int task_id) {
       ConstantOfShapeBool(reinterpret_cast<bool *>(output_ptr_), start, start + current_stride,
                           param_->value_.bool_value_);
       break;
+    case kNumberTypeInt8:
+      ConstantOfShapeInt8(reinterpret_cast<int8_t *>(output_ptr_), start, start + current_stride, int8_value_);
+      break;
 #ifdef ENABLE_FP16
     case kNumberTypeFloat16:
       ConstantOfShapeFp16(reinterpret_cast<float16_t *>(output_ptr_), start, start + current_stride,
@@ -84,6 +88,14 @@ int ConstantOfShapeCPUKernel::Run() {
   CHECK_NULL_RETURN(param_);
   param_->data_type_ = output->data_type();
   param_->element_size_ = output->ElementsNum();
+  if (param_->data_type_ == kNumberTypeInt8) {
+    MS_CHECK_TRUE_MSG(!output->quant_params().empty(), RET_ERROR, "int8 output quant_params cannot be empty.");
+    auto quant_param = output->quant_params().front();
+    MS_CHECK_TRUE_MSG(quant_param.scale > 0.0f, RET_ERROR, "int8 output quant_param scale must be positive.");
+    int32_t q = static_cast<int32_t>(std::round(param_->value_.f32_value_ / quant_param.scale)) + quant_param.zeroPoint;
+    q = q > INT8_MAX ? INT8_MAX : (q < INT8_MIN ? INT8_MIN : q);
+    int8_value_ = static_cast<int8_t>(q);
+  }
   if (param_->element_size_ == 0) {
     MS_LOG(WARNING) << "ConstantOfShape's output element number is 0, it will output a tensor without any data.";
     return RET_OK;
@@ -112,4 +124,5 @@ REG_KERNEL(kCPU, kNumberTypeFloat16, PrimitiveType_ConstantOfShape, LiteKernelCr
 REG_KERNEL(kCPU, kNumberTypeInt32, PrimitiveType_ConstantOfShape, LiteKernelCreator<ConstantOfShapeCPUKernel>)
 REG_KERNEL(kCPU, kNumberTypeInt64, PrimitiveType_ConstantOfShape, LiteKernelCreator<ConstantOfShapeCPUKernel>)
 REG_KERNEL(kCPU, kNumberTypeBool, PrimitiveType_ConstantOfShape, LiteKernelCreator<ConstantOfShapeCPUKernel>)
+REG_KERNEL(kCPU, kNumberTypeInt8, PrimitiveType_ConstantOfShape, LiteKernelCreator<ConstantOfShapeCPUKernel>)
 }  // namespace mindspore::kernel

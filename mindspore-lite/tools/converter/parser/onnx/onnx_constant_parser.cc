@@ -29,9 +29,6 @@
 
 namespace mindspore {
 namespace lite {
-namespace {
-constexpr size_t kInt64Len = 8;
-}  // namespace
 STATUS OnnxConstantParser::AddDataInfoAttr(const onnx::TensorProto &onnx_const_tensor, PrimitiveCPtr prim) {
   MS_CHECK_TRUE_RET(prim != nullptr, RET_ERROR);
   tensor::TensorPtr tensor_info;
@@ -89,9 +86,20 @@ STATUS OnnxConstantParser::AddDataInfoAttr(const onnx::TensorProto &onnx_const_t
 PrimitiveCPtr OnnxConstantParser::Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) {
   auto prim = std::make_shared<lite::Constant>();
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
+  // Build a const tensor from an attribute value (scalar or 1D list) and store it as const_data.
+  auto set_const_data = [prim](const void *data, size_t data_size, const std::vector<int64_t> &shape,
+                               TypeId data_type) -> STATUS {
+    auto tensor_info = CreateTensorInfo(data, data_size, shape, data_type);
+    if (tensor_info == nullptr) {
+      MS_LOG(ERROR) << "create constant data tensor failed.";
+      return RET_ERROR;
+    }
+    prim->set_attr("const_data", tensor_info);
+    return RET_OK;
+  };
   for (const auto &attr : onnx_node.attribute()) {
     if (attr.name() == "sparse_value") {
-      MS_LOG(WARNING) << "sparse_value";
+      MS_LOG(WARNING) << "sparse_value is not supported, ignored.";
       continue;
     }
     if (attr.name() == "value") {
@@ -100,14 +108,28 @@ PrimitiveCPtr OnnxConstantParser::Parse(const onnx::GraphProto &onnx_graph, cons
         MS_LOG(ERROR) << "add basic attr failed.";
         return nullptr;
       }
-    } else if (attr.name() == "value_ints") {
-      std::vector<int64_t> value;
-      for (int i = 0; i < attr.ints().size(); i++) {
-        value.push_back(attr.ints(i));
+    } else if (attr.name() == "value_float") {  // scalar float32 constant
+      float value = attr.f();
+      if (set_const_data(&value, sizeof(float), {}, kNumberTypeFloat32) != RET_OK) {
+        return nullptr;
       }
-      auto tensor_info =
-        CreateTensorInfo(value.data(), attr.ints().size() * kInt64Len, {attr.ints().size()}, kNumberTypeInt64);
-      prim->set_attr("const_data", tensor_info);
+    } else if (attr.name() == "value_floats") {  // 1D float32 constant list
+      const auto &floats = attr.floats();
+      if (set_const_data(floats.data(), floats.size() * sizeof(float), {static_cast<int64_t>(floats.size())},
+                         kNumberTypeFloat32) != RET_OK) {
+        return nullptr;
+      }
+    } else if (attr.name() == "value_int") {  // scalar int64 constant
+      int64_t value = attr.i();
+      if (set_const_data(&value, sizeof(int64_t), {}, kNumberTypeInt64) != RET_OK) {
+        return nullptr;
+      }
+    } else if (attr.name() == "value_ints") {  // 1D int64 constant list
+      const auto &ints = attr.ints();
+      if (set_const_data(ints.data(), ints.size() * sizeof(int64_t), {static_cast<int64_t>(ints.size())},
+                         kNumberTypeInt64) != RET_OK) {
+        return nullptr;
+      }
     } else {
       MS_LOG(ERROR) << "processing Constant op attr " << attr.name() << " not implemented";
       return nullptr;

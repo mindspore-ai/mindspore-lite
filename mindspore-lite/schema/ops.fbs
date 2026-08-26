@@ -471,6 +471,8 @@ table Cos {
 table ConstantOfShape {
     data_type: long;
     value: [float];
+    element_size: int;
+    shape: [long];
 }
 
 table Crop {

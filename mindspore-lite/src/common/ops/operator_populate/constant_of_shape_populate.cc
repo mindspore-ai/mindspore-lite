@@ -16,6 +16,7 @@
 #include "src/common/ops/operator_populate/operator_populate_register.h"
 #include "nnacl_c/constant_of_shape_parameter.h"
 #include "infer/constant_of_shape.h"
+#include "mindapi/ir/value.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 using mindspore::ops::kNameConstantOfShape;
 using mindspore::schema::PrimitiveType_ConstantOfShape;
@@ -36,6 +37,17 @@ OpParameter *PopulateConstantOfShapeOpParameter(const BaseOperatorPtr &base_oper
   }
   auto value = op->get_value();
   param->data_type_ = static_cast<int>(op->get_data_type());
+  std::vector<int64_t> shape;
+  auto shape_attr = op->GetAttr("shape");
+  if (shape_attr != nullptr) {
+    shape = GetValue<std::vector<int64_t>>(shape_attr);
+  }
+  if (!shape.empty() && shape.size() <= MAX_SHAPE_SIZE) {
+    param->shape_size_ = static_cast<int>(shape.size());
+    for (size_t i = 0; i < shape.size(); ++i) {
+      param->shape_[i] = static_cast<int>(shape[i]);
+    }
+  }
   switch (param->data_type_) {
     case kNumberTypeFloat32:
       param->value_.f32_value_ = value[0];
@@ -45,6 +57,11 @@ OpParameter *PopulateConstantOfShapeOpParameter(const BaseOperatorPtr &base_oper
       break;
     case kNumberTypeBool:
       param->value_.bool_value_ = static_cast<bool>(value[0]);
+      break;
+    case kNumberTypeInt8:
+      // value attr is always float; the int8 fill byte is quantized from it at runtime
+      // with the output tensor's scale/zeroPoint, so keep the real value here.
+      param->value_.f32_value_ = value[0];
       break;
     default:
       MS_LOG(ERROR) << "The value of constant of shape is invalid";

@@ -330,6 +330,11 @@ int CoderSession::CreateOpCoders() {
     }
 
     TypeId tensor_data_type = inputs.at(0)->data_type();
+    // ConstantOfShape's input is the int shape tensor while its output is the filled value
+    // tensor (float/bool/...). The coder is registered by the output dtype, so use it here.
+    if (GetPrimitiveType(node->primitive_, schema_version_) == schema::PrimitiveType_ConstantOfShape) {
+      tensor_data_type = outputs.at(0)->data_type();
+    }
     std::unique_ptr<OperatorCoder> op_coder = builder.inputs(inputs)
                                                 .outputs(outputs)
                                                 .node(node)

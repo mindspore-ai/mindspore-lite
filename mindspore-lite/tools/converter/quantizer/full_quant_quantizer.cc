@@ -451,8 +451,18 @@ int FullQuantQuantizer::QuantNode(const FuncGraphPtr &func_graph) {
     }
     primitive->AddAttr(quant::kQuantParam, std::make_shared<ValueList>(quantization_list));
     primitive->AddAttr(quant::kQuantType, MakeValue(static_cast<int>(quant::QUANT_ALL)));
+    SetConstantOfShapeInt8Output(primitive);
   }
   return RET_OK;
+}
+
+void FullQuantQuantizer::SetConstantOfShapeInt8Output(const PrimitivePtr &primitive) {
+  // ConstantOfShape's output dtype is driven by its fill value (float32), not by its int64
+  // shape input. Flip the primitive's data_type so populate/infer-shape emit an int8 output
+  // tensor (the downstream dequant cast then sees an int8 source, matching Max/ReduceProd).
+  if (primitive->name() == "ConstantOfShape") {
+    primitive->AddAttr("data_type", MakeValue(static_cast<int64_t>(kNumberTypeInt8)));
+  }
 }
 
 int FullQuantQuantizer::UpdateDivergeInterval() {
@@ -522,6 +532,7 @@ void FullQuantQuantizer::InitCpuConfig() {
     (void)support_int8_ops_.emplace(prim::kPrimTupleGetItem);
     (void)support_int8_ops_.emplace(prim::kPrimMaximum);
     (void)support_int8_ops_.emplace(prim::kPrimMinimum);
+    (void)support_int8_ops_.emplace(prim::kPrimConstantOfShape);
   }
   skip_check_dtype_ops_ = {prim::kPrimTupleGetItem, prim::kPrimShape};
   per_channel_ops_ = {prim::kPrimConv2DFusion, prim::kPrimConv2dTransposeFusion, prim::kPrimMatMulFusion,
