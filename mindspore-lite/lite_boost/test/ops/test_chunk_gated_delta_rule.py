@@ -349,6 +349,34 @@ class TestChunkGatedDeltaRule:
         )
 
     @pytest.mark.L0
+    def test_qwen35_gqa_multichunk_l0c_sync(self):
+        """Repeated multi-chunk Qwen3.5 calls must not race Cube writes and Vector reads."""
+        if not _is_310p():
+            pytest.skip("310P-specific L0C synchronization regression")
+        data = _generate_gqa_test_data(1, 16, 32, 512, 128, 128, self.device)
+        results = []
+        for _ in range(32):
+            out, final_state = _run_op(data, torch.float16)
+            results.append((out, final_state))
+        torch.npu.synchronize()
+
+        reference_out = results[0][0].float().cpu()
+        reference_state = results[0][1].float().cpu()
+        for repeat, (out, final_state) in enumerate(results):
+            assert torch.isfinite(out).all(), f"Qwen3.5 output has NaN/Inf at repeat {repeat}"
+            assert torch.isfinite(final_state).all(), f"Qwen3.5 state has NaN/Inf at repeat {repeat}"
+            out_metrics = _accuracy_metrics(out.float().cpu(), reference_out)
+            state_metrics = _accuracy_metrics(final_state.float().cpu(), reference_state)
+            assert out_metrics[1] >= 0.999 and out_metrics[2] <= 0.02, (
+                f"Qwen3.5 output is unstable at repeat {repeat}: "
+                f"cosine={out_metrics[1]}, nrmse={out_metrics[2]}"
+            )
+            assert state_metrics[1] >= 0.999 and state_metrics[2] <= 0.02, (
+                f"Qwen3.5 state is unstable at repeat {repeat}: "
+                f"cosine={state_metrics[1]}, nrmse={state_metrics[2]}"
+            )
+
+    @pytest.mark.L0
     @pytest.mark.parametrize("dtype", LOW_DTYPES)
     @pytest.mark.parametrize("dk", (63, 65, 79, 80, 81, 95, 96, 97, 127))
     def test_non_multiple_reduce_width(self, dtype, dk):
