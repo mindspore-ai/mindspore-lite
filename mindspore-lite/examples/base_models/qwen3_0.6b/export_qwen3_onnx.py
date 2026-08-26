@@ -769,13 +769,21 @@ def _qwen3_rotary_emb_matmul2d(rotary_emb, x, position_ids):
 
 
 def _make_bool_causal_mask(attention_mask, q_len, k_len, past_len):
-    """Boolean causal mask (True=masked) for CANN PromptFlashAttention."""
+    """Boolean causal mask (True=masked) for CANN PromptFlashAttention.
+
+    Uses arithmetic ops (Sub, Add) instead of logical (Not, Or) for ONNX→Ascend
+    ACL compatibility. Logical ops cause graph partition failures.
+    """
     device = attention_mask.device
     ar_q = torch.arange(q_len, device=device)
     ar_k = torch.arange(k_len, device=device)
-    causal = ar_k[None, :] > (past_len + ar_q[:, None])
-    padding = ~attention_mask.to(torch.bool)
-    mask = causal[None, None, :, :].expand(attention_mask.shape[0], 1, q_len, k_len) | padding[:, None, None, :]
+    causal = (ar_k[None, :] > (past_len + ar_q[:, None]))  # [q_len, k_len]
+    # padding: 1 where masked (pad positions), 0 where real
+    padding = 1.0 - attention_mask.to(torch.float)  # Sub + Cast (avoid Not)
+    # mask: causal OR padding → use arithmetic: (causal.float() + padding) > 0
+    mask_val = causal.to(torch.float)[None, None, :, :] + padding[:, None, None, :]  # Add (avoid Or)
+    mask = mask_val > 0.5  # Greater → bool
+    mask = mask.expand(attention_mask.shape[0], 1, q_len, k_len)
     return mask
 
 
@@ -1218,6 +1226,47 @@ class Qwen3LlmPrefillFused(torch.nn.Module):
         return logits, present_kv
 
 
+class Qwen3LlmPrefillNoCache(torch.nn.Module):
+    """Prefill wrapper that only outputs logits (no KV cache output)."""
+
+    def __init__(self, prefill):
+        super().__init__()
+        self.prefill = prefill
+
+    def forward(self, input_ids, attention_mask, position_ids):
+        logits, _ = self.prefill(input_ids, attention_mask, position_ids)
+        return logits
+
+
+class Qwen3LlmPrefillSliceLast(torch.nn.Module):
+    """Prefill wrapper that outputs the last real token's logits and KV cache.
+
+    Uses attention_mask to locate the last non-pad token, so it works with
+    right padding (unlike the naive logits[:, -1:, :] approach).
+
+    Returns (logits[last_real_pos, :, :], past_kv).
+    """
+
+    def __init__(self, prefill, output_kv=True):
+        super().__init__()
+        self.prefill = prefill
+        self.output_kv = output_kv
+
+    def forward(self, input_ids, attention_mask, position_ids):
+        """Forward pass: slice last real token logits, optionally output KV cache."""
+        logits, past_kv = self.prefill(input_ids, attention_mask, position_ids)
+        # Find the last real token position via attention_mask.sum(dim=1)
+        # attention_mask: [batch, seq] (1=real, 0=pad), dtype int32
+        seq_lens = attention_mask.sum(dim=1)  # [batch]
+        last_indices = (seq_lens - 1).to(torch.int32)  # [batch], int32 for Ascend Gather
+        # index_select maps to ONNX Gather; int32 indices are Ascend-compatible
+        sliced = logits.index_select(1, last_indices.long())  # [batch, batch, vocab]
+        sliced = sliced[:, :1, :]  # [batch, 1, vocab]
+        if self.output_kv:
+            return sliced, past_kv
+        return (sliced,)
+
+
 class Qwen3LlmDecodeFused(torch.nn.Module):
     """Decode wrapper with CANN fused Custom ops (per-op switches)."""
 
@@ -1296,12 +1345,22 @@ class Qwen3LlmDecodeFused(torch.nn.Module):
         return logits, present_kv
 
 
-def export_llm_prefill_decode(model, output_dir, device="cpu", flags=None):
+def export_llm_prefill_decode(
+    model, output_dir, device="cpu", flags=None,
+    prefill_only=False, prefill_slice_last=False,
+):
     """Export Qwen3-0.6B LLM prefill and decode models to ONNX.
 
     flags: dict of per-op fusion switches. Defaults to all-off (non-fused
     baseline). When any flag is on, the Fused wrapper is used; otherwise the
     plain Qwen3Llm{Prefill,Decode} classes are used.
+
+    prefill_only: if True, only export prefill model without KV cache output
+    (single output: logits). Skips decode export entirely.
+
+    prefill_slice_last: if True, prefill outputs last token's logits [batch, 1, vocab].
+    When prefill_only is also True: no KV cache output (Scene B).
+    When prefill_only is False: outputs logits + KV cache (Scene A with slice_last).
     """
     default_flags = {
         "enable_rmsnorm_replace": False,
@@ -1344,6 +1403,15 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", flags=None):
         suffix = ""
 
     prefill_path = Path(output_dir) / f"qwen3_llm_prefill{suffix}.onnx"
+    if prefill_slice_last and prefill_only:
+        # Scene B: slice_last without KV cache (output: logits [batch, 1, vocab])
+        prefill_path = Path(output_dir) / f"qwen3_llm_prefill{suffix}.onnx"
+    elif prefill_slice_last and not prefill_only:
+        # Scene A with slice_last: outputs sliced logits + KV cache
+        prefill_path = Path(output_dir) / f"qwen3_llm_prefill{suffix}.onnx"
+    elif prefill_only:
+        # Scene B variant: no_cache, full logits without KV cache
+        prefill_path = Path(output_dir) / f"qwen3_llm_prefill{suffix}.onnx"
     decode_path = Path(output_dir) / f"qwen3_llm_decode{suffix}.onnx"
     if TORCH_PTQ_INT8 and not any_fusion_on:
         # PTQ only supported on the non-fused path (fused path mixes Custom
@@ -1352,10 +1420,10 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", flags=None):
 
     dummy_seq = 8
     dummy_input_ids = torch.randint(
-        0, 1000, (1, dummy_seq), dtype=torch.int64, device=device
+        0, 1000, (1, dummy_seq), dtype=torch.int32, device=device
     )
-    dummy_attention_mask = torch.ones(1, dummy_seq, dtype=torch.int64, device=device)
-    dummy_position_ids = torch.arange(dummy_seq, device=device, dtype=torch.int64).view(
+    dummy_attention_mask = torch.ones(1, dummy_seq, dtype=torch.int32, device=device)
+    dummy_position_ids = torch.arange(dummy_seq, device=device, dtype=torch.int32).view(
         1, -1
     )
 
@@ -1369,10 +1437,44 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", flags=None):
         "present_key_values": {1: "batch", 3: "seq_len"},
     }
 
+    if prefill_slice_last:
+        output_kv = not prefill_only
+        prefill_export = Qwen3LlmPrefillSliceLast(prefill, output_kv=output_kv)
+        if output_kv:
+            # Scene A: sliced logits + KV cache
+            prefill_output_names = ["logits", "present_key_values"]
+            prefill_dynamic_axes = {
+                "input_ids": {0: "batch", 1: "seq_len"},
+                "attention_mask": {0: "batch", 1: "seq_len"},
+                "position_ids": {0: "batch", 1: "seq_len"},
+                "logits": {0: "batch"},
+                "present_key_values": {1: "batch", 3: "seq_len"},
+            }
+        else:
+            # Scene B: sliced logits only, no KV cache
+            prefill_output_names = ["logits"]
+            prefill_dynamic_axes = {
+                "input_ids": {0: "batch", 1: "seq_len"},
+                "attention_mask": {0: "batch", 1: "seq_len"},
+                "position_ids": {0: "batch", 1: "seq_len"},
+                "logits": {0: "batch"},
+            }
+    elif prefill_only:
+        prefill_export = Qwen3LlmPrefillNoCache(prefill)
+        prefill_output_names = ["logits"]
+        prefill_dynamic_axes = {
+            "input_ids": {0: "batch", 1: "seq_len"},
+            "attention_mask": {0: "batch", 1: "seq_len"},
+            "position_ids": {0: "batch", 1: "seq_len"},
+            "logits": {0: "batch", 1: "seq_len"},
+        }
+    else:
+        prefill_export = prefill
+
     print(f"Exporting LLM prefill to {prefill_path}...")
     with torch.no_grad():
         torch.onnx.export(
-            prefill,
+            prefill_export,
             (dummy_input_ids, dummy_attention_mask, dummy_position_ids),
             str(prefill_path),
             input_names=prefill_input_names,
@@ -1382,6 +1484,10 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", flags=None):
             dynamic_axes=prefill_dynamic_axes,
         )
     print("LLM prefill exported successfully.")
+
+    if prefill_only:
+        print("Skipping decode export (--prefill-only mode).")
+        return
 
     # Run PTQ calibration + attach quant params to decode's Linear modules.
     # Must happen AFTER prefill export (so prefill stays FP32) and BEFORE
@@ -1409,13 +1515,13 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", flags=None):
     dummy_step = 1
     dummy_past_len = dummy_seq
     dummy_input_ids_step = torch.randint(
-        0, 1000, (1, dummy_step), dtype=torch.int64, device=device
+        0, 1000, (1, dummy_step), dtype=torch.int32, device=device
     )
     dummy_attention_mask_step = torch.ones(
-        1, dummy_past_len + dummy_step, dtype=torch.int64, device=device
+        1, dummy_past_len + dummy_step, dtype=torch.int32, device=device
     )
     dummy_position_ids_step = torch.tensor(
-        [[dummy_past_len]], dtype=torch.int64, device=device
+        [[dummy_past_len]], dtype=torch.int32, device=device
     )
     dummy_past = torch.zeros(
         2 * num_layers,
@@ -1489,12 +1595,6 @@ def main():
         help="Fuse residual+RmsNorm into CANN AddRmsNorm inside fused wrapper.",
     )
     parser.add_argument(
-        "--enable-rotarymul",
-        action="store_true",
-        default=True,
-        help="Route RoPE through Custom(RotaryMul) inside fused wrapper (default: ON).",
-    )
-    parser.add_argument(
         "--enable-pfa",
         action="store_true",
         default=True,
@@ -1552,6 +1652,21 @@ def main():
         "--weight-clip-ratio", type=float, default=0.0,
         help="Clip top fraction of weight outliers before quantization (0=off).",
     )
+    parser.add_argument(
+        "--prefill-only-without-cache",
+        action="store_true",
+        help="Only export prefill model without KV cache output (single output: logits "
+             "for all positions). Skips decode export. "
+             "Default: disabled (slice_last is the default).",
+    )
+    parser.add_argument(
+        "--enable-common-prefix",
+        action="store_true",
+        help="Export prefix + suffix models for common-prefix caching scenario. "
+             "Prefix model processes common prefix tokens and outputs KV cache; "
+             "Suffix model takes prefix KV + user suffix tokens and outputs last-token logits. "
+             "Default: disabled.",
+    )
 
     args = parser.parse_args()
 
@@ -1571,7 +1686,7 @@ def main():
         flags = {
             "enable_rmsnorm_replace": args.enable_rmsnorm_replace or args.enable_all_fusion,
             "enable_add_rmsnorm": args.enable_add_rmsnorm or args.enable_all_fusion,
-            "enable_rotarymul": args.enable_rotarymul or args.enable_all_fusion,
+            "enable_rotarymul": True,  # always ON, no off scenario
             "enable_pfa": args.enable_pfa or args.enable_all_fusion,
             "enable_swiglu": args.enable_swiglu or args.enable_all_fusion,
             "enable_bmm2mm": args.enable_bmm2mm or args.enable_all_fusion,
@@ -1599,7 +1714,31 @@ def main():
         attn_implementation="eager",
     )
 
-    export_llm_prefill_decode(model, output_dir, args.device, flags=flags)
+    # Determine export mode
+    # slice_last is always ON (hardcoded):
+    # - prefill_only=False (Scene A): sliced logits + KV cache + decode
+    # - prefill_only=True  (Scene B): sliced logits only, no decode
+    prefill_only_without_cache = args.prefill_only_without_cache
+    prefill_slice_last = True  # always ON, no off scenario
+    enable_common_prefix = args.enable_common_prefix
+
+    if enable_common_prefix:
+        # Common-prefix scenario: export prefix + suffix models
+        from common_prefix_adapt.export_qwen3_prefix_suffix import export_prefix_suffix
+        export_prefix_suffix(
+            model, str(output_dir), args.device, flags=flags,
+        )
+    else:
+        # prefill_only is True only when --prefill-only-without-cache is set.
+        # slice_last is independent: it can be ON with or without prefill_only.
+        # - slice_last + prefill_only=False (Scene A): sliced logits + KV cache + decode
+        # - slice_last + prefill_only=True  (Scene B): sliced logits only, no decode
+        # - no slice_last + prefill_only=True (Scene B variant): full logits, no decode
+        export_llm_prefill_decode(
+            model, output_dir, args.device, flags=flags,
+            prefill_only=prefill_only_without_cache,
+            prefill_slice_last=prefill_slice_last,
+        )
 
     print("Clearing memory after export...")
     del model
