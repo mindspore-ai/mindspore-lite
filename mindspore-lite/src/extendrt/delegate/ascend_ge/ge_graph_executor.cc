@@ -1214,10 +1214,26 @@ Status GeGraphExecutor::CompileGraph(const FuncGraphPtr &anf_graph, const std::m
   }
   compute_graph_id_list_.push_back(compute_graph_id);
   *graph_id = compute_graph_id;
+
+  // Record whether the graph has dynamic input dimensions at compile time.
+  bool has_dynamic_dim = false;
+  auto graph_inputs = anf_graph->get_inputs();
+  for (const auto &node : graph_inputs) {
+    auto shape = FuncGraphUtils::GetTensorShape({node, 0});
+    if (std::any_of(shape.begin(), shape.end(), [](auto dim) { return dim == -1; })) {
+      has_dynamic_dim = true;
+      break;
+    }
+  }
+  graph_has_dynamic_dim_[*graph_id] = has_dynamic_dim;
   if (ref_mode_flag_ != backend::ge_backend::RefModeFlag::kRefModeNone) {
     if (!BuildGraphRefMode(anf_graph, compute_graph_id)) {
       MS_LOG(ERROR) << "Failed to build ge graph with refdata";
       return Status(kLiteError, "Failed to build ge graph with refdata");
+    }
+  } else {
+    if (!InitMemoryContextManager()) {
+      MS_LOG(WARNING) << "Failed to init memory context manager in CompileGraph (non-RefMode)";
     }
   }
   std::vector<MSTensorPtr> orig_output;
@@ -1607,16 +1623,79 @@ Status GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> 
                  << ms_tensor_input.DataType();
   }
   if (ref_mode_flag_ != backend::ge_backend::RefModeFlag::kRefModeNone) {
-    MS_LOG(ERROR) << "RunGraphRefMode";
     auto ret = RunGraphRefMode(graph_id, inputs, outputs);
     if (!ret) {
       return kLiteError;
     }
+    return kSuccess;
   }
+  // Zero-copy: if any input or output is a device tensor, use RunGraphWithStreamAsync
+  // with pre-allocated device buffers. Only after first inference (graph must be
+  // lazily compiled by RunGeGraphAsync first).
+  bool zero_copy = !is_first_inference_;
+  if (zero_copy) {
+    bool has_device = false;
+    for (const auto &in : inputs) {
+      if (in.IsDevice()) {
+        has_device = true;
+        break;
+      }
+    }
+    if (!has_device && !outputs->empty()) {
+      for (const auto &out : *outputs) {
+        if (out.IsDevice()) {
+          has_device = true;
+          break;
+        }
+      }
+    }
+    zero_copy = has_device;
+  }
+  if (is_first_inference_) {
+    // First inference: use RunGeGraphAsync to trigger GE lazy compilation.
+    is_first_inference_ = false;
+    zero_copy = false;
+  }
+
+  std::vector<::ge::Tensor> ge_outputs;
+  auto time_start = std::chrono::system_clock::now();
+  Status status;
+  if (zero_copy) {
+    status = RunGraphZeroCopy(graph_id, inputs, outputs, &ge_outputs);
+  } else {
+    status = RunGraphNormal(graph_id, inputs, outputs, &ge_outputs);
+  }
+  if (status != kSuccess) {
+    return status;
+  }
+  auto time_cost =
+    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - time_start).count();
+  MS_LOG(INFO) << "Call GE RunGraph Success in " << time_cost << " us, graph id " << graph_id
+               << " the GE outputs num is: " << ge_outputs.size();
+  return kSuccess;
+}
+
+bool GeGraphExecutor::IsDynamicBucketOrStatic(uint32_t graph_id) const {
+  auto dyn_it = graph_has_dynamic_dim_.find(graph_id);
+  bool has_dynamic_dim = (dyn_it != graph_has_dynamic_dim_.end()) ? dyn_it->second : false;
+  if (!has_dynamic_dim) {
+    return true;
+  }
+  auto config_it = config_infos_.find(lite::kGeGraphOptionsSection);
+  if (config_it != config_infos_.end()) {
+    auto option_it = config_it->second.find("ge.dynamicDims");
+    if (option_it != config_it->second.end() && !option_it->second.empty()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Status GeGraphExecutor::RunGraphNormal(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                                       std::vector<mindspore::MSTensor> *outputs, std::vector<GeTensor> *ge_outputs) {
   std::vector<::ge::Tensor> ge_inputs;
   for (size_t i = 0; i < inputs.size(); i++) {
-    auto &ms_tensor_input = inputs[i];
-    auto ge_tensor = ConvertMSTensor(std::make_shared<MSTensor>(ms_tensor_input), kOpFormat_NCHW, false);
+    auto ge_tensor = ConvertMSTensor(std::make_shared<MSTensor>(inputs[i]), kOpFormat_NCHW, false);
     if (ge_tensor == nullptr) {
       MS_LOG(ERROR) << "Failed to converter input " << i << " ME Tensor to GE Tensor";
       return kLiteError;
@@ -1626,32 +1705,69 @@ Status GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> 
   auto ref_data_infos = ref_data_infos_;
   std::transform(ref_data_infos.begin(), ref_data_infos.end(), std::back_inserter(ge_inputs),
                  [](const auto &item) { return item.ge_tensor; });
-  std::vector<::ge::Tensor> ge_outputs;
-  auto time_start = std::chrono::system_clock::now();
-  auto ret = RunGeGraphAsync(graph_id, ge_inputs, &ge_outputs);
-  if (!ret) {
+  bool exec_ok = RunGeGraphAsync(graph_id, ge_inputs, ge_outputs);
+  if (!exec_ok) {
     MS_LOG(ERROR) << "Exec compute graph failed, graph id " << graph_id;
     return kLiteError;
   }
-  auto time_cost =
-    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - time_start).count();
-  MS_LOG(INFO) << "Call GE RunGraph Success in " << time_cost << " us, graph id " << graph_id
-               << " the GE outputs num is: " << ge_outputs.size();
+  return HandleNormalOutputs(graph_id, inputs, outputs, ge_outputs);
+}
 
+Status GeGraphExecutor::HandleNormalOutputs(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                                            std::vector<mindspore::MSTensor> *outputs,
+                                            std::vector<GeTensor> *ge_outputs) {
   if (!outputs->empty()) {
-    if (outputs->size() != ge_outputs.size()) {
+    if (outputs->size() != ge_outputs->size()) {
       MS_LOG(ERROR) << "Invalid output size, outputs' size " << outputs->size() << "ge tensor size "
-                    << ge_outputs.size();
+                    << ge_outputs->size();
       return kLiteError;
     }
     for (size_t i = 0; i < outputs->size(); ++i) {
-      const auto &tensor = ge_outputs[i];
+      const auto &tensor = (*ge_outputs)[i];
       auto &output = (*outputs)[i];
       if (output.DataSize() < LongToSize(UlongToLong(tensor.GetSize()))) {
         MS_LOG(EXCEPTION) << "Output node " << i << "'s mem size " << output.DataSize()
                           << " is less than actual output size " << tensor.GetSize();
       }
-      if ((*outputs)[i].Data() == nullptr) {
+      if (tensor.GetData() == nullptr) {
+        MS_LOG(ERROR) << "GE output " << i << " data ptr is nullptr.";
+        return kLiteError;
+      }
+      // User device output (first inference / non-zero-copy path): device tensor's
+      // Data()/MutableData() is null, cannot use host memcpy; copy to user's device
+      // buffer via D2D or H2D based on GE output placement.
+      void *user_device_buf = output.GetDeviceData();
+      bool ge_out_is_device = (tensor.GetTensorDesc().GetPlacement() == ::ge::kPlacementDevice);
+      if (user_device_buf != nullptr || ge_out_is_device) {
+        if (memory_manager_ == nullptr && !InitMemoryContextManager()) {
+          MS_LOG(ERROR) << "Failed to init memory context manager for device output copy.";
+          return kLiteError;
+        }
+        auto src_size = LongToSize(UlongToLong(tensor.GetSize()));
+        bool copy_ok = false;
+        if (user_device_buf != nullptr) {
+          copy_ok =
+            ge_out_is_device
+              ? memory_manager_->MemcpyDevice2Device(user_device_buf, output.DataSize(), tensor.GetData(), src_size)
+              : memory_manager_->MemcpyHost2Device(user_device_buf, output.DataSize(), tensor.GetData(), src_size);
+        } else {
+          // User host buffer + GE device output -> D2H copy
+          if (output.MutableData() == nullptr) {
+            MS_LOG(ERROR) << "Output host data ptr is nullptr.";
+            return kLiteError;
+          }
+          copy_ok =
+            memory_manager_->MemcpyDevice2Host(output.MutableData(), output.DataSize(), tensor.GetData(), src_size);
+        }
+        if (!copy_ok) {
+          MS_LOG(ERROR) << "Failed to copy output data " << i << ", dst size: " << output.DataSize()
+                        << ", src size: " << src_size;
+          return kLiteError;
+        }
+        MS_LOG(INFO) << "Output " << i << " copied, size " << src_size;
+        continue;
+      }
+      if (output.Data() == nullptr) {
         MS_LOG(ERROR) << "Output data ptr is nullptr.";
         return kLiteError;
       }
@@ -1664,8 +1780,8 @@ Status GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> 
       }
     }
   } else {
-    for (size_t i = 0; i < ge_outputs.size(); i++) {
-      auto &ge_tensor = ge_outputs[i];
+    for (size_t i = 0; i < ge_outputs->size(); i++) {
+      auto &ge_tensor = (*ge_outputs)[i];
       auto ms_tensor = ConvertGeTensorNoCopy(&ge_tensor, graph_id, i);
       if (ms_tensor == nullptr) {
         MS_LOG(ERROR) << "Failed to converter output " << i << " GE Tensor to ME Tensor";
@@ -1680,6 +1796,231 @@ Status GeGraphExecutor::RunGraph(uint32_t graph_id, const std::vector<MSTensor> 
   graph_outputs_[graph_id] = *outputs;
   MS_LOG(INFO) << "GE run graph " << graph_id << " end.";
   return kSuccess;
+}
+
+Status GeGraphExecutor::RunGraphZeroCopy(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
+                                         std::vector<mindspore::MSTensor> *outputs, std::vector<GeTensor> *ge_outputs) {
+  if (!IsDynamicBucketOrStatic(graph_id)) {
+    MS_LOG(ERROR) << "Zero-copy is not supported for purely dynamic graphs, graph id " << graph_id
+                  << ". Set ge.dynamicDims for dynamic-bucket mode.";
+    return kLiteError;
+  }
+  // Zero-copy path: use pre-allocated device buffers (inputs_buffer_infos_ /
+  // outputs_buffer_infos_). Device inputs/outputs use user's buffer directly;
+  // host inputs H2D to pre-allocated; host outputs D2H from pre-allocated.
+  if (memory_manager_ == nullptr && !InitMemoryContextManager()) {
+    MS_LOG(ERROR) << "Failed to init memory context manager for zero-copy.";
+    return kLiteError;
+  }
+  std::vector<::ge::Tensor> ge_inputs;
+  // Prepare inputs: device → zero-copy bind user buffer, host → H2D to cached device buffer.
+  // (RefMode's PrepareInputTensors depends on inputs_buffer_infos_; non-RefMode does
+  // not initialize it, so it cannot be reused.)
+  if (!PrepareZeroCopyInputs(inputs, &ge_inputs)) {
+    MS_LOG(ERROR) << "Failed to prepare input tensors for zero-copy";
+    return kLiteError;
+  }
+  auto ref_data_infos = ref_data_infos_;
+  std::transform(ref_data_infos.begin(), ref_data_infos.end(), std::back_inserter(ge_inputs),
+                 [](const auto &item) { return item.ge_tensor; });
+  // Prepare outputs: device → bind user's buffer (zero-copy); host → cached temp
+  // device buffer (GE writes, then D2H copy out), symmetric with input side.
+  std::vector<bool> output_is_device;
+  if (!BindZeroCopyOutputs(outputs, ge_outputs, &output_is_device)) {
+    return kLiteError;
+  }
+  auto stream = context_manager_->GetDefaultStream();
+  bool exec_ok = RunGraphWithStreamAsync(graph_id, stream, ge_inputs, ge_outputs);
+  if (!exec_ok) {
+    MS_LOG(ERROR) << "RunGraphWithStreamAsync failed for zero-copy, graph id " << graph_id;
+    return kLiteError;
+  }
+  Status status = HandleZeroCopyOutputs(graph_id, outputs, ge_outputs, output_is_device);
+  if (status != kSuccess) {
+    return status;
+  }
+  graph_inputs_[graph_id] = inputs;
+  graph_outputs_[graph_id] = *outputs;
+  return kSuccess;
+}
+
+uint8_t *GeGraphExecutor::GetCachedDeviceBuffer(const std::string &name, size_t size) {
+  auto it = cached_temp_buffers_.find(name);
+  if (it != cached_temp_buffers_.end() && it->second.second >= size) {
+    return static_cast<uint8_t *>(it->second.first);
+  }
+  // Need a new (or larger) buffer; free the old one if it exists.
+  if (it != cached_temp_buffers_.end()) {
+    memory_manager_->FreeDeviceMemory(it->second.first);
+  }
+  auto buf = memory_manager_->MallocDeviceMemory(name, size);
+  if (buf == nullptr) {
+    MS_LOG(ERROR) << "Failed to malloc cached device memory for " << name << ", size " << size;
+    return nullptr;
+  }
+  cached_temp_buffers_[name] = {buf, size};
+  return buf;
+}
+
+bool GeGraphExecutor::PrepareZeroCopyInputs(const std::vector<mindspore::MSTensor> &inputs,
+                                            std::vector<GeTensor> *ge_inputs) {
+  for (size_t i = 0; i < inputs.size(); i++) {
+    auto &input = inputs[i];
+    if (input.IsDevice()) {
+      // Device input: zero-copy bind user's device buffer with kPlacementDevice.
+      auto desc = device::ascend::TransformUtil::GetGeTensorDesc(input.Shape(), static_cast<TypeId>(input.DataType()),
+                                                                 kOpFormat_NCHW);
+      if (desc == nullptr) {
+        MS_LOG(ERROR) << "Failed to get tensor desc for device input " << i;
+        return false;
+      }
+      desc->SetPlacement(::ge::kPlacementDevice);
+      ge::Tensor ge_tensor;
+      if (ge_tensor.SetTensorDesc(*desc) != ACL_SUCCESS) {
+        MS_LOG(ERROR) << "Failed to set tensor desc for device input " << i;
+        return false;
+      }
+      auto device_data = const_cast<MSTensor &>(input).GetDeviceData();
+      auto data_size = input.DataSize();
+      if (device_data == nullptr || data_size == 0) {
+        MS_LOG(ERROR) << "Device input " << i << " has null device data or zero size";
+        return false;
+      }
+      if (ge_tensor.SetData(reinterpret_cast<uint8_t *>(device_data), data_size, [](uint8_t *) -> void {}) !=
+          ge::GRAPH_SUCCESS) {
+        MS_LOG(ERROR) << "Failed to bind device data to ge input " << i;
+        return false;
+      }
+      ge_inputs->push_back(ge_tensor);
+      continue;
+    }
+    // Host input: H2D to a temp device buffer (RunGraphWithStreamAsync requires device inputs).
+    auto tensor_size = input.DataSize();
+    if (tensor_size == 0 || input.Data().get() == nullptr) {
+      MS_LOG(ERROR) << "Input " << i << " host data is invalid, size " << tensor_size;
+      return false;
+    }
+    // Reuse cached device buffer (no per-inference alloc/free).
+    auto device_buf = GetCachedDeviceBuffer("input_" + std::to_string(i), tensor_size);
+    if (device_buf == nullptr) {
+      MS_LOG(ERROR) << "Failed to get cached device buffer for H2D input, size " << tensor_size;
+      return false;
+    }
+    if (!memory_manager_->MemcpyHost2Device(device_buf, tensor_size, input.Data().get(), tensor_size)) {
+      MS_LOG(ERROR) << "Failed to H2D copy input " << i << ", size " << tensor_size;
+      return false;
+    }
+    auto desc = device::ascend::TransformUtil::GetGeTensorDesc(input.Shape(), static_cast<TypeId>(input.DataType()),
+                                                               kOpFormat_NCHW);
+    if (desc == nullptr) {
+      MS_LOG(ERROR) << "Failed to get tensor desc for H2D input " << i;
+      return false;
+    }
+    desc->SetPlacement(::ge::kPlacementDevice);
+    ge::Tensor ge_tensor;
+    if (ge_tensor.SetTensorDesc(*desc) != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Failed to set tensor desc for H2D input " << i;
+      return false;
+    }
+    if (ge_tensor.SetData(device_buf, tensor_size, [](uint8_t *) -> void {}) != ge::GRAPH_SUCCESS) {
+      MS_LOG(ERROR) << "Failed to bind H2D device data to ge input " << i << ", size " << tensor_size;
+      return false;
+    }
+    ge_inputs->push_back(ge_tensor);
+  }
+  return true;
+}
+
+Status GeGraphExecutor::HandleZeroCopyOutputs(uint32_t graph_id, std::vector<mindspore::MSTensor> *outputs,
+                                              std::vector<GeTensor> *ge_outputs,
+                                              const std::vector<bool> &output_is_device) {
+  // Handle outputs after execution.
+  if (outputs->empty()) {
+    // No user outputs: create MSTensors from GE output tensors.
+    for (size_t i = 0; i < ge_outputs->size(); i++) {
+      auto &ge_tensor = (*ge_outputs)[i];
+      auto ms_tensor = ConvertGeTensorNoCopy(&ge_tensor, graph_id, i);
+      if (ms_tensor == nullptr) {
+        MS_LOG(ERROR) << "Failed to converter output " << i << " GE Tensor to ME Tensor";
+        return kLiteError;
+      }
+      outputs->push_back(*ms_tensor);
+    }
+    return kSuccess;
+  }
+  for (size_t i = 0; i < outputs->size(); i++) {
+    auto out_shape = device::ascend::TransformUtil::ConvertGeShape((*ge_outputs)[i].GetTensorDesc().GetShape());
+    (*outputs)[i].SetShape(out_shape);
+    if (output_is_device[i]) {
+      continue;
+    }
+    // Host output: D2H copy from the cached temp device buffer (bound to ge_outputs[i]) to user host buffer.
+    auto src_size = static_cast<size_t>((*ge_outputs)[i].GetSize());
+    auto src_ptr = (*ge_outputs)[i].GetData();
+    if (src_ptr == nullptr) {
+      MS_LOG(ERROR) << "Temp output device ptr is nullptr for index " << i;
+      return kLiteError;
+    }
+    if ((*outputs)[i].MutableData() == nullptr) {
+      MS_LOG(ERROR) << "Output " << i << " host data ptr is nullptr.";
+      return kLiteError;
+    }
+    if (!memory_manager_->MemcpyDevice2Host((*outputs)[i].MutableData(), (*outputs)[i].DataSize(), src_ptr, src_size)) {
+      MS_LOG(ERROR) << "Failed to D2H copy output " << i;
+      return kLiteError;
+    }
+  }
+  return kSuccess;
+}
+
+bool GeGraphExecutor::BindZeroCopyOutputs(std::vector<mindspore::MSTensor> *outputs, std::vector<GeTensor> *ge_outputs,
+                                          std::vector<bool> *output_is_device) {
+  size_t output_count = !outputs->empty() ? outputs->size() : 0;
+  for (size_t i = 0; i < output_count; i++) {
+    auto &output = (*outputs)[i];
+    bool is_device = output.IsDevice();
+    output_is_device->push_back(is_device);
+    auto desc = device::ascend::TransformUtil::GetGeTensorDesc(output.Shape(), static_cast<TypeId>(output.DataType()),
+                                                               kOpFormat_NCHW);
+    if (desc == nullptr) {
+      MS_LOG(ERROR) << "Failed to get tensor desc for zero-copy output " << i;
+      return false;
+    }
+    desc->SetPlacement(::ge::kPlacementDevice);
+    ge::Tensor ge_tensor;
+    auto ret = ge_tensor.SetTensorDesc(*desc);
+    if (ret != ACL_SUCCESS) {
+      MS_LOG(ERROR) << "Failed to set tensor desc for zero-copy output " << i << ", ret " << ret;
+      return false;
+    }
+    if (is_device) {
+      // Device output: bind user's device buffer, GE writes directly (zero-copy).
+      ret = ge_tensor.SetData(reinterpret_cast<uint8_t *>(output.GetDeviceData()), output.DataSize(),
+                              [](uint8_t *) -> void {});
+      if (ret != ge::GRAPH_SUCCESS) {
+        MS_LOG(ERROR) << "Failed to bind device data to ge output " << i;
+        return false;
+      }
+    } else {
+      // Host output: cached device buffer, GE writes, then D2H copy out.
+      if (output.DataSize() == 0) {
+        MS_LOG(ERROR) << "Host output " << i << " size is 0";
+        return false;
+      }
+      auto device_buf = GetCachedDeviceBuffer("output_" + std::to_string(i), output.DataSize());
+      if (device_buf == nullptr) {
+        MS_LOG(ERROR) << "Failed to get cached device buffer for host output " << i << ", size " << output.DataSize();
+        return false;
+      }
+      ret = ge_tensor.SetData(device_buf, output.DataSize(), [](uint8_t *) -> void {});
+      if (ret != ge::GRAPH_SUCCESS) {
+        MS_LOG(ERROR) << "Failed to bind temp device data to ge output " << i;
+        return false;
+      }
+    }
+    ge_outputs->push_back(ge_tensor);
+  }
+  return true;
 }
 
 std::vector<mindspore::MSTensor> GeGraphExecutor::GetInputInfos(uint32_t graph_id) {
@@ -1701,16 +2042,15 @@ MSTensorPtr GeGraphExecutor::ConvertGeTensorNoCopy(::ge::Tensor *ge_tensor_ptr, 
     MS_LOG(ERROR) << "Graph output index is out of range.";
     return nullptr;
   }
+  // Use GE output's actual dtype first; fall back to ANF graph dtype if unknown
   auto type_id = static_cast<TypeId>(original_outputs[idx]->DataType());
   if (type_id == kTypeUnknown) {
     MS_LOG(ERROR) << "Could not convert Ge Tensor because of unsupported data type: "
                   << static_cast<int>(ge_tensor_desc.GetDataType());
     return nullptr;
   }
-  if (ge_tensor_desc.GetPlacement() != ::ge::kPlacementHost) {
-    MS_LOG(ERROR) << "It is not supported that graph output data's placement is device now.";
-    return nullptr;
-  }
+  // Support both HOST and DEVICE placements
+  bool is_device_placement = (ge_tensor_desc.GetPlacement() == ::ge::kPlacementDevice);
   auto &&ge_data_uni = ge_tensor.ResetData();
   auto deleter = ge_data_uni.get_deleter();
   auto ge_data = ge_data_uni.release();
@@ -1727,14 +2067,21 @@ MSTensorPtr GeGraphExecutor::ConvertGeTensorNoCopy(::ge::Tensor *ge_tensor_ptr, 
   for (size_t i = 0; i < me_shape.size(); ++i) {
     elem_num *= me_shape[i];
   }
-  if (GetTypeByte(TypeIdToType(type_id)) * elem_num != ge_tensor.GetSize()) {
-    MS_LOG(ERROR) << "Output datatype error! Output tensor size from GE RunGraph does not match.";
+  auto type_byte = GetTypeByte(TypeIdToType(type_id));
+  if (type_byte * elem_num != ge_tensor.GetSize()) {
+    MS_LOG(ERROR) << "Output datatype error! expected=" << (type_byte * elem_num)
+                  << ", ge_size=" << ge_tensor.GetSize();
     return nullptr;
   }
   auto tensor_impl = std::make_shared<TensorDefaultImpl>("", static_cast<DataType>(type_id), me_shape);
   MS_CHECK_TRUE_RET(tensor_impl != nullptr, nullptr);
   tensor_impl->SetDeleter(deleter);
-  tensor_impl->SetData(static_cast<void *>(ge_data), true);
+  if (is_device_placement) {
+    tensor_impl->SetDeviceId(static_cast<int>(GetDeviceID()));
+    tensor_impl->SetDeviceData(static_cast<void *>(ge_data));
+  } else {
+    tensor_impl->SetData(static_cast<void *>(ge_data), true);
+  }
   auto tensor = std::make_shared<MSTensor>(tensor_impl);
   MS_CHECK_TRUE_RET(tensor != nullptr, nullptr);
   return tensor;
@@ -1845,10 +2192,24 @@ std::shared_ptr<GeTensor> GeGraphExecutor::ConvertMSTensor(const std::shared_ptr
     MS_LOG(ERROR) << "Failed to get Tensor Desc";
     return nullptr;
   }
+  void *device_data = tensor->GetDeviceData();
+  if (device_data != nullptr) {
+    desc->SetPlacement(::ge::kPlacementDevice);
+  }
   std::shared_ptr<GeTensor> tensor_ptr = std::make_shared<GeTensor>(*desc);
   if (tensor_ptr == nullptr) {
     MS_LOG(ERROR) << "Failed to convert MSTensor to Ge Tensor!";
     return nullptr;
+  }
+  if (device_data != nullptr) {
+    MSTensorRel rel(tensor);
+    auto ret =
+      tensor_ptr->SetData(static_cast<uint8_t *>(device_data), data_buff_size, [rel](uint8_t *) -> void { rel.Rel(); });
+    if (ret != ge::GRAPH_SUCCESS) {
+      MS_LOG(ERROR) << "Failed to bind device data to ge tensor (zero-copy), data size " << data_buff_size;
+      return nullptr;
+    }
+    return tensor_ptr;
   }
   if (copy) {
     auto ret = tensor_ptr->SetData(static_cast<uint8_t *>(tensor->MutableData()), data_buff_size);

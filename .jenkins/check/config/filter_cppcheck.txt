@@ -9,6 +9,7 @@
 # src
 "mindspore-lite/mindspore-lite/src/common/draw/drawer.cc"                                                  "duplicateCondition"
 "mindspore-lite/mindspore-lite/src/common/ops/unsqueeze.cc"                                                "useStlAlgorithm"
+"mindspore-lite/mindspore-lite/src/extendrt/delegate/ascend_ge/ge_graph_executor.cc"                      "cppcheckError"
 "mindspore-lite/mindspore-lite/src/litert/kernel/cpu/fp16/lstm_fp16_base.cc"                               "knownConditionTrueFalse"
 "mindspore-lite/mindspore-lite/src/litert/kernel/cpu/fp32/convolution_im2col_fp32.cc"                      "knownConditionTrueFalse"
 "mindspore-lite/mindspore-lite/src/litert/kernel/cpu/fp32/convolution_im2col_fp32.cc"                      "shadowVariable"

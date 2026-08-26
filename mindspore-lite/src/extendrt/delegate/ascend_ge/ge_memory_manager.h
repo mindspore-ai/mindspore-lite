@@ -35,6 +35,7 @@ class GeMemoryManager {
 
   bool MemcpyHost2Device(void *dst_addr, size_t dst_max_size, const void *src_addr, size_t src_size);
   bool MemcpyDevice2Host(void *dst_addr, size_t dst_max_size, const void *src_addr, size_t src_size);
+  bool MemcpyDevice2Device(void *dst_addr, size_t dst_max_size, const void *src_addr, size_t src_size);
 
   void FreeDeviceMemory(void *mem);
   void FreeHostMemory(void *mem);

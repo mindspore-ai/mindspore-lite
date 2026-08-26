@@ -92,6 +92,17 @@ bool GeMemoryManager::MemcpyDevice2Host(void *dst_addr, size_t dst_max_size, con
   return true;
 }
 
+bool GeMemoryManager::MemcpyDevice2Device(void *dst_addr, size_t dst_max_size, const void *src_addr, size_t src_size) {
+  MS_CHECK_TRUE_RET(dst_addr != nullptr && src_addr != nullptr, false);
+  auto ret = CALL_ASCEND_API(aclrtMemcpy, dst_addr, dst_max_size, src_addr, src_size, ACL_MEMCPY_DEVICE_TO_DEVICE);
+  if (ret != ACL_SUCCESS) {
+    MS_LOG(ERROR) << "Call aclrtMemcpy data from device to device failed, dst size: " << dst_max_size
+                  << ", src size: " << src_size;
+    return false;
+  }
+  return true;
+}
+
 void GeMemoryManager::FreeDeviceMemory(void *mem) {
   auto it =
     std::find_if(device_memories_.begin(), device_memories_.end(), [mem](auto &info) { return info.use_addr == mem; });
