@@ -17,6 +17,7 @@
 #include <cmath>
 #include <vector>
 #include "gtest/gtest.h"
+#include "nnacl_c/arithmetic_parameter.h"
 #include "nnacl_c/fp32/arithmetic_fp32.h"
 #include "nnacl_c/fp32/add_fp32.h"
 
@@ -105,6 +106,122 @@ TEST_F(ArithmeticFp32Test, Add_Negative) {
   std::vector<float> input0 = {-1.0f, -2.0f, -3.0f, -4.0f};
   std::vector<float> input1 = {-0.5f, -0.5f, -0.5f, -0.5f};
   std::vector<float> benchmark = {-1.5f, -2.5f, -3.5f, -4.5f};
+  const int length = 4;
+  std::vector<float> output(length, 0.0f);
+  ElementAdd(input0.data(), input1.data(), output.data(), length);
+
+  float similarity = get_cosine_similarity(output.data(), benchmark.data(), length);
+  ASSERT_GT(similarity, accuracy_threshold);
+}
+
+// Testcase6: ElementAdd with 2D broadcasting (2,1) + (1,3) -> (2,3)
+TEST_F(ArithmeticFp32Test, Add_Broadcast_2D) {
+  std::vector<float> input0 = {1.0f, 2.0f};           // shape [2, 1]
+  std::vector<float> input1 = {10.0f, 20.0f, 30.0f};  // shape [1, 3]
+  const int out_size = 6;                             // shape [2, 3]
+  std::vector<float> output(out_size, 0.0f);
+  std::vector<float> tile_input0(out_size, 0.0f);
+  std::vector<float> tile_input1(out_size, 0.0f);
+  std::vector<float> benchmark = {11.0f, 21.0f, 31.0f, 12.0f, 22.0f, 32.0f};
+
+  ArithmeticParameter param = {};
+  param.broadcasting_ = true;
+  param.ndim_ = 2;
+  param.in_shape0_[0] = 2;
+  param.in_shape0_[1] = 1;
+  param.in_elements_num0_ = 2;
+  param.in_shape1_[0] = 1;
+  param.in_shape1_[1] = 3;
+  param.in_elements_num1_ = 3;
+  param.out_shape_[0] = 2;
+  param.out_shape_[1] = 3;
+  param.out_elements_num_ = out_size;
+
+  TileDimensionsFp32(input0.data(), input1.data(), tile_input0.data(), tile_input1.data(), &param);
+  ElementAdd(tile_input0.data(), tile_input1.data(), output.data(), out_size);
+
+  float similarity = get_cosine_similarity(output.data(), benchmark.data(), out_size);
+  ASSERT_GT(similarity, accuracy_threshold);
+}
+
+// Testcase7: ElementAdd with low-dim broadcasting (2,3) + (3) -> (2,3)
+TEST_F(ArithmeticFp32Test, Add_Broadcast_1D) {
+  std::vector<float> input0 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};  // shape [2, 3]
+  std::vector<float> input1 = {10.0f, 20.0f, 30.0f};                 // shape [3]
+  const int out_size = 6;
+  std::vector<float> output(out_size, 0.0f);
+  std::vector<float> tile_input0(out_size, 0.0f);
+  std::vector<float> tile_input1(out_size, 0.0f);
+  std::vector<float> benchmark = {11.0f, 22.0f, 33.0f, 14.0f, 25.0f, 36.0f};
+
+  ArithmeticParameter param = {};
+  param.broadcasting_ = true;
+  param.ndim_ = 2;
+  param.in_shape0_[0] = 2;
+  param.in_shape0_[1] = 3;
+  param.in_elements_num0_ = 6;
+  param.in_shape1_[0] = 1;
+  param.in_shape1_[1] = 3;
+  param.in_elements_num1_ = 3;
+  param.out_shape_[0] = 2;
+  param.out_shape_[1] = 3;
+  param.out_elements_num_ = out_size;
+
+  TileDimensionsFp32(input0.data(), input1.data(), tile_input0.data(), tile_input1.data(), &param);
+  ElementAdd(tile_input0.data(), tile_input1.data(), output.data(), out_size);
+
+  float similarity = get_cosine_similarity(output.data(), benchmark.data(), out_size);
+  ASSERT_GT(similarity, accuracy_threshold);
+}
+
+// Testcase8: ElementAdd with scalar broadcasting (2,3) + scalar -> (2,3)
+TEST_F(ArithmeticFp32Test, Add_Broadcast_Scalar) {
+  std::vector<float> input0 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};  // shape [2, 3]
+  std::vector<float> input1 = {5.0f};                                // scalar -> shape [1, 1]
+  const int out_size = 6;
+  std::vector<float> output(out_size, 0.0f);
+  std::vector<float> tile_input0(out_size, 0.0f);
+  std::vector<float> tile_input1(out_size, 0.0f);
+  std::vector<float> benchmark = {6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
+
+  ArithmeticParameter param = {};
+  param.broadcasting_ = true;
+  param.ndim_ = 2;
+  param.in_shape0_[0] = 2;
+  param.in_shape0_[1] = 3;
+  param.in_elements_num0_ = 6;
+  param.in_shape1_[0] = 1;
+  param.in_shape1_[1] = 1;
+  param.in_elements_num1_ = 1;
+  param.out_shape_[0] = 2;
+  param.out_shape_[1] = 3;
+  param.out_elements_num_ = out_size;
+
+  TileDimensionsFp32(input0.data(), input1.data(), tile_input0.data(), tile_input1.data(), &param);
+  ElementAdd(tile_input0.data(), tile_input1.data(), output.data(), out_size);
+
+  float similarity = get_cosine_similarity(output.data(), benchmark.data(), out_size);
+  ASSERT_GT(similarity, accuracy_threshold);
+}
+
+// Testcase9: ElementAdd with all-zero input (identity boundary)
+TEST_F(ArithmeticFp32Test, Add_Zeros) {
+  std::vector<float> input0 = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  std::vector<float> input1 = {1.0f, -2.0f, 3.0f, -4.0f, 5.0f, -6.0f};
+  std::vector<float> benchmark = {1.0f, -2.0f, 3.0f, -4.0f, 5.0f, -6.0f};
+  const int length = 6;
+  std::vector<float> output(length, 0.0f);
+  ElementAdd(input0.data(), input1.data(), output.data(), length);
+
+  float similarity = get_cosine_similarity(output.data(), benchmark.data(), length);
+  ASSERT_GT(similarity, accuracy_threshold);
+}
+
+// Testcase10: ElementAdd on large-magnitude values (cancellation boundary)
+TEST_F(ArithmeticFp32Test, Add_LargeValues) {
+  std::vector<float> input0 = {1e6f, -1e6f, 1e6f, -1e6f};
+  std::vector<float> input1 = {1e6f, 1e6f, -1e6f, -1e6f};
+  std::vector<float> benchmark = {2e6f, 0.0f, 0.0f, -2e6f};
   const int length = 4;
   std::vector<float> output(length, 0.0f);
   ElementAdd(input0.data(), input1.data(), output.data(), length);

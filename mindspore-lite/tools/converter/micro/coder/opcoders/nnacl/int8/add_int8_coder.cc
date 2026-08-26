@@ -27,6 +27,7 @@
 #include "nnacl_c/int8/quantize.h"
 
 using mindspore::schema::PrimitiveType_AddFusion;
+using mindspore::schema::PrimitiveType_Eltwise;
 
 namespace mindspore::lite::micro::nnacl {
 int AddInt8Coder::Prepare(CoderContext *const context) {
@@ -208,4 +209,5 @@ int AddInt8Coder::DoCode(CoderContext *const context) {
 }
 
 REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_AddFusion, CPUOpCoderCreator<AddInt8Coder>)
+REG_OPERATOR_CODER(kAllTargets, kNumberTypeInt8, PrimitiveType_Eltwise, CPUOpCoderCreator<AddInt8Coder>)
 }  // namespace mindspore::lite::micro::nnacl

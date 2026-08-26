@@ -180,7 +180,18 @@ bool QuantStrategy::CanOpFullQuantized(const FuncGraphManagerPtr &manager, const
     return false;
   }
   auto type = NodePrimitiveType(cnode);
-  if (!support_int8_ops.empty() && !CheckNodeInSet(cnode, support_int8_ops)) {
+  // Eltwise SUM maps to AddFusion for quantization purposes
+  bool is_eltwise_sum = false;
+  if (type == "Eltwise") {
+    auto prim = GetValueNode<PrimitivePtr>(cnode->input(0));
+    if (prim != nullptr) {
+      auto mode_attr = prim->GetAttr("mode");
+      if (mode_attr != nullptr) {
+        is_eltwise_sum = (GetValue<int64_t>(mode_attr) == static_cast<int64_t>(schema::EltwiseMode_SUM));
+      }
+    }
+  }
+  if (!support_int8_ops.empty() && !CheckNodeInSet(cnode, support_int8_ops) && !is_eltwise_sum) {
     MS_LOG(WARNING) << "node:" << cnode->fullname_with_scope() << " type:" << type << " will not quantify.";
     return false;
   }
