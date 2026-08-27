@@ -28,20 +28,26 @@ lite_boost/
 │           └── pytorch_npu_helper.h
 ├── python/
 │   ├── setup.py             # Python wheel 打包配置
+│   ├── manager.py           # BoostManager
 │   ├── ops/
 │   │   └── rain_fusion.py   # RainFusionAttention Python 绑定
 │   ├── layers/
 │   │   ├── attention.py     # NPU 兼容 FlashAttention
 │   │   └── rope.py          # 优化 RoPE 实现
 │   ├── parallel/
-│   │   ├── _manager.py      # ParallelManager / initialize_usp
+│   │   ├── _initializer.py      # initialize_usp（HCCL 分布式初始化）
 │   │   └── context_parallel.py  # all_to_all_4d 通信原语
 │   └── model/
 │       ├── __init__.py      # 模型适配器注册表
-│       └── wan2_1/          # Wan2.1 USP 适配
-│           ├── boost.py     # 一键打补丁入口
-│           ├── model.py     # USP attention / DiT forward 替换
-│           └── README.md    # Wan2.1 适配详细说明
+│       ├── wan2_1/          # Wan2.1 USP 适配
+│       │   ├── boost.py     # 一键打补丁入口
+│       │   ├── model.py     # USP attention / DiT forward 替换
+│       │   └── README.md    # Wan2.1 适配详细说明
+│       ├── wan2_2/          # Wan2.2 USP/DP 适配
+│       ├── qwenimage/       # Qwen-Image VAE 并行实现
+│       └── qwen_image_edit/ # Qwen-Image-Edit 适配
+│           ├── boost.py               # 一键打补丁入口
+│           └── qwen_image_edit.yaml   # 按模块优化配置示例
 └── test/
     └── ops/
         └── test_rain_fusion_attention.py  # RainFusionAttention 测试
@@ -135,7 +141,8 @@ output, softmax_lse = lite_ops.rain_fusion_attention(
 ### Wan2.1 多卡并行推理
 
 ```python
-from lite_boost.parallel import initialize_usp, ParallelManager
+from lite_boost import BoostManager
+from lite_boost.parallel import initialize_usp
 from wan import WanModel
 
 # 1. 初始化 HCCL 分布式环境（读 RANK / WORLD_SIZE / MASTER_ADDR / MASTER_PORT）
@@ -145,7 +152,8 @@ initialize_usp()
 model = WanModel.from_pretrained(checkpoint_dir)
 
 # 3. 一键转为 USP 多卡推理（原地修改，返回模型本身）
-model = ParallelManager(model)
+boost_manager = BoostManager()
+model = boost_manager(model)
 
 # 4. 正常推理
 output = model(x, t, context, seq_len)
@@ -161,6 +169,36 @@ torchrun --nproc_per_node=2 --master_addr $MASTER_ADDR --master_port $MASTER_POR
     generate.py --task t2v-1.3B --size 832*480 \
     --ckpt_dir ./Wan2.1-T2V-1.3B
 ```
+
+### 按模块配置优化（可选）
+
+`BoostManager` 支持通过 YAML 配置文件按模块选择优化：配置被解析为 dict 后透传给对应模型的 boost 函数，各模型只读取自己支持的配置段，未配置的模块默认采用性能最优配置（如 DiT CP / VAE DP @ 分布式 world_size）：
+
+```python
+boost_manager = BoostManager()
+pipe = boost_manager(pipe, config="boost.yaml")  # 一步式：BoostManager(pipe, config="boost.yaml")
+```
+
+以 Qwen-Image-Edit 为例（完整示例见 [python/model/qwen_image_edit/qwen_image_edit.yaml](python/model/qwen_image_edit/qwen_image_edit.yaml)）：
+
+```yaml
+Parallel:
+  dit:                # DiT 上下文并行
+    alg: CP           # current support [CP]
+    world_size: 2
+  vae:                # VAE 数据并行
+    alg: DP           # current support [DP]
+    world_size: 2
+```
+
+| 配置段 | 说明 |
+|--------|------|
+| `Parallel.dit.alg` | DiT 并行算法，当前仅支持 `CP`，缺省 `CP` |
+| `Parallel.dit.world_size` | DiT 并行度，缺省为分布式 world_size，配置时需与其一致 |
+| `Parallel.vae.alg` | VAE 并行算法，当前仅支持 `DP`，缺省 `DP` |
+| `Parallel.vae.world_size` | VAE 并行度，缺省为 dit 的 world_size，配置时需与其一致 |
+
+未配置的模块（含不传 `config`）默认采用性能最优配置（DiT CP + VAE DP @ 分布式 world_size）。
 
 ### 直接使用 Layers
 

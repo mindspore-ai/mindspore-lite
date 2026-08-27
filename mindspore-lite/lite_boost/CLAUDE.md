@@ -19,8 +19,9 @@ MindSpore Lite 推理加速工具包，面向昇腾 NPU 提供高性能自定义
 | [src/ops/plugin/pytorch_npu_helper.cc](src/ops/plugin/pytorch_npu_helper.cc) | NPU 算子调用辅助工具 |
 | [python/ops/](python/ops/) | Python 算子绑定（`rain_fusion_attention`、`sparse_attention`） |
 | [python/layers/](python/layers/) | 优化后的 layer 实现（FlashAttention、RoPE） |
-| [python/parallel/](python/parallel/) | Ulysses Sequence Parallel 多卡并行 |
-| [python/model/](python/model/) | 模型适配器注册表（当前支持 WanModel / VaceWanModel） |
+| [python/parallel/](python/parallel/) | Ulysses Sequence Parallel 多卡并行（`context_parallel.py`、`data_parallel.py`、`_initializer.py`） |
+| [python/manager.py](python/manager.py) | BoostManager 并行入口（`from lite_boost import BoostManager`），负责解析 YAML 优化配置并透传给各模型 boost 函数 |
+| [python/model/](python/model/) | 模型适配器注册表（当前支持 Wan2.1 / Wan2.2 / Qwen-Image-Edit） |
 | [test/](test/) | 测试用例 |
 | [CMakeLists.txt](CMakeLists.txt) | CMake 构建配置 |
 | [build.sh](build.sh) | 一键构建脚本（CMake + wheel 打包） |
@@ -99,14 +100,27 @@ float32 实运算 + cos/sin 表缓存，RoPE 耗时降低约 88%。需要分布�
 
 基于 HCCL 的多卡序列并行方案，核心流程：RoPE → all_to_all（scatter heads / gather seq）→ attention → all_to_all reverse → 输出投影。
 
-- 并行管理：[python/parallel/_manager.py](python/parallel/_manager.py)
+- 加速管理：[python/manager.py](python/manager.py)
+- 分布式初始化：[python/parallel/_initializer.py](python/parallel/_initializer.py)
 - 通信原语：[python/parallel/context_parallel.py](python/parallel/context_parallel.py)
 
 ### 模型适配
 
-通过 `ParallelManager(model)` 一键将支持模型转为 USP 推理模式。模型注册表在 [python/model/__init__.py](python/model/__init__.py)。
+通过 `BoostManager` 一键将支持模型转为 USP 推理模式（`boost_manager = BoostManager(); pipe = boost_manager(pipe)`，也支持 `BoostManager(pipe)` 一步式）。模型注册表在 [python/model/__init__.py](python/model/__init__.py)。
 
-适配新模型：在 `python/model/` 下创建目录，实现 `boost_xxx(model)` 函数，在 `SUPPORTED_MODELS` 中注册模型类名。
+可选传入 YAML 配置文件按模块选择优化：`pipe = boost_manager(pipe, config="boost.yaml")`。BoostManager 将其解析为 dict 后透传给各模型的 boost 函数，各模型只读取自己支持的配置段，未配置的模块默认采用性能最优配置（如 DiT CP / VAE DP @ 分布式 world_size）。以 Qwen-Image-Edit 为例（[python/model/qwen_image_edit/qwen_image_edit.yaml](python/model/qwen_image_edit/qwen_image_edit.yaml)）：
+
+```yaml
+Parallel:
+  dit:
+    alg: CP  # current support [CP]
+    world_size: 2
+  vae:
+    alg: DP  # current support [DP]
+    world_size: 2
+```
+
+适配新模型：在 `python/model/` 下创建目录，实现 `boost_xxx(model, config=None)` 函数（自行解析 config 中支持的段），在 `_MODEL_MATCH_TABLE` 与 `_BOOST_REGISTRY` 中注册。
 
 ## 编码规范
 

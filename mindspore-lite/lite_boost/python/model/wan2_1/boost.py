@@ -27,7 +27,7 @@ from lite_boost.layers.attention import flash_attention as lite_flash_attention
 from . import usp_attn_forward, usp_dit_forward
 
 
-def boost_wan2_1(pipe):
+def boost_wan2_1(pipe, config=None):
     """
     Patch a Wan2.1 pipeline in-place for NPU Ulysses SP.
 
@@ -38,7 +38,13 @@ def boost_wan2_1(pipe):
     2. Replace each block.self_attn.forward → usp_attn_forward
     3. Replace model.forward → usp_dit_forward
     4. If VACE model: replace vace_blocks and forward_vace
+
+    ``config`` (dict parsed from the boost YAML file) is accepted for a
+    uniform boost signature but not yet consumed; parallelism always
+    follows the distributed world size.
     """
+    if config is not None:
+        raise ValueError("config is not yet consumed")
     model = pipe.model
     world_size = dist.get_world_size()
 

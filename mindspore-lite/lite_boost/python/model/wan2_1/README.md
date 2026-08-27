@@ -1,6 +1,6 @@
 # Wan2.1
 
-Wan2.1 模型的 NPU 多卡 Ulysses Sequence Parallel 适配器，基于 `lite_boost.parallel.ParallelManager` 实现序列维度上的多卡并行推理。
+Wan2.1 模型的 NPU 多卡 Ulysses Sequence Parallel 适配器，基于 `lite_boost.BoostManager` 实现序列维度上的多卡并行推理。
 
 ---
 
@@ -25,7 +25,8 @@ Wan2.1 模型的 NPU 多卡 Ulysses Sequence Parallel 适配器，基于 `lite_b
 以下代码简要介绍了如何使用 `lite_boost` 进行 Wan2.1 模型的多卡并行推理。以WanT2V模式举例，会涉及到修改generate.py和wan/text2video.py 2个文件。
 
 ```python
-from lite_boost.parallel import initialize_usp, ParallelManager
+from lite_boost import BoostManager
+from lite_boost.parallel import initialize_usp
 
 # 1. 初始化 HCCL 分布式环境
 initialize_usp()
@@ -34,16 +35,17 @@ initialize_usp()
 wan_t2v = wan.WanT2V(config)
 
 # 3. 一键替换为 USP 版本（原地修改）
-ParallelManager(wan_t2v)
+boost_manager = BoostManager()
+wan_t2v = boost_manager(wan_t2v)
 
 # 4. 正常推理
 output = wan_t2v.generate(*args)
 ```
 
-`ParallelManager` 会自动完成以下替换：
+`BoostManager` 会自动完成以下替换：
 
 ```text
-ParallelManager(model)
+boost_manager(model)
 ├── 替换 flash_attention       → NPU 兼容版本
 ├── 替换 self_attn.forward     → usp_attn_forward（含 all_to_all 通信）
 └── 替换 model.forward         → usp_dit_forward（含序列分片 / 聚合）
@@ -75,12 +77,13 @@ if use_usp:
 **修改后**（lite_boost + HCCL）：
 
 ```python
-from lite_boost.parallel import initialize_usp, ParallelManager
+from lite_boost import BoostManager
+from lite_boost.parallel import initialize_usp
 
 if world_size > 1:
     initialize_usp()  # HCCL backend, 自动读 RANK/WORLD_SIZE/MASTER_ADDR/MASTER_PORT
-    from lite_boost.parallel import ParallelManager
-    ParallelManager(wan_t2v)
+    boost_manager = BoostManager()
+    wan_t2v = boost_manager(wan_t2v)
 # pipeline 中：
 # if use_usp:
 #     from .distributed.xdit_context_parallel import usp_attn_forward, usp_dit_forward

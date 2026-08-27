@@ -17,7 +17,7 @@ lite_boost.parallel.initialize_usp
 
     .. note::
 
-        该函数必须在构造 :class:`ParallelManager` 之前调用，通常在分布式训练或推理脚本的入口处执行。
+        该函数必须在构造 :class:`BoostManager` 之前调用，通常在分布式训练或推理脚本的入口处执行。
 
     异常：
         - **RuntimeError** - HCCL进程组初始化失败时抛出。

@@ -17,6 +17,6 @@
 lite_boost parallel module
 """
 
-__all__ = ["ParallelManager", "initialize_usp"]
+__all__ = ["initialize_usp"]
 
-from ._manager import ParallelManager, initialize_usp
+from ._initializer import initialize_usp

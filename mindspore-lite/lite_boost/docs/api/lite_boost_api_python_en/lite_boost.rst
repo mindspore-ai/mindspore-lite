@@ -12,7 +12,7 @@ Parallel
     :template: classtemplate.rst
 
     lite_boost.parallel.initialize_usp
-    lite_boost.parallel.ParallelManager
+    lite_boost.BoostManager
 
 Operators
 ------------

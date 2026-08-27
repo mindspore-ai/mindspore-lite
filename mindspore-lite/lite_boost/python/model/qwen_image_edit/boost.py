@@ -26,8 +26,12 @@ import torch.distributed as dist
 
 from . import USPQwenDoubleStreamAttnProcessor, usp_dit_forward, patch_eager_sdpa
 
+# Parallel algorithms currently supported per module (Parallel.dit/vae.alg).
+_DIT_PARALLEL_ALGS = ('CP',)
+_VAE_PARALLEL_ALGS = ('DP',)
 
-def boost_qwen_image_edit(pipe, *, world_size=None, enable_vae_parallel=True):
+
+def boost_qwen_image_edit(pipe, config=None):
     """
     Patch a QwenImageEditPlusPipeline in-place for NPU multi-card USP.
 
@@ -38,17 +42,21 @@ def boost_qwen_image_edit(pipe, *, world_size=None, enable_vae_parallel=True):
        joint-attention processor (text replication + head slicing, image
        latent sequence split via all_to_all).
     3. Replace transformer.forward -> usp_dit_forward (sequence split/gather).
-    4. Optionally replace the VAE with the parallel tiled encode/decode
-       version (``enable_vae_parallel=False`` keeps the original VAE so the
-       output matches the single-card pipeline bit-for-bit).
+    4. Replace the VAE with the parallel tiled encode/decode version
+       (``Parallel.vae`` is validated when configured).
 
     ``pipe`` may be a QwenImageEditPlusPipeline or the raw
     QwenImageTransformer2DModel (in which case only the DiT is patched).
+
+    ``config`` is the dict parsed from the boost YAML file (see
+    ``qwen_image_edit.yaml``). Unconfigured sections (or ``config=None``)
+    keep the best-performance defaults: DiT CP at the distributed world
+    size with the parallel VAE enabled.
     """
     transformer = pipe.transformer if hasattr(pipe, "transformer") else pipe
     is_pipeline = transformer is not pipe
 
-    world_size = world_size or dist.get_world_size()
+    world_size = _parse_parallel_config(config)
 
     num_heads = transformer.config.num_attention_heads
     if num_heads % world_size != 0:
@@ -64,11 +72,74 @@ def boost_qwen_image_edit(pipe, *, world_size=None, enable_vae_parallel=True):
             block.attn.processor = USPQwenDoubleStreamAttnProcessor()
         transformer.forward = types.MethodType(usp_dit_forward, transformer)
 
-    if is_pipeline and enable_vae_parallel:
+    if is_pipeline:
         _patch_vae_edit(pipe)
         restore_fp16_params(pipe.vae, dtype=pipe.vae.dtype)
 
     return pipe
+
+
+def _parse_parallel_config(config):
+    """Read the ``Parallel.dit`` / ``Parallel.vae`` sections of the boost config.
+
+    Returns the DiT world size. Unconfigured sections (or ``config=None``)
+    keep the best-performance defaults — DiT CP at the distributed world
+    size with the parallel VAE enabled; a missing key falls back to its
+    default (``alg`` → the sole supported algorithm, ``world_size`` → the
+    DiT world size).
+
+    Configured values are validated: ``dit.alg`` must be one of
+    ``_DIT_PARALLEL_ALGS`` and ``vae.alg`` one of ``_VAE_PARALLEL_ALGS``;
+    ``dit.world_size`` must match the distributed world size, and
+    ``vae.world_size`` must equal ``dit.world_size``.
+
+    The yaml schema (see ``qwen_image_edit.yaml``) is::
+
+        Parallel:
+          dit:
+            alg: CP  # current support [CP]
+            world_size: 2
+          vae:
+            alg: DP  # current support [DP]
+            world_size: 2
+    """
+    dist_world_size = dist.get_world_size()
+    parallel = (config or {}).get('Parallel') or {}
+
+    dit = parallel.get('dit')
+    if dit is None:
+        dit_world_size = dist_world_size  # section absent → best-performance default
+    else:
+        _check_alg(dit, 'dit', _DIT_PARALLEL_ALGS)
+        dit_world_size = dit.get('world_size') or dist_world_size
+        _check_world_size(dit_world_size, 'dit', dist_world_size, 'the distributed world size')
+
+    vae = parallel.get('vae')
+    if vae is not None:
+        _check_alg(vae, 'vae', _VAE_PARALLEL_ALGS)
+        vae_world_size = vae.get('world_size') or dit_world_size
+        _check_world_size(vae_world_size, 'vae', dit_world_size, 'Parallel.dit.world_size')
+
+    return dit_world_size
+
+
+def _check_alg(section, module, supported_algs):
+    """Validate Parallel.<module>.alg against the supported algorithms."""
+    alg = section.get('alg', supported_algs[0])
+    if alg not in supported_algs:
+        raise ValueError(
+            f"Parallel.{module}.alg {alg!r} is unsupported; "
+            f"expected one of {supported_algs}"
+        )
+
+
+def _check_world_size(world_size, module, expected_world_size, expected_desc):
+    """Ensure the configured world size matches the expected value."""
+    if world_size != expected_world_size:
+        raise ValueError(
+            f"Parallel.{module}.world_size ({world_size}) must match "
+            f"{expected_desc} ({expected_world_size})"
+        )
 
 
 def _patch_vae_edit(pipe):

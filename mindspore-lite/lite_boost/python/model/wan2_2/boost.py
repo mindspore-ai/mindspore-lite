@@ -89,12 +89,18 @@ def _find_vae(pipe):
     return getattr(pipe, 'vae', None)
 
 
-def boost_wan2_2(target):
+def boost_wan2_2(target, config=None):
     """Boost a Wan2.2 pipeline or raw WanModel for parallel inference.
 
     - WanModel instances → Context Parallel (USP) for DiT
     - VAE → Data Parallel (temporal tiling) for encoder/decoder
+
+    ``config`` (dict parsed from the boost YAML file) is accepted for a
+    uniform boost signature but not yet consumed; parallelism always
+    follows the distributed world size.
     """
+    if config is not None:
+        raise ValueError("config is not yet consumed")
     cls_name = target.__class__.__name__
 
     if cls_name in _PIPELINE_CLASSES:
