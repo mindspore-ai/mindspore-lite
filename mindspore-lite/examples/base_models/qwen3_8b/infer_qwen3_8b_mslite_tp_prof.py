@@ -27,7 +27,7 @@ device) for minimum latency.
 Each bucket has its own GE compiled graph and its own ModelGroup(SHARE_WEIGHT)
 so that switching buckets releases the previous compiled graph, avoiding TBE
 subprocess OOM when all 12 graphs are built concurrently. Bucket configs
-live under configs/.
+live under configs/ (1p), configs/tp2/ (TP=2), configs/tp4/ (TP=4).
 
 Auto-dispatches by the number of device IDs:
   * 1 device  -> single-chip GE + per-bucket weight sharing + zero-copy decode
@@ -72,7 +72,8 @@ except ImportError as exc:
 # ---------------------------------------------------------------------------
 KV_CACHE_LEN = 256  # TP default; 1p uses dynamic KV via per-bucket cfgs
 # Prefill seq buckets (multi-static-bucket GE flow via 6 separate cfgs).
-PREFILL_SEQ_DIMS = (512, 1024, 1664, 2048, 2816, 3072)
+# PREFILL_SEQ_DIMS = (512, 1024, 1664, 2048, 2816, 3072)
+PREFILL_SEQ_DIMS = (896, 1664, 2560, 2816)
 # Max output tokens per prefill bucket; decode KV = prefill_seq + MAX_OUTPUT_TOKENS.
 MAX_OUTPUT_TOKENS = 512
 # TP path uses a fixed prefill seq for warmup dummy inputs.
@@ -299,6 +300,27 @@ class _DecodeZeroCopyIO:
         return outs
 
 
+def _worker_prof_init(prof_dir, rank_id):
+    """Init aclprof for the prefill phase (best-effort; None disables it)."""
+    # ---- aclprof profiling (enabled when prof_dir is set) ----
+    # Capture windows align with the real inference flow:
+    #   * around the timed prefill predict -> prefill_r{rank}/ dir
+    #   * around the decode-loop predicts  -> decode_r{rank}/ dir
+    # (warmup/compile are not profiled; each rank gets its own output dir)
+    prof = None
+    if prof_dir:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import prof_ctrl
+        prof = prof_ctrl
+        try:
+            prof.prof_init(os.path.join(prof_dir, "prefill_r%d" % rank_id))
+        except Exception as e:
+            print(f"[rank{rank_id}] prof_init(prefill) FAIL, continue without prof: {e}",
+                  flush=True)
+            prof = None
+    return prof
+
+
 def _worker_build(prefill_path, decode_path, device_id, rank_id, pf_config_file,
                   dc_config_file, bucket_seq, kv_len, decode_only):
     """Build prefill + decode GE models; return their dtypes for tensor allocation."""
@@ -405,7 +427,7 @@ def _worker_warmup(pf, pf_in_dtypes, dc, dc_in_dtypes, kv_per, bucket_seq, kv_le
 
 def _worker_prefill_bucket(pf, pf_in_dtypes, pf_out_dtypes, pf_kv_dtype, dc_in_dtypes,
                            device_id, rank_id, kv_per, kv_len, prompt_q,
-                           prefill_logits_q, tp_size):
+                           prefill_logits_q, tp_size, prof=None):
     """Prefill one bucket into DEVICE output tensors; return the zero-copy decode IO."""
     dev = f"ascend:{device_id}"
     prompt_data = prompt_q.get()
@@ -423,6 +445,11 @@ def _worker_prefill_bucket(pf, pf_in_dtypes, pf_out_dtypes, pf_kv_dtype, dc_in_d
                       dtype=pf_kv_dtype, device=dev),
     ]
     pf_outs = pf.predict(pf_inputs, pf_outputs)
+    if prof:
+        _cfg = prof.prof_start(device_id)
+        pf_outs = pf.predict(pf_inputs, pf_outputs)
+        prof.prof_stop(_cfg)
+        print(f"[rank{rank_id}] prof prefill done", flush=True)
     pf_logits = pf_outs[0].get_data_to_numpy()
     first_token = int(np.argmax(pf_logits.reshape(-1)))
     prefill_logits_q.put(first_token)
@@ -460,6 +487,29 @@ def _worker_decode_loop(dc, step_q, decode_out_q, zc_io):
         decode_out_q.put(logits)
 
 
+def _worker_decode_prof(dc, step_q, decode_out_q, zc_io, prof, prof_dir, rank_id,
+                        device_id):
+    """Decode loop wrapped in aclprof (switch to the decode output dir first)."""
+    # Decode capture window: switch to the decode output dir, then wrap the
+    # whole decode loop
+    if prof:
+        try:
+            prof.prof_finalize()
+            prof.prof_init(os.path.join(prof_dir, "decode_r%d" % rank_id))
+            _dcfg = prof.prof_start(device_id)
+        except Exception as e:
+            print(f"[rank{rank_id}] prof decode init FAIL, continue without prof: {e}",
+                  flush=True)
+            _dcfg = None
+    else:
+        _dcfg = None
+    _worker_decode_loop(dc, step_q, decode_out_q, zc_io)
+    if _dcfg is not None:
+        prof.prof_stop(_dcfg)
+        prof.prof_finalize()
+        print(f"[rank{rank_id}] prof decode done", flush=True)
+
+
 def _worker_perf_sweep(pf, pf_in_dtypes, pf_out_dtypes, pf_kv_dtype, dc, dc_in_dtypes,
                        device_id, rank_id, kv_per, prompt_q, prefill_logits_q,
                        step_q, decode_out_q, bucket_q, tp_size):
@@ -478,7 +528,7 @@ def _worker_perf_sweep(pf, pf_in_dtypes, pf_out_dtypes, pf_kv_dtype, dc, dc_in_d
 def _worker_single_bucket(pf, pf_in_dtypes, pf_out_dtypes, pf_kv_dtype, dc,
                           dc_in_dtypes, device_id, rank_id, kv_per, kv_len,
                           prompt_q, prefill_logits_q, step_q, decode_out_q,
-                          tp_size, decode_only):
+                          tp_size, decode_only, prof, prof_dir):
     """Single-bucket mode: hybrid 1p-prefill KV or TP prefill, then the decode loop."""
     if decode_only:
         # Hybrid mode: driver sends (first_token, past_k, past_v) from a 1p prefill
@@ -491,15 +541,16 @@ def _worker_single_bucket(pf, pf_in_dtypes, pf_out_dtypes, pf_kv_dtype, dc,
     else:
         zc_io = _worker_prefill_bucket(pf, pf_in_dtypes, pf_out_dtypes, pf_kv_dtype,
                                        dc_in_dtypes, device_id, rank_id, kv_per,
-                                       kv_len, prompt_q, prefill_logits_q, tp_size)
-    _worker_decode_loop(dc, step_q, decode_out_q, zc_io)
+                                       kv_len, prompt_q, prefill_logits_q, tp_size, prof)
+    _worker_decode_prof(dc, step_q, decode_out_q, zc_io, prof, prof_dir, rank_id,
+                        device_id)
 
 
 def _tp_unified_worker(prefill_path, decode_path, device_id, rank_id,
                        pf_config_file, dc_config_file, bucket_seq, kv_len,
                        prompt_q, prefill_logits_q, step_q, decode_out_q, ready_q,
                        built_q, start_warmup_q, warmup=2, tp_size=2, decode_only=False,
-                       perf_sweep=False, bucket_q=None):
+                       perf_sweep=False, bucket_q=None, prof_dir=None):
     """Run one TP rank: build prefill+decode, warmup, then serve prefill+decode calls.
 
     2p bucketed dynamicDims flow:
@@ -523,6 +574,7 @@ def _tp_unified_worker(prefill_path, decode_path, device_id, rank_id,
     # to the default NPU adapter port (16666) — forked workers occasionally miss
     # the shell env, and 16666 collides with other TP sessions on the shared NPU.
     os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", "21500-21600")
+    prof = _worker_prof_init(prof_dir, rank_id)
     pf, pf_in_dtypes, dc, dc_in_dtypes, pf_out_dtypes, pf_kv_dtype = _worker_build(
         prefill_path, decode_path, device_id, rank_id, pf_config_file, dc_config_file,
         bucket_seq, kv_len, decode_only)
@@ -539,7 +591,8 @@ def _tp_unified_worker(prefill_path, decode_path, device_id, rank_id,
     # --- Single-bucket mode (original path) ---
     _worker_single_bucket(pf, pf_in_dtypes, pf_out_dtypes, pf_kv_dtype, dc,
                           dc_in_dtypes, device_id, rank_id, kv_per, kv_len, prompt_q,
-                          prefill_logits_q, step_q, decode_out_q, tp_size, decode_only)
+                          prefill_logits_q, step_q, decode_out_q, tp_size, decode_only,
+                          prof, prof_dir)
     os._exit(0)
 
 
@@ -570,7 +623,8 @@ def _tp_prepare_prompt(tok, prompt, seq=TP_PREFILL_SEQ, force_len=None):
 
 def _tp_spawn_unified_workers(prefill_ranks, decode_ranks, device_ids,
                               pf_config_files, dc_config_files, bucket_seq, kv_len,
-                              warmup, tp_size, use_hybrid, perf_sweep=False):
+                              warmup, tp_size, use_hybrid, perf_sweep=False,
+                              prof_dir=None):
     """Spawn workers with staggered builds (avoid TBE cache race + GE port 16666 race).
 
     pf_config_files/dc_config_files are per-rank config paths (each carries its own
@@ -602,7 +656,7 @@ def _tp_spawn_unified_workers(prefill_ranks, decode_ranks, device_ids,
             pf_config_files[r], dc_config_files[r], bucket_seq, kv_len,
             prompt_qs[r], pf_logits_qs[r], step_qs[r], out_qs[r], ready_qs[r],
             built_qs[r], start_warmup_qs[r], warmup, tp_size, use_hybrid,
-            perf_sweep, bucket_qs[r] if bucket_qs else None))
+            perf_sweep, bucket_qs[r] if bucket_qs else None, prof_dir))
         p.start()
         procs.append(p)
         # Stagger builds so ranks don't cold-compile the same TBE kernels
@@ -726,7 +780,7 @@ def _tp_finalize(procs, step_qs, tp_size):
 def run_tp_infer(prefill_ranks, decode_ranks, tokenizer_path,
                  pf_config_files, dc_config_files, prompt, max_new_tokens, device_ids,
                  warmup=2, stream=True, tp_size=2, use_hybrid=None, seq=None, kv_len=None,
-                 prompt_tokens=None):
+                 prompt_tokens=None, prof_dir=None):
     """Drive TP inference: spawn one worker per rank, feed prompt, stream decode output.
 
     `seq`/`kv_len` are the selected bucket dims (from _pick_prefill_seq on real_len);
@@ -751,7 +805,7 @@ def run_tp_infer(prefill_ranks, decode_ranks, tokenizer_path,
     kv_per = NUM_KV_HEADS // tp_size
     procs, prompt_qs, pf_logits_qs, step_qs, out_qs, ready_qs, _ = _tp_spawn_unified_workers(
         prefill_ranks, decode_ranks, device_ids, pf_config_files, dc_config_files,
-        seq, kv_len, warmup, tp_size, use_hybrid)
+        seq, kv_len, warmup, tp_size, use_hybrid, prof_dir=prof_dir)
 
     print("Waiting for warmup...", flush=True)
     for r in range(tp_size):
@@ -819,7 +873,7 @@ def _perf_sweep_bucket(tok, ntok, repeats, tp_size, kv_per, seq, kv_len, bucket_
             "output_len": len(generated),
             "truncated": truncated,
         }
-        tag = "warmup(含懒编译)" if rep == 0 else f"steady #{rep}"
+        tag = "warmup(lazy-compile)" if rep == 0 else f"steady #{rep}"
         print(f"  [{tag}] prefill={perf['prefill_ms']}ms  "
               f"decode_avg={perf['avg_decode_ms']}ms  "
               f"output_len={perf['output_len']}", flush=True)
@@ -960,7 +1014,7 @@ def _write_rank_table(device_ids, run_dir):
 # putting an [acl_init_options]-style precision key there makes GE bind port
 # 16666 eagerly at Context creation, colliding with the other rank. So we drop
 # any precision_mode line when grafting [ge_session_options].
-# precision_mode must NOT be dropped: configs carry
+# precision_mode must NOT be dropped: configs/{1p,tp2} carry
 # `ge.exec.precision_mode=must_keep_origin_dtype` under [ge_session_options];
 # dropping it makes GE re-specialize the prefill fp16 KV outputs to fp32
 # ("KV dtype mismatch (pf=FLOAT32 dc=FLOAT16)"), disabling zero-copy attach_kv.
@@ -1097,7 +1151,7 @@ def _parse_args():
     parser.add_argument("--bucket-cfg-dir", type=str, default=None,
                         help="TP prefill/decode: directory containing "
                              "qwen3_8b_llm_prefill.config / qwen3_8b_llm_decode.config "
-                             "(default: configs/)")
+                             "(default: configs/tp2 for TP=2, configs/tp4 for TP=4)")
     parser.add_argument("--json-out", type=str, default=None,
                         help="write perf dict as JSON to this path")
     parser.add_argument("--prompt-tokens", type=int, default=None,
@@ -1109,6 +1163,15 @@ def _parse_args():
     parser.add_argument("--repeats", type=int, default=3,
                         help="perf sweep: repeats per bucket (first = warmup/lazy-compile, "
                              "steady = repeats 2+). Only used with --perf-sweep.")
+    # ---- aclprof profiling ----
+    parser.add_argument("--prof-dir", type=str, default=None,
+                        help="enable aclprof profiling; per-rank outputs under "
+                             "<prof_dir>/bucket_<seq>/{prefill_r<rank>,decode_r<rank>}/")
+    parser.add_argument("--buckets", type=str, default=None,
+                        help="prof mode: comma-separated seq buckets to loop "
+                             "(e.g. 896,1664,2560,2816); each bucket runs the full "
+                             "real inference flow once with aclprof collecting "
+                             "prefill and decode separately")
     return parser.parse_args()
 
 
@@ -1135,17 +1198,76 @@ def _run_single_chip(args, device_ids):
     print("Generated Response: ", end="", flush=True)
     txt, perf = runner.run(args.prompt, max_new_tokens=args.max_new_tokens)
     print(f"\n{txt[:300]}")
-    print("\n--- Performance (1p 动态单图) ---")
+    print("\n--- Performance (1p dynamic single-graph) ---")
     print(f"  real_len={perf['real_len']}  prefill_seq={perf['prefill_seq']}  "
           f"kv_len={perf['kv_len']}")
-    print(f"  KV: phys={perf['kv_out_phys']} -> pad到 {perf['kv_padded_to']}  "
-          f"核心点OK={perf['kv_len_ok']}")
+    print(f"  KV: phys={perf['kv_out_phys']} -> padded-to {perf['kv_padded_to']}  "
+          f"key-point-ok={perf['kv_len_ok']}")
     print(f"  prefill_steady={perf['prefill_ms']}ms  "
           f"decode_first={perf['decode_first_ms']}ms  decode_min={perf['decode_min_ms']}ms  "
           f"truncated={perf['truncated']}")
     if args.json_out:
         with open(args.json_out, "w", encoding="utf-8") as f:
             json.dump({"tp": 1, "prompt": args.prompt, **perf}, f, indent=2)
+
+
+def _run_tp_perf_sweep(prefill_ranks, decode_ranks, args, device_ids,
+                       pf_config_files, dc_config_files, tp_size):
+    """perf-sweep: single build, multi-bucket loop (replaces the 6x process loop)."""
+    bucket_tokens = list(PREFILL_SEQ_DIMS)
+    print("\n" + "=" * 60)
+    print(f"[perf-sweep] TP={tp_size}  buckets={bucket_tokens}  "
+          f"repeats={args.repeats}  max_new_tokens={args.max_new_tokens}")
+    print("=" * 60)
+    results = run_tp_perf_sweep(
+        prefill_ranks, decode_ranks, args.model_id,
+        pf_config_files, dc_config_files, device_ids,
+        bucket_tokens, args.repeats, args.max_new_tokens, tp_size=tp_size)
+    # Print summary table
+    print("\n" + "=" * 60)
+    print(f"=== TP={tp_size} perf-sweep summary (steady-state, repeats 2+) ===")
+    print("=" * 60)
+    hdr = f"{'ntok':>6} {'seq':>6} {'kv_len':>7} {'prefill_ms':>11} {'decode_ms':>10} {'trunc':>6}"
+    print(hdr)
+    print("-" * len(hdr))
+    for r in results:
+        print(f"{r['prompt_tokens']:>6} {r['prefill_seq']:>6} {r['kv_len']:>7} "
+              f"{r['prefill_ms']:>11} {r['avg_decode_ms']:>10} "
+              f"{str(r['truncated']):>6}")
+    ok = all(r.get("kv_len") == (r.get("prefill_seq") or 0) + MAX_OUTPUT_TOKENS
+             for r in results)
+    print(f"\nkey-point check (kv_len == prefill_seq + {MAX_OUTPUT_TOKENS}): "
+          f"{'PASS' if ok else 'FAIL'} ({len(results)}/6 buckets)")
+    if args.json_out:
+        with open(args.json_out, "w", encoding="utf-8") as f:
+            json.dump({"tp": tp_size, "buckets": results}, f, indent=2)
+
+
+def _run_tp_prof_mode(prefill_ranks, decode_ranks, args, device_ids,
+                      pf_config_files, dc_config_files, tp_size):
+    """Prof mode (--buckets + --prof-dir): run the full real inference flow once
+    per bucket, starting/stopping aclprof around the prefill predict and the
+    decode loop."""
+    import subprocess as _sp
+    os.makedirs(args.prof_dir, exist_ok=True)
+    for seq in [int(x) for x in args.buckets.split(",")]:
+        bdir = os.path.join(args.prof_dir, "bucket_%d" % seq)
+        os.makedirs(bdir, exist_ok=True)
+        print("\n" + "=" * 60)
+        print(f"[prof] bucket seq={seq} kv_len={seq + MAX_OUTPUT_TOKENS} -> {bdir}")
+        print("=" * 60, flush=True)
+        _, perf = run_tp_infer(
+            prefill_ranks, decode_ranks, args.model_id, pf_config_files, dc_config_files,
+            args.prompt, args.max_new_tokens, device_ids, warmup=args.warmup,
+            stream=False, tp_size=tp_size, use_hybrid=None, seq=seq, kv_len=None,
+            prompt_tokens=seq, prof_dir=bdir)
+        _print_tp_perf(perf, tp_size)
+        # Export aclprof raw data -> mindstudio_profiler_output/op_summary_*.csv etc.
+        for sub in ("prefill_r0", "prefill_r1", "decode_r0", "decode_r1"):
+            subdir = os.path.join(bdir, sub)
+            if os.path.isdir(subdir):
+                print(f"[prof] export {subdir} ...", flush=True)
+                _sp.run(["msprof", "--export=on", f"--output={subdir}"], check=True)
 
 
 def _run_tensor_parallel(args, device_ids, tp_size):
@@ -1169,7 +1291,7 @@ def _run_tensor_parallel(args, device_ids, tp_size):
         # Per-rank config files carry per-rank GE compile caches
         # (ge.graph_compiler_cache_dir=<base>/rank{r}) so the two ranks never
         # cold-compile the same TBE kernels into one directory.
-        cfg_dir = args.bucket_cfg_dir or "configs"
+        cfg_dir = args.bucket_cfg_dir or "configs/tp2"
         pf_config_files = [
             _write_hccl_config_with_ge(
                 device_ids, run_dir, os.path.join(cfg_dir, "qwen3_8b_llm_prefill.config"),
@@ -1190,36 +1312,19 @@ def _run_tensor_parallel(args, device_ids, tp_size):
 
     # ---- perf sweep: single build, multi-bucket loop (replaces 6x process) ----
     if args.perf_sweep:
-        bucket_tokens = list(PREFILL_SEQ_DIMS)
-        print("\n" + "=" * 60)
-        print(f"[perf-sweep] TP={tp_size}  buckets={bucket_tokens}  "
-              f"repeats={args.repeats}  max_new_tokens={args.max_new_tokens}")
-        print("=" * 60)
-        results = run_tp_perf_sweep(
-            prefill_ranks, decode_ranks, args.model_id,
-            pf_config_files, dc_config_files, device_ids,
-            bucket_tokens, args.repeats, args.max_new_tokens, tp_size=tp_size)
-        # Print summary table
-        print("\n" + "=" * 60)
-        print(f"=== TP={tp_size} perf-sweep summary (steady-state, repeats 2+) ===")
-        print("=" * 60)
-        hdr = f"{'ntok':>6} {'seq':>6} {'kv_len':>7} {'prefill_ms':>11} {'decode_ms':>10} {'trunc':>6}"
-        print(hdr)
-        print("-" * len(hdr))
-        for r in results:
-            print(f"{r['prompt_tokens']:>6} {r['prefill_seq']:>6} {r['kv_len']:>7} "
-                  f"{r['prefill_ms']:>11} {r['avg_decode_ms']:>10} "
-                  f"{str(r['truncated']):>6}")
-        ok = all(r.get("kv_len") == (r.get("prefill_seq") or 0) + MAX_OUTPUT_TOKENS
-                 for r in results)
-        print(f"\n核心点校验 (kv_len == prefill_seq + {MAX_OUTPUT_TOKENS}): "
-              f"{'PASS' if ok else 'FAIL'} ({len(results)}/6 档)")
-        if args.json_out:
-            with open(args.json_out, "w", encoding="utf-8") as f:
-                json.dump({"tp": tp_size, "buckets": results}, f, indent=2)
+        _run_tp_perf_sweep(prefill_ranks, decode_ranks, args, device_ids,
+                           pf_config_files, dc_config_files, tp_size)
         return
 
     # ---- single-bucket mode (original path) ----
+    # Prof mode (--buckets + --prof-dir): run the full real inference flow once
+    # per bucket, starting/stopping aclprof around the prefill predict and the
+    # decode loop.
+    if args.buckets and args.prof_dir:
+        _run_tp_prof_mode(prefill_ranks, decode_ranks, args, device_ids,
+                          pf_config_files, dc_config_files, tp_size)
+        return
+
     print("\n" + "=" * 60)
     print(f"Input Prompt: {args.prompt}")
     print("=" * 60)
@@ -1228,7 +1333,7 @@ def _run_tensor_parallel(args, device_ids, tp_size):
         prefill_ranks, decode_ranks, args.model_id, pf_config_files, dc_config_files,
         args.prompt, args.max_new_tokens, device_ids, warmup=args.warmup,
         stream=not args.json_out, tp_size=tp_size, use_hybrid=None, seq=seq, kv_len=kv_len,
-        prompt_tokens=args.prompt_tokens)
+        prompt_tokens=args.prompt_tokens, prof_dir=args.prof_dir)
     _print_tp_perf(perf, tp_size)
     if args.json_out:
         with open(args.json_out, "w", encoding="utf-8") as f:
