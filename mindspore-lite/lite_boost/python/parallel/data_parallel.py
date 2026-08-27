@@ -139,7 +139,45 @@ def compute_expand_len(input_len: int, stride: int) -> int:
 
 
 # ============================================================================
-# Section 3: Blending (torch tensor ops, no dist)
+# Section 3: Spatial Tile Geometry (pure math, no torch needed)
+# ============================================================================
+
+
+def compute_spatial_tiles(
+    height: int, width: int,
+    size_h: int, size_w: int,
+    stride_h: int, stride_w: int,
+) -> List[Tuple[int, int, int, int]]:
+    """Generate 2D spatial tile coordinates ``(h, h_, w, w_)``.
+
+    Mirrors the DiffSynth ``tiled_decode`` / ``tiled_encode`` task loop:
+    tiles are laid out from the top-left corner; a tile whose start would
+    leave the image covered by the previous tile (``start - stride +
+    size >= extent``) is skipped, so tiles never overrun the boundary.
+
+    Args:
+        height, width: Spatial extent of the tensor to tile.
+        size_h, size_w: Tile size (h, w).
+        stride_h, stride_w: Tile stride (h, w).
+
+    Returns:
+        List of ``(h, h_, w, w_)`` tuples in generation order.
+    """
+    tasks = []
+    for h in range(0, height, stride_h):
+        if h - stride_h >= 0 and h - stride_h + size_h >= height:
+            continue
+        h_ = h + size_h
+        for w in range(0, width, stride_w):
+            if w - stride_w >= 0 and w - stride_w + size_w >= width:
+                continue
+            w_ = w + size_w
+            tasks.append((h, h_, w, w_))
+    return tasks
+
+
+# ============================================================================
+# Section 4: Blending (torch tensor ops, no dist)
 # ============================================================================
 
 
@@ -180,18 +218,28 @@ def blend_along_axis(
 
 
 # ============================================================================
-# Section 4: DP Distribution (requires torch.distributed)
+# Section 5: DP Distribution (requires torch.distributed)
 # ============================================================================
 
 
 def scatter_evenly(
-    items: List, world_size: int, rank: int
+    items: List, world_size: int, rank: int, interleave: bool = False
 ) -> Tuple[List, int, int]:
-    """Distribute items across ranks in contiguous blocks, pad to uniform count.
+    """Distribute items across ranks, pad to uniform count.
+
+    Args:
+        items:     Items to distribute (any type).
+        world_size: Number of ranks.
+        rank:      Current rank.
+        interleave: If True, round-robin assignment (rank *r* takes items
+                   ``r, r+ws, r+2*ws, ...``) — used when results are
+                   combined with all_reduce and load must be balanced by
+                   task, not by contiguous range.  If False, contiguous
+                   block assignment (default, used with gather_and_concat).
 
     Returns (local_items, max_count, n_total) where:
       - *local_items* has exactly *max_count* elements (padded with
-        ``is_padding=True`` chunks).
+        ``None`` entries).
       - *n_total* is the original number of items.
 
     All three values are computable locally without any communication.
@@ -199,18 +247,21 @@ def scatter_evenly(
     n_items = len(items)
     max_count = math.ceil(n_items / world_size)
 
-    base = n_items // world_size
-    rem = n_items % world_size
-    if rank < rem:
-        start = rank * (base + 1)
-        actual = base + 1
+    if interleave:
+        local = [items[i] for i in range(rank, n_items, world_size)]
     else:
-        start = rem * (base + 1) + (rank - rem) * base
-        actual = base
+        base = n_items // world_size
+        rem = n_items % world_size
+        if rank < rem:
+            start = rank * (base + 1)
+            actual = base + 1
+        else:
+            start = rem * (base + 1) + (rank - rem) * base
+            actual = base
+        local = list(items[start:start + actual])
 
-    local = list(items[start:start + actual])
     while len(local) < max_count:
-        local.append(Chunk(global_idx=-1, start=0, end=0, is_padding=True))
+        local.append(None)
 
     return local, max_count, n_items
 
@@ -253,6 +304,9 @@ def gather_and_concat(
     # Gather chunk metadata: [num_local, 2] with (global_idx, is_padding)
     meta = torch.zeros(num_local, 2, dtype=torch.int64, device=device)
     for i, ch in enumerate(local_chunks):
+        if ch is None:
+            meta[i, 1] = 1
+            continue
         meta[i, 0] = ch.global_idx
         meta[i, 1] = 1 if ch.is_padding else 0
     gathered_meta = [torch.empty_like(meta) for _ in range(world_size)]
@@ -285,7 +339,7 @@ def gather_and_concat(
 
 
 # ============================================================================
-# Section 5: DP Temporal Orchestrator (model-agnostic)
+# Section 6: DP Temporal Orchestrator (model-agnostic)
 # ============================================================================
 
 
@@ -354,7 +408,7 @@ def dp_temporal_process(
     output_dtype = None
 
     for ch in local_chunks:
-        if ch.is_padding:
+        if ch is None:
             if output_shape is not None:
                 local_results.append(
                     torch.zeros(output_shape, dtype=output_dtype, device=device))

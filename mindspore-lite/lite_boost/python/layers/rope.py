@@ -18,6 +18,12 @@ Optimized RoPE with float32 real-valued arithmetic and frequency table caching.
 
 Replaces the original complex128 + float64 RoPE path with a pre-computed
 cos/sin cache, reducing RoPE time by ~88% (153ms → 18ms per block).
+
+Handles CP sequence padding correctly: when seq_len is not evenly
+divisible by sp_size, the last rank's RoPE slice may extend beyond the
+cos/sin table — padding positions get zero cos/sin (input values are
+zero anyway, so the RoPE result remains zero).  Used by both the
+Wan2.1 and Wan2.2 model paths.
 """
 import torch
 import torch.distributed as dist
@@ -67,8 +73,20 @@ def _get_rope_cos_sin(freqs, grid_sizes, s_local):
         ], dim=-1).reshape(seq_len, c)
 
         start = sp_rank * s_local
-        all_cos.append(cos_i[start:start + s_local, :])
-        all_sin.append(sin_i[start:start + s_local, :])
+        end = start + s_local
+        if end > seq_len:
+            # Last rank with seq_len % sp_size != 0: zero-pad the slice
+            # past the table (padding positions hold zero input values).
+            pad = end - seq_len
+            c_i = torch.cat([cos_i[start:, :],
+                             cos_i.new_zeros(pad, c)], dim=0)
+            s_i = torch.cat([sin_i[start:, :],
+                             sin_i.new_zeros(pad, c)], dim=0)
+        else:
+            c_i = cos_i[start:end, :]
+            s_i = sin_i[start:end, :]
+        all_cos.append(c_i)
+        all_sin.append(s_i)
 
     cos = torch.stack(all_cos)
     sin = torch.stack(all_sin)
