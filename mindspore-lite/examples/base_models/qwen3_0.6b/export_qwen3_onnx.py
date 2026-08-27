@@ -73,6 +73,22 @@ PTQ_CALIB_KV_LEN = 512
 # the subgraph to a single CANN fused op at conversion time).
 
 
+def _make_output_shapes(val, mask_dims=None):
+    """Build output_shapes string for ONNX Custom op symbolic.
+
+    mask_dims: list of dimension indices to replace with -1 (dynamic).
+    """
+    sizes = val.type().sizes()
+    if sizes is None:
+        return ""
+    dims = [int(d) if d is not None else -1 for d in list(sizes)]
+    if mask_dims:
+        for idx in mask_dims:
+            if idx < len(dims):
+                dims[idx] = -1
+    return ",".join([str(len(dims))] + [str(i) for i in dims])
+
+
 class _CannRmsNorm(torch.autograd.Function):
     """RmsNorm -> Custom(RmsNorm)."""
 
@@ -89,17 +105,9 @@ class _CannRmsNorm(torch.autograd.Function):
     def symbolic(g, x, gamma, epsilon):
         """Emit ONNX Custom node mapping to the CANN RmsNorm op."""
         sizes = x.type().sizes()
-        if sizes is None:
-            out_shapes = ""
-        else:
-            dims = [int(d) if d is not None else -1 for d in list(sizes)]
-            if len(dims) == 3:
-                dims[0] = -1
-                dims[1] = -1
-            elif len(dims) == 4:
-                dims[0] = -1
-                dims[2] = -1
-            out_shapes = ",".join([str(len(dims))] + [str(i) for i in dims])
+        ndim = len(sizes) if sizes else 0
+        mask = [0, 1] if ndim == 3 else [0, 2] if ndim == 4 else []
+        out_shapes = _make_output_shapes(x, mask)
 
         y, rstd = g.op(
             "Custom",
@@ -150,17 +158,9 @@ class _CannAddRmsNorm(torch.autograd.Function):
     def symbolic(g, x1, x2, gamma, epsilon):
         """Emit ONNX Custom node mapping to the fused CANN Add+RmsNorm op."""
         sizes = x1.type().sizes()
-        if sizes is None:
-            out_shapes = ""
-        else:
-            dims = [int(d) if d is not None else -1 for d in list(sizes)]
-            if len(dims) == 3:
-                dims[0] = -1
-                dims[1] = -1
-            elif len(dims) == 4:
-                dims[0] = -1
-                dims[2] = -1
-            out_shapes = ",".join([str(len(dims))] + [str(i) for i in dims])
+        ndim = len(sizes) if sizes else 0
+        mask = [0, 1] if ndim == 3 else [0, 2] if ndim == 4 else []
+        out_shapes = _make_output_shapes(x1, mask)
 
         y, rstd, x = g.op(
             "Custom",
@@ -199,15 +199,7 @@ class _CannRotaryMul(torch.autograd.Function):
     @staticmethod
     def symbolic(g, x, r1, r2):
         """Emit ONNX Custom node mapping to the CANN RotaryMul op (rotate_half + cos/sin mul)."""
-        sizes = x.type().sizes()
-        if sizes is None:
-            out_shapes = ""
-        else:
-            dims = [int(d) if d is not None else -1 for d in list(sizes)]
-            if len(dims) == 4:
-                dims[0] = -1
-                dims[2] = -1
-            out_shapes = ",".join([str(len(dims))] + [str(i) for i in dims])
+        out_shapes = _make_output_shapes(x, [0, 2])
 
         y = g.op(
             "Custom",
@@ -286,15 +278,7 @@ class _CannSwiGlu(torch.autograd.Function):
     @staticmethod
     def symbolic(g, x, dim):
         """Emit ONNX Custom node mapping to the CANN SwiGlu op (SiLU(gate) * up)."""
-        sizes = x.type().sizes()
-        if sizes is None:
-            out_shapes = ""
-        else:
-            dims = [int(d) if d is not None else -1 for d in list(sizes)]
-            if len(dims) == 3:
-                dims[0] = -1
-                dims[1] = -1
-            out_shapes = ",".join([str(len(dims))] + [str(i) for i in dims])
+        out_shapes = _make_output_shapes(x, [0, 1])
 
         y = g.op(
             "Custom",
@@ -355,25 +339,6 @@ class _CannMatMulV2(torch.autograd.Function):
 # ---------------------------------------------------------------------------
 # CANN-fused forward helpers
 # ---------------------------------------------------------------------------
-
-
-def _cann_rotary_mul(x, cos, sin):
-    return _CannRotaryMul.apply(x, cos, sin)
-
-
-def _expand_rotary_cos_sin(cos, sin, target_dim):
-    if cos.dim() != int(target_dim):
-        while cos.dim() < int(target_dim):
-            cos = cos.unsqueeze(1)
-        while sin.dim() < int(target_dim):
-            sin = sin.unsqueeze(1)
-    return cos, sin
-
-
-def _cann_apply_rotary_pos_emb(query, key, cos, sin):
-    query_out = _cann_rotary_mul(query, cos, sin)
-    key_out = _cann_rotary_mul(key, cos, sin)
-    return query_out, key_out
 
 
 def _linear_2d(linear_mod, x):
@@ -911,10 +876,13 @@ def _cann_attn_forward(
 
     cos, sin = position_embeddings
     if enable_rotarymul:
-        cos, sin = _expand_rotary_cos_sin(cos, sin, 4)
-        query_states, key_states = _cann_apply_rotary_pos_emb(
-            query_states, key_states, cos, sin
-        )
+        # Expand cos/sin to 4D for RotaryMul
+        while cos.dim() < 4:
+            cos = cos.unsqueeze(1)
+        while sin.dim() < 4:
+            sin = sin.unsqueeze(1)
+        query_states = _CannRotaryMul.apply(query_states, cos, sin)
+        key_states = _CannRotaryMul.apply(key_states, cos, sin)
     else:
         if apply_rotary_pos_emb is not None:
             query_states, key_states = apply_rotary_pos_emb(
@@ -1345,6 +1313,373 @@ class Qwen3LlmDecodeFused(torch.nn.Module):
         return logits, present_kv
 
 
+# ---------------------------------------------------------------------------
+# Common-prefix wrappers (Scene C): prefix model outputs KV cache,
+# suffix model takes prefix KV + suffix tokens, outputs last-token logits.
+# ---------------------------------------------------------------------------
+
+class Qwen3PrefixModel(torch.nn.Module):
+    """Process common prefix tokens, output KV cache only.
+
+    Uses CANN fused ops (RotaryMul + PFA) for optimal prefill performance.
+    Output: present_kv [2*num_layers, batch, num_kv_heads, seq_len, head_dim] float16
+    """
+
+    def __init__(self, model, flags):
+        super().__init__()
+        self.embed_tokens = model.model.embed_tokens
+        self.layers = model.model.layers
+        self.norm = model.model.norm
+        self.rotary_emb = model.model.rotary_emb
+        self.num_layers = len(self.layers)
+        self.flags = flags
+
+    def forward(self, input_ids, attention_mask, position_ids):
+        """Run prefix forward: embeddings + transformer layers, output KV cache only."""
+        q_len = input_ids.shape[1]
+        inputs_embeds = self.embed_tokens(input_ids)
+        position_embeddings = _qwen3_rotary_emb_matmul2d(
+            self.rotary_emb, inputs_embeds, position_ids
+        )
+
+        bool_mask = _make_bool_causal_mask(attention_mask, q_len, q_len, 0)
+
+        hidden_states = inputs_embeds
+        residual = hidden_states
+        hidden_states = self.layers[0].input_layernorm(hidden_states)
+
+        present = []
+        for i, layer in enumerate(self.layers):
+            attn_out, pk, pv = _cann_attn_forward(
+                layer.self_attn,
+                hidden_states,
+                position_embeddings,
+                bool_mask,
+                None,
+                None,
+                self.flags["enable_rotarymul"],
+                self.flags["enable_pfa"],
+                self.flags["enable_bmm2mm"],
+            )
+            present.append(pk)
+            present.append(pv)
+
+            hidden_states, residual = _cann_add_rms_norm(
+                residual,
+                attn_out,
+                layer.post_attention_layernorm,
+                self.flags["enable_add_rmsnorm"],
+            )
+
+            mlp_out = _cann_mlp_forward(
+                layer.mlp,
+                hidden_states,
+                self.flags["enable_swiglu"],
+                self.flags["enable_bmm2mm"],
+            )
+            if i < self.num_layers - 1:
+                hidden_states, residual = _cann_add_rms_norm(
+                    residual,
+                    mlp_out,
+                    self.layers[i + 1].input_layernorm,
+                    self.flags["enable_add_rmsnorm"],
+                )
+            else:
+                hidden_states, _ = _cann_add_rms_norm(
+                    residual, mlp_out, self.norm, self.flags["enable_add_rmsnorm"]
+                )
+
+        present_kv = torch.stack(present, dim=0)
+        return present_kv
+
+
+class Qwen3SuffixModel(torch.nn.Module):
+    """Process suffix tokens with prefix KV cache, output last-token logits.
+
+    Uses RotaryMul + non-PFA attention (manual matmul + softmax + matmul with
+    GQA repeat) because 310P PFA requires q_len == k_len, which doesn't hold
+    for suffix scenario (q_len=suffix, k_len=prefix+suffix).
+    Output: logits [batch, 1, vocab_size] (only last token, minimal D2H).
+    """
+
+    def __init__(self, model, lm_head, flags):
+        super().__init__()
+        self.embed_tokens = model.model.embed_tokens
+        self.layers = model.model.layers
+        self.norm = model.model.norm
+        self.rotary_emb = model.model.rotary_emb
+        self.lm_head = lm_head
+        self.num_layers = len(self.layers)
+        self.flags = flags
+
+    def forward(self, input_ids, attention_mask, position_ids, past_key_values):
+        """Run suffix forward: prefix KV + suffix tokens, output last-token logits."""
+        q_len = input_ids.shape[1]
+        inputs_embeds = self.embed_tokens(input_ids)
+        position_embeddings = _qwen3_rotary_emb_matmul2d(
+            self.rotary_emb, inputs_embeds, position_ids
+        )
+
+        past_key_0 = past_key_values[0]
+        past_len = past_key_0.shape[2]
+        k_len = past_len + q_len
+
+        # Boolean causal mask [B, 1, q_len, k_len] for non-PFA attention
+        bool_mask = _make_bool_causal_mask(attention_mask, q_len, k_len, past_len)
+
+        hidden_states = inputs_embeds
+        residual = hidden_states
+        hidden_states = self.layers[0].input_layernorm(hidden_states)
+
+        for i, layer in enumerate(self.layers):
+            pk_in = past_key_values[2 * i]
+            pv_in = past_key_values[2 * i + 1]
+            # Non-PFA attention: _cann_attn_forward with enable_pfa=False
+            attn_out, _, _ = _cann_attn_forward(
+                layer.self_attn,
+                hidden_states,
+                position_embeddings,
+                bool_mask,
+                pk_in,
+                pv_in,
+                self.flags["enable_rotarymul"],
+                False,  # enable_pfa=False: 310P doesn't support q_len != k_len
+                self.flags["enable_bmm2mm"],
+            )
+
+            hidden_states, residual = _cann_add_rms_norm(
+                residual,
+                attn_out,
+                layer.post_attention_layernorm,
+                self.flags["enable_add_rmsnorm"],
+            )
+
+            mlp_out = _cann_mlp_forward(
+                layer.mlp,
+                hidden_states,
+                self.flags["enable_swiglu"],
+                self.flags["enable_bmm2mm"],
+            )
+            if i < self.num_layers - 1:
+                hidden_states, residual = _cann_add_rms_norm(
+                    residual,
+                    mlp_out,
+                    self.layers[i + 1].input_layernorm,
+                    self.flags["enable_add_rmsnorm"],
+                )
+            else:
+                hidden_states, _ = _cann_add_rms_norm(
+                    residual, mlp_out, self.norm, self.flags["enable_add_rmsnorm"]
+                )
+
+        logits = self.lm_head(hidden_states)
+        # Only return last token's logits [batch, 1, vocab]
+        return logits[:, -1:, :]
+
+
+def export_prefix_suffix(model, output_dir, device="cpu", flags=None):
+    """Export prefix and suffix models to ONNX.
+
+    Prefix model: processes common prefix tokens, outputs KV cache.
+    Suffix model: receives prefix KV cache + user suffix tokens,
+    outputs last-token logits [batch, 1, vocab_size].
+    """
+    default_flags = {
+        "enable_rmsnorm_replace": False,
+        "enable_add_rmsnorm": False,
+        "enable_rotarymul": True,
+        "enable_pfa": True,
+        "enable_swiglu": False,
+        "enable_bmm2mm": False,
+    }
+    if flags:
+        default_flags.update(flags)
+    flags = default_flags
+
+    lm_head = model.lm_head
+    model.eval()
+    lm_head.eval()
+    model.to(device)
+    lm_head.to(device)
+
+    num_layers = model.config.num_hidden_layers
+    num_kv_heads = model.config.num_key_value_heads
+    head_dim = getattr(
+        model.config,
+        "head_dim",
+        model.config.hidden_size // model.config.num_attention_heads,
+    )
+    vocab_size = model.config.vocab_size
+
+    print(f"Model config: {num_layers} layers, {num_kv_heads} kv_heads, "
+          f"head_dim={head_dim}, vocab={vocab_size}")
+
+    prefix_model = Qwen3PrefixModel(model, flags).to(device).eval()
+    suffix_model = Qwen3SuffixModel(model, lm_head, flags).to(device).eval()
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- Export Prefix model ---
+    # Prefix: seq_len=768 (PFA requires aligned bucket sizes on 310P; 768 >= 650)
+    prefix_len = 768
+    prefix_path = output_dir / "qwen3_prefix.onnx"
+
+    dummy_input_ids = torch.ones(1, prefix_len, dtype=torch.int64, device=device)
+    dummy_attention_mask = torch.ones(1, prefix_len, dtype=torch.int64, device=device)
+    dummy_position_ids = torch.arange(prefix_len, dtype=torch.int64, device=device).unsqueeze(0)
+
+    prefix_dynamic_axes = {
+        "input_ids": {0: "batch", 1: "seq_len"},
+        "attention_mask": {0: "batch", 1: "seq_len"},
+        "position_ids": {0: "batch", 1: "seq_len"},
+        "present_key_values": {1: "batch", 3: "seq_len"},
+    }
+
+    print(f"\nExporting prefix model to {prefix_path}...")
+    with torch.no_grad():
+        torch.onnx.export(
+            prefix_model,
+            (dummy_input_ids, dummy_attention_mask, dummy_position_ids),
+            str(prefix_path),
+            input_names=["input_ids", "attention_mask", "position_ids"],
+            output_names=["present_key_values"],
+            opset_version=18,
+            do_constant_folding=True,
+            dynamic_axes=prefix_dynamic_axes,
+        )
+    print("Prefix model exported successfully.")
+
+    # --- Export Suffix model ---
+    # Suffix: suffix_len tokens + prefix KV cache (prefix_len=768)
+    suffix_len = 16
+    suffix_path = output_dir / "qwen3_suffix.onnx"
+
+    dummy_suf_input_ids = torch.ones(1, suffix_len, dtype=torch.int64, device=device)
+    dummy_suf_attn_mask = torch.ones(1, prefix_len + suffix_len, dtype=torch.int64, device=device)
+    dummy_suf_pos_ids = torch.arange(
+        prefix_len, prefix_len + suffix_len, dtype=torch.int64, device=device
+    ).unsqueeze(0)
+    dummy_past_kv = torch.zeros(
+        2 * num_layers, 1, num_kv_heads, prefix_len, head_dim,
+        dtype=torch.float16, device=device,
+    )
+
+    suffix_dynamic_axes = {
+        "input_ids": {0: "batch", 1: "suffix_len"},
+        "attention_mask": {0: "batch", 1: "total_seq_len"},
+        "position_ids": {0: "batch", 1: "suffix_len"},
+        "past_key_values": {1: "batch", 3: "prefix_seq_len"},
+        "logits": {0: "batch"},
+    }
+
+    print(f"\nExporting suffix model to {suffix_path}...")
+    with torch.no_grad():
+        torch.onnx.export(
+            suffix_model,
+            (dummy_suf_input_ids, dummy_suf_attn_mask, dummy_suf_pos_ids, dummy_past_kv),
+            str(suffix_path),
+            input_names=["input_ids", "attention_mask", "position_ids", "past_key_values"],
+            output_names=["logits"],
+            opset_version=18,
+            do_constant_folding=True,
+            dynamic_axes=suffix_dynamic_axes,
+        )
+    print("Suffix model exported successfully.")
+
+    print(f"\nExport finished. Files saved in {output_dir}")
+    print(f"  Prefix: {prefix_path}")
+    print(f"  Suffix: {suffix_path}")
+
+
+def _build_prefill_config(prefill, prefill_only, prefill_slice_last):
+    """Build prefill export wrapper, output names, and dynamic axes."""
+    if prefill_slice_last:
+        output_kv = not prefill_only
+        export = Qwen3LlmPrefillSliceLast(prefill, output_kv=output_kv)
+        if output_kv:
+            return export, ["logits", "present_key_values"], {
+                "input_ids": {0: "batch", 1: "seq_len"},
+                "attention_mask": {0: "batch", 1: "seq_len"},
+                "position_ids": {0: "batch", 1: "seq_len"},
+                "logits": {0: "batch"},
+                "present_key_values": {1: "batch", 3: "seq_len"},
+            }
+        return export, ["logits"], {
+            "input_ids": {0: "batch", 1: "seq_len"},
+            "attention_mask": {0: "batch", 1: "seq_len"},
+            "position_ids": {0: "batch", 1: "seq_len"},
+            "logits": {0: "batch"},
+        }
+
+    if prefill_only:
+        return Qwen3LlmPrefillNoCache(prefill), ["logits"], {
+            "input_ids": {0: "batch", 1: "seq_len"},
+            "attention_mask": {0: "batch", 1: "seq_len"},
+            "position_ids": {0: "batch", 1: "seq_len"},
+            "logits": {0: "batch", 1: "seq_len"},
+        }
+
+    return prefill, ["logits", "present_key_values"], {
+        "input_ids": {0: "batch", 1: "seq_len"},
+        "attention_mask": {0: "batch", 1: "seq_len"},
+        "position_ids": {0: "batch", 1: "seq_len"},
+        "logits": {0: "batch", 1: "seq_len"},
+        "present_key_values": {1: "batch", 3: "seq_len"},
+    }
+
+
+def _export_decode_onnx(decode, prefill, decode_path, device, dummy_seq,
+                        num_layers, num_kv_heads, head_dim, any_fusion_on):
+    """Run PTQ calibration (if enabled) and export decode model to ONNX."""
+    if TORCH_PTQ_INT8 and not any_fusion_on:
+        print(f"\nRunning PTQ int8 calibration (calib={TORCH_PTQ_CALIB_JSONL or '<synthetic>'}, "
+              f"max_samples={TORCH_PTQ_MAX_SAMPLES}, max_decode_steps={TORCH_PTQ_MAX_DECODE_STEPS}, "
+              f"smooth_alpha={SMOOTH_ALPHA}, weight_clip_ratio={WEIGHT_CLIP_RATIO})...")
+        calib_records = _load_calib_records_jsonl(TORCH_PTQ_CALIB_JSONL, TORCH_PTQ_MAX_SAMPLES)
+        if not calib_records:
+            print("Warning: no calibration JSONL provided; using synthetic records.")
+            calib_records = _make_synthetic_calib_records(
+                num_samples=min(4, int(TORCH_PTQ_MAX_SAMPLES)),
+                seq_len=max(8, dummy_seq),
+            )
+        decode = _torch_ptq_static_int8_quantize_decode(
+            prefill=prefill, decode=decode, device=torch.device(device),
+            calib_records=calib_records, max_decode_steps=TORCH_PTQ_MAX_DECODE_STEPS,
+        )
+        print(f"PTQ int8 quant params attached. Decode will export to {decode_path.name}")
+
+    dummy_step = 1
+    dummy_past_len = dummy_seq
+    dummy_input_ids_step = torch.randint(0, 1000, (1, dummy_step), dtype=torch.int32, device=device)
+    dummy_attention_mask_step = torch.ones(1, dummy_past_len + dummy_step, dtype=torch.int32, device=device)
+    dummy_position_ids_step = torch.tensor([[dummy_past_len]], dtype=torch.int32, device=device)
+    dummy_past = torch.zeros(2 * num_layers, 1, num_kv_heads, dummy_past_len, head_dim,
+                             dtype=torch.float16, device=device)
+
+    decode_dynamic_axes = {
+        "input_ids": {0: "batch", 1: "step"},
+        "attention_mask": {0: "batch", 1: "total_seq_len"},
+        "position_ids": {0: "batch", 1: "step"},
+        "logits": {0: "batch", 1: "step"},
+        "past_key_values": {1: "batch", 3: "past_seq_len"},
+        "present_key_values": {1: "batch", 3: "total_seq_len"},
+    }
+
+    print(f"Exporting LLM decode to {decode_path}...")
+    with torch.no_grad():
+        torch.onnx.export(
+            decode,
+            (dummy_input_ids_step, dummy_attention_mask_step, dummy_position_ids_step, dummy_past),
+            str(decode_path),
+            input_names=["input_ids", "attention_mask", "position_ids", "past_key_values"],
+            output_names=["logits", "present_key_values"],
+            opset_version=18, do_constant_folding=True,
+            dynamic_axes=decode_dynamic_axes,
+        )
+    print("LLM decode exported successfully.")
+
+
 def export_llm_prefill_decode(
     model, output_dir, device="cpu", flags=None,
     prefill_only=False, prefill_slice_last=False,
@@ -1383,8 +1718,7 @@ def export_llm_prefill_decode(
     num_layers = model.config.num_hidden_layers
     num_kv_heads = model.config.num_key_value_heads
     head_dim = getattr(
-        model.config,
-        "head_dim",
+        model.config, "head_dim",
         model.config.hidden_size // model.config.num_attention_heads,
     )
 
@@ -1394,82 +1728,25 @@ def export_llm_prefill_decode(
             _replace_rmsnorm_with_cann(model)
         prefill = Qwen3LlmPrefillFused(model, lm_head, flags).to(device).eval()
         decode = Qwen3LlmDecodeFused(model, lm_head, flags).to(device).eval()
-        suffix = ""
         enabled = [k for k, v in flags.items() if v]
         print(f"Fusion opt ON: {', '.join(enabled)}")
     else:
         prefill = Qwen3LlmPrefill(model, lm_head).to(device).eval()
         decode = Qwen3LlmDecode(model, lm_head).to(device).eval()
-        suffix = ""
 
-    prefill_path = Path(output_dir) / f"qwen3_llm_prefill{suffix}.onnx"
-    if prefill_slice_last and prefill_only:
-        # Scene B: slice_last without KV cache (output: logits [batch, 1, vocab])
-        prefill_path = Path(output_dir) / f"qwen3_llm_prefill{suffix}.onnx"
-    elif prefill_slice_last and not prefill_only:
-        # Scene A with slice_last: outputs sliced logits + KV cache
-        prefill_path = Path(output_dir) / f"qwen3_llm_prefill{suffix}.onnx"
-    elif prefill_only:
-        # Scene B variant: no_cache, full logits without KV cache
-        prefill_path = Path(output_dir) / f"qwen3_llm_prefill{suffix}.onnx"
-    decode_path = Path(output_dir) / f"qwen3_llm_decode{suffix}.onnx"
+    prefill_path = Path(output_dir) / "qwen3_llm_prefill.onnx"
+    decode_path = Path(output_dir) / "qwen3_llm_decode.onnx"
     if TORCH_PTQ_INT8 and not any_fusion_on:
-        # PTQ only supported on the non-fused path (fused path mixes Custom
-        # fusion ops with quant Custom ops, which converter_lite rejects).
-        decode_path = Path(output_dir) / f"qwen3_llm_decode{suffix}_ptq_int8.onnx"
+        decode_path = Path(output_dir) / "qwen3_llm_decode_ptq_int8.onnx"
 
     dummy_seq = 8
-    dummy_input_ids = torch.randint(
-        0, 1000, (1, dummy_seq), dtype=torch.int32, device=device
-    )
+    dummy_input_ids = torch.randint(0, 1000, (1, dummy_seq), dtype=torch.int32, device=device)
     dummy_attention_mask = torch.ones(1, dummy_seq, dtype=torch.int32, device=device)
-    dummy_position_ids = torch.arange(dummy_seq, device=device, dtype=torch.int32).view(
-        1, -1
+    dummy_position_ids = torch.arange(dummy_seq, device=device, dtype=torch.int32).view(1, -1)
+
+    prefill_export, prefill_output_names, prefill_dynamic_axes = _build_prefill_config(
+        prefill, prefill_only, prefill_slice_last,
     )
-
-    prefill_input_names = ["input_ids", "attention_mask", "position_ids"]
-    prefill_output_names = ["logits", "present_key_values"]
-    prefill_dynamic_axes = {
-        "input_ids": {0: "batch", 1: "seq_len"},
-        "attention_mask": {0: "batch", 1: "seq_len"},
-        "position_ids": {0: "batch", 1: "seq_len"},
-        "logits": {0: "batch", 1: "seq_len"},
-        "present_key_values": {1: "batch", 3: "seq_len"},
-    }
-
-    if prefill_slice_last:
-        output_kv = not prefill_only
-        prefill_export = Qwen3LlmPrefillSliceLast(prefill, output_kv=output_kv)
-        if output_kv:
-            # Scene A: sliced logits + KV cache
-            prefill_output_names = ["logits", "present_key_values"]
-            prefill_dynamic_axes = {
-                "input_ids": {0: "batch", 1: "seq_len"},
-                "attention_mask": {0: "batch", 1: "seq_len"},
-                "position_ids": {0: "batch", 1: "seq_len"},
-                "logits": {0: "batch"},
-                "present_key_values": {1: "batch", 3: "seq_len"},
-            }
-        else:
-            # Scene B: sliced logits only, no KV cache
-            prefill_output_names = ["logits"]
-            prefill_dynamic_axes = {
-                "input_ids": {0: "batch", 1: "seq_len"},
-                "attention_mask": {0: "batch", 1: "seq_len"},
-                "position_ids": {0: "batch", 1: "seq_len"},
-                "logits": {0: "batch"},
-            }
-    elif prefill_only:
-        prefill_export = Qwen3LlmPrefillNoCache(prefill)
-        prefill_output_names = ["logits"]
-        prefill_dynamic_axes = {
-            "input_ids": {0: "batch", 1: "seq_len"},
-            "attention_mask": {0: "batch", 1: "seq_len"},
-            "position_ids": {0: "batch", 1: "seq_len"},
-            "logits": {0: "batch", 1: "seq_len"},
-        }
-    else:
-        prefill_export = prefill
 
     print(f"Exporting LLM prefill to {prefill_path}...")
     with torch.no_grad():
@@ -1477,10 +1754,9 @@ def export_llm_prefill_decode(
             prefill_export,
             (dummy_input_ids, dummy_attention_mask, dummy_position_ids),
             str(prefill_path),
-            input_names=prefill_input_names,
+            input_names=["input_ids", "attention_mask", "position_ids"],
             output_names=prefill_output_names,
-            opset_version=18,
-            do_constant_folding=True,
+            opset_version=18, do_constant_folding=True,
             dynamic_axes=prefill_dynamic_axes,
         )
     print("LLM prefill exported successfully.")
@@ -1489,210 +1765,32 @@ def export_llm_prefill_decode(
         print("Skipping decode export (--prefill-only mode).")
         return
 
-    # Run PTQ calibration + attach quant params to decode's Linear modules.
-    # Must happen AFTER prefill export (so prefill stays FP32) and BEFORE
-    # decode export (so decode's ONNX contains AscendQuant/QuantBatchMatmul).
-    if TORCH_PTQ_INT8 and not any_fusion_on:
-        print(f"\nRunning PTQ int8 calibration (calib={TORCH_PTQ_CALIB_JSONL or '<synthetic>'}, "
-              f"max_samples={TORCH_PTQ_MAX_SAMPLES}, max_decode_steps={TORCH_PTQ_MAX_DECODE_STEPS}, "
-              f"smooth_alpha={SMOOTH_ALPHA}, weight_clip_ratio={WEIGHT_CLIP_RATIO})...")
-        calib_records = _load_calib_records_jsonl(TORCH_PTQ_CALIB_JSONL, TORCH_PTQ_MAX_SAMPLES)
-        if not calib_records:
-            print("Warning: no calibration JSONL provided; using synthetic records.")
-            calib_records = _make_synthetic_calib_records(
-                num_samples=min(4, int(TORCH_PTQ_MAX_SAMPLES)),
-                seq_len=max(8, dummy_seq),
-            )
-        decode = _torch_ptq_static_int8_quantize_decode(
-            prefill=prefill,
-            decode=decode,
-            device=torch.device(device),
-            calib_records=calib_records,
-            max_decode_steps=TORCH_PTQ_MAX_DECODE_STEPS,
-        )
-        print(f"PTQ int8 quant params attached. Decode will export to {decode_path.name}")
-
-    dummy_step = 1
-    dummy_past_len = dummy_seq
-    dummy_input_ids_step = torch.randint(
-        0, 1000, (1, dummy_step), dtype=torch.int32, device=device
-    )
-    dummy_attention_mask_step = torch.ones(
-        1, dummy_past_len + dummy_step, dtype=torch.int32, device=device
-    )
-    dummy_position_ids_step = torch.tensor(
-        [[dummy_past_len]], dtype=torch.int32, device=device
-    )
-    dummy_past = torch.zeros(
-        2 * num_layers,
-        1,
-        num_kv_heads,
-        dummy_past_len,
-        head_dim,
-        dtype=torch.float16,
-        device=device,
+    _export_decode_onnx(
+        decode, prefill, decode_path, device, dummy_seq,
+        num_layers, num_kv_heads, head_dim, any_fusion_on,
     )
 
-    decode_input_names = [
-        "input_ids",
-        "attention_mask",
-        "position_ids",
-        "past_key_values",
-    ]
-    decode_output_names = ["logits", "present_key_values"]
 
-    decode_dynamic_axes = {
-        "input_ids": {0: "batch", 1: "step"},
-        "attention_mask": {0: "batch", 1: "total_seq_len"},
-        "position_ids": {0: "batch", 1: "step"},
-        "logits": {0: "batch", 1: "step"},
-        "past_key_values": {1: "batch", 3: "past_seq_len"},
-        "present_key_values": {1: "batch", 3: "total_seq_len"},
-    }
-
-    print(f"Exporting LLM decode to {decode_path}...")
-    with torch.no_grad():
-        torch.onnx.export(
-            decode,
-            (
-                dummy_input_ids_step,
-                dummy_attention_mask_step,
-                dummy_position_ids_step,
-                dummy_past,
-            ),
-            str(decode_path),
-            input_names=decode_input_names,
-            output_names=decode_output_names,
-            opset_version=18,
-            do_constant_folding=True,
-            dynamic_axes=decode_dynamic_axes,
-        )
-    print("LLM decode exported successfully.")
-
-
-def main():
-    """
-    Main function to export Qwen3-0.6B LLM prefill and decode models to ONNX format.
-    """
-    parser = argparse.ArgumentParser(description="Export Qwen3-0.6B to ONNX")
-    parser.add_argument(
-        "--model-id", type=str, default="Qwen/Qwen3-0.6B", help="HuggingFace model ID"
-    )
-    parser.add_argument(
-        "--output-dir", type=str, default="./qwen3_onnx", help="Output directory"
-    )
-    parser.add_argument(
-        "--device", type=str, default="cpu", help="Device for export (cpu or cuda)"
-    )
-    parser.add_argument(
-        "--enable-rmsnorm-replace",
-        action="store_true",
-        help="Replace Qwen3RMSNorm modules with CANN CannRmsNorm (Custom RmsNorm op).",
-    )
-    parser.add_argument(
-        "--enable-add-rmsnorm",
-        action="store_true",
-        help="Fuse residual+RmsNorm into CANN AddRmsNorm inside fused wrapper.",
-    )
-    parser.add_argument(
-        "--enable-pfa",
-        action="store_true",
-        default=True,
-        help="Route QK^T+softmax+V through Custom(PromptFlashAttention) (default: ON).",
-    )
-    parser.add_argument(
-        "--enable-all-fusion",
-        action="store_true",
-        help="Convenience: turn on all per-op fusion switches.",
-    )
-    parser.add_argument(
-        "--disable-fusion",
-        action="store_true",
-        help="Disable all fusion (export non-fused baseline).",
-    )
-    parser.add_argument(
-        "--enable-swiglu",
-        action="store_true",
-        help="Route MLP SiLU(gate)*up through Custom(SwiGlu) (uses cat([gate,up])).",
-    )
-    parser.add_argument(
-        "--enable-bmm2mm",
-        action="store_true",
-        help="Lower BatchMatMul to MatMulV2 (CANN Custom) for Linear layers.",
-    )
-    parser.add_argument(
-        "--torch-ptq-int8",
-        action="store_true",
-        help="Enable PTQ int8 quantization for decode (AscendQuant + QuantBatchMatmul).",
-    )
-    parser.add_argument(
-        "--disable-torch-ptq-int8",
-        action="store_true",
-        help="(Default) Disable PTQ int8 quantization; export plain FP32/fp16 decode.",
-    )
-    parser.add_argument(
-        "--torch-ptq-calib-jsonl",
-        type=str,
-        default="",
-        help="Calibration data JSONL file path (one record per line).",
-    )
-    parser.add_argument(
-        "--torch-ptq-max-samples", type=int, default=32,
-        help="Max number of calibration samples to use.",
-    )
-    parser.add_argument(
-        "--torch-ptq-max-decode-steps", type=int, default=32,
-        help="Max decode steps per calibration sample.",
-    )
-    parser.add_argument(
-        "--smooth-alpha", type=float, default=0.5,
-        help="SmoothQuant alpha (0=no activation smoothing, 1=full).",
-    )
-    parser.add_argument(
-        "--weight-clip-ratio", type=float, default=0.0,
-        help="Clip top fraction of weight outliers before quantization (0=off).",
-    )
-    parser.add_argument(
-        "--prefill-only-without-cache",
-        action="store_true",
-        help="Only export prefill model without KV cache output (single output: logits "
-             "for all positions). Skips decode export. "
-             "Default: disabled (slice_last is the default).",
-    )
-    parser.add_argument(
-        "--enable-common-prefix",
-        action="store_true",
-        help="Export prefix + suffix models for common-prefix caching scenario. "
-             "Prefix model processes common prefix tokens and outputs KV cache; "
-             "Suffix model takes prefix KV + user suffix tokens and outputs last-token logits. "
-             "Default: disabled.",
-    )
-
-    args = parser.parse_args()
-
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
+def _build_flags(args):
+    """Build fusion flags dict from CLI args."""
     if args.disable_fusion:
-        flags = {
-            "enable_rmsnorm_replace": False,
-            "enable_add_rmsnorm": False,
-            "enable_rotarymul": False,
-            "enable_pfa": False,
-            "enable_swiglu": False,
-            "enable_bmm2mm": False,
-        }
-    else:
-        flags = {
-            "enable_rmsnorm_replace": args.enable_rmsnorm_replace or args.enable_all_fusion,
-            "enable_add_rmsnorm": args.enable_add_rmsnorm or args.enable_all_fusion,
-            "enable_rotarymul": True,  # always ON, no off scenario
-            "enable_pfa": args.enable_pfa or args.enable_all_fusion,
-            "enable_swiglu": args.enable_swiglu or args.enable_all_fusion,
-            "enable_bmm2mm": args.enable_bmm2mm or args.enable_all_fusion,
-        }
+        return {k: False for k in [
+            "enable_rmsnorm_replace", "enable_add_rmsnorm", "enable_rotarymul",
+            "enable_pfa", "enable_swiglu", "enable_bmm2mm",
+        ]}
+    base = {
+        "enable_rmsnorm_replace": args.enable_rmsnorm_replace or args.enable_all_fusion,
+        "enable_add_rmsnorm": args.enable_add_rmsnorm or args.enable_all_fusion,
+        "enable_rotarymul": True,
+        "enable_pfa": (args.enable_pfa or args.enable_all_fusion) and not args.disable_pfa,
+        "enable_swiglu": args.enable_swiglu or args.enable_all_fusion,
+        "enable_bmm2mm": args.enable_bmm2mm or args.enable_all_fusion,
+    }
+    return base
 
-    # Wire PTQ CLI args into module-level globals consumed by export_llm_prefill_decode.
+
+def _setup_ptq_globals(args):
+    """Wire PTQ CLI args into module-level globals."""
     global TORCH_PTQ_INT8, TORCH_PTQ_CALIB_JSONL, TORCH_PTQ_MAX_SAMPLES
     global TORCH_PTQ_MAX_DECODE_STEPS, SMOOTH_ALPHA, WEIGHT_CLIP_RATIO
     if args.disable_torch_ptq_int8 and args.torch_ptq_int8:
@@ -1705,6 +1803,64 @@ def main():
     SMOOTH_ALPHA = float(args.smooth_alpha)
     WEIGHT_CLIP_RATIO = float(args.weight_clip_ratio)
 
+
+def _build_parser():
+    """Create argparse parser with all CLI arguments."""
+    parser = argparse.ArgumentParser(description="Export Qwen3-0.6B to ONNX")
+    parser.add_argument("--model-id", type=str, default="Qwen/Qwen3-0.6B", help="HuggingFace model ID")
+    parser.add_argument("--output-dir", type=str, default="./qwen3_onnx", help="Output directory")
+    parser.add_argument("--device", type=str, default="cpu", help="Device for export (cpu or cuda)")
+    parser.add_argument("--enable-rmsnorm-replace", action="store_true",
+                        help="Replace Qwen3RMSNorm modules with CANN CannRmsNorm (Custom RmsNorm op).")
+    parser.add_argument("--enable-add-rmsnorm", action="store_true",
+                        help="Fuse residual+RmsNorm into CANN AddRmsNorm inside fused wrapper.")
+    parser.add_argument("--enable-pfa", action="store_true", default=True,
+                        help="Route QK^T+softmax+V through Custom(PromptFlashAttention) (default: ON).")
+    parser.add_argument("--disable-pfa", action="store_true", help="Disable PFA (PromptFlashAttention) fusion.")
+    parser.add_argument("--enable-all-fusion", action="store_true",
+                        help="Convenience: turn on all per-op fusion switches.")
+    parser.add_argument("--disable-fusion", action="store_true", help="Disable all fusion (export non-fused baseline).")
+    parser.add_argument("--enable-swiglu", action="store_true",
+                        help="Route MLP SiLU(gate)*up through Custom(SwiGlu) (uses cat([gate,up])).")
+    parser.add_argument("--enable-bmm2mm", action="store_true",
+                        help="Lower BatchMatMul to MatMulV2 (CANN Custom) for Linear layers.")
+    parser.add_argument("--torch-ptq-int8", action="store_true",
+                        help="Enable PTQ int8 quantization for decode (AscendQuant + QuantBatchMatmul).")
+    parser.add_argument("--disable-torch-ptq-int8", action="store_true",
+                        help="(Default) Disable PTQ int8 quantization; export plain FP32/fp16 decode.")
+    parser.add_argument("--torch-ptq-calib-jsonl", type=str, default="",
+                        help="Calibration data JSONL file path (one record per line).")
+    parser.add_argument("--torch-ptq-max-samples", type=int, default=32,
+                        help="Max number of calibration samples to use.")
+    parser.add_argument("--torch-ptq-max-decode-steps", type=int, default=32,
+                        help="Max decode steps per calibration sample.")
+    parser.add_argument("--smooth-alpha", type=float, default=0.5,
+                        help="SmoothQuant alpha (0=no activation smoothing, 1=full).")
+    parser.add_argument("--weight-clip-ratio", type=float, default=0.0,
+                        help="Clip top fraction of weight outliers before quantization (0=off).")
+    parser.add_argument("--prefill-only-without-cache", action="store_true",
+                        help="Only export prefill model without KV cache output "
+                             "(single output: logits for all positions). "
+                             "Skips decode export. "
+                             "Default: disabled (slice_last is the default).")
+    parser.add_argument("--enable-common-prefix", action="store_true",
+                        help="Export prefix + suffix models for common-prefix caching scenario. "
+                             "Prefix model processes common prefix tokens and outputs KV cache; "
+                             "Suffix model takes prefix KV + user suffix tokens and outputs last-token logits. "
+                             "Default: disabled.")
+    return parser
+
+
+def main():
+    """Export Qwen3-0.6B LLM prefill and decode models to ONNX."""
+    args = _build_parser().parse_args()
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    flags = _build_flags(args)
+    _setup_ptq_globals(args)
+
     print(f"\nLoading model {args.model_id} in FP16 for export...")
     model = AutoModelForCausalLM.from_pretrained(
         args.model_id,
@@ -1714,30 +1870,13 @@ def main():
         attn_implementation="eager",
     )
 
-    # Determine export mode
-    # slice_last is always ON (hardcoded):
-    # - prefill_only=False (Scene A): sliced logits + KV cache + decode
-    # - prefill_only=True  (Scene B): sliced logits only, no decode
-    prefill_only_without_cache = args.prefill_only_without_cache
-    prefill_slice_last = True  # always ON, no off scenario
-    enable_common_prefix = args.enable_common_prefix
-
-    if enable_common_prefix:
-        # Common-prefix scenario: export prefix + suffix models
-        from common_prefix_adapt.export_qwen3_prefix_suffix import export_prefix_suffix
-        export_prefix_suffix(
-            model, str(output_dir), args.device, flags=flags,
-        )
+    if args.enable_common_prefix:
+        export_prefix_suffix(model, str(output_dir), args.device, flags=flags)
     else:
-        # prefill_only is True only when --prefill-only-without-cache is set.
-        # slice_last is independent: it can be ON with or without prefill_only.
-        # - slice_last + prefill_only=False (Scene A): sliced logits + KV cache + decode
-        # - slice_last + prefill_only=True  (Scene B): sliced logits only, no decode
-        # - no slice_last + prefill_only=True (Scene B variant): full logits, no decode
         export_llm_prefill_decode(
             model, output_dir, args.device, flags=flags,
-            prefill_only=prefill_only_without_cache,
-            prefill_slice_last=prefill_slice_last,
+            prefill_only=args.prefill_only_without_cache,
+            prefill_slice_last=True,
         )
 
     print("Clearing memory after export...")
