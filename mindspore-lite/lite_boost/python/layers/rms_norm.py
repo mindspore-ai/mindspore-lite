@@ -19,13 +19,13 @@ Fused replacement for the expanded ``F.normalize(x, dim) * sqrt(dim) *
 gamma`` chain (7+ ops) used by Wan-series VAE ``RMS_norm`` layers, and
 for the ``x / RMS(x) * weight`` form used by DiT qk-norm (``WanRMSNorm``).
 
-``npu_rms_norm`` accepts N-D inputs natively on most SoCs (910B etc.);
-the 310P3 binary set is 2D-only (probe-verified: higher-rank inputs tile
-incorrectly; fp16 / fp32 accepted, C >= 8).  This primitive therefore
-passes N-D inputs straight through on supporting SoCs and folds to 2D
-``(N, C)`` internally on 310P3 — callers only need to place the
-normalized dim last (e.g. transpose for channel-first layouts); they
-never reshape.
+``npu_rms_norm`` is 2-D ``(N, C)`` only on every SoC — the wan2.2
+whitelist rejects higher-rank inputs with ValueError (probe on 300I Duo
+showed fp16 higher-rank results are silently wrong there, and N-D paths
+on other SoCs are outside the supported contract).  On 300I Duo bf16 is
+rejected and ``C >= 16`` is required (measured bounds).  Callers must
+fold to ``(N, C)`` with the normalized dim last (e.g. transpose for
+channel-first layouts) before calling; they never reshape.
 
 Norm is per-last-dim: ``y = x / RMS(x) * gamma`` with
 ``RMS(x) = sqrt(mean(x^2))``, so the ``sqrt(dim)`` scale is NOT baked
@@ -41,7 +41,7 @@ _FORCE_2D = None
 
 
 def _needs_2d_collapse():
-    """True only on 310P3 (npu_rms_norm is 2D-only there).  Cached."""
+    """True only on 300I Duo (bf16 reject and C >= 16 checks apply there).  Cached."""
     global _FORCE_2D
     if _FORCE_2D is None:
         try:
@@ -53,16 +53,47 @@ def _needs_2d_collapse():
 
 
 def rms_norm(x, gamma, eps=1e-6):
-    """Apply per-row RMS normalization over the last dim.
+    r"""
+    Applies per-row RMS normalization over the last dim of `x`.
+
+    Computes :math:`y = x / RMS(x) * gamma`, where
+    :math:`RMS(x) = \sqrt{mean(x^2)}` and :math:`mean(x^2)` is the mean of
+    squared values of `x` over the last dim. Usually used to replace the
+    expanded ``F.normalize(x, dim) * sqrt(dim) * gamma`` chain in Wan-series
+    VAE ``RMS_norm`` layers.
 
     Args:
-        x:      Input of any shape; the normalized dim must be last.
-        gamma:  Per-column scale, ``(C,)`` broadcastable.
-        eps:    Epsilon (kept for API parity; no effect on 310P3).
+        x (Tensor): 2-D input tensor with shape :math:`(N, C)`, the
+            normalized dim is the last dim. Supported dtypes are float16,
+            float32; on A2 and other SoCs bfloat16 is additionally
+            supported.
+        gamma (Tensor): Per-column scale with shape :math:`(C,)`, matching
+            the last dim of `x`.
+        eps (float, optional): Value added to the denominator for numerical
+            stability. Default: ``1e-6``.
 
     Returns:
-        Normalized tensor, same shape as the input (the ``rstd`` second
-        return value of ``npu_rms_norm`` is discarded).
+        Tensor, the normalized result with the same shape and dtype as `x`.
+
+    Raises:
+        ValueError: If `x` is not 2-D, or `gamma` is not 1-D or does not
+            match the last dim of `x`.
+        ValueError: If on 300I Duo `x` is bfloat16, or the last dim of `x`
+            is smaller than 16.
+
+    Supported Platforms:
+        ``Ascend``
+
+    Examples:
+        >>> import torch
+        >>> import torch_npu
+        >>> from lite_boost.layers import rms_norm
+        >>> torch.npu.set_device(0)
+        >>> x = torch.full((2, 16), 2.0, device="npu")
+        >>> gamma = torch.ones(16, device="npu")
+        >>> y = rms_norm(x, gamma)
+        >>> print(y.shape)
+        torch.Size([2, 16])
     """
     if not torch.is_tensor(x) or not torch.is_tensor(gamma):
         raise TypeError(
