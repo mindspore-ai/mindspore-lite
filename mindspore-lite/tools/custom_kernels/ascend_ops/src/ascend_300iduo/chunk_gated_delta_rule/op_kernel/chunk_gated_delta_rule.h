@@ -113,6 +113,18 @@ class ChunkGatedDeltaRule {
     InitLocalBuffers();
   }
 
+  __aicore__ inline void CopyL0CToUb(LocalTensor<float> dst, LocalTensor<float> src,
+                                     const DataCopyParams &copyParams,
+                                     const DataCopyEnhancedParams &copyEnhanced) {
+    event_t mToV = static_cast<event_t>(pipe_->FetchEventID(HardEvent::M_V));
+    event_t vToM = static_cast<event_t>(pipe_->FetchEventID(HardEvent::V_M));
+    SetFlag<HardEvent::M_V>(mToV);
+    WaitFlag<HardEvent::M_V>(mToV);
+    DataCopy(dst, src, copyParams, copyEnhanced);
+    SetFlag<HardEvent::V_M>(vToM);
+    WaitFlag<HardEvent::V_M>(vToM);
+  }
+
   __aicore__ inline void SetGlobalTensors(const CGDRInitParams &initParams) {
     queryGm_.SetGlobalBuffer((__gm__ inType *)initParams.query);
     keyGm_.SetGlobalBuffer((__gm__ inType *)initParams.key);
@@ -496,7 +508,7 @@ class ChunkGatedDeltaRule {
     DataCopyParams cCopyParams{static_cast<uint16_t>(kBlock / 16), static_cast<uint16_t>(kBlock / 16), 0, 0};
     DataCopyEnhancedParams cCopyEnhanced;
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
-    DataCopy(cNz, c1Local, cCopyParams, cCopyEnhanced);
+    CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
     constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / 32;
     constexpr uint16_t kNzSrcStride = (kBlock / 16 * 16 * 16 - 16) * sizeof(float) / 32;
@@ -1168,7 +1180,7 @@ class ChunkGatedDeltaRule {
     DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(kMatmulM / 16), 0, 0};
     DataCopyEnhancedParams cCopyEnhanced;
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
-    DataCopy(cNz, c1Local, cCopyParams, cCopyEnhanced);
+    CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
     constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / 32;
     constexpr uint16_t kNzSrcStride = (kMatmulM / 16 * 16 * 16 - 16) * sizeof(float) / 32;
@@ -1283,7 +1295,7 @@ class ChunkGatedDeltaRule {
     DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(kMatmulM / 16), 0, 0};
     DataCopyEnhancedParams cCopyEnhanced;
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
-    DataCopy(cNz, c1Local, cCopyParams, cCopyEnhanced);
+    CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
     constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / 32;
     constexpr uint16_t kNzSrcStride = (kMatmulM / 16 * 16 * 16 - 16) * sizeof(float) / 32;
@@ -1719,7 +1731,7 @@ class ChunkGatedDeltaRule {
     DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(kMatmulM / 16), 0, 0};
     DataCopyEnhancedParams cCopyEnhanced;
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
-    DataCopy(cNz, c1Local, cCopyParams, cCopyEnhanced);
+    CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
 
     constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / 32;
@@ -1808,7 +1820,7 @@ class ChunkGatedDeltaRule {
     DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(kMatmulM / 16), 0, 0};
     DataCopyEnhancedParams cCopyEnhanced;
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
-    DataCopy(cNz, c1Local, cCopyParams, cCopyEnhanced);
+    CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
 
     constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / 32;
@@ -1894,7 +1906,7 @@ class ChunkGatedDeltaRule {
     DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(kMatmulM / 16), 0, 0};
     DataCopyEnhancedParams cCopyEnhanced;
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
-    DataCopy(cNz, c1Local, cCopyParams, cCopyEnhanced);
+    CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
 
     // Convert the UB NZ matrix to row-major ND one output row at a time.
@@ -2043,7 +2055,7 @@ class ChunkGatedDeltaRule {
     DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(kMatmulM / 16), 0, 0};
     DataCopyEnhancedParams cCopyEnhanced;
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
-    DataCopy(cNz, c1Local, cCopyParams, cCopyEnhanced);
+    CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
 
     constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / 32;
@@ -2256,7 +2268,7 @@ class ChunkGatedDeltaRule {
       DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(curTileM / 16), 0, 0};
       DataCopyEnhancedParams cCopyEnhanced;
       cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
-      DataCopy(cNz, c1Local, cCopyParams, cCopyEnhanced);
+      CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
       PipeBarrier<PIPE_ALL>();
 
       constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / BLOCK_BYTES;
