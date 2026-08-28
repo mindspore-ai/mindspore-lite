@@ -306,16 +306,16 @@ class TestChunkGatedDeltaRule:
         )
 
     @pytest.mark.L0
-    def test_qwen35_gqa_beta_cast_regression(self):
-        """Qwen3.5 GQA shape stays finite and matches the CPU recurrence."""
+    def test_gqa_beta_cast_regression(self):
+        """A representative GQA shape stays finite and matches the CPU recurrence."""
         num_qk_heads, num_value_heads = 16, 32
         data = _generate_gqa_test_data(
             1, num_qk_heads, num_value_heads, 64, 128, 128, self.device
         )
         out, final_state = _run_op(data, torch.float16)
         torch.npu.synchronize()
-        assert torch.isfinite(out).all(), "Qwen3.5 GQA output has NaN/Inf"
-        assert torch.isfinite(final_state).all(), "Qwen3.5 GQA final_state has NaN/Inf"
+        assert torch.isfinite(out).all(), "GQA output has NaN/Inf"
+        assert torch.isfinite(final_state).all(), "GQA final_state has NaN/Inf"
 
         repeat_factor = num_value_heads // num_qk_heads
 
@@ -334,23 +334,23 @@ class TestChunkGatedDeltaRule:
         out_metrics = _accuracy_metrics(out.float().cpu(), out_ref)
         state_metrics = _accuracy_metrics(final_state.float().cpu(), state_ref)
         logging.info(
-            "[Qwen3.5 GQA] out(max=%.6f cos=%.9f nrmse=%.6f), "
+            "[GQA] out(max=%.6f cos=%.9f nrmse=%.6f), "
             "state(max=%.6f cos=%.9f nrmse=%.6f)",
             *out_metrics,
             *state_metrics,
         )
         assert out_metrics[1] >= 0.999 and out_metrics[2] <= 0.02, (
-            "Qwen3.5 GQA output diverges from CPU recurrence: "
+            "GQA output diverges from CPU recurrence: "
             f"cosine={out_metrics[1]}, nrmse={out_metrics[2]}"
         )
         assert state_metrics[1] >= 0.999 and state_metrics[2] <= 0.02, (
-            "Qwen3.5 GQA final_state diverges from CPU recurrence: "
+            "GQA final_state diverges from CPU recurrence: "
             f"cosine={state_metrics[1]}, nrmse={state_metrics[2]}"
         )
 
     @pytest.mark.L0
-    def test_qwen35_gqa_multichunk_l0c_sync(self):
-        """Repeated multi-chunk Qwen3.5 calls must not race Cube writes and Vector reads."""
+    def test_gqa_multichunk_l0c_sync(self):
+        """Repeated multi-chunk GQA calls must not race Cube writes and Vector reads."""
         if not _is_310p():
             pytest.skip("310P-specific L0C synchronization regression")
         data = _generate_gqa_test_data(1, 16, 32, 512, 128, 128, self.device)
@@ -363,16 +363,16 @@ class TestChunkGatedDeltaRule:
         reference_out = results[0][0].float().cpu()
         reference_state = results[0][1].float().cpu()
         for repeat, (out, final_state) in enumerate(results):
-            assert torch.isfinite(out).all(), f"Qwen3.5 output has NaN/Inf at repeat {repeat}"
-            assert torch.isfinite(final_state).all(), f"Qwen3.5 state has NaN/Inf at repeat {repeat}"
+            assert torch.isfinite(out).all(), f"GQA output has NaN/Inf at repeat {repeat}"
+            assert torch.isfinite(final_state).all(), f"GQA state has NaN/Inf at repeat {repeat}"
             out_metrics = _accuracy_metrics(out.float().cpu(), reference_out)
             state_metrics = _accuracy_metrics(final_state.float().cpu(), reference_state)
             assert out_metrics[1] >= 0.999 and out_metrics[2] <= 0.02, (
-                f"Qwen3.5 output is unstable at repeat {repeat}: "
+                f"GQA output is unstable at repeat {repeat}: "
                 f"cosine={out_metrics[1]}, nrmse={out_metrics[2]}"
             )
             assert state_metrics[1] >= 0.999 and state_metrics[2] <= 0.02, (
-                f"Qwen3.5 state is unstable at repeat {repeat}: "
+                f"GQA state is unstable at repeat {repeat}: "
                 f"cosine={state_metrics[1]}, nrmse={state_metrics[2]}"
             )
 
