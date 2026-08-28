@@ -20,6 +20,7 @@
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/wrapper/int8/matmul_int8_wrapper.h"
+#include "nnacl_c/int8/matmul_int8.h"
 #include "src/litert/kernel/cpu/fp32/matmul_fp32_base.h"
 
 namespace mindspore::lite::micro::nnacl {
@@ -161,6 +162,17 @@ int MatMulBaseInt8Coder::InitTmpBuffer() {
   if (param_->b_const_) {
     if (target_ == kRiscV) {
       CalcWeightBiasSumsMatrixBOffline();
+      if (!param_->b_transpose_) {
+        repacked_b_ptr_size_ = static_cast<size_t>(param_->batch) * static_cast<size_t>(param_->deep_) *
+                               static_cast<size_t>(param_->col_) * sizeof(int8_t);
+        repacked_b_ptr_ =
+          reinterpret_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, repacked_b_ptr_size_, kOfflinePackWeight));
+        MS_CHECK_PTR(repacked_b_ptr_);
+        RepackWeight(reinterpret_cast<int8_t *>(filter_tensor_->data()), repacked_b_ptr_, param_->batch, param_->deep_,
+                     param_->col_);
+        MemoryAllocator::GetInstance()->FreeTensor(filter_tensor_);
+        filter_tensor_ = nullptr;
+      }
     } else if (target_ == kCortex_M) {
       // For MCU init filter offline
       memset(weight_bias_sums_, 0, weight_bias_sums_size_);
@@ -180,6 +192,12 @@ int MatMulBaseInt8Coder::InitTmpBuffer() {
       MemoryAllocator::GetInstance()->FreeTensor(filter_tensor_);
       filter_tensor_ = nullptr;
     }
+  } else if (target_ == kRiscV && !param_->b_transpose_) {
+    // Online variable weight: allocate workspace for repacked weight, repack at runtime per inference.
+    repacked_b_ptr_size_ = static_cast<size_t>(param_->batch) * static_cast<size_t>(param_->deep_) *
+                           static_cast<size_t>(param_->col_) * sizeof(int8_t);
+    repacked_b_ptr_ = reinterpret_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, repacked_b_ptr_size_, kWorkspace));
+    MS_CHECK_PTR(repacked_b_ptr_);
   }
   return RET_OK;
 }
@@ -304,9 +322,14 @@ void MatMulBaseInt8Coder::DoBatchCode(NNaclInt8Serializer *code_ptr) {
   NNaclInt8Serializer &code = *code_ptr;
   std::string value_str_end = ";\n";
   std::string a_ptr_str = allocator_->GetRuntimeAddr(input_tensor_);
+  // repack condition: target=kRiscV && repacked_b_ptr_!=nullptr && !b_transpose
   std::string b_ptr_str = "";
   if (target_ == kRiscV) {
-    b_ptr_str = allocator_->GetRuntimeAddr(filter_tensor_, true);
+    if (repacked_b_ptr_ != nullptr) {
+      b_ptr_str = allocator_->GetRuntimeAddr(repacked_b_ptr_, true);
+    } else {
+      b_ptr_str = allocator_->GetRuntimeAddr(filter_tensor_, true);
+    }
   }
   std::string c_ptr_str = allocator_->GetRuntimeAddr(output_tensor_);
   std::string pack_b_ptr_str = "";
@@ -372,10 +395,15 @@ void MatMulBaseInt8Coder::DoBatchCode(NNaclInt8Serializer *code_ptr) {
     std::string batch_c_ptr_final = batch_c_ptr_str + "+" + std::to_string(cur_stride);
     std::string weight_bias_sums_str_final = batch_weight_bias_sums_str + "+" + std::to_string(cur_stride);
     if (target_ == kRiscV) {
-      code.CodeFunction("MatmulInt8LowMemory", current_src_a, batch_b_ptr_str_final, batch_c_ptr_final, param_->row_,
-                        param_->col_, param_->deep_, input_sums_, weight_bias_sums_str_final, quant_.out_act_min_,
-                        quant_.out_act_max_, quant_.output_.zp_, "cur_mul", "cur_left", "cur_right", param_->col_,
-                        filter_per_channel_, "cur_zp", param_->b_transpose_, param_->a_transpose_);
+      constexpr uint32_t prefetch_csr = (1u << 0) | (1u << 1) | (1u << 4) | (1u << 5);
+      code << "    // Enable Linx131 D-cache auto-prefetch only around the MatMul kernel.\n";
+      code.CodeFunctionWithRet("uint32_t prev_csr", "SetDCacheAutoPrefetchLinx131", prefetch_csr);
+      code.CodeFunction("MatmulInt8LowMemoryInlineRequant", current_src_a, batch_b_ptr_str_final, batch_c_ptr_final,
+                        param_->row_, param_->col_, param_->deep_, input_sums_, weight_bias_sums_str_final,
+                        quant_.out_act_min_, quant_.out_act_max_, quant_.output_.zp_, "cur_mul", "cur_left",
+                        "cur_right", param_->col_, filter_per_channel_, "cur_zp", param_->a_transpose_);
+      code << "    // Restore prefetch state after MatMul finishes.\n";
+      code.CodeFunction("(void)SetDCacheAutoPrefetchLinx131", "prev_csr");
     } else {
       code.CodeFunction("MatmulInt8Opt", pack_a_ptr_, batch_b_ptr_str_final, batch_c_ptr_final, param_->row_, cur_oc,
                         param_->deep_16_, input_sums_, weight_bias_sums_str_final, quant_.out_act_min_,
@@ -391,6 +419,7 @@ int MatMulBaseInt8Coder::DoCode(CoderContext *const context) {
           {
             "nnacl_c/common_func.h",
             "nnacl_c/int8/common_func_int8.h",
+            "nnacl_c/intrinsics/ms_dcache_prefetch_instructions.h",
             "nnacl_c/int8/matmul_int8.h",
             "nnacl_c/int8/fixed_point.h",
             "nnacl_c/int8/relux_int8.h",
@@ -399,6 +428,7 @@ int MatMulBaseInt8Coder::DoCode(CoderContext *const context) {
           {
             "common_func.c",
             "common_func_int8.c",
+            "ms_dcache_prefetch_instructions.c",
             "matmul_int8.c",
             "fixed_point.c",
             "relux_int8.c",
@@ -429,6 +459,11 @@ int MatMulBaseInt8Coder::DoCode(CoderContext *const context) {
   }
   if (!param_->b_const_ && target_ == kRiscV) {
     CalcWeightBiasSumsMatrixBOnline(filter_tensor_name, bias_ptr_str, code);
+    if (!param_->b_transpose_) {
+      // Online variable weight: repack [batch, deep, col] -> [batch, col, deep] at runtime per inference.
+      code.CodeFunction("RepackWeight", filter_tensor_name, repacked_b_ptr_, param_->batch, param_->deep_,
+                        param_->col_);
+    }
   }
   DoBatchCode(&code);
 

@@ -76,6 +76,13 @@ void MatmulInt8LowMemory(const int8_t *a, const int8_t *b, int8_t *dst, int row,
                          const int32_t *multiplier, const int32_t *left_shift, const int32_t *right_shift,
                          size_t stride, size_t filter_peroc, const int32_t *filter_zp, bool transB, bool transA);
 
+void MatmulInt8LowMemoryInlineRequant(const int8_t *a, const int8_t *b, int8_t *dst, int row, int col, int deep16,
+                                      const int32_t *a_sums, const int32_t *bias, int mini, int maxi, int out_zp,
+                                      const int32_t *multiplier, const int32_t *left_shift, const int32_t *right_shift,
+                                      size_t stride, size_t filter_peroc, const int32_t *filter_zp, bool transA);
+
+void RepackWeight(const int8_t *src_weight, int8_t *dst_weight, int batch, int deep, int col);
+
 #ifdef ENABLE_ARM64
 void MatmulInt8Neon64(const int8_t *a, const int8_t *b, int8_t *dst, int row4, int col4, int deep16,
                       const int32_t *a_sums, const int32_t *bias, int act_min, int act_max, int out_zp,

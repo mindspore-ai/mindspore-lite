@@ -371,6 +371,82 @@ void MatmulInt8LowMemory(const int8_t *a, const int8_t *b, int8_t *dst, int row,
   }
 }
 
+#define MATMUL_LOW_MEMORY_INLINE_REQUANT(value, multiplier, left_shift, right_shift) \
+  do {                                                                               \
+    (value) = (value) * (1 << (left_shift));                                         \
+    int64_t ab = (int64_t)(value) * (int64_t)(multiplier);                           \
+    int64_t rounding = ab >= 0 ? (1ll << 30) : (1ll - (1ll << 30));                  \
+    int32_t srdhm = (int32_t)((ab + rounding) / (1ll << 31));                        \
+    int exponent = -(right_shift);                                                   \
+    if (exponent > 31) {                                                             \
+      exponent = 31;                                                                 \
+    }                                                                                \
+    const int mask = (1ll << exponent) - 1;                                          \
+    const int remainder = srdhm & mask;                                              \
+    const int threshold = (mask >> 1) + (srdhm < 0 ? 1 : 0);                         \
+    (value) = (srdhm >> exponent) + (remainder > threshold ? 1 : 0);                 \
+  } while (0)
+
+void MatmulInt8LowMemoryInlineRequant(const int8_t *a, const int8_t *b, int8_t *dst, int row, int col, int deep16,
+                                      const int32_t *a_sums, const int32_t *bias, int mini, int maxi, int out_zp,
+                                      const int32_t *multiplier, const int32_t *left_shift, const int32_t *right_shift,
+                                      size_t stride, size_t filter_peroc, const int32_t *filter_zp, bool transA) {
+  // After RepackWeight, b is [col, deep] row-major regardless of transB, so only transA selects the a layout.
+  if (!transA) {
+    // After RepackWeight, b is [col, deep] row-major (transposed from original [deep, col]).
+    for (int r = 0; r < row; r++) {
+      for (int c = 0; c < col; c++) {
+        int32_t value = 0;
+        size_t ci = (size_t)r * stride + (size_t)c;
+        for (int d = 0; d < deep16; d++) {
+          int32_t ai = r * deep16 + d;
+          int32_t bi = c * deep16 + d;
+          value = value + a[ai] * b[bi];
+        }
+        int32_t cur_input_sum = filter_peroc ? a_sums[r] * filter_zp[c] : a_sums[r];
+        value -= cur_input_sum;
+        value += bias[c];
+        int32_t cur_left_shift = filter_peroc ? left_shift[c] : left_shift[0];
+        int32_t cur_right_shift = filter_peroc ? right_shift[c] : right_shift[0];
+        int32_t cur_multiplier = filter_peroc ? multiplier[c] : multiplier[0];
+        // Expand MultiplyByQuantizedMultiplier here to remove three nested requant calls in the RISC-V hot path.
+        MATMUL_LOW_MEMORY_INLINE_REQUANT(value, cur_multiplier, cur_left_shift, cur_right_shift);
+        value += out_zp;
+        value = MSMIN(maxi, value);
+        value = MSMAX(mini, value);
+        dst[ci] = (int8_t)value;
+      }
+    }
+  } else {
+    // After RepackWeight, b is [col, deep] row-major (transposed from original [deep, col]).
+    for (int r = 0; r < row; r++) {
+      for (int c = 0; c < col; c++) {
+        int32_t value = 0;
+        size_t ci = (size_t)r * stride + (size_t)c;
+        for (int d = 0; d < deep16; d++) {
+          int32_t ai = d * row + r;
+          int32_t bi = c * deep16 + d;
+          value = value + a[ai] * b[bi];
+        }
+        int32_t cur_input_sum = filter_peroc ? a_sums[r] * filter_zp[c] : a_sums[r];
+        value -= cur_input_sum;
+        value += bias[c];
+        int32_t cur_left_shift = filter_peroc ? left_shift[c] : left_shift[0];
+        int32_t cur_right_shift = filter_peroc ? right_shift[c] : right_shift[0];
+        int32_t cur_multiplier = filter_peroc ? multiplier[c] : multiplier[0];
+        // Expand MultiplyByQuantizedMultiplier here to remove three nested requant calls in the RISC-V hot path.
+        MATMUL_LOW_MEMORY_INLINE_REQUANT(value, cur_multiplier, cur_left_shift, cur_right_shift);
+        value += out_zp;
+        value = MSMIN(maxi, value);
+        value = MSMAX(mini, value);
+        dst[ci] = (int8_t)value;
+      }
+    }
+  }
+}
+
+#undef MATMUL_LOW_MEMORY_INLINE_REQUANT
+
 #ifndef ENABLE_ARM
 void MatmulInt8Opt(const int8_t *a, const int8_t *b, int8_t *dst, int row, int col, int deep16, const int32_t *a_sums,
                    const int32_t *bias, int mini, int maxi, int out_zp, const int32_t *multiplier,
@@ -913,6 +989,18 @@ void CalcPartWeightBiasSums(const int8_t *weight, int row, int stride, int cur_c
     dst[c] = row * input_zp * weight_zp - input_zp * sum;
     if (bias != NULL) {
       dst[c] += bias[c];
+    }
+  }
+}
+
+void RepackWeight(const int8_t *src_weight, int8_t *dst_weight, int batch, int deep, int col) {
+  for (int b = 0; b < batch; ++b) {
+    const int8_t *src_batch = src_weight + (size_t)b * deep * col;
+    int8_t *dst_batch = dst_weight + (size_t)b * deep * col;
+    for (int r = 0; r < deep; ++r) {
+      for (int c = 0; c < col; ++c) {
+        dst_batch[(size_t)c * deep + r] = src_batch[(size_t)r * col + c];
+      }
     }
   }
 }

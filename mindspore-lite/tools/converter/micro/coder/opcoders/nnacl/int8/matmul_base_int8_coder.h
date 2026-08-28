@@ -63,6 +63,8 @@ class MatMulBaseInt8Coder : public OperatorCoder {
   size_t b_pack_ptr_size_{0};
   int8_t *pack_a_ptr_{nullptr};
   int8_t *pack_b_ptr_{nullptr};
+  int8_t *repacked_b_ptr_{nullptr};
+  size_t repacked_b_ptr_size_{0};
   size_t bias_ptr_size_{0};
   int *bias_ptr_{nullptr};
   size_t input_sums_size_{0};

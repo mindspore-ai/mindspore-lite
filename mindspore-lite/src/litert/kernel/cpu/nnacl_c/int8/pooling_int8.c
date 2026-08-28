@@ -18,6 +18,37 @@
 #include "nnacl_c/common_func.h"
 #include "nnacl_c/errorcode.h"
 
+static const int kPoolingQ15Shift = 15;
+static const double kPoolingQ15MultiplierUpperBound = 65536.0;
+
+static inline int32_t PoolingRequantizeWithQ15Multiplier(int32_t value, int32_t input_zp, int32_t output_zp,
+                                                         int32_t q15_multiplier) {
+  const int32_t round_offset = (int32_t)1 << (kPoolingQ15Shift - 1);
+  int32_t centered = value - input_zp;
+  int64_t scaled = (int64_t)centered * (int64_t)q15_multiplier;
+  int64_t abs_scaled = scaled < 0 ? -scaled : scaled;
+  int64_t rounded = (abs_scaled + round_offset) >> kPoolingQ15Shift;
+  int64_t signed_rounded = scaled < 0 ? -rounded : rounded;
+  return (int32_t)signed_rounded + output_zp;
+}
+
+static inline int32_t PoolingGetQ15Multiplier(double real_multiplier) {
+  if (real_multiplier <= 0.0) {
+    return 0;
+  }
+  if (real_multiplier >= kPoolingQ15MultiplierUpperBound) {
+    return INT32_MAX;
+  }
+  double scaled = real_multiplier * (double)(1 << kPoolingQ15Shift);
+  return (int32_t)(scaled >= 0.0 ? (int64_t)(scaled + 0.5) : (int64_t)(scaled - 0.5));
+}
+
+static inline int32_t PoolingRoundedDivideByPositive(int32_t value, int32_t divisor) {
+  int32_t abs_value = value < 0 ? -value : value;
+  int32_t quotient = (abs_value + divisor / 2) / divisor;
+  return value < 0 ? -quotient : quotient;
+}
+
 int AvgPoolingInt8(const int8_t *input_ptr, int8_t *output_ptr, const PoolingParameter *pooling_param,
                    PoolingComputeParam *compute_args, QuantArg **quant_args) {
   int stride_w = pooling_param->stride_w_;
@@ -32,7 +63,6 @@ int AvgPoolingInt8(const int8_t *input_ptr, int8_t *output_ptr, const PoolingPar
   int output_w = compute_args->output_w_;
   int output_h = compute_args->output_h_;
   int output_batch = compute_args->output_batch_;
-  int out_plane = output_w * output_h;
   float input_scale = quant_args[0][0].scale_;
   int input_zp = quant_args[0][0].zp_;
   float output_scale = quant_args[1][0].scale_;
@@ -40,43 +70,44 @@ int AvgPoolingInt8(const int8_t *input_ptr, int8_t *output_ptr, const PoolingPar
   double real_multiplier = input_scale / output_scale;
   const int8_t out_min = INT8_MIN;
   const int8_t out_max = INT8_MAX;
+  int32_t q15_multiplier = PoolingGetQ15Multiplier(real_multiplier);
 
   for (int batch = 0; batch < output_batch; batch++) {
     int in_batch_offset = batch * in_h * in_w * channel;
     int out_batch_offset = batch * output_h * output_w * channel;
-    for (int i = 0; i < out_plane; i++) {
-      int out_w_index = i % output_w;
-      int out_h_index = i / output_w;
-      int in_w_index = out_w_index * stride_w - pad_w;
-      int in_h_index = out_h_index * stride_h - pad_h;
-      int out_plane_offset = out_batch_offset + i * channel;
-      for (int j = 0; j < channel; j++) {
-        int in_channel_offset = in_batch_offset + j;
-        int out_channel_offset = out_plane_offset + j;
-        int16_t tmp_avg = 0;
-        int real_count = 0;
-        for (int h = 0; h < win_h; h++) {
-          for (int w = 0; w < win_w; w++) {
-            if ((in_h_index + h) < 0 || (in_h_index + h) >= in_h || (in_w_index + w) < 0 || (in_w_index + w) >= in_w) {
-              continue;
-            } else {
-              int in_offset = in_channel_offset + ((in_h_index + h) * in_w + in_w_index + w) * channel;
-              tmp_avg += *(input_ptr + in_offset);
-              ++real_count;
-            }
-          }  // win_w loop
-        }  // win_h loop
-        if (real_count == 0) {
+    for (int out_h_idx = 0; out_h_idx < output_h; out_h_idx++) {
+      int in_h_idx = out_h_idx * stride_h - pad_h;
+      int kh_s = in_h_idx < 0 ? -in_h_idx : 0;
+      int kh_e = (in_h_idx + win_h) > in_h ? in_h - in_h_idx : win_h;
+      for (int out_w_idx = 0; out_w_idx < output_w; out_w_idx++) {
+        int in_w_idx = out_w_idx * stride_w - pad_w;
+        int kw_s = in_w_idx < 0 ? -in_w_idx : 0;
+        int kw_e = (in_w_idx + win_w) > in_w ? in_w - in_w_idx : win_w;
+        int real_count = (kh_e - kh_s) * (kw_e - kw_s);
+        if (real_count <= 0) {
           return NNACL_ERR;
         }
-        int16_t tmp_out = round((float)tmp_avg / (float)real_count);
-        tmp_out = (int16_t)round((tmp_out - input_zp) * real_multiplier + output_zp);
-        int8_t real_out = tmp_out < out_min ? out_min : tmp_out;
-        real_out = real_out > out_max ? out_max : real_out;
-        *(output_ptr + out_channel_offset) = real_out;
-      }  // in_channel loop
-    }  // out_plane loop
-  }  // out_batch loop
+        int out_offset = out_batch_offset + ((out_h_idx * output_w) + out_w_idx) * channel;
+        int window_base = in_batch_offset + ((in_h_idx + kh_s) * in_w + (in_w_idx + kw_s)) * channel;
+        int row_stride = in_w * channel;
+
+        for (int j = 0; j < channel; j++) {
+          int16_t tmp_avg = 0;
+          const int8_t *win_ptr = input_ptr + window_base + j;
+          for (int h = kh_s; h < kh_e; h++) {
+            const int8_t *row_ptr = win_ptr + (h - kh_s) * row_stride;
+            for (int w = kw_s; w < kw_e; w++) {
+              tmp_avg += row_ptr[(w - kw_s) * channel];
+            }
+          }
+          int32_t avg = PoolingRoundedDivideByPositive(tmp_avg, real_count);
+          int32_t tmp_out = PoolingRequantizeWithQ15Multiplier(avg, input_zp, output_zp, q15_multiplier);
+          int8_t real_out = (int8_t)(tmp_out < out_min ? out_min : (tmp_out > out_max ? out_max : tmp_out));
+          output_ptr[out_offset + j] = real_out;
+        }
+      }
+    }
+  }
   return NNACL_OK;
 }
 
