@@ -9,7 +9,7 @@
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR WARRANTIES OF CONDITIONS OF ANY KIND, either express or implied.
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
@@ -42,13 +42,25 @@ TEMPLATE_DIR=""
 # -----------------------------------------------------------------------------
 resolve_cann()
 {
+  # Prefer the explicit CANN env vars; fall back to ASCEND_PATH (set by the
+  # MindSpore Lite build env on CI hosts where ASCEND_HOME_PATH is unset) and
+  # standard install locations, so the script self-locates CANN in more envs.
   if [[ -n "${ASCEND_HOME_PATH}" && -d "${ASCEND_HOME_PATH}" ]]; then
     ASCEND_CANN_PACKAGE_PATH="${ASCEND_HOME_PATH}"
   elif [[ -n "${ASCEND_TOOLKIT_HOME}" && -d "${ASCEND_TOOLKIT_HOME}" ]]; then
     ASCEND_CANN_PACKAGE_PATH="${ASCEND_TOOLKIT_HOME}"
+  elif [[ -n "${ASCEND_PATH}" && -d "${ASCEND_PATH}" ]]; then
+    ASCEND_CANN_PACKAGE_PATH="${ASCEND_PATH}"
   else
-    echo "[ERROR] CANN toolchain not found. Set ASCEND_HOME_PATH or ASCEND_TOOLKIT_HOME." >&2
-    return 1
+    local cand
+    for cand in /usr/local/Ascend/ascend-toolkit/latest /usr/local/Ascend/cann; do
+      [[ -d "${cand}" ]] && ASCEND_CANN_PACKAGE_PATH="${cand}" && break
+    done
+    if [[ -z "${ASCEND_CANN_PACKAGE_PATH}" ]]; then
+      echo "[ERROR] CANN toolchain not found. Set one of ASCEND_HOME_PATH," >&2
+      echo "        ASCEND_TOOLKIT_HOME, ASCEND_PATH, or install CANN under /usr/local/Ascend/." >&2
+      return 1
+    fi
   fi
   # Best-effort: ensure the CANN compiler/opbuild environment is active when run
   # standalone (the full MindSpore Lite build already sources it).
@@ -98,6 +110,34 @@ soc_to_compute_unit()
   esac
 }
 
+# Run a cmake --build target with the repetitive per-binary CANN opbuild/install log spam
+# filtered out. Suppressed (printed once per kernel binary -- 128x for this op under
+# DataTypeList + DynamicFormat):
+#   [soc] Generating <Op>_<hash> ...   /   [soc] Generating <Op>_<hash> Done
+#   Opc tool start working now, please wait for a moment.
+#   -- Installing: ...   /   -- Up-to-date: ...   /   -- Set runtime path of ...
+# Errors, warnings, cmake progress ([n%]) and status lines are preserved. The function
+# forwards cmake's own exit code (via PIPESTATUS[0]); set +e around the pipe so grep exiting
+# 1 when ALL output is filtered does not trip errexit. CUSTOM_OPS_VERBOSE=1 bypasses the filter.
+_run_build_target() {
+  local build_dir="$1" target="$2" jobs="$3"
+  if [[ "${CUSTOM_OPS_VERBOSE:-0}" == "1" ]]; then
+    cmake --build "${build_dir}" --target "${target}" -j"${jobs}"
+    return $?
+  fi
+  set +e
+  cmake --build "${build_dir}" --target "${target}" -j"${jobs}" 2>&1 \
+    | grep -vE -e '^\[[^]]*\] Generating .* \.\.\.$' \
+              -e '^\[[^]]*\] Generating .* Done$' \
+              -e '^Opc tool start working now' \
+              -e '^-- Installing: ' \
+              -e '^-- Up-to-date: ' \
+              -e '^-- Set runtime path of '
+  local rc=${PIPESTATUS[0]}
+  set -e
+  return "${rc}"
+}
+
 build_one_soc()
 {
   local soc_dir="$1"
@@ -125,11 +165,24 @@ build_one_soc()
 
   # 2. Merge every operator under this SoC into op_host/ and op_kernel/ at the
   #    workspace root (symlinks; the CANN tooling requires them there).
+  #    CUSTOM_OPS_SKIP (space-separated dir basenames) excludes WIP / not-yet-
+  #    compiling ops from the merged build. This is required because the CANN
+  #    op project builds every op in ONE merged workspace, so a single failing
+  #    op aborts the whole `binary` target — and that also prevents the aggregate
+  #    binary_info_config.json from being written, which silently breaks (at
+  #    runtime, "does not support opType") even the ops that DID compile. Skipping
+  #    a broken op here lets the rest ship a complete, valid vendor. Source of a
+  #    skipped op is left untouched; unlist it once it compiles.
   local op_count=0
   shopt -s nullglob
   local op_dirs=("${soc_dir}"/*/)
   shopt -u nullglob
   for op_dir in "${op_dirs[@]}"; do
+    local op_base; op_base="$(basename "${op_dir}")"
+    if [[ " ${CUSTOM_OPS_SKIP:-} " == *" ${op_base} "* ]]; then
+      echo "  skip op (CUSTOM_OPS_SKIP): ${op_base}"
+      continue
+    fi
     if [[ -d "${op_dir}/op_host" ]]; then
       ln -s "${op_dir}"/op_host/* "${ws}/op_host/" 2>/dev/null || true
     fi
@@ -137,7 +190,7 @@ build_one_soc()
       ln -s "${op_dir}"/op_kernel/* "${ws}/op_kernel/" 2>/dev/null || true
     fi
     op_count=$((op_count + 1))
-    echo "  include op: $(basename "${op_dir}")"
+    echo "  include op: ${op_base}"
   done
   if [[ ${op_count} -eq 0 ]]; then
     echo "[WARN] no operator found under ${soc_dir}, skip."
@@ -170,9 +223,9 @@ build_one_soc()
 
   local jobs="${ASCEND_CUSTOM_THREADS:-$(nproc)}"
   echo "build target: binary (-j${jobs})"
-  cmake --build "${build_dir}" --target binary -j"${jobs}"
+  _run_build_target "${build_dir}" binary "${jobs}"
   echo "build target: install"
-  cmake --build "${build_dir}" --target install -j"${jobs}"
+  _run_build_target "${build_dir}" install "${jobs}"
 
   # 5. Copy the (dereferenced) vendor folder into a per-SoC output dir. The wheel
   #    ships this folder as-is; the import hook points ASCEND_CUSTOM_OPP_PATH at it
@@ -182,7 +235,7 @@ build_one_soc()
     echo "[ERROR] staged vendor not found at ${vendor_dir} for ${soc_name}" >&2
     return 1
   fi
-  rm -rf "${OUT_DIR}/${unit}"
+  rm -rf "${OUT_DIR:?}/${unit:?}"
   mkdir -p "${OUT_DIR}/${unit}"
   # -L dereferences the staged tree's symlinks (op_impl/.../mslite_custom_ops_impl/
   # dynamic/* -> absolute build-workspace paths, and the relative liboptiling.so

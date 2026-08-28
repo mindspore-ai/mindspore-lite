@@ -30,6 +30,27 @@ def _read_file(filename):
         return f.read()
 
 
+def _vendor_package_data():
+    """AscendC custom-op vendor folders (one per SoC) staged by build_lite.sh
+    under package/mindspore_lite/custom_ops_vendor/. Listed explicitly
+    (setuptools package_data has no recursive '**' glob) so the whole tree
+    ships in the wheel. Empty when the op build was skipped (non-Ascend/CI).
+
+    At wheel-pack time setup.py runs inside the package/ staging dir, so this
+    scans <setup_dir>/mindspore_lite/custom_ops_vendor/ and returns paths
+    relative to the mindspore_lite package dir (e.g. custom_ops_vendor/<unit>/...).
+    """
+    data = []
+    setup_dir = os.path.dirname(os.path.abspath(__file__))
+    vendor_root = os.path.join(setup_dir, "mindspore_lite", "custom_ops_vendor")
+    if os.path.isdir(vendor_root):
+        pkg_root = os.path.join(setup_dir, "mindspore_lite")
+        for dirpath, _, files in os.walk(vendor_root):
+            for fname in files:
+                data.append(os.path.relpath(os.path.join(dirpath, fname), pkg_root))
+    return data
+
+
 def _get_package_data():
     """ get package data"""
     pkg_data = [
@@ -37,9 +58,9 @@ def _get_package_data():
         '_check_ascend.py', '_ascend_custom_ops.py', 'lib/*.so*', '.commit_id', 'include/api/*',
         'include/api/callback/*', 'include/api/metrics/*', 'include/mindapi/base/*',
         'include/registry/converter_context.h', 'include/converter.h',
-        # AscendC custom-op vendor tarballs (one per SoC); lazily installed on first
-        # import via _ascend_custom_ops.ensure_installed(). Absent for non-Ascend builds.
-        'custom_kernels/*.tar.gz'
+        # AscendC custom-op vendor folders (one per SoC); the import hook points
+        # ASCEND_CUSTOM_OPP_PATH at the matching SoC's folder (no install to $ASCEND_HOME_PATH).
+        *_vendor_package_data(),
     ]
     if os.getenv('MSLITE_ENABLE_CLOUD_INFERENCE') == "on":
         pkg_data.append('lite_infer.py')
