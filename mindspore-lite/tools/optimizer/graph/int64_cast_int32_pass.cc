@@ -86,7 +86,7 @@ bool Int64CastInt32Pass::Run(const FuncGraphPtr &graph) {
     }
     if (CheckPrimitiveType(node, prim::kPrimCast) || CheckPrimitiveType(node, prim::kPrimSplit) ||
         CheckPrimitiveType(node, prim::kPrimGather) || CheckPrimitiveType(node, prim::kPrimCustom) ||
-        CheckPrimitiveType(node, prim::kPrimTupleGetItem)) {
+        CheckPrimitiveType(node, prim::kPrimTupleGetItem) || CheckPrimitiveType(node, prim::kPrimConstantOfShape)) {
       continue;
     }
     auto cnode = node->cast<CNodePtr>();

@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,14 +15,55 @@
  */
 
 #include "tools/converter/parser/onnx/onnx_constant_of_shape_parser.h"
+#include <algorithm>
+#include <functional>
 #include <memory>
+#include <numeric>
 #include <vector>
 #include "tools/converter/parser/onnx/onnx_model_parser.h"
 #include "infer/constant_of_shape.h"
+#include "mindapi/ir/value.h"
 #include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {
+namespace {
+void ResolveConstantOfShapeStaticShape(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node,
+                                       const std::unique_ptr<ops::ConstantOfShape> &prim) {
+  if (onnx_node.output_size() == 0) {
+    return;
+  }
+  const auto &output_name = onnx_node.output(0);
+  const onnx::TypeProto *type = nullptr;
+  auto matches = [&output_name](const onnx::ValueInfoProto &value_info) { return value_info.name() == output_name; };
+  auto out_it = std::find_if(onnx_graph.output().begin(), onnx_graph.output().end(), matches);
+  if (out_it != onnx_graph.output().end()) {
+    type = &out_it->type();
+  } else {
+    auto vi_it = std::find_if(onnx_graph.value_info().begin(), onnx_graph.value_info().end(), matches);
+    if (vi_it != onnx_graph.value_info().end()) {
+      type = &vi_it->type();
+    }
+  }
+  if (type == nullptr || !type->has_tensor_type() || !type->tensor_type().has_shape()) {
+    return;
+  }
+  std::vector<int64_t> out_shape;
+  for (const auto &dim : type->tensor_type().shape().dim()) {
+    if (!dim.has_dim_value() || dim.dim_value() <= 0) {
+      return;
+    }
+    out_shape.push_back(dim.dim_value());
+  }
+  if (out_shape.empty()) {
+    return;
+  }
+  int64_t elem_count = std::accumulate(out_shape.begin(), out_shape.end(), int64_t{1}, std::multiplies<int64_t>());
+  prim->AddAttr("element_size", api::MakeValue(elem_count));
+  prim->AddAttr("shape", api::MakeValue(out_shape));
+}
+}  // namespace
+
 PrimitiveCPtr OnnxConstantOfShapeParser::Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) {
   auto prim = std::make_unique<ops::ConstantOfShape>();
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
@@ -59,6 +100,11 @@ PrimitiveCPtr OnnxConstantOfShapeParser::Parse(const onnx::GraphProto &onnx_grap
   }
   prim->set_value(values);
   prim->set_data_type((int64_t)data_type);
+
+  // Resolve output element count and static output shape from the model's static
+  // value_info (graph output or intermediate node), so micro codegen can emit a
+  // concrete output tensor shape even when the shape input is dynamic.
+  ResolveConstantOfShapeStaticShape(onnx_graph, onnx_node, prim);
 
   return prim->GetPrim();
 }

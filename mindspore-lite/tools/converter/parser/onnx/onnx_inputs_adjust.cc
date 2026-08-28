@@ -18,6 +18,7 @@
 #include <string>
 #include <functional>
 #include <algorithm>
+#include <climits>
 #include <memory>
 #include "mindspore/ops/op_def/random_ops.h"
 #include "infer/eltwise.h"
@@ -198,6 +199,38 @@ STATUS SplitNarySum(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
     return RET_ERROR;
   }
   opt::UpdateManager(func_graph);
+  return lite::RET_OK;
+}
+
+STATUS ResolveConstantOfShape(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
+  MS_CHECK_TRUE_RET(func_graph != nullptr, RET_NULL_PTR);
+  MS_CHECK_TRUE_RET(cnode != nullptr, RET_NULL_PTR);
+  if (cnode->inputs().size() < 2) return lite::RET_OK;
+  // Check if shape input is a Parameter (from initializer)
+  auto shape_input = cnode->input(1);
+  auto param_node = shape_input->cast<ParameterPtr>();
+  if (param_node == nullptr) return lite::RET_OK;
+  auto shape_tensor = param_node->default_param();
+  if (shape_tensor == nullptr) return lite::RET_OK;
+  auto tensor_info = shape_tensor->cast<tensor::TensorPtr>();
+  if (tensor_info == nullptr) return lite::RET_OK;
+  // Read shape data and compute element count
+  auto shape_data = static_cast<const int64_t *>(tensor_info->data_c());
+  auto shape_size = tensor_info->DataSize() / sizeof(int64_t);
+  if (shape_data == nullptr || shape_size <= 0) return lite::RET_OK;
+  int64_t elem_count = 1;
+  for (size_t i = 0; i < static_cast<size_t>(shape_size); ++i) {
+    elem_count *= shape_data[i];
+  }
+  if (elem_count < 0 || elem_count > static_cast<int64_t>(INT_MAX)) {
+    MS_LOG(ERROR) << "ConstantOfShape invalid element count: " << elem_count;
+    return lite::RET_ERROR;
+  }
+  // Store element count as an attribute on the node for the populate/coder to use
+  auto prim = GetValueNode<PrimitivePtr>(cnode->input(0));
+  if (prim != nullptr) {
+    prim->set_attr("element_size", MakeValue<int64_t>(elem_count));
+  }
   return lite::RET_OK;
 }
 
@@ -695,6 +728,9 @@ int DispatchNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode, const co
   if (opt::CheckPrimitiveType(cnode, prim::kPrimEltwise)) {
     return SplitNarySum(func_graph, cnode);
   }
+  if (opt::CheckPrimitiveType(cnode, prim::kPrimConstantOfShape)) {
+    return ResolveConstantOfShape(func_graph, cnode);
+  }
   if (opt::CheckPrimitiveType(cnode, prim::kPrimTranspose) && flag.save_type != kMindIR) {
     return ReplaceTransposeWithGraphInput(func_graph, cnode);
   }
@@ -742,7 +778,17 @@ bool OnnxInputAdjust::Adjust(const FuncGraphPtr &func_graph, const converter::Co
   for (auto &node : node_list) {
     if (utils::isa<ParameterPtr>(node)) {
       auto param_node = node->cast<ParameterPtr>();
-      if (!keep_origin_dtype) {
+      // Skip int64→int32 for ConstantOfShape shape input (must stay int64 per ONNX spec)
+      bool is_cos_shape_input = false;
+      auto node_users = manager->node_users()[param_node];
+      for (auto &user : node_users) {
+        auto user_cnode = user.first->cast<CNodePtr>();
+        if (user_cnode != nullptr && opt::CheckPrimitiveType(user_cnode, prim::kPrimConstantOfShape)) {
+          is_cos_shape_input = true;
+          break;
+        }
+      }
+      if (!keep_origin_dtype && !is_cos_shape_input) {
         status = ReplaceTypeParameterNode(func_graph, param_node, kNumberTypeInt64, kNumberTypeInt32, false);
         MS_CHECK_TRUE_MSG(status == lite::RET_OK, status, "replace fp64 param node failed!");
       }

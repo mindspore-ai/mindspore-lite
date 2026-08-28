@@ -1,5 +1,5 @@
 /**
- * Copyright 2019-2022 Huawei Technologies Co., Ltd
+ * Copyright 2019-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -75,6 +75,8 @@ class FullQuantQuantizer : public Quantizer {
   int QuantNodeSimpleOp(const CNodePtr &cnode);
 
   int QuantNode(const FuncGraphPtr &func_graph);
+
+  void SetConstantOfShapeInt8Output(const PrimitivePtr &primitive);
 
   int QuantNodeGraphInput(const PrimitivePtr &primitive, const AnfNodePtr &input_node,
                           const std::unique_ptr<DataDistribution> &info);

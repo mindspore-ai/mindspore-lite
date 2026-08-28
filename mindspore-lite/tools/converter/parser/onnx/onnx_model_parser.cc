@@ -1,5 +1,5 @@
 /**
- * Copyright 2020-2023 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -434,6 +434,39 @@ STATUS ConvertGraphInputs(const onnx::GraphProto &onnx_graph, const FuncGraphPtr
   return RET_OK;
 }
 
+void ResolveStaticOutputShape(const AnfNodePtr &cnode, const onnx::ValueInfoProto &graph_out) {
+  // For ops whose output shape depends on a runtime input (e.g. ConstantOfShape), shape
+  // inference returns INVALID and the abstract shape stays empty/dynamic. Fall back to the
+  // static shape declared in the ONNX value_info so micro codegen sees a concrete shape.
+  auto out_abstract = cnode->abstract();
+  if (out_abstract == nullptr || !graph_out.has_type() || !graph_out.type().has_tensor_type() ||
+      !graph_out.type().tensor_type().has_shape()) {
+    return;
+  }
+  ShapeVector out_shape;
+  if (opt::FetchShapeFromAbstract(out_abstract, &out_shape) == RET_OK && !JudgeDynamicShape(out_shape)) {
+    return;
+  }
+  std::vector<int64_t> static_shape;
+  bool all_static = true;
+  for (const auto &dim : graph_out.type().tensor_type().shape().dim()) {
+    if (!dim.has_dim_value() || dim.dim_value() <= 0) {
+      all_static = false;
+      break;
+    }
+    static_shape.push_back(dim.dim_value());
+  }
+  if (!all_static || static_shape.empty()) {
+    return;
+  }
+  auto data_type = OnnxNodeParser::GetDataTypeFromOnnx(
+    static_cast<onnx::TensorProto_DataType>(graph_out.type().tensor_type().elem_type()));
+  auto new_abstract = CreateTensorAbstract(static_shape, data_type);
+  if (new_abstract != nullptr) {
+    cnode->set_abstract(new_abstract);
+  }
+}
+
 STATUS ConvertGraphOutputs(const onnx::GraphProto &onnx_graph, const FuncGraphPtr &anf_graph,
                            const std::unordered_map<std::string, AnfNodePtr> &anf_nodes_map) {
   MS_CHECK_TRUE_RET(anf_graph != nullptr, RET_NULL_PTR);
@@ -460,6 +493,7 @@ STATUS ConvertGraphOutputs(const onnx::GraphProto &onnx_graph, const FuncGraphPt
         MS_LOG(ERROR) << "Can't find input node.";
         return RET_NOT_FIND_OP;
       }
+      ResolveStaticOutputShape(cnode, graph_out);
       elem.emplace_back(cnode->abstract());
       make_tuple_inputs.emplace_back(cnode);
     }
@@ -485,6 +519,7 @@ STATUS ConvertGraphOutputs(const onnx::GraphProto &onnx_graph, const FuncGraphPt
       MS_LOG(ERROR) << "Can't find input node.";
       return RET_NOT_FIND_OP;
     }
+    ResolveStaticOutputShape(cnode, graph_out);
     return_inputs.emplace_back(cnode);
   }
   if (BuildReturnNode(anf_graph, return_inputs) != RET_OK) {

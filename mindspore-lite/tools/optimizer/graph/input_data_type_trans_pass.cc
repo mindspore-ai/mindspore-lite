@@ -16,10 +16,13 @@
 
 #define USE_DEPRECATED_API
 #include "tools/optimizer/graph/input_data_type_trans_pass.h"
+#include <algorithm>
 #include <vector>
 #include <memory>
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
+#include "mindspore/ops/op_def/array_ops.h"
+#include "mindspore/core/include/ir/graph_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/common/format_utils.h"
 #include "tools/lite_exporter/fetch_content.h"
@@ -75,8 +78,22 @@ STATUS InOutDTypeTransPass::HandleGraphInput(const FuncGraphPtr &graph) {
   MS_ASSERT(graph != nullptr);
   auto manager = graph->manager();
   MS_CHECK_TRUE_RET(manager != nullptr, RET_ERROR);
+  // ConstantOfShape's shape input must keep int64: its value drives the output shape, and
+  // converting it to int32 would corrupt the runtime shape tensor (size mismatch).
+  std::vector<AnfNodePtr> int64_keep_inputs;
+  for (const auto &node : TopoSort(graph->get_return())) {
+    if (opt::CheckPrimitiveType(node, prim::kPrimConstantOfShape)) {
+      auto cnode = node->cast<CNodePtr>();
+      if (cnode != nullptr && cnode->size() > 1) {
+        int64_keep_inputs.push_back(cnode->input(1));
+      }
+    }
+  }
   auto graph_inputs = graph->get_inputs();
   for (const auto &input : graph_inputs) {
+    if (std::find(int64_keep_inputs.begin(), int64_keep_inputs.end(), input) != int64_keep_inputs.end()) {
+      continue;
+    }
     TypeId input_data_type;
     if (GetDataTypeFromAnfNode(input, &input_data_type) != RET_OK) {
       MS_LOG(ERROR) << "get input node data type failed for node: " << input->fullname_with_scope();

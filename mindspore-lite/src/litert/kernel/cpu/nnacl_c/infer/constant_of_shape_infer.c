@@ -31,6 +31,13 @@ int ConstantOfShapeInferShape(const TensorC *const *inputs, size_t inputs_size, 
   out_tensor->data_type_ = (TypeIdC)(param->data_type_);
   out_tensor->format_ = in_tensor->format_;
   if (!InferFlag(inputs, inputs_size) || in_tensor->data_ == NULL) {
+    // Shape input is not const (e.g. a micro graph input). Fall back to the pre-resolved
+    // static shape carried in the parameter (set by the onnx parser from value_info), so
+    // that micro codegen can emit a concrete output tensor shape.
+    if (param->shape_size_ > 0) {
+      SetShapeArray(out_tensor, param->shape_, (size_t)param->shape_size_);
+      return NNACL_OK;
+    }
     return NNACL_INFER_INVALID;
   }
   int size = NNACLGetElementNum(in_tensor);
