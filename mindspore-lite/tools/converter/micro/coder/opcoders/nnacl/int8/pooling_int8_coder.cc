@@ -72,9 +72,9 @@ int PoolingInt8Coder::DoCode(CoderContext *const context) {
   code.CodeStruct("quant", quant_arg_in, quant_arg_out);
 
   if (pooling_parameter->pool_mode_ == PoolMode_MaxPool) {
-    code.CodeFunction("MaxPoolingInt8", in_tensor, out_tensor, "&pooling_parameter", "&compute", "quant");
+    code.CodeFunction("MaxPoolingInt8V1", in_tensor, out_tensor, "&pooling_parameter", "&compute", "quant");
   } else {
-    code.CodeFunction("AvgPoolingInt8", in_tensor, out_tensor, "&pooling_parameter", "&compute", "&quant");
+    code.CodeFunction("AvgPoolingInt8", in_tensor, out_tensor, "&pooling_parameter", "&compute", "quant");
   }
   context->AppendCode(code.str());
   return lite::RET_OK;

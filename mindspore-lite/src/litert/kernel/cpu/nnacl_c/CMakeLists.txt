@@ -101,6 +101,8 @@ file(GLOB KERNEL_SRC
     ${NNACL_DIR}/kernel/*.c
     ${NNACL_DIR}/experimental/*.c
     ${NNACL_DIR}/fp32/online_fusion/*.c
+    # Register D-cache auto-prefetch intrinsic helpers.
+    ${NNACL_DIR}/intrinsics/ms_dcache_prefetch_instructions.c
 )
 
 set(KERNEL_AVX512_FILE  ${NNACL_DIR}/fp32/matmul_avx512_fp32.c

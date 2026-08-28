@@ -30,6 +30,7 @@ using mindspore::schema::PrimitiveType_Softmax;
 
 namespace mindspore::lite::micro::nnacl {
 int SoftMaxInt8Coder::Prepare(CoderContext *const context) {
+  static_cast<void>(context);
   MS_CHECK_RET_CODE(SoftmaxBaseCoder::Init(), "Softmax base init failed.");
   std::vector<LiteQuantParam> in_quant_args = input_tensor_->quant_params();
   quant_params_.in_quant_args_.scale_ = in_quant_args.at(0).scale;
@@ -37,7 +38,7 @@ int SoftMaxInt8Coder::Prepare(CoderContext *const context) {
 
   std::vector<LiteQuantParam> out_quant_args = output_tensor_->quant_params();
   quant_params_.out_quant_arg_.scale_ = out_quant_args.at(0).scale;
-  quant_params_.out_quant_arg_.zp_ = out_quant_args.at(0).zeroPoint;
+  quant_params_.out_quant_arg_.zp_ = -out_quant_args.at(0).zeroPoint;
   quant_params_.output_activation_min_ = std::numeric_limits<int8_t>::min();
   quant_params_.output_activation_max_ = std::numeric_limits<int8_t>::max();
 
@@ -46,25 +47,27 @@ int SoftMaxInt8Coder::Prepare(CoderContext *const context) {
   int right_shift = 0;
   QuantizeMultiplierSmallerThanOne(input_real_multiplier, &quant_params_.output_multiplier_, &right_shift);
   quant_params_.shift_left_ = right_shift < 0 ? -right_shift : 0;
-  quant_params_.shift_right_ = right_shift < 0 ? -right_shift : 0;
-  // malloc tmp buffer
-  exp_data_size_ = element_size_ * sizeof(int);
-  exp_data_ = static_cast<int *>(allocator_->Malloc(kNumberTypeInt32, exp_data_size_, kWorkspace));
-  MS_CHECK_PTR(exp_data_);
-  int inner_size = 1;
+  quant_params_.shift_right_ = right_shift > 0 ? right_shift : 0;
   MS_CHECK_TRUE(n_dim_ <= static_cast<int>(std::extent<decltype(input_shape_)>::value),
                 "n_dim should be less than the length of maximum value of input_shape");
-  // ret = 1 if axis not in [-n_dim, n_dim-1] else 0
-  auto ret = softmax_param_->axis_ < -n_dim_ && softmax_param_->axis_ >= n_dim_;
-  MS_CHECK_RET_CODE(ret, "SoftMaxInt8Coder::Prepare failed!, Softmax axis must be in [-n_dim, n_dim-1]");
-  softmax_param_->axis_ = softmax_param_->axis_ < 0 ? softmax_param_->axis_ + n_dim_ : softmax_param_->axis_;
+  MS_CHECK_TRUE(softmax_param_->axis_ >= -n_dim_ && softmax_param_->axis_ < n_dim_,
+                "SoftMaxInt8Coder::Prepare failed!, Softmax axis must be in [-n_dim, n_dim-1]");
+  if (softmax_param_->axis_ < 0) {
+    softmax_param_->axis_ += n_dim_;
+  }
+  MS_CHECK_RET_CODE(ReSize(), "SoftMaxInt8Coder::Prepare resize failed");
+
+  int inner_size = 1;
   for (int i = softmax_param_->axis_ + 1; i < n_dim_; i++) {
     inner_size *= input_shape_[i];
   }
+  exp_data_size_ = static_cast<size_t>(element_size_) * sizeof(int);
+  exp_data_ = static_cast<int *>(allocator_->Malloc(kNumberTypeInt32, exp_data_size_, kWorkspace));
+  MS_CHECK_PTR(exp_data_);
   sum_data_size_ = inner_size * sizeof(int);
   sum_data_ = static_cast<int *>(allocator_->Malloc(kNumberTypeInt32, sum_data_size_, kWorkspace));
   MS_CHECK_PTR(sum_data_);
-  return ReSize();
+  return RET_OK;
 }
 
 int SoftMaxInt8Coder::DoCode(CoderContext *const context) {
@@ -93,11 +96,9 @@ int SoftMaxInt8Coder::DoCode(CoderContext *const context) {
   code.CodeFunction("memset", exp_data_, 0, exp_data_size_);
   code.CodeFunction("memset", sum_data_, 0, sum_data_size_);
 
-  MS_CHECK_TRUE(thread_num_ > 0, "thread_num_ <= 0");
-  int stride = UP_DIV(outter_size, thread_num_);
-  int count = MSMIN(stride, outter_size - stride * kDefaultTaskId);
-  code.CodeFunction("SoftmaxInt8", input_tensor_, output_tensor_, count, exp_data_, sum_data_, "input_shape", n_dim_,
-                    "softmax_parameter.axis_", "&quant_params");
+  // Micro Softmax emits one direct kernel call, so it must cover the whole outer extent.
+  code.CodeFunction("SoftmaxInt8", input_tensor_, output_tensor_, outter_size, exp_data_, sum_data_, "input_shape",
+                    n_dim_, "softmax_parameter.axis_", "&quant_params");
   context->AppendCode(code.str());
   return RET_OK;
 }

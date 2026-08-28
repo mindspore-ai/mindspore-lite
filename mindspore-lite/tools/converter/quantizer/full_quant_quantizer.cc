@@ -506,6 +506,7 @@ void FullQuantQuantizer::InitCpuConfig() {
   };
   if (param_->fullQuantParam.enable_all_ops) {
     (void)support_int8_ops_.emplace(prim::kPrimMaxPoolFusion);
+    (void)support_int8_ops_.emplace(prim::kPrimAvgPoolFusion);
     (void)support_int8_ops_.emplace(prim::kPrimActivation);
     (void)support_int8_ops_.emplace(prim::kPrimSoftmax);
     (void)support_int8_ops_.emplace(prim::kPrimMulFusion);
