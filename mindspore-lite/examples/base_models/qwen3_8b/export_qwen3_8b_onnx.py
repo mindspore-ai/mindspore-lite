@@ -34,10 +34,12 @@ kv-head repeat-to-MHA workaround is needed.
 import argparse
 import gc
 import json
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
+import onnx
 import torch
 import torch.nn.functional as F
 
@@ -461,32 +463,35 @@ class _SwiGluCustom(torch.autograd.Function):
         # Build a TensorType that copies input dims but halves the target dim.
         # For our call sites dim is always -1 and the last dim is static
         # (fused MLP gate+up projection = 2*intermediate_size, always known).
+        # torch>=2.8 removed torch.onnx.TensorType; use the jit type directly:
+        # x.type() -> torch._C.TensorType, .sizes() -> [int|None|str],
+        # .with_sizes([...]) rebuilds the type keeping dtype/device. Get the
+        # rank from sizes(), NOT .dim() -- in torch 2.8/2.9 the symbolic input's
+        # .dim() is unreliable on the quantized cat->SwiGlu chain, leaving the
+        # output declared with the UNHALVED dim and breaking the downstream
+        # Reshape [-1,4096] ("cannot be divided from [4096]").
         try:
             x_type = x.type()
-            x_rank = x_type.dim()
+            if not hasattr(x_type, "sizes"):
+                return y
+            sizes = list(x_type.sizes())
+            if sizes is None:
+                # Dynamic/unknown input type (e.g. prefill rotary chain): cannot
+                # halve statically; leave untyped (downstream uses real infershape).
+                return y
+            x_rank = len(sizes)
             d = int(dim)
             if d < 0:
                 d += x_rank
-            from torch.onnx import TensorType
-            new_type = TensorType()
-            for i in range(x_rank):
-                dim_i = x_type.dim(i)
-                if i == d:
-                    if dim_i.is_static and dim_i.dim_value > 0:
-                        new_type.add_dim(int(dim_i.dim_value) // 2)
-                    else:
-                        new_type.add_dim(dim_i.dim_param or "Dhalved")
-                else:
-                    if dim_i.is_static and dim_i.dim_value > 0:
-                        new_type.add_dim(int(dim_i.dim_value))
-                    else:
-                        new_type.add_dim(dim_i.dim_param or (f"D{i}" if dim_i.dim_param is None else dim_i.dim_param))
-            try:
-                new_type.set_scalar_type(x_type.scalar_type())
-            except (RuntimeError, TypeError, ValueError):
-                pass
+            new_sizes = []
+            for i, s in enumerate(sizes):
+                val = s if isinstance(s, int) else None
+                if i == d and val is not None:
+                    val = val // 2
+                new_sizes.append(val)
+            new_type = x_type.with_sizes(new_sizes)
             y.setType(new_type)
-        except (RuntimeError, TypeError, ValueError):
+        except (RuntimeError, TypeError, ValueError, AttributeError):
             # Fallback: downstream depends on actual op infershape, avoid
             # declaring a 2x-wrong size that would guarantee Reshape failure.
             pass
@@ -669,6 +674,224 @@ def _proj_linear(x, weight, bias=None):
     return y.reshape(*in_shape[:-1], -1)
 
 
+# ---------------------------------------------------------------------------
+# A8W8 quantized projection (AMCT A2 eager path)
+#
+# AMCT quantizes the torch model and saves the weights (a2_quant_extract.py ->
+# --quant-dir); this script emits the same Custom(AscendQuant)/
+# Custom(AscendDequant) chain as AMCT's deploy onnx (rewrite_custom3.py):
+#
+#   Mul(x, scale_factor)                       smoothquant smooth weight [k]
+#   Custom(AscendQuant): 1 input; attrs {scale=scale_d, offset=act_offset,
+#       dst_type=2(CANN INT8), dtype=3(onnx INT8 out)}
+#   MatMul(int8, int8) -> int32                (w_int8 [k,n], already transposed)
+#   Add(int32 bias)                            quantized int32 bias [n]
+#   Custom(AscendDequant): 2 inputs (x int32, deq_scale u64 [n]); NO dtype attr
+#
+# Column-parallel (q/k/v/gate/up, TP): slice w_int8[:,s:e], bias[s:e],
+# deq_scale[s:e]. Row-parallel (o_proj, TP): slice w_int8[s:e,:], scale_factor[s:e].
+# skip_layers (down_proj, lm_head) stay fp16 -> plain _proj_linear.
+# ---------------------------------------------------------------------------
+QUANT_PACK = None  # {module_path: {w_int8, scale_factor, scale_d, act_offset, bias, deq_scale}}
+
+
+def _load_quant_pack(quant_dir):
+    """Load AMCT-extracted quantized weights (manifest.json + npy files)."""
+    global QUANT_PACK
+    if not quant_dir:
+        QUANT_PACK = None
+        return
+    with open(Path(quant_dir) / "manifest.json", encoding="utf-8") as f:
+        manifest = json.load(f)
+    raw = {}
+    for key, meta in manifest.items():
+        name, field = key.split("::")
+        arr = np.load(Path(quant_dir) / meta["path"])
+        raw.setdefault(name, {})[field] = arr
+    pack = {}
+    for name, d in raw.items():
+        t = {}
+        for k, v in d.items():
+            if k == "w_int8":
+                t[k] = torch.from_numpy(v)  # int8 [k, n]
+            elif k == "bias":
+                t[k] = torch.from_numpy(v)  # int32 [n]
+            elif k == "deq_scale":
+                t[k] = torch.from_numpy(v)  # uint64 [n]
+            elif k == "scale_factor":
+                t[k] = torch.from_numpy(v).to(torch.float16).squeeze(0)  # [1,k] -> [k]; TP row-slice (sf[s:e]) then cuts the K axis
+            else:
+                t[k] = torch.from_numpy(v).float()
+        pack[name] = t
+    QUANT_PACK = pack
+    print(f"[quant] loaded {len(pack)} quantized modules from {quant_dir}")
+
+
+def _quant_for(name):
+    """Return quant dict for module path ('model.layers.0.self_attn.q_proj') or None."""
+    if not QUANT_PACK:
+        return None
+    return QUANT_PACK.get(name)
+
+
+class _AscendQuantCustom(torch.autograd.Function):
+    """Custom(AscendQuant): fp16 -> int8, attrs {scale=scale_d, offset=act_offset,
+    dst_type=2, dtype=3}. torch forward is a simulation only (tracing); the GE
+    runtime executes the real kernel."""
+
+    @staticmethod
+    def forward(_ctx, x, scale: float, offset: float):
+        xq = torch.clamp(torch.round(x.float() / scale) + offset, -128, 127)
+        return xq.to(torch.int8)
+
+    @staticmethod
+    def symbolic(g, x, scale: float, offset: float):
+        """Emit Custom(AscendQuant) with GE's multiplicative scale semantics."""
+        # GE interprets scale multiplicatively (x*scale+offset) while the torch
+        # fallback divides (scale_d = 1/act_scale); export scale_f=1/scale_d so
+        # both semantics match.
+        y = g.op("Custom", x,
+                 type_s="AscendQuant",
+                 input_names_s=["x"],
+                 output_names_s=["y"],
+                 output_num_i=1,
+                 input_index_i=[0],
+                 scale_f=float(1.0 / scale),
+                 offset_f=float(offset),
+                 dst_type_i=2,
+                 dtype_i=3)
+        return y.setType(x.type().with_dtype(torch.int8))
+
+
+class _AscendDequantCustom(torch.autograd.Function):
+    """Custom(AscendDequant): (int32, u64 deq_scale) -> fp16. NO dtype attr
+    (converter parses dtype as output datatype -> UNDEFINED -> mindir crash)."""
+
+    @staticmethod
+    def forward(_ctx, x, deq_scale):
+        # Simulation only: y ~= x * deq_scale (fp32 domain, then fp16).
+        return (x.float() * deq_scale.float()).to(torch.float16)
+
+    @staticmethod
+    def symbolic(g, x, deq_scale):
+        y = g.op("Custom", x, deq_scale,
+                 type_s="AscendDequant",
+                 input_names_s=["x", "deq_scale"],
+                 output_names_s=["y"],
+                 output_num_i=1,
+                 input_index_i=[0, 1])
+        return y.setType(x.type().with_dtype(torch.float16))
+
+
+class _QBMCV3Custom(torch.autograd.Function):
+    """Custom(QuantBatchMatmulV3): fused int8@int8 matmul + bias + dequant -> fp16.
+
+    Slots match the rewrite_qdq3_to_qbmv3.py graph rewrite: x1=int8 act,
+    x2=int8 weight, scale=uint64 deq_scale, offset=float32 zeros (placeholder),
+    bias=int32. The kernel reads the low 32 bits of scale as float32. forward is
+    a shape-only simulation; GE runs the real kernel. split_matmul_by_chunk
+    keeps each chunk M<=512 to avoid the QBMV3 tiling SIGSEGV at M>=1024.
+    """
+
+    @staticmethod
+    def forward(_ctx, x1, x2, _scale_u64, _offset_f32, bias_i32):
+        # Trace-only shape simulation (fp16 [M, N]); real values come from the
+        # GE kernel. Avoid bit tricks (view/int64 AND) -- trace emits them as
+        # aten::view ONNX nodes and fails.
+        y = x1.float() @ x2.float()  # [M, N]
+        y = y * 1.0  # deq approximated as 1.0; shape propagation only
+        if bias_i32 is not None:
+            y = y + bias_i32.float()
+        return y.to(torch.float16)
+
+    @staticmethod
+    def symbolic(g, x1, x2, scale_u64, offset_f32, bias_i32):
+        """Emit Custom(QuantBatchMatmulV3); output type is [M, N] (w's columns)."""
+        y = g.op("Custom", x1, x2, scale_u64, offset_f32, bias_i32,
+                 type_s="QuantBatchMatmulV3",
+                 input_names_s=_as_list_str(["x1", "x2", "scale", "offset", "bias"]),
+                 output_names_s=_as_list_str(["y"]),
+                 dtype_i=10)
+        # Output type must reflect w's column count [M, N], not x1's [M, K]:
+        # declaring [M, K] (4096) while the kernel emits N=2048 doubles the
+        # gate/up sizes and breaks the downstream Reshape [-1,4096]
+        # ("cannot be divided from [4096]").
+        try:
+            x1_t = x1.type()
+            x2_t = x2.type()
+            s1 = list(x1_t.sizes()) if hasattr(x1_t, "sizes") else None
+            s2 = list(x2_t.sizes()) if hasattr(x2_t, "sizes") else None
+            if s1 is not None and s2 is not None and len(s1) >= 2 and len(s2) >= 2:
+                # x1 [M, K], x2(w) [K, N] -> out [M, N]
+                new_sizes = list(s1[:-1]) + [s2[-1]]
+                y.setType(x1_t.with_sizes(new_sizes).with_dtype(torch.float16))
+        except (RuntimeError, TypeError, ValueError, AttributeError):
+            pass
+        return y
+
+
+def _quant_proj(x, qd, mode="col", slice_=None):
+    """Quantized linear projection: smooth -> AscendQuant -> int8 QBMV3(fused
+    matmul+bias+dequant -> fp16, chunk_size=512 split).
+
+    qd: dict from _quant_for(); mode 'col' = column-parallel (slice output n),
+    'row' = row-parallel (slice input k); slice_=(s,e) applied when TP_SIZE>1.
+    """
+    w = qd["w_int8"]  # [k, n] int8 (already transposed)
+    sf = qd["scale_factor"]  # [k] smooth weight
+    scale_d = float(qd["scale_d"][0]) if qd["scale_d"].dim() else float(qd["scale_d"])
+    offset = float(qd["act_offset"][0]) if qd["act_offset"].dim() else float(qd["act_offset"])
+    bias = qd.get("bias")
+    deq = qd["deq_scale"]  # [n] u64
+    if TP_SIZE > 1 and slice_ is not None:
+        s, e = slice_
+        if mode == "col":
+            w = w[:, s:e]
+            deq = deq[s:e]
+            if bias is not None:
+                bias = bias[s:e]
+        else:
+            w = w[s:e, :]
+            sf = sf[s:e]
+    # Move quantized weights to x's device (NPU).
+    _dev = x.device
+    w = w.to(_dev)
+    sf = sf.to(_dev)
+    deq = deq.to(_dev)
+    if bias is not None:
+        bias = bias.to(_dev)
+    in_shape = x.shape
+    x = x * sf  # smoothquant (broadcast [k] over last dim)
+    xq = _AscendQuantCustom.apply(x, scale_d, offset)
+    # One fused QBMV3 (matmul + bias + dequant -> fp16), no chunking.
+    offset_zeros = torch.zeros(deq.shape, dtype=torch.float32)
+    y = _QBMCV3Custom.apply(xq.reshape(-1, in_shape[-1]), w.to(torch.int8),
+                            deq, offset_zeros, bias)  # int8 x int8 -> fp16 (fused QBMV3)
+    return y.reshape(*in_shape[:-1], -1)
+
+
+def split_matmul_by_chunk(x: torch.Tensor, w: torch.Tensor, deq: torch.Tensor,
+                          offset_f32: torch.Tensor, bias: torch.Tensor,
+                          chunk_size: int = 512):
+    """Chunk the activation along dim 0 into chunk_size-row pieces, emit one
+    QBMV3 (fused matmul+bias+dequant -> fp16) per chunk, then concat(dim=0).
+
+    x: int8 [M, K] (AscendQuant output), w: int8 [K, N], deq: uint64 [N],
+    offset_f32: float32 [N] (all-zero placeholder), bias: int32 [N] or None.
+    Only the M dim is chunked; w/deq/bias stay whole (TP slicing of
+    w/deq/bias/sf already happened in _quant_proj).
+    """
+    parts = []
+    M = x.shape[0]
+    for start in range(0, M, chunk_size):
+        end = start + chunk_size
+        x_chunk = x[start:end, :]
+        part = _QBMCV3Custom.apply(x_chunk, w, deq, offset_f32, bias)
+        parts.append(part)
+    out = torch.cat(parts, dim=0)
+    return out
+
+
 def _set_allow_nz_on_matmul(onnx_path):
     """Add the allow_nz=true attribute to all MatMul/MatMulV2/BatchMatMulV2 nodes in an ONNX graph.
 
@@ -679,10 +902,15 @@ def _set_allow_nz_on_matmul(onnx_path):
     Only MatMul nodes with allow_nz=true are permitted by heavy_format_propagation
     to use FRACTAL_NZ. In ONNX, int 1 is used to represent bool true (the GE-side
     GetBool is compatible with int values).
+
+    IMPORTANT: only the model header is rewritten (load_external_data=False +
+    onnx.save). Do NOT use onnx.save_model(save_as_external_data=True): onnx
+    1.17 inflates fp16 external data ~3x (1.24GB -> 3.7GB) and converter_lite
+    fails with a memcpy_s size mismatch. External files written by
+    torch.onnx.export stay untouched (correct fp16 sizes).
     """
-    import onnx
     from onnx import helper
-    m = onnx.load(onnx_path)
+    m = onnx.load(onnx_path, load_external_data=False)
     added = 0
     for node in m.graph.node:
         if node.op_type in ("MatMul", "MatMulV2", "BatchMatMulV2"):
@@ -692,18 +920,24 @@ def _set_allow_nz_on_matmul(onnx_path):
             node.attribute.append(helper.make_attribute("allow_nz", 1))
             added += 1
     if added:
-        # Model weights are stored as external data (>2GB protobuf limit), so we must
-        # use save_model + save_as_external_data; otherwise SerializeToString exceeds the limit.
-        onnx.save_model(m, onnx_path, save_as_external_data=True,
-                        all_tensors_to_one_file=False, location=".")
+        # Header-only write: initializers keep data_location=EXTERNAL and the
+        # original location/offset/length references; external files are NOT
+        # touched, so the fp16 weights stay byte-exact.
+        onnx.save(m, onnx_path)
     print(f"[allow_nz] {onnx_path}: set allow_nz=true on {added} MatMul nodes")
 
 
-def _compute_qkv(attn_mod, hidden_states):
+def _compute_qkv(attn_mod, hidden_states, layer_idx):
     """Compute fused QKV projection and reshape to (batch, seq, heads, head_dim).
 
     Applies q_norm / k_norm (per-head RMSNorm, TP-sliced) when present.
     Returns (query_states, key_states, value_states, input_shape).
+
+    A8W8 quantized path: q/k/v each have their OWN act scale/offset (per-tensor
+    calibration), so the fused projection is split into three independent
+    quantized projections (smooth -> Quant -> int8 MatMul -> Dequant each), then
+    re-cat into the same [q | k | v] layout. Skip (non-quantized) modules keep
+    the original single fused MatMul.
     """
     input_shape = hidden_states.shape[:-1]
     head_dim = attn_mod.head_dim
@@ -718,16 +952,25 @@ def _compute_qkv(attn_mod, hidden_states):
     kv_per = int(k_w.shape[0]) // TP_SIZE
     qs, qe = TP_RANK * q_per, (TP_RANK + 1) * q_per
     ks, ke = TP_RANK * kv_per, (TP_RANK + 1) * kv_per
-    w = torch.cat([q_w[qs:qe], k_w[ks:ke], v_w[ks:ke]], dim=0)
     q_b, k_b, v_b = attn_mod.q_proj.bias, attn_mod.k_proj.bias, attn_mod.v_proj.bias
-    if q_b is None:
-        b = None
-    else:
-        b = torch.cat([q_b[qs:qe], k_b[ks:ke], v_b[ks:ke]], dim=0)
 
     q_out = q_per
     kv_out = kv_per
-    qkv = _proj_linear(hidden_states, w, b)
+    pfx = "model.layers.%d.self_attn" % layer_idx
+    qd_q, qd_k, qd_v = (_quant_for(pfx + ".q_proj"), _quant_for(pfx + ".k_proj"),
+                        _quant_for(pfx + ".v_proj"))
+    if qd_q and qd_k and qd_v:
+        q = _quant_proj(hidden_states, qd_q, "col", (qs, qe))      # [..., q_out]
+        k = _quant_proj(hidden_states, qd_k, "col", (ks, ke))      # [..., kv_out]
+        v = _quant_proj(hidden_states, qd_v, "col", (ks, ke))      # [..., kv_out]
+        qkv = torch.cat([q, k, v], dim=-1)
+    else:
+        w = torch.cat([q_w[qs:qe], k_w[ks:ke], v_w[ks:ke]], dim=0)
+        if q_b is None:
+            b = None
+        else:
+            b = torch.cat([q_b[qs:qe], k_b[ks:ke], v_b[ks:ke]], dim=0)
+        qkv = _proj_linear(hidden_states, w, b)
 
     query = qkv[..., :q_out].view(hidden_shape)
     key = qkv[..., q_out:q_out + kv_out].view(hidden_shape)
@@ -795,7 +1038,7 @@ def _run_decode_attention(query, key, value, attention_mask, attn_mod, num_heads
 
 
 def _text_attn_forward(attn_mod, hidden_states, cos4, sin4, attention_mask,
-                       cache_pos, past_key, past_value):
+                       cache_pos, past_key, past_value, layer_idx=0):
     """Dispatch attention computation to prefill or decode path.
 
     Prefill: PromptFlashAttention (BSND) with causal+padding mask.
@@ -804,7 +1047,7 @@ def _text_attn_forward(attn_mod, hidden_states, cos4, sin4, attention_mask,
     num_heads = attn_mod.config.num_attention_heads
     num_kv_heads = attn_mod.config.num_key_value_heads
 
-    query, key, value, input_shape = _compute_qkv(attn_mod, hidden_states)
+    query, key, value, input_shape = _compute_qkv(attn_mod, hidden_states, layer_idx)
 
     if past_key is not None:
         query, key, value = query.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
@@ -839,7 +1082,16 @@ def _text_attn_forward(attn_mod, hidden_states, cos4, sin4, attention_mask,
         _TAP_RAW_OUT.append(out)  # raw attention output (heads concatenated), before o_proj
 
     # o_proj: row-parallel under TP (input dim = local q-heads * head_dim), then AllReduce.
-    if TP_SIZE > 1:
+    qd_o = _quant_for("model.layers.%d.self_attn.o_proj" % layer_idx)
+    if qd_o:
+        # Quantized o_proj: row slice on w_int8 [k,n] dim0 + scale_factor [k].
+        if TP_SIZE > 1:
+            q_dim_local = num_heads_local * attn_mod.head_dim
+            out_proj = _quant_proj(out, qd_o, "row",
+                                   (TP_RANK * q_dim_local, (TP_RANK + 1) * q_dim_local))
+        else:
+            out_proj = _quant_proj(out, qd_o, "row", None)
+    elif TP_SIZE > 1:
         q_dim_local = num_heads_local * attn_mod.head_dim
         o_w = attn_mod.o_proj.weight[:, TP_RANK * q_dim_local:(TP_RANK + 1) * q_dim_local]
         out_proj = allreduce_sum(_proj_linear(out, o_w, attn_mod.o_proj.bias))
@@ -853,7 +1105,7 @@ def _text_attn_forward(attn_mod, hidden_states, cos4, sin4, attention_mask,
 # ---------------------------------------------------------------------------
 
 
-def _mlp_gate_up_linear(mlp_mod, x):
+def _mlp_gate_up_linear(mlp_mod, x, layer_idx):
     """Fused gate+up projection -> returns the merged [gate | up] tensor directly.
 
     The fused GEMM weight cat([gate_w, up_w]) makes the output [gate | up] in
@@ -861,6 +1113,10 @@ def _mlp_gate_up_linear(mlp_mod, x):
     dim in half internally). Returning the merged tensor AVOIDS a split-then-recat
     pair (StridedSliceD + ConcatD) per layer that is a pure identity no-op.
     TP: column-parallel -- each rank holds intermediate/TP rows of gate and up.
+
+    A8W8 quantized path: gate/up have independent act scales -> two separate
+    quantized projections, re-cat into [gate | up] (SwiGlu chunks internally,
+    so the re-cat keeps the same layout as the fused path).
     """
     gate_w = mlp_mod.gate_proj.weight
     up_w = mlp_mod.up_proj.weight
@@ -868,16 +1124,22 @@ def _mlp_gate_up_linear(mlp_mod, x):
     up_b = mlp_mod.up_proj.bias
     g_per = int(gate_w.shape[0]) // TP_SIZE
     gs, ge = TP_RANK * g_per, (TP_RANK + 1) * g_per
+    pfx = "model.layers.%d.mlp" % layer_idx
+    qd_g, qd_u = _quant_for(pfx + ".gate_proj"), _quant_for(pfx + ".up_proj")
+    if qd_g and qd_u:
+        gate = _quant_proj(x, qd_g, "col", (gs, ge))   # [..., intermediate]
+        up = _quant_proj(x, qd_u, "col", (gs, ge))     # [..., intermediate]
+        return torch.cat([gate, up], dim=-1)           # [gate | up], feeds SwiGlu
     w = torch.cat([gate_w[gs:ge], up_w[gs:ge]], dim=0)
     b = None if gate_b is None else torch.cat([gate_b[gs:ge], up_b[gs:ge]], dim=0)
     return _proj_linear(x, w, b)   # already [gate | up]; feed directly to SwiGlu
 
 
-def _run_mlp(layer, hidden_states):
+def _run_mlp(layer, hidden_states, layer_idx=0):
     """Run MLP forward pass with fused gate+up projection and SwiGLU activation."""
     mlp = layer.mlp
     if hasattr(mlp, "gate_proj") and hasattr(mlp, "up_proj") and hasattr(mlp, "down_proj"):
-        gate_up = _mlp_gate_up_linear(mlp, hidden_states)   # [gate | up] fused
+        gate_up = _mlp_gate_up_linear(mlp, hidden_states, layer_idx)   # [gate | up] fused
         act = swiglu(gate_up, dim=-1)   # SwiGlu chunks in half internally; no cat needed
         if TP_SIZE > 1:
             # down_proj row-parallel: input dim = intermediate/TP, then AllReduce.
@@ -947,19 +1209,16 @@ class Qwen3LlmPrefill(torch.nn.Module):
 
         present_k, present_v = [], []
         hidden_states = inputs_embeds
-        for layer in self.model.layers:
+        for i, layer in enumerate(self.model.layers):
             residual = hidden_states
             hidden_states = _rms_norm_layer(layer.input_layernorm, hidden_states)
             attn_out, pk, pv = _text_attn_forward(
                 layer.self_attn, hidden_states, cos4, sin4, attention_mask,
-                None, None, None)
-            # No graph-side KV padding — all paths pad on host side:
-            # 1p: infer_qwen3_8b_mslite_1p._prefill; 2p: _reconstruct_kv_tp; 4p: _tp_hybrid_prefill.
-            # This eliminates 72 ConcatD ops (36 layers × 2 K+V) from the graph.
+                None, None, None, i)
             hidden_states = residual + attn_out
             residual = hidden_states
             hidden_states = _rms_norm_layer(layer.post_attention_layernorm, hidden_states)
-            hidden_states = residual + _run_mlp(layer, hidden_states)
+            hidden_states = residual + _run_mlp(layer, hidden_states, i)
             present_k.append(pk)
             present_v.append(pv)
 
@@ -1031,14 +1290,14 @@ class Qwen3LlmDecode(torch.nn.Module):
             hidden_states = _rms_norm_layer(layer.input_layernorm, hidden_states)
             attn_out, pk, pv = _text_attn_forward(
                 layer.self_attn, hidden_states, cos4, sin4, attention_mask,
-                position_ids, past_k_layers[i], past_v_layers[i])
+                position_ids, past_k_layers[i], past_v_layers[i], i)
             hidden_states = residual + attn_out
             if DEBUG_TAP and i == 0:
                 tap_attn_out = attn_out  # layer-0 attention output (post o_proj AllReduce)
                 tap_post_attn = hidden_states  # embed + attn_out_0 (before MLP)
             residual = hidden_states
             hidden_states = _rms_norm_layer(layer.post_attention_layernorm, hidden_states)
-            hidden_states = residual + _run_mlp(layer, hidden_states)
+            hidden_states = residual + _run_mlp(layer, hidden_states, i)
             if DEBUG_TAP and i == 0:
                 tap_post_mlp = hidden_states  # layer-0 full output
             present_k.append(pk)
@@ -1115,6 +1374,84 @@ def _create_prefill_dummy_inputs(device: str, dummy_seq_len: int):
     return seq, ids, mask, pos
 
 
+def _read_external_tensor(t, base_dir):
+    """Manually read an external-data tensor, bypassing numpy_helper's checker path."""
+    loc, offset, length = "", 0, 0
+    for ed in t.external_data:
+        if ed.key == "location":
+            loc = ed.value
+        elif ed.key == "offset":
+            offset = int(ed.value)
+        elif ed.key == "length":
+            length = int(ed.value)
+    with open(os.path.join(base_dir, loc), "rb") as f:
+        f.seek(offset)
+        raw = f.read(length if length > 0 else -1)
+    dt = {onnx.TensorProto.INT64: np.int64, onnx.TensorProto.INT32: np.int32,
+          onnx.TensorProto.FLOAT: np.float32, onnx.TensorProto.FLOAT16: np.float16,
+          onnx.TensorProto.INT8: np.int8, onnx.TensorProto.UINT64: np.uint64}
+    return np.frombuffer(raw, dtype=dt[t.data_type]).reshape(list(t.dims))
+
+
+def _postproc_scale_uint64(m, base_dir):
+    """Post-export fix: rewrite the QBMM scale int64 Constant -> uint64 initializer.
+
+    torch.onnx.export has no uint64, so deq_scale is emitted as an int64
+    Constant in external data; the GE kernel needs uint64
+    ((16384<<32)|f32_bits). Read external data manually to bypass the checker.
+    """
+    g = m.graph
+    prod = {n.output[0]: n for n in g.node if len(n.output) > 0}
+    init_names = {i.name for i in g.initializer}
+    n_fixed = 0
+    for n in list(g.node):
+        if n.op_type == "Custom" and any(a.name == "type" and a.s == b"QuantBatchMatmulV3" for a in n.attribute):
+            if len(n.input) < 3:
+                continue
+            scale_name = n.input[2]
+            const_node = prod.get(scale_name)
+            if const_node is None or const_node.op_type != "Constant":
+                continue
+            t = const_node.attribute[0].t
+            if t.data_type != onnx.TensorProto.INT64:
+                continue
+            if t.data_location == onnx.TensorProto.EXTERNAL:
+                val = _read_external_tensor(t, base_dir).astype(np.uint64)
+            else:
+                val = onnx.numpy_helper.to_array(t).astype(np.uint64)
+            init = onnx.helper.make_tensor(scale_name, onnx.TensorProto.UINT64,
+                                           list(val.shape), val.tolist())
+            g.node.remove(const_node)
+            if scale_name not in init_names:
+                g.initializer.append(init)
+                init_names.add(scale_name)
+            n_fixed += 1
+    return n_fixed
+
+
+def _inline_postproc(path):
+    """Inline post-export processing: scale int64 -> uint64.
+
+    Parse and write back with raw protobuf to bypass the onnx checker (fresh
+    external-data references from torch.export fail onnx.load/save).
+    """
+    import time
+    m = onnx.ModelProto()
+    for _ in range(10):
+        try:
+            with open(str(path), "rb") as f:
+                m.ParseFromString(f.read())
+            break
+        except Exception:
+            time.sleep(1)
+    else:
+        raise RuntimeError(f"inline postproc: onnx parse failed after retries: {path}")
+    n = _postproc_scale_uint64(m, os.path.dirname(os.path.abspath(str(path))))
+    with open(str(path), "wb") as f:
+        f.write(m.SerializeToString())
+    print(f"  [postproc-inline] {n} QBMM scales -> uint64 @ {path}")
+
+
 def _export_prefill_onnx(prefill, prefill_path: Path, dummy_inputs, use_dynamo: bool, static: bool = False):
     """Export prefill subgraph to ONNX (3 inputs).
 
@@ -1139,6 +1476,7 @@ def _export_prefill_onnx(prefill, prefill_path: Path, dummy_inputs, use_dynamo: 
             output_names=pf_out_names,
             opset_version=18, do_constant_folding=True, dynamo=use_dynamo,
             dynamic_axes=dynamic)
+    _inline_postproc(prefill_path)
     print("LLM prefill exported successfully.")
 
 
@@ -1190,6 +1528,7 @@ def _export_decode_onnx(decode, decode_path: Path, dummy_inputs, use_dynamo: boo
             output_names=out_names,
             opset_version=18, do_constant_folding=True, dynamo=use_dynamo,
             dynamic_axes=dynamic)
+    _inline_postproc(decode_path)
     print("LLM decode exported successfully.")
 
 
@@ -1207,6 +1546,20 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq_len=8, 
     _export_decode_onnx(decode, decode_path, decode_inputs, use_dynamo)
 
 
+def _tp_rank_dir(output_dir, rank, tp_size, sub):
+    """Per-rank ONNX output dir for TP>=2.
+
+    Each rank exports into its own directory (rank{r}/{sub}/) because the ONNX
+    external-data files are named after tensor names (onnx__MatMul_*, layer
+    weights, ...) and would silently overwrite each other when rank0/rank1 are
+    written into the same directory. tp_size==1 keeps the legacy flat layout
+    ({output_dir}/{sub}/) for 1p compatibility.
+    """
+    if int(tp_size) > 1:
+        return Path(output_dir) / f"rank{rank}" / sub
+    return Path(output_dir) / sub
+
+
 def export_tp_decode(model, output_dir, rank, tp_size, device="cpu", use_dynamo=False, static=True,
                      dynamic_kv_only=False):
     """Export the TP-sharded decode subgraph for one rank.
@@ -1222,7 +1575,7 @@ def export_tp_decode(model, output_dir, rank, tp_size, device="cpu", use_dynamo=
     decode = _prepare_llm_decode_wrapper(model, device)
     kv_dtype = next(model.parameters()).dtype
     num_layers, num_kv_heads, head_dim = _get_kv_cache_config(model)
-    decode_dir = Path(output_dir) / "decode"
+    decode_dir = _tp_rank_dir(output_dir, rank, tp_size, "decode")
     decode_dir.mkdir(parents=True, exist_ok=True)
     decode_path = decode_dir / f"qwen3_8b_llm_decode_rank{rank}.onnx"
     decode_inputs = _create_decode_dummy_inputs(str(device), num_layers, num_kv_heads, head_dim, kv_dtype)
@@ -1244,7 +1597,7 @@ def export_tp_prefill(model, output_dir, rank, tp_size, device="cpu", dummy_seq_
     _AllReduceCustom.reset_fusion_id()
     print(f"Exporting prefill rank={rank}/{tp_size} (static={static})...")
     prefill = _prepare_llm_prefill_wrapper(model, device)
-    prefill_dir = Path(output_dir) / "prefill"
+    prefill_dir = _tp_rank_dir(output_dir, rank, tp_size, "prefill")
     prefill_dir.mkdir(parents=True, exist_ok=True)
     prefill_path = prefill_dir / f"qwen3_8b_llm_prefill_rank{rank}.onnx"
     _, ids, mask, pos = _create_prefill_dummy_inputs(device=device, dummy_seq_len=dummy_seq_len)
@@ -1365,6 +1718,12 @@ def _parse_export_args():
                         help="Dummy sequence length for export")
     parser.add_argument("--dtype", type=str, default="fp16",
                         choices=["fp16", "bf16", "fp32"], help="Export dtype")
+    parser.add_argument("--quant-dir", type=str, default=None,
+                        help="Directory of AMCT-extracted A8W8 quantized weights "
+                             "(manifest.json + npy from a2_quant_extract.py). When set, "
+                             "q/k/v/o_proj/gate/up projections are emitted as quantized "
+                             "Custom(AscendQuant)->int8 MatMul->Custom(AscendDequant) "
+                             "chains; down_proj/lm_head (AMCT skip_layers) stay fp16.")
     parser.add_argument("--use-dynamo", action="store_true",
                         help="Use torch dynamo exporter path")
     parser.add_argument("--tp-size", type=int, default=1,
@@ -1400,6 +1759,9 @@ def main():
     dtype_map = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": torch.float32}
     torch_dtype = dtype_map[args.dtype]
     device = torch.device(args.device)
+
+    if args.quant_dir:
+        _load_quant_pack(args.quant_dir)
 
     print(f"\nLoading model {args.model_id} for export (dtype={args.dtype})...")
     model = AutoModelForCausalLM.from_pretrained(
@@ -1458,7 +1820,7 @@ def main():
     # causing inefficient vector-unit data rearrangement).
     for sub in ("prefill", "decode"):
         for r in range(args.tp_size):
-            onnx_path = Path(output_dir) / sub / f"qwen3_8b_llm_{sub}_rank{r}.onnx"
+            onnx_path = _tp_rank_dir(output_dir, r, args.tp_size, sub) / f"qwen3_8b_llm_{sub}_rank{r}.onnx"
             if onnx_path.exists():
                 _set_allow_nz_on_matmul(str(onnx_path))
 

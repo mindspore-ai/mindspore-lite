@@ -50,7 +50,7 @@ Ascend 300I Duo 单卡包含 2 个 NPU 芯（chip），因此：
 | 2816 | 2561–2816 | 3328 | 512 |
 | 3072 | 2817–3072 | 3584 | 512 |
 
-**2p（八档）**：对应 `configs/tp2/qwen3_8b_llm_prefill.config` / `qwen3_8b_llm_decode.config`
+**2p（八档）**：对应 `configs/qwen3_8b_llm_prefill.config` / `qwen3_8b_llm_decode.config`
 
 | prefill_seq | 适用输入长度 | kv_len | 最大输出 tokens |
 |------------:|:-----------:|-------:|:--------------:|
@@ -271,13 +271,11 @@ $Convert --fmk=ONNX \
 
 1p/2p 的在线 GE 动态分档由 `ge.dynamicDims` 配置驱动，prefill/decode 各一份，位于：
 
-- `configs/`：1p（KV 8 头/卡）
-- `configs/tp2/`：2p（KV 4 头/rank）
-- `configs/tp4/`：4p（KV 2 头/rank，未验证）
+- `configs/`
 
 `infer_qwen3_8b_mslite_tp.py`（2p/4p）按设备数自动选择配置目录，也可用 `--bucket-cfg-dir` 覆盖；1p 固定使用 `configs/` 下的配置。
 
-> 实际配置文件为 `configs/qwen3_8b_llm_prefill.config` / `configs/qwen3_8b_llm_decode.config`（1p）与 `configs/tp2/qwen3_8b_llm_prefill.config` / `configs/tp2/qwen3_8b_llm_decode.config`（2p）。
+> 实际配置文件为 `configs/qwen3_8b_llm_prefill.config` / `configs/qwen3_8b_llm_decode.config`（1p）与 `configs/qwen3_8b_llm_prefill.config` / `configs/qwen3_8b_llm_decode.config`（2p）。
 
 **1p prefill 配置**（`configs/qwen3_8b_llm_prefill.config`，KV 8 头/卡，8 档）：
 
@@ -321,7 +319,7 @@ ge.dynamicDims=1024,1024,1024;1408,1408,1408;1536,1536,1536;2176,2176,2176;2560,
 ge.dynamicNodeType=1
 ```
 
-**2p prefill 配置**（`configs/tp2/qwen3_8b_llm_prefill.config`，KV 4 头/rank）：
+**2p prefill 配置**（`configs/qwen3_8b_llm_prefill.config`，KV 4 头/rank）：
 
 ```ini
 [ascend_context]
@@ -343,7 +341,7 @@ ge.dynamicDims=512,512,512;896,896,896;1024,1024,1024;1664,1664,1664;2048,2048,2
 ge.dynamicNodeType=1
 ```
 
-**2p decode 配置**（`configs/tp2/qwen3_8b_llm_decode.config`，KV 4 头/rank）：
+**2p decode 配置**（`configs/qwen3_8b_llm_decode.config`，KV 4 头/rank）：
 
 ```ini
 [ascend_context]
@@ -449,7 +447,7 @@ python3 infer_qwen3_8b_mslite_tp.py \
 | `--prefill-model` / `--decode-model` | 1p 显式指定 prefill/decode MindIR 路径 | `None`（自动解析） |
 | `--prefill-ranks` / `--decode-ranks` | TP 显式指定各 rank MindIR 路径 | `None`（自动解析） |
 | `--config-file` | TP 显式指定 HCCL config_file.ini | `None`（自动生成） |
-| `--bucket-cfg-dir` | TP 动态分档配置目录（含 qwen3_8b_llm_prefill.config / qwen3_8b_llm_decode.config） | `configs/tp2`（TP=2） |
+| `--bucket-cfg-dir` | TP 动态分档配置目录（含 qwen3_8b_llm_prefill.config / qwen3_8b_llm_decode.config） | `configs` |
 | `--prompt-tokens` | 强制合成 N 个 token 的 prompt（分档性能用） | `None` |
 | `--perf-sweep` | 单进程多档性能扫描（worker 复用） | `False` |
 | `--repeats` | perf sweep 每档重复轮数 | `3` |
@@ -520,14 +518,16 @@ Generated Response: 你好！我是 Qwen，一个由阿里云开发的大语言�
 
 数据源：`bench_tp2_bucket_results/verified_results.json`（本机实测，可复现）。
 
-| prompt_tokens | prefill_seq | kv_len | prefill (ms) | decode/step (ms) | 核心点 |
-|--------------:|------------:|-------:|-------------:|------------------:|:------:|
-| 500  | 512  | 1024 | 309.1  | 138.4 | 通过 |
-| 1000 | 1024 | 1536 | 600.7  | 177.5 | 通过 |
-| 1600 | 1664 | 2176 | 1145.7 | 246.0 | 通过 |
-| 2000 | 2048 | 2560 | 1314.0 | 271.2 | 通过 |
-| 2800 | 2816 | 3328 | 1765.3 | 349.6 | 通过 |
-| 3072 | 3072 | 3584 | 1970.4 | 372.7 | 通过 |
+| prompt_tokens | prefill_seq | kv_len | prefill (ms) | decode/step (ms) | tok/s | 核心点 |
+|--------------:|------------:|-------:|-------------:|------------------:|------:|:------:|
+| 512  | 512  | 1024 | 299   | 112  | 8.92 | 通过 |
+| 896  | 896  | 1408 | 577   | 153  | 6.53 | 通过 |
+| 1024 | 1024 | 1536 | 601   | 177  | 5.64 | 通过 |
+| 1664 | 1664 | 2176 | 1146  | 246  | 4.06 | 通过 |
+| 2048 | 2048 | 2560 | 1267  | 271  | 3.69 | 通过 |
+| 2560 | 2560 | 3072 | 1514  | 303  | 3.30 | 通过 |
+| 2816 | 2816 | 3328 | 1765  | 333  | 3.00 | 通过 |
+| 3072 | 3072 | 3584 | 1837  | 338  | 2.95 | 通过 |
 
 > 2p 配置共 8 档（含 896/2560）；上表为原 6 档实测数据，896/2560 档可用 `bash infer.sh 0,1 perf` 复现。
 
@@ -539,7 +539,76 @@ Generated Response: 你好！我是 Qwen，一个由阿里云开发的大语言�
 
 ---
 
-## 6. 目录与脚本总览
+## 6. A8W8 量化导出与推理（TP=2）
+
+> quant-dir 支持 AMCT A8W8 量化权重产物（manifest.json + npy）。
+
+### 量化导出（每 rank 独立目录 + 内置 postproc）
+
+```bash
+python3 export_qwen3_8b_onnx.py \
+  --model-id Qwen3-8B \
+  --output-dir <out> --device cpu --dtype fp16 \
+  --tp-size 2 --tp-dynamic \
+  --quant-dir amct_probe/a8w8_smoke35_fp16
+```
+
+- `--quant-dir`：AMCT pack 目录（36 层 `a8w8_smoke35_fp16` 216 模块；单层调试 `a8w8_1layer` + `--num-layers 1`）
+- 产物自动 postproc（216 个 QBMM scale → uint64），**不再需要单独 postproc 步骤**
+- 导出后 allow_nz 仅作用于 fp16 MatMul（down_proj/lm_head），QBMV3 是 Custom 不受影响
+
+### 转换（与 fp16 相同）
+
+```bash
+$CONV --fmk=ONNX --modelFile=<out>/rank{r}/{prefill,decode}/qwen3_8b_llm_*.onnx \
+      --outputFile=<out>/rank{r}/{prefill,decode}/... --optimize=none --saveType=MINDIR
+```
+
+### 推理（force_fp16 模板；显式指定量化 mindir）
+
+```bash
+python3 infer_qwen3_8b_mslite_tp.py \
+  --device-ids 0,1 --model-id <tok> --prompt "你好，请用一句话介绍一下你自己" \
+  --prefill-ranks <out>/rank0/prefill/..._rank0_graph.mindir,<out>/rank1/prefill/..._rank1_graph.mindir \
+  --decode-ranks <out>/rank0/decode/..._rank0_graph.mindir,<out>/rank1/decode/..._rank1_graph.mindir \
+  --bucket-cfg-dir configs \
+  --json-out perf_quant.json
+```
+
+### profiling 采集（infer_qwen3_8b_mslite_tp_prof.py）
+
+基于真实推理流程（双图 build + 真实输入 + decode 自回归）包裹 aclprof：
+
+- timed prefill predict 前后启停 → `<prof_dir>/bucket_<seq>/prefill_r<rank>/`
+- decode 循环前后启停 → `decode_r<rank>/`（build/warmup 不进数据）
+- 采集后自动 `msprof --export=on` 解析 → `op_summary_*.csv`（算子耗时/占比）等
+
+```bash
+python3 infer_qwen3_8b_mslite_tp_prof.py \
+  --device-ids 0,1 --model-id <tok> \
+  --prefill-ranks <pf0>,<pf1> --decode-ranks <dc0>,<dc1> \
+  --bucket-cfg-dir configs --buckets 896,2560 \
+  --prof-dir prof_data --json-out prof.json
+```
+
+### 2p 量化实测性能（300I DUO，fp16+A8W8，TP=2）
+
+| prompt_tokens | prefill_seq | kv_len | prefill (ms) | decode/step (ms) | tok/s | 核心点 |
+|--------------:|------------:|-------:|-------------:|------------------:|------:|:------:|
+| 896  | 896  | 1408 | 325   | 117  | 8.54 | 通过 |
+| 1664 | 1664 | 2176 | 635   | 156  | 6.41 | 通过 |
+| 2560 | 2560 | 3072 | 1038  | 208  | 4.80 | 通过 |
+| 2816 | 2816 | 3328 | 1120  | 215  | 4.65 | 通过 |
+
+### 量化推理现状（实测）
+
+- Reshape_16 声明问题已修复后 decode warmup 通过、完整推理跑通（896 档 prefill ~390ms / decode ~135ms/step）
+- prefill 输出 KV 声明仍为 FLOAT32（dc 输入 FLOAT16）→ 免拷贝 attach 退化 load_kv（一次性 H2D，功能正常）
+- **输出文本仍乱码**：GE 9.1.0 动态图"输入无关"问题（量化/非量化都有，见遗留问题）
+
+---
+
+## 7. 目录与脚本总览
 
 | 文件 | 用途 |
 |------|------|
@@ -549,14 +618,14 @@ Generated Response: 你好！我是 Qwen，一个由阿里云开发的大语言�
 | `infer_qwen3_8b_mslite_tp.py` | 2p/4p 张量并行推理脚本 |
 | `infer_qwen3_8b_mslite_1p.py` | 1p 动态单图分档推理脚本（被 `infer.sh` 1p 路径调用） |
 | `_npu_mem.py` | 1p 显存峰值采样器（被 `infer_qwen3_8b_mslite_1p.py` 调用） |
-| `configs/` | 1p 动态分档配置（KV 8 头，8 档） |
-| `configs/tp2/` | 2p 动态分档配置（KV 4 头/rank，8 档） |
-| `configs/tp4/` | 4p 动态分档配置（KV 2 头/rank，未验证） |
+| `configs/` | 动态分档配置 |
+| `infer_qwen3_8b_mslite_tp_prof.py` | 2p profiling 采集（真实推理包裹 aclprof + 自动解析） |
+| `prof_ctrl.py` | aclprof ctypes 封装（profiling 启停控制） |
 | `bench_tp2_bucket_results/` | 2p 分档性能实测结果（含 `verified_results.json`） |
 
 ---
 
-## 7. 关键坑与注意事项（实测）
+## 8. 关键坑与注意事项（实测）
 
 1. **必须配置 `ge.dynamicNodeType=1`**：在线 GE 解析动态 dim 的开关，缺失时 dynamicDims 不生效（1p 会报 `GetCurDynamicDims: input count of user:0 should be equal to data count of graph:3`）。
 2. **`ge.inputShape` 使用 ONNX 输入名即可**（如 `input_ids` / `attention_mask` / `past_key_cache`）；C++ `UpdateGraphInputs` 位置 fallback 会自动映射 GE 内部 `Uxxx` 名（日志 `fall back to positional` WARNING 属正常）。
@@ -567,10 +636,13 @@ Generated Response: 你好！我是 Qwen，一个由阿里云开发的大语言�
 7. **TP 设备映射漂移**：同一 `--device-ids 0,1`，不同 run 可能落到物理 dev {0,1} 或 {2,3}，需留意实际落卡。
 8. **4p 未验证**：300I Duo 双卡 PCIe 拓扑下 4p HCCL 有已知精度问题。
 9. **短输出退化**：用填充文本 prompt 做性能扫描时，输出可能退化成重复 token（如 `f`），这是填充文本/短 max_new_tokens 的共性，不影响性能测量与核心点验证；默认短档已使用真实对话 prompt。
+10. **量化 decode 报 `Reshape_16 ... cannot be divided from [4096]`**：根因是 QBMV3 symbolic 输出类型声明为激活输入形状 [M,K]（误把 K 当输出列数），gate/up 声明翻倍 → SwiGlu 链声明错位 → GE ReshapeInfer 失败（任何 precision_mode 都触发）。修复：输出类型声明为 [M, N]（取 w 列数）；SwiGlu symbolic 用 `len(sizes())` 替代已失效的 `dim()`。
+11. **onnx 1.17 `save_model(save_as_external_data=True)` 会放大 fp16 external data（3~4 倍）**，converter 报 `memcpy_s dst/src size` 错。导出后处理（allow_nz）只写 onnx 头部（`load_external_data=False` + `onnx.save`），禁止再对已导出的 onnx 用 save_model external 模式重写。
+12. **per-rank GE cache**：cfg 配 `ge.graph_compiler_cache_dir=./ge_cache`，脚本按 rank 生成 `./ge_cache/rank{r}`（目录必须预先存在，否则 E13026）；cache key 不含 session 参数（precision_mode 等），改参数后需清 ge_cache/kernel_meta。
 
 ---
 
-## 8. 参考资源
+## 9. 参考资源
 
 - [MindSpore Lite 文档](https://www.mindspore.cn/lite)
 - [Qwen3-8B（ModelScope）](https://www.modelscope.cn/models/Qwen/Qwen3-8B)
@@ -578,6 +650,6 @@ Generated Response: 你好！我是 Qwen，一个由阿里云开发的大语言�
 
 ---
 
-## 9. 许可证
+## 10. 许可证
 
 本教程遵循 Qwen3-8B 模型及相关依赖的许可证要求。
