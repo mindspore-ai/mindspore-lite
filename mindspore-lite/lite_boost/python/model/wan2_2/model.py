@@ -24,11 +24,12 @@ for WanSelfAttention.forward and WanModel.forward respectively.
 """
 
 import torch
-import torch.distributed as dist
 from torch.npu import amp
 
 from lite_boost.parallel.context_parallel import all_to_all_4d
-from lite_boost.model.wan2_2.rope import rope_apply
+from lite_boost.layers.rope import rope_apply
+from lite_boost.model.wan2_2.usp import (gather_usp_sequence,
+                                         prepare_usp_sequence)
 
 
 def _sinusoidal_embedding_1d(dim, position):
@@ -178,22 +179,13 @@ def usp_dit_forward(
     x, grid_sizes, e, kwargs = _prepare_usp_dit_inputs(
         self, x, t, context, y, seq_len)
 
-    # Pad sequence dim so torch.chunk splits evenly across world_size
-    x_seq_len = x.shape[1]
-    seq_pad = 0
-    world_size = dist.get_world_size()
-    if x_seq_len % world_size != 0:
-        seq_pad = world_size - x_seq_len % world_size
-        x = torch.nn.functional.pad(x, (0, 0, 0, seq_pad), value=0)
-        e = torch.nn.functional.pad(e, (0, 0, 0, seq_pad), value=0)
-        kwargs["e"] = torch.nn.functional.pad(kwargs["e"], (0, 0, 0, 0, 0, seq_pad), value=0)
+    # Pad sequence dim so torch.chunk splits evenly across world_size,
+    # then split across ranks — shared USP primitives (model-agnostic,
+    # also used by the DiffSynth inline forward).
+    x, e, e0_local, seq_pad = prepare_usp_sequence(x, e, kwargs["e"])
+    kwargs["e"] = e0_local
     for block in self.blocks:
         block.self_attn.seq_pad = seq_pad
-
-    # Context Parallel — split sequence across ranks
-    x = torch.chunk(x, world_size, dim=1)[dist.get_rank()]
-    e = torch.chunk(e, world_size, dim=1)[dist.get_rank()]
-    kwargs["e"] = torch.chunk(kwargs["e"], world_size, dim=1)[dist.get_rank()]
 
     for block in self.blocks:
         x = block(x, **kwargs)
@@ -201,12 +193,8 @@ def usp_dit_forward(
     # head
     x = self.head(x, e)
 
-    # Context Parallel — gather sequence across ranks
-    x_gather_shape = list(x.shape)
-    x_gather_shape[1] *= world_size
-    x_gather = torch.empty(x_gather_shape, device=x.device, dtype=x.dtype)
-    dist.all_gather_into_tensor(x_gather, x)
-    x = x_gather
+    # Context Parallel — gather sequence across ranks (shared USP primitive)
+    x = gather_usp_sequence(x, seq_pad)
 
     # unpatchify
     x = self.unpatchify(x, grid_sizes)

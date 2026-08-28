@@ -17,7 +17,9 @@
 lite_boost layers module
 """
 
-__all__ = ["rope_apply", "flash_attention"]
+__all__ = ["rope_apply", "flash_attention", "rms_norm", "nearest_exact_upsample"]
 
 from .rope import rope_apply
 from .attention import flash_attention
+from .rms_norm import rms_norm
+from .upsample import nearest_exact_upsample

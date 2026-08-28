@@ -14,20 +14,13 @@
 # limitations under the License.
 # ============================================================================
 """
-Wan2.2 Ulysses Sequence Parallel (USP) adapters.
+Wan2.2 USP / VAE-DP adapters.
 
-Provides usp_attn_forward and usp_dit_forward as drop-in replacements
-for WanSelfAttention.forward and WanModel.forward respectively.
+Not part of the public API.  Import the primitives from their internal
+modules directly:
+
+- ``lite_boost.model.wan2_2.usp``: prepare_usp_sequence, gather_usp_sequence,
+  usp_attn_forward_cos_sin
+- ``lite_boost.model.wan2_2.model``: usp_attn_forward, usp_dit_forward
+- ``lite_boost.model.wan2_2.boost``: apply_vae_dp
 """
-from lite_boost.model.wan2_2.model import (
-    usp_attn_forward,
-    usp_dit_forward,
-)
-
-# Re-export VAE DP
-from lite_boost.model.wan2_2.boost import DPConfig, apply_vae_dp  # noqa: F401
-
-__all__ = [
-    "usp_attn_forward",
-    "usp_dit_forward",
-]
