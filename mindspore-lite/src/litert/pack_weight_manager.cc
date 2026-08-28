@@ -255,9 +255,12 @@ void PackWeightManager::Free(void *tensor_data) {
 #endif
   FreeData(tensor_data);
 }
-
+std::atomic<bool> PackWeightManager::destroyed_{false};
 void PackWeightManager::FreePackWeight(std::string runner_id, std::string model_id) {
 #ifdef SHARING_MODEL_WEIGHT
+  if (destroyed_.load()) {
+    return;
+  }
   std::unique_lock<std::mutex> l(manager_mutex_);
   if (pack_weight_ != nullptr) {
     if (!runner_id.empty()) {
