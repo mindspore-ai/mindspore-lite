@@ -53,7 +53,10 @@ int CoderGraph::ConvertTensors(bool enable_fp16) {
     all_tensors.clear();
   };
   auto check_dim = [](int dim) -> int {
-    MS_CHECK_TRUE(dim > 0, "invalid dim value!");
+    // dim == 0 is a legal 0-element tensor, e.g. the empty axes input that
+    // inputs_adjust.cc creates for Reduce* ops with an empty axes attribute.
+    // Negative dims are corrupt models and still rejected.
+    MS_CHECK_TRUE(dim >= 0, "invalid dim value!");
     return RET_OK;
   };
 

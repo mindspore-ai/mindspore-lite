@@ -49,6 +49,13 @@ int MultiplyByQuantizedMultiplierWithUpwardRounding(int32_t value, int32_t multi
 
 int MultiplyByMultiplierAndRightShift(int32_t value, int32_t multiplier, int32_t right_shift);
 
+// a * b with saturation when the product exceeds int64 range (never undefined behavior).
+int64_t SaturatingMulInt64(int64_t a, int64_t b);
+
+// value * (multiplier / 2^31) * 2^(left_shift - right_shift), rounded to nearest,
+// computed in double so wide intermediate products keep full relative precision.
+int64_t MultiplyByQuantizedMultiplierInt64(int64_t value, int32_t multiplier, int32_t left_shift, int32_t right_shift);
+
 int SaturatingRoundingMultiplyByPOT(int32_t x, int exponent);
 
 int32_t Rescale(int x, int kIntegerBitsSrc, int kIntegerBitsDst);

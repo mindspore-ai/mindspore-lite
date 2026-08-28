@@ -15,9 +15,12 @@
  */
 
 #include "tools/optimizer/fusion/adjust_reducesum_pass.h"
+#include <algorithm>
+#include <iterator>
 #include <memory>
 #include <vector>
 #include <string>
+#include "mindapi/base/types.h"
 #include "ops_utils/op_utils.h"
 #include "tools/common/tensor_util.h"
 #include "mindspore/ops/op_def/lite_ops.h"
@@ -72,6 +75,53 @@ bool IsAxesEmpty(AnfNodePtr axes_input) {
   return true;
 }
 
+// ONNX-imported reduce ops keep the ReduceFusion primitive with a mode attribute.
+bool IsReduceProdFusionNode(const CNodePtr &cnode) {
+  MS_CHECK_TRUE_RET(cnode->input(0) != nullptr, false);
+  auto value_node = cnode->input(0)->cast<ValueNodePtr>();
+  if (value_node == nullptr || value_node->value() == nullptr) {
+    return false;
+  }
+  auto prim = value_node->value()->cast<PrimitivePtr>();
+  if (prim == nullptr || prim->name() != "ReduceFusion") {
+    return false;
+  }
+  auto mode_ptr = prim->GetAttr("mode");
+  if (mode_ptr == nullptr) {
+    return false;
+  }
+  return GetValue<int64_t>(mode_ptr) == static_cast<int64_t>(ReduceMode::Reduce_Prod);
+}
+
+// ONNX noop_with_empty_axes=1: the reduce is an identity. The schema ReduceFusion has no
+// skip_mode field and the runtime never implements it, so rewrite the node into an explicit
+// reshape to the input shape.
+Status ReplaceReduceProdIdentity(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
+  auto input_abstract = cnode->input(kIndex1)->abstract();
+  MS_CHECK_TRUE_MSG(input_abstract != nullptr, kLiteError, "input abstract is nullptr!");
+  auto input_shape = input_abstract->GetShape();
+  MS_CHECK_TRUE_MSG(input_shape != nullptr, kLiteError, "input shape is nullptr!");
+  auto shape_vec = input_shape->GetShapeVector();
+  if (std::any_of(shape_vec.begin(), shape_vec.end(), [](int64_t dim) { return dim < 0; })) {
+    MS_LOG(INFO) << "Dynamic input shape, keep the reduce node as-is: " << cnode->fullname_with_scope();
+    return kSuccess;
+  }
+  std::vector<int32_t> shape_int;
+  shape_int.reserve(shape_vec.size());
+  std::transform(shape_vec.begin(), shape_vec.end(), std::back_inserter(shape_int),
+                 [](int64_t dim) { return static_cast<int32_t>(dim); });
+  auto reshape_node = CreateReshapeCNode(func_graph, cnode->input(kIndex1), shape_int);
+  MS_CHECK_TRUE_MSG(reshape_node != nullptr, kLiteNullptr, "create identity reshape node failed!");
+  auto graph_manager = func_graph->manager();
+  MS_CHECK_TRUE_MSG(graph_manager != nullptr, kLiteNullptr, "graph_manager is nullptr!");
+  if (!graph_manager->Replace(cnode, reshape_node)) {
+    MS_LOG(ERROR) << "Failed to replace reduce node with identity reshape, cnode: " << cnode->fullname_with_scope();
+    return kLiteError;
+  }
+  MS_LOG(INFO) << "Replace empty-axes noop reduce with identity reshape: " << cnode->fullname_with_scope();
+  return kSuccess;
+}
+
 Status FillAxesForNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode, const std::vector<int32_t> &axes_values) {
   auto axes_value_node = opt::BuildIntVecValueNode(func_graph, axes_values);
   MS_CHECK_TRUE_MSG(axes_value_node != nullptr, kLiteError, "Create axes value node failed!");
@@ -83,6 +133,43 @@ Status FillAxesForNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode, co
   }
   cnode->set_inputs(inputs);
   return kSuccess;
+}
+
+Status AdjustReduceProd(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
+  MS_CHECK_TRUE_MSG(cnode->inputs().size() > kIndex1, kLiteError, "input size should large than 1!");
+  auto value_node = cnode->input(0)->cast<ValueNodePtr>();
+  MS_CHECK_TRUE_RET(value_node != nullptr, kLiteError);
+  auto src_prim = GetValueNode<PrimitivePtr>(value_node);
+  MS_CHECK_TRUE_RET(src_prim != nullptr, kLiteError);
+  auto skip_mode_ptr = src_prim->GetAttr("skip_mode");
+  if (skip_mode_ptr != nullptr && GetValue<bool>(skip_mode_ptr)) {
+    return ReplaceReduceProdIdentity(func_graph, cnode);
+  }
+  // The axes may still live on the primitive as an attribute at this stage (converted to an
+  // input tensor later in inputs_adjust). Only the genuinely-empty case needs handling here.
+  auto axes_attr = src_prim->GetAttr("axes");
+  if (axes_attr != nullptr && !opt::CastToInt(axes_attr).empty()) {
+    return kSuccess;
+  }
+  if (cnode->inputs().size() >= kIndex3 && !IsAxesEmpty(cnode->input(kIndex2))) {
+    return kSuccess;
+  }
+  // Defensive: reduce-all with still-empty axes (the ONNX parser normally fills these).
+  auto input_abstract = cnode->input(kIndex1)->abstract();
+  MS_CHECK_TRUE_MSG(input_abstract != nullptr, kLiteError, "input abstract is nullptr!");
+  auto input_shape = input_abstract->GetShape();
+  MS_CHECK_TRUE_MSG(input_shape != nullptr, kLiteError, "input shape is nullptr!");
+  auto shape_vec = input_shape->GetShapeVector();
+  if (shape_vec.empty()) {
+    return kSuccess;
+  }
+  std::vector<int32_t> full_axis;
+  for (size_t i = 0; i < shape_vec.size(); i++) {
+    full_axis.push_back(static_cast<int32_t>(i));
+  }
+  MS_LOG(INFO) << "Fill full axis list for empty-axes ReduceProd node: " << cnode->fullname_with_scope()
+               << ", axis size: " << full_axis.size();
+  return FillAxesForNode(func_graph, cnode, full_axis);
 }
 
 Status AdjustReduceSum(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
@@ -169,10 +256,22 @@ bool AdjustReduceSumPass::Run(const FuncGraphPtr &func_graph) {
     if (!utils::isa<CNodePtr>(node)) {
       continue;
     }
-    if (!opt::CheckPrimitiveType(node, prim::kPrimReduceSum)) {
+    auto cnode = node->cast<CNodePtr>();
+    MS_CHECK_TRUE_RET(cnode != nullptr, false);
+    const bool is_reduce_sum = opt::CheckPrimitiveType(node, prim::kPrimReduceSum);
+    const bool is_reduce_prod = IsReduceProdFusionNode(cnode);
+    if (!is_reduce_sum && !is_reduce_prod) {
       continue;
     }
-    auto reducesum_node = node->cast<CNodePtr>();
+    if (is_reduce_prod) {
+      if (AdjustReduceProd(func_graph, cnode) != kSuccess) {
+        MS_LOG(ERROR) << "This node run AdjustReduceProd failed! Node_name is: " << cnode->fullname_with_scope() << "!";
+        return false;
+      }
+      MS_LOG(INFO) << "This node run AdjustReduceProd success : " << cnode->fullname_with_scope();
+      continue;
+    }
+    auto reducesum_node = cnode;
     MS_CHECK_TRUE_RET(reducesum_node != nullptr, false);
     if (AdjustReduceSum(func_graph, reducesum_node) != kSuccess) {
       MS_LOG(ERROR) << "This node run AdjustReduceSum failed! Node_name is: " << reducesum_node->fullname_with_scope()

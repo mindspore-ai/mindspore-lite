@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 Huawei Technologies Co., Ltd
+ * Copyright 2021-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,8 +80,12 @@ int ReduceBaseCoder::Init() {
   if (input_tensors_.size() > 1) {
     Tensor *axes_ptr = input_tensors_.at(1);
     num_axes_ = axes_ptr->ElementsNum();
-    MS_CHECK_PTR(axes_ptr->MutableData());
-    MS_CHECK_RET_CODE(memcpy_s(axes_, sizeof(axes_), axes_ptr->MutableData(), axes_ptr->Size()), "memcpy_s failed");
+    // Empty axes (reduce all axes) leaves an empty input tensor; skip the data copy so
+    // CheckParameters() can normalize num_axes_ == 0 to an explicit reduce-all-axes list.
+    if (num_axes_ > 0) {
+      MS_CHECK_PTR(axes_ptr->MutableData());
+      MS_CHECK_RET_CODE(memcpy_s(axes_, sizeof(axes_), axes_ptr->MutableData(), axes_ptr->Size()), "memcpy_s failed");
+    }
   }
 
   mode_ = reduce_param->mode_;

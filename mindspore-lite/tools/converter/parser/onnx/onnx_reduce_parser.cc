@@ -15,13 +15,48 @@
  */
 
 #include "tools/converter/parser/onnx/onnx_reduce_parser.h"
+#include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
 #include "src/common/ops/primitive/reduce_fusion.h"
 #include "nnacl_c/op_base.h"
 
 namespace mindspore {
 namespace lite {
+namespace {
+int GetTensorRankByName(const onnx::GraphProto &onnx_graph, const std::string &name) {
+  const auto match_by_name = [&name](const auto &tensor) { return tensor.name() == name; };
+  auto input_iter = std::find_if(onnx_graph.input().begin(), onnx_graph.input().end(), match_by_name);
+  if (input_iter != onnx_graph.input().end() && input_iter->type().has_tensor_type()) {
+    return input_iter->type().tensor_type().shape().dim_size();
+  }
+  auto info_iter = std::find_if(onnx_graph.value_info().begin(), onnx_graph.value_info().end(), match_by_name);
+  if (info_iter != onnx_graph.value_info().end() && info_iter->type().has_tensor_type()) {
+    return info_iter->type().tensor_type().shape().dim_size();
+  }
+  return 0;
+}
+
+// ONNX semantics: empty axes with noop_with_empty_axes=false reduces ALL axes. Normalize it
+// to an explicit full axis list here: a 0-element axes constant would later hang the MindRT
+// actor dispatch (the op never receives enough input notifications) and fail the micro coder
+// tensor parsing. Identity cases (skip_mode=true) are rewritten by AdjustReduceSumPass.
+void FillFullAxesIfEmpty(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node,
+                         std::vector<int32_t> *axes, bool skip_mode) {
+  if (!axes->empty() || skip_mode || onnx_node.input().empty()) {
+    return;
+  }
+  int32_t rank = GetTensorRankByName(onnx_graph, onnx_node.input(0));
+  for (int32_t i = 0; i < rank; ++i) {
+    axes->push_back(i);
+  }
+  if (rank > 0) {
+    MS_LOG(INFO) << "Fill full axis list for empty-axes reduce node: " << onnx_node.name() << ", rank: " << rank;
+  }
+}
+}  // namespace
+
 PrimitiveCPtr OnnxReduceParser::Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) {
   auto prim = std::make_unique<ops::ReduceFusion>();
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
@@ -29,6 +64,7 @@ PrimitiveCPtr OnnxReduceParser::Parse(const onnx::GraphProto &onnx_graph, const 
   auto prim_c = prim->GetPrim();
   MS_CHECK_TRUE_RET(prim_c != nullptr, nullptr);
   std::vector<int32_t> axes = {};
+  bool skip_mode = false;
   for (const auto &onnx_node_attr : onnx_node.attribute()) {
     const auto &attribute_name = onnx_node_attr.name();
     if (attribute_name == "axes") {
@@ -41,9 +77,15 @@ PrimitiveCPtr OnnxReduceParser::Parse(const onnx::GraphProto &onnx_graph, const 
     } else if (attribute_name == "noop_with_empty_axes") {
       MS_LOG(INFO) << "The noop_with_empty_axes attribute for reduction‑type operators in the latest ONNX release "
                       "controls behavior when axes is omitted or empty (default: false).";
-      prim->set_skip_mode(static_cast<bool>(onnx_node_attr.i()));
+      skip_mode = static_cast<bool>(onnx_node_attr.i());
+      prim->set_skip_mode(skip_mode);
     }
   }
+  // ONNX semantics: empty axes with noop_with_empty_axes=false reduces ALL axes. Normalize it
+  // to an explicit full axis list here: a 0-element axes constant would later hang the MindRT
+  // actor dispatch (the op never receives enough input notifications) and fail the micro coder
+  // tensor parsing. Identity cases (skip_mode=true) are rewritten by AdjustReduceSumPass.
+  FillFullAxesIfEmpty(onnx_graph, onnx_node, &axes, skip_mode);
   // An empty axis means that for all axes, the axis attributes will be adjusted to input in inputs_adjust.cc
   (void)prim_c->AddAttr("axes", MakeValue(axes));
 

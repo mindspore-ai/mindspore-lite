@@ -126,7 +126,10 @@ int ReduceBaseCPUKernel::Prepare() {
 
   mode_ = reduce_param->mode_;
   reduce_to_end_ = reduce_param->reduce_to_end_;
-  return RET_OK;
+  // Normalize empty-axes (reduce all axes) to explicit axes so downstream quant-args
+  // computation (e.g. int8 prod_multipliers_) sees the correct num_axes_.
+  auto check_ret = CheckParameters();
+  return check_ret;
 }
 
 void ReduceBaseCPUKernel::CalculateInnerOuterSize() {

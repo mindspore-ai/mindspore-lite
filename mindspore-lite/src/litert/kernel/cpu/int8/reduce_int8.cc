@@ -126,10 +126,6 @@ int ReduceInt8CPUKernel::Prepare() {
         return RET_ERROR;
       }
     }
-    ret = CalculateQuantArgs();
-    if (ret != RET_OK) {
-      return ret;
-    }
   } else {
     this->valid_shape_ = false;
   }
@@ -173,7 +169,14 @@ int ReduceInt8CPUKernel::Prepare() {
   if (!InferShapeDone()) {
     return RET_OK;
   }
-  return ReSize();
+  auto resize_ret = ReSize();
+  if (resize_ret != RET_OK) {
+    return resize_ret;
+  }
+  // ReSize() normalizes empty-axes via CheckParameters(), so quant args must be
+  // computed AFTER ReSize to see the correct num_axes_.
+  ret = CalculateQuantArgs();
+  return ret;
 }
 
 void ReduceInt8CPUKernel::ReduceMean4DCalQuantParam() {

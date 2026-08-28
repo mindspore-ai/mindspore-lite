@@ -168,13 +168,16 @@ void ReduceInt8Coder::GetQuantArgs(size_t index) {
 
 int ReduceInt8Coder::Prepare(CoderContext *const context) {
   MS_CHECK_RET_CODE(ReduceBaseCoder::Init(), "Init failed");
-  if (input_tensor_->shape().size() == DIMENSION_4D && num_axes_ == kTwo && (axes_[0] + axes_[1]) == kThree) {
+  // The HW fast path (ReduceMeanHW) is ReduceMean-specific; other reduce modes (e.g.
+  // ReduceProd) must not take it, or the generated code calls ReduceMeanHW and the int8
+  // kernel is bypassed (INT8_NOT_GENUINE).
+  if (mode_ == static_cast<int>(schema::ReduceMode_ReduceMean) && input_tensor_->shape().size() == DIMENSION_4D &&
+      num_axes_ == kTwo && (axes_[0] + axes_[1]) == kThree) {
     axes_hw_pattern_ = true;
   }
   std::vector<int> in_shape = input_tensor_->shape();
   if (!in_shape.empty()) {
     this->valid_shape_ = true;
-    MS_CHECK_RET_CODE(CalculateQuantArgs(), "CalculateQuantArgs failed");
   } else {
     this->valid_shape_ = false;
   }
@@ -213,10 +216,10 @@ int ReduceInt8Coder::Prepare(CoderContext *const context) {
       MS_LOG(ERROR) << "Reduce unsupported reduce mode" << mode_;
       return RET_ERROR;
   }
+  // ReSize() normalizes empty-axes (reduce all axes) via CheckParameters(), so quant
+  // args must be computed AFTER ReSize to see the correct num_axes_.
   MS_CHECK_RET_CODE(ReduceBaseCoder::ReSize(), "ReSize failed");
-  if (!this->valid_shape_) {
-    MS_CHECK_RET_CODE(CalculateQuantArgs(), "CalculateQuantArgs failed");
-  }
+  MS_CHECK_RET_CODE(CalculateQuantArgs(), "CalculateQuantArgs failed");
   if (axes_hw_pattern_) {
     nchw_in_data_ = static_cast<int8_t *>(
       allocator_->Malloc(kNumberTypeInt8, sizeof(int8_t) * input_tensor_->ElementsNum(), kWorkspace));
