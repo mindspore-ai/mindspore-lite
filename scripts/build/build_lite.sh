@@ -309,8 +309,11 @@ build_python_wheel_package() {
     # Ascend kernels. Mirrors lite_boost/build.sh.
     if [[ "X${MSLITE_ENABLE_ACL}" == "Xon" && "$1" != "x86_64" ]]; then
       local ops_out=${BASEPATH}/build/custom_ops_out
-      # Vendor is built once in build_lite() before `make package` (shared with tar).
-      # Rebuild here only if the common stage was skipped (e.g. wheel-only dev run).
+      # Vendor is built unconditionally in build_lite() before `make package`
+      # (shared with tar). Rebuild here only if that common stage was skipped
+      # (e.g. a wheel-only dev run) -- i.e. the guard is a reuse check, not a
+      # staleness check. The tar-stage build has no such guard, so ops added
+      # after a previous build always make it into a fresh tar.
       # CUSTOM_OPS_SKIP sidelines not-yet-compiling ops so they cannot abort the
       # merged `binary` target and corrupt the shared binary_info_config.json.
       # Default skips gemma_attention (WIP); set CUSTOM_OPS_SKIP="" once it compiles.
@@ -565,20 +568,23 @@ build_lite() {
         fi
       fi
 
-      # AscendC custom ops: build the vendor ONCE for both tar and wheel.
-      # Runs after `make install` (CANN toolchain env already sourced) and BEFORE
-      # `make package` so the tar install rules in package_lite.cmake can pick it
-      # up. build_python_wheel_package reuses the same output dir (idempotent skip).
+      # AscendC custom ops: build the vendor for the tar package. Runs after
+      # `make install` (CANN toolchain env already sourced) and BEFORE `make
+      # package` so the tar install rules in package_lite.cmake can pick it up.
       # Skipped on x86_64: the AscendC/CANN toolchain cannot compile Ascend kernels there.
       # CUSTOM_OPS_SKIP: sideline not-yet-compiling ops (default gemma_attention, WIP)
       # so they don't abort the merged `binary` target and corrupt the shared
       # binary_info_config.json (which would break every op at runtime).
+      # Always (re)build: a stale `! -d ${ops_out}/ascend310p` guard here used to
+      # skip the build across runs once the dir existed, so custom ops added
+      # after the first build (e.g. inner_prompt_flash_attention) never made it
+      # into the tar. build_all_ops.sh rm -rf's its per-SoC workspace and
+      # OUT_DIR/<unit> on every invocation, so repeat calls are clean; the wheel
+      # packaging step below still guards to reuse this freshly built output.
       if [[ "X${MSLITE_ENABLE_ACL}" == "Xon" && "${local_lite_platform}" != "x86_64" ]]; then
         local ops_out=${BASEPATH}/build/custom_ops_out
-        if [[ ! -d "${ops_out}/ascend310p" ]]; then
-          CUSTOM_OPS_SKIP="${CUSTOM_OPS_SKIP:-gemma_attention}" \
-            bash ${LITE_BASEPATH}/tools/custom_kernels/ascend_ops/build_all_ops.sh ${ops_out}
-        fi
+        CUSTOM_OPS_SKIP="${CUSTOM_OPS_SKIP:-gemma_attention}" \
+          bash ${LITE_BASEPATH}/tools/custom_kernels/ascend_ops/build_all_ops.sh ${ops_out}
       fi
 
       make package
