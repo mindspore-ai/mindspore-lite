@@ -38,8 +38,8 @@ Qwen3-0.6B 是一个 28 层的 decoder-only Transformer：
 | 软件包            | 版本     |
 |----------------|--------|
 | Python         | 3.11   |
-| torch          | 2.10.0 |
-| transformers   | 4.51.3 |
+| torch          | 2.8.0 |
+| transformers   | 5.4.0 |
 | onnx           | 1.19.1 |
 | onnxruntime    | 1.24.2 |
 | numpy          | 1.26.4 |
@@ -47,14 +47,17 @@ Qwen3-0.6B 是一个 28 层的 decoder-only Transformer：
 | mindspore-lite | 2.9.0  |
 
 ```bash
-pip install transformers==4.51.3 torch==2.10.0 onnx==1.19.1 onnxruntime==1.24.2 numpy==1.26.4
+pip install transformers==5.4.0 torch==2.8.0 onnx==1.19.1 onnxruntime==1.24.2 numpy==1.26.4
 ```
 
 ### 权重准备
 
 从 HuggingFace 下载 [Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B) 权重，解压后放到本地目录（本文以 `./Qwen3-0.6B` 为例）。
+
+```bash
 git lfs install
 git clone https://huggingface.co/Qwen/Qwen3-0.6B
+```
 
 ---
 
@@ -176,7 +179,7 @@ ge.dynamicDims="1,128,1,128,1,128;1,256,1,256,1,256;1,512,1,512,1,512;1,1024,1,1
 
 [acl_init_options]
 ge.exec.precision_mode=allow_mix_precision
-ge.exec.modify_mixlist="./op_fp32.json"
+ge.exec.modify_mixlist="configs/op_fp32.json"
 ```
 
 `configs/qwen3_llm_decode.ini`（场景 A Decode 用，5 档）：
@@ -404,6 +407,7 @@ python infer_qwen3_0.6b_mindir.py \
   --prefill-model ./qwen3_onnx/qwen3_llm_prefill_graph.mindir \
   --tokenizer ./Qwen3-0.6B \
   --prompt "The sky is blue because of what physical phenomenon, choose from A, B, C, D? A) Rayleigh scattering B) Diffraction C) Reflection D) Refraction" \
+  --system-prompt "You are a helpful assistant. Answer questions concisely." \
   --prefill-buckets "480,640"
 ```
 
@@ -529,7 +533,7 @@ ge.dynamicDims="1,480,1,480,1,480;1,768,1,768,1,768"
 
 [acl_init_options]
 ge.exec.precision_mode=allow_mix_precision
-ge.exec.modify_mixlist="./op_fp32.json"
+ge.exec.modify_mixlist="configs/op_fp32.json"
 ```
 
 `configs/qwen3_llm_prefill_suffix.ini`（Suffix 用，2 档）：
@@ -542,7 +546,7 @@ ge.dynamicDims="1,480,1,1248,1,480,1,768;1,640,1,1408,1,640,1,768"
 
 [acl_init_options]
 ge.exec.precision_mode=allow_mix_precision
-ge.exec.modify_mixlist="./op_fp32.json"
+ge.exec.modify_mixlist="configs/op_fp32.json"
 ```
 
 > Suffix `ge.dynamicDims` 每 8 个值对应 4 个输入的 `-1` 维度：
