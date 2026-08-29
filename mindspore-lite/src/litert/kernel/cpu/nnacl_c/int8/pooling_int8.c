@@ -410,7 +410,7 @@ void MaxPoolingInt8V1(const int8_t *input_ptr, int8_t *output_ptr, const Pooling
       for (int j = 0; j < channel; j++) {
         int in_channel_offset = in_batch_offset + j;
         int out_channel_offset = out_plane_offset + j;
-        int8_t tmp_max = INT8_MIN;
+        int tmp_max = INT8_MIN;
         for (int h_index = h_index_base; h_index < h_index_base_end; h_index += h_index_stride) {
           int offset_h = in_channel_offset + h_index;
           for (int w_index = w_index_base; w_index < w_index_base_end; w_index += channel) {
@@ -418,10 +418,11 @@ void MaxPoolingInt8V1(const int8_t *input_ptr, int8_t *output_ptr, const Pooling
             tmp_max = MaxInt8(tmp_max, *(input_ptr + in_offset));
           }
         }
-        tmp_max = (int)round((tmp_max - input_zp) * real_multiplier + output_zp);
-        int8_t real_out = tmp_max < out_min ? out_min : tmp_max;
-        real_out = real_out > out_max ? out_max : real_out;
-        *(output_ptr + out_channel_offset) = real_out;
+        // Keep the requantized value in int until after saturation: assigning round()'s
+        // result (e.g. -129) to int8_t wraps to +127 and defeats the clamp below.
+        int requant = (int)round((tmp_max - input_zp) * real_multiplier + output_zp);
+        requant = requant < out_min ? out_min : (requant > out_max ? out_max : requant);
+        *(output_ptr + out_channel_offset) = (int8_t)requant;
       }  // in_channel loop
     }  // out_plane loop
   }  // out_batch loop

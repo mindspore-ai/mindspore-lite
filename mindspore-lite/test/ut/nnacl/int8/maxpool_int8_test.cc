@@ -75,4 +75,24 @@ TEST_F(MaxPoolInt8Test, Testcase01) {
   float sim = get_cosine_similarity(outputs.data(), golden.data(), 1 * 5 * 5);
   ASSERT_GT(sim, 0.9);
 }
+
+TEST_F(MaxPoolInt8Test, RequantUnderflowClampV1) {
+  // Guard the requant saturation fix in MaxPoolingInt8V1: the rounded value must be
+  // saturated in int before narrowing to int8_t. With a window whose max is -100 and
+  // quant {in:0.007826963/zp 0, out:0.006566040/zp -25}, requant gives
+  // -100 * (0.007826963 / 0.006566040) - 25 = -144, which used to wrap to +112 when
+  // assigned to int8_t and must be clamped to -128 instead. Channel 1 keeps a normal
+  // window (max 50 -> round(50 * 1.19193 - 25) = 35) to cover the non-saturating path.
+  std::vector<int8_t> inputs = {-100, -30, -100, 50, -100, 10, -100, -5};  // NHWC [1,2,2,2]
+  std::vector<int8_t> outputs(1 * 1 * 1 * 2, 0);
+  const PoolingParameter pooling_parameter = {
+    {"", 17, 1, 0}, (PoolMode)(2), (RoundType)(2), (PadType)(0), (ActType)(0), 0, false, 2, 2, 2, 2, 0, 0, 0, 0};
+  PoolingComputeParam compute = {2, 2, 1, 2, 1, 1, 1, 2, 2, 2, -128, 127};
+  static QuantArg quant_in = {0.007826963, 0};
+  static QuantArg quant_out = {0.006566040, -25};
+  static QuantArg *quant[2] = {&quant_in, &quant_out};
+  MaxPoolingInt8V1(inputs.data(), outputs.data(), &pooling_parameter, &compute, quant);
+  ASSERT_EQ(outputs[0], -128) << "underflowed requant must clamp to -128, got " << (int)outputs[0];
+  ASSERT_EQ(outputs[1], 35) << "normal window requant, got " << (int)outputs[1];
+}
 }  // namespace mindspore
