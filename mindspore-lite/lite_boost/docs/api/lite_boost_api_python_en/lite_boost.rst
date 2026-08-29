@@ -14,6 +14,17 @@ Parallel
     lite_boost.parallel.initialize_usp
     lite_boost.parallel.ParallelManager
 
+Layers
+--------
+
+.. autosummary::
+    :toctree: lite_boost
+    :nosignatures:
+    :template: classtemplate.rst
+
+    lite_boost.layers.rms_norm
+    lite_boost.layers.nearest_exact_upsample
+
 Operators
 ------------
 

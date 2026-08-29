@@ -12,6 +12,15 @@ LiteBoost是MindSpore Lite面向昇腾硬件的推理加速工具包，提供高
     lite_boost.parallel.initialize_usp
     lite_boost.parallel.ParallelManager
 
+层
+--
+
+.. mscnautosummary::
+    :toctree: lite_boost
+
+    lite_boost.layers.rms_norm
+    lite_boost.layers.nearest_exact_upsample
+
 算子
 ----
 

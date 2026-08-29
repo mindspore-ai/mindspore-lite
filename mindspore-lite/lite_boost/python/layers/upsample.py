@@ -18,9 +18,9 @@
 The bf16→fp32 cast around nearest interpolation in framework VAE
 ``Upsample`` layers only exists to work around CPU/CUDA nearest-exact
 limits.  On NPU the UpsampleNearest kernel handles bf16 natively on most
-SoCs (910B etc.), but the 310P3 binary set has NO bf16 kernel (probe:
+SoCs (A2 etc.), but the 300I Duo binary set has NO bf16 kernel (probe:
 "Cannot find bin of op UpsampleNearest ... bf16/ND/bf16/ND/").  This
-primitive therefore runs all dtypes natively except on 310P3, where bf16
+primitive therefore runs all dtypes natively except on 300I Duo, where bf16
 inputs fall back to the fp32-cast path.
 """
 import torch
@@ -33,7 +33,7 @@ _BF16_CAST_FALLBACK = None
 
 
 def _needs_bf16_cast_fallback():
-    """True only on 310P3 (no bf16 UpsampleNearest kernel).  Cached."""
+    """True only on 300I Duo (no bf16 UpsampleNearest kernel).  Cached."""
     global _BF16_CAST_FALLBACK
     if _BF16_CAST_FALLBACK is None:
         try:
@@ -45,20 +45,47 @@ def _needs_bf16_cast_fallback():
 
 
 def nearest_exact_upsample(x, size=None, scale_factor=None):
-    """Nearest-exact interpolate, cast-free on supported dtypes.
+    r"""
+    Upsamples `x` using nearest-exact interpolation.
+
+    Behaves like ``torch.nn.functional.interpolate(mode="nearest-exact")``.
+    All supported dtypes run natively on A2 and other SoCs; on 300I Duo,
+    bfloat16 inputs are computed through a float32 intermediate cast, which
+    produces bitwise-identical results as nearest-exact uses integer
+    indexing.
 
     Args:
-        x:             Input tensor.
-        size:          Output size (either *size* or *scale_factor*).
-        scale_factor:  Multiplier for spatial dims.
+        x (Tensor): Input tensor with shape :math:`(B, C, H, W)`. Supported
+            dtypes are float16, float32 and bfloat16.
+        size (Union[int, tuple[int]], optional): Output spatial size.
+            Provide exactly one of `size` and `scale_factor`. Default: ``None``.
+        scale_factor (Union[float, tuple[float]], optional): Multiplier for
+            the spatial dims. Provide exactly one of `size` and
+            `scale_factor`. Default: ``None``.
 
     Returns:
-        Upsampled tensor, same dtype as the input.
+        Tensor, with the same dtype as `x`, and shape determined by `size` or
+        `scale_factor`.
 
     Raises:
-        TypeError:  ``x`` is not a tensor.
-        ValueError: Input is not 4-D, or both/neither of *size* /
-            *scale_factor* given.
+        ValueError: If `x` is not 4-D.
+        ValueError: If both or neither of `size` and `scale_factor` are
+            provided.
+
+    Supported Platforms:
+        ``Ascend``
+
+    Examples:
+        >>> import torch
+        >>> import torch_npu
+        >>> from lite_boost.layers import nearest_exact_upsample
+        >>> torch.npu.set_device(0)
+        >>> x = torch.arange(4, device="npu").view(1, 1, 2, 2).float()
+        >>> y = nearest_exact_upsample(x, scale_factor=2)
+        >>> print(y.shape)
+        torch.Size([1, 1, 4, 4])
+        >>> print(y[0, 0, 0])
+        tensor([0., 0., 1., 1.], device='npu:0')
     """
     if not torch.is_tensor(x):
         raise TypeError(
