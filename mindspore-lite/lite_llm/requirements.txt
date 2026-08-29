@@ -1,0 +1,18 @@
+# Export toolchain dependencies.
+# transformers must be 4.57.x: the exporter monkey-patches
+# transformers.models.qwen2 internals (incl. the real q/k/v attention biases
+# that older lines dropped) and GGUF skeleton/tokenizer loading uses the 4.57
+# `gguf_file=` kwarg / modeling_gguf_pytorch_utils.  check_version() enforces it.
+torch>=2.0
+transformers>=4.57,<4.58
+onnx>=1.16
+onnxslim>=0.1.9   # slim(..., skip_fusion_patterns=...) requires >= 0.1.9
+numpy
+
+# GGUF Q4_0 weight injection (gguf_loader.py).
+gguf==0.17.1
+safetensors
+tqdm
+
+# Required by transformers 4.57 for GGUF checkpoint loading.
+accelerate

@@ -55,6 +55,8 @@ process_options()
       O)
         if [[ "X${OPTARG}" == "Xlite_boost" ]]; then
           export BUILD_OPTIONAL_TARGET="lite_boost"
+        elif [[ "X${OPTARG}" == "Xlite_llm" ]]; then
+          export BUILD_OPTIONAL_TARGET="lite_llm"
         else
           echo "Invalid value ${OPTARG} for option -O"
           usage

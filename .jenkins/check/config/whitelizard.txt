@@ -257,3 +257,25 @@ mindspore-lite/mindspore-lite/lite_boost/python/ops/rain_fusion.py:rain_fusion_a
 mindspore-lite/mindspore-lite/lite_boost/python/ops/recurrent_gated_delta_rule.py:recurrent_gated_delta_rule
 mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py:_gather_and_blend_tiles
 mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py:decode_patch_method
+
+# lite_llm
+mindspore-lite/mindspore-lite/lite_llm/export/utils/msl_pack.py:encode_value, manifest_to_kv
+mindspore-lite/mindspore-lite/lite_llm/export/utils/export_quant.py:quantize_linear_ops
+mindspore-lite/mindspore-lite/lite_llm/export/mslite_llm_export.py:run_pipeline
+mindspore-lite/mindspore-lite/lite_llm/export/models/qwen3/qwen3_patch.py:qwen3_model_forward
+mindspore-lite/mindspore-lite/lite_llm/export/models/qwen2_5/qwen2_5_patch.py:qwen2_model_forward_4_40
+mindspore-lite/mindspore-lite/lite_llm/custom_ops/workspace/scripts/generation_build.py:generate_makefile
+mindspore-lite/mindspore-lite/lite_llm/custom_ops/scripts/scaffold.py:cmd_new, cmd_check
+mindspore-lite/mindspore-lite/lite_llm/custom_ops/build.py:main
+mindspore-lite/mindspore-lite/lite_llm/src/sampler/sampler.cc:mslite_llm::Sampler::Sample
+mindspore-lite/mindspore-lite/lite_llm/src/backend/nnrt/nnrt_executor.cc:mslite::backend::nnrt::NnrtExecutor::CreateTensors
+mindspore-lite/mindspore-lite/lite_llm/src/manifest/msl_package_reader.cc:mslite_llm::MslPackageReader::Open
+mindspore-lite/mindspore-lite/lite_llm/src/manifest/model_resource_loader.cc:mslite_llm::LoadModelResourcesFromSingleFile, mslite_llm::LoadModelResources
+mindspore-lite/mindspore-lite/lite_llm/src/manifest/model_manifest.cc:mslite_llm::JsonParser::ParseNumber, mslite_llm::ParseLiteRtManifest, mslite_llm::ParseManifest, mslite_llm::BuildModelManifestFromKv
+mindspore-lite/mindspore-lite/lite_llm/src/pipeline/llm.cc:MSLLMBuildModel, MSLLMGenerate, MSLLMStreamGenerate
+mindspore-lite/mindspore-lite/lite_llm/src/tokenizer/chat_template.cc:mslite_llm::ChatTemplate::Apply
+mindspore-lite/mindspore-lite/lite_llm/src/tokenizer/bpe_codec.cc:mslite_llm::BPECodec::PreTokenize
+# lite_llm: contract validation switch over many I/O pairs (CCN 26, threshold 19)
+mindspore-lite/mindspore-lite/lite_llm/src/backend/nnrt/nnrt_executor.cc:mslite::backend::nnrt::NnrtExecutor::ValidateModelContract
+# lite_llm: CLI main - setup checks + streaming pipeline (NLOC 101, threshold 100)
+mindspore-lite/mindspore-lite/lite_llm/examples/mslite-chat.cc:main

@@ -1,0 +1,34 @@
+[
+  {
+    "op": "MsRmsNorm",
+    "input_desc": [
+      {
+        "name": "x",
+        "param_type": "required",
+        "format": ["ND"],
+        "type": ["fp16"]
+      },
+      {
+        "name": "w",
+        "param_type": "optional",
+        "format": ["ND"],
+        "type": ["fp16"]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "y",
+        "param_type": "required",
+        "format": ["ND"],
+        "type": ["fp16"]
+      }
+    ],
+    "attr": [
+      {
+        "name": "epsilon",
+        "type": "float",
+        "value": "0.000001"
+      }
+    ]
+  }
+]

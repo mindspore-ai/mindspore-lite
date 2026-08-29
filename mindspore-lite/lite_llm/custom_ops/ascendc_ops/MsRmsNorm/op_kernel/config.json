@@ -1,0 +1,11 @@
+{
+  "shell": {
+    "file": "ms_rms_norm.cpp"
+  },
+  "implement": [
+    {
+      "platform": "kirin9020",
+      "files": ["ms_rms_norm_impl.cpp"]
+    }
+  ]
+}

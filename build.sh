@@ -63,6 +63,27 @@ if [[ "X${BUILD_OPTIONAL_TARGET:-off}" == "Xlite_boost" ]]; then
   [[ "${ENABLE_VERBOSE}" == "on" ]] && LITE_BOOST_ARGS+=(-v)
   [[ "${INC_BUILD}" == "on" ]] && LITE_BOOST_ARGS+=(-i)
   bash "${BASEPATH}/mindspore-lite/lite_boost/build.sh" "${LITE_BOOST_ARGS[@]}"
+elif [[ "X${BUILD_OPTIONAL_TARGET:-off}" == "Xlite_llm" ]]; then
+  LITE_LLM_ARGS=(-j "${THREAD_NUM}")
+  if [[ "${DEBUG_MODE}" == "on" ]]; then
+    LITE_LLM_ARGS+=(-d)
+  else
+    LITE_LLM_ARGS+=(-r)
+  fi
+  [[ "${ENABLE_VERBOSE}" == "on" ]] && LITE_LLM_ARGS+=(-v)
+  [[ "${INC_BUILD}" == "on" ]] && LITE_LLM_ARGS+=(-i)
+  # Build the unit tests when the main repo's testcases switch is on.  Both
+  # host and cross builds compile them: host runs them via ctest, the
+  # aarch64 cross build produces test binaries that can be pushed to a device
+  # (BinRunner) for on-device verification.
+  if [[ "${MSLITE_ENABLE_TESTCASES:-off}" == "on" || "${MSLITE_ENABLE_TESTCASES:-off}" == "ut" ]]; then
+    LITE_LLM_ARGS+=(-t on)
+  fi
+  # OHOS cross-compile for the Kirin NPU when the NDK is provided.
+  if [[ -n "${OHOS_NDK:-}" ]]; then
+    LITE_LLM_ARGS+=(-b nnrt)
+  fi
+  bash "${BASEPATH}/mindspore-lite/lite_llm/build.sh" "${LITE_LLM_ARGS[@]}"
 else
   if [ "${MSLITE_ENABLE_SKIP_SUBMODULE_UPDATE}" = "on" ]; then
     echo "Skipping update submodule"
