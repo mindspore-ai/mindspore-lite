@@ -50,7 +50,7 @@ TEST_F(TestSliceInt8, SliceInt8) {
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begin_tensor, &size_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  SliceParameter *parameter = new (std::nothrow) SliceParameter;
+  SliceParameter *parameter = new (std::nothrow) SliceParameter();
 
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_SliceFusion};
 
@@ -59,6 +59,7 @@ TEST_F(TestSliceInt8, SliceInt8) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
   auto ret = kernel->Prepare();
@@ -102,7 +103,7 @@ TEST_F(TestSliceInt8, Slice5D) {
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begin_tensor, &size_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  SliceParameter *parameter = new (std::nothrow) SliceParameter;
+  SliceParameter *parameter = new (std::nothrow) SliceParameter();
 
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_SliceFusion};
 
@@ -111,6 +112,7 @@ TEST_F(TestSliceInt8, Slice5D) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
   auto ret = kernel->Prepare();
@@ -154,7 +156,7 @@ TEST_F(TestSliceInt8, Slice6D) {
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begin_tensor, &size_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  SliceParameter *parameter = new (std::nothrow) SliceParameter;
+  SliceParameter *parameter = new (std::nothrow) SliceParameter();
 
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_SliceFusion};
 
@@ -163,6 +165,7 @@ TEST_F(TestSliceInt8, Slice6D) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
   auto ret = kernel->Prepare();
@@ -206,7 +209,7 @@ TEST_F(TestSliceInt8, Slice7D) {
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begin_tensor, &size_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  SliceParameter *parameter = new (std::nothrow) SliceParameter;
+  SliceParameter *parameter = new (std::nothrow) SliceParameter();
 
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_SliceFusion};
 
@@ -215,6 +218,7 @@ TEST_F(TestSliceInt8, Slice7D) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
   auto ret = kernel->Prepare();
@@ -259,7 +263,7 @@ TEST_F(TestSliceInt8, Slice8D) {
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begin_tensor, &size_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  SliceParameter *parameter = new (std::nothrow) SliceParameter;
+  SliceParameter *parameter = new (std::nothrow) SliceParameter();
 
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_SliceFusion};
 
@@ -268,6 +272,7 @@ TEST_F(TestSliceInt8, Slice8D) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
   auto ret = kernel->Prepare();
@@ -312,7 +317,7 @@ TEST_F(TestSliceInt8, SliceDiffQuantArgs) {
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begin_tensor, &size_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  SliceParameter *parameter = new (std::nothrow) SliceParameter;
+  SliceParameter *parameter = new (std::nothrow) SliceParameter();
 
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_SliceFusion};
 
@@ -321,6 +326,7 @@ TEST_F(TestSliceInt8, SliceDiffQuantArgs) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
   auto ret = kernel->Prepare();
@@ -365,7 +371,7 @@ TEST_F(TestSliceInt8, SliceSingleThread) {
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begin_tensor, &size_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  SliceParameter *parameter = new (std::nothrow) SliceParameter;
+  SliceParameter *parameter = new (std::nothrow) SliceParameter();
 
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_SliceFusion};
 
@@ -376,6 +382,7 @@ TEST_F(TestSliceInt8, SliceSingleThread) {
   ctx->thread_num_ = 1;
 
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
   auto ret = kernel->Prepare();
@@ -420,7 +427,7 @@ TEST_F(TestSliceInt8, Slice4Thread) {
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begin_tensor, &size_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  SliceParameter *parameter = new (std::nothrow) SliceParameter;
+  SliceParameter *parameter = new (std::nothrow) SliceParameter();
 
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_SliceFusion};
 
@@ -430,6 +437,7 @@ TEST_F(TestSliceInt8, Slice4Thread) {
   auto ctx = std::make_shared<lite::InnerContext>();
   ctx->thread_num_ = 4;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
   auto ret = kernel->Prepare();

@@ -26,18 +26,26 @@ class SplitInferTest : public mindspore::CommonTest {
 TEST_F(SplitInferTest, SplitInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 40;
   std::vector<TensorC *> outputs(3, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  outputs[2] = new TensorC;
-  SplitParameter *parameter = new SplitParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  outputs[2] = new TensorC();
+  // explicit split sizes are only honored when they come from the second input tensor:
+  // otherwise UpdateSplitSize overwrites them with the equal-chunk computation
+  inputs.push_back(new TensorC());
+  inputs[1]->data_type_ = kNumberTypeInt32;
+  inputs[1]->shape_size_ = 1;
+  inputs[1]->shape_[0] = 3;
+  int split_size_values[3] = {4, 15, 11};
+  inputs[1]->data_ = split_size_values;
+  SplitParameter *parameter = new SplitParameter();
   parameter->num_split_ = 3;
-  std::vector<int> split_sizes = {4, 15, 11};
-  parameter->split_sizes_ = split_sizes.data();
+  int split_sizes[SPLIT_MAX_SLICE_NUM] = {0};
+  parameter->split_sizes_ = split_sizes;
   parameter->split_dim_ = 1;
   int ret = SplitInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));
@@ -52,7 +60,7 @@ TEST_F(SplitInferTest, SplitInferTest0) {
   ASSERT_EQ(outputs[2]->shape_[0], 5);
   ASSERT_EQ(outputs[2]->shape_[1], 11);
   delete parameter;
-  for (size_t i = 0; i < inputs_size; i++) {
+  for (size_t i = 0; i < inputs.size(); i++) {
     delete inputs[i];
   }
   for (size_t i = 0; i < outputs.size(); i++) {
@@ -63,17 +71,21 @@ TEST_F(SplitInferTest, SplitInferTest0) {
 TEST_F(SplitInferTest, SplitInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 8;
   inputs[0]->shape_[2] = 6;
   std::vector<TensorC *> outputs(2, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  SplitParameter *parameter = new SplitParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  // num_split_ == 0 means "one output per output tensor"; the sizes array must be a valid
+  // writable buffer because UpdateSplitSize fills in the equal-chunk split sizes
+  SplitParameter *parameter = new SplitParameter();
   parameter->num_split_ = 0;
   parameter->split_dim_ = 0;
+  int split_sizes[SPLIT_MAX_SLICE_NUM] = {0};
+  parameter->split_sizes_ = split_sizes;
   int ret = SplitInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -86,7 +98,7 @@ TEST_F(SplitInferTest, SplitInferTest1) {
   ASSERT_EQ(outputs[1]->shape_[1], 8);
   ASSERT_EQ(outputs[1]->shape_[2], 6);
   delete parameter;
-  for (size_t i = 0; i < inputs_size; i++) {
+  for (size_t i = 0; i < inputs.size(); i++) {
     delete inputs[i];
   }
   for (size_t i = 0; i < outputs.size(); i++) {
@@ -97,17 +109,17 @@ TEST_F(SplitInferTest, SplitInferTest1) {
 TEST_F(SplitInferTest, SplitInferTest2) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 5;
   inputs[0]->shape_[2] = 6;
   inputs[0]->shape_[3] = 7;
   std::vector<TensorC *> outputs(3, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  outputs[2] = new TensorC;
-  SplitParameter *parameter = new SplitParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  outputs[2] = new TensorC();
+  SplitParameter *parameter = new SplitParameter();
   parameter->num_split_ = 3;
   parameter->split_count_ = 3;
   parameter->split_sizes_ = reinterpret_cast<int *>(malloc(sizeof(int) * 3));
@@ -146,18 +158,22 @@ TEST_F(SplitInferTest, SplitInferTest2) {
 TEST_F(SplitInferTest, SplitInferTest3) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 5;
   inputs[0]->shape_[2] = 6;
   inputs[0]->shape_[3] = 7;
   std::vector<TensorC *> outputs(2, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  SplitParameter *parameter = new SplitParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  // num_split_ == 0 means "one output per output tensor"; the sizes array must be a valid
+  // writable buffer because UpdateSplitSize fills in the equal-chunk split sizes
+  SplitParameter *parameter = new SplitParameter();
   parameter->num_split_ = 0;
   parameter->split_dim_ = 0;
+  int split_sizes[SPLIT_MAX_SLICE_NUM] = {0};
+  parameter->split_sizes_ = split_sizes;
   int ret = SplitInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -172,7 +188,7 @@ TEST_F(SplitInferTest, SplitInferTest3) {
   ASSERT_EQ(outputs[1]->shape_[2], 6);
   ASSERT_EQ(outputs[1]->shape_[3], 7);
   delete parameter;
-  for (size_t i = 0; i < inputs_size; i++) {
+  for (size_t i = 0; i < inputs.size(); i++) {
     delete inputs[i];
   }
   for (size_t i = 0; i < outputs.size(); i++) {
@@ -183,7 +199,7 @@ TEST_F(SplitInferTest, SplitInferTest3) {
 TEST_F(SplitInferTest, SplitInferTest4) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 1200;
   inputs[0]->shape_[1] = 5;
@@ -191,11 +207,15 @@ TEST_F(SplitInferTest, SplitInferTest4) {
   inputs[0]->shape_[3] = 7;
   std::vector<TensorC *> outputs(100, NULL);
   for (size_t i = 0; i < 100; i++) {
-    outputs[i] = new TensorC;
+    outputs[i] = new TensorC();
   }
-  SplitParameter *parameter = new SplitParameter;
+  // num_split_ == 0 means "one output per output tensor"; the sizes array must be a valid
+  // writable buffer because UpdateSplitSize fills in the equal-chunk split sizes
+  SplitParameter *parameter = new SplitParameter();
   parameter->num_split_ = 0;
   parameter->split_dim_ = 0;
+  int split_sizes[100] = {0};
+  parameter->split_sizes_ = split_sizes;
   int ret = SplitInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -208,7 +228,7 @@ TEST_F(SplitInferTest, SplitInferTest4) {
   }
 
   delete parameter;
-  for (size_t i = 0; i < inputs_size; i++) {
+  for (size_t i = 0; i < inputs.size(); i++) {
     delete inputs[i];
   }
   for (size_t i = 0; i < outputs.size(); i++) {

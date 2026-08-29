@@ -27,15 +27,15 @@ class MaxMinGradInferTest : public mindspore::CommonTest {
 TEST_F(MaxMinGradInferTest, MaxMinGradInferTest0) {
   size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 5;
   inputs[1]->shape_[1] = 6;
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
   inputs[2]->shape_size_ = 3;
   inputs[2]->shape_[0] = 7;
   inputs[2]->shape_[1] = 8;
@@ -43,9 +43,9 @@ TEST_F(MaxMinGradInferTest, MaxMinGradInferTest0) {
   inputs[2]->data_type_ = kNumberTypeInt32;
   inputs[2]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(2, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  ArithmeticParameter *parameter = new ArithmeticParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  ArithmeticParameter *parameter = new ArithmeticParameter();
   int ret = MaxMinGradInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                  reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

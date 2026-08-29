@@ -26,22 +26,23 @@ class CustomNormalizeInferTest : public mindspore::CommonTest {
 TEST_F(CustomNormalizeInferTest, CustomNormalizeInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 1;
   std::vector<int> input_data = {2};
   inputs[0]->data_ = input_data.data();
-  inputs[0]->data_type_ = kNumberTypeInt32;
+  // the infer only accepts uint32 (offset tensor) or string input
+  inputs[0]->data_type_ = kNumberTypeUInt32;
   inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = CustomNormalizeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                       reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
   ASSERT_EQ(outputs[0]->shape_size_, 1);
   ASSERT_EQ(outputs[0]->shape_[0], 2);
-  ASSERT_EQ(outputs[0]->data_type_, kNumberTypeInt32);
+  ASSERT_EQ(outputs[0]->data_type_, kNumberTypeUInt32);
   ASSERT_EQ(outputs[0]->format_, Format_NHWC);
   delete parameter;
   for (size_t i = 0; i < inputs_size; i++) {
@@ -55,22 +56,23 @@ TEST_F(CustomNormalizeInferTest, CustomNormalizeInferTest0) {
 TEST_F(CustomNormalizeInferTest, CustomNormalizeInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 1;
   std::vector<int> input_data = {0};
   inputs[0]->data_ = input_data.data();
-  inputs[0]->data_type_ = kNumberTypeInt32;
+  // the infer only accepts uint32 (offset tensor) or string input
+  inputs[0]->data_type_ = kNumberTypeUInt32;
   inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = CustomNormalizeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                       reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
   ASSERT_EQ(outputs[0]->shape_size_, 1);
   ASSERT_EQ(outputs[0]->shape_[0], 1);
-  ASSERT_EQ(outputs[0]->data_type_, kNumberTypeInt32);
+  ASSERT_EQ(outputs[0]->data_type_, kNumberTypeUInt32);
   ASSERT_EQ(outputs[0]->format_, Format_NHWC);
   delete parameter;
   for (size_t i = 0; i < inputs_size; i++) {

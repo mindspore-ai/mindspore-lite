@@ -26,14 +26,14 @@ class StridedSliceInferTest : public mindspore::CommonTest {
 TEST_F(StridedSliceInferTest, StridedSliceInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 3;
   inputs[0]->shape_[2] = 3;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  StridedSliceParameter *parameter = new StridedSliceParameter;
+  outputs[0] = new TensorC();
+  StridedSliceParameter *parameter = new StridedSliceParameter();
   parameter->begins_[0] = 1;
   parameter->begins_[1] = 0;
   parameter->begins_[2] = 0;
@@ -68,14 +68,14 @@ TEST_F(StridedSliceInferTest, StridedSliceInferTest0) {
 TEST_F(StridedSliceInferTest, StridedSliceInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 3;
   inputs[0]->shape_[2] = 3;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  StridedSliceParameter *parameter = new StridedSliceParameter;
+  outputs[0] = new TensorC();
+  StridedSliceParameter *parameter = new StridedSliceParameter();
   parameter->begins_[0] = 1;
   parameter->begins_[1] = 0;
   parameter->begins_[2] = 0;
@@ -110,14 +110,14 @@ TEST_F(StridedSliceInferTest, StridedSliceInferTest1) {
 TEST_F(StridedSliceInferTest, StridedSliceInferTest2) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 3;
   inputs[0]->shape_[2] = 3;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  StridedSliceParameter *parameter = new StridedSliceParameter;
+  outputs[0] = new TensorC();
+  StridedSliceParameter *parameter = new StridedSliceParameter();
   parameter->begins_[0] = 1;
   parameter->begins_[1] = -1;
   parameter->begins_[2] = 0;
@@ -152,12 +152,12 @@ TEST_F(StridedSliceInferTest, StridedSliceInferTest2) {
 TEST_F(StridedSliceInferTest, StridedSliceInferTest3) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 5;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  StridedSliceParameter *parameter = new StridedSliceParameter;
+  outputs[0] = new TensorC();
+  StridedSliceParameter *parameter = new StridedSliceParameter();
   parameter->begins_[0] = 0;
   parameter->ends_[0] = 3;
   parameter->strides_[0] = 1;
@@ -184,12 +184,12 @@ TEST_F(StridedSliceInferTest, StridedSliceInferTest3) {
 TEST_F(StridedSliceInferTest, StridedSliceInferTest4) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 5;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  StridedSliceParameter *parameter = new StridedSliceParameter;
+  outputs[0] = new TensorC();
+  StridedSliceParameter *parameter = new StridedSliceParameter();
   parameter->begins_[0] = 1;
   parameter->ends_[0] = -2;
   parameter->strides_[0] = 1;
@@ -217,7 +217,7 @@ TEST_F(StridedSliceInferTest, StridedSliceInferTest4) {
 TEST_F(StridedSliceInferTest, StridedSliceInferTest5) {
   size_t inputs_size = 4;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 5;
   int *begin_vector = reinterpret_cast<int *>(malloc(sizeof(int)));
@@ -226,22 +226,26 @@ TEST_F(StridedSliceInferTest, StridedSliceInferTest5) {
   end_vector[0] = -2;
   int *stride_vector = reinterpret_cast<int *>(malloc(sizeof(int)));
   stride_vector[0] = 1;
-  inputs[1] = new TensorC;
+  // GetInt32DataFromTensor requires int32 begin/end/stride tensors
+  inputs[1] = new TensorC();
   inputs[1]->data_ = begin_vector;
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 1;
-  inputs[2] = new TensorC;
+  inputs[1]->data_type_ = kNumberTypeInt32;
+  inputs[2] = new TensorC();
   inputs[2]->data_ = end_vector;
   inputs[2]->shape_size_ = 1;
   inputs[2]->shape_[0] = 1;
-  inputs[3] = new TensorC;
+  inputs[2]->data_type_ = kNumberTypeInt32;
+  inputs[3] = new TensorC();
   inputs[3]->data_ = stride_vector;
   inputs[3]->shape_size_ = 1;
   inputs[3]->shape_[0] = 1;
+  inputs[3]->data_type_ = kNumberTypeInt32;
   std::vector<TensorC *> outputs;
   outputs.push_back(NULL);
-  outputs[0] = new TensorC;
-  StridedSliceParameter *parameter = new StridedSliceParameter;
+  outputs[0] = new TensorC();
+  StridedSliceParameter *parameter = new StridedSliceParameter();
   parameter->begins_mask_ = 0;
   parameter->ends_mask_ = 0;
   parameter->ellipsisMask_ = 0;
@@ -266,7 +270,7 @@ TEST_F(StridedSliceInferTest, StridedSliceInferTest5) {
 TEST_F(StridedSliceInferTest, StridedSliceInferTest6) {
   size_t inputs_size = 4;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 3;
@@ -274,21 +278,25 @@ TEST_F(StridedSliceInferTest, StridedSliceInferTest6) {
   std::vector<int> begin_vector = {1, 0, 0};
   std::vector<int> end_vector = {2, 1, 3};
   std::vector<int> stride_vector = {1, 1, 1};
-  inputs[1] = new TensorC;
+  // GetInt32DataFromTensor requires int32 begin/end/stride tensors
+  inputs[1] = new TensorC();
   inputs[1]->data_ = begin_vector.data();
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 3;
-  inputs[2] = new TensorC;
+  inputs[1]->data_type_ = kNumberTypeInt32;
+  inputs[2] = new TensorC();
   inputs[2]->data_ = end_vector.data();
   inputs[2]->shape_size_ = 1;
   inputs[2]->shape_[0] = 3;
-  inputs[3] = new TensorC;
+  inputs[2]->data_type_ = kNumberTypeInt32;
+  inputs[3] = new TensorC();
   inputs[3]->data_ = stride_vector.data();
   inputs[3]->shape_size_ = 1;
   inputs[3]->shape_[0] = 3;
+  inputs[3]->data_type_ = kNumberTypeInt32;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  StridedSliceParameter *parameter = new StridedSliceParameter;
+  outputs[0] = new TensorC();
+  StridedSliceParameter *parameter = new StridedSliceParameter();
   parameter->begins_mask_ = 0;
   parameter->ends_mask_ = 0;
   parameter->ellipsisMask_ = 0;

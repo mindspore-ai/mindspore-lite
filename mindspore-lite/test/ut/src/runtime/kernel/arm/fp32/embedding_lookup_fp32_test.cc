@@ -44,13 +44,13 @@ void ElTestInit(std::vector<Tensor *> *inputs_, std::vector<Tensor *> *outputs_,
   memcpy(in_t_second->MutableData(), in_second, sizeof(float) * in_t_second->ElementsNum());
   inputs_->push_back(in_t_second);
 
-  Tensor *ids_t = new Tensor(kNumberTypeFloat32, {2, 3}, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  Tensor *ids_t = new Tensor(kNumberTypeInt32, {2, 3}, mindspore::NHWC, lite::Category::CONST_TENSOR);
   ids_t->MallocData();
   int ids[] = {1, 9, 2, 4, 6, 7};
   memcpy(ids_t->MutableData(), ids, sizeof(int) * ids_t->ElementsNum());
   inputs_->push_back(ids_t);
 
-  Tensor *outputs_t = new Tensor(kNumberTypeInt32, {2, 3, 2}, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  Tensor *outputs_t = new Tensor(kNumberTypeFloat32, {2, 3, 2}, mindspore::NHWC, lite::Category::CONST_TENSOR);
   outputs_t->MallocData();
   outputs_->push_back(outputs_t);
 
@@ -66,11 +66,12 @@ TEST_F(TestEmbeddingLookupFp32, ElTest) {
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  embedding_lookup_param_->op_parameter_.thread_num_ = ctx->thread_num_;
   kernel::EmbeddingLookupCPUKernel *el = new kernel::EmbeddingLookupCPUKernel(
     reinterpret_cast<OpParameter *>(embedding_lookup_param_), inputs_, outputs_, ctx);
 
-  el->Prepare();
-  el->Run();
+  EXPECT_EQ(0, el->Prepare());
+  EXPECT_EQ(0, el->Run());
 
   std::cout << "output shape:" << std::endl;
   for (unsigned int i = 0; i < outputs_.front()->shape().size(); ++i) {

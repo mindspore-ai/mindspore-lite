@@ -62,6 +62,7 @@ TEST_F(TestROIPoolingFp32, Simple) {
   auto ctx = new lite::InnerContext;
   ctx->thread_num_ = 3;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  param->op_parameter_.thread_num_ = ctx->thread_num_;
   auto *op = new kernel::ROIPoolingCPUKernel(reinterpret_cast<OpParameter *>(param), inputs_, outputs_, ctx);
   op->Prepare();
   op->Run();

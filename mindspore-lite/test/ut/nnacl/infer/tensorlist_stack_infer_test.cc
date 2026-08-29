@@ -27,7 +27,7 @@ class TensorlistStackInferTest : public mindspore::CommonTest {
 TEST_F(TensorlistStackInferTest, TensorlistStackInferTest0) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  auto *input0 = new TensorListC;
+  auto *input0 = new TensorListC();
   input0->element_num_ = 3;
   auto in_tensors_c = reinterpret_cast<TensorC *>(malloc(input0->element_num_ * sizeof(TensorC)));
   input0->tensors_ = &in_tensors_c;
@@ -53,15 +53,15 @@ TEST_F(TensorlistStackInferTest, TensorlistStackInferTest0) {
   inputs[0] = reinterpret_cast<TensorC *>(input0);
   inputs[0]->data_type_ = kObjectTypeTensorType;
 
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 2;
   std::vector<int> inputs1_data = {-1, 4};
   inputs[1]->data_ = inputs1_data.data();
 
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  auto *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  auto *parameter = new OpParameter();
   int ret = TensorListStackInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                       reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

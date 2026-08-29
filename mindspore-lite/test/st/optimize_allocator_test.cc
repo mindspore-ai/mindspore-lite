@@ -27,6 +27,7 @@ namespace lite {
 class SessionMock : public LiteSession {
  public:
   MOCK_METHOD0(RuntimeAllocatorValid, int());
+  MOCK_METHOD0(ExistCustomCpuKernel, bool());
 };
 }  // namespace lite
 
@@ -136,6 +137,7 @@ TEST_F(OptimizeAllocator, RuntimeAllocator1) {
   auto lite_session = new lite::SessionMock();
   ASSERT_NE(lite_session, nullptr);
   ON_CALL(*lite_session, RuntimeAllocatorValid).WillByDefault(testing::Return(0));
+  ON_CALL(*lite_session, ExistCustomCpuKernel).WillByDefault(testing::Return(false));
 
   auto ret = lite_session->Init(context);
   ASSERT_EQ(mindspore::lite::RET_OK, ret);

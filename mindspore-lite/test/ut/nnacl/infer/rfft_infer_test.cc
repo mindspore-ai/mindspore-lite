@@ -26,13 +26,13 @@ class RfftInferTest : public mindspore::CommonTest {
 TEST_F(RfftInferTest, RfftInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  RfftParameter *parameter = new RfftParameter;
+  outputs[0] = new TensorC();
+  RfftParameter *parameter = new RfftParameter();
   parameter->fft_length_ = 4;
   int ret = RfftInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                            reinterpret_cast<OpParameter *>(parameter));

@@ -57,7 +57,8 @@ void InitConvParamGroup1FP32(ConvParameter *conv_param) {
 
   conv_param->group_ = 1;
   conv_param->act_type_ = ActType_No;
-  conv_param->thread_num_ = 1;
+  // ConvParameter::thread_num_ shadows OpParameter::thread_num_; the kernel reads the base field
+  conv_param->op_parameter_.thread_num_ = 1;
 }
 
 void InitConvParamGroup3FP32(ConvParameter *conv_param) {
@@ -77,6 +78,8 @@ void InitConvParamGroup3Dilation2FP32(ConvParameter *conv_param) {
 TEST_F(TestConvolutionGradFp32, ConvFp32FilterGrad) {
   // prepare stage
   auto conv_param = static_cast<ConvParameter *>(malloc(sizeof(ConvParameter)));
+  // zero-init: garbage in unset pad/stride fields corrupts the gradient
+  memset(conv_param, 0, sizeof(ConvParameter));
   ASSERT_NE(conv_param, nullptr);
 
   InitConvParamGroup1FP32(conv_param);
@@ -157,6 +160,8 @@ TEST_F(TestConvolutionGradFp32, ConvFp32FilterGrad) {
 TEST_F(TestConvolutionGradFp32, ConvFp32InputGrad) {
   // prepare stage
   auto conv_param = static_cast<ConvParameter *>(malloc(sizeof(ConvParameter)));
+  // zero-init: garbage in unset pad/stride fields corrupts the gradient
+  memset(conv_param, 0, sizeof(ConvParameter));
   ASSERT_NE(conv_param, nullptr);
 
   InitConvParamGroup1FP32(conv_param);
@@ -235,6 +240,8 @@ TEST_F(TestConvolutionGradFp32, ConvFp32InputGrad) {
 TEST_F(TestConvolutionGradFp32, ConvFp32GroupFilterGrad) {
   // prepare stage
   auto conv_param = static_cast<ConvParameter *>(malloc(sizeof(ConvParameter)));
+  // zero-init: garbage in unset pad/stride fields corrupts the gradient
+  memset(conv_param, 0, sizeof(ConvParameter));
   ASSERT_NE(conv_param, nullptr);
 
   InitConvParamGroup3FP32(conv_param);
@@ -309,6 +316,8 @@ TEST_F(TestConvolutionGradFp32, ConvFp32GroupFilterGrad) {
 TEST_F(TestConvolutionGradFp32, ConvFp32GroupInputGrad) {
   // prepare stage
   auto conv_param = static_cast<ConvParameter *>(malloc(sizeof(ConvParameter)));
+  // zero-init: garbage in unset pad/stride fields corrupts the gradient
+  memset(conv_param, 0, sizeof(ConvParameter));
   ASSERT_NE(conv_param, nullptr);
 
   InitConvParamGroup3FP32(conv_param);
@@ -387,6 +396,8 @@ TEST_F(TestConvolutionGradFp32, ConvFp32GroupInputGrad) {
 TEST_F(TestConvolutionGradFp32, ConvFp32GroupDilationFilterGrad) {
   // prepare stage
   auto conv_param = static_cast<ConvParameter *>(malloc(sizeof(ConvParameter)));
+  // zero-init: garbage in unset pad/stride fields corrupts the gradient
+  memset(conv_param, 0, sizeof(ConvParameter));
   ASSERT_NE(conv_param, nullptr);
 
   InitConvParamGroup3Dilation2FP32(conv_param);
@@ -463,6 +474,8 @@ TEST_F(TestConvolutionGradFp32, ConvFp32GroupDilationFilterGrad) {
 TEST_F(TestConvolutionGradFp32, ConvFp32GroupDilationInputGrad) {
   // prepare stage
   auto conv_param = static_cast<ConvParameter *>(malloc(sizeof(ConvParameter)));
+  // zero-init: garbage in unset pad/stride fields corrupts the gradient
+  memset(conv_param, 0, sizeof(ConvParameter));
   ASSERT_NE(conv_param, nullptr);
 
   InitConvParamGroup3Dilation2FP32(conv_param);
@@ -535,6 +548,8 @@ TEST_F(TestConvolutionGradFp32, ConvFp32GroupDilationInputGrad) {
 TEST_F(TestConvolutionGradFp32, ConvGroupDilation) {
   // prepare stage
   auto conv_param = static_cast<ConvParameter *>(malloc(sizeof(ConvParameter)));
+  // zero-init: garbage in unset pad/stride fields corrupts the gradient
+  memset(conv_param, 0, sizeof(ConvParameter));
   ASSERT_NE(conv_param, nullptr);
 
   InitConvParamGroup3Dilation2FP32(conv_param);
@@ -613,6 +628,8 @@ TEST_F(TestConvolutionGradFp32, ConvGroupDilation) {
 TEST_F(TestConvolutionGradFp32, ConvFp32Dilation2Group2Stride2FilterGrad) {
   // prepare stage
   auto conv_param = static_cast<ConvParameter *>(malloc(sizeof(ConvParameter)));
+  // zero-init: garbage in unset pad/stride fields corrupts the gradient
+  memset(conv_param, 0, sizeof(ConvParameter));
   ASSERT_NE(conv_param, nullptr);
 
   conv_param->input_batch_ = 2;
@@ -641,7 +658,7 @@ TEST_F(TestConvolutionGradFp32, ConvFp32Dilation2Group2Stride2FilterGrad) {
 
   conv_param->group_ = 2;
   conv_param->act_type_ = ActType_No;
-  conv_param->thread_num_ = 1;
+  conv_param->op_parameter_.thread_num_ = 1;
 
   size_t dy_size;
   std::string dy_path = "./conv/convfp32_dy_d2_g2_s2_2_12_15_15.bin";
@@ -719,6 +736,8 @@ TEST_F(TestConvolutionGradFp32, ConvFp32Dilation2Group2Stride2FilterGrad) {
 TEST_F(TestConvolutionGradFp32, ConvGroup2Dilation2Stride2) {
   // prepare stage
   auto conv_param = static_cast<ConvParameter *>(malloc(sizeof(ConvParameter)));
+  // zero-init: garbage in unset pad/stride fields corrupts the gradient
+  memset(conv_param, 0, sizeof(ConvParameter));
   ASSERT_NE(conv_param, nullptr);
 
   conv_param->input_batch_ = 2;
@@ -747,7 +766,7 @@ TEST_F(TestConvolutionGradFp32, ConvGroup2Dilation2Stride2) {
 
   conv_param->group_ = 2;
   conv_param->act_type_ = ActType_No;
-  conv_param->thread_num_ = 1;
+  conv_param->op_parameter_.thread_num_ = 1;
 
   size_t dy_size;
   std::string dy_path = "./conv/convfp32_dy_d2_g2_s2_2_12_15_15.bin";

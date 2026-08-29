@@ -26,17 +26,18 @@ class PoolingGradInferTest : public mindspore::CommonTest {
 TEST_F(PoolingGradInferTest, PoolingGradInferTest0) {
   size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 21;
   inputs[0]->shape_[1] = 14;
   inputs[0]->shape_[2] = 14;
   inputs[0]->shape_[3] = 3;
-  inputs[1] = new TensorC;
-  inputs[2] = new TensorC;
+  inputs[0]->format_ = Format_NHWC;
+  inputs[1] = new TensorC();
+  inputs[2] = new TensorC();
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  PoolingParameter *parameter = new PoolingParameter;
+  outputs[0] = new TensorC();
+  PoolingParameter *parameter = new PoolingParameter();
   parameter->window_w_ = 3;
   parameter->window_h_ = 3;
   parameter->stride_w_ = 1;

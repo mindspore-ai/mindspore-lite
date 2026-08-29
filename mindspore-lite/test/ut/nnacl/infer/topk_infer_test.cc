@@ -24,18 +24,25 @@ class TopKInferTest : public mindspore::CommonTest {
 };
 
 TEST_F(TopKInferTest, TopKInferTest0) {
-  size_t inputs_size = 1;
+  size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   inputs[0]->shape_[2] = 5;
   inputs[0]->format_ = Format_NHWC;
+  // the infer reads k from the second input tensor
+  inputs[1] = new TensorC();
+  int32_t k_data[] = {6};
+  inputs[1]->shape_size_ = 1;
+  inputs[1]->shape_[0] = 1;
+  inputs[1]->data_type_ = kNumberTypeInt32;
+  inputs[1]->data_ = k_data;
   std::vector<TensorC *> outputs(2, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  TopkParameter *parameter = new TopkParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  TopkParameter *parameter = new TopkParameter();
   parameter->k_ = 6;
   parameter->axis_ = -1;
   int ret = TopKInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
@@ -61,19 +68,19 @@ TEST_F(TopKInferTest, TopKInferTest0) {
 TEST_F(TopKInferTest, TopKInferInputsSize2) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   inputs[0]->shape_[2] = 5;
   inputs[0]->format_ = Format_NHWC;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<int> tmp = {7};
   inputs[1]->data_ = tmp.data();
   std::vector<TensorC *> outputs(2, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  TopkParameter *parameter = new TopkParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  TopkParameter *parameter = new TopkParameter();
   parameter->axis_ = -1;
   int ret = TopKInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                            reinterpret_cast<OpParameter *>(parameter));

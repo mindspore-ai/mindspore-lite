@@ -26,7 +26,7 @@ class SpaceToDepthInferTest : public mindspore::CommonTest {
 TEST_F(SpaceToDepthInferTest, SpaceToDepthInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 1;
   inputs[0]->shape_[1] = 2;
@@ -34,8 +34,8 @@ TEST_F(SpaceToDepthInferTest, SpaceToDepthInferTest0) {
   inputs[0]->shape_[3] = 1;
   inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  SpaceToDepthParameter *parameter = new SpaceToDepthParameter;
+  outputs[0] = new TensorC();
+  SpaceToDepthParameter *parameter = new SpaceToDepthParameter();
   parameter->block_size_ = 2;
   int ret = SpaceToDepthInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                    reinterpret_cast<OpParameter *>(parameter));
@@ -57,7 +57,7 @@ TEST_F(SpaceToDepthInferTest, SpaceToDepthInferTest0) {
 TEST_F(SpaceToDepthInferTest, SpaceToDepthInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 1;
   inputs[0]->shape_[1] = 4;
@@ -65,8 +65,8 @@ TEST_F(SpaceToDepthInferTest, SpaceToDepthInferTest1) {
   inputs[0]->shape_[3] = 1;
   inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  SpaceToDepthParameter *parameter = new SpaceToDepthParameter;
+  outputs[0] = new TensorC();
+  SpaceToDepthParameter *parameter = new SpaceToDepthParameter();
   parameter->block_size_ = 2;
   int ret = SpaceToDepthInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                    reinterpret_cast<OpParameter *>(parameter));

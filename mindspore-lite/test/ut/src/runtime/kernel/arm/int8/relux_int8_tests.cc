@@ -44,9 +44,14 @@ TEST_F(TestReluXInt8, Relu) {
   std::vector<lite::Tensor *> inputs = {&in_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  ActivationParameter parameter = {0};
-  parameter.op_parameter_.type_ = schema::PrimitiveType_Activation;
-  parameter.type_ = schema::ActivationType_RELU;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto parameter = new (std::nothrow) ActivationParameter();
+  if (parameter == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  parameter->op_parameter_.type_ = schema::PrimitiveType_Activation;
+  parameter->type_ = schema::ActivationType_RELU;
 
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Activation};
 
@@ -55,7 +60,8 @@ TEST_F(TestReluXInt8, Relu) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(&parameter), ctx.get(), desc);
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
+  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
 
   auto ret = kernel->Prepare();
@@ -91,9 +97,14 @@ TEST_F(TestReluXInt8, Relu6) {
   std::vector<lite::Tensor *> inputs = {&in_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  ActivationParameter parameter = {0};
-  parameter.op_parameter_.type_ = schema::PrimitiveType_Activation;
-  parameter.type_ = schema::ActivationType_RELU6;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto parameter = new (std::nothrow) ActivationParameter();
+  if (parameter == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  parameter->op_parameter_.type_ = schema::PrimitiveType_Activation;
+  parameter->type_ = schema::ActivationType_RELU6;
 
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Activation};
 
@@ -102,7 +113,8 @@ TEST_F(TestReluXInt8, Relu6) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(&parameter), ctx.get(), desc);
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
+  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
 
   auto ret = kernel->Prepare();

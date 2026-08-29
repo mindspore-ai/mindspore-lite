@@ -24,25 +24,25 @@ class TestNLLLossInfer : public mindspore::CommonTest {
 };
 
 void NLLLossInferInitArgs(std::vector<TensorC *> *inputs, std::vector<TensorC *> *outputs) {
-  auto *logits = new TensorC;
+  auto *logits = new TensorC();
   logits->shape_size_ = 2;
   logits->shape_[0] = 3;
   logits->shape_[1] = 5;
   inputs->push_back(logits);
 
-  auto *labels = new TensorC;
+  auto *labels = new TensorC();
   labels->shape_size_ = 1;
   labels->shape_[0] = 3;
   inputs->push_back(labels);
 
-  auto *weight = new TensorC;
+  auto *weight = new TensorC();
   weight->shape_size_ = 1;
   weight->shape_[0] = 5;
   inputs->push_back(weight);
 
-  auto *loss = new TensorC;
+  auto *loss = new TensorC();
   outputs->push_back(loss);
-  auto *total_weight = new TensorC;
+  auto *total_weight = new TensorC();
   outputs->push_back(total_weight);
 }
 
@@ -57,7 +57,7 @@ TEST_F(TestNLLLossInfer, ReductionNone) {
   std::vector<TensorC *> inputs;
   std::vector<TensorC *> outputs;
   NLLLossInferInitArgs(&inputs, &outputs);
-  auto *param = new NLLLossParameter;
+  auto *param = new NLLLossParameter();
   param->reduction_type_ = Reduction_None;
   int ret = NLLLossInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                               reinterpret_cast<OpParameter *>(param));
@@ -72,7 +72,7 @@ TEST_F(TestNLLLossInfer, ReductionSum) {
   std::vector<TensorC *> inputs;
   std::vector<TensorC *> outputs;
   NLLLossInferInitArgs(&inputs, &outputs);
-  auto *param = new NLLLossParameter;
+  auto *param = new NLLLossParameter();
   param->reduction_type_ = Reduction_Sum;
   int ret = NLLLossInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                               reinterpret_cast<OpParameter *>(param));
@@ -86,7 +86,7 @@ TEST_F(TestNLLLossInfer, ReductionMean) {
   std::vector<TensorC *> inputs;
   std::vector<TensorC *> outputs;
   NLLLossInferInitArgs(&inputs, &outputs);
-  auto *param = new NLLLossParameter;
+  auto *param = new NLLLossParameter();
   param->reduction_type_ = Reduction_Mean;
   int ret = NLLLossInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                               reinterpret_cast<OpParameter *>(param));

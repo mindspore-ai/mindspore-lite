@@ -18,6 +18,7 @@
 #include <memory>
 #include "schema/inner/model_generated.h"
 #include "common/common_test.h"
+#include "nnacl_c/arithmetic_parameter.h"
 #include "src/litert/kernel_registry.h"
 
 namespace mindspore {
@@ -48,7 +49,14 @@ TEST_F(TestQuantizedAdd, Add) {
   std::vector<lite::Tensor *> inputs = {&in_tensor0, &in_tensor1};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  OpParameter parameter = {};
+  // the kernel casts the op parameter to ArithmeticParameter (it stores the shapes in it) and
+  // ~LiteKernel free()s it, so it must be a heap-allocated full ArithmeticParameter
+  auto parameter = new (std::nothrow) ArithmeticParameter();
+  if (parameter == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  parameter->op_parameter_.type_ = schema::PrimitiveType_AddFusion;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_AddFusion};
 
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
@@ -56,7 +64,8 @@ TEST_F(TestQuantizedAdd, Add) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(&parameter), ctx.get(), desc);
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
+  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
 
   auto ret = kernel->Prepare();

@@ -16,6 +16,7 @@
 #include "common/common_test.h"
 #include "src/tensorlist.h"
 #include "src/litert/infer_manager.h"
+#include "nnacl_c/tensorlist_parameter.h"
 
 namespace mindspore::lite {
 
@@ -34,13 +35,13 @@ TEST_F(InferManagerTest, InferManagerTest0) {
   std::vector<int> tensor1_shape = {1, 2};
   tensor1->set_shape(tensor1_shape);
   std::vector<int> tensor1_data = {-1, 5};
-  tensor1->set_data(tensor1_data.data());
+  tensor1->set_data(tensor1_data.data(), false);
   tensor1->set_data_type(kNumberTypeInt32);
   std::vector<lite::Tensor *> inputs;
   inputs.push_back(tensor0);
   inputs.push_back(tensor1);
 
-  OpParameter *parameter = new OpParameter;
+  OpParameter *parameter = new OpParameter();
   parameter->type_ = mindspore::schema::PrimitiveType_TensorListFromTensor;
 
   std::vector<lite::Tensor *> outputs;
@@ -89,12 +90,16 @@ TEST_F(InferManagerTest, InferManagerTest1) {
   Tensor *tensor0_0 = new Tensor;
   std::vector<int> tensor0_0_shape = {1, 2};
   tensor0_0->set_shape(tensor0_0_shape);
+  // typed elements: the infer copies the selected element's shape directly
+  tensor0_0->set_data_type(kNumberTypeFloat32);
   Tensor *tensor0_1 = new Tensor;
   std::vector<int> tensor0_1_shape = {3, 4, 5};
   tensor0_1->set_shape(tensor0_1_shape);
+  tensor0_1->set_data_type(kNumberTypeFloat32);
   Tensor *tensor0_2 = new Tensor;
   std::vector<int> tensor0_2_shape = {6, 7, 8, 9};
   tensor0_2->set_shape(tensor0_2_shape);
+  tensor0_2->set_data_type(kNumberTypeFloat32);
   std::vector<Tensor *> tensor0;
   tensor0.push_back(tensor0_0);
   tensor0.push_back(tensor0_1);
@@ -107,7 +112,7 @@ TEST_F(InferManagerTest, InferManagerTest1) {
   std::vector<int> tensor1_shape = {1};
   std::vector<int> tensor1_data = {2};
   tensor1->set_shape(tensor1_shape);
-  tensor1->set_data(tensor1_data.data());
+  tensor1->set_data(tensor1_data.data(), false);
   Tensor *tensor2 = new Tensor;
 
   std::vector<lite::Tensor *> inputs;
@@ -115,7 +120,7 @@ TEST_F(InferManagerTest, InferManagerTest1) {
   inputs.push_back(tensor1);
   inputs.push_back(tensor2);
 
-  OpParameter *parameter = new OpParameter;
+  OpParameter *parameter = new OpParameter();
   parameter->type_ = mindspore::schema::PrimitiveType_TensorListGetItem;
 
   std::vector<lite::Tensor *> outputs;
@@ -147,19 +152,21 @@ TEST_F(InferManagerTest, InferManagerTest2) {
   tensor0->set_shape(tensor0_shape);
   tensor0->set_data_type(kNumberTypeInt32);
   std::vector<int> tensor0_data = {2, 3, 4};
-  tensor0->set_data(tensor0_data.data());
+  tensor0->set_data(tensor0_data.data(), false);
   Tensor *tensor1 = new (std::nothrow) Tensor;
   std::vector<int> tensor1_shape = {1};
   tensor1->set_shape(tensor1_shape);
   std::vector<int> tensor1_data = {5};
-  tensor1->set_data(tensor1_data.data());
+  tensor1->set_data(tensor1_data.data(), false);
   tensor1->set_data_type(kNumberTypeInt32);
   std::vector<lite::Tensor *> inputs;
   inputs.push_back(tensor0);
   inputs.push_back(tensor1);
 
-  OpParameter *parameter = new OpParameter;
-  parameter->type_ = mindspore::schema::PrimitiveType_TensorListReserve;
+  // the Reserve infer reads element_dtype_ from TensorListParameter; passing a
+  // bare OpParameter would read past the allocation (heap over-read, garbage)
+  TensorListParameter *parameter = new TensorListParameter();
+  parameter->op_parameter_.type_ = mindspore::schema::PrimitiveType_TensorListReserve;
 
   std::vector<lite::Tensor *> outputs;
   TensorList *tensorList = new (std::nothrow) TensorList;
@@ -167,7 +174,7 @@ TEST_F(InferManagerTest, InferManagerTest2) {
   Tensor *output = reinterpret_cast<Tensor *>(tensorList);
   outputs.push_back(output);
 
-  int ret = KernelInferShape(inputs, outputs, parameter);
+  int ret = KernelInferShape(inputs, outputs, reinterpret_cast<OpParameter *>(parameter));
 
   TensorList *out = reinterpret_cast<TensorList *>(outputs[0]);
 

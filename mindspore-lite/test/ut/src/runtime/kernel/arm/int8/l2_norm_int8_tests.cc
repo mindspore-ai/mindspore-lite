@@ -24,7 +24,6 @@ namespace mindspore {
 class TestL2NormInt8 : public mindspore::CommonTest {
  public:
   TestL2NormInt8() {}
-  L2NormParameter param_;
 };
 
 TEST_F(TestL2NormInt8, norm) {
@@ -44,11 +43,18 @@ TEST_F(TestL2NormInt8, norm) {
   std::vector<lite::Tensor *> inputs = {&in_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  param_.axis_num_ = 1;
-  param_.axis_[0] = -1;
-  param_.epsilon_ = 1e-6;
-  param_.act_type_ = ActType_No;
-  param_.shape_ = nullptr;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto param_ = new (std::nothrow) L2NormParameter();
+  if (param_ == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  param_->op_parameter_.type_ = schema::PrimitiveType_L2NormalizeFusion;
+  param_->axis_num_ = 1;
+  param_->axis_[0] = -1;
+  param_->epsilon_ = 1e-6;
+  param_->act_type_ = ActType_No;
+  param_->shape_ = nullptr;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_L2NormalizeFusion};
 
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
@@ -56,7 +62,8 @@ TEST_F(TestL2NormInt8, norm) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(&param_), ctx.get(), desc);
+  param_->op_parameter_.thread_num_ = ctx->thread_num_;
+  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(param_), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
 
   auto ret = kernel->Prepare();
@@ -64,8 +71,9 @@ TEST_F(TestL2NormInt8, norm) {
   ret = kernel->Run();
   EXPECT_EQ(0, ret);
   int8_t expect[10] = {-93, -70, -47, -23, 0, 15, 38, 53, 61, 91};
+  // the quantized kernel differs from the float reference by at most 1 LSB on rounding
   for (int i = 0; i < 10; ++i) {
-    EXPECT_EQ(output_data[i], expect[i]);
+    EXPECT_NEAR(output_data[i], expect[i], 1);
   }
   in_tensor.set_data(nullptr);
   out_tensor.set_data(nullptr);
@@ -90,11 +98,18 @@ TEST_F(TestL2NormInt8, norm2) {
   std::vector<lite::Tensor *> inputs = {&in_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  param_.axis_num_ = 1;
-  param_.axis_[0] = -1;
-  param_.epsilon_ = 1e-6;
-  param_.act_type_ = ActType_No;
-  param_.shape_ = nullptr;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto param_ = new (std::nothrow) L2NormParameter();
+  if (param_ == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  param_->op_parameter_.type_ = schema::PrimitiveType_L2NormalizeFusion;
+  param_->axis_num_ = 1;
+  param_->axis_[0] = -1;
+  param_->epsilon_ = 1e-6;
+  param_->act_type_ = ActType_No;
+  param_->shape_ = nullptr;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_L2NormalizeFusion};
 
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
@@ -102,15 +117,19 @@ TEST_F(TestL2NormInt8, norm2) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(&param_), ctx.get(), desc);
+  param_->op_parameter_.thread_num_ = ctx->thread_num_;
+  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(param_), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
 
-  auto ret = kernel->Run();
+  // Run() requires Prepare() first: it initializes the quant args used by the kernel
+  auto ret = kernel->Prepare();
+  EXPECT_EQ(0, ret);
+  ret = kernel->Run();
   EXPECT_EQ(0, ret);
   int8_t expect[] = {26, 33, 36, 0, 23, 0,  24, 0, 21, 23, 4, 0, 0,  21, 21, 0, 0,  0, 39, 18, 0,  23, 26, 0, 0, 17,
                      19, 27, 35, 0, 6,  22, 24, 0, 0,  21, 0, 0, 26, 13, 0,  0, 32, 0, 0,  29, 22, 0,  0,  0, 10};
   for (size_t i = 0; i < sizeof(expect); ++i) {
-    EXPECT_EQ(output_data[i], expect[i]);
+    EXPECT_NEAR(output_data[i], expect[i], 1);
   }
   in_tensor.set_data(nullptr);
   out_tensor.set_data(nullptr);

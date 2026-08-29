@@ -26,22 +26,22 @@ class FusedBatchNormInferTest : public mindspore::CommonTest {
 TEST_F(FusedBatchNormInferTest, FusedBatchNormInferTest0) {
   size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 6;
   inputs[1]->shape_[1] = 5;
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
   inputs[2]->shape_size_ = 2;
   inputs[2]->shape_[0] = 8;
   inputs[2]->shape_[1] = 7;
   std::vector<TensorC *> outputs(2, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = FusedBatchNormInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                      reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

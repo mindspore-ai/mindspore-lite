@@ -36,8 +36,13 @@ TEST_F(TestGatherNdInt8, GatherNdTest) {
   std::vector<lite::Tensor *> inputs_tensor;
   std::vector<lite::Tensor *> outputs_tensor;
 
-  GatherNdParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_GatherNd;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) GatherNdParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_GatherNd;
   std::vector<int> shape = {1, 2, 2, 5};
   std::vector<int> out_shape = {1, 3, 5};
 
@@ -65,6 +70,9 @@ TEST_F(TestGatherNdInt8, GatherNdTest) {
 
   input0_tensor.AddQuantParam(input_quant_arg);
   input1_tensor.AddQuantParam(input_quant_arg_1);
+  input0_tensor.set_data_type(kNumberTypeInt8);
+  // indices are quantized int8 values decoded inside the kernel
+  input1_tensor.set_data_type(kNumberTypeInt8);
 
   std::vector<int8_t> output(15);
   // std::vector<int8_t> corr_out = {1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0};
@@ -74,6 +82,7 @@ TEST_F(TestGatherNdInt8, GatherNdTest) {
   output0_tensor.set_data(output.data());
   output0_tensor.set_shape(out_shape);
   output0_tensor.AddQuantParam(output_quant_arg);
+  output0_tensor.set_data_type(kNumberTypeInt8);
 
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_GatherNd};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
@@ -81,7 +90,7 @@ TEST_F(TestGatherNdInt8, GatherNdTest) {
   lite::InnerContext ctx;
   ctx.thread_num_ = 3;
   ASSERT_EQ(lite::RET_OK, ctx.Init());
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), &ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), &ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor.shape();
   auto ret = kernel->Prepare();

@@ -48,7 +48,10 @@ TEST_F(CropInferTest, CropInferTest0) {
   if (outputs[0] == nullptr) {
     return;
   }
-  CropParameter *parameter = new (std::nothrow) CropParameter;
+  // axis_ must be initialized: CropInferShape validates it against inputs[0]
+  // and rejects out-of-range axes, so leaving it uninitialized makes this test
+  // depend on heap garbage (fails intermittently across builds).
+  CropParameter *parameter = new (std::nothrow) CropParameter();
   if (parameter == nullptr) {
     return;
   }
@@ -301,16 +304,13 @@ TEST_F(CropInferTest, CropInferTest5) {
   inputs[1]->shape_[1] = 6;
   inputs[1]->shape_[2] = 7;
 
-  std::vector<TensorC *> outputs(2, NULL);
+  // the infer accepts exactly one output; the out-of-range axis is what must be rejected
+  std::vector<TensorC *> outputs(1, NULL);
   outputs[0] = new (std::nothrow) TensorC;
   if (outputs[0] == nullptr) {
     return;
   }
-  outputs[1] = new (std::nothrow) TensorC;
-  if (outputs[1] == nullptr) {
-    return;
-  }
-  CropParameter *parameter = new (std::nothrow) CropParameter;
+  CropParameter *parameter = new (std::nothrow) CropParameter();
   if (parameter == nullptr) {
     return;
   }

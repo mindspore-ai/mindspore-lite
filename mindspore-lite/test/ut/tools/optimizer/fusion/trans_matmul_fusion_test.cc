@@ -22,6 +22,7 @@
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 #include "tools/converter/anf_transform.h"
+#include "tools/converter/cxx_api/converter_para.h"
 #include "tools/lite_exporter/anf_exporter.h"
 #include "test/common/import_from_meta_graphT.h"
 
@@ -62,7 +63,7 @@ void SetTransTensors(std::shared_ptr<schema::MetaGraphT> meta_graph, const std::
   auto input_1 = std::make_unique<schema::TensorT>();
   input_1->nodeType = lite::NodeType_ValueNode;
   input_1->format = schema::Format_NHWC;
-  input_1->dataType = TypeId::kNumberTypeFloat32;
+  input_1->dataType = TypeId::kNumberTypeInt32;
   input_1->dims = {static_cast<int>(perm.size())};
   input_1->data.resize(sizeof(int) * perm.size());
   memcpy(input_1->data.data(), perm.data(), sizeof(int) * perm.size());
@@ -157,8 +158,9 @@ TEST_F(TransMatMulFusionTest, TestTransMatMulNode1) {
   auto meta_graph = BuildGraph(trans_param_a, trans_param_b, output_dims);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto anf_transform = new lite::AnfTransform();
-  auto status = anf_transform->Transform(func_graph, nullptr);
-  ASSERT_NE(status, lite::RET_OK);
+  auto converter_param = std::make_shared<ConverterPara>();
+  auto status = anf_transform->Transform(func_graph, converter_param);
+  ASSERT_EQ(status, lite::RET_OK);
   auto new_meta_graph = lite::Export(func_graph);
   ASSERT_EQ(new_meta_graph->nodes.size(), 1);
   auto &cnode = new_meta_graph->nodes.at(0);
@@ -179,8 +181,9 @@ TEST_F(TransMatMulFusionTest, TestTransMatMulNode2) {
   auto meta_graph = BuildGraph(trans_param_a, trans_param_b, output_dims);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto anf_transform = new lite::AnfTransform();
-  auto status = anf_transform->Transform(func_graph, nullptr);
-  ASSERT_NE(status, lite::RET_OK);
+  auto converter_param = std::make_shared<ConverterPara>();
+  auto status = anf_transform->Transform(func_graph, converter_param);
+  ASSERT_EQ(status, lite::RET_OK);
   auto new_meta_graph = lite::Export(func_graph);
   ASSERT_EQ(new_meta_graph->nodes.size(), 1);
   auto &cnode = new_meta_graph->nodes.at(0);
@@ -201,8 +204,9 @@ TEST_F(TransMatMulFusionTest, TestBadCase_TransMatMul) {
   auto meta_graph = BuildGraph(trans_param_a, trans_param_b, output_dims);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto anf_transform = new lite::AnfTransform();
-  auto status = anf_transform->Transform(func_graph, nullptr);
-  ASSERT_NE(status, lite::RET_OK);
+  auto converter_param = std::make_shared<ConverterPara>();
+  auto status = anf_transform->Transform(func_graph, converter_param);
+  ASSERT_EQ(status, lite::RET_OK);
   auto new_meta_graph = lite::Export(func_graph);
   ASSERT_EQ(new_meta_graph->nodes.size(), 3);
   auto &cnode = new_meta_graph->nodes.at(2);

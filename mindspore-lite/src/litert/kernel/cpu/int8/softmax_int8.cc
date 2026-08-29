@@ -131,9 +131,16 @@ int SoftmaxInt8CPUKernel::DoSoftmax(int task_id) {
   }
   int count = MSMIN(stride, outter_size - stride * task_id);
   int stride_size = stride * task_id * inner_size;
+  // sum_data_ is indexed per outer row over the dims after the axis, so its
+  // per-task offset must use that same inner size, not stride_size
+  int inner_after_axis = 1;
+  for (int i = softmax_param_->axis_ + 1; i < n_dim_; i++) {
+    inner_after_axis *= input_shape_[i];
+  }
 
   auto error_code = SoftmaxInt8(input_ptr + stride_size, output_ptr + stride_size, count, exp_data_ + stride_size,
-                                sum_data_, input_shape_, n_dim_, softmax_param_->axis_, quant_param_);
+                                sum_data_ + stride * task_id * inner_after_axis, input_shape_, n_dim_,
+                                softmax_param_->axis_, quant_param_);
   if (error_code != RET_OK) {
     MS_LOG(ERROR) << "DoSoftmax error task_id[" << task_id << "] error_code[" << error_code << "]";
     return RET_ERROR;
@@ -163,7 +170,13 @@ int SoftmaxInt8CPUKernel::Run() {
     }
     inner_size *= input_shape_[i];
   }
-  sum_data_ = reinterpret_cast<int *>(ms_context_->allocator->Malloc(inner_size * sizeof(int)));
+  // SoftmaxInt8 indexes sum_data per outer row, so the buffer must cover every
+  // outer row; parallel tasks get disjoint slices via the task offset below
+  int outer_size = 1;
+  for (int i = 0; i < softmax_param_->axis_; i++) {
+    outer_size *= input_shape_[i];
+  }
+  sum_data_ = reinterpret_cast<int *>(ms_context_->allocator->Malloc(outer_size * inner_size * sizeof(int)));
   if (exp_data_ == nullptr || sum_data_ == nullptr) {
     MS_LOG(ERROR) << "Memory allocation failed";
     ms_context_->allocator->Free(exp_data_);

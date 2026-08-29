@@ -77,6 +77,16 @@ cp -r ${CUR_DIR}/ut/test_data/* ./
 cp -r ${CUR_DIR}/ut/src/runtime/kernel/arm/test_data/* ./
 cp -r ${CUR_DIR}/ut/tools/converter/parser/tflite/test_data/* ./
 cp -r ${CUR_DIR}/ut/tools/converter/registry/test_data/* ./
+# MindrtRuntimeTest reads ./test_data/mindrt_parallel/parallel.ms; the source
+# file lives under the opencl test_data tree, so expose it under test_data/.
+mkdir -p ./test_data/mindrt_parallel
+cp ${CUR_DIR}/ut/src/runtime/kernel/opencl/test_data/mindrt_parallel/parallel.ms ./test_data/mindrt_parallel/ 2>/dev/null || true
+# some ut sources still reference data as ./test_data/<dir>; expose the copied
+# arm kernel test_data subdirs under that prefix via symlinks (no duplicate copy)
+mkdir -p ./test_data
+for data_dir in ${CUR_DIR}/ut/src/runtime/kernel/arm/test_data/*/; do
+  ln -sfn "$(pwd)/$(basename "${data_dir}")" "./test_data/$(basename "${data_dir}")"
+done
 
 if [[ -f "${mindspore_lite_whl}" || "$MSLITE_ENABLE_SERVER_INFERENCE" == on ]]; then
   echo "download mobilenetv2.ms..."
@@ -150,14 +160,42 @@ echo 'run flatbuffers verifier ut test'
 ./lite-test --gtest_filter="FlatBuffersVerifierTest.RejectModelExceedingTableLimit"
 
 # test cases of Converter
-## ./lite-test --gtest_filter="TestTfliteParser*"
-./lite-test --gtest_filter="ConvActFusionInoutTest*"
-./lite-test --gtest_filter="ConvBiasFusionInoutTest*"
-./lite-test --gtest_filter="ConcatActFusionInoutTest*"
-./lite-test --gtest_filter="MatmulMulFusionInoutTest*"
-./lite-test --gtest_filter="MatMulActivationFusionInoutTest*"
-./lite-test --gtest_filter="ActivationFusionInoutTest*"
-./lite-test --gtest_filter="TransMatMulFusionInoutTest*"
+# TFLite per-op parser tests (~85 suites), ONNX parsers, fusion passes, mappers
+# and SVD. These were previously commented out; re-enabling lifts tools/converter
+# parser coverage. Any failure aborts the run (set -e) — keep an eye on flaky nets.
+# OnnxLayerNormParserTest/OnnxPoolParserTest/ArgmaxFusionMapperTest/FusedBatchNormMapperTest
+# are only compiled when MSLITE_ENABLE_CLOUD_FUSION_INFERENCE or
+# MSLITE_ENABLE_CLOUD_INFERENCE is on (conditional glob in test/CMakeLists.txt);
+# in other builds these filters match 0 tests and are harmless no-ops.
+if [ "$ENABLE_CONVERTER_TEST" = true ]; then
+  ./lite-test-converter --gtest_filter="TestTfliteParser*"
+  ./lite-test-converter --gtest_filter="OnnxLayerNormParserTest*"
+  ./lite-test-converter --gtest_filter="OnnxPoolParserTest*"
+  ./lite-test-converter --gtest_filter="ConstantFoldingFusionTest*"
+  ./lite-test-converter --gtest_filter="ConvActivationFusionTest*"
+  ./lite-test-converter --gtest_filter="ConvBiasAddFusionTest*"
+  ./lite-test-converter --gtest_filter="ConvBNFusionTest*"
+  ./lite-test-converter --gtest_filter="ConvScaleFusionTest*"
+  ./lite-test-converter --gtest_filter="MatMulAddFusionTest*"
+  ./lite-test-converter --gtest_filter="TransMatMulFusionTest*"
+  ./lite-test-converter --gtest_filter="ActivationFusionTest*"
+  ./lite-test-converter --gtest_filter="AddConcatActivationFusionTest*"
+  ./lite-test-converter --gtest_filter="ArgmaxFusionMapperTest*"
+  ./lite-test-converter --gtest_filter="FusedBatchNormMapperTest*"
+  ./lite-test-converter --gtest_filter="SVDTest*"
+fi
+# The *InoutTest suites are compiled into the converter build tree; guard them
+# so a CONVERTER=off build (no lite-test-converter binary) doesn't abort under
+# `set -e` with "No such file or directory".
+if [ "$ENABLE_CONVERTER_TEST" = true ]; then
+  ./lite-test-converter --gtest_filter="ConvActFusionInoutTest*"
+  ./lite-test-converter --gtest_filter="ConvBiasFusionInoutTest*"
+  ./lite-test-converter --gtest_filter="ConcatActFusionInoutTest*"
+  ./lite-test-converter --gtest_filter="MatmulMulFusionInoutTest*"
+  ./lite-test-converter --gtest_filter="MatMulActivationFusionInoutTest*"
+  ./lite-test-converter --gtest_filter="ActivationFusionInoutTest*"
+  ./lite-test-converter --gtest_filter="TransMatMulFusionInoutTest*"
+fi
 # test cases of framework
 
 # test cases of FP32 OP
@@ -196,6 +234,37 @@ echo 'run flatbuffers verifier ut test'
 ./lite-test --gtest_filter=ArithmeticFp32Test.*
 ./lite-test --gtest_filter=ReduceFp32Test.*
 
+# test cases of FP32 OP (supplementary, compiled but previously not filtered)
+# These raise kernel/cpu/fp32 coverage. Any failure aborts the run (set -e).
+./lite-test --gtest_filter=TestActivationFp32*
+./lite-test --gtest_filter=TestMatMulFp32*
+./lite-test --gtest_filter=TestSoftmaxFp32*
+./lite-test --gtest_filter=TestTransposeFp32*
+./lite-test --gtest_filter=TestTopKFp32*
+./lite-test --gtest_filter=TestResizeBilinearFp32*
+./lite-test --gtest_filter=TestResizeNearestNeighborFp32*
+./lite-test --gtest_filter=TestConvolutionDwFp32*
+./lite-test --gtest_filter=TestCumsum*
+./lite-test --gtest_filter=TestConstantOfShapeFp32*
+./lite-test --gtest_filter=TestL2NormFp32*
+./lite-test --gtest_filter=TestDetectionPostProcessFp32*
+./lite-test --gtest_filter=TestEmbeddingLookupFp32*
+./lite-test --gtest_filter=TestLshProjectionFp32*
+./lite-test --gtest_filter=TestNMSFp32*
+./lite-test --gtest_filter=TestROIPoolingFp32*
+./lite-test --gtest_filter=TestReverseSequenceFp32*
+./lite-test --gtest_filter=TestScatterNdAdd*
+./lite-test --gtest_filter=TestScatterNdFp32*
+./lite-test --gtest_filter=TestSkipGramFp32*
+./lite-test --gtest_filter=TestSparseToDenseFp32*
+./lite-test --gtest_filter=TestUniformRealFp32*
+./lite-test --gtest_filter=TestUniqueFp32*
+./lite-test --gtest_filter=TestUnstackFp32*
+./lite-test --gtest_filter=StackTestFp32*
+./lite-test --gtest_filter=SpaceToBatchTestFp32*
+./lite-test --gtest_filter=SpaceToDepthTestFp32*
+./lite-test --gtest_filter=LstmFp32*
+
 # test cases of INT8 OP
 ./lite-test --gtest_filter=TestBatchnormInt8.*
 ./lite-test --gtest_filter=TestDeconvInt8.*
@@ -226,8 +295,75 @@ echo 'run flatbuffers verifier ut test'
 ./lite-test --gtest_filter=MaximumMinimumInt8Test.*
 ./lite-test --gtest_filter=ReduceInt8Test.*
 
+# test cases of INT8 OP (supplementary, compiled but previously not filtered)
+# These raise kernel/cpu/int8 coverage. Any failure aborts the run (set -e).
+./lite-test --gtest_filter=TestConcatInt8*
+./lite-test --gtest_filter=TestMatmulInt8*
+./lite-test --gtest_filter=TestConv1x1Int8*
+./lite-test --gtest_filter=TestReduceInt8*
+./lite-test --gtest_filter=TestSoftmaxInt8*
+./lite-test --gtest_filter=TestQuantizedAdd*
+./lite-test --gtest_filter=QuantCastInt8Test*
+./lite-test --gtest_filter=QuantDTypeCastTestFp32*
+./lite-test --gtest_filter=TestArithmeticSelfInt8*
+./lite-test --gtest_filter=TestCropInt8*
+./lite-test --gtest_filter=TestFcInt8*
+./lite-test --gtest_filter=TestGatherInt8*
+./lite-test --gtest_filter=TestGatherNdInt8*
+./lite-test --gtest_filter=TestHSwishInt8*
+./lite-test --gtest_filter=TestL2NormInt8*
+./lite-test --gtest_filter=TestMulInt8*
+./lite-test --gtest_filter=TestPowerInt8*
+./lite-test --gtest_filter=TestPreluInt8*
+./lite-test --gtest_filter=TestReluXInt8*
+./lite-test --gtest_filter=TestReshapeInt8*
+./lite-test --gtest_filter=TestResizeBilinearInt8*
+./lite-test --gtest_filter=TestResizeNearestNeighborInt8*
+./lite-test --gtest_filter=TestScaleInt8*
+./lite-test --gtest_filter=TestSigmoidInt8*
+./lite-test --gtest_filter=TestSliceInt8*
+./lite-test --gtest_filter=TestSplitInt8*
+./lite-test --gtest_filter=TestSqueezeInt8*
+./lite-test --gtest_filter=TestSubInt8*
+./lite-test --gtest_filter=TestTopKInt8*
+./lite-test --gtest_filter=TestUnsqueezeInt8*
+./lite-test --gtest_filter=SpaceToBatchTestInt8*
+
 # test cases of generic api
+# GenericApiTest source (ut/src/api/generic_api_test.cc) is not referenced by
+# any GLOB in test/CMakeLists.txt; only included if a build flag adds it.
+# Filter is a no-op in current builds.
 ./lite-test --gtest_filter="GenericApiTest*"
+
+# Compiled-but-previously-unfiltered runtime/util suites. All pure CPU.
+# Skipped MultipleDeviceTest (needs GPU/NPU), NetworkTest (stale .ms schema),
+# MindrtRuntimeTest (parallel.ms schema incompatible with current runtime),
+# TestNormalize (CustomNormalize creator not registered in this build),
+# SchedulerTest/UtilsTest (coredump in this build — investigated, root cause
+# is runtime init ordering, not the test itself).
+./lite-test --gtest_filter="LiteMindRtTest.*"
+./lite-test --gtest_filter="ModelObfuscationDeprecatedTest.*"
+./lite-test --gtest_filter="OptimizeAllocator.*"
+./lite-test --gtest_filter="RandomStandardNormalTest.*"
+./lite-test --gtest_filter="ReduceMaxFp32Test.*"
+./lite-test --gtest_filter="TestPack.*"
+./lite-test --gtest_filter="TestStridedSlice.*"
+
+# NNACL shape-inference tests: suites compiled from ut/nnacl/infer/*.cc,
+# previously never filtered. Pure CPU, very fast. Lifts nnacl_c/infer coverage
+# (and acts as a safety net for the infer path).
+echo 'run nnacl infer ut tests'
+./lite-test --gtest_filter="*InferTest*"
+# The *InferTest* filter matches the 98 nnacl/infer suites whose names end in
+# InferTest, plus the end-to-end InferTest suite in ut/src/infer_test.cc. The 6
+# nnacl/infer suites below are named without the "InferTest" substring, so add
+# them explicitly to cover the full ut/nnacl/infer/*.cc set.
+./lite-test --gtest_filter="AdamWeightDecayInfer*"
+./lite-test --gtest_filter="InferManagerTest*"
+./lite-test --gtest_filter="TestNLLLossGradInfer*"
+./lite-test --gtest_filter="TestNLLLossInfer*"
+./lite-test --gtest_filter="TestScatterNdAddInfer*"
+./lite-test --gtest_filter="TestStridedSliceFp32*"
 
 if [ "$ENABLE_CONVERTER_TEST" = true ]; then
   ./lite-test-converter --gtest_filter="ModelParserRegistryTest.TestRegistry"
@@ -249,23 +385,30 @@ if [ -f "$BUILD_DIR/src/libmindspore-lite-train.so" ]; then
   ./lite-test --gtest_filter="TestSoftmaxGradFp32*"
   ./lite-test --gtest_filter="TestSoftmaxCrossEntropyFp32*"
   ./lite-test --gtest_filter="TestBiasGradFp32*"
-  #./lite-test --gtest_filter="TestConvolutionGradFp32*"
-  #./lite-test --gtest_filter="TestDeConvolutionGradFp32*"
+  # Grad tests below were previously commented out; re-enable to lift
+  # kernel/cpu/fp32_grad coverage (currently 19.8%).
+  ./lite-test --gtest_filter="TestConvolutionGradFp32*"
+  ./lite-test --gtest_filter="TestDeConvolutionGradFp32*"
+  ./lite-test --gtest_filter="TestArithmeticGradFp32*"
+  ./lite-test --gtest_filter="TestPoolingGradFp32*"
+  ./lite-test --gtest_filter="TestBNGradFp32*"
+  ./lite-test --gtest_filter="TestNLLLossGradFp32*"
 fi
 
 echo 'run inference ut tests'
-./lite-test --gtest_filter="ControlFlowTest.TestMergeWhileModel"
+# ControlFlowTest.TestMergeWhileModel and GraphTest.UserSetGraphOutput* are
+# orphan filters — the suites are not defined anywhere in test/. Removed.
 
 echo 'run mindrt parallel ut test'
+# MindrtParallelTest.* and BenchmarkTest.* are compiled only in cloud builds
+# (st/mindrt_parallel_test.cc and st/benchmark_test.cc are REMOVE_ITEM'd in
+# non-cloud builds via test/CMakeLists.txt:161-163). Kept as no-op here.
 if [ "$ENABLE_CONVERTER_TEST" = true ]; then
   ./lite-test-converter --gtest_filter="MindrtParallelTest.*"
-  echo 'user set output tensors st test'
-  ./lite-test --gtest_filter="GraphTest.UserSetGraphOutput*"
 fi
 ./lite-test --gtest_filter="BenchmarkTest.mindrtParallelOffline*"
 
-echo 'run custom delegate st test'
-./lite-test --gtest_filter="DelegateTest.CustomDelegate"
+# DelegateTest.CustomDelegate removed — st/delegate_test.cc no longer exists.
 
 echo 'runtime pass'
 ./lite-test --gtest_filter="RuntimePass.*"
@@ -275,7 +418,7 @@ echo 'runtime convert'
 ./lite-test --gtest_filter="BenchmarkTest.runtimeConvert1"
 
 echo 'Optimize Allocator'
-./lite-test --gtest_filter="OptAllocator.*"
+./lite-test --gtest_filter="OptimizeAllocator.*"
 
 echo 'Runtime config file test'
 ./lite-test --gtest_filter="MixDataTypeTest.Config1"
@@ -286,6 +429,10 @@ echo 'run c api ut test'
 ./lite-test --gtest_filter="ModelCApiTest.*"
 
 echo 'run bfc memory ut test'
+# DynamicMemManagerTest is only compiled in cloud builds (test/CMakeLists.txt
+# includes ut/src/runtime/dynamic_mem_manager_test.cc inside the
+# MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE branch).
+# In other builds this filter matches 0 tests and is a harmless no-op.
 ./lite-test --gtest_filter="DynamicMemManagerTest.*"
 
 echo "lite Python API ut test"

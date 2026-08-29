@@ -36,7 +36,7 @@ int ConstantOfShapeTestInit(std::vector<lite::Tensor *> *inputs_, std::vector<li
   for (unsigned int i = 0; i < c_shape.size(); ++i) {
     c_shape[i] = a_ptr[i];
   }
-  auto out_t = new lite::Tensor(kNumberTypeFloat, c_shape, mindspore::NHWC, lite::Category::CONST_TENSOR);
+  auto out_t = new lite::Tensor(kNumberTypeFloat32, c_shape, mindspore::NHWC, lite::Category::CONST_TENSOR);
   out_t->MallocData();
   outputs_->push_back(out_t);
 
@@ -56,6 +56,7 @@ TEST_F(TestConstantOfShapeFp32, Simple) {
   auto ctx = new lite::InnerContext;
   ctx->thread_num_ = 4;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  param->op_parameter_.thread_num_ = ctx->thread_num_;
   kernel::ConstantOfShapeCPUKernel *op =
     new kernel::ConstantOfShapeCPUKernel(reinterpret_cast<OpParameter *>(param), inputs_, outputs_, ctx);
   op->Prepare();

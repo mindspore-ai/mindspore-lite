@@ -26,13 +26,13 @@ class ShapeInferTest : public mindspore::CommonTest {
 TEST_F(ShapeInferTest, ShapeInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = ShapeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

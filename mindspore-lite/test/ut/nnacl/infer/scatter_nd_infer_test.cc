@@ -26,18 +26,24 @@ class ScatterNdInferTest : public mindspore::CommonTest {
 TEST_F(ScatterNdInferTest, ScatterNdInferTest0) {
   size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 4;
   std::vector<int> input_data = {1, 2, 3, 4};
   inputs[0]->data_ = input_data.data();
-  inputs[1] = new TensorC;
-  inputs[2] = new TensorC;
-  inputs[2]->data_type_ = kNumberTypeInt8;
-  inputs[2]->format_ = kNCHW_H;
+  inputs[1] = new TensorC();
+  // output data type/format are copied from the update tensor
+  inputs[1]->data_type_ = kNumberTypeInt8;
+  inputs[1]->format_ = kNCHW_H;
+  inputs[2] = new TensorC();
+  // the output shape comes from the third input's data
+  std::vector<int> shape_data = {1, 2, 3, 4};
+  inputs[2]->shape_size_ = 1;
+  inputs[2]->shape_[0] = 4;
+  inputs[2]->data_ = shape_data.data();
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = ScatterNdInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                 reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

@@ -25,17 +25,24 @@ class FillInferTest : public mindspore::CommonTest {
 };
 
 TEST_F(FillInferTest, FillInferTest0) {
-  size_t inputs_size = 1;
+  size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
+  // the infer reads the dst dims from a second input tensor (1-D int32)
+  inputs[1] = new TensorC();
+  inputs[1]->data_type_ = kNumberTypeInt32;
+  inputs[1]->shape_size_ = 1;
+  inputs[1]->shape_[0] = 4;
+  int32_t dst_dims[] = {1, 2, 3, 4};
+  inputs[1]->data_ = dst_dims;
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 1;
   inputs[0]->shape_[1] = 2;
   inputs[0]->shape_[2] = 3;
   inputs[0]->shape_[3] = 4;
-  std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  FillParameter *parameter = new FillParameter;
+  std::vector<TensorC *> outputs(1, NULL);
+  outputs[0] = new TensorC();
+  FillParameter *parameter = new FillParameter();
   int ret = FillInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                            reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -54,12 +61,19 @@ TEST_F(FillInferTest, FillInferTest0) {
 }
 
 TEST_F(FillInferTest, FillInferTest1) {
-  size_t inputs_size = 1;
+  size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
-  std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  FillParameter *parameter = new FillParameter;
+  inputs[0] = new TensorC();
+  // the infer reads the dst dims from a second input tensor (1-D int32)
+  inputs[1] = new TensorC();
+  inputs[1]->data_type_ = kNumberTypeInt32;
+  inputs[1]->shape_size_ = 1;
+  inputs[1]->shape_[0] = 3;
+  int32_t dst_dims[] = {4, 2, 3};
+  inputs[1]->data_ = dst_dims;
+  std::vector<TensorC *> outputs(1, NULL);
+  outputs[0] = new TensorC();
+  FillParameter *parameter = new FillParameter();
   int ret = FillInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                            reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -77,12 +91,19 @@ TEST_F(FillInferTest, FillInferTest1) {
 }
 
 TEST_F(FillInferTest, FillInferTest2) {
-  size_t inputs_size = 1;
+  size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
-  std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  FillParameter *parameter = new FillParameter;
+  inputs[0] = new TensorC();
+  // the infer reads the dst dims from a second input tensor (1-D int32)
+  inputs[1] = new TensorC();
+  inputs[1]->data_type_ = kNumberTypeInt32;
+  inputs[1]->shape_size_ = 1;
+  inputs[1]->shape_[0] = 2;
+  int32_t dst_dims[] = {4, 2};
+  inputs[1]->data_ = dst_dims;
+  std::vector<TensorC *> outputs(1, NULL);
+  outputs[0] = new TensorC();
+  FillParameter *parameter = new FillParameter();
   int ret = FillInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                            reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -99,12 +120,19 @@ TEST_F(FillInferTest, FillInferTest2) {
 }
 
 TEST_F(FillInferTest, FillInferTest3) {
-  size_t inputs_size = 1;
+  size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
-  std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  FillParameter *parameter = new FillParameter;
+  inputs[0] = new TensorC();
+  // the infer reads the dst dims from a second input tensor (1-D int32)
+  inputs[1] = new TensorC();
+  inputs[1]->data_type_ = kNumberTypeInt32;
+  inputs[1]->shape_size_ = 1;
+  inputs[1]->shape_[0] = 1;
+  int32_t dst_dims[] = {4};
+  inputs[1]->data_ = dst_dims;
+  std::vector<TensorC *> outputs(1, NULL);
+  outputs[0] = new TensorC();
+  FillParameter *parameter = new FillParameter();
   int ret = FillInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                            reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

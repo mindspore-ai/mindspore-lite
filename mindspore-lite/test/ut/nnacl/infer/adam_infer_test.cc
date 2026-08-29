@@ -27,13 +27,13 @@ TEST_F(AdamInferTest, AdamInferTest0) {
   size_t inputs_size = 10;
   std::vector<TensorC *> inputs(inputs_size, NULL);
   for (size_t i = 0; i < inputs_size; i++) {
-    inputs[i] = new TensorC;
+    inputs[i] = new TensorC();
     inputs[i]->shape_size_ = 1;
     inputs[i]->shape_[0] = 1;
   }
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = AdamInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                            reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

@@ -26,16 +26,16 @@ class AudioSpectrogramInferTest : public mindspore::CommonTest {
 TEST_F(AudioSpectrogramInferTest, AudioSpectrogramInferTest0) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  AudioSpectrogramParameter *parameter = new AudioSpectrogramParameter;
+  outputs[0] = new TensorC();
+  AudioSpectrogramParameter *parameter = new AudioSpectrogramParameter();
   parameter->window_size_ = 3;
   parameter->stride_ = 2;
   int ret = AudioSpectrogramInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),

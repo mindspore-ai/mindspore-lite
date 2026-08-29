@@ -21,6 +21,7 @@
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 #include "tools/converter/anf_transform.h"
+#include "tools/optimizer/common/pass_manager_extends.h"
 #include "tools/optimizer/const_fold/constant_folding_fusion.h"
 #include "tools/lite_exporter/anf_exporter.h"
 #include "test/common/import_from_meta_graphT.h"
@@ -365,11 +366,25 @@ MetaGraphTptr BuildSplitGraph() {
   return meta_graph;
 }
 }  //  namespace
+namespace {
+// modern nnacl kernels take perm/axis/shape/begin/size/dst_type as extra const int inputs
+void AppendInt32Tensor(const MetaGraphTptr &meta_graph, const std::vector<int32_t> &values) {
+  auto tensor = std::make_unique<schema::TensorT>();
+  tensor->nodeType = lite::NodeType_ValueNode;
+  tensor->format = schema::Format_NHWC;
+  tensor->dataType = TypeId::kNumberTypeInt32;
+  tensor->dims = {static_cast<int32_t>(values.size())};
+  tensor->offset = -1;
+  tensor->data.resize(values.size() * sizeof(int32_t));
+  memcpy(tensor->data.data(), values.data(), values.size() * sizeof(int32_t));
+  meta_graph->allTensors.emplace_back(std::move(tensor));
+}
+}  // namespace
 TEST_F(ConstantFoldingFusionTest, TestADDConstantFold) {
   auto meta_graph = BuildGraph(schema::PrimitiveType_AddFusion, new schema::AddFusionT);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -382,7 +397,7 @@ TEST_F(ConstantFoldingFusionTest, TestMixedConstantFold) {
   auto meta_graph = BuildMixGraph();
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -395,7 +410,7 @@ TEST_F(ConstantFoldingFusionTest, TestSubConstantFold) {
   auto meta_graph = BuildGraph(schema::PrimitiveType_SubFusion, new schema::SubFusionT);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -408,7 +423,7 @@ TEST_F(ConstantFoldingFusionTest, TestMulConstantFold) {
   auto meta_graph = BuildGraph(schema::PrimitiveType_MulFusion, new schema::MulFusionT);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -420,9 +435,17 @@ TEST_F(ConstantFoldingFusionTest, TestMulConstantFold) {
 TEST_F(ConstantFoldingFusionTest, TestTransposeConstantFold) {
   auto transposeT = new schema::TransposeT;
   auto meta_graph = BuildGraph(schema::PrimitiveType_Transpose, transposeT);
+  // second input is the perm: 1-D int32 {0,3,1,2}, output is x transposed to {1,3,2,2}
+  auto perm = meta_graph->allTensors.at(1).get();
+  perm->dims = {4};
+  perm->dataType = TypeId::kNumberTypeInt32;
+  perm->data.resize(4 * sizeof(int32_t));
+  auto perm_data = std::vector<int32_t>{0, 3, 1, 2};
+  memcpy(perm->data.data(), perm_data.data(), 4 * sizeof(int32_t));
+  meta_graph->allTensors.at(2)->dims = {1, 3, 2, 2};
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -437,7 +460,7 @@ TEST_F(ConstantFoldingFusionTest, TestStackConstantFold) {
   auto meta_graph = BuildGraph(schema::PrimitiveType_Stack, stackT);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -448,10 +471,17 @@ TEST_F(ConstantFoldingFusionTest, TestStackConstantFold) {
 
 TEST_F(ConstantFoldingFusionTest, TestSliceConstantFold) {
   auto sliceT = new schema::SliceFusionT;
+  sliceT->axes = {0, 1, 2, 3};
   auto meta_graph = BuildGraph(schema::PrimitiveType_SliceFusion, sliceT);
+  // slice takes (x, begin, size) const int inputs covering every axis: keep 1 of 2 rows on axis 1
+  AppendInt32Tensor(meta_graph, {0, 1, 0, 0});
+  AppendInt32Tensor(meta_graph, {1, 1, 2, 3});
+  meta_graph->nodes.at(0)->inputIndex = {0, 3, 4};
+  meta_graph->inputIndex = {0, 1, 3, 4};
+  meta_graph->allTensors.at(2)->dims = {1, 1, 2, 3};
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -465,7 +495,7 @@ TEST_F(ConstantFoldingFusionTest, TestShapeConstantFold) {
   auto meta_graph = BuildGraphForOneInput(schema::PrimitiveType_Shape, shapeT);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -479,7 +509,7 @@ TEST_F(ConstantFoldingFusionTest, TestRsqrtConstantFold) {
   auto meta_graph = BuildGraphForOneInput(schema::PrimitiveType_Rsqrt, rsqrtT);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -491,9 +521,13 @@ TEST_F(ConstantFoldingFusionTest, TestRsqrtConstantFold) {
 TEST_F(ConstantFoldingFusionTest, TestReshapeConstantFold) {
   auto reshapeT = new schema::ReshapeT;
   auto meta_graph = BuildGraphForOneInput(schema::PrimitiveType_Reshape, reshapeT);
+  // reshape takes the target shape as a second const int input; identity shape keeps data valid
+  AppendInt32Tensor(meta_graph, {1, 2, 2, 3});
+  meta_graph->nodes.at(0)->inputIndex = {0, 2};
+  meta_graph->inputIndex = {0, 2};
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -508,9 +542,12 @@ TEST_F(ConstantFoldingFusionTest, TestRangeConstantFold) {
   rangeT->start = 1;
   rangeT->delta = 1;
   auto meta_graph = BuildGraphForOneInput(schema::PrimitiveType_Range, rangeT);
+  // the CPU range kernel only supports the attribute path with int32 input
+  meta_graph->allTensors.at(0)->dataType = TypeId::kNumberTypeInt32;
+  meta_graph->allTensors.at(1)->dataType = TypeId::kNumberTypeInt32;
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -520,10 +557,15 @@ TEST_F(ConstantFoldingFusionTest, TestRangeConstantFold) {
 }
 TEST_F(ConstantFoldingFusionTest, TestMatmulConstantFold) {
   auto matmulT = new schema::MatMulFusionT;
+  matmulT->transpose_b = true;
   auto meta_graph = BuildGraph(schema::PrimitiveType_MatMulFusion, matmulT);
+  // matmul infershape only supports 2-D inputs: [2,6] x [2,6]^T -> [2,2]
+  meta_graph->allTensors.at(0)->dims = {2, 6};
+  meta_graph->allTensors.at(1)->dims = {2, 6};
+  meta_graph->allTensors.at(2)->dims = {2, 2};
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -535,9 +577,14 @@ TEST_F(ConstantFoldingFusionTest, TestMatmulConstantFold) {
 TEST_F(ConstantFoldingFusionTest, TestExpandDimsConstantFold) {
   auto expandDimsT = new schema::ExpandDimsT;
   auto meta_graph = BuildGraphForOneInput(schema::PrimitiveType_ExpandDims, expandDimsT);
+  // expand_dims takes the axis as a second const int input; axis 0 turns {1,2,2,3} into {1,1,2,2,3}
+  AppendInt32Tensor(meta_graph, {0});
+  meta_graph->nodes.at(0)->inputIndex = {0, 2};
+  meta_graph->inputIndex = {0, 2};
+  meta_graph->allTensors.at(1)->dims = {1, 1, 2, 2, 3};
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -551,7 +598,7 @@ TEST_F(ConstantFoldingFusionTest, TestConcatDimsConstantFold) {
   auto meta_graph = BuildGraph(schema::PrimitiveType_Concat, concatT);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -565,9 +612,13 @@ TEST_F(ConstantFoldingFusionTest, TestCastDimsConstantFold) {
   auto meta_graph = BuildGraphForOneInput(schema::PrimitiveType_Cast, castT);
   auto input_tensor = meta_graph->allTensors.at(0).get();
   input_tensor->dataType = kNumberTypeUInt8;
+  // cast reads the destination type from a second const int input: uint8 -> float32
+  AppendInt32Tensor(meta_graph, {kNumberTypeFloat32});
+  meta_graph->nodes.at(0)->inputIndex = {0, 2};
+  meta_graph->inputIndex = {0, 2};
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>();
+  auto pm = std::make_shared<opt::LitePassManager>();
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
@@ -582,7 +633,7 @@ TEST_F(ConstantFoldingFusionTest, TestSplitConstantFold) {
   input_tensor->dataType = kNumberTypeFloat32;
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto optimizer = std::make_shared<opt::GraphOptimizer>();
-  auto pm = std::make_shared<opt::PassManager>("test", false);
+  auto pm = std::make_shared<opt::LitePassManager>("test", false);
   pm->AddPass(std::make_shared<opt::ConstFoldPass>());
   optimizer->AddPassManager(pm);
   FuncGraphPtr new_graph = optimizer->Optimize(func_graph);

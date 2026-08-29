@@ -26,13 +26,13 @@ class CustomPredictInferTest : public mindspore::CommonTest {
 TEST_F(CustomPredictInferTest, CustomPredictInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(2, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  CustomPredictParameter *parameter = new CustomPredictParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  CustomPredictParameter *parameter = new CustomPredictParameter();
   parameter->output_num = 5;
   int ret = CustomPredictInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                     reinterpret_cast<OpParameter *>(parameter));

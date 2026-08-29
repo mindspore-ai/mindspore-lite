@@ -26,14 +26,14 @@ class QuantDtypeCastInferTest : public mindspore::CommonTest {
 TEST_F(QuantDtypeCastInferTest, QuantDtypeCastInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4.0;
   inputs[0]->shape_[1] = 3.0;
   inputs[0]->data_type_ = kNumberTypeFloat32;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  QuantDtypeCastParameter *parameter = new QuantDtypeCastParameter;
+  outputs[0] = new TensorC();
+  QuantDtypeCastParameter *parameter = new QuantDtypeCastParameter();
   parameter->srcT_ = kNumberTypeFloat32;
   parameter->dstT_ = kNumberTypeInt;
   int ret = QuantDtypeCastInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),

@@ -75,26 +75,6 @@ extern void mindspore_log_init();
 #endif
 namespace lite {
 namespace {
-bool ExistCustomCpuKernel() {
-#ifndef CUSTOM_KERNEL_REGISTRY_CLIP
-  const std::string kArchCPU = "CPU";
-  auto custom_kernel_creators = registry::RegistryKernelImpl::GetInstance()->GetCustomKernelCreators();
-  for (const auto &custom_kernel_creator : custom_kernel_creators) {  // <provider, <arch, <type, CreateKernel*>>>
-    if (custom_kernel_creator.second.empty()) {
-      continue;
-    }
-    if (std::any_of(
-          custom_kernel_creator.second.begin(), custom_kernel_creator.second.end(),
-          [kArchCPU](const std::pair<std::string, std::unordered_map<std::string, registry::CreateKernel *>> &pair) {
-            return pair.first == kArchCPU && !pair.second.empty();
-          })) {
-      return true;
-    }
-  }
-#endif
-  return false;
-}
-
 int CheckTensorValid(lite::Tensor *dst_tensor) {
   if (dst_tensor->data_type() == kObjectTypeTensorType) {
     return RET_OK;
@@ -1661,6 +1641,26 @@ void LiteSession::RuntimeAllocatorInitSubgraph() {
     }
   }
   return;
+}
+
+bool LiteSession::ExistCustomCpuKernel() {
+#ifndef CUSTOM_KERNEL_REGISTRY_CLIP
+  const std::string kArchCPU = "CPU";
+  auto custom_kernel_creators = registry::RegistryKernelImpl::GetInstance()->GetCustomKernelCreators();
+  for (const auto &custom_kernel_creator : custom_kernel_creators) {  // <provider, <arch, <type, CreateKernel*>>>
+    if (custom_kernel_creator.second.empty()) {
+      continue;
+    }
+    if (std::any_of(
+          custom_kernel_creator.second.begin(), custom_kernel_creator.second.end(),
+          [kArchCPU](const std::pair<std::string, std::unordered_map<std::string, registry::CreateKernel *>> &pair) {
+            return pair.first == kArchCPU && !pair.second.empty();
+          })) {
+      return true;
+    }
+  }
+#endif
+  return false;
 }
 
 int LiteSession::InitRuntimeAllocator() {

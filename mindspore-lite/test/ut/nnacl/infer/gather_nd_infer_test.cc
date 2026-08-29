@@ -27,18 +27,18 @@ class GatherNdInferTest : public mindspore::CommonTest {
 TEST_F(GatherNdInferTest, GatherNdInferTest0) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 2;
   inputs[0]->shape_[2] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 2;
   inputs[1]->shape_[1] = 2;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  GatherNdParameter *parameter = new GatherNdParameter;
+  outputs[0] = new TensorC();
+  GatherNdParameter *parameter = new GatherNdParameter();
   int ret = GatherNdInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -57,19 +57,19 @@ TEST_F(GatherNdInferTest, GatherNdInferTest0) {
 TEST_F(GatherNdInferTest, GatherNdInferTest1) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 2;
   inputs[0]->shape_[2] = 3;
   inputs[0]->shape_[3] = 4;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 2;
   inputs[1]->shape_[1] = 2;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  GatherNdParameter *parameter = new GatherNdParameter;
+  outputs[0] = new TensorC();
+  GatherNdParameter *parameter = new GatherNdParameter();
   int ret = GatherNdInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -89,18 +89,18 @@ TEST_F(GatherNdInferTest, GatherNdInferTest1) {
 TEST_F(GatherNdInferTest, GatherNdInferTest2) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 2;
   inputs[0]->shape_[1] = 3;
   inputs[0]->shape_[2] = 4;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 1;
   inputs[1]->shape_[1] = 1;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  GatherNdParameter *parameter = new GatherNdParameter;
+  outputs[0] = new TensorC();
+  GatherNdParameter *parameter = new GatherNdParameter();
   int ret = GatherNdInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -120,17 +120,17 @@ TEST_F(GatherNdInferTest, GatherNdInferTest2) {
 TEST_F(GatherNdInferTest, GatherNdInferTest3) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 4;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 2;
   inputs[1]->shape_[1] = 1;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  GatherNdParameter *parameter = new GatherNdParameter;
+  outputs[0] = new TensorC();
+  GatherNdParameter *parameter = new GatherNdParameter();
   int ret = GatherNdInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -149,21 +149,21 @@ TEST_F(GatherNdInferTest, GatherNdInferTest3) {
 TEST_F(GatherNdInferTest, GatherNdInferTest4) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 5;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 2;
   inputs[0]->shape_[2] = 3;
   inputs[0]->shape_[3] = 4;
   inputs[0]->shape_[4] = 6;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 3;
   inputs[1]->shape_[0] = 2;
   inputs[1]->shape_[1] = 2;
   inputs[1]->shape_[2] = 4;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  GatherNdParameter *parameter = new GatherNdParameter;
+  outputs[0] = new TensorC();
+  GatherNdParameter *parameter = new GatherNdParameter();
   int ret = GatherNdInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

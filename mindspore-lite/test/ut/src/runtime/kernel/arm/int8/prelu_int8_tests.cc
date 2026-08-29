@@ -19,6 +19,7 @@
 #include "src/common/log_adapter.h"
 #include "common/common_test.h"
 #include "nnacl_c/int8/quantize.h"
+#include "nnacl_c/activation_parameter.h"
 #include "src/litert/kernel_registry.h"
 #include "src/executor/kernel_exec.h"
 #include "src/tensor.h"
@@ -64,16 +65,24 @@ TEST_F(TestPreluInt8, prelu_1) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  LeakyReluQuantArg op_param;
-  op_param.slope_ = 0.25;
+  // the kernel reads slope from ActivationParameter.alpha_ and free()s op_parameter_
+  // in ~LiteKernel, so a heap ActivationParameter must be passed
+  auto op_param = new (std::nothrow) ActivationParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_LeakyRelu;
+  op_param->alpha_ = 0.25;
 
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_LeakyRelu};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);

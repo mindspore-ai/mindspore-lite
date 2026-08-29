@@ -27,13 +27,13 @@ class ReshapeInferTest : public mindspore::CommonTest {
 TEST_F(ReshapeInferTest, ReshapeInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 2;
   inputs[0]->shape_[1] = 3;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ReshapeParameter *parameter = new ReshapeParameter;
+  outputs[0] = new TensorC();
+  ReshapeParameter *parameter = new ReshapeParameter();
   parameter->shape_dim_ = 1;
   parameter->shape_[0] = 6;
   int ret = ReshapeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
@@ -53,19 +53,19 @@ TEST_F(ReshapeInferTest, ReshapeInferTest0) {
 TEST_F(ReshapeInferTest, ReshapeInferTest1) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 2;
   inputs[0]->shape_[1] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<int32_t> shape_tensor = {6};
   inputs[1]->data_ = shape_tensor.data();
   inputs[1]->data_type_ = kNumberTypeInt32;
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 1;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ReshapeParameter *parameter = new ReshapeParameter;
+  outputs[0] = new TensorC();
+  ReshapeParameter *parameter = new ReshapeParameter();
   int ret = ReshapeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                               reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -83,19 +83,19 @@ TEST_F(ReshapeInferTest, ReshapeInferTest1) {
 TEST_F(ReshapeInferTest, ReshapeInferTest2) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 2;
   inputs[0]->shape_[1] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<int8_t> shape_tensor = {6};
   inputs[1]->data_ = shape_tensor.data();
   inputs[1]->data_type_ = kNumberTypeInt8;
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 1;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ReshapeParameter *parameter = new ReshapeParameter;
+  outputs[0] = new TensorC();
+  ReshapeParameter *parameter = new ReshapeParameter();
   int ret = ReshapeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                               reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -113,19 +113,19 @@ TEST_F(ReshapeInferTest, ReshapeInferTest2) {
 TEST_F(ReshapeInferTest, ReshapeInferTest3) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 2;
   inputs[0]->shape_[1] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<uint32_t> shape_tensor = {6};
   inputs[1]->data_ = shape_tensor.data();
   inputs[1]->data_type_ = kNumberTypeUInt32;
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 1;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ReshapeParameter *parameter = new ReshapeParameter;
+  outputs[0] = new TensorC();
+  ReshapeParameter *parameter = new ReshapeParameter();
   int ret = ReshapeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                               reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -143,18 +143,18 @@ TEST_F(ReshapeInferTest, ReshapeInferTest3) {
 TEST_F(ReshapeInferTest, ReshapeInferTest4) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 12;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<float> shape_tensor = {3.0, 4.0};
   inputs[1]->data_ = shape_tensor.data();
   inputs[1]->data_type_ = kNumberTypeFloat;
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 2;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ReshapeParameter *parameter = new ReshapeParameter;
+  outputs[0] = new TensorC();
+  ReshapeParameter *parameter = new ReshapeParameter();
   int ret = ReshapeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                               reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -173,18 +173,18 @@ TEST_F(ReshapeInferTest, ReshapeInferTest4) {
 TEST_F(ReshapeInferTest, ReshapeInferTest5) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 12;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<int64_t> shape_tensor = {3, 4};
   inputs[1]->data_ = shape_tensor.data();
   inputs[1]->data_type_ = kNumberTypeInt64;
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 2;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ReshapeParameter *parameter = new ReshapeParameter;
+  outputs[0] = new TensorC();
+  ReshapeParameter *parameter = new ReshapeParameter();
   int ret = ReshapeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                               reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -203,20 +203,20 @@ TEST_F(ReshapeInferTest, ReshapeInferTest5) {
 TEST_F(ReshapeInferTest, ReshapeInferTest6) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 2;
   inputs[0]->shape_[2] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<int64_t> shape_tensor = {3, 6};
   inputs[1]->data_ = shape_tensor.data();
   inputs[1]->data_type_ = kNumberTypeInt64;
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 2;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ReshapeParameter *parameter = new ReshapeParameter;
+  outputs[0] = new TensorC();
+  ReshapeParameter *parameter = new ReshapeParameter();
   int ret = ReshapeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                               reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -235,20 +235,20 @@ TEST_F(ReshapeInferTest, ReshapeInferTest6) {
 TEST_F(ReshapeInferTest, ReshapeInferTest7) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 2;
   inputs[0]->shape_[2] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<int64_t> shape_tensor = {3, -1};
   inputs[1]->data_ = shape_tensor.data();
   inputs[1]->data_type_ = kNumberTypeInt64;
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 2;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ReshapeParameter *parameter = new ReshapeParameter;
+  outputs[0] = new TensorC();
+  ReshapeParameter *parameter = new ReshapeParameter();
   int ret = ReshapeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                               reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -267,19 +267,19 @@ TEST_F(ReshapeInferTest, ReshapeInferTest7) {
 TEST_F(ReshapeInferTest, ReshapeInferTest8) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 8;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<int64_t> shape_tensor = {1, 2, 5, 4};
   inputs[1]->data_ = shape_tensor.data();
   inputs[1]->data_type_ = kNumberTypeInt64;
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 4;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ReshapeParameter *parameter = new ReshapeParameter;
+  outputs[0] = new TensorC();
+  ReshapeParameter *parameter = new ReshapeParameter();
   int ret = ReshapeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                               reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -300,19 +300,19 @@ TEST_F(ReshapeInferTest, ReshapeInferTest8) {
 TEST_F(ReshapeInferTest, ReshapeInferTest9) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 8;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<int64_t> shape_tensor = {8, 5, -1, 1};
   inputs[1]->data_ = shape_tensor.data();
   inputs[1]->data_type_ = kNumberTypeInt64;
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 4;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ReshapeParameter *parameter = new ReshapeParameter;
+  outputs[0] = new TensorC();
+  ReshapeParameter *parameter = new ReshapeParameter();
   int ret = ReshapeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                               reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

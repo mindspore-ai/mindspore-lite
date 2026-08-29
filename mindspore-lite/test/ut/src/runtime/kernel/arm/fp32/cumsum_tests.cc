@@ -40,6 +40,7 @@ TEST_F(TestCumsum, TestThread1) {
   std::vector<lite::Tensor *> outputs = {&out_tensor0};
 
   CumSumParameter *parameter = reinterpret_cast<CumSumParameter *>(malloc(sizeof(CumSumParameter)));
+  memset(parameter, 0, sizeof(CumSumParameter));
   parameter->op_parameter_.type_ = schema::PrimitiveType_CumSum;
   parameter->exclusive_ = false;
   parameter->reverse_ = false;
@@ -51,6 +52,7 @@ TEST_F(TestCumsum, TestThread1) {
   auto ctx = std::make_shared<lite::InnerContext>();
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   EXPECT_NE(kernel, nullptr);
 
@@ -95,6 +97,7 @@ TEST_F(TestCumsum, TestExclusive) {
   std::vector<lite::Tensor *> outputs = {&out_tensor0};
 
   CumSumParameter *parameter = reinterpret_cast<CumSumParameter *>(malloc(sizeof(CumSumParameter)));
+  memset(parameter, 0, sizeof(CumSumParameter));
   parameter->op_parameter_.type_ = schema::PrimitiveType_CumSum;
   parameter->exclusive_ = true;
   parameter->reverse_ = false;
@@ -105,6 +108,7 @@ TEST_F(TestCumsum, TestExclusive) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   EXPECT_NE(kernel, nullptr);
 
@@ -149,6 +153,7 @@ TEST_F(TestCumsum, TestReverse) {
   std::vector<lite::Tensor *> outputs = {&out_tensor0};
 
   CumSumParameter *parameter = reinterpret_cast<CumSumParameter *>(malloc(sizeof(CumSumParameter)));
+  memset(parameter, 0, sizeof(CumSumParameter));
   parameter->op_parameter_.type_ = schema::PrimitiveType_CumSum;
   parameter->exclusive_ = false;
   parameter->reverse_ = true;
@@ -159,6 +164,7 @@ TEST_F(TestCumsum, TestReverse) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   EXPECT_NE(kernel, nullptr);
 
@@ -203,6 +209,7 @@ TEST_F(TestCumsum, TestReverseExclusive) {
   std::vector<lite::Tensor *> outputs = {&out_tensor0};
 
   CumSumParameter *parameter = reinterpret_cast<CumSumParameter *>(malloc(sizeof(CumSumParameter)));
+  memset(parameter, 0, sizeof(CumSumParameter));
   parameter->op_parameter_.type_ = schema::PrimitiveType_CumSum;
   parameter->exclusive_ = true;
   parameter->reverse_ = true;
@@ -213,6 +220,7 @@ TEST_F(TestCumsum, TestReverseExclusive) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   EXPECT_NE(kernel, nullptr);
 
@@ -257,6 +265,7 @@ TEST_F(TestCumsum, TestIntRank2) {
   std::vector<lite::Tensor *> outputs = {&out_tensor0};
 
   CumSumParameter *parameter = reinterpret_cast<CumSumParameter *>(malloc(sizeof(CumSumParameter)));
+  memset(parameter, 0, sizeof(CumSumParameter));
   parameter->op_parameter_.type_ = schema::PrimitiveType_CumSum;
   parameter->exclusive_ = false;
   parameter->reverse_ = false;
@@ -268,6 +277,7 @@ TEST_F(TestCumsum, TestIntRank2) {
   auto ctx = std::make_shared<lite::InnerContext>();
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   EXPECT_NE(kernel, nullptr);
 
@@ -306,6 +316,7 @@ TEST_F(TestCumsum, TestIntRank2Thread2) {
   std::vector<lite::Tensor *> outputs = {&out_tensor0};
 
   CumSumParameter *parameter = reinterpret_cast<CumSumParameter *>(malloc(sizeof(CumSumParameter)));
+  memset(parameter, 0, sizeof(CumSumParameter));
   parameter->op_parameter_.type_ = schema::PrimitiveType_CumSum;
   parameter->exclusive_ = false;
   parameter->reverse_ = false;
@@ -316,6 +327,7 @@ TEST_F(TestCumsum, TestIntRank2Thread2) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   EXPECT_NE(kernel, nullptr);
 
@@ -354,6 +366,7 @@ TEST_F(TestCumsum, TestIntRank2Thread4) {
   std::vector<lite::Tensor *> outputs = {&out_tensor0};
 
   CumSumParameter *parameter = reinterpret_cast<CumSumParameter *>(malloc(sizeof(CumSumParameter)));
+  memset(parameter, 0, sizeof(CumSumParameter));
   parameter->op_parameter_.type_ = schema::PrimitiveType_CumSum;
   parameter->exclusive_ = false;
   parameter->reverse_ = false;
@@ -365,6 +378,7 @@ TEST_F(TestCumsum, TestIntRank2Thread4) {
   auto ctx = std::make_shared<lite::InnerContext>();
   ctx->thread_num_ = 4;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  parameter->op_parameter_.thread_num_ = ctx->thread_num_;
   auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   EXPECT_NE(kernel, nullptr);
 

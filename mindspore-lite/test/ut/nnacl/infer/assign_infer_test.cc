@@ -26,19 +26,19 @@ class AssignInferTest : public mindspore::CommonTest {
 TEST_F(AssignInferTest, AssignInferTest0) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   inputs[0]->data_type_ = kNumberTypeInt8;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 4;
   inputs[1]->shape_[1] = 3;
   inputs[1]->data_type_ = kNumberTypeInt8;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = AssignInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                              reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

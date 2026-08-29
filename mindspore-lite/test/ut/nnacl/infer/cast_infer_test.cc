@@ -23,10 +23,16 @@ class CastInferTest : public mindspore::CommonTest {
   CastInferTest() {}
 };
 
+// All TensorC below are value-initialized: CastInferShape runs InferFlag over
+// EVERY input, which reads data_type_ (== kObjectTypeTensorType triggers the
+// TensorList branch) and shape_size_/shape_[] of each tensor. The dst_type
+// tensor only carries data_; a default-initialized data_type_/shape_size_ is
+// heap garbage and flips InferFlag between runs (local PASS / gate
+// NNACL_INFER_INVALID).
 TEST_F(CastInferTest, CastInferTest0) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new (std::nothrow) TensorC;
+  inputs[0] = new (std::nothrow) TensorC();
   if (inputs[0] == nullptr) {
     return;
   }
@@ -34,7 +40,7 @@ TEST_F(CastInferTest, CastInferTest0) {
   inputs[0]->shape_[0] = 2;
   inputs[0]->shape_[1] = 5;
   inputs[0]->data_type_ = kNumberTypeFloat32;
-  inputs[1] = new (std::nothrow) TensorC;
+  inputs[1] = new (std::nothrow) TensorC();
   if (inputs[1] == nullptr) {
     return;
   }
@@ -44,7 +50,7 @@ TEST_F(CastInferTest, CastInferTest0) {
   }
   *static_cast<int *>(inputs[1]->data_) = kNumberTypeInt32;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new (std::nothrow) TensorC;
+  outputs[0] = new (std::nothrow) TensorC();
   if (outputs[0] == nullptr) {
     return;
   }
@@ -71,7 +77,7 @@ TEST_F(CastInferTest, CastInferTest0) {
 TEST_F(CastInferTest, CastInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new (std::nothrow) TensorC;
+  inputs[0] = new (std::nothrow) TensorC();
   if (inputs[0] == nullptr) {
     return;
   }
@@ -81,7 +87,7 @@ TEST_F(CastInferTest, CastInferTest1) {
   inputs[0]->data_type_ = kNumberTypeFloat32;
   size_t outputs_size = 1;
   std::vector<TensorC *> outputs(outputs_size, NULL);
-  outputs[0] = new (std::nothrow) TensorC;
+  outputs[0] = new (std::nothrow) TensorC();
   if (outputs[0] == nullptr) {
     return;
   }
@@ -104,7 +110,7 @@ TEST_F(CastInferTest, CastInferTest1) {
 TEST_F(CastInferTest, CastInferTest2) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new (std::nothrow) TensorC;
+  inputs[0] = new (std::nothrow) TensorC();
   if (inputs[0] == nullptr) {
     return;
   }
@@ -115,11 +121,11 @@ TEST_F(CastInferTest, CastInferTest2) {
   inputs[1] = nullptr;
 
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new (std::nothrow) TensorC;
+  outputs[0] = new (std::nothrow) TensorC();
   if (outputs[0] == nullptr) {
     return;
   }
-  OpParameter *parameter = new OpParameter;
+  OpParameter *parameter = new OpParameter();
   if (parameter == nullptr) {
     return;
   }
@@ -140,7 +146,7 @@ TEST_F(CastInferTest, CastInferTest2) {
 TEST_F(CastInferTest, CastInferTest3) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new (std::nothrow) TensorC;
+  inputs[0] = new (std::nothrow) TensorC();
   if (inputs[0] == nullptr) {
     return;
   }
@@ -148,7 +154,7 @@ TEST_F(CastInferTest, CastInferTest3) {
   inputs[0]->shape_[0] = 2;
   inputs[0]->shape_[1] = 5;
   inputs[0]->data_type_ = kNumberTypeFloat32;
-  inputs[1] = new (std::nothrow) TensorC;
+  inputs[1] = new (std::nothrow) TensorC();
   if (inputs[1] == nullptr) {
     return;
   }
@@ -159,7 +165,7 @@ TEST_F(CastInferTest, CastInferTest3) {
   *static_cast<int *>(inputs[1]->data_) = kNumberTypeInt32;
   std::vector<TensorC *> outputs(1, NULL);
   outputs[0] = nullptr;
-  OpParameter *parameter = new OpParameter;
+  OpParameter *parameter = new OpParameter();
   if (parameter == nullptr) {
     return;
   }
@@ -180,7 +186,7 @@ TEST_F(CastInferTest, CastInferTest3) {
 TEST_F(CastInferTest, CastInferTest4) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new (std::nothrow) TensorC;
+  inputs[0] = new (std::nothrow) TensorC();
   if (inputs[0] == nullptr) {
     return;
   }
@@ -188,7 +194,7 @@ TEST_F(CastInferTest, CastInferTest4) {
   inputs[0]->shape_[0] = 2;
   inputs[0]->shape_[1] = 5;
   inputs[0]->data_type_ = kNumberTypeUInt16;
-  inputs[1] = new (std::nothrow) TensorC;
+  inputs[1] = new (std::nothrow) TensorC();
   if (inputs[1] == nullptr) {
     return;
   }
@@ -198,7 +204,7 @@ TEST_F(CastInferTest, CastInferTest4) {
   }
   *static_cast<int *>(inputs[1]->data_) = kNumberTypeInt32;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new (std::nothrow) TensorC;
+  outputs[0] = new (std::nothrow) TensorC();
   if (outputs[0] == nullptr) {
     return;
   }
@@ -208,7 +214,8 @@ TEST_F(CastInferTest, CastInferTest4) {
   }
   int ret = CastInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                            reinterpret_cast<OpParameter *>(parameter));
-  ASSERT_EQ(ret, NNACL_INFER_INVALID);
+  // uint16 is not a cast-supported input type
+  ASSERT_EQ(ret, NNACL_INPUT_TENSOR_ERROR);
   ASSERT_EQ(inputs[0]->shape_size_, 2);
   ASSERT_EQ(inputs[0]->shape_[0], 2);
   ASSERT_EQ(inputs[0]->shape_[1], 5);
@@ -224,7 +231,7 @@ TEST_F(CastInferTest, CastInferTest4) {
 TEST_F(CastInferTest, CastInferTest5) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new (std::nothrow) TensorC;
+  inputs[0] = new (std::nothrow) TensorC();
   if (inputs[0] == nullptr) {
     return;
   }
@@ -234,7 +241,7 @@ TEST_F(CastInferTest, CastInferTest5) {
   inputs[0]->shape_[2] = 128;
   inputs[0]->shape_[3] = 128;
   inputs[0]->data_type_ = kNumberTypeFloat16;
-  inputs[1] = new (std::nothrow) TensorC;
+  inputs[1] = new (std::nothrow) TensorC();
   if (inputs[1] == nullptr) {
     return;
   }
@@ -244,7 +251,7 @@ TEST_F(CastInferTest, CastInferTest5) {
   }
   *static_cast<int *>(inputs[1]->data_) = kNumberTypeInt32;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new (std::nothrow) TensorC;
+  outputs[0] = new (std::nothrow) TensorC();
   if (outputs[0] == nullptr) {
     return;
   }

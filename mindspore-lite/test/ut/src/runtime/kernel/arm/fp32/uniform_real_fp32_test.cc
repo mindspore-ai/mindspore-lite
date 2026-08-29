@@ -26,16 +26,24 @@ class TestUniformRealFp32 : public mindspore::CommonTest {
 };
 
 TEST_F(TestUniformRealFp32, UniformReal) {
+  lite::Tensor in_tensor0(kNumberTypeInt32, {1});
+  int32_t input_data0[] = {10};
+  in_tensor0.set_data(input_data0);
   lite::Tensor out_tensor0(kNumberTypeFloat32, {10});
   float output_data0[10] = {0};
   out_tensor0.set_data(output_data0);
-  std::vector<lite::Tensor *> inputs = {};
+  std::vector<lite::Tensor *> inputs = {&in_tensor0};
   std::vector<lite::Tensor *> outputs = {&out_tensor0};
 
-  RandomParam parameter;
-  parameter.op_parameter_.type_ = schema::PrimitiveType_UniformReal;
-  parameter.seed_ = 42;
-  parameter.seed2_ = 959;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto parameter = new (std::nothrow) RandomParam();
+  if (parameter == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  parameter->op_parameter_.type_ = schema::PrimitiveType_UniformReal;
+  parameter->seed_ = 42;
+  parameter->seed2_ = 959;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt32, NHWC, schema::PrimitiveType_UniformReal};
 
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
@@ -43,7 +51,7 @@ TEST_F(TestUniformRealFp32, UniformReal) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(&parameter), ctx.get(), desc);
+  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   EXPECT_NE(kernel, nullptr);
 
   auto ret = kernel->Prepare();
@@ -64,6 +72,7 @@ TEST_F(TestUniformRealFp32, UniformReal) {
   for (int i = 0; i < 10; ++i) {
     std::cout << output_data0[i] << " ";
   }
+  in_tensor0.set_data(nullptr);
   out_tensor0.set_data(nullptr);
   delete kernel;
 }

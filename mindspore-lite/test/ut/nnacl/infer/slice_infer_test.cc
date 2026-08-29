@@ -26,26 +26,29 @@ class SliceInferTest : public mindspore::CommonTest {
 TEST_F(SliceInferTest, SliceInferTest0) {
   size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 4;
 
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   int begin[2] = {1, 1};
   inputs.at(1)->shape_size_ = 1;
   inputs.at(1)->shape_[0] = 2;
   inputs.at(1)->data_ = begin;
 
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
   int size[2] = {1, 3};
   inputs.at(2)->shape_size_ = 1;
   inputs.at(2)->shape_[0] = 2;
   inputs.at(2)->data_ = size;
+  // the infer requires int32 begin/size tensors
+  inputs.at(1)->data_type_ = kNumberTypeInt32;
+  inputs.at(2)->data_type_ = kNumberTypeInt32;
 
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  SliceParameter *parameter = new SliceParameter;
+  outputs[0] = new TensorC();
+  SliceParameter *parameter = new SliceParameter();
   parameter->axis_[0] = 0;
   parameter->axis_[1] = 1;
 
@@ -69,27 +72,30 @@ TEST_F(SliceInferTest, SliceInferTest0) {
 TEST_F(SliceInferTest, SliceInferTest1) {
   size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 2;
   inputs[0]->shape_[2] = 4;
 
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   int begin[3] = {1, 0, 0};
   inputs.at(1)->shape_size_ = 1;
   inputs.at(1)->shape_[0] = 3;
   inputs.at(1)->data_ = begin;
 
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
   int size[3] = {1, 1, 3};
   inputs.at(2)->shape_size_ = 1;
   inputs.at(2)->shape_[0] = 3;
   inputs.at(2)->data_ = size;
+  // the infer requires int32 begin/size tensors
+  inputs.at(1)->data_type_ = kNumberTypeInt32;
+  inputs.at(2)->data_type_ = kNumberTypeInt32;
 
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  SliceParameter *parameter = new SliceParameter;
+  outputs[0] = new TensorC();
+  SliceParameter *parameter = new SliceParameter();
   parameter->axis_[0] = 0;
   parameter->axis_[1] = 1;
   parameter->axis_[2] = 2;
@@ -115,27 +121,30 @@ TEST_F(SliceInferTest, SliceInferTest1) {
 TEST_F(SliceInferTest, SliceInferTest2) {
   size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 2;
   inputs[0]->shape_[2] = 4;
 
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   int begin[3] = {1, 0, 0};
   inputs.at(1)->shape_size_ = 1;
   inputs.at(1)->shape_[0] = 3;
   inputs.at(1)->data_ = begin;
 
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
   int size[3] = {1, 2, 3};
   inputs.at(2)->shape_size_ = 1;
   inputs.at(2)->shape_[0] = 3;
   inputs.at(2)->data_ = size;
+  // the infer requires int32 begin/size tensors
+  inputs.at(1)->data_type_ = kNumberTypeInt32;
+  inputs.at(2)->data_type_ = kNumberTypeInt32;
 
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  SliceParameter *parameter = new SliceParameter;
+  outputs[0] = new TensorC();
+  SliceParameter *parameter = new SliceParameter();
   parameter->axis_[0] = 0;
   parameter->axis_[1] = 1;
   parameter->axis_[2] = 2;
@@ -161,35 +170,43 @@ TEST_F(SliceInferTest, SliceInferTest2) {
 TEST_F(SliceInferTest, SliceInferTest3) {
   size_t inputs_size = 5;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 2;
   inputs[0]->shape_[2] = 4;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<int> inputs1 = {1, 0, 0};
   inputs[1]->data_ = inputs1.data();
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 3;
-  inputs[2] = new TensorC;
+  // begin/size tensors must be int32
+  inputs[1]->data_type_ = kNumberTypeInt32;
+  inputs[2] = new TensorC();
   std::vector<int> inputs2 = {2, 2, 3};
   inputs[2]->data_ = inputs2.data();
   inputs[2]->shape_size_ = 1;
   inputs[2]->shape_[0] = 3;
-  inputs[3] = new TensorC;
+  inputs[2]->data_type_ = kNumberTypeInt32;
+  inputs[3] = new TensorC();
   std::vector<int> inputs3 = {0, 1, 2};
   inputs[3]->data_ = inputs3.data();
   inputs[3]->shape_size_ = 1;
   inputs[3]->shape_[0] = 3;
-  inputs[4] = new TensorC;
+  inputs[4] = new TensorC();
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  SliceParameter *parameter = new SliceParameter;
+  outputs[0] = new TensorC();
+  SliceParameter *parameter = new SliceParameter();
+  // begin/size apply axis by axis
+  parameter->axis_[0] = 0;
+  parameter->axis_[1] = 1;
+  parameter->axis_[2] = 2;
   int ret = SliceInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
   ASSERT_EQ(outputs[0]->shape_size_, 3);
-  ASSERT_EQ(outputs[0]->shape_[0], 1);
+  // size semantics: dim0 = size 2 from begin 1, dim1 = size 2, dim2 = size 3
+  ASSERT_EQ(outputs[0]->shape_[0], 2);
   ASSERT_EQ(outputs[0]->shape_[1], 2);
   ASSERT_EQ(outputs[0]->shape_[2], 3);
   delete parameter;

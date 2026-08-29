@@ -26,15 +26,17 @@ class PoolingInferTest : public mindspore::CommonTest {
 TEST_F(PoolingInferTest, PoolingInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 21;
   inputs[0]->shape_[1] = 58;
   inputs[0]->shape_[2] = 58;
   inputs[0]->shape_[3] = 3;
+  // pooling infer only accepts NHWC (or NWC) input format
+  inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  PoolingParameter *parameter = new PoolingParameter;
+  outputs[0] = new TensorC();
+  PoolingParameter *parameter = new PoolingParameter();
   parameter->window_w_ = 2;
   parameter->window_h_ = 2;
   parameter->stride_w_ = 2;
@@ -66,15 +68,17 @@ TEST_F(PoolingInferTest, PoolingInferTest0) {
 TEST_F(PoolingInferTest, PoolingInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 21;
   inputs[0]->shape_[1] = 14;
   inputs[0]->shape_[2] = 14;
   inputs[0]->shape_[3] = 3;
+  // pooling infer only accepts NHWC (or NWC) input format
+  inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  PoolingParameter *parameter = new PoolingParameter;
+  outputs[0] = new TensorC();
+  PoolingParameter *parameter = new PoolingParameter();
   parameter->window_w_ = 3;
   parameter->window_h_ = 3;
   parameter->stride_w_ = 1;
@@ -107,15 +111,17 @@ TEST_F(PoolingInferTest, PoolingInferTest1) {
 TEST_F(PoolingInferTest, PoolingInferTest2) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 21;
   inputs[0]->shape_[1] = 60;
   inputs[0]->shape_[2] = 60;
   inputs[0]->shape_[3] = 3;
+  // pooling infer only accepts NHWC (or NWC) input format
+  inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  PoolingParameter *parameter = new PoolingParameter;
+  outputs[0] = new TensorC();
+  PoolingParameter *parameter = new PoolingParameter();
   parameter->window_w_ = 3;
   parameter->window_h_ = 3;
   parameter->stride_w_ = 2;
@@ -148,15 +154,17 @@ TEST_F(PoolingInferTest, PoolingInferTest2) {
 TEST_F(PoolingInferTest, PoolingInferTest3) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 21;
   inputs[0]->shape_[1] = 7;
   inputs[0]->shape_[2] = 7;
   inputs[0]->shape_[3] = 3;
+  // pooling infer only accepts NHWC (or NWC) input format
+  inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  PoolingParameter *parameter = new PoolingParameter;
+  outputs[0] = new TensorC();
+  PoolingParameter *parameter = new PoolingParameter();
   parameter->window_w_ = 7;
   parameter->window_h_ = 7;
   parameter->stride_w_ = 1;
@@ -189,15 +197,17 @@ TEST_F(PoolingInferTest, PoolingInferTest3) {
 TEST_F(PoolingInferTest, PoolingInferTest4) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 21;
   inputs[0]->shape_[1] = 31;
   inputs[0]->shape_[2] = 31;
   inputs[0]->shape_[3] = 3;
+  // pooling infer only accepts NHWC (or NWC) input format
+  inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  PoolingParameter *parameter = new PoolingParameter;
+  outputs[0] = new TensorC();
+  PoolingParameter *parameter = new PoolingParameter();
   parameter->window_w_ = 2;
   parameter->window_h_ = 2;
   parameter->stride_w_ = 2;
@@ -230,15 +240,17 @@ TEST_F(PoolingInferTest, PoolingInferTest4) {
 TEST_F(PoolingInferTest, PoolingInferTest5) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 21;
   inputs[0]->shape_[1] = 16;
   inputs[0]->shape_[2] = 16;
   inputs[0]->shape_[3] = 3;
+  // pooling infer only accepts NHWC (or NWC) input format
+  inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  PoolingParameter *parameter = new PoolingParameter;
+  outputs[0] = new TensorC();
+  PoolingParameter *parameter = new PoolingParameter();
   parameter->window_w_ = 2;
   parameter->window_h_ = 2;
   parameter->stride_w_ = 2;

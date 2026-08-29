@@ -26,12 +26,12 @@ class ArgminInferTest : public mindspore::CommonTest {
 TEST_F(ArgminInferTest, ArgminInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 5;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ArgMinMaxParameter *parameter = new ArgMinMaxParameter;
+  outputs[0] = new TensorC();
+  ArgMinMaxParameter *parameter = new ArgMinMaxParameter();
   parameter->topk_ = 1;
   parameter->keep_dims_ = true;
   parameter->axis_ = 0;
@@ -52,13 +52,13 @@ TEST_F(ArgminInferTest, ArgminInferTest0) {
 TEST_F(ArgminInferTest, ArgminInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 5;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ArgMinMaxParameter *parameter = new ArgMinMaxParameter;
+  outputs[0] = new TensorC();
+  ArgMinMaxParameter *parameter = new ArgMinMaxParameter();
   parameter->topk_ = 1;
   parameter->keep_dims_ = true;
   parameter->axis_ = 0;
@@ -80,13 +80,13 @@ TEST_F(ArgminInferTest, ArgminInferTest1) {
 TEST_F(ArgminInferTest, ArgminInferTest2) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 5;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ArgMinMaxParameter *parameter = new ArgMinMaxParameter;
+  outputs[0] = new TensorC();
+  ArgMinMaxParameter *parameter = new ArgMinMaxParameter();
   parameter->topk_ = 1;
   parameter->keep_dims_ = true;
   parameter->axis_ = 1;
@@ -108,13 +108,13 @@ TEST_F(ArgminInferTest, ArgminInferTest2) {
 TEST_F(ArgminInferTest, ArgminInferTestTopK2) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 5;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ArgMinMaxParameter *parameter = new ArgMinMaxParameter;
+  outputs[0] = new TensorC();
+  ArgMinMaxParameter *parameter = new ArgMinMaxParameter();
   parameter->topk_ = 2;
   parameter->keep_dims_ = true;
   parameter->axis_ = 1;

@@ -42,6 +42,8 @@ TEST_F(InferTest, TestConvNode) {
   primitive->pad_mode = schema::PadMode_SAME;
   primitive->in_channel = 3;
   primitive->out_channel = 32;
+  // group 0 falls back to weight shape[0] in the infer and fails the group check
+  primitive->group = 1;
   primitive->format = schema::Format_NHWC;
   primitive->stride = std::vector<int64_t>{1, 1};
   primitive->kernel_size = std::vector<int64_t>{3, 3};
@@ -87,7 +89,8 @@ TEST_F(InferTest, TestConvNode) {
 
   flatbuffers::FlatBufferBuilder builder(1024);
   auto offset = schema::MetaGraph::Pack(builder, meta_graph.get());
-  builder.Finish(offset);
+  // Import verifies the buffer identifier, so the packed graph must carry it
+  builder.Finish(offset, schema::MetaGraphIdentifier());
   size_t size = builder.GetSize();
   const char *content = reinterpret_cast<char *>(builder.GetBufferPointer());
 
@@ -167,7 +170,8 @@ TEST_F(InferTest, TestAddNode) {
 
   auto weight = std::make_unique<schema::TensorT>();
   weight->nodeType = lite::NodeType_ValueNode;
-  weight->format = schema::Format_KHWC;
+  // both graph inputs must be NHWC/NCHW at RunGraph time; KHWC is rejected
+  weight->format = schema::Format_NHWC;
   weight->dataType = TypeId::kNumberTypeFloat32;
   weight->dims = {1, 28, 28, 3};
 
@@ -183,7 +187,8 @@ TEST_F(InferTest, TestAddNode) {
 
   flatbuffers::FlatBufferBuilder builder(1024);
   auto offset = schema::MetaGraph::Pack(builder, meta_graph.get());
-  builder.Finish(offset);
+  // Import verifies the buffer identifier, so the packed graph must carry it
+  builder.Finish(offset, schema::MetaGraphIdentifier());
   size_t size = builder.GetSize();
   const char *content = reinterpret_cast<char *>(builder.GetBufferPointer());
 
@@ -224,7 +229,8 @@ TEST_F(InferTest, TestAddNode) {
 
 TEST_F(InferTest, TestModel) {
   size_t model_size;
-  char *buff = lite::ReadFile("./models/model_hebing_3branch.ms", &model_size);
+  // model_hebing_3branch.ms no longer ships with the test data; ml_face_isface.ms is the staged single-input model
+  char *buff = lite::ReadFile("./ml_face_isface.ms", &model_size);
   ASSERT_NE(nullptr, buff);
   auto model = lite::Model::Import(buff, model_size);
   ASSERT_NE(nullptr, model);

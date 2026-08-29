@@ -40,7 +40,19 @@ TEST_F(TestTopKFp32, TopK) {
   std::vector<lite::Tensor *> inputs = {&in_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor0, &out_tensor1};
 
-  TopkParameter parameter = {{}, 2, 2, true, 3, 4, 1};
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated, not a stack object
+  auto parameter = new (std::nothrow) TopkParameter();
+  if (parameter == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  parameter->k_ = 2;
+  parameter->axis_ = 2;
+  parameter->sorted_ = true;
+  parameter->dim_size_ = 3;
+  parameter->outer_loop_num_ = 4;
+  parameter->inner_loop_num_ = 1;
+  parameter->topk_node_list_ = nullptr;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_TopKFusion};
 
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
@@ -48,7 +60,7 @@ TEST_F(TestTopKFp32, TopK) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(&parameter), ctx.get(), desc);
+  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
 
   auto ret = kernel->Prepare();

@@ -27,7 +27,7 @@ class SpaceToBatchNdInferTest : public mindspore::CommonTest {
 TEST_F(SpaceToBatchNdInferTest, SpaceToBatchNdInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 1;
   inputs[0]->shape_[1] = 2;
@@ -35,8 +35,8 @@ TEST_F(SpaceToBatchNdInferTest, SpaceToBatchNdInferTest0) {
   inputs[0]->shape_[3] = 1;
   inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  SpaceToBatchParameter *parameter = new SpaceToBatchParameter;
+  outputs[0] = new TensorC();
+  SpaceToBatchParameter *parameter = new SpaceToBatchParameter();
   parameter->m_ = 2;
   parameter->block_sizes_[0] = 2;
   parameter->block_sizes_[1] = 2;
@@ -64,7 +64,7 @@ TEST_F(SpaceToBatchNdInferTest, SpaceToBatchNdInferTest0) {
 TEST_F(SpaceToBatchNdInferTest, SpaceToBatchNdInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 1;
   inputs[0]->shape_[1] = 2;
@@ -72,8 +72,8 @@ TEST_F(SpaceToBatchNdInferTest, SpaceToBatchNdInferTest1) {
   inputs[0]->shape_[3] = 3;
   inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  SpaceToBatchParameter *parameter = new SpaceToBatchParameter;
+  outputs[0] = new TensorC();
+  SpaceToBatchParameter *parameter = new SpaceToBatchParameter();
   parameter->m_ = 2;
   parameter->block_sizes_[0] = 2;
   parameter->block_sizes_[1] = 2;
@@ -101,7 +101,7 @@ TEST_F(SpaceToBatchNdInferTest, SpaceToBatchNdInferTest1) {
 TEST_F(SpaceToBatchNdInferTest, SpaceToBatchNdInferTest2) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 1;
   inputs[0]->shape_[1] = 4;
@@ -109,8 +109,8 @@ TEST_F(SpaceToBatchNdInferTest, SpaceToBatchNdInferTest2) {
   inputs[0]->shape_[3] = 1;
   inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  SpaceToBatchParameter *parameter = new SpaceToBatchParameter;
+  outputs[0] = new TensorC();
+  SpaceToBatchParameter *parameter = new SpaceToBatchParameter();
   parameter->m_ = 2;
   parameter->block_sizes_[0] = 2;
   parameter->block_sizes_[1] = 2;
@@ -138,7 +138,7 @@ TEST_F(SpaceToBatchNdInferTest, SpaceToBatchNdInferTest2) {
 TEST_F(SpaceToBatchNdInferTest, SpaceToBatchNdInferTest3) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 2;
   inputs[0]->shape_[1] = 2;
@@ -146,8 +146,8 @@ TEST_F(SpaceToBatchNdInferTest, SpaceToBatchNdInferTest3) {
   inputs[0]->shape_[3] = 1;
   inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  SpaceToBatchParameter *parameter = new SpaceToBatchParameter;
+  outputs[0] = new TensorC();
+  SpaceToBatchParameter *parameter = new SpaceToBatchParameter();
   parameter->m_ = 2;
   parameter->block_sizes_[0] = 2;
   parameter->block_sizes_[1] = 2;

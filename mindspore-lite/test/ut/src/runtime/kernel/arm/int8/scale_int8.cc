@@ -36,7 +36,7 @@ class TestScaleInt8 : public mindspore::CommonTest {
  public:
   int thread_num_ = 1;
 
-  ScaleParameter param_ = {};
+  ScaleParameter *param_ = nullptr;
   Tensor in_tensor_;
   Tensor scale_tensor_;
   Tensor bias_tensor_;
@@ -90,12 +90,20 @@ void TestScaleInt8::Prepare(const std::vector<int> &in_shape, int8_t *input_data
   out_tensor_.set_data(output_data);
   out_tensor_.AddQuantParam(quant_out_);
 
-  param_.axis_ = axis;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  param_ = new (std::nothrow) ScaleParameter();
+  if (param_ == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  param_->op_parameter_.type_ = schema::PrimitiveType_ScaleFusion;
+  param_->axis_ = axis;
   creator_ = lite::KernelRegistry::GetInstance()->GetCreator(desc_);
 
   ctx_.thread_num_ = thread_num_;
   ASSERT_EQ(lite::RET_OK, ctx_.Init());
-  kernel_ = creator_(inputs, outputs, reinterpret_cast<OpParameter *>(&param_), &ctx_, desc_);
+  param_->op_parameter_.thread_num_ = ctx_.thread_num_;
+  kernel_ = creator_(inputs, outputs, reinterpret_cast<OpParameter *>(param_), &ctx_, desc_);
   auto ret = kernel_->Prepare();
   EXPECT_EQ(0, ret);
 }

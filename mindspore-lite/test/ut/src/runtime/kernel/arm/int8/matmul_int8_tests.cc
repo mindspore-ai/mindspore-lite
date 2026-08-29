@@ -125,6 +125,7 @@ TEST_F(TestMatmulInt8, mmtest1) {
   auto ctx = new lite::InnerContext;
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  matmul_param->op_parameter_.thread_num_ = ctx->thread_num_;
   kernel::MatmulInt8CPUKernel *mm =
     new kernel::MatmulInt8CPUKernel(reinterpret_cast<OpParameter *>(matmul_param), inputs, outputs, ctx);
 
@@ -243,6 +244,7 @@ TEST_F(TestMatmulInt8, mmtest2) {
   auto ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  matmul_param->op_parameter_.thread_num_ = ctx->thread_num_;
   kernel::MatmulInt8CPUKernel *mm =
     new kernel::MatmulInt8CPUKernel(reinterpret_cast<OpParameter *>(matmul_param), inputs, outputs, ctx);
 

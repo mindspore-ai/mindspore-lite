@@ -62,15 +62,20 @@ TEST_F(TestArithmeticSelfInt8, floor_quant0_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Floor;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Floor;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Floor};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -125,15 +130,20 @@ TEST_F(TestArithmeticSelfInt8, floor_quant1_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Floor;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Floor;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Floor};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -188,15 +198,20 @@ TEST_F(TestArithmeticSelfInt8, round_quant0_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Round;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Round;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Floor};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -251,15 +266,20 @@ TEST_F(TestArithmeticSelfInt8, round_quant1_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Round;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Round;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Floor};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -314,15 +334,20 @@ TEST_F(TestArithmeticSelfInt8, ceil_quant0_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Ceil;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Ceil;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Floor};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -377,15 +402,20 @@ TEST_F(TestArithmeticSelfInt8, ceil_quant1_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Ceil;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Ceil;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Floor};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -440,15 +470,20 @@ TEST_F(TestArithmeticSelfInt8, abs_quant0_thread0) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Abs;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Abs;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Abs};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -503,15 +538,20 @@ TEST_F(TestArithmeticSelfInt8, abs_quant1_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Abs;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Abs;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Abs};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -566,15 +606,20 @@ TEST_F(TestArithmeticSelfInt8, sin_quant0_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Sin;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Sin;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Sin};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -629,15 +674,20 @@ TEST_F(TestArithmeticSelfInt8, cos_quant0_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Cos;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Cos;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Cos};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -692,15 +742,20 @@ TEST_F(TestArithmeticSelfInt8, log_quant0_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Log;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Log;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Log};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -755,15 +810,20 @@ TEST_F(TestArithmeticSelfInt8, sqrt_quant0_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Sqrt;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Sqrt;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Sqrt};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -818,15 +878,20 @@ TEST_F(TestArithmeticSelfInt8, rsqrt_quant0_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Rsqrt;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Rsqrt;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Rsqrt};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -881,15 +946,20 @@ TEST_F(TestArithmeticSelfInt8, square_quant0_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Square;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Square;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Square};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -944,15 +1014,20 @@ TEST_F(TestArithmeticSelfInt8, square_quant1_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Square;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Square;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Square};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -1007,15 +1082,20 @@ TEST_F(TestArithmeticSelfInt8, logical_not_quant0_thread2) {
   std::vector<lite::Tensor *> outputs_tensor(1);
   outputs_tensor[0] = output0_tensor;
 
-  ArithmeticSelfParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_LogicalNot;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ArithmeticSelfParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_LogicalNot;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_LogicalNot};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);

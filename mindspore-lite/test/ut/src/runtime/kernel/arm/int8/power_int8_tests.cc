@@ -30,10 +30,15 @@ class TestPowerInt8 : public mindspore::CommonTest {
 };
 
 TEST_F(TestPowerInt8, normal) {
-  PowParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_PowFusion;
-  op_param.scale_ = 1;
-  op_param.shift_ = 0;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) PowParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_PowFusion;
+  op_param->scale_ = 1;
+  op_param->shift_ = 0;
 
   lite::LiteQuantParam input_quant_arg;
   input_quant_arg.scale = 0.0156863;
@@ -64,11 +69,12 @@ TEST_F(TestPowerInt8, normal) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_PowFusion};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
 
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx.get(), desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
 
   auto ret = kernel->Prepare();
@@ -80,7 +86,6 @@ TEST_F(TestPowerInt8, normal) {
   int8_t *output_data = reinterpret_cast<int8_t *>(output.data());
   ASSERT_EQ(0, CompareOutputData(output_data, except_result.data(), output.ElementsNum(), 0.000001));
 
-  kernel->set_parameter(nullptr);
   delete kernel;
 }
 }  // namespace mindspore

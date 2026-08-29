@@ -26,19 +26,19 @@ class StackInferTest : public mindspore::CommonTest {
 TEST_F(StackInferTest, StackInferTest0) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 3;
   inputs[0]->data_type_ = 1;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 3;
   inputs[1]->shape_[1] = 3;
   inputs[1]->data_type_ = 1;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  StackParameter *parameter = new StackParameter;
+  outputs[0] = new TensorC();
+  StackParameter *parameter = new StackParameter();
   parameter->axis_ = 0;
   int ret = StackInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));
@@ -59,19 +59,19 @@ TEST_F(StackInferTest, StackInferTest0) {
 TEST_F(StackInferTest, StackInferTest1) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 3;
   inputs[0]->data_type_ = 1;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 3;
   inputs[1]->shape_[1] = 3;
   inputs[1]->data_type_ = 1;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  StackParameter *parameter = new StackParameter;
+  outputs[0] = new TensorC();
+  StackParameter *parameter = new StackParameter();
   parameter->axis_ = 1;
   int ret = StackInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));

@@ -136,6 +136,7 @@ TEST_F(TestFcInt8, fctest1) {
   auto ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  fc_param->op_parameter_.thread_num_ = ctx->thread_num_;
 
   kernel::FullconnectionInt8CPUKernel *fc =
     new kernel::FullconnectionInt8CPUKernel(reinterpret_cast<OpParameter *>(fc_param), inputs, outputs, ctx);

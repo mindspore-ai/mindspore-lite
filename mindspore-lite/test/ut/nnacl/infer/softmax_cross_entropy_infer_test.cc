@@ -26,16 +26,16 @@ class SoftmaxCrossEntropyInferTest : public mindspore::CommonTest {
 TEST_F(SoftmaxCrossEntropyInferTest, SoftmaxCrossEntropyInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(2, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = SoftmaxCrossEntropyInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(),
                                           outputs.size(), reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

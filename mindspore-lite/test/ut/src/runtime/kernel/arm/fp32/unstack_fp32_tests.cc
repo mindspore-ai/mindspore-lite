@@ -45,7 +45,14 @@ TEST_F(TestUnstackFp32, Unstack) {
   std::vector<lite::Tensor *> inputs = {&in_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor0, &out_tensor1, &out_tensor2, &out_tensor3};
 
-  UnstackParameter parameter = {{}, 4, -2, 3, 4, 2};
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto parameter = new (std::nothrow) UnstackParameter();
+  if (parameter == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  parameter->num_ = 4;
+  parameter->axis_ = -2;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_Unstack};
 
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
@@ -53,7 +60,7 @@ TEST_F(TestUnstackFp32, Unstack) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(&parameter), ctx.get(), desc);
+  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   EXPECT_NE(kernel, nullptr);
 
   auto ret = kernel->Prepare();
@@ -96,7 +103,14 @@ TEST_F(TestUnstackFp32, Unstack2) {
   std::vector<lite::Tensor *> inputs = {&in_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor0, &out_tensor1, &out_tensor2};
 
-  UnstackParameter parameter = {{}, 3, 0, 1, 3, 8};
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto parameter = new (std::nothrow) UnstackParameter();
+  if (parameter == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  parameter->num_ = 3;
+  parameter->axis_ = 0;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_Unstack};
 
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
@@ -104,7 +118,7 @@ TEST_F(TestUnstackFp32, Unstack2) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(&parameter), ctx.get(), desc);
+  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   EXPECT_NE(kernel, nullptr);
 
   auto ret = kernel->Prepare();

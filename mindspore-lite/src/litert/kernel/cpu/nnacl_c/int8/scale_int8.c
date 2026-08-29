@@ -61,11 +61,11 @@ void DoScaleInt8(const int8_t *in_data, int8_t *out_data, const int8_t *scale, c
   for (; index <= real_dst_count - 8; index += 8) {
     int8x8_t input_s8 = vld1_s8(in_data + index);
     int16x8_t input_s16 = vmovl_s8(input_s8);
-    int16x8_t input0_val = vaddq_s16(input_s16, vdupq_n_s16(scale_param->input_zp_));
+    int16x8_t input0_val = vsubq_s16(input_s16, vdupq_n_s16(scale_param->input_zp_));
 
     int8x8_t input1_s8 = vld1_s8(scale + index);
     int16x8_t input1_s16 = vmovl_s8(input1_s8);
-    int16x8_t input1_val = vaddq_s16(input1_s16, vdupq_n_s16(scale_param->scale_zp_));
+    int16x8_t input1_val = vsubq_s16(input1_s16, vdupq_n_s16(scale_param->scale_zp_));
 
     int32x4_t input0_low = vmovl_s16(vget_low_s16(input0_val));
     int32x4_t input0_high = vmovl_s16(vget_high_s16(input0_val));
@@ -84,8 +84,8 @@ void DoScaleInt8(const int8_t *in_data, int8_t *out_data, const int8_t *scale, c
   }
 #endif
   for (; index < real_dst_count; ++index) {
-    const int32_t input0_val = scale_param->input_zp_ + in_data[index];
-    const int32_t input1_val = scale_param->scale_zp_ + scale[index];
+    const int32_t input0_val = in_data[index] - scale_param->input_zp_;
+    const int32_t input1_val = scale[index] - scale_param->scale_zp_;
     int32_t mul_result = RoundingDivideByPOT(
       SaturatingRoundingDoublingHighMul(input0_val * input1_val * (1 << scale_param->scale_mul_arg_.left_shift_),
                                         scale_param->scale_mul_arg_.multiplier_),
@@ -111,15 +111,15 @@ void DoScaleWithBiasInt8(const int8_t *in_data, int8_t *out_data, const int8_t *
   for (; index <= real_dst_count - 8; index += 8) {
     int8x8_t input_s8 = vld1_s8(in_data + index);
     int16x8_t input_s16 = vmovl_s8(input_s8);
-    int16x8_t input0_val = vaddq_s16(input_s16, vdupq_n_s16(scale_param->input_zp_));
+    int16x8_t input0_val = vsubq_s16(input_s16, vdupq_n_s16(scale_param->input_zp_));
 
     int8x8_t input1_s8 = vld1_s8(scale + index);
     int16x8_t input1_s16 = vmovl_s8(input1_s8);
-    int16x8_t input1_val = vaddq_s16(input1_s16, vdupq_n_s16(scale_param->scale_zp_));
+    int16x8_t input1_val = vsubq_s16(input1_s16, vdupq_n_s16(scale_param->scale_zp_));
 
     int8x8_t input2_s8 = vld1_s8(offset + index);
     int16x8_t input2_s16 = vmovl_s8(input2_s8);
-    int16x8_t input2_val = vaddq_s16(input2_s16, vdupq_n_s16(scale_param->offset_zp_));
+    int16x8_t input2_val = vsubq_s16(input2_s16, vdupq_n_s16(scale_param->offset_zp_));
 
     int32x4_t input0_low = vmovl_s16(vget_low_s16(input0_val));
     int32x4_t input0_high = vmovl_s16(vget_high_s16(input0_val));

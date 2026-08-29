@@ -42,7 +42,7 @@ class TestNMSFp32 : public mindspore::CommonTest {
   std::vector<lite::Tensor *> inputs_{&box_tensor_, &score_tensor_, &max_output_box_per_class_tensor_,
                                       &iou_threshold_tensor_, &score_threshold_tensor_};
   std::vector<lite::Tensor *> outputs_{&out_tensor_};
-  NMSParameter param_;
+  NMSParameter *param_ = nullptr;
   kernel::KernelKey desc_ = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC,
                              schema::PrimitiveType_NonMaxSuppression};
   lite::InnerContext ctx_ = lite::InnerContext();
@@ -82,12 +82,18 @@ void TestNMSFp32::Init(const std::vector<int> &box_tensor_shape, float *box_data
 
   out_tensor_.set_data_type(kNumberTypeInt32);
 
-  param_.center_point_box_ = center_box_point;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  param_ = new (std::nothrow) NMSParameter();
+  if (param_ == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  param_->center_point_box_ = center_box_point;
   ctx_ = lite::InnerContext();
   ASSERT_EQ(lite::RET_OK, ctx_.Init());
   creator_ = lite::KernelRegistry::GetInstance()->GetCreator(desc_);
   ASSERT_NE(creator_, nullptr);
-  kernel_ = creator_(inputs_, outputs_, reinterpret_cast<OpParameter *>(&param_), &ctx_, desc_);
+  kernel_ = creator_(inputs_, outputs_, reinterpret_cast<OpParameter *>(param_), &ctx_, desc_);
   ASSERT_NE(kernel_, nullptr);
   auto ret = kernel_->Prepare();
   EXPECT_EQ(0, ret);

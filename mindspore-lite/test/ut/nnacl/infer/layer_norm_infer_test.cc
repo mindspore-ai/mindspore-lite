@@ -26,14 +26,16 @@ class LayerNormInferTest : public mindspore::CommonTest {
 TEST_F(LayerNormInferTest, LayerNormInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  LayerNormParameter *parameter = new LayerNormParameter;
+  outputs[0] = new TensorC();
+  LayerNormParameter *parameter = new LayerNormParameter();
   parameter->elementwise_affine_ = false;
+  // normalize over the last axis (-1 = shape_size - 1)
+  parameter->begin_params_axis_ = -1;
   int ret = LayerNormInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                 reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -52,14 +54,16 @@ TEST_F(LayerNormInferTest, LayerNormInferTest0) {
 TEST_F(LayerNormInferTest, LayerNormInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  LayerNormParameter *parameter = new LayerNormParameter;
+  outputs[0] = new TensorC();
+  LayerNormParameter *parameter = new LayerNormParameter();
   parameter->elementwise_affine_ = false;
+  // axis equal to the input rank is out of range and must be rejected
+  parameter->begin_params_axis_ = 2;
   int ret = LayerNormInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                 reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_PARAM_INVALID);
@@ -75,14 +79,16 @@ TEST_F(LayerNormInferTest, LayerNormInferTest1) {
 TEST_F(LayerNormInferTest, LayerNormInferTest2) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  LayerNormParameter *parameter = new LayerNormParameter;
+  outputs[0] = new TensorC();
+  LayerNormParameter *parameter = new LayerNormParameter();
   parameter->elementwise_affine_ = false;
+  // axis equal to the input rank is out of range and must be rejected
+  parameter->begin_params_axis_ = 2;
   int ret = LayerNormInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                 reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_PARAM_INVALID);

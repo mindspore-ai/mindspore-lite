@@ -29,13 +29,21 @@ class TestGatherInt8 : public mindspore::CommonTest {
 
 TEST_F(TestGatherInt8, GatherTest) {
   std::vector<int8_t> in_data = {11, 41, 21, 51, 31, 61, -11, -41, -21, -51, -31, -61};
-  std::vector<int8_t> in_data1 = {4, 2};
+  // indices must be int32 and within the axis-0 dimension (2); {1, 0} gathers row1,row0
+  std::vector<int32_t> in_data1 = {1, 0};
   std::vector<lite::Tensor *> inputs_tensor;
   std::vector<lite::Tensor *> outputs_tensor;
 
-  GatherParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Gather;
-  op_param.axis_ = 0;
+  // the custom creator rejects params whose quant_type_ is not QUANT_ALL and free()s the
+  // parameter (as does ~LiteKernel), so it must be heap-allocated with an explicit quant type
+  auto op_param = new (std::nothrow) GatherParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Gather;
+  op_param->op_parameter_.quant_type_ = schema::QuantType_QUANT_ALL;
+  op_param->axis_ = 0;
   std::vector<int> shape = {2, 1, 3, 2};
 
   lite::LiteQuantParam input_quant_arg;
@@ -62,6 +70,8 @@ TEST_F(TestGatherInt8, GatherTest) {
 
   input0_tensor.AddQuantParam(input_quant_arg);
   input1_tensor.AddQuantParam(input_quant_arg_1);
+  input0_tensor.set_data_type(kNumberTypeInt8);
+  input1_tensor.set_data_type(kNumberTypeInt32);
 
   std::vector<int8_t> output(12);
   // std::vector<int8_t> corr_out = {-18, -22, -16, -21, -14, -19, -22, -34, -24, -35, -26, -36 };
@@ -71,6 +81,7 @@ TEST_F(TestGatherInt8, GatherTest) {
   output0_tensor.set_data(output.data());
   output0_tensor.set_shape(shape);
   output0_tensor.AddQuantParam(output_quant_arg);
+  output0_tensor.set_data_type(kNumberTypeInt8);
 
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Gather};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
@@ -78,7 +89,7 @@ TEST_F(TestGatherInt8, GatherTest) {
   lite::InnerContext ctx;
   ctx.thread_num_ = 3;
   ASSERT_EQ(lite::RET_OK, ctx.Init());
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), &ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), &ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor.shape();
   auto ret = kernel->Prepare();

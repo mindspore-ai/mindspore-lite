@@ -26,13 +26,13 @@ class BroadcastToInferTest : public mindspore::CommonTest {
 TEST_F(BroadcastToInferTest, BroadcastToInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 1;
   inputs[0]->shape_[1] = 4;
   std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  BroadcastToParameter *param = new BroadcastToParameter;
+  outputs[0] = new TensorC();
+  BroadcastToParameter *param = new BroadcastToParameter();
   param->shape_size_ = 2;
   param->shape_[0] = 5;
   param->shape_[1] = 4;
@@ -54,14 +54,14 @@ TEST_F(BroadcastToInferTest, BroadcastToInferTest0) {
 TEST_F(BroadcastToInferTest, BroadcastToInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 1;
   inputs[0]->shape_[1] = 1;
   inputs[0]->shape_[2] = 3;
   std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  BroadcastToParameter *param = new BroadcastToParameter;
+  outputs[0] = new TensorC();
+  BroadcastToParameter *param = new BroadcastToParameter();
   param->shape_size_ = 3;
   param->shape_[0] = 3;
   param->shape_[1] = 3;
@@ -85,15 +85,15 @@ TEST_F(BroadcastToInferTest, BroadcastToInferTest1) {
 TEST_F(BroadcastToInferTest, BroadcastToInferTest2) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 1;
   inputs[0]->shape_[2] = 3;
   inputs[0]->shape_[3] = 1;
   std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  BroadcastToParameter *param = new BroadcastToParameter;
+  outputs[0] = new TensorC();
+  BroadcastToParameter *param = new BroadcastToParameter();
   param->shape_size_ = 4;
   param->shape_[0] = 4;
   param->shape_[1] = 5;
@@ -119,15 +119,15 @@ TEST_F(BroadcastToInferTest, BroadcastToInferTest2) {
 TEST_F(BroadcastToInferTest, BroadcastToInferTest3) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 1;
   inputs[0]->shape_[2] = 3;
   inputs[0]->shape_[3] = 4;
   std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  BroadcastToParameter *param = new BroadcastToParameter;
+  outputs[0] = new TensorC();
+  BroadcastToParameter *param = new BroadcastToParameter();
   param->shape_size_ = 4;
   param->shape_[0] = 4;
   param->shape_[1] = 5;

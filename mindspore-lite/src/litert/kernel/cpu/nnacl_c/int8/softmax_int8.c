@@ -72,13 +72,13 @@ int SoftmaxInt8(const int8_t *input_ptr, int8_t *output_ptr, int count, int32_t 
         exp_data[axis_offset] = exp_val;
         exp_sum += rescaled_lut[input_diff];
       }
-      sum_data[c] = exp_sum;
+      sum_data[o * inner_size + c] = exp_sum;
     }
     for (int i = 0; i < axis_shape_size; ++i) {
       int axis_offset = outter_offset + i * inner_size;
       for (int c = 0; c < inner_size; ++c) {
         int num_bits_over_unit;
-        int shifted_scale = ComputerReciprocal(sum_data[c], 12, &num_bits_over_unit);
+        int shifted_scale = ComputerReciprocal(sum_data[o * inner_size + c], 12, &num_bits_over_unit);
         output_ptr[axis_offset + c] =
           SoftmaxInt8ToOutput(shifted_scale, exp_data[axis_offset + c], num_bits_over_unit + 31 - 8, quant_param);
       }

@@ -64,14 +64,21 @@ TEST_F(TestSqueezeInt8, Squeeze_1d_axis0_offset0_quant0_thread2) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  OpParameter op_param;
-  op_param.type_ = schema::PrimitiveType_Squeeze;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto *op_param = new (std::nothrow) OpParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->type_ = schema::PrimitiveType_Squeeze;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
+  ASSERT_EQ(lite::RET_OK, ctx->Init());
+  op_param->thread_num_ = ctx->thread_num_;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Squeeze};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, op_param, ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);

@@ -34,7 +34,7 @@ class TestResizeNearestNeighborFp32 : public mindspore::CommonTest {
   lite::Tensor out_tensor_;
   std::vector<lite::Tensor *> inputs_{&in_tensor_};
   std::vector<lite::Tensor *> outputs_{&out_tensor_};
-  ResizeParameter param_ = {{}};
+  ResizeParameter *param_ = nullptr;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_Resize};
   lite::InnerContext ctx_ = lite::InnerContext();
   kernel::KernelCreator creator_ = nullptr;
@@ -57,15 +57,26 @@ void TestResizeNearestNeighborFp32::Prepare(const std::vector<int> &input_shape,
   in_tensor_.set_data(input_data);
   out_tensor_.set_data(output_data);
 
-  ResizeParameter param_ = {
-    {}, static_cast<int>(schema::ResizeMethod_NEAREST), output_shape[1], output_shape[2], align_corners};
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  param_ = new (std::nothrow) ResizeParameter();
+  if (param_ == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  param_->method_ = static_cast<int>(schema::ResizeMethod_NEAREST);
+  param_->new_height_ = output_shape[1];
+  param_->new_width_ = output_shape[2];
+  param_->coordinate_transform_mode_ = align_corners ? static_cast<int>(schema::CoordinateTransformMode_ALIGN_CORNERS)
+                                                     : static_cast<int>(schema::CoordinateTransformMode_ASYMMETRIC);
+  param_->preserve_aspect_ratio_ = false;
+  param_->op_parameter_.thread_num_ = thread_num;
   desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_Resize};
   ctx_ = lite::InnerContext();
   ctx_.thread_num_ = thread_num;
   ASSERT_EQ(lite::RET_OK, ctx_.Init());
   creator_ = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator_, nullptr);
-  kernel_ = creator_(inputs_, outputs_, reinterpret_cast<OpParameter *>(&param_), &ctx_, desc);
+  kernel_ = creator_(inputs_, outputs_, reinterpret_cast<OpParameter *>(param_), &ctx_, desc);
   ASSERT_NE(kernel_, nullptr);
   auto ret = kernel_->Prepare();
   EXPECT_EQ(0, ret);

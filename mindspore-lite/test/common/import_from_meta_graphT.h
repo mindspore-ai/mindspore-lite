@@ -48,6 +48,8 @@ class AnfImporterFromMetaGraphT {
 
   int AddReturnCNode();
 
+  AnfNodePtr BuildGraphInput(uint32_t tensor_index);
+
   AnfNodePtr GetNode(int tensor_id);
 
   void AddNode(int tensor_id, AnfNodePtr node);

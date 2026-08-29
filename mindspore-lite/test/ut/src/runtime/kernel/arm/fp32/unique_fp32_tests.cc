@@ -15,10 +15,8 @@
  */
 
 #include <iostream>
-#include <memory>
 #include "common/common_test.h"
 #include "nnacl_c/fp32/unique_fp32.h"
-#include "src/litert/kernel_registry.h"
 
 namespace mindspore {
 class TestUniqueFp32 : public mindspore::CommonTest {
@@ -26,49 +24,43 @@ class TestUniqueFp32 : public mindspore::CommonTest {
   TestUniqueFp32() {}
 };
 
+// the Unique kernel is registered in the nnacl KernelBase registry, so the test calls
+// the compute function directly instead of going through lite::KernelRegistry
 TEST_F(TestUniqueFp32, Unique) {
-  lite::Tensor in_tensor(kNumberTypeFloat32, {9});
-  lite::Tensor out_tensor0(kNumberTypeFloat32, {9});
-  lite::Tensor out_tensor1(kNumberTypeInt32, {9});
   float input_data[] = {1, 1, 2, 4, 4, 4, 7, 8, 8};
   float output_data0[9] = {0};
   int output_data1[9] = {0};
-  in_tensor.set_data(input_data);
-  out_tensor0.set_data(output_data0);
-  out_tensor1.set_data(output_data1);
-  std::vector<lite::Tensor *> inputs = {&in_tensor};
-  std::vector<lite::Tensor *> outputs = {&out_tensor0, &out_tensor1};
+  int32_t output_data0_len = 0;
 
-  OpParameter parameter = {0};
-  kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_Unique};
-
-  auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
-  EXPECT_NE(creator, nullptr);
-
-  auto ctx = std::make_shared<lite::InnerContext>();
-  ASSERT_EQ(lite::RET_OK, ctx->Init());
-  auto kernel = creator(inputs, outputs, &parameter, ctx.get(), desc);
-  EXPECT_NE(kernel, nullptr);
-
-  auto ret = kernel->Prepare();
-  EXPECT_EQ(0, ret);
-  ret = kernel->Run();
-  EXPECT_EQ(0, ret);
+  Unique(input_data, 9, output_data0, &output_data0_len, output_data1);
 
   float expect0[] = {1, 2, 4, 7, 8};
   int expect1[] = {0, 0, 1, 2, 2, 2, 3, 4, 4};
-  EXPECT_EQ(out_tensor0.ElementsNum(), 5);
-
+  EXPECT_EQ(output_data0_len, 5);
   for (int i = 0; i < 5; i++) {
     EXPECT_EQ(output_data0[i], expect0[i]);
   }
   for (int i = 0; i < 9; ++i) {
     EXPECT_EQ(output_data1[i], expect1[i]);
   }
+}
 
-  in_tensor.set_data(nullptr);
-  out_tensor0.set_data(nullptr);
-  out_tensor1.set_data(nullptr);
-  delete kernel;
+TEST_F(TestUniqueFp32, UniqueInt32) {
+  int32_t input_data[] = {5, 5, 3, 9, 9, 9, 1};
+  int32_t output_data0[7] = {0};
+  int output_data1[7] = {0};
+  int32_t output_data0_len = 0;
+
+  UniqueInt(input_data, 7, output_data0, &output_data0_len, output_data1);
+
+  int32_t expect0[] = {5, 3, 9, 1};
+  int expect1[] = {0, 0, 1, 2, 2, 2, 3};
+  EXPECT_EQ(output_data0_len, 4);
+  for (int i = 0; i < 4; i++) {
+    EXPECT_EQ(output_data0[i], expect0[i]);
+  }
+  for (int i = 0; i < 7; ++i) {
+    EXPECT_EQ(output_data1[i], expect1[i]);
+  }
 }
 }  // namespace mindspore

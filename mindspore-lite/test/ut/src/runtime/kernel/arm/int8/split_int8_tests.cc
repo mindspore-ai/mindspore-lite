@@ -73,19 +73,31 @@ TEST_F(TestSplitInt8, Split_quant0_thread2) {
   outputs_tensor[0] = output1_tensor;
   outputs_tensor[1] = output2_tensor;
 
-  SplitParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Split;
-  op_param.num_split_ = 2;
-  op_param.split_dim_ = 1;
-  op_param.split_sizes_[0] = 1;
-  op_param.split_sizes_[1] = 2;
+  // the kernel reads/writes param->split_sizes_ and both ~LiteKernel and ~SplitBaseCPUKernel
+  // free() the parameter and the sizes array, so both must be heap-allocated
+  auto *op_param = new (std::nothrow) SplitParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Split;
+  op_param->num_split_ = 2;
+  op_param->split_dim_ = 1;
+  op_param->split_sizes_ = reinterpret_cast<int *>(calloc(SPLIT_MAX_SLICE_NUM, sizeof(int)));
+  if (op_param->split_sizes_ == nullptr) {
+    MS_LOG(ERROR) << "Calloc split sizes fails.";
+    delete op_param;
+    return;
+  }
+  op_param->split_sizes_[0] = 1;
+  op_param->split_sizes_[1] = 2;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Split};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output1_tensor_shape = output1_tensor->shape();
   auto output2_tensor_shape = output2_tensor->shape();
@@ -167,17 +179,29 @@ TEST_F(TestSplitInt8, Split_quant0_thread2_num) {
   outputs_tensor[1] = output2_tensor;
   outputs_tensor[2] = output3_tensor;
 
-  SplitParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Split;
-  op_param.num_split_ = 3;
-  op_param.split_dim_ = 1;
+  // the kernel reads/writes param->split_sizes_ (all-zero means equal split) and both
+  // ~LiteKernel and ~SplitBaseCPUKernel free() the parameter and the sizes array
+  auto *op_param = new (std::nothrow) SplitParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Split;
+  op_param->num_split_ = 3;
+  op_param->split_dim_ = 1;
+  op_param->split_sizes_ = reinterpret_cast<int *>(calloc(SPLIT_MAX_SLICE_NUM, sizeof(int)));
+  if (op_param->split_sizes_ == nullptr) {
+    MS_LOG(ERROR) << "Calloc split sizes fails.";
+    delete op_param;
+    return;
+  }
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Split};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output1_tensor_shape = output1_tensor->shape();
   auto output2_tensor_shape = output2_tensor->shape();
@@ -185,7 +209,12 @@ TEST_F(TestSplitInt8, Split_quant0_thread2_num) {
   ASSERT_EQ(output1_tensor_shape, output1_shape);
   ASSERT_EQ(output2_tensor_shape, output2_shape);
   ASSERT_EQ(output3_tensor_shape, output3_shape);
-  kernel->Run();
+  // Run() without Prepare() leaves split_sizes_ all zero: CheckAndInitSplitParam (called via
+  // Prepare -> ReSize) is what turns the all-zero array into the equal-split sizes
+  auto ret = kernel->Prepare();
+  EXPECT_EQ(0, ret);
+  ret = kernel->Run();
+  EXPECT_EQ(0, ret);
 
   std::vector<int8_t> except_result1 = {1, 2, 7, 8};
   std::vector<int8_t> except_result2 = {3, 4, 9, 10};
@@ -264,17 +293,29 @@ TEST_F(TestSplitInt8, Split_quant1_thread2_num) {
   outputs_tensor[1] = output2_tensor;
   outputs_tensor[2] = output3_tensor;
 
-  SplitParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Split;
-  op_param.num_split_ = 3;
-  op_param.split_dim_ = 1;
+  // the kernel reads/writes param->split_sizes_ (all-zero means equal split) and both
+  // ~LiteKernel and ~SplitBaseCPUKernel free() the parameter and the sizes array
+  auto *op_param = new (std::nothrow) SplitParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Split;
+  op_param->num_split_ = 3;
+  op_param->split_dim_ = 1;
+  op_param->split_sizes_ = reinterpret_cast<int *>(calloc(SPLIT_MAX_SLICE_NUM, sizeof(int)));
+  if (op_param->split_sizes_ == nullptr) {
+    MS_LOG(ERROR) << "Calloc split sizes fails.";
+    delete op_param;
+    return;
+  }
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Split};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output1_tensor_shape = output1_tensor->shape();
   auto output2_tensor_shape = output2_tensor->shape();
@@ -282,7 +323,12 @@ TEST_F(TestSplitInt8, Split_quant1_thread2_num) {
   ASSERT_EQ(output1_tensor_shape, output1_shape);
   ASSERT_EQ(output2_tensor_shape, output2_shape);
   ASSERT_EQ(output3_tensor_shape, output3_shape);
-  kernel->Run();
+  // Run() without Prepare() leaves split_sizes_ all zero: CheckAndInitSplitParam (called via
+  // Prepare -> ReSize) is what turns the all-zero array into the equal-split sizes
+  auto ret = kernel->Prepare();
+  EXPECT_EQ(0, ret);
+  ret = kernel->Run();
+  EXPECT_EQ(0, ret);
 
   std::vector<int8_t> except_result1 = {1, 1, 4, 4};
   std::vector<int8_t> except_result2 = {2, 2, 5, 5};

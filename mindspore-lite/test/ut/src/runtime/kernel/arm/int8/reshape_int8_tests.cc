@@ -63,15 +63,21 @@ TEST_F(TestReshapeInt8, reshape_quant0) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  ReshapeParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Reshape;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ReshapeParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Reshape;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Reshape};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -126,15 +132,21 @@ TEST_F(TestReshapeInt8, reshape_quant1_thread2) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  ReshapeParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Reshape;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) ReshapeParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Reshape;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Reshape};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
