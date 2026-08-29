@@ -1,5 +1,5 @@
 /**
- * Copyright 2020 Huawei Technologies Co., Ltd
+ * Copyright 2020-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,10 @@ PrimitiveCPtr TfliteUnstackParser::Parse(const std::unique_ptr<tflite::OperatorT
     return nullptr;
   }
   prim->set_axis(tflite_attr->axis);
+  if (tflite_attr->num != static_cast<int>(tflite_op->outputs.size())) {
+    MS_LOG(ERROR) << "Unpack num " << tflite_attr->num << " does not match outputs size " << tflite_op->outputs.size();
+    return nullptr;
+  }
 
   return prim->GetPrim();
 }

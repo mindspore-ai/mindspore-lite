@@ -123,4 +123,55 @@ TEST_F(UnstackFp32Test, Unstack_2x2x3_Axis1) {
   ASSERT_GT(similarity1, accuracy_threshold);
 }
 
+TEST_F(UnstackFp32Test, Unstack_1x2x3x2_Axis1) {
+  // input shape [1, 2, 3, 2], axis=1, pre_dims=1, axis_dim=2, after_dims=6, num=2
+  std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+  std::vector<float> benchmark0 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<float> benchmark1 = {7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+  const int out_size = 6;
+  std::vector<float> output0(out_size, 0.0f);
+  std::vector<float> output1(out_size, 0.0f);
+  void *outputs[2] = {output0.data(), output1.data()};
+
+  UnstackParameter para = {};
+  para.num_ = 2;
+  para.pre_dims_ = 1;
+  para.axis_dim_ = 2;
+  para.after_dims_ = 6;
+  Unstack(input.data(), outputs, &para, sizeof(float));
+
+  float similarity0 = get_cosine_similarity(output0.data(), benchmark0.data(), output0.size());
+  float similarity1 = get_cosine_similarity(output1.data(), benchmark1.data(), output1.size());
+  ASSERT_GT(similarity0, accuracy_threshold);
+  ASSERT_GT(similarity1, accuracy_threshold);
+}
+
+TEST_F(UnstackFp32Test, Unstack_2x4x3_Axis2) {
+  // input shape [2, 4, 3], axis=2, pre_dims=8, axis_dim=3, after_dims=1, num=3
+  std::vector<float> input = {1.0f,  2.0f,  3.0f,  4.0f,  5.0f,  6.0f,  7.0f,  8.0f,  9.0f,  10.0f, 11.0f, 12.0f,
+                              13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f};
+  std::vector<float> benchmark0 = {1.0f, 4.0f, 7.0f, 10.0f, 13.0f, 16.0f, 19.0f, 22.0f};
+  std::vector<float> benchmark1 = {2.0f, 5.0f, 8.0f, 11.0f, 14.0f, 17.0f, 20.0f, 23.0f};
+  std::vector<float> benchmark2 = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f, 21.0f, 24.0f};
+  const int out_size = 8;
+  std::vector<float> output0(out_size, 0.0f);
+  std::vector<float> output1(out_size, 0.0f);
+  std::vector<float> output2(out_size, 0.0f);
+  void *outputs[3] = {output0.data(), output1.data(), output2.data()};
+
+  UnstackParameter para = {};
+  para.num_ = 3;
+  para.pre_dims_ = 8;
+  para.axis_dim_ = 3;
+  para.after_dims_ = 1;
+  Unstack(input.data(), outputs, &para, sizeof(float));
+
+  float similarity0 = get_cosine_similarity(output0.data(), benchmark0.data(), output0.size());
+  float similarity1 = get_cosine_similarity(output1.data(), benchmark1.data(), output1.size());
+  float similarity2 = get_cosine_similarity(output2.data(), benchmark2.data(), output2.size());
+  ASSERT_GT(similarity0, accuracy_threshold);
+  ASSERT_GT(similarity1, accuracy_threshold);
+  ASSERT_GT(similarity2, accuracy_threshold);
+}
+
 }  // namespace mindspore

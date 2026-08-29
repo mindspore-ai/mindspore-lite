@@ -184,6 +184,7 @@ echo 'run flatbuffers verifier ut test'
 ./lite-test --gtest_filter=ErfFp32Test.*
 ./lite-test --gtest_filter=StackFp32Test.*
 ./lite-test --gtest_filter=UnstackFp32Test.*
+./lite-test --gtest_filter=StackInferTest.*
 ./lite-test --gtest_filter=GeluFp32Test.*
 ./lite-test --gtest_filter=TriuTrilFp32Test.*
 ./lite-test --gtest_filter=DepthToSpaceFp32Test.*
