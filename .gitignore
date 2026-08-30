@@ -21,3 +21,7 @@ third_party/proto/tensorflow/versions.proto
 # IDE
 .vscode/
 .trae
+
+# AI tool artifacts (not part of the repo)
+.memsearch/
+docs/superpowers/

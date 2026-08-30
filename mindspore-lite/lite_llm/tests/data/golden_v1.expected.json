@@ -1,0 +1,89 @@
+{
+  "magic": [
+    46,
+    77,
+    83,
+    76
+  ],
+  "version": 1,
+  "alignment": 4096,
+  "kv": [
+    {
+      "key": "model.name",
+      "type": 4,
+      "value_len": 12
+    },
+    {
+      "key": "model.dtype",
+      "type": 4,
+      "value_len": 4
+    },
+    {
+      "key": "arch.num_layers",
+      "type": 1,
+      "value_len": 4
+    },
+    {
+      "key": "arch.rope_theta",
+      "type": 3,
+      "value_len": 4
+    },
+    {
+      "key": "arch.norm_eps",
+      "type": 3,
+      "value_len": 4
+    },
+    {
+      "key": "npu.max_length",
+      "type": 1,
+      "value_len": 4
+    },
+    {
+      "key": "npu.embedding_quant",
+      "type": 0,
+      "value_len": 1
+    },
+    {
+      "key": "gen.eos_token_id",
+      "type": 1,
+      "value_len": 4
+    },
+    {
+      "key": "litert.decode_variants",
+      "type": 4,
+      "value_len": 43
+    },
+    {
+      "key": "string.array",
+      "type": 5,
+      "value_len": 22
+    }
+  ],
+  "resources": [
+    {
+      "name": "npu_offline/x.omc",
+      "offset": 4096,
+      "size": 70000,
+      "access": 0
+    },
+    {
+      "name": "assets/embedding_quant.bin",
+      "offset": 77824,
+      "size": 12345,
+      "access": 0
+    },
+    {
+      "name": "vocab/vocab.bin",
+      "offset": 94208,
+      "size": 3000,
+      "access": 1
+    },
+    {
+      "name": "a.bin",
+      "offset": 98304,
+      "size": 1,
+      "access": 1
+    }
+  ],
+  "file_size": 98305
+}

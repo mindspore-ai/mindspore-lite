@@ -1,0 +1,18 @@
+# lite_llm standalone build outputs (build.sh)
+build/
+build_npu/
+build_ohos/
+build_tdd/
+output/
+
+# CANN/AscendC compile artifacts (custom_ops kernel builds)
+kernel_meta*/
+
+# Python caches and test scratch
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+check_result.json
+build/
+dist/

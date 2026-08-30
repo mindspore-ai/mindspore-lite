@@ -1,0 +1,79 @@
+# DDK environment (installed by install_ddk.sh)
+ddk_env
+package/
+
+# Python
+.venv/
+.venv-*/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Build outputs (out-of-tree, per ADR-0002 / ADR-0011)
+/build/
+/output/
+tools/model_run_tool/build/
+*.run
+*.run.json
+_CPack_Packages_
+build_out/
+
+# ascendebug generated
+debug_op.log
+simlog/
+test_data/
+test_data_*/
+!scripts/test_data/*.json
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Archives
+*.zip
+*.tar.gz
+
+# Claude Code
+.claude/plans/
+.playwright-mcp/
+
+# Generated CCE code (PyPTO JIT output)
+ascendc_ops/*/pypto_impl/gen_cce/*.cpp
+ascendc_ops/*/pypto_impl/gen_cce/*.h
+ascendc_ops/*/pypto_impl/gen_cce/*.hpp
+ascendc_ops/*/pypto_impl/gen_cce/Makefile*
+ascendc_ops/*/pypto_impl/gen_cce/tmp_build/
+
+# Non-core sub-projects
+models/
+
+# Model-specific end-to-end tests and results are local-only.
+tools/qwen2_5_0_5b/
+
+# Legacy local dev clone of BinRunner (upstream); canonical source now lives in
+# the third_party/BinRunner submodule (ADR-0015).
+hmos-binapp/
+
+# Claude Code session data
+.memsearch/
+
+# Misc generated
+*.log
+camodel_log/
+# Operator model/test artifacts
+*.onnx
+*.omc
+*.bin
+.pytest_cache/
+kernel_meta/
+kernel_meta_*/
+check_result.json
+modelVersion.txt

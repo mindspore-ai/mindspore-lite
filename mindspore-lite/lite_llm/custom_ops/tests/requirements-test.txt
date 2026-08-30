@@ -1,0 +1,6 @@
+numpy>=1.24
+onnx>=1.14
+pytest>=8.0,<9
+pytest-xdist>=3.5,<4
+torch>=2.0
+binrunner @ https://github.com/vincentzhu007/BinRunner/releases/download/v1.0.0/binrunner-1.0.0-py3-none-any.whl#sha256=fb4099ff62544862b18cbf7f97e4f2c01f90d4b73ffcbf820b3bdbc51e7c6d83

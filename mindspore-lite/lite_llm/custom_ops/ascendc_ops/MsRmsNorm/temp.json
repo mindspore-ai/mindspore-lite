@@ -1,0 +1,39 @@
+{
+  "op_type": "MsRmsNorm",
+  "data_script": "./gen_data.py",
+  "gen_data": true,
+  "attrs": {
+    "eps": 1e-5
+  },
+  "inputs": [
+    {
+      "name": "x",
+      "dtype": "float16",
+      "format": "ND",
+      "ignore": false,
+      "shape": [128, 2048],
+      "param_type": "required",
+      "data_file": "x.bin"
+    },
+    {
+      "name": "w",
+      "dtype": "float16",
+      "format": "ND",
+      "ignore": false,
+      "shape": [2048],
+      "param_type": "required",
+      "data_file": "w.bin"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "y",
+      "dtype": "float16",
+      "format": "ND",
+      "ignore": false,
+      "shape": [128, 2048],
+      "param_type": "required",
+      "data_file": "y.bin"
+    }
+  ]
+}

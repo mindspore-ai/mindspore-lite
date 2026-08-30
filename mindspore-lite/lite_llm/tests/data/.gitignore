@@ -1,0 +1,3 @@
+# golden_v1.msl is a generated binary provisioned by the CI data repo;
+# keep it out of the source tree (see gen_golden.py to regenerate locally).
+/golden_v1.msl

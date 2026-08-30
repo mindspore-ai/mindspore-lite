@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mslite-llm"
+dynamic = ["version"]
+description = "MindSpore Lite on-device LLM export toolchain (HF/GGUF -> single-file .msl)"
+requires-python = ">=3.9"
+# transformers must be 4.57.x: the exporter monkey-patches transformers.models.qwen2
+# internals and GGUF loading uses the 4.57 gguf_file= kwarg (see ../requirements.txt).
+dependencies = [
+    "torch>=2.0",
+    "transformers>=4.57,<4.58",
+    "onnx>=1.16",
+    "onnxslim>=0.1.9",
+    "gguf==0.17.1",
+    "numpy",
+    "safetensors",
+    "tqdm",
+    "accelerate",
+]
+
+[project.scripts]
+mslite-llm-export = "mslite_llm_export:main"
+
+# torch_custom stays a top-level package so `from torch_custom.ms_* import` works
+# identically in the source tree (lite_llm/custom_ops on sys.path) and after
+# installing the wheel.
+[tool.setuptools]
+packages = [
+    "utils",
+    "models",
+    "models.qwen2_5",
+    "models.qwen3",
+    "torch_custom",
+]
+py-modules = ["mslite_llm_export"]
+
+[tool.setuptools.package-dir]
+"" = "."
+"torch_custom" = "../custom_ops/torch_custom"
+
+[tool.setuptools.dynamic]
+version = {file = ["version.txt"]}

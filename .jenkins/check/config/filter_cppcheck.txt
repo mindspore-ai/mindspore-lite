@@ -43,3 +43,4 @@
 "mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/inner_prompt_flash_attention/op_host/"   "variableScope"
 # syntaxError: cppcheck 1.90 cannot parse AscendC inline DSL in softmax compute header
 "mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/inner_prompt_flash_attention/op_kernel/kernel_operator_softmax_compute_nz.h"   "syntaxError"
+"mindspore-lite/mindspore-lite/lite_llm/tests/ut/" "syntaxError"
