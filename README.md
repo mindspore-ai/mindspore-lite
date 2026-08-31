@@ -108,6 +108,15 @@ If you wish to further learn and use MindSpore Lite, please refer to the followi
 | GOT-OCR2.0 |  |  |  | DUSt3R / MASt3R |  |
 | ModernBERT-large |  |  |  |  |  |
 
+### Supported operators for cloud-side inference
+
+| Operator | Hardware Backend | Description |
+|---|---|---|
+| ChunkGatedDeltaRule ([Atlas 300I Duo](mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/chunk_gated_delta_rule/README.md) / [Atlas 800I A2](mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/chunk_gated_delta_rule/README.md)) | Atlas 300I Duo / Atlas 800I A2 | Gated Delta Rule (linear attention / linear RNN) forward operator, chunkwise with a fixed `chunkSize=64` |
+| [InnerPromptFlashAttention](mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/inner_prompt_flash_attention/README.md) | Atlas 300I Duo | Prompt Flash Attention forward fusion operator (FP16) for prefill, with `S1 != S2` and GQA/MQA support |
+| [RecurrentGatedDeltaRule](mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/recurrent_gated_delta_rule/README.md) | Atlas 300I Duo | Gated Delta Rule token-by-token recurrent forward operator for decode / multi-token prediction (MTP) |
+| [QuantMatmulW4a8](mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/quant_matmul_w4a8/README.md) | Atlas 800I A2 | W4A8 (INT4 weight / INT8 activation) quantized matrix multiplication operator for LLM Linear-layer acceleration |
+
 ### API and documentation
 
 1. API documentation:
