@@ -109,6 +109,15 @@ MindSpore Lite针对AIGC、语音类算法以及CV类模型推理，实现推理
 | GOT-OCR2.0 |  |  |  | DUSt3R / MASt3R |  |
 | ModernBERT-large |  |  |  |  |  |
 
+### 云侧推理算子支持列表
+
+| 算子 | 硬件后端 | 说明 |
+|---|---|---|
+| ChunkGatedDeltaRule ([Atlas 300I Duo](mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/chunk_gated_delta_rule/README.md) / [Atlas 800I A2](mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/chunk_gated_delta_rule/README.md)) | Atlas 300I Duo / Atlas 800I A2 | Gated Delta Rule（门控 Delta 规则）线性注意力 / 线性 RNN 前向算子，按固定 `chunkSize=64` 分块 |
+| [InnerPromptFlashAttention](mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/inner_prompt_flash_attention/README.md) | Atlas 300I Duo | Prompt Flash Attention 前向融合算子（仅 FP16），用于 prefill，支持 `S1 != S2` 与 GQA/MQA |
+| [RecurrentGatedDeltaRule](mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/recurrent_gated_delta_rule/README.md) | Atlas 300I Duo | Gated Delta Rule 逐 token 递归前向算子，用于 decode / 多 token 预测（MTP） |
+| [QuantMatmulW4a8](mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/quant_matmul_w4a8/README.md) | Atlas 800I A2 | W4A8（权重 INT4 / 激活 INT8）量化矩阵乘算子，用于 LLM Linear 层加速 |
+
 ### API与文档
 
 1. API文档：
