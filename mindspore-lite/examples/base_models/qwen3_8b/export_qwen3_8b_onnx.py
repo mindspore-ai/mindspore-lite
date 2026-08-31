@@ -1085,10 +1085,12 @@ def _text_attn_forward(attn_mod, hidden_states, cos4, sin4, attention_mask,
     qd_o = _quant_for("model.layers.%d.self_attn.o_proj" % layer_idx)
     if qd_o:
         # Quantized o_proj: row slice on w_int8 [k,n] dim0 + scale_factor [k].
+        # TP row-parallel: each rank's QBMV output is a partial sum over its
+        # input slice, must AllReduce before use (mirrors the non-quant path).
         if TP_SIZE > 1:
             q_dim_local = num_heads_local * attn_mod.head_dim
-            out_proj = _quant_proj(out, qd_o, "row",
-                                   (TP_RANK * q_dim_local, (TP_RANK + 1) * q_dim_local))
+            out_proj = allreduce_sum(_quant_proj(out, qd_o, "row",
+                                                 (TP_RANK * q_dim_local, (TP_RANK + 1) * q_dim_local)))
         else:
             out_proj = _quant_proj(out, qd_o, "row", None)
     elif TP_SIZE > 1:
