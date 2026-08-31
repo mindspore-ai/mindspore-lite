@@ -42,7 +42,7 @@ struct alignas(kTilingDataAlign) ChunkGatedDeltaRuleTilingData {
   uint32_t numChunks;
   uint32_t b;  // batch size
   uint32_t padSize;
-  uint32_t hasInitialState;
+  uint32_t hasGamma;  // optional g input is present
   float scaleValue;
   uint32_t vStep;  // tile size for V dimension in state processing
   uint32_t debug;  // debug print flag

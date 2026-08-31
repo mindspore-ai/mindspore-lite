@@ -17,8 +17,6 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-// Default chunk size (tokens per chunk) for the gated Delta rule.
-constexpr int64_t kDefaultChunkSize = 64;
 class ChunkGatedDeltaRule : public OpDef {
  public:
   explicit ChunkGatedDeltaRule(const char *name) : OpDef(name) {
@@ -37,11 +35,6 @@ class ChunkGatedDeltaRule : public OpDef {
       .DataType({ge::DT_FLOAT16})
       .Format({ge::FORMAT_ND})
       .UnknownShapeFormat({ge::FORMAT_ND});
-    this->Input("g")
-      .ParamType(REQUIRED)
-      .DataType({ge::DT_FLOAT16})
-      .Format({ge::FORMAT_ND})
-      .UnknownShapeFormat({ge::FORMAT_ND});
     this->Input("beta")
       .ParamType(REQUIRED)
       .DataType({ge::DT_FLOAT16})
@@ -52,27 +45,27 @@ class ChunkGatedDeltaRule : public OpDef {
       .DataType({ge::DT_FLOAT16})
       .Format({ge::FORMAT_ND})
       .UnknownShapeFormat({ge::FORMAT_ND});
-    this->Input("cu_seqlens")
+    this->Input("actual_seq_lengths")
       .ParamType(REQUIRED)
       .DataType({ge::DT_INT32})
       .Format({ge::FORMAT_ND})
       .UnknownShapeFormat({ge::FORMAT_ND});
-    this->Input("ssm_state_indices")
-      .ParamType(REQUIRED)
-      .DataType({ge::DT_INT32})
+    this->Input("g")
+      .ParamType(OPTIONAL)
+      .DataType({ge::DT_FLOAT})
       .Format({ge::FORMAT_ND})
       .UnknownShapeFormat({ge::FORMAT_ND});
     this->Output("out")
       .ParamType(REQUIRED)
       .DataType({ge::DT_FLOAT16})
       .Format({ge::FORMAT_ND})
-      .UnknownShapeFormat({ge::FORMAT_ND});
+      .UnknownShapeFormat({ge::FORMAT_ND})
+      .AutoContiguous();
     this->Output("final_state")
       .ParamType(REQUIRED)
       .DataType({ge::DT_FLOAT16})
       .Format({ge::FORMAT_ND})
       .UnknownShapeFormat({ge::FORMAT_ND});
-    this->Attr("chunk_size").AttrType(OPTIONAL).Int(kDefaultChunkSize);
     this->Attr("scale_value").AttrType(OPTIONAL).Float(1.0);
 
     OpAICoreConfig aicConfig;

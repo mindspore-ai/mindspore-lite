@@ -256,7 +256,9 @@ build_python_wheel_package() {
       return 0
     fi
     mkdir -pv package/mindspore_lite/lib/
-    cp ${LITE_PYTHON_PATH}/api/* package/mindspore_lite/
+    # *.py (not *) so an incidental __pycache__/ under api/ can't break this cp
+    # with "omitting directory" (which fails the build under `set -e`).
+    cp ${LITE_PYTHON_PATH}/api/*.py package/mindspore_lite/
     local pkg_name=mindspore-lite-${VERSION_STR}-linux-$1
     if [[ "$1" == "x86_64" ]]; then
       local pkg_name=mindspore-lite-${VERSION_STR}-linux-x64
@@ -299,8 +301,26 @@ build_python_wheel_package() {
     if [ -d "${INSTALL_PREFIX}/${pkg_name}/runtime/third_party/dnnl" ]; then
       cp ${INSTALL_PREFIX}/${pkg_name}/runtime/third_party/dnnl/*.so* package/mindspore_lite/lib/
     fi
-    if [ -d "${CPACK_PACKAGE_DIR}/${pkg_name}/tools/custom_kernels" ]; then
-      cp -rf ${CPACK_PACKAGE_DIR}/${pkg_name}/tools/custom_kernels package/mindspore_lite/
+    # Build AscendC custom operators into a vendor folder (one per SoC) and copy
+    # it into the wheel. The import hook (_ascend_custom_ops.ensure_installed)
+    # prepends the matching SoC's folder to ASCEND_CUSTOM_OPP_PATH at import time
+    # -- no install to $ASCEND_HOME_PATH. Only built for ACL (Ascend) targets on
+    # aarch64; skipped on x86_64 where the AscendC/CANN toolchain cannot compile
+    # Ascend kernels. Mirrors lite_boost/build.sh.
+    if [[ "X${MSLITE_ENABLE_ACL}" == "Xon" && "$1" != "x86_64" ]]; then
+      local ops_out=${BASEPATH}/build/custom_ops_out
+      # Vendor is built once in build_lite() before `make package` (shared with tar).
+      # Rebuild here only if the common stage was skipped (e.g. wheel-only dev run).
+      # CUSTOM_OPS_SKIP sidelines not-yet-compiling ops so they cannot abort the
+      # merged `binary` target and corrupt the shared binary_info_config.json.
+      # Default skips gemma_attention (WIP); set CUSTOM_OPS_SKIP="" once it compiles.
+      if [[ ! -d "${ops_out}/ascend310p" ]]; then
+        CUSTOM_OPS_SKIP="${CUSTOM_OPS_SKIP:-gemma_attention}" \
+          bash ${LITE_BASEPATH}/tools/custom_kernels/ascend_ops/build_all_ops.sh ${ops_out}
+      fi
+      # /. copies the directory *contents* so the wheel layout is
+      # custom_ops_vendor/<unit>/mslite_custom_ops/ (matches _ascend_custom_ops._vendor_root).
+      cp -rf ${ops_out}/. package/mindspore_lite/custom_ops_vendor/
     fi
     if [ -d "${INSTALL_PREFIX}/${pkg_name}/tools/converter/lib" ]; then
       cp ${INSTALL_PREFIX}/${pkg_name}/tools/converter/lib/*.so* package/mindspore_lite/lib/
@@ -542,6 +562,22 @@ build_lite() {
           cmake ${LITE_CMAKE_ARGS} -DPKG_PATH=${PKG_PATH} "${LITE_BASEPATH}/"
           cmake --build "${BASEPATH}/build" --target ${twice_target} -j$THREAD_NUM
           make install
+        fi
+      fi
+
+      # AscendC custom ops: build the vendor ONCE for both tar and wheel.
+      # Runs after `make install` (CANN toolchain env already sourced) and BEFORE
+      # `make package` so the tar install rules in package_lite.cmake can pick it
+      # up. build_python_wheel_package reuses the same output dir (idempotent skip).
+      # Skipped on x86_64: the AscendC/CANN toolchain cannot compile Ascend kernels there.
+      # CUSTOM_OPS_SKIP: sideline not-yet-compiling ops (default gemma_attention, WIP)
+      # so they don't abort the merged `binary` target and corrupt the shared
+      # binary_info_config.json (which would break every op at runtime).
+      if [[ "X${MSLITE_ENABLE_ACL}" == "Xon" && "${local_lite_platform}" != "x86_64" ]]; then
+        local ops_out=${BASEPATH}/build/custom_ops_out
+        if [[ ! -d "${ops_out}/ascend310p" ]]; then
+          CUSTOM_OPS_SKIP="${CUSTOM_OPS_SKIP:-gemma_attention}" \
+            bash ${LITE_BASEPATH}/tools/custom_kernels/ascend_ops/build_all_ops.sh ${ops_out}
         fi
       fi
 

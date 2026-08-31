@@ -38,9 +38,9 @@ struct alignas(kTilingDataAlign) ChunkGatedDeltaRuleTilingData {
   uint32_t dv;         // value head dim
   uint32_t chunkSize;  // chunk size (e.g., 64)
   uint32_t numChunks;  // number of chunks
-  uint32_t b;          // batch size
+  uint32_t b;          // batch size from initial_state
   uint32_t padSize;    // padding size
-  uint32_t hasInitialState;
+  uint32_t hasGamma;   // optional g input is present
   float scaleValue;
   uint32_t vStep;
   uint32_t debug;
