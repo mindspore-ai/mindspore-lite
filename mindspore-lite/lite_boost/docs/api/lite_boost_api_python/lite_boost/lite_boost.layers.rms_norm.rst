@@ -10,7 +10,7 @@ lite_boost.layers.rms_norm
     参数：
         - **x** (Tensor) - shape为 :math:`(N, C)` 的二维输入张量，归一化维度是最后一维。支持float16、float32，在A2等平台上额外支持bfloat16。
         - **gamma** (Tensor) - 逐列缩放因子，shape为 :math:`(C,)`，与 `x` 的最后一维匹配。
-        - **eps** (float，可选) - 为数值稳定性添加到分母的值。默认值： ``1e-6`` 。
+        - **eps** (float, 可选) - 为数值稳定性添加到分母的值。默认值： ``1e-6`` 。
 
     返回：
         Tensor, 与 `x` 相同shape和数据类型的归一化结果。

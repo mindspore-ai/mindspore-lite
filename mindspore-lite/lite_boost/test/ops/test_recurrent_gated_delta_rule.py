@@ -240,7 +240,7 @@ def _generate_test_data(batch_size, num_heads, seq_len, k_head_dim, v_head_dim, 
     }
 
 
-def _generate_310p_test_data(batch_size, seq_len, device):
+def _generate_300iduo_test_data(batch_size, seq_len, device):
     """Generate FP16 inputs using the Qwen3.5-4B recurrent-attention shape."""
     num_key_heads, num_value_heads = 16, 32
     k_head_dim = v_head_dim = 128
@@ -468,8 +468,8 @@ class TestRecurrentGatedDeltaRule:
         _print_performance_comparison("L0 Qwen3.5-2B decode", cann_time, ref_time)
 
 
-class TestRecurrentGatedDeltaRule310P:
-    """Validate the 310P custom kernel with Qwen3.5-4B GQA dimensions."""
+class TestRecurrentGatedDeltaRule300IDuo:
+    """Validate the 300I Duo custom kernel with Qwen3.5-4B GQA dimensions."""
 
     @pytest.mark.ascend_300iduo
     @pytest.mark.L0
@@ -479,7 +479,7 @@ class TestRecurrentGatedDeltaRule310P:
         device = torch.device("npu:0")
         torch.npu.set_device(device)
         torch.manual_seed(2026 + batch_size * 10 + seq_len)
-        data = _generate_310p_test_data(batch_size, seq_len, device)
+        data = _generate_300iduo_test_data(batch_size, seq_len, device)
 
         out_npu, state_npu = lite_ops.recurrent_gated_delta_rule(
             data["query"],

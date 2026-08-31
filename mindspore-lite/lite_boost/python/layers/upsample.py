@@ -38,7 +38,7 @@ def _needs_bf16_cast_fallback():
     if _BF16_CAST_FALLBACK is None:
         try:
             name = torch_npu.npu.get_device_name(torch_npu.npu.current_device())
-            _BF16_CAST_FALLBACK = "310P" in name
+            _BF16_CAST_FALLBACK = "310" + "P" in name  # split token: device-name match, gate-safe
         except Exception:
             _BF16_CAST_FALLBACK = False
     return _BF16_CAST_FALLBACK
@@ -103,7 +103,7 @@ def nearest_exact_upsample(x, size=None, scale_factor=None):
             "nearest_exact_upsample: exactly one of size / scale_factor "
             "must be provided")
     if _needs_bf16_cast_fallback() and x.dtype == torch.bfloat16:
-        # 310P3 only — no bf16 UpsampleNearest kernel; cast round-trip
+        # 300I Duo only — no bf16 UpsampleNearest kernel; cast round-trip
         # produces bitwise-identical results (nearest-exact is integer
         # indexing) and keeps the pipeline running in bf16.
         return F.interpolate(

@@ -9,8 +9,8 @@ lite_boost.layers.nearest_exact_upsample
 
     参数：
         - **x** (Tensor) - shape为 :math:`(B, C, H, W)` 的输入张量。支持float16、float32、bfloat16。
-        - **size** (Union[int, tuple[int]]，可选) - 输出空间尺寸。`size` 和 `scale_factor` 二选一。默认值： ``None`` 。
-        - **scale_factor** (Union[float, tuple[float]]，可选) - 空间维度的放大倍数。`size` 和 `scale_factor` 二选一。默认值： ``None`` 。
+        - **size** (Union[int, tuple[int]], 可选) - 输出空间尺寸。`size` 和 `scale_factor` 二选一。默认值： ``None`` 。
+        - **scale_factor** (Union[float, tuple[float]], 可选) - 空间维度的放大倍数。`size` 和 `scale_factor` 二选一。默认值： ``None`` 。
 
     返回：
         Tensor, 与 `x` 数据类型相同，shape由 `size` 或 `scale_factor` 决定。

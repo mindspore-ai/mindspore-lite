@@ -145,7 +145,95 @@ def flash_attention(
     dtype=torch.float32,
     version=None,
 ):
-    """Flash attention with NPU fallback (FA3 → FA2 → NPU)."""
+    r"""
+    Computes flash attention with automatic backend fallback.
+
+    Selects FA3, FA2, or the NPU backend (``npu_prompt_flash_attention``)
+    according to availability.  Supports varlen sequences through
+    `q_lens`/`k_lens`; when both are ``None`` every sequence is treated
+    as full length.
+
+    Notation: `B` is the batch size, `N` the number of heads, `D` the
+    head dim (``D <= 256`` on the NPU), `S` the sequence length of the
+    input `q`/`k`/`v` tensors, `lq` the query sequence length
+    (``q.size(1)``, the same value as `S`), and `lk` the key sequence
+    length (``k.size(1)``).  The output shape reuses `lq` to stress
+    that its sequence dimension matches the input query.  In varlen
+    mode `q_lens`/`k_lens` carry the per-sequence true lengths, which
+    may be shorter than the full length; when both are ``None`` every
+    sequence is treated as full length (`lq`/`lk`).
+
+    Supported only on A2; 300I Duo is not supported.  The
+    `dropout_p`, `causal`, `window_size`, `deterministic` and
+    `version` arguments are GPU-only features of the flash_attn
+    (FA2/FA3) backends; the NPU backend
+    ignores them and always computes global attention with no dropout.
+
+    Args:
+        q (Tensor): Query tensor with shape :math:`(B, S, N, D)`, on an
+            NPU device with head dim :math:`D \le 256`.  Supported dtypes
+            are float16, float32 and bfloat16.
+        k (Tensor): Key tensor with shape :math:`(B, S, N, D)`, same dtype
+            as `q`.
+        v (Tensor): Value tensor with shape :math:`(B, S, N, D)`, same
+            dtype as `q`.
+        q_lens (Union[list[int], Tensor[int32]], optional): Per-sequence
+            query lengths (length `B`) in varlen mode; may be shorter
+            than the full length. Default: ``None``.
+        k_lens (Union[list[int], Tensor[int32]], optional): Per-sequence
+            key lengths (length `B`) in varlen mode; may be shorter than
+            the full key length. Default: ``None``.
+        dropout_p (float, optional): Dropout probability; effective on the
+            GPU flash_attn FA2 backend only. Default: ``0.``.
+        softmax_scale (float, optional): Attention scaling factor; ``None``
+            means :math:`1/\sqrt{D}`. Default: ``None``.
+        q_scale (float, optional): Pre-scale applied to `q` as
+            ``q = q * q_scale``. Default: ``None``.
+        causal (bool, optional): Causal mask; effective on the GPU
+            flash_attn FA2 backend only (the NPU backend always computes
+            global attention, so ``True`` is not honored there).
+            Default: ``False``.
+        window_size (Tuple[int, int], optional): Sliding-window
+            restriction; effective on the GPU flash_attn FA2 backend
+            only. Default: ``(-1, -1)``.
+        deterministic (bool, optional): Deterministic mode; effective on
+            the GPU flash_attn FA3/FA2 backends only. Default: ``False``.
+        dtype (torch.dtype, optional): Target compute dtype, one of
+            float16, bfloat16 or float32; non-half inputs are cast before
+            computing. Default: ``torch.float32``.
+        version (int, optional): ``3`` forces FA3, falling back to FA2
+            with a warning when FA3 is unavailable; ``None`` selects
+            automatically. Effective on the GPU flash_attn FA3/FA2
+            backends only. Default: ``None``.
+
+    Returns:
+        Tensor, with shape :math:`(B, lq, N, D)`, and the same dtype as
+        the input `q`.
+
+    Raises:
+        ValueError: If `dtype` is not in {float16, bfloat16, float32}, or
+            if `q` is not on an NPU device, or if the head dim exceeds
+            256.
+        RuntimeError: If no backend is available (neither ``flash_attn``
+            nor NPU fusion attention).
+
+    Supported Platforms:
+        ``Ascend``
+
+    Examples:
+        >>> import torch
+        >>> import torch_npu
+        >>> from lite_boost.layers import flash_attention
+        >>> torch.npu.set_device(0)
+        >>> q = torch.randn(1, 16, 8, 32, device="npu")
+        >>> k = torch.randn(1, 16, 8, 32, device="npu")
+        >>> v = torch.randn(1, 16, 8, 32, device="npu")
+        >>> out = flash_attention(q, k, v)
+        >>> print(out.shape)
+        torch.Size([1, 16, 8, 32])
+        >>> print(out.dtype)
+        torch.float32
+    """
     half_dtypes = (torch.float16, torch.bfloat16, torch.float32)
     if dtype not in half_dtypes:
         raise ValueError(

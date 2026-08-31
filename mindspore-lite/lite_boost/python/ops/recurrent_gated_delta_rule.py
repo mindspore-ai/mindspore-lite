@@ -59,19 +59,19 @@ def recurrent_gated_delta_rule(
     associations of linear attention.
 
     Args:
-        query (torch.Tensor): Query tensor of shape ``[B, H_k, T, D_k]``, dtype=bfloat16.
+        query (torch.Tensor): Query tensor of shape ``[B, N_k, T, D_k]``, dtype=bfloat16.
             Must be L2-normalized (L2 norm of each head vector is 1, value range [0, 1]).
-            B=batch_size, H_k=num_key_heads, T=seq_len, D_k=key_dim.
-        key (torch.Tensor): Key tensor of shape ``[B, H_k, T, D_k]``, dtype=bfloat16.
+            B=batch_size, N_k=num_key_heads, T=seq_len, D_k=key_dim.
+        key (torch.Tensor): Key tensor of shape ``[B, N_k, T, D_k]``, dtype=bfloat16.
             Must be L2-normalized (same as query).
-        value (torch.Tensor): Value tensor of shape ``[B, H_v, T, D_v]``, dtype=bfloat16.
-            H_v=num_value_heads, D_v=value_dim. H_v must be divisible by H_k.
-        beta (torch.Tensor): Delta update step size of shape ``[B, H_v, T]``, dtype=bfloat16.
+        value (torch.Tensor): Value tensor of shape ``[B, N_v, T, D_v]``, dtype=bfloat16.
+            N_v=num_value_heads, D_v=value_dim. N_v must be divisible by N_k.
+        beta (torch.Tensor): Delta update step size of shape ``[B, N_v, T]``, dtype=bfloat16.
             Value range (0, 1). Controls the magnitude of each delta update: a larger beta
             causes new information to overwrite old memory more aggressively; a smaller
             beta tends to preserve existing memory.
         state (torch.Tensor): Recurrent state pool of shape
-            ``[state_slots, H_v, D_k, D_v]``,
+            ``[state_slots, N_v, D_k, D_v]``,
             dtype=bfloat16. Stores the cumulative key-value associations for linear attention.
             D_k is the key dimension (rows), D_v is the value dimension (columns).
             Can be initialized to zeros for the first call.
@@ -81,11 +81,11 @@ def recurrent_gated_delta_rule(
             E.g., ``[4, 3, 5]`` means 3 batches with sequence lengths 4, 3, and 5.
         ssm_state_indices (torch.Tensor): State-slot indices of shape ``[T_total]``,
             dtype=int32. Each flattened token selects one entry in the global state pool.
-        g (torch.Tensor): Global decay gate of shape ``[B, H_v, T]``, dtype=float32.
+        g (torch.Tensor): Global decay gate of shape ``[B, N_v, T]``, dtype=float32.
             **Must be negative**. ``exp(g)`` serves as the state decay factor with range (0, 1).
             The more negative ``g`` is, the faster historical information is forgotten.
             E.g., when g=-1, approximately 37% of the historical state is retained per step.
-        gk (torch.Tensor): Key-dimension gate of shape ``[B, H_v, T, D_k]``, dtype=float32.
+        gk (torch.Tensor): Key-dimension gate of shape ``[B, N_v, T, D_k]``, dtype=float32.
             **Must be negative**. ``exp(gk)`` applies per-dimension decay independently along
             the key dimension, enabling finer-grained memory control. Unlike the global gate g,
             gk operates element-wise along the D_k dimension.
@@ -100,7 +100,7 @@ def recurrent_gated_delta_rule(
     Returns:
         tuple[Tensor, Tensor]
 
-        - **out** (Tensor) — Attention output of shape ``[B, H_v, T, D_v]``, dtype=bfloat16.
+        - **out** (Tensor) — Attention output of shape ``[B, N_v, T, D_v]``, dtype=bfloat16.
           The linear attention result at each token position.
         - **state_out** (Tensor) — Updated recurrent state pool with the same shape as ``state``,
           dtype=bfloat16. Must be passed as ``state`` input in the next recurrent step to
@@ -114,24 +114,24 @@ def recurrent_gated_delta_rule(
         - This operator only supports the **decode phase** (token-by-token inference),
           with sequence length T not exceeding 8. For parallel prefill computation,
           use the chunk-level operator.
-        - Supports grouped recurrent heads where H_v is an integer multiple of H_k.
+        - Supports grouped recurrent heads where N_v is an integer multiple of N_k.
         - All input tensors must reside on the same NPU device.
         - The CANN operator stores state internally as
-          ``[state_slots, H_v, D_v, D_k]`` layout
+          ``[state_slots, N_v, D_v, D_k]`` layout
           (value dimension first). This function automatically performs the layout conversion.
 
     Examples:
         >>> import torch
         >>> import lite_boost.ops as lite_ops
         >>> device = torch.device("npu:0")
-        >>> B, H, T, Dk, Dv = 1, 64, 1, 64, 512
-        >>> query  = torch.randn(B, H, T, Dk, device=device, dtype=torch.bfloat16)
-        >>> key    = torch.randn(B, H, T, Dk, device=device, dtype=torch.bfloat16)
-        >>> value  = torch.randn(B, H, T, Dv, device=device, dtype=torch.bfloat16)
-        >>> beta   = torch.rand(B, H, T, device=device, dtype=torch.bfloat16) * 0.9 + 0.05
-        >>> state  = torch.zeros(B, H, Dk, Dv, device=device, dtype=torch.bfloat16)
-        >>> g      = -(torch.rand(B, H, T, device=device) + 0.01)
-        >>> gk     = -(torch.rand(B, H, T, Dk, device=device) + 0.01)
+        >>> B, N, T, Dk, Dv = 1, 64, 1, 64, 512
+        >>> query  = torch.randn(B, N, T, Dk, device=device, dtype=torch.bfloat16)
+        >>> key    = torch.randn(B, N, T, Dk, device=device, dtype=torch.bfloat16)
+        >>> value  = torch.randn(B, N, T, Dv, device=device, dtype=torch.bfloat16)
+        >>> beta   = torch.rand(B, N, T, device=device, dtype=torch.bfloat16) * 0.9 + 0.05
+        >>> state  = torch.zeros(B, N, Dk, Dv, device=device, dtype=torch.bfloat16)
+        >>> g      = -(torch.rand(B, N, T, device=device) + 0.01)
+        >>> gk     = -(torch.rand(B, N, T, Dk, device=device) + 0.01)
         >>> actual_seq_lengths  = torch.tensor([T], dtype=torch.int32, device=device)
         >>> ssm_state_indices   = torch.tensor([0], dtype=torch.int32, device=device)
         >>> num_accepted_tokens = torch.tensor([T], dtype=torch.int32, device=device)

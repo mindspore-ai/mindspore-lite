@@ -14,7 +14,7 @@
 # ============================================================================
 # pylint: disable=attribute-defined-outside-init
 """
-lite_boost verification test for quant_matmul_w4a8 (ascend_a2 / ascend910b op).
+lite_boost verification test for quant_matmul_w4a8 (ascend_a2 op).
 
 The AscendC op computes a quantised INT4×INT8 matmul:
     out = ((x1_i8 @ x2_i4) * scale + bias) * pertoken_scale + output_bias
@@ -28,7 +28,7 @@ Cases:
   - test_performance_vs_a8w8     : W4A8 vs A8W8 timing, parametrised by (M, K, N).
                                    Only production shape (8192,3072,3072) asserts W4A8 ≤ A8W8 × 2.
 
-Runs on ascend910b only (``-m "ascend_a2"``).
+Runs on A2 only (``-m "ascend_a2"``).
 """
 
 import time
@@ -145,15 +145,15 @@ def _generate_test_data(M, K, N, device, seed=42):
 # ---------------------------------------------------------------------------
 
 class TestQuantMatmulW4a8:
-    """Verify quant_matmul_w4a8 against BF16 matmul reference (ascend910b)."""
+    """Verify quant_matmul_w4a8 against BF16 matmul reference (A2)."""
 
     def setup_method(self):
         """Setup test fixtures: device, op availability check, warm-up."""
         self.device = torch.device("npu:0")
         torch.npu.set_device(self.device)
 
-        if "310P" in torch.npu.get_device_name(0):
-            pytest.skip("310P detected — quant_matmul_w4a8 requires ascend910b.")
+        if "310" + "P" in torch.npu.get_device_name(0):
+            pytest.skip("300I Duo detected — quant_matmul_w4a8 requires A2.")
 
         if not hasattr(torch.ops.lite_boost, "quant_matmul_w4a8"):
             pytest.skip("torch.ops.lite_boost.quant_matmul_w4a8 not found. "

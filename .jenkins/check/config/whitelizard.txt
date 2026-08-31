@@ -257,6 +257,10 @@ mindspore-lite/mindspore-lite/lite_boost/python/ops/rain_fusion.py:rain_fusion_a
 mindspore-lite/mindspore-lite/lite_boost/python/ops/recurrent_gated_delta_rule.py:recurrent_gated_delta_rule
 mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py:_gather_and_blend_tiles
 mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py:decode_patch_method
+# lite_boost: public API docstrings carry the full contract; docstring lines count as NLOC
+mindspore-lite/mindspore-lite/lite_boost/python/layers/attention.py:flash_attention
+mindspore-lite/mindspore-lite/lite_boost/python/ops/chunk_gated_delta_rule.py:chunk_gated_delta_rule
+mindspore-lite/mindspore-lite/lite_boost/python/layers/rope.py:rope_apply
 
 # lite_llm
 mindspore-lite/mindspore-lite/lite_llm/export/utils/msl_pack.py:encode_value, manifest_to_kv

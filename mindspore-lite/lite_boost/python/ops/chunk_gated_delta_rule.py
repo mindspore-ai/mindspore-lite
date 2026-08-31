@@ -16,10 +16,10 @@
 """
 ChunkGatedDeltaRule operator Python binding (prefill / chunk-level).
 
-Wraps ``torch.ops.lite_boost.chunk_gated_delta_rule`` (-> the ascend_a2 / ascend910b
+Wraps ``torch.ops.lite_boost.chunk_gated_delta_rule`` (-> the ascend_a2
 AscendC op ``aclnnChunkGatedDeltaRule``). Converts the user-friendly BNSD layout to
 the TND layout the CANN op expects, casts q/k/v/beta/state to the low dtype (bf16 OR
-fp16 — the 910B op accepts both via DataTypeList; the input dtype is followed, defaulting
+fp16 — the A2 op accepts both via DataTypeList; the input dtype is followed, defaulting
 to bf16 for fp32/other) while keeping the optional gate ``g`` as float32, and feeds
 ``actual_seq_lengths`` directly (T = sum(lengths)).
 
@@ -50,34 +50,118 @@ def chunk_gated_delta_rule(
     g=None,
     scale_value=1.0,
 ):
-    """Chunked (prefill) Gated Delta Rule on NPU (ascend910b / ascend_a2 op).
+    r"""
+    Chunked (prefill) Gated Delta Rule operator on NPU (ascend_a2 op).
 
-    Args (BNSD layout; q/k/v/beta/state are cast to the low dtype — bf16 or fp16,
-    following the input dtype; default bf16 for fp32/other):
-        query (Tensor):         [B, Nk, T, Dk].
-        key (Tensor):           [B, Nk, T, Dk].
-        value (Tensor):         [B, Nv, T, Dv].
-        beta (Tensor):          [B, Nv, T]  delta step size, in (0, 1).
-        initial_state (Tensor): [B, Nv, Dk, Dv]  incoming recurrent state
-                                (transposed to the op's Dv-first [B,Nv,Dv,Dk]).
-        actual_seq_lengths (Tensor): [B] (int32) per-batch token count;
-                                T = sum(actual_seq_lengths). A uniform T per batch is
-                                assumed by the BNSD->TND flatten.
-        g (Tensor, optional):   [B, Nv, T]  global decay gate (float32, < 0).
-                                ``None`` disables the decay gate (hasGamma=0 path).
-        scale_value (float):    attention scale applied to the query (op default 1.0).
+    Wraps ``torch.ops.lite_boost.chunk_gated_delta_rule``, which maps to
+    the CANN AscendC operator ``aclnnChunkGatedDeltaRule`` on A2.  The
+    user-facing BNSD layout is converted to the TND layout expected by
+    the CANN op; ``query``/``key``/``value``/``beta``/``initial_state``
+    are cast to the low dtype (bfloat16 or float16, following the input
+    dtype; fp32/other inputs default to bfloat16) while the optional
+    gate ``g`` stays float32, and ``actual_seq_lengths`` is passed
+    through directly (T = sum(actual_seq_lengths)).
+
+    Supported only on A2; 300I Duo is not supported.
+
+    Args:
+        query (Tensor): Query tensor with shape :math:`(B, N_k, T, D_k)`.
+            Cast to the low dtype before computation.
+        key (Tensor): Key tensor with shape :math:`(B, N_k, T, D_k)`.
+            Cast to the low dtype before computation.
+        value (Tensor): Value tensor with shape :math:`(B, N_v, T, D_v)`.
+            Cast to the low dtype before computation.
+        beta (Tensor): Delta update step size with shape :math:`(B, N_v,
+            T)`, in the range (0, 1).  Cast to the low dtype before
+            computation.
+        initial_state (Tensor): Incoming recurrent state with shape
+            :math:`(B, N_v, D_k, D_v)` (transposed to the op's
+            value-first ``[B, N_v, D_v, D_k]`` layout).
+        actual_seq_lengths (Tensor): Per-batch token counts with shape
+            :math:`(B)`, dtype int32; the total sequence length is
+            ``T = sum(actual_seq_lengths)``.  A uniform T per batch is
+            assumed by the BNSD-to-TND flatten.
+        g (Tensor, optional): Global decay gate with shape :math:`(B,
+            N_v, T)`, dtype float32, must be negative.  ``None``
+            disables the decay gate (hasGamma=0 path). Default: ``None``.
+        scale_value (float, optional): Attention scale applied to
+            `query`. Default: ``1.0``.
 
     Returns:
         tuple[Tensor, Tensor]
 
-        - **out** (Tensor) — Attention output of shape ``[B, Nv, T, Dv]``, dtype=bfloat16.
-        - **final_state** (Tensor) — Updated recurrent state of shape ``[B, Nv, Dk, Dv]``,
-          dtype=bfloat16.
+        - **out** (Tensor) — Attention output with shape :math:`(B, N_v,
+          T, D_v)`, same dtype as the low-dtype cast of the inputs
+          (bfloat16 by default).
+        - **final_state** (Tensor) — Updated recurrent state with shape
+          :math:`(B, N_v, D_k, D_v)`, same dtype as `out`.
+
+    Raises:
+        RuntimeError: If the input tensor shapes, dtypes or devices are
+            invalid, or if the CANN operator execution fails.
 
     Note:
-        Targets ascend910b only. On ascend310p the registered vendor exposes a different
-        aclnn signature (ascend_300iduo op), so this binding must not be expected to run there.
+        - This operator is supported on A2 only; 300I Duo is not
+          supported (there the registered vendor exposes a different
+          aclnn signature, the ``ascend_300iduo`` op).
+        - All input tensors must reside on the same NPU device.
+        - The CANN op accepts both bfloat16 and float16 for
+          q/k/v/beta/state via DataTypeList; the input dtype is followed
+          and fp32/other inputs default to bfloat16.  The optional gate
+          ``g`` is always float32.
+
+    Supported Platforms:
+        ``Ascend``
+
+    Examples:
+        >>> import torch
+        >>> import lite_boost.ops as lite_ops
+        >>> device = torch.device("npu:0")
+        >>> B, N, T, Dk, Dv = 1, 8, 16, 32, 64
+        >>> query = torch.randn(B, N, T, Dk, device=device, dtype=torch.bfloat16)
+        >>> key = torch.randn(B, N, T, Dk, device=device, dtype=torch.bfloat16)
+        >>> value = torch.randn(B, N, T, Dv, device=device, dtype=torch.bfloat16)
+        >>> beta = torch.rand(B, N, T, device=device, dtype=torch.bfloat16) * 0.9 + 0.05
+        >>> initial_state = torch.zeros(B, N, Dk, Dv, device=device, dtype=torch.bfloat16)
+        >>> actual_seq_lengths = torch.tensor([T], dtype=torch.int32, device=device)
+        >>> out, final_state = lite_ops.chunk_gated_delta_rule(
+        ...     query, key, value, beta, initial_state, actual_seq_lengths)
+        >>> print(out.shape)
+        torch.Size([1, 8, 16, 64])
+        >>> print(final_state.shape)
+        torch.Size([1, 8, 32, 64])
+        >>> print(out.dtype)
+        torch.bfloat16
     """
+    if any(not torch.is_tensor(t) for t in
+           (query, key, value, beta, initial_state, actual_seq_lengths)):
+        raise RuntimeError(
+            "query, key, value, beta, initial_state and actual_seq_lengths "
+            "must be tensors.")
+    device = query.device
+    if any(t.device != device for t in
+           (key, value, beta, initial_state, actual_seq_lengths)):
+        raise RuntimeError(
+            "all input tensors must be on the same device as query.")
+    if query.dim() != 4 or key.dim() != 4 or value.dim() != 4:
+        raise RuntimeError(
+            "query, key and value must be 4-D [B, N, T, D], but got "
+            f"{[tuple(t.shape) for t in (query, key, value)]}.")
+    if beta.dim() != 3:
+        raise RuntimeError(
+            f"beta must be 3-D [B, Nv, T], but got {tuple(beta.shape)}.")
+    if initial_state.dim() != 4:
+        raise RuntimeError(
+            f"initial_state must be 4-D [B, Nv, Dk, Dv], but got "
+            f"{tuple(initial_state.shape)}.")
+    if actual_seq_lengths.dim() != 1:
+        raise RuntimeError(
+            f"actual_seq_lengths must be 1-D [B], but got "
+            f"{tuple(actual_seq_lengths.shape)}.")
+    if query.size(1) != key.size(1):
+        raise RuntimeError(
+            "query and key must have the same number of heads, but got "
+            f"{query.size(1)} and {key.size(1)}.")
     batch_size = query.shape[0]
     num_heads_q = query.shape[1]
     seq_len = query.shape[2]
@@ -97,7 +181,7 @@ def chunk_gated_delta_rule(
     # ---- state layout: user [B,Nv,Dk,Dv] -> op [B,Nv,Dv,Dk] ----
     state_cann = initial_state.transpose(-1, -2).contiguous()
 
-    # ---- low dtype: the 910B op accepts BOTH bf16 and fp16 for q/k/v/beta/state. Follow the
+    # ---- low dtype: the A2 op accepts BOTH bf16 and fp16 for q/k/v/beta/state. Follow the
     #      input dtype (bf16 or fp16); default to bf16 for fp32/other. g stays float32. ----
     low_dtype = torch.bfloat16
     if query.dtype in (torch.bfloat16, torch.float16):
