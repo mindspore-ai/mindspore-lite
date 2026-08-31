@@ -1,0 +1,7 @@
+Parallel:
+  dit:
+    alg: CP  # current support [CP]
+    world_size: 2
+  vae:
+    alg: DP  # current support [DP]
+    world_size: 2

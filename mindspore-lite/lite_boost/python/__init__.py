@@ -27,3 +27,14 @@ try:
     _ensure_ascend_ops()
 except Exception:  # pylint: disable=broad-except
     pass
+
+__all__ = ["BoostManager"]
+
+# BoostManager (lite_boost.manager) is dependency-free; initialize_usp
+# (re-exported by lite_boost.parallel) pulls in torch/torch_npu at import
+# time. Guarded so `import lite_boost` (and lite_boost.ops) still works on
+# hosts without NPU dependencies installed.
+try:
+    from lite_boost.manager import BoostManager
+except ImportError:
+    pass

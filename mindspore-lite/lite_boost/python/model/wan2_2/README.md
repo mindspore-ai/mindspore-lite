@@ -44,13 +44,14 @@ pip install -e .
 
 ### 基本用法
 
-LiteBoost 通过 `ParallelManager` 一行接入，自动对 Wan2.2 pipeline 应用 DiT CP 和 VAE DP。
+LiteBoost 通过 `BoostManager` 一行接入，自动对 Wan2.2 pipeline 应用 DiT CP 和 VAE DP。
 
 以下示例为简化版推理脚本（非 Wan2.2 自带的 `generate.py`，后者包含复杂的命令行参数处理，此处仅为说明 LiteBoost 的接入方式）：
 
 ```python
 import torch_npu
-from lite_boost.parallel import initialize_usp, ParallelManager
+from lite_boost import BoostManager
+from lite_boost.parallel import initialize_usp
 from wan.configs import WAN_CONFIGS
 from wan.textimage2video import WanTI2V
 
@@ -66,7 +67,8 @@ pipe = WanTI2V(config=cfg, checkpoint_dir=ckpt, device_id=local_rank,
                t5_cpu=True, convert_model_dtype=True)
 
 # 3. 一行启用并行
-ParallelManager(pipe)
+boost_manager = BoostManager()
+pipe = boost_manager(pipe)
 
 # 4. 正常推理
 video = pipe.generate(prompt, img=img, size=(832, 480),

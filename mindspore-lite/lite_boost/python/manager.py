@@ -14,12 +14,13 @@
 # limitations under the License.
 # ============================================================================
 r"""
-ParallelManager — one-line model parallelization for distributed inference.
+BoostManager — one-line model parallelization for distributed inference.
 
-This module provides the :func:`initialize_usp` function and the
-:class:`ParallelManager` class, which together enable distributed inference
-on supported models with minimal code changes. Two parallelism strategies
-are applied automatically based on the model type:
+This module provides the :class:`BoostManager` class, which enables
+distributed inference on supported models with minimal code changes. Call
+:func:`lite_boost.parallel.initialize_usp` first to set up the HCCL distributed
+environment (implementation lives in ``lite_boost/parallel/_initializer.py``).
+Two parallelism strategies are applied automatically based on the model type:
 
 - **Ulysses Sequence Parallel (USP)** for DiT models — sequence-dimension
   parallelism via ``all_to_all`` communication around attention layers.
@@ -30,76 +31,43 @@ Usage:
     >>> import os
     >>> os.environ["RANK"] = "0"
     >>> os.environ["WORLD_SIZE"] = "1"
-    >>> from lite_boost.parallel import initialize_usp, ParallelManager
+    >>> from lite_boost import BoostManager
+    >>> from lite_boost.parallel import initialize_usp
     >>> from wan.textimage2video import WanTI2V
     >>> initialize_usp()
     >>> pipe = WanTI2V(config=cfg, checkpoint_dir=ckpt_dir, ...)
-    >>> ParallelManager(pipe)
+    >>> boost_manager = BoostManager()
+    >>> pipe = boost_manager(pipe)
+    >>> # Optionally select per-module optimizations via a YAML config file:
+    >>> pipe = boost_manager(pipe, config="boost.yaml")
 """
-import os
-
-import torch
-import torch.distributed as dist
-import torch_npu
 
 
-def initialize_usp():
-    r"""
-    Initialize the HCCL distributed environment for parallel inference.
+def _load_config(config):
+    """Parse the YAML config file into a dict (``None`` passes through).
 
-    This function configures the NPU runtime settings and initializes the HCCL
-    distributed process group by reading the following environment variables:
-
-    - ``RANK``: Local rank of the current process. Default: ``0``.
-    - ``WORLD_SIZE``: Total number of distributed processes. Default: ``1``.
-    - ``MASTER_ADDR``: IP address of the master node. Default: ``"127.0.0.1"``.
-    - ``MASTER_PORT``: Port of the master node. Default: ``29502``.
-    - ``NUM_THREADS``: Number of CPU threads per process. Default: ``24``.
-
-    If the distributed process group has not been initialized, this function will
-    initialize it with the ``hccl`` backend. After initialization, the NPU device
-    corresponding to ``RANK`` is set as the active device.
-
-    Note:
-        This function must be called before constructing :class:`ParallelManager`.
-        It is typically invoked at the entry point of a distributed training or
-        inference script.
-
-    Raises:
-        RuntimeError: If HCCL process group initialization fails.
-
-    Examples:
-        >>> import os
-        >>> os.environ["RANK"] = "0"
-        >>> os.environ["WORLD_SIZE"] = "1"
-        >>> from lite_boost.parallel import initialize_usp
-        >>> initialize_usp()
+    The dict is forwarded to the detected model's boost function, which
+    reads the sections it supports (e.g. ``Parallel.dit`` / ``Parallel.vae``
+    for Qwen-Image-Edit) and ignores the rest.
     """
-    torch.npu.config.allow_internal_format = False
-    torch.npu.set_compile_mode(jit_compile=False)
+    if config is None:
+        return None
+    import yaml  # deferred so importing this module stays dependency-free
 
-    local_rank = int(os.getenv("RANK", "0"))
-    world_size = int(os.getenv("WORLD_SIZE", "1"))
-    master_addr = str(os.getenv("MASTER_ADDR", "127.0.0.1"))
-    port = int(os.getenv("MASTER_PORT", "29502"))
-
-    torch.set_num_threads(int(os.getenv("NUM_THREADS", "24")))
-
-    if not dist.is_initialized():
-        dist.init_process_group(
-            backend="hccl",
-            init_method=f"tcp://{master_addr}:{port}",
-            world_size=world_size,
-            rank=local_rank,
-        )
-    torch_npu.npu.set_device(local_rank)
+    with open(config, "r", encoding="utf-8") as f:
+        parsed = yaml.safe_load(f)
+    if parsed is None:
+        return {}
+    if not isinstance(parsed, dict):
+        raise ValueError(f"Config file must contain a YAML mapping: {config}")
+    return parsed
 
 
-class ParallelManager:
+class BoostManager:
     r"""
     Modify a supported model in-place for distributed parallel inference.
 
-    :class:`ParallelManager` wraps a supported model or pipeline and patches
+    :class:`BoostManager` wraps a supported model or pipeline and patches
     it in-place for multi-NPU parallel inference. Two parallelism strategies
     are applied automatically based on the detected model components:
 
@@ -121,8 +89,13 @@ class ParallelManager:
     to work normally.
 
     Args:
-        target (object): A supported pipeline object to be parallelized.
-            Supported classes include ``WanT2V`` and ``WanTI2V``.
+        target (object, optional): A supported pipeline object to be
+            parallelized. Supported classes include ``WanT2V`` and
+            ``WanTI2V``. When omitted, a :class:`BoostManager` instance is
+            returned for later use.
+        config (str, optional): Path to a YAML file that lets the user
+            select which module optimizations to enable, parsed into a
+            dict and forwarded to the model's boost function.
 
     Returns:
         object, the same instance modified in-place with USP-patched
@@ -136,14 +109,27 @@ class ParallelManager:
         >>> import os
         >>> os.environ["RANK"] = "0"
         >>> os.environ["WORLD_SIZE"] = "1"
-        >>> from lite_boost.parallel import initialize_usp, ParallelManager
+        >>> from lite_boost import BoostManager
+        >>> from lite_boost.parallel import initialize_usp
         >>> from wan.textimage2video import WanTI2V
         >>> initialize_usp()
         >>> pipe = WanTI2V(config=cfg, checkpoint_dir=ckpt_dir, ...)
-        >>> ParallelManager(pipe)
+        >>> boost_manager = BoostManager()
+        >>> pipe = boost_manager(pipe)
+        >>> # or with a per-module optimization config:
+        >>> pipe = boost_manager(pipe, config="boost.yaml")
     """
 
-    def __new__(cls, target):
+    def __new__(cls, target=None, config=None):
+        # One-step shortcut: BoostManager(pipe) patches and returns the model.
+        if target is not None:
+            from lite_boost.model import setup_model
+            setup_model(target, config=_load_config(config))
+            return target
+        # Two-step usage: boost_manager = BoostManager(); pipe = boost_manager(pipe).
+        return super().__new__(cls)
+
+    def __call__(self, target, config=None):
         from lite_boost.model import setup_model
-        setup_model(target)
+        setup_model(target, config=_load_config(config))
         return target

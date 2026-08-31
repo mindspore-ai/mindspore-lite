@@ -184,7 +184,7 @@ setup(
     package_data={"lite_boost": _get_package_data()},
     include_package_data=True,
     python_requires=">=3.8",
-    install_requires=["torch"],
+    install_requires=["torch", "pyyaml>=6.0"],
     cmdclass={
         "build_py": BuildPy,
         **({"bdist_wheel": BDistWheel} if _bdist_wheel is not None else {}),

@@ -14,7 +14,7 @@
 # limitations under the License.
 # ============================================================================
 """
-Model adapter registry for ParallelManager.
+Model adapter registry for BoostManager.
 
 Model types are detected with a lookup table (see _MODEL_MATCH_TABLE):
 entries are matched in order by class-name prefix, plus optional
@@ -63,9 +63,14 @@ def detect_model_type(model) -> str:
     )
 
 
-def setup_model(model):
-    """Dispatch model setup based on detected model type."""
+def setup_model(model, config=None):
+    """Dispatch model setup based on detected model type.
+
+    ``config`` is the dict parsed from the user's YAML file (or ``None``);
+    it is forwarded to the model's boost function, which reads the sections
+    it supports (e.g. ``Parallel.dit`` / ``Parallel.vae``) and ignores the rest.
+    """
     module_key = detect_model_type(model)
     pkg, fn = _BOOST_REGISTRY[module_key]
     mod = importlib.import_module(pkg, package=__name__)
-    getattr(mod, fn)(model)
+    getattr(mod, fn)(model, config=config)
