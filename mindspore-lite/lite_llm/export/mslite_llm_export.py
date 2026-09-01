@@ -135,7 +135,7 @@ def detect_model_type(model):
         reader = GGUFReader(model)
         try:
             arch = reader.fields["general.architecture"].parts[-1].tobytes().decode("utf-8")
-            layers = int(reader.fields[f"{arch}.block_count"].parts[-1])
+            layers = int(reader.fields[f"{arch}.block_count"].parts[-1].item())
         except KeyError as exc:
             raise ValueError(f"GGUF metadata missing required field: {exc}") from exc
     else:
