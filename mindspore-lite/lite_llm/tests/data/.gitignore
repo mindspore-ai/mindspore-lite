@@ -1,3 +1,4 @@
-# golden_v1.msl is a generated binary provisioned by the CI data repo;
-# keep it out of the source tree (see gen_golden.py to regenerate locally).
+# golden_v1.msl is deterministically regenerable (gen_golden.py); pytest
+# (tests/py/conftest.py) and CMake (tests/CMakeLists.txt) auto-generate it
+# when missing, so it stays out of the source tree.
 /golden_v1.msl

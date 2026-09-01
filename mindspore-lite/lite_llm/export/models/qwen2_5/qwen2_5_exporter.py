@@ -67,7 +67,7 @@ from utils.export_quant import (
     quantize_weight_g32_4bit_nd,
 )
 
-from .qwen2_5_patch import apply_qwen2_patch
+from .qwen2_5_wrapper import Qwen2NnrtWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -95,10 +95,10 @@ class Qwen2Onnx:
         """Load the HF model in fp16 and validate the Qwen2.5-0.5B architecture.
 
         ``model_path`` may be a HF directory or a ``.gguf`` file.  GGUF
-        skeletons are dequantized by transformers 4.57 (``gguf_file=`` kwarg);
-        the real Q4_0 weights are injected afterwards by ``gguf_loader`` -- but
-        the q/k/v attention biases and layer norms are REAL and stay in the
-        exported graph.
+        skeletons are dequantized by transformers via the ``gguf_file=`` kwarg
+        (requires transformers >= 4.57); the real Q4_0 weights are injected
+        afterwards by ``gguf_loader`` -- but the q/k/v attention biases and
+        layer norms are REAL and stay in the exported graph.
         """
         is_gguf = os.path.isfile(model_path) and model_path.endswith(".gguf")
         if is_gguf:
@@ -183,8 +183,12 @@ class Qwen2Onnx:
             attention_mask,
             past_key_values,
         )
+        # Trace the NNRT wrapper (Ms* ops + submodule refs) instead of the HF
+        # model — the wrapper's forward emits ``custom::`` ONNX nodes directly,
+        # so no transformers monkey-patch is needed.
+        wrapper = Qwen2NnrtWrapper(self.model, self.config)
         torch.onnx.export(
-            self.model,
+            wrapper,
             inputs,
             model_path,
             input_names=input_names,
@@ -222,8 +226,8 @@ class Qwen2Onnx:
     def rope_sin_cos_save(self, cos_path, sin_path, seq_len):
         """Save the RoPE cos/sin constants (fp16, [seq_len, head_dim] flattened).
 
-        transformers 4.57: RoPE lives on ``Qwen2Model.rotary_emb``; forward
-        takes position_ids and returns [batch, seq_len, head_dim].
+        RoPE lives on ``Qwen2Model.rotary_emb``; forward takes position_ids and
+        returns [batch, seq_len, head_dim].
         """
         input_embed = torch.rand(1, seq_len, self.hidden_size, dtype=torch.float16).to(device)
         position_ids = torch.arange(0, seq_len).unsqueeze(0)
@@ -326,7 +330,6 @@ def export_qwen2_5(
         raise ValueError("max_length must be a multiple of chunk_size (NNRT chunked prefill contract)")
 
     os.makedirs(output_dir, exist_ok=True)
-    apply_qwen2_patch()
 
     exporter = Qwen2Onnx()
     exporter.load(model_dir, layers)
