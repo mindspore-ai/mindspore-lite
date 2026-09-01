@@ -266,15 +266,17 @@ int GroupConvolutionResize(KernelBase *self) {
   GroupConvolutionStruct *group_conv = (GroupConvolutionStruct *)self;
   NNACL_CHECK_NULL_RETURN_ERR(group_conv);
 
-  (void)ConvBaseUpdateComputeInfo(&group_conv->conv_base_);
-  self->thread_nr_ = NNACL_MIN(NNACL_MAX(1, self->thread_nr_), group_conv->conv_base_.compute_.in_hw_);
-  self->thread_nr_ = NNACL_MIN(NNACL_MAX(1, self->thread_nr_), group_conv->conv_base_.compute_.in_hw_);
+  int ret = ConvBaseUpdateComputeInfo(&group_conv->conv_base_);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
+  self->thread_nr_ = NNACL_MIN(NNACL_MAX(1, self->thread_nr_), NNACL_MAX(1, group_conv->conv_base_.compute_.in_hw_));
 
   GroupConvUpdateShape(group_conv);
 
   for (int i = 0; i < group_conv->group_; ++i) {
     group_conv->group_convs_[i]->thread_nr_ = self->thread_nr_;
-    int ret = group_conv->group_convs_[i]->Resize(group_conv->group_convs_[i]);
+    ret = group_conv->group_convs_[i]->Resize(group_conv->group_convs_[i]);
     if (ret != NNACL_OK) {
       return ret;
     }

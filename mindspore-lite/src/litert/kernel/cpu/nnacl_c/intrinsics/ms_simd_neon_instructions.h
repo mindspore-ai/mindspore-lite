@@ -239,14 +239,14 @@ static inline MS_FLOAT32X4 VexpFp32(MS_FLOAT32X4 input) {
 }
 
 static inline void simd_exp128(MS_FLOAT32X4 input, float *dst) {
-  static MS_FLOAT32X4 maxv = {88.72283935546875f, 88.72283935546875f, 88.72283935546875f, 88.72283935546875f};
+  static MS_FLOAT32X4 maxv = {88.0f, 88.0f, 88.0f, 88.0f};
   static MS_FLOAT32X4 minv = {-87.3365478515625f, -87.3365478515625f, -87.3365478515625f, -87.3365478515625f};
   input = MS_MAXQ_F32(minv, MS_MINQ_F32(input, maxv));
   MS_STQ_F32(dst, VexpFp32(input));
 }
 
 static inline MS_FLOAT32X4 simd_exp128_f32(MS_FLOAT32X4 input) {
-  static MS_FLOAT32X4 maxv = {88.72283935546875f, 88.72283935546875f, 88.72283935546875f, 88.72283935546875f};
+  static MS_FLOAT32X4 maxv = {88.0f, 88.0f, 88.0f, 88.0f};
   static MS_FLOAT32X4 minv = {-87.3365478515625f, -87.3365478515625f, -87.3365478515625f, -87.3365478515625f};
   input = MS_MAXQ_F32(minv, MS_MINQ_F32(input, maxv));
   return VexpFp32(input);

@@ -40,7 +40,7 @@ static inline void single_exp_fp16(float16_t src, float16_t *dst) {
   static float param[] = {0.693147f, 1.0f / 120, 1.0f / 24, 1.0f / 6, 1.0f / 2, 1.0f};
   int integer;
   if (src > 0) {
-    src = MSMIN(88.72283935546875f, src);
+    src = MSMIN(88.0f, src);  // margin below logf(FLT_MAX) to avoid int_exp overflow at the boundary
     integer = (float)src * 1.44269504088896341f + 0.5f;
   } else {
     src = MSMAX(-87.3365478515625f, src);
