@@ -1,164 +1,105 @@
 ---
-name: precision-troubleshooting
-description: MindSpore Lite MindIR模型精度问题定位技能。覆盖从CANN Profiling对比分析定位可疑算子、配置算子Dump、到最终对比Dump数据确定精度差异根因算子的全流程。
+name: precision_troubleshooting
+description: MindSpore Lite（Ascend）云侧推理精度保障总攻略。覆盖 Torch→ONNX→MindIR 三阶段精度对齐、fp32/混合精度配置、Custom 融合算子对接排查、以及跨 CANN 版本精度差异的算子级定位。本文为总览与索引，细化流程见 references/。
 ---
 
-# MindSpore Lite 云侧推理模型精度问题定位技能
+# Precision（MindSpore Lite / Ascend 云侧推理）
 
-本技能聚焦"MindSpore Lite ONNX→MindIR 模型转换后精度差异定位"场景：当不同 CANN 版本下推理结果不一致时，通过 Profiling 对比和 CANN 算子 Dump 功能，从算子级别定位导致精度差异的根本原因。
+## 目标
+
+确保模型从 PyTorch 导出 ONNX、再经 MindSpore Lite 转换为 MindIR 后，在 Ascend 上推理的精度与原始 Torch CPU 一致；并在出现精度差异时，能定位到根因算子。
+
+> **本 skill 的能力边界**：定位到具体算子导致的精度问题；修复则视情况——
+> - 通过混合精度配置（fp32 黑名单）规避的精度问题，可在本 skill 流程内直接解决
+> - 单算子经隔离验证能复现精度问题，且确认非模型导出/对接问题，则需交由 **MindSpore Lite 开发者**进一步排查单算子实现
+> - 属于 CANN 算子实现的精度问题，需由 **CANN 侧相关责任人**修复
+>
+> 即：本 skill 负责"定位到根因算子"，修复主体可能是配置（自助）、MindSpore Lite 代码、或 CANN 算子（需对应责任人）。
+
+> 本文档是**总览与索引**：给出精度保障的总体策略与两个切入场景（三阶段对齐 / 跨版本定位），各场景的完整流程落到 `references/` 下独立文档，便于持续补充。
 
 ## 何时调用
 
-- 用户在不同 CANN 版本下使用同一 MindIR 模型推理，发现输出结果存在精度差异
-- 用户需要从算子级别定位精度差异根因，而非仅判断整体输出是否一致
-- 用户已获取两个 CANN 版本的 `mindstudio_profiler_output` 数据，需要对比分析定位可疑算子
-- 用户需要配置 CANN 算子 Dump 功能来验证特定算子的输入输出精度
+- 需要验证 Torch CPU、ONNX、MindIR 三者精度是否对齐
+- 发现 ONNX 推理结果与 Torch CPU 不一致，需要定位精度问题
+- 发现 MindIR 推理结果与 ONNX 不一致，需要定位精度问题
+- 需要通过 fp32/混合精度配置解决 MindIR 精度问题
+- 怀疑 Custom 融合算子对接引入精度问题，需要隔离验证
+- 在不同 CANN 版本下、同一 MindSpore Lite 版本用 `convert` 转换出的不同 MindIR 模型，推理输出结果存在精度差异
+- 需要从算子级别定位精度差异根因，而非仅判断整体输出是否一致
 
-## 术语与前提
+## 两个切入场景
 
-- 离线转换工具：`converter_lite`（或环境里别名 `Convert`），将 ONNX 模型转换为 `.mindir` 模型文件
-- Profiling 数据：`mindstudio_profiler_output/op_summary_*.csv`，包含算子维度 Block Num、Mix Block Num、Format 等信息
-- CANN Dump：CANN 框架提供的算子级数据导出功能，可 dump 指定算子的输入输出 tensor 数据
-- 对比基线：OK 版本（精度正确） vs NOT_OK 版本（精度异常），需在相同输入数据下分别推理并对比
+精度问题按"差异出现的环节"分两类，各自走不同的定位流程：
 
-## 精度定位流程
+| 场景 | 典型现象 | 核心方法 | 细节文档 |
+|------|---------|---------|---------|
+| **A. 三阶段对齐** | Torch→ONNX→MindIR 任意相邻两者输出对不上 | 逐层/逐算子对比、fp32/混合精度调优、ONNX 添加中间输出定位 | [references/three_stage_alignment.md](references/three_stage_alignment.md) |
+| **B. 跨 CANN 版本定位** | 同一 MindSpore Lite 版本下，不同 CANN 版本用 `convert` 转换出的不同 MindIR 推理输出不一致 | Profiling 对比定位可疑算子、CANN Dump 对比算子输入输出 | [references/cann_dump_locating.md](references/cann_dump_locating.md) |
 
-### Step 1：Profiling 对比分析（定位可疑算子）
+> ⚠️ **动手前必读（强制）**：上表是「场景 → 细化文档」的匹配表。`references/` **不会随 skill 自动加载**——确定属于哪个场景后，**必须先用 `Read` 工具读对应的 `references/` 文档**，再动手。各场景的命令模板、配置文件示例、判断阈值、归因逻辑只存在于细化文档中；只读本文件就动手，必然遗漏关键步骤。
 
-从两个 CANN 版本（OK 版本和 NOT_OK 版本）的 `mindstudio_profiler_output/op_summary_*.csv` 文件中筛选存在差异的算子。
+## 通用原则（两个场景都必须遵守）
 
-```bash
-# 定位 Block Num 差异算子
-diff <(grep "Block" ok/mindstudio_profiler_output/op_summary_*.csv | sort) \
-     <(grep "Block" not_ok/mindstudio_profiler_output/op_summary_*.csv | sort)
+1. **统一测试输入**：构造一份固定的 numpy 输入数据（`test_input.npz`），所有对比阶段共用，避免输入差异污染精度判断。
+2. **先确认基线再归因**：归因到某类问题（如 Custom 算子对接）前，必须先确认更基础的版本是 OK 的（如 fused MindIR 有问题，需先确认 non-fuse MindIR 精度 OK，才能归因到 Custom）。
+3. **精度判断指标**：默认阈值统一为 max_abs < 1e-3 且 cosine > 0.999。
+   > 该阈值适用于多数场景；但图片生成、视频生成、LLM 等场景下，数值差异不一定反映最终效果差异，**能保证端到端效果符合预期即可**。
+   > **不确定时交用户判定**：若数值指标略超阈值但无法判断是否影响实际效果，应将 MindIR 与 Torch CPU 的端到端结果（生成的图片/视频/文本输出）提供给用户，由用户判断是否可接受，而非仅凭数值阈值一票否决。
+4. **ONNX 基线用 non-fuse 版本**：带 Custom 融合算子的 ONNX 无法跑 ONNX Runtime，精度基线始终用未适配融合算子的 non-fuse ONNX。
+5. **不凭记忆写格式转换代码**：涉及 CANN dump 的 FRACTAL_NZ 等 fractal 排布与 ND 格式转换时，优先用 `msaccucmp.py` 工具自带功能，勿手写 transpose/reshape。
+6. **产物可复现**：保留每次尝试的导出/转换/推理/精度对比日志，记录对应模型路径，便于回溯。
+
+## 场景 A：三阶段对齐（Torch → ONNX → MindIR）
+
+模型迁移到 Ascend 推理的精度保障主流程，按三个阶段推进：
+
+```
+阶段1: Torch CPU vs ONNX    ──通过──→ 阶段2
+                              └─不通过→ 逐层定位 Torch vs ONNX 差异
+
+阶段2: ONNX vs MindIR       ──通过──→ 三者对齐，完成
+        ├─ 前置: 确认 ONNX 基线为 non-fuse 版本
+        ├─ non-fuse MindIR 不通过 → Step 2.4 常规定位（fp32/混合精度/中间输出）
+        └─ fused MindIR 不通过（前提: non-fuse 已 OK）→ 归因 Custom 对接
 ```
 
-关键对比指标：
-- **Block Num**：算子 tiling 分块数量，可用于评估算子运行拆分的子任务数据量
-- **Mix Block Num**：混合分块数量（与精度直接相关）
-- **Format**：数据排布格式（NCHW、NHWC、NCHWc 等），数据排布差异可能引入数值精度变化
+阶段 2 的修复路径是渐进式的：默认配置 → force_fp32 → 混合精度（fp32 黑名单）→ ONNX 添加中间输出逐算子定位。大模型转换耗时长时可降层数加速定位。
 
-通过交叉对比定位可疑算子后，下一步通过 Dump 验证。
+完整流程见 [references/three_stage_alignment.md](references/three_stage_alignment.md)。
 
-### Step 2：配置 CANN Dump 功能
+## 场景 B：跨 CANN 版本精度定位
 
-#### dump_config.ini
+同一 MindSpore Lite 版本下，不同 CANN 版本用 `convert` 转换出的不同 MindIR 推理结果不一致时的算子级定位流程：
 
-```ini
-[ascend_context]
-dump_config_file=./dump.json
+```
+Step 1: Profiling 对比（OK vs NOT_OK）→ 定位可疑算子（Block Num / Mix Block Num / Format 差异）
+Step 2: 配置 CANN Dump（dump.json + dump_config.ini）
+Step 3: 触发 Dump 推理 + msaccucmp.py 转 npy
+Step 4: 对比同一算子的输入输出 → 输入一致输出不一致 = 根因算子
 ```
 
-#### dump.json
+完整流程见 [references/cann_dump_locating.md](references/cann_dump_locating.md)。
 
-```json
-{
-    "dump":{
-        "dump_list":[
-            {
-                "model_name":"模型名",
-                "layer":[
-                    "ScatterElements_2740",
-                    "Pow_2744/SquareReduceMean_2745"
-                ]
-            }
-        ],
-        "dump_path":"/path/to/dump",
-        "dump_mode":"all",
-        "dump_op_switch":"off"
-    }
-}
-```
+## 与其他 skill 的关系
 
-字段说明：
-- **model_name**：MindIR 模型名称（不含 .mindir 后缀），必须与模型文件名一致
-- **layer**：要 dump 的算子名称列表，格式为 `node_name` 或 `node_name/sub_op_name`
-- **dump_path**：dump 文件输出目录
-- **dump_mode**：`all` 表示 dump 算子的输入和输出
-- **dump_op_switch**：设置为 `"off"` 表示仅 dump `dump_list` 中指定的算子
+- **performance-optimization**：精度对齐是性能优化的前置约束（任何融合/替换/量化改写都要做功能一致性验证）。本 skill 的 profiling 采集方法直接引用 [open-source-model-migration/references/get_profiling_data.md](../open-source-model-migration/references/get_profiling_data.md)。
+- **open-source-model-migration**：模型导出阶段的精度验证（Torch vs ONNX）属于本 skill 场景 A 的阶段 1。
 
-### Step 3：触发 Dump 并转换数据
+## 执行检查清单（两个场景通用）
 
-#### 推理触发 Dump
+1. 统一测试输入已保存（`test_input.npz`），所有对比阶段共用
+2. 已明确属于场景 A（三阶段对齐）还是场景 B（跨版本定位），并 Read 了对应 references 文档
+3. 精度对比阈值采用默认值（max_abs < 1e-3 / cosine > 0.999）
+4. 数值略超阈值且场景为图/视频生成、LLM 时，已向用户提供 MindIR vs Torch CPU 的端到端结果供判定，而非一票否决
+5. 归因某类问题前，已确认更基础的版本是 OK 的
+6. 涉及 Custom 算子时，已用 non-fuse ONNX/MindIR 作为基线
+7. 涉及 CANN dump 时，已用 msaccucmp 工具处理格式转换，未手写 reshape
+8. 最终精度满足阈值，或已定位到根因算子并明确修复责任归属（混合精度配置自助 / MindSpore Lite 开发者 / CANN 侧责任人）
 
-```python
-import mindspore_lite as mslite
+## 参考文档索引
 
-net = mslite.Model()
-context = mslite.Context()
-context.target = ["ascend"]
-context.ascend.device_id = 0
+细化流程文档（位于 `references/`）：
 
-config_path = "dump_config.ini"
-net.build_from_file("model.mindir", mslite.ModelType.MINDIR, context, config_path=config_path)
-
-inputs_np = [input0, input1]  # 实际输入数据
-res = net.predict(inputs_np)
-```
-
-运行推理后，会在 `dump_path` 下生成算子的输入输出 bin 文件。
-
-#### bin 转 npy
-
-使用 CANN 提供的 msaccucmp 工具将 dump 出的 bin 文件转换为 npy 格式：
-
-```bash
-DUMP_DIR="/path/to/dump/20260701113705/0/model_name/1/0"
-OUTPUT_DIR="/path/to/dump/20260701113705"
-
-python ${ASCEND_HOME_PATH}/tools/operator_cmp/compare/msaccucmp.py convert \
-    -d ${DUMP_DIR}/Square.Pow_2744_SquareReduceMean_2745.726.44.1782877026275963 \
-    -out ${OUTPUT_DIR} \
-    -t npy
-```
-
-参数说明：
-- `-d`：原始 dump 目录（包含 .input.0.bin、.output.0.bin 等文件）
-- `-out`：转换后 npy 文件输出目录
-- `-t`：输出格式（npy 或 numpy）
-
-### Step 4：对比 Dump 数据（确定根因算子）
-
-分别在 OK 和 NOT_OK CANN 版本下触发 Dump，对比同一算子的输入输出数据：
-
-```python
-import numpy as np
-
-ok_input = np.load("dump/ok_9.0/OperatorName.input.0.npy")
-ok_output = np.load("dump/ok_9.0/OperatorName.output.0.npy")
-
-not_ok_input = np.load("dump/not_ok_9.1/OperatorName.input.0.npy")
-not_ok_output = np.load("dump/not_ok_9.1/OperatorName.output.0.npy")
-
-# 对比输入
-print(f"Input max diff: {np.abs(ok_input - not_ok_input).max()}")
-print(f"Input mean diff: {np.abs(ok_input - not_ok_input).mean()}")
-
-# 对比输出
-print(f"Output max diff: {np.abs(ok_output - not_ok_output).max()}")
-print(f"Output mean diff: {np.abs(ok_output - not_ok_output).mean()}")
-```
-
-**判断依据**：
-- 若输入一致、输出不一致 → 该算子为精度问题根因
-- 若输入就不一致 → 精度问题源自上游算子，需继续向上追溯
-
-## 执行与验证
-
-### 端到端检查清单
-
-- Profiling 对比已完成，已定位至少一个可疑算子（Block Num、Mix Block Num 或 Format 存在差异）
-- `dump.json` 中 `model_name` 与 MindIR 文件名（不含后缀）完全一致
-- `dump_config.ini` 路径正确，推理时成功加载
-- Dump 输出目录生成了对应算子的 `.bin` 文件
-- bin 文件已通过 `msaccucmp.py convert` 成功转换为 `.npy` 文件
-- OK 与 NOT_OK 两个版本下同一算子的 npy 数据已加载并完成对比
-- 根据输入输出 diff 判断结果已明确精度问题根因算子，或已确定需继续向上追溯
-
-## 标准与约束
-
-- Profiling 对比必须在相同输入条件下进行，确保两个版本的 Profiling 数据具有可比性
-- Dump 输入数据应使用真实推理数据，避免使用随机数据导致结果不具代表性
-- Dump 目录名包含算子名称、Block 号、Device ID、时间戳等信息，如 `Square.Pow_2744_SquareReduceMean_2745.726.44.1782877026275963`，定位 dump 文件时需注意目录命名规则
-- `dump_path` 下会按时间戳和设备 ID 创建子目录，实际路径需根据实际 dump 输出结构调整
-- Dump 对比时需使用相同精度格式（如均为 float16 或 float32）进行数值比较
+- [three_stage_alignment.md](references/three_stage_alignment.md) — Torch→ONNX→MindIR 三阶段精度对齐完整流程（统一输入构造、逐层定位、fp32/混合精度配置、Custom 对接排查、ONNX 添加中间输出定位、大模型降层数加速）
+- [cann_dump_locating.md](references/cann_dump_locating.md) — 跨 CANN 版本精度差异的算子级定位（Profiling 对比、CANN Dump 配置、msaccucmp 转换、逐算子输入输出对比判断根因）

@@ -17,8 +17,6 @@ MindSpore Lite 是以 C++ 为主的推理框架项目，包含 Python/C++/Java �
 
 ```
 模型迁移/导出 ONNX ─► ONNX→MindIR 转换 + 部署推理 ─► 性能优化 ─► 精度问题定位
-        │
-        └─► 第三方自定义算子对接（需要接入第三方算子包时）
 ```
 
 | 阶段 | 做什么 | 对应 Skill |
@@ -26,10 +24,9 @@ MindSpore Lite 是以 C++ 为主的推理框架项目，包含 Python/C++/Java �
 | ① 模型迁移/导出 | 开源模型按网络结构拆分导出 ONNX、ONNX Runtime 精度对齐、生成推理脚本与 README | [open-source-model-migration](.claude/skills/cloud/open-source-model-migration/SKILL.md) |
 | ② 转换与部署推理 | ONNX→MindIR（固定 shape / 动态分档 / 纯动态 shape）+ Ascend 离线优化；MindIR 加载、Ascend 推理验证与部署注意事项 | [onnx-model-conversion-and-deployment](.claude/skills/cloud/onnx-model-conversion-and-deployment/SKILL.md) |
 | ③ 性能优化 | 基线/profiling、融合算子改写、推理免拷贝、PTQ int8 量化、精度对齐与归档 | [performance-optimization](.claude/skills/cloud/performance-optimization/SKILL.md) |
-| ④ 精度问题定位 | CANN Profiling 对比分析定位可疑算子、配置算子 Dump、对比 Dump 数据确定精度差异根因 | [precision-troubleshooting](.claude/skills/cloud/precision-troubleshooting/SKILL.md) |
-| ⑤ 第三方自定义算子对接 | 安装第三方算子包（非 CANN/非 MSLite 自研）、配置 ASCEND_CUSTOM_OPP_PATH、Custom 算子改写对接与验证 | [third-party-custom-operator-integration](.claude/skills/cloud/third-party-custom-operator-integration/SKILL.md) |
+| ④ 精度问题定位 | Torch→ONNX→MindIR 三阶段精度对齐、fp32/混合精度配置、Custom 融合算子对接排查；跨 CANN 版本 Profiling 对比定位可疑算子、配置算子 Dump、对比 Dump 数据确定精度差异根因 | [precision_troubleshooting](.claude/skills/cloud/precision_troubleshooting/SKILL.md) |
 
-> 典型顺序：①→② 跑通后，再用 ③ 做性能优化；若发现精度问题则进入 ④ 定位。⑤ 在 ① 模型导出阶段按需进入——需要在 ONNX 中构造 Custom 节点对接第三方算子包时使用（每步都需精度+性能验证，见各 Skill）。
+> 典型顺序：①→② 跑通后，再用 ③ 做性能优化；若发现精度问题则进入 ④ 定位（每步都需精度+性能验证，见各 Skill）。
 
 ## 环境要求
 
@@ -96,8 +93,13 @@ bash scripts/format_source_code.sh -l
 - [onnx-model-conversion-and-deployment](.claude/skills/cloud/onnx-model-conversion-and-deployment/SKILL.md)：ONNX→MindIR 转换（固定 shape / 动态分档 / 纯动态 shape）与推理部署
 - [open-source-model-migration](.claude/skills/cloud/open-source-model-migration/SKILL.md)：开源模型迁移到 MindSpore Lite 部署管线（按结构拆分导出 ONNX、精度对齐、生成推理脚本与 README）
 - [performance-optimization](.claude/skills/cloud/performance-optimization/SKILL.md)：模型性能优化总攻略——基线/profiling、融合算子改写、推理免拷贝、PTQ int8 量化、精度对齐与归档（细化策略见 references/）
-- [precision-troubleshooting](.claude/skills/cloud/precision-troubleshooting/SKILL.md)：MindIR 模型精度问题定位——CANN Profiling 对比定位可疑算子、配置算子 Dump、对比 Dump 数据确定精度差异根因
-- [third-party-custom-operator-integration](.claude/skills/cloud/third-party-custom-operator-integration/SKILL.md)：第三方自定义算子包安装与 Custom 算子对接——算子包安装、ASCEND_CUSTOM_OPP_PATH 配置、算子定义确认、Custom 改写、转换验证与精度对齐
+- [precision_troubleshooting](.claude/skills/cloud/precision_troubleshooting/SKILL.md)：精度保障总攻略——Torch→ONNX→MindIR 三阶段对齐、fp32/混合精度配置、Custom 融合算子对接排查（场景 A）；跨 CANN 版本 Profiling 对比定位可疑算子、配置算子 Dump、对比 Dump 数据确定精度差异根因（场景 B）。细化流程见 references/
+  - **精度指标**：默认阈值 max_abs < 1e-3 / cosine > 0.999；图/视频/LLM 场景以端到端效果为准，数值略超阈值时交用户判定 MindIR vs Torch CPU 结果
+  - **能力边界**：负责定位到根因算子；修复视情况——混合精度配置自助、单算子实现交 MindSpore Lite 开发者、CANN 算子交 CANN 侧责任人
+  - **大模型标杆**：Torch CPU 太慢时用 Torch NPU——800I A2 直接用，300I Duo 视模型大小决定
+  - **800I A2 额外手段**：
+    - 饱和模式（`export MS_ASCEND_CHECK_OVERFLOW_MODE=SATURATION_MODE`）：force_fp32 仍不通过、怀疑溢出时用
+    - bf16 混合精度（`allow_mix_precision_bf16`）：fp32 通过、fp16 不通过、且模型含 bf16 计算时用（默认转换即 fp16）
 
 ## 通用技能（跨侧共享）
 
