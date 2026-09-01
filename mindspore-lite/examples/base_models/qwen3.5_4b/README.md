@@ -130,13 +130,17 @@ python export_qwen3_5_4b_onnx.py \
   --device cpu \
   --vision-image-size 128 \
   --dummy-seq-len 32 \
+  --max-seq-len 2048 \
   --enable-cgdr-custom \
   --enable-rgdr-custom
 ```
 
 `--enable-cgdr-custom`用于将Prefill阶段的线性注意力子图替换为
 `ChunkGatedDeltaRule`，`--enable-rgdr-custom`用于将Decode阶段的线性注意力
-子图替换为`RecurrentGatedDeltaRule`。不指定这两个参数时仍导出原始展开子图。
+子图替换为`RecurrentGatedDeltaRule`，并按照`--max-seq-len`固定Decode阶段的
+Attention Mask和KV Cache Shape。固定KV Cache通过`Scatter`更新，并使用
+`IncreFlashAttention`完成全注意力计算。不指定这两个参数时仍导出原始展开子图和
+动态增长的KV Cache。
 脚本会将Vision、Prefill和Decode分别写入`--output-dir`下的独立子目录；使用
 `--component`单独导出时也保持相同目录结构。这样可避免大模型ONNX的外置
 权重文件重名覆盖；不要将这些子目录中的外置权重混放。
@@ -150,6 +154,7 @@ python export_qwen3_5_4b_onnx.py \
 | `--device` | 导出设备（cpu/cuda） | `cpu` |
 | `--vision-image-size` | Vision 模型输入图像尺寸（正方形边长） | `128` |
 | `--dummy-seq-len` | 导出时 dummy 序列长度 | `8` |
+| `--max-seq-len` | RGDR路径中Decode Attention Mask和KV Cache的固定容量 | `2048` |
 | `--dtype` | 导出精度（fp16/fp32） | `fp16` |
 | `--component` | 导出全部模型或仅导出Prefill/Decode（all/prefill/decode） | `all` |
 | `--enable-cgdr-custom` | Prefill接入CGDR Custom算子 | `False` |
@@ -174,7 +179,7 @@ qwen3_5_4b_onnx/
 | Input | pixel_values | `[64, 1536]` | float16 | 64=8x8 patches, 1536=3x2x16x16 |
 | Output | image_embeds | `[16, 2560]` | float16 | 16 个 image token, hidden_size=2560 |
 
-#### LLM Prefill Shape（未融合路径Batch和序列长度动态；CGDR路径Batch=1）
+#### LLM Prefill Shape（未融合路径Batch和序列长度动态；CGDR/RGDR路径Batch=1）
 
 | 输入/输出 | 名称 | Shape | 数据类型 | 说明 |
 |-----------|------|-------|----------|------|
@@ -185,22 +190,22 @@ qwen3_5_4b_onnx/
 | Output | logits | `[batch, seq_len, 248320]` | float16 | 预测 logits |
 | Output | present_conv_states | `[24, batch, 8192, 3]` | float16 | 卷积状态（24 层线性注意力） |
 | Output | present_recurrent_states | `[24, batch, 32, 128, 128]` | float32 | 循环状态（24 层线性注意力） |
-| Output | present_kv_cache | `[16, batch, 4, seq_len, 256]` | float16 | KV cache（8 层全注意力 x 2） |
+| Output | present_kv_cache | `[16, batch, 4, seq_len, 256]`或`[16, 1, 4, max_seq_len, 256]` | float16 | 未融合路径长度为`seq_len`；RGDR路径补齐到固定容量 |
 
-#### LLM Decode Shape（未融合路径Batch动态；RGDR路径Batch=1、Step=1，KV长度动态）
+#### LLM Decode Shape（未融合路径Batch和KV长度动态；RGDR路径Batch=1、Step=1、KV容量固定）
 
 | 输入/输出 | 名称 | Shape | 数据类型 | 说明 |
 |-----------|------|-------|----------|------|
 | Input | input_ids | `[batch, step]` | int64 | 单步 token ID (step=1) |
-| Input | attention_mask | `[batch, total_seq_len]` | int64 | 累积注意力掩码 |
+| Input | attention_mask | `[batch, total_seq_len]`或`[1, max_seq_len]` | int64 | 未融合路径随Token增长；RGDR路径固定容量 |
 | Input | position_ids | `[4, batch, step]` | int64 | 4D mRoPE 位置编码 |
 | Input | past_conv_states | `[24, batch, 8192, 3]` | float16 | 上一步卷积状态 |
 | Input | past_recurrent_states | `[24, batch, 32, 128, 128]` | float32 | 上一步循环状态 |
-| Input | past_kv_cache | `[16, batch, 4, past_seq_len, 256]` | float16 | 上一步 KV cache |
+| Input | past_kv_cache | `[16, batch, 4, past_seq_len, 256]`或`[16, 1, 4, max_seq_len, 256]` | float16 | 未融合路径动态增长；RGDR路径固定容量 |
 | Output | logits | `[batch, step, 248320]` | float16 | 预测 logits |
 | Output | present_conv_states | `[24, batch, 8192, 3]` | float16 | 更新后卷积状态 |
 | Output | present_recurrent_states | `[24, batch, 32, 128, 128]` | float32 | 更新后循环状态 |
-| Output | present_kv_cache | `[16, batch, 4, total_seq_len, 256]` | float16 | 更新后 KV cache |
+| Output | present_kv_cache | `[16, batch, 4, total_seq_len, 256]`或`[16, 1, 4, max_seq_len, 256]` | float16 | 未融合路径动态增长；RGDR路径原位更新固定容量Cache |
 
 ---
 
@@ -213,7 +218,10 @@ qwen3_5_4b_onnx/
 启用CGDR/RGDR后，转换和推理终端必须已经按“CGDR/RGDR Custom算子”小节完成
 算子构建或安装，并加载对应环境变量。
 当前CGDR/RGDR优化导出和推理路径仅验证并固定支持`batch=1`；Prefill序列长度和
-Decode KV长度仍可变。
+Decode KV容量由`--max-seq-len`确定。Prefill转换配置提供32、512、1024和2048
+四个序列长度档位，`image_embeds`固定为16个Token；实际输入必须命中其中一个档位。
+`max_seq_len`由Prompt和后续生成阶段共享，因此必须大于实际Prompt长度并为生成Token
+预留空间；当Prompt长度等于`max_seq_len`时只能执行Prefill，不能继续Decode。
 
 ```bash
 # 设置 converter_lite 路径
@@ -232,7 +240,7 @@ $Convert --fmk=ONNX \
   --modelFile=qwen3_5_4b_onnx/prefill/qwen3_5_llm_prefill.onnx \
   --outputFile=qwen3_5_4b_mindir/qwen3_5_llm_prefill \
   --optimize=ascend_oriented \
-  --configFile=config.ini \
+  --configFile=configs/config_prefill.ini \
   --saveType=MINDIR
 
 # Decode 转换
@@ -295,7 +303,9 @@ python infer_qwen3_5_4b_mslite.py \
 | `--host-state-roundtrip` | Decode每步将State复制到Host再回传NPU，用于回退和A/B验证 | `False` |
 
 在Ascend设备上，推理脚本默认将Conv State、Recurrent State和KV Cache保留在
-NPU侧，并对固定形状的Logits、Conv State及Recurrent State输出Tensor进行复用。
+NPU侧，并对固定形状的Logits、Conv State、Recurrent State及KV Cache输出Tensor
+进行复用。Prefill执行前，推理脚本会根据实际输入Shape调用`Model.resize`以选择
+转换时配置的对应档位。
 指定`--host-state-roundtrip`后恢复为原始Host中转路径。
 
 Vision、Prefill和Decode模型按执行阶段依次加载，当前阶段结束后释放对应模型，
@@ -322,6 +332,9 @@ Vision、Prefill和Decode模型按执行阶段依次加载，当前阶段结束�
 - **max_new_tokens**: 128
 
 ### 推理性能（Ascend NPU）
+
+以下数据为固定Shape适配前PR #1169中变长KV Cache优化路径的性能留档，用作本次
+固定Shape适配的基线；不作为本次固定Shape路径的性能结果。
 
 Prefill使用固定输入，每轮重新构造Host Tensor，预热2轮后测试5轮并取中位数；
 Decode使用固定Past State，预热3轮后测试10轮并取中位数。表内均统计从按模型
@@ -367,16 +380,22 @@ NRMSE不高于0.02且最大绝对误差不高于1.0；实测Prefill最差值分�
 - `position_ids: [4, 1, 32]` - 4D mRoPE 位置编码 (text_pos, temporal, height, width)
 - `image_embeds: [16, 2560]` - Vision Tower 输出
 
+Prefill MindIR仅接受`configs/config_prefill.ini`中配置的Shape组合；默认示例命中
+序列长度32档。若更换Prompt，需保证处理后的序列长度为32、512、1024或2048之一。
+
 ### Decode 输入 Shape 详细说明
 
 每步 decode 的输入：
 
 - `input_ids: [1, 1]` - 单个 token
-- `attention_mask: [1, past_seq_len + 1]` - 随步数递增 (33, 34, 35, ...)
+- `attention_mask: [1, max_seq_len]` - 固定宽度；有效前缀随步数递增
 - `position_ids: [4, 1, 1]` - 单步位置编码
 - `past_conv_states: [24, 1, 8192, 3]` - 24 层线性注意力的卷积状态
 - `past_recurrent_states: [24, 1, 32, 128, 128]` - 24 层线性注意力的循环状态
-- `past_kv_cache: [16, 1, 4, past_seq_len, 256]` - 8 层全注意力的 KV cache (16=8x2)
+- `past_kv_cache: [16, 1, 4, max_seq_len, 256]` - 8 层全注意力的固定容量KV Cache (16=8x2)
+
+以上Decode Shape描述RGDR固定缓存路径；未启用RGDR时仍使用随Token增长的
+Attention Mask和KV Cache。
 
 ---
 

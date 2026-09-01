@@ -225,6 +225,28 @@ def _build_mslite_inputs(model, feed_dict, preferred_order=None):
     )
 
 
+def _resize_dynamic_model_inputs(model, feed_dict, preferred_order=None):
+    """Resize a dynamic MindSpore Lite model to the current input shapes."""
+    inputs = model.get_inputs()
+    if not inputs:
+        return
+    input_names = [getattr(tensor, "name", "") for tensor in inputs]
+    if all(name in feed_dict for name in input_names):
+        ordered_values = [feed_dict[name] for name in input_names]
+    elif preferred_order and len(inputs) == len(preferred_order):
+        ordered_values = [feed_dict[name] for name in preferred_order]
+    else:
+        raise RuntimeError(
+            f"input mismatch. model inputs={input_names} "
+            f"feed keys={list(feed_dict.keys())}"
+        )
+    target_shapes = [list(value.shape) for value in ordered_values]
+    current_shapes = [list(tensor.shape) for tensor in inputs]
+    if current_shapes != target_shapes:
+        print(f"Resizing model inputs: {current_shapes} -> {target_shapes}")
+        model.resize(inputs, target_shapes)
+
+
 class Qwen354BInferencer:
     """Qwen3.5-4B MindSpore Lite inferencer with Vision + Prefill + Decode pipeline."""
 
@@ -584,10 +606,15 @@ class Qwen354BInferencer:
                 "position_ids": position_ids_4.astype(np.int32),
                 "image_embeds": image_embeds.astype(np.float16),
             }
+            prefill_order = [
+                "input_ids", "attention_mask", "position_ids", "image_embeds"
+            ]
+            _resize_dynamic_model_inputs(
+                self.prefill_model, prefill_feed, preferred_order=prefill_order
+            )
             prefill_out = self.prefill_model.predict(
                 _build_mslite_inputs(self.prefill_model, prefill_feed,
-                                     preferred_order=["input_ids", "attention_mask",
-                                                       "position_ids", "image_embeds"])
+                                     preferred_order=prefill_order)
             )
             logits = prefill_out[0].get_data_to_numpy()
             past_conv = prefill_out[1].get_data_to_numpy()
