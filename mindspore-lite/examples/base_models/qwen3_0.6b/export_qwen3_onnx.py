@@ -264,6 +264,56 @@ class _CannPromptFlashAttention(torch.autograd.Function):
         return y
 
 
+class _CannInnerPromptFlashAttention(torch.autograd.Function):
+    """QK^T + softmax + V -> Custom(InnerPromptFlashAttention).
+
+    InnerPromptFlashAttention (InnerPFA) supports q_len != k_len (used in
+    common-prefix suffix scenario), whereas standard PFA requires q_len == k_len
+    on 300I Duo.
+    """
+
+    @staticmethod
+    def forward(ctx, query, key, value, atten_mask, num_heads, num_key_value_heads, scale_value):
+        """PyTorch reference impl (traced for ONNX export numerics)."""
+        del ctx
+        if num_key_value_heads < num_heads:
+            key = key.repeat_interleave(num_heads // num_key_value_heads, dim=1)
+            value = value.repeat_interleave(num_heads // num_key_value_heads, dim=1)
+        scale = float(scale_value)
+        attn = torch.matmul(query, key.transpose(2, 3)) * scale
+        if atten_mask is not None:
+            attn = attn + atten_mask
+        attn = torch.nn.functional.softmax(attn, dim=-1, dtype=torch.float32).to(query.dtype)
+        attn_output = torch.matmul(attn, value)
+        return attn_output
+
+    @staticmethod
+    def symbolic(g, query, key, value, atten_mask, num_heads, num_key_value_heads, scale_value):
+        """Emit ONNX Custom node mapping to the CANN InnerPromptFlashAttention op."""
+        # InnerPFA has 5 inputs: query, key, value, pse_shift, atten_mask
+        # pse_shift is not used here (None), but slot is reserved in input_index
+        y = g.op(
+            "Custom",
+            query,
+            key,
+            value,
+            atten_mask,
+            type_s="InnerPromptFlashAttention",
+            input_names_s=["query", "key", "value", "pse_shift", "atten_mask"],
+            optional_input_names_s=["atten_mask", "pse_shift"],
+            output_names_s=["attention_out"],
+            output_num_i=1,
+            input_index_i=[0, 1, 2, 4],
+            num_heads_i=int(num_heads),
+            num_key_value_heads_i=int(num_key_value_heads),
+            scale_value_f=float(scale_value),
+            input_layout_s="BNSD",
+            inner_precise_i=0,
+        )
+        y.setType(query.type())
+        return y
+
+
 class _CannSwiGlu(torch.autograd.Function):
     """SiLU(gate) * up -> Custom(SwiGlu)."""
 
@@ -841,6 +891,7 @@ def _cann_attn_forward(
     enable_rotarymul=True,
     enable_pfa=True,
     enable_bmm2mm=False,
+    use_inner_pfa=False,
 ):
     """Attention forward with per-op fusion switches.
 
@@ -848,6 +899,8 @@ def _cann_attn_forward(
                       apply_rotary_pos_emb (explicit PyTorch ops).
     enable_pfa:       route QK^T+softmax+V through Custom(PromptFlashAttention);
                       else use explicit matmul + softmax + matmul (with GQA repeat).
+    use_inner_pfa:   use InnerPromptFlashAttention instead of PromptFlashAttention;
+                      supports q_len != k_len (common-prefix suffix scenario).
     """
     input_shape = hidden_states.shape[:-1]
     head_dim = attn_mod.head_dim
@@ -896,15 +949,26 @@ def _cann_attn_forward(
     scaling = getattr(attn_mod, "scaling", 1.0 / (head_dim**0.5))
 
     if enable_pfa:
-        attn_output = _CannPromptFlashAttention.apply(
-            query_states,
-            key_states,
-            value_states,
-            bool_mask,
-            int(num_heads),
-            int(num_kv_heads),
-            float(scaling),
-        )
+        if use_inner_pfa:
+            attn_output = _CannInnerPromptFlashAttention.apply(
+                query_states,
+                key_states,
+                value_states,
+                bool_mask,
+                int(num_heads),
+                int(num_kv_heads),
+                float(scaling),
+            )
+        else:
+            attn_output = _CannPromptFlashAttention.apply(
+                query_states,
+                key_states,
+                value_states,
+                bool_mask,
+                int(num_heads),
+                int(num_kv_heads),
+                float(scaling),
+            )
     else:
         key_states_for_attn = key_states
         value_states_for_attn = value_states
@@ -1396,9 +1460,8 @@ class Qwen3PrefixModel(torch.nn.Module):
 class Qwen3SuffixModel(torch.nn.Module):
     """Process suffix tokens with prefix KV cache, output last-token logits.
 
-    Uses RotaryMul + non-PFA attention (manual matmul + softmax + matmul with
-    GQA repeat) because 310P PFA requires q_len == k_len, which doesn't hold
-    for suffix scenario (q_len=suffix, k_len=prefix+suffix).
+    Uses InnerPromptFlashAttention (supports q_len != k_len) when enable_pfa=True,
+    which is the case for common-prefix suffix scenario (q_len=suffix, k_len=prefix+suffix).
     Output: logits [batch, 1, vocab_size] (only last token, minimal D2H).
     """
 
@@ -1434,7 +1497,7 @@ class Qwen3SuffixModel(torch.nn.Module):
         for i, layer in enumerate(self.layers):
             pk_in = past_key_values[2 * i]
             pv_in = past_key_values[2 * i + 1]
-            # Non-PFA attention: _cann_attn_forward with enable_pfa=False
+            # InnerPFA supports q_len != k_len for suffix scenario
             attn_out, _, _ = _cann_attn_forward(
                 layer.self_attn,
                 hidden_states,
@@ -1443,8 +1506,9 @@ class Qwen3SuffixModel(torch.nn.Module):
                 pk_in,
                 pv_in,
                 self.flags["enable_rotarymul"],
-                False,  # enable_pfa=False: 310P doesn't support q_len != k_len
+                self.flags["enable_pfa"],
                 self.flags["enable_bmm2mm"],
+                use_inner_pfa=True,
             )
 
             hidden_states, residual = _cann_add_rms_norm(
@@ -1772,17 +1836,24 @@ def export_llm_prefill_decode(
 
 
 def _build_flags(args):
-    """Build fusion flags dict from CLI args."""
+    """Build fusion flags dict from CLI args.
+
+    PFA defaults to ON for Scene A/B (prefill/decode), OFF for Scene C
+    (common_prefix) unless explicitly requested via --enable-pfa.
+    """
     if args.disable_fusion:
         return {k: False for k in [
             "enable_rmsnorm_replace", "enable_add_rmsnorm", "enable_rotarymul",
             "enable_pfa", "enable_swiglu", "enable_bmm2mm",
         ]}
+    # PFA: default ON for non-common-prefix (Scene A/B), OFF for common_prefix (Scene C)
+    pfa_default = not args.enable_common_prefix
+    enable_pfa = (args.enable_pfa or args.enable_all_fusion or pfa_default) and not args.disable_pfa
     base = {
         "enable_rmsnorm_replace": args.enable_rmsnorm_replace or args.enable_all_fusion,
         "enable_add_rmsnorm": args.enable_add_rmsnorm or args.enable_all_fusion,
         "enable_rotarymul": True,
-        "enable_pfa": (args.enable_pfa or args.enable_all_fusion) and not args.disable_pfa,
+        "enable_pfa": enable_pfa,
         "enable_swiglu": args.enable_swiglu or args.enable_all_fusion,
         "enable_bmm2mm": args.enable_bmm2mm or args.enable_all_fusion,
     }
@@ -1814,8 +1885,9 @@ def _build_parser():
                         help="Replace Qwen3RMSNorm modules with CANN CannRmsNorm (Custom RmsNorm op).")
     parser.add_argument("--enable-add-rmsnorm", action="store_true",
                         help="Fuse residual+RmsNorm into CANN AddRmsNorm inside fused wrapper.")
-    parser.add_argument("--enable-pfa", action="store_true", default=True,
-                        help="Route QK^T+softmax+V through Custom(PromptFlashAttention) (default: ON).")
+    parser.add_argument("--enable-pfa", action="store_true", default=False,
+                        help="Route QK^T+softmax+V through Custom(PromptFlashAttention) "
+                             "(default: ON for Scene A/B, OFF for Scene C).")
     parser.add_argument("--disable-pfa", action="store_true", help="Disable PFA (PromptFlashAttention) fusion.")
     parser.add_argument("--enable-all-fusion", action="store_true",
                         help="Convenience: turn on all per-op fusion switches.")

@@ -165,7 +165,7 @@ configs/
 ├── qwen3_llm_prefill.ini           # 场景 A/B Prefill（6 档动态分档）
 ├── qwen3_llm_decode.ini            # 场景 A Decode（5 档 KV cache 分档）
 ├── qwen3_llm_prefill_prefix.ini    # 场景 C Prefix（2 档）
-├── qwen3_llm_prefill_suffix.ini    # 场景 C Suffix（2 档）
+├── qwen3_llm_prefill_suffix.ini    # 场景 C Suffix（8 档）
 └── op_fp32.json                    # 混合精度黑名单
 ```
 
@@ -206,8 +206,6 @@ ge.exec.precision_mode=force_fp32
     }
 }
 ```
-
-> **AOE 子图调优**（可选）：如需启用 AOE 子图调优以进一步优化性能，在配置文件中添加 `[ascend_context]` 段并设置 `aoe_mode="subgraph tuning"` 即可。AOE 会自动搜索最优算子分块策略，但会增加转换时间。
 
 #### 产出
 
@@ -302,12 +300,12 @@ Generated Response:
 |------|------------------------|
 | 硬件   | Atlas 300I Duo |
 | 模型   | Qwen3-0.6B（28 层，16 attn heads，8 KV heads GQA，head_dim=128） |
-| 精度   | Prefill: allow_mix_precision + op_fp32.json 黑名单 + slice_last + AOE；Decode: force_fp32 |
+| 精度   | Prefill: allow_mix_precision + op_fp32.json 黑名单 + slice_last；Decode: force_fp32 |
 | 推理脚本 | `infer_qwen3_0.6b_mindir.py`（zero-copy + 预分配输出 buffer） |
 
 #### 各阶段推理输入 Shape 与性能
 
-**LLM Prefill（slice_last + mix 精度 + AOE）**
+**LLM Prefill（slice_last + mix 精度）**
 
 | 项目           | 值                               |
 |--------------|----------------------------------|
@@ -455,16 +453,33 @@ $Benchmark \
 
 适用于有固定公共前缀（如 system prompt）的场景。Prefix 模型处理公共前缀 token，输出 KV cache；Suffix 模型接收 prefix KV + 用户输入，输出最后 token logits。后续请求可复用 prefix KV cache，只需运行 suffix 模型。
 
-> **场景 C 注意**：Suffix 模型使用非 PFA 路径（手动 matmul + softmax + matmul，含 GQA repeat），因为 300I Duo 的 PFA 算子要求 `q_len == k_len`，而 suffix 的 q_len ≠ k_len（suffix_len ≠ prefix_len + suffix_len）。
+> **场景 C 注意**：场景 C 默认不开启 PFA 融合（attention 走原生 PyTorch 计算）。如需使能 PFA 融合，Suffix 模型需使用 `InnerPromptFlashAttention` 算子（支持 `q_len != k_len`），因为标准 `PromptFlashAttention` 算子在 300I Duo 上要求 `q_len == k_len`，而 suffix 的 `q_len != k_len`（suffix_len != prefix_len + suffix_len）。场景 A/B 仍使用标准 `PromptFlashAttention`。
+> **使能 InnerPromptFlashAttention 前置条件**：需使用 MSLite 2.11 及之后的版本，并安装自定义算子包：
+> ```bash
+> # 安装自定义算子包
+> bash <mslite-tar-path>/tools/custom_kernels/install.sh
+> # 设置环境变量
+> source <cann-path>/ascend-toolkit/latest/opp/vendors/mslite_custom_ops/bin/set_env.bash
+> ```
+> 安装完成后再执行 ONNX→MindIR 转换即可自动使能 InnerPromptFlashAttention 算子。
 
 ### 4.1 模型导出 ONNX
 
 ```bash
+# 默认不开启 PFA 融合
 python export_qwen3_onnx.py \
   --model-id ./Qwen3-0.6B \
   --output-dir ./qwen3_onnx \
   --device cpu \
   --enable-common-prefix
+
+# 如需使能 PFA 融合（需安装自定义算子包，见上方前置条件）
+python export_qwen3_onnx.py \
+  --model-id ./Qwen3-0.6B \
+  --output-dir ./qwen3_onnx \
+  --device cpu \
+  --enable-common-prefix \
+  --enable-pfa
 ```
 
 `--enable-common-prefix` 导出两个模型：
@@ -536,24 +551,28 @@ ge.exec.precision_mode=allow_mix_precision
 ge.exec.modify_mixlist="configs/op_fp32.json"
 ```
 
-`configs/qwen3_llm_prefill_suffix.ini`（Suffix 用，2 档）：
+`configs/qwen3_llm_prefill_suffix.ini`（Suffix 用，8 档）：
 
 ```ini
 [acl_build_options]
 input_format="ND"
 input_shape="input_ids:-1,-1;attention_mask:-1,-1;position_ids:-1,-1;past_key_values:56,-1,8,-1,128"
-ge.dynamicDims="1,480,1,1248,1,480,1,768;1,640,1,1408,1,640,1,768"
+ge.dynamicDims="1,32,1,800,1,32,1,768;1,64,1,832,1,64,1,768;1,96,1,864,1,96,1,768;1,128,1,896,1,128,1,768;1,256,1,1024,1,256,1,768;1,384,1,1152,1,384,1,768;1,512,1,1280,1,512,1,768;1,640,1,1408,1,640,1,768"
 
 [acl_init_options]
 ge.exec.precision_mode=allow_mix_precision
 ge.exec.modify_mixlist="configs/op_fp32.json"
 ```
 
-> Suffix `ge.dynamicDims` 每 8 个值对应 4 个输入的 `-1` 维度：
-> - `1,480` = input_ids 的 (batch, suffix_len)
-> - `1,1248` = attention_mask 的 (batch, total_len)，其中 1248 = 768(prefix) + 480(suffix)
-> - `1,480` = position_ids 的 (batch, suffix_len)
-> - `1,768` = past_key_values 的 (batch, prefix_seq_len)
+> Suffix `ge.dynamicDims` 每 8 个值对应 4 个输入的 `-1` 维度（total_len = prefix_len 768 + suffix_len）：
+> - `1,32` = input_ids 的 (batch, suffix_len)，total_len=800=768+32
+> - `1,64` = input_ids 的 (batch, suffix_len)，total_len=832=768+64
+> - `1,96` = input_ids 的 (batch, suffix_len)，total_len=864=768+96
+> - `1,128` = input_ids 的 (batch, suffix_len)，total_len=896=768+128
+> - `1,256` = input_ids 的 (batch, suffix_len)，total_len=1024=768+256
+> - `1,384` = input_ids 的 (batch, suffix_len)，total_len=1152=768+384
+> - `1,512` = input_ids 的 (batch, suffix_len)，total_len=1280=768+512
+> - `1,640` = input_ids 的 (batch, suffix_len)，total_len=1408=768+640
 
 #### 产出
 
@@ -576,7 +595,7 @@ python infer_qwen3_0.6b_mindir.py \
   --prefix-text "You are a helpful assistant. Answer questions concisely." \
   --prompt "The sky is blue because of what physical phenomenon, choose from A, B, C, D? A) Rayleigh scattering B) Diffraction C) Reflection D) Refraction" \
   --prefix-seq-len 768 \
-  --suffix-buckets "480,640"
+  --suffix-buckets "32,64,96,128,256,384,512,640"
 ```
 
 #### 推理参数说明
@@ -587,12 +606,12 @@ python infer_qwen3_0.6b_mindir.py \
 | `--suffix-model`   | Suffix MindIR 模型路径（场景 C） | 必填（场景 C）           |
 | `--prefix-text`    | 公共前缀文本（场景 C） | 系统提示词 |
 | `--prefix-seq-len` | Prefix 模型档位（场景 C） | `768` |
-| `--suffix-buckets` | Suffix seq_len 分档（场景 C） | `480,640` |
+| `--suffix-buckets` | Suffix seq_len 分档（场景 C） | `32,64,96,128,256,384,512,640` |
 
 > **固定 Shape 约束**：由于使用 `ascend_oriented` 编译，推理侧输入 shape 必须匹配转换时配置的 `ge.dynamicDims` 分档之一。推理脚本会自动将输入 pad 到最近的 bucket 边界。
 >
 > - 场景 C prefix：分档 480, 768
-> - 场景 C suffix：分档 (suffix=480, total=1248, prefix=768) 和 (suffix=640, total=1408, prefix=768)
+> - 场景 C suffix：分档 (suffix=32, total=800), (suffix=64, total=832), (suffix=96, total=864), (suffix=128, total=896), (suffix=256, total=1024), (suffix=384, total=1152), (suffix=512, total=1280), (suffix=640, total=1408)，prefix 均为 768
 
 #### 推理示例输出
 
@@ -605,13 +624,13 @@ Prefix model time: 98.30 ms
 Prefix KV cache shape: (56, 1, 8, 768, 128)
 
 User prompt: The sky is blue because of what physical phenomenon, ...
-[suffix] tokens=48, padded to 480
+[suffix] tokens=48, padded to 64
 Running suffix model...
-Suffix model time: 65.10 ms
+Suffix model time: 27.36 ms
 Output logits shape: (1, 1, 151936)
 Predicted token id: 32
 Decoded token: 'A'
-Total time: 163.40 ms
+Total time: 125.66 ms
 ```
 
 #### Benchmark 命令
@@ -623,37 +642,43 @@ $Benchmark \
   --device=Ascend \
   --inputShape="input_ids:1,768;attention_mask:1,768;position_ids:1,768"
 
-# Suffix Benchmark（suffix=480, total=1248, prefix=768）
+# Suffix Benchmark（suffix=32, total=800, prefix=768）
 $Benchmark \
   --modelFile=./qwen3_onnx/qwen3_llm_prefill_suffix_graph.mindir \
   --device=Ascend \
-  --inputShape="input_ids:1,480;attention_mask:1,1248;position_ids:1,480;past_key_values:56,1,8,768,128"
+  --inputShape="input_ids:1,32;attention_mask:1,800;position_ids:1,32;past_key_values:56,1,8,768,128"
 
-# Suffix Benchmark（suffix=640, total=1408, prefix=768）
+# Suffix Benchmark（suffix=512, total=1280, prefix=768）
 $Benchmark \
   --modelFile=./qwen3_onnx/qwen3_llm_prefill_suffix_graph.mindir \
   --device=Ascend \
-  --inputShape="input_ids:1,640;attention_mask:1,1408;position_ids:1,640;past_key_values:56,1,8,768,128"
+  --inputShape="input_ids:1,512;attention_mask:1,1280;position_ids:1,512;past_key_values:56,1,8,768,128"
 ```
 
-### 4.4 性能数据
+#### 性能数据
 
-| 模型 | seq_len | Execute (ms) | D2H (ms) | AvgRunTime (ms) |
-|------|---------|--------------|----------|-----------------|
-| Prefix | 768 | 98.3 | 17.4 | 122.1 |
-| Suffix | 480 | 57.1 | 0.16 | 64.3 |
-| Suffix | 640 | 81.0 | 0.12 | 87.3 |
+| 模型 | seq_len | total_len | AvgRunTime (ms) |
+|------|---------|-----------|-----------------|
+| Prefix | 768 | 768 | 122.1 |
+| Suffix | 32 | 800 | 25.64 |
+| Suffix | 64 | 832 | 27.36 |
+| Suffix | 96 | 864 | 29.23 |
+| Suffix | 128 | 896 | 25.09 |
+| Suffix | 256 | 1024 | 37.9 |
+| Suffix | 384 | 1152 | 63.94 |
+| Suffix | 512 | 1280 | 71.13 |
+| Suffix | 640 | 1408 | 92.22 |
 
-> **首次请求**：Prefix(98.3ms) + Suffix(64.1ms) = 162.4ms
-> **后续请求**（prefix KV 复用）：Suffix(64.1ms) = **64.1ms**
+> **首次请求**：Prefix(122.1ms) + Suffix(37.9ms) = 153.9ms（suffix=256 档位）
+> **后续请求**（prefix KV 复用）：Suffix(37.9ms) = **37.9ms**
 
 ---
 
 ## 5 . 常见问题
 
 1. **现象**：场景 C Suffix 模型转换报错 `attention mask must be NULL, when Qs is not equal to Kvs`
-   - 原因：300I Duo 芯片的 PFA 算子要求 `q_len == k_len`，Suffix 模型 q_len=480 而 k_len=1248
-   - 解决方案：Suffix 模型使用非 PFA 路径（手动 matmul + softmax + matmul，含 GQA repeat），导出脚本已自动处理
+   - 原因：300I Duo 芯片的标准 PFA 算子要求 `q_len == k_len`，Suffix 模型 q_len=128 而 k_len=896
+   - 解决方案：Suffix 模型使用 `InnerPromptFlashAttention` 算子（支持 `q_len != k_len`），需安装 MSLite 自定义算子包（见场景 C 前置条件）
 
 2. **现象**：场景 A prefill 转换报错（5 档动态分档 + 混合精度）
    - 原因：分档数量过多时，部分子图 tiling 失败
