@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Huawei Technologies Co., Ltd
+ * Copyright 2022-2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,7 +94,8 @@ int ReadCalibData(const char *calib_data_path, CalibTensor **calib_tensor_pointe
     printf("Unable open %s", calib_data_path);
     return kMSStatusLiteError;
   }
-  CalibTensor *calib_tensors = (CalibTensor *)malloc(kMaxOutput * sizeof(CalibTensor));
+  int calib_capacity = kMaxOutput;
+  CalibTensor *calib_tensors = (CalibTensor *)malloc(calib_capacity * sizeof(CalibTensor));
   if(calib_tensors == NULL) {
     printf("Malloc calib tensors failed.");
     return kMSStatusLiteError;
@@ -107,6 +108,17 @@ int ReadCalibData(const char *calib_data_path, CalibTensor **calib_tensor_pointe
   *calib_num = 0;
   while (fgets(line, kMaxTensorSize, file) != NULL) {
     if (i == 0) {
+      if (*calib_num >= calib_capacity) {
+        calib_capacity *= 2;
+        CalibTensor *new_tensors = (CalibTensor *)realloc(calib_tensors, calib_capacity * sizeof(CalibTensor));
+        if (new_tensors == NULL) {
+          printf("Realloc calib tensors failed.");
+          FreeCalibTensors(&calib_tensors, *calib_num);
+          fclose(file);
+          return kMSStatusLiteError;
+        }
+        calib_tensors = new_tensors;
+      }
       elements = 1;
       int j = 0;
       int dims = 0;
@@ -127,6 +139,7 @@ int ReadCalibData(const char *calib_data_path, CalibTensor **calib_tensor_pointe
       }
       memcpy(tensor_name, p, tensor_name_len);
       calib_tensors[*calib_num].tensor_name = tensor_name;
+      calib_tensors[*calib_num].elemets_num_ = elements;
       while (p != NULL) {
         if (j == 1) {
           dims = atoi(p);
