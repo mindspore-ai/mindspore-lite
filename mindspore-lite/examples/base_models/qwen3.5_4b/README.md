@@ -41,19 +41,79 @@ Qwen3.5-4B 采用混合注意力架构：
 | Python | 3.11 |
 | torch | 2.10.0 |
 | transformers | 5.6.2 |
+| accelerate | 1.14.0 |
 | onnx | 1.19.1 |
 | onnxruntime | 1.24.2 |
 | numpy | 1.26.4 |
+| Pillow | 12.3.0 |
 | CANN | 8.5.0 |
 | mindspore-lite | 2.9.0 |
+| Qwen3.5-4B权重 | ModelScope revision `ed182e32090db791077e12e0f58d22f3daafa173` |
 
 ```bash
-pip install transformers==5.6.2 torch==2.10.0 onnx==1.19.1 onnxruntime==1.24.2 numpy==1.26.4
+pip install transformers==5.6.2 torch==2.10.0 accelerate==1.14.0 \
+  onnx==1.19.1 onnxruntime==1.24.2 numpy==1.26.4 Pillow==12.3.0
+pip install /path/to/mindspore_lite-2.9.0-*.whl
 ```
+
+### CGDR/RGDR Custom算子
+
+启用CGDR/RGDR优化路径前，转换和推理进程必须能够同时发现Atlas 300I Duo对应的
+`ChunkGatedDeltaRule`和`RecurrentGatedDeltaRule`。算子源码已经包含在MindSpore Lite
+仓库中，不需要额外下载算子仓库。
+
+若使用上表中的MindSpore Lite 2.9.0运行时，可从当前MindSpore Lite源码构建Custom
+算子，并通过环境变量进行进程内加载。该方式不会写入CANN安装目录：
+
+```bash
+source /path/to/CANN/set_env.sh
+export MSLITE_HOME_PATH=/path/to/mindspore-lite-2.9.0-linux-aarch64
+export MSLITE_SOURCE=/path/to/mindspore-lite-source
+export CUSTOM_OPS_OUTPUT="$MSLITE_SOURCE/output/custom_ops"
+
+export PATH="$MSLITE_HOME_PATH/tools/converter/converter:$PATH"
+export LD_LIBRARY_PATH="$MSLITE_HOME_PATH/tools/converter/lib:$MSLITE_HOME_PATH/runtime/lib:$LD_LIBRARY_PATH"
+
+mkdir -p "$(dirname "$CUSTOM_OPS_OUTPUT")"
+cd "$MSLITE_SOURCE"
+bash mindspore-lite/tools/custom_kernels/ascend_ops/build_all_ops.sh "$CUSTOM_OPS_OUTPUT"
+
+export MSLITE_CUSTOM_OPP="$(find "$CUSTOM_OPS_OUTPUT" -mindepth 2 -maxdepth 2 \
+  -type d -name mslite_custom_ops -print -quit)"
+test -n "$MSLITE_CUSTOM_OPP"
+export ASCEND_CUSTOM_OPP_PATH="$MSLITE_CUSTOM_OPP${ASCEND_CUSTOM_OPP_PATH:+:$ASCEND_CUSTOM_OPP_PATH}"
+export MSLITE_OP_TILING="$MSLITE_CUSTOM_OPP/op_impl/ai_core/tbe/op_tiling"
+export LD_LIBRARY_PATH="$MSLITE_CUSTOM_OPP/op_api/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="$MSLITE_OP_TILING/lib/linux/aarch64:$MSLITE_OP_TILING:$LD_LIBRARY_PATH"
+```
+
+若使用由当前源码构建的MindSpore Lite aarch64发布包，包内已经包含对应的Custom
+算子vendor，可使用随包提供的脚本安装并加载：
+
+```bash
+source /path/to/CANN/set_env.sh
+export MSLITE_HOME_PATH=/path/to/mindspore-lite-<version>-linux-aarch64
+
+bash "$MSLITE_HOME_PATH/tools/custom_kernels/install.sh"
+source "$ASCEND_OPP_PATH/vendors/mslite_custom_ops/bin/set_env.bash"
+
+export PATH="$MSLITE_HOME_PATH/tools/converter/converter:$PATH"
+export LD_LIBRARY_PATH="$MSLITE_HOME_PATH/tools/converter/lib:$MSLITE_HOME_PATH/runtime/lib:$LD_LIBRARY_PATH"
+```
+
+执行`converter_lite`和推理脚本的每个新终端均需加载上述对应环境。
 
 ### 模型权重
 
-将 Qwen3.5-4B 模型权重下载到当前目录下的 `Qwen3.5-4B/` 文件夹。
+性能表使用ModelScope revision `ed182e32090db791077e12e0f58d22f3daafa173`，下载前需安装
+Git LFS。
+将该版本的Qwen3.5-4B模型权重下载到当前目录下的`Qwen3.5-4B/`文件夹：
+
+```bash
+git clone https://www.modelscope.cn/Qwen/Qwen3.5-4B.git
+git -C Qwen3.5-4B checkout ed182e32090db791077e12e0f58d22f3daafa173
+git -C Qwen3.5-4B lfs pull
+```
 
 ---
 
@@ -68,8 +128,18 @@ python export_qwen3_5_4b_onnx.py \
   --model-id ./Qwen3.5-4B \
   --output-dir ./qwen3_5_4b_onnx \
   --device cpu \
-  --vision-image-size 128
+  --vision-image-size 128 \
+  --dummy-seq-len 32 \
+  --enable-cgdr-custom \
+  --enable-rgdr-custom
 ```
+
+`--enable-cgdr-custom`用于将Prefill阶段的线性注意力子图替换为
+`ChunkGatedDeltaRule`，`--enable-rgdr-custom`用于将Decode阶段的线性注意力
+子图替换为`RecurrentGatedDeltaRule`。不指定这两个参数时仍导出原始展开子图。
+脚本会将Vision、Prefill和Decode分别写入`--output-dir`下的独立子目录；使用
+`--component`单独导出时也保持相同目录结构。这样可避免大模型ONNX的外置
+权重文件重名覆盖；不要将这些子目录中的外置权重混放。
 
 ### 参数说明
 
@@ -81,14 +151,20 @@ python export_qwen3_5_4b_onnx.py \
 | `--vision-image-size` | Vision 模型输入图像尺寸（正方形边长） | `128` |
 | `--dummy-seq-len` | 导出时 dummy 序列长度 | `8` |
 | `--dtype` | 导出精度（fp16/fp32） | `fp16` |
+| `--component` | 导出全部模型或仅导出Prefill/Decode（all/prefill/decode） | `all` |
+| `--enable-cgdr-custom` | Prefill接入CGDR Custom算子 | `False` |
+| `--enable-rgdr-custom` | Decode接入RGDR Custom算子 | `False` |
 
 ### 导出产出与模型 Shape
 
 ```log
 qwen3_5_4b_onnx/
-├── qwen3_5_vision.onnx          # Vision Tower 模型 (~637MB)
-├── qwen3_5_llm_prefill.onnx     # Prefill 模型 (~22MB, 外部权重 ~23GB)
-└── qwen3_5_llm_decode.onnx      # Decode 模型 (~1.1MB, 外部权重 ~20GB)
+├── vision/
+│   └── qwen3_5_vision.onnx          # Vision Tower 模型 (~637MB)
+├── prefill/
+│   └── qwen3_5_llm_prefill.onnx     # Prefill 图 (~0.95MB, 外置权重 ~9.68GB)
+└── decode/
+    └── qwen3_5_llm_decode.onnx      # Decode 图 (~0.88MB, 外置权重 ~9.68GB)
 ```
 
 #### Vision Tower Shape
@@ -98,7 +174,7 @@ qwen3_5_4b_onnx/
 | Input | pixel_values | `[64, 1536]` | float16 | 64=8x8 patches, 1536=3x2x16x16 |
 | Output | image_embeds | `[16, 2560]` | float16 | 16 个 image token, hidden_size=2560 |
 
-#### LLM Prefill Shape（动态轴）
+#### LLM Prefill Shape（未融合路径Batch和序列长度动态；CGDR路径Batch=1）
 
 | 输入/输出 | 名称 | Shape | 数据类型 | 说明 |
 |-----------|------|-------|----------|------|
@@ -111,7 +187,7 @@ qwen3_5_4b_onnx/
 | Output | present_recurrent_states | `[24, batch, 32, 128, 128]` | float32 | 循环状态（24 层线性注意力） |
 | Output | present_kv_cache | `[16, batch, 4, seq_len, 256]` | float16 | KV cache（8 层全注意力 x 2） |
 
-#### LLM Decode Shape（动态轴）
+#### LLM Decode Shape（未融合路径Batch动态；RGDR路径Batch=1、Step=1，KV长度动态）
 
 | 输入/输出 | 名称 | Shape | 数据类型 | 说明 |
 |-----------|------|-------|----------|------|
@@ -134,13 +210,18 @@ qwen3_5_4b_onnx/
 
 使用 `converter_lite` 工具将 ONNX 模型转换为 MindIR 格式：
 
+启用CGDR/RGDR后，转换和推理终端必须已经按“CGDR/RGDR Custom算子”小节完成
+算子构建或安装，并加载对应环境变量。
+当前CGDR/RGDR优化导出和推理路径仅验证并固定支持`batch=1`；Prefill序列长度和
+Decode KV长度仍可变。
+
 ```bash
 # 设置 converter_lite 路径
-Convert=/path/to/mindspore-lite/tools/converter/converter/converter_lite
+Convert="$MSLITE_HOME_PATH/tools/converter/converter/converter_lite"
 
 # Vision 转换
 $Convert --fmk=ONNX \
-  --modelFile=qwen3_5_4b_onnx/qwen3_5_vision.onnx \
+  --modelFile=qwen3_5_4b_onnx/vision/qwen3_5_vision.onnx \
   --outputFile=qwen3_5_4b_mindir/qwen3_5_vision \
   --optimize=ascend_oriented \
   --configFile=config.ini \
@@ -148,7 +229,7 @@ $Convert --fmk=ONNX \
 
 # Prefill 转换
 $Convert --fmk=ONNX \
-  --modelFile=qwen3_5_4b_onnx/qwen3_5_llm_prefill.onnx \
+  --modelFile=qwen3_5_4b_onnx/prefill/qwen3_5_llm_prefill.onnx \
   --outputFile=qwen3_5_4b_mindir/qwen3_5_llm_prefill \
   --optimize=ascend_oriented \
   --configFile=config.ini \
@@ -156,9 +237,10 @@ $Convert --fmk=ONNX \
 
 # Decode 转换
 $Convert --fmk=ONNX \
-  --modelFile=qwen3_5_4b_onnx/qwen3_5_llm_decode.onnx \
+  --modelFile=qwen3_5_4b_onnx/decode/qwen3_5_llm_decode.onnx \
   --outputFile=qwen3_5_4b_mindir/qwen3_5_llm_decode \
   --optimize=ascend_oriented \
+  --device=Ascend \
   --configFile=config.ini \
   --saveType=MINDIR
 ```
@@ -170,10 +252,10 @@ $Convert --fmk=ONNX \
 ```log
 qwen3_5_4b_mindir/
 ├── qwen3_5_vision.mindir                          # Vision MindIR (~683MB)
-├── qwen3_5_llm_prefill_graph.mindir               # Prefill 图定义 (~2.8KB)
-├── qwen3_5_llm_prefill_variables/data_0           # Prefill 权重 (~23GB)
-├── qwen3_5_llm_decode_graph.mindir                # Decode 图定义 (~2.9KB)
-└── qwen3_5_llm_decode_variables/data_0            # Decode 权重 (~21GB)
+├── qwen3_5_llm_prefill_graph.mindir               # Prefill 图定义 (~2.6KB)
+├── qwen3_5_llm_prefill_variables/data_0           # Prefill 权重 (~21GB)
+├── qwen3_5_llm_decode_graph.mindir                # Decode 图定义 (~2.7KB)
+└── qwen3_5_llm_decode_variables/data_0            # Decode 权重 (~11GB)
 ```
 
 ---
@@ -210,6 +292,14 @@ python infer_qwen3_5_4b_mslite.py \
 | `--image-size` | 图像尺寸（必须与导出 `--vision-image-size` 一致） | `128` |
 | `--device` | 推理设备（ascend/cpu） | `ascend` |
 | `--device-id` | Ascend 设备 ID | `0` |
+| `--host-state-roundtrip` | Decode每步将State复制到Host再回传NPU，用于回退和A/B验证 | `False` |
+
+在Ascend设备上，推理脚本默认将Conv State、Recurrent State和KV Cache保留在
+NPU侧，并对固定形状的Logits、Conv State及Recurrent State输出Tensor进行复用。
+指定`--host-state-roundtrip`后恢复为原始Host中转路径。
+
+Vision、Prefill和Decode模型按执行阶段依次加载，当前阶段结束后释放对应模型，
+以降低Host侧峰值内存占用。
 
 ### 外部资源说明
 
@@ -233,33 +323,48 @@ python infer_qwen3_5_4b_mslite.py \
 
 ### 推理性能（Ascend NPU）
 
-| 阶段 | 输入 Shape | 输出 Shape | 推理时间 | 说明 |
-|------|-----------|-----------|---------|------|
-| Vision Tower | `pixel_values: [64, 1536]` | `image_embeds: [16, 2560]` | **10.17 ms** | 图像编码 |
-| LLM Prefill | `input_ids: [1, 33]`, `attention_mask: [1, 33]`, `position_ids: [4, 1, 33]`, `image_embeds: [16, 2560]` | `logits: [1, 33, 248320]` + states | **5137.89 ms** | 首次前向计算 |
-| LLM Decode (per step) | `input_ids: [1, 1]`, `attention_mask: [1, seq]`, `position_ids: [4, 1, 1]` + states | `logits: [1, 1, 248320]` + states | **138.26 ms/step** | 自回归生成 |
-| LLM Decode (127 steps) | - | - | **17559.05 ms** | 总 decode 时间 |
-| **Total** | - | - | **22707.10 ms** | 端到端 |
+Prefill使用固定输入，每轮重新构造Host Tensor，预热2轮后测试5轮并取中位数；
+Decode使用固定Past State，预热3轮后测试10轮并取中位数。表内均统计从按模型
+输入顺序整理Tensor到`Model.predict`返回的时间，不包含输出`get_data_to_numpy()`。
+Prefill在计时前创建并跨预热/测试轮复用四个Ascend输出Tensor，其Shape依次为
+`[1, S, 248320]`、`[24, 1, 8192, 3]`、`[24, 1, 32, 128, 128]`和
+`[16, 1, 4, S, 256]`。
+Decode将Conv/Recurrent/KV State及输出Buffer常驻NPU，每轮只重建小输入并
+复用Buffer。
+Prefill的序列长度即`input_ids`和`attention_mask`长度；Decode的序列长度指
+`past_kv_cache`长度，对应`attention_mask`长度为序列长度加1。Decode固定Past
+State由对应长度的Prefill输出生成，计时前不包含checkpoint生成与模型加载。
+固定输入由上述官方demo图和prompt生成长度32的基础输入；长序列在基础输入
+最后一个token（id 198）之前插入`seq_len - 32`个token id 220，
+`attention_mask`保持全1，并使用推理脚本相同的mRoPE逻辑重建`position_ids`。
+各长度的Decode checkpoint由对应Prefill执行一次后输出的
+Conv/Recurrent/KV State构造，单步Decode输入token id同为220。
+测试结果如下：
 
-### 性能指标
+| 序列长度 | Prefill Predict（ms） | Decode Predict（ms/token） |
+| ---: | ---: | ---: |
+| 32 | 159.296 | 81.543 |
+| 512 | 506.303 | 84.688 |
+| 1024 | 1009.435 | 90.531 |
+| 2048 | 2081.616 | 101.986 |
 
-| 指标 | 值 |
-|------|-----|
-| 吞吐量 | **5.64 tok/s** |
-| Vision 推理 | 10.17 ms |
-| Prefill 推理 | 48543.19 ms (seq_len=33) |
-| Decode 单步推理 | 128.22 ms (avg) |
-| 总生成 token 数 | 128 |
+序列长度32、512和1024下，当前路径与未融合参考路径生成的前两个Token一致。
+中间Tensor的通过标准为余弦相似度不低于0.999、
+NRMSE不高于0.02且最大绝对误差不高于1.0；实测Prefill最差值分别为
+0.9999855、0.005379和0.449219，Decode最差值分别为0.9999951、0.003441和
+0.699219，均满足标准。
 
-> 注意：首次运行时 Ascend GE 图编译耗时较长（约 40 分钟），后续运行加载已编译的 OM 模型会更快。上述性能数据为推理阶段耗时，不包含模型加载时间。
+> 注意：首次运行时Ascend GE图编译耗时较长。上述结果不包含模型加载和首次编译时间。
+> CGDR的L0C同步修复已经随MindSpore Lite PR #1174合入；请使用与当前模型源码
+> 同一MindSpore Lite checkout构建的Custom算子vendor。
 
 ### Prefill 输入 Shape 详细说明
 
 以 `image_size=128`、prompt="Describe this image." 为例：
 
-- `input_ids: [1, 33]` - 33 个 token (system + image placeholder + user prompt + generation prefix)，包含 16 个 image token（由 Vision Tower 产生 16 个 patch）
-- `attention_mask: [1, 33]` - 全 1
-- `position_ids: [4, 1, 33]` - 4D mRoPE 位置编码 (text_pos, temporal, height, width)
+- `input_ids: [1, 32]` - 32 个 token (system + image placeholder + user prompt + generation prefix)，包含 16 个 image token（由 Vision Tower 产生 16 个 patch）
+- `attention_mask: [1, 32]` - 全 1
+- `position_ids: [4, 1, 32]` - 4D mRoPE 位置编码 (text_pos, temporal, height, width)
 - `image_embeds: [16, 2560]` - Vision Tower 输出
 
 ### Decode 输入 Shape 详细说明
@@ -267,11 +372,11 @@ python infer_qwen3_5_4b_mslite.py \
 每步 decode 的输入：
 
 - `input_ids: [1, 1]` - 单个 token
-- `attention_mask: [1, seq]` - 随步数递增 (34, 35, 36, ...)
+- `attention_mask: [1, past_seq_len + 1]` - 随步数递增 (33, 34, 35, ...)
 - `position_ids: [4, 1, 1]` - 单步位置编码
 - `past_conv_states: [24, 1, 8192, 3]` - 24 层线性注意力的卷积状态
 - `past_recurrent_states: [24, 1, 32, 128, 128]` - 24 层线性注意力的循环状态
-- `past_kv_cache: [16, 1, 4, seq, 256]` - 8 层全注意力的 KV cache (16=8x2)
+- `past_kv_cache: [16, 1, 4, past_seq_len, 256]` - 8 层全注意力的 KV cache (16=8x2)
 
 ---
 

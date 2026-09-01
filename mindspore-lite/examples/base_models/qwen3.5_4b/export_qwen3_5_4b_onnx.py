@@ -47,6 +47,12 @@ except ImportError:
     sys.exit(1)
 
 
+# Keep the original graph as the default and enable the fused linear-attention
+# operators explicitly when exporting for Ascend 310P.
+USE_CUSTOM_RGDR = False
+USE_CUSTOM_CGDR = False
+
+
 def _l2norm(x, dim=-1, eps=1e-6):
     """
     L2 normalize the input tensor.
@@ -145,6 +151,129 @@ def _chunk_gated_delta_rule(query, key, value, g, beta, chunk_size=64, initial_s
     return core_attn_out, last_recurrent_state
 
 
+class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
+    """Export the 310P seven-input ChunkGatedDeltaRule Custom operator."""
+
+    @staticmethod
+    def forward(ctx, query, key, value, beta, state, actual_seq_lengths, g_decay):
+        """Run the PyTorch reference implementation used during ONNX export."""
+        del ctx, actual_seq_lengths
+        batch_size = state.shape[0]
+        sequence_length = query.shape[0] // batch_size
+        num_key_heads = query.shape[1]
+        num_value_heads = value.shape[1]
+        key_dim = query.shape[2]
+        value_dim = value.shape[2]
+        query_4d = query.reshape(
+            batch_size, sequence_length, num_key_heads, key_dim
+        )
+        key_4d = key.reshape(
+            batch_size, sequence_length, num_key_heads, key_dim
+        )
+        value_4d = value.reshape(
+            batch_size, sequence_length, num_value_heads, value_dim
+        )
+        beta_3d = beta.reshape(batch_size, sequence_length, num_value_heads)
+        g_3d = g_decay.reshape(batch_size, sequence_length, num_value_heads)
+        if num_value_heads > num_key_heads:
+            repeat = num_value_heads // num_key_heads
+            query_4d = query_4d.repeat_interleave(repeat, dim=2)
+            key_4d = key_4d.repeat_interleave(repeat, dim=2)
+        state_model = state.transpose(-2, -1).contiguous().float()
+        out, final_state = _chunk_gated_delta_rule(
+            query_4d,
+            key_4d,
+            value_4d,
+            g=g_3d,
+            beta=beta_3d,
+            chunk_size=64,
+            initial_state=state_model,
+            output_final_state=True,
+            use_qk_l2norm_in_kernel=False,
+        )
+        out = out.reshape(-1, num_value_heads, value_dim).to(torch.float16)
+        final_state = final_state.transpose(-2, -1).contiguous().to(torch.float16)
+        return out, final_state
+
+    @staticmethod
+    def symbolic(graph, query, key, value, beta, state, actual_seq_lengths, g_decay):
+        """Export ChunkGatedDeltaRule as an ONNX Custom node."""
+        scale_value = 1.0 / (128.0 ** 0.5)
+        out, final_state = graph.op(
+            "Custom",
+            query,
+            key,
+            value,
+            beta,
+            state,
+            actual_seq_lengths,
+            g_decay,
+            type_s="ChunkGatedDeltaRule",
+            input_names_s=[
+                "query", "key", "value", "beta", "initial_state",
+                "actual_seq_lengths", "g",
+            ],
+            optional_input_names_s=["g"],
+            output_names_s=["out", "final_state"],
+            output_num_i=2,
+            input_index_i=list(range(7)),
+            scale_value_f=scale_value,
+            dtype_i=10,
+            outputs=2,
+        )
+        out.setType(value.type().with_dtype(torch.float16))
+        final_state.setType(state.type().with_dtype(torch.float16))
+        return out, final_state
+
+
+def _chunk_gated_delta_rule_custom(query, key, value, g, beta, initial_state=None,
+                                   output_final_state=False,
+                                   use_qk_l2norm_in_kernel=False):
+    """Qwen3.5 adapter for the 310P seven-input CGDR Custom operator."""
+    initial_dtype = query.dtype
+    if use_qk_l2norm_in_kernel:
+        query = _l2norm(query, dim=-1, eps=1e-6)
+        key = _l2norm(key, dim=-1, eps=1e-6)
+
+    batch_size, sequence_length, num_key_heads, key_dim = query.shape
+    num_value_heads = value.shape[2]
+    value_dim = value.shape[3]
+    token_count = batch_size * sequence_length
+    query_flat = query.reshape(token_count, num_key_heads, key_dim).contiguous().half()
+    key_flat = key.reshape(token_count, num_key_heads, key_dim).contiguous().half()
+    value_flat = value.reshape(
+        token_count, num_value_heads, value_dim
+    ).contiguous().half()
+    beta_flat = beta.reshape(token_count, num_value_heads).contiguous().half()
+    g_flat = g.reshape(token_count, num_value_heads).contiguous().float()
+
+    if initial_state is None:
+        state_custom = torch.zeros(
+            batch_size, num_value_heads, value_dim, key_dim,
+            dtype=torch.float16, device=query.device,
+        )
+    else:
+        state_custom = initial_state.transpose(-2, -1).contiguous().half()
+    query_shape = torch.onnx.operators.shape_as_tensor(query)
+    actual_seq_lengths = query_shape[1:2].to(torch.int32).expand(batch_size)
+    core_attn_out, state_out = ChunkGatedDeltaRuleFunction.apply(
+        query_flat,
+        key_flat,
+        value_flat,
+        beta_flat,
+        state_custom,
+        actual_seq_lengths,
+        g_flat,
+    )
+    core_attn_out = core_attn_out.reshape(
+        batch_size, sequence_length, num_value_heads, value_dim
+    ).to(initial_dtype)
+    state_out = state_out.transpose(-2, -1).contiguous().float()
+    if not output_final_state:
+        state_out = None
+    return core_attn_out, state_out
+
+
 def _recurrent_gated_delta_rule(query, key, value, g, beta, initial_state,
                                 output_final_state=False, use_qk_l2norm_in_kernel=False):
     """
@@ -186,6 +315,147 @@ def _recurrent_gated_delta_rule(query, key, value, g, beta, initial_state,
         last_recurrent_state = None
     core_attn_out = core_attn_out.transpose(1, 2).contiguous().to(initial_dtype)
     return core_attn_out, last_recurrent_state
+
+
+class RecurrentGatedDeltaRuleFunction(torch.autograd.Function):
+    """Export the 310P RecurrentGatedDeltaRule Ascend C Custom operator.
+
+    The custom operator stores its recurrent matrix as [B, NV, DV, DK], while
+    the HuggingFace Qwen3.5 implementation stores it as [B, NV, DK, DV].  The
+    caller performs the two layout conversions and keeps the model-facing state
+    FP32.  The currently available kernel accepts an FP16 state input.
+    """
+
+    @staticmethod
+    def forward(ctx, query, key, value, beta, state, actual_seq_lengths,
+                ssm_state_indices, g_decay, num_accepted_tokens):
+        """Run the PyTorch reference implementation used during ONNX export."""
+        del ctx, ssm_state_indices, num_accepted_tokens
+        scale_value = 1.0 / (128.0 ** 0.5)
+        query_fp32 = query.float()
+        key_fp32 = key.float()
+        value_fp32 = value.float()
+        beta_fp32 = beta.float()
+        state_fp32 = state.float().clone()
+        decay_fp32 = g_decay.float().exp()
+
+        token_count, num_key_heads, _ = query_fp32.shape
+        num_value_heads = value_fp32.shape[1]
+        result = torch.zeros_like(value_fp32)
+        seq_start = 0
+        for batch_idx in range(actual_seq_lengths.numel()):
+            seq_len = int(actual_seq_lengths[batch_idx].item())
+            seq_end = min(seq_start + seq_len, token_count)
+            for value_head in range(num_value_heads):
+                key_head = value_head // (num_value_heads // num_key_heads)
+                recurrent = state_fp32[batch_idx, value_head]
+                for token_idx in range(seq_start, seq_end):
+                    recurrent = recurrent * decay_fp32[token_idx, value_head]
+                    key_t = key_fp32[token_idx, key_head]
+                    query_t = query_fp32[token_idx, key_head] * float(scale_value)
+                    delta = value_fp32[token_idx, value_head] - recurrent @ key_t
+                    delta = delta * beta_fp32[token_idx, value_head]
+                    recurrent = recurrent + torch.outer(delta, key_t)
+                    result[token_idx, value_head] = recurrent @ query_t
+                state_fp32[batch_idx, value_head] = recurrent
+            seq_start = seq_end
+        return result.to(value.dtype), state_fp32.to(state.dtype)
+
+    @staticmethod
+    def symbolic(graph, query, key, value, beta, state, actual_seq_lengths,
+                 ssm_state_indices, g_decay, num_accepted_tokens):
+        """Export RecurrentGatedDeltaRule as an ONNX Custom node."""
+        scale_value = 1.0 / (128.0 ** 0.5)
+        out, state_out = graph.op(
+            "Custom",
+            query, key, value, beta, state, actual_seq_lengths,
+            ssm_state_indices, g_decay, num_accepted_tokens,
+            type_s="RecurrentGatedDeltaRule",
+            input_names_s=[
+                "query", "key", "value", "beta", "state",
+                "actual_seq_lengths", "ssm_state_indices", "g", "gk",
+                "num_accepted_tokens",
+            ],
+            # Keep the exported GE IR signature aligned with the registered
+            # 310P OpDef.  These optional inputs are still supplied below;
+            # only gk is absent from this model adapter.
+            optional_input_names_s=["g", "gk", "num_accepted_tokens"],
+            input_index_i=[0, 1, 2, 3, 4, 5, 6, 7, 9],
+            # Must match the names registered in recurrent_gated_delta_rule_def.cpp.
+            output_names_s=["out", "state"],
+            output_num_i=2,
+            scale_value_f=scale_value,
+            # MindSpore TypeId 42 is Float16.  Lite's Ascend Custom mapper
+            # falls back to the first input dtype when a graph contains more
+            # than one Custom type, so keep the public kernel boundary FP16.
+            # The recurrent math remains FP32 inside the kernel and the model
+            # casts the returned cache back to FP32 below.
+            output_types_i=[42, 42],
+            outputs_shape_s="3,-1,32,128,4,-1,32,128,128,",
+            # ONNX TensorProto.FLOAT16.  Keep this attribute and the value
+            # metadata aligned with the registered GE output contract.
+            dtype_i=10,
+            outputs=2,
+        )
+        # The registered kernel is RGDR<half, half>.  Its internal recurrent
+        # arithmetic is FP32, but both graph outputs intentionally use FP16 to
+        # match Lite's Custom-output allocation behavior.
+        out.setType(value.type().with_dtype(torch.float16))
+        state_out.setType(state.type().with_dtype(torch.float16))
+        return out, state_out
+
+
+def _recurrent_gated_delta_rule_custom(query, key, value, g, beta, initial_state,
+                                       output_final_state=False,
+                                       use_qk_l2norm_in_kernel=False):
+    """Qwen3.5 adapter for the 310P RGDR Custom operator."""
+    initial_dtype = query.dtype
+    if use_qk_l2norm_in_kernel:
+        # The current 310P kernel does not implement Q/K L2 normalization.
+        query = _l2norm(query, dim=-1, eps=1e-6)
+        key = _l2norm(key, dim=-1, eps=1e-6)
+
+    batch_size, sequence_length, num_key_heads, key_dim = query.shape
+    num_value_heads = value.shape[2]
+    value_dim = value.shape[3]
+    token_count = batch_size * sequence_length
+
+    # The registered 310P schema accepts FP16 for Q/K/V/beta/state even when
+    # the surrounding model is exported with --dtype fp32.
+    query_flat = query.reshape(token_count, num_key_heads, key_dim).to(torch.float16).contiguous()
+    key_flat = key.reshape(token_count, num_key_heads, key_dim).to(torch.float16).contiguous()
+    value_flat = value.reshape(token_count, num_value_heads, value_dim).to(torch.float16).contiguous()
+    beta_flat = beta.reshape(token_count, num_value_heads).to(torch.float16).contiguous()
+    g_flat = g.reshape(token_count, num_value_heads).float().contiguous()
+
+    # Custom kernel layout is [B, NV, DV, DK] and its state input is FP16.
+    state_custom = initial_state.transpose(-2, -1).contiguous().to(torch.float16)
+    actual_seq_lengths = torch.full(
+        (batch_size,), sequence_length, dtype=torch.int32, device=query.device
+    )
+    # The RGDR Decode export is fixed to batch one and a single token below,
+    # so every token reads and updates state slot 0.  Keep this input constant:
+    # exporting arange(...).repeat_interleave(...) produces an ONNX OneHot
+    # subgraph that MindSpore Lite 2.9 cannot map for Ascend conversion.
+    ssm_state_indices = torch.zeros(
+        token_count, dtype=torch.int32, device=query.device
+    )
+    num_accepted_tokens = torch.full(
+        (batch_size,), sequence_length, dtype=torch.int32, device=query.device
+    )
+    core_attn_out, state_out = RecurrentGatedDeltaRuleFunction.apply(
+        query_flat, key_flat, value_flat, beta_flat, state_custom,
+        actual_seq_lengths, ssm_state_indices, g_flat, num_accepted_tokens,
+    )
+    core_attn_out = core_attn_out.reshape(
+        batch_size, sequence_length, num_value_heads, value_dim
+    ).to(initial_dtype)
+    # The model-facing recurrent cache remains FP32 even though the Custom
+    # boundary writes FP16; make the conversion explicit in the outer graph.
+    state_out = state_out.transpose(-2, -1).contiguous().float()
+    if not output_final_state:
+        state_out = None
+    return core_attn_out, state_out
 
 
 def _linear_attn_prefill(layer, hidden_states, attention_mask):
@@ -230,15 +500,22 @@ def _linear_attn_prefill(layer, hidden_states, attention_mask):
     beta = b.sigmoid()
     g = -layer.A_log.float().exp() * F.softplus(a.float() + layer.dt_bias)
 
-    if layer.num_v_heads // layer.num_k_heads > 1:
-        query = query.repeat_interleave(layer.num_v_heads // layer.num_k_heads, dim=2)
-        key = key.repeat_interleave(layer.num_v_heads // layer.num_k_heads, dim=2)
-
-    core_attn_out, last_recurrent_state = _chunk_gated_delta_rule(
-        query, key, value, g=g, beta=beta,
-        initial_state=None, output_final_state=True,
-        use_qk_l2norm_in_kernel=True,
-    )
+    if USE_CUSTOM_CGDR:
+        core_attn_out, last_recurrent_state = _chunk_gated_delta_rule_custom(
+            query, key, value, g=g, beta=beta,
+            initial_state=None, output_final_state=True,
+            use_qk_l2norm_in_kernel=True,
+        )
+    else:
+        if layer.num_v_heads // layer.num_k_heads > 1:
+            repeat = layer.num_v_heads // layer.num_k_heads
+            query = query.repeat_interleave(repeat, dim=2)
+            key = key.repeat_interleave(repeat, dim=2)
+        core_attn_out, last_recurrent_state = _chunk_gated_delta_rule(
+            query, key, value, g=g, beta=beta,
+            initial_state=None, output_final_state=True,
+            use_qk_l2norm_in_kernel=True,
+        )
 
     core_attn_out = core_attn_out.reshape(-1, layer.head_v_dim)
     z = z.reshape(-1, layer.head_v_dim)
@@ -286,15 +563,22 @@ def _linear_attn_decode(layer, hidden_states, conv_state_in, recurrent_state_in)
     beta = b.sigmoid()
     g = -layer.A_log.float().exp() * F.softplus(a.float() + layer.dt_bias)
 
-    if layer.num_v_heads // layer.num_k_heads > 1:
-        query = query.repeat_interleave(layer.num_v_heads // layer.num_k_heads, dim=2)
-        key = key.repeat_interleave(layer.num_v_heads // layer.num_k_heads, dim=2)
-
-    core_attn_out, last_recurrent_state = _recurrent_gated_delta_rule(
-        query, key, value, g=g, beta=beta,
-        initial_state=recurrent_state_in, output_final_state=True,
-        use_qk_l2norm_in_kernel=True,
-    )
+    if USE_CUSTOM_RGDR:
+        core_attn_out, last_recurrent_state = _recurrent_gated_delta_rule_custom(
+            query, key, value, g=g, beta=beta,
+            initial_state=recurrent_state_in, output_final_state=True,
+            use_qk_l2norm_in_kernel=True,
+        )
+    else:
+        if layer.num_v_heads // layer.num_k_heads > 1:
+            repeat = layer.num_v_heads // layer.num_k_heads
+            query = query.repeat_interleave(repeat, dim=2)
+            key = key.repeat_interleave(repeat, dim=2)
+        core_attn_out, last_recurrent_state = _recurrent_gated_delta_rule(
+            query, key, value, g=g, beta=beta,
+            initial_state=recurrent_state_in, output_final_state=True,
+            use_qk_l2norm_in_kernel=True,
+        )
 
     core_attn_out = core_attn_out.reshape(-1, layer.head_v_dim)
     z = z.reshape(-1, layer.head_v_dim)
@@ -677,7 +961,9 @@ def export_vision_tower(model, output_dir, device="cpu", vision_image_size=128):
     """
     Export the vision tower of the Qwen3.5 model to ONNX format.
     """
-    output_path = Path(output_dir) / "qwen3_5_vision.onnx"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "qwen3_5_vision.onnx"
     print(f"Exporting Vision Tower to {output_path}...")
 
     vision_tower = model.model.visual
@@ -719,7 +1005,9 @@ def _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_to
     """
     Export the LLM prefill model of the Qwen3.5 model to ONNX format.
     """
-    prefill_path = Path(output_dir) / "qwen3_5_llm_prefill.onnx"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    prefill_path = output_dir / "qwen3_5_llm_prefill.onnx"
     dummy_input_ids = torch.randint(0, 1000, (1, dummy_seq), dtype=torch.int64, device=device)
     dummy_attention_mask = torch.ones(1, dummy_seq, dtype=torch.int64, device=device)
     base_pos = torch.arange(dummy_seq, device=device, dtype=torch.int64).view(1, -1)
@@ -731,16 +1019,27 @@ def _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_to
     input_names = ["input_ids", "attention_mask", "position_ids", "image_embeds"]
     output_names = ["logits", "present_conv_states", "present_recurrent_states",
                     "present_kv_cache"]
-    dynamic_axes = {
-        "input_ids": {0: "batch", 1: "seq_len"},
-        "attention_mask": {0: "batch", 1: "seq_len"},
-        "position_ids": {1: "batch", 2: "seq_len"},
-        "image_embeds": {0: "num_image_tokens"},
-        "logits": {0: "batch", 1: "seq_len"},
-        "present_conv_states": {1: "batch"},
-        "present_recurrent_states": {1: "batch"},
-        "present_kv_cache": {1: "batch", 3: "seq_len"},
-    }
+    if USE_CUSTOM_CGDR:
+        # The 310P CGDR integration currently targets the batch-one demo path.
+        dynamic_axes = {
+            "input_ids": {1: "seq_len"},
+            "attention_mask": {1: "seq_len"},
+            "position_ids": {2: "seq_len"},
+            "image_embeds": {0: "num_image_tokens"},
+            "logits": {1: "seq_len"},
+            "present_kv_cache": {3: "seq_len"},
+        }
+    else:
+        dynamic_axes = {
+            "input_ids": {0: "batch", 1: "seq_len"},
+            "attention_mask": {0: "batch", 1: "seq_len"},
+            "position_ids": {1: "batch", 2: "seq_len"},
+            "image_embeds": {0: "num_image_tokens"},
+            "logits": {0: "batch", 1: "seq_len"},
+            "present_conv_states": {1: "batch"},
+            "present_recurrent_states": {1: "batch"},
+            "present_kv_cache": {1: "batch", 3: "seq_len"},
+        }
     from torch.onnx import utils as onnx_utils
     print(f"Exporting LLM prefill to {prefill_path}...")
     with torch.no_grad():
@@ -758,7 +1057,9 @@ def _export_llm_decode(decode, meta, output_dir, device, dummy_seq):
     """
     Export the LLM decode model of the Qwen3.5 model to ONNX format.
     """
-    decode_path = Path(output_dir) / "qwen3_5_llm_decode.onnx"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    decode_path = output_dir / "qwen3_5_llm_decode.onnx"
     dummy_step = 1
     dummy_past_len = dummy_seq
     dummy_input_ids_step = torch.randint(
@@ -797,18 +1098,26 @@ def _export_llm_decode(decode, meta, output_dir, device, dummy_seq):
                    "past_conv_states", "past_recurrent_states", "past_kv_cache"]
     output_names = ["logits", "present_conv_states", "present_recurrent_states",
                     "present_kv_cache"]
-    dynamic_axes = {
-        "input_ids": {0: "batch", 1: "step"},
-        "attention_mask": {0: "batch", 1: "total_seq_len"},
-        "position_ids": {1: "batch", 2: "step"},
-        "past_conv_states": {1: "batch"},
-        "past_recurrent_states": {1: "batch"},
-        "past_kv_cache": {1: "batch", 3: "past_seq_len"},
-        "logits": {0: "batch", 1: "step"},
-        "present_conv_states": {1: "batch"},
-        "present_recurrent_states": {1: "batch"},
-        "present_kv_cache": {1: "batch", 3: "total_seq_len"},
-    }
+    if USE_CUSTOM_RGDR:
+        # RGDR is used for single-token, batch-one autoregressive Decode.
+        dynamic_axes = {
+            "attention_mask": {1: "total_seq_len"},
+            "past_kv_cache": {3: "past_seq_len"},
+            "present_kv_cache": {3: "total_seq_len"},
+        }
+    else:
+        dynamic_axes = {
+            "input_ids": {0: "batch", 1: "step"},
+            "attention_mask": {0: "batch", 1: "total_seq_len"},
+            "position_ids": {1: "batch", 2: "step"},
+            "past_conv_states": {1: "batch"},
+            "past_recurrent_states": {1: "batch"},
+            "past_kv_cache": {1: "batch", 3: "past_seq_len"},
+            "logits": {0: "batch", 1: "step"},
+            "present_conv_states": {1: "batch"},
+            "present_recurrent_states": {1: "batch"},
+            "present_kv_cache": {1: "batch", 3: "total_seq_len"},
+        }
     from torch.onnx import utils as onnx_utils
     print(f"Exporting LLM decode to {decode_path}...")
     with torch.no_grad():
@@ -841,9 +1150,15 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq=8,
     prefill = Qwen35LlmPrefill(text_model, lm_head, image_token_id).to(device).eval()
     decode = Qwen35LlmDecode(text_model, lm_head).to(device).eval()
 
-    _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_tokens,
-                        dtype=dtype)
-    _export_llm_decode(decode, meta, output_dir, device, dummy_seq)
+    # Independent component exports can assign the same graph-local external
+    # data filename to different tensors.  Keep every graph self-contained so
+    # that repeated or component-only exports cannot overwrite another graph.
+    output_dir = Path(output_dir)
+    _export_llm_prefill(
+        prefill, output_dir / "prefill", device, dummy_seq,
+        dummy_num_img_tokens, dtype=dtype,
+    )
+    _export_llm_decode(decode, meta, output_dir / "decode", device, dummy_seq)
 
 
 def main():
@@ -876,8 +1191,23 @@ def main():
         "--dtype", type=str, default="fp16", choices=["fp16", "fp32"],
         help="Export dtype",
     )
-
+    parser.add_argument(
+        "--component", type=str, default="all", choices=["all", "prefill", "decode"],
+        help="Export all components, the LLM prefill graph, or the LLM decode graph",
+    )
+    parser.add_argument(
+        "--enable-rgdr-custom", action="store_true",
+        help="Replace the expanded decode recurrent rule with the 310P Custom RGDR op",
+    )
+    parser.add_argument(
+        "--enable-cgdr-custom", action="store_true",
+        help="Replace the expanded prefill chunk rule with the 310P Custom CGDR op",
+    )
     args = parser.parse_args()
+
+    global USE_CUSTOM_RGDR, USE_CUSTOM_CGDR
+    USE_CUSTOM_RGDR = args.enable_rgdr_custom
+    USE_CUSTOM_CGDR = args.enable_cgdr_custom
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -892,9 +1222,31 @@ def main():
         attn_implementation="eager",
     )
 
-    export_vision_tower(model, output_dir, args.device, args.vision_image_size)
-    export_llm_prefill_decode(model, output_dir, args.device, args.dummy_seq_len,
-                              dtype=torch_dtype)
+    if args.component == "all":
+        export_vision_tower(
+            model, output_dir / "vision", args.device, args.vision_image_size
+        )
+        export_llm_prefill_decode(model, output_dir, args.device, args.dummy_seq_len,
+                                  dtype=torch_dtype)
+    elif args.component == "prefill":
+        meta = _get_model_meta(model)
+        text_model = meta["text_model"].to(args.device).eval()
+        lm_head = meta["lm_head"].to(args.device).eval()
+        prefill = Qwen35LlmPrefill(
+            text_model, lm_head, meta["image_token_id"]
+        ).to(args.device).eval()
+        _export_llm_prefill(
+            prefill, output_dir / "prefill", args.device, args.dummy_seq_len, 16,
+            dtype=torch_dtype,
+        )
+    else:
+        meta = _get_model_meta(model)
+        text_model = meta["text_model"].to(args.device).eval()
+        lm_head = meta["lm_head"].to(args.device).eval()
+        decode = Qwen35LlmDecode(text_model, lm_head).to(args.device).eval()
+        _export_llm_decode(
+            decode, meta, output_dir / "decode", args.device, args.dummy_seq_len
+        )
 
     print("Clearing memory after export...")
     del model

@@ -29,6 +29,7 @@ This script does NOT depend on torch -- all computation uses numpy.
 
 import sys
 import argparse
+import gc
 import urllib.request
 import itertools
 import time
@@ -183,7 +184,17 @@ def _mslite_tensor(np_array):
     """
     Convert numpy array to MindSpore Lite tensor.
     """
+    if isinstance(np_array, mslite.Tensor):
+        return np_array
     return mslite.Tensor(np_array)
+
+
+def _device_output_tensor(template, shape, device):
+    """Create an Ascend output tensor matching a model output descriptor."""
+    tensor = mslite.Tensor(shape=list(shape), dtype=template.dtype, device=device)
+    tensor.name = template.name
+    tensor.format = template.format
+    return tensor
 
 
 def _build_mslite_inputs(model, feed_dict, preferred_order=None):
@@ -218,7 +229,8 @@ class Qwen354BInferencer:
     """Qwen3.5-4B MindSpore Lite inferencer with Vision + Prefill + Decode pipeline."""
 
     def __init__(self, vision_model_path, prefill_model_path, decode_model_path,
-                 processor_id, device="ascend", device_id=0, image_size=128):
+                 processor_id, device="ascend", device_id=0, image_size=128,
+                 device_resident_states=True):
         """
         Initialize the inferencer.
         """
@@ -234,24 +246,19 @@ class Qwen354BInferencer:
         self.context.target = [device]
         if device == "ascend":
             self.context.ascend.device_id = device_id
+        self.device = device
+        self.device_id = device_id
+        self.device_resident_states = bool(device_resident_states and device == "ascend")
 
-        print(f"Loading vision model from {vision_model_path}...")
-        self.vision_model = mslite.Model()
-        self.vision_model.build_from_file(
-            vision_model_path, mslite.ModelType.MINDIR, self.context
-        )
-
-        print(f"Loading prefill model from {prefill_model_path}...")
-        self.prefill_model = mslite.Model()
-        self.prefill_model.build_from_file(
-            prefill_model_path, mslite.ModelType.MINDIR, self.context
-        )
-
-        print(f"Loading decode model from {decode_model_path}...")
-        self.decode_model = mslite.Model()
-        self.decode_model.build_from_file(
-            decode_model_path, mslite.ModelType.MINDIR, self.context
-        )
+        # These three large models can exceed host memory when they are built
+        # concurrently on a shared server.  Keep only one model alive at a
+        # time; the NumPy outputs are sufficient to bridge the stages.
+        self.vision_model_path = vision_model_path
+        self.prefill_model_path = prefill_model_path
+        self.decode_model_path = decode_model_path
+        self.vision_model = None
+        self.prefill_model = None
+        self.decode_model = None
 
         print(f"Loading processor from {processor_id}...")
         self.cfg = AutoConfig.from_pretrained(processor_id)
@@ -292,6 +299,82 @@ class Qwen354BInferencer:
         if token_text:
             print(token_text, end="", flush=True)
 
+    def _initialize_decode_device_states(self, logits, past_conv, past_recurrent, past_kv):
+        """Upload decode states and allocate reusable device output tensors."""
+        if not self.device_resident_states:
+            return past_conv, past_recurrent, past_kv, 0.0, None
+
+        device_name = f"ascend:{self.device_id}"
+        state_init_start = time.perf_counter()
+        past_conv = mslite.Tensor(
+            past_conv.astype(np.float16), device=device_name
+        )
+        past_recurrent = mslite.Tensor(
+            past_recurrent.astype(np.float32), device=device_name
+        )
+        past_kv = mslite.Tensor(
+            past_kv.astype(np.float16), device=device_name
+        )
+        output_templates = self.decode_model.get_outputs()
+        if len(output_templates) != 4:
+            raise RuntimeError(
+                f"expected 4 Decode outputs, got {len(output_templates)}"
+            )
+        device_outputs = {
+            "device_name": device_name,
+            "templates": output_templates,
+            "conv": [
+                _device_output_tensor(output_templates[1], past_conv.shape, device_name),
+                _device_output_tensor(output_templates[1], past_conv.shape, device_name),
+            ],
+            "recurrent": [
+                _device_output_tensor(
+                    output_templates[2], past_recurrent.shape, device_name
+                ),
+                _device_output_tensor(
+                    output_templates[2], past_recurrent.shape, device_name
+                ),
+            ],
+            "logits": _device_output_tensor(
+                output_templates[0], [1, 1, logits.shape[-1]], device_name
+            ),
+        }
+        device_state_init_ms = (time.perf_counter() - state_init_start) * 1000
+        print(f"Decode state upload time: {device_state_init_ms:.2f} ms")
+        return past_conv, past_recurrent, past_kv, device_state_init_ms, device_outputs
+
+    def _build_decode_step_io(self, step_id, attention_mask, position_ids,
+                              past_conv, past_recurrent, past_kv, step_index,
+                              device_outputs):
+        """Build one decode step's inputs and optional reusable output tensors."""
+        decode_feed = {
+            "input_ids": step_id,
+            "attention_mask": attention_mask,
+            "position_ids": position_ids,
+            "past_conv_states": past_conv,
+            "past_recurrent_states": past_recurrent,
+            "past_kv_cache": past_kv,
+        }
+        if not self.device_resident_states:
+            decode_feed["past_conv_states"] = past_conv.astype(np.float16)
+            decode_feed["past_recurrent_states"] = past_recurrent.astype(np.float32)
+            decode_feed["past_kv_cache"] = past_kv.astype(np.float16)
+            return decode_feed, None
+
+        kv_output_shape = list(past_kv.shape)
+        kv_output_shape[-2] += 1
+        output_index = step_index & 1
+        output_templates = device_outputs["templates"]
+        output_buffers = [
+            device_outputs["logits"],
+            device_outputs["conv"][output_index],
+            device_outputs["recurrent"][output_index],
+            _device_output_tensor(
+                output_templates[3], kv_output_shape, device_outputs["device_name"]
+            ),
+        ]
+        return decode_feed, output_buffers
+
     def _decode_generate(self, logits, past_conv, past_recurrent, past_kv,
                          attention_mask, rope_deltas, max_new_tokens, eos_token_id,
                          stream=True):
@@ -306,12 +389,20 @@ class Qwen354BInferencer:
         attn_mask_np = attention_mask.astype(np.int32)
         rope_deltas_np = rope_deltas.astype(np.int32)
 
+        past_conv, past_recurrent, past_kv, device_state_init_ms, device_outputs = (
+            self._initialize_decode_device_states(
+                logits, past_conv, past_recurrent, past_kv
+            )
+        )
+
         print("Running LLM decode...")
         decode_times = []
-        for _ in range(max_new_tokens - 1):
+        decode_wall_times = []
+        for step_index in range(max_new_tokens - 1):
             if eos_token_id is not None and generated[-1] == int(eos_token_id):
                 break
 
+            wall_start = time.perf_counter()
             step_id = np.array([[generated[-1]]], dtype=np.int32)
             attn_mask_np = np.concatenate(
                 [attn_mask_np, np.ones((1, 1), dtype=np.int32)], axis=1
@@ -326,27 +417,31 @@ class Qwen354BInferencer:
                 [text_pos_step, mm_pos_step], axis=0
             ).astype(np.int32)
 
-            decode_feed = {
-                "input_ids": step_id,
-                "attention_mask": attn_mask_np,
-                "position_ids": position_ids_step,
-                "past_conv_states": past_conv.astype(np.float16),
-                "past_recurrent_states": past_recurrent.astype(np.float32),
-                "past_kv_cache": past_kv.astype(np.float16),
-            }
-            t_step = time.time()
-            decode_out = self.decode_model.predict(
-                _build_mslite_inputs(self.decode_model, decode_feed,
-                                     preferred_order=["input_ids", "attention_mask",
-                                                       "position_ids", "past_conv_states",
-                                                       "past_recurrent_states", "past_kv_cache"])
+            decode_feed, output_buffers = self._build_decode_step_io(
+                step_id, attn_mask_np, position_ids_step,
+                past_conv, past_recurrent, past_kv, step_index, device_outputs,
             )
+            t_step = time.time()
+            decode_inputs = _build_mslite_inputs(
+                self.decode_model, decode_feed,
+                preferred_order=["input_ids", "attention_mask", "position_ids",
+                                 "past_conv_states", "past_recurrent_states",
+                                 "past_kv_cache"],
+            )
+            if output_buffers is None:
+                decode_out = self.decode_model.predict(decode_inputs)
+            else:
+                decode_out = self.decode_model.predict(decode_inputs, output_buffers)
             decode_times.append((time.time() - t_step) * 1000)
             logits = decode_out[0].get_data_to_numpy()
-            past_conv = decode_out[1].get_data_to_numpy()
-            past_recurrent = decode_out[2].get_data_to_numpy()
-            past_kv = decode_out[3].get_data_to_numpy()
+            if self.device_resident_states:
+                past_conv, past_recurrent, past_kv = decode_out[1:]
+            else:
+                past_conv = decode_out[1].get_data_to_numpy()
+                past_recurrent = decode_out[2].get_data_to_numpy()
+                past_kv = decode_out[3].get_data_to_numpy()
             generated.append(int(np.argmax(logits[0, -1])))
+            decode_wall_times.append((time.perf_counter() - wall_start) * 1000)
             if stream:
                 self._stream_print_token(generated[-1])
 
@@ -358,7 +453,13 @@ class Qwen354BInferencer:
         print(f"Total decode time: {total_decode_ms:.2f} ms, "
               f"avg decode step: {avg_decode_ms:.2f} ms, "
               f"steps: {len(decode_times)}")
-        return generated, total_decode_ms
+        total_decode_wall_ms = device_state_init_ms + sum(decode_wall_times)
+        avg_decode_wall_ms = (
+            sum(decode_wall_times) / len(decode_wall_times) if decode_wall_times else 0
+        )
+        print(f"Total decode wall time: {total_decode_wall_ms:.2f} ms, "
+              f"avg decode wall step: {avg_decode_wall_ms:.2f} ms")
+        return generated, total_decode_wall_ms
 
     def infer(self, image_path_or_url, text_prompt, max_new_tokens=128, stream=True):
         """
@@ -370,16 +471,26 @@ class Qwen354BInferencer:
             self.cfg, input_ids, attention_mask, mm_token_type_ids, image_grid_thw
         )
 
-        print("Running vision tower...")
-        t0 = time.time()
-        vision_feed = {"pixel_values": pixel_values}
-        vision_out = self.vision_model.predict(
-            _build_mslite_inputs(self.vision_model, vision_feed,
-                                 preferred_order=["pixel_values"])
-        )
-        image_embeds = vision_out[0].get_data_to_numpy()
-        vision_ms = (time.time() - t0) * 1000
-        print(f"Vision time: {vision_ms:.2f} ms")
+        print(f"Loading vision model from {self.vision_model_path}...")
+        self.vision_model = mslite.Model()
+        try:
+            self.vision_model.build_from_file(
+                self.vision_model_path, mslite.ModelType.MINDIR, self.context
+            )
+            print("Running vision tower...")
+            t0 = time.time()
+            vision_feed = {"pixel_values": pixel_values}
+            vision_out = self.vision_model.predict(
+                _build_mslite_inputs(self.vision_model, vision_feed,
+                                     preferred_order=["pixel_values"])
+            )
+            image_embeds = vision_out[0].get_data_to_numpy()
+            vision_ms = (time.time() - t0) * 1000
+            print(f"Vision time: {vision_ms:.2f} ms")
+            del vision_out
+        finally:
+            self.vision_model = None
+            gc.collect()
 
         image_token_cnt = int((input_ids == int(self.cfg.image_token_id)).sum())
         if int(image_embeds.shape[0]) != image_token_cnt:
@@ -388,32 +499,51 @@ class Qwen354BInferencer:
                 f"vs image_token_cnt={image_token_cnt}"
             )
 
-        print("Running LLM prefill...")
-        t0 = time.time()
-        prefill_feed = {
-            "input_ids": input_ids.astype(np.int32),
-            "attention_mask": attention_mask.astype(np.int32),
-            "position_ids": position_ids_4.astype(np.int32),
-            "image_embeds": image_embeds.astype(np.float16),
-        }
-        prefill_out = self.prefill_model.predict(
-            _build_mslite_inputs(self.prefill_model, prefill_feed,
-                                 preferred_order=["input_ids", "attention_mask",
-                                                   "position_ids", "image_embeds"])
-        )
-        logits = prefill_out[0].get_data_to_numpy()
-        past_conv = prefill_out[1].get_data_to_numpy()
-        past_recurrent = prefill_out[2].get_data_to_numpy()
-        past_kv = prefill_out[3].get_data_to_numpy()
-        prefill_ms = (time.time() - t0) * 1000
-        print(f"Prefill time: {prefill_ms:.2f} ms")
+        print(f"Loading prefill model from {self.prefill_model_path}...")
+        self.prefill_model = mslite.Model()
+        try:
+            self.prefill_model.build_from_file(
+                self.prefill_model_path, mslite.ModelType.MINDIR, self.context
+            )
+            print("Running LLM prefill...")
+            t0 = time.time()
+            prefill_feed = {
+                "input_ids": input_ids.astype(np.int32),
+                "attention_mask": attention_mask.astype(np.int32),
+                "position_ids": position_ids_4.astype(np.int32),
+                "image_embeds": image_embeds.astype(np.float16),
+            }
+            prefill_out = self.prefill_model.predict(
+                _build_mslite_inputs(self.prefill_model, prefill_feed,
+                                     preferred_order=["input_ids", "attention_mask",
+                                                       "position_ids", "image_embeds"])
+            )
+            logits = prefill_out[0].get_data_to_numpy()
+            past_conv = prefill_out[1].get_data_to_numpy()
+            past_recurrent = prefill_out[2].get_data_to_numpy()
+            past_kv = prefill_out[3].get_data_to_numpy()
+            prefill_ms = (time.time() - t0) * 1000
+            print(f"Prefill time: {prefill_ms:.2f} ms")
+            del prefill_out
+        finally:
+            self.prefill_model = None
+            gc.collect()
 
-        eos_token_id = getattr(self.processor.tokenizer, "eos_token_id", None)
-        generated, total_decode_ms = self._decode_generate(
-            logits, past_conv, past_recurrent, past_kv,
-            attention_mask, rope_deltas, max_new_tokens, eos_token_id,
-            stream=stream,
-        )
+        print(f"Loading decode model from {self.decode_model_path}...")
+        self.decode_model = mslite.Model()
+        try:
+            self.decode_model.build_from_file(
+                self.decode_model_path, mslite.ModelType.MINDIR, self.context
+            )
+            eos_token_id = getattr(self.processor.tokenizer, "eos_token_id", None)
+            generated, total_decode_ms = self._decode_generate(
+                logits, past_conv, past_recurrent, past_kv,
+                attention_mask, rope_deltas, max_new_tokens, eos_token_id,
+                stream=stream,
+            )
+        finally:
+            self.decode_model = None
+            gc.collect()
 
         total_ms = vision_ms + prefill_ms + total_decode_ms
         throughput = len(generated) / (total_ms / 1000) if total_ms > 0 else 0
@@ -448,6 +578,10 @@ def main():
     parser.add_argument("--device", type=str, default="ascend", choices=["ascend", "cpu"],
                         help="MindSpore Lite target device")
     parser.add_argument("--device-id", type=int, default=0, help="Ascend device ID")
+    parser.add_argument(
+        "--host-state-roundtrip", action="store_true",
+        help="Copy Conv/Recurrent/KV states through NumPy every decode step",
+    )
 
     args = parser.parse_args()
 
@@ -459,6 +593,7 @@ def main():
         device=args.device,
         device_id=args.device_id,
         image_size=args.image_size,
+        device_resident_states=not args.host_state_roundtrip,
     )
     result = inferencer.infer(args.image, args.prompt, max_new_tokens=args.max_new_tokens)
 
