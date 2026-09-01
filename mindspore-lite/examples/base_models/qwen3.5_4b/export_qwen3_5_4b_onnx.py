@@ -739,6 +739,22 @@ def _kv_cache_update(past, update, cache_pos):
     return ScatterUpdateFunction.apply(past, indices, update.to(past.dtype), 2)
 
 
+def _expand_kv_heads_for_ifa(cache, num_heads, num_kv_heads, head_dim):
+    """Expand compact GQA cache heads to the MHA layout accepted by 310P IFA."""
+    if num_heads == num_kv_heads:
+        return cache
+    if num_heads % num_kv_heads != 0:
+        raise ValueError(
+            f"num_heads={num_heads} must be divisible by num_kv_heads={num_kv_heads}"
+        )
+    repeat = num_heads // num_kv_heads
+    batch_size = cache.shape[0]
+    cache_len = cache.shape[2]
+    return cache.unsqueeze(2).expand(
+        batch_size, num_kv_heads, repeat, cache_len, head_dim
+    ).reshape(batch_size, num_heads, cache_len, head_dim)
+
+
 def _full_attn_decode_fixed(layer, hidden_states, position_embeddings,
                             attention_mask, past_key, past_value, cache_pos):
     """Run one full-attention Decode layer with a fixed-capacity KV cache."""
@@ -762,10 +778,25 @@ def _full_attn_decode_fixed(layer, hidden_states, position_embeddings,
     key_cache = _kv_cache_update(past_key, key_states, cache_pos)
     value_cache = _kv_cache_update(past_value, value_states, cache_pos)
     scaling = getattr(layer, "scaling", 1.0 / (head_dim ** 0.5))
+    if num_kv_heads < num_heads:
+        # The current 310P IFA tiler rejects GQA with head_dim=256.
+        # Keep the persistent cache in compact GQA form and materialize an
+        # equivalent MHA view only for the fused attention call.
+        key_for_attn = _expand_kv_heads_for_ifa(
+            key_cache, num_heads, num_kv_heads, head_dim
+        )
+        value_for_attn = _expand_kv_heads_for_ifa(
+            value_cache, num_heads, num_kv_heads, head_dim
+        )
+        ifa_num_kv_heads = num_heads
+    else:
+        key_for_attn = key_cache
+        value_for_attn = value_cache
+        ifa_num_kv_heads = num_kv_heads
     attn_output = _incre_flash_attention(
         query_states.to(key_cache.dtype).contiguous(),
-        key_cache.contiguous(), value_cache.contiguous(),
-        attention_mask, num_heads, scaling, num_kv_heads,
+        key_for_attn.contiguous(), value_for_attn.contiguous(),
+        attention_mask, num_heads, scaling, ifa_num_kv_heads,
     )
     attn_output = attn_output.to(hidden_states.dtype)
     attn_output = attn_output.transpose(1, 2).reshape(*input_shape, -1).contiguous()
