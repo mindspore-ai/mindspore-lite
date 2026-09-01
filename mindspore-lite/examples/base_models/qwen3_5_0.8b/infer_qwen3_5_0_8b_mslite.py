@@ -162,7 +162,6 @@ def _build_position_ids(cfg, input_ids, attention_mask, mm_token_type_ids, image
     ).astype(np.int64)
     return position_ids_4, rope_deltas
 
-
 def _force_processor_image_size(processor, image_size):
     if hasattr(processor, "image_processor") and hasattr(processor.image_processor, "size"):
         size_pixels = int(image_size) * int(image_size)

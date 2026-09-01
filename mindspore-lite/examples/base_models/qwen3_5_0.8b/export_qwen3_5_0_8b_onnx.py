@@ -117,7 +117,7 @@ class _CustomPromptFlashAttention(torch.autograd.Function):
                 optional_input_names_s=["atten_mask"],
                 output_names_s= ["attention_out"],
                 output_num_i=1,
-                input_index_i=[0, 1, 2, 4],
+                input_index_i=[0, 1, 2, 3],
                 num_heads_i=int(num_heads),
                 num_key_value_heads_i=int(num_key_value_heads),
                 scale_value_f=float(scale_value),
@@ -623,8 +623,13 @@ def _linear_attn_decode(layer, hidden_states, conv_state_in, recurrent_state_in,
 
 
 def _full_attn_forward(layer, hidden_states, position_embeddings, attention_mask,
-                       past_key=None, past_value=None):
-    """Forward pass for full attention layer using CANN PromptFlashAttention."""
+                       past_key=None, past_value=None, use_pfa: bool = True):
+    """Forward pass for full attention layer.
+
+    Args:
+        use_pfa: If True, use CANN PromptFlashAttention custom op.
+                 If False, fall back to manual matmul with boolean mask.
+    """
     input_shape = hidden_states.shape[:-1]
     head_dim = layer.head_dim
     num_heads = layer.config.num_attention_heads
@@ -649,12 +654,36 @@ def _full_attn_forward(layer, hidden_states, position_embeddings, attention_mask
 
     scaling = getattr(layer, "scaling", 1.0 / (head_dim ** 0.5))
 
-    # CANN PromptFlashAttention handles GQA internally via num_key_value_heads
-    attn_output = _cann_pfa(
-        query_states, key_states, value_states,
-        attention_mask, num_heads, num_kv_heads, scaling,
-    )
-    attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+    if use_pfa:
+        # CANN PromptFlashAttention handles GQA internally via num_key_value_heads
+        attn_output = _cann_pfa(
+            query_states, key_states, value_states,
+            attention_mask, num_heads, num_kv_heads, scaling,
+        )
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+    else:
+        # Manual matmul with boolean mask (masked_fill) fallback
+        key_states_for_attn = key_states
+        value_states_for_attn = value_states
+        if num_kv_heads < num_heads:
+            key_states_for_attn = key_states.repeat_interleave(
+                num_heads // num_kv_heads, dim=1)
+            value_states_for_attn = value_states.repeat_interleave(
+                num_heads // num_kv_heads, dim=1)
+        attn_weights = torch.matmul(
+            query_states, key_states_for_attn.transpose(2, 3)) * scaling
+        if attention_mask is not None:
+            m = attention_mask.to(torch.bool)
+            if m.dim() == 4 and m.shape[1] == 1:
+                m = m.expand(attn_weights.shape[0], attn_weights.shape[1],
+                             m.shape[2], m.shape[3])
+            attn_weights = attn_weights.masked_fill(
+                m, torch.finfo(attn_weights.dtype).min)
+        attn_weights = F.softmax(attn_weights, dim=-1,
+                                 dtype=torch.float32).to(query_states.dtype)
+        attn_output = torch.matmul(attn_weights, value_states_for_attn)
+        attn_output = attn_output.transpose(1, 2).reshape(
+            *input_shape, -1).contiguous()
 
     attn_output = attn_output * torch.sigmoid(gate)
     attn_output = layer.o_proj(attn_output)
@@ -1325,13 +1354,14 @@ class Qwen35LlmPrefill(torch.nn.Module):
     """Qwen3.5-0.8B LLM Prefill model for ONNX export."""
 
     def __init__(self, text_model, lm_head, image_token_id,
-                 max_seq_len: int = 2048):
+                 max_seq_len: int = 2048, use_pfa: bool = True):
         super().__init__()
         self.text_model = text_model
         self.lm_head = lm_head
         self.image_token_id = int(image_token_id)
         self.config = text_model.config
         self.max_seq_len = int(max_seq_len)
+        self.use_pfa = bool(use_pfa)
 
     def forward(self, input_ids, attention_mask, position_ids, image_embeds):
         """Run prefill forward pass with image embeddings.
@@ -1394,7 +1424,7 @@ class Qwen35LlmPrefill(torch.nn.Module):
             else:
                 attn_out, pk, pv = _full_attn_forward(
                     layer.self_attn, hidden_states, position_embeddings, attn_mask,
-                    None, None,
+                    None, None, use_pfa=self.use_pfa,
                 )
                 hidden_states = residual + attn_out
                 present_kv.append(pk)
@@ -1405,8 +1435,13 @@ class Qwen35LlmPrefill(torch.nn.Module):
             hidden_states = residual + layer.mlp(hidden_states)
 
         hidden_states = self.text_model.norm(hidden_states)
-        # Only compute lm_head for the last position to reduce matmul
-        last_hidden = hidden_states[:, -1:, :]
+        # Select the last valid token, not the last padded position.  Prefill
+        # inputs are aligned upward to 16 by the runtime, so the final tensor
+        # position may be padding (attention_mask == 0).
+        valid_lengths = attention_mask.to(torch.int64).sum(dim=1).clamp(min=1)
+        last_indices = (valid_lengths - 1).view(-1, 1, 1)
+        last_indices = last_indices.expand(-1, 1, hidden_states.shape[-1])
+        last_hidden = torch.gather(hidden_states, 1, last_indices)
         logits = self.lm_head(last_hidden)
         next_token_id = logits.argmax(dim=-1, keepdim=True).to(torch.int32)
 
@@ -1424,12 +1459,14 @@ class Qwen35LlmPrefill(torch.nn.Module):
 class Qwen35LlmDecode(torch.nn.Module):
     """Qwen3.5-0.8B LLM Decode model for ONNX export."""
 
-    def __init__(self, text_model, lm_head, use_rgdr_custom: bool = True):
+    def __init__(self, text_model, lm_head, use_rgdr_custom: bool = True,
+                 use_ifa: bool = False):
         super().__init__()
         self.text_model = text_model
         self.lm_head = lm_head
         self.config = text_model.config
         self.use_rgdr_custom = bool(use_rgdr_custom)
+        self.use_ifa = bool(use_ifa)
 
     def forward(self, input_ids, attention_mask, position_ids,
                 past_conv_states, past_recurrent_states, past_kv_cache):
@@ -1520,16 +1557,34 @@ class Qwen35LlmDecode(torch.nn.Module):
                 k_full = _kv_cache_update(pk_in, key_states, cache_pos, use_custom=True)
                 v_full = _kv_cache_update(pv_in, value_states, cache_pos, use_custom=True)
 
-                q_bnsd = query_states.contiguous()
-                k_bnsd = k_full.contiguous()
-                v_bnsd = v_full.contiguous()
+                q_bnsd = query_states.contiguous()  # [1, n_heads, 1, head_dim]
+                k_bnsd = k_full.contiguous()         # [1, n_kv_heads, seq, head_dim]
+                v_bnsd = v_full.contiguous()         # [1, n_kv_heads, seq, head_dim]
 
-                attn_out = incre_flash_attention(
-                    q_bnsd, k_bnsd, v_bnsd, ifa_attn_mask,
-                    num_heads=num_heads, scale_value=float(scaling),
-                    input_layout="BNSD", num_key_value_heads=num_kv_heads,
-                    inner_precise=1,
-                )
+                if self.use_ifa:
+                    # ---- IFA path (requires headDim <= 128 on 300I DUO) ----
+                    attn_out = incre_flash_attention(
+                        q_bnsd, k_bnsd, v_bnsd, ifa_attn_mask,
+                        num_heads=num_heads, scale_value=float(scaling),
+                        input_layout="BNSD", num_key_value_heads=num_kv_heads,
+                        inner_precise=1,
+                    )
+                else:
+                    # ---- Manual attention (standard ONNX ops, no headDim limit) ----
+                    if num_kv_heads < num_heads:
+                        rep = num_heads // num_kv_heads
+                        k_bnsd = k_bnsd.repeat_interleave(rep, dim=1)
+                        v_bnsd = v_bnsd.repeat_interleave(rep, dim=1)
+                    attn_weights = torch.matmul(q_bnsd, k_bnsd.transpose(2, 3)) * float(scaling)
+                    if ifa_attn_mask is not None:
+                        m = ifa_attn_mask.to(torch.bool)
+                        if m.dim() == 4 and m.shape[1] == 1:
+                            m = m.expand(attn_weights.shape[0], attn_weights.shape[1],
+                                         m.shape[2], m.shape[3])
+                        attn_weights = attn_weights.masked_fill(
+                            m, torch.finfo(attn_weights.dtype).min)
+                    attn_weights = F.softmax(attn_weights, dim=-1, dtype=torch.float32).to(q_bnsd.dtype)
+                    attn_out = torch.matmul(attn_weights, v_bnsd)
                 if attn_out.dim() == 4:
                     attn_out = attn_out.transpose(1, 2).reshape(*input_shape, -1)
 
@@ -1752,6 +1807,8 @@ def _export_llm_decode(decode, meta, output_dir, device, dummy_seq, max_seq_len=
 def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq=8,
                              dummy_num_img_tokens=16,
                              use_rgdr_custom: bool = True,
+                             use_ifa: bool = False,
+                             use_pfa: bool = True,
                              max_seq_len: int = 2048):
     """Export Qwen3.5-0.8B LLM prefill and decode models to ONNX."""
     meta = _get_model_meta(model)
@@ -1775,10 +1832,11 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq=8,
 
     prefill = Qwen35LlmPrefill(
         text_model, lm_head, image_token_id,
-        max_seq_len=max_seq_len,
+        max_seq_len=max_seq_len, use_pfa=use_pfa,
     ).to(device).eval()
     decode = Qwen35LlmDecode(
         text_model, lm_head, use_rgdr_custom=use_rgdr_custom,
+        use_ifa=use_ifa,
     ).to(device).eval()
 
     _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_tokens)
@@ -1819,6 +1877,18 @@ def main():
         default=False,
         help="Enable RecurrentGatedDeltaRule custom op in decode linear attention",
     )
+    parser.add_argument(
+        "--use-ifa",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable IncreFlashAttention custom op in decode (requires headDim<=128 on 300I DUO)",
+    )
+    parser.add_argument(
+        "--use-pfa",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable PromptFlashAttention custom op in prefill full attention layers",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -1840,6 +1910,8 @@ def main():
         args.device,
         args.dummy_seq_len,
         use_rgdr_custom=args.use_rgdr_custom,
+        use_ifa=args.use_ifa,
+        use_pfa=args.use_pfa,
         max_seq_len=args.max_seq_len,
     )
 

@@ -9,6 +9,7 @@
 | `export_qwen3_5_0_8b_onnx.py` | 一键导出 Vision Tower / LLM Prefill / LLM Decode 的 ONNX 模型 |
 | `infer_qwen3_5_0_8b_mslite.py` | MindSpore Lite 端到端推理（vision + prefill + decode） |
 | `configs/` | `converter_lite` 转换配置文件（vision / prefill / decoder 各一份，**转换时必须全部指定**） |
+| `configs_fp16/` | `converter_lite` 转换配置文件（vision / prefill / decoder 各一份，**转换时必须全部指定**，**FP16 精度**） |
 | `README.md` | 本教程 |
 
 > **注意**：本工程导出/推理的 ONNX 包含 Ascend Custom 算子（如 `ChunkGatedDeltaRule`、`RecurrentGatedDeltaRule`、`IncreFlashAttention`、`VisionFlashAttention`、`PromptFlashAttention` 等），**无法使用 CPU/CUDA 上的 ONNX Runtime 直接推理**，仅用于通过 `converter_lite` 转换为 MindIR 后在 Ascend 部署。
@@ -49,11 +50,21 @@ Qwen3.5-0.8B 的 24 层 decoder 中：
 pip install transformers==5.6.2 torch==2.10.0 onnx==1.19.1 onnxruntime==1.24.2 numpy==1.26.4
 ```
 
+### 模型权重下载
+
+通过 ModelScope 下载 Qwen3.5-0.8B 开源权重到本地 `./Qwen3.5-0.8B`（与导出命令的 `--model-id` 路径一致）：
+
+```bash
+pip install modelscope && modelscope download --model Qwen/Qwen3.5-0.8B --localdir ./Qwen3.5-0.8B
+```
+
 ---
 
 ## 2. 模型导出 ONNX
 
 ### 导出命令
+
+**Atlas 300I Duo（不使用 IFA/PFA）：**
 
 ```bash
 python export_qwen3_5_0_8b_onnx.py \
@@ -63,7 +74,19 @@ python export_qwen3_5_0_8b_onnx.py \
   --vision-image-size 1024
 ```
 
-> 注：导出时始终启用以下自定义算子：ChunkGatedDeltaRule（prefill 线性注意力）、IncreFlashAttention（decode 全注意力）、VisionFlashAttention（vision 注意力）、PromptFlashAttention（prefill 全注意力）；RecurrentGatedDeltaRule（decode 线性注意力）默认**关闭**，需通过 `--use-rgdr-custom` 启用。
+**Atlas 800I A2（使用 IFA/PFA）：**
+
+```bash
+python export_qwen3_5_0_8b_onnx.py \
+  --model-id ./Qwen3.5-0.8B \
+  --output-dir ./qwen3_5_onnx_static \
+  --device cpu \
+  --vision-image-size 1024 \
+  --use-ifa \
+  --use-pfa
+```
+
+> 注：导出时始终启用以下自定义算子：ChunkGatedDeltaRule（prefill 线性注意力）、VisionFlashAttention（vision 注意力）；prefill 全注意力是否使用 PromptFlashAttention 自定义算子由 `--use-pfa` 控制、decode 全注意力是否使用 IncreFlashAttention 自定义算子由 `--use-ifa` 控制，两者各自独立、仅影响对应算子，按部署硬件区分——**Atlas 300I Duo 应关闭**（默认即关闭），**Atlas 800I A2 应打开**（见上方命令）；RecurrentGatedDeltaRule（decode 线性注意力）默认**关闭**，需通过 `--use-rgdr-custom` 启用。
 
 ### 参数说明
 
@@ -76,6 +99,8 @@ python export_qwen3_5_0_8b_onnx.py \
 | `--dummy-seq-len`           | LLM 导出时 dummy 序列长度                       | `8`                   |
 | `--max-seq-len`             | 最大序列长度（固定 shape KV cache padding）         | `2048`                |
 | `--use-rgdr-custom`         | 启用 RecurrentGatedDeltaRule 自定义算子          | `False`               |
+| `--use-ifa`                 | 启用 IncreFlashAttention 自定义算子（decode 全注意力）；仅影响 IFA，Atlas 300I Duo 关闭、Atlas 800I A2 打开 | `False`               |
+| `--use-pfa`                 | 启用 PromptFlashAttention 自定义算子（prefill 全注意力）；仅影响 PFA，Atlas 300I Duo 关闭、Atlas 800I A2 打开 | `False`               |
 
 ### 产出
 
@@ -136,6 +161,10 @@ qwen3_5_onnx_static/
 ### 转换命令
 
 > **重要**：所有三个模型转换时都必须指定对应的 `--configFile`，以确保 Ascend 推理精度与 PyTorch 一致。不使用配置文件会导致 Vision Tower 在 Ascend FP16 下产生严重精度损失。
+>
+> 不同硬件请使用对应目录下的配置文件：Ascend 800I A2 使用 `configs_fp16/`，Ascend 300I Duo 使用 `configs/`。
+
+#### Ascend 300I Duo
 
 ```bash
 Convert=mindspore-lite-2.8.0-linux-aarch64/tools/converter/converter/converter_lite
@@ -165,6 +194,36 @@ $Convert --fmk=ONNX \
   --saveType=MINDIR
 ```
 
+#### Ascend 800I A2
+
+```bash
+Convert=mindspore-lite-2.8.0-linux-aarch64/tools/converter/converter/converter_lite
+
+# Vision 转换
+$Convert --fmk=ONNX \
+  --modelFile=qwen3_5_onnx_static/qwen3_5_vision.onnx \
+  --outputFile=qwen3_5_onnx_static/qwen3_5_vision \
+  --optimize=ascend_oriented \
+  --configFile=configs_fp16/config_vision.ini \
+  --saveType=MINDIR
+
+# Prefill 转换
+$Convert --fmk=ONNX \
+  --modelFile=qwen3_5_onnx_static/prefill/qwen3_5_llm_prefill.onnx \
+  --outputFile=qwen3_5_onnx_static/prefill/qwen3_5_llm_prefill \
+  --optimize=ascend_oriented \
+  --configFile=configs_fp16/config_prefill.ini \
+  --saveType=MINDIR
+
+# Decode 转换
+$Convert --fmk=ONNX \
+  --modelFile=qwen3_5_onnx_static/decoder/qwen3_5_llm_decode.onnx \
+  --outputFile=qwen3_5_onnx_static/decoder/qwen3_5_llm_decode \
+  --optimize=ascend_oriented \
+  --configFile=configs_fp16/config_decoder.ini \
+  --saveType=MINDIR
+```
+
 ### 参数说明
 
 | 参数             | 说明                          |
@@ -178,7 +237,14 @@ $Convert --fmk=ONNX \
 
 ### 配置文件
 
-各模型使用独立的配置文件（位于 `configs/` 目录下）：
+不同硬件使用的配置文件如下：
+
+| 硬件 | 配置目录 |
+|------|----------|
+| Ascend 800I A2 | `configs_fp16/` |
+| Ascend 300I Duo | `configs/` |
+
+各模型使用独立的配置文件：
 
 **`configs/config_vision.ini`**
 
@@ -205,7 +271,7 @@ ge.exec.precision_mode = force_fp32
 plugin_custom_ops=BatchMatmulToMatmul
 
 [acl_build_options]
-input_format='ND'
+input_format="ND"
 input_shape="input_ids:1,-1;attention_mask:1,-1;position_ids:4,1,-1;image_embeds:-1,1024"
 ge.dynamicDims="82,82,82,64;1874,1874,1874,1024"
 ```
@@ -216,6 +282,40 @@ ge.dynamicDims="82,82,82,64;1874,1874,1874,1024"
 [acl_init_options]
 ge.exec.precision_mode = force_fp32
 
+[ascend_context]
+plugin_custom_ops=BatchMatmulToMatmul
+```
+
+**`configs_fp16/config_vision.ini`**
+
+```ini
+[acl_init_options]
+ge.exec.precision_mode=force_fp32
+
+[ascend_context]
+plugin_custom_ops=All
+
+[acl_build_options]
+input_format="ND"
+input_shape="pixel_values:-1,1536;grid_h:-1;grid_w:-1"
+ge.dynamicDims="256,16,16;4096,64,64"
+```
+
+**`configs_fp16/config_prefill.ini`**
+
+```ini
+[ascend_context]
+plugin_custom_ops=BatchMatmulToMatmul
+
+[acl_build_options]
+input_format="ND"
+input_shape="input_ids:1,-1;attention_mask:1,-1;position_ids:4,1,-1;image_embeds:-1,1024"
+ge.dynamicDims="82,82,82,64;1874,1874,1874,1024"
+```
+
+**`configs_fp16/config_decoder.ini`**
+
+```ini
 [ascend_context]
 plugin_custom_ops=BatchMatmulToMatmul
 ```
@@ -277,23 +377,31 @@ python infer_qwen3_5_0_8b_mslite.py \
 使用示例图片 `https://hbr.org/resources/images/article_assets/2018/03/mar18_9_824179306.jpg`：
 
 ```text
-Loading vision model from ./qwen3_5_onnx_static/qwen3_5_vision.mindir...
-Loading prefill model from ./qwen3_5_onnx_static/qwen3_5_llm_prefill_graph.mindir...
-Loading decode model from ./qwen3_5_onnx_static/qwen3_5_llm_decode_graph.mindir...
-Loading processor from ./Qwen3.5-0.8B...
 Running vision tower...
-Vision time: 13.56 ms
+Vision time: 12.02 ms
 Running LLM prefill...
-Prefill time: 799.09 ms
+Prefill time: 45.45 ms
 Running LLM decode (zero-copy)...
-Total decode time: 6281.00 ms, avg decode step: 49.46 ms, steps: 127
-Total time: 7093.65 ms, throughput: 18.04 tok/s
-
+Total decode time: 4693.03 ms, avg decode step: 36.95 ms, steps: 127
+Total time: 4750.49 ms, throughput: 26.94 tok/s
 ==================================================
 Input Prompt: Describe this image.
-Generated Response: This is a banana on a wooden table.
+Generated Response: This is a vibrant, abstract digital artwork featuring two stylized bananas as the central subject, set against a striped background.
+
+**Visual Elements:**
+
+- **The Bananas:**
+- Two bananas are rendered in a glossy, almost metallic or plastic-like material.
+- They are painted with a rainbow gradient — transitioning from yellow at the top to green, blue, purple, and red at the bottom.
+- The lighting creates highlights and shadows that give them a three-dimensional, sculpted appearance.
+- One banana is slightly behind the other, creating depth.
+
+- **The Background:**
+ - The
 ==================================================
 ```
+
+> 注：以上输出来自 Atlas 300I Duo；Atlas 800I A2 由于部分算子实现不同及图融合策略不同，生成文本可能与上述略有差异。
 
 ---
 
@@ -318,7 +426,7 @@ Generated Response: This is a banana on a wooden table.
 | 输入 Shape    | `(64, 1536)`   | `(64, 1536)`   |
 | 输入 Dtype    | float32        | float32        |
 | 输出 Shape    | `(16, 1024)`   | `(16, 1024)`   |
-| 推理耗时        | **13.56 ms**   | **5 ms**     |
+| 推理耗时        | **12.02 ms**   | **5 ms**     |
 
 > 输入 64 个 patch（128/16 × 128/16 = 8×8=64），1536 = 3ch × 2temporal × 16patch × 16patch。输出 16 个图像 token（spatial_merge_size=2 压缩后 4×4=16）。
 
@@ -331,7 +439,7 @@ Generated Response: This is a banana on a wooden table.
 | position_ids Shape | `(4, 1, 82)`  | `(4, 1, 82)`  |
 | image_embeds Shape | `(64, 1024)`  | `(64, 1024)`  |
 | 输出 next_token_id Shape | `(1, 1)`  | `(1, 1)`  |
-| 推理耗时        | **799.09 ms**  | **14.0 ms**    |
+| 推理耗时        | **45.45 ms**   | **14.0 ms**    |
 
 > seq_len=82 包含：系统 prompt token + 64 个图像 token + 用户文本 token + 生成 prompt token
 
@@ -344,18 +452,18 @@ Generated Response: This is a banana on a wooden table.
 | position_ids Shape | `(4, 1, 1)`   | `(4, 1, 1)`   |
 | past_kv_cache Shape | `(12, 1, 2, 82+step, 256)` | `(12, 1, 2, 82+step, 256)` |
 | 输出 logits Shape | `(1, 1, 248320)` | `(1, 1, 248320)` |
-| 单步平均耗时      | **49.46 ms**   | **5.4 ms**     |
+| 单步平均耗时      | **36.95 ms**   | **5.4 ms**     |
 
 ### 端到端推理性能对比
 
 | 指标                       | Atlas 300I Duo | Atlas 800I A2 |
 |--------------------------|----------------|----------------|
-| Vision Tower             | 13.56 ms       | 5.4 ms         |
-| LLM Prefill              | 799.09 ms      | 14.0 ms        |
-| LLM Decode（127 steps）   | 6281.00 ms     | 719 ms              |
-| **总耗时**                  | **7093.65 ms** | **738 ms**              |
-| **Avg decode step**       | **49.46 ms**   | **5.4 ms**     |
-| **吞吐量**                  | **18.04 tok/s** | **173.27 tok/s**              |
+| Vision Tower             | 12.02 ms       | 5.4 ms         |
+| LLM Prefill              | 45.45 ms       | 14.0 ms        |
+| LLM Decode（127 steps）   | 4693.03 ms     | 719 ms              |
+| **总耗时**                  | **4750.49 ms** | **738 ms**              |
+| **Avg decode step**       | **36.95 ms**   | **5.4 ms**     |
+| **吞吐量**                  | **26.94 tok/s** | **173.27 tok/s**              |
 | **生成 token 数**           | **127**        | **127**              |
 
 > 注意：Atlas 800I A2 相比 Atlas 300I Duo 在 Prefill 和 Decode 阶段均有显著性能提升。
