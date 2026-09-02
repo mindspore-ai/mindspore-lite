@@ -13,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -36,15 +38,36 @@ ArithmeticParameter *PopulateArithmeticParameter(mindspore::schema::PrimitiveTyp
     MS_LOG(ERROR) << "new ArithmeticParameter failed.";
     return nullptr;
   }
+  // the grad kernel's reduce/broadcast helpers read these shape fields directly; in the full
+  // runtime the infer funcs (MaxMinGradInferShape / ArithmeticGradInferShape) fill them
+  memset(arithmetic_param, 0, sizeof(ArithmeticParameter));
   arithmetic_param->op_parameter_.type_ = type;
-  schema::PrimitiveT *prim = new schema::PrimitiveT;
-  if (prim == nullptr) {
-    free(arithmetic_param);
-    MS_LOG(ERROR) << "new PrimitiveT failed.";
-    return nullptr;
-  }
-
-  prim->value.type = type;
+  bool is_max_min =
+    (type == mindspore::schema::PrimitiveType_MaximumGrad || type == mindspore::schema::PrimitiveType_MinimumGrad);
+  auto *dy = is_max_min ? inputs[2] : inputs[0];
+  auto *x1 = is_max_min ? inputs[0] : inputs[1];
+  auto *x2 = is_max_min ? inputs[1] : inputs[2];
+  // Mul2L/Div2L (dx1 smaller than dx2) reduce the large tile into dx1: the kernel then expects
+  // in_shape0_ to be the larger x's shape and in_shape1_ the smaller one's, mirroring the swap
+  // ArithmeticGradInferShape applies for this case
+  bool mul_div_swapped =
+    !is_max_min &&
+    (type == mindspore::schema::PrimitiveType_MulGrad || type == mindspore::schema::PrimitiveType_DivGrad) &&
+    outputs[0]->ElementsNum() < outputs[1]->ElementsNum();
+  auto *shape0_src = mul_div_swapped ? x2 : x1;
+  auto *shape1_src = mul_div_swapped ? x1 : x2;
+  size_t ndim = std::max({dy->shape().size(), x1->shape().size(), x2->shape().size()});
+  arithmetic_param->ndim_ = ndim;
+  auto fill_shape = [ndim](const std::vector<int> &dims, int *dst) {
+    size_t pad = ndim - dims.size();
+    for (size_t i = 0; i < pad; i++) dst[i] = 1;
+    for (size_t i = 0; i < dims.size(); i++) dst[pad + i] = dims[i];
+  };
+  fill_shape(dy->shape(), arithmetic_param->out_shape_);
+  fill_shape(shape0_src->shape(), arithmetic_param->in_shape0_);
+  fill_shape(shape1_src->shape(), arithmetic_param->in_shape1_);
+  arithmetic_param->broadcasting_ =
+    memcmp(arithmetic_param->in_shape0_, arithmetic_param->in_shape1_, ndim * sizeof(int)) != 0;
   return arithmetic_param;
 }
 

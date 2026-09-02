@@ -26,14 +26,14 @@ class Deconv2dInferTest : public mindspore::CommonTest {
 TEST_F(Deconv2dInferTest, Deconv2dInferTest0) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 4;
   inputs[0]->shape_[2] = 4;
   inputs[0]->shape_[3] = 6;
   inputs[0]->format_ = Format_NHWC;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 6;
   inputs[1]->shape_[1] = 3;
@@ -41,8 +41,8 @@ TEST_F(Deconv2dInferTest, Deconv2dInferTest0) {
   inputs[1]->shape_[3] = 20;
   inputs[1]->format_ = Format_KHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  ConvParameter *parameter = new ConvParameter();
   parameter->kernel_h_ = 3;
   parameter->kernel_w_ = 3;
   parameter->stride_h_ = 1;
@@ -74,14 +74,14 @@ TEST_F(Deconv2dInferTest, Deconv2dInferTest0) {
 TEST_F(Deconv2dInferTest, Deconv2dInferTest1) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 3;
   inputs[0]->shape_[2] = 3;
   inputs[0]->shape_[3] = 6;
   inputs[0]->format_ = Format_NHWC;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 6;
   inputs[1]->shape_[1] = 3;
@@ -89,8 +89,8 @@ TEST_F(Deconv2dInferTest, Deconv2dInferTest1) {
   inputs[1]->shape_[3] = 20;
   inputs[1]->format_ = Format_KHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  ConvParameter *parameter = new ConvParameter();
   parameter->kernel_h_ = 3;
   parameter->kernel_w_ = 3;
   parameter->stride_h_ = 2;
@@ -122,14 +122,14 @@ TEST_F(Deconv2dInferTest, Deconv2dInferTest1) {
 TEST_F(Deconv2dInferTest, Deconv2dInferTest2) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 17;
   inputs[0]->shape_[2] = 17;
   inputs[0]->shape_[3] = 6;
   inputs[0]->format_ = Format_NHWC;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 6;
   inputs[1]->shape_[1] = 3;
@@ -137,8 +137,8 @@ TEST_F(Deconv2dInferTest, Deconv2dInferTest2) {
   inputs[1]->shape_[3] = 20;
   inputs[1]->format_ = Format_KHWC;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  ConvParameter *parameter = new ConvParameter();
   parameter->kernel_h_ = 2;
   parameter->kernel_w_ = 2;
   parameter->stride_h_ = 2;

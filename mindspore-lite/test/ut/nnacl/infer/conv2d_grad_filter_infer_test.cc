@@ -27,18 +27,20 @@ TEST_F(Conv2dGradFilterInferTest, Conv2dGradFilterInferTest0) {
   size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
   for (size_t i = 0; i < inputs_size; i++) {
-    inputs[i] = new TensorC;
+    inputs[i] = new TensorC();
   }
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
+  // the infer requires the first two inputs to be NHWC; the third carries the NCHW filter shape
+  inputs[1]->format_ = Format_NHWC;
   inputs[0]->shape_size_ = 4;
   inputs[2]->shape_size_ = 1;
   inputs[2]->shape_[0] = 4;
   std::vector<int> nchw_shape = {32, 3, 15, 15};
   inputs[2]->data_ = static_cast<void *>(nchw_shape.data());
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  ConvParameter *parameter = new ConvParameter();
   int ret = Conv2dGradFilterInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                        reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

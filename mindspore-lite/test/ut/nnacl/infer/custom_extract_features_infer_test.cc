@@ -26,7 +26,7 @@ class CustomExtractFeaturesInferTest : public mindspore::CommonTest {
 TEST_F(CustomExtractFeaturesInferTest, CustomExtractFeaturesInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 1;
   std::vector<int> input_data = {3};
@@ -34,9 +34,9 @@ TEST_F(CustomExtractFeaturesInferTest, CustomExtractFeaturesInferTest0) {
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(2, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = CustomExtractFeaturesInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(),
                                             outputs.size(), reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -60,7 +60,7 @@ TEST_F(CustomExtractFeaturesInferTest, CustomExtractFeaturesInferTest0) {
 TEST_F(CustomExtractFeaturesInferTest, CustomExtractFeaturesInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 1;
   std::vector<int> input_data = {0};
@@ -68,9 +68,9 @@ TEST_F(CustomExtractFeaturesInferTest, CustomExtractFeaturesInferTest1) {
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
   std::vector<TensorC *> outputs(2, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = CustomExtractFeaturesInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(),
                                             outputs.size(), reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

@@ -16,6 +16,7 @@
 
 #include <iostream>
 #include "schema/inner/model_generated.h"
+#include "src/common/log_adapter.h"
 #include "common/common_test.h"
 #include "nnacl_c/unsqueeze_parameter.h"
 #include "src/litert/kernel_registry.h"
@@ -63,17 +64,23 @@ TEST_F(TestUnsqueezeInt8, Unsqueeze_1) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  UnSqueezeParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Unsqueeze;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto *op_param = new (std::nothrow) UnSqueezeParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Unsqueeze;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  op_param.axis_ = 0;
-  op_param.offset_[0] = 1;
+  op_param->axis_ = 0;
+  op_param->offset_[0] = 1;
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Unsqueeze};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);

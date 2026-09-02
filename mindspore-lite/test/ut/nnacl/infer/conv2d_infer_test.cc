@@ -26,21 +26,25 @@ class Conv2dInferTest : public mindspore::CommonTest {
 TEST_F(Conv2dInferTest, Conv2dInferTest0) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 4;
   inputs[0]->shape_[2] = 4;
   inputs[0]->shape_[3] = 6;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 20;
   inputs[1]->shape_[1] = 3;
   inputs[1]->shape_[2] = 3;
   inputs[1]->shape_[3] = 6;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  // the infer checks input/weight formats and requires a non-zero group (1 = common conv)
+  inputs[0]->format_ = Format_NHWC;
+  inputs[1]->format_ = Format_NHWC;
+  ConvParameter *parameter = new ConvParameter();
+  parameter->group_ = 1;
   parameter->kernel_h_ = 3;
   parameter->kernel_w_ = 3;
   parameter->stride_h_ = 1;
@@ -71,21 +75,26 @@ TEST_F(Conv2dInferTest, Conv2dInferTest0) {
 TEST_F(Conv2dInferTest, Conv2dInferTest1) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 120;
   inputs[0]->shape_[2] = 120;
   inputs[0]->shape_[3] = 6;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
+  // CheckConvAttr requires kernel_h_/kernel_w_ to equal weight shape[1]/shape[2]
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 20;
-  inputs[1]->shape_[1] = 3;
-  inputs[1]->shape_[2] = 3;
+  inputs[1]->shape_[1] = 7;
+  inputs[1]->shape_[2] = 7;
   inputs[1]->shape_[3] = 6;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  // the infer checks input/weight formats and requires a non-zero group (1 = common conv)
+  inputs[0]->format_ = Format_NHWC;
+  inputs[1]->format_ = Format_NHWC;
+  ConvParameter *parameter = new ConvParameter();
+  parameter->group_ = 1;
   parameter->kernel_h_ = 7;
   parameter->kernel_w_ = 7;
   parameter->stride_h_ = 2;
@@ -116,21 +125,25 @@ TEST_F(Conv2dInferTest, Conv2dInferTest1) {
 TEST_F(Conv2dInferTest, Conv2dInferTest2) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 30;
   inputs[0]->shape_[2] = 30;
   inputs[0]->shape_[3] = 6;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 20;
   inputs[1]->shape_[1] = 3;
   inputs[1]->shape_[2] = 3;
   inputs[1]->shape_[3] = 6;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  // the infer checks input/weight formats and requires a non-zero group (1 = common conv)
+  inputs[0]->format_ = Format_NHWC;
+  inputs[1]->format_ = Format_NHWC;
+  ConvParameter *parameter = new ConvParameter();
+  parameter->group_ = 1;
   parameter->kernel_h_ = 3;
   parameter->kernel_w_ = 3;
   parameter->stride_h_ = 1;
@@ -162,21 +175,25 @@ TEST_F(Conv2dInferTest, Conv2dInferTest2) {
 TEST_F(Conv2dInferTest, Conv2dInferTest3) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 30;
   inputs[0]->shape_[2] = 30;
   inputs[0]->shape_[3] = 6;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 20;
   inputs[1]->shape_[1] = 3;
   inputs[1]->shape_[2] = 3;
   inputs[1]->shape_[3] = 6;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  // the infer checks input/weight formats and requires a non-zero group (1 = common conv)
+  inputs[0]->format_ = Format_NHWC;
+  inputs[1]->format_ = Format_NHWC;
+  ConvParameter *parameter = new ConvParameter();
+  parameter->group_ = 1;
   parameter->kernel_h_ = 3;
   parameter->kernel_w_ = 3;
   parameter->stride_h_ = 2;
@@ -208,21 +225,25 @@ TEST_F(Conv2dInferTest, Conv2dInferTest3) {
 TEST_F(Conv2dInferTest, Conv2dInferTest4) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 120;
   inputs[0]->shape_[2] = 120;
   inputs[0]->shape_[3] = 6;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 20;
   inputs[1]->shape_[1] = 5;
   inputs[1]->shape_[2] = 5;
   inputs[1]->shape_[3] = 6;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  // the infer checks input/weight formats and requires a non-zero group (1 = common conv)
+  inputs[0]->format_ = Format_NHWC;
+  inputs[1]->format_ = Format_NHWC;
+  ConvParameter *parameter = new ConvParameter();
+  parameter->group_ = 1;
   parameter->kernel_h_ = 5;
   parameter->kernel_w_ = 5;
   parameter->stride_h_ = 2;
@@ -254,21 +275,25 @@ TEST_F(Conv2dInferTest, Conv2dInferTest4) {
 TEST_F(Conv2dInferTest, Conv2dInferTest5) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 27;
   inputs[0]->shape_[2] = 27;
   inputs[0]->shape_[3] = 6;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 20;
   inputs[1]->shape_[1] = 3;
   inputs[1]->shape_[2] = 3;
   inputs[1]->shape_[3] = 6;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  // the infer checks input/weight formats and requires a non-zero group (1 = common conv)
+  inputs[0]->format_ = Format_NHWC;
+  inputs[1]->format_ = Format_NHWC;
+  ConvParameter *parameter = new ConvParameter();
+  parameter->group_ = 1;
   parameter->kernel_h_ = 3;
   parameter->kernel_w_ = 3;
   parameter->stride_h_ = 1;
@@ -300,21 +325,25 @@ TEST_F(Conv2dInferTest, Conv2dInferTest5) {
 TEST_F(Conv2dInferTest, Conv2dInferTest6) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 88;
   inputs[0]->shape_[2] = 88;
   inputs[0]->shape_[3] = 6;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 20;
   inputs[1]->shape_[1] = 1;
   inputs[1]->shape_[2] = 1;
   inputs[1]->shape_[3] = 6;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  // the infer checks input/weight formats and requires a non-zero group (1 = common conv)
+  inputs[0]->format_ = Format_NHWC;
+  inputs[1]->format_ = Format_NHWC;
+  ConvParameter *parameter = new ConvParameter();
+  parameter->group_ = 1;
   parameter->kernel_h_ = 1;
   parameter->kernel_w_ = 1;
   parameter->stride_h_ = 1;
@@ -346,21 +375,25 @@ TEST_F(Conv2dInferTest, Conv2dInferTest6) {
 TEST_F(Conv2dInferTest, Conv2dInferTest7) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 11;
   inputs[0]->shape_[2] = 11;
   inputs[0]->shape_[3] = 6;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 20;
   inputs[1]->shape_[1] = 9;
   inputs[1]->shape_[2] = 1;
   inputs[1]->shape_[3] = 6;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  // the infer checks input/weight formats and requires a non-zero group (1 = common conv)
+  inputs[0]->format_ = Format_NHWC;
+  inputs[1]->format_ = Format_NHWC;
+  ConvParameter *parameter = new ConvParameter();
+  parameter->group_ = 1;
   parameter->kernel_h_ = 9;
   parameter->kernel_w_ = 1;
   parameter->stride_h_ = 1;
@@ -392,21 +425,25 @@ TEST_F(Conv2dInferTest, Conv2dInferTest7) {
 TEST_F(Conv2dInferTest, Conv2dInferTest8) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 29;
   inputs[0]->shape_[2] = 29;
   inputs[0]->shape_[3] = 6;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 20;
   inputs[1]->shape_[1] = 3;
   inputs[1]->shape_[2] = 3;
   inputs[1]->shape_[3] = 6;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  // the infer checks input/weight formats and requires a non-zero group (1 = common conv)
+  inputs[0]->format_ = Format_NHWC;
+  inputs[1]->format_ = Format_NHWC;
+  ConvParameter *parameter = new ConvParameter();
+  parameter->group_ = 1;
   parameter->kernel_h_ = 3;
   parameter->kernel_w_ = 3;
   parameter->stride_h_ = 1;
@@ -438,21 +475,25 @@ TEST_F(Conv2dInferTest, Conv2dInferTest8) {
 TEST_F(Conv2dInferTest, Conv2dInferTest9) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 14;
   inputs[0]->shape_[2] = 14;
   inputs[0]->shape_[3] = 6;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 20;
   inputs[1]->shape_[1] = 1;
   inputs[1]->shape_[2] = 1;
   inputs[1]->shape_[3] = 6;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  // the infer checks input/weight formats and requires a non-zero group (1 = common conv)
+  inputs[0]->format_ = Format_NHWC;
+  inputs[1]->format_ = Format_NHWC;
+  ConvParameter *parameter = new ConvParameter();
+  parameter->group_ = 1;
   parameter->kernel_h_ = 1;
   parameter->kernel_w_ = 1;
   parameter->stride_h_ = 1;
@@ -484,21 +525,25 @@ TEST_F(Conv2dInferTest, Conv2dInferTest9) {
 TEST_F(Conv2dInferTest, Conv2dInferTest10) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 448;
   inputs[0]->shape_[2] = 448;
   inputs[0]->shape_[3] = 6;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 20;
   inputs[1]->shape_[1] = 5;
   inputs[1]->shape_[2] = 5;
   inputs[1]->shape_[3] = 6;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  ConvParameter *parameter = new ConvParameter;
+  outputs[0] = new TensorC();
+  // the infer checks input/weight formats and requires a non-zero group (1 = common conv)
+  inputs[0]->format_ = Format_NHWC;
+  inputs[1]->format_ = Format_NHWC;
+  ConvParameter *parameter = new ConvParameter();
+  parameter->group_ = 1;
   parameter->kernel_h_ = 5;
   parameter->kernel_w_ = 5;
   parameter->stride_h_ = 2;

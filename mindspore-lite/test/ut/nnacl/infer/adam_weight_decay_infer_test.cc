@@ -24,14 +24,15 @@ class AdamWeightDecayInfer : public mindspore::CommonTest {
 };
 
 void AdamWeightDecayInferInitArgs(std::vector<TensorC *> *inputs, std::vector<TensorC *> *outputs) {
-  const size_t inputs_size = 9;
+  // the infer validates an exact input count of 10 (var, m, v, lr, beta1, beta2, epsilon, decay, grad + 1)
+  const size_t inputs_size = 10;
   for (size_t i = 0; i < inputs_size; i++) {
-    auto *input_x = new TensorC;
+    auto *input_x = new TensorC();
     input_x->shape_size_ = 1;
     input_x->shape_[0] = 1;
     inputs->push_back(input_x);
   }
-  auto *output = new TensorC;
+  auto *output = new TensorC();
   outputs->push_back(output);
 }
 
@@ -46,7 +47,7 @@ TEST_F(AdamWeightDecayInfer, OneDim) {
   std::vector<TensorC *> inputs;
   std::vector<TensorC *> outputs;
   AdamWeightDecayInferInitArgs(&inputs, &outputs);
-  auto *param = new OpParameter;
+  auto *param = new OpParameter();
   int ret = AdamWeightDecayInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                       reinterpret_cast<OpParameter *>(param));
   ASSERT_EQ(ret, NNACL_OK);

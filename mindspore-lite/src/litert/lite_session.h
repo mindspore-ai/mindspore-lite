@@ -205,6 +205,7 @@ class MS_API LiteSession {
   void RuntimeAllocatorInitGraphOutput();
   void RuntimeAllocatorInitSubgraph();
   virtual int RuntimeAllocatorValid();
+  virtual bool ExistCustomCpuKernel();
   RuntimeAllocatorPtr runtime_allocator_ = nullptr;
 
  private:

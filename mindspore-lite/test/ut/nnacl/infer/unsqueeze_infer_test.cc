@@ -27,12 +27,12 @@ class UnsqueezeInferTest : public mindspore::CommonTest {
 TEST_F(UnsqueezeInferTest, UnsqueezeInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 4;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  UnSqueezeParameter *parameter = new UnSqueezeParameter;
+  outputs[0] = new TensorC();
+  UnSqueezeParameter *parameter = new UnSqueezeParameter();
   parameter->num_dim_ = 1;
   parameter->dims_[0] = 0;
   int ret = UnsqueezeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
@@ -53,12 +53,12 @@ TEST_F(UnsqueezeInferTest, UnsqueezeInferTest0) {
 TEST_F(UnsqueezeInferTest, UnsqueezeInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 4;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  UnSqueezeParameter *parameter = new UnSqueezeParameter;
+  outputs[0] = new TensorC();
+  UnSqueezeParameter *parameter = new UnSqueezeParameter();
   parameter->num_dim_ = 1;
   parameter->dims_[0] = 1;
   int ret = UnsqueezeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
@@ -79,12 +79,12 @@ TEST_F(UnsqueezeInferTest, UnsqueezeInferTest1) {
 TEST_F(UnsqueezeInferTest, UnsqueezeInferTest2) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 4;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  UnSqueezeParameter *parameter = new UnSqueezeParameter;
+  outputs[0] = new TensorC();
+  UnSqueezeParameter *parameter = new UnSqueezeParameter();
   parameter->num_dim_ = 0;
   int ret = UnsqueezeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                 reinterpret_cast<OpParameter *>(parameter));
@@ -103,15 +103,15 @@ TEST_F(UnsqueezeInferTest, UnsqueezeInferTest2) {
 TEST_F(UnsqueezeInferTest, UnsqueezeInferTest3) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 5;
   inputs[0]->shape_[2] = 6;
   inputs[0]->shape_[3] = 7;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  UnSqueezeParameter *parameter = new UnSqueezeParameter;
+  outputs[0] = new TensorC();
+  UnSqueezeParameter *parameter = new UnSqueezeParameter();
   parameter->num_dim_ = 1;
   parameter->dims_[0] = 1;
   int ret = UnsqueezeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
@@ -135,15 +135,15 @@ TEST_F(UnsqueezeInferTest, UnsqueezeInferTest3) {
 TEST_F(UnsqueezeInferTest, UnsqueezeInferTest4) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 5;
   inputs[0]->shape_[2] = 6;
   inputs[0]->shape_[3] = 7;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  UnSqueezeParameter *parameter = new UnSqueezeParameter;
+  outputs[0] = new TensorC();
+  UnSqueezeParameter *parameter = new UnSqueezeParameter();
   parameter->num_dim_ = 1;
   parameter->dims_[0] = 1;
   int ret = UnsqueezeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
@@ -167,15 +167,15 @@ TEST_F(UnsqueezeInferTest, UnsqueezeInferTest4) {
 TEST_F(UnsqueezeInferTest, UnsqueezeInferTest5) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 5;
   inputs[0]->shape_[2] = 6;
   inputs[0]->shape_[3] = 7;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  UnSqueezeParameter *parameter = new UnSqueezeParameter;
+  outputs[0] = new TensorC();
+  UnSqueezeParameter *parameter = new UnSqueezeParameter();
   parameter->num_dim_ = 1;
   parameter->dims_[0] = 3;
   int ret = UnsqueezeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),

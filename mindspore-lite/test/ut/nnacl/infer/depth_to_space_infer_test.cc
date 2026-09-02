@@ -27,7 +27,7 @@ class DepthToSpaceInferTest : public mindspore::CommonTest {
 TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->format_ = Format_NHWC;
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 1;
@@ -35,8 +35,8 @@ TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest0) {
   inputs[0]->shape_[2] = 1;
   inputs[0]->shape_[3] = 12;
   std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  DepthToSpaceParameter *param = new DepthToSpaceParameter;
+  outputs[0] = new TensorC();
+  DepthToSpaceParameter *param = new DepthToSpaceParameter();
   param->block_size_ = 2;
   int ret = DepthToSpaceInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                    reinterpret_cast<OpParameter *>(param));
@@ -58,7 +58,7 @@ TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest0) {
 TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->format_ = Format_NHWC;
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 1;
@@ -66,8 +66,8 @@ TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest1) {
   inputs[0]->shape_[2] = 2;
   inputs[0]->shape_[3] = 4;
   std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  DepthToSpaceParameter *param = new DepthToSpaceParameter;
+  outputs[0] = new TensorC();
+  DepthToSpaceParameter *param = new DepthToSpaceParameter();
   param->block_size_ = 2;
   int ret = DepthToSpaceInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                    reinterpret_cast<OpParameter *>(param));
@@ -89,7 +89,7 @@ TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest1) {
 TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest2) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->format_ = Format_NHWC;
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 1;
@@ -97,8 +97,8 @@ TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest2) {
   inputs[0]->shape_[2] = 1;
   inputs[0]->shape_[3] = 4;
   std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  DepthToSpaceParameter *param = new DepthToSpaceParameter;
+  outputs[0] = new TensorC();
+  DepthToSpaceParameter *param = new DepthToSpaceParameter();
   param->block_size_ = 2;
   int ret = DepthToSpaceInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                    reinterpret_cast<OpParameter *>(param));
@@ -120,7 +120,7 @@ TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest2) {
 TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest3) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->format_ = Format_NHWC;
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 4;
@@ -128,8 +128,8 @@ TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest3) {
   inputs[0]->shape_[2] = 7;
   inputs[0]->shape_[3] = 32;
   std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  DepthToSpaceParameter *param = new DepthToSpaceParameter;
+  outputs[0] = new TensorC();
+  DepthToSpaceParameter *param = new DepthToSpaceParameter();
   param->block_size_ = 4;
   int ret = DepthToSpaceInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                    reinterpret_cast<OpParameter *>(param));
@@ -151,18 +151,19 @@ TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest3) {
 TEST_F(DepthToSpaceInferTest, DepthToSpaceInferTest4) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 7;
   inputs[0]->shape_[2] = 32;
   std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  DepthToSpaceParameter *param = new DepthToSpaceParameter;
+  outputs[0] = new TensorC();
+  DepthToSpaceParameter *param = new DepthToSpaceParameter();
   param->block_size_ = 4;
   int ret = DepthToSpaceInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                    reinterpret_cast<OpParameter *>(param));
-  ASSERT_EQ(ret, NNACL_ERR);
+  // only 4-D input is accepted
+  ASSERT_EQ(ret, NNACL_PARAM_INVALID);
   delete param;
   for (size_t i = 0; i < inputs_size; i++) {
     delete inputs[i];

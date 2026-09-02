@@ -24,22 +24,24 @@ class TransposeInferTest : public mindspore::CommonTest {
 };
 
 TEST_F(TransposeInferTest, TransposeInferTest0) {
-  size_t inputs_size = 1;
+  size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 5;
   inputs[0]->shape_[2] = 6;
   inputs[0]->shape_[3] = 7;
+  // the infer reads the permutation from the second input tensor
+  inputs[1] = new TensorC();
+  int32_t perm_data[] = {2, 1, 3, 0};
+  inputs[1]->shape_size_ = 1;
+  inputs[1]->shape_[0] = 4;
+  inputs[1]->data_type_ = kNumberTypeInt32;
+  inputs[1]->data_ = perm_data;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  TransposeParameter *parameter = new TransposeParameter;
-  parameter->perm_size_ = 4;
-  parameter->perm_[0] = 2;
-  parameter->perm_[1] = 1;
-  parameter->perm_[2] = 3;
-  parameter->perm_[3] = 0;
+  outputs[0] = new TensorC();
+  TransposeParameter *parameter = new TransposeParameter();
   int ret = TransposeInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                 reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

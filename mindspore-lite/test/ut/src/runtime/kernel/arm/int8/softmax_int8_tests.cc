@@ -33,9 +33,14 @@ TEST_F(TestSoftmaxInt8, SoftmaxInt8) {
   std::vector<lite::Tensor *> inputs_tensor;
   std::vector<lite::Tensor *> outputs_tensor;
 
-  SoftmaxParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Softmax;
-  op_param.axis_ = 2;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) SoftmaxParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Softmax;
+  op_param->axis_ = 2;
 
   lite::LiteQuantParam input_quant_arg;
   input_quant_arg.scale = 0.0352941;
@@ -66,12 +71,14 @@ TEST_F(TestSoftmaxInt8, SoftmaxInt8) {
   output0_tensor.set_data_type(tid_int8);
 
   auto ctx = std::make_shared<lite::InnerContext>();
+  ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Softmax};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
 
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx.get(), desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor.shape();
   auto ret = kernel->Prepare();

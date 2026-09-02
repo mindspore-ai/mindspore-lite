@@ -15,6 +15,7 @@
  */
 #include "common/common_test.h"
 #include "nnacl_c/infer/flatten_infer.h"
+#include "nnacl_c/flatten_parameter.h"
 
 namespace mindspore {
 
@@ -26,16 +27,19 @@ class FlattenInferTest : public mindspore::CommonTest {
 TEST_F(FlattenInferTest, FlattenInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 2;
   inputs[0]->shape_[2] = 3;
   inputs[0]->shape_[3] = 4;
   std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *param = new OpParameter;
-  int ret = FlattenInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(), param);
+  outputs[0] = new TensorC();
+  // the infer reads the flatten axis from FlattenParameter
+  FlattenParameter *param = new FlattenParameter();
+  param->axis_ = 1;
+  int ret = FlattenInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
+                              reinterpret_cast<OpParameter *>(param));
   ASSERT_EQ(ret, NNACL_OK);
   ASSERT_EQ(outputs[0]->shape_size_, 2);
   ASSERT_EQ(outputs[0]->shape_[0], 5);
@@ -52,15 +56,18 @@ TEST_F(FlattenInferTest, FlattenInferTest0) {
 TEST_F(FlattenInferTest, FlattenInferTest1) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 2;
   inputs[0]->shape_[1] = 3;
   inputs[0]->shape_[2] = 4;
   std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *param = new OpParameter;
-  int ret = FlattenInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(), param);
+  outputs[0] = new TensorC();
+  // the infer reads the flatten axis from FlattenParameter
+  FlattenParameter *param = new FlattenParameter();
+  param->axis_ = 1;
+  int ret = FlattenInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
+                              reinterpret_cast<OpParameter *>(param));
   ASSERT_EQ(ret, NNACL_OK);
   ASSERT_EQ(outputs[0]->shape_size_, 2);
   ASSERT_EQ(outputs[0]->shape_[0], 2);
@@ -77,14 +84,17 @@ TEST_F(FlattenInferTest, FlattenInferTest1) {
 TEST_F(FlattenInferTest, FlattenInferTest2) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 4;
   std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *param = new OpParameter;
-  int ret = FlattenInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(), param);
+  outputs[0] = new TensorC();
+  // the infer reads the flatten axis from FlattenParameter
+  FlattenParameter *param = new FlattenParameter();
+  param->axis_ = 1;
+  int ret = FlattenInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
+                              reinterpret_cast<OpParameter *>(param));
   ASSERT_EQ(ret, NNACL_OK);
   ASSERT_EQ(outputs[0]->shape_size_, 2);
   ASSERT_EQ(outputs[0]->shape_[0], 3);
@@ -101,17 +111,20 @@ TEST_F(FlattenInferTest, FlattenInferTest2) {
 TEST_F(FlattenInferTest, FlattenInferTest3) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 4;
   std::vector<TensorC *> outputs(inputs_size, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *param = new OpParameter;
-  int ret = FlattenInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(), param);
+  outputs[0] = new TensorC();
+  // rank-1 input: only axis 0 is in range, giving a leading singleton dimension
+  FlattenParameter *param = new FlattenParameter();
+  param->axis_ = 0;
+  int ret = FlattenInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
+                              reinterpret_cast<OpParameter *>(param));
   ASSERT_EQ(ret, NNACL_OK);
   ASSERT_EQ(outputs[0]->shape_size_, 2);
-  ASSERT_EQ(outputs[0]->shape_[0], 4);
-  ASSERT_EQ(outputs[0]->shape_[1], 1);
+  ASSERT_EQ(outputs[0]->shape_[0], 1);
+  ASSERT_EQ(outputs[0]->shape_[1], 4);
   delete param;
   for (size_t i = 0; i < inputs_size; i++) {
     delete inputs[i];

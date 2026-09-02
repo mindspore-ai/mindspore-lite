@@ -26,27 +26,27 @@ class GruInferTest : public mindspore::CommonTest {
 TEST_F(GruInferTest, GruInferTest0) {
   size_t inputs_size = 5;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 5;
   inputs[0]->shape_[2] = 6;
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 3;
   inputs[1]->shape_[1] = 9;
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
   inputs[2]->shape_size_ = 3;
   inputs[2]->shape_[1] = 9;
-  inputs[3] = new TensorC;
+  inputs[3] = new TensorC();
   inputs[3]->shape_[1] = 18;
-  inputs[4] = new TensorC;
+  inputs[4] = new TensorC();
 
   std::vector<TensorC *> outputs(2, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  GruParameter *parameter = new GruParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  GruParameter *parameter = new GruParameter();
   parameter->bidirectional_ = true;
   OpParameter *param = reinterpret_cast<OpParameter *>(parameter);
   int ret = GruInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(), param);
@@ -78,30 +78,31 @@ TEST_F(GruInferTest, GruInferTest0) {
 TEST_F(GruInferTest, GruInferTest1) {
   size_t inputs_size = 6;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 5;
   inputs[0]->shape_[2] = 6;
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 3;
   inputs[1]->shape_[1] = 9;
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
   inputs[2]->shape_size_ = 3;
   inputs[2]->shape_[1] = 9;
-  inputs[3] = new TensorC;
+  inputs[3] = new TensorC();
   inputs[3]->shape_[1] = 18;
-  inputs[4] = new TensorC;
-  inputs[5] = new TensorC;
+  inputs[4] = new TensorC();
+  inputs[5] = new TensorC();
   inputs[5]->shape_size_ = 1;
-  inputs[5]->shape_[0] = -1;
+  // a scalar seq_len: shape > 1 is rejected and a negative shape blocks InferFlag
+  inputs[5]->shape_[0] = 1;
 
   std::vector<TensorC *> outputs(2, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  GruParameter *parameter = new GruParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  GruParameter *parameter = new GruParameter();
   parameter->bidirectional_ = false;
   int ret = GruInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                           reinterpret_cast<OpParameter *>(parameter));

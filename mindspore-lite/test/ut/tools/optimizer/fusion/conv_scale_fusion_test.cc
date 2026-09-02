@@ -21,6 +21,7 @@
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 #include "tools/converter/anf_transform.h"
+#include "tools/converter/cxx_api/converter_para.h"
 #include "tools/lite_exporter/anf_exporter.h"
 #include "test/common/import_from_meta_graphT.h"
 
@@ -51,7 +52,7 @@ CNodeTptr BuildConv2D(int with_bias_flag) {
   prim1->stride = {1, 1};
   prim1->kernel_size = {3, 3};
   prim1->dilation = {1, 1};
-  prim1->out_channel = 3;
+  prim1->out_channel = 8;
   convNode->primitive->value.value = prim1;
   convNode->name = "Conv2D";
   return convNode;
@@ -131,11 +132,11 @@ MetaGraphTptr BuildGraph(schema::PrimitiveType conv_type, bool conv_with_bias) {
   if (conv_with_bias) {
     // input 00: bias
     auto input00 = std::make_unique<schema::TensorT>();
-    input00->nodeType = lite::NodeType_Parameter;
+    input00->nodeType = lite::NodeType_ValueNode;
     input00->format = schema::Format_NHWC;
     input00->dataType = TypeId::kNumberTypeFloat32;
-    input00->dims = {1, 5, 5, 3};
-    input00->offset = -1;
+    input00->dims = {8};
+    input00->data.resize(sizeof(float) * 8);
     meta_graph->allTensors.emplace_back(std::move(input00));
   }
 
@@ -152,8 +153,8 @@ MetaGraphTptr BuildGraph(schema::PrimitiveType conv_type, bool conv_with_bias) {
   input2->nodeType = lite::NodeType_ValueNode;
   input2->format = schema::Format_NHWC;
   input2->dataType = TypeId::kNumberTypeFloat32;
-  input2->dims = {1, 5, 5, 8};
-  input2->data.resize(sizeof(float) * 8 * 5 * 5);
+  input2->dims = {8};
+  input2->data.resize(sizeof(float) * 8);
   meta_graph->allTensors.emplace_back(std::move(input2));
 
   // scale bias input
@@ -161,8 +162,8 @@ MetaGraphTptr BuildGraph(schema::PrimitiveType conv_type, bool conv_with_bias) {
   input3->nodeType = lite::NodeType_ValueNode;
   input3->format = schema::Format_NHWC;
   input3->dataType = TypeId::kNumberTypeFloat32;
-  input3->dims = {1, 5, 5, 8};
-  input3->data.resize(sizeof(float) * 8 * 5 * 5);
+  input3->dims = {8};
+  input3->data.resize(sizeof(float) * 8);
   meta_graph->allTensors.emplace_back(std::move(input3));
 
   // final scale output
@@ -186,8 +187,9 @@ TEST_F(ConvScaleFusionTest, TestConvScaleNode) {
   auto meta_graph = BuildGraph(schema::PrimitiveType_Conv2DFusion, true);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto anf_transform = new lite::AnfTransform();
-  auto status = anf_transform->Transform(func_graph, nullptr);
-  ASSERT_NE(status, lite::RET_OK);
+  auto converter_param = std::make_shared<ConverterPara>();
+  auto status = anf_transform->Transform(func_graph, converter_param);
+  ASSERT_EQ(status, lite::RET_OK);
   auto new_meta_graph = lite::Export(func_graph);
   ASSERT_EQ(new_meta_graph->nodes.size(), 1);
   delete anf_transform;
@@ -197,8 +199,9 @@ TEST_F(ConvScaleFusionTest, TestDeptiwiseConvScaleNode) {
   auto meta_graph = BuildGraph(schema::PrimitiveType_Conv2DFusion, false);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto anf_transform = new lite::AnfTransform();
-  auto status = anf_transform->Transform(func_graph, nullptr);
-  ASSERT_NE(status, lite::RET_OK);
+  auto converter_param = std::make_shared<ConverterPara>();
+  auto status = anf_transform->Transform(func_graph, converter_param);
+  ASSERT_EQ(status, lite::RET_OK);
   auto new_meta_graph = lite::Export(func_graph);
   ASSERT_EQ(new_meta_graph->nodes.size(), 1);
   for (auto &cnode : new_meta_graph->nodes) {

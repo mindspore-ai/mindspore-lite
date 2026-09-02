@@ -21,6 +21,7 @@
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 #include "tools/converter/anf_transform.h"
+#include "tools/converter/cxx_api/converter_para.h"
 #include "tools/lite_exporter/anf_exporter.h"
 #include "test/common/import_from_meta_graphT.h"
 #include "tools/optimizer/common/gllo_utils.h"
@@ -74,7 +75,7 @@ MetaGraphTptr BuildGraph() {
   auto mul_node = BuildMul();
   meta_graph->nodes.emplace_back(std::move(mul_node));
   meta_graph->inputIndex = {0};
-  meta_graph->outputIndex = {opt::kInputIndexFour};
+  meta_graph->outputIndex = {opt::kInputIndexFive};
 
   // input 0:
   auto input0 = std::make_unique<schema::TensorT>();
@@ -135,8 +136,20 @@ TEST_F(MatMulAddFusionTest, TestMatMulMulNode) {
   auto meta_graph = BuildGraph();
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto anf_transform = new lite::AnfTransform();
-  auto status = anf_transform->Transform(func_graph, nullptr);
-  ASSERT_NE(status, lite::RET_OK);
+  auto converter_param = std::make_shared<ConverterPara>();
+  auto status = anf_transform->Transform(func_graph, converter_param);
+  ASSERT_EQ(status, lite::RET_OK);
+  // after mul fusion the old const params have no consumers and would break export
+  auto manager = Manage(func_graph, true);
+  AnfNodePtrList used_params;
+  const auto &node_users = manager->node_users();
+  for (const auto &param : func_graph->parameters()) {
+    auto iter = node_users.find(param);
+    if (iter != node_users.end() && !iter->second.empty()) {
+      used_params.push_back(param);
+    }
+  }
+  func_graph->set_parameters(std::move(used_params));
   auto new_meta_graph = lite::Export(func_graph);
   ASSERT_EQ(new_meta_graph->nodes.size(), 1);
   MS_LOG(INFO) << "Passed";

@@ -26,13 +26,13 @@ class PowerInferTest : public mindspore::CommonTest {
 TEST_F(PowerInferTest, PowerInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = PowerInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -51,19 +51,22 @@ TEST_F(PowerInferTest, PowerInferTest0) {
 TEST_F(PowerInferTest, PowerInferTest1) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   inputs[0]->data_type_ = kNumberTypeInt;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 4;
   inputs[1]->shape_[1] = 3;
   inputs[1]->data_type_ = kNumberTypeInt;
+  // the infer reads the exponent from the second input's data and stores it in PowParameter
+  float exp_data[12] = {2.0f};
+  inputs[1]->data_ = exp_data;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = reinterpret_cast<OpParameter *>(new PowParameter());
   int ret = PowerInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -82,18 +85,20 @@ TEST_F(PowerInferTest, PowerInferTest1) {
 TEST_F(PowerInferTest, PowerInferTest2) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   inputs[0]->data_type_ = kNumberTypeInt;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 1;
   inputs[1]->data_type_ = kNumberTypeInt;
+  float exp_data[] = {2.0f};
+  inputs[1]->data_ = exp_data;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = reinterpret_cast<OpParameter *>(new PowParameter());
   int ret = PowerInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                             reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

@@ -28,7 +28,7 @@ class CropInt8CPUKernel : public LiteKernel {
  public:
   CropInt8CPUKernel(OpParameter *parameter, const std::vector<lite::Tensor *> &inputs,
                     const std::vector<lite::Tensor *> &outputs, const mindspore::lite::InnerContext *ctx)
-      : LiteKernel(parameter, inputs, outputs, ctx) {}
+      : LiteKernel(parameter, inputs, outputs, ctx), crop_para_(reinterpret_cast<CropParameter *>(parameter)) {}
   ~CropInt8CPUKernel() = default;
 
   int Prepare() override;

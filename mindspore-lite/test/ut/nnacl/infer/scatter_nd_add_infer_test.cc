@@ -25,7 +25,7 @@ class TestScatterNdAddInfer : public mindspore::CommonTest {
 };
 
 void ScatterNdAddInferInitArgs(std::vector<TensorC *> *inputs, std::vector<TensorC *> *outputs) {
-  auto *input_x = new TensorC;
+  auto *input_x = new TensorC();
   input_x->data_type_ = kNumberTypeFloat32;
   input_x->shape_size_ = 4;
   input_x->shape_[0] = 3;
@@ -34,7 +34,7 @@ void ScatterNdAddInferInitArgs(std::vector<TensorC *> *inputs, std::vector<Tenso
   input_x->shape_[3] = 6;
   inputs->push_back(input_x);
 
-  auto *indices = new TensorC;
+  auto *indices = new TensorC();
   indices->data_type_ = kNumberTypeInt32;
   indices->shape_size_ = 3;
   indices->shape_[0] = 7;
@@ -42,7 +42,7 @@ void ScatterNdAddInferInitArgs(std::vector<TensorC *> *inputs, std::vector<Tenso
   indices->shape_[2] = 2;
   inputs->push_back(indices);
 
-  auto *updates = new TensorC;
+  auto *updates = new TensorC();
   updates->data_type_ = kNumberTypeFloat32;
   updates->shape_size_ = 4;
   updates->shape_[0] = 7;
@@ -51,7 +51,7 @@ void ScatterNdAddInferInitArgs(std::vector<TensorC *> *inputs, std::vector<Tenso
   updates->shape_[3] = 6;
   inputs->push_back(updates);
 
-  auto *output = new TensorC;
+  auto *output = new TensorC();
   outputs->push_back(output);
 }
 
@@ -66,7 +66,7 @@ TEST_F(TestScatterNdAddInfer, FourDims) {
   std::vector<TensorC *> inputs;
   std::vector<TensorC *> outputs;
   ScatterNdAddInferInitArgs(&inputs, &outputs);
-  auto *param = new ScatterNDParameter;
+  auto *param = new ScatterNDParameter();
   int ret = ScatterNdUpdateInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                       reinterpret_cast<OpParameter *>(param));
   ASSERT_EQ(ret, NNACL_OK);

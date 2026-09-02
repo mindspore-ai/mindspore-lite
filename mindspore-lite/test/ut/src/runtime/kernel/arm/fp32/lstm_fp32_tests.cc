@@ -143,6 +143,7 @@ TEST_F(LstmFp32, LstmForwardFp32Accuracy) {
   auto ctx = new lite::InnerContext();
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  lstm_param->op_parameter_.thread_num_ = ctx->thread_num_;
 
   // init tensor
   std::vector<lite::Tensor *> inputs;
@@ -172,7 +173,7 @@ TEST_F(LstmFp32, LstmForwardFp32Accuracy) {
   std::vector<float> output2_data = {0.0989, 0.2094, -0.4132};
   CompareResult(outputs[2], output2_data);
 
-  delete lstm_param;
+  // op_parameter_ (lstm_param) is free()d by ~LiteKernel, do not delete it here
   for (unsigned int i = 0; i < inputs.size() - 1; i++) {
     delete inputs[i];
   }
@@ -295,6 +296,7 @@ TEST_F(LstmFp32, LstmBackwardFp32Accuracy) {
   auto ctx = new lite::InnerContext();
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
+  lstm_param->op_parameter_.thread_num_ = ctx->thread_num_;
 
   // init tensor
   std::vector<lite::Tensor *> inputs;
@@ -325,7 +327,7 @@ TEST_F(LstmFp32, LstmBackwardFp32Accuracy) {
   std::vector<float> output2_data = {0.0373, -0.2322, -0.1477, -0.1621, -0.1808, 0.5146};
   CompareResult(outputs[2], output2_data);
 
-  delete lstm_param;
+  // op_parameter_ (lstm_param) is free()d by ~LiteKernel, do not delete it here
   for (unsigned int i = 0; i < inputs.size() - 1; i++) {
     delete inputs[i];
   }

@@ -27,14 +27,14 @@ class TensorlistFromtensorInferTest : public mindspore::CommonTest {
 TEST_F(TensorlistFromtensorInferTest, TensorlistFromtensorInferTest0) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 6;
   inputs[0]->shape_[2] = 5;
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<int> tmp = {-1, 5};
   inputs[1]->data_ = tmp.data();
   inputs[1]->data_type_ = kNumberTypeInt32;
@@ -46,7 +46,7 @@ TEST_F(TensorlistFromtensorInferTest, TensorlistFromtensorInferTest0) {
   auto out = reinterpret_cast<TensorListC *>(malloc(sizeof(TensorListC)));
   out->tensors_ = nullptr;
   outputs[0] = reinterpret_cast<TensorC *>(out);
-  auto *parameter = new OpParameter;
+  auto *parameter = new OpParameter();
   int ret = TensorListFromTensorInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(),
                                            outputs.size(), reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

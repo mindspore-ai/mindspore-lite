@@ -35,8 +35,8 @@ TEST_F(TestTfliteParserL2Norm, OpType) {
 TEST_F(TestTfliteParserL2Norm, AttrValue) {
   ASSERT_NE(meta_graph->nodes.front()->primitive->value.AsL2NormalizeFusion(), nullptr);
   auto val = meta_graph->nodes.front()->primitive->value.AsL2NormalizeFusion();
-  ASSERT_EQ(val->epsilon, 0.0);
-  std::vector<int64_t> axis = {0, 1, 2, 3};
+  ASSERT_EQ(val->epsilon, 1e-6f);
+  std::vector<int64_t> axis = {-1};
   ASSERT_EQ(val->axis, axis);
 }
 

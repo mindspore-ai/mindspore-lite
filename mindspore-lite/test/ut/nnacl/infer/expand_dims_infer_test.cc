@@ -25,18 +25,25 @@ class ExpandDimsInferTest : public mindspore::CommonTest {
 
 // https://tensorflow.google.cn/api_docs/python/tf/expand_dims?hl=en
 TEST_F(ExpandDimsInferTest, ExpandDimsInferTest0) {
-  size_t inputs_size = 1;
+  size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 10;
   inputs[0]->shape_[1] = 10;
   inputs[0]->shape_[2] = 3;
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
+  // the infer reads the dim from a second input tensor
+  inputs[1] = new TensorC();
+  inputs[1]->data_type_ = kNumberTypeInt32;
+  inputs[1]->shape_size_ = 1;
+  inputs[1]->shape_[0] = 1;
+  int32_t dim_data[] = {0};
+  inputs[1]->data_ = dim_data;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret =
     ExpandDimsInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(), parameter);
   ASSERT_EQ(ret, NNACL_OK);
@@ -57,18 +64,25 @@ TEST_F(ExpandDimsInferTest, ExpandDimsInferTest0) {
 }
 
 TEST_F(ExpandDimsInferTest, ExpandDimsInferTest1) {
-  size_t inputs_size = 1;
+  size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 10;
   inputs[0]->shape_[1] = 10;
   inputs[0]->shape_[2] = 3;
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
+  // the infer reads the dim from a second input tensor
+  inputs[1] = new TensorC();
+  inputs[1]->data_type_ = kNumberTypeInt32;
+  inputs[1]->shape_size_ = 1;
+  inputs[1]->shape_[0] = 1;
+  int32_t dim_data[] = {1};
+  inputs[1]->data_ = dim_data;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret =
     ExpandDimsInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(), parameter);
   ASSERT_EQ(ret, NNACL_OK);
@@ -89,18 +103,25 @@ TEST_F(ExpandDimsInferTest, ExpandDimsInferTest1) {
 }
 
 TEST_F(ExpandDimsInferTest, ExpandDimsInferTest2) {
-  size_t inputs_size = 1;
+  size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 10;
   inputs[0]->shape_[1] = 10;
   inputs[0]->shape_[2] = 3;
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
+  // the infer reads the dim from a second input tensor
+  inputs[1] = new TensorC();
+  inputs[1]->data_type_ = kNumberTypeInt32;
+  inputs[1]->shape_size_ = 1;
+  inputs[1]->shape_[0] = 1;
+  int32_t dim_data[] = {3};
+  inputs[1]->data_ = dim_data;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret =
     ExpandDimsInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(), parameter);
   ASSERT_EQ(ret, NNACL_OK);

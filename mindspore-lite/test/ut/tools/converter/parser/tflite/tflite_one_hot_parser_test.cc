@@ -34,7 +34,7 @@ TEST_F(TestTfliteParserOneHot, OpType) {
 TEST_F(TestTfliteParserOneHot, AttrValue) {
   ASSERT_NE(meta_graph->nodes.front()->primitive->value.AsOneHot(), nullptr);
   auto val = meta_graph->nodes.front()->primitive->value.AsOneHot();
-  ASSERT_EQ(val->axis, 2);
+  ASSERT_EQ(val->axis, -1);
 }
 
 }  // namespace mindspore

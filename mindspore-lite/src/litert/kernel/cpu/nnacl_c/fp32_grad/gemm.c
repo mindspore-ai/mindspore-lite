@@ -50,8 +50,8 @@ int MatSizeTotal(int row, int col, int deep, int stride) {
   const int num0 = C4NUM;
 #elif ENABLE_AVX
   const int num0 = C6NUM;
-#elif ENABLE_SSE
-  const int num0 = C4NUM;
+#elif defined(ENABLE_SSE) && !defined(ENABLE_AVX)
+  const int num0 = C12NUM;
 #else
   const int num0 = C12NUM;
 #endif
@@ -65,7 +65,7 @@ int MatSizeTotal(int row, int col, int deep, int stride) {
   if (stride > 0) res += row * stride;
   return res;
 }
-#if defined(ENABLE_ARM32) || (defined(ENABLE_SSE) && !defined(ENABLE_AVX))
+#ifdef ENABLE_ARM32
 static void RowMajor2Row4MajorStride(const float *src_ptr, float *dst_ptr, int row, int col, int lead) {
   for (int r = 0; r < row; r++) {
     const float *src = src_ptr + r * lead;
@@ -509,7 +509,7 @@ void RowMajor2Col8MajorStride(const float *src_ptr, float *dst_ptr, size_t row, 
   }
   return;
 }
-#if defined(ENABLE_ARM32) || (defined(ENABLE_SSE) && !defined(ENABLE_AVX))
+#ifdef ENABLE_ARM32
 static void RowMajor2Col4MajorStride(const float *src_ptr, float *dst_ptr, size_t row, size_t col, int lead) {
   size_t row8 = row / C4NUM * C4NUM;
   size_t col4 = col / C4NUM * C4NUM;
@@ -795,8 +795,8 @@ void GemmMatmulPlus(int ta, int tb, int M, int N, int K, float alpha, const floa
 #elif ENABLE_AVX
   const int num = C6NUM;
   const int num1 = C16NUM;
-#elif ENABLE_SSE
-  const int num = C4NUM;
+#elif defined(ENABLE_SSE) && !defined(ENABLE_AVX)
+  const int num = C12NUM;
   const int num1 = C8NUM;
 #else
   const int num = C12NUM;
@@ -816,8 +816,6 @@ void GemmMatmulPlus(int ta, int tb, int M, int N, int K, float alpha, const floa
       RowMajor2Row4MajorStride(mat_a, mat_a_input, K, M, lda);
 #elif ENABLE_AVX
       RowMajor2Row6MajorStride(mat_a, mat_a_input, K, M, lda);
-#elif ENABLE_SSE
-      RowMajor2Row4MajorStride(mat_a, mat_a_input, K, M, lda);
 #else
       RowMajor2Row12MajorStride(mat_a, mat_a_input, K, M, lda);
 #endif
@@ -827,8 +825,6 @@ void GemmMatmulPlus(int ta, int tb, int M, int N, int K, float alpha, const floa
       RowMajor2Col4MajorStride(mat_a, mat_a_input, M, K, lda);
 #elif ENABLE_AVX
       RowMajor2Col6MajorStride(mat_a, mat_a_input, M, K, lda);
-#elif ENABLE_SSE
-      RowMajor2Col4MajorStride(mat_a, mat_a_input, M, K, lda);
 #else
       RowMajor2Col12MajorStride(mat_a, mat_a_input, M, K, lda);
 #endif
@@ -855,6 +851,8 @@ void GemmMatmulPlus(int ta, int tb, int M, int N, int K, float alpha, const floa
   if (incremental) output = fworkspace;
 #ifdef ENABLE_ARM32
   MatmulFloatNeon32Opt(mat_a_input, mat_b_input, output, gcb->bias, (int)gcb->atype, K, M, N, ldc, 1);
+#elif defined(ENABLE_SSE) && !defined(ENABLE_AVX)
+  MatMul12x8(mat_a_input, mat_b_input, output, gcb->bias, gcb->atype, K, M, N, ldc, OutType_Nhwc);
 #else
   MatMulOpt(mat_a_input, mat_b_input, output, gcb->bias, gcb->atype, K, M, N, ldc, OutType_Nhwc);
 #endif

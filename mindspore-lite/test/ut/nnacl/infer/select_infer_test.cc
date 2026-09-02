@@ -32,8 +32,8 @@ class SelectInferTest : public mindspore::CommonTest {
 TEST_F(SelectInferTest, SelectInferTest0) {
   size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
-  inputs[1] = new TensorC;
+  inputs[0] = new TensorC();
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 4;
   inputs[1]->shape_[1] = 5;
@@ -41,11 +41,11 @@ TEST_F(SelectInferTest, SelectInferTest0) {
   inputs[1]->shape_[3] = 7;
   inputs[1]->data_type_ = kNumberTypeInt32;
   inputs[1]->format_ = Format_NHWC;
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
 
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = SelectInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                              reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -74,10 +74,11 @@ TEST_F(SelectInferTest, SelectInferTest0) {
  * outputs[1].shape: [8, 9, 10, 11]
  */
 TEST_F(SelectInferTest, SelectInferTest1) {
-  size_t inputs_size = 6;
+  // the infer requires exactly 2 * outputs_size + 1 inputs
+  size_t inputs_size = 5;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
-  inputs[1] = new TensorC;
+  inputs[0] = new TensorC();
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 4;
   inputs[1]->shape_[1] = 5;
@@ -85,7 +86,7 @@ TEST_F(SelectInferTest, SelectInferTest1) {
   inputs[1]->shape_[3] = 7;
   inputs[1]->data_type_ = kNumberTypeInt32;
   inputs[1]->format_ = Format_NHWC;
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
   inputs[2]->shape_size_ = 4;
   inputs[2]->shape_[0] = 8;
   inputs[2]->shape_[1] = 9;
@@ -93,14 +94,13 @@ TEST_F(SelectInferTest, SelectInferTest1) {
   inputs[2]->shape_[3] = 11;
   inputs[2]->data_type_ = kNumberTypeInt32;
   inputs[2]->format_ = Format_NHWC;
-  inputs[3] = new TensorC;
-  inputs[4] = new TensorC;
-  inputs[5] = new TensorC;
+  inputs[3] = new TensorC();
+  inputs[4] = new TensorC();
 
   std::vector<TensorC *> outputs(2, NULL);
-  outputs[0] = new TensorC;
-  outputs[1] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  outputs[1] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = SelectInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                              reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -130,8 +130,8 @@ TEST_F(SelectInferTest, SelectInferTest1) {
 TEST_F(SelectInferTest, SelectInferTest2) {
   size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
-  TensorListC *inputs1 = new TensorListC;
+  inputs[0] = new TensorC();
+  TensorListC *inputs1 = new TensorListC();
   inputs1->data_type_ = kObjectTypeTensorType;
   inputs1->format_ = Format_NHWC;
   inputs1->max_elements_num_ = 8;
@@ -142,11 +142,11 @@ TEST_F(SelectInferTest, SelectInferTest2) {
   inputs1->element_shape_[2] = 6;
   inputs1->element_shape_[3] = 7;
   inputs[1] = reinterpret_cast<TensorC *>(inputs1);
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
 
   std::vector<TensorC *> outputs(1, NULL);
   outputs[0] = reinterpret_cast<TensorC *>(new TensorListC);
-  OpParameter *parameter = new OpParameter;
+  OpParameter *parameter = new OpParameter();
   int ret = SelectInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                              reinterpret_cast<OpParameter *>(parameter));
   TensorListC *outputs0 = reinterpret_cast<TensorListC *>(outputs[0]);
@@ -171,8 +171,8 @@ TEST_F(SelectInferTest, SelectInferTest2) {
 TEST_F(SelectInferTest, SelectInferTest3) {
   size_t inputs_size = 5;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
-  TensorListC *inputs1 = new TensorListC;
+  inputs[0] = new TensorC();
+  TensorListC *inputs1 = new TensorListC();
   inputs1->data_type_ = kObjectTypeTensorType;
   inputs1->format_ = Format_NHWC;
   inputs1->max_elements_num_ = 8;
@@ -183,8 +183,8 @@ TEST_F(SelectInferTest, SelectInferTest3) {
   inputs1->element_shape_[2] = 6;
   inputs1->element_shape_[3] = 7;
   inputs[1] = reinterpret_cast<TensorC *>(inputs1);
-  // inputs[2] = new TensorC;
-  TensorListC *inputs2 = new TensorListC;
+  // inputs[2] = new TensorC();
+  TensorListC *inputs2 = new TensorListC();
   inputs2->data_type_ = kObjectTypeTensorType;
   inputs2->format_ = Format_NHWC;
   inputs2->max_elements_num_ = 8;
@@ -195,13 +195,13 @@ TEST_F(SelectInferTest, SelectInferTest3) {
   inputs2->element_shape_[2] = 10;
   inputs2->element_shape_[3] = 11;
   inputs[2] = reinterpret_cast<TensorC *>(inputs2);
-  inputs[3] = new TensorC;
-  inputs[4] = new TensorC;
+  inputs[3] = new TensorC();
+  inputs[4] = new TensorC();
 
   std::vector<TensorC *> outputs(2, NULL);
   outputs[0] = reinterpret_cast<TensorC *>(new TensorListC);
   outputs[1] = reinterpret_cast<TensorC *>(new TensorListC);
-  OpParameter *parameter = new OpParameter;
+  OpParameter *parameter = new OpParameter();
   int ret = SelectInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                              reinterpret_cast<OpParameter *>(parameter));
   TensorListC *outputs0 = reinterpret_cast<TensorListC *>(outputs[0]);

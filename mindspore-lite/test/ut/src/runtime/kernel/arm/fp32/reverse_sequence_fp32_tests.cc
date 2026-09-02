@@ -16,6 +16,7 @@
 
 #include <iostream>
 #include <memory>
+#include "src/common/log_adapter.h"
 #include "common/common_test.h"
 #include "nnacl_c/fp32/reverse_sequence_fp32.h"
 #include "src/litert/kernel_registry.h"
@@ -41,9 +42,14 @@ TEST_F(TestReverseSequenceFp32, BatchLessSeq) {
   std::vector<lite::Tensor *> inputs = {&in_tensor0, &in_tensor1};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  ReverseSequenceParameter parameter = {0};
-  parameter.batch_axis_ = 1;
-  parameter.seq_axis_ = 2;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto parameter = new (std::nothrow) ReverseSequenceParameter();
+  if (parameter == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  parameter->batch_axis_ = 1;
+  parameter->seq_axis_ = 2;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_ReverseSequence};
 
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
@@ -51,7 +57,7 @@ TEST_F(TestReverseSequenceFp32, BatchLessSeq) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(&parameter), ctx.get(), desc);
+  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   EXPECT_NE(kernel, nullptr);
 
   auto ret = kernel->Prepare();
@@ -88,9 +94,14 @@ TEST_F(TestReverseSequenceFp32, BatchGreaterSeq) {
   std::vector<lite::Tensor *> inputs = {&in_tensor0, &in_tensor1};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  ReverseSequenceParameter parameter = {0};
-  parameter.batch_axis_ = 2;
-  parameter.seq_axis_ = 1;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto parameter = new (std::nothrow) ReverseSequenceParameter();
+  if (parameter == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  parameter->batch_axis_ = 2;
+  parameter->seq_axis_ = 1;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_ReverseSequence};
 
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
@@ -98,7 +109,7 @@ TEST_F(TestReverseSequenceFp32, BatchGreaterSeq) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(&parameter), ctx.get(), desc);
+  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   EXPECT_NE(kernel, nullptr);
 
   auto ret = kernel->Prepare();
@@ -135,9 +146,14 @@ TEST_F(TestReverseSequenceFp32, BatchSeqNotAdjacent) {
   std::vector<lite::Tensor *> inputs = {&in_tensor0, &in_tensor1};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  ReverseSequenceParameter parameter = {0};
-  parameter.batch_axis_ = 0;
-  parameter.seq_axis_ = 2;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto parameter = new (std::nothrow) ReverseSequenceParameter();
+  if (parameter == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  parameter->batch_axis_ = 0;
+  parameter->seq_axis_ = 2;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_ReverseSequence};
 
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
@@ -145,7 +161,7 @@ TEST_F(TestReverseSequenceFp32, BatchSeqNotAdjacent) {
 
   auto ctx = std::make_shared<lite::InnerContext>();
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(&parameter), ctx.get(), desc);
+  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   EXPECT_NE(kernel, nullptr);
 
   auto ret = kernel->Prepare();

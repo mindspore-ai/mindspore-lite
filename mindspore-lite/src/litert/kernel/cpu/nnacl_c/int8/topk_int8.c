@@ -29,7 +29,7 @@ void TopkInt8(int8_t *input_data, int8_t *output_data, int32_t *output_index, To
   int outer_loop_num = parameter->outer_loop_num_;
   int inner_loop_num = parameter->inner_loop_num_;
   int k = parameter->k_;
-  TopkNode *top_map = (TopkNode *)parameter->topk_node_list_;
+  TopkNodeInt8 *top_map = (TopkNodeInt8 *)parameter->topk_node_list_;
 
   int8_t *cur_input_data = (int8_t *)input_data;
   int8_t *cur_output_data = (int8_t *)output_data;

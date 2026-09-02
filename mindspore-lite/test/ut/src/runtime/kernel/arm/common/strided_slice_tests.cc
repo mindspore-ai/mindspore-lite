@@ -68,7 +68,11 @@ TEST_F(TestStridedSlice, StridedSlice) {
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begins_tensor, &ends_tensor, &strides_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
 
-  StridedSliceParameter *parameter = new StridedSliceParameter;
+  // value-init: StridedSliceResize scans the FULL strides_/begins_/ends_/in_shape_
+  // arrays (MAX_SHAPE_SIZE), not just the first `dim` entries; a default-initialized
+  // (garbage) tail flips soft_copy/fast_run/has_setted_strides between runs and
+  // makes local/gate results diverge. value-init keeps every test deterministic.
+  StridedSliceParameter *parameter = new StridedSliceParameter();
   parameter->op_parameter_.type_ = schema::PrimitiveType_StridedSlice;
   InitStridedSliceParam(parameter, &in_tensor, &begins_tensor, &ends_tensor, &strides_tensor);
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_StridedSlice};
@@ -110,7 +114,11 @@ TEST_F(TestStridedSlice, 7d) {
   strides_tensor.set_data(strides_data);
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begins_tensor, &ends_tensor, &strides_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
-  StridedSliceParameter *parameter = new StridedSliceParameter;
+  // value-init: StridedSliceResize scans the FULL strides_/begins_/ends_/in_shape_
+  // arrays (MAX_SHAPE_SIZE), not just the first `dim` entries; a default-initialized
+  // (garbage) tail flips soft_copy/fast_run/has_setted_strides between runs and
+  // makes local/gate results diverge. value-init keeps every test deterministic.
+  StridedSliceParameter *parameter = new StridedSliceParameter();
   parameter->op_parameter_.type_ = schema::PrimitiveType_StridedSlice;
   InitStridedSliceParam(parameter, &in_tensor, &begins_tensor, &ends_tensor, &strides_tensor);
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_StridedSlice};
@@ -157,7 +165,11 @@ TEST_F(TestStridedSlice, 8d) {
   strides_tensor.set_data(strides_data, false);
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begins_tensor, &ends_tensor, &strides_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
-  StridedSliceParameter *parameter = new StridedSliceParameter;
+  // value-init: StridedSliceResize scans the FULL strides_/begins_/ends_/in_shape_
+  // arrays (MAX_SHAPE_SIZE), not just the first `dim` entries; a default-initialized
+  // (garbage) tail flips soft_copy/fast_run/has_setted_strides between runs and
+  // makes local/gate results diverge. value-init keeps every test deterministic.
+  StridedSliceParameter *parameter = new StridedSliceParameter();
   parameter->op_parameter_.type_ = schema::PrimitiveType_StridedSlice;
   InitStridedSliceParam(parameter, &in_tensor, &begins_tensor, &ends_tensor, &strides_tensor);
   parameter->op_parameter_.type_ = schema::PrimitiveType_StridedSlice;
@@ -202,7 +214,11 @@ TEST_F(TestStridedSlice, FastRun7d) {
   strides_tensor.set_data(strides_data, false);
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begins_tensor, &ends_tensor, &strides_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
-  StridedSliceParameter *parameter = new StridedSliceParameter;
+  // value-init: StridedSliceResize scans the FULL strides_/begins_/ends_/in_shape_
+  // arrays (MAX_SHAPE_SIZE), not just the first `dim` entries; a default-initialized
+  // (garbage) tail flips soft_copy/fast_run/has_setted_strides between runs and
+  // makes local/gate results diverge. value-init keeps every test deterministic.
+  StridedSliceParameter *parameter = new StridedSliceParameter();
   parameter->op_parameter_.type_ = schema::PrimitiveType_StridedSlice;
   InitStridedSliceParam(parameter, &in_tensor, &begins_tensor, &ends_tensor, &strides_tensor);
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_StridedSlice};
@@ -247,7 +263,11 @@ TEST_F(TestStridedSlice, FastRun7dSingleThread) {
   strides_tensor.set_data(strides_data, false);
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begins_tensor, &ends_tensor, &strides_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
-  StridedSliceParameter *parameter = new StridedSliceParameter;
+  // value-init: StridedSliceResize scans the FULL strides_/begins_/ends_/in_shape_
+  // arrays (MAX_SHAPE_SIZE), not just the first `dim` entries; a default-initialized
+  // (garbage) tail flips soft_copy/fast_run/has_setted_strides between runs and
+  // makes local/gate results diverge. value-init keeps every test deterministic.
+  StridedSliceParameter *parameter = new StridedSliceParameter();
   parameter->op_parameter_.type_ = schema::PrimitiveType_StridedSlice;
   InitStridedSliceParam(parameter, &in_tensor, &begins_tensor, &ends_tensor, &strides_tensor);
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_StridedSlice};
@@ -276,7 +296,10 @@ TEST_F(TestStridedSlice, FastRun7dSingleThread) {
 
 TEST_F(TestStridedSlice, StridedSliceInt8) {
   lite::Tensor in_tensor(kNumberTypeInt8, {2, 3, 4});
-  lite::Tensor out_tensor(kNumberTypeInt8, {2, 3, 4});
+  // real slice of begins{0,1,2}/ends{2,3,4}/strides{1,2,1} is {2,1,2}: dim0 idx 0..1,
+  // dim1 idx 1 (stride 2), dim2 idx 2..3. An out shape equal to the input ({2,3,4})
+  // would hit the soft_copy memcpy path and mask the actual slice semantics.
+  lite::Tensor out_tensor(kNumberTypeInt8, {2, 1, 2});
   int8_t input_data[] = {-12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int8_t output_data[4] = {0};
   in_tensor.set_data(input_data, false);
@@ -292,7 +315,11 @@ TEST_F(TestStridedSlice, StridedSliceInt8) {
   strides_tensor.set_data(strides_data, false);
   std::vector<lite::Tensor *> inputs = {&in_tensor, &begins_tensor, &ends_tensor, &strides_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor};
-  StridedSliceParameter *parameter = new StridedSliceParameter;
+  // value-init: StridedSliceResize scans the FULL strides_/begins_/ends_/in_shape_
+  // arrays (MAX_SHAPE_SIZE), not just the first `dim` entries; a default-initialized
+  // (garbage) tail flips soft_copy/fast_run/has_setted_strides between runs and
+  // makes local/gate results diverge. value-init keeps every test deterministic.
+  StridedSliceParameter *parameter = new StridedSliceParameter();
   parameter->op_parameter_.type_ = schema::PrimitiveType_StridedSlice;
   InitStridedSliceParam(parameter, &in_tensor, &begins_tensor, &ends_tensor, &strides_tensor);
   parameter->op_parameter_.type_ = schema::PrimitiveType_StridedSlice;
@@ -310,7 +337,7 @@ TEST_F(TestStridedSlice, StridedSliceInt8) {
   EXPECT_EQ(0, ret);
   ret = kernel->Run();
   EXPECT_EQ(0, ret);
-  int8_t expect[4] = {-12, -11, -10, -9};
+  int8_t expect[4] = {-6, -5, 7, 8};
   for (unsigned int i = 0; i < sizeof(expect); ++i) {
     EXPECT_EQ(output_data[i], expect[i]);
   }

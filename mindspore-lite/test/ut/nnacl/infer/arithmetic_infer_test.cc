@@ -26,13 +26,13 @@ class ArithmeticInferTest : public mindspore::CommonTest {
 TEST_F(ArithmeticInferTest, ArithmeticInferTest0) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 2;
   inputs[0]->shape_[1] = 3;
   inputs[0]->shape_[2] = 4;
   inputs[0]->shape_[3] = 5;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 5;
   inputs[1]->shape_[0] = 6;
   inputs[1]->shape_[1] = 7;
@@ -40,8 +40,10 @@ TEST_F(ArithmeticInferTest, ArithmeticInferTest0) {
   inputs[1]->shape_[3] = 9;
   inputs[1]->shape_[4] = 10;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  // the infer shape writes broadcast/shape fields through the parameter pointer, so the
+  // allocation must be the full ArithmeticParameter, not the smaller OpParameter
+  OpParameter *parameter = reinterpret_cast<OpParameter *>(new ArithmeticParameter());
   int ret =
     ArithmeticInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(), parameter);
   ASSERT_EQ(ret, NNACL_ERR);
@@ -57,13 +59,13 @@ TEST_F(ArithmeticInferTest, ArithmeticInferTest0) {
 TEST_F(ArithmeticInferTest, ArithmeticInferTest1) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 7;
   inputs[0]->shape_[1] = 8;
   inputs[0]->shape_[2] = 9;
   inputs[0]->shape_[3] = 10;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 5;
   inputs[1]->shape_[0] = 6;
   inputs[1]->shape_[1] = 7;
@@ -71,8 +73,10 @@ TEST_F(ArithmeticInferTest, ArithmeticInferTest1) {
   inputs[1]->shape_[3] = 9;
   inputs[1]->shape_[4] = 10;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  // the infer shape writes broadcast/shape fields through the parameter pointer, so the
+  // allocation must be the full ArithmeticParameter, not the smaller OpParameter
+  OpParameter *parameter = reinterpret_cast<OpParameter *>(new ArithmeticParameter());
   int ret =
     ArithmeticInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(), parameter);
   ASSERT_EQ(ret, NNACL_OK);
@@ -94,13 +98,13 @@ TEST_F(ArithmeticInferTest, ArithmeticInferTest1) {
 TEST_F(ArithmeticInferTest, ArithmeticInferTest2) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 4;
   inputs[1]->shape_[0] = 7;
   inputs[1]->shape_[1] = 8;
   inputs[1]->shape_[2] = 9;
   inputs[1]->shape_[3] = 10;
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 5;
   inputs[0]->shape_[0] = 6;
   inputs[0]->shape_[1] = 7;
@@ -108,8 +112,10 @@ TEST_F(ArithmeticInferTest, ArithmeticInferTest2) {
   inputs[0]->shape_[3] = 9;
   inputs[0]->shape_[4] = 10;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  // the infer shape writes broadcast/shape fields through the parameter pointer, so the
+  // allocation must be the full ArithmeticParameter, not the smaller OpParameter
+  OpParameter *parameter = reinterpret_cast<OpParameter *>(new ArithmeticParameter());
   int ret =
     ArithmeticInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(), parameter);
   ASSERT_EQ(ret, NNACL_OK);
@@ -131,14 +137,14 @@ TEST_F(ArithmeticInferTest, ArithmeticInferTest2) {
 TEST_F(ArithmeticInferTest, ArithmeticInferTest3) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 5;
   inputs[1]->shape_[0] = 6;
   inputs[1]->shape_[1] = 7;
   inputs[1]->shape_[2] = 8;
   inputs[1]->shape_[3] = 9;
   inputs[1]->shape_[4] = 10;
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 5;
   inputs[0]->shape_[0] = 6;
   inputs[0]->shape_[1] = 7;
@@ -146,8 +152,10 @@ TEST_F(ArithmeticInferTest, ArithmeticInferTest3) {
   inputs[0]->shape_[3] = 9;
   inputs[0]->shape_[4] = 10;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  // the infer shape writes broadcast/shape fields through the parameter pointer, so the
+  // allocation must be the full ArithmeticParameter, not the smaller OpParameter
+  OpParameter *parameter = reinterpret_cast<OpParameter *>(new ArithmeticParameter());
   int ret =
     ArithmeticInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(), parameter);
   ASSERT_EQ(ret, NNACL_OK);

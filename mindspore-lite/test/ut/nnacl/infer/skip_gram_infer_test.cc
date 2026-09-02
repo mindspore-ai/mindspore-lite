@@ -26,13 +26,13 @@ class SkipGramInferTest : public mindspore::CommonTest {
 TEST_F(SkipGramInferTest, SkipGramInferTest0) {
   size_t inputs_size = 1;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->data_ = NULL;
   inputs[0]->data_type_ = kNumberTypeInt8;
   inputs[0]->format_ = kNHWC_C;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = SkipGramInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_INFER_INVALID);

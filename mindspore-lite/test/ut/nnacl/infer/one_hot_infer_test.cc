@@ -26,18 +26,18 @@ class OneHotInferTest : public mindspore::CommonTest {
 TEST_F(OneHotInferTest, OneHotInferTest0) {
   size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 4;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   std::vector<int> input1_data = {3};
   inputs[1]->data_ = input1_data.data();
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
   inputs[2]->data_type_ = kNumberTypeFloat32;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OneHotParameter *parameter = new OneHotParameter;
+  outputs[0] = new TensorC();
+  OneHotParameter *parameter = new OneHotParameter();
   parameter->axis_ = -2;
   int ret = OneHotInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                              reinterpret_cast<OpParameter *>(parameter));

@@ -35,9 +35,9 @@ TEST_F(TestTfliteParserDepthwiseConv1, AttrValue) {
   ASSERT_NE(meta_graph->nodes.front()->primitive->value.AsConv2DFusion(), nullptr);
   auto val = meta_graph->nodes.front()->primitive->value.AsConv2DFusion();
   ASSERT_EQ(val->format, schema::Format_NHWC);
-  ASSERT_EQ(val->group, 0);
+  ASSERT_EQ(val->group, 1);
   ASSERT_EQ(val->activation_type, schema::ActivationType_NO_ACTIVATION);
-  ASSERT_EQ(val->in_channel, 1);
+  ASSERT_EQ(val->in_channel, 4);
   ASSERT_EQ(val->out_channel, 4);
   ASSERT_EQ(val->kernel_size, (std::vector<int64_t>{3, 3}));
   ASSERT_EQ(val->stride, (std::vector<int64_t>{1, 1}));

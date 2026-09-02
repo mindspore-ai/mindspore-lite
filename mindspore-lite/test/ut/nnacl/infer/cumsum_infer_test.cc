@@ -27,20 +27,20 @@ class CumSumInferTest : public mindspore::CommonTest {
 TEST_F(CumSumInferTest, Test0) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
   inputs[0]->shape_[2] = 2;
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 1;
 
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  CumSumParameter *parameter = new CumSumParameter;
+  outputs[0] = new TensorC();
+  CumSumParameter *parameter = new CumSumParameter();
   int ret = CumsumInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                              reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

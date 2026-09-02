@@ -64,18 +64,24 @@ TEST_F(TestCropInt8, crop_1d_axis0_offset0_quant0_thread2) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  CropParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Crop;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) CropParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Crop;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  op_param.axis_ = 0;
-  op_param.offset_[0] = 1;
-  op_param.offset_size_ = 1;
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
+  op_param->axis_ = 0;
+  op_param->offset_[0] = 1;
+  op_param->offset_size_ = 1;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Crop};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -131,18 +137,24 @@ TEST_F(TestCropInt8, crop_2d_axis1_offset0_quant0_thread2) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  CropParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Crop;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) CropParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Crop;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  op_param.axis_ = 1;
-  op_param.offset_[0] = 1;
-  op_param.offset_size_ = 1;
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
+  op_param->axis_ = 1;
+  op_param->offset_[0] = 1;
+  op_param->offset_size_ = 1;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Crop};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -198,18 +210,24 @@ TEST_F(TestCropInt8, crop_3d_axis1_offset0_quant0_thread0) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  CropParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Crop;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) CropParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Crop;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  op_param.axis_ = 1;
-  op_param.offset_[0] = 1;
-  op_param.offset_size_ = 1;
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
+  op_param->axis_ = 1;
+  op_param->offset_[0] = 1;
+  op_param->offset_size_ = 1;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Crop};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -266,18 +284,24 @@ TEST_F(TestCropInt8, crop_3d_axis1_offset0_quant0_thread2) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  CropParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Crop;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) CropParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Crop;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  op_param.axis_ = 1;
-  op_param.offset_[0] = 1;
-  op_param.offset_size_ = 1;
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
+  op_param->axis_ = 1;
+  op_param->offset_[0] = 1;
+  op_param->offset_size_ = 1;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Crop};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -333,18 +357,24 @@ TEST_F(TestCropInt8, crop_4d_axis0_offset0_quant0_thread0) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  CropParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Crop;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) CropParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Crop;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  op_param.axis_ = 0;
-  op_param.offset_[0] = 1;
-  op_param.offset_size_ = 1;
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
+  op_param->axis_ = 0;
+  op_param->offset_[0] = 1;
+  op_param->offset_size_ = 1;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Crop};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -400,18 +430,24 @@ TEST_F(TestCropInt8, crop_4d_axis1_offset0_quant0_thread0) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  CropParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Crop;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) CropParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Crop;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  op_param.axis_ = 1;
-  op_param.offset_[0] = 1;
-  op_param.offset_size_ = 1;
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
+  op_param->axis_ = 1;
+  op_param->offset_[0] = 1;
+  op_param->offset_size_ = 1;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Crop};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -467,21 +503,27 @@ TEST_F(TestCropInt8, crop_4d_axis1_offset1_quant0_thread0) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  CropParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Crop;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) CropParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Crop;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  op_param.axis_ = 0;
-  op_param.offset_[0] = 1;
-  op_param.offset_[1] = 1;
-  op_param.offset_[2] = 0;
-  op_param.offset_[3] = 0;
-  op_param.offset_size_ = 4;
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
+  op_param->axis_ = 0;
+  op_param->offset_[0] = 1;
+  op_param->offset_[1] = 1;
+  op_param->offset_[2] = 0;
+  op_param->offset_[3] = 0;
+  op_param->offset_size_ = 4;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Crop};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -537,21 +579,27 @@ TEST_F(TestCropInt8, crop_4d_axis1_offset1_quant1_thread0) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  CropParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Crop;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) CropParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Crop;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 1;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  op_param.axis_ = 0;
-  op_param.offset_[0] = 1;
-  op_param.offset_[1] = 1;
-  op_param.offset_[2] = 0;
-  op_param.offset_[3] = 0;
-  op_param.offset_size_ = 4;
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
+  op_param->axis_ = 0;
+  op_param->offset_[0] = 1;
+  op_param->offset_[1] = 1;
+  op_param->offset_[2] = 0;
+  op_param->offset_[3] = 0;
+  op_param->offset_size_ = 4;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Crop};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -609,18 +657,24 @@ TEST_F(TestCropInt8, crop_4d_axis0_offset0_quant0_thread2) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  CropParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Crop;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) CropParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Crop;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 2;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  op_param.axis_ = 0;
-  op_param.offset_[0] = 1;
-  op_param.offset_size_ = 1;
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
+  op_param->axis_ = 0;
+  op_param->offset_[0] = 1;
+  op_param->offset_size_ = 1;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Crop};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);
@@ -678,18 +732,24 @@ TEST_F(TestCropInt8, crop_4d_axis0_offset0_quant0_thread3) {
   output0_tensor->set_data_type(tid_int8);
   outputs_tensor[0] = output0_tensor;
 
-  CropParameter op_param;
-  op_param.op_parameter_.type_ = schema::PrimitiveType_Crop;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  auto op_param = new (std::nothrow) CropParameter();
+  if (op_param == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  op_param->op_parameter_.type_ = schema::PrimitiveType_Crop;
   lite::InnerContext *ctx = new lite::InnerContext;
   ctx->thread_num_ = 3;
   ASSERT_EQ(lite::RET_OK, ctx->Init());
-  op_param.axis_ = 0;
-  op_param.offset_[0] = 1;
-  op_param.offset_size_ = 1;
+  op_param->op_parameter_.thread_num_ = ctx->thread_num_;
+  op_param->axis_ = 0;
+  op_param->offset_[0] = 1;
+  op_param->offset_size_ = 1;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_Crop};
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
-  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(&op_param), ctx, desc);
+  auto *kernel = creator(inputs_tensor, outputs_tensor, reinterpret_cast<OpParameter *>(op_param), ctx, desc);
   ASSERT_NE(kernel, nullptr);
   auto output_tensor_shape = output0_tensor->shape();
   ASSERT_EQ(output_tensor_shape, output_shape);

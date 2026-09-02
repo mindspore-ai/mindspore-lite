@@ -128,14 +128,15 @@ class TestTfliteParserLeakyRelu : public TestTfliteParser {
 TEST_F(TestTfliteParserLeakyRelu, OpType) {
   ASSERT_GT(meta_graph->nodes.size(), 0);
   ASSERT_NE(meta_graph->nodes.front()->primitive.get(), nullptr);
-  ASSERT_EQ(meta_graph->nodes.front()->primitive->value.type, schema::PrimitiveType_LeakyRelu) << "wrong Op Type";
+  ASSERT_EQ(meta_graph->nodes.front()->primitive->value.type, schema::PrimitiveType_Activation) << "wrong Op Type";
 }
 
 TEST_F(TestTfliteParserLeakyRelu, AttrValue) {
-  ASSERT_NE(meta_graph->nodes.front()->primitive->value.AsLeakyRelu(), nullptr);
+  ASSERT_NE(meta_graph->nodes.front()->primitive->value.AsActivation(), nullptr);
   auto val = meta_graph->nodes.front()->primitive->value;
-  ASSERT_EQ(val.AsLeakyRelu()->negative_slope, 0.20000000298023224);
-  ASSERT_EQ(val.type, schema::PrimitiveType_LeakyRelu);
+  ASSERT_EQ(val.AsActivation()->activation_type, schema::ActivationType_LEAKY_RELU);
+  ASSERT_EQ(val.AsActivation()->alpha, 0.20000000298023224);
+  ASSERT_EQ(val.type, schema::PrimitiveType_Activation);
 }
 
 }  // namespace mindspore

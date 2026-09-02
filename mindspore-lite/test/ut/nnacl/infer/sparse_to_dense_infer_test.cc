@@ -26,17 +26,19 @@ class SparseToDenseInferTest : public mindspore::CommonTest {
 TEST_F(SparseToDenseInferTest, SparseToDenseInferTest0) {
   size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
-  inputs[1] = new TensorC;
+  inputs[0] = new TensorC();
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 4;
+  // the output shape and type come from the second input
+  inputs[1]->data_type_ = kNumberTypeInt32;
   std::vector<int> data_tmp = {2, 3, 4, 5};
   inputs[1]->data_ = data_tmp.data();
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
   inputs[2]->data_type_ = kNumberTypeInt32;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = SparseToDenseInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                     reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

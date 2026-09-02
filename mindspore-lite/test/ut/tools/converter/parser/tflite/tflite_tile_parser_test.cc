@@ -35,7 +35,8 @@ TEST_F(TestTfliteParserTile, OpType) {
 TEST_F(TestTfliteParserTile, AttrValue) {
   ASSERT_NE(meta_graph->nodes.front()->primitive->value.AsTileFusion(), nullptr);
   auto val = meta_graph->nodes.front()->primitive->value.AsTileFusion();
-  std::vector<int64_t> dims = {2, 3, 4};
-  ASSERT_EQ(val->dims, dims);
+  ASSERT_EQ(val->dims.size(), 0);
+  // multiples are no longer folded into dims attr but kept as the second input
+  ASSERT_EQ(meta_graph->nodes.front()->inputIndex.size(), 2);
 }
 }  // namespace mindspore

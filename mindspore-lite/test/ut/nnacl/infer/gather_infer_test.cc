@@ -24,21 +24,27 @@ class GatherInferTest : public mindspore::CommonTest {
 };
 
 TEST_F(GatherInferTest, GatherInferTest0) {
-  size_t inputs_size = 2;
+  size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 18;
   inputs[0]->shape_[1] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 3;
   inputs[1]->shape_[0] = 2;
   inputs[1]->shape_[1] = 3;
   inputs[1]->shape_[2] = 2;
+  // the infer reads the axis from a third input tensor
+  inputs[2] = new TensorC();
+  inputs[2]->data_type_ = kNumberTypeInt32;
+  inputs[2]->shape_size_ = 1;
+  inputs[2]->shape_[0] = 1;
+  int32_t axis_data[] = {0};
+  inputs[2]->data_ = axis_data;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  GatherParameter *param = new GatherParameter;
-  param->axis_ = 0;
+  outputs[0] = new TensorC();
+  GatherParameter *param = new GatherParameter();
   int ret = GatherInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                              reinterpret_cast<OpParameter *>(param));
   ASSERT_EQ(ret, NNACL_OK);
@@ -57,20 +63,26 @@ TEST_F(GatherInferTest, GatherInferTest0) {
 }
 
 TEST_F(GatherInferTest, GatherInferTest1) {
-  size_t inputs_size = 2;
+  size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 18;
   inputs[0]->shape_[1] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 3;
   inputs[1]->shape_[1] = 2;
+  // the infer reads the axis from a third input tensor
+  inputs[2] = new TensorC();
+  inputs[2]->data_type_ = kNumberTypeInt32;
+  inputs[2]->shape_size_ = 1;
+  inputs[2]->shape_[0] = 1;
+  int32_t axis_data[] = {0};
+  inputs[2]->data_ = axis_data;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  GatherParameter *param = new GatherParameter;
-  param->axis_ = 0;
+  outputs[0] = new TensorC();
+  GatherParameter *param = new GatherParameter();
   int ret = GatherInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                              reinterpret_cast<OpParameter *>(param));
   ASSERT_EQ(ret, NNACL_OK);
@@ -88,21 +100,27 @@ TEST_F(GatherInferTest, GatherInferTest1) {
 }
 
 TEST_F(GatherInferTest, GatherInferTest2) {
-  size_t inputs_size = 2;
+  size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 18;
   inputs[0]->shape_[1] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 3;
   inputs[1]->shape_[0] = 3;
   inputs[1]->shape_[1] = 2;
   inputs[1]->shape_[2] = 2;
+  // the infer reads the axis from a third input tensor
+  inputs[2] = new TensorC();
+  inputs[2]->data_type_ = kNumberTypeInt32;
+  inputs[2]->shape_size_ = 1;
+  inputs[2]->shape_[0] = 1;
+  int32_t axis_data[] = {0};
+  inputs[2]->data_ = axis_data;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  GatherParameter *param = new GatherParameter;
-  param->axis_ = 0;
+  outputs[0] = new TensorC();
+  GatherParameter *param = new GatherParameter();
   int ret = GatherInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                              reinterpret_cast<OpParameter *>(param));
   ASSERT_EQ(ret, NNACL_OK);
@@ -121,19 +139,25 @@ TEST_F(GatherInferTest, GatherInferTest2) {
 }
 
 TEST_F(GatherInferTest, GatherInferTest3) {
-  size_t inputs_size = 2;
+  size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 18;
   inputs[0]->shape_[1] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 3;
+  // the infer reads the axis from a third input tensor
+  inputs[2] = new TensorC();
+  inputs[2]->data_type_ = kNumberTypeInt32;
+  inputs[2]->shape_size_ = 1;
+  inputs[2]->shape_[0] = 1;
+  int32_t axis_data[] = {0};
+  inputs[2]->data_ = axis_data;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  GatherParameter *param = new GatherParameter;
-  param->axis_ = 0;
+  outputs[0] = new TensorC();
+  GatherParameter *param = new GatherParameter();
   int ret = GatherInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                              reinterpret_cast<OpParameter *>(param));
   ASSERT_EQ(ret, NNACL_OK);
@@ -150,23 +174,29 @@ TEST_F(GatherInferTest, GatherInferTest3) {
 }
 
 TEST_F(GatherInferTest, GatherInferTest4) {
-  size_t inputs_size = 2;
+  size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 3;
   inputs[0]->shape_[1] = 2;
   inputs[0]->shape_[2] = 3;
   inputs[0]->shape_[3] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 3;
   inputs[1]->shape_[0] = 2;
   inputs[1]->shape_[1] = 3;
   inputs[1]->shape_[2] = 2;
+  // the infer reads the axis from a third input tensor
+  inputs[2] = new TensorC();
+  inputs[2]->data_type_ = kNumberTypeInt32;
+  inputs[2]->shape_size_ = 1;
+  inputs[2]->shape_[0] = 1;
+  int32_t axis_data[] = {0};
+  inputs[2]->data_ = axis_data;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  GatherParameter *param = new GatherParameter;
-  param->axis_ = 0;
+  outputs[0] = new TensorC();
+  GatherParameter *param = new GatherParameter();
   int ret = GatherInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                              reinterpret_cast<OpParameter *>(param));
   ASSERT_EQ(ret, NNACL_OK);

@@ -40,13 +40,24 @@ TEST_F(TestTopKInt8, TopK) {
   std::vector<lite::Tensor *> inputs = {&in_tensor};
   std::vector<lite::Tensor *> outputs = {&out_tensor0, &out_tensor1};
 
-  TopkParameter parameter = {{}, 2, 2, true, 3, 4, 1};
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated; Run() also
+  // allocates its workspace through ms_context_->allocator, so a real context is required
+  auto parameter = new (std::nothrow) TopkParameter();
+  if (parameter == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
+  }
+  parameter->k_ = 2;
+  parameter->axis_ = 2;
+  parameter->sorted_ = true;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeInt8, NHWC, schema::PrimitiveType_TopKFusion};
 
   auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator, nullptr);
 
-  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(&parameter), nullptr, desc);
+  auto ctx = std::make_shared<lite::InnerContext>();
+  ASSERT_EQ(lite::RET_OK, ctx->Init());
+  auto kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(parameter), ctx.get(), desc);
   ASSERT_NE(kernel, nullptr);
 
   auto ret = kernel->Prepare();

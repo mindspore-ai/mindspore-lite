@@ -16,6 +16,7 @@
 #include "common/common_test.h"
 #include "src/common/tensor_util.h"
 #include "nnacl_c/infer/control/tensorlist_reserve_infer.h"
+#include "nnacl_c/tensorlist_parameter.h"
 
 namespace mindspore {
 
@@ -27,13 +28,13 @@ class TensorlistReserveInferTest : public mindspore::CommonTest {
 TEST_F(TensorlistReserveInferTest, TensorlistReserveInferTest0) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 1;
   inputs[0]->shape_[0] = 3;
   std::vector<int> inputs0 = {2, 3, 4};
   inputs[0]->data_ = inputs0.data();
   inputs[0]->data_type_ = kNumberTypeInt32;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 1;
   std::vector<int> inputs1 = {5};
@@ -41,10 +42,10 @@ TEST_F(TensorlistReserveInferTest, TensorlistReserveInferTest0) {
   inputs[1]->data_type_ = kNumberTypeInt32;
 
   std::vector<TensorC *> outputs(1, NULL);
-  auto out = reinterpret_cast<TensorListC *>(malloc(sizeof(TensorListC)));
-  out->tensors_ = nullptr;
+  auto out = new TensorListC();
   outputs[0] = reinterpret_cast<TensorC *>(out);
-  auto *parameter = new OpParameter;
+  // the infer reads the element dtype from TensorListParameter
+  auto *parameter = new TensorListParameter();
   int ret = TensorListReserveInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                         reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
@@ -56,14 +57,18 @@ TEST_F(TensorlistReserveInferTest, TensorlistReserveInferTest0) {
   ASSERT_EQ(out->element_shape_[2], 4);
   ASSERT_EQ(out->tensors_data_type_, kTypeUnknown);
   for (size_t i = 0; i < out->element_num_; i++) {
-    ASSERT_EQ(out->tensors_[i]->shape_size_, 0);
+    // each reserved element carries the element shape
+    ASSERT_EQ(out->tensors_[i]->shape_size_, 3);
+    ASSERT_EQ(out->tensors_[i]->shape_[0], 2);
+    ASSERT_EQ(out->tensors_[i]->shape_[1], 3);
+    ASSERT_EQ(out->tensors_[i]->shape_[2], 4);
   }
   delete parameter;
   for (size_t i = 0; i < inputs_size; i++) {
     delete inputs[i];
   }
   lite::FreeOutTensorC(&outputs);
-  free(out);
+  delete out;
 }
 
 }  // namespace mindspore

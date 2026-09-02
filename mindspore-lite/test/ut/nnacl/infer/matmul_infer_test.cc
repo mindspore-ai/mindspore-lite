@@ -26,17 +26,17 @@ class MatmulInferTest : public mindspore::CommonTest {
 TEST_F(MatmulInferTest, MatmulInferTest0) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 4;
   inputs[0]->shape_[1] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 4;
   inputs[1]->shape_[1] = 3;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  MatMulParameter *parameter = new MatMulParameter;
+  outputs[0] = new TensorC();
+  MatMulParameter *parameter = new MatMulParameter();
   parameter->a_transpose_ = false;
   parameter->b_transpose_ = true;
   int ret = MatmulInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
@@ -57,19 +57,19 @@ TEST_F(MatmulInferTest, MatmulInferTest0) {
 TEST_F(MatmulInferTest, MatmulInferTest1) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 3;
   inputs[0]->shape_[0] = 2;
   inputs[0]->shape_[1] = 4;
   inputs[0]->shape_[2] = 3;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 3;
   inputs[1]->shape_[0] = 2;
   inputs[1]->shape_[1] = 3;
   inputs[1]->shape_[2] = 5;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  MatMulParameter *parameter = new MatMulParameter;
+  outputs[0] = new TensorC();
+  MatMulParameter *parameter = new MatMulParameter();
   parameter->a_transpose_ = false;
   parameter->b_transpose_ = false;
   int ret = MatmulInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
@@ -91,30 +91,30 @@ TEST_F(MatmulInferTest, MatmulInferTest1) {
 TEST_F(MatmulInferTest, MatmulInferTest2) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  // 4-D A is kept as-is; batch dims must divide B's batch dims (no implicit squeeze)
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 4;
   inputs[0]->shape_[0] = 1;
-  inputs[0]->shape_[1] = 128;
+  inputs[0]->shape_[1] = 1;
   inputs[0]->shape_[2] = 1;
-  inputs[0]->shape_[3] = 1;
-  inputs[1] = new TensorC;
+  inputs[0]->shape_[3] = 128;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 96;
   inputs[1]->shape_[1] = 128;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  MatMulParameter *parameter = new MatMulParameter;
+  outputs[0] = new TensorC();
+  MatMulParameter *parameter = new MatMulParameter();
   parameter->a_transpose_ = false;
   parameter->b_transpose_ = true;
   int ret = MatmulInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                              reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);
-  ASSERT_EQ(inputs[0]->shape_size_, 2);
-  ASSERT_EQ(inputs[0]->shape_[0], 1);
-  ASSERT_EQ(inputs[0]->shape_[1], 128);
-  ASSERT_EQ(outputs[0]->shape_size_, 2);
+  ASSERT_EQ(outputs[0]->shape_size_, 4);
   ASSERT_EQ(outputs[0]->shape_[0], 1);
-  ASSERT_EQ(outputs[0]->shape_[1], 96);
+  ASSERT_EQ(outputs[0]->shape_[1], 1);
+  ASSERT_EQ(outputs[0]->shape_[2], 1);
+  ASSERT_EQ(outputs[0]->shape_[3], 96);
   delete parameter;
   for (size_t i = 0; i < inputs_size; i++) {
     delete inputs[i];
@@ -127,17 +127,18 @@ TEST_F(MatmulInferTest, MatmulInferTest2) {
 TEST_F(MatmulInferTest, MatmulInferTest3) {
   size_t inputs_size = 2;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 1;
-  inputs[0]->shape_[1] = 1288;
-  inputs[1] = new TensorC;
+  // must equal B^T's first dim (1280) for the inner-product check to pass
+  inputs[0]->shape_[1] = 1280;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 256;
   inputs[1]->shape_[1] = 1280;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  MatMulParameter *parameter = new MatMulParameter;
+  outputs[0] = new TensorC();
+  MatMulParameter *parameter = new MatMulParameter();
   parameter->a_transpose_ = false;
   parameter->b_transpose_ = true;
   int ret = MatmulInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),

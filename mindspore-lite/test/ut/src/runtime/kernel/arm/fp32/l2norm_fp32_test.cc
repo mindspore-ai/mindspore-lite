@@ -33,7 +33,7 @@ class TestL2NormFp32 : public mindspore::CommonTest {
   lite::Tensor out_tensor_;
   std::vector<lite::Tensor *> inputs_{&in_tensor_};
   std::vector<lite::Tensor *> outputs_{&out_tensor_};
-  L2NormParameter param_;
+  L2NormParameter *param_ = nullptr;
   kernel::KernelKey desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_Resize};
   lite::InnerContext ctx_ = lite::InnerContext();
   kernel::KernelCreator creator_ = nullptr;
@@ -56,12 +56,19 @@ void TestL2NormFp32::Init(const std::vector<int> &input_shape, const std::vector
   in_tensor_.set_data(input_data);
   out_tensor_.set_data(output_data);
 
-  param_.axis_num_ = axis_num;
-  if (axis_num == 1) {
-    param_.axis_[0] = -1;
+  // LiteKernel's destructor free()s op_parameter_, so it must be heap-allocated
+  param_ = new (std::nothrow) L2NormParameter();
+  if (param_ == nullptr) {
+    MS_LOG(ERROR) << "New param fails.";
+    return;
   }
-  param_.epsilon_ = 1e-6;
-  param_.act_type_ = activation_type;
+  param_->axis_num_ = axis_num;
+  if (axis_num == 1) {
+    param_->axis_[0] = -1;
+  }
+  param_->epsilon_ = 1e-6;
+  param_->act_type_ = activation_type;
+  param_->op_parameter_.thread_num_ = thread_num;
 
   desc = {kernel::KERNEL_ARCH::kCPU, kNumberTypeFloat32, NHWC, schema::PrimitiveType_L2NormalizeFusion};
   ctx_ = lite::InnerContext();
@@ -69,7 +76,7 @@ void TestL2NormFp32::Init(const std::vector<int> &input_shape, const std::vector
   ASSERT_EQ(lite::RET_OK, ctx_.Init());
   creator_ = lite::KernelRegistry::GetInstance()->GetCreator(desc);
   ASSERT_NE(creator_, nullptr);
-  kernel_ = creator_(inputs_, outputs_, reinterpret_cast<OpParameter *>(&param_), &ctx_, desc);
+  kernel_ = creator_(inputs_, outputs_, reinterpret_cast<OpParameter *>(param_), &ctx_, desc);
   ASSERT_NE(kernel_, nullptr);
   auto ret = kernel_->Prepare();
   EXPECT_EQ(0, ret);

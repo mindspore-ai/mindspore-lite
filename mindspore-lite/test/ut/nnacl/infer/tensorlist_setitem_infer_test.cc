@@ -28,40 +28,44 @@ class TensorlistSetItemInferTest : public mindspore::CommonTest {
 TEST_F(TensorlistSetItemInferTest, TensorlistSetItemInferTest0) {
   size_t inputs_size = 3;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  auto *input0 = new TensorListC;
+  auto *input0 = new TensorListC();
   input0->element_num_ = 3;
-  auto in_tensors_c = reinterpret_cast<TensorC *>(malloc(input0->element_num_ * sizeof(TensorC)));
-  input0->tensors_ = &in_tensors_c;
+  // tensors_ must be a real array of tensor pointers
+  TensorC **in_tensors = new TensorC *[input0->element_num_];
+  for (size_t i = 0; i < input0->element_num_; i++) {
+    in_tensors[i] = new TensorC();
+  }
+  input0->tensors_ = in_tensors;
   input0->element_shape_size_ = 2;
   input0->element_shape_[0] = 2;
   input0->element_shape_[1] = 4;
   input0->tensors_data_type_ = kNumberTypeInt32;
   input0->data_type_ = kObjectTypeTensorType;
 
-  in_tensors_c[0].shape_size_ = 2;
-  in_tensors_c[0].shape_[0] = 2;
-  in_tensors_c[0].shape_[1] = 4;
-  in_tensors_c[0].data_type_ = kNumberTypeInt32;
+  in_tensors[0]->shape_size_ = 2;
+  in_tensors[0]->shape_[0] = 2;
+  in_tensors[0]->shape_[1] = 4;
+  in_tensors[0]->data_type_ = kNumberTypeInt32;
 
-  in_tensors_c[1].shape_size_ = 2;
-  in_tensors_c[1].shape_[0] = 2;
-  in_tensors_c[1].shape_[1] = 4;
-  in_tensors_c[1].data_type_ = kNumberTypeInt32;
+  in_tensors[1]->shape_size_ = 2;
+  in_tensors[1]->shape_[0] = 2;
+  in_tensors[1]->shape_[1] = 4;
+  in_tensors[1]->data_type_ = kNumberTypeInt32;
 
-  in_tensors_c[2].shape_size_ = 2;
-  in_tensors_c[2].shape_[0] = 2;
-  in_tensors_c[2].shape_[1] = 4;
-  in_tensors_c[2].data_type_ = kNumberTypeInt32;
+  in_tensors[2]->shape_size_ = 2;
+  in_tensors[2]->shape_[0] = 2;
+  in_tensors[2]->shape_[1] = 4;
+  in_tensors[2]->data_type_ = kNumberTypeInt32;
   inputs[0] = reinterpret_cast<TensorC *>(input0);
 
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 1;
   std::vector<int> inputs1_data = {2};
   inputs[1]->data_ = inputs1_data.data();
   inputs[1]->data_type_ = kNumberTypeInt32;
 
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
   inputs[2]->shape_size_ = 2;
   inputs[2]->shape_[0] = 5;
   inputs[2]->shape_[1] = 6;
@@ -70,10 +74,10 @@ TEST_F(TensorlistSetItemInferTest, TensorlistSetItemInferTest0) {
   inputs[2]->data_ = inputs2_data.data();
 
   std::vector<TensorC *> outputs(1, NULL);
-  auto out = reinterpret_cast<TensorListC *>(malloc(sizeof(TensorListC)));
+  auto out = new TensorListC();
   out->tensors_ = nullptr;
   outputs[0] = reinterpret_cast<TensorC *>(out);
-  auto *parameter = new OpParameter;
+  auto *parameter = new OpParameter();
   int ret = TensorListSetItemInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                         reinterpret_cast<OpParameter *>(parameter));
   auto *res = reinterpret_cast<TensorListC *>(outputs[0]);
@@ -95,15 +99,16 @@ TEST_F(TensorlistSetItemInferTest, TensorlistSetItemInferTest0) {
   ASSERT_EQ(res->tensors_[2]->shape_[1], 6);
 
   delete parameter;
-  for (size_t i = 0; i < inputs_size; i++) {
-    if (inputs[i]->data_type_ == kObjectTypeTensorType) {
-      auto *tensorList_c = reinterpret_cast<TensorListC *>(inputs[i]);
-      free(*tensorList_c->tensors_);
-    }
+  for (size_t i = 0; i < input0->element_num_; i++) {
+    delete input0->tensors_[i];
+  }
+  delete[] input0->tensors_;
+  for (size_t i = 1; i < inputs_size; i++) {
     delete inputs[i];
   }
+  delete input0;
   lite::FreeOutTensorC(&outputs);
-  free(out);
+  delete out;
 }
 
 // retest mergeshape

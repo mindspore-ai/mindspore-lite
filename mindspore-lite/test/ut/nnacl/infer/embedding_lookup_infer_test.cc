@@ -27,26 +27,26 @@ class EmbeddingLookupInferTest : public mindspore::CommonTest {
 TEST_F(EmbeddingLookupInferTest, EmbeddingLookupInferTest0) {
   size_t inputs_size = 4;
   std::vector<TensorC *> inputs(inputs_size, NULL);
-  inputs[0] = new TensorC;
+  inputs[0] = new TensorC();
   inputs[0]->shape_size_ = 2;
   inputs[0]->shape_[0] = 5;
   inputs[0]->shape_[1] = 2;
   inputs[0]->data_type_ = kNumberTypeInt32;
   inputs[0]->format_ = Format_NHWC;
-  inputs[1] = new TensorC;
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 2;
   inputs[1]->shape_[0] = 5;
   inputs[1]->shape_[1] = 2;
-  inputs[2] = new TensorC;
+  inputs[2] = new TensorC();
   inputs[2]->shape_size_ = 2;
   inputs[2]->shape_[0] = 5;
   inputs[2]->shape_[1] = 2;
-  inputs[3] = new TensorC;
+  inputs[3] = new TensorC();
   inputs[3]->shape_size_ = 1;
   inputs[3]->shape_[0] = 3;
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = new TensorC;
-  OpParameter *parameter = new OpParameter;
+  outputs[0] = new TensorC();
+  OpParameter *parameter = new OpParameter();
   int ret = EmbeddingLookupInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                       reinterpret_cast<OpParameter *>(parameter));
   ASSERT_EQ(ret, NNACL_OK);

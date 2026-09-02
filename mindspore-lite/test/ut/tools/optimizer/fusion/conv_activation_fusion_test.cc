@@ -21,6 +21,7 @@
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 #include "tools/converter/anf_transform.h"
+#include "tools/converter/cxx_api/converter_para.h"
 #include "tools/lite_exporter/anf_exporter.h"
 #include "test/common/import_from_meta_graphT.h"
 
@@ -135,8 +136,9 @@ TEST_F(ConvActivationFusionTest, TestConvReluNode) {
   auto meta_graph = BuildGraph(schema::PrimitiveType_Conv2DFusion, schema::ActivationType_RELU);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto anf_transform = new lite::AnfTransform();
-  auto status = anf_transform->Transform(func_graph, nullptr);
-  ASSERT_NE(status, lite::RET_OK);
+  auto converter_param = std::make_shared<ConverterPara>();
+  auto status = anf_transform->Transform(func_graph, converter_param);
+  ASSERT_EQ(status, lite::RET_OK);
   auto new_meta_graph = lite::Export(func_graph);
   ASSERT_EQ(new_meta_graph->nodes.size(), 1);
   for (auto &cnode : new_meta_graph->nodes) {
@@ -148,8 +150,9 @@ TEST_F(ConvActivationFusionTest, TestConvRelu6Node) {
   auto meta_graph = BuildGraph(schema::PrimitiveType_Conv2DFusion, schema::ActivationType_RELU6);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto anf_transform = new lite::AnfTransform();
-  auto status = anf_transform->Transform(func_graph, nullptr);
-  ASSERT_NE(status, lite::RET_OK);
+  auto converter_param = std::make_shared<ConverterPara>();
+  auto status = anf_transform->Transform(func_graph, converter_param);
+  ASSERT_EQ(status, lite::RET_OK);
   auto new_meta_graph = lite::Export(func_graph);
   ASSERT_EQ(new_meta_graph->nodes.size(), 1);
   for (auto &cnode : new_meta_graph->nodes) {
@@ -161,8 +164,9 @@ TEST_F(ConvActivationFusionTest, TestBadCase_ConvRelu) {
   auto meta_graph = BuildGraph(schema::PrimitiveType_Conv2DFusion, schema::ActivationType_LEAKY_RELU);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto anf_transform = new lite::AnfTransform();
-  auto status = anf_transform->Transform(func_graph, nullptr);
-  ASSERT_NE(status, lite::RET_OK);
+  auto converter_param = std::make_shared<ConverterPara>();
+  auto status = anf_transform->Transform(func_graph, converter_param);
+  ASSERT_EQ(status, lite::RET_OK);
   auto new_meta_graph = lite::Export(func_graph);
   ASSERT_EQ(new_meta_graph->nodes.size(), 2);
   for (auto &cnode : new_meta_graph->nodes) {

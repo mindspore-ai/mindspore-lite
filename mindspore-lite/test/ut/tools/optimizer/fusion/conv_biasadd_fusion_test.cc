@@ -21,6 +21,7 @@
 #include "include/errorcode.h"
 #include "src/common/log_adapter.h"
 #include "tools/converter/anf_transform.h"
+#include "tools/converter/cxx_api/converter_para.h"
 #include "tools/lite_exporter/anf_exporter.h"
 #include "test/common/import_from_meta_graphT.h"
 
@@ -45,7 +46,7 @@ CNodeTptr BuildConv2D() {
   prim1->stride = {1, 1};
   prim1->kernel_size = {3, 3};
   prim1->dilation = {1, 1};
-  prim1->out_channel = 3;
+  prim1->out_channel = 8;
   convNode->primitive->value.value = prim1;
   convNode->name = "Conv2D";
   return convNode;
@@ -63,6 +64,7 @@ CNodeTptr BuildDepthwiseConv2D() {
   prim1->kernel_size = {3, 3};
   prim1->dilation = {1, 1};
   prim1->in_channel = 1;
+  prim1->out_channel = 8;
   convNode->primitive->value.value = prim1;
   convNode->name = "Conv2D";
   return convNode;
@@ -126,8 +128,8 @@ MetaGraphTptr BuildGraph(schema::PrimitiveType conv_type, schema::PrimitiveType 
   input2->nodeType = lite::NodeType_ValueNode;
   input2->format = schema::Format_NHWC;
   input2->dataType = TypeId::kNumberTypeFloat32;
-  input2->dims = {1, 5, 5, 8};
-  input2->data.resize(sizeof(float) * 8 * 5 * 5);
+  input2->dims = {8};
+  input2->data.resize(sizeof(float) * 8);
   meta_graph->allTensors.emplace_back(std::move(input2));
 
   // final output
@@ -144,8 +146,9 @@ TEST_F(ConvBiasAddFusionTest, TestConvAddNode) {
   auto meta_graph = BuildGraph(schema::PrimitiveType_Conv2DFusion, schema::PrimitiveType_BiasAdd);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto anf_transform = new lite::AnfTransform();
-  auto status = anf_transform->Transform(func_graph, nullptr);
-  ASSERT_NE(status, lite::RET_OK);
+  auto converter_param = std::make_shared<ConverterPara>();
+  auto status = anf_transform->Transform(func_graph, converter_param);
+  ASSERT_EQ(status, lite::RET_OK);
   auto new_meta_graph = lite::Export(func_graph);
   ASSERT_EQ(new_meta_graph->nodes.size(), 1);
   MS_LOG(INFO) << "Passed";
@@ -155,8 +158,9 @@ TEST_F(ConvBiasAddFusionTest, TestDeptiwiseConvAddNode) {
   auto meta_graph = BuildGraph(schema::PrimitiveType_Conv2DFusion, schema::PrimitiveType_AddFusion);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto anf_transform = new lite::AnfTransform();
-  auto status = anf_transform->Transform(func_graph, nullptr);
-  ASSERT_NE(status, lite::RET_OK);
+  auto converter_param = std::make_shared<ConverterPara>();
+  auto status = anf_transform->Transform(func_graph, converter_param);
+  ASSERT_EQ(status, lite::RET_OK);
   auto new_meta_graph = lite::Export(func_graph);
   ASSERT_EQ(new_meta_graph->nodes.size(), 1);
 }
@@ -165,8 +169,9 @@ TEST_F(ConvBiasAddFusionTest, TestBadCase_ConvAdd) {
   auto meta_graph = BuildGraph(schema::PrimitiveType_Conv2DFusion, schema::PrimitiveType_MatMulFusion);
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   auto anf_transform = new lite::AnfTransform();
-  auto status = anf_transform->Transform(func_graph, nullptr);
-  ASSERT_NE(status, lite::RET_OK);
+  auto converter_param = std::make_shared<ConverterPara>();
+  auto status = anf_transform->Transform(func_graph, converter_param);
+  ASSERT_EQ(status, lite::RET_OK);
   auto new_meta_graph = lite::Export(func_graph);
   ASSERT_EQ(new_meta_graph->nodes.size(), 2);
 }
