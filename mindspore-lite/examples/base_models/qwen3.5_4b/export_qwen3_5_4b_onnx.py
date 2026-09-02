@@ -634,6 +634,177 @@ def _full_attn_forward(layer, hidden_states, position_embeddings, attention_mask
     return attn_output, key_states, value_states
 
 
+class IncreFlashAttentionFunction(torch.autograd.Function):
+    """Export full-attention Decode as the CANN IncreFlashAttention op."""
+
+    @staticmethod
+    def forward(ctx, query, key, value, atten_mask, num_heads, scale_value,
+                num_kv_heads):
+        """Run a PyTorch reference implementation during ONNX tracing."""
+        del ctx
+        key_ref = key
+        value_ref = value
+        if 0 < num_kv_heads < num_heads:
+            repeat = num_heads // num_kv_heads
+            key_ref = key_ref.repeat_interleave(repeat, dim=1)
+            value_ref = value_ref.repeat_interleave(repeat, dim=1)
+        attn = torch.matmul(query, key_ref.transpose(2, 3)) * float(scale_value)
+        if atten_mask is not None:
+            mask = atten_mask.to(torch.bool)
+            if mask.dim() == 4 and mask.shape[1] == 1:
+                mask = mask.expand(attn.shape[0], attn.shape[1], mask.shape[2], mask.shape[3])
+            attn = attn.masked_fill(mask, torch.finfo(attn.dtype).min)
+        attn = F.softmax(attn, dim=-1, dtype=torch.float32).to(query.dtype)
+        output = torch.matmul(attn, value_ref)
+        return output
+
+    @staticmethod
+    def symbolic(graph, query, key, value, atten_mask, num_heads, scale_value,
+                 num_kv_heads):
+        """Export an IncreFlashAttention Custom node."""
+        inputs = [query, key, value]
+        input_index = [0, 1, 2]
+        if atten_mask is not None:
+            inputs.append(atten_mask)
+            input_index.append(3)
+        output = graph.op(
+            "Custom",
+            *inputs,
+            type_s="IncreFlashAttention",
+            input_names_s=["query", "key", "value", "atten_mask"],
+            optional_input_names_s=["atten_mask"],
+            output_names_s=["attention_out"],
+            output_num_i=1,
+            input_index_i=input_index,
+            num_heads_i=int(num_heads),
+            scale_value_f=float(scale_value),
+            input_layout_s="BNSD",
+            num_key_value_heads_i=int(num_kv_heads),
+            block_size_i=0,
+            inner_precise_i=1,
+        )
+        output.setType(query.type())
+        return output
+
+
+def _incre_flash_attention(query, key, value, atten_mask, num_heads, scale_value,
+                           num_kv_heads):
+    """Call the fixed-cache incremental flash-attention Custom operator."""
+    return IncreFlashAttentionFunction.apply(
+        query, key, value, atten_mask, int(num_heads), float(scale_value), int(num_kv_heads),
+    )
+
+
+class ScatterUpdateFunction(torch.autograd.Function):
+    """Export fixed KV-cache updates as the CANN Scatter Custom operator."""
+
+    @staticmethod
+    def forward(ctx, var, indices, updates, axis):
+        """Run the cache update used while tracing the ONNX graph."""
+        del ctx
+        axis = int(axis)
+        if axis != 2:
+            raise ValueError(f"Only BNSD axis 2 is supported, but got axis={axis}")
+        result = var.clone()
+        positions = indices.to(torch.int64).reshape(-1)
+        index = positions.reshape(-1, 1, 1, 1).expand(
+            updates.size(0), updates.size(1), 1, updates.size(3)
+        )
+        result.scatter_(axis, index, updates.to(var.dtype))
+        return result
+
+    @staticmethod
+    def symbolic(graph, var, indices, updates, axis):
+        """Export a Scatter Custom node in update mode."""
+        output = graph.op(
+            "Custom",
+            var,
+            indices,
+            updates,
+            input_index_i=[0, 1, 2],
+            input_names_s=["var", "indices", "updates"],
+            optional_input_names_s=[],
+            output_names_s=["var"],
+            type_s="Scatter",
+            reduce_s="update",
+            axis_i=int(axis),
+        )
+        output.setType(var.type())
+        return output
+
+
+def _kv_cache_update(past, update, cache_pos):
+    """Write the current key or value into a fixed-capacity BNSD cache."""
+    indices = cache_pos.reshape(-1).to(torch.int64)
+    return ScatterUpdateFunction.apply(past, indices, update.to(past.dtype), 2)
+
+
+def _expand_kv_heads_for_ifa(cache, num_heads, num_kv_heads, head_dim):
+    """Expand compact GQA cache heads to the MHA layout accepted by 310P IFA."""
+    if num_heads == num_kv_heads:
+        return cache
+    if num_heads % num_kv_heads != 0:
+        raise ValueError(
+            f"num_heads={num_heads} must be divisible by num_kv_heads={num_kv_heads}"
+        )
+    repeat = num_heads // num_kv_heads
+    batch_size = cache.shape[0]
+    cache_len = cache.shape[2]
+    return cache.unsqueeze(2).expand(
+        batch_size, num_kv_heads, repeat, cache_len, head_dim
+    ).reshape(batch_size, num_heads, cache_len, head_dim)
+
+
+def _full_attn_decode_fixed(layer, hidden_states, position_embeddings,
+                            attention_mask, past_key, past_value, cache_pos):
+    """Run one full-attention Decode layer with a fixed-capacity KV cache."""
+    input_shape = hidden_states.shape[:-1]
+    head_dim = layer.head_dim
+    num_heads = int(layer.config.num_attention_heads)
+    num_kv_heads = int(layer.config.num_key_value_heads)
+    hidden_shape = (*input_shape, -1, head_dim)
+
+    qkv = layer.q_proj(hidden_states).view(*input_shape, -1, head_dim * 2)
+    query_states, gate = torch.chunk(qkv, 2, dim=-1)
+    gate = gate.reshape(*input_shape, -1)
+    query_states = layer.q_norm(query_states.view(hidden_shape)).transpose(1, 2)
+    key_states = layer.k_norm(layer.k_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
+    value_states = layer.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+
+    cos, sin = position_embeddings
+    from transformers.models.qwen3_5.modeling_qwen3_5 import apply_rotary_pos_emb
+    query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+    key_cache = _kv_cache_update(past_key, key_states, cache_pos)
+    value_cache = _kv_cache_update(past_value, value_states, cache_pos)
+    scaling = getattr(layer, "scaling", 1.0 / (head_dim ** 0.5))
+    if num_kv_heads < num_heads:
+        # The current 310P IFA tiler rejects GQA with head_dim=256.
+        # Keep the persistent cache in compact GQA form and materialize an
+        # equivalent MHA view only for the fused attention call.
+        key_for_attn = _expand_kv_heads_for_ifa(
+            key_cache, num_heads, num_kv_heads, head_dim
+        )
+        value_for_attn = _expand_kv_heads_for_ifa(
+            value_cache, num_heads, num_kv_heads, head_dim
+        )
+        ifa_num_kv_heads = num_heads
+    else:
+        key_for_attn = key_cache
+        value_for_attn = value_cache
+        ifa_num_kv_heads = num_kv_heads
+    attn_output = _incre_flash_attention(
+        query_states.to(key_cache.dtype).contiguous(),
+        key_for_attn.contiguous(), value_for_attn.contiguous(),
+        attention_mask, num_heads, scaling, ifa_num_kv_heads,
+    )
+    attn_output = attn_output.to(hidden_states.dtype)
+    attn_output = attn_output.transpose(1, 2).reshape(*input_shape, -1).contiguous()
+    attn_output = attn_output * torch.sigmoid(gate)
+    attn_output = layer.o_proj(attn_output)
+    return attn_output, key_cache, value_cache
+
+
 class PromptFlashAttentionFunction(torch.autograd.Function):
     """Export full attention as CANN PromptFlashAttention fused op."""
 
@@ -749,7 +920,7 @@ class Qwen35LlmPrefill(torch.nn.Module):
     """
     Qwen3.5 LLM prefill model for the attention layer.
     """
-    def __init__(self, text_model, lm_head, image_token_id):
+    def __init__(self, text_model, lm_head, image_token_id, max_seq_len=None):
         """
         Initialize the Qwen3.5 LLM prefill model.
         """
@@ -758,6 +929,7 @@ class Qwen35LlmPrefill(torch.nn.Module):
         self.lm_head = lm_head
         self.image_token_id = int(image_token_id)
         self.config = text_model.config
+        self.max_seq_len = None if max_seq_len is None else int(max_seq_len)
 
     def forward(self, input_ids, attention_mask, position_ids, image_embeds):
         """
@@ -765,11 +937,18 @@ class Qwen35LlmPrefill(torch.nn.Module):
         """
         inputs_embeds = self.text_model.embed_tokens(input_ids)
         image_mask = input_ids == self.image_token_id
-        image_mask = image_mask.unsqueeze(-1).expand_as(inputs_embeds)
-        inputs_embeds = inputs_embeds.masked_scatter(
-            image_mask,
-            image_embeds.to(device=inputs_embeds.device, dtype=inputs_embeds.dtype),
+        image_values = image_embeds.to(
+            device=inputs_embeds.device, dtype=inputs_embeds.dtype
         )
+        if self.max_seq_len is None:
+            image_mask = image_mask.unsqueeze(-1).expand_as(inputs_embeds)
+            inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_values)
+        else:
+            image_indices = image_mask.long().cumsum(dim=1).clamp(min=1) - 1
+            image_values = image_values[image_indices]
+            inputs_embeds = torch.where(
+                image_mask.unsqueeze(-1), image_values, inputs_embeds
+            )
 
         q_len = input_ids.shape[1]
         if position_ids.ndim == 2:
@@ -820,6 +999,14 @@ class Qwen35LlmPrefill(torch.nn.Module):
         present_conv_stack = torch.stack(present_conv, dim=0) if present_conv else torch.zeros(0)
         present_recurrent_stack = torch.stack(present_recurrent, dim=0) if present_recurrent else torch.zeros(0)
         present_kv_stack = torch.stack(present_kv, dim=0) if present_kv else torch.zeros(0)
+        if self.max_seq_len is not None and present_kv_stack.dim() >= 4:
+            if present_kv_stack.shape[3] > self.max_seq_len:
+                raise ValueError(
+                    f"Prefill sequence length exceeds max_seq_len={self.max_seq_len}"
+                )
+            if present_kv_stack.shape[3] < self.max_seq_len:
+                pad_size = self.max_seq_len - present_kv_stack.shape[3]
+                present_kv_stack = F.pad(present_kv_stack, (0, 0, 0, pad_size))
 
         return logits, present_conv_stack, present_recurrent_stack, present_kv_stack
 
@@ -828,7 +1015,7 @@ class Qwen35LlmDecode(torch.nn.Module):
     """
     Qwen3.5 LLM decode model for the attention layer.
     """
-    def __init__(self, text_model, lm_head):
+    def __init__(self, text_model, lm_head, fixed_kv_cache=False):
         """
         Initialize the Qwen3.5 LLM decode model.
         """
@@ -836,11 +1023,12 @@ class Qwen35LlmDecode(torch.nn.Module):
         self.text_model = text_model
         self.lm_head = lm_head
         self.config = text_model.config
+        self.fixed_kv_cache = bool(fixed_kv_cache)
 
     def forward(self, input_ids, attention_mask, position_ids,
                 past_conv_states, past_recurrent_states, past_kv_cache):
         """
-        Forward function for the Qwen3.5 LLM decode model.
+        Decode with either the original growing cache or a fixed-capacity cache.
         """
         inputs_embeds = self.text_model.embed_tokens(input_ids)
         q_len = input_ids.shape[1]
@@ -853,19 +1041,23 @@ class Qwen35LlmDecode(torch.nn.Module):
             mm_position_ids = position_ids
 
         position_embeddings = self.text_model.rotary_emb(inputs_embeds, mm_position_ids)
-
-        past_len = 0
-        kv_idx = 0
-        for layer in self.text_model.layers:
-            if layer.layer_type == "full_attention":
-                if kv_idx == 0 and past_kv_cache.shape[0] > 0:
-                    past_len = past_kv_cache[0].shape[2]
-                break
-
-        k_len = past_len + q_len
-        attn_mask = _make_additive_causal_mask(
-            attention_mask, q_len, k_len, past_len, inputs_embeds.dtype
-        )
+        cache_pos = None
+        if self.fixed_kv_cache:
+            max_seq_len = past_kv_cache.shape[3]
+            total_valid_tokens = attention_mask.sum(dim=1, keepdim=True)
+            cache_pos = (total_valid_tokens - q_len).reshape(())
+            kv_range = torch.arange(
+                max_seq_len, device=inputs_embeds.device, dtype=torch.int64
+            )
+            allowed = kv_range.view(1, -1) <= cache_pos.view(-1, 1)
+            allowed = allowed & attention_mask.to(torch.bool)
+            attn_mask = (~allowed).view(-1, 1, 1, max_seq_len)
+        else:
+            past_len = past_kv_cache.shape[3]
+            k_len = past_len + q_len
+            attn_mask = _make_additive_causal_mask(
+                attention_mask, q_len, k_len, past_len, inputs_embeds.dtype
+            )
 
         hidden_states = inputs_embeds
         present_conv = []
@@ -891,10 +1083,16 @@ class Qwen35LlmDecode(torch.nn.Module):
             else:
                 pk_in = past_kv_cache[kv_idx]
                 pv_in = past_kv_cache[kv_idx + 1]
-                attn_out, pk, pv = _full_attn_forward(
-                    layer.self_attn, hidden_states, position_embeddings, attn_mask,
-                    pk_in, pv_in,
-                )
+                if self.fixed_kv_cache:
+                    attn_out, pk, pv = _full_attn_decode_fixed(
+                        layer.self_attn, hidden_states, position_embeddings, attn_mask,
+                        pk_in, pv_in, cache_pos,
+                    )
+                else:
+                    attn_out, pk, pv = _full_attn_forward(
+                        layer.self_attn, hidden_states, position_embeddings, attn_mask,
+                        pk_in, pv_in,
+                    )
                 hidden_states = residual + attn_out
                 present_kv.append(pk)
                 present_kv.append(pv)
@@ -1008,6 +1206,12 @@ def _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_to
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     prefill_path = output_dir / "qwen3_5_llm_prefill.onnx"
+    if dummy_seq <= 0:
+        raise ValueError(f"dummy_seq must be positive, but got {dummy_seq}")
+    if prefill.max_seq_len is not None and dummy_seq > prefill.max_seq_len:
+        raise ValueError(
+            f"dummy_seq must be in [1, {prefill.max_seq_len}], but got {dummy_seq}"
+        )
     dummy_input_ids = torch.randint(0, 1000, (1, dummy_seq), dtype=torch.int64, device=device)
     dummy_attention_mask = torch.ones(1, dummy_seq, dtype=torch.int64, device=device)
     base_pos = torch.arange(dummy_seq, device=device, dtype=torch.int64).view(1, -1)
@@ -1019,16 +1223,17 @@ def _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_to
     input_names = ["input_ids", "attention_mask", "position_ids", "image_embeds"]
     output_names = ["logits", "present_conv_states", "present_recurrent_states",
                     "present_kv_cache"]
-    if USE_CUSTOM_CGDR:
-        # The 310P CGDR integration currently targets the batch-one demo path.
+    if USE_CUSTOM_CGDR or prefill.max_seq_len is not None:
+        # Both the fused Prefill and fixed-cache Decode paths target batch one.
         dynamic_axes = {
             "input_ids": {1: "seq_len"},
             "attention_mask": {1: "seq_len"},
             "position_ids": {2: "seq_len"},
             "image_embeds": {0: "num_image_tokens"},
             "logits": {1: "seq_len"},
-            "present_kv_cache": {3: "seq_len"},
         }
+        if prefill.max_seq_len is None:
+            dynamic_axes["present_kv_cache"] = {3: "seq_len"}
     else:
         dynamic_axes = {
             "input_ids": {0: "batch", 1: "seq_len"},
@@ -1038,8 +1243,10 @@ def _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_to
             "logits": {0: "batch", 1: "seq_len"},
             "present_conv_states": {1: "batch"},
             "present_recurrent_states": {1: "batch"},
-            "present_kv_cache": {1: "batch", 3: "seq_len"},
+            "present_kv_cache": {1: "batch"},
         }
+        if prefill.max_seq_len is None:
+            dynamic_axes["present_kv_cache"][3] = "seq_len"
     from torch.onnx import utils as onnx_utils
     print(f"Exporting LLM prefill to {prefill_path}...")
     with torch.no_grad():
@@ -1053,21 +1260,37 @@ def _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_to
     print("LLM prefill exported successfully.")
 
 
-def _export_llm_decode(decode, meta, output_dir, device, dummy_seq):
+def _export_llm_decode(decode, meta, output_dir, device, dummy_seq, max_seq_len=2048):
     """
-    Export the LLM decode model of the Qwen3.5 model to ONNX format.
+    Export fixed-cache Custom Decode or the original dynamic fallback graph.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     decode_path = output_dir / "qwen3_5_llm_decode.onnx"
     dummy_step = 1
     dummy_past_len = dummy_seq
+    fixed_kv_cache = decode.fixed_kv_cache
+    if dummy_past_len <= 0:
+        raise ValueError(f"dummy_seq must be positive, but got {dummy_past_len}")
+    if fixed_kv_cache and dummy_past_len + dummy_step > max_seq_len:
+        raise ValueError(
+            f"dummy_seq must be in [1, {max_seq_len - dummy_step}], "
+            f"but got {dummy_past_len}"
+        )
     dummy_input_ids_step = torch.randint(
         0, 1000, (1, dummy_step), dtype=torch.int64, device=device
     )
-    dummy_attention_mask_step = torch.ones(
-        1, dummy_past_len + dummy_step, dtype=torch.int64, device=device
-    )
+    if fixed_kv_cache:
+        dummy_attention_mask_step = torch.zeros(
+            1, max_seq_len, dtype=torch.int64, device=device
+        )
+        dummy_attention_mask_step[:, :dummy_past_len + dummy_step] = 1
+        kv_cache_len = max_seq_len
+    else:
+        dummy_attention_mask_step = torch.ones(
+            1, dummy_past_len + dummy_step, dtype=torch.int64, device=device
+        )
+        kv_cache_len = dummy_past_len
     step_pos = torch.tensor([[dummy_past_len]], dtype=torch.int64, device=device)
     dummy_position_ids_step = step_pos.unsqueeze(0).expand(4, 1, dummy_step)
 
@@ -1090,7 +1313,7 @@ def _export_llm_decode(decode, meta, output_dir, device, dummy_seq):
         dtype=torch.float32, device=device,
     )
     dummy_past_kv = torch.zeros(
-        2 * num_full, 1, num_kv_heads, dummy_past_len, head_dim,
+        2 * num_full, 1, num_kv_heads, kv_cache_len, head_dim,
         dtype=torch.float16, device=device,
     )
 
@@ -1098,42 +1321,43 @@ def _export_llm_decode(decode, meta, output_dir, device, dummy_seq):
                    "past_conv_states", "past_recurrent_states", "past_kv_cache"]
     output_names = ["logits", "present_conv_states", "present_recurrent_states",
                     "present_kv_cache"]
-    if USE_CUSTOM_RGDR:
-        # RGDR is used for single-token, batch-one autoregressive Decode.
-        dynamic_axes = {
-            "attention_mask": {1: "total_seq_len"},
-            "past_kv_cache": {3: "past_seq_len"},
-            "present_kv_cache": {3: "total_seq_len"},
-        }
-    else:
-        dynamic_axes = {
-            "input_ids": {0: "batch", 1: "step"},
-            "attention_mask": {0: "batch", 1: "total_seq_len"},
-            "position_ids": {1: "batch", 2: "step"},
-            "past_conv_states": {1: "batch"},
-            "past_recurrent_states": {1: "batch"},
-            "past_kv_cache": {1: "batch", 3: "past_seq_len"},
-            "logits": {0: "batch", 1: "step"},
-            "present_conv_states": {1: "batch"},
-            "present_recurrent_states": {1: "batch"},
-            "present_kv_cache": {1: "batch", 3: "total_seq_len"},
-        }
+    dynamic_axes = {
+        "input_ids": {0: "batch", 1: "step"},
+        "attention_mask": {0: "batch", 1: "total_seq_len"},
+        "position_ids": {1: "batch", 2: "step"},
+        "past_conv_states": {1: "batch"},
+        "past_recurrent_states": {1: "batch"},
+        "past_kv_cache": {1: "batch", 3: "past_seq_len"},
+        "logits": {0: "batch", 1: "step"},
+        "present_conv_states": {1: "batch"},
+        "present_recurrent_states": {1: "batch"},
+        "present_kv_cache": {1: "batch", 3: "total_seq_len"},
+    }
     from torch.onnx import utils as onnx_utils
-    print(f"Exporting LLM decode to {decode_path}...")
+    shape_info = f"max_seq_len={max_seq_len}" if fixed_kv_cache else "dynamic KV cache"
+    print(f"Exporting LLM decode to {decode_path} ({shape_info})...")
+    export_options = {
+        "input_names": input_names,
+        "output_names": output_names,
+        "opset_version": 14,
+        "do_constant_folding": True,
+    }
+    if not fixed_kv_cache:
+        export_options["dynamic_axes"] = dynamic_axes
     with torch.no_grad():
         onnx_utils.export(
             decode,
             (dummy_input_ids_step, dummy_attention_mask_step, dummy_position_ids_step,
              dummy_past_conv, dummy_past_recurrent, dummy_past_kv),
             str(decode_path),
-            input_names=input_names, output_names=output_names,
-            opset_version=14, do_constant_folding=True, dynamic_axes=dynamic_axes,
+            **export_options,
         )
     print("LLM decode exported successfully.")
 
 
 def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq=8,
-                              dummy_num_img_tokens=16, dtype=torch.float16):
+                              dummy_num_img_tokens=16, dtype=torch.float16,
+                              max_seq_len=2048):
     """
     Export the LLM prefill and decode models of the Qwen3.5 model to ONNX format.
     """
@@ -1147,8 +1371,13 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq=8,
     text_model.to(device)
     lm_head.to(device)
 
-    prefill = Qwen35LlmPrefill(text_model, lm_head, image_token_id).to(device).eval()
-    decode = Qwen35LlmDecode(text_model, lm_head).to(device).eval()
+    prefill = Qwen35LlmPrefill(
+        text_model, lm_head, image_token_id,
+        max_seq_len=max_seq_len if USE_CUSTOM_RGDR else None,
+    ).to(device).eval()
+    decode = Qwen35LlmDecode(
+        text_model, lm_head, fixed_kv_cache=USE_CUSTOM_RGDR
+    ).to(device).eval()
 
     # Independent component exports can assign the same graph-local external
     # data filename to different tensors.  Keep every graph self-contained so
@@ -1158,7 +1387,10 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq=8,
         prefill, output_dir / "prefill", device, dummy_seq,
         dummy_num_img_tokens, dtype=dtype,
     )
-    _export_llm_decode(decode, meta, output_dir / "decode", device, dummy_seq)
+    _export_llm_decode(
+        decode, meta, output_dir / "decode", device, dummy_seq,
+        max_seq_len=max_seq_len,
+    )
 
 
 def main():
@@ -1183,9 +1415,11 @@ def main():
         "--vision-image-size", type=int, default=128,
         help="Image size for vision tower export",
     )
-    parser.add_argument(
-        "--dummy-seq-len", type=int, default=8,
+    parser.add_argument("--dummy-seq-len", type=int, default=8,
         help="Dummy sequence length for LLM export",
+    )
+    parser.add_argument("--max-seq-len", type=int, default=2048,
+        help="Maximum sequence length for the fixed Decode mask and KV cache",
     )
     parser.add_argument(
         "--dtype", type=str, default="fp16", choices=["fp16", "fp32"],
@@ -1197,7 +1431,7 @@ def main():
     )
     parser.add_argument(
         "--enable-rgdr-custom", action="store_true",
-        help="Replace the expanded decode recurrent rule with the 310P Custom RGDR op",
+        help="Enable RGDR plus fixed Decode KV cache with Scatter and IFA",
     )
     parser.add_argument(
         "--enable-cgdr-custom", action="store_true",
@@ -1227,13 +1461,14 @@ def main():
             model, output_dir / "vision", args.device, args.vision_image_size
         )
         export_llm_prefill_decode(model, output_dir, args.device, args.dummy_seq_len,
-                                  dtype=torch_dtype)
+                                  dtype=torch_dtype, max_seq_len=args.max_seq_len)
     elif args.component == "prefill":
         meta = _get_model_meta(model)
         text_model = meta["text_model"].to(args.device).eval()
         lm_head = meta["lm_head"].to(args.device).eval()
         prefill = Qwen35LlmPrefill(
-            text_model, lm_head, meta["image_token_id"]
+            text_model, lm_head, meta["image_token_id"],
+            max_seq_len=args.max_seq_len if USE_CUSTOM_RGDR else None,
         ).to(args.device).eval()
         _export_llm_prefill(
             prefill, output_dir / "prefill", args.device, args.dummy_seq_len, 16,
@@ -1243,9 +1478,12 @@ def main():
         meta = _get_model_meta(model)
         text_model = meta["text_model"].to(args.device).eval()
         lm_head = meta["lm_head"].to(args.device).eval()
-        decode = Qwen35LlmDecode(text_model, lm_head).to(args.device).eval()
+        decode = Qwen35LlmDecode(
+            text_model, lm_head, fixed_kv_cache=USE_CUSTOM_RGDR
+        ).to(args.device).eval()
         _export_llm_decode(
-            decode, meta, output_dir / "decode", args.device, args.dummy_seq_len
+            decode, meta, output_dir / "decode", args.device, args.dummy_seq_len,
+            max_seq_len=args.max_seq_len,
         )
 
     print("Clearing memory after export...")
