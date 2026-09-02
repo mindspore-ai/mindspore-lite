@@ -32,13 +32,13 @@ Qwen-Image-Edit 模型的 NPU 多卡并行适配器，基于 `lite_boost.BoostMa
 ```python
 from lite_boost import BoostManager
 from lite_boost.parallel import initialize_usp
-from diffusers import QwenImageEditPipeline
+from diffusers import QwenImageEditPlusPipeline
 
 # 1. 初始化 HCCL 分布式环境（读 RANK / WORLD_SIZE / MASTER_ADDR / MASTER_PORT）
 initialize_usp()
 
 # 2. 加载流水线
-pipe = QwenImageEditPipeline.from_pretrained("qwen-image-edit", torch_dtype=torch.bfloat16)
+pipe = QwenImageEditPlusPipeline.from_pretrained("qwen-image-edit", torch_dtype=torch.bfloat16)
 
 # 3. 一键替换为并行版本（原地修改，config 指向 YAML 配置文件）
 boost_manager = BoostManager()
