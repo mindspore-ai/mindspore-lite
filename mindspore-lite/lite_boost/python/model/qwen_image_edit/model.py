@@ -60,8 +60,10 @@ def _eager_sdpa(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=Fals
 
 
 def patch_eager_sdpa():
-    """Globally replace F.scaled_dot_product_attention with an eager matmul
-    implementation (idempotent), since the NPU fusion SDPA op is unsupported."""
+    """Globally replace F.scaled_dot_product_attention with an eager matmul.
+
+    Idempotent; the NPU fusion SDPA op is unsupported.
+    """
     if not getattr(torch.nn.functional, "_lite_boost_eager_sdpa_patched", False):
         torch.nn.functional.scaled_dot_product_attention = _eager_sdpa
         setattr(torch.nn.functional, "_lite_boost_eager_sdpa_patched", True)

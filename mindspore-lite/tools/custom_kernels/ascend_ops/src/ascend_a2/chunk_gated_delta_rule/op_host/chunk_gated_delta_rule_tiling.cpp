@@ -31,18 +31,23 @@
  * copy (no memcpy_s/securec dependency).
  */
 
+#include "chunk_gated_delta_rule_tiling.h"
+
 #include <string>
 
-#include "chunk_gated_delta_rule_tiling.h"
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "../op_kernel/chunk_gated_delta_rule_tiling_key.h"
 #include "version/cann_version.h"
+#include "../op_kernel/chunk_gated_delta_rule_tiling_key.h"
 #if CANN_VERSION_NUM < 80600000
 #define SOC_VERSION_IS_NOT_950 true
 #else
 #define SOC_VERSION_IS_NOT_950 (socVersion_ != platform_ascendc::SocVersion::ASCEND950)
 #endif
+
+// Dim caps for the arch22 kernel (per head-group).
+constexpr int64_t MAX_HEAD_NUM = 64;
+constexpr int64_t MAX_HEAD_DIM = 128;
 
 namespace optiling {
 
@@ -248,7 +253,8 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoLibApiTiling() {
   // tilingData.isFp16, NOT on the tiling key). Introducing a separate fp16 tiling key (e.g.
   // 2) is NOT registered in CANN's autogen tiling_struct_expr_map and raises KeyError at
   // convert (gen_static_shape_v2). So keep the original 0/1 scheme; fp16 reuses key 0.
-  tilingKey_ = tilingData_.stateIsFp32 ? TILING_KEY_CGDR_FP32_STATE : TILING_KEY_CGDR_BF16_STATE;
+  tilingKey_ = tilingData_.stateIsFp32 ? ChunkGatedDeltaRule::TILING_KEY_CGDR_FP32_STATE
+                                       : ChunkGatedDeltaRule::TILING_KEY_CGDR_BF16_STATE;
 
   // Run matmul tiling
   if (DoMatmulTiling() != ge::GRAPH_SUCCESS) {
@@ -506,10 +512,10 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::CheckDerivedDimConstraints() {
       tilingData_.dv <= 0) {
     return ge::GRAPH_FAILED;
   }
-  if (tilingData_.nk > 64 || tilingData_.nv > 64) {
+  if (tilingData_.nk > MAX_HEAD_NUM || tilingData_.nv > MAX_HEAD_NUM) {
     return ge::GRAPH_FAILED;
   }
-  if (tilingData_.dv > 128 || tilingData_.dk > 128) {
+  if (tilingData_.dv > MAX_HEAD_DIM || tilingData_.dk > MAX_HEAD_DIM) {
     return ge::GRAPH_FAILED;
   }
   if (tilingData_.nv % tilingData_.nk != 0) {

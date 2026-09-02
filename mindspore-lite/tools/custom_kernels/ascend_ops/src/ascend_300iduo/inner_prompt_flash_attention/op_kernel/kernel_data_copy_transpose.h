@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file kernel_data_copy_transpose.h
@@ -22,6 +22,10 @@
 #include "kernel_operator.h"  // NOLINT(build/include_subdir)
 #endif
 using namespace AscendC;  // NOLINT(build/namespaces)
+
+// Data-copy/transpose helpers are namespaced (not global) per repo convention;
+// consumers re-export them with a using-directive after including this header.
+namespace pfa310 {
 
 enum class CopyTransposeType {
   TRANSPOSE_TYPE_NONE,   // Default value
@@ -130,5 +134,7 @@ __aicore__ inline void DataCopyTranspose2(const GlobalTensor<T> &dstGlobal, cons
     }
   }
 }
+
+}  // namespace pfa310
 
 #endif  // KERNEL_DATA_COPY_TRANSPOSE_H

@@ -73,14 +73,17 @@ extern "C" __global__ __aicore__ void inner_prompt_flash_attention(
   TILING_KEY_IS(QFP4E1M2_KVFP16_OUTINT8_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING);  // 22888
 
 #if TILING_KEY_VAR == QINT8_KVFP16_OUTBF16_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING
-  PFA310_INVOKE(InnerPromptFlashAttentionS1s2Bns1X310, PFATypeNZ<PFALayoutNZ::BNSD, half, int8_t, half>);
+  PFA310_INVOKE(pfa310::InnerPromptFlashAttentionS1s2Bns1X310,
+                pfa310::PFATypeNZ<pfa310::PFALayoutNZ::BNSD, half, int8_t, half>);
 #elif TILING_KEY_VAR == QINT8_KVFP16_OUTINT8_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING
-  PFA310_INVOKE(InnerPromptFlashAttentionS1s2Bns1X310, PFATypeNZ<PFALayoutNZ::BSH, half, int8_t, half>);
+  PFA310_INVOKE(pfa310::InnerPromptFlashAttentionS1s2Bns1X310,
+                pfa310::PFATypeNZ<pfa310::PFALayoutNZ::BSH, half, int8_t, half>);
 #elif TILING_KEY_VAR == QFP4E1M2_KVFP16_OUTBF16_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING
-  PFA310_INVOKE(InnerPromptFlashAttentionS1s2Bns1X310,
-                PFATypeNZ<PFALayoutNZ::BNSD, half, int8_t, half, half, ModeNZ::HighPrecisionNZ>);
+  PFA310_INVOKE(
+    pfa310::InnerPromptFlashAttentionS1s2Bns1X310,
+    pfa310::PFATypeNZ<pfa310::PFALayoutNZ::BNSD, half, int8_t, half, half, pfa310::ModeNZ::HighPrecisionNZ>);
 #elif TILING_KEY_VAR == QFP4E1M2_KVFP16_OUTINT8_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING
-  PFA310_INVOKE(InnerPromptFlashAttentionS1s2Bns1X310,
-                PFATypeNZ<PFALayoutNZ::BSH, half, int8_t, half, half, ModeNZ::HighPrecisionNZ>);
+  PFA310_INVOKE(pfa310::InnerPromptFlashAttentionS1s2Bns1X310,
+                pfa310::PFATypeNZ<pfa310::PFALayoutNZ::BSH, half, int8_t, half, half, pfa310::ModeNZ::HighPrecisionNZ>);
 #endif
 }

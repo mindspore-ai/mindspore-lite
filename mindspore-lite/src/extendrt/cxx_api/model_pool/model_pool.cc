@@ -31,6 +31,7 @@
 #include "thread/parallel_thread_pool_manager.h"
 #endif
 #include "src/common/config_file.h"
+#include "src/common/log_util.h"
 namespace mindspore {
 namespace {
 constexpr int kNumDeviceInfo = 2;
@@ -486,12 +487,14 @@ std::shared_ptr<Context> ModelPool::CopyContext(const std::shared_ptr<Context> &
   for (auto &device : device_list) {
     if (device->GetDeviceType() == DeviceType::kCPU) {
       auto cpu_info = device->Cast<CPUDeviceInfo>();
+      MS_CHECK_TRUE_MSG(cpu_info != nullptr, nullptr, "Cast to CPUDeviceInfo failed.");
       auto new_cpu_info = std::make_shared<CPUDeviceInfo>();
       new_cpu_info->SetEnableFP16(cpu_info->GetEnableFP16());
       new_cpu_info->SetProvider(cpu_info->GetProvider());
       new_device_list.push_back(new_cpu_info);
     } else if (device->GetDeviceType() == DeviceType::kGPU) {
       auto gpu_info = device->Cast<GPUDeviceInfo>();
+      MS_CHECK_TRUE_MSG(gpu_info != nullptr, nullptr, "Cast to GPUDeviceInfo failed.");
       auto new_gpu_info = std::make_shared<GPUDeviceInfo>();
       new_gpu_info->SetEnableFP16(gpu_info->GetEnableFP16());
       new_gpu_info->SetDeviceID(gpu_info->GetDeviceID());
@@ -499,6 +502,7 @@ std::shared_ptr<Context> ModelPool::CopyContext(const std::shared_ptr<Context> &
       new_device_list.push_back(new_gpu_info);
     } else if (device->GetDeviceType() == DeviceType::kAscend) {
       auto asscend_info = device->Cast<AscendDeviceInfo>();
+      MS_CHECK_TRUE_MSG(asscend_info != nullptr, nullptr, "Cast to AscendDeviceInfo failed.");
       auto new_asscend_info = std::make_shared<AscendDeviceInfo>();
       new_asscend_info->SetDeviceID(asscend_info->GetDeviceID());
       new_asscend_info->SetProvider(asscend_info->GetProvider());
@@ -1320,11 +1324,15 @@ Status ModelPool::ParseDeviceIds(const std::shared_ptr<RunnerConfig> &runner_con
       bool has_ascend_or_gpu = false;
       for (auto &device_info : device_infos) {
         if (device_info->GetDeviceType() == kAscend) {
+          auto ascend_info = device_info->Cast<AscendDeviceInfo>();
+          MS_CHECK_TRUE_MSG(ascend_info != nullptr, kLiteError, "Cast to AscendDeviceInfo failed.");
           has_ascend_or_gpu = true;
-          device_info->Cast<AscendDeviceInfo>()->SetDeviceID(id);
+          ascend_info->SetDeviceID(id);
         } else if (device_info->GetDeviceType() == kGPU) {
+          auto gpu_info = device_info->Cast<GPUDeviceInfo>();
+          MS_CHECK_TRUE_MSG(gpu_info != nullptr, kLiteError, "Cast to GPUDeviceInfo failed.");
           has_ascend_or_gpu = true;
-          device_info->Cast<GPUDeviceInfo>()->SetDeviceID(id);
+          gpu_info->SetDeviceID(id);
         }
       }
       if (!has_ascend_or_gpu) {

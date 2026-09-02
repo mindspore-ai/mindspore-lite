@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file inner_prompt_flash_attention_s1s2_bns1_x310_base.h
@@ -26,14 +26,19 @@
 #include "kernel_data_copy_transpose.h"          // NOLINT(build/include_subdir)
 #include "kernel_operator_softmax_compute_nz.h"  // NOLINT(build/include_subdir)
 
-using namespace matmul;                             // NOLINT(build/namespaces)
+using namespace matmul;  // NOLINT(build/namespaces)
+
+// Kernel-side constants, tags and the base class live in namespace pfa310 (not the
+// global namespace) per repo convention. Only the kernel ENTRY stays global.
+namespace pfa310 {
+
 constexpr uint32_t BATCH_NUM_MAX_NZ = 300;          // 300 is batch size high limit
 constexpr int32_t MAX_REPEATS_PER_BATCH = 255;      // max repeatTime in InitConstValue
 constexpr int32_t REPEAT_DATASIZE_EACH_TIME = 512;  // processing a fixed amount of data per iteration
 constexpr static uint32_t NEGATIVE_MIN_VAULE_FP32 = 0xFF7FFFFF;
 constexpr static uint32_t NEGATIVE_MIN_VAULE_FP16 = 0xC61C4000;
 
-enum ModeNZ { HighPrecisionNZ = 0, HighPerformanceNZ };
+enum class ModeNZ : uint32_t { HighPrecisionNZ = 0, HighPerformanceNZ };
 
 enum class PFALayoutNZ {
   BSH = 0,
@@ -1032,5 +1037,7 @@ __aicore__ inline void InnerPromptFlashAttentionS1s2Bns1X310Base<PFAT>::CopyND2N
   SetFlag<HardEvent::MTE2_MTE1>(EVENT_ID3);
   WaitFlag<HardEvent::MTE2_MTE1>(EVENT_ID3);
 }
+
+}  // namespace pfa310
 
 #endif  // INNER_PROMPT_FLASH_ATTENTION_S1S2_BNS1_X310_BASE_H

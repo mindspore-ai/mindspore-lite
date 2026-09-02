@@ -36,6 +36,12 @@
 #include "quant_matmul_w4a8_tiling_data.h"
 
 using namespace AscendC;
+
+// Kernel-side constants, helpers and classes live in namespace w4a8 (not the
+// global namespace) per repo convention; the kernel ENTRY stays global and
+// refers to them with explicit qualification.
+namespace w4a8 {
+
 enum class QuantType : std::uint8_t {
   K_C = 5,  // pertoken superimposed perchannel
   K_G = 6   // pertoken superimposed pergroup
@@ -478,7 +484,9 @@ __aicore__ inline void QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, qua
   uint32_t taskRation = GetTaskRation();
   CrossCoreWaitFlag(SYNC_AIC_TO_AIV);
   for (uint32_t offsetN = 0; offsetN < curCubeSingleN; offsetN += baseN_) {
-    if (offsetN + baseN_ >= curCubeSingleN) curVecBaseN = curCubeSingleN - offsetN;
+    if (offsetN + baseN_ >= curCubeSingleN) {
+      curVecBaseN = curCubeSingleN - offsetN;
+    }
     uint32_t alignBaseN = ops::CeilDiv(curVecBaseN, static_cast<uint32_t>(16)) * 16;  //  16: num half in 32B ub block
     DataCopyYOffset(curVecBaseN, alignBaseN, yOffset + offsetN);
     DataCopyOutputBias(curVecBaseN, alignBaseN, yOffset + offsetN);  // w4a8: load output_bias
@@ -650,4 +658,7 @@ __aicore__ inline void QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, qua
   BroadCast<float, 2, 1>(buffer3_, scaleTmp, broadCastDst, broadCastSrc, buffer5_);
   x1ScaleInQueue_.FreeTensor(x1ScaleLocal);
 }
+
+}  // namespace w4a8
+
 #endif

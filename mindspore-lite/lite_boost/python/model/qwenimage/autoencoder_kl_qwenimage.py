@@ -22,7 +22,7 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
+from typing import NamedTuple, Optional
 import math
 import torch
 import torch.distributed as dist
@@ -38,10 +38,22 @@ from diffusers.models.modeling_utils import ModelMixin
 from diffusers.models.autoencoders.vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
 
 CACHE_T = 2
+
+
+class TileBlendMeta(NamedTuple):
+    """Geometry + dtype metadata for overlap-blending gathered VAE tiles."""
+
+    blend_height: int
+    blend_width: int
+    stride_h: int
+    stride_w: int
+    output_height: int
+    output_width: int
 # Environment variable: when PROMPT_VAE_ENCODE_PARALLEL=1, the encoder uses ranks 0..N-2
 # for parallel encoding, leaving rank N-1 dedicated to the prompt text model;
 # otherwise all ranks participate in VAE encode/decode parallelism.
 PROMPT_VAE_ENCODE_PARALLEL = bool(int(os.environ.get('PROMPT_VAE_ENCODE_PARALLEL', 0)))
+
 
 class QwenImageCausalConv3d(nn.Conv3d):
     r"""
@@ -79,6 +91,7 @@ class QwenImageCausalConv3d(nn.Conv3d):
         self.padding = (0, 0, 0)
 
     def forward(self, x, cache_x=None):
+        """Causally pad and convolve x, splicing in cached time frames if given."""
         padding = list(self._padding)
         if cache_x is not None and self._padding[4] > 0:
             cache_x = cache_x.to(x.device)
@@ -86,6 +99,7 @@ class QwenImageCausalConv3d(nn.Conv3d):
             padding[4] -= cache_x.shape[2]
         x = F.pad(x, padding)
         return super().forward(x)
+
 
 class QwenImageCausalConv2d(nn.Module):
     r"""
@@ -151,8 +165,8 @@ class QwenImageCausalConv2d(nn.Module):
         kernel_size = conv3d_module.kernel_size
         stride = conv3d_module.stride
 
-        if hasattr(conv3d_module, "_padding"):
-            conv_pad = conv3d_module._padding
+        conv_pad = getattr(conv3d_module, "_padding", None)
+        if conv_pad is not None:
             d_left = conv_pad[4]
             h_pad = conv_pad[2]
             w_pad = conv_pad[0]
@@ -202,6 +216,7 @@ class QwenImageCausalConv2d(nn.Module):
                     self.out_channels_3d, -1, self.kernel_size_3d[1], self.kernel_size_3d[2]
                 )
 
+            # pylint: disable-next=not-callable
             x = F.conv2d(x, self.w2d, self.bias, self.stride_3d[1:])
             x = x.unsqueeze(2)
             return x
@@ -210,6 +225,7 @@ class QwenImageCausalConv2d(nn.Module):
         if self.w2d is None:
             self.w2d = self.weight_3d[:, :, self.kernel_size_3d[0] - 1, :, :]
 
+        # pylint: disable-next=not-callable
         x = F.conv2d(
             x, self.w2d, self.bias,
             stride=self.stride_3d[1:],
@@ -217,9 +233,15 @@ class QwenImageCausalConv2d(nn.Module):
         )
         x = x.unsqueeze(2)
         return x
-class QwenImageRMS_norm(nn.Module):
+
+
+class QwenImageRMSNorm(nn.Module):
     r"""
     A custom RMS normalization layer.
+
+    Migrated from the open-source diffusers repository (AutoencoderKLQwenImage)
+    without modifying the implementation; only the class name is changed.
+    Equivalent to ``QwenImageRMS_norm`` in ``diffusers.models.autoencoders.autoencoder_kl_qwenimage``.
 
     Args:
         dim (int): The number of dimensions to normalize over.
@@ -240,6 +262,7 @@ class QwenImageRMS_norm(nn.Module):
         self.bias = nn.Parameter(torch.zeros(shape)) if bias else 0.0
 
     def forward(self, x):
+        """Normalize over the channel (or last) axis and rescale/shift."""
         return F.normalize(x, dim=(1 if self.channel_first else -1)) * self.scale * self.gamma + self.bias
 
 
@@ -255,6 +278,7 @@ class QwenImageUpsample(nn.Upsample):
     """
 
     def forward(self, x):
+        """Upsample in fp32 and cast back to the input dtype."""
         return super().forward(x.float()).type_as(x)
 
 
@@ -372,9 +396,9 @@ class QwenImageResidualBlock(nn.Module):
         self.nonlinearity = get_activation(non_linearity)
 
         # layers
-        self.norm1 = QwenImageRMS_norm(in_dim, images=False)
+        self.norm1 = QwenImageRMSNorm(in_dim, images=False)
         self.conv1 = QwenImageCausalConv3d(in_dim, out_dim, 3, padding=1)
-        self.norm2 = QwenImageRMS_norm(out_dim, images=False)
+        self.norm2 = QwenImageRMSNorm(out_dim, images=False)
         self.dropout = nn.Dropout(dropout)
         self.conv2 = QwenImageCausalConv3d(out_dim, out_dim, 3, padding=1)
         self.conv_shortcut = QwenImageCausalConv3d(in_dim, out_dim, 1) if in_dim != out_dim else nn.Identity()
@@ -458,7 +482,7 @@ class QwenImageAttentionBlock(nn.Module):
         self.dim = dim
 
         # layers
-        self.norm = QwenImageRMS_norm(dim)
+        self.norm = QwenImageRMSNorm(dim)
         self.to_qkv = nn.Conv2d(dim, dim * 3, 1)
         self.proj = nn.Conv2d(dim, dim, 1)
 
@@ -477,6 +501,7 @@ class QwenImageAttentionBlock(nn.Module):
         q, k, v = qkv.chunk(3, dim=-1)
 
         # apply attention
+        # pylint: disable-next=not-callable
         x = F.scaled_dot_product_attention(q, k, v)
 
         x = x.squeeze(1).permute(0, 2, 1).reshape(batch_size * time, channels, height, width)
@@ -548,6 +573,7 @@ class QwenImageEncoder3d(nn.Module):
         non_linearity (str): Type of non-linearity to use.
     """
 
+    # pylint: disable=dangerous-default-value
     def __init__(
         self,
         dim=128,
@@ -572,6 +598,7 @@ class QwenImageEncoder3d(nn.Module):
         # dimensions
         dims = [dim * u for u in [1] + dim_mult]
         scale = 1.0
+        out_dim = dims[-1]
 
         # init block
         self.conv_in = QwenImageCausalConv3d(input_channels, dims[0], 3, padding=1)
@@ -596,7 +623,7 @@ class QwenImageEncoder3d(nn.Module):
         self.mid_block = QwenImageMidBlock(out_dim, dropout, non_linearity, num_layers=1)
 
         # output blocks
-        self.norm_out = QwenImageRMS_norm(out_dim, images=False)
+        self.norm_out = QwenImageRMSNorm(out_dim, images=False)
         self.conv_out = QwenImageCausalConv3d(out_dim, z_dim, 3, padding=1)
 
         self.gradient_checkpointing = False
@@ -730,6 +757,7 @@ class QwenImageDecoder3d(nn.Module):
         non_linearity (str): Type of non-linearity to use.
     """
 
+    # pylint: disable=dangerous-default-value
     def __init__(
         self,
         dim=128,
@@ -755,6 +783,7 @@ class QwenImageDecoder3d(nn.Module):
         # dimensions
         dims = [dim * u for u in [dim_mult[-1]] + dim_mult[::-1]]
         scale = 1.0 / 2 ** (len(dim_mult) - 2)
+        out_dim = dims[0]
 
         # init block
         self.conv_in = QwenImageCausalConv3d(z_dim, dims[0], 3, padding=1)
@@ -791,7 +820,7 @@ class QwenImageDecoder3d(nn.Module):
                 scale *= 2.0
 
         # output blocks
-        self.norm_out = QwenImageRMS_norm(out_dim, images=False)
+        self.norm_out = QwenImageRMSNorm(out_dim, images=False)
         self.conv_out = QwenImageCausalConv3d(out_dim, input_channels, 3, padding=1)
         # 2D equivalent of conv_out: lazily converted from conv_out's 3D weights on first forward pass
         self.conv_out_2d = None
@@ -864,6 +893,7 @@ class AutoencoderKLQwenImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
     _supports_gradient_checkpointing = False
 
     @register_to_config
+    # pylint: disable=dangerous-default-value,unused-argument
     def __init__(
         self,
         base_dim: int = 96,
@@ -1082,6 +1112,7 @@ class AutoencoderKLQwenImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         return DecoderOutput(sample=decoded)
 
     def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+        """Blend the last `blend_extent` rows of a into the first rows of b."""
         blend_extent = min(a.shape[-2], b.shape[-2], blend_extent)
         for y in range(blend_extent):
             b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, :, y, :] * (
@@ -1090,6 +1121,7 @@ class AutoencoderKLQwenImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         return b
 
     def blend_h(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+        """Blend the last `blend_extent` columns of a into the first columns of b."""
         blend_extent = min(a.shape[-1], b.shape[-1], blend_extent)
         for x in range(blend_extent):
             b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, :, x] * (
@@ -1105,14 +1137,9 @@ class AutoencoderKLQwenImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         use_distributed,
         world_size,
         dist_group,
-        blend_height,
-        blend_width,
-        tile_stride_h,
-        tile_stride_w,
+        tile_meta: TileBlendMeta,
         device,
         dtype,
-        output_height,
-        output_width,
         fallback_bct,
     ):
         """Gather tiles from all ranks via all_gather, then overlap-blend in row-major order."""
@@ -1189,14 +1216,14 @@ class AutoencoderKLQwenImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
                 tile = all_tiles[(i, j)]
                 if i_idx > 0:
                     prev_i = row_keys[i_idx - 1]
-                    tile = self.blend_v(all_tiles[(prev_i, j)], tile, blend_height)
+                    tile = self.blend_v(all_tiles[(prev_i, j)], tile, tile_meta.blend_height)
                 if j_idx > 0:
                     prev_j = col_keys[j_idx - 1]
-                    tile = self.blend_h(all_tiles[(i, prev_j)], tile, blend_width)
-                result_row.append(tile[:, :, :, :tile_stride_h, :tile_stride_w])
+                    tile = self.blend_h(all_tiles[(i, prev_j)], tile, tile_meta.blend_width)
+                result_row.append(tile[:, :, :, :tile_meta.stride_h, :tile_meta.stride_w])
             result_rows.append(torch.cat(result_row, dim=-1))
 
-        return torch.cat(result_rows, dim=3)[:, :, :, :output_height, :output_width]
+        return torch.cat(result_rows, dim=3)[:, :, :, :tile_meta.output_height, :tile_meta.output_width]
 
     def tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
         r"""Encode a batch of images using a tiled encoder.
@@ -1257,13 +1284,18 @@ class AutoencoderKLQwenImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
             my_tiles[(i, j)] = torch.cat(time, dim=2)
         self.clear_cache()
 
+        tile_meta = TileBlendMeta(
+            blend_height=blend_height,
+            blend_width=blend_width,
+            stride_h=tile_latent_stride_height,
+            stride_w=tile_latent_stride_width,
+            output_height=latent_height,
+            output_width=latent_width,
+        )
         enc = self._gather_and_blend_tiles(
             my_tiles, my_positions, tile_positions,
             use_distributed, world_size, self.vae_group,
-            blend_height, blend_width,
-            tile_latent_stride_height, tile_latent_stride_width,
-            x.device, x.dtype,
-            latent_height, latent_width,
+            tile_meta, x.device, x.dtype,
             fallback_bct=(1, 1, 1),
         )
         return enc
@@ -1327,7 +1359,7 @@ class AutoencoderKLQwenImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         row_keys = sorted({i for i, j in tile_positions})
         result_rows = []
         for i_idx, i in enumerate(row_keys):
-            col_keys = sorted(j for _i, j in tile_positions if _i == i)
+            col_keys = sorted(j for pos_i, j in tile_positions if pos_i == i)
             result_row = []
             for j_idx, j in enumerate(col_keys):
                 tile = all_tiles[(i, j)]

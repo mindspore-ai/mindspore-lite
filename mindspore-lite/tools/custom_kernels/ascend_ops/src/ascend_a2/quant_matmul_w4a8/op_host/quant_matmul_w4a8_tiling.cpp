@@ -34,6 +34,23 @@ constexpr uint32_t UB_CALSIZE = 32U * 256U;  // = 8192
 constexpr uint32_t UB_BUFFER_NUM = 4;
 constexpr uint32_t INT4_SIZE = 2;
 constexpr uint32_t CV_PARALL_NUM = 4;
+// The activation is deinterleave-loaded as 2*M rows (lo/hi nibble planes).
+constexpr uint32_t INTERLEAVED_ROW_FACTOR = 2;
+// K must be 32-element aligned (INT4 packing granularity).
+constexpr uint32_t K_ALIGN = 32;
+// N is aligned down to 16 (fractal N granularity) with a 16 minimum.
+constexpr uint32_t N_FRACTAL_ALIGN = 16;
+// V5-style baseM/baseN caps for the per-channel path.
+constexpr uint32_t BASE_M_CAP = 120;
+constexpr uint32_t BASE_N_CAP = 128;
+// BK cap and fallback baseM when the tiling API returns degenerate values.
+constexpr uint32_t BK_CAP = 64;
+constexpr uint32_t BASE_M_FALLBACK = 8;
+// Minimum baseM floor so a single lo/hi row pair still forms a cube tile.
+constexpr uint32_t BASE_M_MIN = 2;
+// UB-budget coefficients for maxBm: (ubSize - 16*bn) / (12*bn).
+constexpr uint32_t UB_BUDGET_FIXED_ROWS = 16;
+constexpr uint32_t UB_BUDGET_ROW_BYTES = 12;
 
 static inline uint32_t CeilDiv(uint32_t a, uint32_t b) { return (a + b - 1) / b; }
 }  // namespace
@@ -103,23 +120,30 @@ bool QuantMatmulW4a8Tiling::SetMatmulTiling() {
 
   uint32_t M = static_cast<uint32_t>(inputParams_.M);
   uint32_t N = static_cast<uint32_t>(inputParams_.N);
-  uint32_t Kpad = ((static_cast<uint32_t>(inputParams_.K) + 31) / 32) * 32;
+  uint32_t Kpad = ((static_cast<uint32_t>(inputParams_.K) + K_ALIGN - 1) / K_ALIGN) * K_ALIGN;
 
-  if (static_cast<uint32_t>(inputParams_.K) % 32 != 0 || N < 16) {
+  if (static_cast<uint32_t>(inputParams_.K) % K_ALIGN != 0 || N < N_FRACTAL_ALIGN) {
     return false;
   }
 
   // V5 tiling: baseM=120, baseN=128, like V5's per-channel path
-  uint32_t bm = (2 * M < 120) ? (2 * M) : 120;
-  uint32_t bn = (N < 128) ? N : 128;
-  if (bn >= 16) bn = (bn / 16) * 16;
+  uint32_t bm = (INTERLEAVED_ROW_FACTOR * M < BASE_M_CAP) ? (INTERLEAVED_ROW_FACTOR * M) : BASE_M_CAP;
+  uint32_t bn = (N < BASE_N_CAP) ? N : BASE_N_CAP;
+  if (bn >= N_FRACTAL_ALIGN) {
+    bn = (bn / N_FRACTAL_ALIGN) * N_FRACTAL_ALIGN;
+  }
   // UB budget: V5 uses ubCalSize*4*float ≈ 128KB for tmpBuf_
   // rest for queues: ubCalSize*2*half + ubCalSize*bf16 ≈ 32KB
   // total ~160KB < 192KB UB
-  uint32_t maxBm = (static_cast<uint32_t>(compileInfo_.ubSize) - 16u * bn) / (12u * bn);
-  if (bm > maxBm) bm = maxBm;
-  if (bm < 2) bm = 2;
-  uint32_t bk = (Kpad < 64) ? Kpad : 64;
+  uint32_t maxBm =
+    (static_cast<uint32_t>(compileInfo_.ubSize) - UB_BUDGET_FIXED_ROWS * bn) / (UB_BUDGET_ROW_BYTES * bn);
+  if (bm > maxBm) {
+    bm = maxBm;
+  }
+  if (bm < BASE_M_MIN) {
+    bm = BASE_M_MIN;
+  }
+  uint32_t bk = (Kpad < BK_CAP) ? Kpad : BK_CAP;
 
   matmul_tiling::PlatformInfo platformInfo;
   platformInfo.socVersion = platform_ascendc::SocVersion::ASCEND910B;
@@ -137,8 +161,8 @@ bool QuantMatmulW4a8Tiling::SetMatmulTiling() {
   // Use full problem shape (2*M for interleaved rows) to get correct
   // baseM/baseN/stepM/stepN/Ka/Kb from MultiCoreMatmulTiling.
   // usedCoreNum is overridden below (V5 pattern: computed from tiles).
-  mm.SetOrgShape(2 * M, N, Kpad);
-  mm.SetShape(2 * M, N, Kpad);
+  mm.SetOrgShape(INTERLEAVED_ROW_FACTOR * M, N, Kpad);
+  mm.SetShape(INTERLEAVED_ROW_FACTOR * M, N, Kpad);
   mm.SetFixSplit(bm, bn, bk);
 
   if (mm.GetTiling(mt) == -1) {
@@ -150,15 +174,21 @@ bool QuantMatmulW4a8Tiling::SetMatmulTiling() {
   // QuantBatchMatmulV3BasicTiling::SetBase does.
   uint32_t apiBaseM = static_cast<uint32_t>(mt.baseM);
   uint32_t apiBaseN = static_cast<uint32_t>(mt.baseN);
-  if (apiBaseM > 2 * M) apiBaseM = 2 * M;
-  if (apiBaseM == 0) apiBaseM = 8;
-  uint32_t blockDimM = CeilDiv(2 * M, apiBaseM);
+  if (apiBaseM > INTERLEAVED_ROW_FACTOR * M) {
+    apiBaseM = INTERLEAVED_ROW_FACTOR * M;
+  }
+  if (apiBaseM == 0) {
+    apiBaseM = BASE_M_FALLBACK;
+  }
+  uint32_t blockDimM = CeilDiv(INTERLEAVED_ROW_FACTOR * M, apiBaseM);
   uint32_t blockDimN = CeilDiv(N, apiBaseN);
   uint32_t totalBlocks = blockDimM * blockDimN;
   uint32_t usedCoreNum = (totalBlocks < static_cast<uint32_t>(compileInfo_.aicNum))
                            ? totalBlocks
                            : static_cast<uint32_t>(compileInfo_.aicNum);
-  if (usedCoreNum < 1) usedCoreNum = 1;
+  if (usedCoreNum < 1) {
+    usedCoreNum = 1;
+  }
   mt.usedCoreNum = usedCoreNum;  // override API's value (V5 pattern)
 
   return true;
@@ -166,7 +196,7 @@ bool QuantMatmulW4a8Tiling::SetMatmulTiling() {
 
 ge::graphStatus QuantMatmulW4a8Tiling::DoOpTiling() {
   uint32_t M = static_cast<uint32_t>(inputParams_.M);
-  uint32_t K = ((static_cast<uint32_t>(inputParams_.K) + 31) / 32) * 32;
+  uint32_t K = ((static_cast<uint32_t>(inputParams_.K) + K_ALIGN - 1) / K_ALIGN) * K_ALIGN;
   uint32_t N = static_cast<uint32_t>(inputParams_.N);
 
   if (!SetMatmulTiling()) {
@@ -175,10 +205,16 @@ ge::graphStatus QuantMatmulW4a8Tiling::DoOpTiling() {
 
   uint32_t bm = static_cast<uint32_t>(tilingData_.matmulTiling.baseM);
   uint32_t bn = static_cast<uint32_t>(tilingData_.matmulTiling.baseN);
-  if (bm > 2 * M) bm = 2 * M;
-  if (bm == 0) bm = 8;
+  if (bm > INTERLEAVED_ROW_FACTOR * M) {
+    bm = INTERLEAVED_ROW_FACTOR * M;
+  }
+  if (bm == 0) {
+    bm = BASE_M_FALLBACK;
+  }
   uint32_t usedCoreNum = static_cast<uint32_t>(tilingData_.matmulTiling.usedCoreNum);
-  if (usedCoreNum < 1) usedCoreNum = 1;
+  if (usedCoreNum < 1) {
+    usedCoreNum = 1;
+  }
 
   // ── V5 tiling data fields ──
   tilingData_.coreNum = static_cast<uint8_t>(usedCoreNum);
@@ -203,7 +239,9 @@ ge::graphStatus QuantMatmulW4a8Tiling::DoOpTiling() {
 
 ge::graphStatus QuantMatmulW4a8Tiling::PostTiling() {
   uint32_t blockDim = tilingData_.coreNum;
-  if (blockDim < 1) blockDim = 1;
+  if (blockDim < 1) {
+    blockDim = 1;
+  }
   context_->SetBlockDim(blockDim);
   context_->SetScheduleMode(1);  // exclusive cores (required for CrossCoreSetFlag)
 

@@ -1,6 +1,7 @@
 /**
  * modified from
- * https://gitcode.com/cann/ops-nn/blob/master/matmul/quant_batch_matmul_v4/op_kernel/quant_batch_matmul_v4_tiling_data.h
+ * https://gitcode.com/cann/ops-nn/blob/master/matmul/quant_batch_matmul_v4/
+ * op_kernel/quant_batch_matmul_v4_tiling_data.h
  * Copyright 2026 Huawei Technologies Co., Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,8 +28,12 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
+// QuantMatmulW4a8TilingData MUST stay in the global namespace: the CANN tiling
+// macros (REGISTER_TILING_DEFAULT / GET_TILING_DATA) expanded in the kernel
+// entry require a globally-scoped tiling-data type.
+constexpr uint32_t STRUCT_ALIGNAS = 8;  // tiling-data struct alignment (bytes)
 #pragma pack(push, 8)
-struct alignas(8) QuantMatmulW4a8TilingData {
+struct alignas(STRUCT_ALIGNAS) QuantMatmulW4a8TilingData {
   uint8_t coreNum;
   uint32_t vBaseM;
   uint32_t ubRestBytes;

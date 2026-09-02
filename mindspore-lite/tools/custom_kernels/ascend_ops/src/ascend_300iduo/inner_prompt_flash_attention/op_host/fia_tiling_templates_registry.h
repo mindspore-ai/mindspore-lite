@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_tiling_templates_registry.h
@@ -25,6 +25,9 @@
 
 namespace optiling {
 
+// std::make_unique is C++14; this op_host translation unit compiles as C++11,
+// so the unique_ptr is constructed directly (nothrow new keeps the null-check
+// contract of the callers below).
 template <typename T>
 std::unique_ptr<FiaTilingBase> TILING_CLASS(gert::TilingContext *context) {
   return std::unique_ptr<T>(new (std::nothrow) T(context));
@@ -67,11 +70,11 @@ class FiaTilingRegistry {
     auto soc_iter = registry_map_.find(soc_version);
     if (soc_iter == registry_map_.end()) {
       std::map<std::string, std::shared_ptr<FiaTilingCases>> op_type_map;
-      op_type_map[op_type] = std::shared_ptr<FiaTilingCases>(new (std::nothrow) FiaTilingCases(op_type));
+      op_type_map[op_type] = std::make_shared<FiaTilingCases>(op_type);
       registry_map_[soc_version] = op_type_map;
     } else {
       if (soc_iter->second.find(op_type) == soc_iter->second.end()) {
-        soc_iter->second[op_type] = std::shared_ptr<FiaTilingCases>(new (std::nothrow) FiaTilingCases(op_type));
+        soc_iter->second[op_type] = std::make_shared<FiaTilingCases>(op_type);
       }
     }
 

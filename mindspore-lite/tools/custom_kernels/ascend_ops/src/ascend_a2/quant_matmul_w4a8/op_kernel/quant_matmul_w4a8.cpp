@@ -66,7 +66,7 @@ extern "C" __global__ __aicore__ void quant_matmul_w4a8(
 
   // ── Phase 1: AIV split (in-place, V5 exact pattern) ──
   if ASCEND_IS_AIV {
-    QuantBatchMatmulV4MsdPre opPre;
+    w4a8::QuantBatchMatmulV4MsdPre opPre;
     opPre.Init(act, act, userWS, &td, &pipe);
     opPre.Process();
     pipe.Reset();
@@ -78,7 +78,7 @@ extern "C" __global__ __aicore__ void quant_matmul_w4a8(
 
   // ── Phase 2: Matmul + dequant (V5 exact pattern) ──
   using YType = bfloat16_t;
-  QuantBatchMatmulV4Msd<int4b_t, int4b_t, float, YType, QuantType::K_C, true, false> op;
+  w4a8::QuantBatchMatmulV4Msd<int4b_t, int4b_t, float, YType, w4a8::QuantType::K_C, true, false> op;
 
   // V5 Init: x1, x2, v5_bias, x1_scale, x2_scale, y_scale, x1_offset, x2_offset,
   //           y_offset, outputBias, y, workspace, tilingData, pipe

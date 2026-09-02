@@ -22,21 +22,35 @@
 
 using namespace AscendC;  // NOLINT(build/namespaces)
 
-// NOTE: CGDR + helpers intentionally live in the GLOBAL namespace (not a user
-// namespace). On some CANN toolchains the op-kernel autogen expands the tiling
-// macros (REGISTER_TILING_DEFAULT / GET_TILING_DATA) and, when a user namespace
-// is open, emits the tiling-data type / tiling-key as <ns>::-qualified symbols
-// that then fail to resolve ("unknown type 'ChunkGatedDeltaRuleTilingData'",
-// "undeclared identifier '..._tilingkey'") and abort the device-kernel compile.
-// Keeping everything global matches the CANN sample-operator convention and
-// removes the namespace as an autogen variable. Each op is its own translation
-// unit, so global symbols here do not collide with other ops.
+// NOTE: only the kernel ENTRY (in chunk_gated_delta_rule.cpp) must stay in the
+// global namespace: on some CANN toolchains the op-kernel autogen expands the
+// tiling macros (REGISTER_TILING_DEFAULT / GET_TILING_DATA) and, when a user
+// namespace is open around them, emits the tiling-data type / tiling-key as
+// <ns>::-qualified symbols that then fail to resolve ("unknown type
+// 'ChunkGatedDeltaRuleTilingData'", "undeclared identifier '..._tilingkey'")
+// and aborts the device-kernel compile. The kernel class, its helpers and the
+// constants live in the ChunkGatedDeltaRule namespace (mirroring the ascend_a2
+// arch22 port); the entry refers to them with explicit qualification, which the
+// autogen tolerates (it is only an OPEN user namespace around the macros that
+// breaks symbol resolution). Each op is its own translation unit.
+namespace ChunkGatedDeltaRule {
+
 constexpr uint64_t BUFFER_NUM = 1;
 constexpr uint64_t FP16_NUM_PER_BLOCK = 16;
 constexpr uint64_t FP32_NUM_PER_BLOCK = 8;
 constexpr int64_t BLOCK_BYTES = 32;
 constexpr uint64_t CUBE_STAGE_SLOT_BYTES = 64 * 1024;
 constexpr uint32_t CUBE_STAGE_SLOT_COUNT = 2;
+// NZ fractal geometry on dav_m200: one fractal is 16x16 elements; one L0A/L0B
+// fractal row occupies 16 * 32 = 512 bytes.
+constexpr uint32_t kNzFractalDim = 16;
+constexpr uint32_t kNzFractalRowBytes = 512;
+// Maximum value of the 16-bit DataCopy stride fields (in 32-byte blocks).
+constexpr uint64_t kDataCopyStrideBlockLimit = 65535;
+// Chunk length that selects the fast (specialized) Cube path.
+constexpr uint32_t kCubeFastPathChunkLen = 64;
+// Number of columns processed per high-dimensional Mul in the beta-scale loops.
+constexpr uint32_t kVectorMulBlockSize = 64;
 // Number of Taylor-series terms used by ScalarExp to approximate exp on a scalar.
 constexpr int kExpTaylorTerms = 12;
 
@@ -113,8 +127,7 @@ class ChunkGatedDeltaRule {
     InitLocalBuffers();
   }
 
-  __aicore__ inline void CopyL0CToUb(LocalTensor<float> dst, LocalTensor<float> src,
-                                     const DataCopyParams &copyParams,
+  __aicore__ inline void CopyL0CToUb(LocalTensor<float> dst, LocalTensor<float> src, const DataCopyParams &copyParams,
                                      const DataCopyEnhancedParams &copyEnhanced) {
     event_t mToV = static_cast<event_t>(pipe_->FetchEventID(HardEvent::M_V));
     event_t vToM = static_cast<event_t>(pipe_->FetchEventID(HardEvent::V_M));
@@ -268,7 +281,8 @@ class ChunkGatedDeltaRule {
 
   __aicore__ inline bool IsCubeFastPath(uint32_t chunkLen, uint32_t avFp32) {
     if constexpr (kSpecializedDk != 0) {
-      return realK_ <= kSpecializedDk && chunkLen == 64 && vStepAligned_ == kSpecializedDk && avFp32 == kSpecializedDk;
+      return realK_ <= kSpecializedDk && chunkLen == kCubeFastPathChunkLen && vStepAligned_ == kSpecializedDk &&
+             avFp32 == kSpecializedDk;
     }
     return false;
   }
@@ -293,10 +307,10 @@ class ChunkGatedDeltaRule {
     uint32_t tailElements = realK_ % FP16_NUM_PER_BLOCK;
     uint32_t srcRowBlocks = gmRowElements / FP16_NUM_PER_BLOCK;
     uint32_t dstRowBlocks = alignK_ / FP16_NUM_PER_BLOCK;
-    bool canUseStridedFullBlocks = fullBlocks > 0 && gmRowElements % FP16_NUM_PER_BLOCK == 0 &&
-                                   alignK_ % FP16_NUM_PER_BLOCK == 0 && srcRowBlocks >= fullBlocks &&
-                                   dstRowBlocks >= fullBlocks && srcRowBlocks - fullBlocks <= 65535U &&
-                                   dstRowBlocks - fullBlocks <= 65535U;
+    bool canUseStridedFullBlocks =
+      fullBlocks > 0 && gmRowElements % FP16_NUM_PER_BLOCK == 0 && alignK_ % FP16_NUM_PER_BLOCK == 0 &&
+      srcRowBlocks >= fullBlocks && dstRowBlocks >= fullBlocks &&
+      srcRowBlocks - fullBlocks <= kDataCopyStrideBlockLimit && dstRowBlocks - fullBlocks <= kDataCopyStrideBlockLimit;
     if (likely(canUseStridedFullBlocks)) {
       DataCopyParams copyParams{static_cast<uint16_t>(rows), static_cast<uint16_t>(fullBlocks),
                                 static_cast<uint16_t>(srcRowBlocks - fullBlocks),
@@ -313,8 +327,8 @@ class ChunkGatedDeltaRule {
       uint32_t tailOffset = fullBlocks * FP16_NUM_PER_BLOCK;
       bool copyTailAsBlock = tailElements > FP16_NUM_PER_BLOCK / 2 && rows > 1 &&
                              gmRowElements % FP16_NUM_PER_BLOCK == 0 && alignK_ % FP16_NUM_PER_BLOCK == 0 &&
-                             srcRowBlocks > 0 && dstRowBlocks > 0 && srcRowBlocks - 1 <= 65535U &&
-                             dstRowBlocks - 1 <= 65535U;
+                             srcRowBlocks > 0 && dstRowBlocks > 0 && srcRowBlocks - 1 <= kDataCopyStrideBlockLimit &&
+                             dstRowBlocks - 1 <= kDataCopyStrideBlockLimit;
       if (copyTailAsBlock) {
         // Every row except the last one may safely read through the short tail
         // into the following token/head. Clear those extra elements below.
@@ -510,7 +524,7 @@ class ChunkGatedDeltaRule {
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
     CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
-    constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / 32;
+    constexpr uint16_t kNdBlockLen = kNzFractalDim * sizeof(float) / 32;
     constexpr uint16_t kNzSrcStride = (kBlock / 16 * 16 * 16 - 16) * sizeof(float) / 32;
     DataCopyParams nzToNdParams{static_cast<uint16_t>(kBlock / 16), kNdBlockLen, kNzSrcStride, 0};
     for (uint32_t row = 0; row < kBlock; ++row) {
@@ -522,9 +536,7 @@ class ChunkGatedDeltaRule {
   // Solve one 16x16 diagonal block entirely on the Vector pipe. For every
   // source row k, Gather extracts A[k+1:, k], Brcb expands its coefficients,
   // and one strided MulAddDst applies the outer-product update
-  //
   //   U[k+1:, :] += A[k+1:, k] * U[k, :].
-  //
   // The only scalar work left is the fixed 15-step dependency schedule and
   // setup of the 16 diagonal/offset entries; the O(block^3) arithmetic and
   // all coefficient application stay on PIPE_V.
@@ -638,7 +650,8 @@ class ChunkGatedDeltaRule {
   // buf is lower-triangular (excluding diagonal), with upper tri (incl diagonal) = 0.
   __aicore__ inline void ComputeRecursiveAttn(LocalTensor<float> &buf, uint32_t chunkLen, uint32_t ld) {
     constexpr uint32_t kBlockedScratchMinV = (kSpecializedDk == 0) ? 128 : kSpecializedDk;
-    if (likely(chunkLen == 64 && ld == 64 && vStepAligned_ >= kBlockedScratchMinV)) {
+    if (likely(chunkLen == kCubeFastPathChunkLen && ld == kCubeFastPathChunkLen &&
+               vStepAligned_ >= kBlockedScratchMinV)) {
       ComputeRecursiveAttnBlocked64(buf, ld);
       return;
     }
@@ -897,8 +910,8 @@ class ChunkGatedDeltaRule {
     uint8_t rowStride = static_cast<uint8_t>(alignK_ / FP32_NUM_PER_BLOCK);
     BinaryRepeatParams mulParams{1, 1, 0, rowStride, rowStride, 1};
     uint32_t kOffset = 0;
-    for (; kOffset + 64 <= realK_; kOffset += 64) {
-      Mul(kCumdecayFp32[kOffset], chunkKFp32[kOffset], betaBlocks, static_cast<uint64_t>(64),
+    for (; kOffset + kVectorMulBlockSize <= realK_; kOffset += kVectorMulBlockSize) {
+      Mul(kCumdecayFp32[kOffset], chunkKFp32[kOffset], betaBlocks, static_cast<uint64_t>(kVectorMulBlockSize),
           static_cast<uint8_t>(chunkLen), mulParams);
     }
     if (kOffset < realK_) {
@@ -978,7 +991,7 @@ class ChunkGatedDeltaRule {
   __aicore__ inline void ComputeAttnMatrix(uint64_t qkHead, int32_t t_start, uint32_t chunkLen) {
     uint32_t cs = chunkSize_;
     if constexpr (kSpecializedDk != 0) {
-      if (likely(realK_ <= kSpecializedDk && chunkLen == 64 && vStepAligned_ >= kSpecializedDk &&
+      if (likely(realK_ <= kSpecializedDk && chunkLen == kCubeFastPathChunkLen && vStepAligned_ >= kSpecializedDk &&
                  CanCacheAttnQuery(chunkLen))) {
         ComputeAttnProductsCube<kSpecializedDk>();
         ComputeRecursiveAttn(chunkScoresFp32, chunkLen, cs);
@@ -1095,13 +1108,13 @@ class ChunkGatedDeltaRule {
     DataCopy(a1Local, aStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * 16], a1Local[mBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / 16, kMatmulM / 16, 0, 0, false, 0});
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
+      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
     }
-    for (uint32_t kBlock = 0; kBlock < kMatmulK / 16; ++kBlock) {
-      LoadData(b2Local[kBlock * kMatmulN * 16], b1Local[kBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulN / 16, kMatmulK / 16, 0, 0, true, 0});
+    for (uint32_t kBlock = 0; kBlock < kMatmulK / kNzFractalDim; ++kBlock) {
+      LoadData(b2Local[kBlock * kMatmulN * kNzFractalDim], b1Local[kBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulN / kNzFractalDim, kMatmulK / kNzFractalDim, 0, 0, true, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
     WaitFlag<HardEvent::MTE1_M>(0);
@@ -1112,9 +1125,9 @@ class ChunkGatedDeltaRule {
     DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * 16], a1Local[mBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / 16, kMatmulM / 16, 0, 0, false, 0});
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
+      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
     WaitFlag<HardEvent::MTE1_M>(0);
@@ -1134,9 +1147,9 @@ class ChunkGatedDeltaRule {
     DataCopy(a1Local, nextAStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * 16], a1Local[mBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / 16, kMatmulM / 16, 0, 0, false, 0});
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
+      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
     WaitFlag<HardEvent::MTE1_M>(0);
@@ -1146,9 +1159,9 @@ class ChunkGatedDeltaRule {
     DataCopy(a1Local, nextAResidualStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * 16], a1Local[mBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / 16, kMatmulM / 16, 0, 0, false, 0});
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
+      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
     WaitFlag<HardEvent::MTE1_M>(0);
@@ -1171,22 +1184,24 @@ class ChunkGatedDeltaRule {
     attentionSync.WaitFlag(0);
   }
 
-  __aicore__ inline void CopyAttnCubeResult(LocalTensor<float> &c1Local, LocalTensor<float> dst) {
+  __aicore__ inline void CopyAttnCubeResult(const LocalTensor<float> &c1Local, LocalTensor<float> dst) {
     constexpr uint32_t kMatmulM = 64;
     constexpr uint32_t kMatmulN = 64;
     SetFlag<HardEvent::M_MTE1>(0);
     WaitFlag<HardEvent::M_MTE1>(0);
     LocalTensor<float> cNz = chunkVFp32;
-    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(kMatmulM / 16), 0, 0};
+    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim),
+                               static_cast<uint16_t>(kMatmulM / kNzFractalDim), 0, 0};
     DataCopyEnhancedParams cCopyEnhanced;
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
     CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
-    constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / 32;
-    constexpr uint16_t kNzSrcStride = (kMatmulM / 16 * 16 * 16 - 16) * sizeof(float) / 32;
-    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / 16), kNdBlockLen, kNzSrcStride, 0};
+    constexpr uint16_t kNdBlockLen = kNzFractalDim * sizeof(float) / 32;
+    constexpr uint16_t kNzSrcStride =
+      (kMatmulM / kNzFractalDim * kNzFractalDim * kNzFractalDim - kNzFractalDim) * sizeof(float) / 32;
+    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim), kNdBlockLen, kNzSrcStride, 0};
     for (uint32_t row = 0; row < kMatmulM; ++row) {
-      DataCopy(dst[row * kMatmulN], cNz[row * 16], nzToNdParams);
+      DataCopy(dst[row * kMatmulN], cNz[row * kNzFractalDim], nzToNdParams);
     }
     PipeBarrier<PIPE_ALL>();
   }
@@ -1202,7 +1217,7 @@ class ChunkGatedDeltaRule {
     decaySync.SetFlag(0);
     decaySync.WaitFlag(0);
     if constexpr (kSpecializedDk != 0) {
-      if (likely(realK_ <= kSpecializedDk && chunkLen == 64 && vStepAligned_ >= kSpecializedDk)) {
+      if (likely(realK_ <= kSpecializedDk && chunkLen == kCubeFastPathChunkLen && vStepAligned_ >= kSpecializedDk)) {
         ComputeKCumdecayCube<kSpecializedDk>();
         return;
       }
@@ -1266,13 +1281,13 @@ class ChunkGatedDeltaRule {
     DataCopy(b1Local, bStageGm, Nd2NzParams{1, kMatmulK, kMatmulN, 0, kMatmulN, kMatmulK, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * 16], a1Local[mBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / 16, kMatmulM / 16, 0, 0, false, 0});
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
+      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
     }
-    for (uint32_t kBlock = 0; kBlock < kMatmulK / 16; ++kBlock) {
-      LoadData(b2Local[kBlock * kMatmulN * 16], b1Local[kBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulN / 16, kMatmulK / 16, 0, 0, true, 0});
+    for (uint32_t kBlock = 0; kBlock < kMatmulK / kNzFractalDim; ++kBlock) {
+      LoadData(b2Local[kBlock * kMatmulN * kNzFractalDim], b1Local[kBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulN / kNzFractalDim, kMatmulK / kNzFractalDim, 0, 0, true, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
     WaitFlag<HardEvent::MTE1_M>(0);
@@ -1282,9 +1297,9 @@ class ChunkGatedDeltaRule {
     DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * 16], a1Local[mBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / 16, kMatmulM / 16, 0, 0, false, 0});
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
+      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
     WaitFlag<HardEvent::MTE1_M>(0);
@@ -1292,14 +1307,16 @@ class ChunkGatedDeltaRule {
     SetFlag<HardEvent::M_MTE1>(0);
     WaitFlag<HardEvent::M_MTE1>(0);
     LocalTensor<float> cNz = chunkVFp32;
-    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(kMatmulM / 16), 0, 0};
+    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim),
+                               static_cast<uint16_t>(kMatmulM / kNzFractalDim), 0, 0};
     DataCopyEnhancedParams cCopyEnhanced;
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
     CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
-    constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / 32;
-    constexpr uint16_t kNzSrcStride = (kMatmulM / 16 * 16 * 16 - 16) * sizeof(float) / 32;
-    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / 16), kNdBlockLen, kNzSrcStride, 0};
+    constexpr uint16_t kNdBlockLen = kNzFractalDim * sizeof(float) / 32;
+    constexpr uint16_t kNzSrcStride =
+      (kMatmulM / kNzFractalDim * kNzFractalDim * kNzFractalDim - kNzFractalDim) * sizeof(float) / 32;
+    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim), kNdBlockLen, kNzSrcStride, 0};
     for (uint32_t row = 0; row < kMatmulM; ++row) {
       DataCopy(chunkKFp32[row * kMatmulN], cNz[row * 16], nzToNdParams);
     }
@@ -1352,8 +1369,8 @@ class ChunkGatedDeltaRule {
     uint64_t srcRowGapBytes = srcRowGapElems * sizeof(inType);
     uint64_t dstRowGapBytes = static_cast<uint64_t>(avFp32 - curV) * sizeof(inType);
     if (likely((curV * sizeof(inType)) % BLOCK_BYTES == 0 && srcRowGapBytes % BLOCK_BYTES == 0 &&
-               dstRowGapBytes % BLOCK_BYTES == 0 && srcRowGapBytes / BLOCK_BYTES <= 65535 &&
-               dstRowGapBytes / BLOCK_BYTES <= 65535)) {
+               dstRowGapBytes % BLOCK_BYTES == 0 && srcRowGapBytes / BLOCK_BYTES <= kDataCopyStrideBlockLimit &&
+               dstRowGapBytes / BLOCK_BYTES <= kDataCopyStrideBlockLimit)) {
       LocalTensor<inType> valueLocal = chunkAttnOutFp32.template ReinterpretCast<inType>();
       uint64_t vOff = (static_cast<uint64_t>(t_start) * NV_ + head_i) * realV_ + v_i;
       uint16_t rowBlocks = static_cast<uint16_t>(curV * sizeof(inType) / BLOCK_BYTES);
@@ -1391,8 +1408,8 @@ class ChunkGatedDeltaRule {
       uint8_t rowStride = static_cast<uint8_t>(avFp32 / FP32_NUM_PER_BLOCK);
       BinaryRepeatParams mulParams{1, 1, 0, rowStride, rowStride, 1};
       uint32_t vOffset = 0;
-      for (; vOffset + 64 <= avFp32; vOffset += 64) {
-        Mul(chunkVFp32[vOffset], chunkVFp32[vOffset], betaBlocks, static_cast<uint64_t>(64),
+      for (; vOffset + kVectorMulBlockSize <= avFp32; vOffset += kVectorMulBlockSize) {
+        Mul(chunkVFp32[vOffset], chunkVFp32[vOffset], betaBlocks, static_cast<uint64_t>(kVectorMulBlockSize),
             static_cast<uint8_t>(chunkLen), mulParams);
       }
       if (vOffset < avFp32) {
@@ -1660,12 +1677,12 @@ class ChunkGatedDeltaRule {
     DataCopy(b1Local, bStageGm, Nd2NzParams{1, kAttnK, kMatmulN, 0, kMatmulN, kAttnK, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kAttnK * 16], a1Local[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kAttnK / 16, kMatmulM / 16, 0, 0, false, 0});
     }
     for (uint32_t kBlock = 0; kBlock < kAttnK / 16; ++kBlock) {
-      LoadData(b2Local[kBlock * kMatmulN * 16], b1Local[kBlock * 512 / sizeof(half)],
+      LoadData(b2Local[kBlock * kMatmulN * kNzFractalDim], b1Local[kBlock * kNzFractalRowBytes / sizeof(half)],
                LoadData2DParams{0, kMatmulN / 16, kAttnK / 16, 0, 0, true, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
@@ -1677,7 +1694,7 @@ class ChunkGatedDeltaRule {
     DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kAttnK, 0, kAttnK, kMatmulM, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kAttnK * 16], a1Local[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kAttnK / 16, kMatmulM / 16, 0, 0, false, 0});
     }
@@ -1700,12 +1717,12 @@ class ChunkGatedDeltaRule {
     DataCopy(b1Local, bStageGm, Nd2NzParams{1, kStateK, kMatmulN, 0, kMatmulN, kStateK, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kStateK * 16], a1Local[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kStateK / 16, kMatmulM / 16, 0, 0, false, 0});
     }
     for (uint32_t kBlock = 0; kBlock < kStateK / 16; ++kBlock) {
-      LoadData(b2Local[kBlock * kMatmulN * 16], b1Local[kBlock * 512 / sizeof(half)],
+      LoadData(b2Local[kBlock * kMatmulN * kNzFractalDim], b1Local[kBlock * kNzFractalRowBytes / sizeof(half)],
                LoadData2DParams{0, kMatmulN / 16, kStateK / 16, 0, 0, true, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
@@ -1717,7 +1734,7 @@ class ChunkGatedDeltaRule {
     DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kStateK, 0, kStateK, kMatmulM, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kStateK * 16], a1Local[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kStateK / 16, kMatmulM / 16, 0, 0, false, 0});
     }
@@ -1728,17 +1745,19 @@ class ChunkGatedDeltaRule {
     SetFlag<HardEvent::M_MTE1>(0);
     WaitFlag<HardEvent::M_MTE1>(0);
     LocalTensor<float> cNz = chunkKFp32;
-    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(kMatmulM / 16), 0, 0};
+    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim),
+                               static_cast<uint16_t>(kMatmulM / kNzFractalDim), 0, 0};
     DataCopyEnhancedParams cCopyEnhanced;
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
     CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
 
-    constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / 32;
-    constexpr uint16_t kNzSrcStride = (kMatmulM / 16 * 16 * 16 - 16) * sizeof(float) / 32;
-    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / 16), kNdBlockLen, kNzSrcStride, 0};
+    constexpr uint16_t kNdBlockLen = kNzFractalDim * sizeof(float) / 32;
+    constexpr uint16_t kNzSrcStride =
+      (kMatmulM / kNzFractalDim * kNzFractalDim * kNzFractalDim - kNzFractalDim) * sizeof(float) / 32;
+    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim), kNdBlockLen, kNzSrcStride, 0};
     for (uint32_t row = 0; row < kMatmulM; ++row) {
-      DataCopy(chunkVFp32[row * kMatmulN], cNz[row * 16], nzToNdParams);
+      DataCopy(chunkVFp32[row * kMatmulN], cNz[row * kNzFractalDim], nzToNdParams);
     }
     PipeBarrier<PIPE_ALL>();
   }
@@ -1789,13 +1808,13 @@ class ChunkGatedDeltaRule {
     DataCopy(b1Local, bStageGm, Nd2NzParams{1, kMatmulK, kMatmulN, 0, kMatmulN, kMatmulK, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * 16], a1Local[mBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / 16, kMatmulM / 16, 0, 0, false, 0});
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
+      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
     }
-    for (uint32_t kBlock = 0; kBlock < kMatmulK / 16; ++kBlock) {
-      LoadData(b2Local[kBlock * kMatmulN * 16], b1Local[kBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulN / 16, kMatmulK / 16, 0, 0, true, 0});
+    for (uint32_t kBlock = 0; kBlock < kMatmulK / kNzFractalDim; ++kBlock) {
+      LoadData(b2Local[kBlock * kMatmulN * kNzFractalDim], b1Local[kBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulN / kNzFractalDim, kMatmulK / kNzFractalDim, 0, 0, true, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
     WaitFlag<HardEvent::MTE1_M>(0);
@@ -1806,9 +1825,9 @@ class ChunkGatedDeltaRule {
     DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * 16], a1Local[mBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / 16, kMatmulM / 16, 0, 0, false, 0});
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
+      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
     WaitFlag<HardEvent::MTE1_M>(0);
@@ -1817,15 +1836,17 @@ class ChunkGatedDeltaRule {
     SetFlag<HardEvent::M_MTE1>(0);
     WaitFlag<HardEvent::M_MTE1>(0);
     LocalTensor<float> cNz = kCumdecayFp32;
-    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(kMatmulM / 16), 0, 0};
+    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim),
+                               static_cast<uint16_t>(kMatmulM / kNzFractalDim), 0, 0};
     DataCopyEnhancedParams cCopyEnhanced;
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
     CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
 
-    constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / 32;
-    constexpr uint16_t kNzSrcStride = (kMatmulM / 16 * 16 * 16 - 16) * sizeof(float) / 32;
-    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / 16), kNdBlockLen, kNzSrcStride, 0};
+    constexpr uint16_t kNdBlockLen = kNzFractalDim * sizeof(float) / 32;
+    constexpr uint16_t kNzSrcStride =
+      (kMatmulM / kNzFractalDim * kNzFractalDim * kNzFractalDim - kNzFractalDim) * sizeof(float) / 32;
+    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim), kNdBlockLen, kNzSrcStride, 0};
     for (uint32_t row = 0; row < kMatmulM; ++row) {
       DataCopy(chunkAttnOutFp32[row * kMatmulN], cNz[row * 16], nzToNdParams);
     }
@@ -1870,13 +1891,13 @@ class ChunkGatedDeltaRule {
     DataCopy(b1Local, bStageGm, Nd2NzParams{1, kMatmulK, kMatmulN, 0, kMatmulN, kMatmulK, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * 16], a1Local[mBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / 16, kMatmulM / 16, 0, 0, false, 0});
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
+      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
     }
-    for (uint32_t kBlock = 0; kBlock < kMatmulK / 16; ++kBlock) {
-      LoadData(b2Local[kBlock * kMatmulN * 16], b1Local[kBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulN / 16, kMatmulK / 16, 0, 0, true, 0});
+    for (uint32_t kBlock = 0; kBlock < kMatmulK / kNzFractalDim; ++kBlock) {
+      LoadData(b2Local[kBlock * kMatmulN * kNzFractalDim], b1Local[kBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulN / kNzFractalDim, kMatmulK / kNzFractalDim, 0, 0, true, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
     WaitFlag<HardEvent::MTE1_M>(0);
@@ -1889,9 +1910,9 @@ class ChunkGatedDeltaRule {
     DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kMatmulK, 0, kMatmulK, kMatmulM, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
-      LoadData(a2Local[mBlock * kMatmulK * 16], a1Local[mBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulK / 16, kMatmulM / 16, 0, 0, false, 0});
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
+      LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulK / kNzFractalDim, kMatmulM / kNzFractalDim, 0, 0, false, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
     WaitFlag<HardEvent::MTE1_M>(0);
@@ -1903,7 +1924,8 @@ class ChunkGatedDeltaRule {
     LocalTensor<float> cNz = chunkKFp32;
     // On dav_m200, raw Mmad writes L0C in NZ order and Fixpipe is unavailable.
     // Copy N/16 fractals, each containing M/16 cube blocks, into UB in NZ order.
-    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(kMatmulM / 16), 0, 0};
+    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim),
+                               static_cast<uint16_t>(kMatmulM / kNzFractalDim), 0, 0};
     DataCopyEnhancedParams cCopyEnhanced;
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
     CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
@@ -1911,11 +1933,12 @@ class ChunkGatedDeltaRule {
 
     // Convert the UB NZ matrix to row-major ND one output row at a time.
     // Each row contributes 16 FP32 values from every N fractal.
-    constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / 32;
-    constexpr uint16_t kNzSrcStride = (kMatmulM / 16 * 16 * 16 - 16) * sizeof(float) / 32;
-    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / 16), kNdBlockLen, kNzSrcStride, 0};
+    constexpr uint16_t kNdBlockLen = kNzFractalDim * sizeof(float) / 32;
+    constexpr uint16_t kNzSrcStride =
+      (kMatmulM / kNzFractalDim * kNzFractalDim * kNzFractalDim - kNzFractalDim) * sizeof(float) / 32;
+    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim), kNdBlockLen, kNzSrcStride, 0};
     for (uint32_t row = 0; row < kMatmulM; ++row) {
-      DataCopy(chunkVFp32[row * kMatmulN], cNz[row * 16], nzToNdParams);
+      DataCopy(chunkVFp32[row * kMatmulN], cNz[row * kNzFractalDim], nzToNdParams);
     }
     PipeBarrier<PIPE_ALL>();
     Muls(chunkVFp32, chunkVFp32, -1.0f, kCElements);
@@ -1981,12 +2004,12 @@ class ChunkGatedDeltaRule {
     DataCopy(b1Local, bStageGm, Nd2NzParams{1, kStateK, kMatmulN, 0, kMatmulN, kStateK, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kStateK * 16], a1Local[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kStateK / 16, kMatmulM / 16, 0, 0, false, 0});
     }
     for (uint32_t kBlock = 0; kBlock < kStateK / 16; ++kBlock) {
-      LoadData(b2Local[kBlock * kMatmulN * 16], b1Local[kBlock * 512 / sizeof(half)],
+      LoadData(b2Local[kBlock * kMatmulN * kNzFractalDim], b1Local[kBlock * kNzFractalRowBytes / sizeof(half)],
                LoadData2DParams{0, kMatmulN / 16, kStateK / 16, 0, 0, true, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
@@ -1998,7 +2021,7 @@ class ChunkGatedDeltaRule {
     DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kStateK, 0, kStateK, kMatmulM, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kStateK * 16], a1Local[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kStateK / 16, kMatmulM / 16, 0, 0, false, 0});
     }
@@ -2024,12 +2047,12 @@ class ChunkGatedDeltaRule {
     DataCopy(b1Local, bStageGm, Nd2NzParams{1, kAttnK, kMatmulN, 0, kMatmulN, kAttnK, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kAttnK * 16], a1Local[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kAttnK / 16, kMatmulM / 16, 0, 0, false, 0});
     }
     for (uint32_t kBlock = 0; kBlock < kAttnK / 16; ++kBlock) {
-      LoadData(b2Local[kBlock * kMatmulN * 16], b1Local[kBlock * 512 / sizeof(half)],
+      LoadData(b2Local[kBlock * kMatmulN * kNzFractalDim], b1Local[kBlock * kNzFractalRowBytes / sizeof(half)],
                LoadData2DParams{0, kMatmulN / 16, kAttnK / 16, 0, 0, true, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
@@ -2041,7 +2064,7 @@ class ChunkGatedDeltaRule {
     DataCopy(a1Local, aResidualStageGm, Nd2NzParams{1, kMatmulM, kAttnK, 0, kAttnK, kMatmulM, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t mBlock = 0; mBlock < kMatmulM / 16; ++mBlock) {
+    for (uint32_t mBlock = 0; mBlock < kMatmulM / kNzFractalDim; ++mBlock) {
       LoadData(a2Local[mBlock * kAttnK * 16], a1Local[mBlock * 512 / sizeof(half)],
                LoadData2DParams{0, kAttnK / 16, kMatmulM / 16, 0, 0, false, 0});
     }
@@ -2052,15 +2075,17 @@ class ChunkGatedDeltaRule {
     SetFlag<HardEvent::M_MTE1>(0);
     WaitFlag<HardEvent::M_MTE1>(0);
     LocalTensor<float> cNz = kCumdecayFp32;
-    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / 16), static_cast<uint16_t>(kMatmulM / 16), 0, 0};
+    DataCopyParams cCopyParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim),
+                               static_cast<uint16_t>(kMatmulM / kNzFractalDim), 0, 0};
     DataCopyEnhancedParams cCopyEnhanced;
     cCopyEnhanced.blockMode = BlockMode::BLOCK_MODE_MATRIX;
     CopyL0CToUb(cNz, c1Local, cCopyParams, cCopyEnhanced);
     PipeBarrier<PIPE_ALL>();
 
-    constexpr uint16_t kNdBlockLen = 16 * sizeof(float) / 32;
-    constexpr uint16_t kNzSrcStride = (kMatmulM / 16 * 16 * 16 - 16) * sizeof(float) / 32;
-    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / 16), kNdBlockLen, kNzSrcStride, 0};
+    constexpr uint16_t kNdBlockLen = kNzFractalDim * sizeof(float) / 32;
+    constexpr uint16_t kNzSrcStride =
+      (kMatmulM / kNzFractalDim * kNzFractalDim * kNzFractalDim - kNzFractalDim) * sizeof(float) / 32;
+    DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim), kNdBlockLen, kNzSrcStride, 0};
     for (uint32_t row = 0; row < kMatmulM; ++row) {
       DataCopy(chunkAttnOutFp32[row * kMatmulN], cNz[row * 16], nzToNdParams);
     }
@@ -2219,9 +2244,9 @@ class ChunkGatedDeltaRule {
     DataCopy(b1Local, bStageGm, Nd2NzParams{1, kMatmulK, kMatmulN, 0, kMatmulN, kMatmulK, 1, 0});
     SetFlag<HardEvent::MTE2_MTE1>(0);
     WaitFlag<HardEvent::MTE2_MTE1>(0);
-    for (uint32_t kBlock = 0; kBlock < kMatmulK / 16; ++kBlock) {
-      LoadData(b2Local[kBlock * kMatmulN * 16], b1Local[kBlock * 512 / sizeof(half)],
-               LoadData2DParams{0, kMatmulN / 16, kMatmulK / 16, 0, 0, true, 0});
+    for (uint32_t kBlock = 0; kBlock < kMatmulK / kNzFractalDim; ++kBlock) {
+      LoadData(b2Local[kBlock * kMatmulN * kNzFractalDim], b1Local[kBlock * kNzFractalRowBytes / sizeof(half)],
+               LoadData2DParams{0, kMatmulN / kNzFractalDim, kMatmulK / kNzFractalDim, 0, 0, true, 0});
     }
     SetFlag<HardEvent::MTE1_M>(0);
     WaitFlag<HardEvent::MTE1_M>(0);
@@ -2235,7 +2260,7 @@ class ChunkGatedDeltaRule {
       SetFlag<HardEvent::MTE2_MTE1>(0);
       WaitFlag<HardEvent::MTE2_MTE1>(0);
       for (uint32_t mBlock = 0; mBlock < curTileM / 16; ++mBlock) {
-        LoadData(a2Local[mBlock * kMatmulK * 16], a1Local[mBlock * 512 / sizeof(half)],
+        LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
                  LoadData2DParams{0, kMatmulK / 16, static_cast<uint16_t>(curTileM / 16), 0, 0, false, 0});
       }
       SetFlag<HardEvent::MTE1_M>(0);
@@ -2250,7 +2275,7 @@ class ChunkGatedDeltaRule {
       SetFlag<HardEvent::MTE2_MTE1>(0);
       WaitFlag<HardEvent::MTE2_MTE1>(0);
       for (uint32_t mBlock = 0; mBlock < curTileM / 16; ++mBlock) {
-        LoadData(a2Local[mBlock * kMatmulK * 16], a1Local[mBlock * 512 / sizeof(half)],
+        LoadData(a2Local[mBlock * kMatmulK * kNzFractalDim], a1Local[mBlock * kNzFractalRowBytes / sizeof(half)],
                  LoadData2DParams{0, kMatmulK / 16, static_cast<uint16_t>(curTileM / 16), 0, 0, false, 0});
       }
       SetFlag<HardEvent::MTE1_M>(0);
@@ -2470,5 +2495,7 @@ class ChunkGatedDeltaRule {
   float scale_;
   uint64_t blockIdx_;
 };
+
+}  // namespace ChunkGatedDeltaRule
 
 #endif  // CHUNK_GATED_DELTA_RULE_KERNEL_H_

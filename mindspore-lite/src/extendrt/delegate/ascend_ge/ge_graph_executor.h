@@ -170,6 +170,9 @@ class GeGraphExecutor : public LiteGraphExecutor {
                         std::vector<mindspore::MSTensor> *outputs, std::vector<GeTensor> *ge_outputs);
   Status HandleNormalOutputs(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                              std::vector<mindspore::MSTensor> *outputs, std::vector<GeTensor> *ge_outputs);
+  // Sub-step of HandleNormalOutputs: copy one GE device-placed (or user device-buffered)
+  // output to the user buffer via D2D / H2D / D2H, based on GE placement and buffer kinds.
+  Status CopyDeviceOutput(const GeTensor &tensor, MSTensor &output, void *user_device_buf, bool ge_out_is_device);
   // Check whether the graph supports zero-copy: dynamic-bucket (ge.dynamicNodeType=1)
   // or static graphs are allowed; purely dynamic graphs are not.
   bool IsDynamicBucketOrStatic(uint32_t graph_id) const;

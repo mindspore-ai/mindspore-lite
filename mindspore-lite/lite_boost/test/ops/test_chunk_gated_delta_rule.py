@@ -186,12 +186,13 @@ def _run_op(data, dtype, g=_DEFAULT_G, beta=None):
 
 
 def _measure_latency_ms(data, dtype, warmup=5, repeats=20):
+    """Measure op latency (ms per call) after warm-up; op outputs are unused."""
     for _ in range(warmup):
-        _run_op(data, dtype)
+        _ = _run_op(data, dtype)
     torch.npu.synchronize()
     start = time.perf_counter()
     for _ in range(repeats):
-        _run_op(data, dtype)
+        _ = _run_op(data, dtype)
     torch.npu.synchronize()
     return (time.perf_counter() - start) * 1000 / repeats
 
@@ -202,6 +203,7 @@ class TestChunkGatedDeltaRule:
     """Verify the shared interface, optional input, accuracy, and latency."""
 
     def setup_method(self):
+        """Set up device and per-test tensor-shape fixtures."""
         self.device = torch.device("npu:0")
         torch.npu.set_device(self.device)
         self.batch_size, self.num_heads, self.seq_len = 1, 8, 64

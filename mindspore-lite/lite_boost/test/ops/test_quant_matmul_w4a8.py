@@ -62,21 +62,23 @@ TEST_SHAPES = [
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _cosine_similarity(a, b):
     """Cosine similarity between two tensors (flattened to f32)."""
     a_f32 = a.float().reshape(-1)
     b_f32 = b.float().reshape(-1)
     if a_f32.norm() == 0 or b_f32.norm() == 0:
         return 1.0 if a_f32.norm() == b_f32.norm() else 0.0
+    # pylint: disable-next=not-callable
     return F.cosine_similarity(a_f32.unsqueeze(0), b_f32.unsqueeze(0)).item()
 
 
-def _pack_weight_int4(w_npu, K, N):
-    """Per-channel absmax/7 quantise BF16 weight → int4, pack to int32 [N, K/8].
+def _pack_weight_int4(w_npu, k, n):
+    """Per-channel absmax/7 quantise BF16 weight → int4, pack to int32 [n, k/8].
 
     Returns (w_packed, w_scale, bias) on NPU.
     """
-    k8 = K // 8
+    k8 = k // 8
     w_fp32 = w_npu.cpu().float().numpy()
 
     w_scale = np.abs(w_fp32).max(axis=0).clip(min=1e-8) / 7.0
@@ -84,30 +86,31 @@ def _pack_weight_int4(w_npu, K, N):
 
     bias_np = (8.0 * w_int4.astype(np.float32).sum(axis=0)).astype(np.float32)
 
-    w_grp = w_int4.reshape(k8, 8, N).astype(np.int32) & 0xF
+    w_grp = w_int4.reshape(k8, 8, n).astype(np.int32) & 0xF
+    # pylint: disable-next=too-many-function-args
     shifts = np.array([0, 4, 8, 12, 16, 20, 24, 28], dtype=np.int32).reshape(1, 8, 1)
     w_packed = (w_grp.astype(np.int64) << shifts).sum(axis=1)
     w_packed = w_packed.T.astype(np.int32).ravel()
 
-    w_packed_t = torch.from_numpy(w_packed).to(torch.int32).reshape(N, k8).npu()
+    w_packed_t = torch.from_numpy(w_packed).to(torch.int32).reshape(n, k8).npu()
     w_scale_t = torch.from_numpy(w_scale.copy()).float().npu()
     bias_t = torch.from_numpy(bias_np.copy()).float().npu()
     return w_packed_t, w_scale_t, bias_t
 
 
-def _generate_test_data(M, K, N, device, seed=42):
-    """Build test tensors for shape [M,K] × [K,N] with K padded to 32-align.
+def _generate_test_data(m, k, n, device, seed=42):
+    """Build test tensors for shape [m,k] × [k,n] with k padded to 32-align.
 
     Returns dict with all inputs for both W4A8 and A8W8 paths.
     """
-    k_pad = ((K + 31) // 32) * 32
+    k_pad = ((k + 31) // 32) * 32
     rng = np.random.RandomState(seed)
 
-    x_bf16 = torch.from_numpy(rng.randn(M, K).astype(np.float32)).to(torch.bfloat16)
-    w_bf16 = torch.from_numpy(rng.randn(K, N).astype(np.float32)).to(torch.bfloat16)
-    if K != k_pad:
-        x_bf16 = F.pad(x_bf16, (0, k_pad - K))
-        w_bf16 = F.pad(w_bf16, (0, 0, 0, k_pad - K))
+    x_bf16 = torch.from_numpy(rng.randn(m, k).astype(np.float32)).to(torch.bfloat16)
+    w_bf16 = torch.from_numpy(rng.randn(k, n).astype(np.float32)).to(torch.bfloat16)
+    if k != k_pad:
+        x_bf16 = F.pad(x_bf16, (0, k_pad - k))
+        w_bf16 = F.pad(w_bf16, (0, 0, 0, k_pad - k))
 
     x_npu = x_bf16.to(device)
     w_npu = w_bf16.to(device)
@@ -116,7 +119,7 @@ def _generate_test_data(M, K, N, device, seed=42):
     x_int8, x_scale = torch_npu.npu_dynamic_quant(x_npu)
 
     # W4A8 weight packing
-    w_packed, w4_scale, bias = _pack_weight_int4(w_npu, k_pad, N)
+    w_packed, w4_scale, bias = _pack_weight_int4(w_npu, k_pad, n)
 
     # A8W8 weight quantisation
     w_int8_t, w8_scale = torch_npu.npu_dynamic_quant(w_npu.T)
@@ -136,7 +139,7 @@ def _generate_test_data(M, K, N, device, seed=42):
         "w_int8": w_int8,
         "w8_scale": w8_scale,
         "out_bf16": out_bf16,
-        "M": M, "K": K, "N": N, "k_pad": k_pad,
+        "M": m, "K": k, "N": n, "k_pad": k_pad,
     }
 
 
@@ -161,14 +164,14 @@ class TestQuantMatmulW4a8:
 
         # Warm-up: prime the NPU stream and JIT-compile the AscendC kernel
         # so that subsequent timed runs are not skewed by cold-start overhead.
-        M, K, N = 128, 256, 128
-        wx = torch.randn(M, K, dtype=torch.bfloat16, device=self.device)
-        ww = torch.randn(K, N, dtype=torch.bfloat16, device=self.device)
+        warmup_m, warmup_k, warmup_n = 128, 256, 128
+        wx = torch.randn(warmup_m, warmup_k, dtype=torch.bfloat16, device=self.device)
+        ww = torch.randn(warmup_k, warmup_n, dtype=torch.bfloat16, device=self.device)
         torch.matmul(wx, ww)
         torch.npu.synchronize()
 
         wx_int8, wx_scale = torch_npu.npu_dynamic_quant(wx)
-        wp, ws, wb = _pack_weight_int4(ww, K, N)
+        wp, ws, wb = _pack_weight_int4(ww, warmup_k, warmup_n)
         lite_ops.quant_matmul_w4a8(wx_int8, wp, ws, wb, pertoken_scale=wx_scale)
         torch.npu.synchronize()
 
@@ -178,21 +181,21 @@ class TestQuantMatmulW4a8:
 
     @pytest.mark.ascend_a2
     @pytest.mark.L0
-    @pytest.mark.parametrize("M,K,N", TEST_SHAPES)
-    def test_output_shape_and_finite(self, M, K, N):
+    @pytest.mark.parametrize("m,k,n", TEST_SHAPES)
+    def test_output_shape_and_finite(self, m, k, n):
         """Output has correct shape [M,N], dtype bf16, and all values finite."""
-        d = _generate_test_data(M, K, N, self.device)
+        d = _generate_test_data(m, k, n, self.device)
         out = lite_ops.quant_matmul_w4a8(
             d["x_int8"], d["w_packed"], d["w4_scale"], d["bias"],
             pertoken_scale=d["x_scale"])
         torch.npu.synchronize()
 
-        assert out.shape == (M, N), \
-            f"expected ({M},{N}), got {tuple(out.shape)}"
+        assert out.shape == (m, n), \
+            f"expected ({m},{n}), got {tuple(out.shape)}"
         assert out.dtype == torch.bfloat16, \
             f"expected bfloat16, got {out.dtype}"
         assert torch.isfinite(out).all(), \
-            f"output has NaN/Inf for shape ({M},{K},{N})"
+            f"output has NaN/Inf for shape ({m},{k},{n})"
 
     # ------------------------------------------------------------------
     # Accuracy vs BF16 reference
@@ -200,19 +203,19 @@ class TestQuantMatmulW4a8:
 
     @pytest.mark.ascend_a2
     @pytest.mark.L0
-    @pytest.mark.parametrize("M,K,N", TEST_SHAPES)
-    def test_accuracy_vs_bf16_ref(self, M, K, N):
+    @pytest.mark.parametrize("m,k,n", TEST_SHAPES)
+    def test_accuracy_vs_bf16_ref(self, m, k, n):
         """W4A8 cosine similarity vs torch.matmul BF16 reference ≥ 0.98."""
-        d = _generate_test_data(M, K, N, self.device)
+        d = _generate_test_data(m, k, n, self.device)
         out = lite_ops.quant_matmul_w4a8(
             d["x_int8"], d["w_packed"], d["w4_scale"], d["bias"],
             pertoken_scale=d["x_scale"])
         torch.npu.synchronize()
 
         cos = _cosine_similarity(out.cpu(), d["out_bf16"].cpu())
-        logging.info("[accuracy %dx%dx%d] cos vs BF16 ref = %.6f", M, K, N, cos)
+        logging.info("[accuracy %dx%dx%d] cos vs BF16 ref = %.6f", m, k, n, cos)
         assert cos >= COSINE_THRESHOLD, \
-            f"cosine {cos:.6f} < {COSINE_THRESHOLD} for shape ({M},{K},{N})"
+            f"cosine {cos:.6f} < {COSINE_THRESHOLD} for shape ({m},{k},{n})"
 
     # ------------------------------------------------------------------
     # Optional output_bias
@@ -222,15 +225,15 @@ class TestQuantMatmulW4a8:
     @pytest.mark.L0
     def test_optional_output_bias(self):
         """output_bias=None (default zeros) matches explicit zero output_bias."""
-        M, K, N = 64, 128, 128
-        d = _generate_test_data(M, K, N, self.device)
+        m, k, n = 64, 128, 128
+        d = _generate_test_data(m, k, n, self.device)
 
         out_default = lite_ops.quant_matmul_w4a8(
             d["x_int8"], d["w_packed"], d["w4_scale"], d["bias"],
             pertoken_scale=d["x_scale"])  # output_bias=None
         torch.npu.synchronize()
 
-        zeros = torch.zeros(N, dtype=torch.float32, device=self.device)
+        zeros = torch.zeros(n, dtype=torch.float32, device=self.device)
         out_explicit = lite_ops.quant_matmul_w4a8(
             d["x_int8"], d["w_packed"], d["w4_scale"], d["bias"],
             pertoken_scale=d["x_scale"], output_bias=zeros)
@@ -247,12 +250,15 @@ class TestQuantMatmulW4a8:
     # ------------------------------------------------------------------
 
     @pytest.mark.ascend_a2
-    @pytest.mark.parametrize("M,K,N", TEST_SHAPES)
-    def test_performance_vs_a8w8(self, M, K, N):
-        """W4A8 vs A8W8 timing.  Only production shape (8192,3072,3072) has a
-        W4A8 ≤ A8W8 × 2 threshold; all other shapes are informational."""
-        PROD_SHAPE = (8192, 3072, 3072)
-        d = _generate_test_data(M, K, N, self.device)
+    @pytest.mark.parametrize("m,k,n", TEST_SHAPES)
+    def test_performance_vs_a8w8(self, m, k, n):
+        """W4A8 vs A8W8 timing; only the production shape enforces a threshold.
+
+        Only production shape (8192,3072,3072) has a W4A8 ≤ A8W8 × 2 threshold;
+        all other shapes are informational.
+        """
+        prod_shape = (8192, 3072, 3072)
+        d = _generate_test_data(m, k, n, self.device)
         n_warmup = 3
         n_iters = 10
 
@@ -290,12 +296,12 @@ class TestQuantMatmulW4a8:
 
         ratio = w4a8_ms / a8w8_ms if a8w8_ms > 0 else float("inf")
         logging.info("[perf %dx%dx%d] W4A8 %.3f ms  |  A8W8 %.3f ms  |  ratio %.2fx",
-                     M, K, N, w4a8_ms, a8w8_ms, ratio)
+                     m, k, n, w4a8_ms, a8w8_ms, ratio)
 
-        if (M, K, N) == PROD_SHAPE:
+        if (m, k, n) == prod_shape:
             assert w4a8_ms <= a8w8_ms * 2, \
                 (f"W4A8 ({w4a8_ms:.3f} ms) > 2x A8W8 ({a8w8_ms:.3f} ms) "
-                 f"for production shape ({M},{K},{N})")
+                 f"for production shape ({m},{k},{n})")
 
 
 # ---------------------------------------------------------------------------

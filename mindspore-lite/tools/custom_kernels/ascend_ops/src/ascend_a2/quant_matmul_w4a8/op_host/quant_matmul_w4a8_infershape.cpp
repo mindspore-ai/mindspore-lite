@@ -28,8 +28,9 @@ static ge::graphStatus QuantMatmulW4a8InferShape(gert::InferShapeContext *contex
   const auto &wDims = context->GetInputShape(1);
   int64_t N = wDims->GetDim(0);
 
+  constexpr uint32_t OUT_RANK = 2;  // out: [M, N]
   auto *outShape = context->GetOutputShape(0);
-  outShape->SetDimNum(2);
+  outShape->SetDimNum(OUT_RANK);
   outShape->SetDim(0, M);
   outShape->SetDim(1, N);
   return ge::GRAPH_SUCCESS;

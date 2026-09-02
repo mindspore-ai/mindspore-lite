@@ -24,6 +24,8 @@ namespace {
 constexpr std::string_view kOpName = "aclnnQuantMatmulW4a8";
 }  // namespace
 
+namespace lite_boost {
+
 at::Tensor QuantMatmulW4a8LiteBoostImplNPU(const at::Tensor &act, const at::Tensor &weight, const at::Tensor &scale,
                                            const at::Tensor &bias, const at::Tensor &x_scale,
                                            const at::Tensor &output_bias) {
@@ -34,3 +36,5 @@ at::Tensor QuantMatmulW4a8LiteBoostImplNPU(const at::Tensor &act, const at::Tens
   EXEC_NPU_CMD<kOpName>(act, weight, scale, bias, x_scale, output_bias, out);
   return out;
 }
+
+}  // namespace lite_boost

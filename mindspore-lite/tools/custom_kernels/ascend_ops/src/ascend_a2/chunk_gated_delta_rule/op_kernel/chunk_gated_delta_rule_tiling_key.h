@@ -23,7 +23,13 @@
 #ifndef CHUNK_GATED_DELTA_RULE_TILING_KEY_H
 #define CHUNK_GATED_DELTA_RULE_TILING_KEY_H
 
-#define TILING_KEY_CGDR_BF16_STATE 0UL
-#define TILING_KEY_CGDR_FP32_STATE 1UL
+#include <cstdint>
+
+// Tiling-key buckets for the kernel dispatch (values are part of the op's
+// tiling-key contract with the CANN autogen; keep in sync with the kernel entry).
+namespace ChunkGatedDeltaRule {
+constexpr uint64_t TILING_KEY_CGDR_BF16_STATE = 0UL;
+constexpr uint64_t TILING_KEY_CGDR_FP32_STATE = 1UL;
+}  // namespace ChunkGatedDeltaRule
 
 #endif  // CHUNK_GATED_DELTA_RULE_TILING_KEY_H
