@@ -95,6 +95,9 @@ class ModelConfig:
     eos_id: int
     embedding_quant: QuantizationConfig
     decoder_quant: QuantizationConfig
+    # Some architectures use a projected head width that differs from
+    # hidden_size / num_attention_heads.
+    head_dim: int = 0
 
 
 @dataclass
@@ -684,13 +687,16 @@ def apply_quant(input_model, output_model, model_config: ModelConfig):
     """Quantize the exported model in place (weights + lm_head) and save."""
     model = onnx.load(input_model)
 
+    head_dim = getattr(model_config, "head_dim", 0) or (
+        model_config.hidden_size // model_config.num_attention_heads
+    )
     model = infer_shape(
         model,
         model_config.chunk_size,
         model_config.max_length,
-        model_config.num_attention_heads,
         model_config.num_key_value_heads,
-        model_config.hidden_size // model_config.num_key_value_heads,
+        model_config.num_attention_heads,
+        head_dim,
     )
 
     model = quantize_linear_ops(model, model_config.embedding_quant, model_config.decoder_quant)
