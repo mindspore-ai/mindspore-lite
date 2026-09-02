@@ -6,7 +6,7 @@
 torch>=2.0
 transformers>=4.57,<5
 onnx>=1.16
-onnxslim>=0.1.9   # slim(..., skip_fusion_patterns=...) requires >= 0.1.9
+onnxslim>=0.1.96  # restores missing custom-domain opset imports when slimming rebuilt graphs
 numpy
 
 # GGUF Q4_0 weight injection (gguf_loader.py).

@@ -16,7 +16,7 @@ dependencies = [
     "torch>=2.0",
     "transformers>=4.57,<5",
     "onnx>=1.16",
-    "onnxslim>=0.1.9",
+    "onnxslim>=0.1.96",
     "gguf==0.17.1",
     "numpy",
     "safetensors",
