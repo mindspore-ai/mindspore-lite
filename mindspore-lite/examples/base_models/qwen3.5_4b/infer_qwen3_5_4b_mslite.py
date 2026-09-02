@@ -247,6 +247,16 @@ def _resize_dynamic_model_inputs(model, feed_dict, preferred_order=None):
         model.resize(inputs, target_shapes)
 
 
+def _find_model_tensor(tensors, name, fallback_index):
+    """Find a model tensor by name, with an order-based fallback."""
+    for tensor in tensors:
+        if getattr(tensor, "name", "") == name:
+            return tensor
+    if len(tensors) > fallback_index:
+        return tensors[fallback_index]
+    return None
+
+
 class Qwen354BInferencer:
     """Qwen3.5-4B MindSpore Lite inferencer with Vision + Prefill + Decode pipeline."""
 
@@ -411,17 +421,9 @@ class Qwen354BInferencer:
         """Return the fixed Decode cache capacity, or None for a growing cache."""
         input_list = self.decode_model.get_inputs()
         output_list = self.decode_model.get_outputs()
-        inputs = {getattr(tensor, "name", ""): tensor for tensor in input_list}
-        outputs = {getattr(tensor, "name", ""): tensor for tensor in output_list}
-        attention = inputs.get("attention_mask")
-        past_kv = inputs.get("past_kv_cache")
-        present_kv = outputs.get("present_kv_cache")
-        if attention is None and len(input_list) > 1:
-            attention = input_list[1]
-        if past_kv is None and len(input_list) > 5:
-            past_kv = input_list[5]
-        if present_kv is None and len(output_list) > 3:
-            present_kv = output_list[3]
+        attention = _find_model_tensor(input_list, "attention_mask", 1)
+        past_kv = _find_model_tensor(input_list, "past_kv_cache", 5)
+        present_kv = _find_model_tensor(output_list, "present_kv_cache", 3)
         if attention is None or past_kv is None or present_kv is None:
             return None
         attention_shape = [int(dim) for dim in attention.shape]
@@ -434,6 +436,47 @@ class Qwen354BInferencer:
             return capacity
         return None
 
+    def _prepare_decode_attention_mask(self, attention_mask, past_kv):
+        """Validate and pad the initial Decode attention mask when required."""
+        capacity = self.fixed_decode_max_seq_len
+        if capacity is None:
+            return attention_mask.astype(np.int32)
+        if attention_mask.shape[0] != 1:
+            raise ValueError("fixed Decode currently supports batch=1 only")
+        if attention_mask.shape[1] > capacity:
+            raise ValueError(
+                f"prompt length {attention_mask.shape[1]} exceeds fixed Decode "
+                f"capacity {capacity}"
+            )
+        if int(past_kv.shape[-2]) != capacity:
+            raise ValueError(
+                f"Prefill KV capacity {past_kv.shape[-2]} does not match Decode "
+                f"capacity {capacity}"
+            )
+        if not np.all((attention_mask == 0) | (attention_mask == 1)):
+            raise ValueError("fixed Decode attention mask must contain only 0 or 1")
+        valid_tokens = int(attention_mask.sum())
+        expected_mask = np.arange(attention_mask.shape[1]) < valid_tokens
+        if not np.array_equal(attention_mask[0].astype(bool), expected_mask):
+            raise ValueError("fixed Decode requires a contiguous prefix attention mask")
+        padded_mask = np.zeros((1, capacity), dtype=np.int32)
+        padded_mask[:, :attention_mask.shape[1]] = attention_mask.astype(np.int32)
+        return padded_mask
+
+    def _advance_decode_attention_mask(self, attention_mask):
+        """Append or expose one valid Decode position and return its index."""
+        capacity = self.fixed_decode_max_seq_len
+        if capacity is None:
+            attention_mask = np.concatenate(
+                [attention_mask, np.ones((1, 1), dtype=np.int32)], axis=1
+            )
+            return attention_mask, int(attention_mask.shape[1]) - 1
+        next_pos = int(attention_mask.sum())
+        if next_pos >= capacity:
+            raise ValueError(f"Decode reached fixed capacity {capacity}")
+        attention_mask[0, next_pos] = 1
+        return attention_mask, next_pos
+
     def _decode_generate(self, logits, past_conv, past_recurrent, past_kv,
                          attention_mask, rope_deltas, max_new_tokens, eos_token_id,
                          stream=True):
@@ -445,33 +488,7 @@ class Qwen354BInferencer:
         if stream:
             self._stream_print_token(generated[-1])
 
-        if self.fixed_decode_max_seq_len is None:
-            attn_mask_np = attention_mask.astype(np.int32)
-        else:
-            if attention_mask.shape[0] != 1:
-                raise ValueError("fixed Decode currently supports batch=1 only")
-            if attention_mask.shape[1] > self.fixed_decode_max_seq_len:
-                raise ValueError(
-                    f"prompt length {attention_mask.shape[1]} exceeds fixed Decode "
-                    f"capacity {self.fixed_decode_max_seq_len}"
-                )
-            if int(past_kv.shape[-2]) != self.fixed_decode_max_seq_len:
-                raise ValueError(
-                    f"Prefill KV capacity {past_kv.shape[-2]} does not match Decode "
-                    f"capacity {self.fixed_decode_max_seq_len}"
-                )
-            if not np.all((attention_mask == 0) | (attention_mask == 1)):
-                raise ValueError("fixed Decode attention mask must contain only 0 or 1")
-            valid_tokens = int(attention_mask.sum())
-            expected_mask = np.arange(attention_mask.shape[1]) < valid_tokens
-            if not np.array_equal(attention_mask[0].astype(bool), expected_mask):
-                raise ValueError(
-                    "fixed Decode requires a contiguous prefix attention mask"
-                )
-            attn_mask_np = np.zeros(
-                (1, self.fixed_decode_max_seq_len), dtype=np.int32
-            )
-            attn_mask_np[:, :attention_mask.shape[1]] = attention_mask.astype(np.int32)
+        attn_mask_np = self._prepare_decode_attention_mask(attention_mask, past_kv)
         rope_deltas_np = rope_deltas.astype(np.int32)
 
         past_conv, past_recurrent, past_kv, device_state_init_ms, device_outputs = (
@@ -489,18 +506,7 @@ class Qwen354BInferencer:
 
             wall_start = time.perf_counter()
             step_id = np.array([[generated[-1]]], dtype=np.int32)
-            if self.fixed_decode_max_seq_len is None:
-                attn_mask_np = np.concatenate(
-                    [attn_mask_np, np.ones((1, 1), dtype=np.int32)], axis=1
-                )
-                next_pos = int(attn_mask_np.shape[1]) - 1
-            else:
-                next_pos = int(attn_mask_np.sum())
-                if next_pos >= self.fixed_decode_max_seq_len:
-                    raise ValueError(
-                        f"Decode reached fixed capacity {self.fixed_decode_max_seq_len}"
-                    )
-                attn_mask_np[0, next_pos] = 1
+            attn_mask_np, next_pos = self._advance_decode_attention_mask(attn_mask_np)
 
             text_pos_step = np.array([[[next_pos]]], dtype=np.int32)
             mm_pos_step = np.broadcast_to(
