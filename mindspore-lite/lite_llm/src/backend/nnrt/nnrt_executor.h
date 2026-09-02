@@ -55,6 +55,7 @@ class NnrtExecutor {
   bool MapOfflineModelFile(const std::string &path);
   void ReclaimOfflineModelPages() const;
   void ReclaimEmbeddingWeightPages() const;
+  bool LoadExternalWeights();
   // Read an asset either from the single-file package reader (entry name) or
   // from a filesystem path, into a raw byte buffer.
   bool ReadAsset(const std::string &path_or_entry, std::vector<uint8_t> *out) const;
@@ -166,6 +167,12 @@ class NnrtExecutor {
   std::string omc_path_;
   void *omc_mapping_{nullptr};
   size_t omc_mapping_size_{0};
+
+  std::string om_weight_dir_;
+  std::string external_weight_entry_ = "SubGraph_0.weight";
+  bool has_external_weights_{false};
+  std::string package_root_;
+  std::string temp_weight_dir_;
 
   // Single-file .msl container support. package_reader_ owns the reader so its
   // .msl mmap stays alive for the executor's lifetime (the .omc is handed to

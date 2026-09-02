@@ -121,6 +121,7 @@ inline constexpr const char kNpuMaxLength[] = "npu.max_length";
 inline constexpr const char kNpuChunkSize[] = "npu.chunk_size";
 inline constexpr const char kNpuEmbeddingQuant[] = "npu.embedding_quant";
 inline constexpr const char kNpuScaleGpSize[] = "npu.scale_gp_size";
+inline constexpr const char kNpuOmWeightDir[] = "npu.om_weight_dir";
 
 inline constexpr const char kAssetTokenizer[] = "asset.tokenizer";
 inline constexpr const char kAssetEmbedding[] = "asset.embedding";

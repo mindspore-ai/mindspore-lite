@@ -69,6 +69,15 @@ struct NnrtConfig {
   // filesystem path.
   std::shared_ptr<MslPackageReader> package_reader;
   bool single_file = false;
+  // .msl path in single-file mode, package directory otherwise. External
+  // weights are extracted next to the .msl because HarmonyOS may mount /tmp
+  // read-only.
+  std::string package_root;
+
+  // ── Optional external decoder weights ────────────────────────────────
+  std::string om_weight_dir;
+  std::string external_weight_entry = "SubGraph_0.weight";
+  bool has_external_weights = false;
 };
 
 }  // namespace nnrt

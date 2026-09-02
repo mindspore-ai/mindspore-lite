@@ -812,6 +812,7 @@ MSLlmStatus ParseManifest(const std::string &content, ModelManifest *manifest, s
     GetInt(*npu, "chunk_size", &out.chunk_size);
     GetBool(*npu, "embedding_quant", &out.embedding_quant);
     GetInt(*npu, "scale_gp_size", &out.scale_gp_size);
+    out.om_weight_dir = GetString(*npu, "om_weight_dir");
     if (out.max_length <= 0 || out.chunk_size <= 0) {
       if (error_message != nullptr) {
         *error_message = "npu.max_length and npu.chunk_size must be positive";
@@ -952,6 +953,7 @@ MSLlmStatus BuildModelManifestFromKv(const MslPackageReader &reader, ModelManife
   if (reader.GetKvUint32(msl_format::key::kNpuScaleGpSize, &u32)) m.npu.scale_gp_size = u32;
   bool flag = false;
   if (reader.GetKvBool(msl_format::key::kNpuEmbeddingQuant, &flag)) m.npu.embedding_quant = flag;
+  reader.GetKvString(msl_format::key::kNpuOmWeightDir, &m.npu.om_weight_dir);
   m.npu.present = m.npu.max_length > 0;
 
   // ── generation (eos token id; NNRTBackend reads stop_token_ids.front) ──

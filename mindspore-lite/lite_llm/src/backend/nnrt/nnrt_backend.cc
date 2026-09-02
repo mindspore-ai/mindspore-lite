@@ -69,6 +69,11 @@ bool NNRTBackend::BuildNnrtConfig(const BackendConfig &config, backend::nnrt::Nn
   // ── Single-file .msl container ───────────────────────────────────────
   nnrt->single_file = res.single_file;
   nnrt->package_reader = res.package_reader;
+  nnrt->package_root = res.package_root;
+
+  // ── Optional external decoder weights ────────────────────────────────
+  nnrt->om_weight_dir = res.om_weight_dir;
+  nnrt->has_external_weights = !man.npu.om_weight_dir.empty();
 
   return true;
 }

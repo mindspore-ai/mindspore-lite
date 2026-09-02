@@ -403,6 +403,51 @@ TEST(ModelResourceLoader, LoadsSingleFileNpuPackage) {
   std::filesystem::remove(path);
 }
 
+TEST(ModelResourceLoader, ValidatesSingleFileExternalWeights) {
+  const uint32_t kTypeString = mslite_llm::msl_format::kTypeString;
+  const uint32_t kTypeUint32 = mslite_llm::msl_format::kTypeUint32;
+  const std::vector<std::pair<std::string, std::pair<uint32_t, std::vector<uint8_t>>>> kv = {
+    {"model.name", {kTypeString, StrVal("test")}},
+    {"litert.prefill.path", {kTypeString, StrVal("npu_offline/x.omc")}},
+    {"asset.tokenizer", {kTypeString, StrVal("vocab/vocab.bin")}},
+    {"asset.embedding", {kTypeString, StrVal("assets/embedding_quant.bin")}},
+    {"asset.rope_cos", {kTypeString, StrVal("assets/rope_cos.bin")}},
+    {"asset.rope_sin", {kTypeString, StrVal("assets/rope_sin.bin")}},
+    {"asset.attention_mask", {kTypeString, StrVal("assets/attention_mask.bin")}},
+    {"npu.max_length", {kTypeUint32, U32Val(128)}},
+    {"npu.chunk_size", {kTypeUint32, U32Val(32)}},
+    {"npu.om_weight_dir", {kTypeString, StrVal("weights")}},
+  };
+  const std::vector<std::pair<std::string, std::string>> resources = {
+    {"npu_offline/x.omc", "omc"},
+    {"assets/embedding_quant.bin", "e"},
+    {"assets/rope_cos.bin", "c"},
+    {"assets/rope_sin.bin", "s"},
+    {"assets/attention_mask.bin", "m"},
+    {"vocab/vocab.bin", "v"},
+  };
+
+  auto missing_path = std::filesystem::temp_directory_path() / ("test_msl_ext_missing_" + MakeStamp() + ".msl");
+  WriteSingleFileMslV1(missing_path, kv, resources);
+  ModelResources missing_resources;
+  std::string error;
+  EXPECT_EQ(LoadModelResources(missing_path.string(), &missing_resources, MSLLM_BACKEND_NNRT, &error),
+            MSLLM_ERROR_MODEL_LOAD);
+  EXPECT_FALSE(error.empty());
+  std::filesystem::remove(missing_path);
+
+  auto valid_path = std::filesystem::temp_directory_path() / ("test_msl_ext_valid_" + MakeStamp() + ".msl");
+  auto resources_with_weight = resources;
+  resources_with_weight.emplace_back("SubGraph_0.weight", "weights");
+  WriteSingleFileMslV1(valid_path, kv, resources_with_weight);
+  ModelResources valid_resources;
+  error.clear();
+  ASSERT_EQ(LoadModelResources(valid_path.string(), &valid_resources, MSLLM_BACKEND_NNRT, &error), MSLLM_SUCCESS)
+    << error;
+  EXPECT_EQ(valid_resources.om_weight_dir, "weights");
+  std::filesystem::remove(valid_path);
+}
+
 TEST(ModelResourceLoader, RejectsSingleFileMissingNpuConfig) {
   auto path = std::filesystem::temp_directory_path() / ("test_msl_nonpu_" + MakeStamp() + ".msl");
   const uint32_t kTypeString = mslite_llm::msl_format::kTypeString;

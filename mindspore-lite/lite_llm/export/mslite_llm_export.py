@@ -90,6 +90,9 @@ QWEN_CHAT_TEMPLATE = (
 # NNRT omg dynamic-dims decode gear (prefill gear is ``args.chunk_size``).
 DECODE_GEAR = 1
 
+# Fixed filename produced by omg when external decoder weights are enabled.
+EXTERNAL_WEIGHT_FILE = "SubGraph_0.weight"
+
 # Per-model-type pipeline knobs.
 MODEL_TYPES = {
     "qwen2_5": {
@@ -190,6 +193,7 @@ def run_pipeline(args, work_dir):
     model_type = detect_model_type(args.model)
     logger.info("model kind: %s (%s), type: %s", model_kind, args.model, model_type)
     mt = MODEL_TYPES[model_type]
+    use_external_weights = bool(mt.get("external_weights", False))
 
     # ── Step 1: skeleton export (HF/GGUF -> ONNX + assets) ────────────────
     if model_kind == "gguf":
@@ -248,6 +252,7 @@ def run_pipeline(args, work_dir):
         embedding_quant=embedding_quant,
         omc_path=os.path.join(work_dir, "model"),
         platform=args.target,
+        save_external_weights=use_external_weights,
     )
 
     # ── Step 3: tokenizer -> vocab.bin ────────────────────────────────────
@@ -273,6 +278,11 @@ def run_pipeline(args, work_dir):
         # W4A16 g32 group size (QuantizationConfig derives it from the method).
         "scale_gp_size": QuantizationConfig(embedding_quant).group_size,
     }
+    external_weight_path = None
+    if use_external_weights:
+        external_weight_path = os.path.join(os.path.dirname(omc_path), EXTERNAL_WEIGHT_FILE)
+        if not os.path.isfile(external_weight_path):
+            raise RuntimeError(f"omg did not produce external weights at {external_weight_path}")
 
     result = build_single_file_msl(
         omc_path=omc_path,
@@ -286,6 +296,7 @@ def run_pipeline(args, work_dir):
         generation_policy=generation_policy,
         package_name=package_name,
         output_path=args.output,
+        external_weight_path=external_weight_path,
     )
     logger.info("exported %s", result)
     return result
