@@ -547,7 +547,7 @@ class Qwen3CommonPrefixInferencer:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
         self.prefix_seq_len = prefix_seq_len
-        self.suffix_buckets = suffix_buckets or [480, 640]
+        self.suffix_buckets = suffix_buckets or [128, 256, 384, 512, 640]
         self._prefix_kv = None
 
     def compute_prefix_cache(self, prefix_text: str):
@@ -707,7 +707,7 @@ def main():
                         help="Decode seq_len buckets (prefill_decode mode)")
     parser.add_argument("--prefix-seq-len", type=int, default=768,
                         help="Prefix model bucket size (common_prefix mode)")
-    parser.add_argument("--suffix-buckets", type=str, default="480,640",
+    parser.add_argument("--suffix-buckets", type=str, default="128,256,384,512,640",
                         help="Suffix seq_len buckets (common_prefix mode)")
     parser.add_argument("--force-no-pre-alloc", action="store_true",
                         help="Skip pre-alloc probe; use plain predict (prefill_decode mode)")

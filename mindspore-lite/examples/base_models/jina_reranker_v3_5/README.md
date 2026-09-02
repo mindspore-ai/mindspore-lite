@@ -257,7 +257,7 @@ Higher scores indicate better relevance to the query.
 
 ## 5. 性能数据（300I DUO）
 
-> 本节数据来自对 8 个消融变体的逐一测量（2026-08-11，两档动态 shape `{1280, 4096}`，`max_length=1280`，每个变体 3 次取中位数）。
+> 本节数据来自对 8 个消融变体的逐一测量（两档动态 shape `{1280, 4096}`，`max_length=1280`，每个变体 3 次取中位数）。
 
 ### 端到端推理性能（生产配置，`max_length=1280`）
 
