@@ -27,7 +27,7 @@ import torch_npu
 # Deliberate side-effect import: redirects CUDA calls inside transformers and
 # diffusers to their NPU equivalents; never referenced directly in this file.
 from torch_npu.contrib import transfer_to_npu  # pylint: disable=unused-import
-from diffusers import QwenImageEditPipeline
+from diffusers import QwenImageEditPlusPipeline
 from lite_boost.parallel import initialize_usp
 from lite_boost import BoostManager
 
@@ -43,7 +43,7 @@ local_rank = int(os.getenv("LOCAL_RANK", os.getenv("RANK", "0")))
 torch_npu.npu.set_device(local_rank)
 initialize_usp()
 
-pipe = QwenImageEditPipeline.from_pretrained("qwen-image-edit", torch_dtype=DTYPE)
+pipe = QwenImageEditPlusPipeline.from_pretrained("qwen-image-edit", torch_dtype=DTYPE)
 
 boost_manager = BoostManager()
 pipe = boost_manager(pipe, config=CONFIG_YAML)
