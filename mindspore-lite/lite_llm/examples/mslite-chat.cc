@@ -15,12 +15,14 @@
  */
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cinttypes>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <iostream>
 #include <limits>
@@ -50,7 +52,41 @@ bool ParsePositiveInt(const char *value, int32_t *out) {
   return true;
 }
 
-void PrintUsage(const char *program) { std::cerr << "Usage: " << program << " MODEL_PACKAGE PROMPT [MAX_TOKENS=64]\n"; }
+void PrintUsage(const char *program) {
+  std::cerr << "Usage: " << program << " MODEL_PACKAGE PROMPT [MAX_TOKENS=64] [--verbose]\n"
+            << "  PROMPT is rendered as a user message with the model chat template by default.\n"
+            << "  --verbose bypasses chat-template rendering and uses PROMPT verbatim.\n";
+}
+
+const char *StatusName(MSLLMStatus status);
+
+bool RenderUserPrompt(MSLLMModelHandle model, const char *user_prompt, std::string *rendered_prompt) {
+  if (model == nullptr || user_prompt == nullptr || rendered_prompt == nullptr) {
+    return false;
+  }
+
+  const MSLLMChatMessage messages[] = {{MSLLM_ROLE_SYSTEM, "You are a helpful assistant."},
+                                       {MSLLM_ROLE_USER, user_prompt}};
+  size_t capacity = std::max<size_t>(4096, std::strlen(user_prompt) + 256);
+  while (capacity <= static_cast<size_t>(std::numeric_limits<int>::max())) {
+    std::vector<char> buffer(capacity);
+    MSLLMStatus status = MSLLMApplyChatTemplate(model, messages, 2, 1, buffer.data(), static_cast<int>(buffer.size()));
+    if (status == kMSLLM_SUCCESS) {
+      *rendered_prompt = buffer.data();
+      return true;
+    }
+    if (status != kMSLLM_ERROR_BUFFER_TOO_SMALL) {
+      std::cerr << "[error] MSLLMApplyChatTemplate failed: " << StatusName(status) << '\n';
+      return false;
+    }
+    if (capacity > static_cast<size_t>(std::numeric_limits<int>::max()) / 2) {
+      break;
+    }
+    capacity *= 2;
+  }
+  std::cerr << "[error] rendered chat prompt is too large\n";
+  return false;
+}
 
 const char *StatusName(MSLLMStatus status) {
   switch (status) {
@@ -220,9 +256,17 @@ int main(int argc, char **argv) {
   }
 
   int32_t max_tokens = 64;
-  if (argc > 3 && !ParsePositiveInt(argv[3], &max_tokens)) {
-    PrintUsage(argv[0]);
-    return 2;
+  bool use_chat_template = true;
+  bool max_tokens_set = false;
+  for (int i = 3; i < argc; ++i) {
+    if (std::string(argv[i]) == "--verbose") {
+      use_chat_template = false;
+    } else if (!max_tokens_set && ParsePositiveInt(argv[i], &max_tokens)) {
+      max_tokens_set = true;
+    } else {
+      PrintUsage(argv[0]);
+      return 2;
+    }
   }
 
   const char *model_path = argv[1];
@@ -244,6 +288,15 @@ int main(int argc, char **argv) {
     std::cerr << "[error] MSLLMBuildModel failed: " << StatusName(status) << '\n';
     MSLLMDestroyModel(model);
     return 1;
+  }
+
+  std::string rendered_prompt;
+  if (use_chat_template) {
+    if (!RenderUserPrompt(model, prompt, &rendered_prompt)) {
+      MSLLMDestroyModel(model);
+      return 1;
+    }
+    prompt = rendered_prompt.c_str();
   }
 
   MSLLMGenerationConfig config = {};
