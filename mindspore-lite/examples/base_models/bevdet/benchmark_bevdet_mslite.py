@@ -23,14 +23,14 @@ Handles three shape modes (auto-detected or explicit):
 
 Pipeline: Main inference (NPU) → Decode (CPU PyTorch) → NMS (CPU numba)
 
-Run from BEVDet/:
+Run from examples/base_models/bevdet/:
     source /usr/local/Ascend/ascend-toolkit/set_env.sh
-    export PYTHONPATH=/path/to/BEVDet-dev3.0:/usr/local/lib/python3.10/site-packages
-    export LD_LIBRARY_PATH=/path/to/mindspore-lite-2.9.0-linux-aarch64/runtime/lib:$LD_LIBRARY_PATH
-    python scripts/benchmark_devbet_mslite.py \
-        --config config/bevdet/bevdet-r50.py \
+    export PYTHONPATH=/path/to/BEVDet:/usr/local/lib/python3.10/site-packages
+    python benchmark_bevdet_mslite.py \
+        --config BEVDet/configs/bevdet/bevdet-r50.py \
         --checkpoint bevdet-r50.pth \
-        --model output/bevdet_r50_ascend.mindir \
+        --model output/bevdet_r50.mindir \
+        --data-root BEVDet/data/nuscenes \
         --shape-mode fixed \
         --postprocessing \
         --eval \
@@ -330,6 +330,10 @@ def parse_args():
     p.add_argument('--config', required=True)
     p.add_argument('--checkpoint', required=True)
     p.add_argument('--model', required=True)
+    p.add_argument('--data-root', default=None,
+                   help='override cfg.data.test.data_root and ann_file '
+                        'to run from this dir without copying scripts into '
+                        'the BEVDet repo')
     p.add_argument('--shape-mode', choices=['auto', 'fixed', 'dynamic', 'gear'],
                    default='fixed', help='shape mode for ranks')
     p.add_argument('--fixed-ranks-len', type=int, default=179832)
@@ -350,6 +354,82 @@ def parse_args():
     return p.parse_args()
 
 
+def _override_data_root(cfg, data_root):
+    """Override data_root and ann_file paths so scripts can run from this dir.
+
+    BEVDet configs concatenate data_root + filename at parse time, so
+    ann_file='data/nuscenes/xxx.pkl' already embeds the full prefix. Rewrite
+    both fields by replacing the config's original data_root prefix with
+    --data-root (the actual nuscenes dir).
+    """
+    if not data_root:
+        return cfg
+    data_root = os.path.abspath(data_root)
+    if not os.path.isdir(data_root):
+        raise FileNotFoundError(f'--data-root not a directory: {data_root}')
+
+    def _repath(ann, old_root):
+        if old_root and ann.startswith(old_root):
+            return os.path.join(data_root, ann[len(old_root):])
+        if ann.startswith('data/'):
+            return os.path.join(data_root, ann[len('data/'):])
+        return ann
+
+    def _patch(item):
+        if not isinstance(item, dict):
+            return
+        old_root = item.get('data_root', '')
+        if old_root:
+            item['data_root'] = data_root + '/'
+        if 'ann_file' in item:
+            item['ann_file'] = _repath(item['ann_file'], old_root)
+        if 'ann_files' in item:
+            item['ann_files'] = [_repath(a, old_root)
+                                 for a in item['ann_files']]
+        for v in item.values():
+            if isinstance(v, dict):
+                _patch(v)
+            elif isinstance(v, list):
+                for x in v:
+                    if isinstance(x, dict):
+                        _patch(x)
+
+    for key in ('train', 'val', 'test'):
+        ds_cfg = cfg.data.get(key, None)
+        if isinstance(ds_cfg, dict):
+            _patch(ds_cfg)
+        elif isinstance(ds_cfg, list):
+            for x in ds_cfg:
+                _patch(x)
+    return cfg
+
+
+def _rewrite_dataset_paths(dataset, data_root):
+    """Rewrite relative data paths baked into the info pkl.
+
+    The pkl stores cam/lidar paths like './data/nuscenes/samples/...', which
+    only resolve when cwd is the BEVDet repo root. Point them at data_root so
+    the dataloader finds images from any cwd.
+    """
+    prefixes = ('./data/nuscenes/', 'data/nuscenes/')
+    data_root = os.path.abspath(data_root)
+
+    def _fix(value):
+        if isinstance(value, str):
+            for pre in prefixes:
+                if value.startswith(pre):
+                    return os.path.join(data_root, value[len(pre):])
+            return value
+        if isinstance(value, dict):
+            return {k: _fix(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [_fix(v) for v in value]
+        return value
+
+    if getattr(dataset, 'data_infos', None):
+        dataset.data_infos = [_fix(info) for info in dataset.data_infos]
+
+
 def build_model_and_loader(args):
     """Build mmdet3d model and test data loader from args."""
     cfg = Config.fromfile(args.config)
@@ -358,6 +438,7 @@ def build_model_and_loader(args):
     cfg.model.img_backbone.with_cp = False
     cfg = compat_cfg(cfg)
     cfg.gpu_ids = [0]
+    cfg = _override_data_root(cfg, args.data_root)
     cfg.data.test_dataloader.workers_per_gpu = 2
     assert cfg.data.test.test_mode
     default_args = {'samples_per_gpu': 1, 'workers_per_gpu': 0, 'dist': False,
@@ -369,6 +450,8 @@ def build_model_and_loader(args):
                 cfg.data.test.pipeline)
     test_loader_cfg = {**default_args, **cfg.data.get('test_dataloader', {})}
     dataset = build_dataset(cfg.data.test)
+    if args.data_root:
+        _rewrite_dataset_paths(dataset, args.data_root)
     data_loader = build_dataloader(dataset, **test_loader_cfg)
     cfg.model.train_cfg = None
     model = build_model(cfg.model, test_cfg=cfg.get('test_cfg'))
