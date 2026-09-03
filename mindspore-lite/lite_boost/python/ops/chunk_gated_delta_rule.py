@@ -62,6 +62,25 @@ def chunk_gated_delta_rule(
     gate ``g`` stays float32, and ``actual_seq_lengths`` is passed
     through directly (T = sum(actual_seq_lengths)).
 
+    At each time step :math:`t` the Gated Delta Rule computes the new
+    recurrent state and the attention output as
+
+    .. math::
+
+        S_t = \alpha_t S_{t-1} + \beta_t (v_t - \alpha_t S_{t-1} k_t) k_t^{\top}
+
+    .. math::
+
+        o_t = S_t q_t \cdot scale
+
+    where :math:`\alpha_t = \exp(g_t)` is the decay factor (with ``g``
+    omitted the decay is disabled, i.e. :math:`\alpha_t = 1`), and
+    :math:`\beta_t` is the delta update step size. This operator is the
+    chunked (blocked-parallel) implementation of the recurrence above,
+    which is more efficient than the token-by-token form on long
+    sequences and thus suited for the prefill phase; it produces the
+    output at every step as well as the final state.
+
     Supported only on A2; 300I Duo is not supported.
 
     Args:
@@ -71,30 +90,31 @@ def chunk_gated_delta_rule(
             Cast to the low dtype before computation.
         value (Tensor): Value tensor with shape :math:`(B, N_v, T, D_v)`.
             Cast to the low dtype before computation.
-        beta (Tensor): Delta update step size with shape :math:`(B, N_v,
-            T)`, in the range (0, 1).  Cast to the low dtype before
-            computation.
-        initial_state (Tensor): Incoming recurrent state with shape
-            :math:`(B, N_v, D_k, D_v)` (transposed to the op's
+        beta (Tensor): Delta update step size
+            with shape :math:`(B, N_v, T)`, in the range (0, 1).  Cast
+            to the low dtype before computation.
+        initial_state (Tensor): Incoming recurrent state
+            with shape :math:`(B, N_v, D_k, D_v)` (transposed to the op's
             value-first ``[B, N_v, D_v, D_k]`` layout).
-        actual_seq_lengths (Tensor): Per-batch token counts with shape
-            :math:`(B)`, dtype int32; the total sequence length is
-            ``T = sum(actual_seq_lengths)``.  A uniform T per batch is
-            assumed by the BNSD-to-TND flatten.
-        g (Tensor, optional): Global decay gate with shape :math:`(B,
-            N_v, T)`, dtype float32, must be negative.  ``None``
-            disables the decay gate (hasGamma=0 path). Default: ``None``.
+        actual_seq_lengths (Tensor): Per-batch token counts
+            with shape :math:`(B)`, dtype int32; the total sequence
+            length is ``T = sum(actual_seq_lengths)``.  A uniform T per
+            batch is assumed by the BNSD-to-TND flatten.
+        g (Tensor, optional): Global decay gate
+            with shape :math:`(B, N_v, T)`, dtype float32, must be
+            negative.  ``None`` disables the decay gate
+            (hasGamma=0 path). Default: ``None``.
         scale_value (float, optional): Attention scale applied to
             `query`. Default: ``1.0``.
 
     Returns:
         tuple[Tensor, Tensor]
 
-        - **out** (Tensor) — Attention output with shape :math:`(B, N_v,
-          T, D_v)`, same dtype as the low-dtype cast of the inputs
-          (bfloat16 by default).
-        - **final_state** (Tensor) — Updated recurrent state with shape
-          :math:`(B, N_v, D_k, D_v)`, same dtype as `out`.
+        - **out** (Tensor) — Attention output
+          with shape :math:`(B, N_v, T, D_v)`, same dtype as the
+          low-dtype cast of the inputs (bfloat16 by default).
+        - **final_state** (Tensor) — Updated recurrent state
+          with shape :math:`(B, N_v, D_k, D_v)`, same dtype as `out`.
 
     Raises:
         RuntimeError: If the input tensor shapes, dtypes or devices are

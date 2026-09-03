@@ -20,4 +20,4 @@ lite_boost.layers.rope_apply
     异常：
         - **RuntimeError** - `x` 非4维、`D` 非偶数、`freqs` 与 `x` 不在同一设备时抛出。
         - **ValueError** - 调用前未初始化 ``torch.distributed`` 时抛出。
-        - **TypeError** - `grid_sizes` 非2维 :math:`[B, 3]` 时抛出。
+        - **TypeError** - `grid_sizes` 非2维 :math:`(B, 3)` 时抛出。

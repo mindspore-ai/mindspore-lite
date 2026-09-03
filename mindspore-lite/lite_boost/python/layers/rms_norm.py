@@ -57,10 +57,10 @@ def rms_norm(x, gamma, eps=1e-6):
     Applies per-row RMS normalization over the last dim of `x`.
 
     Computes :math:`y = x / RMS(x) * gamma`, where
-    :math:`RMS(x) = \sqrt{mean(x^2)}` and :math:`mean(x^2)` is the mean of
-    squared values of `x` over the last dim. Usually used to replace the
-    expanded ``F.normalize(x, dim) * sqrt(dim) * gamma`` chain in Wan-series
-    VAE ``RMS_norm`` layers.
+    :math:`RMS(x) = \sqrt{mean(x^2)}` and :math:`mean(x^2)` is the mean
+    of squared values of `x` over the last dim. Usually used to replace
+    the expanded ``F.normalize(x, dim) * sqrt(dim) * gamma`` chain in
+    Wan-series VAE ``RMS_norm`` layers.
 
     Args:
         x (Tensor): 2-D input tensor with shape :math:`(N, C)`, the
