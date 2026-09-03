@@ -111,6 +111,14 @@ class NnrtOpSet:
         """
         return MsScatterND.apply(past, current_pos, current.to(torch.float16), "BNSD")
 
+    def prepare_qkv(self, states, position_embeddings, past_key_value, valid_seq_len):
+        """Apply RoPE and cache updates to native BSND projections."""
+        query, key, value = (state.transpose(1, 2) for state in states)
+        query, key = self.rope(query, key, *position_embeddings)
+        key = self.kv_scatter(past_key_value[0], valid_seq_len, key)
+        value = self.kv_scatter(past_key_value[1], valid_seq_len, value)
+        return query, key, value
+
     def qk_matmul(self, query, key):
         """Q @ K^T (BNSD, GQA-aware)."""
         return MsGroupMatmul.apply(query, key, True)
@@ -192,15 +200,10 @@ class NnrtAttention(nn.Module):
         query_states, key_states, value_states = self.apply_qk_norm(
             query_states, key_states, value_states
         )
-        query_states = query_states.transpose(1, 2)
-        key_states = key_states.transpose(1, 2)
-        value_states = value_states.transpose(1, 2)
-
-        # RoPE consumes BNSD q/k and [B, S, D] cos/sin.
-        query_states, key_states = self.ops.rope(query_states, key_states, rope_cos, rope_sin)
-
-        key_states = self.ops.kv_scatter(past_key_value[0], valid_seq_len, key_states)
-        value_states = self.ops.kv_scatter(past_key_value[1], valid_seq_len, value_states)
+        query_states, key_states, value_states = self.ops.prepare_qkv(
+            (query_states, key_states, value_states), (rope_cos, rope_sin),
+            past_key_value, valid_seq_len,
+        )
 
         attn_weights = self.ops.qk_matmul(query_states, key_states)
         attn_weights = attn_weights / math.sqrt(self.head_dim)
@@ -211,7 +214,7 @@ class NnrtAttention(nn.Module):
         attn_output = self.ops.pv_matmul(attn_weights, value_states)
 
         attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.reshape(bsz, -1, self.hidden_size)
+        attn_output = attn_output.reshape(bsz, -1, self.num_heads * self.head_dim)
         attn_output = self.o_proj(attn_output)
         return attn_output, [key_states, value_states]
 

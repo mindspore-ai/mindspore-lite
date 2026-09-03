@@ -31,6 +31,8 @@ import os
 import onnx
 from onnx import helper
 
+from utils.quantization import EmbeddingFormat
+
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -155,11 +157,16 @@ NNRT_NON_KV_INPUTS = [
 ]
 
 
-def validate_contract(model_path: str, num_layers: int, embedding_quant: bool = False):
+def validate_contract(
+    model_path: str,
+    num_layers: int,
+    embedding_quant: bool = False,
+    embedding_format: str = EmbeddingFormat.W4A16,
+):
     """Verify the exported ONNX matches the NNRT executor's I/O contract.
 
     Contract (see ``nnrt_executor.cc`` ``ValidateModelContract``):
-      7 non-KV inputs in fixed order (embedding_weight at index 6) + interleaved
+      7 or 8 non-KV inputs (embedding_weight at index 6, S16S4 embedding_scale at 7) + interleaved
       past_key_i/past_val_i per layer; outputs logits + interleaved out_key_i/out_val_i.
 
     Raises:
@@ -169,7 +176,9 @@ def validate_contract(model_path: str, num_layers: int, embedding_quant: bool = 
     inputs = [vi.name for vi in model.graph.input]
     outputs = [out.name for out in model.graph.output]
 
-    expected_inputs = NNRT_NON_KV_INPUTS[:]
+    expected_inputs = list(NNRT_NON_KV_INPUTS)
+    if embedding_format == EmbeddingFormat.S16S4_NZ_V1:
+        expected_inputs.append("embedding_scale")
     for i in range(num_layers):
         expected_inputs.append(f"past_key_{i}")
         expected_inputs.append(f"past_val_{i}")
@@ -191,11 +200,17 @@ def validate_contract(model_path: str, num_layers: int, embedding_quant: bool = 
 
     embedding = model.graph.input[6]
     expected_dtype = TensorProto.UINT8 if embedding_quant else TensorProto.FLOAT16
+    if embedding_format == EmbeddingFormat.S16S4_NZ_V1:
+        expected_dtype = TensorProto.INT8
+        if model.graph.input[7].type.tensor_type.elem_type != TensorProto.INT8:
+            raise ValueError("embedding_scale must be INT8")
     if embedding.type.tensor_type.elem_type != expected_dtype:
         raise ValueError(
             f"embedding_weight dtype {embedding.type.tensor_type.elem_type} != expected "
             f"{expected_dtype} (embedding_quant={embedding_quant})"
         )
+
+    embedding_dtype = TensorProto.DataType.Name(expected_dtype)
     logger.info("NNRT contract OK: %d inputs / %d outputs (embedding_weight %s)",
-                len(inputs), len(outputs), "UINT8" if embedding_quant else "FLOAT16")
+                len(inputs), len(outputs), embedding_dtype)
     return True

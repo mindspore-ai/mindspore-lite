@@ -196,6 +196,8 @@ def test_minicpm_quant_chain_resolves_gguf_map(llama_ref, tmp_path):
     apply_quant(onnx_path, quant_path, quant_config)
 
     quant_model = onnx.load(quant_path)
+    apply_shared_weight(quant_model)
+    _save_onnx(quant_model, quant_path)
     op_counts = {}
     node_names = set()
     for node in quant_model.graph.node:

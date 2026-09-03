@@ -86,12 +86,21 @@ def test_quantization_config():
         QuantizationConfig("W8A8")
 
 
-def test_apply_shared_weight_inserts_embedding_input_at_index_6():
+def test_apply_shared_weight_inserts_embedding_input_at_index_6(tmp_path):
     """apply_shared_weight inserts the embedding input at the contract index."""
     from utils.export_quant import apply_shared_weight
 
     model = _make_lmhead_graph()
-    apply_shared_weight(model)
+    model.graph.initializer[0].CopyFrom(
+        onnx.numpy_helper.from_array(np.arange(32, dtype=np.float16).reshape(4, 8), "lm_head.weight")
+    )
+    expected = onnx.numpy_helper.to_array(model.graph.initializer[0]).T.copy()
+    asset = apply_shared_weight(model)
+    assert asset.quant_type is None
+    assert asset.logical_shape == expected.shape
+    path = tmp_path / "embedding.bin"
+    asset.save(path)
+    assert path.read_bytes() == expected.astype(np.float16).tobytes()
 
     names = [vi.name for vi in model.graph.input]
     assert "embedding_weight" in names
@@ -104,7 +113,7 @@ def test_apply_shared_weight_inserts_embedding_input_at_index_6():
     assert lm_head.input[1] == "embedding_weight_transpose"
 
 
-def test_quantized_lmhead_and_embedding_share_compact_graph_contract():
+def test_quantized_lmhead_and_embedding_share_compact_graph_contract(tmp_path):
     """The quant pass and tied input expose the same live compact blob."""
     from utils.export_quant import apply_shared_weight, quant_node_4bit_gp32
     from utils.omc_compiler import embedding_weight_elems
@@ -120,7 +129,11 @@ def test_quantized_lmhead_and_embedding_share_compact_graph_contract():
     assert payload.dtype == np.uint8
     assert payload.shape == (48 * 32 // 32 * 18,)
     np.testing.assert_array_equal(payload[48 * 32 // 2:].view("<f2"), np.ones(48, dtype=np.float16))
-    apply_shared_weight(model, is_quant=True)
+    asset = apply_shared_weight(model)
+    assert asset.logical_shape == (48, 32)
+    path = tmp_path / "embedding_quant.bin"
+    asset.save(path)
+    assert path.read_bytes() == payload.tobytes()
     embedding = model.graph.input[6]
     assert embedding.name == "embedding_weight"
     assert embedding.type.tensor_type.elem_type == TensorProto.UINT8

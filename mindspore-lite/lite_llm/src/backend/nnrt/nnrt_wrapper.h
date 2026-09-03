@@ -86,6 +86,8 @@ struct NNRTFunctions {
 
   // === HiAI Foundation (libhiai_foundation.so) — 分档模式必须关异步 ===
   int (*HIAIOptions_SetAsyncModeEnable)(OH_NNCompilation *compilation, bool enable);
+  // Optional HiAI diagnostic API. Om type 1 selects profiling.
+  int (*HIAIOptions_SetOmOptions)(OH_NNCompilation *compilation, int type, const char *directory) = nullptr;
 
   // Optional on older SDKs; required only by packages that declare external
   // decoder weights.

@@ -87,7 +87,7 @@ mslite_llm_add_unit_test(test_nnrt_embedding_dequant ut/test_nnrt_embedding_dequ
 # the same CPU-only source directly so this test needs no NPU backend.
 if(NOT MSLITE_LLM_ENABLE_NNRT)
     target_sources(test_nnrt_embedding_dequant PRIVATE
-        ${MSLITE_LLM_ROOT}/src/backend/nnrt/nnrt_embedding_dequant.cc)
+        ${MSLITE_LLM_ROOT}/src/backend/nnrt/nnrt_embedding.cc)
 endif()
 mslite_llm_add_unit_test(test_llm_chat_template ut/test_llm_chat_template.cc)
 mslite_llm_add_unit_test(test_llm_engine ut/test_llm_engine.cc)
@@ -99,3 +99,6 @@ target_include_directories(test_msl_golden PRIVATE ${MSLITE_LLM_ROOT}/src)
 target_compile_definitions(test_msl_golden PRIVATE
     MSL_GOLDEN_FILE="${CMAKE_CURRENT_SOURCE_DIR}/data/golden_v1.msl")
 add_test(NAME llm_msl_golden COMMAND test_msl_golden)
+
+mslite_llm_add_unit_test(test_s16s4_embedding ut/test_s16s4_embedding.cc)
+target_sources(test_s16s4_embedding PRIVATE ${MSLITE_LLM_ROOT}/src/backend/nnrt/nnrt_embedding.cc)

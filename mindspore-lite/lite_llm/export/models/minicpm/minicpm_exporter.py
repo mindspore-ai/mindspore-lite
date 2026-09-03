@@ -53,8 +53,10 @@ from utils.export_quant import LiteTurboConfig, ModelConfig, QuantizationConfig
 from utils.export_quant import (
     apply_quant,
     apply_shared_weight,
-    quantize_weight_g128_4bit_nz,
+    EmbeddingAsset,
 )
+
+from utils.quantization import QuantType
 
 from .minicpm_wrapper import MiniCpmNnrtWrapper
 
@@ -191,20 +193,9 @@ class MiniCpmOnnx:
         _save_onnx(new_model, model_path)
         logger.info("Export + slim + add-rmsnorm fusion done: %s", model_path)
 
-    def embedding_weight_save(self, embedding_weight_save_path=None, embedding_quantize_config=None):
-        """Save the input embedding weight (fp16 raw / W4A8 / W4A16 quantized)."""
-        embedding_layer = self.model.get_input_embeddings()
-        weight = embedding_layer.weight.detach().numpy().astype(np.float16)
-        if embedding_quantize_config == "W4A8":
-            weight_4bit = quantize_weight_g128_4bit_nz(weight.T)
-            weight_4bit.tofile(embedding_weight_save_path)
-        elif embedding_quantize_config == "W4A16":
-            from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32
-
-            weight_4bit_gp32 = MsQuant4N0Group32.quantize_weight_g32_4bit(weight.T)
-            weight_4bit_gp32.tofile(embedding_weight_save_path)
-        else:
-            weight.flatten().tofile(embedding_weight_save_path)
+    def embedding_weight_save(self, embedding_weight_save_path, embedding_asset: EmbeddingAsset):
+        """Save the shared graph payload without repeating quantization."""
+        embedding_asset.save(embedding_weight_save_path)
         logger.info("Saved embedding weight to %s", embedding_weight_save_path)
 
     def rope_sin_cos_save(self, cos_path, sin_path, seq_len):
@@ -277,7 +268,7 @@ class MiniCpmOnnx:
                 "embedding_quant": embedding_quant_config.asdict() if embedding_quant_config.is_quant else None,
                 "decoder_quant": decoder_quant_config.asdict() if decoder_quant_config.is_quant else None,
                 **({"q4_0_weight_layout": "q4_0_nzf_compact_phase4"}
-                   if embedding_quant_config.is_quant and embedding_quant_config.quant_method == "W4A16"
+                   if embedding_quant_config.is_quant and embedding_quant_config.quant_method == QuantType.Q4_0
                    else {}),
             },
             "sampling": LiteTurboConfig(
@@ -316,6 +307,10 @@ def export_minicpm(
 
     Returns the path to ``minicpm_config.json``.
     """
+    embedding_quant_config = QuantizationConfig(embedding_quant)
+    decoder_quant_config = QuantizationConfig(decoder_quant)
+    embedding_quant = embedding_quant_config.quant_method
+    decoder_quant = decoder_quant_config.quant_method
     if max_length <= 0 or chunk_size <= 0 or max_length % chunk_size != 0:
         raise ValueError(f"max_length {max_length} must be a positive multiple of chunk_size {chunk_size}")
 
@@ -328,8 +323,6 @@ def export_minicpm(
     onnx_path = os.path.join(output_dir, onnx_name)
     exporter.export(onnx_path, max_seq_len=max_length, chunk_size=chunk_size)
 
-    embedding_quant_config = QuantizationConfig(embedding_quant)
-    decoder_quant_config = QuantizationConfig(decoder_quant)
 
     if embedding_quant_config.is_quant or decoder_quant_config.is_quant:
         model_config = ModelConfig(
@@ -348,10 +341,11 @@ def export_minicpm(
         quant_model_path = os.path.join(path, name + "_quant" + ext)
         apply_quant(onnx_path, quant_model_path, model_config)
         onnx_path = quant_model_path  # the .omc is compiled from the quantized graph
-    else:
-        model = onnx.load(onnx_path)
-        apply_shared_weight(model)  # inserts embedding_weight input at index 6
-        _save_onnx(model, onnx_path)
+
+    embedding_bin = os.path.join(output_dir, "embedding_quant.bin" if embedding_quant else "embedding.bin")
+    model = onnx.load(onnx_path)
+    embedding_asset = apply_shared_weight(model)
+    _save_onnx(model, onnx_path)
 
     validate_contract(onnx_path, exporter.num_layers, embedding_quant=embedding_quant_config.is_quant)
 
@@ -363,8 +357,7 @@ def export_minicpm(
     with open(os.path.join(output_dir, "generation_policy.json"), "w", encoding="utf-8") as f:
         json.dump(config["generation"], f, indent=2)
 
-    embedding_bin = os.path.join(output_dir, "embedding_quant.bin" if embedding_quant else "embedding.bin")
-    exporter.embedding_weight_save(embedding_bin, embedding_quant)
+    exporter.embedding_weight_save(embedding_bin, embedding_asset)
 
     cos_path = os.path.join(output_dir, "rope_cos.bin")
     sin_path = os.path.join(output_dir, "rope_sin.bin")

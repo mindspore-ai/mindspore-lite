@@ -309,6 +309,7 @@ struct QuantLayoutCase {
   int group_size = 0;
   bool valid = false;
   const char *layout_key = "q4_0_weight_layout";
+  const char *embedding_format = "W4A16";
 };
 
 const QuantLayoutCase kQuantLayoutCases[] = {
@@ -321,6 +322,10 @@ const QuantLayoutCase kQuantLayoutCases[] = {
   {"unknown_layout", true, "future_layout", 32, false},
   {"wrong_group_size", true, "q4_0_nzf_compact_phase4", 16, false},
   {"fp16_without_layout", false, "", 32, true},
+  {"s16s4_without_q4_marker", true, "", 128, true, "q4_0_weight_layout", "S16S4_NZ_V1"},
+  {"s16s4_wrong_group", true, "", 32, false, "q4_0_weight_layout", "S16S4_NZ_V1"},
+  {"s16s4_unquantized", false, "", 128, false, "q4_0_weight_layout", "S16S4_NZ_V1"},
+  {"unknown_embedding_format", true, "q4_0_nzf_compact_phase4", 32, false, "q4_0_weight_layout", "unknown"},
 };
 
 TEST(ManifestQuantLayout, ValidatesJsonLayoutAndPreservesFp16Compatibility) {
@@ -332,6 +337,7 @@ TEST(ManifestQuantLayout, ValidatesJsonLayoutAndPreservesFp16Compatibility) {
     if (item.layout[0] != '\0') {
       npu += std::string(",\"") + item.layout_key + "\":\"" + item.layout + "\"";
     }
+    npu += std::string(",\"embedding_format\":\"") + item.embedding_format + "\"";
     WriteManifest(root, "", npu);
     ModelManifest manifest;
     std::string error;
@@ -341,6 +347,9 @@ TEST(ManifestQuantLayout, ValidatesJsonLayoutAndPreservesFp16Compatibility) {
       EXPECT_EQ(manifest.npu.embedding_quant, item.quantized);
       EXPECT_EQ(manifest.npu.q4_0_weight_layout, item.layout);
       EXPECT_EQ(manifest.npu.scale_gp_size, item.group_size);
+      EXPECT_EQ(manifest.npu.embedding_format, std::string(item.embedding_format) == "S16S4_NZ_V1"
+                                                 ? mslite_llm::EmbeddingFormat::kS16S4NzV1
+                                                 : mslite_llm::EmbeddingFormat::kW4A16);
     }
     // Reject padded, adjacent-byte NZF and planar packages before the
     // embedding payload can be silently interpreted as compact phase4.
@@ -373,6 +382,7 @@ TEST(ManifestQuantLayout, ValidatesKvLayoutAndPreservesFp16Compatibility) {
       {"npu.chunk_size", {kUint32, U32Val(128)}},
       {"npu.embedding_quant", {msl_format::kTypeBool, BoolVal(item.quantized)}},
       {"npu.scale_gp_size", {kUint32, U32Val(item.group_size)}},
+      {"npu.embedding_format", {kString, StrVal(item.embedding_format)}},
     };
     if (item.layout[0] != '\0') {
       kv.emplace_back(std::string("npu.") + item.layout_key, std::make_pair(kString, StrVal(item.layout)));
@@ -393,6 +403,9 @@ TEST(ManifestQuantLayout, ValidatesKvLayoutAndPreservesFp16Compatibility) {
       EXPECT_EQ(manifest.npu.embedding_quant, item.quantized);
       EXPECT_EQ(manifest.npu.q4_0_weight_layout, item.layout);
       EXPECT_EQ(manifest.npu.scale_gp_size, item.group_size);
+      EXPECT_EQ(manifest.npu.embedding_format, std::string(item.embedding_format) == "S16S4_NZ_V1"
+                                                 ? mslite_llm::EmbeddingFormat::kS16S4NzV1
+                                                 : mslite_llm::EmbeddingFormat::kW4A16);
     }
     ModelResources resources;
     EXPECT_EQ(LoadModelResources(path.string(), &resources, MSLLM_BACKEND_NNRT, &error),

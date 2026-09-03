@@ -16,6 +16,7 @@
 #ifndef MSLLM_BPE_CODEC_H
 #define MSLLM_BPE_CODEC_H
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -36,12 +37,14 @@ class BPECodec {
   std::string Decode(const std::vector<std::string> &tokens);
 
   void SetVocab(const Vocabulary &vocabulary);
+  void SetQwenRules(std::vector<std::array<uint32_t, 3>> rules) { qwen_rules_ = std::move(rules); }
 
  private:
   void InitByteEncoder();
   static std::string CodePointToUTF8(uint32_t cp);
   static uint32_t UTF8ToCodePoint(const std::string &s, size_t &pos);
-  static std::vector<std::string> PreTokenize(const std::string &text);
+  std::vector<std::string> PreTokenize(const std::string &text);
+  std::vector<std::string> PreTokenizeQwen(const std::string &text);
   std::vector<std::string> ApplyBPE(const std::string &token);
 
   static bool IsAlpha(unsigned char c);
@@ -50,6 +53,7 @@ class BPECodec {
 
   std::unordered_map<uint64_t, int32_t> merge_rank_;
   const TokenToIdMap *token_to_id_{nullptr};
+  std::vector<std::array<uint32_t, 3>> qwen_rules_;
 
   std::unordered_map<uint8_t, std::string> byte_encoder_;
   std::unordered_map<uint32_t, uint8_t> byte_decoder_cp_;

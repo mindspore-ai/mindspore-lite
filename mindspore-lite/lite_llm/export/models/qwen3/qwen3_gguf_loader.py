@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Inject GGUF Q4_0 weights into a MiniMind-3 (Qwen3 dense) ONNX skeleton.
+"""Inject GGUF weights into a supported dense Qwen3 ONNX skeleton.
 
 Model-specific half of the GGUF weight injection: the ONNX node name -> GGUF
 tensor name maps and the replacement orchestration.  The model-agnostic
@@ -26,7 +26,7 @@ Qwen3 differences vs the Qwen2.5 loader:
   are injected into the extra ``MsRmsNorm`` nodes.
 
 The ONNX skeleton must already carry the quantized ``MatMul_quant`` nodes
-(exported with ``--decoder-quant W4A16`` from ``qwen3_exporter``); this module
+(exported with ``--quant-type q4_0`` from ``qwen3_exporter``); this module
 replaces their placeholder quantized weights with the real Q4_0 weights read
 from the GGUF file, rearranged into the compact phase4 NZF layout expected by
 ``MsQuant4N0Group32``.
@@ -38,6 +38,7 @@ Example:
                 embedding_weight_save_path=...)
 """
 
+from typing import Optional
 import logging
 
 import numpy as np
@@ -47,6 +48,8 @@ from onnxslim import slim
 
 from utils.onnx_postprocess import _save_onnx, duplicate_shared_initializers
 from utils.gguf_mapping import create_new_initializer, load_file_from_tensors
+
+from utils.quantization import QuantType
 
 logger = logging.getLogger(__name__)
 
@@ -138,11 +141,11 @@ def load_model_fp16_weight(model, weights):
     return new_initializers
 
 
-def load_weight(model, weights, layers=8, decoder_quantize_config="W4A16"):
+def load_weight(model, weights, layers=8, decoder_quantize_config: Optional[QuantType] = QuantType.Q4_0):
     """Inject decoder quantized weights + fp16 norms + model norm into the skeleton."""
-    if decoder_quantize_config == "W4A16":
+    if decoder_quantize_config == QuantType.Q4_0:
         quant_weight = load_q4_weight(model, weights, layers)
-    elif decoder_quantize_config == "FP16":
+    elif decoder_quantize_config is None:
         quant_weight = load_decode_fp16_weight(model, weights, layers)
     else:
         raise ValueError(f"decoder_quantize_config {decoder_quantize_config} not supported")
@@ -174,10 +177,12 @@ def gguf_loader(
     onnx_output_path,
     embedding_weight_save_path,
     layers=8,
-    embedding_quantize_config="W4A16",
-    decoder_quantize_config="W4A16",
+    embedding_quantize_config=QuantType.Q4_0,
+    decoder_quantize_config=QuantType.Q4_0,
 ):
     """Load GGUF Q4_0 weights into the ONNX skeleton and save the result."""
+    embedding_quantize_config = QuantType.parse(embedding_quantize_config)
+    decoder_quantize_config = QuantType.parse(decoder_quantize_config)
     reader = GGUFReader(gguf_path)
     name2weight = load_file_from_tensors(
         reader.tensors, embedding_weight_save_path, decoder_quantize_config, embedding_quantize_config

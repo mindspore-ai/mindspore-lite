@@ -29,9 +29,28 @@ Qwen3-specific differences vs the base Qwen2 path:
 
 from models._base.nnrt_decoder_wrapper import (
     NnrtAttention,
+    NnrtOpSet,
     NnrtDecoderWrapper,
     NnrtRmsNorm,
 )
+
+
+from torch_custom.ms_trans_rope_scatter_nd_update import MsTransRopeScatterNDUpdate
+
+
+class Qwen3OpSet(NnrtOpSet):
+    """Fuse layout conversion, full-head RoPE and cache updates for Qwen3."""
+
+    def __init__(self, config):
+        self.num_heads = int(config.num_attention_heads)
+        self.head_dim = int(getattr(config, "head_dim", None) or config.hidden_size // self.num_heads)
+
+    def prepare_qkv(self, states, position_embeddings, past_key_value, valid_seq_len):
+        """Keep Q/K normalization before the BSND fused operator boundary."""
+        return MsTransRopeScatterNDUpdate.apply(
+            *states, *position_embeddings, *past_key_value, valid_seq_len,
+            self.num_heads, self.head_dim,
+        )
 
 
 class Qwen3Attention(NnrtAttention):
@@ -58,3 +77,6 @@ class Qwen3NnrtWrapper(NnrtDecoderWrapper):
     """NNRT wrapper for Qwen3 — selects the per-head-QK-norm attention adapter."""
 
     attn_module = Qwen3Attention
+
+    def __init__(self, hf_model, config, op_set=None):
+        super().__init__(hf_model, config, Qwen3OpSet(config) if op_set is None else op_set)

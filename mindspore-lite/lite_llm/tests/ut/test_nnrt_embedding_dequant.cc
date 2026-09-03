@@ -22,12 +22,127 @@
 #include <utility>
 #include <vector>
 
-#include "backend/nnrt/nnrt_embedding_dequant.h"
+#include "backend/nnrt/nnrt_embedding.h"
+#include "backend/nnrt/nnrt_config.h"
+#include "backend/nnrt/nnrt_wrapper.h"
 
 namespace mslite {
 namespace backend {
 namespace nnrt {
 namespace {
+
+NnrtConfig EmbeddingConfig(bool quantized, bool separate_scales) {
+  NnrtConfig config;
+  config.vocab_size = 128;
+  config.hidden_size = 128;
+  config.embedding_quant = quantized;
+  config.embedding_format = separate_scales ? EmbeddingFormat::kS16S4NzV1 : EmbeddingFormat::kW4A16;
+  return config;
+}
+
+TEST(NnrtEmbedding, UploadsSharedInputsAndUsesTheirBuffersForLookup) {
+  for (const auto &config :
+       {EmbeddingConfig(false, false), EmbeddingConfig(true, false), EmbeddingConfig(true, true)}) {
+    NnrtEmbedding embedding;
+    ASSERT_TRUE(embedding.Configure(config));
+    std::vector<uint8_t> source(config.embedding_quant ? 9216 : 32768, 0);
+    ASSERT_TRUE(embedding.Load([&source](const std::string &, std::vector<uint8_t> *bytes) {
+      *bytes = source;
+      return true;
+    }));
+    EXPECT_EQ(embedding.InputCount(), config.embedding_format == EmbeddingFormat::kS16S4NzV1 ? 2 : 1);
+    std::vector<std::vector<uint8_t>> buffers(embedding.InputCount());
+    std::vector<NN_Tensor *> inputs(6 + embedding.InputCount());
+    auto create = [&buffers, &config](size_t index, const std::vector<int32_t> &shape, int32_t dtype, size_t bytes) {
+      EXPECT_EQ(dtype, !config.embedding_quant ? kOhNnFloat16 : (buffers.size() == 2 ? kOhNnInt8 : kOhNnUint8));
+      const std::vector<int32_t> expected =
+        buffers.size() == 2 ? (index == 6 ? std::vector<int32_t>{128, 64} : std::vector<int32_t>{1, 1, 128, 8})
+                            : std::vector<int32_t>{config.embedding_quant ? 9216 : 16384};
+      EXPECT_EQ(shape, expected);
+      buffers[index - 6].resize(bytes);
+      return reinterpret_cast<NN_Tensor *>(&buffers[index - 6]);
+    };
+    auto upload = [](NN_Tensor *tensor, const void *data, size_t size) {
+      auto *buffer = reinterpret_cast<std::vector<uint8_t> *>(tensor);
+      const auto *bytes = static_cast<const uint8_t *>(data);
+      std::copy(bytes, bytes + size, buffer->begin());
+      return buffer->data();
+    };
+    ASSERT_TRUE(embedding.CreateInputs(create, upload, &inputs));
+    std::vector<uint16_t> output(128, 0xffff);
+    ASSERT_TRUE(embedding.Row(0, output.data()));
+    EXPECT_EQ(output, std::vector<uint16_t>(128, 0));
+    // Mutate the uploaded source to prove lookup no longer reads the temporary copy.
+    if (!config.embedding_quant) {
+      buffers[0][1] = 0x3c;
+    } else {
+      buffers[0][0] = 1;
+      if (buffers.size() == 2) {
+        buffers[1][2] = 0x80;
+        buffers[1][3] = 0x3a;  // fp32 1/1024 scale record
+      } else {
+        buffers[0][8193] = 0x3c;  // first fp16 scale = 1
+      }
+    }
+    ASSERT_TRUE(embedding.Row(0, output.data()));
+    EXPECT_EQ(output[0], 0x3c00);
+    EXPECT_FALSE(embedding.Row(-1, output.data()));
+    EXPECT_FALSE(embedding.Row(128, output.data()));
+  }
+}
+
+TEST(NnrtEmbedding, RejectsInvalidDimensionsAndTruncatedAssets) {
+  NnrtEmbedding embedding;
+  EXPECT_FALSE(embedding.Configure(NnrtConfig{}));
+  ASSERT_TRUE(embedding.Configure(EmbeddingConfig(true, true)));
+  EXPECT_FALSE(embedding.Load([](const std::string &, std::vector<uint8_t> *bytes) {
+    bytes->resize(8192);
+    return true;
+  }));
+}
+
+TEST(NnrtEmbedding, RejectsUnsupportedLayoutsAndStorageOverflow) {
+  NnrtEmbedding embedding;
+  auto config = EmbeddingConfig(true, false);
+  config.vocab_size = 17;
+  EXPECT_FALSE(embedding.Configure(config));
+  config = EmbeddingConfig(true, false);
+  config.hidden_size = 31;
+  EXPECT_FALSE(embedding.Configure(config));
+  config = EmbeddingConfig(true, true);
+  config.hidden_size = 64;
+  EXPECT_FALSE(embedding.Configure(config));
+  config = EmbeddingConfig(false, true);
+  EXPECT_FALSE(embedding.Configure(config));
+  config = EmbeddingConfig(true, false);
+  config.embedding_format = EmbeddingFormat::kUnknown;
+  EXPECT_FALSE(embedding.Configure(config));
+  for (const auto &base : {EmbeddingConfig(false, false), EmbeddingConfig(true, false), EmbeddingConfig(true, true)}) {
+    config = base;
+    config.vocab_size = std::numeric_limits<int32_t>::max() - 127;
+    EXPECT_FALSE(embedding.Configure(config));
+  }
+}
+
+TEST(NnrtEmbedding, KeepsCreatedInputsVisibleWhenUploadFails) {
+  NnrtEmbedding embedding;
+  ASSERT_TRUE(embedding.Configure(EmbeddingConfig(true, true)));
+  ASSERT_TRUE(embedding.Load([](const std::string &, std::vector<uint8_t> *bytes) {
+    bytes->resize(9216);
+    return true;
+  }));
+  std::vector<NN_Tensor *> inputs(8);
+  uint8_t handles[2] = {};
+  auto create = [&handles](size_t index, const std::vector<int32_t> &, int32_t, size_t) {
+    return reinterpret_cast<NN_Tensor *>(&handles[index - 6]);
+  };
+  auto upload = [&handles](const NN_Tensor *tensor, const void *data, size_t) -> const uint8_t * {
+    return tensor == reinterpret_cast<NN_Tensor *>(&handles[1]) ? nullptr : static_cast<const uint8_t *>(data);
+  };
+  EXPECT_FALSE(embedding.CreateInputs(create, upload, &inputs));
+  EXPECT_EQ(inputs[6], reinterpret_cast<NN_Tensor *>(&handles[0]));
+  EXPECT_EQ(inputs[7], reinterpret_cast<NN_Tensor *>(&handles[1]));
+}
 
 int QuantValue(int row, int k) { return (row * 5 + k * 3 + k / 32 + row / 64 + k / 1024) % 16 - 8; }
 int ScaleExponent(int row, int group) { return (row * 3 + group + row / 64 + group / 32) % 4 - 2; }
@@ -92,11 +207,8 @@ std::vector<uint8_t> MakeNzfBlob(int rows, int hidden) {
 }
 
 TEST(NnrtEmbeddingDequant, SizesExcludePaddingAndSeparateScales) {
-  struct Case {
-    int rows;
-    int hidden;
-  };
-  for (const auto &item : {Case{16, 32}, Case{64, 1024}, Case{80, 1056}, Case{144, 2080}}) {
+  const Q4EmbeddingShape shapes[] = {{16, 32}, {64, 1024}, {80, 1056}, {144, 2080}};
+  for (const auto &item : shapes) {
     SCOPED_TRACE(::testing::Message() << item.rows << "x" << item.hidden);
     size_t packed = 0;
     size_t total = 0;
@@ -107,7 +219,8 @@ TEST(NnrtEmbeddingDequant, SizesExcludePaddingAndSeparateScales) {
 }
 
 TEST(NnrtEmbeddingDequant, DecodesSignedNibblesAndPerRowGroupScalesAcrossTiles) {
-  for (const auto shape : {Q4EmbeddingShape{80, 1056}, {112, 1152}, {144, 2080}}) {
+  const Q4EmbeddingShape shapes[] = {{80, 1056}, {112, 1152}, {144, 2080}};
+  for (const auto shape : shapes) {
     SCOPED_TRACE(::testing::Message() << shape.rows << "x" << shape.hidden);
     const auto blob = MakeNzfBlob(shape.rows, shape.hidden);
     ASSERT_EQ(blob.size(), static_cast<size_t>(shape.rows) * (shape.hidden / 32) * 18);
@@ -179,8 +292,9 @@ TEST(NnrtEmbeddingDequant, ChecksSizeOverflowBeforeMultiplication) {
 TEST(NnrtEmbeddingDequant, RejectsInvalidDimensionsAndNullSizeOutputs) {
   size_t packed = 123;
   size_t total = 456;
-  for (const auto &dims :
-       {std::pair<int, int>{0, 32}, {-1, 32}, {64, 0}, {64, -1}, {1, 32}, {17, 32}, {64, 16}, {64, 33}, {65, 1057}}) {
+  const std::pair<int, int> invalid_dims[] = {{0, 32},  {-1, 32}, {64, 0},  {64, -1},  {1, 32},
+                                              {17, 32}, {64, 16}, {64, 33}, {65, 1057}};
+  for (const auto &dims : invalid_dims) {
     SCOPED_TRACE(::testing::Message() << dims.first << "x" << dims.second);
     EXPECT_FALSE(Q4NzfEmbeddingSize(dims.first, dims.second, &packed, &total));
     EXPECT_EQ(packed, 123u);

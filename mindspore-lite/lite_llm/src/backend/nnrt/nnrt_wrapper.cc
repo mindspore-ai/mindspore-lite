@@ -153,6 +153,8 @@ bool NNRTWrapper::LoadHiAIFoundation() {
     MS_LOG(ERROR) << "Missing HMS_HiAIOptions_SetAsyncModeEnable in libhiai_foundation.so: " << dlerror();
     return false;
   }
+  api_.HIAIOptions_SetOmOptions =
+    reinterpret_cast<decltype(api_.HIAIOptions_SetOmOptions)>(dlsym(hiai_handle_, "HMS_HiAIOptions_SetOmOptions"));
   api_.HIAIExecutor_InitWeights =
     reinterpret_cast<decltype(api_.HIAIExecutor_InitWeights)>(dlsym(hiai_handle_, "HMS_HiAIExecutor_InitWeights"));
   if (api_.HIAIExecutor_InitWeights == nullptr) {

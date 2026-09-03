@@ -19,7 +19,7 @@ tensor name maps and the replacement orchestration.  The model-agnostic
 Q4_0 block rearrangement lives in ``utils.gguf_mapping``.
 
 The ONNX skeleton must already carry the quantized ``MatMul_quant`` nodes
-(exported with ``--decoder-quant W4A16`` from ``qwen2_5_exporter``); this
+(exported with ``--quant-type q4_0`` from ``qwen2_5_exporter``); this
 module replaces their placeholder quantized weights with the real Q4_0 weights
 read from the GGUF file, rearranged into the g32 NZF layout expected by
 ``MsQuant4N0Group32``.
@@ -31,6 +31,7 @@ Example:
                 embedding_weight_save_path=...)
 """
 
+from typing import Optional
 import logging
 
 import numpy as np
@@ -40,6 +41,8 @@ from onnxslim import slim
 
 from utils.onnx_postprocess import _save_onnx, duplicate_shared_initializers
 from utils.gguf_mapping import create_new_initializer, load_file_from_tensors
+
+from utils.quantization import QuantType
 
 logger = logging.getLogger(__name__)
 
@@ -133,11 +136,11 @@ def load_model_fp16_weight(model, weights):
 
 
 
-def load_weight(model, weights, layers=24, decoder_quantize_config="W4A16"):
+def load_weight(model, weights, layers=24, decoder_quantize_config: Optional[QuantType] = QuantType.Q4_0):
     """Inject decoder quantized weights + fp16 norm/bias + model norm into the skeleton."""
-    if decoder_quantize_config == "W4A16":
+    if decoder_quantize_config == QuantType.Q4_0:
         quant_weight = load_q4_weight(model, weights, layers)
-    elif decoder_quantize_config == "FP16":
+    elif decoder_quantize_config is None:
         quant_weight = load_decode_fp16_weight(model, weights, layers)
     else:
         raise ValueError(f"decoder_quantize_config {decoder_quantize_config} not supported")
@@ -169,10 +172,12 @@ def gguf_loader(
     onnx_output_path,
     embedding_weight_save_path,
     layers=24,
-    embedding_quantize_config="W4A16",
-    decoder_quantize_config="W4A16",
+    embedding_quantize_config=QuantType.Q4_0,
+    decoder_quantize_config=QuantType.Q4_0,
 ):
     """Load GGUF Q4_0 weights into the ONNX skeleton and save the result."""
+    embedding_quantize_config = QuantType.parse(embedding_quantize_config)
+    decoder_quantize_config = QuantType.parse(decoder_quantize_config)
     reader = GGUFReader(gguf_path)
     name2weight = load_file_from_tensors(
         reader.tensors, embedding_weight_save_path, decoder_quantize_config, embedding_quantize_config

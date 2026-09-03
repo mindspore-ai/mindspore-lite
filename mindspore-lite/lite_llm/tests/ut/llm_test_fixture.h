@@ -88,6 +88,8 @@ inline std::vector<uint8_t> BuildMinimalVocabBin(bool include_whitespace_tokens 
   u32(static_cast<uint32_t>(tmpl.size()));
   b.insert(b.end(), tmpl.begin(), tmpl.end());
 
+  // u32 captures the vector object by reference; insert only invalidates its elements.
+  // cppcheck-suppress invalidContainer
   u32(1);  // stop_count
   str("</s>");
   u32(0);  // suppress_count

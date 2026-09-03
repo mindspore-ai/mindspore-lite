@@ -20,7 +20,9 @@ template string. The C++ interpreter golden tests (tests/ut/) use the same IR
 bytes embedded in a fixed program.
 """
 
+import json
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -32,6 +34,7 @@ sys.path.insert(0, str(_EXPORT_DIR))
 
 # pylint: disable=wrong-import-position  # export/ added to sys.path above
 from utils.export_tokenizer import (  # noqa: E402
+    _bpe_merges,
     MAGIC,
     VERSION,
     UnsupportedTemplateError,
@@ -142,3 +145,29 @@ def test_compiler_rejects_message_index_access():
         compile_chat_template_ir(
             "{% for message in messages %}{{ message[0] }}{% endfor %}"
         )
+
+
+@pytest.mark.parametrize("merges", [["a b", "ab c"], [["a", "b"], ["ab", "c"]]])
+def test_fast_bpe_merges_preserve_rank(merges):
+    """Fast tokenizers store merge rules in backend JSON, in rank order."""
+    backend = SimpleNamespace(to_str=lambda: json.dumps({"model": {"type": "BPE", "merges": merges}}))
+    assert _bpe_merges(SimpleNamespace(backend_tokenizer=backend)) == ["a b", "ab c"]
+
+
+def test_explicit_bpe_merges_take_precedence():
+    """Keep the existing slow/GGUF merge source when present."""
+    assert _bpe_merges(SimpleNamespace(merges=["b c", "a b"])) == ["b c", "a b"]
+
+
+def test_bpe_merges_file(tmp_path):
+    """Read the legacy merges.txt path and ignore its header."""
+    path = tmp_path / "merges.txt"
+    path.write_text("#version: 0.2\na b\n\nab c\n", encoding="utf-8")
+    assert _bpe_merges(SimpleNamespace(merges_file=path)) == ["a b", "ab c"]
+
+
+@pytest.mark.parametrize("merges", [["abc"], [["a", "b", "c"]], [["a", 1]], [["", "b"]]])
+def test_invalid_bpe_merges_rejected(merges):
+    """Malformed rules must fail during export instead of corrupting vocab.bin."""
+    with pytest.raises(ValueError, match="BPE merge"):
+        _bpe_merges(SimpleNamespace(merges=merges))

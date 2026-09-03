@@ -61,6 +61,7 @@ bool NNRTBackend::BuildNnrtConfig(const BackendConfig &config, backend::nnrt::Nn
   // ── NPU runtime params (from manifest.npu, fixed at export) ──────────
   nnrt->max_length = man.npu.max_length;
   nnrt->chunk_size = man.npu.chunk_size;
+  nnrt->embedding_format = man.npu.embedding_format;
   nnrt->embedding_quant = man.npu.embedding_quant;
   nnrt->q4_0_weight_layout = man.npu.q4_0_weight_layout;
   if (man.npu.scale_gp_size > 0) {

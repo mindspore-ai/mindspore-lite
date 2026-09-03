@@ -37,7 +37,7 @@ MindSpore Lite LLM（`mslite-llm`）是 MindSpore Lite 框架中的**端侧大�
 | 采样（greedy / top-k / top-p / temperature / repetition penalty） | 已接通 |
 | Chat Template（导出时固化） | 已接通 |
 | KV Cache | NNRT 设备侧管理 |
-| W4A16 量化推理 | 已接通（`src/backend/nnrt/nnrt_embedding_dequant.*`） |
+| W4A16 量化推理 | 已接通（`src/backend/nnrt/nnrt_embedding.*`） |
 | VLM / LoRA / 推测解码 / Chunk Prefill / PD 分离 | 预留，公共路径返回 `NOT_SUPPORTED` |
 
 ## 2. 架构分层

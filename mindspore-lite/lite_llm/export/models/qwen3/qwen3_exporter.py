@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""MiniMind-3 (Qwen3 dense) ONNX exporter for the mslite-llm NNRT (Kirin NPU) runtime.
+"""Dense Qwen3 ONNX exporter for the mslite-llm NNRT (Kirin NPU) runtime.
 
 Mirror of the Qwen2.5 exporter (``models/qwen2_5/qwen2_5_exporter.py``)
 adapted to the Qwen3 architecture: same graph I/O contract consumed by the
@@ -53,8 +53,10 @@ from utils.export_quant import LiteTurboConfig, ModelConfig, QuantizationConfig
 from utils.export_quant import (
     apply_quant,
     apply_shared_weight,
-    quantize_weight_g128_4bit_nz,
+    EmbeddingAsset,
 )
+
+from utils.quantization import EmbeddingFormat, QuantType
 
 from .qwen3_wrapper import Qwen3NnrtWrapper
 
@@ -90,19 +92,9 @@ def _ensure_qwen3_gguf_head_dim_mapping():
 
 
 class Qwen3Onnx:
-    """Export a MiniMind-3 (Qwen3 dense) GGUF/HF model to the NNRT ONNX contract."""
+    """Export a supported dense Qwen3 GGUF/HF model to the NNRT ONNX contract."""
 
-    #: Only the MiniMind-3 architecture is validated (matches the NNRT gear
-    #: shapes and the proven omc contract).
-    REQUIRED_ARCH = {
-        "num_hidden_layers": 8,
-        "intermediate_size": 2432,
-        "max_position_embeddings": 32768,
-        "hidden_size": 768,
-        "num_attention_heads": 8,
-        "num_key_value_heads": 4,
-        "head_dim": 96,
-    }
+    SUPPORTED_LAYER_COUNTS = (8, 36)
 
     def __init__(self):
         self.model = None
@@ -112,8 +104,8 @@ class Qwen3Onnx:
         self.hidden_size = 0
         self.num_kv_heads = 0
 
-    def load(self, model_path, layers=8):
-        """Load the model in fp16 and validate the MiniMind-3 architecture.
+    def load(self, model_path, layers=None):
+        """Load the model in fp16 and validate the dense Qwen3 architecture.
 
         ``model_path`` may be a HF directory or a ``.gguf`` file.  GGUF
         skeletons are dequantized by transformers via the ``gguf_file=`` kwarg
@@ -135,12 +127,13 @@ class Qwen3Onnx:
             )
             self.config = self.model.config
         else:
-            self.config = AutoConfig.from_pretrained(model_path)
+            self.config = AutoConfig.from_pretrained(model_path, trust_remote_code=False)
             self.config._attn_implementation = "eager"  # pylint: disable=W0212
-            self.config.num_hidden_layers = layers
+            if layers is not None:
+                self.config.num_hidden_layers = layers
             self.model = AutoModelForCausalLM.from_pretrained(
                 model_path,
-                trust_remote_code=True,
+                trust_remote_code=False,
                 config=self.config,
                 device_map=DEVICE,
                 dtype=dtype,
@@ -148,20 +141,32 @@ class Qwen3Onnx:
             )
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
 
-        if self.config.model_type != "qwen3":
-            raise ValueError(f"Model type must be qwen3, got {self.config.model_type}")
-        for key, expected in self.REQUIRED_ARCH.items():
-            if getattr(self.config, key, None) != expected:
-                raise ValueError(
-                    f"Error: the model at '{model_path}' is not a MiniMind-3 (Qwen3 dense) model "
-                    f"({key}={getattr(self.config, key, None)}, expected {expected})."
-                )
+        self._validate_config()
         self.model = self.model.eval()
 
         self.num_layers = self.model.config.num_hidden_layers
         self.hidden_size = self.model.config.hidden_size
         self.num_kv_heads = self.model.config.num_key_value_heads
         logger.info("model loaded: %s", model_path)
+
+    def _validate_config(self):
+        """Reject checkpoints outside the supported dense Qwen3 contract."""
+        config = self.config
+        if config.model_type != "qwen3":
+            raise ValueError(f"Model type must be qwen3, got {config.model_type}")
+        if config.num_hidden_layers not in self.SUPPORTED_LAYER_COUNTS:
+            raise ValueError(
+                f"Unsupported Qwen3 layer count {config.num_hidden_layers}; "
+                f"supported: {list(self.SUPPORTED_LAYER_COUNTS)}"
+            )
+        if getattr(config, "hidden_act", "silu") != "silu":
+            raise ValueError(f"Unsupported Qwen3 activation {config.hidden_act!r}; expected 'silu'")
+        if getattr(config, "use_sliding_window", False):
+            raise ValueError("Sliding-window Qwen3 checkpoints are not supported")
+        if getattr(config, "num_experts", 0) not in (None, 0):
+            raise ValueError("Qwen3 MoE checkpoints are not supported")
+        if not getattr(config, "tie_word_embeddings", False):
+            raise ValueError("The Qwen3 runtime contract requires tied input and output embeddings")
 
     def export(self, model_path, max_seq_len=1024, chunk_size=128):
         """Export the ONNX graph (NNRT 7-input + interleaved KV contract)."""
@@ -233,20 +238,9 @@ class Qwen3Onnx:
         _save_onnx(new_model, model_path)
         logger.info("Export + slim + add-rmsnorm fusion done: %s", model_path)
 
-    def embedding_weight_save(self, embedding_weight_save_path=None, embedding_quantize_config=None):
-        """Save the input embedding weight (fp16 raw / W4A8 / W4A16 quantized)."""
-        embedding_layer = self.model.get_input_embeddings()
-        weight = embedding_layer.weight.detach().numpy().astype(np.float16)
-        if embedding_quantize_config == "W4A8":
-            weight_4bit = quantize_weight_g128_4bit_nz(weight.T)
-            weight_4bit.tofile(embedding_weight_save_path)
-        elif embedding_quantize_config == "W4A16":
-            from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32
-
-            weight_4bit_gp32 = MsQuant4N0Group32.quantize_weight_g32_4bit(weight.T)
-            weight_4bit_gp32.tofile(embedding_weight_save_path)
-        else:
-            weight.flatten().tofile(embedding_weight_save_path)
+    def embedding_weight_save(self, embedding_weight_save_path, embedding_asset: EmbeddingAsset):
+        """Save the shared graph payload without repeating quantization."""
+        embedding_asset.save(embedding_weight_save_path)
         logger.info("Saved embedding weight to %s", embedding_weight_save_path)
 
     def rope_sin_cos_save(self, cos_path, sin_path, seq_len):
@@ -312,7 +306,7 @@ class Qwen3Onnx:
                 "embedding_quant": embedding_quant_config.asdict() if embedding_quant_config.is_quant else None,
                 "decoder_quant": decoder_quant_config.asdict() if decoder_quant_config.is_quant else None,
                 **({"q4_0_weight_layout": "q4_0_nzf_compact_phase4"}
-                   if embedding_quant_config.is_quant and embedding_quant_config.quant_method == "W4A16"
+                   if embedding_quant_config.is_quant and embedding_quant_config.quant_method == QuantType.Q4_0
                    else {}),
             },
             "sampling": LiteTurboConfig(
@@ -336,21 +330,25 @@ def export_qwen3(
     chunk_size: int = 128,
     embedding_quant: Optional[str] = None,
     decoder_quant: Optional[str] = None,
-    layers: int = 8,
-    model_name: str = "minimind-3-qwen3",
-    onnx_name: str = "minimind3_qwen3.onnx",
+    layers: Optional[int] = None,
+    model_name: str = "qwen3",
+    onnx_name: str = "qwen3.onnx",
 ):
-    """Export a MiniMind-3 (Qwen3 dense) model to the mslite-llm NNRT contract.
+    """Export a supported dense Qwen3 model to the mslite-llm NNRT contract.
 
     Produces, under ``output_dir``:
       * ``<onnx_name>`` — the ONNX graph (custom Ms* ops, 7-input contract)
       * ``embedding.bin`` / ``embedding_quant.bin`` — embedding weight
       * ``rope_cos.bin`` / ``rope_sin.bin`` — RoPE constants
       * ``attention_mask.bin`` — precomputed causal mask
-      * ``minimind3_config.json`` — packager-consumable config
+      * ``qwen3_config.json`` — packager-consumable config
 
-    Returns the path to ``minimind3_config.json``.
+    Returns the path to ``qwen3_config.json``.
     """
+    embedding_quant_config = QuantizationConfig(embedding_quant)
+    decoder_quant_config = QuantizationConfig(decoder_quant)
+    embedding_quant = embedding_quant_config.quant_method
+    decoder_quant = decoder_quant_config.quant_method
     if max_length <= 0 or chunk_size <= 0 or max_length % chunk_size != 0:
         raise ValueError(f"max_length {max_length} must be a positive multiple of chunk_size {chunk_size}")
     if max_length % chunk_size != 0:
@@ -364,8 +362,6 @@ def export_qwen3(
     onnx_path = os.path.join(output_dir, onnx_name)
     exporter.export(onnx_path, max_seq_len=max_length, chunk_size=chunk_size)
 
-    embedding_quant_config = QuantizationConfig(embedding_quant)
-    decoder_quant_config = QuantizationConfig(decoder_quant)
 
     if embedding_quant_config.is_quant or decoder_quant_config.is_quant:
         head_dim = int(getattr(exporter.config, "head_dim", None) or (
@@ -388,15 +384,25 @@ def export_qwen3(
         quant_model_path = os.path.join(path, name + "_quant" + ext)
         apply_quant(onnx_path, quant_model_path, model_config)
         onnx_path = quant_model_path  # the .omc is compiled from the quantized graph
-    else:
-        model = onnx.load(onnx_path)
-        apply_shared_weight(model)  # inserts embedding_weight input at index 6
-        _save_onnx(model, onnx_path)
 
-    validate_contract(onnx_path, exporter.num_layers, embedding_quant=embedding_quant_config.is_quant)
+    embedding_bin = os.path.join(output_dir, "embedding_quant.bin" if embedding_quant else "embedding.bin")
+    model = onnx.load(onnx_path)
+    embedding_asset = apply_shared_weight(model)
+    _save_onnx(model, onnx_path)
+
+    validate_contract(
+        onnx_path,
+        exporter.num_layers,
+        embedding_quant=embedding_quant_config.is_quant,
+        embedding_format=embedding_quant.embedding_format if embedding_quant else EmbeddingFormat.W4A16,
+    )
 
     config = exporter.build_config(
         max_length, chunk_size, embedding_quant_config, decoder_quant_config, model_name
+    )
+
+    config["npu"]["embedding_format"] = (
+        embedding_quant.embedding_format if embedding_quant else EmbeddingFormat.W4A16
     )
 
     # Standalone packager-consumable fragments (same content as the config json).
@@ -405,8 +411,7 @@ def export_qwen3(
     with open(os.path.join(output_dir, "generation_policy.json"), "w", encoding="utf-8") as f:
         json.dump(config["generation"], f, indent=2)
 
-    embedding_bin = os.path.join(output_dir, "embedding_quant.bin" if embedding_quant else "embedding.bin")
-    exporter.embedding_weight_save(embedding_bin, embedding_quant)
+    exporter.embedding_weight_save(embedding_bin, embedding_asset)
 
     cos_path = os.path.join(output_dir, "rope_cos.bin")
     sin_path = os.path.join(output_dir, "rope_sin.bin")
@@ -423,7 +428,7 @@ def export_qwen3(
     }
     config["onnx"] = os.path.basename(onnx_path)
 
-    config_path = os.path.join(output_dir, "minimind3_config.json")
+    config_path = os.path.join(output_dir, "qwen3_config.json")
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
     logger.info("Qwen3 export complete. Config: %s", config_path)

@@ -21,11 +21,12 @@ Merges the former ``quantize`` / ``packing`` / ``quant_config`` modules:
 * Pure-Python (NumPy) weight packing kernels (bit-exact ports of the C++
   reference kernels for the Kirin NPU ``MsQuant*`` custom operators).
 * ``apply_quant`` / ``quantize_linear_ops`` — graph-level quantization
-  (weights + tied lm_head) producing the NNRT-compatible ONNX.
+  (weights + tied lm_head); exporters then expose shared embedding inputs.
 """
 
 import os
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 import onnx
@@ -33,6 +34,7 @@ from onnx import TensorProto, helper, shape_inference
 
 from utils import ensure_custom_ops
 from utils.onnx_postprocess import _save_onnx, duplicate_shared_initializers
+from utils.quantization import QuantType, get_quant_preset
 
 
 # ─── quantization configuration ────────────────────────────────────────────
@@ -41,34 +43,24 @@ class QuantizationConfig:
     """Quantization method configuration for embedding or decoder layers."""
 
     def __init__(self, quant_method):
+        quant_method = QuantType.parse(quant_method)
+        self.quant_method = quant_method
         if quant_method is None:
             self.is_quant = False
             self.bits = 0
             self.group_size = 0
             return
 
-        if quant_method not in ["W4A8", "W2A16", "W4A16"]:
-            raise ValueError(
-                f"`quant_method` should be one of [W4A8, W2A16, W4A16], but is {quant_method}"
-            )
-
         self.is_quant = True
-        self.quant_method = quant_method
-        if quant_method == "W4A8":
-            self.bits = 4
-            self.group_size = 128
-        elif quant_method == "W2A16":
-            self.bits = 2
-            self.group_size = 32
-        elif quant_method == "W4A16":
-            self.bits = 4
-            self.group_size = 32
+        self.preset = get_quant_preset(quant_method)
+        self.bits = self.preset.bits
+        self.group_size = self.preset.group_size
 
     def asdict(self):
         """Return the quantization config as a plain dict (empty when quant is off)."""
         if self.is_quant:
             return {
-                "quant_method": self.quant_method,
+                "quant_method": self.quant_method.value,
                 "bits": self.bits,
                 "group_size": self.group_size,
             }
@@ -76,7 +68,7 @@ class QuantizationConfig:
 
     def __repr__(self):
         config = f"<is_quant: {self.is_quant}"
-        if hasattr(self, "quant_method"):
+        if self.is_quant:
             config += (
                 f", quant_method: {self.quant_method}, bits: {self.bits}, "
                 f"group_size: {self.group_size}"
@@ -223,7 +215,7 @@ def _q4_n0_nz(x, n, d):
     Returns the packed ``uint8`` buffer: weight bytes in Ascend NZ fractal
     order followed by fp32 scales.
     """
-    qk = 128
+    qk = get_quant_preset(QuantType.W4A8).group_size
     n_factor_q = 64
     fractal_n = 16
     fractal_d = 32
@@ -279,7 +271,7 @@ def _q2_n0(x, n, d):
     Returns the packed ``uint8`` buffer: ``n*d/4`` weight bytes followed by
     ``n*d/32`` fp16 scales (``n*d/16`` bytes).
     """
-    qk = 32
+    qk = get_quant_preset(QuantType.W2A16).group_size
     nb = n * d // qk
     xg = x.reshape(nb, qk)
 
@@ -309,7 +301,8 @@ def quantize_weight_g128_4bit_nz(weight):
     k, n = weight.shape  # [K, N]
     x = weight.T.astype(np.float32).reshape(-1)  # [N, K] flattened
     out = _q4_n0_nz(x, n, k)
-    length = _ceil(n, 16) * (k // 2 + k // 128 * 4)
+    preset = get_quant_preset(QuantType.W4A8)
+    length = _ceil(n, 16) * (k // 2 + k // preset.group_size * preset.scale_encoding.byte_size)
     return _pad_to_length(out, length).view(np.uint8)
 
 
@@ -318,7 +311,8 @@ def quantize_weight_g32_2bit_nd(weight):
     k, n = weight.shape  # [K, N]
     x = weight.T.astype(np.float32).reshape(-1)  # [N, K] flattened
     out = _q2_n0(x, n, k)
-    length = _ceil(n, 16) * (k // 4 + k // 32 * 2)
+    preset = get_quant_preset(QuantType.W2A16)
+    length = _ceil(n, 16) * (k // 4 + k // preset.group_size * preset.scale_encoding.byte_size)
     return _pad_to_length(out, length)
 
 
@@ -430,7 +424,7 @@ def quant_node_4bit_gp32(shape_info, origin_node, initializers):
         raise ValueError(f"Can not get input shape of {origin_node.name}.")
 
     quant_linear_node = helper.make_node(
-        "MsQuant4N0Group32",
+        get_quant_preset(QuantType.Q4_0).operator,
         inputs=[input_name, quant_weight_name],
         outputs=[origin_node.output[0]],
         input1_shape=f"{weight_shape[0]},{weight_shape[1]}",
@@ -465,7 +459,7 @@ def quant_node_4bit(shape_info, origin_node, initializers):
         raise ValueError(f"Can not get input shape of {origin_node.name}.")
 
     quant_linear_node = helper.make_node(
-        "MsQuant4N0Group128",
+        get_quant_preset(QuantType.W4A8).operator,
         inputs=[quant_act_name, quant_weight_name],
         outputs=[origin_node.output[0]],
         input1_shape=f"{weight_shape[0]},{weight_shape[1]}",
@@ -497,7 +491,7 @@ def quant_node_2bit(shape_info, origin_node, initializers, q2_v):
         raise ValueError(f"Can not get input shape of {origin_node.name}.")
 
     quant_linear_node = helper.make_node(
-        "MsQuant2N0Group32",
+        get_quant_preset(QuantType.W2A16).operator,
         inputs=[origin_node.input[0], quant_weight_name],
         outputs=[origin_node.output[0]],
         input1_shape=f"{weight_shape[0]},{weight_shape[1]}",
@@ -516,7 +510,7 @@ def _find_lmhead_matmul(graph):
     by the weight initializer name containing ``lm_head`` (robust to renaming).
     """
     initializer_names = {init.name for init in graph.initializer}
-    lmhead_quant_ops = {"MsQuant4N0Group32", "MsQuant4N0Group128", "MsQuant2N0Group32"}
+    lmhead_quant_ops = {"MsQuant4N0Group32", "MsQuant4N0Group128", "MsQuant2N0Group32", "MsMatmulS16S4"}
     for node in graph.node:
         if node.op_type not in ["MatMul", *lmhead_quant_ops]:
             continue
@@ -527,17 +521,93 @@ def _find_lmhead_matmul(graph):
     return None
 
 
-def apply_shared_weight(model, is_quant=False):
+def _validate_shared_s16s4_weight(head, initializers):
+    """Validate the packed head layout required by CPU embedding lookup."""
+    if onnx.numpy_helper.to_array(initializers[head.input[1]]).tolist() != [1024.0]:
+        raise ValueError("S16S4_NZ_V1 requires activation scale 1024")
+    attrs = {attr.name: helper.get_attribute_value(attr) for attr in head.attribute}
+    hidden, vocab = attrs["w_shape"]
+    if hidden % S16S4_GROUP_SIZE or vocab % S16S4_N_TILE or attrs.get("group_size") != S16S4_GROUP_SIZE:
+        raise ValueError("Shared S16S4 embedding requires Group128 and aligned dimensions")
+    if list(initializers[head.input[2]].dims) != [vocab, hidden // 2]:
+        raise ValueError("Unexpected packed S16S4 weight shape")
+    if list(initializers[head.input[4]].dims) != [vocab // S16S4_N_TILE, hidden // S16S4_GROUP_SIZE, S16S4_N_TILE, 8]:
+        raise ValueError("Unexpected S16S4 scale record shape")
+
+
+@dataclass
+class EmbeddingAsset:
+    """Shared embedding payload, with buffers in file serialization order."""
+
+    quant_type: Optional[QuantType]
+    logical_shape: tuple[int, int]
+    buffers: list[np.ndarray]
+
+    def save(self, output_path):
+        """Write the graph's existing payload without quantizing it again."""
+        with open(output_path, "wb") as stream:
+            for buffer in self.buffers:
+                buffer.tofile(stream)
+
+
+def _apply_shared_s16s4_weight(model):
+    """Move packed head weights/scales from constants to two runtime inputs."""
+    heads = [node for node in model.graph.node if node.op_type == "MsMatmulS16S4" and "lm_head" in node.name]
+    if len(heads) != 1:
+        raise ValueError("Expected exactly one S16S4 LM head")
+    head = heads[0]
+    initializers = {value.name: value for value in model.graph.initializer}
+    _validate_shared_s16s4_weight(head, initializers)
+    parameters = [(2, "embedding_weight"), (4, "embedding_scale")]
+    inputs = []
+    removed = set()
+    buffers = []
+    for index, name in parameters:
+        value = initializers[head.input[index]]
+        if value.data_type != onnx.TensorProto.INT8:
+            raise ValueError("S16S4 shared parameters must be INT8 byte tensors")
+        buffers.append(onnx.numpy_helper.to_array(value))
+        inputs.append(helper.make_tensor_value_info(name, value.data_type, list(value.dims)))
+        removed.add(value.name)
+        head.input[index] = name
+    # Sharing a constant with a different consumer would need a separate binding.
+    if any(name in removed for node in model.graph.node for name in node.input):
+        raise ValueError("Head parameters unexpectedly used by another node")
+    remaining = [value for value in model.graph.initializer if value.name not in removed]
+    del model.graph.initializer[:]
+    model.graph.initializer.extend(remaining)
+    original = list(model.graph.input)
+    del model.graph.input[:]
+    model.graph.input.extend(original[:6] + inputs + original[6:])
+    attrs = {attr.name: helper.get_attribute_value(attr) for attr in head.attribute}
+    hidden, vocab = attrs["w_shape"]
+    return EmbeddingAsset(QuantType.S16S4, (vocab, hidden), buffers)
+
+
+def apply_shared_weight(model):
     """Replace the tied lm_head weight with the ``embedding_weight`` graph input.
 
     Inserts the input at index 6 so the final input order is the NNRT contract:
     [valid_seq_len, lmhead_idx, rope_cos, rope_sin, inputs_embeds, attention_mask,
     embedding_weight] + past_key_i/past_val_i.
+    S16S4 also inserts embedding_scale at index 7. Returns an EmbeddingAsset
+    containing the removed weights/scales in embedding file layout.
     """
     graph = model.graph
     node = _find_lmhead_matmul(graph)
     if node is None:
         raise ValueError("lm_head MatMul node not found; cannot apply shared embedding weight")
+
+    if node.op_type == "MsMatmulS16S4":
+        return _apply_shared_s16s4_weight(model)
+
+    quant_types = {
+        "MsQuant4N0Group32": QuantType.Q4_0,
+        "MsQuant4N0Group128": QuantType.W4A8,
+        "MsQuant2N0Group32": QuantType.W2A16,
+    }
+    quant_type = quant_types.get(node.op_type)
+    is_quant = quant_type is not None
 
     weight_name = node.input[1]
     for init in graph.initializer:
@@ -547,8 +617,13 @@ def apply_shared_weight(model, is_quant=False):
         weight_data = onnx.numpy_helper.to_array(init)
 
         if is_quant:
+            attrs = {attr.name: helper.get_attribute_value(attr) for attr in node.attribute}
+            hidden, vocab = map(int, attrs["input1_shape"].decode("ascii").split(","))
+            asset = EmbeddingAsset(quant_type, (vocab, hidden), [weight_data])
             embedding_input = helper.make_tensor_value_info("embedding_weight", TensorProto.UINT8, weight_data.shape)
         else:
+            embedding_weight = np.ascontiguousarray(weight_data.T, dtype=np.float16)
+            asset = EmbeddingAsset(None, embedding_weight.shape, [embedding_weight])
             embedding_input = helper.make_tensor_value_info(
                 "embedding_weight", TensorProto.FLOAT16, weight_data.T.shape
             )
@@ -568,12 +643,12 @@ def apply_shared_weight(model, is_quant=False):
         node.input[1] = node_input
         graph.input.insert(6, embedding_input)
         graph.initializer.remove(init)
-        return
+        return asset
     raise ValueError(f"lm_head weight initializer '{weight_name}' not found")
 
 
 def quantize_linear_ops(model, embedding_quant_config, decoder_quant_config):
-    """Quantize decoder Linear weights and the lm_head (tied embedding)."""
+    """Quantize decoder Linear weights and the lm_head, retaining weight initializers."""
     graph = model.graph
 
     shape_info = get_shape_info(graph)
@@ -590,21 +665,23 @@ def quantize_linear_ops(model, embedding_quant_config, decoder_quant_config):
 
     initializers = {init.name: init for init in graph.initializer}
     q2_v = None
-    if getattr(embedding_quant_config, "quant_method", None) == "W2A16" or getattr(
+    if getattr(embedding_quant_config, "quant_method", None) == QuantType.W2A16 or getattr(
         decoder_quant_config, "quant_method", None
-    ) == "W2A16":
+    ) == QuantType.W2A16:
         q2_v = load_q2_constant()
 
     if lmhead_node is None:
         raise ValueError("lm_head MatMul node not found for quantization")
 
     if embedding_quant_config.is_quant:
-        if embedding_quant_config.quant_method == "W4A8":
+        if embedding_quant_config.quant_method == QuantType.W4A8:
             new_node_list, new_initializer_list = quant_node_4bit(shape_info, lmhead_node, initializers)
-        elif embedding_quant_config.quant_method == "W2A16":
+        elif embedding_quant_config.quant_method == QuantType.W2A16:
             new_node_list, new_initializer_list = quant_node_2bit(shape_info, lmhead_node, initializers, q2_v)
-        elif embedding_quant_config.quant_method == "W4A16":
+        elif embedding_quant_config.quant_method == QuantType.Q4_0:
             new_node_list, new_initializer_list = quant_node_4bit_gp32(shape_info, lmhead_node, initializers)
+        elif embedding_quant_config.quant_method == QuantType.S16S4:
+            new_node_list, new_initializer_list = quant_node_s16s4(lmhead_node, initializers)
         else:
             raise RuntimeError(f"quant method: {embedding_quant_config.quant_method} not supported")
         new_nodes.extend(new_node_list)
@@ -615,12 +692,14 @@ def quantize_linear_ops(model, embedding_quant_config, decoder_quant_config):
             # Dynamic MatMul (e.g. attention score products): keep as-is.
             new_nodes.append(node)
             continue
-        if decoder_quant_config.quant_method == "W4A8":
+        if decoder_quant_config.quant_method == QuantType.W4A8:
             new_node_list, new_initializer_list = quant_node_4bit(shape_info, node, initializers)
-        elif decoder_quant_config.quant_method == "W2A16":
+        elif decoder_quant_config.quant_method == QuantType.W2A16:
             new_node_list, new_initializer_list = quant_node_2bit(shape_info, node, initializers, q2_v)
-        elif decoder_quant_config.quant_method == "W4A16":
+        elif decoder_quant_config.quant_method == QuantType.Q4_0:
             new_node_list, new_initializer_list = quant_node_4bit_gp32(shape_info, node, initializers)
+        elif decoder_quant_config.quant_method == QuantType.S16S4:
+            new_node_list, new_initializer_list = quant_node_s16s4(node, initializers)
         else:
             raise RuntimeError(f"quant method: {decoder_quant_config.quant_method} not supported")
         new_nodes.extend(new_node_list)
@@ -651,8 +730,6 @@ def quantize_linear_ops(model, embedding_quant_config, decoder_quant_config):
     if not any(opset.domain == "custom" for opset in new_model.opset_import):
         new_model.opset_import.append(helper.make_opsetid("custom", 1))
 
-    apply_shared_weight(new_model, is_quant=embedding_quant_config.is_quant)
-
     # Remove redundant MsFloatCastInt nodes and duplicate shared initializers.
     from onnxslim import slim
 
@@ -675,7 +752,7 @@ def _has_external_data(model):
 
 
 def apply_quant(input_model, output_model, model_config: ModelConfig):
-    """Quantize the exported model in place (weights + lm_head) and save.
+    """Quantize and save weights + lm_head; callers then apply shared weights.
 
     Shape inference runs before external tensor payloads are loaded so large
     models do not exceed protobuf's in-memory size limit during inference.
@@ -703,3 +780,203 @@ def apply_quant(input_model, output_model, model_config: ModelConfig):
 
     _save_onnx(model, output_model)
     return output_model
+
+
+S16S4_GROUP_SIZE = get_quant_preset(QuantType.S16S4).group_size
+S16S4_N_TILE = 128
+S16S4_K_TILE = 64
+S16S4_ACTIVATION_SCALE = 1024.0
+
+
+def pack_s16s4_nz(weight_kn):
+    """Pack logical signed-S4 [K,N] into the L311 [N,K/2] byte layout."""
+    weight_kn = np.ascontiguousarray(weight_kn, dtype=np.int8)
+    if weight_kn.ndim != 2:
+        raise ValueError("weight must be rank-2 [K,N]")
+    k, n = weight_kn.shape
+    if k % S16S4_K_TILE or n % S16S4_N_TILE:
+        raise ValueError(
+            f"S16S4 requires K%{S16S4_K_TILE}=0 and N%{S16S4_N_TILE}=0: {(k, n)}"
+        )
+    if np.any(weight_kn < -8) or np.any(weight_kn > 7):
+        raise ValueError("weight contains values outside signed int4")
+
+    reordered = (
+        weight_kn.T.reshape(
+            n // S16S4_N_TILE,
+            S16S4_N_TILE // 16,
+            16,
+            k // S16S4_K_TILE,
+            S16S4_K_TILE,
+        )
+        .transpose(0, 3, 1, 2, 4)
+        .copy()
+        .reshape(-1)
+    )
+    low = reordered[0::2].astype(np.uint8) & np.uint8(0x0F)
+    high = (reordered[1::2].astype(np.uint8) & np.uint8(0x0F)) << 4
+    return np.ascontiguousarray((low | high).view(np.int8).reshape(n, k // 2))
+
+
+def unpack_s16s4_nz(packed, k, n):
+    """Inverse of pack_s16s4_nz; returns signed-S4 [K,N]."""
+    packed = np.ascontiguousarray(packed, dtype=np.int8)
+    if packed.size != n * k // 2:
+        raise ValueError(f"packed size {packed.size} does not match K={k}, N={n}")
+    raw = packed.view(np.uint8).reshape(-1)
+    reordered = np.empty(k * n, dtype=np.uint8)
+    reordered[0::2] = raw & np.uint8(0x0F)
+    reordered[1::2] = raw >> np.uint8(4)
+    signed = ((reordered.astype(np.int8) << 4) >> 4).reshape((
+        n // S16S4_N_TILE,
+        k // S16S4_K_TILE,
+        S16S4_N_TILE // 16,
+        16,
+        S16S4_K_TILE,
+    ))
+    return np.ascontiguousarray(
+        signed.transpose(0, 2, 3, 1, 4).reshape(n, k).T
+    )
+
+
+def _s16s4_fixpipe_parameters(scales_gn, activation_scale):
+    """Encode grouped scales as [N/128,K/128,128,8] FixPipe records."""
+    groups, n = scales_gn.shape
+    if n % S16S4_N_TILE:
+        raise ValueError(f"N must be a multiple of {S16S4_N_TILE}: {n}")
+    effective = scales_gn.astype(np.float32) / np.float32(activation_scale)
+    ordered = effective.T.reshape((
+        n // S16S4_N_TILE, S16S4_N_TILE, groups
+    )).transpose((0, 2, 1))
+    records = np.zeros((*ordered.shape, 2), dtype=np.float32)
+    records[..., 0] = ordered
+    return np.ascontiguousarray(
+        records.view(np.int8).reshape((
+            n // S16S4_N_TILE, groups, S16S4_N_TILE, 8
+        ))
+    )
+
+
+def _s16s4_corrected_bias(weight_nk, scales_gn, activation_scale):
+    """Compensate the low-byte XOR used by the L311 S16 activation path."""
+    n, k = weight_nk.shape
+    groups = k // S16S4_GROUP_SIZE
+    grouped = weight_nk.reshape(n, groups, S16S4_GROUP_SIZE)
+    correction = (
+        grouped.sum(axis=2, dtype=np.int64).astype(np.float64)
+        * scales_gn.T.astype(np.float64)
+        / float(activation_scale)
+    ).sum(axis=1)
+    return np.ascontiguousarray((128.0 * correction).astype(np.float16))
+
+
+def quantize_weight_s16s4_rtn128(weight):
+    """Materialize one FP16/FP32 [K,N] projection for MsMatmulS16S4."""
+    weight = np.ascontiguousarray(weight)
+    if weight.ndim != 2:
+        raise ValueError("weight must be rank-2 [K,N]")
+    k, n = weight.shape
+    if k % S16S4_GROUP_SIZE or n % S16S4_N_TILE:
+        raise ValueError(
+            f"MsMatmulS16S4 requires K%128=0 and N%128=0: {(k, n)}"
+        )
+    if not np.isfinite(weight).all():
+        raise ValueError("weight contains NaN or infinity")
+    scale_fp16 = np.float16(S16S4_ACTIVATION_SCALE)
+
+    weight_nk = weight.T.astype(np.float32, copy=False)
+    groups = k // S16S4_GROUP_SIZE
+    grouped = weight_nk.reshape(n, groups, S16S4_GROUP_SIZE)
+    signed_max = _signed_max_per_group(grouped)
+    scales_ng, inverse_ng = _inverse_scale(signed_max, 8)
+    quantized = np.minimum(
+        15, (grouped * inverse_ng[..., None] + np.float32(8.5)).astype(np.int64)
+    ) - 8
+    weight_nk_s4 = np.ascontiguousarray(quantized.reshape(n, k), dtype=np.int8)
+    scales_gn = np.ascontiguousarray(scales_ng.T, dtype=np.float16)
+    packed = pack_s16s4_nz(weight_nk_s4.T)
+    if not np.array_equal(unpack_s16s4_nz(packed, k, n).T, weight_nk_s4):
+        raise RuntimeError("internal S16S4 pack/unpack verification failed")
+    return {
+        "w": packed,
+        "bias": _s16s4_corrected_bias(weight_nk_s4, scales_gn, scale_fp16),
+        "w_scale": _s16s4_fixpipe_parameters(scales_gn, scale_fp16),
+        "x_scale": np.array([scale_fp16], dtype=np.float16),
+        "weight_s4": weight_nk_s4,
+        "scales": scales_gn,
+    }
+
+
+def _s16s4_dynamic_activation(node):
+    """Keep each activation row within S16 range, then restore its output scale.
+
+    The kernel multiplies FP16 inputs by 1024 before converting to INT16.
+    Normalize only rows exceeding 16, leaving headroom for FP16 rounding.
+    Rescaling after the kernel also rescales its corrected-bias contribution;
+    the packed weights, FixPipe records and shared embedding stay unchanged.
+    """
+    prefix = node.name + "/activation"
+    original_input, original_output = node.input[0], node.output[0]
+    names = {key: prefix + "/" + key for key in (
+        "abs", "amax", "ratio", "scale", "normalized", "result", "limit", "one", "axis"
+    )}
+    constants = [
+        onnx.numpy_helper.from_array(np.array([16], dtype=np.float16), names["limit"]),
+        onnx.numpy_helper.from_array(np.array([1], dtype=np.float16), names["one"]),
+        onnx.numpy_helper.from_array(np.array([-1], dtype=np.int64), names["axis"]),
+    ]
+    nodes = [
+        helper.make_node("Abs", [original_input], [names["abs"]], name=prefix + "/Abs"),
+        helper.make_node("ReduceMax", [names["abs"], names["axis"]], [names["amax"]],
+                         keepdims=1, name=prefix + "/ReduceMax"),
+        helper.make_node("Div", [names["amax"], names["limit"]], [names["ratio"]], name=prefix + "/Div"),
+        helper.make_node("Max", [names["ratio"], names["one"]], [names["scale"]], name=prefix + "/Max"),
+        helper.make_node("Div", [original_input, names["scale"]], [names["normalized"]],
+                         name=prefix + "/Normalize"),
+    ]
+    node.input[0] = names["normalized"]
+    node.output[0] = names["result"]
+    nodes.extend([
+        node,
+        helper.make_node("Mul", [names["result"], names["scale"]], [original_output],
+                         name=prefix + "/Restore"),
+    ])
+    return nodes, constants
+
+
+def quant_node_s16s4(origin_node, initializers):
+    """RTN Group128 S16S4 quantization for one decoder MatMul."""
+    weight_name = origin_node.input[1]
+    weight_data = onnx.numpy_helper.to_array(initializers[weight_name])
+    if weight_data.ndim != 2:
+        raise ValueError(f"{origin_node.name}: weight must be rank-2")
+    k_dim, n_dim = weight_data.shape
+    materialized = quantize_weight_s16s4_rtn128(weight_data)
+
+    packed_name = weight_name + "_quant"
+    x_scale_name = weight_name + "_s16s4_x_scale"
+    bias_name = weight_name + "_s16s4_bias"
+    w_scale_name = weight_name + "_s16s4_w_scale"
+    new_initializers = [
+        onnx.numpy_helper.from_array(materialized["x_scale"], x_scale_name),
+        onnx.numpy_helper.from_array(materialized["w"], packed_name),
+        onnx.numpy_helper.from_array(materialized["bias"], bias_name),
+        onnx.numpy_helper.from_array(materialized["w_scale"], w_scale_name),
+    ]
+    node = helper.make_node(
+        get_quant_preset(QuantType.S16S4).operator,
+        inputs=[
+            origin_node.input[0],
+            x_scale_name,
+            packed_name,
+            bias_name,
+            w_scale_name,
+        ],
+        outputs=[origin_node.output[0]],
+        w_shape=[int(k_dim), int(n_dim)],
+        group_size=S16S4_GROUP_SIZE,
+        name=origin_node.name + "_quant",
+        domain="custom",
+    )
+    nodes, activation_constants = _s16s4_dynamic_activation(node)
+    return nodes, new_initializers + activation_constants
