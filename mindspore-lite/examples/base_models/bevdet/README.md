@@ -23,7 +23,7 @@
 
 ### 环境安装
 
-> 安装mmdet3d、导出和推理需要下载[BEVDet源码](https://github.com/HuangJunJie2017/BEVDet)
+> 安装 mmdet3d、导出和推理需要下载[BEVDet源码](https://github.com/HuangJunJie2017/BEVDet)
 
 ```bash
 # 安装 PyTorch 2.0.0 CPU 版本
@@ -83,51 +83,16 @@ except ImportError:
 ext_modules=[],  # 移除 CUDA 扩展，跳过编译
 ```
 
-### 数据准备
-
-> `bevdetv3-nuscenes_infos_val.pkl` 数据集是由 [NuScenes 开源数据集 Full dataset (v1.0) Mini](https://www.nuscenes.org/nuscenes#download) 经过 BEVDet 代码仓中步骤 step 3. 处理得到。
-
-```text
-BEVDet/
-└── data/
-    └── nuscenes/
-        ├── bevdetv3-nuscenes_infos_val.pkl   # 验证集标注文件（81 样本）
-        ├── maps/
-        ├── samples/
-        └── sweeps/
-```
-
 ### 模型权重
 
 下载 BEVDet-R50 预训练权重：
 
 ```bash
-# 放置到项目根目录
+# 放置到 examples/base_models/bevdet/ 目录下
 wget <权重下载地址>/bevdet-r50.pth
 ```
 
 > [BEVDet 代码仓和权重下载](https://github.com/HuangJunJie2017/BEVDet)
-
-### 目录结构
-
-> 下载本工程，将工程中脚本文件export_bevdet_onnx.py、benchmark_bevdet_mslite.py和infer_bevdet_mslite.py拷贝到BEVDet/scripts目录下，将config目录拷贝到BEVDet目录下
-
-```text
-examples/base_models/bevdet/
-├── BEVDet/                             # BEVDet 源码（含 mmdet3d）
-│   ├── configs/bevdet/bevdet-r50.py
-│   ├── scripts/
-│   │   ├── export_bevdet_onnx.py       # ONNX 导出脚本
-│   │   ├── benchmark_bevdet_mslite.py  # Benchmark 脚本
-│   │   └── infer_bevdet_mslite.py      # 单样本推理脚本
-│   ├── config/
-│   │   ├── config_fixed.ini            # 固定 shape 转换配置
-│   │   └── config_dynamic.ini          # 动态 shape 转换配置
-│   └── output/                         # ONNX / MindIR 产出
-├── bevdet-r50.pth                      # 模型权重
-└── results/
-    └── benchmark_mslite_result.txt     # 测试结果
-```
 
 ***
 
@@ -218,10 +183,10 @@ class BEVPoolSegmentSum(torch.autograd.Function):
 ### 导出命令
 
 ```bash
-cd BEVDet
+cd examples/base_models/bevdet
 
-python scripts/export_bevdet_onnx.py \
-    --config configs/bevdet/bevdet-r50.py \
+python export_bevdet_onnx.py \
+    --config BEVDet/configs/bevdet/bevdet-r50.py \
     --checkpoint bevdet-r50.pth \
     --output output \
     --prefix bevdet_r50
@@ -231,11 +196,13 @@ python scripts/export_bevdet_onnx.py \
 
 | 参数             | 说明            | 默认值                          |
 | -------------- | ------------- | ---------------------------- |
-| `--config`     | BEVDet 配置文件   | `configs/bevdet/bevdet-r50.py` |
+| `--config`     | BEVDet 配置文件   | `BEVDet/configs/bevdet/bevdet-r50.py` |
 | `--checkpoint` | 权重文件路径        | `bevdet-r50.pth`              |
 | `--output`     | 输出目录          | `output`                     |
 | `--prefix`     | 输出文件前缀        | `bevdet_r50`                 |
 | `--opset`      | ONNX opset 版本 | `17`                         |
+| `--num-points` | 随机 ranks 长度（仅用于结构导出，不参与精度） | `179832`     |
+| `--device`     | 导出设备          | `cpu`                        |
 
 ### 关键技术细节
 
@@ -243,6 +210,7 @@ python scripts/export_bevdet_onnx.py \
 2. **禁用 with_cp**：ResNet-50 的梯度检查点不兼容 ONNX 导出，设为 `False`
 3. **ONNX_FALLTHROUGH**：使用 `operator_export_type=ONNX_FALLTHROUGH` 跳过 Custom 算子注册检查
 4. **固定 shape 导出**：不使用 `dynamic_axes`，让 converter 完成常量折叠优化
+5. **随机 dummy 输入**：用随机张量作为导出输入；`ranks_*` 的 randint 上界由 pre-pass 探测真实 `D / H_feat / W_feat` 后生成，避免 gather 越界。随机 ranks 仅用于结构导出，导出的 ONNX 数值无意义，不能用于精度评估。
 
 ### 产出
 
@@ -288,8 +256,16 @@ plugin_custom_ops=All
 ### 转换命令
 
 ```bash
+# 按CANN安装的实际路径进行修改
+source /path/to/Ascend/ascend-toolkit/set_env.sh
+# 配置环境变量(LITE_HOME路径需要用户自行修改)
+export LITE_HOME=/path/to/mindspore-lite-2.9.0-linux-aarch64
+export LD_LIBRARY_PATH=${LITE_HOME}/runtime/third_party/dnnl:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${LITE_HOME}/runtime/lib:$LITE_HOME/tools/converter/lib:$LD_LIBRARY_PATH
+export Convert=${LITE_HOME}/tools/converter/converter/converter_lite
+
 # 固定 shape
-converter_lite \
+$Convert \
     --fmk=ONNX \
     --modelFile=output/bevdet_r50.onnx \
     --outputFile=output/bevdet_r50 \
@@ -298,7 +274,7 @@ converter_lite \
     --saveType=MINDIR
 
 # 动态 shape
-converter_lite \
+$Convert \
     --fmk=ONNX \
     --modelFile=output/bevdet_r50.onnx \
     --outputFile=output/bevdet_r50_dynamic \
@@ -340,42 +316,89 @@ output/
 
 ***
 
-## 5. MindSpore Lite 推理
+## 5. MindSpore Lite 推理验证
+
+> 该脚本仅用于验证 MindIR 模型推理功能正常，用固定种子的随机张量作为输入；性能和精度由第 6 节的 benchmark 体现。
+
+```bash
+cd examples/base_models/bevdet
+
+python infer_bevdet_mslite.py \
+    --model output/bevdet_r50.mindir \
+    --device-id 0
+```
+
+### 参数说明
+
+| 参数             | 说明            | 默认值                          |
+| -------------- | ------------- | ---------------------------- |
+| `--model`      | MindIR 模型路径   | 必填                           |
+| `--device-id`  | Ascend 设备 ID | `0`                          |
+| `--seed`       | 随机种子          | `42`                         |
+| `--depth-size` | ranks_depth randint 上界（B·N·D·H_feat·W_feat） | `498432`（BEVDet-R50） |
+| `--feat-size`  | ranks_feat randint 上界（B·N·H_feat·W_feat） | `4224`（BEVDet-R50）   |
+| `--bev-size`   | ranks_bev randint 上界（bev_z·bev_h·bev_w） | `16384`（BEVDet-R50）  |
+
+脚本会在推理前校验输入 shape 不含 `-1`，否则提示用动态模型。
+
+***
+
+## 6. Benchmark 与精度评估
+
+### 数据准备
+
+> `bevdetv3-nuscenes_infos_val.pkl` 数据集是由 [NuScenes 开源数据集 Full dataset (v1.0) Mini](https://www.nuscenes.org/nuscenes#download) 经过 BEVDet 代码仓中步骤 step 3. 处理得到。
+
+将 NuScenes 数据按以下结构放置到 BEVDet 仓中：
+
+```text
+BEVDet/
+└── data/
+    └── nuscenes/
+        ├── bevdetv3-nuscenes_infos_val.pkl   # 验证集标注文件（81 样本）
+        ├── maps/
+        ├── samples/
+        └── sweeps/
+```
+
+Benchmark 推理时通过 `--data-root BEVDet/data/nuscenes` 指向该目录。
 
 ### 手动执行
 
 ```bash
-cd BEVDet
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
+cd examples/base_models/bevdet
 
 # 固定 shape
-ASCEND_RT_VISIBLE_DEVICES=0 python scripts/benchmark_bevdet_mslite.py \
-    --config configs/bevdet/bevdet-r50.py \
+ASCEND_RT_VISIBLE_DEVICES=0 python benchmark_bevdet_mslite.py \
+    --config BEVDet/configs/bevdet/bevdet-r50.py \
     --checkpoint bevdet-r50.pth \
     --model output/bevdet_r50.mindir \
+    --data-root BEVDet/data/nuscenes \
     --shape-mode fixed \
     --device-id 0 \
     --eval \
     --output results/benchmark_mslite_fixed_result.txt
 
 # 动态 shape
-ASCEND_RT_VISIBLE_DEVICES=0 python scripts/benchmark_bevdet_mslite.py \
-    --config configs/bevdet/bevdet-r50.py \
+ASCEND_RT_VISIBLE_DEVICES=0 python benchmark_bevdet_mslite.py \
+    --config BEVDet/configs/bevdet/bevdet-r50.py \
     --checkpoint bevdet-r50.pth \
     --model output/bevdet_r50_dynamic.mindir \
+    --data-root BEVDet/data/nuscenes \
     --shape-mode dynamic \
     --device-id 0 \
     --eval \
     --output results/benchmark_mslite_dynamic_result.txt
 ```
 
-### Benchmark 参数说明
+### 参数说明
 
 | 参数              | 说明                              | 默认值          |
 | --------------- | ------------------------------- | ------------ |
 | `--config`      | BEVDet 配置文件                     | 必填           |
 | `--checkpoint`  | 权重文件                            | 必填           |
 | `--model`       | MindIR 模型路径                     | 必填           |
+| `--data-root`   | nuscenes 数据根目录（覆盖 cfg.data.test.data_root / ann_file，避免拷贝脚本到 BEVDet 仓） | 无 |
 | `--shape-mode`  | shape 模式：`fixed` / `dynamic` / `gear` / `auto` | `fixed` |
 | `--device-id`   | Ascend 设备 ID                    | `0`          |
 | `--warmup`      | 预热迭代次数                          | `5`          |
@@ -384,31 +407,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 python scripts/benchmark_bevdet_mslite.py \
 | `--eval`        | 运行 mAP/NDS 评估（自动启用 postprocessing）| 关            |
 | `--output`      | 结果输出文件                          | 无            |
 
-***
-
-## 6. 单样本推理
-
-```bash
-cd BEVDet
-
-# 固定 shape 模型（仅支持 ranks 匹配的样本）
-python scripts/infer_bevdet_mslite.py \
-    --model output/bevdet_r50.mindir \
-    --config configs/bevdet/bevdet-r50.py \
-    --checkpoint bevdet-r50.pth \
-    --sample-idx 0 \
-    --output results/infer_sample0.txt
-
-# 动态 shape 模型（支持任意样本）
-python scripts/infer_bevdet_mslite.py \
-    --model output/bevdet_r50_dynamic.mindir \
-    --config configs/bevdet/bevdet-r50.py \
-    --checkpoint bevdet-r50.pth \
-    --sample-idx 1 \
-    --output results/infer_sample1.txt
-```
-
-脚本自动检测 MindIR 是否为动态 shape（输入 shape 含 `-1`），动态模型自动 `resize`，固定模型在 ranks 不匹配时给出友好提示。
+> `--data-root` 指向 BEVDet 仓中的 `data/nuscenes/` 目录（包含 `bevdetv3-nuscenes_infos_val.pkl`、`maps/`、`samples/`、`sweeps/`），脚本会自动改写配置里的相对路径，无需拷贝脚本到 BEVDet 仓。
 
 ***
 
@@ -430,6 +429,8 @@ python scripts/infer_bevdet_mslite.py \
 | 延迟     | 29.40 ms            |
 
 ### 精度对比
+
+> 精度数据基于固定 shape MindIR（`bevdet_r50.mindir`，`--shape-mode fixed`）执行得到。
 
 | 指标 | TRT Fixed (GPU) | MSLite Fixed (NPU) | 绝对差 | 相对差 |
 | ---- |-----------------| ------------------- | ------ | ------ |
@@ -477,19 +478,6 @@ python scripts/infer_bevdet_mslite.py \
 **问题：** `RuntimeError: _Map_base::at`
 
 **解决：** 导出脚本已自动设置 `cfg.model.img_backbone.with_cp = False` 禁用 ResNet 梯度检查点。
-
-### 8.5 环境变量配置
-
-运行前需配置以下环境变量：
-
-```bash
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-export LITE_HOME=/path/to/mindspore-lite-2.9.0-linux-aarch64
-export LD_LIBRARY_PATH=$LITE_HOME/runtime/lib:$LITE_HOME/runtime/third_party/dnnl:$LITE_HOME/tools/converter/lib:$LD_LIBRARY_PATH
-export PATH=$LITE_HOME/tools/converter/converter:$PATH
-export ASCEND_OPP_PATH=/usr/local/Ascend/ascend-toolkit/latest/opp
-export ASCEND_CUSTOM_OPP_PATH=/path/to/mx_driving/packages/vendors/customize/:$ASCEND_CUSTOM_OPP_PATH
-```
 
 ***
 

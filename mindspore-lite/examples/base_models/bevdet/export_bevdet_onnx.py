@@ -24,9 +24,9 @@ converter downstream-miscompilation issue (built-in op adapter is complete).
 forward runs pure-torch scatter_add (correct in eager); symbolic emits the
 Custom UnsortedSegmentSum node for ONNX/MindIR.
 
-Run from BEVDet/:
-    python scripts/export_bevdet_onnx.py \
-        --config config/bevdet/bevdet-r50.py \
+Run from examples/base_models/bevdet/:
+    python export_bevdet_onnx.py \
+        --config BEVDet/configs/bevdet/bevdet-r50.py \
         --checkpoint bevdet-r50.pth \
         --output output \
         --prefix bevdet_r50
@@ -39,12 +39,10 @@ from torch import nn
 from mmcv import Config
 from mmcv.runner import load_checkpoint
 
-from mmdet.datasets import replace_ImageToTensor
 try:
     from mmdet.utils import compat_cfg
 except ImportError:
     from mmdet3d.utils import compat_cfg
-from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 
 
@@ -136,11 +134,15 @@ def parse_args():
     """Parse command-line arguments for ONNX export."""
     p = argparse.ArgumentParser(
         description='Export BEVDet ONNX (UnsortedSegmentSum BEV pool)')
-    p.add_argument('--config', help='model config', default='config/bevdet/bevdet-r50.py')
-    p.add_argument('--checkpoint', help='checkpoint file', default='bevdet-r50.pth')
+    p.add_argument('--config', help='model config',
+                   default='BEVDet/configs/bevdet/bevdet-r50.py')
+    p.add_argument('--checkpoint', help='checkpoint file',
+                   default='bevdet-r50.pth')
     p.add_argument('--output', help='output directory', default='output')
     p.add_argument('--prefix', help='prefix of output file', default='bevdet_r50')
     p.add_argument('--opset', type=int, default=17)
+    p.add_argument('--num-points', type=int, default=179832,
+                   help='number of points for random ranks')
     p.add_argument('--device', default='cpu')
     return p.parse_args()
 
@@ -157,47 +159,46 @@ def main():
     cfg = compat_cfg(cfg)
     cfg.gpu_ids = [0]
 
-    test_dataloader_default_args = {
-        'samples_per_gpu': 1, 'workers_per_gpu': 2, 'dist': False, 'shuffle': False}
-    if isinstance(cfg.data.test, dict):
-        cfg.data.test.test_mode = True
-        if cfg.data.test_dataloader.get('samples_per_gpu', 1) > 1:
-            cfg.data.test.pipeline = replace_ImageToTensor(
-                cfg.data.test.pipeline)
-    elif isinstance(cfg.data.test, list):
-        for ds_cfg in cfg.data.test:
-            ds_cfg.test_mode = True
-        if cfg.data.test_dataloader.get('samples_per_gpu', 1) > 1:
-            for ds_cfg in cfg.data.test:
-                ds_cfg.pipeline = replace_ImageToTensor(ds_cfg.pipeline)
-    test_loader_cfg = {
-        **test_dataloader_default_args,
-        **cfg.data.get('test_dataloader', {})
-    }
-    dataset = build_dataset(cfg.data.test)
-    data_loader = build_dataloader(dataset, **test_loader_cfg)
-
     cfg.model.train_cfg = None
     model = build_model(cfg.model, test_cfg=cfg.get('test_cfg'))
     load_checkpoint(model, args.checkpoint, map_location='cpu')
     model.to(args.device)
     model.eval()
 
-    for _, data in enumerate(data_loader):
-        inputs = [t.to(args.device) for t in data['img_inputs'][0]]
-        metas = model.get_bev_pool_input(inputs)
-        img = inputs[0]
-        ranks_bev, ranks_depth, ranks_feat = metas[0], metas[1], metas[2]
-        break
+    wrapper = BEVDetSegSumWrapper(model)
+    wrapper.to(args.device).eval()
 
-    num_points = ranks_bev.shape[0]
-    grid = model.img_view_transformer.grid_size.tolist()
+    bev_z, bev_h, bev_w = wrapper.bev_z, wrapper.bev_h, wrapper.bev_w
+    num_points = args.num_points
+    num_segments = int(bev_z * bev_h * bev_w)
+
+    # Shape pre-pass: discover H_feat, W_feat, D from the actual backbone+neck.
+    # feat_flat length = B·N·H_feat·W_feat; depth_flat length = B·N·D·H_feat·W_feat.
+    # ranks_* must be sampled within their respective index spaces or gather() trips.
+    with torch.no_grad():
+        dummy = torch.randn(1 * 6, 3, 256, 704, device=args.device)
+        f = model.img_backbone(dummy)
+        f = model.img_neck(f)
+        _, _, H_feat, W_feat = f.shape
+        D = int(model.img_view_transformer.D)
+    depth_size = 1 * 6 * D * H_feat * W_feat
+    feat_size = 1 * 6 * H_feat * W_feat
+
+    img = torch.randn(1, 6, 3, 256, 704, dtype=torch.float32,
+                      device=args.device)
+    ranks_depth = torch.randint(0, depth_size, (num_points,),
+                               dtype=torch.int32, device=args.device)
+    ranks_feat = torch.randint(0, feat_size, (num_points,),
+                               dtype=torch.int32, device=args.device)
+    ranks_bev = torch.randint(0, num_segments, (num_points,),
+                              dtype=torch.int32, device=args.device)
+
+    grid = [int(bev_w), int(bev_h), int(bev_z)]
     print("Exporting BEVDet ONNX (UnsortedSegmentSum BEV pool)...")
     print(f"  img shape: {tuple(img.shape)}  BEV grid: {grid}  "
           f"ranks N_Points: {num_points}")
-
-    wrapper = BEVDetSegSumWrapper(model)
-    wrapper.to(args.device).eval()
+    print(f"  depth_size: {depth_size}  feat_size: {feat_size}  "
+          f"num_segments: {num_segments}")
 
     output_path = os.path.join(args.output, args.prefix + '.onnx')
     torch.onnx.export(
@@ -207,9 +208,12 @@ def main():
          ranks_feat.int().contiguous(),
          ranks_bev.int().contiguous()),
         output_path,
+        export_params=True,
         opset_version=args.opset,
+        do_constant_folding=True,
         input_names=['img', 'ranks_depth', 'ranks_feat', 'ranks_bev'],
         output_names=['reg', 'height', 'dim', 'rot', 'vel', 'heatmap'],
+        dynamic_axes=None,
         operator_export_type=torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH,
     )
     print(f"Successfully exported to: {output_path}")
