@@ -12,9 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Qwen3 (MiniMind-3) model exporter: NNRT wrapper + skeleton export + GGUF injection."""
+"""Qwen2.5 NNRT ONNX wrapper (bias projections, no per-head Q/K norm).
 
-from .qwen3_exporter import Qwen3Onnx, export_qwen3
-from .qwen3_gguf_loader import gguf_loader
+Qwen2.5 attention uses the default base behaviour: projections carry q/k/v
+biases (handled by ``nn.Linear`` automatically — no special wrapper code),
+and there is no per-head Q/K RMSNorm.  The class exists so the exporter names
+a concrete subclass and remains a seam for future Qwen2 variants.
+"""
 
-__all__ = ["Qwen3Onnx", "export_qwen3", "gguf_loader"]
+from models._base.nnrt_decoder_wrapper import NnrtDecoderWrapper
+
+
+class Qwen2NnrtWrapper(NnrtDecoderWrapper):
+    """NNRT wrapper for Qwen2.5 — uses the base attention path unchanged."""

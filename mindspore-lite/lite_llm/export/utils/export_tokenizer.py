@@ -469,7 +469,7 @@ def export_generation_policy(tokenizer, model_dir, output_path):
 class _GGUFTokenizerAdapter:
     """Minimal tokenizer facade over GGUF tokenizer metadata.
 
-    Reuses transformers 4.57 ``load_gguf_checkpoint`` (the same parser that
+    Reuses transformers ``load_gguf_checkpoint`` (>= 4.57; the same parser that
     builds the GGUF model config), so the token order/ids match the dequantized
     model exactly.  Exposes only the attributes ``_export_bpe`` needs.
     """
@@ -497,8 +497,8 @@ class _GGUFTokenizerAdapter:
 def export_tokenizer(model_dir, output_dir, chat_template=None):
     """Export ``vocab.bin`` + ``generation_policy.json`` for a Qwen2.5 model.
 
-    ``model_dir`` may be a HF directory or a ``.gguf`` file (transformers 4.57
-    rebuilds the tokenizer from GGUF metadata).  Returns the ``vocab.bin`` path.
+    ``model_dir`` may be a HF directory or a ``.gguf`` file (transformers
+    >= 4.57 rebuilds the tokenizer from GGUF metadata).  Returns the ``vocab.bin`` path.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

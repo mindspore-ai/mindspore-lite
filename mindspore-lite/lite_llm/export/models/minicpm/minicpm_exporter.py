@@ -12,23 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""MiniMind-3 (Qwen3 dense) ONNX exporter for the mslite-llm NNRT (Kirin NPU) runtime.
+"""MiniCPM-2B ONNX exporter for the mslite-llm NNRT (Kirin NPU) runtime.
 
-Mirror of the Qwen2.5 exporter (``models/qwen2_5/qwen2_5_exporter.py``)
-adapted to the Qwen3 architecture: same graph I/O contract consumed by the
-mslite-llm NNRT executor (``lite_llm/src/executor/nnrt/nnrt_executor.cc``):
+Same NNRT graph I/O contract as ``qwen2_5_exporter`` (7 inputs + interleaved
+per-layer KV), instantiated for the MiniCPM architecture:
 
-    inputs:  [valid_seq_len, lmhead_idx, rope_cos, rope_sin, inputs_embeds,
-              attention_mask, embedding_weight] + past_key_i/past_val_i (per layer)
-    outputs: [logits, out_key_i/out_val_i]   (KV updated in place on device)
+* ``scale_emb`` (12) is applied inside ``MiniCpmNnrtWrapper`` at the graph
+  entry (embedding lookup itself stays CPU-side).
+* RoPE lives on each attention (LLaMA<=4.4x layout,
+  ``layers[i].self_attn.rotary_emb``, old-style ``forward(x, seq_len)``
+  returning ``[S, D]``) instead of the model-level rotary of Qwen2.5
+  (new-style ``forward(x, position_ids)`` returning ``[B, S, D]``);
+  ``rope_sin_cos_save`` handles both.
 
-Qwen3-specific differences vs Qwen2.5:
-
-* per-head Q/K RMSNorm (``q_norm`` / ``k_norm``) — extra ``MsRmsNorm`` nodes
-  with ``[head_dim]`` weights, injected from the GGUF in ``qwen3_gguf_loader``;
-* bias-free projections (``attention_bias=False``) — no ``Add`` bias nodes;
-* head_dim may differ from ``hidden // heads`` (MiniMind-3: 96), handled by
-  the GGUF loading shim ``_ensure_qwen3_gguf_head_dim_mapping`` below.
+Loading caveat (see README): transformers removed the built-in ``minicpm``
+model after 4.5x, so both the HF path and the GGUF ``gguf_file=`` path
+require ``trust_remote_code=True`` with a repo that ships its own
+``modeling_minicpm.py`` (only validated on the 4.5x series).
 """
 
 import json
@@ -57,7 +57,7 @@ from utils.export_quant import (
     quantize_weight_g32_4bit_nd,
 )
 
-from .qwen3_wrapper import Qwen3NnrtWrapper
+from .minicpm_wrapper import MiniCpmNnrtWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -65,59 +65,22 @@ device = "cpu"
 dtype = torch.float16
 
 
-def _ensure_qwen3_gguf_head_dim_mapping():
-    """Best-effort GGUF loading shim: ensure the dense ``qwen3`` GGUF config
-    mapping carries ``attention.key_length -> head_dim``.
+class MiniCpmOnnx:
+    """Export a MiniCPM-2B HF model to the mslite-llm NNRT ONNX contract."""
 
-    transformers' ``GGUF_CONFIG_MAPPING["qwen3"]`` historically omits
-    key_length (only ``qwen3_moe`` carries it), so dense Qwen3 checkpoints with
-    ``head_dim != hidden_size // num_attention_heads`` (MiniMind-3: 96 vs
-    768/8) load with the wrong default head_dim=128 and fail on weight shapes.
-    This touches only the GGUF *loading* mapping (a transformers loading
-    concern), not the forward path, and degrades gracefully if transformers
-    restructures the mapping.
-    """
-    try:
-        import transformers
-
-        mapping = transformers.integrations.ggml.GGUF_CONFIG_MAPPING["qwen3"]
-        mapping.setdefault("attention.key_length", "head_dim")
-    except (KeyError, AttributeError, ImportError) as exc:  # pragma: no cover
-        logger.warning("qwen3 GGUF head_dim mapping shim skipped: %s", exc)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Part 3: exporter
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class Qwen3Onnx:
-    """Export a MiniMind-3 (Qwen3 dense) GGUF/HF model to the NNRT ONNX contract."""
-
-    #: Only the MiniMind-3 architecture is validated (matches the NNRT gear
-    #: shapes and the proven omc contract).
+    #: Only the MiniCPM-2B architecture is validated (skeleton shapes + GGUF
+    #: tensor layout of the reference model).
     REQUIRED_ARCH = {
-        "num_hidden_layers": 8,
-        "intermediate_size": 2432,
-        "max_position_embeddings": 32768,
-        "hidden_size": 768,
-        "num_attention_heads": 8,
-        "num_key_value_heads": 4,
-        "head_dim": 96,
+        "num_hidden_layers": 40,
+        "intermediate_size": 9216,
+        "max_position_embeddings": 2048,
+        "hidden_size": 2304,
     }
 
-    def load(self, model_path, layers=8):
-        """Load the model in fp16 and validate the MiniMind-3 architecture.
-
-        ``model_path`` may be a HF directory or a ``.gguf`` file.  GGUF
-        skeletons are dequantized by transformers via the ``gguf_file=`` kwarg
-        (requires transformers >= 4.57); the real Q4_0 weights are injected
-        afterwards by ``qwen3_gguf_loader``.
-        """
+    def load(self, model_path, layers=40):
+        """Load the HF model in fp16 and validate the MiniCPM-2B architecture."""
         is_gguf = os.path.isfile(model_path) and model_path.endswith(".gguf")
         if is_gguf:
-            # Best-effort GGUF loading shim (qwen3 dense head_dim mapping); see
-            # ``_ensure_qwen3_gguf_head_dim_mapping`` docstring.
-            _ensure_qwen3_gguf_head_dim_mapping()
             self.model = AutoModelForCausalLM.from_pretrained(
                 os.path.dirname(os.path.abspath(model_path)),
                 gguf_file=os.path.basename(model_path),
@@ -128,7 +91,7 @@ class Qwen3Onnx:
             )
             self.config = self.model.config
         else:
-            self.config = AutoConfig.from_pretrained(model_path)
+            self.config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
             self.config._attn_implementation = "eager"  # pylint: disable=W0212
             self.config.num_hidden_layers = layers
             self.model = AutoModelForCausalLM.from_pretrained(
@@ -139,14 +102,14 @@ class Qwen3Onnx:
                 dtype=dtype,
                 attn_implementation="eager",
             )
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
-        if self.config.model_type != "qwen3":
-            raise ValueError(f"Model type must be qwen3, got {self.config.model_type}")
+        if self.config.model_type != "minicpm":
+            raise ValueError(f"Model type must be minicpm, got {self.config.model_type}")
         for key, expected in self.REQUIRED_ARCH.items():
             if getattr(self.config, key, None) != expected:
                 raise ValueError(
-                    f"Error: the model at '{model_path}' is not a MiniMind-3 (Qwen3 dense) model "
+                    f"Error: the model at '{model_path}' is not a MiniCPM-2B model "
                     f"({key}={getattr(self.config, key, None)}, expected {expected})."
                 )
         self.model = self.model.eval()
@@ -156,11 +119,17 @@ class Qwen3Onnx:
         self.num_kv_heads = self.model.config.num_key_value_heads
         logger.info("model loaded: %s", model_path)
 
+    def _rotary(self):
+        """Locate the RoPE module: model-level (Qwen/LLaMA>=4.4x) or per-attention (MiniCPM)."""
+        inner = self.model.model
+        rotary = getattr(inner, "rotary_emb", None)
+        if rotary is None:
+            rotary = inner.layers[0].self_attn.rotary_emb
+        return rotary
+
     def export(self, model_path, max_seq_len=1024, chunk_size=128):
         """Export the ONNX graph (NNRT 7-input + interleaved KV contract)."""
-        head_dim = getattr(self.model.config, "head_dim", None) or (
-            self.model.config.hidden_size // self.model.config.num_attention_heads
-        )
+        head_dim = self.model.config.hidden_size // self.model.config.num_attention_heads
 
         input_names = [
             "valid_seq_len",
@@ -200,10 +169,7 @@ class Qwen3Onnx:
             attention_mask,
             past_key_values,
         )
-        # Trace the NNRT wrapper (Ms* ops + submodule refs) instead of the HF
-        # model — the wrapper's forward emits ``custom::`` ONNX nodes directly,
-        # so no transformers monkey-patch is needed.
-        wrapper = Qwen3NnrtWrapper(self.model, self.config)
+        wrapper = MiniCpmNnrtWrapper(self.model, self.config)
         torch.onnx.export(
             wrapper,
             inputs,
@@ -243,16 +209,20 @@ class Qwen3Onnx:
     def rope_sin_cos_save(self, cos_path, sin_path, seq_len):
         """Save the RoPE cos/sin constants (fp16, [seq_len, head_dim] flattened).
 
-        RoPE lives on ``Qwen3Model.rotary_emb``; forward takes
-        (hidden_states, position_ids) and returns [batch, seq_len, head_dim].
+        Handles both rotary layouts: new-style ``forward(x, position_ids)``
+        returning ``[batch, seq_len, head_dim]`` and old-style (MiniCPM /
+        LLaMA<=4.4x) ``forward(x, seq_len)`` returning ``[seq_len, head_dim]``.
         """
         input_embed = torch.rand(1, seq_len, self.hidden_size, dtype=torch.float16).to(device)
-        position_ids = torch.arange(0, seq_len).unsqueeze(0)
-
-        rotary_layer = self.model.model.rotary_emb
-        rope_cos, rope_sin = rotary_layer(input_embed, position_ids)
-        rope_cos = rope_cos[0]
-        rope_sin = rope_sin[0]
+        rotary_layer = self._rotary()
+        try:
+            position_ids = torch.arange(0, seq_len).unsqueeze(0)
+            rope_cos, rope_sin = rotary_layer(input_embed, position_ids)
+            rope_cos = rope_cos[0]
+            rope_sin = rope_sin[0]
+        except TypeError:
+            # Old-style per-attention rotary: forward(x, seq_len=None) -> [S, D].
+            rope_cos, rope_sin = rotary_layer(input_embed, seq_len=seq_len)
 
         rope_cos = rope_cos.detach().numpy().astype(np.float16)
         rope_sin = rope_sin.detach().numpy().astype(np.float16)
@@ -271,9 +241,12 @@ class Qwen3Onnx:
         attention_mask.to(torch.float16).detach().numpy().tofile(attention_mask_path)
         logger.info("Saved attention mask to %s", attention_mask_path)
 
-    def build_config(self, max_length, chunk_size, embedding_quant_config, decoder_quant_config, model_name):
+    def build_config(self, max_length, chunk_size, embedding_quant_config, decoder_quant_config):
         """Build the packager-consumable model config (architecture/generation/assets/npu)."""
         arch = self.model.config
+        model_name = os.path.basename(getattr(arch, "_name_or_path", "") or "") or getattr(
+            self, "model_name", "minicpm-2b"
+        )
         return {
             "model_name": model_name,
             "architecture": {
@@ -282,12 +255,13 @@ class Qwen3Onnx:
                 "intermediate_size": int(arch.intermediate_size),
                 "num_heads": int(arch.num_attention_heads),
                 "num_kv_heads": int(arch.num_key_value_heads),
-                "head_dim": int(getattr(arch, "head_dim", None) or arch.hidden_size // arch.num_attention_heads),
+                "head_dim": int(arch.hidden_size // arch.num_attention_heads),
                 "vocab_size": int(arch.vocab_size),
                 "max_position_embeddings": int(arch.max_position_embeddings),
                 "rope_theta": float(getattr(arch, "rope_theta", 10000.0)),
                 "norm_eps": float(getattr(arch, "rms_norm_eps", 1e-6)),
                 "tie_word_embeddings": int(bool(arch.tie_word_embeddings)),
+                "scale_emb": float(getattr(arch, "scale_emb", 1) or 1),
             },
             "generation": {
                 "stop_token_ids": [
@@ -316,37 +290,36 @@ class Qwen3Onnx:
         }
 
 
-def export_qwen3(
+def export_minicpm(
     model_dir: str,
     output_dir: str,
     max_length: int = 1024,
     chunk_size: int = 128,
     embedding_quant: Optional[str] = None,
     decoder_quant: Optional[str] = None,
-    layers: int = 8,
-    model_name: str = "minimind-3-qwen3",
-    onnx_name: str = "minimind3_qwen3.onnx",
+    layers: int = 40,
+    model_name: str = "minicpm-2b",
+    onnx_name: str = "minicpm_2b.onnx",
 ):
-    """Export a MiniMind-3 (Qwen3 dense) model to the mslite-llm NNRT contract.
+    """Export a MiniCPM-2B model to the mslite-llm NNRT contract.
 
     Produces, under ``output_dir``:
       * ``<onnx_name>`` — the ONNX graph (custom Ms* ops, 7-input contract)
       * ``embedding.bin`` / ``embedding_quant.bin`` — embedding weight
       * ``rope_cos.bin`` / ``rope_sin.bin`` — RoPE constants
       * ``attention_mask.bin`` — precomputed causal mask
-      * ``minimind3_config.json`` — packager-consumable config
+      * ``minicpm_config.json`` — packager-consumable config
 
-    Returns the path to ``minimind3_config.json``.
+    Returns the path to ``minicpm_config.json``.
     """
     if max_length <= 0 or chunk_size <= 0 or max_length % chunk_size != 0:
         raise ValueError(f"max_length {max_length} must be a positive multiple of chunk_size {chunk_size}")
-    if max_length % chunk_size != 0:
-        raise ValueError("max_length must be a multiple of chunk_size (NNRT chunked prefill contract)")
 
     os.makedirs(output_dir, exist_ok=True)
 
-    exporter = Qwen3Onnx()
+    exporter = MiniCpmOnnx()
     exporter.load(model_dir, layers)
+    exporter.model_name = model_name
 
     onnx_path = os.path.join(output_dir, onnx_name)
     exporter.export(onnx_path, max_seq_len=max_length, chunk_size=chunk_size)
@@ -378,11 +351,9 @@ def export_qwen3(
 
     validate_contract(onnx_path, exporter.num_layers, embedding_quant=embedding_quant_config.is_quant)
 
-    config = exporter.build_config(
-        max_length, chunk_size, embedding_quant_config, decoder_quant_config, model_name
-    )
+    config = exporter.build_config(max_length, chunk_size, embedding_quant_config, decoder_quant_config)
 
-    # Standalone packager-consumable fragments (same content as the config json).
+    # Standalone packager-consumable fragments (same content as minicpm_config.json).
     with open(os.path.join(output_dir, "architecture.json"), "w", encoding="utf-8") as f:
         json.dump(config["architecture"], f, indent=2)
     with open(os.path.join(output_dir, "generation_policy.json"), "w", encoding="utf-8") as f:
@@ -406,8 +377,8 @@ def export_qwen3(
     }
     config["onnx"] = os.path.basename(onnx_path)
 
-    config_path = os.path.join(output_dir, "minimind3_config.json")
+    config_path = os.path.join(output_dir, "minicpm_config.json")
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
-    logger.info("Qwen3 export complete. Config: %s", config_path)
+    logger.info("MiniCPM export complete. Config: %s", config_path)
     return config_path

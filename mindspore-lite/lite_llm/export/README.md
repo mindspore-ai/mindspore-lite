@@ -12,11 +12,20 @@
 export/
 ├── mslite_llm_export.py      # 唯一对外入口（唯一带 CLI 的导出脚本）
 ├── models/
+│   ├── _base/                # 跨模型公共 NNRT wrapper 基类
+│   │   └── nnrt_decoder_wrapper.py  # NnrtDecoderWrapper（forward 循环）+ NnrtOpSet（算子集策略）
 │   ├── qwen2_5/              # 模型专属（纯内部 API，无 CLI）
-│   │   ├── qwen2_5_patch.py       # Qwen2 forward monkey-patch（Ms* 算子导出）
+│   │   ├── qwen2_5_wrapper.py     # Qwen2NnrtWrapper（继承基类，无 per-head norm）
 │   │   ├── qwen2_5_exporter.py    # Qwen2Onnx 类 + export_qwen2_5 编排
 │   │   └── qwen2_5_gguf_loader.py # GGUF Q4_0 权重注入（qwen2 层名映射）
-│   └── qwen3/                # MiniMind-3（Qwen3 dense, head_dim=96），结构同 qwen2_5/
+│   ├── qwen3/                # MiniMind-3（Qwen3 dense, head_dim=96），结构同 qwen2_5/
+│   │   ├── qwen3_wrapper.py      # Qwen3NnrtWrapper（per-head q_norm/k_norm）
+│   │   ├── qwen3_exporter.py     # Qwen3Onnx 类 + export_qwen3 编排
+│   │   └── qwen3_gguf_loader.py  # MiniMind-3 GGUF Q4_0 权重注入
+│   └── minicpm/              # MiniCPM-2B（LLaMA 派生, scale_emb=12），结构同 qwen2_5/
+│       ├── minicpm_wrapper.py    # MiniCpmNnrtWrapper（scale_emb 输入缩放）
+│       ├── minicpm_exporter.py   # MiniCpmOnnx 类 + export_minicpm 编排
+│       └── minicpm_gguf_loader.py  # GGUF Q4_0 权重注入（llama.cpp 标准命名，复用族内 map）
 └── utils/                    # 跨模型通用（均为内部 API，无 CLI）
     ├── onnx_postprocess.py   # MsAddRmsNorm 融合 / NNRT 契约校验 / 共享 initializer 复制
     ├── gguf_mapping.py       # Q4_0 g32 重排等模型无关 GGUF 张量映射
@@ -37,13 +46,26 @@ export/
 ```bash
 
 pip install -r ../requirements.txt
-# transformers 必须为 4.57.x（导出器 monkey-patch 了 transformers.models.qwen2 内部，
-# 且 GGUF 骨架/tokenizer 加载依赖 4.57 的 gguf_file= 支持；check_version() 强制校验）
+# transformers >= 4.57：GGUF 骨架/tokenizer 加载依赖 4.57 的 gguf_file= 支持。
+# forward 逻辑在独立 NNRT wrapper（models/_base + 子类）中，仅触碰稳定公开
+# transformers API，不再 monkey-patch transformers 内部，故无 4.57.x 单 minor 锁定。
 
 ```text
 
 omg 编译需要 Huawei DDK（AscendC）环境，且 DDK 里必须已注册 Ms\* 自定义算子，
 见下方「附录 A：DDK 自定义算子安装」。
+
+## 已支持模型与加载约束
+
+| 模型 | model_type | 加载方式 |
+|---|---|---|
+| Qwen2.5-0.5B | `qwen2` | HF 目录 / GGUF（内置实现） |
+| MiniMind-3（Qwen3 dense） | `qwen3` | HF 目录 / GGUF（内置实现） |
+| MiniCPM-2B | `minicpm` | HF 目录 / GGUF，均需 `trust_remote_code=True`（模型仓库自带 modeling） |
+
+注意：transformers 已移除内置 `minicpm`（4.57 与 5.x 均无），MiniCPM 的 HF/GGUF
+加载都依赖模型仓库自带的 `modeling_minicpm.py`（仅 4.5x 系列验证过）；导出侧
+wrapper（`models/minicpm/`）本身不依赖该 custom code，仅加载层受影响。
 
 ## 一键导出（issue #416）
 

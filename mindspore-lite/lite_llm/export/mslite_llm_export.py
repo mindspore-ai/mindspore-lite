@@ -51,6 +51,8 @@ from models.qwen2_5.qwen2_5_exporter import export_qwen2_5  # noqa: E402
 from models.qwen2_5.qwen2_5_gguf_loader import gguf_loader as qwen2_5_gguf_loader  # noqa: E402
 from models.qwen3.qwen3_exporter import export_qwen3  # noqa: E402
 from models.qwen3.qwen3_gguf_loader import gguf_loader as qwen3_gguf_loader  # noqa: E402
+from models.minicpm.minicpm_exporter import export_minicpm  # noqa: E402
+from models.minicpm.minicpm_gguf_loader import gguf_loader as minicpm_gguf_loader  # noqa: E402
 from utils.omc_compiler import compile_omc, resolve_omg  # noqa: E402
 from utils.msl_pack import build_single_file_msl  # noqa: E402
 from utils.export_quant import QuantizationConfig  # noqa: E402
@@ -61,7 +63,7 @@ logger = logging.getLogger(__name__)
 SUPPORTED_TARGETS = ("kirin9020",)
 
 # Model metadata architecture -> MODEL_TYPES key.
-MODEL_TYPE_BY_ARCH = {"qwen2": "qwen2_5", "qwen3": "qwen3"}
+MODEL_TYPE_BY_ARCH = {"qwen2": "qwen2_5", "qwen3": "qwen3", "minicpm": "minicpm"}
 
 # GGUF Q4_0 == W4A16 group-32 quantization (no calibration data needed).
 GGUF_QUANT = "W4A16"
@@ -107,6 +109,30 @@ MODEL_TYPES = {
         "quant_name": "minimind3_qwen3_quant.onnx",
         "gguf_name": "minimind3_qwen3_gguf.onnx",
         "model_name": "minimind-3-qwen3",
+    },
+    "minicpm": {
+        "exporter": export_minicpm,
+        "gguf_loader": minicpm_gguf_loader,
+        "layers": 40,
+        "onnx_name": "minicpm_2b.onnx",
+        "quant_name": "minicpm_2b_quant.onnx",
+        "gguf_name": "minicpm_2b_gguf.onnx",
+        "model_name": "minicpm-2b",
+        # MiniCPM uses the <用户>/<AI> turn format, not ChatML — the Qwen
+        # template must not be reused.  Restricted to the v1 IR subset
+        # (message loop + add_generation_prompt) like QWEN_CHAT_TEMPLATE.
+        "chat_template": (
+            "{%- for message in messages %}\n"
+            "    {%- if message['role'] == 'user' %}\n"
+            "        {{- '<用户>' + message['content'] + '<AI>' }}\n"
+            "    {%- else %}\n"
+            "        {{- message['content'] }}\n"
+            "    {%- endif %}\n"
+            "{%- endfor %}\n"
+            "{%- if add_generation_prompt %}\n"
+            "    {{- '' }}\n"
+            "{%- endif %}\n"
+        ),
     },
 }
 
@@ -225,13 +251,14 @@ def run_pipeline(args, work_dir):
     )
 
     # ── Step 3: tokenizer -> vocab.bin ────────────────────────────────────
-    # Chat template is pinned to the canonical ChatML IR; real GGUF
-    # metadata templates (tool-call Jinja) are outside the v1 IR subset.
+    # Chat template is pinned per model type (Qwen: canonical ChatML IR;
+    # MiniCPM: its own turn format).  Real GGUF metadata templates
+    # (tool-call Jinja) are outside the v1 IR subset.
     tokenizer_dir = os.path.join(work_dir, "tokenizer")
     vocab_path = export_tokenizer(
         model_dir=args.model,
         output_dir=tokenizer_dir,
-        chat_template=QWEN_CHAT_TEMPLATE,
+        chat_template=mt.get("chat_template", QWEN_CHAT_TEMPLATE),
     )
     policy_path = os.path.join(tokenizer_dir, "generation_policy.json")
     with open(policy_path, encoding="utf-8") as f:

@@ -7,11 +7,14 @@ name = "mslite-llm"
 dynamic = ["version"]
 description = "MindSpore Lite on-device LLM export toolchain (HF/GGUF -> single-file .msl)"
 requires-python = ">=3.9"
-# transformers must be 4.57.x: the exporter monkey-patches transformers.models.qwen2
-# internals and GGUF loading uses the 4.57 gguf_file= kwarg (see ../requirements.txt).
+# transformers >= 4.57: the GGUF skeleton path uses the 4.57 ``gguf_file=``
+# kwarg.  The forward logic lives in standalone NNRT wrappers (``models/_base``
+# + per-model subclasses) that only touch stable public transformers APIs
+# (AutoModelForCausalLM / AutoConfig / submodule attribute refs), so there is
+# no monkey-patch coupling to a single transformers minor anymore.
 dependencies = [
     "torch>=2.0",
-    "transformers>=4.57,<4.58",
+    "transformers>=4.57,<5",
     "onnx>=1.16",
     "onnxslim>=0.1.9",
     "gguf==0.17.1",
@@ -31,6 +34,7 @@ mslite-llm-export = "mslite_llm_export:main"
 packages = [
     "utils",
     "models",
+    "models._base",
     "models.qwen2_5",
     "models.qwen3",
     "torch_custom",

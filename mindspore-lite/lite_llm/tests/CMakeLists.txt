@@ -38,6 +38,29 @@ set(TOP_DIR ${MSLITE_LLM_REPO_ROOT})
 # harness used here.
 include(${MSLITE_LLM_REPO_ROOT}/cmake/external_libs/gtest.cmake)
 
+# golden_v1.msl is gitignored (deterministically regenerable via
+# data/gen_golden.py).  Generate it at configure time when missing so a
+# fresh checkout works for both this CTest suite and the pytest suite;
+# an existing file is left untouched.  msl_pack.py is stdlib-only, so any
+# Python3 interpreter suffices.
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/data/golden_v1.msl")
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        message(STATUS "Generating tests/data/golden_v1.msl via gen_golden.py")
+        execute_process(
+            COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/data/gen_golden.py"
+            RESULT_VARIABLE _golden_gen_result
+        )
+        if(NOT _golden_gen_result EQUAL 0)
+            message(WARNING "gen_golden.py failed (${_golden_gen_result}); "
+                "llm_msl_golden will fail until tests/data/golden_v1.msl exists")
+        endif()
+    else()
+        message(WARNING "Python3 interpreter not found; cannot auto-generate "
+            "tests/data/golden_v1.msl — llm_msl_golden will fail until it exists")
+    endif()
+endif()
+
 # Every test executable links the shared entry (ut/gtest_main.cc) plus the
 # provisioned gtest; there is no gtest_main library involved.
 set(MSLITE_LLM_GTEST_MAIN ${CMAKE_CURRENT_SOURCE_DIR}/ut/gtest_main.cc)

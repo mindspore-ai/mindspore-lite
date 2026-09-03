@@ -12,9 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Qwen3 (MiniMind-3) model exporter: NNRT wrapper + skeleton export + GGUF injection."""
-
-from .qwen3_exporter import Qwen3Onnx, export_qwen3
-from .qwen3_gguf_loader import gguf_loader
-
-__all__ = ["Qwen3Onnx", "export_qwen3", "gguf_loader"]
+"""MiniCPM (LLaMA-derived, scale_emb=12) NNRT export modules."""
