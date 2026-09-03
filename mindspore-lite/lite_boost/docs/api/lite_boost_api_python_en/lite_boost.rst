@@ -24,6 +24,8 @@ Layers
 
     lite_boost.layers.rms_norm
     lite_boost.layers.nearest_exact_upsample
+    lite_boost.layers.rope_apply
+    lite_boost.layers.flash_attention
 
 Operators
 ------------
@@ -36,3 +38,4 @@ Operators
     lite_boost.ops.rain_fusion_attention
     lite_boost.ops.sparse_attention
     lite_boost.ops.recurrent_gated_delta_rule
+    lite_boost.ops.chunk_gated_delta_rule

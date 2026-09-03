@@ -43,8 +43,10 @@ def _get_rope_cos_sin(freqs, grid_sizes, s_local):
     sp_size = dist.get_world_size()
     sp_rank = dist.get_rank()
 
-    f0, h0, w0 = grid_sizes[0].tolist()
-    key = (f0, h0, w0, sp_rank, sp_size, s_local, freqs.device)
+    # The cache key must cover the whole grid list: two batches with the
+    # same first sample but different later samples must not share tables.
+    key = (tuple(grid_sizes.flatten().tolist()),
+           sp_rank, sp_size, s_local, freqs.device)
     if key in _rope_cache:
         return _rope_cache[key]
 
@@ -96,12 +98,102 @@ def _get_rope_cos_sin(freqs, grid_sizes, s_local):
 
 @amp.autocast(enabled=False)
 def rope_apply(x, grid_sizes, freqs):
+    r"""
+    Applies rotary position embeddings (RoPE) to `x`.
+
+    Each interleaved complex pair :math:`(x[..., 2k], x[..., 2k+1])` is
+    rotated by the angle from `freqs`, using a per-sample cos/sin table
+    expanded from `grid_sizes`.  The table is cached process-wide.  The
+    per-rank slice follows the sequence-parallel (SP) partition; when
+    ``seq_len % sp_size != 0`` the last rank's slice is zero-padded past
+    the table, and padding positions hold zero input values so the output
+    stays zero there.
+
+    Notation: `T` is the length of the `freqs` table, `B` the batch
+    size, `F`/`H`/`W` the (frames, height, width) grid of each sample
+    with raw length ``seq_len = F*H*W``, `D` the head dim, `N` the
+    number of heads, and `s` the per-rank sequence length
+    ``padded_seq_len / sp_size`` (``padded_seq_len`` is the common
+    padded length of every sample before the SP split).  So `s` is
+    related to ``F*H*W`` but not identical: with a single rank and no
+    padding ``s == F*H*W``; in general ``s >= ceil(seq_len / sp_size)``
+    (the padded length is split evenly across ranks), and the last
+    rank's slice may extend past a short sample's table -- those
+    positions are zero-padded (their inputs are zero, so the output
+    stays zero).
+
+    Requires ``torch.distributed`` to be initialized before calling
+    (single process: ``dist.init_process_group(backend="hccl",
+    world_size=1, rank=0)``).
+
+    Supported only on A2; 300I Duo is not supported.
+
+    Args:
+        x (Tensor): Input tensor with shape :math:`(B, s, N, D)`, where
+            `B` is the batch size, `s` the per-rank sequence length
+            (``padded_seq_len / sp_size``), `N` the number of heads, and
+            `D` the head dim (even; pairs are rotated).  Supported dtypes
+            are float16, float32 and bfloat16.
+        grid_sizes (Tensor): Integer tensor with shape :math:`(B, 3)`, the
+            ``(F, H, W)`` grid of each sample (``seq_len = F*H*W``).
+        freqs (Tensor): Complex tensor with shape :math:`(T, D//2)` in
+            polar form :math:`e^{i\theta}`; must be on the same device as
+            `x`.
+
+    Returns:
+        Tensor, with the same shape as `x`, always cast to float32.
+
+    Raises:
+        RuntimeError: If `x` is not 4-D, if `D` is odd, or if `freqs` is
+            on a different device from `x`.
+        ValueError: If ``torch.distributed`` is not initialized before
+            the call.
+        TypeError: If `grid_sizes` is not 2-D with shape :math:`(B, 3)`.
+
+    Supported Platforms:
+        ``Ascend``
+
+    Examples:
+        >>> import os
+        >>> import torch
+        >>> import torch_npu
+        >>> import torch.distributed as dist
+        >>> from lite_boost.layers import rope_apply
+        >>> os.environ["MASTER_ADDR"] = "127.0.0.1"
+        >>> os.environ["MASTER_PORT"] = "29500"
+        >>> torch.npu.set_device(0)
+        >>> torch.npu.set_compile_mode(jit_compile=False)  # complex freqs on some platforms
+        >>> if not dist.is_initialized():
+        ...     dist.init_process_group(backend="hccl", world_size=1, rank=0)
+        >>> x = torch.randn(1, 16, 8, 32, device="npu")
+        >>> grid_sizes = torch.tensor([[4, 4, 4]], device="npu")
+        >>> freqs = torch.exp(1j * torch.rand(1024, 16)).to("npu")
+        >>> y = rope_apply(x, grid_sizes, freqs)
+        >>> print(y.shape)
+        torch.Size([1, 16, 8, 32])
+        >>> print(y.dtype)
+        torch.float32
+        >>> dist.destroy_process_group()
     """
-    Apply RoPE.
-    x:          [B, s, N, D] where D = head_dim, s = padded_seq_len / sp_size
-    grid_sizes: [B, 3] with (F, H, W) per sample
-    freqs:      [1024, D//2] complex (polar form)
-    """
+    if (not torch.is_tensor(grid_sizes) or grid_sizes.dim() != 2
+            or grid_sizes.size(1) != 3):
+        raise TypeError(
+            f"grid_sizes must be a 2-D tensor with shape [B, 3], but got "
+            f"{type(grid_sizes).__name__} with shape "
+            f"{tuple(grid_sizes.shape) if torch.is_tensor(grid_sizes) else grid_sizes}.")
+    if x.dim() != 4:
+        raise RuntimeError(
+            f"x must be 4-D with shape [B, s, N, D], but got {tuple(x.shape)}.")
+    if x.size(-1) % 2 != 0:
+        raise RuntimeError(
+            f"x head dim D must be even, but got {x.size(-1)}.")
+    if freqs.device != x.device:
+        raise RuntimeError(
+            f"freqs must be on the same device as x, but got freqs on "
+            f"{freqs.device} and x on {x.device}.")
+    if not dist.is_initialized():
+        raise ValueError(
+            "torch.distributed must be initialized before calling rope_apply.")
     s = x.size(1)
     cos, sin = _get_rope_cos_sin(freqs, grid_sizes, s)
 

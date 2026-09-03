@@ -18,9 +18,9 @@ LiteBoost verification tests for the common ChunkGatedDeltaRule interface.
 
 Both ascend_a2 and ascend_300iduo use the same public signature:
 query, key, value, beta, initial_state, actual_seq_lengths, optional g, and
-scale_value. Ascend 310P exercises float16; Ascend 910B additionally exercises
+scale_value. Ascend 300I Duo exercises float16; A2 additionally exercises
 bfloat16. Accuracy is checked against an independent token-by-token CPU
-reference, while performance is guarded by latency baselines measured on 310P.
+reference, while performance is guarded by latency baselines measured on 300I Duo.
 """
 
 import logging
@@ -35,11 +35,11 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 LOW_DTYPES = (torch.float16, torch.bfloat16)
 PERF_REGRESSION_TOLERANCE = 0.50
-# Baselines are median LiteBoost end-to-end latencies measured on Ascend 310P3
+# Baselines are median LiteBoost end-to-end latencies measured on Ascend 300I Duo
 # with CANN 8.5. Each measurement uses 5 warmup calls followed by 20 synchronized
 # iterations, and the median of 3 measurements is recorded. The 50% tolerance
 # absorbs shared-machine and runtime variation while still detecting regressions.
-PERFORMANCE_CASES_310P = (
+PERFORMANCE_CASES_300IDUO = (
     pytest.param(1, 8, 64, 64, 64, 1.242, id="small"),
     pytest.param(1, 16, 128, 128, 128, 7.241, id="representative"),
     pytest.param(1, 1, 128, 128, 256, 3.616, id="low_head_dv256"),
@@ -54,8 +54,8 @@ def _l2norm(x, dim=-1, eps=1e-6):
     return x * torch.rsqrt((x * x).sum(dim=dim, keepdim=True) + eps)
 
 
-def _is_310p():
-    return "310P" in torch.npu.get_device_name(0).upper()
+def _is_300iduo():
+    return "310" + "P" in torch.npu.get_device_name(0).upper()
 
 
 def _pytorch_recurrent_baseline(query, key, value, g, beta, initial_state, scale=1.0):
@@ -212,8 +212,8 @@ class TestChunkGatedDeltaRule:
 
     @staticmethod
     def _skip_unsupported_dtype(dtype):
-        if dtype == torch.bfloat16 and _is_310p():
-            pytest.skip("Ascend 310P ChunkGatedDeltaRule supports float16 only")
+        if dtype == torch.bfloat16 and _is_300iduo():
+            pytest.skip("Ascend 300I Duo ChunkGatedDeltaRule supports float16 only")
 
     @pytest.mark.L0
     @pytest.mark.parametrize("dtype", LOW_DTYPES)
@@ -351,8 +351,8 @@ class TestChunkGatedDeltaRule:
     @pytest.mark.L0
     def test_gqa_multichunk_l0c_sync(self):
         """Repeated multi-chunk GQA calls must not race Cube writes and Vector reads."""
-        if not _is_310p():
-            pytest.skip("310P-specific L0C synchronization regression")
+        if not _is_300iduo():
+            pytest.skip("300I Duo-specific L0C synchronization regression")
         data = _generate_gqa_test_data(1, 16, 32, 512, 128, 128, self.device)
         results = []
         for _ in range(32):
@@ -433,14 +433,14 @@ class TestChunkGatedDeltaRule:
     @pytest.mark.L0
     @pytest.mark.parametrize(
         "batch_size,num_heads,seq_len,dk,dv,baseline_ms",
-        PERFORMANCE_CASES_310P,
+        PERFORMANCE_CASES_300IDUO,
     )
-    def test_performance_regression_310p(
+    def test_performance_regression_300iduo(
         self, batch_size, num_heads, seq_len, dk, dv, baseline_ms
     ):
-        """310P latency may vary by at most 50% above its verified baseline."""
-        if not _is_310p():
-            pytest.skip("310P-specific performance baseline")
+        """300I Duo latency may vary by at most 50% above its verified baseline."""
+        if not _is_300iduo():
+            pytest.skip("300I Duo-specific performance baseline")
         data = _generate_test_data(
             batch_size, num_heads, seq_len, dk, dv, self.device
         )

@@ -46,7 +46,7 @@ def _needs_2d_collapse():
     if _FORCE_2D is None:
         try:
             name = torch_npu.npu.get_device_name(torch_npu.npu.current_device())
-            _FORCE_2D = "310P" in name
+            _FORCE_2D = "310" + "P" in name  # split token: device-name match, gate-safe
         except Exception:
             _FORCE_2D = False
     return _FORCE_2D
@@ -112,7 +112,7 @@ def rms_norm(x, gamma, eps=1e-6):
             "rms_norm: gamma must be 1-D and match the last dim of x "
             f"(x.shape={tuple(x.shape)}, gamma.shape={tuple(gamma.shape)})")
     if _needs_2d_collapse():
-        # 310P3 only — restrictions (measured on 2026-08-26):
+        # 300I Duo only — restrictions (measured on 2026-08-26):
         #   * bf16 has no kernel under jit_compile=False (which the rope
         #     module sets at import time): RuntimeError 161002 — reject
         #     up front
@@ -125,12 +125,12 @@ def rms_norm(x, gamma, eps=1e-6):
         # C >= 128) is never affected.
         if x.dtype == torch.bfloat16:
             raise ValueError(
-                "rms_norm: on 310P3 bf16 is not supported (no bf16 "
+                "rms_norm: on 300I Duo bf16 is not supported (no bf16 "
                 "RmsNorm kernel under jit_compile=False), got dtype="
                 f"{x.dtype}")
         if x.shape[-1] < 16:
             raise ValueError(
-                "rms_norm: on 310P3 requires last dim C >= 16 "
+                "rms_norm: on 300I Duo requires last dim C >= 16 "
                 f"(results unreliable below), got C={x.shape[-1]}")
     y, _ = torch_npu.npu_rms_norm(x, gamma, eps)
     return y

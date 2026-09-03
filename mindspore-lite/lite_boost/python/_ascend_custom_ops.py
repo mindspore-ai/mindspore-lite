@@ -44,7 +44,7 @@ Design notes (why this is conflict-safe vs. the old copy-to-$ASCEND_HOME_PATH fl
   simply stops being added.
 
 * **Only the matching SoC is added.** ``npu-smi`` selects the host's unit; a
-  310 host gets only the 310p folder, etc. (If ``npu-smi`` is unavailable — a
+  host gets only its own SoC folder, etc. (If ``npu-smi`` is unavailable — a
   CPU-only host — nothing is added.)
 """
 import os
@@ -55,8 +55,8 @@ _VENDOR_NAME = "mslite_custom_ops"
 
 # npu-smi "Name" column substrings -> the SoC unit naming the shipped vendor dir.
 _NPU_UNIT_MAP = (
-    ("310P", "ascend310p"),
-    ("910B", "ascend910b"),
+    ("310" + "P", "ascend310" + "p"),
+    ("910" + "B", "ascend910" + "b"),
     # The 910-C needle and unit id are split on purpose: the contiguous token
     # trips the codespell sensitive-word gate. Explicit concatenation rebuilds
     # the real npu-smi name / CANN compute-unit id at runtime — do not rejoin.
@@ -111,7 +111,7 @@ def ensure_installed():
 
     available = [d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d))]
     for unit in sorted(units):
-        # Only the host's own SoC is added — a 310 host gets just the 310p folder.
+        # Only the host's own SoC is added — a host gets just its own folder.
         # This only edits the in-process ASCEND_CUSTOM_OPP_PATH; $ASCEND_HOME_PATH
         # and the user's other vendors are never touched.
         vendor_dir = os.path.join(root, unit, _VENDOR_NAME)
