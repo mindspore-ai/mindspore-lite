@@ -31,7 +31,7 @@ fi
 if grep -iE '^[[:space:]]*co-authored-by:' "$msg_file" >/dev/null; then
     echo -e "${RED}[commit-msg]${NC} Rejected: commit message contains a Co-Authored-By trailer."
     echo -e "${YELLOW}This repo does not accept Co-Authored-By lines (no AI/bot attribution).${NC}"
-    echo -e "${YELLOW}Strip the trailer and re-commit. See CLAUDE.md 提交规范 for details.${NC}"
+    echo -e "${YELLOW}Strip the trailer and re-commit. See AGENTS.md 提交规范 for details.${NC}"
     exit 1
 fi
 

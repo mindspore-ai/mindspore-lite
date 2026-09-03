@@ -201,6 +201,8 @@ SHELLCHECK_ERRORS="0"
 TAB_ERRORS="0"
 LIZARD_CCN_ERRORS="0"
 LIZARD_NLOC_ERRORS="0"
+MARKDOWNLINT_ERRORS="0"
+CPPCHECK_ERRORS="0"
 
 ERROR_DIR="/tmp/pre-push-errors-$$"
 mkdir -p "$ERROR_DIR"
@@ -301,6 +303,8 @@ function DP_ASSERT_EQUAL() {
         "tab") TAB_ERRORS="${actual_value}" ;;
         "lizard_ccn") LIZARD_CCN_ERRORS="${actual_value}" ;;
         "lizard_nloc") LIZARD_NLOC_ERRORS="${actual_value}" ;;
+        "markdownlint") MARKDOWNLINT_ERRORS="${actual_value}" ;;
+        "cppcheck") CPPCHECK_ERRORS="${actual_value}" ;;
     esac
     if [ "${actual_value}" != "${expect_value}" ]; then
         log_error "${assert_msg} failed, error number is ${actual_value}."
@@ -377,6 +381,18 @@ function SHOW_SUMMARY() {
         printf "${GREEN}%-30s | ${BOLD}PASSED${NC}${GREEN}  | %d${NC}\n" "tab" "${TAB_ERRORS}"
     fi
     total_errors=$((total_errors + TAB_ERRORS))
+    if [ "${MARKDOWNLINT_ERRORS}" -gt 0 ]; then
+        printf "${RED}%-30s | ${BOLD}FAILED${NC}${RED}  | %d${NC}\n" "markdownlint" "${MARKDOWNLINT_ERRORS}"
+    else
+        printf "${GREEN}%-30s | ${BOLD}PASSED${NC}${GREEN}  | %d${NC}\n" "markdownlint" "${MARKDOWNLINT_ERRORS}"
+    fi
+    total_errors=$((total_errors + MARKDOWNLINT_ERRORS))
+    if [ "${CPPCHECK_ERRORS}" -gt 0 ]; then
+        printf "${RED}%-30s | ${BOLD}FAILED${NC}${RED}  | %d${NC}\n" "cppcheck" "${CPPCHECK_ERRORS}"
+    else
+        printf "${GREEN}%-30s | ${BOLD}PASSED${NC}${GREEN}  | %d${NC}\n" "cppcheck" "${CPPCHECK_ERRORS}"
+    fi
+    total_errors=$((total_errors + CPPCHECK_ERRORS))
     local lizard_total=$((LIZARD_CCN_ERRORS + LIZARD_NLOC_ERRORS))
     if [ "${lizard_total}" -gt 0 ]; then
         printf "${RED}%-30s | ${BOLD}FAILED${NC}${RED}  | %d (CCN:%d, NLOC:%d)${NC}\n" "lizard" "${lizard_total}" "${LIZARD_CCN_ERRORS}" "${LIZARD_NLOC_ERRORS}"
@@ -927,6 +943,153 @@ function shellcheck_check() {
     cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
 }
 
+function markdownlint_check() {
+    log_step "markdownlint scan start"
+    local original_dir=$(pwd)
+    local mdl_bin=""
+    if command -v mdl >/dev/null 2>&1; then
+        mdl_bin="$(command -v mdl)"
+    else
+        for candidate in "${HOME}"/.local/share/gem/ruby/*/bin/mdl "${HOME}"/.local/share/gem/ruby/*/*/bin/mdl; do
+            if [ -x "$candidate" ]; then
+                mdl_bin="$candidate"
+                break
+            fi
+        done
+    fi
+    if [ -z "${mdl_bin}" ]; then
+        log_warning "[INFO] Please install 'mdl' tool first (gem install mdl)"
+        cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
+        return 1
+    fi
+    local md_files=()
+    while IFS= read -r file; do
+        # CI gate only scans non-dot-directory markdown files (observed via
+        # build.mindspore.cn Check_Markdownlint); dot dirs like .claude/ are
+        # not gated, so local checks must not block on them either.
+        [[ "$file" == .* ]] && continue
+        if [[ "$file" == *.md ]] && [ -f "${REPO_HOME}/$file" ]; then
+            md_files+=("$file")
+        fi
+    done < "${CODE_PATH}/pr_filelist.txt"
+    if [ ${#md_files[@]} -eq 0 ]; then
+        log_info "No markdown files changed, skipping markdownlint"
+        DP_ASSERT_EQUAL "0" "0" "Markdownlint scanning" "markdownlint"
+        cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
+        return 0
+    fi
+    log_info "Markdown files to check:"
+    for f in "${md_files[@]}"; do
+        log_info "  $f"
+    done
+    local mdl_path=${check_path}/markdownlint
+    mkdir -p "${mdl_path}"
+    local result_log="${mdl_path}/markdownlint_result.log"
+    : > "$result_log"
+    local ruleset="${REPO_HOME}/.jenkins/rules/markdownlint/markdownlint_mindspore_lite.rb"
+    if [ ! -f "$ruleset" ]; then
+        ruleset="${JENKINS_PATH}/rules/markdownlint/markdownlint_mindspore_lite.rb"
+    fi
+    cd "${REPO_HOME}" || {
+        log_error "Cannot cd to repo home: ${REPO_HOME}"
+        cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
+        return 1
+    }
+    for file in "${md_files[@]}"; do
+        log_debug "Running markdownlint on $file"
+        ruby "${mdl_bin}" -s "$ruleset" "$file" >> "$result_log" 2>&1 || true
+    done
+    local error_number=$(grep -cE ': MD[0-9]+ ' "$result_log" 2>/dev/null | tr -d ' ' || echo 0)
+    error_number=${error_number:-0}
+    if [ "$error_number" != 0 ]; then
+        STORE_ERRORS "markdownlint" "$result_log"
+        log_error "Found ${error_number} markdownlint issues"
+        local count=0
+        while IFS= read -r line && [ $count -lt 20 ]; do
+            count=$((count + 1))
+            log_error "  ${count}:$line"
+        done < <(grep -E ': MD[0-9]+ ' "$result_log" | head -20)
+        if [ "$error_number" -gt 20 ]; then
+            log_error "  ... and $((error_number - 20)) more issues"
+        fi
+    fi
+    DP_ASSERT_EQUAL "$error_number" "0" "Markdownlint scanning" "markdownlint"
+    cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
+}
+
+function cppcheck_check() {
+    log_step "cppcheck scan start"
+    local original_dir=$(pwd)
+    which cppcheck 2>/dev/null >/dev/null || {
+        log_warning "[INFO] Please install 'cppcheck' tool first"
+        cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
+        return 1
+    }
+    local cpp_files=()
+    while IFS= read -r file; do
+        if [[ "$file" =~ \.(cc|cpp|cxx|c|h|hh|hpp)$ ]] && [ -f "${REPO_HOME}/$file" ]; then
+            cpp_files+=("$file")
+        fi
+    done < "${CODE_PATH}/pr_filelist.txt"
+    if [ ${#cpp_files[@]} -eq 0 ]; then
+        log_info "No C/C++ files changed, skipping cppcheck"
+        DP_ASSERT_EQUAL "0" "0" "Cppcheck scanning" "cppcheck"
+        cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
+        return 0
+    fi
+    log_info "C/C++ files to check:"
+    for f in "${cpp_files[@]}"; do
+        log_info "  $f"
+    done
+    local cppcheck_path=${check_path}/cppcheck
+    mkdir -p "${cppcheck_path}"
+    local result_log="${cppcheck_path}/cppcheck_result.log"
+    : > "$result_log"
+    cd "${REPO_HOME}" || {
+        log_error "Cannot cd to repo home: ${REPO_HOME}"
+        cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
+        return 1
+    }
+    for file in "${cpp_files[@]}"; do
+        log_debug "Running cppcheck on $file"
+        cppcheck --enable=style --inline-suppr --template=gcc "$file" >> "$result_log" 2>&1 || true
+    done
+    local filter_file="${REPO_HOME}/.jenkins/check/config/filter_cppcheck.txt"
+    if [ ! -f "$filter_file" ]; then
+        filter_file="${JENKINS_PATH}/check/config/filter_cppcheck.txt"
+    fi
+    local filtered_log="${cppcheck_path}/cppcheck_filtered.log"
+    cp "$result_log" "$filtered_log"
+    if [ -f "$filter_file" ]; then
+        local converted_filter="${cppcheck_path}/filter_cppcheck_converted.txt"
+        create_converted_filter_file "$filter_file" "$converted_filter" || true
+        # Filter lines are "path" "errorType"; splitting on '"' yields 5 fields
+        # ('', path, spaces, errorType, '') — the 3rd must be discarded.
+        while IFS='"' read -r _ filter_file_path _ filter_error_type _; do
+            [ -z "$filter_file_path" ] && continue
+            [[ "$filter_file_path" == \#* ]] && continue
+            grep -v "^${filter_file_path}.*${filter_error_type}" "$filtered_log" > "${filtered_log}.tmp" 2>/dev/null || true
+            mv "${filtered_log}.tmp" "$filtered_log"
+        done < "$converted_filter"
+    fi
+    local error_number=$(grep -cE ': (error|warning|style|performance|portability): ' "$filtered_log" 2>/dev/null | tr -d ' ' || echo 0)
+    error_number=${error_number:-0}
+    if [ "$error_number" != 0 ]; then
+        STORE_ERRORS "cppcheck" "$filtered_log"
+        log_error "Found ${error_number} cppcheck issues"
+        local count=0
+        while IFS= read -r line && [ $count -lt 20 ]; do
+            count=$((count + 1))
+            log_error "  ${count}:$line"
+        done < <(grep -E ': (error|warning|style|performance|portability): ' "$filtered_log" | head -20)
+        if [ "$error_number" -gt 20 ]; then
+            log_error "  ... and $((error_number - 20)) more issues"
+        fi
+    fi
+    DP_ASSERT_EQUAL "$error_number" "0" "Cppcheck scanning" "cppcheck"
+    cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
+}
+
 function tab_check() {
     log_step "tab scan start"
     local original_dir=$(pwd)
@@ -1199,6 +1362,12 @@ else
     log_info "Skipping shellcheck on Windows/MINGW"
 fi
 tab_check
+markdownlint_check
+if [ "$os_name" == "Linux" ] || [ "$os_name" == "Darwi" ]; then
+    cppcheck_check
+else
+    log_info "Skipping cppcheck on Windows/MINGW"
+fi
 SHOW_SUMMARY
 rm -rf "${check_path}" 2>/dev/null || true
 END_TIME=$(date +%s)

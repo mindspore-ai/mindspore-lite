@@ -584,14 +584,81 @@ install_ruby_gems() {
         log_info "gem not found; skipping Ruby gems (chef-utils, mdl)"
         return 0
     fi
-    log_info "Installing Ruby gems (chef-utils ${CHEF_UTILS_VERSION}, mdl)..."
+    log_info "Installing Ruby gems (chef-utils ${CHEF_UTILS_VERSION}, mdl ${MDL_VERSION})..."
     gem install chef-utils -v "${CHEF_UTILS_VERSION}" || log_warning "chef-utils install failed"
-    gem install mdl                          || log_warning "mdl install failed"
+    gem install mdl -v "${MDL_VERSION}"            || log_warning "mdl install failed"
+}
+
+check_cppcheck_version() {
+    if [[ "$(detect_os)" == "windows" ]] || [[ "$(detect_os)" == "macos" ]]; then
+        return 0
+    fi
+    if ! command_exists cppcheck; then return 1; fi
+    local version_str
+    version_str=$(cppcheck --version 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+' | head -1)
+    [[ -n "$version_str" ]] || return 1
+    if printf '%s\n' "${CPPCHECK_VERSION}" "$version_str" | sort -V -C; then
+        log_success "cppcheck version meets requirement (>= ${CPPCHECK_VERSION})"
+        return 0
+    fi
+    log_warning "cppcheck version $version_str is older than ${CPPCHECK_VERSION}"
+    return 1
+}
+
+install_cppcheck() {
+    local os_type
+    os_type=$(detect_os)
+    case "$os_type" in
+        windows|macos)
+            log_info "cppcheck skipped on ${os_type}: no reference value"
+            return 0
+            ;;
+        linux|debian|redhat)
+            if command_exists cppcheck && check_cppcheck_version; then
+                log_success "cppcheck already installed and meets required version"
+                return 0
+            fi
+            local pm_cmd=()
+            if command_exists apt-get; then pm_cmd=(apt-get install -y cppcheck)
+            elif command_exists dnf;    then pm_cmd=(dnf install -y cppcheck)
+            elif command_exists yum;    then pm_cmd=(yum install -y cppcheck)
+            else
+                log_warning "No supported package manager (apt-get/dnf/yum). Install cppcheck manually."
+                return 0
+            fi
+            if [[ $EUID -eq 0 ]]; then
+                if ! "${pm_cmd[@]}"; then
+                    log_warning "cppcheck install via package manager failed. Install manually."
+                    return 0
+                fi
+            else
+                if ! command_exists sudo; then
+                    log_warning "sudo not available and not root. cppcheck install skipped."
+                    return 0
+                fi
+                if ! sudo "${pm_cmd[@]}"; then
+                    log_warning "cppcheck install via sudo failed. Install manually."
+                    return 0
+                fi
+            fi
+            if command_exists cppcheck; then
+                log_success "cppcheck installed"
+            else
+                log_warning "cppcheck install reported success but binary not found. Install manually."
+            fi
+            return 0
+            ;;
+        *)
+            log_warning "Unsupported OS for cppcheck: ${os_type}. Skipping."
+            return 0
+            ;;
+    esac
 }
 
 install_system_tools() {
     log_header "Phase 2: system-package tools"
     install_shellcheck
+    install_cppcheck
     install_ruby_gems
     log_success "System-package phase complete"
     return 0

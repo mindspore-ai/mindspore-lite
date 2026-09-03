@@ -1,0 +1,41 @@
+#!/bin/bash
+# Copyright 2026 Huawei Technologies Co., Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# pre-commit hook: lightweight reminder of the mandatory commit flow.
+# Prints the AGENTS.md flow when staged changes contain code files.
+# Advisory only (always exit 0) — lint enforcement lives in pre-push and CI.
+
+readonly RED='\033[0;31m'
+readonly YELLOW='\033[1;33m'
+readonly GREEN='\033[0;32m'
+readonly NC='\033[0m'
+
+staged_files=$(git diff --cached --name-only --diff-filter=ACMRTUXB 2>/dev/null)
+if [ -z "$staged_files" ]; then
+    exit 0
+fi
+
+code_files=$(echo "$staged_files" | grep -E '\.(cc|cpp|cxx|c|h|hh|hpp|py|sh|bash|cmake)$|(^|/)CMakeLists\.txt$' || true)
+if [ -z "$code_files" ]; then
+    exit 0
+fi
+
+count=$(echo "$code_files" | wc -l)
+echo -e "${YELLOW}[pre-commit]${NC} 暂存区包含 ${count} 个代码文件。按 AGENTS.md「代码改动与提交流程」："
+echo -e "  ${GREEN}1.${NC} commit 前 ${RED}必须${NC} 跑 bash scripts/pre_commit/githooks/pre-push（10 个 lint，0 告警才算过）"
+echo -e "  ${GREEN}2.${NC} commit 前 ${RED}必须${NC} 完成 PR 级 review（clean-code-check skill 30 秒清单 + 语义/安全章），Critical 项未修完不得 commit"
+echo -e "  ${YELLOW}本提醒不阻塞。lint 兜底在 pre-push 与 CI。工具缺失：cd scripts/pre_commit && bash install_tools.sh${NC}"
+
+exit 0
