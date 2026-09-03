@@ -16,6 +16,7 @@
 
 #include "src/litert/kernel/cpu/base/reduce_base.h"
 #include <set>
+#include <string>
 #include "src/litert/kernel_registry.h"
 #include "schema/model_generated.h"
 #include "include/errorcode.h"
@@ -57,19 +58,45 @@ int ReduceBaseCPUKernel::CheckInputsOutputs() {
 
 int ReduceBaseCPUKernel::CheckParameters() {
   size_t input_rank = in_tensors_.at(0)->shape().size();
+  std::string axes_info;
+  for (auto i = 0; i < num_axes_; i++) {
+    axes_info += std::to_string(axes_[i]) + ",";
+  }
+  std::string shape_info;
+  for (auto dim : in_tensors_.at(0)->shape()) {
+    shape_info += std::to_string(dim) + ",";
+  }
   if (static_cast<size_t>(num_axes_) > input_rank) {
-    MS_LOG(ERROR) << "Reduce op invalid num of reduce axes " << num_axes_ << " larger than input rank " << input_rank;
+    MS_LOG(ERROR) << "Reduce op invalid num of reduce axes " << num_axes_ << " larger than input rank " << input_rank
+                  << ": the axes list must not contain duplicate values and every axis must be within the input "
+                     "rank. Got axes ["
+                  << axes_info << "], input shape [" << shape_info << "]. Please fix the 'axes' in the source model.";
     return RET_ERROR;
   }
 
   for (auto i = 0; i < num_axes_; i++) {
     if (axes_[i] < -(static_cast<int>(input_rank)) || axes_[i] >= static_cast<int>(input_rank)) {
       MS_LOG(ERROR) << "Reduce got invalid axis " << axes_[i] << ", axis should be in ["
-                    << -(static_cast<int>(input_rank)) << ", " << input_rank - 1 << "].";
+                    << -(static_cast<int>(input_rank)) << ", " << input_rank - 1 << "]. Got axes [" << axes_info
+                    << "], input shape [" << shape_info << "]. Please fix the 'axes' in the source model.";
       return RET_ERROR;
     }
     if (axes_[i] < 0) {
       axes_[i] += static_cast<int>(input_rank);
+    }
+  }
+
+  // Duplicates are not caught by the num_axes/rank checks when count <= rank (e.g. axes [0,1,1]
+  // on a rank-3 input) but silently reduce the same axis twice; reject them explicitly. The
+  // check runs after negative-axis normalization so [-1,2] on rank 3 (both map to axis 2) is
+  // caught too.
+  std::set<int> seen_axes;
+  for (auto i = 0; i < num_axes_; i++) {
+    if (!seen_axes.insert(axes_[i]).second) {
+      MS_LOG(ERROR) << "Reduce got duplicate axis " << axes_[i]
+                    << ": the axes list must not contain duplicate values. Got axes [" << axes_info
+                    << "], input shape [" << shape_info << "]. Please fix the 'axes' in the source model.";
+      return RET_ERROR;
     }
   }
 
