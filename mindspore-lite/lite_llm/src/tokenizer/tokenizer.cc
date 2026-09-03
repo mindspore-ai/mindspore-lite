@@ -18,7 +18,9 @@
 #include <algorithm>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <memory>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -26,6 +28,7 @@
 #include "tokenizer/bpe_codec.h"
 #include "tokenizer/sentencepiece_codec.h"
 #include "tokenizer/chat_template.h"
+#include "tokenizer/vocabulary.h"
 namespace mslite_llm {
 
 namespace {
@@ -66,13 +69,13 @@ struct TextSegment {
   bool is_special;
 };
 
-bool IsDefaultStopToken(const std::string &token) {
+bool IsDefaultStopToken(std::string_view token) {
   return token == "<|endoftext|>" || token == "<|im_end|>" || token == "</s>";
 }
 
-bool IsDefaultSuppressedToken(const std::string &token) { return token == "<|im_start|>"; }
+bool IsDefaultSuppressedToken(std::string_view token) { return token == "<|im_start|>"; }
 
-bool IsDefaultSpecialToken(const std::string &token) {
+bool IsDefaultSpecialToken(std::string_view token) {
   return IsDefaultStopToken(token) || IsDefaultSuppressedToken(token);
 }
 
@@ -161,30 +164,13 @@ class TokenizerImpl : public Tokenizer {
     // Legacy chat template type (builtin families removed): read
     // only to advance past the header field, value carries no meaning.
     (void)ReadU32(data, offset, data_size);
-
-    token_to_id_.clear();
-    id_to_token_.clear();
-    special_tokens_.clear();
-    special_token_ids_.clear();
-    suppressed_token_ids_.clear();
-    stop_token_ids_.clear();
-
-    for (uint32_t i = 0; i < vocab_size; ++i) {
-      std::string token = ReadStr(data, offset, data_size);
-      int32_t id = ReadI32(data, offset, data_size);
-      token_to_id_[token] = id;
-      id_to_token_[id] = token;
+    constexpr size_t kMinVocabEntrySize = sizeof(uint32_t) + sizeof(int32_t);
+    if (offset > data_size || vocab_size > (data_size - offset) / kMinVocabEntrySize ||
+        vocab_size > static_cast<uint32_t>(std::numeric_limits<int32_t>::max())) {
+      return false;
     }
 
-    if (codec_type == kCodecBPE) {
-      bpe_codec_ = std::make_unique<BPECodec>();
-      bpe_codec_->SetVocab(token_to_id_, id_to_token_);
-      if (!bpe_codec_->Load(data, data_size, offset)) return false;
-    } else if (codec_type == kCodecSentencePiece) {
-      sp_codec_ = std::make_unique<SentencePieceCodec>();
-      sp_codec_->SetVocab(token_to_id_, id_to_token_);
-      if (!sp_codec_->Load(data, data_size, offset)) return false;
-    } else {
+    if (!LoadVocabulary(data, data_size, &offset, vocab_size) || !LoadCodec(data, data_size, &offset, codec_type)) {
       return false;
     }
 
@@ -212,6 +198,56 @@ class TokenizerImpl : public Tokenizer {
     return true;
   }
 
+  bool LoadVocabulary(const uint8_t *data, size_t data_size, size_t *offset, uint32_t vocab_size) {
+    if (offset == nullptr) {
+      return false;
+    }
+    vocabulary_.token_to_id.clear();
+    vocabulary_.id_to_token.clear();
+    vocabulary_.token_to_id.reserve(vocab_size);
+    vocabulary_.id_to_token.resize(vocab_size);
+    special_tokens_.clear();
+    special_token_ids_.clear();
+    suppressed_token_ids_.clear();
+    stop_token_ids_.clear();
+
+    for (uint32_t i = 0; i < vocab_size; ++i) {
+      std::string token = ReadStr(data, *offset, data_size);
+      const int32_t id = ReadI32(data, *offset, data_size);
+      if (token.empty() || id < 0 || static_cast<uint32_t>(id) >= vocab_size ||
+          !vocabulary_.id_to_token[static_cast<size_t>(id)].empty()) {
+        return false;
+      }
+      vocabulary_.id_to_token[static_cast<size_t>(id)] = std::move(token);
+    }
+    for (size_t id = 0; id < vocabulary_.id_to_token.size(); ++id) {
+      const std::string &token = vocabulary_.id_to_token[id];
+      if (token.empty() || !vocabulary_.token_to_id.emplace(token, static_cast<int32_t>(id)).second) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool LoadCodec(const uint8_t *data, size_t data_size, size_t *offset, uint32_t codec_type) {
+    if (offset == nullptr) {
+      return false;
+    }
+    bpe_codec_.reset();
+    sp_codec_.reset();
+    if (codec_type == kCodecBPE) {
+      bpe_codec_ = std::make_unique<BPECodec>();
+      bpe_codec_->SetVocab(vocabulary_);
+      return bpe_codec_->Load(data, data_size, *offset);
+    }
+    if (codec_type == kCodecSentencePiece) {
+      sp_codec_ = std::make_unique<SentencePieceCodec>();
+      sp_codec_->SetVocab(vocabulary_);
+      return sp_codec_->Load(data, data_size, *offset);
+    }
+    return false;
+  }
+
   std::vector<int32_t> Encode(const std::string &text) override {
     std::vector<int32_t> ids;
 
@@ -224,8 +260,8 @@ class TokenizerImpl : public Tokenizer {
 
       for (const auto &segment : segments) {
         if (segment.is_special) {
-          auto it = token_to_id_.find(segment.text);
-          if (it != token_to_id_.end()) {
+          auto it = vocabulary_.token_to_id.find(segment.text);
+          if (it != vocabulary_.token_to_id.end()) {
             ids.push_back(it->second);
           } else if (unk_token_id_ >= 0) {
             ids.push_back(unk_token_id_);
@@ -247,9 +283,8 @@ class TokenizerImpl : public Tokenizer {
       if (special_token_ids_.count(id) > 0) {
         continue;
       }
-      auto it = id_to_token_.find(id);
-      if (it != id_to_token_.end()) {
-        tokens.push_back(it->second);
+      if (id >= 0 && static_cast<size_t>(id) < vocabulary_.id_to_token.size()) {
+        tokens.push_back(vocabulary_.id_to_token[static_cast<size_t>(id)]);
       }
     }
 
@@ -263,13 +298,13 @@ class TokenizerImpl : public Tokenizer {
 
   std::string DecodeIncremental(int32_t token_id) override {
     if (special_token_ids_.count(token_id) > 0) return "";
-    auto it = id_to_token_.find(token_id);
-    if (it == id_to_token_.end()) return "";
+    if (token_id < 0 || static_cast<size_t>(token_id) >= vocabulary_.id_to_token.size()) return "";
+    const std::string &token = vocabulary_.id_to_token[static_cast<size_t>(token_id)];
 
     if (bpe_codec_) {
-      pending_bytes_ += bpe_codec_->Decode({it->second});
+      pending_bytes_ += bpe_codec_->Decode({token});
     } else if (sp_codec_) {
-      pending_bytes_ += sp_codec_->Decode({it->second});
+      pending_bytes_ += sp_codec_->Decode({token});
     }
     return DrainCompleteUtf8();
   }
@@ -307,17 +342,17 @@ class TokenizerImpl : public Tokenizer {
     }
   }
 
-  void MarkSpecialTokenString(const std::string &token, bool stop) {
-    auto it = token_to_id_.find(token);
-    if (it == token_to_id_.end()) {
+  void MarkSpecialTokenString(std::string_view token, bool stop) {
+    auto it = vocabulary_.token_to_id.find(token);
+    if (it == vocabulary_.token_to_id.end()) {
       return;
     }
-    special_tokens_[token] = it->second;
+    special_tokens_[std::string(token)] = it->second;
     MarkSpecialTokenId(it->second, stop);
   }
 
   void MarkDefaultSpecialTokenPolicy() {
-    for (const auto &entry : token_to_id_) {
+    for (const auto &entry : vocabulary_.token_to_id) {
       if (!IsDefaultSpecialToken(entry.first)) {
         continue;
       }
@@ -405,8 +440,8 @@ class TokenizerImpl : public Tokenizer {
     }
 
     for (const auto &tok : tokens) {
-      auto it = token_to_id_.find(tok);
-      if (it != token_to_id_.end()) {
+      auto it = vocabulary_.token_to_id.find(tok);
+      if (it != vocabulary_.token_to_id.end()) {
         ids.push_back(it->second);
       } else if (unk_token_id_ >= 0) {
         ids.push_back(unk_token_id_);
@@ -414,13 +449,11 @@ class TokenizerImpl : public Tokenizer {
     }
   }
 
+  Vocabulary vocabulary_;
   std::unique_ptr<BPECodec> bpe_codec_;
   std::unique_ptr<SentencePieceCodec> sp_codec_;
   std::unique_ptr<ChatTemplate> chat_template_;
   std::string pending_bytes_;
-
-  std::unordered_map<std::string, int32_t> token_to_id_;
-  std::unordered_map<int32_t, std::string> id_to_token_;
   std::unordered_map<std::string, int32_t> special_tokens_;
   std::unordered_set<int32_t> special_token_ids_;
   std::unordered_set<int32_t> stop_token_ids_;

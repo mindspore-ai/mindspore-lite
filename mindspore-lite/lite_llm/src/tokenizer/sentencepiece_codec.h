@@ -21,6 +21,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "tokenizer/vocabulary.h"
+
 namespace mslite_llm {
 
 struct SPPiece {
@@ -38,8 +40,7 @@ class SentencePieceCodec {
   std::vector<std::string> Encode(const std::string &text);
   std::string Decode(const std::vector<std::string> &tokens);
 
-  void SetVocab(const std::unordered_map<std::string, int32_t> &token_to_id,
-                const std::unordered_map<int32_t, std::string> &id_to_token);
+  void SetVocab(const Vocabulary &vocabulary);
 
  private:
   bool ParseModel(const uint8_t *data, size_t size);
@@ -48,8 +49,7 @@ class SentencePieceCodec {
 
   std::vector<SPPiece> pieces_;
   std::unordered_map<std::string, float> piece_score_;
-  std::unordered_map<std::string, int32_t> token_to_id_;
-  std::unordered_map<int32_t, std::string> id_to_token_;
+  const TokenToIdMap *token_to_id_{nullptr};
   int32_t unk_id_;
   bool byte_fallback_;
 };

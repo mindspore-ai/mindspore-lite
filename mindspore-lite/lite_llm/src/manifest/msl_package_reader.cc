@@ -270,6 +270,21 @@ bool MslPackageReader::Mmap(const std::string &name, const uint8_t **data, size_
   return true;
 }
 
+bool MslPackageReader::Reclaim(const std::string &name) const {
+  if (mapped_ == nullptr) {
+    return false;
+  }
+  const MslEntry *entry = Lookup(name);
+  if (entry == nullptr || entry->size == 0) {
+    return entry != nullptr;
+  }
+  const int64_t page_size = static_cast<int64_t>(::sysconf(_SC_PAGESIZE));
+  if (page_size <= 0 || entry->offset % static_cast<uint64_t>(page_size) != 0) {
+    return false;
+  }
+  return ::madvise(mapped_ + entry->offset, entry->size, MADV_DONTNEED) == 0;
+}
+
 // ─── KV typed getters ─────────────────────────────────────────────────────
 
 const MslKvValue *FindKv(const MslPackageReader *reader, const std::string &key) {

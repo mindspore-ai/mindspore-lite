@@ -92,13 +92,10 @@ SentencePieceCodec::SentencePieceCodec() : unk_id_(-1), byte_fallback_(true) {}
 
 SentencePieceCodec::~SentencePieceCodec() = default;
 
-void SentencePieceCodec::SetVocab(const std::unordered_map<std::string, int32_t> &token_to_id,
-                                  const std::unordered_map<int32_t, std::string> &id_to_token) {
-  token_to_id_ = token_to_id;
-  id_to_token_ = id_to_token;
-
-  auto unk_it = token_to_id.find("<unk>");
-  if (unk_it != token_to_id.end()) {
+void SentencePieceCodec::SetVocab(const Vocabulary &vocabulary) {
+  token_to_id_ = &vocabulary.token_to_id;
+  const auto unk_it = token_to_id_->find("<unk>");
+  if (unk_it != token_to_id_->end()) {
     unk_id_ = unk_it->second;
   }
 }
@@ -111,13 +108,16 @@ bool SentencePieceCodec::Load(const uint8_t *data, size_t size, size_t &offset) 
   offset += sp_model_size;
 
   if (!parsed) {
-    for (const auto &entry : token_to_id_) {
+    if (token_to_id_ == nullptr) {
+      return false;
+    }
+    for (const auto &entry : *token_to_id_) {
       SPPiece piece;
-      piece.piece = entry.first;
+      piece.piece = std::string(entry.first);
       piece.score = 0.0f;
       piece.type = 1;
       pieces_.push_back(piece);
-      piece_score_[entry.first] = 0.0f;
+      piece_score_[piece.piece] = 0.0f;
     }
   }
 
@@ -216,6 +216,9 @@ std::vector<std::string> SentencePieceCodec::ViterbiEncode(const std::string &te
 }
 
 std::vector<std::string> SentencePieceCodec::ByteFallbackEncode(const std::string &text) {
+  if (token_to_id_ == nullptr) {
+    return {};
+  }
   std::vector<std::string> result;
   size_t i = 0;
   while (i < text.size()) {
@@ -233,13 +236,13 @@ std::vector<std::string> SentencePieceCodec::ByteFallbackEncode(const std::strin
       oss << "<0x" << std::uppercase << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(c) << ">";
       std::string byte_token = oss.str();
 
-      auto it = token_to_id_.find(byte_token);
-      if (it != token_to_id_.end()) {
+      auto it = token_to_id_->find(byte_token);
+      if (it != token_to_id_->end()) {
         result.push_back(byte_token);
       } else {
         std::string single(1, static_cast<char>(c));
-        auto single_it = token_to_id_.find(single);
-        if (single_it != token_to_id_.end()) {
+        auto single_it = token_to_id_->find(single);
+        if (single_it != token_to_id_->end()) {
           result.push_back(single);
         } else if (unk_id_ >= 0) {
           result.push_back("<unk>");
@@ -253,8 +256,8 @@ std::vector<std::string> SentencePieceCodec::ByteFallbackEncode(const std::strin
       }
 
       std::string utf8_char = text.substr(i, char_len);
-      auto it = token_to_id_.find(utf8_char);
-      if (it != token_to_id_.end()) {
+      auto it = token_to_id_->find(utf8_char);
+      if (it != token_to_id_->end()) {
         result.push_back(utf8_char);
       } else if (byte_fallback_) {
         for (size_t b = 0; b < char_len; ++b) {
@@ -262,8 +265,8 @@ std::vector<std::string> SentencePieceCodec::ByteFallbackEncode(const std::strin
           oss << "<0x" << std::uppercase << std::hex << std::setw(2) << std::setfill('0')
               << static_cast<int>(static_cast<unsigned char>(text[i + b])) << ">";
           std::string byte_token = oss.str();
-          auto byte_it = token_to_id_.find(byte_token);
-          if (byte_it != token_to_id_.end()) {
+          auto byte_it = token_to_id_->find(byte_token);
+          if (byte_it != token_to_id_->end()) {
             result.push_back(byte_token);
           }
         }
