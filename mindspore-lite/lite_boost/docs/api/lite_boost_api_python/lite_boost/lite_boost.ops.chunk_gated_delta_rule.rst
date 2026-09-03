@@ -5,7 +5,21 @@ lite_boost.ops.chunk_gated_delta_rule
 
     分块（prefill）Gated Delta Rule算子（A2）。
 
-    包装 ``torch.ops.lite_boost.chunk_gated_delta_rule``，对应A2上CANN的AscendC算子 ``aclnnChunkGatedDeltaRule``。将用户友好的BNSD布局转换为CANN算子要求的TND布局，``query``/``key``/``value``/``beta``/``initial_state`` 转换为低精度dtype（bf16或fp16，跟随输入dtype；fp32/其他默认bf16），可选门 ``g`` 保持float32，``actual_seq_lengths`` 直接透传（T = sum(actual_seq_lengths)）。本接口仅支持A2，不支持300I Duo。
+    包装 ``torch.ops.lite_boost.chunk_gated_delta_rule``，对应A2上CANN的AscendC算子 ``aclnnChunkGatedDeltaRule``。将用户友好的BNSD布局转换为CANN算子要求的TND布局，``query``/``key``/``value``/``beta``/``initial_state`` 转换为低精度dtype（bf16或fp16，跟随输入dtype；fp32/其他默认bf16），可选门 ``g`` 保持float32，``actual_seq_lengths`` 直接透传（T = sum(actual_seq_lengths)）。
+
+    在每个时间步 :math:`t`，Gated Delta Rule按如下公式计算新的递推状态和注意力输出：
+
+    .. math::
+
+        S_t = \alpha_t S_{t-1} + \beta_t (v_t - \alpha_t S_{t-1} k_t) k_t^{\top}
+
+    .. math::
+
+        o_t = S_t q_t \cdot scale
+
+    其中 :math:`\alpha_t = \exp(g_t)` 为衰减因子（省略 ``g`` 时禁用衰减，即 :math:`\alpha_t = 1`），:math:`\beta_t` 为Delta更新步长。本算子是上述递推的分块（按块并行）实现，在长序列场景比逐token形式计算效率更高，适用于prefill阶段；输出每一步的结果以及最终状态。
+
+    本接口仅支持A2，不支持300I Duo。
 
     参数：
         - **query** (Tensor) - 查询张量，shape :math:`(B, N_k, T, D_k)` 。计算前转换为低精度dtype。

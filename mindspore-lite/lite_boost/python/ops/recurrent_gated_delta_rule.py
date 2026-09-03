@@ -48,48 +48,72 @@ def recurrent_gated_delta_rule(
     Primarily used for decode-phase inference acceleration in hybrid linear attention
     models such as Qwen3.5.
 
-    Algorithm flow (executed sequentially for each token in each batch):
+    Algorithm flow (executed sequentially for each token in each batch).
+    The state decay is
 
-    1. State decay:   S = S * exp(g) * exp(gk)
-    2. Memory retrieval: kv_mem = S^T @ k
-    3. Delta update:  S = S + k^T @ ((v - kv_mem) * beta)
-    4. Output:        o = S^T @ q
+    .. math::
 
-    where S is the recurrent state matrix ``[H, D_k, D_v]`` storing the key-value
-    associations of linear attention.
+        S = S * \exp(g) * \exp(gk)
+
+    The memory retrieval is
+
+    .. math::
+
+        kv\_mem = S^{\top} k
+
+    The delta update is
+
+    .. math::
+
+        S = S + k^{\top} ((v - kv\_mem) * \beta)
+
+    The output is computed as
+
+    .. math::
+
+        o = S^{\top} q
+
+    where :math:`S` is the recurrent state matrix of shape
+    :math:`(N_v, D_k, D_v)`, storing the key-value associations of
+    linear attention.
 
     Args:
-        query (torch.Tensor): Query tensor of shape ``[B, N_k, T, D_k]``, dtype=bfloat16.
+        query (Tensor): Query tensor of shape :math:`(B, N_k, T, D_k)`, dtype=bfloat16.
             Must be L2-normalized (L2 norm of each head vector is 1, value range [0, 1]).
             B=batch_size, N_k=num_key_heads, T=seq_len, D_k=key_dim.
-        key (torch.Tensor): Key tensor of shape ``[B, N_k, T, D_k]``, dtype=bfloat16.
+        key (Tensor): Key tensor of shape :math:`(B, N_k, T, D_k)`, dtype=bfloat16.
             Must be L2-normalized (same as query).
-        value (torch.Tensor): Value tensor of shape ``[B, N_v, T, D_v]``, dtype=bfloat16.
+        value (Tensor): Value tensor of shape :math:`(B, N_v, T, D_v)`, dtype=bfloat16.
             N_v=num_value_heads, D_v=value_dim. N_v must be divisible by N_k.
-        beta (torch.Tensor): Delta update step size of shape ``[B, N_v, T]``, dtype=bfloat16.
+        beta (Tensor): Delta update step size of shape :math:`(B, N_v, T)`, dtype=bfloat16.
             Value range (0, 1). Controls the magnitude of each delta update: a larger beta
             causes new information to overwrite old memory more aggressively; a smaller
             beta tends to preserve existing memory.
-        state (torch.Tensor): Recurrent state pool of shape
-            ``[state_slots, N_v, D_k, D_v]``,
-            dtype=bfloat16. Stores the cumulative key-value associations for linear attention.
-            D_k is the key dimension (rows), D_v is the value dimension (columns).
+        state (Tensor): Recurrent state pool of shape
+            :math:`(state\_slots, N_v, D_k, D_v)`,
+            dtype=bfloat16. ``state_slots`` is the number of state slots in the
+            pool; each slot independently stores the cumulative key-value
+            associations of one sequence, and each token selects its slot via
+            `ssm_state_indices` (for standard inference each batch occupies one
+            slot, so state_slots usually equals B). D_k is the key dimension
+            (rows), D_v is the value dimension (columns).
             Can be initialized to zeros for the first call.
-        actual_seq_lengths (torch.Tensor): Actual sequence lengths of shape ``[B]``, dtype=int32.
+        actual_seq_lengths (Tensor): Actual sequence lengths of shape :math:`(B)`, dtype=int32.
             Used for variable-length sequence inference. Each element represents the number
             of valid tokens in the corresponding batch.
             E.g., ``[4, 3, 5]`` means 3 batches with sequence lengths 4, 3, and 5.
-        ssm_state_indices (torch.Tensor): State-slot indices of shape ``[T_total]``,
-            dtype=int32. Each flattened token selects one entry in the global state pool.
-        g (torch.Tensor): Global decay gate of shape ``[B, N_v, T]``, dtype=float32.
+        ssm_state_indices (Tensor): State-slot indices of shape :math:`(T\_total)`,
+            dtype=int32. Each flattened token selects one state slot in the global
+            state pool (dim 0 of `state`, ``state_slots`` slots in total).
+        g (Tensor): Global decay gate of shape :math:`(B, N_v, T)`, dtype=float32.
             **Must be negative**. ``exp(g)`` serves as the state decay factor with range (0, 1).
             The more negative ``g`` is, the faster historical information is forgotten.
             E.g., when g=-1, approximately 37% of the historical state is retained per step.
-        gk (torch.Tensor): Key-dimension gate of shape ``[B, N_v, T, D_k]``, dtype=float32.
+        gk (Tensor): Key-dimension gate of shape :math:`(B, N_v, T, D_k)`, dtype=float32.
             **Must be negative**. ``exp(gk)`` applies per-dimension decay independently along
             the key dimension, enabling finer-grained memory control. Unlike the global gate g,
             gk operates element-wise along the D_k dimension.
-        num_accepted_tokens (torch.Tensor): Number of accepted tokens of shape ``[B]``, dtype=int32.
+        num_accepted_tokens (Tensor): Number of accepted tokens of shape :math:`(B)`, dtype=int32.
             Used in speculative decoding and similar scenarios to mark the number of actually
             accepted (non-rejected) tokens. For standard inference, this is the same as
             ``actual_seq_lengths``.
@@ -100,7 +124,7 @@ def recurrent_gated_delta_rule(
     Returns:
         tuple[Tensor, Tensor]
 
-        - **out** (Tensor) — Attention output of shape ``[B, N_v, T, D_v]``, dtype=bfloat16.
+        - **out** (Tensor) — Attention output of shape :math:`(B, N_v, T, D_v)`, dtype=bfloat16.
           The linear attention result at each token position.
         - **state_out** (Tensor) — Updated recurrent state pool with the same shape as ``state``,
           dtype=bfloat16. Must be passed as ``state`` input in the next recurrent step to
@@ -117,8 +141,11 @@ def recurrent_gated_delta_rule(
         - Supports grouped recurrent heads where N_v is an integer multiple of N_k.
         - All input tensors must reside on the same NPU device.
         - The CANN operator stores state internally as
-          ``[state_slots, N_v, D_v, D_k]`` layout
+          :math:`(state\_slots, N_v, D_v, D_k)` layout
           (value dimension first). This function automatically performs the layout conversion.
+
+    Supported Platforms:
+        ``Ascend``
 
     Examples:
         >>> import torch

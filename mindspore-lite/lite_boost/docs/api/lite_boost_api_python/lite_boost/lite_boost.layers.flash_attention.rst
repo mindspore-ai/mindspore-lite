@@ -13,8 +13,8 @@ lite_boost.layers.flash_attention
         - **q** (Tensor) - shape为 :math:`(B, S, N, D)` 的Query张量，须在NPU设备上且 :math:`D \le 256`。支持float16、float32、bfloat16。
         - **k** (Tensor) - shape为 :math:`(B, S, N, D)` 的Key张量，dtype与 `q` 一致。
         - **v** (Tensor) - shape为 :math:`(B, S, N, D)` 的Value张量，dtype与 `q` 一致。
-        - **q_lens** (list[int]或Tensor[int32], 可选) - varlen模式下每序列的查询长度，长度须等于 `B`，可短于满长。默认值： ``None`` 。
-        - **k_lens** (list[int]或Tensor[int32], 可选) - varlen模式下每序列的键长度，长度须等于 `B`，可短于满长。默认值： ``None`` 。
+        - **q_lens** (Union[list[int], Tensor[int32]], 可选) - varlen模式下每序列的查询长度，长度须等于 `B`，可短于满长。默认值： ``None`` 。
+        - **k_lens** (Union[list[int], Tensor[int32]], 可选) - varlen模式下每序列的键长度，长度须等于 `B`，可短于满长。默认值： ``None`` 。
         - **dropout_p** (float, 可选) - dropout概率，仅GPU端flash_attn FA2后端生效。默认值： ``0.`` 。
         - **softmax_scale** (float, 可选) - 注意力缩放因子， ``None`` 时为 :math:`1/\sqrt{D}`。默认值： ``None`` 。
         - **q_scale** (float, 可选) - 对 `q` 的预缩放（``q = q * q_scale``）。默认值： ``None`` 。
