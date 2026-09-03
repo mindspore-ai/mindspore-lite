@@ -306,8 +306,11 @@ static inline float simd_exp32_f32(float data) {
     return 1.6516363e+38;  // e^88 = 1.6516363e+38
   }
 #else
-  data =
-    MS_MAX32_F32(-87.3365478515625f, MS_MIN32_F32(88.72283935546875f, data));  // clamp(logf(FLT_MIN), logf(FLT_MAX))
+  data = MS_MAX32_F32(
+    -87.3365478515625f,
+    MS_MIN32_F32(
+      88.0f,
+      data));  // clamp(logf(FLT_MIN), 88.0f); margin below logf(FLT_MAX) to avoid int_exp overflow at the boundary
 #endif
   int integer = floor(data * 1.44269504088896341f + 0.5f);
   float decimal = data - integer * param[0];
@@ -331,7 +334,11 @@ static inline void simd_exp32(float src, float *dst) {
     int i;
   } fi;
   static float param[] = {0.693147f, 1.0f / 120, 1.0f / 24, 1.0f / 6, 1.0f / 2, 1.0f};  // log(2.0f)
-  src = MS_MAX32_F32(-87.3365478515625f, MS_MIN32_F32(88.72283935546875f, src));  // clamp(logf(FLT_MIN), logf(FLT_MAX))
+  src = MS_MAX32_F32(
+    -87.3365478515625f,
+    MS_MIN32_F32(
+      88.0f,
+      src));  // clamp(logf(FLT_MIN), 88.0f); margin below logf(FLT_MAX) to avoid int_exp overflow at the boundary
   int integer = floor(src * 1.44269504088896341f + 0.5f);
   float decimal = src - integer * param[0];
   fi int_exp;
