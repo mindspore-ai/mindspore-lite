@@ -19,6 +19,7 @@ Infer Qwen3-Reranker-0.6B with MindSpore Lite.
 """
 
 import sys
+import time
 import argparse
 import numpy as np
 
@@ -29,6 +30,10 @@ except ImportError:
     print("Error: mindspore_lite or transformers package not found.")
     print("Please install them first.")
     sys.exit(1)
+
+# 动态分档档位（seq_len），需与 converter config.ini 中 ge.dynamicDims 保持一致。
+# batch 固定为 1（pointwise reranker），仅 seq_len 分档。
+SEQ_BUCKETS = (128, 256, 512, 768, 1024, 1280, 1536, 2048, 3072, 4096, 8192)
 
 
 class Qwen3RerankerInferencer:
@@ -81,9 +86,24 @@ class Qwen3RerankerInferencer:
         )
         return output
 
+    @staticmethod
+    def _select_bucket(seq_len, max_length):
+        """
+        Select the smallest bucket >= seq_len, capped by max_length.
+
+        动态分档不会自动 pad：业务侧必须把输入 pad 到某个档位值再 resize。
+        """
+        for bucket in SEQ_BUCKETS:
+            if seq_len <= bucket <= max_length:
+                return bucket
+        # 超过 max_length 或所有档位都不够时，回退到 max_length（截断保证过）
+        return max_length
+
     def _prepare_inputs(self, pairs, prefix_tokens, suffix_tokens, max_length):
         """
-        Prepare input tensors for inference.
+        Tokenize each pair and prepend/append prefix/suffix tokens.
+
+        返回每条样本的真实 token id 列表（未 pad），后续逐条选档 + pad。
         """
         inputs = self.tokenizer(
             pairs,
@@ -92,37 +112,70 @@ class Qwen3RerankerInferencer:
             return_attention_mask=False,
             max_length=max_length - len(prefix_tokens) - len(suffix_tokens),
         )
-        for i, ele in enumerate(inputs["input_ids"]):
-            inputs["input_ids"][i] = prefix_tokens + ele + suffix_tokens
-        inputs = self.tokenizer.pad(
-            inputs, padding=True, return_tensors="np", max_length=max_length
-        )
-        return inputs
+        token_ids_list = []
+        for ele in inputs["input_ids"]:
+            full_ids = prefix_tokens + ele + suffix_tokens
+            if len(full_ids) > max_length:
+                full_ids = full_ids[:max_length]
+            token_ids_list.append(full_ids)
+        return token_ids_list
 
-    def _compute_scores(self, inputs):
+    def _run_single(self, token_ids, bucket):
         """
-        Compute reranking scores from model outputs.
+        Left-pad one sample to `bucket`, resize model to the gear, and predict.
+
+        返回该样本的 logits（numpy）。
         """
-        batch_size = inputs["input_ids"].shape[0]
+        pad_len = bucket - len(token_ids)
+        pad_id = self.tokenizer.pad_token_id
+        if pad_id is None:
+            pad_id = 0
+        input_ids = np.array([pad_id] * pad_len + list(token_ids), dtype=np.int32)
+        attention_mask = np.array([0] * pad_len + [1] * len(token_ids), dtype=np.int32)
+        mslite_inputs = [
+            mslite.Tensor(input_ids.reshape(1, bucket)),
+            mslite.Tensor(attention_mask.reshape(1, bucket)),
+        ]
+        # resize 需要按输入顺序给出每个输入的完整 shape 列表。
+        self.model.resize(mslite_inputs, [[1, bucket], [1, bucket]])
+        outputs = self.model.predict(mslite_inputs)
+        return outputs[0].get_data_to_numpy()
+
+    def _compute_scores(self, token_ids_list, max_length, timing):
+        """
+        Compute reranking scores from model outputs (one sample per forward).
+        """
         scores = []
-
-        for i in range(batch_size):
-            mslite_inputs = [
-                mslite.Tensor(inputs["input_ids"][i : i + 1].astype(np.int32)),
-                mslite.Tensor(inputs["attention_mask"][i : i + 1].astype(np.int32)),
-            ]
-            outputs = self.model.predict(mslite_inputs)
-            logits = outputs[0].get_data_to_numpy()
+        for token_ids in token_ids_list:
+            t0 = time.perf_counter()
+            bucket = self._select_bucket(len(token_ids), max_length)
+            t1 = time.perf_counter()
+            logits = self._run_single(token_ids, bucket)
+            t2 = time.perf_counter()
 
             last_token_logits = logits[0, -1, :]
-            true_score = last_token_logits[self.token_true_id]
-            false_score = last_token_logits[self.token_false_id]
-
+            # Auto-detect lm_head-sliced output ([1,1,2], convention
+            # row 0=yes, row 1=no) vs full-vocab output ([1,1,vocab]).
+            # Slicing the lm_head weight to the [yes, no] two rows is
+            # bit-identical to full-vocab lm_head then indexing those ids,
+            # but cuts the lm_head MatMul + weight read + D2H by ~76000x.
+            if int(last_token_logits.shape[-1]) == 2:
+                true_score = float(last_token_logits[0])   # row 0 = yes
+                false_score = float(last_token_logits[1])  # row 1 = no
+            else:
+                true_score = last_token_logits[self.token_true_id]
+                false_score = last_token_logits[self.token_false_id]
             scores_array = np.array([false_score, true_score])
             scores_array = np.exp(scores_array - np.max(scores_array))
             scores_array = scores_array / np.sum(scores_array)
-            scores.append(scores_array[1])
+            scores.append(float(scores_array[1]))
+            t3 = time.perf_counter()
 
+            timing["select"].append(t1 - t0)
+            timing["predict"].append(t2 - t1)
+            timing["postprocess"].append(t3 - t2)
+            timing["seq_len"].append(len(token_ids))
+            timing["bucket"].append(bucket)
         return scores
 
     def rerank(self, queries, documents, instruction=None, max_length=8192):
@@ -142,13 +195,26 @@ class Qwen3RerankerInferencer:
         if instruction is None:
             instruction = "Given a web search query, retrieve relevant passages that answer the query"
 
+        t_tok0 = time.perf_counter()
         pairs = [
             self._format_instruction(instruction, query, doc)
             for query, doc in zip(queries, documents)
         ]
-        inputs = self._prepare_inputs(pairs, prefix_tokens, suffix_tokens, max_length)
-        scores = self._compute_scores(inputs)
+        token_ids_list = self._prepare_inputs(
+            pairs, prefix_tokens, suffix_tokens, max_length
+        )
+        t_tok1 = time.perf_counter()
 
+        timing = {
+            "tokenize": t_tok1 - t_tok0,
+            "select": [],
+            "predict": [],
+            "postprocess": [],
+            "seq_len": [],
+            "bucket": [],
+        }
+        scores = self._compute_scores(token_ids_list, max_length, timing)
+        self.last_timing = timing
         return scores
 
 
@@ -160,7 +226,7 @@ def main():
         description="Qwen3-Reranker-0.6B Inference with MindSpore Lite"
     )
     parser.add_argument(
-        "--model", type=str, required=True, help="Path to qwen3_reranker_0.6b.mindir"
+        "--model", type=str, required=True, help="Path to qwen3_reranker_0.6b_graph.mindir"
     )
     parser.add_argument(
         "--tokenizer",
@@ -175,6 +241,12 @@ def main():
         "--device", type=str, default="ascend", help="Device for inference (cpu/ascend)"
     )
     parser.add_argument("--device-id", type=int, default=0, help="Device ID for ascend")
+    parser.add_argument(
+        "--warmup",
+        type=int,
+        default=1,
+        help="Warmup rounds to skip (Ascend first-run graph compile)",
+    )
 
     args = parser.parse_args()
 
@@ -194,14 +266,44 @@ def main():
         "is responsible for the movement of planets around the sun.",
     ]
 
+    # Warmup: Ascend 首次推理会触发图编译，计时前先跑 warmup 轮排除编译开销。
+    for _ in range(args.warmup):
+        inferencer.rerank(queries, documents, max_length=args.max_length)
+
     print("\nRunning reranking inference...")
+    t_start = time.perf_counter()
     scores = inferencer.rerank(queries, documents, max_length=args.max_length)
+    t_total = time.perf_counter() - t_start
+    timing = inferencer.last_timing
 
     print("\nReranking scores:")
     for i, (query, doc, score) in enumerate(zip(queries, documents, scores)):
         print(f"\n[{i + 1}] Score: {score:.4f}")
         print(f"Query: {query}")
         print(f"Document: {doc}")
+
+    print("\n=== 端到端推理性能（本次运行） ===")
+    print("| 指标 | 耗时 (ms) |")
+    print("|---|---:|")
+    print(f"| Tokenize + pad | {timing['tokenize'] * 1000:.2f} |")
+    n = len(timing["predict"])
+    if n:
+        print(
+            f"| Bucket 选择 | {sum(timing['select']) * 1000:.2f} |"
+        )
+        print(
+            f"| Model predict (单条平均 {sum(timing['predict']) * 1000 / n:.2f} ms × {n}) | "
+            f"{sum(timing['predict']) * 1000:.2f} |"
+        )
+        print(
+            f"| Postprocess | {sum(timing['postprocess']) * 1000:.2f} |"
+        )
+    print(f"| **总耗时** | **{t_total * 1000:.2f}** |")
+    for i in range(n):
+        print(
+            f"  [sample {i + 1}] seq_len={timing['seq_len'][i]}, "
+            f"bucket={timing['bucket'][i]}, predict={timing['predict'][i] * 1000:.2f} ms"
+        )
 
 
 if __name__ == "__main__":
