@@ -1,0 +1,5 @@
+{
+    "black-list": {
+        "to-add": ["RealDiv", "SquareSumV1", "Square", "Sqrt", "ReduceMean"]
+    }
+}
