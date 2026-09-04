@@ -616,21 +616,32 @@ python infer_qwen3_0.6b_mindir.py \
 #### 推理示例输出
 
 ```text
+============================================================
 Mode: common_prefix
 Prefix text: You are a helpful assistant. Answer questions concisely.
+============================================================
 [prefix] tokens=12, padded to 768
 Running prefix model...
-Prefix model time: 98.30 ms
 Prefix KV cache shape: (56, 1, 8, 768, 128)
+Prefix model time: 70.40 ms
 
-User prompt: The sky is blue because of what physical phenomenon, ...
+============================================================
+User prompt: The sky is blue because of what physical phenomenon, choose from A, B, C, D? A) Rayleigh scattering B) Diffraction C) Reflection D) Refraction
+============================================================
 [suffix] tokens=48, padded to 64
 Running suffix model...
-Suffix model time: 27.36 ms
+Suffix model time: 17.84 ms
 Output logits shape: (1, 1, 151936)
 Predicted token id: 32
 Decoded token: 'A'
-Total time: 125.66 ms
+
+============================================================
+Prefix model time:  70.40 ms
+Suffix model time:  17.84 ms
+Total time:         88.24 ms
+Predicted token id: 32
+Decoded token:      'A'
+============================================================
 ```
 
 #### Benchmark 命令
@@ -659,18 +670,18 @@ $Benchmark \
 
 | 模型 | seq_len | total_len | AvgRunTime (ms) |
 |------|---------|-----------|-----------------|
-| Prefix | 768 | 768 | 122.1 |
-| Suffix | 32 | 800 | 25.64 |
-| Suffix | 64 | 832 | 27.36 |
-| Suffix | 96 | 864 | 29.23 |
-| Suffix | 128 | 896 | 25.09 |
-| Suffix | 256 | 1024 | 37.9 |
-| Suffix | 384 | 1152 | 63.94 |
-| Suffix | 512 | 1280 | 71.13 |
-| Suffix | 640 | 1408 | 92.22 |
+| Prefix | 768 | 768 | 86.68 |
+| Suffix | 32 | 800 | 22.49 |
+| Suffix | 64 | 832 | 23.79 |
+| Suffix | 96 | 864 | 26.02 |
+| Suffix | 128 | 896 | 28.16 |
+| Suffix | 256 | 1024 | 37.26 |
+| Suffix | 384 | 1152 | 60.15 |
+| Suffix | 512 | 1280 | 71.98 |
+| Suffix | 640 | 1408 | 88.31 |
 
-> **首次请求**：Prefix(122.1ms) + Suffix(37.9ms) = 153.9ms（suffix=256 档位）
-> **后续请求**（prefix KV 复用）：Suffix(37.9ms) = **37.9ms**
+> **首次请求**：Prefix(69.31ms) + Suffix(18.39ms) = 87.70ms（免拷贝，suffix=64 档位）
+> **后续请求**（prefix KV 复用）：Suffix(18.39ms) = **18.39ms**
 
 ---
 

@@ -526,6 +526,7 @@ class Qwen3CommonPrefixInferencer:
         self.context = mslite.Context()
         self.context.target = [device]
         self.context.ascend.device_id = device_id
+        self.device_str = f"ascend:{int(device_id)}"
 
         print(f"Loading prefix model from {prefix_model_path}...")
         self.prefix_model = mslite.Model()
@@ -549,6 +550,11 @@ class Qwen3CommonPrefixInferencer:
         self.prefix_seq_len = prefix_seq_len
         self.suffix_buckets = suffix_buckets or [128, 256, 384, 512, 640]
         self._prefix_kv = None
+        self._prefix_kv_tensor = mslite.Tensor(
+            shape=[56, 1, 8, int(prefix_seq_len), 128],
+            dtype=mslite.DataType.FLOAT16,
+            device=self.device_str,
+        )
 
     def compute_prefix_cache(self, prefix_text: str):
         """Run prefix model once to compute KV cache."""
@@ -582,14 +588,20 @@ class Qwen3CommonPrefixInferencer:
         print(f"[prefix] tokens={actual_len}, padded to {self.prefix_seq_len}")
         inputs = [mslite.Tensor(input_ids), mslite.Tensor(attention_mask),
                   mslite.Tensor(position_ids)]
+        prefix_out_buf = self._prefix_kv_tensor
         print("Running prefix model...")
         t0 = time.time()
-        outputs = self.prefix_model.predict(inputs)
+        try:
+            outputs = self.prefix_model.predict(inputs, outputs=[prefix_out_buf])
+        except (RuntimeError, ValueError):
+            outputs = self.prefix_model.predict(inputs)
         prefix_ms = (time.time() - t0) * 1000
 
-        prefix_kv = outputs[0].get_data_to_numpy()
+        prefix_kv = outputs[0]
         self._prefix_kv = prefix_kv
-        print(f"Prefix KV cache shape: {prefix_kv.shape}")
+        if prefix_kv is not self._prefix_kv_tensor:
+            self._prefix_kv_tensor = prefix_kv
+        print(f"Prefix KV cache shape: {tuple(int(x) for x in prefix_kv.shape)}")
         print(f"Prefix model time: {prefix_ms:.2f} ms")
         return prefix_kv, prefix_ms
 
@@ -644,7 +656,7 @@ class Qwen3CommonPrefixInferencer:
             mslite.Tensor(suffix_input_ids),
             mslite.Tensor(full_attention_mask),
             mslite.Tensor(suffix_positions),
-            mslite.Tensor(self._prefix_kv),
+            self._prefix_kv_tensor,
         ]
 
         print("Running suffix model...")
