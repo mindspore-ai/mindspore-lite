@@ -36,9 +36,9 @@
 #   bash export_and_convert.sh 4p    # TP=4: 4-rank ONNX + GE convert (optimize=none)
 #
 # Output paths (consumed by infer.sh):
-#   1p -> qwen3_8b_onnx/{prefill,decode}/*_rank0_graph.mindir
-#   2p -> qwen3_8b_tp_onnx/{prefill,decode}/*_rank{0,1}_graph.mindir
-#   4p -> qwen3_8b_tp4_onnx/{prefill,decode}/*_rank{0..3}_graph.mindir
+#   1p -> qwen3_8b_onnx/{prefix,suffix,decode}/*_rank0_graph.mindir
+#   2p -> qwen3_8b_tp2_onnx/rank{0,1}/{prefix,suffix,decode}/*_graph.mindir
+#   4p -> qwen3_8b_tp4_onnx/rank{0..3}/{prefix,suffix,decode}/*_graph.mindir
 #
 # Prerequisites (env vars, see README.md): $CONV (converter_lite path),
 #   $ASCEND_CUSTOM_OPP_PATH (exported), $MODEL_ID (Qwen3-8B weights dir), $DTYPE.
@@ -49,8 +49,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # ---- Defaults (override via env or env.sh; see README.md "环境准备") ----
-DTYPE="${DTYPE:-fp16}"
-MODEL_ID="${MODEL_ID:-./Qwen3-8B}"
+DTYPE="${3:-fp16}"
+MODEL_ID="${2:-./Qwen3-8B}"
+PREFIX_LEN="${4:-768}"
+SUFFIX_LEN="${5:-896}"
 if [ -z "${CONV:-}" ]; then
   if [ -n "${MSLITE_HOME_PATH:-}" ] && [ -x "$MSLITE_HOME_PATH/tools/converter/converter/converter_lite" ]; then
     CONV="$MSLITE_HOME_PATH/tools/converter/converter/converter_lite"
@@ -78,6 +80,7 @@ if [ -z "${1:-}" ]; then
   echo "  bash export_and_convert.sh 1p    # Single-chip export (GE: optimize=none, 6-bucket cfg at runtime"
   echo "  bash export_and_convert.sh 2p    # TP=2 export (GE: optimize=none, cfgs under configs/tp2)"
   echo "  bash export_and_convert.sh 4p    # TP=4 export (GE: optimize=none, cfgs under configs/tp4)"
+  echo "  bash export_and_convert.sh <1p|2p|4p> [model_id] [dtype] [prefix_len] [suffix_len] [output_dir]"
   exit 1
 fi
 TP_ARG="$1"
@@ -91,27 +94,24 @@ echo "=== TP_SIZE=$TP_SIZE  dtype=$DTYPE ==="
 
 # ---- Step 1: Export ONNX (unified script for all TP sizes) ----
 if [ "$TP_SIZE" -eq 1 ]; then
-  OUT_DIR="./qwen3_8b_onnx"
-elif [ "$TP_SIZE" -eq 4 ]; then
-  OUT_DIR="./qwen3_8b_tp4_onnx"
+  DEFAULT_OUT_DIR="./qwen3_8b_onnx"
+elif [ "$TP_SIZE" -eq 2 ]; then
+  DEFAULT_OUT_DIR="./qwen3_8b_tp2_onnx"
 else
-  OUT_DIR="./qwen3_8b_tp_onnx"
+  echo "Error: unsupported TP size $TP_SIZE" >&2
+  exit 1
 fi
+OUT_DIR="${6:-$DEFAULT_OUT_DIR}"
 
 echo "=== [1] Exporting TP=$TP_SIZE prefill + decode ($DTYPE) -> $OUT_DIR ==="
 # TP=2 uses ONE dynamic ONNX (dynamic prefill seq + dynamic decode KV len) served
 # by the two dynamicDims cfgs configs/tp2/ge_{prefill,decode}.cfg at runtime.
 # 1p/4p keep the multi-static-bucket flow.
 EXTRA_ARGS=()
-if [ "$TP_SIZE" -eq 1 ]; then
-  echo "     cfgs=configs/ge_{prefill,decode}.cfg  (KV dim3=8 heads, ge.dynamicDims 6 buckets)."
-  echo "     1p runs via infer_qwen3_8b_mslite_1p.py (single dynamic graph + resize per bucket)."
-elif [ "$TP_SIZE" -eq 2 ]; then
-  echo "     cfgs=configs/tp2/ge_{prefill,decode}.cfg  (KV dim3=4 heads per rank, ge.dynamicDims 6 buckets)."
-  echo "     Prefill exported with dynamic seq axis + decode with dynamic KV-len axis (--tp-dynamic)."
+echo "     common-prefix enabled: prefix=$PREFIX_LEN, suffix dummy=$SUFFIX_LEN"
+EXTRA_ARGS+=(--common-prefix --prefix-len "$PREFIX_LEN" --suffix-len "$SUFFIX_LEN")
+if [ "$TP_SIZE" -eq 2 ]; then
   EXTRA_ARGS+=(--tp-dynamic)
-else
-  echo "     cfgs=configs/tp4/  (KV dim3=2 heads per rank)."
 fi
 python3 export_qwen3_8b_onnx.py \
   --model-id "$MODEL_ID" \
@@ -123,10 +123,28 @@ python3 export_qwen3_8b_onnx.py \
 
 # ---- Step 2: Convert ONNX -> MindIR (online GE: optimize=none for all TP sizes) ----
 echo "=== [2] Converting (online GE: optimize=none) -> build_from_file picks bucket cfg at runtime ==="
-for SUB in prefill decode; do
+SUBS=(prefix suffix decode)
+for SUB in "${SUBS[@]}"; do
   for R in $(seq 0 $((TP_SIZE - 1))); do
-    ONNX="$OUT_DIR/$SUB/qwen3_8b_llm_${SUB}_rank${R}.onnx"
-    OUT="$OUT_DIR/$SUB/qwen3_8b_llm_${SUB}_rank${R}"
+    if [ "$SUB" = "prefix" ] || [ "$SUB" = "suffix" ]; then
+      STEM="$SUB"
+      if [ "$TP_SIZE" -gt 1 ]; then
+        ONNX="$OUT_DIR/rank${R}/$SUB/qwen3_8b_${STEM}_rank${R}.onnx"
+        OUT="$OUT_DIR/rank${R}/$SUB/qwen3_8b_${STEM}_rank${R}"
+      else
+        ONNX="$OUT_DIR/$SUB/qwen3_8b_${STEM}_rank${R}.onnx"
+        OUT="$OUT_DIR/$SUB/qwen3_8b_${STEM}_rank${R}"
+      fi
+    else
+      STEM="$SUB"
+      if [ "$TP_SIZE" -gt 1 ]; then
+        ONNX="$OUT_DIR/rank${R}/$SUB/qwen3_8b_llm_${STEM}_rank${R}.onnx"
+        OUT="$OUT_DIR/rank${R}/$SUB/qwen3_8b_llm_${STEM}_rank${R}"
+      else
+        ONNX="$OUT_DIR/$SUB/qwen3_8b_llm_${STEM}_rank${R}.onnx"
+        OUT="$OUT_DIR/$SUB/qwen3_8b_llm_${STEM}_rank${R}"
+      fi
+    fi
     echo "  $SUB rank$R ..."
     "$CONV" --fmk=ONNX \
       --modelFile="$ONNX" \
@@ -136,6 +154,7 @@ for SUB in prefill decode; do
 done
 
 echo "=== Done. Models at $OUT_DIR ==="
+echo "=== ${TP_SIZE}p common-prefix models: prefix + suffix + decode ==="
 echo "=== Run (1p)    : bash infer.sh <device_id>        # auto uses configs/ 6-bucket cfgs"
 echo "=== Run (2p)    : bash infer.sh <id0,id1>         # auto uses configs/tp2 cfgs"
 echo "=== Run (4p)    : bash infer.sh <id0,id1,id2,id3>  # auto uses configs/tp4 cfgs"
