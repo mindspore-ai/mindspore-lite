@@ -32,7 +32,14 @@ namespace {
 std::string FloatLiteral(float value) {
   std::ostringstream oss;
   oss << std::setprecision(std::numeric_limits<float>::max_digits10) << value;
-  return oss.str();
+  std::string str = oss.str();
+  // Default ostream formatting prints integral values like 0.0f/1.0f as "0"/"1"; appending
+  // 'f' to that yields the invalid C literal "0f". A float literal needs '.' or an exponent.
+  if (str.find('.') == std::string::npos && str.find('e') == std::string::npos && str.find('E') == std::string::npos &&
+      str.find("nan") == std::string::npos && str.find("inf") == std::string::npos) {
+    str += ".0";
+  }
+  return str;
 }
 }  // namespace
 
