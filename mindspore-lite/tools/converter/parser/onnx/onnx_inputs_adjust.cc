@@ -52,6 +52,13 @@ namespace mindspore::lite {
 namespace {
 const std::vector<int> kNH2NCPerm = {0, 3, 1, 2};
 constexpr int kDataInfoMinLen = 2;
+// N-ary Add/Maximum/Minimum cnode layout: inputs[0] is the primitive value node and
+// inputs[1..] are data inputs. A binary kernel consumes exactly two data inputs,
+// so n-ary chaining starts at the third element.
+constexpr size_t kPrimInputNum = 1;
+constexpr size_t kBinaryDataInputNum = 2;
+// The chained node accumulates from inputs[1]; the next data input (inputs[2]) starts the chain.
+constexpr size_t kFirstChainedInput = kPrimInputNum + 1;
 
 STATUS AddAttrToInput(const FuncGraphPtr &func_graph, const CNodePtr &cnode, int input_num,
                       const std::string &attr_name) {
@@ -160,10 +167,6 @@ bool ValidParameterNode(const ParameterPtr &param_node) {
 STATUS SplitNarySum(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
   MS_CHECK_TRUE_RET(func_graph != nullptr, RET_NULL_PTR);
   MS_CHECK_TRUE_RET(cnode != nullptr, RET_NULL_PTR);
-  // Only split Eltwise SUM with >2 data inputs (input[0]=primitive, input[1..N]=data)
-  if (cnode->inputs().size() <= 3) {
-    return lite::RET_OK;
-  }
   auto prim = GetValueNode<PrimitivePtr>(cnode->input(0));
   if (prim == nullptr) {
     return lite::RET_OK;
@@ -174,11 +177,32 @@ STATUS SplitNarySum(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
   }
   auto manager = func_graph->manager();
   MS_CHECK_TRUE_RET(manager != nullptr, RET_NULL_PTR);
+  // input[0]=primitive, input[1..N]=data; 2 data inputs are natively supported
+  if (cnode->inputs().size() == kPrimInputNum + 1) {
+    // ONNX Sum accepts 1+ data inputs; a single one is an identity (Sum(X) == X).
+    // Eltwise's infer shape and kernels require >=2 inputs, so pad with a scalar zero
+    // and keep the node: removing it would leave a graph whose output is the input
+    // parameter itself, which specify_graph_output_format (and the micro codegen for an
+    // op-less graph) cannot handle. The extra X+0 add is trivial and numerically exact.
+    float zero = 0.0f;
+    auto tensor_info = CreateTensorInfo(&zero, sizeof(float), {1}, kNumberTypeFloat32);
+    MS_CHECK_TRUE_RET(tensor_info != nullptr, RET_ERROR);
+    auto zero_param = opt::BuildParameterNode(func_graph, tensor_info, cnode->fullname_with_scope() + "_zero");
+    MS_CHECK_TRUE_RET(zero_param != nullptr, RET_ERROR);
+    auto new_inputs = cnode->inputs();
+    new_inputs.push_back(zero_param);
+    cnode->set_inputs(new_inputs);
+    opt::UpdateManager(func_graph);
+    return lite::RET_OK;
+  }
+  if (cnode->inputs().size() <= kPrimInputNum + kBinaryDataInputNum) {
+    return lite::RET_OK;
+  }
 
   // Chain binary AddFusion: Add(Add(in1,in2), in3)...
   auto inputs = cnode->inputs();
-  AnfNodePtr acc = inputs[1];
-  for (size_t i = 2; i < inputs.size(); ++i) {
+  AnfNodePtr acc = inputs[kPrimInputNum];
+  for (size_t i = kFirstChainedInput; i < inputs.size(); ++i) {
     auto add_prim = std::make_shared<ops::AddFusion>();
     MS_CHECK_TRUE_RET(add_prim != nullptr, RET_ERROR);
     auto add_prim_c = add_prim->GetPrim();
@@ -199,6 +223,58 @@ STATUS SplitNarySum(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
     return RET_ERROR;
   }
   opt::UpdateManager(func_graph);
+  return lite::RET_OK;
+}
+
+STATUS AdjustNaryMaxMin(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
+  MS_CHECK_TRUE_RET(func_graph != nullptr, RET_NULL_PTR);
+  MS_CHECK_TRUE_RET(cnode != nullptr, RET_NULL_PTR);
+  auto inputs = cnode->inputs();
+  // input[0]=primitive, input[1..N]=data; 2 data inputs are natively supported by the
+  // binary Maximum/Minimum kernels.
+  if (inputs.size() > kPrimInputNum + kBinaryDataInputNum) {
+    // Binary kernels read inputs[0..1] only, so data inputs beyond the 2nd are silently
+    // dropped unless the node is chained here: Max(Max(in1,in2), in3)...
+    auto manager = func_graph->manager();
+    MS_CHECK_TRUE_RET(manager != nullptr, RET_NULL_PTR);
+    bool is_min = opt::CheckPrimitiveType(cnode, prim::kPrimMinimum);
+    AnfNodePtr acc = inputs[kPrimInputNum];
+    for (size_t i = kFirstChainedInput; i < inputs.size(); ++i) {
+      PrimitivePtr binary_prim_c;
+      if (is_min) {
+        auto min_prim = std::make_shared<ops::Minimum>();
+        MS_CHECK_TRUE_RET(min_prim != nullptr, RET_ERROR);
+        binary_prim_c = min_prim->GetPrim();
+      } else {
+        auto max_prim = std::make_shared<ops::Maximum>();
+        MS_CHECK_TRUE_RET(max_prim != nullptr, RET_ERROR);
+        binary_prim_c = max_prim->GetPrim();
+      }
+      MS_CHECK_TRUE_RET(binary_prim_c != nullptr, RET_ERROR);
+      auto value_node = NewValueNode(binary_prim_c);
+      MS_CHECK_TRUE_RET(value_node != nullptr, RET_ERROR);
+      auto new_node = func_graph->NewCNode({value_node, acc, inputs[i]});
+      if (new_node == nullptr) {
+        MS_LOG(ERROR) << "Create max/min node failed.";
+        return RET_ERROR;
+      }
+      new_node->set_fullname_with_scope(cnode->fullname_with_scope() + "_Split" + std::to_string(i));
+      new_node->set_abstract(cnode->abstract());
+      acc = new_node;
+    }
+    if (!manager->Replace(cnode, acc)) {
+      MS_LOG(ERROR) << "Replace nary max/min node failed.";
+      return RET_ERROR;
+    }
+    opt::UpdateManager(func_graph);
+  } else if (inputs.size() == 2) {
+    // ONNX Max/Min accept 1+ data inputs, while ArithmeticInferShape and the binary
+    // kernels require >=2. Feed the single input twice: Max(X, X) == X.
+    auto new_inputs = inputs;
+    new_inputs.push_back(inputs[1]);
+    cnode->set_inputs(new_inputs);
+    opt::UpdateManager(func_graph);
+  }
   return lite::RET_OK;
 }
 
@@ -727,6 +803,9 @@ int DispatchNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode, const co
   }
   if (opt::CheckPrimitiveType(cnode, prim::kPrimEltwise)) {
     return SplitNarySum(func_graph, cnode);
+  }
+  if (opt::CheckPrimitiveType(cnode, prim::kPrimMaximum) || opt::CheckPrimitiveType(cnode, prim::kPrimMinimum)) {
+    return AdjustNaryMaxMin(func_graph, cnode);
   }
   if (opt::CheckPrimitiveType(cnode, prim::kPrimConstantOfShape)) {
     return ResolveConstantOfShape(func_graph, cnode);
