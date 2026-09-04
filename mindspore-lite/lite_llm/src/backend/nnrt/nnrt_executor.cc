@@ -16,10 +16,14 @@
 
 #include "backend/nnrt/nnrt_executor.h"
 
+#include <fcntl.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -58,7 +62,6 @@ NnrtExecutor::~NnrtExecutor() {
     embedding_table_ = nullptr;
     embedding_table_elems_ = 0;
   }
-
   if (nn_executor_ != nullptr && api.Executor_Destroy != nullptr) {
     api.Executor_Destroy(&nn_executor_);
     nn_executor_ = nullptr;
@@ -66,6 +69,11 @@ NnrtExecutor::~NnrtExecutor() {
   if (nn_compilation_ != nullptr && api.Compilation_Destroy != nullptr) {
     api.Compilation_Destroy(&nn_compilation_);
     nn_compilation_ = nullptr;
+  }
+  if (omc_mapping_ != nullptr) {
+    ::munmap(omc_mapping_, omc_mapping_size_);
+    omc_mapping_ = nullptr;
+    omc_mapping_size_ = 0;
   }
 }
 
@@ -108,6 +116,7 @@ bool NnrtExecutor::Build(const NnrtConfig &config) {
   scale_gp_size_ = config.scale_gp_size;
   single_file_ = config.single_file;
   package_reader_ = config.package_reader;
+  embedding_path_ = config.embedding_path;
   // device_id_ defaults to 0 (first NPU). Single-NPU Kirin is the current target;
   // multi-device name->id resolution via OH_NNDevice_GetAllDevicesID is TODO.
 
@@ -152,27 +161,7 @@ bool NnrtExecutor::Build(const NnrtConfig &config) {
 
 bool NnrtExecutor::BuildModel() {
   const auto &api = NNRTWrapper::GetApi();
-  if (single_file_) {
-    // The .omc lives inside the .msl. Hand NNRT the mmap'd entry directly via
-    // the offline-model BUFFER API — the /proc/self/fd/N memfd path is rejected
-    // by the app sandbox at Build time (verified on kirin9020).
-    if (package_reader_ == nullptr || api.Compilation_ConstructWithOfflineModelBuffer == nullptr) {
-      MS_LOG(ERROR) << "single-file mode requires package reader + offline-model buffer API";
-      return false;
-    }
-    const uint8_t *data = nullptr;
-    size_t size = 0;
-    if (!package_reader_->Mmap(omc_path_, &data, &size) || data == nullptr || size == 0) {
-      MS_LOG(ERROR) << "Failed to mmap .omc entry: " << omc_path_;
-      return false;
-    }
-    nn_compilation_ = api.Compilation_ConstructWithOfflineModelBuffer(data, size);
-    MS_LOG(INFO) << "Loaded .omc entry " << omc_path_ << " (" << size << " bytes) via offline-model buffer API";
-  } else {
-    nn_compilation_ = api.Compilation_ConstructWithOfflineModelFile(omc_path_.c_str());
-  }
-  if (nn_compilation_ == nullptr) {
-    MS_LOG(ERROR) << "ConstructWithOfflineModel failed";
+  if (!ConstructCompilation()) {
     return false;
   }
   if (api.Compilation_SetDevice(nn_compilation_, device_id_) != 0) {
@@ -198,7 +187,93 @@ bool NnrtExecutor::BuildModel() {
   if (!ReadModelVocab()) {
     return false;
   }
+  ReclaimOfflineModelPages();
   return true;
+}
+
+bool NnrtExecutor::ConstructCompilation() {
+  const auto &api = NNRTWrapper::GetApi();
+  if (single_file_) {
+    // The .omc lives inside the .msl. Hand NNRT the mmap'd entry directly via
+    // the offline-model BUFFER API — the /proc/self/fd/N memfd path is rejected
+    // by the app sandbox at Build time (verified on kirin9020).
+    if (package_reader_ == nullptr || api.Compilation_ConstructWithOfflineModelBuffer == nullptr) {
+      MS_LOG(ERROR) << "single-file mode requires package reader + offline-model buffer API";
+      return false;
+    }
+    const uint8_t *data = nullptr;
+    size_t size = 0;
+    if (!package_reader_->Mmap(omc_path_, &data, &size) || data == nullptr || size == 0) {
+      MS_LOG(ERROR) << "Failed to mmap .omc entry: " << omc_path_;
+      return false;
+    }
+    nn_compilation_ = api.Compilation_ConstructWithOfflineModelBuffer(data, size);
+    MS_LOG(INFO) << "Loaded .omc entry " << omc_path_ << " (" << size << " bytes) via offline-model buffer API";
+  } else if (api.Compilation_ConstructWithOfflineModelBuffer != nullptr && MapOfflineModelFile(omc_path_)) {
+    nn_compilation_ = api.Compilation_ConstructWithOfflineModelBuffer(omc_mapping_, omc_mapping_size_);
+    if (nn_compilation_ != nullptr) {
+      MS_LOG(INFO) << "Loaded directory .omc " << omc_path_ << " (" << omc_mapping_size_
+                   << " bytes) via mmap + offline-model buffer API";
+    } else {
+      MS_LOG(WARNING) << "offline-model buffer API rejected directory .omc; falling back to file API";
+      ::munmap(omc_mapping_, omc_mapping_size_);
+      omc_mapping_ = nullptr;
+      omc_mapping_size_ = 0;
+    }
+  } else {
+    MS_LOG(WARNING) << (api.Compilation_ConstructWithOfflineModelBuffer == nullptr
+                          ? "offline-model buffer API unavailable; falling back to file API"
+                          : "Failed to mmap directory .omc; falling back to file API");
+  }
+  if (!single_file_ && nn_compilation_ == nullptr) {
+    nn_compilation_ = api.Compilation_ConstructWithOfflineModelFile(omc_path_.c_str());
+  }
+  if (nn_compilation_ == nullptr) {
+    MS_LOG(ERROR) << "ConstructWithOfflineModel failed";
+    return false;
+  }
+  return true;
+}
+
+bool NnrtExecutor::MapOfflineModelFile(const std::string &path) {
+  const int fd = ::open(path.c_str(), O_RDONLY);
+  if (fd < 0) {
+    return false;
+  }
+  struct stat st {};
+  const bool valid = ::fstat(fd, &st) == 0 && st.st_size > 0;
+  if (!valid || static_cast<uintmax_t>(st.st_size) > std::numeric_limits<size_t>::max()) {
+    (void)::close(fd);
+    return false;
+  }
+  omc_mapping_size_ = static_cast<size_t>(st.st_size);
+  omc_mapping_ = ::mmap(nullptr, omc_mapping_size_, PROT_READ, MAP_PRIVATE, fd, 0);
+  (void)::close(fd);
+  if (omc_mapping_ == MAP_FAILED) {
+    omc_mapping_ = nullptr;
+    omc_mapping_size_ = 0;
+    return false;
+  }
+  return true;
+}
+
+void NnrtExecutor::ReclaimOfflineModelPages() const {
+  if (single_file_) {
+    if (package_reader_ != nullptr && !omc_path_.empty() && !package_reader_->Reclaim(omc_path_)) {
+      MS_LOG(WARNING) << "Failed to reclaim package .omc pages";
+    }
+    return;
+  }
+  if (omc_mapping_ != nullptr && ::madvise(omc_mapping_, omc_mapping_size_, MADV_DONTNEED) != 0) {
+    MS_LOG(WARNING) << "Failed to reclaim directory .omc pages";
+  }
+}
+
+void NnrtExecutor::ReclaimEmbeddingWeightPages() const {
+  if (single_file_ && package_reader_ != nullptr && !embedding_path_.empty() &&
+      !package_reader_->Reclaim(embedding_path_)) {
+    MS_LOG(WARNING) << "Failed to reclaim embedding package pages";
+  }
 }
 
 bool NnrtExecutor::ValidateModelContract() {
@@ -350,13 +425,27 @@ bool NnrtExecutor::LoadCpuBuffers(const NnrtConfig &config) {
   size_t embed_size = static_cast<size_t>(vocab_size_) * hidden_size_;
   if (!config.embedding_path.empty()) {
     if (config.embedding_quant) {
-      // W4A16: keep only the packed bin (73MB). Embedding rows are dequantized on
-      // demand by EmbeddingRow — no 272MB fp16 table is materialized.
-      if (!ReadAsset(config.embedding_path, &embedding_weight_buffer_)) {
-        MS_LOG(ERROR) << "Failed to read embedding weight bin";
+      // Keep only a temporary upload source until idx6 ION Tensor is initialized.
+      // After CreateTensors, EmbeddingRow reads the shared ION buffer directly.
+      if (single_file_) {
+        if (package_reader_ == nullptr ||
+            !package_reader_->Mmap(config.embedding_path, &embedding_weight_data_, &embedding_weight_size_)) {
+          MS_LOG(ERROR) << "Failed to mmap embedding weight entry";
+          return false;
+        }
+      } else {
+        if (!ReadAsset(config.embedding_path, &embedding_weight_buffer_)) {
+          MS_LOG(ERROR) << "Failed to read embedding weight bin";
+          return false;
+        }
+        embedding_weight_data_ = embedding_weight_buffer_.data();
+        embedding_weight_size_ = embedding_weight_buffer_.size();
+      }
+      if (embedding_weight_data_ == nullptr || embedding_weight_size_ == 0) {
+        MS_LOG(ERROR) << "Embedding weight bin is empty";
         return false;
       }
-      mark("ReadAsset(embedding_weight)");
+      mark("LoadEmbeddingWeight");
       if (!DequantizeEmbeddingTable(config.scale_gp_size)) {
         return false;
       }
@@ -435,14 +524,13 @@ bool NnrtExecutor::DequantizeEmbeddingTable(int group_size) {
   const size_t packed_per_row = static_cast<size_t>(hidden_size_ / 2);
   const size_t scales_per_row = static_cast<size_t>(hidden_size_ / group_size);
   const size_t row_bytes = packed_per_row + scales_per_row * sizeof(uint16_t);
-  if (embedding_weight_buffer_.size() % row_bytes != 0) {
-    MS_LOG(ERROR) << "Embedding bin size " << embedding_weight_buffer_.size() << " is not a multiple of row bytes "
-                  << row_bytes;
+  if (embedding_weight_size_ % row_bytes != 0) {
+    MS_LOG(ERROR) << "Embedding bin size " << embedding_weight_size_ << " is not a multiple of row bytes " << row_bytes;
     return false;
   }
-  const size_t rows = embedding_weight_buffer_.size() / row_bytes;
-  if (rows < static_cast<size_t>(vocab_size_)) {
-    MS_LOG(ERROR) << "Embedding bin rows " << rows << " < vocab_size " << vocab_size_;
+  const size_t rows = embedding_weight_size_ / row_bytes;
+  if (rows != static_cast<size_t>(vocab_size_)) {
+    MS_LOG(ERROR) << "Embedding bin rows " << rows << " != vocab_size " << vocab_size_;
     return false;
   }
   embed_file_rows_ = rows;
@@ -466,10 +554,10 @@ bool NnrtExecutor::EmbeddingRow(int tid, uint16_t *dst) {
     std::memcpy(dst, embedding_table_ + static_cast<size_t>(tid) * hidden_size_, hidden_size_ * sizeof(uint16_t));
     return true;
   }
-  if (embedding_weight_buffer_.empty() || embed_file_rows_ == 0) {
+  if (embedding_weight_data_ == nullptr || embed_file_rows_ == 0) {
     return false;
   }
-  const auto *packed_base = reinterpret_cast<const uint8_t *>(embedding_weight_buffer_.data());
+  const auto *packed_base = embedding_weight_data_;
   const auto *scales_base = reinterpret_cast<const uint16_t *>(packed_base + embed_file_rows_ * embed_packed_per_row_);
   DequantizeEmbeddingRow(packed_base + static_cast<size_t>(tid) * embed_packed_per_row_,
                          scales_base + static_cast<size_t>(tid) * embed_scales_per_row_, hidden_size_,
@@ -477,59 +565,25 @@ bool NnrtExecutor::EmbeddingRow(int tid, uint16_t *dst) {
   return true;
 }
 
-bool NnrtExecutor::PrepareEmbeddingWeightWrite(NN_Tensor *tensor, std::vector<uint8_t> *repacked, const void **data,
-                                               size_t *size) const {
-  *data = embedding_weight_buffer_.data();
-  *size = embedding_weight_buffer_.size();
+bool NnrtExecutor::PrepareEmbeddingWeightWrite(NN_Tensor *tensor, const void **data, size_t *size) const {
+  if (data == nullptr || size == nullptr || embedding_weight_data_ == nullptr || embedding_weight_size_ == 0) {
+    return false;
+  }
+  *data = embedding_weight_data_;
+  *size = embedding_weight_size_;
   if (!embedding_quant_) {
-    return true;  // fp16 bin: raw pass-through
+    return true;
   }
   auto it = tensor_byte_sizes_.find(tensor);
   if (it == tensor_byte_sizes_.end()) {
-    // Old NNRT without TensorDesc_GetByteSize: capacity unknown, degrade to the raw write.
-    MS_LOG(WARNING) << "idx6 embedding_weight capacity unknown; writing quantized bin as-is";
-    return true;
-  }
-  const size_t capacity = it->second;
-  if (scale_gp_size_ <= 0 || hidden_size_ <= 0 || hidden_size_ % 2 != 0 || hidden_size_ % scale_gp_size_ != 0) {
-    MS_LOG(ERROR) << "Invalid hidden_size " << hidden_size_ << " or scale_gp_size " << scale_gp_size_;
+    MS_LOG(ERROR) << "idx6 embedding_weight logical capacity unavailable";
     return false;
   }
-  const size_t packed_per_row = static_cast<size_t>(hidden_size_ / 2);
-  const size_t scale_bytes_per_row = static_cast<size_t>(hidden_size_ / scale_gp_size_) * sizeof(uint16_t);
-  const size_t row_bytes = packed_per_row + scale_bytes_per_row;
-  if (capacity == 0 || capacity % row_bytes != 0) {
-    MS_LOG(ERROR) << "idx6 embedding_weight capacity " << capacity << " is not a multiple of the planar row size "
-                  << row_bytes << " (hidden " << hidden_size_ << ", group " << scale_gp_size_ << ")";
+  if (it->second != embedding_weight_size_) {
+    MS_LOG(ERROR) << "idx6 embedding_weight capacity " << it->second << " != embedding bin size "
+                  << embedding_weight_size_;
     return false;
   }
-  const size_t graph_rows = capacity / row_bytes;
-  if (embedding_weight_buffer_.size() % row_bytes != 0) {
-    MS_LOG(ERROR) << "Embedding bin size " << embedding_weight_buffer_.size() << " is not a multiple of row bytes "
-                  << row_bytes;
-    return false;
-  }
-  const size_t file_rows = embedding_weight_buffer_.size() / row_bytes;
-  if (file_rows < graph_rows) {
-    MS_LOG(ERROR) << "Embedding bin rows " << file_rows << " < idx6 graph capacity rows " << graph_rows
-                  << "; the on-graph embedding table would be partially uninitialized";
-    return false;
-  }
-  if (file_rows == graph_rows) {
-    return true;  // bin already matches the graph layout
-  }
-  // The bin holds MORE rows than the graph capacity. The planar layout means the scale
-  // plane starts at file_rows * packed_per_row, so a plain prefix write would misplace the
-  // scales: copy the first graph_rows of each plane into a contiguous graph-sized buffer.
-  const auto *base = reinterpret_cast<const uint8_t *>(embedding_weight_buffer_.data());
-  repacked->resize(capacity);
-  std::memcpy(repacked->data(), base, graph_rows * packed_per_row);
-  std::memcpy(repacked->data() + graph_rows * packed_per_row, base + file_rows * packed_per_row,
-              graph_rows * scale_bytes_per_row);
-  *data = repacked->data();
-  *size = repacked->size();
-  MS_LOG(INFO) << "Repacked embedding_weight: " << file_rows << " file rows -> " << graph_rows << " graph rows ("
-               << capacity << " bytes)";
   return true;
 }
 
@@ -627,7 +681,11 @@ bool NnrtExecutor::CreateTensors() {
   prefill_inputs_[3] = CreateInputTensor(3, s_rope_p, 3, kOhNnFloat16);   // rope_sin
   prefill_inputs_[4] = CreateInputTensor(4, s_embed_p, 3, kOhNnFloat16);  // input_embeds
   prefill_inputs_[5] = CreateInputTensor(5, s_mask_p, 4, kOhNnFloat16);   // attn_mask
-  const auto embed_capacity = static_cast<int32_t>(embedding_weight_buffer_.size());
+  if (embedding_weight_size_ > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    MS_LOG(ERROR) << "embedding_weight size exceeds NNRT INT32 capacity";
+    return false;
+  }
+  const auto embed_capacity = static_cast<int32_t>(embedding_weight_size_);
   prefill_inputs_[6] = CreateInputTensorFromOmc(6, embed_capacity, kOhNnUint8);  // embedding_weight
 
   // Decode group (seq = 1 gear). input_embeds fp16.
@@ -670,19 +728,25 @@ bool NnrtExecutor::CreateTensors() {
     return false;
   }
 
-  // Write the constant embedding_weight once (shared by prefill and decode). A failed write
-  // leaves the idx6 ION buffer uninitialized (garbage logits on device), so fail the Build.
-  // When the bin holds more rows than the graph capacity, the write is repacked to the
-  // graph's planar layout first (the CPU lookup table keeps using the full bin).
-  if (!embedding_weight_buffer_.empty()) {
-    std::vector<uint8_t> repacked;
-    const void *embed_data = embedding_weight_buffer_.data();
-    size_t embed_size = embedding_weight_buffer_.size();
-    if (!PrepareEmbeddingWeightWrite(prefill_inputs_[6], &repacked, &embed_data, &embed_size) ||
+  // Write the W4A16 constant once, then use this CPU-accessible ION Tensor as the
+  // sole packed embedding owner for both NNRT and per-token CPU dequantization.
+  if (embedding_quant_) {
+    const void *embed_data = nullptr;
+    size_t embed_size = 0;
+    if (!PrepareEmbeddingWeightWrite(prefill_inputs_[6], &embed_data, &embed_size) ||
         !WriteTensor(prefill_inputs_[6], embed_data, embed_size)) {
       MS_LOG(ERROR) << "Failed to write embedding_weight input tensor";
       return false;
     }
+    const auto &api = NNRTWrapper::GetApi();
+    embedding_weight_data_ = static_cast<const uint8_t *>(api.Tensor_GetDataBuffer(prefill_inputs_[6]));
+    if (embedding_weight_data_ == nullptr) {
+      MS_LOG(ERROR) << "embedding_weight ION buffer is unavailable";
+      return false;
+    }
+    embedding_weight_buffer_.clear();
+    embedding_weight_buffer_.shrink_to_fit();
+    ReclaimEmbeddingWeightPages();
   }
 
   // Assemble I/O arrays. KV layout is interleaved: K0,V0,K1,V1,... starting at index 7.

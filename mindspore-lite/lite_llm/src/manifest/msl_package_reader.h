@@ -59,11 +59,18 @@ class MslPackageReader {
 
   const MslEntry *Lookup(const std::string &name) const;
 
-  /// Copy an entry's bytes into ``out`` (access=1 semantics). Returns false on miss.
+  /// Copy an entry's bytes into ``out`` (access=1 semantics). Returns false on
+  /// miss.
   bool Read(const std::string &name, std::vector<uint8_t> *out) const;
 
-  /// Point at an entry's bytes inside the mapping (access=0 semantics). Returns false on miss.
+  /// Point at an entry's bytes inside the mapping (access=0 semantics). Returns
+  /// false on miss.
   bool Mmap(const std::string &name, const uint8_t **data, size_t *size) const;
+
+  /// Discard the caller's resident pages for an entry that has been fully
+  /// consumed. The entry remains addressable and pages fault back in on a later
+  /// access.
+  bool Reclaim(const std::string &name) const;
 
   size_t entry_count() const { return entries_.size(); }
 

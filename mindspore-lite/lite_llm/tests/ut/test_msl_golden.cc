@@ -286,6 +286,9 @@ TEST_F(MslGoldenTest, RuntimeReader) {
   EXPECT_EQ(size, 70000u);
   EXPECT_EQ(data[0], PayloadByte(0));
   EXPECT_EQ(data[69999], PayloadByte(69999));
+  EXPECT_TRUE(reader.Reclaim("npu_offline/x.omc"));
+  EXPECT_FALSE(reader.Reclaim("missing.bin"));
+  EXPECT_EQ(data[0], PayloadByte(0));
 
   std::vector<uint8_t> out;
   EXPECT_TRUE(reader.Read("a.bin", &out));

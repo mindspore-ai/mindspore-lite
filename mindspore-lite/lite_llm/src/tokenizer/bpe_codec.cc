@@ -148,31 +148,34 @@ bool BPECodec::IsAlpha(unsigned char c) { return (c >= 'A' && c <= 'Z') || (c >=
 
 bool BPECodec::IsDigit(unsigned char c) { return c >= '0' && c <= '9'; }
 
-void BPECodec::SetVocab(const std::unordered_map<std::string, int32_t> &token_to_id,
-                        const std::unordered_map<int32_t, std::string> &id_to_token) {
-  token_to_id_ = token_to_id;
-  id_to_token_ = id_to_token;
+void BPECodec::SetVocab(const Vocabulary &vocabulary) { token_to_id_ = &vocabulary.token_to_id; }
+
+uint64_t BPECodec::MergeKey(int32_t left, int32_t right) {
+  return (static_cast<uint64_t>(static_cast<uint32_t>(left)) << 32U) | static_cast<uint32_t>(right);
 }
 
 bool BPECodec::Load(const uint8_t *data, size_t size, size_t &offset) {
-  uint32_t num_merges = ReadU32(data, offset, size);
-
-  merges_.clear();
+  if (token_to_id_ == nullptr) {
+    return false;
+  }
+  const uint32_t num_merges = ReadU32(data, offset, size);
   merge_rank_.clear();
+  merge_rank_.reserve(num_merges);
 
   for (uint32_t i = 0; i < num_merges; ++i) {
     std::string merge_str = ReadStr(data, offset, size);
-    size_t space_pos = merge_str.find(' ');
-    if (space_pos == std::string::npos) continue;
-
-    std::string left = merge_str.substr(0, space_pos);
-    std::string right = merge_str.substr(space_pos + 1);
-
-    merges_.push_back({left, right});
-    merge_rank_[{left, right}] = static_cast<int32_t>(i);
+    const size_t space_pos = merge_str.find(' ');
+    if (space_pos == std::string::npos) {
+      continue;
+    }
+    const auto left = token_to_id_->find(merge_str.substr(0, space_pos));
+    const auto right = token_to_id_->find(merge_str.substr(space_pos + 1));
+    if (left == token_to_id_->end() || right == token_to_id_->end()) {
+      return false;
+    }
+    merge_rank_[MergeKey(left->second, right->second)] = static_cast<int32_t>(i);
   }
-
-  return !merges_.empty() || num_merges == 0;
+  return !merge_rank_.empty() || num_merges == 0;
 }
 
 std::vector<std::string> BPECodec::PreTokenize(const std::string &text) {
@@ -284,8 +287,11 @@ std::vector<std::string> BPECodec::ApplyBPE(const std::string &token) {
     return {token};
   }
 
-  auto it = token_to_id_.find(token);
-  if (it != token_to_id_.end()) {
+  if (token_to_id_ == nullptr) {
+    return {};
+  }
+  auto it = token_to_id_->find(token);
+  if (it != token_to_id_->end()) {
     return {token};
   }
 
@@ -301,7 +307,12 @@ std::vector<std::string> BPECodec::ApplyBPE(const std::string &token) {
     std::pair<std::string, std::string> min_pair;
 
     for (size_t i = 0; i + 1 < word.size(); ++i) {
-      auto merge_it = merge_rank_.find({word[i], word[i + 1]});
+      const auto left = token_to_id_->find(word[i]);
+      const auto right = token_to_id_->find(word[i + 1]);
+      if (left == token_to_id_->end() || right == token_to_id_->end()) {
+        continue;
+      }
+      auto merge_it = merge_rank_.find(MergeKey(left->second, right->second));
       if (merge_it != merge_rank_.end() && merge_it->second < min_rank) {
         min_rank = merge_it->second;
         min_pair = {word[i], word[i + 1]};

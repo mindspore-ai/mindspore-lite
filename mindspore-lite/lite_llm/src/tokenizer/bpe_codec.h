@@ -17,11 +17,12 @@
 #define MSLLM_BPE_CODEC_H
 
 #include <cstdint>
-#include <map>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include "tokenizer/vocabulary.h"
 
 namespace mslite_llm {
 
@@ -34,8 +35,7 @@ class BPECodec {
   std::vector<std::string> Encode(const std::string &text);
   std::string Decode(const std::vector<std::string> &tokens);
 
-  void SetVocab(const std::unordered_map<std::string, int32_t> &token_to_id,
-                const std::unordered_map<int32_t, std::string> &id_to_token);
+  void SetVocab(const Vocabulary &vocabulary);
 
  private:
   void InitByteEncoder();
@@ -46,11 +46,10 @@ class BPECodec {
 
   static bool IsAlpha(unsigned char c);
   static bool IsDigit(unsigned char c);
+  static uint64_t MergeKey(int32_t left, int32_t right);
 
-  std::vector<std::pair<std::string, std::string>> merges_;
-  std::map<std::pair<std::string, std::string>, int32_t> merge_rank_;
-  std::unordered_map<std::string, int32_t> token_to_id_;
-  std::unordered_map<int32_t, std::string> id_to_token_;
+  std::unordered_map<uint64_t, int32_t> merge_rank_;
+  const TokenToIdMap *token_to_id_{nullptr};
 
   std::unordered_map<uint8_t, std::string> byte_encoder_;
   std::unordered_map<uint32_t, uint8_t> byte_decoder_cp_;
