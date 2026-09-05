@@ -45,6 +45,8 @@ import torch.nn.functional as F
 
 KV_CACHE_LEN = 256
 MAX_OUTPUT_TOKENS = 512
+COMMON_PREFIX_LEN = 768
+COMMON_SUFFIX_LEN = 16
 
 # Tensor-parallel config (set from --tp-size / --rank before exporting each
 # subgraph). TP_SIZE=1 reproduces the single-shard export.
@@ -118,10 +120,12 @@ def _make_flash_attn_mask(attention_mask, q_len, k_len, past_len):
     """
     ar_q = torch.arange(q_len, device=attention_mask.device)
     ar_k = torch.arange(k_len, device=attention_mask.device)
-    causal = ar_k[None, :] > (past_len + ar_q[:, None])
+    causal = (ar_k[None, :] > (past_len + ar_q[:, None])).to(torch.float32)
     causal = causal[None, None, :, :].expand(attention_mask.shape[0], 1, q_len, k_len)
-    padding = attention_mask[:, None, None, :] == 0
-    return causal | padding
+    # Keep Not/Or out of the exported graph: those logical ops prevent the
+    # ONNX -> Ascend graph from being fully lowered on 310P.
+    padding = 1.0 - attention_mask[:, None, None, :].to(torch.float32)
+    return (causal + padding) > 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -379,12 +383,12 @@ class _PromptFlashAttentionCustom(torch.autograd.Function):
         base_index = [0, 1, 2]
         if atten_mask is not None:
             base_inputs.append(atten_mask)
-            base_index.append(3)
+            base_index.append(4)
         y = g.op(
             "Custom", *base_inputs,
-            type_s="PromptFlashAttention",
-            input_names_s=_as_list_str(["query", "key", "value", "atten_mask"]),
-            optional_input_names_s=_as_list_str(["atten_mask"]),
+            type_s="InnerPromptFlashAttention",
+            input_names_s=_as_list_str(["query", "key", "value","pse_shift", "atten_mask"]),
+            optional_input_names_s=_as_list_str(["pse_shift","atten_mask"]),
             output_names_s=_as_list_str(["attention_out"]),
             output_num_i=1,
             input_index_i=base_index,
@@ -740,7 +744,8 @@ class _AscendQuantCustom(torch.autograd.Function):
     runtime executes the real kernel."""
 
     @staticmethod
-    def forward(_ctx, x, scale: float, offset: float):
+    def forward(ctx, x, scale: float, offset: float):
+        del ctx
         xq = torch.clamp(torch.round(x.float() / scale) + offset, -128, 127)
         return xq.to(torch.int8)
 
@@ -768,7 +773,8 @@ class _AscendDequantCustom(torch.autograd.Function):
     (converter parses dtype as output datatype -> UNDEFINED -> mindir crash)."""
 
     @staticmethod
-    def forward(_ctx, x, deq_scale):
+    def forward(ctx, x, deq_scale):
+        del ctx
         # Simulation only: y ~= x * deq_scale (fp32 domain, then fp16).
         return (x.float() * deq_scale.float()).to(torch.float16)
 
@@ -794,10 +800,13 @@ class _QBMCV3Custom(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(_ctx, x1, x2, _scale_u64, _offset_f32, bias_i32):
+    def forward(ctx, x1, x2, scale_u64, offset_f32, bias_i32):
+        """Trace-only shape simulation of the fused QBMV3 kernel (real values from GE)."""
         # Trace-only shape simulation (fp16 [M, N]); real values come from the
         # GE kernel. Avoid bit tricks (view/int64 AND) -- trace emits them as
-        # aten::view ONNX nodes and fails.
+        # aten::view ONNX nodes and fails. ctx/scale_u64/offset_f32 exist only
+        # for the .apply signature; the GE kernel reads them at runtime.
+        del ctx, scale_u64, offset_f32
         y = x1.float() @ x2.float()  # [M, N]
         y = y * 1.0  # deq approximated as 1.0; shape propagation only
         if bias_i32 is not None:
@@ -854,12 +863,12 @@ def _quant_proj(x, qd, mode="col", slice_=None):
             w = w[s:e, :]
             sf = sf[s:e]
     # Move quantized weights to x's device (NPU).
-    _dev = x.device
-    w = w.to(_dev)
-    sf = sf.to(_dev)
-    deq = deq.to(_dev)
+    dev = x.device
+    w = w.to(dev)
+    sf = sf.to(dev)
+    deq = deq.to(dev)
     if bias is not None:
-        bias = bias.to(_dev)
+        bias = bias.to(dev)
     in_shape = x.shape
     x = x * sf  # smoothquant (broadcast [k] over last dim)
     xq = _AscendQuantCustom.apply(x, scale_d, offset)
@@ -882,8 +891,8 @@ def split_matmul_by_chunk(x: torch.Tensor, w: torch.Tensor, deq: torch.Tensor,
     w/deq/bias/sf already happened in _quant_proj).
     """
     parts = []
-    M = x.shape[0]
-    for start in range(0, M, chunk_size):
+    rows = x.shape[0]
+    for start in range(0, rows, chunk_size):
         end = start + chunk_size
         x_chunk = x[start:end, :]
         part = _QBMCV3Custom.apply(x_chunk, w, deq, offset_f32, bias)
@@ -982,7 +991,8 @@ def _compute_qkv(attn_mod, hidden_states, layer_idx):
     return query, key, value, input_shape
 
 
-def _run_prefill_attention(query, key, value, attention_mask, num_heads, num_kv_heads, scaling):
+def _run_prefill_attention(query, key, value, attention_mask, num_heads,
+                           num_kv_heads, scaling, past_len=0):
     """Run prefill-path attention via PromptFlashAttention (BSND).
 
     query/key/value are (batch, seq, heads, head_dim) = BSND. For 1p/2p
@@ -995,7 +1005,8 @@ def _run_prefill_attention(query, key, value, attention_mask, num_heads, num_kv_
     matching decode's past_key_cache layout.
     """
     q_len, k_len = query.shape[1], key.shape[1]
-    flash_mask = _make_flash_attn_mask(attention_mask, q_len, k_len, 0)
+    flash_mask = _make_flash_attn_mask(
+        attention_mask, q_len, k_len, past_len)
     k_pfa, v_pfa, n_kv_pfa = key, value, num_kv_heads
     if 0 < num_kv_heads < num_heads and TP_SIZE >= 4:
         rep = num_heads // num_kv_heads
@@ -1010,6 +1021,51 @@ def _run_prefill_attention(query, key, value, attention_mask, num_heads, num_kv_
         sparse_mode=0, inner_precise=1)
     # cache: original (un-repeated) kv, BNSD fp16 (matches decode past_key_cache)
     return attn_output, key.permute(0, 2, 1, 3), value.permute(0, 2, 1, 3)
+
+
+def _run_suffix_attention(query, key, value, attention_mask, past_key, past_value,
+                          num_heads, num_kv_heads, scaling):
+    """Suffix attention using the same PromptFlashAttention path as prefix."""
+    past_len = past_key.shape[2]
+    # Prefix cache is BNSD while the shared PFA helper consumes BSND.
+    key = torch.cat([past_key.permute(0, 2, 1, 3), key], dim=1)
+    value = torch.cat([past_value.permute(0, 2, 1, 3), value], dim=1)
+    return _run_prefill_attention(
+        query, key, value, attention_mask, num_heads, num_kv_heads,
+        scaling, past_len=past_len)
+
+
+def _text_attn_forward_suffix(attn_mod, hidden_states, cos4, sin4,
+                              attention_mask, past_key, past_value, layer_idx=0):
+    """Run one suffix-prefill attention layer using reusable prefix KV."""
+    num_heads = attn_mod.config.num_attention_heads // TP_SIZE
+    num_kv_heads = attn_mod.config.num_key_value_heads // TP_SIZE
+    query, key, value, input_shape = _compute_qkv(attn_mod, hidden_states, layer_idx)
+    query = rotary_mul(query, cos4, sin4)
+    key = rotary_mul(key, cos4, sin4)
+    output, key, value = _run_suffix_attention(
+        query, key, value, attention_mask, past_key, past_value,
+        num_heads, num_kv_heads,
+        getattr(attn_mod, "scaling", 1.0 / (attn_mod.head_dim ** 0.5)))
+    output = output.reshape(*input_shape, -1)
+
+    qd_o = _quant_for("model.layers.%d.self_attn.o_proj" % layer_idx)
+    if qd_o:
+        if TP_SIZE > 1:
+            q_dim_local = num_heads * attn_mod.head_dim
+            output = allreduce_sum(_quant_proj(
+                output, qd_o, "row",
+                (TP_RANK * q_dim_local, (TP_RANK + 1) * q_dim_local)))
+        else:
+            output = _quant_proj(output, qd_o, "row", None)
+    elif TP_SIZE > 1:
+        q_dim_local = num_heads * attn_mod.head_dim
+        weight = attn_mod.o_proj.weight[
+            :, TP_RANK * q_dim_local:(TP_RANK + 1) * q_dim_local]
+        output = allreduce_sum(_proj_linear(output, weight, attn_mod.o_proj.bias))
+    else:
+        output = _proj_linear(output, attn_mod.o_proj.weight, attn_mod.o_proj.bias)
+    return output, key, value
 
 
 def _run_decode_attention(query, key, value, attention_mask, attn_mod, num_heads, num_kv_heads):
@@ -1191,8 +1247,9 @@ class Qwen3LlmPrefill(torch.nn.Module):
     (1p: infer_qwen3_8b_mslite_1p._prefill; 2p: _reconstruct_kv_tp; 4p: _tp_hybrid_prefill).
     """
 
-    def __init__(self, model, lm_head):
-        """Initialize prefill wrapper with shared model and lm_head."""
+    def __init__(self, model, lm_head, pad_kv=True):
+        """Initialize prefill wrapper; pad_kv controls decode-tail padding."""
+        self.pad_kv = bool(pad_kv)
         super().__init__()
         self.model = model.model
         self.lm_head = lm_head
@@ -1244,7 +1301,7 @@ class Qwen3LlmPrefill(torch.nn.Module):
         # (decode inputs kv_len = seq + MAX_OUTPUT_TOKENS), avoiding host-side padding.
         k_out = torch.stack(present_k, dim=0)  # [L, B, H, seq, D]
         v_out = torch.stack(present_v, dim=0)
-        if MAX_OUTPUT_TOKENS > 0:
+        if self.pad_kv and MAX_OUTPUT_TOKENS > 0:
             k_pad = k_out.new_zeros(k_out.shape[0], k_out.shape[1], k_out.shape[2],
                                     MAX_OUTPUT_TOKENS, k_out.shape[4])
             v_pad = v_out.new_zeros(v_out.shape[0], v_out.shape[1], v_out.shape[2],
@@ -1252,6 +1309,94 @@ class Qwen3LlmPrefill(torch.nn.Module):
             k_out = torch.cat([k_out, k_pad], dim=3)
             v_out = torch.cat([v_out, v_pad], dim=3)
         return logits, k_out, v_out
+
+
+class Qwen3LlmPrefix(torch.nn.Module):
+    """Common-prefix graph: compute reusable per-layer K/V only."""
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model.model
+
+    def forward(self, input_ids, attention_mask, position_ids):
+        """Run the common-prefix prefill and return stacked per-layer K/V only."""
+        inputs_embeds = self.model.embed_tokens(input_ids)
+        cos, sin = self.model.rotary_emb(inputs_embeds, position_ids)
+        cos4 = cos.unsqueeze(2) if cos.dim() == 3 else cos
+        sin4 = sin.unsqueeze(2) if sin.dim() == 3 else sin
+        present_k, present_v = [], []
+        hidden_states = inputs_embeds
+        for i, layer in enumerate(self.model.layers):
+            residual = hidden_states
+            hidden_states = _rms_norm_layer(layer.input_layernorm, hidden_states)
+            attn_out, pk, pv = _text_attn_forward(
+                layer.self_attn, hidden_states, cos4, sin4, attention_mask,
+                None, None, None, i)
+            hidden_states = residual + attn_out
+            residual = hidden_states
+            hidden_states = _rms_norm_layer(layer.post_attention_layernorm, hidden_states)
+            hidden_states = residual + _run_mlp(layer, hidden_states, i)
+            present_k.append(pk)
+            present_v.append(pv)
+        # Do not run lm_head: a common prefix is cached, not sampled.
+        return torch.stack(present_k, dim=0), torch.stack(present_v, dim=0)
+
+
+class Qwen3LlmSuffix(torch.nn.Module):
+    """Suffix graph: consume prefix KV and return logits plus decode-ready KV."""
+
+    def __init__(self, model, lm_head):
+        super().__init__()
+        self.model = model.model
+        self.lm_head = lm_head
+
+    def forward(self, input_ids, attention_mask, position_ids,
+                past_key_cache, past_value_cache):
+        """Consume prefix K/V, run suffix layers, and return last-token logits + full K/V."""
+        inputs_embeds = self.model.embed_tokens(input_ids)
+        cos, sin = self.model.rotary_emb(inputs_embeds, position_ids)
+        cos4 = cos.unsqueeze(2) if cos.dim() == 3 else cos
+        sin4 = sin.unsqueeze(2) if sin.dim() == 3 else sin
+        hidden_states = inputs_embeds
+        present_k, present_v = [], []
+        for i, layer in enumerate(self.model.layers):
+            residual = hidden_states
+            hidden_states = _rms_norm_layer(layer.input_layernorm, hidden_states)
+            attn_out, pk, pv = _text_attn_forward_suffix(
+                layer.self_attn, hidden_states, cos4, sin4, attention_mask,
+                past_key_cache[i], past_value_cache[i], i)
+            hidden_states = residual + attn_out
+            residual = hidden_states
+            hidden_states = _rms_norm_layer(layer.post_attention_layernorm, hidden_states)
+            hidden_states = residual + _run_mlp(layer, hidden_states, i)
+            present_k.append(pk)
+            present_v.append(pv)
+        hidden_states = _rms_norm_layer(self.model.norm, hidden_states)[:, -1:, :]
+        if TP_SIZE > 1 and not REPLICATE_LM_HEAD:
+            hidden_per_rank = hidden_states.shape[-1] // TP_SIZE
+            start = TP_RANK * hidden_per_rank
+            end = (TP_RANK + 1) * hidden_per_rank
+            partial = _proj_linear(
+                hidden_states[..., start:end], self.lm_head.weight[:, start:end],
+                self.lm_head.bias)
+            logits = _allreduce_lm_head(partial)
+        else:
+            logits = _proj_linear(
+                hidden_states, self.lm_head.weight, self.lm_head.bias).float()
+        # Keep the complete cache so the existing decode graph can continue
+        # generation after the suffix produces the first token.
+        key_cache = torch.stack(present_k, dim=0)
+        value_cache = torch.stack(present_v, dim=0)
+        if MAX_OUTPUT_TOKENS > 0:
+            key_pad = key_cache.new_zeros(
+                key_cache.shape[0], key_cache.shape[1], key_cache.shape[2],
+                MAX_OUTPUT_TOKENS, key_cache.shape[4])
+            value_pad = value_cache.new_zeros(
+                value_cache.shape[0], value_cache.shape[1], value_cache.shape[2],
+                MAX_OUTPUT_TOKENS, value_cache.shape[4])
+            key_cache = torch.cat([key_cache, key_pad], dim=3)
+            value_cache = torch.cat([value_cache, value_pad], dim=3)
+        return logits, key_cache, value_cache
 
 
 class Qwen3LlmDecode(torch.nn.Module):
@@ -1338,9 +1483,12 @@ def _prepare_llm_modules(model, device: str):
     return prefill, decode, lm_head
 
 
-def _prepare_llm_prefill_wrapper(model, device: str):
+def _prepare_llm_prefill_wrapper(model, device: str, pad_kv=True):
     """Build only the prefill wrapper."""
-    return _prepare_llm_modules(model, device)[0]
+    prefill = _prepare_llm_modules(model, device)[0]
+    if not pad_kv:
+        prefill.pad_kv = False
+    return prefill
 
 
 def _prepare_llm_decode_wrapper(model, device: str):
@@ -1438,13 +1586,15 @@ def _inline_postproc(path):
     external-data references from torch.export fail onnx.load/save).
     """
     import time
+    from google.protobuf.message import DecodeError
+
     m = onnx.ModelProto()
     for _ in range(10):
         try:
             with open(str(path), "rb") as f:
                 m.ParseFromString(f.read())
             break
-        except Exception:
+        except (OSError, DecodeError):
             time.sleep(1)
     else:
         raise RuntimeError(f"inline postproc: onnx parse failed after retries: {path}")
@@ -1598,12 +1748,89 @@ def export_tp_prefill(model, output_dir, rank, tp_size, device="cpu", dummy_seq_
     TP_RANK = int(rank)
     _AllReduceCustom.reset_fusion_id()
     print(f"Exporting prefill rank={rank}/{tp_size} (static={static})...")
-    prefill = _prepare_llm_prefill_wrapper(model, device)
+    prefill = _prepare_llm_prefill_wrapper(model, device, pad_kv=True)
     prefill_dir = _tp_rank_dir(output_dir, rank, tp_size, "prefill")
     prefill_dir.mkdir(parents=True, exist_ok=True)
     prefill_path = prefill_dir / f"qwen3_8b_llm_prefill_rank{rank}.onnx"
     _, ids, mask, pos = _create_prefill_dummy_inputs(device=device, dummy_seq_len=dummy_seq_len)
     _export_prefill_onnx(prefill, prefill_path, (ids, mask, pos), use_dynamo, static=static)
+    TP_SIZE, TP_RANK = 1, 0
+
+
+def export_common_prefix_suffix(model, output_dir, rank, tp_size, device="cpu",
+                                prefix_len=COMMON_PREFIX_LEN,
+                                suffix_len=COMMON_SUFFIX_LEN, use_dynamo=False):
+    """Export common-prefix KV producer and suffix consumer for one TP rank."""
+    global TP_SIZE, TP_RANK
+    TP_SIZE, TP_RANK = int(tp_size), int(rank)
+    _AllReduceCustom.reset_fusion_id()
+    model.eval().to(device)
+    prefix = Qwen3LlmPrefix(model).to(device).eval()
+    suffix = Qwen3LlmSuffix(model, model.lm_head).to(device).eval()
+    num_layers, num_kv_heads, head_dim = _get_kv_cache_config(model)
+    local_kv_heads = num_kv_heads // TP_SIZE
+    kv_dtype = next(model.parameters()).dtype
+
+    prefix_dir = _tp_rank_dir(output_dir, rank, tp_size, "prefix")
+    suffix_dir = _tp_rank_dir(output_dir, rank, tp_size, "suffix")
+    prefix_dir.mkdir(parents=True, exist_ok=True)
+    suffix_dir.mkdir(parents=True, exist_ok=True)
+    prefix_path = prefix_dir / f"qwen3_8b_prefix_rank{rank}.onnx"
+    suffix_path = suffix_dir / f"qwen3_8b_suffix_rank{rank}.onnx"
+
+    _, prefix_ids, prefix_mask, prefix_pos = _create_prefill_dummy_inputs(
+        device, prefix_len)
+    prefix_dynamic = {
+        "input_ids": {0: "batch", 1: "prefix_len"},
+        "attention_mask": {0: "batch", 1: "prefix_len"},
+        "position_ids": {0: "batch", 1: "prefix_len"},
+        "present_key_cache": {1: "batch", 3: "prefix_len"},
+        "present_value_cache": {1: "batch", 3: "prefix_len"},
+    }
+    with torch.no_grad():
+        torch.onnx.export(
+            prefix, (prefix_ids, prefix_mask, prefix_pos), str(prefix_path),
+            input_names=["input_ids", "attention_mask", "position_ids"],
+            output_names=["present_key_cache", "present_value_cache"],
+            opset_version=18, do_constant_folding=True, dynamo=use_dynamo,
+            dynamic_axes=prefix_dynamic)
+    _inline_postproc(prefix_path)
+
+    suffix_ids = torch.randint(
+        0, 1000, (1, suffix_len), dtype=torch.int64, device=device)
+    # Suffix receives the complete prefix+suffix mask. This preserves prefix
+    # padding and lets callers left-pad suffix buckets without changing logits.
+    suffix_mask = torch.ones(
+        1, prefix_len + suffix_len, dtype=torch.int64, device=device)
+    suffix_pos = torch.arange(
+        prefix_len, prefix_len + suffix_len, dtype=torch.int64,
+        device=device).view(1, -1)
+    past_k = torch.zeros(
+        num_layers, 1, local_kv_heads, prefix_len, head_dim,
+        dtype=kv_dtype, device=device)
+    past_v = torch.zeros_like(past_k)
+    suffix_dynamic = {
+        "input_ids": {0: "batch", 1: "suffix_len"},
+        "attention_mask": {0: "batch", 1: "total_len"},
+        "position_ids": {0: "batch", 1: "suffix_len"},
+        "past_key_cache": {1: "batch", 3: "prefix_len"},
+        "past_value_cache": {1: "batch", 3: "prefix_len"},
+        "logits": {0: "batch"},
+        "present_key_cache": {1: "batch", 3: "kv_len"},
+        "present_value_cache": {1: "batch", 3: "kv_len"},
+    }
+    with torch.no_grad():
+        torch.onnx.export(
+            suffix, (suffix_ids, suffix_mask, suffix_pos, past_k, past_v),
+            str(suffix_path),
+            input_names=["input_ids", "attention_mask", "position_ids",
+                         "past_key_cache", "past_value_cache"],
+            output_names=["logits", "present_key_cache", "present_value_cache"],
+            opset_version=18,
+            do_constant_folding=True, dynamo=use_dynamo,
+            dynamic_axes=suffix_dynamic)
+    _inline_postproc(suffix_path)
+    print(f"Common-prefix graphs exported: {prefix_path}, {suffix_path}")
     TP_SIZE, TP_RANK = 1, 0
 
 
@@ -1744,6 +1971,12 @@ def _parse_export_args():
                              "(static prefill — the current TP flow). Decode is always static. "
                              "Requires runtime config with ge.inputShape (U-names) + ge.dynamicDims "
                              "+ ge.dynamicNodeType=1 on the online-GE (provider=ge) path.")
+    parser.add_argument("--common-prefix", action="store_true",
+                        help="Export prefix/suffix/decode graphs with reusable prefix KV.")
+    parser.add_argument("--prefix-len", type=int, default=COMMON_PREFIX_LEN,
+                        help="Dummy common-prefix length (310P aligned default: 768).")
+    parser.add_argument("--suffix-len", type=int, default=COMMON_SUFFIX_LEN,
+                        help="Dummy suffix length; real length remains dynamic.")
     return parser.parse_args()
 
 
@@ -1775,7 +2008,20 @@ def main():
         model.config.num_hidden_layers = args.num_layers  # type: ignore[attr-defined]
         print(f"Sliced model to {args.num_layers} layers (debug)")
 
-    if args.tp_size > 1:
+    if args.common_prefix:
+        if args.prefix_len <= 0 or args.suffix_len <= 0:
+            raise ValueError("--prefix-len and --suffix-len must be positive")
+        global REPLICATE_LM_HEAD
+        REPLICATE_LM_HEAD = args.tp_size >= 4
+        for rank in range(args.tp_size):
+            export_common_prefix_suffix(
+                model, output_dir, rank, args.tp_size, str(device),
+                args.prefix_len, args.suffix_len, args.use_dynamo)
+            export_tp_decode(
+                model, output_dir, rank, args.tp_size, str(device),
+                args.use_dynamo, static=False,
+                dynamic_kv_only=True)
+    elif args.tp_size > 1:
         # TP=4 (36 layers, 4 ranks / 2 cards) can hit a GE graph-optimization
         # miscompile that dampens decode logits. Exporting the decode with
         # layer-0 intermediate output taps (DEBUG_TAP) forces GE to materialize
@@ -1814,15 +2060,19 @@ def main():
 
     # Save reference data for MindIR accuracy comparison (1p only;
     # TP>1 AllReduce eager fallback is identity, so reference would be wrong)
-    if args.tp_size == 1:
+    if args.tp_size == 1 and not args.common_prefix:
         _save_reference_data(model, args.output_dir, str(device), args.dtype)
 
     # Add allow_nz=true to MatMul/MatMulV2/BatchMatMulV2 nodes in all exported ONNX files,
     # allowing GE to use FRACTAL_NZ for fp16 MatMul (otherwise the whole graph falls to ND,
     # causing inefficient vector-unit data rearrangement).
-    for sub in ("prefill", "decode"):
+    export_subgraphs = ("prefix", "suffix", "decode") if args.common_prefix else ("prefill", "decode")
+    for sub in export_subgraphs:
         for r in range(args.tp_size):
-            onnx_path = _tp_rank_dir(output_dir, r, args.tp_size, sub) / f"qwen3_8b_llm_{sub}_rank{r}.onnx"
+            filename = (f"qwen3_8b_{sub}_rank{r}.onnx"
+                        if args.common_prefix and sub in ("prefix", "suffix")
+                        else f"qwen3_8b_llm_{sub}_rank{r}.onnx")
+            onnx_path = _tp_rank_dir(output_dir, r, args.tp_size, sub) / filename
             if onnx_path.exists():
                 _set_allow_nz_on_matmul(str(onnx_path))
 

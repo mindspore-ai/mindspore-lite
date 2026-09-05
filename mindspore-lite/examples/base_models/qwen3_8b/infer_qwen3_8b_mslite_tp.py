@@ -37,7 +37,7 @@ Auto-dispatches by the number of device IDs:
 Usage:
   python infer_qwen3_8b_mslite_tp.py --device-ids 0,1       # TP=2
   python infer_qwen3_8b_mslite_tp.py --device-ids 0,1,2,3   # TP=4
-  # 1p: use infer_qwen3_8b_mslite_1p.py instead
+  # The same entry point handles one, two, or four devices.
 
 Model paths auto-resolve from the device count (1p/2p/4p output dirs produced
 by export_and_convert.sh); override with --prefill-ranks / --decode-ranks (TP)
@@ -46,9 +46,11 @@ or --prefill-model / --decode-model (1p).
 
 import argparse
 import json
+import multiprocessing as mp
 import os
 import sys
 import time
+import traceback
 from multiprocessing import Process, Queue
 
 import numpy as np
@@ -57,7 +59,7 @@ import numpy as np
 # read it at the C-library init (the default port 16666 otherwise collides
 # across same-card ranks in TP). Placed at module top so both the driver and
 # spawn-forked workers inherit it before any GE init.
-os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", "21500-21600")
+os.environ["HCCL_NPU_SOCKET_PORT_RANGE"] = "21500-21600"
 
 try:
     import mindspore_lite as mslite
@@ -522,7 +524,7 @@ def _tp_unified_worker(prefill_path, decode_path, device_id, rank_id,
     # Force-set the HCCL port range INSIDE the worker so GE/HCCL never falls back
     # to the default NPU adapter port (16666) — forked workers occasionally miss
     # the shell env, and 16666 collides with other TP sessions on the shared NPU.
-    os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", "21500-21600")
+    os.environ["HCCL_NPU_SOCKET_PORT_RANGE"] = "21500-21600"
     pf, pf_in_dtypes, dc, dc_in_dtypes, pf_out_dtypes, pf_kv_dtype = _worker_build(
         prefill_path, decode_path, device_id, rank_id, pf_config_file, dc_config_file,
         bucket_seq, kv_len, decode_only)
@@ -925,7 +927,7 @@ def _auto_model_dir(tp_size):
         return "./qwen3_8b_onnx"
     if tp_size == 4:
         return "./qwen3_8b_tp4_onnx"
-    return "./qwen3_8b_tp_onnx"
+    return "./qwen3_8b_tp_quant_onnx"
 
 
 def _rank_paths(model_dir, tp_size, sub):
@@ -1068,88 +1070,710 @@ def _write_hccl_config(device_ids, run_dir):
 
 
 # ===========================================================================
+# Unified common-prefix runners (1P / TP)
+# ===========================================================================
+COMMON_PREFIX_BUCKET = 768
+COMMON_SUFFIX_BUCKET = 896
+BUCKET_SEQ_DIMS = (512, 896, 1024, 1664, 2048, 2560, 2816, 3072)
+
+def _pick_seq(real_len):
+    for dim in BUCKET_SEQ_DIMS:
+        if dim >= real_len:
+            return dim
+    raise ValueError(f"prompt length {real_len} exceeds max bucket {BUCKET_SEQ_DIMS[-1]}")
+
+class _DecodeLoopMixin:
+    """Reusable zero-copy decode loop shared by all runners.
+
+    Hosts must provide: self.decode, self.eos_token_id, self.t_dc_* tensors
+    and self._dc_*_np dtypes (allocated by the runner's own __init__).
+    """
+
+    def _decode(self, first, pf_k, pf_v, real_len, kv_len, max_new_tokens):
+        """Decode loop. pf_k/pf_v are prefill outputs (device tensors or numpy arrays)."""
+        kv_heads = getattr(self, "num_kv_heads", NUM_KV_HEADS)
+        din = self.decode.get_inputs()
+        self.decode.resize(din, [[1, 1], [1, kv_len], [1, 1],
+                                 [NUM_LAYERS, 1, kv_heads, kv_len, HEAD_DIM],
+                                 [NUM_LAYERS, 1, kv_heads, kv_len, HEAD_DIM]])
+        gen = [first]
+        valid = real_len
+        cur_attn = np.zeros((1, kv_len), dtype=self._dc_attn_np)
+        cur_attn[0, :valid] = 1
+        step_ms = []
+        truncated = False
+
+        kv_shape = [NUM_LAYERS, 1, kv_heads, kv_len, HEAD_DIM]
+        self.t_dc_attn.shape = [1, kv_len]
+        self.t_dc_k_a.shape = kv_shape
+        self.t_dc_v_a.shape = kv_shape
+        self.t_dc_k_b.shape = kv_shape
+        self.t_dc_v_b.shape = kv_shape
+
+        k_buf = np.zeros(kv_shape, dtype=self._dc_kv_np)
+        v_buf = np.zeros(kv_shape, dtype=self._dc_kv_np)
+        for src, dst in ((pf_k, k_buf), (pf_v, v_buf)):
+            try:
+                arr = src.get_data_to_numpy() if hasattr(src, 'get_data_to_numpy') else np.asarray(src)
+            except (RuntimeError, ValueError, TypeError):
+                arr = None
+            if arr is None:
+                continue
+            arr = np.asarray(arr)
+            while arr.ndim < 5:
+                arr = arr[np.newaxis, ...]
+            phys = min(arr.shape[3], kv_len)
+            dst[:, :, :, :phys, :] = arr[:, :, :, :phys, :]
+        self.t_dc_k_a.set_data_from_numpy(np.ascontiguousarray(k_buf))
+        self.t_dc_v_a.set_data_from_numpy(np.ascontiguousarray(v_buf))
+        k_in, k_out = self.t_dc_k_a, self.t_dc_k_b
+        v_in, v_out = self.t_dc_v_a, self.t_dc_v_b
+
+        for _ in range(max_new_tokens - 1):
+            if self.eos_token_id is not None and gen[-1] == int(self.eos_token_id):
+                break
+            if valid >= kv_len:
+                truncated = True
+                break
+            cur_attn[0, valid] = 1
+            self.t_dc_ids.set_data_from_numpy(np.array([[gen[-1]]], dtype=self._dc_ids_np))
+            self.t_dc_attn.set_data_from_numpy(cur_attn.copy())
+            self.t_dc_pos.set_data_from_numpy(np.array([[valid]], dtype=self._dc_pos_np))
+            inputs = [self.t_dc_ids, self.t_dc_attn, self.t_dc_pos, k_in, v_in]
+            outputs = [self.t_dc_logits, k_out, v_out]
+            t0 = time.perf_counter()
+            self.decode.predict(inputs, outputs=outputs)
+            step_ms.append((time.perf_counter() - t0) * 1000)
+            lg = self.t_dc_logits.get_data_to_numpy()
+            k_in, k_out = k_out, k_in
+            v_in, v_out = v_out, v_in
+            valid += 1
+            nid = int(np.argmax(lg[0, -1, :])) if lg.ndim == 3 else int(np.argmax(lg.reshape(-1)))
+            gen.append(nid)
+        return gen, step_ms, truncated
+
+class DynamicBucketRunner(_DecodeLoopMixin):
+    """Single dynamic prefill graph + single dynamic decode graph, SHARE_WEIGHT, resize bucket selection, per-bucket KV slicing."""
+
+    def __init__(self, device_id, tokenizer, phase="both"):
+        """phase: 'both' normal inference; 'prefill'/'decode' builds only the corresponding model (for per-process prof collection)."""
+        self.device_id = int(device_id)
+        self.tokenizer = tokenizer
+        self.eos_token_id = tokenizer.eos_token_id
+        self.phase = phase
+        ctx = mslite.Context()
+        ctx.target = ["ascend"]
+        ctx.ascend.device_id = self.device_id
+        ctx.ascend.provider = "ge"
+        t0 = time.perf_counter()
+        if phase in ("both", "prefill"):
+            self.prefill = mslite.Model()
+            self.prefill.build_from_file(PREFILL_PATH, mslite.ModelType.MINDIR, ctx, PREFILL_CFG)
+            self._pf_build_s = time.perf_counter() - t0
+            print(f"[build] prefill={self._pf_build_s:.1f}s", flush=True)
+            print(f"[build] prefill inputs={[list(t.shape) for t in self.prefill.get_inputs()]}",
+                  flush=True)
+        if phase in ("both", "decode"):
+            self.decode = mslite.Model()
+            self.decode.build_from_file(DECODE_PATH, mslite.ModelType.MINDIR, ctx, DECODE_CFG)
+            self._build_s = time.perf_counter() - t0
+            print(f"[build] decode total={self._build_s:.1f}s", flush=True)
+            print(f"[build] decode inputs={[list(t.shape) for t in self.decode.get_inputs()]}",
+                  flush=True)
+        if phase == "both":
+            self._mg = mslite.ModelGroup(mslite.ModelGroupFlag.SHARE_WEIGHT)
+            self._mg.add_model([self.prefill, self.decode])
+            print(f"[build] both graphs total={self._build_s:.1f}s (SHARE_WEIGHT)", flush=True)
+
+        self.max_seq = BUCKET_SEQ_DIMS[-1]
+        self.max_kv_len = self.max_seq + MAX_OUTPUT_TOKENS
+        dev = f"ascend:{self.device_id}"
+
+        self._pf_kv_dtype = mslite.DataType.FLOAT16
+        self.t_pf_logits = mslite.Tensor(
+            shape=[VOCAB], dtype=mslite.DataType.FLOAT32, device=dev)
+        self.t_pf_k = mslite.Tensor(
+            shape=[NUM_LAYERS, 1, NUM_KV_HEADS, self.max_kv_len, HEAD_DIM],
+            dtype=self._pf_kv_dtype, device=dev)
+        self.t_pf_v = mslite.Tensor(
+            shape=[NUM_LAYERS, 1, NUM_KV_HEADS, self.max_kv_len, HEAD_DIM],
+            dtype=self._pf_kv_dtype, device=dev)
+        if phase in ("both", "prefill"):
+            _ = self.t_pf_k.get_data_to_numpy()
+            _ = self.t_pf_v.get_data_to_numpy()
+
+        if phase in ("both", "decode"):
+            din = self.decode.get_inputs()
+            self._dc_ids_np = MS_DTYPE_TO_NP[din[0].dtype]
+            self._dc_attn_np = MS_DTYPE_TO_NP[din[1].dtype]
+            self._dc_pos_np = MS_DTYPE_TO_NP[din[2].dtype]
+            self._dc_kv_np = MS_DTYPE_TO_NP[din[3].dtype]
+            kv_shape = [NUM_LAYERS, 1, NUM_KV_HEADS, self.max_kv_len, HEAD_DIM]
+            self.t_dc_ids = mslite.Tensor(shape=[1, 1], dtype=din[0].dtype, device=dev)
+            self.t_dc_attn = mslite.Tensor(shape=[1, self.max_kv_len], dtype=din[1].dtype, device=dev)
+            self.t_dc_pos = mslite.Tensor(shape=[1, 1], dtype=din[2].dtype, device=dev)
+            self.t_dc_k_a = mslite.Tensor(shape=kv_shape, dtype=din[3].dtype, device=dev)
+            self.t_dc_v_a = mslite.Tensor(shape=kv_shape, dtype=din[4].dtype, device=dev)
+            self.t_dc_k_b = mslite.Tensor(shape=kv_shape, dtype=din[3].dtype, device=dev)
+            self.t_dc_v_b = mslite.Tensor(shape=kv_shape, dtype=din[4].dtype, device=dev)
+            self.t_dc_logits = mslite.Tensor(
+                shape=[VOCAB], dtype=mslite.DataType.FLOAT32, device=dev)
+
+    def _prep_inputs(self, text):
+        """Tokenize and pad prompt → (padded, attn, pos, real, seq, kv_len)."""
+        enc = self.tokenizer.apply_chat_template(
+            [{"role": "user", "content": text}], tokenize=True,
+            add_generation_prompt=True, return_tensors="np")
+        ids = np.asarray(enc["input_ids"] if hasattr(enc, "keys") else enc, dtype=np.int32).reshape(1, -1)
+        real = int(ids.shape[1])
+        seq = _pick_seq(real)
+        kv_len = seq + MAX_OUTPUT_TOKENS
+        padded = np.zeros((1, seq), np.int32)
+        padded[0, :real] = ids[0, :real]
+        attn = np.zeros((1, seq), np.int32)
+        attn[0, :real] = 1
+        cum = np.cumsum(attn[0], dtype=np.int32) - 1
+        pos = np.where(attn[0] > 0, cum, 0).astype(np.int32)[None, :]
+        return padded, attn, pos, real, seq, kv_len
+
+    def _prefill(self, padded, attn, pos, seq, kv_len):
+        """Run prefill with preallocated device output buffers and return first token + KV tensors."""
+        self.prefill.resize(self.prefill.get_inputs(), [[1, seq], [1, seq], [1, seq]])
+        feed = build_mslite_inputs(
+            self.prefill, {"input_ids": padded, "attention_mask": attn, "position_ids": pos},
+            preferred_order=["input_ids", "attention_mask", "position_ids"])
+
+        kv_shape = [NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM]
+        self.t_pf_k.shape = kv_shape
+        self.t_pf_v.shape = kv_shape
+
+        t0 = time.perf_counter()
+        self.prefill.predict(feed, outputs=[self.t_pf_logits, self.t_pf_k, self.t_pf_v])
+        pf_ms = (time.perf_counter() - t0) * 1000
+
+        # logits 小张量 D2H 做 argmax
+        logits = self.t_pf_logits.get_data_to_numpy().astype(np.float32)
+        flat = logits.reshape((-1, VOCAB))
+        if flat.shape[0] > 1:
+            real = int(attn.sum())
+            first = int(np.argmax(flat[real - 1, :]))
+        else:
+            first = int(np.argmax(flat[0, :]))
+
+        kv_out_phys = kv_len
+        return first, self.t_pf_k, self.t_pf_v, pf_ms, kv_out_phys
+
+    def run_prefill(self, text):
+        """Run prefill only (for prof mode). Returns perf dict."""
+        padded, attn, pos, real, seq, kv_len = self._prep_inputs(text)
+        _, _, _, pf_ms, kv_phys = self._prefill(padded, attn, pos, seq, kv_len)
+        return {"real_len": real, "prefill_seq": seq, "kv_len": kv_len,
+                "prefill_ms": round(pf_ms, 1), "kv_out_phys": kv_phys}
+
+    def run_decode_only(self, seq, kv_len, max_new_tokens=32):
+        """Run decode only with dummy (zero) KV — for per-process prof decode collection.
+
+        Does not build/run prefill: KV is zero-filled and the decode process contains only decode ops,
+        avoiding mixing prefill and decode data (profiling is per-process).
+        Returns perf dict.
+        """
+        din = self.decode.get_inputs()
+        self.decode.resize(din, [[1, 1], [1, kv_len], [1, 1],
+                                 [NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM],
+                                 [NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM]])
+        ids_np = MS_DTYPE_TO_NP[din[0].dtype]
+        attn_np = MS_DTYPE_TO_NP[din[1].dtype]
+        pos_np = MS_DTYPE_TO_NP[din[2].dtype]
+        kv_np = MS_DTYPE_TO_NP[din[3].dtype]
+        first = 1
+        valid = seq
+        cur_attn = np.zeros((1, kv_len), dtype=attn_np)
+        cur_attn[0, :valid] = 1
+        gen = [first]
+        step_ms = []
+        truncated = False
+
+        dc_buf = self._dc_buffers[kv_len]
+        t_ids, t_attn, t_pos = dc_buf["ids"], dc_buf["attn"], dc_buf["pos"]
+        t_k_a, t_v_a = dc_buf["k_a"], dc_buf["v_a"]
+        t_k_b, t_v_b = dc_buf["k_b"], dc_buf["v_b"]
+        t_logits = dc_buf["logits"]
+        dummy_k = np.zeros([NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM], dtype=kv_np)
+        dummy_v = np.zeros([NUM_LAYERS, 1, NUM_KV_HEADS, kv_len, HEAD_DIM], dtype=kv_np)
+        t_k_a.set_data_from_numpy(np.ascontiguousarray(dummy_k))
+        t_v_a.set_data_from_numpy(np.ascontiguousarray(dummy_v))
+        k_in, k_out = t_k_a, t_k_b
+        v_in, v_out = t_v_a, t_v_b
+
+        for _ in range(max_new_tokens - 1):
+            if self.eos_token_id is not None and gen[-1] == int(self.eos_token_id):
+                break
+            if valid >= kv_len:
+                truncated = True
+                break
+            cur_attn[0, valid] = 1
+            t_ids.set_data_from_numpy(np.array([[gen[-1]]], dtype=ids_np))
+            t_attn.set_data_from_numpy(cur_attn.copy())
+            t_pos.set_data_from_numpy(np.array([[valid]], dtype=pos_np))
+            inputs = [t_ids, t_attn, t_pos, k_in, v_in]
+            outputs = [t_logits, k_out, v_out]
+            t0 = time.perf_counter()
+            o = self.decode.predict(inputs, outputs=outputs)
+            step_ms.append((time.perf_counter() - t0) * 1000)
+            lg = o[0].get_data_to_numpy()
+            k_in, k_out = k_out, k_in
+            v_in, v_out = v_out, v_in
+            valid += 1
+            nid = int(np.argmax(lg[0, -1, :])) if lg.ndim == 3 else int(np.argmax(lg.reshape(-1)))
+            gen.append(nid)
+        return {"prefill_seq": seq, "kv_len": kv_len,
+                "decode_first_ms": round(step_ms[0], 1) if step_ms else 0.0,
+                "decode_min_ms": round(min(step_ms), 1) if step_ms else 0.0,
+                "decode_steps": len(step_ms), "output_len": len(gen), "truncated": truncated}
+
+    def run_decode(self, text, max_new_tokens=32):
+        """Run prefill (for KV) + decode only (for prof mode). Returns perf dict."""
+        padded, attn, pos, real, seq, kv_len = self._prep_inputs(text)
+        first, pf_k, pf_v, _, _ = self._prefill(padded, attn, pos, seq, kv_len)
+        gen, step_ms, trunc = self._decode(first, pf_k, pf_v, real, kv_len, max_new_tokens)
+        return {"real_len": real, "prefill_seq": seq, "kv_len": kv_len,
+                "decode_first_ms": round(step_ms[0], 1) if step_ms else 0.0,
+                "decode_min_ms": round(min(step_ms), 1) if step_ms else 0.0,
+                "decode_steps": len(step_ms), "output_len": len(gen), "truncated": trunc}
+
+    def run(self, text, max_new_tokens=32):
+        padded, attn, pos, real, seq, kv_len = self._prep_inputs(text)
+        first, pf_k, pf_v, pf_ms, kv_phys = self._prefill(padded, attn, pos, seq, kv_len)
+        gen, step_ms, trunc = self._decode(first, pf_k, pf_v, real, kv_len, max_new_tokens)
+        txt = self.tokenizer.decode(gen, skip_special_tokens=True)
+        return txt, {
+            "real_len": real, "prefill_seq": seq, "kv_len": kv_len,
+            "kv_out_phys": kv_phys, "kv_padded_to": kv_len,
+            "kv_len_ok": (pf_k.shape[3] >= kv_len),
+            "prefill_ms": round(pf_ms, 1),
+            "decode_steps": len(step_ms),
+            "decode_first_ms": round(step_ms[0], 1) if step_ms else 0.0,
+            "decode_min_ms": round(min(step_ms), 1) if step_ms else 0.0,
+            "decode_tok_s": round(1000.0 / min(step_ms), 2) if step_ms else 0.0,
+            "output_len": len(gen), "truncated": trunc,
+            "output_preview": txt[:80].replace("\n", " "),
+            "generated_ids": [int(x) for x in gen],
+        }
+
+
+class CommonPrefixRunner(_DecodeLoopMixin):
+    """1P prefix-cache runner; the prefix graph executes once per system prompt."""
+
+    def __init__(self, device_id, tokenizer, common_prefix, prefix_role="system",
+                 rank_id=0, prefix_model=None, suffix_model=None,
+                 decode_model=None, prefix_config=None, suffix_config=None,
+                 decode_config=None, num_kv_heads=NUM_KV_HEADS):
+        self.device_id = int(device_id)
+        self.tokenizer = tokenizer
+        self.eos_token_id = tokenizer.eos_token_id
+        self.phase = "both"
+        self.num_kv_heads = int(num_kv_heads)
+        ctx = mslite.Context()
+        ctx.target = ["ascend"]
+        ctx.ascend.device_id = self.device_id
+        ctx.ascend.rank_id = int(rank_id)
+        ctx.ascend.provider = "ge"
+        self.prefix = mslite.Model()
+        self.suffix = mslite.Model()
+        self.decode = mslite.Model()
+        self._mg = mslite.ModelGroup(mslite.ModelGroupFlag.SHARE_WEIGHT)
+        self._mg.add_model([self.prefix, self.suffix, self.decode])
+        self.prefix.build_from_file(
+            prefix_model, mslite.ModelType.MINDIR, ctx, prefix_config)
+        self.suffix.build_from_file(
+            suffix_model, mslite.ModelType.MINDIR, ctx, suffix_config)
+        self.decode.build_from_file(
+            decode_model, mslite.ModelType.MINDIR, ctx, decode_config)
+
+        self.max_seq = COMMON_PREFIX_BUCKET + COMMON_SUFFIX_BUCKET
+        self.max_kv_len = self.max_seq + MAX_OUTPUT_TOKENS
+        dev = f"ascend:{self.device_id}"
+        suffix_out = self.suffix.get_outputs()
+        prefix_kv_shape = [
+            NUM_LAYERS, 1, self.num_kv_heads, COMMON_PREFIX_BUCKET, HEAD_DIM]
+        suffix_kv_shape = [
+            NUM_LAYERS, 1, self.num_kv_heads, self.max_kv_len, HEAD_DIM]
+        # GE dynamic graphs expose the active logical output shape, while the
+        # zero-copy buffer must cover the maximum configured bucket.  The
+        # converted graph descriptor may report FP32 for KV even though GE's
+        # force_fp16 graph physically produces/consumes FP16 KV, so do not use
+        # get_outputs()[].dtype for these buffers.
+        self.t_prefix_k = mslite.Tensor(
+            shape=prefix_kv_shape, dtype=mslite.DataType.FLOAT16, device=dev)
+        self.t_prefix_v = mslite.Tensor(
+            shape=prefix_kv_shape, dtype=mslite.DataType.FLOAT16, device=dev)
+        self.t_suffix_logits = mslite.Tensor(
+            shape=[1, 1, VOCAB], dtype=suffix_out[0].dtype, device=dev)
+        self.t_suffix_k = mslite.Tensor(
+            shape=suffix_kv_shape, dtype=mslite.DataType.FLOAT16, device=dev)
+        self.t_suffix_v = mslite.Tensor(
+            shape=suffix_kv_shape, dtype=mslite.DataType.FLOAT16, device=dev)
+        din = self.decode.get_inputs()
+        self._dc_ids_np = MS_DTYPE_TO_NP[din[0].dtype]
+        self._dc_attn_np = MS_DTYPE_TO_NP[din[1].dtype]
+        self._dc_pos_np = MS_DTYPE_TO_NP[din[2].dtype]
+        self._dc_kv_np = MS_DTYPE_TO_NP[din[3].dtype]
+        kv_shape = [NUM_LAYERS, 1, self.num_kv_heads, self.max_kv_len, HEAD_DIM]
+        self.t_dc_ids = mslite.Tensor(shape=[1, 1], dtype=din[0].dtype, device=dev)
+        self.t_dc_attn = mslite.Tensor(
+            shape=[1, self.max_kv_len], dtype=din[1].dtype, device=dev)
+        self.t_dc_pos = mslite.Tensor(shape=[1, 1], dtype=din[2].dtype, device=dev)
+        self.t_dc_k_a = mslite.Tensor(shape=kv_shape, dtype=din[3].dtype, device=dev)
+        self.t_dc_v_a = mslite.Tensor(shape=kv_shape, dtype=din[4].dtype, device=dev)
+        self.t_dc_k_b = mslite.Tensor(shape=kv_shape, dtype=din[3].dtype, device=dev)
+        self.t_dc_v_b = mslite.Tensor(shape=kv_shape, dtype=din[4].dtype, device=dev)
+        self.t_dc_logits = mslite.Tensor(
+            shape=[VOCAB], dtype=mslite.DataType.FLOAT32, device=dev)
+        self.prefix_role = prefix_role
+        self._prepare_prefix(common_prefix)
+
+    @staticmethod
+    def _ids(encoded):
+        value = encoded["input_ids"] if hasattr(encoded, "keys") else encoded
+        return np.asarray(value, dtype=np.int32).reshape(1, -1)
+
+    def _prepare_prefix(self, text):
+        """Cache the common prefix text and optionally build the prefix KV now."""
+        self.common_prefix_text = text
+        if self.prefix_role == "user":
+            # Token boundaries can merge across "prefix + suffix". Defer the
+            # one-time prefix build until the first complete user request lets
+            # us cut at an exact offset-mapped token boundary.
+            self._prefix_ids_raw = None
+            self.prefix_k = self.prefix_v = None
+            self.prefix_actual_len = 0
+            self.prefix_ms = 0.0
+            return
+        messages = [{"role": "system", "content": text}]
+        ids = self._ids(self.tokenizer.apply_chat_template(
+            messages, tokenize=True, add_generation_prompt=False,
+            return_tensors="np"))
+        self._cache_prefix_ids(ids)
+
+    def _cache_prefix_ids(self, ids):
+        """Run the prefix graph once and keep its KV on device for reuse."""
+        self._prefix_ids_raw = ids.copy()
+        self.prefix_actual_len = int(ids.shape[1])
+        if self.prefix_actual_len > COMMON_PREFIX_BUCKET:
+            raise ValueError(
+                f"common prefix has {self.prefix_actual_len} tokens; maximum is "
+                f"{COMMON_PREFIX_BUCKET}")
+        pad_id = int(self.tokenizer.pad_token_id)
+        pids = np.full((1, COMMON_PREFIX_BUCKET), pad_id, np.int32)
+        pids[:, :self.prefix_actual_len] = ids
+        pmask = np.zeros((1, COMMON_PREFIX_BUCKET), np.int32)
+        pmask[:, :self.prefix_actual_len] = 1
+        ppos = np.zeros((1, COMMON_PREFIX_BUCKET), np.int32)
+        ppos[:, :self.prefix_actual_len] = np.arange(
+            self.prefix_actual_len, dtype=np.int32)
+        self.prefix.resize(self.prefix.get_inputs(), [
+            [1, COMMON_PREFIX_BUCKET], [1, COMMON_PREFIX_BUCKET],
+            [1, COMMON_PREFIX_BUCKET]])
+        feed = build_mslite_inputs(
+            self.prefix, {"input_ids": pids, "attention_mask": pmask,
+                          "position_ids": ppos},
+            preferred_order=["input_ids", "attention_mask", "position_ids"])
+        outputs = None
+        t0 = 0.0
+        for repeat in range(4):
+            if repeat == 3:
+                t0 = time.perf_counter()
+            outputs = self.prefix.predict(
+                feed, outputs=[self.t_prefix_k, self.t_prefix_v])
+        self.prefix_ms = (time.perf_counter() - t0) * 1000
+        self.prefix_k, self.prefix_v = outputs[0], outputs[1]
+        print(f"[prefix cache] actual={self.prefix_actual_len}, "
+              f"bucket={COMMON_PREFIX_BUCKET}, repeats=4, "
+              f"last_latency={self.prefix_ms:.1f}ms",
+              flush=True)
+
+    def _prepare_suffix(self, user_text):
+        """Tokenize the user suffix, split it from the cached prefix, and pad to the suffix bucket."""
+        if self.prefix_role == "user":
+            messages = [{"role": "user",
+                         "content": self.common_prefix_text + user_text}]
+            rendered = self.tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True)
+            encoded = self.tokenizer(
+                rendered, add_special_tokens=False,
+                return_offsets_mapping=True)
+            full = np.asarray(
+                encoded["input_ids"], dtype=np.int32).reshape(1, -1)
+            content_start = rendered.find(self.common_prefix_text + user_text)
+            if content_start < 0:
+                raise ValueError("cannot locate user content in rendered chat template")
+            boundary = content_start + len(self.common_prefix_text)
+            split = 0
+            for i, offset in enumerate(encoded["offset_mapping"]):
+                if offset[1] <= boundary:
+                    split = i + 1
+                else:
+                    break
+            if split <= 0:
+                raise ValueError("common prefix does not end on a usable token boundary")
+            if self._prefix_ids_raw is None:
+                self._cache_prefix_ids(full[:, :split])
+        else:
+            messages = [{"role": "system", "content": self.common_prefix_text},
+                        {"role": "user", "content": user_text}]
+            full = self._ids(self.tokenizer.apply_chat_template(
+                messages, tokenize=True, add_generation_prompt=True,
+                return_tensors="np"))
+        # Prefer an exact token-prefix split. Some tokenizers do not round-trip
+        # decoded system text identically; fail loudly instead of duplicating it.
+        plen = self.prefix_actual_len
+        if full.shape[1] < plen or not np.array_equal(full[:, :plen], self._prefix_ids_raw):
+            raise ValueError("chat template does not preserve the cached system prefix")
+        ids = full[:, plen:]
+        real = int(ids.shape[1])
+        if real <= 0 or real > COMMON_SUFFIX_BUCKET:
+            raise ValueError(
+                f"suffix has {real} tokens; supported range is 1..{COMMON_SUFFIX_BUCKET}")
+        pad = COMMON_SUFFIX_BUCKET - real
+        pad_id = int(self.tokenizer.pad_token_id)
+        sids = np.full((1, COMMON_SUFFIX_BUCKET), pad_id, np.int32)
+        sids[:, pad:] = ids
+        full_mask = np.zeros(
+            (1, COMMON_PREFIX_BUCKET + COMMON_SUFFIX_BUCKET), np.int32)
+        full_mask[:, :plen] = 1
+        full_mask[:, COMMON_PREFIX_BUCKET + pad:] = 1
+        spos = np.zeros((1, COMMON_SUFFIX_BUCKET), np.int32)
+        spos[:, pad:] = np.arange(plen, plen + real, dtype=np.int32)
+        return sids, full_mask, spos, real, pad
+
+    def run(self, text, max_new_tokens=32):
+        """Run suffix prefill (reusing cached prefix KV) and the decode loop."""
+        sids, mask, spos, suffix_real, suffix_pad = self._prepare_suffix(text)
+        self.suffix.resize(self.suffix.get_inputs(), [
+            [1, COMMON_SUFFIX_BUCKET],
+            [1, COMMON_PREFIX_BUCKET + COMMON_SUFFIX_BUCKET],
+            [1, COMMON_SUFFIX_BUCKET],
+            [NUM_LAYERS, 1, self.num_kv_heads, COMMON_PREFIX_BUCKET, HEAD_DIM],
+            [NUM_LAYERS, 1, self.num_kv_heads, COMMON_PREFIX_BUCKET, HEAD_DIM]])
+        small = build_mslite_inputs(
+            self.suffix, {"input_ids": sids, "attention_mask": mask,
+                          "position_ids": spos},
+            preferred_order=["input_ids", "attention_mask", "position_ids"])
+        out = None
+        t0 = 0.0
+        for repeat in range(4):
+            if repeat == 3:
+                t0 = time.perf_counter()
+            out = self.suffix.predict(
+                small + [self.prefix_k, self.prefix_v],
+                outputs=[self.t_suffix_logits, self.t_suffix_k,
+                         self.t_suffix_v])
+        suffix_ms = (time.perf_counter() - t0) * 1000
+        logits = out[0].get_data_to_numpy()
+        first = int(np.argmax(logits.reshape(-1, VOCAB)[-1]))
+
+        # Compact right-padded prefix + left-padded suffix into the contiguous
+        # cache layout expected by decode, then reserve MAX_OUTPUT_TOKENS slots.
+        valid = self.prefix_actual_len + suffix_real
+        kv_len = self.max_kv_len
+        compact = []
+        suffix_start = COMMON_PREFIX_BUCKET + suffix_pad
+        for src in out[1:3]:
+            arr = src.get_data_to_numpy()
+            buf = np.zeros(
+                [NUM_LAYERS, 1, self.num_kv_heads, kv_len, HEAD_DIM],
+                dtype=self._dc_kv_np)
+            buf[:, :, :, :self.prefix_actual_len, :] = \
+                arr[:, :, :, :self.prefix_actual_len, :]
+            buf[:, :, :, self.prefix_actual_len:valid, :] = \
+                arr[:, :, :, suffix_start:suffix_start + suffix_real, :]
+            compact.append(buf)
+        gen, step_ms, trunc = self._decode(
+            first, compact[0], compact[1], valid, kv_len, max_new_tokens)
+        decoded = self.tokenizer.decode(gen, skip_special_tokens=True)
+        prefix_ms = round(self.prefix_ms, 1)
+        suffix_ms_rounded = round(suffix_ms, 1)
+        return decoded, {
+            "prefix_actual_len": self.prefix_actual_len,
+            "prefix_bucket": COMMON_PREFIX_BUCKET,
+            "suffix_actual_len": suffix_real,
+            "suffix_bucket": COMMON_SUFFIX_BUCKET,
+            "prefix_ms_once": prefix_ms,
+            "suffix_ms": suffix_ms_rounded,
+            "prefill_total_ms": round(prefix_ms + suffix_ms_rounded, 1),
+            "decode_first_ms": round(step_ms[0], 1) if step_ms else 0.0,
+            "decode_min_ms": round(min(step_ms), 1) if step_ms else 0.0,
+            "decode_avg_ms": round(sum(step_ms) / len(step_ms), 1) if step_ms else 0.0,
+            "decode_total_ms": round(sum(step_ms), 1),
+            "decode_steps": len(step_ms),
+            "output_len": len(gen), "truncated": trunc,
+            "generated_ids": [int(x) for x in gen],
+        }
+
+
+
+def _worker(rank, device_id, args, barrier, result_q):
+    """TP worker: build one CommonPrefixRunner and stream (rank, text, perf, error) back."""
+    try:
+        os.environ["HCCL_NPU_SOCKET_PORT_RANGE"] = "21500-21600"
+        impl = sys.modules[__name__]
+
+        # A TP=2 rank owns half of the eight KV heads.  Reuse the thoroughly
+        # tested common-prefix runner while replacing its per-rank graph data.
+        base = args.model_dir
+        prefix_model = f"{base}/rank{rank}/prefix/qwen3_8b_prefix_rank{rank}_graph.mindir"
+        suffix_model = f"{base}/rank{rank}/suffix/qwen3_8b_suffix_rank{rank}_graph.mindir"
+        decode_model = f"{base}/rank{rank}/decode/qwen3_8b_llm_decode_rank{rank}_graph.mindir"
+
+        tok = AutoTokenizer.from_pretrained(args.model_id, trust_remote_code=True)
+        if tok.pad_token is None:
+            tok.pad_token = tok.eos_token
+        runner = impl.CommonPrefixRunner(
+            device_id, tok, args.prefix, prefix_role="user", rank_id=rank,
+            prefix_model=prefix_model, suffix_model=suffix_model,
+            decode_model=decode_model, prefix_config=args.prefix_cfgs[rank],
+            suffix_config=args.suffix_cfgs[rank],
+            decode_config=args.decode_cfgs[rank],
+            num_kv_heads=NUM_KV_HEADS // args.tp_size)
+        barrier.wait()
+        text, perf = runner.run(args.suffix, args.max_new_tokens)
+        result_q.put((rank, text, perf, None))
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError,
+            IndexError, AttributeError):
+        result_q.put((rank, None, None, traceback.format_exc()))
+
+
+def run_common_prefix_tp(args):
+    """Run multi-rank common-prefix inference for a compatible namespace."""
+    devices = [int(x) for x in args.device_ids.split(",")]
+    if len(devices) not in (2, 4):
+        raise ValueError("common-prefix TP requires two or four device IDs")
+    args.tp_size = len(devices)
+
+    # Keep stable graph configuration under configs/tp2.  HCCL topology is
+    # runtime state, so merge the current rank table into per-rank temporary
+    # configs instead of hard-coding rank_table_file in those base files.
+    run_dir = os.path.join(os.getcwd(), "tp_run")
+    cfg_dir = args.config_dir
+    def runtime_cfgs(base_name, tag):
+        return [
+            _write_hccl_config_with_ge(
+                devices, run_dir, os.path.join(cfg_dir, base_name),
+                f"common_{tag}_r{rank}", cache_suffix=str(rank))
+            for rank in range(args.tp_size)
+        ]
+    args.prefix_cfgs = runtime_cfgs(
+        "qwen3_8b_llm_prefill_prefix.config", "prefix")
+    args.suffix_cfgs = runtime_cfgs(
+        "qwen3_8b_llm_prefill_suffix.config", "suffix")
+    args.decode_cfgs = runtime_cfgs(
+        "qwen3_8b_llm_decode.config", "decode")
+
+    mp.set_start_method("spawn", force=True)
+    barrier = mp.Barrier(args.tp_size)
+    result_q = mp.Queue()
+    workers = [mp.Process(target=_worker,
+                          args=(rank, dev, args, barrier, result_q))
+               for rank, dev in enumerate(devices)]
+    for proc in workers:
+        proc.start()
+    results = [result_q.get() for _ in workers]
+    for proc in workers:
+        proc.join()
+    errors = [f"rank{r}:\n{err}" for r, _, _, err in results if err]
+    if errors:
+        raise RuntimeError("\n".join(errors))
+    results.sort()
+    if results[0][1] != results[1][1]:
+        raise RuntimeError("TP ranks produced different token sequences")
+    print(results[0][1])
+    perf = results[0][2]
+    print(f"[TP{args.tp_size} common-prefix]", perf)
+    print(f"Prefill: total={perf['prefill_total_ms']} ms "
+          f"(prefix={perf['prefix_ms_once']} ms, suffix={perf['suffix_ms']} ms)")
+    print(f"Decoder: total={perf['decode_total_ms']} ms, "
+          f"steps={perf['decode_steps']}, first={perf['decode_first_ms']} ms, "
+          f"avg={perf['decode_avg_ms']} ms, min={perf['decode_min_ms']} ms")
+
+
+
+# ===========================================================================
 # CLI + dispatch
 # ===========================================================================
 def _parse_args():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Qwen3-8B inference (MindSpore Lite MindIR on Ascend) — 1p / 2p / 4p auto-dispatch")
-    parser.add_argument("--device-ids", type=str, required=True,
+    parser.add_argument("--device-ids", "--device-id", dest="device_ids",
+                        type=str, required=True,
                         help="comma-separated Ascend device ids (count decides parallelism: 1/2/4)")
     parser.add_argument("--model-id", type=str, default="./Qwen3-8B",
                         help="tokenizer / weights path")
-    parser.add_argument("--prompt", type=str, default="你好，请用一句话介绍一下你自己")
-    parser.add_argument("--max-new-tokens", type=int, default=128)
-    parser.add_argument("--warmup", type=int, default=3,
-                        help="TP warm-up rounds (each = 1 prefill + 1 decode); 1p ignores this")
-    # optional explicit model path overrides (otherwise auto-resolved from device count)
-    parser.add_argument("--prefill-model", type=str, default=None,
-                        help="1p override: path to prefill _graph.mindir")
-    parser.add_argument("--decode-model", type=str, default=None,
-                        help="1p override: path to decode _graph.mindir")
-    parser.add_argument("--prefill-ranks", type=str, default=None,
-                        help="TP override: comma-separated prefill rank MindIR paths")
-    parser.add_argument("--decode-ranks", type=str, default=None,
-                        help="TP override: comma-separated decode rank MindIR paths")
-    parser.add_argument("--config-file", type=str, default=None,
-                        help="TP override: HCCL config_file.ini (auto-generated if omitted)")
-    # ---- TP GE config dir (dynamicDims qwen3_8b_llm_{prefill,decode}.config; auto-resolved if omitted) ----
-    parser.add_argument("--bucket-cfg-dir", type=str, default=None,
-                        help="TP prefill/decode: directory containing "
-                             "qwen3_8b_llm_prefill.config / qwen3_8b_llm_decode.config "
-                             "(default: configs/)")
+    parser.add_argument("--common-prefix-text", default="你好，")
+    parser.add_argument("--suffix-prompt", default="请用一句话介绍一下你自己")
+    parser.add_argument("--common-model-dir", required=True,
+                        help="common-prefix model root supplied by the caller")
+    parser.add_argument("--common-config-dir", default=None,
+                        help="config directory; defaults to configs for 1P and configs/tpN for TP")
+    parser.add_argument("--max-new-tokens", type=int, default=64)
     parser.add_argument("--json-out", type=str, default=None,
                         help="write perf dict as JSON to this path")
-    parser.add_argument("--prompt-tokens", type=int, default=None,
-                        help="perf sweep (TP=2): synthesize a prompt of exactly N tokens "
-                             "to deterministically drive one prefill bucket (overrides --prompt)")
-    parser.add_argument("--perf-sweep", action="store_true", default=False,
-                        help="TP=2 perf mode: single process, build once, loop over all 6 "
-                             "buckets with repeats. Replaces the infer.sh 6x process loop.")
-    parser.add_argument("--repeats", type=int, default=3,
-                        help="perf sweep: repeats per bucket (first = warmup/lazy-compile, "
-                             "steady = repeats 2+). Only used with --perf-sweep.")
     return parser.parse_args()
 
 
 def _run_single_chip(args, device_ids):
     """Run the single-chip (1p) dynamic single-graph path.
 
-    1p uniformly uses infer_qwen3_8b_mslite_1p.DynamicBucketRunner (single prefill mindir +
-    single decode mindir, configs/qwen3_8b_llm_prefill.config / qwen3_8b_llm_decode.config,
-    ge.dynamicDims 8 buckets, compile once and infer across buckets, KV slicing).
-    The old multi-static bucket cfgs (ge_prefill_bucket_*.cfg) are no longer used (removed).
+    The one-device path uses the common-prefix runner defined in this module.
     """
-    # Deferred import to avoid a circular dependency (infer_qwen3_8b_mslite_1p imports this module's helpers at the top).
-    from infer_qwen3_8b_mslite_1p import DynamicBucketRunner
-
     tok = AutoTokenizer.from_pretrained(args.model_id, trust_remote_code=True)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
 
-    runner = DynamicBucketRunner(device_ids[0], tok)
+    model_dir = args.common_model_dir
+    config_dir = args.common_config_dir
+    runner = CommonPrefixRunner(
+        device_ids[0], tok, args.common_prefix_text, prefix_role="user",
+        prefix_model=f"{model_dir}/prefix/qwen3_8b_prefix_rank0_graph.mindir",
+        suffix_model=f"{model_dir}/suffix/qwen3_8b_suffix_rank0_graph.mindir",
+        decode_model=f"{model_dir}/decode/qwen3_8b_llm_decode_rank0_graph.mindir",
+        prefix_config=f"{config_dir}/qwen3_8b_llm_prefill_prefix.config",
+        suffix_config=f"{config_dir}/qwen3_8b_llm_prefill_suffix.config",
+        decode_config=f"{config_dir}/qwen3_8b_llm_decode.config")
+    run_prompt = args.suffix_prompt
 
     print("\n" + "=" * 60)
-    print(f"Input Prompt: {args.prompt}")
+    full_prompt = args.common_prefix_text + args.suffix_prompt
+    print(f"Input Prompt: {full_prompt}")
     print("=" * 60)
     print("Generated Response: ", end="", flush=True)
-    txt, perf = runner.run(args.prompt, max_new_tokens=args.max_new_tokens)
+    txt, perf = runner.run(run_prompt, max_new_tokens=args.max_new_tokens)
     print(f"\n{txt[:300]}")
-    print("\n--- Performance (1p 动态单图) ---")
-    print(f"  real_len={perf['real_len']}  prefill_seq={perf['prefill_seq']}  "
-          f"kv_len={perf['kv_len']}")
-    print(f"  KV: phys={perf['kv_out_phys']} -> pad到 {perf['kv_padded_to']}  "
-          f"核心点OK={perf['kv_len_ok']}")
-    print(f"  prefill_steady={perf['prefill_ms']}ms  "
-          f"decode_first={perf['decode_first_ms']}ms  decode_min={perf['decode_min_ms']}ms  "
-          f"truncated={perf['truncated']}")
+    print("\n--- Performance (1p common prefix) ---")
+    print(perf)
+    print(f"Prefill: total={perf['prefill_total_ms']} ms "
+          f"(prefix={perf['prefix_ms_once']} ms, suffix={perf['suffix_ms']} ms)")
+    print(f"Decoder: total={perf['decode_total_ms']} ms, "
+          f"steps={perf['decode_steps']}, first={perf['decode_first_ms']} ms, "
+          f"avg={perf['decode_avg_ms']} ms, min={perf['decode_min_ms']} ms")
     if args.json_out:
         with open(args.json_out, "w", encoding="utf-8") as f:
-            json.dump({"tp": 1, "prompt": args.prompt, **perf}, f, indent=2)
+            json.dump({"tp": 1, "prompt": full_prompt, **perf}, f, indent=2)
 
 
 def _run_tensor_parallel(args, device_ids, tp_size):
     """Run the tensor-parallel (2p/4p) multi-process path."""
+    if tp_size in (2, 4):
+        from types import SimpleNamespace
+        run_common_prefix_tp(SimpleNamespace(
+            device_ids=args.device_ids,
+            model_id=args.model_id,
+            model_dir=args.common_model_dir,
+            prefix=args.common_prefix_text,
+            suffix=args.suffix_prompt,
+            config_dir=args.common_config_dir,
+            max_new_tokens=args.max_new_tokens))
+        return
     model_dir = _auto_model_dir(tp_size)
     if args.prefill_ranks:
         prefill_ranks = args.prefill_ranks.split(",")
@@ -1169,21 +1793,25 @@ def _run_tensor_parallel(args, device_ids, tp_size):
         # Per-rank config files carry per-rank GE compile caches
         # (ge.graph_compiler_cache_dir=<base>/rank{r}) so the two ranks never
         # cold-compile the same TBE kernels into one directory.
-        cfg_dir = args.bucket_cfg_dir or "configs"
+        cfg_dir = args.bucket_cfg_dir
+        if not cfg_dir:
+            raise ValueError("--bucket-cfg-dir is required")
         pf_config_files = [
             _write_hccl_config_with_ge(
-                device_ids, run_dir, os.path.join(cfg_dir, "qwen3_8b_llm_prefill.config"),
+                device_ids, run_dir, os.path.join(cfg_dir, "tp2/qwen3_8b_llm_prefill.config"),
                 f"prefill_r{r}", cache_suffix=str(r)) for r in range(tp_size)]
         dc_config_files = [
             _write_hccl_config_with_ge(
-                device_ids, run_dir, os.path.join(cfg_dir, "qwen3_8b_llm_decode.config"),
+                device_ids, run_dir, os.path.join(cfg_dir, "tp2/qwen3_8b_llm_decode.config"),
                 f"decode_r{r}", cache_suffix=str(r)) for r in range(tp_size)]
         seq = kv_len = None
         print(f"[TP2] bucketed dynamicDims cfgs: {pf_config_files[0]} / {dc_config_files[0]} "
               f"(per-rank GE cache under ge_cache/rank{{r}})")
     else:
         # 4p keeps the fixed-shape path (plain HCCL config, no ge_graph_options).
-        config_file = args.config_file or _write_hccl_config(device_ids, run_dir)
+        config_file = args.config_file
+        if not config_file:
+            raise ValueError("--config-file is required")
         pf_config_files = [config_file] * tp_size
         dc_config_files = [config_file] * tp_size
         seq, kv_len = TP_PREFILL_SEQ, KV_CACHE_LEN
@@ -1229,6 +1857,7 @@ def _run_tensor_parallel(args, device_ids, tp_size):
         args.prompt, args.max_new_tokens, device_ids, warmup=args.warmup,
         stream=not args.json_out, tp_size=tp_size, use_hybrid=None, seq=seq, kv_len=kv_len,
         prompt_tokens=args.prompt_tokens)
+    print("result:",txt)
     _print_tp_perf(perf, tp_size)
     if args.json_out:
         with open(args.json_out, "w", encoding="utf-8") as f:
@@ -1242,12 +1871,14 @@ def main():
     # workers inherit the driver's imported-GE state and the port-range env var
     # is ignored → every rank tries the default NPU adapter port 16666 →
     # "Initialize GE failed ... port 16666 already bound" on the 2nd+ rank.
-    import multiprocessing
-    multiprocessing.set_start_method("spawn", force=True)
+    mp.set_start_method("spawn", force=True)
 
     args = _parse_args()
     device_ids = [int(x) for x in args.device_ids.split(",")]
     tp_size = len(device_ids)
+    if args.common_config_dir is None:
+        args.common_config_dir = (
+            "configs" if tp_size == 1 else f"configs/tp{tp_size}")
 
     print(f"=== TP_SIZE={tp_size}  devices={args.device_ids} ===")
     if tp_size == 1:
