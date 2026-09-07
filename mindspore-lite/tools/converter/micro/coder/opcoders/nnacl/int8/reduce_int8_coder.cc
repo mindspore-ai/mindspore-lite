@@ -111,6 +111,10 @@ int ReduceInt8Coder::CalculateQuantArgs() {
   MS_CHECK_TRUE(num_axes_ < MAX_SHAPE_SIZE, "the number of axes should be less the max num");
   int ret = RET_OK;
   switch (mode_) {
+    case static_cast<int>(schema::ReduceMode_ReduceSum):
+    case static_cast<int>(schema::ReduceMode_ReduceMax):
+    case static_cast<int>(schema::ReduceMode_ReduceMin):
+      break;
     case static_cast<int>(schema::ReduceMode_ReduceMean):
       ret = CalReduceMeanQuantParam();
       break;
