@@ -43,6 +43,7 @@ MindSpore Lite（Ascend）的性能优化可以从两个角度切入，二者互
 | 2 | **推理免拷贝** | 运行 / 调度 | 模型输出会被下一阶段继续使用：多模型流水线、自回归 decode、KV cache、多分支复用 | 降低 Host↔Device 拷贝与重复分配 | [references/zero_copy_inference.md](references/zero_copy_inference.md) |
 | 3 | **PTQ Int8 量化导出** | 导出 / 图改写 | 访存密集型大线性层（LLM decode 等）需低比特推理减带宽/显存 | 减半带宽、降显存 | [references/torch_ptq_int8.md](references/torch_ptq_int8.md) |
 | 4 | **Profiling 驱动的运行时调优** | 运行 / Profiling | 已有可跑模型，需定位热点算子并尝试精度模式 / 融合开关 / 算子替换（PFA、QKV 合并、MatMul 选型、混合精度、解融合等） | 针对热点算子的定向加速 | [references/other_opt_methods.md](references/other_opt_methods.md) |
+| 5 | **公共前缀（prefix+suffix）适配** | 导出 / 图改写 | LLM 推理有固定公共前缀（system prompt、文档片段），需要复用 prefix KV cache、避免每次重算 | 后续请求只跑 suffix，省掉 prefix 重算 | [references/common_prefix_adapt.md](references/common_prefix_adapt.md) |
 
 > ⚠️ **动手前必读（强制）**：上表就是「任务 → 细化文档」的匹配表。`references/` **不会随 skill 自动加载**——确定要做哪类优化后，**必须先用 `Read` 工具读对应的 `references/` 文档，再动手改代码/模型**。Custom 属性规范、PTQ 校准流程、免拷贝 I/O 模板、profiling/精度对齐命令等关键细节**只存在于细化文档中**；只读本文件就动手，必然遗漏这些步骤、导致转换失败或返工。
 >
@@ -98,3 +99,4 @@ MindSpore Lite（Ascend）的性能优化可以从两个角度切入，二者互
 - [zero_copy_inference.md](references/zero_copy_inference.md) — 推理免拷贝核心做法与 Qwen3-VL 三阶段流水线示例
 - [torch_ptq_int8.md](references/torch_ptq_int8.md) — Torch PTQ int8 量化导出六步法
 - [other_opt_methods.md](references/other_opt_methods.md) — 基线 / msprof profiling / 精度对齐命令模板 + 运行时优化手段清单（PFA、QKV 合并、MatMul 选型、混合精度、解融合等）+ 转换失败定位
+- [common_prefix_adapt.md](references/common_prefix_adapt.md) — LLM 公共前缀（prefix+suffix）适配：模型拆分、InnerPromptFlashAttention 使能与运行时安装、推理侧 KV 复用
