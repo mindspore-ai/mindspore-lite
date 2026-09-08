@@ -67,8 +67,8 @@ def rms_norm(x, gamma, eps=1e-6):
             normalized dim is the last dim. Supported dtypes are float16,
             float32; on A2 and other SoCs bfloat16 is additionally
             supported.
-        gamma (Tensor): Per-column scale with shape :math:`(C,)`, matching
-            the last dim of `x`.
+        gamma (Tensor): Per-column scale with shape :math:`(C,)` and the
+            same dtype as `x`, matching the last dim of `x`.
         eps (float, optional): Value added to the denominator for numerical
             stability. Default: ``1e-6``.
 
