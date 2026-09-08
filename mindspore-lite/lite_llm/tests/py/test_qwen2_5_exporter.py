@@ -249,3 +249,38 @@ def test_validate_contract_rejects_bad_order():
             validate_contract(path, num_layers=1, embedding_quant=False)
     finally:
         os.remove(path)
+
+
+@pytest.mark.parametrize(("configured_head_dim", "expected_head_dim"), [(128, 128), (0, 80)])
+def test_apply_quant_propagates_head_shape(monkeypatch, configured_head_dim, expected_head_dim):
+    """Quantization uses explicit head_dim and preserves the legacy fallback."""
+    from utils import export_quant
+
+    captured = {}
+    model = object()
+
+    def fake_infer_shape(model_arg, chunk_size, max_length, kv_heads, q_heads, head_dim):
+        captured["args"] = (chunk_size, max_length, kv_heads, q_heads, head_dim)
+        return model_arg
+
+    monkeypatch.setattr(export_quant.onnx, "load", lambda _, **__: model)
+    monkeypatch.setattr(export_quant, "infer_shape", fake_infer_shape)
+    monkeypatch.setattr(export_quant, "_has_external_data", lambda _: False)
+    monkeypatch.setattr(export_quant, "quantize_linear_ops", lambda value, *_: value)
+    monkeypatch.setattr(export_quant, "_save_onnx", lambda *_: None)
+    config = export_quant.ModelConfig(
+        max_length=1024,
+        chunk_size=128,
+        vocab_size=4096,
+        hidden_size=2560,
+        num_attention_heads=32,
+        num_key_value_heads=8,
+        eos_id=1,
+        embedding_quant=export_quant.QuantizationConfig(None),
+        decoder_quant=export_quant.QuantizationConfig(None),
+        head_dim=configured_head_dim,
+    )
+
+    export_quant.apply_quant("input.onnx", "output.onnx", config)
+
+    assert captured["args"] == (128, 1024, 8, 32, expected_head_dim)

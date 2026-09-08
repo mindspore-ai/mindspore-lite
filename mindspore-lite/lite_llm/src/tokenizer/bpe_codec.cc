@@ -276,6 +276,10 @@ std::vector<std::string> BPECodec::PreTokenize(const std::string &text) {
       continue;
     }
 
+    // Byte-level BPE represents every input byte, including non-space
+    // whitespace.  Keep it as a chunk so ChatML line breaks and tabs reach
+    // the byte encoder instead of being silently discarded.
+    chunks.push_back(text.substr(i, 1));
     i++;
   }
 

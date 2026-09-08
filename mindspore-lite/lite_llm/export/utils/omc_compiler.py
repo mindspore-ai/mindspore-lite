@@ -99,7 +99,7 @@ def build_omg_command(onnx_path, omc_path, config, max_seq_len, chunk_sizes, emb
     hidden_size = config["hidden_size"]
     num_kv_heads = config.get("num_kv_heads", config.get("num_key_value_heads"))
     num_heads = config.get("num_heads", config.get("num_attention_heads"))
-    head_dim = hidden_size // num_heads
+    head_dim = config.get("head_dim") or (hidden_size // num_heads)
 
     emb_elems = embedding_weight_elems(vocab_size, hidden_size, embedding_quant)
 

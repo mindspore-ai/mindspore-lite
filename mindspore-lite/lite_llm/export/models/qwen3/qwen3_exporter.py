@@ -355,6 +355,9 @@ def export_qwen3(
     decoder_quant_config = QuantizationConfig(decoder_quant)
 
     if embedding_quant_config.is_quant or decoder_quant_config.is_quant:
+        head_dim = int(getattr(exporter.config, "head_dim", None) or (
+            exporter.config.hidden_size // exporter.config.num_attention_heads
+        ))
         model_config = ModelConfig(
             max_length=max_length,
             chunk_size=chunk_size,
@@ -365,6 +368,7 @@ def export_qwen3(
             eos_id=exporter.config.eos_token_id,
             embedding_quant=embedding_quant_config,
             decoder_quant=decoder_quant_config,
+            head_dim=head_dim,
         )
         path, name = os.path.split(onnx_path)
         name, ext = os.path.splitext(name)

@@ -35,16 +35,19 @@ namespace mslite_llm_test {
 ///   vocab_size x (u32 len + token bytes + i32 id)
 ///   u32 num_merges(0) | u32 template_len(0)
 ///   u32 stop_count + stop tokens | u32 suppress_count + suppress tokens
-inline std::vector<uint8_t> BuildMinimalVocabBin() {
+inline std::vector<uint8_t> BuildMinimalVocabBin(bool include_whitespace_tokens = false) {
   constexpr uint32_t kMagic = 0x4D534C54;
   constexpr uint32_t kVersion = 2;
   constexpr uint32_t kCodecBPE = 0;
 
   // Sorted by token id. Ids 5/6/7 are the byte-encoder tokens for the three
   // UTF-8 bytes of '你' (0xE4 0xBD 0xA0), used by the incremental-decode test.
-  const std::vector<std::pair<std::string, int32_t>> vocab = {
+  std::vector<std::pair<std::string, int32_t>> vocab = {
     {"<unk>", 0}, {"<s>", 1}, {"</s>", 2}, {"a", 3}, {"b", 4}, {"ä", 5}, {"½", 6}, {"ł", 7},
   };
+  if (include_whitespace_tokens) {
+    vocab.insert(vocab.end(), {{"ĉ", 8}, {"Ċ", 9}, {"č", 10}});
+  }
 
   std::vector<uint8_t> b;
   auto u32 = [&b](uint32_t v) {
@@ -86,6 +89,12 @@ inline std::vector<uint8_t> BuildMinimalVocabBin() {
   str("</s>");
   u32(0);  // suppress_count
 
+  return b;
+}
+
+inline std::vector<uint8_t> BuildMinimalSentencePieceVocabBin() {
+  auto b = BuildMinimalVocabBin();
+  b[8] = 1;  // codec=SentencePiece; its empty model has the same u32 layout as zero BPE merges.
   return b;
 }
 

@@ -27,8 +27,12 @@ import logging
 
 import numpy as np
 import onnx
+from gguf.quants import GGMLQuantizationType, dequantize
+
+from .export_quant import quantize_weight_g32_4bit_nd
 
 logger = logging.getLogger(__name__)
+
 
 def create_new_initializer(name, weight):
     return onnx.numpy_helper.from_array(weight, name)
@@ -58,6 +62,27 @@ def rearrange_q4_0_g32(data):
     return final_data
 
 
+def convert_embedding_weight(data, tensor_type, embedding_quantize_config):
+    """Convert a GGUF embedding tensor to the selected runtime representation.
+
+    Q4_0 already has the same group-32 quantization contract as W4A16 and only
+    needs its blocks rearranged. Other GGUF formats must first be dequantized.
+    """
+    if embedding_quantize_config == "W4A16":
+        if tensor_type == GGMLQuantizationType.Q4_0:
+            return rearrange_q4_0_g32(data)
+        fp32 = dequantize(data, tensor_type)
+        return quantize_weight_g32_4bit_nd(fp32.astype(np.float16).T)
+
+    if embedding_quantize_config == "FP16":
+        if tensor_type in (GGMLQuantizationType.F16, GGMLQuantizationType.F32):
+            return data.astype(np.float16)
+        return dequantize(data, tensor_type).astype(np.float16)
+
+    raise ValueError(
+        f"embedding_quantize_config {embedding_quantize_config} not supported (W4A16/FP16)"
+    )
+
 
 def load_file_from_tensors(tensors, embedding_weight_save_path, decoder_quantize_config, embedding_quantize_config):
     """Read GGUF tensors, rearrange Q4_0 weights, and save the embedding weight."""
@@ -81,12 +106,9 @@ def load_file_from_tensors(tensors, embedding_weight_save_path, decoder_quantize
             else:
                 raise ValueError(f"decoder_quantize_config {decoder_quantize_config} not supported (W4A16/FP16)")
         elif name == "token_embd.weight":
-            if embedding_quantize_config == "W4A16":
-                name2weight[name] = rearrange_q4_0_g32(tensor_item.data)
-            elif embedding_quantize_config == "FP16":
-                name2weight[name] = tensor_item.data
-            else:
-                raise ValueError(f"embedding_quantize_config {embedding_quantize_config} not supported (W4A16/FP16)")
+            name2weight[name] = convert_embedding_weight(
+                tensor_item.data, tensor_item.tensor_type, embedding_quantize_config
+            )
             name2weight[name].tofile(embedding_weight_save_path)
         elif name == "output_norm.weight":
             name2weight[name] = tensor_item.data.astype(np.float16)

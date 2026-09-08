@@ -346,8 +346,9 @@ TEST(StreamGenerate, MaxContextLengthFinishReason) {
 
   StreamResult r;
   EXPECT_EQ(MSLLMStreamGenerate(tm.handle, "a", CollectTokens, &r), kMSLLM_SUCCESS);
-  // prompt = BOS + 'a' = 2 tokens, window = 64 → 62 generated tokens.
-  EXPECT_EQ(r.tokens.size(), 62u);
+  // Byte-level BPE does not inject BOS: prompt = 'a' = 1 token, so a
+  // 64-token context window has room for 63 generated tokens.
+  EXPECT_EQ(r.tokens.size(), 63u);
   EXPECT_EQ(r.reason, kMSLLM_FINISHED_BY_MAX_CONTEXT_LENGTH);
 }
 
@@ -463,6 +464,26 @@ TEST(Reentry, DestroyReturnsBusy) {
 }
 
 // ─── Incremental decode (#17) ────────────────────────────────────────────
+
+TEST(TokenizerEncode, ByteLevelBpePreservesWhitespaceWithoutImplicitBos) {
+  auto vocab = mslite_llm_test::BuildMinimalVocabBin(true);
+  auto tok = mslite_llm::CreateTokenizerFromBuffer(vocab.data(), vocab.size());
+  ASSERT_NE(tok, nullptr);
+
+  // GPT-style byte encoding maps tab/LF/CR to ĉ/Ċ/č respectively.  The BOS
+  // configured in the fixture must not be injected for a byte-level BPE.
+  EXPECT_EQ(tok->Encode("a\t\n\rb"), (std::vector<int32_t>{3, 8, 9, 10, 4}));
+}
+
+TEST(TokenizerEncode, SentencePieceRetainsImplicitBos) {
+  auto vocab = mslite_llm_test::BuildMinimalSentencePieceVocabBin();
+  auto tok = mslite_llm::CreateTokenizerFromBuffer(vocab.data(), vocab.size());
+  ASSERT_NE(tok, nullptr);
+
+  const auto ids = tok->Encode("a");
+  ASSERT_FALSE(ids.empty());
+  EXPECT_EQ(ids.front(), 1);
+}
 
 TEST(TokenizerIncremental, SplitsMultibyteUtf8) {
   auto vocab = mslite_llm_test::BuildMinimalVocabBin();
