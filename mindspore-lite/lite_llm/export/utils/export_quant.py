@@ -24,13 +24,14 @@ Merges the former ``quantize`` / ``packing`` / ``quant_config`` modules:
   (weights + tied lm_head) producing the NNRT-compatible ONNX.
 """
 
+import os
 from dataclasses import dataclass
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, shape_inference
 
-from utils.onnx_postprocess import duplicate_shared_initializers
+from utils.onnx_postprocess import _save_onnx, duplicate_shared_initializers
 
 
 # ─── quantization configuration ────────────────────────────────────────────
@@ -683,9 +684,18 @@ def infer_shape(model, chunk_size, max_seq_len, num_kv_heads, num_q_heads, dim, 
     return model
 
 
+def _has_external_data(model):
+    """Return whether any initializer payload is stored outside the protobuf."""
+    return any(initializer.data_location == TensorProto.EXTERNAL for initializer in model.graph.initializer)
+
+
 def apply_quant(input_model, output_model, model_config: ModelConfig):
-    """Quantize the exported model in place (weights + lm_head) and save."""
-    model = onnx.load(input_model)
+    """Quantize the exported model in place (weights + lm_head) and save.
+
+    Shape inference runs before external tensor payloads are loaded so large
+    models do not exceed protobuf's in-memory size limit during inference.
+    """
+    model = onnx.load(input_model, load_external_data=False)
 
     head_dim = getattr(model_config, "head_dim", 0) or (
         model_config.hidden_size // model_config.num_attention_heads
@@ -699,7 +709,12 @@ def apply_quant(input_model, output_model, model_config: ModelConfig):
         head_dim,
     )
 
+    if _has_external_data(model):
+        onnx.external_data_helper.load_external_data_for_model(
+            model, os.path.dirname(os.path.abspath(input_model))
+        )
+
     model = quantize_linear_ops(model, model_config.embedding_quant, model_config.decoder_quant)
 
-    onnx.save(model, output_model)
+    _save_onnx(model, output_model)
     return output_model

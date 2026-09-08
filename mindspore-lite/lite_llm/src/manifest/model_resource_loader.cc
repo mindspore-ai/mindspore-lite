@@ -193,6 +193,24 @@ MSLlmStatus LoadModelResourcesFromSingleFile(const std::string &msl_path, ModelR
     return MSLLM_ERROR_MODEL_LOAD;
   }
 
+  // External decoder weights are opt-in. Once declared, the package must
+  // contain the fixed blob produced by omg; do not silently fall back to an
+  // incomplete .omc.
+  if (!manifest.npu.om_weight_dir.empty()) {
+    if (!IsPackageRelativePath(manifest.npu.om_weight_dir)) {
+      if (error_message != nullptr) {
+        *error_message = "npu.om_weight_dir is invalid: " + manifest.npu.om_weight_dir;
+      }
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    std::string entry;
+    if (!ResolveEntry(*resources->package_reader, "external_weight", "SubGraph_0.weight", true, &entry,
+                      error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    resources->om_weight_dir = manifest.npu.om_weight_dir;
+  }
+
   return MSLLM_SUCCESS;
 }
 
@@ -297,6 +315,23 @@ MSLlmStatus LoadModelResources(const std::string &package_root, ModelResources *
       *error_message = "NPU backend requires assets in manifest";
     }
     return MSLLM_ERROR_MODEL_LOAD;
+  }
+
+  if (!manifest.npu.om_weight_dir.empty()) {
+    if (!ResolvePackagePath(canonical_root, manifest.npu.om_weight_dir, &resources->om_weight_dir)) {
+      if (error_message != nullptr) {
+        *error_message = "npu.om_weight_dir path is invalid: " + manifest.npu.om_weight_dir;
+      }
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    std::string weight_path;
+    if (!ResolvePackagePath(canonical_root, manifest.npu.om_weight_dir + "/SubGraph_0.weight", &weight_path) ||
+        !IsRegularFile(weight_path)) {
+      if (error_message != nullptr) {
+        *error_message = "external weight is missing: " + manifest.npu.om_weight_dir + "/SubGraph_0.weight";
+      }
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
   }
 
   return MSLLM_SUCCESS;

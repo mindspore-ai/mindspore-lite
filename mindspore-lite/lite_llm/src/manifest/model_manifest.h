@@ -90,6 +90,9 @@ struct NpuConfig {
   int32_t chunk_size = 0;        // prefill chunk size (prefill gear seq length)
   bool embedding_quant = false;  // W4A8/W4A16 int4-packed embedding weight
   int32_t scale_gp_size = 32;    // embedding quant group size
+  // Optional directory containing SubGraph_0.weight produced by omg
+  // --save_weights_as_external_data. Empty means weights are embedded.
+  std::string om_weight_dir;
 };
 
 struct ModelManifest {
@@ -134,6 +137,9 @@ struct ModelResources {
   std::string rope_sin_path;
   std::string rope_cos_path;
   std::string attention_mask_path;
+  // Resolved filesystem directory in directory mode, or the declared
+  // extraction directory name in a single-file package.
+  std::string om_weight_dir;
 };
 
 /// Validate that \p candidate is a relative path strictly inside \p package_root

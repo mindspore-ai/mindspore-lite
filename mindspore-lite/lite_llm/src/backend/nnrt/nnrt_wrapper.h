@@ -82,6 +82,10 @@ struct NNRTFunctions {
 
   // === HiAI Foundation (libhiai_foundation.so) — 分档模式必须关异步 ===
   int (*HIAIOptions_SetAsyncModeEnable)(OH_NNCompilation *compilation, bool enable);
+
+  // Optional on older SDKs; required only by packages that declare external
+  // decoder weights.
+  NnrtReturnCode (*HIAIExecutor_InitWeights)(OH_NNExecutor *executor, const char *weightPath);
 };
 
 class NNRTWrapper {

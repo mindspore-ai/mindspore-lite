@@ -22,8 +22,10 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -75,6 +77,24 @@ NnrtExecutor::~NnrtExecutor() {
     omc_mapping_ = nullptr;
     omc_mapping_size_ = 0;
   }
+
+  if (!temp_weight_dir_.empty()) {
+    std::string weight_dir = temp_weight_dir_;
+    if (!om_weight_dir_.empty()) {
+      weight_dir += "/" + om_weight_dir_;
+    }
+    ::unlink((weight_dir + "/" + external_weight_entry_).c_str());
+    while (weight_dir.size() > temp_weight_dir_.size()) {
+      ::rmdir(weight_dir.c_str());
+      const size_t separator = weight_dir.find_last_of('/');
+      if (separator == std::string::npos) {
+        break;
+      }
+      weight_dir.resize(separator);
+    }
+    ::rmdir(temp_weight_dir_.c_str());
+    temp_weight_dir_.clear();
+  }
 }
 
 namespace {
@@ -82,6 +102,35 @@ namespace {
 int ArgMax(const std::vector<float> &logits) {
   if (logits.empty()) return -1;
   return static_cast<int>(std::distance(logits.begin(), std::max_element(logits.begin(), logits.end())));
+}
+
+bool IsRegularFile(const std::string &path) {
+  struct stat st {};
+  return ::stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+}
+
+bool EnsureDir(const std::string &path) {
+  if (path.empty()) {
+    return false;
+  }
+  size_t separator = path.front() == '/' ? 1 : 0;
+  while (separator <= path.size()) {
+    separator = path.find('/', separator);
+    const std::string component = path.substr(0, separator);
+    if (!component.empty() && ::mkdir(component.c_str(), 0755) != 0 && errno != EEXIST) {
+      return false;
+    }
+    if (separator == std::string::npos) {
+      break;
+    }
+    ++separator;
+  }
+  return true;
+}
+
+std::string DirName(const std::string &path) {
+  const size_t separator = path.find_last_of("/\\");
+  return separator == std::string::npos ? "." : path.substr(0, separator);
 }
 
 }  // namespace
@@ -117,6 +166,11 @@ bool NnrtExecutor::Build(const NnrtConfig &config) {
   single_file_ = config.single_file;
   package_reader_ = config.package_reader;
   embedding_path_ = config.embedding_path;
+  package_root_ = config.package_root;
+  om_weight_dir_ = config.om_weight_dir;
+  external_weight_entry_ =
+    config.external_weight_entry.empty() ? "SubGraph_0.weight" : config.external_weight_entry;
+  has_external_weights_ = config.has_external_weights;
   // device_id_ defaults to 0 (first NPU). Single-NPU Kirin is the current target;
   // multi-device name->id resolution via OH_NNDevice_GetAllDevicesID is TODO.
 
@@ -179,6 +233,9 @@ bool NnrtExecutor::BuildModel() {
   nn_executor_ = api.Executor_Construct(nn_compilation_);
   if (nn_executor_ == nullptr) {
     MS_LOG(ERROR) << "Executor_Construct failed";
+    return false;
+  }
+  if (!LoadExternalWeights()) {
     return false;
   }
   if (!ValidateModelContract()) {
@@ -274,6 +331,73 @@ void NnrtExecutor::ReclaimEmbeddingWeightPages() const {
       !package_reader_->Reclaim(embedding_path_)) {
     MS_LOG(WARNING) << "Failed to reclaim embedding package pages";
   }
+}
+
+bool NnrtExecutor::LoadExternalWeights() {
+  if (!has_external_weights_) {
+    return true;
+  }
+
+  const auto &api = NNRTWrapper::GetApi();
+  if (api.HIAIExecutor_InitWeights == nullptr) {
+    MS_LOG(ERROR) << "External-weight package requires HMS_HiAIExecutor_InitWeights";
+    return false;
+  }
+
+  std::string weight_dir = om_weight_dir_;
+  if (single_file_) {
+    if (package_reader_ == nullptr || package_root_.empty()) {
+      MS_LOG(ERROR) << "Single-file external weights require package reader and package path";
+      return false;
+    }
+    const uint8_t *data = nullptr;
+    size_t size = 0;
+    if (!package_reader_->Mmap(external_weight_entry_, &data, &size) || data == nullptr || size == 0) {
+      MS_LOG(ERROR) << "Failed to mmap external weight entry: " << external_weight_entry_;
+      return false;
+    }
+
+    std::string name_template = DirName(package_root_) + "/.msl_weights_XXXXXX";
+    std::vector<char> mutable_template(name_template.begin(), name_template.end());
+    mutable_template.push_back('\0');
+    char *created = ::mkdtemp(mutable_template.data());
+    if (created == nullptr) {
+      MS_LOG(ERROR) << "Failed to create external-weight directory next to .msl: " << strerror(errno);
+      return false;
+    }
+    temp_weight_dir_ = created;
+    weight_dir = temp_weight_dir_ + "/" + om_weight_dir_;
+    if (!EnsureDir(weight_dir)) {
+      MS_LOG(ERROR) << "Failed to create external-weight directory: " << weight_dir;
+      return false;
+    }
+
+    const std::string weight_path = weight_dir + "/" + external_weight_entry_;
+    std::ofstream output(weight_path, std::ios::binary | std::ios::trunc);
+    if (!output.is_open()) {
+      MS_LOG(ERROR) << "Failed to open extracted external weight: " << weight_path;
+      return false;
+    }
+    output.write(reinterpret_cast<const char *>(data), static_cast<std::streamsize>(size));
+    output.close();
+    if (!output.good()) {
+      MS_LOG(ERROR) << "Failed to extract external weight: " << weight_path;
+      return false;
+    }
+  }
+
+  const std::string weight_path = weight_dir + "/" + external_weight_entry_;
+  if (!IsRegularFile(weight_path)) {
+    MS_LOG(ERROR) << "Declared external weight is missing: " << weight_path;
+    return false;
+  }
+  const NnrtReturnCode status = api.HIAIExecutor_InitWeights(nn_executor_, weight_dir.c_str());
+  if (status != 0) {
+    MS_LOG(ERROR) << "HMS_HiAIExecutor_InitWeights failed (" << status << ") for " << weight_dir;
+    return false;
+  }
+  MS_LOG(INFO) << "Loaded external weights from " << weight_dir;
+  return true;
 }
 
 bool NnrtExecutor::ValidateModelContract() {

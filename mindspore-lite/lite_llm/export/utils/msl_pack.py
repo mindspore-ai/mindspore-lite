@@ -381,6 +381,9 @@ NPU_U32_KEYS = {
 NPU_BOOL_KEYS = {
     "embedding_quant": "npu.embedding_quant",
 }
+NPU_STRING_KEYS = {
+    "om_weight_dir": "npu.om_weight_dir",
+}
 
 
 def manifest_to_kv(manifest: Dict[str, Any]) -> Dict[str, Any]:
@@ -441,6 +444,9 @@ def manifest_to_kv(manifest: Dict[str, Any]) -> Dict[str, Any]:
     for src, dst in NPU_BOOL_KEYS.items():
         if src in npu:
             kv[dst] = bool(npu[src])
+    for src, dst in NPU_STRING_KEYS.items():
+        if src in npu:
+            kv[dst] = str(npu[src])
     generation = manifest.get("generation") or {}
     stop_ids = generation.get("stop_token_ids") or []
     if stop_ids:
@@ -578,19 +584,27 @@ def build_manifest(package_name, architecture, npu_config, generation_policy, om
     }
     if generation_policy:
         manifest["generation"] = dict(generation_policy)
+    if npu_config.get("om_weight_dir"):
+        manifest["npu"]["om_weight_dir"] = npu_config["om_weight_dir"]
     return manifest
 
 
 def build_single_file_msl(omc_path, vocab_path, embedding_path, rope_cos, rope_sin,
                           attention_mask, architecture, npu_config, generation_policy,
-                          package_name, output_path):
+                          package_name, output_path, external_weight_path=None,
+                          external_weight_dir="weights"):
     """Pack the export artifacts into a single-file ``.msl`` (v1).
 
     The .omc graph is mmap'd at runtime (access 0); tokenizer/rope/mask
     assets are read (access 1); the quantized embedding is mmap'd too.
     """
     omc_name = os.path.basename(omc_path)
-    manifest = build_manifest(package_name, architecture, npu_config, generation_policy, omc_name)
+    effective_npu_config = dict(npu_config)
+    effective_npu_config.pop("om_weight_dir", None)
+    if external_weight_path:
+        validate_resource_name(external_weight_dir)
+        effective_npu_config["om_weight_dir"] = external_weight_dir
+    manifest = build_manifest(package_name, architecture, effective_npu_config, generation_policy, omc_name)
     kv = manifest_to_kv(manifest)
 
     resources = [
@@ -601,6 +615,8 @@ def build_single_file_msl(omc_path, vocab_path, embedding_path, rope_cos, rope_s
         ("assets/rope_sin.bin", rope_sin, ACCESS_READ),
         ("assets/attention_mask.bin", attention_mask, ACCESS_READ),
     ]
+    if external_weight_path:
+        resources.append(("SubGraph_0.weight", external_weight_path, ACCESS_MMAP))
 
     logger.info("packing %d resources, %d KV entries -> %s", len(resources), len(kv), output_path)
     pack(output_path, kv, resources)

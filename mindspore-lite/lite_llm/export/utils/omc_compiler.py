@@ -90,7 +90,7 @@ def embedding_weight_elems(vocab_size, hidden_size, quant):
 
 
 def build_omg_command(onnx_path, omc_path, config, max_seq_len, chunk_sizes, embedding_quant,
-                         platform="kirin9020", omg=None):
+                      platform="kirin9020", omg=None, save_external_weights=False):
     """Build the omg command for a Qwen2.5-0.5B NNRT graph."""
     if omg is None:
         omg = resolve_omg()
@@ -124,15 +124,24 @@ def build_omg_command(onnx_path, omc_path, config, max_seq_len, chunk_sizes, emb
         f"--input_shape={input_shape}",
         f"--dynamic_dims={dynamic_dims}",
     ]
+    if save_external_weights:
+        cmd.append("--save_weights_as_external_data=true")
     return cmd
 
 
 def compile_omc(onnx_path, config, max_seq_len=1024, chunk_sizes=(128,), embedding_quant="W4A16",
-                   omc_path=None, platform="kirin9020"):
+                omc_path=None, platform="kirin9020", save_external_weights=False):
     """Compile onnx -> .omc. Returns the .omc path."""
     if omc_path is None:
         omc_path = os.path.splitext(onnx_path)[0]
-    cmd = build_omg_command(onnx_path, omc_path, config, max_seq_len, chunk_sizes, embedding_quant, platform)
+    cmd = build_omg_command(
+        onnx_path, omc_path, config, max_seq_len, chunk_sizes, embedding_quant,
+        platform, save_external_weights=save_external_weights,
+    )
     logger.info("Running omg: %s", " ".join(cmd))
     subprocess.run(cmd, check=True)
+    if save_external_weights:
+        # In external-data mode omg treats --output as a directory and writes
+        # <output>/<basename(output)>.omc plus SubGraph_0.weight.
+        return os.path.join(omc_path, os.path.basename(omc_path) + ".omc")
     return omc_path + ".omc"

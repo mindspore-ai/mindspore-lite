@@ -45,7 +45,7 @@ import onnx
 from gguf import GGUFReader
 from onnxslim import slim
 
-from utils.onnx_postprocess import duplicate_shared_initializers
+from utils.onnx_postprocess import _save_onnx, duplicate_shared_initializers
 from utils.gguf_mapping import create_new_initializer, load_file_from_tensors
 
 logger = logging.getLogger(__name__)
@@ -184,5 +184,5 @@ def gguf_loader(
     )
     model = onnx.load(onnx_input_path)
     model = load_weight(model, name2weight, layers, decoder_quantize_config)
-    onnx.save(model, onnx_output_path)
+    _save_onnx(model, onnx_output_path)
     logger.info("Saved quantized model to %s", onnx_output_path)
