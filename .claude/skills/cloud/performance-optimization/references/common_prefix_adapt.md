@@ -22,6 +22,7 @@
 │ Prefix 模型                 │  ← 跑一次：prefix tokens → KV cache
 │ (input: prefix tokens)      │     输出 [2*L, B, H_kv, P, D]
 │ (output: present_kv only)   │     存在 device 侧复用
+│ q_len == k_len → 标准 PFA   │
 └──────────────┬──────────────┘
                │ KV cache (复用)
                ▼
@@ -29,9 +30,11 @@
 │ Suffix 模型                 │  ← 每次请求都跑
 │ (input: suffix tokens +     │     输入：suffix tokens + past_kv + attention_mask
 │  past_key_values)           │     输出：最后一个 token 的 logits [B, 1, vocab]
-│ (output: last-token logits) │
+│ (output: last-token logits) │     q_len(S) != k_len(P+S) → 如果使能PFA，必须用 InnerPFA*
 └─────────────────────────────┘
 ```
+
+> **\*300I Duo 约束**：suffix 模型 `q_len != k_len`，而 300I Duo 上 CANN 内置的 `PromptFlashAttention` 融合算子当前不支持该形态（强制 `q_len == k_len`），suffix 若要保留 PFA 融合必须改用 `InnerPromptFlashAttention`（详见下文「与 InnerPFA 搭配」专节）。
 
 **关键收益**：后续请求直接复用 prefix KV cache，**只跑 suffix 模型**——suffix 模型 seq_len 远小于 prefix+suffix 之和，省掉 prefix 重算开销。
 
@@ -41,7 +44,7 @@
 
 Prefix 模型只跑 `embed → N 层 transformer → 输出 KV cache`（不接 `lm_head`），Suffix 模型接 `lm_head` 并只输出最后一个 token 的 logits（slice_last）。
 
-**核心要点**（以 Qwen3 为例，对应 [`export_qwen3_onnx.py`](../../../../../mindspore-lite/examples/base_models/qwen3_0.6b/export_qwen3_onnx.py)）：
+**核心要点**（以 Qwen3-0.6B模型 为例，对应 [`export_qwen3_onnx.py`](https://atomgit.com/mindspore/mindspore-lite/blob/master/mindspore-lite/examples/base_models/qwen3_0.6b/export_qwen3_onnx.py)：
 
 - `--enable-common-prefix` 触发 `export_prefix_suffix()`：分别导出 `qwen3_prefix.onnx` 与 `qwen3_suffix.onnx`。
 - Prefix 模型 I/O：
@@ -117,25 +120,13 @@ else:
         q, k, v, bool_mask, num_heads, num_kv_heads, scale)
 ```
 
-`InnerPromptFlashAttention` 与 `PromptFlashAttention` 在 ONNX 侧都走 `Custom` 节点，区别只在 `type_s` 与输入签名（InnerPFA 多保留 `pse_shift` 槽位）：
-
-```python
-# InnerPFA：5 个输入槽位，pse_shift 不传，atten_mask 可选
-g.op("Custom", q, k, v, atten_mask,
-     type_s="InnerPromptFlashAttention",
-     input_names_s=["query", "key", "value", "pse_shift", "atten_mask"],
-     optional_input_names_s=["atten_mask", "pse_shift"],
-     output_names_s=["attention_out"],
-     output_num_i=1, input_index_i=[0, 1, 2, 4],
-     num_heads_i=..., num_key_value_heads_i=..., scale_value_f=...,
-     input_layout_s="BNSD", inner_precise_i=0)
-```
+`InnerPromptFlashAttention` 与 `PromptFlashAttention` 的 `Custom` 节点签名差异（`type_s`、5 槽位 `input_names_s`、`input_index_i`）见下文「与 InnerPFA 搭配」专节，此处不展开。
 
 ### 第 2 步：ONNX → MindIR 转换（按档位配置 dynamicDims）
 
 Prefix 与 Suffix 各自一个 ini，**`ge.dynamicDims` 必须覆盖推理侧会用到档位**：
 
-- Prefix：固定一个或多个 prefix 长度档位（典型：`P=480, 768`）。
+- Prefix：固定一个或多个 prefix 长度档位，（典型：`P=480, 768`）。
 - Suffix：每个档 8 个值，对应 4 个动态维 `(B, S)`、`(B, P+S)`、`(B, S)`、`(2*L, B, H_kv, P, D)`，P 在所有档中固定。
   - 例（Qwen3-0.6B，P=768）：`S ∈ {32, 64, 96, 128, 256, 384, 512, 640}` → `P+S ∈ {800, 832, 864, 896, 1024, 1152, 1280, 1408}`。
 
@@ -157,7 +148,7 @@ $Convert --fmk=ONNX --optimize=ascend_oriented --saveType=MINDIR \
 
 ### 第 3 步：推理 —— prefix 跑一次、suffix 复用 KV
 
-按 inference `ge.dynamicDims` 设定 prefix / suffix 档位，输入做 padding 到最近 bucket（参考 [`infer_qwen3_0.6b_mindir.py`](../../../../../mindspore-lite/examples/base_models/qwen3_0.6b/infer_qwen3_0.6b_mindir.py) 中 `Qwen3CommonPrefixInferencer`）：
+按 inference `ge.dynamicDims` 设定 prefix / suffix 档位，输入做 padding 到最近 bucket（参考 [`infer_qwen3_0.6b_mindir.py`](https://atomgit.com/mindspore/mindspore-lite/blob/master/mindspore-lite/examples/base_models/qwen3_0.6b/infer_qwen3_0.6b_mindir.py) 中 `Qwen3CommonPrefixInferencer`）：
 
 ```python
 class Qwen3CommonPrefixInferencer:
@@ -211,15 +202,21 @@ PyTorch `forward` 中数值参考实现相同（`matmul → mask add → softmax
 
 ### InnerPFA 的运行时使能（必装）
 
-`InnerPromptFlashAttention` 属于 MSLite **自定义算子包**，**不是 CANN 内建算子**。在 ONNX→MindIR 转换时，`converter_lite` 默认不会找到 InnerPFA 的解析器，必须先安装：
+`InnerPromptFlashAttention` 是随 MindSpore Lite 发布的**自定义算子包**（Ascend C 实现，非 CANN 内建），为 converter 提供 InnerPFA 的解析与注册。在 ONNX→MindIR 转换前必须安装（MSLite ≥ 2.11）：
+
+**方式一：安装 MindSpore Lite 发布包内置的算子包（推荐）**
 
 ```bash
-# 1. 安装 MSLite 自定义算子包（仅一次，MSLite ≥ 2.11 提供 install.sh）
+# 1. 安装自定义算子包（仅一次；tar 包路径按实际安装位置替换）
 bash <mslite-tar-path>/tools/custom_kernels/install.sh
 
-# 2. 设置环境变量（每个新 shell 都需执行，或写入 ~/.bashrc）
+# 2. 设置环境变量（每个转换/推理的 shell 都需执行）
 source <cann-path>/ascend-toolkit/latest/opp/vendors/mslite_custom_ops/bin/set_env.bash
 ```
+
+**方式二：源码只编译自定义算子包**（无需全量编译 MindSpore Lite）
+
+MindSpore Lite 仓的 `tools/custom_kernels/ascend_ops` 提供独立构建脚本，只编译算子部分（复用 CANN toolkit 的算子工程模板），编译+安装流程详见 [third-party-custom-operator-integration skill](../../third-party-custom-operator-integration/SKILL.md) 的「MindSpore Lite 自定义算子包（mslite_custom_ops）」一节。
 
 安装 + 设好环境变量后，再跑 `$Convert` 即可让 suffix 模型转换时自动命中 InnerPFA 算子。如果不装，会看到转换报错或推理期 fallback 到非融合路径，性能明显下降。
 
@@ -242,22 +239,11 @@ source <cann-path>/ascend-toolkit/latest/opp/vendors/mslite_custom_ops/bin/set_e
 8. **混合精度黑名单**：prefix 与 suffix 都保留 `op_fp32.json` 黑名单（RmsNorm 敏感算子保 FP32）。
 9. **精度对齐**：与普通 prefill+decode 基线比 prefix KV 与 suffix logits 的 max_abs / cosine；top-1 token 必须一致。
 
-## 性能参考（Qwen3-0.6B，Atlas 300I Duo，P=768）
-
-| 阶段 | 耗时 |
-|------|------|
-| Prefix（P=768） | ~70–87 ms |
-| Suffix（S=64）首次 | ~18–24 ms |
-| Suffix（S=64）后续复用 prefix KV | **~18 ms**（纯 suffix，无 prefix 重算） |
-| Suffix（S=512） | ~70–72 ms |
-
-> 后续请求省掉 prefix 重算 ≈ 70–87 ms；同样请求若走完整 prefill，prefix 长度越长收益越大。
-
 ## 参考实现
 
-- 完整 ONNX 导出：[`export_qwen3_onnx.py`](../../../../../mindspore-lite/examples/base_models/qwen3_0.6b/export_qwen3_onnx.py)（`Qwen3PrefixModel` / `Qwen3SuffixModel` / `_CannInnerPromptFlashAttention`）
-- 转换 ini：[`qwen3_llm_prefill_prefix.ini`](../../../../../mindspore-lite/examples/base_models/qwen3_0.6b/configs/qwen3_llm_prefill_prefix.ini) 与 [`qwen3_llm_prefill_suffix.ini`](../../../../../mindspore-lite/examples/base_models/qwen3_0.6b/configs/qwen3_llm_prefill_suffix.ini)
-- 推理脚本：[`infer_qwen3_0.6b_mindir.py`](../../../../../mindspore-lite/examples/base_models/qwen3_0.6b/infer_qwen3_0.6b_mindir.py) 中 `Qwen3CommonPrefixInferencer`
-- 端到端 README 与场景 C 性能数据：[`README.md §4 场景 C`](../../../../../mindspore-lite/examples/base_models/qwen3_0.6b/README.md)
+- 完整 ONNX 导出：[`export_qwen3_onnx.py`](https://atomgit.com/mindspore/mindspore-lite/blob/master/mindspore-lite/examples/base_models/qwen3_0.6b/export_qwen3_onnx.py)（`Qwen3PrefixModel` / `Qwen3SuffixModel` / `_CannInnerPromptFlashAttention`）
+- 转换 ini：[`qwen3_llm_prefill_prefix.ini`](https://atomgit.com/mindspore/mindspore-lite/blob/master/mindspore-lite/examples/base_models/qwen3_0.6b/configs/qwen3_llm_prefill_prefix.ini) 与 [`qwen3_llm_prefill_suffix.ini`](https://atomgit.com/mindspore/mindspore-lite/blob/master/mindspore-lite/examples/base_models/qwen3_0.6b/configs/qwen3_llm_prefill_suffix.ini)
+- 推理脚本：[`infer_qwen3_0.6b_mindir.py`](https://atomgit.com/mindspore/mindspore-lite/blob/master/mindspore-lite/examples/base_models/qwen3_0.6b/infer_qwen3_0.6b_mindir.py) 中 `Qwen3CommonPrefixInferencer`
+- 端到端 README 与场景 C 性能数据：[`README.md §4 场景 C`](https://atomgit.com/mindspore/mindspore-lite/blob/master/mindspore-lite/examples/base_models/qwen3_0.6b/README.md)
 - 通用免拷贝：见 [zero_copy_inference.md](zero_copy_inference.md)
-- Custom 改写规范：见 [custom_operator_fusion.md](custom_operator_fusion.md)
+- Custom 算子融合规范：见 [custom_operator_fusion.md](custom_operator_fusion.md)

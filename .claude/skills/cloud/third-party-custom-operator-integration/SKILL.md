@@ -1,28 +1,92 @@
 ---
 name: third-party-custom-operator-integration
-description: 安装第三方自定义算子包并通过Custom算子对接到MindSpore Lite推理链路。用户需要安装第三方算子包、配置ASCEND_CUSTOM_OPP_PATH、确认算子定义、在导出脚本中实现Custom算子改写、完成转换与验证时调用。
+description: 安装第三方自定义算子包并通过Custom算子对接到MindSpore Lite推理链路。用户需要安装第三方算子包、配置ASCEND_CUSTOM_OPP_PATH、确认算子定义、在导出脚本中实现Custom算子改写、完成转换与验证时调用。也覆盖MindSpore Lite自研自定义算子包mslite_custom_ops（含InnerPromptFlashAttention）的独立编译与安装。
 ---
 
 # 第三方自定义算子包安装与 Custom 算子对接
 
-本技能覆盖第三方自定义算子包对接到 MindSpore Lite 推理链路的流程，聚焦于第三方算子包特有的**安装与环境配置**环节；Custom 改写、转换验证、精度对齐等通用流程直接引用现有 skill。
+本技能覆盖自定义算子包对接到 MindSpore Lite 推理链路的流程，聚焦**安装与环境配置**环节；Custom 改写、转换验证、精度对齐等通用流程直接引用现有 skill。
 
 ## 适用范围
 
-- **适用**：用户或第三方团队开发的算子包（如 DrivingSDK、其他领域专用算子包等），需要通过 Custom 节点接入 MindSpore Lite 推理链路
-- **不适用**：CANN 自带算子（CANN Toolkit/ops 已覆盖的标准算子）；MindSpore Lite 基于Ascend C实现的自定义算子
+- **适用**：
+  - 用户或第三方团队开发的算子包（如 DrivingSDK、其他领域专用算子包等），需要通过 Custom 节点接入 MindSpore Lite 推理链路
+  - MindSpore Lite 自研的 Ascend C 自定义算子包 `mslite_custom_ops`（含 `InnerPromptFlashAttention` 等）——只编译算子包、无需全量编译 MindSpore Lite
+- **不适用**：CANN 自带算子（CANN Toolkit/ops 已覆盖的标准算子）
 
-> CANN 内置算子无需额外安装和对接；MindSpore Lite 基于Ascend C实现的自定义算子不在本技能范围内。
+> CANN 内置算子无需额外安装和对接。
 
 ## 何时调用
 
 - 用户需要安装第三方算子包并对接到 MindSpore Lite
 - 用户需要将某个第三方融合算子通过 Custom 节点接入推理链路
 - 用户遇到 Custom 节点转换/推理失败，需要排查第三方算子包环境配置问题
+- 用户需要使能 MindSpore Lite 自定义算子（如 `InnerPromptFlashAttention`），但没有 MindSpore Lite 发布包或需要从源码构建算子部分
 
 ---
 
-## 通用对接流程
+## MindSpore Lite 自定义算子包（mslite_custom_ops）
+
+MindSpore Lite 自研一批 Ascend C 自定义算子打包为 `mslite_custom_ops` vendor 包，随 MindSpore Lite 发布包（≥ 2.11）一起交付。典型算子：
+
+| 算子 | 说明 |
+|------|------|
+| `InnerPromptFlashAttention` | PFA 前向融合算子（仅 FP16），相比 CANN 内置 `PromptFlashAttention` 额外支持 `S1 != S2` 时的 `attenMask` 与 GQA/MQA 组合场景。公共前缀 suffix 模型（`q_len != k_len`）在 300I Duo 上必须用它，详见 [common_prefix_adapt.md](../performance-optimization/references/common_prefix_adapt.md) |
+| `ChunkGatedDeltaRule` / `RecurrentGatedDeltaRule` | 线性注意力相关算子 |
+| `QuantMatmulW4A8` | W4A8 量化矩阵乘（Atlas 800I A2） |
+
+源码位于 MindSpore Lite 仓 `tools/custom_kernels/ascend_ops/`（[AtomGit](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/tools/custom_kernels/ascend_ops)），按 SoC 分目录：`src/ascend_300iduo/`（Atlas 300I Duo）、`src/ascend_a2/`（Atlas 800I A2）。
+
+### 方式一：安装发布包内置的算子包（推荐）
+
+```bash
+# 前置：source CANN 环境变量
+source <cann-path>/ascend-toolkit/set_env.sh
+
+# 安装自定义算子包（仅一次；tar 包路径按实际安装位置替换）
+bash <mslite-tar-path>/tools/custom_kernels/install.sh
+
+# 设置环境变量（每个转换/推理的 shell 都需执行）
+source <cann-path>/ascend-toolkit/latest/opp/vendors/mslite_custom_ops/bin/set_env.bash
+```
+
+安装后再执行 ONNX→MindIR 转换即可自动使能对应自定义算子。
+
+### 方式二：源码只编译算子包（无需全量编译 MindSpore Lite）
+
+`build_all_ops.sh` 只编译算子部分（复用 CANN toolkit 自带的算子工程模板），不依赖 MindSpore Lite 全量构建：
+
+```bash
+# 前置：source CANN 环境变量
+source <cann-path>/ascend-toolkit/set_env.sh
+
+cd <mslite源码路径>/mindspore-lite/tools/custom_kernels/ascend_ops
+
+# 编译 src/ 下所有 SoC 的算子，输出到当前目录：./<compute_unit>/mslite_custom_ops/
+bash build_all_ops.sh .
+
+# 安装：install.sh 从自身所在目录的 <compute_unit>/mslite_custom_ops/ 拷贝到
+# $ASCEND_OPP_PATH/vendors/（自动按 npu-smi 检测主机 SoC），并生成 set_env.bash
+bash install.sh
+
+# 设置环境变量（每个转换/推理的 shell 都需执行）
+source $ASCEND_OPP_PATH/vendors/mslite_custom_ops/bin/set_env.bash
+```
+
+> 编译说明：`build_all_ops.sh` 按 SoC 生成独立 vendor 目录；`CUSTOM_OPS_SKIP` 环境变量可跳过暂未编译通过的算子。若已有 MindSpore Lite 发布包，直接用方式一即可，无需源码编译。
+
+安装后验证：
+
+```bash
+ls $ASCEND_OPP_PATH/vendors/mslite_custom_ops/    # 应有 op_api、op_impl、op_proto 等目录
+echo $ASCEND_CUSTOM_OPP_PATH                     # 应包含 mslite_custom_ops 路径
+```
+
+---
+
+## 第三方算子包通用对接流程
+
+> 以下为第三方算子包的通用对接流程；mslite_custom_ops 的安装与使能见上一节，Custom 改写等 Step 3~6 流程两类完全一致。
 
 ### 总体流程
 
