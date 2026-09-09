@@ -17,6 +17,52 @@
 lite_boost parallel module
 """
 
-__all__ = ["initialize_usp"]
+__all__ = [
+    "initialize_usp",
+    "is_distributed_active",
+    "get_world_size",
+    "get_rank",
+    "all_reduce",
+    "broadcast",
+    "mm_all_reduce",
+    "concat_all_reduce_split",
+    "get_hcom_name",
+    "shard_colwise",
+    "shard_rowwise",
+    "shard_kv_overlap",
+    "get_overlap_kv_heads_per_rank",
+    "gqa_expand_kv_overlap",
+    "all_to_all_4d",
+    "get_sp_size",
+    "get_sp_rank",
+    "all_gather_seq",
+    "pad_split_seq",
+    "gqa_kv_head_index",
+]
 
-from ._initializer import initialize_usp
+from ._initializer import (
+    initialize_usp,
+    is_distributed_active,
+    get_world_size,
+    get_rank,
+    all_reduce,
+    broadcast,
+)
+from .tensor_parallel import (
+    mm_all_reduce,
+    concat_all_reduce_split,
+    get_hcom_name,
+    shard_colwise,
+    shard_rowwise,
+    get_overlap_kv_heads_per_rank,
+    shard_kv_overlap,
+    gqa_expand_kv_overlap,
+)
+from .context_parallel import (
+    all_to_all_4d,
+    get_sp_size,
+    get_sp_rank,
+    all_gather_seq,
+    pad_split_seq,
+    gqa_kv_head_index,
+)

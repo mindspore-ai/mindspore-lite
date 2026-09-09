@@ -29,14 +29,17 @@ _WAN22_MARKER_ATTR = 'low_noise_model'
 # Wan2.2 classes that do NOT have low_noise_model (e.g. WanTI2V, WanS2V).
 _WAN22_CLASSES = frozenset({'WanTI2V', 'WanS2V'})
 
+_BOOGUIMAGE_CLASSES = frozenset({'BooguImagePipeline', 'BooguImageTurboPipeline'})
+
 # Model-type match table: (key, class_prefixes, extra_classes, marker_attr).
 #   class_prefixes: class name must start with one of these prefixes.
 #   extra_classes:  class names that match without any marker attribute.
 #   marker_attr:    instance attribute that also matches; None means the
 #                   entry matches unconditionally (fallback for its prefix).
 # Entries are checked in order; the first hit wins, so specific entries
-# (e.g. wan2_2) must precede their generic fallback (e.g. wan2_1).
+# (e.g. wan2_2, booguimage) must precede their generic fallback (e.g. wan2_1).
 _MODEL_MATCH_TABLE = (
+    ('booguimage', ('BooguImage',), _BOOGUIMAGE_CLASSES, None),
     ('qwen_image_edit', ('QwenImageEdit',), frozenset(), None),
     ('wan2_2', ('Wan',), _WAN22_CLASSES, _WAN22_MARKER_ATTR),
     ('wan2_1', ('Wan',), frozenset(), None),
@@ -46,6 +49,7 @@ _BOOST_REGISTRY = {
     'wan2_1': ('.wan2_1.boost', 'boost_wan2_1'),
     'wan2_2': ('.wan2_2.boost', 'boost_wan2_2'),
     'qwen_image_edit': ('.qwen_image_edit.boost', 'boost_qwen_image_edit'),
+    'booguimage': ('.booguimage.boost', 'boost_booguimage'),
 }
 
 
@@ -59,9 +63,8 @@ def detect_model_type(model) -> str:
             return key
     raise ValueError(
         f"Unsupported model type: {cls_name}. "
-        f"Expected a Wan-series or Qwen-Image-Edit pipeline or model."
+        f"Expected a Wan-series, Qwen-Image-Edit or Boogu-series pipeline or model."
     )
-
 
 def setup_model(model, config=None):
     """Dispatch model setup based on detected model type.

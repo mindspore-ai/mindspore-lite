@@ -1,0 +1,13 @@
+Parallel:
+  dit:
+    # Parallel algorithm per transformer region, in pipeline order.
+    # Values: TP | SP
+    # TP: tensor parallel (weight sharding + all-reduce); best for small-batch
+    #     latency, requires num_attention_heads % world_size == 0
+    # SP: Ulysses sequence parallel (full weights, sequence sharding); best for
+    #     long sequences, no head-count constraint
+    double:     # double-stream blocks (SP not yet supported)
+      alg: TP
+    single:     # single-stream blocks
+      alg: TP
+    world_size: 2

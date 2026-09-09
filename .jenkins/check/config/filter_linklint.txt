@@ -2,3 +2,5 @@ https://www.mindspore.cn/sig/MindSpore%20Lite
 https://www.mindspore.cn/sig/MindSpore%20Lite
 https://gitee.com/mirrors/abseil-cpp/repository/archive/
 https://github.com/abseil/abseil-cpp/archive/refs/tags/
+https://github.com/boogu-project/Boogu-Image
+
