@@ -28,6 +28,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <memory>
 #include <string>
 #include <thread>
@@ -125,10 +126,16 @@ TEST(BuildModel, EmptyPathReturnsInvalidArgs) {
   MSLLMDestroyModel(h);
 }
 
-TEST(BuildModel, NonexistentPathReturnsModelLoad) {
+TEST(BuildModel, NonexistentPathReturnsInvalidArgs) {
+  const auto missing_path =
+    std::filesystem::temp_directory_path() /
+    ("mslite_llm_missing_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+  ASSERT_FALSE(std::filesystem::exists(missing_path));
+  const auto missing_path_string = missing_path.string();
+
   auto *h = MSLLMCreateModel();
   ASSERT_NE(h, nullptr);
-  EXPECT_EQ(MSLLMBuildModel(h, "/tmp/definitely_does_not_exist_xyz"), kMSLLM_ERROR_MODEL_LOAD);
+  EXPECT_EQ(MSLLMBuildModel(h, missing_path_string.c_str()), kMSLLM_ERROR_INVALID_ARGS);
   MSLLMDestroyModel(h);
 }
 

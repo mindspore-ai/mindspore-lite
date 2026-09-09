@@ -174,7 +174,9 @@ MSLLMStatus MSLLMDestroyModel(MSLLMModelHandle llm_model);
  *
  * @param llm_model LLM model object handle.
  * @param model_path Define the LLM model(.msl) file path.
- * @return MSLLMStatus.
+ * @return kMSLLM_SUCCESS on success; kMSLLM_ERROR_INVALID_ARGS if llm_model
+ *         or model_path is NULL, or if model_path is empty or does not exist;
+ *         kMSLLM_ERROR_MODEL_LOAD if an existing package cannot be loaded.
  */
 MSLLMStatus MSLLMBuildModel(MSLLMModelHandle llm_model, const char *model_path);
 
@@ -423,9 +425,9 @@ MSLLMStatus MSLLMAbort(MSLLMModelHandle llm_model);
 
 enum MSLLMStatus {
     kMSLLM_SUCCESS = 0,
-    /** invalid handle, null pointer, or out-of-range parameter. */
+    /** invalid handle, null pointer, invalid path, or out-of-range parameter. */
     kMSLLM_ERROR_INVALID_ARGS = 1,
-    /** model package missing, corrupt, or incompatible. */
+    /** model package corrupt or incompatible. */
     kMSLLM_ERROR_MODEL_LOAD = 2,
     /** failure during prefill or decode execution. */
     kMSLLM_ERROR_INFERENCE = 3,

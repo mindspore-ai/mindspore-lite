@@ -26,8 +26,11 @@
 
 #include "llm/llm.h"
 
+#include <sys/stat.h>
+
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <cstring>
 #include <fstream>
 #include <mutex>
@@ -106,6 +109,12 @@ MSLlmGenerateConfig DefaultGenConfig() {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+bool PathDoesNotExist(const std::string &path) {
+  struct stat path_stat {};
+  if (::stat(path.c_str(), &path_stat) == 0) return false;
+  return errno == ENOENT || errno == ENOTDIR;
+}
 
 int32_t GetMaxSeqLen(const InternalEngine *e) {
   if (e->model && e->model->IsLoaded()) {
@@ -189,8 +198,9 @@ MSLLMStatus MSLLMBuildModel(MSLLMModelHandle llm_model, const char *model_path) 
   if (e->state.load() == EngineState::kReady) return kMSLLM_ERROR_NOT_SUPPORTED;
   if (e->state.load() != EngineState::kCreated) return kMSLLM_ERROR_INVALID_ARGS;
 
-  std::string path(model_path);
+  const std::string path(model_path);
   if (path.empty()) return kMSLLM_ERROR_INVALID_ARGS;
+  if (PathDoesNotExist(path)) return kMSLLM_ERROR_INVALID_ARGS;
 
   // ── Determine backend type ──────────────────────────────────────────
   auto backend_type = MSLLM_BACKEND_NNRT;
