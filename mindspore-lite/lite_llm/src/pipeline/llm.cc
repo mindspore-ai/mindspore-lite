@@ -109,7 +109,7 @@ MSLlmGenerateConfig DefaultGenConfig() {
 
 int32_t GetMaxSeqLen(const InternalEngine *e) {
   if (e->model && e->model->IsLoaded()) {
-    return e->model->GetWeights().max_seq_len;
+    return e->model->GetContextLimit();
   }
   return 0;
 }
@@ -219,7 +219,8 @@ MSLLMStatus MSLLMBuildModel(MSLLMModelHandle llm_model, const char *model_path) 
   }
 
   MSLlmModelConfig model_cfg = {};
-  model_cfg.max_context_len = e->manifest.architecture.max_position_embeddings;
+  model_cfg.max_context_len =
+    e->manifest.npu.present ? e->manifest.npu.max_length : e->manifest.architecture.max_position_embeddings;
   model_cfg.max_batch_size = 1;
 
   MSLlmEngineConfig engine_cfg = {};

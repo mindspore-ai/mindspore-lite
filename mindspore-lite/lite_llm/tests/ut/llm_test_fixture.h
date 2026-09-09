@@ -98,8 +98,8 @@ inline std::vector<uint8_t> BuildMinimalSentencePieceVocabBin() {
   return b;
 }
 
-inline const char *MinimalManifestJson() {
-  return R"({
+inline std::string MinimalManifestJson(int32_t npu_max_length = 64) {
+  return std::string(R"({
   "model_name": "test-llm",
   "version": "1.0.0",
   "dtype": "float16",
@@ -132,7 +132,8 @@ inline const char *MinimalManifestJson() {
     "attention_mask": "attention_mask.bin"
   },
   "npu": {
-    "max_length": 64,
+    "max_length": )") +
+         std::to_string(npu_max_length) + R"(,
     "chunk_size": 16
   }
 })";
@@ -180,7 +181,7 @@ inline bool TouchFile(const std::string &path) {
 
 /// Write a minimal, valid model package (manifest + vocab + dummy assets) into
 /// a fresh tempdir and return it. Returns a fixture with empty `dir` on failure.
-inline ModelFixture WriteMinimalModelDir() {
+inline ModelFixture WriteMinimalModelDir(int32_t npu_max_length = 64) {
   char tmpl[] = "/tmp/msllm_fixture_XXXXXX";
   char *made = ::mkdtemp(tmpl);
   if (made == nullptr) return {};
@@ -191,7 +192,8 @@ inline ModelFixture WriteMinimalModelDir() {
   ::mkdir((fx.dir + "/npu").c_str(), 0755);
 
   auto vocab = BuildMinimalVocabBin();
-  bool ok = WriteFile(fx.dir + "/manifest.json", MinimalManifestJson(), std::string(MinimalManifestJson()).size()) &&
+  const auto manifest = MinimalManifestJson(npu_max_length);
+  bool ok = WriteFile(fx.dir + "/manifest.json", manifest.data(), manifest.size()) &&
             WriteFile(fx.dir + "/vocab.bin", vocab.data(), vocab.size()) && TouchFile(fx.dir + "/embedding.bin") &&
             TouchFile(fx.dir + "/rope_sin.bin") && TouchFile(fx.dir + "/rope_cos.bin") &&
             TouchFile(fx.dir + "/attention_mask.bin") && TouchFile(fx.dir + "/npu/prefill.omc") &&
