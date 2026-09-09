@@ -12,6 +12,7 @@
 
 ## 目录
 
+- [PR 代码审查清单](#pr-代码审查清单)
 - [CI 工具配置](#ci-工具配置)
 - [设计原则](#设计原则)
 - [错误处理决策](#错误处理决策)
@@ -64,7 +65,7 @@
 | 指标 | 阈值 | 说明 |
 |------|------|------|
 | CCN（圈复杂度） | <= 19 | 代码中独立执行路径的数量 |
-| NLOC（非注释代码行数） | <= 50 | 不含注释和空行的代码行数 |
+| NLOC（非注释代码行数） | <= 50 | 不含注释和空行的代码行数。**CI 实际门禁为 50**；本地 pre-push 的 lizard `-L 100` 比真实门禁松，本地过≠CI 过，超 50 须重构或加白名单 |
 
 收到 Lizard 告警时，**必须**在合入前重构代码。仅在极少数情况下允许加入白名单，详见[附录：复杂度白名单管理](#附录复杂度白名单管理)。
 
@@ -400,7 +401,7 @@ class Base {
 
 ## 错误处理决策
 
-什么时候抛异常、什么时候返回错误码？**禁用 C++ 异常机制，错误用返回码传递**。lite 全树实测：`MS_CHECK_*` 返回码 **7527 处** vs `MS_EXCEPTION_*` 抛异常 **1444 处**（~5:1），返回码已是主流。
+什么时候抛异常、什么时候返回错误码？**禁用 C++ 异常机制，错误用返回码传递**。lite 全树实测：`MS_CHECK_*` 返回码 **8910 处** vs `MS_EXCEPTION_*` 抛异常 **1012 处**（~9:1），返回码已是主流。
 
 ### 决策表
 
@@ -417,7 +418,7 @@ class Base {
 - **禁异常**：`MS_EXCEPTION_*` 抛异常，是偏离项目规范的做法。新代码默认用 `MS_CHECK_*` 返回码；仅当返回码无法传递（构造函数内、运算符重载）或属不可恢复致命错误时用 `MS_EXCEPTION_*`，并在 PR 说明中标注为偏离。
 - `MS_EXCEPTION_*` 异常展开有开销，端侧 C API（libmindspore-lite）性能敏感路径慎用；嵌入式场景可能禁用异常。
 - `MS_EXCEPTION_IF_NULL` 不在 lite 自家头里，使用前确认已 `#include "utils/log_adapter.h"`。
-- `assert` / `MS_ASSERT` 在 release 下被移除（`src/common/log.h:157-159`，非 Debug 展开为 `((void)0)`），不能用于外部输入校验或 error path 返回——见 [安全编码·ASSERT](#assert)。
+- `assert` / `MS_ASSERT` 在 release 下被移除（`mindspore-lite/src/common/log.h`，非 Debug 展开为 `((void)0)`），不能用于外部输入校验或 error path 返回——见 [安全编码·ASSERT](#assert)。
 
 ### 示例
 
@@ -434,7 +435,9 @@ MS_EXCEPTION(ValueError) << "shape mismatch";
 
 ## 安全编码
 
-本章是 [SKILL.md 第三步](SKILL.md#第三步安全编码外部数据--攻击者思维) 的深度配套。### 攻击者思维与外部数据
+本章是 [SKILL.md 第三步](SKILL.md#第三步安全编码涉及外部数据时) 的深度配套。
+
+### 攻击者思维与外部数据
 
 核心假设：**程序处理的所有外部数据都是不可信的攻击数据**。以下来源一律视为外部数据，使用前必须严格校验：
 
@@ -447,8 +450,6 @@ MS_EXCEPTION(ValueError) << "shape mismatch";
 
 ### 安全规则总览
 
-| 主题 | 子项 | 处理章节 |
-|------|------|---------|
 | 主题 | 子项 | 处理章节 |
 |------|------|---------|
 | 变量 | 初值 / 释放后置新值 / 成员初值 | [指针与内存安全](#指针与内存安全) / [C++ 风格](#c-风格与现代特性) |
@@ -468,10 +469,7 @@ MS_EXCEPTION(ValueError) << "shape mismatch";
 | 文件 | 显式权限 / 路径规范化 / 临时文件 / TOCTOU | [文件操作](#文件操作) |
 | 敏感信息 | 禁 rand 安全随机 / 清零防优化 / 禁 std::string | [敏感信息](#敏感信息) |
 
-> 原三处历史冲突（异常 / `_s` / `std::string`）全部已收敛到项目规范一侧。lite 现状数据：`MS_CHECK_*` 7527 vs `MS_EXCEPTION_*` 1444（返回码主流）；`_s` 函数现有 337 处（securec.h 可用）。
-
-
-> 原三处历史冲突（异常 / `_s` / std::string）全部已收敛到项目规范一侧。lite 现状数据：`MS_CHECK_*` 7527 vs `MS_EXCEPTION_*` 1444（返回码主流）；`_s` 函数现有 337 处（securec.h 可用）。
+> 原三处历史冲突（异常 / `_s` / `std::string`）全部已收敛到项目规范一侧。`_s` 安全函数（securec.h）在 lite 已可用且广泛使用，数量随代码演进，不在此写死。
 
 ### 注入类（命令/模块/SQL）
 
@@ -523,7 +521,7 @@ Linux/Unix 建议用 `execv` 系列，且 `path`/`file` 禁用命令解析器（
 
 #### 路径规范化（已覆盖）
 
-外部路径须 `realpath`（Linux）/ `PathCanonicalize`（Windows）规范化后再校验合法性，防 `../../../etc/passwd` 穿越访问。精简规则见 [SKILL.md 第三步](SKILL.md#第三步安全编码外部数据--攻击者思维)；C++ 用 `FileUtils::GetRealPath`，Python 用 `os.path.realpath`，Java 用 `File.getCanonicalFile`。例外：命令行手工输入路径的控制台程序可例外。
+外部路径须 `realpath`（Linux）/ `PathCanonicalize`（Windows）规范化后再校验合法性，防 `../../../etc/passwd` 穿越访问。精简规则见 [SKILL.md 第三步](SKILL.md#第三步安全编码涉及外部数据时)；C++ 用 `FileUtils::GetRealPath`，Python 用 `os.path.realpath`，Java 用 `File.getCanonicalFile`。例外：命令行手工输入路径的控制台程序可例外。
 
 #### 临时文件不进共享目录
 
@@ -820,7 +818,7 @@ C 标准库 `rand()` 生成伪随机数，可预测，禁用于安全用途（�
 
 ### ASSERT
 
-断言是除错机制，验证代码是否符合编码人员预期，只在调试版有效，发布版必须移除（`MS_ASSERT` 非 Debug 展开为 `((void)0)`，见 `src/common/log.h:157-159`）。
+断言是除错机制，验证代码是否符合编码人员预期，只在调试版有效，发布版必须移除（`MS_ASSERT` 非 Debug 展开为 `((void)0)`，见 `mindspore-lite/src/common/log.h`）。
 
 #### 断言须用宏定义
 
@@ -910,7 +908,7 @@ pylint `max-args=5`（Python）强制；C++/Shell/CMake 推荐同阈值。超 5 
 ✓ void ParseKernel(const Node &n, PoolAttrs *attrs);  // 2 个参数
 ```
 
-详见 [SKILL.md 代码结构章](SKILL.md#代码结构让-lizard-不报警) 三类硬指标表。
+详见 [SKILL.md 代码结构章](SKILL.md#代码结构与三类硬指标) 三类硬指标表。
 
 ### 循环退出条件
 
@@ -933,7 +931,7 @@ pylint `max-args=5`（Python）强制；C++/Shell/CMake 推荐同阈值。超 5 
 
 严禁 C++ 异常机制：异常打乱执行流程、资源可能不清理、降低复用性、依赖编译器/OS/处理器致性能降低、二进制层面增加攻击面。所有错误应通过错误值在函数间传递并判断。例外：接管 C++ 语言本身抛出的异常（如 `new` 失败、STL）、第三方库抛出的异常时，可用 `try`/`catch`。
 
-lite 收敛方向见 [错误处理决策](#错误处理决策)：默认 `MS_CHECK_*` 返回码（全树 7527 处），`MS_EXCEPTION_*` 抛异常（1444 处）仅作返回码无法传递时的偏离，新代码避免。
+lite 收敛方向见 [错误处理决策](#错误处理决策)：默认 `MS_CHECK_*` 返回码，`MS_EXCEPTION_*` 抛异常仅作返回码无法传递时的偏离，新代码避免。
 
 ## 语言规范与 PR 案例
 

@@ -33,3 +33,7 @@ readonly CLANG_FORMAT_VERSION="18.1.8"
 readonly CLANG_FORMAT_VERSION_ARM64_MAC="18.1.4"
 readonly SHELLCHECK_VERSION="0.7.1"
 readonly CHEF_UTILS_VERSION="16.6.14"
+# CI gate (build.mindspore.cn Check_Markdownlint) runs mdl 0.11.0.
+readonly MDL_VERSION="0.11.0"
+# Minimum cppcheck version; CI gate enables style checks.
+readonly CPPCHECK_VERSION="2.7"

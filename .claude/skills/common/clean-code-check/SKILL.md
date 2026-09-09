@@ -1,6 +1,6 @@
 ---
 name: clean-code-check
-description: 改完或 review MindSpore Lite 的 C++/Python/Shell/CMake 代码时用。先跑 pre-push（8 个 lint 全自动），再按 30 秒快速清单逐项过——三类硬指标（CCN≤19 / NLOC≤50 / 入参≤5）+ 指针/边界/逻辑/异常/接口契约等 lint 抓不到的语义问题 + 涉及外部数据时的安全编码。深度参考 clean-code-guidelines.md。
+description: 改完或 review MindSpore Lite 的 C++/Python/Shell/CMake 代码时用。先跑 pre-push（10 个 lint 全自动），再按 30 秒快速清单逐项过——三类硬指标（CCN≤19 / NLOC≤50 / 入参≤5，超阈值须重构或加 .jenkins/check/config/whitelizard.txt 白名单）+ 指针/边界/逻辑/异常/接口契约等 lint 抓不到的语义问题 + 涉及外部数据时的安全编码。深度参考 clean-code-guidelines.md。
 ---
 
 # MindSpore Lite Clean Code Skill
@@ -9,7 +9,7 @@ description: 改完或 review MindSpore Lite 的 C++/Python/Shell/CMake 代码�
 
 按顺序过，前 5 项最常被遗漏：
 
-1. **跑 pre-push**——`bash scripts/pre_commit/githooks/pre-push`（8 个 lint 全自动）
+1. **跑 pre-push**——`bash scripts/pre_commit/githooks/pre-push`（10 个 lint 全自动）
 2. **三类硬指标**——CCN ≤ 19 / NLOC ≤ 50 / 入参 ≤ 5，超阈值必须重构或加白名单
 3. **指针校验**——`cast<>` 后必查 null；`delete` 后置 `nullptr`；优先 RAII
 4. **边界 / off-by-one**——`>` 改 `>=`；`==0` 改 `<=0`（防御负数）；广播用 shape 比较非元素数
@@ -25,10 +25,16 @@ description: 改完或 review MindSpore Lite 的 C++/Python/Shell/CMake 代码�
 ## 第一步：pre-push 抓机械问题
 
 ```bash
-bash scripts/pre_commit/githooks/pre-push     # 8 个 lint：clang-format/cmakelint/codespell/cpplint/lizard/pylint/shellcheck/tab/codespell
+bash scripts/pre_commit/githooks/pre-push     # 10 个 lint：clang-format/cmakelint/codespell/cpplint/lizard/pylint/shellcheck/tab/markdownlint/cppcheck
 ```
 
 工具缺失按提示装：`cd scripts/pre_commit && bash install_tools.sh`。机械问题（格式、命名、拼写、复杂度阈值）由 lint 自动抓，**本 skill 不重复**。
+
+> **pre-push 与 review 的分工**（鸡生蛋问题）：
+> - pre-push 跑 `git diff HEAD~ HEAD`——**只看已 commit 的内容**，看不到 unstaged/staged 改动
+> - `/lite-review` 跑 `git diff`——**看 unstaged + staged**，但抓不到 commit message 问题
+> - 实际流程：改代码 → `/lite-review`（review 未 commit 改动）→ 修问题 → `git add` → `git commit` → 跑 pre-push（lint 已 commit 内容）→ 修问题 → amend 或新 commit → `git push`（触发 pre-push hook）
+> - **分支首 commit** 时 `HEAD~` 不存在，pre-push 的 `git diff HEAD~ HEAD` 会报 `ambiguous argument`——先在 master 上跑或新建一个空 commit 再跑
 
 ## 第二步：lint 抓不到的语义问题
 
@@ -85,7 +91,7 @@ bash scripts/pre_commit/githooks/pre-push     # 8 个 lint：clang-format/cmakel
 
 ### 错误处理决策（返回码 vs 异常）
 
-项目规范**禁用 C++ 异常机制，错误用返回码传递**。lite 全树实测：`MS_CHECK_*` 返回码 **7527 处** vs `MS_EXCEPTION_*` 抛异常 **1444 处**（~5:1）——**默认返回码**。
+项目规范**禁用 C++ 异常机制，错误用返回码传递**。lite 全树实测：`MS_CHECK_*` 返回码 **8910 处** vs `MS_EXCEPTION_*` 抛异常 **1012 处**（~9:1）——**默认返回码**。
 
 | 场景 | 选什么 | 头文件 |
 |------|--------|--------|
@@ -93,12 +99,12 @@ bash scripts/pre_commit/githooks/pre-push     # 8 个 lint：clang-format/cmakel
 | 可恢复 + 打日志 | `MS_CHECK_TRUE_MSG` / `MS_CHECK_FALSE_MSG` | 同上 |
 | 可恢复 + 静默返回 | `MS_CHECK_TRUE_RET` / `MS_CHECK_FALSE_RET` | 同上 |
 | 数值边界 | `MS_CHECK_GT(a, b, errcode)` / `MS_CHECK_LT` / `MS_CHECK_LE` | 同上 |
-| 仅当返回码无法传递（构造函数、运算符、不可恢复） | `MS_EXCEPTION_IF_NULL(ptr)` / `MS_EXCEPTION(...)` | `utils/log_adapter.h`（mindspore core） |
+| 仅当返回码无法传递（构造函数、运算符、不可恢复） | `MS_EXCEPTION_IF_NULL(ptr)` / `MS_EXCEPTION(...)` | `src/common/log_adapter.h`（lite 自家头，转引 core 的 `utils/log_adapter.h`） |
 
 注意：
 
 - `MS_EXCEPTION_*` **抛异常偏离项目规范**。新代码默认 `MS_CHECK_*`；仅返回码无法传递（构造/运算符）或不可恢复致命错误时用 `MS_EXCEPTION_*`，PR 须标注偏离。端侧 C API 性能敏感路径慎用。
-- `MS_EXCEPTION_IF_NULL` 在 `utils/log_adapter.h`（不在 lite 自家头）；`assert`/`MS_ASSERT` release 下被移除，不能用于外部输入校验或 error path 返回。
+- `MS_EXCEPTION_IF_NULL` 头文件入口在 lite 自家的 `mindspore-lite/src/common/log_adapter.h`（内部转引 mindspore core 的 `utils/log_adapter.h`）；`assert`/`MS_ASSERT` release 下被移除，不能用于外部输入校验或 error path 返回。
 
 ### C++ 接口约定（编译器只强制一部分，但属契约）
 
@@ -113,7 +119,8 @@ bash scripts/pre_commit/githooks/pre-push     # 8 个 lint：clang-format/cmakel
 | 指标 | 阈值 | 工具 | 语言 |
 |------|------|------|------|
 | 圈复杂度 CCN | ≤ 19 | lizard | C++/Python/Java |
-| 函数长度 NLOC | ≤ 50 | lizard + pylint `max-statements=50` | 全部 |
+| 函数长度 NLOC | ≤ 50 | **CI 实际门禁**（本地 pre-push `THRESHOLD_LIZARD_LENGTH=100` 比真实门禁松，过了不代表 CI 过，review 时按 50 卡） | C++/Python/Java |
+| 函数语句数 | ≤ 50 | pylint `max-statements=50`（语句数≠NLOC，另一维度） | Python |
 | 函数入参个数 | ≤ 5 | pylint `max-args=5`（Python 强制）；C++/Shell/CMake 推荐同阈值 | 全部 |
 
 入参超 5 个**用参数对象**（不是把第 6 个参数硬塞）。CCN/NLOC 超阈值的处理见 [guidelines 白名单管理](clean-code-guidelines.md#附录复杂度白名单管理)。常用降复杂度模式：
