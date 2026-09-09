@@ -84,25 +84,35 @@ def chunk_gated_delta_rule(
     Supported only on A2; 300I Duo is not supported.
 
     Args:
-        query (Tensor): Query tensor with shape :math:`(B, N_k, T, D_k)`.
+        query (Tensor): Query tensor with shape :math:`(B, N_k, S, D_k)`.
             Cast to the low dtype before computation.
-        key (Tensor): Key tensor with shape :math:`(B, N_k, T, D_k)`.
+        key (Tensor): Key tensor with shape :math:`(B, N_k, S, D_k)`.
             Cast to the low dtype before computation.
-        value (Tensor): Value tensor with shape :math:`(B, N_v, T, D_v)`.
-            Cast to the low dtype before computation.
+        value (Tensor): Value tensor with shape :math:`(B, N_v, S, D_v)`.
+            ``N_v`` must be an integer multiple of ``N_k`` (GQA: each key
+            head maps to ``N_v / N_k`` value heads).  Cast to the low
+            dtype before computation.
         beta (Tensor): Delta update step size
-            with shape :math:`(B, N_v, T)`, in the range (0, 1).  Cast
+            with shape :math:`(B, N_v, S)`, in the range [0, 1].  Cast
             to the low dtype before computation.
         initial_state (Tensor): Incoming recurrent state
             with shape :math:`(B, N_v, D_k, D_v)` (transposed to the op's
             value-first ``[B, N_v, D_v, D_k]`` layout).
         actual_seq_lengths (Tensor): Per-batch token counts
-            with shape :math:`(B)`, dtype int32; the total sequence
-            length is ``T = sum(actual_seq_lengths)``.  A uniform T per
-            batch is assumed by the BNSD-to-TND flatten.
+            with shape :math:`(B)`, dtype int32.  Each element must be
+            within ``[0, S]`` — the BNSD ``S`` dim is the padded
+            per-batch length and only the first ``actual_seq_lengths[b]``
+            tokens of each batch are valid.  Non-uniform lengths are
+            supported: the binding packs the valid tokens into TND
+            tensors with ``T = sum(actual_seq_lengths)``, and output
+            positions beyond each batch's length are zero-filled.
         g (Tensor, optional): Global decay gate
-            with shape :math:`(B, N_v, T)`, dtype float32, must be
-            negative.  ``None`` disables the decay gate
+            with shape :math:`(B, N_v, S)`, dtype float32, must be
+            negative.  This range is not validated: validating it would
+            introduce extra reduction ops (min/max over the tensor) and
+            add noticeable overhead in the inference path.  Out-of-range
+            values do not raise but yield meaningless results.
+            ``None`` disables the decay gate
             (hasGamma=0 path). Default: ``None``.
         scale_value (float, optional): Attention scale applied to
             `query`. Default: ``1.0``.
@@ -111,8 +121,10 @@ def chunk_gated_delta_rule(
         tuple[Tensor, Tensor]
 
         - **out** (Tensor) — Attention output
-          with shape :math:`(B, N_v, T, D_v)`, same dtype as the
-          low-dtype cast of the inputs (bfloat16 by default).
+          with shape :math:`(B, N_v, S, D_v)`, same dtype as the
+          low-dtype cast of the inputs (bfloat16 by default).  Valid
+          for the first ``actual_seq_lengths[b]`` positions of each
+          batch; padded positions are zero-filled.
         - **final_state** (Tensor) — Updated recurrent state
           with shape :math:`(B, N_v, D_k, D_v)`, same dtype as `out`.
 
@@ -125,6 +137,14 @@ def chunk_gated_delta_rule(
           supported (there the registered vendor exposes a different
           aclnn signature, the ``ascend_300iduo`` op).
         - All input tensors must reside on the same NPU device.
+        - ``N_v`` (number of value heads) must be an integer multiple of
+          ``N_k`` (number of key/query heads); each key head serves
+          ``N_v / N_k`` value heads.
+        - The BNSD ``S`` dim is the padded per-batch sequence length;
+          only the first ``actual_seq_lengths[b]`` tokens of each batch
+          are valid.  Non-uniform ``actual_seq_lengths`` are
+          packed/unpacked automatically, and padded output positions
+          are zero-filled.
         - The CANN op accepts both bfloat16 and float16 for
           q/k/v/beta/state via DataTypeList; the input dtype is followed
           and fp32/other inputs default to bfloat16.  The optional gate
@@ -137,13 +157,13 @@ def chunk_gated_delta_rule(
         >>> import torch
         >>> import lite_boost.ops as lite_ops
         >>> device = torch.device("npu:0")
-        >>> B, N, T, Dk, Dv = 1, 8, 16, 32, 64
-        >>> query = torch.randn(B, N, T, Dk, device=device, dtype=torch.bfloat16)
-        >>> key = torch.randn(B, N, T, Dk, device=device, dtype=torch.bfloat16)
-        >>> value = torch.randn(B, N, T, Dv, device=device, dtype=torch.bfloat16)
-        >>> beta = torch.rand(B, N, T, device=device, dtype=torch.bfloat16) * 0.9 + 0.05
+        >>> B, N, S, Dk, Dv = 1, 8, 16, 32, 64
+        >>> query = torch.randn(B, N, S, Dk, device=device, dtype=torch.bfloat16)
+        >>> key = torch.randn(B, N, S, Dk, device=device, dtype=torch.bfloat16)
+        >>> value = torch.randn(B, N, S, Dv, device=device, dtype=torch.bfloat16)
+        >>> beta = torch.rand(B, N, S, device=device, dtype=torch.bfloat16) * 0.9 + 0.05
         >>> initial_state = torch.zeros(B, N, Dk, Dv, device=device, dtype=torch.bfloat16)
-        >>> actual_seq_lengths = torch.tensor([T], dtype=torch.int32, device=device)
+        >>> actual_seq_lengths = torch.tensor([S], dtype=torch.int32, device=device)
         >>> out, final_state = lite_ops.chunk_gated_delta_rule(
         ...     query, key, value, beta, initial_state, actual_seq_lengths)
         >>> print(out.shape)
@@ -165,11 +185,11 @@ def chunk_gated_delta_rule(
             "all input tensors must be on the same device as query.")
     if query.dim() != 4 or key.dim() != 4 or value.dim() != 4:
         raise RuntimeError(
-            "query, key and value must be 4-D [B, N, T, D], but got "
+            "query, key and value must be 4-D [B, N, S, D], but got "
             f"{[tuple(t.shape) for t in (query, key, value)]}.")
     if beta.dim() != 3:
         raise RuntimeError(
-            f"beta must be 3-D [B, Nv, T], but got {tuple(beta.shape)}.")
+            f"beta must be 3-D [B, Nv, S], but got {tuple(beta.shape)}.")
     if initial_state.dim() != 4:
         raise RuntimeError(
             f"initial_state must be 4-D [B, Nv, Dk, Dv], but got "
@@ -182,21 +202,55 @@ def chunk_gated_delta_rule(
         raise RuntimeError(
             "query and key must have the same number of heads, but got "
             f"{query.size(1)} and {key.size(1)}.")
+    if value.size(1) % query.size(1) != 0:
+        raise RuntimeError(
+            "Nv (number of value heads) must be an integer multiple of "
+            f"Nk (number of key/query heads), but got Nv={value.size(1)} "
+            f"and Nk={query.size(1)}.")
     batch_size = query.shape[0]
     num_heads_q = query.shape[1]
     seq_len = query.shape[2]
-    dk = query.shape[3]
     num_heads_v = value.shape[1]
     dv = value.shape[3]
 
-    # ---- BNSD -> TND (Time-first). Assumes equal seq_len per batch. ----
-    query_tnd = query.transpose(1, 2).reshape(-1, num_heads_q, dk).contiguous()
-    key_tnd = key.transpose(1, 2).reshape(-1, num_heads_q, dk).contiguous()
-    value_tnd = value.transpose(1, 2).reshape(-1, num_heads_v, dv).contiguous()
-    beta_tnd = beta.transpose(1, 2).reshape(-1, num_heads_v).contiguous()  # [T, Nv]
-
-    # ---- actual_seq_lengths [B] (int32) is passed directly: T = sum(lengths) ----
+    # ---- actual_seq_lengths: the CANN op consumes exactly T_total = sum(lengths)
+    #      tokens from the packed TND tensors; per batch only the first len tokens
+    #      of the padded BNSD slice are read. ----
+    if actual_seq_lengths.numel() != batch_size:
+        raise RuntimeError(
+            f"actual_seq_lengths must have {batch_size} elements, but got "
+            f"{actual_seq_lengths.numel()}.")
     seq_lengths_int = actual_seq_lengths.int().contiguous()
+    lengths_cpu = seq_lengths_int.cpu()
+    if int(lengths_cpu.min()) < 0 or int(lengths_cpu.max()) > seq_len:
+        raise RuntimeError(
+            "each element of actual_seq_lengths must be within [0, S], but got "
+            f"{lengths_cpu.tolist()} with S={seq_len}.")
+    lengths = lengths_cpu.tolist()
+    total_len = sum(lengths)
+
+    # token indices (into the flattened B*S layout) of the valid tokens
+    valid_idx = None
+    if total_len != batch_size * seq_len:
+        valid_idx = torch.cat([
+            torch.arange(b * seq_len, b * seq_len + l, device=query.device)
+            for b, l in enumerate(lengths)
+        ])
+
+    def _pack(t, heads):
+        if t.dim() == 4:  # [B, N, S, D] -> [B*S, N, D]
+            flat = t.transpose(1, 2).reshape(-1, heads, t.shape[3])
+        else:  # 3-D [B, N, S] -> [B*S, N]
+            flat = t.transpose(1, 2).reshape(-1, heads)
+        if valid_idx is not None:
+            flat = flat.index_select(0, valid_idx)
+        return flat.contiguous()
+
+    # ---- BNSD -> TND (Time-first, varlen-aware: pack per-batch valid tokens). ----
+    query_tnd = _pack(query, num_heads_q)
+    key_tnd = _pack(key, num_heads_q)
+    value_tnd = _pack(value, num_heads_v)
+    beta_tnd = _pack(beta, num_heads_v)  # [T_total, Nv]
 
     # ---- state layout: user [B,Nv,Dk,Dv] -> op [B,Nv,Dv,Dk] ----
     state_cann = initial_state.transpose(-1, -2).contiguous()
@@ -215,14 +269,29 @@ def chunk_gated_delta_rule(
     # ---- g is OPTIONAL and stays float32 (op dtype for g is FLOAT); None -> omit ----
     g_tnd = None
     if g is not None:
-        g_tnd = _ensure_nd_format(g.transpose(1, 2).reshape(-1, num_heads_v).contiguous()).to(torch.float32)
+        g_tnd = _ensure_nd_format(_pack(g, num_heads_v)).to(torch.float32)
 
     out_tnd, final_state_cann = torch.ops.lite_boost.chunk_gated_delta_rule(
         query_tnd, key_tnd, value_tnd, beta_tnd, state_cann,
         seq_lengths_int, g_tnd, float(scale_value),
     )
 
-    # ---- TND -> BNSD reverse ----
-    out_bnsd = out_tnd.reshape(batch_size, seq_len, num_heads_v, dv).transpose(1, 2).contiguous()
+    # The CANN kernel never writes final_state for a zero-length batch; carry the
+    # incoming state through so an empty batch stays frozen instead of leaking
+    # uninitialized memory, mirroring the zero-fill already applied to `out`.
+    for b, length in enumerate(lengths):
+        if length == 0:
+            final_state_cann[b].copy_(state_cann[b])
+
+    # ---- TND -> BNSD reverse (varlen-aware: scatter valid tokens back and
+    #      zero-fill the padded positions). ----
+    out_bnsd = torch.zeros(
+        batch_size * seq_len, num_heads_v, dv,
+        dtype=out_tnd.dtype, device=out_tnd.device)
+    if valid_idx is not None:
+        out_bnsd.index_copy_(0, valid_idx, out_tnd)
+    else:
+        out_bnsd.copy_(out_tnd)
+    out_bnsd = out_bnsd.reshape(batch_size, seq_len, num_heads_v, dv).transpose(1, 2).contiguous()
     final_state = final_state_cann.transpose(-1, -2).contiguous()  # CANN [B,Nv,Dv,Dk] -> [B,Nv,Dk,Dv]
     return out_bnsd, final_state

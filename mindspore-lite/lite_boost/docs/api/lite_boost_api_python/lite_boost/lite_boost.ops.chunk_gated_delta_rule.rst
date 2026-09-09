@@ -22,19 +22,19 @@ lite_boost.ops.chunk_gated_delta_rule
     本接口仅支持A2，不支持300I Duo。
 
     参数：
-        - **query** (Tensor) - 查询张量，shape :math:`(B, N_k, T, D_k)` 。计算前转换为低精度dtype。
-        - **key** (Tensor) - 键张量，shape :math:`(B, N_k, T, D_k)` 。计算前转换为低精度dtype。
-        - **value** (Tensor) - 值张量，shape :math:`(B, N_v, T, D_v)` 。计算前转换为低精度dtype。
-        - **beta** (Tensor) - Delta更新步长，shape :math:`(B, N_v, T)` ，取值范围(0, 1)。计算前转换为低精度dtype。
+        - **query** (Tensor) - 查询张量，shape :math:`(B, N_k, S, D_k)` 。计算前转换为低精度dtype。
+        - **key** (Tensor) - 键张量，shape :math:`(B, N_k, S, D_k)` 。计算前转换为低精度dtype。
+        - **value** (Tensor) - 值张量，shape :math:`(B, N_v, S, D_v)` 。 ``N_v`` 须为 ``N_k`` 的整数倍（GQA模式下每个key头对应 ``N_v / N_k`` 个value头）。计算前转换为低精度dtype。
+        - **beta** (Tensor) - Delta更新步长，shape :math:`(B, N_v, S)` ，取值范围[0, 1]。计算前转换为低精度dtype。
         - **initial_state** (Tensor) - 输入递推状态，shape :math:`(B, N_v, D_k, D_v)` ，内部转换为算子的value在前布局 ``[B, N_v, D_v, D_k]`` 。
-        - **actual_seq_lengths** (Tensor) - 每batch的有效token数，shape :math:`(B)` ，dtype=int32。总序列长度 T = sum(actual_seq_lengths)。BNSD到TND的展平假定每个batch的序列长度一致。
-        - **g** (Tensor, 可选) - 全局衰减门，shape :math:`(B, N_v, T)` ，dtype=float32， **必须为负值** 。 ``None`` 表示禁用衰减门（hasGamma=0路径）。默认值： ``None`` 。
+        - **actual_seq_lengths** (Tensor) - 每batch的有效token数，shape :math:`(B)` ，dtype=int32。每个元素须在 ``[0, S]`` 范围内，BNSD布局的 ``S`` 维为每个batch padding后的长度，仅前 ``actual_seq_lengths[b]`` 个token有效。支持非等长，有效token会打包成 ``T = sum(actual_seq_lengths)`` 的TND张量，输出中超出每个batch长度的位置补零。
+        - **g** (Tensor, 可选) - 全局衰减门，shape :math:`(B, N_v, S)` ，dtype=float32，必须为负值。该取值范围不做校验，因为校验需引入额外的归约算子（对张量求min/max），在推理路径上带来明显开销。超出范围的输入不会报错，但结果无意义。 ``None`` 表示禁用衰减门（hasGamma=0路径）。默认值： ``None`` 。
         - **scale_value** (float, 可选) - 施加在 `query` 上的注意力缩放因子。默认值： ``1.0`` 。
 
     返回：
         tuple[Tensor, Tensor]
 
-        - **out** (Tensor) - 注意力输出，shape :math:`(B, N_v, T, D_v)` ，dtype与输入低精度转换结果一致（默认bfloat16）。
+        - **out** (Tensor) - 注意力输出，shape :math:`(B, N_v, S, D_v)` ，dtype与输入低精度转换结果一致（默认bfloat16）。每个batch仅前 ``actual_seq_lengths[b]`` 个位置有效，padding位置补零。
         - **final_state** (Tensor) - 更新后的递推状态，shape :math:`(B, N_v, D_k, D_v)` ，dtype与 `out` 一致。
 
     异常：
@@ -44,4 +44,6 @@ lite_boost.ops.chunk_gated_delta_rule
 
         - 本接口仅支持A2。300I Duo上注册的是另一签名的 ``ascend_300iduo`` 算子，本绑定不兼容，请勿在300I Duo上使用。
         - 所有输入张量必须在同一NPU设备上。
+        - ``N_v``（值头数）须为 ``N_k``（key/query头数）的整数倍，每个key头对应 ``N_v / N_k`` 个value头。
+        - BNSD布局的 ``S`` 维为每个batch padding后的序列长度，仅前 ``actual_seq_lengths[b]`` 个token有效；非等长 ``actual_seq_lengths`` 会自动打包/解包，输出中padding位置补零。
         - CANN算子通过DataTypeList同时接受bf16和fp16（q/k/v/beta/state），跟随输入dtype，fp32/其他输入默认bf16；可选门 ``g`` 始终为float32。

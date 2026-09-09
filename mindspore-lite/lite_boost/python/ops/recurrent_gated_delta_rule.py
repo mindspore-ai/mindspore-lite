@@ -78,15 +78,15 @@ def recurrent_gated_delta_rule(
     linear attention.
 
     Args:
-        query (Tensor): Query tensor of shape :math:`(B, N_k, T, D_k)`, dtype=bfloat16.
+        query (Tensor): Query tensor of shape :math:`(B, N_k, S, D_k)`, dtype=bfloat16.
             Must be L2-normalized (L2 norm of each head vector is 1, value range [0, 1]).
-            B=batch_size, N_k=num_key_heads, T=seq_len, D_k=key_dim.
-        key (Tensor): Key tensor of shape :math:`(B, N_k, T, D_k)`, dtype=bfloat16.
+            B=batch_size, N_k=num_key_heads, S=seq_len, D_k=key_dim.
+        key (Tensor): Key tensor of shape :math:`(B, N_k, S, D_k)`, dtype=bfloat16.
             Must be L2-normalized (same as query).
-        value (Tensor): Value tensor of shape :math:`(B, N_v, T, D_v)`, dtype=bfloat16.
+        value (Tensor): Value tensor of shape :math:`(B, N_v, S, D_v)`, dtype=bfloat16.
             N_v=num_value_heads, D_v=value_dim. N_v must be divisible by N_k.
-        beta (Tensor): Delta update step size of shape :math:`(B, N_v, T)`, dtype=bfloat16.
-            Value range (0, 1). Controls the magnitude of each delta update: a larger beta
+        beta (Tensor): Delta update step size of shape :math:`(B, N_v, S)`, dtype=bfloat16.
+            Value range [0, 1]. Controls the magnitude of each delta update: a larger beta
             causes new information to overwrite old memory more aggressively; a smaller
             beta tends to preserve existing memory.
         state (Tensor): Recurrent state pool of shape
@@ -102,15 +102,21 @@ def recurrent_gated_delta_rule(
             Used for variable-length sequence inference. Each element represents the number
             of valid tokens in the corresponding batch.
             E.g., ``[4, 3, 5]`` means 3 batches with sequence lengths 4, 3, and 5.
-        ssm_state_indices (Tensor): State-slot indices of shape :math:`(T\_total)`,
-            dtype=int32. Each flattened token selects one state slot in the global
+        ssm_state_indices (Tensor): State-slot indices of shape :math:`(T)`,
+            dtype=int32, where ``T = B * S`` (one entry per flattened
+            token). Each token selects one state slot in the global
             state pool (dim 0 of `state`, ``state_slots`` slots in total).
-        g (Tensor): Global decay gate of shape :math:`(B, N_v, T)`, dtype=float32.
-            **Must be negative**. ``exp(g)`` serves as the state decay factor with range (0, 1).
+        g (Tensor): Global decay gate of shape :math:`(B, N_v, S)`, dtype=float32.
+            Must be negative. This range is not validated: validating it would
+            introduce extra reduction ops (min/max over the tensor) and
+            add noticeable overhead in the inference path. Out-of-range
+            values do not raise but yield meaningless results.
+            ``exp(g)`` serves as the state decay factor with range (0, 1).
             The more negative ``g`` is, the faster historical information is forgotten.
             E.g., when g=-1, approximately 37% of the historical state is retained per step.
-        gk (Tensor): Key-dimension gate of shape :math:`(B, N_v, T, D_k)`, dtype=float32.
-            **Must be negative**. ``exp(gk)`` applies per-dimension decay independently along
+        gk (Tensor): Key-dimension gate of shape :math:`(B, N_v, S, D_k)`, dtype=float32.
+            Must be negative (same no-validation rationale as `g`).
+            ``exp(gk)`` applies per-dimension decay independently along
             the key dimension, enabling finer-grained memory control. Unlike the global gate g,
             gk operates element-wise along the D_k dimension.
         num_accepted_tokens (Tensor): Number of accepted tokens of shape :math:`(B)`, dtype=int32.
@@ -124,19 +130,22 @@ def recurrent_gated_delta_rule(
     Returns:
         tuple[Tensor, Tensor]
 
-        - **out** (Tensor) — Attention output of shape :math:`(B, N_v, T, D_v)`, dtype=bfloat16.
+        - **out** (Tensor) — Attention output of shape :math:`(B, N_v, S, D_v)`, dtype=bfloat16.
           The linear attention result at each token position.
         - **state_out** (Tensor) — Updated recurrent state pool with the same shape as ``state``,
           dtype=bfloat16. Must be passed as ``state`` input in the next recurrent step to
           form a state-passing chain.
 
     Raises:
-        RuntimeError: If input tensor shapes, dtypes, or devices are invalid, or if the
+        RuntimeError: If input tensor dtypes or devices are invalid, or if the
             CANN operator execution fails.
+        ValueError: If input tensor shapes are invalid, i.e. ``N_v`` is not an
+            integer multiple of ``N_k``, or ``ssm_state_indices`` does not
+            contain exactly one entry per flattened token (``B * S`` entries).
 
     Note:
         - This operator only supports the **decode phase** (token-by-token inference),
-          with sequence length T not exceeding 8. For parallel prefill computation,
+          with sequence length S not exceeding 8. For parallel prefill computation,
           use the chunk-level operator.
         - Supports grouped recurrent heads where N_v is an integer multiple of N_k.
         - All input tensors must reside on the same NPU device.
@@ -151,17 +160,17 @@ def recurrent_gated_delta_rule(
         >>> import torch
         >>> import lite_boost.ops as lite_ops
         >>> device = torch.device("npu:0")
-        >>> B, N, T, Dk, Dv = 1, 64, 1, 64, 512
-        >>> query  = torch.randn(B, N, T, Dk, device=device, dtype=torch.bfloat16)
-        >>> key    = torch.randn(B, N, T, Dk, device=device, dtype=torch.bfloat16)
-        >>> value  = torch.randn(B, N, T, Dv, device=device, dtype=torch.bfloat16)
-        >>> beta   = torch.rand(B, N, T, device=device, dtype=torch.bfloat16) * 0.9 + 0.05
+        >>> B, N, S, Dk, Dv = 1, 64, 1, 64, 512
+        >>> query  = torch.randn(B, N, S, Dk, device=device, dtype=torch.bfloat16)
+        >>> key    = torch.randn(B, N, S, Dk, device=device, dtype=torch.bfloat16)
+        >>> value  = torch.randn(B, N, S, Dv, device=device, dtype=torch.bfloat16)
+        >>> beta   = torch.rand(B, N, S, device=device, dtype=torch.bfloat16) * 0.9 + 0.05
         >>> state  = torch.zeros(B, N, Dk, Dv, device=device, dtype=torch.bfloat16)
-        >>> g      = -(torch.rand(B, N, T, device=device) + 0.01)
-        >>> gk     = -(torch.rand(B, N, T, Dk, device=device) + 0.01)
-        >>> actual_seq_lengths  = torch.tensor([T], dtype=torch.int32, device=device)
+        >>> g      = -(torch.rand(B, N, S, device=device) + 0.01)
+        >>> gk     = -(torch.rand(B, N, S, Dk, device=device) + 0.01)
+        >>> actual_seq_lengths  = torch.tensor([S], dtype=torch.int32, device=device)
         >>> ssm_state_indices   = torch.tensor([0], dtype=torch.int32, device=device)
-        >>> num_accepted_tokens = torch.tensor([T], dtype=torch.int32, device=device)
+        >>> num_accepted_tokens = torch.tensor([S], dtype=torch.int32, device=device)
         >>> output, state_out = lite_ops.recurrent_gated_delta_rule(
         ...     query, key, value, beta, state,
         ...     actual_seq_lengths, ssm_state_indices,
@@ -174,7 +183,8 @@ def recurrent_gated_delta_rule(
     # BNSD layout: [Batch, Num_heads, Seq_len, Dim]
     # - B (batch_size):    batch size
     # - H_k (num_heads_q): number of key/query heads
-    # - T (seq_len):       sequence length (typically 1~8 in decode phase)
+    # - S (seq_len):       padded per-batch sequence length
+    #                      (typically 1~8 in decode phase)
     # - D_k (dk):          Key/Query attention head dimension
     # - H_v (num_heads_v): number of value heads (a multiple of H_k)
     # - D_v (dv):          Value attention head dimension
@@ -195,38 +205,38 @@ def recurrent_gated_delta_rule(
     # =========================================================================
     # The CANN operator requires TND (Time-first) layout: the sequence dimension
     # is flattened and placed first.
-    # T_total = B * T (when all batches have equal length) or
-    #           sum(actual_seq_lengths) (for variable-length sequences).
+    # T = B * S (when all batches have equal length) or
+    #     sum(actual_seq_lengths) (for variable-length sequences).
     #
     # Conversion rule for 4D tensors:
-    #   [B, H, T, D] --transpose(1,2)--> [B, T, H, D] --reshape(-1,H,D)--> [B*T, H, D]
+    #   [B, H, S, D] --transpose(1,2)--> [B, S, H, D] --reshape(-1,H,D)--> [B*S, H, D]
     #
     # Conversion rule for 3D tensors:
-    #   [B, H, T] --transpose(1,2)--> [B, T, H] --reshape(-1,H)--> [B*T, H]
+    #   [B, H, S] --transpose(1,2)--> [B, S, H] --reshape(-1,H)--> [B*S, H]
     #
     # =========================================================================
 
-    # query: [B, H_q, T, D_k] -> [T_total, H_q, D_k]
+    # query: [B, H_q, S, D_k] -> [T, H_q, D_k]
     query_tnd = query.transpose(1, 2).reshape(-1, num_heads_q, dk).contiguous()
 
-    # key: [B, H_q, T, D_k] -> [T_total, H_q, D_k]
+    # key: [B, H_q, S, D_k] -> [T, H_q, D_k]
     # Shares the same head count and dimension as query (key-query symmetry in linear attention)
     key_tnd = key.transpose(1, 2).reshape(-1, num_heads_q, dk).contiguous()
 
-    # value: [B, H_v, T, D_v] -> [T_total, H_v, D_v]
+    # value: [B, H_v, S, D_v] -> [T, H_v, D_v]
     # Recurrent GDR maps each key/query head to Nv/Nk value heads in the
-    # kernel. Preserve H_v here; reshaping with H_q corrupts T_total for GQA.
+    # kernel. Preserve H_v here; reshaping with H_q corrupts T for GQA.
     value_tnd = value.transpose(1, 2).reshape(-1, num_heads_v, dv).contiguous()
 
-    # beta: [B, H_v, T] -> [T_total, H_v]
+    # beta: [B, H_v, S] -> [T, H_v]
     # Delta update step size, controls how much new information overwrites old memory
     beta_tnd = beta.transpose(1, 2).reshape(-1, num_heads_v).contiguous()
 
-    # g: [B, H_v, T] -> [T_total, H_v]
+    # g: [B, H_v, S] -> [T, H_v]
     # Global decay gate, exp(g) ∈ (0, 1) controls state decay rate
     g_tnd = g.transpose(1, 2).reshape(-1, num_heads_v).contiguous()
 
-    # gk: [B, H_v, T, D_k] -> [T_total, H_v, D_k]
+    # gk: [B, H_v, S, D_k] -> [T, H_v, D_k]
     # Per-element gate along the key dimension, providing finer-grained memory control
     # than the global gate g
     gk_tnd = gk.transpose(1, 2).reshape(-1, num_heads_v, dk).contiguous()
@@ -263,20 +273,20 @@ def recurrent_gated_delta_rule(
     # handles workspace allocation and asynchronous execution.
     #
     # Input tensor summary (all in TND layout):
-    #   query_tnd:  [T_total, H_k, D_k]      - L2-normalized query
-    #   key_tnd:    [T_total, H_k, D_k]      - L2-normalized key
-    #   value_tnd:  [T_total, H_v, D_v]      - value
-    #   beta_tnd:   [T_total, H_v]            - Delta update step size (0, 1)
+    #   query_tnd:  [T, H_k, D_k]      - L2-normalized query
+    #   key_tnd:    [T, H_k, D_k]      - L2-normalized key
+    #   value_tnd:  [T, H_v, D_v]      - value
+    #   beta_tnd:   [T, H_v]            - Delta update step size [0, 1]
     #   state_cann: [state_slots, H_v, D_v, D_k] - recurrent state pool
     #   seq_lengths_int: [B]                 - actual sequence lengths
-    #   ssm_state_indices: [T_total]          - state pool indices
-    #   g_tnd:      [T_total, H_v]            - global decay gate (negative)
-    #   gk_tnd:     [T_total, H_v, D_k]      - key gate (negative)
+    #   ssm_state_indices: [T]          - state pool indices
+    #   g_tnd:      [T, H_v]            - global decay gate (negative)
+    #   gk_tnd:     [T, H_v, D_k]      - key gate (negative)
     #   num_accepted_tokens: [B]              - accepted token counts
     #   scale_value: float                    - scale factor
     #
     # Output tensors:
-    #   out_tnd:        [T_total, H_v, D_v]   - attention output
+    #   out_tnd:        [T, H_v, D_v]   - attention output
     #   state_out_cann: [state_slots, H_v, D_v, D_k] - updated recurrent state
     # =========================================================================
     out_tnd, state_out_cann = torch.ops.lite_boost.recurrent_gated_delta_rule(
@@ -305,7 +315,7 @@ def recurrent_gated_delta_rule(
     state_out = state_out_cann.transpose(-1, -2).contiguous()
     state_out = _ensure_nd_format(state_out)
 
-    # out: [T_total, H_v, D_v] -> [B, T, H_v, D_v] -> [B, H_v, T, D_v]
+    # out: [T, H_v, D_v] -> [B, S, H_v, D_v] -> [B, H_v, S, D_v]
     # Reverse: reshape back to 4D, then transpose sequence and head dimensions
     out_bnsd = (
         out_tnd.reshape(batch_size, seq_len, num_heads_v, dv)
