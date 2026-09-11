@@ -301,6 +301,27 @@ TEST(Generate, PromptAtNpuLimitReturnsContextOverflowBeforePrefill) {
   EXPECT_EQ(tm.backend->execute_calls(), 0);
 }
 
+TEST(Generate, NpuContextLimitStopsDecodeWithNoExplicitOutputCap) {
+  // The architecture supports 64 positions, while the exported NPU model and
+  // its KV cache only support 16. An 8-token prompt therefore has room for
+  // exactly 8 generated tokens when max_new_tokens=0.
+  auto tm = BuildTestModel(/*npu_max_length=*/16);
+  ASSERT_NE(tm.handle, nullptr);
+  ASSERT_NE(tm.backend, nullptr);
+  SetConfig(tm.handle, 0);
+
+  tm.backend->QueueLogits(LogitsFor(3));  // never EOS
+  // With the old architecture-only limit, execution continued past the NPU
+  // boundary: call 9 filled history to 16 and call 10 failed in Decode.
+  tm.backend->QueueError(MSLLM_ERROR_INFERENCE, 10);
+
+  std::string prompt(8, 'a');
+  char buf[256] = {};
+  EXPECT_EQ(MSLLMGenerate(tm.handle, prompt.c_str(), buf, sizeof(buf)), kMSLLM_SUCCESS);
+  EXPECT_STREQ(buf, "aaaaaaaa");
+  EXPECT_EQ(tm.backend->execute_calls(), 8);
+}
+
 TEST(Generate, BufferTooSmallReturnsError) {
   auto tm = BuildTestModel();
   ASSERT_NE(tm.handle, nullptr);
@@ -395,6 +416,25 @@ TEST(StreamGenerate, MaxContextLengthFinishReason) {
   // 64-token context window has room for 63 generated tokens.
   EXPECT_EQ(r.tokens.size(), 63u);
   EXPECT_EQ(r.reason, kMSLLM_FINISHED_BY_MAX_CONTEXT_LENGTH);
+}
+
+TEST(StreamGenerate, NpuContextLimitStopsDecodeBeforeLargeOutputCap) {
+  auto tm = BuildTestModel(/*npu_max_length=*/16);
+  ASSERT_NE(tm.handle, nullptr);
+  ASSERT_NE(tm.backend, nullptr);
+  SetConfig(tm.handle, 10000);  // Explicit output cap is larger than the NPU context.
+
+  tm.backend->QueueLogits(LogitsFor(3));  // never EOS
+  // Reproduce the real NNRT boundary failure if generation incorrectly uses
+  // architecture.max_position_embeddings (64) instead of npu.max_length (16).
+  tm.backend->QueueError(MSLLM_ERROR_INFERENCE, 10);
+
+  std::string prompt(8, 'a');
+  StreamResult r;
+  EXPECT_EQ(MSLLMStreamGenerate(tm.handle, prompt.c_str(), CollectTokens, &r), kMSLLM_SUCCESS);
+  EXPECT_EQ(r.tokens.size(), 8u);
+  EXPECT_EQ(r.reason, kMSLLM_FINISHED_BY_MAX_CONTEXT_LENGTH);
+  EXPECT_EQ(tm.backend->execute_calls(), 8);
 }
 
 TEST(StreamGenerate, AbortDuringGenerationYieldsStoppedByUser) {

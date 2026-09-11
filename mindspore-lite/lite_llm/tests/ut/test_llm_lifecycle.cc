@@ -78,6 +78,24 @@ TEST(Config, SetGetRoundTrip) {
   MSLLMDestroyModel(h);
 }
 
+TEST(Config, ZeroRepetitionPenaltyFallsBackToDefault) {
+  auto *h = MSLLMCreateModel();
+  ASSERT_NE(h, nullptr);
+
+  MSLLMGenerationConfig cfg = {};
+  cfg.repetition_penalty = 1.2f;
+  EXPECT_EQ(MSLLMSetGenerationConfig(h, cfg), kMSLLM_SUCCESS);
+
+  cfg.repetition_penalty = 0.0f;
+  EXPECT_EQ(MSLLMSetGenerationConfig(h, cfg), kMSLLM_SUCCESS);
+
+  MSLLMGenerationConfig out = {};
+  EXPECT_EQ(MSLLMGetGenerationConfig(h, &out), kMSLLM_SUCCESS);
+  EXPECT_FLOAT_EQ(out.repetition_penalty, 1.0f);
+
+  MSLLMDestroyModel(h);
+}
+
 TEST(Config, SetConfigNullHandle) {
   MSLLMGenerationConfig cfg = {};
   EXPECT_EQ(MSLLMSetGenerationConfig(nullptr, cfg), kMSLLM_ERROR_INVALID_ARGS);

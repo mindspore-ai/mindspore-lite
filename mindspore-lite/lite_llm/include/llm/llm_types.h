@@ -101,8 +101,8 @@ typedef struct {
    *  until EOS or the context window is exhausted); negative is invalid. */
   int32_t max_new_tokens;
 
-  /** Sampling parameters. do_sample=false → greedy (argmax); all sampling
-   *  fields below are then ignored. */
+  /** Sampling parameters. do_sample=false → greedy (argmax); temperature,
+   *  top_k and top_p are then ignored. */
   bool do_sample;
   /** Sampling temperature, valid range [0, 2]. 0 = greedy. */
   float temperature;
@@ -110,6 +110,7 @@ typedef struct {
   int32_t top_k;
   /** top_p (nucleus), valid range [0, 1]; 0 or 1 = disabled. */
   float top_p;
+  /** Repetition penalty; 0 falls back to the default value 1.0. */
   float repetition_penalty;
 } MSLLMGenerationConfig;
 

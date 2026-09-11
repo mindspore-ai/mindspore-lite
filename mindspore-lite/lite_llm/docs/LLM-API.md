@@ -192,12 +192,12 @@ typedef struct {
     // output length option：0 = 不设输出上限（生成到 EOS 或撞上下文窗口）；负值非法
     int max_new_tokens;
 
-    // sampling parameters：do_sample=false 时以下字段全部忽略（greedy）
+    // sampling parameters：do_sample=false 时忽略 temperature/top_k/top_p（greedy）
     bool do_sample;
     float temperature;       // 合法区间 [0, 2]，越界 → INVALID_ARGS
     int top_k;               // 合法区间 >= 0（0 = 禁用），越界 → INVALID_ARGS
     float top_p;             // 合法区间 [0, 1]（0 或 1 = 禁用），越界 → INVALID_ARGS
-    float repetition_penalty;
+    float repetition_penalty;  // greedy/sampling 均生效；0 回退为默认值 1.0
 } MSLLMGenerationConfig;
 
 ```text

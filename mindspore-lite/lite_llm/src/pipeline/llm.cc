@@ -321,10 +321,15 @@ MSLLMStatus MSLLMSetGenerationConfig(MSLLMModelHandle llm_model, const MSLLMGene
     }
   }
 
+  auto normalized_config = config;
+  if (normalized_config.repetition_penalty == 0.0f) {
+    normalized_config.repetition_penalty = 1.0f;
+  }
+
   std::lock_guard<std::mutex> lock(e->config_mutex);
   if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
 
-  e->gen_config = config;
+  e->gen_config = normalized_config;
   return kMSLLM_SUCCESS;
 }
 
