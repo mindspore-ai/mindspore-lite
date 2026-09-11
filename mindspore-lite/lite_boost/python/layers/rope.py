@@ -25,11 +25,29 @@ cos/sin table — padding positions get zero cos/sin (input values are
 zero anyway, so the RoPE result remains zero).  Used by both the
 Wan2.1 and Wan2.2 model paths.
 """
+import collections
+
 import torch
 import torch.distributed as dist
 from torch.npu import amp
 
-_rope_cache = {}
+# Process-wide cos/sin table cache, bounded with LRU eviction: every key
+# holds NPU tensors of ~s_local * D bytes, so an unbounded dict OOMs the
+# device when grid combinations keep changing (e.g. a serving process
+# that sees many resolutions).  The cache is capped both in entry count
+# (LRU: the most recent _ROPE_CACHE_MAX_ENTRIES tables win) and in
+# estimated device bytes (_ROPE_CACHE_MAX_BYTES), so cached memory is
+# bounded no matter how large individual tables are.
+_ROPE_CACHE_MAX_ENTRIES = 32
+_ROPE_CACHE_MAX_BYTES = 2 * 1024 ** 3  # ~2 GiB of cached tables at most
+_rope_cache = collections.OrderedDict()
+
+
+def _cache_est_bytes():
+    """Estimated device bytes held by the current cache entries."""
+    return sum(
+        v[0].numel() * v[0].element_size() + v[1].numel() * v[1].element_size()
+        for v in _rope_cache.values())
 
 
 def _get_rope_cos_sin(freqs, grid_sizes, s_local):
@@ -48,6 +66,7 @@ def _get_rope_cos_sin(freqs, grid_sizes, s_local):
     key = (tuple(grid_sizes.flatten().tolist()),
            sp_rank, sp_size, s_local, freqs.device)
     if key in _rope_cache:
+        _rope_cache.move_to_end(key)
         return _rope_cache[key]
 
     cos_freqs = freqs.real.float()
@@ -92,7 +111,12 @@ def _get_rope_cos_sin(freqs, grid_sizes, s_local):
 
     cos = torch.stack(all_cos)
     sin = torch.stack(all_sin)
-    _rope_cache[key] = (cos, sin)
+    est_bytes = cos.numel() * cos.element_size() + sin.numel() * sin.element_size()
+    if est_bytes <= _ROPE_CACHE_MAX_BYTES:
+        _rope_cache[key] = (cos, sin)
+        while (len(_rope_cache) > _ROPE_CACHE_MAX_ENTRIES
+               or _cache_est_bytes() > _ROPE_CACHE_MAX_BYTES):
+            _rope_cache.popitem(last=False)
     return cos, sin
 
 
@@ -103,8 +127,12 @@ def rope_apply(x, grid_sizes, freqs):
 
     Each interleaved complex pair :math:`(x[..., 2k], x[..., 2k+1])` is
     rotated by the angle from `freqs`, using a per-sample cos/sin table
-    expanded from `grid_sizes`.  The table is cached process-wide.  The
-    per-rank slice follows the sequence-parallel (SP) partition; when
+    expanded from `grid_sizes`.  The table is cached process-wide with
+    LRU eviction: both the entry count and the estimated bytes are
+    capped (``_ROPE_CACHE_MAX_ENTRIES=32``, ``_ROPE_CACHE_MAX_BYTES=2 GiB``),
+    so cached memory stays bounded when grids keep changing; an
+    evicted table is rebuilt on its next hit with unchanged results.
+    The per-rank slice follows the sequence-parallel (SP) partition; when
     ``seq_len % sp_size != 0`` the last rank's slice is zero-padded past
     the table, and padding positions hold zero input values so the output
     stays zero there.
@@ -127,6 +155,10 @@ def rope_apply(x, grid_sizes, freqs):
     world_size=1, rank=0)``).
 
     Supported only on A2; 300I Duo is not supported.
+
+    Device memory note: if the device memory footprint keeps growing
+    over a long run, call ``torch.npu.empty_cache()`` periodically at
+    application idle points.
 
     Args:
         x (Tensor): Input tensor with shape :math:`(B, s, N, D)`, where
