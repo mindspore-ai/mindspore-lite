@@ -53,22 +53,22 @@ bool TestOnnxLayerNormNode1() {
     return false;
   }
   primitive_c = node_parser_builtin->Parse(*onnx_graph, *onnx_layer_norm_node);
-  if (!primitive_c->HasAttr("axis")) {
-    MS_LOG(ERROR) << "prim has no axis!";
+  if (!primitive_c->HasAttr("begin_norm_axis")) {
+    MS_LOG(ERROR) << "prim has no begin_norm_axis!";
     return false;
   }
-  auto axis_value = GetValue<int>(primitive_c->GetAttr("axis"));
+  auto axis_value = GetValue<int64_t>(primitive_c->GetAttr("begin_norm_axis"));
   if (axis_value != 1) {
-    MS_LOG(ERROR) << "axis value is wrong!";
+    MS_LOG(ERROR) << "begin_norm_axis value is wrong!";
     return false;
   }
   if (!primitive_c->HasAttr("epsilon")) {
-    MS_LOG(ERROR) << "prim has no axis!";
+    MS_LOG(ERROR) << "prim has no epsilon!";
     return false;
   }
   auto epsilon_value = GetValue<float>(primitive_c->GetAttr("epsilon"));
-  if (epsilon_value != 0.1) {
-    MS_LOG(ERROR) << "axis value is wrong!";
+  if (epsilon_value != 0.1f) {
+    MS_LOG(ERROR) << "epsilon value is wrong!";
     return false;
   }
   return true;
@@ -97,17 +97,17 @@ bool TestOnnxLayerNormNode2() {
     return false;
   }
   primitive_c = node_parser_builtin->Parse(*onnx_graph, *onnx_layer_norm_node);
-  if (!primitive_c->HasAttr("axis")) {
-    MS_LOG(ERROR) << "prim has no axis!";
+  if (!primitive_c->HasAttr("begin_norm_axis")) {
+    MS_LOG(ERROR) << "prim has no begin_norm_axis!";
     return false;
   }
-  auto axis_value = GetValue<int>(primitive_c->GetAttr("axis"));
+  auto axis_value = GetValue<int64_t>(primitive_c->GetAttr("begin_norm_axis"));
   if (axis_value != 1) {
-    MS_LOG(ERROR) << "axis value is wrong!";
+    MS_LOG(ERROR) << "begin_norm_axis value is wrong!";
     return false;
   }
   if (!primitive_c->HasAttr("epsilon")) {
-    MS_LOG(ERROR) << "prim has no axis!";
+    MS_LOG(ERROR) << "prim has no epsilon!";
     return false;
   }
   auto epsilon_value = GetValue<float>(primitive_c->GetAttr("epsilon"));

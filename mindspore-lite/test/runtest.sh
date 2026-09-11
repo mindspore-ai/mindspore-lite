@@ -171,6 +171,7 @@ if [ "$ENABLE_CONVERTER_TEST" = true ]; then
   ./lite-test-converter --gtest_filter="TestTfliteParser*"
   ./lite-test-converter --gtest_filter="OnnxLayerNormParserTest*"
   ./lite-test-converter --gtest_filter="OnnxPoolParserTest*"
+  ./lite-test-converter --gtest_filter="OnnxInputsAdjustTest*"
   ./lite-test-converter --gtest_filter="ConstantFoldingFusionTest*"
   ./lite-test-converter --gtest_filter="ConvActivationFusionTest*"
   ./lite-test-converter --gtest_filter="ConvBiasAddFusionTest*"
