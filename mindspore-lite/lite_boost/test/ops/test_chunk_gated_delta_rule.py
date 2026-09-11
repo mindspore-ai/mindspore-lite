@@ -88,6 +88,30 @@ def _pytorch_recurrent_baseline(query, key, value, g, beta, initial_state, scale
     return out, state
 
 
+def _pytorch_varlen_baseline(query, key, value, g, beta, initial_state, lengths, scale=1.0):
+    """Token-by-token FP32 CPU reference that honors per-batch valid lengths.
+
+    Only the first ``lengths[b]`` tokens of each padded batch slice are
+    consumed; positions beyond a batch's length are zero in the output
+    reference, mirroring the binding's zero-fill contract.
+    """
+    out = torch.zeros_like(value, dtype=torch.float32)
+    states = []
+    for b, length in enumerate(lengths):
+        out_b, state_b = _pytorch_recurrent_baseline(
+            query[b:b + 1, :, :length, :],
+            key[b:b + 1, :, :length, :],
+            value[b:b + 1, :, :length, :],
+            None if g is None else g[b:b + 1, :, :length],
+            beta[b:b + 1, :, :length],
+            initial_state[b:b + 1],
+            scale=scale,
+        )
+        out[b, :, :length, :] = out_b[0]
+        states.append(state_b)
+    return out, torch.cat(states, dim=0)
+
+
 def _accuracy_metrics(actual, expected):
     """Return max absolute error, cosine similarity, and normalized RMSE."""
     actual = actual.float().reshape(-1)
@@ -165,6 +189,45 @@ def _generate_gqa_test_data(
         "actual_seq_lengths": torch.tensor(
             [seq_len] * batch_size, dtype=torch.int32, device=device
         ),
+        "g": g.to(device),
+        "scale": 1.0 / (dk ** 0.5),
+    }
+
+
+def _generate_varlen_test_data(batch_size, num_heads, seq_len, dk, dv, lengths, device):
+    """Build varlen BNSD inputs padded to ``seq_len``.
+
+    ``lengths[b]`` tokens of each batch slice are filled with valid data;
+    the padded tail carries garbage that must not influence the output.
+    """
+    generator = torch.Generator().manual_seed(42)
+    query = _l2norm(
+        torch.randn(batch_size, num_heads, seq_len, dk, generator=generator), dim=-1
+    )
+    key = _l2norm(
+        torch.randn(batch_size, num_heads, seq_len, dk, generator=generator), dim=-1
+    )
+    value = torch.randn(batch_size, num_heads, seq_len, dv, generator=generator)
+    beta = torch.randn(batch_size, num_heads, seq_len, generator=generator).sigmoid()
+    g = -(
+        torch.rand(
+            batch_size, num_heads, seq_len, dtype=torch.float32, generator=generator
+        )
+        + 0.01
+    )
+    for b, length in enumerate(lengths):
+        query[b, :, length:, :] = 0
+        key[b, :, length:, :] = 0
+        value[b, :, length:, :] = 0
+        beta[b, :, length:] = 0
+        g[b, :, length:] = 0
+    return {
+        "query": query.to(device),
+        "key": key.to(device),
+        "value": value.to(device),
+        "beta": beta.to(device),
+        "state": torch.zeros(batch_size, num_heads, dk, dv, device=device),
+        "actual_seq_lengths": torch.tensor(lengths, dtype=torch.int32, device=device),
         "g": g.to(device),
         "scale": 1.0 / (dk ** 0.5),
     }
@@ -429,6 +492,80 @@ class TestChunkGatedDeltaRule:
             f"tail state diverges from CPU recurrence ({dtype}, dk={dk}): "
             f"cosine={state_metrics[1]}, nrmse={state_metrics[2]}"
         )
+
+    @pytest.mark.L0
+    def test_varlen_packing(self):
+        """Non-uniform lengths pack correctly; padded outputs are zero.
+
+        Case 1: B=2, S=16, lengths=[8, 16] (sum != B*S, batch 1 fills
+        its whole slice).  Case 2: B=2, S=16, lengths=[8, 0] (empty
+        batch keeps its state frozen and yields all-zero output).
+        Case 3: B=2, S=24, lengths=[8, 16] (sum equals S but not B*S).
+        """
+        cases = (
+            (16, [8, 16], "case1_sum_lt_bs"),
+            (16, [8, 0], "case2_empty_batch"),
+            (24, [8, 16], "case3_sum_eq_s"),
+        )
+        for seq_len, lengths, case_id in cases:
+            data = _generate_varlen_test_data(
+                2, 4, seq_len, 32, 64, lengths, self.device
+            )
+            out, final_state = _run_op(data, torch.float16)
+            torch.npu.synchronize()
+
+            def cpu_low(tensor):
+                return tensor.to(torch.float16).float().cpu()
+
+            out_ref, state_ref = _pytorch_varlen_baseline(
+                cpu_low(data["query"]),
+                cpu_low(data["key"]),
+                cpu_low(data["value"]),
+                data["g"].float().cpu(),
+                cpu_low(data["beta"]),
+                cpu_low(data["state"]),
+                lengths,
+                scale=data["scale"],
+            )
+            out_metrics = _accuracy_metrics(out.float().cpu(), out_ref)
+            state_metrics = _accuracy_metrics(final_state.float().cpu(), state_ref)
+            logging.info(
+                "[varlen %s] out(max=%.6f cos=%.9f nrmse=%.6f), "
+                "state(max=%.6f cos=%.9f nrmse=%.6f)",
+                case_id,
+                *out_metrics,
+                *state_metrics,
+            )
+            assert out_metrics[1] >= 0.999 and out_metrics[2] <= 0.02, (
+                f"varlen output diverges from CPU recurrence ({case_id}): "
+                f"cosine={out_metrics[1]}, nrmse={out_metrics[2]}"
+            )
+            assert state_metrics[1] >= 0.999 and state_metrics[2] <= 0.02, (
+                f"varlen final_state diverges from CPU recurrence ({case_id}): "
+                f"cosine={state_metrics[1]}, nrmse={state_metrics[2]}"
+            )
+            for b, length in enumerate(lengths):
+                if length < seq_len:
+                    pad = out[b, :, length:, :]
+                    assert torch.count_nonzero(pad) == 0, (
+                        f"varlen padded positions must be zero ({case_id}, "
+                        f"batch {b})"
+                    )
+            assert out.shape == (2, 4, seq_len, 64), case_id
+            assert final_state.shape == (2, 4, 32, 64), case_id
+
+    @pytest.mark.L0
+    def test_varlen_rejects_mismatched_lengths(self):
+        """actual_seq_lengths shorter than B must fail with RuntimeError."""
+        data = _generate_varlen_test_data(
+            2, 4, 16, 32, 64, [8, 16], self.device
+        )
+        data["actual_seq_lengths"] = torch.tensor(
+            [8], dtype=torch.int32, device=self.device
+        )
+        with pytest.raises(RuntimeError):
+            _run_op(data, torch.float16)
+        torch.npu.synchronize()
 
     @pytest.mark.L0
     @pytest.mark.parametrize(
