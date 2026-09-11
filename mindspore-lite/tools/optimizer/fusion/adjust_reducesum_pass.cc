@@ -60,6 +60,17 @@ CNodePtr CreateReshapeCNode(const FuncGraphPtr &func_graph, const AnfNodePtr &cn
 
 bool IsAxesEmpty(AnfNodePtr axes_input) {
   MS_CHECK_TRUE_RET(axes_input != nullptr, true);
+  // ONNX/TFLite imports materialize constant axes as a Parameter with a tensor default value;
+  // only a zero-element tensor is genuinely empty, otherwise the real axes would be clobbered
+  // by the defensive full-axis fill below.
+  auto axes_param = axes_input->cast<ParameterPtr>();
+  if (axes_param != nullptr) {
+    auto default_param = axes_param->default_param();
+    if (default_param == nullptr || !utils::isa<tensor::TensorPtr>(default_param)) {
+      return true;
+    }
+    return default_param->cast<tensor::TensorPtr>()->DataSize() == 0;
+  }
   if (utils::isa<ValueNodePtr>(axes_input) && axes_input->cast<ValueNodePtr>() != nullptr &&
       axes_input->cast<ValueNodePtr>()->value() != nullptr) {
     auto value_ptr = axes_input->cast<ValueNodePtr>()->value();
@@ -133,6 +144,126 @@ Status FillAxesForNode(const FuncGraphPtr &func_graph, const CNodePtr &cnode, co
   }
   cnode->set_inputs(inputs);
   return kSuccess;
+}
+
+// Any reduce mode (ONNX ReduceMax/Min/Mean/Prod all import as ReduceFusion).
+bool IsReduceFusionNode(const CNodePtr &cnode) {
+  MS_CHECK_TRUE_RET(cnode != nullptr && cnode->input(0) != nullptr, false);
+  auto value_node = cnode->input(0)->cast<ValueNodePtr>();
+  if (value_node == nullptr || value_node->value() == nullptr) {
+    return false;
+  }
+  auto prim = value_node->value()->cast<PrimitivePtr>();
+  return prim != nullptr && prim->name() == "ReduceFusion";
+}
+
+// Reads int32/int64 tensor data into values; reports false for non-int tensors, and true with
+// empty values for a zero-element tensor.
+bool TensorAxesToValues(const tensor::TensorPtr &tensor, std::vector<int32_t> *values) {
+  if (tensor == nullptr || (tensor->data_type() != kNumberTypeInt32 && tensor->data_type() != kNumberTypeInt64)) {
+    return false;
+  }
+  auto elem_num = tensor->ElementsNum();
+  if (elem_num <= 0) {
+    return true;  // constant but empty
+  }
+  values->reserve(elem_num);
+  for (int64_t i = 0; i < elem_num; ++i) {
+    values->push_back(tensor->data_type() == kNumberTypeInt64
+                        ? static_cast<int32_t>(static_cast<const int64_t *>(tensor->data_c())[i])
+                        : static_cast<const int32_t *>(tensor->data_c())[i]);
+  }
+  return true;
+}
+
+// Reads an int-sequence (or scalar int) ValueNode payload into values; reports false for
+// non-integer payloads.
+bool ValueSeqAxesToValues(const ValuePtr &val, std::vector<int32_t> *values) {
+  if (utils::isa<ValueSequencePtr>(val)) {
+    auto seq = val->cast<ValueSequencePtr>();
+    if (!seq->value().empty()) {
+      auto elem_type = seq->value().front()->type()->number_type();
+      if (elem_type != kNumberTypeInt64 && elem_type != kNumberTypeInt32) {
+        return false;
+      }
+    }
+  } else if (val->type() != nullptr && val->type()->number_type() != kNumberTypeInt64 &&
+             val->type()->number_type() != kNumberTypeInt32) {
+    return false;
+  }
+  auto ints = opt::CastToInt(val);
+  values->assign(ints.begin(), ints.end());
+  return true;
+}
+
+// Reads the values of a constant axes input: opset >= 13 ONNX materializes axes as an initializer
+// Parameter; other paths may hold a folded tensor ValueNode or an int sequence ValueNode.
+// Returns whether the producer is a compile-time constant; a zero-element constant (the ONNX
+// empty-axes form) reports is_constant=true with empty values.
+bool GetConstantAxesInput(const AnfNodePtr &axes_input, std::vector<int32_t> *values) {
+  values->clear();
+  if (utils::isa<ParameterPtr>(axes_input)) {
+    auto param = axes_input->cast<ParameterPtr>();
+    if (param != nullptr && param->has_default()) {
+      return TensorAxesToValues(param->default_param()->cast<tensor::TensorPtr>(), values);
+    }
+    return false;
+  }
+  if (utils::isa<ValueNodePtr>(axes_input)) {
+    auto value_node = axes_input->cast<ValueNodePtr>();
+    if (value_node != nullptr && value_node->value() != nullptr) {
+      const auto &val = value_node->value();
+      if (utils::isa<tensor::TensorPtr>(val)) {
+        return TensorAxesToValues(val->cast<tensor::TensorPtr>(), values);
+      }
+      return ValueSeqAxesToValues(val, values);
+    }
+  }
+  return false;
+}
+
+// opset >= 18 allows an empty axes input with noop_with_empty_axes=false meaning reduce-all, but a
+// zero-element axes tensor deadlocks the MindRT scheduler (the kernel never receives enough input
+// notifications). It arrives as the constant second input of an opset >= 13 node, which the
+// parser-side handling never sees, so replace it with an explicit full axis list here and keep the
+// "axes" attribute consistent. Non-empty axes constants (including invalid ones such as duplicate
+// or out-of-range values) are deliberately passed through unchanged and rejected with a detailed
+// message by the kernel-side validation.
+Status FillEmptyConstantAxesInput(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
+  if (cnode->inputs().size() < kIndex3) {
+    return kSuccess;
+  }
+  std::vector<int32_t> axes_values;
+  if (!GetConstantAxesInput(cnode->input(kIndex2), &axes_values) || !axes_values.empty()) {
+    return kSuccess;  // non-constant producer, or a non-empty axes constant: leave it as-is
+  }
+  auto value_node = cnode->input(0)->cast<ValueNodePtr>();
+  auto src_prim = value_node != nullptr ? GetValueNode<PrimitivePtr>(value_node) : nullptr;
+  // Empty constant axes: noop_with_empty_axes=true is an identity, left for AdjustReduceProd's
+  // rewrite; otherwise ONNX semantics reduce all axes.
+  auto skip_mode_ptr = src_prim != nullptr ? src_prim->GetAttr("skip_mode") : nullptr;
+  if (skip_mode_ptr != nullptr && GetValue<bool>(skip_mode_ptr)) {
+    return kSuccess;
+  }
+  auto input_abstract = cnode->input(kIndex1)->abstract();
+  MS_CHECK_TRUE_MSG(input_abstract != nullptr, kLiteError, "input abstract is nullptr!");
+  auto input_shape = input_abstract->GetShape();
+  MS_CHECK_TRUE_MSG(input_shape != nullptr, kLiteError, "input shape is nullptr!");
+  auto shape_vec = input_shape->GetShapeVector();
+  if (shape_vec.empty() || std::any_of(shape_vec.begin(), shape_vec.end(), [](int64_t dim) { return dim < 0; })) {
+    MS_LOG(INFO) << "Dynamic input shape, skip axes normalize: " << cnode->fullname_with_scope();
+    return kSuccess;
+  }
+  std::vector<int32_t> full_axis;
+  for (size_t i = 0; i < shape_vec.size(); i++) {
+    full_axis.push_back(static_cast<int32_t>(i));
+  }
+  MS_LOG(INFO) << "Fill full axis list for empty-axes reduce node: " << cnode->fullname_with_scope()
+               << ", axis size: " << full_axis.size();
+  if (src_prim != nullptr) {
+    (void)src_prim->AddAttr("axes", MakeValue(full_axis));
+  }
+  return FillAxesForNode(func_graph, cnode, full_axis);
 }
 
 Status AdjustReduceProd(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
@@ -258,27 +389,36 @@ bool AdjustReduceSumPass::Run(const FuncGraphPtr &func_graph) {
     }
     auto cnode = node->cast<CNodePtr>();
     MS_CHECK_TRUE_RET(cnode != nullptr, false);
+    // prim::kPrimReduceSum and ONNX-imported ReduceFusion are disjoint families; decide the
+    // routing up front so non-reduce nodes skip before any primitive attribute inspection.
     const bool is_reduce_sum = opt::CheckPrimitiveType(node, prim::kPrimReduceSum);
-    const bool is_reduce_prod = IsReduceProdFusionNode(cnode);
-    if (!is_reduce_sum && !is_reduce_prod) {
+    const bool is_reduce_fusion = !is_reduce_sum && IsReduceFusionNode(cnode);
+    if (!is_reduce_sum && !is_reduce_fusion) {
       continue;
     }
-    if (is_reduce_prod) {
-      if (AdjustReduceProd(func_graph, cnode) != kSuccess) {
-        MS_LOG(ERROR) << "This node run AdjustReduceProd failed! Node_name is: " << cnode->fullname_with_scope() << "!";
-        return false;
-      }
-      MS_LOG(INFO) << "This node run AdjustReduceProd success : " << cnode->fullname_with_scope();
-      continue;
-    }
-    auto reducesum_node = cnode;
-    MS_CHECK_TRUE_RET(reducesum_node != nullptr, false);
-    if (AdjustReduceSum(func_graph, reducesum_node) != kSuccess) {
-      MS_LOG(ERROR) << "This node run AdjustReduceSum failed! Node_name is: " << reducesum_node->fullname_with_scope()
-                    << "!";
+    // opset >= 13 empty axes-as-input constants bypass the parser-side handling and deadlock the
+    // scheduler; fill them for every reduce mode before the empty-axes adjustments below. Invalid
+    // non-empty axes (duplicate/out-of-range) are passed through and rejected downstream.
+    if (FillEmptyConstantAxesInput(func_graph, cnode) != kSuccess) {
+      MS_LOG(ERROR) << "Fill empty reduce axes failed! Node_name is: " << cnode->fullname_with_scope() << "!";
       return false;
     }
-    MS_LOG(INFO) << "This node run AdjustReduceSum success : " << reducesum_node->fullname_with_scope();
+    if (is_reduce_fusion) {
+      if (IsReduceProdFusionNode(cnode)) {
+        if (AdjustReduceProd(func_graph, cnode) != kSuccess) {
+          MS_LOG(ERROR) << "This node run AdjustReduceProd failed! Node_name is: " << cnode->fullname_with_scope()
+                        << "!";
+          return false;
+        }
+        MS_LOG(INFO) << "This node run AdjustReduceProd success : " << cnode->fullname_with_scope();
+      }
+      continue;  // other ReduceFusion modes (Max/Min/Mean) only needed the axes fill above
+    }
+    if (AdjustReduceSum(func_graph, cnode) != kSuccess) {
+      MS_LOG(ERROR) << "This node run AdjustReduceSum failed! Node_name is: " << cnode->fullname_with_scope() << "!";
+      return false;
+    }
+    MS_LOG(INFO) << "This node run AdjustReduceSum success : " << cnode->fullname_with_scope();
   }
   MS_LOG(INFO) << "AdjustReduceSum end.";
   return true;

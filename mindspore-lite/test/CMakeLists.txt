@@ -5,6 +5,8 @@ set(LITE_DIR ${TOP_DIR}/mindspore-lite)
 include_directories(${TOP_DIR})
 include_directories(${TEST_DIR})
 include_directories(${NNACL_DIR}/../)
+# micro coder headers include each other module-relatively ("coder/..."), e.g. from the coder UTs.
+include_directories(${LITE_DIR}/tools/converter/micro)
 
 include(${TOP_DIR}/cmake/external_libs/gtest.cmake)
 include(${TOP_DIR}/cmake/external_libs/mockcpp.cmake)

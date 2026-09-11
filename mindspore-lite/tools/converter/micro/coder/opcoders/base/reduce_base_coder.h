@@ -35,6 +35,8 @@ class ReduceBaseCoder : public OperatorCoder {
 
  private:
   int CheckInputsOutputs() const;
+
+ protected:
   int CheckParameters();
 
  protected:
