@@ -28,6 +28,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <memory>
 #include <string>
 #include <thread>
@@ -54,14 +55,14 @@ struct TestModel {
   }
 };
 
-TestModel BuildTestModel() {
+TestModel BuildTestModel(int32_t npu_max_length = 64) {
   TestModel tm;
   mslite_llm::SetBackendFactory([&tm] {
     auto *b = new mslite_llm_test::FakeBackend();
     tm.backend = b;
     return std::unique_ptr<mslite_llm::Backend>(b);
   });
-  auto fixture = mslite_llm_test::WriteMinimalModelDir();
+  auto fixture = mslite_llm_test::WriteMinimalModelDir(npu_max_length);
   tm.handle = MSLLMCreateModel();
   MSLLMBuildModel(tm.handle, fixture.dir.c_str());
   mslite_llm::SetBackendFactory(nullptr);
@@ -125,10 +126,16 @@ TEST(BuildModel, EmptyPathReturnsInvalidArgs) {
   MSLLMDestroyModel(h);
 }
 
-TEST(BuildModel, NonexistentPathReturnsModelLoad) {
+TEST(BuildModel, NonexistentPathReturnsInvalidArgs) {
+  const auto missing_path =
+    std::filesystem::temp_directory_path() /
+    ("mslite_llm_missing_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+  ASSERT_FALSE(std::filesystem::exists(missing_path));
+  const auto missing_path_string = missing_path.string();
+
   auto *h = MSLLMCreateModel();
   ASSERT_NE(h, nullptr);
-  EXPECT_EQ(MSLLMBuildModel(h, "/tmp/definitely_does_not_exist_xyz"), kMSLLM_ERROR_MODEL_LOAD);
+  EXPECT_EQ(MSLLMBuildModel(h, missing_path_string.c_str()), kMSLLM_ERROR_INVALID_ARGS);
   MSLLMDestroyModel(h);
 }
 
@@ -224,10 +231,12 @@ TEST(ApplyChatTemplate, LastMessageAssistantAccepted) {
 struct StreamResult {
   std::vector<std::string> tokens;
   MSLLMFinishReason reason = kMSLLM_RUNNING;
+  int callback_calls = 0;
 };
 
 void CollectTokens(const char *token, MSLLMFinishReason reason, void *data) {
   auto *r = static_cast<StreamResult *>(data);
+  ++r->callback_calls;
   if (token != nullptr) r->tokens.emplace_back(token);
   if (reason != kMSLLM_RUNNING) r->reason = reason;
 }
@@ -272,6 +281,24 @@ TEST(Generate, PromptOverflowReturnsContextOverflow) {
   std::string prompt(64, 'a');
   char buf[256] = {};
   EXPECT_EQ(MSLLMGenerate(tm.handle, prompt.c_str(), buf, sizeof(buf)), kMSLLM_ERROR_CONTEXT_OVERFLOW);
+}
+
+TEST(Generate, PromptAtNpuLimitReturnsContextOverflowBeforePrefill) {
+  // The model architecture supports 64 positions, but this exported NPU model
+  // only has resources for 16. Byte-level BPE does not inject BOS, so 16 'a'
+  // tokens fill the NPU context and leave no position for generation.
+  auto tm = BuildTestModel(/*npu_max_length=*/16);
+  ASSERT_NE(tm.handle, nullptr);
+  ASSERT_NE(tm.backend, nullptr);
+
+  // Emulate the real NNRT failure if the pipeline incorrectly lets the
+  // full-window prompt reach the first Prefill call.
+  tm.backend->QueueError(MSLLM_ERROR_INFERENCE, 1);
+
+  std::string prompt(16, 'a');
+  char buf[256] = {};
+  EXPECT_EQ(MSLLMGenerate(tm.handle, prompt.c_str(), buf, sizeof(buf)), kMSLLM_ERROR_CONTEXT_OVERFLOW);
+  EXPECT_EQ(tm.backend->execute_calls(), 0);
 }
 
 TEST(Generate, BufferTooSmallReturnsError) {
@@ -322,6 +349,24 @@ TEST(StreamGenerate, EosFinishReason) {
   ASSERT_EQ(r.tokens.size(), 1u);
   EXPECT_EQ(r.tokens[0], "a");
   EXPECT_EQ(r.reason, kMSLLM_FINISHED_BY_EOS);
+}
+
+TEST(StreamGenerate, PromptAtNpuLimitReturnsContextOverflowWithoutCallback) {
+  auto tm = BuildTestModel(/*npu_max_length=*/16);
+  ASSERT_NE(tm.handle, nullptr);
+  ASSERT_NE(tm.backend, nullptr);
+
+  // The current bug reaches Prefill and turns this failure into INFERENCE.
+  // The fixed pipeline must reject the prompt before this scripted call.
+  tm.backend->QueueError(MSLLM_ERROR_INFERENCE, 1);
+
+  std::string prompt(16, 'a');  // Fills the NPU context, leaving no output position.
+  StreamResult r;
+  EXPECT_EQ(MSLLMStreamGenerate(tm.handle, prompt.c_str(), CollectTokens, &r), kMSLLM_ERROR_CONTEXT_OVERFLOW);
+  EXPECT_EQ(tm.backend->execute_calls(), 0);
+  EXPECT_EQ(r.callback_calls, 0);
+  EXPECT_TRUE(r.tokens.empty());
+  EXPECT_EQ(r.reason, kMSLLM_RUNNING);
 }
 
 TEST(StreamGenerate, MaxOutputLengthFinishReason) {

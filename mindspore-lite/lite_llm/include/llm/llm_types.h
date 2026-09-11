@@ -44,9 +44,9 @@ typedef struct MSLLMModel *MSLLMModelHandle;
 
 typedef enum {
   kMSLLM_SUCCESS = 0,
-  /** invalid handle, null pointer, or out-of-range parameter. */
+  /** invalid handle, null pointer, invalid path, or out-of-range parameter. */
   kMSLLM_ERROR_INVALID_ARGS = 1,
-  /** model package missing, corrupt, or incompatible. */
+  /** model package corrupt or incompatible. */
   kMSLLM_ERROR_MODEL_LOAD = 2,
   /** failure during prefill or decode execution. */
   kMSLLM_ERROR_INFERENCE = 3,

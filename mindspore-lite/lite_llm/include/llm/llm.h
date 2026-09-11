@@ -57,7 +57,10 @@ MSLLM_API MSLLMStatus MSLLMDestroyModel(MSLLMModelHandle llm_model);
  *
  * @param llm_model LLM model handle.
  * @param model_path Path to the .msl model package.
- * @return kMSLLM_SUCCESS on success, or an error code.
+ * @return kMSLLM_SUCCESS on success, kMSLLM_ERROR_INVALID_ARGS if llm_model
+ *         or model_path is NULL, or if model_path is empty or does not exist;
+ *         kMSLLM_ERROR_MODEL_LOAD if an existing package cannot be loaded, or
+ *         another error code.
  */
 MSLLM_API MSLLMStatus MSLLMBuildModel(MSLLMModelHandle llm_model, const char *model_path);
 
