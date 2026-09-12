@@ -38,14 +38,32 @@ int PoolingFP16Coder::DoCode(CoderContext *const context) {
   auto pooling_parameter = reinterpret_cast<PoolingParameter *>(parameter_);
   MS_CHECK_PTR(pooling_parameter);
   // init struct PoolingParameters
-  compute_param_.input_batch_ = input_tensor_->Batch();
-  compute_param_.input_channel_ = input_tensor_->Channel();
-  compute_param_.input_h_ = input_tensor_->Height();
-  compute_param_.input_w_ = input_tensor_->Width();
-  compute_param_.output_batch_ = output_tensor_->Batch();
-  compute_param_.output_channel_ = output_tensor_->Channel();
-  compute_param_.output_h_ = output_tensor_->Height();
-  compute_param_.output_w_ = output_tensor_->Width();
+  constexpr size_t kNcDimIdx = 0;  // NCW layout: N
+  constexpr size_t kCcDimIdx = 1;  // NCW layout: C, occupies the H slot
+  constexpr size_t kWcDimIdx = 2;  // NCW layout: W
+  if (input_tensor_->shape().size() == DIMENSION_3D) {
+    // 3D (1D pooling) NCW [N, C, W]: Tensor::Batch/Height/Width only serve 2D/4D,
+    // fill positionally — the channel dim takes the H slot, channel is 1.
+    auto in_shape = input_tensor_->shape();
+    auto out_shape = output_tensor_->shape();
+    compute_param_.input_batch_ = in_shape[kNcDimIdx];
+    compute_param_.input_channel_ = 1;
+    compute_param_.input_h_ = in_shape[kCcDimIdx];
+    compute_param_.input_w_ = in_shape[kWcDimIdx];
+    compute_param_.output_batch_ = out_shape[kNcDimIdx];
+    compute_param_.output_channel_ = 1;
+    compute_param_.output_h_ = out_shape[kCcDimIdx];
+    compute_param_.output_w_ = out_shape[kWcDimIdx];
+  } else {
+    compute_param_.input_batch_ = input_tensor_->Batch();
+    compute_param_.input_channel_ = input_tensor_->Channel();
+    compute_param_.input_h_ = input_tensor_->Height();
+    compute_param_.input_w_ = input_tensor_->Width();
+    compute_param_.output_batch_ = output_tensor_->Batch();
+    compute_param_.output_channel_ = output_tensor_->Channel();
+    compute_param_.output_h_ = output_tensor_->Height();
+    compute_param_.output_w_ = output_tensor_->Width();
+  }
   compute_param_.window_h_ = pooling_parameter->window_h_;
   compute_param_.window_w_ = pooling_parameter->window_w_;
 

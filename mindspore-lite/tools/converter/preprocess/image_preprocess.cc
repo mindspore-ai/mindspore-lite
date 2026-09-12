@@ -259,12 +259,19 @@ int PreProcess(const DataPreProcessParam &data_pre_process_param, const std::str
     return RET_NULL_PTR;
   }
 
-  if (data_pre_process_param.calibrate_path_vector.find(input_name) ==
-      data_pre_process_param.calibrate_path_vector.end()) {
-    MS_LOG(ERROR) << "Cant find input:" << input_name;
-    return RET_INPUT_PARAM_INVALID;
+  auto calibrate_iter = data_pre_process_param.calibrate_path_vector.find(input_name);
+  if (calibrate_iter == data_pre_process_param.calibrate_path_vector.end()) {
+    // The calibrate_path key in the quant cfg is often a generic name (e.g. "input") rather than the
+    // model tensor name; for single-input models fall back to the only configured entry.
+    if (data_pre_process_param.calibrate_path_vector.size() != 1) {
+      MS_LOG(ERROR) << "Cant find input:" << input_name;
+      return RET_INPUT_PARAM_INVALID;
+    }
+    calibrate_iter = data_pre_process_param.calibrate_path_vector.begin();
+    MS_LOG(WARNING) << "Cant find input:" << input_name
+                    << ", use the only calibrate path of input:" << calibrate_iter->first;
   }
-  auto data_path = data_pre_process_param.calibrate_path_vector.at(input_name).at(image_index);
+  auto data_path = calibrate_iter->second.at(image_index);
 #ifndef MSLITE_DEPS_OPENCV
   if (data_pre_process_param.input_type == BIN) {
 #else

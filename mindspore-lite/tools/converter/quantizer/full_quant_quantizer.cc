@@ -361,6 +361,16 @@ int FullQuantQuantizer::QuantNodeSimpleOp(const CNodePtr &cnode) {
   return RET_OK;
 }
 
+namespace {
+// Ops imported already quantized (e.g. int8 tflite with QUANTIZE/DEQUANTIZE boundary ops)
+// keep their existing quant_type mark; only unmarked ops are downgraded to QUANT_NONE.
+void MarkQuantTypeNoneIfAbsent(const PrimitivePtr &primitive) {
+  if (primitive->GetAttr(quant::kQuantType) == nullptr) {
+    primitive->AddAttr(quant::kQuantType, MakeValue(static_cast<int>(quant::QUANT_NONE)));
+  }
+}
+}  // namespace
+
 int FullQuantQuantizer::QuantNode(const FuncGraphPtr &func_graph) {
   auto inputs_diverg_info = calibrator_->GetInputDivergInfo();
   auto outputs_diverg_info = calibrator_->GetOutputDivergInfo();
@@ -379,7 +389,7 @@ int FullQuantQuantizer::QuantNode(const FuncGraphPtr &func_graph) {
     }
     if (inputs_diverg_info->find(op_name) == inputs_diverg_info->end()) {
       MS_LOG(INFO) << op_name << " can not do quant";
-      primitive->AddAttr(quant::kQuantType, MakeValue(static_cast<int>(quant::QUANT_NONE)));
+      MarkQuantTypeNoneIfAbsent(primitive);
       continue;
     }
 
