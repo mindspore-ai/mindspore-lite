@@ -54,6 +54,8 @@ TEST_F(TensorlistGetItemInferTest, TensorlistGetItemInferTest0) {
   inputs[0] = reinterpret_cast<TensorC *>(input0);
   inputs[0]->data_type_ = kObjectTypeTensorType;
 
+  // value-initialized storage: InferFlag() scans shape_size_/shape_[] of every plain input,
+  // uninitialized malloc memory makes the result depend on heap history
   inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 1;
