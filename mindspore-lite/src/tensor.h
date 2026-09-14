@@ -106,6 +106,10 @@ class Tensor {
   void set_data_type(TypeId data_type) { tensor_c_.data_type_ = data_type; }
 
   std::vector<int> shape() const {
+    if (tensor_c_.shape_size_ > MAX_SHAPE_SIZE) {
+      MS_LOG(ERROR) << "Invalid tensor shape size: " << tensor_c_.shape_size_;
+      return {};
+    }
     return std::vector<int>(tensor_c_.shape_, tensor_c_.shape_ + tensor_c_.shape_size_);
   }
 
