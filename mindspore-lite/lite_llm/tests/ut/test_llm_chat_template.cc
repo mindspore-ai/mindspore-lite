@@ -41,7 +41,7 @@ namespace {
 TEST(ChatTemplate, NullHandleReturnsError) {
   MSLLMChatMessage msgs[] = {{MSLLM_ROLE_USER, "hello"}};
   char buf[256];
-  auto s = MSLLMApplyChatTemplate(nullptr, msgs, 1, 0, buf, sizeof(buf));
+  auto s = MSLLMApplyChatTemplate(nullptr, msgs, 1, buf, sizeof(buf));
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
 }
 
@@ -49,7 +49,7 @@ TEST(ChatTemplate, NullMessagesReturnsError) {
   auto *h = MSLLMCreateModel();
   ASSERT_NE(h, nullptr);
   char buf[256];
-  auto s = MSLLMApplyChatTemplate(h, nullptr, 1, 0, buf, sizeof(buf));
+  auto s = MSLLMApplyChatTemplate(h, nullptr, 1, buf, sizeof(buf));
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
   MSLLMDestroyModel(h);
 }
@@ -59,7 +59,7 @@ TEST(ChatTemplate, ZeroMessagesReturnsError) {
   ASSERT_NE(h, nullptr);
   MSLLMChatMessage msgs[] = {{MSLLM_ROLE_USER, "hello"}};
   char buf[256];
-  auto s = MSLLMApplyChatTemplate(h, msgs, 0, 0, buf, sizeof(buf));
+  auto s = MSLLMApplyChatTemplate(h, msgs, 0, buf, sizeof(buf));
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
   MSLLMDestroyModel(h);
 }
@@ -68,7 +68,7 @@ TEST(ChatTemplate, NullBufferReturnsError) {
   auto *h = MSLLMCreateModel();
   ASSERT_NE(h, nullptr);
   MSLLMChatMessage msgs[] = {{MSLLM_ROLE_USER, "hello"}};
-  auto s = MSLLMApplyChatTemplate(h, msgs, 1, 0, nullptr, 256);
+  auto s = MSLLMApplyChatTemplate(h, msgs, 1, nullptr, 256);
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
   MSLLMDestroyModel(h);
 }
@@ -78,7 +78,7 @@ TEST(ChatTemplate, ZeroBufferSizeReturnsError) {
   ASSERT_NE(h, nullptr);
   MSLLMChatMessage msgs[] = {{MSLLM_ROLE_USER, "hello"}};
   char buf[256];
-  auto s = MSLLMApplyChatTemplate(h, msgs, 1, 0, buf, 0);
+  auto s = MSLLMApplyChatTemplate(h, msgs, 1, buf, 0);
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
   MSLLMDestroyModel(h);
 }
@@ -89,7 +89,7 @@ TEST(ChatTemplate, UnbuiltModelReturnsError) {
   MSLLMChatMessage msgs[] = {{MSLLM_ROLE_USER, "hello"}};
   char buf[256];
   // No BuildModel — tokenizer is null
-  auto s = MSLLMApplyChatTemplate(h, msgs, 1, 0, buf, sizeof(buf));
+  auto s = MSLLMApplyChatTemplate(h, msgs, 1, buf, sizeof(buf));
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
   MSLLMDestroyModel(h);
 }
@@ -106,7 +106,7 @@ TEST(ChatTemplate, AllRoleTypesAccepted) {
   };
   char buf[256];
   // Unbuilt model → INVALID_ARGS (tokenizer null), but messages are valid
-  auto s = MSLLMApplyChatTemplate(h, msgs, 3, 1, buf, sizeof(buf));
+  auto s = MSLLMApplyChatTemplate(h, msgs, 3, buf, sizeof(buf));
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
   MSLLMDestroyModel(h);
 }
@@ -118,7 +118,7 @@ TEST(ChatTemplate, EmptyContentAccepted) {
     {MSLLM_ROLE_USER, ""},
   };
   char buf[256];
-  auto s = MSLLMApplyChatTemplate(h, msgs, 1, 0, buf, sizeof(buf));
+  auto s = MSLLMApplyChatTemplate(h, msgs, 1, buf, sizeof(buf));
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);  // unbuilt model
   MSLLMDestroyModel(h);
 }
@@ -130,7 +130,7 @@ TEST(ChatTemplate, NullContentReturnsInvalidArgs) {
     {MSLLM_ROLE_USER, nullptr},
   };
   char buf[256];
-  auto s = MSLLMApplyChatTemplate(h, msgs, 1, 0, buf, sizeof(buf));
+  auto s = MSLLMApplyChatTemplate(h, msgs, 1, buf, sizeof(buf));
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
   MSLLMDestroyModel(h);
 }

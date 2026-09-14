@@ -338,7 +338,7 @@ MSLLMStatus MSLLMGetGenerationConfig(MSLLMModelHandle llm_model, MSLLMGeneration
 }
 
 MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const MSLLMChatMessage *messages, int num_messages,
-                                   int add_generation_prompt, char *generated_prompt, int prompt_size) {
+                                   char *generated_prompt, int prompt_size) {
   if (llm_model == nullptr || messages == nullptr || num_messages <= 0 || generated_prompt == nullptr ||
       prompt_size <= 0) {
     return kMSLLM_ERROR_INVALID_ARGS;
@@ -370,7 +370,10 @@ MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const MSLLMChatMe
     return kMSLLM_ERROR_MODEL_LOAD;
   }
 
-  std::string rendered = e->tokenizer->ApplyChatTemplate(msgs, add_generation_prompt != 0);
+  // Render without appending the generation prompt. If the trailing
+  // assistant-start marker is later needed, that will be introduced as a
+  // separate configuration; the current behavior is add_generation_prompt=false.
+  std::string rendered = e->tokenizer->ApplyChatTemplate(msgs, false);
   int needed = static_cast<int>(rendered.size()) + 1;
 
   if (needed > prompt_size) {

@@ -97,9 +97,6 @@ MSLLM_API MSLLMStatus MSLLMGetGenerationConfig(MSLLMModelHandle llm_model, MSLLM
  * @param llm_model LLM model handle.
  * @param messages Array of role/content messages (e.g. full multi-turn history).
  * @param num_messages Number of messages.
- * @param add_generation_prompt Non-zero to append the generation prompt
- *        (e.g. the trailing assistant-start marker); zero to render the
- *        conversation so far without it.
  * @param generated_prompt Caller-provided output buffer for the rendered text.
  * @param prompt_size Size of generated_prompt in bytes.
  * @return kMSLLM_SUCCESS on success, kMSLLM_ERROR_BUFFER_TOO_SMALL if the
@@ -108,8 +105,7 @@ MSLLM_API MSLLMStatus MSLLMGetGenerationConfig(MSLLMModelHandle llm_model, MSLLM
  *         another error code.
  */
 MSLLM_API MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const MSLLMChatMessage *messages,
-                                             int num_messages, int add_generation_prompt, char *generated_prompt,
-                                             int prompt_size);
+                                             int num_messages, char *generated_prompt, int prompt_size);
 
 /**
  * @brief Generate text from a prompt, blocking until finished.
