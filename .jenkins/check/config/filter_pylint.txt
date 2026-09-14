@@ -41,6 +41,17 @@
 "mindspore-lite/mindspore-lite/lite_boost/python/ops/quant_matmul_w4a8.py"                                    "unsupported-binary-operation"
 "mindspore-lite/mindspore-lite/lite_boost/python/ops/quant_matmul_w4a8.py"                                    "too-many-arguments"
 
+# lite_boost/parallel
+"mindspore-lite/mindspore-lite/lite_boost/python/parallel/tensor_parallel.py"                                 "not-callable"
+"mindspore-lite/mindspore-lite/lite_boost/python/parallel/tensor_parallel.py"                                 "protected-access"
+"mindspore-lite/mindspore-lite/lite_boost/python/parallel/context_parallel.py"                                "protected-access"
+
+# lite_boost/booguimage
+"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/boost.py"                                   "protected-access"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/npu_kernels.py"                             "protected-access"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/tp.py"                                      "protected-access"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/usp.py"                                     "protected-access"
+
 # lite_boost/qwenimage
 "mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py"                 "access-member-before-definition"
 "mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py"                 "protected-access"

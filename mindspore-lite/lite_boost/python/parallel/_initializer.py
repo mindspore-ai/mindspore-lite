@@ -34,6 +34,39 @@ import torch.distributed as dist
 import torch_npu
 
 
+def get_world_size() -> int:
+    """Return the distributed world size, or 1 when not initialized."""
+    if dist is not None and dist.is_available() and dist.is_initialized():
+        return dist.get_world_size()
+    return 1
+
+
+def get_rank() -> int:
+    """Return the rank of the current process, or 0 when not initialized."""
+    if dist is not None and dist.is_available() and dist.is_initialized():
+        return dist.get_rank()
+    return 0
+
+
+def is_distributed_active():
+    """Return True when the distributed process group is initialized (world size > 1)."""
+    return dist is not None and dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1
+
+
+def all_reduce(x, op=dist.ReduceOp.SUM):
+    """All-reduce ``x`` in place across ranks; return ``x`` unchanged when not initialized."""
+    if dist is not None and dist.is_available() and dist.is_initialized():
+        dist.all_reduce(x, op=op)
+    return x
+
+
+def broadcast(x, src=0):
+    """Broadcast ``x`` from rank ``src``; return ``x`` unchanged when not initialized."""
+    if dist is not None and dist.is_available() and dist.is_initialized():
+        dist.broadcast(x, src=src)
+    return x
+
+
 def initialize_usp():
     r"""
     Initialize the HCCL distributed environment for parallel inference.
