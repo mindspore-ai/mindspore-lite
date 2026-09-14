@@ -29,27 +29,31 @@ TEST_F(TensorlistStackInferTest, TensorlistStackInferTest0) {
   std::vector<TensorC *> inputs(inputs_size, NULL);
   auto *input0 = new TensorListC();
   input0->element_num_ = 3;
-  auto in_tensors_c = reinterpret_cast<TensorC *>(malloc(input0->element_num_ * sizeof(TensorC)));
-  input0->tensors_ = &in_tensors_c;
+  // tensors_ must be a real array of tensor pointers
+  TensorC **in_tensors = new TensorC *[input0->element_num_];
+  for (size_t i = 0; i < input0->element_num_; i++) {
+    in_tensors[i] = new TensorC();
+  }
+  input0->tensors_ = in_tensors;
   input0->element_shape_size_ = 2;
   input0->element_shape_[0] = 2;
   input0->element_shape_[1] = 4;
   input0->tensors_data_type_ = kNumberTypeInt32;
 
-  in_tensors_c[0].shape_size_ = 2;
-  in_tensors_c[0].shape_[0] = 2;
-  in_tensors_c[0].shape_[1] = 4;
-  in_tensors_c[0].data_type_ = kNumberTypeInt32;
+  in_tensors[0]->shape_size_ = 2;
+  in_tensors[0]->shape_[0] = 2;
+  in_tensors[0]->shape_[1] = 4;
+  in_tensors[0]->data_type_ = kNumberTypeInt32;
 
-  in_tensors_c[1].shape_size_ = 2;
-  in_tensors_c[1].shape_[0] = 2;
-  in_tensors_c[1].shape_[1] = 4;
-  in_tensors_c[1].data_type_ = kNumberTypeInt32;
+  in_tensors[1]->shape_size_ = 2;
+  in_tensors[1]->shape_[0] = 2;
+  in_tensors[1]->shape_[1] = 4;
+  in_tensors[1]->data_type_ = kNumberTypeInt32;
 
-  in_tensors_c[2].shape_size_ = 2;
-  in_tensors_c[2].shape_[0] = 2;
-  in_tensors_c[2].shape_[1] = 4;
-  in_tensors_c[2].data_type_ = kNumberTypeInt32;
+  in_tensors[2]->shape_size_ = 2;
+  in_tensors[2]->shape_[0] = 2;
+  in_tensors[2]->shape_[1] = 4;
+  in_tensors[2]->data_type_ = kNumberTypeInt32;
   inputs[0] = reinterpret_cast<TensorC *>(input0);
   inputs[0]->data_type_ = kObjectTypeTensorType;
 
@@ -72,13 +76,14 @@ TEST_F(TensorlistStackInferTest, TensorlistStackInferTest0) {
   ASSERT_EQ(outputs[0]->data_type_, kNumberTypeInt32);
 
   delete parameter;
-  for (size_t i = 0; i < inputs_size; i++) {
-    if (inputs[i]->data_type_ == kObjectTypeTensorType) {
-      auto *tensorList_c = reinterpret_cast<TensorListC *>(inputs[i]);
-      free(*tensorList_c->tensors_);
-    }
+  for (size_t i = 0; i < input0->element_num_; i++) {
+    delete input0->tensors_[i];
+  }
+  delete[] input0->tensors_;
+  for (size_t i = 1; i < inputs_size; i++) {
     delete inputs[i];
   }
+  delete input0;
   for (size_t i = 0; i < outputs.size(); i++) {
     delete outputs[i];
   }

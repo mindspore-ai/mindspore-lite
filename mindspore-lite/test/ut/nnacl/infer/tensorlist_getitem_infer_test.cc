@@ -54,16 +54,17 @@ TEST_F(TensorlistGetItemInferTest, TensorlistGetItemInferTest0) {
   inputs[0] = reinterpret_cast<TensorC *>(input0);
   inputs[0]->data_type_ = kObjectTypeTensorType;
 
-  inputs[1] = reinterpret_cast<TensorC *>(malloc(sizeof(TensorC)));
+  inputs[1] = new TensorC();
   inputs[1]->shape_size_ = 1;
   inputs[1]->shape_[0] = 1;
   std::vector<int> inputs1_data = {2};
   inputs[1]->data_ = inputs1_data.data();
+  inputs[1]->data_type_ = kNumberTypeInt32;
 
-  inputs[2] = reinterpret_cast<TensorC *>(malloc(sizeof(TensorC)));
+  inputs[2] = new TensorC();
 
   std::vector<TensorC *> outputs(1, NULL);
-  outputs[0] = reinterpret_cast<TensorC *>(malloc(sizeof(TensorC)));
+  outputs[0] = new TensorC();
   auto *parameter = new OpParameter();
   int ret = TensorListGetItemInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
                                         reinterpret_cast<OpParameter *>(parameter));
@@ -82,10 +83,10 @@ TEST_F(TensorlistGetItemInferTest, TensorlistGetItemInferTest0) {
   delete[] input0->tensors_;
   delete input0;
   for (size_t i = 1; i < inputs_size; i++) {
-    free(inputs[i]);
+    delete inputs[i];
   }
   for (size_t i = 0; i < outputs.size(); i++) {
-    free(outputs[i]);
+    delete outputs[i];
   }
 }
 

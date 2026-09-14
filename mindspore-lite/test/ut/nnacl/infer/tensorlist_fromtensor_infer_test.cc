@@ -43,7 +43,7 @@ TEST_F(TensorlistFromtensorInferTest, TensorlistFromtensorInferTest0) {
   inputs[1]->shape_[1] = 2;
 
   std::vector<TensorC *> outputs(1, NULL);
-  auto out = reinterpret_cast<TensorListC *>(malloc(sizeof(TensorListC)));
+  auto out = new TensorListC();
   out->tensors_ = nullptr;
   outputs[0] = reinterpret_cast<TensorC *>(out);
   auto *parameter = new OpParameter();
@@ -66,7 +66,7 @@ TEST_F(TensorlistFromtensorInferTest, TensorlistFromtensorInferTest0) {
     delete inputs[i];
   }
   lite::FreeOutTensorC(&outputs);
-  free(out);
+  delete out;
 }
 
 }  // namespace mindspore
