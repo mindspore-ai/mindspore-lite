@@ -70,7 +70,7 @@ bool RenderUserPrompt(MSLLMModelHandle model, const char *user_prompt, std::stri
   size_t capacity = std::max<size_t>(4096, std::strlen(user_prompt) + 256);
   while (capacity <= static_cast<size_t>(std::numeric_limits<int>::max())) {
     std::vector<char> buffer(capacity);
-    MSLLMStatus status = MSLLMApplyChatTemplate(model, messages, 2, 1, buffer.data(), static_cast<int>(buffer.size()));
+    MSLLMStatus status = MSLLMApplyChatTemplate(model, messages, 2, buffer.data(), static_cast<int>(buffer.size()));
     if (status == kMSLLM_SUCCESS) {
       *rendered_prompt = buffer.data();
       return true;

@@ -190,7 +190,7 @@ TEST(ApplyChatTemplate, NullContentReturnsInvalidArgs) {
 
   MSLLMChatMessage msgs[] = {{MSLLM_ROLE_USER, nullptr}};
   char buf[256];
-  EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 1, 0, buf, sizeof(buf)), kMSLLM_ERROR_INVALID_ARGS);
+  EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 1, buf, sizeof(buf)), kMSLLM_ERROR_INVALID_ARGS);
 }
 
 TEST(ApplyChatTemplate, EmptyContentAccepted) {
@@ -201,7 +201,7 @@ TEST(ApplyChatTemplate, EmptyContentAccepted) {
   char buf[256];
   // Empty content is legal (#10); the fixture package carries a minimal chat
   // template, so the render succeeds and emits "role:content\n".
-  EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 1, 0, buf, sizeof(buf)), kMSLLM_SUCCESS);
+  EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 1, buf, sizeof(buf)), kMSLLM_SUCCESS);
   EXPECT_STREQ(buf, "user:\n");
 }
 
@@ -211,7 +211,7 @@ TEST(ApplyChatTemplate, SmallBufferReturnsBufferTooSmall) {
 
   MSLLMChatMessage msgs[] = {{MSLLM_ROLE_USER, "hello world"}};
   char tiny[4] = {};  // rendered "user:hello world\n" (17 bytes) does not fit
-  EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 1, 0, tiny, sizeof(tiny)), kMSLLM_ERROR_BUFFER_TOO_SMALL);
+  EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 1, tiny, sizeof(tiny)), kMSLLM_ERROR_BUFFER_TOO_SMALL);
 }
 
 TEST(ApplyChatTemplate, LastMessageAssistantAccepted) {
@@ -222,7 +222,7 @@ TEST(ApplyChatTemplate, LastMessageAssistantAccepted) {
   // template renders it verbatim (model decides how to continue).
   MSLLMChatMessage msgs[] = {{MSLLM_ROLE_USER, "hi"}, {MSLLM_ROLE_ASSISTANT, "hello!"}};
   char buf[256];
-  EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 2, 0, buf, sizeof(buf)), kMSLLM_SUCCESS);
+  EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 2, buf, sizeof(buf)), kMSLLM_SUCCESS);
   EXPECT_STREQ(buf, "user:hiassistant:hello!\n");
 }
 
@@ -457,7 +457,7 @@ void ReentrantCallback(const char *token, MSLLMFinishReason reason, void *data) 
     }
     case ReentryOp::kApplyChatTemplate: {
       MSLLMChatMessage m[] = {{MSLLM_ROLE_USER, "x"}};
-      ctx->result = MSLLMApplyChatTemplate(ctx->handle, m, 1, 0, buf, sizeof(buf));
+      ctx->result = MSLLMApplyChatTemplate(ctx->handle, m, 1, buf, sizeof(buf));
       break;
     }
     case ReentryOp::kAbort:

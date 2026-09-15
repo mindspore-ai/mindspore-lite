@@ -255,8 +255,8 @@ MSLLMStatus MSLLMGetGenerationConfig(MSLLMModelHandle llm_model,
  * @param llm_model LLM model object handle.
  * @param messages Array of role/content messages (e.g. full multi-turn history).
  * @param num_messages Number of messages.
- * @param add_generation_prompt 非零则追加生成提示（如尾部 assistant 起始符）；
- *        零则仅渲染既有会话。
+ *        渲染不追加生成提示（尾部 assistant 起始符）；如需该标记，
+ *        后续以独立配置引入。
  * @param generated_prompt Caller-provided output buffer for the rendered text.
  * @param prompt_size Size of generated_prompt in bytes.
  * @return MSLLMStatus. kMSLLM_ERROR_BUFFER_TOO_SMALL if prompt_size is insufficient
@@ -266,7 +266,7 @@ MSLLMStatus MSLLMGetGenerationConfig(MSLLMModelHandle llm_model,
  *         kMSLLM_ERROR_BUSY while a generation is in flight on this model (D9).
  */
 MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model,
-    const MSLLMChatMessage *messages, int num_messages, int add_generation_prompt,
+    const MSLLMChatMessage *messages, int num_messages,
     char *generated_prompt, int prompt_size);
 
 ```text
@@ -543,7 +543,7 @@ int main() {
         },
     }
     MSLLMApplyChatTemplate(llm_model,
-        messages, 2, 1, prompt, prompt_size);
+        messages, 2, prompt, prompt_size);
 
     // 调用一次接口，生成所有文本。同步阻塞，无需回调，也不涉及线程管理。
     // 调用方预分配缓冲（见「buffer 契约」，D4）：缓冲不足返回
@@ -571,7 +571,7 @@ int main() {
         },
     }
     MSLLMApplyChatTemplate(llm_model,
-        messages2, 2, 1, prompt, prompt_size);
+        messages2, 2, prompt, prompt_size);
 
     MSLLMGenerate(llm_model, prompt, result, sizeof(result));
     LOGI("model response: %s", result);
@@ -836,7 +836,7 @@ Chat template 的应用位置是此边界的直接推论：由于 tokenizer 不�
 **由此得出：**
 
 - `MSLLMGenerate` 接收裸字符串 —— 对齐 HF 的 `generate()` 定位（已定决策），模板能力与生成能力分离。
-- **新增 `MSLLMApplyChatTemplate(model, messages, num_messages, add_generation_prompt, buffer, buffer_size)`**：把消息数组渲染为完整 prompt 文本。它不属于「接口边界」禁止的 Tokenize —— 输入输出都是文本，不产生 token id、不暴露词表；开放的是模板渲染能力。角色序列不校验（#8/#9）；`content==NULL` → INVALID_ARGS（#10）。
+- **新增 `MSLLMApplyChatTemplate(model, messages, num_messages, buffer, buffer_size)`**：把消息数组渲染为完整 prompt 文本（不追加尾部 assistant 起始符）。它不属于「接口边界」禁止的 Tokenize —— 输入输出都是文本，不产生 token id、不暴露词表；开放的是模板渲染能力。角色序列不校验（#8/#9）；`content==NULL` → INVALID_ARGS（#10）。
 - 该接口需要 **session** 参数：模板配置从模型包加载，属会话资源（与"会话是资源容器"一致），不是纯函数。
 - 调用方三选一：自拼字符串直接 Generate（不用模板）；`ApplyChatTemplate` 渲染后 Generate（用库内模板）；自持自定义模板自拼（此时模板细节是调用方责任，需自行与模型配套）。
 - 与「会话与多轮对话」决策衔接：多轮历史由调用方维护，以完整 messages 数组传给 `ApplyChatTemplate`，渲染出完整 prompt 后再 Generate。
@@ -853,7 +853,7 @@ MSLLMChatMessage msgs[] = {
     {.role = MSLLM_ROLE_USER, .content = "本轮用户输入"},
 };
 char prompt[4096];
-MSLLMApplyChatTemplate(llm_model, msgs, 4, 1, prompt, sizeof(prompt));
+MSLLMApplyChatTemplate(llm_model, msgs, 4, prompt, sizeof(prompt));
 MSLLMGenerate(llm_model, prompt, result, sizeof(result));
 
 // 把本次回答追加进 history，供下一轮使用
