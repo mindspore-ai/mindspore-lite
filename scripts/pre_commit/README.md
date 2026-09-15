@@ -48,6 +48,12 @@
 
     **Note**: The `core.hooksPath` parameter indicates the directory where the `pre-push` file is located and cannot contain `pre-push`.
 
+    C/C++ checks require a compilation database. Configure the relevant build target with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`; the default database is `build/compile_commands.json`. For another build directory, export `CPPCHECK_COMPILE_COMMANDS` with the database path before running the hook.
+
+    The database must cover changed C/C++ sources and consumers of changed headers. The hook rejects missing source entries and analyzes headers through translation units, using the build's language, include paths and defines plus the GoogleTest library model. Ordinary diagnostics are limited to changed files; analysis errors in dependencies remain visible. A missing database or failed checker invocation blocks the gate instead of reporting an empty successful scan.
+
+    Directory exclusions match complete path components: excluding `mindspore/` does not exclude `mindspore-lite/`, and excluding `build/` does not exclude `building/`.
+
     (3) Execute pre-push.
 
     You do not need to execute pre-push manually. Each time `git push` is executed to push code, pre-push is automatically triggered to scan the pushed code.

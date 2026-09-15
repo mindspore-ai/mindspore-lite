@@ -189,8 +189,8 @@ create_converted_filter_file() {
 status=0
 CURR_DIR=$(dirname "${BASH_SOURCE-$0}")
 CURR_DIR=$(cd -P "${CURR_DIR}" || exit; pwd -P)
-REPO_HOME=$(cd -P "${CURR_DIR}/../../../" || exit; pwd -P)
-WORKSPACE=$(cd -P "${CURR_DIR}/../../../../" || exit; pwd -P)
+REPO_HOME=$(git rev-parse --show-toplevel) || exit 1
+WORKSPACE=$(dirname "${REPO_HOME}")
 
 CLANG_FORMAT_ERRORS="0"
 CMAKELINT_ERRORS="0"
@@ -268,7 +268,7 @@ function GET_CODE() {
             if [ -n "${all_exclude_folders}" ]; then
                 IFS=',' read -ra exclude_array <<< "${all_exclude_folders}"
                 for exclude_pattern in "${exclude_array[@]}"; do
-                    if [[ "${line}" == ${exclude_pattern}* ]] || [[ "${line}" == */${exclude_pattern}* ]]; then
+                    if path_has_directory "${line}" "${exclude_pattern}"; then
                         exclude_file=1
                         break
                     fi
@@ -1050,10 +1050,15 @@ function cppcheck_check() {
         cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
         return 1
     }
-    for file in "${cpp_files[@]}"; do
-        log_debug "Running cppcheck on $file"
-        cppcheck --enable=style --inline-suppr --template=gcc "$file" >> "$result_log" 2>&1 || true
-    done
+    local project="${CPPCHECK_COMPILE_COMMANDS:-${REPO_HOME}/build/compile_commands.json}"
+    local cppcheck_exit=0
+    python3 "${CURR_DIR}/../lib/cppcheck_project.py" \
+        "${REPO_HOME}" "${CODE_PATH}/pr_filelist.txt" "${project}" >> "$result_log" 2>&1 || cppcheck_exit=$?
+    # Exit 2 means completed analysis with findings; existing filters still apply.
+    if [ "$cppcheck_exit" -ne 0 ] && [ "$cppcheck_exit" -ne 2 ]; then
+        printf 'nofile:0:0: error: cppcheck analysis failed (exit %s) [toolExecution]\n' \
+            "$cppcheck_exit" >> "$result_log"
+    fi
     local filter_file="${REPO_HOME}/.jenkins/check/config/filter_cppcheck.txt"
     if [ ! -f "$filter_file" ]; then
         filter_file="${JENKINS_PATH}/check/config/filter_cppcheck.txt"
