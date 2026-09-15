@@ -56,6 +56,8 @@
 
     Pylint 在原始包目录中检查选中的文件，保留未变更的 `__init__.py` 和相对导入上下文。共享 hook 通过 Git 确定待检查仓库，辅助脚本则从 hook 自身目录加载。
 
+    无法解析引号形式的 include（`missingInclude`）属于配置错误，即使 cppcheck 返回成功也会阻断。旧版 cppcheck 可能无法解析含空格的 include 路径；应升级工具或修正构建上下文，不能接受不完整分析。
+
     （3）运行pre-push
 
     pre-push不用手动执行，每次执行`git push`推送代码会自动触发pre-push对本次推送的代码进行扫描。

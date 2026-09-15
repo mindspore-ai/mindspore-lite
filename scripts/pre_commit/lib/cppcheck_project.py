@@ -42,11 +42,18 @@ def _project_sources(project):
 
 
 def _report_diagnostics(stream, root, changed):
+    """Keep actionable diagnostics and reject incomplete quoted-include resolution."""
+    missing_include = False
     for line in stream:
+        if line.rstrip().endswith("[missingInclude]"):
+            sys.stderr.write(line.replace(": information:", ": error:", 1))
+            missing_include = True
+            continue
         match = _DIAGNOSTIC.match(line)
         # Analysis errors must remain visible even in unchanged dependencies.
         if not match or match.group(2) == "error" or (root / match.group(1)).resolve() in changed:
             sys.stderr.write(line)
+    return missing_include
 
 
 def main():
@@ -66,7 +73,7 @@ def main():
             raise ValueError("compilation database omits changed sources: "
                              + ", ".join(str(path) for path in sorted(missing)))
         command = [
-            "cppcheck", "--enable=style", "--inline-suppr", "--error-exitcode=2",
+            "cppcheck", "--enable=style,missingInclude", "--inline-suppr", "--error-exitcode=2",
             "--library=googletest", "--relative-paths=" + str(root),
             "--template={file}:{line}:{column}: {severity}: {message} [{id}]",
             "--project=" + str(project),
@@ -74,8 +81,8 @@ def main():
         with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as diagnostics:
             result = subprocess.run(command, cwd=root, stderr=diagnostics, check=False)
             diagnostics.seek(0)
-            _report_diagnostics(diagnostics, root, changed)
-        return result.returncode
+            missing_include = _report_diagnostics(diagnostics, root, changed)
+        return 1 if missing_include else result.returncode
     except (OSError, ValueError, KeyError, TypeError) as error:
         print(f"cppcheck configuration error: {error}", file=sys.stderr)
         print("Set CPPCHECK_COMPILE_COMMANDS to a compilation database covering changed sources "

@@ -56,6 +56,8 @@
 
     Pylint reads selected files in their original package tree so unchanged `__init__.py` files and relative imports remain available. Shared hooks resolve the repository through Git, while loading their own helper scripts from the hook directory.
 
+    Unresolved quoted includes (`missingInclude`) are configuration failures, even when cppcheck exits successfully. Older cppcheck versions can fail to resolve include paths containing spaces; upgrade the tool or correct the build context rather than accepting an incomplete analysis.
+
     (3) Execute pre-push.
 
     You do not need to execute pre-push manually. Each time `git push` is executed to push code, pre-push is automatically triggered to scan the pushed code.
