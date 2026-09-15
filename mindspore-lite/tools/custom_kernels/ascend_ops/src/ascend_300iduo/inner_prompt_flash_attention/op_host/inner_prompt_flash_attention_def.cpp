@@ -26,6 +26,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
+// Sentinel meaning "no pre-token bound" (mirrors upstream ops-transformer).
+constexpr int64_t PRE_TOKENS_UNBOUNDED = 214748647;
+
 class InnerPromptFlashAttention : public OpDef {
  public:
   explicit InnerPromptFlashAttention(const char *name) : OpDef(name) {
@@ -98,7 +101,7 @@ class InnerPromptFlashAttention : public OpDef {
       .UnknownShapeFormat({ge::FORMAT_ND});
     this->Attr("num_heads").AttrType(REQUIRED).Int(1);
     this->Attr("scale_value").AttrType(OPTIONAL).Float(1.0);
-    this->Attr("pre_tokens").AttrType(OPTIONAL).Int(214748647);
+    this->Attr("pre_tokens").AttrType(OPTIONAL).Int(PRE_TOKENS_UNBOUNDED);  // 214748647 = unbounded sentinel
     this->Attr("next_tokens").AttrType(OPTIONAL).Int(0);
     this->Attr("input_layout").AttrType(OPTIONAL).String("BSH");
     this->Attr("num_key_value_heads").AttrType(OPTIONAL).Int(0);

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file kernel_operator_softmax_compute_nz.h
@@ -28,6 +28,11 @@
 #pragma begin_pipe(V)
 namespace AscendC {
 constexpr bool SOFTMAX_EXP_FAST = true;
+// Elements per NZ block row on the Vector pipe: 128 floats = 8 x 16-element
+// fractal columns; 16 = fractal dim, 2 = fp32 elements per 32-byte repeat.
+constexpr uint32_t NZ_BLOCK_ROW_ELEMENTS = 128;
+constexpr uint32_t NZ_FRACTAL_DIM = 16;
+
 __aicore__ inline void ReduceMaxLastNZImplPFA(const LocalTensor<half> &dst, const LocalTensor<half> &src,
                                               const LocalTensor<half> &tmpBuffer, uint64_t mask[2],
                                               const ReduceLastND &reduceParam) {
@@ -56,7 +61,7 @@ __aicore__ inline void ReduceMaxLastNZImplPFA(const LocalTensor<half> &dst, cons
   uint8_t repeat = reduceParam.srcM / 16;
   for (uint8_t i = 0; i < repeat; i++) {
     Muls<half, false>(
-      tmpBuffer[i * 128 * 2], dst[i * 16], 1.0, MASK_PLACEHOLDER, 2,
+      tmpBuffer[i * NZ_BLOCK_ROW_ELEMENTS * 2], dst[i * NZ_FRACTAL_DIM], 1.0, MASK_PLACEHOLDER, 2,
       {1, 0, DEFAULT_REPEAT_STRIDE, 0});  // 2: FLOAT_REPEAT_SIZE  128: BLOCK_SIZE  16: is the dst copy factor
   }
   PipeBarrier<PIPE_V>();
@@ -103,7 +108,7 @@ __aicore__ inline void ReduceSumLastNZImplPFA(const LocalTensor<half> &dst, cons
   uint8_t repeat = reduceParam.srcM / 16;
   for (uint8_t i = 0; i < repeat; i++) {
     Muls<half, false>(
-      tmpBuffer[i * 128 * 2], dst[i * 16], 1.0, MASK_PLACEHOLDER, 2,
+      tmpBuffer[i * NZ_BLOCK_ROW_ELEMENTS * 2], dst[i * NZ_FRACTAL_DIM], 1.0, MASK_PLACEHOLDER, 2,
       {1, 0, DEFAULT_REPEAT_STRIDE, 0});  // 2: FLOAT_REPEAT_SIZE  128: BLOCK_SIZE  16: is the dst copy factor
   }
   PipeBarrier<PIPE_V>();

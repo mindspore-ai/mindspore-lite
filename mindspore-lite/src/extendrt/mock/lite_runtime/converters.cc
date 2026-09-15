@@ -122,6 +122,7 @@ std::shared_ptr<lite::InnerContext> ContextUtils::Convert(Context *context) {
     MS_CHECK_TRUE_RET(device != nullptr, nullptr);
     if (device->GetDeviceType() == kCPU) {
       auto cpu_context = device->Cast<CPUDeviceInfo>();
+      MS_CHECK_TRUE_RET(cpu_context != nullptr, nullptr);
       if (cpu_context->GetAllocator() == nullptr) {
         cpu_context->SetAllocator(Allocator::Create());
       }

@@ -1,29 +1,30 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file inner_prompt_flash_attention_tiling.cpp
  * \brief
  */
-#include <graph/utils/type_utils.h>
-#include <queue>
+#include "inner_prompt_flash_attention_tiling.h"  // NOLINT(build/include_subdir)
+
 #include <numeric>
+#include <queue>
 #include <unordered_map>
 #include <unordered_set>
 
+#include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
+#include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "data_copy_transpose_tiling.h"  // NOLINT(build/include_subdir)
 #include "utils/inner_prompt_flash_attention_utils.h"
-#include "inner_prompt_flash_attention_tiling.h"  // NOLINT(build/include_subdir)
-#include "register/tilingdata_base.h"
 
 using namespace ge;             // NOLINT(build/namespaces)
 using namespace AscendC;        // NOLINT(build/namespaces)
@@ -478,7 +479,8 @@ bool InnerPromptFlashAttentionTiling::GetApiTmpSize(const uint32_t sOuterFactor,
 }
 
 size_t InnerPromptFlashAttentionTiling::GetPFAWorkSpaceSize(InnerPromptFlashAttentionTilingData &tilingData) {
-  size_t sysWorkspaceSize, workspaceSize;
+  size_t sysWorkspaceSize = 0;
+  size_t workspaceSize = 0;
   const uint64_t defaultSysWorkspaceSize910B = 16U * 1024U * 1024U;
   if (curShortSocName == platform_ascendc::SocVersion::ASCEND310P) {
     sysWorkspaceSize = defaultSysWorkspaceSize;  // sys workspace size default value
@@ -544,7 +546,8 @@ size_t InnerPromptFlashAttentionTiling::GetPFAWorkSpaceSize(InnerPromptFlashAtte
 }
 
 size_t InnerPromptFlashAttentionTiling::GetPFABaseApiWorkSpaceSize(const uint32_t &numBlocksToBeSet) {
-  size_t sysWorkspaceSize, workspaceSize;
+  size_t sysWorkspaceSize = 0;
+  size_t workspaceSize = 0;
   const uint64_t defaultSysWorkspaceSize910B = 16U * 1024U * 1024U;
   if (curShortSocName == platform_ascendc::SocVersion::ASCEND310P) {
     sysWorkspaceSize = defaultSysWorkspaceSize;
@@ -976,7 +979,7 @@ void InnerPromptFlashAttentionTiling::SetSplitCoreMode(InnerPromptFlashAttention
 
   bool enableLeftPadding =
     ((contextKeyParamsPtr->queryPaddingSize != nullptr) || (contextKeyParamsPtr->kvPaddingSize != nullptr));
-  bool enableRingAttention = (contextKeyParamsPtr->isSoftMaxLseEnable == true);
+  bool enableRingAttention = contextKeyParamsPtr->isSoftMaxLseEnable;
 
   GetPreNextTokensLeftUp(tilingData, actualSeqLength, actualSeqLengthKV, preTokensLeftUp, nextTokensLeftUp);
   bool inputTypeFp16 = (inputType == ge::DT_FLOAT16) && (contextKeyParamsPtr->kDataType == ge::DT_FLOAT16) &&
@@ -1295,7 +1298,7 @@ bool InnerPromptFlashAttentionTiling::InnerPromptFlashAttentionCheckBmm1(
   bool res =
     EnableMTE2BmmPipe(tilingData, bmm1, bmm1TilingData, sOuterFactor, sInnerFactor);  // Open MTE2 Matmul pipeline.
 
-  OP_CHECK_IF(res == false,  // EnableMTE2BmmPipe fail.
+  OP_CHECK_IF(!res,  // EnableMTE2BmmPipe fail.
               OPS_REPORT_VECTOR_INNER_ERR(contextKeyParamsPtr->opName, "EnableMTE2BmmPipe failed!"), return false);
 
   return true;
@@ -1625,7 +1628,7 @@ bool InnerPromptFlashAttentionTiling::InnerPromptFlashAttentionCheckArgsLegal(
                                             sOuterFactor, sInnerFactor, dSplitFactor));
 
   OP_CHECK_IF(
-    res == false,
+    !res,
     OPS_REPORT_VECTOR_INNER_ERR(contextKeyParamsPtr->opName,
                                 "InnerPromptFlashAttentionCheckBmm1 or InnerPromptFlashAttentionCheckBmm2 failed."),
     return false);
@@ -1644,7 +1647,8 @@ bool InnerPromptFlashAttentionTiling::InnerPromptFlashAttentionCheckArgsLegal(
   }
 
   if (curShortSocName == platform_ascendc::SocVersion::ASCEND310P) {
-    matmul_tiling::SysTilingTempBufSize mm1bufSize, mm2bufSize;
+    matmul_tiling::SysTilingTempBufSize mm1bufSize;
+    matmul_tiling::SysTilingTempBufSize mm2bufSize;
     int32_t getBufRes;
     apiTmpSize = GetApiTmpSize(sOuterFactor, sInnerFactor, typeByteSize);
     getBufRes = MatmulGetTmpBufSize(tilingData.bmm1TilingDataRect, mm1bufSize);
@@ -1656,12 +1660,12 @@ bool InnerPromptFlashAttentionTiling::InnerPromptFlashAttentionCheckArgsLegal(
     }
     ubSizeRemain = ubSize -
                    (apiTmpSize + tilingData.promptAttentionTensorSizeRect.get_mmResUbSize() +
-                    tilingData.promptAttentionTensorSizeRect.get_bmm2ResUbSize() * 2 +  // 2:2 mm2 ub
+                    tilingData.promptAttentionTensorSizeRect.get_bmm2ResUbSize() * NUM_2 +  // 2:2 mm2 ub
                     SOFTMAX_BUFFER_NUM * tilingData.promptAttentionTensorSizeRect.get_softmaxExpSize()) *
                      typeByteSize -
-                   tilingData.promptAttentionTensorSizeRect.get_softmaxExpSize() * 4 -
+                   tilingData.promptAttentionTensorSizeRect.get_softmaxExpSize() * NUM_4 -
                    queueBufferSize * maskTypeSize *
-                     2;  // 4: Multiply the obtained softmaxExpSize by 4, 2: Multiply maskTypeSize by 2
+                     NUM_2;  // 4: Multiply the obtained softmaxExpSize by 4, 2: Multiply maskTypeSize by 2
     tilingData.promptAttentionTensorSizeRect.set_tmpSoftMaxV2Size((ubSizeRemain + apiTmpSize) / UB_ALIGN * UB_ALIGN);
     tilingData.promptAttentionTensorSizeRect.set_mm1TmpUbSize(mm1bufSize.ubSize);
     tilingData.promptAttentionTensorSizeRect.set_mm2TmpUbSize(mm2bufSize.ubSize);
@@ -2301,15 +2305,21 @@ bool InnerPromptFlashAttentionTiling::CheckPAKeyValueParams(ContextParamsForInne
 bool InnerPromptFlashAttentionTiling::CheckPASparseMode(const ContextParamsForInnerPFA &contextKeyParams) {
   const int32_t *sparseMode = contextKeyParams.sparseMode;
   const gert::StorageShape *attenMaskShape = contextKeyParams.attentionMaskShape;
-  OP_CHECK_IF((sparseMode == nullptr) || (*sparseMode != SPARSE_MODE_NO_MASK && *sparseMode != SPARSE_MODE_RIGHT_DOWN &&
-                                          *sparseMode != SPARSE_MODE_BAND),
+  OP_CHECK_IF(sparseMode == nullptr,
+              OPS_REPORT_VECTOR_INNER_ERR(
+                contextKeyParams.opName,
+                "When Layout is TND/NTD_TND and PA enabled, sparseMode must not be null"),
+              return false);
+  int32_t sparseModeVal = *sparseMode;
+  OP_CHECK_IF((sparseModeVal != SPARSE_MODE_NO_MASK && sparseModeVal != SPARSE_MODE_RIGHT_DOWN &&
+               sparseModeVal != SPARSE_MODE_BAND),
               OPS_REPORT_VECTOR_INNER_ERR(
                 contextKeyParams.opName,
                 "When Layout is TND/NTD_TND and PA enabled, sparseMode only support 0 or 3 or 4, but sparseMode = %d",
-                *sparseMode),
+                sparseModeVal),
               return false);
   OP_CHECK_IF(
-    (*sparseMode == SPARSE_MODE_NO_MASK && attenMaskShape != nullptr),
+    (sparseModeVal == SPARSE_MODE_NO_MASK && attenMaskShape != nullptr),
     OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
                                 "When Layout is TND/NTD_TND and PA enabled, sparseMode = 0, not support attentionMask"),
     return false);
@@ -2537,7 +2547,8 @@ bool InnerPromptFlashAttentionTiling::CheckAttenMaskShape(const ContextParamsFor
   }
   uint32_t attenMaskDim = attenMaskShape->GetStorageShape().GetDimNum();
   uint32_t attenMaskBatch = 1U;
-  uint32_t attenMaskS1, attenMaskS2;
+  uint32_t attenMaskS1 = 0;
+  uint32_t attenMaskS2 = 0;
   int32_t checkShapeRet = 0;
   if (attenMaskDim == ATTENTION_MASK_DIM2) {
     attenMaskS1 = attenMaskShape->GetStorageShape().GetDim(0);
@@ -2841,7 +2852,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::CheckPostQuantParams(const Cont
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "post quant per-channel do not support left padding."),
         return ge::GRAPH_FAILED);
       OP_CHECK_IF(
-        contextKeyParams.isSoftMaxLseEnable == true,
+        contextKeyParams.isSoftMaxLseEnable,
         OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "post quant per-channel do not support ring attention."),
         return ge::GRAPH_FAILED);
       OP_CHECK_IF(
@@ -3844,7 +3855,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::CheckLearnableSinkWhenLayoutIsT
   int64_t queryN = GetNFromInputShape(QUERY_INDEX, queryShape);
   int64_t valueD = GetDFromInputShape(VALUE_INDEX, valueShape);
 
-  if (contextKeyParams.hasLearnableSink == false) {
+  if (!contextKeyParams.hasLearnableSink) {
     return ge::GRAPH_SUCCESS;
   }
 
@@ -4572,8 +4583,8 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
     OP_LOGW(contextKeyParams.opName, "the key/value's actual sequence lengths is useless for SH format!");
   }
   if (curShortSocName == platform_ascendc::SocVersion::ASCEND310P) {
-    unsigned int ret;
-    ret = GetBasicShape310P(b, bKV, s, h, seqInnerSize, queryShape, keyShape, *n, actualLenDims, actualLenDimsKV);
+    unsigned int ret =
+      GetBasicShape310P(b, bKV, s, h, seqInnerSize, queryShape, keyShape, *n, actualLenDims, actualLenDimsKV);
     OP_CHECK_IF(ret == GRAPH_FAILED, OPS_REPORT_VECTOR_INNER_ERR("GetBasicShape310P", "execute is failed."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
@@ -4726,7 +4737,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
       h = h1;
       s1StrideSize = gSize * n2Size * dSize;
       s2StrideSize = n2Size * dSize;
-      s1BasicBlockBest = 128;
+      s1BasicBlockBest = BMM_BASICBLOCK_M_128;
     } else {
       return ge::GRAPH_FAILED;
     }
@@ -6727,7 +6738,7 @@ void InnerPromptFlashAttentionTiling::InferTilingMod(const ContextParamsForInner
     splitS2 = 0U;
   }
 
-  if ((curShortSocName != platform_ascendc::SocVersion::ASCEND310P) && (splitD != 1U) && (isDNoTail == true)) {
+  if ((curShortSocName != platform_ascendc::SocVersion::ASCEND310P) && (splitD != 1U) && (isDNoTail)) {
     tilingMod = TilingMod::CVDIFF;
   }
 
@@ -6783,10 +6794,12 @@ ge::graphStatus InnerPromptFlashAttentionTiling::AdjustCVTiling(uint64_t hDivN, 
   }
   minFactor = rectangleQueue.front();
   if (curShortSocName == platform_ascendc::SocVersion::ASCEND310P) {
-    minFactor = std::min(minFactor, (tilingData.promptAttentionBaseParams.get_seqSize() + 16 - 1) / 16 *
-                                      16);  // Round up to an integer multiple of 16
-    rectangleFactor = std::min(rectangleFactor, (tilingData.promptAttentionBaseParams.get_seqInnerSize() + 16 - 1) /
-                                                  16 * 16);  // Round up to an integer multiple of 16
+    minFactor =
+      std::min(minFactor, (tilingData.promptAttentionBaseParams.get_seqSize() + SIXTEEN_HOST_TILING - 1) /
+                            SIXTEEN_HOST_TILING * SIXTEEN_HOST_TILING);  // Round up to an integer multiple of 16
+    rectangleFactor =
+      std::min(rectangleFactor, (tilingData.promptAttentionBaseParams.get_seqInnerSize() + SIXTEEN_HOST_TILING - 1) /
+                                  SIXTEEN_HOST_TILING * SIXTEEN_HOST_TILING);  // Round up to an integer multiple of 16
   }
 
   while (true) {
@@ -6880,8 +6893,7 @@ bool InnerPromptFlashAttentionTiling::InnerPromptFlashAttentionComputeCVDiffPara
     res = FindOptimalTilingBasicBLock(tilingData, sOuterFactor, sInnerFactor, softmaxSOuterFactor, ubSize, typeByteSize,
                                       maskTypeSize);
   }
-  OP_CHECK_IF(res == false,
-              OPS_REPORT_VECTOR_INNER_ERR(contextKeyParamsPtr->opName, "FindOptimalTilingBasicBLock failed!"),
+  OP_CHECK_IF(!res, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParamsPtr->opName, "FindOptimalTilingBasicBLock failed!"),
               return false);
 
   // kvcache antiquant tiling
@@ -6897,7 +6909,7 @@ bool InnerPromptFlashAttentionTiling::InnerPromptFlashAttentionComputeCVDiffPara
       GetAscendAntiQuantMaxMinTmpSize(srcShape, scaleShape, false, ge::DT_INT8, inputType, kvAntiquantApiSizeMax,
                                       kvAntiquantApiSize);
       ubSizeRemain = ubSizeRemainTmp - kvAntiquantApiSize -
-                     tilingData.promptAttentionBaseParams.get_alignedHeadSize() * 2 *
+                     tilingData.promptAttentionBaseParams.get_alignedHeadSize() * NUM_2 *
                        FLOAT16SIZE -  // scale offset fp16, 2 is used for alignment
                      (sKvAntiquantFactor * tilingData.promptAttentionBaseParams.get_alignedHeadSize() *
                       (INT8SIZE + FLOAT16SIZE) * 1);  // Input/output
@@ -6917,13 +6929,13 @@ bool InnerPromptFlashAttentionTiling::InnerPromptFlashAttentionComputeCVDiffPara
   SetSplitCoreMode(tilingData, sOuterFactor);
   res = InnerPromptFlashAttentionCheckBmm1(tilingData, tilingData.bmm1TilingDataRect, l1SizeRemain, l0CSize,
                                            sOuterFactor, sInnerFactor, true, true);
-  OP_CHECK_IF(res == false,
+  OP_CHECK_IF(!res,
               OPS_REPORT_VECTOR_INNER_ERR(contextKeyParamsPtr->opName, "InnerPromptFlashAttentionCheckBmm1 failed!"),
               return false);
 
   res = InnerPromptFlashAttentionCheckBmm2(tilingData, tilingData.bmm2TilingDataRect, l1SizeRemain, l0CSize,
                                            sOuterFactor, sInnerFactor, dSplitFactorBmm2, true, true);
-  OP_CHECK_IF(res == false,
+  OP_CHECK_IF(!res,
               OPS_REPORT_VECTOR_INNER_ERR(contextKeyParamsPtr->opName, "InnerPromptFlashAttentionCheckBmm2 failed!"),
               return false);
 
@@ -7165,9 +7177,9 @@ bool InnerPromptFlashAttentionTiling::FindOptimalTilingBasicBLock(InnerPromptFla
               OPS_REPORT_VECTOR_INNER_ERR(contextKeyParamsPtr->opName,
                                           "cannot find valid sOuterFactor, sInnerFactor and softmaxSOuterFactor!"),
               return false);
-  sOuterFactor = (uint32_t)sOuterFactorTmp;
-  sInnerFactor = (uint32_t)sInnerFactorTmp;
-  softmaxSOuterFactor = (uint32_t)softmaxSOuterFactorTmp;
+  sOuterFactor = static_cast<uint32_t>(sOuterFactorTmp);
+  sInnerFactor = static_cast<uint32_t>(sInnerFactorTmp);
+  softmaxSOuterFactor = static_cast<uint32_t>(softmaxSOuterFactorTmp);
   return true;
 }
 
@@ -7246,7 +7258,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::AdjustCVTilingCVDiff(int64_t ub
     InnerPromptFlashAttentionComputeCVDiffParams(tilingData, ubSize, l1Size, l0CSize, softmaxDataTypeSize, minFactor,
                                                  rectangleFactor, maskElemSize, softmaxSOuterFactor);
   OP_CHECK_IF(
-    res == false,
+    !res,
     OPS_REPORT_VECTOR_INNER_ERR(contextKeyParamsPtr->opName, "InnerPromptFlashAttentionComputeCVDiffParams failed!"),
     return ge::GRAPH_FAILED);
 

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file inner_prompt_flash_attention_s1s2_bns1_x310.h
@@ -23,6 +23,9 @@
 #include "kernel_operator.h"  // NOLINT(build/include_subdir)
 #endif
 using namespace matmul;  // NOLINT(build/namespaces)
+
+namespace pfa310 {
+
 template <typename PFAT>
 class InnerPromptFlashAttentionS1s2Bns1X310 : public InnerPromptFlashAttentionS1s2Bns1X310Base<PFAT> {
  public:
@@ -338,4 +341,6 @@ __aicore__ inline void InnerPromptFlashAttentionS1s2Bns1X310<PFAT>::ComputeEachC
     sIdStart = 0;
   }
 }
+}  // namespace pfa310
+
 #endif  // INNER_PROMPT_FLASH_ATTENTION_S1S2_BNS1_X310_H

@@ -33,6 +33,9 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 
+// Tiling-data struct alignment (bytes). Global-scope constant kept beside the
+// struct it parameterises; the struct itself MUST stay global for the CANN
+// tiling macros in this build (see file header).
 constexpr uint64_t STRUCT_ALIGNAS = 8;
 #pragma pack(push, 8)
 // MUST stay global for the CANN tiling macros in this build (see file header).

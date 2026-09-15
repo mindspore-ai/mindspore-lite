@@ -1713,6 +1713,34 @@ Status GeGraphExecutor::RunGraphNormal(uint32_t graph_id, const std::vector<mind
   return HandleNormalOutputs(graph_id, inputs, outputs, ge_outputs);
 }
 
+Status GeGraphExecutor::CopyDeviceOutput(const GeTensor &tensor, MSTensor &output, void *user_device_buf,
+                                         bool ge_out_is_device) {
+  if (memory_manager_ == nullptr && !InitMemoryContextManager()) {
+    MS_LOG(ERROR) << "Failed to init memory context manager for device output copy.";
+    return kLiteError;
+  }
+  auto src_size = LongToSize(UlongToLong(tensor.GetSize()));
+  bool copy_ok = false;
+  if (user_device_buf != nullptr) {
+    copy_ok = ge_out_is_device
+                ? memory_manager_->MemcpyDevice2Device(user_device_buf, output.DataSize(), tensor.GetData(), src_size)
+                : memory_manager_->MemcpyHost2Device(user_device_buf, output.DataSize(), tensor.GetData(), src_size);
+  } else {
+    // User host buffer + GE device output -> D2H copy
+    if (output.MutableData() == nullptr) {
+      MS_LOG(ERROR) << "Output host data ptr is nullptr.";
+      return kLiteError;
+    }
+    copy_ok = memory_manager_->MemcpyDevice2Host(output.MutableData(), output.DataSize(), tensor.GetData(), src_size);
+  }
+  if (!copy_ok) {
+    MS_LOG(ERROR) << "Failed to copy output data, dst size: " << output.DataSize() << ", src size: " << src_size;
+    return kLiteError;
+  }
+  MS_LOG(INFO) << "Output copied, size " << src_size;
+  return kSuccess;
+}
+
 Status GeGraphExecutor::HandleNormalOutputs(uint32_t graph_id, const std::vector<mindspore::MSTensor> &inputs,
                                             std::vector<mindspore::MSTensor> *outputs,
                                             std::vector<GeTensor> *ge_outputs) {
@@ -1739,32 +1767,10 @@ Status GeGraphExecutor::HandleNormalOutputs(uint32_t graph_id, const std::vector
       void *user_device_buf = output.GetDeviceData();
       bool ge_out_is_device = (tensor.GetTensorDesc().GetPlacement() == ::ge::kPlacementDevice);
       if (user_device_buf != nullptr || ge_out_is_device) {
-        if (memory_manager_ == nullptr && !InitMemoryContextManager()) {
-          MS_LOG(ERROR) << "Failed to init memory context manager for device output copy.";
-          return kLiteError;
+        auto copy_status = CopyDeviceOutput(tensor, output, user_device_buf, ge_out_is_device);
+        if (copy_status != kSuccess) {
+          return copy_status;
         }
-        auto src_size = LongToSize(UlongToLong(tensor.GetSize()));
-        bool copy_ok = false;
-        if (user_device_buf != nullptr) {
-          copy_ok =
-            ge_out_is_device
-              ? memory_manager_->MemcpyDevice2Device(user_device_buf, output.DataSize(), tensor.GetData(), src_size)
-              : memory_manager_->MemcpyHost2Device(user_device_buf, output.DataSize(), tensor.GetData(), src_size);
-        } else {
-          // User host buffer + GE device output -> D2H copy
-          if (output.MutableData() == nullptr) {
-            MS_LOG(ERROR) << "Output host data ptr is nullptr.";
-            return kLiteError;
-          }
-          copy_ok =
-            memory_manager_->MemcpyDevice2Host(output.MutableData(), output.DataSize(), tensor.GetData(), src_size);
-        }
-        if (!copy_ok) {
-          MS_LOG(ERROR) << "Failed to copy output data " << i << ", dst size: " << output.DataSize()
-                        << ", src size: " << src_size;
-          return kLiteError;
-        }
-        MS_LOG(INFO) << "Output " << i << " copied, size " << src_size;
         continue;
       }
       if (output.Data() == nullptr) {

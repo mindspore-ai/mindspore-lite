@@ -21,31 +21,43 @@ using namespace ge;    // NOLINT(build/namespaces)
 using namespace gert;  // NOLINT(build/namespaces)
 
 namespace {
+constexpr uint32_t OUTPUT_OUT = 0;
+constexpr uint32_t OUTPUT_STATE = 1;
+
 static uint32_t RecurrentGatedDeltaRuleInferShape(InferShapeContext *context) {
-  auto queryShape = context->GetInputShape(0);  // [T, NK, DK]
-  auto valueShape = context->GetInputShape(2);  // [T, NV, DV]
+  constexpr uint32_t INPUT_QUERY = 0;
+  constexpr uint32_t INPUT_VALUE = 2;
+  constexpr uint32_t INPUT_STATE = 4;
+  constexpr size_t OUT_RANK = 3;    // out: [T, NV, DV]
+  constexpr size_t STATE_RANK = 4;  // state: [S, NV, DK, DV]
+  constexpr int64_t kIndex0 = 0;
+  constexpr int64_t kIndex1 = 1;
+  constexpr int64_t kIndex2 = 2;
+
+  auto queryShape = context->GetInputShape(INPUT_QUERY);  // [T, NK, DK]
+  auto valueShape = context->GetInputShape(INPUT_VALUE);  // [T, NV, DV]
   if (queryShape == nullptr || valueShape == nullptr) {
     return ge::GRAPH_FAILED;
   }
 
-  int64_t t = queryShape->GetDim(0);
-  int64_t nv = valueShape->GetDim(1);
-  int64_t dv = valueShape->GetDim(2);
+  int64_t t = queryShape->GetDim(kIndex0);
+  int64_t nv = valueShape->GetDim(kIndex1);
+  int64_t dv = valueShape->GetDim(kIndex2);
 
   // Output "out": [T, NV, DV]
-  auto outShape = context->GetOutputShape(0);
-  outShape->SetDimNum(3);
-  outShape->SetDim(0, t);
-  outShape->SetDim(1, nv);
-  outShape->SetDim(2, dv);
+  auto outShape = context->GetOutputShape(OUTPUT_OUT);
+  outShape->SetDimNum(OUT_RANK);
+  outShape->SetDim(kIndex0, t);
+  outShape->SetDim(kIndex1, nv);
+  outShape->SetDim(kIndex2, dv);
 
-  auto stateShape = context->GetInputShape(4);
-  auto stateOutShape = context->GetOutputShape(1);
+  auto stateShape = context->GetInputShape(INPUT_STATE);
+  auto stateOutShape = context->GetOutputShape(OUTPUT_STATE);
   if (stateShape == nullptr || stateOutShape == nullptr) {
     return ge::GRAPH_FAILED;
   }
-  stateOutShape->SetDimNum(4);
-  for (size_t i = 0; i < 4; ++i) {
+  stateOutShape->SetDimNum(STATE_RANK);
+  for (size_t i = 0; i < STATE_RANK; ++i) {
     stateOutShape->SetDim(i, stateShape->GetDim(i));
   }
 
@@ -53,8 +65,8 @@ static uint32_t RecurrentGatedDeltaRuleInferShape(InferShapeContext *context) {
 }
 
 static uint32_t RecurrentGatedDeltaRuleInferDataType(InferDataTypeContext *context) {
-  context->SetOutputDataType(0, ge::DT_FLOAT16);
-  context->SetOutputDataType(1, ge::DT_FLOAT16);
+  context->SetOutputDataType(OUTPUT_OUT, ge::DT_FLOAT16);
+  context->SetOutputDataType(OUTPUT_STATE, ge::DT_FLOAT16);
   return ge::GRAPH_SUCCESS;
 }
 }  // namespace

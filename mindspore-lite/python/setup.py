@@ -80,8 +80,8 @@ def _get_package_data():
     return pkg_data
 
 
-version = _read_file(TOP_DIR + "/version.txt").replace("\n", "")
-readme = _read_file(TOP_DIR + "/README.md")
+version = _read_file(os.path.join(TOP_DIR, "version.txt")).replace("\n", "")
+readme = _read_file(os.path.join(TOP_DIR, "README.md"))
 
 setup(
     name="mindspore_lite",

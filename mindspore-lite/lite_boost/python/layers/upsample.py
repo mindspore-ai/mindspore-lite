@@ -23,11 +23,11 @@ SoCs (A2 etc.), but the 300I Duo binary set has NO bf16 kernel (probe:
 primitive therefore runs all dtypes natively except on 300I Duo, where bf16
 inputs fall back to the fp32-cast path.
 """
+__all__ = ["nearest_exact_upsample"]
+
 import torch
 import torch.nn.functional as F
 import torch_npu
-
-__all__ = ["nearest_exact_upsample"]
 
 _BF16_CAST_FALLBACK = None
 

@@ -86,5 +86,5 @@ TORCH_LIBRARY_IMPL(lite_boost, PrivateUse1, m) {
   m.impl("rain_fusion_attention", &RainFusionAttentionLiteBoostImplNPU);
   m.impl("recurrent_gated_delta_rule", &RecurrentGatedDeltaRuleLiteBoostImplNPU);
   m.impl("chunk_gated_delta_rule", &ChunkGatedDeltaRuleLiteBoostImplNPU);
-  m.impl("quant_matmul_w4a8", &QuantMatmulW4a8LiteBoostImplNPU);
+  m.impl("quant_matmul_w4a8", &lite_boost::QuantMatmulW4a8LiteBoostImplNPU);
 }

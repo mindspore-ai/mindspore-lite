@@ -18,7 +18,8 @@
 
 using namespace AscendC;  // NOLINT(build/namespaces)
 
-// The kernel entry and tiling macros must remain in the global namespace.
+// The kernel entry and tiling macros must remain in the global namespace; the kernel
+// class/helpers are qualified with ChunkGatedDeltaRule:: (see header NOTE).
 extern "C" __global__ __aicore__ void chunk_gated_delta_rule(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR beta,
                                                              GM_ADDR initialState, GM_ADDR actualSeqLengths,
                                                              GM_ADDR gOptional, GM_ADDR out, GM_ADDR finalState,
@@ -27,23 +28,23 @@ extern "C" __global__ __aicore__ void chunk_gated_delta_rule(GM_ADDR query, GM_A
   GET_TILING_DATA(tilingData, tilingGM);
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
   GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
-  CGDRInitParams initParams{query,     key, value,      beta,         initialState, actualSeqLengths,
-                            gOptional, out, finalState, userWorkspace};
+  ChunkGatedDeltaRule::CGDRInitParams initParams{
+    query, key, value, beta, initialState, actualSeqLengths, gOptional, out, finalState, userWorkspace};
   TPipe pipe;
   if (TILING_KEY_IS(0)) {
-    ChunkGatedDeltaRule<half, half, 64> op(&tilingData);
+    ChunkGatedDeltaRule::ChunkGatedDeltaRule<half, half, 64> op(&tilingData);
     op.Init(initParams, &pipe);
     op.Process();
   } else if (TILING_KEY_IS(1)) {
-    ChunkGatedDeltaRule<half, half, 80> op(&tilingData);
+    ChunkGatedDeltaRule::ChunkGatedDeltaRule<half, half, 80> op(&tilingData);
     op.Init(initParams, &pipe);
     op.Process();
   } else if (TILING_KEY_IS(2)) {
-    ChunkGatedDeltaRule<half, half, 96> op(&tilingData);
+    ChunkGatedDeltaRule::ChunkGatedDeltaRule<half, half, 96> op(&tilingData);
     op.Init(initParams, &pipe);
     op.Process();
   } else if (TILING_KEY_IS(3)) {
-    ChunkGatedDeltaRule<half, half, 128> op(&tilingData);
+    ChunkGatedDeltaRule::ChunkGatedDeltaRule<half, half, 128> op(&tilingData);
     op.Init(initParams, &pipe);
     op.Process();
   }

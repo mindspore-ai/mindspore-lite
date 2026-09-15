@@ -19,8 +19,13 @@
 
 #include "kernel_operator.h"  // NOLINT(build/include_subdir)
 
+constexpr uint32_t STRUCT_ALIGNAS = 8;  // tiling-data struct alignment (bytes)
+// RecurrentGatedDeltaRuleTilingData MUST stay in the global namespace: the CANN
+// tiling macros (REGISTER_TILING_DEFAULT / GET_TILING_DATA) expanded in the kernel
+// entry require a globally-scoped tiling-data type (see the NOTE in
+// recurrent_gated_delta_rule.h).
 #pragma pack(push, 8)
-struct alignas(8) RecurrentGatedDeltaRuleTilingData {
+struct alignas(STRUCT_ALIGNAS) RecurrentGatedDeltaRuleTilingData {
   uint32_t vectorCoreNum;
   uint32_t ubCalSize;
   uint32_t ubRestBytes;

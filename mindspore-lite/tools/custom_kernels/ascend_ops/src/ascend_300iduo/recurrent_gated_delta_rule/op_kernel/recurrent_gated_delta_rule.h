@@ -21,6 +21,15 @@
 #include "recurrent_gated_delta_rule_tiling_data.h"  // NOLINT(build/include_subdir)
 
 using namespace AscendC;  // NOLINT(build/namespaces)
+
+// NOTE: only the kernel ENTRY (in recurrent_gated_delta_rule.cpp) must stay in the
+// global namespace: the CANN tiling macros (REGISTER_TILING_DEFAULT / GET_TILING_DATA)
+// expand against the globally-scoped RecurrentGatedDeltaRuleTilingData, and an open
+// user namespace around them makes the autogen emit <ns>::-qualified tiling symbols
+// that fail to resolve. The kernel class, its helpers and the constants live in the
+// RecurrentGatedDeltaRule namespace; the entry refers to them with explicit
+// qualification (mirroring the chunk_gated_delta_rule kernels in this repo).
+namespace RecurrentGatedDeltaRule {
 constexpr uint64_t BUFFER_NUM = 1;
 constexpr uint32_t MAX_OUT_BUFFER_NUM = 2;
 constexpr uint64_t MAX_MTP = 8;
@@ -284,31 +293,43 @@ class RGDR {
       if (seq0 < 0 || seq1 < 0 || seq0 > static_cast<int32_t>(T_) || seq1 > static_cast<int32_t>(T_) || seq0 > seq1) {
         return;
       }
-      uint32_t copyFlag = 0;
-      uint64_t stateOffset;
-      for (uint64_t head_i = 0; head_i < NV_; head_i++) {
-        if (blockDim > 0 &&
-            (static_cast<uint64_t>(batch_i) * static_cast<uint64_t>(NV_) + head_i) % blockDim != blockIdx) {
-          continue;
-        }
-        copyFlag++;
-        if (copyFlag == 1) {
-          int32_t stateTokenIdx = seq0;
-          if (hasAcceptedTokens_) {
-            int32_t acceptedTokenNum = numAcceptedTokensGm_.GetValue(batch_i);
-            if (acceptedTokenNum > 0 && acceptedTokenNum <= seqLen) {
-              stateTokenIdx = seq0 + acceptedTokenNum - 1;
-            }
-          }
-          stateOffset = GetSsmStateIndex(stateTokenIdx);
-          CopyInGamaBeta(seq0, seq1);
-        }
-        ProcessHead(seq0, seq1, head_i, stateOffset);
-      }
+      ProcessBatch(batch_i, seq0, seq1, blockDim);
     }
   }
 
  private:
+  // Runs every (head, v) unit of one batch that this core owns, computing the
+  // shared state offset and loading gama/beta once for the first owned head.
+  __aicore__ inline void ProcessBatch(uint64_t batch_i, int32_t seq0, int32_t seq1, uint64_t blockDim) {
+    uint32_t copyFlag = 0;
+    uint64_t stateOffset = 0;
+    for (uint64_t head_i = 0; head_i < NV_; head_i++) {
+      if (blockDim > 0 &&
+          (static_cast<uint64_t>(batch_i) * static_cast<uint64_t>(NV_) + head_i) % blockDim != blockIdx) {
+        continue;
+      }
+      copyFlag++;
+      if (copyFlag == 1) {
+        stateOffset = ResolveStateOffset(batch_i, seq0, seq1);
+        CopyInGamaBeta(seq0, seq1);
+      }
+      ProcessHead(seq0, seq1, head_i, stateOffset);
+    }
+  }
+
+  // Picks the state slot: the last accepted token when acceptance info is
+  // present, otherwise the first token of the sequence.
+  __aicore__ inline uint64_t ResolveStateOffset(uint64_t batch_i, int32_t seq0, int32_t seqLen) {
+    int32_t stateTokenIdx = seq0;
+    if (hasAcceptedTokens_) {
+      int32_t acceptedTokenNum = numAcceptedTokensGm_.GetValue(batch_i);
+      if (acceptedTokenNum > 0 && acceptedTokenNum <= seqLen) {
+        stateTokenIdx = seq0 + acceptedTokenNum - 1;
+      }
+    }
+    return GetSsmStateIndex(stateTokenIdx);
+  }
+
   __aicore__ inline int32_t GetCuSeqlen(uint64_t idx) const {
     if (cuSeqlensIsInt64_) {
       return static_cast<int32_t>(cuSeqlens64Gm_.GetValue(idx));
@@ -671,5 +692,7 @@ class RGDR {
   uint64_t blockIdx;
   uint64_t workBlockDim_;
 };
+
+}  // namespace RecurrentGatedDeltaRule
 
 #endif  // RECURRENT_GATED_DELTA_RULE_KERNEL_H_

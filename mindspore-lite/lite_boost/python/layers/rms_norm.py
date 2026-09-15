@@ -32,10 +32,10 @@ Norm is per-last-dim: ``y = x / RMS(x) * gamma`` with
 into gamma (RMS normalization cancels it; equivalence verified with
 rel error ~6e-4 in fp16).
 """
+__all__ = ["rms_norm"]
+
 import torch
 import torch_npu
-
-__all__ = ["rms_norm"]
 
 _FORCE_2D = None
 

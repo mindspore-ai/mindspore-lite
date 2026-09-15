@@ -23,8 +23,12 @@
 
 #include <ATen/Tensor.h>
 
+namespace lite_boost {
+
 at::Tensor QuantMatmulW4a8LiteBoostImplNPU(const at::Tensor &act, const at::Tensor &weight, const at::Tensor &scale,
                                            const at::Tensor &bias, const at::Tensor &x_scale,
                                            const at::Tensor &output_bias);
+
+}  // namespace lite_boost
 
 #endif  // LITE_BOOST_OPS_PLUGIN_QUANT_MATMUL_W4A8_H_

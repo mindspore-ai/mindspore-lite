@@ -44,6 +44,11 @@ constexpr uint32_t kSmallCubeDk = 64;
 constexpr uint32_t kMidSmallCubeDk = 80;
 constexpr uint32_t kMediumCubeDk = 96;
 constexpr uint32_t kLargeCubeDk = 128;
+// Tiling-key buckets for the padded Cube tiles (kernel dispatch order).
+constexpr uint32_t kTilingKeyDk64 = 0;
+constexpr uint32_t kTilingKeyDk80 = 1;
+constexpr uint32_t kTilingKeyDk96 = 2;
+constexpr uint32_t kTilingKeyDk128 = 3;
 constexpr uint32_t kCubeStageSlotCount = 2;
 constexpr uint64_t kRawMatmulStageBytesPerCore =
   kCubeStageSlotCount * static_cast<uint64_t>(2 * kMatmulM * kMatmulK + kMatmulK * kMatmulN) * sizeof(uint16_t);
@@ -322,13 +327,13 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
   context->SetBlockDim(blockDim);
   // Keep four compiled kernels for the 64/80/96/128 padded Cube tiles.
   // Shapes above 128 use the generic fallback in the 96-wide kernel class.
-  uint32_t tilingKey = 2;
+  uint32_t tilingKey = kTilingKeyDk96;
   if (cubeDk == kSmallCubeDk) {
-    tilingKey = 0;
+    tilingKey = kTilingKeyDk64;
   } else if (cubeDk == kMidSmallCubeDk) {
-    tilingKey = 1;
+    tilingKey = kTilingKeyDk80;
   } else if (cubeDk == kLargeCubeDk) {
-    tilingKey = 3;
+    tilingKey = kTilingKeyDk128;
   }
   context->SetTilingKey(tilingKey);
 

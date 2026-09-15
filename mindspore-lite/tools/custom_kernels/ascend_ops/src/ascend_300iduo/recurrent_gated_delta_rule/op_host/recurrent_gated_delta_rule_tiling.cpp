@@ -28,37 +28,47 @@ constexpr uint32_t FP16_NUM_PER_BLOCK = 16;
 constexpr uint32_t MAX_TQUE_BUFFER_NUM_310P = 8;
 constexpr uint32_t MAX_SCHEDULABLE_AICORE_310P = 8;
 constexpr size_t SYSTEM_WORKSPACE_BYTES = 16ULL << 20;
+// Optional-input indices in the op definition (after the 7 required inputs:
+// query, key, value, beta, state, actual_seq_lengths, ssm_state_indices).
+constexpr uint32_t OPTIONAL_INPUT_G = 7;
+constexpr uint32_t OPTIONAL_INPUT_GK = 8;
+constexpr uint32_t OPTIONAL_INPUT_NUM_ACCEPTED_TOKENS = 9;
+// Bytes per fp32 / fp16 element in the UB-size formulas below.
+constexpr int64_t FP32_BYTES = 4;
+constexpr int64_t FP16_BYTES = 2;
+// Small fixed UB allowance (bytes) for event/scheduling bookkeeping.
+constexpr int64_t UB_FIXED_ALLOWANCE_BYTES = 128;
 
 uint32_t CeilAlign(uint32_t val, uint32_t align) { return (val + align - 1) / align * align; }
 
 uint32_t CeilDiv(uint32_t val, uint32_t div) { return (val + div - 1) / div; }
 
 int64_t CalcFixedUbBytes(int64_t aNv, int64_t aDv, int64_t aDk, bool hasGama, bool hasGamaK, bool gamaKScalar) {
-  int64_t usedUbBytes = MAX_MTP * (4 * aDk + 2 * aDv);
-  usedUbBytes += 128;
+  int64_t usedUbBytes = MAX_MTP * (FP32_BYTES * aDk + FP16_BYTES * aDv);
+  usedUbBytes += UB_FIXED_ALLOWANCE_BYTES;
   if (hasGamaK) {
     if (gamaKScalar) {
-      usedUbBytes += MAX_MTP * 4 * aNv;  // scalar per head, same size as gama
+      usedUbBytes += MAX_MTP * FP32_BYTES * aNv;  // scalar per head, same size as gama
     } else {
-      usedUbBytes += MAX_MTP * 4 * aDk;
+      usedUbBytes += MAX_MTP * FP32_BYTES * aDk;
     }
   }
-  usedUbBytes += MAX_MTP * 2 * aNv;
+  usedUbBytes += MAX_MTP * FP16_BYTES * aNv;
   return usedUbBytes;
 }
 
 int64_t CalcWorkingUbBytes(int64_t aNv, int64_t aDv, int64_t aDk, bool hasGama, bool hasGamaK, bool gamaKScalar) {
   int64_t usedUbBytes = CalcFixedUbBytes(aNv, aDv, aDk, hasGama, hasGamaK, gamaKScalar);
-  usedUbBytes += MAX_MTP * (8 * aDk + 4 * aDv + 4 * aNv);
+  usedUbBytes += MAX_MTP * (2 * FP32_BYTES * aDk + FP32_BYTES * aDv + FP32_BYTES * aNv);
   if (hasGama) {
-    usedUbBytes += MAX_MTP * 4 * aNv;
+    usedUbBytes += MAX_MTP * FP32_BYTES * aNv;
   }
   return usedUbBytes;
 }
 
 int64_t CalcVStepCoeff(int64_t aDk, uint32_t stateOutBufferNum, uint32_t attnOutBufferNum) {
   int64_t coeff = static_cast<int64_t>(2 * stateOutBufferNum) * aDk + static_cast<int64_t>(2 * attnOutBufferNum);
-  coeff += (4 + 4) * aDk + 4;
+  coeff += (FP32_BYTES + FP32_BYTES) * aDk + FP32_BYTES;
   return coeff;
 }
 
@@ -151,10 +161,14 @@ bool GetPlatformResources(TilingContext *context, uint32_t &coreNum, int64_t &ub
 }
 
 bool GetShapeDims(TilingContext *context, ShapeDims &dims) {
-  auto queryShape = context->GetInputShape(0);
-  auto valueShape = context->GetInputShape(2);
-  auto stateShape = context->GetInputShape(4);
-  auto cuSeqlensShape = context->GetInputShape(5);
+  constexpr uint32_t INPUT_QUERY = 0;
+  constexpr uint32_t INPUT_VALUE = 2;
+  constexpr uint32_t INPUT_STATE = 4;
+  constexpr uint32_t INPUT_CU_SEQLENS = 5;
+  auto queryShape = context->GetInputShape(INPUT_QUERY);
+  auto valueShape = context->GetInputShape(INPUT_VALUE);
+  auto stateShape = context->GetInputShape(INPUT_STATE);
+  auto cuSeqlensShape = context->GetInputShape(INPUT_CU_SEQLENS);
   if (queryShape == nullptr || valueShape == nullptr || stateShape == nullptr || cuSeqlensShape == nullptr) {
     return false;
   }
@@ -186,8 +200,8 @@ float GetScale(TilingContext *context) {
 
 OptionalInputs GetOptionalInputs(TilingContext *context, const ShapeDims &dims) {
   OptionalInputs inputs = {0, 0, 0, 0};
-  inputs.hasGama = context->GetOptionalInputShape(7) == nullptr ? 0 : 1;
-  auto gamaKShape = context->GetOptionalInputShape(8);
+  inputs.hasGama = context->GetOptionalInputShape(OPTIONAL_INPUT_G) == nullptr ? 0 : 1;
+  auto gamaKShape = context->GetOptionalInputShape(OPTIONAL_INPUT_GK);
   if (gamaKShape != nullptr) {
     inputs.hasGamaK = 1;
     const auto &gamaKDims = gamaKShape->GetStorageShape();
@@ -198,7 +212,7 @@ OptionalInputs GetOptionalInputs(TilingContext *context, const ShapeDims &dims) 
     int64_t expectedVector = static_cast<int64_t>(dims.t) * dims.nv * dims.dk;
     inputs.gamaKScalar = gamaKTotal < expectedVector ? 1 : 0;
   }
-  inputs.hasAcceptedTokens = context->GetOptionalInputShape(9) == nullptr ? 0 : 1;
+  inputs.hasAcceptedTokens = context->GetOptionalInputShape(OPTIONAL_INPUT_NUM_ACCEPTED_TOKENS) == nullptr ? 0 : 1;
   if (inputs.hasGama == 1 && inputs.hasGamaK == 1 && inputs.gamaKScalar == 1) {
     inputs.hasGamaK = 0;
     inputs.gamaKScalar = 0;
