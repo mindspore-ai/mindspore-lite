@@ -25,6 +25,7 @@ Run from examples/base_models/bevdet/:
 """
 import argparse
 import sys
+import time
 
 import numpy as np
 import mindspore_lite as mslite
@@ -96,7 +97,12 @@ def main():
             sys.exit(1)
         inp.set_data_from_numpy(arr)
 
+    for _ in range(3):
+        ms_model.predict(ms_inputs)
+
+    t0 = time.time()
     ms_outputs = ms_model.predict(ms_inputs)
+    print(f"\n  Model Predict Latency: {(time.time() - t0) * 1000:.2f} ms")
 
     print("\n  Output shapes:")
     for i, out in enumerate(ms_outputs):
