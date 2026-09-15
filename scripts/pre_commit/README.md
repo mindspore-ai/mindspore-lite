@@ -54,6 +54,8 @@
 
     Directory exclusions match complete path components: excluding `mindspore/` does not exclude `mindspore-lite/`, and excluding `build/` does not exclude `building/`.
 
+    Pylint reads selected files in their original package tree so unchanged `__init__.py` files and relative imports remain available. Shared hooks resolve the repository through Git, while loading their own helper scripts from the hook directory.
+
     (3) Execute pre-push.
 
     You do not need to execute pre-push manually. Each time `git push` is executed to push code, pre-push is automatically triggered to scan the pushed code.

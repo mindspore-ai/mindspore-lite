@@ -54,6 +54,8 @@
 
     目录排除按完整路径段匹配：排除 `mindspore/` 不会排除 `mindspore-lite/`，排除 `build/` 不会排除 `building/`。
 
+    Pylint 在原始包目录中检查选中的文件，保留未变更的 `__init__.py` 和相对导入上下文。共享 hook 通过 Git 确定待检查仓库，辅助脚本则从 hook 自身目录加载。
+
     （3）运行pre-push
 
     pre-push不用手动执行，每次执行`git push`推送代码会自动触发pre-push对本次推送的代码进行扫描。

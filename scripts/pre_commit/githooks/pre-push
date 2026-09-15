@@ -657,15 +657,9 @@ function pylint_check() {
     }
     local pylint_version=$(pylint --version 2>&1 | head -1)
     log_debug "pylint version: ${pylint_version}"
-    local workspace=${CODE_PATH}/pylint
-    rm -rf "${workspace}" 2>/dev/null || true
-    mkdir -p "${workspace}"
-    local LOCAL_EXCLUDE_FOLDER="${COMMON_EXCLUDE_FOLDER}"
-    GET_CODE "${workspace}" "${LOCAL_EXCLUDE_FOLDER}"
     local RULE_FILE="${JENKINS_PATH}/rules/pylint/pylintrc"
     if [ ! -f "${RULE_FILE}" ]; then
         log_error "ERROR: ${RULE_FILE} not exist"
-        rm -rf "${workspace}" 2>/dev/null || true
         cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
         return
     fi
@@ -675,31 +669,23 @@ function pylint_check() {
     local file_count=$(wc -l < "${pylint_path}/scan_filename.txt" 2>/dev/null || echo 0)
     if [ "$file_count" -eq 0 ]; then
         log_info "No Python files to scan"
-        rm -rf "${workspace}" 2>/dev/null || true
         cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
         return
     fi
     log_info "Found ${file_count} Python files to scan"
-    cd "${workspace}" || {
-        log_error "Cannot cd to workspace: ${workspace}"
+    cd "${REPO_HOME}" || {
+        log_error "Cannot cd to repo home: ${REPO_HOME}"
         cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
         return 1
     }
     : >"${pylint_path}"/pylint_original.log
     local file_args=()
-    local missing_files=()
     while IFS= read -r line || [[ -n "$line" ]]; do
         line=${line%$'\r'}
-        if [ -f "${workspace}/${line}" ]; then
-            file_args+=("${workspace}/${line}")
+        if [ -f "${REPO_HOME}/${line}" ]; then
+            file_args+=("${REPO_HOME}/${line}")
         else
-            if [ -f "${REPO_HOME}/${line}" ]; then
-                log_warning "File ${line} not found in workspace, using original path"
-                file_args+=("${REPO_HOME}/${line}")
-                missing_files+=("${line}")
-            else
-                log_warning "File ${line} not found in workspace or repository, skipping"
-            fi
+            log_warning "File ${line} not found in repository, skipping"
         fi
     done < "${pylint_path}/scan_filename.txt"
     if [ ${#file_args[@]} -eq 0 ]; then
@@ -707,7 +693,7 @@ function pylint_check() {
         cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
         return 1
     fi
-    log_info "Checking ${#file_args[@]} files (${#missing_files[@]} from original path)"
+    log_info "Checking ${#file_args[@]} files in their original package context"
     log_info "Files to check:"
     for f in "${file_args[@]}"; do
         relative_path="${f#${REPO_HOME}/}"
@@ -773,7 +759,6 @@ function pylint_check() {
     DP_ASSERT_EQUAL "${error_number}" "0" "Pylint scanning" "pylint"
     local total_duration=$(( $(date +%s) - total_start_time ))
     log_info "Total pylint check time: ${total_duration}s"
-    rm -rf "${workspace}" 2>/dev/null || true
     cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
 }
 
