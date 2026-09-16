@@ -328,6 +328,21 @@ endif()
 add_subdirectory(litert/kernel/cpu)
 add_subdirectory(common)
 
+# Archive securec objects into the static libs so the released .a is self-contained,
+# matching the SHARED library which links mindspore::securec.
+if(NOT MSVC AND securec_LIB)
+    set(SECUREC_OBJ_DIR ${CMAKE_BINARY_DIR}/securec_obj)
+    file(REMOVE_RECURSE ${SECUREC_OBJ_DIR})
+    file(MAKE_DIRECTORY ${SECUREC_OBJ_DIR})
+    execute_process(COMMAND ${CMAKE_AR} -x ${securec_LIB}
+            WORKING_DIRECTORY ${SECUREC_OBJ_DIR}
+            RESULT_VARIABLE _securec_extract_ret)
+    if(NOT _securec_extract_ret EQUAL 0)
+        message(FATAL_ERROR "Failed to extract objects from ${securec_LIB}")
+    endif()
+    file(GLOB SECUREC_OBJS ${SECUREC_OBJ_DIR}/*.o)
+endif()
+
 add_library(lite_src_mid OBJECT ${LITE_SRC})
 target_include_directories(lite_src_mid PRIVATE ${TOP_DIR})
 add_dependencies(lite_src_mid lite_src_common_mid fbs_src fbs_inner_src)
@@ -387,6 +402,7 @@ else()
 endif()
 set_target_properties(mindspore-lite_static PROPERTIES OUTPUT_NAME "mindspore-lite")
 set_target_properties(mindspore-lite_static PROPERTIES CLEAN_DIRECT_OUTPUT 1)
+target_sources(mindspore-lite_static PRIVATE ${SECUREC_OBJS})
 
 if(NOT MSVC AND NOT MSLITE_ENABLE_ACL)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-private-field")
@@ -500,6 +516,7 @@ if(SUPPORT_TRAIN)
   set_target_properties(mindspore-lite-train_static PROPERTIES OUTPUT_NAME "mindspore-lite-train")
   set_target_properties(mindspore-lite-train_static PROPERTIES CLEAN_DIRECT_OUTPUT 1)
   target_link_libraries(mindspore-lite-train_static mindspore-lite)
+  target_sources(mindspore-lite-train_static PRIVATE ${SECUREC_OBJS})
 endif()
 
 if(MSLITE_ENABLE_KERNEL_EXECUTOR)
