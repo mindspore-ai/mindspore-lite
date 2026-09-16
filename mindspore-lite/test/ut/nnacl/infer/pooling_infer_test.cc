@@ -279,4 +279,127 @@ TEST_F(PoolingInferTest, PoolingInferTest5) {
     delete outputs[i];
   }
 }
+
+// 3D (1D pooling) NCW input [1,2,68] with the schema-default NCHW label: must be
+// accepted, and the channel dim takes the H slot with window/stride = 1 on H.
+// Guards the fix for ONNX MaxPool/AvgPool over [1,2,68] k5 s5 (converter abort
+// "Unexpected input format 0" -> InferSubgraph ret -500).
+TEST_F(PoolingInferTest, PoolingInfer3D_accepts_default_NCHW_label) {
+  size_t inputs_size = 1;
+  std::vector<TensorC *> inputs(inputs_size, NULL);
+  inputs[0] = new TensorC();
+  inputs[0]->shape_size_ = 3;
+  inputs[0]->shape_[0] = 1;
+  inputs[0]->shape_[1] = 2;
+  inputs[0]->shape_[2] = 68;
+  inputs[0]->format_ = Format_NCHW;  // exporters never label intermediate tensors
+  std::vector<TensorC *> outputs(1, NULL);
+  outputs[0] = new TensorC();
+  PoolingParameter *parameter = new PoolingParameter();
+  parameter->window_w_ = 5;
+  parameter->window_h_ = 1;
+  parameter->stride_w_ = 5;
+  parameter->stride_h_ = 1;
+  parameter->pad_mode_ = Pad_valid;
+  parameter->pad_u_ = 0;
+  parameter->pad_d_ = 0;
+  parameter->pad_r_ = 0;
+  parameter->pad_l_ = 0;
+  parameter->global_ = false;
+  parameter->round_type_ = RoundType_Floor;
+  int ret = PoolingInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
+                              reinterpret_cast<OpParameter *>(parameter));
+  ASSERT_EQ(ret, NNACL_OK);
+  ASSERT_EQ(outputs[0]->shape_size_, 3);
+  ASSERT_EQ(outputs[0]->shape_[0], 1);
+  ASSERT_EQ(outputs[0]->shape_[1], 2);
+  ASSERT_EQ(outputs[0]->shape_[2], 13);
+  ASSERT_EQ(outputs[0]->format_, Format_NCHW);
+  delete parameter;
+  for (size_t i = 0; i < inputs_size; i++) {
+    delete inputs[i];
+  }
+  for (size_t i = 0; i < outputs.size(); i++) {
+    delete outputs[i];
+  }
+}
+
+// 3D global pooling reduces only W per channel: H slot (=C) is kept with window 1,
+// output [N, C, 1].
+TEST_F(PoolingInferTest, PoolingInfer3D_global_reduces_W_only) {
+  size_t inputs_size = 1;
+  std::vector<TensorC *> inputs(inputs_size, NULL);
+  inputs[0] = new TensorC();
+  inputs[0]->shape_size_ = 3;
+  inputs[0]->shape_[0] = 1;
+  inputs[0]->shape_[1] = 2;
+  inputs[0]->shape_[2] = 68;
+  inputs[0]->format_ = Format_NCHW;
+  std::vector<TensorC *> outputs(1, NULL);
+  outputs[0] = new TensorC();
+  PoolingParameter *parameter = new PoolingParameter();
+  parameter->window_w_ = 1;
+  parameter->window_h_ = 1;
+  parameter->stride_w_ = 1;
+  parameter->stride_h_ = 1;
+  parameter->pad_mode_ = Pad_valid;
+  parameter->pad_u_ = 0;
+  parameter->pad_d_ = 0;
+  parameter->pad_r_ = 0;
+  parameter->pad_l_ = 0;
+  parameter->global_ = true;
+  parameter->round_type_ = RoundType_Floor;
+  int ret = PoolingInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
+                              reinterpret_cast<OpParameter *>(parameter));
+  ASSERT_EQ(ret, NNACL_OK);
+  ASSERT_EQ(outputs[0]->shape_size_, 3);
+  ASSERT_EQ(outputs[0]->shape_[0], 1);
+  ASSERT_EQ(outputs[0]->shape_[1], 2);
+  ASSERT_EQ(outputs[0]->shape_[2], 1);
+  delete parameter;
+  for (size_t i = 0; i < inputs_size; i++) {
+    delete inputs[i];
+  }
+  for (size_t i = 0; i < outputs.size(); i++) {
+    delete outputs[i];
+  }
+}
+
+// The 3D relaxation must not leak into 4D: a 4D tensor with the default NCHW
+// label is still rejected (Format_NCHW == 0, the schema default).
+TEST_F(PoolingInferTest, PoolingInfer4D_still_rejects_NCHW_label) {
+  size_t inputs_size = 1;
+  std::vector<TensorC *> inputs(inputs_size, NULL);
+  inputs[0] = new TensorC();
+  inputs[0]->shape_size_ = 4;
+  inputs[0]->shape_[0] = 1;
+  inputs[0]->shape_[1] = 16;
+  inputs[0]->shape_[2] = 25;
+  inputs[0]->shape_[3] = 24;
+  inputs[0]->format_ = Format_NCHW;
+  std::vector<TensorC *> outputs(1, NULL);
+  outputs[0] = new TensorC();
+  PoolingParameter *parameter = new PoolingParameter();
+  parameter->window_w_ = 2;
+  parameter->window_h_ = 2;
+  parameter->stride_w_ = 2;
+  parameter->stride_h_ = 2;
+  parameter->pad_mode_ = Pad_valid;
+  parameter->pad_u_ = 0;
+  parameter->pad_d_ = 0;
+  parameter->pad_r_ = 0;
+  parameter->pad_l_ = 0;
+  parameter->global_ = false;
+  parameter->round_type_ = RoundType_Floor;
+  int ret = PoolingInferShape((const TensorC **)inputs.data(), inputs.size(), outputs.data(), outputs.size(),
+                              reinterpret_cast<OpParameter *>(parameter));
+  ASSERT_EQ(ret, NNACL_FORMAT_ERROR);
+  delete parameter;
+  for (size_t i = 0; i < inputs_size; i++) {
+    delete inputs[i];
+  }
+  for (size_t i = 0; i < outputs.size(); i++) {
+    delete outputs[i];
+  }
+}
 }  // namespace mindspore

@@ -29,6 +29,7 @@
 #include "src/common/file_utils.h"
 #include "tools/common/graph_util.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
+#include "tools/converter/quantizer/quant_params.h"
 #include "tools/converter/converter_context.h"
 #include "tools/converter/parser/tflite/tflite_inputs_adjust.h"
 #include "tools/converter/parser/parser_utils.h"
@@ -447,6 +448,36 @@ STATUS TfliteModelParser::SetTensorQuantParam(const std::unique_ptr<tflite::Tens
   return RET_OK;
 }
 
+namespace {
+// An op whose in/out tensors are all int8 with quant scales was exported already
+// quantized (QAT tflite with QUANTIZE/DEQUANTIZE boundary ops).
+bool AllTensorsInt8Quantized(const std::vector<int32_t> &tensor_indices,
+                             const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph) {
+  if (tensor_indices.empty()) {
+    return false;
+  }
+  for (auto index : tensor_indices) {
+    if (index < 0) {
+      index += static_cast<int32_t>(tflite_subgraph->tensors.size());
+    }
+    if (index < 0 || static_cast<size_t>(index) >= tflite_subgraph->tensors.size()) {
+      return false;
+    }
+    const auto &tensor = tflite_subgraph->tensors[index];
+    if (tensor == nullptr || tensor->type != tflite::TensorType_INT8 || tensor->quantization == nullptr ||
+        tensor->quantization->scale.empty()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsOpExportedInt8(const std::unique_ptr<tflite::OperatorT> &op,
+                      const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph) {
+  return AllTensorsInt8Quantized(op->inputs, tflite_subgraph) && AllTensorsInt8Quantized(op->outputs, tflite_subgraph);
+}
+}  // namespace
+
 STATUS TfliteModelParser::ConvertOpQuantParams(const std::unique_ptr<tflite::OperatorT> &op,
                                                const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph,
                                                PrimitiveCPtr primitive_c) {
@@ -516,6 +547,12 @@ STATUS TfliteModelParser::ConvertOpQuantParams(const std::unique_ptr<tflite::Ope
       quant_params_holder->set_output_quant_param(iter.first, iter.second);
     }
     primitive_c->AddAttr("quant_params", quant_params_holder);
+  }
+  if (IsOpExportedInt8(op, tflite_subgraph)) {
+    // An op whose in/out tensors are all int8 with quant scales was exported already
+    // quantized (QAT tflite with QUANTIZE/DEQUANTIZE boundary ops). Mark the primitive so
+    // kernel scheduling accepts it instead of rejecting QUANT_NONE int8 ops.
+    primitive_c->AddAttr(quant::kQuantType, MakeValue(static_cast<int>(quant::QUANT_ALL)));
   }
   return RET_OK;
 }

@@ -88,13 +88,19 @@ OpParameter *PopulateAvgPoolParameter(const void *primitive) {
   param->pool_mode_ = PoolMode_AvgPool;
   param->global_ = value->global();
   auto strides = value->strides();
-  if (strides == nullptr || strides->size() < kMinShapeSizeTwo) {
+  if (strides == nullptr || strides->size() < 1) {
     MS_LOG(ERROR) << "strides is invalid!";
     free(param);
     return nullptr;
   }
-  param->stride_w_ = static_cast<int>(*(strides->begin() + 1));
-  param->stride_h_ = static_cast<int>(*(strides->begin()));
+  // A size-1 vector means 1D pooling over W: the H slot takes 1.
+  if (strides->size() == 1) {
+    param->stride_h_ = 1;
+    param->stride_w_ = static_cast<int>(*(strides->begin()));
+  } else {
+    param->stride_w_ = static_cast<int>(*(strides->begin() + 1));
+    param->stride_h_ = static_cast<int>(*(strides->begin()));
+  }
   auto pad = value->pad();
   if (pad != nullptr && pad->size() >= kMinShapeSizeFour) {
     param->pad_u_ = static_cast<int>(*(pad->begin()));
@@ -104,13 +110,18 @@ OpParameter *PopulateAvgPoolParameter(const void *primitive) {
   }
   if (!param->global_) {
     auto kernel_size = value->kernel_size();
-    if (kernel_size == nullptr || kernel_size->size() < kMinShapeSizeTwo) {
+    if (kernel_size == nullptr || kernel_size->size() < 1) {
       MS_LOG(ERROR) << "kernel_size is invalid";
       free(param);
       return nullptr;
     }
-    param->window_w_ = static_cast<int>(*(kernel_size->begin() + 1));
-    param->window_h_ = static_cast<int>(*(kernel_size->begin()));
+    if (kernel_size->size() == 1) {
+      param->window_h_ = 1;
+      param->window_w_ = static_cast<int>(*(kernel_size->begin()));
+    } else {
+      param->window_w_ = static_cast<int>(*(kernel_size->begin() + 1));
+      param->window_h_ = static_cast<int>(*(kernel_size->begin()));
+    }
   }
 
   UpdateRoundMode(value->round_mode(), param);
@@ -147,16 +158,26 @@ OpParameter *PopulateMaxPoolParameter(const void *primitive) {
   if (!param->global_) {
     auto kernel_size = value->kernel_size();
     auto strides = value->strides();
-    if (kernel_size == nullptr || strides == nullptr || kernel_size->size() < kMinShapeSizeTwo ||
-        strides->size() < kMinShapeSizeTwo) {
+    if (kernel_size == nullptr || strides == nullptr || kernel_size->size() < 1 || strides->size() < 1) {
       MS_LOG(ERROR) << "kernel_size or strides is invalid";
       free(param);
       return nullptr;
     }
-    param->window_w_ = static_cast<int>(*(kernel_size->begin() + 1));
-    param->window_h_ = static_cast<int>(*(kernel_size->begin()));
-    param->stride_w_ = static_cast<int>(*(strides->begin() + 1));
-    param->stride_h_ = static_cast<int>(*(strides->begin()));
+    // Size-1 vectors mean 1D pooling over W: the H slot takes 1.
+    if (kernel_size->size() == 1) {
+      param->window_h_ = 1;
+      param->window_w_ = static_cast<int>(*(kernel_size->begin()));
+    } else {
+      param->window_w_ = static_cast<int>(*(kernel_size->begin() + 1));
+      param->window_h_ = static_cast<int>(*(kernel_size->begin()));
+    }
+    if (strides->size() == 1) {
+      param->stride_h_ = 1;
+      param->stride_w_ = static_cast<int>(*(strides->begin()));
+    } else {
+      param->stride_w_ = static_cast<int>(*(strides->begin() + 1));
+      param->stride_h_ = static_cast<int>(*(strides->begin()));
+    }
     auto pad = value->pad();
     if (pad != nullptr && pad->size() >= kMinShapeSizeFour) {
       param->pad_u_ = static_cast<int>(*(pad->begin()));

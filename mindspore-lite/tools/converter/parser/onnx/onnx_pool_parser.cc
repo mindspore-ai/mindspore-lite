@@ -39,6 +39,7 @@ struct AvgPoolAttrs {
   std::vector<int64_t> pads;
   mindspore::RoundMode round_mode = mindspore::RoundMode::FLOOR;
   bool is_3d = false;
+  bool is_1d = false;
 };
 
 bool CheckDilations(const onnx::AttributeProto &onnx_node_attr) {
@@ -67,6 +68,10 @@ void ParseKernelSize(const std::unique_ptr<ops::AvgPoolFusion> &prim, const onnx
     kernels.push_back(onnx_node_attr.ints(kIndex1));
     prim->set_kernel_size(kernels);
   } else if (onnx_node_attr.ints_size() == kNumShapeSize1) {
+    // 1D pooling over W: normalize to {1, k} so downstream (populate/quantizer)
+    // sees the regular 2-element H/W form.
+    attrs->is_1d = true;
+    kernels.push_back(1);
     kernels.push_back(onnx_node_attr.ints(kIndex0));
     prim->set_kernel_size(kernels);
   } else if (onnx_node_attr.ints_size() == kNumShapeSize3) {
@@ -88,6 +93,9 @@ void ParseStrides(const onnx::AttributeProto &onnx_node_attr, AvgPoolAttrs *attr
     strides.push_back(onnx_node_attr.ints(kIndex0));
     strides.push_back(onnx_node_attr.ints(kIndex1));
   } else if (onnx_node_attr.ints_size() == kNumShapeSize1) {
+    // 1D pooling over W: normalize to {1, s}.
+    attrs->is_1d = true;
+    strides.push_back(1);
     strides.push_back(onnx_node_attr.ints(kIndex0));
   } else if (onnx_node_attr.ints_size() == kNumShapeSize3) {
     attrs->is_3d = true;
@@ -109,6 +117,10 @@ void ParsePads(const onnx::AttributeProto &onnx_node_attr, AvgPoolAttrs *attrs) 
     pads.push_back(onnx_node_attr.ints(kIndex1));
     pads.push_back(onnx_node_attr.ints(kIndex3));
   } else if (onnx_node_attr.ints_size() == kNumShapeSize2) {
+    // 1D pooling pads [pl, pr] act on W: map to {0, 0, pl, pr}.
+    attrs->is_1d = true;
+    pads.push_back(0);
+    pads.push_back(0);
     pads.push_back(onnx_node_attr.ints(kIndex0));
     pads.push_back(onnx_node_attr.ints(kIndex1));
   } else if (onnx_node_attr.ints_size() == kNumShapeSize6) {
@@ -189,13 +201,14 @@ PrimitiveCPtr OnnxAvgPoolParser::Parse(const onnx::GraphProto &onnx_graph, const
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
   auto prim_c = prim->GetPrim();
   MS_CHECK_TRUE_RET(prim_c != nullptr, nullptr);
-  (void)prim_c->AddAttr(mindspore::ops::kOriginalFormat, MakeValue<int64_t>(mindspore::Format::NCHW));
   prim->set_pad_mode(mindspore::PadMode::PAD);
   AvgPoolAttrs attrs;
   if (!ParseAttrs(onnx_node, prim, &attrs)) {
     MS_LOG(ERROR) << "ParseAttrs failed!";
     return nullptr;
   }
+  (void)prim_c->AddAttr(mindspore::ops::kOriginalFormat,
+                        MakeValue<int64_t>(attrs.is_1d ? mindspore::Format::NCW : mindspore::Format::NCHW));
   prim->set_round_mode(attrs.round_mode);
 
   if (attrs.strides.empty()) {

@@ -17,6 +17,11 @@
 #define USE_DEPRECATED_API
 #include <memory>
 #include <vector>
+// Expand the core logging headers (complete MS_LOG family) and func_graph.h first:
+// later converter headers pull in lite's src/common/log.h whose narrower MS_LOG
+// macro would otherwise break the inline functions of already-open core headers.
+#include "src/common/log_adapter.h"
+#include "ir/func_graph.h"
 #include "common/common_test.h"
 #include "include/registry/converter_context.h"
 #include "include/registry/node_parser_registry.h"
@@ -28,13 +33,14 @@ namespace {
 constexpr int64_t kRoundModeFloor = 0;
 constexpr int64_t kRoundModeCeil = 1;
 
-ops::PrimitiveCPtr ParseMaxPoolNode(const std::vector<int64_t> &kernel_shape, const std::vector<int64_t> &strides,
-                                    const std::vector<int64_t> &pads, int ceil_mode) {
+ops::PrimitiveCPtr ParsePoolNode(const std::string &op_type, const std::vector<int64_t> &kernel_shape,
+                                 const std::vector<int64_t> &strides, const std::vector<int64_t> &pads, int ceil_mode,
+                                 bool with_pads = true) {
   auto onnx_graph = std::make_shared<onnx::GraphProto>();
-  onnx_graph->set_name("onnx_maxpool_graph");
+  onnx_graph->set_name("onnx_pool_graph");
   onnx::NodeProto *node = onnx_graph->add_node();
-  node->set_name("maxpool_node");
-  node->set_op_type("MaxPool");
+  node->set_name("pool_node");
+  node->set_op_type(op_type);
   node->add_input("x");
 
   auto ks_attr = node->add_attribute();
@@ -51,11 +57,13 @@ ops::PrimitiveCPtr ParseMaxPoolNode(const std::vector<int64_t> &kernel_shape, co
     st_attr->add_ints(v);
   }
 
-  auto pads_attr = node->add_attribute();
-  pads_attr->set_name("pads");
-  pads_attr->set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
-  for (auto v : pads) {
-    pads_attr->add_ints(v);
+  if (with_pads) {
+    auto pads_attr = node->add_attribute();
+    pads_attr->set_name("pads");
+    pads_attr->set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    for (auto v : pads) {
+      pads_attr->add_ints(v);
+    }
   }
 
   auto ceil_attr = node->add_attribute();
@@ -68,6 +76,11 @@ ops::PrimitiveCPtr ParseMaxPoolNode(const std::vector<int64_t> &kernel_shape, co
     return nullptr;
   }
   return parser->Parse(*onnx_graph, *node);
+}
+
+ops::PrimitiveCPtr ParseMaxPoolNode(const std::vector<int64_t> &kernel_shape, const std::vector<int64_t> &strides,
+                                    const std::vector<int64_t> &pads, int ceil_mode) {
+  return ParsePoolNode("MaxPool", kernel_shape, strides, pads, ceil_mode);
 }
 
 std::vector<int64_t> GetIntVecAttr(const ops::PrimitiveCPtr &prim, const std::string &name) {
@@ -121,5 +134,43 @@ TEST_F(OnnxPoolParserTest, MaxPool2D_keeps_two_element_kernel_size) {
   ASSERT_NE(prim, nullptr);
   ASSERT_EQ(GetIntVecAttr(prim, ops::kKernelSize), (std::vector<int64_t>{2, 2}));
   ASSERT_EQ(GetIntVecAttr(prim, ops::kStrides), (std::vector<int64_t>{2, 2}));
+}
+
+// ---------- AvgPool 1D (ONNX [1,2,256] k8 s8 bug) ----------
+// AveragePool with size-1 kernel_shape used to keep size-1 kernel/strides and crash
+// PopulateAvgPoolParameter ("strides is invalid!"). Must normalize to the 2-element
+// H/W form with H=1, matching MaxPool1D.
+
+TEST_F(OnnxPoolParserTest, AvgPool1D_expands_kernel_and_strides_to_2d) {
+  // ONNX AveragePool has no pads attribute by default (pads default 0).
+  auto prim = ParsePoolNode("AveragePool", {8}, {8}, {}, 0, false);
+  ASSERT_NE(prim, nullptr);
+  ASSERT_EQ(GetIntVecAttr(prim, ops::kKernelSize), (std::vector<int64_t>{1, 8}));
+  ASSERT_EQ(GetIntVecAttr(prim, ops::kStrides), (std::vector<int64_t>{1, 8}));
+  ASSERT_EQ(GetIntVecAttr(prim, ops::kPad), (std::vector<int64_t>{0, 0, 0, 0}));
+}
+
+TEST_F(OnnxPoolParserTest, AvgPool1D_maps_1d_pads_to_W_slots) {
+  auto prim = ParsePoolNode("AveragePool", {8}, {8}, {1, 2}, 0);
+  ASSERT_NE(prim, nullptr);
+  ASSERT_EQ(GetIntVecAttr(prim, ops::kKernelSize), (std::vector<int64_t>{1, 8}));
+  ASSERT_EQ(GetIntVecAttr(prim, ops::kStrides), (std::vector<int64_t>{1, 8}));
+  // 1D pads [begin, end] act on W: {0, 0, begin, end}.
+  ASSERT_EQ(GetIntVecAttr(prim, ops::kPad), (std::vector<int64_t>{0, 0, 1, 2}));
+}
+
+TEST_F(OnnxPoolParserTest, AvgPool1D_labels_original_format_NCW) {
+  auto prim = ParsePoolNode("AveragePool", {8}, {8}, {}, 0, false);
+  ASSERT_NE(prim, nullptr);
+  auto fmt = prim->GetAttr(mindspore::ops::kOriginalFormat);
+  ASSERT_NE(fmt, nullptr);
+  ASSERT_EQ(GetValue<int64_t>(fmt), static_cast<int64_t>(mindspore::Format::NCW));
+}
+
+TEST_F(OnnxPoolParserTest, AvgPool2D_keeps_two_element_kernel_size) {
+  auto prim = ParsePoolNode("AveragePool", {8, 8}, {8, 8}, {0, 0, 0, 0}, 0);
+  ASSERT_NE(prim, nullptr);
+  ASSERT_EQ(GetIntVecAttr(prim, ops::kKernelSize), (std::vector<int64_t>{8, 8}));
+  ASSERT_EQ(GetIntVecAttr(prim, ops::kStrides), (std::vector<int64_t>{8, 8}));
 }
 }  // namespace mindspore

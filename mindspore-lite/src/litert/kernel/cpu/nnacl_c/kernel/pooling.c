@@ -15,11 +15,13 @@
  */
 
 #include "nnacl_c/kernel/pooling.h"
+
 #include <float.h>
-#include "nnacl_c/pooling_parameter.h"
+
 #include "nnacl_c/fp32/pooling_fp32.h"
-#include "nnacl_c/tensor_c_utils.h"
 #include "nnacl_c/kernel/default_kernel_base.h"
+#include "nnacl_c/pooling_parameter.h"
+#include "nnacl_c/tensor_c_utils.h"
 #ifdef ENABLE_FP16
 #include "nnacl_c/fp16/pooling_fp16.h"
 #endif
@@ -69,6 +71,16 @@ int PoolingRunImpl(PoolingStruct *pooling, int task_id) {
     } else {
       return AvgPooling(input_ptr, output_ptr, param, &pooling->compute_, task_id, pooling->base_.thread_nr_);
     }
+  } else if (input_tensor->shape_size_ == DIMENSION_3D) {
+    // 3D (1D pooling) NCW data: infer shape and the compute params map the
+    // channel dim onto the H slot (window_h/stride_h = 1), so the plain
+    // NHWC kernels are positional-compatible regardless of the (possibly
+    // default NCHW) format label.
+    if (param->pool_mode_ == PoolMode_MaxPool) {
+      return MaxPooling(input_ptr, output_ptr, param, &pooling->compute_, task_id, pooling->base_.thread_nr_);
+    } else {
+      return AvgPooling(input_ptr, output_ptr, param, &pooling->compute_, task_id, pooling->base_.thread_nr_);
+    }
   }
 
   return NNACL_UNSUPPORTED_FORMAT;
@@ -100,19 +112,39 @@ int PoolingResize(KernelBase *self) {
   PoolingComputeParam *compute = &pooling->compute_;
   PoolingParameter *param = (PoolingParameter *)self->param_;
 
-  compute->input_batch_ = NNACLGetBatch(in_tensor);
-  compute->input_channel_ = NNACLGetChannel(in_tensor);
-  compute->input_h_ = NNACLGetHeight(in_tensor);
-  compute->input_w_ = NNACLGetWidth(in_tensor);
-  compute->output_batch_ = NNACLGetBatch(out_tensor);
-  compute->output_channel_ = NNACLGetChannel(out_tensor);
-  compute->output_h_ = NNACLGetHeight(out_tensor);
-  compute->output_w_ = NNACLGetWidth(out_tensor);
+  if (in_tensor->shape_size_ == DIMENSION_3D) {
+    // 3D (1D pooling) NCW [N, C, W]: H slot = channel dim, channel = 1,
+    // matches HandleInputHW in pooling_infer.c positionally.
+    compute->input_batch_ = in_tensor->shape_[C0NUM];
+    compute->input_channel_ = C1NUM;
+    compute->input_h_ = in_tensor->shape_[C1NUM];
+    compute->input_w_ = in_tensor->shape_[C2NUM];
+    compute->output_batch_ = out_tensor->shape_[C0NUM];
+    compute->output_channel_ = C1NUM;
+    compute->output_h_ = out_tensor->shape_[C1NUM];
+    compute->output_w_ = out_tensor->shape_[C2NUM];
+  } else {
+    compute->input_batch_ = NNACLGetBatch(in_tensor);
+    compute->input_channel_ = NNACLGetChannel(in_tensor);
+    compute->input_h_ = NNACLGetHeight(in_tensor);
+    compute->input_w_ = NNACLGetWidth(in_tensor);
+    compute->output_batch_ = NNACLGetBatch(out_tensor);
+    compute->output_channel_ = NNACLGetChannel(out_tensor);
+    compute->output_h_ = NNACLGetHeight(out_tensor);
+    compute->output_w_ = NNACLGetWidth(out_tensor);
+  }
   compute->window_h_ = param->window_h_;
   compute->window_w_ = param->window_w_;
   if (param->global_) {
-    compute->window_h_ = compute->input_h_;
-    compute->window_w_ = compute->input_w_;
+    // 3D global pooling reduces only W per channel; keep H (=C) with
+    // window 1.
+    if (in_tensor->shape_size_ == DIMENSION_3D) {
+      compute->window_h_ = 1;
+      compute->window_w_ = compute->input_w_;
+    } else {
+      compute->window_h_ = compute->input_h_;
+      compute->window_w_ = compute->input_w_;
+    }
   }
   return NNACL_OK;
 }

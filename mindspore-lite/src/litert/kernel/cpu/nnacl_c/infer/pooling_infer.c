@@ -15,7 +15,9 @@
  */
 
 #include "nnacl_c/infer/pooling_infer.h"
+
 #include <math.h>
+
 #include "nnacl_c/infer/infer_register.h"
 
 const int kOriginDefault = 0;
@@ -56,22 +58,30 @@ int PoolingHandleDefault(PoolingParameter *param) {
 }
 
 void HandleInputHW(const TensorC *input, int input_shape_size, int *input_h, int *input_w) {
-  // if shape is 3 then Handle MaxPool1D else Handle MaxPool2D
+  // 3D (1D pooling) input is NCW [N, C, W]: the channel dim takes the H slot
+  // with window_h/stride_h = 1 and W stays the last dim, so the plain NHWC
+  // positional kernel indexes it without any transpose. Positions coincide
+  // with the 4D case.
   if (input_shape_size == DIMENSION_3D) {
-    *input_h = 1;
-    *input_w = input->shape_[1];
+    *input_h = input->shape_[1];
+    *input_w = input->shape_[C2NUM];
   } else {
     *input_h = input->shape_[1];
     *input_w = input->shape_[C2NUM];
   }
 }
 
-int HandleOutputHW(PoolingParameter *param, int *input_h, int *input_w, int *output_h, int *output_w) {
+int HandleOutputHW(PoolingParameter *param, int input_shape_size, int *input_h, int *input_w, int *output_h,
+                   int *output_w) {
   int window_h = param->window_h_;
   int window_w = param->window_w_;
   if (param->global_) {
-    param->window_h_ = window_h = *input_h;
-    param->window_w_ = window_w = *input_w;
+    // 3D global pooling reduces only W per channel; keep H (=C) with
+    // window 1.
+    window_h = (input_shape_size == DIMENSION_3D) ? 1 : *input_h;
+    window_w = *input_w;
+    param->window_h_ = window_h;
+    param->window_w_ = window_w;
   }
   if ((param->stride_h_ == 0 || param->stride_w_ == 0) && !param->global_) {
     return NNACL_PARAM_INVALID;
@@ -100,9 +110,11 @@ int HandleOutputHW(PoolingParameter *param, int *input_h, int *input_w, int *out
 }
 
 void HaneleOutputShape(int input_shape_size, int *output_shape, int *output_h, int *output_w) {
-  // if MaxPool1D, output_shape[1]=output_w
+  // 3D output is NCW [N, C, W']; H slot carries the channel dim, W is the
+  // pooled axis.
   if (input_shape_size == DIMENSION_3D) {
-    output_shape[1] = *output_w > 0 ? *output_w : 1;
+    output_shape[1] = *output_h > 0 ? *output_h : 1;
+    output_shape[C2NUM] = *output_w > 0 ? *output_w : 1;
   } else {
     output_shape[1] = *output_h > 0 ? *output_h : 1;
     output_shape[C2NUM] = *output_w > 0 ? *output_w : 1;
@@ -117,7 +129,16 @@ int PoolingInferShape(const TensorC *const *inputs, size_t inputs_size, TensorC 
   }
 
   const TensorC *input = inputs[0];
-  NNACL_CHECK_TRUE_RET(input->format_ == Format_NHWC || input->format_ == Format_NWC, NNACL_FORMAT_ERROR);
+  // 4D pooling data is NHWC. 3D (1D pooling) data keeps the ONNX NCW layout:
+  // the exporter never writes format labels on intermediate tensors (schema
+  // default NCHW), and infer/kernels derive everything from shape positions,
+  // so accept the NCHW label for 3D inputs as well.
+  if (input->shape_size_ == DIMENSION_3D) {
+    NNACL_CHECK_TRUE_RET(input->format_ == Format_NHWC || input->format_ == Format_NWC || input->format_ == Format_NCHW,
+                         NNACL_FORMAT_ERROR);
+  } else {
+    NNACL_CHECK_TRUE_RET(input->format_ == Format_NHWC || input->format_ == Format_NWC, NNACL_FORMAT_ERROR);
+  }
   for (size_t i = 0; i < outputs_size; i++) {
     TensorC *output = outputs[i];
     SetDataTypeFormat(output, input);
@@ -144,7 +165,7 @@ int PoolingInferShape(const TensorC *const *inputs, size_t inputs_size, TensorC 
   HandleInputHW(input, input->shape_size_, &input_h, &input_w);
   int output_h = 0;
   int output_w = 0;
-  check_ret = HandleOutputHW(param, &input_h, &input_w, &output_h, &output_w);
+  check_ret = HandleOutputHW(param, input->shape_size_, &input_h, &input_w, &output_h, &output_w);
   if (check_ret != NNACL_OK) {
     return check_ret;
   }

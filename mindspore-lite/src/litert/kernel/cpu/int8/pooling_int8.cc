@@ -130,19 +130,45 @@ int PoolingInt8CPUKernel::Prepare() {
 int PoolingInt8CPUKernel::ReSize() {
   auto in_tensor = this->in_tensors_.front();
   auto out_tensor = this->out_tensors_.front();
-  compute_.input_batch_ = in_tensor->Batch();
-  compute_.input_channel_ = in_tensor->Channel();
-  compute_.input_h_ = in_tensor->Height();
-  compute_.input_w_ = in_tensor->Width();
-  compute_.output_batch_ = out_tensor->Batch();
-  compute_.output_channel_ = out_tensor->Channel();
-  compute_.output_h_ = out_tensor->Height();
-  compute_.output_w_ = out_tensor->Width();
+  constexpr size_t kNcDimIdx = 0;  // NCW layout: N
+  constexpr size_t kCcDimIdx = 1;  // NCW layout: C, occupies the H slot
+  constexpr size_t kWcDimIdx = 2;  // NCW layout: W
+  if (in_tensor->shape().size() == DIMENSION_3D) {
+    // 3D (1D pooling) NCW [N, C, W]: Tensor::Batch/Height/Width only serve 2D/4D,
+    // fill positionally — the channel dim takes the H slot, channel is 1.
+    auto in_shape = in_tensor->shape();
+    auto out_shape = out_tensor->shape();
+    compute_.input_batch_ = in_shape[kNcDimIdx];
+    compute_.input_channel_ = 1;
+    compute_.input_h_ = in_shape[kCcDimIdx];
+    compute_.input_w_ = in_shape[kWcDimIdx];
+    compute_.output_batch_ = out_shape[kNcDimIdx];
+    compute_.output_channel_ = 1;
+    compute_.output_h_ = out_shape[kCcDimIdx];
+    compute_.output_w_ = out_shape[kWcDimIdx];
+  } else {
+    compute_.input_batch_ = in_tensor->Batch();
+    compute_.input_channel_ = in_tensor->Channel();
+    compute_.input_h_ = in_tensor->Height();
+    compute_.input_w_ = in_tensor->Width();
+    compute_.output_batch_ = out_tensor->Batch();
+    compute_.output_channel_ = out_tensor->Channel();
+    compute_.output_h_ = out_tensor->Height();
+    compute_.output_w_ = out_tensor->Width();
+  }
   compute_.window_h_ = pooling_param_->window_h_;
   compute_.window_w_ = pooling_param_->window_w_;
   if (pooling_param_->global_) {
-    pooling_param_->window_h_ = compute_.input_h_;
-    pooling_param_->window_w_ = compute_.input_w_;
+    // 3D global pooling reduces only W per channel; keep H (=C) with window 1.
+    if (in_tensor->shape().size() == DIMENSION_3D) {
+      pooling_param_->window_h_ = 1;
+      pooling_param_->window_w_ = compute_.input_w_;
+      compute_.window_h_ = 1;
+      compute_.window_w_ = compute_.input_w_;
+    } else {
+      pooling_param_->window_h_ = compute_.input_h_;
+      pooling_param_->window_w_ = compute_.input_w_;
+    }
   }
   compute_.minf = INT8_MIN;
   compute_.maxf = INT8_MAX;

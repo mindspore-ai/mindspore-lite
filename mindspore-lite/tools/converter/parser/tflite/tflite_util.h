@@ -45,16 +45,14 @@ STATUS getPaddingParam(const std::unique_ptr<tflite::TensorT> &tensor, mindspore
                        int strideW, int windowH, int windowW, std::vector<int64_t> *params);
 
 inline tflite::BuiltinOperator GetBuiltinCode(const std::unique_ptr<tflite::OperatorCodeT> &opcode) {
-  auto builtin_code = opcode->builtin_code;
-  // Backward compatibility with old TFLite models:
-  // Old models store the operator code at field 0 (now deprecated_builtin_code),
-  // while the new builtin_code field at field 3 defaults to 0 (ADD) for old models.
-  // For new operators (>=128), builtin_code has the correct value.
-  // For old operators (<128), read from deprecated_builtin_code.
-  if (builtin_code <= tflite::BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES) {
-    return static_cast<tflite::BuiltinOperator>(opcode->deprecated_builtin_code);
-  }
-  return builtin_code;
+  // TFLite official schema_utils resolves with max(builtin_code, deprecated_builtin_code):
+  // a well-formed OperatorCode stores the same value in both fields, so the max only picks
+  // the non-default one. Some exporters write builtin_code alone for old ops (<128) and leave
+  // deprecated_builtin_code at its default 0 (ADD); reading deprecated alone would misparse
+  // e.g. BATCH_MATMUL(126) as ADD.
+  auto builtin_code = static_cast<int32_t>(opcode->builtin_code);
+  auto deprecated_code = static_cast<int32_t>(opcode->deprecated_builtin_code);
+  return static_cast<tflite::BuiltinOperator>(builtin_code > deprecated_code ? builtin_code : deprecated_code);
 }
 }  // namespace lite
 }  // namespace mindspore

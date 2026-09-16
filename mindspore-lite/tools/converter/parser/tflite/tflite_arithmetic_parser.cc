@@ -35,8 +35,15 @@ PrimitiveCPtr TfliteAddParser::Parse(const std::unique_ptr<tflite::OperatorT> &t
   auto prim = std::make_unique<ops::AddFusion>();
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
 
+  // Some exporters omit AddOptions entirely (BuiltinOptions_NONE), in which case
+  // AsAddOptions() returns null. The only field is fused_activation_function,
+  // so treat a missing table as no activation instead of failing the model.
   const auto &tflite_attr = tflite_op->builtin_options.AsAddOptions();
-  MS_CHECK_TRUE_MSG(tflite_attr != nullptr, nullptr, "get AddFusion attr failed");
+  if (tflite_attr == nullptr) {
+    MS_LOG(WARNING) << "ADD builtin_options is absent, use NONE activation.";
+    prim->set_activation_type(mindspore::NO_ACTIVATION);
+    return prim->GetPrim();
+  }
   prim->set_activation_type(GetActivationFunctionType(tflite_attr->fused_activation_function));
 
   return prim->GetPrim();
