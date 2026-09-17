@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 /**
- * @file test_llm_lifecycle.cpp
+ * @file test_lm_api.cc
  * @brief Seam ① — Test MSLLMCreateModel / MSLLMDestroyModel / Config lifecycle.
  *
  * Pure memory operations: no .msl model, no backend, no tokenizer required.
@@ -28,27 +28,35 @@ namespace {
 
 // ─── Create ──────────────────────────────────────────────────────────────────
 
-TEST(Lifecycle, CreateReturnsNonNullHandle) {
+TEST(LLMApi, CreateReturnsNonNullHandle) {
   auto *h = MSLLMCreateModel();
   ASSERT_NE(h, nullptr);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
-TEST(Lifecycle, CreateReturnsDistinctHandles) {
+TEST(LLMApi, CreateReturnsDistinctHandles) {
   auto *h1 = MSLLMCreateModel();
   auto *h2 = MSLLMCreateModel();
   ASSERT_NE(h1, nullptr);
   ASSERT_NE(h2, nullptr);
   ASSERT_NE(h1, h2);
-  MSLLMDestroyModel(h2);
-  MSLLMDestroyModel(h1);
+  MSLLMDestroyModel(&h2);
+  MSLLMDestroyModel(&h1);
 }
 
 // ─── Destroy ─────────────────────────────────────────────────────────────────
 
-TEST(Lifecycle, DestroyNullReturnsError) {
+TEST(LLMApi, DestroyNullReturnsError) {
   auto status = MSLLMDestroyModel(nullptr);
   EXPECT_EQ(status, kMSLLM_ERROR_INVALID_ARGS);
+}
+
+TEST(LLMApi, DestroySameHandleTwiceReturnsInvalidArgs) {
+  auto handle = MSLLMCreateModel();
+  ASSERT_NE(handle, nullptr);
+  ASSERT_EQ(MSLLMDestroyModel(&handle), kMSLLM_SUCCESS);
+  EXPECT_EQ(handle, nullptr);
+  EXPECT_EQ(MSLLMDestroyModel(&handle), kMSLLM_ERROR_INVALID_ARGS);
 }
 
 // ─── Config — set / get round-trip ───────────────────────────────────────────
@@ -76,7 +84,7 @@ TEST(Config, SetGetRoundTrip) {
   EXPECT_FLOAT_EQ(out.top_p, 0.95f);
   EXPECT_FLOAT_EQ(out.repetition_penalty, 1.1f);
 
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(Config, ZeroRepetitionPenaltyFallsBackToDefault) {
@@ -94,7 +102,7 @@ TEST(Config, ZeroRepetitionPenaltyFallsBackToDefault) {
   EXPECT_EQ(MSLLMGetGenerationConfig(h, &out), kMSLLM_SUCCESS);
   EXPECT_FLOAT_EQ(out.repetition_penalty, 1.0f);
 
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(Config, SetConfigNullHandle) {
@@ -111,7 +119,7 @@ TEST(Config, GetConfigNullOutParamReturnsInvalidArgs) {
   auto *h = MSLLMCreateModel();
   ASSERT_NE(h, nullptr);
   EXPECT_EQ(MSLLMGetGenerationConfig(h, nullptr), kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 // ─── Config — defaults ──────────────────────────────────────────────────────
@@ -129,7 +137,7 @@ TEST(Config, DefaultConfigAfterCreate) {
   EXPECT_FLOAT_EQ(cfg.top_p, 1.0f);
   EXPECT_FLOAT_EQ(cfg.repetition_penalty, 1.0f);
 
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(Config, OverwriteThenReadbackPreservesLastValue) {
@@ -151,7 +159,7 @@ TEST(Config, OverwriteThenReadbackPreservesLastValue) {
   EXPECT_EQ(out.max_new_tokens, 200);
   EXPECT_FALSE(out.do_sample);
 
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 // ─── Config — validation (#3/#4/#5/#6) ─────────────────────────────────────
@@ -169,7 +177,7 @@ TEST(Config, AcceptsMaxNewTokensUnlimited) {
   cfg.max_new_tokens = 0;  // #3: 0 = no explicit cap
   EXPECT_EQ(MSLLMSetGenerationConfig(h, cfg), kMSLLM_SUCCESS);
 
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(Config, RejectsMaxNewTokensBelowMinusOne) {
@@ -180,7 +188,7 @@ TEST(Config, RejectsMaxNewTokensBelowMinusOne) {
   cfg.max_new_tokens = -2;
   EXPECT_EQ(MSLLMSetGenerationConfig(h, cfg), kMSLLM_ERROR_INVALID_ARGS);
 
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(Config, RejectsTemperatureBelowZeroWhenSampling) {
@@ -190,7 +198,7 @@ TEST(Config, RejectsTemperatureBelowZeroWhenSampling) {
   cfg.do_sample = true;  // #5: sampling fields validated only when used
   cfg.temperature = -0.1f;
   EXPECT_EQ(MSLLMSetGenerationConfig(h, cfg), kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(Config, IgnoresSamplingFieldsWhenGreedy) {
@@ -203,7 +211,7 @@ TEST(Config, IgnoresSamplingFieldsWhenGreedy) {
   cfg.top_k = -5;
   cfg.top_p = 3.0f;
   EXPECT_EQ(MSLLMSetGenerationConfig(h, cfg), kMSLLM_SUCCESS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(Config, RejectsTemperatureAboveTwoWhenSampling) {
@@ -213,7 +221,7 @@ TEST(Config, RejectsTemperatureAboveTwoWhenSampling) {
   cfg.do_sample = true;  // #5: sampling fields validated only when used
   cfg.temperature = 2.1f;
   EXPECT_EQ(MSLLMSetGenerationConfig(h, cfg), kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(Config, AcceptsTemperatureBoundaries) {
@@ -228,7 +236,7 @@ TEST(Config, AcceptsTemperatureBoundaries) {
   c2.temperature = 2.0f;
   EXPECT_EQ(MSLLMSetGenerationConfig(h, c2), kMSLLM_SUCCESS);
 
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(Config, RejectsNegativeTopKWhenSampling) {
@@ -238,7 +246,7 @@ TEST(Config, RejectsNegativeTopKWhenSampling) {
   cfg.do_sample = true;  // #5: sampling fields validated only when used
   cfg.top_k = -1;
   EXPECT_EQ(MSLLMSetGenerationConfig(h, cfg), kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(Config, RejectsNegativeTopPWhenSampling) {
@@ -248,7 +256,7 @@ TEST(Config, RejectsNegativeTopPWhenSampling) {
   cfg.do_sample = true;  // #5: sampling fields validated only when used
   cfg.top_p = -0.1f;
   EXPECT_EQ(MSLLMSetGenerationConfig(h, cfg), kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(Config, RejectsTopPAboveOneWhenSampling) {
@@ -258,7 +266,7 @@ TEST(Config, RejectsTopPAboveOneWhenSampling) {
   cfg.do_sample = true;  // #5: sampling fields validated only when used
   cfg.top_p = 1.1f;
   EXPECT_EQ(MSLLMSetGenerationConfig(h, cfg), kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(Config, AcceptsTopKTopPBoundaries) {
@@ -277,7 +285,7 @@ TEST(Config, AcceptsTopKTopPBoundaries) {
   cp1.top_p = 1.0f;  // disabled
   EXPECT_EQ(MSLLMSetGenerationConfig(h, cp1), kMSLLM_SUCCESS);
 
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(Config, RejectionPreservesPreviousConfig) {
@@ -299,28 +307,28 @@ TEST(Config, RejectionPreservesPreviousConfig) {
   EXPECT_EQ(out.max_new_tokens, 100);
   EXPECT_FLOAT_EQ(out.temperature, 0.8f);
 
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 // ─── Generate rejected before BuildModel ────────────────────────────────────
 
-TEST(Lifecycle, GenerateRejectedBeforeBuild) {
+TEST(LLMApi, GenerateRejectedBeforeBuild) {
   auto *h = MSLLMCreateModel();
   ASSERT_NE(h, nullptr);
 
   char buf[256];
   EXPECT_EQ(MSLLMGenerate(h, "hello", buf, sizeof(buf)), kMSLLM_ERROR_INVALID_ARGS);
 
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
-TEST(Lifecycle, StreamGenerateRejectedBeforeBuild) {
+TEST(LLMApi, StreamGenerateRejectedBeforeBuild) {
   auto *h = MSLLMCreateModel();
   ASSERT_NE(h, nullptr);
 
   EXPECT_EQ(MSLLMStreamGenerate(h, "hello", nullptr, nullptr), kMSLLM_ERROR_INVALID_ARGS);
 
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 }  // namespace

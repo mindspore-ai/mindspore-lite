@@ -41,10 +41,12 @@ MSLLM_API MSLLMModelHandle MSLLMCreateModel(void);
  * Correct teardown sequence: Abort → wait for StreamGenerate to return →
  * Destroy.
  *
- * @param llm_model LLM model handle.
- * @return kMSLLM_SUCCESS on success.
+ * @param llm_model Pointer to the LLM model handle. The handle is set to NULL
+ *        after successful destruction.
+ * @return kMSLLM_SUCCESS on success, or kMSLLM_ERROR_INVALID_ARGS if llm_model
+ *         or the referenced handle is NULL.
  */
-MSLLM_API MSLLMStatus MSLLMDestroyModel(MSLLMModelHandle llm_model);
+MSLLM_API MSLLMStatus MSLLMDestroyModel(MSLLMModelHandle *llm_model);
 
 /**
  * @brief Load and build the LLM model from an .msl package.

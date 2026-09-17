@@ -51,7 +51,7 @@ TEST(ChatTemplate, NullMessagesReturnsError) {
   char buf[256];
   auto s = MSLLMApplyChatTemplate(h, nullptr, 1, buf, sizeof(buf));
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(ChatTemplate, ZeroMessagesReturnsError) {
@@ -61,7 +61,7 @@ TEST(ChatTemplate, ZeroMessagesReturnsError) {
   char buf[256];
   auto s = MSLLMApplyChatTemplate(h, msgs, 0, buf, sizeof(buf));
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(ChatTemplate, NullBufferReturnsError) {
@@ -70,7 +70,7 @@ TEST(ChatTemplate, NullBufferReturnsError) {
   MSLLMChatMessage msgs[] = {{MSLLM_ROLE_USER, "hello"}};
   auto s = MSLLMApplyChatTemplate(h, msgs, 1, nullptr, 256);
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(ChatTemplate, ZeroBufferSizeReturnsError) {
@@ -80,7 +80,7 @@ TEST(ChatTemplate, ZeroBufferSizeReturnsError) {
   char buf[256];
   auto s = MSLLMApplyChatTemplate(h, msgs, 1, buf, 0);
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(ChatTemplate, UnbuiltModelReturnsError) {
@@ -91,7 +91,7 @@ TEST(ChatTemplate, UnbuiltModelReturnsError) {
   // No BuildModel — tokenizer is null
   auto s = MSLLMApplyChatTemplate(h, msgs, 1, buf, sizeof(buf));
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 // ─── Message type coverage ──────────────────────────────────────────────────
@@ -108,7 +108,7 @@ TEST(ChatTemplate, AllRoleTypesAccepted) {
   // Unbuilt model → INVALID_ARGS (tokenizer null), but messages are valid
   auto s = MSLLMApplyChatTemplate(h, msgs, 3, buf, sizeof(buf));
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(ChatTemplate, EmptyContentAccepted) {
@@ -120,7 +120,7 @@ TEST(ChatTemplate, EmptyContentAccepted) {
   char buf[256];
   auto s = MSLLMApplyChatTemplate(h, msgs, 1, buf, sizeof(buf));
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);  // unbuilt model
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(ChatTemplate, NullContentReturnsInvalidArgs) {
@@ -132,7 +132,7 @@ TEST(ChatTemplate, NullContentReturnsInvalidArgs) {
   char buf[256];
   auto s = MSLLMApplyChatTemplate(h, msgs, 1, buf, sizeof(buf));
   EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 // ─── IR interpreter ───────────────────────────────────────────────

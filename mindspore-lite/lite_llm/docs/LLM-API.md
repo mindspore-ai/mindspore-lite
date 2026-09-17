@@ -154,10 +154,12 @@ MSLLMModelHandle MSLLMCreateModel(void);
  *
  * 生成进行中（GENERATING）拒绝销毁并返回 kMSLLM_ERROR_BUSY（#16）；
  * 正确序列 = Abort → 等生成返回 → Destroy。
+ * 成功销毁后，*llm_model 被置为 NULL；llm_model 或 *llm_model 为 NULL 时
+ * 返回 kMSLLM_ERROR_INVALID_ARGS。
  *
- * @param llm_model LLM model object handle.
+ * @param llm_model Pointer to the LLM model object handle.
  */
-MSLLMStatus MSLLMDestroyModel(MSLLMModelHandle llm_model);
+MSLLMStatus MSLLMDestroyModel(MSLLMModelHandle *llm_model);
 
 ```text
 
@@ -522,7 +524,7 @@ int main() {
     const char *model_path = "/path/to/model";
     MSLLMStatus ret = MSLLMBuildModel(llm_model, model_path);
     if (ret != kMSLLM_SUCCESS) {
-        MSLLMDestroyModel(llm_model);
+        MSLLMDestroyModel(&llm_model);
         return -1;
     }
 
@@ -576,7 +578,7 @@ int main() {
     MSLLMGenerate(llm_model, prompt, result, sizeof(result));
     LOGI("model response: %s", result);
 
-    MSLLMDestroyModel(llm_model);
+    MSLLMDestroyModel(&llm_model);
     return 0;
 }
 
@@ -618,7 +620,7 @@ int main() {
 
     MSLLMStatus ret = MSLLMBuildModel(llm_model, "/path/to/model");
     if (ret != kMSLLM_SUCCESS) {
-        MSLLMDestroyModel(llm_model);
+        MSLLMDestroyModel(&llm_model);
         return -1;
     }
 
@@ -636,12 +638,12 @@ int main() {
         MSLLMStatus status = MSLLMStreamGenerate(llm_model, prompt, OnToken, &ctx);
         if (status == kMSLLM_ERROR_BUSY) {
             MS_LOG(ERROR) << "model already has an in-flight generation";
-            MSLLMDestroyModel(llm_model);
+            MSLLMDestroyModel(&llm_model);
             return -1;
         }
         if (status != kMSLLM_SUCCESS) {
             MS_LOG(ERROR) << "MSLLMStreamGenerate error: " << status;
-            MSLLMDestroyModel(llm_model);
+            MSLLMDestroyModel(&llm_model);
             return -1;
         }
     }
@@ -650,7 +652,7 @@ int main() {
     infer_task.join();
 
     // 函数返回即生成完成，无需任何等待原语；直接销毁即可。
-    MSLLMDestroyModel(llm_model);
+    MSLLMDestroyModel(&llm_model);
     return 0;
 }
 
