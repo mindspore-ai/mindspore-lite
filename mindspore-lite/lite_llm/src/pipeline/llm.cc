@@ -176,16 +176,16 @@ MSLLMModelHandle MSLLMCreateModel(void) {
   return reinterpret_cast<MSLLMModelHandle>(e);
 }
 
-MSLLMStatus MSLLMDestroyModel(MSLLMModelHandle llm_model) {
-  if (llm_model == nullptr) return kMSLLM_ERROR_INVALID_ARGS;
-  auto *e = reinterpret_cast<InternalEngine *>(llm_model);
+MSLLMStatus MSLLMDestroyModel(MSLLMModelHandle *llm_model) {
+  if (llm_model == nullptr || *llm_model == nullptr) return kMSLLM_ERROR_INVALID_ARGS;
+  auto *e = reinterpret_cast<InternalEngine *>(*llm_model);
 
-  // Refuse to destroy while a generation is in-flight (use-after-free
-  // otherwise). Caller sequence: Abort → wait for StreamGenerate to return →
-  // Destroy (#16).
+  // Refuse to destroy while a generation is in-flight. Caller sequence:
+  // Abort -> wait for StreamGenerate to return -> Destroy.
   if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
 
   delete e;
+  *llm_model = nullptr;
   return kMSLLM_SUCCESS;
 }
 

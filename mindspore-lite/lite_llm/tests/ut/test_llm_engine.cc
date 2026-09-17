@@ -51,7 +51,7 @@ struct TestModel {
   MSLLMModelHandle handle = nullptr;
 
   ~TestModel() {
-    if (handle != nullptr) MSLLMDestroyModel(handle);
+    if (handle != nullptr) MSLLMDestroyModel(&handle);
   }
 };
 
@@ -82,7 +82,7 @@ TEST(BuildModel, SucceedsWithInjectedFakeBackend) {
   auto *h = MSLLMCreateModel();
   ASSERT_NE(h, nullptr);
   EXPECT_EQ(MSLLMBuildModel(h, fixture.dir.c_str()), kMSLLM_SUCCESS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 
   mslite_llm::SetBackendFactory(nullptr);
 }
@@ -103,7 +103,7 @@ TEST(BuildModel, SecondBuildReturnsNotSupported) {
   ASSERT_EQ(MSLLMBuildModel(h, fixture.dir.c_str()), kMSLLM_SUCCESS);
   // Re-compile in READY state is rejected (#20).
   EXPECT_EQ(MSLLMBuildModel(h, fixture.dir.c_str()), kMSLLM_ERROR_NOT_SUPPORTED);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 
   mslite_llm::SetBackendFactory(nullptr);
 }
@@ -116,14 +116,14 @@ TEST(BuildModel, NullPathReturnsInvalidArgs) {
   auto *h = MSLLMCreateModel();
   ASSERT_NE(h, nullptr);
   EXPECT_EQ(MSLLMBuildModel(h, nullptr), kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(BuildModel, EmptyPathReturnsInvalidArgs) {
   auto *h = MSLLMCreateModel();
   ASSERT_NE(h, nullptr);
   EXPECT_EQ(MSLLMBuildModel(h, ""), kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 TEST(BuildModel, NonexistentPathReturnsInvalidArgs) {
@@ -136,12 +136,12 @@ TEST(BuildModel, NonexistentPathReturnsInvalidArgs) {
   auto *h = MSLLMCreateModel();
   ASSERT_NE(h, nullptr);
   EXPECT_EQ(MSLLMBuildModel(h, missing_path_string.c_str()), kMSLLM_ERROR_INVALID_ARGS);
-  MSLLMDestroyModel(h);
+  MSLLMDestroyModel(&h);
 }
 
 // ─── Destroy during generation (#16) ────────────────────────────────────────
 
-TEST(Lifecycle, DestroyDuringGeneratingReturnsBusy) {
+TEST(LLMApi, DestroyDuringGeneratingReturnsBusy) {
   auto tm = BuildTestModel();
   ASSERT_NE(tm.handle, nullptr);
   ASSERT_NE(tm.backend, nullptr);
@@ -161,14 +161,15 @@ TEST(Lifecycle, DestroyDuringGeneratingReturnsBusy) {
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   // Generation is in-flight (blocked in Execute): Destroy must refuse.
-  EXPECT_EQ(MSLLMDestroyModel(tm.handle), kMSLLM_ERROR_BUSY);
+  EXPECT_EQ(MSLLMDestroyModel(&tm.handle), kMSLLM_ERROR_BUSY);
+  EXPECT_NE(tm.handle, nullptr);
 
   tm.backend->UnblockExecute();
   t.join();
 
   // After the generation returns, Destroy succeeds.
-  EXPECT_EQ(MSLLMDestroyModel(tm.handle), kMSLLM_SUCCESS);
-  tm.handle = nullptr;
+  EXPECT_EQ(MSLLMDestroyModel(&tm.handle), kMSLLM_SUCCESS);
+  EXPECT_EQ(tm.handle, nullptr);
 }
 
 // ─── Abort semantics (#13/#15) ─────────────────────────────────────────────
@@ -504,7 +505,7 @@ void ReentrantCallback(const char *token, MSLLMFinishReason reason, void *data) 
       ctx->result = MSLLMAbort(ctx->handle);
       break;
     case ReentryOp::kDestroy:
-      ctx->result = MSLLMDestroyModel(ctx->handle);
+      ctx->result = MSLLMDestroyModel(&ctx->handle);
       break;
   }
 }
