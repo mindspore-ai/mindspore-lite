@@ -21,8 +21,6 @@
 #include <memory>
 #include <vector>
 #include <set>
-#include <map>
-#include <utility>
 #include "include/registry/model_parser.h"
 #include "include/registry/model_parser_registry.h"
 #include "tools/converter/parser/tflite/tflite_node_parser_registry.h"
@@ -56,11 +54,6 @@ class TfliteModelParser : public converter::ModelParser {
   STATUS ConvertGraphOutputs(const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph, const FuncGraphPtr &func_graph,
                              std::unordered_map<int, AnfNodePtr> *anf_node_map);
   STATUS ConvertTfliteGraph();
-  STATUS ProcessControlFlowOp(const std::unique_ptr<tflite::OperatorT> &op, const CNodePtr &anf_node,
-                              const std::string &op_type);
-  STATUS BuildSubFuncGraphMap(size_t subgraph_idx, const FuncGraphPtr &sub_func_graph,
-                              const std::string &subgraph_name);
-  STATUS ControlFlowNodePostProcess();
   void ConvertInputTensor(const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph, const FuncGraphPtr &func_graph,
                           const std::unique_ptr<tflite::OperatorT> &op, tflite::BuiltinOperator tflite_op_type,
                           std::unordered_map<int, AnfNodePtr> *anf_node_map, std::string op_name,
@@ -80,8 +73,6 @@ class TfliteModelParser : public converter::ModelParser {
 
  private:
   std::unique_ptr<tflite::ModelT> tflite_model_;
-  std::map<int, CNodePtr> control_flow_nodes_;
-  std::map<CNodePtr, std::pair<FuncGraphPtr, FuncGraphPtr>> control_flow_map_;
   char *tflite_model_buf_ = nullptr;
 };
 }  // namespace lite
