@@ -81,7 +81,7 @@ endfunction()
 
 mslite_llm_add_unit_test(test_sampler ut/test_sampler.cc)
 mslite_llm_add_unit_test(test_model_resource_loader ut/test_model_resource_loader.cc)
-mslite_llm_add_unit_test(test_llm_lifecycle ut/test_llm_lifecycle.cc)
+mslite_llm_add_unit_test(test_lm_api ut/test_lm_api.cc)
 mslite_llm_add_unit_test(test_llm_chat_template ut/test_llm_chat_template.cc)
 mslite_llm_add_unit_test(test_llm_engine ut/test_llm_engine.cc)
 

@@ -286,14 +286,14 @@ int main(int argc, char **argv) {
   MSLLMStatus status = MSLLMBuildModel(model, model_path);
   if (status != kMSLLM_SUCCESS) {
     std::cerr << "[error] MSLLMBuildModel failed: " << StatusName(status) << '\n';
-    MSLLMDestroyModel(model);
+    MSLLMDestroyModel(&model);
     return 1;
   }
 
   std::string rendered_prompt;
   if (use_chat_template) {
     if (!RenderUserPrompt(model, prompt, &rendered_prompt)) {
-      MSLLMDestroyModel(model);
+      MSLLMDestroyModel(&model);
       return 1;
     }
     prompt = rendered_prompt.c_str();
@@ -310,7 +310,7 @@ int main(int argc, char **argv) {
   status = MSLLMSetGenerationConfig(model, config);
   if (status != kMSLLM_SUCCESS) {
     std::cerr << "[error] MSLLMSetGenerationConfig failed: " << StatusName(status) << '\n';
-    MSLLMDestroyModel(model);
+    MSLLMDestroyModel(&model);
     return 1;
   }
   DebugLog("config-ok");
@@ -364,7 +364,7 @@ int main(int argc, char **argv) {
   status = sink.generate_status;
   if (status != kMSLLM_SUCCESS) {
     std::cerr << "[error] MSLLMStreamGenerate failed: " << StatusName(status) << '\n';
-    MSLLMDestroyModel(model);
+    MSLLMDestroyModel(&model);
     return 1;
   }
   std::cout << "\n[finish reason] " << ReasonName(sink.final_reason) << '\n' << std::flush;
@@ -378,6 +378,6 @@ int main(int argc, char **argv) {
               << (sink.decode_ms / sink.decode_tokens) << " ms/token\n";
   }
 
-  MSLLMStatus destroy_status = MSLLMDestroyModel(model);
+  MSLLMStatus destroy_status = MSLLMDestroyModel(&model);
   return destroy_status == kMSLLM_SUCCESS ? 0 : 1;
 }
