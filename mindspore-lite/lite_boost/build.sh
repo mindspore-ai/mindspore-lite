@@ -117,25 +117,25 @@ fi
 mkdir -p "${BUILD_DIR}" || exit 1
 cd "${BUILD_DIR}" || exit 1
 
-CMAKE_ARGS=(-DCMAKE_BUILD_TYPE="${BUILD_TYPE}")
+CMAKE_ARGS=("-DCMAKE_BUILD_TYPE=${BUILD_TYPE}")
 
 if [[ -n "${ASCEND_PATH:-}" ]]; then
-  CMAKE_ARGS+=(-DASCEND_PATH="${ASCEND_PATH}")
+  CMAKE_ARGS+=("-DASCEND_PATH=${ASCEND_PATH}")
 fi
 if [[ -n "${PYTORCH_INSTALL_PATH:-}" ]]; then
-  CMAKE_ARGS+=(-DPYTORCH_INSTALL_PATH="${PYTORCH_INSTALL_PATH}")
+  CMAKE_ARGS+=("-DPYTORCH_INSTALL_PATH=${PYTORCH_INSTALL_PATH}")
 fi
 if [[ -n "${PYTORCH_NPU_INSTALL_PATH:-}" ]]; then
-  CMAKE_ARGS+=(-DPYTORCH_NPU_INSTALL_PATH="${PYTORCH_NPU_INSTALL_PATH}")
+  CMAKE_ARGS+=("-DPYTORCH_NPU_INSTALL_PATH=${PYTORCH_NPU_INSTALL_PATH}")
 fi
 if [[ -n "${Python3_EXECUTABLE:-}" ]]; then
-  CMAKE_ARGS+=(-DPython3_EXECUTABLE="${Python3_EXECUTABLE}")
+  CMAKE_ARGS+=("-DPython3_EXECUTABLE=${Python3_EXECUTABLE}")
 fi
 if [[ -n "${CXX_STANDARD:-}" ]]; then
-  CMAKE_ARGS+=(-DCXX_STANDARD="${CXX_STANDARD}")
+  CMAKE_ARGS+=("-DCXX_STANDARD=${CXX_STANDARD}")
 fi
 if [[ -n "${ENABLE_GLIBCXX:-}" ]]; then
-  CMAKE_ARGS+=(-DENABLE_GLIBCXX="${ENABLE_GLIBCXX}")
+  CMAKE_ARGS+=("-DENABLE_GLIBCXX=${ENABLE_GLIBCXX}")
 fi
 
 # Inject GCC coverage instrumentation for the C++ adapters when MSLITE_ENABLE_COVERAGE is on.
@@ -143,8 +143,8 @@ fi
 if [[ "${MSLITE_ENABLE_COVERAGE}" == "on" || "${MSLITE_ENABLE_COVERAGE}" == "ON" ]]; then
   echo "MSLITE_ENABLE_COVERAGE: ${MSLITE_ENABLE_COVERAGE} — enabling GCC coverage flags"
   CMAKE_ARGS+=(
-    -DCMAKE_C_FLAGS="-g --coverage -fprofile-arcs -ftest-coverage -lgcov"
-    -DCMAKE_CXX_FLAGS="-g --coverage -fprofile-arcs -ftest-coverage -lgcov"
+    "-DCMAKE_C_FLAGS=-g --coverage -fprofile-arcs -ftest-coverage -lgcov"
+    "-DCMAKE_CXX_FLAGS=-g --coverage -fprofile-arcs -ftest-coverage -lgcov"
   )
 fi
 
