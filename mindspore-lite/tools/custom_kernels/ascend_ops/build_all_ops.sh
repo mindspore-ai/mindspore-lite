@@ -219,6 +219,8 @@ build_one_soc()
       -DENABLE_BINARY_PACKAGE=True \
       -DENABLE_TEST=False \
       -DENABLE_CROSS_COMPILE=False \
+      -DCMAKE_CXX_FLAGS="-D_FORTIFY_SOURCE=2 -O2" \
+      -DCMAKE_C_FLAGS="-D_FORTIFY_SOURCE=2 -O2" \
       -DCMAKE_INSTALL_PREFIX="${build_dir}"
 
   local jobs="${ASCEND_CUSTOM_THREADS:-$(nproc)}"
@@ -235,7 +237,7 @@ build_one_soc()
     echo "[ERROR] staged vendor not found at ${vendor_dir} for ${soc_name}" >&2
     return 1
   fi
-  rm -rf "${OUT_DIR}/${unit}"
+  rm -rf "${OUT_DIR:?}/${unit:?}"
   mkdir -p "${OUT_DIR}/${unit}"
   # -L dereferences the staged tree's symlinks (op_impl/.../mslite_custom_ops_impl/
   # dynamic/* -> absolute build-workspace paths, and the relative liboptiling.so
