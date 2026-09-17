@@ -110,6 +110,7 @@ bool NNRTWrapper::LoadNeuralNetworkCore() {
   LOAD_SYM(Compilation_Build, "OH_NNCompilation_Build");
   LOAD_SYM(Compilation_Destroy, "OH_NNCompilation_Destroy");
   LOAD_SYM(Compilation_SetDevice, "OH_NNCompilation_SetDevice");
+  LOAD_SYM(Compilation_SetPerformanceMode, "OH_NNCompilation_SetPerformanceMode");
   LOAD_SYM(Executor_Construct, "OH_NNExecutor_Construct");
   LOAD_SYM(Executor_Destroy, "OH_NNExecutor_Destroy");
   LOAD_SYM(Executor_RunSync, "OH_NNExecutor_RunSync");
@@ -150,8 +151,8 @@ bool NNRTWrapper::LoadHiAIFoundation() {
     MS_LOG(ERROR) << "Missing HMS_HiAIOptions_SetAsyncModeEnable in libhiai_foundation.so: " << dlerror();
     return false;
   }
-  api_.HIAIExecutor_InitWeights = reinterpret_cast<decltype(api_.HIAIExecutor_InitWeights)>(
-    dlsym(hiai_handle_, "HMS_HiAIExecutor_InitWeights"));
+  api_.HIAIExecutor_InitWeights =
+    reinterpret_cast<decltype(api_.HIAIExecutor_InitWeights)>(dlsym(hiai_handle_, "HMS_HiAIExecutor_InitWeights"));
   if (api_.HIAIExecutor_InitWeights == nullptr) {
     MS_LOG(WARNING) << "Optional HMS_HiAIExecutor_InitWeights missing in libhiai_foundation.so: " << dlerror();
   }

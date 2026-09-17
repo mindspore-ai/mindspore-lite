@@ -79,7 +79,7 @@ class NNRTBackend : public Backend {
 
  private:
   /// Populate NnrtConfig from BackendConfig.resources and BackendConfig.manifest.
-  bool BuildNnrtConfig(const BackendConfig &config, backend::nnrt::NnrtConfig *nnrt);
+  static bool BuildNnrtConfig(const BackendConfig &config, backend::nnrt::NnrtConfig *nnrt);
 
   std::unique_ptr<backend::nnrt::NnrtExecutor> executor_;
   bool built_ = false;

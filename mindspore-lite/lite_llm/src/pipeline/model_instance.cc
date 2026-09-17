@@ -133,37 +133,28 @@ MSLlmStatus ModelInstance::Unload() {
 }
 
 MSLlmStatus ModelInstance::Execute(const std::vector<int32_t> &input_ids, const std::vector<int32_t> &position_ids,
-                                   BackendExecutionPhase phase, std::vector<float> &logits) {
-  if (!loaded_) {
+                                   BackendExecutionPhase phase, BackendOutput *output) {
+  if (!loaded_ || output == nullptr || input_ids.empty()) {
     return MSLLM_ERROR_INVALID_ARGS;
   }
 
-  if (input_ids.empty()) {
-    return MSLLM_ERROR_INVALID_ARGS;
-  }
-
+  output->logits.clear();
+  output->logits_view = nullptr;
+  output->logits_view_size = 0;
+  output->next_token_id = -1;
   if (backend_) {
     BackendInput input;
     input.input_ids = input_ids;
     input.valid_seq_len = static_cast<int32_t>(input_ids.size());
     input.is_prefill = (phase == BackendExecutionPhase::kPrefill);
-    BackendOutput output;
-    MSLlmStatus status;
     if (input.is_prefill) {
-      status = backend_->Prefill(input, &output);
-    } else {
-      status = backend_->Decode(input, &output);
+      return backend_->Prefill(input, output);
     }
-    if (status != MSLLM_SUCCESS) {
-      return status;
-    }
-    logits = std::move(output.logits);
-    return MSLLM_SUCCESS;
+    return backend_->Decode(input, output);
   }
 
   int32_t vocab_size = weights_.vocab_size > 0 ? weights_.vocab_size : 32000;
-  logits.resize(vocab_size, 0.0f);
-
+  output->logits.resize(vocab_size, 0.0f);
   return MSLLM_SUCCESS;
 }
 

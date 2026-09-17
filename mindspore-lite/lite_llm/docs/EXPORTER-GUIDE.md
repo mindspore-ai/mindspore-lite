@@ -90,6 +90,11 @@ NnrtOpSet                      # 算子集策略：rope / kv_scatter / qk_matmul
 
 契约由 `utils/onnx_postprocess.py::validate_contract` 强制校验，任何后处理改动后必须过它。约束：`max_length` 必须是 `chunk_size` 的正整数倍（NPU chunked prefill 要求）。
 
+导出 trace 的 `valid_seq_len` 从 0 开始，确保 `chunk_size == max_length` 时首个 chunk
+仍完整落在 cache 内。自定义算子 shape inference 保留 Qwen3 逐头 RMSNorm 的 BSND
+形状，并更新已有输出/中间张量注解而不追加重复 `value_info`；量化图重建保留这些
+注解、原模型元数据及 opset imports，缺失时补充 `custom` opset。
+
 ---
 
 ## 4. 融合算子清单（`custom_ops/torch_custom/`）
@@ -106,6 +111,10 @@ NnrtOpSet                      # 算子集策略：rope / kv_scatter / qk_matmul
 | `ms_add_rms_norm` | —（图后融合） | `fuse_add_rmsnorm` pass 把 `Add+MsRmsNorm` 模式融合为单节点 |
 | `ms_quant4_n0_group32` | —（量化） | W4A16 反量化核 |
 | `ms_float_cast_int` | —（量化） | W4A8 激活量化：FP16 截断饱和到 INT8 |
+
+`kv_scatter(past, current_pos, current)` 按绝对位置把当前 BNSD K/V 写入完整 cache；
+Q/K 在 BNSD 布局下通过 `rope(query, key, cos, sin)` 完成 RoPE。Qwen3 的逐头 Q/K
+norm 在转置前的 BSND 投影上执行。
 
 换算子集示例（同架构不同规格用不同融合粒度）：
 
@@ -183,14 +192,22 @@ chat template 被限制在 v1 IR 子集（消息循环 + `add_generation_prompt`
 ## 6. 量化链路（`utils/export_quant.py`）
 
 - 配置类：`QuantizationConfig`（"W4A8"/"W4A16"/None）、`ModelConfig`、`LiteTurboConfig`
-- embedding：W4A8 走 `quantize_weight_g128_4bit_nz`；W4A16 走 `quantize_weight_g32_4bit_nd`
-- decoder：`apply_quant` 图变换把 `MatMul` 换成 `MatMul_quant` + `MsQuant4N0Group32` 反量化核
+- embedding：W4A8 仍走 `quantize_weight_g128_4bit_nz`；W4A16 统一调用 `MsQuant4N0Group32.quantize_weight_g32_4bit`，输出 compact signed int4 phase4 NZF。CPU 按需解码 NPU 使用的同一 ION blob，不展开全量 fp16 embedding。
+- decoder：`apply_quant` 图变换把 `MatMul` 换成 `MatMul_quant` + `MsQuant4N0Group32`；W4A16 与 embedding 使用同一个类的权重准备方法及 `q4_0_nzf_compact_phase4` 布局。
 - **互斥规则**：quant 分支直接 `apply_quant`；`apply_shared_weight` 是 FP16 分支专属（先插共享权重再 quant 会 KeyError）
+- **W4A16 二进制契约**：逻辑 `[N,K]`，N/K 为正且分别为 16/32 的整数倍。cell 按 N64/K1024 划分，但只保存有效尾部，不补齐；先存全部 signed int4，再存 cell 内 `[nc,kc/32]` little-endian fp16 scales。分形内 phase4 字节排列不变，总字节数严格为 `N*(K/32)*18`。精确偏移见 [PROTOCOL.md](PROTOCOL.md) 的 Binary Format Reference；OMG 的 `embedding_weight` 输入使用同一精确尺寸。
+- **兼容边界**：量化包必须标记 `npu.q4_0_weight_layout = "q4_0_nzf_compact_phase4"`。旧 padded `q4_0_nzf_phase4`、`q4_0_nzf`、planar 和缺失当前标记的包均被拒绝，须重新导出、编译整包；不能只改元数据。旧字段 `npu.weight_layout` 不作为别名或回退，未知键仍按协议忽略。对齐 shape 的容量可能相同，禁止按大小猜测布局。FP16 不受影响；本契约不覆盖 W4A8。
+- **Torch 权重 API**：使用 `torch_custom.ms_quant4_n0_group32.MsQuant4N0Group32` 的静态方法 `weight_blob_size(K,N)`、`repack_q4_0_to_nzf(blocks,(K,N))`、`quantize_q4_0_blocks(weight)`、`quantize_weight_g32_4bit(weight)` 和 `dequantize_weight_g32_4bit(blob,(K,N))`。浮点矩阵输入为 `[K,N]`；原始 block 为 `[N,K/32,18]` 的 `bytes` 或 `uint8` 数组。重排逐位保留 scale 与码值，工作缓冲限于一个 cell；eager 路径消费同一 compact blob。旧模块级权重函数及 exporter 的重复 packer 已移除。
+- **浮点量化规则**：采用 canonical Q4_0，首个带符号绝对最大值确定 `d=vmax/-8`，FP32 reciprocal/multiply/add 后截断并限制码值至 15，最后才将 scale 存为 FP16；不再使用旧 Torch helper 的 abs-max/7。已有 GGUF Q4_0 必须走无损 repack，不重新量化。
+- **配置产物**：Qwen2.5、Qwen3、MiniCPM 的独立导出配置和统一 CLI 均声明 compact 布局；通用 packager 只保留声明，不猜测或升级旧数据。FP16 / W4A8 不产生该 Q4_0 标记。
+- Qwen2.5 使用已有 external decoder weights 打包路径；`SubGraph_0.weight` 仍是单文件 `.msl` 内的资源，“external” 不要求用户手工维护第二个文件。
 
 ## 7. GGUF 权重注入（`*_gguf_loader.py`）
 
-skeleton 先导出（全零权重），再按三张表把 GGUF Q4_0 权重注入 initializer：
+先导出图及占位量化权重，再按三张表注入 GGUF 原始 Q4_0 block；bias 和 norm 保留真实权重：
 `QUANT_MATMUL_MAP`（量化 matmul）/ `FP16_WEIGHT_MAP`（bias+norm）/ `MODEL_WEIGHT_MAP`（最终 norm）。key 是**量化后节点名**，value 是 llama.cpp 标准命名（`blk.{i}.attn_q.weight`…）。同族模型 map 可直接复用（MiniCPM 即零改动复用 Qwen2.5 map，仅层数 40 不同）。无 bias 的模型靠 `None` 防护跳过可选条目。
+
+GGUF Q4_0 的 unsigned split-half nibble 不能原样作为 NPU 权重：注入时经 `MsQuant4N0Group32.repack_q4_0_to_nzf` 转成 compact signed phase4 NZF，逐位保留各组 fp16 scale（包括其符号）；embedding 与 decoder 遵循同一契约。HF 下载的 GGUF 已完成量化，此处不执行 `max/-8` 或 `abs_max/7` 量化；浮点量化规则的差异不能直接用于推断这条原始 block 导入链路的数值差异。
 
 ## 8. 版本约束与环境
 
@@ -200,7 +217,15 @@ skeleton 先导出（全零权重），再按三张表把 GGUF Q4_0 权重注入
 | torch | `>=2.0` | |
 | onnxslim / gguf / onnx | 见 `requirements.txt` | |
 
-`custom_ops` 由 wrapper 内 `sys.path` bootstrap 定位（装 wheel 后 no-op）。**禁止**在 forward 逻辑里 import `transformers.models.*` 内部模块——这是 CI 版本统一的根基。
+源码树通过 `utils.ensure_custom_ops` 按需定位 `custom_ops`，已安装的 wheel 优先直接使用其 `torch_custom` 包；独立导入 OMG 编译工具不加载 Torch。wheel 同时打包所有 CLI 导入的模型模块（含 `models.minicpm`）。**禁止**在 forward 逻辑里 import `transformers.models.*` 内部模块。
+
+### Kirin 9020 W4A16 算子前置条件
+
+Kirin 9020 W4A16 要求 DDK 中的 `MsQuant4N0Group32` 支持 `q4_0_nzf_compact_phase4` 布局，并与导出器、Torch 权重接口和 CPU embedding 解码保持一致。布局及兼容性要求见 [PROTOCOL.md](PROTOCOL.md)。
+
+使用同一套 DDK 完成算子注册和 omg 编译，确保整网所需算子均已安装；不要用 Q4-only 安装包覆盖整网共享 host 库和注册配置。算子依赖见 [导出工具说明](../export/README.md#附录-addk-自定义算子依赖)。
+
+NNRT 在 `SetDevice` 后、`Compilation_Build` 前设置 `EXTREME=4`；缺少接口或设置失败时明确报错，不静默回退。该策略可能增加功耗和温度。
 
 ## 9. 已接入模型矩阵
 

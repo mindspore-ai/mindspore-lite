@@ -273,6 +273,19 @@ TEST(Generate, StopsAtEos) {
   EXPECT_STREQ(buf, "a");
 }
 
+TEST(Generate, SamplesBorrowedLogitsViewBeforeNextForward) {
+  auto tm = BuildTestModel();
+  ASSERT_NE(tm.handle, nullptr);
+  SetConfig(tm.handle, 0);
+
+  tm.backend->QueueLogitsView(LogitsFor(3));  // prefill → 'a'
+  tm.backend->QueueLogitsView(LogitsFor(2));  // decode → EOS
+
+  char buf[256] = {};
+  EXPECT_EQ(MSLLMGenerate(tm.handle, "a", buf, sizeof(buf)), kMSLLM_SUCCESS);
+  EXPECT_STREQ(buf, "a");
+}
+
 TEST(Generate, PromptOverflowReturnsContextOverflow) {
   auto tm = BuildTestModel();
   ASSERT_NE(tm.handle, nullptr);
@@ -471,8 +484,8 @@ enum class ReentryOp {
 };
 
 struct ReentryCtx {
-  MSLLMModelHandle handle;
-  ReentryOp op;
+  MSLLMModelHandle handle = nullptr;
+  ReentryOp op = ReentryOp::kGenerate;
   MSLLMStatus result = kMSLLM_SUCCESS;
 };
 
