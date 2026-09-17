@@ -295,7 +295,7 @@ def _compute_block_scores(model, input_ids_np, attention_mask_np):
 def _split_into_blocks(doc_lengths, docs, query_length, max_length, max_doc_length):
     """Split documents into blocks that fit within the context window."""
     del max_doc_length
-    block_size = 125
+    block_size = MAX_DOCS
     total_capacity = max_length - 2 * query_length
     block_docs_list = []
     current_block = []

@@ -77,6 +77,14 @@ def duplicate_shared_initializers(model):
             new_init.name = new_name
             model.graph.initializer.append(new_init)
             node.input[idx_del] = new_name
+        # All consumers now reference deep copies; the original shared
+        # initializer is an orphan (no node references it) and would otherwise
+        # be serialized into the output model as dead weight.  Skip removal if
+        # any reference remains (e.g. an initializer referenced from a control-
+        # flow subgraph attribute is invisible to init_usage_map) so a dangling
+        # reference never invalidates the exported graph.
+        if not any(init_name in gnode.input for gnode in model.graph.node):
+            model.graph.initializer.remove(name_2_init[init_name])
 
 
 def get_fusion_outputs(users):
