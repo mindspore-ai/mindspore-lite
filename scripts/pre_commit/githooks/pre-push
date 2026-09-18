@@ -189,8 +189,8 @@ create_converted_filter_file() {
 status=0
 CURR_DIR=$(dirname "${BASH_SOURCE-$0}")
 CURR_DIR=$(cd -P "${CURR_DIR}" || exit; pwd -P)
-REPO_HOME=$(cd -P "${CURR_DIR}/../../../" || exit; pwd -P)
-WORKSPACE=$(cd -P "${CURR_DIR}/../../../../" || exit; pwd -P)
+REPO_HOME=$(git rev-parse --show-toplevel) || exit 1
+WORKSPACE=$(dirname "${REPO_HOME}")
 
 CLANG_FORMAT_ERRORS="0"
 CMAKELINT_ERRORS="0"
@@ -268,7 +268,7 @@ function GET_CODE() {
             if [ -n "${all_exclude_folders}" ]; then
                 IFS=',' read -ra exclude_array <<< "${all_exclude_folders}"
                 for exclude_pattern in "${exclude_array[@]}"; do
-                    if [[ "${line}" == ${exclude_pattern}* ]] || [[ "${line}" == */${exclude_pattern}* ]]; then
+                    if path_has_directory "${line}" "${exclude_pattern}"; then
                         exclude_file=1
                         break
                     fi
@@ -657,15 +657,9 @@ function pylint_check() {
     }
     local pylint_version=$(pylint --version 2>&1 | head -1)
     log_debug "pylint version: ${pylint_version}"
-    local workspace=${CODE_PATH}/pylint
-    rm -rf "${workspace}" 2>/dev/null || true
-    mkdir -p "${workspace}"
-    local LOCAL_EXCLUDE_FOLDER="${COMMON_EXCLUDE_FOLDER}"
-    GET_CODE "${workspace}" "${LOCAL_EXCLUDE_FOLDER}"
     local RULE_FILE="${JENKINS_PATH}/rules/pylint/pylintrc"
     if [ ! -f "${RULE_FILE}" ]; then
         log_error "ERROR: ${RULE_FILE} not exist"
-        rm -rf "${workspace}" 2>/dev/null || true
         cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
         return
     fi
@@ -675,31 +669,23 @@ function pylint_check() {
     local file_count=$(wc -l < "${pylint_path}/scan_filename.txt" 2>/dev/null || echo 0)
     if [ "$file_count" -eq 0 ]; then
         log_info "No Python files to scan"
-        rm -rf "${workspace}" 2>/dev/null || true
         cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
         return
     fi
     log_info "Found ${file_count} Python files to scan"
-    cd "${workspace}" || {
-        log_error "Cannot cd to workspace: ${workspace}"
+    cd "${REPO_HOME}" || {
+        log_error "Cannot cd to repo home: ${REPO_HOME}"
         cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
         return 1
     }
     : >"${pylint_path}"/pylint_original.log
     local file_args=()
-    local missing_files=()
     while IFS= read -r line || [[ -n "$line" ]]; do
         line=${line%$'\r'}
-        if [ -f "${workspace}/${line}" ]; then
-            file_args+=("${workspace}/${line}")
+        if [ -f "${REPO_HOME}/${line}" ]; then
+            file_args+=("${REPO_HOME}/${line}")
         else
-            if [ -f "${REPO_HOME}/${line}" ]; then
-                log_warning "File ${line} not found in workspace, using original path"
-                file_args+=("${REPO_HOME}/${line}")
-                missing_files+=("${line}")
-            else
-                log_warning "File ${line} not found in workspace or repository, skipping"
-            fi
+            log_warning "File ${line} not found in repository, skipping"
         fi
     done < "${pylint_path}/scan_filename.txt"
     if [ ${#file_args[@]} -eq 0 ]; then
@@ -707,7 +693,7 @@ function pylint_check() {
         cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
         return 1
     fi
-    log_info "Checking ${#file_args[@]} files (${#missing_files[@]} from original path)"
+    log_info "Checking ${#file_args[@]} files in their original package context"
     log_info "Files to check:"
     for f in "${file_args[@]}"; do
         relative_path="${f#${REPO_HOME}/}"
@@ -773,7 +759,6 @@ function pylint_check() {
     DP_ASSERT_EQUAL "${error_number}" "0" "Pylint scanning" "pylint"
     local total_duration=$(( $(date +%s) - total_start_time ))
     log_info "Total pylint check time: ${total_duration}s"
-    rm -rf "${workspace}" 2>/dev/null || true
     cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
 }
 
@@ -1050,10 +1035,15 @@ function cppcheck_check() {
         cd "${original_dir}" 2>/dev/null || cd ~ 2>/dev/null || true
         return 1
     }
-    for file in "${cpp_files[@]}"; do
-        log_debug "Running cppcheck on $file"
-        cppcheck --enable=style --inline-suppr --template=gcc "$file" >> "$result_log" 2>&1 || true
-    done
+    local project="${CPPCHECK_COMPILE_COMMANDS:-${REPO_HOME}/build/compile_commands.json}"
+    local cppcheck_exit=0
+    python3 "${CURR_DIR}/../lib/cppcheck_project.py" \
+        "${REPO_HOME}" "${CODE_PATH}/pr_filelist.txt" "${project}" >> "$result_log" 2>&1 || cppcheck_exit=$?
+    # Exit 2 means completed analysis with findings; existing filters still apply.
+    if [ "$cppcheck_exit" -ne 0 ] && [ "$cppcheck_exit" -ne 2 ]; then
+        printf 'nofile:0:0: error: cppcheck analysis failed (exit %s) [toolExecution]\n' \
+            "$cppcheck_exit" >> "$result_log"
+    fi
     local filter_file="${REPO_HOME}/.jenkins/check/config/filter_cppcheck.txt"
     if [ ! -f "$filter_file" ]; then
         filter_file="${JENKINS_PATH}/check/config/filter_cppcheck.txt"

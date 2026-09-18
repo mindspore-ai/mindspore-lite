@@ -48,6 +48,16 @@
 
     **Note**: The `core.hooksPath` parameter indicates the directory where the `pre-push` file is located and cannot contain `pre-push`.
 
+    C/C++ checks require a compilation database. Configure the relevant build target with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`; the default database is `build/compile_commands.json`. For another build directory, export `CPPCHECK_COMPILE_COMMANDS` with the database path before running the hook.
+
+    The database must cover changed C/C++ sources and consumers of changed headers. The hook rejects missing source entries and analyzes headers through translation units, using the build's language, include paths and defines plus the GoogleTest library model. Ordinary diagnostics are limited to changed files; analysis errors in dependencies remain visible. A missing database or failed checker invocation blocks the gate instead of reporting an empty successful scan.
+
+    Directory exclusions match complete path components: excluding `mindspore/` does not exclude `mindspore-lite/`, and excluding `build/` does not exclude `building/`.
+
+    Pylint reads selected files in their original package tree so unchanged `__init__.py` files and relative imports remain available. Shared hooks resolve the repository through Git, while loading their own helper scripts from the hook directory.
+
+    Unresolved quoted includes (`missingInclude`) are configuration failures, even when cppcheck exits successfully. Older cppcheck versions can fail to resolve include paths containing spaces; upgrade the tool or correct the build context rather than accepting an incomplete analysis.
+
     (3) Execute pre-push.
 
     You do not need to execute pre-push manually. Each time `git push` is executed to push code, pre-push is automatically triggered to scan the pushed code.

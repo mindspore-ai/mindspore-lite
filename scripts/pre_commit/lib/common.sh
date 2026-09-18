@@ -63,6 +63,9 @@ die() { log_error "$*"; exit 1; }
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
+# Match complete directory components, never similarly prefixed names.
+path_has_directory() { [[ "/${1}" == *"/${2%/}/"* ]]; }
+
 detect_architecture() {
     case "$(uname -m)" in
         arm64|aarch64) echo "arm64" ;;

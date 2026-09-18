@@ -48,6 +48,16 @@
 
     **注意**：`core.hooksPath`的参数是pre-push所在的目录，路径上不可以包含pre-push。
 
+    C/C++ 检查需要编译数据库。为相关构建目标启用 `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`，默认使用 `build/compile_commands.json`；使用其他构建目录时，在执行 hook 前将 `CPPCHECK_COMPILE_COMMANDS` 设为对应数据库路径。
+
+    数据库必须覆盖变更的 C/C++ 源文件及变更头文件的消费者。源文件条目缺失会阻断检查；头文件通过真实翻译单元分析，使用构建的语言、include 路径、宏定义及 GoogleTest 库模型。普通告警限定在变更文件，依赖中的分析错误仍保留。数据库缺失或检查器执行失败会阻断门禁，不再将空扫描视为成功。
+
+    目录排除按完整路径段匹配：排除 `mindspore/` 不会排除 `mindspore-lite/`，排除 `build/` 不会排除 `building/`。
+
+    Pylint 在原始包目录中检查选中的文件，保留未变更的 `__init__.py` 和相对导入上下文。共享 hook 通过 Git 确定待检查仓库，辅助脚本则从 hook 自身目录加载。
+
+    无法解析引号形式的 include（`missingInclude`）属于配置错误，即使 cppcheck 返回成功也会阻断。旧版 cppcheck 可能无法解析含空格的 include 路径；应升级工具或修正构建上下文，不能接受不完整分析。
+
     （3）运行pre-push
 
     pre-push不用手动执行，每次执行`git push`推送代码会自动触发pre-push对本次推送的代码进行扫描。
