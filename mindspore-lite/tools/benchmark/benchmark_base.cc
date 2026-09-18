@@ -342,7 +342,12 @@ int BenchmarkFlags::InitResizeDimsList() {
       std::cout << "Resize Dims: ";
       for (const auto &dim_str : dim_strs) {
         std::cout << dim_str << " ";
-        shape.emplace_back(static_cast<int>(std::stoi(dim_str)));
+        int dim = 0;
+        if (!ConvertStrToInt(dim_str, &dim)) {
+          MS_LOG(ERROR) << "Convert dim " << dim_str << " to int failed.";
+          return RET_PARAM_INVALID;
+        }
+        shape.emplace_back(dim);
       }
       std::cout << std::endl;
       this->resize_dims_.emplace_back(shape);
@@ -360,7 +365,12 @@ void BenchmarkFlags::InitCoreList() {
   std::cout << "core list: ";
   for (const auto &core_id : core_ids) {
     std::cout << core_id << " ";
-    this->core_list_.emplace_back(static_cast<int>(std::stoi(core_id)));
+    int core = 0;
+    if (!ConvertStrToInt(core_id, &core)) {
+      MS_LOG(ERROR) << "Convert core id " << core_id << " to int failed.";
+      continue;
+    }
+    this->core_list_.emplace_back(core);
   }
   std::cout << std::endl;
 }
@@ -487,6 +497,10 @@ int BenchmarkBase::InitDumpConfigFromJson(const char *path) {
 
   auto abs_path = dump_cfg_json_[dump::kSettings][dump::kPath].get<std::string>();
   auto net_name = dump_cfg_json_[dump::kSettings][dump::kNetName].get<std::string>();
+  if (abs_path.empty()) {
+    MS_LOG(ERROR) << "dump config path is empty.";
+    return RET_ERROR;
+  }
   if (abs_path.back() == '\\' || abs_path.back() == '/') {
     dump_file_output_dir_ = abs_path + net_name;
   } else {
@@ -577,7 +591,7 @@ int BenchmarkBase::Init() {
   }
 
   static std::vector<std::string> CPU_BIND_MODE_MAP = {"NO_BIND", "HIGHER_CPU", "MID_CPU"};
-  if (this->flags_->cpu_bind_mode_ >= 1) {
+  if (this->flags_->cpu_bind_mode_ >= 1 && this->flags_->cpu_bind_mode_ < 3) {
     MS_LOG(INFO) << "cpuBindMode = " << CPU_BIND_MODE_MAP[this->flags_->cpu_bind_mode_];
     std::cout << "cpuBindMode = " << CPU_BIND_MODE_MAP[this->flags_->cpu_bind_mode_] << std::endl;
   } else {

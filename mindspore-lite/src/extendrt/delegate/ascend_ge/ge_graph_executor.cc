@@ -1868,6 +1868,38 @@ uint8_t *GeGraphExecutor::GetCachedDeviceBuffer(const std::string &name, size_t 
   return buf;
 }
 
+// Check that the user-declared data size is consistent with the shape-derived size.
+// Prevents binding a GE tensor with a declared size larger than the actual buffer.
+bool GeGraphExecutor::CheckTensorSizeConsistency(const std::vector<int64_t> &shape, TypeId dtype, size_t data_size) {
+  size_t elem_num = 1;
+  for (auto dim : shape) {
+    if (dim <= 0) {
+      MS_LOG(ERROR) << "Invalid shape dim " << dim;
+      return false;
+    }
+    if (elem_num != 0 && static_cast<size_t>(dim) > SIZE_MAX / elem_num) {
+      MS_LOG(ERROR) << "Shape element num overflows.";
+      return false;
+    }
+    elem_num *= static_cast<size_t>(dim);
+  }
+  auto type_size = GetDataTypeSize(dtype);
+  if (type_size == 0 || type_size == kErrorSize) {
+    MS_LOG(ERROR) << "Invalid data type size " << type_size;
+    return false;
+  }
+  if (elem_num != 0 && type_size != 0 && elem_num > SIZE_MAX / type_size) {
+    MS_LOG(ERROR) << "Shape derived size overflows.";
+    return false;
+  }
+  if (elem_num * type_size < data_size) {
+    MS_LOG(ERROR) << "Declared data size " << data_size << " is larger than shape derived size "
+                  << elem_num * type_size;
+    return false;
+  }
+  return true;
+}
+
 bool GeGraphExecutor::PrepareZeroCopyInputs(const std::vector<mindspore::MSTensor> &inputs,
                                             std::vector<GeTensor> *ge_inputs) {
   for (size_t i = 0; i < inputs.size(); i++) {
@@ -1892,6 +1924,12 @@ bool GeGraphExecutor::PrepareZeroCopyInputs(const std::vector<mindspore::MSTenso
         MS_LOG(ERROR) << "Device input " << i << " has null device data or zero size";
         return false;
       }
+      // Consistency check between declared size and shape-derived size; the real
+      // capacity of the user's device buffer cannot be validated host-side.
+      if (!CheckTensorSizeConsistency(input.Shape(), static_cast<TypeId>(input.DataType()), data_size)) {
+        MS_LOG(ERROR) << "Device input " << i << " data size is inconsistent with shape";
+        return false;
+      }
       if (ge_tensor.SetData(reinterpret_cast<uint8_t *>(device_data), data_size, [](uint8_t *) -> void {}) !=
           ge::GRAPH_SUCCESS) {
         MS_LOG(ERROR) << "Failed to bind device data to ge input " << i;
@@ -1904,6 +1942,10 @@ bool GeGraphExecutor::PrepareZeroCopyInputs(const std::vector<mindspore::MSTenso
     auto tensor_size = input.DataSize();
     if (tensor_size == 0 || input.Data().get() == nullptr) {
       MS_LOG(ERROR) << "Input " << i << " host data is invalid, size " << tensor_size;
+      return false;
+    }
+    if (!CheckTensorSizeConsistency(input.Shape(), static_cast<TypeId>(input.DataType()), tensor_size)) {
+      MS_LOG(ERROR) << "Input " << i << " data size is inconsistent with shape";
       return false;
     }
     // Reuse cached device buffer (no per-inference alloc/free).
@@ -1971,6 +2013,11 @@ Status GeGraphExecutor::HandleZeroCopyOutputs(uint32_t graph_id, std::vector<min
       MS_LOG(ERROR) << "Output " << i << " host data ptr is nullptr.";
       return kLiteError;
     }
+    if (src_size > (*outputs)[i].DataSize()) {
+      MS_LOG(ERROR) << "Output " << i << " device buffer size " << src_size << " is larger than host buffer size "
+                    << (*outputs)[i].DataSize();
+      return kLiteError;
+    }
     if (!memory_manager_->MemcpyDevice2Host((*outputs)[i].MutableData(), (*outputs)[i].DataSize(), src_ptr, src_size)) {
       MS_LOG(ERROR) << "Failed to D2H copy output " << i;
       return kLiteError;
@@ -2001,6 +2048,12 @@ bool GeGraphExecutor::BindZeroCopyOutputs(std::vector<mindspore::MSTensor> *outp
     }
     if (is_device) {
       // Device output: bind user's device buffer, GE writes directly (zero-copy).
+      // The user-declared DataSize must be consistent with the shape-derived size;
+      // the real capacity of the user's device buffer cannot be validated host-side.
+      if (!CheckTensorSizeConsistency(output.Shape(), static_cast<TypeId>(output.DataType()), output.DataSize())) {
+        MS_LOG(ERROR) << "Device output " << i << " data size is inconsistent with shape";
+        return false;
+      }
       ret = ge_tensor.SetData(reinterpret_cast<uint8_t *>(output.GetDeviceData()), output.DataSize(),
                               [](uint8_t *) -> void {});
       if (ret != ge::GRAPH_SUCCESS) {
@@ -2009,8 +2062,8 @@ bool GeGraphExecutor::BindZeroCopyOutputs(std::vector<mindspore::MSTensor> *outp
       }
     } else {
       // Host output: cached device buffer, GE writes, then D2H copy out.
-      if (output.DataSize() == 0) {
-        MS_LOG(ERROR) << "Host output " << i << " size is 0";
+      if (!CheckTensorSizeConsistency(output.Shape(), static_cast<TypeId>(output.DataType()), output.DataSize())) {
+        MS_LOG(ERROR) << "Host output " << i << " data size is inconsistent with shape";
         return false;
       }
       auto device_buf = GetCachedDeviceBuffer("output_" + std::to_string(i), output.DataSize());
@@ -2190,6 +2243,13 @@ std::shared_ptr<GeTensor> GeGraphExecutor::ConvertMSTensor(const std::shared_ptr
   size_t data_buff_size = tensor->DataSize();
   if (data_buff_size == 0) {
     MS_LOG(INFO) << "The MSTensor data buff size is 0.";
+  }
+  // Cross-check the reported size against the shape-derived size to avoid
+  // binding a GE tensor with a size larger than the actual buffer. Scalars
+  // (empty shape) have no shape-derived bound to compare against.
+  if (!tensor->Shape().empty() &&
+      !CheckTensorSizeConsistency(tensor->Shape(), static_cast<TypeId>(data_type), data_buff_size)) {
+    return nullptr;
   }
   // create ge tensor
   auto desc = device::ascend::TransformUtil::GetGeTensorDesc(tensor->Shape(),
