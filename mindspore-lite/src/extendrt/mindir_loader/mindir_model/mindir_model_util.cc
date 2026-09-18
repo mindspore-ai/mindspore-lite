@@ -65,6 +65,10 @@ mindspore::ValuePtr MindirModelUtil::MakeValueFromAttribute(const mind_ir::Attri
 }
 
 mindspore::ValuePtr MindirModelUtil::MakeValueFromTensorOrTypeAttribute(const mind_ir::AttributeProto &attr_proto) {
+  if (attr_proto.tensors_size() == 0) {
+    MS_LOG(ERROR) << "MindirModelUtil: tensor attribute has no tensor proto.";
+    return nullptr;
+  }
   auto tensor_proto = attr_proto.tensors(0);
   if (tensor_proto.has_raw_data()) {
     // For real tensor
@@ -73,8 +77,10 @@ mindspore::ValuePtr MindirModelUtil::MakeValueFromTensorOrTypeAttribute(const mi
     // for data type
     const int attr_tensor_type = tensor_proto.data_type();
     auto iter = kDefaultValueSwitchMap.find(attr_tensor_type);
-    MS_CHECK_TRUE_MSG(iter == kDefaultValueSwitchMap.end(), nullptr,
-                      "MindirModelUtil: Generate value ptr failed, cannot find attr tensor type " << attr_tensor_type);
+    if (iter == kDefaultValueSwitchMap.end()) {
+      MS_LOG(ERROR) << "MindirModelUtil: Generate value ptr failed, cannot find attr tensor type " << attr_tensor_type;
+      return nullptr;
+    }
     return TypeIdToType(iter->second);
   }
 }
@@ -83,6 +89,10 @@ mindspore::ValuePtr MindirModelUtil::MakeValueFromTensorAttribute(const mind_ir:
                                                                   bool need_load_data) {
   ShapeVector shape;
   auto attr_tensor_type = tensor_proto.data_type();
+  if (kDefaultValueSwitchMap.find(attr_tensor_type) == kDefaultValueSwitchMap.end()) {
+    MS_LOG(ERROR) << "MindirModelUtil: unsupported attr tensor type " << attr_tensor_type;
+    return nullptr;
+  }
   for (int i = 0; i < tensor_proto.dims_size(); i++) {
     shape.push_back(tensor_proto.dims(i));
   }
@@ -92,10 +102,15 @@ mindspore::ValuePtr MindirModelUtil::MakeValueFromTensorAttribute(const mind_ir:
   MS_EXCEPTION_IF_NULL(tensor);
   const std::string &tensor_buf = tensor_proto.raw_data();
   if (tensor_proto.has_raw_data()) {
+    if (tensor_buf.size() > tensor->DataNBytes()) {
+      MS_LOG(ERROR) << "MindirModelUtil: tensor raw data size " << tensor_buf.size() << " is larger than tensor size "
+                    << tensor->DataNBytes();
+      return nullptr;
+    }
     auto *tensor_data_buf = reinterpret_cast<uint8_t *>(tensor->data_c());
     auto ret = memcpy_s(tensor_data_buf, tensor->DataNBytes(), tensor_buf.data(), tensor_buf.size());
     MS_CHECK_TRUE_MSG(
-      ret != mindspore::lite::RET_OK, nullptr,
+      ret == mindspore::lite::RET_OK, nullptr,
       "MindirModelUtil: Generate tensor ptr from tensor proto failed, failed to get tensor from tensor proto.");
   } else {
     MS_CHECK_TRUE_MSG(

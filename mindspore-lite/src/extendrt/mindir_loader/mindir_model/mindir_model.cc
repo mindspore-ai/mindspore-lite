@@ -135,7 +135,27 @@ int MindirModel::LoadTensorData(mindspore::lite::Tensor *lite_tensor, const mind
                     mindir_tensor.raw_data().size());
   }
   if (mindir_tensor.has_external_data()) {
-    std::string file = this->GetModelPath() + "/" + mindir_tensor.external_data().location();
+    std::string location = mindir_tensor.external_data().location();
+    // The location is a relative path under the model directory (subdirectories
+    // are allowed, e.g. "xxx_variables/data_0" produced by the exporter). Reject
+    // absolute paths and '..' components so it cannot escape that directory.
+    bool is_absolute = !location.empty() && (location.front() == '/' || location.front() == '\\');
+    bool escapes_parent_dir = false;
+    for (size_t start = 0; start <= location.size() && !escapes_parent_dir;) {
+      size_t end = location.find_first_of("/\\", start);
+      if (end == std::string::npos) {
+        end = location.size();
+      }
+      if (end - start == 2 && location.compare(start, 2, "..") == 0) {
+        escapes_parent_dir = true;
+      }
+      start = end + 1;
+    }
+    if (location.empty() || is_absolute || escapes_parent_dir) {
+      MS_LOG(ERROR) << "The external data location '" << location << "' is not a valid relative path.";
+      return mindspore::lite::RET_ERROR;
+    }
+    std::string file = this->GetModelPath() + "/" + location;
     // Read file
     std::basic_ifstream<char> fid(file, std::ios::in | std::ios::binary);
     if (!fid) {
@@ -146,6 +166,13 @@ int MindirModel::LoadTensorData(mindspore::lite::Tensor *lite_tensor, const mind
     size_t file_size = static_cast<size_t>(fid.tellg());
     fid.clear();
     fid.seekg(0);
+    uint64_t data_offset = mindir_tensor.external_data().offset();
+    uint64_t data_length = mindir_tensor.external_data().length();
+    if (data_offset > file_size || data_length > file_size - data_offset) {
+      MS_LOG(ERROR) << "The external data offset " << data_offset << " and length " << data_length
+                    << " exceed the file size " << file_size << ".";
+      return mindspore::lite::RET_ERROR;
+    }
     auto plain_data = std::make_unique<char[]>(file_size);
     constexpr uint8_t is_little_endian = 1;
     constexpr int byte_order_index = 0;
@@ -157,9 +184,8 @@ int MindirModel::LoadTensorData(mindspore::lite::Tensor *lite_tensor, const mind
       return mindspore::lite::RET_ERROR;
     }
     const uint8_t *data = reinterpret_cast<const uint8_t *>(plain_data.get());
-    auto ret =
-      common::huge_memcpy(reinterpret_cast<uint8_t *>(lite_tensor->MutableData()), lite_tensor->Size(),
-                          data + mindir_tensor.external_data().offset(), mindir_tensor.external_data().length());
+    auto ret = common::huge_memcpy(reinterpret_cast<uint8_t *>(lite_tensor->MutableData()), lite_tensor->Size(),
+                                   data + data_offset, static_cast<size_t>(data_length));
     if (ret != 0) {
       MS_LOG(ERROR) << "Build parameter occur memcpy_s error.";
       return mindspore::lite::RET_OK;

@@ -44,6 +44,9 @@ NUMAAdapter::NUMAAdapter() {
   numa_interfaces_.numa_available = reinterpret_cast<int (*)(void)>(dlsym(handle_, "numa_available"));
   if (MS_UNLIKELY(numa_interfaces_.numa_available == nullptr)) {
     MS_LOG(ERROR) << "numa_available not found!";
+    (void)dlclose(handle_);
+    handle_ = nullptr;
+    return;
   }
   if (numa_interfaces_.numa_available() < 0) {
     MS_LOG(ERROR) << "numa is not available!";

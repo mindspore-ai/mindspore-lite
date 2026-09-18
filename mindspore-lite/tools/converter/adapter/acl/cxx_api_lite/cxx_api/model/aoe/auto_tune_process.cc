@@ -64,6 +64,37 @@ static std::vector<std::string> GetAoeMode(const std::shared_ptr<AclModelOptions
   return tune_mode;
 }
 
+// Basic guard for values interpolated into the aoe command line. The values come
+// from the user's own converter config file (no privilege boundary), so only the
+// characters that can never legitimately appear in an aoe value yet would change
+// the command semantics are rejected: backtick and '$' (command substitution),
+// '"' (escapes the double-quote wrapping added in this function), and newlines
+// (a second command). Documented value formats such as the ';' separator in
+// dynamic_dims="1,1,32,32;2,2,64,64" are deliberately allowed.
+static bool ContainsShellMetaCharacter(const std::string &value) {
+  static const std::string kForbidden = "\"`$\n\r";
+  return value.find_first_of(kForbidden) != std::string::npos;
+}
+
+// Validate the raw option values that will be interpolated into the aoe command
+// line. The quotes in the command are added by ExecuteAoe, not part of the value.
+static Status ValidateAoeOptions(const std::map<std::string, std::string> &build_options,
+                                 const std::string &aoe_options) {
+  for (const auto &key : {ge::ir_option::DYNAMIC_BATCH_SIZE, ge::ir_option::DYNAMIC_IMAGE_SIZE,
+                          ge::ir_option::DYNAMIC_DIMS, ge::ir_option::INPUT_SHAPE}) {
+    auto it = build_options.find(key);
+    if (it != build_options.end() && ContainsShellMetaCharacter(it->second)) {
+      MS_LOG(ERROR) << "Aoe option " << key << " contains shell metacharacters, reject to build command.";
+      return kMCFailed;
+    }
+  }
+  if (ContainsShellMetaCharacter(aoe_options)) {
+    MS_LOG(ERROR) << "Aoe options contain shell metacharacters, reject to build command. Option: " << aoe_options;
+    return kMCFailed;
+  }
+  return kSuccess;
+}
+
 static Status ExecuteAoe(const std::shared_ptr<AclModelOptions> &options, const backend::ge_backend::DfGraphPtr &graph,
                          const std::string &air_path) {
   MS_LOG(INFO) << "Start to aoe.";
@@ -73,6 +104,12 @@ static Status ExecuteAoe(const std::shared_ptr<AclModelOptions> &options, const 
   std::map<std::string, std::string> build_options;
   std::tie(init_options, build_options) = options->GenAclOptions();
   std::string aoe_options = options->GenAoeOptions(&aoe_modes);
+  // Option values interpolated into the aoe command line come from the (untrusted)
+  // config file; reject shell metacharacters in the raw values before the command
+  // is assembled.
+  if (ValidateAoeOptions(build_options, aoe_options) != kSuccess) {
+    return kMCFailed;
+  }
   std::string dynamic_option;
   if (build_options.find(ge::ir_option::DYNAMIC_BATCH_SIZE) != build_options.end() &&
       aoe_options.find("dynamic_batch_size") == std::string::npos) {

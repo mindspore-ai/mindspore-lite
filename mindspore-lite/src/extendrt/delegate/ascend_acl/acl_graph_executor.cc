@@ -277,8 +277,16 @@ Status AclGraphExecutor::CompileGraph(const FuncGraphPtr &graph, const std::map<
     std::vector<AnfWithOutIndex> inputs;
     std::vector<AnfWithOutIndex> outputs;
     FuncGraphUtils::GetCNodeInputsOutputs(cnode, &inputs, &outputs);
+    if (inputs.empty()) {
+      MS_LOG(ERROR) << "CustomAscend cnode " << cnode->fullname_with_scope() << " has no inputs.";
+      return Status(kLiteGraphFileError, "CustomAscend cnode has no inputs.");
+    }
     auto &input = inputs[inputs.size() - 1];
     auto tensor_data = FuncGraphUtils::GetConstNodeValue(input.first);
+    if (tensor_data == nullptr) {
+      MS_LOG(ERROR) << "Get om data from cnode " << cnode->fullname_with_scope() << " failed, tensor value is nullptr.";
+      return Status(kLiteNullptr, "GetConstNodeValue returns nullptr.");
+    }
     om_data_size = tensor_data->Size();
     om_data = tensor_data->data_c();
     (void)FuncGraphUtils::GetCNodeOperator(cnode, &op);
