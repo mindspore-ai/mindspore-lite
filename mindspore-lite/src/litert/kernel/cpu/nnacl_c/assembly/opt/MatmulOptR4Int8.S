@@ -31,10 +31,14 @@
 // x7: bias
 
 asm_function MatMulOptR4Int8Neon64
+  // Keep sp below the save area for the entire body: AArch64 has no red zone, so an
+  // asynchronous signal frame written at sp would otherwise clobber the saved registers.
   sub sp, sp, #144
-  st1 {v8.4s, v9.4s, v10.4s, v11.4s}, [sp], #64
-  st1 {v12.4s, v13.4s, v14.4s, v15.4s}, [sp], #64
-  stp x19, x20, [sp], #16
+  stp q8, q9, [sp, #96]
+  stp q10, q11, [sp, #64]
+  stp q12, q13, [sp, #32]
+  stp q14, q15, [sp]
+  stp x19, x20, [sp, #128]
 
   mov w15, #0       // b col index
   mov w16, #0       // a row index
@@ -147,9 +151,11 @@ End2:
   b L1
 
 End1:
-  sub sp, sp, #144
-  ld1 {v8.4s, v9.4s, v10.4s, v11.4s}, [sp], #64
-  ld1 {v12.4s, v13.4s, v14.4s, v15.4s}, [sp], #64
-  ldp x19, x20, [sp], #16
+  ldp x19, x20, [sp, #128]
+  ldp q14, q15, [sp]
+  ldp q12, q13, [sp, #32]
+  ldp q10, q11, [sp, #64]
+  ldp q8, q9, [sp, #96]
+  add sp, sp, #144
   ret
 #endif
