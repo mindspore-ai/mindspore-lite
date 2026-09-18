@@ -190,13 +190,6 @@ api::FuncGraphPtr TfliteModelParser::Parse(const converter::ConverterParameters 
     return nullptr;
   }
 
-  status = ControlFlowNodePostProcess();
-  if (status != RET_OK) {
-    MS_LOG(ERROR) << "Control flow node post process failed.";
-    ReturnCode::GetSingleReturnCode()->UpdateReturnCode(status);
-    return nullptr;
-  }
-
   auto func_graph = ConvertGraph(res_graph_);
   MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
   if ((status = CommonAnfAdjust(func_graph)) != RET_OK) {
@@ -224,6 +217,9 @@ api::FuncGraphPtr TfliteModelParser::Parse(const converter::ConverterParameters 
 STATUS TfliteModelParser::ConvertTfliteGraph() {
   auto subgraph_num = tflite_model_->subgraphs.size();
   for (size_t idx = 0; idx < subgraph_num; idx++) {
+    if (idx != kMainGraphIndex) {
+      continue;
+    }
     std::unordered_map<int, AnfNodePtr> anf_node_map;
     const auto &tflite_subgraph = tflite_model_->subgraphs.at(idx);
     const auto subgraph_name = tflite_subgraph->name;
@@ -259,17 +255,8 @@ STATUS TfliteModelParser::ConvertTfliteGraph() {
     }
 
     // record the function graph
-    if (idx == kMainGraphIndex) {
-      res_graph_ = api::MakeShared<api::FuncGraph>(func_graph);
-      MS_CHECK_TRUE_MSG(res_graph_ != nullptr, RET_ERROR, "create FuncGraph failed");
-    } else {
-      status = BuildSubFuncGraphMap(idx, func_graph, subgraph_name);
-      if (status != RET_OK) {
-        MS_LOG(ERROR) << "Fail to build the map from CNode to FuncGraph.";
-        ReturnCode::GetSingleReturnCode()->UpdateReturnCode(status);
-        return RET_ERROR;
-      }
-    }
+    res_graph_ = api::MakeShared<api::FuncGraph>(func_graph);
+    MS_CHECK_TRUE_MSG(res_graph_ != nullptr, RET_ERROR, "create FuncGraph failed");
   }
   return RET_OK;
 }
@@ -346,11 +333,6 @@ STATUS TfliteModelParser::ConvertOps(const std::unique_ptr<tflite::SubGraphT> &t
     auto new_cnode = func_graph->NewCNode(op_inputs);
     MSLITE_CHECK_PTR(new_cnode);
     new_cnode->set_fullname_with_scope(op_name);
-    status = ProcessControlFlowOp(op, new_cnode, op_type);
-    if (status != RET_OK) {
-      MS_LOG(ERROR) << "ProcessControlFlowOp failed.";
-      return RET_ERROR;
-    }
 
     // parse outputs
     status = ConvertOutputTensor(tflite_subgraph, func_graph, op, new_cnode, anf_node_map);
@@ -360,48 +342,6 @@ STATUS TfliteModelParser::ConvertOps(const std::unique_ptr<tflite::SubGraphT> &t
     }
   }
   return status;
-}
-
-STATUS TfliteModelParser::ProcessControlFlowOp(const std::unique_ptr<tflite::OperatorT> &op, const CNodePtr &anf_node,
-                                               const std::string &op_type) {
-  MS_ASSERT(op != nullptr && anf_node != nullptr);
-  auto subgraph_count = static_cast<int32_t>(tflite_model_->subgraphs.size());
-  if (op_type == "WHILE") {
-    const auto &tflite_attr = op->builtin_options.AsWhileOptions();
-    if (tflite_attr == nullptr) {
-      MS_LOG(ERROR) << "get While attr failed";
-      return RET_ERROR;
-    }
-    if (tflite_attr->cond_subgraph_index < 0 || tflite_attr->cond_subgraph_index >= subgraph_count) {
-      MS_LOG(ERROR) << "invalid cond_subgraph_index " << tflite_attr->cond_subgraph_index;
-      return RET_ERROR;
-    }
-    if (tflite_attr->body_subgraph_index < 0 || tflite_attr->body_subgraph_index >= subgraph_count) {
-      MS_LOG(ERROR) << "invalid body_subgraph_index " << tflite_attr->body_subgraph_index;
-      return RET_ERROR;
-    }
-    auto cnode = anf_node->cast<CNodePtr>();
-    control_flow_nodes_[tflite_attr->cond_subgraph_index] = cnode;
-    control_flow_nodes_[tflite_attr->body_subgraph_index] = cnode;
-  } else if (op_type == "IF") {
-    const auto &tflite_attr = op->builtin_options.AsIfOptions();
-    if (tflite_attr == nullptr) {
-      MS_LOG(ERROR) << "get If attr failed";
-      return RET_ERROR;
-    }
-    if (tflite_attr->then_subgraph_index < 0 || tflite_attr->then_subgraph_index >= subgraph_count) {
-      MS_LOG(ERROR) << "invalid then_subgraph_index " << tflite_attr->then_subgraph_index;
-      return RET_ERROR;
-    }
-    if (tflite_attr->else_subgraph_index < 0 || tflite_attr->else_subgraph_index >= subgraph_count) {
-      MS_LOG(ERROR) << "invalid else_subgraph_index " << tflite_attr->else_subgraph_index;
-      return RET_ERROR;
-    }
-    auto cnode = anf_node->cast<CNodePtr>();
-    control_flow_nodes_[tflite_attr->then_subgraph_index] = cnode;
-    control_flow_nodes_[tflite_attr->else_subgraph_index] = cnode;
-  }
-  return RET_OK;
 }
 
 STATUS TfliteModelParser::SetTensorQuantParam(const std::unique_ptr<tflite::TensorT> &tflite_tensor,
@@ -650,69 +590,6 @@ STATUS TfliteModelParser::ConvertGraphOutputs(const std::unique_ptr<tflite::SubG
       } else if (utils::isa<ParameterPtr>(output_node)) {
         output_node->cast<ParameterPtr>()->set_name(subgraph_name + "_output_" + std::to_string(i) + "_parameter");
       }
-    }
-  }
-  return RET_OK;
-}
-
-STATUS TfliteModelParser::BuildSubFuncGraphMap(size_t subgraph_idx, const FuncGraphPtr &sub_func_graph,
-                                               const std::string &subgraph_name) {
-  MS_ASSERT(sub_func_graph != nullptr);
-  auto control_flow_node = control_flow_nodes_.at(subgraph_idx);
-  if (opt::CheckPrimitiveType(control_flow_node, prim::kPrimWhile)) {
-    if (subgraph_name.find("cond") != std::string::npos) {
-      control_flow_map_[control_flow_node].first = sub_func_graph;
-    } else if (subgraph_name.find("body") != std::string::npos) {
-      control_flow_map_[control_flow_node].second = sub_func_graph;
-    }
-  } else if (opt::CheckPrimitiveType(control_flow_node, prim::kPrimIf)) {
-    if (subgraph_name.find("then") != std::string::npos) {
-      control_flow_map_[control_flow_node].first = sub_func_graph;
-    } else if (subgraph_name.find("else") != std::string::npos) {
-      control_flow_map_[control_flow_node].second = sub_func_graph;
-    }
-  } else {
-    MS_LOG(ERROR) << "Unsupported control flow subgraph type, name: " << subgraph_name;
-    return RET_ERROR;
-  }
-  return RET_OK;
-}
-
-STATUS TfliteModelParser::ControlFlowNodePostProcess() {
-  if (control_flow_map_.empty()) {
-    return RET_OK;
-  }
-  auto func_graph = ConvertGraph(res_graph_);
-  MS_CHECK_TRUE_RET(func_graph != nullptr, RET_ERROR);
-  static auto root_func_manager = Manage(func_graph);
-  MS_CHECK_TRUE_RET(root_func_manager != nullptr, RET_ERROR);
-  for (auto &node_vs_graph : control_flow_map_) {
-    auto control_flow_node = node_vs_graph.first;
-    auto sub_graphs = node_vs_graph.second;
-    auto &first_sub_graph = sub_graphs.first;
-    auto &second_sub_graph = sub_graphs.second;
-    if (first_sub_graph == nullptr || second_sub_graph == nullptr) {
-      MS_LOG(ERROR) << "Incomplete subgraph for op: " << control_flow_node->fullname_with_scope();
-      return RET_ERROR;
-    }
-    first_sub_graph->set_manager(root_func_manager);
-    second_sub_graph->set_manager(root_func_manager);
-    auto first_value_node = NewValueNode(first_sub_graph);
-    MSLITE_CHECK_PTR(first_value_node);
-    auto second_value_node = NewValueNode(second_sub_graph);
-    MSLITE_CHECK_PTR(second_value_node);
-    auto inputs = control_flow_node->inputs();
-    inputs.insert(inputs.begin() + 1, {first_value_node, second_value_node});
-    auto new_node = func_graph->NewCNode(inputs);  // must create new node, otherwise node_users won't update
-    if (new_node == nullptr) {
-      MS_LOG(ERROR) << "new node failed";
-      return RET_ERROR;
-    }
-    new_node->set_abstract(control_flow_node->abstract()->Clone());
-    new_node->set_fullname_with_scope(control_flow_node->fullname_with_scope());
-    if (!root_func_manager->Replace(control_flow_node, new_node)) {
-      MS_LOG(ERROR) << "replace new node failed";
-      return RET_ERROR;
     }
   }
   return RET_OK;

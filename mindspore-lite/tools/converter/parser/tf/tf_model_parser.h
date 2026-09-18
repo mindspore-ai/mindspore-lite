@@ -43,8 +43,7 @@ class TFModelParser : public converter::ModelParser {
 
   api::FuncGraphPtr Parse(const converter::ConverterParameters &flag) override;
 
-  static int TF2AnfAdjust(const std::set<FuncGraphPtr> &all_func_graphs,
-                          std::map<AnfNodePtr, int> *ineffective_if_op_map = nullptr);
+  static int TF2AnfAdjust(const std::set<FuncGraphPtr> &all_func_graphs);
 
  private:
   static STATUS ConvertConstVariant(const tensorflow::TensorProto &tensor_proto, tensor::TensorPtr *tensor_info);
@@ -74,38 +73,12 @@ class TFModelParser : public converter::ModelParser {
   STATUS ResetAbstractTensorToInt64(const std::string &op_type, const std::vector<std::string> &input_names,
                                     const std::map<std::string, const tensorflow::NodeDef *> &tf_node_map,
                                     const std::unordered_map<std::string, AnfNodePtr> &anf_node_map);
-  STATUS ProcessControlFlowOp(const CNodePtr &anf_node, const string &op_type, const tensorflow::NodeDef &node_def);
-
-  int FetchIfConditionData(const CNodePtr &anf_node, lite::DataInfo *if_cond_info);
-  bool CheckIneffectiveBranch(const CNodePtr &anf_node, const tensorflow::NodeDef &node_def,
-                              const lite::DataInfo &if_cond_info);
-
-  bool IsIneffectiveIfOp(const CNodePtr &anf_node, const string &op_type, const tensorflow::NodeDef &node_def);
-
-  bool IsEmptyTfFunction(const CNodePtr &anf_node, std::string branch_name);
 
   std::set<std::string> GetAllNodeInputs();
 
   STATUS GetGraphOutputNames(std::vector<AnfNodePtr> *output_nodes);
 
   STATUS ConvertRootGraphOutputs();
-
-  void UpdateMap(const CNodePtr &cnode, const FuncGraphPtr &sub_func_graph, const std::string &sub_graph_name);
-
-  STATUS ConvertSubgraph();
-
-  STATUS ConvertSubgraphInputs(std::map<std::string, const tensorflow::NodeDef *> *tf_sub_node_map,
-                               std::unordered_map<std::string, AnfNodePtr> *anf_sub_node_map,
-                               const tensorflow::FunctionDef &tf_sub_fuction, const CNodePtr &cnode,
-                               const FuncGraphPtr &sub_func_graph);
-
-  static STATUS ConvertSubgraphOutputs(std::map<std::string, const tensorflow::NodeDef *> *tf_sub_node_map,
-                                       const std::unordered_map<std::string, AnfNodePtr> &anf_sub_node_map,
-                                       const tensorflow::FunctionDef &tf_sub_fuction,
-                                       const FuncGraphPtr &sub_func_graph);
-
-  STATUS ControlFlowNodePostProcess(const std::map<CNodePtr, FuncGraphPtr> &first_func_map,
-                                    const std::map<CNodePtr, FuncGraphPtr> &second_func_map);
 
   static STATUS MakeAnfGraphOutputs(const std::vector<AnfNodePtr> &output_nodes, const FuncGraphPtr &anf_graph);
 
@@ -119,14 +92,8 @@ class TFModelParser : public converter::ModelParser {
   std::unordered_map<std::string, AnfNodePtr> anf_root_node_map_;
   std::vector<std::string> graph_input_names_;
   std::vector<std::string> graph_output_names_;
-  std::map<std::string, AnfNodePtr> function_while_map_;  // tf function name->while_node_name
-  std::map<std::string, AnfNodePtr> function_if_map_;     // tf function name->if_node
-  std::map<AnfNodePtr, int> ineffective_if_op_map_;
   std::vector<std::pair<CNodePtr, std::vector<std::string>>> nodes_with_null_input_{};
-  std::vector<std::string> while_cond_branch_name_;
-  std::vector<std::string> if_then_branch_name_;
   std::unordered_map<std::string, int> node_output_num_;
-  std::map<CNodePtr, FuncGraphPtr> while_cond_map_, while_body_map_, if_then_map_, if_else_map_;
 };
 }  // namespace lite
 }  // namespace mindspore
