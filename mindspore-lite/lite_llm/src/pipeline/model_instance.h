@@ -60,10 +60,11 @@ class ModelInstance {
   MSLlmStatus Unload();
 
   /// Run one forward step. phase selects prefill (full prompt) vs decode
-  /// (single token); logits receives the next-token distribution. position_ids
-  /// is reserved for future positional backends (NNRT ignores it).
+  /// (single token); output receives either owned logits or a step-scoped
+  /// backend logits view. position_ids is reserved for future positional
+  /// backends (NNRT ignores it).
   MSLlmStatus Execute(const std::vector<int32_t> &input_ids, const std::vector<int32_t> &position_ids,
-                      BackendExecutionPhase phase, std::vector<float> &logits);
+                      BackendExecutionPhase phase, BackendOutput *output);
 
   MSLlmStatus ExecuteTensor(const std::vector<float> &input_tensor, const std::vector<int64_t> &input_shape,
                             std::vector<float> &output_tensor, std::vector<int64_t> &output_shape);
@@ -94,7 +95,7 @@ class ModelInstance {
   std::unique_ptr<Backend> backend_;
   int32_t model_id_;
   bool loaded_;
-  MSLlmModelConfig model_config_;
+  MSLlmModelConfig model_config_ = {};
 };
 
 }  // namespace mslite_llm

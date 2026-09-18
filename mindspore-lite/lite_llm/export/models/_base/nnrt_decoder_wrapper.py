@@ -61,23 +61,15 @@ node types change.
 
 import logging
 import math
-import os
-import sys
 
 import torch
 from torch import nn
 
-# custom_ops torch_custom layer (vendored under custom_ops/) is the single
-# source of truth for the Ms* operator ONNX contracts (eager reference +
-# ``custom::`` symbolic).  Source-checkout bootstrap — no-op once the
-# mslite-llm-export wheel (which packages torch_custom) is installed.
-_CUSTOM_OPS_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "custom_ops"
-)
-if _CUSTOM_OPS_DIR not in sys.path:
-    sys.path.insert(0, _CUSTOM_OPS_DIR)
+from utils import ensure_custom_ops
 
-# pylint: disable=wrong-import-position  # adapters resolve via _CUSTOM_OPS_DIR
+ensure_custom_ops()
+
+# pylint: disable=wrong-import-position  # resolve vendored or installed adapters
 from torch_custom.ms_add_softmax import MsAddSoftmax  # noqa: E402
 from torch_custom.ms_group_matmul import MsGroupMatmul  # noqa: E402
 from torch_custom.ms_rotary_pos_emb import MsRotaryPosEmb  # noqa: E402

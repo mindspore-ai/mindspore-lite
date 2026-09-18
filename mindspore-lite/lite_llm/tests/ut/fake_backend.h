@@ -28,9 +28,9 @@ namespace mslite_llm_test {
 /// Test double for the NNRT/NPU system boundary.
 ///
 /// Scripted behavior:
-///  - QueueLogits(logits, count): serve `logits` for the next `count` backend
-///    calls (prefill + each decode; default: repeat the last scripted vector
-///    forever).
+///  - QueueLogits(logits): return owned logits.
+///  - QueueLogitsView(logits): return a step-scoped borrowed logits view.
+///  - Both repeat their last scripted result for prefill and decode calls.
 ///  - QueueError(status, at_call): make the `at_call`-th (1-based) backend
 ///    call return `status`.
 ///  - ScriptInit(status): make Init() return `status`.
@@ -38,7 +38,9 @@ namespace mslite_llm_test {
 ///    test can keep a generation in-flight deterministically.
 class FakeBackend : public mslite_llm::Backend {
  public:
-  void QueueLogits(std::vector<float> logits) { script_.push_back(std::move(logits)); }
+  void QueueLogits(std::vector<float> logits) { script_.push_back({std::move(logits), false}); }
+
+  void QueueLogitsView(std::vector<float> logits) { script_.push_back({std::move(logits), true}); }
 
   void QueueError(MSLlmStatus status, int at_call) { error_script_[at_call] = status; }
 
@@ -81,17 +83,33 @@ class FakeBackend : public mslite_llm::Backend {
     }
     if (script_.empty()) {
       output->logits.clear();
+      output->logits_view = nullptr;
+      output->logits_view_size = 0;
       return MSLLM_SUCCESS;
     }
     size_t idx = static_cast<size_t>(execute_calls_ - 1);
     if (idx >= script_.size()) {
       idx = script_.size() - 1;  // repeat last
     }
-    output->logits = script_[idx];
+    const auto &scripted = script_[idx];
+    if (scripted.use_view) {
+      output->logits.clear();
+      output->logits_view = scripted.logits.data();
+      output->logits_view_size = scripted.logits.size();
+    } else {
+      output->logits = scripted.logits;
+      output->logits_view = nullptr;
+      output->logits_view_size = 0;
+    }
     return MSLLM_SUCCESS;
   }
 
-  std::vector<std::vector<float>> script_;
+  struct ScriptedLogits {
+    std::vector<float> logits;
+    bool use_view = false;
+  };
+
+  std::vector<ScriptedLogits> script_;
   std::map<int, MSLlmStatus> error_script_;
   MSLlmStatus init_status_ = MSLLM_SUCCESS;
   int execute_calls_ = 0;

@@ -40,6 +40,9 @@ namespace nnrt {
 // OH_NN_ReturnCode is int; OH_NN_SUCCESS == 0
 using NnrtReturnCode = int;
 
+// OH_NN_PerformanceMode ABI from neural_network_runtime_type.h.
+enum class NnrtPerformanceMode : int32_t { kNone = 0, kLow = 1, kMedium = 2, kHigh = 3, kExtreme = 4 };
+
 /// @brief Function pointer table for NNRT core + HiAI APIs (all from libneural_network_core.so
 ///        except HIAIOptions which is from libhiai_foundation.so). Verified against NDK headers.
 struct NNRTFunctions {
@@ -48,6 +51,7 @@ struct NNRTFunctions {
   NnrtReturnCode (*Compilation_Build)(OH_NNCompilation *compilation);
   void (*Compilation_Destroy)(OH_NNCompilation **compilation);
   NnrtReturnCode (*Compilation_SetDevice)(OH_NNCompilation *compilation, size_t deviceID);
+  NnrtReturnCode (*Compilation_SetPerformanceMode)(OH_NNCompilation *compilation, NnrtPerformanceMode mode);
 
   // === OH_NNExecutor (core.so) ===
   OH_NNExecutor *(*Executor_Construct)(OH_NNCompilation *compilation);

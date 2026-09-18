@@ -27,6 +27,8 @@ import logging
 import os
 import subprocess
 
+from utils import ensure_custom_ops
+
 logger = logging.getLogger(__name__)
 
 # Candidate omg locations relative to DDK_PATH, newest layout first.
@@ -76,13 +78,16 @@ def _omg_invocation(omg):
 def embedding_weight_elems(vocab_size, hidden_size, quant):
     """Byte-element count of the embedding_weight graph input.
 
-    W4A16 (g32): vocab * (hidden/2 + hidden/32*2)
+    W4A16 (compact g32 NZF): vocab * hidden / 32 * 18 bytes
     W4A8  (g128): ceil(vocab,16) * (hidden/2 + hidden/128*4)
     """
     if quant in (None, "", "FP16"):
         return vocab_size * hidden_size
     if quant == "W4A16":
-        return vocab_size * (hidden_size // 2 + hidden_size // 32 * 2)
+        ensure_custom_ops()
+        from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32  # pylint: disable=import-outside-toplevel
+
+        return MsQuant4N0Group32.weight_blob_size(hidden_size, vocab_size)
     if quant == "W4A8":
         ceil_v = (vocab_size + 15) // 16 * 16
         return ceil_v * (hidden_size // 2 + hidden_size // 128 * 4)

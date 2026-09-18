@@ -103,6 +103,9 @@ MODEL_TYPES = {
         "quant_name": "qwen2_5_0b5_quant.onnx",
         "gguf_name": "qwen2_5_0b5_gguf.onnx",
         "model_name": "qwen2.5-0.5b",
+        # Keep the padded NZF decoder payload outside the executable OMC.
+        # Both resources remain bundled in the single-file .msl package.
+        "external_weights": True,
     },
     "qwen3": {
         "exporter": export_qwen3,
@@ -278,6 +281,8 @@ def run_pipeline(args, work_dir):
         # W4A16 g32 group size (QuantizationConfig derives it from the method).
         "scale_gp_size": QuantizationConfig(embedding_quant).group_size,
     }
+    if embedding_quant == "W4A16":
+        npu_config["q4_0_weight_layout"] = "q4_0_nzf_compact_phase4"
     external_weight_path = None
     if use_external_weights:
         external_weight_path = os.path.join(os.path.dirname(omc_path), EXTERNAL_WEIGHT_FILE)
@@ -427,7 +432,7 @@ def main(argv=None):
     try:
         result = run_pipeline(args, work_dir)
         print(result)
-        return result
+        return 0
     finally:
         # Intermediate artifacts (ONNX / .omc / assets) are scratch; the .msl
         # is self-contained.  Remove the work dir to keep the tree clean.

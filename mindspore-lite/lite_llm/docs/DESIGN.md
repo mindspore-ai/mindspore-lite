@@ -101,7 +101,7 @@ Set-GetGenerationConfig / GetUsage / Destroy。理由：
 
 ### 3.5 采样在主机侧
 
-生成循环中采样在 CPU 完成，NPU 只做前向：`NnrtExecutor::Execute` 把 logits 拷回 host，交给 `Pipeline` 的 `Sampler`（greedy/top_k/top_p/temperature/repetition_penalty），与 CPU 路径共用同一采样链。每次 decode 多拷 ~600KB fp32 logits 的代价在 kirin9020 真机上接受，待真机 profiling 后再评估设备端采样（需改 NNRT 契约 + NPU kernel）。
+生成循环中采样在 CPU 完成，NPU 只做前向：`NnrtExecutor::Forward` 暴露最终 logits tensor 的只读 ION 视图，生成循环在下一次 forward 前立即交给 `Sampler`。视图随下一次执行或后端销毁失效，不复制整份 logits 到 host vector。无惩罚、无 bias、无需温度缩放的 greedy 路径直接扫描视图；需要修改 logits 的其他采样路径仍创建工作副本。其他后端可继续返回自有 logits vector；公开 C ABI 不变。
 
 ### 3.6 Chat template 导出时固化
 

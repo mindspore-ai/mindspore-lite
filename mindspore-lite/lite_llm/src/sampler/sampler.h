@@ -16,6 +16,7 @@
 #ifndef MSLLM_SAMPLER_H
 #define MSLLM_SAMPLER_H
 
+#include <cstddef>
 #include <vector>
 #include <random>
 #include <unordered_map>
@@ -29,6 +30,7 @@ class Sampler {
   ~Sampler();
 
   int32_t Sample(const std::vector<float> &logits);
+  int32_t Sample(const float *logits, size_t size);
   void Reset();
 
   void SetStrategy(MSLlmSamplerStrategy strategy);
