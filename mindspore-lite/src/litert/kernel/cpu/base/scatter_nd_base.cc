@@ -123,6 +123,12 @@ int ScatterNDCPUKernel::Run() {
   (void)memset(output->data(), 0, output->Size());
 
   auto indices = in_tensors_[kScatterIndicesIndex];
+  auto shape = in_tensors_[kScatterShapeIndex];
+  CHECK_NULL_RETURN(indices);
+  CHECK_NULL_RETURN(shape);
+  CHECK_NULL_RETURN(indices->data());
+  auto shape_data = reinterpret_cast<int *>(shape->data());
+  CHECK_NULL_RETURN(shape_data);
   auto indices_shape = indices->shape();
   MS_CHECK_TRUE_MSG(!indices_shape.empty(), RET_ERROR, "indices_shape shouldn't be empty.");
   auto indice_unit_rank = indices_shape.back();
