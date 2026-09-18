@@ -105,36 +105,21 @@ python mslite_llm_export.py --target kirin9020 \
 
 ---
 
-## 附录 A：DDK 自定义算子安装（custom_ops 算子仓）
+## 附录 A：DDK 自定义算子依赖
 
-omg 编译需要 DDK 里注册 Ms\* 算子。算子源码统一由 **custom_ops 算子库**提供，
-已 vendor 到本仓库（`../custom_ops`），取代旧 douyin
-自包含 `ddk_append_files/` 的手工拷贝流程。
+omg 编译需要 DDK 里注册默认图使用的全部 Ms\* 算子。
+Torch eager/ONNX 适配器已 vendor 到本仓库（`../custom_ops/torch_custom`）。
+导出前须确认 DDK 已注册目标模型所需算子，且算子支持模型的量化布局与 shape。
+本仓 `custom_ops/ascendc_ops` 不包含默认整网所需的全部内核。
 
-### A1. 构建并安装算子到 DDK
+W4A16 默认量化链路需要 7 个算子：`MsQuant4N0Group32` /
+`MsRotaryPosEmb` / `MsScatterND` / `MsGroupMatmul` / `MsAddSoftmax` /
+`MsAddRmsNorm` / `MsRmsNorm`；`MsFloatCastInt` 为 W4A8
+（`--embedding-quant W4A8`）额外所需。
+W4A16 的 `MsQuant4N0Group32` 必须支持 `q4_0_nzf_compact_phase4`；
+布局与兼容性要求见 [PROTOCOL.md](../docs/PROTOCOL.md)。
 
-```bash
-
-# 1. 进入算子库目录
-cd ../custom_ops
-
-# 2. source DDK 环境（与 omg 编译同一套 DDK）
-source $DDK/tools/tools_ascendc/set_ascendc_env.sh
-
-# 3. 一键构建 + 安装 Ms* 算子到 DDK（kirin9020 平台）
-./build.py \
-    --ops MsRmsNorm MsAddRmsNorm MsAddSoftmax MsGroupMatmul \
-         MsQuant4N0Group32 MsRotaryPosEmb MsScatterND MsFloatCastInt \
-    --install "$DDK"
-
-```text
-
-W4A16 量化链路需要 7 个算子：`MsQuant4N0Group32` / `MsRotaryPosEmb` /
-`MsScatterND` / `MsGroupMatmul` / `MsAddSoftmax` / `MsAddRmsNorm` / `MsRmsNorm`；
-`MsFloatCastInt` 为 W4A8（`--embedding-quant W4A8`）额外所需。算子能力矩阵见
-算子仓 `README.md`。
-
-### A2. 验证
+### 验证
 
 ```bash
 
@@ -143,6 +128,3 @@ export PATH=$DDK/tools/tools_omg:$PATH
 # 跑一键导出（omg 步骤），日志里应无 undefined symbol / fatal error，且 exit=0
 
 ```
-
-首次编译约 10–30 分钟（约 360 个自定义算子逐个 tiling/编译），之后 kernel cache
-落在 `~/atc_data/kernel_cache/kirin9020/`，二次编译秒级复用。

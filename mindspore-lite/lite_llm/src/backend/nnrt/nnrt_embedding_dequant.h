@@ -17,27 +17,33 @@
 #ifndef MSLLM_NNRT_EMBEDDING_DEQUANT_H
 #define MSLLM_NNRT_EMBEDDING_DEQUANT_H
 
+#include <cstddef>
 #include <cstdint>
 
 namespace mslite {
 namespace backend {
 namespace nnrt {
 
-// IEEE fp16 <-> fp32 bit-level conversions (fp16 values are passed as raw uint16 bits).
+// IEEE fp16 <-> fp32 bit-level conversions (fp16 values are passed as raw
+// uint16 bits).
 uint16_t Fp32ToFp16Bits(float value);
 float Fp16BitsToFp32(uint16_t bits);
 
-// Dequantize one row of W4A16 int4-packed embedding weights to fp16.
-// The format matches quantize_Q4_N_0_V1_reference (douyin kernel): symmetric
-// quantization, one fp16 scale per group of group_size weights,
-// w = (q - 8) * scale. Within a group, byte j packs the quantized value of
-// element base+j in its low nibble and of element base+j+group_size/2 in its
-// high nibble (SPLIT order).
-//   packed:      this row's hidden/2 packed int4 bytes
-//   scales_fp16: this row's hidden/group_size fp16 scales
-//   out_fp16:    output buffer for hidden fp16 values (raw uint16 bits)
-void DequantizeEmbeddingRow(const uint8_t *packed, const uint16_t *scales_fp16, int hidden, int group_size,
-                            uint16_t *out_fp16);
+// Compact Q4_0 phase4 NZF: packed cells followed by per-row g32 fp16 scales.
+// Cells are at most 64x1024, with no padding. Rows must be a multiple of 16,
+// hidden a multiple of 32; total storage is rows * hidden / 32 * 18 bytes.
+bool Q4NzfEmbeddingSize(int rows, int hidden, size_t *packed_bytes, size_t *total_bytes);
+
+struct Q4EmbeddingShape {
+  int rows = 0;
+  int hidden = 0;
+};
+
+// Decode only the requested logical row directly into hidden fp16 output
+// values. Adjacent K lanes occupy low/high signed two's-complement nibbles.
+// Each 128-byte 16x16 tile interleaves four 32-byte phases: byte j of the
+// adjacent-byte layout is at 4 * (j % 32) + j / 32. Scale bits are unchanged.
+bool DequantizeEmbeddingRow(const uint8_t *blob, size_t blob_size, Q4EmbeddingShape shape, int row, uint16_t *out_fp16);
 
 }  // namespace nnrt
 }  // namespace backend

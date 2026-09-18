@@ -47,11 +47,33 @@ TEST(Sampler, GreedyArgmax) {
   EXPECT_EQ(sampler.Sample(logits), 1) << "greedy picks the argmax token";
 }
 
+TEST(Sampler, BorrowedLogitsViewGreedyArgmax) {
+  auto sampler = MakeSampler(0.0f);
+  const float logits[] = {0.1f, 0.9f, 0.2f};
+  EXPECT_EQ(sampler.Sample(logits, 3), 1);
+}
+
 TEST(Sampler, GreedyTieBreak) {
   // All-equal logits must deterministically pick the first index (strict >).
   auto sampler = MakeSampler(0.0f);
   std::vector<float> logits(8, 0.5f);
   EXPECT_EQ(sampler.Sample(logits), 0) << "greedy tie-break picks index 0";
+}
+
+TEST(Sampler, GreedyArgmaxVectorBoundaries) {
+  // Cover vector-lane, vector-group and scalar-tail winners while preserving
+  // the first-index tie rule used by std::max_element.
+  auto sampler = MakeSampler(/*temperature=*/0.0f);
+  std::vector<float> logits(17, -1.0f);
+  logits[4] = 2.0f;
+  logits[12] = 3.0f;
+  logits[16] = 4.0f;
+  EXPECT_EQ(sampler.Sample(logits), 16);
+
+  auto tied_sampler = MakeSampler(/*temperature=*/0.0f);
+  logits[7] = 5.0f;
+  logits[15] = 5.0f;
+  EXPECT_EQ(tied_sampler.Sample(logits), 7);
 }
 
 TEST(Sampler, TemperatureDeterminism) {
@@ -107,6 +129,21 @@ TEST(Sampler, LogitBias) {
   // argmax without bias = 1; +5 on token 3 flips the winner.
   std::vector<float> logits = {0.1f, 0.9f, 0.2f, 0.3f};
   EXPECT_EQ(sampler.Sample(logits), 3) << "logit bias promotes the biased token";
+}
+
+TEST(Sampler, BorrowedLogitsViewAppliesBias) {
+  MSLlmGenerateConfig cfg = {};
+  cfg.max_new_tokens = 32;
+  cfg.temperature = 0.0f;
+  cfg.override_sampler = 1;
+  int32_t bias_token = 3;
+  float bias_val = 5.0f;
+  cfg.logit_bias_tokens = &bias_token;
+  cfg.logit_bias_values = &bias_val;
+  cfg.num_logit_biases = 1;
+  mslite_llm::Sampler sampler(cfg);
+  const float logits[] = {0.1f, 0.9f, 0.2f, 0.3f};
+  EXPECT_EQ(sampler.Sample(logits, 4), 3);
 }
 
 }  // namespace

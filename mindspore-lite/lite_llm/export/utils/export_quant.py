@@ -31,6 +31,7 @@ import numpy as np
 import onnx
 from onnx import TensorProto, helper, shape_inference
 
+from utils import ensure_custom_ops
 from utils.onnx_postprocess import _save_onnx, duplicate_shared_initializers
 
 
@@ -211,35 +212,6 @@ def _inverse_scale(max_vals, divisor):
 
 
 # ---------------------------------------------------------------------------
-# W4A16: MsQuant4N0Group32 (group 32, planar "V1" layout, fp16 scales)
-# ---------------------------------------------------------------------------
-def _q4_n0_v1(x, n, d):
-    """Port of ``quantize_Q4_N_0_V1_reference``.
-
-    ``x`` is the transposed weight ``[N, K]`` flattened row-major; ``n=N``,
-    ``d=K``. Returns the packed ``uint8`` buffer: ``n*d/2`` weight bytes
-    followed by ``n*d/32`` fp16 scales (``n*d/16`` bytes).
-    """
-    qk = 32
-    nb = n * d // qk
-    xg = x.reshape(nb, qk)
-
-    max_vals = _signed_max_per_group(xg)
-    scale, id_ = _inverse_scale(max_vals, 8)
-
-    x0 = xg[:, :16] * id_[:, None]
-    x1 = xg[:, 16:] * id_[:, None]
-    xi0 = np.minimum(15, (x0 + np.float32(8.5)).astype(np.int64))
-    xi1 = np.minimum(15, (x1 + np.float32(8.5)).astype(np.int64))
-
-    packed = (xi0.astype(np.uint8) & 0x0F) | ((xi1.astype(np.uint8) & 0x0F) << 4)
-    weight_bytes = packed.reshape(-1)
-
-    scale_bytes = _fp32_to_fp16(scale).view(np.uint8).reshape(-1)
-    return np.concatenate([weight_bytes, scale_bytes])
-
-
-# ---------------------------------------------------------------------------
 # W4A8: MsQuant4N0Group128 (group 128, NZ fractal layout, fp32 scales)
 # ---------------------------------------------------------------------------
 def _q4_n0_nz(x, n, d):
@@ -330,15 +302,6 @@ def _ceil(x, y):
     return (x + y - 1) // y * y
 
 
-def quantize_weight_g32_4bit_nd(weight):
-    """W4A16 weight quantize, 4 bits, symmetric, group size=32 (planar layout)."""
-    k, n = weight.shape  # [K, N]
-    x = weight.T.astype(np.float32).reshape(-1)  # [N, K] flattened
-    out = _q4_n0_v1(x, n, k)
-    length = _ceil(n, 16) * (k // 2 + k // 32 * 2)
-    return _pad_to_length(out, length).view(np.uint8)
-
-
 def quantize_weight_g128_4bit_nz(weight):
     """W4A8 weight quantize, 4 bits, symmetric, group size=128."""
     k, n = weight.shape  # [K, N]
@@ -365,42 +328,50 @@ def _pad_to_length(out, length):
 
 # ─── graph-level quantization ──────────────────────────────────────────────
 
+def _set_custom_output_shape(graph, value_infos, name, shape):
+    """Update existing graph outputs/intermediates without duplicate value_info."""
+    value_info = helper.make_tensor_value_info(name, TensorProto.FLOAT16, shape)
+    if name in value_infos:
+        for existing in value_infos[name]:
+            existing.type.CopyFrom(value_info.type)
+    else:
+        graph.value_info.append(value_info)
+        value_infos[name] = [graph.value_info[-1]]
+
+
 def custom_op_infer_shape(graph, chunk_size, max_seq_len, num_kv_heads, num_q_heads, dim, is_prefill):
     """Infer shapes for the custom operators before quantization."""
-    graph_output = {vi.name: vi for vi in graph.output}
-
+    value_infos = {}
+    for value_info in (*graph.input, *graph.value_info, *graph.output):
+        value_infos.setdefault(value_info.name, []).append(value_info)
+    seq_len = chunk_size if is_prefill else 1
+    query_shape = [1, num_q_heads, seq_len, dim]
+    cache_shape = [1, num_kv_heads, max_seq_len, dim]
     for node in graph.node:
         if node.op_type == "MsScatterND":
-            if node.attribute[0].name == "layout" and node.attribute[0].s.lower() == "bsnd":
-                shape = [1, max_seq_len, num_kv_heads, dim]
-            else:
-                shape = [1, num_kv_heads, max_seq_len, dim]
-            value_info = helper.make_tensor_value_info(node.output[0], TensorProto.FLOAT16, shape)
-            if node.output[0] in graph_output:
-                output = graph_output[node.output[0]]
-                output.type.tensor_type.shape.CopyFrom(value_info.type.tensor_type.shape)
-            else:
-                graph.value_info.append(value_info)
+            shapes = [cache_shape]
         elif node.op_type in ["MsRmsNorm", "MsAddRmsNorm"]:
-            shape = [1, chunk_size, num_q_heads * dim] if is_prefill else [1, 1, num_q_heads * dim]
-            for _, output_name in enumerate(node.output):
-                value_info = helper.make_tensor_value_info(output_name, TensorProto.FLOAT16, shape)
-                graph.value_info.append(value_info)
-        elif node.op_type == "MsRotaryPosEmb":
-            rope_q_shape = [1, num_q_heads, chunk_size, dim] if is_prefill else [1, num_q_heads, 1, dim]
-            rope_k_shape = [1, num_kv_heads, chunk_size, dim] if is_prefill else [1, num_kv_heads, 1, dim]
-
-            rope_q_value_info = helper.make_tensor_value_info(node.output[0], TensorProto.FLOAT16, rope_q_shape)
-            rope_k_value_info = helper.make_tensor_value_info(node.output[1], TensorProto.FLOAT16, rope_k_shape)
-            graph.value_info.append(rope_q_value_info)
-            graph.value_info.append(rope_k_value_info)
-        elif node.op_type == "MsGroupMatmul":
-            if node.attribute[0].name == "trans_b" and node.attribute[0].s.lower() == "true":
-                shape = [1, num_q_heads, chunk_size, max_seq_len] if is_prefill else [1, num_q_heads, 1, max_seq_len]
+            # Qwen3's per-head norms preserve BSND, not flattened hidden states.
+            source = value_infos.get(node.input[0]) or value_infos.get(node.output[0])
+            if source and source[0].type.tensor_type.HasField("shape"):
+                shape = [
+                    dimension.dim_value if dimension.HasField("dim_value") else dimension.dim_param
+                    for dimension in source[0].type.tensor_type.shape.dim
+                ]
             else:
-                shape = [1, num_q_heads, chunk_size, dim] if is_prefill else [1, num_q_heads, 1, dim]
-            value_info = helper.make_tensor_value_info(node.output[0], TensorProto.FLOAT16, shape)
-            graph.value_info.append(value_info)
+                shape = [1, seq_len, num_q_heads * dim]
+            shapes = [shape] * len(node.output)
+        elif node.op_type == "MsRotaryPosEmb":
+            shapes = [query_shape, [1, num_kv_heads, seq_len, dim]]
+        elif node.op_type == "MsGroupMatmul":
+            if node.attribute[0].name == "trans_b" and node.attribute[0].s.lower() == b"true":
+                shapes = [[1, num_q_heads, seq_len, max_seq_len]]
+            else:
+                shapes = [query_shape]
+        else:
+            continue
+        for output_name, shape in zip(node.output, shapes):
+            _set_custom_output_shape(graph, value_infos, output_name, shape)
 
 
 def load_q2_constant():
@@ -437,13 +408,16 @@ def get_shape_info(graph):
 
 def quant_node_4bit_gp32(shape_info, origin_node, initializers):
     """W4A16 quantization (MsQuant4N0Group32)."""
+    ensure_custom_ops()
+    from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32  # pylint: disable=import-outside-toplevel
+
     new_node_list = []
     new_initializer_list = []
     weight_name = origin_node.input[1]
     weight_init = initializers[weight_name]
     weight_data = onnx.numpy_helper.to_array(weight_init)
     weight_shape = weight_data.shape
-    quantized_weight = quantize_weight_g32_4bit_nd(weight_data)
+    quantized_weight = MsQuant4N0Group32.quantize_weight_g32_4bit(weight_data)
     quant_weight_name = weight_name + "_quant"
     quant_weight_init = onnx.numpy_helper.from_array(quantized_weight, quant_weight_name)
     new_initializer_list.append(quant_weight_init)
@@ -664,16 +638,23 @@ def quantize_linear_ops(model, embedding_quant_config, decoder_quant_config):
         if not is_quanted:
             new_initializers.append(ori_init)
 
-    new_graph = helper.make_graph(new_nodes, graph.name, graph.input, graph.output, new_initializers)
-    new_model = helper.make_model(new_graph, producer_name=model.producer_name)
-    new_model.opset_import[0].version = 18
+    new_graph = helper.make_graph(
+        new_nodes, graph.name, graph.input, graph.output, new_initializers,
+        value_info=graph.value_info,
+    )
+    new_model = onnx.ModelProto()
+    new_model.CopyFrom(model)
+    new_model.graph.CopyFrom(new_graph)
+    if not any(opset.domain == "custom" for opset in new_model.opset_import):
+        new_model.opset_import.append(helper.make_opsetid("custom", 1))
 
     apply_shared_weight(new_model, is_quant=embedding_quant_config.is_quant)
 
     # Remove redundant MsFloatCastInt nodes and duplicate shared initializers.
     from onnxslim import slim
 
-    new_model = slim(new_model)
+    slimmed_model = slim(new_model, no_shape_infer=True)
+    new_model.graph.CopyFrom(slimmed_model.graph)
     duplicate_shared_initializers(new_model)
     return new_model
 

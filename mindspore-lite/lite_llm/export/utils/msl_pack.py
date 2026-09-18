@@ -93,6 +93,28 @@ class MslPackError(Exception):
 
 # ─── value encoding ────────────────────────────────────────────────────────
 
+def _encode_uint(value: Any, type_name: str, maximum: int, wire_format: str) -> bytes:
+    """Validate and encode an unsigned integer of the requested wire width."""
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise MslPackError(f"expected {type_name}, got {type(value).__name__}")
+    if not 0 <= value <= maximum:
+        raise MslPackError(f"{type_name} out of range: {value}")
+    return struct.pack(wire_format, value)
+
+
+def _encode_string_array(value: Any) -> bytes:
+    """Encode validated strings with their count and UTF-8 byte lengths."""
+    if not isinstance(value, (list, tuple)) or not all(isinstance(v, str) for v in value):
+        raise MslPackError("expected string[] (list of str)")
+    payload = bytearray()
+    payload += struct.pack("<I", len(value))
+    for item in value:
+        encoded = item.encode("utf-8")
+        payload += struct.pack("<I", len(encoded))
+        payload += encoded
+    return bytes(payload)
+
+
 def encode_value(value_type: int, value: Any) -> bytes:
     """Encode a Python value into its v1 wire format."""
     if value_type == TYPE_BOOL:
@@ -100,17 +122,9 @@ def encode_value(value_type: int, value: Any) -> bytes:
             raise MslPackError(f"expected bool, got {type(value).__name__}")
         return b"\x01" if value else b"\x00"
     if value_type == TYPE_UINT32:
-        if not isinstance(value, int) or isinstance(value, bool):
-            raise MslPackError(f"expected uint32, got {type(value).__name__}")
-        if not 0 <= value <= 0xFFFFFFFF:
-            raise MslPackError(f"uint32 out of range: {value}")
-        return struct.pack("<I", value)
+        return _encode_uint(value, "uint32", 0xFFFFFFFF, "<I")
     if value_type == TYPE_UINT64:
-        if not isinstance(value, int) or isinstance(value, bool):
-            raise MslPackError(f"expected uint64, got {type(value).__name__}")
-        if not 0 <= value <= 0xFFFFFFFFFFFFFFFF:
-            raise MslPackError(f"uint64 out of range: {value}")
-        return struct.pack("<Q", value)
+        return _encode_uint(value, "uint64", 0xFFFFFFFFFFFFFFFF, "<Q")
     if value_type == TYPE_FLOAT32:
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise MslPackError(f"expected float32, got {type(value).__name__}")
@@ -120,15 +134,7 @@ def encode_value(value_type: int, value: Any) -> bytes:
             raise MslPackError(f"expected string, got {type(value).__name__}")
         return value.encode("utf-8")
     if value_type == TYPE_STRING_ARRAY:
-        if not isinstance(value, (list, tuple)) or not all(isinstance(v, str) for v in value):
-            raise MslPackError("expected string[] (list of str)")
-        payload = bytearray()
-        payload += struct.pack("<I", len(value))
-        for item in value:
-            encoded = item.encode("utf-8")
-            payload += struct.pack("<I", len(encoded))
-            payload += encoded
-        return bytes(payload)
+        return _encode_string_array(value)
     raise MslPackError(f"unknown KV value type: {value_type}")
 
 
@@ -382,8 +388,43 @@ NPU_BOOL_KEYS = {
     "embedding_quant": "npu.embedding_quant",
 }
 NPU_STRING_KEYS = {
+    "q4_0_weight_layout": "npu.q4_0_weight_layout",
     "om_weight_dir": "npu.om_weight_dir",
 }
+
+
+def _add_litert_kv(litert: Dict[str, Any], kv: Dict[str, Any]) -> None:
+    """Append graph paths, sequence lengths, and decode variants in wire order."""
+    if isinstance(litert.get("prefill"), str):
+        kv["litert.prefill.path"] = litert["prefill"]
+    if "prefill_seq_len" in litert:
+        kv["litert.prefill.seq_len"] = int(litert["prefill_seq_len"])
+    decode = litert.get("decode")
+    if isinstance(decode, str):
+        kv["litert.decode.path"] = decode
+    elif isinstance(decode, dict):
+        for src, dst in (("path", "litert.decode.path"),
+                         ("dynamic_past_len", "litert.decode.dynamic_past_len"),
+                         ("past_len", "litert.decode.past_len"),
+                         ("max_past_len", "litert.decode.max_past_len")):
+            if src in decode:
+                kv[dst] = decode[src]
+    variants = litert.get("decode_variants")
+    if variants is not None:
+        kv["litert.decode_variants"] = json.dumps(variants, separators=(",", ":"))
+
+
+def _add_npu_kv(npu: Dict[str, Any], kv: Dict[str, Any]) -> None:
+    """Append recognized NPU fields with their existing schema conversions."""
+    for src, dst in NPU_U32_KEYS.items():
+        if src in npu:
+            kv[dst] = int(npu[src])
+    for src, dst in NPU_BOOL_KEYS.items():
+        if src in npu:
+            kv[dst] = bool(npu[src])
+    for src, dst in NPU_STRING_KEYS.items():
+        if src in npu:
+            kv[dst] = str(npu[src])
 
 
 def manifest_to_kv(manifest: Dict[str, Any]) -> Dict[str, Any]:
@@ -416,37 +457,13 @@ def manifest_to_kv(manifest: Dict[str, Any]) -> Dict[str, Any]:
             kv[dst] = float(arch[src])
 
     litert = manifest.get("litert") or {}
-    if isinstance(litert.get("prefill"), str):
-        kv["litert.prefill.path"] = litert["prefill"]
-    if "prefill_seq_len" in litert:
-        kv["litert.prefill.seq_len"] = int(litert["prefill_seq_len"])
-    decode = litert.get("decode")
-    if isinstance(decode, str):
-        kv["litert.decode.path"] = decode
-    elif isinstance(decode, dict):
-        for src, dst in (("path", "litert.decode.path"),
-                         ("dynamic_past_len", "litert.decode.dynamic_past_len"),
-                         ("past_len", "litert.decode.past_len"),
-                         ("max_past_len", "litert.decode.max_past_len")):
-            if src in decode:
-                kv[dst] = decode[src]
-    variants = litert.get("decode_variants")
-    if variants is not None:
-        kv["litert.decode_variants"] = json.dumps(variants, separators=(",", ":"))
+    _add_litert_kv(litert, kv)
 
     for src, dst in ASSET_KEYS.items():
         if src in (manifest.get("assets") or {}):
             kv[dst] = manifest["assets"][src]
     npu = manifest.get("npu") or {}
-    for src, dst in NPU_U32_KEYS.items():
-        if src in npu:
-            kv[dst] = int(npu[src])
-    for src, dst in NPU_BOOL_KEYS.items():
-        if src in npu:
-            kv[dst] = bool(npu[src])
-    for src, dst in NPU_STRING_KEYS.items():
-        if src in npu:
-            kv[dst] = str(npu[src])
+    _add_npu_kv(npu, kv)
     generation = manifest.get("generation") or {}
     stop_ids = generation.get("stop_token_ids") or []
     if stop_ids:
@@ -584,6 +601,8 @@ def build_manifest(package_name, architecture, npu_config, generation_policy, om
     }
     if generation_policy:
         manifest["generation"] = dict(generation_policy)
+    if npu_config.get("q4_0_weight_layout"):
+        manifest["npu"]["q4_0_weight_layout"] = npu_config["q4_0_weight_layout"]
     if npu_config.get("om_weight_dir"):
         manifest["npu"]["om_weight_dir"] = npu_config["om_weight_dir"]
     return manifest

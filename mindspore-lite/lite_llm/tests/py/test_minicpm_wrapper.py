@@ -66,12 +66,12 @@ def _llama_ref():
     from transformers import LlamaConfig, LlamaForCausalLM
 
     torch.manual_seed(7)
-    config = LlamaConfig(
-        vocab_size=128, hidden_size=64, intermediate_size=176,
-        num_hidden_layers=NUM_LAYERS, num_attention_heads=4, num_key_value_heads=2,
-        max_position_embeddings=MAX_SEQ_LEN, rms_norm_eps=1e-5,
-        tie_word_embeddings=True, rope_theta=10000.0,
-    )
+    config = LlamaConfig.from_dict({
+        "vocab_size": 128, "hidden_size": 64, "intermediate_size": 192,
+        "num_hidden_layers": NUM_LAYERS, "num_attention_heads": 4, "num_key_value_heads": 2,
+        "max_position_embeddings": MAX_SEQ_LEN, "rms_norm_eps": 1e-5,
+        "tie_word_embeddings": True, "rope_theta": 10000.0,
+    })
     config._attn_implementation = "eager"  # pylint: disable=protected-access
     model = LlamaForCausalLM(config).to(torch.float16).eval()
     input_ids = torch.randint(0, 128, (1, SEQ_LEN))
@@ -128,7 +128,8 @@ def test_minicpm_wrapper_matches_hf_reference(llama_ref, scale_emb):
         assert torch.allclose(out_val.float(), ref_val.float(), atol=5e-3)
 
 
-def test_minicpm_export_traces_ms_ops_with_scope(llama_ref, tmp_path):
+@pytest.mark.parametrize("cache_length", [SEQ_LEN, MAX_SEQ_LEN])
+def test_minicpm_export_traces_ms_ops_with_scope(llama_ref, tmp_path, cache_length):
     """The traced graph keeps /model/... scopes and the expected Ms* multiset."""
     from models.minicpm.minicpm_exporter import MiniCpmOnnx
 
@@ -138,9 +139,11 @@ def test_minicpm_export_traces_ms_ops_with_scope(llama_ref, tmp_path):
     exporter.model, exporter.config = model, config
     exporter.num_layers, exporter.hidden_size, exporter.num_kv_heads = NUM_LAYERS, 64, 2
     onnx_path = str(tmp_path / "minicpm.onnx")
-    exporter.export(onnx_path, max_seq_len=MAX_SEQ_LEN, chunk_size=SEQ_LEN)
+    exporter.export(onnx_path, max_seq_len=cache_length, chunk_size=SEQ_LEN)
 
     graph = onnx.load(onnx_path).graph
+    for output in graph.output[1:]:
+        assert [dim.dim_value for dim in output.type.tensor_type.shape.dim] == [1, 2, cache_length, HEAD_DIM]
     node_names = [node.name for node in graph.node]
     op_counts = {}
     for node in graph.node:

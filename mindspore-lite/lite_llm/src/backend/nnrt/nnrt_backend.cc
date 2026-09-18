@@ -62,6 +62,7 @@ bool NNRTBackend::BuildNnrtConfig(const BackendConfig &config, backend::nnrt::Nn
   nnrt->max_length = man.npu.max_length;
   nnrt->chunk_size = man.npu.chunk_size;
   nnrt->embedding_quant = man.npu.embedding_quant;
+  nnrt->q4_0_weight_layout = man.npu.q4_0_weight_layout;
   if (man.npu.scale_gp_size > 0) {
     nnrt->scale_gp_size = man.npu.scale_gp_size;
   }
@@ -119,8 +120,7 @@ MSLlmStatus NNRTBackend::Prefill(const BackendInput &input, BackendOutput *outpu
 
   std::vector<int> ids(input.input_ids.begin(), input.input_ids.end());
 
-  int next_token = -1;
-  if (!executor_->Forward(ids, &next_token, /*is_prefill=*/true, &output->logits)) {
+  if (!executor_->Forward(ids, /*is_prefill=*/true, output)) {
     return MSLLM_ERROR_INFERENCE;
   }
 
@@ -143,8 +143,7 @@ MSLlmStatus NNRTBackend::Decode(const BackendInput &input, BackendOutput *output
 
   std::vector<int> ids = {static_cast<int>(input.input_ids.back())};
 
-  int next_token = -1;
-  if (!executor_->Forward(ids, &next_token, /*is_prefill=*/false, &output->logits)) {
+  if (!executor_->Forward(ids, /*is_prefill=*/false, output)) {
     return MSLLM_ERROR_INFERENCE;
   }
 

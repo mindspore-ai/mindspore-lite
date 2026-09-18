@@ -82,6 +82,13 @@ endfunction()
 mslite_llm_add_unit_test(test_sampler ut/test_sampler.cc)
 mslite_llm_add_unit_test(test_model_resource_loader ut/test_model_resource_loader.cc)
 mslite_llm_add_unit_test(test_lm_api ut/test_lm_api.cc)
+mslite_llm_add_unit_test(test_nnrt_embedding_dequant ut/test_nnrt_embedding_dequant.cc)
+# NNRT builds already export the decoder from mslite_llm; host builds compile
+# the same CPU-only source directly so this test needs no NPU backend.
+if(NOT MSLITE_LLM_ENABLE_NNRT)
+    target_sources(test_nnrt_embedding_dequant PRIVATE
+        ${MSLITE_LLM_ROOT}/src/backend/nnrt/nnrt_embedding_dequant.cc)
+endif()
 mslite_llm_add_unit_test(test_llm_chat_template ut/test_llm_chat_template.cc)
 mslite_llm_add_unit_test(test_llm_engine ut/test_llm_engine.cc)
 

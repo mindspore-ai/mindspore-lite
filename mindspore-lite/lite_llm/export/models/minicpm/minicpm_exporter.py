@@ -54,7 +54,6 @@ from utils.export_quant import (
     apply_quant,
     apply_shared_weight,
     quantize_weight_g128_4bit_nz,
-    quantize_weight_g32_4bit_nd,
 )
 
 from .minicpm_wrapper import MiniCpmNnrtWrapper
@@ -145,7 +144,7 @@ class MiniCpmOnnx:
         out_kv_names = [(f"out_key_{i}", f"out_val_{i}") for i in range(self.num_layers)]
         out_kv_names = [name for kv in out_kv_names for name in kv]
 
-        valid_seq_len = torch.tensor([1], dtype=torch.int32).to(device)
+        valid_seq_len = torch.tensor([0], dtype=torch.int32).to(device)
         lmhead_idx = torch.tensor([0], dtype=torch.int32).to(device)
 
         rope_cos = torch.zeros((1, chunk_size, head_dim), device=device, dtype=dtype)
@@ -200,7 +199,9 @@ class MiniCpmOnnx:
             weight_4bit = quantize_weight_g128_4bit_nz(weight.T)
             weight_4bit.tofile(embedding_weight_save_path)
         elif embedding_quantize_config == "W4A16":
-            weight_4bit_gp32 = quantize_weight_g32_4bit_nd(weight.T)
+            from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32
+
+            weight_4bit_gp32 = MsQuant4N0Group32.quantize_weight_g32_4bit(weight.T)
             weight_4bit_gp32.tofile(embedding_weight_save_path)
         else:
             weight.flatten().tofile(embedding_weight_save_path)
@@ -275,6 +276,9 @@ class MiniCpmOnnx:
                 "chunk_size": int(chunk_size),
                 "embedding_quant": embedding_quant_config.asdict() if embedding_quant_config.is_quant else None,
                 "decoder_quant": decoder_quant_config.asdict() if decoder_quant_config.is_quant else None,
+                **({"q4_0_weight_layout": "q4_0_nzf_compact_phase4"}
+                   if embedding_quant_config.is_quant and embedding_quant_config.quant_method == "W4A16"
+                   else {}),
             },
             "sampling": LiteTurboConfig(
                 max_length=max_length,

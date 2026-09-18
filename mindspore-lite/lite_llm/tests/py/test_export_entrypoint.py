@@ -24,9 +24,6 @@ from pathlib import Path
 
 import pytest
 
-torch = pytest.importorskip("torch")
-pytest.importorskip("onnx")
-pytest.importorskip("gguf")
 
 _EXPORT_DIR = Path(__file__).resolve().parents[2] / "export"
 

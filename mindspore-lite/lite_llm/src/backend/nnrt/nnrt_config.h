@@ -56,9 +56,10 @@ struct NnrtConfig {
 
   // ── NNRT-specific ────────────────────────────────────────────────────
   size_t device_id = 0;
-  int32_t chunk_size = 0;        // prefill chunk size (0 = full prompt)
-  bool embedding_quant = false;  // W4A16 int4-packed embedding
-  int32_t scale_gp_size = 32;    // W4A16 quant group size
+  int32_t chunk_size = 0;          // prefill chunk size (0 = full prompt)
+  bool embedding_quant = false;    // W4A16 int4-packed embedding
+  int32_t scale_gp_size = 32;      // W4A16 quant group size
+  std::string q4_0_weight_layout;  // quantized models require compact phase4 NZF
   int32_t eos_id = -1;
 
   // ── Single-file .msl container ───────────────────────────────────────

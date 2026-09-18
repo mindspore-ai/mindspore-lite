@@ -19,6 +19,10 @@
 #include <cmath>
 #include <numeric>
 
+#if defined(__aarch64__)
+#include <arm_neon.h>
+#endif
+
 namespace mslite_llm {
 
 namespace {
@@ -33,6 +37,35 @@ void Softmax(std::vector<float> &logits) {
   if (sum > 0.0f) {
     std::transform(logits.begin(), logits.end(), logits.begin(), [sum](float v) { return v / sum; });
   }
+}
+
+int32_t GreedyArgMax(const float *logits, size_t size) {
+  size_t best_index = 0;
+  float best_value = logits[0];
+  size_t index = 1;
+#if defined(__aarch64__)
+  for (; index + 4 <= size; index += 4) {
+    const float32x4_t values = vld1q_f32(logits + index);
+    const uint32x4_t exceeds_best = vcgtq_f32(values, vdupq_n_f32(best_value));
+    if (vmaxvq_u32(exceeds_best) == 0) {
+      continue;
+    }
+    for (size_t lane = 0; lane < 4; ++lane) {
+      const float value = logits[index + lane];
+      if (value > best_value) {
+        best_value = value;
+        best_index = index + lane;
+      }
+    }
+  }
+#endif
+  for (; index < size; ++index) {
+    if (logits[index] > best_value) {
+      best_value = logits[index];
+      best_index = index;
+    }
+  }
+  return static_cast<int32_t>(best_index);
 }
 
 }  // namespace
@@ -91,18 +124,33 @@ Sampler::~Sampler() = default;
 
 void Sampler::Reset() { generated_tokens_.clear(); }
 
-int32_t Sampler::Sample(const std::vector<float> &logits) {
-  if (logits.empty()) {
+int32_t Sampler::Sample(const std::vector<float> &logits) { return Sample(logits.data(), logits.size()); }
+
+int32_t Sampler::Sample(const float *logits, size_t size) {
+  if (logits == nullptr || size == 0) {
     return 0;
   }
 
-  std::vector<float> work(logits.begin(), logits.end());
+  const bool has_history = !generated_tokens_.empty();
+  const bool has_repetition_penalty =
+    has_history && repetition_penalty_ > 0.0f && std::fabs(repetition_penalty_ - 1.0f) > 1e-6f;
+  const bool has_count_penalty =
+    has_history && (std::fabs(presence_penalty_) > 1e-6f || std::fabs(frequency_penalty_) > 1e-6f);
+  const bool has_temperature_scale = temperature_ > 0.0f && std::fabs(temperature_ - 1.0f) > 1e-6f;
+  const bool greedy_mode = strategy_ == MSLLM_SAMPLER_GREEDY || temperature_ <= 0.0f;
+  if (greedy_mode && logit_bias_.empty() && !has_repetition_penalty && !has_count_penalty && !has_temperature_scale) {
+    const int32_t argmax = GreedyArgMax(logits, size);
+    generated_tokens_.push_back(argmax);
+    return argmax;
+  }
+
+  std::vector<float> work(logits, logits + size);
 
   // Apply logit bias
   ApplyLogitBias(work);
 
   // Repetition penalty
-  if (repetition_penalty_ > 0.0f && std::fabs(repetition_penalty_ - 1.0f) > 1e-6f && !generated_tokens_.empty()) {
+  if (has_repetition_penalty) {
     for (auto tid : generated_tokens_) {
       if (tid >= 0 && static_cast<size_t>(tid) < work.size()) {
         if (work[tid] > 0.0f) {
@@ -115,7 +163,7 @@ int32_t Sampler::Sample(const std::vector<float> &logits) {
   }
 
   // Presence / frequency penalty
-  if ((std::fabs(presence_penalty_) > 1e-6f || std::fabs(frequency_penalty_) > 1e-6f) && !generated_tokens_.empty()) {
+  if (has_count_penalty) {
     std::unordered_map<int32_t, int32_t> token_counts;
     for (auto tid : generated_tokens_) {
       token_counts[tid]++;
@@ -130,21 +178,12 @@ int32_t Sampler::Sample(const std::vector<float> &logits) {
   }
 
   // Temperature
-  if (temperature_ > 0.0f && std::fabs(temperature_ - 1.0f) > 1e-6f) {
+  if (has_temperature_scale) {
     std::transform(work.begin(), work.end(), work.begin(), [this](float v) { return v / temperature_; });
   }
 
-  bool greedy_mode = (strategy_ == MSLLM_SAMPLER_GREEDY) || (temperature_ <= 0.0f);
-
   if (greedy_mode) {
-    int32_t argmax = 0;
-    float max_val = work[0];
-    for (size_t i = 1; i < work.size(); ++i) {
-      if (work[i] > max_val) {
-        max_val = work[i];
-        argmax = static_cast<int32_t>(i);
-      }
-    }
+    const int32_t argmax = GreedyArgMax(work.data(), work.size());
     generated_tokens_.push_back(argmax);
     return argmax;
   }

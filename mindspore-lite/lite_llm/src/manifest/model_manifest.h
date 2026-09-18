@@ -27,6 +27,8 @@ namespace mslite_llm {
 
 class MslPackageReader;
 
+inline constexpr char kQ4_0WeightLayout[] = "q4_0_nzf_compact_phase4";
+
 struct LiteRtDecodeVariant {
   int32_t past_len = -1;
   std::string path;
@@ -86,10 +88,11 @@ struct ModelManifestAssets {
 /// .omc gear shapes) and consumed by NNRTBackend::BuildNnrtConfig.
 struct NpuConfig {
   bool present = false;
-  int32_t max_length = 0;        // max sequence length (must be a multiple of chunk_size)
-  int32_t chunk_size = 0;        // prefill chunk size (prefill gear seq length)
-  bool embedding_quant = false;  // W4A8/W4A16 int4-packed embedding weight
-  int32_t scale_gp_size = 32;    // embedding quant group size
+  int32_t max_length = 0;          // max sequence length (must be a multiple of chunk_size)
+  int32_t chunk_size = 0;          // prefill chunk size (prefill gear seq length)
+  bool embedding_quant = false;    // W4A8/W4A16 int4-packed embedding weight
+  int32_t scale_gp_size = 32;      // embedding quant group size
+  std::string q4_0_weight_layout;  // quantized models require kQ4_0WeightLayout
   // Optional directory containing SubGraph_0.weight produced by omg
   // --save_weights_as_external_data. Empty means weights are embedded.
   std::string om_weight_dir;
@@ -111,7 +114,8 @@ bool ParseDTypeName(const std::string &raw, MSLlmDType *out);
 MSLlmStatus LoadModelManifest(const std::string &manifest_path, ModelManifest *manifest,
                               std::string *error_message = nullptr);
 
-/// Parse a manifest from an in-memory JSON string (used by the single-file .msl reader).
+/// Parse a manifest from an in-memory JSON string (used by the single-file .msl
+/// reader).
 MSLlmStatus ParseManifest(const std::string &content, ModelManifest *manifest, std::string *error_message = nullptr);
 
 /// Build a manifest from the KV metadata of a single-file .msl (v1).
@@ -142,8 +146,9 @@ struct ModelResources {
   std::string om_weight_dir;
 };
 
-/// Validate that \p candidate is a relative path strictly inside \p package_root
-/// (no absolute paths, no ".." traversal, no colon-based drive escapes).
+/// Validate that \p candidate is a relative path strictly inside \p
+/// package_root (no absolute paths, no ".." traversal, no colon-based drive
+/// escapes).
 bool IsPackageRelativePath(const std::string &path);
 
 /// Resolve \p candidate against \p package_root and verify it is a canonical
