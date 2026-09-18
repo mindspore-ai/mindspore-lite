@@ -856,7 +856,13 @@ int ConvertCNodeFp16ToFp32(const CNodePtr &cnode) {
 
 bool IsPerchannelWeight(const std::vector<schema::QuantParamT> &quant_params, const tensor::TensorPtr &weight,
                         int preferred_dim) {
+  if (weight == nullptr) {
+    return false;
+  }
   auto dims = weight->shape();
+  if (preferred_dim < 0 || static_cast<size_t>(preferred_dim) >= dims.size()) {
+    return false;
+  }
   return (static_cast<int>(quant_params.size()) == dims[preferred_dim]);
 }
 
