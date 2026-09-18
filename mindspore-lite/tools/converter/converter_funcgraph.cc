@@ -138,6 +138,9 @@ Status CvtFp64ModelToFp32(const FuncGraphPtr &func_graph) {
     }
     auto attrs = primitive->attrs();
     for (const auto &pair : attrs) {
+      if (pair.second == nullptr) {
+        continue;
+      }
       if (pair.second->type() != nullptr && pair.second->type()->type_id() == kNumberTypeFloat64) {
         float val = GetValue<double>(pair.second);
         primitive->AddAttr(pair.first, MakeValue<float>(static_cast<float>(val)));
