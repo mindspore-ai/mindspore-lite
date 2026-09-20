@@ -19,11 +19,11 @@ from __future__ import annotations
 import torch
 
 
-class MsScatterND(torch.autograd.Function):
+class MsScatterND(torch.autograd.Function):  # pylint: disable=abstract-method
     """Overwrite sequence slices and export a ``custom::MsScatterND`` node."""
 
     @staticmethod
-    def forward(
+    def forward(  # pylint: disable=arguments-differ
         ctx,
         data: torch.Tensor,
         indices: torch.Tensor,
@@ -33,11 +33,17 @@ class MsScatterND(torch.autograd.Function):
         """forward: helper."""
         del ctx
         if layout == "BNSD":
-            if (data.ndim != 4 or data.shape[0] != 1 or indices.ndim != 1
-                    or indices.shape[0] != 1 or updates.ndim != 4
-                    or updates.shape[0] != 1
-                    or updates.shape[1] != data.shape[1]
-                    or updates.shape[3] != data.shape[3]):
+            if data.ndim != 4 or updates.ndim != 4 or indices.ndim != 1:
+                raise ValueError(
+                    "BNSD expects data [1,N,S,H], indices [1], "
+                    "and updates [1,N,L,H]"
+                )
+            if data.shape[0] != 1 or indices.shape[0] != 1 or updates.shape[0] != 1:
+                raise ValueError(
+                    "BNSD expects data [1,N,S,H], indices [1], "
+                    "and updates [1,N,L,H]"
+                )
+            if updates.shape[1] != data.shape[1] or updates.shape[3] != data.shape[3]:
                 raise ValueError(
                     "BNSD expects data [1,N,S,H], indices [1], "
                     "and updates [1,N,L,H]"
@@ -72,6 +78,7 @@ class MsScatterND(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, data, indices, updates, layout: str = "SND"):
+        """Emit the custom::MsScatterND ONNX node with FP16 output type."""
         output = g.op(
             "custom::MsScatterND", data, indices, updates, layout_s=layout
         )

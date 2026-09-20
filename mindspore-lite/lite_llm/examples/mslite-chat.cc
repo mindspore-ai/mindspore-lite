@@ -132,14 +132,19 @@ const char *ReasonName(MSLLMFinishReason reason) {
   }
 }
 
+// IEC binary multiples for human-readable sizes (1024-based, not SI 1000).
+constexpr uint64_t kKiB = 1024ULL;
+constexpr uint64_t kMiB = kKiB * kKiB;
+constexpr uint64_t kGiB = kMiB * kKiB;
+
 std::string FormatSize(uint64_t bytes) {
   char buf[64];
-  if (bytes >= 1024ULL * 1024 * 1024) {
-    std::snprintf(buf, sizeof(buf), "%.1f GiB", static_cast<double>(bytes) / (1024.0 * 1024 * 1024));
-  } else if (bytes >= 1024ULL * 1024) {
-    std::snprintf(buf, sizeof(buf), "%.1f MiB", static_cast<double>(bytes) / (1024.0 * 1024));
-  } else if (bytes >= 1024ULL) {
-    std::snprintf(buf, sizeof(buf), "%.1f KiB", static_cast<double>(bytes) / 1024.0);
+  if (bytes >= kGiB) {
+    std::snprintf(buf, sizeof(buf), "%.1f GiB", static_cast<double>(bytes) / static_cast<double>(kGiB));
+  } else if (bytes >= kMiB) {
+    std::snprintf(buf, sizeof(buf), "%.1f MiB", static_cast<double>(bytes) / static_cast<double>(kMiB));
+  } else if (bytes >= kKiB) {
+    std::snprintf(buf, sizeof(buf), "%.1f KiB", static_cast<double>(bytes) / static_cast<double>(kKiB));
   } else {
     std::snprintf(buf, sizeof(buf), "%" PRIu64 " B", static_cast<uint64_t>(bytes));
   }
@@ -323,7 +328,7 @@ int main(int argc, char **argv) {
   // Worker thread runs the blocking stream generator; its callback queues
   // tokens and signals the condvar.  The main thread below prints tokens as
   // they arrive.
-  std::thread worker([&] {
+  std::thread worker([&sink, model, prompt] {
     sink.generate_status = MSLLMStreamGenerate(model, prompt, OnStreamToken, &sink);
     {  // generator returned: no more tokens will be queued
       std::lock_guard<std::mutex> lock(sink.mtx);
@@ -336,7 +341,7 @@ int main(int argc, char **argv) {
     std::string token;
     {
       std::unique_lock<std::mutex> lock(sink.mtx);
-      sink.cv.wait(lock, [&] { return !sink.tokens.empty() || sink.done; });
+      sink.cv.wait(lock, [&sink] { return !sink.tokens.empty() || sink.done; });
       if (!sink.tokens.empty()) {
         token = std::move(sink.tokens.front());
         sink.tokens.pop_front();

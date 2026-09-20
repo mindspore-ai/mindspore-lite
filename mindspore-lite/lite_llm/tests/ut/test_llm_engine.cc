@@ -152,12 +152,14 @@ TEST(LLMApi, DestroyDuringGeneratingReturnsBusy) {
   tm.backend->BlockExecute();
 
   std::atomic<bool> started{false};
-  std::thread t([&] {
+  std::thread t([&started, &tm] {
     started.store(true);
     MSLLMStreamGenerate(tm.handle, "a", [](const char *, MSLLMFinishReason, void *) {}, nullptr);
   });
 
-  while (!started.load()) std::this_thread::yield();
+  while (!started.load()) {
+    std::this_thread::yield();
+  }
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   // Generation is in-flight (blocked in Execute): Destroy must refuse.
@@ -238,8 +240,12 @@ struct StreamResult {
 void CollectTokens(const char *token, MSLLMFinishReason reason, void *data) {
   auto *r = static_cast<StreamResult *>(data);
   ++r->callback_calls;
-  if (token != nullptr) r->tokens.emplace_back(token);
-  if (reason != kMSLLM_RUNNING) r->reason = reason;
+  if (token != nullptr) {
+    r->tokens.emplace_back(token);
+  }
+  if (reason != kMSLLM_RUNNING) {
+    r->reason = reason;
+  }
 }
 
 // Scripted logits of vocab_size 8 with argmax at `token_id`.
@@ -291,7 +297,7 @@ TEST(Generate, PromptOverflowReturnsContextOverflow) {
   ASSERT_NE(tm.handle, nullptr);
   SetConfig(tm.handle, 0);
 
-  // Fixture max_position_embeddings = 64; 64 'a' tokens == the window.
+  // Fixture max_position_embeddings is 64, so 64 'a' tokens exactly fill the window.
   std::string prompt(64, 'a');
   char buf[256] = {};
   EXPECT_EQ(MSLLMGenerate(tm.handle, prompt.c_str(), buf, sizeof(buf)), kMSLLM_ERROR_CONTEXT_OVERFLOW);
@@ -462,7 +468,7 @@ TEST(StreamGenerate, AbortDuringGenerationYieldsStoppedByUser) {
   tm.backend->BlockExecute();
 
   StreamResult r;
-  std::thread aborter([&] {
+  std::thread aborter([&tm] {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     EXPECT_EQ(MSLLMAbort(tm.handle), kMSLLM_SUCCESS);  // external thread, allowed
     tm.backend->UnblockExecute();                      // let the loop observe the flag
@@ -491,7 +497,9 @@ struct ReentryCtx {
 
 void ReentrantCallback(const char *token, MSLLMFinishReason reason, void *data) {
   auto *ctx = static_cast<ReentryCtx *>(data);
-  if (token == nullptr || reason != kMSLLM_RUNNING) return;
+  if (token == nullptr || reason != kMSLLM_RUNNING) {
+    return;
+  }
 
   char buf[64];
   switch (ctx->op) {

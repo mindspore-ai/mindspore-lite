@@ -26,6 +26,7 @@ against the layout contract.
 """
 
 import json
+import logging
 import os
 import sys
 
@@ -33,12 +34,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "export")
 # pylint: disable=wrong-import-position  # export/ added to sys.path above
 from utils import msl_pack as mp
 
+logger = logging.getLogger(__name__)
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 MSL_PATH = os.path.join(HERE, "golden_v1.msl")
 EXPECTED_PATH = os.path.join(HERE, "golden_v1.expected.json")
 
+
 # Deterministic payload bytes so the golden file is reproducible.
 def payload(size: int) -> bytes:
+    """Return deterministic pseudo-random payload bytes of the given size."""
     return bytes((i * 7 + 3) % 256 for i in range(size))
 
 
@@ -95,12 +100,16 @@ def build_expected() -> dict:
 
 
 def struct_pack_u32(v: int) -> bytes:
+    """Pack an int as little-endian uint32 (mirrors the .msl writer)."""
     import struct
     return struct.pack("<I", v)
 
 
 def main() -> int:
+    """Regenerate golden_v1.msl and golden_v1.expected.json deterministically."""
     import tempfile
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     with tempfile.TemporaryDirectory(prefix="golden_gen_") as tmp:
         paths = []
@@ -115,7 +124,7 @@ def main() -> int:
     expected = build_expected()
     with open(EXPECTED_PATH, "w", encoding="utf-8") as f:
         json.dump(expected, f, indent=2)
-    print(f"wrote {MSL_PATH} ({os.path.getsize(MSL_PATH)} bytes) and {EXPECTED_PATH}")
+    logger.info("wrote %s (%d bytes) and %s", MSL_PATH, os.path.getsize(MSL_PATH), EXPECTED_PATH)
     return 0
 
 

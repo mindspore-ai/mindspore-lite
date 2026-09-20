@@ -96,6 +96,7 @@ def test_ir_renders_identically_to_jinja2(messages, add_generation_prompt):
 
 
 def test_ir_header():
+    """Test that the IR blob starts with the magic and version header."""
     ir = compile_chat_template_ir(QWEN_TEMPLATE)
     assert len(ir) >= 5
     magic, version = ir[0:4], ir[4]
@@ -104,6 +105,7 @@ def test_ir_header():
 
 
 def test_tools_branch_folded_false():
+    """Test that the {% if tools %} branch folds to false like Jinja2."""
     # {% if tools %} folds to false: a system message in the conversation still
     # renders (it goes through the loop), but no implicit system prefix is
     # injected — exactly what Jinja2 does with tools absent.
@@ -122,7 +124,8 @@ def test_tools_branch_folded_false():
         "{% if add_generation_prompt %}a{% else %}b{% endif %}",  # else on addgen
         "{% if chat %}a{% endif %}",                   # unknown condition
         "{% for item in other %}{{ item }}{% endfor %}",  # unknown iterable
-        "{% for message in messages %}{{ message['role'] }}{{ message['content'] }}{% endfor %}{% call x() %}y{% endcall %}",  # call
+        ("{% for message in messages %}{{ message['role'] }}{{ message['content'] }}{% endfor %}"
+         "{% call x() %}y{% endcall %}"),                          # call
         "{{ 1 + 2 }}",                                 # non-string const
     ],
 )
@@ -133,6 +136,7 @@ def test_unsupported_syntax_raises(template):
 
 
 def test_compiler_rejects_message_index_access():
+    """Test that positional message access (message[0]) is rejected."""
     # message[0] (positional access) is not in the v1 subset.
     with pytest.raises(UnsupportedTemplateError):
         compile_chat_template_ir(

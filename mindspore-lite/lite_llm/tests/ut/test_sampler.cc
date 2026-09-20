@@ -42,7 +42,7 @@ mslite_llm::Sampler MakeSampler(float temperature = 0.0f, int32_t top_k = 0, flo
 }
 
 TEST(Sampler, GreedyArgmax) {
-  auto sampler = MakeSampler(/*temperature=*/0.0f);
+  auto sampler = MakeSampler(0.0f /* temperature */);
   std::vector<float> logits = {0.1f, 0.9f, 0.2f, 0.3f, 0.05f};
   EXPECT_EQ(sampler.Sample(logits), 1) << "greedy picks the argmax token";
 }

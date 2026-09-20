@@ -78,27 +78,29 @@ bool NNRTWrapper::LoadLibraries() {
   return true;
 }
 
-// LOAD_SYM loads + verifies a required symbol from nncore_handle_, failing on missing.
-#define LOAD_SYM(field, name)                                                         \
-  do {                                                                                \
-    api_.field = reinterpret_cast<decltype(api_.field)>(dlsym(nncore_handle_, name)); \
-    if (api_.field == nullptr) {                                                      \
-      MS_LOG(ERROR) << "dlsym failed for " name ": " << dlerror();                    \
-      return false;                                                                   \
-    }                                                                                 \
-  } while (0)
+// Loads and verifies a required symbol from handle. Missing symbols are logged
+// and clear ok, but loading continues so every gap is reported at once.
+template <typename T>
+void LoadRequiredSymbol(void *handle, T &field, const char *name, bool &ok) {
+  field = reinterpret_cast<T>(dlsym(handle, name));
+  if (field == nullptr) {
+    MS_LOG(ERROR) << "dlsym failed for " << name << ": " << dlerror();
+    ok = false;
+  }
+}
 
-// LOAD_SYM_OPTIONAL loads an optional symbol; missing symbols are logged as a warning
-// but do not fail loading, so older NNRT versions remain compatible.
-#define LOAD_SYM_OPTIONAL(field, name)                                                \
-  do {                                                                                \
-    api_.field = reinterpret_cast<decltype(api_.field)>(dlsym(nncore_handle_, name)); \
-    if (api_.field == nullptr) {                                                      \
-      MS_LOG(WARNING) << "Optional NNRT symbol missing " name ": " << dlerror();      \
-    }                                                                                 \
-  } while (0)
+// Loads an optional symbol; missing symbols are logged as a warning but do not
+// fail loading, so older NNRT versions remain compatible.
+template <typename T>
+void LoadOptionalSymbol(void *handle, T &field, const char *name) {
+  field = reinterpret_cast<T>(dlsym(handle, name));
+  if (field == nullptr) {
+    MS_LOG(WARNING) << "Optional NNRT symbol missing " << name << ": " << dlerror();
+  }
+}
 
 bool NNRTWrapper::LoadNeuralNetworkCore() {
+  bool ok = true;
   dlerror();  // clear stale error
   nncore_handle_ = dlopen("libneural_network_core.so", RTLD_LAZY | RTLD_LOCAL);
   if (nncore_handle_ == nullptr) {
@@ -106,34 +108,34 @@ bool NNRTWrapper::LoadNeuralNetworkCore() {
     return false;
   }
 
-  LOAD_SYM(Compilation_ConstructWithOfflineModelFile, "OH_NNCompilation_ConstructWithOfflineModelFile");
-  LOAD_SYM(Compilation_Build, "OH_NNCompilation_Build");
-  LOAD_SYM(Compilation_Destroy, "OH_NNCompilation_Destroy");
-  LOAD_SYM(Compilation_SetDevice, "OH_NNCompilation_SetDevice");
-  LOAD_SYM(Compilation_SetPerformanceMode, "OH_NNCompilation_SetPerformanceMode");
-  LOAD_SYM(Executor_Construct, "OH_NNExecutor_Construct");
-  LOAD_SYM(Executor_Destroy, "OH_NNExecutor_Destroy");
-  LOAD_SYM(Executor_RunSync, "OH_NNExecutor_RunSync");
-  LOAD_SYM(Executor_CreateInputTensorDesc, "OH_NNExecutor_CreateInputTensorDesc");
-  LOAD_SYM(Executor_CreateOutputTensorDesc, "OH_NNExecutor_CreateOutputTensorDesc");
-  LOAD_SYM_OPTIONAL(Executor_GetInputCount, "OH_NNExecutor_GetInputCount");
-  LOAD_SYM_OPTIONAL(Executor_GetOutputCount, "OH_NNExecutor_GetOutputCount");
-  LOAD_SYM_OPTIONAL(Compilation_ConstructWithOfflineModelBuffer, "OH_NNCompilation_ConstructWithOfflineModelBuffer");
-  LOAD_SYM(TensorDesc_SetShape, "OH_NNTensorDesc_SetShape");
-  LOAD_SYM(TensorDesc_SetDataType, "OH_NNTensorDesc_SetDataType");
-  LOAD_SYM_OPTIONAL(TensorDesc_GetName, "OH_NNTensorDesc_GetName");
-  LOAD_SYM_OPTIONAL(TensorDesc_GetDataType, "OH_NNTensorDesc_GetDataType");
-  LOAD_SYM_OPTIONAL(TensorDesc_GetShape, "OH_NNTensorDesc_GetShape");
-  LOAD_SYM_OPTIONAL(TensorDesc_GetByteSize, "OH_NNTensorDesc_GetByteSize");
-  LOAD_SYM(TensorDesc_Destroy, "OH_NNTensorDesc_Destroy");
-  LOAD_SYM(Tensor_Create, "OH_NNTensor_Create");
-  LOAD_SYM(Tensor_Destroy, "OH_NNTensor_Destroy");
-  LOAD_SYM(Tensor_GetDataBuffer, "OH_NNTensor_GetDataBuffer");
+  LoadRequiredSymbol(nncore_handle_, api_.Compilation_ConstructWithOfflineModelFile,
+                     "OH_NNCompilation_ConstructWithOfflineModelFile", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.Compilation_Build, "OH_NNCompilation_Build", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.Compilation_Destroy, "OH_NNCompilation_Destroy", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.Compilation_SetDevice, "OH_NNCompilation_SetDevice", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.Compilation_SetPerformanceMode, "OH_NNCompilation_SetPerformanceMode", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.Executor_Construct, "OH_NNExecutor_Construct", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.Executor_Destroy, "OH_NNExecutor_Destroy", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.Executor_RunSync, "OH_NNExecutor_RunSync", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.Executor_CreateInputTensorDesc, "OH_NNExecutor_CreateInputTensorDesc", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.Executor_CreateOutputTensorDesc, "OH_NNExecutor_CreateOutputTensorDesc", ok);
+  LoadOptionalSymbol(nncore_handle_, api_.Executor_GetInputCount, "OH_NNExecutor_GetInputCount");
+  LoadOptionalSymbol(nncore_handle_, api_.Executor_GetOutputCount, "OH_NNExecutor_GetOutputCount");
+  LoadOptionalSymbol(nncore_handle_, api_.Compilation_ConstructWithOfflineModelBuffer,
+                     "OH_NNCompilation_ConstructWithOfflineModelBuffer");
+  LoadRequiredSymbol(nncore_handle_, api_.TensorDesc_SetShape, "OH_NNTensorDesc_SetShape", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.TensorDesc_SetDataType, "OH_NNTensorDesc_SetDataType", ok);
+  LoadOptionalSymbol(nncore_handle_, api_.TensorDesc_GetName, "OH_NNTensorDesc_GetName");
+  LoadOptionalSymbol(nncore_handle_, api_.TensorDesc_GetDataType, "OH_NNTensorDesc_GetDataType");
+  LoadOptionalSymbol(nncore_handle_, api_.TensorDesc_GetShape, "OH_NNTensorDesc_GetShape");
+  LoadOptionalSymbol(nncore_handle_, api_.TensorDesc_GetByteSize, "OH_NNTensorDesc_GetByteSize");
+  LoadRequiredSymbol(nncore_handle_, api_.TensorDesc_Destroy, "OH_NNTensorDesc_Destroy", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.Tensor_Create, "OH_NNTensor_Create", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.Tensor_Destroy, "OH_NNTensor_Destroy", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.Tensor_GetDataBuffer, "OH_NNTensor_GetDataBuffer", ok);
 
-  return true;
+  return ok;
 }
-#undef LOAD_SYM
-#undef LOAD_SYM_OPTIONAL
 
 bool NNRTWrapper::LoadHiAIFoundation() {
   dlerror();

@@ -24,6 +24,7 @@
 #include <gtest/gtest.h>
 #include "llm/llm.h"
 #include "llm/llm_types.h"
+namespace {
 
 // ─── Create ──────────────────────────────────────────────────────────────────
 
@@ -329,3 +330,5 @@ TEST(LLMApi, StreamGenerateRejectedBeforeBuild) {
 
   MSLLMDestroyModel(&h);
 }
+
+}  // namespace

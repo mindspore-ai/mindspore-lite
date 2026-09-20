@@ -21,9 +21,7 @@
 #include <memory>
 #include <string>
 
-namespace mslite_llm {
-class MslPackageReader;
-}  // namespace mslite_llm
+#include "manifest/msl_package_reader.h"
 
 namespace mslite {
 namespace backend {

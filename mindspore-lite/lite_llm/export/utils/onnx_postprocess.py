@@ -167,7 +167,7 @@ def validate_contract(model_path: str, num_layers: int, embedding_quant: bool = 
     """
     model = onnx.load(model_path)
     inputs = [vi.name for vi in model.graph.input]
-    outputs = [o.name for o in model.graph.output]
+    outputs = [out.name for out in model.graph.output]
 
     expected_inputs = NNRT_NON_KV_INPUTS[:]
     for i in range(num_layers):

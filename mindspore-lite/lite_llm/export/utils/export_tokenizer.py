@@ -412,7 +412,8 @@ def _export_sentencepiece(tokenizer, vocab_path):
     elif hasattr(tokenizer, "vocab_file") and tokenizer.vocab_file is not None:
         import sentencepiece as spm
 
-        sp_model = spm.SentencePieceProcessor(model_file=tokenizer.vocab_file)
+        # sentencepiece ships no type stubs, so pylint cannot resolve this documented keyword argument.
+        sp_model = spm.SentencePieceProcessor(model_file=tokenizer.vocab_file)  # pylint: disable=unexpected-keyword-arg
     else:
         raise ValueError("Tokenizer does not have a SentencePiece model")
 
@@ -491,6 +492,7 @@ class _GGUFTokenizerAdapter:
         self._vocab = {token: i for i, token in enumerate(self.tokens)}
 
     def get_vocab(self):
+        """Return a copy of the token -> token-id vocabulary mapping."""
         return dict(self._vocab)
 
 
@@ -544,5 +546,7 @@ def export_tokenizer(model_dir, output_dir, chat_template=None):
         else:
             raise ValueError("Tokenizer has no recognizable vocab format")
 
-    export_generation_policy(tokenizer, model_dir, str(output_dir / "generation_policy.json"))
+    # The returned policy path duplicates the path argument passed in, so it is
+    # intentionally discarded here (export_generation_policy already logs it).
+    _ = export_generation_policy(tokenizer, model_dir, str(output_dir / "generation_policy.json"))
     return str(vocab_path)

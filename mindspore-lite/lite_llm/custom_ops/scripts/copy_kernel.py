@@ -34,9 +34,9 @@ from __future__ import annotations
 import argparse
 import filecmp
 import json
+import logging
 import re
 import shutil
-import sys
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
@@ -44,6 +44,8 @@ from typing import Any, Iterable, Sequence
 SUPPORTED_PLATFORMS = {"kirin9020", "kirin9030", "kirinx90"}
 SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".o"}
 OP_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigError(ValueError):
@@ -207,6 +209,7 @@ def collect_configs(
 
 
 def write_merged_config(config: dict[str, Any], destination: Path) -> None:
+    """Atomically write the merged config JSON to ``destination``."""
     destination = destination.resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(f".{destination.name}.tmp")
@@ -252,6 +255,8 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Parse CLI arguments, merge kernel configs, and report the result."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = _parser().parse_args(argv)
     try:
         configs = (
@@ -264,11 +269,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         merged = collect_configs(configs, args.shell_dir, args.impl_dir)
         write_merged_config(merged, args.merge_json)
     except ConfigError as exc:
-        print(f"scripts/copy_kernel.py: error: {exc}", file=sys.stderr)
+        logger.info("scripts/copy_kernel.py: error: %s", exc)
         return 2
-    print(
-        f"Collected {len(merged['shell'])} shell source(s) and "
-        f"{len(merged['implement'])} implementation build(s) into {args.merge_json}"
+    logger.info(
+        "Collected %d shell source(s) and %d implementation build(s) into %s",
+        len(merged["shell"]),
+        len(merged["implement"]),
+        args.merge_json,
     )
     return 0
 

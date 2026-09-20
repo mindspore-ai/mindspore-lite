@@ -19,11 +19,12 @@ from __future__ import annotations
 import torch
 
 
-class MsFloatCastInt(torch.autograd.Function):
+class MsFloatCastInt(torch.autograd.Function):  # pylint: disable=abstract-method
     """Truncate FP16 values toward zero and saturate them to INT8."""
 
     @staticmethod
-    def forward(ctx, x):
+    def forward(ctx, x):  # pylint: disable=arguments-differ
+        """Truncate FP16 toward zero and saturate to INT8."""
         del ctx
         if x.dtype != torch.float16:
             raise TypeError("x must be FP16")
@@ -33,6 +34,7 @@ class MsFloatCastInt(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x):
+        """Emit the custom::MsFloatCastInt ONNX node with INT8 output type."""
         output = g.op("custom::MsFloatCastInt", x)
         output.setType(
             output.type().with_dtype(torch.int8).with_sizes(x.type().sizes())

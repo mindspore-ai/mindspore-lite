@@ -18,6 +18,7 @@
 #define MSLLM_NNRT_EXECUTOR_H
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -32,7 +33,6 @@ struct NN_TensorDesc;
 struct NN_Tensor;
 
 namespace mslite {
-class MslPackageReader;
 namespace backend {
 namespace nnrt {
 
@@ -68,6 +68,12 @@ class NnrtExecutor {
   // (fallback: config vocab_size_); sampling uses the smaller vocabulary.
   void ReadModelVocab();
   bool LoadCpuBuffers(const NnrtConfig &config);
+  // Load the external embedding weight: the W4A16 path keeps only a temporary
+  // upload source, the fp16 path mmaps the resident table. mark() emits the
+  // [perf] tags shared with LoadCpuBuffers.
+  bool LoadEmbeddingWeight(const NnrtConfig &config, size_t embed_size, const std::function<void(const char *)> &mark);
+  // Copy an fp16 bin of count elements into dst; a missing path is not an error.
+  bool LoadFp16Bin(const std::string &path, const char *what, std::vector<uint16_t> *dst, size_t count) const;
   // Validate the compact Q4_0 phase4 NZF blob size against vocab_size_ and
   // hidden_size_. No fp16 table is built; EmbeddingRow decodes directly from
   // the shared idx6 ION buffer.

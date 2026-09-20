@@ -172,7 +172,7 @@ bool NnrtExecutor::InitConfig(const NnrtConfig &config) {
   external_weight_entry_ = config.external_weight_entry.empty() ? "SubGraph_0.weight" : config.external_weight_entry;
   has_external_weights_ = config.has_external_weights;
   // device_id_ defaults to 0 (first NPU). Single-NPU Kirin is the current target;
-  // multi-device name->id resolution via OH_NNDevice_GetAllDevicesID is TODO.
+  // multi-device name to id resolution via OH_NNDevice_GetAllDevicesID is not yet supported.
 
   omc_path_ = config.prefill_path;
   if (omc_path_.empty()) {
@@ -560,95 +560,103 @@ bool NnrtExecutor::LoadCpuBuffers(const NnrtConfig &config) {
                  << std::chrono::duration<double, std::milli>(t1 - t0).count() << "ms";
     t0 = t1;
   };
-  size_t embed_size = static_cast<size_t>(vocab_size_) * hidden_size_;
+  const size_t embed_size = static_cast<size_t>(vocab_size_) * hidden_size_;
   if (!config.embedding_path.empty()) {
-    if (config.embedding_quant) {
-      // Keep only a temporary upload source until idx6 ION Tensor is initialized.
-      // After CreateTensors, EmbeddingRow reads the shared ION buffer directly.
-      if (single_file_) {
-        if (package_reader_ == nullptr ||
-            !package_reader_->Mmap(config.embedding_path, &embedding_weight_data_, &embedding_weight_size_)) {
-          MS_LOG(ERROR) << "Failed to mmap embedding weight entry";
-          return false;
-        }
-      } else {
-        if (!ReadAsset(config.embedding_path, &embedding_weight_buffer_)) {
-          MS_LOG(ERROR) << "Failed to read embedding weight bin";
-          return false;
-        }
-        embedding_weight_data_ = embedding_weight_buffer_.data();
-        embedding_weight_size_ = embedding_weight_buffer_.size();
-      }
-      if (embedding_weight_data_ == nullptr || embedding_weight_size_ == 0) {
-        MS_LOG(ERROR) << "Embedding weight bin is empty";
-        return false;
-      }
-      mark("LoadEmbeddingWeight");
-      if (!DequantizeEmbeddingTable(config.scale_gp_size)) {
-        return false;
-      }
-      mark("DequantizeEmbeddingTable");
-    } else {
-      // fp16: the bin IS the table. mmap (lazy pages) avoids the 272MB eager zero-fill.
-      embedding_table_elems_ = embed_size;
-      embedding_table_ = static_cast<uint16_t *>(
-        ::mmap(nullptr, embed_size * sizeof(uint16_t), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
-      if (embedding_table_ == MAP_FAILED) {
-        embedding_table_ = nullptr;
-        embedding_table_elems_ = 0;
-        MS_LOG(ERROR) << "mmap embedding_table failed";
-        return false;
-      }
-      std::vector<uint8_t> bytes;
-      if (!ReadAsset(config.embedding_path, &bytes)) {
-        MS_LOG(ERROR) << "Failed to read embedding weight bin";
-        return false;
-      }
-      mark("ReadAsset(embedding)");
-      if (bytes.size() != embed_size * sizeof(uint16_t)) {
-        MS_LOG(ERROR) << "Embedding bin size " << bytes.size() << " != expected " << embed_size * sizeof(uint16_t);
-        return false;
-      }
-      std::memcpy(embedding_table_, bytes.data(), bytes.size());
-      mark("memcpy(embedding_table)");
+    if (!LoadEmbeddingWeight(config, embed_size, mark)) {
+      return false;
     }
   }
-
-  auto load_fp16 = [&](const std::string &path, const char *what, std::vector<uint16_t> *dst, size_t count) {
-    if (path.empty()) {
-      return true;
-    }
-    std::vector<uint8_t> bytes;
-    if (!ReadAsset(path, &bytes)) {
-      MS_LOG(ERROR) << "Failed to read " << what;
-      return false;
-    }
-    if (bytes.size() != count * sizeof(uint16_t)) {
-      MS_LOG(ERROR) << "Unexpected " << what << " size " << bytes.size() << " (expected " << count * sizeof(uint16_t)
-                    << ")";
-      return false;
-    }
-    std::memcpy(dst->data(), bytes.data(), bytes.size());
-    return true;
-  };
-
   size_t rope_size = static_cast<size_t>(max_length_) * head_dim_;
   sin_buffer_.assign(rope_size, 0);
-  if (!load_fp16(config.rope_sin_path, "sin bin", &sin_buffer_, rope_size)) {
+  if (!LoadFp16Bin(config.rope_sin_path, "sin bin", &sin_buffer_, rope_size)) {
     return false;
   }
   mark("rope_sin");
   cos_buffer_.assign(rope_size, 0);
-  if (!load_fp16(config.rope_cos_path, "cos bin", &cos_buffer_, rope_size)) {
+  if (!LoadFp16Bin(config.rope_cos_path, "cos bin", &cos_buffer_, rope_size)) {
     return false;
   }
   mark("rope_cos");
   size_t mask_size = static_cast<size_t>(max_length_) * max_length_;
   attention_mask_buffer_.assign(mask_size, 0);
-  if (!load_fp16(config.attention_mask_path, "attn mask", &attention_mask_buffer_, mask_size)) {
+  if (!LoadFp16Bin(config.attention_mask_path, "attn mask", &attention_mask_buffer_, mask_size)) {
     return false;
   }
   mark("attention_mask");
+  return true;
+}
+
+bool NnrtExecutor::LoadEmbeddingWeight(const NnrtConfig &config, size_t embed_size,
+                                       const std::function<void(const char *)> &mark) {
+  if (config.embedding_quant) {
+    // Keep only a temporary upload source until idx6 ION Tensor is initialized.
+    // After CreateTensors, EmbeddingRow reads the shared ION buffer directly.
+    if (single_file_) {
+      if (package_reader_ == nullptr ||
+          !package_reader_->Mmap(config.embedding_path, &embedding_weight_data_, &embedding_weight_size_)) {
+        MS_LOG(ERROR) << "Failed to mmap embedding weight entry";
+        return false;
+      }
+    } else {
+      if (!ReadAsset(config.embedding_path, &embedding_weight_buffer_)) {
+        MS_LOG(ERROR) << "Failed to read embedding weight bin";
+        return false;
+      }
+      embedding_weight_data_ = embedding_weight_buffer_.data();
+      embedding_weight_size_ = embedding_weight_buffer_.size();
+    }
+    if (embedding_weight_data_ == nullptr || embedding_weight_size_ == 0) {
+      MS_LOG(ERROR) << "Embedding weight bin is empty";
+      return false;
+    }
+    mark("LoadEmbeddingWeight");
+    if (!DequantizeEmbeddingTable(config.scale_gp_size)) {
+      return false;
+    }
+    mark("DequantizeEmbeddingTable");
+    return true;
+  }
+  // fp16: the bin IS the table. mmap (lazy pages) avoids the 272MB eager zero-fill.
+  embedding_table_elems_ = embed_size;
+  embedding_table_ = static_cast<uint16_t *>(
+    ::mmap(nullptr, embed_size * sizeof(uint16_t), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+  if (embedding_table_ == MAP_FAILED) {
+    embedding_table_ = nullptr;
+    embedding_table_elems_ = 0;
+    MS_LOG(ERROR) << "mmap embedding_table failed";
+    return false;
+  }
+  std::vector<uint8_t> bytes;
+  if (!ReadAsset(config.embedding_path, &bytes)) {
+    MS_LOG(ERROR) << "Failed to read embedding weight bin";
+    return false;
+  }
+  mark("ReadAsset(embedding)");
+  if (bytes.size() != embed_size * sizeof(uint16_t)) {
+    MS_LOG(ERROR) << "Embedding bin size " << bytes.size() << " != expected " << embed_size * sizeof(uint16_t);
+    return false;
+  }
+  std::memcpy(embedding_table_, bytes.data(), bytes.size());
+  mark("memcpy(embedding_table)");
+  return true;
+}
+
+bool NnrtExecutor::LoadFp16Bin(const std::string &path, const char *what, std::vector<uint16_t> *dst,
+                               size_t count) const {
+  if (path.empty()) {
+    return true;
+  }
+  std::vector<uint8_t> bytes;
+  if (!ReadAsset(path, &bytes)) {
+    MS_LOG(ERROR) << "Failed to read " << what;
+    return false;
+  }
+  if (bytes.size() != count * sizeof(uint16_t)) {
+    MS_LOG(ERROR) << "Unexpected " << what << " size " << bytes.size() << " (expected " << count * sizeof(uint16_t)
+                  << ")";
+    return false;
+  }
+  std::memcpy(dst->data(), bytes.data(), bytes.size());
   return true;
 }
 
