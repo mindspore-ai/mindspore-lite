@@ -50,6 +50,28 @@ constexpr int kNumCoreNumTimes = 5;
 constexpr int kDefaultThreadNumTimes = 2;
 }  // namespace
 
+std::shared_ptr<Allocator> ModelPool::GetNumaAllocator(int numa_id) {
+  // Keep the map and mutex as function-local statics instead of class statics.
+  // model_pool.cc is compiled into both libmindspore-lite.so and _c_lite_wrapper.so
+  // through mindspore_infer_shared_lib_obj; class-level statics would be duplicated
+  // across the two shared objects and destroyed twice at process exit.
+  static std::mutex numa_allocator_mutex;
+  static std::unordered_map<int, std::shared_ptr<Allocator>> numa_allocator;
+  std::lock_guard<std::mutex> lock(numa_allocator_mutex);
+  auto iter = numa_allocator.find(numa_id);
+  if (iter != numa_allocator.end()) {
+    return iter->second;
+  }
+  auto allocator = std::make_shared<DynamicMemAllocator>(numa_id);
+  if (allocator == nullptr) {
+    MS_LOG(ERROR) << "new DynamicMemAllocator for numa node " << numa_id << "failed.";
+    return nullptr;
+  }
+  numa_allocator[numa_id] = allocator;
+  MS_LOG(INFO) << "create process-level DynamicMemAllocator for numa node " << numa_id;
+  return allocator;
+}
+
 int ModelPool::GetDefaultThreadNum(int worker_num) {
   int default_thread_num = -1;
   if (can_use_core_num_ <= kNumPhysicalCoreThreshold) {
@@ -521,7 +543,7 @@ Status ModelPool::SetupCpuAllocator(int numa_id, const std::shared_ptr<Context> 
     return kLiteError;
   }
   if (context->MutableDeviceInfo().front()->GetAllocator() == nullptr) {
-    allocator = std::make_shared<DynamicMemAllocator>(numa_id);
+    allocator = GetNumaAllocator(numa_id);
   } else {
     allocator = context->MutableDeviceInfo().front()->GetAllocator();
   }
@@ -938,7 +960,7 @@ Status ModelPool::InitByPath(const std::string &model_path, const std::shared_pt
   size_t size = 0;
   bool numa_copy_buf = numa_available_ && (used_numa_node_num_ > 1);
   if (numa_copy_buf) {
-    allocator_ = std::make_shared<DynamicMemAllocator>(0);
+    allocator_ = GetNumaAllocator(0);
     if (allocator_ == nullptr) {
       MS_LOG(ERROR) << "new dynamic allocator failed.";
       return Status(kLiteNullptr, "allocator_ is nullptr, new dynamic allocator failed.");

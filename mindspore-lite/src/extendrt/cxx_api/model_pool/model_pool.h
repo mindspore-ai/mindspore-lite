@@ -137,6 +137,7 @@ class ModelPool {
   Status AssignNumaCoresForWorker(size_t bind_numa_id, int thread_num, std::vector<int> *physical_index,
                                   std::vector<int> *logical_index, std::vector<int> *worker_bind_list);
   Status SetupCpuAllocator(int numa_id, const std::shared_ptr<Context> &context);
+  static std::shared_ptr<Allocator> GetNumaAllocator(int numa_id);
   Status SetWorkerModelConfig(std::shared_ptr<WorkerConfig> *worker_config);
   Status InitNumaAndResources(const std::shared_ptr<RunnerConfig> &runner_config);
   Status InitTaskQueue();
@@ -173,7 +174,6 @@ class ModelPool {
   std::vector<std::vector<int>> numa_logical_cores_;
   bool use_numa_bind_mode_ = false;
   size_t used_numa_node_num_ = 0;  // Initialize in SetNumaBindStrategy
-  std::unordered_map<int, std::shared_ptr<Allocator>> numa_allocator_;
 
   // split batch
   bool is_user_data_ = false;
