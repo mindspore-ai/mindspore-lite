@@ -76,6 +76,7 @@ class NNRTBackend : public Backend {
   static bool BuildNnrtConfig(const BackendConfig &config, backend::nnrt::NnrtConfig *nnrt);
 
   std::unique_ptr<backend::nnrt::NnrtExecutor> executor_;
+  std::unique_ptr<Backend> paged_backend_;
   bool built_ = false;
 };
 

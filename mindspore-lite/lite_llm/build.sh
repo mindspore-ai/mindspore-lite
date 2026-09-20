@@ -229,6 +229,16 @@ assemble_archive()
     cp -f "${op_pkgs[@]}" "${staging}/tool/ascendc_ops/"
   fi
 
+  # Custom operators are released by the separate mslite_internal repository.
+  if [[ -n "${MSLITE_LLM_OPS_PACKAGE:-}" ]]; then
+    if [[ ! -f "${MSLITE_LLM_OPS_PACKAGE}" ]]; then
+      echo "Operator package not found: ${MSLITE_LLM_OPS_PACKAGE}" >&2
+      exit 1
+    fi
+    mkdir -p "${staging}/tool/ascendc_ops"
+    cp -f "${MSLITE_LLM_OPS_PACKAGE}" "${staging}/tool/ascendc_ops/"
+  fi
+
   tar -C "${BUILD_DIR}/staging" -czf "${OUTPUT_DIR}/${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}"
 }
 

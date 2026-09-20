@@ -21,6 +21,7 @@ bytes embedded in a fixed program.
 """
 
 import json
+import struct
 from types import SimpleNamespace
 
 import pytest
@@ -38,6 +39,29 @@ from utils.export_tokenizer import (  # pylint: disable=wrong-import-position
     compile_chat_template_ir,
     render_ir,
 )
+
+
+@pytest.mark.parametrize("merges", [[["a", "b"], ["ab", "c"]], ["a b", "ab c"]])
+def test_fast_tokenizer_backend_merges_are_exported(tmp_path, merges):
+    """tokenizer.json-only checkpoints must retain their ranked merge table."""
+    from utils.export_tokenizer import _export_bpe
+
+    tokenizer = SimpleNamespace(
+        get_vocab=lambda: {"a": 0, "b": 1, "ab": 2, "c": 3, "abc": 4},
+        backend_tokenizer=SimpleNamespace(to_str=lambda: json.dumps({"model": {"merges": merges}})),
+        bos_token_id=None, eos_token_id=None, pad_token_id=None, unk_token_id=None,
+    )
+    path = tmp_path / "vocab.bin"
+    _export_bpe(tokenizer, path)
+    with path.open("rb") as stream:
+        stream.seek(36)  # Nine 32-bit header fields.
+        for _ in range(5):
+            length = struct.unpack("<I", stream.read(4))[0]
+            stream.seek(length + 4, 1)  # Token UTF-8 bytes and token ID.
+        assert struct.unpack("<I", stream.read(4))[0] == 2
+        for expected in (b"a b", b"ab c"):
+            length = struct.unpack("<I", stream.read(4))[0]
+            assert stream.read(length) == expected
 
 QWEN_TEMPLATE = (
     "{%- if tools %}\n"

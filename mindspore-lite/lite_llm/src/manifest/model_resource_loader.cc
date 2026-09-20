@@ -15,10 +15,13 @@
  */
 #include <sys/stat.h>
 
+#include <algorithm>
+#include <array>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "manifest/artifact_file.h"
 #include "manifest/model_manifest.h"
 #include "manifest/msl_package_reader.h"
 namespace mslite_llm {
@@ -91,6 +94,15 @@ namespace {
 
 /// Validate the NPU-specific manifest contract shared by directory and single-file modes.
 MSLlmStatus ValidateNpuManifest(const ModelManifest &manifest, std::string *error_message) {
+  if (manifest.architecture.name == "qwen3.5") {
+    if (manifest.architecture.num_layers != 40 || manifest.architecture.hidden_size != 2048 ||
+        manifest.architecture.vocab_size != 248320 || manifest.npu.chunk_size != 64 ||
+        manifest.npu.max_length != 8192) {
+      if (error_message) *error_message = "invalid Qwen3.5-35B paged model contract";
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    return MSLLM_SUCCESS;
+  }
   if (!manifest.litert.has_prefill || manifest.litert.prefill_path.empty()) {
     if (error_message != nullptr) {
       *error_message = "NPU backend requires litert.prefill graph (.omc)";
@@ -323,6 +335,25 @@ MSLlmStatus LoadModelResourcesFromSingleFile(const std::string &msl_path, ModelR
     }
   }
 
+  if (manifest.architecture.name == "qwen3.5") {
+    if (!is_nnrt) return MSLLM_ERROR_MODEL_LOAD;
+    RegisterArtifactPackage(msl_path, resources->package_reader);
+    if (!ResolveEntry(*resources->package_reader, "tokenizer", manifest.assets.tokenizer, true,
+                      &resources->tokenizer_path, error_message))
+      return MSLLM_ERROR_MODEL_LOAD;
+    const std::array<const char *, 6> required = {
+      "model.json",          "global/embedding_fp16.bin", "experts/manifest.json", "experts_s16s4/manifest.json",
+      "experts_s16s4/READY", "tokenizer/qwen35.bin"};
+    const auto missing = std::find_if(required.begin(), required.end(), [&msl_path](const char *name) {
+      return !ArtifactExists(std::filesystem::path(msl_path) / name);
+    });
+    if (missing != required.end()) {
+      if (error_message) *error_message = std::string("missing paged model resource: ") + *missing;
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    return MSLLM_SUCCESS;
+  }
+
   // ── LiteRT graphs ────────────────────────────────────────────────────
   if (auto status = ResolveSingleFileGraphs(manifest, resources, error_message); status != MSLLM_SUCCESS) {
     return status;
@@ -366,6 +397,11 @@ MSLlmStatus LoadModelResources(const std::string &package_root, ModelResources *
   }
 
   resources->package_root = canonical_root;
+
+  if (manifest.architecture.name == "qwen3.5") {
+    if (error_message) *error_message = "Qwen3.5 requires a single .msl file; directory packages are unsupported";
+    return MSLLM_ERROR_MODEL_LOAD;
+  }
 
   // ── LiteRT graphs ────────────────────────────────────────────────────
   const bool is_nnrt = (backend == MSLLM_BACKEND_NNRT);

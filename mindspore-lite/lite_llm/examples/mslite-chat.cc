@@ -31,10 +31,10 @@
 #include <thread>
 #include <vector>
 
+#include "include/securec.h"
 #include "llm/llm.h"
 #include "manifest/model_manifest.h"
 #include "manifest/msl_package_reader.h"
-#include "include/securec.h"
 namespace {
 
 void DebugLog(const char *tag) { std::cout << "[m] " << tag << '\n' << std::flush; }
@@ -172,24 +172,28 @@ bool PrintModelInfo(const char *path) {
     std::cerr << "[info] stat failed: " << path << '\n';
     return false;
   }
-  std::cout << "[info] model file: " << path << " (" << FormatSize(static_cast<uint64_t>(st.st_size)) << ")\n"
-            << std::flush;
-
-  mslite_llm::MslPackageReader reader;
-  std::string err;
-  if (!reader.Open(path, &err)) {
-    std::cerr << "[info] open .msl failed: " << err << '\n';
-    return false;
-  }
-  std::cout << "[info] msl entries (" << reader.entry_count() << "):\n";
-  for (const auto &e : reader.entries()) {
-    std::cout << "[info]   " << e.name << "  " << FormatSize(e.size) << (e.access == 0 ? "  mmap" : "  read") << '\n';
-  }
-
+  std::cout << "[info] model package: " << path << '\n' << std::flush;
   mslite_llm::ModelManifest m;
-  if (mslite_llm::BuildModelManifestFromKv(reader, &m, &err) != MSLLM_SUCCESS) {
-    std::cerr << "[info] parse manifest failed: " << err << '\n';
-    return false;
+  std::string err;
+  if (S_ISDIR(st.st_mode)) {
+    if (mslite_llm::LoadModelManifest(std::string(path) + "/manifest.json", &m, &err) != MSLLM_SUCCESS) {
+      std::cerr << "[info] parse directory manifest failed: " << err << '\n';
+      return false;
+    }
+  } else {
+    mslite_llm::MslPackageReader reader;
+    if (!reader.Open(path, &err)) {
+      std::cerr << "[info] open .msl failed: " << err << '\n';
+      return false;
+    }
+    std::cout << "[info] msl entries (" << reader.entry_count() << "):\n";
+    for (const auto &e : reader.entries()) {
+      std::cout << "[info]   " << e.name << "  " << FormatSize(e.size) << (e.access == 0 ? "  mmap" : "  read") << '\n';
+    }
+    if (mslite_llm::BuildModelManifestFromKv(reader, &m, &err) != MSLLM_SUCCESS) {
+      std::cerr << "[info] parse manifest failed: " << err << '\n';
+      return false;
+    }
   }
   const auto &a = m.architecture;
   std::cout << "[info] manifest: model=" << m.model_name << " layers=" << a.num_layers << " hidden=" << a.hidden_size

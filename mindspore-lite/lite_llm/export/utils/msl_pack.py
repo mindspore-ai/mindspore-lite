@@ -64,6 +64,7 @@ import json
 import logging
 import os
 import struct
+import shutil
 import sys
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -247,21 +248,22 @@ def _encode_kv_region(kv: Dict[str, Any]) -> Tuple[int, bytearray]:
 
 
 def _layout_resources(entries: List[Tuple[str, str, int]], data_offset: int,
-                      alignment: int) -> Tuple[bytearray, bytearray]:
-    """Serialize the resource table and the aligned data-region payloads."""
+                      alignment: int) -> Tuple[bytearray, List[Tuple[str, int, int]]]:
+    """Serialize the resource table and describe payloads for streaming."""
     table = bytearray()
-    payloads = bytearray()
+    payloads = []
     file_pos = data_offset
+    names = set()
     for name, path, access in entries:
-        with open(path, "rb") as f:
-            data = f.read()
+        if name in names:
+            raise MslPackError(f"duplicate resource name: {name}")
+        names.add(name)
+        size = os.path.getsize(path)
         aligned = ((file_pos + alignment - 1) // alignment) * alignment
-        payloads += b"\x00" * (aligned - file_pos)
-        table += _encode_entry(name, aligned, len(data), access)
-        payloads += data
-        file_pos = aligned + len(data)
+        table += _encode_entry(name, aligned, size, access)
+        payloads.append((path, aligned, size))
+        file_pos = aligned + size
     return table, payloads
-
 
 def pack(output_path: str, kv: Dict[str, Any], resources: Iterable[Tuple[str, str, int]],
          alignment: int = DEFAULT_ALIGNMENT) -> str:
@@ -292,7 +294,13 @@ def pack(output_path: str, kv: Dict[str, Any], resources: Iterable[Tuple[str, st
         f.write(header)
         f.write(kv_region)
         f.write(table)
-        f.write(payloads)
+        for path, offset, size in payloads:
+            f.seek(offset)
+            with open(path, "rb") as source:
+                shutil.copyfileobj(source, f, length=1024 * 1024)
+            if f.tell() != offset + size:
+                raise MslPackError(f"resource changed while packing: {path}")
+        f.truncate()
     return output_path
 
 
@@ -488,8 +496,12 @@ def manifest_to_kv(manifest: Dict[str, Any]) -> Dict[str, Any]:
     pipeline = manifest.get("pipeline_config") or {}
     if "precision" in pipeline:
         kv["model.dtype"] = pipeline["precision"]
+    elif "dtype" in manifest:
+        kv["model.dtype"] = manifest["dtype"]
 
     arch = manifest.get("architecture") or {}
+    if "name" in arch:
+        kv["arch.name"] = str(arch["name"])
     for src, dst in ARCH_U32_KEYS.items():
         if src in arch:
             kv[dst] = int(arch[src])

@@ -115,6 +115,7 @@ inline constexpr const char kModelVersion[] = "model.version";
 inline constexpr const char kModelFormatVersion[] = "model.format_version";
 inline constexpr const char kModelDtype[] = "model.dtype";
 
+inline constexpr const char kArchName[] = "arch.name";
 inline constexpr const char kArchNumLayers[] = "arch.num_layers";
 inline constexpr const char kArchHiddenSize[] = "arch.hidden_size";
 inline constexpr const char kArchIntermediateSize[] = "arch.intermediate_size";

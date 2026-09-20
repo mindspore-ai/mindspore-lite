@@ -1,0 +1,21 @@
+{
+  "repository": "HMOS-Device-AI",
+  "base_commit": "0124c31a98175f60d8d5c8c4bec8854df59ec0e2",
+  "source_sha256": {
+    "build_model_manifest.py": "11fd5e5dffd338bf94cc1321e784b49a50193c830354fd6d3aa5dac574b16f75",
+    "export_expert_onnx.py": "4a8e7c16b96abc8ae63abdb2ed876b141be2ccd593542627979cef9fcd87da8a",
+    "export_expert_stage_onnx.py": "0a37f7fd707b365e81e18adf7c3dc3a13cfb369b0b03b9b4f3b9ae179ad2990e",
+    "export_global_weights.py": "64c9ef5d2538f5f6d569a522f2b506762ed8805544d359e4b177d66bcddc6339",
+    "export_lm_head_onnx.py": "7d29ac5c057fff1879051fc050d3c76135de45e6c0aabe9e24574245134f3f48",
+    "export_packed_indexed_grouped_top8_onnx.py": "3a7f53312a3ad46d4f487c18ead16a4aa426f25d94c3bfe830a90131a1495d74",
+    "export_paged_weights.py": "6e68ba1fa1c6f6ae61b71c608d987963cda899d093054295c9b69f7142b581cb",
+    "export_resident_layer.py": "0ed368c9f41c17afe6c8619a1cf8003e7a7577249e4eb3a0212e12964661d375",
+    "export_s16s4_expert_stage_onnx.py": "1d91f0c397b5fdebf99fdd8110fcea892052a145938321addbfebf692e1e953b",
+    "export_s16s4_paged_weights.py": "0ca35c0f359a9f4ff00a9372a7e3ec5745d23d168f500686215d83f8766f0035",
+    "gptq.py": "a822b3867c15bcd3f477c2cde9eef39f3a914adfcc3a1b45dafeddf56325a7e4",
+    "s16s4.py": "ea23bdc751b4492b83323372c9657a16f8142175c187279afabda9a4d9f0d215",
+    "operator/Qwen35CombinedOps/tests/fix_multishape_omc_gears.py": "88e61d95bf843b4cd02dd872d84be5227aef1d8f0c9053473c2277dec17b6123",
+    "operator/Qwen35CombinedOps/tests/inspect_omc_abi.py": "e15c4d8a9d130af6a9f52234e7b639b83f2642071c1b3f32f217c86a88e69992",
+    "llm/engine/tokenizer/tools/export_qwen_tokenizer.py": "c053628ccb4a0ce2c803bf981d8255a4b731573821ed4f5f18a6d1c6da80273c"
+  }
+}

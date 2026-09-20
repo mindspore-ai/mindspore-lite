@@ -33,19 +33,19 @@
 #include <cerrno>
 #include <cstring>
 #include <fstream>
-#include <mutex>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
 #include "../llm_types_internal.h"
+#include "backend/common/backend.h"
+#include "include/securec.h"
 #include "manifest/model_manifest.h"
 #include "manifest/msl_package_reader.h"
 #include "pipeline/model_instance.h"
-#include "tokenizer/tokenizer.h"
 #include "sampler/sampler.h"
-#include "backend/common/backend.h"
-#include "include/securec.h"
+#include "tokenizer/tokenizer.h"
 // Internal Engine
 
 namespace {
@@ -124,9 +124,15 @@ bool PathDoesNotExist(const std::string &path) {
   return errno == ENOENT || errno == ENOTDIR;
 }
 
-int32_t GetMaxSeqLen(const InternalEngine *e) {
+int32_t GetMaxSeqLen(const InternalEngine *e, size_t prompt_length) {
   if (e->model && e->model->IsLoaded()) {
-    return e->model->GetContextLimit();
+    int32_t capacity = e->model->GetContextLimit();
+    // Masked prefill padding still occupies physical cache slots.
+    if (e->manifest.architecture.name == "qwen3.5" && e->manifest.npu.chunk_size > 0) {
+      const size_t chunk = static_cast<size_t>(e->manifest.npu.chunk_size);
+      capacity -= static_cast<int32_t>((chunk - prompt_length % chunk) % chunk);
+    }
+    return capacity;
   }
   return 0;
 }
@@ -222,6 +228,7 @@ MSLLMStatus LoadEngineModel(InternalEngine *e, const std::string &path) {
 }
 
 MSLLMStatus LoadEngineTokenizer(InternalEngine *e, const std::string &path) {
+  const bool is_qwen35 = e->manifest.architecture.name == "qwen3.5";
   if (e->resources.single_file) {
     std::vector<uint8_t> vocab;
     if (!e->resources.package_reader || !e->resources.package_reader->Read(e->resources.tokenizer_path, &vocab)) {
@@ -230,6 +237,10 @@ MSLLMStatus LoadEngineTokenizer(InternalEngine *e, const std::string &path) {
       return kMSLLM_ERROR_MODEL_LOAD;
     }
     e->tokenizer = mslite_llm::CreateTokenizerFromBuffer(vocab.data(), vocab.size());
+    if (is_qwen35) {
+      e->tokenizer =
+        mslite_llm::CreateQwen35Tokenizer(std::move(e->tokenizer), e->resources.package_root + "/tokenizer/qwen35.bin");
+    }
   } else {
     std::string vocab_path = e->resources.tokenizer_path;
     if (vocab_path.empty()) {
@@ -242,7 +253,11 @@ MSLLMStatus LoadEngineTokenizer(InternalEngine *e, const std::string &path) {
         vocab_path = path + "/tokenizer.model";
       }
     }
-    e->tokenizer = mslite_llm::CreateTokenizer(vocab_path);
+    if (!is_qwen35) {
+      e->tokenizer = mslite_llm::CreateTokenizer(vocab_path);
+    } else {
+      e->tokenizer = mslite_llm::CreateQwen35Tokenizer(vocab_path, e->resources.package_root + "/tokenizer/qwen35.bin");
+    }
   }
   if (!e->tokenizer) {
     SetError(e, "tokenizer creation failed");
@@ -281,7 +296,7 @@ MSLLMStatus PrepareGeneration(InternalEngine *e, const char *prompt, std::vector
     FinishGeneration(e);
     return kMSLLM_ERROR_INVALID_ARGS;
   }
-  const int32_t max_seq_len = GetMaxSeqLen(e);
+  const int32_t max_seq_len = GetMaxSeqLen(e, input_ids->size());
   if (max_seq_len > 0 && static_cast<int32_t>(input_ids->size()) >= max_seq_len) {
     FinishGeneration(e);
     return kMSLLM_ERROR_CONTEXT_OVERFLOW;
@@ -305,7 +320,7 @@ MSLLMStatus GenerateText(InternalEngine *e, std::vector<int32_t> &token_ids, int
   int32_t token_id = SampleStepLogits(e->sampler.get(), backend_output);
   int32_t position = static_cast<int32_t>(token_ids.size());
   int32_t generated_count = 1;
-  const int32_t max_seq_len = GetMaxSeqLen(e);
+  const int32_t max_seq_len = GetMaxSeqLen(e, token_ids.size());
   std::vector<int32_t> generated_ids;
   // Non-streaming generation is not abortable (D8).
   while (!IsEosToken(token_id, e)) {
@@ -334,7 +349,7 @@ MSLLMStatus GenerateStream(InternalEngine *e, std::vector<int32_t> &token_ids, i
   int32_t token_id = SampleStepLogits(e->sampler.get(), backend_output);
   int32_t position = static_cast<int32_t>(token_ids.size());
   int32_t generated_count = 1;
-  const int32_t max_seq_len = GetMaxSeqLen(e);
+  const int32_t max_seq_len = GetMaxSeqLen(e, token_ids.size());
   MSLLMFinishReason finish_reason = kMSLLM_FINISHED_BY_EOS;
   while (!IsEosToken(token_id, e)) {
     std::string delta = e->tokenizer->DecodeIncremental(token_id);

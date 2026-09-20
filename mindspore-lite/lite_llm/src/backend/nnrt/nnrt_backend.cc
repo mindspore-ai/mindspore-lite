@@ -18,6 +18,7 @@
 #include "backend/common/backend_factory.h"
 #include "backend/nnrt/nnrt_config.h"
 #include "backend/nnrt/nnrt_executor.h"
+#include "backend/nnrt/qwen35/paged_backend.h"
 #include "manifest/model_manifest.h"
 
 namespace mslite {
@@ -94,6 +95,13 @@ MSLlmStatus NNRTBackend::Init(const BackendConfig &config) {
     return MSLLM_SUCCESS;
   }
 
+  if (config.manifest != nullptr && config.manifest->architecture.name == "qwen3.5") {
+    paged_backend_ = std::make_unique<mslite_llm::qwen35::PagedBackend>();
+    const auto status = paged_backend_->Init(config);
+    built_ = status == MSLLM_SUCCESS;
+    if (!built_) paged_backend_.reset();
+    return status;
+  }
   executor_ = std::make_unique<backend::nnrt::NnrtExecutor>();
 
   backend::nnrt::NnrtConfig nnrt;
@@ -112,6 +120,7 @@ MSLlmStatus NNRTBackend::Init(const BackendConfig &config) {
 }
 
 MSLlmStatus NNRTBackend::Prefill(const BackendInput &input, BackendOutput *output) {
+  if (paged_backend_) return paged_backend_->Prefill(input, output);
   if (!built_ || !executor_) {
     return MSLLM_ERROR_INVALID_ARGS;
   }
@@ -133,6 +142,7 @@ MSLlmStatus NNRTBackend::Prefill(const BackendInput &input, BackendOutput *outpu
 }
 
 MSLlmStatus NNRTBackend::Decode(const BackendInput &input, BackendOutput *output) {
+  if (paged_backend_) return paged_backend_->Decode(input, output);
   if (!built_ || !executor_) {
     return MSLLM_ERROR_INVALID_ARGS;
   }
@@ -155,6 +165,7 @@ MSLlmStatus NNRTBackend::Decode(const BackendInput &input, BackendOutput *output
 }
 
 MSLlmStatus NNRTBackend::Reset() {
+  if (paged_backend_) return paged_backend_->Reset();
   if (!executor_) {
     return MSLLM_ERROR_INVALID_ARGS;
   }

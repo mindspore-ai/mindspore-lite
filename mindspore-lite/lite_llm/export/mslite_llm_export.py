@@ -81,7 +81,8 @@ logger = logging.getLogger(__name__)
 SUPPORTED_TARGETS = ("kirin9020", "kirin9030")
 
 # Model metadata architecture -> MODEL_TYPES key.
-MODEL_TYPE_BY_ARCH = {"qwen2": "qwen2_5", "qwen3": "qwen3", "minicpm": "minicpm"}
+MODEL_TYPE_BY_ARCH = {"qwen2": "qwen2_5", "qwen3": "qwen3", "minicpm": "minicpm",
+                      "qwen3_5_moe": "qwen3_5"}
 
 # Pinned ChatML template for the Qwen2.5 / Qwen3 template family.
 # Real HF/GGUF tokenizer metadata carries the full tool-call Jinja template,
@@ -110,6 +111,7 @@ EXTERNAL_WEIGHT_FILE = "SubGraph_0.weight"
 
 # Per-model-type pipeline knobs.
 MODEL_TYPES = {
+    "qwen3_5": {"layers": 40, "model_name": "Qwen3.5-35B-A3B"},
     "qwen2_5": {
         "exporter": export_qwen2_5,
         "gguf_loader": qwen2_5_gguf_loader,
@@ -193,7 +195,7 @@ def detect_model_type(model):
         with open(os.path.join(model, "config.json"), encoding="utf-8") as f:
             config = json.load(f)
         arch = config.get("model_type")
-        layers = config.get("num_hidden_layers")
+        layers = config.get("text_config", config).get("num_hidden_layers")
         if arch is None or layers is None:
             raise ValueError("HF config.json missing model_type or num_hidden_layers")
 
@@ -250,6 +252,9 @@ def run_pipeline(args, work_dir):
     model_type, model_layers = detect_model_type(args.model)
     logger.info("model kind: %s (%s), type: %s layers: %d", model_kind, args.model, model_type, model_layers)
     mt = MODEL_TYPES[model_type]
+    if model_type == "qwen3_5":
+        from models.qwen3_5.pipeline import export_qwen3_5
+        return export_qwen3_5(args, work_dir)
     use_external_weights = bool(mt.get("external_weights", False))
 
     # ── Step 1: skeleton export (HF/GGUF -> ONNX + assets) ────────────────
@@ -366,12 +371,13 @@ def build_parser():
     """Build the CLI argument parser for mslite-llm-export."""
     parser = argparse.ArgumentParser(
         prog="mslite-llm-export",
-        description="One-click LLM (Qwen2.5-0.5B / dense Qwen3, GGUF Q4_0 or HF) -> single-file .msl",
+        description="Export models to a single .msl package",
     )
     parser.add_argument("--target", default="kirin9020",
                         help=f"Deployment chip (default: kirin9020), one of {list(SUPPORTED_TARGETS)}")
     parser.add_argument("--model", required=True, help="GGUF file (.gguf) or HF model directory")
-    parser.add_argument("--output", required=True, help="Output single-file .msl path")
+    parser.add_argument("--output", required=True,
+                        help="Output .msl path (required suffix for Qwen3.5-35B)")
     parser.add_argument("--quant-type", "--quant_type", dest="quant_type", choices=EXPORT_QUANT_TYPES,
                         default=QuantType.Q4_0.value,
                         help="Quantization for decoder and embedding/head (default: q4_0)")

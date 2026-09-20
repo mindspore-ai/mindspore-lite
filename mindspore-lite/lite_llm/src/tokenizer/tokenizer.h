@@ -19,13 +19,19 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "../llm_types_internal.h"
 
+#include "../llm_types_internal.h"
 #include "tokenizer/tokenizer_base.h"
 
 namespace mslite_llm {
 
 std::unique_ptr<TokenizerBase> CreateTokenizer(const std::string &vocab_path);
+
+std::unique_ptr<TokenizerBase> CreateQwen35Tokenizer(std::unique_ptr<TokenizerBase> native,
+                                                     const std::string &encoding_path);
+
+// Qwen3.5 Unicode-aware encoding with native streaming decode and chat policy.
+std::unique_ptr<TokenizerBase> CreateQwen35Tokenizer(const std::string &vocab_path, const std::string &encoding_path);
 
 /// Create a tokenizer from an in-memory vocab image (single-file .msl entry).
 std::unique_ptr<TokenizerBase> CreateTokenizerFromBuffer(const uint8_t *data, size_t size);

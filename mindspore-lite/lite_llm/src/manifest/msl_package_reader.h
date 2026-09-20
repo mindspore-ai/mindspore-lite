@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "manifest/msl_format.h"
@@ -56,6 +57,7 @@ class MslPackageReader {
 
   bool Open(const std::string &path, std::string *error_message = nullptr);
   bool IsOpen() const { return mapped_ != nullptr; }
+  int Fd() const { return fd_; }
 
   const MslEntry *Lookup(const std::string &name) const;
 
@@ -105,6 +107,7 @@ class MslPackageReader {
   uint8_t *mapped_ = nullptr;  // nullptr == not mapped
   size_t mapped_size_ = 0;
   std::vector<MslEntry> entries_;
+  std::unordered_map<std::string, size_t> entry_index_;
   std::vector<MslKvValue> kv_;
 };
 

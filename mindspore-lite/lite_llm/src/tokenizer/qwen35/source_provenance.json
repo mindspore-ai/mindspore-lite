@@ -1,0 +1,10 @@
+{
+  "repository": "HMOS-Device-AI",
+  "source_sha256": {
+    "qwen_tokenizer.cc": "b28758e9758c6b43d205f0fa3eb3b4124fbe366ce3994d5f2a7ca7c1614c5d77",
+    "qwen_tokenizer.h": "39047f5f5702bf49efa0c1be1c724f0fd0dc7218890f3469c28f91de16a5f7c9",
+    "tokenizer.h": "01c59fb9b331705749e7dd8ac73c66d1d2d97920fcbb5c2fa36dd87578627ef5"
+  },
+  "base_commit": "0124c31a98175f60d8d5c8c4bec8854df59ec0e2",
+  "source_directory": "llm/engine/tokenizer/runtime"
+}
