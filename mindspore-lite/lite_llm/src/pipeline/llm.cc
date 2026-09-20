@@ -470,7 +470,7 @@ MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const MSLLMChatMe
     if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
   }
 
-  if (!e->tokenizer) return kMSLLM_ERROR_INVALID_ARGS;
+  if (!e->tokenizer) return kMSLLM_ERROR_NOT_SUPPORTED;
 
   // Template-less packages are rejected: the runtime has no builtin renderer
   // The template is pinned at export time.
