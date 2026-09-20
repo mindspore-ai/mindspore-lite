@@ -105,7 +105,8 @@ MSLLM_API MSLLMStatus MSLLMGetGenerationConfig(MSLLMModelHandle llm_model, MSLLM
  *         buffer is insufficient, kMSLLM_ERROR_NOT_SUPPORTED if the tokenizer
  *         is not initialized (e.g. before MSLLMBuildModel),
  *         kMSLLM_ERROR_MODEL_LOAD if the package has
- *         no chat template (runtime ships no builtin renderer), or
+ *         no chat template (runtime ships no builtin renderer),
+ *         kMSLLM_ERROR_INVALID_ARGS if a message has an invalid role or NULL content, or
  *         another error code.
  */
 MSLLM_API MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const MSLLMChatMessage *messages,
