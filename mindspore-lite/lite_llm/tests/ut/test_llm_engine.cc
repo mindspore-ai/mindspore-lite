@@ -194,6 +194,35 @@ TEST(ApplyChatTemplate, NullContentReturnsInvalidArgs) {
   EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 1, buf, sizeof(buf)), kMSLLM_ERROR_INVALID_ARGS);
 }
 
+TEST(ApplyChatTemplate, InvalidRoleReturnsInvalidArgs) {
+  auto tm = BuildTestModel();
+  ASSERT_NE(tm.handle, nullptr);
+  for (int role : {3, 99}) {
+    for (int position : {0, 1}) {
+      MSLLMChatMessage msgs[] = {{MSLLM_ROLE_USER, "hello"}, {MSLLM_ROLE_ASSISTANT, "reply"}};
+      msgs[position].role = static_cast<MSLLMRole>(role);
+      std::vector<char> buf(256, 'x');
+      const auto original = buf;
+      EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 2, buf.data(), static_cast<int>(buf.size())),
+                kMSLLM_ERROR_INVALID_ARGS);
+      EXPECT_EQ(buf, original);
+    }
+  }
+}
+
+TEST(ApplyChatTemplate, AllLegalRolesRenderSuccessfully) {
+  auto tm = BuildTestModel();
+  ASSERT_NE(tm.handle, nullptr);
+  MSLLMChatMessage msgs[] = {
+    {MSLLM_ROLE_SYSTEM, "system content"},
+    {MSLLM_ROLE_USER, "user content"},
+    {MSLLM_ROLE_ASSISTANT, "assistant content"},
+  };
+  char buf[256] = {};
+  EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 3, buf, sizeof(buf)), kMSLLM_SUCCESS);
+  EXPECT_STREQ(buf, "system:system contentuser:user contentassistant:assistant content\n");
+}
+
 TEST(ApplyChatTemplate, EmptyContentAccepted) {
   auto tm = BuildTestModel();
   ASSERT_NE(tm.handle, nullptr);

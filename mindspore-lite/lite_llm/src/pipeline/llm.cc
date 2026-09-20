@@ -457,6 +457,10 @@ MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const MSLLMChatMe
   msgs.reserve(static_cast<size_t>(num_messages));
   for (int i = 0; i < num_messages; ++i) {
     if (messages[i].content == nullptr) return kMSLLM_ERROR_INVALID_ARGS;  // #10
+    if (messages[i].role != MSLLM_ROLE_SYSTEM && messages[i].role != MSLLM_ROLE_USER &&
+        messages[i].role != MSLLM_ROLE_ASSISTANT) {
+      return kMSLLM_ERROR_INVALID_ARGS;
+    }
     MSLlmChatMessage m;
     m.role = static_cast<MSLlmChatRole>(messages[i].role);
     m.content = messages[i].content;
