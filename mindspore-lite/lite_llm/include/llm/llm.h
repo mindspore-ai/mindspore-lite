@@ -102,7 +102,9 @@ MSLLM_API MSLLMStatus MSLLMGetGenerationConfig(MSLLMModelHandle llm_model, MSLLM
  * @param generated_prompt Caller-provided output buffer for the rendered text.
  * @param prompt_size Size of generated_prompt in bytes.
  * @return kMSLLM_SUCCESS on success, kMSLLM_ERROR_BUFFER_TOO_SMALL if the
- *         buffer is insufficient, kMSLLM_ERROR_MODEL_LOAD if the package has
+ *         buffer is insufficient, kMSLLM_ERROR_NOT_SUPPORTED if the tokenizer
+ *         is not initialized (e.g. before MSLLMBuildModel),
+ *         kMSLLM_ERROR_MODEL_LOAD if the package has
  *         no chat template (runtime ships no builtin renderer), or
  *         another error code.
  */

@@ -266,6 +266,8 @@ MSLLMStatus MSLLMGetGenerationConfig(MSLLMModelHandle llm_model,
  *         返回 kMSLLM_ERROR_INVALID_ARGS（#10），空串 "" 合法。角色序列不校验：
  *         system 可选（#8）、末条为 assistant 是合法 prefill/continue 用法（#9）。
  *         kMSLLM_ERROR_BUSY while a generation is in flight on this model (D9).
+ *         kMSLLM_ERROR_NOT_SUPPORTED if the tokenizer is not initialized
+ *         (e.g. before MSLLMBuildModel), with the output buffer left unchanged.
  */
 MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model,
     const MSLLMChatMessage *messages, int num_messages,
