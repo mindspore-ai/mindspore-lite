@@ -68,11 +68,13 @@ void WriteManifest(const std::filesystem::path &root, const std::string &extra_j
     "graph_io": {
       "prefill": {
         "inputs": [{"name": "input_ids", "role": "input_ids", "dtype": "int32", "shape": [1, -1]}],
-        "outputs": [{"name": "logits", "role": "logits", "dtype": "float32", "shape": [1, -1, 151936], "token_axis": 1, "vocab_axis": 2}]
+        "outputs": [{"name": "logits", "role": "logits", "dtype": "float32", "shape": [1, -1, 151936],
+                     "token_axis": 1, "vocab_axis": 2}]
       },
       "decode": {
         "inputs": [{"name": "input_ids", "role": "input_ids", "dtype": "int32", "shape": [1, 1]}],
-        "outputs": [{"name": "logits", "role": "logits", "dtype": "float32", "shape": [1, 1, 151936], "token_axis": 1, "vocab_axis": 2}]
+        "outputs": [{"name": "logits", "role": "logits", "dtype": "float32", "shape": [1, 1, 151936],
+                     "token_axis": 1, "vocab_axis": 2}]
       }
     }
   },
@@ -189,10 +191,14 @@ TEST(ModelResourceLoader, RejectsMissingNpuPrefill) {
   auto path = root / "manifest.json";
   std::ofstream out(path);
   out << R"({
-  "model_name":"test","version":"1","format_version":"1.0","dtype":"float32",
-  "architecture":{"num_layers":1,"hidden_size":128,"intermediate_size":512,"num_heads":2,"num_kv_heads":2,"head_dim":64,"vocab_size":100,"max_position_embeddings":512,"rope_theta":10000,"norm_eps":1e-6,"tie_word_embeddings":false},
-  "litert":{"precision":"float32","capabilities":{"decode":{"path":"decode/graph.ms"}},"graph_io":{"prefill":{"inputs":[],"outputs":[]}}},
-  "assets":{"tokenizer":"vocab/vocab.bin"}
+  "model_name": "test", "version": "1", "format_version": "1.0", "dtype": "float32",
+  "architecture": {"num_layers": 1, "hidden_size": 128, "intermediate_size": 512, "num_heads": 2,
+                   "num_kv_heads": 2, "head_dim": 64, "vocab_size": 100, "max_position_embeddings": 512,
+                   "rope_theta": 10000, "norm_eps": 1e-6, "tie_word_embeddings": false},
+  "litert": {"precision": "float32",
+             "capabilities": {"decode": {"path": "decode/graph.ms"}},
+             "graph_io": {"prefill": {"inputs": [], "outputs": []}}},
+  "assets": {"tokenizer": "vocab/vocab.bin"}
 })";
   out.close();  // flush before the loader reads the manifest
   ModelResources resources;

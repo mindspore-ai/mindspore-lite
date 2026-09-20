@@ -27,6 +27,9 @@
 #include <vector>
 namespace mslite_llm_test {
 
+// Permissions for fixture temp directories created by the helper below.
+constexpr int kCreateDirMode = 0755;
+
 /// Builds the bytes of a minimal valid v2 BPE vocab.bin understood by
 /// TokenizerImpl::LoadFromBuffer. Format (little-endian):
 ///
@@ -189,7 +192,7 @@ inline ModelFixture WriteMinimalModelDir(int32_t npu_max_length = 64) {
   ModelFixture fx;
   fx.dir = made;
 
-  ::mkdir((fx.dir + "/npu").c_str(), 0755);
+  ::mkdir((fx.dir + "/npu").c_str(), kCreateDirMode);
 
   auto vocab = BuildMinimalVocabBin();
   const auto manifest = MinimalManifestJson(npu_max_length);
@@ -198,7 +201,6 @@ inline ModelFixture WriteMinimalModelDir(int32_t npu_max_length = 64) {
             TouchFile(fx.dir + "/rope_sin.bin") && TouchFile(fx.dir + "/rope_cos.bin") &&
             TouchFile(fx.dir + "/attention_mask.bin") && TouchFile(fx.dir + "/npu/prefill.omc") &&
             TouchFile(fx.dir + "/npu/decode.omc");
-
   if (!ok) {
     fx.dir.clear();
   }

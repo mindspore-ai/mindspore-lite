@@ -39,6 +39,8 @@ class Mismatch:
 
 @dataclass(frozen=True)
 class PrecisionReport:
+    """Aggregate result of comparing actual tensors against expected ones."""
+
     passed: bool
     element_count: int
     mismatch_count: int
@@ -47,6 +49,7 @@ class PrecisionReport:
     samples: tuple[Mismatch, ...] = field(default_factory=tuple)
 
     def to_dict(self) -> dict:
+        """Return a JSON-serializable dict view of the report."""
         return {
             "passed": self.passed,
             "element_count": self.element_count,

@@ -26,7 +26,9 @@ namespace mslite_llm {
 namespace {
 
 uint32_t ReadU32(const uint8_t *data, size_t &offset, size_t size) {
-  if (offset + sizeof(uint32_t) > size) return 0;
+  if (offset + sizeof(uint32_t) > size) {
+    return 0;
+  }
   uint32_t val;
   std::memcpy(&val, data + offset, sizeof(val));
   offset += sizeof(val);
@@ -39,7 +41,9 @@ uint64_t ReadVarint(const uint8_t *data, size_t &offset, size_t size) {
   while (offset < size) {
     uint8_t b = data[offset++];
     result |= static_cast<uint64_t>(b & 0x7F) << shift;
-    if ((b & 0x80) == 0) break;
+    if ((b & 0x80) == 0) {
+      break;
+    }
     shift += 7;
   }
   return result;
@@ -50,7 +54,9 @@ uint32_t ReadTag(const uint8_t *data, size_t &offset, size_t size) {
 }
 
 float ReadFloat32(const uint8_t *data, size_t &offset, size_t size) {
-  if (offset + sizeof(float) > size) return 0.0f;
+  if (offset + sizeof(float) > size) {
+    return 0.0f;
+  }
   float val;
   std::memcpy(&val, data + offset, sizeof(val));
   offset += sizeof(val);
@@ -59,7 +65,9 @@ float ReadFloat32(const uint8_t *data, size_t &offset, size_t size) {
 
 std::string ReadBytes(const uint8_t *data, size_t &offset, size_t size) {
   uint64_t len = ReadVarint(data, offset, size);
-  if (offset + len > size) return "";
+  if (offset + len > size) {
+    return "";
+  }
   std::string s(reinterpret_cast<const char *>(data + offset), len);
   offset += len;
   return s;
@@ -305,7 +313,7 @@ std::vector<std::string> SentencePieceCodec::Encode(const std::string &text) {
 
   if (normalized.empty()) return {};
 
-  if (!normalized.empty() && static_cast<unsigned char>(normalized[0]) != 0xe2) {
+  if (static_cast<unsigned char>(normalized[0]) != 0xe2) {
     bool starts_with_marker = false;
     if (normalized.size() >= 3 && static_cast<unsigned char>(normalized[0]) == 0xe2 &&
         static_cast<unsigned char>(normalized[1]) == 0x96 && static_cast<unsigned char>(normalized[2]) == 0x81) {

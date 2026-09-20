@@ -55,6 +55,7 @@ MODELS = {
 
 
 def pytest_addoption(parser):
+    """Register the ST command-line options (model/package/gguf/msl)."""
     parser.addoption("--model", default="qwen2.5-0.5b",
                      help="model id registered in conftest.MODELS (default: qwen2.5-0.5b)")
     parser.addoption("--package", default=None,
@@ -76,6 +77,7 @@ def model_id(request):
 
 @pytest.fixture(scope="session")
 def model_cfg(model_id):
+    """Export option table for the selected model id."""
     return MODELS[model_id]
 
 

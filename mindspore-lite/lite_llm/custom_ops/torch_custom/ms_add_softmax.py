@@ -19,11 +19,11 @@ from __future__ import annotations
 import torch
 
 
-class MsAddSoftmax(torch.autograd.Function):
+class MsAddSoftmax(torch.autograd.Function):  # pylint: disable=abstract-method
     """FP16 broadcast add followed by FP32 last-axis softmax."""
 
     @staticmethod
-    def forward(ctx, scores, mask):
+    def forward(ctx, scores, mask):  # pylint: disable=arguments-differ
         """forward: helper."""
         del ctx
         if scores.ndim < 3 or mask.ndim != scores.ndim:
@@ -37,6 +37,7 @@ class MsAddSoftmax(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, scores, mask):
+        """Emit the custom::MsAddSoftmax ONNX node with FP16 output type."""
         output = g.op("custom::MsAddSoftmax", scores, mask)
         output.setType(
             output.type().with_dtype(torch.float16).with_sizes(scores.type().sizes())

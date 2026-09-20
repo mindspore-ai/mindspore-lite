@@ -22,11 +22,9 @@
 #include <vector>
 
 #include "../../llm_types_internal.h"
+#include "manifest/model_manifest.h"
 
 namespace mslite_llm {
-
-struct ModelManifest;
-struct ModelResources;
 
 enum class BackendExecutionPhase {
   kPrefill,
@@ -62,7 +60,7 @@ class Backend {
   virtual ~Backend() = default;
 
   /// One-time initialisation with backend configuration and resource references.
-  virtual MSLlmStatus Init(const BackendConfig & /*config*/) = 0;
+  virtual MSLlmStatus Init(const BackendConfig & /* config */) = 0;
 
   /// Run a prefill step: feed the full prompt, produce logits for the next token.
   virtual MSLlmStatus Prefill(const BackendInput &input, BackendOutput *output) = 0;

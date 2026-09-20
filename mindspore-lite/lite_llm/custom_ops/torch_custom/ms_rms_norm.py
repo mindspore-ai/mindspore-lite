@@ -21,11 +21,11 @@ import math
 import torch
 
 
-class MsRmsNorm(torch.autograd.Function):
+class MsRmsNorm(torch.autograd.Function):  # pylint: disable=abstract-method
     """FP16 RMSNorm over the last dimension, with optional gamma."""
 
     @staticmethod
-    def forward(
+    def forward(  # pylint: disable=arguments-differ
         ctx,
         x: torch.Tensor,
         w: torch.Tensor | None = None,
@@ -59,6 +59,7 @@ class MsRmsNorm(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x, w=None, epsilon: float = 1.0e-6):
+        """Emit the custom::MsRmsNorm ONNX node with FP16 output type."""
         if w is None:
             output = g.op("custom::MsRmsNorm", x, epsilon_f=epsilon)
         else:

@@ -60,7 +60,7 @@ from .qwen3_wrapper import Qwen3NnrtWrapper
 
 logger = logging.getLogger(__name__)
 
-device = "cpu"
+DEVICE = "cpu"
 dtype = torch.float16
 
 
@@ -104,6 +104,14 @@ class Qwen3Onnx:
         "head_dim": 96,
     }
 
+    def __init__(self):
+        self.model = None
+        self.config = None
+        self.tokenizer = None
+        self.num_layers = 0
+        self.hidden_size = 0
+        self.num_kv_heads = 0
+
     def load(self, model_path, layers=8):
         """Load the model in fp16 and validate the MiniMind-3 architecture.
 
@@ -121,7 +129,7 @@ class Qwen3Onnx:
                 os.path.dirname(os.path.abspath(model_path)),
                 gguf_file=os.path.basename(model_path),
                 trust_remote_code=True,
-                device_map=device,
+                device_map=DEVICE,
                 dtype=dtype,
                 attn_implementation="eager",
             )
@@ -134,7 +142,7 @@ class Qwen3Onnx:
                 model_path,
                 trust_remote_code=True,
                 config=self.config,
-                device_map=device,
+                device_map=DEVICE,
                 dtype=dtype,
                 attn_implementation="eager",
             )
@@ -175,18 +183,18 @@ class Qwen3Onnx:
         out_kv_names = [(f"out_key_{i}", f"out_val_{i}") for i in range(self.num_layers)]
         out_kv_names = [name for kv in out_kv_names for name in kv]
 
-        valid_seq_len = torch.tensor([0], dtype=torch.int32).to(device)
-        lmhead_idx = torch.tensor([0], dtype=torch.int32).to(device)
+        valid_seq_len = torch.tensor([0], dtype=torch.int32).to(DEVICE)
+        lmhead_idx = torch.tensor([0], dtype=torch.int32).to(DEVICE)
 
-        rope_cos = torch.zeros((1, chunk_size, head_dim), device=device, dtype=dtype)
-        rope_sin = torch.zeros((1, chunk_size, head_dim), device=device, dtype=dtype)
+        rope_cos = torch.zeros((1, chunk_size, head_dim), device=DEVICE, dtype=dtype)
+        rope_sin = torch.zeros((1, chunk_size, head_dim), device=DEVICE, dtype=dtype)
 
         past_key_or_value = torch.zeros(
-            (1, self.num_kv_heads, max_seq_len, head_dim), device=device, dtype=dtype
+            (1, self.num_kv_heads, max_seq_len, head_dim), device=DEVICE, dtype=dtype
         )
         past_key_values = [[past_key_or_value] * 2] * self.num_layers
 
-        inputs_embeds = torch.zeros((1, chunk_size, self.hidden_size), device=device, dtype=dtype)
+        inputs_embeds = torch.zeros((1, chunk_size, self.hidden_size), device=DEVICE, dtype=dtype)
         attention_mask = torch.zeros(1, 1, chunk_size, max_seq_len, dtype=dtype)
 
         inputs = (
@@ -247,7 +255,7 @@ class Qwen3Onnx:
         RoPE lives on ``Qwen3Model.rotary_emb``; forward takes
         (hidden_states, position_ids) and returns [batch, seq_len, head_dim].
         """
-        input_embed = torch.rand(1, seq_len, self.hidden_size, dtype=torch.float16).to(device)
+        input_embed = torch.rand(1, seq_len, self.hidden_size, dtype=torch.float16).to(DEVICE)
         position_ids = torch.arange(0, seq_len).unsqueeze(0)
 
         rotary_layer = self.model.model.rotary_emb
@@ -262,7 +270,8 @@ class Qwen3Onnx:
         rope_sin.flatten().tofile(sin_path)
         logger.info("Saved rope cos/sin to %s / %s", cos_path, sin_path)
 
-    def attention_mask_save(self, attention_mask_path, max_seq_len):
+    @staticmethod
+    def attention_mask_save(attention_mask_path, max_seq_len):
         """Save the causal attention mask (fp16, [1,1,max_seq_len,max_seq_len])."""
         mask = torch.full((max_seq_len, max_seq_len), torch.finfo(dtype).min)
         mask_cond = torch.arange(mask.size(-1))

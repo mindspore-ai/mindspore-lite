@@ -402,6 +402,7 @@ def _log_ddk_env(target):
 
 
 def main(argv=None):
+    """CLI entry point: validate args, run the export pipeline, report the .msl path."""
     args = build_parser().parse_args(argv)
 
     logging.basicConfig(
@@ -431,7 +432,7 @@ def main(argv=None):
     work_dir = tempfile.mkdtemp(prefix=".msl_export_", dir=output_dir)
     try:
         result = run_pipeline(args, work_dir)
-        print(result)
+        logger.info("%s", result)
         return 0
     finally:
         # Intermediate artifacts (ONNX / .omc / assets) are scratch; the .msl
@@ -440,4 +441,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(0 if main() else 1)

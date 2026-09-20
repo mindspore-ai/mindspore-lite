@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 import re
@@ -27,6 +28,8 @@ import time
 import uuid
 
 from base_test import TestCaseBasic
+
+logger = logging.getLogger(__name__)
 
 
 class BinRunnerTestCaseBasic(TestCaseBasic):
@@ -47,6 +50,7 @@ class BinRunnerTestCaseBasic(TestCaseBasic):
         check: bool = True,
         capture_output: bool = False,
     ):
+        """Run one BinRunner CLI command against the configured target."""
         return cls._run(
             [
                 *cls.binrunner_command,
@@ -130,14 +134,15 @@ class BinRunnerTestCaseBasic(TestCaseBasic):
         # by memmgr.  Recover it before the first BinRunner RPC so setup does
         # not spend a full command timeout trying to remove a stale case.
         cls._restart_app()
-        cls.run_binrunner("rm", cls.remote_case_name, check=False)
+        # Stale case may not exist; the rm failure is intentionally ignored.
+        _ = cls.run_binrunner("rm", cls.remote_case_name, check=False)
 
         local_runner = Path(cls.model_run_tools_path).expanduser()
         if not local_runner.is_file():
             raise FileNotFoundError(
                 f"BinRunner requires a local model runner: {local_runner}"
             )
-        cls.run_binrunner(
+        _ = cls.run_binrunner(
             "push",
             str(local_runner.resolve()),
             f"{cls.remote_case_name}/{local_runner.name}",
@@ -150,7 +155,7 @@ class BinRunnerTestCaseBasic(TestCaseBasic):
             dependency = Path(item).expanduser()
             if not dependency.is_file():
                 raise FileNotFoundError(f"Cannot find BinRunner dependency: {dependency}")
-            cls.run_binrunner("push", str(dependency.resolve()), dependency.name)
+            _ = cls.run_binrunner("push", str(dependency.resolve()), dependency.name)
             cls.binapp_dependencies.append(dependency.name)
 
     @classmethod
@@ -162,7 +167,8 @@ class BinRunnerTestCaseBasic(TestCaseBasic):
         unique_id = getattr(cls, "unique_id", "")
         if remote_case_name.startswith("MsLiteUT_") and unique_id in remote_case_name:
             cls._restart_app()
-            cls.run_binrunner("rm", remote_case_name, check=False)
+            # Best-effort remote cleanup: failures are intentionally ignored.
+            _ = cls.run_binrunner("rm", remote_case_name, check=False)
 
     def upload(self, omc, inputs):
         remote_files = []
@@ -265,4 +271,4 @@ class BinRunnerTestCaseBasic(TestCaseBasic):
 
     def display_perf(self, suffix: str) -> None:
         if self.test_perf and self.data_proc_tool:
-            print("BinRunner transport does not expose model-runner profiles", flush=True)
+            logger.info("BinRunner transport does not expose model-runner profiles")

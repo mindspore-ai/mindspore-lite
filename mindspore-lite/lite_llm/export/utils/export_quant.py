@@ -65,6 +65,7 @@ class QuantizationConfig:
             self.group_size = 32
 
     def asdict(self):
+        """Return the quantization config as a plain dict (empty when quant is off)."""
         if self.is_quant:
             return {
                 "quant_method": self.quant_method,
@@ -130,6 +131,7 @@ class LiteTurboConfig:
     random_seed: int = 42
 
     def asdict(self):
+        """Return the sampling/runtime config as a plain dict."""
         return {
             "max_length": self.max_length,
             "chunk_size": self.chunk_size,
@@ -375,6 +377,7 @@ def custom_op_infer_shape(graph, chunk_size, max_seq_len, num_kv_heads, num_q_he
 
 
 def load_q2_constant():
+    """Return the fixed weight-reorder table used by W2A16 (2-bit) packing."""
     return np.array(
         [
             0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23,
@@ -660,6 +663,7 @@ def quantize_linear_ops(model, embedding_quant_config, decoder_quant_config):
 
 
 def infer_shape(model, chunk_size, max_seq_len, num_kv_heads, num_q_heads, dim, is_prefill=True):
+    """Run custom-op shape inference, then standard ONNX shape inference."""
     custom_op_infer_shape(model.graph, chunk_size, max_seq_len, num_kv_heads, num_q_heads, dim, is_prefill)
     model = shape_inference.infer_shapes(model)
     return model

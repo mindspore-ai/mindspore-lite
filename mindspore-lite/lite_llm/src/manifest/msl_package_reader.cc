@@ -45,11 +45,23 @@ bool DecodeKv(const msl_format::KvType type, const uint8_t *raw, size_t len, Msl
       out->value.assign(raw, raw + len);
       return len == 1;
     case msl_format::kTypeUint32:
-      return len == 4 && (out->value.assign(raw, raw + len), true);
+      if (len != 4) {
+        return false;
+      }
+      out->value.assign(raw, raw + len);
+      return true;
     case msl_format::kTypeUint64:
-      return len == 8 && (out->value.assign(raw, raw + len), true);
+      if (len != 8) {
+        return false;
+      }
+      out->value.assign(raw, raw + len);
+      return true;
     case msl_format::kTypeFloat32:
-      return len == 4 && (out->value.assign(raw, raw + len), true);
+      if (len != 4) {
+        return false;
+      }
+      out->value.assign(raw, raw + len);
+      return true;
     case msl_format::kTypeString:
       out->value.assign(raw, raw + len);
       return true;
@@ -134,7 +146,7 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
     }
     return false;
   }
-  const uint32_t kv_count = ReadU32(mapped_ + 8);
+  const uint32_t count = ReadU32(mapped_ + 8);
   const uint32_t resource_count = ReadU32(mapped_ + 12);
   const uint32_t alignment = ReadU32(mapped_ + 16);
   if (alignment == 0) {
@@ -146,9 +158,9 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
 
   // ── KV region: unknown keys are skipped, unknown types rejected ───────
   kv_.clear();
-  kv_.reserve(kv_count);
+  kv_.reserve(count);
   size_t pos = msl_format::kHeaderSize;
-  for (uint32_t i = 0; i < kv_count; ++i) {
+  for (uint32_t i = 0; i < count; ++i) {
     if (pos + 4 > mapped_size_) {
       if (error_message != nullptr) {
         *error_message = "KV region truncated at entry " + std::to_string(i);
@@ -174,16 +186,17 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
       }
       return false;
     }
-    MslKvValue kv;
-    kv.key = std::move(key);
-    kv.type = type;
-    if (!DecodeKv(static_cast<msl_format::KvType>(type), mapped_ + pos, value_len, &kv)) {
+    MslKvValue kv_item;
+    kv_item.key = std::move(key);
+    kv_item.type = type;
+    if (!DecodeKv(static_cast<msl_format::KvType>(type), mapped_ + pos, value_len, &kv_item)) {
       if (error_message != nullptr) {
-        *error_message = "unknown or malformed KV value type " + std::to_string(type) + " for key \"" + kv.key + "\"";
+        *error_message =
+          "unknown or malformed KV value type " + std::to_string(type) + " for key \"" + kv_item.key + "\"";
       }
       return false;
     }
-    kv_.push_back(std::move(kv));
+    kv_.push_back(std::move(kv_item));
     pos += value_len;
   }
 
@@ -297,11 +310,11 @@ bool MslPackageReader::GetKvString(const std::string &key, std::string *out) con
   if (out == nullptr) {
     return false;
   }
-  const MslKvValue *kv = FindKv(this, key);
-  if (kv == nullptr || kv->type != msl_format::kTypeString) {
+  const MslKvValue *kv_item = FindKv(this, key);
+  if (kv_item == nullptr || kv_item->type != msl_format::kTypeString) {
     return false;
   }
-  out->assign(reinterpret_cast<const char *>(kv->value.data()), kv->value.size());
+  out->assign(reinterpret_cast<const char *>(kv_item->value.data()), kv_item->value.size());
   return true;
 }
 
@@ -309,11 +322,11 @@ bool MslPackageReader::GetKvUint32(const std::string &key, uint32_t *out) const 
   if (out == nullptr) {
     return false;
   }
-  const MslKvValue *kv = FindKv(this, key);
-  if (kv == nullptr || kv->type != msl_format::kTypeUint32 || kv->value.size() != sizeof(uint32_t)) {
+  const MslKvValue *kv_item = FindKv(this, key);
+  if (kv_item == nullptr || kv_item->type != msl_format::kTypeUint32 || kv_item->value.size() != sizeof(uint32_t)) {
     return false;
   }
-  *out = ReadU32(kv->value.data());
+  *out = ReadU32(kv_item->value.data());
   return true;
 }
 
@@ -321,11 +334,11 @@ bool MslPackageReader::GetKvUint64(const std::string &key, uint64_t *out) const 
   if (out == nullptr) {
     return false;
   }
-  const MslKvValue *kv = FindKv(this, key);
-  if (kv == nullptr || kv->type != msl_format::kTypeUint64 || kv->value.size() != sizeof(uint64_t)) {
+  const MslKvValue *kv_item = FindKv(this, key);
+  if (kv_item == nullptr || kv_item->type != msl_format::kTypeUint64 || kv_item->value.size() != sizeof(uint64_t)) {
     return false;
   }
-  *out = ReadU64(kv->value.data());
+  *out = ReadU64(kv_item->value.data());
   return true;
 }
 
@@ -333,11 +346,11 @@ bool MslPackageReader::GetKvFloat32(const std::string &key, float *out) const {
   if (out == nullptr) {
     return false;
   }
-  const MslKvValue *kv = FindKv(this, key);
-  if (kv == nullptr || kv->type != msl_format::kTypeFloat32 || kv->value.size() != sizeof(float)) {
+  const MslKvValue *kv_item = FindKv(this, key);
+  if (kv_item == nullptr || kv_item->type != msl_format::kTypeFloat32 || kv_item->value.size() != sizeof(float)) {
     return false;
   }
-  std::memcpy(out, kv->value.data(), sizeof(float));
+  std::memcpy(out, kv_item->value.data(), sizeof(float));
   return true;
 }
 
@@ -345,11 +358,11 @@ bool MslPackageReader::GetKvBool(const std::string &key, bool *out) const {
   if (out == nullptr) {
     return false;
   }
-  const MslKvValue *kv = FindKv(this, key);
-  if (kv == nullptr || kv->type != msl_format::kTypeBool || kv->value.size() != 1) {
+  const MslKvValue *kv_item = FindKv(this, key);
+  if (kv_item == nullptr || kv_item->type != msl_format::kTypeBool || kv_item->value.size() != 1) {
     return false;
   }
-  *out = (kv->value[0] != 0);
+  *out = (kv_item->value[0] != 0);
   return true;
 }
 
@@ -357,12 +370,12 @@ bool MslPackageReader::GetKvStringArray(const std::string &key, std::vector<std:
   if (out == nullptr) {
     return false;
   }
-  const MslKvValue *kv = FindKv(this, key);
-  if (kv == nullptr || kv->type != msl_format::kTypeStringArray) {
+  const MslKvValue *kv_item = FindKv(this, key);
+  if (kv_item == nullptr || kv_item->type != msl_format::kTypeStringArray) {
     return false;
   }
-  const uint8_t *raw = kv->value.data();
-  const size_t len = kv->value.size();
+  const uint8_t *raw = kv_item->value.data();
+  const size_t len = kv_item->value.size();
   const uint32_t count = ReadU32(raw);
   size_t pos = 4;
   out->clear();
