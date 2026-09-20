@@ -36,7 +36,7 @@ pip install torch==2.10.0 transformers==4.57.0 huggingface_hub==0.36.2 \
 ### 获取模型权重
 
 ```bash
-git clone https://www.modelscope.cn/AI-ModelScope/grounding-dino-base.git \
+git clone https://www.modelscope.cn/AI-ModelScope/GroundingDINO.git \
     ./grounding-dino-base
 ```
 
