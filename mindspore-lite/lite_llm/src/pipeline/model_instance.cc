@@ -39,7 +39,7 @@ bool FileExists(const std::string &path) {
 
 }  // namespace
 
-ModelInstance::ModelInstance() : model_id_(0), loaded_(false) {}
+ModelInstance::ModelInstance() : model_id_(0), loaded_(false), model_config_{} {}
 
 ModelInstance::~ModelInstance() {
   if (loaded_) {
@@ -171,7 +171,6 @@ MSLlmStatus ModelInstance::ExecuteTensor(const std::vector<float> &input_tensor,
 
   int64_t total_input =
     std::accumulate(input_shape.begin(), input_shape.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
-
   if (static_cast<int64_t>(input_tensor.size()) != total_input) {
     return MSLLM_ERROR_INVALID_ARGS;
   }

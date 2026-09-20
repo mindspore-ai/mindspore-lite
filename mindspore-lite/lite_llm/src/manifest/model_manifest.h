@@ -22,10 +22,9 @@
 #include <vector>
 
 #include "../llm_types_internal.h"
+#include "manifest/msl_package_reader.h"
 
 namespace mslite_llm {
-
-class MslPackageReader;
 
 inline constexpr char kQ4_0WeightLayout[] = "q4_0_nzf_compact_phase4";
 

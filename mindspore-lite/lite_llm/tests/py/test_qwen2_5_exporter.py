@@ -35,8 +35,11 @@ sys.path.insert(0, str(_EXPORT_DIR))
 # pylint: disable=wrong-import-position  # export/ added to sys.path above
 from utils.export_quant import QuantizationConfig  # noqa: E402
 
+# onnx is an optional dependency: importorskip must run first so the
+# config-only tests still collect when onnx is absent; the import below
+# therefore intentionally stays after it instead of at the module top.
 onnx = pytest.importorskip("onnx")
-from onnx import TensorProto, helper  # noqa: E402
+from onnx import TensorProto, helper  # noqa: E402,H2305
 
 
 def _make_lmhead_graph():
@@ -73,6 +76,7 @@ def _make_lmhead_graph():
 
 
 def test_quantization_config():
+    """Test that W4 quant schemes parse and unsupported schemes raise."""
     assert QuantizationConfig(None).is_quant is False
     cfg = QuantizationConfig("W4A16")
     assert cfg.is_quant and cfg.bits == 4 and cfg.group_size == 32
@@ -283,6 +287,7 @@ def _make_contract_model(num_layers=2, embedding_quant=False):
 
 
 def test_validate_contract_ok():
+    """Test that a synthetic contract-conforming model passes validation."""
     from utils.onnx_postprocess import validate_contract
 
     model, _ = _make_contract_model(num_layers=2)

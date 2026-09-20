@@ -49,13 +49,18 @@
 
 namespace {
 
+// Defaults applied when the caller leaves generation knobs at their zero
+// value (see ToInternalGenConfig / DefaultGenConfig).
+constexpr int kDefaultMaxNewTokens = 256;
+constexpr int kDefaultNumThreads = 2;
+
 struct EngineState {
-  enum Value { kCreated = 0, kReady, kGenerating };
+  enum class Value { kCreated = 0, kReady, kGenerating };
 };
 
 struct InternalEngine {
   // ── Lifecycle ───────────────────────────────────────────────────────
-  std::atomic<EngineState::Value> state{EngineState::kCreated};
+  std::atomic<EngineState::Value> state{EngineState::Value::kCreated};
 
   // ── Model ───────────────────────────────────────────────────────────
   std::unique_ptr<mslite_llm::ModelInstance> model;
@@ -88,7 +93,7 @@ void SetError(InternalEngine *e, const std::string &msg) {
 
 MSLlmGenerateConfig ToInternalGenConfig(const MSLLMGenerationConfig &c) {
   MSLlmGenerateConfig gc = {};
-  gc.max_new_tokens = c.max_new_tokens > 0 ? c.max_new_tokens : 256;
+  gc.max_new_tokens = c.max_new_tokens > 0 ? c.max_new_tokens : kDefaultMaxNewTokens;
   gc.temperature = c.do_sample ? c.temperature : 0.0f;
   gc.top_k = c.top_k;
   gc.top_p = c.top_p;
@@ -99,7 +104,7 @@ MSLlmGenerateConfig ToInternalGenConfig(const MSLLMGenerationConfig &c) {
 
 MSLlmGenerateConfig DefaultGenConfig() {
   MSLlmGenerateConfig gc = {};
-  gc.max_new_tokens = 256;
+  gc.max_new_tokens = kDefaultMaxNewTokens;
   gc.temperature = 0.0f;
   gc.top_k = 1;
   gc.top_p = 1.0f;
@@ -144,7 +149,9 @@ struct GenContext {
 bool StepForward(GenContext *ctx, std::vector<int32_t> &token_ids, int32_t position,
                  mslite_llm::BackendOutput *output) {
   auto *model = ctx->engine->model.get();
-  if (model == nullptr || output == nullptr) return false;
+  if (model == nullptr || output == nullptr) {
+    return false;
+  }
 
   // Build position_ids
   std::vector<int32_t> position_ids(token_ids.size());
@@ -190,7 +197,7 @@ MSLLMStatus LoadEngineModel(InternalEngine *e, const std::string &path) {
   model_cfg.max_batch_size = 1;
   MSLlmEngineConfig engine_cfg = {};
   engine_cfg.backend_type = MSLLM_BACKEND_NNRT;
-  engine_cfg.num_threads = 2;
+  engine_cfg.num_threads = kDefaultNumThreads;
   e->model = std::make_unique<mslite_llm::ModelInstance>();
   auto status = e->resources.single_file ? e->model->Load(path, e->manifest, model_cfg, engine_cfg)
                                          : e->model->Load(path, model_cfg, engine_cfg);
@@ -202,7 +209,7 @@ MSLLMStatus LoadEngineModel(InternalEngine *e, const std::string &path) {
   mslite_llm::BackendConfig backend_cfg;
   backend_cfg.resources = &e->resources;
   backend_cfg.manifest = &e->manifest;
-  backend_cfg.num_threads = 2;
+  backend_cfg.num_threads = kDefaultNumThreads;
   if (e->model->InitBackend(backend_cfg) != MSLLM_SUCCESS) {
     SetError(e, "backend init failed");
     e->model.reset();
@@ -240,21 +247,21 @@ MSLLMStatus LoadEngineTokenizer(InternalEngine *e, const std::string &path) {
 
 void FinishGeneration(InternalEngine *e) {
   std::lock_guard<std::mutex> lock(e->engine_mutex);
-  e->state.store(EngineState::kReady);
+  e->state.store(EngineState::Value::kReady);
 }
 
 MSLLMStatus PrepareGeneration(InternalEngine *e, const char *prompt, std::vector<int32_t> *input_ids,
                               MSLLMGenerationConfig *cfg) {
   {
     std::lock_guard<std::mutex> lock(e->engine_mutex);
-    if (e->state.load() != EngineState::kReady) {
-      if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
+    if (e->state.load() != EngineState::Value::kReady) {
+      if (e->state.load() == EngineState::Value::kGenerating) return kMSLLM_ERROR_BUSY;
       return kMSLLM_ERROR_INVALID_ARGS;
     }
     if (!e->model || !e->tokenizer || !e->sampler || !e->model->IsLoaded()) {
       return kMSLLM_ERROR_INVALID_ARGS;
     }
-    e->state.store(EngineState::kGenerating);
+    e->state.store(EngineState::Value::kGenerating);
     e->abort_flag.store(false);
   }
   {
@@ -351,11 +358,10 @@ MSLLMStatus GenerateStream(InternalEngine *e, std::vector<int32_t> &token_ids, i
 // Public C API Implementation
 
 extern "C" {
-
 MSLLMModelHandle MSLLMCreateModel(void) {
   auto *e = new InternalEngine();
   // Set sensible defaults
-  e->gen_config.max_new_tokens = 256;
+  e->gen_config.max_new_tokens = kDefaultMaxNewTokens;
   e->gen_config.do_sample = false;
   e->gen_config.temperature = 1.0f;
   e->gen_config.top_k = 1;
@@ -371,7 +377,7 @@ MSLLMStatus MSLLMDestroyModel(MSLLMModelHandle llm_model) {
   // Refuse to destroy while a generation is in-flight (use-after-free
   // otherwise). Caller sequence: Abort → wait for StreamGenerate to return →
   // Destroy (#16).
-  if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
+  if (e->state.load() == EngineState::Value::kGenerating) return kMSLLM_ERROR_BUSY;
 
   delete e;
   return kMSLLM_SUCCESS;
@@ -382,9 +388,9 @@ MSLLMStatus MSLLMBuildModel(MSLLMModelHandle llm_model, const char *model_path) 
   auto *e = reinterpret_cast<InternalEngine *>(llm_model);
 
   std::lock_guard<std::mutex> lock(e->engine_mutex);
-  if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
-  if (e->state.load() == EngineState::kReady) return kMSLLM_ERROR_NOT_SUPPORTED;
-  if (e->state.load() != EngineState::kCreated) return kMSLLM_ERROR_INVALID_ARGS;
+  if (e->state.load() == EngineState::Value::kGenerating) return kMSLLM_ERROR_BUSY;
+  if (e->state.load() == EngineState::Value::kReady) return kMSLLM_ERROR_NOT_SUPPORTED;
+  if (e->state.load() != EngineState::Value::kCreated) return kMSLLM_ERROR_INVALID_ARGS;
 
   const std::string path(model_path);
   if (path.empty()) return kMSLLM_ERROR_INVALID_ARGS;
@@ -398,7 +404,7 @@ MSLLMStatus MSLLMBuildModel(MSLLMModelHandle llm_model, const char *model_path) 
   if (status != kMSLLM_SUCCESS) return status;
   e->sampler = std::make_unique<mslite_llm::Sampler>(DefaultGenConfig());
 
-  e->state.store(EngineState::kReady);
+  e->state.store(EngineState::Value::kReady);
   return kMSLLM_SUCCESS;
 }
 
@@ -430,7 +436,7 @@ MSLLMStatus MSLLMSetGenerationConfig(MSLLMModelHandle llm_model, const MSLLMGene
   }
 
   std::lock_guard<std::mutex> lock(e->config_mutex);
-  if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
+  if (e->state.load() == EngineState::Value::kGenerating) return kMSLLM_ERROR_BUSY;
 
   e->gen_config = normalized_config;
   return kMSLLM_SUCCESS;
@@ -467,7 +473,7 @@ MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const MSLLMChatMe
   // of resource availability.
   {
     std::lock_guard<std::mutex> lock(e->engine_mutex);
-    if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
+    if (e->state.load() == EngineState::Value::kGenerating) return kMSLLM_ERROR_BUSY;
   }
 
   if (!e->tokenizer) return kMSLLM_ERROR_INVALID_ARGS;
@@ -483,7 +489,6 @@ MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const MSLLMChatMe
   // separate configuration; the current behavior is add_generation_prompt=false.
   std::string rendered = e->tokenizer->ApplyChatTemplate(msgs, false);
   int needed = static_cast<int>(rendered.size()) + 1;
-
   if (needed > prompt_size) {
     return kMSLLM_ERROR_BUFFER_TOO_SMALL;
   }
@@ -504,7 +509,9 @@ MSLLMStatus MSLLMGenerate(MSLLMModelHandle llm_model, const char *prompt, char *
   std::string output;
   status = GenerateText(e, input_ids, cfg.max_new_tokens, &output);
   FinishGeneration(e);
-  if (status != kMSLLM_SUCCESS) return status;
+  if (status != kMSLLM_SUCCESS) {
+    return status;
+  }
   int needed = static_cast<int>(output.size()) + 1;
   if (needed > text_size) return kMSLLM_ERROR_BUFFER_TOO_SMALL;
   std::memcpy(generated_text, output.c_str(), static_cast<size_t>(needed));
@@ -531,7 +538,7 @@ MSLLMStatus MSLLMAbort(MSLLMModelHandle llm_model) {
   auto *e = reinterpret_cast<InternalEngine *>(llm_model);
 
   // Only affect an in-flight streaming generation; otherwise no-op (#13).
-  if (e->state.load() == EngineState::kGenerating) {
+  if (e->state.load() == EngineState::Value::kGenerating) {
     e->abort_flag.store(true);
   }
   return kMSLLM_SUCCESS;

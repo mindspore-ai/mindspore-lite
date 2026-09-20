@@ -540,6 +540,8 @@ def _parse_kv_scalar(type_name: str, raw: str) -> Any:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    """CLI entry point: pack (-d) or unpack (-g) a single-file .msl container."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(
         prog="msl_pack",
         description="Pack/unpack single-file .msl (v1) model containers.")
@@ -554,12 +556,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         base_dir = _dirname(args.d)
         with open(args.d, encoding="utf-8") as f:
             output_path, kv, resources = parse_config(f.read(), base_dir)
-        pack(output_path, kv, resources)
-        print(f"packed {output_path} ({len(resources)} resources, {len(kv)} KV entries)")
+        packed_path = pack(output_path, kv, resources)
+        logger.info("packed %s (%d resources, %d KV entries)", packed_path, len(resources), len(kv))
         return 0
     if args.g:
-        unpack(args.g, args.out_dir)
-        print(f"unpacked {args.g} into {args.out_dir}")
+        kv = unpack(args.g, args.out_dir)
+        logger.info("unpacked %s into %s (%d KV entries)", args.g, args.out_dir, len(kv))
         return 0
     parser.error("need -d or -g")
     return 1  # unreachable (parser.error exits)
@@ -567,8 +569,6 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 def _dirname(path: str) -> str:
     return os.path.dirname(path)
-
-
 
 
 # ─── export artifact -> v1 KV schema ───────────────────────────────────────
@@ -638,8 +638,7 @@ def build_single_file_msl(omc_path, vocab_path, embedding_path, rope_cos, rope_s
         resources.append(("SubGraph_0.weight", external_weight_path, ACCESS_MMAP))
 
     logger.info("packing %d resources, %d KV entries -> %s", len(resources), len(kv), output_path)
-    pack(output_path, kv, resources)
-    return output_path
+    return pack(output_path, kv, resources)
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 import shutil
@@ -26,13 +27,13 @@ import pytest
 import torch
 from torch.onnx import OperatorExportTypes
 
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
-# pylint: disable=wrong-import-position  # test helpers resolve via sys.path
 from base_test import TestCaseBasic, build_omg_environment
 from binrunner_test import BinRunnerTestCaseBasic
 from torch_custom.ms_rms_norm import MsRmsNorm
+
+logger = logging.getLogger(__name__)
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 DeviceTestBase = (
@@ -47,6 +48,7 @@ MAX_FAIL_RATIO = 1.0e-3
 
 
 def get_name(x_shape: list[int], w_shape: list[int]) -> str:
+    """Build the file-name suffix from the input and weight shapes."""
     return "_".join(map(str, x_shape + w_shape))
 
 
@@ -73,6 +75,7 @@ def test_reference_matches_independent_numpy() -> None:
 
 
 def test_reference_supports_optional_gamma() -> None:
+    """Test that the reference runs without the optional gamma weight."""
     x = np.linspace(-1.0, 1.0, 64, dtype=np.float16).reshape(2, 32)
     actual = MsRmsNorm.apply(torch.from_numpy(x), None, 1.0e-6).numpy()
     x_f32 = x.astype(np.float32)
@@ -85,6 +88,7 @@ def test_reference_supports_optional_gamma() -> None:
 
 @pytest.mark.parametrize("hidden", [896, 2048, 2560, 4096, 8192])
 def test_reference_accepts_model_hidden_sizes(hidden: int) -> None:
+    """Test that the reference accepts common model hidden sizes."""
     x = torch.ones((1, hidden), dtype=torch.float16)
     w = torch.ones((hidden,), dtype=torch.float16)
     assert MsRmsNorm.apply(x, w, 1.0e-5).shape == x.shape
@@ -129,6 +133,7 @@ def find_omg() -> str:
 
 
 def omg_environment(platform: str) -> dict:
+    """Return the OMG subprocess environment for the given platform."""
     return build_omg_environment(platform)
 
 
@@ -161,6 +166,7 @@ class MsRmsNormModel(torch.nn.Module):
         self.epsilon = epsilon
 
     def forward(self, x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+        """Run the eager MsRmsNorm reference implementation."""
         return MsRmsNorm.apply(x, w, self.epsilon)
 
 
@@ -189,6 +195,7 @@ class TestRmsNorm(DeviceTestBase):
 
     @pytest.mark.parametrize("platform,x_shape,w_shape,eps,atol", configs)
     def test_case(self, platform, x_shape, w_shape, eps, atol, ext_platform):
+        """Test that the device output matches the golden within tolerance."""
         target_platform = ext_platform or platform
         suffix = get_name(x_shape, w_shape)
         inputs = self.gen_data(x_shape, w_shape, eps, suffix)
@@ -241,7 +248,7 @@ class TestRmsNorm(DeviceTestBase):
             f"--output={omc_stem}",
             f"--platform={platform}",
         ]
-        print("$ " + " ".join(map(str, command)), flush=True)
+        logger.info("$ %s", " ".join(map(str, command)))
         subprocess.run(command, check=True, env=omg_environment(platform))
         if not omc_path.is_file():
             raise FileNotFoundError(f"OMG did not generate {omc_path}")
@@ -335,12 +342,17 @@ class TestRmsNorm(DeviceTestBase):
         failed = int(np.count_nonzero(diff > tolerance))
         fail_ratio = failed / actual_size
         max_abs_diff = float(diff.max(initial=0.0))
-        print(
-            f"RmsNorm suffix={suffix}: elements={actual_size}, "
-            f"max_abs_diff={max_abs_diff:.8g}, failed={failed}, "
-            f"fail_ratio={fail_ratio:.6g}, threshold={max_fail_ratio:g}, "
-            f"tol=(atol={atol:g}, rtol={rtol:g})",
-            flush=True,
+        logger.info(
+            "RmsNorm suffix=%s: elements=%d, max_abs_diff=%.8g, failed=%d, "
+            "fail_ratio=%.6g, threshold=%g, tol=(atol=%g, rtol=%g)",
+            suffix,
+            actual_size,
+            max_abs_diff,
+            failed,
+            fail_ratio,
+            max_fail_ratio,
+            atol,
+            rtol,
         )
         assert fail_ratio < max_fail_ratio, (
             f"fail_ratio {fail_ratio:.6g} >= {max_fail_ratio:g} "

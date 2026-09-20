@@ -34,6 +34,9 @@ namespace mslite_llm {
 
 namespace {
 
+// Default W4A16 embedding scale group size when the manifest omits it.
+constexpr int kDefaultScaleGroupSize = 32;
+
 std::string Lower(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(),
                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -43,9 +46,10 @@ std::string Lower(std::string value) {
 std::string Trim(std::string value) {
   auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
   value.erase(value.begin(), std::find_if(value.begin(), value.end(),
-                                          [&](char c) { return !is_space(static_cast<unsigned char>(c)); }));
+                                          [is_space](char c) { return !is_space(static_cast<unsigned char>(c)); }));
   value.erase(
-    std::find_if(value.rbegin(), value.rend(), [&](char c) { return !is_space(static_cast<unsigned char>(c)); }).base(),
+    std::find_if(value.rbegin(), value.rend(), [is_space](char c) { return !is_space(static_cast<unsigned char>(c)); })
+      .base(),
     value.end());
   return value;
 }
@@ -535,7 +539,7 @@ bool ParseGenerationPolicy(const JsonValue &root, ModelManifest *manifest, std::
   }
 
   if (manifest->architecture.vocab_size > 0) {
-    auto out_of_range = [&](int32_t token_id) { return token_id >= manifest->architecture.vocab_size; };
+    auto out_of_range = [manifest](int32_t token_id) { return token_id >= manifest->architecture.vocab_size; };
     if (std::any_of(policy.stop_token_ids.begin(), policy.stop_token_ids.end(), out_of_range) ||
         std::any_of(policy.suppress_token_ids.begin(), policy.suppress_token_ids.end(), out_of_range)) {
       if (error != nullptr) {
@@ -716,8 +720,8 @@ bool ValidateQ4Layout(const NpuConfig &config, std::string *error_message) {
 
 MSLlmStatus ParseManifestPrecision(const JsonValue &root, ModelManifest &parsed, std::string *error_message) {
   bool precision_declared = false;
-  auto apply_precision = [&parsed, &precision_declared, error_message](const std::string &value,
-                                                                       const std::string &field) {
+  auto apply_precision = [&error_message, &parsed, &precision_declared](const std::string &value,
+                                                                        const std::string &field) {
     if (value.empty()) {
       return true;
     }
@@ -738,7 +742,6 @@ MSLlmStatus ParseManifestPrecision(const JsonValue &root, ModelManifest &parsed,
     precision_declared = true;
     return true;
   };
-
   if (!apply_precision(GetString(root, "dtype"), "manifest dtype")) {
     return MSLLM_ERROR_INVALID_ARGS;
   }
@@ -798,7 +801,7 @@ MSLlmStatus ParseNpuConfig(const JsonValue &root, NpuConfig &out, std::string *e
     return MSLLM_ERROR_INVALID_ARGS;
   }
   if (out.scale_gp_size <= 0) {
-    out.scale_gp_size = 32;
+    out.scale_gp_size = kDefaultScaleGroupSize;
   }
   return MSLLM_SUCCESS;
 }

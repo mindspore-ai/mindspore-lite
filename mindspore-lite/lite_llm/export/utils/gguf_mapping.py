@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_new_initializer(name, weight):
+    """Create an ONNX initializer tensor from a numpy weight array."""
     return onnx.numpy_helper.from_array(weight, name)
 
 

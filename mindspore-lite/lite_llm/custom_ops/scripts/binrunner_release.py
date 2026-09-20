@@ -66,8 +66,8 @@ _bootstrap_hdc()
 # Patch those leaf modules before importing the CLI so modules using
 # ``from ... import`` bind the configured values rather than the defaults.
 # pylint: disable=wrong-import-position  # imports intentionally follow _bootstrap_hdc()
-from binrunner import config as release_config  # noqa: E402
-from binrunner import hilog as release_hilog  # noqa: E402
+from binrunner import config as release_config  # noqa: E402,H2305
+from binrunner import hilog as release_hilog  # noqa: E402,H2305
 
 
 release_config.BUNDLE = os.environ.get("BINAPP_BUNDLE", release_config.BUNDLE)
@@ -84,7 +84,7 @@ def _parse_output(output, started, report_lines, parts, run_id=""):
 
 release_hilog.parse_output = _parse_output
 
-from binrunner import __main__ as release_cli  # noqa: E402
+from binrunner import __main__ as release_cli  # noqa: E402,H2305
 
 
 if __name__ == "__main__":

@@ -18,13 +18,18 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 import sys
 
+logger = logging.getLogger(__name__)
+
 
 def main() -> int:
+    """Emit NUL-delimited -D cache arguments for the default CMake preset."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} CMAKE_PRESETS SOURCE_DIR", file=sys.stderr)
+        logger.info("Usage: %s CMAKE_PRESETS SOURCE_DIR", sys.argv[0])
         return 2
 
     preset_path = Path(sys.argv[1])

@@ -15,6 +15,7 @@
  */
 #include "tokenizer/chat_template.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <sstream>
@@ -39,7 +40,9 @@ constexpr uint8_t kOpIfEnd = 0x07;
 constexpr uint8_t kOpEnd = 0x08;
 
 uint32_t ReadU32(const uint8_t *data, size_t size, size_t &offset) {
-  if (offset + 4 > size) return 0;
+  if (offset + 4 > size) {
+    return 0;
+  }
   uint32_t v;
   std::memcpy(&v, data + offset, 4);
   offset += 4;
@@ -65,8 +68,9 @@ struct Frame {
 };
 
 const Frame *CurrentLoop(const std::vector<Frame> &frames) {
-  for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
-    if (it->is_loop) return &*it;
+  auto it = std::find_if(frames.rbegin(), frames.rend(), [](const Frame &frame) { return frame.is_loop; });
+  if (it != frames.rend()) {
+    return &*it;
   }
   return nullptr;
 }
@@ -84,7 +88,9 @@ size_t SkipToIfEnd(const uint8_t *data, size_t size, size_t pos) {
       ++depth;
     } else if (op == kOpIfEnd) {
       --depth;
-      if (depth == 0) return pos;
+      if (depth == 0) {
+        return pos;
+      }
     }
   }
   return size;
@@ -103,7 +109,9 @@ size_t SkipToLoopEnd(const uint8_t *data, size_t size, size_t pos) {
       ++depth;
     } else if (op == kOpLoopEnd) {
       --depth;
-      if (depth == 0) return pos;
+      if (depth == 0) {
+        return pos;
+      }
     }
   }
   return size;

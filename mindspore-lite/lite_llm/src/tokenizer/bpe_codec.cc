@@ -27,7 +27,9 @@ namespace mslite_llm {
 namespace {
 
 uint32_t ReadU32(const uint8_t *data, size_t &offset, size_t size) {
-  if (offset + sizeof(uint32_t) > size) return 0;
+  if (offset + sizeof(uint32_t) > size) {
+    return 0;
+  }
   uint32_t val;
   std::memcpy(&val, data + offset, sizeof(val));
   offset += sizeof(val);
@@ -36,7 +38,9 @@ uint32_t ReadU32(const uint8_t *data, size_t &offset, size_t size) {
 
 std::string ReadStr(const uint8_t *data, size_t &offset, size_t size) {
   uint32_t len = ReadU32(data, offset, size);
-  if (offset + len > size) return "";
+  if (offset + len > size) {
+    return "";
+  }
   std::string s(reinterpret_cast<const char *>(data + offset), len);
   offset += len;
   return s;

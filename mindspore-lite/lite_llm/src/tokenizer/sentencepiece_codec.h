@@ -27,8 +27,8 @@ namespace mslite_llm {
 
 struct SPPiece {
   std::string piece;
-  float score;
-  int32_t type;
+  float score{0.0f};
+  int32_t type{0};
 };
 
 class SentencePieceCodec {
@@ -38,7 +38,7 @@ class SentencePieceCodec {
 
   bool Load(const uint8_t *data, size_t size, size_t &offset);
   std::vector<std::string> Encode(const std::string &text);
-  std::string Decode(const std::vector<std::string> &tokens);
+  static std::string Decode(const std::vector<std::string> &tokens);
 
   void SetVocab(const Vocabulary &vocabulary);
 

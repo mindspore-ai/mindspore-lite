@@ -21,14 +21,10 @@
 #include <vector>
 
 #include "backend/common/backend.h"
+#include "backend/nnrt/nnrt_executor.h"
 
-// Real definitions live in the global mslite_llm namespace (engine contract +
-// manifest); forward-declare them here so this header stays self-contained.
-namespace mslite_llm {
-struct ModelManifest;
-struct ModelResources;
-}  // namespace mslite_llm
-
+// ModelManifest / ModelResources come in via backend/common/backend.h, which
+// includes manifest/model_manifest.h.
 namespace mslite {
 namespace backend {
 namespace nnrt {
@@ -40,8 +36,6 @@ using ::mslite_llm::BackendOutput;
 using ::mslite_llm::ModelManifest;
 using ::mslite_llm::ModelResources;
 
-class NnrtExecutor;
-struct NnrtConfig;
 }  // namespace nnrt
 }  // namespace backend
 }  // namespace mslite
