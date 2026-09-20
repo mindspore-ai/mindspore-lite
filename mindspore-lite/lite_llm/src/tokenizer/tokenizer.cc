@@ -251,10 +251,8 @@ class TokenizerImpl : public Tokenizer {
   std::vector<int32_t> Encode(const std::string &text) override {
     std::vector<int32_t> ids;
 
-    // SentencePiece models historically receive an implicit BOS here.
-    // Byte-level BPE prompts already encode their complete wire format (for
-    // example ChatML) and must not receive an extra token.
-    if (sp_codec_ && bos_token_id_ >= 0) {
+    // Preserve empty-prompt generation without changing non-empty BPE inputs.
+    if ((sp_codec_ || text.empty()) && bos_token_id_ >= 0) {
       ids.push_back(bos_token_id_);
     }
 
