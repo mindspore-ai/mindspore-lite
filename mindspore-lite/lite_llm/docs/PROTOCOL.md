@@ -101,6 +101,7 @@ Header 字段：
 | `npu.chunk_size` | uint32 | prefill 档位 seq 长度（decode 恒为 1） |
 | `npu.embedding_quant` | bool | 是否 W4A8/W4A16 int4 打包 embedding |
 | `npu.scale_gp_size` | uint32 | 量化分组大小（默认 32） |
+| `npu.q4_0_weight_layout` | string | W4A16 必需为 `q4_0_nzf_compact_phase4`；旧 padded `q4_0_nzf_phase4`、`q4_0_nzf`、planar 或缺失标记的量化包须重新导出 |
 
 `asset.*`（值 = 资源表中的资源名）：
 
@@ -139,11 +140,45 @@ Header 字段：
    `Lookup` 定位资源（完整路径匹配）。
 4. `NPUBackend::Init`：NNRT 单图 + 设备 KV；`.omc` 经 mmap 指针喂 buffer API。
 
-## Binary Format Reference（资源内容格式，与 v0 一致）
+## Binary Format Reference（资源内容格式）
 
-- **embedding_quant.bin**（W4A16 Q4N0Group32）：容量 =
-  `vocab_size * (hidden_size/2 + hidden_size/32 * 2)` 字节；每组 32 元素打包为
-  16B int4 数据 + 2B scale + 2B zero point。
+- **embedding_quant.bin**（W4A16 `q4_0_nzf_compact_phase4`）：与 decoder 权重使用同一格式。
+  逻辑权重为 `Q[N,K]`（embedding 中 `N = vocab_size`、`K = hidden_size`），
+  N/K 必须为正数，分别为 16/32 的整数倍。cell 按 N64、K1024 划分，
+  但尾 cell 只保存有效元素，不补齐 N 或 K。
+  blob 先存全部 packed int4 cell，再存全部 fp16 scale cell，无 zero point；
+  总容量严格为 `N * (K/32) * 18` 字节，其中 packed 区为 `N*K/2` 字节。
+    - cell 按 `(nt,ks)` 排序；令 `n0=nt*64`、`k0=ks*1024`、
+      `nc=min(64,N-n0)`、`kc=min(1024,K-k0)`。
+      packed cell 起始字节为 `n0*K/2 + nc*k0/2`，
+      scale cell 起始字节为 `N*K/2 + n0*K/16 + nc*k0/16`。
+    - 每个 packed cell 含 `[kc/16,nc/16]` 个 16×16 分形，每个分形 128B。
+      int4 为 signed 二补码（`-8..7`），相邻 K 元素占 low/high nibble。
+      phase4 排列仍为 `dst[4*i+p] = src[32*p+i]`，`i=0..31`、`p=0..3`；
+      compact 仅移除尾 cell padding，不改变分形内的编码。
+    - 对逻辑坐标 `(n,k)`，取其所在 cell，令
+      `fractal=((k-k0)//16)*(nc//16)+(n-n0)//16`、
+      `j=((n%16)*16+k%16)//2`。
+      packed 字节位于 `packed_cell_offset + fractal*128 + 4*(j%32) + j//32`；
+      `k%2 == 0` 取 low nibble，否则取 high nibble，按 signed int4 解码。
+    - scale 在每个 cell 内按 `[nc,kc/32]` 存储，为 little-endian fp16。
+      `(n,k)` 的 scale 字节位于
+      `scale_cell_offset + 2*((n-n0)*(kc/32)+(k-k0)//32)`。
+      反量化值为 signed int4 × scale，CPU 按运行时 FP16 规则舍入。
+    - 标准 GGUF Q4_0 block 为 2B scale + 16B split-half nibble。
+      导入时逐位保留 scale（含符号及特殊位模式）和量化码值，仅将 unsigned nibble
+      以 XOR 8 转为 signed wire 编码并重排；不重新量化。
+    - CPU embedding 按需直接解码供 NPU 使用的同一 ION blob，不展开全量 fp16 embedding。
+      字节数、维度合法性及容量计算溢出由运行时校验。
+    - W4A16 必须携带 `npu.q4_0_weight_layout = "q4_0_nzf_compact_phase4"`。
+      旧 padded `q4_0_nzf_phase4`、相邻字节 `q4_0_nzf`、planar 和缺失当前标记的包
+      必须用匹配算子与当前导出器重新导出、编译整包。旧字段 `npu.weight_layout`
+      不作为别名或回退；仅当前键的值参与布局校验，未知键仍按 KV 协议忽略。
+      对齐 shape 的新旧容量可能相同，不能靠字节数识别布局，也不能只改标记。
+      FP16 不受影响；本契约不覆盖 W4A8。
+
+- **SubGraph_0.weight**：Qwen2.5 使用已有 external decoder weights 路径；
+  “external” 指相对编译图的权重资源，仍打包在同一个 `.msl` 内，用户无需手工维护双文件。
 - **rope_cos.bin / rope_sin.bin**：`[max_length, head_dim]` fp16，`max_length = npu.max_length`。
 - **attention_mask.bin**：`[max_length, max_length]` fp16 上三角 mask。
 - **vocab.bin**：tokenizer 词表 + 内嵌 chat template（受限 IR 指令流，v1）

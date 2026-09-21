@@ -1,5 +1,6 @@
 # lite_llm standalone build outputs (build.sh)
 build/
+build_host/
 build_npu/
 build_ohos/
 build_tdd/

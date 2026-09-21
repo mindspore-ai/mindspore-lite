@@ -49,13 +49,18 @@
 
 namespace {
 
+// Defaults applied when the caller leaves generation knobs at their zero
+// value (see ToInternalGenConfig / DefaultGenConfig).
+constexpr int kDefaultMaxNewTokens = 256;
+constexpr int kDefaultNumThreads = 2;
+
 struct EngineState {
-  enum Value { kCreated = 0, kReady, kGenerating };
+  enum class Value { kCreated = 0, kReady, kGenerating };
 };
 
 struct InternalEngine {
   // ── Lifecycle ───────────────────────────────────────────────────────
-  std::atomic<EngineState::Value> state{EngineState::kCreated};
+  std::atomic<EngineState::Value> state{EngineState::Value::kCreated};
 
   // ── Model ───────────────────────────────────────────────────────────
   std::unique_ptr<mslite_llm::ModelInstance> model;
@@ -67,7 +72,7 @@ struct InternalEngine {
   std::unique_ptr<mslite_llm::Sampler> sampler;
 
   // ── Generation config ───────────────────────────────────────────────
-  MSLLMGenerationConfig gen_config;
+  MSLLMGenerationConfig gen_config = {};
   std::mutex config_mutex;
 
   // ── Concurrency ─────────────────────────────────────────────────────
@@ -88,7 +93,7 @@ void SetError(InternalEngine *e, const std::string &msg) {
 
 MSLlmGenerateConfig ToInternalGenConfig(const MSLLMGenerationConfig &c) {
   MSLlmGenerateConfig gc = {};
-  gc.max_new_tokens = c.max_new_tokens > 0 ? c.max_new_tokens : 256;
+  gc.max_new_tokens = c.max_new_tokens > 0 ? c.max_new_tokens : kDefaultMaxNewTokens;
   gc.temperature = c.do_sample ? c.temperature : 0.0f;
   gc.top_k = c.top_k;
   gc.top_p = c.top_p;
@@ -99,7 +104,7 @@ MSLlmGenerateConfig ToInternalGenConfig(const MSLLMGenerationConfig &c) {
 
 MSLlmGenerateConfig DefaultGenConfig() {
   MSLlmGenerateConfig gc = {};
-  gc.max_new_tokens = 256;
+  gc.max_new_tokens = kDefaultMaxNewTokens;
   gc.temperature = 0.0f;
   gc.top_k = 1;
   gc.top_p = 1.0f;
@@ -125,20 +130,28 @@ int32_t GetMaxSeqLen(const InternalEngine *e) {
 
 bool IsEosToken(int32_t token_id, const InternalEngine *e) { return e->tokenizer->IsStopTokenId(token_id); }
 
+int32_t SampleStepLogits(mslite_llm::Sampler *sampler, const mslite_llm::BackendOutput &output) {
+  if (output.logits_view != nullptr) {
+    return sampler->Sample(output.logits_view, output.logits_view_size);
+  }
+  return sampler->Sample(output.logits);
+}
+
 // ─── Generation loop helper ─────────────────────────────────────────────────
 
 struct GenContext {
-  mslite_llm::Backend *backend;
   InternalEngine *engine;
   bool is_first_step;
 };
 
 /// Run one forward step: prefill on the first call, decode on subsequent calls.
 /// Returns false on error.
-bool StepForward(GenContext *ctx, std::vector<int32_t> &token_ids, int32_t position, std::vector<float> &logits) {
-  auto *backend = ctx->backend;
+bool StepForward(GenContext *ctx, std::vector<int32_t> &token_ids, int32_t position,
+                 mslite_llm::BackendOutput *output) {
   auto *model = ctx->engine->model.get();
-  if (!backend || !model) return false;
+  if (model == nullptr || output == nullptr) {
+    return false;
+  }
 
   // Build position_ids
   std::vector<int32_t> position_ids(token_ids.size());
@@ -154,8 +167,190 @@ bool StepForward(GenContext *ctx, std::vector<int32_t> &token_ids, int32_t posit
     phase = mslite_llm::BackendExecutionPhase::kDecode;
   }
 
-  auto status = model->Execute(token_ids, position_ids, phase, logits);
+  auto status = model->Execute(token_ids, position_ids, phase, output);
   return status == MSLLM_SUCCESS;
+}
+
+MSLLMStatus LoadEngineResources(InternalEngine *e, const std::string &path) {
+  std::string error;
+  auto status = mslite_llm::LoadModelResources(path, &e->resources, MSLLM_BACKEND_NNRT, &error);
+  if (status != MSLLM_SUCCESS) {
+    SetError(e, "resource load: " + error);
+    return kMSLLM_ERROR_MODEL_LOAD;
+  }
+  if (e->resources.single_file) {
+    status = mslite_llm::BuildModelManifestFromKv(*e->resources.package_reader, &e->manifest, &error);
+  } else {
+    status = mslite_llm::LoadModelManifest(path + "/manifest.json", &e->manifest, &error);
+  }
+  if (status != MSLLM_SUCCESS) {
+    SetError(e, "manifest load: " + error);
+    return kMSLLM_ERROR_MODEL_LOAD;
+  }
+  return kMSLLM_SUCCESS;
+}
+
+MSLLMStatus LoadEngineModel(InternalEngine *e, const std::string &path) {
+  MSLlmModelConfig model_cfg = {};
+  model_cfg.max_context_len =
+    e->manifest.npu.present ? e->manifest.npu.max_length : e->manifest.architecture.max_position_embeddings;
+  model_cfg.max_batch_size = 1;
+  MSLlmEngineConfig engine_cfg = {};
+  engine_cfg.backend_type = MSLLM_BACKEND_NNRT;
+  engine_cfg.num_threads = kDefaultNumThreads;
+  e->model = std::make_unique<mslite_llm::ModelInstance>();
+  auto status = e->resources.single_file ? e->model->Load(path, e->manifest, model_cfg, engine_cfg)
+                                         : e->model->Load(path, model_cfg, engine_cfg);
+  if (status != MSLLM_SUCCESS) {
+    SetError(e, "model load failed");
+    e->model.reset();
+    return kMSLLM_ERROR_MODEL_LOAD;
+  }
+  mslite_llm::BackendConfig backend_cfg;
+  backend_cfg.resources = &e->resources;
+  backend_cfg.manifest = &e->manifest;
+  backend_cfg.num_threads = kDefaultNumThreads;
+  if (e->model->InitBackend(backend_cfg) != MSLLM_SUCCESS) {
+    SetError(e, "backend init failed");
+    e->model.reset();
+    return kMSLLM_ERROR_MODEL_LOAD;
+  }
+  return kMSLLM_SUCCESS;
+}
+
+MSLLMStatus LoadEngineTokenizer(InternalEngine *e, const std::string &path) {
+  if (e->resources.single_file) {
+    std::vector<uint8_t> vocab;
+    if (!e->resources.package_reader || !e->resources.package_reader->Read(e->resources.tokenizer_path, &vocab)) {
+      SetError(e, "tokenizer entry not found in .msl");
+      e->model.reset();
+      return kMSLLM_ERROR_MODEL_LOAD;
+    }
+    e->tokenizer = mslite_llm::CreateTokenizerFromBuffer(vocab.data(), vocab.size());
+  } else {
+    std::string vocab_path = e->resources.tokenizer_path;
+    if (vocab_path.empty()) vocab_path = path + "/vocab.bin";
+    // Fallback: look for tokenizer.model (SentencePiece).
+    {
+      std::ifstream test(vocab_path, std::ios::binary);
+      if (!test.good()) vocab_path = path + "/tokenizer.model";
+    }
+    e->tokenizer = mslite_llm::CreateTokenizer(vocab_path);
+  }
+  if (!e->tokenizer) {
+    SetError(e, "tokenizer creation failed");
+    e->model.reset();
+    return kMSLLM_ERROR_MODEL_LOAD;
+  }
+  return kMSLLM_SUCCESS;
+}
+
+void FinishGeneration(InternalEngine *e) {
+  std::lock_guard<std::mutex> lock(e->engine_mutex);
+  e->state.store(EngineState::Value::kReady);
+}
+
+MSLLMStatus PrepareGeneration(InternalEngine *e, const char *prompt, std::vector<int32_t> *input_ids,
+                              MSLLMGenerationConfig *cfg) {
+  {
+    std::lock_guard<std::mutex> lock(e->engine_mutex);
+    if (e->state.load() != EngineState::Value::kReady) {
+      if (e->state.load() == EngineState::Value::kGenerating) return kMSLLM_ERROR_BUSY;
+      return kMSLLM_ERROR_INVALID_ARGS;
+    }
+    if (!e->model || !e->tokenizer || !e->sampler || !e->model->IsLoaded()) {
+      return kMSLLM_ERROR_INVALID_ARGS;
+    }
+    e->state.store(EngineState::Value::kGenerating);
+    e->abort_flag.store(false);
+  }
+  {
+    std::lock_guard<std::mutex> lock(e->config_mutex);
+    *cfg = e->gen_config;
+  }
+  e->sampler->ApplyConfigOverrides(ToInternalGenConfig(*cfg));
+  *input_ids = e->tokenizer->Encode(prompt);
+  if (input_ids->empty()) {
+    FinishGeneration(e);
+    return kMSLLM_ERROR_INVALID_ARGS;
+  }
+  const int32_t max_seq_len = GetMaxSeqLen(e);
+  if (max_seq_len > 0 && static_cast<int32_t>(input_ids->size()) >= max_seq_len) {
+    FinishGeneration(e);
+    return kMSLLM_ERROR_CONTEXT_OVERFLOW;
+  }
+  e->model->ResetGenerationState();
+  e->sampler->Reset();
+  return kMSLLM_SUCCESS;
+}
+
+MSLLMFinishReason GenerationLimit(int32_t max_new, int32_t generated_count, int32_t max_seq_len, int32_t position) {
+  // Zero means no explicit output cap; an explicit cap wins over context.
+  if (max_new > 0 && generated_count >= max_new) return kMSLLM_FINISHED_BY_MAX_OUTPUT_LENGTH;
+  if (max_seq_len > 0 && position + 1 >= max_seq_len) return kMSLLM_FINISHED_BY_MAX_CONTEXT_LENGTH;
+  return kMSLLM_RUNNING;
+}
+
+MSLLMStatus GenerateText(InternalEngine *e, std::vector<int32_t> &token_ids, int32_t max_new, std::string *output) {
+  GenContext ctx{e, true};
+  mslite_llm::BackendOutput backend_output;
+  if (!StepForward(&ctx, token_ids, 0, &backend_output)) return kMSLLM_ERROR_INFERENCE;
+  int32_t token_id = SampleStepLogits(e->sampler.get(), backend_output);
+  int32_t position = static_cast<int32_t>(token_ids.size());
+  int32_t generated_count = 1;
+  const int32_t max_seq_len = GetMaxSeqLen(e);
+  std::vector<int32_t> generated_ids;
+  // Non-streaming generation is not abortable (D8).
+  while (!IsEosToken(token_id, e)) {
+    generated_ids.push_back(token_id);
+    *output = e->tokenizer->Decode(generated_ids);
+    if (GenerationLimit(max_new, generated_count, max_seq_len, position) != kMSLLM_RUNNING) break;
+    std::vector<int32_t> single_token = {token_id};
+    if (!StepForward(&ctx, single_token, position, &backend_output)) return kMSLLM_ERROR_INFERENCE;
+    token_id = SampleStepLogits(e->sampler.get(), backend_output);
+    ++position;
+    ++generated_count;
+  }
+  return kMSLLM_SUCCESS;
+}
+
+MSLLMStatus GenerateStream(InternalEngine *e, std::vector<int32_t> &token_ids, int32_t max_new,
+                           MSLLMStreamCallback callback, void *user_data) {
+  GenContext ctx{e, true};
+  mslite_llm::BackendOutput backend_output;
+  if (!StepForward(&ctx, token_ids, 0, &backend_output)) {
+    callback(nullptr, kMSLLM_FINISHED_BY_ERROR, user_data);
+    return kMSLLM_ERROR_INFERENCE;
+  }
+  int32_t token_id = SampleStepLogits(e->sampler.get(), backend_output);
+  int32_t position = static_cast<int32_t>(token_ids.size());
+  int32_t generated_count = 1;
+  const int32_t max_seq_len = GetMaxSeqLen(e);
+  MSLLMFinishReason finish_reason = kMSLLM_FINISHED_BY_EOS;
+  while (!IsEosToken(token_id, e)) {
+    std::string delta = e->tokenizer->DecodeIncremental(token_id);
+    callback(delta.c_str(), kMSLLM_RUNNING, user_data);
+    if (e->abort_flag.load()) {
+      finish_reason = kMSLLM_STOPPED_BY_USER;
+      break;
+    }
+    finish_reason = GenerationLimit(max_new, generated_count, max_seq_len, position);
+    if (finish_reason != kMSLLM_RUNNING) break;
+    std::vector<int32_t> single_token = {token_id};
+    if (!StepForward(&ctx, single_token, position, &backend_output)) {
+      finish_reason = kMSLLM_FINISHED_BY_ERROR;
+      break;
+    }
+    token_id = SampleStepLogits(e->sampler.get(), backend_output);
+    ++position;
+    ++generated_count;
+  }
+  if (IsEosToken(token_id, e)) finish_reason = kMSLLM_FINISHED_BY_EOS;
+  // Flush buffered incomplete UTF-8 before the terminal callback (#17).
+  std::string tail = e->tokenizer->FlushDecode();
+  if (!tail.empty()) callback(tail.c_str(), kMSLLM_RUNNING, user_data);
+  callback(nullptr, finish_reason, user_data);
+  return kMSLLM_SUCCESS;
 }
 
 }  // namespace
@@ -163,11 +358,10 @@ bool StepForward(GenContext *ctx, std::vector<int32_t> &token_ids, int32_t posit
 // Public C API Implementation
 
 extern "C" {
-
 MSLLMModelHandle MSLLMCreateModel(void) {
   auto *e = new InternalEngine();
   // Set sensible defaults
-  e->gen_config.max_new_tokens = 256;
+  e->gen_config.max_new_tokens = kDefaultMaxNewTokens;
   e->gen_config.do_sample = false;
   e->gen_config.temperature = 1.0f;
   e->gen_config.top_k = 1;
@@ -183,7 +377,7 @@ MSLLMStatus MSLLMDestroyModel(MSLLMModelHandle llm_model) {
   // Refuse to destroy while a generation is in-flight (use-after-free
   // otherwise). Caller sequence: Abort → wait for StreamGenerate to return →
   // Destroy (#16).
-  if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
+  if (e->state.load() == EngineState::Value::kGenerating) return kMSLLM_ERROR_BUSY;
 
   delete e;
   return kMSLLM_SUCCESS;
@@ -194,108 +388,23 @@ MSLLMStatus MSLLMBuildModel(MSLLMModelHandle llm_model, const char *model_path) 
   auto *e = reinterpret_cast<InternalEngine *>(llm_model);
 
   std::lock_guard<std::mutex> lock(e->engine_mutex);
-  if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
-  if (e->state.load() == EngineState::kReady) return kMSLLM_ERROR_NOT_SUPPORTED;
-  if (e->state.load() != EngineState::kCreated) return kMSLLM_ERROR_INVALID_ARGS;
+  if (e->state.load() == EngineState::Value::kGenerating) return kMSLLM_ERROR_BUSY;
+  if (e->state.load() == EngineState::Value::kReady) return kMSLLM_ERROR_NOT_SUPPORTED;
+  if (e->state.load() != EngineState::Value::kCreated) return kMSLLM_ERROR_INVALID_ARGS;
 
   const std::string path(model_path);
   if (path.empty()) return kMSLLM_ERROR_INVALID_ARGS;
   if (PathDoesNotExist(path)) return kMSLLM_ERROR_INVALID_ARGS;
 
-  // ── Determine backend type ──────────────────────────────────────────
-  auto backend_type = MSLLM_BACKEND_NNRT;
+  auto status = LoadEngineResources(e, path);
+  if (status != kMSLLM_SUCCESS) return status;
+  status = LoadEngineModel(e, path);
+  if (status != kMSLLM_SUCCESS) return status;
+  status = LoadEngineTokenizer(e, path);
+  if (status != kMSLLM_SUCCESS) return status;
+  e->sampler = std::make_unique<mslite_llm::Sampler>(DefaultGenConfig());
 
-  // ── Load resources (directory or single-file .msl) ──────────────────
-  std::string resource_error;
-  auto status = mslite_llm::LoadModelResources(path, &e->resources, backend_type, &resource_error);
-  if (status != MSLLM_SUCCESS) {
-    SetError(e, "resource load: " + resource_error);
-    return kMSLLM_ERROR_MODEL_LOAD;
-  }
-
-  // ── Load manifest (directory file or single-file entry) ─────────────
-  std::string manifest_error;
-  if (e->resources.single_file) {
-    // Single-file .msl stores the manifest as flat KV entries (msl_pack v1);
-    // rebuild the typed manifest from the package reader, same as
-    // LoadModelResourcesFromSingleFile does for validation.
-    status = mslite_llm::BuildModelManifestFromKv(*e->resources.package_reader, &e->manifest, &manifest_error);
-  } else {
-    status = mslite_llm::LoadModelManifest(path + "/manifest.json", &e->manifest, &manifest_error);
-  }
-  if (status != MSLLM_SUCCESS) {
-    SetError(e, "manifest load: " + manifest_error);
-    return kMSLLM_ERROR_MODEL_LOAD;
-  }
-
-  MSLlmModelConfig model_cfg = {};
-  model_cfg.max_context_len =
-    e->manifest.npu.present ? e->manifest.npu.max_length : e->manifest.architecture.max_position_embeddings;
-  model_cfg.max_batch_size = 1;
-
-  MSLlmEngineConfig engine_cfg = {};
-  engine_cfg.backend_type = backend_type;
-  engine_cfg.num_threads = 2;
-
-  // ── Create and load ModelInstance (manifest pre-parsed for single-file) ──
-  e->model = std::make_unique<mslite_llm::ModelInstance>();
-  if (e->resources.single_file) {
-    status = e->model->Load(path, e->manifest, model_cfg, engine_cfg);
-  } else {
-    status = e->model->Load(path, model_cfg, engine_cfg);
-  }
-  if (status != MSLLM_SUCCESS) {
-    SetError(e, "model load failed");
-    e->model.reset();
-    return kMSLLM_ERROR_MODEL_LOAD;
-  }
-
-  // ── Init backend with resources ─────────────────────────────────────
-  mslite_llm::BackendConfig backend_cfg;
-  backend_cfg.resources = &e->resources;
-  backend_cfg.manifest = &e->manifest;
-  backend_cfg.num_threads = 2;
-  status = e->model->InitBackend(backend_cfg);
-  if (status != MSLLM_SUCCESS) {
-    SetError(e, "backend init failed");
-    e->model.reset();
-    return kMSLLM_ERROR_MODEL_LOAD;
-  }
-
-  // ── Create tokenizer (single-file entry or filesystem path) ─────────
-  if (e->resources.single_file) {
-    std::vector<uint8_t> vocab;
-    if (!e->resources.package_reader || !e->resources.package_reader->Read(e->resources.tokenizer_path, &vocab)) {
-      SetError(e, "tokenizer entry not found in .msl");
-      e->model.reset();
-      return kMSLLM_ERROR_MODEL_LOAD;
-    }
-    e->tokenizer = mslite_llm::CreateTokenizerFromBuffer(vocab.data(), vocab.size());
-  } else {
-    std::string vocab_path = e->resources.tokenizer_path;
-    if (vocab_path.empty()) {
-      vocab_path = path + "/vocab.bin";
-    }
-    // Fallback: look for tokenizer.model (SentencePiece)
-    {
-      std::ifstream test(vocab_path, std::ios::binary);
-      if (!test.good()) {
-        vocab_path = path + "/tokenizer.model";
-      }
-    }
-    e->tokenizer = mslite_llm::CreateTokenizer(vocab_path);
-  }
-  if (!e->tokenizer) {
-    SetError(e, "tokenizer creation failed");
-    e->model.reset();
-    return kMSLLM_ERROR_MODEL_LOAD;
-  }
-
-  // ── Create sampler ──────────────────────────────────────────────────
-  auto internal_gen_config = DefaultGenConfig();
-  e->sampler = std::make_unique<mslite_llm::Sampler>(internal_gen_config);
-
-  e->state.store(EngineState::kReady);
+  e->state.store(EngineState::Value::kReady);
   return kMSLLM_SUCCESS;
 }
 
@@ -327,7 +436,7 @@ MSLLMStatus MSLLMSetGenerationConfig(MSLLMModelHandle llm_model, const MSLLMGene
   }
 
   std::lock_guard<std::mutex> lock(e->config_mutex);
-  if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
+  if (e->state.load() == EngineState::Value::kGenerating) return kMSLLM_ERROR_BUSY;
 
   e->gen_config = normalized_config;
   return kMSLLM_SUCCESS;
@@ -364,7 +473,7 @@ MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const MSLLMChatMe
   // of resource availability.
   {
     std::lock_guard<std::mutex> lock(e->engine_mutex);
-    if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
+    if (e->state.load() == EngineState::Value::kGenerating) return kMSLLM_ERROR_BUSY;
   }
 
   if (!e->tokenizer) return kMSLLM_ERROR_INVALID_ARGS;
@@ -380,7 +489,6 @@ MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const MSLLMChatMe
   // separate configuration; the current behavior is add_generation_prompt=false.
   std::string rendered = e->tokenizer->ApplyChatTemplate(msgs, false);
   int needed = static_cast<int>(rendered.size()) + 1;
-
   if (needed > prompt_size) {
     return kMSLLM_ERROR_BUFFER_TOO_SMALL;
   }
@@ -394,119 +502,18 @@ MSLLMStatus MSLLMGenerate(MSLLMModelHandle llm_model, const char *prompt, char *
     return kMSLLM_ERROR_INVALID_ARGS;
   }
   auto *e = reinterpret_cast<InternalEngine *>(llm_model);
-
-  // ── Acquire engine mutex, validate state and readiness ──────────────
-  std::unique_lock<std::mutex> lock(e->engine_mutex);
-  if (e->state.load() != EngineState::kReady) {
-    if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
-    return kMSLLM_ERROR_INVALID_ARGS;
-  }
-  if (!e->model || !e->tokenizer || !e->sampler || !e->model->IsLoaded()) {
-    return kMSLLM_ERROR_INVALID_ARGS;
-  }
-  e->state.store(EngineState::kGenerating);
-  e->abort_flag.store(false);
-  lock.unlock();
-
-  // ── Snapshot config ─────────────────────────────────────────────────
-  MSLLMGenerationConfig cfg;
-  {
-    std::lock_guard<std::mutex> cl(e->config_mutex);
-    cfg = e->gen_config;
-  }
-  auto internal_cfg = ToInternalGenConfig(cfg);
-  e->sampler->ApplyConfigOverrides(internal_cfg);
-
-  // ── Tokenize ────────────────────────────────────────────────────────
-  std::vector<int32_t> input_ids = e->tokenizer->Encode(prompt);
-  if (input_ids.empty()) {
-    lock.lock();
-    e->state.store(EngineState::kReady);
-    return kMSLLM_ERROR_INVALID_ARGS;
-  }
-
-  int32_t max_seq_len = GetMaxSeqLen(e);
-  // max_new_tokens==0 means "no explicit output cap" (#3): generate until
-  // EOS or the context window is exhausted.
-  int32_t max_new = cfg.max_new_tokens;
-
-  // ── Context overflow check ──────────────────────────────────────────
-  if (max_seq_len > 0 && static_cast<int32_t>(input_ids.size()) >= max_seq_len) {
-    lock.lock();
-    e->state.store(EngineState::kReady);
-    return kMSLLM_ERROR_CONTEXT_OVERFLOW;
-  }
-
-  // ── Reset backend state ─────────────────────────────────────────────
-  e->model->ResetGenerationState();
-  e->sampler->Reset();
-
-  // ── Generation loop ─────────────────────────────────────────────────
+  std::vector<int32_t> input_ids;
+  MSLLMGenerationConfig cfg = {};
+  auto status = PrepareGeneration(e, prompt, &input_ids, &cfg);
+  if (status != kMSLLM_SUCCESS) return status;
   std::string output;
-  std::vector<int32_t> token_ids = input_ids;
-  std::vector<int32_t> generated_ids;
-  GenContext ctx;
-  ctx.backend = e->model->GetBackend();
-  ctx.engine = e;
-  ctx.is_first_step = true;
-
-  int32_t position = 0;
-  std::vector<float> logits;
-
-  // Prefill: feed all prompt tokens
-  if (!StepForward(&ctx, token_ids, position, logits)) {
-    lock.lock();
-    e->state.store(EngineState::kReady);
-    return kMSLLM_ERROR_INFERENCE;
+  status = GenerateText(e, input_ids, cfg.max_new_tokens, &output);
+  FinishGeneration(e);
+  if (status != kMSLLM_SUCCESS) {
+    return status;
   }
-
-  // Sample first token
-  int32_t token_id = e->sampler->Sample(logits);
-  position = static_cast<int32_t>(input_ids.size());
-  int32_t generated_count = 1;
-  bool eos = IsEosToken(token_id, e);
-
-  if (!eos) {
-    generated_ids.push_back(token_id);
-    output = e->tokenizer->Decode(generated_ids);
-  }
-
-  // Decode loop: generate until EOS, explicit output cap, or the context
-  // window is exhausted. Non-streaming is not abortable (D8).
-  while (!eos) {
-    if (max_new > 0 && generated_count >= max_new) break;       // MAX_OUTPUT_LENGTH
-    if (max_seq_len > 0 && position + 1 >= max_seq_len) break;  // MAX_CONTEXT_LENGTH
-
-    std::vector<int32_t> single_token = {token_id};
-    ctx.is_first_step = false;
-    if (!StepForward(&ctx, single_token, position, logits)) {
-      lock.lock();
-      e->state.store(EngineState::kReady);
-      return kMSLLM_ERROR_INFERENCE;
-    }
-
-    token_id = e->sampler->Sample(logits);
-    ++position;
-    ++generated_count;
-
-    eos = IsEosToken(token_id, e);
-    if (!eos) {
-      generated_ids.push_back(token_id);
-      output = e->tokenizer->Decode(generated_ids);
-    }
-  }
-
-  // ── Buffer contract check ───────────────────────────────────────────
   int needed = static_cast<int>(output.size()) + 1;
-
-  lock.lock();
-  e->state.store(EngineState::kReady);
-  lock.unlock();
-
-  if (needed > text_size) {
-    return kMSLLM_ERROR_BUFFER_TOO_SMALL;
-  }
-
+  if (needed > text_size) return kMSLLM_ERROR_BUFFER_TOO_SMALL;
   std::memcpy(generated_text, output.c_str(), static_cast<size_t>(needed));
   return kMSLLM_SUCCESS;
 }
@@ -517,136 +524,13 @@ MSLLMStatus MSLLMStreamGenerate(MSLLMModelHandle llm_model, const char *prompt, 
     return kMSLLM_ERROR_INVALID_ARGS;
   }
   auto *e = reinterpret_cast<InternalEngine *>(llm_model);
-
-  // ── Acquire engine mutex, validate state and readiness ──────────────
-  std::unique_lock<std::mutex> lock(e->engine_mutex);
-  if (e->state.load() != EngineState::kReady) {
-    if (e->state.load() == EngineState::kGenerating) return kMSLLM_ERROR_BUSY;
-    return kMSLLM_ERROR_INVALID_ARGS;
-  }
-  if (!e->model || !e->tokenizer || !e->sampler || !e->model->IsLoaded()) {
-    return kMSLLM_ERROR_INVALID_ARGS;
-  }
-  e->state.store(EngineState::kGenerating);
-  e->abort_flag.store(false);
-  lock.unlock();
-
-  // ── Snapshot config ─────────────────────────────────────────────────
-  MSLLMGenerationConfig cfg;
-  {
-    std::lock_guard<std::mutex> cl(e->config_mutex);
-    cfg = e->gen_config;
-  }
-  auto internal_cfg = ToInternalGenConfig(cfg);
-  e->sampler->ApplyConfigOverrides(internal_cfg);
-
-  // ── Tokenize ────────────────────────────────────────────────────────
-  std::vector<int32_t> input_ids = e->tokenizer->Encode(prompt);
-  if (input_ids.empty()) {
-    lock.lock();
-    e->state.store(EngineState::kReady);
-    return kMSLLM_ERROR_INVALID_ARGS;
-  }
-
-  int32_t max_seq_len = GetMaxSeqLen(e);
-  // max_new_tokens==0 means "no explicit output cap" (#3).
-  int32_t max_new = cfg.max_new_tokens;
-
-  // ── Context overflow check ──────────────────────────────────────────
-  if (max_seq_len > 0 && static_cast<int32_t>(input_ids.size()) >= max_seq_len) {
-    lock.lock();
-    e->state.store(EngineState::kReady);
-    return kMSLLM_ERROR_CONTEXT_OVERFLOW;
-  }
-
-  // ── Reset backend ───────────────────────────────────────────────────
-  e->model->ResetGenerationState();
-  e->sampler->Reset();
-
-  // ── Generation loop with callback ───────────────────────────────────
-  std::vector<int32_t> token_ids = input_ids;
-  std::vector<int32_t> generated_ids;
-  GenContext ctx;
-  ctx.backend = e->model->GetBackend();
-  ctx.engine = e;
-  ctx.is_first_step = true;
-
-  int32_t position = 0;
-  std::vector<float> logits;
-
-  // Prefill
-  if (!StepForward(&ctx, token_ids, position, logits)) {
-    callback(nullptr, kMSLLM_FINISHED_BY_ERROR, user_data);
-    lock.lock();
-    e->state.store(EngineState::kReady);
-    return kMSLLM_ERROR_INFERENCE;
-  }
-
-  int32_t token_id = e->sampler->Sample(logits);
-  position = static_cast<int32_t>(input_ids.size());
-  int32_t generated_count = 1;
-  bool eos = IsEosToken(token_id, e);
-
-  MSLLMFinishReason finish_reason = kMSLLM_RUNNING;
-
-  if (!eos) {
-    generated_ids.push_back(token_id);
-    std::string delta = e->tokenizer->DecodeIncremental(token_id);
-    callback(delta.c_str(), kMSLLM_RUNNING, user_data);
-  }
-
-  // Decode loop: terminate on abort, explicit output cap (wins over context
-  // per #14), context window, EOS, or inference error.
-  while (!eos) {
-    if (e->abort_flag.load()) {
-      finish_reason = kMSLLM_STOPPED_BY_USER;
-      break;
-    }
-    if (max_new > 0 && generated_count >= max_new) {
-      finish_reason = kMSLLM_FINISHED_BY_MAX_OUTPUT_LENGTH;
-      break;
-    }
-    if (max_seq_len > 0 && position + 1 >= max_seq_len) {
-      finish_reason = kMSLLM_FINISHED_BY_MAX_CONTEXT_LENGTH;
-      break;
-    }
-
-    std::vector<int32_t> single_token = {token_id};
-    ctx.is_first_step = false;
-    if (!StepForward(&ctx, single_token, position, logits)) {
-      finish_reason = kMSLLM_FINISHED_BY_ERROR;
-      break;
-    }
-
-    token_id = e->sampler->Sample(logits);
-    ++position;
-    ++generated_count;
-
-    eos = IsEosToken(token_id, e);
-    if (!eos) {
-      generated_ids.push_back(token_id);
-      std::string delta = e->tokenizer->DecodeIncremental(token_id);
-      callback(delta.c_str(), kMSLLM_RUNNING, user_data);
-    }
-  }
-
-  if (eos) {
-    finish_reason = kMSLLM_FINISHED_BY_EOS;
-  }
-
-  // Flush any buffered incomplete UTF-8 tail before the terminal callback
-  // (#17).
-  std::string tail = e->tokenizer->FlushDecode();
-  if (!tail.empty()) {
-    callback(tail.c_str(), kMSLLM_RUNNING, user_data);
-  }
-
-  // Terminal callback
-  callback(nullptr, finish_reason, user_data);
-
-  lock.lock();
-  e->state.store(EngineState::kReady);
-  return kMSLLM_SUCCESS;
+  std::vector<int32_t> input_ids;
+  MSLLMGenerationConfig cfg = {};
+  auto status = PrepareGeneration(e, prompt, &input_ids, &cfg);
+  if (status != kMSLLM_SUCCESS) return status;
+  status = GenerateStream(e, input_ids, cfg.max_new_tokens, callback, user_data);
+  FinishGeneration(e);
+  return status;
 }
 
 MSLLMStatus MSLLMAbort(MSLLMModelHandle llm_model) {
@@ -654,7 +538,7 @@ MSLLMStatus MSLLMAbort(MSLLMModelHandle llm_model) {
   auto *e = reinterpret_cast<InternalEngine *>(llm_model);
 
   // Only affect an in-flight streaming generation; otherwise no-op (#13).
-  if (e->state.load() == EngineState::kGenerating) {
+  if (e->state.load() == EngineState::Value::kGenerating) {
     e->abort_flag.store(true);
   }
   return kMSLLM_SUCCESS;

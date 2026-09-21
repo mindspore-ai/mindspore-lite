@@ -22,6 +22,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <utility>
 
 #include "manifest/model_manifest.h"
 #include "manifest/msl_package_reader.h"
@@ -33,11 +34,7 @@ using namespace std::chrono;  // NOLINT(build/namespaces)
 
 std::string MakeStamp() { return std::to_string(steady_clock::now().time_since_epoch().count()); }
 
-/// Create a minimal valid manifest.json in `root`.
-void WriteManifest(const std::filesystem::path &root, const std::string &extra_json = "") {
-  auto path = root / "manifest.json";
-  std::ofstream out(path);
-  out << R"({
+constexpr char kModelMetadataJson[] = R"({
   "model_name": "test-model",
   "version": "0.1.0",
   "format_version": "1.0",
@@ -54,8 +51,14 @@ void WriteManifest(const std::filesystem::path &root, const std::string &extra_j
     "rope_theta": 1000000.0,
     "norm_eps": 1e-6,
     "tie_word_embeddings": true
-  },)" << extra_json
-      << R"(
+  },)";
+
+/// Create a minimal valid manifest.json in `root`.
+void WriteManifest(const std::filesystem::path &root, const std::string &extra_json = "",
+                   const std::string &npu_extra_json = "") {
+  auto path = root / "manifest.json";
+  std::ofstream out(path);
+  out << kModelMetadataJson << extra_json << R"(
   "litert": {
     "precision": "float32",
     "capabilities": {
@@ -65,11 +68,13 @@ void WriteManifest(const std::filesystem::path &root, const std::string &extra_j
     "graph_io": {
       "prefill": {
         "inputs": [{"name": "input_ids", "role": "input_ids", "dtype": "int32", "shape": [1, -1]}],
-        "outputs": [{"name": "logits", "role": "logits", "dtype": "float32", "shape": [1, -1, 151936], "token_axis": 1, "vocab_axis": 2}]
+        "outputs": [{"name": "logits", "role": "logits", "dtype": "float32", "shape": [1, -1, 151936],
+                     "token_axis": 1, "vocab_axis": 2}]
       },
       "decode": {
         "inputs": [{"name": "input_ids", "role": "input_ids", "dtype": "int32", "shape": [1, 1]}],
-        "outputs": [{"name": "logits", "role": "logits", "dtype": "float32", "shape": [1, 1, 151936], "token_axis": 1, "vocab_axis": 2}]
+        "outputs": [{"name": "logits", "role": "logits", "dtype": "float32", "shape": [1, 1, 151936],
+                     "token_axis": 1, "vocab_axis": 2}]
       }
     }
   },
@@ -83,7 +88,8 @@ void WriteManifest(const std::filesystem::path &root, const std::string &extra_j
   },
   "npu": {
     "max_length": 4096,
-    "chunk_size": 128
+    "chunk_size": 128)"
+      << npu_extra_json << R"(
   }
 })";
 }
@@ -185,10 +191,14 @@ TEST(ModelResourceLoader, RejectsMissingNpuPrefill) {
   auto path = root / "manifest.json";
   std::ofstream out(path);
   out << R"({
-  "model_name":"test","version":"1","format_version":"1.0","dtype":"float32",
-  "architecture":{"num_layers":1,"hidden_size":128,"intermediate_size":512,"num_heads":2,"num_kv_heads":2,"head_dim":64,"vocab_size":100,"max_position_embeddings":512,"rope_theta":10000,"norm_eps":1e-6,"tie_word_embeddings":false},
-  "litert":{"precision":"float32","capabilities":{"decode":{"path":"decode/graph.ms"}},"graph_io":{"prefill":{"inputs":[],"outputs":[]}}},
-  "assets":{"tokenizer":"vocab/vocab.bin"}
+  "model_name": "test", "version": "1", "format_version": "1.0", "dtype": "float32",
+  "architecture": {"num_layers": 1, "hidden_size": 128, "intermediate_size": 512, "num_heads": 2,
+                   "num_kv_heads": 2, "head_dim": 64, "vocab_size": 100, "max_position_embeddings": 512,
+                   "rope_theta": 10000, "norm_eps": 1e-6, "tie_word_embeddings": false},
+  "litert": {"precision": "float32",
+             "capabilities": {"decode": {"path": "decode/graph.ms"}},
+             "graph_io": {"prefill": {"inputs": [], "outputs": []}}},
+  "assets": {"tokenizer": "vocab/vocab.bin"}
 })";
   out.close();  // flush before the loader reads the manifest
   ModelResources resources;
@@ -292,6 +302,106 @@ void WriteSingleFileMslV1(const std::filesystem::path &path,
   out.write(reinterpret_cast<const char *>(buf.data()), static_cast<std::streamsize>(buf.size()));
 }
 
+struct QuantLayoutCase {
+  const char *name = "";
+  bool quantized = false;
+  const char *layout = "";
+  int group_size = 0;
+  bool valid = false;
+  const char *layout_key = "q4_0_weight_layout";
+};
+
+const QuantLayoutCase kQuantLayoutCases[] = {
+  {"compact_phase4", true, "q4_0_nzf_compact_phase4", 32, true},
+  {"old_padded_phase4", true, "q4_0_nzf_phase4", 32, false},
+  {"old_adjacent_byte_nzf", true, "q4_0_nzf", 32, false},
+  {"legacy_generic_layout_key", true, "q4_0_nzf_compact_phase4", 32, false, "weight_layout"},
+  {"legacy_planar_missing_marker", true, "", 32, false},
+  {"legacy_planar_explicit_marker", true, "q4_0_planar", 32, false},
+  {"unknown_layout", true, "future_layout", 32, false},
+  {"wrong_group_size", true, "q4_0_nzf_compact_phase4", 16, false},
+  {"fp16_without_layout", false, "", 32, true},
+};
+
+TEST(ManifestQuantLayout, ValidatesJsonLayoutAndPreservesFp16Compatibility) {
+  for (const auto &item : kQuantLayoutCases) {
+    SCOPED_TRACE(item.name);
+    const auto root = MakePackage(item.name);
+    std::string npu = std::string(",\"embedding_quant\":") + (item.quantized ? "true" : "false") +
+                      ",\"scale_gp_size\":" + std::to_string(item.group_size);
+    if (item.layout[0] != '\0') {
+      npu += std::string(",\"") + item.layout_key + "\":\"" + item.layout + "\"";
+    }
+    WriteManifest(root, "", npu);
+    ModelManifest manifest;
+    std::string error;
+    const auto status = LoadModelManifest((root / "manifest.json").string(), &manifest, &error);
+    EXPECT_EQ(status, item.valid ? MSLLM_SUCCESS : MSLLM_ERROR_INVALID_ARGS) << error;
+    if (item.valid) {
+      EXPECT_EQ(manifest.npu.embedding_quant, item.quantized);
+      EXPECT_EQ(manifest.npu.q4_0_weight_layout, item.layout);
+      EXPECT_EQ(manifest.npu.scale_gp_size, item.group_size);
+    }
+    // Reject padded, adjacent-byte NZF and planar packages before the
+    // embedding payload can be silently interpreted as compact phase4.
+    ModelResources resources;
+    EXPECT_EQ(LoadModelResources(root.string(), &resources, MSLLM_BACKEND_NNRT, &error),
+              item.valid ? MSLLM_SUCCESS : MSLLM_ERROR_INVALID_ARGS)
+      << error;
+    std::filesystem::remove_all(root);
+  }
+}
+
+TEST(ManifestQuantLayout, ValidatesKvLayoutAndPreservesFp16Compatibility) {
+  // Reuse the output so a prior compact marker cannot authorize a later
+  // unmarked package or a legacy key.
+  ModelManifest manifest;
+  for (const auto &item : kQuantLayoutCases) {
+    SCOPED_TRACE(item.name);
+    const auto path = std::filesystem::temp_directory_path() / ("test_msl_layout_" + MakeStamp() + ".msl");
+    const uint32_t kString = msl_format::kTypeString;
+    const uint32_t kUint32 = msl_format::kTypeUint32;
+    std::vector<std::pair<std::string, std::pair<uint32_t, std::vector<uint8_t>>>> kv = {
+      {"model.name", {kString, StrVal("test")}},
+      {"litert.prefill.path", {kString, StrVal("npu_offline/x.omc")}},
+      {"asset.tokenizer", {kString, StrVal("vocab/vocab.bin")}},
+      {"asset.embedding", {kString, StrVal("assets/embedding.bin")}},
+      {"asset.rope_cos", {kString, StrVal("assets/rope_cos.bin")}},
+      {"asset.rope_sin", {kString, StrVal("assets/rope_sin.bin")}},
+      {"asset.attention_mask", {kString, StrVal("assets/attention_mask.bin")}},
+      {"npu.max_length", {kUint32, U32Val(1024)}},
+      {"npu.chunk_size", {kUint32, U32Val(128)}},
+      {"npu.embedding_quant", {msl_format::kTypeBool, BoolVal(item.quantized)}},
+      {"npu.scale_gp_size", {kUint32, U32Val(item.group_size)}},
+    };
+    if (item.layout[0] != '\0') {
+      kv.emplace_back(std::string("npu.") + item.layout_key, std::make_pair(kString, StrVal(item.layout)));
+    }
+    WriteSingleFileMslV1(path, kv,
+                         {{"npu_offline/x.omc", "omc"},
+                          {"vocab/vocab.bin", "v"},
+                          {"assets/embedding.bin", "e"},
+                          {"assets/rope_cos.bin", "c"},
+                          {"assets/rope_sin.bin", "s"},
+                          {"assets/attention_mask.bin", "m"}});
+    MslPackageReader reader;
+    std::string error;
+    ASSERT_TRUE(reader.Open(path.string(), &error)) << error;
+    const auto status = BuildModelManifestFromKv(reader, &manifest, &error);
+    EXPECT_EQ(status, item.valid ? MSLLM_SUCCESS : MSLLM_ERROR_INVALID_ARGS) << error;
+    if (item.valid) {
+      EXPECT_EQ(manifest.npu.embedding_quant, item.quantized);
+      EXPECT_EQ(manifest.npu.q4_0_weight_layout, item.layout);
+      EXPECT_EQ(manifest.npu.scale_gp_size, item.group_size);
+    }
+    ModelResources resources;
+    EXPECT_EQ(LoadModelResources(path.string(), &resources, MSLLM_BACKEND_NNRT, &error),
+              item.valid ? MSLLM_SUCCESS : MSLLM_ERROR_INVALID_ARGS)
+      << error;
+    std::filesystem::remove(path);
+  }
+}
+
 TEST(MslPackageReader, ParsesAndReadsEntries) {
   auto path = std::filesystem::temp_directory_path() / ("test_msl_single_" + MakeStamp() + ".msl");
   const uint32_t kTypeString = mslite_llm::msl_format::kTypeString;
@@ -380,6 +490,7 @@ TEST(ModelResourceLoader, LoadsSingleFileNpuPackage) {
                         {"npu.max_length", {kTypeUint32, U32Val(1024)}},
                         {"npu.chunk_size", {kTypeUint32, U32Val(128)}},
                         {"npu.embedding_quant", {kTypeBool, BoolVal(true)}},
+                        {"npu.q4_0_weight_layout", {kTypeString, StrVal("q4_0_nzf_compact_phase4")}},
                         {"npu.scale_gp_size", {kTypeUint32, U32Val(32)}}},
                        {{"npu_offline/x.omc", "omc"},
                         {"assets/embedding_quant.bin", "e"},
@@ -419,12 +530,8 @@ TEST(ModelResourceLoader, ValidatesSingleFileExternalWeights) {
     {"npu.om_weight_dir", {kTypeString, StrVal("weights")}},
   };
   const std::vector<std::pair<std::string, std::string>> resources = {
-    {"npu_offline/x.omc", "omc"},
-    {"assets/embedding_quant.bin", "e"},
-    {"assets/rope_cos.bin", "c"},
-    {"assets/rope_sin.bin", "s"},
-    {"assets/attention_mask.bin", "m"},
-    {"vocab/vocab.bin", "v"},
+    {"npu_offline/x.omc", "omc"}, {"assets/embedding_quant.bin", "e"}, {"assets/rope_cos.bin", "c"},
+    {"assets/rope_sin.bin", "s"}, {"assets/attention_mask.bin", "m"},  {"vocab/vocab.bin", "v"},
   };
 
   auto missing_path = std::filesystem::temp_directory_path() / ("test_msl_ext_missing_" + MakeStamp() + ".msl");
@@ -450,7 +557,6 @@ TEST(ModelResourceLoader, ValidatesSingleFileExternalWeights) {
 
 TEST(ModelResourceLoader, RejectsSingleFileMissingNpuConfig) {
   auto path = std::filesystem::temp_directory_path() / ("test_msl_nonpu_" + MakeStamp() + ".msl");
-  const uint32_t kTypeString = mslite_llm::msl_format::kTypeString;
   // Only a resource table, no KV metadata: NPU validation must reject it.
   WriteSingleFileMslV1(path, {}, {{"npu_offline/x.omc", "omc"}});
 

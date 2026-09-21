@@ -16,8 +16,10 @@
 
 #include "backend/nnrt/nnrt_embedding_dequant.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace mslite {
 namespace backend {
@@ -118,29 +120,57 @@ float Fp16BitsToFp32(uint16_t h) {
   return Fp32FromBits(bits);
 }
 
-void DequantizeEmbeddingRow(const uint8_t *packed, const uint16_t *scales_fp16, int hidden, int group_size,
-                            uint16_t *out_fp16) {
-  if (packed == nullptr || scales_fp16 == nullptr || out_fp16 == nullptr || hidden <= 0 || group_size <= 0 ||
-      group_size % 2 != 0) {
-    return;
+bool Q4NzfEmbeddingSize(int rows, int hidden, size_t *packed_bytes, size_t *total_bytes) {
+  if (rows <= 0 || hidden <= 0 || rows % 16 != 0 || hidden % 32 != 0 || packed_bytes == nullptr ||
+      total_bytes == nullptr) {
+    return false;
   }
-  const int half = group_size / 2;  // packed bytes per group
-  const int num_groups = (hidden + group_size - 1) / group_size;
-  for (int g = 0; g < num_groups; ++g) {
-    const float scale = Fp16BitsToFp32(scales_fp16[g]);
-    const int base = g * group_size;
-    for (int j = 0; j < half; ++j) {
-      const uint8_t byte = packed[g * half + j];
-      const int i0 = base + j;         // low nibble
-      const int i1 = base + j + half;  // high nibble
-      if (i0 < hidden) {
-        out_fp16[i0] = Fp32ToFp16Bits((static_cast<float>(byte & 0x0Fu) - 8.0f) * scale);
-      }
-      if (i1 < hidden) {
-        out_fp16[i1] = Fp32ToFp16Bits((static_cast<float>(byte >> 4) - 8.0f) * scale);
-      }
+  const size_t groups_per_row = static_cast<size_t>(hidden) / 32;
+  if (static_cast<size_t>(rows) > std::numeric_limits<size_t>::max() / 18 / groups_per_row) {
+    return false;
+  }
+  const size_t groups = static_cast<size_t>(rows) * groups_per_row;
+  *packed_bytes = groups * 16;
+  *total_bytes = groups * 18;
+  return true;
+}
+
+bool DequantizeEmbeddingRow(const uint8_t *blob, size_t blob_size, Q4EmbeddingShape shape, int row,
+                            uint16_t *out_fp16) {
+  size_t packed_bytes = 0;
+  size_t total_bytes = 0;
+  if (blob == nullptr || out_fp16 == nullptr || row < 0 || row >= shape.rows ||
+      !Q4NzfEmbeddingSize(shape.rows, shape.hidden, &packed_bytes, &total_bytes) || blob_size != total_bytes) {
+    return false;
+  }
+  const size_t hidden = static_cast<size_t>(shape.hidden);
+  const size_t n = static_cast<size_t>(row);
+  const size_t n0 = n / 64 * 64;
+  const size_t nc = std::min(size_t{64}, static_cast<size_t>(shape.rows) - n0);
+  for (size_t k_base = 0; k_base < hidden; k_base += 32) {
+    const size_t k0 = k_base / 1024 * 1024;
+    const size_t kc = std::min(size_t{1024}, hidden - k0);
+    // Divide before multiplying: the compact byte count may fit size_t even
+    // when the logical element count does not (notably on 32-bit hosts).
+    const size_t cell_offset = n0 * (hidden / 2) + nc * (k0 / 2);
+    const size_t scale_offset =
+      packed_bytes + n0 * (hidden / 16) + nc * (k0 / 16) + (n - n0) * (kc / 16) + (k_base - k0) / 16;
+    const uint16_t scale_bits =
+      static_cast<uint16_t>(blob[scale_offset]) | (static_cast<uint16_t>(blob[scale_offset + 1]) << 8);
+    const float scale = Fp16BitsToFp32(scale_bits);
+    for (size_t lane = 0; lane < 32; ++lane) {
+      const size_t k = k_base + lane;
+      const size_t fractal = ((k - k0) / 16) * (nc / 16) + (n - n0) / 16;
+      const size_t flat = (n % 16) * 16 + k % 16;
+      const size_t packed_index = flat / 2;
+      const size_t phase4_index = 4 * (packed_index % 32) + packed_index / 32;
+      const uint8_t byte = blob[cell_offset + fractal * 128 + phase4_index];
+      const int nibble = (byte >> ((flat % 2) * 4)) & 15;
+      const int value = nibble < 8 ? nibble : nibble - 16;
+      out_fp16[k] = Fp32ToFp16Bits(static_cast<float>(value) * scale);
     }
   }
+  return true;
 }
 
 }  // namespace nnrt

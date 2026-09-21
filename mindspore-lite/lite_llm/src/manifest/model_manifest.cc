@@ -34,6 +34,9 @@ namespace mslite_llm {
 
 namespace {
 
+// Default W4A16 embedding scale group size when the manifest omits it.
+constexpr int kDefaultScaleGroupSize = 32;
+
 std::string Lower(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(),
                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -43,9 +46,10 @@ std::string Lower(std::string value) {
 std::string Trim(std::string value) {
   auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
   value.erase(value.begin(), std::find_if(value.begin(), value.end(),
-                                          [&](char c) { return !is_space(static_cast<unsigned char>(c)); }));
+                                          [is_space](char c) { return !is_space(static_cast<unsigned char>(c)); }));
   value.erase(
-    std::find_if(value.rbegin(), value.rend(), [&](char c) { return !is_space(static_cast<unsigned char>(c)); }).base(),
+    std::find_if(value.rbegin(), value.rend(), [is_space](char c) { return !is_space(static_cast<unsigned char>(c)); })
+      .base(),
     value.end());
   return value;
 }
@@ -300,29 +304,29 @@ class JsonParser {
     return false;
   }
 
+  void SkipNumberDigits() {
+    while (pos_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[pos_])) != 0) {
+      ++pos_;
+    }
+  }
+
   bool ParseNumber(JsonValue *out, std::string *error) {
     SkipWhitespace();
     const size_t start = pos_;
     if (pos_ < text_.size() && text_[pos_] == '-') {
       ++pos_;
     }
-    while (pos_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[pos_])) != 0) {
-      ++pos_;
-    }
+    SkipNumberDigits();
     if (pos_ < text_.size() && text_[pos_] == '.') {
       ++pos_;
-      while (pos_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[pos_])) != 0) {
-        ++pos_;
-      }
+      SkipNumberDigits();
     }
     if (pos_ < text_.size() && (text_[pos_] == 'e' || text_[pos_] == 'E')) {
       ++pos_;
       if (pos_ < text_.size() && (text_[pos_] == '-' || text_[pos_] == '+')) {
         ++pos_;
       }
-      while (pos_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[pos_])) != 0) {
-        ++pos_;
-      }
+      SkipNumberDigits();
     }
 
     const std::string token = text_.substr(start, pos_ - start);
@@ -535,7 +539,7 @@ bool ParseGenerationPolicy(const JsonValue &root, ModelManifest *manifest, std::
   }
 
   if (manifest->architecture.vocab_size > 0) {
-    auto out_of_range = [&](int32_t token_id) { return token_id >= manifest->architecture.vocab_size; };
+    auto out_of_range = [manifest](int32_t token_id) { return token_id >= manifest->architecture.vocab_size; };
     if (std::any_of(policy.stop_token_ids.begin(), policy.stop_token_ids.end(), out_of_range) ||
         std::any_of(policy.suppress_token_ids.begin(), policy.suppress_token_ids.end(), out_of_range)) {
       if (error != nullptr) {
@@ -544,6 +548,73 @@ bool ParseGenerationPolicy(const JsonValue &root, ModelManifest *manifest, std::
       return false;
     }
   }
+  return true;
+}
+
+void ParseLiteRtDecodeVariants(const JsonValue &source, LiteRtManifest *out) {
+  const JsonValue *variants = Find(source, "decode_variants");
+  if (variants == nullptr || !variants->IsArray()) {
+    return;
+  }
+  for (const auto &entry : variants->array_value) {
+    if (!entry.IsObject()) {
+      continue;
+    }
+    LiteRtDecodeVariant variant;
+    GetInt(entry, "past_len", &variant.past_len);
+    variant.path = GetString(entry, "path");
+    if (variant.past_len >= 0 && !variant.path.empty()) {
+      out->decode_variants.push_back(std::move(variant));
+    }
+  }
+}
+
+void ParseLiteRtCapabilities(const JsonValue &capabilities, LiteRtManifest *manifest) {
+  auto &out = *manifest;
+  const JsonValue *prefill = Find(capabilities, "prefill");
+  if (prefill != nullptr && prefill->IsObject()) {
+    const std::string path = GetString(*prefill, "path");
+    if (!path.empty()) {
+      out.has_prefill = true;
+      out.prefill_path = path;
+    }
+    GetInt(*prefill, "seq_len", &out.prefill_seq_len);
+  }
+
+  const JsonValue *decode = Find(capabilities, "decode");
+  if (decode != nullptr && decode->IsObject()) {
+    const std::string path = GetString(*decode, "path");
+    if (!path.empty()) {
+      out.has_decode = true;
+      out.decode_path = path;
+    }
+    bool dynamic = false;
+    if (GetBool(*decode, "dynamic_past_len", &dynamic)) {
+      out.decode_dynamic_past_len = dynamic;
+    }
+    GetInt(*decode, "past_len", &out.decode_past_len);
+    GetInt(*decode, "max_past_len", &out.decode_max_past_len);
+  }
+
+  ParseLiteRtDecodeVariants(capabilities, manifest);
+}
+
+bool ValidateLiteRtGraphPaths(const LiteRtManifest &out, std::string *error) {
+  if ((out.has_prefill && !IsPackageRelativePath(out.prefill_path)) ||
+      (out.has_decode && !IsPackageRelativePath(out.decode_path))) {
+    if (error != nullptr) {
+      *error = "LiteRT graph paths must be relative to the model package";
+    }
+    return false;
+  }
+  if (std::any_of(out.decode_variants.begin(), out.decode_variants.end(),
+                  [](const auto &variant) { return !IsPackageRelativePath(variant.path); })) {
+    if (error != nullptr) {
+      *error = "LiteRT decode variant paths must be relative to the model package";
+    }
+    return false;
+  }
+
   return true;
 }
 
@@ -577,78 +648,12 @@ bool ParseLiteRtManifest(const JsonValue &root, ModelManifest *manifest, std::st
 
   const JsonValue *capabilities = Find(*litert, "capabilities");
   if (capabilities != nullptr && capabilities->IsObject()) {
-    const JsonValue *prefill = Find(*capabilities, "prefill");
-    if (prefill != nullptr && prefill->IsObject()) {
-      const std::string path = GetString(*prefill, "path");
-      if (!path.empty()) {
-        out.has_prefill = true;
-        out.prefill_path = path;
-      }
-      GetInt(*prefill, "seq_len", &out.prefill_seq_len);
-    }
-
-    const JsonValue *decode = Find(*capabilities, "decode");
-    if (decode != nullptr && decode->IsObject()) {
-      const std::string path = GetString(*decode, "path");
-      if (!path.empty()) {
-        out.has_decode = true;
-        out.decode_path = path;
-      }
-      bool dynamic = false;
-      if (GetBool(*decode, "dynamic_past_len", &dynamic)) {
-        out.decode_dynamic_past_len = dynamic;
-      }
-      GetInt(*decode, "past_len", &out.decode_past_len);
-      GetInt(*decode, "max_past_len", &out.decode_max_past_len);
-    }
-
-    const JsonValue *variants = Find(*capabilities, "decode_variants");
-    if (variants != nullptr && variants->IsArray()) {
-      for (const auto &entry : variants->array_value) {
-        if (!entry.IsObject()) {
-          continue;
-        }
-        LiteRtDecodeVariant variant;
-        GetInt(entry, "past_len", &variant.past_len);
-        variant.path = GetString(entry, "path");
-        if (variant.past_len >= 0 && !variant.path.empty()) {
-          out.decode_variants.push_back(std::move(variant));
-        }
-      }
-    }
+    ParseLiteRtCapabilities(*capabilities, &out);
   }
 
-  const JsonValue *top_variants = Find(*litert, "decode_variants");
-  if (top_variants != nullptr && top_variants->IsArray()) {
-    for (const auto &entry : top_variants->array_value) {
-      if (!entry.IsObject()) {
-        continue;
-      }
-      LiteRtDecodeVariant variant;
-      GetInt(entry, "past_len", &variant.past_len);
-      variant.path = GetString(entry, "path");
-      if (variant.past_len >= 0 && !variant.path.empty()) {
-        out.decode_variants.push_back(std::move(variant));
-      }
-    }
-  }
+  ParseLiteRtDecodeVariants(*litert, &out);
 
-  if ((out.has_prefill && !IsPackageRelativePath(out.prefill_path)) ||
-      (out.has_decode && !IsPackageRelativePath(out.decode_path))) {
-    if (error != nullptr) {
-      *error = "LiteRT graph paths must be relative to the model package";
-    }
-    return false;
-  }
-  if (std::any_of(out.decode_variants.begin(), out.decode_variants.end(),
-                  [](const auto &variant) { return !IsPackageRelativePath(variant.path); })) {
-    if (error != nullptr) {
-      *error = "LiteRT decode variant paths must be relative to the model package";
-    }
-    return false;
-  }
-
-  return true;
+  return ValidateLiteRtGraphPaths(out, error);
 }
 
 std::string ReadTextFile(const std::string &path) {
@@ -699,6 +704,123 @@ bool ParseDTypeName(const std::string &raw, MSLlmDType *out) {
   return false;
 }
 
+namespace {
+
+bool ValidateQ4Layout(const NpuConfig &config, std::string *error_message) {
+  if (!config.embedding_quant || (config.q4_0_weight_layout == kQ4_0WeightLayout && config.scale_gp_size == 32)) {
+    return true;
+  }
+  if (error_message != nullptr) {
+    *error_message = std::string("Incompatible quantized NPU package: requires npu.q4_0_weight_layout=") +
+                     kQ4_0WeightLayout +
+                     " and npu.scale_gp_size=32; padded, old NZF, planar and unmarked packages must be re-exported";
+  }
+  return false;
+}
+
+MSLlmStatus ParseManifestPrecision(const JsonValue &root, ModelManifest &parsed, std::string *error_message) {
+  bool precision_declared = false;
+  auto apply_precision = [&error_message, &parsed, &precision_declared](const std::string &value,
+                                                                        const std::string &field) {
+    if (value.empty()) {
+      return true;
+    }
+    MSLlmDType candidate = MSLLM_DTYPE_FLOAT32;
+    if (!ParseDTypeName(value, &candidate)) {
+      if (error_message != nullptr) {
+        *error_message = "unsupported " + field + ": " + value;
+      }
+      return false;
+    }
+    if (precision_declared && candidate != parsed.dtype) {
+      if (error_message != nullptr) {
+        *error_message = "conflicting precision declaration in " + field;
+      }
+      return false;
+    }
+    parsed.dtype = candidate;
+    precision_declared = true;
+    return true;
+  };
+  if (!apply_precision(GetString(root, "dtype"), "manifest dtype")) {
+    return MSLLM_ERROR_INVALID_ARGS;
+  }
+  const JsonValue *pipeline_config = Find(root, "pipeline_config");
+  if (pipeline_config != nullptr && pipeline_config->IsObject()) {
+    if (!apply_precision(GetString(*pipeline_config, "precision"), "pipeline_config.precision")) {
+      return MSLLM_ERROR_INVALID_ARGS;
+    }
+  }
+  const JsonValue *litert_config = Find(root, "litert");
+  if (litert_config != nullptr && litert_config->IsObject() &&
+      !apply_precision(GetString(*litert_config, "precision"), "litert.precision")) {
+    return MSLLM_ERROR_INVALID_ARGS;
+  }
+  return MSLLM_SUCCESS;
+}
+
+void ParseManifestAssets(const JsonValue &root, ModelManifest &parsed) {
+  const JsonValue *assets = Find(root, "assets");
+  if (assets != nullptr && assets->IsObject()) {
+    auto &out = parsed.assets;
+    out.present = true;
+    out.tokenizer = GetString(*assets, "tokenizer");
+    out.embedding = GetString(*assets, "embedding");
+    out.embedding_fp16 = GetString(*assets, "embedding_fp16");
+    out.rope_sin = GetString(*assets, "rope_sin");
+    out.rope_cos = GetString(*assets, "rope_cos");
+    out.attention_mask = GetString(*assets, "attention_mask");
+  }
+}
+
+MSLlmStatus ParseNpuConfig(const JsonValue &root, NpuConfig &out, std::string *error_message) {
+  const JsonValue *npu = Find(root, "npu");
+  if (npu == nullptr || !npu->IsObject()) {
+    return MSLLM_SUCCESS;
+  }
+  out.present = true;
+  GetInt(*npu, "max_length", &out.max_length);
+  GetInt(*npu, "chunk_size", &out.chunk_size);
+  GetBool(*npu, "embedding_quant", &out.embedding_quant);
+  GetInt(*npu, "scale_gp_size", &out.scale_gp_size);
+  out.q4_0_weight_layout = GetString(*npu, "q4_0_weight_layout");
+  if (!ValidateQ4Layout(out, error_message)) {
+    return MSLLM_ERROR_INVALID_ARGS;
+  }
+  out.om_weight_dir = GetString(*npu, "om_weight_dir");
+  if (out.max_length <= 0 || out.chunk_size <= 0) {
+    if (error_message != nullptr) {
+      *error_message = "npu.max_length and npu.chunk_size must be positive";
+    }
+    return MSLLM_ERROR_INVALID_ARGS;
+  }
+  if (out.max_length % out.chunk_size != 0) {
+    if (error_message != nullptr) {
+      *error_message = "npu.max_length must be a multiple of npu.chunk_size";
+    }
+    return MSLLM_ERROR_INVALID_ARGS;
+  }
+  if (out.scale_gp_size <= 0) {
+    out.scale_gp_size = kDefaultScaleGroupSize;
+  }
+  return MSLLM_SUCCESS;
+}
+
+MSLlmStatus ParseManifestIdentity(const JsonValue &root, ModelManifest &parsed, std::string *error_message) {
+  parsed.model_name = GetString(root, "model_name");
+  parsed.version = GetString(root, "version");
+  parsed.format_version = GetString(root, "format_version");
+  if (!parsed.format_version.empty() && parsed.format_version != "1.0") {
+    if (error_message != nullptr) {
+      *error_message = "unsupported manifest format_version: " + parsed.format_version;
+    }
+    return MSLLM_ERROR_NOT_SUPPORTED;
+  }
+  return MSLLM_SUCCESS;
+}
+
+}  // namespace
+
 MSLlmStatus ParseManifest(const std::string &content, ModelManifest *manifest, std::string *error_message) {
   if (manifest == nullptr) {
     if (error_message != nullptr) {
@@ -724,51 +846,12 @@ MSLlmStatus ParseManifest(const std::string &content, ModelManifest *manifest, s
   }
 
   ModelManifest parsed;
-  parsed.model_name = GetString(root, "model_name");
-  parsed.version = GetString(root, "version");
-  parsed.format_version = GetString(root, "format_version");
-  if (!parsed.format_version.empty() && parsed.format_version != "1.0") {
-    if (error_message != nullptr) {
-      *error_message = "unsupported manifest format_version: " + parsed.format_version;
-    }
-    return MSLLM_ERROR_NOT_SUPPORTED;
+  const auto identity_status = ParseManifestIdentity(root, parsed, error_message);
+  if (identity_status != MSLLM_SUCCESS) {
+    return identity_status;
   }
 
-  bool precision_declared = false;
-  auto apply_precision = [&](const std::string &value, const std::string &field) {
-    if (value.empty()) {
-      return true;
-    }
-    MSLlmDType candidate = MSLLM_DTYPE_FLOAT32;
-    if (!ParseDTypeName(value, &candidate)) {
-      if (error_message != nullptr) {
-        *error_message = "unsupported " + field + ": " + value;
-      }
-      return false;
-    }
-    if (precision_declared && candidate != parsed.dtype) {
-      if (error_message != nullptr) {
-        *error_message = "conflicting precision declaration in " + field;
-      }
-      return false;
-    }
-    parsed.dtype = candidate;
-    precision_declared = true;
-    return true;
-  };
-
-  if (!apply_precision(GetString(root, "dtype"), "manifest dtype")) {
-    return MSLLM_ERROR_INVALID_ARGS;
-  }
-  const JsonValue *pipeline_config = Find(root, "pipeline_config");
-  if (pipeline_config != nullptr && pipeline_config->IsObject()) {
-    if (!apply_precision(GetString(*pipeline_config, "precision"), "pipeline_config.precision")) {
-      return MSLLM_ERROR_INVALID_ARGS;
-    }
-  }
-  const JsonValue *litert_config = Find(root, "litert");
-  if (litert_config != nullptr && litert_config->IsObject() &&
-      !apply_precision(GetString(*litert_config, "precision"), "litert.precision")) {
+  if (ParseManifestPrecision(root, parsed, error_message) != MSLLM_SUCCESS) {
     return MSLLM_ERROR_INVALID_ARGS;
   }
 
@@ -779,55 +862,17 @@ MSLlmStatus ParseManifest(const std::string &content, ModelManifest *manifest, s
     ParseArchitectureFrom(root, &parsed.architecture);
   }
 
-  if (!ParseGenerationPolicy(root, &parsed, error_message)) {
-    return MSLLM_ERROR_INVALID_ARGS;
-  }
-
-  if (!ParseLiteRtManifest(root, &parsed, error_message)) {
+  if (!ParseGenerationPolicy(root, &parsed, error_message) || !ParseLiteRtManifest(root, &parsed, error_message)) {
     return MSLLM_ERROR_INVALID_ARGS;
   }
   if (parsed.litert.present) {
     parsed.dtype = parsed.litert.precision;
   }
 
-  // ── Assets ──────────────────────────────────────────────────────────
-  const JsonValue *assets = Find(root, "assets");
-  if (assets != nullptr && assets->IsObject()) {
-    auto &out = parsed.assets;
-    out.present = true;
-    out.tokenizer = GetString(*assets, "tokenizer");
-    out.embedding = GetString(*assets, "embedding");
-    out.embedding_fp16 = GetString(*assets, "embedding_fp16");
-    out.rope_sin = GetString(*assets, "rope_sin");
-    out.rope_cos = GetString(*assets, "rope_cos");
-    out.attention_mask = GetString(*assets, "attention_mask");
-  }
+  ParseManifestAssets(root, parsed);
 
-  // ── NPU (NNRT) runtime params ───────────────────────────────────────
-  const JsonValue *npu = Find(root, "npu");
-  if (npu != nullptr && npu->IsObject()) {
-    auto &out = parsed.npu;
-    out.present = true;
-    GetInt(*npu, "max_length", &out.max_length);
-    GetInt(*npu, "chunk_size", &out.chunk_size);
-    GetBool(*npu, "embedding_quant", &out.embedding_quant);
-    GetInt(*npu, "scale_gp_size", &out.scale_gp_size);
-    out.om_weight_dir = GetString(*npu, "om_weight_dir");
-    if (out.max_length <= 0 || out.chunk_size <= 0) {
-      if (error_message != nullptr) {
-        *error_message = "npu.max_length and npu.chunk_size must be positive";
-      }
-      return MSLLM_ERROR_INVALID_ARGS;
-    }
-    if (out.max_length % out.chunk_size != 0) {
-      if (error_message != nullptr) {
-        *error_message = "npu.max_length must be a multiple of npu.chunk_size";
-      }
-      return MSLLM_ERROR_INVALID_ARGS;
-    }
-    if (out.scale_gp_size <= 0) {
-      out.scale_gp_size = 32;
-    }
+  if (ParseNpuConfig(root, parsed.npu, error_message) != MSLLM_SUCCESS) {
+    return MSLLM_ERROR_INVALID_ARGS;
   }
 
   *manifest = std::move(parsed);
@@ -908,28 +953,9 @@ bool ResolvePackagePath(const std::string &package_root, const std::string &cand
   return resolved->size() >= package_root.size() && resolved->compare(0, package_root.size(), package_root) == 0;
 }
 
-MSLlmStatus BuildModelManifestFromKv(const MslPackageReader &reader, ModelManifest *manifest,
-                                     std::string *error_message) {
-  if (manifest == nullptr) {
-    if (error_message != nullptr) {
-      *error_message = "manifest output is null";
-    }
-    return MSLLM_ERROR_INVALID_ARGS;
-  }
-  ModelManifest &m = *manifest;
+namespace {
 
-  reader.GetKvString(msl_format::key::kModelName, &m.model_name);
-  reader.GetKvString(msl_format::key::kModelVersion, &m.version);
-  reader.GetKvString(msl_format::key::kModelFormatVersion, &m.format_version);
-  std::string dtype_name;
-  if (reader.GetKvString(msl_format::key::kModelDtype, &dtype_name) && !ParseDTypeName(dtype_name, &m.dtype)) {
-    if (error_message != nullptr) {
-      *error_message = "unknown dtype in KV metadata: " + dtype_name;
-    }
-    return MSLLM_ERROR_NOT_SUPPORTED;
-  }
-
-  // ── architecture ───────────────────────────────────────────────────────
+void ReadKvArchitecture(const MslPackageReader &reader, ModelManifest &m) {
   uint32_t u32 = 0;
   if (reader.GetKvUint32(msl_format::key::kArchNumLayers, &u32)) m.architecture.num_layers = u32;
   if (reader.GetKvUint32(msl_format::key::kArchHiddenSize, &u32)) m.architecture.hidden_size = u32;
@@ -946,23 +972,29 @@ MSLlmStatus BuildModelManifestFromKv(const MslPackageReader &reader, ModelManife
   if (reader.GetKvFloat32(msl_format::key::kArchRopeTheta, &f32)) m.architecture.rope_theta = f32;
   if (reader.GetKvFloat32(msl_format::key::kArchNormEps, &f32)) m.architecture.norm_eps = f32;
   m.architecture.present = m.architecture.num_layers > 0;
+}
 
-  // ── NPU runtime params ─────────────────────────────────────────────────
-  if (reader.GetKvUint32(msl_format::key::kNpuMaxLength, &u32)) m.npu.max_length = u32;
-  if (reader.GetKvUint32(msl_format::key::kNpuChunkSize, &u32)) m.npu.chunk_size = u32;
-  if (reader.GetKvUint32(msl_format::key::kNpuScaleGpSize, &u32)) m.npu.scale_gp_size = u32;
+bool ReadKvNpuConfig(const MslPackageReader &reader, NpuConfig &out, std::string *error_message) {
+  NpuConfig parsed;
+  uint32_t u32 = 0;
   bool flag = false;
-  if (reader.GetKvBool(msl_format::key::kNpuEmbeddingQuant, &flag)) m.npu.embedding_quant = flag;
-  reader.GetKvString(msl_format::key::kNpuOmWeightDir, &m.npu.om_weight_dir);
-  m.npu.present = m.npu.max_length > 0;
-
-  // ── generation (eos token id; NNRTBackend reads stop_token_ids.front) ──
-  if (reader.GetKvUint32(msl_format::key::kGenEosTokenId, &u32)) {
-    m.generation.present = true;
-    m.generation.stop_token_ids.assign(1, static_cast<int32_t>(u32));
+  if (reader.GetKvUint32(msl_format::key::kNpuMaxLength, &u32)) parsed.max_length = u32;
+  if (reader.GetKvUint32(msl_format::key::kNpuChunkSize, &u32)) parsed.chunk_size = u32;
+  if (reader.GetKvUint32(msl_format::key::kNpuScaleGpSize, &u32)) parsed.scale_gp_size = u32;
+  if (reader.GetKvBool(msl_format::key::kNpuEmbeddingQuant, &flag)) parsed.embedding_quant = flag;
+  reader.GetKvString(msl_format::key::kNpuQ4_0WeightLayout, &parsed.q4_0_weight_layout);
+  if (!ValidateQ4Layout(parsed, error_message)) {
+    return false;
   }
+  reader.GetKvString(msl_format::key::kNpuOmWeightDir, &parsed.om_weight_dir);
+  parsed.present = parsed.max_length > 0;
+  out = std::move(parsed);
+  return true;
+}
 
-  // ── LiteRT graphs ──────────────────────────────────────────────────────
+MSLlmStatus ReadKvLiteRt(const MslPackageReader &reader, ModelManifest &m, std::string *error_message) {
+  uint32_t u32 = 0;
+  bool flag = false;
   std::string str;
   if (reader.GetKvString(msl_format::key::kLitertPrefillPath, &str)) {
     m.litert.present = true;
@@ -1000,8 +1032,52 @@ MSLlmStatus BuildModelManifestFromKv(const MslPackageReader &reader, ModelManife
       return MSLLM_ERROR_INVALID_ARGS;
     }
   }
+  return MSLLM_SUCCESS;
+}
+
+}  // namespace
+
+MSLlmStatus BuildModelManifestFromKv(const MslPackageReader &reader, ModelManifest *manifest,
+                                     std::string *error_message) {
+  if (manifest == nullptr) {
+    if (error_message != nullptr) {
+      *error_message = "manifest output is null";
+    }
+    return MSLLM_ERROR_INVALID_ARGS;
+  }
+  ModelManifest &m = *manifest;
+
+  reader.GetKvString(msl_format::key::kModelName, &m.model_name);
+  reader.GetKvString(msl_format::key::kModelVersion, &m.version);
+  reader.GetKvString(msl_format::key::kModelFormatVersion, &m.format_version);
+  std::string dtype_name;
+  if (reader.GetKvString(msl_format::key::kModelDtype, &dtype_name) && !ParseDTypeName(dtype_name, &m.dtype)) {
+    if (error_message != nullptr) {
+      *error_message = "unknown dtype in KV metadata: " + dtype_name;
+    }
+    return MSLLM_ERROR_NOT_SUPPORTED;
+  }
+
+  ReadKvArchitecture(reader, m);
+
+  if (!ReadKvNpuConfig(reader, m.npu, error_message)) {
+    return MSLLM_ERROR_INVALID_ARGS;
+  }
+
+  // ── generation (eos token id; NNRTBackend reads stop_token_ids.front) ──
+  uint32_t u32 = 0;
+  if (reader.GetKvUint32(msl_format::key::kGenEosTokenId, &u32)) {
+    m.generation.present = true;
+    m.generation.stop_token_ids.assign(1, static_cast<int32_t>(u32));
+  }
+
+  const auto litert_status = ReadKvLiteRt(reader, m, error_message);
+  if (litert_status != MSLLM_SUCCESS) {
+    return litert_status;
+  }
 
   // ── assets (resolved against the resource table by the loader) ────────
+  std::string str;
   if (reader.GetKvString(msl_format::key::kAssetTokenizer, &str)) {
     m.assets.present = true;
     m.assets.tokenizer = str;

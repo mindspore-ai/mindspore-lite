@@ -24,17 +24,19 @@ def _rotate_half(value: torch.Tensor) -> torch.Tensor:
     return torch.cat((-second, first), dim=-1)
 
 
-class MsRotaryPosEmb(torch.autograd.Function):
+class MsRotaryPosEmb(torch.autograd.Function):  # pylint: disable=abstract-method
     """Apply NeoX half-split RoPE to BNSD query and key tensors."""
 
     @staticmethod
-    def forward(ctx, query, key, cos, sin):
+    def forward(ctx, query, key, cos, sin):  # pylint: disable=arguments-differ
         """forward: helper."""
         del ctx
         tensors = (query, key, cos, sin)
         if any(tensor.dtype != torch.float16 for tensor in tensors):
             raise TypeError("query, key, cos and sin must be FP16")
-        if query.ndim != 4 or key.ndim != 4 or cos.ndim != 3 or sin.ndim != 3:
+        if query.ndim != 4 or key.ndim != 4:
+            raise ValueError("query/key must be rank 4 and cos/sin rank 3")
+        if cos.ndim != 3 or sin.ndim != 3:
             raise ValueError("query/key must be rank 4 and cos/sin rank 3")
         if cos.shape != sin.shape:
             raise ValueError("cos and sin shapes must match")

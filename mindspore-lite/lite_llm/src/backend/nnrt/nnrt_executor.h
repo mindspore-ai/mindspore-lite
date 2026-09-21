@@ -17,13 +17,15 @@
 #ifndef MSLLM_NNRT_EXECUTOR_H
 #define MSLLM_NNRT_EXECUTOR_H
 
-#include "backend/nnrt/nnrt_config.h"
-#include "backend/nnrt/nnrt_kvcache.h"
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "backend/common/backend.h"
+#include "backend/nnrt/nnrt_config.h"
+#include "backend/nnrt/nnrt_kvcache.h"
 
 struct OH_NNCompilation;
 struct OH_NNExecutor;
@@ -31,7 +33,6 @@ struct NN_TensorDesc;
 struct NN_Tensor;
 
 namespace mslite {
-class MslPackageReader;
 namespace backend {
 namespace nnrt {
 
@@ -41,15 +42,13 @@ class NnrtExecutor {
   ~NnrtExecutor();
 
   bool Build(const NnrtConfig &config);
-  /// Run prefill or decode. The executor never samples: when logits_out is
-  /// non-null the host logits vector is returned for Pipeline::Sampler (the
-  /// caller owns argmax / top-k / temperature). When null, the legacy ArgMax
-  /// token is written to output_ids for callers that only need a token.
-  bool Forward(const std::vector<int> &input_ids, int *output_ids, bool is_prefill,
-               std::vector<float> *logits_out = nullptr);
+  // Run prefill or decode and expose a read-only view of the ION-backed logits
+  // tensor. The view remains valid until the next Executor_RunSync call.
+  bool Forward(const std::vector<int> &input_ids, bool is_prefill, mslite_llm::BackendOutput *output);
   bool Reset();
 
  private:
+  bool InitConfig(const NnrtConfig &config);
   bool BuildModel();
   bool ConstructCompilation();
   bool MapOfflineModelFile(const std::string &path);
@@ -66,14 +65,18 @@ class NnrtExecutor {
   // actual output names are logged for forensics.
   bool ValidateModelContract();
   // Read the logits width from the model output desc 0 into model_vocab_
-  // (fallback: config vocab_size_). Fails if the tokenizer vocab exceeds the
-  // model vocab.
-  bool ReadModelVocab();
+  // (fallback: config vocab_size_); sampling uses the smaller vocabulary.
+  void ReadModelVocab();
   bool LoadCpuBuffers(const NnrtConfig &config);
-  // Parse the W4A16 embedding bin layout (file rows / packed-per-row /
-  // scales-per-row / group size) and validate it against vocab_size_. Does NOT
-  // build an fp16 table: embedding rows are dequantized on demand by
-  // EmbeddingRow.
+  // Load the external embedding weight: the W4A16 path keeps only a temporary
+  // upload source, the fp16 path mmaps the resident table. mark() emits the
+  // [perf] tags shared with LoadCpuBuffers.
+  bool LoadEmbeddingWeight(const NnrtConfig &config, size_t embed_size, const std::function<void(const char *)> &mark);
+  // Copy an fp16 bin of count elements into dst; a missing path is not an error.
+  bool LoadFp16Bin(const std::string &path, const char *what, std::vector<uint16_t> *dst, size_t count) const;
+  // Validate the compact Q4_0 phase4 NZF blob size against vocab_size_ and
+  // hidden_size_. No fp16 table is built; EmbeddingRow decodes directly from
+  // the shared idx6 ION buffer.
   bool DequantizeEmbeddingTable(int group_size);
   // Write token tid's fp16 embedding row into dst. W4A16 (embedding_quant) rows
   // are dequantized from the packed bin on demand; the fp16 path copies from
@@ -100,9 +103,11 @@ class NnrtExecutor {
   // the write exceeds the recorded capacity, or when the data buffer is
   // unavailable.
   bool WriteTensor(NN_Tensor *tensor, const void *data, size_t size);
+  // Publish the final ION-backed logits buffer as a step-scoped read-only view.
+  bool ReadLogits(mslite_llm::BackendOutput *output) const;
 
-  bool Prefill(const std::vector<int> &input_ids, int *output_ids, std::vector<float> *logits_out = nullptr);
-  bool Decode(const std::vector<int> &input_ids, int *output_ids, std::vector<float> *logits_out = nullptr);
+  bool Prefill(const std::vector<int> &input_ids, mslite_llm::BackendOutput *output);
+  bool Decode(const std::vector<int> &input_ids, mslite_llm::BackendOutput *output);
 
   // model info
   int64_t vocab_size_{0};   // tokenizer/sampling vocab (NnrtConfig.vocab_size, cropped)
@@ -133,10 +138,6 @@ class NnrtExecutor {
   // or packed heap copy is resident.
   uint16_t *embedding_table_{nullptr};
   size_t embedding_table_elems_{0};
-  size_t embed_file_rows_ = 0;
-  size_t embed_packed_per_row_ = 0;
-  size_t embed_scales_per_row_ = 0;
-  int embed_group_size_ = 32;
   std::vector<uint8_t> embedding_weight_buffer_;   // temporary directory-mode upload buffer
   const uint8_t *embedding_weight_data_{nullptr};  // idx6 ION data after Build
   size_t embedding_weight_size_{0};

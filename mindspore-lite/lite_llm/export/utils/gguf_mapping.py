@@ -14,7 +14,7 @@
 # ============================================================================
 """GGUF Q4_0 / FP16 tensor helpers shared by model weight injectors.
 
-Model-agnostic: block rearrangement for the ``MsQuant4N0Group32`` g32 planar
+Model-agnostic: block rearrangement for the ``MsQuant4N0Group32`` g32 NZF
 layout, initializer creation, and ``load_file_from_tensors`` which reads the
 raw GGUF tensors into a name->weight map (biases/norms as fp16, quantized
 weights rearranged, embedding saved separately).
@@ -29,37 +29,31 @@ import numpy as np
 import onnx
 from gguf.quants import GGMLQuantizationType, dequantize
 
-from .export_quant import quantize_weight_g32_4bit_nd
+from utils import ensure_custom_ops
 
 logger = logging.getLogger(__name__)
 
 
 def create_new_initializer(name, weight):
+    """Create an ONNX initializer tensor from a numpy weight array."""
     return onnx.numpy_helper.from_array(weight, name)
 
 
 def rearrange_q4_0_g32(data):
-    """Rearrange GGUF Q4_0 blocks into the g32 planar layout.
+    """Repack GGUF rows into signed int4 NZF without requantizing their scales.
 
-    GGUF Q4_0 block (32 weights): 2-byte fp16 scale + 16-byte int4 nibbles.
-    ``MsQuant4N0Group32`` expects all weight bytes first, then all fp16 scales
-    (matching ``packing.quantize_weight_g32_4bit_nd``).
+    Each input row holds K/32 blocks of fp16 scale + 16 split-nibble bytes.
+    GGUF represents weights as (unsigned_q - 8) * scale; NZF stores the
+    two's-complement int4 value and the original per-row fp16 scale bits.
     """
-    data_flatten = np.ascontiguousarray(data, dtype=np.uint8).reshape(-1)
-    block_bytes = 2 + 32 // 2  # 2 scale + 16 qweight = 18 bytes per block
-    num_block = data_flatten.shape[0] // block_bytes
-    final_data = np.zeros((num_block * block_bytes,), dtype=np.uint8)
-    scale_start = num_block * 16
-    for block_id in range(num_block):
-        scale_raw = data_flatten[block_id * block_bytes: block_id * block_bytes + 2]
-        qweight = data_flatten[block_id * block_bytes + 2: (block_id + 1) * block_bytes]
-        # GGUF Q4_0 nibbles are already SPLIT (byte j = elem j | elem j+16),
-        # matching the douyin MsQuant4N0Group32 kernel. Only reorder blocks
-        # (weights first, scales after).
-        final_data[block_id * 16: (block_id + 1) * 16] = qweight
-        final_data[scale_start + block_id * 2] = scale_raw[0]
-        final_data[scale_start + block_id * 2 + 1] = scale_raw[1]
-    return final_data
+    ensure_custom_ops()
+    from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32  # pylint: disable=import-outside-toplevel
+
+    if not isinstance(data, np.ndarray) or data.dtype != np.uint8:
+        raise ValueError("GGUF Q4_0 rows must be a UINT8 ndarray")
+    if data.ndim != 2 or data.shape[1] % 18:
+        raise ValueError("Expected GGUF Q4_0 rows [N, K/32 * 18]")
+    return MsQuant4N0Group32.repack_q4_0_to_nzf(data, (data.shape[1] // 18 * 32, data.shape[0]))
 
 
 def convert_embedding_weight(data, tensor_type, embedding_quantize_config):
@@ -71,8 +65,11 @@ def convert_embedding_weight(data, tensor_type, embedding_quantize_config):
     if embedding_quantize_config == "W4A16":
         if tensor_type == GGMLQuantizationType.Q4_0:
             return rearrange_q4_0_g32(data)
+        ensure_custom_ops()
+        from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32  # pylint: disable=import-outside-toplevel
+
         fp32 = dequantize(data, tensor_type)
-        return quantize_weight_g32_4bit_nd(fp32.astype(np.float16).T)
+        return MsQuant4N0Group32.quantize_weight_g32_4bit(fp32.T)
 
     if embedding_quantize_config == "FP16":
         if tensor_type in (GGMLQuantizationType.F16, GGMLQuantizationType.F32):

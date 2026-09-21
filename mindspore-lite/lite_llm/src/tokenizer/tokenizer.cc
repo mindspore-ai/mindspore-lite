@@ -41,7 +41,9 @@ constexpr uint32_t kCodecBPE = 0;
 constexpr uint32_t kCodecSentencePiece = 1;
 
 uint32_t ReadU32(const uint8_t *data, size_t &offset, size_t size) {
-  if (offset + sizeof(uint32_t) > size) return 0;
+  if (offset + sizeof(uint32_t) > size) {
+    return 0;
+  }
   uint32_t val;
   std::memcpy(&val, data + offset, sizeof(val));
   offset += sizeof(val);
@@ -49,7 +51,9 @@ uint32_t ReadU32(const uint8_t *data, size_t &offset, size_t size) {
 }
 
 int32_t ReadI32(const uint8_t *data, size_t &offset, size_t size) {
-  if (offset + sizeof(int32_t) > size) return -1;
+  if (offset + sizeof(int32_t) > size) {
+    return -1;
+  }
   int32_t val;
   std::memcpy(&val, data + offset, sizeof(val));
   offset += sizeof(val);
@@ -58,7 +62,9 @@ int32_t ReadI32(const uint8_t *data, size_t &offset, size_t size) {
 
 std::string ReadStr(const uint8_t *data, size_t &offset, size_t size) {
   uint32_t len = ReadU32(data, offset, size);
-  if (offset + len > size) return "";
+  if (offset + len > size) {
+    return "";
+  }
   std::string s(reinterpret_cast<const char *>(data + offset), len);
   offset += len;
   return s;
@@ -66,7 +72,7 @@ std::string ReadStr(const uint8_t *data, size_t &offset, size_t size) {
 
 struct TextSegment {
   std::string text;
-  bool is_special;
+  bool is_special{false};
 };
 
 bool IsDefaultStopToken(std::string_view token) {
@@ -96,7 +102,9 @@ std::vector<TextSegment> SplitOnSpecialTokens(const std::string &text,
       }
     }
 
-    if (found_special) continue;
+    if (found_special) {
+      continue;
+    }
 
     size_t start = i;
     while (i < text.size()) {
@@ -108,7 +116,9 @@ std::vector<TextSegment> SplitOnSpecialTokens(const std::string &text,
           break;
         }
       }
-      if (is_special_boundary) break;
+      if (is_special_boundary) {
+        break;
+      }
       i++;
     }
 
@@ -128,30 +138,42 @@ class TokenizerImpl : public Tokenizer {
 
   bool Load(const std::string &vocab_path) {
     std::ifstream ifs(vocab_path, std::ios::binary | std::ios::ate);
-    if (!ifs.good()) return false;
+    if (!ifs.good()) {
+      return false;
+    }
 
     auto file_size = ifs.tellg();
-    if (file_size <= 0) return false;
+    if (file_size <= 0) {
+      return false;
+    }
 
     size_t data_size = static_cast<size_t>(file_size);
     ifs.seekg(0, std::ios::beg);
 
     std::vector<uint8_t> data(data_size);
-    if (!ifs.read(reinterpret_cast<char *>(data.data()), data_size)) return false;
+    if (!ifs.read(reinterpret_cast<char *>(data.data()), data_size)) {
+      return false;
+    }
 
     return LoadFromBuffer(data.data(), data_size);
   }
 
   bool LoadFromBuffer(const uint8_t *data, size_t data_size) {
-    if (data == nullptr || data_size == 0) return false;
+    if (data == nullptr || data_size == 0) {
+      return false;
+    }
 
     size_t offset = 0;
 
     uint32_t magic = ReadU32(data, offset, data_size);
-    if (magic != kMagic) return false;
+    if (magic != kMagic) {
+      return false;
+    }
 
     uint32_t version = ReadU32(data, offset, data_size);
-    if (version != kVersion) return false;
+    if (version != kVersion) {
+      return false;
+    }
 
     uint32_t codec_type = ReadU32(data, offset, data_size);
     uint32_t vocab_size = ReadU32(data, offset, data_size);
@@ -300,8 +322,12 @@ class TokenizerImpl : public Tokenizer {
   }
 
   std::string DecodeIncremental(int32_t token_id) override {
-    if (special_token_ids_.count(token_id) > 0) return "";
-    if (token_id < 0 || static_cast<size_t>(token_id) >= vocabulary_.id_to_token.size()) return "";
+    if (special_token_ids_.count(token_id) > 0) {
+      return "";
+    }
+    if (token_id < 0 || static_cast<size_t>(token_id) >= vocabulary_.id_to_token.size()) {
+      return "";
+    }
     const std::string &token = vocabulary_.id_to_token[static_cast<size_t>(token_id)];
 
     if (bpe_codec_) {
@@ -416,7 +442,9 @@ class TokenizerImpl : public Tokenizer {
     const size_t n = pending_bytes_.size();
     while (i < n) {
       size_t len = Utf8SeqLen(static_cast<uint8_t>(pending_bytes_[i]));
-      if (i + len > n) break;  // incomplete tail
+      if (i + len > n) {
+        break;  // incomplete tail
+      }
       out.append(pending_bytes_, i, len);
       i += len;
     }
@@ -425,15 +453,25 @@ class TokenizerImpl : public Tokenizer {
   }
 
   static size_t Utf8SeqLen(uint8_t lead) {
-    if ((lead & 0x80u) == 0) return 1;
-    if ((lead & 0xE0u) == 0xC0u) return 2;
-    if ((lead & 0xF0u) == 0xE0u) return 3;
-    if ((lead & 0xF8u) == 0xF0u) return 4;
+    if ((lead & 0x80u) == 0) {
+      return 1;
+    }
+    if ((lead & 0xE0u) == 0xC0u) {
+      return 2;
+    }
+    if ((lead & 0xF0u) == 0xE0u) {
+      return 3;
+    }
+    if ((lead & 0xF8u) == 0xF0u) {
+      return 4;
+    }
     return 1;  // invalid leading byte: pass through as a single byte
   }
 
   void EncodeRegularText(const std::string &text, std::vector<int32_t> &ids) {
-    if (text.empty()) return;
+    if (text.empty()) {
+      return;
+    }
 
     std::vector<std::string> tokens;
     if (bpe_codec_) {

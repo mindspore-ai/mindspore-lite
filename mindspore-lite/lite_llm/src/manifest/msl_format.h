@@ -28,8 +28,8 @@
 ///   MslHeader(24B):  magic[4] ".MSL" | version u32 | kv_count u32
 ///                    | resource_count u32 | alignment u32 | reserved u32
 ///   KV region:       key_len u32 | key | type u32 | value_len u32 | value
-///   Resource table:  name[64] | offset u64 | size u64 | access u32 | reserved u32
-///   Data region:     payloads, each starting at an offset aligned to
+///   Resource table:  name[64] | offset u64 | size u64 | access u32 | reserved
+///   u32 Data region:     payloads, each starting at an offset aligned to
 ///                    ``alignment``.
 ///
 /// KV value types form a closed v1 set: unknown types are rejected
@@ -121,6 +121,7 @@ inline constexpr const char kNpuMaxLength[] = "npu.max_length";
 inline constexpr const char kNpuChunkSize[] = "npu.chunk_size";
 inline constexpr const char kNpuEmbeddingQuant[] = "npu.embedding_quant";
 inline constexpr const char kNpuScaleGpSize[] = "npu.scale_gp_size";
+inline constexpr const char kNpuQ4_0WeightLayout[] = "npu.q4_0_weight_layout";
 inline constexpr const char kNpuOmWeightDir[] = "npu.om_weight_dir";
 
 inline constexpr const char kAssetTokenizer[] = "asset.tokenizer";

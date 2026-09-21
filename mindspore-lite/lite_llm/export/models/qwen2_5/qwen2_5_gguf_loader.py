@@ -21,7 +21,7 @@ Q4_0 block rearrangement lives in ``utils.gguf_mapping``.
 The ONNX skeleton must already carry the quantized ``MatMul_quant`` nodes
 (exported with ``--decoder-quant W4A16`` from ``qwen2_5_exporter``); this
 module replaces their placeholder quantized weights with the real Q4_0 weights
-read from the GGUF file, rearranged into the g32 planar layout expected by
+read from the GGUF file, rearranged into the g32 NZF layout expected by
 ``MsQuant4N0Group32``.
 
 Example:

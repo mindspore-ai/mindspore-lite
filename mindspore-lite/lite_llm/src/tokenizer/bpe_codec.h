@@ -39,9 +39,9 @@ class BPECodec {
 
  private:
   void InitByteEncoder();
-  std::string CodePointToUTF8(uint32_t cp);
-  uint32_t UTF8ToCodePoint(const std::string &s, size_t &pos);
-  std::vector<std::string> PreTokenize(const std::string &text);
+  static std::string CodePointToUTF8(uint32_t cp);
+  static uint32_t UTF8ToCodePoint(const std::string &s, size_t &pos);
+  static std::vector<std::string> PreTokenize(const std::string &text);
   std::vector<std::string> ApplyBPE(const std::string &token);
 
   static bool IsAlpha(unsigned char c);

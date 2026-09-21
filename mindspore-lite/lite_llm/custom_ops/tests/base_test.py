@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 import re
@@ -25,6 +26,8 @@ import subprocess
 import tempfile
 from typing import Iterable, Sequence
 import uuid
+
+logger = logging.getLogger(__name__)
 
 
 def build_omg_environment(platform: str) -> dict[str, str]:
@@ -78,7 +81,7 @@ class TestCaseBasic:
     ) -> subprocess.CompletedProcess[str]:
         """Run."""
         command = [str(part) for part in command]
-        print(f"$ {shlex.join(command)}", flush=True)
+        logger.info("$ %s", shlex.join(command))
         return subprocess.run(
             command,
             check=check,
@@ -93,6 +96,7 @@ class TestCaseBasic:
         check: bool = True,
         capture_output: bool = False,
     ) -> subprocess.CompletedProcess[str]:
+        """Run one HDC command against the configured device target."""
         return cls._run(
             [*cls.hdc_prefix_args, *map(str, arguments)],
             check=check,
@@ -146,20 +150,20 @@ class TestCaseBasic:
         prefix = f"MsLiteUT_{cls.unique_id}_{cls.worker_id}"
         cls.local_dir = tempfile.mkdtemp(prefix=prefix)
         cls.remote_dir = f"{cls.remote_root}/{prefix}"
-        cls.run_hdc("shell", "mkdir", "-p", cls.remote_dir)
+        _ = cls.run_hdc("shell", "mkdir", "-p", cls.remote_dir)
 
         # MODEL_RUN_TOOLS_PATH may be a command already installed on the device,
         # or a local executable that should be copied into this test workspace.
         local_runner = Path(cls.model_run_tools_path).expanduser()
         if local_runner.is_file():
             cls.remote_model_run_tools = cls.remote_path(local_runner.name)
-            cls.run_hdc(
+            _ = cls.run_hdc(
                 "file",
                 "send",
                 cls.hdc_local_path(local_runner.resolve()),
                 cls.remote_model_run_tools,
             )
-            cls.run_hdc("shell", "chmod", "700", cls.remote_model_run_tools)
+            _ = cls.run_hdc("shell", "chmod", "700", cls.remote_model_run_tools)
         else:
             cls.remote_model_run_tools = cls.model_run_tools_path
 
@@ -179,15 +183,18 @@ class TestCaseBasic:
         unique_id = getattr(cls, "unique_id", "")
         safe_prefix = f"{cls.remote_root}/MsLiteUT_"
         if remote_dir.startswith(safe_prefix) and unique_id in remote_dir:
-            cls.run_hdc("shell", "rm", "-rf", remote_dir, check=False)
+            # Best-effort remote cleanup: failures are intentionally ignored.
+            _ = cls.run_hdc("shell", "rm", "-rf", remote_dir, check=False)
 
     @classmethod
     def local_path(cls, file_name: str | os.PathLike[str]) -> Path:
+        """Resolve ``file_name`` inside the local workspace directory."""
         path = Path(file_name)
         return path if path.is_absolute() else Path(cls.local_dir) / path
 
     @classmethod
     def remote_path(cls, file_name: str | os.PathLike[str]) -> str:
+        """Return the device-side path of ``file_name`` in the remote workspace."""
         return f"{cls.remote_dir}/{Path(file_name).name}"
 
     def upload(
@@ -255,6 +262,6 @@ class TestCaseBasic:
 
         csv_files = sorted(local_profile.rglob("*_op.csv"))
         if not csv_files:
-            print(f"No *_op.csv found under {local_profile}", flush=True)
+            logger.info("No *_op.csv found under %s", local_profile)
             return
         self._run(["cat", *map(str, csv_files)])

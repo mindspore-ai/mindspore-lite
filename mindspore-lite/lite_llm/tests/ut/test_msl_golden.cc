@@ -28,6 +28,8 @@
 // runtime reader (MslPackageReader): it pins the format contract itself,
 // so a layout change on either side breaks it before the reader exists.
 
+#include <gtest/gtest.h>
+
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -36,8 +38,6 @@
 #include <cstring>
 #include <string>
 #include <vector>
-
-#include "gtest/gtest.h"
 
 #include "manifest/msl_package_reader.h"
 
@@ -62,8 +62,8 @@ constexpr uint32_t kTypeString = 4;
 constexpr uint32_t kTypeStringArray = 5;
 
 struct ExpectedKv {
-  const char *key;
-  uint32_t type;
+  const char *key = nullptr;
+  uint32_t type = 0;
   const std::vector<uint8_t> value;  // raw value bytes
 };
 
@@ -82,10 +82,11 @@ std::vector<uint8_t> Hex(const char *hex) {
     for (int i = 0; i < 2; ++i) {
       char c = *hex++;
       byte <<= 4;
-      if (c >= '0' && c <= '9')
+      if (c >= '0' && c <= '9') {
         byte |= static_cast<uint8_t>(c - '0');
-      else
+      } else {
         byte |= static_cast<uint8_t>(c - 'a' + 10);
+      }
     }
     out.push_back(byte);
   }
@@ -136,14 +137,18 @@ uint64_t ReadU64(const uint8_t *p) {
 std::vector<uint8_t> ReadWholeFile(const std::string &path) {
   int fd = ::open(path.c_str(), O_RDONLY);
   EXPECT_GE(fd, 0) << "cannot open " << path;
-  if (fd < 0) return {};
+  if (fd < 0) {
+    return {};
+  }
   struct stat st {};
   EXPECT_EQ(::fstat(fd, &st), 0);
   std::vector<uint8_t> data(static_cast<size_t>(st.st_size));
   size_t off = 0;
   while (off < data.size()) {
     ssize_t n = ::read(fd, data.data() + off, data.size() - off);
-    if (n <= 0) break;
+    if (n <= 0) {
+      break;
+    }
     off += static_cast<size_t>(n);
   }
   ::close(fd);
@@ -213,7 +218,8 @@ TEST_F(MslGoldenTest, ResourceTable) {
     size_t base = pos + kEntrySize * i;
     ASSERT_LE(base + kEntrySize, data_.size());
     std::string name(reinterpret_cast<const char *>(data_.data() + base), kNameSize);
-    name = name.substr(0, name.find('\0'));
+    const size_t nul = name.find('\0');
+    name.resize(nul == std::string::npos ? name.size() : nul);
     EXPECT_EQ(name, expected[i].name) << "resource name mismatch at index " << i;
     uint64_t offset = ReadU64(data_.data() + base + kNameSize);
     uint64_t size = ReadU64(data_.data() + base + kNameSize + 8);

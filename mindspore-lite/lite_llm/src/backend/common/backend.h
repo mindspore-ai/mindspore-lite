@@ -16,16 +16,15 @@
 #ifndef MSLLM_BACKEND_H
 #define MSLLM_BACKEND_H
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "../../llm_types_internal.h"
+#include "manifest/model_manifest.h"
 
 namespace mslite_llm {
-
-struct ModelManifest;
-struct ModelResources;
 
 enum class BackendExecutionPhase {
   kPrefill,
@@ -49,6 +48,10 @@ struct BackendInput {
 
 struct BackendOutput {
   std::vector<float> logits;
+  // Borrowed logits are valid only until this backend's next execution. The
+  // generation loop must consume them before issuing another forward step.
+  const float *logits_view = nullptr;
+  size_t logits_view_size = 0;
   int32_t next_token_id = -1;  // argmax of logits, set by caller or backend
 };
 
@@ -57,7 +60,7 @@ class Backend {
   virtual ~Backend() = default;
 
   /// One-time initialisation with backend configuration and resource references.
-  virtual MSLlmStatus Init(const BackendConfig & /*config*/) = 0;
+  virtual MSLlmStatus Init(const BackendConfig & /* config */) = 0;
 
   /// Run a prefill step: feed the full prompt, produce logits for the next token.
   virtual MSLlmStatus Prefill(const BackendInput &input, BackendOutput *output) = 0;

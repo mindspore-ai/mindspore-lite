@@ -24,15 +24,13 @@ from pathlib import Path
 
 import pytest
 
-torch = pytest.importorskip("torch")
-pytest.importorskip("onnx")
-pytest.importorskip("gguf")
 
 _EXPORT_DIR = Path(__file__).resolve().parents[2] / "export"
 
 
 @pytest.fixture(scope="module")
 def export_module():
+    """Load the export entry point module from export/ by file path."""
     spec = importlib.util.spec_from_file_location(
         "mslite_llm_export", str(_EXPORT_DIR / "mslite_llm_export.py")
     )

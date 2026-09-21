@@ -1194,9 +1194,13 @@ def load_whitelist(whitelist_file):
                 continue
             file_path, func_name = line.split(':', 1)
             file_path = file_path.strip()
-            func_name = func_name.strip()
             file_path_norm = normalize_path(file_path, strip_repo=True)
-            whitelist.add((file_path_norm, func_name))
+            # The whitelist header documents comma-separated function lists; each
+            # name must become its own key, otherwise the entry never matches.
+            for name in func_name.split(','):
+                name = name.strip()
+                if name:
+                    whitelist.add((file_path_norm, name))
     return whitelist
 def filter_log(input_file, output_file, whitelist):
     filtered = 0

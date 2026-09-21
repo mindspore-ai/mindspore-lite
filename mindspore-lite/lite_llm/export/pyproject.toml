@@ -37,6 +37,7 @@ packages = [
     "models._base",
     "models.qwen2_5",
     "models.qwen3",
+    "models.minicpm",
     "torch_custom",
 ]
 py-modules = ["mslite_llm_export"]

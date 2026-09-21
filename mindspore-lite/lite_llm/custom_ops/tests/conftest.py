@@ -28,6 +28,7 @@ for _path in (REPO_ROOT, TESTS_ROOT, REPO_ROOT / "scripts"):
 
 
 def pytest_addoption(parser):
+    """Register the --ext-platform command line option."""
     parser.addoption(
         "--ext-platform",
         action="store",
@@ -38,4 +39,5 @@ def pytest_addoption(parser):
 
 @pytest.fixture
 def ext_platform(request):
+    """Provide the platform override passed via --ext-platform."""
     return request.config.getoption("--ext-platform")

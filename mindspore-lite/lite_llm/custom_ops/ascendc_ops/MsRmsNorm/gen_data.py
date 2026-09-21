@@ -21,6 +21,7 @@ Golden 唯一真标杆来源：``torch_custom.ms_rms_norm.MsRmsNorm.apply``（ea
 """
 
 import json
+import logging
 from pathlib import Path
 import sys
 
@@ -30,6 +31,8 @@ import numpy as np
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+logger = logging.getLogger(__name__)
 
 
 def rms_norm_reference(x: np.ndarray, w: np.ndarray, eps: float) -> np.ndarray:
@@ -63,13 +66,19 @@ def generate(config_path: Path, output_dir: Path) -> None:
     x.tofile(output_dir / config["inputs"][0]["data_file"])
     w.tofile(output_dir / config["inputs"][1]["data_file"])
     y.tofile(output_dir / config["outputs"][0]["data_file"])
-    print(
-        f"generated x={x.shape} w={w.shape} eps={eps:g} "
-        f"output={output_dir} elements={y.size}"
+    logger.info(
+        "generated x=%s w=%s eps=%g output=%s elements=%d",
+        x.shape,
+        w.shape,
+        eps,
+        output_dir,
+        y.size,
     )
 
 
 def main() -> None:
+    """Parse CLI arguments and generate the golden data files."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     if len(sys.argv) != 3:
         raise SystemExit(f"usage: {sys.argv[0]} CONFIG_JSON OUTPUT_DIR")
     generate(Path(sys.argv[1]), Path(sys.argv[2]))

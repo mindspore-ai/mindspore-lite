@@ -28,7 +28,7 @@ Qwen3 differences vs the Qwen2.5 loader:
 The ONNX skeleton must already carry the quantized ``MatMul_quant`` nodes
 (exported with ``--decoder-quant W4A16`` from ``qwen3_exporter``); this module
 replaces their placeholder quantized weights with the real Q4_0 weights read
-from the GGUF file, rearranged into the g32 planar layout expected by
+from the GGUF file, rearranged into the compact phase4 NZF layout expected by
 ``MsQuant4N0Group32``.
 
 Example:

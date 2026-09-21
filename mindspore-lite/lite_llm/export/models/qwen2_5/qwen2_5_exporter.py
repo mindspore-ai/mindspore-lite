@@ -64,14 +64,13 @@ from utils.export_quant import (
     apply_quant,
     apply_shared_weight,
     quantize_weight_g128_4bit_nz,
-    quantize_weight_g32_4bit_nd,
 )
 
 from .qwen2_5_wrapper import Qwen2NnrtWrapper
 
 logger = logging.getLogger(__name__)
 
-device = "cpu"
+DEVICE = "cpu"
 dtype = torch.float16
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +90,15 @@ class Qwen2Onnx:
         "hidden_size": 896,
     }
 
+    def __init__(self):
+        self.model = None
+        self.config = None
+        self.tokenizer = None
+        self.num_layers = 0
+        self.hidden_size = 0
+        self.num_kv_heads = 0
+        self.model_name = "qwen2.5-0.5b"
+
     def load(self, model_path, layers=24):
         """Load the HF model in fp16 and validate the Qwen2.5-0.5B architecture.
 
@@ -107,7 +115,7 @@ class Qwen2Onnx:
                 os.path.dirname(os.path.abspath(model_path)),
                 gguf_file=os.path.basename(model_path),
                 trust_remote_code=True,
-                device_map=device,
+                device_map=DEVICE,
                 dtype=dtype,
                 attn_implementation="eager",
             )
@@ -120,7 +128,7 @@ class Qwen2Onnx:
                 model_path,
                 trust_remote_code=True,
                 config=self.config,
-                device_map=device,
+                device_map=DEVICE,
                 dtype=dtype,
                 attn_implementation="eager",
             )
@@ -159,18 +167,18 @@ class Qwen2Onnx:
         out_kv_names = [(f"out_key_{i}", f"out_val_{i}") for i in range(self.num_layers)]
         out_kv_names = [name for kv in out_kv_names for name in kv]
 
-        valid_seq_len = torch.tensor([1], dtype=torch.int32).to(device)
-        lmhead_idx = torch.tensor([0], dtype=torch.int32).to(device)
+        valid_seq_len = torch.tensor([0], dtype=torch.int32).to(DEVICE)
+        lmhead_idx = torch.tensor([0], dtype=torch.int32).to(DEVICE)
 
-        rope_cos = torch.zeros((1, chunk_size, head_dim), device=device, dtype=dtype)
-        rope_sin = torch.zeros((1, chunk_size, head_dim), device=device, dtype=dtype)
+        rope_cos = torch.zeros((1, chunk_size, head_dim), device=DEVICE, dtype=dtype)
+        rope_sin = torch.zeros((1, chunk_size, head_dim), device=DEVICE, dtype=dtype)
 
         past_key_or_value = torch.zeros(
-            (1, self.num_kv_heads, max_seq_len, head_dim), device=device, dtype=dtype
+            (1, self.num_kv_heads, max_seq_len, head_dim), device=DEVICE, dtype=dtype
         )
         past_key_values = [[past_key_or_value] * 2] * self.num_layers
 
-        inputs_embeds = torch.zeros((1, chunk_size, self.hidden_size), device=device, dtype=dtype)
+        inputs_embeds = torch.zeros((1, chunk_size, self.hidden_size), device=DEVICE, dtype=dtype)
         attention_mask = torch.zeros(1, 1, chunk_size, max_seq_len, dtype=dtype)
 
         inputs = (
@@ -217,7 +225,9 @@ class Qwen2Onnx:
             weight_4bit = quantize_weight_g128_4bit_nz(weight.T)
             weight_4bit.tofile(embedding_weight_save_path)
         elif embedding_quantize_config == "W4A16":
-            weight_4bit_gp32 = quantize_weight_g32_4bit_nd(weight.T)
+            from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32
+
+            weight_4bit_gp32 = MsQuant4N0Group32.quantize_weight_g32_4bit(weight.T)
             weight_4bit_gp32.tofile(embedding_weight_save_path)
         else:
             weight.flatten().tofile(embedding_weight_save_path)
@@ -229,7 +239,7 @@ class Qwen2Onnx:
         RoPE lives on ``Qwen2Model.rotary_emb``; forward takes position_ids and
         returns [batch, seq_len, head_dim].
         """
-        input_embed = torch.rand(1, seq_len, self.hidden_size, dtype=torch.float16).to(device)
+        input_embed = torch.rand(1, seq_len, self.hidden_size, dtype=torch.float16).to(DEVICE)
         position_ids = torch.arange(0, seq_len).unsqueeze(0)
 
         rotary_layer = self.model.model.rotary_emb
@@ -244,7 +254,8 @@ class Qwen2Onnx:
         rope_sin.flatten().tofile(sin_path)
         logger.info("Saved rope cos/sin to %s / %s", cos_path, sin_path)
 
-    def attention_mask_save(self, attention_mask_path, max_seq_len):
+    @staticmethod
+    def attention_mask_save(attention_mask_path, max_seq_len):
         """Save the causal attention mask (fp16, [1,1,max_seq_len,max_seq_len])."""
         mask = torch.full((max_seq_len, max_seq_len), torch.finfo(dtype).min)
         mask_cond = torch.arange(mask.size(-1))
@@ -287,6 +298,9 @@ class Qwen2Onnx:
                 "chunk_size": int(chunk_size),
                 "embedding_quant": embedding_quant_config.asdict() if embedding_quant_config.is_quant else None,
                 "decoder_quant": decoder_quant_config.asdict() if decoder_quant_config.is_quant else None,
+                **({"q4_0_weight_layout": "q4_0_nzf_compact_phase4"}
+                   if embedding_quant_config.is_quant and embedding_quant_config.quant_method == "W4A16"
+                   else {}),
             },
             "sampling": LiteTurboConfig(
                 max_length=max_length,
