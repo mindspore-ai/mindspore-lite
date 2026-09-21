@@ -694,6 +694,7 @@ STATUS GetTensorInfoFromAbstract(tensor::TensorPtr *const tensor_info, const CNo
     auto input = cnode->input(index);
     if (input != nullptr && utils::isa<ParameterPtr>(input)) {
       auto param = input->cast<ParameterPtr>();
+      MS_CHECK_TRUE_RET(param != nullptr, RET_ERROR);
       if (param->has_default() && param->default_param() != nullptr) {
         *tensor_info = param->default_param()->cast<tensor::TensorPtr>();
       }

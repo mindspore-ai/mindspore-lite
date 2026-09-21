@@ -32,6 +32,9 @@ using mindspore::schema::ActivationType_RELU6;
 using mindspore::schema::PrimitiveType_Conv2dTransposeFusion;
 
 namespace mindspore::kernel {
+namespace {
+constexpr int32_t kFirstSetArgCnt = 2;  // arg 0/1 are gws and bias, consts start at 2
+}  // namespace
 int Conv2dTransposeOpenCLKernel::CheckSpecs() {
   if ((in_tensors_.size() != INPUT_TENSOR_SIZE_2 && in_tensors_.size() != INPUT_TENSOR_SIZE_3) ||
       out_tensors_.size() != OUTPUT_TENSOR_SIZE_1) {
@@ -162,7 +165,7 @@ int Conv2dTransposeOpenCLKernel::SetConstArgs() {
   cl_int2 padding = {pad_h, pad_w};
   cl_int4 src_size = {h, w, UP_DIV(ci, C4NUM), n};
   cl_int4 dst_size = {oh, ow, UP_DIV(co, C4NUM), n};
-  return SetKernelArgs(2, kernel_size, stride, padding, src_size, dst_size);
+  return SetKernelArgs(kFirstSetArgCnt, kernel_size, stride, padding, src_size, dst_size);
 }
 
 int Conv2dTransposeOpenCLKernel::InitWeights() {

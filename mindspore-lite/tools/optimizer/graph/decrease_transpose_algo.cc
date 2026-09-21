@@ -409,6 +409,16 @@ STATUS DecreaseTransposeAlgo::DoPreInsert(const FuncGraphPtr &func_graph, const 
     abstract = abstract_list.front();
     MS_CHECK_TRUE_RET(abstract != nullptr, lite::RET_NULL_PTR);
   }
+  auto handle_make_tuple = [this, &func_graph, trans_type](const CNodePtr &make_tuple) -> STATUS {
+    for (size_t j = 1; j < make_tuple->size(); ++j) {
+      MS_CHECK_TRUE_RET(make_tuple->input(j) != nullptr, lite::RET_NULL_PTR);
+      if (HandlePreInsertForInput(func_graph, make_tuple, j, trans_type) != lite::RET_OK) {
+        MS_LOG(ERROR) << "handle pre insert failed.";
+        return lite::RET_ERROR;
+      }
+    }
+    return lite::RET_OK;
+  };
   for (size_t i = 1; i < cnode->size(); ++i) {
     MS_CHECK_TRUE_RET(cnode->input(i) != nullptr, lite::RET_NULL_PTR);
     if (IsMonadNode(cnode->input(i))) {
@@ -418,12 +428,9 @@ STATUS DecreaseTransposeAlgo::DoPreInsert(const FuncGraphPtr &func_graph, const 
         CheckPrimitiveType(cnode->input(i), prim::kPrimMakeTupleV2)) {
       auto input_make_tuple = cnode->input(i)->cast<CNodePtr>();
       MS_CHECK_TRUE_RET(input_make_tuple != nullptr, lite::RET_NULL_PTR);
-      for (size_t j = 1; j < input_make_tuple->size(); ++j) {
-        MS_CHECK_TRUE_RET(input_make_tuple->input(j) != nullptr, lite::RET_NULL_PTR);
-        if (HandlePreInsertForInput(func_graph, input_make_tuple, j, trans_type) != lite::RET_OK) {
-          MS_LOG(ERROR) << "handle pre insert failed.";
-          return lite::RET_ERROR;
-        }
+      auto ret = handle_make_tuple(input_make_tuple);
+      if (ret != lite::RET_OK) {
+        return ret;
       }
       continue;
     }

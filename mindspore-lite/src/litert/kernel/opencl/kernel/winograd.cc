@@ -19,6 +19,7 @@
 #include "src/litert/kernel/opencl/cl/winograd.cl.inc"
 #include "nnacl_c/base/minimal_filtering_generator.h"
 #include "nnacl_c/errorcode.h"
+#include "include/securec.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;
@@ -169,7 +170,8 @@ int WinogradOpenCLKernel::WriteFilterData(size_t size) {
       MS_LOG(ERROR) << "Map Buffer failed.";
       return RET_ERROR;
     }
-    memcpy(packed_filter_, tmp.data(), size);
+    auto memcpy_ret = memcpy_s(packed_filter_, size, tmp.data(), size);
+    MS_CHECK_TRUE_MSG(memcpy_ret == EOK, RET_ERROR, "memcpy_s failed");
     if (allocator->UnmapBuffer(packed_filter_) != RET_OK) {
       MS_LOG(ERROR) << "UnmapBuffer failed.";
       return RET_ERROR;

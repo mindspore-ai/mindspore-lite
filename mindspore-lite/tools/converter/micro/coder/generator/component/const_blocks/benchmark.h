@@ -18,7 +18,7 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_CONST_BLOCKS_BENCHMARK_H_
 
 namespace mindspore::lite::micro {
-extern const char *benchmark_source;
-extern const char *benchmark_source_cortex;
+const char *GetBenchmarkSource();
+const char *GetBenchmarkSourceCortex();
 }  // namespace mindspore::lite::micro
 #endif  // MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_CONST_BLOCKS_BENCHMARK_H_

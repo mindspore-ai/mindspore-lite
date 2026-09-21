@@ -40,7 +40,7 @@ class GeluInt8CPUKernel : public LiteKernel {
  private:
   int thread_count_;
   GeluQuantArg quant_arg_ = {};
-  int8_t table_[kGeluInt8TableRange];
+  int8_t table_[kGeluInt8TableRange] = {};
 };
 }  // namespace mindspore::kernel
 

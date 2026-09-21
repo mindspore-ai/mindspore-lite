@@ -595,6 +595,27 @@ int InsertQuantNodeManager::InsertCastNodeForFullQuant(const FuncGraphPtr &graph
   if (opt::CheckPrimitiveType(cnode, prim::kPrimTupleGetItem)) {
     return RET_OK;
   }
+  // Resolve the quant type of a CNode input; TupleGetItem merely extracts one output of a
+  // (possibly quantized) multi-output op (e.g. Unstack). Treat it as transparent by inheriting
+  // its producer's quant type; otherwise a cast would be inserted between the multi-output op
+  // and the TupleGetItem, corrupting the graph (Unstack(int8) -> [cast] -> TupleGetItem breaks
+  // multi-output extraction, and the malformed cast node later makes the downstream Stack
+  // InferShape fail with ret=-500).
+  auto get_input_quant_type = [this, &cnode](const mindspore::CNodePtr &input_cnode,
+                                             quant::QuantType *pre_quant_type) -> int {
+    auto resolve_node = input_cnode;
+    if (opt::CheckPrimitiveType(input_cnode, prim::kPrimTupleGetItem) && input_cnode->size() > 1) {
+      auto producer = input_cnode->input(1)->cast<mindspore::CNodePtr>();
+      if (producer != nullptr) {
+        resolve_node = producer;
+      }
+    }
+    if (GetQuantTypeNew(resolve_node, pre_quant_type) != RET_OK) {
+      MS_LOG(ERROR) << "Get quant type failed, cnode name: " << cnode->fullname_with_scope();
+      return RET_ERROR;
+    }
+    return RET_OK;
+  };
   // inputs
   for (size_t index = 1; index < cnode->size(); index++) {
     auto input_node = cnode->input(index);
@@ -605,22 +626,9 @@ int InsertQuantNodeManager::InsertCastNodeForFullQuant(const FuncGraphPtr &graph
     }
     quant::QuantType pre_quant_type = quant::QUANT_NONE;
     if (input_node->isa<mindspore::CNode>()) {
-      auto input_cnode = input_node->cast<mindspore::CNodePtr>();
-      // TupleGetItem merely extracts one output of a (possibly quantized) multi-output op (e.g.
-      // Unstack). Treat it as transparent by inheriting its producer's quant type; otherwise a cast
-      // would be inserted between the multi-output op and the TupleGetItem, corrupting the graph
-      // (Unstack(int8) -> [cast] -> TupleGetItem breaks multi-output extraction, and the malformed
-      // cast node later makes the downstream Stack InferShape fail with ret=-500).
-      auto resolve_node = input_cnode;
-      if (opt::CheckPrimitiveType(input_cnode, prim::kPrimTupleGetItem) && input_cnode->size() > 1) {
-        auto producer = input_cnode->input(1)->cast<mindspore::CNodePtr>();
-        if (producer != nullptr) {
-          resolve_node = producer;
-        }
-      }
-      if (GetQuantTypeNew(resolve_node, &pre_quant_type) != RET_OK) {
-        MS_LOG(ERROR) << "Get quant type failed, cnode name: " << cnode->fullname_with_scope();
-        return RET_ERROR;
+      auto ret = get_input_quant_type(input_node->cast<mindspore::CNodePtr>(), &pre_quant_type);
+      if (ret != RET_OK) {
+        return ret;
       }
     }
     if (pre_quant_type == quant::QUANT_NONE && curr_quant_type == quant::QUANT_ALL) {

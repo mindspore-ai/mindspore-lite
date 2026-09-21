@@ -103,10 +103,10 @@ int main(int argc, const char **argv) {
 )RAW");
 }
 
-const char *benchmark_source = []() {
-  static std::string s = GetBenchmarkSourceStr();
+const char *GetBenchmarkSource() {
+  static const std::string s = GetBenchmarkSourceStr();
   return s.c_str();
-}();
+}
 
 // Cortex-M benchmark function
 static std::string GetBenchmarkSourceCortexStr() {
@@ -225,9 +225,9 @@ int benchmark() {
 )RAW");
 }
 
-const char *benchmark_source_cortex = []() {
-  static std::string s = GetBenchmarkSourceCortexStr();
+const char *GetBenchmarkSourceCortex() {
+  static const std::string s = GetBenchmarkSourceCortexStr();
   return s.c_str();
-}();
+}
 
 }  // namespace mindspore::lite::micro
