@@ -55,6 +55,7 @@ void CodeAllocatorFileHeader(std::ofstream &ofs) {
     ofs << "#ifndef MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_ALLOCATOR_H_\n"
            "#define MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_ALLOCATOR_H_\n\n"
         << "#include <stddef.h>\n"
+        << "#include \"stdatomic.h\"\n"
         << "#include \"stdbool.h\"\n";
     ofs << R"RAW(
   typedef struct MemBlock {

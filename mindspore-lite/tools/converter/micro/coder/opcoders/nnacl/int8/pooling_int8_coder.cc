@@ -22,6 +22,7 @@
 #include "coder/opcoders/file_collector.h"
 #include "coder/opcoders/parallel.h"
 #include "coder/utils/common.h"
+#include "ops_utils/op_constants.h"
 
 using mindspore::schema::PrimitiveType_AvgPoolFusion;
 using mindspore::schema::PrimitiveType_MaxPoolFusion;
@@ -36,14 +37,30 @@ int PoolingInt8Coder::DoCode(CoderContext *const context) {
   MS_CHECK_PTR(in_tensor);
   MS_CHECK_PTR(out_tensor);
 
-  compute_param_.input_batch_ = in_tensor->Batch();
-  compute_param_.input_channel_ = in_tensor->Channel();
-  compute_param_.input_h_ = in_tensor->Height();
-  compute_param_.input_w_ = in_tensor->Width();
-  compute_param_.output_batch_ = out_tensor->Batch();
-  compute_param_.output_channel_ = out_tensor->Channel();
-  compute_param_.output_h_ = out_tensor->Height();
-  compute_param_.output_w_ = out_tensor->Width();
+  // 3D positional mapping NCW: kDim0=N, kDim1=C (occupies the H slot), kDim2=W.
+  if (in_tensor->shape().size() == DIMENSION_3D) {
+    // 3D (1D pooling) NCW [N, C, W]: Tensor::Batch/Height/Width only serve 2D/4D,
+    // fill positionally — the channel dim takes the H slot, channel is 1.
+    auto in_shape = in_tensor->shape();
+    auto out_shape = out_tensor->shape();
+    compute_param_.input_batch_ = in_shape[kDim0];
+    compute_param_.input_channel_ = 1;
+    compute_param_.input_h_ = in_shape[kDim1];
+    compute_param_.input_w_ = in_shape[kDim2];
+    compute_param_.output_batch_ = out_shape[kDim0];
+    compute_param_.output_channel_ = 1;
+    compute_param_.output_h_ = out_shape[kDim1];
+    compute_param_.output_w_ = out_shape[kDim2];
+  } else {
+    compute_param_.input_batch_ = in_tensor->Batch();
+    compute_param_.input_channel_ = in_tensor->Channel();
+    compute_param_.input_h_ = in_tensor->Height();
+    compute_param_.input_w_ = in_tensor->Width();
+    compute_param_.output_batch_ = out_tensor->Batch();
+    compute_param_.output_channel_ = out_tensor->Channel();
+    compute_param_.output_h_ = out_tensor->Height();
+    compute_param_.output_w_ = out_tensor->Width();
+  }
   compute_param_.window_w_ = pooling_parameter->window_w_;
   compute_param_.window_h_ = pooling_parameter->window_h_;
   compute_param_.minf = INT8_MIN;
@@ -56,10 +73,13 @@ int PoolingInt8Coder::DoCode(CoderContext *const context) {
           {
             "nnacl_c/int8/pooling_int8.h",
             "nnacl_c/kernel/pooling.h",
+            "nnacl_c/common_func.h",
             "nnacl_c/errorcode.h",
           },
           {
+            // Max/AvgPoolingInt8V1 use MinInt8/MaxInt8 from common_func.c.
             "pooling_int8.c",
+            "common_func.c",
           });
   NNaclInt8Serializer code;
   code.precision(kPrecision);

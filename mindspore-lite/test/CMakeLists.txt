@@ -32,6 +32,7 @@ else()
             ${TEST_DIR}/ut/src/runtime/dynamic_mem_manager_test.cc
             ${TEST_DIR}/ut/src/registry/registry_test.cc
             ${TEST_DIR}/ut/src/registry/registry_custom_op_test.cc
+            ${TEST_DIR}/ut/src/common/ops/pooling_populate_test.cc
             ${TEST_DIR}/st/multiple_device_test.cc
             ${TEST_DIR}/st/mindrt_parallel_runtime_test.cc
             ${TEST_DIR}/st/mix_data_type_test.cc
@@ -150,6 +151,7 @@ if(MSLITE_ENABLE_CONVERTER)
             ${TEST_DIR}/ut/tools/converter/registry/*.cc
             ${TEST_DIR}/ut/tools/converter/parser/onnx/*.cc
             ${TEST_DIR}/ut/tools/converter/parser/tflite/*.cc
+            ${TEST_DIR}/ut/tools/converter/preprocess/*.cc
             ${TEST_DIR}/ut/tools/converter/quantizer/*.cc
             ${TEST_DIR}/ut/tools/converter/api/*.cc
             ${TEST_DIR}/st/converter_test.cc
