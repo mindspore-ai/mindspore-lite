@@ -15,9 +15,7 @@
  */
 
 #include "nnacl_c/kernel/pooling.h"
-
 #include <float.h>
-
 #include "nnacl_c/fp32/pooling_fp32.h"
 #include "nnacl_c/kernel/default_kernel_base.h"
 #include "nnacl_c/pooling_parameter.h"
