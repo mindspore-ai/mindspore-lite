@@ -74,6 +74,8 @@ class FullQuantQuantizer : public Quantizer {
 
   int QuantNodeSimpleOp(const CNodePtr &cnode);
 
+  int QuantTupleGetItemNode(const CNodePtr &cnode, const PrimitivePtr &primitive);
+
   int QuantNode(const FuncGraphPtr &func_graph);
 
   void SetConstantOfShapeInt8Output(const PrimitivePtr &primitive);

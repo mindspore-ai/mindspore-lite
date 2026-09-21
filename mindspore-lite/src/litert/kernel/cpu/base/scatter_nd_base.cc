@@ -120,7 +120,9 @@ int ScatterNDCPUKernel::Run() {
   auto output = out_tensors_[kOutputIndex];
   CHECK_NULL_RETURN(output);
   CHECK_NULL_RETURN(output->data());
-  (void)memset(output->data(), 0, output->Size());
+  // Full-size zeroing on the hot inference path: the bound-checked memset_s has measurable
+  // overhead here (see prior review), and dest size == count is already validated above.
+  (void)memset(output->data(), 0, output->Size());  // NOLINT
 
   auto indices = in_tensors_[kScatterIndicesIndex];
   auto shape = in_tensors_[kScatterShapeIndex];

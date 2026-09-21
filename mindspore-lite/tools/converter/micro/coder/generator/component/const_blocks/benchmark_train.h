@@ -18,6 +18,6 @@
 #define MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_CONST_BLOCKS_BENCHMARK_TRAIN_H_
 
 namespace mindspore::lite::micro {
-extern const char *benchmark_train_source;
+const char *GetBenchmarkTrainSource();
 }  // namespace mindspore::lite::micro
 #endif  // MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_CONST_BLOCKS_BENCHMARK_TRAIN_H_

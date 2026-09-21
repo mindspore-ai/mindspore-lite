@@ -17,7 +17,9 @@
 #ifndef MINDSPORE_LITE_TOOLS_CONVERTER_ADAPTER_COMMON_CUSTOM_INFER_IMPL_H_
 #define MINDSPORE_LITE_TOOLS_CONVERTER_ADAPTER_COMMON_CUSTOM_INFER_IMPL_H_
 
+#include <cstdlib>
 #include <memory>
+#include <sstream>
 #include <vector>
 #include <string>
 #include "schema/model_generated.h"
@@ -67,20 +69,21 @@ class CustomInferImpl {
       return kLiteError;
     }
     uint32_t id = 0;
-    char delims[] = ",";
-    char *res = nullptr;
-    char *save_ptr = nullptr;
-    res = strtok_r(buf.data(), delims, &save_ptr);
-    while (res != nullptr && id < outputs->size()) {
-      int64_t dims_num = strtol(res, &res, kBase);
+    std::string shape_str(buf.data(), buf.size());
+    std::istringstream iss(shape_str);
+    std::string token;
+    while (std::getline(iss, token, ',') && id < outputs->size()) {
+      int64_t dims_num = static_cast<int64_t>(strtoll(token.c_str(), nullptr, kBase));
       std::vector<int64_t> shape(dims_num);
       for (int64_t j = 0; j < dims_num; j++) {
-        res = strtok_r(nullptr, delims, &save_ptr);
-        shape[j] = static_cast<int64_t>(strtol(res, &res, kBase));
+        if (!std::getline(iss, token, ',')) {
+          MS_LOG(ERROR) << "Output shape attr is incomplete.";
+          return kLiteError;
+        }
+        shape[j] = static_cast<int64_t>(strtoll(token.c_str(), nullptr, kBase));
       }
       (*outputs)[id].SetShape(shape);
       id += 1;
-      res = strtok_r(nullptr, delims, &save_ptr);
     }
     return kSuccess;
   }

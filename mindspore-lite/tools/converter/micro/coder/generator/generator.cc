@@ -249,7 +249,7 @@ int Generator::CodeStaticContent() {
   std::string calib_source_txt = calib_source;
   std::string load_input_h_txt = load_input_h;
   std::string load_input_c_txt = load_input_c;
-  std::string benchmark_source_txt = benchmark_source;
+  std::string benchmark_source_txt = GetBenchmarkSource();
   std::string src_cmake_lists_txt = src_cmake_lists;
   if (config_->target() == kRiscV) {
     if (config_->debug_mode()) {
@@ -270,7 +270,7 @@ int Generator::CodeStaticContent() {
     log_source_txt = log_source;
   }
   if (config_->code_mode() == CodeMode::Train) {
-    benchmark_source_txt = benchmark_train_source;
+    benchmark_source_txt = GetBenchmarkTrainSource();
   }
   if (config_->target() == kCortex_M) {
     bench_cmake_lists_txt = bench_cmake_lists_cortex;
@@ -278,7 +278,7 @@ int Generator::CodeStaticContent() {
     calib_source_txt = calib_source_cortex;
     load_input_h_txt = load_input_h_cortex;
     load_input_c_txt = load_input_c_cortex;
-    benchmark_source_txt = benchmark_source_cortex;
+    benchmark_source_txt = GetBenchmarkSourceCortex();
     context_source_txt = context_source_cortex;
   } else if (config_->support_parallel() == false) {
     context_source_txt = context_source_no_parallel;

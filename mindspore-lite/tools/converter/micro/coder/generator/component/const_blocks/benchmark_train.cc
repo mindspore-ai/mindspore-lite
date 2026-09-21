@@ -193,9 +193,9 @@ int main(int argc, const char **argv) {
 )RAW");
 }
 
-const char *benchmark_train_source = []() {
-  static std::string s = GetBenchmarkTrainSourceStr();
+const char *GetBenchmarkTrainSource() {
+  static const std::string s = GetBenchmarkTrainSourceStr();
   return s.c_str();
-}();
+}
 
 }  // namespace mindspore::lite::micro

@@ -61,6 +61,10 @@ ConvParameter *PopulateConvGradParameterCommon(const void *prim, size_t param_si
 template <typename T>
 void SetConvFusionAttrs(ConvParameter *param, const T *value, int input_index_one, int input_index_two,
                         int input_index_three) {
+  if (value->stride() == nullptr) {
+    MS_LOG(ERROR) << "Stride attr of conv fusion op is missing.";
+    return;
+  }
   param->kernel_h_ = value->kernel_size()->Get(0);
   param->kernel_w_ = value->kernel_size()->Get(1);
   param->stride_h_ = value->stride()->Get((value->stride()->size()) - input_index_two);

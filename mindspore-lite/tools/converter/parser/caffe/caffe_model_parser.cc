@@ -384,25 +384,33 @@ STATUS CaffeModelParser::ConvertGraphInputsOfShape() {
 
 STATUS CaffeModelParser::ConvertGraphInputsOfDim() {
   const int default_input_dim_size = 4;
+  // fill shape from input_dim: per-input slice when dims of multiple inputs are concatenated
+  auto fill_shape_from_input_dim = [this](int i, std::vector<int64_t> *shape) -> STATUS {
+    if (caffe_model_.input_dim_size() > default_input_dim_size) {
+      if (caffe_model_.input_size() == 0) {
+        MS_LOG(ERROR) << "input_size is zero";
+        return RET_ERROR;
+      }
+      int step = caffe_model_.input_dim_size() / caffe_model_.input_size();
+      for (int j = i * step; j < (i + 1) * step; j++) {
+        shape->push_back(caffe_model_.input_dim(j));
+      }
+    } else {
+      for (int j = 0; j < caffe_model_.input_dim_size(); j++) {
+        shape->push_back(caffe_model_.input_dim(j));
+      }
+    }
+    return RET_OK;
+  };
   for (int i = 0; i < caffe_model_.input_size(); i++) {
     std::vector<int64_t> shape = ConverterInnerContext::GetInstance()->GetGraphInputTensorShape(caffe_model_.input(i));
     if (ConverterInnerContext::GetInstance()->GetGraphInputTensorShapeMapSize() > 0 && shape.empty()) {
       MS_LOG(WARNING) << "Can not find name in map. name is " << caffe_model_.input(i);
     }
     if (shape.empty()) {
-      if (caffe_model_.input_dim_size() > default_input_dim_size) {
-        if (caffe_model_.input_size() == 0) {
-          MS_LOG(ERROR) << "input_size is zero";
-          return RET_ERROR;
-        }
-        int step = caffe_model_.input_dim_size() / caffe_model_.input_size();
-        for (int j = i * step; j < (i + 1) * step; j++) {
-          shape.push_back(caffe_model_.input_dim(j));
-        }
-      } else {
-        for (int j = 0; j < caffe_model_.input_dim_size(); j++) {
-          shape.push_back(caffe_model_.input_dim(j));
-        }
+      auto ret = fill_shape_from_input_dim(i, &shape);
+      if (ret != RET_OK) {
+        return ret;
       }
     }
     auto graph = ConvertGraph(res_graph_);
