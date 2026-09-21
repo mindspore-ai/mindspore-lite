@@ -52,7 +52,7 @@ def usp_attn_forward(self,
                      seq_lens,
                      grid_sizes,
                      freqs,
-                     dtype=torch.bfloat16):  # pylint: disable=unused-argument
+                     dtype=torch.bfloat16):
     """Ulysses Sequence Parallel self-attention forward."""
     b, s, n, d = *x.shape[:2], self.num_heads, self.head_dim
 
@@ -86,7 +86,8 @@ def usp_attn_forward(self,
         v=v,
         q_lens=seq_lens,
         k_lens=seq_lens,
-        window_size=self.window_size)
+        window_size=self.window_size,
+        dtype=dtype)
 
     # flash_attention now always returns 4D [B, L_q, N//world_size, D]
 

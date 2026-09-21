@@ -135,7 +135,7 @@ def _rope_apply_expanded(x, freqs, s_local):
 
 
 def usp_attn_forward_cos_sin(self, x, freqs, seq_lens=None,
-                             dtype=torch.bfloat16):  # pylint: disable=unused-argument
+                             dtype=torch.bfloat16):
     """Ulysses SP self-attention for expanded-cos/sin RoPE (DiffSynth style).
 
     Drop-in replacement for ``WanSelfAttention.forward(x, freqs)`` on
@@ -178,7 +178,8 @@ def usp_attn_forward_cos_sin(self, x, freqs, seq_lens=None,
         v=v,
         q_lens=seq_lens,
         k_lens=seq_lens,
-        window_size=getattr(self, "window_size", None))
+        window_size=getattr(self, "window_size", None),
+        dtype=dtype)
 
     # Re-insert padding tokens at the END before reverse all_to_all
     if seq_pad > 0:
