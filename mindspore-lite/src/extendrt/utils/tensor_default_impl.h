@@ -75,15 +75,23 @@ class TensorDefaultImpl : public MutableTensorImpl {
   }
   ~TensorDefaultImpl() {
     if (deleter_ != nullptr && data_ != nullptr && own_data_) {
-      deleter_(reinterpret_cast<uint8_t *>(const_cast<void *>(data_)));
+      auto *ptr = reinterpret_cast<uint8_t *>(const_cast<void *>(data_));
+      deleter_(ptr);
+      if (device_data_ == ptr) {
+        device_data_ = nullptr;
+      }
       data_ = nullptr;
     }
     if (own_data_ && data_ != nullptr && data_ != buffer_.Data()) {
       free(const_cast<void *>(data_));
     }
-    if (device_data_ != nullptr && own_data_) {
-      MS_LOG(INFO) << "free device data in tensor default impl.";
-      AscendAllocatorPlugin::GetInstance().Free(device_data_, device_id_);
+    if (device_data_ != nullptr) {
+      if (device_data_owned_by_deleter_ && deleter_ != nullptr) {
+        deleter_(reinterpret_cast<uint8_t *>(device_data_));
+      } else if (own_data_) {
+        MS_LOG(INFO) << "free device data in tensor default impl.";
+        AscendAllocatorPlugin::GetInstance().Free(device_data_, device_id_);
+      }
       device_data_ = nullptr;
     }
     if (is_acl_host_ && data_ != nullptr) {
@@ -119,12 +127,25 @@ class TensorDefaultImpl : public MutableTensorImpl {
   void SetDevice(const std::string &device) override { device_ = device; }
 
   void SetDeviceData(void *data) override {
-    if (own_data_ && device_data_ != nullptr) {
+    if (device_data_owned_by_deleter_ && device_data_ != nullptr && deleter_ != nullptr) {
+      // Release previously bound producer-owned device data through its deleter.
+      deleter_(reinterpret_cast<uint8_t *>(device_data_));
+    } else if (own_data_ && device_data_ != nullptr) {
       MS_LOG(INFO) << "tensor has own device data, now release device data and set new device data.";
       AscendAllocatorPlugin::GetInstance().Free(device_data_, device_id_);
     }
     device_data_ = data;
     own_data_ = false;
+    device_data_owned_by_deleter_ = false;
+  }
+
+  // Bind device data that deleter_ (set via SetDeleter) owns: on destruction or
+  // overwrite the deleter returns it to the producer's pool (e.g. GE executor
+  // zero-copy device outputs) instead of the Ascend allocator.  data_ is left
+  // untouched so MutableData() still lazily allocates host memory for D2H readers.
+  void SetDeviceDataOwnedByDeleter(void *data) {
+    SetDeviceData(data);
+    device_data_owned_by_deleter_ = true;
   }
 
   void *GetDeviceData() override { return device_data_; }
@@ -195,6 +216,7 @@ class TensorDefaultImpl : public MutableTensorImpl {
   mutable Buffer buffer_;
   mutable const void *data_ = nullptr;
   bool own_data_ = false;
+  bool device_data_owned_by_deleter_ = false;
 
   bool is_const_ = false;
   bool is_acl_host_ = false;

@@ -338,16 +338,19 @@ int ReduceInt8CPUKernel::CalculateQuantArgsReduceSumSquare() {
 void ReduceInt8CPUKernel::FreeMultipliers() {
   for (auto qm : mean_multipliers_) {
     delete qm;
-    qm = nullptr;
   }
   for (auto qm : prod_multipliers_) {
     delete qm;
-    qm = nullptr;
   }
   for (auto qm : sum_square_multipliers_) {
     delete qm;
-    qm = nullptr;
   }
+  // Clear after deleting: Run() calls FreeMultipliers when valid_shape_ is false
+  // and the destructor calls it again — without clear() the second call would
+  // delete the same dangling pointers (double-free).
+  mean_multipliers_.clear();
+  prod_multipliers_.clear();
+  sum_square_multipliers_.clear();
 }
 
 int ReduceInt8CPUKernel::MallocTmpBuffer() {

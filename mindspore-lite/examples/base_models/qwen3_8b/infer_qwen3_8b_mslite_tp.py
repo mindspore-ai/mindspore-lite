@@ -662,6 +662,10 @@ def _tp_decode_step(step_qs, out_qs, generated, valid_len, cur_am, tp_size):
         step_qs[r].put(step)
     td0 = time.perf_counter()
     logits_r0 = out_qs[0].get()
+    # Drain remaining rank outputs to prevent unbounded queue growth
+    # (each non-rank-0 worker puts ~608KB arrays per decode step).
+    for r in range(1, tp_size):
+        out_qs[r].get()
     return int(np.argmax(logits_r0[0, -1, :])), time.perf_counter() - td0
 
 
