@@ -263,6 +263,14 @@ def flash_attention(
     if dtype is not None and dtype not in half_dtypes:
         raise ValueError(
             f"dtype must be one of {half_dtypes} or None, but got {dtype}.")
+    # An explicit dtype casts q/k/v up front so mixed-dtype inputs (e.g.
+    # float32 q/k from RoPE with bfloat16 v) pass the uniformity check
+    # below; dtype=None keeps the inputs untouched and still requires
+    # them to share one dtype.
+    if dtype is not None:
+        q = q.to(dtype)
+        k = k.to(dtype)
+        v = v.to(dtype)
     if q.dtype not in half_dtypes or k.dtype != q.dtype or v.dtype != q.dtype:
         raise ValueError(
             f"q/k/v must share a dtype in {half_dtypes}, but got "
