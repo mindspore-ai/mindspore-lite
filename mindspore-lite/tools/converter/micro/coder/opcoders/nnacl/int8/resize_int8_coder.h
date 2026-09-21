@@ -46,6 +46,7 @@ class ResizeInt8Coder final : public ResizeBaseCoder {
  private:
   int ReSize();
   void FreeArgs();
+  static void FreeAxisArrays(int32_t **arr);
   ResizeParameter *param_{nullptr};
   ::QuantArg *quant_in_{nullptr};
   ::QuantArg *quant_out_{nullptr};
