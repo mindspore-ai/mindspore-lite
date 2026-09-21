@@ -116,6 +116,10 @@ Status GetOmInfoFromCnode(const CNodePtr &cnode, void **om_data, size_t *om_size
     MS_LOG(ERROR) << "GetCnodeInputsOutputs failed!";
     return kLiteError;
   }
+  if (inputs.empty()) {
+    MS_LOG(ERROR) << "GetCnodeInputsOutputs failed, cnode inputs is empty!";
+    return kLiteError;
+  }
   auto om_inputs = inputs.back();
   auto tensor_data = mindspore::FuncGraphUtils::GetConstNodeValue(om_inputs.first);
   if (tensor_data == nullptr) {

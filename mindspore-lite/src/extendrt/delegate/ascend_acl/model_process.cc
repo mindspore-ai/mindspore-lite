@@ -927,6 +927,10 @@ Status ModelProcess::ResetInputSize(const std::vector<ShapeVector> &new_shapes) 
         elem_count = 0;
         break;
       }
+      if (elem_count != 0 && static_cast<uint64_t>(shape[i]) > SIZE_MAX / elem_count) {
+        MS_LOG(ERROR) << "ModelProcess ResetInputSize ERROR, elem count overflow, shape index " << i;
+        return Status(kLiteInputParamInvalid, "Input shape element count overflows.");
+      }
       elem_count *= shape[i];
     }
     input_infos_[index].dims = shape;
@@ -935,7 +939,12 @@ Status ModelProcess::ResetInputSize(const std::vector<ShapeVector> &new_shapes) 
       MS_LOG(ERROR) << "ModelProcess ResetInputSize ERROR" << data_type;
       return Status(kLiteAclInitFailed, "Get model input data type is invalid.");
     }
-    auto new_buffer_size = elem_count * CALL_ASCEND_API(aclDataTypeSize, data_type);
+    auto type_size = CALL_ASCEND_API(aclDataTypeSize, data_type);
+    if (elem_count != 0 && type_size != 0 && elem_count > SIZE_MAX / type_size) {
+      MS_LOG(ERROR) << "ModelProcess ResetInputSize ERROR, buffer size overflow.";
+      return Status(kLiteInputParamInvalid, "Input buffer size overflows.");
+    }
+    auto new_buffer_size = elem_count * type_size;
     if (!is_dynamic_input_) {
       input_infos_[index].buffer_size = new_buffer_size;
     } else if (new_buffer_size > input_infos_[index].buffer_size) {
@@ -1247,6 +1256,11 @@ void *ModelProcess::GetInputBuffer(size_t i, const MSTensor &input) {
       return device_data_addr;
     }
     auto data_copy_size = input.DataSize();
+    if (data_copy_size > info.buffer_size) {
+      MS_LOG(ERROR) << "Input " << i << " data size " << data_copy_size << " is larger than device buffer size "
+                    << info.buffer_size;
+      return nullptr;
+    }
     auto copy_result = allocator_->CopyDeviceDataToDevice(device_data_addr, info.device_data, data_copy_size,
                                                           info.buffer_size, input_device_id, device_id_);
     MS_CHECK_TRUE_MSG(copy_result == kSuccess, nullptr, "Copy input data from device to current device failed.");
@@ -1254,6 +1268,11 @@ void *ModelProcess::GetInputBuffer(size_t i, const MSTensor &input) {
   }
   auto data = host_data_addr;
   auto size = input.DataSize();
+  if (size > info.buffer_size) {
+    MS_LOG(ERROR) << "Input " << i << " data size " << size << " is larger than device buffer size "
+                  << info.buffer_size;
+    return nullptr;
+  }
   if (!is_run_on_device_) {
     auto ret = AclrtMemcpy(info.device_data, info.buffer_size, data, size, ACL_MEMCPY_HOST_TO_DEVICE);
     if (ret != ACL_SUCCESS) {

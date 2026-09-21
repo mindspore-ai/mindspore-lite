@@ -192,6 +192,8 @@ class GeGraphExecutor : public LiteGraphExecutor {
   // symmetric with the input side and does not depend on RefMode's outputs_buffer_infos_.
   bool BindZeroCopyOutputs(std::vector<mindspore::MSTensor> *outputs, std::vector<GeTensor> *ge_outputs,
                            std::vector<bool> *output_is_device);
+  // Check that a declared data size is consistent with the shape-derived size.
+  static bool CheckTensorSizeConsistency(const std::vector<int64_t> &shape, TypeId dtype, size_t data_size);
   Status HandleZeroCopyOutputs(uint32_t graph_id, std::vector<mindspore::MSTensor> *outputs,
                                std::vector<GeTensor> *ge_outputs, const std::vector<bool> &output_is_device);
   bool InitRefDataList(const std::vector<std::pair<std::string, tensor::TensorPtr>> &ref_data_tensors);

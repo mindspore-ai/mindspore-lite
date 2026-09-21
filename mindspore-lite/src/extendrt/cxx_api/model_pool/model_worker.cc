@@ -174,11 +174,15 @@ std::vector<MSTensor> ModelWorker::GetInputs() { return origin_worker_inputs_; }
 
 std::vector<MSTensor> ModelWorker::GetOutputs() { return origin_worker_outputs_; }
 
-std::pair<std::vector<std::vector<int64_t>>, bool> ModelWorker::GetModelResize(
-  const std::vector<MSTensor> &model_inputs, const std::vector<MSTensor> &inputs) {
-  std::vector<std::vector<int64_t>> dims;
-  bool need_resize = false;
+Status ModelWorker::GetModelResize(const std::vector<MSTensor> &model_inputs, const std::vector<MSTensor> &inputs,
+                                   std::vector<std::vector<int64_t>> &dims, bool &need_resize) {
+  need_resize = false;
   for (size_t i = 0; i < model_inputs.size(); i++) {
+    if (model_inputs[i].Shape().size() != inputs[i].Shape().size()) {
+      MS_LOG(ERROR) << "model input " << i << " shape size " << model_inputs[i].Shape().size()
+                    << " is not equal to given input shape size " << inputs[i].Shape().size();
+      return Status(kLiteInputParamInvalid, "Input shape rank != model input shape rank.");
+    }
     for (size_t j = 0; j < model_inputs[i].Shape().size(); j++) {
       if (model_inputs[i].Shape()[j] != inputs[i].Shape()[j]) {
         need_resize = true;
@@ -186,7 +190,7 @@ std::pair<std::vector<std::vector<int64_t>>, bool> ModelWorker::GetModelResize(
     }
     dims.push_back(inputs[i].Shape());
   }
-  return std::make_pair(dims, need_resize);
+  return kSuccess;
 }
 
 Status ModelWorker::CopyOutputTensor(std::vector<MSTensor> model_outputs, std::vector<MSTensor> *user_outputs) {
@@ -226,10 +230,16 @@ Status ModelWorker::Predict(const std::vector<MSTensor> &inputs, std::vector<MST
     available_ = true;
     return Status(kLiteInputParamInvalid, "Model inputs size != the given inputs size.");
   }
-  auto resize_pair = GetModelResize(model_input, inputs);
-  if (resize_pair.second) {
+  std::vector<std::vector<int64_t>> dims;
+  bool need_resize = false;
+  auto resize_status = GetModelResize(model_input, inputs, dims, need_resize);
+  if (resize_status != kSuccess) {
+    PrintWorkerInfo();
+    available_ = true;
+    return resize_status;
+  }
+  if (need_resize) {
     // model need resize
-    auto dims = resize_pair.first;
     auto status = model_->Resize(model_->GetInputs(), dims);
     if (status != kSuccess) {
       MS_LOG(ERROR) << "model pool resize failed.";
