@@ -1,360 +1,336 @@
-# Qwen3-VL-Embedding-2B ONNX/MindIR 导出与推理完整教程
+# Qwen3-VL-Embedding-2B ONNX 模型导出与 MindSpore Lite 推理部署教程
 
-本教程详细介绍如何将 Qwen3-VL-Embedding-2B 多模态嵌入模型导出为 ONNX 格式，并使用 ONNX Runtime 进行推理，最后转换为 MindIR 并基于 MindSpore Lite Python API 推理。
+本教程介绍如何将 [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B) 模型导出为 ONNX 格式，并转换为 MindSpore Lite 的 MINDIR 模型，在昇腾（Ascend）上完成文本、图像以及图文混合输入的 Embedding 推理。模型输出为 2048 维向量，推理侧对最后一个有效 token 做池化并 L2 归一化。
 
-## 目录
+为了让视觉部分能够以固定 Shape 编译到昇腾上，示例把模型拆分为两个 ONNX 分块：
 
-1. [环境准备](#环境准备)
-2. [依赖安装](#依赖安装)
-3. [模型导出](#模型导出)
-4. [ONNX 推理](#onnx-推理)
-5. [MindSpore Lite 转换](#mindspore-lite-转换)
-6. [MindIR 推理](#mindir-推理)
-7. [常见问题](#常见问题)
+- **Vision 分块**（`qwen3_vl_embedding_2b_vision`）：输入为切 patch 后的像素 `pixel_values [num_patches, 1536]`，输出图像特征 `image_embeds` 以及 3 个 Deepstack 特征 `ds0/ds1/ds2`（均为 `[num_merged, 2048]`）。图像的位置编码与 Vision RoPE 表在导出时按 `--vision-image-size` 固化进计算图。
+- **Text-Image 分块**（`qwen3_vl_embedding_2b_text_image`）：输入为 `input_ids`、`attention_mask`、3 行 M-RoPE 的 `position_ids` 以及 Vision 分块的 4 个输出，输出最后一层隐状态 `last_hidden_state`。图像特征在计算图内部散列到 `<|image_pad|>` 位置，Deepstack 特征注入也在图内完成。
 
-## 环境准备
+按默认的 `--vision-image-size 1024` 导出时：1024x1024 图像 -> 64x64 的 patch 网格 -> 4096 个 patch -> 空间合并（merge 2x2）后得到 1024 个图像 token。
 
-### 系统要求
+> 注意：ONNX 导出必须使用 float32。MindSpore Lite 转换工具不支持部分算子的 FLOAT16 类型声明（例如 `Clip` 会报 `do not support data_type: 10`）。
 
-- Linux 系统（推荐 Ubuntu 20.04+）
-- Python 3.9+（推荐 3.10 / 3.11）
+---
 
-## 依赖安装
+## 1. 环境准备
 
-本示例涉及三段流程（ONNX 导出 / ONNX 推理 / MindIR 推理），依赖按“必选/可选”列出。
+### 1.1 系统要求
 
-### 必选依赖（导出 + ONNX 推理）
+- Linux（推荐 Ubuntu 20.04 及以上）
+- Python 3.9 及以上
+- 已安装 CANN，并配置好 MindSpore Lite 的运行环境
 
-- mindspore_lite
-- torch（用于导出）
-- transformers（用于加载模型与 processor/tokenizer）
-- accelerate（transformers `device_map` 相关依赖，建议安装）
-- numpy
-- onnx
-- onnxruntime（CPU 推理）
+### 1.2 依赖安装
 
-### 可选依赖
+本教程验证时使用的版本如下：
 
-- onnxruntime-gpu（如需 CUDA 推理）
-- scikit-learn（如需在 ONNX 推理脚本中计算相似度）
-- pillow（如需多模态输入图片）
+| 组件 | 版本 |
+| --- | --- |
+| Python | 3.12.0 |
+| torch | 2.12.0 |
+| transformers | 5.4.0 |
+| onnx | 1.23.0 |
+| numpy | 2.5.1 |
+| pillow | 12.3.0 |
+| mindspore-lite | 2.9.0 |
+| CANN | 8.5.0 |
 
-```bash
-# 导出 + ONNX 推理（CPU）
-pip install torch transformers accelerate numpy onnx onnxruntime
-
-# 相似度计算（可选）
-pip install scikit-learn
-
-# CUDA 推理（可选，二选一安装）
-# pip install onnxruntime-gpu
-
-# MindIR 推理（可选：安装 MindSpore Lite Python wheel）
-# pip install /path/to/mindspore_lite-*.whl
-
-# 多模态输入图片（可选）
-pip install pillow
-```
-
-### 环境校验
+### 1.3 环境校验
 
 ```bash
-# Python 版本
-python -V
-
-# 核心依赖版本
-python -c "import numpy as np; print('numpy:', np.__version__)"
-python -c "import torch; print('torch:', torch.__version__, 'cuda_available:', torch.cuda.is_available())"
-python -c "import transformers; print('transformers:', transformers.__version__)"
-python -c "import accelerate; print('accelerate:', accelerate.__version__)"
-python -c "import onnx; print('onnx:', onnx.__version__)"
-python -c "import onnxruntime as ort; print('onnxruntime:', ort.__version__, 'providers:', ort.get_available_providers())"
-
-# 可选依赖校验（按需执行）
-python -c "import sklearn; print('scikit-learn:', sklearn.__version__)"
-python -c "import PIL; print('pillow:', PIL.__version__)"
-python -c "import mindspore_lite as mslite; print('mindspore_lite:', mslite.__version__)"
+python -c "import torch, transformers, onnx, numpy, PIL; print(torch.__version__, transformers.__version__, onnx.__version__)"
+python -c "import mindspore_lite as mslite; print(mslite.__version__)"
 ```
 
-## 模型导出
+---
 
-### 导出脚本说明
+## 2. 模型导出 ONNX
 
-导出脚本将 Qwen3-VL-Embedding-2B 模型导出为单个 ONNX 文件：
-
-- **Embedding Model** (`qwen3_vl_embedding_2b.onnx`): 完整的嵌入模型，支持文本和图像输入
-
-### 导出命令
+### 2.1 导出命令
 
 ```bash
 cd examples/base_models/qwen3_vl_embedding_2b
-
-# 使用默认参数导出
-python export_qwen3_vl_embedding_onnx.py
-
-# 自定义参数导出
-python export_qwen3_vl_embedding_onnx.py \
-  --model-id Qwen/Qwen3-VL-Embedding-2B \
+python export_qwen3_vl_embedding_image_onnx.py \
+  --model-id ./Qwen3-VL-Embedding-2B \
   --output-dir ./qwen3_vl_embedding_onnx \
-  --device cpu
+  --device cpu \
+  --vision-image-size 1024
 ```
 
-### 参数说明
+### 2.2 参数说明
 
-- `--model-id`: HuggingFace 模型 ID（默认：Qwen/Qwen3-VL-Embedding-2B）
-- `--output-dir`: 输出目录（默认：./qwen3_vl_embedding_onnx）
-- `--device`: 导出设备（cpu 或 cuda，默认：cpu）
+| 参数 | 说明 | 默认值 |
+| --- | --- | --- |
+| --model-id | 本地模型目录或 HuggingFace 模型名 | ./Qwen3-VL-Embedding-2B |
+| --output-dir | ONNX 输出目录 | ./qwen3_vl_embedding_onnx |
+| --device | 导出使用的设备 | cpu |
+| --module | 导出 all / vision / text | all |
+| --vision-image-size | 固化 Vision 位置表与 RoPE 表的图像边长 | 1024 |
+| --vision-name | Vision ONNX 文件名 | qwen3_vl_embedding_2b_vision.onnx |
+| --text-name | Text-Image ONNX 文件名 | qwen3_vl_embedding_2b_text_image.onnx |
+| --use-fused-gelu-tanh-nz | 使用 CANN 融合算子 FusedGeluTanhNZ | 关闭 |
+| --use-fused-rms-norm-nz | 使用 CANN 融合算子 FusedRmsNormNZ | 关闭 |
+| --use-fused-qk-norm-rope-bsh | 使用 CANN 融合算子 FusedQKNormRopeBSH | 关闭 |
 
-### 导出输出
+### 2.3 导出产物
 
-成功导出后，输出目录将包含以下文件：
-
-```bash
+```text
 qwen3_vl_embedding_onnx/
-└── qwen3_vl_embedding_2b.onnx     # Embedding 模型
+├── qwen3_vl_embedding_2b_vision.onnx
+├── qwen3_vl_embedding_2b_vision.onnx.data
+├── qwen3_vl_embedding_2b_text_image.onnx
+└── qwen3_vl_embedding_2b_text_image.onnx.data
 ```
 
-### 导出过程说明
+权重以外部数据文件（`.onnx.data`）形式保存，转换时 `.onnx` 与 `.onnx.data` 必须放在同一目录。
 
-导出过程：
+### 2.4 注意事项
 
-1. **加载模型**: 从 HuggingFace 加载 Qwen3-VL-Embedding-2B 模型（FP16 精度）
-2. **创建包装器**: 创建 PyTorch 包装器以适配 ONNX 导出
-3. **导出模型**: 使用 torch.onnx.export 导出模型
+- `--vision-image-size` 决定 Vision 分块的输入 Shape：默认 1024 对应 4096 个 patch（`pixel_values [4096, 1536]`）与 1024 个图像 token，推理脚本的 `--image-size` 必须与此一致。
+- 导出精度固定为 float32，请勿手动改成 fp16。
+- 三个 `--use-fused-*` 开关默认关闭；只有确认 CANN 版本提供对应融合算子时才建议打开。
 
-### 导出注意事项
+---
 
-- 使用 FP16 精度导出以减少模型大小
-- 使用 `torch._dynamo.disable()` 避免动态编译问题
-- 使用 opset_version=18 确保兼容性
-- 支持文本和图像输入（pixel_values 和 image_grid_thw）
+## 3. MindSpore Lite 转换
 
-## ONNX 推理
-
-### 推理脚本说明
-
-推理脚本实现了完整的嵌入推理流程：
-
-1. 使用 processor 处理文本
-2. 使用 ONNX 模型计算嵌入向量
-3. 可选：计算嵌入向量之间的相似度
-
-### 推理命令
+### 3.1 转换命令
 
 ```bash
-cd examples/base_models/qwen3_vl_embedding_2b
-
-# 基本推理
-python infer_qwen3_vl_embedding_onnx.py \
-  --model ./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b.onnx \
-  --texts "Hello world" "Hi there" "Good morning"
-
-# 自定义参数推理
-python infer_qwen3_vl_embedding_onnx.py \
-  --model ./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b.onnx \
-  --tokenizer ./Qwen3-VL-Embedding-2B \
-  --texts "What is machine learning?" "Deep learning uses neural networks." "Python is a programming language." \
-  --device cpu
-
-# 计算相似度矩阵
-python infer_qwen3_vl_embedding_onnx.py \
-  --model ./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b.onnx \
-  --texts "The cat is on the mat" "A dog is running" "The feline is resting" \
-  --compute-similarity
-```
-
-### 参数说明
-
-- `--model`: ONNX 模型路径
-- `--tokenizer`: HuggingFace tokenizer 路径（默认：./Qwen3-VL-Embedding-2B）
-- `--texts`: 文本列表（空格分隔）
-- `--device`: 推理设备（cpu 或 cuda，默认：cpu）
-- `--compute-similarity`: 计算嵌入向量之间的相似度矩阵
-
-### 推理示例
-
-```bash
-# 文本嵌入
-python infer_qwen3_vl_embedding_onnx.py \
-  --model ./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b.onnx \
-  --texts "Machine learning is a subset of AI" "Deep learning uses neural networks" "Python is a programming language"
-
-# 语义相似度
-python infer_qwen3_vl_embedding_onnx.py \
-  --model ./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b.onnx \
-  --texts "The cat is sleeping" "A feline is resting" "The car is driving" \
-  --compute-similarity
-```
-
-## MindSpore Lite 转换
-
-### 转换 ONNX 模型
-
-```bash
-# 转换 Embedding 模型
-./output/bin/converter_lite \
-  --fmk=ONNX \
-  --modelFile=./mindspore-lite/examples/base_models/qwen3_vl_embedding_2b/qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b.onnx \
-  --outputFile=./mindspore-lite/examples/base_models/qwen3_vl_embedding_2b/qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b \
+converter_lite --fmk=ONNX \
+  --modelFile=./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b_vision.onnx \
+  --outputFile=./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b_vision \
   --optimize=ascend_oriented \
-  --saveType=MINDIR
+  --saveType=MINDIR \
+  --configFile=./configs/qwen3_vl_embedding_vision.ini
+
+converter_lite --fmk=ONNX \
+  --modelFile=./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b_text_image.onnx \
+  --outputFile=./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b_text_image \
+  --optimize=ascend_oriented \
+  --saveType=MINDIR \
+  --configFile=./configs/qwen3_vl_embedding_text_image.ini
 ```
 
-### 转换参数说明
+### 3.2 转换配置说明
 
-- `--fmk`: 输入模型格式（ONNX）
-- `--modelFile`: 输入 ONNX 模型路径
-- `--outputFile`: 输出 MINDIR 模型路径（不带扩展名）
-- `--optimize`: 优化选项（ascend_oriented）
-- `--saveType`: 保存类型（MINDIR）
+`configs/qwen3_vl_embedding_vision.ini`：Vision 分块为固定 Shape，`input_shape` 直接声明为 `pixel_values:4096,1536`。
 
-### 转换输出
+```ini
+[acl_build_options]
+input_format="ND"
+input_shape="pixel_values:4096,1536"
 
-成功转换后，输出目录将包含：
+[acl_init_options]
+ge.exec.precision_mode=allow_mix_precision
 
-```bash
+[ascend_context]
+plugin_custom_ops=All
+```
+
+`configs/qwen3_vl_embedding_text_image.ini`：Text-Image 分块只保留序列长度动态，并做动态分档（128/512/1024/2048/4096）。
+
+```ini
+[acl_build_options]
+input_format="ND"
+input_shape="input_ids:1,-1;attention_mask:1,-1;position_ids:3,1,-1;image_embeds:1024,2048;ds0:1024,2048;ds1:1024,2048;ds2:1024,2048"
+ge.dynamicDims="128,128,128;512,512,512;1024,1024,1024;2048,2048,2048;4096,4096,4096"
+
+[acl_init_options]
+ge.exec.precision_mode=allow_mix_precision
+ge.exec.modify_mixlist="configs/op_fp32.json"
+
+[ascend_context]
+plugin_custom_ops=All
+```
+
+`configs/op_fp32.json` 把 RMSNorm 相关的算子（`RealDiv`、`SquareSumV1`、`Square`、`Sqrt`、`ReduceMean`）固定在 fp32 上计算，避免混合精度下精度下降过多。
+
+### 3.3 转换产物
+
+```text
 qwen3_vl_embedding_onnx/
-├── qwen3_vl_embedding_2b.onnx
-└── qwen3_vl_embedding_2b.mindir
+├── qwen3_vl_embedding_2b_vision.mindir
+├── qwen3_vl_embedding_2b_text_image_graph.mindir
+└── qwen3_vl_embedding_2b_text_image_variables/
+    └── data_0
 ```
 
-## MindIR 推理
+Text-Image 分块权重超过 2GB，转换后拆成 `*_graph.mindir` 与 `*_variables/` 两部分，推理时两者必须放在同一目录，并加载 `*_graph.mindir`。
 
-### 依赖安装（MindSpore Lite Python）
+### 3.4 注意事项
 
-需要安装 mindspore_lite Python 包（建议使用编译产物 wheel 安装）：
+- 修改 `--vision-image-size` 后，Vision 分块的 patch 数与合并后 token 数会变化，需要同步更新两个 ini 中的 `input_shape` 后重新导出、转换。
+- 转换失败报 `Check shape failed` 时，先检查 ini 里的 `input_shape` 是否与 ONNX 实际输入一致。
+
+---
+
+## 4. MindSpore Lite 推理
+
+### 4.1 纯文本 Embedding
 
 ```bash
-# 安装 MindSpore Lite Python wheel（示例，按实际 wheel 路径修改）
-pip install /path/to/mindspore_lite-*.whl
+python infer_qwen3_vl_embedding_mslite.py \
+  --vision-model ./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b_vision.mindir \
+  --text-model ./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b_text_image_graph.mindir \
+  --processor ./Qwen3-VL-Embedding-2B \
+  --texts "The cat is sleeping" "A feline is resting" "The car is driving" \
+  --image "" \
+  --device ascend --device-id 0 \
+  --compute-similarity
 ```
 
-### 最小推理代码（示例）
+`--image` 默认使用示例图片（远程 URL），纯文本请求需显式传入 `--image ""` 关闭图像输入；此时不会触发 Vision 分块，脚本会为图像特征输入填充全 0 占位数据（昇腾不支持 0 尺寸张量，这些占位行不会被实际读取）。
 
-下面示例展示如何用 MindSpore Lite Python API 加载 `.mindir` 并执行一次推理（输入名与 dtype 以实际转换出来的模型为准）：
-
-```python
-import numpy as np
-import mindspore_lite as mslite
-
-context = mslite.Context()
-context.target = ["ascend"]
-
-model = mslite.Model()
-model.build_from_file(
-    "./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b.mindir",
-    mslite.ModelType.MINDIR,
-    context,
-)
-
-inputs = model.get_inputs()
-for t in inputs:
-    print("input:", t.name, t.shape, t.data_type)
-
-# 仅示例：请按模型真实输入名/shape/dtype 准备数据
-feed = {}
-for t in inputs:
-    if t.name == "input_ids":
-        feed[t.name] = np.ones((1, 8), dtype=np.int64)
-    elif t.name == "attention_mask":
-        feed[t.name] = np.ones((1, 8), dtype=np.int64)
-    elif t.name == "pixel_values":
-        feed[t.name] = np.zeros((1, 3, 224, 224), dtype=np.float16)
-    elif t.name in ("image_grid_thw", "grid_thw"):
-        feed[t.name] = np.array([[1, 16, 16]], dtype=np.int64)
-
-mslite_inputs = [mslite.Tensor(feed[t.name]) for t in inputs]
-outputs = model.predict(mslite_inputs)
-out0 = outputs[0].get_data_to_numpy()
-print("output[0] shape:", out0.shape)
-```
-
-## 常见问题
-
-### 1. transformers 版本过低
-
-**错误信息**:
+### 4.2 图文 Embedding
 
 ```bash
-ImportError: cannot import name 'AutoModel' from 'transformers'
+python infer_qwen3_vl_embedding_mslite.py \
+  --vision-model ./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b_vision.mindir \
+  --text-model ./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b_text_image_graph.mindir \
+  --processor ./Qwen3-VL-Embedding-2B \
+  --texts "a photo of a cat" "hello world" \
+  --image-size 1024 \
+  --device ascend --device-id 0 \
+  --compute-similarity
 ```
 
-**解决方案**:
+图像会与每个文本一起编码，同时脚本会单独输出图像自身的 Embedding，用于计算图文相似度。不传 `--image` 时使用脚本内置的默认示例图片（远程 URL）；离线环境请传入本地图片路径。
 
-```bash
-# 检查当前版本
-python -c "import transformers; print(transformers.__version__)"
+### 4.3 参数说明
 
-# 如果版本过低，升级 transformers（在当前环境中）
-pip install --upgrade transformers
+| 参数 | 说明 | 默认值 |
+| --- | --- | --- |
+| --vision-model | Vision MINDIR 路径 | 必填 |
+| --text-model | Text-Image MINDIR 路径（`*_graph.mindir`） | 必填 |
+| --processor | 处理器目录或 HuggingFace 模型名 | Qwen/Qwen3-VL-Embedding-2B |
+| --texts | 待编码文本，可多个 | Hello world / Hi there / Good morning |
+| --image | 图片路径或 URL；不传时使用默认示例图片，传入空字符串 `--image ""` 关闭图像输入 | https://hbr.org/resources/images/article_assets/2018/03/mar18_9_824179306.jpg |
+| --instruction | 指令前缀（官方默认指令） | Represent the user's input. |
+| --image-size | 图像边长，必须与导出 `--vision-image-size` 一致 | 1024 |
+| --seq-len-buckets | 文本序列长度分档，需与 `ge.dynamicDims` 一致 | 128,512,1024,2048,4096 |
+| --device | 推理设备（转换配置为 `ascend_oriented`，请在昇腾上运行） | cpu |
+| --device-id | 昇腾设备 ID | 0 |
+| --compute-similarity | 打印相似度矩阵 | 关闭 |
 
-# 或者安装特定版本
-pip install transformers==4.40.0
+### 4.4 预期输出
+
+> 说明：日志中可能出现 `use_fast` 弃用警告与 Ascend 自定义算子路径提示，均为无害告警。
+
+```text
+Loading processor from ./Qwen3-VL-Embedding-2B...
+Loading model from ./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b_vision.mindir...
+Vision model inputs:
+  - pixel_values  shape=[4096, 1536]  dtype=float32
+Loading model from ./qwen3_vl_embedding_onnx/qwen3_vl_embedding_2b_text_image_graph.mindir...
+Text model inputs:
+  - input_ids   shape=[1, -1]   dtype=int32
+  - attention_mask      shape=[1, -1]   dtype=int32
+  - position_ids        shape=[3, 1, -1]        dtype=int32
+  - image_embeds        shape=[1024, 2048]      dtype=float32
+  - ds0 shape=[1024, 2048]      dtype=float32
+  - ds1 shape=[1024, 2048]      dtype=float32
+  - ds2 shape=[1024, 2048]      dtype=float32
+Image grid_thw=[1, 64, 64], image tokens=1024, vision inference=419.76 ms
+============================================================
+embeddings shape: (2, 2048)
+image embedding shape: (2048,)
+============================================================
+
+Text-to-text similarity (cosine):
+  text[0] vs text[1]: 0.6662
+
+Image-to-text similarity (cosine):
+  image vs text[0] ('a photo of a cat'): 0.6542
+  image vs text[1] ('hello world'): 0.8165
+
+--- Performance ---
+  Vision inference:  419.76 ms
+  Text inference:    332.29 ms (per call)
+  Total:             2074.81 ms
 ```
 
-### 2. 模型下载失败
+具体数值会随输入变化，上表来自一次 1024x1024 随机图片 + 两条文本的实际运行。其中 `Text inference` 为单次文本模型调用的平均耗时（本次运行共调用 3 次：两条图文请求各一次、纯图像请求一次），`Total` 为端到端墙钟时间。
 
-**错误信息**:
+---
 
-```bash
-OSError: Can't load model from 'Qwen/Qwen3-VL-Embedding-2B'
-```
+## 5. 性能数据
 
-**解决方案**:
+Atlas 300I Duo实测，1024x1024 图片：
 
-```bash
-export HF_ENDPOINT=https://hf-mirror.com
+| 阶段 | 耗时 |
+| --- | --- |
+| Vision 推理 | 422.47 ms |
+| Text-Image 推理（图文） | 327.90 ms（单次调用平均，本次共 3 次调用） |
+| 纯文本（128 分档） | 31.31 ms |
+| 端到端（图文两条文本） | 1607.23 ms |
 
-git clone https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B
-python export_qwen3_vl_embedding_onnx.py --model-id ./Qwen3-VL-Embedding-2B
-```
+模型加载耗时约 30 秒/个，未计入上表。
+
+---
+
+## 6. 常见问题
+
+### 6.1 转换报错 `Clip ... do not support data_type: 10`
+
+MindSpore Lite 转换工具不支持部分算子的 FLOAT16 类型声明，请确保使用脚本默认的 float32 导出，不要手动改成 fp16。
+
+### 6.2 转换报错 `Check shape failed`
+
+`configs/*.ini` 中的 `input_shape` 与 ONNX 实际输入不一致，请检查：
+
+- Vision 分块：`pixel_values` 的行数应为 `(image_size / 16) ** 2`，默认 1024 对应 4096；
+- Text-Image 分块：`image_embeds/ds0/ds1/ds2` 的行数应为 `(image_size / 16 / 2) ** 2`，默认 1024 对应 1024。
+
+修改 `--vision-image-size` 后需同步更新并重新导出、转换。
+
+### 6.3 推理报错 `input data type not match, required 34, given 35`
+
+输入张量类型与模型声明不符（34 为 int32，35 为 int64）。推理脚本会按模型声明的类型自动转换，如自行调用请把 `input_ids/attention_mask/position_ids` 转成 int32。
+
+### 6.4 推理报错 `aclmdlSetInputDynamicDims failed`
+
+序列长度没有命中转换时 `ge.dynamicDims` 编译出的分档。推理脚本会自动把输入左填充到最近的分档；如修改了分档列表，请同时更新 `configs/qwen3_vl_embedding_text_image.ini` 与推理脚本的 `--seq-len-buckets`。
+
+### 6.5 图文精度异常或提示图像 token 数量不匹配
+
+推理脚本的 `--image-size` 必须与导出时的 `--vision-image-size` 一致（默认均为 1024）。不一致时图像 token 数与 Vision 输出的行数无法对齐。
+
+### 6.6 模型下载失败
 
 > **外部资源说明**：`HF_ENDPOINT=https://hf-mirror.com` 和 `git clone https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B` 仅作为模型下载失败时的手动下载示例；导出脚本本身未硬编码权重下载 URL，生产或离线环境可直接传入本地权重目录。
 
-### 3. ONNX 导出失败
+### 6.7 纯文本请求为什么要填充图像特征
 
-**错误信息**:
+昇腾不支持 0 尺寸张量，纯文本请求没有图像特征，脚本会填充全 0 占位数据；由于提示词中没有 `<|image_pad|>` 位置，这些占位数据不会被读取。
 
-```bash
-RuntimeError: Failed to export embedding model
-```
+---
 
-**解决方案**:
+## 7. 文件结构
 
-```bash
-pip install --upgrade transformers
-
-python -c "import torch; print(torch.__version__)"
-
-# 尝试使用不同的 opset 版本（修改脚本中的 opset_version 参数）
-```
-
-## 性能优化建议
-
-- 使用 FP16 精度减少模型大小（默认已使用）
-- 调整 dummy_seq 参数以匹配实际使用场景
-- 批量处理多个文本
-- 针对目标设备优化模型
-
-## 文件结构
-
-```bash
+```text
 qwen3_vl_embedding_2b/
-├── export_qwen3_vl_embedding_onnx.py          # ONNX 导出脚本
-├── infer_qwen3_vl_embedding_onnx.py           # ONNX 推理脚本
-├── README.md                                  # 本教程文档
-└── qwen3_vl_embedding_onnx/                    # 导出输出目录
-    ├── qwen3_vl_embedding_2b.onnx             # Embedding 模型
-    └── qwen3_vl_embedding_2b.mindir            # Embedding MINDIR（转换后）
+├── export_qwen3_vl_embedding_image_onnx.py   # 双分块 ONNX 导出脚本
+├── infer_qwen3_vl_embedding_mslite.py        # MindSpore Lite 推理脚本（双模型）
+├── convert.sh                                # ONNX -> MINDIR 转换脚本
+├── configs/                                  # 转换配置
+│   ├── qwen3_vl_embedding_vision.ini
+│   ├── qwen3_vl_embedding_text_image.ini
+│   └── op_fp32.json
+└── qwen3_vl_embedding_onnx/                  # 导出与转换产物
 ```
 
-## 参考资源
+---
 
-- [Qwen3-VL-Embedding-2B 官方文档](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B)
-- [Transformers 文档](https://huggingface.co/docs/transformers)
-- [ONNX Runtime 文档](https://onnxruntime.ai/docs/)
-- [MindSpore Lite 文档](https://www.mindspore.cn/lite)
+## 8. 参考资源
 
-## 许可证
+- [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B)
+- [MindSpore Lite 文档](https://www.mindspore.cn/lite/docs/zh-CN/master/index.html)
+- [MindSpore Lite 模型转换工具](https://www.mindspore.cn/lite/docs/zh-CN/master/use/converter_tool.html)
 
-本教程遵循 Qwen3-VL-Embedding-2B 模型的许可证。
+---
+
+## 9. 许可证
+
+Apache License 2.0
