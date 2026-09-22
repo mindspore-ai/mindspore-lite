@@ -690,6 +690,15 @@ void CodeMSModelPredict(std::ofstream &ofs, const std::unique_ptr<CoderContext> 
   ofs << "    inputs_data_array[i] = TransformInput((MicroTensor *)inputs.handle_list[i], expect_types[i], "
          "&type_changed[i]);\n";
   ofs << "  }\n";
+  ofs << "  for (int i = 0; i < " << inputs_num << "; i++) {\n";
+  ofs << "    if (inputs_data_array[i] == NULL) {\n";
+  ofs << "      // No printf diagnostic here: output backends are not guaranteed on micro devices;\n"
+         "      // the error status tells the caller which contract was violated.\n";
+  ofs << "      for (int j = 0; j < " << inputs_num
+      << "; j++) {\n  if (type_changed[j]) { free((void *)inputs_data_array[j]); } }\n";
+  ofs << "      return kMSStatusLiteParamInvalid;\n";
+  ofs << "    }\n";
+  ofs << "  }\n";
   ofs << "  SetInputs" << ctx->GetCurModelIndex() << "(inputs_data_array, " << inputs_num << ");\n";
   ofs << "  Execute" << ctx->GetCurModelIndex() << "(micro_model->train_mode);\n";
   ofs << "\n";
