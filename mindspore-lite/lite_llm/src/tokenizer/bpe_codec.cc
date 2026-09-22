@@ -46,6 +46,73 @@ std::string ReadStr(const uint8_t *data, size_t &offset, size_t size) {
   return s;
 }
 
+constexpr uint32_t kLetter = 1;
+constexpr uint32_t kNumber = 2;
+constexpr uint32_t kWhitespace = 3;
+
+struct QwenCharacter {
+  uint32_t value;
+  uint32_t kind;
+  // Read by BPECodec::PreTokenizeQwen; cppcheck 2.7 misses that use.
+  // cppcheck-suppress unusedStructMember
+  size_t offset;
+};
+
+bool IsNewline(uint32_t value) { return value == '\r' || value == '\n'; }
+
+size_t ContractionEnd(const std::vector<QwenCharacter> &chars, size_t start) {
+  if (chars[start].value != '\'') return start;
+  for (const char *suffix : {"s", "t", "re", "ve", "m", "ll", "d"}) {
+    size_t pos = start + 1;
+    size_t index = 0;
+    while (suffix[index] != '\0' && pos < chars.size()) {
+      uint32_t value = chars[pos].value;
+      if (value >= 'A' && value <= 'Z') value += 'a' - 'A';
+      if (value != static_cast<uint32_t>(suffix[index])) break;
+      ++pos;
+      ++index;
+    }
+    if (suffix[index] == '\0') return pos;
+  }
+  return start;
+}
+
+size_t QwenWhitespaceEnd(const std::vector<QwenCharacter> &chars, size_t start) {
+  size_t end = start;
+  size_t newline_end = start;
+  while (end < chars.size() && chars[end].kind == kWhitespace) {
+    if (IsNewline(chars[end].value)) newline_end = end + 1;
+    ++end;
+  }
+  if (newline_end != start) return newline_end;
+  // The regex's negative lookahead leaves one whitespace for the following
+  // word/punctuation alternative, unless the run ends the input.
+  return end < chars.size() && end > start + 1 ? end - 1 : end;
+}
+
+size_t QwenChunkEnd(const std::vector<QwenCharacter> &chars, size_t start) {
+  size_t end = ContractionEnd(chars, start);
+  if (end != start) return end;
+  end = start;
+  if (!IsNewline(chars[end].value) && chars[end].kind != kLetter && chars[end].kind != kNumber &&
+      end + 1 < chars.size() && chars[end + 1].kind == kLetter) {
+    ++end;
+  }
+  if (chars[end].kind == kLetter) {
+    while (end < chars.size() && chars[end].kind == kLetter) ++end;
+    return end;
+  }
+  if (chars[start].kind == kNumber) return start + 1;
+  end = start;
+  if (chars[end].value == ' ' && end + 1 < chars.size() && chars[end + 1].kind == 0) ++end;
+  if (chars[end].kind == 0) {
+    while (end < chars.size() && chars[end].kind == 0) ++end;
+    while (end < chars.size() && IsNewline(chars[end].value)) ++end;
+    return end;
+  }
+  return QwenWhitespaceEnd(chars, start);
+}
+
 }  // namespace
 
 BPECodec::BPECodec() { InitByteEncoder(); }
@@ -182,7 +249,28 @@ bool BPECodec::Load(const uint8_t *data, size_t size, size_t &offset) {
   return !merge_rank_.empty() || num_merges == 0;
 }
 
+std::vector<std::string> BPECodec::PreTokenizeQwen(const std::string &text) {
+  std::vector<QwenCharacter> chars;
+  for (size_t pos = 0; pos < text.size();) {
+    size_t start = pos;
+    uint32_t value = UTF8ToCodePoint(text, pos);
+    auto range = std::lower_bound(qwen_rules_.begin(), qwen_rules_.end(), value,
+                                  [](const auto &entry, uint32_t cp) { return entry[1] < cp; });
+    uint32_t kind = range != qwen_rules_.end() && (*range)[0] <= value ? (*range)[2] : 0;
+    chars.push_back({value, kind, start});
+  }
+  std::vector<std::string> chunks;
+  for (size_t start = 0; start < chars.size();) {
+    size_t end = QwenChunkEnd(chars, start);
+    size_t byte_end = end < chars.size() ? chars[end].offset : text.size();
+    chunks.push_back(text.substr(chars[start].offset, byte_end - chars[start].offset));
+    start = end;
+  }
+  return chunks;
+}
+
 std::vector<std::string> BPECodec::PreTokenize(const std::string &text) {
+  if (!qwen_rules_.empty()) return PreTokenizeQwen(text);
   std::vector<std::string> chunks;
   size_t i = 0;
   size_t n = text.size();
@@ -299,7 +387,7 @@ std::vector<std::string> BPECodec::ApplyBPE(const std::string &token) {
     return {};
   }
   auto it = token_to_id_->find(token);
-  if (it != token_to_id_->end()) {
+  if (it != token_to_id_->end() && qwen_rules_.empty()) {
     return {token};
   }
 

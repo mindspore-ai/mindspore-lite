@@ -37,7 +37,8 @@ class KVCacheManager {
 
   /// @brief Create num_layers key + value tensors, shape [1, kv_heads, max_len, head_dim] fp16,
   ///        zero-initialized via memset on their ION buffers.
-  bool Alloc(int num_layers, int kv_heads, int max_len, int head_dim, size_t device_id, OH_NNExecutor *executor);
+  bool Alloc(int num_layers, int kv_heads, int max_len, int head_dim, size_t device_id, OH_NNExecutor *executor,
+             size_t fixed_inputs = 7);
 
   void Free();
   void Reset();  // memset each tensor's GetDataBuffer to 0

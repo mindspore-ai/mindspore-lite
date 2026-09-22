@@ -40,6 +40,7 @@ MSLT_MAGIC = 0x4D534C54
 MSLT_VERSION = 2
 
 CODEC_BPE = 0
+CODEC_QWEN_BPE = 2
 CODEC_SENTENCEPIECE = 1
 
 CHAT_TEMPLATE_LEGACY = 0  # type field: byte-layout only; the custom template carries the payload
@@ -364,12 +365,15 @@ def _write_header(file_obj, codec, vocab_size, tokenizer):
     file_obj.write(struct.pack("<I", CHAT_TEMPLATE_LEGACY))
 
 
-def _export_bpe(tokenizer, vocab_path):
-    """Export vocab.json + merges.txt BPE tokenizer (Qwen2.5)."""
-    vocab = tokenizer.get_vocab()
-    sorted_vocab = sorted(vocab.items(), key=lambda x: x[1])
-
+def _bpe_merges(tokenizer):
+    """Read ordered BPE rules from slow, GGUF, or fast tokenizer storage."""
     merges = list(getattr(tokenizer, "merges", None) or [])
+    backend = getattr(tokenizer, "backend_tokenizer", None)
+    if not merges and backend is not None:
+        model = json.loads(backend.to_str()).get("model", {})
+        if model.get("type") != "BPE":
+            raise ValueError("Expected a BPE backend tokenizer")
+        merges = model.get("merges", [])
     if not merges:
         merges_file = getattr(tokenizer, "merges_file", None)
         if merges_file:
@@ -377,14 +381,79 @@ def _export_bpe(tokenizer, vocab_path):
             if not merges_path.exists():
                 merges_path = Path(tokenizer.vocab_file).parent / "merges.txt"
             if merges_path.exists():
-                for line in merges_path.read_text(encoding="utf-8").splitlines():
-                    stripped = line.strip()
-                    if not stripped or stripped.startswith("#"):
-                        continue
-                    merges.append(stripped)
+                merges = [line.strip() for line in merges_path.read_text(encoding="utf-8").splitlines()
+                          if line.strip() and not line.startswith("#")]
+    return _normalize_bpe_merges(merges)
+
+
+def _normalize_bpe_merges(merges):
+    """Validate merge pairs and serialize them in their original order."""
+    rules = []
+    for merge in merges:
+        pair = merge.split(" ") if isinstance(merge, str) else merge
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2 or not all(
+                isinstance(token, str) and token and " " not in token for token in pair):
+            raise ValueError("Each BPE merge must contain two nonempty tokens")
+        rules.append(" ".join(pair))
+    return rules
+
+
+QWEN_BPE_PATTERN = (
+    r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}|"
+    r" ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"
+)
+
+
+def _qwen_bpe_backend(tokenizer):
+    """Select the Qwen pre-tokenization contract from HF or GGUF metadata."""
+    if isinstance(tokenizer, _GGUFTokenizerAdapter):
+        return tokenizer.qwen_bpe_rules
+    backend = getattr(tokenizer, "backend_tokenizer", None)
+    if type(tokenizer).__name__ != "Qwen2TokenizerFast" or backend is None:
+        return None
+    config = json.loads(backend.to_str())
+    stages = config.get("pre_tokenizer", {}).get("pretokenizers", [])
+    if len(stages) != 2 or stages[0].get("pattern", {}).get("Regex") != QWEN_BPE_PATTERN:
+        raise ValueError("Unsupported Qwen BPE pre-tokenizer pattern")
+    if (stages[0].get("behavior") != "Isolated" or stages[0].get("invert", False)
+            or stages[1].get("type") != "ByteLevel" or stages[1].get("add_prefix_space", False)
+            or stages[1].get("use_regex", False)
+            or config.get("normalizer") not in (None, {"type": "NFC"})):
+        raise ValueError("Unsupported Qwen BPE pre-tokenizer configuration")
+    return config
+
+
+def _write_qwen_bpe_rules(stream, backend):
+    """Persist Unicode character classes and input-only added-token IDs."""
+    import regex
+
+    characters = "".join(map(chr, range(0x110000)))
+    ranges = []
+    for kind, pattern in enumerate((r"\p{L}+", r"\p{N}+", r"\s+"), start=1):
+        ranges.extend((match.start(), match.end() - 1, kind)
+                      for match in regex.finditer(pattern, characters))
+    ranges.sort()
+    stream.write(struct.pack("<I", len(ranges)))
+    for entry in ranges:
+        stream.write(struct.pack("<III", *entry))
+    added = backend.get("added_tokens", [])
+    if any(token.get(flag, False) for token in added for flag in ("single_word", "lstrip", "rstrip")):
+        raise ValueError("Qwen BPE added-token matching flags are not supported")
+    stream.write(struct.pack("<I", len(added)))
+    for token in added:
+        stream.write(struct.pack("<I", token["id"]))
+
+
+def _export_bpe(tokenizer, vocab_path):
+    """Export vocab.json + merges.txt BPE tokenizer (Qwen2.5)."""
+    vocab = tokenizer.get_vocab()
+    sorted_vocab = sorted(vocab.items(), key=lambda x: x[1])
+
+    merges = _bpe_merges(tokenizer)
+    qwen_backend = _qwen_bpe_backend(tokenizer)
 
     with open(vocab_path, "wb") as f:
-        _write_header(f, CODEC_BPE, len(sorted_vocab), tokenizer)
+        _write_header(f, CODEC_QWEN_BPE if qwen_backend else CODEC_BPE, len(sorted_vocab), tokenizer)
 
         for token_str, token_id in sorted_vocab:
             token_bytes = token_str.encode("utf-8")
@@ -397,6 +466,9 @@ def _export_bpe(tokenizer, vocab_path):
             merge_bytes = merge.encode("utf-8")
             f.write(struct.pack("<I", len(merge_bytes)))
             f.write(merge_bytes)
+
+        if qwen_backend:
+            _write_qwen_bpe_rules(f, qwen_backend)
 
         _write_custom_chat_template(f, tokenizer)
         _write_special_token_policy(f, tokenizer)
@@ -470,26 +542,48 @@ def export_generation_policy(tokenizer, model_dir, output_path):
 class _GGUFTokenizerAdapter:
     """Minimal tokenizer facade over GGUF tokenizer metadata.
 
-    Reuses transformers ``load_gguf_checkpoint`` (>= 4.57; the same parser that
-    builds the GGUF model config), so the token order/ids match the dequantized
-    model exactly.  Exposes only the attributes ``_export_bpe`` needs.
+    Read the tokenizer fields directly: the transformers config mapping drops
+    ``tokenizer.ggml.pre``, which is needed to select the correct BPE rules.
+    Token IDs remain the original indices in the GGUF vocabulary.
     """
 
     def __init__(self, gguf_path):
-        from transformers.modeling_gguf_pytorch_utils import load_gguf_checkpoint
+        from gguf import GGUFReader
 
-        info = load_gguf_checkpoint(gguf_path, return_tensors=False)
-        tokenizer = info["tokenizer"]
-        tokenizer_config = info.get("tokenizer_config", {}) or {}
+        reader = GGUFReader(gguf_path)
 
-        self.tokens = list(tokenizer.get("tokens", []))
-        self.merges = list(tokenizer.get("merges", None) or [])
-        self.bos_token_id = tokenizer.get("bos_token_id")
-        self.eos_token_id = tokenizer.get("eos_token_id")
-        self.pad_token_id = tokenizer.get("pad_token_id")
-        self.unk_token_id = tokenizer.get("unk_token_id")
-        self.chat_template = tokenizer_config.get("chat_template")
+        def field(name, default=None):
+            value = reader.get_field(name)
+            return default if value is None else value.contents()
+
+        self.tokens = list(field("tokenizer.ggml.tokens", []))
+        self.merges = list(field("tokenizer.ggml.merges", []))
+        self.bos_token_id = field("tokenizer.ggml.bos_token_id")
+        self.eos_token_id = field("tokenizer.ggml.eos_token_id")
+        self.pad_token_id = field("tokenizer.ggml.padding_token_id")
+        self.unk_token_id = field("tokenizer.ggml.unknown_token_id")
+        self.chat_template = field("tokenizer.chat_template")
         self._vocab = {token: i for i, token in enumerate(self.tokens)}
+        self.qwen_bpe_rules = self._qwen_rules(field)
+
+    def _qwen_rules(self, field):
+        """Translate Qwen's GGUF pre-tokenizer and added-token classifications."""
+        from gguf import TokenType
+
+        pre_tokenizer = field("tokenizer.ggml.pre")
+        if pre_tokenizer != "qwen2":
+            if field("general.architecture") in ("qwen2", "qwen3", "qwen3moe"):
+                raise ValueError(f"Unsupported Qwen GGUF pre-tokenizer: {pre_tokenizer!r}")
+            return None
+        if field("tokenizer.ggml.model") != "gpt2" or field("tokenizer.ggml.add_space_prefix", False):
+            raise ValueError("Unsupported Qwen GGUF BPE configuration")
+        token_types = field("tokenizer.ggml.token_type", [])
+        if len(token_types) != len(self.tokens):
+            raise ValueError("Qwen GGUF token types must cover the entire vocabulary")
+        return {"added_tokens": [
+            {"id": index} for index, kind in enumerate(token_types)
+            if kind in (TokenType.CONTROL, TokenType.USER_DEFINED)
+        ]}
 
     def get_vocab(self):
         """Return a copy of the token -> token-id vocabulary mapping."""
@@ -499,8 +593,9 @@ class _GGUFTokenizerAdapter:
 def export_tokenizer(model_dir, output_dir, chat_template=None):
     """Export ``vocab.bin`` + ``generation_policy.json`` for a Qwen2.5 model.
 
-    ``model_dir`` may be a HF directory or a ``.gguf`` file (transformers
-    >= 4.57 rebuilds the tokenizer from GGUF metadata).  Returns the ``vocab.bin`` path.
+    ``model_dir`` may be a HF directory or a ``.gguf`` file. GGUF token IDs
+    and pre-tokenization rules come directly from its metadata.
+    Returns the ``vocab.bin`` path.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

@@ -38,6 +38,7 @@ constexpr uint32_t kMagic = 0x4D534C54;
 // Jinja / builtin types) are rejected at load and must be re-exported.
 constexpr uint32_t kVersion = 2;
 constexpr uint32_t kCodecBPE = 0;
+constexpr uint32_t kCodecQwenBPE = 2;
 constexpr uint32_t kCodecSentencePiece = 1;
 
 uint32_t ReadU32(const uint8_t *data, size_t &offset, size_t size) {
@@ -75,13 +76,13 @@ struct TextSegment {
   bool is_special{false};
 };
 
-bool IsDefaultStopToken(std::string_view token) {
+bool IsDefaultStopToken(const std::string_view &token) {
   return token == "<|endoftext|>" || token == "<|im_end|>" || token == "</s>";
 }
 
-bool IsDefaultSuppressedToken(std::string_view token) { return token == "<|im_start|>"; }
+bool IsDefaultSuppressedToken(const std::string_view &token) { return token == "<|im_start|>"; }
 
-bool IsDefaultSpecialToken(std::string_view token) {
+bool IsDefaultSpecialToken(const std::string_view &token) {
   return IsDefaultStopToken(token) || IsDefaultSuppressedToken(token);
 }
 
@@ -251,16 +252,44 @@ class TokenizerImpl : public Tokenizer {
     return true;
   }
 
+  bool LoadQwenRules(const uint8_t *data, size_t size, size_t *offset) {
+    if (*offset > size || size - *offset < sizeof(uint32_t)) return false;
+    uint32_t count = ReadU32(data, *offset, size);
+    if (count == 0 || count > (size - *offset) / (3 * sizeof(uint32_t))) return false;
+    std::vector<std::array<uint32_t, 3>> rules;
+    uint32_t previous_end = 0;
+    for (uint32_t i = 0; i < count; ++i) {
+      uint32_t begin = ReadU32(data, *offset, size);
+      uint32_t end = ReadU32(data, *offset, size);
+      uint32_t kind = ReadU32(data, *offset, size);
+      if (begin > end || end > 0x10FFFF || kind < 1 || kind > 3 || (i > 0 && begin <= previous_end)) return false;
+      rules.push_back({begin, end, kind});
+      previous_end = end;
+    }
+    if (size - *offset < sizeof(uint32_t)) return false;
+    count = ReadU32(data, *offset, size);
+    if (count > (size - *offset) / sizeof(uint32_t)) return false;
+    for (uint32_t i = 0; i < count; ++i) {
+      uint32_t id = ReadU32(data, *offset, size);
+      if (id >= vocabulary_.id_to_token.size() || vocabulary_.id_to_token[id].empty()) return false;
+      // Added input tokens need not stop or suppress generated output.
+      special_tokens_[vocabulary_.id_to_token[id]] = static_cast<int32_t>(id);
+    }
+    bpe_codec_->SetQwenRules(std::move(rules));
+    return true;
+  }
+
   bool LoadCodec(const uint8_t *data, size_t data_size, size_t *offset, uint32_t codec_type) {
     if (offset == nullptr) {
       return false;
     }
     bpe_codec_.reset();
     sp_codec_.reset();
-    if (codec_type == kCodecBPE) {
+    if (codec_type == kCodecBPE || codec_type == kCodecQwenBPE) {
       bpe_codec_ = std::make_unique<BPECodec>();
       bpe_codec_->SetVocab(vocabulary_);
-      return bpe_codec_->Load(data, data_size, *offset);
+      if (!bpe_codec_->Load(data, data_size, *offset)) return false;
+      return codec_type != kCodecQwenBPE || LoadQwenRules(data, data_size, offset);
     }
     if (codec_type == kCodecSentencePiece) {
       sp_codec_ = std::make_unique<SentencePieceCodec>();

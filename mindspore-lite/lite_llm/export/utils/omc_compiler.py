@@ -26,6 +26,9 @@ operator library (``../custom_ops``, see the README appendix) via
 import logging
 import os
 import subprocess
+from typing import Optional
+
+from utils.quantization import QuantType, get_quant_preset
 
 from utils import ensure_custom_ops
 
@@ -75,28 +78,37 @@ def _omg_invocation(omg):
     return [omg]
 
 
-def embedding_weight_elems(vocab_size, hidden_size, quant):
+def embedding_weight_elems(vocab_size, hidden_size, quant: Optional[QuantType]):
     """Byte-element count of the embedding_weight graph input.
 
     W4A16 (compact g32 NZF): vocab * hidden / 32 * 18 bytes
     W4A8  (g128): ceil(vocab,16) * (hidden/2 + hidden/128*4)
     """
-    if quant in (None, "", "FP16"):
+    quant = QuantType.parse(quant)
+    if quant is None:
         return vocab_size * hidden_size
-    if quant == "W4A16":
+    preset = get_quant_preset(quant)
+    if quant == QuantType.S16S4:
+        return vocab_size * hidden_size // 2
+    if quant == QuantType.Q4_0:
         ensure_custom_ops()
         from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32  # pylint: disable=import-outside-toplevel
 
         return MsQuant4N0Group32.weight_blob_size(hidden_size, vocab_size)
-    if quant == "W4A8":
+    if quant == QuantType.W4A8:
         ceil_v = (vocab_size + 15) // 16 * 16
-        return ceil_v * (hidden_size // 2 + hidden_size // 128 * 4)
+        return ceil_v * (hidden_size // 2 + hidden_size // preset.group_size * preset.scale_encoding.byte_size)
     raise ValueError(f"quant {quant} not supported")
 
 
 def build_omg_command(onnx_path, omc_path, config, max_seq_len, chunk_sizes, embedding_quant,
                       platform="kirin9020", omg=None, save_external_weights=False):
     """Build the omg command for a Qwen2.5-0.5B NNRT graph."""
+    embedding_quant = QuantType.parse(embedding_quant)
+    if embedding_quant is not None:
+        preset = get_quant_preset(embedding_quant)
+        if preset.export_targets:
+            preset.validate_target(platform)
     if omg is None:
         omg = resolve_omg()
     vocab_size = config["vocab_size"]
@@ -112,7 +124,12 @@ def build_omg_command(onnx_path, omc_path, config, max_seq_len, chunk_sizes, emb
     parts += [f"rope_cos:1,-1,{head_dim}", f"rope_sin:1,-1,{head_dim}"]
     parts += [f"inputs_embeds:1,-1,{hidden_size}"]
     parts += [f"attention_mask:1,1,-1,{max_seq_len}"]
-    parts += [f"embedding_weight:{emb_elems}"]
+    if embedding_quant == QuantType.S16S4:
+        parts += [f"embedding_weight:{vocab_size},{hidden_size // 2}"]
+        parts += [f"embedding_scale:{vocab_size // 128},{hidden_size // preset.group_size},128,"
+                  f"{preset.scale_encoding.byte_size}"]
+    else:
+        parts += [f"embedding_weight:{emb_elems}"]
     for i in range(num_layers):
         parts += [f"past_key_{i}:1,{num_kv_heads},{max_seq_len},{head_dim}"]
         parts += [f"past_val_{i}:1,{num_kv_heads},{max_seq_len},{head_dim}"]
@@ -134,7 +151,7 @@ def build_omg_command(onnx_path, omc_path, config, max_seq_len, chunk_sizes, emb
     return cmd
 
 
-def compile_omc(onnx_path, config, max_seq_len=1024, chunk_sizes=(128,), embedding_quant="W4A16",
+def compile_omc(onnx_path, config, max_seq_len=1024, chunk_sizes=(128,), embedding_quant=QuantType.Q4_0,
                 omc_path=None, platform="kirin9020", save_external_weights=False):
     """Compile onnx -> .omc. Returns the .omc path."""
     if omc_path is None:

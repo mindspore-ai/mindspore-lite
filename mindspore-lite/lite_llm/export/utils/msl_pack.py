@@ -389,6 +389,7 @@ NPU_BOOL_KEYS = {
 }
 NPU_STRING_KEYS = {
     "q4_0_weight_layout": "npu.q4_0_weight_layout",
+    "embedding_format": "npu.embedding_format",
     "om_weight_dir": "npu.om_weight_dir",
 }
 
@@ -596,6 +597,7 @@ def build_manifest(package_name, architecture, npu_config, generation_policy, om
             "max_length": int(npu_config["max_length"]),
             "chunk_size": int(npu_config["chunk_size"]),
             "embedding_quant": bool(npu_config["embedding_quant"]),
+            "embedding_format": npu_config.get("embedding_format", "W4A16"),
             "scale_gp_size": int(npu_config.get("scale_gp_size", 32)),
         },
     }

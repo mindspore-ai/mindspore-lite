@@ -24,12 +24,15 @@ Example:
 """
 
 import logging
+from typing import Optional
 
 import numpy as np
 import onnx
 from gguf.quants import GGMLQuantizationType, dequantize
 
 from utils import ensure_custom_ops
+
+from utils.quantization import QuantType
 
 logger = logging.getLogger(__name__)
 
@@ -56,13 +59,13 @@ def rearrange_q4_0_g32(data):
     return MsQuant4N0Group32.repack_q4_0_to_nzf(data, (data.shape[1] // 18 * 32, data.shape[0]))
 
 
-def convert_embedding_weight(data, tensor_type, embedding_quantize_config):
+def convert_embedding_weight(data, tensor_type, embedding_quantize_config: Optional[QuantType]):
     """Convert a GGUF embedding tensor to the selected runtime representation.
 
     Q4_0 already has the same group-32 quantization contract as W4A16 and only
     needs its blocks rearranged. Other GGUF formats must first be dequantized.
     """
-    if embedding_quantize_config == "W4A16":
+    if embedding_quantize_config == QuantType.Q4_0:
         if tensor_type == GGMLQuantizationType.Q4_0:
             return rearrange_q4_0_g32(data)
         ensure_custom_ops()
@@ -71,18 +74,20 @@ def convert_embedding_weight(data, tensor_type, embedding_quantize_config):
         fp32 = dequantize(data, tensor_type)
         return MsQuant4N0Group32.quantize_weight_g32_4bit(fp32.T)
 
-    if embedding_quantize_config == "FP16":
+    if embedding_quantize_config is None:
         if tensor_type in (GGMLQuantizationType.F16, GGMLQuantizationType.F32):
             return data.astype(np.float16)
         return dequantize(data, tensor_type).astype(np.float16)
 
     raise ValueError(
-        f"embedding_quantize_config {embedding_quantize_config} not supported (W4A16/FP16)"
+        f"embedding_quantize_config {embedding_quantize_config} not supported (q4_0/FP16)"
     )
 
 
-def load_file_from_tensors(tensors, embedding_weight_save_path, decoder_quantize_config, embedding_quantize_config):
-    """Read GGUF tensors, rearrange Q4_0 weights, and save the embedding weight."""
+def load_file_from_tensors(tensors, embedding_weight_save_path,
+                           decoder_quantize_config: Optional[QuantType],
+                           embedding_quantize_config: Optional[QuantType]):
+    """Read GGUF tensors using quantization types normalized by the model loader."""
     name2weight = {}
     for tensor_item in tensors:
         name = tensor_item.name
@@ -96,12 +101,12 @@ def load_file_from_tensors(tensors, embedding_weight_save_path, decoder_quantize
             # output tensor that community GGUFs emit for higher-precision logits.
             logger.info("Skipping %s (tied skeleton uses token_embd.weight for lm_head)", name)
         elif "weight" in name and name not in ("token_embd.weight", "output_norm.weight"):
-            if decoder_quantize_config == "W4A16":
+            if decoder_quantize_config == QuantType.Q4_0:
                 name2weight[name] = rearrange_q4_0_g32(tensor_item.data)
-            elif decoder_quantize_config == "FP16":
+            elif decoder_quantize_config is None:
                 name2weight[name] = tensor_item.data
             else:
-                raise ValueError(f"decoder_quantize_config {decoder_quantize_config} not supported (W4A16/FP16)")
+                raise ValueError(f"decoder_quantize_config {decoder_quantize_config} not supported (q4_0/FP16)")
         elif name == "token_embd.weight":
             name2weight[name] = convert_embedding_weight(
                 tensor_item.data, tensor_item.tensor_type, embedding_quantize_config

@@ -706,7 +706,37 @@ bool ParseDTypeName(const std::string &raw, MSLlmDType *out) {
 
 namespace {
 
+bool ParseEmbeddingFormat(const std::string &raw, EmbeddingFormat &format, std::string *error_message) {
+  if (raw == "W4A16") {
+    format = EmbeddingFormat::kW4A16;
+    return true;
+  }
+  if (raw == "S16S4_NZ_V1") {
+    format = EmbeddingFormat::kS16S4NzV1;
+    return true;
+  }
+  if (error_message != nullptr) {
+    *error_message = "Unknown embedding format: " + raw;
+  }
+  return false;
+}
+
 bool ValidateQ4Layout(const NpuConfig &config, std::string *error_message) {
+  if (config.embedding_format == EmbeddingFormat::kS16S4NzV1) {
+    if (config.embedding_quant && config.scale_gp_size == 128) {
+      return true;
+    }
+    if (error_message != nullptr) {
+      *error_message = "S16S4 embedding requires quantization with group size 128";
+    }
+    return false;
+  }
+  if (config.embedding_format != EmbeddingFormat::kW4A16) {
+    if (error_message != nullptr) {
+      *error_message = "Unknown embedding format";
+    }
+    return false;
+  }
   if (!config.embedding_quant || (config.q4_0_weight_layout == kQ4_0WeightLayout && config.scale_gp_size == 32)) {
     return true;
   }
@@ -783,6 +813,9 @@ MSLlmStatus ParseNpuConfig(const JsonValue &root, NpuConfig &out, std::string *e
   GetInt(*npu, "chunk_size", &out.chunk_size);
   GetBool(*npu, "embedding_quant", &out.embedding_quant);
   GetInt(*npu, "scale_gp_size", &out.scale_gp_size);
+  if (!ParseEmbeddingFormat(GetString(*npu, "embedding_format", "W4A16"), out.embedding_format, error_message)) {
+    return MSLLM_ERROR_INVALID_ARGS;
+  }
   out.q4_0_weight_layout = GetString(*npu, "q4_0_weight_layout");
   if (!ValidateQ4Layout(out, error_message)) {
     return MSLLM_ERROR_INVALID_ARGS;
@@ -982,6 +1015,11 @@ bool ReadKvNpuConfig(const MslPackageReader &reader, NpuConfig &out, std::string
   if (reader.GetKvUint32(msl_format::key::kNpuChunkSize, &u32)) parsed.chunk_size = u32;
   if (reader.GetKvUint32(msl_format::key::kNpuScaleGpSize, &u32)) parsed.scale_gp_size = u32;
   if (reader.GetKvBool(msl_format::key::kNpuEmbeddingQuant, &flag)) parsed.embedding_quant = flag;
+  std::string embedding_format;
+  if (reader.GetKvString("npu.embedding_format", &embedding_format) &&
+      !ParseEmbeddingFormat(embedding_format, parsed.embedding_format, error_message)) {
+    return false;
+  }
   reader.GetKvString(msl_format::key::kNpuQ4_0WeightLayout, &parsed.q4_0_weight_layout);
   if (!ValidateQ4Layout(parsed, error_message)) {
     return false;

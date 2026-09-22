@@ -17,7 +17,9 @@
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+import importlib
 
+import pytest
 import numpy as np
 
 _EXPORT_DIR = Path(__file__).resolve().parents[2] / "export"
@@ -26,12 +28,43 @@ sys.path.insert(0, str(_EXPORT_DIR))
 # pylint: disable=wrong-import-position  # export/ added to sys.path above
 from gguf.quants import GGMLQuantizationType, dequantize  # noqa: E402
 from utils import gguf_mapping  # noqa: E402
+from utils.quantization import QuantType  # noqa: E402
 
 
 def _embedding(data, tensor_type):
     return SimpleNamespace(
         name="token_embd.weight", data=data, tensor_type=tensor_type
     )
+
+
+@pytest.mark.parametrize("family", ["qwen2_5", "qwen3", "minicpm"])
+def test_loader_normalizes_legacy_arguments(monkeypatch, tmp_path, family):
+    """Only the loader boundary accepts legacy names; helpers receive enums."""
+    loader = importlib.import_module(f"models.{family}.{family}_gguf_loader")
+    model = object()
+    monkeypatch.setattr(loader, "GGUFReader", lambda _: SimpleNamespace(tensors=[]))
+    monkeypatch.setattr(loader.onnx, "load", lambda _: model)
+    if family == "minicpm":
+        monkeypatch.setattr(loader.onnx, "save", lambda *_: None)
+    else:
+        monkeypatch.setattr(loader, "_save_onnx", lambda *_: None)
+
+    def read_weights(tensors, path, decoder, embedding):
+        del tensors, path
+        assert decoder is QuantType.Q4_0
+        assert embedding is None
+        return {}
+
+    def inject_weights(graph, weights, layers, decoder):
+        del weights, layers
+        assert graph is model
+        assert decoder is QuantType.Q4_0
+        return graph
+
+    monkeypatch.setattr(loader, "load_file_from_tensors", read_weights)
+    monkeypatch.setattr(loader, "load_weight", inject_weights)
+    loader.gguf_loader("model.gguf", "in.onnx", "out.onnx", tmp_path / "embedding.bin",
+                       embedding_quantize_config="FP16", decoder_quantize_config="W4A16")
 
 
 def test_q4_embedding_preserves_direct_rearrangement(tmp_path):
@@ -45,8 +78,8 @@ def test_q4_embedding_preserves_direct_rearrangement(tmp_path):
         [_embedding(q4_block, GGMLQuantizationType.Q4_0),
          SimpleNamespace(name="blk.0.attn_q.weight", data=q4_block, tensor_type=GGMLQuantizationType.Q4_0)],
         output_path,
-        decoder_quantize_config="W4A16",
-        embedding_quantize_config="W4A16",
+        decoder_quantize_config=QuantType.Q4_0,
+        embedding_quantize_config=QuantType.Q4_0,
     )
 
     # Repeated rows occupy both live K16 fractals, with no N64/K1024 padding.
@@ -68,8 +101,8 @@ def test_fp16_embedding_is_requantized_to_w4a16(tmp_path):
     weights = gguf_mapping.load_file_from_tensors(
         [_embedding(fp16, GGMLQuantizationType.F16)],
         output_path,
-        decoder_quantize_config="W4A16",
-        embedding_quantize_config="W4A16",
+        decoder_quantize_config=QuantType.Q4_0,
+        embedding_quantize_config=QuantType.Q4_0,
     )
 
     expected = np.empty(288, dtype=np.uint8)
@@ -93,8 +126,8 @@ def test_quantized_embedding_is_dequantized_for_fp16(tmp_path):
     weights = gguf_mapping.load_file_from_tensors(
         [_embedding(raw, GGMLQuantizationType.Q8_0)],
         output_path,
-        decoder_quantize_config="W4A16",
-        embedding_quantize_config="FP16",
+        decoder_quantize_config=QuantType.Q4_0,
+        embedding_quantize_config=None,
     )
 
     expected = dequantize(raw, GGMLQuantizationType.Q8_0).astype(np.float16)

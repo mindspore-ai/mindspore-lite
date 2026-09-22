@@ -21,11 +21,13 @@
 #include <memory>
 #include <string>
 
+#include "manifest/model_manifest.h"
 #include "manifest/msl_package_reader.h"
 
 namespace mslite {
 namespace backend {
 namespace nnrt {
+using ::mslite_llm::EmbeddingFormat;
 using ::mslite_llm::MslPackageReader;
 
 /// @brief Configuration subset extracted from ModelManifest + BackendConfig
@@ -58,6 +60,7 @@ struct NnrtConfig {
   bool embedding_quant = false;    // W4A16 int4-packed embedding
   int32_t scale_gp_size = 32;      // W4A16 quant group size
   std::string q4_0_weight_layout;  // quantized models require compact phase4 NZF
+  EmbeddingFormat embedding_format = EmbeddingFormat::kW4A16;
   int32_t eos_id = -1;
 
   // ── Single-file .msl container ───────────────────────────────────────

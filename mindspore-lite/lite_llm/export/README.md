@@ -18,7 +18,7 @@ export/
 │   │   ├── qwen2_5_wrapper.py     # Qwen2NnrtWrapper（继承基类，无 per-head norm）
 │   │   ├── qwen2_5_exporter.py    # Qwen2Onnx 类 + export_qwen2_5 编排
 │   │   └── qwen2_5_gguf_loader.py # GGUF Q4_0 权重注入（qwen2 层名映射）
-│   ├── qwen3/                # MiniMind-3（Qwen3 dense, head_dim=96），结构同 qwen2_5/
+│   ├── qwen3/                # Dense Qwen3（MiniMind-3 / Qwen3-4B），结构同 qwen2_5/
 │   │   ├── qwen3_wrapper.py      # Qwen3NnrtWrapper（per-head q_norm/k_norm）
 │   │   ├── qwen3_exporter.py     # Qwen3Onnx 类 + export_qwen3 编排
 │   │   └── qwen3_gguf_loader.py  # MiniMind-3 GGUF Q4_0 权重注入
@@ -79,10 +79,11 @@ python mslite_llm_export.py --target kirin9020 \
     --model ./Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q4_0.gguf \
     --output ./Qwen2.5-0.5B-Instruct-Q4-0.msl
 
-# HF bfloat16（>1GB，仅支持导出，不满足 NPU <200MB 推理限制）
+# HF 原始权重，导出为 Q4_0 / W4A16 Group32
 python mslite_llm_export.py --target kirin9020 \
     --model ./Qwen2.5-0.5B-Instruct \
-    --output ./Qwen2.5-0.5B-Instruct-fp16.msl
+    --quant-type q4_0 \
+    --output ./Qwen2.5-0.5B-Instruct-Q4-0.msl
 
 ```text
 
@@ -92,7 +93,8 @@ python mslite_llm_export.py --target kirin9020 \
   --model MODEL     输入：GGUF 文件(.gguf) 或 HF 模型目录（自动识别）
   --output OUTPUT   输出单文件 .msl 路径
 可选（均带默认值）：
-  --target TARGET   部署目标芯片（默认 kirin9020），当前仅支持 kirin9020
+  --target TARGET   部署目标芯片（默认 kirin9020），支持 kirin9020 / kirin9030
+  --quant-type TYPE 量化方式：q4_0 / s16s4（默认 q4_0，也可写作 --quant_type）
   --max-length N    最大序列长度（默认 1024）
   --chunk-size N    prefill chunk 大小（默认 64）
   --verbose         详细日志
@@ -128,3 +130,51 @@ export PATH=$DDK/tools/tools_omg:$PATH
 # 跑一键导出（omg 步骤），日志里应无 undefined symbol / fatal error，且 exit=0
 
 ```
+
+### Quantization selection
+
+Internal Python APIs use `QuantType.Q4_0` and `QuantType.S16S4`, serialized as
+`q4_0` and `s16s4`. Legacy `W4A16` and `S16S4` arguments remain accepted.
+Runtime embedding layout identifiers (`W4A16` and `S16S4_NZ_V1`) retain
+their existing names for package compatibility.
+
+Each name resolves to an immutable `QuantPreset` in `utils/quantization.py`.
+The preset specifies weight and activation types, group size, scale encoding,
+packing layout, custom operator, and supported export targets. Packing, graph
+generation, compiler input sizing, and package metadata use this shared contract.
+Group size is fixed at 32 for `q4_0` and 128 for `s16s4`; there is no
+`--group-size` override. Supporting another group size requires a matching
+packing implementation and kernel. Legacy `w4a8` and `w2a16` presets remain
+internal and are not exposed by the one-click exporter.
+
+Use `--quant-type q4_0` (the default) or `--quant-type s16s4` to select
+quantization for both the decoder and embedding/head.
+
+`q4_0` uses W4A16 Group32 for Qwen2.5, dense Qwen3 and MiniCPM. GGUF input
+uses byte-preserving Q4_0 repacking; HF input is quantized during export.
+Both paths use compact phase4 NZF weights and write
+`npu.q4_0_weight_layout=q4_0_nzf_compact_phase4`. Older planar or padded
+Q4 packages must be re-exported together with their graphs.
+
+`s16s4` currently requires a dense Qwen3 exporter (MiniMind-3 or Qwen3-4B)
+and `--target kirin9030`, with shared S16S4 CPU embedding/head buffers.
+Use original F16 GGUF projection weights or an original HF model directory;
+prequantized GGUF projections are rejected. Other model exporters reject
+this mode before loading the model.
+
+```bash
+python mslite_llm_export.py --target kirin9030 \
+    --model ./Qwen3-4B --quant-type s16s4 --output ./Qwen3-4B-S16S4.msl
+```
+
+The `S16S4_NZ_V1` embedding asset contains the signed-S4 NZ packed head
+weights followed by its FixPipe Group128 scale records. Both are runtime
+inputs (`embedding_weight` and `embedding_scale`) backed by CPU-accessible
+ION tensors shared between prefill, decode, and CPU lookup. The activation
+scale is fixed at 1024 for this format. Packages declare
+`npu.embedding_format=S16S4_NZ_V1`, `embedding_quant=true`, and
+`scale_gp_size=128`; the Q4 layout marker is not required. CPU lookup reconstructs group scales
+from the records and does not apply the head correction bias. The two small
+head constants remain compiled. Qwen3 has eight fixed inputs before KV
+caches (80 total for Qwen3-4B). W4A16 keeps seven fixed inputs. Shared
+embedding inputs are required; six-input packages are not supported.

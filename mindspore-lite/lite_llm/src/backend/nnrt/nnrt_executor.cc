@@ -35,7 +35,7 @@
 #include "backend/nnrt/nnrt_wrapper.h"
 #include "manifest/model_manifest.h"
 #include "manifest/msl_package_reader.h"
-#include "backend/nnrt/nnrt_embedding_dequant.h"
+#include "backend/nnrt/nnrt_embedding.h"
 namespace mslite {
 namespace backend {
 namespace nnrt {
@@ -50,9 +50,9 @@ NnrtExecutor::~NnrtExecutor() {
   for (auto *t : prefill_inputs_) {
     destroy_tensor(t);
   }
-  // embedding_weight (idx6) is shared between prefill and decode; avoid double-free.
-  if (decode_inputs_.size() > 6) {
-    decode_inputs_[6] = nullptr;
+  // Constant embedding inputs are shared by both gears; destroy them only once.
+  for (size_t i = 6; i < decode_inputs_.size(); ++i) {
+    decode_inputs_[i] = nullptr;
   }
   for (auto *t : decode_inputs_) {
     destroy_tensor(t);
@@ -60,11 +60,6 @@ NnrtExecutor::~NnrtExecutor() {
   destroy_tensor(logits_tensor_);
   // KV tensors freed by kv_cache_manager_ destructor
 
-  if (embedding_table_ != nullptr) {
-    ::munmap(embedding_table_, embedding_table_elems_ * sizeof(uint16_t));
-    embedding_table_ = nullptr;
-    embedding_table_elems_ = 0;
-  }
   if (nn_executor_ != nullptr && api.Executor_Destroy != nullptr) {
     api.Executor_Destroy(&nn_executor_);
     nn_executor_ = nullptr;
@@ -137,17 +132,6 @@ bool NnrtExecutor::InitConfig(const NnrtConfig &config) {
     MS_LOG(ERROR) << "Invalid NnrtConfig";
     return false;
   }
-  if (config.embedding_quant &&
-      (config.q4_0_weight_layout != mslite_llm::kQ4_0WeightLayout || config.scale_gp_size != 32)) {
-    MS_LOG(ERROR) << "Incompatible quantized NPU package: requires npu.q4_0_weight_layout="
-                  << mslite_llm::kQ4_0WeightLayout
-                  << " and npu.scale_gp_size=32; padded, old NZF, planar and unmarked packages must be re-exported";
-    return false;
-  }
-  if (config.embedding_quant && config.vocab_size > std::numeric_limits<int>::max()) {
-    MS_LOG(ERROR) << "Q4 embedding vocabulary exceeds the supported integer dimension range";
-    return false;
-  }
   // Prefill copies whole chunks of [start, start+chunk_size) rows from the max_length_-row
   // rope/mask buffers, so a non-divisible max_length would read out of bounds on the last chunk.
   if (config.max_length % config.chunk_size != 0) {
@@ -162,11 +146,11 @@ bool NnrtExecutor::InitConfig(const NnrtConfig &config) {
   hidden_size_ = config.hidden_size;
   num_key_value_heads_ = config.num_key_value_heads;
   num_layers_ = config.num_layers;
-  embedding_quant_ = config.embedding_quant;
-  scale_gp_size_ = config.scale_gp_size;
+  if (!embedding_.Configure(config)) {
+    return false;
+  }
   single_file_ = config.single_file;
   package_reader_ = config.package_reader;
-  embedding_path_ = config.embedding_path;
   package_root_ = config.package_root;
   om_weight_dir_ = config.om_weight_dir;
   external_weight_entry_ = config.external_weight_entry.empty() ? "SubGraph_0.weight" : config.external_weight_entry;
@@ -207,7 +191,7 @@ bool NnrtExecutor::Build(const NnrtConfig &config) {
   }
   log_phase("LoadCpuBuffers");
   if (!kv_cache_manager_.Alloc(num_layers_, num_key_value_heads_, static_cast<int>(max_length_), head_dim_, device_id_,
-                               nn_executor_)) {
+                               nn_executor_, non_kv_inputs_)) {
     MS_LOG(ERROR) << "KV Cache allocation failed";
     return false;
   }
@@ -242,6 +226,25 @@ bool NnrtExecutor::BuildModel() {
   if (api.HIAIOptions_SetAsyncModeEnable(nn_compilation_, false) != 0) {
     MS_LOG(ERROR) << "HIAIOptions_SetAsyncModeEnable failed";
     return false;
+  }
+  const char *profiling_dir = std::getenv("MSLITE_LLM_PROFILING_DIR");
+  if (profiling_dir != nullptr && profiling_dir[0] != '\0') {
+    if (api.HIAIOptions_SetOmOptions == nullptr) {
+      MS_LOG(ERROR) << "Profiling requested but HMS_HiAIOptions_SetOmOptions is unavailable";
+      return false;
+    }
+    struct stat directory_stat {};
+    if ((mkdir(profiling_dir, 0700) != 0 && errno != EEXIST) || stat(profiling_dir, &directory_stat) != 0 ||
+        !S_ISDIR(directory_stat.st_mode) || access(profiling_dir, W_OK | X_OK) != 0) {
+      MS_LOG(ERROR) << "Profiling directory is not writable: " << profiling_dir;
+      return false;
+    }
+    constexpr int kHiAIProfiling = 1;
+    if (api.HIAIOptions_SetOmOptions(nn_compilation_, kHiAIProfiling, profiling_dir) != 0) {
+      MS_LOG(ERROR) << "HMS_HiAIOptions_SetOmOptions(PROFILING) failed";
+      return false;
+    }
+    MS_LOG(INFO) << "Graph profiling enabled: " << profiling_dir;
   }
   if (api.Compilation_Build(nn_compilation_) != 0) {
     MS_LOG(ERROR) << "Compilation_Build failed";
@@ -341,13 +344,6 @@ void NnrtExecutor::ReclaimOfflineModelPages() const {
   }
 }
 
-void NnrtExecutor::ReclaimEmbeddingWeightPages() const {
-  if (single_file_ && package_reader_ != nullptr && !embedding_path_.empty() &&
-      !package_reader_->Reclaim(embedding_path_)) {
-    MS_LOG(WARNING) << "Failed to reclaim embedding package pages";
-  }
-}
-
 bool NnrtExecutor::LoadExternalWeights() {
   if (!has_external_weights_) {
     return true;
@@ -417,21 +413,26 @@ bool NnrtExecutor::LoadExternalWeights() {
 
 bool NnrtExecutor::ValidateModelContract() {
   const auto &api = NNRTWrapper::GetApi();
-  // Expected contract, derived from config.num_layers: 7 non-KV inputs + interleaved
+  // Expected contract, derived from config.num_layers: 7 or 8 non-KV inputs + interleaved
   // past_key_i/past_val_i per layer; logits + interleaved out_key_i/out_val_i per layer.
   // Deriving from num_layers_ (rather than a fixed model) also catches config/model mismatch.
-  constexpr size_t kNonKvInputs = 7;
+  const size_t kNonKvInputs = 6 + embedding_.InputCount();
+  non_kv_inputs_ = kNonKvInputs;
   const size_t kv_layers = static_cast<size_t>(num_layers_);
   const size_t expected_input_count = kNonKvInputs + 2 * kv_layers;
   const size_t expected_output_count = 1 + 2 * kv_layers;
-  static const char *kBaseNames[kNonKvInputs] = {"valid_seq_len", "lmhead_idx",     "rope_cos",        "rope_sin",
-                                                 "inputs_embeds", "attention_mask", "embedding_weight"};
+  static const char *kBaseNames[8] = {"valid_seq_len", "lmhead_idx",     "rope_cos",         "rope_sin",
+                                      "inputs_embeds", "attention_mask", "embedding_weight", "embedding_scale"};
 
   // Count check (skipped with a warning if the NNRT is too old to expose I/O counts).
   if (api.Executor_GetInputCount != nullptr && api.Executor_GetOutputCount != nullptr) {
     size_t in_count = 0;
     size_t out_count = 0;
-    if (api.Executor_GetInputCount(nn_executor_, &in_count) != 0 || in_count != expected_input_count) {
+    if (api.Executor_GetInputCount(nn_executor_, &in_count) != 0) {
+      MS_LOG(ERROR) << "Could not query model input count";
+      return false;
+    }
+    if (in_count != expected_input_count) {
       MS_LOG(ERROR) << "Contract check failed: model input count " << in_count << " != expected "
                     << expected_input_count;
       return false;
@@ -560,12 +561,12 @@ bool NnrtExecutor::LoadCpuBuffers(const NnrtConfig &config) {
                  << std::chrono::duration<double, std::milli>(t1 - t0).count() << "ms";
     t0 = t1;
   };
-  const size_t embed_size = static_cast<size_t>(vocab_size_) * hidden_size_;
-  if (!config.embedding_path.empty()) {
-    if (!LoadEmbeddingWeight(config, embed_size, mark)) {
-      return false;
-    }
+  if (!embedding_.Load(
+        [this](const std::string &path, std::vector<uint8_t> *bytes) { return ReadAsset(path, bytes); })) {
+    return false;
   }
+  mark("embedding");
+
   size_t rope_size = static_cast<size_t>(max_length_) * head_dim_;
   sin_buffer_.assign(rope_size, 0);
   if (!LoadFp16Bin(config.rope_sin_path, "sin bin", &sin_buffer_, rope_size)) {
@@ -583,61 +584,6 @@ bool NnrtExecutor::LoadCpuBuffers(const NnrtConfig &config) {
     return false;
   }
   mark("attention_mask");
-  return true;
-}
-
-bool NnrtExecutor::LoadEmbeddingWeight(const NnrtConfig &config, size_t embed_size,
-                                       const std::function<void(const char *)> &mark) {
-  if (config.embedding_quant) {
-    // Keep only a temporary upload source until idx6 ION Tensor is initialized.
-    // After CreateTensors, EmbeddingRow reads the shared ION buffer directly.
-    if (single_file_) {
-      if (package_reader_ == nullptr ||
-          !package_reader_->Mmap(config.embedding_path, &embedding_weight_data_, &embedding_weight_size_)) {
-        MS_LOG(ERROR) << "Failed to mmap embedding weight entry";
-        return false;
-      }
-    } else {
-      if (!ReadAsset(config.embedding_path, &embedding_weight_buffer_)) {
-        MS_LOG(ERROR) << "Failed to read embedding weight bin";
-        return false;
-      }
-      embedding_weight_data_ = embedding_weight_buffer_.data();
-      embedding_weight_size_ = embedding_weight_buffer_.size();
-    }
-    if (embedding_weight_data_ == nullptr || embedding_weight_size_ == 0) {
-      MS_LOG(ERROR) << "Embedding weight bin is empty";
-      return false;
-    }
-    mark("LoadEmbeddingWeight");
-    if (!DequantizeEmbeddingTable(config.scale_gp_size)) {
-      return false;
-    }
-    mark("DequantizeEmbeddingTable");
-    return true;
-  }
-  // fp16: the bin IS the table. mmap (lazy pages) avoids the 272MB eager zero-fill.
-  embedding_table_elems_ = embed_size;
-  embedding_table_ = static_cast<uint16_t *>(
-    ::mmap(nullptr, embed_size * sizeof(uint16_t), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
-  if (embedding_table_ == MAP_FAILED) {
-    embedding_table_ = nullptr;
-    embedding_table_elems_ = 0;
-    MS_LOG(ERROR) << "mmap embedding_table failed";
-    return false;
-  }
-  std::vector<uint8_t> bytes;
-  if (!ReadAsset(config.embedding_path, &bytes)) {
-    MS_LOG(ERROR) << "Failed to read embedding weight bin";
-    return false;
-  }
-  mark("ReadAsset(embedding)");
-  if (bytes.size() != embed_size * sizeof(uint16_t)) {
-    MS_LOG(ERROR) << "Embedding bin size " << bytes.size() << " != expected " << embed_size * sizeof(uint16_t);
-    return false;
-  }
-  std::memcpy(embedding_table_, bytes.data(), bytes.size());
-  mark("memcpy(embedding_table)");
   return true;
 }
 
@@ -660,63 +606,6 @@ bool NnrtExecutor::LoadFp16Bin(const std::string &path, const char *what, std::v
   return true;
 }
 
-bool NnrtExecutor::DequantizeEmbeddingTable(int group_size) {
-  // Validate the shared compact phase4 NZF blob; decode only requested rows from idx6 ION.
-  size_t packed_bytes = 0;
-  size_t expected_bytes = 0;
-  if (group_size != 32 ||
-      !Q4NzfEmbeddingSize(static_cast<int>(vocab_size_), hidden_size_, &packed_bytes, &expected_bytes)) {
-    MS_LOG(ERROR) << "Invalid compact Q4_0 phase4 NZF embedding dimensions or scale_gp_size " << group_size;
-    return false;
-  }
-  if (embedding_weight_size_ != expected_bytes) {
-    MS_LOG(ERROR) << "Compact Q4_0 phase4 NZF embedding bin size " << embedding_weight_size_ << " != expected "
-                  << expected_bytes << "; re-export the graph and weights together";
-    return false;
-  }
-  MS_LOG(INFO) << "Compact Q4_0 phase4 NZF embedding: " << vocab_size_ << " rows, " << hidden_size_ << " columns, "
-               << packed_bytes << " packed bytes; dequantized on demand";
-  return true;
-}
-
-bool NnrtExecutor::EmbeddingRow(int tid, uint16_t *dst) {
-  if (tid < 0 || tid >= vocab_size_ || dst == nullptr) {
-    return false;
-  }
-  if (!embedding_quant_) {
-    // fp16 path: the table is the single resident copy.
-    if (embedding_table_ == nullptr) {
-      return false;
-    }
-    std::memcpy(dst, embedding_table_ + static_cast<size_t>(tid) * hidden_size_, hidden_size_ * sizeof(uint16_t));
-    return true;
-  }
-  return DequantizeEmbeddingRow(embedding_weight_data_, embedding_weight_size_,
-                                {static_cast<int>(vocab_size_), hidden_size_}, tid, dst);
-}
-
-bool NnrtExecutor::PrepareEmbeddingWeightWrite(NN_Tensor *tensor, const void **data, size_t *size) const {
-  if (data == nullptr || size == nullptr || embedding_weight_data_ == nullptr || embedding_weight_size_ == 0) {
-    return false;
-  }
-  *data = embedding_weight_data_;
-  *size = embedding_weight_size_;
-  if (!embedding_quant_) {
-    return true;
-  }
-  auto it = tensor_byte_sizes_.find(tensor);
-  if (it == tensor_byte_sizes_.end()) {
-    MS_LOG(ERROR) << "idx6 embedding_weight logical capacity unavailable";
-    return false;
-  }
-  if (it->second != embedding_weight_size_) {
-    MS_LOG(ERROR) << "idx6 embedding_weight capacity " << it->second << " != embedding bin size "
-                  << embedding_weight_size_;
-    return false;
-  }
-  return true;
-}
-
 void NnrtExecutor::RecordTensorCapacity(NN_Tensor *tensor, const NN_TensorDesc *desc, size_t index) {
   if (tensor == nullptr || desc == nullptr) {
     return;
@@ -732,11 +621,21 @@ void NnrtExecutor::RecordTensorCapacity(NN_Tensor *tensor, const NN_TensorDesc *
   }
 }
 
-NN_Tensor *NnrtExecutor::CreateInputTensor(size_t index, const int32_t *shape, size_t dim_count, int32_t dtype) {
+NN_Tensor *NnrtExecutor::CreateInputTensor(size_t index, const int32_t *shape, size_t dim_count, int32_t dtype,
+                                           size_t expected_bytes) {
   const auto &api = NNRTWrapper::GetApi();
   NN_TensorDesc *desc = api.Executor_CreateInputTensorDesc(nn_executor_, index);
   if (desc == nullptr) {
     MS_LOG(ERROR) << "CreateInputTensorDesc " << index << " failed";
+    return nullptr;
+  }
+  // Check constant inputs against the compiled graph before restoring their
+  // original ONNX rank (NNRT may pad descriptors to four dimensions).
+  size_t graph_bytes = 0;
+  if (expected_bytes != 0 && api.TensorDesc_GetByteSize != nullptr &&
+      api.TensorDesc_GetByteSize(desc, &graph_bytes) == 0 && graph_bytes != 0 && graph_bytes != expected_bytes) {
+    MS_LOG(ERROR) << "Input " << index << " graph size " << graph_bytes << " != configured size " << expected_bytes;
+    api.TensorDesc_Destroy(&desc);
     return nullptr;
   }
   if (api.TensorDesc_SetShape(desc, shape, dim_count) != 0 || api.TensorDesc_SetDataType(desc, dtype) != 0) {
@@ -754,45 +653,6 @@ NN_Tensor *NnrtExecutor::CreateInputTensor(size_t index, const int32_t *shape, s
   return t;
 }
 
-NN_Tensor *NnrtExecutor::CreateInputTensorFromOmc(size_t index, int32_t fallback_capacity, int32_t fallback_dtype) {
-  const auto &api = NNRTWrapper::GetApi();
-  NN_TensorDesc *desc = api.Executor_CreateInputTensorDesc(nn_executor_, index);
-  if (desc == nullptr) {
-    const int32_t fallback_shape[1] = {fallback_capacity};
-    return CreateInputTensor(index, fallback_shape, 1, fallback_dtype);
-  }
-  // The device enum-shape gear matcher compares input desc shapes against the ORIGINAL
-  // ONNX ranks at RunSync (proven on kirin9020, 2026-07-25: rc=0 for both the seq=128 and
-  // seq=1 gears). embedding_weight is 1-dim INT8 [capacity] in the ONNX, but the NNRT/omc
-  // desc is padded to [capacity,1,1,1] — passing that padded desc to Tensor_Create is what
-  // broke gear matching. Keep only the CAPACITY (byte size) from the omc desc and force
-  // the original 1-dim shape; without a byte-size query (old NNRT), keep the caller's
-  // fallback (the embedding bin size).
-  int32_t flat_shape[1] = {fallback_capacity};
-  if (api.TensorDesc_GetByteSize != nullptr) {
-    size_t byte_size = 0;
-    if (api.TensorDesc_GetByteSize(desc, &byte_size) == 0 && byte_size > 0 &&
-        byte_size <= static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
-      flat_shape[0] = static_cast<int32_t>(byte_size);
-    }
-  }
-  if (embedding_quant_ && index == 6 && flat_shape[0] != fallback_capacity) {
-    MS_LOG(ERROR) << "Compact Q4_0 phase4 NZF embedding_weight graph capacity " << flat_shape[0] << " != NZF blob size "
-                  << fallback_capacity << "; re-export the graph and weights together";
-    api.TensorDesc_Destroy(&desc);
-    return nullptr;
-  }
-  if (api.TensorDesc_SetShape(desc, flat_shape, 1) != 0 || api.TensorDesc_SetDataType(desc, fallback_dtype) != 0) {
-    MS_LOG(ERROR) << "TensorDesc config failed for input " << index;
-    api.TensorDesc_Destroy(&desc);
-    return nullptr;
-  }
-  NN_Tensor *t = api.Tensor_Create(device_id_, desc);
-  RecordTensorCapacity(t, desc, index);
-  api.TensorDesc_Destroy(&desc);
-  return t;
-}
-
 bool NnrtExecutor::CreateTensors() {
   const int cs = static_cast<int>(chunk_size_);
   const int hd = static_cast<int>(head_dim_);
@@ -806,7 +666,7 @@ bool NnrtExecutor::CreateTensors() {
   // IS its ONNX rank), embedding_weight INT8 [capacity] (1-dim). NNRT-padded 4-dim descs
   // are rejected by the matcher. Gear matching is shape-based, so the prefill set uses
   // seq = chunk_size and the decode set seq = 1.
-  prefill_inputs_.resize(7);
+  prefill_inputs_.resize(non_kv_inputs_);
   const int32_t s1[1] = {1};
   const int32_t s_rope_p[3] = {1, cs, hd};
   const int32_t s_embed_p[3] = {1, cs, hs};
@@ -817,15 +677,20 @@ bool NnrtExecutor::CreateTensors() {
   prefill_inputs_[3] = CreateInputTensor(3, s_rope_p, 3, kOhNnFloat16);   // rope_sin
   prefill_inputs_[4] = CreateInputTensor(4, s_embed_p, 3, kOhNnFloat16);  // input_embeds
   prefill_inputs_[5] = CreateInputTensor(5, s_mask_p, 4, kOhNnFloat16);   // attn_mask
-  if (embedding_weight_size_ > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
-    MS_LOG(ERROR) << "embedding_weight size exceeds NNRT INT32 capacity";
+  auto create_embedding_input = [this](size_t index, const std::vector<int32_t> &shape, int32_t dtype, size_t bytes) {
+    return CreateInputTensor(index, shape.data(), shape.size(), dtype, bytes);
+  };
+  auto upload_embedding_input = [this](NN_Tensor *tensor, const void *data, size_t size) -> const uint8_t * {
+    if (!WriteTensor(tensor, data, size)) {
+      return nullptr;
+    }
+    return static_cast<const uint8_t *>(NNRTWrapper::GetApi().Tensor_GetDataBuffer(tensor));
+  };
+  if (!embedding_.CreateInputs(create_embedding_input, upload_embedding_input, &prefill_inputs_)) {
     return false;
   }
-  const auto embed_capacity = static_cast<int32_t>(embedding_weight_size_);
-  prefill_inputs_[6] = CreateInputTensorFromOmc(6, embed_capacity, kOhNnUint8);  // embedding_weight
-
   // Decode group (seq = 1 gear). input_embeds fp16.
-  decode_inputs_.resize(7);
+  decode_inputs_.resize(non_kv_inputs_);
   const int32_t s_rope_d[3] = {1, 1, hd};
   const int32_t s_embed_d[3] = {1, 1, hs};
   const int32_t s_mask_d[4] = {1, 1, 1, ml};
@@ -835,7 +700,7 @@ bool NnrtExecutor::CreateTensors() {
   decode_inputs_[3] = CreateInputTensor(3, s_rope_d, 3, kOhNnFloat16);
   decode_inputs_[4] = CreateInputTensor(4, s_embed_d, 3, kOhNnFloat16);  // decode fp16
   decode_inputs_[5] = CreateInputTensor(5, s_mask_d, 4, kOhNnFloat16);
-  decode_inputs_[6] = prefill_inputs_[6];  // embedding_weight shared constant
+  std::copy(prefill_inputs_.begin() + 6, prefill_inputs_.end(), decode_inputs_.begin() + 6);
 
   // Logits output tensor [1,1,1,model_vocab] fp32. The model's logits width may exceed the
   // tokenizer vocab (two-vocab cropped model); sampling reads only the first vocab_size_.
@@ -864,32 +729,11 @@ bool NnrtExecutor::CreateTensors() {
     return false;
   }
 
-  // Write the W4A16 constant once, then use this CPU-accessible ION Tensor as the
-  // sole packed embedding owner for both NNRT and per-token CPU dequantization.
-  if (embedding_quant_) {
-    const void *embed_data = nullptr;
-    size_t embed_size = 0;
-    if (!PrepareEmbeddingWeightWrite(prefill_inputs_[6], &embed_data, &embed_size) ||
-        !WriteTensor(prefill_inputs_[6], embed_data, embed_size)) {
-      MS_LOG(ERROR) << "Failed to write embedding_weight input tensor";
-      return false;
-    }
-    const auto &api = NNRTWrapper::GetApi();
-    embedding_weight_data_ = static_cast<const uint8_t *>(api.Tensor_GetDataBuffer(prefill_inputs_[6]));
-    if (embedding_weight_data_ == nullptr) {
-      MS_LOG(ERROR) << "embedding_weight ION buffer is unavailable";
-      return false;
-    }
-    embedding_weight_buffer_.clear();
-    embedding_weight_buffer_.shrink_to_fit();
-    ReclaimEmbeddingWeightPages();
-  }
-
-  // Assemble I/O arrays. KV layout is interleaved: K0,V0,K1,V1,... starting at index 7.
+  // Assemble I/O arrays. KV layout is interleaved: K0,V0,K1,V1,... starting at non_kv_inputs_.
   // Output KV entries are the SAME tensor objects as inputs (in-place model update).
   auto assemble = [&](std::vector<NN_Tensor *> &in, std::vector<NN_Tensor *> &out,
                       const std::vector<NN_Tensor *> &non_kv) {
-    in = non_kv;  // 7 non-KV (including embedding_weight at idx6)
+    in = non_kv;  // shared embedding inputs are already included
     for (int i = 0; i < num_layers_; ++i) {
       in.push_back(kv_cache_manager_.GetKeyTensor(i));    // K_i
       in.push_back(kv_cache_manager_.GetValueTensor(i));  // V_i (interleaved)
@@ -1016,7 +860,7 @@ bool NnrtExecutor::Prefill(const std::vector<int> &input_ids, mslite_llm::Backen
         MS_LOG(ERROR) << "token oob tid=" << tid << " vocab=" << vocab_size_;
         return false;
       }
-      if (!EmbeddingRow(tid, embed_buf.data() + i * hs)) {
+      if (!embedding_.Row(tid, embed_buf.data() + i * hs)) {
         MS_LOG(ERROR) << "EmbeddingRow failed for tid=" << tid;
         return false;
       }
@@ -1095,7 +939,7 @@ bool NnrtExecutor::Decode(const std::vector<int> &input_ids, mslite_llm::Backend
     MS_LOG(ERROR) << "Decode: null inputs_embeds buffer";
     return false;
   }
-  if (!EmbeddingRow(last, static_cast<uint16_t *>(embeds_buf))) {
+  if (!embedding_.Row(last, static_cast<uint16_t *>(embeds_buf))) {
     MS_LOG(ERROR) << "Decode: EmbeddingRow failed for tid=" << last;
     return false;
   }

@@ -52,8 +52,9 @@ NN_Tensor *CreateKvTensor(size_t device_id, OH_NNExecutor *executor, size_t inpu
 }  // namespace
 
 bool KVCacheManager::Alloc(int num_layers, int kv_heads, int max_len, int head_dim, size_t device_id,
-                           OH_NNExecutor *executor) {
-  if (num_layers <= 0 || kv_heads <= 0 || max_len <= 0 || head_dim <= 0 || executor == nullptr) {
+                           OH_NNExecutor *executor, size_t fixed_inputs) {
+  if (num_layers <= 0 || kv_heads <= 0 || max_len <= 0 || head_dim <= 0 || executor == nullptr ||
+      (fixed_inputs != 7 && fixed_inputs != 8)) {
     MS_LOG(ERROR) << "KVCacheManager::Alloc invalid params";
     return false;
   }
@@ -63,9 +64,9 @@ bool KVCacheManager::Alloc(int num_layers, int kv_heads, int max_len, int head_d
   key_tensors_.resize(num_layers, nullptr);
   value_tensors_.resize(num_layers, nullptr);
 
-  // KV input index layout: after 7 fixed inputs, key/value caches are interleaved
+  // KV input index layout: after 7 or 8 fixed inputs, key/value caches are interleaved
   // (key_cache_0, value_cache_0, key_cache_1, value_cache_1, ...).
-  const size_t kFixedInputs = 7;
+  const size_t kFixedInputs = fixed_inputs;
   for (int i = 0; i < num_layers; ++i) {
     size_t key_idx = kFixedInputs + static_cast<size_t>(2 * i);
     size_t val_idx = kFixedInputs + static_cast<size_t>(2 * i) + 1;

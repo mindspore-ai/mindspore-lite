@@ -53,7 +53,7 @@ bool ParsePositiveInt(const char *value, int32_t *out) {
 }
 
 void PrintUsage(const char *program) {
-  std::cerr << "Usage: " << program << " MODEL_PACKAGE PROMPT [MAX_TOKENS=64] [--verbose]\n"
+  std::cerr << "Usage: " << program << " MODEL_PACKAGE PROMPT [MAX_TOKENS=64] [--verbose] [--profiling DIR]\n"
             << "  PROMPT is rendered as a user message with the model chat template by default.\n"
             << "  --verbose bypasses chat-template rendering and uses PROMPT verbatim.\n";
 }
@@ -263,9 +263,13 @@ int main(int argc, char **argv) {
   int32_t max_tokens = 64;
   bool use_chat_template = true;
   bool max_tokens_set = false;
+  const char *profiling_dir = nullptr;
   for (int i = 3; i < argc; ++i) {
     if (std::string(argv[i]) == "--verbose") {
       use_chat_template = false;
+    } else if (std::string(argv[i]) == "--profiling" && profiling_dir == nullptr && i + 1 < argc &&
+               argv[i + 1][0] != '\0' && argv[i + 1][0] != '-') {
+      profiling_dir = argv[++i];
     } else if (!max_tokens_set && ParsePositiveInt(argv[i], &max_tokens)) {
       max_tokens_set = true;
     } else {
@@ -275,6 +279,13 @@ int main(int argc, char **argv) {
   }
 
   const char *model_path = argv[1];
+  if (profiling_dir != nullptr) {
+    const int env_status = setenv("MSLITE_LLM_PROFILING_DIR", profiling_dir, 1);
+    if (env_status != 0) {
+      std::cerr << "[error] cannot configure profiling directory\n";
+      return 1;
+    }
+  }
   const char *prompt = argv[2];
 
   if (!PrintModelInfo(model_path)) {
