@@ -151,6 +151,7 @@ if(MSLITE_ENABLE_CONVERTER)
             ${TEST_DIR}/ut/tools/converter/registry/*.cc
             ${TEST_DIR}/ut/tools/converter/parser/onnx/*.cc
             ${TEST_DIR}/ut/tools/converter/parser/tflite/*.cc
+            ${TEST_DIR}/ut/tools/converter/preprocess/*.cc
             ${TEST_DIR}/ut/tools/converter/quantizer/*.cc
             ${TEST_DIR}/ut/tools/converter/api/*.cc
             ${TEST_DIR}/st/converter_test.cc
@@ -197,24 +198,6 @@ if(MSLITE_ENABLE_SERVER_INFERENCE OR MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSL
     list(APPEND TEST_SRC ${TEST_DIR}/ut/src/api/model_parallel_runner_test.cc)
 endif()
 
-# Converter parser unit tests (resource-free, run against the converter library).
-# The big TEST_CONVERTER_UT_SRC list assembled inside the ENABLE_CONVERTER branch
-# is not consumed by any target, so register these into lite-test explicitly.
-if(MSLITE_ENABLE_CONVERTER)
-  list(APPEND TEST_SRC
-    ${TEST_DIR}/ut/tools/converter/parser/onnx/onnx_pool_parser_test.cc
-    ${TEST_DIR}/ut/tools/converter/parser/tflite/tflite_add_parser_test.cc
-    ${TEST_DIR}/ut/tools/converter/parser/tflite/tflite_util_test.cc
-    ${TEST_DIR}/ut/tools/converter/preprocess/image_preprocess_test.cc)
-  set_source_files_properties(
-    ${TEST_DIR}/ut/tools/converter/parser/onnx/onnx_pool_parser_test.cc
-    ${TEST_DIR}/ut/tools/converter/parser/tflite/tflite_add_parser_test.cc
-    ${TEST_DIR}/ut/tools/converter/parser/tflite/tflite_util_test.cc
-    ${TEST_DIR}/ut/tools/converter/preprocess/image_preprocess_test.cc
-    PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}"
-      COMPILE_OPTIONS "-Wno-error")
-endif()
-
 add_executable(lite-test ${TEST_SRC})
 add_dependencies(lite-test fbs_src fbs_inner_src)
 
@@ -222,46 +205,6 @@ if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
     target_link_libraries(lite-test mindspore-extendrt dl mindspore::gtest)
 else()
     target_link_libraries(lite-test mindspore-lite dl mindspore::gtest)
-endif()
-
-# Converter parser unit tests registered above link against the converter library
-# and its direct dependencies (the linker does not resolve symbols through
-# shared-library DT_NEEDED entries during static link). Everything is linked by
-# target name so the build stays independent of per-config output locations.
-if(MSLITE_ENABLE_CONVERTER)
-    set(MS_UT_CONVERTER_DEPS mindspore::glog mindspore::protobuf)
-    if(TARGET mindspore::opencv_core)
-        list(APPEND MS_UT_CONVERTER_DEPS mindspore::opencv_core
-            mindspore::opencv_imgcodecs mindspore::opencv_imgproc)
-    endif()
-    target_link_libraries(lite-test
-        mindspore_converter
-        mindspore_core
-        mindspore_ops
-        mslite_converter_plugin
-        ${MS_UT_CONVERTER_DEPS})
-    # CMAKE_SKIP_BUILD_RPATH is ON globally (secure_option.cmake), so no rpath is
-    # baked into the binary: generate a wrapper exporting the library paths. All
-    # runtime dirs are resolved from the linked targets with generator expressions.
-    set(LITE_UT_RUNTIME_DIRS
-        "$<TARGET_FILE_DIR:mindspore-lite>"
-        "$<TARGET_FILE_DIR:mindspore_converter>"
-        "$<TARGET_FILE_DIR:mindspore_core>"
-        "$<TARGET_FILE_DIR:mindspore_ops>"
-        "$<TARGET_FILE_DIR:mslite_converter_plugin>"
-        "$<TARGET_FILE_DIR:mindspore::glog>"
-        "$<TARGET_FILE_DIR:mindspore::gtest>")
-    if(TARGET mindspore::opencv_core)
-        list(APPEND LITE_UT_RUNTIME_DIRS "$<TARGET_FILE_DIR:mindspore::opencv_core>")
-    endif()
-    list(JOIN LITE_UT_RUNTIME_DIRS ":" LITE_UT_LD_PATHS)
-    # The CONTENT below is written verbatim into build/test/lite-test.sh (CMake only
-    # writes the file); the export itself runs when that script is executed by bash.
-    file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/test/lite-test.sh
-        CONTENT "#!/bin/bash
-export LD_LIBRARY_PATH=\"${LITE_UT_LD_PATHS}:\$LD_LIBRARY_PATH\"
-exec ${CMAKE_BINARY_DIR}/test/lite-test \"\$@\"
-")
 endif()
 
 # test file using gmock

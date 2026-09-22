@@ -15,9 +15,7 @@
  */
 
 #include "nnacl_c/infer/pooling_infer.h"
-
 #include <math.h>
-
 #include "nnacl_c/infer/infer_register.h"
 
 const int kOriginDefault = 0;
@@ -129,16 +127,14 @@ int PoolingInferShape(const TensorC *const *inputs, size_t inputs_size, TensorC 
   }
 
   const TensorC *input = inputs[0];
-  // 4D pooling data is NHWC. 3D (1D pooling) data keeps the ONNX NCW layout:
-  // the exporter never writes format labels on intermediate tensors (schema
-  // default NCHW), and infer/kernels derive everything from shape positions,
-  // so accept the NCHW label for 3D inputs as well.
-  if (input->shape_size_ == DIMENSION_3D) {
-    NNACL_CHECK_TRUE_RET(input->format_ == Format_NHWC || input->format_ == Format_NWC || input->format_ == Format_NCHW,
-                         NNACL_FORMAT_ERROR);
-  } else {
-    NNACL_CHECK_TRUE_RET(input->format_ == Format_NHWC || input->format_ == Format_NWC, NNACL_FORMAT_ERROR);
-  }
+  // 4D pooling data is NHWC. 3D (1D pooling) data keeps the ONNX NCW layout: the
+  // format label is stamped per inputDataFormat regardless of rank, so a 3D tensor
+  // may carry NHWC/NCHW labels, and positionally N/C/W decode identically under
+  // all three labels. Hence NCHW is accepted for 3D only; 4D keeps rejecting it
+  // (real layout difference).
+  bool format_label_ok = input->format_ == Format_NHWC || input->format_ == Format_NWC ||
+                         (input->shape_size_ == DIMENSION_3D && input->format_ == Format_NCHW);
+  NNACL_CHECK_TRUE_RET(format_label_ok, NNACL_FORMAT_ERROR);
   for (size_t i = 0; i < outputs_size; i++) {
     TensorC *output = outputs[i];
     SetDataTypeFormat(output, input);

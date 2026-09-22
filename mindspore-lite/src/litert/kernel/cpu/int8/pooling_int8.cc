@@ -18,6 +18,7 @@
 #include <cfloat>
 #include "nnacl_c/int8/pooling_int8.h"
 #include "include/errorcode.h"
+#include "ops_utils/op_constants.h"
 #include "src/litert/kernel_registry.h"
 
 using mindspore::kernel::KERNEL_ARCH;
@@ -130,22 +131,20 @@ int PoolingInt8CPUKernel::Prepare() {
 int PoolingInt8CPUKernel::ReSize() {
   auto in_tensor = this->in_tensors_.front();
   auto out_tensor = this->out_tensors_.front();
-  constexpr size_t kNcDimIdx = 0;  // NCW layout: N
-  constexpr size_t kCcDimIdx = 1;  // NCW layout: C, occupies the H slot
-  constexpr size_t kWcDimIdx = 2;  // NCW layout: W
+  // 3D positional mapping NCW: kDim0=N, kDim1=C (occupies the H slot), kDim2=W.
   if (in_tensor->shape().size() == DIMENSION_3D) {
     // 3D (1D pooling) NCW [N, C, W]: Tensor::Batch/Height/Width only serve 2D/4D,
     // fill positionally — the channel dim takes the H slot, channel is 1.
     auto in_shape = in_tensor->shape();
     auto out_shape = out_tensor->shape();
-    compute_.input_batch_ = in_shape[kNcDimIdx];
+    compute_.input_batch_ = in_shape[kDim0];
     compute_.input_channel_ = 1;
-    compute_.input_h_ = in_shape[kCcDimIdx];
-    compute_.input_w_ = in_shape[kWcDimIdx];
-    compute_.output_batch_ = out_shape[kNcDimIdx];
+    compute_.input_h_ = in_shape[kDim1];
+    compute_.input_w_ = in_shape[kDim2];
+    compute_.output_batch_ = out_shape[kDim0];
     compute_.output_channel_ = 1;
-    compute_.output_h_ = out_shape[kCcDimIdx];
-    compute_.output_w_ = out_shape[kWcDimIdx];
+    compute_.output_h_ = out_shape[kDim1];
+    compute_.output_w_ = out_shape[kDim2];
   } else {
     compute_.input_batch_ = in_tensor->Batch();
     compute_.input_channel_ = in_tensor->Channel();
