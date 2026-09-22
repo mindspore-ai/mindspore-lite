@@ -386,6 +386,66 @@ class _CannMatMulV2(torch.autograd.Function):
         return y
 
 
+class _CannScatter(torch.autograd.Function):
+    """In-place KV update -> Custom(Scatter, reduce=update, axis=-2).
+
+    var [B, H, S, D], indices [B] (write position), updates [B, H, 1, D].
+    Output has the same shape as var: var with updates written at S=indices.
+    """
+
+    @staticmethod
+    def forward(ctx, var, indices, updates, reduce, axis):
+        """Forward of _CannScatter: scatter-update `updates` into `var` at `indices`."""
+        del ctx
+        if str(reduce) != "update":
+            raise RuntimeError("Only reduce='update' is supported.")
+        ax = int(axis)
+        if ax < 0:
+            ax = var.dim() + ax
+        if var.dim() != 4 or ax != 2:
+            raise RuntimeError("Only 4D var with axis=-2/2 is supported.")
+        bsz, num_heads, _, _ = var.shape
+        pos = indices
+        if pos.dim() == 2 and pos.shape[-1] == 1:
+            pos = pos.squeeze(-1)
+        pos = pos.to(torch.long).view(bsz)
+        upd = updates
+        if upd.dim() == 4 and upd.shape[2] == 1:
+            upd = upd[:, :, 0, :]
+        out = var.clone()
+        b = torch.arange(bsz, device=out.device).view(bsz, 1).expand(bsz, num_heads)
+        h = torch.arange(num_heads, device=out.device).view(1, num_heads).expand(
+            bsz, num_heads
+        )
+        s = pos.view(bsz, 1).expand(bsz, num_heads)
+        out[b, h, s, :] = upd
+        return out
+
+    @staticmethod
+    def symbolic(g, var, indices, updates, reduce, axis):
+        """Symbolic function for ONNX export: emit a Custom(Scatter) node."""
+        y = g.op(
+            "Custom",
+            var,
+            indices,
+            updates,
+            type_s="Scatter",
+            input_names_s=["var", "indices", "updates"],
+            optional_input_names_s=[],
+            output_names_s=["var"],
+            output_num_i=1,
+            input_index_i=[0, 1, 2],
+            reduce_s=str(reduce),
+            axis_i=int(axis),
+        )
+        y.setType(var.type())
+        return y
+
+
+def scatter(var, indices, updates, reduce="update", axis=-2):
+    return _CannScatter.apply(var, indices, updates, str(reduce), int(axis))
+
+
 # ---------------------------------------------------------------------------
 # CANN-fused forward helpers
 # ---------------------------------------------------------------------------
@@ -997,6 +1057,77 @@ def _cann_attn_forward(
     return attn_output, key_states, value_states
 
 
+def _zc_attn_forward(attn_mod, hidden_states, cos4, sin4, pad_mask, write_pos,
+                     past_key, past_value, enable_bmm2mm=False):
+    """Zero-copy single-token attention with in-graph Scatter KV update.
+
+    The new K/V is written IN PLACE at write_pos inside the gear-sized buffer
+    via CANN Scatter (reduce=update, axis=-2), so present has the SAME shape
+    as past (padding preserved). Attention uses a pure padding mask derived
+    from attention_mask. PFA is not used (GQA incompatible with CANN PFA on
+    310P). Numerics match the original decode (RotaryMul + GQA
+    repeat_interleave + fp32 softmax + additive where-mask).
+    """
+    input_shape = hidden_states.shape[:-1]
+    head_dim = attn_mod.head_dim
+    num_heads = attn_mod.config.num_attention_heads
+    num_kv_heads = attn_mod.config.num_key_value_heads
+    hidden_shape = (*input_shape, -1, head_dim)
+
+    query_states = _linear(attn_mod.q_proj, hidden_states, enable_bmm2mm).view(
+        hidden_shape
+    )
+    key_states = _linear(attn_mod.k_proj, hidden_states, enable_bmm2mm).view(
+        hidden_shape
+    )
+    if hasattr(attn_mod, "q_norm"):
+        query_states = attn_mod.q_norm(query_states)
+    if hasattr(attn_mod, "k_norm"):
+        key_states = attn_mod.k_norm(key_states)
+    query_states = query_states.transpose(1, 2)
+    key_states = key_states.transpose(1, 2)
+    value_states = (
+        _linear(attn_mod.v_proj, hidden_states, enable_bmm2mm)
+        .view(hidden_shape)
+        .transpose(1, 2)
+    )
+
+    query_states = _CannRotaryMul.apply(query_states, cos4, sin4)
+    key_states = _CannRotaryMul.apply(key_states, cos4, sin4)
+
+    present_key = scatter(past_key, write_pos, key_states, reduce="update", axis=-2)
+    present_value = scatter(past_value, write_pos, value_states, reduce="update", axis=-2)
+
+    key_for_attn = present_key
+    value_for_attn = present_value
+    if num_kv_heads < num_heads:
+        rep = num_heads // num_kv_heads
+        key_for_attn = present_key.repeat_interleave(rep, dim=1)
+        value_for_attn = present_value.repeat_interleave(rep, dim=1)
+
+    scaling = getattr(attn_mod, "scaling", 1.0 / (head_dim ** 0.5))
+    attn_weights = torch.matmul(
+        query_states, key_for_attn.transpose(2, 3)
+    ) * scaling
+    mask_value = torch.finfo(query_states.dtype).min
+    additive = torch.where(
+        pad_mask,
+        torch.full((), mask_value, dtype=query_states.dtype),
+        torch.zeros((), dtype=query_states.dtype),
+    )
+    attn_weights = attn_weights + additive
+    attn_weights = torch.nn.functional.softmax(
+        attn_weights, dim=-1, dtype=torch.float32
+    ).to(query_states.dtype)
+    attn_output = torch.matmul(attn_weights, value_for_attn)
+
+    attn_output = (
+        attn_output.transpose(1, 2).reshape(*input_shape, -1).contiguous()
+    )
+    attn_output = _linear(attn_mod.o_proj, attn_output, enable_bmm2mm)
+    return attn_output, present_key, present_value
+
+
 def _cann_mlp_forward(
     mlp_mod, hidden_states, enable_swiglu=True, enable_bmm2mm=False
 ):
@@ -1082,9 +1213,12 @@ class Qwen3LlmPrefill(torch.nn.Module):
         self.lm_head = lm_head
         self.num_hidden_layers = model.config.num_hidden_layers
 
-    def forward(self, input_ids, attention_mask, position_ids):
+    def forward(self, input_ids, attention_mask, position_ids, slice_last_idx=None):
         """
         Forward pass for Qwen3LlmPrefill.
+
+        slice_last_idx: optional int32 tensor [batch]. When provided, only the
+        last real token's hidden state is fed into lm_head (Slice hoisting).
         """
         inputs_embeds = self.model.embed_tokens(input_ids)
         q_len = input_ids.shape[1]
@@ -1117,67 +1251,111 @@ class Qwen3LlmPrefill(torch.nn.Module):
             present.append(pv)
 
         hidden_states = self.model.norm(hidden_states)
-        logits = _linear_ptq_aware(self.lm_head, hidden_states)
+        if slice_last_idx is not None:
+            # Slice hoisting: only the last real token's hidden state goes
+            # through lm_head (seq_len× less MatMul FLOPs).
+            last_hidden = hidden_states.index_select(1, slice_last_idx.long())[:, :1, :]
+            logits = _linear_ptq_aware(self.lm_head, last_hidden)
+        else:
+            logits = _linear_ptq_aware(self.lm_head, hidden_states)
         present_kv = torch.stack(present, dim=0)
         return logits, present_kv
 
 
-class Qwen3LlmDecode(torch.nn.Module):
-    """
-    Qwen3-0.6B LLM Decode model for ONNX inference.
+class Qwen3LlmDecodeZeroCopy(torch.nn.Module):
+    """Zero-copy decode wrapper: outputs (token_id, present_key_values).
+
+    Uses CANN Scatter for in-place KV update (present shape == past shape),
+    RotaryMul for RoPE, and ArgMax fused in-graph. PFA is not used (GQA
+    incompatible with CANN PFA on 310P for decode).
+
+    Inputs:
+      input_ids        [1, 1] int32        — the last generated token
+      attention_mask   [1, gear] int32     — ones on [0, valid_len+1)
+      position_ids     [1, 1] int32        — valid_len (real write position)
+      past_key_values  [56, 1, 8, gear, 128] fp16 — padded gear buffer
+
+    Outputs:
+      token_id            [1, 1, 1] int64          — ArgMax fused in graph
+      present_key_values  [56, 1, 8, gear, 128] fp16 — same shape as input
     """
 
-    def __init__(self, model, lm_head):
-        """
-        Initialize Qwen3LlmDecode.
-        """
+    def __init__(self, model, lm_head, flags=None):
         super().__init__()
-        self.model = model.model
+        self.embed_tokens = model.model.embed_tokens
+        self.layers = model.model.layers
+        self.norm = model.model.norm
+        self.rotary_emb = model.model.rotary_emb
         self.lm_head = lm_head
-        self.num_hidden_layers = model.config.num_hidden_layers
+        self.num_layers = len(self.layers)
+        self.flags = flags or {}
+        self.enable_bmm2mm = self.flags.get("enable_bmm2mm", False)
+        self.enable_add_rmsnorm = self.flags.get("enable_add_rmsnorm", False)
+        self.enable_swiglu = self.flags.get("enable_swiglu", False)
 
     def forward(self, input_ids, attention_mask, position_ids, past_key_values):
-        """
-        Forward pass for Qwen3LlmDecode.
-        """
-        inputs_embeds = self.model.embed_tokens(input_ids)
-        q_len = input_ids.shape[1]
-
-        position_embeddings = self.model.rotary_emb(inputs_embeds, position_ids)
-        past_key_0 = past_key_values[0]
-        past_len = past_key_0.shape[2]
-        k_len = past_len + q_len
-        attn_mask = _make_additive_causal_mask(
-            attention_mask, q_len, k_len, past_len, inputs_embeds.dtype
+        """Forward of Qwen3LlmDecodeZeroCopy: in-place Scatter KV update + decode."""
+        inputs_embeds = self.embed_tokens(input_ids)
+        position_embeddings = _qwen3_rotary_emb_matmul2d(
+            self.rotary_emb, inputs_embeds, position_ids
         )
+        cos, sin = position_embeddings
+        cos4 = cos.unsqueeze(1)
+        sin4 = sin.unsqueeze(1)
+
+        write_pos = position_ids[:, -1]
+
+        pad_mask = (1.0 - attention_mask.to(torch.float32))[:, None, None, :] > 0.5
 
         hidden_states = inputs_embeds
-        present = []
+        residual = hidden_states
+        hidden_states = self.layers[0].input_layernorm(hidden_states)
 
-        for i, layer in enumerate(self.model.layers):
-            pk_in = past_key_values[2 * i]
-            pv_in = past_key_values[2 * i + 1]
-            residual = hidden_states
-            hidden_states = layer.input_layernorm(hidden_states)
-            attn_out, pk, pv = _text_attn_forward(
+        present = []
+        for i, layer in enumerate(self.layers):
+            attn_out, pk, pv = _zc_attn_forward(
                 layer.self_attn,
                 hidden_states,
-                position_embeddings,
-                attn_mask,
-                pk_in,
-                pv_in,
+                cos4,
+                sin4,
+                pad_mask,
+                write_pos,
+                past_key_values[2 * i],
+                past_key_values[2 * i + 1],
+                self.enable_bmm2mm,
             )
-            hidden_states = residual + attn_out
-            residual = hidden_states
-            hidden_states = layer.post_attention_layernorm(hidden_states)
-            hidden_states = residual + _mlp_ptq_aware_forward(layer.mlp, hidden_states)
             present.append(pk)
             present.append(pv)
 
-        hidden_states = self.model.norm(hidden_states)
-        logits = _linear_ptq_aware(self.lm_head, hidden_states)
+            hidden_states, residual = _cann_add_rms_norm(
+                residual,
+                attn_out,
+                layer.post_attention_layernorm,
+                self.enable_add_rmsnorm,
+            )
+
+            mlp_out = _cann_mlp_forward(
+                layer.mlp,
+                hidden_states,
+                self.enable_swiglu,
+                self.enable_bmm2mm,
+            )
+            if i < self.num_layers - 1:
+                hidden_states, residual = _cann_add_rms_norm(
+                    residual,
+                    mlp_out,
+                    self.layers[i + 1].input_layernorm,
+                    self.enable_add_rmsnorm,
+                )
+            else:
+                hidden_states, _ = _cann_add_rms_norm(
+                    residual, mlp_out, self.norm, self.enable_add_rmsnorm,
+                )
+
+        logits = self.lm_head(hidden_states)
+        token_id = torch.argmax(logits, dim=-1, keepdim=True)
         present_kv = torch.stack(present, dim=0)
-        return logits, present_kv
+        return token_id, present_kv
 
 
 # ---------------------------------------------------------------------------
@@ -1198,8 +1376,14 @@ class Qwen3LlmPrefillFused(torch.nn.Module):
         self.num_layers = len(self.layers)
         self.flags = flags
 
-    def forward(self, input_ids, attention_mask, position_ids):
-        """Run prefill forward pass: embeddings + transformer layers + norm + lm_head."""
+    def forward(self, input_ids, attention_mask, position_ids, slice_last_idx=None):
+        """Run prefill forward pass: embeddings + transformer layers + norm + lm_head.
+
+        slice_last_idx: optional int32 tensor [batch]. When provided, only the
+        last real token's hidden state is fed into lm_head, reducing MatMul cost
+        from seq_len×hidden×vocab to 1×hidden×vocab (Slice hoisting). The returned
+        logits have shape [batch, 1, vocab] instead of [batch, seq_len, vocab].
+        """
         q_len = input_ids.shape[1]
         inputs_embeds = self.embed_tokens(input_ids)
         position_embeddings = _qwen3_rotary_emb_matmul2d(
@@ -1253,30 +1437,30 @@ class Qwen3LlmPrefillFused(torch.nn.Module):
                     residual, mlp_out, self.norm, self.flags["enable_add_rmsnorm"]
                 )
 
-        logits = self.lm_head(hidden_states)
+        if slice_last_idx is not None:
+            # Slice hoisting: only feed last real token's hidden state into lm_head,
+            # reducing MatMul from [batch, seq, hidden] × [hidden, vocab] to
+            # [batch, 1, hidden] × [hidden, vocab] (seq_len× less FLOPs).
+            last_hidden = hidden_states.index_select(1, slice_last_idx.long())  # [batch, batch, hidden]
+            last_hidden = last_hidden[:, :1, :]  # [batch, 1, hidden]
+            logits = self.lm_head(last_hidden)  # [batch, 1, vocab]
+        else:
+            logits = self.lm_head(hidden_states)
         present_kv = torch.stack(present, dim=0)
         return logits, present_kv
 
 
-class Qwen3LlmPrefillNoCache(torch.nn.Module):
-    """Prefill wrapper that only outputs logits (no KV cache output)."""
-
-    def __init__(self, prefill):
-        super().__init__()
-        self.prefill = prefill
-
-    def forward(self, input_ids, attention_mask, position_ids):
-        logits, _ = self.prefill(input_ids, attention_mask, position_ids)
-        return logits
-
-
 class Qwen3LlmPrefillSliceLast(torch.nn.Module):
-    """Prefill wrapper that outputs the last real token's logits and KV cache.
+    """Prefill wrapper that outputs the last real token's token_id and KV cache.
+
+    Fuses two optimizations into the graph (always enabled, all scenes):
+      1. Slice hoisting — Gather the last real token's hidden state BEFORE the
+         lm_head MatMul, reducing FLOPs by seq_len×.
+      2. ArgMax fusion — output token_id [batch, 1, 1] INT64 instead of logits
+         [batch, 1, vocab] FP32, reducing D2H from ~600KB to 8 bytes.
 
     Uses attention_mask to locate the last non-pad token, so it works with
-    right padding (unlike the naive logits[:, -1:, :] approach).
-
-    Returns (logits[last_real_pos, :, :], past_kv).
+    right padding (unlike the naive hidden_states[:, -1:] approach).
     """
 
     def __init__(self, prefill, output_kv=True):
@@ -1285,96 +1469,33 @@ class Qwen3LlmPrefillSliceLast(torch.nn.Module):
         self.output_kv = output_kv
 
     def forward(self, input_ids, attention_mask, position_ids):
-        """Forward pass: slice last real token logits, optionally output KV cache."""
-        logits, past_kv = self.prefill(input_ids, attention_mask, position_ids)
+        """Forward pass: slice-hoisted lm_head + fused ArgMax, optionally output KV cache."""
         # Find the last real token position via attention_mask.sum(dim=1)
         # attention_mask: [batch, seq] (1=real, 0=pad), dtype int32
         seq_lens = attention_mask.sum(dim=1)  # [batch]
         last_indices = (seq_lens - 1).to(torch.int32)  # [batch], int32 for Ascend Gather
-        # index_select maps to ONNX Gather; int32 indices are Ascend-compatible
-        sliced = logits.index_select(1, last_indices.long())  # [batch, batch, vocab]
-        sliced = sliced[:, :1, :]  # [batch, 1, vocab]
+        # Slice hoisting: pass last_indices into prefill.forward so that only
+        # the last real token's hidden state is fed into lm_head.
+        logits, past_kv = self.prefill(
+            input_ids, attention_mask, position_ids, slice_last_idx=last_indices
+        )  # logits: [batch, 1, vocab]
+        # ArgMax fusion: D2H from [batch,1,vocab] FP32 (~600KB) to [batch,1,1] INT64 (8B)
+        token_id = torch.argmax(logits, dim=-1, keepdim=True)  # [batch, 1, 1] int64
         if self.output_kv:
-            return sliced, past_kv
-        return (sliced,)
+            return token_id, past_kv
+        return (token_id,)
 
 
-class Qwen3LlmDecodeFused(torch.nn.Module):
-    """Decode wrapper with CANN fused Custom ops (per-op switches)."""
+class Qwen3LlmDecodeFused(Qwen3LlmDecodeZeroCopy):
+    """Backward-compat alias: zero-copy decode with fused ops.
+
+    Uses Scatter for in-place KV update (present shape == past shape) and
+    ArgMax fused in-graph. PFA is not used (GQA incompatible with CANN PFA
+    on 310P for decode).
+    """
 
     def __init__(self, model, lm_head, flags):
-        super().__init__()
-        self.embed_tokens = model.model.embed_tokens
-        self.layers = model.model.layers
-        self.norm = model.model.norm
-        self.rotary_emb = model.model.rotary_emb
-        self.lm_head = lm_head
-        self.num_layers = len(self.layers)
-        self.flags = flags
-
-    def forward(self, input_ids, attention_mask, position_ids, past_key_values):
-        """Run single-step decode forward: embeddings + transformer layers + norm + lm_head."""
-        q_len = input_ids.shape[1]
-        inputs_embeds = self.embed_tokens(input_ids)
-        position_embeddings = _qwen3_rotary_emb_matmul2d(
-            self.rotary_emb, inputs_embeds, position_ids
-        )
-
-        past_key_0 = past_key_values[0]
-        past_len = past_key_0.shape[2]
-        k_len = past_len + q_len
-        bool_mask = _make_bool_causal_mask(attention_mask, q_len, k_len, past_len)
-
-        hidden_states = inputs_embeds
-        residual = hidden_states
-        hidden_states = self.layers[0].input_layernorm(hidden_states)
-
-        present = []
-        for i, layer in enumerate(self.layers):
-            pk_in = past_key_values[2 * i]
-            pv_in = past_key_values[2 * i + 1]
-            attn_out, pk, pv = _cann_attn_forward(
-                layer.self_attn,
-                hidden_states,
-                position_embeddings,
-                bool_mask,
-                pk_in,
-                pv_in,
-                self.flags["enable_rotarymul"],
-                False,  # decode 不使用 PFA（GQA 与 CANN PFA 不兼容）
-                self.flags["enable_bmm2mm"],
-            )
-            present.append(pk)
-            present.append(pv)
-
-            hidden_states, residual = _cann_add_rms_norm(
-                residual,
-                attn_out,
-                layer.post_attention_layernorm,
-                self.flags["enable_add_rmsnorm"],
-            )
-
-            mlp_out = _cann_mlp_forward(
-                layer.mlp,
-                hidden_states,
-                self.flags["enable_swiglu"],
-                self.flags["enable_bmm2mm"],
-            )
-            if i < self.num_layers - 1:
-                hidden_states, residual = _cann_add_rms_norm(
-                    residual,
-                    mlp_out,
-                    self.layers[i + 1].input_layernorm,
-                    self.flags["enable_add_rmsnorm"],
-                )
-            else:
-                hidden_states, _ = _cann_add_rms_norm(
-                    residual, mlp_out, self.norm, self.flags["enable_add_rmsnorm"]
-                )
-
-        logits = self.lm_head(hidden_states)
-        present_kv = torch.stack(present, dim=0)
-        return logits, present_kv
+        super().__init__(model, lm_head, flags)
 
 
 # ---------------------------------------------------------------------------
@@ -1458,11 +1579,11 @@ class Qwen3PrefixModel(torch.nn.Module):
 
 
 class Qwen3SuffixModel(torch.nn.Module):
-    """Process suffix tokens with prefix KV cache, output last-token logits.
+    """Process suffix tokens with prefix KV cache, output last-token token_id.
 
     Uses InnerPromptFlashAttention (supports q_len != k_len) when enable_pfa=True,
     which is the case for common-prefix suffix scenario (q_len=suffix, k_len=prefix+suffix).
-    Output: logits [batch, 1, vocab_size] (only last token, minimal D2H).
+    Output: token_id [batch, 1, 1] int64 (fused Slice hoisting + ArgMax, minimal D2H).
     """
 
     def __init__(self, model, lm_head, flags):
@@ -1536,9 +1657,13 @@ class Qwen3SuffixModel(torch.nn.Module):
                     residual, mlp_out, self.norm, self.flags["enable_add_rmsnorm"]
                 )
 
-        logits = self.lm_head(hidden_states)
-        # Only return last token's logits [batch, 1, vocab]
-        return logits[:, -1:, :]
+        # Slice hoisting: take the last token's hidden_states before lm_head MatMul.
+        # Equivalent to MatMul over all tokens then Slice, but MatMul FLOPs drop
+        # from suffix_len×hidden×vocab to 1×hidden×vocab (512× less at suffix_len=512).
+        last_hidden = hidden_states[:, -1:, :]  # [batch, 1, hidden]
+        logits = self.lm_head(last_hidden)       # [batch, 1, vocab]
+        # ArgMax fusion: D2H transfer drops from [batch,1,vocab] FP32 (~600KB) to [batch,1,1] INT64 (8B)
+        return torch.argmax(logits, dim=-1, keepdim=True)  # [batch, 1, 1] int64
 
 
 def export_prefix_suffix(model, output_dir, device="cpu", flags=None):
@@ -1546,7 +1671,7 @@ def export_prefix_suffix(model, output_dir, device="cpu", flags=None):
 
     Prefix model: processes common prefix tokens, outputs KV cache.
     Suffix model: receives prefix KV cache + user suffix tokens,
-    outputs last-token logits [batch, 1, vocab_size].
+    outputs token_id [batch, 1, 1] via fused Slice hoisting + ArgMax.
     """
     default_flags = {
         "enable_rmsnorm_replace": False,
@@ -1634,8 +1759,12 @@ def export_prefix_suffix(model, output_dir, device="cpu", flags=None):
         "attention_mask": {0: "batch", 1: "total_seq_len"},
         "position_ids": {0: "batch", 1: "suffix_len"},
         "past_key_values": {1: "batch", 3: "prefix_seq_len"},
-        "logits": {0: "batch"},
     }
+
+    # ArgMax is fused into the graph: output is token_id [batch, 1, 1] int64
+    # instead of logits [batch, 1, vocab] float32.
+    suffix_out_name = "token_id"
+    suffix_dynamic_axes[suffix_out_name] = {0: "batch"}
 
     print(f"\nExporting suffix model to {suffix_path}...")
     with torch.no_grad():
@@ -1644,7 +1773,7 @@ def export_prefix_suffix(model, output_dir, device="cpu", flags=None):
             (dummy_suf_input_ids, dummy_suf_attn_mask, dummy_suf_pos_ids, dummy_past_kv),
             str(suffix_path),
             input_names=["input_ids", "attention_mask", "position_ids", "past_key_values"],
-            output_names=["logits"],
+            output_names=[suffix_out_name],
             opset_version=18,
             do_constant_folding=True,
             dynamic_axes=suffix_dynamic_axes,
@@ -1656,46 +1785,36 @@ def export_prefix_suffix(model, output_dir, device="cpu", flags=None):
     print(f"  Suffix: {suffix_path}")
 
 
-def _build_prefill_config(prefill, prefill_only, prefill_slice_last):
-    """Build prefill export wrapper, output names, and dynamic axes."""
-    if prefill_slice_last:
-        output_kv = not prefill_only
-        export = Qwen3LlmPrefillSliceLast(prefill, output_kv=output_kv)
-        if output_kv:
-            return export, ["logits", "present_key_values"], {
-                "input_ids": {0: "batch", 1: "seq_len"},
-                "attention_mask": {0: "batch", 1: "seq_len"},
-                "position_ids": {0: "batch", 1: "seq_len"},
-                "logits": {0: "batch"},
-                "present_key_values": {1: "batch", 3: "seq_len"},
-            }
-        return export, ["logits"], {
-            "input_ids": {0: "batch", 1: "seq_len"},
-            "attention_mask": {0: "batch", 1: "seq_len"},
-            "position_ids": {0: "batch", 1: "seq_len"},
-            "logits": {0: "batch"},
-        }
+def _build_prefill_config(prefill, prefill_only):
+    """Build prefill export wrapper, output names, and dynamic axes.
 
-    if prefill_only:
-        return Qwen3LlmPrefillNoCache(prefill), ["logits"], {
-            "input_ids": {0: "batch", 1: "seq_len"},
-            "attention_mask": {0: "batch", 1: "seq_len"},
-            "position_ids": {0: "batch", 1: "seq_len"},
-            "logits": {0: "batch", 1: "seq_len"},
-        }
-
-    return prefill, ["logits", "present_key_values"], {
+    The prefill graph always fuses Slice hoisting + ArgMax: output 0 is
+    token_id [batch, 1, 1] INT64. present_key_values is additionally exported
+    unless prefill_only (Scene B needs no KV cache).
+    """
+    export = Qwen3LlmPrefillSliceLast(prefill, output_kv=not prefill_only)
+    dynamic_axes = {
         "input_ids": {0: "batch", 1: "seq_len"},
         "attention_mask": {0: "batch", 1: "seq_len"},
         "position_ids": {0: "batch", 1: "seq_len"},
-        "logits": {0: "batch", 1: "seq_len"},
-        "present_key_values": {1: "batch", 3: "seq_len"},
+        "token_id": {0: "batch"},
     }
+    if prefill_only:
+        return export, ["token_id"], dynamic_axes
+    dynamic_axes["present_key_values"] = {1: "batch", 3: "seq_len"}
+    return export, ["token_id", "present_key_values"], dynamic_axes
 
 
-def _export_decode_onnx(decode, prefill, decode_path, device, dummy_seq,
+def _export_decode_onnx(decode, prefill, decode_path, device, dummy_gear,
                         num_layers, num_kv_heads, head_dim, any_fusion_on):
-    """Run PTQ calibration (if enabled) and export decode model to ONNX."""
+    """Run PTQ calibration (if enabled) and export zero-copy decode model to ONNX.
+
+    Zero-copy decode: past_key_values is a gear-sized padded buffer
+    [2*num_layers, 1, num_kv_heads, gear, head_dim]. The new K/V is
+    Scatter-written in-place at position_ids, so present_key_values has
+    the SAME shape as past_key_values (padding preserved). ArgMax is fused
+    in-graph: output is token_id [1, 1, 1] int64 instead of logits.
+    """
     if TORCH_PTQ_INT8 and not any_fusion_on:
         print(f"\nRunning PTQ int8 calibration (calib={TORCH_PTQ_CALIB_JSONL or '<synthetic>'}, "
               f"max_samples={TORCH_PTQ_MAX_SAMPLES}, max_decode_steps={TORCH_PTQ_MAX_DECODE_STEPS}, "
@@ -1705,7 +1824,7 @@ def _export_decode_onnx(decode, prefill, decode_path, device, dummy_seq,
             print("Warning: no calibration JSONL provided; using synthetic records.")
             calib_records = _make_synthetic_calib_records(
                 num_samples=min(4, int(TORCH_PTQ_MAX_SAMPLES)),
-                seq_len=max(8, dummy_seq),
+                seq_len=max(8, dummy_gear),
             )
         decode = _torch_ptq_static_int8_quantize_decode(
             prefill=prefill, decode=decode, device=torch.device(device),
@@ -1713,40 +1832,42 @@ def _export_decode_onnx(decode, prefill, decode_path, device, dummy_seq,
         )
         print(f"PTQ int8 quant params attached. Decode will export to {decode_path.name}")
 
-    dummy_step = 1
-    dummy_past_len = dummy_seq
-    dummy_input_ids_step = torch.randint(0, 1000, (1, dummy_step), dtype=torch.int32, device=device)
-    dummy_attention_mask_step = torch.ones(1, dummy_past_len + dummy_step, dtype=torch.int32, device=device)
-    dummy_position_ids_step = torch.tensor([[dummy_past_len]], dtype=torch.int32, device=device)
-    dummy_past = torch.zeros(2 * num_layers, 1, num_kv_heads, dummy_past_len, head_dim,
+    gear = int(dummy_gear)
+    half_valid = min(gear // 2, 64)
+    dummy_input_ids_step = torch.randint(0, 1000, (1, 1), dtype=torch.int32, device=device)
+    # ones on [0, half_valid+1): valid prefix incl. the slot written this step
+    dummy_attention_mask_step = torch.zeros(1, gear, dtype=torch.int32, device=device)
+    dummy_attention_mask_step[0, : half_valid + 1] = 1
+    dummy_position_ids_step = torch.tensor([[half_valid]], dtype=torch.int32, device=device)
+    dummy_past = torch.zeros(2 * num_layers, 1, num_kv_heads, gear, head_dim,
                              dtype=torch.float16, device=device)
 
     decode_dynamic_axes = {
-        "input_ids": {0: "batch", 1: "step"},
-        "attention_mask": {0: "batch", 1: "total_seq_len"},
-        "position_ids": {0: "batch", 1: "step"},
-        "logits": {0: "batch", 1: "step"},
-        "past_key_values": {1: "batch", 3: "past_seq_len"},
-        "present_key_values": {1: "batch", 3: "total_seq_len"},
+        "input_ids": {0: "batch"},
+        "attention_mask": {0: "batch", 1: "gear"},
+        "position_ids": {0: "batch"},
+        "token_id": {0: "batch"},
+        "past_key_values": {1: "batch", 3: "gear"},
+        "present_key_values": {1: "batch", 3: "gear"},
     }
 
-    print(f"Exporting LLM decode to {decode_path}...")
+    print(f"Exporting zero-copy LLM decode to {decode_path}...")
     with torch.no_grad():
         torch.onnx.export(
             decode,
             (dummy_input_ids_step, dummy_attention_mask_step, dummy_position_ids_step, dummy_past),
             str(decode_path),
             input_names=["input_ids", "attention_mask", "position_ids", "past_key_values"],
-            output_names=["logits", "present_key_values"],
+            output_names=["token_id", "present_key_values"],
             opset_version=18, do_constant_folding=True,
             dynamic_axes=decode_dynamic_axes,
         )
-    print("LLM decode exported successfully.")
+    print("Zero-copy LLM decode exported successfully.")
 
 
 def export_llm_prefill_decode(
     model, output_dir, device="cpu", flags=None,
-    prefill_only=False, prefill_slice_last=False,
+    prefill_only=False,
 ):
     """Export Qwen3-0.6B LLM prefill and decode models to ONNX.
 
@@ -1755,11 +1876,8 @@ def export_llm_prefill_decode(
     plain Qwen3Llm{Prefill,Decode} classes are used.
 
     prefill_only: if True, only export prefill model without KV cache output
-    (single output: logits). Skips decode export entirely.
-
-    prefill_slice_last: if True, prefill outputs last token's logits [batch, 1, vocab].
-    When prefill_only is also True: no KV cache output (Scene B).
-    When prefill_only is False: outputs logits + KV cache (Scene A with slice_last).
+    (single output: token_id). Skips decode export entirely (Scene B).
+    Otherwise prefill outputs token_id + KV cache (Scene A).
     """
     default_flags = {
         "enable_rmsnorm_replace": False,
@@ -1791,12 +1909,12 @@ def export_llm_prefill_decode(
         if flags["enable_rmsnorm_replace"]:
             _replace_rmsnorm_with_cann(model)
         prefill = Qwen3LlmPrefillFused(model, lm_head, flags).to(device).eval()
-        decode = Qwen3LlmDecodeFused(model, lm_head, flags).to(device).eval()
         enabled = [k for k, v in flags.items() if v]
         print(f"Fusion opt ON: {', '.join(enabled)}")
     else:
         prefill = Qwen3LlmPrefill(model, lm_head).to(device).eval()
-        decode = Qwen3LlmDecode(model, lm_head).to(device).eval()
+    # Decode always uses zero-copy (Scatter in-place KV + ArgMax fused in graph)
+    decode = Qwen3LlmDecodeZeroCopy(model, lm_head, flags).to(device).eval()
 
     prefill_path = Path(output_dir) / "qwen3_llm_prefill.onnx"
     decode_path = Path(output_dir) / "qwen3_llm_decode.onnx"
@@ -1809,7 +1927,7 @@ def export_llm_prefill_decode(
     dummy_position_ids = torch.arange(dummy_seq, device=device, dtype=torch.int32).view(1, -1)
 
     prefill_export, prefill_output_names, prefill_dynamic_axes = _build_prefill_config(
-        prefill, prefill_only, prefill_slice_last,
+        prefill, prefill_only,
     )
 
     print(f"Exporting LLM prefill to {prefill_path}...")
@@ -1829,8 +1947,10 @@ def export_llm_prefill_decode(
         print("Skipping decode export (--prefill-only mode).")
         return
 
+    # Zero-copy decode: dummy gear size for tracing (seq dim is dynamic)
+    dummy_gear = 128
     _export_decode_onnx(
-        decode, prefill, decode_path, device, dummy_seq,
+        decode, prefill, decode_path, device, dummy_gear,
         num_layers, num_kv_heads, head_dim, any_fusion_on,
     )
 
@@ -1912,13 +2032,14 @@ def _build_parser():
                         help="Clip top fraction of weight outliers before quantization (0=off).")
     parser.add_argument("--prefill-only-without-cache", action="store_true",
                         help="Only export prefill model without KV cache output "
-                             "(single output: logits for all positions). "
+                             "(single output: token_id via fused Slice+ArgMax). "
                              "Skips decode export. "
-                             "Default: disabled (slice_last is the default).")
+                             "Default: disabled (prefill outputs token_id + KV cache).")
     parser.add_argument("--enable-common-prefix", action="store_true",
                         help="Export prefix + suffix models for common-prefix caching scenario. "
                              "Prefix model processes common prefix tokens and outputs KV cache; "
-                             "Suffix model takes prefix KV + user suffix tokens and outputs last-token logits. "
+                             "Suffix model takes prefix KV + user suffix tokens and outputs token_id "
+                             "via fused Slice+ArgMax. "
                              "Default: disabled.")
     return parser
 
@@ -1948,7 +2069,6 @@ def main():
         export_llm_prefill_decode(
             model, output_dir, args.device, flags=flags,
             prefill_only=args.prefill_only_without_cache,
-            prefill_slice_last=True,
         )
 
     print("Clearing memory after export...")

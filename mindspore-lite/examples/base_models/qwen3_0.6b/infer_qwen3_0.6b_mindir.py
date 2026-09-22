@@ -17,8 +17,21 @@
 
 Supports three modes:
   1. prefill_decode: Full conversation generation with KV cache (Scene A)
-  2. prefill_only:   Prefill outputs [batch, 1, vocab] only (Scene B)
+  2. prefill_only:   Prefill outputs a single token_id (Scene B)
   3. common_prefix:  Prefix + suffix models for common-prefix caching (Scene C)
+
+All models fuse "Slice hoisting + ArgMax" into the graph (always enabled at
+export time): the lm_head MatMul only runs on the last real token's hidden
+state (seq_len× less FLOPs), and the graph outputs token_id [batch, 1, 1] INT
+(8 bytes D2H) instead of full logits [batch, 1, vocab] FP32 (~600 KB D2H).
+This supports greedy decoding only.
+
+Scene A decode uses zero-copy (Scatter in-place KV update): past_key_values is
+a gear-sized padded buffer; the new K/V is Scatter-written in-place at
+position_ids, so present has the SAME shape as past. The inference loop uses
+ping-pong device buffers (two per gear), so KV never round-trips through the
+host. Per-step host traffic is just input_ids(4B) + attention_mask(≤4KB) +
+position_ids(4B) H2D + token_id(8B) D2H.
 """
 
 import sys
@@ -34,21 +47,27 @@ except ImportError:
     sys.exit(1)
 
 
+_MSLITE_TO_NP = {
+    mslite.DataType.INT32: np.int32,
+    mslite.DataType.INT64: np.int64,
+    mslite.DataType.FLOAT16: np.float16,
+    mslite.DataType.FLOAT32: np.float32,
+}
+
+
+def _np_dtype(dt):
+    return _MSLITE_TO_NP.get(dt, np.float32)
+
+
+def _shape_with_gear(meta_shape, gear):
+    """Replace the dynamic dim (-1) of a [56,1,8,-1,128]-style shape with gear."""
+    return [int(gear) if int(d) == -1 else int(d) for d in meta_shape]
+
+
 def _compute_position_ids(attention_mask: np.ndarray) -> np.ndarray:
     position_ids = np.cumsum(attention_mask.astype(np.int32), axis=-1) - 1
     position_ids = np.where(attention_mask > 0, position_ids, 0)
     return position_ids.astype(np.int32)
-
-
-_DTYPE_MAP = {
-    np.dtype("int32"): mslite.DataType.INT32,
-    np.dtype("float16"): mslite.DataType.FLOAT16,
-    np.dtype("float32"): mslite.DataType.FLOAT32,
-}
-
-
-def _np_to_mslite_dtype(np_dtype):
-    return _DTYPE_MAP[np.dtype(np_dtype)]
 
 
 def _tokenize(text, tokenizer, max_length=2048, use_chat_template=True,
@@ -123,11 +142,25 @@ def _next_bucket(seq_len, buckets):
 
 
 # ---------------------------------------------------------------------------
-# Prefill + Decode inferencer (Scene A)
+# Prefill + Decode inferencer (Scene A) — zero-copy ping-pong
 # ---------------------------------------------------------------------------
 
 class Qwen3PrefillDecodeInferencer:
-    """Zero-copy prefill + autoregressive decode inferencer."""
+    """Prefill + zero-copy decode inferencer (Scene A).
+
+    Prefill model outputs (token_id, present_key_values): ArgMax is fused
+    in-graph, so the first token comes directly from the graph output.
+
+    Decode model uses Scatter in-place KV update: past_key_values is a
+    gear-sized padded buffer; the new K/V is written at position_ids inside
+    the graph, so present_key_values has the SAME shape as past_key_values.
+    The loop uses ping-pong device buffers (two per gear): each step's output
+    buffer becomes the next step's input, so KV never round-trips through
+    the host. ArgMax is fused in the decode graph too (token_id output).
+
+    Per-step host traffic: input_ids(4B) + attention_mask(≤4KB) +
+    position_ids(4B) H2D + token_id(8B) D2H.
+    """
 
     def __init__(
         self,
@@ -139,18 +172,15 @@ class Qwen3PrefillDecodeInferencer:
         decode_buckets=None,
         prefill_buckets=None,
     ):
-        if device not in ["cpu", "ascend"]:
-            raise ValueError("device must be cpu or ascend")
         if device != "ascend":
-            raise ValueError("Zero-copy path requires device='ascend'")
-
-        self._use_pre_alloc = None
+            raise ValueError("prefill_decode mode requires device='ascend'")
+        if not decode_buckets:
+            raise ValueError("decode_buckets is required (must match decode ini ge.dynamicDims)")
 
         print(f"Initializing MindSpore Lite context for {device}...")
         self.context = mslite.Context()
         self.context.target = [device]
         self.context.ascend.device_id = device_id
-        self.device_id = device_id
         self.device_str = f"ascend:{int(device_id)}"
 
         print(f"Loading prefill model from {prefill_model_path}...")
@@ -172,115 +202,86 @@ class Qwen3PrefillDecodeInferencer:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.eos_token_id = self.tokenizer.eos_token_id
-        self.decode_buckets = (
-            sorted(int(b) for b in decode_buckets) if decode_buckets else []
-        )
+        self.decode_buckets = sorted(int(b) for b in decode_buckets)
         self.prefill_buckets = (
             sorted(int(b) for b in prefill_buckets) if prefill_buckets else []
         )
+        self.max_total_len = self.decode_buckets[-1]
 
-        self._bucket_io_cache = {}
-        self._probe_pre_alloc_support()
+        # Static dtype/shape metadata from the built models.
+        pf_out = self.prefill_model.get_outputs()
+        self._pf_token_dtype = pf_out[0].dtype
+        self._pf_kv_meta_shape = [int(d) for d in pf_out[1].shape]
+        self._pf_kv_dtype = pf_out[1].dtype
 
-    def _probe_pre_alloc_support(self):
-        """Probe whether the model supports zero-copy pre-allocated output buffers."""
-        if self._use_pre_alloc is not None:
-            return
-        if not self.decode_buckets:
-            self._use_pre_alloc = False
-            return
+        dc_in = self.decode_model.get_inputs()
+        dc_out = self.decode_model.get_outputs()
+        self._dc_ids_dtype = dc_in[0].dtype
+        self._dc_mask_dtype = dc_in[1].dtype
+        self._dc_pos_dtype = dc_in[2].dtype
+        self._dc_kv_meta_shape = [int(d) for d in dc_in[3].shape]
+        self._dc_kv_dtype = dc_in[3].dtype
+        self._dc_token_dtype = dc_out[0].dtype
 
-        smallest_bucket = self.decode_buckets[0]
-        io = self._get_bucket_io(smallest_bucket)
+        # Device buffer caches: decode gear I/O sets (ping-pong KV pair).
+        self._gear_io = {}
 
-        syn_input_ids = np.zeros((1, 1), dtype=np.int32)
-        syn_attn = np.zeros((1, smallest_bucket + 1), dtype=np.int32)
-        syn_attn[0, smallest_bucket] = 1
-        syn_pos = np.array([[0]], dtype=np.int32)
-        syn_past = np.zeros(
-            (56, 1, 8, smallest_bucket, 128), dtype=np.float16
+    def _gear_io_for(self, gear):
+        """Device buffers for decode at this gear (ping-pong KV pair)."""
+        if gear not in self._gear_io:
+            kv_shape = _shape_with_gear(self._dc_kv_meta_shape, gear)
+            self._gear_io[gear] = {
+                "t_ids": mslite.Tensor(
+                    shape=[1, 1], dtype=self._dc_ids_dtype, device=self.device_str
+                ),
+                "t_mask": mslite.Tensor(
+                    shape=[1, gear], dtype=self._dc_mask_dtype, device=self.device_str
+                ),
+                "t_pos": mslite.Tensor(
+                    shape=[1, 1], dtype=self._dc_pos_dtype, device=self.device_str
+                ),
+                "t_token": mslite.Tensor(
+                    shape=[1, 1, 1], dtype=self._dc_token_dtype, device=self.device_str
+                ),
+                "t_kv_a": mslite.Tensor(
+                    shape=kv_shape, dtype=self._dc_kv_dtype, device=self.device_str
+                ),
+                "t_kv_b": mslite.Tensor(
+                    shape=kv_shape, dtype=self._dc_kv_dtype, device=self.device_str
+                ),
+            }
+        return self._gear_io[gear]
+
+    def _seed_kv_buffer(self, src_np, valid_len, gear):
+        """One-time KV copy into a gear's device buffer: H2D of valid prefix."""
+        io = self._gear_io_for(gear)
+        if hasattr(src_np, "get_data_to_numpy"):
+            src_np = src_np.get_data_to_numpy()
+        src = src_np[:, :, :, :valid_len, :]
+        kv_np = np.zeros(
+            _shape_with_gear(self._dc_kv_meta_shape, gear),
+            dtype=_np_dtype(self._dc_kv_dtype),
         )
+        kv_np[:, :, :, :valid_len] = src
+        io["t_kv_a"].set_data_from_numpy(kv_np)
+        return io["t_kv_a"]
 
-        io["t_input_ids"].set_data_from_numpy(syn_input_ids)
-        io["t_attention_mask"].set_data_from_numpy(syn_attn)
-        io["t_position_ids"].set_data_from_numpy(syn_pos)
-        io["t_past_in"].set_data_from_numpy(syn_past)
-
-        inputs = [
-            io["t_input_ids"],
-            io["t_attention_mask"],
-            io["t_position_ids"],
-            io["t_past_in"],
-        ]
-        try:
-            self.decode_model.predict(inputs, outputs=io["out_bufs"])
-            self._use_pre_alloc = True
-            print("[zero-copy] pre-allocated outputs: enabled (probe OK)")
-        except (RuntimeError, ValueError) as e:
-            self._use_pre_alloc = False
-            print(
-                f"[zero-copy] pre-allocated outputs disabled (probe failed: "
-                f"{type(e).__name__}: {e!s:.120s}); using plain predict"
+    def _prime_gear(self, gear, t_in_kv, ids_np, mask_np, pos_np):
+        """One untimed plain decode predict at this gear (triggers model resize)."""
+        prime_out = self.decode_model.predict(
+            [
+                mslite.Tensor(ids_np),
+                mslite.Tensor(mask_np),
+                mslite.Tensor(pos_np),
+                t_in_kv,
+            ]
+        )
+        got = [int(d) for d in prime_out[1].shape]
+        if got[3] != gear:
+            raise RuntimeError(
+                f"decode prime at gear {gear}: present seq dim {got[3]} != {gear}"
             )
-
-    def _get_bucket_io(self, bucket_kv_len: int):
-        """Get or create cached input/output tensors for a given decode bucket."""
-        if bucket_kv_len in self._bucket_io_cache:
-            return self._bucket_io_cache[bucket_kv_len]
-
-        amask_len = bucket_kv_len + 1
-        device_str = self.device_str
-
-        t_input_ids = mslite.Tensor(
-            shape=[1, 1], dtype=mslite.DataType.INT32, device=device_str
-        )
-        t_attention_mask = mslite.Tensor(
-            shape=[1, amask_len], dtype=mslite.DataType.INT32, device=device_str
-        )
-        t_position_ids = mslite.Tensor(
-            shape=[1, 1], dtype=mslite.DataType.INT32, device=device_str
-        )
-        t_past_in = mslite.Tensor(
-            shape=[56, 1, 8, bucket_kv_len, 128],
-            dtype=mslite.DataType.FLOAT16,
-            device=device_str,
-        )
-        t_past_out = mslite.Tensor(
-            shape=[56, 1, 8, bucket_kv_len + 1, 128],
-            dtype=mslite.DataType.FLOAT16,
-            device=device_str,
-        )
-
-        outs_info = self.decode_model.get_outputs()
-        logits_shape = [int(x) if int(x) > 0 else 1 for x in outs_info[0].shape]
-        if len(logits_shape) == 3:
-            logits_shape = [1, 1, logits_shape[2]]
-        elif len(logits_shape) == 2:
-            logits_shape = [1, logits_shape[1]]
-        else:
-            logits_shape = [1, 1, logits_shape[-1]]
-        t_logits = mslite.Tensor(
-            shape=logits_shape,
-            dtype=mslite.DataType.FLOAT16,
-            device=device_str,
-        )
-
-        io = {
-            "t_input_ids": t_input_ids,
-            "t_attention_mask": t_attention_mask,
-            "t_position_ids": t_position_ids,
-            "t_past_in": t_past_in,
-            "t_past_out": t_past_out,
-            "t_logits": t_logits,
-            "out_bufs": [t_logits, t_past_out],
-        }
-        self._bucket_io_cache[bucket_kv_len] = io
-        return io
-
-    def _predict(self, inputs, out_bufs):
-        if self._use_pre_alloc:
-            return self.decode_model.predict(inputs, outputs=out_bufs)
-        return self.decode_model.predict(inputs)
+        return prime_out
 
     def generate(
         self,
@@ -290,7 +291,7 @@ class Qwen3PrefillDecodeInferencer:
         use_chat_template: bool = True,
         enable_thinking: bool = True,
     ):
-        """Run prefill + autoregressive decode and return the generated text.
+        """Run prefill + zero-copy decode and return the generated text.
 
         enable_thinking=True (default): 保留 Qwen3 thinking 模式，输出含思考过程，
             与原始 README 输出一致（如 "好的，用户问我的介绍..."）。
@@ -301,6 +302,20 @@ class Qwen3PrefillDecodeInferencer:
         )
 
         actual_seq_len = int(input_ids.shape[1])
+
+        # Total sequence (prompt + generation) is capped by the max decode gear.
+        budget = self.max_total_len - int(max_new_tokens)
+        if actual_seq_len > budget:
+            print(
+                f"[truncate] prompt seq_len={actual_seq_len} > budget={budget} "
+                f"(max gear {self.max_total_len} - max_new {max_new_tokens}); keeping tail"
+            )
+            input_ids = input_ids[:, -budget:]
+            attention_mask = attention_mask[:, -budget:]
+            position_ids = _compute_position_ids(attention_mask)
+            actual_seq_len = budget
+
+        # ---- Prefill ----
         if self.prefill_buckets:
             target_seq_len = _next_bucket(actual_seq_len, self.prefill_buckets)
             if target_seq_len < actual_seq_len:
@@ -314,105 +329,136 @@ class Qwen3PrefillDecodeInferencer:
             )
             print(f"[prefill] seq_len={actual_seq_len} -> bucket={target_seq_len} (pad {pad_len})")
 
-        prefill_inputs = [
+        print("Running LLM prefill...")
+        pf_inputs = [
             mslite.Tensor(input_ids),
             mslite.Tensor(attention_mask),
             mslite.Tensor(position_ids),
         ]
-        print("Running LLM prefill...")
-        t0 = time.time()
-        prefill_outputs = self.prefill_model.predict(prefill_inputs)
-        logits = prefill_outputs[0].get_data_to_numpy()
-        past_kv = prefill_outputs[1].get_data_to_numpy()
-        prefill_ms = (time.time() - t0) * 1000
+        # Warmup (untimed): trigger the graph resize/compile at this bucket.
+        self.prefill_model.predict(pf_inputs)
+        t0 = time.perf_counter()
+        pf_out = self.prefill_model.predict(pf_inputs)
+        prefill_ms = (time.perf_counter() - t0) * 1000.0
+        # ArgMax fused in the prefill graph: output 0 is already token_id.
+        generated_ids = [int(pf_out[0].get_data_to_numpy().flatten()[0])]
+        valid_len = actual_seq_len
+        pf_kv_np = pf_out[1].get_data_to_numpy()
         print(f"Prefill time: {prefill_ms:.2f} ms")
 
-        if actual_seq_len != int(input_ids.shape[1]):
-            past_kv = past_kv[:, :, :, :actual_seq_len, :]
-
-        generated_ids = []
-        # logits is [batch, 1, vocab] (slice_last) or [batch, seq, vocab]
-        next_token = int(np.argmax(logits[0, -1]))
-        generated_ids.append(next_token)
-
-        cur_pos = int(position_ids[0, actual_seq_len - 1])
-
-        print("Running LLM decode...")
+        # ---- Zero-copy decode loop ----
+        print("Running LLM decode (zero-copy ping-pong KV on device)...")
         decode_times = []
+        gear_step_ms = {}
+        switch_ms = []
+        gear = _next_bucket(valid_len + 1, self.decode_buckets)
+        if gear < valid_len + 1:
+            raise ValueError(
+                f"sequence length {valid_len + 1} exceeds max decode "
+                f"bucket {self.decode_buckets[-1]}"
+            )
+        print(f"[decode] start gear={gear}")
+
+        # Prefill -> decode handoff: one H2D copy of the valid KV prefix.
+        t0 = time.perf_counter()
+        t_in_kv = self._seed_kv_buffer(pf_kv_np, valid_len, gear)
+        switch_ms.append((time.perf_counter() - t0) * 1000.0)
+        print(f"[decode] prefill->decode KV handoff: H2D {switch_ms[-1]:.2f} ms")
+
+        io = self._gear_io_for(gear)
+        t_out_kv = io["t_kv_b"]
+        ids_np = _np_dtype(self._dc_ids_dtype)
+        mask_np_dtype = _np_dtype(self._dc_mask_dtype)
+        pos_np = _np_dtype(self._dc_pos_dtype)
+
+        # Prime the decode model at the starting gear (untimed).
+        prime_mask = np.zeros((1, gear), dtype=mask_np_dtype)
+        prime_mask[0, : valid_len + 1] = 1
+        self._prime_gear(
+            gear, t_in_kv,
+            np.array([[generated_ids[-1]]], dtype=ids_np),
+            prime_mask, np.array([[valid_len]], dtype=pos_np),
+        )
+
         for _ in range(max_new_tokens - 1):
             if self.eos_token_id is not None and generated_ids[-1] == int(
                 self.eos_token_id
             ):
                 break
+            if valid_len >= self.max_total_len:
+                print(f"[decode] KV buffer full at max gear {self.max_total_len}; stop")
+                break
 
-            next_input_ids = np.array([[generated_ids[-1]]], dtype=np.int32)
-            next_position_ids = np.array([[cur_pos + 1]], dtype=np.int32)
+            # Gear switch when the current buffer is full.
+            if valid_len >= gear:
+                next_gear = _next_bucket(valid_len + 1, self.decode_buckets)
+                t0 = time.perf_counter()
+                t_in_kv = self._seed_kv_buffer(t_in_kv, valid_len, next_gear)
+                gear = next_gear
+                io = self._gear_io_for(gear)
+                t_out_kv = io["t_kv_b"]
+                switch_mask = np.zeros((1, gear), dtype=mask_np_dtype)
+                switch_mask[0, : valid_len + 1] = 1
+                self._prime_gear(
+                    gear, t_in_kv,
+                    np.array([[generated_ids[-1]]], dtype=ids_np),
+                    switch_mask, np.array([[valid_len]], dtype=pos_np),
+                )
+                switch_ms.append((time.perf_counter() - t0) * 1000.0)
+                print(
+                    f"[decode] gear switch -> {gear} "
+                    f"(copy+prime {switch_ms[-1]:.2f} ms, valid_len={valid_len})"
+                )
 
-            if self.decode_buckets:
-                cur_kv_len = past_kv.shape[3]
-                target_len = _next_bucket(cur_kv_len, self.decode_buckets)
-                if target_len > cur_kv_len:
-                    pad = np.zeros(
-                        (
-                            past_kv.shape[0], past_kv.shape[1], past_kv.shape[2],
-                            target_len - cur_kv_len, past_kv.shape[4],
-                        ),
-                        dtype=past_kv.dtype,
-                    )
-                    past_kv_in = np.concatenate([past_kv, pad], axis=3)
-                else:
-                    past_kv_in = past_kv
-                attn_in = np.zeros((1, target_len + 1), dtype=np.int32)
-                attn_in[0, :cur_kv_len] = 1
-                attn_in[0, target_len] = 1
-            else:
-                target_len = past_kv.shape[3]
-                past_kv_in = past_kv
-                attn_in = np.ones((1, target_len + 1), dtype=np.int32)
+            # attention_mask: ones on [0, valid_len+1).
+            attn_mask = np.zeros((1, gear), dtype=mask_np_dtype)
+            attn_mask[0, : valid_len + 1] = 1
 
-            io = self._get_bucket_io(target_len)
+            t_step = time.perf_counter()
+            io["t_ids"].set_data_from_numpy(
+                np.array([[generated_ids[-1]]], dtype=ids_np)
+            )
+            io["t_mask"].set_data_from_numpy(attn_mask)
+            io["t_pos"].set_data_from_numpy(np.array([[valid_len]], dtype=pos_np))
+            decode_outputs = self.decode_model.predict(
+                [io["t_ids"], io["t_mask"], io["t_pos"], t_in_kv],
+                outputs=[io["t_token"], t_out_kv],
+            )
+            # ArgMax fused in the decode graph: 8-byte D2H per step.
+            token = int(decode_outputs[0].get_data_to_numpy().flatten()[0])
+            step_ms = (time.perf_counter() - t_step) * 1000.0
+            decode_times.append(step_ms)
+            gear_step_ms.setdefault(gear, []).append(step_ms)
 
-            io["t_input_ids"].set_data_from_numpy(next_input_ids)
-            io["t_attention_mask"].set_data_from_numpy(attn_in)
-            io["t_position_ids"].set_data_from_numpy(next_position_ids)
-            io["t_past_in"].set_data_from_numpy(past_kv_in)
+            # Ping-pong swap: next step's input KV is this step's output buffer.
+            t_in_kv, t_out_kv = t_out_kv, t_in_kv
+            valid_len += 1
+            generated_ids.append(token)
 
-            inputs = [
-                io["t_input_ids"],
-                io["t_attention_mask"],
-                io["t_position_ids"],
-                io["t_past_in"],
-            ]
-            t_step = time.time()
-            decode_outputs = self._predict(inputs, io["out_bufs"])
-            decode_times.append((time.time() - t_step) * 1000)
-
-            logits = decode_outputs[0].get_data_to_numpy()
-            new_past_kv = decode_outputs[1].get_data_to_numpy()
-
-            if self.decode_buckets and new_past_kv.shape[3] != past_kv.shape[3] + 1:
-                tail_idx = past_kv_in.shape[3]
-                new_kv = new_past_kv[:, :, :, tail_idx : tail_idx + 1, :]
-                past_kv = np.concatenate([past_kv, new_kv], axis=3)
-            else:
-                past_kv = new_past_kv
-            cur_pos += 1
-
-            generated_ids.append(int(np.argmax(logits[0, -1])))
-
+        # ---- Summary ----
         total_decode_ms = sum(decode_times)
         avg_decode_ms = (
             total_decode_ms / len(decode_times) if decode_times else 0.0
+        )
+        total_ms = prefill_ms + total_decode_ms
+        throughput = (
+            len(generated_ids) / (total_ms / 1000.0) if total_ms > 0 else 0.0
         )
         print(
             f"Total decode time: {total_decode_ms:.2f} ms, "
             f"avg decode step: {avg_decode_ms:.2f} ms, steps: {len(decode_times)}"
         )
-
-        total_ms = prefill_ms + total_decode_ms
-        throughput = (
-            len(generated_ids) / (total_ms / 1000.0) if total_ms > 0 else 0.0
-        )
+        for g in sorted(gear_step_ms):
+            times = gear_step_ms[g]
+            print(
+                f"  gear {g}: {len(times)} steps, "
+                f"avg {sum(times) / len(times):.2f} ms"
+            )
+        if switch_ms:
+            print(
+                f"Gear-switch/handoff one-time costs (copy+prime): {len(switch_ms)} "
+                f"(total {sum(switch_ms):.2f} ms, excluded from decode avg)"
+            )
         print(
             f"Total time: {total_ms:.2f} ms, throughput: {throughput:.2f} tok/s"
         )
@@ -421,7 +467,7 @@ class Qwen3PrefillDecodeInferencer:
 
 
 # ---------------------------------------------------------------------------
-# Prefill-only inferencer (slice_last & no_cache modes)
+# Prefill-only inferencer (Scene B)
 # ---------------------------------------------------------------------------
 
 class Qwen3PrefillInferencer:
@@ -460,7 +506,7 @@ class Qwen3PrefillInferencer:
         self, text: str, max_length: int = 2048, use_chat_template: bool = True,
         system_prompt: str = None,
     ):
-        """Run prefill to generate the first token logits (Scene B)."""
+        """Run prefill to generate the first token (Scene B)."""
         input_ids, attention_mask, position_ids = _tokenize(
             text, self.tokenizer, max_length, use_chat_template,
             enable_thinking=False,  # 场景B：关闭 thinking，直接输出选项
@@ -483,21 +529,20 @@ class Qwen3PrefillInferencer:
             )
             print(f"[prefill] seq_len={actual_seq_len} -> bucket={target} (pad {pad_len})")
 
-        prefill_inputs = [
+        print("Running LLM prefill...")
+        t0 = time.time()
+        prefill_outputs = self.prefill_model.predict([
             mslite.Tensor(input_ids),
             mslite.Tensor(attention_mask),
             mslite.Tensor(position_ids),
-        ]
-        print("Running LLM prefill...")
-        t0 = time.time()
-        prefill_outputs = self.prefill_model.predict(prefill_inputs)
+        ])
         prefill_ms = (time.time() - t0) * 1000
 
-        logits = prefill_outputs[0].get_data_to_numpy()
-        next_token = int(np.argmax(logits[0, -1]))
-
+        # ArgMax is fused into the graph: output 0 is already token_id [batch, 1, 1].
+        token_out = prefill_outputs[0].get_data_to_numpy()
+        next_token = int(token_out.flatten()[0])
         print(f"Prefill time: {prefill_ms:.2f} ms")
-        print(f"Output logits shape: {logits.shape}")
+        print(f"Output token_id shape: {token_out.shape}")
         print(f"Predicted token id: {next_token}")
         decoded = self.tokenizer.decode([next_token], skip_special_tokens=False)
         print(f"Decoded token: {decoded!r}")
@@ -557,13 +602,43 @@ class Qwen3CommonPrefixInferencer:
         )
 
     def compute_prefix_cache(self, prefix_text: str):
-        """Run prefix model once to compute KV cache."""
-        enc = self.tokenizer(
-            prefix_text, return_tensors="np", padding=False, truncation=True,
-            max_length=self.prefix_seq_len,
-        )
-        input_ids = enc["input_ids"].astype(np.int32)
-        attention_mask = enc.get("attention_mask", np.ones_like(input_ids)).astype(np.int32)
+        """Run prefix model once to compute KV cache.
+
+        prefix_text is wrapped as a system message via apply_chat_template so
+        that the prefix tokens follow the chat format (<|im_start|>system\\n...
+        <|im_end|>\\n). The suffix model then appends <|im_start|>user\\n...
+        <|im_end|>\\n<|im_start|>assistant\\n via apply_chat_template, producing
+        a coherent chat sequence. Without this wrapping, the model sees raw
+        text for prefix and chat-templated suffix, breaking the context and
+        causing degenerate outputs (e.g., <|im_end|>).
+        """
+        if (
+            hasattr(self.tokenizer, "apply_chat_template")
+            and getattr(self.tokenizer, "chat_template", None)
+        ):
+            messages = [{"role": "system", "content": prefix_text}]
+            enc = self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=True,
+                add_generation_prompt=False,  # no assistant header; suffix adds it
+                return_tensors="np",
+                enable_thinking=False,
+            )
+            if hasattr(enc, "keys") and "input_ids" in enc:
+                input_ids = enc["input_ids"]
+                attention_mask = enc.get("attention_mask", np.ones_like(input_ids))
+            else:
+                input_ids = enc
+                attention_mask = np.ones_like(input_ids)
+        else:
+            enc = self.tokenizer(
+                prefix_text, return_tensors="np", padding=False, truncation=True,
+                max_length=self.prefix_seq_len,
+            )
+            input_ids = enc["input_ids"]
+            attention_mask = enc.get("attention_mask", np.ones_like(input_ids))
+        input_ids = input_ids.astype(np.int32)
+        attention_mask = attention_mask.astype(np.int32)
         position_ids = _compute_position_ids(attention_mask)
 
         actual_len = int(input_ids.shape[1])
@@ -622,6 +697,7 @@ class Qwen3CommonPrefixInferencer:
             suffix_input_ids = enc["input_ids"]
 
         suffix_input_ids = suffix_input_ids.astype(np.int32)
+
         suffix_len = int(suffix_input_ids.shape[1])
 
         target_suffix_len = _next_bucket(suffix_len, self.suffix_buckets)
@@ -646,11 +722,14 @@ class Qwen3CommonPrefixInferencer:
             suffix_mask[:, :pad_len] = 0
         full_attention_mask = np.concatenate([prefix_mask, suffix_mask], axis=1)
 
-        suffix_positions = np.arange(
-            prefix_len, prefix_len + target_suffix_len, dtype=np.int32
+        # Natural single-sequence RoPE: real suffix tokens continue right after the
+        # actual prefix length, not after the right-padded prefix_len (base-768).
+        # The base-768 positions shift the rotary phase and, with the added-token
+        # remap above, are what flips the reference Z into the deployment C.
+        suffix_positions = np.zeros((1, target_suffix_len), dtype=np.int32)
+        suffix_positions[:, pad_len:] = np.arange(
+            prefix_actual, prefix_actual + suffix_len, dtype=np.int32
         ).reshape(1, -1)
-        if pad_len > 0:
-            suffix_positions[:, :pad_len] = 0
 
         inputs = [
             mslite.Tensor(suffix_input_ids),
@@ -664,13 +743,13 @@ class Qwen3CommonPrefixInferencer:
         outputs = self.suffix_model.predict(inputs)
         suffix_ms = (time.time() - t0) * 1000
 
-        logits = outputs[0].get_data_to_numpy()
-        token_id = int(np.argmax(logits[0, -1]))
-        decoded = self.tokenizer.decode([token_id], skip_special_tokens=False)
-
+        # ArgMax is fused into the graph: output 0 is already token_id [batch, 1, 1].
+        out0 = outputs[0].get_data_to_numpy()
+        token_id = int(out0.flatten()[0])
         print(f"Suffix model time: {suffix_ms:.2f} ms")
-        print(f"Output logits shape: {logits.shape}")
+        print(f"Output token_id shape: {out0.shape}")
         print(f"Predicted token id: {token_id}")
+        decoded = self.tokenizer.decode([token_id], skip_special_tokens=False)
         print(f"Decoded token: {decoded!r}")
 
         return token_id, decoded, suffix_ms
@@ -682,7 +761,7 @@ class Qwen3CommonPrefixInferencer:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Qwen3-0.6B Inference (supports prefill_decode, slice_last, no_cache, common_prefix)"
+        description="Qwen3-0.6B Inference (supports prefill_decode, prefill_only, common_prefix)"
     )
     parser.add_argument(
         "--mode", type=str, default="prefill_only",
@@ -691,7 +770,7 @@ def main():
              "or common_prefix (Scene C)",
     )
     parser.add_argument("--prefill-model", type=str, default=None,
-                        help="Prefill MindIR model path (for prefill_decode/slice_last/no_cache modes)")
+                        help="Prefill MindIR model path (for prefill_decode/prefill_only modes)")
     parser.add_argument("--decode-model", type=str, default=None,
                         help="Decode MindIR model path (for prefill_decode mode)")
     parser.add_argument("--prefix-model", type=str, default=None,
@@ -703,7 +782,7 @@ def main():
     parser.add_argument("--prompt", type=str, default="你好，请介绍一下你自己。")
     parser.add_argument("--system-prompt", type=str,
                         default="You are a helpful assistant. Answer questions concisely.",
-                        help="System prompt for slice_last/common_prefix modes (Scene B/C)")
+                        help="System prompt for prefill_only/common_prefix modes (Scene B/C)")
     parser.add_argument("--prefix-text", type=str,
                         default="You are a helpful assistant. Answer questions concisely.")
     parser.add_argument("--max-new-tokens", type=int, default=128,
@@ -712,17 +791,15 @@ def main():
     parser.add_argument("--no-chat-template", action="store_true")
     parser.add_argument("--device", type=str, default="ascend")
     parser.add_argument("--device-id", type=int, default=0)
-    parser.add_argument("--prefill-buckets", type=str, default="128,256,512,1024,480,640",
-                        help="Prefill seq_len buckets (prefill_decode/prefill_only modes)")
-    parser.add_argument("--decode-buckets", type=str,
-                        default="16,32,64,96,128,192,256,384,512,768,1024,1536,2048",
-                        help="Decode seq_len buckets (prefill_decode mode)")
+    parser.add_argument("--prefill-buckets", type=str, default="128,512,1024,2048",
+                        help="Prefill seq_len buckets, must match prefill ini ge.dynamicDims")
+    parser.add_argument("--decode-buckets", type=str, default="256,640,1152,2176",
+                        help="Decode gear sizes (zero-copy KV cache buckets), must match "
+                             "decode ini ge.dynamicDims")
     parser.add_argument("--prefix-seq-len", type=int, default=768,
                         help="Prefix model bucket size (common_prefix mode)")
     parser.add_argument("--suffix-buckets", type=str, default="128,256,384,512,640",
                         help="Suffix seq_len buckets (common_prefix mode)")
-    parser.add_argument("--force-no-pre-alloc", action="store_true",
-                        help="Skip pre-alloc probe; use plain predict (prefill_decode mode)")
     args = parser.parse_args()
 
     if args.mode == "prefill_decode":
@@ -740,9 +817,6 @@ def main():
             decode_buckets=decode_buckets,
             prefill_buckets=prefill_buckets,
         )
-        if args.force_no_pre_alloc:
-            inferencer._use_pre_alloc = False
-            print("[zero-copy] pre-alloc disabled by --force-no-pre-alloc flag")
 
         print(f"\n{'=' * 60}")
         print("Mode: prefill_decode")
