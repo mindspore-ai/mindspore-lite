@@ -151,6 +151,11 @@ bool MindirModelLoader::ConvertGraph(const mind_ir::GraphProto &graph_proto, Lit
 bool MindirModelLoader::ConvertTensors(const mind_ir::GraphProto &graph_proto, LiteGraph::SubGraph *sub_graph,
                                        bool is_main_graph) {
   for (int i = 0; i < graph_proto.input_size(); i++) {
+    if (graph_proto.input(i).tensor_size() == 0) {
+      MS_LOG(ERROR) << "MindirModelLoader: Convert tensors failed, graph input " << graph_proto.input(i).name()
+                    << " has no tensor proto.";
+      return false;
+    }
     const mind_ir::TensorProto &tensor_proto = graph_proto.input(i).tensor(0);
     TensorProtoWrap tensor_wrap(graph_proto.input(i).name(), tensor_proto);
     this->model_->all_mindir_tensors_.push_back(tensor_wrap);
@@ -165,6 +170,11 @@ bool MindirModelLoader::ConvertTensors(const mind_ir::GraphProto &graph_proto, L
     this->tensor_count_++;
   }
   for (int i = 0; i < graph_proto.output_size(); i++) {
+    if (graph_proto.output(i).tensor_size() == 0) {
+      MS_LOG(ERROR) << "MindirModelLoader: Convert tensors failed, graph output " << graph_proto.output(i).name()
+                    << " has no tensor proto.";
+      return false;
+    }
     const mind_ir::TensorProto &tensor_proto = graph_proto.output(i).tensor(0);
     TensorProtoWrap tensor_wrap(graph_proto.output(i).name(), tensor_proto);
     this->model_->all_mindir_tensors_.push_back(tensor_wrap);
@@ -195,6 +205,11 @@ bool MindirModelLoader::ConvertConstantNode(const mind_ir::NodeProto &node_proto
   for (int j = 0; j < node_proto.attribute_size(); j++) {
     auto attribute_proto = node_proto.attribute(j);
     if (attribute_proto.type() == mind_ir::AttributeProto_AttributeType_TENSORS) {
+      if (attribute_proto.tensors_size() == 0) {
+        MS_LOG(ERROR) << "MindirModelLoader: Convert constant node failed, node " << node_proto.name()
+                      << " tensor attribute has no tensor proto.";
+        return false;
+      }
       const mind_ir::TensorProto &tensor_proto = attribute_proto.tensors(0);
       TensorProtoWrap tensor_wrap(node_proto.name(), tensor_proto);
       this->model_->all_mindir_tensors_.push_back(tensor_wrap);
@@ -247,7 +262,19 @@ bool MindirModelLoader::ConvertNodes(const mind_ir::GraphProto &graph_proto, Lit
     }
     node->name_ = node_proto.name();
     node->base_operator_ = this->MakePrimitiveC(node_proto.op_type());
+    if (node->base_operator_ == nullptr) {
+      MS_LOG(ERROR) << "MindirModelLoader: Convert nodes failed, unsupported op type: " << node_proto.op_type()
+                    << ", node: " << node_proto.name();
+      delete node;
+      return false;
+    }
     auto base_operator = std::reinterpret_pointer_cast<ops::BaseOperator>(node->base_operator_);
+    if (base_operator == nullptr || base_operator->GetPrim() == nullptr) {
+      MS_LOG(ERROR) << "MindirModelLoader: Convert nodes failed, invalid operator for op type: " << node_proto.op_type()
+                    << ", node: " << node_proto.name();
+      delete node;
+      return false;
+    }
     node->op_type_ = base_operator->GetPrim()->instance_name();
 
     ResolveNodeInputs(node_proto, node);

@@ -234,6 +234,9 @@ Status LiteRTGraphExecutor::RunGraph(uint32_t, const std::vector<MSTensor> &inpu
         if (input->Size() != user_input.DataSize()) {
           ResetTensorData(old_data, input_tensors);
 #ifndef ENABLE_LITE_ACL
+          MS_LOG(ERROR) << "Input " << i << " data size not match, required size " << input->Size() << ", given size "
+                        << user_input.DataSize();
+          return kLiteInputParamInvalid;
 #else
           std::vector<int> truncate_shape = {static_cast<int>(user_input.DataSize())};
           input->set_shape(truncate_shape);

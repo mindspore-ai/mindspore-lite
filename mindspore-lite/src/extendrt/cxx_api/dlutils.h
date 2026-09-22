@@ -47,8 +47,21 @@ inline std::string FindFileWithRecursion(const std::string &parent_dir, const st
       ent = readdir(dir);
       continue;
     }
-    if (std::string(ent->d_name).find(target_so) != std::string::npos) {
+    // Only accept regular files (or symlinks to them) whose name matches the
+    // target exactly or is a versioned/suffixed variant of it (target + '.');
+    // do not load arbitrary lookalike files found by loose substring match.
+    const std::string d_name = ent->d_name;
+    bool name_match =
+      d_name == target_so || (target_so.size() >= 3 && d_name.size() > target_so.size() &&
+                              d_name.compare(0, target_so.size(), target_so) == 0 && d_name[target_so.size()] == '.');
+    if (name_match && (ent->d_type == DT_REG || ent->d_type == DT_LNK)) {
       std::string found_path = parent_dir + std::string(ent->d_name);
+      auto real_path = lite::RealPath(found_path.c_str());
+      if (real_path.empty()) {
+        MS_LOG(WARNING) << "Skip invalid file: " << found_path;
+        ent = readdir(dir);
+        continue;
+      }
       (void)closedir(dir);
       return found_path;
     }
