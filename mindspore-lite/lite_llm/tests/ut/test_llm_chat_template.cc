@@ -83,14 +83,17 @@ TEST(ChatTemplate, ZeroBufferSizeReturnsError) {
   MSLLMDestroyModel(&h);
 }
 
-TEST(ChatTemplate, UnbuiltModelReturnsError) {
+TEST(ChatTemplate, UnbuiltModelReturnsNotSupported) {
   auto *h = MSLLMCreateModel();
   ASSERT_NE(h, nullptr);
   MSLLMChatMessage msgs[] = {{MSLLM_ROLE_USER, "hello"}};
   char buf[256];
-  // No BuildModel — tokenizer is null
+  std::memset(buf, 'X', sizeof(buf));
+  const std::string original(buf, sizeof(buf));
+  // No BuildModel — tokenizer is null. The output must remain untouched.
   auto s = MSLLMApplyChatTemplate(h, msgs, 1, buf, sizeof(buf));
-  EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
+  EXPECT_EQ(s, kMSLLM_ERROR_NOT_SUPPORTED);
+  EXPECT_EQ(std::string(buf, sizeof(buf)), original);
   MSLLMDestroyModel(&h);
 }
 
@@ -105,9 +108,9 @@ TEST(ChatTemplate, AllRoleTypesAccepted) {
     {MSLLM_ROLE_ASSISTANT, "Hello!"},
   };
   char buf[256];
-  // Unbuilt model → INVALID_ARGS (tokenizer null), but messages are valid
+  // Unbuilt model → NOT_SUPPORTED (tokenizer null), but messages are valid
   auto s = MSLLMApplyChatTemplate(h, msgs, 3, buf, sizeof(buf));
-  EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);
+  EXPECT_EQ(s, kMSLLM_ERROR_NOT_SUPPORTED);
   MSLLMDestroyModel(&h);
 }
 
@@ -119,7 +122,7 @@ TEST(ChatTemplate, EmptyContentAccepted) {
   };
   char buf[256];
   auto s = MSLLMApplyChatTemplate(h, msgs, 1, buf, sizeof(buf));
-  EXPECT_EQ(s, kMSLLM_ERROR_INVALID_ARGS);  // unbuilt model
+  EXPECT_EQ(s, kMSLLM_ERROR_NOT_SUPPORTED);  // unbuilt model
   MSLLMDestroyModel(&h);
 }
 

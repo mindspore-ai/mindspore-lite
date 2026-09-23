@@ -196,6 +196,35 @@ TEST(ApplyChatTemplate, NullContentReturnsInvalidArgs) {
   EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 1, buf, sizeof(buf)), kMSLLM_ERROR_INVALID_ARGS);
 }
 
+TEST(ApplyChatTemplate, InvalidRoleReturnsInvalidArgs) {
+  auto tm = BuildTestModel();
+  ASSERT_NE(tm.handle, nullptr);
+  for (int role : {3, 99}) {
+    for (int position : {0, 1}) {
+      MSLLMChatMessage msgs[] = {{MSLLM_ROLE_USER, "hello"}, {MSLLM_ROLE_ASSISTANT, "reply"}};
+      msgs[position].role = static_cast<MSLLMRole>(role);
+      std::vector<char> buf(256, 'x');
+      const auto original = buf;
+      EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 2, buf.data(), static_cast<int>(buf.size())),
+                kMSLLM_ERROR_INVALID_ARGS);
+      EXPECT_EQ(buf, original);
+    }
+  }
+}
+
+TEST(ApplyChatTemplate, AllLegalRolesRenderSuccessfully) {
+  auto tm = BuildTestModel();
+  ASSERT_NE(tm.handle, nullptr);
+  MSLLMChatMessage msgs[] = {
+    {MSLLM_ROLE_SYSTEM, "system content"},
+    {MSLLM_ROLE_USER, "user content"},
+    {MSLLM_ROLE_ASSISTANT, "assistant content"},
+  };
+  char buf[256] = {};
+  EXPECT_EQ(MSLLMApplyChatTemplate(tm.handle, msgs, 3, buf, sizeof(buf)), kMSLLM_SUCCESS);
+  EXPECT_STREQ(buf, "system:system contentuser:user contentassistant:assistant content\n");
+}
+
 TEST(ApplyChatTemplate, EmptyContentAccepted) {
   auto tm = BuildTestModel();
   ASSERT_NE(tm.handle, nullptr);
@@ -264,6 +293,40 @@ void SetConfig(MSLLMModelHandle h, int32_t max_new_tokens) {
   cfg.top_p = 1.0f;
   cfg.repetition_penalty = 1.0f;
   ASSERT_EQ(MSLLMSetGenerationConfig(h, cfg), kMSLLM_SUCCESS);
+}
+
+TEST(Generate, EmptyPromptStartsFromBos) {
+  auto tm = BuildTestModel();
+  ASSERT_NE(tm.handle, nullptr);
+  ASSERT_NE(tm.backend, nullptr);
+  SetConfig(tm.handle, 4);
+  tm.backend->QueueLogits(LogitsFor(3));
+  tm.backend->QueueLogits(LogitsFor(2));
+
+  char buf[4096] = {};
+  EXPECT_EQ(MSLLMGenerate(tm.handle, nullptr, buf, sizeof(buf)), kMSLLM_ERROR_INVALID_ARGS);
+  EXPECT_EQ(tm.backend->execute_calls(), 0);
+  EXPECT_EQ(MSLLMGenerate(tm.handle, "", buf, sizeof(buf)), kMSLLM_SUCCESS);
+  EXPECT_STREQ(buf, "a");
+  EXPECT_EQ(tm.backend->execute_calls(), 2);
+}
+
+TEST(StreamGenerate, EmptyPromptStartsFromBos) {
+  auto tm = BuildTestModel();
+  ASSERT_NE(tm.handle, nullptr);
+  ASSERT_NE(tm.backend, nullptr);
+  SetConfig(tm.handle, 4);
+  tm.backend->QueueLogits(LogitsFor(3));
+  tm.backend->QueueLogits(LogitsFor(2));
+
+  StreamResult result;
+  EXPECT_EQ(MSLLMStreamGenerate(tm.handle, nullptr, CollectTokens, &result), kMSLLM_ERROR_INVALID_ARGS);
+  EXPECT_EQ(result.callback_calls, 0);
+  EXPECT_EQ(MSLLMStreamGenerate(tm.handle, "", CollectTokens, &result), kMSLLM_SUCCESS);
+  EXPECT_EQ(result.tokens, (std::vector<std::string>{"a"}));
+  EXPECT_EQ(result.reason, kMSLLM_FINISHED_BY_EOS);
+  EXPECT_EQ(result.callback_calls, 2);
+  EXPECT_EQ(tm.backend->execute_calls(), 2);
 }
 
 TEST(Generate, StopsAtEos) {
@@ -571,6 +634,26 @@ TEST(Reentry, DestroyReturnsBusy) {
 }
 
 // ─── Incremental decode (#17) ────────────────────────────────────────────
+
+TEST(TokenizerEncode, EmptyPromptUsesConfiguredBos) {
+  for (bool sentencepiece : {false, true}) {
+    auto vocab =
+      sentencepiece ? mslite_llm_test::BuildMinimalSentencePieceVocabBin() : mslite_llm_test::BuildMinimalVocabBin();
+    auto tok = mslite_llm::CreateTokenizerFromBuffer(vocab.data(), vocab.size());
+    ASSERT_NE(tok, nullptr);
+    EXPECT_EQ(tok->Encode(""), (std::vector<int32_t>{1}));
+  }
+}
+
+TEST(TokenizerEncode, EmptyPromptWithoutBosRemainsEmpty) {
+  auto vocab = mslite_llm_test::BuildMinimalVocabBin();
+  // Disable the configured start token in the vocabulary header.
+  for (size_t i = 16; i < 20; ++i) vocab[i] = 0xff;
+  auto tok = mslite_llm::CreateTokenizerFromBuffer(vocab.data(), vocab.size());
+  ASSERT_NE(tok, nullptr);
+  EXPECT_TRUE(tok->Encode("").empty());
+  EXPECT_EQ(tok->Encode("a"), (std::vector<int32_t>{3}));
+}
 
 TEST(TokenizerEncode, ByteLevelBpePreservesWhitespaceWithoutImplicitBos) {
   auto vocab = mslite_llm_test::BuildMinimalVocabBin(true);

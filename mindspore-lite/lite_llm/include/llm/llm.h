@@ -102,8 +102,11 @@ MSLLM_API MSLLMStatus MSLLMGetGenerationConfig(MSLLMModelHandle llm_model, MSLLM
  * @param generated_prompt Caller-provided output buffer for the rendered text.
  * @param prompt_size Size of generated_prompt in bytes.
  * @return kMSLLM_SUCCESS on success, kMSLLM_ERROR_BUFFER_TOO_SMALL if the
- *         buffer is insufficient, kMSLLM_ERROR_MODEL_LOAD if the package has
- *         no chat template (runtime ships no builtin renderer), or
+ *         buffer is insufficient, kMSLLM_ERROR_NOT_SUPPORTED if the tokenizer
+ *         is not initialized (e.g. before MSLLMBuildModel),
+ *         kMSLLM_ERROR_MODEL_LOAD if the package has
+ *         no chat template (runtime ships no builtin renderer),
+ *         kMSLLM_ERROR_INVALID_ARGS if a message has an invalid role or NULL content, or
  *         another error code.
  */
 MSLLM_API MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const MSLLMChatMessage *messages,
@@ -119,7 +122,7 @@ MSLLM_API MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const M
  * Non-streaming: cannot be aborted via MSLLMAbort.
  *
  * @param llm_model LLM model handle.
- * @param prompt Input prompt text.
+ * @param prompt Input prompt text. Must not be null.
  * @param generated_text Caller-provided output buffer.
  * @param text_size Size of generated_text in bytes.
  * @return kMSLLM_SUCCESS or error code.
@@ -137,7 +140,7 @@ MSLLM_API MSLLMStatus MSLLMGenerate(MSLLMModelHandle llm_model, const char *prom
  * Call this from a Task/Worker on UI platforms to avoid blocking the UI.
  *
  * @param llm_model LLM model handle.
- * @param prompt Input prompt text.
+ * @param prompt Input prompt text. Must not be null.
  * @param callback Called once per generated token, and once at the end
  *        (token=NULL) with the terminal reason.
  * @param user_data Opaque pointer passed through to the callback.
