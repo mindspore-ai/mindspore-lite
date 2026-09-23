@@ -247,9 +247,12 @@ void CollectTokens(const char *token, MSLLMFinishReason reason, void *data) {
   }
 }
 
+constexpr int kNonEosTokenId = 3;  // 'a': argmax token that never hits EOS
+
 // Scripted logits of vocab_size 8 with argmax at `token_id`.
 std::vector<float> LogitsFor(int token_id) {
-  std::vector<float> logits(8, 0.0f);
+  constexpr size_t kFixtureVocabSize = 8;  // must match llm_test_fixture.h vocab_size
+  std::vector<float> logits(kFixtureVocabSize, 0.0f);
   logits[token_id] = 1.0f;
   return logits;
 }
@@ -531,8 +534,9 @@ void ReentrantCallback(const char *token, MSLLMFinishReason reason, void *data) 
 }
 
 MSLLMStatus RunReentrant(MSLLMModelHandle handle, mslite_llm_test::FakeBackend *backend, ReentryOp op) {
-  SetConfig(handle, 4);                // a few tokens so the callback fires
-  backend->QueueLogits(LogitsFor(3));  // never EOS
+  constexpr int32_t kReentrantMaxNewTokens = 4;  // a few tokens so the callback fires
+  SetConfig(handle, kReentrantMaxNewTokens);
+  backend->QueueLogits(LogitsFor(kNonEosTokenId));  // never EOS
 
   ReentryCtx ctx{handle, op};
   MSLLMStreamGenerate(handle, "a", ReentrantCallback, &ctx);

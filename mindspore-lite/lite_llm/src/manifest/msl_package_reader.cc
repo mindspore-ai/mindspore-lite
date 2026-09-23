@@ -45,19 +45,19 @@ bool DecodeKv(const msl_format::KvType type, const uint8_t *raw, size_t len, Msl
       out->value.assign(raw, raw + len);
       return len == 1;
     case msl_format::kTypeUint32:
-      if (len != 4) {
+      if (len != msl_format::kU32Size) {
         return false;
       }
       out->value.assign(raw, raw + len);
       return true;
     case msl_format::kTypeUint64:
-      if (len != 8) {
+      if (len != msl_format::kU64Size) {
         return false;
       }
       out->value.assign(raw, raw + len);
       return true;
     case msl_format::kTypeFloat32:
-      if (len != 4) {
+      if (len != msl_format::kU32Size) {
         return false;
       }
       out->value.assign(raw, raw + len);
@@ -66,17 +66,17 @@ bool DecodeKv(const msl_format::KvType type, const uint8_t *raw, size_t len, Msl
       out->value.assign(raw, raw + len);
       return true;
     case msl_format::kTypeStringArray: {
-      if (len < 4) {
+      if (len < msl_format::kU32Size) {
         return false;
       }
       const uint32_t count = ReadU32(raw);
-      size_t pos = 4;
+      size_t pos = msl_format::kU32Size;
       for (uint32_t i = 0; i < count; ++i) {
-        if (pos + 4 > len) {
+        if (pos + msl_format::kU32Size > len) {
           return false;
         }
         const uint32_t item_len = ReadU32(raw + pos);
-        pos += 4;
+        pos += msl_format::kU32Size;
         if (pos + item_len > len) {
           return false;
         }
@@ -161,15 +161,15 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
   kv_.reserve(count);
   size_t pos = msl_format::kHeaderSize;
   for (uint32_t i = 0; i < count; ++i) {
-    if (pos + 4 > mapped_size_) {
+    if (pos + msl_format::kU32Size > mapped_size_) {
       if (error_message != nullptr) {
         *error_message = "KV region truncated at entry " + std::to_string(i);
       }
       return false;
     }
     const uint32_t key_len = ReadU32(mapped_ + pos);
-    pos += 4;
-    if (pos + key_len + 8 > mapped_size_) {
+    pos += msl_format::kU32Size;
+    if (pos + key_len + msl_format::kKvTypeAndValueLenSize > mapped_size_) {
       if (error_message != nullptr) {
         *error_message = "KV key truncated at entry " + std::to_string(i);
       }
@@ -178,8 +178,8 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
     std::string key(reinterpret_cast<const char *>(mapped_ + pos), key_len);
     pos += key_len;
     const uint32_t type = ReadU32(mapped_ + pos);
-    const uint32_t value_len = ReadU32(mapped_ + pos + 4);
-    pos += 8;
+    const uint32_t value_len = ReadU32(mapped_ + pos + msl_format::kU32Size);
+    pos += msl_format::kKvTypeAndValueLenSize;
     if (pos + value_len > mapped_size_) {
       if (error_message != nullptr) {
         *error_message = "KV value truncated for key \"" + key + "\"";
@@ -218,9 +218,9 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
       ++name_len;
     }
     entry.name.assign(reinterpret_cast<const char *>(raw), name_len);
-    entry.offset = ReadU64(raw + msl_format::kNameSize);
-    entry.size = ReadU64(raw + msl_format::kNameSize + 8);
-    entry.access = ReadU32(raw + msl_format::kNameSize + 16);
+    entry.offset = ReadU64(raw + msl_format::kEntryOffsetPos);
+    entry.size = ReadU64(raw + msl_format::kEntrySizePos);
+    entry.access = ReadU32(raw + msl_format::kEntryAccessPos);
 
     if (entry.name.empty()) {
       if (error_message != nullptr) {
@@ -377,15 +377,15 @@ bool MslPackageReader::GetKvStringArray(const std::string &key, std::vector<std:
   const uint8_t *raw = kv_item->value.data();
   const size_t len = kv_item->value.size();
   const uint32_t count = ReadU32(raw);
-  size_t pos = 4;
+  size_t pos = msl_format::kU32Size;
   out->clear();
   out->reserve(count);
   for (uint32_t i = 0; i < count; ++i) {
-    if (pos + 4 > len) {
+    if (pos + msl_format::kU32Size > len) {
       return false;
     }
     const uint32_t item_len = ReadU32(raw + pos);
-    pos += 4;
+    pos += msl_format::kU32Size;
     if (pos + item_len > len) {
       return false;
     }

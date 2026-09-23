@@ -26,6 +26,47 @@ namespace mslite_llm {
 
 namespace {
 
+// UTF-8 encoding constants.
+constexpr size_t kUtf8SeqLen2B = 2;              // length of a 2-byte sequence (U+0080..U+07FF)
+constexpr size_t kUtf8SeqLen3B = 3;              // length of a 3-byte sequence (U+0800..U+FFFF)
+constexpr size_t kUtf8SeqLen4B = 4;              // length of a 4-byte sequence (U+10000..U+10FFFF)
+constexpr int kUtf8ContBits = 6;                 // payload bits carried by a UTF-8 continuation byte
+constexpr int kUtf8ContMask = 0x3F;              // payload mask of a UTF-8 continuation byte
+constexpr int kUtf8Shift2B = 2 * kUtf8ContBits;  // 12: shift of the byte two positions from the end
+constexpr int kUtf8Shift3B = 3 * kUtf8ContBits;  // 18: shift of the byte three positions from the end
+constexpr unsigned int kMaxAscii = 0x7F;         // upper bound of the UTF-8 ASCII range
+
+// GPT-2 pretokenizer contraction lengths, a port of the 's|'t|'re|'ve|'m|'ll|'d
+// part of the GPT-2 pretokenizer regex.
+constexpr size_t kShortContractionLen = 2;  // 's/'t/'m/'d two-char contractions
+constexpr size_t kLongContractionLen = 3;   // 'll/'ve/'re three-char contractions
+
+// GPT-2 bytes_to_unicode() code point ranges, a value-by-value port of its
+// range() calls: printable ASCII and printable Latin-1 code points map to
+// themselves, every other byte value is remapped to 256 + n.
+constexpr int kGpt2PrintableMin = 33;     // ord('!')
+constexpr int kGpt2PrintableMax = 126;    // ord('~')
+constexpr int kGpt2Latin1Min = 161;       // ord('¡')
+constexpr int kGpt2Latin1Max = 172;       // ord('¬')
+constexpr int kGpt2Latin1UpperMin = 174;  // ord('®')
+constexpr int kGpt2Latin1UpperMax = 255;  // ord('ÿ')
+constexpr int kGpt2ByteDomainSize = 256;  // 2**8, remap base (256 + n) for non-printable bytes
+
+// Length in bytes of the UTF-8 sequence introduced by the given lead byte.
+// An invalid leading byte is passed through as a single byte.
+size_t Utf8CharLen(unsigned char lead) {
+  if ((lead & 0xE0) == 0xC0) {
+    return kUtf8SeqLen2B;
+  }
+  if ((lead & 0xF0) == 0xE0) {
+    return kUtf8SeqLen3B;
+  }
+  if ((lead & 0xF8) == 0xF0) {
+    return kUtf8SeqLen4B;
+  }
+  return 1;
+}
+
 uint32_t ReadU32(const uint8_t *data, size_t &offset, size_t size) {
   if (offset + sizeof(uint32_t) > size) {
     return 0;
@@ -56,25 +97,25 @@ void BPECodec::InitByteEncoder() {
   std::vector<int> bs;
   std::vector<int> cs;
 
-  for (int b = 33; b <= 126; ++b) {
+  for (int b = kGpt2PrintableMin; b <= kGpt2PrintableMax; ++b) {
     bs.push_back(b);
     cs.push_back(b);
   }
-  for (int b = 161; b <= 172; ++b) {
+  for (int b = kGpt2Latin1Min; b <= kGpt2Latin1Max; ++b) {
     bs.push_back(b);
     cs.push_back(b);
   }
-  for (int b = 174; b <= 255; ++b) {
+  for (int b = kGpt2Latin1UpperMin; b <= kGpt2Latin1UpperMax; ++b) {
     bs.push_back(b);
     cs.push_back(b);
   }
 
   int n = 0;
-  for (int b = 0; b < 256; ++b) {
+  for (int b = 0; b < kGpt2ByteDomainSize; ++b) {
     bool found = std::any_of(bs.begin(), bs.end(), [b](int j) { return j == b; });
     if (!found) {
       bs.push_back(b);
-      cs.push_back(256 + n);
+      cs.push_back(kGpt2ByteDomainSize + n);
       n++;
     }
   }
@@ -92,16 +133,16 @@ std::string BPECodec::CodePointToUTF8(uint32_t cp) {
   if (cp <= 0x7F) {
     result += static_cast<char>(cp);
   } else if (cp <= 0x7FF) {
-    result += static_cast<char>(0xC0 | (cp >> 6));
+    result += static_cast<char>(0xC0 | (cp >> kUtf8ContBits));
     result += static_cast<char>(0x80 | (cp & 0x3F));
   } else if (cp <= 0xFFFF) {
-    result += static_cast<char>(0xE0 | (cp >> 12));
-    result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+    result += static_cast<char>(0xE0 | (cp >> kUtf8Shift2B));
+    result += static_cast<char>(0x80 | ((cp >> kUtf8ContBits) & kUtf8ContMask));
     result += static_cast<char>(0x80 | (cp & 0x3F));
   } else if (cp <= 0x10FFFF) {
-    result += static_cast<char>(0xF0 | (cp >> 18));
-    result += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
-    result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+    result += static_cast<char>(0xF0 | (cp >> kUtf8Shift3B));
+    result += static_cast<char>(0x80 | ((cp >> kUtf8Shift2B) & 0x3F));
+    result += static_cast<char>(0x80 | ((cp >> kUtf8ContBits) & kUtf8ContMask));
     result += static_cast<char>(0x80 | (cp & 0x3F));
   }
   return result;
@@ -114,34 +155,38 @@ uint32_t BPECodec::UTF8ToCodePoint(const std::string &s, size_t &pos) {
     pos++;
     return c;
   } else if ((c & 0xE0) == 0xC0) {
+    constexpr size_t seq_len = kUtf8SeqLen2B;
     if (pos + 1 >= s.size()) {
       pos++;
       return c;
     }
-    uint32_t cp = (c & 0x1F) << 6;
+    uint32_t cp = (c & 0x1F) << kUtf8ContBits;
     cp |= (static_cast<uint8_t>(s[pos + 1]) & 0x3F);
-    pos += 2;
+    pos += seq_len;
     return cp;
   } else if ((c & 0xF0) == 0xE0) {
-    if (pos + 2 >= s.size()) {
+    constexpr size_t seq_len = kUtf8SeqLen3B;
+    if (pos + seq_len - 1 >= s.size()) {
       pos++;
       return c;
     }
-    uint32_t cp = (c & 0x0F) << 12;
-    cp |= (static_cast<uint8_t>(s[pos + 1]) & 0x3F) << 6;
-    cp |= (static_cast<uint8_t>(s[pos + 2]) & 0x3F);
-    pos += 3;
+    uint32_t cp = (c & 0x0F);
+    for (size_t k = 1; k < seq_len; ++k) {
+      cp = (cp << kUtf8ContBits) | (static_cast<uint8_t>(s[pos + k]) & 0x3F);
+    }
+    pos += seq_len;
     return cp;
   } else if ((c & 0xF8) == 0xF0) {
-    if (pos + 3 >= s.size()) {
+    constexpr size_t seq_len = kUtf8SeqLen4B;
+    if (pos + seq_len - 1 >= s.size()) {
       pos++;
       return c;
     }
-    uint32_t cp = (c & 0x07) << 18;
-    cp |= (static_cast<uint8_t>(s[pos + 1]) & 0x3F) << 12;
-    cp |= (static_cast<uint8_t>(s[pos + 2]) & 0x3F) << 6;
-    cp |= (static_cast<uint8_t>(s[pos + 3]) & 0x3F);
-    pos += 4;
+    uint32_t cp = (c & 0x07);
+    for (size_t k = 1; k < seq_len; ++k) {
+      cp = (cp << kUtf8ContBits) | (static_cast<uint8_t>(s[pos + k]) & 0x3F);
+    }
+    pos += seq_len;
     return cp;
   }
   pos++;
@@ -191,15 +236,16 @@ std::vector<std::string> BPECodec::PreTokenize(const std::string &text) {
     if (i + 1 < n && text[i] == '\'') {
       char next = static_cast<char>(text[i + 1]);
       if (next == 's' || next == 't' || next == 'm' || next == 'd') {
-        chunks.push_back(text.substr(i, 2));
-        i += 2;
+        chunks.push_back(text.substr(i, kShortContractionLen));
+        i += kShortContractionLen;
         continue;
       }
-      if (i + 2 < n) {
-        if ((next == 'l' && text[i + 2] == 'l') || (next == 'v' && text[i + 2] == 'e') ||
-            (next == 'r' && text[i + 2] == 'e')) {
-          chunks.push_back(text.substr(i, 3));
-          i += 3;
+      if (i + kLongContractionLen - 1 < n) {
+        if ((next == 'l' && text[i + kLongContractionLen - 1] == 'l') ||
+            (next == 'v' && text[i + kLongContractionLen - 1] == 'e') ||
+            (next == 'r' && text[i + kLongContractionLen - 1] == 'e')) {
+          chunks.push_back(text.substr(i, kLongContractionLen));
+          i += kLongContractionLen;
           continue;
         }
       }
@@ -214,15 +260,9 @@ std::vector<std::string> BPECodec::PreTokenize(const std::string &text) {
       } else if (i < n && IsDigit(static_cast<unsigned char>(text[i]))) {
         while (i < n && IsDigit(static_cast<unsigned char>(text[i]))) i++;
         chunks.push_back(text.substr(start, i - start));
-      } else if (i < n && static_cast<unsigned char>(text[i]) > 127) {
+      } else if (i < n && (static_cast<unsigned char>(text[i]) > kMaxAscii)) {
         unsigned char c = static_cast<unsigned char>(text[i]);
-        size_t char_len = 1;
-        if ((c & 0xE0) == 0xC0)
-          char_len = 2;
-        else if ((c & 0xF0) == 0xE0)
-          char_len = 3;
-        else if ((c & 0xF8) == 0xF0)
-          char_len = 4;
+        size_t char_len = Utf8CharLen(c);
         i += char_len;
         chunks.push_back(text.substr(start, i - start));
       } else if (i < n && !std::isspace(static_cast<unsigned char>(text[i]))) {
@@ -250,16 +290,10 @@ std::vector<std::string> BPECodec::PreTokenize(const std::string &text) {
       continue;
     }
 
-    if (static_cast<unsigned char>(text[i]) > 127) {
+    if (static_cast<unsigned char>(text[i]) > kMaxAscii) {
       size_t start = i;
       unsigned char c = static_cast<unsigned char>(text[i]);
-      size_t char_len = 1;
-      if ((c & 0xE0) == 0xC0)
-        char_len = 2;
-      else if ((c & 0xF0) == 0xE0)
-        char_len = 3;
-      else if ((c & 0xF8) == 0xF0)
-        char_len = 4;
+      size_t char_len = Utf8CharLen(c);
       i += char_len;
       chunks.push_back(text.substr(start, char_len));
       continue;
@@ -269,7 +303,7 @@ std::vector<std::string> BPECodec::PreTokenize(const std::string &text) {
       size_t start = i;
       while (i < n && !std::isspace(static_cast<unsigned char>(text[i])) &&
              !IsAlpha(static_cast<unsigned char>(text[i])) && !IsDigit(static_cast<unsigned char>(text[i])) &&
-             static_cast<unsigned char>(text[i]) <= 127)
+             static_cast<unsigned char>(text[i]) <= kMaxAscii)
         i++;
       if (i > start) {
         chunks.push_back(text.substr(start, i - start));
@@ -331,12 +365,14 @@ std::vector<std::string> BPECodec::ApplyBPE(const std::string &token) {
       break;
     }
 
+    // One merge consumes the two adjacent pieces of min_pair.
+    constexpr size_t kMergePairLen = 2;
     std::vector<std::string> new_word;
     size_t i = 0;
     while (i < word.size()) {
       if (i + 1 < word.size() && word[i] == min_pair.first && word[i + 1] == min_pair.second) {
         new_word.push_back(min_pair.first + min_pair.second);
-        i += 2;
+        i += kMergePairLen;
       } else {
         new_word.push_back(word[i]);
         i++;

@@ -27,6 +27,11 @@ namespace mslite {
 namespace backend {
 namespace nnrt {
 
+// .omc model input contract: number of fixed non-KV inputs (valid_seq_len,
+// lmhead_idx, rope_cos, rope_sin, inputs_embeds, attention_mask,
+// embedding_weight) before the interleaved per-layer K/V caches.
+constexpr size_t kNonKvInputs = 7;
+
 /// @brief Owns per-layer key/value KV cache as ION-backed NN_Tensor objects.
 /// Tensors are reused as both input and output (omc model updates in place),
 /// so there is no Read*/Write* copy API.

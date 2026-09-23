@@ -233,8 +233,8 @@ def chunk_gated_delta_rule(
     valid_idx = None
     if total_len != batch_size * seq_len:
         valid_idx = torch.cat([
-            torch.arange(b * seq_len, b * seq_len + l, device=query.device)
-            for b, l in enumerate(lengths)
+            torch.arange(b * seq_len, b * seq_len + length, device=query.device)
+            for b, length in enumerate(lengths)
         ])
 
     def _pack(t, heads):

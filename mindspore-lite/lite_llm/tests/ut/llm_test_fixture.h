@@ -29,6 +29,7 @@ namespace mslite_llm_test {
 
 // Permissions for fixture temp directories created by the helper below.
 constexpr int kCreateDirMode = 0755;
+constexpr int32_t kEosTokenId = 2;  // "</s>" in BuildMinimalVocabBin
 
 /// Builds the bytes of a minimal valid v2 BPE vocab.bin understood by
 /// TokenizerImpl::LoadFromBuffer. Format (little-endian):
@@ -46,7 +47,7 @@ inline std::vector<uint8_t> BuildMinimalVocabBin(bool include_whitespace_tokens 
   // Sorted by token id. Ids 5/6/7 are the byte-encoder tokens for the three
   // UTF-8 bytes of '你' (0xE4 0xBD 0xA0), used by the incremental-decode test.
   std::vector<std::pair<std::string, int32_t>> vocab = {
-    {"<unk>", 0}, {"<s>", 1}, {"</s>", 2}, {"a", 3}, {"b", 4}, {"ä", 5}, {"½", 6}, {"ł", 7},
+    {"<unk>", 0}, {"<s>", 1}, {"</s>", kEosTokenId}, {"a", 3}, {"b", 4}, {"ä", 5}, {"½", 6}, {"ł", 7},
   };
   if (include_whitespace_tokens) {
     vocab.insert(vocab.end(), {{"ĉ", 8}, {"Ċ", 9}, {"č", 10}});
@@ -66,11 +67,11 @@ inline std::vector<uint8_t> BuildMinimalVocabBin(bool include_whitespace_tokens 
   u32(kVersion);
   u32(kCodecBPE);
   u32(static_cast<uint32_t>(vocab.size()));
-  i32(1);   // bos
-  i32(2);   // eos
-  i32(-1);  // pad
-  i32(0);   // unk
-  u32(0);   // legacy chat template type
+  i32(1);            // bos
+  i32(kEosTokenId);  // eos
+  i32(-1);           // pad
+  i32(0);            // unk
+  u32(0);            // legacy chat template type
 
   for (const auto &[tok, id] : vocab) {
     str(tok);
@@ -97,7 +98,8 @@ inline std::vector<uint8_t> BuildMinimalVocabBin(bool include_whitespace_tokens 
 
 inline std::vector<uint8_t> BuildMinimalSentencePieceVocabBin() {
   auto b = BuildMinimalVocabBin();
-  b[8] = 1;  // codec=SentencePiece; its empty model has the same u32 layout as zero BPE merges.
+  constexpr size_t kCodecFieldOffset = 8;  // u32 magic + u32 version precede the codec field
+  b[kCodecFieldOffset] = 1;  // codec=SentencePiece; its empty model has the same u32 layout as zero BPE merges.
   return b;
 }
 

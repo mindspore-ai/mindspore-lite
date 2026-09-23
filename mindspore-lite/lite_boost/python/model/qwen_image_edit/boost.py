@@ -158,8 +158,10 @@ def _patch_vae_edit(pipe):
 
 
 def restore_fp16_params(module, dtype=torch.float16):
-    """torch_npu casts some low-bit params (4D conv weights, norm gammas) back
-    to fp32 during .to("npu"); restore every fp32 param to the target dtype."""
+    """torch_npu casts some low-bit params (4D conv weights, norm gammas) back to fp32 during .to("npu").
+
+    Restore every fp32 param to the target dtype.
+    """
     for p in module.parameters():
         if p.dtype == torch.float32:
             p.data = p.data.to(dtype)

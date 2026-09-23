@@ -41,6 +41,18 @@ inline float Fp32FromBits(uint32_t w) { return BitCast<float>(w); }
 
 inline uint32_t Fp32ToBits(float f) { return BitCast<uint32_t>(f); }
 
+// IEEE-754 layout constants: binary16 (fp16) carries a 10-bit mantissa and a
+// 5-bit exponent biased by 15; binary32 (fp32) carries a 23-bit mantissa and
+// an 8-bit exponent biased by 127.
+constexpr int kFp16MinNormalExp = -14;          // normals cover 2^-14 .. 2^15 * (2 - 2^-10)
+constexpr int kFp16MaxExp = 15;                 // overflow saturates to inf; NOT the encoding bias 15
+constexpr uint32_t kFp16MantissaCarry = 1024;   // 2^10: 10-bit mantissa round-up carry bound
+constexpr int kFp16SubnormalMantExp = 24;       // subnormal |v| = m * 2^-24
+constexpr double kFp16MantQuantScale = 2048.0;  // frac in [0, 0.5) * 2048 -> mantissa in [0, 1024)
+constexpr int kFp32MantissaLsb = 23;            // binary32 mantissa occupies bits [22:0]
+constexpr int kFp16ToFp32MantShift = 13;        // 23 - 10
+constexpr int kFp16ToFp32ExpBiasDelta = 112;    // 127 - 15
+
 }  // namespace
 
 uint16_t Fp32ToFp16Bits(float value) {
@@ -66,12 +78,12 @@ uint16_t Fp32ToFp16Bits(float value) {
   const float abs_mant = std::fabs(std::frexp(value, &exp));
   const int lead_exp = exp - 1;
 
-  if (lead_exp < -14) {
+  if (lead_exp < kFp16MinNormalExp) {
     // Subnormal: |value| = m * 2^-24, m in (0, 1024); round m to nearest-even
     // on the magnitude, re-attach the sign below.
-    const double m_d = std::ldexp(static_cast<double>(std::fabs(value)), 24);
+    const double m_d = std::ldexp(static_cast<double>(std::fabs(value)), kFp16SubnormalMantExp);
     const uint32_t m = static_cast<uint32_t>(std::nearbyint(m_d));
-    if (m >= 1024) {  // rounded up into the smallest normal (exp=-14, mant=0)
+    if (m >= kFp16MantissaCarry) {  // rounded up into the smallest normal (exp=-14, mant=0)
       return static_cast<uint16_t>(sign | 0x0400u);
     }
     return static_cast<uint16_t>(sign | m);
@@ -80,13 +92,13 @@ uint16_t Fp32ToFp16Bits(float value) {
   // Normal: 10-bit mantissa from the fractional part, rounded to nearest-even;
   // a round-up carry bumps the exponent, overflow saturates to +/-inf.
   const double frac = static_cast<double>(abs_mant) - 0.5;  // in [0, 0.5)
-  uint32_t m = static_cast<uint32_t>(std::nearbyint(frac * 2048.0));
+  uint32_t m = static_cast<uint32_t>(std::nearbyint(frac * kFp16MantQuantScale));
   int16_t fexp = static_cast<int16_t>(lead_exp);
-  if (m >= 1024) {
+  if (m >= kFp16MantissaCarry) {
     m = 0;
     ++fexp;
   }
-  if (fexp > 15) {
+  if (fexp > kFp16MaxExp) {
     return static_cast<uint16_t>(sign | 0x7C00u);  // overflow -> inf
   }
   const uint16_t exp_bits = static_cast<uint16_t>((fexp + 15) << 10);
@@ -110,28 +122,29 @@ float Fp16BitsToFp32(uint16_t h) {
       }
       mant &= 0x03FFu;
       const uint32_t fexp = static_cast<uint32_t>(127 - 15 + 1 - shift);
-      bits = sign | (fexp << 23) | (mant << 13);
+      bits = sign | (fexp << kFp32MantissaLsb) | (mant << kFp16ToFp32MantShift);
     }
   } else if (exp == 0x1Fu) {
-    bits = sign | 0x7F800000u | (mant << 13);  // inf / nan
+    bits = sign | 0x7F800000u | (mant << kFp16ToFp32MantShift);  // inf / nan
   } else {
-    bits = sign | ((exp + 112) << 23) | (mant << 13);  // rebias 15 -> 127
+    // rebias 15 -> 127
+    bits = sign | ((exp + kFp16ToFp32ExpBiasDelta) << kFp32MantissaLsb) | (mant << kFp16ToFp32MantShift);
   }
   return Fp32FromBits(bits);
 }
 
 bool Q4NzfEmbeddingSize(int rows, int hidden, size_t *packed_bytes, size_t *total_bytes) {
-  if (rows <= 0 || hidden <= 0 || rows % 16 != 0 || hidden % 32 != 0 || packed_bytes == nullptr ||
-      total_bytes == nullptr) {
+  if (rows <= 0 || hidden <= 0 || rows % kQ4NzFractalRows != 0 || hidden % kQ4GroupElems != 0 ||
+      packed_bytes == nullptr || total_bytes == nullptr) {
     return false;
   }
-  const size_t groups_per_row = static_cast<size_t>(hidden) / 32;
-  if (static_cast<size_t>(rows) > std::numeric_limits<size_t>::max() / 18 / groups_per_row) {
+  const size_t groups_per_row = static_cast<size_t>(hidden) / kQ4GroupElems;
+  if (static_cast<size_t>(rows) > std::numeric_limits<size_t>::max() / kQ4BytesPerGroup / groups_per_row) {
     return false;
   }
   const size_t groups = static_cast<size_t>(rows) * groups_per_row;
-  *packed_bytes = groups * 16;
-  *total_bytes = groups * 18;
+  *packed_bytes = groups * kQ4PackedBytesPerGroup;
+  *total_bytes = groups * kQ4BytesPerGroup;
   return true;
 }
 
@@ -147,7 +160,7 @@ bool DequantizeEmbeddingRow(const uint8_t *blob, size_t blob_size, Q4EmbeddingSh
   const size_t n = static_cast<size_t>(row);
   const size_t n0 = n / 64 * 64;
   const size_t nc = std::min(size_t{64}, static_cast<size_t>(shape.rows) - n0);
-  for (size_t k_base = 0; k_base < hidden; k_base += 32) {
+  for (size_t k_base = 0; k_base < hidden; k_base += kQ4GroupElems) {
     const size_t k0 = k_base / 1024 * 1024;
     const size_t kc = std::min(size_t{1024}, hidden - k0);
     // Divide before multiplying: the compact byte count may fit size_t even
@@ -158,7 +171,7 @@ bool DequantizeEmbeddingRow(const uint8_t *blob, size_t blob_size, Q4EmbeddingSh
     const uint16_t scale_bits =
       static_cast<uint16_t>(blob[scale_offset]) | (static_cast<uint16_t>(blob[scale_offset + 1]) << 8);
     const float scale = Fp16BitsToFp32(scale_bits);
-    for (size_t lane = 0; lane < 32; ++lane) {
+    for (size_t lane = 0; lane < kQ4GroupElems; ++lane) {
       const size_t k = k_base + lane;
       const size_t fractal = ((k - k0) / 16) * (nc / 16) + (n - n0) / 16;
       const size_t flat = (n % 16) * 16 + k % 16;

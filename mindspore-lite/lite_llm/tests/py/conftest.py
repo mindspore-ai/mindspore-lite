@@ -23,9 +23,12 @@ provisioned golden, if any, wins).  Byte-level correctness is still
 guarded by the committed ``golden_v1.expected.json`` cross-check.
 """
 
+import logging
 import os
 import subprocess
 import sys
+
+logging.basicConfig(level=logging.INFO)
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(TESTS_DIR, "..", "data")
@@ -47,4 +50,4 @@ def pytest_sessionstart(session):
             f"auto-generating golden_v1.msl failed (rc={proc.returncode}):\n"
             f"{proc.stdout}\n{proc.stderr}"
         )
-    print(f"[conftest] generated missing golden fixture: {GOLDEN_MSL}")
+    logging.info("[conftest] generated missing golden fixture: %s", GOLDEN_MSL)

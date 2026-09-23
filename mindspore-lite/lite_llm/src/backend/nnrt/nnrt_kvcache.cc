@@ -26,6 +26,10 @@ namespace backend {
 namespace nnrt {
 
 namespace {
+
+// NNRT/NPU KV tensors use a uniform 4-dim layout [1, kv_heads, max_len, head_dim].
+constexpr size_t kKvTensorRank = 4;
+
 // Create one ION tensor of the fixed KV shape. Returns nullptr on failure.
 NN_Tensor *CreateKvTensor(size_t device_id, OH_NNExecutor *executor, size_t input_index, int kv_heads, int max_len,
                           int head_dim) {
@@ -35,8 +39,8 @@ NN_Tensor *CreateKvTensor(size_t device_id, OH_NNExecutor *executor, size_t inpu
     MS_LOG(ERROR) << "CreateInputTensorDesc failed for KV input " << input_index;
     return nullptr;
   }
-  int32_t shape[4] = {1, kv_heads, max_len, head_dim};
-  if (api.TensorDesc_SetShape(desc, shape, 4) != 0 || api.TensorDesc_SetDataType(desc, kOhNnFloat16) != 0) {
+  int32_t shape[kKvTensorRank] = {1, kv_heads, max_len, head_dim};
+  if (api.TensorDesc_SetShape(desc, shape, kKvTensorRank) != 0 || api.TensorDesc_SetDataType(desc, kOhNnFloat16) != 0) {
     MS_LOG(ERROR) << "KV TensorDesc SetShape/SetDataType failed";
     api.TensorDesc_Destroy(&desc);
     return nullptr;
@@ -65,10 +69,9 @@ bool KVCacheManager::Alloc(int num_layers, int kv_heads, int max_len, int head_d
 
   // KV input index layout: after 7 fixed inputs, key/value caches are interleaved
   // (key_cache_0, value_cache_0, key_cache_1, value_cache_1, ...).
-  const size_t kFixedInputs = 7;
   for (int i = 0; i < num_layers; ++i) {
-    size_t key_idx = kFixedInputs + static_cast<size_t>(2 * i);
-    size_t val_idx = kFixedInputs + static_cast<size_t>(2 * i) + 1;
+    size_t key_idx = kNonKvInputs + static_cast<size_t>(2 * i);
+    size_t val_idx = kNonKvInputs + static_cast<size_t>(2 * i) + 1;
     key_tensors_[i] = CreateKvTensor(device_id, executor, key_idx, kv_heads, max_len, head_dim);
     value_tensors_[i] = CreateKvTensor(device_id, executor, val_idx, kv_heads, max_len, head_dim);
     if (key_tensors_[i] == nullptr || value_tensors_[i] == nullptr) {

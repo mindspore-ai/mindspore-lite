@@ -39,8 +39,10 @@ _cos_sin_cache = {}
 
 def npu_sdpa(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False,
              scale=None, enable_gqa=False):
-    """SDPA wrapper that expands broadcast ``[B, 1, 1, S]`` bool masks to
-    ``[B, 1, S, S]`` on NPU (the fused NPU SDPA kernel rejects them)."""
+    """SDPA wrapper that expands broadcast ``[B, 1, 1, S]`` bool masks to ``[B, 1, S, S]`` on NPU.
+
+    The fused NPU SDPA kernel rejects them.
+    """
     if (attn_mask is not None and query.device.type == "npu"
             and attn_mask.dim() == 4 and attn_mask.shape[1] == 1
             and attn_mask.shape[2] == 1 and attn_mask.dtype == torch.bool):
@@ -52,8 +54,7 @@ def npu_sdpa(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False,
 
 
 def patch_sdpa_mask():
-    """Install the NPU-safe SDPA wrapper on ``F.scaled_dot_product_attention``
-    globally (idempotent)."""
+    """Install the NPU-safe SDPA wrapper on ``F.scaled_dot_product_attention`` globally (idempotent)."""
     if getattr(F, "_lb_npu_sdpa_patched", False):
         return
     orig_sdpa = F.scaled_dot_product_attention

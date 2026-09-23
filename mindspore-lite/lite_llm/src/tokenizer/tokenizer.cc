@@ -40,6 +40,11 @@ constexpr uint32_t kVersion = 2;
 constexpr uint32_t kCodecBPE = 0;
 constexpr uint32_t kCodecSentencePiece = 1;
 
+// UTF-8 sequence lengths by leading byte class.
+constexpr size_t kUtf8SeqLen2B = 2;
+constexpr size_t kUtf8SeqLen3B = 3;
+constexpr size_t kUtf8SeqLen4B = 4;
+
 uint32_t ReadU32(const uint8_t *data, size_t &offset, size_t size) {
   if (offset + sizeof(uint32_t) > size) {
     return 0;
@@ -457,13 +462,13 @@ class TokenizerImpl : public Tokenizer {
       return 1;
     }
     if ((lead & 0xE0u) == 0xC0u) {
-      return 2;
+      return kUtf8SeqLen2B;
     }
     if ((lead & 0xF0u) == 0xE0u) {
-      return 3;
+      return kUtf8SeqLen3B;
     }
     if ((lead & 0xF8u) == 0xF0u) {
-      return 4;
+      return kUtf8SeqLen4B;
     }
     return 1;  // invalid leading byte: pass through as a single byte
   }

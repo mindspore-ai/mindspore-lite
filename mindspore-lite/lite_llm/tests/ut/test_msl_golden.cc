@@ -53,6 +53,32 @@ constexpr size_t kEntrySize = 88;
 constexpr size_t kNameSize = 64;
 constexpr uint32_t kAlignment = 4096;
 
+// .msl v1 scalar field widths.
+constexpr size_t kU32Size = 4;
+constexpr size_t kU64Size = 8;
+// KV entry type(u32) + value_len(u32) after the key.
+constexpr size_t kKvTypeAndValueLenSize = kU32Size * 2;
+
+// .msl v1 header offset chain (five u32 fields after the magic).
+constexpr size_t kMagicSize = 4;                                      // ".MSL" magic length
+constexpr size_t kVersionOffset = kMagicSize;                         // 4
+constexpr size_t kKvCountOffset = kVersionOffset + kU32Size;          // 8
+constexpr size_t kResourceCountOffset = kKvCountOffset + kU32Size;    // 12
+constexpr size_t kAlignmentOffset = kResourceCountOffset + kU32Size;  // 16
+constexpr size_t kReservedOffset = kAlignmentOffset + kU32Size;       // 20
+
+// hex parse helpers
+constexpr int kHexDigitsPerByte = 2;
+constexpr int kBitsPerNibble = 4;
+constexpr int kHexDigitBase = 10;
+
+constexpr int kPayloadCoefficient = 7;  // mirrors gen_golden.py payload()
+constexpr int kPayloadOffset = 3;
+
+constexpr uint64_t kOmcResourceSize = 70000;  // golden npu_offline/x.omc payload size (gen_golden.py)
+
+constexpr size_t kThirdElemIndex = 2;  // third element of the "string.array" KV value
+
 // KV value types (v1 closed set).
 constexpr uint32_t kTypeBool = 0;
 constexpr uint32_t kTypeUint32 = 1;
@@ -79,13 +105,13 @@ std::vector<uint8_t> Hex(const char *hex) {
   std::vector<uint8_t> out;
   while (*hex != '\0') {
     uint8_t byte = 0;
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < kHexDigitsPerByte; ++i) {
       char c = *hex++;
-      byte <<= 4;
+      byte <<= kBitsPerNibble;
       if (c >= '0' && c <= '9') {
         byte |= static_cast<uint8_t>(c - '0');
       } else {
-        byte |= static_cast<uint8_t>(c - 'a' + 10);
+        byte |= static_cast<uint8_t>(c - 'a' + kHexDigitBase);
       }
     }
     out.push_back(byte);
@@ -112,7 +138,7 @@ const std::vector<ExpectedKv> &ExpectedKvs() {
 
 const std::vector<ExpectedResource> &ExpectedResources() {
   static const std::vector<ExpectedResource> res = {
-    {"npu_offline/x.omc", 4096, 70000, 0},
+    {"npu_offline/x.omc", 4096, kOmcResourceSize, 0},
     {"assets/embedding_quant.bin", 77824, 12345, 0},
     {"vocab/vocab.bin", 94208, 3000, 1},
     {"a.bin", 98304, 1, 1},
@@ -121,7 +147,7 @@ const std::vector<ExpectedResource> &ExpectedResources() {
 }
 
 // Deterministic payload bytes used by gen_golden.py.
-uint8_t PayloadByte(size_t i) { return static_cast<uint8_t>((i * 7 + 3) % 256); }
+uint8_t PayloadByte(size_t i) { return static_cast<uint8_t>((i * kPayloadCoefficient + kPayloadOffset) % 256); }
 
 uint32_t ReadU32(const uint8_t *p) {
   uint32_t v = 0;
@@ -172,28 +198,28 @@ class MslGoldenTest : public ::testing::Test {
 
 TEST_F(MslGoldenTest, Header) {
   ASSERT_GE(data_.size(), kHeaderSize);
-  EXPECT_EQ(std::memcmp(data_.data(), ".MSL", 4), 0);
-  EXPECT_EQ(ReadU32(data_.data() + 4), kVersion);
-  EXPECT_EQ(ReadU32(data_.data() + 8), ExpectedKvs().size());
-  EXPECT_EQ(ReadU32(data_.data() + 12), ExpectedResources().size());
-  EXPECT_EQ(ReadU32(data_.data() + 16), kAlignment);
-  EXPECT_EQ(ReadU32(data_.data() + 20), 0u);  // reserved
+  EXPECT_EQ(std::memcmp(data_.data(), ".MSL", kMagicSize), 0);
+  EXPECT_EQ(ReadU32(data_.data() + kVersionOffset), kVersion);
+  EXPECT_EQ(ReadU32(data_.data() + kKvCountOffset), ExpectedKvs().size());
+  EXPECT_EQ(ReadU32(data_.data() + kResourceCountOffset), ExpectedResources().size());
+  EXPECT_EQ(ReadU32(data_.data() + kAlignmentOffset), kAlignment);
+  EXPECT_EQ(ReadU32(data_.data() + kReservedOffset), 0u);  // reserved
 }
 
 TEST_F(MslGoldenTest, KvRegion) {
   const auto &expected = ExpectedKvs();
   size_t pos = kHeaderSize;
   for (size_t i = 0; i < expected.size(); ++i) {
-    ASSERT_LE(pos + 4, data_.size());
+    ASSERT_LE(pos + kU32Size, data_.size());
     uint32_t key_len = ReadU32(data_.data() + pos);
-    pos += 4;
-    ASSERT_LE(pos + key_len + 8, data_.size());
+    pos += kU32Size;
+    ASSERT_LE(pos + key_len + kKvTypeAndValueLenSize, data_.size());
     std::string key(reinterpret_cast<const char *>(data_.data() + pos), key_len);
     EXPECT_EQ(key, expected[i].key) << "KV key mismatch at index " << i;
     pos += key_len;
     uint32_t type = ReadU32(data_.data() + pos);
-    uint32_t value_len = ReadU32(data_.data() + pos + 4);
-    pos += 8;
+    uint32_t value_len = ReadU32(data_.data() + pos + kU32Size);
+    pos += kKvTypeAndValueLenSize;
     ASSERT_LE(pos + value_len, data_.size());
     EXPECT_EQ(type, expected[i].type) << "KV type mismatch for " << expected[i].key;
     ASSERT_EQ(value_len, expected[i].value.size()) << "KV value length for " << expected[i].key;
@@ -210,8 +236,8 @@ TEST_F(MslGoldenTest, ResourceTable) {
   const auto &kvs = ExpectedKvs();
   size_t pos = kHeaderSize;
   for (const auto &kv : kvs) {
-    pos += 4 + std::strlen(kv.key);
-    pos += 8 + kv.value.size();
+    pos += kU32Size + std::strlen(kv.key);
+    pos += kKvTypeAndValueLenSize + kv.value.size();
   }
   const auto &expected = ExpectedResources();
   for (size_t i = 0; i < expected.size(); ++i) {
@@ -276,7 +302,7 @@ TEST_F(MslGoldenTest, RuntimeReader) {
   ASSERT_EQ(arr.size(), 3u);
   EXPECT_EQ(arr[0], "a");
   EXPECT_EQ(arr[1], "bb");
-  EXPECT_EQ(arr[2], "ccc");
+  EXPECT_EQ(arr[kThirdElemIndex], "ccc");
 
   // Unknown keys are skipped (absent), unknown access fails type check.
   EXPECT_FALSE(reader.GetKvString("no.such.key", &str));
@@ -285,13 +311,13 @@ TEST_F(MslGoldenTest, RuntimeReader) {
   // Resource access via the entry table.
   const auto *entry = reader.Lookup("npu_offline/x.omc");
   ASSERT_NE(entry, nullptr);
-  EXPECT_EQ(entry->size, 70000u);
+  EXPECT_EQ(entry->size, kOmcResourceSize);
   const uint8_t *data = nullptr;
   size_t size = 0;
   ASSERT_TRUE(reader.Mmap("npu_offline/x.omc", &data, &size));
-  EXPECT_EQ(size, 70000u);
+  EXPECT_EQ(size, kOmcResourceSize);
   EXPECT_EQ(data[0], PayloadByte(0));
-  EXPECT_EQ(data[69999], PayloadByte(69999));
+  EXPECT_EQ(data[kOmcResourceSize - 1], PayloadByte(static_cast<size_t>(kOmcResourceSize - 1)));
   EXPECT_TRUE(reader.Reclaim("npu_offline/x.omc"));
   EXPECT_FALSE(reader.Reclaim("missing.bin"));
   EXPECT_EQ(data[0], PayloadByte(0));

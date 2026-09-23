@@ -20,6 +20,7 @@ in-place via BoostManager (with per-module parallel settings selected by
 qwen_image_edit.yaml), then runs one image-edit request and saves the
 result image on rank 0.
 """
+import logging
 import os
 import torch
 from PIL import Image
@@ -30,6 +31,8 @@ from torch_npu.contrib import transfer_to_npu  # pylint: disable=unused-import
 from diffusers import QwenImageEditPlusPipeline
 from lite_boost.parallel import initialize_usp
 from lite_boost import BoostManager
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 DTYPE = torch.bfloat16
 
@@ -47,7 +50,7 @@ pipe = QwenImageEditPlusPipeline.from_pretrained("qwen-image-edit", torch_dtype=
 
 boost_manager = BoostManager()
 pipe = boost_manager(pipe, config=CONFIG_YAML)
-print(f"rank {local_rank}: pipeline boosted")
+logging.info("rank %s: pipeline boosted", local_rank)
 
 pipe.to("npu")
 
@@ -64,21 +67,21 @@ pipe.text_encoder.config._attn_implementation = "eager"
 pipe.text_encoder.config.vision_config._attn_implementation = "eager"
 # pylint: enable=protected-access
 
-image1 = Image.open("image1.jpg")
-prompt = "给图中的人头上戴一顶帽子"
+PROMPT = "给图中的人头上戴一顶帽子"
 
-inputs = {
-    "image": [image1, ],
-    "prompt": prompt,
-    "generator": torch.manual_seed(42),
-    "true_cfg_scale": 4.0,
-    "negative_prompt": "模糊，低质量，失真，变形，水印，噪点，文字，过度曝光，细节缺失",
-    "num_inference_steps": 40,
-    "guidance_scale": 1.0,
-    "num_images_per_prompt": 1
-}
-with torch.inference_mode():
-    output = pipe(**inputs)
-    output_images = output.images[0]
+with Image.open("image1.jpg") as image1:
+    inputs = {
+        "image": [image1, ],
+        "prompt": PROMPT,
+        "generator": torch.manual_seed(42),
+        "true_cfg_scale": 4.0,
+        "negative_prompt": "模糊，低质量，失真，变形，水印，噪点，文字，过度曝光，细节缺失",
+        "num_inference_steps": 40,
+        "guidance_scale": 1.0,
+        "num_images_per_prompt": 1
+    }
+    with torch.inference_mode():
+        output = pipe(**inputs)
+        output_images = output.images[0]
 if int(local_rank) == 0:
     output_images.save("output.png")
