@@ -23,6 +23,7 @@ using mindspore::schema::PrimitiveType_Triu;
 
 namespace mindspore::lite::micro::nnacl {
 namespace {
+constexpr size_t kMatrixDims = 2;  // tril/triu operate on the last two (matrix) dims
 constexpr size_t kDiagonalInputIndex = 1;
 
 // Read the diagonal offset from the constant k input (scalar int32/int64). Returns 0 when the k input is absent or
@@ -47,15 +48,15 @@ int GetDiagonal(const std::vector<Tensor *> &input_tensors) {
 
 int TriuBaseCoder::DoCode(CoderContext *const context) {
   auto input_shape = input_tensor_->shape();
-  if (input_shape.size() < 2) {
+  if (input_shape.size() < kMatrixDims) {
     MS_LOG(ERROR) << "Triu requires at least 2D input";
     return RET_ERROR;
   }
-  int height = input_shape[input_shape.size() - 2];
+  int height = input_shape[input_shape.size() - kMatrixDims];
   int width = input_shape[input_shape.size() - 1];
   // Product of leading dims: supports 2D..ND (each leading matrix is handled independently).
   int num = 1;
-  for (size_t i = 0; i < input_shape.size() - 2; i++) {
+  for (size_t i = 0; i < input_shape.size() - kMatrixDims; i++) {
     num *= input_shape[i];
   }
   int diagonal = GetDiagonal(input_tensors_);

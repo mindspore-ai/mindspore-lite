@@ -324,13 +324,13 @@ std::vector<int> WeightDecoder::ParseUniqueValues(const std::vector<bool> &bit_v
                                                   size_t unique_value_cnt, size_t *index) {
   std::vector<int> unique_values;
   for (size_t i = 0; i < unique_value_cnt; i++) {
-    int unique_value = 0;
+    uint32_t unique_value = 0;
     for (int j = 0; j < bit_num; j++) {
       bool bit = bit_vec[(*index)++];
-      unique_value |= bit << static_cast<size_t>((bit_num - j - 1));
+      unique_value |= static_cast<uint32_t>(bit) << static_cast<size_t>((bit_num - j - 1));
     }
     // unsigned to signed
-    unique_values.push_back(unique_value - (1u << static_cast<size_t>((bit_num - 1))));
+    unique_values.push_back(static_cast<int>(unique_value - (1u << static_cast<size_t>((bit_num - 1)))));
   }
   return unique_values;
 }

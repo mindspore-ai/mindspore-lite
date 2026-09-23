@@ -21,6 +21,7 @@
 #include "src/litert/delegate/fusion_pass_utils.h"
 
 // Adapter for CoreML Pass Utils to work with Transform Pass templates
+namespace {
 struct CoreMLTransformPassUtils {
   static bool IsNchw2Nhwc(CoreMLOp *op) { return CoreMLPassUtils::IsNchw2Nhwc(op); }
   static bool IsNhwc2Nchw(CoreMLOp *op) { return CoreMLPassUtils::IsNhwc2Nchw(op); }
@@ -51,6 +52,7 @@ struct CoreMLTransformPassUtils {
     return CoreMLPassUtils::UpdateNC2NHTransNodePostOp(cur_op, nc2nh_op, post_op, trans_in_tensor);
   }
 };
+}  // namespace
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;

@@ -126,7 +126,6 @@ int KernelInferShape(const std::vector<lite::Tensor *> &inputs, const std::vecto
     return RET_NOT_SUPPORT;
   }
   auto kernel_interface = GetKernelInterfaceForNode(primitive, providers, schema_version, kernel);
-
   if (kernel_interface == nullptr) {
     return RET_NOT_SUPPORT;
   }

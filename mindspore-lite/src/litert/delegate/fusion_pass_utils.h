@@ -168,6 +168,17 @@ template <typename T, bool EnableDedup = false>
 int UpdatePreOps(T *cur_op, std::vector<T *> *all_ops, std::function<void(T *)> remove_and_free_op) {
   auto cur_in_ops = cur_op->in_ops();
   std::conditional_t<EnableDedup, std::set<T *>, EmptyType> has_visited;
+  // replace the first (CoreML) or every (NPU dedup) occurrence of from by to
+  auto replace_op = [](std::vector<T *> *ops, T *from, T *to, bool only_first) {
+    for (size_t i = 0; i < ops->size(); i++) {
+      if ((*ops)[i] == from) {
+        (*ops)[i] = to;
+        if (only_first) {
+          return;
+        }
+      }
+    }
+  };
 
   for (auto in_op : cur_op->in_ops()) {
     if constexpr (EnableDedup) {
@@ -181,20 +192,9 @@ int UpdatePreOps(T *cur_op, std::vector<T *> *all_ops, std::function<void(T *)> 
     } else {
       auto pre_op = in_op->in_ops()[0];
       auto pre_out_ops = pre_op->out_ops();
-      for (size_t i = 0; i < pre_out_ops.size(); i++) {
-        if (pre_out_ops[i] == in_op) {
-          pre_out_ops[i] = cur_op;
-          if constexpr (!EnableDedup) break;
-        }
-      }
+      replace_op(&pre_out_ops, in_op, cur_op, !EnableDedup);
       pre_op->set_out_ops(pre_out_ops);
-
-      for (size_t i = 0; i < cur_in_ops.size(); i++) {
-        if (cur_in_ops[i] == in_op) {
-          cur_in_ops[i] = pre_op;
-          if constexpr (!EnableDedup) break;
-        }
-      }
+      replace_op(&cur_in_ops, in_op, pre_op, !EnableDedup);
     }
     if (remove_and_free_op) {
       remove_and_free_op(in_op);
@@ -321,30 +321,34 @@ void UpdateOutOpsOfPreOp(T *cur_op, bool found_graph_out_tensor, const mindspore
   }
   auto is_graph_input = cur_op->in_ops().empty();
   auto cur_op_in_tensor = cur_op->inputs()[0];
-  if (!is_graph_input) {
-    auto pre_op = cur_op->in_ops()[0];
-    auto pre_out_ops = pre_op->out_ops();
-    size_t cur_op_index = 0;
-    for (size_t index = 0; index < pre_out_ops.size(); index++) {
-      if (pre_out_ops[index] == cur_op) {
-        pre_out_ops.erase(pre_out_ops.begin() + index);
-        cur_op_index = index;
-        index--;
-      } else if (found_graph_out_tensor) {
-        // only in this case, the output of pre_op is specified to 2nd trans op's output
-        auto tensors_vec = pre_out_ops[index]->inputs();
-        for (size_t i = 0; i < tensors_vec.size(); i++) {
-          if (tensors_vec[i] == cur_op_in_tensor) {
-            tensors_vec[i] = graph_out_tensor;
-            break;
-          }
-        }
-        pre_out_ops[index]->set_inputs(tensors_vec);
+  // only when a graph out tensor is found, the output of pre_op is specified to 2nd trans op's output
+  auto replace_input_tensor = [cur_op_in_tensor, &graph_out_tensor](T *op) {
+    auto tensors_vec = op->inputs();
+    for (size_t i = 0; i < tensors_vec.size(); i++) {
+      if (tensors_vec[i] == cur_op_in_tensor) {
+        tensors_vec[i] = graph_out_tensor;
+        break;
       }
     }
-    pre_out_ops.insert(pre_out_ops.begin() + cur_op_index, pre_insert_ops.begin(), pre_insert_ops.end());
-    pre_op->set_out_ops(pre_out_ops);
+    op->set_inputs(tensors_vec);
+  };
+  if (is_graph_input) {
+    return;
   }
+  auto pre_op = cur_op->in_ops()[0];
+  auto pre_out_ops = pre_op->out_ops();
+  size_t cur_op_index = 0;
+  for (size_t index = 0; index < pre_out_ops.size(); index++) {
+    if (pre_out_ops[index] == cur_op) {
+      pre_out_ops.erase(pre_out_ops.begin() + index);
+      cur_op_index = index;
+      index--;
+    } else if (found_graph_out_tensor) {
+      replace_input_tensor(pre_out_ops[index]);
+    }
+  }
+  pre_out_ops.insert(pre_out_ops.begin() + cur_op_index, pre_insert_ops.begin(), pre_insert_ops.end());
+  pre_op->set_out_ops(pre_out_ops);
 }
 
 /**
@@ -763,56 +767,63 @@ int TransformPassRun(GraphType *subgraph, const std::set<mindspore::schema::Prim
   std::vector<T *> insert_ops;
   int total = 0;
 
+  // Handle the insert state of a single op; on insert, advance *idx past the newly inserted ops
+  auto handle_op = [&insert_ops, all_tensors, &format_depend_nodes, &name, &total, subgraph](
+                     T *op, size_t *idx, std::vector<T *> *ops_vec) -> int {
+    auto insert_state = GetInsertState<T, Utils>(op, subgraph->outputs(), format_depend_nodes);
+    insert_ops.clear();
+    switch (insert_state) {
+      case lite::InsertState::PreInsert: {
+        auto ret = InsertPreNodes<T, Utils>(op, &insert_ops, subgraph->outputs(), all_tensors, name, total);
+        if (ret != RET_OK) {
+          MS_LOG(ERROR) << "Insert nhwc2nchw op and nchw2nhwc op before op " << op->name() << " failed.";
+          return RET_ERROR;
+        }
+        ops_vec->insert(ops_vec->begin() + *idx, insert_ops.begin(), insert_ops.end());
+        *idx += insert_ops.size();
+        break;
+      }
+      case lite::InsertState::PostInsert: {
+        auto ret = InsertPostNodes<T, Utils>(op, &insert_ops, subgraph->outputs(), all_tensors, name, total);
+        if (ret != RET_OK) {
+          MS_LOG(ERROR) << "Insert nhwc2nchw op and nchw2nhwc op after op " << op->name() << " failed.";
+          return RET_ERROR;
+        }
+        ops_vec->insert(ops_vec->begin() + *idx + 1, insert_ops.begin(), insert_ops.end());
+        *idx += insert_ops.size();
+        break;
+      }
+      case lite::InsertState::BothInsert: {
+        auto ret = InsertPreNodes<T, Utils>(op, &insert_ops, subgraph->outputs(), all_tensors, name, total);
+        if (ret != RET_OK) {
+          MS_LOG(ERROR) << "Insert nhwc2nchw op and nchw2nhwc op before op " << op->name() << " failed.";
+          return RET_ERROR;
+        }
+        ops_vec->insert(ops_vec->begin() + *idx, insert_ops.begin(), insert_ops.end());
+        *idx += insert_ops.size();
+
+        insert_ops.clear();
+        ret = InsertPostNodes<T, Utils>(op, &insert_ops, subgraph->outputs(), all_tensors, name, total);
+        if (ret != RET_OK) {
+          MS_LOG(ERROR) << "Insert nhwc2nchw op and nchw2nhwc op after op " << op->name() << " failed.";
+          return RET_ERROR;
+        }
+        ops_vec->insert(ops_vec->begin() + *idx + 1, insert_ops.begin(), insert_ops.end());
+        *idx += insert_ops.size();
+        break;
+      }
+      default:
+        MS_LOG(DEBUG) << "Insert Nothing on op " << op->name();
+    }
+    return RET_OK;
+  };
+
   for (int j = 0; j < lite::REPEAT_TIMES2; ++j) {
     for (size_t i = 0; i < all_ops->size(); i++) {
       auto op = (*all_ops)[i];
-      auto insert_state = GetInsertState<T, Utils>(op, subgraph->outputs(), format_depend_nodes);
-      insert_ops.clear();
-
-      // If the every output op is nhwc2nchw, insert
-      // modify loop index add post_ops.size() to the next op in the origin vector
-      switch (insert_state) {
-        case lite::InsertState::PreInsert: {
-          auto ret = InsertPreNodes<T, Utils>(op, &insert_ops, subgraph->outputs(), all_tensors, name, total);
-          if (ret != RET_OK) {
-            MS_LOG(ERROR) << "Insert nhwc2nchw op and nchw2nhwc op before op " << op->name() << " failed.";
-            return RET_ERROR;
-          }
-          all_ops->insert(all_ops->begin() + i, insert_ops.begin(), insert_ops.end());
-          i += insert_ops.size();
-          break;
-        }
-        case lite::InsertState::PostInsert: {
-          auto ret = InsertPostNodes<T, Utils>(op, &insert_ops, subgraph->outputs(), all_tensors, name, total);
-          if (ret != RET_OK) {
-            MS_LOG(ERROR) << "Insert nhwc2nchw op and nchw2nhwc op after op " << op->name() << " failed.";
-            return RET_ERROR;
-          }
-          all_ops->insert(all_ops->begin() + i + 1, insert_ops.begin(), insert_ops.end());
-          i += insert_ops.size();
-          break;
-        }
-        case lite::InsertState::BothInsert: {
-          auto ret = InsertPreNodes<T, Utils>(op, &insert_ops, subgraph->outputs(), all_tensors, name, total);
-          if (ret != RET_OK) {
-            MS_LOG(ERROR) << "Insert nhwc2nchw op and nchw2nhwc op before op " << op->name() << " failed.";
-            return RET_ERROR;
-          }
-          all_ops->insert(all_ops->begin() + i, insert_ops.begin(), insert_ops.end());
-          i += insert_ops.size();
-
-          insert_ops.clear();
-          ret = InsertPostNodes<T, Utils>(op, &insert_ops, subgraph->outputs(), all_tensors, name, total);
-          if (ret != RET_OK) {
-            MS_LOG(ERROR) << "Insert nhwc2nchw op and nchw2nhwc op after op " << op->name() << " failed.";
-            return RET_ERROR;
-          }
-          all_ops->insert(all_ops->begin() + i + 1, insert_ops.begin(), insert_ops.end());
-          i += insert_ops.size();
-          break;
-        }
-        default:
-          MS_LOG(DEBUG) << "Insert Nothing on op " << op->name();
+      auto ret = handle_op(op, &i, all_ops);
+      if (ret != RET_OK) {
+        return ret;
       }
     }
   }

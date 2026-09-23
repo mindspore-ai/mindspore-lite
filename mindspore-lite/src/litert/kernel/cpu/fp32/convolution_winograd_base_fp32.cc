@@ -18,6 +18,7 @@
 #include "nnacl_c/fp32/conv_winograd_fp32.h"
 #include "nnacl_c/pack.h"
 #include "include/errorcode.h"
+#include "include/securec.h"
 
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_MEMORY_FAILED;
@@ -274,7 +275,8 @@ int ConvolutionWinogradBaseCPUKernel::MallocBiasData() {
       return RET_MEMORY_FAILED;
     }
   }
-  memset(bias_data_, 0, new_bias_size);
+  auto memset_ret = memset_s(bias_data_, new_bias_size, 0, new_bias_size);
+  MS_CHECK_TRUE_MSG(memset_ret == EOK, RET_ERROR, "memset_s failed");
   return RET_OK;
 }
 

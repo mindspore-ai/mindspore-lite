@@ -361,6 +361,34 @@ int FullQuantQuantizer::QuantNodeSimpleOp(const CNodePtr &cnode) {
   return RET_OK;
 }
 
+int FullQuantQuantizer::QuantTupleGetItemNode(const CNodePtr &cnode, const PrimitivePtr &primitive) {
+  constexpr int tuple_get_item_input_size = 3;
+  MS_CHECK_TRUE_MSG(cnode->size() == tuple_get_item_input_size, RET_ERROR, "cnode->size() != 3");
+  auto index_node = cnode->input(THIRD_INPUT);
+  auto index_value_node = index_node->cast<mindspore::ValueNodePtr>();
+  if (index_value_node == nullptr) {
+    MS_LOG(WARNING) << "index value node is null";
+    return RET_OK;
+  }
+  auto index_int_value = opt::CastToInt(index_value_node->value());
+  if (index_int_value.empty()) {
+    MS_LOG(WARNING) << "index_value_node->value() is null";
+    return RET_OK;
+  }
+  size_t index = static_cast<size_t>(index_int_value.front());
+  auto input_node_quant_params = quant::GetInputNodeQuantParam(cnode, FIRST_INPUT + kPrimOffset, index);
+  std::vector<ValuePtr> quantization_list;
+  auto quantization_ptr = quant::ConvertQuantParamTToQuantizationParam(input_node_quant_params);
+  if (quantization_ptr != nullptr) {
+    quantization_list.push_back(quantization_ptr);
+    primitive->AddAttr(quant::kQuantParam, std::make_shared<ValueList>(quantization_list));
+    primitive->AddAttr(quant::kQuantType, MakeValue(static_cast<int>(quant::QUANT_ALL)));
+  } else {
+    MS_LOG(WARNING) << cnode->fullname_with_scope() << "this TupleGetItem node's input_node_quant_params is empty.";
+  }
+  return RET_OK;
+}
+
 namespace {
 // Ops imported already quantized (e.g. int8 tflite with QUANTIZE/DEQUANTIZE boundary ops)
 // keep their existing quant_type mark; only unmarked ops are downgraded to QUANT_NONE.
@@ -395,29 +423,9 @@ int FullQuantQuantizer::QuantNode(const FuncGraphPtr &func_graph) {
 
     auto op_type = primitive->name();
     if (op_type == mindspore::ops::kNameTupleGetItem) {
-      constexpr int tuple_get_item_input_size = 3;
-      MS_CHECK_TRUE_MSG(cnode->size() == tuple_get_item_input_size, RET_ERROR, "cnode->size() != 3");
-      auto index_node = cnode->input(THIRD_INPUT);
-      auto index_value_node = index_node->cast<mindspore::ValueNodePtr>();
-      if (index_value_node == nullptr) {
-        MS_LOG(WARNING) << "index value node is null";
-        continue;
-      }
-      auto index_int_value = opt::CastToInt(index_value_node->value());
-      if (index_int_value.empty()) {
-        MS_LOG(WARNING) << "index_value_node->value() is null";
-        continue;
-      }
-      size_t index = static_cast<size_t>(index_int_value.front());
-      auto input_node_quant_params = quant::GetInputNodeQuantParam(cnode, FIRST_INPUT + kPrimOffset, index);
-      std::vector<ValuePtr> quantization_list;
-      auto quantization_ptr = quant::ConvertQuantParamTToQuantizationParam(input_node_quant_params);
-      if (quantization_ptr != nullptr) {
-        quantization_list.push_back(quantization_ptr);
-        primitive->AddAttr(quant::kQuantParam, std::make_shared<ValueList>(quantization_list));
-        primitive->AddAttr(quant::kQuantType, MakeValue(static_cast<int>(quant::QUANT_ALL)));
-      } else {
-        MS_LOG(WARNING) << cnode->fullname_with_scope() << "this TupleGetItem node's input_node_quant_params is empty.";
+      auto status = QuantTupleGetItemNode(cnode, primitive);
+      if (status != RET_OK) {
+        return status;
       }
       continue;
     } else {  // do simple op quant

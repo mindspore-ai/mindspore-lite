@@ -260,13 +260,10 @@ int ArithmeticDynamicFP16Coder::BroadcastInput1(NNaclFp32Serializer *const code,
     for (size_t i = 0; i < scene_num; ++i) {
       int out_element_num = 1;
       for (size_t j = 0; j < out_shape.size(); ++j) {
-        if (IsNumber(out_shape[j])) {
-          out_element_num *= std::stoi(out_shape[j]);
-        } else {
-          out_element_num *= real_nums[out_shape[j]][i % real_nums[out_shape[j]].size()];
-        }
+        const auto &dim = out_shape[j];
+        out_element_num *= IsNumber(dim) ? std::stoi(dim) : real_nums[dim][i % real_nums[dim].size()];
       }
-      int workspace = out_element_num * DataTypeSize(kNumberTypeFloat16);
+      int workspace = out_element_num * static_cast<int>(DataTypeSize(kNumberTypeFloat16));
       temp = dynamic_mem_manager_->AllocWorkSpace(workspace, i);
       MS_CHECK_TRUE_MSG(!temp.empty(), RET_ERROR, "Arithmetic cannot alloc workspace.");
     }

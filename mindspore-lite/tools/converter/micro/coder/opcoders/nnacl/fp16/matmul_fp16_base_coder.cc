@@ -45,6 +45,7 @@ int MatMulFP16BaseCoder::InitBufferA() {
   if (a_pack_ptr_ != nullptr || vec_matmul_) {
     return RET_OK;
   }
+  MS_CHECK_PTR(allocator_);
   a_pack_ptr_size_ =
     static_cast<size_t>(params_.a_batch_ * params_.row_align_ * params_.deep_ * DataTypeSize(data_type_));
   if (params_.a_const_) {
