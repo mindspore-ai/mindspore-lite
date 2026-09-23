@@ -102,3 +102,15 @@ add_test(NAME llm_msl_golden COMMAND test_msl_golden)
 
 mslite_llm_add_unit_test(test_s16s4_embedding ut/test_s16s4_embedding.cc)
 target_sources(test_s16s4_embedding PRIVATE ${MSLITE_LLM_ROOT}/src/backend/nnrt/nnrt_embedding.cc)
+
+# File export tests exercise the real executor without loading the NPU runtime.
+# Host builds omit NNRT from the engine, so link its implementation into the test.
+mslite_llm_add_unit_test(test_nnrt_external_weight ut/test_nnrt_external_weight.cc)
+if(NOT MSLITE_LLM_ENABLE_NNRT)
+    target_sources(test_nnrt_external_weight PRIVATE
+        ${MSLITE_LLM_ROOT}/src/backend/nnrt/nnrt_executor.cc
+        ${MSLITE_LLM_ROOT}/src/backend/nnrt/nnrt_embedding.cc
+        ${MSLITE_LLM_ROOT}/src/backend/nnrt/nnrt_kvcache.cc
+        ${MSLITE_LLM_ROOT}/src/backend/nnrt/nnrt_wrapper.cc)
+    target_link_libraries(test_nnrt_external_weight PRIVATE ${CMAKE_DL_LIBS})
+endif()

@@ -344,6 +344,68 @@ void NnrtExecutor::ReclaimOfflineModelPages() const {
   }
 }
 
+bool NnrtExecutor::WriteExternalWeightFile(const std::string &path, const uint8_t *data, size_t size) {
+  std::ofstream output(path, std::ios::binary | std::ios::trunc);
+  if (!output.is_open()) {
+    MS_LOG(ERROR) << "Failed to open extracted external weight: " << path;
+    return false;
+  }
+  // Bound source mapping residency while exporting. Reclaim keeps the mapping
+  // valid: the next chunk faults back in on demand, without a second heap copy.
+  constexpr size_t kCopyChunkBytes = 4 * 1024 * 1024;
+  bool reclaim_available = true;
+  for (size_t offset = 0; offset < size;) {
+    const size_t bytes = std::min(kCopyChunkBytes, size - offset);
+    output.write(reinterpret_cast<const char *>(data + offset), static_cast<std::streamsize>(bytes));
+    if (!output.good()) {
+      MS_LOG(ERROR) << "Failed to extract external weight: " << path;
+      return false;
+    }
+    if (reclaim_available && !package_reader_->Reclaim(external_weight_entry_)) {
+      MS_LOG(WARNING) << "Could not reclaim exported weight chunks; continuing without page reclaim";
+      reclaim_available = false;
+    }
+    offset += bytes;
+  }
+  output.close();
+  if (!output.good()) {
+    MS_LOG(ERROR) << "Failed to close extracted external weight: " << path;
+    return false;
+  }
+  return true;
+}
+
+bool NnrtExecutor::ExtractExternalWeightFile() {
+  if (package_reader_ == nullptr || package_root_.empty()) {
+    MS_LOG(ERROR) << "Single-file external weights require package reader and package path";
+    return false;
+  }
+  const uint8_t *data = nullptr;
+  size_t size = 0;
+  if (!package_reader_->Mmap(external_weight_entry_, &data, &size) || data == nullptr || size == 0) {
+    MS_LOG(ERROR) << "Failed to mmap external weight entry: " << external_weight_entry_;
+    return false;
+  }
+
+  std::string name_template = DirName(package_root_) + "/.msl_weights_XXXXXX";
+  std::vector<char> mutable_template(name_template.begin(), name_template.end());
+  mutable_template.push_back('\0');
+  char *created = ::mkdtemp(mutable_template.data());
+  if (created == nullptr) {
+    MS_LOG(ERROR) << "Failed to create external-weight directory next to .msl: " << strerror(errno);
+    return false;
+  }
+  temp_weight_dir_ = created;
+  const std::string weight_dir = temp_weight_dir_ + "/" + om_weight_dir_;
+  if (!EnsureDir(weight_dir)) {
+    MS_LOG(ERROR) << "Failed to create external-weight directory: " << weight_dir;
+    return false;
+  }
+
+  const std::string weight_path = weight_dir + "/" + external_weight_entry_;
+  return WriteExternalWeightFile(weight_path, data, size);
+}
+
 bool NnrtExecutor::LoadExternalWeights() {
   if (!has_external_weights_) {
     return true;
@@ -357,50 +419,21 @@ bool NnrtExecutor::LoadExternalWeights() {
 
   std::string weight_dir = om_weight_dir_;
   if (single_file_) {
-    if (package_reader_ == nullptr || package_root_.empty()) {
-      MS_LOG(ERROR) << "Single-file external weights require package reader and package path";
+    if (!ExtractExternalWeightFile()) {
       return false;
     }
-    const uint8_t *data = nullptr;
-    size_t size = 0;
-    if (!package_reader_->Mmap(external_weight_entry_, &data, &size) || data == nullptr || size == 0) {
-      MS_LOG(ERROR) << "Failed to mmap external weight entry: " << external_weight_entry_;
-      return false;
-    }
-
-    std::string name_template = DirName(package_root_) + "/.msl_weights_XXXXXX";
-    std::vector<char> mutable_template(name_template.begin(), name_template.end());
-    mutable_template.push_back('\0');
-    char *created = ::mkdtemp(mutable_template.data());
-    if (created == nullptr) {
-      MS_LOG(ERROR) << "Failed to create external-weight directory next to .msl: " << strerror(errno);
-      return false;
-    }
-    temp_weight_dir_ = created;
     weight_dir = temp_weight_dir_ + "/" + om_weight_dir_;
-    if (!EnsureDir(weight_dir)) {
-      MS_LOG(ERROR) << "Failed to create external-weight directory: " << weight_dir;
-      return false;
-    }
-
-    const std::string weight_path = weight_dir + "/" + external_weight_entry_;
-    std::ofstream output(weight_path, std::ios::binary | std::ios::trunc);
-    if (!output.is_open()) {
-      MS_LOG(ERROR) << "Failed to open extracted external weight: " << weight_path;
-      return false;
-    }
-    output.write(reinterpret_cast<const char *>(data), static_cast<std::streamsize>(size));
-    output.close();
-    if (!output.good()) {
-      MS_LOG(ERROR) << "Failed to extract external weight: " << weight_path;
-      return false;
-    }
   }
 
   const std::string weight_path = weight_dir + "/" + external_weight_entry_;
   if (!IsRegularFile(weight_path)) {
     MS_LOG(ERROR) << "Declared external weight is missing: " << weight_path;
     return false;
+  }
+  // The extracted file is closed above. InitWeights consumes that file, not
+  // the package mapping; drop source pages before its temporary allocations.
+  if (single_file_ && !package_reader_->Reclaim(external_weight_entry_)) {
+    MS_LOG(WARNING) << "Failed to reclaim external weight package pages";
   }
   const NnrtReturnCode status = api.HIAIExecutor_InitWeights(nn_executor_, weight_dir.c_str());
   if (status != 0) {
