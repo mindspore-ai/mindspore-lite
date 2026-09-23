@@ -42,6 +42,10 @@ def parse_input1_shape(input1_shape):
 class MsQuant4N0Group32(torch.autograd.Function):  # pylint: disable=abstract-method
     """W4A16 group-32 MatMul and its single weight-preparation API."""
 
+    # Layout constants for the compact phase4 NZF wire format.
+    GROUP_SIZE = 32
+    K_SUB = 1024
+    N_TILE = 64
 
     @staticmethod
     def _shape(input1_shape):
