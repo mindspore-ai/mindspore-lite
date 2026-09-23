@@ -647,9 +647,11 @@ FuncGraphPtr OnnxModelParser::BuildBodyGraph(const onnx::NodeProto &loop_node, c
   auto return_tuple_cnode = return_node->input(1)->cast<CNodePtr>();
   MS_CHECK_TRUE_RET(return_tuple_cnode != nullptr, nullptr);
   auto return_new_inputs = return_tuple_cnode->inputs();
+  MS_CHECK_TRUE_RET(act_outputs_num >= 0 && static_cast<size_t>(act_outputs_num) <= return_new_inputs.size(), nullptr);
   return_new_inputs.insert(return_new_inputs.end() - act_outputs_num, gen_subgraph_inputs.begin(),
                            gen_subgraph_inputs.end());
 
+  MS_CHECK_TRUE_RET(subgraph_proto.input_size() > 0, nullptr);
   std::string max_trip_count_name = subgraph_proto.input(0).name();
   status =
     AddIterNumsUpdateEdge(loop_body_graph, &return_new_inputs, anf_nodes_map, max_trip_count_name, loop_node_name);
@@ -1610,11 +1612,13 @@ STATUS OnnxModelParser::ConvertLoopOnnxNode(const onnx::NodeProto &onnx_node,
                                             std::unordered_map<std::string, AnfNodePtr> *anf_root_nodes_map,
                                             const std::string &root_node_name) {
   MS_CHECK_TRUE_RET(anf_root_nodes_map != nullptr, RET_NULL_PTR);
+  int body_attr_num = 0;
   for (int i = 0; i < onnx_node.attribute_size(); i++) {
     auto &attr = onnx_node.attribute(i);
     if (attr.name() != "body" || attr.type() != onnx::AttributeProto_AttributeType_GRAPH) {
       continue;
     }
+    MS_CHECK_TRUE_MSG(body_attr_num++ == 0, RET_ERROR, "Loop node has more than one body graph attribute");
     auto &subgraph_proto = attr.g();
     int cond_graph_input_num = -1;
     auto loop_body_graph = BuildBodyGraph(onnx_node, subgraph_proto, &cond_graph_input_num);
@@ -1633,6 +1637,7 @@ STATUS OnnxModelParser::ConvertLoopOnnxNode(const onnx::NodeProto &onnx_node,
     inputs.insert(inputs.begin() + 1, {cond_value_node, body_value_node});
     root_while_node->set_inputs(inputs);
   }
+  MS_CHECK_TRUE_MSG(body_attr_num == 1, RET_ERROR, "Loop node should have exactly one body graph attribute");
   return RET_OK;
 }
 

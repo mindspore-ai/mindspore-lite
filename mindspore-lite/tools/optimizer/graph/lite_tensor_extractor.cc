@@ -105,6 +105,11 @@ TensorPtr ConvertToLiteTensor(const lite::DataInfo &data_info) {
         return nullptr;
       }
     } else {
+      if (tensor->Size() != 0 && tensor->Size() != tensor_size) {
+        MS_LOG(ERROR) << "invalid const tensor data: tensor Size()=" << tensor->Size()
+                      << " != data_size=" << tensor_size;
+        return nullptr;
+      }
       auto tensor_data = malloc(tensor_size);
       if (tensor_data == nullptr) {
         MS_LOG(ERROR) << "tensor_data is nullptr.";

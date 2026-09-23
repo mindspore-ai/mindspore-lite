@@ -129,6 +129,10 @@ int ScaleInt8CPUKernel::InitParameter() {
   }
   MS_CHECK_TRUE_MSG(tile_para != nullptr, RET_ERROR, "scale's arithmetic-param is a nullptr.");
   auto out_shape = out_tensors_.front()->shape();
+  if (out_shape.size() > ARITHMETIC_SUPPORT_DIMS_NUM) {
+    MS_LOG(ERROR) << "Scale output dims " << out_shape.size() << " exceeds max " << ARITHMETIC_SUPPORT_DIMS_NUM;
+    return RET_ERROR;
+  }
   tile_para->ndim_ = out_shape.size();
   int i = 0;
   for (; i < scale_param_->axis_; ++i) {

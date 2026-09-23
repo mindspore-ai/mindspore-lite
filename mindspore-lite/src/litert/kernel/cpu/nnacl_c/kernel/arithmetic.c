@@ -414,6 +414,9 @@ static int ArithmeticBroadCastInput(ArithmeticStruct *arithmetic, int input_inde
     return NNACL_OK;
   }
   int buffer_size = NNACLGetElementNum(arithmetic->base_.out_[OUTPUT_INDEX]) * arithmetic->in_data_size_;
+  if (buffer_size < 0) {
+    return NNACL_ERR;
+  }
   matrix->data_ = arithmetic->base_.env_->Alloc(arithmetic->base_.env_->allocator_, buffer_size);
   NNACL_MALLOC_CHECK_NULL_RETURN_ERR(matrix->data_);
   arithmetic->broadcast_buffer_[input_index] = matrix->data_;

@@ -112,6 +112,12 @@ int Cropper::GetModelOps() {
       std::cerr << "Read model file failed while running " << path.c_str() << std::endl;
       return RET_ERROR;
     }
+    flatbuffers::Verifier verify(reinterpret_cast<const uint8_t *>(graph_buf), buffer_lens);
+    if (!schema::VerifyMetaGraphBuffer(verify)) {
+      delete[] graph_buf;
+      MS_LOG(ERROR) << "invalid model buffer: " << path;
+      return RET_ERROR;
+    }
     auto meta_graph = schema::GetMetaGraph(graph_buf);
     if (meta_graph == nullptr) {
       delete[] graph_buf;
@@ -204,10 +210,10 @@ int Cropper::GetOpMatchFiles() {
     in_file.getline(buf, kBufSize);
     std::string buf_str = buf;
     auto mapping = StrSplit(buf_str, kDelimComma);
-    if (!mapping.empty()) {
-      std::string primitive = mapping.at(0);
-      std::string type = mapping.at(1);
-      std::string file = mapping.at(2);
+    if (mapping.size() >= 3) {
+      std::string primitive = mapping[0];
+      std::string type = mapping[1];
+      std::string file = mapping[2];
       if (type == "kNumberTypeFloat32" || type == "kNumberTypeFloat16" || type == "kNumberTypeInt32") {
         for (auto op : this->fp32_operators_) {
           if (schema::EnumNamePrimitiveType(op) == primitive) {

@@ -127,7 +127,7 @@ STATUS PytorchModelParser::ConvertTorchGraph(const FuncGraphPtr &anf_graph) {
   if (RET_OK != status) {
     ReturnCode::GetSingleReturnCode()->UpdateReturnCode(status);
     MS_LOG(ERROR) << "convert graph inputs failed.";
-    return RET_OK;
+    return RET_ERROR;
   }
 
   status = ConvertNodes(anf_graph);
@@ -280,13 +280,13 @@ STATUS CopyDataFromTorchTensor(char *dst_data, const at::Tensor &torch_tensor, T
   size_t idx = 0;
   std::function<void(size_t, size_t)> copy_data = [&](size_t dim, size_t offset) {
     if (dim == data_shape.size() - 1) {
-      for (int i = 0; i < data_shape[dim]; i++) {
+      for (int64_t i = 0; i < data_shape[dim]; i++) {
         auto src_ptr = data_ptr + offset + i * stride[dim] * ele_size;
         auto dst_ptr = dst_data + (idx++) * ele_size;
         MS_CHECK_TRUE_RET_VOID(memcpy_s(dst_ptr, ele_size, src_ptr, ele_size) == EOK);
       }
     } else {
-      for (int i = 0; i < data_shape[dim]; i++) {
+      for (int64_t i = 0; i < data_shape[dim]; i++) {
         copy_data(dim + 1, offset + i * stride[dim] * ele_size);
       }
     }

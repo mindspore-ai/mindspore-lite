@@ -209,6 +209,7 @@ bool BPECodec::Load(const uint8_t *data, size_t size, size_t &offset) {
   }
   const uint32_t num_merges = ReadU32(data, offset, size);
   merge_rank_.clear();
+  if (offset > size || num_merges > (size - offset) / (sizeof(uint32_t) + 1)) return false;
   merge_rank_.reserve(num_merges);
 
   for (uint32_t i = 0; i < num_merges; ++i) {

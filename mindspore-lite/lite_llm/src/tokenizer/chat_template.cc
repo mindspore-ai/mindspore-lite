@@ -38,6 +38,8 @@ constexpr uint8_t kOpLoopEnd = 0x05;
 constexpr uint8_t kOpIfAddGenStart = 0x06;
 constexpr uint8_t kOpIfEnd = 0x07;
 constexpr uint8_t kOpEnd = 0x08;
+constexpr size_t kMaxLoopDepth = 8;
+constexpr size_t kMaxRenderedBytes = 1U << 20;
 
 uint32_t ReadU32(const uint8_t *data, size_t size, size_t &offset) {
   if (offset + sizeof(uint32_t) > size) {
@@ -142,6 +144,7 @@ std::string ChatTemplate::Apply(const std::vector<MSLlmChatMessage> &messages, b
     uint8_t op = data[pos++];
     switch (op) {
       case kOpEmitConst: {
+        if (oss.tellp() >= static_cast<std::streamoff>(kMaxRenderedBytes)) return {};
         size_t len = ReadU32(data, size, pos);
         if (pos + len > size) return {};
         oss.write(reinterpret_cast<const char *>(data + pos), static_cast<std::streamsize>(len));
@@ -155,6 +158,7 @@ std::string ChatTemplate::Apply(const std::vector<MSLlmChatMessage> &messages, b
         break;
       }
       case kOpEmitContent: {
+        if (oss.tellp() >= static_cast<std::streamoff>(kMaxRenderedBytes)) return {};
         const Frame *frame = CurrentLoop(frames);
         if (frame == nullptr || frame->msg_index >= messages.size()) return {};
         const char *content = messages[frame->msg_index].content;
@@ -165,6 +169,7 @@ std::string ChatTemplate::Apply(const std::vector<MSLlmChatMessage> &messages, b
         if (messages.empty()) {
           pos = SkipToLoopEnd(data, size, pos);
         } else {
+          if (frames.size() >= kMaxLoopDepth) return {};
           frames.push_back({true, pos, 0});
         }
         break;

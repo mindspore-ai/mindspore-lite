@@ -18,6 +18,7 @@
 #include "nnacl_c/fp32/gatherNd_fp32.h"
 #include "nnacl_c/kernel/default_kernel_base.h"
 #include "nnacl_c/nnacl_common.h"
+#include "nnacl_c/tensor_c_utils.h"
 
 int GatherNdInitOffset(GatherNdStruct *gather_nd) {
   TensorC *input_tensor = gather_nd->base_.in_[FIRST_INPUT];
@@ -56,12 +57,18 @@ int GatherNdInitOffset(GatherNdStruct *gather_nd) {
       for (int k = 0; k < idx_lastshape; ++k) {
         gather_nd->in_offset_[j] += indices_ptr[j * idx_stride + k] * in_stride[k];
       }
+      if (gather_nd->in_offset_[j] < 0 || gather_nd->in_offset_[j] >= NNACLGetElementNum(input_tensor)) {
+        return NNACL_GATHER_ND_INDICES_SHAPE_INVALID;
+      }
     }
   } else if (indices_tensor->data_type_ == kNumberTypeInt64) {
     int64_t *indices_ptr = (int64_t *)indices_tensor->data_;
     for (int j = 0; j < gather_nd->count_; ++j) {
       for (int k = 0; k < idx_lastshape; ++k) {
         gather_nd->in_offset_[j] += indices_ptr[j * idx_stride + k] * in_stride[k];
+      }
+      if (gather_nd->in_offset_[j] < 0 || gather_nd->in_offset_[j] >= NNACLGetElementNum(input_tensor)) {
+        return NNACL_GATHER_ND_INDICES_SHAPE_INVALID;
       }
     }
   } else {
