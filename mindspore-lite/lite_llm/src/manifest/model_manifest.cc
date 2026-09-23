@@ -36,6 +36,11 @@ namespace {
 
 // Default W4A16 embedding scale group size when the manifest omits it.
 constexpr int kDefaultScaleGroupSize = 32;
+// Manifest metadata holds short config strings/numbers; 1 MiB is far above any real value
+// and bounds memory when a malformed manifest declares a huge token.
+constexpr size_t kMaxTokenLen = 1 << 20;
+// Real manifests nest only a few levels; the cap turns deep recursion into a clean parse error.
+constexpr size_t kMaxJsonDepth = 32;
 
 std::string Lower(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(),
@@ -127,7 +132,7 @@ class JsonParser {
     }
   }
 
-  bool ParseValue(JsonValue *out, std::string *error) {
+  bool ParseValue(JsonValue *out, std::string *error, size_t depth = 0) {
     SkipWhitespace();
     if (pos_ >= text_.size()) {
       SetError(error, "unexpected end of JSON");
@@ -136,10 +141,10 @@ class JsonParser {
 
     const char ch = text_[pos_];
     if (ch == '{') {
-      return ParseObject(out, error);
+      return ParseObject(out, error, depth);
     }
     if (ch == '[') {
-      return ParseArray(out, error);
+      return ParseArray(out, error, depth);
     }
     if (ch == '"') {
       out->type = JsonValue::Type::kString;
@@ -166,9 +171,13 @@ class JsonParser {
     return false;
   }
 
-  bool ParseObject(JsonValue *out, std::string *error) {
+  bool ParseObject(JsonValue *out, std::string *error, size_t depth) {
     if (!Consume('{')) {
       SetError(error, "expected object");
+      return false;
+    }
+    if (depth > kMaxJsonDepth) {
+      SetError(error, "JSON nesting too deep");
       return false;
     }
     out->type = JsonValue::Type::kObject;
@@ -189,7 +198,7 @@ class JsonParser {
         return false;
       }
       JsonValue value;
-      if (!ParseValue(&value, error)) {
+      if (!ParseValue(&value, error, depth + 1)) {
         return false;
       }
       out->object_value[key] = std::move(value);
@@ -208,9 +217,13 @@ class JsonParser {
     return false;
   }
 
-  bool ParseArray(JsonValue *out, std::string *error) {
+  bool ParseArray(JsonValue *out, std::string *error, size_t depth) {
     if (!Consume('[')) {
       SetError(error, "expected array");
+      return false;
+    }
+    if (depth > kMaxJsonDepth) {
+      SetError(error, "JSON nesting too deep");
       return false;
     }
     out->type = JsonValue::Type::kArray;
@@ -223,7 +236,7 @@ class JsonParser {
 
     while (pos_ < text_.size()) {
       JsonValue value;
-      if (!ParseValue(&value, error)) {
+      if (!ParseValue(&value, error, depth + 1)) {
         return false;
       }
       out->array_value.push_back(std::move(value));
@@ -252,6 +265,10 @@ class JsonParser {
     out->clear();
 
     while (pos_ < text_.size()) {
+      if (out->size() > kMaxTokenLen) {
+        SetError(error, "string too long");
+        return false;
+      }
       const char ch = text_[pos_++];
       if (ch == '"') {
         return true;
@@ -330,6 +347,10 @@ class JsonParser {
     }
 
     const std::string token = text_.substr(start, pos_ - start);
+    if (token.size() > kMaxTokenLen) {
+      SetError(error, "number too long");
+      return false;
+    }
     errno = 0;
     char *end = nullptr;
     const double value = std::strtod(token.c_str(), &end);
@@ -383,7 +404,12 @@ bool GetInt(const JsonValue &object, const std::string &key, int32_t *out) {
     return false;
   }
   if (value->IsNumber()) {
-    *out = static_cast<int32_t>(value->number_value);
+    const double val = value->number_value;
+    if (val > static_cast<double>(std::numeric_limits<int32_t>::max()) ||
+        val < static_cast<double>(std::numeric_limits<int32_t>::min())) {
+      return false;
+    }
+    *out = static_cast<int32_t>(val);
     return true;
   }
   if (value->IsString()) {

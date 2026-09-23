@@ -58,6 +58,10 @@ int UnsortedSegmentSumCPUKernel::ReSize() {
   for (size_t j = 1; j < output_shape.size(); j++) {
     output_dim1_ *= static_cast<size_t>(output_shape[j]);
   }
+  if (output_dim1_ > static_cast<size_t>(INT_MAX)) {
+    MS_LOG(ERROR) << "output_dim1_ overflow";
+    return RET_ERROR;
+  }
   return RET_OK;
 }
 

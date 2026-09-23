@@ -28,6 +28,10 @@ int SetAttrsForPool(const torch::jit::Node *torch_node, PrimitiveCPtr prim_c) {
   MS_ASSERT(torch_node != nullptr && prim_c != nullptr);
   auto node_type = PytorchNodeParser::GetTorchNodeType(torch_node);
   prim_c->AddAttr(ops::kPadMode, MakeValue(static_cast<int64_t>(mindspore::PadMode::PAD)));
+  if (torch_node->inputs().size() <= 1) {
+    MS_LOG(ERROR) << "pooling op has too few inputs";
+    return RET_ERROR;
+  }
   auto kernels = PytorchNodeParser::GetValueFromConstNode<std::vector<int64_t>>(torch_node->input(1));
   prim_c->AddAttr(ops::kKernelSize, MakeValue(kernels));
   if (node_type.find("adaptive") != node_type.npos) {

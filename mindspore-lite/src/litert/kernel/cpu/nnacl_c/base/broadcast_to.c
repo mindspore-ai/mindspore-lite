@@ -22,6 +22,9 @@
 size_t accumulate(const int *shape, int start, int end) {
   size_t product = 1;
   for (int i = start; i <= end; ++i) {
+    if (shape[i] <= 0 || product > SIZE_MAX / (size_t)shape[i]) {
+      return 0;
+    }
     product *= (size_t)shape[i];
   }
   return product;

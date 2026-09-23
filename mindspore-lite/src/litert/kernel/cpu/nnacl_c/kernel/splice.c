@@ -44,7 +44,7 @@ int SpliceCompute(struct KernelBase *self) {
   NNACL_CHECK_FALSE(param->context_dim_ * dst_row != param->forward_indexes_dim_, NNACL_SPLICE_SHAPE_INVALID);
 
   for (int i = 0; i < param->forward_indexes_dim_; ++i) {
-    if (param->forward_indexes_[i] >= src_row) {
+    if (param->forward_indexes_[i] < 0 || param->forward_indexes_[i] >= src_row) {
       return NNACL_SPLICE_SHAPE_INVALID;
     }
   }

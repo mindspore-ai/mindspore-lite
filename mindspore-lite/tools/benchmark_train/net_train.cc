@@ -509,9 +509,15 @@ int NetTrain::InitDumpTensorDataCallbackParameter() {
   // before callback
   before_call_back_ = [&](const std::vector<mindspore::MSTensor> &before_inputs,
                           const std::vector<mindspore::MSTensor> &before_outputs, const MSCallBackParam &call_param) {
-    auto dump_mode = dump_cfg_json_[dump::kSettings][dump::kMode].get<int>();
-    auto input_output_mode = dump_cfg_json_[dump::kSettings][dump::kInputOutput].get<int>();
-    auto kernels = dump_cfg_json_[dump::kSettings][dump::kKernels].get<std::vector<std::string>>();
+    auto dump_mode = dump_cfg_json_[dump::kSettings][dump::kMode].is_number_integer()
+                       ? dump_cfg_json_[dump::kSettings][dump::kMode].get<int>()
+                       : 0;
+    auto input_output_mode = dump_cfg_json_[dump::kSettings][dump::kInputOutput].is_number_integer()
+                               ? dump_cfg_json_[dump::kSettings][dump::kInputOutput].get<int>()
+                               : 0;
+    auto kernels = dump_cfg_json_[dump::kSettings][dump::kKernels].is_array()
+                     ? dump_cfg_json_[dump::kSettings][dump::kKernels].get<std::vector<std::string>>()
+                     : std::vector<std::string>{};
     if (dump_mode == 0 || std::find(kernels.begin(), kernels.end(), call_param.node_name) != kernels.end()) {
       if (input_output_mode == 0 || input_output_mode == 1) {
         for (size_t i = 0; i < before_inputs.size(); i++) {
@@ -531,9 +537,15 @@ int NetTrain::InitDumpTensorDataCallbackParameter() {
   // after callback
   after_call_back_ = [&](const std::vector<mindspore::MSTensor> &after_inputs,
                          const std::vector<mindspore::MSTensor> &after_outputs, const MSCallBackParam &call_param) {
-    auto dump_mode = dump_cfg_json_[dump::kSettings][dump::kMode].get<int>();
-    auto input_output_mode = dump_cfg_json_[dump::kSettings][dump::kInputOutput].get<int>();
-    auto kernels = dump_cfg_json_[dump::kSettings][dump::kKernels].get<std::vector<std::string>>();
+    auto dump_mode = dump_cfg_json_[dump::kSettings][dump::kMode].is_number_integer()
+                       ? dump_cfg_json_[dump::kSettings][dump::kMode].get<int>()
+                       : 0;
+    auto input_output_mode = dump_cfg_json_[dump::kSettings][dump::kInputOutput].is_number_integer()
+                               ? dump_cfg_json_[dump::kSettings][dump::kInputOutput].get<int>()
+                               : 0;
+    auto kernels = dump_cfg_json_[dump::kSettings][dump::kKernels].is_array()
+                     ? dump_cfg_json_[dump::kSettings][dump::kKernels].get<std::vector<std::string>>()
+                     : std::vector<std::string>{};
     if (dump_mode == kDumpInputsAndOutputs ||
         std::find(kernels.begin(), kernels.end(), call_param.node_name) != kernels.end()) {
       if (input_output_mode == kDumpInputsAndOutputs || input_output_mode == kDumpOutputs) {

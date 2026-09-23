@@ -73,6 +73,7 @@ HEADER_SIZE = 24
 ENTRY_SIZE = 88
 NAME_MAX = 64
 DEFAULT_ALIGNMENT = 4096
+U32_SIZE = 4
 
 # ─── KV value types (v1 closed set) ────────────────────────────────────────
 TYPE_BOOL = 0
@@ -159,14 +160,16 @@ def decode_value(value_type: int, raw: bytes) -> Any:
     if value_type == TYPE_STRING:
         return raw.decode("utf-8")
     if value_type == TYPE_STRING_ARRAY:
+        if len(raw) < U32_SIZE:
+            raise MslPackError(f"string[] value must be at least {U32_SIZE} bytes")
         count = struct.unpack_from("<I", raw, 0)[0]
-        pos = 4
+        pos = U32_SIZE
         items = []
         for _ in range(count):
-            if pos + 4 > len(raw):
+            if pos + U32_SIZE > len(raw):
                 raise MslPackError("string[] truncated")
             item_len = struct.unpack_from("<I", raw, pos)[0]
-            pos += 4
+            pos += U32_SIZE
             if pos + item_len > len(raw):
                 raise MslPackError("string[] element truncated")
             items.append(raw[pos:pos + item_len].decode("utf-8"))

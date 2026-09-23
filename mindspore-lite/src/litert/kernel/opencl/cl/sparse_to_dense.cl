@@ -22,6 +22,10 @@ __kernel void SparseToDenseScalar(__read_only image2d_t input, __global DTYPE *o
     index = (index_input_int.x) * outputshape.y * stride_w + (index_input_int.y) * stride_w +
             (index_input_int.z) * outputshape.w * C4NUM + index_input_int.w;
   }
+  int output_num = outputshape.x * outputshape.y * outputshape.z * outputshape.w * C4NUM;
+  if (index < 0 || index >= output_num) {
+    return;
+  }
   output[index] = weight;
 }
 
@@ -45,6 +49,10 @@ __kernel void SparseToDenseVector(__read_only image2d_t input, __global DTYPE *o
   } else {
     index = (index_input_int.x) * outputshape.y * stride_w + (index_input_int.y) * stride_w +
             (index_input_int.z) * outputshape.w * C4NUM + index_input_int.w;
+  }
+  int output_num = outputshape.x * outputshape.y * outputshape.z * outputshape.w * C4NUM;
+  if (index < 0 || index >= output_num) {
+    return;
   }
   output[index] = weight_vector[X];
 }

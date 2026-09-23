@@ -158,6 +158,12 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
 
   // ── KV region: unknown keys are skipped, unknown types rejected ───────
   kv_.clear();
+  if (count > mapped_size_ / msl_format::kHeaderSize) {
+    if (error_message != nullptr) {
+      *error_message = "KV count exceeds file size";
+    }
+    return false;
+  }
   kv_.reserve(count);
   size_t pos = msl_format::kHeaderSize;
   for (uint32_t i = 0; i < count; ++i) {
@@ -202,6 +208,12 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
 
   // ── Resource table ─────────────────────────────────────────────────────
   entries_.clear();
+  if (resource_count > mapped_size_ / msl_format::kEntrySize) {
+    if (error_message != nullptr) {
+      *error_message = "resource count exceeds file size";
+    }
+    return false;
+  }
   entries_.reserve(resource_count);
   for (uint32_t i = 0; i < resource_count; ++i) {
     if (pos + msl_format::kEntrySize > mapped_size_) {

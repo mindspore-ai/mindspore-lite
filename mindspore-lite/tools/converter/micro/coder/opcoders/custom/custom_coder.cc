@@ -28,6 +28,39 @@
 using mindspore::schema::PrimitiveType_Custom;
 
 namespace mindspore::lite::micro {
+namespace {
+// Bytes below this are not printable ASCII and are emitted as \xHH.
+constexpr unsigned char kMinPrintableChar = 0x20;
+
+// Escape special characters for safe embedding in C string literals.
+std::string EscapeCString(const std::string &s) {
+  constexpr char kHexDigits[] = "0123456789abcdef";
+  std::string out;
+  out.reserve(s.size() + 4);
+  for (size_t i = 0; i < s.size(); ++i) {
+    char c = s[i];
+    if (c == '"' || c == '\\') {
+      out.push_back('\\');
+      out.push_back(c);
+    } else if (c == '\n') {
+      out += "\\n";
+    } else if (c == '\r') {
+      out += "\\r";
+    } else if (c == '\t') {
+      out += "\\t";
+    } else if (static_cast<unsigned char>(c) < kMinPrintableChar) {
+      const auto byte = static_cast<unsigned char>(c);
+      out += "\\x";
+      out.push_back(kHexDigits[byte >> 4]);
+      out.push_back(kHexDigits[byte & 0x0f]);
+    } else {
+      out.push_back(c);
+    }
+  }
+  return out;
+}
+}  // namespace
+
 std::map<Tensor *, void *> CustomCoder::const_tensor_map_;
 
 void CustomCoder::Populate(const void *prim) {
@@ -88,17 +121,14 @@ int CustomCoder::TransformTensors(Serializer *code, std::string array_name, cons
       (*code) << "\t\t" << array_name << "[" << i << "].shape_[" << j << "] = " << tensors[i]->shape()[j] << ";\n";
     }
     (*code) << "\t\t" << array_name << "[" << i << "].shape_size_ = " << tensors[i]->shape().size() << ";\n";
-    (*code) << "\t\t" << array_name << "[" << i << "].data_type_ = " << tensors[i]->data_type() << ";\n";
-    (*code) << "\t\t" << array_name << "[" << i << "].format_ = " << tensors[i]->format() << ";\n";
     if (tensors[i]->tensor_name().size() > MAX_STR_LEN) {
       MS_LOG(ERROR) << "tensor name is too long: " << tensors[i]->tensor_name();
       return RET_ERROR;
     }
     size_t tensor_name_len = tensors[i]->tensor_name().length() + 1;
-    (*code) << "\t\t" << array_name << "[" << i << "].name_ = "
-            << "malloc(" << tensor_name_len << ");\n";
-    (*code) << "\t\tmemcpy(" << array_name << "[" << i << "].name_, "
-            << "\"" << tensors[i]->tensor_name() << "\", " << tensor_name_len << ");\n";
+    (*code) << "\t\t" << array_name << "[" << i << "].name_ = " << "malloc(" << tensor_name_len << ");\n";
+    (*code) << "\t\tmemcpy(" << array_name << "[" << i << "].name_, " << "\""
+            << EscapeCString(tensors[i]->tensor_name()) << "\", " << tensor_name_len << ");\n";
   }
 
   return RET_OK;
@@ -115,8 +145,7 @@ int CustomCoder::TransformParams(Serializer *code, std::string var_name) {
     MS_LOG(ERROR) << "type name is too long: " << type_;
     return RET_ERROR;
   }
-  (*code) << "\t\tstrncpy(" << var_name << ".type, "
-          << "\"" << type_ << "\", MAX_STR_LEN);\n";
+  (*code) << "\t\tstrncpy(" << var_name << ".type, " << "\"" << EscapeCString(type_) << "\", MAX_STR_LEN);\n";
   (*code) << "\t\t" << var_name << ".type[MAX_STR_LEN - 1] = '\\0';\n";
   int i = 0;
   for (auto iter = attrs_.begin(); iter != attrs_.end(); ++iter) {
@@ -124,14 +153,13 @@ int CustomCoder::TransformParams(Serializer *code, std::string var_name) {
       MS_LOG(ERROR) << "attr name is too long: " << iter->first;
       return RET_ERROR;
     }
-    (*code) << "\t\tstrncpy(" << var_name << ".attr_name[" << i << "], "
-            << "\"" << iter->first << "\", MAX_STR_LEN);\n";
+    (*code) << "\t\tstrncpy(" << var_name << ".attr_name[" << i << "], " << "\"" << EscapeCString(iter->first)
+            << "\", MAX_STR_LEN);\n";
     (*code) << "\t\t" << var_name << ".attr_name[" << i << "][MAX_STR_LEN - 1] = '\\0';\n";
     size_t attr_data_len = iter->second.size() + 1;
-    (*code) << "\t\t" << var_name << ".attr_data[" << i << "] = "
-            << "malloc(" << attr_data_len << ");\n";
-    (*code) << "\t\tmemcpy(" << var_name << ".attr_data[" << i++ << "], "
-            << "\"" << iter->second << "\", " << attr_data_len << ");\n";
+    (*code) << "\t\t" << var_name << ".attr_data[" << i << "] = " << "malloc(" << attr_data_len << ");\n";
+    (*code) << "\t\tmemcpy(" << var_name << ".attr_data[" << i++ << "], " << "\"" << EscapeCString(iter->second)
+            << "\", " << attr_data_len << ");\n";
   }
   (*code) << "\t\t" << var_name << ".attr_num = " << attrs_.size() << ";\n";
   return RET_OK;

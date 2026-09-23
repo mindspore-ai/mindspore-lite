@@ -492,8 +492,8 @@ MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const MSLLMChatMe
   // assistant-start marker is later needed, that will be introduced as a
   // separate configuration; the current behavior is add_generation_prompt=false.
   std::string rendered = e->tokenizer->ApplyChatTemplate(msgs, false);
-  int needed = static_cast<int>(rendered.size()) + 1;
-  if (needed > prompt_size) {
+  int64_t needed = static_cast<int64_t>(rendered.size()) + 1;
+  if (needed < 0 || static_cast<size_t>(needed) > static_cast<size_t>(prompt_size)) {
     return kMSLLM_ERROR_BUFFER_TOO_SMALL;
   }
 
@@ -516,8 +516,8 @@ MSLLMStatus MSLLMGenerate(MSLLMModelHandle llm_model, const char *prompt, char *
   if (status != kMSLLM_SUCCESS) {
     return status;
   }
-  int needed = static_cast<int>(output.size()) + 1;
-  if (needed > text_size) return kMSLLM_ERROR_BUFFER_TOO_SMALL;
+  int64_t needed = static_cast<int64_t>(output.size()) + 1;
+  if (needed < 0 || static_cast<size_t>(needed) > static_cast<size_t>(text_size)) return kMSLLM_ERROR_BUFFER_TOO_SMALL;
   std::memcpy(generated_text, output.c_str(), static_cast<size_t>(needed));
   return kMSLLM_SUCCESS;
 }
