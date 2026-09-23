@@ -32,6 +32,17 @@ int CropInferShape(const TensorC *const *inputs, size_t inputs_size, TensorC **o
   if (axis < 0 || axis >= (int64_t)input_shape_size) {
     return NNACL_ERR;
   }
+  if (param->offset_size_ > COMM_SHAPE_SIZE) {
+    return NNACL_ERR;
+  }
+  if (param->offset_size_ > 1 && axis + param->offset_size_ != (int64_t)input_shape_size) {
+    return NNACL_ERR;
+  }
+  for (int i = 0; i < param->offset_size_; i++) {
+    if (param->offset_[i] < 0) {
+      return NNACL_ERR;
+    }
+  }
 
   SetDataTypeFormat(outputs[0], inputs[0]);
   if (!InferFlag(inputs, inputs_size)) {
