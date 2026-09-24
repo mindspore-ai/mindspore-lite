@@ -26,8 +26,15 @@ region:
 
 - TP (tensor parallel, ``tp.py``): shard the transformer weights across
   ranks and patch attention/FFN forwards with all-reduce based kernels.
-- SP (Ulysses sequence parallel, ``usp.py``): keep full weights, shard the
-  padded sequence; attention exchanges heads/sequence via all_to_all.
+- SP (Ulysses sequence parallel, ``usp_single_stream.py`` /
+  ``usp_double_stream.py``): keep full
+  weights, shard the padded sequence; attention exchanges heads/sequence
+  via all_to_all. Optional per-region ``cc_overlap`` hides the SP
+  collectives behind FFN / projection matmuls (``comm_compute_overlap.py``).
+- ``bsnd`` (``attention_bsnd.py``): fused-attention layout optimization (BNSD
+  transposes removed via ``npu_fusion_attention`` in BSND layout); composes
+  with 1P / TP (processor patch) and with SP / cc_overlap (backend axis of
+  the shared kernels in ``attention_common.py``).
 
 Missing config sections keep the default ``TP`` at the distributed world
 size.
@@ -53,14 +60,21 @@ from lite_boost.model.booguimage.tp import (
     tp_vae_decode,
     tp_pipeline_call,
 )
-from lite_boost.model.booguimage.usp import boost_sp_single_stream
+from lite_boost.model.booguimage.attention_common import attention_bsnd
+from lite_boost.model.booguimage.usp_single_stream import (
+    _sp_attention_bsnd,
+    boost_sp_single_stream,
+    set_sp_attention,
+)
+from lite_boost.model.booguimage.usp_double_stream import boost_sp_double_stream
+from lite_boost.model.booguimage.attention_bsnd import install_bsnd_processors
 
 _PIPELINE_CLASS_NAMES = frozenset({"BooguImagePipeline", "BooguImageTurboPipeline"})
 
 # Parallel algorithms selectable per transformer region (Parallel.dit.<region>).
 _DIT_PARALLEL_ALGS = ('TP', 'SP')
 # Regions that currently support SP; TP is available everywhere.
-_SP_SUPPORTED_REGIONS = ('single',)
+_SP_SUPPORTED_REGIONS = ('single', 'double')
 
 _NPU_DEVICE_REGEX = r"^(cpu|cuda|cuda:\d+|npu|npu:\d+)$"
 
@@ -246,24 +260,38 @@ def _patch_pipeline_call(pipe):
 # ---------------------------------------------------------------------------
 
 def _parse_parallel_config(config):
-    """Read the ``Parallel.dit`` section of the boost config.
+    """Read the ``Parallel`` section of the boost config.
 
-    Returns ``(algs, world_size)`` where ``algs`` maps each transformer
-    region to its parallel algorithm. Missing keys fall back to ``TP``;
-    world size defaults to the distributed world size. The yaml schema (see
+    Returns ``(algs, world_size, options)`` where ``algs`` maps each
+    transformer region to its parallel algorithm and ``options`` holds the
+    per-optimization flags:
+
+    - ``options['cc_overlap'][region]`` — hide SP collectives behind
+      independent matmuls (SP only, needs world_size > 1).
+    - ``options['bsnd']`` — BSND fused-attention backend for the attention
+      kernels (any world size; on 1P/TP it patches the processors, under SP
+      / cc_overlap it binds the SP / comm-compute kernels to the fused
+      backend — the double-stream processor stays owned by SP there).
+
+    Missing keys fall back to TP / disabled. The yaml schema (see
     ``booguimage.yaml``) is::
 
         Parallel:
           dit:
-            double:         # double-stream blocks: TP | SP (SP not yet supported)
+            double:         # double-stream blocks: TP | SP
               alg: TP
+              cc_overlap: false   # SP only: overlap a2a with FFN matmuls
             single:         # single-stream blocks
               alg: TP
+              cc_overlap: false
             world_size: 2
+          bsnd: true        # BSND fused attention (composes with TP/SP/CC)
     """
     dist_world_size = get_world_size()
-    dit = (config or {}).get('Parallel', {}).get('dit') or {}
+    root = (config or {}).get('Parallel', {})
+    dit = root.get('dit') or {}
     algs = {}
+    cc_overlap = {}
     for region in ('double', 'single'):
         section = dit.get(region) or {}
         if not isinstance(section, dict):
@@ -283,14 +311,31 @@ def _parse_parallel_config(config):
                 f"{region}-stream blocks yet; expected one of "
                 f"{_SP_SUPPORTED_REGIONS}"
             )
+        cc = bool(section.get('cc_overlap', False))
+        if cc and alg != 'SP':
+            raise ValueError(
+                f"Parallel.dit.{region}.cc_overlap requires alg: SP "
+                f"(it overlaps the SP all_to_all with FFN matmuls)"
+            )
+        if cc and region == 'double':
+            logger.warning(
+                "Parallel.dit.double.cc_overlap: double-stream SP assumes "
+                "batch_size == 1 and fixed sequence layout per forward "
+                "(see usp_double_stream.py); results are only correct under those "
+                "assumptions."
+            )
         algs[region] = alg
+        cc_overlap[region] = cc
+
+    bsnd = bool((config or {}).get('bsnd', False))
+
     world_size = dit.get('world_size') or dist_world_size
     if world_size != dist_world_size:
         raise ValueError(
             f"Parallel.dit.world_size ({world_size}) must match the "
             f"distributed world size ({dist_world_size})"
         )
-    return algs, world_size
+    return algs, world_size, {'cc_overlap': cc_overlap, 'bsnd': bsnd}
 
 
 def boost_booguimage(pipe, config=None):
@@ -304,7 +349,7 @@ def boost_booguimage(pipe, config=None):
     if cls_name not in _PIPELINE_CLASS_NAMES:
         raise ValueError(f"pipe class {cls_name} is not supported")
 
-    algs, world_size = _parse_parallel_config(config)
+    algs, world_size, options = _parse_parallel_config(config)
 
     transformer = getattr(pipe, "transformer", None)
     if transformer is None:
@@ -313,6 +358,8 @@ def boost_booguimage(pipe, config=None):
     patch_clean_boogu_for_npu(transformer)
 
     if world_size <= 1:
+        if options['bsnd']:
+            install_bsnd_processors()
         pipe._lite_boost_tp = False
         return pipe
 
@@ -323,11 +370,36 @@ def boost_booguimage(pipe, config=None):
         pipe.vae.to(device)
 
     if algs['single'] == 'SP':
+        if options['cc_overlap']['single']:
+            from lite_boost.model.booguimage.comm_compute_overlap import sp_attention_overlap
+
+            def cc_attention(attn, hidden_local, mask_sdpa, rope_local,
+                        base_sequence_length=None, backend=None):
+                """Comm-compute overlap kernel with the bsnd option folded in."""
+                return sp_attention_overlap(
+                    attn, hidden_local, mask_sdpa, rope_local,
+                    base_sequence_length,
+                    backend=attention_bsnd if options['bsnd'] else backend,
+                )
+            set_sp_attention(cc_attention)
+        elif options['bsnd']:
+            set_sp_attention(_sp_attention_bsnd)
         boost_sp_single_stream(transformer, world_size=world_size)
+        if algs['double'] == 'SP':
+            boost_sp_double_stream(
+                transformer, world_size=world_size,
+                cc_overlap=options['cc_overlap']['double'],
+                bsnd=options['bsnd'],
+            )
     else:
         shard_boogu_transformer(transformer, rank=rank, world_size=world_size)
         transformer.config.num_attention_heads //= world_size
         patch_transformer_forwards(transformer)
+
+    # On SP the double-stream joint attention is owned by usp_double_stream, so bsnd
+    # only patches the single-stream processor.
+    if options['bsnd']:
+        install_bsnd_processors(patch_double_stream=algs['double'] != 'SP')
 
     _patch_vae_decode(pipe)
     _patch_pipeline_call(pipe)

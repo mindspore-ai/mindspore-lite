@@ -20,7 +20,7 @@ Each function here is a drop-in replacement for the original ``__call__`` /
 ``forward`` / ``decode`` method, adding all-reduce and GQA-overlap logic
 when tensor parallelism is active, and falling back to the original method
 otherwise. Weight sharding lives in ``shard_boogu_transformer`` (also here);
-the SP counterpart is ``usp.py``.
+the SP counterpart is ``usp_single_stream.py``.
 """
 
 import math

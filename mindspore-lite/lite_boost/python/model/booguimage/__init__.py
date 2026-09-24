@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""BooguImage boost package: TP in ``tp.py``, Ulysses SP in ``usp.py``."""
+"""BooguImage boost package: TP in ``tp.py``, Ulysses SP in
+``usp_single_stream.py`` / ``usp_double_stream.py``, comm-compute overlap in
+``comm_compute_overlap.py`` (async primitives in ``async_collectives.py``),
+BSND attention in ``attention_bsnd.py``."""
 
 __all__ = [
     "boost_booguimage",
@@ -21,6 +24,11 @@ __all__ = [
     "patch_transformer_forwards",
     "boost_sp_single_stream",
     "sp_single_stream_block_forward",
+    "set_sp_attention",
+    "boost_sp_double_stream",
+    "sp_double_stream_block_forward",
+    "install_bsnd_processors",
+    "revert_bsnd_processors",
     "tp_single_stream_processor_call",
     "tp_single_stream_processor_call_flash",
     "tp_double_stream_processor_call",
@@ -32,7 +40,13 @@ __all__ = [
 
 from .boost import boost_booguimage
 from .tp import shard_boogu_transformer, patch_transformer_forwards
-from .usp import boost_sp_single_stream, sp_single_stream_block_forward
+from .usp_single_stream import (
+    boost_sp_single_stream,
+    sp_single_stream_block_forward,
+    set_sp_attention,
+)
+from .usp_double_stream import boost_sp_double_stream, sp_double_stream_block_forward
+from .attention_bsnd import install_bsnd_processors, revert_bsnd_processors
 from .tp import (
     tp_single_stream_processor_call,
     tp_single_stream_processor_call_flash,

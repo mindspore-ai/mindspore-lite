@@ -35,78 +35,53 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 
-from lite_boost.model.booguimage.npu_kernels import npu_apply_rotary_emb
+from lite_boost.model.booguimage.attention_common import (
+    SyncExchanger,
+    attention_bnsd,
+    attention_bsnd,
+    resolve_apply_rotary_emb,
+    single_stream_sp_attention,
+)
 from lite_boost.parallel.context_parallel import (
     all_gather_seq,
-    all_to_all_4d,
-    gqa_kv_head_index,
     pad_split_seq,
 )
 
 
-def _sp_attn(attn, hidden_local, mask_sdpa, rope_local):
-    """Ulysses attention for one single-stream block on a local sequence chunk.
+def set_sp_attention(attention_fn):
+    """Override the attention kernel used by ``sp_single_stream_block_forward``.
+
+    Used by ``comm_compute_overlap.py`` to swap in the comm-compute overlapping variant;
+    pass ``None`` to restore the default Ulysses kernel.
+    """
+    global _sp_attention
+    _sp_attention = attention_fn if attention_fn is not None else _sp_attention_default
+
+
+def _sp_attention_backend(attn, hidden_local, mask_sdpa, rope_local, backend):
+    """Ulysses attention for one single-stream block on a local chunk.
 
     hidden_local: [B, S/P, D]; mask_sdpa: [B, 1, 1, S_pad] or None;
-    rope_local:   [B, S/P, D/2] complex or None.
-    Returns [B, S/P, D].
+    rope_local:   [B, S/P, D/2] complex or None. Returns [B, S/P, D].
     """
-    world_size = dist.get_world_size()
-    b, sloc, _ = hidden_local.shape
-
-    query = attn.to_q(hidden_local)
-    key = attn.to_k(hidden_local)
-    value = attn.to_v(hidden_local)
-
-    head_dim = query.shape[-1] // attn.heads
-    kv_heads = key.shape[-1] // head_dim
-
-    query = query.view(b, -1, attn.heads, head_dim)
-    key = key.view(b, -1, kv_heads, head_dim)
-    value = value.view(b, -1, kv_heads, head_dim)
-
-    if attn.norm_q is not None:
-        query = attn.norm_q(query)
-    if attn.norm_k is not None:
-        key = attn.norm_k(key)
-
-    if rope_local is not None:
-        query = npu_apply_rotary_emb(query, rope_local, use_real=False)
-        key = npu_apply_rotary_emb(key, rope_local, use_real=False)
-
-    dtype = query.dtype
-    query, key = query.to(dtype), key.to(dtype)
-
-    # Ulysses forward: [B, S/P, H, D] -> [B, S_pad, H/P, D]
-    query = all_to_all_4d(query, scatter_idx=2, gather_idx=1)
-    # K/V hold all heads locally already (weights unsharded under SP); gather
-    # the full sequence so every rank can attend over all positions.
-    key = all_gather_seq(key, dim=1)    # [B, S_pad, H_kv, D]
-    value = all_gather_seq(value, dim=1)
-
-    heads_local = attn.heads // world_size
-    qk_ratio = attn.heads // kv_heads
-
-    # After all_to_all the query heads on this rank are the contiguous block
-    # [rank*heads_local, (rank+1)*heads_local) of the full head order; index
-    # the gathered K/V heads each local query group maps to (GQA).
-    kv_idx = gqa_kv_head_index(heads_local, qk_ratio, query.device)
-    key = key.index_select(2, kv_idx).transpose(1, 2)    # [B, H/P, S_pad, D]
-    value = value.index_select(2, kv_idx).transpose(1, 2)
-    query = query.transpose(1, 2)                        # [B, H/P, S_pad, D]
-
-    out = F.scaled_dot_product_attention(
-        query, key, value, attn_mask=mask_sdpa, scale=attn.scale,
+    return single_stream_sp_attention(
+        attn, hidden_local, mask_sdpa, rope_local, SyncExchanger(),
+        resolve_apply_rotary_emb(), backend=backend,
     )
-    out = out.transpose(1, 2).contiguous()  # [B, S_pad, H/P, D]
 
-    # Ulysses reverse: [B, S_pad, H/P, D] -> [B, S/P, H, D]
-    out = all_to_all_4d(out, scatter_idx=1, gather_idx=2)
 
-    out = out.reshape(b, sloc, attn.heads * head_dim)
-    out = attn.to_out[0](out)
-    out = attn.to_out[1](out)
-    return out
+def _sp_attention_default(attn, hidden_local, mask_sdpa, rope_local):
+    """Ulysses attention for one single-stream block (SDPA backend)."""
+    return _sp_attention_backend(attn, hidden_local, mask_sdpa, rope_local, attention_bnsd)
+
+
+def _sp_attention_bsnd(attn, hidden_local, mask_sdpa, rope_local):
+    """Ulysses attention for one single-stream block (fused BSND backend)."""
+    return _sp_attention_backend(attn, hidden_local, mask_sdpa, rope_local, attention_bsnd)
+
+
+# Current single-stream attention kernel; swapped by ``set_sp_attention``.
+_sp_attention = _sp_attention_default
 
 
 def sp_single_stream_block_forward(
@@ -136,7 +111,10 @@ def sp_single_stream_block_forward(
             f"got shape {tuple(attention_mask.shape)}"
         )
     seq_full = attention_mask.shape[1] if attention_mask is not None else hidden_states.shape[1]
-    seq_pad = (world_size - seq_full % world_size) % world_size
+    # Pad to a multiple of 2*world so S_local is even - HCCL all_to_all hits
+    # a ~2x transit-time cliff on odd per-rank sequence counts.
+    align = 2 * world_size
+    seq_pad = (align - seq_full % align) % align
 
     if split_input:
         hs, _ = pad_split_seq(hidden_states, seq_pad, dim=1)
@@ -167,13 +145,13 @@ def sp_single_stream_block_forward(
 
     if self.modulation:
         norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hs, temb)
-        attn_output = _sp_attn(self.attn, norm_hidden_states, mask_sdpa, rope_local)
+        attn_output = _sp_attention(self.attn, norm_hidden_states, mask_sdpa, rope_local)
         hs = hs + gate_msa.unsqueeze(1).tanh() * self.norm2(attn_output)
         mlp_output = self.feed_forward(self.ffn_norm1(hs) * (1 + scale_mlp.unsqueeze(1)))
         hs = hs + gate_mlp.unsqueeze(1).tanh() * self.ffn_norm2(mlp_output)
     else:
         norm_hidden_states = self.norm1(hs)
-        attn_output = _sp_attn(self.attn, norm_hidden_states, mask_sdpa, rope_local)
+        attn_output = _sp_attention(self.attn, norm_hidden_states, mask_sdpa, rope_local)
         hs = hs + self.norm2(attn_output)
         mlp_output = self.feed_forward(self.ffn_norm1(hs))
         hs = hs + self.ffn_norm2(mlp_output)

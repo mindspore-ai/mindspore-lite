@@ -1,3 +1,6 @@
+# BooguImage boost config template.
+#
+# Missing sections keep the defaults (TP everywhere, extra optimizations off).
 Parallel:
   dit:
     # Parallel algorithm per transformer region, in pipeline order.
@@ -5,9 +8,24 @@ Parallel:
     # TP: tensor parallel (weight sharding + all-reduce); best for small-batch
     #     latency, requires num_attention_heads % world_size == 0
     # SP: Ulysses sequence parallel (full weights, sequence sharding); best for
-    #     long sequences, no head-count constraint
-    double:     # double-stream blocks (SP not yet supported)
+    #     long sequences, no head-count constraint. SP is available for both
+    #     regions; the double-stream SP assumes batch_size == 1 and a fixed
+    #     instruct/img sequence layout per forward (see usp_double_stream.py).
+    double:     # double-stream blocks
       alg: TP
+      # SP only: overlap the SP all_to_all/all_gather with the FFN matmuls
+      # (linear_1/linear_3 under the send side, linear_2 under the recv side).
+      # Keeps feed_forward.linear_1/2/3 as normal modules, so Quant can be
+      # applied on them later without changing this file.
+      cc_overlap: false
     single:     # single-stream blocks
       alg: TP
+      # SP only: overlap the attention all_to_all with the QKV / out projections.
+      cc_overlap: false
     world_size: 2
+
+# BSND fused attention: run attention through npu_fusion_attention in BSND
+# layout (no BNSD transpose). Composes with everything: 1 card and TP (patches
+# the processors), SP and CC overlap (routes the SP/CC kernels through the
+# fused backend; the double-stream processor stays owned by SP there).
+bsnd: false
