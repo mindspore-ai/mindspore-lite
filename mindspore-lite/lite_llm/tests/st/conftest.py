@@ -95,6 +95,11 @@ def release(request, tmp_path_factory):
         root = os.path.join(tmp_path_factory.mktemp("st_release"), "pkg")
         with tarfile.open(path) as tf:
             tf.extractall(root, filter="data")
+        # The release archive wraps its contents in a single top-level package
+        # directory; descend into it so bin/ and tool/ resolve as before.
+        entries = os.listdir(root)
+        if len(entries) == 1 and os.path.isdir(os.path.join(root, entries[0])):
+            root = os.path.join(root, entries[0])
     info = {"root": root}
     info["mslite_chat"] = os.path.join(root, "bin", "mslite-chat")
     info["wheel"] = next(

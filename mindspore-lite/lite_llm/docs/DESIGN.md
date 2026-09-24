@@ -158,11 +158,15 @@ bash mindspore-lite/lite_llm/build.sh -b nnrt -j8       # Kirin NPU 后端（OHO
 
 ```
 
-└── mindspore-lite-llm-linux-x64-{version}.tar.gz
-    ├── tool/mslite-llm-{version}.whl     # mslite-llm-export 入口
-    ├── include/llm/*.h                   # 公共 C API 头
+└── mindspore-lite-llm-linux-x64-{version}/   # 归档内顶层目录（与包名同名）
     ├── lib/libmindspore-lite-llm.so      # 引擎动态库
-    └── ascendc_ops/*.run                 # CI 产出的算子包（存在时收集）
+    ├── include/llm/*.h                   # 公共 C API 头
+    ├── bin/mslite-chat                   # 示例 CLI（ST 设备验证入口）
+    └── tool/                             # 工具与算子产物
+        ├── mslite_llm-{version}.whl      # mslite-llm-export 入口
+        └── ascendc_ops/                  # CI 产出的算子产物（存在时收集）
+            ├── mslite_llm_ops-*.whl      # 算子 wheel
+            └── *.run                     # 算子二进制包
 
 ```
 
