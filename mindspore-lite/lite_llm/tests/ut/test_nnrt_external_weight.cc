@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-// Exercise external weight export with synthetic packages, without an NPU runtime.
+// Exercise the real Build -> LoadExternalWeights path with a fake NNRT API.
 
 #include <gtest/gtest.h>
 #include <sys/resource.h>
@@ -34,27 +34,86 @@
 #include <vector>
 
 #include "backend/nnrt/nnrt_executor.h"
+#include "backend/nnrt/nnrt_wrapper.h"
 #include "manifest/msl_format.h"
 #include "manifest/msl_package_reader.h"
 
 namespace mslite {
 namespace backend {
 namespace nnrt {
+namespace {
+
+struct WeightRuntime {
+  int compilation = 0;
+  int executor = 0;
+  int init_calls = 0;
+  int init_result = 0;
+  bool contract_queried = false;
+  std::string directory;
+  std::vector<char> bytes;
+};
+WeightRuntime runtime;
+
+NNRTFunctions WeightApi() {
+  NNRTFunctions api{};
+  api.Compilation_ConstructWithOfflineModelBuffer = [](const void *, size_t) {
+    return reinterpret_cast<OH_NNCompilation *>(&runtime.compilation);
+  };
+  api.Compilation_SetDevice = [](OH_NNCompilation *, size_t) { return 0; };
+  api.Compilation_SetPerformanceMode = [](OH_NNCompilation *, NnrtPerformanceMode) { return 0; };
+  api.HIAIOptions_SetAsyncModeEnable = [](OH_NNCompilation *, bool) { return 0; };
+  api.Compilation_Build = [](OH_NNCompilation *) { return 0; };
+  api.Compilation_Destroy = [](OH_NNCompilation **handle) { *handle = nullptr; };
+  api.Executor_Construct = [](OH_NNCompilation *) { return reinterpret_cast<OH_NNExecutor *>(&runtime.executor); };
+  api.Executor_Destroy = [](OH_NNExecutor **handle) { *handle = nullptr; };
+  api.HIAIExecutor_InitWeights = [](OH_NNExecutor *, const char *directory) {
+    ++runtime.init_calls;
+    runtime.directory = directory;
+    std::ifstream file(runtime.directory + "/SubGraph_0.weight", std::ios::binary);
+    EXPECT_TRUE(file.is_open());
+    runtime.bytes.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    return runtime.init_result;
+  };
+  // Stop after successful weight initialization, before unrelated tensor setup.
+  // Build returns false deliberately; tests also assert this boundary was reached.
+  api.Executor_GetInputCount = [](const OH_NNExecutor *, size_t *) {
+    runtime.contract_queried = true;
+    return -1;
+  };
+  api.Executor_GetOutputCount = [](const OH_NNExecutor *, size_t *) { return -1; };
+  return api;
+}
 
 class ExternalWeightExportTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    saved_api_ = NNRTWrapper::GetApi();
+    runtime = {};
+    NNRTWrapper::SetApiForTesting(WeightApi());
     std::string pattern = (std::filesystem::temp_directory_path() / "msl_export_XXXXXX").string();
     std::vector<char> name(pattern.begin(), pattern.end());
     name.push_back('\0');
     const char *created = ::mkdtemp(name.data());
     ASSERT_NE(created, nullptr);
     root_ = created;
-    executor_ = std::make_unique<NnrtExecutor>();
+    config_.vocab_size = 128;
+    config_.hidden_size = 128;
+    config_.num_layers = 1;
+    config_.num_key_value_heads = 1;
+    config_.head_dim = 128;
+    config_.max_length = 64;
+    config_.chunk_size = 64;
+    config_.single_file = true;
+    config_.has_external_weights = true;
+    config_.prefill_path = "npu_offline/x.omc";
+    config_.package_root = root_ + "/model.msl";
+    config_.om_weight_dir = "weights";
   }
 
   void TearDown() override {
     executor_.reset();
+    config_.package_reader.reset();
+    NNRTWrapper::SetApiForTesting(saved_api_);
     if (!root_.empty()) {
       std::error_code error;
       std::filesystem::remove_all(root_, error);
@@ -62,7 +121,7 @@ class ExternalWeightExportTest : public ::testing::Test {
     }
   }
 
-  void Prepare(size_t size) {
+  void Prepare(size_t size, bool aligned = true) {
     const auto page_size = ::sysconf(_SC_PAGESIZE);
     ASSERT_GT(page_size, 0);
     payload_.resize(size);
@@ -71,42 +130,49 @@ class ExternalWeightExportTest : public ::testing::Test {
     }
     using mslite_llm::msl_format::MslHeader;
     using mslite_llm::msl_format::MslResourceEntry;
-    MslHeader header{{'.', 'M', 'S', 'L'}, 1, 0, 1, static_cast<uint32_t>(page_size), 0};
-    MslResourceEntry entry{};
-    const std::string entry_name = "SubGraph_0.weight";
-    std::copy(entry_name.begin(), entry_name.end(), entry.name);
-    entry.offset = static_cast<uint64_t>(page_size);
-    entry.size = size;
-    std::ofstream file(root_ + "/model.msl", std::ios::binary);
+    const uint32_t alignment = aligned ? static_cast<uint32_t>(page_size) : 1;
+    MslHeader header{{'.', 'M', 'S', 'L'}, 1, 0, 2, alignment, 0};
+    MslResourceEntry omc{};
+    std::copy(config_.prefill_path.begin(), config_.prefill_path.end(), omc.name);
+    omc.offset = page_size;
+    omc.size = 1;
+    MslResourceEntry weight{};
+    std::copy(config_.external_weight_entry.begin(), config_.external_weight_entry.end(), weight.name);
+    weight.offset = 2 * page_size + (aligned ? 0 : 1);
+    weight.size = size;
+    std::ofstream file(config_.package_root, std::ios::binary);
     file.write(reinterpret_cast<const char *>(&header), sizeof(header));
-    file.write(reinterpret_cast<const char *>(&entry), sizeof(entry));
-    file.seekp(page_size - 1);
+    file.write(reinterpret_cast<const char *>(&omc), sizeof(omc));
+    file.write(reinterpret_cast<const char *>(&weight), sizeof(weight));
+    file.seekp(omc.offset);
+    file.put(0);
+    file.seekp(weight.offset - 1);
     file.put(0);
     file.write(payload_.data(), static_cast<std::streamsize>(size));
     file.close();
     ASSERT_TRUE(file.good());
-    executor_->package_reader_ = std::make_shared<mslite_llm::MslPackageReader>();
-    ASSERT_TRUE(executor_->package_reader_->Open(root_ + "/model.msl"));
-    executor_->package_root_ = root_ + "/model.msl";
-    executor_->om_weight_dir_ = "weights";
-    ASSERT_TRUE(executor_->package_reader_->Mmap(entry_name, &data_, &size_));
+    config_.package_reader = std::make_shared<mslite_llm::MslPackageReader>();
+    ASSERT_TRUE(config_.package_reader->Open(config_.package_root));
+    ASSERT_TRUE(config_.package_reader->Mmap(config_.external_weight_entry, &data_, &size_));
   }
 
-  bool Write(const std::string &path) { return executor_->WriteExternalWeightFile(path, data_, size_); }
-  bool Extract() { return executor_->ExtractExternalWeightFile(); }
-  bool Reclaim() { return executor_->package_reader_->Reclaim(executor_->external_weight_entry_); }
-  void MissingEntry() { executor_->external_weight_entry_ = "missing"; }
-  void MissingReader() { executor_->package_reader_.reset(); }
-  std::string ExportDirectory() const { return executor_->temp_weight_dir_; }
-
-  void CheckBytes(const std::string &path) {
-    std::ifstream file(path, std::ios::binary);
-    ASSERT_TRUE(file.is_open());
-    const std::vector<char> actual((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    EXPECT_EQ(actual, payload_);
+  void BuildAndCheckExport() {
+    executor_ = std::make_unique<NnrtExecutor>();
+    EXPECT_FALSE(executor_->Build(config_));
+    ASSERT_EQ(runtime.init_calls, 1);
+    EXPECT_TRUE(runtime.contract_queried);
+    EXPECT_EQ(runtime.bytes, payload_);
+    EXPECT_TRUE(std::equal(payload_.begin(), payload_.end(), reinterpret_cast<const char *>(data_)));
   }
 
-  // Run in an ASSERT_EXIT child: never alter the test runner's resource limits.
+  void BuildAndCheckRejected() {
+    executor_ = std::make_unique<NnrtExecutor>();
+    EXPECT_FALSE(executor_->Build(config_));
+    EXPECT_EQ(runtime.init_calls, 0);
+    EXPECT_FALSE(runtime.contract_queried);
+  }
+
+  // Run in a child: never alter the test runner's resource limits or signals.
   void RejectWriteWithFileLimit() {
     struct rlimit limit {};
     if (::getrlimit(RLIMIT_FSIZE, &limit) != 0) {
@@ -117,19 +183,24 @@ class ExternalWeightExportTest : public ::testing::Test {
     if (std::signal(SIGXFSZ, SIG_IGN) == SIG_ERR || ::setrlimit(RLIMIT_FSIZE, &limit) != 0) {
       ::_exit(3);
     }
-    // gtest captures stderr in a file, also affected by RLIMIT_FSIZE.
     std::ostringstream errors;
     auto *original_buffer = std::cerr.rdbuf(errors.rdbuf());
-    const bool written = Write(root_ + "/limited.bin");
+    bool built = false;
+    {
+      NnrtExecutor executor;
+      built = executor.Build(config_);
+    }
     if (::setrlimit(RLIMIT_FSIZE, &original) != 0) {
       ::_exit(4);
     }
     std::cerr.rdbuf(original_buffer);
     std::cerr << errors.str();
-    ::_exit(written ? 1 : 0);
+    ::_exit(!built && runtime.init_calls == 0 && !runtime.contract_queried ? 0 : 1);
   }
 
   std::string root_;
+  NnrtConfig config_;
+  NNRTFunctions saved_api_{};
   std::unique_ptr<NnrtExecutor> executor_;
   std::vector<char> payload_;
   const uint8_t *data_{nullptr};
@@ -139,26 +210,23 @@ class ExternalWeightExportTest : public ::testing::Test {
 TEST_F(ExternalWeightExportTest, PreservesBytesAcrossChunkBoundaries) {
   for (size_t bytes : {1UL, 4194303UL, 4194304UL, 4194305UL, 8388625UL}) {
     SCOPED_TRACE(bytes);
+    executor_.reset();
+    runtime = {};
     ASSERT_NO_FATAL_FAILURE(Prepare(bytes));
-    ASSERT_TRUE(Reclaim());
-    ASSERT_TRUE(Write(root_ + "/output.bin"));
-    CheckBytes(root_ + "/output.bin");
-    // Reclaim leaves the source address usable, including the final partial page.
-    EXPECT_TRUE(std::equal(payload_.begin(), payload_.end(), reinterpret_cast<const char *>(data_)));
+    ASSERT_NO_FATAL_FAILURE(BuildAndCheckExport());
   }
 }
 
 TEST_F(ExternalWeightExportTest, ReclaimFailureStillExportsAllChunks) {
-  ASSERT_NO_FATAL_FAILURE(Prepare(8388625));
-  MissingEntry();
-  ASSERT_FALSE(Reclaim());
-  ASSERT_TRUE(Write(root_ + "/output.bin"));
-  CheckBytes(root_ + "/output.bin");
+  ASSERT_NO_FATAL_FAILURE(Prepare(8388625, false));
+  ASSERT_FALSE(config_.package_reader->Reclaim(config_.external_weight_entry));
+  ASSERT_NO_FATAL_FAILURE(BuildAndCheckExport());
 }
 
 TEST_F(ExternalWeightExportTest, OpenFailureIsReported) {
+  config_.external_weight_entry = "missing/SubGraph_0.weight";
   ASSERT_NO_FATAL_FAILURE(Prepare(1));
-  EXPECT_FALSE(Write(root_ + "/missing/output.bin"));
+  BuildAndCheckRejected();
 }
 
 TEST_F(ExternalWeightExportTest, BufferedFlushFailureIsReported) {
@@ -173,26 +241,41 @@ TEST_F(ExternalWeightExportTest, LargeWriteFailureIsReported) {
 
 TEST_F(ExternalWeightExportTest, ExtractsAndRemovesTemporaryWeightFile) {
   ASSERT_NO_FATAL_FAILURE(Prepare(4194305));
-  ASSERT_TRUE(Extract());
-  const std::string directory = ExportDirectory();
-  CheckBytes(directory + "/weights/SubGraph_0.weight");
+  ASSERT_NO_FATAL_FAILURE(BuildAndCheckExport());
+  const auto directory = std::filesystem::path(runtime.directory).parent_path();
+  ASSERT_TRUE(std::filesystem::exists(directory / "weights/SubGraph_0.weight"));
   executor_.reset();
   EXPECT_FALSE(std::filesystem::exists(directory));
 }
 
 TEST_F(ExternalWeightExportTest, MissingEntryAndReaderAreRejected) {
   ASSERT_NO_FATAL_FAILURE(Prepare(1));
-  MissingEntry();
-  EXPECT_FALSE(Extract());
-  MissingReader();
-  EXPECT_FALSE(Extract());
+  config_.external_weight_entry = "missing";
+  BuildAndCheckRejected();
+  config_.package_reader.reset();
+  BuildAndCheckRejected();
 }
 
 TEST_F(ExternalWeightExportTest, EmptyWeightIsRejected) {
   ASSERT_NO_FATAL_FAILURE(Prepare(0));
-  EXPECT_FALSE(Extract());
+  BuildAndCheckRejected();
 }
 
+TEST_F(ExternalWeightExportTest, InitWeightsFailureStopsBuildAndCleansExport) {
+  ASSERT_NO_FATAL_FAILURE(Prepare(4194305));
+  runtime.init_result = -1;
+  executor_ = std::make_unique<NnrtExecutor>();
+  EXPECT_FALSE(executor_->Build(config_));
+  EXPECT_EQ(runtime.init_calls, 1);
+  EXPECT_EQ(runtime.bytes, payload_);
+  EXPECT_FALSE(runtime.contract_queried);
+  const auto directory = std::filesystem::path(runtime.directory).parent_path();
+  ASSERT_FALSE(directory.empty());
+  executor_.reset();
+  EXPECT_FALSE(std::filesystem::exists(directory));
+}
+
+}  // namespace
 }  // namespace nnrt
 }  // namespace backend
 }  // namespace mslite

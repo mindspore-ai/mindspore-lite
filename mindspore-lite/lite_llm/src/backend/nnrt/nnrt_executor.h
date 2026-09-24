@@ -49,7 +49,6 @@ class NnrtExecutor {
   bool Reset();
 
  private:
-  friend class ExternalWeightExportTest;
   bool InitConfig(const NnrtConfig &config);
   bool BuildModel();
   bool ConstructCompilation();
