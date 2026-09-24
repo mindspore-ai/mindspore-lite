@@ -27,6 +27,7 @@ using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;
 
 // Adapter for NPU Pass Utils to work with Transform Pass templates
+namespace {
 struct NPUTransformPassUtils {
   static bool IsNchw2Nhwc(NPUOp *op) { return NPUPassUtils::IsNchw2Nhwc(op); }
   static bool IsNhwc2Nchw(NPUOp *op) { return NPUPassUtils::IsNhwc2Nchw(op); }
@@ -55,6 +56,7 @@ struct NPUTransformPassUtils {
     return NPUPassUtils::UpdateNC2NHTransNodePostOp(cur_op, nc2nh_op, post_op, trans_in_tensor);
   }
 };
+}  // namespace
 
 namespace mindspore::lite {
 std::set<mindspore::schema::PrimitiveType> format_depend_nodes = {

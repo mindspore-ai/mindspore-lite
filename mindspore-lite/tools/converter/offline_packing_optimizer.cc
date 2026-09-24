@@ -137,6 +137,23 @@ TypeId GetDataType(const CNodePtr &cnode, const std::vector<Tensor *> &in_tensor
 STATUS CreateInputTensors(const CNodePtr &cnode, std::vector<Tensor *> *in_tensors) {
   std::vector<int> shape(0);
   mindspore::TypeId type_id = TypeId::kTypeUnknown;
+  // Get tensor data and quant params from a parameter node with a default value
+  auto get_param_tensor_data = [](const ParameterPtr &param_node, void **tensor_data,
+                                  std::vector<lite::LiteQuantParam> *lite_quant_params) -> bool {
+    auto tensor_info = std::static_pointer_cast<tensor::Tensor>(param_node->default_param());
+    if (tensor_info == nullptr || tensor_info->device_address() == nullptr) {
+      return false;
+    }
+    *tensor_data = tensor_info->device_address()->GetMutablePtr();
+    auto quantization_params = tensor_info->quant_params();
+    if (!quantization_params.empty()) {
+      auto quantization_param = quantization_params.front();
+      auto scale_list_attr = quantization_param->GetAttr(quant::kScaleList);
+      auto scales = GetValue<std::vector<double>>(scale_list_attr);
+      lite_quant_params->resize(scales.size());
+    }
+    return true;
+  };
 
   for (size_t i = kPrimIndex + 1; i < cnode->size(); i++) {
     if (opt::GetDataTypeFromAnfNode(cnode->input(i), &type_id) != RET_OK) {
@@ -152,18 +169,8 @@ STATUS CreateInputTensors(const CNodePtr &cnode, std::vector<Tensor *> *in_tenso
     MS_CHECK_TRUE_MSG(!shape.empty(), RET_ERROR, "Infer shape must be done when using offline packing.");
     // Get tensor data from parameter node.
     if (cnode->input(i)->isa<Parameter>() && cnode->input(i)->cast<ParameterPtr>()->has_default()) {
-      auto param_node = cnode->input(i)->cast<ParameterPtr>();
-      if (param_node->has_default()) {
-        auto tensor_info = std::static_pointer_cast<tensor::Tensor>(param_node->default_param());
-        tensor_data = tensor_info->device_address()->GetMutablePtr();
-        auto quantization_params = tensor_info->quant_params();
-        if (!quantization_params.empty()) {
-          auto quantization_param = quantization_params.front();
-          auto scale_list_attr = quantization_param->GetAttr(quant::kScaleList);
-          auto scales = GetValue<std::vector<double>>(scale_list_attr);
-          lite_quant_params.resize(scales.size());
-        }
-      }
+      MS_CHECK_TRUE_MSG(get_param_tensor_data(cnode->input(i)->cast<ParameterPtr>(), &tensor_data, &lite_quant_params),
+                        RET_ERROR, "Get tensor data from parameter node failed.");
     }
     auto in_tensor = new (std::nothrow) Tensor(type_id, shape);
     MS_CHECK_TRUE_MSG(in_tensor != nullptr, RET_ERROR, "Create input tensor failed.");

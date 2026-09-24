@@ -162,6 +162,7 @@ std::shared_ptr<lite::InnerContext> ContextUtils::Convert(Context *context) {
                          cpu_context->GetProvider(), cpu_context->GetProviderDevice(), inner_context.get());
     } else if (device->GetDeviceType() == kGPU) {
       auto gpu_context = device->Cast<GPUDeviceInfo>();
+      MS_CHECK_TRUE_RET(gpu_context != nullptr, nullptr);
       bool enable_gl_texture = gpu_context->GetEnableGLTexture();
       void *gl_context = gpu_context->GetGLContext();
       void *gl_display = gpu_context->GetGLDisplay();

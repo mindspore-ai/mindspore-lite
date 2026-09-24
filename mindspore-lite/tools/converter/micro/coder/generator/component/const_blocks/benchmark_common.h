@@ -234,7 +234,7 @@ inline std::string GetWarmupAndBenchmark(const std::string &predict_call = "MSMo
   }
   printf("Running warm up loops...");
   for (int i = 0; i < warm_up_loop_count; ++i) {
-    ret = )"
+    ret =)"
       << predict_call
       << R"((model_handle, inputs_handle, &outputs_handle, NULL, NULL);)"
          R"(
@@ -253,7 +253,7 @@ inline std::string GetWarmupAndBenchmark(const std::string &predict_call = "MSMo
     printf("\nloop count: %d\n", loop_count);
     uint64_t start_time = GetTimeUs();
     for (int i = 0; i < loop_count; ++i) {
-      ret = )"
+      ret =)"
       << predict_call
       << R"((model_handle, inputs_handle, &outputs_handle, NULL, NULL);)"
          R"(
@@ -270,7 +270,7 @@ inline std::string GetWarmupAndBenchmark(const std::string &predict_call = "MSMo
     float total_time = (float)(end_time - start_time) / 1000.0f;
     printf("total time: %.5fms, per time: %.5fms\n", total_time, total_time / loop_count);
   }
-  ret = )"
+  ret =)"
       << predict_call
       << R"((model_handle, inputs_handle, &outputs_handle, NULL, NULL);)"
          R"(

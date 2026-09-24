@@ -113,6 +113,16 @@ int MatMulBaseInt8Coder::CalcWeightBiasSumsMatrixBOnline(std::string filter_tens
   }
   return RET_OK;
 }
+int *MatMulBaseInt8Coder::MallocWeightBiasSums() {
+  if (param_->b_const_) {
+    if ((target_ == kCortex_M) || (target_ == kRiscV)) {
+      return reinterpret_cast<int *>(allocator_->Malloc(kNumberTypeInt32, weight_bias_sums_size_, kOfflinePackWeight));
+    }
+    return reinterpret_cast<int *>(allocator_->Malloc(kNumberTypeInt32, kOnlineSize, kOnlinePackWeight));
+  }
+  return reinterpret_cast<int *>(allocator_->Malloc(kNumberTypeInt32, weight_bias_sums_size_, kWorkspace));
+}
+
 int MatMulBaseInt8Coder::InitTmpBuffer() {
   // c = a * b + bias
   if (target_ != kRiscV) {
@@ -146,17 +156,8 @@ int MatMulBaseInt8Coder::InitTmpBuffer() {
   }
   input_sums_ = reinterpret_cast<int *>(allocator_->Malloc(kNumberTypeInt32, input_sums_size_, kWorkspace));
   MS_CHECK_PTR(input_sums_);
-  if (param_->b_const_) {
-    if ((target_ == kCortex_M) || (target_ == kRiscV)) {
-      weight_bias_sums_ =
-        reinterpret_cast<int *>(allocator_->Malloc(kNumberTypeInt32, weight_bias_sums_size_, kOfflinePackWeight));
-    } else {
-      weight_bias_sums_ = reinterpret_cast<int *>(allocator_->Malloc(kNumberTypeInt32, kOnlineSize, kOnlinePackWeight));
-    }
-  } else {
-    weight_bias_sums_ =
-      reinterpret_cast<int *>(allocator_->Malloc(kNumberTypeInt32, weight_bias_sums_size_, kWorkspace));
-  }
+  weight_bias_sums_ = MallocWeightBiasSums();
+  MS_CHECK_PTR(weight_bias_sums_);
 
   MS_CHECK_PTR(weight_bias_sums_);
   if (param_->b_const_) {
