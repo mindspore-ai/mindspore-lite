@@ -33,6 +33,7 @@ constexpr bool SOFTMAX_EXP_FAST = true;
 // issued per loop iteration by the NZ gather Muls below.
 constexpr uint32_t NZ_BLOCK_ROW_ELEMENTS = 128;
 constexpr uint32_t NZ_FRACTAL_DIM = 16;
+
 constexpr uint8_t NZ_GATHER_REPEATS_PER_ITER = 2;
 
 __aicore__ inline void ReduceMaxLastNZImplPFA(const LocalTensor<half> &dst, const LocalTensor<half> &src,
@@ -63,6 +64,7 @@ __aicore__ inline void ReduceMaxLastNZImplPFA(const LocalTensor<half> &dst, cons
   uint8_t repeat = reduceParam.srcM / 16;
   for (uint8_t i = 0; i < repeat; i++) {
     Muls<half, false>(
+
       tmpBuffer[i * NZ_BLOCK_ROW_ELEMENTS * NZ_GATHER_REPEATS_PER_ITER], dst[i * NZ_FRACTAL_DIM], 1.0, MASK_PLACEHOLDER,
       NZ_GATHER_REPEATS_PER_ITER,
       {1, 0, DEFAULT_REPEAT_STRIDE, 0});  // 2: NZ_GATHER_REPEATS_PER_ITER  128: BLOCK_SIZE  16: is the dst copy factor
@@ -111,6 +113,7 @@ __aicore__ inline void ReduceSumLastNZImplPFA(const LocalTensor<half> &dst, cons
   uint8_t repeat = reduceParam.srcM / 16;
   for (uint8_t i = 0; i < repeat; i++) {
     Muls<half, false>(
+
       tmpBuffer[i * NZ_BLOCK_ROW_ELEMENTS * NZ_GATHER_REPEATS_PER_ITER], dst[i * NZ_FRACTAL_DIM], 1.0, MASK_PLACEHOLDER,
       NZ_GATHER_REPEATS_PER_ITER,
       {1, 0, DEFAULT_REPEAT_STRIDE, 0});  // 2: NZ_GATHER_REPEATS_PER_ITER  128: BLOCK_SIZE  16: is the dst copy factor

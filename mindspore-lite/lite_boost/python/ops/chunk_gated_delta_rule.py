@@ -173,14 +173,13 @@ def chunk_gated_delta_rule(
         >>> print(out.dtype)
         torch.bfloat16
     """
-    if any(not torch.is_tensor(t) for t in
-           (query, key, value, beta, initial_state, actual_seq_lengths)):
+    inputs = (query, key, value, beta, initial_state, actual_seq_lengths)
+    if any(not torch.is_tensor(t) for t in inputs):
         raise RuntimeError(
             "query, key, value, beta, initial_state and actual_seq_lengths "
             "must be tensors.")
     device = query.device
-    if any(t.device != device for t in
-           (key, value, beta, initial_state, actual_seq_lengths)):
+    if any(t.device != device for t in inputs[1:]):
         raise RuntimeError(
             "all input tensors must be on the same device as query.")
     if query.dim() != 4 or key.dim() != 4 or value.dim() != 4:
