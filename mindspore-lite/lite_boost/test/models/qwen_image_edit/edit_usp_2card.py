@@ -20,6 +20,7 @@ in-place via BoostManager (with per-module parallel settings selected by
 qwen_image_edit.yaml), then runs one image-edit request and saves the
 result image on rank 0.
 """
+import logging
 import os
 import torch
 from PIL import Image
@@ -47,7 +48,8 @@ pipe = QwenImageEditPlusPipeline.from_pretrained("qwen-image-edit", torch_dtype=
 
 boost_manager = BoostManager()
 pipe = boost_manager(pipe, config=CONFIG_YAML)
-print(f"rank {local_rank}: pipeline boosted")
+logging.basicConfig(level=logging.INFO)
+logging.info("rank %d: pipeline boosted", local_rank)
 
 pipe.to("npu")
 

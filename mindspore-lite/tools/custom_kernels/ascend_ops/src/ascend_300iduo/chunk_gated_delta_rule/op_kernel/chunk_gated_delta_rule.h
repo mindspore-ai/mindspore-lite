@@ -1854,7 +1854,7 @@ class ChunkGatedDeltaRule {
       (kMatmulM / kNzFractalDim * kNzFractalDim * kNzFractalDim - kNzFractalDim) * sizeof(float) / 32;
     DataCopyParams nzToNdParams{static_cast<uint16_t>(kMatmulN / kNzFractalDim), kNdBlockLen, kNzSrcStride, 0};
     for (uint32_t row = 0; row < kMatmulM; ++row) {
-      DataCopy(chunkAttnOutFp32[row * kMatmulN], cNz[row * 16], nzToNdParams);
+      DataCopy(chunkAttnOutFp32[row * kMatmulN], cNz[row * kNzFractalDim], nzToNdParams);
     }
     PipeBarrier<PIPE_ALL>();
   }

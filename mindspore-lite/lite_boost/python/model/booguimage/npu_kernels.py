@@ -36,14 +36,28 @@ import torch_npu
 _COS_SIN_CACHE_MAX = 16
 _cos_sin_cache = {}
 
+# Broadcast bool attn_mask layout expected by the NPU SDPA wrappers: [B, 1, 1, S].
+_BROADCAST_BOOL_MASK_NDIM = 4
+
+
+def _is_broadcast_bool_mask(attn_mask, query):
+    """True when ``attn_mask`` is a broadcast ``[B, 1, 1, S]`` bool mask on NPU
+    (rejected by the fused NPU SDPA kernel and expanded by the wrappers below).
+    """
+    return (attn_mask is not None
+            and query.device.type == "npu"
+            and attn_mask.dim() == _BROADCAST_BOOL_MASK_NDIM
+            and attn_mask.shape[1] == 1
+            and attn_mask.shape[2] == 1
+            and attn_mask.dtype == torch.bool)
+
 
 def npu_sdpa(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False,
              scale=None, enable_gqa=False):
     """SDPA wrapper that expands broadcast ``[B, 1, 1, S]`` bool masks to
-    ``[B, 1, S, S]`` on NPU (the fused NPU SDPA kernel rejects them)."""
-    if (attn_mask is not None and query.device.type == "npu"
-            and attn_mask.dim() == 4 and attn_mask.shape[1] == 1
-            and attn_mask.shape[2] == 1 and attn_mask.dtype == torch.bool):
+    ``[B, 1, S, S]`` on NPU (the fused NPU SDPA kernel rejects them).
+    """
+    if _is_broadcast_bool_mask(attn_mask, query):
         attn_mask = attn_mask.expand(-1, -1, query.shape[-2], -1)
     return F.scaled_dot_product_attention(
         query, key, value, attn_mask=attn_mask, dropout_p=dropout_p,
@@ -53,16 +67,15 @@ def npu_sdpa(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False,
 
 def patch_sdpa_mask():
     """Install the NPU-safe SDPA wrapper on ``F.scaled_dot_product_attention``
-    globally (idempotent)."""
+    globally (idempotent).
+    """
     if getattr(F, "_lb_npu_sdpa_patched", False):
         return
     orig_sdpa = F.scaled_dot_product_attention
 
     def npu_sdpa_patched(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False,
                          scale=None, enable_gqa=False):
-        if (attn_mask is not None and query.device.type == "npu"
-                and attn_mask.dim() == 4 and attn_mask.shape[1] == 1
-                and attn_mask.shape[2] == 1 and attn_mask.dtype == torch.bool):
+        if _is_broadcast_bool_mask(attn_mask, query):
             attn_mask = attn_mask.expand(-1, -1, query.shape[-2], -1)
         return orig_sdpa(query, key, value, attn_mask=attn_mask, dropout_p=dropout_p,
                          is_causal=is_causal, scale=scale, enable_gqa=enable_gqa)
@@ -129,9 +142,10 @@ def _complex64_supported(device):
             c = torch.view_as_complex(real.reshape(2, 2))
             out = torch.view_as_real(c * c).flatten(1)
             out.sum().item()
-            _complex64_ok[dev_type] = True
         except RuntimeError:
             _complex64_ok[dev_type] = False
+        else:
+            _complex64_ok[dev_type] = True
     return _complex64_ok[dev_type]
 
 
