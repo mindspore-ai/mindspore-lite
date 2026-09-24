@@ -1858,6 +1858,10 @@ uint8_t *GeGraphExecutor::GetCachedDeviceBuffer(const std::string &name, size_t 
   // Need a new (or larger) buffer; free the old one if it exists.
   if (it != cached_temp_buffers_.end()) {
     memory_manager_->FreeDeviceMemory(it->second.first);
+    // Erase immediately so a failed MallocDeviceMemory below cannot leave a
+    // dangling {freed_ptr, old_size} entry that a later smaller-size request
+    // would return as if it were still live (use-after-free on device memory).
+    cached_temp_buffers_.erase(it);
   }
   auto buf = memory_manager_->MallocDeviceMemory(name, size);
   if (buf == nullptr) {
@@ -2137,7 +2141,10 @@ MSTensorPtr GeGraphExecutor::ConvertGeTensorNoCopy(::ge::Tensor *ge_tensor_ptr, 
   tensor_impl->SetDeleter(deleter);
   if (is_device_placement) {
     tensor_impl->SetDeviceId(static_cast<int>(GetDeviceID()));
-    tensor_impl->SetDeviceData(static_cast<void *>(ge_data));
+    // Bind device data as deleter-owned: the deleter (SetDeleter above) returns it
+    // to GE's memory pool on tensor destruction, while data_ stays unset so
+    // MutableData() lazily allocates host memory for D2H readers.
+    tensor_impl->SetDeviceDataOwnedByDeleter(static_cast<void *>(ge_data));
   } else {
     tensor_impl->SetData(static_cast<void *>(ge_data), true);
   }

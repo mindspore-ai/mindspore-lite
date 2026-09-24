@@ -29,6 +29,13 @@ namespace mindspore::lite::micro::nnacl {
 
 ResizeInt8Coder::~ResizeInt8Coder() { FreeArgs(); }
 
+void ResizeInt8Coder::FreeAxisArrays(int32_t **arr) {
+  if (*arr != nullptr) {
+    free(*arr);
+    *arr = nullptr;
+  }
+}
+
 void ResizeInt8Coder::FreeArgs() {
   delete quant_out_;
   quant_out_ = nullptr;
@@ -38,6 +45,22 @@ void ResizeInt8Coder::FreeArgs() {
 
   delete multiplier_;
   multiplier_ = nullptr;
+
+  // Free the axis arrays malloc'd by InitResizeQuantArgCommon (all int32_t) and
+  // InitResizeFloatQuantArgCommon (index arrays are float*, lower/upper are
+  // int32_t*). Without explicit free() they leak on coder destruction.
+  FreeAxisArrays(&resize_quant_arg_.x_axis_index_);
+  FreeAxisArrays(&resize_quant_arg_.x_axis_lower_);
+  FreeAxisArrays(&resize_quant_arg_.x_axis_upper_);
+  FreeAxisArrays(&resize_quant_arg_.y_axis_index_);
+  FreeAxisArrays(&resize_quant_arg_.y_axis_lower_);
+  FreeAxisArrays(&resize_quant_arg_.y_axis_upper_);
+  FreeAxisArrays(reinterpret_cast<int32_t **>(&resize_float_quant_arg_.x_axis_index_));
+  FreeAxisArrays(&resize_float_quant_arg_.x_axis_lower_);
+  FreeAxisArrays(&resize_float_quant_arg_.x_axis_upper_);
+  FreeAxisArrays(reinterpret_cast<int32_t **>(&resize_float_quant_arg_.y_axis_index_));
+  FreeAxisArrays(&resize_float_quant_arg_.y_axis_lower_);
+  FreeAxisArrays(&resize_float_quant_arg_.y_axis_upper_);
 }
 
 int ResizeInt8Coder::Prepare(CoderContext *const context) {

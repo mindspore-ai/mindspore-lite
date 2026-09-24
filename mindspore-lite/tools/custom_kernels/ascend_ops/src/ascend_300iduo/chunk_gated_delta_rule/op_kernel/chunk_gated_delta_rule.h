@@ -649,7 +649,13 @@ class ChunkGatedDeltaRule {
   // buf is stored with leading dimension ld (= chunkSize_), and only [chunkLen, chunkLen] is valid.
   // buf is lower-triangular (excluding diagonal), with upper tri (incl diagonal) = 0.
   __aicore__ inline void ComputeRecursiveAttn(LocalTensor<float> &buf, uint32_t chunkLen, uint32_t ld) {
-    constexpr uint32_t kBlockedScratchMinV = (kSpecializedDk == 0) ? 128 : kSpecializedDk;
+    // ComputeRecursiveAttnBlocked64 carves 5 disjoint kBlock*kBlock blocks out of
+    // chunkVFp32 (offset 4*kMatrixElements starts the 5th block), so the scratch
+    // must hold cs * vStepAligned_ >= 5 * kBlock * kBlock elements. With cs==64
+    // (kCubeFastPathChunkLen) this requires vStepAligned_ >= 80, which for the
+    // dk<=64 specialization is above the default vStep=64 (chunkVFp32 would only
+    // be 64*64=4096 elements, and the 5th block writes at offset 4096 -> OOB).
+    constexpr uint32_t kBlockedScratchMinV = (kSpecializedDk == 0) ? 128 : (kSpecializedDk <= 64 ? 80 : kSpecializedDk);
     if (likely(chunkLen == kCubeFastPathChunkLen && ld == kCubeFastPathChunkLen &&
                vStepAligned_ >= kBlockedScratchMinV)) {
       ComputeRecursiveAttnBlocked64(buf, ld);

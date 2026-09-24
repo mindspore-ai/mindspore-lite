@@ -962,11 +962,25 @@ class AutoencoderKLQwenImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         }
         # Initialize distributed communication group: when prompt-parallel mode is enabled,
         # exclude the last rank (reserved for the prompt text model) from the VAE group.
+        self.vae_group = None
         if PROMPT_VAE_ENCODE_PARALLEL:
             self.vae_group = dist.new_group(range(dist.get_world_size() - 1))
         else:
             self.vae_group = dist.new_group(range(dist.get_world_size()))
 
+
+    def destroy(self):
+        """Release the distributed process group held by this instance.
+
+        dist.new_group() creates a communicator (NCCL/GLOO) that is only freed by
+        an explicit dist.destroy_process_group() call; without this, repeated
+        instantiation of AutoencoderKLQwenImage in one process leaks one
+        communicator per instance. Call destroy() before discarding an instance
+        (e.g. when swapping pipe.vae for a new model).
+        """
+        if self.vae_group is not None:
+            dist.destroy_process_group(self.vae_group)
+            self.vae_group = None
 
     def enable_tiling(
         self,

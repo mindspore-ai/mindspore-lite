@@ -150,6 +150,8 @@ def _patch_vae_edit(pipe):
     if isinstance(vae, ParallelVAE):
         new_vae = vae
     else:
+        if hasattr(vae, "destroy"):
+            vae.destroy()
         new_vae = ParallelVAE.from_config(vae.config)
         new_vae.load_state_dict(vae.state_dict())
         new_vae.to(device=vae.device, dtype=vae.dtype)

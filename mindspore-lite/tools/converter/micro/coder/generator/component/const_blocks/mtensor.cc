@@ -191,9 +191,15 @@ void MSTensorDestroy(MSTensorHandle *tensor) {
   }
   if (micro_tensor->data != NULL && micro_tensor->owned) {
     free(micro_tensor->data);
+    micro_tensor->data = NULL;
   }
   if (micro_tensor->name != NULL) {
     free(micro_tensor->name);
+    micro_tensor->name = NULL;
+  }
+  if (micro_tensor->shape != NULL) {
+    free(micro_tensor->shape);
+    micro_tensor->shape = NULL;
   }
   free(micro_tensor);
   *tensor = NULL;
