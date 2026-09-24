@@ -61,10 +61,17 @@ int SoftMaxInt8Coder::Prepare(CoderContext *const context) {
   for (int i = softmax_param_->axis_ + 1; i < n_dim_; i++) {
     inner_size *= input_shape_[i];
   }
+  // SoftmaxInt8 indexes sum_data per outer row (sum_data[o * inner_size + c]),
+  // and micro emits one kernel call over the whole outer extent, so the buffer
+  // must cover every outer row, not just one.
+  int outer_size = 1;
+  for (int i = 0; i < softmax_param_->axis_; i++) {
+    outer_size *= input_shape_[i];
+  }
   exp_data_size_ = static_cast<size_t>(element_size_) * sizeof(int);
   exp_data_ = static_cast<int *>(allocator_->Malloc(kNumberTypeInt32, exp_data_size_, kWorkspace));
   MS_CHECK_PTR(exp_data_);
-  sum_data_size_ = inner_size * sizeof(int);
+  sum_data_size_ = static_cast<size_t>(outer_size) * static_cast<size_t>(inner_size) * sizeof(int);
   sum_data_ = static_cast<int *>(allocator_->Malloc(kNumberTypeInt32, sum_data_size_, kWorkspace));
   MS_CHECK_PTR(sum_data_);
   return RET_OK;
