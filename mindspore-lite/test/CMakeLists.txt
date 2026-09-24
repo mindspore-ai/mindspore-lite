@@ -148,6 +148,7 @@ if(MSLITE_ENABLE_CONVERTER)
     if(NOT (MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE))
         file(GLOB_RECURSE TEST_CONVERTER_UT_SRC
             ${TEST_DIR}/ut/tools/converter/decomposer/svd_test.cc
+            ${TEST_DIR}/ut/tools/converter/micro_coder/*.cc
             ${TEST_DIR}/ut/tools/converter/registry/*.cc
             ${TEST_DIR}/ut/tools/converter/parser/onnx/*.cc
             ${TEST_DIR}/ut/tools/converter/parser/tflite/*.cc
