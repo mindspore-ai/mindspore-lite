@@ -231,8 +231,11 @@ ge::graphStatus QuantMatmulW4a8Tiling::DoOpTiling() {
   tilingData_.vBaseM = (vBaseMMax < vBaseMOne) ? vBaseMMax : vBaseMOne;
 
   // ── V5 workspace: per-core ping-pong × parallNum ──
+  // half per element: Cube dequantises s32→f16 with ×w_scale (SetQuantVector),
+  // halving the workspace bandwidth vs the earlier int32 full-precision variant.
   uint64_t baseSize = static_cast<uint64_t>(bm) * bn;
-  workspaceSize_ = SYS_WORKSPACE_SIZE + static_cast<size_t>(CV_PARALL_NUM) * usedCoreNum * baseSize * sizeof(uint16_t);
+  workspaceSize_ =
+    SYS_WORKSPACE_SIZE + static_cast<size_t>(CV_PARALL_NUM) * usedCoreNum * baseSize * sizeof(uint16_t);
 
   return ge::GRAPH_SUCCESS;
 }

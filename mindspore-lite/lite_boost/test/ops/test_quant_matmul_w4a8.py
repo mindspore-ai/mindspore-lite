@@ -18,12 +18,18 @@ lite_boost verification test for quant_matmul_w4a8 (ascend_a2 op).
 
 The AscendC op computes a quantised INT4×INT8 matmul:
     out = ((x1_i8 @ x2_i4) * scale + bias) * pertoken_scale + output_bias
-with BF16 output.  x1 is split in-place (int8→int4b_t) by the AIV phase,
-so the Python wrapper clones it internally.
+with BF16 output.  scale is the uint64 deqScale consumed by the Cube
+(SetQuantVector): fp32 bit pattern in the low 32 bits, high 32 bits zero.
+bias is the per-channel -8 shift compensation pre-multiplied by w_scale
+(host-side y_offset, computed once at weight pack time).
+x1 is split in-place (int8→int4b_t) by the AIV phase, so the Python wrapper
+clones it internally.
 
 Cases:
   - test_output_shape_and_finite : output shape/dtype/finite, parametrised by (M, K, N).
   - test_accuracy_vs_bf16_ref    : cosine similarity vs torch.matmul BF16 reference ≥ 0.98.
+  - test_accuracy_vs_int8_weight_ref : W4A8 vs A8W8 over the same int4 weight
+                                   values widened to int8, cosine similarity ≥ 0.999.
   - test_optional_output_bias    : output_bias=None defaults to zeros, matches explicit zeros.
   - test_performance_vs_a8w8     : W4A8 vs A8W8 timing, parametrised by (M, K, N).
                                    Only production shape (8192,3072,3072) asserts W4A8 ≤ A8W8 × 2.
@@ -48,6 +54,7 @@ logging.basicConfig(level=logging.INFO, format='%(message)s')
 # ---------------------------------------------------------------------------
 
 COSINE_THRESHOLD = 0.98
+INT8_WEIGHT_REF_THRESHOLD = 0.999
 TEST_SHAPES = [
     (8, 64, 16),
     (16, 128, 32),
@@ -76,7 +83,13 @@ def _cosine_similarity(a, b):
 def _pack_weight_int4(w_npu, k, n):
     """Per-channel absmax/7 quantise BF16 weight → int4, pack to int32 [n, k/8].
 
-    Returns (w_packed, w_scale, bias) on NPU.
+    Returns (w_packed, w_scale, w_scale_f32, bias, w_int4_i8) on NPU, where
+    w_scale is the uint64 deqScale consumed by the Cube (fp32 bit pattern in
+    the low 32 bits, high 32 bits zero), w_scale_f32 is the truncated f32
+    value (hardware keeps only the high 19 bits ≈ fp16 precision) used by the
+    A8W8 reference, and bias is the -8 shift compensation pre-multiplied by
+    w_scale (host-side y_offset, computed here once instead of per-call in
+    the wrapper); w_int4_i8 is the same int4 weight widened to int8 [k, n].
     """
     k8 = k // 8
     w_fp32 = w_npu.cpu().float().numpy()
@@ -92,10 +105,24 @@ def _pack_weight_int4(w_npu, k, n):
     w_packed = (w_grp.astype(np.int64) << shifts).sum(axis=1)
     w_packed = w_packed.T.astype(np.int32).ravel()
 
+    # deqScale packing (SetQuantVector / VDEQF16): low 32 bits = fp32 bit
+    # pattern, high 32 bits = 0.  The hardware keeps only the high 19 bits
+    # (fp16 precision), so the reference uses the truncated f32 value.
+    w_scale_f32 = w_scale.astype(np.float32)
+    w_scale_bits = w_scale_f32.view(np.uint32) & np.uint32(0xFFFFE000)
+    w_scale_u64 = w_scale_bits.astype(np.uint64)
+    w_scale_trunc_f32 = w_scale_bits.view(np.float32)
+    # y_offset: pre-multiply the -8 shift compensation by the truncated
+    # w_scale at pack time (one-off), so the Python wrapper only forwards
+    # the bias tensor — no per-call bit recovery or multiply.
+    bias_np = (bias_np * w_scale_trunc_f32).astype(np.float32)
+
     w_packed_t = torch.from_numpy(w_packed).to(torch.int32).reshape(n, k8).npu()
-    w_scale_t = torch.from_numpy(w_scale.copy()).float().npu()
+    w_scale_t = torch.from_numpy(w_scale_u64.copy()).to(torch.uint64).npu()
+    w_scale_f32_t = torch.from_numpy(w_scale_trunc_f32.copy()).float().npu()
     bias_t = torch.from_numpy(bias_np.copy()).float().npu()
-    return w_packed_t, w_scale_t, bias_t
+    w_int4_i8_t = torch.from_numpy(w_int4.copy()).to(torch.int8).npu()
+    return w_packed_t, w_scale_t, w_scale_f32_t, bias_t, w_int4_i8_t
 
 
 def _generate_test_data(m, k, n, device, seed=42):
@@ -119,7 +146,7 @@ def _generate_test_data(m, k, n, device, seed=42):
     x_int8, x_scale = torch_npu.npu_dynamic_quant(x_npu)
 
     # W4A8 weight packing
-    w_packed, w4_scale, bias = _pack_weight_int4(w_npu, k_pad, n)
+    w_packed, w4_scale, w4_scale_f32, bias, w_int4_i8 = _pack_weight_int4(w_npu, k_pad, n)
 
     # A8W8 weight quantisation
     w_int8_t, w8_scale = torch_npu.npu_dynamic_quant(w_npu.T)
@@ -135,7 +162,9 @@ def _generate_test_data(m, k, n, device, seed=42):
         "x_scale": x_scale,
         "w_packed": w_packed,
         "w4_scale": w4_scale,
+        "w4_scale_f32": w4_scale_f32,
         "bias": bias,
+        "w_int4_i8": w_int4_i8,
         "w_int8": w_int8,
         "w8_scale": w8_scale,
         "out_bf16": out_bf16,
@@ -171,7 +200,7 @@ class TestQuantMatmulW4a8:
         torch.npu.synchronize()
 
         wx_int8, wx_scale = torch_npu.npu_dynamic_quant(wx)
-        wp, ws, wb = _pack_weight_int4(ww, warmup_k, warmup_n)
+        wp, ws, _, wb, _ = _pack_weight_int4(ww, warmup_k, warmup_n)
         lite_ops.quant_matmul_w4a8(wx_int8, wp, ws, wb, pertoken_scale=wx_scale)
         torch.npu.synchronize()
 
@@ -216,6 +245,42 @@ class TestQuantMatmulW4a8:
         logging.info("[accuracy %dx%dx%d] cos vs BF16 ref = %.6f", m, k, n, cos)
         assert cos >= COSINE_THRESHOLD, \
             f"cosine {cos:.6f} < {COSINE_THRESHOLD} for shape ({m},{k},{n})"
+
+    # ------------------------------------------------------------------
+    # Accuracy vs A8W8 reference (same int4 weight widened to int8)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.ascend_a2
+    @pytest.mark.L0
+    @pytest.mark.parametrize("m,k,n", TEST_SHAPES)
+    def test_accuracy_vs_int8_weight_ref(self, m, k, n):
+        """W4A8 vs A8W8 over identical int4 weight values, cosine similarity ≥ 0.999.
+
+        The A8W8 reference widens the exact same int4 weight values to int8
+        (values -8..7 unchanged) and feeds them to torch_npu.npu_quant_matmul
+        with the same w4_scale and pertoken_scale, no bias argument.
+
+        No explicit bias term is needed: the W4A8 kernel splits x into
+        floor(x/16) and (x&0xF)-8 int4 halves (16E+O rebuilds x-8), and the
+        bias = 8*sum(w_int4) pre-multiplied by w_scale at pack time
+        (host-side y_offset) exactly compensates that shift — the two cancel algebraically, so
+        both paths compute x_int8 @ w_int4 * w4_scale * x_scale.
+        """
+        d = _generate_test_data(m, k, n, self.device)
+        out = lite_ops.quant_matmul_w4a8(
+            d["x_int8"], d["w_packed"], d["w4_scale"], d["bias"],
+            pertoken_scale=d["x_scale"])
+        torch.npu.synchronize()
+
+        out_ref = torch_npu.npu_quant_matmul(
+            d["x_int8"], d["w_int4_i8"], d["w4_scale_f32"],
+            pertoken_scale=d["x_scale"], output_dtype=torch.bfloat16)
+        torch.npu.synchronize()
+
+        cos = _cosine_similarity(out.cpu(), out_ref.cpu())
+        logging.info("[int4ref %dx%dx%d] cos vs int8-weight ref = %.6f", m, k, n, cos)
+        assert cos >= INT8_WEIGHT_REF_THRESHOLD, \
+            f"cosine {cos:.6f} < {INT8_WEIGHT_REF_THRESHOLD} for shape ({m},{k},{n})"
 
     # ------------------------------------------------------------------
     # Optional output_bias
@@ -316,6 +381,8 @@ if __name__ == "__main__":
         logging.info("shape_and_finite    %-20s: PASS", str(shape))
         t.test_accuracy_vs_bf16_ref(*shape)
         logging.info("accuracy            %-20s: PASS", str(shape))
+        t.test_accuracy_vs_int8_weight_ref(*shape)
+        logging.info("int8-ref accuracy   %-20s: PASS", str(shape))
         t.test_performance_vs_a8w8(*shape)
         logging.info("performance         %-20s: PASS", str(shape))
     t.test_optional_output_bias()
