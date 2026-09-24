@@ -40,12 +40,12 @@ constexpr uint8_t kOpIfEnd = 0x07;
 constexpr uint8_t kOpEnd = 0x08;
 
 uint32_t ReadU32(const uint8_t *data, size_t size, size_t &offset) {
-  if (offset + 4 > size) {
+  if (offset + sizeof(uint32_t) > size) {
     return 0;
   }
   uint32_t v;
-  std::memcpy(&v, data + offset, 4);
-  offset += 4;
+  std::memcpy(&v, data + offset, sizeof(v));
+  offset += sizeof(uint32_t);
   return v;
 }
 

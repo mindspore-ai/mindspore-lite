@@ -6773,11 +6773,13 @@ ge::graphStatus InnerPromptFlashAttentionTiling::AdjustCVTiling(uint64_t hDivN, 
   // 310P involves nz2nd conversion, and currently cannot arbitrarily increase the basic block size
   if (curShortSocName != platform_ascendc::SocVersion::ASCEND310P) {
     const uint32_t littleDLimit = 64;
+    // Base Sinner tile raised to 256 when no attention mask is configured and d is small (see comment below).
+    const uint32_t kSinnerBaseTileNoMask = 256;
     if ((tilingData.promptAttentionBaseParams.get_useMask() == 0) && (hDivN <= littleDLimit)) {
       // If attentionMask is not configured, it can save UB space for softmax calculation
       // In this scenario, when d is relatively small, the size of the basic block Sinner can be adjusted to 256 to
       // improve computational performance
-      rectangleFactor = 256;
+      rectangleFactor = kSinnerBaseTileNoMask;
     }
     // Strategy: When there are not enough sub cores, halve the initial value of the souter to a minimum of 32
     while (n * middleActualSeqLengths / seqFactorThreshold <= coreNum) {

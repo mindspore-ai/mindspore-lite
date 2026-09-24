@@ -57,6 +57,9 @@ constexpr int kDataInfoMinLen = 2;
 // so n-ary chaining starts at the third element.
 constexpr size_t kPrimInputNum = 1;
 constexpr size_t kBinaryDataInputNum = 2;
+// Ops that carry exactly one data input besides the primitive (e.g. ONNX Max/Min before the binary rewrite,
+// ConstantOfShape with its shape input).
+constexpr size_t kSingleDataInputNum = 1;
 // The chained node accumulates from inputs[1]; the next data input (inputs[2]) starts the chain.
 constexpr size_t kFirstChainedInput = kPrimInputNum + 1;
 
@@ -267,7 +270,7 @@ STATUS AdjustNaryMaxMin(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
       return RET_ERROR;
     }
     opt::UpdateManager(func_graph);
-  } else if (inputs.size() == 2) {
+  } else if (inputs.size() == kPrimInputNum + kSingleDataInputNum) {
     // ONNX Max/Min accept 1+ data inputs, while ArithmeticInferShape and the binary
     // kernels require >=2. Feed the single input twice: Max(X, X) == X.
     auto new_inputs = inputs;
@@ -281,7 +284,7 @@ STATUS AdjustNaryMaxMin(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
 STATUS ResolveConstantOfShape(const FuncGraphPtr &func_graph, const CNodePtr &cnode) {
   MS_CHECK_TRUE_RET(func_graph != nullptr, RET_NULL_PTR);
   MS_CHECK_TRUE_RET(cnode != nullptr, RET_NULL_PTR);
-  if (cnode->inputs().size() < 2) return lite::RET_OK;
+  if (cnode->inputs().size() < kPrimInputNum + kSingleDataInputNum) return lite::RET_OK;
   // Check if shape input is a Parameter (from initializer)
   auto shape_input = cnode->input(1);
   auto param_node = shape_input->cast<ParameterPtr>();

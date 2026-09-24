@@ -142,7 +142,6 @@ MSLlmStatus NNRTBackend::Decode(const BackendInput &input, BackendOutput *output
   }
 
   std::vector<int> ids = {static_cast<int>(input.input_ids.back())};
-
   if (!executor_->Forward(ids, /*is_prefill=*/false, output)) {
     return MSLLM_ERROR_INFERENCE;
   }

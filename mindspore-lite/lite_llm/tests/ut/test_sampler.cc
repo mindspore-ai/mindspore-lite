@@ -30,8 +30,9 @@ namespace {
 
 mslite_llm::Sampler MakeSampler(float temperature = 0.0f, int32_t top_k = 0, float top_p = 0.0f,
                                 float repetition_penalty = 1.0f, int32_t seed = 0) {
+  constexpr int32_t kDefaultMaxNewTokens = 32;
   MSLlmGenerateConfig cfg = {};
-  cfg.max_new_tokens = 32;
+  cfg.max_new_tokens = kDefaultMaxNewTokens;
   cfg.temperature = temperature;
   cfg.top_k = top_k;
   cfg.top_p = top_p;

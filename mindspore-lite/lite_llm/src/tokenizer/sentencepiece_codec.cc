@@ -25,6 +25,53 @@ namespace mslite_llm {
 
 namespace {
 
+// UTF-8 encoding constants.
+constexpr size_t kUtf8SeqLen2B = 2;  // length of a 2-byte sequence (U+0080..U+07FF)
+constexpr size_t kUtf8SeqLen3B = 3;  // length of a 3-byte sequence (U+0800..U+FFFF)
+constexpr size_t kUtf8SeqLen4B = 4;  // length of a 4-byte sequence (U+10000..U+10FFFF)
+
+// Protobuf wire-format constants.
+constexpr uint32_t kWtVarint = 0;
+constexpr uint32_t kWtFixed64 = 1;
+constexpr uint32_t kWtLenDelim = 2;
+constexpr uint32_t kWtFixed32 = 5;
+constexpr size_t kFixed64Bytes = 8;
+constexpr size_t kFixed32Bytes = 4;
+
+// Varint encoding constants.
+constexpr int kVarintPayloadBits = 7;  // payload bits carried by one varint byte
+constexpr uint8_t kVarintPayloadMask = 0x7F;
+
+// SentencePiece ModelProto field numbers (proto2 schema).
+constexpr uint32_t kSpFieldPieces = 1;      // ModelProto.pieces
+constexpr uint32_t kPieceFieldText = 1;     // SentencePiece.text
+constexpr uint32_t kPieceFieldScore = 2;    // SentencePiece.score
+constexpr uint32_t kPieceFieldType = 3;     // SentencePiece.type
+constexpr int32_t kSpPieceTypeUnknown = 2;  // SentencePiece.Type::UNKNOWN
+
+constexpr size_t kMaxViterbiPieceLen = 64;    // max byte length of a Viterbi candidate piece
+constexpr int kHexDigitsPerByte = 2;          // two hex digits in a byte-fallback <0xN> token
+constexpr unsigned int kMaxByteValue = 255;   // upper bound of a single byte value
+constexpr size_t kByteTokenMinLen = 5;        // min length of a byte-fallback token (<0xN>)
+constexpr size_t kSpByteTokenPrefixLen = 3;   // length of the "<0x" token prefix
+constexpr char kSpMarker[] = "\xe2\x96\x81";  // U+2581 sentencepiece whitespace marker
+constexpr size_t kSpMarkerLen = 3;
+
+// Length in bytes of the UTF-8 sequence introduced by the given lead byte.
+// An invalid leading byte is passed through as a single byte.
+size_t Utf8CharLen(unsigned char lead) {
+  if ((lead & 0xE0) == 0xC0) {
+    return kUtf8SeqLen2B;
+  }
+  if ((lead & 0xF0) == 0xE0) {
+    return kUtf8SeqLen3B;
+  }
+  if ((lead & 0xF8) == 0xF0) {
+    return kUtf8SeqLen4B;
+  }
+  return 1;
+}
+
 uint32_t ReadU32(const uint8_t *data, size_t &offset, size_t size) {
   if (offset + sizeof(uint32_t) > size) {
     return 0;
@@ -40,11 +87,11 @@ uint64_t ReadVarint(const uint8_t *data, size_t &offset, size_t size) {
   int shift = 0;
   while (offset < size) {
     uint8_t b = data[offset++];
-    result |= static_cast<uint64_t>(b & 0x7F) << shift;
+    result |= static_cast<uint64_t>(b & kVarintPayloadMask) << shift;
     if ((b & 0x80) == 0) {
       break;
     }
-    shift += 7;
+    shift += kVarintPayloadBits;
   }
   return result;
 }
@@ -75,19 +122,19 @@ std::string ReadBytes(const uint8_t *data, size_t &offset, size_t size) {
 
 void SkipField(uint32_t wire_type, const uint8_t *data, size_t &offset, size_t size) {
   switch (wire_type) {
-    case 0:
+    case kWtVarint:
       ReadVarint(data, offset, size);
       break;
-    case 1:
-      offset += 8;
+    case kWtFixed64:
+      offset += kFixed64Bytes;
       break;
-    case 2: {
+    case kWtLenDelim: {
       uint64_t len = ReadVarint(data, offset, size);
       offset += len;
       break;
     }
-    case 5:
-      offset += 4;
+    case kWtFixed32:
+      offset += kFixed32Bytes;
       break;
     default:
       break;
@@ -142,7 +189,7 @@ bool SentencePieceCodec::ParseModel(const uint8_t *data, size_t size) {
     uint32_t field_number = tag >> 3;
     uint32_t wire_type = tag & 0x07;
 
-    if (field_number == 1 && wire_type == 2) {
+    if (field_number == kSpFieldPieces && wire_type == kWtLenDelim) {
       uint64_t msg_len = ReadVarint(data, pos, size);
       if (pos + msg_len > size) break;
 
@@ -157,11 +204,11 @@ bool SentencePieceCodec::ParseModel(const uint8_t *data, size_t size) {
         uint32_t inner_field = inner_tag >> 3;
         uint32_t inner_wire = inner_tag & 0x07;
 
-        if (inner_field == 1 && inner_wire == 2) {
+        if (inner_field == kPieceFieldText && inner_wire == kWtLenDelim) {
           piece.piece = ReadBytes(data, pos, size);
-        } else if (inner_field == 2 && inner_wire == 5) {
+        } else if (inner_field == kPieceFieldScore && inner_wire == kWtFixed32) {
           piece.score = ReadFloat32(data, pos, size);
-        } else if (inner_field == 3 && inner_wire == 0) {
+        } else if (inner_field == kPieceFieldType && inner_wire == kWtVarint) {
           piece.type = static_cast<int32_t>(ReadVarint(data, pos, size));
         } else {
           SkipField(inner_wire, data, pos, size);
@@ -173,7 +220,7 @@ bool SentencePieceCodec::ParseModel(const uint8_t *data, size_t size) {
       pieces_.push_back(piece);
       piece_score_[piece.piece] = piece.score;
 
-      if (piece.type == 2) {
+      if (piece.type == kSpPieceTypeUnknown) {
         unk_id_ = static_cast<int32_t>(pieces_.size() - 1);
       }
     } else {
@@ -196,7 +243,7 @@ std::vector<std::string> SentencePieceCodec::ViterbiEncode(const std::string &te
   for (size_t i = 0; i < n; ++i) {
     if (best_score[i] <= kNegInf + 1.0f) continue;
 
-    for (size_t len = 1; len <= n - i && len <= 64; ++len) {
+    for (size_t len = 1; len <= n - i && len <= kMaxViterbiPieceLen; ++len) {
       std::string piece = text.substr(i, len);
       auto score_it = piece_score_.find(piece);
       if (score_it == piece_score_.end()) continue;
@@ -231,17 +278,12 @@ std::vector<std::string> SentencePieceCodec::ByteFallbackEncode(const std::strin
   size_t i = 0;
   while (i < text.size()) {
     unsigned char c = static_cast<unsigned char>(text[i]);
-    size_t char_len = 1;
-    if ((c & 0xE0) == 0xC0)
-      char_len = 2;
-    else if ((c & 0xF0) == 0xE0)
-      char_len = 3;
-    else if ((c & 0xF8) == 0xF0)
-      char_len = 4;
+    size_t char_len = Utf8CharLen(c);
 
     if (char_len == 1) {
       std::ostringstream oss;
-      oss << "<0x" << std::uppercase << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(c) << ">";
+      oss << "<0x" << std::uppercase << std::hex << std::setw(kHexDigitsPerByte) << std::setfill('0')
+          << static_cast<int>(c) << ">";
       std::string byte_token = oss.str();
 
       auto it = token_to_id_->find(byte_token);
@@ -270,7 +312,7 @@ std::vector<std::string> SentencePieceCodec::ByteFallbackEncode(const std::strin
       } else if (byte_fallback_) {
         for (size_t b = 0; b < char_len; ++b) {
           std::ostringstream oss;
-          oss << "<0x" << std::uppercase << std::hex << std::setw(2) << std::setfill('0')
+          oss << "<0x" << std::uppercase << std::hex << std::setw(kHexDigitsPerByte) << std::setfill('0')
               << static_cast<int>(static_cast<unsigned char>(text[i + b])) << ">";
           std::string byte_token = oss.str();
           auto byte_it = token_to_id_->find(byte_token);
@@ -297,13 +339,7 @@ std::vector<std::string> SentencePieceCodec::Encode(const std::string &text) {
       normalized += "\xe2\x96\x81";
       i++;
     } else {
-      size_t char_len = 1;
-      if ((c & 0xE0) == 0xC0)
-        char_len = 2;
-      else if ((c & 0xF0) == 0xE0)
-        char_len = 3;
-      else if ((c & 0xF8) == 0xF0)
-        char_len = 4;
+      size_t char_len = Utf8CharLen(c);
       for (size_t j = 0; j < char_len && i + j < text.size(); ++j) {
         normalized += text[i + j];
       }
@@ -314,11 +350,7 @@ std::vector<std::string> SentencePieceCodec::Encode(const std::string &text) {
   if (normalized.empty()) return {};
 
   if (static_cast<unsigned char>(normalized[0]) != 0xe2) {
-    bool starts_with_marker = false;
-    if (normalized.size() >= 3 && static_cast<unsigned char>(normalized[0]) == 0xe2 &&
-        static_cast<unsigned char>(normalized[1]) == 0x96 && static_cast<unsigned char>(normalized[2]) == 0x81) {
-      starts_with_marker = true;
-    }
+    bool starts_with_marker = normalized.compare(0, kSpMarkerLen, kSpMarker) == 0;
     if (!starts_with_marker) {
       normalized = "\xe2\x96\x81" + normalized;
     }
@@ -330,13 +362,13 @@ std::vector<std::string> SentencePieceCodec::Encode(const std::string &text) {
 std::string SentencePieceCodec::Decode(const std::vector<std::string> &tokens) {
   std::string result;
   for (const auto &token : tokens) {
-    if (token.size() >= 5 && token.substr(0, 3) == "<0x" && token.back() == '>') {
-      std::string hex_str = token.substr(3, token.size() - 4);
+    if (token.size() >= kByteTokenMinLen && token.substr(0, 3) == "<0x" && token.back() == '>') {
+      std::string hex_str = token.substr(kSpByteTokenPrefixLen, token.size() - kSpByteTokenPrefixLen - 1);
       try {
         unsigned int byte_val = 0;
         std::istringstream iss(hex_str);
         iss >> std::hex >> byte_val;
-        if (byte_val <= 255) {
+        if (byte_val <= kMaxByteValue) {
           result += static_cast<char>(byte_val);
         } else {
           result += token;
@@ -346,10 +378,10 @@ std::string SentencePieceCodec::Decode(const std::vector<std::string> &tokens) {
       }
     } else {
       std::string decoded = token;
-      std::string marker = "\xe2\x96\x81";
+      std::string marker = kSpMarker;
       size_t pos = 0;
       while ((pos = decoded.find(marker, pos)) != std::string::npos) {
-        decoded.replace(pos, 3, " ");
+        decoded.replace(pos, kSpMarkerLen, " ");
         pos++;
       }
       result += decoded;

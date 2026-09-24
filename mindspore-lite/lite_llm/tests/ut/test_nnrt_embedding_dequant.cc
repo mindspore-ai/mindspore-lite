@@ -29,13 +29,35 @@ namespace backend {
 namespace nnrt {
 namespace {
 
-int QuantValue(int row, int k) { return (row * 5 + k * 3 + k / 32 + row / 64 + k / 1024) % 16 - 8; }
-int ScaleExponent(int row, int group) { return (row * 3 + group + row / 64 + group / 32) % 4 - 2; }
-bool NegativeScale(int row, int group) { return (row + group + row / 64 + group / 32) % 2 != 0; }
+// NZF compact phase4 wire-layout constants, deliberately defined test-local:
+// this test is an independent oracle and must not share them with the decoder.
+constexpr int kNBlockRows = 64;      // N row-block width of the compact layout.
+constexpr int kKBlockCols = 1024;    // K column-block width of the compact layout.
+constexpr int kScaleGroupCols = 32;  // scale group width (G32).
+
+constexpr int kQuantRowCoefficient = 5;  // deterministic QuantValue generator
+constexpr int kScaleRowCoefficient = 3;  // deterministic ScaleExponent generator
+
+constexpr int kNibbleMask = 0x0F;      // 4-bit nibble mask
+constexpr int kBytesPerTileRow = 8;    // 16 nibbles per tile row, two per byte
+constexpr int kPhasesPerTile = 4;      // phase4 interleaving
+constexpr int kRowsPerPhase = 4;       // 16-row tile split across kPhasesPerTile phases
+constexpr int kFp16ExponentBias = 15;  // IEEE 754 binary16 exponent bias
+constexpr int kBitsPerByte = 8;
+constexpr int kLowByteMask = 0xFF;
+
+int QuantValue(int row, int k) {
+  return (row * kQuantRowCoefficient + k * 3 + k / kScaleGroupCols + row / kNBlockRows + k / kKBlockCols) % 16 - 8;
+}
+int ScaleExponent(int row, int group) {
+  return (row * kScaleRowCoefficient + group + row / kNBlockRows + group / kScaleGroupCols) % 4 - 2;
+}
+bool NegativeScale(int row, int group) { return (row + group + row / kNBlockRows + group / kScaleGroupCols) % 2 != 0; }
 
 // All fixture scales are signed powers of two, exactly representable in fp16.
 uint16_t ScaleBits(int row, int group) {
-  return static_cast<uint16_t>(((15 + ScaleExponent(row, group)) << 10) | (NegativeScale(row, group) ? 0x8000 : 0));
+  return static_cast<uint16_t>(((kFp16ExponentBias + ScaleExponent(row, group)) << 10) |
+                               (NegativeScale(row, group) ? 0x8000 : 0));
 }
 
 // Scalar oracle: encode the exact dyadic product using known integer fp16
@@ -44,20 +66,21 @@ uint16_t ExpectedBits(int row, int k) {
   constexpr uint16_t kIntegerBits[] = {0, 0x3c00, 0x4000, 0x4200, 0x4400, 0x4500, 0x4600, 0x4700, 0x4800};
   const int q = QuantValue(row, k);
   const int magnitude = q < 0 ? -q : q;
-  const uint16_t sign = ((q < 0) != NegativeScale(row, k / 32)) ? 0x8000 : 0;
-  return static_cast<uint16_t>(sign |
-                               (magnitude == 0 ? 0 : kIntegerBits[magnitude] + ScaleExponent(row, k / 32) * 1024));
+  const uint16_t sign = ((q < 0) != NegativeScale(row, k / kScaleGroupCols)) ? 0x8000 : 0;
+  return static_cast<uint16_t>(
+    sign | (magnitude == 0 ? 0 : kIntegerBits[magnitude] + ScaleExponent(row, k / kScaleGroupCols) * 1024));
 }
 
 // Serialize a 16x16 tile in physical phase4 order, independently of the
 // decoder's random-access offset expressions.
 void AppendTile(int row_base, int k_base, std::vector<uint8_t> *blob) {
-  for (int row_in_phase = 0; row_in_phase < 4; ++row_in_phase) {
-    for (int pair = 0; pair < 8; ++pair) {
-      for (int phase = 0; phase < 4; ++phase) {
-        const int row = row_base + phase * 4 + row_in_phase;
+  for (int row_in_phase = 0; row_in_phase < kRowsPerPhase; ++row_in_phase) {
+    for (int pair = 0; pair < kBytesPerTileRow; ++pair) {
+      for (int phase = 0; phase < kPhasesPerTile; ++phase) {
+        const int row = row_base + phase * kRowsPerPhase + row_in_phase;
         const int k = k_base + pair * 2;
-        blob->push_back(static_cast<uint8_t>((QuantValue(row, k) & 15) | ((QuantValue(row, k + 1) & 15) << 4)));
+        blob->push_back(
+          static_cast<uint8_t>((QuantValue(row, k) & kNibbleMask) | ((QuantValue(row, k + 1) & kNibbleMask) << 4)));
       }
     }
   }
@@ -67,23 +90,23 @@ void AppendTile(int row_base, int k_base, std::vector<uint8_t> *blob) {
 // Terminal cells retain only complete logical n16/g32 groups, never padding.
 std::vector<uint8_t> MakeNzfBlob(int rows, int hidden) {
   std::vector<uint8_t> blob;
-  blob.reserve(static_cast<size_t>(rows) * (hidden / 32) * 18);
-  for (int n0 = 0; n0 < rows; n0 += 64) {
-    for (int k0 = 0; k0 < hidden; k0 += 1024) {
-      for (int k = k0; k < std::min(k0 + 1024, hidden); k += 16) {
-        for (int n = n0; n < std::min(n0 + 64, rows); n += 16) {
+  blob.reserve(static_cast<size_t>(rows) * (hidden / kScaleGroupCols) * 18);
+  for (int n0 = 0; n0 < rows; n0 += kNBlockRows) {
+    for (int k0 = 0; k0 < hidden; k0 += kKBlockCols) {
+      for (int k = k0; k < std::min(k0 + kKBlockCols, hidden); k += 16) {
+        for (int n = n0; n < std::min(n0 + kNBlockRows, rows); n += 16) {
           AppendTile(n, k, &blob);
         }
       }
     }
   }
-  for (int n0 = 0; n0 < rows; n0 += 64) {
-    for (int k0 = 0; k0 < hidden; k0 += 1024) {
-      for (int row = n0; row < std::min(n0 + 64, rows); ++row) {
-        for (int k = k0; k < std::min(k0 + 1024, hidden); k += 32) {
-          const uint16_t bits = ScaleBits(row, k / 32);
-          blob.push_back(static_cast<uint8_t>(bits & 255));
-          blob.push_back(static_cast<uint8_t>(bits >> 8));
+  for (int n0 = 0; n0 < rows; n0 += kNBlockRows) {
+    for (int k0 = 0; k0 < hidden; k0 += kKBlockCols) {
+      for (int row = n0; row < std::min(n0 + kNBlockRows, rows); ++row) {
+        for (int k = k0; k < std::min(k0 + kKBlockCols, hidden); k += kScaleGroupCols) {
+          const uint16_t bits = ScaleBits(row, k / kScaleGroupCols);
+          blob.push_back(static_cast<uint8_t>(bits & kLowByteMask));
+          blob.push_back(static_cast<uint8_t>(bits >> kBitsPerByte));
         }
       }
     }
@@ -140,8 +163,8 @@ TEST(NnrtEmbeddingDequant, DecodesIndependentPhaseInterleavedWireBytes) {
     {0x4500, 0x4600, 0xc200, 0xc000},  // 5, 6, -3, -2
     {0x4700, 0xc800, 0xbc00, 0x0000},  // 7, -8, -1, 0
   };
-  for (int phase = 0; phase < 4; ++phase) {
-    const int row = phase * 4;
+  for (int phase = 0; phase < kPhasesPerTile; ++phase) {
+    const int row = phase * kRowsPerPhase;
     blob[256 + row * 2 + 1] = 0x3c;  // g32 scale = fp16 1.
     uint16_t output[32] = {};
     ASSERT_TRUE(DequantizeEmbeddingRow(blob.data(), blob.size(), {16, 32}, row, output));

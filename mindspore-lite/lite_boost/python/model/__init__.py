@@ -66,6 +66,7 @@ def detect_model_type(model) -> str:
         f"Expected a Wan-series, Qwen-Image-Edit or Boogu-series pipeline or model."
     )
 
+
 def setup_model(model, config=None):
     """Dispatch model setup based on detected model type.
 

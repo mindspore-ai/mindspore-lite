@@ -117,7 +117,9 @@ MSLlmGenerateConfig DefaultGenConfig() {
 
 bool PathDoesNotExist(const std::string &path) {
   struct stat path_stat {};
-  if (::stat(path.c_str(), &path_stat) == 0) return false;
+  if (::stat(path.c_str(), &path_stat) == 0) {
+    return false;
+  }
   return errno == ENOENT || errno == ENOTDIR;
 }
 
@@ -229,11 +231,15 @@ MSLLMStatus LoadEngineTokenizer(InternalEngine *e, const std::string &path) {
     e->tokenizer = mslite_llm::CreateTokenizerFromBuffer(vocab.data(), vocab.size());
   } else {
     std::string vocab_path = e->resources.tokenizer_path;
-    if (vocab_path.empty()) vocab_path = path + "/vocab.bin";
+    if (vocab_path.empty()) {
+      vocab_path = path + "/vocab.bin";
+    }
     // Fallback: look for tokenizer.model (SentencePiece).
     {
       std::ifstream test(vocab_path, std::ios::binary);
-      if (!test.good()) vocab_path = path + "/tokenizer.model";
+      if (!test.good()) {
+        vocab_path = path + "/tokenizer.model";
+      }
     }
     e->tokenizer = mslite_llm::CreateTokenizer(vocab_path);
   }
@@ -304,7 +310,9 @@ MSLLMStatus GenerateText(InternalEngine *e, std::vector<int32_t> &token_ids, int
   while (!IsEosToken(token_id, e)) {
     generated_ids.push_back(token_id);
     *output = e->tokenizer->Decode(generated_ids);
-    if (GenerationLimit(max_new, generated_count, max_seq_len, position) != kMSLLM_RUNNING) break;
+    if (GenerationLimit(max_new, generated_count, max_seq_len, position) != kMSLLM_RUNNING) {
+      break;
+    }
     std::vector<int32_t> single_token = {token_id};
     if (!StepForward(&ctx, single_token, position, &backend_output)) return kMSLLM_ERROR_INFERENCE;
     token_id = SampleStepLogits(e->sampler.get(), backend_output);
@@ -335,7 +343,9 @@ MSLLMStatus GenerateStream(InternalEngine *e, std::vector<int32_t> &token_ids, i
       break;
     }
     finish_reason = GenerationLimit(max_new, generated_count, max_seq_len, position);
-    if (finish_reason != kMSLLM_RUNNING) break;
+    if (finish_reason != kMSLLM_RUNNING) {
+      break;
+    }
     std::vector<int32_t> single_token = {token_id};
     if (!StepForward(&ctx, single_token, position, &backend_output)) {
       finish_reason = kMSLLM_FINISHED_BY_ERROR;

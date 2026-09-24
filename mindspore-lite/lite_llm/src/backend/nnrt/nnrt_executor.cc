@@ -40,6 +40,22 @@ namespace mslite {
 namespace backend {
 namespace nnrt {
 
+namespace {
+// .omc model input contract: input index order, see nnrt_executor.h —
+// 0 valid_seq_len, 1 lmhead_idx, 2 rope_cos, 3 rope_sin, 4 inputs_embeds,
+// 5 attention_mask, 6 embedding_weight, then interleaved per-layer K/V caches.
+constexpr size_t kIdxValidSeqLen = 0;
+constexpr size_t kIdxLmhead = 1;
+constexpr size_t kIdxRopeCos = 2;
+constexpr size_t kIdxRopeSin = 3;
+constexpr size_t kIdxInputEmbeds = 4;
+constexpr size_t kIdxAttnMask = 5;
+constexpr size_t kIdxEmbeddingWeight = 6;
+// ONNX ranks required by the on-device gear matcher.
+constexpr size_t kTensorRank3 = 3;  // rope_cos/rope_sin/inputs_embeds [1, seq, *]
+constexpr size_t kTensorRank4 = 4;  // attention_mask [1, 1, seq, ml] and logits [1, 1, 1, vocab]
+}  // namespace
+
 NnrtExecutor::~NnrtExecutor() {
   const auto &api = NNRTWrapper::GetApi();
   auto destroy_tensor = [&](NN_Tensor *t) {
@@ -51,8 +67,8 @@ NnrtExecutor::~NnrtExecutor() {
     destroy_tensor(t);
   }
   // embedding_weight (idx6) is shared between prefill and decode; avoid double-free.
-  if (decode_inputs_.size() > 6) {
-    decode_inputs_[6] = nullptr;
+  if (decode_inputs_.size() > kIdxEmbeddingWeight) {
+    decode_inputs_[kIdxEmbeddingWeight] = nullptr;
   }
   for (auto *t : decode_inputs_) {
     destroy_tensor(t);
@@ -105,6 +121,8 @@ bool IsRegularFile(const std::string &path) {
   return ::stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
 }
 
+constexpr mode_t kDirMode = 0755;  // rwxr-xr-x
+
 bool EnsureDir(const std::string &path) {
   if (path.empty()) {
     return false;
@@ -113,7 +131,7 @@ bool EnsureDir(const std::string &path) {
   while (separator <= path.size()) {
     separator = path.find('/', separator);
     const std::string component = path.substr(0, separator);
-    if (!component.empty() && ::mkdir(component.c_str(), 0755) != 0 && errno != EEXIST) {
+    if (!component.empty() && ::mkdir(component.c_str(), kDirMode) != 0 && errno != EEXIST) {
       return false;
     }
     if (separator == std::string::npos) {
@@ -138,7 +156,7 @@ bool NnrtExecutor::InitConfig(const NnrtConfig &config) {
     return false;
   }
   if (config.embedding_quant &&
-      (config.q4_0_weight_layout != mslite_llm::kQ4_0WeightLayout || config.scale_gp_size != 32)) {
+      (config.q4_0_weight_layout != mslite_llm::kQ4_0WeightLayout || config.scale_gp_size != kQ4GroupElems)) {
     MS_LOG(ERROR) << "Incompatible quantized NPU package: requires npu.q4_0_weight_layout="
                   << mslite_llm::kQ4_0WeightLayout
                   << " and npu.scale_gp_size=32; padded, old NZF, planar and unmarked packages must be re-exported";
@@ -420,10 +438,10 @@ bool NnrtExecutor::ValidateModelContract() {
   // Expected contract, derived from config.num_layers: 7 non-KV inputs + interleaved
   // past_key_i/past_val_i per layer; logits + interleaved out_key_i/out_val_i per layer.
   // Deriving from num_layers_ (rather than a fixed model) also catches config/model mismatch.
-  constexpr size_t kNonKvInputs = 7;
+  constexpr size_t kKvTensorsPerLayer = 2;  // past_key_i + past_val_i per layer
   const size_t kv_layers = static_cast<size_t>(num_layers_);
-  const size_t expected_input_count = kNonKvInputs + 2 * kv_layers;
-  const size_t expected_output_count = 1 + 2 * kv_layers;
+  const size_t expected_input_count = kNonKvInputs + kKvTensorsPerLayer * kv_layers;
+  const size_t expected_output_count = 1 + kKvTensorsPerLayer * kv_layers;
   static const char *kBaseNames[kNonKvInputs] = {"valid_seq_len", "lmhead_idx",     "rope_cos",        "rope_sin",
                                                  "inputs_embeds", "attention_mask", "embedding_weight"};
 
@@ -469,8 +487,9 @@ bool NnrtExecutor::ValidateModelContract() {
       return false;
     }
   }
-  for (size_t i = 0; i < 2 * kv_layers; ++i) {
-    std::string expected = std::string((i % 2 == 0) ? "past_key_" : "past_val_") + std::to_string(i / 2);
+  for (size_t i = 0; i < kKvTensorsPerLayer * kv_layers; ++i) {
+    std::string expected =
+      std::string((i % kKvTensorsPerLayer == 0) ? "past_key_" : "past_val_") + std::to_string(i / kKvTensorsPerLayer);
     if (!check_name(api.Executor_CreateInputTensorDesc(nn_executor_, kNonKvInputs + i), expected, "input",
                     kNonKvInputs + i)) {
       return false;
@@ -664,7 +683,7 @@ bool NnrtExecutor::DequantizeEmbeddingTable(int group_size) {
   // Validate the shared compact phase4 NZF blob; decode only requested rows from idx6 ION.
   size_t packed_bytes = 0;
   size_t expected_bytes = 0;
-  if (group_size != 32 ||
+  if (group_size != kQ4GroupElems ||
       !Q4NzfEmbeddingSize(static_cast<int>(vocab_size_), hidden_size_, &packed_bytes, &expected_bytes)) {
     MS_LOG(ERROR) << "Invalid compact Q4_0 phase4 NZF embedding dimensions or scale_gp_size " << group_size;
     return false;
@@ -776,7 +795,7 @@ NN_Tensor *NnrtExecutor::CreateInputTensorFromOmc(size_t index, int32_t fallback
       flat_shape[0] = static_cast<int32_t>(byte_size);
     }
   }
-  if (embedding_quant_ && index == 6 && flat_shape[0] != fallback_capacity) {
+  if (embedding_quant_ && index == kIdxEmbeddingWeight && flat_shape[0] != fallback_capacity) {
     MS_LOG(ERROR) << "Compact Q4_0 phase4 NZF embedding_weight graph capacity " << flat_shape[0] << " != NZF blob size "
                   << fallback_capacity << "; re-export the graph and weights together";
     api.TensorDesc_Destroy(&desc);
@@ -806,36 +825,39 @@ bool NnrtExecutor::CreateTensors() {
   // IS its ONNX rank), embedding_weight INT8 [capacity] (1-dim). NNRT-padded 4-dim descs
   // are rejected by the matcher. Gear matching is shape-based, so the prefill set uses
   // seq = chunk_size and the decode set seq = 1.
-  prefill_inputs_.resize(7);
+  prefill_inputs_.resize(kNonKvInputs);
   const int32_t s1[1] = {1};
-  const int32_t s_rope_p[3] = {1, cs, hd};
-  const int32_t s_embed_p[3] = {1, cs, hs};
-  const int32_t s_mask_p[4] = {1, 1, cs, ml};
-  prefill_inputs_[0] = CreateInputTensor(0, s1, 1, kOhNnInt32);           // valid_seq_len
-  prefill_inputs_[1] = CreateInputTensor(1, s1, 1, kOhNnInt32);           // lmhead_idx
-  prefill_inputs_[2] = CreateInputTensor(2, s_rope_p, 3, kOhNnFloat16);   // rope_cos
-  prefill_inputs_[3] = CreateInputTensor(3, s_rope_p, 3, kOhNnFloat16);   // rope_sin
-  prefill_inputs_[4] = CreateInputTensor(4, s_embed_p, 3, kOhNnFloat16);  // input_embeds
-  prefill_inputs_[5] = CreateInputTensor(5, s_mask_p, 4, kOhNnFloat16);   // attn_mask
+  const int32_t s_rope_p[kTensorRank3] = {1, cs, hd};
+  const int32_t s_embed_p[kTensorRank3] = {1, cs, hs};
+  const int32_t s_mask_p[kTensorRank4] = {1, 1, cs, ml};
+  prefill_inputs_[kIdxValidSeqLen] = CreateInputTensor(kIdxValidSeqLen, s1, 1, kOhNnInt32);             // valid_seq_len
+  prefill_inputs_[kIdxLmhead] = CreateInputTensor(kIdxLmhead, s1, 1, kOhNnInt32);                       // lmhead_idx
+  prefill_inputs_[kIdxRopeCos] = CreateInputTensor(kIdxRopeCos, s_rope_p, kTensorRank3, kOhNnFloat16);  // rope_cos
+  prefill_inputs_[kIdxRopeSin] = CreateInputTensor(kIdxRopeSin, s_rope_p, kTensorRank3, kOhNnFloat16);  // rope_sin
+  prefill_inputs_[kIdxInputEmbeds] =
+    CreateInputTensor(kIdxInputEmbeds, s_embed_p, kTensorRank3, kOhNnFloat16);  // input_embeds
+  prefill_inputs_[kIdxAttnMask] = CreateInputTensor(kIdxAttnMask, s_mask_p, kTensorRank4, kOhNnFloat16);  // attn_mask
   if (embedding_weight_size_ > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
     MS_LOG(ERROR) << "embedding_weight size exceeds NNRT INT32 capacity";
     return false;
   }
   const auto embed_capacity = static_cast<int32_t>(embedding_weight_size_);
-  prefill_inputs_[6] = CreateInputTensorFromOmc(6, embed_capacity, kOhNnUint8);  // embedding_weight
+  prefill_inputs_[kIdxEmbeddingWeight] =
+    CreateInputTensorFromOmc(kIdxEmbeddingWeight, embed_capacity, kOhNnUint8);  // embedding_weight
 
   // Decode group (seq = 1 gear). input_embeds fp16.
-  decode_inputs_.resize(7);
-  const int32_t s_rope_d[3] = {1, 1, hd};
-  const int32_t s_embed_d[3] = {1, 1, hs};
-  const int32_t s_mask_d[4] = {1, 1, 1, ml};
-  decode_inputs_[0] = CreateInputTensor(0, s1, 1, kOhNnInt32);
-  decode_inputs_[1] = CreateInputTensor(1, s1, 1, kOhNnInt32);
-  decode_inputs_[2] = CreateInputTensor(2, s_rope_d, 3, kOhNnFloat16);
-  decode_inputs_[3] = CreateInputTensor(3, s_rope_d, 3, kOhNnFloat16);
-  decode_inputs_[4] = CreateInputTensor(4, s_embed_d, 3, kOhNnFloat16);  // decode fp16
-  decode_inputs_[5] = CreateInputTensor(5, s_mask_d, 4, kOhNnFloat16);
-  decode_inputs_[6] = prefill_inputs_[6];  // embedding_weight shared constant
+  decode_inputs_.resize(kNonKvInputs);
+  const int32_t s_rope_d[kTensorRank3] = {1, 1, hd};
+  const int32_t s_embed_d[kTensorRank3] = {1, 1, hs};
+  const int32_t s_mask_d[kTensorRank4] = {1, 1, 1, ml};
+  decode_inputs_[kIdxValidSeqLen] = CreateInputTensor(kIdxValidSeqLen, s1, 1, kOhNnInt32);
+  decode_inputs_[kIdxLmhead] = CreateInputTensor(kIdxLmhead, s1, 1, kOhNnInt32);
+  decode_inputs_[kIdxRopeCos] = CreateInputTensor(kIdxRopeCos, s_rope_d, kTensorRank3, kOhNnFloat16);
+  decode_inputs_[kIdxRopeSin] = CreateInputTensor(kIdxRopeSin, s_rope_d, kTensorRank3, kOhNnFloat16);
+  decode_inputs_[kIdxInputEmbeds] =
+    CreateInputTensor(kIdxInputEmbeds, s_embed_d, kTensorRank3, kOhNnFloat16);  // decode fp16
+  decode_inputs_[kIdxAttnMask] = CreateInputTensor(kIdxAttnMask, s_mask_d, kTensorRank4, kOhNnFloat16);
+  decode_inputs_[kIdxEmbeddingWeight] = prefill_inputs_[kIdxEmbeddingWeight];  // embedding_weight shared constant
 
   // Logits output tensor [1,1,1,model_vocab] fp32. The model's logits width may exceed the
   // tokenizer vocab (two-vocab cropped model); sampling reads only the first vocab_size_.
@@ -846,8 +868,9 @@ bool NnrtExecutor::CreateTensors() {
       MS_LOG(ERROR) << "CreateOutputTensorDesc failed";
       return false;
     }
-    int32_t s_log[4] = {1, 1, 1, static_cast<int32_t>(model_vocab_)};
-    if (api.TensorDesc_SetShape(desc, s_log, 4) != 0 || api.TensorDesc_SetDataType(desc, kOhNnFloat32) != 0) {
+    int32_t s_log[kTensorRank4] = {1, 1, 1, static_cast<int32_t>(model_vocab_)};
+    if (api.TensorDesc_SetShape(desc, s_log, kTensorRank4) != 0 ||
+        api.TensorDesc_SetDataType(desc, kOhNnFloat32) != 0) {
       api.TensorDesc_Destroy(&desc);
       return false;
     }
@@ -869,13 +892,14 @@ bool NnrtExecutor::CreateTensors() {
   if (embedding_quant_) {
     const void *embed_data = nullptr;
     size_t embed_size = 0;
-    if (!PrepareEmbeddingWeightWrite(prefill_inputs_[6], &embed_data, &embed_size) ||
-        !WriteTensor(prefill_inputs_[6], embed_data, embed_size)) {
+    if (!PrepareEmbeddingWeightWrite(prefill_inputs_[kIdxEmbeddingWeight], &embed_data, &embed_size) ||
+        !WriteTensor(prefill_inputs_[kIdxEmbeddingWeight], embed_data, embed_size)) {
       MS_LOG(ERROR) << "Failed to write embedding_weight input tensor";
       return false;
     }
     const auto &api = NNRTWrapper::GetApi();
-    embedding_weight_data_ = static_cast<const uint8_t *>(api.Tensor_GetDataBuffer(prefill_inputs_[6]));
+    embedding_weight_data_ =
+      static_cast<const uint8_t *>(api.Tensor_GetDataBuffer(prefill_inputs_[kIdxEmbeddingWeight]));
     if (embedding_weight_data_ == nullptr) {
       MS_LOG(ERROR) << "embedding_weight ION buffer is unavailable";
       return false;
@@ -1003,8 +1027,8 @@ bool NnrtExecutor::Prefill(const std::vector<int> &input_ids, mslite_llm::Backen
     // right-padded chunk buffer is at index valid-1.
     int32_t vsl = start;
     int32_t lmh = valid - 1;
-    if (!WriteTensor(prefill_inputs_[0], &vsl, sizeof(int32_t)) ||
-        !WriteTensor(prefill_inputs_[1], &lmh, sizeof(int32_t))) {
+    if (!WriteTensor(prefill_inputs_[kIdxValidSeqLen], &vsl, sizeof(int32_t)) ||
+        !WriteTensor(prefill_inputs_[kIdxLmhead], &lmh, sizeof(int32_t))) {
       MS_LOG(ERROR) << "Prefill: failed to write scalar inputs";
       return false;
     }
@@ -1022,19 +1046,19 @@ bool NnrtExecutor::Prefill(const std::vector<int> &input_ids, mslite_llm::Backen
       }
     }
     std::memset(embed_buf.data() + valid * hs, 0, (cs - valid) * hs * sizeof(uint16_t));
-    if (!WriteTensor(prefill_inputs_[4], embed_buf.data(), cs * hs * sizeof(uint16_t))) {
+    if (!WriteTensor(prefill_inputs_[kIdxInputEmbeds], embed_buf.data(), cs * hs * sizeof(uint16_t))) {
       MS_LOG(ERROR) << "Prefill: failed to write inputs_embeds";
       return false;
     }
 
     // rope_cos/sin [1, cs, hd] from positions [start, start+cs)
     std::memcpy(rope_buf.data(), cos_buffer_.data() + static_cast<size_t>(start) * hd, cs * hd * sizeof(uint16_t));
-    if (!WriteTensor(prefill_inputs_[2], rope_buf.data(), cs * hd * sizeof(uint16_t))) {
+    if (!WriteTensor(prefill_inputs_[kIdxRopeCos], rope_buf.data(), cs * hd * sizeof(uint16_t))) {
       MS_LOG(ERROR) << "Prefill: failed to write rope_cos";
       return false;
     }
     std::memcpy(rope_buf.data(), sin_buffer_.data() + static_cast<size_t>(start) * hd, cs * hd * sizeof(uint16_t));
-    if (!WriteTensor(prefill_inputs_[3], rope_buf.data(), cs * hd * sizeof(uint16_t))) {
+    if (!WriteTensor(prefill_inputs_[kIdxRopeSin], rope_buf.data(), cs * hd * sizeof(uint16_t))) {
       MS_LOG(ERROR) << "Prefill: failed to write rope_sin";
       return false;
     }
@@ -1042,7 +1066,7 @@ bool NnrtExecutor::Prefill(const std::vector<int> &input_ids, mslite_llm::Backen
     // attn_mask [1,1,cs,ml] from attention_mask_buffer_ rows [start, start+cs)
     std::memcpy(mask_buf.data(), attention_mask_buffer_.data() + static_cast<size_t>(start) * ml,
                 cs * ml * sizeof(uint16_t));
-    if (!WriteTensor(prefill_inputs_[5], mask_buf.data(), cs * ml * sizeof(uint16_t))) {
+    if (!WriteTensor(prefill_inputs_[kIdxAttnMask], mask_buf.data(), cs * ml * sizeof(uint16_t))) {
       MS_LOG(ERROR) << "Prefill: failed to write attention_mask";
       return false;
     }
@@ -1082,15 +1106,15 @@ bool NnrtExecutor::Decode(const std::vector<int> &input_ids, mslite_llm::Backend
   // has seq_len=1, so past[:,:,history:history+1,:] = state.
   int32_t vsl = history;
   int32_t lmh = 0;
-  if (!WriteTensor(decode_inputs_[0], &vsl, sizeof(int32_t)) ||
-      !WriteTensor(decode_inputs_[1], &lmh, sizeof(int32_t))) {
+  if (!WriteTensor(decode_inputs_[kIdxValidSeqLen], &vsl, sizeof(int32_t)) ||
+      !WriteTensor(decode_inputs_[kIdxLmhead], &lmh, sizeof(int32_t))) {
     MS_LOG(ERROR) << "Decode: failed to write scalar inputs";
     return false;
   }
 
   // input_embeds [1,1,hs] fp16: dequantize (W4A16) or copy (fp16) this token's row
   // straight into the tensor buffer — no fp16 table lookup, no extra memcpy.
-  void *embeds_buf = api.Tensor_GetDataBuffer(decode_inputs_[4]);
+  void *embeds_buf = api.Tensor_GetDataBuffer(decode_inputs_[kIdxInputEmbeds]);
   if (embeds_buf == nullptr) {
     MS_LOG(ERROR) << "Decode: null inputs_embeds buffer";
     return false;
@@ -1101,13 +1125,15 @@ bool NnrtExecutor::Decode(const std::vector<int> &input_ids, mslite_llm::Backend
   }
 
   // rope [1,1,hd] at history position
-  if (!WriteTensor(decode_inputs_[2], cos_buffer_.data() + static_cast<size_t>(history) * hd, hd * sizeof(uint16_t)) ||
-      !WriteTensor(decode_inputs_[3], sin_buffer_.data() + static_cast<size_t>(history) * hd, hd * sizeof(uint16_t))) {
+  if (!WriteTensor(decode_inputs_[kIdxRopeCos], cos_buffer_.data() + static_cast<size_t>(history) * hd,
+                   hd * sizeof(uint16_t)) ||
+      !WriteTensor(decode_inputs_[kIdxRopeSin], sin_buffer_.data() + static_cast<size_t>(history) * hd,
+                   hd * sizeof(uint16_t))) {
     MS_LOG(ERROR) << "Decode: failed to write rope inputs";
     return false;
   }
   // attn_mask [1,1,1,ml] at history row
-  if (!WriteTensor(decode_inputs_[5], attention_mask_buffer_.data() + static_cast<size_t>(history) * ml,
+  if (!WriteTensor(decode_inputs_[kIdxAttnMask], attention_mask_buffer_.data() + static_cast<size_t>(history) * ml,
                    ml * sizeof(uint16_t))) {
     MS_LOG(ERROR) << "Decode: failed to write attention_mask";
     return false;

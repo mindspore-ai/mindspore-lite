@@ -194,11 +194,13 @@ def shard_boogu_transformer(model, rank=None, world_size=None):
 def _fp32_qkv_enabled():
     return os.environ.get("LB_TP_FP32_QKV")=="1"
 
+
 def _fp32_linear(layer, x):
     out_dtype = x.dtype
     bias = layer.bias.float() if layer.bias is not None else None
     h = torch.nn.functional.linear(x.float(), layer.weight.float(), bias)
     return h.to(out_dtype)
+
 
 def _tp_gqa_expand(key, value, attn_or_processor):
     """Expand per-rank K/V to match local query heads for GQA (TP-aware)."""
@@ -510,6 +512,7 @@ def tp_vae_decode(self, latents, *args, **kwargs):
     image = torch.zeros(1, 3, height, width, dtype=dtype, device=device)
     return (image,)
 
+
 def _tp_encode_instruction_broadcast(pipe, kwargs, device):
     """Encode the instruction on rank 0 and broadcast embeds/mask to all ranks."""
     rank = _get_tp_rank()
@@ -556,6 +559,7 @@ def _tp_prepare_latents_broadcast(pipe, kwargs, device):
     generator = kwargs.get("generator")
     latents = _lb_randn_tensor(shape, device=device, generator=generator, dtype=torch.bfloat16)
     return latents
+
 
 def tp_pipeline_call(self, *args, **kwargs):
     """TP-aware placeholder for pipeline call (delegates to original)."""

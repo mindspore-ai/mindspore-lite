@@ -29,6 +29,16 @@ namespace nnrt {
 uint16_t Fp32ToFp16Bits(float value);
 float Fp16BitsToFp32(uint16_t bits);
 
+// Compact Q4_0 phase4 NZF layout contract, mirroring the phase4 NZF export
+// tool: each 32-element quant group packs into 16 nibble bytes plus one
+// 2-byte fp16 scale (18 bytes per group), and rows are tiled in 16-row NZF
+// fractals.
+constexpr size_t kQ4GroupElems = 32;
+constexpr size_t kQ4PackedBytesPerGroup = 16;
+constexpr size_t kQ4ScaleBytesPerGroup = 2;
+constexpr size_t kQ4BytesPerGroup = kQ4PackedBytesPerGroup + kQ4ScaleBytesPerGroup;
+constexpr size_t kQ4NzFractalRows = 16;
+
 // Compact Q4_0 phase4 NZF: packed cells followed by per-row g32 fp16 scales.
 // Cells are at most 64x1024, with no padding. Rows must be a multiple of 16,
 // hidden a multiple of 32; total storage is rows * hidden / 32 * 18 bytes.

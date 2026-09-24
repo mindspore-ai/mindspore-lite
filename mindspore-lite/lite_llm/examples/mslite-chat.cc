@@ -58,7 +58,13 @@ void PrintUsage(const char *program) {
             << "  --verbose bypasses chat-template rendering and uses PROMPT verbatim.\n";
 }
 
+constexpr int kUsageExitCode = 2;  // conventional CLI usage-error exit (see PrintUsage)
+constexpr int kMinArgc = 3;        // program + MODEL_PACKAGE + PROMPT
+
 const char *StatusName(MSLLMStatus status);
+
+// Double the render buffer on MSLLM_ERROR_BUFFER_TOO_SMALL.
+constexpr size_t kBufferGrowthFactor = 2;
 
 bool RenderUserPrompt(MSLLMModelHandle model, const char *user_prompt, std::string *rendered_prompt) {
   if (model == nullptr || user_prompt == nullptr || rendered_prompt == nullptr) {
@@ -79,10 +85,10 @@ bool RenderUserPrompt(MSLLMModelHandle model, const char *user_prompt, std::stri
       std::cerr << "[error] MSLLMApplyChatTemplate failed: " << StatusName(status) << '\n';
       return false;
     }
-    if (capacity > static_cast<size_t>(std::numeric_limits<int>::max()) / 2) {
+    if (capacity > static_cast<size_t>(std::numeric_limits<int>::max()) / kBufferGrowthFactor) {
       break;
     }
-    capacity *= 2;
+    capacity *= kBufferGrowthFactor;
   }
   std::cerr << "[error] rendered chat prompt is too large\n";
   return false;
@@ -255,22 +261,22 @@ void OnStreamToken(const char *token, MSLLMFinishReason reason, void *user_data)
 
 int main(int argc, char **argv) {
   DebugLog("start");
-  if (argc < 3) {
+  if (argc < kMinArgc) {
     PrintUsage(argv[0]);
-    return 2;
+    return kUsageExitCode;
   }
 
   int32_t max_tokens = 64;
   bool use_chat_template = true;
   bool max_tokens_set = false;
-  for (int i = 3; i < argc; ++i) {
+  for (int i = kMinArgc; i < argc; ++i) {
     if (std::string(argv[i]) == "--verbose") {
       use_chat_template = false;
     } else if (!max_tokens_set && ParsePositiveInt(argv[i], &max_tokens)) {
       max_tokens_set = true;
     } else {
       PrintUsage(argv[0]);
-      return 2;
+      return kUsageExitCode;
     }
   }
 

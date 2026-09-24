@@ -78,6 +78,9 @@ struct JsonValue {
   bool IsBool() const { return type == Type::kBool; }
 };
 
+// RFC 8259 \uXXXX escapes carry exactly 4 hex digits.
+constexpr size_t kUnicodeEscapeHexDigits = 4;
+
 class JsonParser {
  public:
   explicit JsonParser(std::string text) : text_(std::move(text)) {}
@@ -287,12 +290,12 @@ class JsonParser {
           out->push_back('\t');
           break;
         case 'u':
-          if (pos_ + 4 > text_.size()) {
+          if (pos_ + kUnicodeEscapeHexDigits > text_.size()) {
             SetError(error, "short unicode escape");
             return false;
           }
           out->push_back('?');
-          pos_ += 4;
+          pos_ += kUnicodeEscapeHexDigits;
           break;
         default:
           SetError(error, "unsupported string escape");
@@ -707,13 +710,14 @@ bool ParseDTypeName(const std::string &raw, MSLlmDType *out) {
 namespace {
 
 bool ValidateQ4Layout(const NpuConfig &config, std::string *error_message) {
-  if (!config.embedding_quant || (config.q4_0_weight_layout == kQ4_0WeightLayout && config.scale_gp_size == 32)) {
+  if (!config.embedding_quant ||
+      (config.q4_0_weight_layout == kQ4_0WeightLayout && config.scale_gp_size == kDefaultScaleGroupSize)) {
     return true;
   }
   if (error_message != nullptr) {
     *error_message = std::string("Incompatible quantized NPU package: requires npu.q4_0_weight_layout=") +
-                     kQ4_0WeightLayout +
-                     " and npu.scale_gp_size=32; padded, old NZF, planar and unmarked packages must be re-exported";
+                     kQ4_0WeightLayout + " and npu.scale_gp_size=" + std::to_string(kDefaultScaleGroupSize) +
+                     "; padded, old NZF, planar and unmarked packages must be re-exported";
   }
   return false;
 }
