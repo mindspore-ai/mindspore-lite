@@ -60,7 +60,8 @@ usage()
   echo ""
   echo "Packaging (after a successful build):"
   echo "    host:  builds mslite-llm-{version}.whl into output/tool/"
-  echo "    nnrt:  assembles output/${PACKAGE_NAME}.tar.gz with lib/ include/ bin/ + tool/ + ascendc_ops/*.run"
+  echo "    nnrt:  assembles output/${PACKAGE_NAME}.tar.gz (top dir ${PACKAGE_NAME}/)"
+  echo "           with lib/ include/ bin/ + tool/ + tool/ascendc_ops/ (ops whl + *.run)"
   echo ""
   echo "Run tests:"
   echo "    ctest --test-dir build --output-on-failure"
@@ -197,13 +198,15 @@ build_wheel()
 
 # Assemble the deployable archive without CPack: the C++ artifacts come from
 # the install() rules (lib/ include/ bin/ via `cmake --install`), then the
-# script collects the Python wheel and the AscendC operator .run packages
-# into the same staging tree and tar-s it — three artifact kinds CPack cannot
-# compose in one pass.
+# script collects the Python export wheel and the AscendC custom-op artifacts
+# (ops wheel + .run packages) into the same staging tree and tar-s it — these
+# artifact kinds CPack cannot compose in one pass.  The payload is wrapped in
+# a top-level directory named after the archive (main-repo convention), so
+# extraction stays self-contained.
 assemble_archive()
 {
-  local staging="${BUILD_DIR}/staging"
-  rm -rf "${staging}"
+  local staging="${BUILD_DIR}/staging/${PACKAGE_NAME}"
+  rm -rf "${BUILD_DIR}/staging"
   mkdir -p "${staging}" "${OUTPUT_DIR}"
 
   # C++ artifacts: engine .so/.a + headers + mslite-chat (install() rules).
@@ -215,13 +218,18 @@ assemble_archive()
     cp -f "${OUTPUT_DIR}"/tool/*.whl "${staging}/tool/"
   fi
 
-  # AscendC operator .run packages (CI-produced under custom_ops/output).
-  if compgen -G "${TOP_DIR}/custom_ops/output/"*.run > /dev/null; then
-    mkdir -p "${staging}/ascendc_ops"
-    cp -f "${TOP_DIR}"/custom_ops/output/*.run "${staging}/ascendc_ops/"
+  # AscendC custom-op artifacts (CI-produced under custom_ops/output): the
+  # ops wheel and the binary .run packages both ship under tool/ascendc_ops/.
+  shopt -s nullglob
+  local op_pkgs=("${TOP_DIR}/custom_ops/output/"*.run
+                 "${TOP_DIR}/custom_ops/output/"mslite_llm_ops*.whl)
+  shopt -u nullglob
+  if [ ${#op_pkgs[@]} -gt 0 ]; then
+    mkdir -p "${staging}/tool/ascendc_ops"
+    cp -f "${op_pkgs[@]}" "${staging}/tool/ascendc_ops/"
   fi
 
-  tar -C "${staging}" -czf "${OUTPUT_DIR}/${PACKAGE_NAME}.tar.gz" .
+  tar -C "${BUILD_DIR}/staging" -czf "${OUTPUT_DIR}/${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}"
 }
 
 build_wheel
