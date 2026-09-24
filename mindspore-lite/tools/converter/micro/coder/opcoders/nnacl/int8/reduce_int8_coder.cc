@@ -172,13 +172,6 @@ void ReduceInt8Coder::GetQuantArgs(size_t index) {
 
 int ReduceInt8Coder::Prepare(CoderContext *const context) {
   MS_CHECK_RET_CODE(ReduceBaseCoder::Init(), "Init failed");
-  // The HW fast path (ReduceMeanHW) is ReduceMean-specific; other reduce modes (e.g.
-  // ReduceProd) must not take it, or the generated code calls ReduceMeanHW and the int8
-  // kernel is bypassed (INT8_NOT_GENUINE).
-  if (mode_ == static_cast<int>(schema::ReduceMode_ReduceMean) && input_tensor_->shape().size() == DIMENSION_4D &&
-      num_axes_ == kTwo && (axes_[0] + axes_[1]) == kThree) {
-    axes_hw_pattern_ = true;
-  }
   std::vector<int> in_shape = input_tensor_->shape();
   if (!in_shape.empty()) {
     this->valid_shape_ = true;
@@ -223,6 +216,15 @@ int ReduceInt8Coder::Prepare(CoderContext *const context) {
   // ReSize() normalizes empty-axes (reduce all axes) via CheckParameters(), so quant
   // args must be computed AFTER ReSize to see the correct num_axes_.
   MS_CHECK_RET_CODE(ReduceBaseCoder::ReSize(), "ReSize failed");
+  // The HW fast path (ReduceMeanHW) is ReduceMean-specific and only valid for reducing
+  // exactly the H/W axes {1, 2} of a 4D input; it must also be decided after ReSize() so
+  // negative axes are already normalized. A sum-of-axes test (sum == 3) wrongly captures
+  // axes {0, 3} (N+C), producing NCHW-packed H/W reduction and garbage output.
+  if (mode_ == static_cast<int>(schema::ReduceMode_ReduceMean) && input_tensor_->shape().size() == DIMENSION_4D &&
+      num_axes_ == kTwo &&
+      ((axes_[0] == kNHWC_H && axes_[1] == kNHWC_W) || (axes_[0] == kNHWC_W && axes_[1] == kNHWC_H))) {
+    axes_hw_pattern_ = true;
+  }
   MS_CHECK_RET_CODE(CalculateQuantArgs(), "CalculateQuantArgs failed");
   if (axes_hw_pattern_) {
     nchw_in_data_ = static_cast<int8_t *>(
