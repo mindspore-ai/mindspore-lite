@@ -131,6 +131,12 @@ void CodeGlobalMemory(std::ofstream &ofs, size_t size) {
       return mem_block;
     }
     mem_block = malloc(sizeof(MemBlock) + init_size);
+    if (mem_block == NULL) {
+      // Report through the NULL return: MSModelCreate0 turns it into an allocation error status,
+      // no direct printf here because output backends are not guaranteed on micro devices.
+      kLock = false;
+      return NULL;
+    }
     mem_block->occupied = false;
     mem_block->size = init_size;
     mem_block->addr = (char *)mem_block + sizeof(MemBlock);
@@ -145,6 +151,11 @@ void CodeGlobalMemory(std::ofstream &ofs, size_t size) {
     ofs << R"RAW(
     bool expected = false;
     mem_block = malloc(sizeof(MemBlock) + init_size);
+    if (mem_block == NULL) {
+      // Report through the NULL return: MSModelCreate0 turns it into an allocation error status,
+      // no direct printf here because output backends are not guaranteed on micro devices.
+      return NULL;
+    }
     mem_block->occupied = false;
     mem_block->size = init_size;
     mem_block->addr = (char *)mem_block + sizeof(MemBlock);

@@ -69,6 +69,16 @@ bool IsPrimitiveProper(const CNodePtr &add_cnode, const CNodePtr &matmul_cnode, 
       return false;
     }
   }
+  // The fused bias can only be quantized offline with the weight scales, which requires the weight
+  // to be a constant with data. A variable weight (e.g. the online second input of BatchMatMul)
+  // makes bias quantization impossible and aborts FULL_QUANT, so keep the Add unfused there.
+  auto matmul_weight_node = matmul_cnode->input(kInputIndexTwo);
+  MS_CHECK_TRUE_MSG(matmul_weight_node != nullptr, false, "matmul_weight_node is nullptr!");
+  if (!utils::isa<ValueNode>(matmul_weight_node) &&
+      (!utils::isa<Parameter>(matmul_weight_node) || !matmul_weight_node->cast<ParameterPtr>()->default_param())) {
+    MS_LOG(INFO) << matmul_cnode->fullname_with_scope() << "'s weight is not constant parameter";
+    return false;
+  }
   auto matmul_primc = ops::GetOperator<ops::MatMulFusion>(matmul_cnode->input(0));
   if (matmul_primc != nullptr) {
     if (matmul_primc->GetAttr(ops::kActivationType) != nullptr &&

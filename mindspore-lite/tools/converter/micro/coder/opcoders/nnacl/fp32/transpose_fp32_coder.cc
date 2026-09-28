@@ -136,6 +136,7 @@ int TransposeFp32Coder::DoCode(CoderContext *const context) {
   }
   GetNHNCTransposeFunc();
   if (!NHNCTransposeFunc_.empty()) {
+    Collect(context, {"nnacl_c/fp32/pack_fp32.h"}, {"pack_fp32.c"});
     if (!support_parallel_) {
       code.CodeFunction(NHNCTransposeFunc_, input_tensor_, output_tensor_, nhnc_param_[0], nhnc_param_[1],
                         nhnc_param_[kTwo], kDefaultTaskId, 1);

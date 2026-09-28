@@ -192,12 +192,12 @@ int AddInt8Coder::DoCode(CoderContext *const context) {
     }
   } else {
     if (arith_para_->broadcasting_) {
-      tile0_data_ = static_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, output_tensor_->Size(), kWorkspace));
-      MS_CHECK_PTR(tile0_data_);
-      tile1_data_ = static_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, output_tensor_->Size(), kWorkspace));
-      MS_CHECK_PTR(tile1_data_);
-      code.CodeFunction("TileDimensionsInt8", input0, input1, tile0_data_, tile1_data_, "&arith_para");
-      code.CodeFunction("AddInt8", tile0_data_, tile1_data_, output_tensor_, elements_num_, "&para");
+      // Broadcast in place via the broadcast runner instead of tiling both operands up to the
+      // output shape: single thread (task 0) covers the whole output, and the smaller operand
+      // workspace is not needed, which is critical for heap-limited MCUs.
+      code.CodeBaseStruct("AddInt8Args", kRunArgs, "&para", "&arith_para", in_size_, out_size_, gThreadNum,
+                          elements_num_, support_opt_add_, input0, input1, output_tensor_);
+      code.CodeFunction("AddBroadcastInt8Run", kRunArgsAddr, kDefaultTaskId, kLhsScale, kRhsScale);
     } else {
       code.CodeBaseStruct("AddInt8Args", kRunArgs, "&para", "&arith_para", in_size_, out_size_, gThreadNum,
                           elements_num_, support_opt_add_, input0, input1, output_tensor_);
