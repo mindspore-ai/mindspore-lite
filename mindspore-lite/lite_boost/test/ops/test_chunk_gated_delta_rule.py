@@ -566,7 +566,7 @@ class TestChunkGatedDeltaRule:
             [8], dtype=torch.int32, device=self.device
         )
         with pytest.raises(RuntimeError):
-            _run_op(data, torch.float16)
+            _ = _run_op(data, torch.float16)
         torch.npu.synchronize()
 
     @pytest.mark.L0

@@ -50,7 +50,9 @@ pipe = QwenImageEditPlusPipeline.from_pretrained("qwen-image-edit", torch_dtype=
 
 boost_manager = BoostManager()
 pipe = boost_manager(pipe, config=CONFIG_YAML)
-logging.info("rank %s: pipeline boosted", local_rank)
+
+logging.basicConfig(level=logging.INFO)
+logging.info("rank %d: pipeline boosted", local_rank)
 
 pipe.to("npu")
 

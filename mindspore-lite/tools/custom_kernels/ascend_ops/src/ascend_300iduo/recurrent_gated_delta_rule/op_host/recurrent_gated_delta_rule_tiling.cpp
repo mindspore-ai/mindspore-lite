@@ -40,6 +40,8 @@ constexpr int64_t FP16_BYTES = 2;
 constexpr int64_t WORKING_DK_FP32_BUFFER_NUM = 2;
 // Small fixed UB allowance (bytes) for event/scheduling bookkeeping.
 constexpr int64_t UB_FIXED_ALLOWANCE_BYTES = 128;
+// Number of fp32 buffers of size aDk held in the working area.
+constexpr int64_t WORKING_ADK_FP32_BUFFERS = 2;
 
 uint32_t CeilAlign(uint32_t val, uint32_t align) { return (val + align - 1) / align * align; }
 
@@ -61,7 +63,9 @@ int64_t CalcFixedUbBytes(int64_t aNv, int64_t aDv, int64_t aDk, bool hasGama, bo
 
 int64_t CalcWorkingUbBytes(int64_t aNv, int64_t aDv, int64_t aDk, bool hasGama, bool hasGamaK, bool gamaKScalar) {
   int64_t usedUbBytes = CalcFixedUbBytes(aNv, aDv, aDk, hasGama, hasGamaK, gamaKScalar);
+
   usedUbBytes += MAX_MTP * (WORKING_DK_FP32_BUFFER_NUM * FP32_BYTES * aDk + FP32_BYTES * aDv + FP32_BYTES * aNv);
+
   if (hasGama) {
     usedUbBytes += MAX_MTP * FP32_BYTES * aNv;
   }
@@ -167,10 +171,12 @@ bool GetShapeDims(TilingContext *context, ShapeDims &dims) {
   constexpr uint32_t INPUT_VALUE = 2;
   constexpr uint32_t INPUT_STATE = 4;
   constexpr uint32_t INPUT_CU_SEQLENS = 5;
+
   // Dimension indices of the [T, N, D] query/value storage shapes.
   constexpr size_t DIM_TOKEN_T = 0;
   constexpr size_t DIM_HEAD_N = 1;
   constexpr size_t DIM_HEAD_D = 2;
+
   auto queryShape = context->GetInputShape(INPUT_QUERY);
   auto valueShape = context->GetInputShape(INPUT_VALUE);
   auto stateShape = context->GetInputShape(INPUT_STATE);
@@ -182,11 +188,13 @@ bool GetShapeDims(TilingContext *context, ShapeDims &dims) {
   const auto &vDims = valueShape->GetStorageShape();
   const auto &sDims = stateShape->GetStorageShape();
   const auto &cDims = cuSeqlensShape->GetStorageShape();
+
   dims.t = qDims.GetDim(DIM_TOKEN_T);
   dims.nk = qDims.GetDim(DIM_HEAD_N);
   dims.dk = qDims.GetDim(DIM_HEAD_D);
   dims.nv = vDims.GetDim(DIM_HEAD_N);
   dims.dv = vDims.GetDim(DIM_HEAD_D);
+
   dims.sBlockNum = sDims.GetDim(0);
   dims.b = cDims.GetDim(0);
   if (dims.b == 0) {

@@ -221,7 +221,7 @@ bool MetaGraphSerializer::SerializeModelAndUpdateWeight(const schema::MetaGraphT
 
 uint8_t *MetaGraphSerializer::GetMetaGraphPackedBuff(flatbuffers::FlatBufferBuilder *builder,
                                                      const schema::MetaGraphT &graph, size_t *data_size) {
-  MS_CHECK_TRUE_RET(data_size != nullptr, nullptr);
+  MS_CHECK_TRUE_MSG(data_size != nullptr, nullptr, "data_size is nullptr!");
   auto offset = schema::MetaGraph::Pack(*builder, &graph);
   builder->Finish(offset);
   schema::FinishMetaGraphBuffer(*builder, offset);
