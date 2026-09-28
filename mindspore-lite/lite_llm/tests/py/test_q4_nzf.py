@@ -24,11 +24,8 @@ from gguf.quants import GGMLQuantizationType, dequantize
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "export"))
 
-from utils import ensure_custom_ops  # pylint: disable=wrong-import-position
+from mslite_llm_ops import MsQuant4N0Group32  # pylint: disable=wrong-import-position
 from utils.gguf_mapping import rearrange_q4_0_g32  # pylint: disable=wrong-import-position
-
-ensure_custom_ops()
-from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32  # pylint: disable=wrong-import-position
 
 
 def _gguf_blocks(n, k):

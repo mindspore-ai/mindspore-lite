@@ -190,7 +190,7 @@ def test_compiler_rejects_unsupported_quant_target():
 def test_packed_embedding_matches_compiler_size(quant_type):
     """Compiler shapes must account for the actual packed weights and scales."""
     from utils.export_quant import quantize_weight_g128_4bit_nz
-    from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32
+    from mslite_llm_ops import MsQuant4N0Group32
     from utils.omc_compiler import embedding_weight_elems
 
     weight = np.arange(256 * 128, dtype=np.float32).reshape(256, 128) / 1024

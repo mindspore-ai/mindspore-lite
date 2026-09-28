@@ -97,24 +97,28 @@ NnrtOpSet                      # 算子集策略：rope / kv_scatter / qk_matmul
 
 ---
 
-## 4. 融合算子清单（`custom_ops/torch_custom/`）
+## 4. 融合算子清单（`mslite_llm_ops`）
 
-每个算子 = `torch.autograd.Function` + ONNX symbolic，导出时经 `ONNX_FALLTHROUGH` 落为 `custom::Ms*` 节点。
+wheel 从包顶层导出各 `Ms<Op>` 适配类；forward 链路中的算子由
+`torch.autograd.Function` + ONNX symbolic 经 `ONNX_FALLTHROUGH` 落为
+`custom::Ms*` 节点，图后融合和量化 pass 也会直接生成相应节点。
 
 | 算子 | OpSet 原语 | 语义 |
 |---|---|---|
-| `ms_rotary_pos_emb` | `rope` | RoPE 旋转 |
-| `ms_scatter_nd` | `kv_scatter` | `past[:,:,pos:pos+seq,:] = state`，layout `"BNSD"`，状态 cast fp16 |
-| `ms_group_matmul` | `qk_matmul` / `pv_matmul` | GQA 分组 matmul |
-| `ms_add_softmax` | `mask_softmax` | `(w+mask).softmax()` 融合 |
-| `ms_rms_norm` | `rmsnorm` | RMSNorm |
-| `ms_add_rms_norm` | —（图后融合） | `fuse_add_rmsnorm` pass 把 `Add+MsRmsNorm` 模式融合为单节点 |
-| `ms_quant4_n0_group32` | —（量化） | W4A16 反量化核 |
-| `ms_float_cast_int` | —（量化） | W4A8 激活量化：FP16 截断饱和到 INT8 |
+| `MsRotaryPosEmb` | `rope` | RoPE 旋转 |
+| `MsScatterND` | `kv_scatter` | `past[:,:,pos:pos+seq,:] = state`，layout `"BNSD"`，状态 cast fp16 |
+| `MsGroupMatmul` | `qk_matmul` / `pv_matmul` | GQA 分组 matmul |
+| `MsAddSoftmax` | `mask_softmax` | `(w+mask).softmax()` 融合 |
+| `MsRmsNorm` | `rmsnorm` | RMSNorm |
+| `MsTransRopeScatterNDUpdate` | `prepare_qkv`（Qwen3） | BSND/BNSD 转换、RoPE 和 KV cache 更新融合 |
+| `MsAddRmsNorm` | —（图后融合） | `fuse_add_rmsnorm` pass 把 `Add+MsRmsNorm` 模式融合为单节点 |
+| `MsQuant4N0Group32` | —（量化） | W4A16 反量化核 |
+| `MsFloatCastInt` | —（量化） | W4A8 激活量化：FP16 截断饱和到 INT8 |
 
 `kv_scatter(past, current_pos, current)` 按绝对位置把当前 BNSD K/V 写入完整 cache；
 Q/K 在 BNSD 布局下通过 `rope(query, key, cos, sin)` 完成 RoPE。Qwen3 的逐头 Q/K
-norm 在转置前的 BSND 投影上执行。
+norm 在转置前的 BSND 投影上执行，随后由 `MsTransRopeScatterNDUpdate` 完成布局
+转换、RoPE 和 KV cache 更新。
 
 换算子集示例（同架构不同规格用不同融合粒度）：
 
@@ -197,7 +201,7 @@ chat template 被限制在 v1 IR 子集（消息循环 + `add_generation_prompt`
 - **互斥规则**：quant 分支直接 `apply_quant`；`apply_shared_weight` 是 FP16 分支专属（先插共享权重再 quant 会 KeyError）
 - **W4A16 二进制契约**：逻辑 `[N,K]`，N/K 为正且分别为 16/32 的整数倍。cell 按 N64/K1024 划分，但只保存有效尾部，不补齐；先存全部 signed int4，再存 cell 内 `[nc,kc/32]` little-endian fp16 scales。分形内 phase4 字节排列不变，总字节数严格为 `N*(K/32)*18`。精确偏移见 [PROTOCOL.md](PROTOCOL.md) 的 Binary Format Reference；OMG 的 `embedding_weight` 输入使用同一精确尺寸。
 - **兼容边界**：量化包必须标记 `npu.q4_0_weight_layout = "q4_0_nzf_compact_phase4"`。旧 padded `q4_0_nzf_phase4`、`q4_0_nzf`、planar 和缺失当前标记的包均被拒绝，须重新导出、编译整包；不能只改元数据。旧字段 `npu.weight_layout` 不作为别名或回退，未知键仍按协议忽略。对齐 shape 的容量可能相同，禁止按大小猜测布局。FP16 不受影响；本契约不覆盖 W4A8。
-- **Torch 权重 API**：使用 `torch_custom.ms_quant4_n0_group32.MsQuant4N0Group32` 的静态方法 `weight_blob_size(K,N)`、`repack_q4_0_to_nzf(blocks,(K,N))`、`quantize_q4_0_blocks(weight)`、`quantize_weight_g32_4bit(weight)` 和 `dequantize_weight_g32_4bit(blob,(K,N))`。浮点矩阵输入为 `[K,N]`；原始 block 为 `[N,K/32,18]` 的 `bytes` 或 `uint8` 数组。重排逐位保留 scale 与码值，工作缓冲限于一个 cell；eager 路径消费同一 compact blob。旧模块级权重函数及 exporter 的重复 packer 已移除。
+- **Torch 权重 API**：通过 `from mslite_llm_ops import MsQuant4N0Group32` 从包顶层导入该类，并使用其静态方法 `weight_blob_size(K,N)`、`repack_q4_0_to_nzf(blocks,(K,N))`、`quantize_q4_0_blocks(weight)`、`quantize_weight_g32_4bit(weight)` 和 `dequantize_weight_g32_4bit(blob,(K,N))`。浮点矩阵输入为 `[K,N]`；原始 block 为 `[N,K/32,18]` 的 `bytes` 或 `uint8` 数组。重排逐位保留 scale 与码值，工作缓冲限于一个 cell；eager 路径消费同一 compact blob。旧模块级权重函数及 exporter 的重复 packer 已移除。
 - **浮点量化规则**：采用 canonical Q4_0，首个带符号绝对最大值确定 `d=vmax/-8`，FP32 reciprocal/multiply/add 后截断并限制码值至 15，最后才将 scale 存为 FP16；不再使用旧 Torch helper 的 abs-max/7。已有 GGUF Q4_0 必须走无损 repack，不重新量化。
 - **配置产物**：Qwen2.5、Qwen3、MiniCPM 的独立导出配置和统一 CLI 均声明 compact 布局；通用 packager 只保留声明，不猜测或升级旧数据。FP16 / W4A8 不产生该 Q4_0 标记。
 - Qwen2.5 使用已有 external decoder weights 打包路径；`SubGraph_0.weight` 仍是单文件 `.msl` 内的资源，“external” 不要求用户手工维护第二个文件。
@@ -217,7 +221,7 @@ GGUF Q4_0 的 unsigned split-half nibble 不能原样作为 NPU 权重：注入�
 | torch | `>=2.0` | |
 | onnxslim / gguf / onnx | 见 `requirements.txt` | |
 
-源码树通过 `utils.ensure_custom_ops` 按需定位 `custom_ops`，已安装的 wheel 优先直接使用其 `torch_custom` 包；独立导入 OMG 编译工具不加载 Torch。wheel 同时打包所有 CLI 导入的模型模块（含 `models.minicpm`）。**禁止**在 forward 逻辑里 import `transformers.models.*` 内部模块。
+导出工具从独立安装的 `mslite_llm_ops` wheel 导入 Torch eager/ONNX 算子适配层。该 wheel 必须与 DDK 中安装的算子 `.run` 版本匹配。Lite LLM 导出工具 wheel 同时打包所有 CLI 导入的模型模块（含 `models.minicpm`）。**禁止**在 forward 逻辑里 import `transformers.models.*` 内部模块。
 
 ### Kirin 9020 W4A16 算子前置条件
 
@@ -232,7 +236,7 @@ NNRT 在 `SetDevice` 后、`Compilation_Build` 前设置 `EXTREME=4`；缺少接
 | 模型 | 目录 | wrapper 改动量 | 特殊点 |
 |---|---|---|---|
 | Qwen2.5-0.5B | `models/qwen2_5/` | 空子类 | 基准实现 |
-| MiniMind-3 (Qwen3 dense) | `models/qwen3/` | 覆写 `apply_qk_norm`（15 行） | per-head `q_norm/k_norm`，head_dim=96；GGUF head_dim 修复 |
+| MiniMind-3 (Qwen3 dense) | `models/qwen3/` | `Qwen3Attention` + `Qwen3OpSet` | per-head `q_norm/k_norm`；`MsTransRopeScatterNDUpdate` 融合布局转换、RoPE 和 KV cache 更新；GGUF head_dim 修复 |
 | MiniCPM-2B | `models/minicpm/` | 薄子类（~15 行）+ exporter rotary fallback | `scale_emb=12` 图入口 Mul；rotary 挂 per-attention；**加载层卡点**：transformers 无内置 minicpm，需 `trust_remote_code` 且社区 custom code 在 5.x 下 KV-cache 崩溃（导出链路本身已验证全通：数值 rel_err 2.2e-4、GGUF key 14/14，回归固化于 `tests/py/test_minicpm_wrapper.py`） |
 
 ## 10. 常见坑速查

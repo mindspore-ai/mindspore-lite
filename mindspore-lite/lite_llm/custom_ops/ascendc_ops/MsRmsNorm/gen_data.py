@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Generate deterministic FP16 inputs and the torch_custom-backed RMSNorm golden.
+"""Generate deterministic FP16 inputs and the mslite_llm_ops-backed RMSNorm golden.
 
-Golden 唯一真标杆来源：``torch_custom.ms_rms_norm.MsRmsNorm.apply``（eager 参考
-实现）。本脚本只负责确定性输入采样与落盘，数学计算全部委托给 torch_custom，
+Golden 唯一真标杆来源：``mslite_llm_ops.MsRmsNorm.apply``（eager 参考
+实现）。本脚本只负责确定性输入采样与落盘，数学计算全部委托给 mslite_llm_ops，
 避免多套参考实现各自漂移。
 """
 
@@ -27,7 +27,7 @@ import sys
 
 import numpy as np
 
-# 仓库根 = ascendc_ops/MsRmsNorm/ 上两级（torch_custom 在仓库根下）
+# 仓库根 = ascendc_ops/MsRmsNorm/ 上两级
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -36,10 +36,10 @@ logger = logging.getLogger(__name__)
 
 
 def rms_norm_reference(x: np.ndarray, w: np.ndarray, eps: float) -> np.ndarray:
-    """Golden：委托给 torch_custom 的 MsRmsNorm eager 参考实现（唯一真源）。"""
+    """Golden：委托给 mslite_llm_ops 的 MsRmsNorm eager 参考实现。"""
     import torch
 
-    from torch_custom.ms_rms_norm import MsRmsNorm
+    from mslite_llm_ops import MsRmsNorm
 
     x_t = torch.from_numpy(np.ascontiguousarray(x))
     w_t = torch.from_numpy(np.ascontiguousarray(w))

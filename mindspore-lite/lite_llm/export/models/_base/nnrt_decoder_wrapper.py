@@ -20,7 +20,7 @@ Two orthogonal variation axes, two independent seams:
   an attention adapter via the ``attn_module`` class attribute and adapters
   override hooks (``NnrtAttention.apply_qk_norm`` for per-head Q/K norm).
   This axis decides *what* the graph computes.
-* **Operator-set axis** (which ``torch_custom`` fused kernels realize each
+* **Operator-set axis** (which ``mslite_llm_ops`` fused kernels realize each
   primitive): inject an ``NnrtOpSet`` subclass via ``op_set=``.  Different
   model specs / targets may fuse differently (e.g. unfused Add+Softmax
   instead of ``MsAddSoftmax``) while sharing the same architecture wrapper —
@@ -65,22 +65,19 @@ import math
 import torch
 from torch import nn
 
-from utils import ensure_custom_ops
+from utils import load_custom_op
 
-ensure_custom_ops()
-
-# pylint: disable=wrong-import-position  # resolve vendored or installed adapters
-from torch_custom.ms_add_softmax import MsAddSoftmax  # noqa: E402
-from torch_custom.ms_group_matmul import MsGroupMatmul  # noqa: E402
-from torch_custom.ms_rotary_pos_emb import MsRotaryPosEmb  # noqa: E402
-from torch_custom.ms_rms_norm import MsRmsNorm  # noqa: E402
-from torch_custom.ms_scatter_nd import MsScatterND  # noqa: E402
+MsAddSoftmax = load_custom_op("MsAddSoftmax")
+MsGroupMatmul = load_custom_op("MsGroupMatmul")
+MsRotaryPosEmb = load_custom_op("MsRotaryPosEmb")
+MsRmsNorm = load_custom_op("MsRmsNorm")
+MsScatterND = load_custom_op("MsScatterND")
 
 logger = logging.getLogger(__name__)
 
 
 class NnrtOpSet:
-    """Operator-set policy: which ``torch_custom`` kernels realize each primitive.
+    """Operator-set policy: which ``mslite_llm_ops`` kernels realize each primitive.
 
     The decoder forward loop is architecture math (reshape / scale / residual);
     every fused-kernel call is delegated to this policy so a model spec or

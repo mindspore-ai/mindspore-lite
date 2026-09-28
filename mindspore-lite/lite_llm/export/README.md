@@ -110,7 +110,8 @@ python mslite_llm_export.py --target kirin9020 \
 ## 附录 A：DDK 自定义算子依赖
 
 omg 编译需要 DDK 里注册默认图使用的全部 Ms\* 算子。
-Torch eager/ONNX 适配器已 vendor 到本仓库（`../custom_ops/torch_custom`）。
+Torch eager/ONNX 适配器由 `mslite_llm_ops` wheel 安装提供，
+应与版本匹配的算子 `.run` 配套安装和使用。
 导出前须确认 DDK 已注册目标模型所需算子，且算子支持模型的量化布局与 shape。
 本仓 `custom_ops/ascendc_ops` 不包含默认整网所需的全部内核。
 

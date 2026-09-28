@@ -35,7 +35,7 @@ from models._base.nnrt_decoder_wrapper import (
 )
 
 
-from torch_custom.ms_trans_rope_scatter_nd_update import MsTransRopeScatterNDUpdate
+from mslite_llm_ops import MsTransRopeScatterNDUpdate
 
 
 class Qwen3OpSet(NnrtOpSet):

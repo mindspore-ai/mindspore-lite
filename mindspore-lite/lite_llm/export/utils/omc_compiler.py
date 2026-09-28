@@ -30,7 +30,7 @@ from typing import Optional
 
 from utils.quantization import QuantType, get_quant_preset
 
-from utils import ensure_custom_ops
+from utils import load_custom_op
 
 logger = logging.getLogger(__name__)
 
@@ -91,10 +91,9 @@ def embedding_weight_elems(vocab_size, hidden_size, quant: Optional[QuantType]):
     if quant == QuantType.S16S4:
         return vocab_size * hidden_size // 2
     if quant == QuantType.Q4_0:
-        ensure_custom_ops()
-        from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32  # pylint: disable=import-outside-toplevel
+        quant_op_class = load_custom_op("MsQuant4N0Group32")
 
-        return MsQuant4N0Group32.weight_blob_size(hidden_size, vocab_size)
+        return quant_op_class.weight_blob_size(hidden_size, vocab_size)
     if quant == QuantType.W4A8:
         ceil_v = (vocab_size + 15) // 16 * 16
         return ceil_v * (hidden_size // 2 + hidden_size // preset.group_size * preset.scale_encoding.byte_size)
@@ -161,7 +160,13 @@ def compile_omc(onnx_path, config, max_seq_len=1024, chunk_sizes=(128,), embeddi
         platform, save_external_weights=save_external_weights,
     )
     logger.info("Running omg: %s", " ".join(cmd))
-    subprocess.run(cmd, check=True)
+    env = os.environ.copy()
+    # The AscendC kernel store reads SOC_VERSION while it initializes platform
+    # information.  --platform selects OMG's output target but does not provide
+    # this environment value to the store, so a clean CI shell otherwise fails
+    # with "initialize platform info failed" before checking custom operators.
+    env["SOC_VERSION"] = platform
+    subprocess.run(cmd, check=True, env=env)
     if save_external_weights:
         # In external-data mode omg treats --output as a directory and writes
         # <output>/<basename(output)>.omc plus SubGraph_0.weight.

@@ -32,7 +32,7 @@
 ```bash
 
 ├── ascendc_ops/              # 算子目录集合（当前仅 MsRmsNorm）
-├── torch_custom/             # torch 对接层：每算子一个 ms_<op>.py（eager 参考实现 + ONNX symbolic，供 lite_llm export 使用）
+├── torch_custom/             # 保留 ms_add_rms_norm.py 和 ms_rms_norm.py 算子 demo，不进入发布包
 ├── workspace/                # 只读构建模板（cmake/、CMakeLists、presets）
 ├── templates/operator/       # 算子创作模板（经 scaffold 实例化）
 ├── scripts/                  # 工程脚手架：build_operator.sh、scaffold.py、lima/
@@ -111,13 +111,13 @@ DEVICE_TRANSPORT=binapp HDC_TARGET_OPTION=-t \
 ### 命名约定（强制）
 
 - 每个算子自带 **ONNX 框架插件**（`framework/onnx_plugin/onnx_ms_<op>_plugin.cc`），OMG 侧同名直通
-- 每个算子在 `torch_custom/` 有对应模块 `ms_<op>.py`（`torch.autograd.Function`：eager 参考实现 + ONNX symbolic，导出 `custom::Ms<Op>` 节点）
+- Torch eager/ONNX 适配模块由 `mslite_llm_ops` wheel 安装提供。
 
 ### 用 scaffold 创建新算子（自动满足全部约定）
 
 ```bash
 
-python scripts/scaffold.py new MsMyOp   # 生成 ascendc_ops/MsMyOp/ + torch_custom/ms_my_op.py + 注册 __init__
+python scripts/scaffold.py new MsMyOp   # 生成 ascendc_ops/MsMyOp/
 python scripts/scaffold.py check        # 校验全部算子目录合规
 python scripts/scaffold.py check --strict  # 额外真构建模板，防模板与 workspace 漂移
 
@@ -125,12 +125,12 @@ python scripts/scaffold.py check --strict  # 额外真构建模板，防模板�
 
 算子目录只允许携带**差异内容**：`operator.json`、`op_host/`、`op_kernel/` 必选；`DESIGN.md`、`framework/onnx_plugin/`、`onnx/`、`scripts/`、`gen_data.py`、`temp.json` 可选。构建基础设施（CMakeLists、cmake/、presets）属于 `workspace/`，禁止放入算子目录。
 
-## torch_custom 对接层
+## Torch 对接层
 
-所有算子统一走 **torch → ONNX 整图导出** 链路（不引入其他框架）：
-
-- `torch_custom/ms_<op>.py` 只定义叶子 `Function`（eager + symbolic）；wrapper 模型与整图 `torch.export()` 由消费者（每算子的 `onnx/` 脚本、pytest 用例）自行构建
-- 两种导入方式：`from torch_custom import MsRmsNorm` 或 `from torch_custom.ms_rms_norm import MsRmsNorm`
+所有算子统一走 **torch → ONNX 整图导出** 链路。安装
+`mslite_llm_ops-*.whl` 后，从
+`mslite_llm_ops` 包顶层导入 eager 参考实现和 ONNX symbolic，例如：
+`from mslite_llm_ops import MsRmsNorm`。
 
 ## 关键文档
 

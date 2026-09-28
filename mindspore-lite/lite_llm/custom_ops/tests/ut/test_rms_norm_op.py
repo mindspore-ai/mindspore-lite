@@ -29,7 +29,7 @@ from torch.onnx import OperatorExportTypes
 
 from base_test import TestCaseBasic, build_omg_environment
 from binrunner_test import BinRunnerTestCaseBasic
-from torch_custom.ms_rms_norm import MsRmsNorm
+from mslite_llm_ops import MsRmsNorm
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def get_name(x_shape: list[int], w_shape: list[int]) -> str:
 
 
 def rms_norm_reference(x: np.ndarray, w: np.ndarray, eps: float) -> np.ndarray:
-    """Golden：唯一真标杆来源 = torch_custom eager 参考实现（MsRmsNorm.apply）。"""
+    """Golden：唯一真标杆来源 = mslite_llm_ops eager 参考实现。"""
     x_t = torch.from_numpy(np.ascontiguousarray(x))
     w_t = torch.from_numpy(np.ascontiguousarray(w))
     return MsRmsNorm.apply(x_t, w_t, eps).numpy()

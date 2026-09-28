@@ -32,7 +32,7 @@ import numpy as np
 import onnx
 from onnx import TensorProto, helper, shape_inference
 
-from utils import ensure_custom_ops
+from utils import load_custom_op
 from utils.onnx_postprocess import _save_onnx, duplicate_shared_initializers
 from utils.quantization import QuantType, get_quant_preset
 
@@ -405,8 +405,7 @@ def get_shape_info(graph):
 
 def quant_node_4bit_gp32(shape_info, origin_node, initializers):
     """W4A16 quantization (MsQuant4N0Group32)."""
-    ensure_custom_ops()
-    from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32  # pylint: disable=import-outside-toplevel
+    quant_op_class = load_custom_op("MsQuant4N0Group32")
 
     new_node_list = []
     new_initializer_list = []
@@ -414,7 +413,7 @@ def quant_node_4bit_gp32(shape_info, origin_node, initializers):
     weight_init = initializers[weight_name]
     weight_data = onnx.numpy_helper.to_array(weight_init)
     weight_shape = weight_data.shape
-    quantized_weight = MsQuant4N0Group32.quantize_weight_g32_4bit(weight_data)
+    quantized_weight = quant_op_class.quantize_weight_g32_4bit(weight_data)
     quant_weight_name = weight_name + "_quant"
     quant_weight_init = onnx.numpy_helper.from_array(quantized_weight, quant_weight_name)
     new_initializer_list.append(quant_weight_init)

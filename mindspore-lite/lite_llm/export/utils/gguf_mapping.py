@@ -30,7 +30,7 @@ import numpy as np
 import onnx
 from gguf.quants import GGMLQuantizationType, dequantize
 
-from utils import ensure_custom_ops
+from utils import load_custom_op
 
 from utils.quantization import QuantType
 
@@ -49,14 +49,13 @@ def rearrange_q4_0_g32(data):
     GGUF represents weights as (unsigned_q - 8) * scale; NZF stores the
     two's-complement int4 value and the original per-row fp16 scale bits.
     """
-    ensure_custom_ops()
-    from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32  # pylint: disable=import-outside-toplevel
+    quant_op_class = load_custom_op("MsQuant4N0Group32")
 
     if not isinstance(data, np.ndarray) or data.dtype != np.uint8:
         raise ValueError("GGUF Q4_0 rows must be a UINT8 ndarray")
     if data.ndim != 2 or data.shape[1] % 18:
         raise ValueError("Expected GGUF Q4_0 rows [N, K/32 * 18]")
-    return MsQuant4N0Group32.repack_q4_0_to_nzf(data, (data.shape[1] // 18 * 32, data.shape[0]))
+    return quant_op_class.repack_q4_0_to_nzf(data, (data.shape[1] // 18 * 32, data.shape[0]))
 
 
 def convert_embedding_weight(data, tensor_type, embedding_quantize_config: Optional[QuantType]):
@@ -68,11 +67,10 @@ def convert_embedding_weight(data, tensor_type, embedding_quantize_config: Optio
     if embedding_quantize_config == QuantType.Q4_0:
         if tensor_type == GGMLQuantizationType.Q4_0:
             return rearrange_q4_0_g32(data)
-        ensure_custom_ops()
-        from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32  # pylint: disable=import-outside-toplevel
+        quant_op_class = load_custom_op("MsQuant4N0Group32")
 
         fp32 = dequantize(data, tensor_type)
-        return MsQuant4N0Group32.quantize_weight_g32_4bit(fp32.T)
+        return quant_op_class.quantize_weight_g32_4bit(fp32.T)
 
     if embedding_quantize_config is None:
         if tensor_type in (GGMLQuantizationType.F16, GGMLQuantizationType.F32):
