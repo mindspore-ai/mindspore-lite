@@ -153,7 +153,8 @@ bash mindspore-lite/lite_llm/build.sh -b nnrt -j8       # Kirin NPU 后端（OHO
 
 打包产物（`lite_llm/output/`，host 与 OHOS 均产出）：
 
-- `tool/mslite-llm-{version}.whl`（导出工具链，含 torch_custom 算子接口）
+- `tool/mslite-llm-{version}.whl`（导出工具链）
+- `tool/mslite_llm_ops-{version}-py3-none-any.whl`（Torch eager/ONNX 算子适配层）
 - `mindspore-lite-llm-linux-x64-{version}.tar.gz`（发布归档，含运行时）
 
 ```

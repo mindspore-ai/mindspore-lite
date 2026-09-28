@@ -12,17 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Export utilities and the source-checkout custom operator bootstrap."""
-
-import importlib.util
-import os
-import sys
+"""Export utilities and custom-operator adapter loading."""
 
 
-def ensure_custom_ops():
-    """Resolve the vendored adapters only when no installed package is visible."""
-    if importlib.util.find_spec("torch_custom") is not None:
-        return
-    custom_ops = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "custom_ops"))
-    if os.path.isdir(custom_ops) and custom_ops not in sys.path:
-        sys.path.insert(0, custom_ops)
+def load_custom_op(class_name):
+    """Load one adapter class from the installed custom-operator package."""
+    import mslite_llm_ops
+
+    return getattr(mslite_llm_ops, class_name)

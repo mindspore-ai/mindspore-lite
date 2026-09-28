@@ -39,7 +39,7 @@ bash build.sh -b nnrt -j8
 # 产物：output/mindspore-lite-llm-linux-x64-{version}.tar.gz + output/tool/mslite-llm-{version}.whl
 
 # 单元测试（无需 NPU 硬件）
-ctest --test-dir build --output-on-failure
+bash tests/run_llm_ut.sh --output-dir ./ut_results --jobs 8
 
 # 端到端示例（需要 .msl 模型包）
 ./build/examples/mslite-chat ./Qwen2.5-0.5B-Instruct-Q4-0.msl "你好" 5 2 4

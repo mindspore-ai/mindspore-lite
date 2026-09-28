@@ -1,9 +1,9 @@
 ---
 name: "nnrt-torch-custom-export"
-description: "将 HuggingFace/GGUF 大模型导出为带 Ms* torch_custom 算子的 NNRT ONNX（麒麟 NPU）。当需要新增/迁移 LLM 导出、替换融合算子集、或排查导出图节点名/量化/GGUF 注入问题时调用。"
+description: "将 HuggingFace/GGUF 大模型导出为带 Ms* 自定义算子的 NNRT ONNX（麒麟 NPU）。当需要新增/迁移 LLM 导出、替换融合算子集、或排查导出图节点名/量化/GGUF 注入问题时调用。"
 ---
 
-# NNRT torch_custom 算子 ONNX 导出
+# NNRT 自定义算子 ONNX 导出
 
 适用目录：`mindspore-lite/lite_llm/export/`。目标：把 HF 权重或 GGUF 权重的解码器网络导出为符合 NNRT（Kirin NPU）执行器 I/O 契约、内含 `Ms*` 自定义算子的 ONNX。
 
@@ -12,7 +12,7 @@ description: "将 HuggingFace/GGUF 大模型导出为带 Ms* torch_custom 算子
 | 变化轴 | 承载者 | 位置 |
 |---|---|---|
 | 模型架构（Qwen2/Qwen3/MiniCPM/后续家族…） | `NnrtDecoderWrapper` 子类 + `attn_module` 类属性选 attention 适配器 | `export/models/_base/nnrt_decoder_wrapper.py` |
-| 融合算子集（哪些 torch_custom 核实现每个原语） | `NnrtOpSet` 子类，经 `wrapper(op_set=...)` 注入 | 同上 |
+| 融合算子集（哪些 `mslite_llm_ops` 算子实现每个原语） | `NnrtOpSet` 子类，经 `wrapper(op_set=...)` 注入 | 同上 |
 
 基类提供：`NnrtOpSet`（rope/kv_scatter/qk_matmul/pv_matmul/mask_softmax/rmsnorm 六原语）、`NnrtRmsNorm`、`NnrtAttention`（`apply_qk_norm` hook，默认 no-op）、`NnrtDecoderLayer`、`NnrtDecoderCore`、`NnrtDecoderWrapper`（`attn_module = NnrtAttention` 类属性，子类换适配器只需一行，如 `Qwen3NnrtWrapper.attn_module = Qwen3Attention`）。
 
@@ -22,14 +22,24 @@ description: "将 HuggingFace/GGUF 大模型导出为带 Ms* torch_custom 算子
 
 ## 2. 新增模型五步（Step 0 每次前置）
 
-### Step 0 刷新算子支持清单（每次 export 前必做，不可跳过）
+### Step 0 检查算子适配 wheel（每次 export 前必做，不可跳过）
 
-任何 export 任务（新模型对接、重导出、换算子集、排障）动手前，先遍历 `mindspore-lite/lite_llm/custom_ops/torch_custom/`，确认算子支持状态最新，再做模型 export：
+任何 export 任务（新模型对接、重导出、换算子集、排障）动手前，先检查当前 Python 环境：
 
-1. **枚举**：遍历目录全部 `ms_*.py`——每文件一个算子（模块内 `Ms<Op>` 类 = eager 参考实现 + ONNX symbolic），并核对 `torch_custom/__init__.py` 的 `__all__` 与目录一致（漏注册 → 包级 import 断）。
-2. **比对快照**：目录实况 vs 本 skill §3 算子清单与 `EXPORTER-GUIDE.md` §4 算子表。目录有而文档无 → **先补文档再导出**；文档有而目录无（算子删除/改名）→ 同步清理两份文档与代码引用，防 `ImportError`。
-3. **新算子归位**：新算子并非都进 `NnrtOpSet`——接入路径有三：OpSet 原语（forward 链路调用，如 `MsAddSoftmax`）、图后融合 pass（`fuse_add_rmsnorm` 产出 `MsAddRmsNorm`）、quant pass 直接建节点（`MsFloatCastInt`）。按语义归位后才动 wrapper/后处理。
-4. **编译侧边界**：`ms_*.py` 只定义 ONNX 契约与 eager 参考，omg 编译还要求 DDK 侧 `libcustom_op.so` 有对应核实现——新算子过不了 omg 先查 DDK 支持，别改导出图迁就。
+1. **检查安装**：先执行导入检查；失败时安装与 DDK 中算子 `.run` 版本匹配的 wheel，再重新检查。
+
+   ```bash
+   # 检查当前 Python 环境
+   python -c "import mslite_llm_ops; print(mslite_llm_ops.__file__)"
+
+   # 仅在导入失败时执行，安装后重新运行上面的检查命令
+   python -m pip install /path/to/mslite_llm_ops-*.whl
+   ```
+
+2. **检查顶层导出**：导出代码统一使用 `from mslite_llm_ops import Ms<Op>`。通过 `hasattr(mslite_llm_ops, "Ms<Op>")` 确认模型需要的类均存在，禁止回退到 `mslite_llm_ops.ms_<op>` 子模块路径。
+3. **比对清单**：已安装 wheel 的包顶层导出 vs 本 skill §3 算子清单与 `EXPORTER-GUIDE.md` §4 算子表。wheel 有而文档无 → **先补文档再导出**；文档有而 wheel 无 → 检查 wheel 版本或同步清理文档与代码引用。
+4. **新算子归位**：新算子并非都进 `NnrtOpSet`——接入路径有三：OpSet 原语（forward 链路调用，如 `MsAddSoftmax`）、图后融合 pass（`fuse_add_rmsnorm` 产出 `MsAddRmsNorm`）、quant pass 直接建节点（`MsFloatCastInt`）。按语义归位后才动 wrapper/后处理。
+5. **编译侧边界**：wheel 提供 eager 参考实现与 ONNX symbolic，omg 编译还要求 DDK 侧 `libcustom_op.so` 有对应核实现——新算子过不了 omg 先查 DDK 支持，别改导出图迁就。仓内 `custom_ops/torch_custom/` 仅保留 demo，不作为完整算子支持清单。
 
 清单确认最新后：新模型对接走 Step 1–5；重导出/换算子集/排障直接执行对应操作。
 
@@ -70,13 +80,13 @@ class UnfusedSpecOpSet(NnrtOpSet):
 
 注意：`utils/onnx_postprocess.py` 的 `fuse_add_rmsnorm` 假设默认算子集的 `Add + MsRmsNorm` 模式；改 `rmsnorm`/matmul 原语时须同步导出侧融合 pass（跳过或扩展）。NNRT 图 I/O 契约（由 NPU 运行时固定）与算子集无关，换算子集不影响运行时契约。
 
-现有 `custom_ops/torch_custom/` 算子（**快照，以 Step 0 遍历实况为准**）：`ms_rotary_pos_emb` `ms_scatter_nd` `ms_rms_norm` `ms_group_matmul` `ms_add_softmax` `ms_add_rms_norm`（图后融合）`ms_quant4_n0_group32`（量化）`ms_float_cast_int`（W4A8 激活量化：FP16 截断饱和到 INT8，由 `export_quant.py` quant pass 直接建节点）。每个都是 `torch.autograd.Function` + ONNX symbolic。
+现有 `mslite_llm_ops` 顶层算子（**快照，以 Step 0 检查已安装 wheel 为准**）：`MsRotaryPosEmb`、`MsScatterND`、`MsRmsNorm`、`MsGroupMatmul`、`MsAddSoftmax`、`MsAddRmsNorm`（图后融合）、`MsQuant4N0Group32`（量化）、`MsFloatCastInt`（W4A8 激活量化）和 `MsTransRopeScatterNDUpdate`。wheel 中的类同时提供 eager 参考实现与 ONNX symbolic。
 
 ## 4. 关键契约速查
 
 - **图输入**（顺序固定）：`valid_seq_len, lmhead_idx, rope_cos, rope_sin, inputs_embeds, attention_mask, embedding_weight` + `past_key_{i}/past_val_{i}`；**输出**：`logits` + `out_key_{i}/out_val_{i}`（KV 设备侧原地写回）。embedding lookup 在 CPU 侧，故 `input_ids` 不是图输入。
 - **KV scatter**：纯 `MsScatterND`，`past[:, :, pos:pos+seq, :] = state`，无 mask 输入，状态 cast fp16，layout 参数 `"BNSD"`。
-- **版本约束**：`transformers>=4.57,<5`（GGUF `gguf_file=` 为下限来源）、`torch>=2.0`；`custom_ops` 由 wrapper 内 `sys.path` bootstrap 定位（装 wheel 后 no-op）。
+- **版本约束**：`transformers>=4.57,<5`（GGUF `gguf_file=` 为下限来源）、`torch>=2.0`；导出前必须安装与算子 `.run` 版本匹配的 `mslite_llm_ops` wheel。
 - **下游**：量化后的 ONNX 经 `omg` 编译为 `.omc` 离线模型（`--framework=5 --target=omc`），再由 `utils/msl_pack.py` 打包 `.msl`。
 
 ## 5. 常见坑

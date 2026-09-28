@@ -19,7 +19,7 @@ Two orthogonal variation axes:
 * architecture (Qwen2 / Qwen3 / MiniCPM / ...) — subclass
   ``NnrtDecoderWrapper`` (select an attention adapter via ``attn_module``,
   override its ``apply_qk_norm`` hook for per-head Q/K norm variants);
-* fused-operator set (``torch_custom`` kernel combination per model spec /
+* fused-operator set (``mslite_llm_ops`` kernel combination per model spec /
   target) — subclass ``NnrtOpSet`` and override the differing primitives,
   then inject via ``wrapper(op_set=...)``.
 

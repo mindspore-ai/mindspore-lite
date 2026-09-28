@@ -25,7 +25,8 @@ import pytest
 EXPORT_DIR = Path(__file__).resolve().parents[2] / "export"
 sys.path.insert(0, str(EXPORT_DIR))
 
-from utils import msl_pack, omc_compiler, ensure_custom_ops, export_quant  # pylint: disable=wrong-import-position
+from mslite_llm_ops import MsQuant4N0Group32  # pylint: disable=wrong-import-position
+from utils import msl_pack, omc_compiler, export_quant  # pylint: disable=wrong-import-position
 
 
 COMPACT_LAYOUT = "q4_0_nzf_compact_phase4"
@@ -47,9 +48,6 @@ def _architecture():
 @pytest.mark.parametrize("n,k", [(16, 32), (48, 896), (80, 1056)])
 def test_omg_embedding_input_matches_compact_payload(n, k):
     """OMG must receive live byte counts even when both tile dimensions end."""
-    ensure_custom_ops()
-    from torch_custom.ms_quant4_n0_group32 import MsQuant4N0Group32  # pylint: disable=import-outside-toplevel
-
     arch = _architecture()
     arch.update(vocab_size=n, hidden_size=k)
     command = omc_compiler.build_omg_command(
@@ -75,6 +73,28 @@ def test_omg_rejects_shapes_outside_compact_kernel_contract(n, k):
 @pytest.mark.parametrize("quant,expected", [(None, 17 * 128), ("FP16", 17 * 128), ("W4A8", 32 * 68)])
 def test_non_w4a16_embedding_sizes_keep_their_original_contract(quant, expected):
     assert omc_compiler.embedding_weight_elems(17, 128, quant) == expected
+
+
+def test_compile_omc_sets_soc_version(monkeypatch):
+    """A clean CI shell still gives the AscendC store its target platform."""
+    invocation = {}
+
+    def fake_run(command, check, env):
+        invocation.update(command=command, check=check, env=env)
+
+    monkeypatch.delenv("SOC_VERSION", raising=False)
+    monkeypatch.setattr(omc_compiler, "resolve_omg", lambda: "omg")
+    monkeypatch.setattr(omc_compiler.subprocess, "run", fake_run)
+
+    output = omc_compiler.compile_omc(
+        "input.onnx", _architecture(), max_seq_len=128,
+        chunk_sizes=(32,), embedding_quant=None, platform="kirin9020",
+    )
+
+    assert output == "input.omc"
+    assert invocation["check"] is True
+    assert invocation["env"]["SOC_VERSION"] == "kirin9020"
+    assert "--platform=kirin9020" in invocation["command"]
 
 
 def _package_inputs(tmp_path, layout):
