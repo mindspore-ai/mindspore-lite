@@ -27,8 +27,14 @@ int CalShape(const int *data, const TensorC *const *inputs, int *out_shape, size
     if ((int)(data[i]) == -1) {
       index = i;
     } else if ((int)(data[i]) == 0) {
+      if (INT_MUL_OVERFLOW(size, inputs[0]->shape_[i])) {
+        return NNACL_ERR;
+      }
       size *= inputs[0]->shape_[i];
     } else {
+      if (INT_MUL_OVERFLOW(size, data[i])) {
+        return NNACL_ERR;
+      }
       size *= data[i];
     }
     ShapePush(out_shape, out_shape_size, data[i]);
@@ -48,6 +54,9 @@ int CalShape(const int *data, const TensorC *const *inputs, int *out_shape, size
 int CalNewShape(const TensorC *in_tensor, int *out_shape, size_t out_shape_size) {
   int in_shape_size = 1;
   for (size_t i = 0; i < in_tensor->shape_size_; i++) {
+    if (INT_MUL_OVERFLOW(in_shape_size, in_tensor->shape_[i])) {
+      return NNACL_ERR;
+    }
     in_shape_size *= in_tensor->shape_[i];
   }
   int64_t infer_index = -1;
@@ -64,12 +73,18 @@ int CalNewShape(const TensorC *in_tensor, int *out_shape, size_t out_shape_size)
     } else if (out_shape[i] == 0) {
       if (NNACLGetElementNum(in_tensor) != 0) {
         out_shape[i] = in_tensor->shape_[i];
+        if (INT_MUL_OVERFLOW(out_shape_size_new, out_shape[i])) {
+          return NNACL_ERR;
+        }
         out_shape_size_new *= out_shape[i];
       } else {
         out_shape_size_new = 0;
         break;
       }
     } else {
+      if (INT_MUL_OVERFLOW(out_shape_size_new, out_shape[i])) {
+        return NNACL_ERR;
+      }
       out_shape_size_new *= out_shape[i];
     }
   }

@@ -549,6 +549,7 @@ int MoveAttrSlice(const CNodePtr &cnode) {
   ops::SliceFusion dst_node;
   auto dst_prim = dst_node.GetPrim();
   MS_CHECK_TRUE_MSG(dst_prim != nullptr, RET_NULL_PTR, "dst_prim is nullptr.");
+  MS_CHECK_TRUE_MSG(cnode->size() > 3, RET_ERROR, "MoveAttrSlice input size too small");
   auto begin = GetValueNode<ValuePtr>(cnode->input(opt::kInputIndexTwo));
   auto begin_value = GetValue<std::vector<int64_t>>(begin);
 

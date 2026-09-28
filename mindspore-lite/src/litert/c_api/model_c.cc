@@ -529,6 +529,14 @@ MSTensorHandleArray MSModelGetWeights(MSModelHandle model) {
   }
   for (size_t i = 0; i < handle_num; i++) {
     handle_list[i] = new (std::nothrow) mindspore::MSTensor(features[i].impl());
+    if (handle_list[i] == nullptr) {
+      MS_LOG(ERROR) << "Failed to alloc MSTensor.";
+      for (size_t j = 0; j < i; j++) {
+        delete handle_list[j];
+      }
+      free(handle_list);
+      return {0, nullptr};
+    }
   }
   return {handle_num, reinterpret_cast<MSTensorHandle *>(handle_list)};
 }

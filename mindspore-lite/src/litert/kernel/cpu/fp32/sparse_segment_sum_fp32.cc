@@ -97,6 +97,10 @@ int SparseSegmentSumCPUKernel::Run() {
     return RET_ERROR;
   }
 
+  if (in_segment_ids_ptr[segment_ids_num - 1] == INT32_MAX) {
+    MS_LOG(ERROR) << "For '" << this->name_ << "', segment_ids last value too large, would overflow.";
+    return RET_ERROR;
+  }
   out_data_shape.emplace_back(in_segment_ids_ptr[segment_ids_num - 1] + 1);
   for (size_t i = 1; i < in_data_shape.size(); i++) {
     out_data_shape.emplace_back(in_data_shape[i]);
@@ -106,10 +110,10 @@ int SparseSegmentSumCPUKernel::Run() {
   out_tensors_.at(kOutput_data)->FreeData();
 
   constexpr size_t kMultiply = 1;
-  size_t n =
-    std::accumulate(in_data_shape.begin(), in_data_shape.end(), kMultiply, std::multiplies<int>()) / in_data_shape[0];
+  size_t n = std::accumulate(in_data_shape.begin(), in_data_shape.end(), kMultiply, std::multiplies<size_t>()) /
+             in_data_shape[0];
   size_t m =
-    std::accumulate(in_segment_ids_shape.begin(), in_segment_ids_shape.end(), kMultiply, std::multiplies<int>());
+    std::accumulate(in_segment_ids_shape.begin(), in_segment_ids_shape.end(), kMultiply, std::multiplies<size_t>());
   int oldindex = -1;
 
   int32_t *in_data_ptr_int32 = nullptr;

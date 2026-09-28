@@ -95,6 +95,10 @@ int ScatterNDBinaryCPUKernel::ReSize() {
       for (int j = 0; j < indices_unit_rank; j++) {
         tmp_stride += indices_data[i * indices_unit_rank + j] * out_strides.at(j) * param_->unit_size;
       }
+      if (tmp_stride < 0) {
+        MS_LOG(ERROR) << "ScatterNDBinary invalid offset: " << tmp_stride;
+        return RET_ERROR;
+      }
       output_unit_offsets_.push_back(tmp_stride);
     }
   } else if (indices->data_type() == kNumberTypeInt64) {
@@ -103,6 +107,10 @@ int ScatterNDBinaryCPUKernel::ReSize() {
       int tmp_stride = 0;
       for (int j = 0; j < indices_unit_rank; j++) {
         tmp_stride += indices_data[i * indices_unit_rank + j] * out_strides.at(j) * param_->unit_size;
+      }
+      if (tmp_stride < 0) {
+        MS_LOG(ERROR) << "ScatterNDBinary invalid offset: " << tmp_stride;
+        return RET_ERROR;
       }
       output_unit_offsets_.push_back(tmp_stride);
     }

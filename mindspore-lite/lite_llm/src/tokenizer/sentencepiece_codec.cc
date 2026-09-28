@@ -45,6 +45,9 @@ uint64_t ReadVarint(const uint8_t *data, size_t &offset, size_t size) {
       break;
     }
     shift += 7;
+    if (shift >= std::numeric_limits<uint64_t>::digits) {
+      return 0;
+    }
   }
   return result;
 }

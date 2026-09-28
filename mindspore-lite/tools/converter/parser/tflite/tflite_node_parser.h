@@ -81,6 +81,7 @@ class TfliteNodeParser {
     }
     switch (tensor->type) {
       case tflite::TensorType_UINT8: {
+        MS_CHECK_TRUE_RET(!SIZE_MUL_OVERFLOW(count, sizeof(uint8_t)), RET_ERROR);
         CHECK_LESS_RETURN(buf_data->data.size(), count * sizeof(uint8_t));
         for (size_t i = 0; i < count; i++) {
           auto data = *(static_cast<uint8_t *>(static_cast<void *>(data_ptr)));
@@ -90,6 +91,7 @@ class TfliteNodeParser {
         break;
       }
       case tflite::TensorType_INT8: {
+        MS_CHECK_TRUE_RET(!SIZE_MUL_OVERFLOW(count, sizeof(int8_t)), RET_ERROR);
         CHECK_LESS_RETURN(buf_data->data.size(), count * sizeof(int8_t));
         for (size_t i = 0; i < count; i++) {
           auto data = *(static_cast<int8_t *>(static_cast<void *>(data_ptr)));
@@ -99,6 +101,7 @@ class TfliteNodeParser {
         break;
       }
       case tflite::TensorType_INT16: {
+        MS_CHECK_TRUE_RET(!SIZE_MUL_OVERFLOW(count, sizeof(int16_t)), RET_ERROR);
         CHECK_LESS_RETURN(buf_data->data.size(), count * sizeof(int16_t));
         for (size_t i = 0; i < count; i++) {
           auto data = *(static_cast<int16_t *>(static_cast<void *>(data_ptr)));
@@ -108,6 +111,7 @@ class TfliteNodeParser {
         break;
       }
       case tflite::TensorType_INT32: {
+        MS_CHECK_TRUE_RET(!SIZE_MUL_OVERFLOW(count, sizeof(int32_t)), RET_ERROR);
         CHECK_LESS_RETURN(buf_data->data.size(), count * sizeof(int32_t));
         for (size_t i = 0; i < count; i++) {
           auto data = *(static_cast<int32_t *>(static_cast<void *>(data_ptr)));
@@ -117,6 +121,7 @@ class TfliteNodeParser {
         break;
       }
       case tflite::TensorType_INT64: {
+        MS_CHECK_TRUE_RET(!SIZE_MUL_OVERFLOW(count, sizeof(int64_t)), RET_ERROR);
         CHECK_LESS_RETURN(buf_data->data.size(), count * sizeof(int64_t));
         for (size_t i = 0; i < count; i++) {
           auto data = *(static_cast<int64_t *>(static_cast<void *>(data_ptr)));
@@ -126,6 +131,7 @@ class TfliteNodeParser {
         break;
       }
       case tflite::TensorType_FLOAT32: {
+        MS_CHECK_TRUE_RET(!SIZE_MUL_OVERFLOW(count, sizeof(float)), RET_ERROR);
         CHECK_LESS_RETURN(buf_data->data.size(), count * sizeof(float));
         for (size_t i = 0; i < count; i++) {
           auto data = *(static_cast<float *>(static_cast<void *>(data_ptr)));
@@ -166,10 +172,12 @@ class TfliteNodeParser {
     MSLITE_CHECK_PTR_RETURN(tensor, RET_NULL_PTR);
 
     size_t count = 1;
-    std::for_each(tensor->shape.begin(), tensor->shape.end(), [&](int32_t sha) {
-      MS_CHECK_TRUE_RET_VOID(sha >= 0);
-      count *= static_cast<size_t>(sha);
-    });
+    for (const auto &dim : tensor->shape) {
+      MS_CHECK_TRUE_RET(dim >= 0, RET_ERROR);
+      const size_t dim_size = static_cast<size_t>(dim);
+      MS_CHECK_TRUE_RET(!SIZE_MUL_OVERFLOW(count, dim_size), RET_ERROR);
+      count *= dim_size;
+    }
     CHECK_LESS_RETURN(tflite_model_buffer.size(), static_cast<size_t>(tensor->buffer + 1));
     auto &buf_data = tflite_model_buffer[tensor->buffer];
     MSLITE_CHECK_PTR_RETURN(buf_data, RET_NULL_PTR);

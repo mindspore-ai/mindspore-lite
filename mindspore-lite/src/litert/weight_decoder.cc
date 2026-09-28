@@ -311,6 +311,10 @@ std::vector<bool> WeightDecoder::StringToBitVector(const std::string &str) {
 size_t WeightDecoder::ParseUniqueValueCnt(const std::vector<bool> &bit_vec, int bit_num, size_t *index) {
   size_t unique_value_cnt = 0;
   for (int i = 0; i < bit_num; i++) {
+    if (*index >= bit_vec.size()) {
+      MS_LOG(ERROR) << "bitstream too short for unique value count at bit " << i;
+      return 0;
+    }
     bool bit = bit_vec[(*index)++];
     unique_value_cnt |= bit << static_cast<size_t>((bit_num - i - 1));
   }
@@ -319,13 +323,16 @@ size_t WeightDecoder::ParseUniqueValueCnt(const std::vector<bool> &bit_vec, int 
   }
   return unique_value_cnt;
 }
-
 std::vector<int> WeightDecoder::ParseUniqueValues(const std::vector<bool> &bit_vec, int bit_num,
                                                   size_t unique_value_cnt, size_t *index) {
   std::vector<int> unique_values;
   for (size_t i = 0; i < unique_value_cnt; i++) {
     uint32_t unique_value = 0;
     for (int j = 0; j < bit_num; j++) {
+      if (*index >= bit_vec.size()) {
+        MS_LOG(ERROR) << "bitstream too short for unique values at index " << i << " bit " << j;
+        return {};
+      }
       bool bit = bit_vec[(*index)++];
       unique_value |= static_cast<uint32_t>(bit) << static_cast<size_t>((bit_num - j - 1));
     }
@@ -391,7 +398,15 @@ STATUS WeightDecoder::IndexingDecompress(const SchemaTensorWrapper &src_tensor, 
   auto bit_vec = StringToBitVector(str);
   size_t index = 0;
   auto unique_value_cnt = ParseUniqueValueCnt(bit_vec, bit_num, &index);
+  if (unique_value_cnt == 0) {
+    MS_LOG(ERROR) << "failed to parse unique value count from bitstream";
+    return RET_ERROR;
+  }
   auto unique_values = ParseUniqueValues(bit_vec, bit_num, unique_value_cnt, &index);
+  if (unique_values.empty()) {
+    MS_LOG(ERROR) << "failed to parse unique values from bitstream";
+    return RET_ERROR;
+  }
   return ParseAndUnIndex(dst_tensor, bit_num, bit_vec, index, unique_value_cnt, unique_values);
 }
 

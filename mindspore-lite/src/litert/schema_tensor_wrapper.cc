@@ -21,6 +21,25 @@
 
 namespace mindspore {
 namespace lite {
+namespace {
+// External tensor data must be a regular file inside the directory of the model file.
+bool ResolveExternalDataPath(const std::string &base_path, const std::string &location, std::string *full_path) {
+  if (full_path == nullptr) {
+    return false;
+  }
+  *full_path = base_path + location;
+  const std::string base = base_path.empty() ? std::string(".") : base_path;
+  const std::string real_base_path = RealPath(base.c_str());
+  const std::string real_data_path = RealPath(full_path->c_str());
+  if (real_base_path.empty() || real_data_path.empty() || real_data_path.size() <= real_base_path.size() ||
+      real_data_path.compare(0, real_base_path.size(), real_base_path) != 0) {
+    MS_LOG(ERROR) << "Illegal external data location, path escapes the model directory: " << location;
+    return false;
+  }
+  return true;
+}
+}  // namespace
+
 // don't check data_size and shape_size: bit_pack or huffman_code
 // don't check tensor category: variable-tensor-list may have data
 #ifdef ENABLE_LITE_HELPER
@@ -57,13 +76,19 @@ bool SchemaTensorWrapper::Init(const schema::Tensor &tensor, const SCHEMA_VERSIO
     this->data_ = infer_helpers->GetExternalTensorHelper()->GetExternalTensorData(external_data);
     this->if_own_data_ = false;
   } else {
-    this->data_ =
-      ReadFileSegment(base_path + external_data->location()->str(), external_data->offset(), external_data->length());
+    std::string full_path;
+    if (!ResolveExternalDataPath(base_path, external_data->location()->str(), &full_path)) {
+      return false;
+    }
+    this->data_ = ReadFileSegment(full_path, external_data->offset(), external_data->length());
     this->if_own_data_ = true;
   }
 #else
-  this->data_ =
-    ReadFileSegment(base_path + external_data->location()->str(), external_data->offset(), external_data->length());
+  std::string full_path;
+  if (!ResolveExternalDataPath(base_path, external_data->location()->str(), &full_path)) {
+    return false;
+  }
+  this->data_ = ReadFileSegment(full_path, external_data->offset(), external_data->length());
   this->if_own_data_ = true;
 #endif
   if (this->length_ > 0 && this->data_ == nullptr) {
