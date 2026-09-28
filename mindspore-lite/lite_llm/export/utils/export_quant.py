@@ -34,7 +34,9 @@ from onnx import TensorProto, helper, shape_inference
 
 from utils import load_custom_op
 from utils.onnx_postprocess import _save_onnx, duplicate_shared_initializers
-from utils.quantization import QuantType, get_quant_preset
+from utils.quantization import EmbeddingFormat, QuantType, get_quant_preset
+
+S16S4_ACTIVATION_SCALE = 1024.0
 
 
 # ─── quantization configuration ────────────────────────────────────────────
@@ -42,9 +44,10 @@ from utils.quantization import QuantType, get_quant_preset
 class QuantizationConfig:
     """Quantization method configuration for embedding or decoder layers."""
 
-    def __init__(self, quant_method):
+    def __init__(self, quant_method, activation_scale=S16S4_ACTIVATION_SCALE):
         quant_method = QuantType.parse(quant_method)
         self.quant_method = quant_method
+        self.activation_scale = activation_scale
         if quant_method is None:
             self.is_quant = False
             self.bits = 0
@@ -75,6 +78,11 @@ class QuantizationConfig:
             )
         config += ">"
         return config
+
+    @property
+    def embedding_format(self):
+        """Identify packed storage independently of the quantization parameters."""
+        return self.quant_method.embedding_format if self.is_quant else EmbeddingFormat.FP16
 
 
 @dataclass
@@ -359,6 +367,10 @@ def custom_op_infer_shape(graph, chunk_size, max_seq_len, num_kv_heads, num_q_he
             shapes = [shape] * len(node.output)
         elif node.op_type == "MsRotaryPosEmb":
             shapes = [query_shape, [1, num_kv_heads, seq_len, dim]]
+        elif node.op_type == "MsTransRopeScatterNDUpdate":
+            shapes = [query_shape, cache_shape, cache_shape]
+        elif node.op_type == "MsAttention":
+            shapes = [query_shape]
         elif node.op_type == "MsGroupMatmul":
             if node.attribute[0].name == "trans_b" and node.attribute[0].s.lower() == b"true":
                 shapes = [[1, num_q_heads, seq_len, max_seq_len]]
@@ -522,8 +534,9 @@ def _find_lmhead_matmul(graph):
 
 def _validate_shared_s16s4_weight(head, initializers):
     """Validate the packed head layout required by CPU embedding lookup."""
-    if onnx.numpy_helper.to_array(initializers[head.input[1]]).tolist() != [1024.0]:
-        raise ValueError("S16S4_NZ_V1 requires activation scale 1024")
+    activation_scale = onnx.numpy_helper.to_array(initializers[head.input[1]])
+    if activation_scale.size != 1 or not np.isfinite(activation_scale).all() or activation_scale.item() <= 0:
+        raise ValueError("Shared S16S4 embedding requires a finite positive activation scale")
     attrs = {attr.name: helper.get_attribute_value(attr) for attr in head.attribute}
     hidden, vocab = attrs["w_shape"]
     if hidden % S16S4_GROUP_SIZE or vocab % S16S4_N_TILE or attrs.get("group_size") != S16S4_GROUP_SIZE:
@@ -680,7 +693,9 @@ def quantize_linear_ops(model, embedding_quant_config, decoder_quant_config):
         elif embedding_quant_config.quant_method == QuantType.Q4_0:
             new_node_list, new_initializer_list = quant_node_4bit_gp32(shape_info, lmhead_node, initializers)
         elif embedding_quant_config.quant_method == QuantType.S16S4:
-            new_node_list, new_initializer_list = quant_node_s16s4(lmhead_node, initializers)
+            new_node_list, new_initializer_list = quant_node_s16s4(
+                lmhead_node, initializers, embedding_quant_config.activation_scale
+            )
         else:
             raise RuntimeError(f"quant method: {embedding_quant_config.quant_method} not supported")
         new_nodes.extend(new_node_list)
@@ -698,7 +713,9 @@ def quantize_linear_ops(model, embedding_quant_config, decoder_quant_config):
         elif decoder_quant_config.quant_method == QuantType.Q4_0:
             new_node_list, new_initializer_list = quant_node_4bit_gp32(shape_info, node, initializers)
         elif decoder_quant_config.quant_method == QuantType.S16S4:
-            new_node_list, new_initializer_list = quant_node_s16s4(node, initializers)
+            new_node_list, new_initializer_list = quant_node_s16s4(
+                node, initializers, decoder_quant_config.activation_scale
+            )
         else:
             raise RuntimeError(f"quant method: {decoder_quant_config.quant_method} not supported")
         new_nodes.extend(new_node_list)
@@ -784,7 +801,6 @@ def apply_quant(input_model, output_model, model_config: ModelConfig):
 S16S4_GROUP_SIZE = get_quant_preset(QuantType.S16S4).group_size
 S16S4_N_TILE = 128
 S16S4_K_TILE = 64
-S16S4_ACTIVATION_SCALE = 1024.0
 
 
 def pack_s16s4_nz(weight_kn):
@@ -866,10 +882,14 @@ def _s16s4_corrected_bias(weight_nk, scales_gn, activation_scale):
         * scales_gn.T.astype(np.float64)
         / float(activation_scale)
     ).sum(axis=1)
-    return np.ascontiguousarray((128.0 * correction).astype(np.float16))
+    with np.errstate(over="ignore"):
+        bias = (128.0 * correction).astype(np.float16)
+    if not np.isfinite(bias).all():
+        raise ValueError("S16S4 activation scale causes FP16 correction bias overflow")
+    return np.ascontiguousarray(bias)
 
 
-def quantize_weight_s16s4_rtn128(weight):
+def quantize_weight_s16s4_rtn128(weight, activation_scale=S16S4_ACTIVATION_SCALE):
     """Materialize one FP16/FP32 [K,N] projection for MsMatmulS16S4."""
     weight = np.ascontiguousarray(weight)
     if weight.ndim != 2:
@@ -881,7 +901,11 @@ def quantize_weight_s16s4_rtn128(weight):
         )
     if not np.isfinite(weight).all():
         raise ValueError("weight contains NaN or infinity")
-    scale_fp16 = np.float16(S16S4_ACTIVATION_SCALE)
+    if not np.isfinite(activation_scale) or not 0 < activation_scale <= float(np.finfo(np.float16).max):
+        raise ValueError("S16S4 activation scale must be positive and representable in FP16")
+    scale_fp16 = np.float16(activation_scale)
+    if float(scale_fp16) != activation_scale:
+        raise ValueError("S16S4 activation scale must be exactly representable in FP16")
 
     weight_nk = weight.T.astype(np.float32, copy=False)
     groups = k // S16S4_GROUP_SIZE
@@ -906,51 +930,14 @@ def quantize_weight_s16s4_rtn128(weight):
     }
 
 
-def _s16s4_dynamic_activation(node):
-    """Keep each activation row within S16 range, then restore its output scale.
-
-    The kernel multiplies FP16 inputs by 1024 before converting to INT16.
-    Normalize only rows exceeding 16, leaving headroom for FP16 rounding.
-    Rescaling after the kernel also rescales its corrected-bias contribution;
-    the packed weights, FixPipe records and shared embedding stay unchanged.
-    """
-    prefix = node.name + "/activation"
-    original_input, original_output = node.input[0], node.output[0]
-    names = {key: prefix + "/" + key for key in (
-        "abs", "amax", "ratio", "scale", "normalized", "result", "limit", "one", "axis"
-    )}
-    constants = [
-        onnx.numpy_helper.from_array(np.array([16], dtype=np.float16), names["limit"]),
-        onnx.numpy_helper.from_array(np.array([1], dtype=np.float16), names["one"]),
-        onnx.numpy_helper.from_array(np.array([-1], dtype=np.int64), names["axis"]),
-    ]
-    nodes = [
-        helper.make_node("Abs", [original_input], [names["abs"]], name=prefix + "/Abs"),
-        helper.make_node("ReduceMax", [names["abs"], names["axis"]], [names["amax"]],
-                         keepdims=1, name=prefix + "/ReduceMax"),
-        helper.make_node("Div", [names["amax"], names["limit"]], [names["ratio"]], name=prefix + "/Div"),
-        helper.make_node("Max", [names["ratio"], names["one"]], [names["scale"]], name=prefix + "/Max"),
-        helper.make_node("Div", [original_input, names["scale"]], [names["normalized"]],
-                         name=prefix + "/Normalize"),
-    ]
-    node.input[0] = names["normalized"]
-    node.output[0] = names["result"]
-    nodes.extend([
-        node,
-        helper.make_node("Mul", [names["result"], names["scale"]], [original_output],
-                         name=prefix + "/Restore"),
-    ])
-    return nodes, constants
-
-
-def quant_node_s16s4(origin_node, initializers):
+def quant_node_s16s4(origin_node, initializers, activation_scale=S16S4_ACTIVATION_SCALE):
     """RTN Group128 S16S4 quantization for one decoder MatMul."""
     weight_name = origin_node.input[1]
     weight_data = onnx.numpy_helper.to_array(initializers[weight_name])
     if weight_data.ndim != 2:
         raise ValueError(f"{origin_node.name}: weight must be rank-2")
     k_dim, n_dim = weight_data.shape
-    materialized = quantize_weight_s16s4_rtn128(weight_data)
+    materialized = quantize_weight_s16s4_rtn128(weight_data, activation_scale)
 
     packed_name = weight_name + "_quant"
     x_scale_name = weight_name + "_s16s4_x_scale"
@@ -977,5 +964,4 @@ def quant_node_s16s4(origin_node, initializers):
         name=origin_node.name + "_quant",
         domain="custom",
     )
-    nodes, activation_constants = _s16s4_dynamic_activation(node)
-    return nodes, new_initializers + activation_constants
+    return [node], new_initializers

@@ -78,6 +78,7 @@ class NnrtEmbedding {
   int hidden_size_{0};
   bool quantized_{false};
   EmbeddingFormat format_{EmbeddingFormat::kUnknown};
+  float activation_scale_{0.0f};
   size_t input_count_{0};
   size_t weight_bytes_{0};
   size_t scale_bytes_{0};
@@ -117,6 +118,7 @@ struct S16S4EmbeddingView {
   size_t scale_bytes{0};
   int hidden{0};
   int vocab{0};
+  float activation_scale{0.0f};
 };
 
 bool ValidateS16S4Embedding(const S16S4EmbeddingView &view);

@@ -50,6 +50,7 @@ struct LiteRtManifest {
 };
 
 struct ModelArchitecture {
+  std::string name;
   int32_t num_layers = 0;
   int32_t hidden_size = 0;
   int32_t intermediate_size = 0;
@@ -82,7 +83,10 @@ struct ModelManifestAssets {
   std::string attention_mask;
 };
 
-enum class EmbeddingFormat { kUnknown, kW4A16, kS16S4NzV1 };
+// S16S4 stores FixPipe records containing group scales / activation_scale.
+enum class EmbeddingFormat { kUnknown, kW4A16, kS16S4, kFP16 };
+
+inline bool IsS16S4Embedding(EmbeddingFormat format) { return format == EmbeddingFormat::kS16S4; }
 
 /// NNRT (Kirin NPU) runtime parameters carried by the manifest ``npu`` section.
 /// These are fixed at export time (max_length/chunk_size are encoded in the
@@ -94,7 +98,7 @@ struct NpuConfig {
   bool embedding_quant = false;    // W4A8/W4A16 int4-packed embedding weight
   int32_t scale_gp_size = 32;      // embedding quant group size
   std::string q4_0_weight_layout;  // quantized models require kQ4_0WeightLayout
-  EmbeddingFormat embedding_format = EmbeddingFormat::kW4A16;
+  EmbeddingFormat embedding_format = EmbeddingFormat::kFP16;
   // Optional directory containing SubGraph_0.weight produced by omg
   // --save_weights_as_external_data. Empty means weights are embedded.
   std::string om_weight_dir;

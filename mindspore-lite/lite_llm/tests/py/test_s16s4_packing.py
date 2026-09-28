@@ -77,49 +77,44 @@ def test_quant_node_has_five_input_abi_and_attrs():
         "MatMul", ["hidden", initializer.name], ["out"], name="decoder/MatMul"
     )
     nodes, initializers = quant_node_s16s4(
-        matmul, {initializer.name: initializer}
+        matmul, {initializer.name: initializer}, activation_scale=128.0
     )
+    assert len(nodes) == 1
     node = next(node for node in nodes if node.op_type == "MsMatmulS16S4")
+    assert node.input[0] == "hidden" and list(node.output) == ["out"]
     attrs = {attr.name: helper.get_attribute_value(attr) for attr in node.attribute}
     assert node.op_type == "MsMatmulS16S4"
     assert node.domain == "custom"
     assert len(node.input) == 5
     assert attrs == {"group_size": 128, "w_shape": [768, 128]}
     arrays = {init.name: onnx.numpy_helper.to_array(init) for init in initializers}
+    assert arrays["decoder.weight_s16s4_x_scale"].tolist() == [128.0]
     assert arrays["decoder.weight_quant"].shape == (128, 384)
     assert arrays["decoder.weight_s16s4_w_scale"].shape == (1, 6, 128, 8)
 
 
-@pytest.mark.parametrize("shape", [(1, 1, 768), (1, 64, 2560)])
-def test_dynamic_activation_prevents_saturation(shape):
-    """Execute exported standard ops on outliers, zero rows and ordinary rows."""
-    from onnx.reference import ReferenceEvaluator
-    from utils.export_quant import _s16s4_dynamic_activation
+@pytest.mark.parametrize("activation_scale", [16.0, 32.0, 128.0, 512.0, 1024.0])
+def test_static_scale_updates_bias_and_fixpipe_together(activation_scale):
+    """Changing activation range preserves weights and compensation algebra."""
+    weight = np.random.default_rng(37).normal(0, 0.1, (256, 128)).astype(np.float16)
+    baseline = quantize_weight_s16s4_rtn128(weight)
+    result = quantize_weight_s16s4_rtn128(weight, activation_scale)
+    np.testing.assert_array_equal(result["w"], baseline["w"])
+    np.testing.assert_array_equal(result["scales"], baseline["scales"])
+    assert result["x_scale"].tolist() == [activation_scale]
+    np.testing.assert_allclose(result["w_scale"].view(np.float32) * activation_scale,
+                               baseline["w_scale"].view(np.float32) * 1024, rtol=0, atol=0)
+    np.testing.assert_allclose(result["bias"].astype(np.float32) * activation_scale,
+                               baseline["bias"].astype(np.float32) * 1024, rtol=0.001, atol=0.001)
 
-    node = helper.make_node("MsMatmulS16S4", ["x", "xs", "w", "b", "ws"], ["y"],
-                            name="projection", domain="custom")
-    nodes, constants = _s16s4_dynamic_activation(node)
-    outputs = [
-        helper.make_tensor_value_info(node.input[0], onnx.TensorProto.FLOAT16, shape),
-        helper.make_tensor_value_info(nodes[-1].input[1], onnx.TensorProto.FLOAT16, [*shape[:-1], 1]),
-    ]
-    graph = helper.make_graph(nodes[:-2], "normalize", [
-        helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT16, shape)
-    ], outputs, constants)
-    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
-    onnx.checker.check_model(model)
-    evaluator = ReferenceEvaluator(model)
-    rng = np.random.default_rng(19)
-    x = rng.normal(size=shape).astype(np.float16)
-    x[0, 0, 0], x[0, 0, 1] = 1444, -660
-    normalized, scale = evaluator.run(None, {"x": x})
-    assert np.max(np.abs(normalized)) <= 16
-    assert np.isfinite(normalized * np.float16(1024)).all()
-    restored = np.rint((normalized * np.float16(1024)).astype(np.float32)) / 1024 * scale
-    reference = x.astype(np.float32)
-    assert np.linalg.norm(restored - reference) / np.linalg.norm(reference) < 0.002
-    if shape[1] > 1:
-        np.testing.assert_array_equal(normalized[:, 1:], x[:, 1:])
-    zero, zero_scale = evaluator.run(None, {"x": np.zeros(shape, np.float16)})
-    np.testing.assert_array_equal(zero, 0)
-    np.testing.assert_array_equal(zero_scale, 1)
+
+@pytest.mark.parametrize("scale", [0, -1, np.nan, np.inf, 65536, 1e-12, 1.0001])
+def test_static_scale_rejects_invalid_fp16_values(scale):
+    with pytest.raises(ValueError, match="activation scale"):
+        quantize_weight_s16s4_rtn128(np.ones((128, 128), np.float16), scale)
+
+
+def test_static_scale_rejects_correction_bias_overflow():
+    """A representable multiplier must also produce finite FP16 compensation."""
+    with pytest.raises(ValueError, match="correction bias overflow"):
+        quantize_weight_s16s4_rtn128(np.ones((128, 128), np.float16), 0.125)

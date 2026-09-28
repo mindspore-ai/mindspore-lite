@@ -44,7 +44,7 @@ TEST(S16S4Embedding, TileBoundariesAndSignedNibbles) {
     const float scale = 1.0f / 1024.0f;
     std::memcpy(scales.data() + i, &scale, sizeof(scale));
   }
-  S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kHidden, kVocab};
+  S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kHidden, kVocab, 1024.0f};
   std::vector<uint16_t> output(kHidden);
   // Exact FP16 encodings for integer magnitudes 0..8.
   const uint16_t magnitude[] = {0, 0x3c00, 0x4000, 0x4200, 0x4400, 0x4500, 0x4600, 0x4700, 0x4800};
@@ -58,6 +58,17 @@ TEST(S16S4Embedding, TileBoundariesAndSignedNibbles) {
   }
   EXPECT_FALSE(DequantizeS16S4EmbeddingRow(view, -1, output.data()));
   EXPECT_FALSE(DequantizeS16S4EmbeddingRow(view, kVocab, output.data()));
+  // A128 scales encode the same embedding values with activation scale 128.
+  view.activation_scale = 128.0f;
+  for (size_t i = 0; i < scales.size(); i += 8) {
+    const float scale = 1.0f / view.activation_scale;
+    std::memcpy(scales.data() + i, &scale, sizeof(scale));
+  }
+  ASSERT_TRUE(DequantizeS16S4EmbeddingRow(view, 128, output.data()));
+  for (int k = 0; k < kHidden; ++k) {
+    const int value = (128 * 7 + k * 3) % 16 - 8;
+    EXPECT_EQ(output[k], value < 0 ? magnitude[-value] | 0x8000 : magnitude[value]);
+  }
   --view.weight_bytes;
   EXPECT_FALSE(DequantizeS16S4EmbeddingRow(view, 0, output.data()));
 }

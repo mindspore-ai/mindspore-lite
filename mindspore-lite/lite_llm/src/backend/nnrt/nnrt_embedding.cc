@@ -31,6 +31,34 @@ namespace mslite {
 namespace backend {
 namespace nnrt {
 
+namespace {
+constexpr int kBitsPerByte = 8;
+constexpr int kWeightBits = 4;
+constexpr int kWeightsPerByte = kBitsPerByte / kWeightBits;
+constexpr int kWeightSignBit = 1 << (kWeightBits - 1);
+constexpr int kWeightValueCount = 1 << kWeightBits;
+constexpr int kWeightMask = kWeightValueCount - 1;
+constexpr int kQwen3SharedHeadLayers = 36;
+constexpr float kQwen3SharedHeadScale = 128.0f;
+constexpr float kDefaultActivationScale = 1024.0f;
+
+// S16S4 uses [N/128, K/64, 128, 32] packed weights and
+// [N/128, K/128, 128, 8] FixPipe scale records.
+constexpr int kS16S4RowsPerTile = 128;
+constexpr int kS16S4ColumnsPerTile = 64;
+constexpr int kS16S4GroupSize = 128;
+constexpr int kS16S4PackedRowBytes = kS16S4ColumnsPerTile / kWeightsPerByte;
+constexpr int kS16S4ScaleRecordBytes = 8;
+
+// Q4 NZF stores one FP16 scale per Group32 and phase-interleaved 16x16 tiles.
+constexpr int kQ4ElementsPerScaleByte = kQ4GroupElems / kQ4ScaleBytesPerGroup;
+constexpr int kQ4FractalBytes = kQ4NzFractalRows * kQ4NzFractalRows / kWeightsPerByte;
+constexpr int kQ4RowsPerTile = 64;
+constexpr int kQ4ColumnsPerTile = 1024;
+constexpr int kQ4PackingPhases = 4;
+constexpr int kQ4BytesPerPhase = kQ4FractalBytes / kQ4PackingPhases;
+}  // namespace
+
 bool NnrtEmbedding::Configure(const NnrtConfig &config) {
   if (config.vocab_size <= 0 || config.hidden_size <= 0) {
     MS_LOG(ERROR) << "Embedding dimensions must be positive";
@@ -40,6 +68,10 @@ bool NnrtEmbedding::Configure(const NnrtConfig &config) {
   hidden_size_ = config.hidden_size;
   quantized_ = config.embedding_quant;
   format_ = config.embedding_format;
+  // Temporary RTN shared-head policy; keep it aligned with the Qwen3 exporter.
+  activation_scale_ = config.architecture_name == "qwen3" && config.num_layers == kQwen3SharedHeadLayers
+                        ? kQwen3SharedHeadScale
+                        : kDefaultActivationScale;
   path_ = config.embedding_path;
   package_reader_ = config.package_reader;
   single_file_ = config.single_file;
@@ -80,24 +112,26 @@ bool NnrtEmbedding::InitStorage() {
   uint64_t weight_bytes = 0;
   uint64_t scale_bytes = 0;
   input_count_ = 1;
-  if (format_ == EmbeddingFormat::kS16S4NzV1) {
-    if (!quantized_ || vocab_size_ % 128 != 0 || hidden_size_ % 128 != 0) {
+  if (mslite_llm::IsS16S4Embedding(format_)) {
+    if (!quantized_ || vocab_size_ % kS16S4RowsPerTile != 0 || hidden_size_ % kS16S4GroupSize != 0 ||
+        !std::isfinite(activation_scale_) || activation_scale_ <= 0.0f) {
       return false;
     }
     input_count_ = 2;
-    weight_bytes = elements / 2;
-    scale_bytes = elements / 16;
-  } else if (format_ == EmbeddingFormat::kW4A16) {
+    weight_bytes = elements / kWeightsPerByte;
+    scale_bytes = elements / kS16S4GroupSize * kS16S4ScaleRecordBytes;
+  } else if (format_ == EmbeddingFormat::kFP16) {
     if (quantized_) {
-      size_t packed_bytes = 0;
-      size_t total_bytes = 0;
-      if (!Q4NzfEmbeddingSize(vocab_size_, hidden_size_, &packed_bytes, &total_bytes)) {
-        return false;
-      }
-      weight_bytes = total_bytes;
-    } else {
-      weight_bytes = elements * sizeof(uint16_t);
+      return false;
     }
+    weight_bytes = elements * sizeof(uint16_t);
+  } else if (format_ == EmbeddingFormat::kW4A16) {
+    size_t packed_bytes = 0;
+    size_t total_bytes = 0;
+    if (!quantized_ || !Q4NzfEmbeddingSize(vocab_size_, hidden_size_, &packed_bytes, &total_bytes)) {
+      return false;
+    }
+    weight_bytes = total_bytes;
   } else {
     return false;
   }
@@ -111,10 +145,10 @@ bool NnrtEmbedding::InitStorage() {
 
 std::vector<int32_t> NnrtEmbedding::InputShape(size_t input) const {
   if (input == 1) {
-    return {vocab_size_ / 128, hidden_size_ / 128, 128, 8};
+    return {vocab_size_ / kS16S4RowsPerTile, hidden_size_ / kS16S4GroupSize, kS16S4RowsPerTile, kS16S4ScaleRecordBytes};
   }
-  if (format_ == EmbeddingFormat::kS16S4NzV1) {
-    return {vocab_size_, hidden_size_ / 2};
+  if (mslite_llm::IsS16S4Embedding(format_)) {
+    return {vocab_size_, hidden_size_ / kWeightsPerByte};
   }
   const size_t element_bytes = quantized_ ? 1 : sizeof(uint16_t);
   // Preserve original ONNX rank; NNRT may report a padded four-dimensional desc.
@@ -127,7 +161,7 @@ bool NnrtEmbedding::CreateInputs(const CreateTensor &create, const UploadTensor 
   if (inputs == nullptr || inputs->size() < kFirstEmbeddingInput + input_count_ || weights_ == nullptr) {
     return false;
   }
-  const int32_t dtype = !quantized_ ? kOhNnFloat16 : (format_ == EmbeddingFormat::kS16S4NzV1 ? kOhNnInt8 : kOhNnUint8);
+  const int32_t dtype = !quantized_ ? kOhNnFloat16 : (mslite_llm::IsS16S4Embedding(format_) ? kOhNnInt8 : kOhNnUint8);
   const uint8_t *buffers[2] = {weights_, scales_};
   const size_t sizes[2] = {weight_bytes_, scale_bytes_};
   for (size_t i = 0; i < input_count_; ++i) {
@@ -165,9 +199,9 @@ bool NnrtEmbedding::Row(int token, uint16_t *output) const {
     }
     return true;
   }
-  if (format_ == EmbeddingFormat::kS16S4NzV1) {
-    return DequantizeS16S4EmbeddingRow({weights_, weight_bytes_, scales_, scale_bytes_, hidden_size_, vocab_size_},
-                                       token, output);
+  if (mslite_llm::IsS16S4Embedding(format_)) {
+    return DequantizeS16S4EmbeddingRow(
+      {weights_, weight_bytes_, scales_, scale_bytes_, hidden_size_, vocab_size_, activation_scale_}, token, output);
   }
   return DequantizeEmbeddingRow(weights_, weight_bytes_, {vocab_size_, hidden_size_}, token, output);
 }
@@ -282,7 +316,8 @@ float Fp16BitsToFp32(uint16_t h) {
 
 bool ValidateS16S4Embedding(const S16S4EmbeddingView &view) {
   if (view.weights == nullptr || view.scales == nullptr || view.hidden <= 0 || view.vocab <= 0 ||
-      view.hidden % 128 != 0 || view.vocab % 128 != 0) {
+      view.hidden % kS16S4GroupSize != 0 || view.vocab % kS16S4RowsPerTile != 0 ||
+      (!std::isfinite(view.activation_scale) || view.activation_scale <= 0.0f)) {
     return false;
   }
   const size_t hidden = static_cast<size_t>(view.hidden);
@@ -290,7 +325,8 @@ bool ValidateS16S4Embedding(const S16S4EmbeddingView &view) {
   if (vocab > std::numeric_limits<size_t>::max() / hidden) {
     return false;
   }
-  return view.weight_bytes == vocab * hidden / 2 && view.scale_bytes == vocab * (hidden / 128) * 8;
+  return view.weight_bytes == vocab * hidden / kWeightsPerByte &&
+         view.scale_bytes == vocab * (hidden / kS16S4GroupSize) * kS16S4ScaleRecordBytes;
 }
 
 bool DequantizeS16S4EmbeddingRow(const S16S4EmbeddingView &view, int token, uint16_t *output) {
@@ -299,24 +335,31 @@ bool DequantizeS16S4EmbeddingRow(const S16S4EmbeddingView &view, int token, uint
   }
   const size_t hidden = static_cast<size_t>(view.hidden);
   const size_t row = static_cast<size_t>(token);
-  for (size_t group = 0; group < hidden / 128; ++group) {
-    const size_t scale_offset = ((row / 128 * (hidden / 128) + group) * 128 + row % 128) * 8;
+  const size_t row_tile = row / kS16S4RowsPerTile;
+  const size_t row_in_tile = row % kS16S4RowsPerTile;
+  const size_t groups_per_row = hidden / kS16S4GroupSize;
+  const size_t column_tiles = hidden / kS16S4ColumnsPerTile;
+  for (size_t group = 0; group < groups_per_row; ++group) {
+    const size_t scale_offset =
+      ((row_tile * groups_per_row + group) * kS16S4RowsPerTile + row_in_tile) * kS16S4ScaleRecordBytes;
     float effective_scale = 0.0f;
     if (memcpy_s(&effective_scale, sizeof(effective_scale), view.scales + scale_offset, sizeof(effective_scale)) !=
         EOK) {
       return false;
     }
-    // S16S4_NZ_V1 FixPipe records contain the FP16 group scale divided by 1024.
-    const float scale = effective_scale * 1024.0f;
+    // Recover the group scale from the activation-scaled FixPipe encoding.
+    const float scale = effective_scale * view.activation_scale;
     if (!std::isfinite(scale)) {
       return false;
     }
-    for (size_t lane = 0; lane < 128; ++lane) {
-      const size_t k = group * 128 + lane;
-      const size_t offset = ((row / 128 * (hidden / 64) + k / 64) * 128 + row % 128) * 32 + k % 64 / 2;
+    for (size_t lane = 0; lane < kS16S4GroupSize; ++lane) {
+      const size_t k = group * kS16S4GroupSize + lane;
+      const size_t offset = ((row_tile * column_tiles + k / kS16S4ColumnsPerTile) * kS16S4RowsPerTile + row_in_tile) *
+                              kS16S4PackedRowBytes +
+                            k % kS16S4ColumnsPerTile / kWeightsPerByte;
       const uint8_t packed = view.weights[offset];
-      const int nibble = (k % 2 == 0 ? packed & 15 : packed >> 4);
-      const int signed_weight = nibble >= 8 ? nibble - 16 : nibble;
+      const int nibble = (packed >> ((k % kWeightsPerByte) * kWeightBits)) & kWeightMask;
+      const int signed_weight = nibble >= kWeightSignBit ? nibble - kWeightValueCount : nibble;
       output[k] = Fp32ToFp16Bits(static_cast<float>(signed_weight) * scale);
     }
   }
@@ -348,28 +391,30 @@ bool DequantizeEmbeddingRow(const uint8_t *blob, size_t blob_size, Q4EmbeddingSh
   }
   const size_t hidden = static_cast<size_t>(shape.hidden);
   const size_t n = static_cast<size_t>(row);
-  const size_t n0 = n / 64 * 64;
-  const size_t nc = std::min(size_t{64}, static_cast<size_t>(shape.rows) - n0);
+  const size_t n0 = n / kQ4RowsPerTile * kQ4RowsPerTile;
+  const size_t nc = std::min(size_t{kQ4RowsPerTile}, static_cast<size_t>(shape.rows) - n0);
   for (size_t k_base = 0; k_base < hidden; k_base += kQ4GroupElems) {
-    const size_t k0 = k_base / 1024 * 1024;
-    const size_t kc = std::min(size_t{1024}, hidden - k0);
+    const size_t k0 = k_base / kQ4ColumnsPerTile * kQ4ColumnsPerTile;
+    const size_t kc = std::min(size_t{kQ4ColumnsPerTile}, hidden - k0);
     // Divide before multiplying: the compact byte count may fit size_t even
     // when the logical element count does not (notably on 32-bit hosts).
-    const size_t cell_offset = n0 * (hidden / 2) + nc * (k0 / 2);
-    const size_t scale_offset =
-      packed_bytes + n0 * (hidden / 16) + nc * (k0 / 16) + (n - n0) * (kc / 16) + (k_base - k0) / 16;
+    const size_t cell_offset = n0 * (hidden / kWeightsPerByte) + nc * (k0 / kWeightsPerByte);
+    const size_t scale_offset = packed_bytes + n0 * (hidden / kQ4ElementsPerScaleByte) +
+                                nc * (k0 / kQ4ElementsPerScaleByte) + (n - n0) * (kc / kQ4ElementsPerScaleByte) +
+                                (k_base - k0) / kQ4ElementsPerScaleByte;
     const uint16_t scale_bits =
-      static_cast<uint16_t>(blob[scale_offset]) | (static_cast<uint16_t>(blob[scale_offset + 1]) << 8);
+      static_cast<uint16_t>(blob[scale_offset]) | (static_cast<uint16_t>(blob[scale_offset + 1]) << kBitsPerByte);
     const float scale = Fp16BitsToFp32(scale_bits);
     for (size_t lane = 0; lane < kQ4GroupElems; ++lane) {
       const size_t k = k_base + lane;
-      const size_t fractal = ((k - k0) / 16) * (nc / 16) + (n - n0) / 16;
-      const size_t flat = (n % 16) * 16 + k % 16;
-      const size_t packed_index = flat / 2;
-      const size_t phase4_index = 4 * (packed_index % 32) + packed_index / 32;
-      const uint8_t byte = blob[cell_offset + fractal * 128 + phase4_index];
-      const int nibble = (byte >> ((flat % 2) * 4)) & 15;
-      const int value = nibble < 8 ? nibble : nibble - 16;
+      const size_t fractal = ((k - k0) / kQ4NzFractalRows) * (nc / kQ4NzFractalRows) + (n - n0) / kQ4NzFractalRows;
+      const size_t flat = (n % kQ4NzFractalRows) * kQ4NzFractalRows + k % kQ4NzFractalRows;
+      const size_t packed_index = flat / kWeightsPerByte;
+      const size_t phase4_index =
+        kQ4PackingPhases * (packed_index % kQ4BytesPerPhase) + packed_index / kQ4BytesPerPhase;
+      const uint8_t byte = blob[cell_offset + fractal * kQ4FractalBytes + phase4_index];
+      const int nibble = (byte >> ((flat % kWeightsPerByte) * kWeightBits)) & kWeightMask;
+      const int value = nibble < kWeightSignBit ? nibble : nibble - kWeightValueCount;
       out_fp16[k] = Fp32ToFp16Bits(static_cast<float>(value) * scale);
     }
   }

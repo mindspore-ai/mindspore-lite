@@ -33,7 +33,7 @@ def test_quantization_names(name, expected, group_size):
     assert config.group_size == group_size
     assert json.loads(json.dumps(config.asdict()))["quant_method"] == expected.value
     assert json.loads(json.dumps(expected.embedding_format)) == (
-        "S16S4_NZ_V1" if expected is QuantType.S16S4 else "W4A16"
+        "S16S4" if expected is QuantType.S16S4 else "W4A16"
     )
 
 
@@ -60,15 +60,19 @@ def test_lmhead_follows_embedding_quant_config(embedding_quant, decoder_quant):
         value_info=[x, helper.make_tensor_value_info("hidden", TensorProto.FLOAT16, [1, 1, 128])],
     )
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)], ir_version=8)
-    quant = quantize_linear_ops(model, QuantizationConfig(embedding_quant), QuantizationConfig(decoder_quant))
+    quant = quantize_linear_ops(model, QuantizationConfig(embedding_quant),
+                                QuantizationConfig(decoder_quant, activation_scale=128.0))
     onnx.checker.check_model(quant)
     op_types = {None: "MatMul", QuantType.Q4_0: "MsQuant4N0Group32", QuantType.S16S4: "MsMatmulS16S4"}
     head = next(node for node in quant.graph.node if "lm_head" in node.name and node.op_type in op_types.values())
     assert head.op_type == op_types[QuantType.parse(embedding_quant)]
     decoder = next(node for node in quant.graph.node if "/decoder/" in node.name and node.op_type in op_types.values())
     assert decoder.op_type == op_types[QuantType.parse(decoder_quant)]
+    initializers = {i.name: i for i in quant.graph.initializer}
+    if QuantType.parse(decoder_quant) is QuantType.S16S4:
+        assert numpy_helper.to_array(initializers[decoder.input[1]]).tolist() == [128.0]
     if QuantType.parse(embedding_quant) is QuantType.S16S4:
-        initializers = {i.name: i for i in quant.graph.initializer}
+        assert numpy_helper.to_array(initializers[head.input[1]]).tolist() == [1024.0]
         assert all(name in initializers for name in head.input[1:])
         assert numpy_helper.to_array(initializers[head.input[2]]).shape == (256, 64)
     assert "embedding_weight" not in {i.name for i in quant.graph.input}
@@ -93,15 +97,16 @@ def test_omg_contract_shared_weight():
     assert any(s.startswith("embedding_weight:") for s in shapes)
 
 
-@pytest.mark.parametrize("embedding_format", ["W4A16", "S16S4_NZ_V1"])
+@pytest.mark.parametrize("embedding_format", ["FP16", "W4A16", "S16S4"])
 def test_graph_contract_shared_embedding_and_kv_order(tmp_path, embedding_format):
     """Require shared inputs and interleaved KV order for both formats."""
     from utils.onnx_postprocess import validate_contract
 
     names = ["valid_seq_len", "lmhead_idx", "rope_cos", "rope_sin", "inputs_embeds", "attention_mask"]
     inputs = [helper.make_tensor_value_info(name, TensorProto.FLOAT16, [1]) for name in names]
-    is_s16s4 = embedding_format == "S16S4_NZ_V1"
-    dtype = TensorProto.INT8 if is_s16s4 else TensorProto.UINT8
+    is_s16s4 = embedding_format == "S16S4"
+    dtype = (TensorProto.FLOAT16 if embedding_format == "FP16"
+             else TensorProto.INT8 if is_s16s4 else TensorProto.UINT8)
     inputs.append(helper.make_tensor_value_info("embedding_weight", dtype, [128]))
     if is_s16s4:
         inputs.append(helper.make_tensor_value_info("embedding_scale", TensorProto.INT8, [128]))
@@ -117,7 +122,7 @@ def test_graph_contract_shared_embedding_and_kv_order(tmp_path, embedding_format
     path = tmp_path / "contract.onnx"
     onnx.save(model, path)
     args = {
-        "embedding_quant": True,
+        "embedding_quant": embedding_format != "FP16",
         "embedding_format": embedding_format,
     }
     assert validate_contract(str(path), 1, **args)
@@ -134,7 +139,8 @@ def test_graph_contract_shared_embedding_and_kv_order(tmp_path, embedding_format
 
 
 @pytest.mark.parametrize("hidden,vocab", [(128, 256), (256, 384)])
-def test_shared_s16s4_asset_matches_head(tmp_path, hidden, vocab):
+@pytest.mark.parametrize("activation_scale", [128.0, 256.0, 1024.0])
+def test_shared_s16s4_asset_matches_head(tmp_path, hidden, vocab, activation_scale):
     """Shared inputs replace head constants without changing packed bytes."""
     from utils.export_quant import quant_node_s16s4
     from utils.export_quant import apply_shared_weight
@@ -143,6 +149,7 @@ def test_shared_s16s4_asset_matches_head(tmp_path, hidden, vocab):
     nodes, constants = quant_node_s16s4(
         helper.make_node("MatMul", ["inputs_embeds", weights.name], ["y"], name="/lm_head/MatMul"),
         {weights.name: weights},
+        activation_scale=activation_scale,
     )
     expected = numpy_helper.to_array(constants[1]).tobytes() + numpy_helper.to_array(constants[3]).tobytes()
     names = ["valid_seq_len", "lmhead_idx", "rope_cos", "rope_sin", "inputs_embeds", "attention_mask"]
@@ -165,8 +172,16 @@ def test_shared_s16s4_asset_matches_head(tmp_path, hidden, vocab):
     assert head.input[1] in remaining and head.input[3] in remaining
     assert head.input[2] not in remaining and head.input[4] not in remaining
     manifest = build_manifest("test", {"vocab_size": vocab, "hidden_size": hidden}, {"max_length": 64, "chunk_size": 1,
-        "embedding_quant": True, "scale_gp_size": 128, "embedding_format": "S16S4_NZ_V1"}, {}, "model.omc")
-    assert manifest_to_kv(manifest)["npu.embedding_format"] == "S16S4_NZ_V1"
+        "embedding_quant": True, "scale_gp_size": 128,
+        "embedding_format": QuantizationConfig("s16s4", activation_scale).embedding_format}, {}, "model.omc")
+    assert manifest_to_kv(manifest)["npu.embedding_format"] == "S16S4"
+    assert "npu.activation_scale" not in manifest_to_kv(manifest)
+    from utils.msl_pack import pack, unpack
+    package = tmp_path / "scale.msl"
+    pack(str(package), manifest_to_kv(manifest), [])
+    metadata = unpack(str(package), str(tmp_path / "unpacked"))
+    assert metadata["npu.embedding_format"] == "S16S4"
+    assert "npu.activation_scale" not in metadata
 
 
 def test_shared_s16s4_compiler_shapes():

@@ -35,7 +35,7 @@ from models._base.nnrt_decoder_wrapper import (
 )
 
 
-from mslite_llm_ops import MsTransRopeScatterNDUpdate
+from mslite_llm_ops import MsAttention, MsTransRopeScatterNDUpdate
 
 
 class Qwen3OpSet(NnrtOpSet):
@@ -50,6 +50,16 @@ class Qwen3OpSet(NnrtOpSet):
         return MsTransRopeScatterNDUpdate.apply(
             *states, *position_embeddings, *past_key_value, valid_seq_len,
             self.num_heads, self.head_dim,
+        )
+
+    def attention(self, states, mask, valid_seq_len, dropout_p=0.0):
+        """Fuse inference attention; cache lowering selects packed NZ storage."""
+        if dropout_p:
+            return super().attention(states, mask, valid_seq_len, dropout_p)
+        query, key, value = states
+        scale = query.new_full((1,), self.head_dim ** -0.5)
+        return MsAttention.apply(
+            query, key, value, mask.squeeze(0).squeeze(0), scale, valid_seq_len,
         )
 
 
