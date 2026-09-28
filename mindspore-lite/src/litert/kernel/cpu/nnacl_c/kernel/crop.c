@@ -51,13 +51,20 @@ int CropResize(struct KernelBase *self) {
   TensorC *out_tensor = self->out_[OUTPUT_INDEX];
   NNACL_CHECK_NULL_RETURN_ERR(out_tensor);
   NNACL_CHECK_FALSE(out_tensor->shape_size_ <= Num1, NNACL_OUTPUT_TENSOR_ERROR);
+  if (in_tensor->shape_size_ != out_tensor->shape_size_) {
+    return NNACL_PARAM_INVALID;
+  }
 
   CropStruct *crop = (CropStruct *)self;
   NNACL_CHECK_NULL_RETURN_ERR(crop);
   CropParameter *crop_param = (CropParameter *)self->param_;
   NNACL_CHECK_NULL_RETURN_ERR(crop_param);
 
-  return CropPadOffset(in_tensor->shape_size_, crop_param, crop->in_offset_);
+  int ret = CropPadOffset(in_tensor->shape_size_, crop_param, crop->in_offset_);
+  if (ret != NNACL_OK) {
+    return ret;
+  }
+  return CropCheckBounds(crop->in_offset_, in_tensor->shape_, out_tensor->shape_, (int)in_tensor->shape_size_);
 }
 
 int CropCompute(struct KernelBase *self) {
