@@ -27,6 +27,7 @@ extern "C" {
 #endif
 
 int CropPadOffset(int input_dim, CropParameter *crop_para, int64_t *in_offset);
+int CropCheckBounds(const int64_t *in_offset, const int *in_shape, const int *out_shape, int dim);
 
 #ifdef __cplusplus
 }

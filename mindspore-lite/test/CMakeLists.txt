@@ -28,6 +28,8 @@ else()
             ${TEST_DIR}/ut/src/runtime/dynamic_mem_manager_test.cc
             ${TEST_DIR}/ut/src/registry/registry_test.cc
             ${TEST_DIR}/ut/src/registry/registry_custom_op_test.cc
+            ${TEST_DIR}/ut/src/common/ops/crop_populate_test.cc
+            ${TEST_DIR}/ut/src/common/ops/custom_populate_test.cc
             ${TEST_DIR}/st/multiple_device_test.cc
             ${TEST_DIR}/st/mindrt_parallel_runtime_test.cc
             ${TEST_DIR}/st/mix_data_type_test.cc
