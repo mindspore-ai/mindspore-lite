@@ -45,11 +45,11 @@
 #define SOC_VERSION_IS_NOT_950 (socVersion_ != platform_ascendc::SocVersion::ASCEND950)
 #endif
 
+namespace optiling {
+
 // Dim caps for the arch22 kernel (per head-group).
 constexpr int64_t MAX_HEAD_NUM = 64;
 constexpr int64_t MAX_HEAD_DIM = 128;
-
-namespace optiling {
 
 const size_t QUERY_INDEX = 0;
 const size_t KEY_INDEX = 1;

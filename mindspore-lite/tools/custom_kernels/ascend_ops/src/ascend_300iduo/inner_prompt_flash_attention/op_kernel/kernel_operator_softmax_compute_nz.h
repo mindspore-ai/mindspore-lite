@@ -32,6 +32,8 @@ constexpr bool SOFTMAX_EXP_FAST = true;
 // fractal columns; 16 = fractal dim, 2 = fp32 elements per 32-byte repeat.
 constexpr uint32_t NZ_BLOCK_ROW_ELEMENTS = 128;
 constexpr uint32_t NZ_FRACTAL_DIM = 16;
+// 2 = fp32 elements per 32-byte repeat (see the NZ_BLOCK_ROW_ELEMENTS comment).
+constexpr uint32_t NZ_FLOAT_REPEAT_SIZE = 2;
 
 __aicore__ inline void ReduceMaxLastNZImplPFA(const LocalTensor<half> &dst, const LocalTensor<half> &src,
                                               const LocalTensor<half> &tmpBuffer, uint64_t mask[2],
@@ -61,7 +63,7 @@ __aicore__ inline void ReduceMaxLastNZImplPFA(const LocalTensor<half> &dst, cons
   uint8_t repeat = reduceParam.srcM / 16;
   for (uint8_t i = 0; i < repeat; i++) {
     Muls<half, false>(
-      tmpBuffer[i * NZ_BLOCK_ROW_ELEMENTS * 2], dst[i * NZ_FRACTAL_DIM], 1.0, MASK_PLACEHOLDER, 2,
+      tmpBuffer[i * NZ_BLOCK_ROW_ELEMENTS * NZ_FLOAT_REPEAT_SIZE], dst[i * NZ_FRACTAL_DIM], 1.0, MASK_PLACEHOLDER, 2,
       {1, 0, DEFAULT_REPEAT_STRIDE, 0});  // 2: FLOAT_REPEAT_SIZE  128: BLOCK_SIZE  16: is the dst copy factor
   }
   PipeBarrier<PIPE_V>();
@@ -108,7 +110,7 @@ __aicore__ inline void ReduceSumLastNZImplPFA(const LocalTensor<half> &dst, cons
   uint8_t repeat = reduceParam.srcM / 16;
   for (uint8_t i = 0; i < repeat; i++) {
     Muls<half, false>(
-      tmpBuffer[i * NZ_BLOCK_ROW_ELEMENTS * 2], dst[i * NZ_FRACTAL_DIM], 1.0, MASK_PLACEHOLDER, 2,
+      tmpBuffer[i * NZ_BLOCK_ROW_ELEMENTS * NZ_FLOAT_REPEAT_SIZE], dst[i * NZ_FRACTAL_DIM], 1.0, MASK_PLACEHOLDER, 2,
       {1, 0, DEFAULT_REPEAT_STRIDE, 0});  // 2: FLOAT_REPEAT_SIZE  128: BLOCK_SIZE  16: is the dst copy factor
   }
   PipeBarrier<PIPE_V>();

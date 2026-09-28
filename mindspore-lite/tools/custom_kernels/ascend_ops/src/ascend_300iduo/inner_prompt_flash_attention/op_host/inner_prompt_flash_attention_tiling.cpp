@@ -6777,7 +6777,8 @@ ge::graphStatus InnerPromptFlashAttentionTiling::AdjustCVTiling(uint64_t hDivN, 
       // If attentionMask is not configured, it can save UB space for softmax calculation
       // In this scenario, when d is relatively small, the size of the basic block Sinner can be adjusted to 256 to
       // improve computational performance
-      rectangleFactor = 256;
+      const uint32_t largeSinnerFactor = 256;
+      rectangleFactor = largeSinnerFactor;
     }
     // Strategy: When there are not enough sub cores, halve the initial value of the souter to a minimum of 32
     while (n * middleActualSeqLengths / seqFactorThreshold <= coreNum) {
