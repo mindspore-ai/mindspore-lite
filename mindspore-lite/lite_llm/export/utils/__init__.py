@@ -23,6 +23,11 @@ def ensure_custom_ops():
     """Resolve the vendored adapters only when no installed package is visible."""
     if importlib.util.find_spec("torch_custom") is not None:
         return
-    custom_ops = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "custom_ops"))
-    if os.path.isdir(custom_ops) and custom_ops not in sys.path:
-        sys.path.insert(0, custom_ops)
+    pkg_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "custom_ops", "torch_custom"))
+    if not os.path.isdir(pkg_dir) or "torch_custom" in sys.modules:
+        return
+    spec = importlib.util.spec_from_file_location("torch_custom", os.path.join(pkg_dir, "__init__.py"),
+                                                  submodule_search_locations=[pkg_dir])
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["torch_custom"] = module
+    spec.loader.exec_module(module)

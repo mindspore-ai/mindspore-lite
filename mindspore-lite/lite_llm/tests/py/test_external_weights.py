@@ -15,20 +15,22 @@
 """Compiler input sizes and opt-in external OMC package weights."""
 
 import importlib
-from pathlib import Path
-import sys
 
 import numpy as np
 import pytest
 
-
-EXPORT_DIR = Path(__file__).resolve().parents[2] / "export"
-sys.path.insert(0, str(EXPORT_DIR))
-
-from utils import msl_pack, omc_compiler, ensure_custom_ops, export_quant  # pylint: disable=wrong-import-position
+# utils/models are registered by tests/py/conftest.py before collection.
+from utils import msl_pack, omc_compiler, ensure_custom_ops, export_quant
 
 
 COMPACT_LAYOUT = "q4_0_nzf_compact_phase4"
+
+
+def _file(files, name):
+    """Return a package-input path, failing loudly on an unknown artifact name."""
+    value = files.get(name)
+    assert value is not None, f"unknown package input: {name}"
+    return value
 
 
 def _architecture():
@@ -66,6 +68,7 @@ def test_omg_embedding_input_matches_compact_payload(n, k):
 
 @pytest.mark.parametrize("n,k", [(1, 32), (17, 32), (16, 31), (16, 0), (0, 32)])
 def test_omg_rejects_shapes_outside_compact_kernel_contract(n, k):
+    """OMG must reject embedding shapes outside the compact kernel contract."""
     arch = _architecture()
     arch.update(vocab_size=n, hidden_size=k)
     with pytest.raises(ValueError):
@@ -74,6 +77,7 @@ def test_omg_rejects_shapes_outside_compact_kernel_contract(n, k):
 
 @pytest.mark.parametrize("quant,expected", [(None, 17 * 128), ("FP16", 17 * 128), ("W4A8", 32 * 68)])
 def test_non_w4a16_embedding_sizes_keep_their_original_contract(quant, expected):
+    """Non-W4A16 quantization must keep the original embedding element-count contract."""
     assert omc_compiler.embedding_weight_elems(17, 128, quant) == expected
 
 
@@ -91,9 +95,9 @@ def _package_inputs(tmp_path, layout):
     if layout is not None:
         npu["q4_0_weight_layout"] = layout
     return {
-        "omc_path": files["model.omc"], "vocab_path": files["vocab.bin"],
-        "embedding_path": files["embedding.bin"], "rope_cos": files["cos.bin"],
-        "rope_sin": files["sin.bin"], "attention_mask": files["mask.bin"],
+        "omc_path": _file(files, "model.omc"), "vocab_path": _file(files, "vocab.bin"),
+        "embedding_path": _file(files, "embedding.bin"), "rope_cos": _file(files, "cos.bin"),
+        "rope_sin": _file(files, "sin.bin"), "attention_mask": _file(files, "mask.bin"),
         "architecture": _architecture(), "npu_config": npu,
         "generation_policy": {}, "package_name": "test",
     }

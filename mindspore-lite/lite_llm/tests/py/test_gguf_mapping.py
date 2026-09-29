@@ -14,18 +14,13 @@
 # ============================================================================
 """Tests for type-aware GGUF embedding conversion."""
 
-import sys
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 
-_EXPORT_DIR = Path(__file__).resolve().parents[2] / "export"
-sys.path.insert(0, str(_EXPORT_DIR))
-
-# pylint: disable=wrong-import-position  # export/ added to sys.path above
-from gguf.quants import GGMLQuantizationType, dequantize  # noqa: E402
-from utils import gguf_mapping  # noqa: E402
+# utils is registered by tests/py/conftest.py before collection.
+from gguf.quants import GGMLQuantizationType, dequantize
+from utils import gguf_mapping
 
 
 def _embedding(data, tensor_type):

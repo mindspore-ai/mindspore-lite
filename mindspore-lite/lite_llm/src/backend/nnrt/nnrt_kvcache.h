@@ -35,10 +35,10 @@ constexpr size_t kNonKvInputs = 7;
 /// @brief Owns per-layer key/value KV cache as ION-backed NN_Tensor objects.
 /// Tensors are reused as both input and output (omc model updates in place),
 /// so there is no Read*/Write* copy API.
-class KVCacheManager {
+class NnrtKvCache {
  public:
-  KVCacheManager() = default;
-  ~KVCacheManager() { Free(); }
+  NnrtKvCache() = default;
+  ~NnrtKvCache() { Free(); }
 
   /// @brief Create num_layers key + value tensors, shape [1, kv_heads, max_len, head_dim] fp16,
   ///        zero-initialized via memset on their ION buffers.

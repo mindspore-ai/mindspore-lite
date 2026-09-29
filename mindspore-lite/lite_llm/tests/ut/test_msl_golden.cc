@@ -74,6 +74,7 @@ constexpr int kHexDigitBase = 10;
 
 constexpr int kPayloadCoefficient = 7;  // mirrors gen_golden.py payload()
 constexpr int kPayloadOffset = 3;
+constexpr int kPayloadModulus = 256;  // mirrors gen_golden.py payload() % 256
 
 constexpr uint64_t kOmcResourceSize = 70000;  // golden npu_offline/x.omc payload size (gen_golden.py)
 
@@ -147,7 +148,9 @@ const std::vector<ExpectedResource> &ExpectedResources() {
 }
 
 // Deterministic payload bytes used by gen_golden.py.
-uint8_t PayloadByte(size_t i) { return static_cast<uint8_t>((i * kPayloadCoefficient + kPayloadOffset) % 256); }
+uint8_t PayloadByte(size_t i) {
+  return static_cast<uint8_t>((i * kPayloadCoefficient + kPayloadOffset) % kPayloadModulus);
+}
 
 uint32_t ReadU32(const uint8_t *p) {
   uint32_t v = 0;

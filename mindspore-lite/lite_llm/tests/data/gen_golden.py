@@ -25,14 +25,18 @@ the Python test asserts that, and the C++ test validates the file
 against the layout contract.
 """
 
+import importlib.util
 import json
 import logging
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "export"))
-# pylint: disable=wrong-import-position  # export/ added to sys.path above
-from utils import msl_pack as mp
+# msl_pack is stdlib-only; load it straight from the export tree by file path
+# (same pattern as tests/py/test_export_entrypoint.py) — no sys.path mutation.
+_MSL_PACK = os.path.join(os.path.dirname(__file__), "..", "..", "export", "utils", "msl_pack.py")
+_spec = importlib.util.spec_from_file_location("msl_pack", _MSL_PACK)
+mp = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(mp)
 
 logger = logging.getLogger(__name__)
 

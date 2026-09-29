@@ -32,8 +32,7 @@ constexpr int kCreateDirMode = 0755;
 constexpr int32_t kEosTokenId = 2;  // "</s>" in BuildMinimalVocabBin
 
 /// Builds the bytes of a minimal valid v2 BPE vocab.bin understood by
-/// TokenizerImpl::LoadFromBuffer. Format (little-endian):
-///
+/// Tokenizer::LoadFromBuffer. Format (little-endian):
 ///   u32 magic(0x4D534C54) | u32 version(2) | u32 codec(0=BPE) | u32 vocab_size
 ///   i32 bos | i32 eos | i32 pad | i32 unk | u32 legacy_type(0)
 ///   vocab_size x (u32 len + token bytes + i32 id)

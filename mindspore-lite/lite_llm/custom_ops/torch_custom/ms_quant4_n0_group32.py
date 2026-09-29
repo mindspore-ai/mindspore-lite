@@ -57,7 +57,9 @@ class MsQuant4N0Group32(torch.autograd.Function):  # pylint: disable=abstract-me
                for value in input1_shape):
             raise ValueError("input1_shape dimensions must be integers")
         k_dim, n_dim = map(int, input1_shape)
-        if k_dim <= 0 or k_dim % 32 or n_dim <= 0 or n_dim % 16:
+        k_dim_invalid = k_dim <= 0 or k_dim % 32 != 0
+        n_dim_invalid = n_dim <= 0 or n_dim % 16 != 0
+        if k_dim_invalid or n_dim_invalid:
             raise ValueError("input1_shape requires positive K%32==0 and N%16==0")
         return k_dim, n_dim
 

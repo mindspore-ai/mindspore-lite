@@ -55,10 +55,10 @@ NN_Tensor *CreateKvTensor(size_t device_id, OH_NNExecutor *executor, size_t inpu
 }
 }  // namespace
 
-bool KVCacheManager::Alloc(int num_layers, int kv_heads, int max_len, int head_dim, size_t device_id,
-                           OH_NNExecutor *executor) {
+bool NnrtKvCache::Alloc(int num_layers, int kv_heads, int max_len, int head_dim, size_t device_id,
+                        OH_NNExecutor *executor) {
   if (num_layers <= 0 || kv_heads <= 0 || max_len <= 0 || head_dim <= 0 || executor == nullptr) {
-    MS_LOG(ERROR) << "KVCacheManager::Alloc invalid params";
+    MS_LOG(ERROR) << "NnrtKvCache::Alloc invalid params";
     return false;
   }
   Free();
@@ -84,7 +84,7 @@ bool KVCacheManager::Alloc(int num_layers, int kv_heads, int max_len, int head_d
   return true;
 }
 
-void KVCacheManager::Free() {
+void NnrtKvCache::Free() {
   const auto &api = NNRTWrapper::GetApi();
   for (auto *t : key_tensors_) {
     if (t != nullptr && api.Tensor_Destroy != nullptr) {
@@ -101,7 +101,7 @@ void KVCacheManager::Free() {
   byte_count_per_layer_ = 0;
 }
 
-void KVCacheManager::Reset() {
+void NnrtKvCache::Reset() {
   const auto &api = NNRTWrapper::GetApi();
   for (auto *t : key_tensors_) {
     if (t != nullptr && api.Tensor_GetDataBuffer != nullptr) {
@@ -115,10 +115,10 @@ void KVCacheManager::Reset() {
   }
 }
 
-NN_Tensor *KVCacheManager::GetKeyTensor(size_t layer) {
+NN_Tensor *NnrtKvCache::GetKeyTensor(size_t layer) {
   return (layer < key_tensors_.size()) ? key_tensors_[layer] : nullptr;
 }
-NN_Tensor *KVCacheManager::GetValueTensor(size_t layer) {
+NN_Tensor *NnrtKvCache::GetValueTensor(size_t layer) {
   return (layer < value_tensors_.size()) ? value_tensors_[layer] : nullptr;
 }
 

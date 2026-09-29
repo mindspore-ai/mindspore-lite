@@ -35,28 +35,44 @@ constexpr int kNBlockRows = 64;      // N row-block width of the compact layout.
 constexpr int kKBlockCols = 1024;    // K column-block width of the compact layout.
 constexpr int kScaleGroupCols = 32;  // scale group width (G32).
 
-constexpr int kQuantRowCoefficient = 5;  // deterministic QuantValue generator
-constexpr int kScaleRowCoefficient = 3;  // deterministic ScaleExponent generator
+constexpr int kQuantRowCoefficient = 5;   // deterministic QuantValue generator
+constexpr int kQuantColCoefficient = 3;   // deterministic QuantValue generator along K columns
+constexpr int kQuantValueModulus = 16;    // signed nibble value-range width
+constexpr int kQuantValueCenter = 8;      // centering offset, values span [-8, 7]
+constexpr int kScaleRowCoefficient = 3;   // deterministic ScaleExponent generator
+constexpr int kScaleExponentModulus = 4;  // exponent generator modulus, yields 4 exponents
+constexpr int kScaleExponentCenter = 2;   // centering offset, exponents span [-2, 1]
+constexpr int kScaleSignPeriod = 2;       // scale sign alternates with (row + group) parity
 
-constexpr int kNibbleMask = 0x0F;      // 4-bit nibble mask
-constexpr int kBytesPerTileRow = 8;    // 16 nibbles per tile row, two per byte
-constexpr int kPhasesPerTile = 4;      // phase4 interleaving
-constexpr int kRowsPerPhase = 4;       // 16-row tile split across kPhasesPerTile phases
-constexpr int kFp16ExponentBias = 15;  // IEEE 754 binary16 exponent bias
+constexpr int kNibbleMask = 0x0F;                            // 4-bit nibble mask
+constexpr int kBitsPerNibble = 4;                            // bits per nibble, high-nibble left shift
+constexpr int kBytesPerTileRow = 8;                          // 16 nibbles per tile row, two per byte
+constexpr int kPhasesPerTile = 4;                            // phase4 interleaving
+constexpr int kRowsPerPhase = 4;                             // 16-row tile split across kPhasesPerTile phases
+constexpr int kNzTileSide = 16;                              // 16x16 NZ fractal tile side (row/column step)
+constexpr int kFp16ExponentBias = 15;                        // IEEE 754 binary16 exponent bias
+constexpr int kFp16MantissaBits = 10;                        // IEEE 754 binary16 mantissa width
+constexpr int kFp16ExponentStride = 1 << kFp16MantissaBits;  // exponent +1 steps the bit pattern by 2^10
 constexpr int kBitsPerByte = 8;
 constexpr int kLowByteMask = 0xFF;
 
 int QuantValue(int row, int k) {
-  return (row * kQuantRowCoefficient + k * 3 + k / kScaleGroupCols + row / kNBlockRows + k / kKBlockCols) % 16 - 8;
+  return (row * kQuantRowCoefficient + k * kQuantColCoefficient + k / kScaleGroupCols + row / kNBlockRows +
+          k / kKBlockCols) %
+           kQuantValueModulus -
+         kQuantValueCenter;
 }
 int ScaleExponent(int row, int group) {
-  return (row * kScaleRowCoefficient + group + row / kNBlockRows + group / kScaleGroupCols) % 4 - 2;
+  return (row * kScaleRowCoefficient + group + row / kNBlockRows + group / kScaleGroupCols) % kScaleExponentModulus -
+         kScaleExponentCenter;
 }
-bool NegativeScale(int row, int group) { return (row + group + row / kNBlockRows + group / kScaleGroupCols) % 2 != 0; }
+bool NegativeScale(int row, int group) {
+  return (row + group + row / kNBlockRows + group / kScaleGroupCols) % kScaleSignPeriod != 0;
+}
 
 // All fixture scales are signed powers of two, exactly representable in fp16.
 uint16_t ScaleBits(int row, int group) {
-  return static_cast<uint16_t>(((kFp16ExponentBias + ScaleExponent(row, group)) << 10) |
+  return static_cast<uint16_t>(((kFp16ExponentBias + ScaleExponent(row, group)) << kFp16MantissaBits) |
                                (NegativeScale(row, group) ? 0x8000 : 0));
 }
 
@@ -68,7 +84,8 @@ uint16_t ExpectedBits(int row, int k) {
   const int magnitude = q < 0 ? -q : q;
   const uint16_t sign = ((q < 0) != NegativeScale(row, k / kScaleGroupCols)) ? 0x8000 : 0;
   return static_cast<uint16_t>(
-    sign | (magnitude == 0 ? 0 : kIntegerBits[magnitude] + ScaleExponent(row, k / kScaleGroupCols) * 1024));
+    sign |
+    (magnitude == 0 ? 0 : kIntegerBits[magnitude] + ScaleExponent(row, k / kScaleGroupCols) * kFp16ExponentStride));
 }
 
 // Serialize a 16x16 tile in physical phase4 order, independently of the
@@ -79,8 +96,8 @@ void AppendTile(int row_base, int k_base, std::vector<uint8_t> *blob) {
       for (int phase = 0; phase < kPhasesPerTile; ++phase) {
         const int row = row_base + phase * kRowsPerPhase + row_in_phase;
         const int k = k_base + pair * 2;
-        blob->push_back(
-          static_cast<uint8_t>((QuantValue(row, k) & kNibbleMask) | ((QuantValue(row, k + 1) & kNibbleMask) << 4)));
+        blob->push_back(static_cast<uint8_t>((QuantValue(row, k) & kNibbleMask) |
+                                             ((QuantValue(row, k + 1) & kNibbleMask) << kBitsPerNibble)));
       }
     }
   }
@@ -90,11 +107,11 @@ void AppendTile(int row_base, int k_base, std::vector<uint8_t> *blob) {
 // Terminal cells retain only complete logical n16/g32 groups, never padding.
 std::vector<uint8_t> MakeNzfBlob(int rows, int hidden) {
   std::vector<uint8_t> blob;
-  blob.reserve(static_cast<size_t>(rows) * (hidden / kScaleGroupCols) * 18);
+  blob.reserve(static_cast<size_t>(rows) * (hidden / kScaleGroupCols) * kQ4BytesPerGroup);
   for (int n0 = 0; n0 < rows; n0 += kNBlockRows) {
     for (int k0 = 0; k0 < hidden; k0 += kKBlockCols) {
-      for (int k = k0; k < std::min(k0 + kKBlockCols, hidden); k += 16) {
-        for (int n = n0; n < std::min(n0 + kNBlockRows, rows); n += 16) {
+      for (int k = k0; k < std::min(k0 + kKBlockCols, hidden); k += kNzTileSide) {
+        for (int n = n0; n < std::min(n0 + kNBlockRows, rows); n += kNzTileSide) {
           AppendTile(n, k, &blob);
         }
       }

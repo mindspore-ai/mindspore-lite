@@ -164,7 +164,7 @@ class NnrtExecutor {
   // overwrites.
   std::unordered_map<NN_Tensor *, size_t> tensor_byte_sizes_;
 
-  KVCacheManager kv_cache_manager_;
+  NnrtKvCache kv_cache_manager_;
   std::string omc_path_;
   void *omc_mapping_{nullptr};
   size_t omc_mapping_size_{0};

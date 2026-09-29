@@ -76,6 +76,16 @@ class MiniCpmOnnx:
         "hidden_size": 2304,
     }
 
+    def __init__(self):
+        """Declare lazily-loaded model artifacts; load() fills them in."""
+        self.model: Optional[AutoModelForCausalLM] = None
+        self.config: Optional[AutoConfig] = None
+        self.tokenizer: Optional[AutoTokenizer] = None
+        self.num_layers: int = 0
+        self.hidden_size: int = 0
+        self.num_kv_heads: int = 0
+        self.model_name: str = "minicpm-2b"
+
     def load(self, model_path, layers=40):
         """Load the HF model in fp16 and validate the MiniCPM-2B architecture."""
         is_gguf = os.path.isfile(model_path) and model_path.endswith(".gguf")

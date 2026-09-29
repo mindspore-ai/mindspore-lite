@@ -137,9 +137,9 @@ std::vector<TextSegment> SplitOnSpecialTokens(const std::string &text,
 
 }  // namespace
 
-class TokenizerImpl : public Tokenizer {
+class Tokenizer : public TokenizerBase {
  public:
-  TokenizerImpl() : bos_token_id_(-1), eos_token_id_(-1), pad_token_id_(-1), unk_token_id_(-1) {}
+  Tokenizer() : bos_token_id_(-1), eos_token_id_(-1), pad_token_id_(-1), unk_token_id_(-1) {}
 
   bool Load(const std::string &vocab_path) {
     std::ifstream ifs(vocab_path, std::ios::binary | std::ios::ate);
@@ -511,16 +511,16 @@ class TokenizerImpl : public Tokenizer {
   int32_t unk_token_id_;
 };
 
-std::unique_ptr<Tokenizer> CreateTokenizer(const std::string &vocab_path) {
-  auto impl = std::make_unique<TokenizerImpl>();
+std::unique_ptr<TokenizerBase> CreateTokenizer(const std::string &vocab_path) {
+  auto impl = std::make_unique<Tokenizer>();
   if (!impl->Load(vocab_path)) {
     return nullptr;
   }
   return impl;
 }
 
-std::unique_ptr<Tokenizer> CreateTokenizerFromBuffer(const uint8_t *data, size_t size) {
-  auto impl = std::make_unique<TokenizerImpl>();
+std::unique_ptr<TokenizerBase> CreateTokenizerFromBuffer(const uint8_t *data, size_t size) {
+  auto impl = std::make_unique<Tokenizer>();
   if (!impl->LoadFromBuffer(data, size)) {
     return nullptr;
   }
