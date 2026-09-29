@@ -33,7 +33,7 @@
       if (index < 0 || index >= output_dim0) {                                                                   \
         continue;                                                                                                \
       }                                                                                                          \
-      type1 output_index = index * output_dim1 + k;                                                              \
+      int64_t output_index = (int64_t)index * (int64_t)output_dim1 + (int64_t)k;                                 \
       output[output_index] += input[i];                                                                          \
     }                                                                                                            \
     return NNACL_OK;                                                                                             \

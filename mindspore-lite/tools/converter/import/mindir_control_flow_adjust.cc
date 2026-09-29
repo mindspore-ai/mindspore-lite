@@ -211,7 +211,7 @@ int MindIRControlFlowAdjust::MoveCallInputsToPartialFusionInputs(const std::set<
 
       if (IsSwitch(call_first_input_cnode)) {
         auto switch_cnode_inputs = call_first_input_cnode->inputs();
-        if (switch_cnode_inputs.size() == kSwitchInputSize) {
+        if (switch_cnode_inputs.size() != kSwitchInputSize) {
           MS_LOG(ERROR) << "switch op inputs size not right.";
           return RET_ERROR;
         }

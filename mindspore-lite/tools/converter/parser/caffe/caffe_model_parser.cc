@@ -331,6 +331,7 @@ STATUS CaffeModelParser::ConvertGraphInputsOfLayer() {
         MS_LOG(WARNING) << "Can not find name in map. name is " << layer.name();
       }
       if (shape.empty()) {
+        MS_CHECK_TRUE_MSG(layer.input_param().shape_size() > 0, RET_ERROR, "caffe input shape is empty");
         for (int j = 0; j < layer.input_param().shape(0).dim_size(); j++) {
           shape.push_back(layer.input_param().shape(0).dim(j));
         }
@@ -347,9 +348,9 @@ STATUS CaffeModelParser::ConvertGraphInputsOfLayer() {
   }
   return RET_OK;
 }
-
 STATUS CaffeModelParser::ConvertGraphInputsOfShape() {
   for (int i = 0; i < caffe_model_.input_shape_size(); i++) {
+    MS_CHECK_TRUE_MSG(i < caffe_model_.input_size(), RET_ERROR, "caffe input index out of range");
     auto shape = caffe_model_.input_shape(i);
     std::vector<int64_t> shape_vector =
       ConverterInnerContext::GetInstance()->GetGraphInputTensorShape(caffe_model_.input(i));
@@ -700,12 +701,14 @@ std::string CaffeModelParser::GetOriginLayerName(const std::string &layer_name) 
   if (layer.type() != "Split" && layer.type() != "Dropout") {
     return layer_name;
   }
+  MS_CHECK_TRUE_MSG(layer.bottom_size() > 0, "", "caffe layer has no bottom");
   if (layer.type() == "Dropout" && layer.bottom(0) == layer.top(0)) {
     return layer_name;
   }
   std::set<string> visited;
   visited.insert(layer_name);
   while (layer.type() == "Split" || layer.type() == "Dropout") {
+    MS_CHECK_TRUE_MSG(layer.bottom_size() > 0, "", "caffe layer has no bottom");
     string input_name = layer.bottom(0);
     if (visited.count(input_name) > 0) {
       MS_LOG(ERROR) << "Detect cycle in caffe layer graph, layer: " << input_name;

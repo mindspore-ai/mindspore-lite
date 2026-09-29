@@ -81,6 +81,7 @@ PrimitiveCPtr CaffeDeconvolutionParser::Parse(const caffe::LayerParameter &proto
   }
 
   // parse channelIN
+  MS_CHECK_TRUE_MSG(weight.blobs_size() > 0, nullptr, "caffe deconv has no blobs");
   auto &weightBlob = weight.blobs(0);
   if (weightBlob.has_shape()) {
     if (group == 1)

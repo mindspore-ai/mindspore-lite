@@ -338,6 +338,43 @@ int NetTrainBase::Init() {
   return RET_OK;
 }
 
+namespace {
+bool IsSafeNetName(const std::string &net_name) {
+  if (net_name.empty()) {
+    return false;
+  }
+  return net_name.find("..") == std::string::npos && net_name.find('/') == std::string::npos &&
+         net_name.find('\\') == std::string::npos;
+}
+
+// Validate "common_dump_settings" and fill defaults for the optional fields.
+bool NormalizeDumpSettings(nlohmann::json *settings) {
+  if (!(*settings)[dump::kMode].is_number_integer()) {
+    MS_LOG(ERROR) << "\"dump_mode\" is required and should be an integer.";
+    return false;
+  }
+  if ((*settings)[dump::kPath] == nullptr) {
+    MS_LOG(ERROR) << "\"path\" is required.";
+    return false;
+  }
+  if ((*settings)[dump::kInputOutput].is_number_integer() == false) {
+    (*settings)[dump::kInputOutput] = 0;
+  }
+  if ((*settings)[dump::kNetName] == nullptr) {
+    (*settings)[dump::kNetName] = "default";
+  }
+  if (!(*settings)[dump::kKernels].is_array()) {
+    (*settings)[dump::kKernels] = std::vector<std::string>{};
+    return true;
+  }
+  if (!(*settings)[dump::kKernels].empty() && (*settings)[dump::kMode] == 0) {
+    MS_LOG(ERROR) << R"("dump_mode" should be 1 when "kernels" isn't empty.)";
+    return false;
+  }
+  return true;
+}
+}  // namespace
+
 int NetTrainBase::InitDumpConfigFromJson(std::string path) {
   auto real_path = RealPath(path.c_str());
   std::ifstream ifs(real_path);
@@ -360,30 +397,20 @@ int NetTrainBase::InitDumpConfigFromJson(std::string path) {
     MS_LOG(ERROR) << "\"common_dump_settings\" is required.";
     return RET_ERROR;
   }
-  if (dump_cfg_json_[dump::kSettings][dump::kMode] == nullptr) {
-    MS_LOG(ERROR) << "\"dump_mode\" is required.";
+  if (!NormalizeDumpSettings(&dump_cfg_json_[dump::kSettings])) {
     return RET_ERROR;
-  }
-  if (dump_cfg_json_[dump::kSettings][dump::kPath] == nullptr) {
-    MS_LOG(ERROR) << "\"path\" is required.";
-    return RET_ERROR;
-  }
-  if (dump_cfg_json_[dump::kSettings][dump::kNetName] == nullptr) {
-    dump_cfg_json_[dump::kSettings][dump::kNetName] = "default";
-  }
-  if (dump_cfg_json_[dump::kSettings][dump::kInputOutput] == nullptr) {
-    dump_cfg_json_[dump::kSettings][dump::kInputOutput] = 0;
-  }
-  if (dump_cfg_json_[dump::kSettings][dump::kKernels] != nullptr &&
-      !dump_cfg_json_[dump::kSettings][dump::kKernels].empty()) {
-    if (dump_cfg_json_[dump::kSettings][dump::kMode] == 0) {
-      MS_LOG(ERROR) << R"("dump_mode" should be 1 when "kernels" isn't empty.)";
-      return RET_ERROR;
-    }
   }
 
   auto abs_path = dump_cfg_json_[dump::kSettings][dump::kPath].get<std::string>();
   auto net_name = dump_cfg_json_[dump::kSettings][dump::kNetName].get<std::string>();
+  if (!IsSafeNetName(net_name)) {
+    MS_LOG(ERROR) << "invalid net_name: " << net_name;
+    return RET_ERROR;
+  }
+  if (abs_path.empty()) {
+    MS_LOG(ERROR) << "\"path\" can not be empty.";
+    return RET_ERROR;
+  }
   if (abs_path.back() == '\\' || abs_path.back() == '/') {
     dump_file_output_dir_ = abs_path + net_name;
   } else {

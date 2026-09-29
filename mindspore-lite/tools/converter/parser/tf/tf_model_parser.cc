@@ -83,6 +83,7 @@ std::string GetOriginInputName(const tensorflow::NodeDef &node,
   }
   auto tmp_node = &node;
   while (TensorFlowUtils::OutputIsInputOp(tmp_node->op())) {
+    MS_CHECK_TRUE_MSG(tmp_node->input_size() > 0, "", "tf node has no input");
     auto flatten_input_name = TensorFlowUtils::GetFlattenNodeName(tmp_node->input(0));
     if (tf_graph_nodes.find(flatten_input_name) == tf_graph_nodes.end()) {
       return flatten_input_name;

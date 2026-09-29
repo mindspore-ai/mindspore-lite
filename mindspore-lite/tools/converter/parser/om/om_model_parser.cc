@@ -295,11 +295,14 @@ std::vector<std::vector<int64_t>> OMModelParser::ParseShapes(const std::map<std:
   for (size_t i = 0; i < shape_str.size(); i++) {
     auto shape_str_split = SplitStringToVector(shape_str[i], ',');
     std::vector<int64_t> shape;
-    std::transform(shape_str_split.begin(), shape_str_split.end(), std::back_inserter(shape), [](std::string dim_str) {
+    for (size_t j = 0; j < shape_str_split.size(); j++) {
       int64_t val;
-      ConvertStrToInt(dim_str, &val);
-      return val;
-    });
+      if (!ConvertStrToInt(shape_str_split[j], &val)) {
+        MS_LOG(ERROR) << "invalid shape dim: " << shape_str_split[j];
+        return {};
+      }
+      shape.push_back(val);
+    }
     shapes.push_back(shape);
   }
   return shapes;
