@@ -141,12 +141,13 @@ int MindirModel::LoadTensorData(mindspore::lite::Tensor *lite_tensor, const mind
     // absolute paths and '..' components so it cannot escape that directory.
     bool is_absolute = !location.empty() && (location.front() == '/' || location.front() == '\\');
     bool escapes_parent_dir = false;
+    constexpr size_t kParentDirLen = 2;
     for (size_t start = 0; start <= location.size() && !escapes_parent_dir;) {
       size_t end = location.find_first_of("/\\", start);
       if (end == std::string::npos) {
         end = location.size();
       }
-      if (end - start == 2 && location.compare(start, 2, "..") == 0) {
+      if (end - start == kParentDirLen && location.compare(start, kParentDirLen, "..") == 0) {
         escapes_parent_dir = true;
       }
       start = end + 1;
@@ -166,8 +167,8 @@ int MindirModel::LoadTensorData(mindspore::lite::Tensor *lite_tensor, const mind
     size_t file_size = static_cast<size_t>(fid.tellg());
     fid.clear();
     fid.seekg(0);
-    uint64_t data_offset = mindir_tensor.external_data().offset();
-    uint64_t data_length = mindir_tensor.external_data().length();
+    uint64_t data_offset = static_cast<uint64_t>(mindir_tensor.external_data().offset());
+    uint64_t data_length = static_cast<uint64_t>(mindir_tensor.external_data().length());
     if (data_offset > file_size || data_length > file_size - data_offset) {
       MS_LOG(ERROR) << "The external data offset " << data_offset << " and length " << data_length
                     << " exceed the file size " << file_size << ".";

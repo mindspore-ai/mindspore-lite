@@ -25,6 +25,8 @@ namespace {
 constexpr std::string_view kOpNameChunkGatedDeltaRule = "aclnnChunkGatedDeltaRule";
 }  // namespace
 
+namespace lite_boost {
+
 std::tuple<at::Tensor, at::Tensor> ChunkGatedDeltaRuleLiteBoostImplNPU(const at::Tensor &query, const at::Tensor &key,
                                                                        const at::Tensor &value, const at::Tensor &beta,
                                                                        const at::Tensor &initial_state,
@@ -53,3 +55,5 @@ std::tuple<at::Tensor, at::Tensor> ChunkGatedDeltaRuleLiteBoostImplNPU(const at:
 
   return std::tuple<at::Tensor, at::Tensor>(out, final_state);
 }
+
+}  // namespace lite_boost
