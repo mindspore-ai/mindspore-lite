@@ -77,16 +77,27 @@ def all_to_all_4d(
         torch.npu.synchronize()
 
     # Step 4: merge P into gather dim
+    return merge_a2a_4d(out, world_size, gather_idx)
+
+
+def merge_a2a_4d(out: torch.Tensor, world_size: int, gather_idx: int) -> torch.Tensor:
+    """Merge the raw all-to-all output ``[P, B, S', H', D]`` back to 4-D.
+
+    ``gather_idx=1`` folds the rank dim into the sequence dim
+    (``[B, P*S', H', D]``); ``gather_idx=2`` folds it into the head dim
+    (``[B, S', P*H', D]``). Shared by the sync and async all-to-all paths —
+    the reshape must fold the RANK dim (here dim 0), never a world-sized
+    data dim.
+    """
     if gather_idx == 1:
         # gather along seq: [P, B, S', H', D] → [B, P*S', H', D]
         out = out.permute(1, 0, 2, 3, 4).contiguous()
-        out = out.reshape(out.shape[0], world_size * out.shape[2], out.shape[3], out.shape[4])
-    else:
-        # gather along heads: [P, B, S', H', D] → [B, S', P*H', D]
-        out = out.permute(1, 2, 0, 3, 4).contiguous()
-        out = out.reshape(out.shape[0], out.shape[1], world_size * out.shape[3], out.shape[4])
-
-    return out
+        return out.reshape(
+            out.shape[0], world_size * out.shape[2], out.shape[3], out.shape[4])
+    # gather along heads: [P, B, S', H', D] → [B, S', P*H', D]
+    out = out.permute(1, 2, 0, 3, 4).contiguous()
+    return out.reshape(
+        out.shape[0], out.shape[1], world_size * out.shape[3], out.shape[4])
 
 
 def get_sp_size() -> int:

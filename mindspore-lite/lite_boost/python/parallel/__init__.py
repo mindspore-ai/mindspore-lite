@@ -33,6 +33,7 @@ __all__ = [
     "get_overlap_kv_heads_per_rank",
     "gqa_expand_kv_overlap",
     "all_to_all_4d",
+    "merge_a2a_4d",
     "get_sp_size",
     "get_sp_rank",
     "all_gather_seq",
@@ -60,6 +61,7 @@ from .tensor_parallel import (
 )
 from .context_parallel import (
     all_to_all_4d,
+    merge_a2a_4d,
     get_sp_size,
     get_sp_rank,
     all_gather_seq,

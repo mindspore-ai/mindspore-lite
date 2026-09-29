@@ -48,9 +48,16 @@
 
 # lite_boost/booguimage
 "mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/boost.py"                                   "protected-access"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/attention_common.py"                             "protected-access"
 "mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/npu_kernels.py"                             "protected-access"
 "mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/tp.py"                                      "protected-access"
-"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/usp.py"                                     "protected-access"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/usp_single_stream.py"                       "protected-access"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/comm_compute_overlap.py"                              "invalid-name"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/comm_compute_overlap.py"                              "unused-argument"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/usp_double_stream.py"                                  "invalid-name"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/usp_double_stream.py"                                  "protected-access"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/attention_bsnd.py"                          "protected-access"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/attention_bsnd.py"                          "unused-argument"
 
 # lite_boost/qwenimage
 "mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py"                 "access-member-before-definition"

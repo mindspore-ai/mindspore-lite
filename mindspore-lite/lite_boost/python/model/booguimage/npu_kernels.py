@@ -84,6 +84,38 @@ def patch_sdpa_mask():
     F._lb_npu_sdpa_patched = True
 
 
+def npu_fusion_attention_bsnd(query, key, value, attn_mask=None, scale=None, num_heads=None):
+    """Fused attention via ``torch_npu.npu_fusion_attention`` in BSND layout.
+
+    query/key/value are ``[B, S, N, D]`` (GQA: key/value may hold fewer
+    heads), so no BNSD transpose or materialization is needed — the tensors
+    stay contiguous from the QKV projections. ``attn_mask`` follows the SDPA
+    bool convention (True = keep); it is inverted for the fused kernel
+    (True = masked) and dropped when every position is valid. Non-NPU
+    devices fall back to ``F.scaled_dot_product_attention``.
+    """
+    if query.device.type != "npu":
+        return F.scaled_dot_product_attention(
+            query.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2),
+            attn_mask=attn_mask, scale=scale, enable_gqa=True,
+        )
+    atten_mask = None
+    if attn_mask is not None:
+        if bool(attn_mask.all()):
+            atten_mask = None    # all-valid: skip mask handling in the kernel
+        else:
+            atten_mask = (~attn_mask).contiguous()
+    out = torch_npu.npu_fusion_attention(
+        query, key, value,
+        head_num=num_heads if num_heads is not None else query.shape[2],
+        input_layout="BSND",
+        atten_mask=atten_mask,
+        scale=scale,
+        keep_prob=1.0,
+    )
+    return out[0]
+
+
 def npu_swiglu(x, y):
     """Fused SwiGLU via ``torch_npu.npu_swiglu`` on NPU; SiLU fallback elsewhere."""
     if x.device.type == "npu":
