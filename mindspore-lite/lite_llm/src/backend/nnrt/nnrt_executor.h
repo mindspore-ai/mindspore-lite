@@ -55,6 +55,8 @@ class NnrtExecutor {
   bool MapOfflineModelFile(const std::string &path);
   void ReclaimOfflineModelPages() const;
   bool LoadExternalWeights();
+  bool ExtractExternalWeightFile();
+  bool WriteExternalWeightFile(const std::string &path, const uint8_t *data, size_t size);
   // Read an asset either from the single-file package reader (entry name) or
   // from a filesystem path, into a raw byte buffer.
   bool ReadAsset(const std::string &path_or_entry, std::vector<uint8_t> *out) const;
