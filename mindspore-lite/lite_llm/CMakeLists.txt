@@ -71,6 +71,30 @@ set(MSLITE_LLM_REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 file(READ ${MSLITE_LLM_ROOT}/export/version.txt MSLITE_LLM_VERSION)
 string(STRIP ${MSLITE_LLM_VERSION} MSLITE_LLM_VERSION)
 
+# ─── securec (memcpy_s / memset_s / snprintf_s) ────────────────────────────
+# Reuse the outer repo's recipe (cmake/external_libs/securec.cmake): same
+# openEuler libboundscheck v1.1.16, plus its CMake patch (install rules,
+# Windows branch) and the shared .mslib hash cache. lite_llm therefore
+# requires the outer repo layout (cmake/ + third_party/ two levels up).
+set(TOP_DIR "${MSLITE_LLM_REPO_ROOT}")
+find_program(Patch_EXECUTABLE patch)   # mindspore_add_pkg applies securec.patch001 with it
+if(NOT Patch_EXECUTABLE)
+    message(FATAL_ERROR "'patch' tool not found: required to apply securec.patch001")
+endif()
+set(BUILD_LITE ON)                     # securec.cmake's cross branches are BUILD_LITE-gated
+if(MSLITE_LLM_ENABLE_NNRT)
+    set(TOOLCHAIN_NAME ohos)           # activates the OHOS recipe via $ENV{OHOS_NDK}
+endif()
+include("${TOP_DIR}/cmake/utils.cmake")
+include("${TOP_DIR}/cmake/external_libs/securec.cmake")
+# Restore the outer-repo switches set above: they are meaningful only to
+# securec.cmake. If BUILD_LITE leaked onward, gtest.cmake (included later by
+# tests/) would provision gtest 1.8.1 instead of the 1.12.1 baseline — and
+# MslGoldenTest's GTEST_SKIP() (test_msl_golden.cc:199, skips when
+# golden_v1.msl is not provisioned) requires gtest >= 1.10.
+unset(BUILD_LITE)
+unset(TOOLCHAIN_NAME)
+
 # ─── Sub-modules ──────────────────────────────────────────────────────────
 # src/      — mslite_llm static library (engine)
 # examples/ — public API sample CLI (mslite-chat), always built; also the

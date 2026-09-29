@@ -36,6 +36,8 @@ namespace mslite {
 namespace backend {
 namespace nnrt {
 
+struct NNRTFunctions;  // function-pointer table, defined in nnrt_wrapper.h
+
 class NnrtExecutor {
  public:
   NnrtExecutor() = default;
@@ -64,6 +66,10 @@ class NnrtExecutor {
   // count only, because the Kirin DDK renames them (enum-shape artifact) —
   // actual output names are logged for forensics.
   bool ValidateModelContract();
+  // Contract-check stages: I/O count check (skipped with a warning on NNRTs
+  // too old to expose counts) and output-name forensics logging.
+  bool ValidateIoCounts(const NNRTFunctions &api, size_t expected_input_count, size_t expected_output_count);
+  void LogOutputNames(const NNRTFunctions &api, size_t expected_output_count);
   // Read the logits width from the model output desc 0 into model_vocab_
   // (fallback: config vocab_size_); sampling uses the smaller vocabulary.
   void ReadModelVocab();

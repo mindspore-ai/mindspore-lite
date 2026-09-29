@@ -133,13 +133,11 @@ int32_t Sampler::Sample(const float *logits, size_t size) {
     return 0;
   }
 
-  const bool has_history = !generated_tokens_.empty();
-  const bool has_repetition_penalty =
-    has_history && repetition_penalty_ > 0.0f && std::fabs(repetition_penalty_ - 1.0f) > 1e-6f;
-  const bool has_count_penalty =
-    has_history && (std::fabs(presence_penalty_) > 1e-6f || std::fabs(frequency_penalty_) > 1e-6f);
-  const bool has_temperature_scale = temperature_ > 0.0f && std::fabs(temperature_ - 1.0f) > 1e-6f;
-  const bool greedy_mode = strategy_ == MSLLM_SAMPLER_GREEDY || temperature_ <= 0.0f;
+  bool has_repetition_penalty = false;
+  bool has_count_penalty = false;
+  bool has_temperature_scale = false;
+  bool greedy_mode = false;
+  ComputeSampleFlags(&has_repetition_penalty, &has_count_penalty, &has_temperature_scale, &greedy_mode);
   if (greedy_mode && logit_bias_.empty() && !has_repetition_penalty && !has_count_penalty && !has_temperature_scale) {
     const int32_t argmax = GreedyArgMax(logits, size);
     generated_tokens_.push_back(argmax);
@@ -153,30 +151,12 @@ int32_t Sampler::Sample(const float *logits, size_t size) {
 
   // Repetition penalty
   if (has_repetition_penalty) {
-    for (auto tid : generated_tokens_) {
-      if (tid >= 0 && static_cast<size_t>(tid) < work.size()) {
-        if (work[tid] > 0.0f) {
-          work[tid] /= repetition_penalty_;
-        } else {
-          work[tid] *= repetition_penalty_;
-        }
-      }
-    }
+    ApplyRepetitionPenalty(work);
   }
 
   // Presence / frequency penalty
   if (has_count_penalty) {
-    std::unordered_map<int32_t, int32_t> token_counts;
-    for (auto tid : generated_tokens_) {
-      token_counts[tid]++;
-    }
-    for (const auto &pair : token_counts) {
-      int32_t tid = pair.first;
-      if (tid >= 0 && static_cast<size_t>(tid) < work.size()) {
-        work[tid] -= frequency_penalty_ * static_cast<float>(pair.second);
-        work[tid] -= presence_penalty_;
-      }
-    }
+    ApplyCountPenalties(work);
   }
 
   // Temperature
@@ -193,52 +173,95 @@ int32_t Sampler::Sample(const float *logits, size_t size) {
   Softmax(work);
 
   if (strategy_ == MSLLM_SAMPLER_TOP_K && top_k_ > 0 && top_k_ < static_cast<int32_t>(work.size())) {
-    std::vector<size_t> indices(work.size());
-    std::iota(indices.begin(), indices.end(), 0);
-    std::partial_sort(indices.begin(), indices.begin() + top_k_, indices.end(),
-                      [&work](size_t a, size_t b) { return work[a] > work[b]; });
-
-    std::vector<float> filtered(work.size(), 0.0f);
-    for (int32_t i = 0; i < top_k_; ++i) {
-      filtered[indices[i]] = work[indices[i]];
-    }
-    work = std::move(filtered);
-
-    float sum = std::accumulate(work.begin(), work.end(), 0.0f);
-    if (sum > 0.0f) {
-      std::transform(work.begin(), work.end(), work.begin(), [sum](float v) { return v / sum; });
-    }
+    ApplyTopKFilter(work);
   } else if (strategy_ == MSLLM_SAMPLER_TOP_P && top_p_ > 0.0f && top_p_ < 1.0f) {
-    std::vector<size_t> indices(work.size());
-    std::iota(indices.begin(), indices.end(), 0);
-    std::sort(indices.begin(), indices.end(), [&work](size_t a, size_t b) { return work[a] > work[b]; });
-
-    float cumulative = 0.0f;
-    size_t cutoff = 0;
-    for (size_t i = 0; i < indices.size(); ++i) {
-      cumulative += work[indices[i]];
-      cutoff = i + 1;
-      if (cumulative >= top_p_) {
-        break;
-      }
-    }
-
-    std::vector<float> filtered(work.size(), 0.0f);
-    for (size_t i = 0; i < cutoff; ++i) {
-      filtered[indices[i]] = work[indices[i]];
-    }
-    work = std::move(filtered);
-
-    float sum = std::accumulate(work.begin(), work.end(), 0.0f);
-    if (sum > 0.0f) {
-      std::transform(work.begin(), work.end(), work.begin(), [sum](float v) { return v / sum; });
-    }
+    ApplyTopPFilter(work);
   }
 
   std::discrete_distribution<int32_t> dist(work.begin(), work.end());
   int32_t token_id = dist(rng_);
   generated_tokens_.push_back(token_id);
   return token_id;
+}
+
+void Sampler::ComputeSampleFlags(bool *has_repetition_penalty, bool *has_count_penalty, bool *has_temperature_scale,
+                                 bool *greedy_mode) const {
+  const bool has_history = !generated_tokens_.empty();
+  *has_repetition_penalty = has_history && repetition_penalty_ > 0.0f && std::fabs(repetition_penalty_ - 1.0f) > 1e-6f;
+  *has_count_penalty = has_history && (std::fabs(presence_penalty_) > 1e-6f || std::fabs(frequency_penalty_) > 1e-6f);
+  *has_temperature_scale = temperature_ > 0.0f && std::fabs(temperature_ - 1.0f) > 1e-6f;
+  *greedy_mode = strategy_ == MSLLM_SAMPLER_GREEDY || temperature_ <= 0.0f;
+}
+
+void Sampler::ApplyRepetitionPenalty(std::vector<float> &work) const {
+  for (auto tid : generated_tokens_) {
+    if (tid >= 0 && static_cast<size_t>(tid) < work.size()) {
+      if (work[tid] > 0.0f) {
+        work[tid] /= repetition_penalty_;
+      } else {
+        work[tid] *= repetition_penalty_;
+      }
+    }
+  }
+}
+
+void Sampler::ApplyCountPenalties(std::vector<float> &work) const {
+  std::unordered_map<int32_t, int32_t> token_counts;
+  for (auto tid : generated_tokens_) {
+    token_counts[tid]++;
+  }
+  for (const auto &pair : token_counts) {
+    int32_t tid = pair.first;
+    if (tid >= 0 && static_cast<size_t>(tid) < work.size()) {
+      work[tid] -= frequency_penalty_ * static_cast<float>(pair.second);
+      work[tid] -= presence_penalty_;
+    }
+  }
+}
+
+void Sampler::ApplyTopKFilter(std::vector<float> &work) const {
+  std::vector<size_t> indices(work.size());
+  std::iota(indices.begin(), indices.end(), 0);
+  std::partial_sort(indices.begin(), indices.begin() + top_k_, indices.end(),
+                    [&work](size_t a, size_t b) { return work[a] > work[b]; });
+
+  std::vector<float> filtered(work.size(), 0.0f);
+  for (int32_t i = 0; i < top_k_; ++i) {
+    filtered[indices[i]] = work[indices[i]];
+  }
+  work = std::move(filtered);
+
+  float sum = std::accumulate(work.begin(), work.end(), 0.0f);
+  if (sum > 0.0f) {
+    std::transform(work.begin(), work.end(), work.begin(), [sum](float v) { return v / sum; });
+  }
+}
+
+void Sampler::ApplyTopPFilter(std::vector<float> &work) const {
+  std::vector<size_t> indices(work.size());
+  std::iota(indices.begin(), indices.end(), 0);
+  std::sort(indices.begin(), indices.end(), [&work](size_t a, size_t b) { return work[a] > work[b]; });
+
+  float cumulative = 0.0f;
+  size_t cutoff = 0;
+  for (size_t i = 0; i < indices.size(); ++i) {
+    cumulative += work[indices[i]];
+    cutoff = i + 1;
+    if (cumulative >= top_p_) {
+      break;
+    }
+  }
+
+  std::vector<float> filtered(work.size(), 0.0f);
+  for (size_t i = 0; i < cutoff; ++i) {
+    filtered[indices[i]] = work[indices[i]];
+  }
+  work = std::move(filtered);
+
+  float sum = std::accumulate(work.begin(), work.end(), 0.0f);
+  if (sum > 0.0f) {
+    std::transform(work.begin(), work.end(), work.begin(), [sum](float v) { return v / sum; });
+  }
 }
 
 void Sampler::SetStrategy(MSLlmSamplerStrategy strategy) { strategy_ = strategy; }

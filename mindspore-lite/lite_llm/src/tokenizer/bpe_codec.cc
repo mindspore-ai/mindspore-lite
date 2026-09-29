@@ -22,6 +22,8 @@
 #include <cstring>
 #include <limits>
 
+#include "include/securec.h"
+
 namespace mslite_llm {
 
 namespace {
@@ -72,7 +74,9 @@ uint32_t ReadU32(const uint8_t *data, size_t &offset, size_t size) {
     return 0;
   }
   uint32_t val;
-  std::memcpy(&val, data + offset, sizeof(val));
+  if (memcpy_s(&val, sizeof(val), data + offset, sizeof(val)) != EOK) {
+    return 0;
+  }
   offset += sizeof(val);
   return val;
 }
@@ -234,95 +238,121 @@ std::vector<std::string> BPECodec::PreTokenize(const std::string &text) {
   size_t n = text.size();
 
   while (i < n) {
-    if (i + 1 < n && text[i] == '\'') {
-      char next = static_cast<char>(text[i + 1]);
-      if (next == 's' || next == 't' || next == 'm' || next == 'd') {
-        chunks.push_back(text.substr(i, kShortContractionLen));
-        i += kShortContractionLen;
-        continue;
-      }
-      if (i + kLongContractionLen - 1 < n) {
-        if ((next == 'l' && text[i + kLongContractionLen - 1] == 'l') ||
-            (next == 'v' && text[i + kLongContractionLen - 1] == 'e') ||
-            (next == 'r' && text[i + kLongContractionLen - 1] == 'e')) {
-          chunks.push_back(text.substr(i, kLongContractionLen));
-          i += kLongContractionLen;
-          continue;
-        }
-      }
+    if (TryPushContraction(text, i, chunks)) {
+      continue;
     }
 
     if (static_cast<unsigned char>(text[i]) == ' ') {
-      size_t start = i;
-      i++;
-      if (i < n && IsAlpha(static_cast<unsigned char>(text[i]))) {
-        while (i < n && IsAlpha(static_cast<unsigned char>(text[i]))) i++;
-        chunks.push_back(text.substr(start, i - start));
-      } else if (i < n && IsDigit(static_cast<unsigned char>(text[i]))) {
-        while (i < n && IsDigit(static_cast<unsigned char>(text[i]))) i++;
-        chunks.push_back(text.substr(start, i - start));
-      } else if (i < n && (static_cast<unsigned char>(text[i]) > kMaxAscii)) {
-        unsigned char c = static_cast<unsigned char>(text[i]);
-        size_t char_len = Utf8CharLen(c);
-        i += char_len;
-        chunks.push_back(text.substr(start, i - start));
-      } else if (i < n && !std::isspace(static_cast<unsigned char>(text[i]))) {
-        while (i < n && !std::isspace(static_cast<unsigned char>(text[i])) &&
-               !IsAlpha(static_cast<unsigned char>(text[i])) && !IsDigit(static_cast<unsigned char>(text[i])))
-          i++;
-        chunks.push_back(text.substr(start, i - start));
-      } else {
-        chunks.push_back(" ");
-      }
+      PushSpacePrefixed(text, i, chunks);
       continue;
     }
 
-    if (IsAlpha(static_cast<unsigned char>(text[i]))) {
-      size_t start = i;
-      while (i < n && IsAlpha(static_cast<unsigned char>(text[i]))) i++;
-      chunks.push_back(text.substr(start, i - start));
-      continue;
-    }
-
-    if (IsDigit(static_cast<unsigned char>(text[i]))) {
-      size_t start = i;
-      while (i < n && IsDigit(static_cast<unsigned char>(text[i]))) i++;
-      chunks.push_back(text.substr(start, i - start));
-      continue;
-    }
-
-    if (static_cast<unsigned char>(text[i]) > kMaxAscii) {
-      size_t start = i;
-      unsigned char c = static_cast<unsigned char>(text[i]);
-      size_t char_len = Utf8CharLen(c);
-      i += char_len;
-      chunks.push_back(text.substr(start, char_len));
-      continue;
-    }
-
-    if (!std::isspace(static_cast<unsigned char>(text[i]))) {
-      size_t start = i;
-      while (i < n && !std::isspace(static_cast<unsigned char>(text[i])) &&
-             !IsAlpha(static_cast<unsigned char>(text[i])) && !IsDigit(static_cast<unsigned char>(text[i])) &&
-             static_cast<unsigned char>(text[i]) <= kMaxAscii)
-        i++;
-      if (i > start) {
-        chunks.push_back(text.substr(start, i - start));
-      } else {
-        chunks.push_back(text.substr(i, 1));
-        i++;
-      }
-      continue;
-    }
-
-    // Byte-level BPE represents every input byte, including non-space
-    // whitespace.  Keep it as a chunk so ChatML line breaks and tabs reach
-    // the byte encoder instead of being silently discarded.
-    chunks.push_back(text.substr(i, 1));
-    i++;
+    PushStandalone(text, i, chunks);
   }
 
   return chunks;
+}
+
+// GPT-2 pretokenizer contractions at position i: 's|'t|'re|'ve|'m|'ll|'d.
+// Pushes the matched chunk and advances i; returns false when text[i] does
+// not start a contraction.
+bool BPECodec::TryPushContraction(const std::string &text, size_t &i, std::vector<std::string> &chunks) {
+  const size_t n = text.size();
+  if (i + 1 < n && text[i] == '\'') {
+    char next = static_cast<char>(text[i + 1]);
+    if (next == 's' || next == 't' || next == 'm' || next == 'd') {
+      chunks.push_back(text.substr(i, kShortContractionLen));
+      i += kShortContractionLen;
+      return true;
+    }
+    if (i + kLongContractionLen - 1 < n) {
+      if ((next == 'l' && text[i + kLongContractionLen - 1] == 'l') ||
+          (next == 'v' && text[i + kLongContractionLen - 1] == 'e') ||
+          (next == 'r' && text[i + kLongContractionLen - 1] == 'e')) {
+        chunks.push_back(text.substr(i, kLongContractionLen));
+        i += kLongContractionLen;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// A space-led token: the space plus one following word / number / UTF-8
+// char / other-symbol run, or a bare space.
+void BPECodec::PushSpacePrefixed(const std::string &text, size_t &i, std::vector<std::string> &chunks) {
+  const size_t n = text.size();
+  size_t start = i;
+  i++;
+  if (i < n && IsAlpha(static_cast<unsigned char>(text[i]))) {
+    while (i < n && IsAlpha(static_cast<unsigned char>(text[i]))) i++;
+    chunks.push_back(text.substr(start, i - start));
+  } else if (i < n && IsDigit(static_cast<unsigned char>(text[i]))) {
+    while (i < n && IsDigit(static_cast<unsigned char>(text[i]))) i++;
+    chunks.push_back(text.substr(start, i - start));
+  } else if (i < n && (static_cast<unsigned char>(text[i]) > kMaxAscii)) {
+    unsigned char c = static_cast<unsigned char>(text[i]);
+    size_t char_len = Utf8CharLen(c);
+    i += char_len;
+    chunks.push_back(text.substr(start, i - start));
+  } else if (i < n && !std::isspace(static_cast<unsigned char>(text[i]))) {
+    while (i < n && !std::isspace(static_cast<unsigned char>(text[i])) &&
+           !IsAlpha(static_cast<unsigned char>(text[i])) && !IsDigit(static_cast<unsigned char>(text[i])))
+      i++;
+    chunks.push_back(text.substr(start, i - start));
+  } else {
+    chunks.push_back(" ");
+  }
+}
+
+// A standalone (non-space-led) token: word / number / >0x7F char /
+// other-symbol run; any other byte (non-space whitespace) is pushed as-is.
+void BPECodec::PushStandalone(const std::string &text, size_t &i, std::vector<std::string> &chunks) {
+  const size_t n = text.size();
+
+  if (IsAlpha(static_cast<unsigned char>(text[i]))) {
+    size_t start = i;
+    while (i < n && IsAlpha(static_cast<unsigned char>(text[i]))) i++;
+    chunks.push_back(text.substr(start, i - start));
+    return;
+  }
+
+  if (IsDigit(static_cast<unsigned char>(text[i]))) {
+    size_t start = i;
+    while (i < n && IsDigit(static_cast<unsigned char>(text[i]))) i++;
+    chunks.push_back(text.substr(start, i - start));
+    return;
+  }
+
+  if (static_cast<unsigned char>(text[i]) > kMaxAscii) {
+    size_t start = i;
+    unsigned char c = static_cast<unsigned char>(text[i]);
+    size_t char_len = Utf8CharLen(c);
+    i += char_len;
+    chunks.push_back(text.substr(start, char_len));
+    return;
+  }
+
+  if (!std::isspace(static_cast<unsigned char>(text[i]))) {
+    size_t start = i;
+    while (i < n && !std::isspace(static_cast<unsigned char>(text[i])) &&
+           !IsAlpha(static_cast<unsigned char>(text[i])) && !IsDigit(static_cast<unsigned char>(text[i])) &&
+           static_cast<unsigned char>(text[i]) <= kMaxAscii)
+      i++;
+    if (i > start) {
+      chunks.push_back(text.substr(start, i - start));
+    } else {
+      chunks.push_back(text.substr(i, 1));
+      i++;
+    }
+    return;
+  }
+
+  // Byte-level BPE represents every input byte, including non-space
+  // whitespace.  Keep it as a chunk so ChatML line breaks and tabs reach
+  // the byte encoder instead of being silently discarded.
+  chunks.push_back(text.substr(i, 1));
+  i++;
 }
 
 std::vector<std::string> BPECodec::ApplyBPE(const std::string &token) {

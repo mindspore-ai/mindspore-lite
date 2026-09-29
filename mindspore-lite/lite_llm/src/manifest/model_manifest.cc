@@ -17,9 +17,7 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cerrno>
 #include <cmath>
-#include <cstdlib>
 #include <fstream>
 #include <limits>
 #include <map>
@@ -354,16 +352,20 @@ class JsonParser {
       SetError(error, "number too long");
       return false;
     }
-    errno = 0;
-    char *end = nullptr;
-    const double value = std::strtod(token.c_str(), &end);
-    if (errno != 0 || end == token.c_str() || *end != '\0') {
-      SetError(error, "invalid number");
+    try {
+      std::size_t pos = 0;
+      const double value = std::stod(token, &pos);
+      if (pos != token.size()) {
+        SetError(error, "invalid number");
+        return false;
+      }
+      out->type = JsonValue::Type::kNumber;
+      out->number_value = value;
+      return true;
+    } catch (const std::exception &e) {
+      SetError(error, std::string("invalid number: ") + e.what());
       return false;
     }
-    out->type = JsonValue::Type::kNumber;
-    out->number_value = value;
-    return true;
   }
 
   std::string text_;

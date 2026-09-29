@@ -23,8 +23,11 @@ inputs, and (b) decode it back to the expected metadata/resources.
 import importlib.util
 import json
 import os
+import re
 import struct
 import tempfile
+
+import pytest
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(TESTS_DIR, "..", "data")
@@ -109,3 +112,37 @@ def test_golden_unpack():
             with open(os.path.join(tmp, name), "rb") as f:
                 payload = f.read()
             assert payload == _payload(size), name
+
+
+def test_pack_rejects_invalid_resource_names():
+    """pack() refuses path-escaping and overlong resource names up front."""
+    with tempfile.TemporaryDirectory(prefix="golden_badname_") as tmp:
+        path = os.path.join(tmp, "a.bin")
+        with open(path, "wb") as f:
+            f.write(b"x")
+        out = os.path.join(tmp, "o.msl")
+        # Note: duplicate names are NOT among pack()'s v1 validations (the
+        # table allows them; last one wins on unpack) — the enforced name
+        # rules are path safety and the 1..63-byte length budget.
+        with pytest.raises(
+            mp.MslPackError,
+            match=re.escape("resource name has invalid path segment: '../esc.bin'"),
+        ):
+            mp.pack(out, KV, [("../esc.bin", path, mp.ACCESS_READ)])
+        overlong = "q" * mp.NAME_MAX
+        expected = f"resource name must be 1..{mp.NAME_MAX - 1} bytes: {overlong!r}"
+        with pytest.raises(mp.MslPackError, match=re.escape(expected)):
+            mp.pack(out, KV, [(overlong, path, mp.ACCESS_READ)])
+
+
+def test_pack_rejects_invalid_access_mode():
+    """pack() refuses resource access modes outside {0 mmap, 1 read}."""
+    with tempfile.TemporaryDirectory(prefix="golden_access_") as tmp:
+        path = os.path.join(tmp, "x.omc")
+        with open(path, "wb") as f:
+            f.write(b"omc")
+        with pytest.raises(
+            mp.MslPackError,
+            match=re.escape("invalid access mode 7 for 'npu_offline/x.omc'"),
+        ):
+            mp.pack(os.path.join(tmp, "o.msl"), KV, [("npu_offline/x.omc", path, 7)])

@@ -21,6 +21,8 @@
 #include <sstream>
 #include <vector>
 
+#include "include/securec.h"
+
 namespace mslite_llm {
 
 namespace {
@@ -46,7 +48,9 @@ uint32_t ReadU32(const uint8_t *data, size_t size, size_t &offset) {
     return 0;
   }
   uint32_t v;
-  std::memcpy(&v, data + offset, sizeof(v));
+  if (memcpy_s(&v, sizeof(v), data + offset, sizeof(v)) != EOK) {
+    return 0;
+  }
   offset += sizeof(uint32_t);
   return v;
 }

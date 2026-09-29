@@ -43,6 +43,8 @@ import os
 import shutil
 import sys
 import tempfile
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 # Register the export-tree top-level packages by content so ``models.*`` /
 # ``utils.*`` resolve without mutating sys.path.  Unconditional registration
@@ -72,7 +74,7 @@ from models.qwen3.qwen3_gguf_loader import gguf_loader as qwen3_gguf_loader  # n
 from models.minicpm.minicpm_exporter import export_minicpm  # noqa: E402
 from models.minicpm.minicpm_gguf_loader import gguf_loader as minicpm_gguf_loader  # noqa: E402
 from utils.omc_compiler import compile_omc, resolve_omg  # noqa: E402
-from utils.msl_pack import build_single_file_msl  # noqa: E402
+from utils.msl_pack import SingleFileMslRequest, build_single_file_msl  # noqa: E402
 from utils.export_quant import QuantizationConfig  # noqa: E402
 from utils.export_tokenizer import export_tokenizer  # noqa: E402
 
@@ -208,15 +210,21 @@ def detect_model_type(model):
     return key
 
 
-def run_pipeline(args, work_dir):
-    """Execute the full export pipeline inside ``work_dir``. Returns the .msl path."""
-    model_kind = detect_model_kind(args.model)
-    model_type = detect_model_type(args.model)
-    logger.info("model kind: %s (%s), type: %s", model_kind, args.model, model_type)
-    mt = MODEL_TYPES[model_type]
-    use_external_weights = bool(mt.get("external_weights", False))
+@dataclass
+class StepPaths:
+    """Artifact paths and parsed metadata flowing between pipeline steps."""
 
-    # ── Step 1: skeleton export (HF/GGUF -> ONNX + assets) ────────────────
+    onnx_path: str = ""
+    embedding_bin: str = ""
+    embedding_quant: Optional[str] = None
+    omc_path: str = ""
+    architecture: Optional[Dict[str, Any]] = None
+    vocab_path: str = ""
+    generation_policy: Optional[Dict[str, Any]] = None
+
+
+def _export_skeleton(args, mt, work_dir, model_kind, paths):
+    """Step 1: skeleton export (HF/GGUF -> ONNX + assets), filling ``paths``."""
     if model_kind == "gguf":
         # Skeleton from GGUF (transformers dequantizes for the graph), weights
         # quantized to W4A16 placeholders; real Q4_0 weights injected in step 2.
@@ -233,18 +241,18 @@ def run_pipeline(args, work_dir):
         quant_onnx = os.path.join(work_dir, mt["quant_name"])
         if not os.path.exists(quant_onnx):
             raise RuntimeError(f"expected quantized skeleton not produced: {quant_onnx}")
-        onnx_path = os.path.join(work_dir, mt["gguf_name"])
-        embedding_bin = os.path.join(work_dir, "embedding_weight.bin")
+        paths.onnx_path = os.path.join(work_dir, mt["gguf_name"])
+        paths.embedding_bin = os.path.join(work_dir, "embedding_weight.bin")
         mt["gguf_loader"](
             gguf_path=args.model,
             onnx_input_path=quant_onnx,
-            onnx_output_path=onnx_path,
-            embedding_weight_save_path=embedding_bin,
+            onnx_output_path=paths.onnx_path,
+            embedding_weight_save_path=paths.embedding_bin,
             layers=mt["layers"],
             embedding_quantize_config=GGUF_QUANT,
             decoder_quantize_config=GGUF_QUANT,
         )
-        embedding_quant = GGUF_QUANT
+        paths.embedding_quant = GGUF_QUANT
     else:
         mt["exporter"](
             model_dir=args.model,
@@ -256,71 +264,100 @@ def run_pipeline(args, work_dir):
             layers=mt["layers"],
             model_name=mt["model_name"],
         )
-        onnx_path = os.path.join(work_dir, mt["onnx_name"])
-        embedding_bin = os.path.join(work_dir, "embedding.bin")
-        embedding_quant = None
+        paths.onnx_path = os.path.join(work_dir, mt["onnx_name"])
+        paths.embedding_bin = os.path.join(work_dir, "embedding.bin")
+        paths.embedding_quant = None
 
-    # ── Step 2: omg compile (ONNX -> .omc, unconditional) ─────────────────
+
+def _compile_omc(args, work_dir, use_external_weights, paths):
+    """Step 2: omg compile (ONNX -> .omc, unconditional), filling ``paths``."""
     arch_path = os.path.join(work_dir, "architecture.json")
     with open(arch_path, encoding="utf-8") as f:
-        architecture = json.load(f)
+        paths.architecture = json.load(f)
 
-    omc_path = compile_omc(
-        onnx_path=onnx_path,
-        config=architecture,
+    paths.omc_path = compile_omc(
+        onnx_path=paths.onnx_path,
+        config=paths.architecture,
         max_seq_len=args.max_length,
         chunk_sizes=(DECODE_GEAR, args.chunk_size),  # decode=1 / prefill=chunk_size
-        embedding_quant=embedding_quant,
+        embedding_quant=paths.embedding_quant,
         omc_path=os.path.join(work_dir, "model"),
         platform=args.target,
         save_external_weights=use_external_weights,
     )
 
-    # ── Step 3: tokenizer -> vocab.bin ────────────────────────────────────
+
+def _export_tokenizer(args, mt, work_dir, paths):
+    """Step 3: tokenizer -> vocab.bin + generation policy, filling ``paths``."""
     # Chat template is pinned per model type (Qwen: canonical ChatML IR;
     # MiniCPM: its own turn format).  Real GGUF metadata templates
     # (tool-call Jinja) are outside the v1 IR subset.
     tokenizer_dir = os.path.join(work_dir, "tokenizer")
-    vocab_path = export_tokenizer(
+    paths.vocab_path = export_tokenizer(
         model_dir=args.model,
         output_dir=tokenizer_dir,
         chat_template=mt.get("chat_template", QWEN_CHAT_TEMPLATE),
     )
     policy_path = os.path.join(tokenizer_dir, "generation_policy.json")
     with open(policy_path, encoding="utf-8") as f:
-        generation_policy = json.load(f)
+        paths.generation_policy = json.load(f)
 
-    # ── Step 4: package into single-file .msl ─────────────────────────────
+
+def _package_msl(args, work_dir, use_external_weights, paths):
+    """Step 4: package every artifact into the single-file .msl."""
     package_name = os.path.splitext(os.path.basename(args.output))[0]
     npu_config = {
         "max_length": args.max_length,
         "chunk_size": args.chunk_size,
-        "embedding_quant": embedding_quant is not None,
+        "embedding_quant": paths.embedding_quant is not None,
         # W4A16 g32 group size (QuantizationConfig derives it from the method).
-        "scale_gp_size": QuantizationConfig(embedding_quant).group_size,
+        "scale_gp_size": QuantizationConfig(paths.embedding_quant).group_size,
     }
-    if embedding_quant == "W4A16":
+    if paths.embedding_quant == "W4A16":
         npu_config["q4_0_weight_layout"] = "q4_0_nzf_compact_phase4"
     external_weight_path = None
     if use_external_weights:
-        external_weight_path = os.path.join(os.path.dirname(omc_path), EXTERNAL_WEIGHT_FILE)
+        external_weight_path = os.path.join(os.path.dirname(paths.omc_path), EXTERNAL_WEIGHT_FILE)
         if not os.path.isfile(external_weight_path):
             raise RuntimeError(f"omg did not produce external weights at {external_weight_path}")
 
-    result = build_single_file_msl(
-        omc_path=omc_path,
-        vocab_path=vocab_path,
-        embedding_path=embedding_bin,
+    return build_single_file_msl(
+        SingleFileMslRequest(
+        omc_path=paths.omc_path,
+        vocab_path=paths.vocab_path,
+        embedding_path=paths.embedding_bin,
         rope_cos=os.path.join(work_dir, "rope_cos.bin"),
         rope_sin=os.path.join(work_dir, "rope_sin.bin"),
         attention_mask=os.path.join(work_dir, "attention_mask.bin"),
-        architecture=architecture,
+        architecture=paths.architecture,
         npu_config=npu_config,
-        generation_policy=generation_policy,
+        generation_policy=paths.generation_policy,
         package_name=package_name,
         output_path=args.output,
         external_weight_path=external_weight_path,
-    )
+        ))
+
+
+def run_pipeline(args, work_dir):
+    """Execute the full export pipeline inside ``work_dir``. Returns the .msl path."""
+    model_kind = detect_model_kind(args.model)
+    model_type = detect_model_type(args.model)
+    logger.info("model kind: %s (%s), type: %s", model_kind, args.model, model_type)
+    mt = MODEL_TYPES[model_type]
+    use_external_weights = bool(mt.get("external_weights", False))
+    paths = StepPaths()
+
+    # ── Step 1: skeleton export (HF/GGUF -> ONNX + assets) ────────────────
+    _export_skeleton(args, mt, work_dir, model_kind, paths)
+
+    # ── Step 2: omg compile (ONNX -> .omc, unconditional) ─────────────────
+    _compile_omc(args, work_dir, use_external_weights, paths)
+
+    # ── Step 3: tokenizer -> vocab.bin ────────────────────────────────────
+    _export_tokenizer(args, mt, work_dir, paths)
+
+    # ── Step 4: package into single-file .msl ─────────────────────────────
+    result = _package_msl(args, work_dir, use_external_weights, paths)
     logger.info("exported %s", result)
     return result
 

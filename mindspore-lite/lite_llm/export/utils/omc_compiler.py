@@ -26,6 +26,7 @@ operator library (``../custom_ops``, see the README appendix) via
 import logging
 import os
 import subprocess
+from dataclasses import dataclass
 
 from utils import ensure_custom_ops
 
@@ -94,11 +95,20 @@ def embedding_weight_elems(vocab_size, hidden_size, quant):
     raise ValueError(f"quant {quant} not supported")
 
 
-def build_omg_command(onnx_path, omc_path, config, max_seq_len, chunk_sizes, embedding_quant,
-                      platform="kirin9020", omg=None, save_external_weights=False):
-    """Build the omg command for a Qwen2.5-0.5B NNRT graph."""
-    if omg is None:
-        omg = resolve_omg()
+@dataclass
+class _OmgInputShape:
+    """Graph-shape knobs resolved from the model config for ``--input_shape``."""
+
+    num_layers: int
+    num_kv_heads: int
+    head_dim: int
+    hidden_size: int
+    max_seq_len: int
+    emb_elems: int
+
+
+def _resolve_omg_input_shape(config, max_seq_len, embedding_quant):
+    """Resolve the omg input-shape knobs (config access order preserved)."""
     vocab_size = config["vocab_size"]
     num_layers = config.get("num_layers", config.get("num_hidden_layers"))
     hidden_size = config["hidden_size"]
@@ -107,16 +117,28 @@ def build_omg_command(onnx_path, omc_path, config, max_seq_len, chunk_sizes, emb
     head_dim = config.get("head_dim") or (hidden_size // num_heads)
 
     emb_elems = embedding_weight_elems(vocab_size, hidden_size, embedding_quant)
+    return _OmgInputShape(num_layers, num_kv_heads, head_dim, hidden_size, max_seq_len, emb_elems)
 
+
+def _format_input_shape(shape):
+    """Render the omg ``--input_shape`` value (fixed inputs + per-layer KV)."""
     parts = ["valid_seq_len:1", "lmhead_idx:1"]
-    parts += [f"rope_cos:1,-1,{head_dim}", f"rope_sin:1,-1,{head_dim}"]
-    parts += [f"inputs_embeds:1,-1,{hidden_size}"]
-    parts += [f"attention_mask:1,1,-1,{max_seq_len}"]
-    parts += [f"embedding_weight:{emb_elems}"]
-    for i in range(num_layers):
-        parts += [f"past_key_{i}:1,{num_kv_heads},{max_seq_len},{head_dim}"]
-        parts += [f"past_val_{i}:1,{num_kv_heads},{max_seq_len},{head_dim}"]
-    input_shape = ";".join(parts)
+    parts += [f"rope_cos:1,-1,{shape.head_dim}", f"rope_sin:1,-1,{shape.head_dim}"]
+    parts += [f"inputs_embeds:1,-1,{shape.hidden_size}"]
+    parts += [f"attention_mask:1,1,-1,{shape.max_seq_len}"]
+    parts += [f"embedding_weight:{shape.emb_elems}"]
+    for i in range(shape.num_layers):
+        parts += [f"past_key_{i}:1,{shape.num_kv_heads},{shape.max_seq_len},{shape.head_dim}"]
+        parts += [f"past_val_{i}:1,{shape.num_kv_heads},{shape.max_seq_len},{shape.head_dim}"]
+    return ";".join(parts)
+
+
+def build_omg_command(onnx_path, omc_path, config, max_seq_len, chunk_sizes, embedding_quant,
+                      platform="kirin9020", omg=None, save_external_weights=False):
+    """Build the omg command for a Qwen2.5-0.5B NNRT graph."""
+    if omg is None:
+        omg = resolve_omg()
+    input_shape = _format_input_shape(_resolve_omg_input_shape(config, max_seq_len, embedding_quant))
 
     dynamic_dims = ";".join(",".join([str(c)] * 4) for c in chunk_sizes)
 

@@ -69,7 +69,7 @@ set(MSLITE_LLM_GTEST_MAIN ${CMAKE_CURRENT_SOURCE_DIR}/ut/gtest_main.cc)
 # add_test name derives from the target ("test_foo" -> "llm_foo").
 function(mslite_llm_add_unit_test target_name source_file)
     add_executable(${target_name} ${source_file} ${MSLITE_LLM_GTEST_MAIN})
-    target_link_libraries(${target_name} PRIVATE mslite_llm mindspore::gtest)
+    target_link_libraries(${target_name} PRIVATE mslite_llm mindspore::gtest securec::securec)
     target_include_directories(${target_name} PRIVATE
         ${MSLITE_LLM_ROOT}/include
         ${MSLITE_LLM_ROOT}/src
@@ -94,7 +94,7 @@ mslite_llm_add_unit_test(test_llm_engine ut/test_llm_engine.cc)
 
 # Golden-file test: embeds the golden package path; no unit-test fixture include.
 add_executable(test_msl_golden ut/test_msl_golden.cc ${MSLITE_LLM_GTEST_MAIN})
-target_link_libraries(test_msl_golden PRIVATE mslite_llm mindspore::gtest)
+target_link_libraries(test_msl_golden PRIVATE mslite_llm mindspore::gtest securec::securec)
 target_include_directories(test_msl_golden PRIVATE ${MSLITE_LLM_ROOT}/src)
 target_compile_definitions(test_msl_golden PRIVATE
     MSL_GOLDEN_FILE="${CMAKE_CURRENT_SOURCE_DIR}/data/golden_v1.msl")
