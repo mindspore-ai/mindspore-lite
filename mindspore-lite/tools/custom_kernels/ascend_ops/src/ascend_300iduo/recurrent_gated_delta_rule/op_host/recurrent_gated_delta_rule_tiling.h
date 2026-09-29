@@ -19,9 +19,9 @@
 
 #include <cstdint>
 
-constexpr uint32_t STRUCT_ALIGNAS = 8;  // tiling-data struct alignment (bytes)
+constexpr uint32_t kTilingDataAlign = 8;  // tiling-data struct alignment (bytes)
 #pragma pack(push, 8)
-struct alignas(STRUCT_ALIGNAS) RecurrentGatedDeltaRuleTilingData {
+struct alignas(kTilingDataAlign) RecurrentGatedDeltaRuleTilingData {
   uint32_t vectorCoreNum;
   uint32_t ubCalSize;
   uint32_t ubRestBytes;

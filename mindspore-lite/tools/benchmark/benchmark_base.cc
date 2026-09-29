@@ -591,7 +591,7 @@ int BenchmarkBase::Init() {
   }
 
   static std::vector<std::string> CPU_BIND_MODE_MAP = {"NO_BIND", "HIGHER_CPU", "MID_CPU"};
-  if (this->flags_->cpu_bind_mode_ >= 1 && this->flags_->cpu_bind_mode_ < 3) {
+  if (this->flags_->cpu_bind_mode_ >= HIGHER_CPU && this->flags_->cpu_bind_mode_ <= MID_CPU) {
     MS_LOG(INFO) << "cpuBindMode = " << CPU_BIND_MODE_MAP[this->flags_->cpu_bind_mode_];
     std::cout << "cpuBindMode = " << CPU_BIND_MODE_MAP[this->flags_->cpu_bind_mode_] << std::endl;
   } else {

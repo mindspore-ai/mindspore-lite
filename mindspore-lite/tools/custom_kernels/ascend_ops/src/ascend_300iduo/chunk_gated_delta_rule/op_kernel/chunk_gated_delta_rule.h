@@ -2130,11 +2130,15 @@ class ChunkGatedDeltaRule {
     }
   }
 
-  // Fixed-shape state update:
-  //   state = exp(g_last) * state + (K * exp(g_last - g))^T @ v_new.
-  // The weighted K^T @ v_new product uses Cube. The 64/80/96 buckets convert the
-  // complete NZ result to contiguous ND and use one wide Vector Add; the 128
-  // bucket retains the segmented fallback.
+  /**
+   * @brief Fixed-shape state update: state = exp(g_last) * state +
+   *        (K * exp(g_last - g))^T @ v_new. The weighted K^T @ v_new product
+   *        uses Cube. The 64/80/96 buckets convert the complete NZ result to
+   *        contiguous ND and use one wide Vector Add; the 128 bucket retains
+   *        the segmented fallback.
+   * @param t_start Start position on the T dimension.
+   * @param qkHead  Q/K head index for this dispatch.
+   */
   __aicore__ inline void ComputeStateUpdateCubeDispatch(int32_t t_start, uint64_t qkHead) {
     if constexpr (kSpecializedDk != 0) {
       ComputeStateUpdateCube<kSpecializedDk, kSpecializedDk>(t_start, qkHead);
