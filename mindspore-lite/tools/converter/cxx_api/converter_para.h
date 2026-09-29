@@ -27,6 +27,7 @@
 #include "tools/converter/adapter/acl/common/acl_types.h"
 #include "tools/converter/micro/coder/config.h"
 #include "src/common/config_infos.h"
+#include "tools/mindir_exporter/shared_weight_store.h"
 
 namespace mindspore {
 enum ParallelSplitType { SplitNo = 0, SplitByUserRatio = 1, SplitByUserAttr = 2 };
@@ -111,6 +112,9 @@ struct ConverterPara {
   std::vector<std::string> variable_node_names;
   std::vector<AbstractBasePtr> variable_node_abstracts;
   FuncGraphPtr update_graph = nullptr;
+  // Set for multi-model (directory) conversion: all models of the batch append their weight
+  // data into one deduplicated external data file, see lite::SharedWeightStore.
+  std::shared_ptr<lite::SharedWeightStore> shared_weight_store = nullptr;
 };
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_TOOLS_CONVERTER_CXX_API_CONVERTER_PARA_H_

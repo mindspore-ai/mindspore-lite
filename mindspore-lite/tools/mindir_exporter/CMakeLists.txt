@@ -22,6 +22,7 @@ add_dependencies(_mindspore_utils_ir_dump_onnx_obj mindir_proto_mid)
 
 add_library(mindir_serializer_mid OBJECT
         ${CMAKE_CURRENT_SOURCE_DIR}/mindir_serializer.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/shared_weight_store.cc
         )
 add_dependencies(mindir_serializer_mid fbs_src fbs_inner_src)
 file(STRINGS "${TOP_DIR}/version.txt" VERSION)

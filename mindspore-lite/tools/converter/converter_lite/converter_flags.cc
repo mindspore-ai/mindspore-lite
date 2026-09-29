@@ -35,9 +35,17 @@ Flags::Flags() {
           "");
   AddFlag(&Flags::modelFile, "modelFile",
           "Input model file. TF: *.pb | TFLITE: *.tflite | CAFFE: *.prototxt | MINDIR: *.mindir | ONNX: *.onnx | "
-          "MSLITE: *.ms | OM: *.om",
+          "MSLITE: *.ms | OM: *.om. For ONNX, it can also be a directory holding \"rank0\" .. \"rankn\" sub "
+          "directories, whose rank numbers must be consecutive and each of which must contain at least one "
+          "*.onnx: every *.onnx under rankN is converted into one "
+          "*.mindir, and the whole batch shares one deduplicated weight file. Entries outside the rankN "
+          "directories are ignored. This requires fmk=ONNX, saveType=MINDIR and optimize=none.",
           "");
-  AddFlag(&Flags::outputFile, "outputFile", "Output model file path.", "");
+  AddFlag(&Flags::outputFile, "outputFile",
+          "Output model file path. When modelFile is a directory, it is the output root directory: a model at "
+          "\"<modelFile>/rankN/<sub>/x.onnx\" is written to \"<outputFile>/rankN/<sub>/x.mindir\", and the shared "
+          "weight file is \"<outputFile>/variables/data_0\".",
+          "");
   AddFlag(&Flags::weightFile, "weightFile", "Input model weight file. Needed when fmk is CAFFE. CAFFE: *.caffemodel",
           "");
   AddFlag(&Flags::inputDataTypeStr, "inputDataType",

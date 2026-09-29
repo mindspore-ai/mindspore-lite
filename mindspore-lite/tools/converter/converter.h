@@ -70,6 +70,9 @@ class ConverterImpl {
   int LoadPluginLib(const std::shared_ptr<ConverterPara> &param);
   int HandleGraphCommon(const std::shared_ptr<ConverterPara> &param, void **model_data, size_t *data_size,
                         bool not_save, bool is_multi_model);
+  int ConvertSharedWeightDir(const std::shared_ptr<ConverterPara> &param, void **model_data, size_t *data_size,
+                             bool not_save);
+  static int CollectOnnxFiles(const std::string &input_dir, std::vector<std::string> *onnx_files);
   int ExecuteMicro(const schema::MetaGraphT *meta_graph, const std::shared_ptr<ConverterPara> &param,
                    bool is_multi_model);
   int UnifyInputShape(const std::shared_ptr<ConverterPara> &param);

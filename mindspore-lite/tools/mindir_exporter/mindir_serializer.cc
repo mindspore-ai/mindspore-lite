@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <fstream>
+#include <sstream>
 #include <set>
 #include <algorithm>
 #include <map>
@@ -25,6 +26,7 @@
 #include "tools/mindir_exporter/export_depend/dump_proto.h"
 #include "src/common/file_utils.h"
 #include "src/common/common.h"
+#include "src/common/string_utils.h"
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/common/graph_util.h"
 #include "utils/file_utils.h"
@@ -43,6 +45,12 @@ namespace {
 constexpr const size_t TOTAL_SAVE = 1024 * 1024 * 1024;
 constexpr const size_t PARA_ROUND = 1024;
 constexpr const int64_t OFFSET = 64;
+
+bool IsSystemLittleEndian() {
+  int check = 0x01;
+  auto address = reinterpret_cast<char *>(&check);
+  return *address == 0x01;
+}
 
 bool DeleteDirRecursively(const std::string &dir_name) {
   DIR *dir = opendir(dir_name.c_str());
@@ -247,7 +255,9 @@ int MindIRSerializer::Save(const std::shared_ptr<ConverterPara> &param, const Fu
     return ret;
   }
 
-  if (save_together_) {
+  if (param->shared_weight_store != nullptr) {
+    ret = SharedWeightSave(param);
+  } else if (save_together_) {
     ret = SaveMindIRTogether(param);
   } else {
     ret = SplitSave(param);
@@ -509,11 +519,7 @@ int MindIRSerializer::ChangeParaDataFile(const std::string &file) {
   return RET_OK;
 }
 
-bool MindIRSerializer::IsSystemLittleEndidan() const {
-  int check = 0x01;
-  auto address = reinterpret_cast<char *>(&check);
-  return *address == 0x01;
-}
+bool MindIRSerializer::IsSystemLittleEndidan() const { return IsSystemLittleEndian(); }
 
 int MindIRSerializer::GetDataFile(const std::string &data_file_name, std::ofstream *fout, int64_t *, int64_t *offset) {
   if (offset == nullptr) {
@@ -637,6 +643,49 @@ int MindIRSerializer::SplitSave(const std::shared_ptr<ConverterPara> &param) {
   return SaveProtoToFile(&model_proto_, split_model_file_name, param);
 }
 
+int MindIRSerializer::SharedWeightSave(const std::shared_ptr<ConverterPara> &param) {
+  auto shared_store = param->shared_weight_store;
+  if (shared_store == nullptr) {
+    MS_LOG(ERROR) << "shared weight store is nullptr.";
+    return RET_ERROR;
+  }
+  // external_data.location is relative to the directory of the mindir itself, so it points from the
+  // mindir to the shared weight file ("../../variables/data_0" for a mindir two levels below the
+  // output root). Keeping it relative keeps the whole output tree relocatable.
+  const auto weight_root = shared_store->RelativeRootPath(save_path_);
+  const std::string location = weight_root == "." ? SharedWeightStore::kSharedWeightLocation
+                                                  : weight_root + "/" + SharedWeightStore::kSharedWeightLocation;
+  // Sort by parameter name to keep a deterministic append order among the models of the batch.
+  std::map<std::string, mind_ir::TensorProto *> proto_map;
+  for (auto &param_proto : *(model_proto_.mutable_graph()->mutable_parameter())) {
+    proto_map.insert({param_proto.name(), &param_proto});
+  }
+  for (const auto &proto : proto_map) {
+    std::string proto_name = proto.first;
+    auto param_proto = proto.second;
+    auto para = GetFgParaAccordingToProtoName(proto_name);
+    if (para == nullptr) {
+      return RET_ERROR;
+    }
+    if (!para->has_default()) {
+      continue;
+    }
+    auto data = para->default_param()->cast<tensor::TensorPtr>();
+    int64_t offset = 0;
+    int64_t length = 0;
+    if (shared_store->OrAllocate(para->name(), data, &offset, &length) != RET_OK) {
+      MS_LOG(ERROR) << "Allocate shared weight for parameter " << proto_name << " failed.";
+      return RET_ERROR;
+    }
+    *(param_proto->mutable_external_data()->mutable_location()) = location;
+    param_proto->mutable_external_data()->set_length(length);
+    param_proto->mutable_external_data()->set_offset(offset);
+    MS_LOG(DEBUG) << "The proto " << proto_name << " shared location:" << location << " length:" << length
+                  << " offset:" << offset;
+  }
+  return SaveProtoToFile(&model_proto_, save_model_path_, param);
+}
+
 int MindIRSerializer::ParserPath(const std::string &output_path) {
   if (!ParserPathAndModelName(output_path, &save_path_, &model_name_)) {
     MS_LOG(ERROR) << "parser save path and model name from output_path failed.";
@@ -736,5 +785,4 @@ int MindIRSerializer::GetBuffAndSize(void **buff, size_t *size) {
   model_proto_.SerializeToArray(*buff, *size);
   return RET_OK;
 }
-
 }  // namespace mindspore::lite
