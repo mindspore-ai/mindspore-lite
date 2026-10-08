@@ -64,14 +64,15 @@ TEST(Sampler, GreedyTieBreak) {
 TEST(Sampler, GreedyArgmaxVectorBoundaries) {
   // Cover vector-lane, vector-group and scalar-tail winners while preserving
   // the first-index tie rule used by std::max_element.
-  auto sampler = MakeSampler(/*temperature=*/0.0f);
+  const float temperature = 0.0f;
+  auto sampler = MakeSampler(temperature);
   std::vector<float> logits(17, -1.0f);
   logits[4] = 2.0f;
   logits[12] = 3.0f;
   logits[16] = 4.0f;
   EXPECT_EQ(sampler.Sample(logits), 16);
 
-  auto tied_sampler = MakeSampler(/*temperature=*/0.0f);
+  auto tied_sampler = MakeSampler(temperature);
   logits[7] = 5.0f;
   logits[15] = 5.0f;
   EXPECT_EQ(tied_sampler.Sample(logits), 7);

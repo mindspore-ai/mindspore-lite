@@ -21,30 +21,14 @@
 #include <vector>
 #include "../llm_types_internal.h"
 
+#include "tokenizer/tokenizer_base.h"
+
 namespace mslite_llm {
 
-class Tokenizer {
- public:
-  virtual ~Tokenizer() = default;
-
-  virtual std::vector<int32_t> Encode(const std::string &text) = 0;
-  virtual std::string Decode(const std::vector<int32_t> &token_ids) = 0;
-  /// Streaming decode: returns only complete UTF-8 characters for a single
-  /// token, buffering any trailing incomplete byte sequence internally.
-  virtual std::string DecodeIncremental(int32_t token_id) = 0;
-  /// Emit any buffered incomplete bytes (call once after the last token).
-  virtual std::string FlushDecode() = 0;
-  /// Whether the tokenizer carries a pinned chat template (export-time IR).
-  virtual bool HasChatTemplate() const = 0;
-  virtual std::string ApplyChatTemplate(const std::vector<MSLlmChatMessage> &messages, bool add_generation_prompt) = 0;
-  virtual const std::vector<int32_t> &SuppressedTokenIds() const = 0;
-  virtual bool IsStopTokenId(int32_t token_id) const = 0;
-};
-
-std::unique_ptr<Tokenizer> CreateTokenizer(const std::string &vocab_path);
+std::unique_ptr<TokenizerBase> CreateTokenizer(const std::string &vocab_path);
 
 /// Create a tokenizer from an in-memory vocab image (single-file .msl entry).
-std::unique_ptr<Tokenizer> CreateTokenizerFromBuffer(const uint8_t *data, size_t size);
+std::unique_ptr<TokenizerBase> CreateTokenizerFromBuffer(const uint8_t *data, size_t size);
 
 }  // namespace mslite_llm
 

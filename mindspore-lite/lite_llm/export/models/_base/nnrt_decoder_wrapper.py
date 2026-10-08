@@ -89,7 +89,8 @@ class NnrtOpSet:
 
         class UnfusedSpecOpSet(NnrtOpSet):
             \"\"\"Spec that lets the NPU compiler fuse Add+Softmax itself.\"\"\"
-            def mask_softmax(self, weights, mask):
+            @staticmethod
+            def mask_softmax(weights, mask):
                 return (weights + mask).softmax(dim=-1)
 
     Coupling note: the ONNX postprocess pass ``fuse_add_rmsnorm``
@@ -99,11 +100,13 @@ class NnrtOpSet:
     fusion passes consistent (skip or extend them accordingly).
     """
 
-    def rope(self, query, key, cos, sin):
+    @staticmethod
+    def rope(query, key, cos, sin):
         """Rotary position embedding on BNSD q/k with [B, S, D] cos/sin tables."""
         return MsRotaryPosEmb.apply(query, key, cos, sin)
 
-    def kv_scatter(self, past, current_pos, current):
+    @staticmethod
+    def kv_scatter(past, current_pos, current):
         """Scatter-update one KV cache tensor (BNSD): ``past[:, :, pos:pos+seq, :] = cur``.
 
         NNRT contract: pure ``MsScatterND`` — the device kernel writes in
@@ -111,19 +114,23 @@ class NnrtOpSet:
         """
         return MsScatterND.apply(past, current_pos, current.to(torch.float16), "BNSD")
 
-    def qk_matmul(self, query, key):
+    @staticmethod
+    def qk_matmul(query, key):
         """Q @ K^T (BNSD, GQA-aware)."""
         return MsGroupMatmul.apply(query, key, True)
 
-    def pv_matmul(self, weights, value):
+    @staticmethod
+    def pv_matmul(weights, value):
         """P @ V (BNSD)."""
         return MsGroupMatmul.apply(weights, value, False)
 
-    def mask_softmax(self, weights, mask):
+    @staticmethod
+    def mask_softmax(weights, mask):
         """Fused (weights + mask).softmax(-1)."""
         return MsAddSoftmax.apply(weights, mask)
 
-    def rmsnorm(self, hidden, weight, eps):
+    @staticmethod
+    def rmsnorm(hidden, weight, eps):
         """RMSNorm over the last dim."""
         return MsRmsNorm.apply(hidden, weight, eps)
 
@@ -146,6 +153,7 @@ class NnrtRmsNorm(nn.Module):
         self.ops = ops
 
     def forward(self, hidden):
+        """Delegate hidden states with the shared HF weight and epsilon to ops.rmsnorm."""
         return self.ops.rmsnorm(hidden, self.weight, self.variance_epsilon)
 
 

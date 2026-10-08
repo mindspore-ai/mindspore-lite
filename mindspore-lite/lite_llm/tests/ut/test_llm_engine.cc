@@ -373,7 +373,8 @@ TEST(Generate, PromptAtNpuLimitReturnsContextOverflowBeforePrefill) {
   // The model architecture supports 64 positions, but this exported NPU model
   // only has resources for 16. Byte-level BPE does not inject BOS, so 16 'a'
   // tokens fill the NPU context and leave no position for generation.
-  auto tm = BuildTestModel(/*npu_max_length=*/16);
+  constexpr int32_t npu_max_length = 16;
+  auto tm = BuildTestModel(npu_max_length);
   ASSERT_NE(tm.handle, nullptr);
   ASSERT_NE(tm.backend, nullptr);
 
@@ -391,7 +392,8 @@ TEST(Generate, NpuContextLimitStopsDecodeWithNoExplicitOutputCap) {
   // The architecture supports 64 positions, while the exported NPU model and
   // its KV cache only support 16. An 8-token prompt therefore has room for
   // exactly 8 generated tokens when max_new_tokens=0.
-  auto tm = BuildTestModel(/*npu_max_length=*/16);
+  constexpr int32_t npu_max_length = 16;
+  auto tm = BuildTestModel(npu_max_length);
   ASSERT_NE(tm.handle, nullptr);
   ASSERT_NE(tm.backend, nullptr);
   SetConfig(tm.handle, 0);
@@ -459,7 +461,8 @@ TEST(StreamGenerate, EosFinishReason) {
 }
 
 TEST(StreamGenerate, PromptAtNpuLimitReturnsContextOverflowWithoutCallback) {
-  auto tm = BuildTestModel(/*npu_max_length=*/16);
+  constexpr int32_t npu_max_length = 16;
+  auto tm = BuildTestModel(npu_max_length);
   ASSERT_NE(tm.handle, nullptr);
   ASSERT_NE(tm.backend, nullptr);
 
@@ -505,7 +508,8 @@ TEST(StreamGenerate, MaxContextLengthFinishReason) {
 }
 
 TEST(StreamGenerate, NpuContextLimitStopsDecodeBeforeLargeOutputCap) {
-  auto tm = BuildTestModel(/*npu_max_length=*/16);
+  constexpr int32_t npu_max_length = 16;
+  auto tm = BuildTestModel(npu_max_length);
   ASSERT_NE(tm.handle, nullptr);
   ASSERT_NE(tm.backend, nullptr);
   SetConfig(tm.handle, 10000);  // Explicit output cap is larger than the NPU context.

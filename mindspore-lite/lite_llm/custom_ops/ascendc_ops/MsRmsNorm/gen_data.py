@@ -20,6 +20,7 @@ Golden 唯一真标杆来源：``torch_custom.ms_rms_norm.MsRmsNorm.apply``（ea
 避免多套参考实现各自漂移。
 """
 
+import importlib.util
 import json
 import logging
 from pathlib import Path
@@ -27,10 +28,15 @@ import sys
 
 import numpy as np
 
-# 仓库根 = ascendc_ops/MsRmsNorm/ 上两级（torch_custom 在仓库根下）
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+# 仓库根 = ascendc_ops/MsRmsNorm/ 上两级;按内容注册 torch_custom 包,不改 sys.path
+_TORCH_CUSTOM_DIR = Path(__file__).resolve().parents[2] / "torch_custom"
+if "torch_custom" not in sys.modules:
+    _spec = importlib.util.spec_from_file_location(
+        "torch_custom", str(_TORCH_CUSTOM_DIR / "__init__.py"), submodule_search_locations=[str(_TORCH_CUSTOM_DIR)]
+    )
+    _torch_custom = importlib.util.module_from_spec(_spec)
+    sys.modules["torch_custom"] = _torch_custom
+    _spec.loader.exec_module(_torch_custom)
 
 logger = logging.getLogger(__name__)
 

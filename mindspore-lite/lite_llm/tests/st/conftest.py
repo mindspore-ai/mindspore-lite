@@ -34,6 +34,7 @@ so a host-only run never attempts NPU inference.
 # pylint: disable=redefined-outer-name,unused-argument  # fixture deps/names
 
 
+import importlib.util
 import os
 import shutil
 import struct
@@ -134,10 +135,11 @@ def export_cli(installed_wheel):  # pylint: disable=unused-argument
 
 @pytest.fixture(scope="session")
 def msl_pack(installed_wheel):  # pylint: disable=unused-argument
-    """utils.msl_pack imported from the installed wheel (guards the artifact)."""
-    sys.path.insert(0, installed_wheel)  # pylint: disable=wrong-import-position
-    from utils import msl_pack  # pylint: disable=import-outside-toplevel
-
+    """msl_pack loaded from the installed wheel by file path (guards the artifact)."""
+    msl_pack_py = os.path.join(installed_wheel, "utils", "msl_pack.py")
+    spec = importlib.util.spec_from_file_location("msl_pack", msl_pack_py)
+    msl_pack = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(msl_pack)
     return msl_pack
 
 

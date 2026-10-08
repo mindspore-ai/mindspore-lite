@@ -20,18 +20,14 @@ template string. The C++ interpreter golden tests (tests/ut/) use the same IR
 bytes embedded in a fixed program.
 """
 
-import sys
-from pathlib import Path
-
 import pytest
 
 jinja2 = pytest.importorskip("jinja2")
 
-_EXPORT_DIR = Path(__file__).resolve().parents[2] / "export"
-sys.path.insert(0, str(_EXPORT_DIR))
-
-# pylint: disable=wrong-import-position  # export/ added to sys.path above
-from utils.export_tokenizer import (  # noqa: E402
+# utils is registered by tests/py/conftest.py before collection; the import
+# must stay below importorskip: utils/export_tokenizer.py imports jinja2 at
+# module load, so a missing jinja2 should skip instead of erroring collection.
+from utils.export_tokenizer import (  # pylint: disable=wrong-import-position
     MAGIC,
     VERSION,
     UnsupportedTemplateError,

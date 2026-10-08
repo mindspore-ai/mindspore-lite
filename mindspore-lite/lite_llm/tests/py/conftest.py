@@ -23,6 +23,7 @@ provisioned golden, if any, wins).  Byte-level correctness is still
 guarded by the committed ``golden_v1.expected.json`` cross-check.
 """
 
+import importlib.util
 import logging
 import os
 import subprocess
@@ -34,6 +35,27 @@ TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(TESTS_DIR, "..", "data")
 GEN_GOLDEN = os.path.join(DATA_DIR, "gen_golden.py")
 GOLDEN_MSL = os.path.join(DATA_DIR, "golden_v1.msl")
+
+# Register the export-tree top-level packages by content so test modules can
+# keep plain ``from utils.x import`` / ``from models.y import`` statements
+# without mutating sys.path (pytest imports this conftest before any test
+# module).  Unconditional registration mirrors the previous sys.path.insert(0,
+# EXPORT_DIR) bootstrap: the source tree wins over any installed copy.
+EXPORT_DIR = os.path.join(TESTS_DIR, "..", "..", "export")
+
+
+def _register_package(name):
+    """Register an export-tree top-level package without touching sys.path."""
+    pkg_dir = os.path.join(EXPORT_DIR, name)
+    spec = importlib.util.spec_from_file_location(name, os.path.join(pkg_dir, "__init__.py"),
+                                                  submodule_search_locations=[pkg_dir])
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+
+
+_register_package("utils")
+_register_package("models")
 
 
 def pytest_sessionstart(session):

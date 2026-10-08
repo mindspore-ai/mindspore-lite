@@ -282,7 +282,6 @@ std::vector<std::string> SentencePieceCodec::ByteFallbackEncode(const std::strin
   while (i < text.size()) {
     unsigned char c = static_cast<unsigned char>(text[i]);
     size_t char_len = Utf8CharLen(c);
-
     if (char_len == 1) {
       std::ostringstream oss;
       oss << "<0x" << std::uppercase << std::hex << std::setw(kHexDigitsPerByte) << std::setfill('0')
@@ -365,7 +364,7 @@ std::vector<std::string> SentencePieceCodec::Encode(const std::string &text) {
 std::string SentencePieceCodec::Decode(const std::vector<std::string> &tokens) {
   std::string result;
   for (const auto &token : tokens) {
-    if (token.size() >= kByteTokenMinLen && token.substr(0, 3) == "<0x" && token.back() == '>') {
+    if (token.size() >= kByteTokenMinLen && token.substr(0, kSpByteTokenPrefixLen) == "<0x" && token.back() == '>') {
       std::string hex_str = token.substr(kSpByteTokenPrefixLen, token.size() - kSpByteTokenPrefixLen - 1);
       try {
         unsigned int byte_val = 0;

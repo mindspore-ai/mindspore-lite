@@ -68,7 +68,7 @@ struct InternalEngine {
   mslite_llm::ModelManifest manifest;
 
   // ── Tokenizer / Sampler ─────────────────────────────────────────────
-  std::unique_ptr<mslite_llm::Tokenizer> tokenizer;
+  std::unique_ptr<mslite_llm::TokenizerBase> tokenizer;
   std::unique_ptr<mslite_llm::Sampler> sampler;
 
   // ── Generation config ───────────────────────────────────────────────

@@ -23,23 +23,19 @@ for the ONNX-graph tests; the config/quant-config tests run without torch/onnx.
 """
 
 import os
-import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-_EXPORT_DIR = Path(__file__).resolve().parents[2] / "export"
-sys.path.insert(0, str(_EXPORT_DIR))
-
-# pylint: disable=wrong-import-position  # export/ added to sys.path above
-from utils.export_quant import QuantizationConfig  # noqa: E402
+# utils is registered by tests/py/conftest.py before collection.
+from utils.export_quant import QuantizationConfig
 
 # onnx is an optional dependency: importorskip must run first so the
 # config-only tests still collect when onnx is absent; the import below
 # therefore intentionally stays after it instead of at the module top.
 onnx = pytest.importorskip("onnx")
-from onnx import TensorProto, helper  # noqa: E402,H2305
+from onnx import TensorProto, helper  # pylint: disable=wrong-import-position  # noqa: E402,H2305
 
 
 def _make_lmhead_graph():
@@ -113,8 +109,8 @@ def test_quantized_lmhead_and_embedding_share_compact_graph_contract():
     initializer = onnx.numpy_helper.from_array(weight, "lm_head.weight")
     original = helper.make_node("MatMul", ["hidden", "lm_head.weight"], ["logits"], name="lm_head/MatMul")
     nodes, initializers = quant_node_4bit_gp32({"hidden": [1, 1, 32]}, original, {initializer.name: initializer})
-    inputs = [helper.make_tensor_value_info(name, TensorProto.FLOAT16, [1]) for name in
-              ("valid_seq_len", "lmhead_idx", "rope_cos", "rope_sin", "hidden", "attention_mask")]
+    input_names = ("valid_seq_len", "lmhead_idx", "rope_cos", "rope_sin", "hidden", "attention_mask")
+    inputs = [helper.make_tensor_value_info(name, TensorProto.FLOAT16, [1]) for name in input_names]
     model = helper.make_model(helper.make_graph(nodes, "quant", inputs, [], initializers))
     payload = onnx.numpy_helper.to_array(initializers[0])
     assert payload.dtype == np.uint8
