@@ -67,9 +67,17 @@ int CropInt8CPUKernel::ReSize() {
   CHECK_NULL_RETURN(input_shape_.data());
   output_shape_ = out_tensor->shape();
   CHECK_NULL_RETURN(output_shape_.data());
+  if (input_shape_.size() != output_shape_.size()) {
+    return RET_ERROR;
+  }
 
   if (CropPadOffset(input_shape_.size(), crop_para_, in_offset_) != RET_OK) {
     MS_LOG(ERROR) << "Pad offset failed.";
+    return RET_ERROR;
+  }
+  if (CropCheckBounds(in_offset_, input_shape_.data(), output_shape_.data(), static_cast<int>(input_shape_.size())) !=
+      RET_OK) {
+    MS_LOG(ERROR) << "Crop bound check failed.";
     return RET_ERROR;
   }
   return RET_OK;

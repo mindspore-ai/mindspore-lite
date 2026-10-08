@@ -18,13 +18,22 @@
 #include "nnacl_c/errorcode.h"
 
 int CropPadOffset(int input_dim, CropParameter *crop_para, int64_t *in_offset) {
+  // in_offset is sized COMM_SHAPE_SIZE by every caller; larger dims would
+  // write past the end of the caller's array.
+  NNACL_CHECK_TRUE_RET(input_dim > 0 && input_dim <= COMM_SHAPE_SIZE, NNACL_ERR);
   int64_t axis = crop_para->axis_;
   int offsets_size = crop_para->offset_size_;
+  if (axis < 0) {
+    axis += input_dim;
+  }
+  if (axis < 0 || axis > input_dim) {
+    return NNACL_ERR;
+  }
   if (offsets_size > 1) {
     NNACL_CHECK_TRUE_RET(axis + offsets_size == input_dim, NNACL_ERR);
   }
   for (int i = 0; i < input_dim; i++) {
-    int crop_offset = 0;
+    int64_t crop_offset = 0;
     if (i >= axis) {
       if (offsets_size == 1) {
         crop_offset = crop_para->offset_[0];
@@ -34,7 +43,22 @@ int CropPadOffset(int input_dim, CropParameter *crop_para, int64_t *in_offset) {
         }
       }
     }
+    if (crop_offset < 0) {
+      return NNACL_ERR;
+    }
     in_offset[i] = crop_offset;
+  }
+  return NNACL_OK;
+}
+
+int CropCheckBounds(const int64_t *in_offset, const int *in_shape, const int *out_shape, int dim) {
+  NNACL_CHECK_NULL_RETURN_ERR(in_offset);
+  NNACL_CHECK_NULL_RETURN_ERR(in_shape);
+  NNACL_CHECK_NULL_RETURN_ERR(out_shape);
+  for (int i = 0; i < dim; i++) {
+    if (in_offset[i] < 0 || out_shape[i] < 0 || in_offset[i] > (int64_t)in_shape[i] - (int64_t)out_shape[i]) {
+      return NNACL_ERR;
+    }
   }
   return NNACL_OK;
 }
