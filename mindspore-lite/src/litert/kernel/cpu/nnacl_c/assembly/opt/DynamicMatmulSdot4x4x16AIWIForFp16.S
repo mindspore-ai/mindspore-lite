@@ -38,19 +38,23 @@
 // x21: act_type -> 0: none, 1:Relu, 3:Relu6
 
 asm_function DynamicMatmulSdot4x4x16AIWIForFp16
+    // Keep sp below the save area for the entire body: AArch64 has no red zone, so an
+    // asynchronous signal frame written at sp would otherwise clobber the saved registers.
     sub sp, sp, #160
-    st1 {v8.4s, v9.4s, v10.4s, v11.4s}, [sp], #64
-    st1 {v12.4s, v13.4s, v14.4s, v15.4s}, [sp], #64
-    stp x19, x20, [sp], #16
-    stp x21, x22, [sp], #16
+    stp q8, q9, [sp, #96]
+    stp q10, q11, [sp, #64]
+    stp q12, q13, [sp, #32]
+    stp q14, q15, [sp]
+    stp x19, x20, [sp, #144]
+    stp x21, x22, [sp, #128]
 
-    ldr x8, [sp]
-    ldr x9, [sp, #8]
-    ldr x10, [sp, #16]
-    ldr x19, [sp, #24]
-    ldr x20, [sp, #32]
-    ldr x21, [sp, #40]
-    ldr x22, [sp, #48]
+    ldr x8, [sp, #160]
+    ldr x9, [sp, #168]
+    ldr x10, [sp, #176]
+    ldr x19, [sp, #184]
+    ldr x20, [sp, #192]
+    ldr x21, [sp, #200]
+    ldr x22, [sp, #208]
 
     dup v16.4s, wzr // dup:Duplicate general-purpose register to vector.
     dup v17.4s, wzr
@@ -779,10 +783,12 @@ Write1:
     st1 {v28.h}[0], [x12]
     b StoreDataEnd
 StoreDataEnd:
-    sub sp, sp, #160
-    ld1 {v8.4s, v9.4s, v10.4s, v11.4s}, [sp], #64
-    ld1 {v12.4s, v13.4s, v14.4s, v15.4s}, [sp], #64
-    ldp x19, x20, [sp], #16
-    ldp x21, x22, [sp], #16
+    ldp x21, x22, [sp, #128]
+    ldp x19, x20, [sp, #144]
+    ldp q14, q15, [sp]
+    ldp q12, q13, [sp, #32]
+    ldp q10, q11, [sp, #64]
+    ldp q8, q9, [sp, #96]
+    add sp, sp, #160
     ret
 #endif

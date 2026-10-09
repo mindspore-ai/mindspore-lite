@@ -42,24 +42,28 @@
 // x28: filter_zp
 
 asm_function MatmulInt8DpOpt
+  // Keep sp below the save area for the entire body: AArch64 has no red zone, so an
+  // asynchronous signal frame written at sp would otherwise clobber the saved registers.
   sub sp, sp, #224
-  st1 {v8.4s, v9.4s, v10.4s, v11.4s}, [sp], #64
-  st1 {v12.4s, v13.4s, v14.4s, v15.4s}, [sp], #64
-  stp x19, x20, [sp], #16
-  stp x21, x22, [sp], #16
-  stp x23, x24, [sp], #16
-  stp x25, x26, [sp], #16
-  stp x27, x28, [sp], #16
-  stp x29, x30, [sp], #16
+  stp q8, q9, [sp, #96]
+  stp q10, q11, [sp, #64]
+  stp q12, q13, [sp, #32]
+  stp q14, q15, [sp]
+  stp x19, x20, [sp, #208]
+  stp x21, x22, [sp, #192]
+  stp x23, x24, [sp, #176]
+  stp x25, x26, [sp, #160]
+  stp x27, x28, [sp, #144]
+  stp x29, x30, [sp, #128]
 
-  ldr w8, [sp]
-  ldr w9, [sp, #8]
-  ldr w10, [sp, #16]
-  ldr x11, [sp, #24]
-  ldr x12, [sp, #32]
-  ldr x13, [sp, #40]
-  ldr x14, [sp, #48]
-  ldr x15, [sp, #56]
+  ldr w8, [sp, #224]
+  ldr w9, [sp, #232]
+  ldr w10, [sp, #240]
+  ldr x11, [sp, #248]
+  ldr x12, [sp, #256]
+  ldr x13, [sp, #264]
+  ldr x14, [sp, #272]
+  ldr x15, [sp, #280]
 
   mov x23, #4
   mul x23, x23, x5 // lhs step
@@ -72,7 +76,7 @@ LoopRow:
     mov x29, x7 // reload bias ptr
     mov x25, x6 // reload input_sum ptr
     mov x27, x2 // reload dst ptr
-    ldr x28, [sp, #64] // reload filter_zp
+    ldr x28, [sp, #288] // reload filter_zp
 
     LoopCol:
         mov x19, x27 // reload dst ptr
@@ -1076,23 +1080,25 @@ LoopRow:
 LoopColEnd:
     subs x3, x3, #4
     ble LoopRowEnd
-    ldr x11, [sp, #24]
-    ldr x12, [sp, #32]
-    ldr x13, [sp, #40]
+    ldr x11, [sp, #248]
+    ldr x12, [sp, #256]
+    ldr x13, [sp, #264]
     add x6, x6, #16
     add x0, x0, x23
     add x2, x2, x24
     b LoopRow
 
 LoopRowEnd:
-  sub sp, sp, #224
-  ld1 {v8.4s, v9.4s, v10.4s, v11.4s}, [sp], #64
-  ld1 {v12.4s, v13.4s, v14.4s, v15.4s}, [sp], #64
-  ldp x19, x20, [sp], #16
-  ldp x21, x22, [sp], #16
-  ldp x23, x24, [sp], #16
-  ldp x25, x26, [sp], #16
-  ldp x27, x28, [sp], #16
-  ldp x29, x30, [sp], #16
+  ldp x29, x30, [sp, #128]
+  ldp x27, x28, [sp, #144]
+  ldp x25, x26, [sp, #160]
+  ldp x23, x24, [sp, #176]
+  ldp x21, x22, [sp, #192]
+  ldp x19, x20, [sp, #208]
+  ldp q14, q15, [sp]
+  ldp q12, q13, [sp, #32]
+  ldp q10, q11, [sp, #64]
+  ldp q8, q9, [sp, #96]
+  add sp, sp, #224
   ret
 #endif
