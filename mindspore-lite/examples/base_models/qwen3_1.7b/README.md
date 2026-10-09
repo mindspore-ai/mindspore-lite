@@ -32,21 +32,16 @@
 | torch          | 2.8.0 |
 | transformers   | 4.51.0 |
 | onnx           | 1.21.0 |
-| onnxruntime    | 1.24.0 |
 | mindspore-lite | 2.8.0 |
 | CANN           | 8.5.0 |
 
 ### 安装命令
 
 ```bash
-pip install torch==2.8.0 transformers==4.51.0 onnx==1.21.0 onnxruntime==1.24.0 mindspore-lite==2.8.0
+pip install torch==2.8.0 transformers==4.51.0 onnx==1.21.0 onnxruntime==1.24.0
 ```
 
-### 验证安装
-
-```bash
-python -c "import torch, transformers, onnx, onnxruntime, mindspore_lite; print('All dependencies installed successfully!')"
-```
+mindspore-lite请到MindSporeLite[官网下载](https://www.mindspore.cn/lite/docs/zh-CN/master/use/downloads.html)
 
 ---
 
@@ -82,7 +77,7 @@ python export_qwen3_1_7b_onnx.py \
 
 | 参数 | 说明 | 默认值 |
 |---|---|---|
-| `--model-id` | HuggingFace 模型路径或本地目录 | `./Qwen3-1.7B` |
+| `--model-id` | [ModelScope模型路径](https://www.modelscope.cn/models/Qwen/Qwen3-1.7B)或本地目录 | `./Qwen3-1.7B` |
 | `--output-dir` | 导出输出目录 | `./qwen3_1_7b_onnx` |
 | `--device` | 导出设备（cpu/cuda） | `cpu` |
 | `--dummy-seq-len` | 导出用 dummy 序列长度 | `8` |
@@ -127,8 +122,9 @@ qwen3_1_7b_onnx/
 ```bash
 cd ./mindspore-lite/examples/base_models/qwen3_1.7b
 
+Convert=mindspore-lite-2.8.0-linux-aarch64/tools/converter/converter/converter_lite
 # Prefill
-./converter_lite \
+$Convert \
   --fmk=ONNX \
   --modelFile=./qwen3_1_7b_onnx/prefill/qwen3_1_7b_llm_prefill.onnx \
   --outputFile=./qwen3_1_7b_onnx/prefill/qwen3_1_7b_llm_prefill \
@@ -138,7 +134,7 @@ cd ./mindspore-lite/examples/base_models/qwen3_1.7b
 
 # Decode（量化启用时，使用 ptq_int8 版本）
 export KEEP_ORIGIN_DTYPE=1
-./converter_lite \
+$Convert \
   --fmk=ONNX \
   --modelFile=./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode_ptq_int8.onnx \
   --outputFile=./qwen3_1_7b_onnx/decode/qwen3_1_7b_llm_decode_ptq_int8 \
@@ -169,6 +165,7 @@ plugin_custom_ops=All
 
 ```ini
 [acl_build_options]
+input_format="ND"
 input_shape="input_ids:1,1;attention_mask:1,512;position_ids:1,1;past_key_cache:28,1,8,512,128;past_value_cache:28,1,8,512,128"
 
 [acl_init_options]
@@ -178,7 +175,7 @@ ge.exec.precision_mode=force_fp32
 plugin_custom_ops=All
 ```
 
-> 注：
+> 说明：
 > - prefill 模型在转换为 MindIR 时会转换为动态分档（dynamicDims），需要在 config 中配置 `ge.dynamicDims`。
 > - `ge.dynamicDims` 的每个分号分隔项，对应一次“动态分档”的实际值；数值个数需与 `input_shape` 中 `-1` 的数量一致。
 > - decode 的 cache 已拆分为 `past_key_cache`/`past_value_cache` 两个输入。
@@ -227,7 +224,7 @@ python infer_qwen3_1_7b_mslite.py \
 ### 性能测试结果
 
 测试模型：Qwen3-1.7B
-测试条件：默认 PTQ INT8 量化 Decode + FP32 Prefill，输入约 128 tokens，输出约 128 tokens
+测试条件：默认 PTQ INT8 量化 Decode + FP32 Prefill，输出约 128 tokens
 测试环境：CANN 8.5.0，MindSpore Lite 2.8.0
 
 | 指标                       | **PTQ INT8 (300I Duo)** | **非量化 FP32 (300I Duo)** | **PTQ INT8 (800I A2)** | **非量化 FP32 (800I A2)** |
