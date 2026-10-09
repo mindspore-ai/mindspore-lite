@@ -31,9 +31,9 @@
 // QuantMatmulW4a8TilingData MUST stay in the global namespace: the CANN tiling
 // macros (REGISTER_TILING_DEFAULT / GET_TILING_DATA) expanded in the kernel
 // entry require a globally-scoped tiling-data type.
-constexpr uint32_t STRUCT_ALIGNAS = 8;  // tiling-data struct alignment (bytes)
+constexpr uint32_t kTilingDataAlign = 8;  // tiling-data struct alignment (bytes)
 #pragma pack(push, 8)
-struct alignas(STRUCT_ALIGNAS) QuantMatmulW4a8TilingData {
+struct alignas(kTilingDataAlign) QuantMatmulW4a8TilingData {
   uint8_t coreNum;
   uint32_t vBaseM;
   uint32_t ubRestBytes;

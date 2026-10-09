@@ -44,6 +44,8 @@
 #include "ATen/Tensor.h"
 #include "c10/util/Optional.h"
 
+namespace lite_boost {
+
 /**
  * @brief NPU implementation of ChunkGatedDeltaRule (ascend910b / ascend_a2 op spec).
  *
@@ -58,5 +60,7 @@ std::tuple<at::Tensor, at::Tensor> ChunkGatedDeltaRuleLiteBoostImplNPU(const at:
                                                                        const at::Tensor &actual_seq_lengths,
                                                                        const c10::optional<at::Tensor> &g,
                                                                        double scale_value);
+
+}  // namespace lite_boost
 
 #endif  // LITE_BOOST_OPS_PLUGIN_CHUNK_GATED_DELTA_RULE_H_
