@@ -36,10 +36,10 @@
 // Tiling-data struct alignment (bytes). Global-scope constant kept beside the
 // struct it parameterises; the struct itself MUST stay global for the CANN
 // tiling macros in this build (see file header).
-constexpr uint64_t STRUCT_ALIGNAS = 8;
+constexpr uint64_t kTilingDataAlign = 8;
 #pragma pack(push, 8)
 // MUST stay global for the CANN tiling macros in this build (see file header).
-struct alignas(STRUCT_ALIGNAS) ChunkGatedDeltaRuleTilingData {
+struct alignas(kTilingDataAlign) ChunkGatedDeltaRuleTilingData {
   int64_t aiCoreNum;
   int64_t t;
   int64_t nk;
