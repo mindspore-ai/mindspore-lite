@@ -429,7 +429,7 @@ if(PLATFORM_ARM64)
                 install(FILES ${BUILD_DIR}/tools/converter/adapter/dpico/libdpico_atc_adapter.so
                         DESTINATION ${CONVERTER_ROOT_DIR}/providers/SD3403 COMPONENT ${RUNTIME_COMPONENT_NAME})
                 if(MSLITE_ENABLE_TOOLS)
-                    install(TARGETS ${BECHCHMARK_NAME} RUNTIME DESTINATION ${BENCHMARK_ROOT_DIR}
+                    install(TARGETS ${BENCHMARK_NAME} RUNTIME DESTINATION ${BENCHMARK_ROOT_DIR}
                             COMPONENT ${RUNTIME_COMPONENT_NAME})
                 endif()
             endif()
@@ -835,7 +835,7 @@ else()
             install(FILES ${BUILD_DIR}/tools/converter/adapter/dpico/libdpico_atc_adapter.so
                     DESTINATION ${CONVERTER_ROOT_DIR}/providers/SD3403 COMPONENT ${RUNTIME_COMPONENT_NAME})
             if(MSLITE_ENABLE_TOOLS)
-                install(TARGETS ${BECHCHMARK_NAME} RUNTIME DESTINATION ${BENCHMARK_ROOT_DIR}
+                install(TARGETS ${BENCHMARK_NAME} RUNTIME DESTINATION ${BENCHMARK_ROOT_DIR}
                         COMPONENT ${RUNTIME_COMPONENT_NAME})
             endif()
         endif()
