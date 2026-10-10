@@ -18,6 +18,10 @@
 "mindspore-lite/mindspore-lite/src/litert/kernel/opencl/cl/"                                               "unreadVariable"
 "mindspore-lite/mindspore-lite/src/litert/kernel/opencl/kernel/"                                           "unreadVariable"
 "mindspore-lite/mindspore-lite/src/train/optimizer/fusion/gru_fusion_pass.cc"                              "stlFindInsert"
+# Standalone C++ headers are parsed as C by the pre-push cppcheck invocation.
+"mindspore-lite/mindspore-lite/src/litert/delegate/npu/npu_manager.h" "syntaxError"
+"mindspore-lite/mindspore-lite/src/litert/delegate/npu/npu_subgraph.h" "syntaxError"
+"mindspore-lite/mindspore-lite/src/litert/delegate/npu/offline_model_kernel.h" "syntaxError"
 
 # test
 "mindspore-lite/mindspore-lite/test/"                                                                      "syntaxError"

@@ -70,11 +70,19 @@ void NPUManager::Reset() {
   for (const auto &model_map : models_) {
     auto model = model_map.second;
     if (!model->is_freed_) {
-      UnmapMmapBuffer(const_cast<void *>(static_cast<const void *>(model->model_buffer_data_->data)),
-                      model->model_buffer_data_->length);
+      if (model->is_cache_buffer_) {
+        // The cache OM is an mmap-backed buffer, release it with munmap.
+        UnmapMmapBuffer(const_cast<void *>(static_cast<const void *>(model->model_buffer_data_->data)),
+                        model->model_buffer_data_->length);
+      } else {
+        // The IR-build OM is a malloc buffer created by CreateModelBuff() and
+        // must be released before data/length are nulled, otherwise the paired
+        // ReleaseModelBuff() degenerates into free(nullptr) and the buffer
+        // leaks (~200MB reserved per subgraph by the DDK default).
+        ir_build.ReleaseModelBuff(*model->model_buffer_data_);
+      }
       model->model_buffer_data_->data = nullptr;
       model->model_buffer_data_->length = 0;
-      ir_build.ReleaseModelBuff(*model->model_buffer_data_);
       model->is_freed_ = true;
     }
     model->model_buffer_data_.reset();
@@ -182,8 +190,8 @@ std::shared_ptr<domi::ModelBufferData> NPUManager::LoadCache(const std::string &
 }
 
 int NPUManager::AddModel(std::shared_ptr<domi::ModelBufferData> model_buffer_data, const std::string &model_name,
-                         int frequency) {
-  auto model = std::make_shared<SubGraphModel>(subgraph_index_, model_name, model_buffer_data);
+                         int frequency, bool is_cache_buffer) {
+  auto model = std::make_shared<SubGraphModel>(subgraph_index_, model_name, model_buffer_data, is_cache_buffer);
   auto desc = std::make_shared<hiai::AiModelDescription>(model_name, frequency, 0, 0, 0);
   model->desc_ = desc;
   models_.insert({model_name, model});
@@ -208,19 +216,13 @@ std::shared_ptr<hiai::AiModelMngerClient> NPUManager::CreateAiModelMngerClient()
 int NPUManager::LoadOMModel() {
   std::vector<std::shared_ptr<hiai::AiModelDescription>> models_desc;
   std::shared_ptr<hiai::AiModelMngerClient> client = nullptr;
-  std::shared_ptr<hiai::AiModelBuilder> mc_builder = nullptr;
-  std::unordered_map<std::shared_ptr<hiai::AiModelBuilder>, hiai::MemBuffer *> builder_buffer_map;
+  // ModelBufferData remains owned by models_ until Reset(), after Load consumes it.
   int total = 0;
   for (const auto &model_map : models_) {
     if (total % MAX_MODEL_NUM == 0) {
       client = CreateAiModelMngerClient();
       if (client == nullptr) {
         MS_LOG(ERROR) << "Create Client failed.";
-        return RET_ERROR;
-      }
-      mc_builder = std::make_shared<hiai::AiModelBuilder>(client);
-      if (mc_builder == nullptr) {
-        MS_LOG(ERROR) << "Create AiModelBuilder failed.";
         return RET_ERROR;
       }
     }
@@ -231,16 +233,10 @@ int NPUManager::LoadOMModel() {
     }
     models_desc.push_back(model->desc_);
 
-    auto buffer = mc_builder->InputMemBufferCreate(model->model_buffer_data_->data, model->model_buffer_data_->length);
-    if (buffer == nullptr) {
-      MS_LOG(ERROR) << "NPU input memory buffer create failed.";
-      return RET_ERROR;
-    }
-    builder_buffer_map.insert({mc_builder, buffer});
-    model->desc_->SetModelBuffer(buffer->GetMemBufferData(), buffer->GetMemBufferSize());
+    model->desc_->SetModelBuffer(model->model_buffer_data_->data, model->model_buffer_data_->length);
     if (models_desc.size() == MAX_MODEL_NUM) {
       auto ret = LoadModel(client, models_desc);
-      if (ret != RET_ERROR) {
+      if (ret != RET_OK) {
         MS_LOG(ERROR) << "Client load model failed.";
         return RET_ERROR;
       }
@@ -257,10 +253,6 @@ int NPUManager::LoadOMModel() {
     models_desc.clear();
   }
 
-  for (auto it : builder_buffer_map) {
-    it.first->MemBufferDestroy(it.second);
-  }
-  builder_buffer_map.clear();
   return RET_OK;
 }
 

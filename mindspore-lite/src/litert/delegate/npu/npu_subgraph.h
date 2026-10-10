@@ -53,7 +53,7 @@ class NPUSubGraph : public kernel::Kernel {
   void UpdateInputMappingRelationShip(const std::vector<size_t> &input_index) { input_relationship_ = input_index; }
 
  private:
-  std::shared_ptr<domi::ModelBufferData> BuildIRModel();
+  std::shared_ptr<domi::ModelBufferData> BuildIRModel(bool *is_om_cache);
 
   int BuildNPUInputOp();
 

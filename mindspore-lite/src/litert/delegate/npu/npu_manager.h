@@ -34,14 +34,19 @@ namespace mindspore::lite {
 
 struct SubGraphModel {
  public:
-  SubGraphModel(int index, std::string model_name, std::shared_ptr<domi::ModelBufferData> model_buffer_data)
-      : index_(index), model_name_(std::move(model_name)), model_buffer_data_(model_buffer_data) {}
+  SubGraphModel(int index, std::string model_name, std::shared_ptr<domi::ModelBufferData> model_buffer_data,
+                bool is_cache_buffer)
+      : index_(index),
+        model_name_(std::move(model_name)),
+        model_buffer_data_(model_buffer_data),
+        is_cache_buffer_(is_cache_buffer) {}
 
   bool is_freed_ = false;
   bool is_loaded_ = false;
   int index_;
   std::string model_name_;
   std::shared_ptr<domi::ModelBufferData> model_buffer_data_;
+  bool is_cache_buffer_ = false;
   std::shared_ptr<hiai::AiModelMngerClient> client_ = nullptr;
   std::shared_ptr<hiai::AiModelDescription> desc_ = nullptr;
 };
@@ -55,7 +60,8 @@ class NPUManager {
   bool IsSupportNPU();
 
   // provide to subgraph to add model.
-  int AddModel(std::shared_ptr<domi::ModelBufferData> model_buffer_data, const std::string &model_name, int frequency);
+  int AddModel(std::shared_ptr<domi::ModelBufferData> model_buffer_data, const std::string &model_name, int frequency,
+               bool is_cache_buffer);
 
   // scheduler to load om model.
   int LoadOMModel();

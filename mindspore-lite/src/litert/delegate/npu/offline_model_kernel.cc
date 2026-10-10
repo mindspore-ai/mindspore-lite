@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <unordered_map>
 #include "litert/cxx_api/tensor/tensor_impl.h"
 #include "include/api/data_type.h"
 #include "src/litert/delegate/npu/offline_model_kernel.h"
@@ -27,7 +26,6 @@ const char kHiaiModelName[] = "Third_Party_Model";
 namespace mindspore {
 OfflineModelKernel::~OfflineModelKernel() {
   model_manager_client_ = nullptr;
-  model_builder_ = nullptr;
   for (auto t : offline_model_inputs_tensors_) {
     t.reset();
   }
@@ -41,11 +39,6 @@ int OfflineModelKernel::Prepare() {
   model_manager_client_ = std::make_shared<hiai::AiModelMngerClient>();
   if (model_manager_client_ == nullptr) {
     MS_LOG(ERROR) << "Alloc AiModelMngerClient failed.";
-    return lite::RET_ERROR;
-  }
-  model_builder_ = std::make_shared<hiai::AiModelBuilder>(model_manager_client_);
-  if (model_builder_ == nullptr) {
-    MS_LOG(ERROR) << "Alloc AiModelBuilder failed.";
     return lite::RET_ERROR;
   }
   auto client_ret = model_manager_client_->Init(nullptr);  // sync mode
@@ -70,14 +63,12 @@ int OfflineModelKernel::BuildHiaiModel(uint8_t *model_data, size_t model_data_le
     MS_LOG(ERROR) << "Current model_data is invalid, please check model file.";
     return lite::RET_ERROR;
   }
-  void *offline_model_data = model_data;
   if (kHiaiFrequencyType == -1 || kHiaiDeviceType == -1) {
     MS_LOG(ERROR) << "Create model description failed. Current kHiaiFrequencyType is :" << kHiaiFrequencyType
                   << ", kHiaiDeviceType:" << kHiaiDeviceType << ".";
     return lite::RET_ERROR;
   }
   std::vector<std::shared_ptr<hiai::AiModelDescription>> model_descs;
-  std::unordered_map<std::shared_ptr<hiai::AiModelBuilder>, hiai::MemBuffer *> builder_buffer_map;
   MS_LOG(INFO) << "Create model description: version [" << model_manager_client_->GetVersion()
                << "], kHiaiFrequencyType is " << kHiaiFrequencyType << ", kHiaiDeviceType is " << kHiaiDeviceType
                << ".";
@@ -88,28 +79,16 @@ int OfflineModelKernel::BuildHiaiModel(uint8_t *model_data, size_t model_data_le
     return lite::RET_ERROR;
   }
   model_descs.push_back(model_desc);
-  auto model_buffer = model_builder_->InputMemBufferCreate(offline_model_data, model_data_length);
-  if (model_buffer == nullptr) {
-    MS_LOG(ERROR) << "Hiai Model Builder input memory buffer create failed, model data size:" << model_data_length;
-    return lite::RET_ERROR;
-  }
-  builder_buffer_map.insert({model_builder_, model_buffer});
-  model_desc->SetModelBuffer(model_buffer->GetMemBufferData(), model_buffer->GetMemBufferSize());
+  // The kernel owns model_data for the duration of Load; avoid the DDK buffer allocation.
+  model_desc->SetModelBuffer(model_data, model_data_length);
   MS_LOG(INFO) << "Hiai Model Builder set offline model buffer success.";
 
-  if (!model_descs.empty()) {
-    auto load_ret = model_manager_client_->Load(model_descs);
-    if (load_ret != hiai::AI_SUCCESS) {
-      for (auto it : builder_buffer_map) {
-        it.first->MemBufferDestroy(it.second);
-      }
-      builder_buffer_map.clear();
-      MS_LOG(ERROR) << "Hiai Client load offline model failed and clear offline model buffer.";
-      return lite::RET_ERROR;
-    }
-    MS_LOG(INFO) << "Hiai Client load offline model success.";
-    model_descs.clear();
+  auto load_ret = model_manager_client_->Load(model_descs);
+  if (load_ret != hiai::AI_SUCCESS) {
+    MS_LOG(ERROR) << "Hiai Client load offline model failed.";
+    return lite::RET_ERROR;
   }
+  MS_LOG(INFO) << "Hiai Client load offline model success.";
   // Init OfflineModel IO tensor
   if (InitHiaiIOTensors() != lite::RET_OK) {
     MS_LOG(ERROR) << "OfflineModelKernel InitHiaiIOTensors failed.";
