@@ -21,10 +21,11 @@
  *
  * Ported from ops-transformer attention/chunk_gated_delta_rule/op_kernel. The one structural
  * change required by this repo's CANN "customize" build: the ChunkGatedDeltaRuleTilingData
- * struct is kept in the GLOBAL namespace. REGISTER_TILING_DEFAULT / GET_TILING_DATA expanded
- * inside the device-kernel entry require a globally-scoped tiling-data type here (a namespace-
- * qualified struct makes the CANN autogen emit <ns>::-qualified tiling symbols that fail to
- * resolve); the upstream ops-transformer module framework does not have this constraint.
+ * struct is wrapped in namespace tiling_detail with a using-declaration that re-exports it
+ * to global scope. REGISTER_TILING_DEFAULT / GET_TILING_DATA expanded inside the device-kernel
+ * entry require a globally-visible tiling-data type here (a namespace-qualified struct makes
+ * the CANN autogen emit <ns>::-qualified tiling symbols that fail to resolve); the upstream
+ * ops-transformer module framework does not have this constraint.
  * ChunkGroup stays in the ChunkGatedDeltaRule namespace (only the kernel classes reference it).
  */
 
@@ -33,12 +34,14 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 
-// Tiling-data struct alignment (bytes). Global-scope constant kept beside the
-// struct it parameterises; the struct itself MUST stay global for the CANN
-// tiling macros in this build (see file header).
+// Tiling-data struct alignment (bytes) and the struct itself are wrapped in
+// namespace tiling_detail to satisfy clangTidy G.INC.11-CPP; the using-declaration
+// below re-exports the type to global scope because the CANN tiling macros
+// (REGISTER_TILING_DEFAULT / GET_TILING_DATA) expanded in the device-kernel entry
+// require a globally-visible tiling-data type (see file header).
+namespace tiling_detail {
 constexpr uint64_t kTilingDataAlign = 8;
 #pragma pack(push, 8)
-// MUST stay global for the CANN tiling macros in this build (see file header).
 struct alignas(kTilingDataAlign) ChunkGatedDeltaRuleTilingData {
   int64_t aiCoreNum;
   int64_t t;
@@ -62,6 +65,8 @@ struct alignas(kTilingDataAlign) ChunkGatedDeltaRuleTilingData {
   int64_t stateStride1;
 };
 #pragma pack(pop)
+}  // namespace tiling_detail
+using tiling_detail::ChunkGatedDeltaRuleTilingData;
 
 namespace ChunkGatedDeltaRule {
 
