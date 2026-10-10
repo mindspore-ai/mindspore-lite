@@ -1178,7 +1178,6 @@ LiteSession::~LiteSession() {
   }
   for (auto *kernel : kernels_) {
     delete kernel;
-    kernel = nullptr;
   }
   CleanupTensors();
   CleanupResources();
@@ -1826,7 +1825,8 @@ mindspore::ModelType lite::LiteSession::LoadModelByBuff(const char *model_buf, c
     return mindspore::ModelType::kUnknownType;
   }
 
-  flatbuffers::Verifier verify((const uint8_t *)model_buf, buf_size, FLATBUFFERS_MAX_DEPTH, FLATBUFFERS_MAX_TABLES);
+  flatbuffers::Verifier verify(reinterpret_cast<const uint8_t *>(model_buf), buf_size, FLATBUFFERS_MAX_DEPTH,
+                               FLATBUFFERS_MAX_TABLES);
   auto version_verify = lite::LiteModel::VersionVerify(&verify);
   if (version_verify != SCHEMA_INVALID) {
     MS_LOG(DEBUG) << "The kMindIR type model buffer is valid mslite model buffer";
@@ -1836,11 +1836,6 @@ mindspore::ModelType lite::LiteSession::LoadModelByBuff(const char *model_buf, c
   }
   MS_LOG(WARNING) << "Invalid mslite model.";
 
-#ifdef RUNTIME_CONVERT
-  *lite_buf = RuntimeConvert(model_buf, buf_size, size, ms_context_);
-#else
-  MS_LOG(WARNING) << "Please enable runtime convert.";
-#endif
 #ifdef ENABLE_CLOUD_FUSION_INFERENCE
   *size = buf_size;
   *lite_buf = const_cast<char *>(model_buf);
