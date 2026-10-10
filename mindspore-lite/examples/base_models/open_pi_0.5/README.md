@@ -60,7 +60,6 @@ PI0.5 Base 采用双 Transformer 架构，模型被拆分为 2 个 ONNX 文件�
 | transformers    | 4.53.2   |
 | safetensors    | 0.7.0   |
 | sentencepiece    | 0.2.1   |
-| numpy          | 2.2.6     |
 | onnx           | 1.20.1   |
 | CANN           | 8.5.0    |
 | mindspore-lite | 2.8.0    |
@@ -71,6 +70,8 @@ PI0.5 Base 采用双 Transformer 架构，模型被拆分为 2 个 ONNX 文件�
 pip install torch==2.12.0 transformers==4.53.2 safetensors==0.7.0 onnx==1.20.1 sentencepiece==0.2.1
 ```
 
+> **说明**：`numpy` 会作为 `transformers` 的依赖被 pip 自动安装，无需单独安装。
+>
 > **注意**：[mindspore-lite](https://www.mindspore.cn/lite/docs/zh-CN/stable/use/downloads.html#2-8-0)和[CANN版本](https://www.hiascend.com/cann)安装包需要从对应的官网上进行下载并安装。
 
 ### 1.3 使能昇腾CANN环境
@@ -87,7 +88,7 @@ source /path/to/Ascend/set_env.sh
 # 下载模型源码
 git clone https://github.com/Physical-Intelligence/openpi
 # 模型权重下载链接
-https://www.modelscope.cn/models/lerobot/pi05_base
+https://www.modelscope.cn/models/lerobot/pi05_base/files
 ```
 
 ---
@@ -109,7 +110,7 @@ python export_pi0.5_onnx.py \
 
 | 参数 | 说明 | 默认值 |
 |------|------|------|
-| `--checkpoint_dir` | 模型权重目录（包含 model.safetensors） | `/patch/to/pi05_base` |
+| `--checkpoint_dir` | 模型权重目录（包含 model.safetensors），权重从 [pi05_base](https://www.modelscope.cn/models/lerobot/pi05_base/files) 下载 | `/path/to/pi05_base` |
 | `--output_dir` | ONNX 输出目录 | `./onnx_output_fp16` |
 
 ### 产出
@@ -209,6 +210,8 @@ ge.exec.modify_mixlist="./configs/op_fp32_for_denoise.json"
 }
 ```
 
+> **注意**：第 5 节的性能数据是基于上述开启 AOE 调优（`aoe_mode`）的配置文件测得的。源码仓中 `./configs/config_for_prefix_encoder.ini` 默认未开启 AOE 调优配置，如需复现该性能数据，请参考上述配置手动添加 AOE 相关配置。
+
 ### 转换命令
 
 使用 `converter_lite` 命令：
@@ -216,7 +219,9 @@ ge.exec.modify_mixlist="./configs/op_fp32_for_denoise.json"
 ```bash
 # 创建mindir_output用于保存转换后的mindir模型
 mkdir mindir_output
-Convert=mindspore-lite-2.8.0-linux-aarch64/tools/converter/converter/converter_lite
+# mindspore-lite 解压根目录，根据实际路径修改
+export MSLITE_HOME=/path/to/mindspore-lite-2.8.0-linux-aarch64
+export Convert=${MSLITE_HOME}/tools/converter/converter/converter_lite
 
 # Prefix Encoder 转换（使用混合精度）
 $Convert --fmk=ONNX \
