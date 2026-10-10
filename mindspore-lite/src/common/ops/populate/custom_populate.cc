@@ -15,6 +15,7 @@
  */
 
 #include <cstddef>
+#include <limits>
 #include <unordered_map>
 #include <vector>
 #include <string>
@@ -35,8 +36,24 @@ using mindspore::schema::PrimitiveType_Custom;
 
 namespace mindspore {
 namespace lite {
+namespace {
+constexpr size_t kSplitParamAttrIndex = 0;
+constexpr size_t kSplitSizesAttrIndex = 1;
+constexpr size_t kSplitReduceConcatAttrNum = 2;
+}  // namespace
+
 bool GetDataFromPrim(void *dst, size_t len, const schema::Custom *custom_prim, size_t index) {
-  auto data_bytes = custom_prim->attr()->Get(index)->data();
+  if (custom_prim == nullptr || custom_prim->attr() == nullptr) {
+    return false;
+  }
+  if (index >= custom_prim->attr()->size()) {
+    return false;
+  }
+  auto attr = custom_prim->attr()->Get(index);
+  if (attr == nullptr || attr->data() == nullptr) {
+    return false;
+  }
+  auto data_bytes = attr->data();
   auto data_size = data_bytes->size();
   if (len < data_size) {
     return false;
@@ -49,9 +66,18 @@ bool GetDataFromPrim(void *dst, size_t len, const schema::Custom *custom_prim, s
   return true;
 }
 
+void DestroySplitReduceConcatParam(OpParameter *parameter) {
+  MS_CHECK_PTR_IF_NULL(parameter);
+  auto param = reinterpret_cast<SplitParameter *>(parameter);
+  if (param->split_sizes_ != nullptr) {
+    free(param->split_sizes_);
+    param->split_sizes_ = nullptr;
+  }
+}
+
 OpParameter *PopulateSplitReduceConcatFusionParam(const schema::Custom *value) {
   MS_CHECK_TRUE_RET(value != nullptr && value->attr() != nullptr, nullptr);
-  if (value->attr()->size() < 1) {
+  if (value->attr()->size() < kSplitReduceConcatAttrNum) {
     return nullptr;
   }
   SplitParameter *param = static_cast<SplitParameter *>(malloc(sizeof(SplitParameter)));
@@ -59,25 +85,56 @@ OpParameter *PopulateSplitReduceConcatFusionParam(const schema::Custom *value) {
     MS_LOG(ERROR) << "malloc SplitParameter failed.";
     return nullptr;
   }
-  if (!GetDataFromPrim(param, sizeof(SplitParameter), value, 0)) {
+  memset(param, 0, sizeof(SplitParameter));
+  if (!GetDataFromPrim(param, sizeof(SplitParameter), value, kSplitParamAttrIndex)) {
     MS_LOG(ERROR) << "Get SplitParameter value From prim fail.";
     free(param);
+    param = nullptr;
+    return nullptr;
+  }
+
+  // attr[0].data is attacker-controlled raw bytes copied over the whole struct;
+  // the OpParameter header (including the destroy_func_ function pointer) must
+  // never survive the copy.
+  param->op_parameter_.destroy_func_ = DestroySplitReduceConcatParam;
+  param->op_parameter_.is_train_session_ = false;
+  param->op_parameter_.is_zero_shape_ = false;
+  param->op_parameter_.name_[0] = '\0';
+  param->op_parameter_.thread_num_ = 0;
+  param->op_parameter_.quant_type_ = 0;
+  if (param->num_split_ <= 0 || param->num_split_ > std::numeric_limits<int>::max() / static_cast<int>(sizeof(int))) {
+    MS_LOG(ERROR) << "The value of param->num_split_ is not correct";
+    free(param);
+    param = nullptr;
     return nullptr;
   }
 
   MS_CHECK_INT_MUL_NOT_OVERFLOW(param->num_split_, static_cast<int>(sizeof(int)), nullptr);
   auto split_sizes_size = static_cast<size_t>(param->num_split_) * sizeof(int);
   MS_CHECK_TRUE_RET(split_sizes_size < MAX_MALLOC_SIZE, nullptr);
+  // A partial attr[1] payload would leave the tail of the malloc'd split_sizes_
+  // uninitialized for the fused kernel; require an exact-size match. (The
+  // online fusion pass always serializes exactly num_split_ * sizeof(int).)
+  auto sizes_attr = value->attr()->Get(kSplitSizesAttrIndex);
+  if (sizes_attr == nullptr || sizes_attr->data() == nullptr ||
+      static_cast<size_t>(sizes_attr->data()->size()) != split_sizes_size) {
+    MS_LOG(ERROR) << "Get split value From prim fail.";
+    free(param);
+    param = nullptr;
+    return nullptr;
+  }
   param->split_sizes_ = reinterpret_cast<int *>(malloc(split_sizes_size));
   if (param->split_sizes_ == nullptr) {
     MS_LOG(ERROR) << "malloc split_sizes_ failed.";
     free(param);
+    param = nullptr;
     return nullptr;
   }
-  if (!GetDataFromPrim(param->split_sizes_, split_sizes_size, value, 1)) {
+  if (!GetDataFromPrim(param->split_sizes_, split_sizes_size, value, kSplitSizesAttrIndex)) {
     MS_LOG(ERROR) << "Get split value From prim fail.";
-    free(param->split_sizes_);
+    DestroySplitReduceConcatParam(reinterpret_cast<OpParameter *>(param));
     free(param);
+    param = nullptr;
     return nullptr;
   }
 
