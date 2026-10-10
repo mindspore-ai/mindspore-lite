@@ -2,7 +2,7 @@
 
 本教程详细介绍如何将 IDEA-Research/grounding-dino-base 模型导出为 ONNX 格式，转换为 MindSpore Lite MindIR 格式，并在 Ascend NPU 上完成端到端推理部署。
 
-Grounding-DINO-Base 是一个开放词汇（open-vocabulary）目标检测模型：输入图像和一段文字描述（如 `"a cat, a remote control"`），输出每个匹配对象的边界框 + 置信度 + 文字标签。模型被整合为单个 ONNX 文件，由三部分组成：
+Grounding-DINO-Base 是一个开放词汇（open-vocabulary）目标检测模型：输入图像和一段文字描述（如 `"a cat. a remote control."`），输出每个匹配对象的边界框 + 置信度 + 文字标签。模型被整合为单个 ONNX 文件，由三部分组成：
 
 1. **视觉分支**：Swin Transformer backbone + 多尺度特征金字塔（FPN），输出 4 个尺度的视觉特征
 2. **文本分支**：BERT 编码器，对输入文字标签进行编码
@@ -189,9 +189,9 @@ python infer_grounding_dino_base_mslite.py \
   --model ./outputs/grounding_dino_base.mindir \
   --model-dir ./grounding-dino-base \
   --image ./sample.jpg \
-  --text "a cat, a remote control" \
-  --threshold 0.25 \
-  --text-threshold 0.25 \
+  --text "a cat. a remote control." \
+  --threshold 0.3 \
+  --text-threshold 0.3 \
   --device-id 0 \
   --warmup 3 \
   --runs 10
@@ -204,9 +204,9 @@ python infer_grounding_dino_base_mslite.py \
 | `--model`           | MindIR 模型路径                     | `./outputs/grounding_dino_base.mindir`               |
 | `--model-dir`       | HuggingFace 权重目录（用于 tokenizer） | `./grounding-dino-base`  |
 | `--image`           | 输入图像路径                          | 必填                                                   |
-| `--text`            | 逗号分隔的候选文字标签                     | `a cat`                                              |
-| `--threshold`       | 检测框置信度阈值                        | `0.25`                                               |
-| `--text-threshold`  | 每个 query 对应 token 的二值化阈值        | `0.25`                                               |
+| `--text`            | 句号分隔的候选文字标签，需要全小写                     | `a cat. a remote control.`                                              |
+| `--threshold`       | 检测框置信度阈值                        | `0.3`                                               |
+| `--text-threshold`  | 每个 query 对应 token 的二值化阈值        | `0.3`                                               |
 | `--device-id`       | Ascend 设备 ID                    | `0`                                                  |
 | `--warmup`          | 预热轮数                            | `2`                                                  |
 | `--runs`            | 计时轮数                            | `5`                                                  |
@@ -217,36 +217,39 @@ python infer_grounding_dino_base_mslite.py \
 
 ```text
 [Atlas 300I Duo | non-fuse(GridSample)]
-[batch 0] detected 6 objects
-  label='a remote control' score=0.3621 box=[39.09, 70.94, 175.85, 116.31]
-  label='a cat' score=0.3757 box=[344.67, 22.33, 636.72, 376.42]
-  label='a remote control' score=0.2980 box=[332.45, 74.37, 370.63, 187.32]
-  label='a remote control' score=0.3365 box=[29.94, 56.88, 184.01, 128.78]
-  label='a cat' score=0.3643 box=[10.26, 51.48, 317.04, 469.04]
-  label='remote' score=0.2515 box=[319.5, 65.69, 383.2, 198.43]
+[batch 0] detected 4 objects
+  label='a cat' score=0.4233 box=[346.02, 22.11, 637.33, 374.83]
+  label='a remote control' score=0.4150 box=[38.18, 69.56, 176.89, 117.68]
+  label='a cat' score=0.4565 box=[10.02, 52.35, 316.92, 472.71]
+  label='a remote control' score=0.3303 box=[331.97, 73.84, 371.71, 187.97]
 Perf:
   warmup: 3 runs: 10
-  preprocess_ms_mean: 102.791
-  inference_ms_mean:  2779.789
-  e2e_ms_mean:        2887.671
+  preprocess_ms_mean: 65.162
+  inference_ms_mean:  2831.678
+  e2e_ms_mean:        2900.572
 
 [Atlas 800I A2 | fuse(MSDA)]
 
-[batch 0] detected 6 objects
-  label='a remote control' score=0.3541 box=[37.45, 69.54, 176.83, 118.03]
-  label='a cat' score=0.3537 box=[340.78, 23.46, 633.63, 383.26]
-  label='a remote control' score=0.3446 box=[332.16, 72.15, 371.9, 188.84]
-  label='a remote control' score=0.3050 box=[30.4, 54.07, 181.06, 131.56]
-  label='a cat' score=0.3175 box=[11.36, 48.95, 317.09, 471.54]
-  label='a remote control' score=0.2939 box=[319.71, 59.61, 389.28, 195.66]
+[batch 0] detected 4 objects
+  label='a remote control' score=0.3961 box=[38.25, 70.23, 176.97, 117.76]
+  label='a cat' score=0.4249 box=[344.11, 22.47, 636.0, 377.73]
+  label='a remote control' score=0.3363 box=[332.25, 74.0, 371.07, 187.91]
+  label='a cat' score=0.4006 box=[11.06, 51.15, 317.05, 471.83]
 Perf:
   warmup: 3 runs: 10
-  preprocess_ms_mean: 70.743
-  inference_ms_mean:  132.648
-  e2e_ms_mean:        209.413
+  preprocess_ms_mean: 70.649
+  inference_ms_mean:  132.231
+  e2e_ms_mean:        208.591
 ```
 
-> 检测出来2 只猫 + 4 个遥控器是因为score设置较低，推理的时候，将--threshold设置为0.3即可。
+> 以上 Atlas 800I A2 推理没有配置确定性计算，推理结果会小幅波动，但不会影响检出结果；如果配置确定性计算之后，推理结果可以稳定下来，不过性能会有较大劣化。配置确定性计算方法，模型转换的config文件acl_init_options选项添加：
+
+  ```bash
+  [acl_init_options]
+  ge.deterministic=1
+  ```
+
+> 以上 Atlas 300I Duo 推理没有配置确定性计算，但推理结果稳定。
 > 所有输入固定为 batch=1、文本长度=256、图像 canvas=800×1333；推理脚本内部完成按比例缩放与 zero-pad，输出 boxes 会按原图 (height, width) 反缩放，直接对应原图坐标。MindSpore Lite 推理脚本为纯 numpy/PIL 实现（无 `import torch`）。性能计时分为三段：**Preprocess**（图像预处理 + 文本 tokenization）、**Inference**（Ascend NPU 前向推理）、**E2E**（包含后处理与脚本框架开销）。
 
 ---
@@ -260,8 +263,8 @@ Perf:
 | 模型   | grounding-dino-base |
 | 图片   | sample.jpg（COCO val2017 000000039769.jpg） |
 | 图像尺寸 | 800 × 1333 |
-| 文本   | "a cat, a remote control" |
-| 推理参数 | threshold=0.25, text-threshold=0.25, device-id=0, warmup=3, runs=10 |
+| 文本   | "a cat. a remote control." |
+| 推理参数 | threshold=0.3, text-threshold=0.3, device-id=0, warmup=3, runs=10 |
 
 ### 5.2 Atlas 300I Duo（non-fuse / GridSample）
 

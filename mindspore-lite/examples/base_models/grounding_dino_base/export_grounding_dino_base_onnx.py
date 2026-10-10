@@ -198,6 +198,51 @@ def _set_precomputed_text_masks(masks, position_ids):
     _PRECOMPUTED_TEXT_MASKS["position_ids"] = position_ids
 
 
+def _patch_sine_position_embedding_elementwise():
+    """Replace the broadcast Div in sine position embeddings with an explicit
+    pre-broadcast (Expand) + element-wise division.
+
+    The Ascend broadcast Div kernel is nondeterministic AND numerically wrong for a
+    ``(1, H, W, 1) / (C,)`` division once ``H * W * C`` is large enough
+    (>= ~5e5, e.g. the backbone position-embedding grids 100x167x128 and
+    50x84x128 of this model): repeated executions read misaligned rows of
+    the broadcast input.  Expanding both operands to ``(bs, H, W, C)`` first
+    makes the division element-wise, whose kernel is deterministic and
+    bitwise-equal to the numpy reference.
+    """
+    from transformers.models.grounding_dino import modeling_grounding_dino as gm
+
+    def new_forward(self, pixel_values, pixel_mask):
+        y_embed = pixel_mask.cumsum(1, dtype=torch.float32)
+        x_embed = pixel_mask.cumsum(2, dtype=torch.float32)
+        eps = 1e-6
+        y_embed = y_embed / (y_embed[:, -1:, :] + eps) * self.scale
+        x_embed = x_embed / (x_embed[:, :, -1:] + eps) * self.scale
+
+        dim_t = torch.arange(self.embedding_dim, dtype=torch.float32,
+                             device=pixel_values.device)
+        dim_t = self.temperature ** (
+            2 * torch.div(dim_t, 2, rounding_mode="floor")
+            / self.embedding_dim)
+
+        # workaround: expand both operands to (bs, H, W, C) so the exported
+        # ONNX contains Expand + element-wise Div instead of a broadcast Div
+        bs, h, w = x_embed.shape[0], x_embed.shape[1], x_embed.shape[2]
+        c = dim_t.shape[0]
+        dim_t_full = dim_t.expand(bs, h, w, c)
+        pos_x = x_embed[:, :, :, None].expand(bs, h, w, c) / dim_t_full
+        pos_y = y_embed[:, :, :, None].expand(bs, h, w, c) / dim_t_full
+
+        pos_x = torch.stack((pos_x[:, :, :, 0::2].sin(),
+                             pos_x[:, :, :, 1::2].cos()), dim=4).flatten(3)
+        pos_y = torch.stack((pos_y[:, :, :, 0::2].sin(),
+                             pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
+        pos = torch.cat((pos_y, pos_x), dim=3).permute(0, 3, 1, 2)
+        return pos
+
+    gm.GroundingDinoSinePositionEmbedding.forward = new_forward
+
+
 def _patch_text_mask_generator():
     """Replace the special-token mask generator with a context lookup."""
     from transformers.models.grounding_dino import modeling_grounding_dino as gm
@@ -216,6 +261,7 @@ def export_onnx(model_dir: str, output_path: str, opset: int = OPSET_VERSION):
         _patch_msda_to_grid_sample()
     else:
         _patch_msda_fusion()
+    _patch_sine_position_embedding_elementwise()
     _patch_text_mask_generator()
     model = AutoModelForZeroShotObjectDetection.from_pretrained(model_dir)
     model.eval()
