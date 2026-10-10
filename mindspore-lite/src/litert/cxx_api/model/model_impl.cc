@@ -60,6 +60,24 @@ constexpr auto kCommonSection = "common";  // support external user configuratio
 constexpr auto kEnablePreInferenceKey = "enable_pre_inference";
 constexpr auto kEnablePreInferenceValue = "true";
 #endif
+bool IsAippConfigured(const std::shared_ptr<Context> &context) {
+#ifdef ENABLE_LITE_ACL
+  if (context == nullptr) {
+    return false;
+  }
+  const auto &device_infos = context->MutableDeviceInfo();
+  return std::any_of(device_infos.begin(), device_infos.end(), [](const auto &device_info) {
+    if (device_info == nullptr || device_info->GetDeviceType() != DeviceType::kAscend) {
+      return false;
+    }
+    auto ascend_info = device_info->template Cast<AscendDeviceInfo>();
+    return ascend_info != nullptr && !ascend_info->GetInsertOpConfigPath().empty();
+  });
+#else
+  return false;
+#endif
+}
+
 }  // namespace
 using mindspore::lite::RET_ERROR;
 using mindspore::lite::RET_OK;
@@ -516,7 +534,6 @@ Status ModelImpl::RunGraphWithTracing() {
       MS_LOG(INFO) << "The num of afterOutputs is empty";
     }
     std::string op_name = call_param.node_name;
-    std::string op_type = call_param.node_type;
     auto arch = call_param.arch;
     auto it = op_start_times.find(op_name);
     if (it != op_start_times.end()) {
@@ -536,6 +553,7 @@ Status ModelImpl::RunGraphWithTracing() {
       } else {
         tid = lite::GetCurrentTid();
       }
+      std::string op_type = call_param.node_type;
       kernel_infos.push_back({op_name, op_type, arch, op_start_time, op_end_time, input_shapes, input_dtypes, tid});
       op_start_times.erase(it);
     }
@@ -610,15 +628,17 @@ Status ModelImpl::Predict(const std::vector<MSTensor> &inputs, std::vector<MSTen
       if (user_input.MutableData() != input->data()) {
         if (input->Size() != user_input.DataSize()) {
           ResetTensorData(old_data, input_tensors);
-#ifndef ENABLE_LITE_ACL
-          MS_LOG(ERROR) << "Tensor " << user_input.Name() << " has wrong data size.";
-          return kLiteInputTensorError;
-#else
-          MS_LOG(WARNING) << "Please check tensor " << user_input.Name()
-                          << " has been modified data size by DVPP method.";
+          // Non-ACL builds intentionally reject all mismatched input sizes.
+          // cppcheck-suppress knownConditionTrueFalse
+          if (!IsAippConfigured(context_)) {
+            MS_LOG(ERROR) << "Tensor " << user_input.Name() << " has wrong data size.";
+            return kLiteInputTensorError;
+          }
+          MS_LOG(WARNING) << "Tensor " << user_input.Name() << " has a different data size with AIPP configured.";
+          // AIPP input size may differ from the model input size; adjust the runtime shape
+          // to match the supplied buffer.
           std::vector<int> truncate_shape = {static_cast<int>(user_input.DataSize())};
           input->set_shape(truncate_shape);
-#endif
         }
         // Mali GPU tensor can't manipulate CPU memory which the user provides.
         // When model input is GPU tensor and user input is NOT GPU data,
