@@ -22,19 +22,25 @@
 
 #include <algorithm>
 #include <cstring>
+
+#include "include/securec.h"
 namespace mslite_llm {
 
 namespace {
 
 uint32_t ReadU32(const uint8_t *p) {
   uint32_t v = 0;
-  std::memcpy(&v, p, sizeof(v));
+  if (memcpy_s(&v, sizeof(v), p, sizeof(v)) != EOK) {
+    return 0;
+  }
   return v;
 }
 
 uint64_t ReadU64(const uint8_t *p) {
   uint64_t v = 0;
-  std::memcpy(&v, p, sizeof(v));
+  if (memcpy_s(&v, sizeof(v), p, sizeof(v)) != EOK) {
+    return 0;
+  }
   return v;
 }
 
@@ -107,6 +113,28 @@ MslPackageReader::~MslPackageReader() {
 }
 
 bool MslPackageReader::Open(const std::string &path, std::string *error_message) {
+  if (!MapFile(path, error_message)) {
+    return false;
+  }
+
+  uint32_t count = 0;
+  uint32_t resource_count = 0;
+  uint32_t alignment = 0;
+  if (!ParseHeader(path, &count, &resource_count, &alignment, error_message)) {
+    return false;
+  }
+
+  // ── KV region: unknown keys are skipped, unknown types rejected ───────
+  size_t pos = msl_format::kHeaderSize;
+  if (!ParseKvRegion(count, &pos, error_message)) {
+    return false;
+  }
+
+  // ── Resource table ─────────────────────────────────────────────────────
+  return ParseResourceTable(resource_count, alignment, &pos, error_message);
+}
+
+bool MslPackageReader::MapFile(const std::string &path, std::string *error_message) {
   fd_ = ::open(path.c_str(), O_RDONLY);
   if (fd_ < 0) {
     if (error_message != nullptr) {
@@ -132,7 +160,11 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
     return false;
   }
   mapped_ = static_cast<uint8_t *>(mapped);
+  return true;
+}
 
+bool MslPackageReader::ParseHeader(const std::string &path, uint32_t *kv_count, uint32_t *resource_count,
+                                   uint32_t *alignment, std::string *error_message) {
   if (std::memcmp(mapped_, msl_format::kMagic, sizeof(msl_format::kMagic)) != 0) {
     if (error_message != nullptr) {
       *error_message = "bad .msl magic (expected .MSL): " + path;
@@ -146,17 +178,19 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
     }
     return false;
   }
-  const uint32_t count = ReadU32(mapped_ + 8);
-  const uint32_t resource_count = ReadU32(mapped_ + 12);
-  const uint32_t alignment = ReadU32(mapped_ + 16);
-  if (alignment == 0) {
+  *kv_count = ReadU32(mapped_ + 8);
+  *resource_count = ReadU32(mapped_ + 12);
+  *alignment = ReadU32(mapped_ + 16);
+  if (*alignment == 0) {
     if (error_message != nullptr) {
       *error_message = "invalid .msl alignment: 0";
     }
     return false;
   }
+  return true;
+}
 
-  // ── KV region: unknown keys are skipped, unknown types rejected ───────
+bool MslPackageReader::ParseKvRegion(uint32_t count, size_t *pos, std::string *error_message) {
   kv_.clear();
   if (count > mapped_size_ / msl_format::kHeaderSize) {
     if (error_message != nullptr) {
@@ -165,28 +199,27 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
     return false;
   }
   kv_.reserve(count);
-  size_t pos = msl_format::kHeaderSize;
   for (uint32_t i = 0; i < count; ++i) {
-    if (pos + msl_format::kU32Size > mapped_size_) {
+    if (*pos + msl_format::kU32Size > mapped_size_) {
       if (error_message != nullptr) {
         *error_message = "KV region truncated at entry " + std::to_string(i);
       }
       return false;
     }
-    const uint32_t key_len = ReadU32(mapped_ + pos);
-    pos += msl_format::kU32Size;
-    if (pos + key_len + msl_format::kKvTypeAndValueLenSize > mapped_size_) {
+    const uint32_t key_len = ReadU32(mapped_ + *pos);
+    *pos += msl_format::kU32Size;
+    if (*pos + key_len + msl_format::kKvTypeAndValueLenSize > mapped_size_) {
       if (error_message != nullptr) {
         *error_message = "KV key truncated at entry " + std::to_string(i);
       }
       return false;
     }
-    std::string key(reinterpret_cast<const char *>(mapped_ + pos), key_len);
-    pos += key_len;
-    const uint32_t type = ReadU32(mapped_ + pos);
-    const uint32_t value_len = ReadU32(mapped_ + pos + msl_format::kU32Size);
-    pos += msl_format::kKvTypeAndValueLenSize;
-    if (pos + value_len > mapped_size_) {
+    std::string key(reinterpret_cast<const char *>(mapped_ + *pos), key_len);
+    *pos += key_len;
+    const uint32_t type = ReadU32(mapped_ + *pos);
+    const uint32_t value_len = ReadU32(mapped_ + *pos + msl_format::kU32Size);
+    *pos += msl_format::kKvTypeAndValueLenSize;
+    if (*pos + value_len > mapped_size_) {
       if (error_message != nullptr) {
         *error_message = "KV value truncated for key \"" + key + "\"";
       }
@@ -195,7 +228,7 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
     MslKvValue kv_item;
     kv_item.key = std::move(key);
     kv_item.type = type;
-    if (!DecodeKv(static_cast<msl_format::KvType>(type), mapped_ + pos, value_len, &kv_item)) {
+    if (!DecodeKv(static_cast<msl_format::KvType>(type), mapped_ + *pos, value_len, &kv_item)) {
       if (error_message != nullptr) {
         *error_message =
           "unknown or malformed KV value type " + std::to_string(type) + " for key \"" + kv_item.key + "\"";
@@ -203,10 +236,13 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
       return false;
     }
     kv_.push_back(std::move(kv_item));
-    pos += value_len;
+    *pos += value_len;
   }
+  return true;
+}
 
-  // ── Resource table ─────────────────────────────────────────────────────
+bool MslPackageReader::ParseResourceTable(uint32_t resource_count, uint32_t alignment, size_t *pos,
+                                          std::string *error_message) {
   entries_.clear();
   if (resource_count > mapped_size_ / msl_format::kEntrySize) {
     if (error_message != nullptr) {
@@ -216,13 +252,13 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
   }
   entries_.reserve(resource_count);
   for (uint32_t i = 0; i < resource_count; ++i) {
-    if (pos + msl_format::kEntrySize > mapped_size_) {
+    if (*pos + msl_format::kEntrySize > mapped_size_) {
       if (error_message != nullptr) {
         *error_message = "resource table overflow";
       }
       return false;
     }
-    const uint8_t *raw = mapped_ + pos;
+    const uint8_t *raw = mapped_ + *pos;
 
     MslEntry entry;
     size_t name_len = 0;
@@ -234,33 +270,43 @@ bool MslPackageReader::Open(const std::string &path, std::string *error_message)
     entry.size = ReadU64(raw + msl_format::kEntrySizePos);
     entry.access = ReadU32(raw + msl_format::kEntryAccessPos);
 
-    if (entry.name.empty()) {
-      if (error_message != nullptr) {
-        *error_message = "empty resource name at index " + std::to_string(i);
-      }
-      return false;
-    }
-    if (entry.access != msl_format::kAccessMmap && entry.access != msl_format::kAccessRead) {
-      if (error_message != nullptr) {
-        *error_message = "invalid access mode " + std::to_string(entry.access) + " for " + entry.name;
-      }
-      return false;
-    }
-    if (entry.offset % alignment != 0) {
-      if (error_message != nullptr) {
-        *error_message = "resource payload not aligned (" + std::to_string(entry.offset) + " % " +
-                         std::to_string(alignment) + "): " + entry.name;
-      }
-      return false;
-    }
-    if (entry.offset > mapped_size_ || entry.size > mapped_size_ - entry.offset) {
-      if (error_message != nullptr) {
-        *error_message = "resource range overflow: " + entry.name;
-      }
+    if (!ValidateResourceEntry(entry, alignment, i, error_message)) {
       return false;
     }
     entries_.push_back(std::move(entry));
-    pos += msl_format::kEntrySize;
+    *pos += msl_format::kEntrySize;
+  }
+  return true;
+}
+
+// Per-entry field checks: non-empty name, known access mode, payload aligned
+// to the header alignment and inside the mapping.
+bool MslPackageReader::ValidateResourceEntry(const MslEntry &entry, uint32_t alignment, uint32_t index,
+                                             std::string *error_message) {
+  if (entry.name.empty()) {
+    if (error_message != nullptr) {
+      *error_message = "empty resource name at index " + std::to_string(index);
+    }
+    return false;
+  }
+  if (entry.access != msl_format::kAccessMmap && entry.access != msl_format::kAccessRead) {
+    if (error_message != nullptr) {
+      *error_message = "invalid access mode " + std::to_string(entry.access) + " for " + entry.name;
+    }
+    return false;
+  }
+  if (entry.offset % alignment != 0) {
+    if (error_message != nullptr) {
+      *error_message = "resource payload not aligned (" + std::to_string(entry.offset) + " % " +
+                       std::to_string(alignment) + "): " + entry.name;
+    }
+    return false;
+  }
+  if (entry.offset > mapped_size_ || entry.size > mapped_size_ - entry.offset) {
+    if (error_message != nullptr) {
+      *error_message = "resource range overflow: " + entry.name;
+    }
+    return false;
   }
   return true;
 }
@@ -362,7 +408,9 @@ bool MslPackageReader::GetKvFloat32(const std::string &key, float *out) const {
   if (kv_item == nullptr || kv_item->type != msl_format::kTypeFloat32 || kv_item->value.size() != sizeof(float)) {
     return false;
   }
-  std::memcpy(out, kv_item->value.data(), sizeof(float));
+  if (memcpy_s(out, sizeof(float), kv_item->value.data(), sizeof(float)) != EOK) {
+    return false;
+  }
   return true;
 }
 

@@ -46,7 +46,8 @@ target_compile_features(mslite_llm PUBLIC cxx_std_17)
 
 # Merge the backend OBJECT libraries (each compiled once, linked into both
 # engines): the list is filled by backend/ and its subdirectories.
-target_link_libraries(mslite_llm PRIVATE ${MSLITE_LLM_BACKENDS})
+# securec supplies memcpy_s/memset_s/snprintf_s (statically linked).
+target_link_libraries(mslite_llm PRIVATE ${MSLITE_LLM_BACKENDS} securec::securec)
 
 # Note: unit tests link against internal C++ classes (MslPackageReader etc.),
 # so the shared library currently exports all symbols; the MSLLM_API-marked
@@ -71,7 +72,7 @@ set_target_properties(mslite_llm_static PROPERTIES
 )
 target_compile_features(mslite_llm_static PUBLIC cxx_std_17)
 
-target_link_libraries(mslite_llm_static PRIVATE ${MSLITE_LLM_BACKENDS})
+target_link_libraries(mslite_llm_static PRIVATE ${MSLITE_LLM_BACKENDS} securec::securec)
 
 target_include_directories(mslite_llm_static PUBLIC
     ${MSLITE_LLM_ROOT}/include

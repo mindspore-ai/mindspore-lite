@@ -31,30 +31,28 @@ require ``trust_remote_code=True`` with a repo that ships its own
 ``modeling_minicpm.py`` (only validated on the 4.5x series).
 """
 
-import json
 import logging
 import os
 from typing import Optional
 
 import numpy as np
-import onnx
 import torch
-from onnxslim import slim
 from torch.onnx import OperatorExportTypes
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-from utils.onnx_postprocess import (
-    _save_onnx,
-    duplicate_shared_initializers,
-    fuse_add_rmsnorm,
-    validate_contract,
+from models._base.export_utils import (
+    NNRT_INPUT_NAMES,
+    ExportArtifacts,
+    NnrtTraceSpec,
+    build_quant_request,
+    collect_kv_names,
+    dump_json,
+    finalize_onnx_graph,
+    make_input_placeholders,
+    prepare_weights_for_compile,
 )
-from utils.export_quant import LiteTurboConfig, ModelConfig, QuantizationConfig
-from utils.export_quant import (
-    apply_quant,
-    apply_shared_weight,
-    quantize_weight_g128_4bit_nz,
-)
+from utils.onnx_postprocess import validate_contract
+from utils.export_quant import LiteTurboConfig, quantize_weight_g128_4bit_nz
 
 from .minicpm_wrapper import MiniCpmNnrtWrapper
 
@@ -140,44 +138,18 @@ class MiniCpmOnnx:
         """Export the ONNX graph (NNRT 7-input + interleaved KV contract)."""
         head_dim = self.model.config.hidden_size // self.model.config.num_attention_heads
 
-        input_names = [
-            "valid_seq_len",
-            "lmhead_idx",
-            "rope_cos",
-            "rope_sin",
-            "inputs_embeds",
-            "attention_mask",
-        ]
-        kv_names = [(f"past_key_{i}", f"past_val_{i}") for i in range(self.num_layers)]
-        kv_names = [name for kv in kv_names for name in kv]
-        input_names = input_names + kv_names
-        out_kv_names = [(f"out_key_{i}", f"out_val_{i}") for i in range(self.num_layers)]
-        out_kv_names = [name for kv in out_kv_names for name in kv]
+        kv_names, out_kv_names = collect_kv_names(self.num_layers)
+        input_names = NNRT_INPUT_NAMES + kv_names
 
-        valid_seq_len = torch.tensor([0], dtype=torch.int32).to(DEVICE)
-        lmhead_idx = torch.tensor([0], dtype=torch.int32).to(DEVICE)
-
-        rope_cos = torch.zeros((1, chunk_size, head_dim), device=DEVICE, dtype=dtype)
-        rope_sin = torch.zeros((1, chunk_size, head_dim), device=DEVICE, dtype=dtype)
-
-        past_key_or_value = torch.zeros(
-            (1, self.num_kv_heads, max_seq_len, head_dim), device=DEVICE, dtype=dtype
+        spec = NnrtTraceSpec(
+            num_layers=self.num_layers,
+            hidden_size=self.hidden_size,
+            num_kv_heads=self.num_kv_heads,
+            head_dim=head_dim,
+            max_seq_len=max_seq_len,
+            chunk_size=chunk_size,
         )
-        past_key_values = [[past_key_or_value] * 2] * self.num_layers
-
-        inputs_embeds = torch.zeros((1, chunk_size, self.hidden_size), device=DEVICE, dtype=dtype)
-        attention_mask = torch.zeros(1, 1, chunk_size, max_seq_len, dtype=dtype)
-
-        inputs = (
-            None,  # input_ids (not an input: embedding lookup is CPU-side)
-            valid_seq_len,
-            lmhead_idx,
-            rope_cos,
-            rope_sin,
-            inputs_embeds,
-            attention_mask,
-            past_key_values,
-        )
+        inputs = make_input_placeholders(spec)
         wrapper = MiniCpmNnrtWrapper(self.model, self.config)
         torch.onnx.export(
             wrapper,
@@ -191,14 +163,7 @@ class MiniCpmOnnx:
             dynamo=False,  # legacy TorchScript exporter: required for Ms* custom symbolic ops
         )
 
-        new_model = slim(model_path, skip_fusion_patterns=["FusionGemm"])
-        _save_onnx(new_model, model_path)
-
-        fuse_add_rmsnorm(model_path, model_path)
-
-        new_model = onnx.load(model_path)
-        duplicate_shared_initializers(new_model)
-        _save_onnx(new_model, model_path)
+        finalize_onnx_graph(model_path)
         logger.info("Export + slim + add-rmsnorm fusion done: %s", model_path)
 
     def embedding_weight_save(self, embedding_weight_save_path=None, embedding_quantize_config=None):
@@ -336,64 +301,39 @@ def export_minicpm(
     exporter.load(model_dir, layers)
     exporter.model_name = model_name
 
-    onnx_path = os.path.join(output_dir, onnx_name)
-    exporter.export(onnx_path, max_seq_len=max_length, chunk_size=chunk_size)
+    artifacts = ExportArtifacts(
+        onnx=os.path.join(output_dir, onnx_name),
+        embedding=os.path.join(output_dir, "embedding_quant.bin" if embedding_quant else "embedding.bin"),
+        rope_cos=os.path.join(output_dir, "rope_cos.bin"),
+        rope_sin=os.path.join(output_dir, "rope_sin.bin"),
+        mask=os.path.join(output_dir, "attention_mask.bin"),
+        config=os.path.join(output_dir, "minicpm_config.json"),
+    )
+    exporter.export(artifacts.onnx, max_seq_len=max_length, chunk_size=chunk_size)
 
-    embedding_quant_config = QuantizationConfig(embedding_quant)
-    decoder_quant_config = QuantizationConfig(decoder_quant)
+    request = build_quant_request(embedding_quant, decoder_quant, max_length, chunk_size)
+    artifacts.onnx = prepare_weights_for_compile(artifacts.onnx, exporter.config, request)
 
-    if embedding_quant_config.is_quant or decoder_quant_config.is_quant:
-        model_config = ModelConfig(
-            max_length=max_length,
-            chunk_size=chunk_size,
-            vocab_size=exporter.config.vocab_size,
-            hidden_size=exporter.config.hidden_size,
-            num_attention_heads=exporter.config.num_attention_heads,
-            num_key_value_heads=exporter.config.num_key_value_heads,
-            eos_id=exporter.config.eos_token_id,
-            embedding_quant=embedding_quant_config,
-            decoder_quant=decoder_quant_config,
-        )
-        path, name = os.path.split(onnx_path)
-        name, ext = os.path.splitext(name)
-        quant_model_path = os.path.join(path, name + "_quant" + ext)
-        apply_quant(onnx_path, quant_model_path, model_config)
-        onnx_path = quant_model_path  # the .omc is compiled from the quantized graph
-    else:
-        model = onnx.load(onnx_path)
-        apply_shared_weight(model)  # inserts embedding_weight input at index 6
-        _save_onnx(model, onnx_path)
+    validate_contract(artifacts.onnx, exporter.num_layers, embedding_quant=request.embedding_quant.is_quant)
 
-    validate_contract(onnx_path, exporter.num_layers, embedding_quant=embedding_quant_config.is_quant)
-
-    config = exporter.build_config(max_length, chunk_size, embedding_quant_config, decoder_quant_config)
+    config = exporter.build_config(max_length, chunk_size, request.embedding_quant, request.decoder_quant)
 
     # Standalone packager-consumable fragments (same content as minicpm_config.json).
-    with open(os.path.join(output_dir, "architecture.json"), "w", encoding="utf-8") as f:
-        json.dump(config["architecture"], f, indent=2)
-    with open(os.path.join(output_dir, "generation_policy.json"), "w", encoding="utf-8") as f:
-        json.dump(config["generation"], f, indent=2)
+    dump_json(os.path.join(output_dir, "architecture.json"), config["architecture"])
+    dump_json(os.path.join(output_dir, "generation_policy.json"), config["generation"])
 
-    embedding_bin = os.path.join(output_dir, "embedding_quant.bin" if embedding_quant else "embedding.bin")
-    exporter.embedding_weight_save(embedding_bin, embedding_quant)
-
-    cos_path = os.path.join(output_dir, "rope_cos.bin")
-    sin_path = os.path.join(output_dir, "rope_sin.bin")
-    exporter.rope_sin_cos_save(cos_path, sin_path, max_length)
-
-    mask_path = os.path.join(output_dir, "attention_mask.bin")
-    exporter.attention_mask_save(mask_path, max_length)
+    exporter.embedding_weight_save(artifacts.embedding, embedding_quant)
+    exporter.rope_sin_cos_save(artifacts.rope_cos, artifacts.rope_sin, max_length)
+    exporter.attention_mask_save(artifacts.mask, max_length)
 
     config["assets"] = {
-        "embedding": os.path.basename(embedding_bin),
-        "rope_sin": os.path.basename(sin_path),
-        "rope_cos": os.path.basename(cos_path),
-        "attention_mask": os.path.basename(mask_path),
+        "embedding": os.path.basename(artifacts.embedding),
+        "rope_sin": os.path.basename(artifacts.rope_sin),
+        "rope_cos": os.path.basename(artifacts.rope_cos),
+        "attention_mask": os.path.basename(artifacts.mask),
     }
-    config["onnx"] = os.path.basename(onnx_path)
+    config["onnx"] = os.path.basename(artifacts.onnx)
 
-    config_path = os.path.join(output_dir, "minicpm_config.json")
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
-    logger.info("MiniCPM export complete. Config: %s", config_path)
-    return config_path
+    dump_json(artifacts.config, config)
+    logger.info("MiniCPM export complete. Config: %s", artifacts.config)
+    return artifacts.config

@@ -21,6 +21,8 @@
 #include <cstring>
 #include <limits>
 
+#include "include/securec.h"
+
 namespace mslite {
 namespace backend {
 namespace nnrt {
@@ -33,7 +35,8 @@ template <typename To, typename From>
 To BitCast(const From &src) {
   static_assert(sizeof(To) == sizeof(From), "BitCast requires equal sizes");
   To dst;
-  std::memcpy(&dst, &src, sizeof(dst));
+  // count == destMax is pinned by the static_assert above, so this cannot fail.
+  (void)memcpy_s(&dst, sizeof(dst), &src, sizeof(dst));
   return dst;
 }
 

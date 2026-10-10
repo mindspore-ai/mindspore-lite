@@ -111,7 +111,7 @@ def test_external_weight_package_is_opt_in(tmp_path, layout, weight_dir):
     external = tmp_path / "SubGraph_0.weight"
     external.write_bytes(b"external-weights")
     embedded = tmp_path / "embedded.msl"
-    msl_pack.build_single_file_msl(output_path=str(embedded), **common)
+    msl_pack.build_single_file_msl(msl_pack.SingleFileMslRequest(output_path=str(embedded), **common))
     embedded_dir = tmp_path / "embedded"
     embedded_kv = msl_pack.unpack(str(embedded), str(embedded_dir))
     assert "npu.om_weight_dir" not in embedded_kv
@@ -119,10 +119,10 @@ def test_external_weight_package_is_opt_in(tmp_path, layout, weight_dir):
     assert embedded_kv.get("npu.q4_0_weight_layout") == layout
 
     split = tmp_path / "split.msl"
-    msl_pack.build_single_file_msl(
+    msl_pack.build_single_file_msl(msl_pack.SingleFileMslRequest(
         output_path=str(split), external_weight_path=str(external),
         external_weight_dir=weight_dir, **common
-    )
+    ))
     split_dir = tmp_path / "split"
     split_kv = msl_pack.unpack(str(split), str(split_dir))
     assert split_kv["npu.om_weight_dir"] == weight_dir

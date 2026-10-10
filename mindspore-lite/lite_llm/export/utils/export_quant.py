@@ -572,14 +572,47 @@ def apply_shared_weight(model, is_quant=False):
     raise ValueError(f"lm_head weight initializer '{weight_name}' not found")
 
 
-def quantize_linear_ops(model, embedding_quant_config, decoder_quant_config):
-    """Quantize decoder Linear weights and the lm_head (tied embedding)."""
-    graph = model.graph
+def _quant_node_by_method(shape_info, origin_node, initializers, quant_config, q2_v):
+    """Dispatch one node to its quant kernel by the configured quant method."""
+    quant_method = quant_config.quant_method
+    if quant_method == "W4A8":
+        return quant_node_4bit(shape_info, origin_node, initializers)
+    if quant_method == "W2A16":
+        return quant_node_2bit(shape_info, origin_node, initializers, q2_v)
+    if quant_method == "W4A16":
+        return quant_node_4bit_gp32(shape_info, origin_node, initializers)
+    raise RuntimeError(f"quant method: {quant_method} not supported")
 
-    shape_info = get_shape_info(graph)
 
-    new_initializers = []
+def _collect_kept_nodes(graph, linear_nodes, lmhead_node, embedding_is_quant):
+    """Nodes kept verbatim: everything except the quantized Linear/lm_head ones."""
     new_nodes = []
+    linear_ids = {id(n) for n in linear_nodes}
+    lmhead_id = id(lmhead_node) if lmhead_node is not None else None
+    for node in graph.node:
+        if id(node) in linear_ids:
+            continue
+        # The original lm_head MatMul is replaced by its MsQuant node when quantized.
+        if lmhead_id is not None and id(node) == lmhead_id and embedding_is_quant:
+            continue
+        new_nodes.append(node)
+    return new_nodes
+
+
+@dataclass
+class _QuantFacts:
+    """Graph facts collected before the linear-quantization pass."""
+
+    shape_info: dict
+    initializers: dict
+    linear_nodes: list
+    lmhead_node: object
+    q2_v: object
+
+
+def _collect_quant_facts(graph, embedding_quant_config, decoder_quant_config):
+    """Collect shape info, MatMul nodes, initializer map and the W2A16 table."""
+    shape_info = get_shape_info(graph)
 
     linear_nodes = []
     lmhead_node = _find_lmhead_matmul(graph)
@@ -597,50 +630,54 @@ def quantize_linear_ops(model, embedding_quant_config, decoder_quant_config):
 
     if lmhead_node is None:
         raise ValueError("lm_head MatMul node not found for quantization")
+    return _QuantFacts(shape_info, initializers, linear_nodes, lmhead_node, q2_v)
+
+
+def _quant_graph(graph, embedding_quant_config, decoder_quant_config):
+    """Quantize the lm_head and every static-weight Linear node.
+
+    Returns the replacement ``(nodes, initializers)``: quant nodes first, then
+    dynamic MatMuls kept verbatim, then every other original node verbatim,
+    then the non-quantized original initializers.
+    """
+    facts = _collect_quant_facts(graph, embedding_quant_config, decoder_quant_config)
+
+    new_nodes = []
+    new_initializers = []
 
     if embedding_quant_config.is_quant:
-        if embedding_quant_config.quant_method == "W4A8":
-            new_node_list, new_initializer_list = quant_node_4bit(shape_info, lmhead_node, initializers)
-        elif embedding_quant_config.quant_method == "W2A16":
-            new_node_list, new_initializer_list = quant_node_2bit(shape_info, lmhead_node, initializers, q2_v)
-        elif embedding_quant_config.quant_method == "W4A16":
-            new_node_list, new_initializer_list = quant_node_4bit_gp32(shape_info, lmhead_node, initializers)
-        else:
-            raise RuntimeError(f"quant method: {embedding_quant_config.quant_method} not supported")
+        new_node_list, new_initializer_list = _quant_node_by_method(
+            facts.shape_info, facts.lmhead_node, facts.initializers,
+            embedding_quant_config, facts.q2_v,
+        )
         new_nodes.extend(new_node_list)
         new_initializers.extend(new_initializer_list)
 
-    for node in linear_nodes:
-        if node.input[1] not in initializers:
+    for node in facts.linear_nodes:
+        if node.input[1] not in facts.initializers:
             # Dynamic MatMul (e.g. attention score products): keep as-is.
             new_nodes.append(node)
             continue
-        if decoder_quant_config.quant_method == "W4A8":
-            new_node_list, new_initializer_list = quant_node_4bit(shape_info, node, initializers)
-        elif decoder_quant_config.quant_method == "W2A16":
-            new_node_list, new_initializer_list = quant_node_2bit(shape_info, node, initializers, q2_v)
-        elif decoder_quant_config.quant_method == "W4A16":
-            new_node_list, new_initializer_list = quant_node_4bit_gp32(shape_info, node, initializers)
-        else:
-            raise RuntimeError(f"quant method: {decoder_quant_config.quant_method} not supported")
+        new_node_list, new_initializer_list = _quant_node_by_method(
+            facts.shape_info, node, facts.initializers, decoder_quant_config, facts.q2_v
+        )
         new_nodes.extend(new_node_list)
         new_initializers.extend(new_initializer_list)
 
-    linear_ids = {id(n) for n in linear_nodes}
-    lmhead_id = id(lmhead_node) if lmhead_node is not None else None
-    for node in graph.node:
-        if id(node) in linear_ids:
-            continue
-        # The original lm_head MatMul is replaced by its MsQuant node when quantized.
-        if lmhead_id is not None and id(node) == lmhead_id and embedding_quant_config.is_quant:
-            continue
-        new_nodes.append(node)
+    new_nodes.extend(
+        _collect_kept_nodes(graph, facts.linear_nodes, facts.lmhead_node,
+                            embedding_quant_config.is_quant)
+    )
 
     for ori_init in graph.initializer:
         is_quanted = any(ori_init.name + "_quant" == new_init.name for new_init in new_initializers)
         if not is_quanted:
             new_initializers.append(ori_init)
+    return new_nodes, new_initializers
 
+
+def _rebuild_quantized_model(model, graph, new_nodes, new_initializers):
+    """Rebuild the model proto around the quantized graph + custom opset import."""
     new_graph = helper.make_graph(
         new_nodes, graph.name, graph.input, graph.output, new_initializers,
         value_info=graph.value_info,
@@ -650,6 +687,15 @@ def quantize_linear_ops(model, embedding_quant_config, decoder_quant_config):
     new_model.graph.CopyFrom(new_graph)
     if not any(opset.domain == "custom" for opset in new_model.opset_import):
         new_model.opset_import.append(helper.make_opsetid("custom", 1))
+    return new_model
+
+
+def quantize_linear_ops(model, embedding_quant_config, decoder_quant_config):
+    """Quantize decoder Linear weights and the lm_head (tied embedding)."""
+    new_nodes, new_initializers = _quant_graph(
+        model.graph, embedding_quant_config, decoder_quant_config
+    )
+    new_model = _rebuild_quantized_model(model, model.graph, new_nodes, new_initializers)
 
     apply_shared_weight(new_model, is_quant=embedding_quant_config.is_quant)
 

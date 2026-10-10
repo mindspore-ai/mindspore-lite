@@ -40,6 +40,10 @@ target_include_directories(mslite_llm_nnrt_backend PRIVATE
     ${MSLITE_LLM_REPO_ROOT}/mindspore-lite/src
 )
 
+# memcpy_s/memset_s/snprintf_s users (executor/kvcache/embedding_dequant) get
+# securec.h from this usage requirement (OBJECT libs accept link lines).
+target_link_libraries(mslite_llm_nnrt_backend PRIVATE securec::securec)
+
 # Register this backend object in the engine-wide backend list (one PARENT_SCOPE
 # hop reaches ../CMakeLists.txt, which forwards it to src/CMakeLists.txt).
 list(APPEND MSLITE_LLM_BACKENDS mslite_llm_nnrt_backend)

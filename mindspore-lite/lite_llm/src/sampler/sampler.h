@@ -46,6 +46,17 @@ class Sampler {
   void ApplyLogitBias(std::vector<float> &logits) const;
 
  private:
+  // Sampling pipeline stages, in Sample() call order: flag computation,
+  // repetition penalty, presence/frequency penalties, top-K and top-P
+  // filtering. All are pure transforms of `work` (they never touch rng_,
+  // so the random stream is consumed only by the final discrete draw).
+  void ComputeSampleFlags(bool *has_repetition_penalty, bool *has_count_penalty, bool *has_temperature_scale,
+                          bool *greedy_mode) const;
+  void ApplyRepetitionPenalty(std::vector<float> &work) const;
+  void ApplyCountPenalties(std::vector<float> &work) const;
+  void ApplyTopKFilter(std::vector<float> &work) const;
+  void ApplyTopPFilter(std::vector<float> &work) const;
+
   MSLlmSamplerStrategy strategy_;
   float temperature_;
   int32_t top_k_;

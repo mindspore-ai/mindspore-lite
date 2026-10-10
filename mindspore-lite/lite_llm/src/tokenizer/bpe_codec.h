@@ -42,6 +42,11 @@ class BPECodec {
   static std::string CodePointToUTF8(uint32_t cp);
   static uint32_t UTF8ToCodePoint(const std::string &s, size_t &pos);
   static std::vector<std::string> PreTokenize(const std::string &text);
+  // PreTokenize dispatch helpers (chunk push order is load-bearing):
+  // contractions ('s/'t/'re/...), space-led tokens, everything else.
+  static bool TryPushContraction(const std::string &text, size_t &i, std::vector<std::string> &chunks);
+  static void PushSpacePrefixed(const std::string &text, size_t &i, std::vector<std::string> &chunks);
+  static void PushStandalone(const std::string &text, size_t &i, std::vector<std::string> &chunks);
   std::vector<std::string> ApplyBPE(const std::string &token);
 
   static bool IsAlpha(unsigned char c);

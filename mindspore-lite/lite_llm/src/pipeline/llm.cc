@@ -45,6 +45,7 @@
 #include "tokenizer/tokenizer.h"
 #include "sampler/sampler.h"
 #include "backend/common/backend.h"
+#include "include/securec.h"
 // Internal Engine
 
 namespace {
@@ -508,7 +509,10 @@ MSLLMStatus MSLLMApplyChatTemplate(MSLLMModelHandle llm_model, const MSLLMChatMe
     return kMSLLM_ERROR_BUFFER_TOO_SMALL;
   }
 
-  std::memcpy(generated_prompt, rendered.c_str(), static_cast<size_t>(needed));
+  if (memcpy_s(generated_prompt, static_cast<size_t>(prompt_size), rendered.c_str(), static_cast<size_t>(needed)) !=
+      EOK) {
+    return kMSLLM_ERROR_BUFFER_TOO_SMALL;
+  }
   return kMSLLM_SUCCESS;
 }
 
@@ -529,7 +533,9 @@ MSLLMStatus MSLLMGenerate(MSLLMModelHandle llm_model, const char *prompt, char *
   }
   int64_t needed = static_cast<int64_t>(output.size()) + 1;
   if (needed < 0 || static_cast<size_t>(needed) > static_cast<size_t>(text_size)) return kMSLLM_ERROR_BUFFER_TOO_SMALL;
-  std::memcpy(generated_text, output.c_str(), static_cast<size_t>(needed));
+  if (memcpy_s(generated_text, static_cast<size_t>(text_size), output.c_str(), static_cast<size_t>(needed)) != EOK) {
+    return kMSLLM_ERROR_BUFFER_TOO_SMALL;
+  }
   return kMSLLM_SUCCESS;
 }
 

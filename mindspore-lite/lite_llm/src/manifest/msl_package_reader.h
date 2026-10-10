@@ -91,6 +91,16 @@ class MslPackageReader {
   bool GetKvStringArray(const std::string &key, std::vector<std::string> *out) const;
 
  private:
+  // Open() pipeline stages, in call order: map the file, validate the fixed
+  // header, walk the KV region, then the resource table. Each stage reports
+  // its own error message and advances the shared byte cursor via *pos.
+  bool MapFile(const std::string &path, std::string *error_message);
+  bool ParseHeader(const std::string &path, uint32_t *kv_count, uint32_t *resource_count, uint32_t *alignment,
+                   std::string *error_message);
+  bool ParseKvRegion(uint32_t count, size_t *pos, std::string *error_message);
+  bool ParseResourceTable(uint32_t resource_count, uint32_t alignment, size_t *pos, std::string *error_message);
+  bool ValidateResourceEntry(const MslEntry &entry, uint32_t alignment, uint32_t index, std::string *error_message);
+
   int fd_ = -1;
   uint8_t *mapped_ = nullptr;  // nullptr == not mapped
   size_t mapped_size_ = 0;

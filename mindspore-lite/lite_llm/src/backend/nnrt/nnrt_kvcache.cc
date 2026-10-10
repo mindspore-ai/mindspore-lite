@@ -20,6 +20,7 @@
 
 #include "backend/nnrt/nnrt_log.h"
 #include "backend/nnrt/nnrt_wrapper.h"
+#include "include/securec.h"
 
 namespace mslite {
 namespace backend {
@@ -105,12 +106,14 @@ void NnrtKvCache::Reset() {
   const auto &api = NNRTWrapper::GetApi();
   for (auto *t : key_tensors_) {
     if (t != nullptr && api.Tensor_GetDataBuffer != nullptr) {
-      std::memset(api.Tensor_GetDataBuffer(t), 0, byte_count_per_layer_);
+      // destMax == count: the ION buffer holds exactly byte_count_per_layer_ bytes
+      // (same shape params as CreateKvTensor); Reset has no failure exit.
+      (void)memset_s(api.Tensor_GetDataBuffer(t), byte_count_per_layer_, 0, byte_count_per_layer_);
     }
   }
   for (auto *t : value_tensors_) {
     if (t != nullptr && api.Tensor_GetDataBuffer != nullptr) {
-      std::memset(api.Tensor_GetDataBuffer(t), 0, byte_count_per_layer_);
+      (void)memset_s(api.Tensor_GetDataBuffer(t), byte_count_per_layer_, 0, byte_count_per_layer_);
     }
   }
 }

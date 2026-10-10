@@ -65,6 +65,7 @@ import logging
 import os
 import struct
 import sys
+from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 MAGIC = b".MSL"
@@ -217,6 +218,51 @@ def validate_resource_name(name: str) -> None:
 
 # ─── pack ──────────────────────────────────────────────────────────────────
 
+def _validate_entries(entries: List[Tuple[str, str, int]]) -> None:
+    """Validate resource names and access modes before packing."""
+    for name, _, access in entries:
+        validate_resource_name(name)
+        if access not in (ACCESS_MMAP, ACCESS_READ):
+            raise MslPackError(f"invalid access mode {access} for {name!r}")
+
+
+def _encode_kv_region(kv: Dict[str, Any]) -> Tuple[int, bytearray]:
+    """Encode the KV metadata dict into its v1 wire region.
+
+    Returns the entry count (for the header) and the serialized region.
+    """
+    kv_entries = []
+    for key, value in kv.items():
+        key_bytes = key.encode("utf-8")
+        value_type = infer_type(value)
+        value_bytes = encode_value(value_type, value)
+        kv_entries.append((key_bytes, value_type, value_bytes))
+    kv_region = bytearray()
+    for key_bytes, value_type, value_bytes in kv_entries:
+        kv_region += struct.pack("<I", len(key_bytes))
+        kv_region += key_bytes
+        kv_region += struct.pack("<II", value_type, len(value_bytes))
+        kv_region += value_bytes
+    return len(kv_entries), kv_region
+
+
+def _layout_resources(entries: List[Tuple[str, str, int]], data_offset: int,
+                      alignment: int) -> Tuple[bytearray, bytearray]:
+    """Serialize the resource table and the aligned data-region payloads."""
+    table = bytearray()
+    payloads = bytearray()
+    file_pos = data_offset
+    for name, path, access in entries:
+        with open(path, "rb") as f:
+            data = f.read()
+        aligned = ((file_pos + alignment - 1) // alignment) * alignment
+        payloads += b"\x00" * (aligned - file_pos)
+        table += _encode_entry(name, aligned, len(data), access)
+        payloads += data
+        file_pos = aligned + len(data)
+    return table, payloads
+
+
 def pack(output_path: str, kv: Dict[str, Any], resources: Iterable[Tuple[str, str, int]],
          alignment: int = DEFAULT_ALIGNMENT) -> str:
     """Write a v1 ``.msl`` file.
@@ -230,42 +276,17 @@ def pack(output_path: str, kv: Dict[str, Any], resources: Iterable[Tuple[str, st
     if alignment <= 0:
         raise MslPackError(f"alignment must be > 0, got {alignment}")
     entries = list(resources)
-    for name, _, access in entries:
-        validate_resource_name(name)
-        if access not in (ACCESS_MMAP, ACCESS_READ):
-            raise MslPackError(f"invalid access mode {access} for {name!r}")
+    _validate_entries(entries)
 
     # Encode the KV region.
-    kv_entries = []
-    for key, value in kv.items():
-        key_bytes = key.encode("utf-8")
-        value_type = infer_type(value)
-        value_bytes = encode_value(value_type, value)
-        kv_entries.append((key_bytes, value_type, value_bytes))
-    kv_region = bytearray()
-    for key_bytes, value_type, value_bytes in kv_entries:
-        kv_region += struct.pack("<I", len(key_bytes))
-        kv_region += key_bytes
-        kv_region += struct.pack("<II", value_type, len(value_bytes))
-        kv_region += value_bytes
+    kv_count, kv_region = _encode_kv_region(kv)
 
     # Layout: header | KV region | resource table | data region.
     table_offset = HEADER_SIZE + len(kv_region)
     data_offset = table_offset + ENTRY_SIZE * len(entries)
 
-    header = struct.pack("<4sIIIII", MAGIC, VERSION, len(kv_entries), len(entries), alignment, 0)
-
-    table = bytearray()
-    payloads = bytearray()
-    file_pos = data_offset
-    for name, path, access in entries:
-        with open(path, "rb") as f:
-            data = f.read()
-        aligned = ((file_pos + alignment - 1) // alignment) * alignment
-        payloads += b"\x00" * (aligned - file_pos)
-        table += _encode_entry(name, aligned, len(data), access)
-        payloads += data
-        file_pos = aligned + len(data)
+    header = struct.pack("<4sIIIII", MAGIC, VERSION, kv_count, len(entries), alignment, 0)
+    table, payloads = _layout_resources(entries, data_offset, alignment)
 
     with open(output_path, "wb") as f:
         f.write(header)
@@ -294,16 +315,11 @@ def unpack(msl_path: str, out_dir: str, emit_kv: Optional[str] = None) -> Dict[s
     return unpack_bytes(data, out_dir, emit_kv)
 
 
-def unpack_bytes(data: bytes, out_dir: str, emit_kv: Optional[str] = None) -> Dict[str, Any]:
-    """Parse an in-memory v1 ``.msl`` buffer, extracting its resources."""
-    if len(data) < HEADER_SIZE or data[:4] != MAGIC:
-        raise MslPackError("not a .msl file (bad magic)")
-    version, kv_count, resource_count, alignment, _ = struct.unpack_from("<IIIII", data, 4)
-    if version != VERSION:
-        raise MslPackError(f"unsupported .msl version {version} (this packer understands {VERSION})")
-    if alignment <= 0:
-        raise MslPackError(f"invalid alignment {alignment}")
+def _parse_kv_region(data: bytes, kv_count: int) -> Tuple[Dict[str, Any], int]:
+    """Parse the KV region starting right after the header.
 
+    Returns the decoded KV dict and the offset just past the region.
+    """
     pos = HEADER_SIZE
     kv: Dict[str, Any] = {}
     for _ in range(kv_count):
@@ -322,29 +338,50 @@ def unpack_bytes(data: bytes, out_dir: str, emit_kv: Optional[str] = None) -> Di
         # Unknown value types are a layout contract violation: reject.
         kv[key] = decode_value(value_type, data[pos:pos + value_len])
         pos += value_len
+    return kv, pos
 
-    table_offset = pos
+
+def _extract_resource(data: bytes, out_dir: str, base: int) -> None:
+    """Validate one resource table entry at ``base`` and write its payload."""
+    name_bytes = data[base:base + NAME_MAX].split(b"\x00", 1)[0]
+    name = name_bytes.decode("utf-8")
+    offset, size, access, _ = struct.unpack_from("<QQII", data, base + NAME_MAX)
+    if offset > len(data) or size > len(data) - offset:
+        raise MslPackError(f"resource {name!r} range out of file bounds")
+    if access not in (ACCESS_MMAP, ACCESS_READ):
+        raise MslPackError(f"resource {name!r} has invalid access mode {access}")
+    payload = data[offset:offset + size]
+    target = os.path.normpath(os.path.join(out_dir, name))
+    if not target.startswith(os.path.normpath(out_dir) + os.sep) and target != os.path.normpath(out_dir):
+        raise MslPackError(f"resource name escapes output dir: {name!r}")
+    parent = os.path.dirname(target)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(target, "wb") as f:
+        f.write(payload)
+
+
+def _extract_resources(data: bytes, out_dir: str, table_offset: int, resource_count: int) -> None:
+    """Validate the resource table and write every payload under ``out_dir``."""
     if table_offset + ENTRY_SIZE * resource_count > len(data):
         raise MslPackError("resource table out of range")
     os.makedirs(out_dir, exist_ok=True)
     for i in range(resource_count):
-        base = table_offset + ENTRY_SIZE * i
-        name_bytes = data[base:base + NAME_MAX].split(b"\x00", 1)[0]
-        name = name_bytes.decode("utf-8")
-        offset, size, access, _ = struct.unpack_from("<QQII", data, base + NAME_MAX)
-        if offset > len(data) or size > len(data) - offset:
-            raise MslPackError(f"resource {name!r} range out of file bounds")
-        if access not in (ACCESS_MMAP, ACCESS_READ):
-            raise MslPackError(f"resource {name!r} has invalid access mode {access}")
-        payload = data[offset:offset + size]
-        target = os.path.normpath(os.path.join(out_dir, name))
-        if not target.startswith(os.path.normpath(out_dir) + os.sep) and target != os.path.normpath(out_dir):
-            raise MslPackError(f"resource name escapes output dir: {name!r}")
-        parent = os.path.dirname(target)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(target, "wb") as f:
-            f.write(payload)
+        _extract_resource(data, out_dir, table_offset + ENTRY_SIZE * i)
+
+
+def unpack_bytes(data: bytes, out_dir: str, emit_kv: Optional[str] = None) -> Dict[str, Any]:
+    """Parse an in-memory v1 ``.msl`` buffer, extracting its resources."""
+    if len(data) < HEADER_SIZE or data[:4] != MAGIC:
+        raise MslPackError("not a .msl file (bad magic)")
+    version, kv_count, resource_count, alignment, _ = struct.unpack_from("<IIIII", data, 4)
+    if version != VERSION:
+        raise MslPackError(f"unsupported .msl version {version} (this packer understands {VERSION})")
+    if alignment <= 0:
+        raise MslPackError(f"invalid alignment {alignment}")
+
+    kv, table_offset = _parse_kv_region(data, kv_count)
+    _extract_resources(data, out_dir, table_offset, resource_count)
 
     if emit_kv is not None:
         with open(emit_kv, "w", encoding="utf-8") as f:
@@ -611,37 +648,53 @@ def build_manifest(package_name, architecture, npu_config, generation_policy, om
     return manifest
 
 
-def build_single_file_msl(omc_path, vocab_path, embedding_path, rope_cos, rope_sin,
-                          attention_mask, architecture, npu_config, generation_policy,
-                          package_name, output_path, external_weight_path=None,
-                          external_weight_dir="weights"):
-    """Pack the export artifacts into a single-file ``.msl`` (v1).
+@dataclass
+class SingleFileMslRequest:
+    """Named input bundle for :func:`build_single_file_msl` (artifact paths + packaging knobs)."""
+
+    omc_path: str
+    vocab_path: str
+    embedding_path: str
+    rope_cos: str
+    rope_sin: str
+    attention_mask: str
+    architecture: str
+    npu_config: Dict[str, Any]
+    generation_policy: Dict[str, Any]
+    package_name: str
+    output_path: str
+    external_weight_path: Optional[str] = None
+    external_weight_dir: str = "weights"
+
+
+def build_single_file_msl(req):
+    """Pack the export artifacts described by ``req`` into a single-file ``.msl`` (v1).
 
     The .omc graph is mmap'd at runtime (access 0); tokenizer/rope/mask
     assets are read (access 1); the quantized embedding is mmap'd too.
     """
-    omc_name = os.path.basename(omc_path)
-    effective_npu_config = dict(npu_config)
+    omc_name = os.path.basename(req.omc_path)
+    effective_npu_config = dict(req.npu_config)
     effective_npu_config.pop("om_weight_dir", None)
-    if external_weight_path:
-        validate_resource_name(external_weight_dir)
-        effective_npu_config["om_weight_dir"] = external_weight_dir
-    manifest = build_manifest(package_name, architecture, effective_npu_config, generation_policy, omc_name)
+    if req.external_weight_path:
+        validate_resource_name(req.external_weight_dir)
+        effective_npu_config["om_weight_dir"] = req.external_weight_dir
+    manifest = build_manifest(req.package_name, req.architecture, effective_npu_config, req.generation_policy, omc_name)
     kv = manifest_to_kv(manifest)
 
     resources = [
-        (f"npu_offline/{omc_name}", omc_path, ACCESS_MMAP),
-        ("vocab/vocab.bin", vocab_path, ACCESS_READ),
-        ("assets/embedding_quant.bin", embedding_path, ACCESS_MMAP),
-        ("assets/rope_cos.bin", rope_cos, ACCESS_READ),
-        ("assets/rope_sin.bin", rope_sin, ACCESS_READ),
-        ("assets/attention_mask.bin", attention_mask, ACCESS_READ),
+        (f"npu_offline/{omc_name}", req.omc_path, ACCESS_MMAP),
+        ("vocab/vocab.bin", req.vocab_path, ACCESS_READ),
+        ("assets/embedding_quant.bin", req.embedding_path, ACCESS_MMAP),
+        ("assets/rope_cos.bin", req.rope_cos, ACCESS_READ),
+        ("assets/rope_sin.bin", req.rope_sin, ACCESS_READ),
+        ("assets/attention_mask.bin", req.attention_mask, ACCESS_READ),
     ]
-    if external_weight_path:
-        resources.append(("SubGraph_0.weight", external_weight_path, ACCESS_MMAP))
+    if req.external_weight_path:
+        resources.append(("SubGraph_0.weight", req.external_weight_path, ACCESS_MMAP))
 
-    logger.info("packing %d resources, %d KV entries -> %s", len(resources), len(kv), output_path)
-    return pack(output_path, kv, resources)
+    logger.info("packing %d resources, %d KV entries -> %s", len(resources), len(kv), req.output_path)
+    return pack(req.output_path, kv, resources)
 
 
 if __name__ == "__main__":

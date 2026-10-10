@@ -16,7 +16,6 @@
 #include <sys/stat.h>
 
 #include <algorithm>
-#include <cerrno>
 #include <chrono>
 #include <cinttypes>
 #include <condition_variable>
@@ -34,22 +33,27 @@
 #include "llm/llm.h"
 #include "manifest/model_manifest.h"
 #include "manifest/msl_package_reader.h"
+#include "include/securec.h"
 namespace {
 
 void DebugLog(const char *tag) { std::cout << "[m] " << tag << '\n' << std::flush; }
 
-bool ParsePositiveInt(const char *value, int32_t *out) {
-  if (value == nullptr || out == nullptr) {
+bool ParsePositiveInt(const std::string &value, int32_t *out) {
+  if (out == nullptr) {
     return false;
   }
-  errno = 0;
-  char *end = nullptr;
-  const int64_t parsed = std::strtoll(value, &end, 10);
-  if (errno != 0 || end == value || *end != '\0' || parsed <= 0 || parsed > std::numeric_limits<int32_t>::max()) {
+  try {
+    std::size_t pos = 0;
+    const std::int64_t parsed = std::stoll(value, &pos, 10);
+    if (pos != value.size() || parsed <= 0 || parsed > std::numeric_limits<int32_t>::max()) {
+      return false;
+    }
+    *out = static_cast<int32_t>(parsed);
+    return true;
+  } catch (const std::exception &e) {
+    std::cerr << "[error] invalid max_tokens \"" << value << "\": " << e.what() << '\n';
     return false;
   }
-  *out = static_cast<int32_t>(parsed);
-  return true;
 }
 
 void PrintUsage(const char *program) {
@@ -146,13 +150,16 @@ constexpr uint64_t kGiB = kMiB * kKiB;
 std::string FormatSize(uint64_t bytes) {
   char buf[64];
   if (bytes >= kGiB) {
-    std::snprintf(buf, sizeof(buf), "%.1f GiB", static_cast<double>(bytes) / static_cast<double>(kGiB));
+    (void)snprintf_s(buf, sizeof(buf), sizeof(buf) - 1, "%.1f GiB",
+                     static_cast<double>(bytes) / static_cast<double>(kGiB));
   } else if (bytes >= kMiB) {
-    std::snprintf(buf, sizeof(buf), "%.1f MiB", static_cast<double>(bytes) / static_cast<double>(kMiB));
+    (void)snprintf_s(buf, sizeof(buf), sizeof(buf) - 1, "%.1f MiB",
+                     static_cast<double>(bytes) / static_cast<double>(kMiB));
   } else if (bytes >= kKiB) {
-    std::snprintf(buf, sizeof(buf), "%.1f KiB", static_cast<double>(bytes) / static_cast<double>(kKiB));
+    (void)snprintf_s(buf, sizeof(buf), sizeof(buf) - 1, "%.1f KiB",
+                     static_cast<double>(bytes) / static_cast<double>(kKiB));
   } else {
-    std::snprintf(buf, sizeof(buf), "%" PRIu64 " B", static_cast<uint64_t>(bytes));
+    (void)snprintf_s(buf, sizeof(buf), sizeof(buf) - 1, "%" PRIu64 " B", static_cast<uint64_t>(bytes));
   }
   return buf;
 }
@@ -257,6 +264,55 @@ void OnStreamToken(const char *token, MSLLMFinishReason reason, void *user_data)
   s->cv.notify_one();
 }
 
+// Parse the optional CLI arguments after MODEL_PACKAGE and PROMPT (positions
+// kMinArgc..argc): MAX_TOKENS and --verbose.  Returns false on an invalid
+// argument (usage has already been printed).
+bool ParseArgs(int argc, char **argv, int32_t *max_tokens, bool *use_chat_template) {
+  bool max_tokens_set = false;
+  for (int i = kMinArgc; i < argc; ++i) {
+    if (std::string(argv[i]) == "--verbose") {
+      *use_chat_template = false;
+    } else if (!max_tokens_set && ParsePositiveInt(argv[i], max_tokens)) {
+      max_tokens_set = true;
+    } else {
+      PrintUsage(argv[0]);
+      return false;
+    }
+  }
+  return true;
+}
+
+// Consume the generation stream: wait on the sink condvar, print each token
+// as it arrives and accumulate the prefill/decode timing statistics.
+void CountStreamTokens(StreamSink *sink) {
+  for (;;) {
+    std::string token;
+    {
+      std::unique_lock<std::mutex> lock(sink->mtx);
+      sink->cv.wait(lock, [&sink] { return !sink->tokens.empty() || sink->done; });
+      if (!sink->tokens.empty()) {
+        token = std::move(sink->tokens.front());
+        sink->tokens.pop_front();
+      } else if (sink->done) {
+        break;
+      }
+    }
+    const auto now = std::chrono::steady_clock::now();
+    const double ms = std::chrono::duration<double, std::milli>(now - sink->t_last).count();
+    if (sink->prefill_tokens == 0 && sink->decode_tokens == 0) {
+      sink->prefill_ms = ms;  // time-to-first-token == prefill + first sample
+      ++sink->prefill_tokens;
+    } else {
+      sink->decode_ms += ms;  // inter-token gap == one decode step
+      ++sink->decode_tokens;
+    }
+    sink->t_last = now;
+    std::cout << token << std::flush;
+    sink->output += token;
+    sink->token_written = true;
+  }
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -268,16 +324,8 @@ int main(int argc, char **argv) {
 
   int32_t max_tokens = 64;
   bool use_chat_template = true;
-  bool max_tokens_set = false;
-  for (int i = kMinArgc; i < argc; ++i) {
-    if (std::string(argv[i]) == "--verbose") {
-      use_chat_template = false;
-    } else if (!max_tokens_set && ParsePositiveInt(argv[i], &max_tokens)) {
-      max_tokens_set = true;
-    } else {
-      PrintUsage(argv[0]);
-      return kUsageExitCode;
-    }
+  if (!ParseArgs(argc, argv, &max_tokens, &use_chat_template)) {
+    return kUsageExitCode;
   }
 
   const char *model_path = argv[1];
@@ -343,32 +391,7 @@ int main(int argc, char **argv) {
     sink.cv.notify_all();
   });
 
-  for (;;) {
-    std::string token;
-    {
-      std::unique_lock<std::mutex> lock(sink.mtx);
-      sink.cv.wait(lock, [&sink] { return !sink.tokens.empty() || sink.done; });
-      if (!sink.tokens.empty()) {
-        token = std::move(sink.tokens.front());
-        sink.tokens.pop_front();
-      } else if (sink.done) {
-        break;
-      }
-    }
-    const auto now = std::chrono::steady_clock::now();
-    const double ms = std::chrono::duration<double, std::milli>(now - sink.t_last).count();
-    if (sink.prefill_tokens == 0 && sink.decode_tokens == 0) {
-      sink.prefill_ms = ms;  // time-to-first-token == prefill + first sample
-      ++sink.prefill_tokens;
-    } else {
-      sink.decode_ms += ms;  // inter-token gap == one decode step
-      ++sink.decode_tokens;
-    }
-    sink.t_last = now;
-    std::cout << token << std::flush;
-    sink.output += token;
-    sink.token_written = true;
-  }
+  CountStreamTokens(&sink);
   worker.join();
   DebugLog("stream-done");
 

@@ -29,6 +29,7 @@
 #include "tokenizer/sentencepiece_codec.h"
 #include "tokenizer/chat_template.h"
 #include "tokenizer/vocabulary.h"
+#include "include/securec.h"
 namespace mslite_llm {
 
 namespace {
@@ -50,7 +51,9 @@ uint32_t ReadU32(const uint8_t *data, size_t &offset, size_t size) {
     return 0;
   }
   uint32_t val;
-  std::memcpy(&val, data + offset, sizeof(val));
+  if (memcpy_s(&val, sizeof(val), data + offset, sizeof(val)) != EOK) {
+    return 0;
+  }
   offset += sizeof(val);
   return val;
 }
@@ -60,7 +63,9 @@ int32_t ReadI32(const uint8_t *data, size_t &offset, size_t size) {
     return -1;
   }
   int32_t val;
-  std::memcpy(&val, data + offset, sizeof(val));
+  if (memcpy_s(&val, sizeof(val), data + offset, sizeof(val)) != EOK) {
+    return -1;
+  }
   offset += sizeof(val);
   return val;
 }

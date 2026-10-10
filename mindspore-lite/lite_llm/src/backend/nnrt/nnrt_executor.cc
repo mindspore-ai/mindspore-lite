@@ -36,6 +36,7 @@
 #include "manifest/model_manifest.h"
 #include "manifest/msl_package_reader.h"
 #include "backend/nnrt/nnrt_embedding_dequant.h"
+#include "include/securec.h"
 namespace mslite {
 namespace backend {
 namespace nnrt {
@@ -445,22 +446,8 @@ bool NnrtExecutor::ValidateModelContract() {
   static const char *kBaseNames[kNonKvInputs] = {"valid_seq_len", "lmhead_idx",     "rope_cos",        "rope_sin",
                                                  "inputs_embeds", "attention_mask", "embedding_weight"};
 
-  // Count check (skipped with a warning if the NNRT is too old to expose I/O counts).
-  if (api.Executor_GetInputCount != nullptr && api.Executor_GetOutputCount != nullptr) {
-    size_t in_count = 0;
-    size_t out_count = 0;
-    if (api.Executor_GetInputCount(nn_executor_, &in_count) != 0 || in_count != expected_input_count) {
-      MS_LOG(ERROR) << "Contract check failed: model input count " << in_count << " != expected "
-                    << expected_input_count;
-      return false;
-    }
-    if (api.Executor_GetOutputCount(nn_executor_, &out_count) != 0 || out_count != expected_output_count) {
-      MS_LOG(ERROR) << "Contract check failed: model output count " << out_count << " != expected "
-                    << expected_output_count;
-      return false;
-    }
-  } else {
-    MS_LOG(WARNING) << "NNRT does not expose I/O counts; skipping count contract check";
+  if (!ValidateIoCounts(api, expected_input_count, expected_output_count)) {
+    return false;
   }
 
   // Name check (degrade to count-only on old NNRT without TensorDesc_GetName).
@@ -495,9 +482,38 @@ bool NnrtExecutor::ValidateModelContract() {
       return false;
     }
   }
-  // The Kirin DDK renames every output (enum-shape artifact, e.g.
-  // "output_0_enum_shape_graph/case0_0"), so output NAME checks can never pass on device:
-  // outputs are verified by count only (above) and the actual names are logged for forensics.
+  LogOutputNames(api, expected_output_count);
+  MS_LOG(INFO) << "Model contract check passed (" << expected_input_count << " inputs / " << expected_output_count
+               << " outputs, interleaved KV)";
+  return true;
+}
+
+// Count check (skipped with a warning if the NNRT is too old to expose I/O counts).
+bool NnrtExecutor::ValidateIoCounts(const NNRTFunctions &api, size_t expected_input_count,
+                                    size_t expected_output_count) {
+  if (api.Executor_GetInputCount != nullptr && api.Executor_GetOutputCount != nullptr) {
+    size_t in_count = 0;
+    size_t out_count = 0;
+    if (api.Executor_GetInputCount(nn_executor_, &in_count) != 0 || in_count != expected_input_count) {
+      MS_LOG(ERROR) << "Contract check failed: model input count " << in_count << " != expected "
+                    << expected_input_count;
+      return false;
+    }
+    if (api.Executor_GetOutputCount(nn_executor_, &out_count) != 0 || out_count != expected_output_count) {
+      MS_LOG(ERROR) << "Contract check failed: model output count " << out_count << " != expected "
+                    << expected_output_count;
+      return false;
+    }
+  } else {
+    MS_LOG(WARNING) << "NNRT does not expose I/O counts; skipping count contract check";
+  }
+  return true;
+}
+
+// The Kirin DDK renames every output (enum-shape artifact, e.g.
+// "output_0_enum_shape_graph/case0_0"), so output NAME checks can never pass on device:
+// outputs are verified by count only (above) and the actual names are logged for forensics.
+void NnrtExecutor::LogOutputNames(const NNRTFunctions &api, size_t expected_output_count) {
   for (size_t i = 0; i < expected_output_count; ++i) {
     NN_TensorDesc *desc = api.Executor_CreateOutputTensorDesc(nn_executor_, i);
     const char *name = nullptr;
@@ -507,9 +523,6 @@ bool NnrtExecutor::ValidateModelContract() {
       api.TensorDesc_Destroy(&desc);
     }
   }
-  MS_LOG(INFO) << "Model contract check passed (" << expected_input_count << " inputs / " << expected_output_count
-               << " outputs, interleaved KV)";
-  return true;
 }
 
 void NnrtExecutor::ReadModelVocab() {
@@ -655,7 +668,10 @@ bool NnrtExecutor::LoadEmbeddingWeight(const NnrtConfig &config, size_t embed_si
     MS_LOG(ERROR) << "Embedding bin size " << bytes.size() << " != expected " << embed_size * sizeof(uint16_t);
     return false;
   }
-  std::memcpy(embedding_table_, bytes.data(), bytes.size());
+  if (memcpy_s(embedding_table_, embed_size * sizeof(uint16_t), bytes.data(), bytes.size()) != EOK) {
+    MS_LOG(ERROR) << "memcpy_s embedding_table failed";
+    return false;
+  }
   mark("memcpy(embedding_table)");
   return true;
 }
@@ -675,7 +691,10 @@ bool NnrtExecutor::LoadFp16Bin(const std::string &path, const char *what, std::v
                   << ")";
     return false;
   }
-  std::memcpy(dst->data(), bytes.data(), bytes.size());
+  if (memcpy_s(dst->data(), dst->size() * sizeof(uint16_t), bytes.data(), bytes.size()) != EOK) {
+    MS_LOG(ERROR) << "memcpy_s " << what << " failed";
+    return false;
+  }
   return true;
 }
 
@@ -707,7 +726,10 @@ bool NnrtExecutor::EmbeddingRow(int tid, uint16_t *dst) {
     if (embedding_table_ == nullptr) {
       return false;
     }
-    std::memcpy(dst, embedding_table_ + static_cast<size_t>(tid) * hidden_size_, hidden_size_ * sizeof(uint16_t));
+    if (memcpy_s(dst, hidden_size_ * sizeof(uint16_t), embedding_table_ + static_cast<size_t>(tid) * hidden_size_,
+                 hidden_size_ * sizeof(uint16_t)) != EOK) {
+      return false;
+    }
     return true;
   }
   return DequantizeEmbeddingRow(embedding_weight_data_, embedding_weight_size_,
@@ -940,13 +962,19 @@ bool NnrtExecutor::WriteTensor(NN_Tensor *tensor, const void *data, size_t size)
     MS_LOG(ERROR) << "WriteTensor: size " << size << " exceeds tensor capacity " << it->second;
     return false;
   }
+  // Unknown capacity (old NNRT without TensorDesc_GetByteSize): the destMax
+  // bound degrades to the requested size, matching the previous unguarded copy.
+  const size_t tensor_capacity = (it != tensor_byte_sizes_.end()) ? it->second : size;
   const auto &api = NNRTWrapper::GetApi();
   void *buf = api.Tensor_GetDataBuffer(tensor);
   if (buf == nullptr) {
     MS_LOG(ERROR) << "WriteTensor: null data buffer";
     return false;
   }
-  std::memcpy(buf, data, size);
+  if (memcpy_s(buf, tensor_capacity, data, size) != EOK) {
+    MS_LOG(ERROR) << "WriteTensor: memcpy_s failed";
+    return false;
+  }
   return true;
 }
 
@@ -1045,27 +1073,42 @@ bool NnrtExecutor::Prefill(const std::vector<int> &input_ids, mslite_llm::Backen
         return false;
       }
     }
-    std::memset(embed_buf.data() + valid * hs, 0, (cs - valid) * hs * sizeof(uint16_t));
+    if (memset_s(embed_buf.data() + valid * hs, (cs - valid) * hs * sizeof(uint16_t), 0,
+                 (cs - valid) * hs * sizeof(uint16_t)) != EOK) {
+      MS_LOG(ERROR) << "Prefill: failed to zero-pad inputs_embeds";
+      return false;
+    }
     if (!WriteTensor(prefill_inputs_[kIdxInputEmbeds], embed_buf.data(), cs * hs * sizeof(uint16_t))) {
       MS_LOG(ERROR) << "Prefill: failed to write inputs_embeds";
       return false;
     }
 
     // rope_cos/sin [1, cs, hd] from positions [start, start+cs)
-    std::memcpy(rope_buf.data(), cos_buffer_.data() + static_cast<size_t>(start) * hd, cs * hd * sizeof(uint16_t));
+    if (memcpy_s(rope_buf.data(), rope_buf.size() * sizeof(uint16_t),
+                 cos_buffer_.data() + static_cast<size_t>(start) * hd, cs * hd * sizeof(uint16_t)) != EOK) {
+      MS_LOG(ERROR) << "Prefill: failed to stage rope_cos";
+      return false;
+    }
     if (!WriteTensor(prefill_inputs_[kIdxRopeCos], rope_buf.data(), cs * hd * sizeof(uint16_t))) {
       MS_LOG(ERROR) << "Prefill: failed to write rope_cos";
       return false;
     }
-    std::memcpy(rope_buf.data(), sin_buffer_.data() + static_cast<size_t>(start) * hd, cs * hd * sizeof(uint16_t));
+    if (memcpy_s(rope_buf.data(), rope_buf.size() * sizeof(uint16_t),
+                 sin_buffer_.data() + static_cast<size_t>(start) * hd, cs * hd * sizeof(uint16_t)) != EOK) {
+      MS_LOG(ERROR) << "Prefill: failed to stage rope_sin";
+      return false;
+    }
     if (!WriteTensor(prefill_inputs_[kIdxRopeSin], rope_buf.data(), cs * hd * sizeof(uint16_t))) {
       MS_LOG(ERROR) << "Prefill: failed to write rope_sin";
       return false;
     }
 
     // attn_mask [1,1,cs,ml] from attention_mask_buffer_ rows [start, start+cs)
-    std::memcpy(mask_buf.data(), attention_mask_buffer_.data() + static_cast<size_t>(start) * ml,
-                cs * ml * sizeof(uint16_t));
+    if (memcpy_s(mask_buf.data(), mask_buf.size() * sizeof(uint16_t),
+                 attention_mask_buffer_.data() + static_cast<size_t>(start) * ml, cs * ml * sizeof(uint16_t)) != EOK) {
+      MS_LOG(ERROR) << "Prefill: failed to stage attention_mask";
+      return false;
+    }
     if (!WriteTensor(prefill_inputs_[kIdxAttnMask], mask_buf.data(), cs * ml * sizeof(uint16_t))) {
       MS_LOG(ERROR) << "Prefill: failed to write attention_mask";
       return false;
