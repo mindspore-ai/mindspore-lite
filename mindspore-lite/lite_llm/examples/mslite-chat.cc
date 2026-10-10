@@ -63,7 +63,7 @@ void PrintUsage(const char *program) {
 }
 
 constexpr int kUsageExitCode = 2;  // conventional CLI usage-error exit (see PrintUsage)
-constexpr int kMinArgc = 3;        // program + MODEL_PACKAGE + PROMPT
+constexpr size_t kMinArgc = 3;     // program + MODEL_PACKAGE + PROMPT
 
 const char *StatusName(MSLLMStatus status);
 
@@ -265,17 +265,17 @@ void OnStreamToken(const char *token, MSLLMFinishReason reason, void *user_data)
 }
 
 // Parse the optional CLI arguments after MODEL_PACKAGE and PROMPT (positions
-// kMinArgc..argc): MAX_TOKENS and --verbose.  Returns false on an invalid
-// argument (usage has already been printed).
-bool ParseArgs(int argc, char **argv, int32_t *max_tokens, bool *use_chat_template) {
+// kMinArgc..args.size()): MAX_TOKENS and --verbose.  Returns false on an
+// invalid argument (usage has already been printed).
+bool ParseArgs(const std::vector<std::string> &args, int32_t *max_tokens, bool *use_chat_template) {
   bool max_tokens_set = false;
-  for (int i = kMinArgc; i < argc; ++i) {
-    if (std::string(argv[i]) == "--verbose") {
+  for (size_t i = kMinArgc; i < args.size(); ++i) {
+    if (args[i] == "--verbose") {
       *use_chat_template = false;
-    } else if (!max_tokens_set && ParsePositiveInt(argv[i], max_tokens)) {
+    } else if (!max_tokens_set && ParsePositiveInt(args[i], max_tokens)) {
       max_tokens_set = true;
     } else {
-      PrintUsage(argv[0]);
+      PrintUsage(args[0].c_str());
       return false;
     }
   }
@@ -317,14 +317,15 @@ void CountStreamTokens(StreamSink *sink) {
 
 int main(int argc, char **argv) {
   DebugLog("start");
-  if (argc < kMinArgc) {
-    PrintUsage(argv[0]);
+  const std::vector<std::string> args(argv, argv + argc);
+  if (args.size() < kMinArgc) {
+    PrintUsage(args[0].c_str());
     return kUsageExitCode;
   }
 
   int32_t max_tokens = 64;
   bool use_chat_template = true;
-  if (!ParseArgs(argc, argv, &max_tokens, &use_chat_template)) {
+  if (!ParseArgs(args, &max_tokens, &use_chat_template)) {
     return kUsageExitCode;
   }
 

@@ -84,6 +84,12 @@ struct MslHeader {
 #pragma pack(pop)
 static_assert(sizeof(MslHeader) == kHeaderSize, "MslHeader must be 24 bytes");
 
+// Field offsets within MslHeader (magic | version u32 | kv_count u32 | resource_count u32 | alignment u32).
+constexpr size_t kHeaderVersionPos = sizeof(kMagic);
+constexpr size_t kHeaderKvCountPos = sizeof(kMagic) + kU32Size;
+constexpr size_t kHeaderResourceCountPos = sizeof(kMagic) + 2 * kU32Size;
+constexpr size_t kHeaderAlignmentPos = sizeof(kMagic) + 3 * kU32Size;
+
 #pragma pack(push, 1)
 struct MslResourceEntry {
   uint8_t name[kNameSize];

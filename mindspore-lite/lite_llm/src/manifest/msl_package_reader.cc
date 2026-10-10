@@ -171,16 +171,16 @@ bool MslPackageReader::ParseHeader(const std::string &path, uint32_t *kv_count, 
     }
     return false;
   }
-  const uint32_t version = ReadU32(mapped_ + 4);
+  const uint32_t version = ReadU32(mapped_ + msl_format::kHeaderVersionPos);
   if (version != msl_format::kVersion) {
     if (error_message != nullptr) {
       *error_message = "unsupported .msl version: " + std::to_string(version);
     }
     return false;
   }
-  *kv_count = ReadU32(mapped_ + 8);
-  *resource_count = ReadU32(mapped_ + 12);
-  *alignment = ReadU32(mapped_ + 16);
+  *kv_count = ReadU32(mapped_ + msl_format::kHeaderKvCountPos);
+  *resource_count = ReadU32(mapped_ + msl_format::kHeaderResourceCountPos);
+  *alignment = ReadU32(mapped_ + msl_format::kHeaderAlignmentPos);
   if (*alignment == 0) {
     if (error_message != nullptr) {
       *error_message = "invalid .msl alignment: 0";
