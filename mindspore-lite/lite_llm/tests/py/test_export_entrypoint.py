@@ -200,21 +200,23 @@ def test_run_pipeline_model_kind_drives_skeleton_and_weight_mode(
     skeleton_seen = []
     weight_modes = []
 
-    monkeypatch.setattr(
-        export_module, "_export_skeleton",
-        lambda args, mt, work_dir, model_kind, paths: skeleton_seen.append(
-            (model_kind, mt["model_name"])))
-    monkeypatch.setattr(
-        export_module, "_compile_omc",
-        lambda args, work_dir, use_external_weights, paths: weight_modes.append(
-            ("omc", use_external_weights)))
-    monkeypatch.setattr(
-        export_module, "_export_tokenizer",
-        lambda args, mt, work_dir, paths: None)
-    monkeypatch.setattr(
-        export_module, "_package_msl",
-        lambda args, work_dir, use_external_weights, paths: (
-            weight_modes.append(("package", use_external_weights)), args.output)[1])
+    def fake_export_skeleton(args, mt, work_dir, model_kind, paths):  # pylint: disable=unused-argument
+        skeleton_seen.append((model_kind, mt["model_name"]))
+
+    def fake_compile_omc(args, work_dir, use_external_weights, paths):  # pylint: disable=unused-argument
+        weight_modes.append(("omc", use_external_weights))
+
+    def fake_export_tokenizer(args, mt, work_dir, paths):  # pylint: disable=unused-argument
+        return None
+
+    def fake_package_msl(args, work_dir, use_external_weights, paths):  # pylint: disable=unused-argument
+        weight_modes.append(("package", use_external_weights))
+        return args.output
+
+    monkeypatch.setattr(export_module, "_export_skeleton", fake_export_skeleton)
+    monkeypatch.setattr(export_module, "_compile_omc", fake_compile_omc)
+    monkeypatch.setattr(export_module, "_export_tokenizer", fake_export_tokenizer)
+    monkeypatch.setattr(export_module, "_package_msl", fake_package_msl)
 
     monkeypatch.setattr(export_module, "detect_model_kind", lambda model: "gguf")
     monkeypatch.setattr(export_module, "detect_model_type", lambda model: "qwen2_5")

@@ -31,12 +31,16 @@ namespace mindspore::lite::micro {
 namespace {
 // Bytes below this are not printable ASCII and are emitted as \xHH.
 constexpr unsigned char kMinPrintableChar = 0x20;
+// Worst-case escape length of one source byte ("\xHH"), used as the reserve hint.
+constexpr size_t kHexEscapeLen = 4;
+// Bits per hex digit when splitting one byte into the two \xHH nibbles.
+constexpr int kBitsPerHexDigit = 4;
 
 // Escape special characters for safe embedding in C string literals.
 std::string EscapeCString(const std::string &s) {
   constexpr char kHexDigits[] = "0123456789abcdef";
   std::string out;
-  out.reserve(s.size() + 4);
+  out.reserve(s.size() + kHexEscapeLen);
   for (size_t i = 0; i < s.size(); ++i) {
     char c = s[i];
     if (c == '"' || c == '\\') {
@@ -51,7 +55,7 @@ std::string EscapeCString(const std::string &s) {
     } else if (static_cast<unsigned char>(c) < kMinPrintableChar) {
       const auto byte = static_cast<unsigned char>(c);
       out += "\\x";
-      out.push_back(kHexDigits[byte >> 4]);
+      out.push_back(kHexDigits[byte >> kBitsPerHexDigit]);
       out.push_back(kHexDigits[byte & 0x0f]);
     } else {
       out.push_back(c);

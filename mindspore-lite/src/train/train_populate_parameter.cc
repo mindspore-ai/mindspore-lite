@@ -61,8 +61,24 @@ ConvParameter *PopulateConvGradParameterCommon(const void *prim, size_t param_si
 template <typename T>
 void SetConvFusionAttrs(ConvParameter *param, const T *value, int input_index_one, int input_index_two,
                         int input_index_three) {
+  if (value == nullptr) {
+    MS_LOG(ERROR) << "Value of conv fusion op is missing.";
+    return;
+  }
   if (value->stride() == nullptr) {
     MS_LOG(ERROR) << "Stride attr of conv fusion op is missing.";
+    return;
+  }
+  if (value->kernel_size() == nullptr) {
+    MS_LOG(ERROR) << "Kernel size attr of conv fusion op is missing.";
+    return;
+  }
+  if (value->dilation() == nullptr) {
+    MS_LOG(ERROR) << "Dilation attr of conv fusion op is missing.";
+    return;
+  }
+  if (value->pad_list() == nullptr) {
+    MS_LOG(ERROR) << "Pad list attr of conv fusion op is missing.";
     return;
   }
   param->kernel_h_ = value->kernel_size()->Get(0);

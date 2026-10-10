@@ -172,10 +172,10 @@ std::string ChatTemplate::Apply(const std::vector<MSLlmChatMessage> &messages, b
       case kOpLoopStart: {
         if (messages.empty()) {
           pos = SkipToLoopEnd(data, size, pos);
-        } else {
-          if (frames.size() >= kMaxLoopDepth) return {};
-          frames.push_back({true, pos, 0});
+          break;
         }
+        if (frames.size() >= kMaxLoopDepth) return {};
+        frames.push_back({true, pos, 0});
         break;
       }
       case kOpLoopEnd: {
