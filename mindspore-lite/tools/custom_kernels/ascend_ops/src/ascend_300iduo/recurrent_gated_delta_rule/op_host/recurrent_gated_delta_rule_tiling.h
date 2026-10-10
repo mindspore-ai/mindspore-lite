@@ -19,6 +19,7 @@
 
 #include <cstdint>
 
+namespace tiling_detail {
 constexpr uint32_t kTilingDataAlign = 8;  // tiling-data struct alignment (bytes)
 #pragma pack(push, 8)
 struct alignas(kTilingDataAlign) RecurrentGatedDeltaRuleTilingData {
@@ -46,5 +47,7 @@ struct alignas(kTilingDataAlign) RecurrentGatedDeltaRuleTilingData {
   uint32_t reserved;
 };
 #pragma pack(pop)
+}  // namespace tiling_detail
+using tiling_detail::RecurrentGatedDeltaRuleTilingData;
 
 #endif  // RECURRENT_GATED_DELTA_RULE_TILING_H

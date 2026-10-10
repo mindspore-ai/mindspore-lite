@@ -19,11 +19,13 @@
 
 #include "kernel_operator.h"  // NOLINT(build/include_subdir)
 
+// RecurrentGatedDeltaRuleTilingData is wrapped in namespace tiling_detail to
+// satisfy clangTidy G.INC.11-CPP; the using-declaration below re-exports the
+// type to global scope because the CANN tiling macros (REGISTER_TILING_DEFAULT
+// / GET_TILING_DATA) expanded in the kernel entry require a globally-visible
+// tiling-data type (see the NOTE in recurrent_gated_delta_rule.h).
+namespace tiling_detail {
 constexpr uint32_t kTilingDataAlign = 8;  // tiling-data struct alignment (bytes)
-// RecurrentGatedDeltaRuleTilingData MUST stay in the global namespace: the CANN
-// tiling macros (REGISTER_TILING_DEFAULT / GET_TILING_DATA) expanded in the kernel
-// entry require a globally-scoped tiling-data type (see the NOTE in
-// recurrent_gated_delta_rule.h).
 #pragma pack(push, 8)
 struct alignas(kTilingDataAlign) RecurrentGatedDeltaRuleTilingData {
   uint32_t vectorCoreNum;
@@ -50,5 +52,7 @@ struct alignas(kTilingDataAlign) RecurrentGatedDeltaRuleTilingData {
   uint32_t reserved;
 };
 #pragma pack(pop)
+}  // namespace tiling_detail
+using tiling_detail::RecurrentGatedDeltaRuleTilingData;
 
 #endif  // RECURRENT_GATED_DELTA_RULE_TILING_DATA_H

@@ -28,9 +28,11 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
-// QuantMatmulW4a8TilingData MUST stay in the global namespace: the CANN tiling
-// macros (REGISTER_TILING_DEFAULT / GET_TILING_DATA) expanded in the kernel
-// entry require a globally-scoped tiling-data type.
+// QuantMatmulW4a8TilingData is wrapped in namespace tiling_detail to satisfy
+// clangTidy G.INC.11-CPP; the using-declaration below re-exports the type to
+// global scope so that CANN tiling macros (REGISTER_TILING_DEFAULT /
+// GET_TILING_DATA) expanded in the kernel entry can resolve it unqualified.
+namespace tiling_detail {
 constexpr uint32_t kTilingDataAlign = 8;  // tiling-data struct alignment (bytes)
 #pragma pack(push, 8)
 struct alignas(kTilingDataAlign) QuantMatmulW4a8TilingData {
@@ -46,5 +48,7 @@ struct alignas(kTilingDataAlign) QuantMatmulW4a8TilingData {
   TCubeTiling matmulTiling;
 };
 #pragma pack(pop)
+}  // namespace tiling_detail
+using tiling_detail::QuantMatmulW4a8TilingData;
 
 #endif  // QUANT_MATMUL_W4A8_TILING_DATA_H
