@@ -785,7 +785,6 @@ function(find_required_package pkg_name)
         message(FATAL_ERROR "Required package ${pkg_name} not found, "
                 "please install the package and try building MindSpore again.")
     endif()
-    set(${pkg_name}_VERSION PARENT_SCOPE)
 endfunction()
 
 find_required_package(Patch)
