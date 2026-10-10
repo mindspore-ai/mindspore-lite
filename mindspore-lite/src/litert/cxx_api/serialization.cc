@@ -55,10 +55,6 @@ Status Serialization::Load(const void *model_data, size_t data_size, ModelType m
     MS_LOG(ERROR) << "New model failed.";
     return kLiteNullptr;
   }
-  if (buf_model_type == mindspore::ModelType::kMindIR) {
-    free(lite_buf);
-    lite_buf = nullptr;
-  }
   auto graph_data = std::shared_ptr<Graph::GraphData>(new (std::nothrow) Graph::GraphData(model));
   if (graph_data == nullptr) {
     MS_LOG(ERROR) << "New graph data failed.";
