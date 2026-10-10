@@ -38,7 +38,7 @@
 ### 安装命令
 
 ```bash
-pip install torch==2.8.0 transformers==4.51.0 onnx==1.21.0 onnxruntime==1.24.0
+pip install torch==2.8.0 transformers==4.51.0 onnx==1.21.0
 ```
 
 mindspore-lite请到MindSporeLite[官网下载](https://www.mindspore.cn/lite/docs/zh-CN/master/use/downloads.html)
