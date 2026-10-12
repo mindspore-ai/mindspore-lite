@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <vector>
 #include <string>
+#include "include/securec.h"
 #include "src/common/ops/populate/populate_register.h"
 #include "src/common/log_adapter.h"
 #include "src/tensor.h"
@@ -85,7 +86,8 @@ OpParameter *PopulateSplitReduceConcatFusionParam(const schema::Custom *value) {
     MS_LOG(ERROR) << "malloc SplitParameter failed.";
     return nullptr;
   }
-  memset(param, 0, sizeof(SplitParameter));
+  auto ret = memset_s(param, sizeof(SplitParameter), 0, sizeof(SplitParameter));
+  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
   if (!GetDataFromPrim(param, sizeof(SplitParameter), value, kSplitParamAttrIndex)) {
     MS_LOG(ERROR) << "Get SplitParameter value From prim fail.";
     free(param);
@@ -148,7 +150,8 @@ OpParameter *CreateCustomIsInfParameter() {
     MS_LOG(ERROR) << "malloc CustomIsInfParameter failed.";
     return nullptr;
   }
-  memset(param, 0, sizeof(CustomIsInfParameter));
+  auto ret = memset_s(param, sizeof(CustomIsInfParameter), 0, sizeof(CustomIsInfParameter));
+  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
   param->op_parameter_.type_ = PrimType_Inner_CustomIsInf;
   return reinterpret_cast<OpParameter *>(param);
 }
@@ -159,7 +162,8 @@ OpParameter *CreateCustomTensorScatterMaxParameter() {
     MS_LOG(ERROR) << "malloc ScatterNDParameter failed.";
     return nullptr;
   }
-  memset(param, 0, sizeof(ScatterNDParameter));
+  auto ret = memset_s(param, sizeof(ScatterNDParameter), 0, sizeof(ScatterNDParameter));
+  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
   param->op_parameter.type_ = PrimType_Inner_CustomTensorScatterMax;
   return reinterpret_cast<OpParameter *>(param);
 }
@@ -170,7 +174,8 @@ OpParameter *CreateCustomMaskedFillParameter() {
     MS_LOG(ERROR) << "malloc CustomMaskedFillParameter failed.";
     return nullptr;
   }
-  memset(param, 0, sizeof(CustomMaskedFillParameter));
+  auto ret = memset_s(param, sizeof(CustomMaskedFillParameter), 0, sizeof(CustomMaskedFillParameter));
+  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
   param->op_parameter_.type_ = PrimType_Inner_CustomMaskedFill;
   return reinterpret_cast<OpParameter *>(param);
 }
@@ -181,7 +186,8 @@ OpParameter *CreateParam(PrimType param_type) {
     MS_LOG(ERROR) << "malloc DecoderLayer failed.";
     return nullptr;
   }
-  memset(param, 0, sizeof(OpParameter));
+  auto ret = memset_s(param, sizeof(OpParameter), 0, sizeof(OpParameter));
+  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
   param->type_ = param_type;
   return reinterpret_cast<OpParameter *>(param);
 }
@@ -192,7 +198,8 @@ OpParameter *CreateCustomGruParameter() {
     MS_LOG(ERROR) << "malloc CustomGruParameter failed.";
     return nullptr;
   }
-  memset(param, 0, sizeof(CustomGruParameter));
+  auto ret = memset_s(param, sizeof(CustomGruParameter), 0, sizeof(CustomGruParameter));
+  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
   param->op_parameter_.type_ = PrimType_Inner_CustomGru;
   return reinterpret_cast<OpParameter *>(param);
 }
@@ -203,7 +210,8 @@ OpParameter *CreateCustomConv3DParameter(const schema::Custom *value) {
     MS_LOG(ERROR) << "malloc Conv3DParameter failed.";
     return nullptr;
   }
-  memset(param, 0, sizeof(Conv3DParameter));
+  auto ret = memset_s(param, sizeof(Conv3DParameter), 0, sizeof(Conv3DParameter));
+  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
 
   param->op_parameter_.type_ = PrimType_Inner_Conv3D;
   return reinterpret_cast<OpParameter *>(param);
@@ -215,7 +223,8 @@ OpParameter *CreateGridSamplerParameter(const schema::Custom *value) {
     MS_LOG(ERROR) << "malloc GridSamplerParameter failed.";
     return nullptr;
   }
-  memset(param, 0, sizeof(GridSamplerParameter));
+  auto ret = memset_s(param, sizeof(GridSamplerParameter), 0, sizeof(GridSamplerParameter));
+  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
   if (!GetDataFromPrim(&param->interpolation_mode_, sizeof(int64_t), value, 0)) {
     MS_LOG(ERROR) << "Get interpolation_mode from prim failed.";
     free(param);
@@ -241,7 +250,8 @@ OpParameter *CreateNpuOfflineModelParameter(const void *prim) {
     MS_LOG(ERROR) << "Malloc NpuOfflineModel Parameter failed.";
     return nullptr;
   }
-  memset(param, 0, sizeof(CustomParameter));
+  auto ret = memset_s(param, sizeof(CustomParameter), 0, sizeof(CustomParameter));
+  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
   param->op_parameter_.type_ = PrimType_Inner_ThirdPartyModel;
   // The offline model only uses the attr_data [0] field, and other fields do not need to be assigned values.
   param->attr_data[0] = static_cast<char *>(const_cast<void *>(prim));
@@ -282,7 +292,8 @@ OpParameter *PopulateCustomParameter(const void *prim) {
       MS_LOG(ERROR) << "malloc CustomParameter failed.";
       return nullptr;
     }
-    (void)memset(param, 0, sizeof(CustomParameter));
+    auto ret = memset_s(param, sizeof(CustomParameter), 0, sizeof(CustomParameter));
+    MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
     param->op_parameter_.type_ = static_cast<int>(PrimType_Inner_GraphKernel);
     // Just use the attr_data pointer to save the prim directly, the inner value is parsed as necessary.
     param->attr_data[0] = static_cast<char *>(const_cast<void *>(prim));
