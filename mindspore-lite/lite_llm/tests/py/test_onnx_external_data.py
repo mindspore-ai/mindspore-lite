@@ -14,8 +14,6 @@
 # ============================================================================
 """Tests for ONNX external tensor data handling."""
 
-from pathlib import Path
-import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -24,9 +22,8 @@ import pytest
 onnx = pytest.importorskip("onnx")
 from onnx import helper, numpy_helper  # pylint: disable=wrong-import-position
 
-EXPORT_DIR = Path(__file__).resolve().parents[2] / "export"
-sys.path.insert(0, str(EXPORT_DIR))
-
+# utils is registered by tests/py/conftest.py before collection; export_quant
+# must stay below importorskip: it imports onnx at module load.
 from utils import export_quant  # pylint: disable=wrong-import-position
 
 

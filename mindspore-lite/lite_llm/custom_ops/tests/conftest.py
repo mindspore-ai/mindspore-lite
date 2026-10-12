@@ -13,6 +13,7 @@
 # limitations under the License.
 # ============================================================================
 """Module helpers for the custom-ops build tooling."""
+import importlib.util
 import os
 from pathlib import Path
 import sys
@@ -21,10 +22,19 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TESTS_ROOT = Path(__file__).resolve().parent
-for _path in (REPO_ROOT, TESTS_ROOT, REPO_ROOT / "scripts"):
-    if str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
+
+# Register the vendored torch_custom package by content instead of mutating
+# sys.path; test modules keep plain ``from torch_custom.ms_* import`` lines.
+# (Sibling helpers like base_test resolve via pytest's own prepend import of
+# this conftest's directory.)
+_TORCH_CUSTOM_DIR = REPO_ROOT / "torch_custom"
+if "torch_custom" not in sys.modules:
+    _spec = importlib.util.spec_from_file_location(
+        "torch_custom", str(_TORCH_CUSTOM_DIR / "__init__.py"), submodule_search_locations=[str(_TORCH_CUSTOM_DIR)]
+    )
+    _torch_custom = importlib.util.module_from_spec(_spec)
+    sys.modules["torch_custom"] = _torch_custom
+    _spec.loader.exec_module(_torch_custom)
 
 
 def pytest_addoption(parser):

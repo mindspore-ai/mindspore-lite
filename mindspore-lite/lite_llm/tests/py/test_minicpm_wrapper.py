@@ -29,24 +29,19 @@ Covers, in order:
 Requires the qwen2.5 export extras (``pip install -r requirements.txt``).
 """
 
-import sys
-from pathlib import Path
-
 import pytest
 
-_EXPORT_DIR = Path(__file__).resolve().parents[2] / "export"
-sys.path.insert(0, str(_EXPORT_DIR))
-
-# pylint: disable=wrong-import-position  # export/ added to sys.path above
-from utils.onnx_postprocess import _save_onnx, validate_contract  # noqa: E402
-from utils.export_quant import ModelConfig, QuantizationConfig, apply_quant, apply_shared_weight  # noqa: E402
+# utils/models are registered by tests/py/conftest.py before collection; the
+# models imports must stay below the importorskips (models.minicpm needs torch).
+from utils.onnx_postprocess import _save_onnx, validate_contract  # pylint: disable=wrong-import-position
+from utils.export_quant import ModelConfig, QuantizationConfig, apply_quant, apply_shared_weight  # pylint: disable=wrong-import-position
 
 onnx = pytest.importorskip("onnx")
 torch = pytest.importorskip("torch")
 transformers = pytest.importorskip("transformers")
 
-from models.minicpm.minicpm_gguf_loader import QUANT_MATMUL_MAP  # noqa: E402
-from models.minicpm.minicpm_wrapper import MiniCpmNnrtWrapper  # noqa: E402
+from models.minicpm.minicpm_gguf_loader import QUANT_MATMUL_MAP  # pylint: disable=wrong-import-position
+from models.minicpm.minicpm_wrapper import MiniCpmNnrtWrapper  # pylint: disable=wrong-import-position
 
 SEQ_LEN, MAX_SEQ_LEN, NUM_LAYERS = 32, 64, 2
 HEAD_DIM = 16  # hidden 64 / 4 heads

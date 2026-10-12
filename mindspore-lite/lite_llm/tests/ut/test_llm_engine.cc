@@ -277,9 +277,12 @@ void CollectTokens(const char *token, MSLLMFinishReason reason, void *data) {
   }
 }
 
+constexpr int kNonEosTokenId = 3;  // 'a': argmax token that never hits EOS
+
 // Scripted logits of vocab_size 8 with argmax at `token_id`.
 std::vector<float> LogitsFor(int token_id) {
-  std::vector<float> logits(8, 0.0f);
+  constexpr size_t kFixtureVocabSize = 8;  // must match llm_test_fixture.h vocab_size
+  std::vector<float> logits(kFixtureVocabSize, 0.0f);
   logits[token_id] = 1.0f;
   return logits;
 }
@@ -370,7 +373,8 @@ TEST(Generate, PromptAtNpuLimitReturnsContextOverflowBeforePrefill) {
   // The model architecture supports 64 positions, but this exported NPU model
   // only has resources for 16. Byte-level BPE does not inject BOS, so 16 'a'
   // tokens fill the NPU context and leave no position for generation.
-  auto tm = BuildTestModel(/*npu_max_length=*/16);
+  constexpr int32_t npu_max_length = 16;
+  auto tm = BuildTestModel(npu_max_length);
   ASSERT_NE(tm.handle, nullptr);
   ASSERT_NE(tm.backend, nullptr);
 
@@ -388,7 +392,8 @@ TEST(Generate, NpuContextLimitStopsDecodeWithNoExplicitOutputCap) {
   // The architecture supports 64 positions, while the exported NPU model and
   // its KV cache only support 16. An 8-token prompt therefore has room for
   // exactly 8 generated tokens when max_new_tokens=0.
-  auto tm = BuildTestModel(/*npu_max_length=*/16);
+  constexpr int32_t npu_max_length = 16;
+  auto tm = BuildTestModel(npu_max_length);
   ASSERT_NE(tm.handle, nullptr);
   ASSERT_NE(tm.backend, nullptr);
   SetConfig(tm.handle, 0);
@@ -456,7 +461,8 @@ TEST(StreamGenerate, EosFinishReason) {
 }
 
 TEST(StreamGenerate, PromptAtNpuLimitReturnsContextOverflowWithoutCallback) {
-  auto tm = BuildTestModel(/*npu_max_length=*/16);
+  constexpr int32_t npu_max_length = 16;
+  auto tm = BuildTestModel(npu_max_length);
   ASSERT_NE(tm.handle, nullptr);
   ASSERT_NE(tm.backend, nullptr);
 
@@ -502,7 +508,8 @@ TEST(StreamGenerate, MaxContextLengthFinishReason) {
 }
 
 TEST(StreamGenerate, NpuContextLimitStopsDecodeBeforeLargeOutputCap) {
-  auto tm = BuildTestModel(/*npu_max_length=*/16);
+  constexpr int32_t npu_max_length = 16;
+  auto tm = BuildTestModel(npu_max_length);
   ASSERT_NE(tm.handle, nullptr);
   ASSERT_NE(tm.backend, nullptr);
   SetConfig(tm.handle, 10000);  // Explicit output cap is larger than the NPU context.
@@ -595,8 +602,9 @@ void ReentrantCallback(const char *token, MSLLMFinishReason reason, void *data) 
 }
 
 MSLLMStatus RunReentrant(MSLLMModelHandle handle, mslite_llm_test::FakeBackend *backend, ReentryOp op) {
-  SetConfig(handle, 4);                // a few tokens so the callback fires
-  backend->QueueLogits(LogitsFor(3));  // never EOS
+  constexpr int32_t kReentrantMaxNewTokens = 4;  // a few tokens so the callback fires
+  SetConfig(handle, kReentrantMaxNewTokens);
+  backend->QueueLogits(LogitsFor(kNonEosTokenId));  // never EOS
 
   ReentryCtx ctx{handle, op};
   MSLLMStreamGenerate(handle, "a", ReentrantCallback, &ctx);

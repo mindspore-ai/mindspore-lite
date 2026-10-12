@@ -20,18 +20,21 @@ test validates it from the runtime side, this test validates that
 inputs, and (b) decode it back to the expected metadata/resources.
 """
 
+import importlib.util
 import json
 import os
 import struct
-import sys
 import tempfile
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(TESTS_DIR, "..", "data")
-EXPORT_DIR = os.path.join(TESTS_DIR, "..", "..", "export")
-sys.path.insert(0, EXPORT_DIR)
-# pylint: disable=wrong-import-position  # export/ added to sys.path above
-from utils import msl_pack as mp
+
+# msl_pack is stdlib-only; load it straight from the export tree by file path
+# (same pattern as tests/py/test_export_entrypoint.py) — no sys.path mutation.
+_MSL_PACK = os.path.join(TESTS_DIR, "..", "..", "export", "utils", "msl_pack.py")
+_spec = importlib.util.spec_from_file_location("msl_pack", _MSL_PACK)
+mp = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(mp)
 
 GOLDEN_MSL = os.path.join(DATA_DIR, "golden_v1.msl")
 GOLDEN_EXPECTED = os.path.join(DATA_DIR, "golden_v1.expected.json")
