@@ -155,15 +155,40 @@ bool NnrtExecutor::InitConfig(const NnrtConfig &config) {
   om_weight_dir_ = config.om_weight_dir;
   external_weight_entry_ = config.external_weight_entry.empty() ? "SubGraph_0.weight" : config.external_weight_entry;
   has_external_weights_ = config.has_external_weights;
-  // device_id_ defaults to 0 (first NPU). Single-NPU Kirin is the current target;
-  // multi-device name to id resolution via OH_NNDevice_GetAllDevicesID is not yet supported.
 
   omc_path_ = config.prefill_path;
   if (omc_path_.empty()) {
     MS_LOG(ERROR) << "model_path empty";
     return false;
   }
+
   return true;
+}
+
+void NnrtExecutor::InitDeviceId() {
+  // Preserve the default device when discovery fails or HIAI_F is unavailable.
+  device_id_ = 0;
+  const auto &api = NNRTWrapper::GetApi();
+  if (api.NNDevice_GetAllDevicesID == nullptr || api.NNDevice_GetName == nullptr) {
+    MS_LOG(ERROR) << "NNDevice_GetAllDevicesID or NNDevice_GetName is unavailable";
+  } else {
+    const size_t *device_list = nullptr;
+    uint32_t device_count = 0;
+    if (api.NNDevice_GetAllDevicesID(&device_list, &device_count) != 0 || device_list == nullptr || device_count == 0) {
+      MS_LOG(ERROR) << "NNDevice_GetAllDevicesID failed";
+    } else {
+      MS_LOG(INFO) << "NNDevice_GetAllDevicesID returned " << device_count << " devices";
+      for (uint32_t i = 0; i < device_count; ++i) {
+        const size_t id = device_list[i];
+        const char *name = nullptr;
+        if (api.NNDevice_GetName(id, &name) == 0 && name != nullptr && std::string(name) == "HIAI_F") {
+          device_id_ = id;
+          MS_LOG(INFO) << "Selected device HIAI_F with ID " << device_id_;
+          break;
+        }
+      }
+    }
+  }
 }
 
 bool NnrtExecutor::Build(const NnrtConfig &config) {
@@ -181,6 +206,7 @@ bool NnrtExecutor::Build(const NnrtConfig &config) {
     return false;
   }
   log_phase("GetInstance(dlopen)");
+  InitDeviceId();
 
   if (!BuildModel()) {
     return false;

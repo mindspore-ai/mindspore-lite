@@ -133,6 +133,8 @@ bool NNRTWrapper::LoadNeuralNetworkCore() {
   LoadRequiredSymbol(nncore_handle_, api_.Tensor_Create, "OH_NNTensor_Create", ok);
   LoadRequiredSymbol(nncore_handle_, api_.Tensor_Destroy, "OH_NNTensor_Destroy", ok);
   LoadRequiredSymbol(nncore_handle_, api_.Tensor_GetDataBuffer, "OH_NNTensor_GetDataBuffer", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.NNDevice_GetAllDevicesID, "OH_NNDevice_GetAllDevicesID", ok);
+  LoadRequiredSymbol(nncore_handle_, api_.NNDevice_GetName, "OH_NNDevice_GetName", ok);
 
   return ok;
 }
