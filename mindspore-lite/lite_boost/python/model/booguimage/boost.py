@@ -172,8 +172,8 @@ def patch_rope_gather():
 
 
 def patch_rotary_emb():
-    """Patch boogu's ``apply_rotary_emb`` with the NPU-safe variant
-    (complex64 preferred, fused fp32 fallback; idempotent). Patching the
+    """Patch boogu's ``apply_rotary_emb`` with the NPU-safe variant.
+    Prefers complex64, with a fused fp32 fallback; idempotent. Patching the
     ``boogu.models.embeddings`` definition covers all importers that did
     ``from .embeddings import apply_rotary_emb`` only if they import the
     module lazily; the direct importers are patched too.
@@ -210,9 +210,9 @@ def patch_swiglu():
 
 
 def patch_swiglu_instances(transformer):
-    """Swap every ``LuminaFeedForward.swiglu`` instance attribute for the fused
-    NPU variant. Needed because the attribute is bound at __init__ time, so
-    patching the module afterwards misses already-constructed instances.
+    """Swap every ``LuminaFeedForward.swiglu`` instance attribute for the fused NPU variant.
+    Needed because the attribute is bound at __init__ time, so patching the
+    module afterwards misses already-constructed instances.
     """
     for _, module in transformer.named_modules():
         if hasattr(module, "swiglu") and callable(module.swiglu):

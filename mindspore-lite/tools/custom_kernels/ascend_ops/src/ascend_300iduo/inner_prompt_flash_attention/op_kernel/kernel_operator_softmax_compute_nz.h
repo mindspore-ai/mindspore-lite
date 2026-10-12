@@ -63,8 +63,9 @@ __aicore__ inline void ReduceMaxLastNZImplPFA(const LocalTensor<half> &dst, cons
   uint8_t repeat = reduceParam.srcM / 16;
   for (uint8_t i = 0; i < repeat; i++) {
     Muls<half, false>(
-      tmpBuffer[i * NZ_BLOCK_ROW_ELEMENTS * NZ_FLOAT_REPEAT_SIZE], dst[i * NZ_FRACTAL_DIM], 1.0, MASK_PLACEHOLDER, 2,
-      {1, 0, DEFAULT_REPEAT_STRIDE, 0});  // 2: FLOAT_REPEAT_SIZE  128: BLOCK_SIZE  16: is the dst copy factor
+      tmpBuffer[i * NZ_BLOCK_ROW_ELEMENTS * NZ_FLOAT_REPEAT_SIZE], dst[i * NZ_FRACTAL_DIM], 1.0, MASK_PLACEHOLDER,
+      NZ_FLOAT_REPEAT_SIZE,
+      {1, 0, DEFAULT_REPEAT_STRIDE, 0});  // 2: NZ_FLOAT_REPEAT_SIZE  128: BLOCK_SIZE  16: is the dst copy factor
   }
   PipeBarrier<PIPE_V>();
   uint64_t dstList[NCHW_CONV_ADDR_LIST_SIZE];
@@ -110,8 +111,9 @@ __aicore__ inline void ReduceSumLastNZImplPFA(const LocalTensor<half> &dst, cons
   uint8_t repeat = reduceParam.srcM / 16;
   for (uint8_t i = 0; i < repeat; i++) {
     Muls<half, false>(
-      tmpBuffer[i * NZ_BLOCK_ROW_ELEMENTS * NZ_FLOAT_REPEAT_SIZE], dst[i * NZ_FRACTAL_DIM], 1.0, MASK_PLACEHOLDER, 2,
-      {1, 0, DEFAULT_REPEAT_STRIDE, 0});  // 2: FLOAT_REPEAT_SIZE  128: BLOCK_SIZE  16: is the dst copy factor
+      tmpBuffer[i * NZ_BLOCK_ROW_ELEMENTS * NZ_FLOAT_REPEAT_SIZE], dst[i * NZ_FRACTAL_DIM], 1.0, MASK_PLACEHOLDER,
+      NZ_FLOAT_REPEAT_SIZE,
+      {1, 0, DEFAULT_REPEAT_STRIDE, 0});  // 2: NZ_FLOAT_REPEAT_SIZE  128: BLOCK_SIZE  16: is the dst copy factor
   }
   PipeBarrier<PIPE_V>();
   uint64_t dstList[NCHW_CONV_ADDR_LIST_SIZE];

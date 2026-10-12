@@ -180,10 +180,13 @@ bool GetShapeDims(TilingContext *context, ShapeDims &dims) {
   const auto &vDims = valueShape->GetStorageShape();
   const auto &sDims = stateShape->GetStorageShape();
   const auto &cDims = cuSeqlensShape->GetStorageShape();
-  dims.t = qDims.GetDim(0);
-  dims.nk = qDims.GetDim(1);
+  // Dimension indices of the [T, N, D] query/value storage shapes.
+  constexpr size_t DIM_TOKEN_T = 0;
+  constexpr size_t DIM_HEAD_N = 1;
+  dims.t = qDims.GetDim(DIM_TOKEN_T);
+  dims.nk = qDims.GetDim(DIM_HEAD_N);
   dims.dk = qDims.GetDim(DIM_INDEX_D);
-  dims.nv = vDims.GetDim(1);
+  dims.nv = vDims.GetDim(DIM_HEAD_N);
   dims.dv = vDims.GetDim(DIM_INDEX_D);
   dims.sBlockNum = sDims.GetDim(0);
   dims.b = cDims.GetDim(0);

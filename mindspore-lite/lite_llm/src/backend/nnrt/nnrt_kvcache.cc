@@ -26,6 +26,9 @@ namespace backend {
 namespace nnrt {
 
 namespace {
+// NNRT/NPU KV tensors use a uniform 4-dim layout [1, kv_heads, max_len, head_dim].
+constexpr size_t kKvTensorRank = 4;
+
 // Create one ION tensor of the fixed KV shape. Returns nullptr on failure.
 NN_Tensor *CreateKvTensor(size_t device_id, OH_NNExecutor *executor, size_t input_index, int kv_heads, int max_len,
                           int head_dim) {
@@ -35,8 +38,8 @@ NN_Tensor *CreateKvTensor(size_t device_id, OH_NNExecutor *executor, size_t inpu
     MS_LOG(ERROR) << "CreateInputTensorDesc failed for KV input " << input_index;
     return nullptr;
   }
-  int32_t shape[4] = {1, kv_heads, max_len, head_dim};
-  if (api.TensorDesc_SetShape(desc, shape, 4) != 0 || api.TensorDesc_SetDataType(desc, kOhNnFloat16) != 0) {
+  int32_t shape[kKvTensorRank] = {1, kv_heads, max_len, head_dim};
+  if (api.TensorDesc_SetShape(desc, shape, kKvTensorRank) != 0 || api.TensorDesc_SetDataType(desc, kOhNnFloat16) != 0) {
     MS_LOG(ERROR) << "KV TensorDesc SetShape/SetDataType failed";
     api.TensorDesc_Destroy(&desc);
     return nullptr;
