@@ -51,8 +51,16 @@ def make_cpp_probe(tmp_path_factory):
     sources = [ROOT / "tests/data/tokenizer_probe.cc"] + [
         ROOT / "src/tokenizer" / name for name in
         ("tokenizer.cc", "bpe_codec.cc", "sentencepiece_codec.cc", "chat_template.cc")]
+    # The tokenizer sources use securec (*_s + EOK); reuse the .mslib cache
+    # provisioned by the unit-test build (same recipe as tests/CMakeLists.txt).
+    securec_dirs = sorted((ROOT / "build" / ".mslib").glob("securec_*/"))
+    if not securec_dirs:
+        pytest.skip("securec not provisioned; run lite_llm build.sh -t ut once")
+    securec = securec_dirs[-1]
     subprocess.run([compiler, "-std=c++17", "-O2", "-I" + str(ROOT / "src"),
-                    "-I" + str(ROOT / "include"), *map(str, sources), "-o", str(output)], check=True)
+                    "-I" + str(ROOT / "include"), "-I" + str(securec),
+                    *map(str, sources), str(securec / "lib" / "libsecurec.a"),
+                    "-o", str(output)], check=True)
     return output
 
 

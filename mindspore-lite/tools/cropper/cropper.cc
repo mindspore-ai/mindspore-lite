@@ -23,6 +23,8 @@ namespace lite {
 namespace cropper {
 const char *kDelimComma = ",";
 constexpr int kBufSize = 1024;
+// Fields per config line: primitive, type, archive file.
+constexpr size_t kCropperConfigFieldNum = 3;
 
 std::string EscapeShellSingleQuote(const std::string &s) {
   std::string out;
@@ -210,7 +212,7 @@ int Cropper::GetOpMatchFiles() {
     in_file.getline(buf, kBufSize);
     std::string buf_str = buf;
     auto mapping = StrSplit(buf_str, kDelimComma);
-    if (mapping.size() >= 3) {
+    if (mapping.size() >= kCropperConfigFieldNum) {
       std::string primitive = mapping[0];
       std::string type = mapping[1];
       std::string file = mapping[2];

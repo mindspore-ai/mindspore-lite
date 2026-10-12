@@ -69,7 +69,9 @@ bool IsAxesEmpty(AnfNodePtr axes_input) {
     if (default_param == nullptr || !utils::isa<tensor::TensorPtr>(default_param)) {
       return true;
     }
-    return default_param->cast<tensor::TensorPtr>()->DataSize() == 0;
+    auto default_tensor = default_param->cast<tensor::TensorPtr>();
+    MS_CHECK_TRUE_RET(default_tensor != nullptr, true);
+    return default_tensor->DataSize() == 0;
   }
   if (utils::isa<ValueNodePtr>(axes_input) && axes_input->cast<ValueNodePtr>() != nullptr &&
       axes_input->cast<ValueNodePtr>()->value() != nullptr) {
@@ -181,6 +183,7 @@ bool TensorAxesToValues(const tensor::TensorPtr &tensor, std::vector<int32_t> *v
 bool ValueSeqAxesToValues(const ValuePtr &val, std::vector<int32_t> *values) {
   if (utils::isa<ValueSequencePtr>(val)) {
     auto seq = val->cast<ValueSequencePtr>();
+    MS_CHECK_TRUE_RET(seq != nullptr, false);
     if (!seq->value().empty()) {
       auto elem_type = seq->value().front()->type()->number_type();
       if (elem_type != kNumberTypeInt64 && elem_type != kNumberTypeInt32) {

@@ -40,6 +40,7 @@
 #include <vector>
 
 #include "manifest/msl_package_reader.h"
+#include "include/securec.h"
 
 #ifndef MSL_GOLDEN_FILE
 #error "MSL_GOLDEN_FILE must be set by the build (absolute path to golden_v1.msl)"
@@ -154,12 +155,16 @@ uint8_t PayloadByte(size_t i) {
 
 uint32_t ReadU32(const uint8_t *p) {
   uint32_t v = 0;
-  std::memcpy(&v, p, sizeof(v));
+  if (memcpy_s(&v, sizeof(v), p, sizeof(v)) != EOK) {
+    return 0;
+  }
   return v;
 }
 uint64_t ReadU64(const uint8_t *p) {
   uint64_t v = 0;
-  std::memcpy(&v, p, sizeof(v));
+  if (memcpy_s(&v, sizeof(v), p, sizeof(v)) != EOK) {
+    return 0;
+  }
   return v;
 }
 

@@ -25,6 +25,8 @@
 #include "backend/nnrt/nnrt_wrapper.h"
 #include "manifest/msl_package_reader.h"
 
+#include "include/securec.h"
+
 namespace mslite {
 namespace backend {
 namespace nnrt {
@@ -158,7 +160,9 @@ bool NnrtEmbedding::Row(int token, uint16_t *output) const {
   }
   if (!quantized_) {
     const size_t row_bytes = static_cast<size_t>(hidden_size_) * sizeof(uint16_t);
-    std::memcpy(output, weights_ + static_cast<size_t>(token) * row_bytes, row_bytes);
+    if (memcpy_s(output, row_bytes, weights_ + static_cast<size_t>(token) * row_bytes, row_bytes) != EOK) {
+      return false;
+    }
     return true;
   }
   if (format_ == EmbeddingFormat::kS16S4NzV1) {
@@ -177,7 +181,8 @@ template <typename To, typename From>
 To BitCast(const From &src) {
   static_assert(sizeof(To) == sizeof(From), "BitCast requires equal sizes");
   To dst;
-  std::memcpy(&dst, &src, sizeof(dst));
+  // count == destMax is pinned by the static_assert above, so this cannot fail.
+  (void)memcpy_s(&dst, sizeof(dst), &src, sizeof(dst));
   return dst;
 }
 
@@ -297,7 +302,10 @@ bool DequantizeS16S4EmbeddingRow(const S16S4EmbeddingView &view, int token, uint
   for (size_t group = 0; group < hidden / 128; ++group) {
     const size_t scale_offset = ((row / 128 * (hidden / 128) + group) * 128 + row % 128) * 8;
     float effective_scale = 0.0f;
-    std::memcpy(&effective_scale, view.scales + scale_offset, sizeof(effective_scale));
+    if (memcpy_s(&effective_scale, sizeof(effective_scale), view.scales + scale_offset, sizeof(effective_scale)) !=
+        EOK) {
+      return false;
+    }
     // S16S4_NZ_V1 FixPipe records contain the FP16 group scale divided by 1024.
     const float scale = effective_scale * 1024.0f;
     if (!std::isfinite(scale)) {

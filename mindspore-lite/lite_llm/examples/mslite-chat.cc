@@ -34,22 +34,27 @@
 #include "llm/llm.h"
 #include "manifest/model_manifest.h"
 #include "manifest/msl_package_reader.h"
+#include "include/securec.h"
 namespace {
 
 void DebugLog(const char *tag) { std::cout << "[m] " << tag << '\n' << std::flush; }
 
-bool ParsePositiveInt(const char *value, int32_t *out) {
-  if (value == nullptr || out == nullptr) {
+bool ParsePositiveInt(const std::string &value, int32_t *out) {
+  if (out == nullptr) {
     return false;
   }
-  errno = 0;
-  char *end = nullptr;
-  const int64_t parsed = std::strtoll(value, &end, 10);
-  if (errno != 0 || end == value || *end != '\0' || parsed <= 0 || parsed > std::numeric_limits<int32_t>::max()) {
+  try {
+    std::size_t pos = 0;
+    const std::int64_t parsed = std::stoll(value, &pos, 10);
+    if (pos != value.size() || parsed <= 0 || parsed > std::numeric_limits<int32_t>::max()) {
+      return false;
+    }
+    *out = static_cast<int32_t>(parsed);
+    return true;
+  } catch (const std::exception &e) {
+    std::cerr << "[error] invalid max_tokens \"" << value << "\": " << e.what() << '\n';
     return false;
   }
-  *out = static_cast<int32_t>(parsed);
-  return true;
 }
 
 void PrintUsage(const char *program) {
@@ -146,13 +151,16 @@ constexpr uint64_t kGiB = kMiB * kKiB;
 std::string FormatSize(uint64_t bytes) {
   char buf[64];
   if (bytes >= kGiB) {
-    std::snprintf(buf, sizeof(buf), "%.1f GiB", static_cast<double>(bytes) / static_cast<double>(kGiB));
+    (void)snprintf_s(buf, sizeof(buf), sizeof(buf) - 1, "%.1f GiB",
+                     static_cast<double>(bytes) / static_cast<double>(kGiB));
   } else if (bytes >= kMiB) {
-    std::snprintf(buf, sizeof(buf), "%.1f MiB", static_cast<double>(bytes) / static_cast<double>(kMiB));
+    (void)snprintf_s(buf, sizeof(buf), sizeof(buf) - 1, "%.1f MiB",
+                     static_cast<double>(bytes) / static_cast<double>(kMiB));
   } else if (bytes >= kKiB) {
-    std::snprintf(buf, sizeof(buf), "%.1f KiB", static_cast<double>(bytes) / static_cast<double>(kKiB));
+    (void)snprintf_s(buf, sizeof(buf), sizeof(buf) - 1, "%.1f KiB",
+                     static_cast<double>(bytes) / static_cast<double>(kKiB));
   } else {
-    std::snprintf(buf, sizeof(buf), "%" PRIu64 " B", static_cast<uint64_t>(bytes));
+    (void)snprintf_s(buf, sizeof(buf), sizeof(buf) - 1, "%" PRIu64 " B", static_cast<uint64_t>(bytes));
   }
   return buf;
 }

@@ -37,6 +37,7 @@ import json
 import logging
 import re
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
@@ -129,6 +130,95 @@ def _shell_files(config: dict[str, Any], config_path: Path) -> list[str]:
     return result
 
 
+@dataclass
+class _ConfigContext:
+    """Per-config paths used while copying one operator's sources."""
+
+    config_path: Path
+    source_dir: Path
+    shell_dir: Path
+    impl_dir: Path
+
+
+def _shell_records_for(ctx: _ConfigContext, shell_files: list[str]) -> list[dict[str, str]]:
+    """Copy one config's shell sources into the shell dir; return their records."""
+    shell_records: list[dict[str, str]] = []
+    for shell_file in shell_files:
+        relative, source = _relative_source(
+            ctx.source_dir, shell_file, f"{ctx.config_path}: shell.file"
+        )
+        if source.suffix.lower() not in SOURCE_SUFFIXES - {".o"}:
+            raise ConfigError(f"unsupported shell source type: {source}")
+        destination = ctx.shell_dir / relative.name
+        _copy_checked(source, destination)
+        shell_records.append({"file": destination.name})
+    return shell_records
+
+
+def _copy_implementation_files(
+    files: list[Any], ctx: _ConfigContext, index: int, target_stem: str
+) -> list[str]:
+    """Copy one ``implement[]`` entry's sources under ``impl_dir/target_stem``."""
+    merged_files: list[str] = []
+    for file_index, file_name in enumerate(files):
+        relative, source = _relative_source(
+            ctx.source_dir,
+            file_name,
+            f"{ctx.config_path}: implement[{index}].files[{file_index}]",
+        )
+        if source.suffix.lower() not in SOURCE_SUFFIXES:
+            raise ConfigError(f"unsupported implementation source type: {source}")
+        destination = ctx.impl_dir / target_stem / relative
+        _copy_checked(source, destination)
+        merged_files.append(destination.relative_to(ctx.impl_dir).as_posix())
+    return merged_files
+
+
+def _implementation_record(
+    implementation: Any, ctx: _ConfigContext, index: int, default_target: str
+) -> dict[str, Any]:
+    """Validate one ``implement[]`` entry, copy its files; return its record."""
+    if not isinstance(implementation, dict):
+        raise ConfigError(f"implement[{index}] must be an object in {ctx.config_path}")
+    platform = implementation.get("platform")
+    if platform not in SUPPORTED_PLATFORMS:
+        supported = ", ".join(sorted(SUPPORTED_PLATFORMS))
+        raise ConfigError(
+            f"unsupported platform {platform!r} in {ctx.config_path}; expected {supported}"
+        )
+    files = implementation.get("files")
+    if not isinstance(files, list) or not files:
+        raise ConfigError(f"implement[{index}].files must be a non-empty list")
+    target = implementation.get("target", default_target)
+    if not isinstance(target, str) or Path(target).name != target or not target.endswith(".o"):
+        raise ConfigError(
+            f"implement[{index}].target must be a plain .o file name in {ctx.config_path}"
+        )
+    merged_files = _copy_implementation_files(files, ctx, index, Path(target).stem)
+    return {
+        "platform": platform,
+        "files": merged_files,
+        "target": target,
+    }
+
+
+def _implementation_records_for(
+    config: dict[str, Any], ctx: _ConfigContext, shell_files: list[str]
+) -> list[dict[str, Any]]:
+    """Copy one config's per-platform implementation sources; return records."""
+    implementation_records: list[dict[str, Any]] = []
+    implementations = config.get("implement")
+    if not isinstance(implementations, list) or not implementations:
+        raise ConfigError(f"implement must be a non-empty list in {ctx.config_path}")
+    default_target = Path(shell_files[0]).with_suffix(".o").name
+
+    for index, implementation in enumerate(implementations):
+        implementation_records.append(
+            _implementation_record(implementation, ctx, index, default_target)
+        )
+    return implementation_records
+
+
 def collect_configs(
     config_paths: Sequence[Path], shell_dir: Path, impl_dir: Path
 ) -> dict[str, Any]:
@@ -142,60 +232,10 @@ def collect_configs(
     for config_path in sorted({path.resolve() for path in config_paths}, key=str):
         config = _load_json(config_path)
         _, source_dir = _operator_context(config_path)
+        ctx = _ConfigContext(config_path, source_dir, shell_dir, impl_dir)
         shell_files = _shell_files(config, config_path)
-        for shell_file in shell_files:
-            relative, source = _relative_source(
-                source_dir, shell_file, f"{config_path}: shell.file"
-            )
-            if source.suffix.lower() not in SOURCE_SUFFIXES - {".o"}:
-                raise ConfigError(f"unsupported shell source type: {source}")
-            destination = shell_dir / relative.name
-            _copy_checked(source, destination)
-            shell_records.append({"file": destination.name})
-
-        implementations = config.get("implement")
-        if not isinstance(implementations, list) or not implementations:
-            raise ConfigError(f"implement must be a non-empty list in {config_path}")
-        default_target = Path(shell_files[0]).with_suffix(".o").name
-
-        for index, implementation in enumerate(implementations):
-            if not isinstance(implementation, dict):
-                raise ConfigError(f"implement[{index}] must be an object in {config_path}")
-            platform = implementation.get("platform")
-            if platform not in SUPPORTED_PLATFORMS:
-                supported = ", ".join(sorted(SUPPORTED_PLATFORMS))
-                raise ConfigError(
-                    f"unsupported platform {platform!r} in {config_path}; expected {supported}"
-                )
-            files = implementation.get("files")
-            if not isinstance(files, list) or not files:
-                raise ConfigError(f"implement[{index}].files must be a non-empty list")
-            target = implementation.get("target", default_target)
-            if not isinstance(target, str) or Path(target).name != target or not target.endswith(".o"):
-                raise ConfigError(
-                    f"implement[{index}].target must be a plain .o file name in {config_path}"
-                )
-            target_stem = Path(target).stem
-            merged_files: list[str] = []
-            for file_index, file_name in enumerate(files):
-                relative, source = _relative_source(
-                    source_dir,
-                    file_name,
-                    f"{config_path}: implement[{index}].files[{file_index}]",
-                )
-                if source.suffix.lower() not in SOURCE_SUFFIXES:
-                    raise ConfigError(f"unsupported implementation source type: {source}")
-                destination = impl_dir / target_stem / relative
-                _copy_checked(source, destination)
-                merged_files.append(destination.relative_to(impl_dir).as_posix())
-
-            implementation_records.append(
-                {
-                    "platform": platform,
-                    "files": merged_files,
-                    "target": target,
-                }
-            )
+        shell_records.extend(_shell_records_for(ctx, shell_files))
+        implementation_records.extend(_implementation_records_for(config, ctx, shell_files))
 
     shell_records.sort(key=lambda item: item["file"])
     implementation_records.sort(

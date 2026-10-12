@@ -79,7 +79,9 @@ PrimitiveCPtr CaffeConvolutionParser::Parse(const caffe::LayerParameter &proto, 
     return nullptr;
   }
   auto &weightBlob = weight.blobs(0);
-  MS_CHECK_TRUE_MSG(!weightBlob.has_shape() || weightBlob.shape().dim_size() >= 2, nullptr,
+  // The conv weight blob shape carries at least (out_channels, channel_in / group) two dims.
+  constexpr int kConvWeightMinDimNum = 2;
+  MS_CHECK_TRUE_MSG(!weightBlob.has_shape() || weightBlob.shape().dim_size() >= kConvWeightMinDimNum, nullptr,
                     "caffe conv blob shape dim size < 2");
   auto channelIn = weightBlob.has_shape() ? weightBlob.shape().dim(1) * group : weightBlob.channels() * group;
   prim->set_in_channel(channelIn);

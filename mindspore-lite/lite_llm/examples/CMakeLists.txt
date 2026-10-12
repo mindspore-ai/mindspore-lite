@@ -26,11 +26,11 @@ if(MSLITE_LLM_CROSS_COMPILE_HARMONYOS)
   # run from the BinRunner memory loader (no runtime dlopen of the engine
   # .so, and the device has no libc++_shared.so in the app sandbox).
   target_link_libraries(mslite-chat PRIVATE
-    -Wl,--whole-archive mslite_llm_static -Wl,--no-whole-archive)
+    -Wl,--whole-archive mslite_llm_static -Wl,--no-whole-archive securec::securec)
   target_link_options(mslite-chat PRIVATE -static-libstdc++)
 else()
   target_link_libraries(mslite-chat PRIVATE
-    -Wl,--whole-archive mslite_llm_static -Wl,--no-whole-archive)
+    -Wl,--whole-archive mslite_llm_static -Wl,--no-whole-archive securec::securec)
 endif()
 # Relocatable library lookup: dev tree keeps the .so in build/src, the packaged
 # archive keeps it in lib/, so resolve relative to the binary.

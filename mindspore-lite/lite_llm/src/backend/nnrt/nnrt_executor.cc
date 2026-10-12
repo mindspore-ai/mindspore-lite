@@ -33,6 +33,8 @@
 
 #include "backend/nnrt/nnrt_log.h"
 #include "backend/nnrt/nnrt_wrapper.h"
+
+#include "include/securec.h"
 #include "manifest/model_manifest.h"
 #include "manifest/msl_package_reader.h"
 #include "backend/nnrt/nnrt_embedding.h"
@@ -652,7 +654,10 @@ bool NnrtExecutor::LoadFp16Bin(const std::string &path, const char *what, std::v
                   << ")";
     return false;
   }
-  std::memcpy(dst->data(), bytes.data(), bytes.size());
+  if (memcpy_s(dst->data(), dst->size() * sizeof(uint16_t), bytes.data(), bytes.size()) != EOK) {
+    MS_LOG(ERROR) << "Unexpected " << what << " copy failure";
+    return false;
+  }
   return true;
 }
 
@@ -819,7 +824,10 @@ bool NnrtExecutor::WriteTensor(NN_Tensor *tensor, const void *data, size_t size)
     MS_LOG(ERROR) << "WriteTensor: null data buffer";
     return false;
   }
-  std::memcpy(buf, data, size);
+  if (memcpy_s(buf, size, data, size) != EOK) {
+    MS_LOG(ERROR) << "WriteTensor: copy failure";
+    return false;
+  }
   return true;
 }
 
@@ -918,27 +926,42 @@ bool NnrtExecutor::Prefill(const std::vector<int> &input_ids, mslite_llm::Backen
         return false;
       }
     }
-    std::memset(embed_buf.data() + valid * hs, 0, (cs - valid) * hs * sizeof(uint16_t));
+    if (memset_s(embed_buf.data() + valid * hs, (cs - valid) * hs * sizeof(uint16_t), 0,
+                 (cs - valid) * hs * sizeof(uint16_t)) != EOK) {
+      MS_LOG(ERROR) << "Prefill: embed tail clear failure";
+      return false;
+    }
     if (!WriteTensor(prefill_inputs_[kIdxInputEmbeds], embed_buf.data(), cs * hs * sizeof(uint16_t))) {
       MS_LOG(ERROR) << "Prefill: failed to write inputs_embeds";
       return false;
     }
 
     // rope_cos/sin [1, cs, hd] from positions [start, start+cs)
-    std::memcpy(rope_buf.data(), cos_buffer_.data() + static_cast<size_t>(start) * hd, cs * hd * sizeof(uint16_t));
+    if (memcpy_s(rope_buf.data(), rope_buf.size() * sizeof(uint16_t),
+                 cos_buffer_.data() + static_cast<size_t>(start) * hd, cs * hd * sizeof(uint16_t)) != EOK) {
+      MS_LOG(ERROR) << "Prefill: rope_cos copy failure";
+      return false;
+    }
     if (!WriteTensor(prefill_inputs_[kIdxRopeCos], rope_buf.data(), cs * hd * sizeof(uint16_t))) {
       MS_LOG(ERROR) << "Prefill: failed to write rope_cos";
       return false;
     }
-    std::memcpy(rope_buf.data(), sin_buffer_.data() + static_cast<size_t>(start) * hd, cs * hd * sizeof(uint16_t));
+    if (memcpy_s(rope_buf.data(), rope_buf.size() * sizeof(uint16_t),
+                 sin_buffer_.data() + static_cast<size_t>(start) * hd, cs * hd * sizeof(uint16_t)) != EOK) {
+      MS_LOG(ERROR) << "Prefill: rope_sin copy failure";
+      return false;
+    }
     if (!WriteTensor(prefill_inputs_[kIdxRopeSin], rope_buf.data(), cs * hd * sizeof(uint16_t))) {
       MS_LOG(ERROR) << "Prefill: failed to write rope_sin";
       return false;
     }
 
     // attn_mask [1,1,cs,ml] from attention_mask_buffer_ rows [start, start+cs)
-    std::memcpy(mask_buf.data(), attention_mask_buffer_.data() + static_cast<size_t>(start) * ml,
-                cs * ml * sizeof(uint16_t));
+    if (memcpy_s(mask_buf.data(), mask_buf.size() * sizeof(uint16_t),
+                 attention_mask_buffer_.data() + static_cast<size_t>(start) * ml, cs * ml * sizeof(uint16_t)) != EOK) {
+      MS_LOG(ERROR) << "Prefill: attention_mask copy failure";
+      return false;
+    }
     if (!WriteTensor(prefill_inputs_[kIdxAttnMask], mask_buf.data(), cs * ml * sizeof(uint16_t))) {
       MS_LOG(ERROR) << "Prefill: failed to write attention_mask";
       return false;

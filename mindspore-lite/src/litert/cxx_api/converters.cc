@@ -155,6 +155,7 @@ std::shared_ptr<lite::InnerContext> ContextUtils::Convert(Context *context) {
     MS_CHECK_TRUE_RET(device != nullptr, nullptr);
     if (device->GetDeviceType() == kCPU) {
       auto cpu_context = device->Cast<CPUDeviceInfo>();
+      MS_CHECK_TRUE_RET(cpu_context != nullptr, nullptr);
       if (cpu_context->GetAllocator() == nullptr) {
         cpu_context->SetAllocator(Allocator::Create());
       }
@@ -172,6 +173,7 @@ std::shared_ptr<lite::InnerContext> ContextUtils::Convert(Context *context) {
                      gpu_context->GetProviderDevice(), gpu_context->GetAllocator(), inner_context.get());
     } else if (device->GetDeviceType() == kKirinNPU) {
       auto npu_context = device->Cast<KirinNPUDeviceInfo>();
+      MS_CHECK_TRUE_RET(npu_context != nullptr, nullptr);
       ret = AddNpuDevice(npu_context->GetEnableFP16(), npu_context->GetFrequency(), inner_context.get());
     } else if (device->GetDeviceType() == kAscend) {
       ret = AddAscendDevice(inner_context.get(), device.get());
