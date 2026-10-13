@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include <limits>
+#include "include/securec.h"
 #include "src/common/ops/operator_populate/operator_populate_register.h"
 #include "nnacl_c/custom_parameter.h"
 #include "nnacl_c/split_parameter.h"
@@ -71,7 +72,8 @@ OpParameter *PopulateSplitReduceConcatFusionParam(const ops::Custom *op) {
     MS_LOG(ERROR) << "malloc SplitParameter failed.";
     return nullptr;
   }
-  memset(param, 0, sizeof(SplitParameter));
+  auto ret = memset_s(param, sizeof(SplitParameter), 0, sizeof(SplitParameter));
+  MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
   if (!GetDataFromOp(param, sizeof(SplitParameter), op, kSplitParamAttrKey)) {
     MS_LOG(ERROR) << "Get SplitParameter value From prim fail.";
     free(param);
@@ -142,7 +144,8 @@ OpParameter *PopulateCustomOpParameter(const BaseOperatorPtr &base_operator) {
       MS_LOG(ERROR) << "malloc ShapeParameter failed.";
       return nullptr;
     }
-    memset(param, 0, sizeof(OpParameter));
+    auto ret = memset_s(param, sizeof(OpParameter), 0, sizeof(OpParameter));
+    MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
     param->type_ = PrimType_Inner_ShapeFusion;
     return reinterpret_cast<OpParameter *>(param);
   } else if (type == "GraphKernel") {
@@ -151,7 +154,8 @@ OpParameter *PopulateCustomOpParameter(const BaseOperatorPtr &base_operator) {
       MS_LOG(ERROR) << "malloc CustomParameter failed.";
       return nullptr;
     }
-    memset(param, 0, sizeof(CustomParameter));
+    auto ret = memset_s(param, sizeof(CustomParameter), 0, sizeof(CustomParameter));
+    MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
     param->op_parameter_.type_ = PrimType_Inner_GraphKernel;
     return reinterpret_cast<OpParameter *>(param);
   } else if (type == "SplitReduceConcatFusion") {
@@ -163,7 +167,8 @@ OpParameter *PopulateCustomOpParameter(const BaseOperatorPtr &base_operator) {
       MS_LOG(ERROR) << "malloc EncoderLayer failed.";
       return nullptr;
     }
-    memset(param, 0, sizeof(OpParameter));
+    auto ret = memset_s(param, sizeof(OpParameter), 0, sizeof(OpParameter));
+    MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
     param->type_ = PrimType_Inner_EncoderLayer;
     return reinterpret_cast<OpParameter *>(param);
   } else if (type == "ACL") {
@@ -172,7 +177,8 @@ OpParameter *PopulateCustomOpParameter(const BaseOperatorPtr &base_operator) {
       MS_LOG(ERROR) << "malloc CustomParameter failed.";
       return nullptr;
     }
-    memset(param, 0, sizeof(CustomParameter));
+    auto ret = memset_s(param, sizeof(CustomParameter), 0, sizeof(CustomParameter));
+    MS_CHECK_TRUE_MSG(ret == EOK, nullptr, "memset_s failed");
     // NNACL does not need to solve ACl Custom op, add this is just return a parameter object
     param->op_parameter_.type_ = PrimType_Inner_AclCustomOp;
     return reinterpret_cast<OpParameter *>(param);
