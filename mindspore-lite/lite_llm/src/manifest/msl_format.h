@@ -50,6 +50,13 @@ constexpr size_t kEntrySize = 88;
 constexpr size_t kNameSize = 64;
 constexpr uint32_t kDefaultAlignment = 4096;
 
+// Fixed field widths (bytes).
+constexpr size_t kU32Size = 4;
+constexpr size_t kU64Size = 8;
+
+// KV record trailer after the key: type u32 + value_len u32.
+constexpr size_t kKvTypeAndValueLenSize = kU32Size * 2;
+
 // KV value types (v1 closed set).
 enum KvType : uint32_t {
   kTypeBool = 0,
@@ -87,6 +94,11 @@ struct MslResourceEntry {
 };
 #pragma pack(pop)
 static_assert(sizeof(MslResourceEntry) == kEntrySize, "MslResourceEntry must be 88 bytes");
+
+// Field offsets within MslResourceEntry (name | offset u64 | size u64 | access u32).
+constexpr size_t kEntryOffsetPos = kNameSize;
+constexpr size_t kEntrySizePos = kNameSize + kU64Size;
+constexpr size_t kEntryAccessPos = kNameSize + 2 * kU64Size;
 
 /// v1 KV keys consumed by the runtime.  Adding a key does NOT bump the
 /// version (readers skip unknown keys); only keys with runtime consumers

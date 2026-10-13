@@ -30,8 +30,9 @@ namespace {
 
 mslite_llm::Sampler MakeSampler(float temperature = 0.0f, int32_t top_k = 0, float top_p = 0.0f,
                                 float repetition_penalty = 1.0f, int32_t seed = 0) {
+  constexpr int32_t kDefaultMaxNewTokens = 32;
   MSLlmGenerateConfig cfg = {};
-  cfg.max_new_tokens = 32;
+  cfg.max_new_tokens = kDefaultMaxNewTokens;
   cfg.temperature = temperature;
   cfg.top_k = top_k;
   cfg.top_p = top_p;
@@ -63,14 +64,15 @@ TEST(Sampler, GreedyTieBreak) {
 TEST(Sampler, GreedyArgmaxVectorBoundaries) {
   // Cover vector-lane, vector-group and scalar-tail winners while preserving
   // the first-index tie rule used by std::max_element.
-  auto sampler = MakeSampler(/*temperature=*/0.0f);
+  const float temperature = 0.0f;
+  auto sampler = MakeSampler(temperature);
   std::vector<float> logits(17, -1.0f);
   logits[4] = 2.0f;
   logits[12] = 3.0f;
   logits[16] = 4.0f;
   EXPECT_EQ(sampler.Sample(logits), 16);
 
-  auto tied_sampler = MakeSampler(/*temperature=*/0.0f);
+  auto tied_sampler = MakeSampler(temperature);
   logits[7] = 5.0f;
   logits[15] = 5.0f;
   EXPECT_EQ(tied_sampler.Sample(logits), 7);

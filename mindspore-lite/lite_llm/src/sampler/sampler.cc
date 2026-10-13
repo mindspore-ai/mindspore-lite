@@ -44,13 +44,15 @@ int32_t GreedyArgMax(const float *logits, size_t size) {
   float best_value = logits[0];
   size_t index = 1;
 #if defined(__aarch64__)
-  for (; index + 4 <= size; index += 4) {
+  // float32x4_t lane count, fixed by the vld1q_f32/vdupq_n_f32 intrinsic types.
+  constexpr size_t kNeonLaneCount = 4;
+  for (; index + kNeonLaneCount <= size; index += kNeonLaneCount) {
     const float32x4_t values = vld1q_f32(logits + index);
     const uint32x4_t exceeds_best = vcgtq_f32(values, vdupq_n_f32(best_value));
     if (vmaxvq_u32(exceeds_best) == 0) {
       continue;
     }
-    for (size_t lane = 0; lane < 4; ++lane) {
+    for (size_t lane = 0; lane < kNeonLaneCount; ++lane) {
       const float value = logits[index + lane];
       if (value > best_value) {
         best_value = value;

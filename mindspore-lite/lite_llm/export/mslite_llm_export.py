@@ -36,6 +36,7 @@ packing tool).
 """
 
 import argparse
+import importlib.util
 import json
 import logging
 import os
@@ -43,10 +44,27 @@ import shutil
 import sys
 import tempfile
 
-# Package root: export/ must be importable so ``models.*`` / ``utils.*`` resolve.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Register the export-tree top-level packages by content so ``models.*`` /
+# ``utils.*`` resolve without mutating sys.path.  Unconditional registration
+# mirrors the previous sys.path.insert(0, export_dir) bootstrap: the source
+# tree wins over any installed copy.
+_PACKAGE_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-# pylint: disable=wrong-import-position  # package root injected on sys.path above
+
+def _bootstrap_package(name):
+    """Register an export-tree top-level package without touching sys.path."""
+    pkg_dir = os.path.join(_PACKAGE_ROOT, name)
+    spec = importlib.util.spec_from_file_location(name, os.path.join(pkg_dir, "__init__.py"),
+                                                  submodule_search_locations=[pkg_dir])
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+
+
+_bootstrap_package("models")
+_bootstrap_package("utils")
+
+# pylint: disable=wrong-import-position  # packages bootstrapped above, not via sys.path
 from models.qwen2_5.qwen2_5_exporter import export_qwen2_5  # noqa: E402
 from models.qwen2_5.qwen2_5_gguf_loader import gguf_loader as qwen2_5_gguf_loader  # noqa: E402
 from models.qwen3.qwen3_exporter import export_qwen3  # noqa: E402

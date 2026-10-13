@@ -41,6 +41,11 @@ constexpr uint32_t kCodecBPE = 0;
 constexpr uint32_t kCodecQwenBPE = 2;
 constexpr uint32_t kCodecSentencePiece = 1;
 
+// UTF-8 sequence lengths by leading byte class.
+constexpr size_t kUtf8SeqLen2B = 2;
+constexpr size_t kUtf8SeqLen3B = 3;
+constexpr size_t kUtf8SeqLen4B = 4;
+
 uint32_t ReadU32(const uint8_t *data, size_t &offset, size_t size) {
   if (offset + sizeof(uint32_t) > size) {
     return 0;
@@ -133,9 +138,9 @@ std::vector<TextSegment> SplitOnSpecialTokens(const std::string &text,
 
 }  // namespace
 
-class TokenizerImpl : public Tokenizer {
+class Tokenizer : public TokenizerBase {
  public:
-  TokenizerImpl() : bos_token_id_(-1), eos_token_id_(-1), pad_token_id_(-1), unk_token_id_(-1) {}
+  Tokenizer() : bos_token_id_(-1), eos_token_id_(-1), pad_token_id_(-1), unk_token_id_(-1) {}
 
   bool Load(const std::string &vocab_path) {
     std::ifstream ifs(vocab_path, std::ios::binary | std::ios::ate);
@@ -484,13 +489,13 @@ class TokenizerImpl : public Tokenizer {
       return 1;
     }
     if ((lead & 0xE0u) == 0xC0u) {
-      return 2;
+      return kUtf8SeqLen2B;
     }
     if ((lead & 0xF0u) == 0xE0u) {
-      return 3;
+      return kUtf8SeqLen3B;
     }
     if ((lead & 0xF8u) == 0xF0u) {
-      return 4;
+      return kUtf8SeqLen4B;
     }
     return 1;  // invalid leading byte: pass through as a single byte
   }
@@ -533,16 +538,16 @@ class TokenizerImpl : public Tokenizer {
   int32_t unk_token_id_;
 };
 
-std::unique_ptr<Tokenizer> CreateTokenizer(const std::string &vocab_path) {
-  auto impl = std::make_unique<TokenizerImpl>();
+std::unique_ptr<TokenizerBase> CreateTokenizer(const std::string &vocab_path) {
+  auto impl = std::make_unique<Tokenizer>();
   if (!impl->Load(vocab_path)) {
     return nullptr;
   }
   return impl;
 }
 
-std::unique_ptr<Tokenizer> CreateTokenizerFromBuffer(const uint8_t *data, size_t size) {
-  auto impl = std::make_unique<TokenizerImpl>();
+std::unique_ptr<TokenizerBase> CreateTokenizerFromBuffer(const uint8_t *data, size_t size) {
+  auto impl = std::make_unique<Tokenizer>();
   if (!impl->LoadFromBuffer(data, size)) {
     return nullptr;
   }

@@ -227,15 +227,20 @@ TEST(ModelResourceLoader, NullResourcesIsInvalidArg) {
 
 // Single-file .msl (v1) Tests
 
+// Little-endian serialization helpers: field widths in bytes and bits.
+constexpr int kU32SizeBytes = 4;
+constexpr int kU64SizeBytes = 8;
+constexpr int kBitsPerByte = 8;
+
 void WriteU32(std::vector<uint8_t> *buf, uint32_t v) {
-  for (int i = 0; i < 4; ++i) {
-    buf->push_back(static_cast<uint8_t>((v >> (8 * i)) & 0xFF));
+  for (int i = 0; i < kU32SizeBytes; ++i) {
+    buf->push_back(static_cast<uint8_t>((v >> (kBitsPerByte * i)) & 0xFF));
   }
 }
 
 void WriteU64(std::vector<uint8_t> *buf, uint64_t v) {
-  for (int i = 0; i < 8; ++i) {
-    buf->push_back(static_cast<uint8_t>((v >> (8 * i)) & 0xFF));
+  for (int i = 0; i < kU64SizeBytes; ++i) {
+    buf->push_back(static_cast<uint8_t>((v >> (kBitsPerByte * i)) & 0xFF));
   }
 }
 
@@ -255,6 +260,8 @@ void WriteKvEntry(std::vector<uint8_t> *buf, const std::string &key, uint32_t ty
   buf->insert(buf->end(), value.begin(), value.end());
 }
 
+constexpr size_t kNameSize = 64;  // .msl v1 resource-table name field width
+
 /// Build a single-file .msl (v1: .MSL header + KV region + resource table +
 /// data) from KV pairs and (name, content) resource pairs.
 void WriteSingleFileMslV1(const std::filesystem::path &path,
@@ -263,7 +270,7 @@ void WriteSingleFileMslV1(const std::filesystem::path &path,
                           uint32_t alignment = 4096) {
   std::vector<uint8_t> buf;
   const char kMagic[4] = {'.', 'M', 'S', 'L'};
-  buf.insert(buf.end(), kMagic, kMagic + 4);
+  buf.insert(buf.end(), kMagic, kMagic + sizeof(kMagic));
   WriteU32(&buf, 1);                                        // version
   WriteU32(&buf, static_cast<uint32_t>(kv.size()));         // kv_count
   WriteU32(&buf, static_cast<uint32_t>(resources.size()));  // resource_count
@@ -280,7 +287,7 @@ void WriteSingleFileMslV1(const std::filesystem::path &path,
   for (const auto &[name, content] : resources) {
     const uint64_t aligned = ((cursor + alignment - 1) / alignment) * alignment;
     offsets.push_back(aligned);
-    for (size_t j = 0; j < 64; ++j) {
+    for (size_t j = 0; j < kNameSize; ++j) {
       buf.push_back(j < name.size() ? static_cast<uint8_t>(name[j]) : 0);
     }
     WriteU64(&buf, aligned);
