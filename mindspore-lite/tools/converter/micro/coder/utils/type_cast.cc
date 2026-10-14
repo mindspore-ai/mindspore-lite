@@ -62,7 +62,7 @@ std::string EnumNameMSDataType(TypeId type) {
     case kNumberTypeInt32:
       return "kMSDataTypeNumberTypeInt32";
     case kNumberTypeInt64:
-      return "kMSDataTypeNumberTypeUInt64";
+      return "kMSDataTypeNumberTypeInt64";
     case kNumberTypeUInt:
       return "kMSDataTypeNumberTypeUInt32";
     case kNumberTypeUInt8:
