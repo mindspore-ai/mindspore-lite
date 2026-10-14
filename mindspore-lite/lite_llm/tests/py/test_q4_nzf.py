@@ -14,16 +14,13 @@
 # ============================================================================
 """Independent scalar checks for compact phase4 Q4_0 and canonical quantization."""
 
-import sys
-from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
 from gguf.quants import GGMLQuantizationType, dequantize
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "export"))
-
+# utils is registered by tests/py/conftest.py before collection.
 from mslite_llm_ops import MsQuant4N0Group32  # pylint: disable=wrong-import-position
 from utils.gguf_mapping import rearrange_q4_0_g32  # pylint: disable=wrong-import-position
 
@@ -167,7 +164,9 @@ def test_repack_accepts_byte_streams_without_mutation(representation):
     variants = {"bytes": rows.tobytes(), "readonly": rows, "strided": storage[:, ::2]}
     rows.flags.writeable = False
     storage.flags.writeable = False
-    actual = MsQuant4N0Group32.repack_q4_0_to_nzf(variants[representation], (1056, 80))
+    variant = variants.get(representation)
+    assert variant is not None, f"unknown representation: {representation}"
+    actual = MsQuant4N0Group32.repack_q4_0_to_nzf(variant, (1056, 80))
     np.testing.assert_array_equal(actual, expected)
     np.testing.assert_array_equal(storage[:, ::2], rows)
     assert np.all(storage[:, 1::2] == 0xCD)
@@ -187,12 +186,14 @@ def test_quantize_accepts_readonly_strided_floating_weights():
 @pytest.mark.parametrize("shape", [(0, 16), (32, 0), (31, 16), (33, 16), (32, 1), (32, 17),
                                   (32, 1.5), (32.0, 16), (True, 16), (32, False), (32,), "32,16"])
 def test_repack_rejects_invalid_logical_dimensions(shape):
+    """Repack must reject zero, non-multiple-of-16, and non-integer logical dimensions."""
     with pytest.raises(ValueError):
         MsQuant4N0Group32.repack_q4_0_to_nzf(bytes(288), shape)
 
 
 @pytest.mark.parametrize("shape", [(0, 16), (32, 0), (31, 16), (32, 17), (32,), (32, 16, 1)])
 def test_quantize_rejects_invalid_matrix_shapes(shape):
+    """Quantize must reject shapes with zero dims, non-16-multiples, or rank != 2."""
     with pytest.raises(ValueError):
         MsQuant4N0Group32.quantize_weight_g32_4bit(np.zeros(shape, dtype=np.float16))
 
@@ -200,12 +201,14 @@ def test_quantize_rejects_invalid_matrix_shapes(shape):
 @pytest.mark.parametrize("data", [bytes(287), bytes(289), np.zeros(288, np.float32), [0] * 288])
 @pytest.mark.parametrize("method", ["repack_q4_0_to_nzf", "dequantize_weight_g32_4bit"])
 def test_weight_ingress_rejects_wrong_dtype_or_byte_length(data, method):
+    """Repack and dequantize ingress must reject wrong dtype or byte length."""
     with pytest.raises(ValueError):
         getattr(MsQuant4N0Group32, method)(data, (32, 16))
 
 
 @pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
 def test_quantize_rejects_nonfinite_values(value):
+    """Quantize must reject NaN and infinite weight values."""
     weight = np.zeros((32, 16), dtype=np.float32)
     weight[5, 7] = value
     with pytest.raises(ValueError):
@@ -214,12 +217,14 @@ def test_quantize_rejects_nonfinite_values(value):
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.int32, np.complex64])
 def test_quantize_rejects_nonfloating_matrices(dtype):
+    """Quantize must reject integer and complex (non-floating) matrices."""
     with pytest.raises(ValueError):
         MsQuant4N0Group32.quantize_q4_0_blocks(np.zeros((32, 16), dtype=dtype))
 
 
 @pytest.mark.parametrize("shape", [(18,), (1, 1, 18), (16, 19), (16, 17)])
 def test_rearrange_rejects_non_block_rows(shape):
+    """Rearrange must reject shapes that are not whole 18-byte Q4_0 block rows."""
     with pytest.raises(ValueError):
         rearrange_q4_0_g32(np.zeros(shape, np.uint8))
 

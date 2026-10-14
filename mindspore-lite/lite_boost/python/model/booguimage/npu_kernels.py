@@ -54,8 +54,8 @@ def _is_broadcast_bool_mask(attn_mask, query):
 
 def npu_sdpa(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False,
              scale=None, enable_gqa=False):
-    """SDPA wrapper that expands broadcast ``[B, 1, 1, S]`` bool masks to
-    ``[B, 1, S, S]`` on NPU (the fused NPU SDPA kernel rejects them).
+    """SDPA wrapper that expands broadcast ``[B, 1, 1, S]`` bool masks to ``[B, 1, S, S]`` on NPU.
+    The fused NPU SDPA kernel rejects them.
     """
     if _is_broadcast_bool_mask(attn_mask, query):
         attn_mask = attn_mask.expand(-1, -1, query.shape[-2], -1)
@@ -66,8 +66,7 @@ def npu_sdpa(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False,
 
 
 def patch_sdpa_mask():
-    """Install the NPU-safe SDPA wrapper on ``F.scaled_dot_product_attention``
-    globally (idempotent).
+    """Install the NPU-safe SDPA wrapper on ``F.scaled_dot_product_attention`` globally (idempotent).
     """
     if getattr(F, "_lb_npu_sdpa_patched", False):
         return
