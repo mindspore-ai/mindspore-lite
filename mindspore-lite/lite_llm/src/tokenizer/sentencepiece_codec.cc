@@ -20,6 +20,7 @@
 #include <iomanip>
 #include <limits>
 #include <sstream>
+#include "include/securec.h"
 
 namespace mslite_llm {
 
@@ -30,7 +31,9 @@ uint32_t ReadU32(const uint8_t *data, size_t &offset, size_t size) {
     return 0;
   }
   uint32_t val;
-  std::memcpy(&val, data + offset, sizeof(val));
+  if (memcpy_s(&val, sizeof(val), data + offset, sizeof(val)) != EOK) {
+    return 0;
+  }
   offset += sizeof(val);
   return val;
 }
@@ -108,7 +111,9 @@ float ReadFloat32(const uint8_t *data, size_t &offset, size_t size) {
     return 0.0f;
   }
   float val;
-  std::memcpy(&val, data + offset, sizeof(val));
+  if (memcpy_s(&val, sizeof(val), data + offset, sizeof(val)) != EOK) {
+    return 0.0f;
+  }
   offset += sizeof(val);
   return val;
 }

@@ -26,11 +26,11 @@
 
 #include <gtest/gtest.h>
 #include <cstdint>
-#include <cstring>
 #include <string>
 #include <vector>
 #include "llm/llm.h"
 #include "../../src/llm_types_internal.h"
+#include "include/securec.h"
 #include "tokenizer/chat_template.h"
 
 namespace mslite_llm {
@@ -88,7 +88,7 @@ TEST(ChatTemplate, UnbuiltModelReturnsNotSupported) {
   ASSERT_NE(h, nullptr);
   MSLLMChatMessage msgs[] = {{MSLLM_ROLE_USER, "hello"}};
   char buf[256];
-  std::memset(buf, 'X', sizeof(buf));
+  (void)memset_s(buf, sizeof(buf), 'X', sizeof(buf));
   const std::string original(buf, sizeof(buf));
   // No BuildModel — tokenizer is null. The output must remain untouched.
   auto s = MSLLMApplyChatTemplate(h, msgs, 1, buf, sizeof(buf));

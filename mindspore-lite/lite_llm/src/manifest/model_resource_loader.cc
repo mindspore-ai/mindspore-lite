@@ -108,6 +108,191 @@ MSLlmStatus ValidateNpuManifest(const ModelManifest &manifest, std::string *erro
 
 }  // namespace
 
+namespace {
+
+/// Single-file mode: resolve the LiteRT graphs (prefill/decode/variants)
+/// against the .msl entry table.
+MSLlmStatus ResolveSingleFileGraphs(const ModelManifest &manifest, ModelResources *resources,
+                                    std::string *error_message) {
+  if (manifest.litert.has_prefill && !manifest.litert.prefill_path.empty()) {
+    if (!ResolveEntry(*resources->package_reader, "prefill", manifest.litert.prefill_path, true,
+                      &resources->prefill_path, error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+  }
+  if (manifest.litert.has_decode && !manifest.litert.decode_path.empty()) {
+    if (!ResolveEntry(*resources->package_reader, "decode", manifest.litert.decode_path, true, &resources->decode_path,
+                      error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+  }
+  for (const auto &variant : manifest.litert.decode_variants) {
+    std::string resolved;
+    if (!ResolveEntry(*resources->package_reader, "decode_variant", variant.path, true, &resolved, error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    LiteRtDecodeVariant resolved_variant = variant;
+    resolved_variant.path = resolved;
+    resources->decode_variants.push_back(std::move(resolved_variant));
+  }
+  return MSLLM_SUCCESS;
+}
+
+/// Single-file mode: resolve the asset entries (tokenizer/embedding/rope/mask).
+MSLlmStatus ResolveSingleFileAssets(const ModelManifest &manifest, ModelResources *resources, bool is_nnrt,
+                                    std::string *error_message) {
+  if (manifest.assets.present) {
+    if (!ResolveEntry(*resources->package_reader, "tokenizer", manifest.assets.tokenizer, is_nnrt,
+                      &resources->tokenizer_path, error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    const bool nnrt_assets_required = is_nnrt;
+    if (!ResolveEntry(*resources->package_reader, "embedding", manifest.assets.embedding, nnrt_assets_required,
+                      &resources->embedding_path, error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    ResolveEntry(*resources->package_reader, "embedding_fp16", manifest.assets.embedding_fp16, false,
+                 &resources->embedding_fp16_path, nullptr);
+    if (!ResolveEntry(*resources->package_reader, "rope_sin", manifest.assets.rope_sin, nnrt_assets_required,
+                      &resources->rope_sin_path, error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    if (!ResolveEntry(*resources->package_reader, "rope_cos", manifest.assets.rope_cos, nnrt_assets_required,
+                      &resources->rope_cos_path, error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    if (!ResolveEntry(*resources->package_reader, "attention_mask", manifest.assets.attention_mask,
+                      nnrt_assets_required, &resources->attention_mask_path, error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+  } else if (is_nnrt) {
+    if (error_message != nullptr) {
+      *error_message = "NPU backend requires assets in manifest";
+    }
+    return MSLLM_ERROR_MODEL_LOAD;
+  }
+  return MSLLM_SUCCESS;
+}
+
+/// Single-file mode: opt-in external decoder weights. Once declared, the
+/// package must contain the fixed blob produced by omg; do not silently fall
+/// back to an incomplete .omc.
+MSLlmStatus ResolveSingleFileExternalWeights(const ModelManifest &manifest, ModelResources *resources,
+                                             std::string *error_message) {
+  if (!manifest.npu.om_weight_dir.empty()) {
+    if (!IsPackageRelativePath(manifest.npu.om_weight_dir)) {
+      if (error_message != nullptr) {
+        *error_message = "npu.om_weight_dir is invalid: " + manifest.npu.om_weight_dir;
+      }
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    std::string entry;
+    if (!ResolveEntry(*resources->package_reader, "external_weight", "SubGraph_0.weight", true, &entry,
+                      error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    resources->om_weight_dir = manifest.npu.om_weight_dir;
+  }
+  return MSLLM_SUCCESS;
+}
+
+/// Directory mode: resolve the LiteRT graph paths under the package root.
+MSLlmStatus ResolveDirectoryGraphs(const std::string &canonical_root, const ModelManifest &manifest,
+                                   ModelResources *resources, std::string *error_message) {
+  if (manifest.litert.has_prefill && !manifest.litert.prefill_path.empty()) {
+    if (!ResolvePackagePath(canonical_root, manifest.litert.prefill_path, &resources->prefill_path)) {
+      if (error_message != nullptr) {
+        *error_message = "prefill graph path is invalid: " + manifest.litert.prefill_path;
+      }
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+  }
+  if (manifest.litert.has_decode && !manifest.litert.decode_path.empty()) {
+    if (!ResolvePackagePath(canonical_root, manifest.litert.decode_path, &resources->decode_path)) {
+      if (error_message != nullptr) {
+        *error_message = "decode graph path is invalid: " + manifest.litert.decode_path;
+      }
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+  }
+  for (const auto &variant : manifest.litert.decode_variants) {
+    std::string resolved;
+    if (!ResolvePackagePath(canonical_root, variant.path, &resolved)) {
+      if (error_message != nullptr) {
+        *error_message = "decode variant path is invalid: " + variant.path;
+      }
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    LiteRtDecodeVariant resolved_variant = variant;
+    resolved_variant.path = resolved;
+    resources->decode_variants.push_back(std::move(resolved_variant));
+  }
+  return MSLLM_SUCCESS;
+}
+
+/// Directory mode: resolve the asset paths (tokenizer/embedding/rope/mask).
+MSLlmStatus ResolveDirectoryAssets(const std::string &canonical_root, const ModelManifest &manifest,
+                                   ModelResources *resources, bool is_nnrt, std::string *error_message) {
+  if (manifest.assets.present) {
+    if (!ResolveAsset(canonical_root, "tokenizer", manifest.assets.tokenizer, is_nnrt, &resources->tokenizer_path,
+                      error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    // NPU (NNRT) runtime reads these bins for the CPU-side embedding lookup,
+    // RoPE constants and the causal mask; missing any of them fails at Build.
+    const bool nnrt_assets_required = is_nnrt;
+    if (!ResolveAsset(canonical_root, "embedding", manifest.assets.embedding, nnrt_assets_required,
+                      &resources->embedding_path, error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    ResolveAsset(canonical_root, "embedding_fp16", manifest.assets.embedding_fp16, false,
+                 &resources->embedding_fp16_path, nullptr);
+    if (!ResolveAsset(canonical_root, "rope_sin", manifest.assets.rope_sin, nnrt_assets_required,
+                      &resources->rope_sin_path, error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    if (!ResolveAsset(canonical_root, "rope_cos", manifest.assets.rope_cos, nnrt_assets_required,
+                      &resources->rope_cos_path, error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    if (!ResolveAsset(canonical_root, "attention_mask", manifest.assets.attention_mask, nnrt_assets_required,
+                      &resources->attention_mask_path, error_message)) {
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+  } else if (is_nnrt) {
+    if (error_message != nullptr) {
+      *error_message = "NPU backend requires assets in manifest";
+    }
+    return MSLLM_ERROR_MODEL_LOAD;
+  }
+  return MSLLM_SUCCESS;
+}
+
+/// Directory mode: opt-in external decoder weights (om_weight_dir +
+/// SubGraph_0.weight on disk).
+MSLlmStatus ResolveDirectoryExternalWeights(const std::string &canonical_root, const ModelManifest &manifest,
+                                            ModelResources *resources, std::string *error_message) {
+  if (!manifest.npu.om_weight_dir.empty()) {
+    if (!ResolvePackagePath(canonical_root, manifest.npu.om_weight_dir, &resources->om_weight_dir)) {
+      if (error_message != nullptr) {
+        *error_message = "npu.om_weight_dir path is invalid: " + manifest.npu.om_weight_dir;
+      }
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+    std::string weight_path;
+    if (!ResolvePackagePath(canonical_root, manifest.npu.om_weight_dir + "/SubGraph_0.weight", &weight_path) ||
+        !IsRegularFile(weight_path)) {
+      if (error_message != nullptr) {
+        *error_message = "external weight is missing: " + manifest.npu.om_weight_dir + "/SubGraph_0.weight";
+      }
+      return MSLLM_ERROR_MODEL_LOAD;
+    }
+  }
+  return MSLLM_SUCCESS;
+}
+
+}  // namespace
+
 MSLlmStatus LoadModelResourcesFromSingleFile(const std::string &msl_path, ModelResources *resources,
                                              MSLlmBackendType backend, std::string *error_message) {
   if (resources == nullptr) {
@@ -139,79 +324,16 @@ MSLlmStatus LoadModelResourcesFromSingleFile(const std::string &msl_path, ModelR
   }
 
   // ── LiteRT graphs ────────────────────────────────────────────────────
-  if (manifest.litert.has_prefill && !manifest.litert.prefill_path.empty()) {
-    if (!ResolveEntry(*resources->package_reader, "prefill", manifest.litert.prefill_path, true,
-                      &resources->prefill_path, error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-  }
-  if (manifest.litert.has_decode && !manifest.litert.decode_path.empty()) {
-    if (!ResolveEntry(*resources->package_reader, "decode", manifest.litert.decode_path, true, &resources->decode_path,
-                      error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-  }
-  for (const auto &variant : manifest.litert.decode_variants) {
-    std::string resolved;
-    if (!ResolveEntry(*resources->package_reader, "decode_variant", variant.path, true, &resolved, error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-    LiteRtDecodeVariant resolved_variant = variant;
-    resolved_variant.path = resolved;
-    resources->decode_variants.push_back(std::move(resolved_variant));
+  if (auto status = ResolveSingleFileGraphs(manifest, resources, error_message); status != MSLLM_SUCCESS) {
+    return status;
   }
 
   // ── Assets ───────────────────────────────────────────────────────────
-  if (manifest.assets.present) {
-    if (!ResolveEntry(*resources->package_reader, "tokenizer", manifest.assets.tokenizer, is_nnrt,
-                      &resources->tokenizer_path, error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-    const bool nnrt_assets_required = is_nnrt;
-    if (!ResolveEntry(*resources->package_reader, "embedding", manifest.assets.embedding, nnrt_assets_required,
-                      &resources->embedding_path, error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-    ResolveEntry(*resources->package_reader, "embedding_fp16", manifest.assets.embedding_fp16, false,
-                 &resources->embedding_fp16_path, nullptr);
-    if (!ResolveEntry(*resources->package_reader, "rope_sin", manifest.assets.rope_sin, nnrt_assets_required,
-                      &resources->rope_sin_path, error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-    if (!ResolveEntry(*resources->package_reader, "rope_cos", manifest.assets.rope_cos, nnrt_assets_required,
-                      &resources->rope_cos_path, error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-    if (!ResolveEntry(*resources->package_reader, "attention_mask", manifest.assets.attention_mask,
-                      nnrt_assets_required, &resources->attention_mask_path, error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-  } else if (is_nnrt) {
-    if (error_message != nullptr) {
-      *error_message = "NPU backend requires assets in manifest";
-    }
-    return MSLLM_ERROR_MODEL_LOAD;
+  if (auto status = ResolveSingleFileAssets(manifest, resources, is_nnrt, error_message); status != MSLLM_SUCCESS) {
+    return status;
   }
 
-  // External decoder weights are opt-in. Once declared, the package must
-  // contain the fixed blob produced by omg; do not silently fall back to an
-  // incomplete .omc.
-  if (!manifest.npu.om_weight_dir.empty()) {
-    if (!IsPackageRelativePath(manifest.npu.om_weight_dir)) {
-      if (error_message != nullptr) {
-        *error_message = "npu.om_weight_dir is invalid: " + manifest.npu.om_weight_dir;
-      }
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-    std::string entry;
-    if (!ResolveEntry(*resources->package_reader, "external_weight", "SubGraph_0.weight", true, &entry,
-                      error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-    resources->om_weight_dir = manifest.npu.om_weight_dir;
-  }
-
-  return MSLLM_SUCCESS;
+  return ResolveSingleFileExternalWeights(manifest, resources, error_message);
 }
 
 MSLlmStatus LoadModelResources(const std::string &package_root, ModelResources *resources, MSLlmBackendType backend,
@@ -254,87 +376,18 @@ MSLlmStatus LoadModelResources(const std::string &package_root, ModelResources *
     }
   }
 
-  if (manifest.litert.has_prefill && !manifest.litert.prefill_path.empty()) {
-    if (!ResolvePackagePath(canonical_root, manifest.litert.prefill_path, &resources->prefill_path)) {
-      if (error_message != nullptr) {
-        *error_message = "prefill graph path is invalid: " + manifest.litert.prefill_path;
-      }
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-  }
-  if (manifest.litert.has_decode && !manifest.litert.decode_path.empty()) {
-    if (!ResolvePackagePath(canonical_root, manifest.litert.decode_path, &resources->decode_path)) {
-      if (error_message != nullptr) {
-        *error_message = "decode graph path is invalid: " + manifest.litert.decode_path;
-      }
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-  }
-  for (const auto &variant : manifest.litert.decode_variants) {
-    std::string resolved;
-    if (!ResolvePackagePath(canonical_root, variant.path, &resolved)) {
-      if (error_message != nullptr) {
-        *error_message = "decode variant path is invalid: " + variant.path;
-      }
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-    LiteRtDecodeVariant resolved_variant = variant;
-    resolved_variant.path = resolved;
-    resources->decode_variants.push_back(std::move(resolved_variant));
+  if (auto status = ResolveDirectoryGraphs(canonical_root, manifest, resources, error_message);
+      status != MSLLM_SUCCESS) {
+    return status;
   }
 
   // ── Assets ───────────────────────────────────────────────────────────
-  if (manifest.assets.present) {
-    if (!ResolveAsset(canonical_root, "tokenizer", manifest.assets.tokenizer, is_nnrt, &resources->tokenizer_path,
-                      error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-    // NPU (NNRT) runtime reads these bins for the CPU-side embedding lookup,
-    // RoPE constants and the causal mask; missing any of them fails at Build.
-    const bool nnrt_assets_required = is_nnrt;
-    if (!ResolveAsset(canonical_root, "embedding", manifest.assets.embedding, nnrt_assets_required,
-                      &resources->embedding_path, error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-    ResolveAsset(canonical_root, "embedding_fp16", manifest.assets.embedding_fp16, false,
-                 &resources->embedding_fp16_path, nullptr);
-    if (!ResolveAsset(canonical_root, "rope_sin", manifest.assets.rope_sin, nnrt_assets_required,
-                      &resources->rope_sin_path, error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-    if (!ResolveAsset(canonical_root, "rope_cos", manifest.assets.rope_cos, nnrt_assets_required,
-                      &resources->rope_cos_path, error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-    if (!ResolveAsset(canonical_root, "attention_mask", manifest.assets.attention_mask, nnrt_assets_required,
-                      &resources->attention_mask_path, error_message)) {
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-  } else if (is_nnrt) {
-    if (error_message != nullptr) {
-      *error_message = "NPU backend requires assets in manifest";
-    }
-    return MSLLM_ERROR_MODEL_LOAD;
+  if (auto status = ResolveDirectoryAssets(canonical_root, manifest, resources, is_nnrt, error_message);
+      status != MSLLM_SUCCESS) {
+    return status;
   }
 
-  if (!manifest.npu.om_weight_dir.empty()) {
-    if (!ResolvePackagePath(canonical_root, manifest.npu.om_weight_dir, &resources->om_weight_dir)) {
-      if (error_message != nullptr) {
-        *error_message = "npu.om_weight_dir path is invalid: " + manifest.npu.om_weight_dir;
-      }
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-    std::string weight_path;
-    if (!ResolvePackagePath(canonical_root, manifest.npu.om_weight_dir + "/SubGraph_0.weight", &weight_path) ||
-        !IsRegularFile(weight_path)) {
-      if (error_message != nullptr) {
-        *error_message = "external weight is missing: " + manifest.npu.om_weight_dir + "/SubGraph_0.weight";
-      }
-      return MSLLM_ERROR_MODEL_LOAD;
-    }
-  }
-
-  return MSLLM_SUCCESS;
+  return ResolveDirectoryExternalWeights(canonical_root, manifest, resources, error_message);
 }
 
 }  // namespace mslite_llm

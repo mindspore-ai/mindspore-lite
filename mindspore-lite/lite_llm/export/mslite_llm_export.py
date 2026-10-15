@@ -72,7 +72,7 @@ from models.qwen3.qwen3_gguf_loader import gguf_loader as qwen3_gguf_loader  # n
 from models.minicpm.minicpm_exporter import export_minicpm  # noqa: E402
 from models.minicpm.minicpm_gguf_loader import gguf_loader as minicpm_gguf_loader  # noqa: E402
 from utils.omc_compiler import compile_omc, resolve_omg  # noqa: E402
-from utils.msl_pack import build_single_file_msl  # noqa: E402
+from utils.msl_pack import SingleFileMslRequest, build_single_file_msl  # noqa: E402
 from utils.quantization import EXPORT_QUANT_TYPES, QuantType, get_quant_preset  # noqa: E402
 from utils.export_tokenizer import export_tokenizer  # noqa: E402
 
@@ -343,18 +343,20 @@ def run_pipeline(args, work_dir):
             raise RuntimeError(f"omg did not produce external weights at {external_weight_path}")
 
     result = build_single_file_msl(
-        omc_path=omc_path,
-        vocab_path=vocab_path,
-        embedding_path=embedding_bin,
-        rope_cos=os.path.join(work_dir, "rope_cos.bin"),
-        rope_sin=os.path.join(work_dir, "rope_sin.bin"),
-        attention_mask=os.path.join(work_dir, "attention_mask.bin"),
-        architecture=architecture,
-        npu_config=npu_config,
-        generation_policy=generation_policy,
-        package_name=package_name,
-        output_path=args.output,
-        external_weight_path=external_weight_path,
+        SingleFileMslRequest(
+            omc_path=omc_path,
+            vocab_path=vocab_path,
+            embedding_path=embedding_bin,
+            rope_cos=os.path.join(work_dir, "rope_cos.bin"),
+            rope_sin=os.path.join(work_dir, "rope_sin.bin"),
+            attention_mask=os.path.join(work_dir, "attention_mask.bin"),
+            architecture=architecture,
+            npu_config=npu_config,
+            generation_policy=generation_policy,
+            package_name=package_name,
+            output_path=args.output,
+            external_weight_path=external_weight_path,
+        )
     )
     logger.info("exported %s", result)
     return result
