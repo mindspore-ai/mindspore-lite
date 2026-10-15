@@ -66,3 +66,6 @@
 "mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py"                 "dangerous-default-value"
 "mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py"                 "undefined-loop-variable"
 "mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_qwenimage.py"                 "unused-argument"
+
+# Boogu attention passes structure_transform to replacement Linear modules.
+"mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/quant/w8a8_quant_linear.py" "unused-argument"
