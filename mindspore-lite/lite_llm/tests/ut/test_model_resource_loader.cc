@@ -40,6 +40,7 @@ constexpr char kModelMetadataJson[] = R"({
   "format_version": "1.0",
   "dtype": "float32",
   "architecture": {
+    "name": "qwen3",
     "num_layers": 28,
     "hidden_size": 1024,
     "intermediate_size": 3072,
@@ -148,6 +149,8 @@ TEST(ManifestAssets, ParsesAssetsSection) {
   auto status = LoadModelManifest((root / "manifest.json").string(), &manifest);
   ASSERT_EQ(status, MSLLM_SUCCESS);
   EXPECT_TRUE(manifest.assets.present);
+  EXPECT_EQ(manifest.model_name, "test-model");
+  EXPECT_EQ(manifest.architecture.name, "qwen3");
   EXPECT_EQ(manifest.assets.tokenizer, "vocab/vocab.bin");
   EXPECT_EQ(manifest.assets.embedding, "embedding/embedding.bin");
   EXPECT_EQ(manifest.assets.rope_sin, "rope/sin.bin");
@@ -328,10 +331,16 @@ const QuantLayoutCase kQuantLayoutCases[] = {
   {"legacy_planar_explicit_marker", true, "q4_0_planar", 32, false},
   {"unknown_layout", true, "future_layout", 32, false},
   {"wrong_group_size", true, "q4_0_nzf_compact_phase4", 16, false},
-  {"fp16_without_layout", false, "", 32, true},
-  {"s16s4_without_q4_marker", true, "", 128, true, "q4_0_weight_layout", "S16S4_NZ_V1"},
-  {"s16s4_wrong_group", true, "", 32, false, "q4_0_weight_layout", "S16S4_NZ_V1"},
-  {"s16s4_unquantized", false, "", 128, false, "q4_0_weight_layout", "S16S4_NZ_V1"},
+  {"fp16_without_layout", false, "", 32, true, "q4_0_weight_layout", "FP16"},
+  {"unquantized_w4a16", false, "", 32, false},
+  {"s16s4_without_q4_marker", true, "", 128, false, "q4_0_weight_layout", "S16S4_NZ_A1024"},
+  {"s16s4_static128", true, "", 128, false, "q4_0_weight_layout", "S16S4_NZ_A128"},
+  {"s16s4_legacy_v1", true, "", 128, false, "q4_0_weight_layout", "S16S4_NZ_V1"},
+  {"s16s4_unified", true, "", 128, true, "q4_0_weight_layout", "S16S4"},
+  {"s16s4_static128_wrong_group", true, "", 32, false, "q4_0_weight_layout", "S16S4_NZ_A128"},
+  {"s16s4_static128_unquantized", false, "", 128, false, "q4_0_weight_layout", "S16S4_NZ_A128"},
+  {"s16s4_wrong_group", true, "", 32, false, "q4_0_weight_layout", "S16S4_NZ_A1024"},
+  {"s16s4_unquantized", false, "", 128, false, "q4_0_weight_layout", "S16S4_NZ_A1024"},
   {"unknown_embedding_format", true, "q4_0_nzf_compact_phase4", 32, false, "q4_0_weight_layout", "unknown"},
 };
 
@@ -354,9 +363,10 @@ TEST(ManifestQuantLayout, ValidatesJsonLayoutAndPreservesFp16Compatibility) {
       EXPECT_EQ(manifest.npu.embedding_quant, item.quantized);
       EXPECT_EQ(manifest.npu.q4_0_weight_layout, item.layout);
       EXPECT_EQ(manifest.npu.scale_gp_size, item.group_size);
-      EXPECT_EQ(manifest.npu.embedding_format, std::string(item.embedding_format) == "S16S4_NZ_V1"
-                                                 ? mslite_llm::EmbeddingFormat::kS16S4NzV1
-                                                 : mslite_llm::EmbeddingFormat::kW4A16);
+      EXPECT_EQ(manifest.npu.embedding_format, std::string(item.embedding_format) == "FP16" ? EmbeddingFormat::kFP16
+                                               : std::string(item.embedding_format) == "W4A16"
+                                                 ? EmbeddingFormat::kW4A16
+                                                 : EmbeddingFormat::kS16S4);
     }
     // Reject padded, adjacent-byte NZF and planar packages before the
     // embedding payload can be silently interpreted as compact phase4.
@@ -366,6 +376,36 @@ TEST(ManifestQuantLayout, ValidatesJsonLayoutAndPreservesFp16Compatibility) {
       << error;
     std::filesystem::remove_all(root);
   }
+}
+
+TEST(ManifestEmbeddingFormat, Fp16RequiresUnquantizedStorage) {
+  for (bool quantized : {false, true}) {
+    const auto root = MakePackage("_fp16");
+    WriteManifest(root, "",
+                  std::string(",\"embedding_format\":\"FP16\",\"embedding_quant\":") + (quantized ? "true" : "false"));
+    ModelManifest manifest;
+    EXPECT_EQ(LoadModelManifest((root / "manifest.json").string(), &manifest),
+              quantized ? MSLLM_ERROR_INVALID_ARGS : MSLLM_SUCCESS);
+    if (!quantized) {
+      EXPECT_EQ(manifest.npu.embedding_format, EmbeddingFormat::kFP16);
+    }
+    std::filesystem::remove_all(root);
+  }
+}
+
+TEST(ManifestArchitecture, ReadsNameIndependentlyOfPackageName) {
+  const auto path = std::filesystem::temp_directory_path() / ("test_msl_arch_" + MakeStamp() + ".msl");
+  const uint32_t kString = msl_format::kTypeString;
+  WriteSingleFileMslV1(
+    path, {{"model.name", {kString, StrVal("custom-output")}}, {"arch.name", {kString, StrVal("qwen3")}}}, {});
+  MslPackageReader reader;
+  std::string error;
+  ASSERT_TRUE(reader.Open(path.string(), &error)) << error;
+  ModelManifest manifest;
+  ASSERT_EQ(BuildModelManifestFromKv(reader, &manifest, &error), MSLLM_SUCCESS) << error;
+  EXPECT_EQ(manifest.model_name, "custom-output");
+  EXPECT_EQ(manifest.architecture.name, "qwen3");
+  std::filesystem::remove(path);
 }
 
 TEST(ManifestQuantLayout, ValidatesKvLayoutAndPreservesFp16Compatibility) {
@@ -379,6 +419,7 @@ TEST(ManifestQuantLayout, ValidatesKvLayoutAndPreservesFp16Compatibility) {
     const uint32_t kUint32 = msl_format::kTypeUint32;
     std::vector<std::pair<std::string, std::pair<uint32_t, std::vector<uint8_t>>>> kv = {
       {"model.name", {kString, StrVal("test")}},
+      {"arch.name", {kString, StrVal("qwen3")}},
       {"litert.prefill.path", {kString, StrVal("npu_offline/x.omc")}},
       {"asset.tokenizer", {kString, StrVal("vocab/vocab.bin")}},
       {"asset.embedding", {kString, StrVal("assets/embedding.bin")}},
@@ -405,14 +446,19 @@ TEST(ManifestQuantLayout, ValidatesKvLayoutAndPreservesFp16Compatibility) {
     std::string error;
     ASSERT_TRUE(reader.Open(path.string(), &error)) << error;
     const auto status = BuildModelManifestFromKv(reader, &manifest, &error);
+    if (status == MSLLM_SUCCESS) {
+      EXPECT_EQ(manifest.model_name, "test");
+      EXPECT_EQ(manifest.architecture.name, "qwen3");
+    }
     EXPECT_EQ(status, item.valid ? MSLLM_SUCCESS : MSLLM_ERROR_INVALID_ARGS) << error;
     if (item.valid) {
       EXPECT_EQ(manifest.npu.embedding_quant, item.quantized);
       EXPECT_EQ(manifest.npu.q4_0_weight_layout, item.layout);
       EXPECT_EQ(manifest.npu.scale_gp_size, item.group_size);
-      EXPECT_EQ(manifest.npu.embedding_format, std::string(item.embedding_format) == "S16S4_NZ_V1"
-                                                 ? mslite_llm::EmbeddingFormat::kS16S4NzV1
-                                                 : mslite_llm::EmbeddingFormat::kW4A16);
+      EXPECT_EQ(manifest.npu.embedding_format, std::string(item.embedding_format) == "FP16" ? EmbeddingFormat::kFP16
+                                               : std::string(item.embedding_format) == "W4A16"
+                                                 ? EmbeddingFormat::kW4A16
+                                                 : EmbeddingFormat::kS16S4);
     }
     ModelResources resources;
     EXPECT_EQ(LoadModelResources(path.string(), &resources, MSLLM_BACKEND_NNRT, &error),
@@ -510,6 +556,7 @@ TEST(ModelResourceLoader, LoadsSingleFileNpuPackage) {
                         {"npu.max_length", {kTypeUint32, U32Val(1024)}},
                         {"npu.chunk_size", {kTypeUint32, U32Val(128)}},
                         {"npu.embedding_quant", {kTypeBool, BoolVal(true)}},
+                        {"npu.embedding_format", {kTypeString, StrVal("W4A16")}},
                         {"npu.q4_0_weight_layout", {kTypeString, StrVal("q4_0_nzf_compact_phase4")}},
                         {"npu.scale_gp_size", {kTypeUint32, U32Val(32)}}},
                        {{"npu_offline/x.omc", "omc"},

@@ -88,6 +88,11 @@ def test_detect_model_type_hf(export_module,  # pylint: disable=redefined-outer-
     assert export_module.detect_model_type(str(hf_dir)) == ("qwen3", 8)
 
     (hf_dir / "config.json").write_text(
+        '{"model_type": "qwen3", "num_hidden_layers": 28}'
+    )
+    assert export_module.detect_model_type(str(hf_dir)) == ("qwen3", 28)
+
+    (hf_dir / "config.json").write_text(
         '{"model_type": "qwen3", "num_hidden_layers": 36}'
     )
     assert export_module.detect_model_type(str(hf_dir)) == ("qwen3", 36)
@@ -97,6 +102,24 @@ def test_detect_model_type_hf(export_module,  # pylint: disable=redefined-outer-
     )
     with pytest.raises(ValueError, match="unsupported model size"):
         export_module.detect_model_type(str(hf_dir))
+
+
+@pytest.mark.parametrize("source_type", ["F16", "BF16", "Q4_0"])
+def test_s16s4_source_types(export_module, tmp_path, monkeypatch, source_type):
+    """Accept original floating weights and reject a second lossy quantization."""
+    import gguf
+    model = tmp_path / "model.gguf"
+    model.touch()
+    tensors = [SimpleNamespace(name=f"blk.0.{projection}.weight",
+                               tensor_type=getattr(gguf.GGMLQuantizationType, source_type))
+               for projection in ("attn_q", "attn_k", "attn_v", "attn_output",
+                                  "ffn_gate", "ffn_up", "ffn_down")]
+    monkeypatch.setattr(gguf, "GGUFReader", lambda path: SimpleNamespace(tensors=tensors))
+    if source_type == "Q4_0":
+        with pytest.raises(ValueError, match="original F16/BF16"):
+            export_module.validate_s16s4_source(str(model), 1)
+    else:
+        export_module.validate_s16s4_source(str(model), 1)
 
 
 def test_qwen3_structural_validation(export_module):  # pylint: disable=redefined-outer-name
@@ -200,6 +223,10 @@ def test_model_quantization_pipeline(export_module, monkeypatch, tmp_path, case)
         calls["embedding_quant"] = kwargs["embedding_quant"]
         (work_dir / model_info["quant_name" if quant else "onnx_name"]).write_bytes(b"onnx")
         (work_dir / "architecture.json").write_text(json.dumps({"vocab_size": 128, "hidden_size": 128}))
+        config_path = work_dir / "export_config.json"
+        config_path.write_text(json.dumps({"npu": {"embedding_format":
+            "S16S4" if quant_type == "s16s4" else "W4A16"}}))
+        return str(config_path)
 
     def fake_loader(**kwargs):
         calls["loader_layers"] = kwargs["layers"]
@@ -230,17 +257,19 @@ def test_model_quantization_pipeline(export_module, monkeypatch, tmp_path, case)
     monkeypatch.setitem(model_info, "gguf_loader", fake_loader)
     monkeypatch.setattr(export_module, "compile_omc", fake_compile)
     monkeypatch.setattr(export_module, "export_tokenizer", fake_tokenizer)
-    def fake_pack(**kwargs):
-        calls["npu_config"] = kwargs["npu_config"]
-        calls["embedding_path"] = kwargs["embedding_path"]
-        calls["external_weight_path"] = kwargs["external_weight_path"]
-        return kwargs["output_path"]
+    def fake_pack(request):
+        calls["package_name"] = request.package_name
+        calls["architecture"] = request.architecture
+        calls["npu_config"] = request.npu_config
+        calls["embedding_path"] = request.embedding_path
+        calls["external_weight_path"] = request.external_weight_path
+        return request.output_path
 
     monkeypatch.setattr(export_module, "build_single_file_msl", fake_pack)
 
     args = SimpleNamespace(
         model="model.gguf",
-        output=str(tmp_path / "qwen3.msl"),
+        output=str(tmp_path / "custom-output.msl"),
         max_length=1024,
         chunk_size=64,
         target="kirin9030" if quant_type == "s16s4" else "kirin9020",
@@ -255,8 +284,11 @@ def test_model_quantization_pipeline(export_module, monkeypatch, tmp_path, case)
     assert calls["compile_quant"] == quant
     assert calls["onnx_path"] == str(work_dir / model_info["gguf_name" if inject_gguf else "quant_name"])
     assert calls["embedding_path"] == str(work_dir / ("embedding_weight.bin" if inject_gguf else "embedding_quant.bin"))
-    assert calls["npu_config"]["embedding_format"] == ("S16S4_NZ_V1" if quant_type == "s16s4" else "W4A16")
+    assert calls["npu_config"]["embedding_format"] == ("S16S4" if quant_type == "s16s4" else "W4A16")
     assert calls["npu_config"]["scale_gp_size"] == (128 if quant_type == "s16s4" else 32)
+    assert "activation_scale" not in calls["npu_config"]
+    assert calls["package_name"] == "custom-output"
+    assert calls["architecture"]["name"] == model_info["model_name"]
     assert calls["npu_config"].get("q4_0_weight_layout") == (
         "q4_0_nzf_compact_phase4" if quant_type == "q4_0" else None
     )

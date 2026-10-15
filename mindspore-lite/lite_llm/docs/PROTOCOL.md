@@ -79,6 +79,7 @@ Header 字段：
 
 | 键 | 类型 |
 |----|------|
+| `arch.name`（模型架构名称，例如 `qwen3`；独立于 `model.name`） | string |
 | `arch.num_layers` / `hidden_size` / `intermediate_size` / `num_heads` / `num_kv_heads` / `head_dim` / `vocab_size` / `max_position_embeddings` / `tie_word_embeddings` | uint32 |
 | `arch.rope_theta` / `norm_eps` | float32 |
 

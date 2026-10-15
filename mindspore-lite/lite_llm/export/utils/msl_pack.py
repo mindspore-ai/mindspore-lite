@@ -490,6 +490,8 @@ def manifest_to_kv(manifest: Dict[str, Any]) -> Dict[str, Any]:
         kv["model.dtype"] = pipeline["precision"]
 
     arch = manifest.get("architecture") or {}
+    if "name" in arch:
+        kv["arch.name"] = arch["name"]
     for src, dst in ARCH_U32_KEYS.items():
         if src in arch:
             kv[dst] = int(arch[src])
@@ -637,7 +639,8 @@ def build_manifest(package_name, architecture, npu_config, generation_policy, om
             "max_length": int(npu_config["max_length"]),
             "chunk_size": int(npu_config["chunk_size"]),
             "embedding_quant": bool(npu_config["embedding_quant"]),
-            "embedding_format": npu_config.get("embedding_format", "W4A16"),
+            "embedding_format": npu_config.get(
+                "embedding_format", "W4A16" if npu_config["embedding_quant"] else "FP16"),
             "scale_gp_size": int(npu_config.get("scale_gp_size", 32)),
         },
     }

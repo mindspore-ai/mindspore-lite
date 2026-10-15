@@ -66,6 +66,28 @@ def _payload(size: int) -> bytes:
     return bytes((i * 7 + 3) % 256 for i in range(size))
 
 
+def test_architecture_name_is_independent_of_package_name(tmp_path):
+    """Preserve the package identity while storing the canonical architecture."""
+    manifest = mp.build_manifest(
+        "custom-output", {"name": "qwen3", "num_layers": 36},
+        {"max_length": 1024, "chunk_size": 128, "embedding_quant": True,
+         "embedding_format": "S16S4", "scale_gp_size": 128}, {}, "model.omc")
+    package = tmp_path / "custom-output.msl"
+    mp.pack(str(package), mp.manifest_to_kv(manifest), [])
+    metadata = mp.unpack(str(package), str(tmp_path / "unpacked"))
+    assert metadata["model.name"] == "custom-output"
+    assert metadata["arch.name"] == "qwen3"
+    assert metadata["arch.num_layers"] == 36
+
+
+def test_unquantized_embedding_defaults_to_fp16():
+    """Declare unquantized storage explicitly without a Q4 format marker."""
+    manifest = mp.build_manifest(
+        "fp16-model", {}, {"max_length": 1024, "chunk_size": 128,
+                           "embedding_quant": False}, {}, "model.omc")
+    assert mp.manifest_to_kv(manifest)["npu.embedding_format"] == "FP16"
+
+
 def test_golden_reproducible():
     """Re-packing the same inputs must produce byte-identical output."""
     with tempfile.TemporaryDirectory(prefix="golden_repro_") as tmp:

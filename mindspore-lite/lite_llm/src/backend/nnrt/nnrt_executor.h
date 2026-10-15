@@ -70,7 +70,9 @@ class NnrtExecutor {
   bool ValidateModelContract();
   // Contract-check stages: I/O count check (skipped with a warning on NNRTs
   // too old to expose counts) and output-name forensics logging.
-  bool ValidateIoCounts(const NNRTFunctions &api, size_t expected_input_count, size_t expected_output_count);
+  bool ValidateInputNames(const NNRTFunctions &api);
+  bool ValidateIoCounts(const NNRTFunctions &api, size_t expected_input_count, size_t expected_output_count,
+                        size_t &actual_output_count);
   void LogOutputNames(const NNRTFunctions &api, size_t expected_output_count);
   // Read the logits width from the model output desc 0 into model_vocab_
   // (fallback: config vocab_size_); sampling uses the smaller vocabulary.
@@ -110,7 +112,8 @@ class NnrtExecutor {
   int num_key_value_heads_{0};
   int num_layers_{0};
   size_t device_id_{0};
-  size_t non_kv_inputs_{0};  // six dynamic inputs plus the shared embedding inputs
+  size_t non_kv_inputs_{0};    // six dynamic inputs plus the shared embedding inputs
+  bool has_kv_outputs_{true};  // false for operators that mutate persistent input caches
   NnrtEmbedding embedding_;
 
   // NNRT handles

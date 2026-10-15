@@ -35,6 +35,7 @@ using ::mslite_llm::MslPackageReader;
 /// actually consumed by the NNRT graph/executor path.
 struct NnrtConfig {
   // ── Model architecture (from manifest.architecture) ──────────────────
+  std::string architecture_name;
   int32_t num_layers = 0;
   int32_t hidden_size = 0;
   int32_t num_key_value_heads = 0;
@@ -60,7 +61,7 @@ struct NnrtConfig {
   bool embedding_quant = false;    // W4A16 int4-packed embedding
   int32_t scale_gp_size = 32;      // W4A16 quant group size
   std::string q4_0_weight_layout;  // quantized models require compact phase4 NZF
-  EmbeddingFormat embedding_format = EmbeddingFormat::kW4A16;
+  EmbeddingFormat embedding_format = EmbeddingFormat::kFP16;
   int32_t eos_id = -1;
 
   // ── Single-file .msl container ───────────────────────────────────────

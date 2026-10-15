@@ -15,12 +15,12 @@
 """Dense Qwen3 ONNX exporter for the mslite-llm NNRT (Kirin NPU) runtime.
 
 Mirror of the Qwen2.5 exporter (``models/qwen2_5/qwen2_5_exporter.py``)
-adapted to the Qwen3 architecture: same graph I/O contract consumed by the
-mslite-llm NNRT executor (``lite_llm/src/executor/nnrt/nnrt_executor.cc``):
+adapted to the Qwen3 architecture and writable-cache operator contract consumed
+by the NNRT executor (``lite_llm/src/backend/nnrt/nnrt_executor.cc``):
 
     inputs:  [valid_seq_len, lmhead_idx, rope_cos, rope_sin, inputs_embeds,
               attention_mask, embedding_weight] + past_key_i/past_val_i (per layer)
-    outputs: [logits, out_key_i/out_val_i]   (KV updated in place on device)
+    outputs: [logits]   (persistent KV inputs updated in place on device)
 
 Qwen3-specific differences vs Qwen2.5:
 
@@ -56,14 +56,24 @@ from utils.export_quant import (
     EmbeddingAsset,
 )
 
-from utils.quantization import EmbeddingFormat, QuantType
+from utils.quantization import QuantType
 
 from .qwen3_wrapper import Qwen3NnrtWrapper
+from .inplace_cache import lower_inplace_cache
 
 logger = logging.getLogger(__name__)
 
 DEVICE = "cpu"
 dtype = torch.float16
+
+QWEN3_SHARED_HEAD_LAYERS = 36
+QWEN3_SHARED_HEAD_SCALE = 128.0
+DEFAULT_ACTIVATION_SCALE = 1024.0
+QWEN3_06B_GEOMETRY = (1024, 3072, 16, 8)
+QWEN3_4B_GEOMETRY = (2560, 9728, 32, 8)
+QWEN3_06B_DECODER_SCALE = 32.0
+ATTENTION_CACHE_ALIGNMENT = 64
+ATTENTION_TILE_ALIGNMENT = 16
 
 
 def _ensure_qwen3_gguf_head_dim_mapping():
@@ -94,7 +104,7 @@ def _ensure_qwen3_gguf_head_dim_mapping():
 class Qwen3Onnx:
     """Export a supported dense Qwen3 GGUF/HF model to the NNRT ONNX contract."""
 
-    SUPPORTED_LAYER_COUNTS = (8, 36)
+    SUPPORTED_LAYER_COUNTS = (8, 28, 36)
 
     def __init__(self):
         self.model = None
@@ -169,10 +179,15 @@ class Qwen3Onnx:
             raise ValueError("The Qwen3 runtime contract requires tied input and output embeddings")
 
     def export(self, model_path, max_seq_len=1024, chunk_size=128):
-        """Export the ONNX graph (NNRT 7-input + interleaved KV contract)."""
+        """Trace functional KV outputs; export_qwen3 lowers them after quantization."""
         head_dim = getattr(self.model.config, "head_dim", None) or (
             self.model.config.hidden_size // self.model.config.num_attention_heads
         )
+        if max_seq_len <= 0 or max_seq_len % ATTENTION_CACHE_ALIGNMENT or head_dim % ATTENTION_TILE_ALIGNMENT:
+            raise ValueError("MsAttention requires KV capacity divisible by 64 and head_dim divisible by 16")
+        if (chunk_size <= 0 or chunk_size > max_seq_len
+                or (chunk_size != 1 and chunk_size % ATTENTION_TILE_ALIGNMENT)):
+            raise ValueError("MsAttention requires a prefill chunk divisible by 16, or decode chunk 1")
 
         input_names = [
             "valid_seq_len",
@@ -305,6 +320,7 @@ class Qwen3Onnx:
                 "chunk_size": int(chunk_size),
                 "embedding_quant": embedding_quant_config.asdict() if embedding_quant_config.is_quant else None,
                 "decoder_quant": decoder_quant_config.asdict() if decoder_quant_config.is_quant else None,
+                "embedding_format": embedding_quant_config.embedding_format,
                 **({"q4_0_weight_layout": "q4_0_nzf_compact_phase4"}
                    if embedding_quant_config.is_quant and embedding_quant_config.quant_method == QuantType.Q4_0
                    else {}),
@@ -321,6 +337,40 @@ class Qwen3Onnx:
                 embedding_quant=bool(embedding_quant_config.is_quant),
             ).asdict(),
         }
+
+
+def _set_static_activation_scales(config, embedding_quant, decoder_quant):
+    """Apply model-specific S16S4 ranges to the decoder and shared head.
+
+    The static activation scales are temporary workarounds for the NNRT S16S4 quantization contract,
+    and should be replaced by a formal quantization calibration procedure in the future.
+    The current values are based on empirical observations.
+
+                       qwen3-0.6b qwen3-4b
+    Embedding scale    1024       128
+    Decoder scale      32         128
+    """
+    if embedding_quant.quant_method == QuantType.S16S4:
+        embedding_quant.activation_scale = (
+            QWEN3_SHARED_HEAD_SCALE
+            if config.model_type == "qwen3" and config.num_hidden_layers == QWEN3_SHARED_HEAD_LAYERS
+            else DEFAULT_ACTIVATION_SCALE
+        )
+    architecture = (config.hidden_size, config.intermediate_size,
+                    config.num_attention_heads, config.num_key_value_heads)
+    if architecture == QWEN3_06B_GEOMETRY:
+        # Qwen3-0.6B needs a wider decoder range (approximately +/-1024).
+        # Keep the shared embedding/LM head at its default A1024 encoding.
+        if decoder_quant.quant_method == QuantType.S16S4:
+            decoder_quant.activation_scale = QWEN3_06B_DECODER_SCALE
+        return
+    if architecture != QWEN3_4B_GEOMETRY:
+        return
+    # Scale 128 covers approximately +/-256. Smaller scales lose precision;
+    # 256 and 1024 caused more clipping error in the full-model CPU sweep.
+    # The shared head must use the matching A128 embedding scale encoding.
+    if decoder_quant.quant_method == QuantType.S16S4:
+        decoder_quant.activation_scale = QWEN3_SHARED_HEAD_SCALE
 
 
 def export_qwen3(
@@ -359,6 +409,8 @@ def export_qwen3(
     exporter = Qwen3Onnx()
     exporter.load(model_dir, layers)
 
+    _set_static_activation_scales(exporter.config, embedding_quant_config, decoder_quant_config)
+
     onnx_path = os.path.join(output_dir, onnx_name)
     exporter.export(onnx_path, max_seq_len=max_length, chunk_size=chunk_size)
 
@@ -388,21 +440,19 @@ def export_qwen3(
     embedding_bin = os.path.join(output_dir, "embedding_quant.bin" if embedding_quant else "embedding.bin")
     model = onnx.load(onnx_path)
     embedding_asset = apply_shared_weight(model)
+    lower_inplace_cache(model, exporter.num_layers)
     _save_onnx(model, onnx_path)
 
     validate_contract(
         onnx_path,
         exporter.num_layers,
         embedding_quant=embedding_quant_config.is_quant,
-        embedding_format=embedding_quant.embedding_format if embedding_quant else EmbeddingFormat.W4A16,
+        embedding_format=embedding_quant_config.embedding_format,
+        inplace_cache=True,
     )
 
     config = exporter.build_config(
         max_length, chunk_size, embedding_quant_config, decoder_quant_config, model_name
-    )
-
-    config["npu"]["embedding_format"] = (
-        embedding_quant.embedding_format if embedding_quant else EmbeddingFormat.W4A16
     )
 
     # Standalone packager-consumable fragments (same content as the config json).

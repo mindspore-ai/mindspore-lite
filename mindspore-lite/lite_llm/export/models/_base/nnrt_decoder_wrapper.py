@@ -134,6 +134,15 @@ class NnrtOpSet:
         """Fused (weights + mask).softmax(-1)."""
         return MsAddSoftmax.apply(weights, mask)
 
+    def attention(self, states, mask, valid_seq_len, dropout_p=0.0):
+        """Compute GQA, allowing model policies to fuse the attention core."""
+        del valid_seq_len
+        query, key, value = states
+        weights = self.qk_matmul(query, key) / math.sqrt(query.shape[-1])
+        weights = self.mask_softmax(weights, mask)
+        weights = nn.functional.dropout(weights, p=dropout_p, training=dropout_p > 0)
+        return self.pv_matmul(weights, value)
+
     @staticmethod
     def rmsnorm(hidden, weight, eps):
         """RMSNorm over the last dim."""
@@ -210,13 +219,10 @@ class NnrtAttention(nn.Module):
             past_key_value, valid_seq_len,
         )
 
-        attn_weights = self.ops.qk_matmul(query_states, key_states)
-        attn_weights = attn_weights / math.sqrt(self.head_dim)
-        attn_weights = self.ops.mask_softmax(attn_weights, attention_mask)
-        attn_weights = nn.functional.dropout(
-            attn_weights, p=self.attention_dropout, training=self.training
+        attn_output = self.ops.attention(
+            (query_states, key_states, value_states), attention_mask, valid_seq_len,
+            self.attention_dropout if self.training else 0.0,
         )
-        attn_output = self.ops.pv_matmul(attn_weights, value_states)
 
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(bsz, -1, self.num_heads * self.head_dim)

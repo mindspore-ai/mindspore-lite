@@ -170,12 +170,14 @@ def validate_contract(
     num_layers: int,
     embedding_quant: bool = False,
     embedding_format: str = EmbeddingFormat.W4A16,
+    inplace_cache: bool = False,
 ):
     """Verify the exported ONNX matches the NNRT executor's I/O contract.
 
     Contract (see ``nnrt_executor.cc`` ``ValidateModelContract``):
       7 or 8 non-KV inputs (embedding_weight at index 6, S16S4 embedding_scale at 7) + interleaved
-      past_key_i/past_val_i per layer; outputs logits + interleaved out_key_i/out_val_i.
+      past_key_i/past_val_i per layer; outputs logits, optionally followed by
+      interleaved out_key_i/out_val_i for operators with explicit cache outputs.
 
     Raises:
         ValueError: on any contract mismatch.
@@ -185,15 +187,16 @@ def validate_contract(
     outputs = [out.name for out in model.graph.output]
 
     expected_inputs = list(NNRT_NON_KV_INPUTS)
-    if embedding_format == EmbeddingFormat.S16S4_NZ_V1:
+    if embedding_format == EmbeddingFormat.S16S4:
         expected_inputs.append("embedding_scale")
     for i in range(num_layers):
         expected_inputs.append(f"past_key_{i}")
         expected_inputs.append(f"past_val_{i}")
     expected_outputs = ["logits"]
-    for i in range(num_layers):
-        expected_outputs.append(f"out_key_{i}")
-        expected_outputs.append(f"out_val_{i}")
+    if not inplace_cache:
+        for i in range(num_layers):
+            expected_outputs.append(f"out_key_{i}")
+            expected_outputs.append(f"out_val_{i}")
 
     if inputs != expected_inputs:
         raise ValueError(
@@ -208,7 +211,7 @@ def validate_contract(
 
     embedding = model.graph.input[6]
     expected_dtype = TensorProto.UINT8 if embedding_quant else TensorProto.FLOAT16
-    if embedding_format == EmbeddingFormat.S16S4_NZ_V1:
+    if embedding_format == EmbeddingFormat.S16S4:
         expected_dtype = TensorProto.INT8
         if model.graph.input[7].type.tensor_type.elem_type != TensorProto.INT8:
             raise ValueError("embedding_scale must be INT8")

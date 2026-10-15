@@ -112,6 +112,7 @@ def _run_attention(monkeypatch, hidden_size, num_heads, num_kv_heads, head_dim):
 def test_attention_uses_projected_head_width(monkeypatch):
     """Qwen3-4B and MiniMind both feed the correct projected width to o_proj."""
     assert _run_attention(monkeypatch, hidden_size=2560, num_heads=32, num_kv_heads=8, head_dim=128) == 4096
+    assert _run_attention(monkeypatch, hidden_size=1024, num_heads=16, num_kv_heads=8, head_dim=128) == 2048
     assert _run_attention(monkeypatch, hidden_size=768, num_heads=8, num_kv_heads=4, head_dim=96) == 768
 
 
@@ -172,3 +173,24 @@ def test_fused_wrapper_matches_unfused_reference(sequence, offset):
         expected = reference(**inputs)
     for output, golden in zip(actual, expected):
         torch.testing.assert_close(output, golden, atol=0.002, rtol=0.002)
+
+
+@pytest.mark.parametrize("sequence,offset", [(16, 0), (16, 16), (1, 32)])
+@pytest.mark.parametrize("num_heads", [16, 32])
+def test_qwen3_attention_matches_grouped_reference(sequence, offset, num_heads):
+    """Check 0.6B and 4B geometry with causal and padded cache positions."""
+    from models._base.nnrt_decoder_wrapper import NnrtOpSet
+
+    torch.manual_seed(19)
+    ops = Qwen3OpSet(SimpleNamespace(num_attention_heads=num_heads, head_dim=128))
+    query = torch.randn(1, num_heads, sequence, 128).half()
+    key = torch.randn(1, 8, 64, 128).half()
+    value = torch.randn_like(key)
+    positions = torch.arange(64).view(1, -1)
+    visible = positions <= offset + torch.arange(sequence).view(-1, 1)
+    mask = torch.where(visible, 0.0, -65504.0).half().view(1, 1, sequence, 64)
+    position = torch.tensor([offset], dtype=torch.int32)
+    actual = ops.attention((query, key, value), mask, position)
+    expected = NnrtOpSet().attention((query, key, value), mask, position)
+    assert actual.dtype == torch.float16
+    torch.testing.assert_close(actual, expected, atol=0.004, rtol=0.004)

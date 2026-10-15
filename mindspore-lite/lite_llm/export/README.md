@@ -33,7 +33,6 @@ export/
     ├── export_tokenizer.py   # tokenizer → vocab.bin + policy（含 chat template IR 编译器）
     ├── omc_compiler.py       # DDK omg → .omc
     └── msl_pack.py           # .msl v1 单文件容器 pack/unpack + 资源组装（内置工具）
-
 ```
 
 对外接口只有一个：`mslite_llm_export.py`（一键导出）。
@@ -61,6 +60,7 @@ omg 编译需要 Huawei DDK（AscendC）环境，且 DDK 里必须已注册 Ms\*
 |---|---|---|
 | Qwen2.5-0.5B | `qwen2` | HF 目录 / GGUF（内置实现） |
 | MiniMind-3（Qwen3 dense） | `qwen3` | HF 目录 / GGUF（内置实现） |
+| Qwen3-0.6B / Qwen3-4B | `qwen3` | HF 目录 / GGUF（内置实现） |
 | MiniCPM-2B | `minicpm` | HF 目录 / GGUF，均需 `trust_remote_code=True`（模型仓库自带 modeling） |
 
 注意：transformers 已移除内置 `minicpm`（4.57 与 5.x 均无），MiniCPM 的 HF/GGUF
@@ -85,10 +85,9 @@ python mslite_llm_export.py --target kirin9020 \
     --quant-type q4_0 \
     --output ./Qwen2.5-0.5B-Instruct-Q4-0.msl
 
-```text
-
 ```
 
+```text
 必需：
   --model MODEL     输入：GGUF 文件(.gguf) 或 HF 模型目录（自动识别）
   --output OUTPUT   输出单文件 .msl 路径
@@ -99,7 +98,7 @@ python mslite_llm_export.py --target kirin9020 \
   --chunk-size N    prefill chunk 大小（默认 64）
   --verbose         详细日志
 
-```text
+```
 
 前置：`pip install -r ../requirements.txt`、DDK 已 source（omg 可用）。
 打包由内置 `msl_pack.py` 完成（无外部工具依赖）。中间产物落在输出同目录的
@@ -132,12 +131,11 @@ export PATH=$DDK/tools/tools_omg:$PATH
 
 ```
 
-### Quantization selection
-
 Internal Python APIs use `QuantType.Q4_0` and `QuantType.S16S4`, serialized as
 `q4_0` and `s16s4`. Legacy `W4A16` and `S16S4` arguments remain accepted.
-Runtime embedding layout identifiers (`W4A16` and `S16S4_NZ_V1`) retain
-their existing names for package compatibility.
+Runtime embedding identifiers are `FP16` (unquantized), `W4A16`, and `S16S4`.
+`FP16` requires `embedding_quant=false`; `W4A16` and `S16S4` require
+`embedding_quant=true`.
 
 Each name resolves to an immutable `QuantPreset` in `utils/quantization.py`.
 The preset specifies weight and activation types, group size, scale encoding,
@@ -157,25 +155,31 @@ Both paths use compact phase4 NZF weights and write
 `npu.q4_0_weight_layout=q4_0_nzf_compact_phase4`. Older planar or padded
 Q4 packages must be re-exported together with their graphs.
 
-`s16s4` currently requires a dense Qwen3 exporter (MiniMind-3 or Qwen3-4B)
+`s16s4` currently requires a dense Qwen3 exporter (MiniMind-3, Qwen3-0.6B, or Qwen3-4B)
 and `--target kirin9030`, with shared S16S4 CPU embedding/head buffers.
-Use original F16 GGUF projection weights or an original HF model directory;
+Use original F16/BF16 GGUF projection weights or an original HF model directory;
 prequantized GGUF projections are rejected. Other model exporters reject
 this mode before loading the model.
 
 ```bash
 python mslite_llm_export.py --target kirin9030 \
     --model ./Qwen3-4B --quant-type s16s4 --output ./Qwen3-4B-S16S4.msl
+
+python mslite_llm_export.py --target kirin9030 \
+    --model ./Qwen3-0.6B-BF16.gguf --quant-type s16s4 \
+    --max-length 1024 --chunk-size 128 --output ./Qwen3-0.6B-S16S4.msl
 ```
 
-The `S16S4_NZ_V1` embedding asset contains the signed-S4 NZ packed head
+The `S16S4` embedding assets contain the signed-S4 NZ packed head
 weights followed by its FixPipe Group128 scale records. Both are runtime
 inputs (`embedding_weight` and `embedding_scale`) backed by CPU-accessible
-ION tensors shared between prefill, decode, and CPU lookup. The activation
-scale is fixed at 1024 for this format. Packages declare
-`npu.embedding_format=S16S4_NZ_V1`, `embedding_quant=true`, and
+ION tensors shared between prefill, decode, and CPU lookup. Packages declare
+`npu.embedding_format=S16S4`, `embedding_quant=true`, and
 `scale_gp_size=128`; the Q4 layout marker is not required. CPU lookup reconstructs group scales
-from the records and does not apply the head correction bias. The two small
+from the records and does not apply the head correction bias. The exporter and
+runtime select shared-head activation scale 128 for `arch.name=qwen3` with 36
+layers, and 1024 otherwise. Legacy `S16S4_NZ_V1`, `S16S4_NZ_A1024`, and
+`S16S4_NZ_A128` packages must be re-exported with the unified format. The two small
 head constants remain compiled. Qwen3 has eight fixed inputs before KV
 caches (80 total for Qwen3-4B). W4A16 keeps seven fixed inputs. Shared
 embedding inputs are required; six-input packages are not supported.

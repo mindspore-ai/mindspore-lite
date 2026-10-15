@@ -36,13 +36,20 @@ NnrtConfig EmbeddingConfig(bool quantized, bool separate_scales) {
   config.vocab_size = 128;
   config.hidden_size = 128;
   config.embedding_quant = quantized;
-  config.embedding_format = separate_scales ? EmbeddingFormat::kS16S4NzV1 : EmbeddingFormat::kW4A16;
+  config.embedding_format =
+    separate_scales ? EmbeddingFormat::kS16S4 : (quantized ? EmbeddingFormat::kW4A16 : EmbeddingFormat::kFP16);
+  config.architecture_name = "qwen3";
+  config.num_layers = 28;
   return config;
 }
 
 TEST(NnrtEmbedding, UploadsSharedInputsAndUsesTheirBuffersForLookup) {
-  for (const auto &config :
-       {EmbeddingConfig(false, false), EmbeddingConfig(true, false), EmbeddingConfig(true, true)}) {
+  auto static_scale_config = EmbeddingConfig(true, true);
+  static_scale_config.num_layers = 36;
+  auto other_model_config = static_scale_config;
+  other_model_config.architecture_name = "other";
+  for (const auto &config : {EmbeddingConfig(false, false), EmbeddingConfig(true, false), EmbeddingConfig(true, true),
+                             static_scale_config, other_model_config}) {
     NnrtEmbedding embedding;
     ASSERT_TRUE(embedding.Configure(config));
     std::vector<uint8_t> source(config.embedding_quant ? 9216 : 32768, 0);
@@ -50,7 +57,7 @@ TEST(NnrtEmbedding, UploadsSharedInputsAndUsesTheirBuffersForLookup) {
       *bytes = source;
       return true;
     }));
-    EXPECT_EQ(embedding.InputCount(), config.embedding_format == EmbeddingFormat::kS16S4NzV1 ? 2 : 1);
+    EXPECT_EQ(embedding.InputCount(), mslite_llm::IsS16S4Embedding(config.embedding_format) ? 2 : 1);
     std::vector<std::vector<uint8_t>> buffers(embedding.InputCount());
     std::vector<NN_Tensor *> inputs(6 + embedding.InputCount());
     auto create = [&buffers, &config](size_t index, const std::vector<int32_t> &shape, int32_t dtype, size_t bytes) {
@@ -78,8 +85,9 @@ TEST(NnrtEmbedding, UploadsSharedInputsAndUsesTheirBuffersForLookup) {
     } else {
       buffers[0][0] = 1;
       if (buffers.size() == 2) {
-        buffers[1][2] = 0x80;
-        buffers[1][3] = 0x3a;  // fp32 1/1024 scale record
+        const bool static128 = config.architecture_name == "qwen3" && config.num_layers == 36;
+        buffers[1][2] = static128 ? 0x00 : 0x80;
+        buffers[1][3] = static128 ? 0x3c : 0x3a;  // fp32 1/128 or 1/1024
       } else {
         buffers[0][8193] = 0x3c;  // first fp16 scale = 1
       }
@@ -103,6 +111,12 @@ TEST(NnrtEmbedding, RejectsInvalidDimensionsAndTruncatedAssets) {
 
 TEST(NnrtEmbedding, RejectsUnsupportedLayoutsAndStorageOverflow) {
   NnrtEmbedding embedding;
+  auto fp16_config = EmbeddingConfig(false, false);
+  fp16_config.embedding_quant = true;
+  EXPECT_FALSE(embedding.Configure(fp16_config));
+  fp16_config = EmbeddingConfig(false, false);
+  fp16_config.embedding_format = EmbeddingFormat::kW4A16;
+  EXPECT_FALSE(embedding.Configure(fp16_config));
   auto config = EmbeddingConfig(true, false);
   config.vocab_size = 17;
   EXPECT_FALSE(embedding.Configure(config));

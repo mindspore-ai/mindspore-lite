@@ -67,13 +67,13 @@ _bootstrap_package("utils")
 # pylint: disable=wrong-import-position  # packages bootstrapped above, not via sys.path
 from models.qwen2_5.qwen2_5_exporter import export_qwen2_5  # noqa: E402
 from models.qwen2_5.qwen2_5_gguf_loader import gguf_loader as qwen2_5_gguf_loader  # noqa: E402
-from models.qwen3.qwen3_exporter import export_qwen3  # noqa: E402
+from models.qwen3.qwen3_exporter import Qwen3Onnx, export_qwen3  # noqa: E402
 from models.qwen3.qwen3_gguf_loader import gguf_loader as qwen3_gguf_loader  # noqa: E402
 from models.minicpm.minicpm_exporter import export_minicpm  # noqa: E402
 from models.minicpm.minicpm_gguf_loader import gguf_loader as minicpm_gguf_loader  # noqa: E402
 from utils.omc_compiler import compile_omc, resolve_omg  # noqa: E402
 from utils.msl_pack import SingleFileMslRequest, build_single_file_msl  # noqa: E402
-from utils.quantization import EXPORT_QUANT_TYPES, QuantType, get_quant_preset  # noqa: E402
+from utils.quantization import EXPORT_QUANT_TYPES, EmbeddingFormat, QuantType, get_quant_preset  # noqa: E402
 from utils.export_tokenizer import export_tokenizer  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -126,7 +126,7 @@ MODEL_TYPES = {
     "qwen3": {
         "exporter": export_qwen3,
         "gguf_loader": qwen3_gguf_loader,
-        "layers": (8, 36),
+        "layers": Qwen3Onnx.SUPPORTED_LAYER_COUNTS,
         "external_weights": True,
         "quant_types": (QuantType.Q4_0, QuantType.S16S4),
         "onnx_name": "qwen3.onnx",
@@ -213,7 +213,7 @@ def detect_model_type(model):
 
 
 def validate_s16s4_source(model, layers):
-    """Require original F16 projection tensors; reject second-order quantization."""
+    """Require original F16/BF16 projections; reject second-order quantization."""
     if not os.path.isfile(model) or not model.endswith(".gguf"):
         return
     from gguf import GGMLQuantizationType, GGUFReader
@@ -235,11 +235,11 @@ def validate_s16s4_source(model, layers):
             tensor = tensors.get(name)
             if tensor is None:
                 invalid.append(name + ":missing")
-            elif tensor.tensor_type != GGMLQuantizationType.F16:
+            elif tensor.tensor_type not in (GGMLQuantizationType.F16, GGMLQuantizationType.BF16):
                 invalid.append(f"{name}:{tensor.tensor_type}")
     if invalid:
         raise ValueError(
-            "S16S4 requires original F16 decoder projections; "
+            "S16S4 requires original F16/BF16 decoder projections; "
             f"invalid tensors: {', '.join(invalid[:8])}"
         )
 
@@ -265,7 +265,7 @@ def run_pipeline(args, work_dir):
         validate_s16s4_source(args.model, model_layers)
 
     logger.info("export quantization: %s, group size: %d", quant_type, preset.group_size)
-    mt["exporter"](
+    export_config_path = mt["exporter"](
         model_dir=args.model,
         output_dir=work_dir,
         max_length=args.max_length,
@@ -275,6 +275,8 @@ def run_pipeline(args, work_dir):
         layers=model_layers,
         model_name=mt["model_name"],
     )
+    with open(export_config_path, encoding="utf-8") as stream:
+        export_config = json.load(stream)
     onnx_path = os.path.join(work_dir, mt["quant_name"])
     if not os.path.exists(onnx_path):
         raise RuntimeError(f"expected {quant_type} model not produced: {onnx_path}")
@@ -326,13 +328,16 @@ def run_pipeline(args, work_dir):
 
     # ── Step 4: package into single-file .msl ─────────────────────────────
     package_name = os.path.splitext(os.path.basename(args.output))[0]
+    # Runtime architecture policies use the canonical family, independent of the package name.
+    architecture["name"] = mt["model_name"]
     npu_config = {
         "max_length": args.max_length,
         "chunk_size": args.chunk_size,
         "embedding_quant": embedding_quant is not None,
         # Group size and runtime layout follow the selected quantization.
         "scale_gp_size": preset.group_size,
-        "embedding_format": preset.embedding_format,
+        "embedding_format": (export_config["npu"].get("embedding_format", preset.embedding_format)
+                             if embedding_quant is not None else EmbeddingFormat.FP16),
     }
     if embedding_quant == QuantType.Q4_0:
         npu_config["q4_0_weight_layout"] = preset.packing_layout.value

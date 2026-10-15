@@ -464,37 +464,18 @@ bool NnrtExecutor::LoadExternalWeights() {
 bool NnrtExecutor::ValidateModelContract() {
   const auto &api = NNRTWrapper::GetApi();
   // Expected contract, derived from config.num_layers: 7 or 8 non-KV inputs + interleaved
-  // past_key_i/past_val_i per layer; logits + interleaved out_key_i/out_val_i per layer.
+  // past_key_i/past_val_i per layer; logits, with optional interleaved cache outputs.
   // Deriving from num_layers_ (rather than a fixed model) also catches config/model mismatch.
   const size_t kNonKvInputs = 6 + embedding_.InputCount();
   non_kv_inputs_ = kNonKvInputs;
   const size_t kv_layers = static_cast<size_t>(num_layers_);
   constexpr size_t kKvTensorsPerLayer = 2;  // past_key_i + past_val_i per layer
   const size_t expected_input_count = kNonKvInputs + kKvTensorsPerLayer * kv_layers;
-  const size_t expected_output_count = 1 + kKvTensorsPerLayer * kv_layers;
-  static const char *kBaseNames[8] = {"valid_seq_len", "lmhead_idx",     "rope_cos",         "rope_sin",
-                                      "inputs_embeds", "attention_mask", "embedding_weight", "embedding_scale"};
+  size_t expected_output_count = 1 + kKvTensorsPerLayer * kv_layers;
+  has_kv_outputs_ = true;
 
-  // Count check (skipped with a warning if the NNRT is too old to expose I/O counts).
-  if (api.Executor_GetInputCount != nullptr && api.Executor_GetOutputCount != nullptr) {
-    size_t in_count = 0;
-    size_t out_count = 0;
-    if (api.Executor_GetInputCount(nn_executor_, &in_count) != 0) {
-      MS_LOG(ERROR) << "Could not query model input count";
-      return false;
-    }
-    if (in_count != expected_input_count) {
-      MS_LOG(ERROR) << "Contract check failed: model input count " << in_count << " != expected "
-                    << expected_input_count;
-      return false;
-    }
-    if (api.Executor_GetOutputCount(nn_executor_, &out_count) != 0 || out_count != expected_output_count) {
-      MS_LOG(ERROR) << "Contract check failed: model output count " << out_count << " != expected "
-                    << expected_output_count;
-      return false;
-    }
-  } else {
-    MS_LOG(WARNING) << "NNRT does not expose I/O counts; skipping count contract check";
+  if (!ValidateIoCounts(api, expected_input_count, expected_output_count, expected_output_count)) {
+    return false;
   }
 
   // Name check (degrade to count-only on old NNRT without TensorDesc_GetName).
@@ -503,7 +484,20 @@ bool NnrtExecutor::ValidateModelContract() {
     MS_LOG(WARNING) << "NNRT does not expose tensor names; skipping name contract check";
     return true;
   }
-  auto check_name = [&](NN_TensorDesc *desc, const std::string &expected, const char *io, size_t index) {
+  if (!ValidateInputNames(api)) {
+    return false;
+  }
+  LogOutputNames(api, expected_output_count);
+  MS_LOG(INFO) << "Model contract check passed (" << expected_input_count << " inputs / " << expected_output_count
+               << " outputs, interleaved KV)";
+  return true;
+}
+
+bool NnrtExecutor::ValidateInputNames(const NNRTFunctions &api) {
+  static const char *kBaseNames[8] = {"valid_seq_len", "lmhead_idx",     "rope_cos",         "rope_sin",
+                                      "inputs_embeds", "attention_mask", "embedding_weight", "embedding_scale"};
+  constexpr size_t kKvTensorsPerLayer = 2;
+  auto check_name = [&api](NN_TensorDesc *desc, const std::string &expected, const char *io, size_t index) {
     const char *name = nullptr;
     bool ok = desc != nullptr && api.TensorDesc_GetName(desc, &name) == 0 && name != nullptr && expected == name;
     if (!ok) {
@@ -516,19 +510,52 @@ bool NnrtExecutor::ValidateModelContract() {
     return ok;
   };
   // Inputs keep their semantic names on device, so they are checked by name.
-  for (size_t i = 0; i < kNonKvInputs; ++i) {
+  for (size_t i = 0; i < non_kv_inputs_; ++i) {
     if (!check_name(api.Executor_CreateInputTensorDesc(nn_executor_, i), kBaseNames[i], "input", i)) {
       return false;
     }
   }
-  for (size_t i = 0; i < kKvTensorsPerLayer * kv_layers; ++i) {
+  for (size_t i = 0; i < kKvTensorsPerLayer * static_cast<size_t>(num_layers_); ++i) {
     std::string expected =
       std::string((i % kKvTensorsPerLayer == 0) ? "past_key_" : "past_val_") + std::to_string(i / kKvTensorsPerLayer);
-    if (!check_name(api.Executor_CreateInputTensorDesc(nn_executor_, kNonKvInputs + i), expected, "input",
-                    kNonKvInputs + i)) {
+    if (!check_name(api.Executor_CreateInputTensorDesc(nn_executor_, non_kv_inputs_ + i), expected, "input",
+                    non_kv_inputs_ + i)) {
       return false;
     }
   }
+  return true;
+}
+
+bool NnrtExecutor::ValidateIoCounts(const NNRTFunctions &api, size_t expected_input_count, size_t expected_output_count,
+                                    size_t &actual_output_count) {
+  actual_output_count = expected_output_count;
+  if (api.Executor_GetInputCount != nullptr && api.Executor_GetOutputCount != nullptr) {
+    size_t in_count = 0;
+    size_t out_count = 0;
+    if (api.Executor_GetInputCount(nn_executor_, &in_count) != 0) {
+      MS_LOG(ERROR) << "Could not query model input count";
+      return false;
+    }
+    if (in_count != expected_input_count) {
+      MS_LOG(ERROR) << "Contract check failed: model input count " << in_count << " != expected "
+                    << expected_input_count;
+      return false;
+    }
+    if (api.Executor_GetOutputCount(nn_executor_, &out_count) != 0 ||
+        (out_count != 1 && out_count != expected_output_count)) {
+      MS_LOG(ERROR) << "Contract check failed: model output count " << out_count << " must be 1 or "
+                    << expected_output_count;
+      return false;
+    }
+    has_kv_outputs_ = out_count != 1;
+    actual_output_count = out_count;
+  } else {
+    MS_LOG(WARNING) << "NNRT does not expose I/O counts; skipping count contract check";
+  }
+  return true;
+}
+
+void NnrtExecutor::LogOutputNames(const NNRTFunctions &api, size_t expected_output_count) {
   // The Kirin DDK renames every output (enum-shape artifact, e.g.
   // "output_0_enum_shape_graph/case0_0"), so output NAME checks can never pass on device:
   // outputs are verified by count only (above) and the actual names are logged for forensics.
@@ -541,9 +568,6 @@ bool NnrtExecutor::ValidateModelContract() {
       api.TensorDesc_Destroy(&desc);
     }
   }
-  MS_LOG(INFO) << "Model contract check passed (" << expected_input_count << " inputs / " << expected_output_count
-               << " outputs, interleaved KV)";
-  return true;
 }
 
 void NnrtExecutor::ReadModelVocab() {
@@ -788,9 +812,10 @@ bool NnrtExecutor::CreateTensors() {
   }
 
   // Assemble I/O arrays. KV layout is interleaved: K0,V0,K1,V1,... starting at non_kv_inputs_.
-  // Output KV entries are the SAME tensor objects as inputs (in-place model update).
-  auto assemble = [&](std::vector<NN_Tensor *> &in, std::vector<NN_Tensor *> &out,
-                      const std::vector<NN_Tensor *> &non_kv) {
+  // Legacy cache outputs alias inputs. Writable-input operators return logits only;
+  // their cache inputs remain allocated and are reused by every synchronous run.
+  auto assemble = [this](std::vector<NN_Tensor *> &in, std::vector<NN_Tensor *> &out,
+                         const std::vector<NN_Tensor *> &non_kv) {
     in = non_kv;  // shared embedding inputs are already included
     for (int i = 0; i < num_layers_; ++i) {
       in.push_back(kv_cache_manager_.GetKeyTensor(i));    // K_i
@@ -798,9 +823,11 @@ bool NnrtExecutor::CreateTensors() {
     }
     out.clear();
     out.push_back(logits_tensor_);
-    for (int i = 0; i < num_layers_; ++i) {
-      out.push_back(kv_cache_manager_.GetKeyTensor(i));    // out_key_i (same object → in-place)
-      out.push_back(kv_cache_manager_.GetValueTensor(i));  // out_val_i
+    if (has_kv_outputs_) {
+      for (int i = 0; i < num_layers_; ++i) {
+        out.push_back(kv_cache_manager_.GetKeyTensor(i));    // out_key_i (same object → in-place)
+        out.push_back(kv_cache_manager_.GetValueTensor(i));  // out_val_i
+      }
     }
   };
   assemble(prefill_in_, prefill_out_, prefill_inputs_);

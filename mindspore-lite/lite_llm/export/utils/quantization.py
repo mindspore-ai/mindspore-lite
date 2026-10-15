@@ -54,10 +54,11 @@ class QuantType(str, Enum):
 
 
 class EmbeddingFormat(str, Enum):
-    """Versioned runtime layout names, distinct from quantization algorithms."""
+    """Runtime layout and activation-scale names, distinct from quantization algorithms."""
 
+    FP16 = "FP16"
     W4A16 = "W4A16"
-    S16S4_NZ_V1 = "S16S4_NZ_V1"
+    S16S4 = "S16S4"
 
     def __str__(self):
         return self.value
@@ -133,7 +134,7 @@ QUANT_PRESETS = MappingProxyType({
         quant_type=QuantType.S16S4, bits=4, group_size=128,
         weight_dtype=QuantDType.INT4, activation_dtype=QuantDType.INT16,
         scale_encoding=ScaleEncoding.FIXPIPE, packing_layout=PackingLayout.S16S4_NZ,
-        operator="MsMatmulS16S4", embedding_format=EmbeddingFormat.S16S4_NZ_V1,
+        operator="MsMatmulS16S4", embedding_format=EmbeddingFormat.S16S4,
         export_targets=("kirin9030",),
     ),
     QuantType.W4A8: QuantPreset(

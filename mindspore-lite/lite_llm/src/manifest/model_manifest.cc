@@ -265,6 +265,9 @@ class JsonParser {
     out->clear();
 
     while (pos_ < text_.size()) {
+      // Cppcheck 2.7 keeps the initial zero size across loop iterations,
+      // overlooking the push_back calls below. The growing length needs this guard.
+      // cppcheck-suppress unsignedLessThanZero
       if (out->size() > kMaxTokenLen) {
         SetError(error, "string too long");
         return false;
@@ -481,6 +484,7 @@ void ReadIntAlias(const JsonValue &object, const std::string &first, const std::
 }
 
 void ParseArchitectureFrom(const JsonValue &source, ModelArchitecture *arch) {
+  arch->name = GetString(source, "name");
   ReadIntAlias(source, "num_layers", "num_hidden_layers", &arch->num_layers);
   GetInt(source, "hidden_size", &arch->hidden_size);
   GetInt(source, "intermediate_size", &arch->intermediate_size);
@@ -736,13 +740,17 @@ bool ParseDTypeName(const std::string &raw, MSLlmDType *out) {
 
 namespace {
 
-bool ParseEmbeddingFormat(const std::string &raw, EmbeddingFormat &format, std::string *error_message) {
-  if (raw == "W4A16") {
-    format = EmbeddingFormat::kW4A16;
+bool ParseEmbeddingFormat(const std::string &raw, NpuConfig &config, std::string *error_message) {
+  if (raw == "FP16") {
+    config.embedding_format = EmbeddingFormat::kFP16;
     return true;
   }
-  if (raw == "S16S4_NZ_V1") {
-    format = EmbeddingFormat::kS16S4NzV1;
+  if (raw == "W4A16") {
+    config.embedding_format = EmbeddingFormat::kW4A16;
+    return true;
+  }
+  if (raw == "S16S4") {
+    config.embedding_format = EmbeddingFormat::kS16S4;
     return true;
   }
   if (error_message != nullptr) {
@@ -752,7 +760,16 @@ bool ParseEmbeddingFormat(const std::string &raw, EmbeddingFormat &format, std::
 }
 
 bool ValidateQ4Layout(const NpuConfig &config, std::string *error_message) {
-  if (config.embedding_format == EmbeddingFormat::kS16S4NzV1) {
+  if (config.embedding_format == EmbeddingFormat::kFP16) {
+    if (!config.embedding_quant) {
+      return true;
+    }
+    if (error_message != nullptr) {
+      *error_message = "FP16 embedding requires embedding_quant=false";
+    }
+    return false;
+  }
+  if (IsS16S4Embedding(config.embedding_format)) {
     if (config.embedding_quant && config.scale_gp_size == 128) {
       return true;
     }
@@ -767,12 +784,12 @@ bool ValidateQ4Layout(const NpuConfig &config, std::string *error_message) {
     }
     return false;
   }
-  if (!config.embedding_quant ||
-      (config.q4_0_weight_layout == kQ4_0WeightLayout && config.scale_gp_size == kDefaultScaleGroupSize)) {
+  if (config.embedding_quant && config.q4_0_weight_layout == kQ4_0WeightLayout &&
+      config.scale_gp_size == kDefaultScaleGroupSize) {
     return true;
   }
   if (error_message != nullptr) {
-    *error_message = std::string("Incompatible quantized NPU package: requires npu.q4_0_weight_layout=") +
+    *error_message = std::string("W4A16 embedding requires embedding_quant=true, npu.q4_0_weight_layout=") +
                      kQ4_0WeightLayout + " and npu.scale_gp_size=" + std::to_string(kDefaultScaleGroupSize) +
                      "; padded, old NZF, planar and unmarked packages must be re-exported";
   }
@@ -844,7 +861,7 @@ MSLlmStatus ParseNpuConfig(const JsonValue &root, NpuConfig &out, std::string *e
   GetInt(*npu, "chunk_size", &out.chunk_size);
   GetBool(*npu, "embedding_quant", &out.embedding_quant);
   GetInt(*npu, "scale_gp_size", &out.scale_gp_size);
-  if (!ParseEmbeddingFormat(GetString(*npu, "embedding_format", "W4A16"), out.embedding_format, error_message)) {
+  if (!ParseEmbeddingFormat(GetString(*npu, "embedding_format", "FP16"), out, error_message)) {
     return MSLLM_ERROR_INVALID_ARGS;
   }
   out.q4_0_weight_layout = GetString(*npu, "q4_0_weight_layout");
@@ -1020,6 +1037,7 @@ bool ResolvePackagePath(const std::string &package_root, const std::string &cand
 namespace {
 
 void ReadKvArchitecture(const MslPackageReader &reader, ModelManifest &m) {
+  reader.GetKvString(msl_format::key::kArchName, &m.architecture.name);
   uint32_t u32 = 0;
   if (reader.GetKvUint32(msl_format::key::kArchNumLayers, &u32)) m.architecture.num_layers = u32;
   if (reader.GetKvUint32(msl_format::key::kArchHiddenSize, &u32)) m.architecture.hidden_size = u32;
@@ -1048,7 +1066,7 @@ bool ReadKvNpuConfig(const MslPackageReader &reader, NpuConfig &out, std::string
   if (reader.GetKvBool(msl_format::key::kNpuEmbeddingQuant, &flag)) parsed.embedding_quant = flag;
   std::string embedding_format;
   if (reader.GetKvString("npu.embedding_format", &embedding_format) &&
-      !ParseEmbeddingFormat(embedding_format, parsed.embedding_format, error_message)) {
+      !ParseEmbeddingFormat(embedding_format, parsed, error_message)) {
     return false;
   }
   reader.GetKvString(msl_format::key::kNpuQ4_0WeightLayout, &parsed.q4_0_weight_layout);
