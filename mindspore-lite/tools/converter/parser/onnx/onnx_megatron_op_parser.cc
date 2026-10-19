@@ -74,6 +74,8 @@ PrimitiveCPtr OnnxMegatronFusedLayerNormAffineParser::Parse(const onnx::GraphPro
                                                             const onnx::NodeProto &onnx_node) {
   auto prim = std::make_unique<ops::LayerNormFusion>();
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
+  // FusedLayerNormAffineFunction always applies affine with gamma/beta as its 2nd/3rd inputs.
+  prim->set_elementwise_affine(true);
   for (const auto &onnx_node_attr : onnx_node.attribute()) {
     const auto &attribute_name = onnx_node_attr.name();
     if (attribute_name == "eps") {

@@ -97,7 +97,7 @@ HEADER_LOCATION="-I${MINDSPORE_HOME}
 -I${PROJECT_ROOT_HOME}/build/schema
 -I${PROJECT_ROOT_HOME}/build/schema/inner
 -I${PROJECT_ROOT_HOME}/build/src
--I${MINDSPORE_HOME}/mindspore/ops/kernel/cpu
+-I${MINDSPORE_HOME}/mindspore/ops
 -I${PROJECT_ROOT_HOME}"
 
 REMOVE_LISTS_STR=""
