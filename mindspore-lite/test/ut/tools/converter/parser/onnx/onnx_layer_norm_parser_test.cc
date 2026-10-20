@@ -118,6 +118,43 @@ bool TestOnnxLayerNormNode2() {
   return true;
 }
 
+bool TestOnnxLayerNormNode3() {
+  auto onnx_graph = std::make_shared<onnx::GraphProto>();
+  onnx_graph->set_name("LN_affine_graph");
+  onnx::NodeProto *onnx_layer_norm_node = onnx_graph->add_node();
+  onnx_layer_norm_node->set_name("LN_affine");
+  onnx_layer_norm_node->set_op_type("LayerNormalization");
+  onnx_layer_norm_node->add_input("input_data");
+  onnx_layer_norm_node->add_input("scale");
+  onnx_layer_norm_node->add_input("bias");
+
+  onnx::AttributeProto *epsilon_attr = onnx_layer_norm_node->add_attribute();
+  epsilon_attr->set_name("epsilon");
+  epsilon_attr->set_f(1e-5);
+
+  onnx::AttributeProto *axis_attr = onnx_layer_norm_node->add_attribute();
+  axis_attr->set_name("axis");
+  axis_attr->set_i(-1);
+
+  ops::PrimitiveCPtr primitive_c;
+  auto node_parser_builtin = lite::OnnxNodeParserRegistry::GetInstance().GetNodeParser(onnx_layer_norm_node->op_type());
+  if (node_parser_builtin == nullptr) {
+    MS_LOG(ERROR) << "not support onnx data type " << onnx_layer_norm_node->op_type();
+    return false;
+  }
+  primitive_c = node_parser_builtin->Parse(*onnx_graph, *onnx_layer_norm_node);
+  if (!primitive_c->HasAttr("elementwise_affine")) {
+    MS_LOG(ERROR) << "prim has no elementwise_affine!";
+    return false;
+  }
+  auto elementwise_affine_value = GetValue<bool>(primitive_c->GetAttr("elementwise_affine"));
+  if (!elementwise_affine_value) {
+    MS_LOG(ERROR) << "elementwise_affine should be true when scale/bias inputs exist!";
+    return false;
+  }
+  return true;
+}
+
 TEST_F(OnnxLayerNormParserTest, OnnxLayerNormParserTest1) {
   auto ret = TestOnnxLayerNormNode1();
   ASSERT_EQ(ret, true);
@@ -125,6 +162,11 @@ TEST_F(OnnxLayerNormParserTest, OnnxLayerNormParserTest1) {
 
 TEST_F(OnnxLayerNormParserTest, OnnxLayerNormParserTest2) {
   auto ret = TestOnnxLayerNormNode2();
+  ASSERT_EQ(ret, true);
+}
+
+TEST_F(OnnxLayerNormParserTest, OnnxLayerNormParserTest3) {
+  auto ret = TestOnnxLayerNormNode3();
   ASSERT_EQ(ret, true);
 }
 }  // namespace mindspore

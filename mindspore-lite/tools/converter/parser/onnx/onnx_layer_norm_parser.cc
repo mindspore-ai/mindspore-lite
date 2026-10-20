@@ -24,6 +24,9 @@ namespace lite {
 PrimitiveCPtr OnnxLayerNormParser::Parse(const onnx::GraphProto &onnx_graph, const onnx::NodeProto &onnx_node) {
   auto prim = std::make_unique<ops::LayerNormFusion>();
   MS_CHECK_TRUE_RET(prim != nullptr, nullptr);
+  // Onnx LayerNormalization carries scale(required) and bias(optional) as its 2nd/3rd inputs;
+  // affine params exist iff the scale input is provided.
+  prim->set_elementwise_affine(onnx_node.input_size() > 1 && !onnx_node.input(1).empty());
   for (const auto &onnx_node_attr : onnx_node.attribute()) {
     const auto &attribute_name = onnx_node_attr.name();
     if (attribute_name == "axis") {
