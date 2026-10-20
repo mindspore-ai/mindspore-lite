@@ -112,8 +112,10 @@ std::vector<NPUOp *> NPUSubGraph::FindPreOps(NPUOp *cur_op) {
   return in_ops;
 }
 
-std::shared_ptr<domi::ModelBufferData> NPUSubGraph::BuildIRModel() {
+std::shared_ptr<domi::ModelBufferData> NPUSubGraph::BuildIRModel(bool *is_om_cache) {
   ge::Graph graph("NPUGraph");
+  MS_ASSERT(is_om_cache != nullptr);
+  *is_om_cache = false;
 
   auto ret = BuildNPUInputOp();
   if (ret != RET_OK) {
@@ -127,31 +129,36 @@ std::shared_ptr<domi::ModelBufferData> NPUSubGraph::BuildIRModel() {
   }
   // For om Cache, StoreCache
   auto om_model_buffer = npu_manager_->LoadCache(GetOMModelName());
+  if (om_model_buffer != nullptr) {
+    *is_om_cache = true;
+    return om_model_buffer;
+  }
+  // No om Cache, build IR model.
+  graph.SetInputs(subgraph_input_ops_).SetOutputs(subgraph_output_ops_);
+  ge::Model model(GetOMModelName(), mindspore::Version());
+  model.SetGraph(graph);
+  domi::HiaiIrBuild ir_build;
+  om_model_buffer = std::make_shared<domi::ModelBufferData>();
   if (om_model_buffer == nullptr) {
-    // No om Cache, build IR model.
-    graph.SetInputs(subgraph_input_ops_).SetOutputs(subgraph_output_ops_);
-    ge::Model model(GetOMModelName(), mindspore::Version());
-    model.SetGraph(graph);
-    domi::HiaiIrBuild ir_build;
-    om_model_buffer = std::make_shared<domi::ModelBufferData>();
-    if (om_model_buffer == nullptr) {
-      MS_LOG(ERROR) << "OM model buffer is nullptr.";
-      return nullptr;
-    }
-    if (!ir_build.CreateModelBuff(model, *om_model_buffer)) {
-      MS_LOG(ERROR) << "Create model buffer failed.";
-      return nullptr;
-    }
-    if (!ir_build.BuildIRModel(model, *om_model_buffer)) {
-      MS_LOG(ERROR) << "Build IR model failed.";
-      ir_build.ReleaseModelBuff(*om_model_buffer);
-      return nullptr;
-    }
-    if (npu_manager_->StoreCache(GetOMModelName(), om_model_buffer) != RET_OK) {
-      MS_LOG(ERROR) << "Store Cache failed.";
-      ir_build.ReleaseModelBuff(*om_model_buffer);
-      return nullptr;
-    }
+    MS_LOG(ERROR) << "OM model buffer is nullptr.";
+    return nullptr;
+  }
+  // customSize 0 lets the DDK size the buffer from the IR model instead of
+  // reserving the ~200MB default; the oversized reservation leaked the
+  // virtual address space of 39-bit aarch64 in repeated Build/Destroy cycles.
+  if (!ir_build.CreateModelBuff(model, *om_model_buffer, 0)) {
+    MS_LOG(ERROR) << "Create model buffer failed.";
+    return nullptr;
+  }
+  if (!ir_build.BuildIRModel(model, *om_model_buffer)) {
+    MS_LOG(ERROR) << "Build IR model failed.";
+    ir_build.ReleaseModelBuff(*om_model_buffer);
+    return nullptr;
+  }
+  if (npu_manager_->StoreCache(GetOMModelName(), om_model_buffer) != RET_OK) {
+    MS_LOG(ERROR) << "Store Cache failed.";
+    ir_build.ReleaseModelBuff(*om_model_buffer);
+    return nullptr;
   }
   return om_model_buffer;
 }
@@ -294,14 +301,15 @@ int NPUSubGraph::Init() {
   } else {
     name_ = "kNpuSubGraph" + std::to_string(npu_manager_->SubGraphIndex());
   }
-  auto model_buffer_data = BuildIRModel();
+  bool is_om_cache = false;
+  auto model_buffer_data = BuildIRModel(&is_om_cache);
   if (model_buffer_data == nullptr) {
     MS_LOG(ERROR) << "Build IR model failed.";
     return RET_ERROR;
   }
 
   MS_ASSERT(npu_manager_ != nullptr);
-  npu_manager_->AddModel(model_buffer_data, GetOMModelName(), npu_manager_->GetFrequency());
+  npu_manager_->AddModel(model_buffer_data, GetOMModelName(), npu_manager_->GetFrequency(), is_om_cache);
 
   executor_ = new (std::nothrow) NPUExecutor(GetOMModelName(), npu_manager_);
   if (executor_ == nullptr) {

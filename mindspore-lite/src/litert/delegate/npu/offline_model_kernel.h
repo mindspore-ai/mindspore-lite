@@ -54,7 +54,6 @@ class OfflineModelKernel : public kernel::Kernel {
   int CopyHiaiTensorsDataToMSTensorsData();
 
   std::shared_ptr<hiai::AiModelMngerClient> model_manager_client_ = nullptr;
-  std::shared_ptr<hiai::AiModelBuilder> model_builder_ = nullptr;
   uint8_t *offline_model_buffer_;
   size_t offline_model_size_;
   std::vector<std::shared_ptr<hiai::AiTensor>> offline_model_inputs_tensors_;
