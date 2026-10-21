@@ -145,6 +145,8 @@ class GeGraphExecutor : public LiteGraphExecutor {
   void GetGeSessionOptions(std::map<std::string, std::string> *ge_options);
   void GetGeSessionOptionsFromAscendContext(const std::map<std::string, std::string> &config,
                                             std::map<std::string, std::string> *ge_options_ptr);
+  void SetGeCompileEnvOptions();
+  std::string GetCompileCacheFingerprint(const FuncGraphPtr &anf_graph);
   void SetGeDumpOptions(const std::map<std::string, std::string> &config,
                         std::map<std::string, std::string> *ge_options_ptr);
   void SetGeProfilingOptions(const std::map<std::string, std::string> &config,

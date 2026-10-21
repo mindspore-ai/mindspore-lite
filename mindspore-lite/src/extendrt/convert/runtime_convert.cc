@@ -166,6 +166,10 @@ int RuntimeConvert(const mindspore::api::FuncGraphPtr &graph, const std::shared_
   param->train_model = false;
   param->save_type = mindspore::kMindIR;
   param->is_runtime_converter = true;
+  // Keep the raw config (all sections/keys) on the param, mirroring converter.cc: the
+  // ConverterFuncGraph::Optimize entry exports whitelisted [ascend_context] env keys as
+  // process env from it, and the ge provider's offline build passes config_infos down.
+  param->config_infos = config_info;
 
   auto device_list = context->MutableDeviceInfo();
   for (auto &device : device_list) {
