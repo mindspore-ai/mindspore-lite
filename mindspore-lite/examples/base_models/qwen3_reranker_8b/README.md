@@ -1,20 +1,30 @@
-# Qwen3-Reranker-8B ONNX 导出与 MindSpore Lite 推理
+# Qwen3-Reranker-8B ONNX 导出与 MindSpore Lite 推理部署教程
 
-本目录提供 Qwen3-Reranker-8B 的 ONNX 导出脚本及基于 MindSpore Lite 的推理脚本，已在 **Atlas 300I Duo** 上完成端到端流程打通、精度对齐与性能验证。
+本目录提供 Qwen3-Reranker-8B 的 ONNX 导出、MindIR 转换与 MindSpore Lite 推理脚本，
+已在 **Atlas 300I Duo（CANN 9.1.0 + MindSpore Lite 2.11.0）** 上用
+T2Reranking（中文重排基准）完成端到端精度对齐验证。
 
----
-
-## 1. 概览
-
-Qwen3-Reranker-8B 是通义千问团队推出的**重排序模型**（Cross-Encoder Reranker），用于对检索结果进行精排。输入 Query 与 Document，输出相关性分数。
-
-本实现采用与官方一致的二分类式打分：
+Qwen3-Reranker-8B 是重排序（Cross-Encoder）模型：输入 Query 与 Document，输出
+相关性分数。本实现与官方一致采用二分类打分：
 
 - 取最后一个 token 位置的 logits
 - 取 `yes` / `no` 两个 token 的 logits 做 softmax
-- `P(yes)` 作为相关性分数
+- `P(yes)` 作为相关性分数（`yes`=9693，`no`=2152）
 
-### 模型架构参数（取自 `config.json`）
+推荐流程为 **CP2（Ulysses 序列并行）+ 公共前缀 + 免拷贝 KV**：
+
+1. **Prefix** 图：共享前缀（系统提示等）**只算一次**，产出 36 层 K/V 缓存
+   `[36, 1, bucket, 8, 128]`；prefix 与 rank 无关（无集合通信）；
+2. **Suffix** 图：接收 prefix KV + 请求后缀，输出全局最后 token 的 logits；
+   prefix 的 K/V 通过**零拷贝**（device 张量直传）交给 suffix，不进 host、不落 npy。
+
+目录下另有 **A8W8 量化开关**（第 6 节，默认关闭）；本示例只提供 CP2 双 rank 路径。
+
+---
+
+## 模型架构
+
+### 架构参数
 
 | 参数 | 值 |
 |---|---|
@@ -25,235 +35,394 @@ Qwen3-Reranker-8B 是通义千问团队推出的**重排序模型**（Cross-Enco
 | `num_key_value_heads` | 8（GQA） |
 | `head_dim` | 128 |
 | `intermediate_size` | 12288 |
-| `vocab_size` | 151669 |
-| `max_position_embeddings` | 40960 |
+| `vocab_size` | 151669（GE 按 32 对齐到 151680） |
 | 原始权重精度 | bfloat16 |
 
----
+### CP2 切分策略（Ulysses）
 
-## 2. 环境依赖
+Context Parallel（Ulysses）切 **序列维度**，权重每 rank 完整复制：
 
-| 软件包 | 验证版本 |
-|---|---|
-| Python | 3.11 |
-| torch | 2.9.0（CPU 即可，仅用于导出） |
-| transformers | 5.9.0 |
-| onnx | 1.19.1 |
-| numpy | - |
-| mindspore-lite | ≥ 2.9.0（converter_lite 来自 2.9.0 工具包；Python 运行时 2.10.0 验证通过） |
-| CANN | 8.5.0 |
-
-```bash
-pip install torch transformers onnx numpy
+```text
+每 rank:   输入切片 [1, S/2]（自己的序列段）
+attention: 本段 q/k/v -> AllGather(seq) 全序列注意力（本 rank 负责 16 q / 4 kv 头）
+           -> AllGather(heads) 32 头 -> 切回本 rank 段 -> o_proj/MLP（全权重，本地）
+lm_head:   全权重；host 取拥有全局最后 token 的 rank（左 padding 下恒为 rank1）
 ```
 
-> 导出（export）仅需 CPU + torch；推理（infer）在昇腾 NPU 上执行。
+通信只用 `Custom(AllGather)`（HcomAllGather），每层 2 个（seq 方向 + head 方向）。
+
+### 公共前缀分桶设计
+
+**Prefix（固定 1 桶，静态 shape）** — 转换时用 `--inputShape` 固定：
+
+| 项 | 值 |
+|---|---|
+| 真实共享前缀 | ≤ 512 token（T2Reranking 示例前缀 56 token） |
+| 桶 | 512（128 对齐；PFA tiling 要求） |
+| 产出 | K/V `[36, 1, 512, 8, 128]` fp16，两 rank 相同 |
+
+**Suffix（动态 4 档）** — `ge.dynamicDims`（五元组：suffix_len、mask_len=prefix+桶、
+suffix_len、prefix、prefix）：
+
+| 档 | suffix 桶 | mask 长 | 说明 |
+|---:|---:|---:|---|
+| 512 | 512 | 1024 | 默认档（真实 368 token 进此档） |
+| 1024 | 1024 | 1536 | |
+| 1536 | 1536 | 2048 | |
+| 2048 | 2048 | 2560 | 上限 |
 
 ---
 
-## 3. 导出 ONNX
+## 1. 环境准备
+
+### 依赖版本（建议）
+
+| 软件包 | 版本 / 路径 |
+|---|---|
+| Python | 3.11 |
+| torch | ≥ 2.7（**仅导出**；`dynamo=False` 强制 legacy exporter） |
+| transformers | 5.x（导出与推理都要用 tokenizer） |
+| onnx | 1.19.x（仅导出） |
+| **mindspore-lite（运行时包）** | 2.11.0 aarch64。<br>需含 `runtime/lib/` 与 `tools/converter/converter/converter_lite` |
+| **mindspore_lite（Python 模块）** | 与上面运行时包**同源**的 wheel：`mindspore_lite-2.11.0-cp311-cp311-linux_aarch64.whl`。**仅推理需要**，导出不需要 |
+| CANN | 9.1.0 |
+
+> ⚠ **运行时包与 config 必须匹配**：`configs/*.config` 的 `ge.inputShape` 用的是
+> ONNX 真实名（`input_ids` 等）。务必使用上面这个包；换用其它版本包若报
+> `Failed to update graph inputs` 或 `Failed to run multi-dimension process`，
+> 说明包与本配置的命名/顺序不匹配，请先核对 `MSLITE_HOME`。
+
+### 环境变量
+
+`export_and_convert.sh` 内部会自动 source CANN 与 `mslite_custom_ops` 供应商 OPP；
+推理脚本需自行准备环境（命令见 §4「运行推理」）；路径均可用环境变量覆盖：
+
+```bash
+export CANN=/path/to/cann-9.1.0
+export MSLITE_HOME=/path/to/mindspore-lite-2.11.0-linux-aarch64
+export PYTHONPATH=/path/to/pynew:$PYTHONPATH     # 可选：mindspore_lite 模块目录（未装进解释器时需要）
+export PY=/path/to/python3.11
+export DEVICES=2,3                              # 双 rank 设备（默认 2,3）
+```
+
+### 权重获取
+
+```bash
+# 方式一：ModelScope（国内快）
+python -c "from modelscope import snapshot_download; snapshot_download('Qwen/Qwen3-Reranker-8B', local_dir='./Qwen3-Reranker-8B')"
+
+# 方式二：HuggingFace
+huggingface-cli download Qwen/Qwen3-Reranker-8B --local-dir ./Qwen3-Reranker-8B
+```
+
+---
+
+## 2. 模型导出 ONNX（CP2 + 公共前缀）
+
+### 一键导出 + 转换（推荐）
 
 ```bash
 cd ./mindspore-lite/examples/base_models/qwen3_reranker_8b
 
-python export_qwen3_reranker_8b_onnx.py \
-    --model-id ./Qwen/Qwen3-Reranker-8B \
-    --output-dir ./onnx \
-    --max-length 8192 \
-    --device cpu
+bash export_and_convert.sh            # 导出 + 转换（默认非量化 fp16）
+bash export_and_convert.sh ./Qwen3-Reranker-8B fp16 512 384 ./output
 ```
 
-### 导出参数
+| 位置参数 | 默认值 | 说明 |
+|---|---|---|
+| `[model_id]` | `$B/Qwen3-Reranker-8B` | 权重目录 |
+| `[dtype]` | `fp16` | 导出精度 |
+| `[prefix_len]` | `512` | 公共前缀桶（128 对齐） |
+| `[suffix_len]` | `384` | 后缀 dummy 长度（真实长度动态） |
+| `[out_dir]` | `$SELF/output` | 产物目录 |
+
+`export_and_convert.sh` 自动执行：
+
+1. `export_qwen3_reranker_8b_onnx_cp.py --mode prefix/suffix` 导出双 rank 的 prefix + suffix ONNX（同一脚本也支持 `--mode whole` 全图 CP，历史入口）；
+2. `converter_lite --optimize=none --saveType=MINDIR` 转换：**prefix 静态**（`--inputShape` 固定）、**suffix 动态**（不带 inputShape）；
+3. 放置配置：把随示例交付的 `configs/{prefix,suffix}.config` 复制到产物目录（prefix 静态、suffix 4 档动态）。
+
+> 首次跑约 25–40 分钟（大头是推理阶段的 GE 双 rank 特化编译）；之后命中
+> GE 编译缓存约 **4 分钟**。
+
+### 直接导出命令
+
+```bash
+# prefix + suffix（双 rank；--mode 可选 whole/prefix/suffix/both）
+python3 export_qwen3_reranker_8b_onnx_cp.py \
+  --model-id ./Qwen3-Reranker-8B --output-dir ./output/export \
+  --dtype fp16 --cp-size 2 --prefix-len 512 --suffix-len 384 --mode both
+```
+
+### 导出参数说明
 
 | 参数 | 说明 | 默认值 |
 |---|---|---|
-| `--model-id` | 模型路径或 ModelScope/HF ID | `Qwen/Qwen3-Reranker-8B` |
-| `--output-dir` | 导出输出目录 | `./onnx` |
-| `--max-length` | 最大序列长度（控制 dummy 输入） | `8192` |
-| `--device` | 导出设备（cpu/cuda） | `cpu` |
+| `--model-id` | 权重目录 | 必填 |
+| `--quant-dir` | A8W8 权重包目录（空 = 非量化 fp16） | `None` |
+| `--quant-format` | 包格式（auto/amct/safetensors） | `auto` |
+| `--output-dir` | 导出目录 | 必填 |
+| `--dtype` | 导出精度（fp16/fp32） | `fp16` |
+| `--cp-size` | Context Parallel 规模 | `2` |
+| `--prefix-len` | 前缀桶 | `128` |
+| `--suffix-len` | 后缀 dummy 长 | `384` |
+| `--mode` | prefix/suffix/both | `both` |
 
-### 导出说明
-
-- 导出脚本将 `Qwen3ForCausalLM` 拆为 `model.model`（主干）+ `lm_head`，输出完整 `logits`，动态 `batch` 与 `sequence` 轴（opset 17）。
-- 导出时强制使用 **legacy (TorchScript) exporter**（`dynamo=False`）：torch ≥ 2.9 默认改用 dynamo exporter（opset 18），既无法降级到 opset 17，产出的图也无法被 `converter_lite` 的 `ascend_oriented` 优化正确处理。脚本已对 torch < 2.7（无 `dynamo` 参数）做兼容。
-- 导出时会自动清理 ONNX 图中的 `IsNaN/Where` 节点，并将外部权重合并为单一 `.data` 文件（图编辑阶段以 `load_external_data=False` 加载，避免把 ~16GB 权重重新写回 `.onnx` 造成 >2GB 的非法 protobuf）。
-- 8B 模型导出峰值约占 32GB 内存，请确保内存充足（或减小 `--max-length`）。
-
-### 导出产物
-
-| 文件 | 大小 | 说明 |
-|---|---|---|
-| `qwen3_reranker_8b.onnx` | ~1.9MB | 模型图定义 |
-| `qwen3_reranker_8b.data` | ~16GB | 外部权重（fp16） |
-
-### 模型 I/O
-
-**输入：**
-
-- `input_ids`：`int64`，形状 `(batch, seq_len)`
-- `attention_mask`：`int64`，形状 `(batch, seq_len)`
-
-**输出：**
-
-- `logits`：`float`，形状 `(batch, seq_len, 151669)`
-
-推理脚本取最后一个 token 位置的 logits，提取 `yes`（token 9693）和 `no`（token 2152）的 logits，通过 softmax 计算 `P(yes)` 作为相关性分数。
-
----
-
-## 4. 输入格式
-
-输入按以下模板拼接后再 tokenize（与官方 Qwen3-Reranker 示例一致）：
+### 产出（ONNX）
 
 ```text
-<|im_start|>system
-Judge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be "yes" or "no".<|im_end|>
-<|im_start|>user
-<Instruct>: {instruction}
-<Query>: {query}
-<Document>: {document}<|im_end|>
-<|im_start|>assistant
+output/export/rank{r}/{prefix,suffix}/qwen3_reranker_8b_{prefix,suffix}_rank{r}.onnx
+# 外部权重按 tensor 名分文件（fp16，prefix ~9.8GB / suffix ~11GB，双 rank）
 ```
 
-其中 `instruction` 默认为 `Given a web search query, retrieve relevant passages that answer the query`。
+### ONNX 模型输入输出 Shape
+
+**Prefix** — 输入 `input_ids/attention_mask/position_ids` 各 `(1, 512)` int64；
+输出 `k_out/v_out` 各 `(36, 1, 512, 8, 128)` fp16（36 层 K/V，无 logits/lm_head）。
+
+**Suffix** — 输入 `input_ids/position_ids` `(1, S)`、`attention_mask` `(1, 512+S)`、
+`past_key_cache/past_value_cache` `(36, 1, 512, 8, 128)`；输出 `logits` `(1, 1, 151669)`
+（全局最后 token；GE 写 151680，推理侧按 32 对齐截回）。
+
+> 每 rank 的 suffix 图在**图内**完成 CP 切分（`CP_RANK` 常量行切片），host 喂
+> 相同的 padding 后缀即可。
 
 ---
 
-## 5. MindSpore Lite 模型转换
+## 3. ONNX 转 MindIR
+
+### 转换命令
 
 ```bash
-converter_lite \
-    --fmk=ONNX \
-    --modelFile=./onnx/qwen3_reranker_8b.onnx \
-    --outputFile=./onnx/qwen3_reranker_8b_fp16 \
-    --optimize=ascend_oriented \
-    --saveType=MINDIR \
-    --configFile=./configs/config.ini
+# prefix：静态（固定 512，部署时绝不 resize）
+$CONV --fmk=ONNX --modelFile=…/prefix/…_rank0.onnx --outputFile=…_rank0 \
+      --optimize=none --saveType=MINDIR \
+      --inputShape="input_ids:1,512;attention_mask:1,512;position_ids:1,512"
+
+# suffix：动态（不带 --inputShape，运行时按桶 resize）
+$CONV --fmk=ONNX --modelFile=…/suffix/…_rank0.onnx --outputFile=…_rank0 \
+      --optimize=none --saveType=MINDIR
 ```
 
-### config 文件 `./configs/config.ini`
+### 运行时动态分档配置（随示例预生成）
+
+suffix 的 GE 分档配置**已预生成并随示例交付**：`configs/qwen3_reranker_8b_suffix.config`
 
 ```ini
-[acl_init_options]
-ge.exec.precision_mode = allow_fp32_to_fp16
+[ge_graph_options]
+ge.inputShape=input_ids:1,-1;attention_mask:1,-1;position_ids:1,-1;past_key_cache:36,1,-1,8,128;past_value_cache:36,1,-1,8,128
+ge.dynamicDims=512,1024,512,512,512;1024,1536,1024,512,512;1536,2048,1536,512,512;2048,2560,2048,512,512
+ge.dynamicNodeType=1
 ```
 
-> ⚠️ **精度模式选择（关键）**：8B 模型原始权重为 bf16。
-> - 使用 `allow_fp32_to_fp16`（本目录默认）：权重以 fp16 存储，转换产物 `*_variables/data_0` 约 **31GB**，可放入 300I Duo 单卡 44GB 显存，**推荐**。
-> - 若改用 `force_fp32`：权重被上提到 fp32，产物约 **45GB**，**超出 300I Duo 单卡 44GB 显存**，推理时 `build_from_file` 会以 `aclmdlLoadFromMem failed, ret=500002`（显存 OOM）失败。`force_fp32` 仅适用于显存 ≥ 48GB 的更大卡型（如 Ascend 910 系列 48GB 卡）。
+要点：
 
-### 转换产物
+- `ge.inputShape` 用 **ONNX 图 input 名**，且**顺序必须与图的输入顺序一致**（勿按字母序重排，
+  否则 GE 报 `Failed to run multi-dimension process`）；
+- `ge.dynamicDims` 每档五元组，列次序与 `inputShape` 一致：
+  `input_ids`(suffix 桶)、`attention_mask`(prefix 桶 + suffix 桶)、`position_ids`(suffix 桶)、
+  `past_key_cache`/`past_value_cache`(prefix 桶)；
+- prefix 配置（`configs/qwen3_reranker_8b_prefix.config`）静态构建，**不含** `ge.inputShape`；
+- ⚠ 若改模型结构或导出契约（层数 / KV 头数 / `head_dim` / 桶大小），需同步修改这两个配置。
 
-| 文件 | 大小 | 说明 |
-|---|---|---|
-| `qwen3_reranker_8b_fp16_graph.mindir` | ~0.9KB | 图定义（引用外部变量） |
-| `qwen3_reranker_8b_fp16_variables/data_0` | ~31GB | 编译后的 ACL om 权重（fp16） |
+### 产出（MindIR）
+
+```text
+output/mindir/rank{r}/{prefix,suffix}/qwen3_reranker_8b_{prefix,suffix}_rank{r}_graph.mindir
+output/mindir/rank{r}/{prefix,suffix}/…_variables/data_0   # 编译后的权重（fp16）
+```
+
+### GE 缓存说明（模型缓存 / 编译缓存）
+
+GE 在**首次 `predict`** 时做图特化编译（双 rank 并行）。缓存完全由 **mslite / GE 侧**管理，
+脚本不再注入任何缓存配置；`.config` 里 `[ascend_context]` 段的键会被**原样透传**进每个 rank
+生成的 `config_<tag>.ini`，因此缓存也在这段里配置：
+
+1. **`model_cache_mode=mem_opt`**（目前写在 `configs/qwen3_reranker_8b_suffix.config`）：
+   mslite 据此**自动**把编译缓存目录设为**运行目录**下的 `model_build_cache_<rank>/`
+   （不存在会自动创建），并启用「小图 + 从缓存加载已编译图」的快路径 —— 这就是命中缓存后
+   起跑只要几分钟、且显存占用更低的原因。
+2. **`model_cache_dir=<dir>`**（可选，写在同一段）：想固定缓存位置时加上这一行 ——
+   否则缓存会跟着运行目录走，并在运行目录留下 `model_build_cache_<rank>/`（每个约 16 GB）。
+   该键等价于 GE 的 `ge.graph_compiler_cache_dir`。
+
+> ⚠ **缓存 key 由框架按「rank + 图序号 + 图结构」生成，不含 `precision_mode` /
+> `externalWeight` 等 session 参数**：改这些参数后请手工清缓存（删掉
+> `model_build_cache_<rank>/` 或 `model_cache_dir` 指向的目录）再跑，避免复用到旧产物；
+> 换 `model_cache_dir`、换运行目录同样等于换一份缓存。
+>
+> 冷编译耗时参考：双 rank 一次特化编译首次约 20–25 分钟（本机实测冷启动整程 9 分钟），
+> 命中编译缓存后起跑约 3–5 分钟。
 
 ---
 
-## 6. MindSpore Lite 推理
+## 4. MindSpore Lite 推理（零拷贝 KV）
+
+### 测试数据（T2Reranking，必须自备）
+
+推理输入**不随示例交付**，运行前必须显式指定两件套（缺 `--prefix-text-file` / `--queries` 会直接报错退出）：
+
+| 环境变量 | 文件 | 用途 / 规格 |
+|---|---|---|
+| `PREFIX_TEXT` | `prefix_official.txt` | 共享前缀文本文件（`--prefix-text-file`，逐字节读入）；T2 官方模板前缀 56 token（桶 512） |
+| `QUERIES` | `t2rerank_20_official.tsv` | 打分输入，每行 `query<tab>doc`；40 行 = T2Reranking 20 条 × (正例, 负例) |
+
+数据来源：**T2Reranking**（中文重排基准，见 §7）。输入按 Qwen3-Reranker **官方模板**构造
+（`<Instruct>/<Query>/<Document>` + assistant 后缀，文档取 `title + text`）：共享前缀放
+`PREFIX_TEXT`，Query/Document 放在 tsv 的行内。
+
+**口径约定（关键，写错会出现"分数还行但逐 logit 错位"）**：
+
+- **tsv 是行式格式**：字段内的换行写成 `\n` 转义（推理脚本会还原；`\t` / `\\` 同理），
+  因此官方模板那种多行 prompt 也能放进一行；
+- 共享前缀**必须用文件**传入（`PREFIX_TEXT` → `--prefix-text-file`）：shell 的 `"$(cat f)"`
+  会吃掉尾随换行，导致 prefix 少 1 token、后续 token 的位置全部错位；请用 `--prefix-text-file` 原样读入文件。
+
+### 运行推理
 
 ```bash
-python infer_qwen3_reranker_8b_mslite.py \
-    --model ./onnx/qwen3_reranker_8b_fp16_graph.mindir \
-    --tokenizer ./Qwen/Qwen3-Reranker-8B \
-    --max-length 8192 \
-    --device ascend \
-    --device-id 0
+# ① 环境（每个新 shell 一次；路径按实际环境改，或用 §1 的环境变量）
+source $CANN/set_env.sh
+export LD_LIBRARY_PATH=$MSLITE_HOME/runtime/lib:$LD_LIBRARY_PATH
+export PYTHONPATH=/path/to/pynew:$PYTHONPATH        # 可选：mindspore_lite 模块目录
+
+# ② 打分（T2Reranking 40 对；两件套见上表）
+T2=/path/to/t2rerank_20
+python3 infer_qwen3_reranker_8b_mslite_cp.py \
+  --device-ids 0,1 --model-id /path/to/Qwen3-Reranker-8B \
+  --mindir-root ./output/mindir --cfg-dir ./output/configs \
+  --prefix-bucket 512 --prefix-text-file $T2/prefix_official.txt \
+  --suffix-buckets 512,1024,1536,2048 \
+  --queries $T2/t2rerank_20_official.tsv --warmup 1 \
+  --work-dir ./output/zc_run --json-out ./output/scores_cp2.json
 ```
 
-### 推理参数
+产物：`output/scores_cp2.json`（逐对 `P(yes)` + 每对延迟）、`output/zc_run/logits_ge.npy`
+（逐对 GE logits，可与自备的 CPU eager 参考做离线比对）。GE 编译缓存的目录与失效规则
+见 §3「GE 缓存说明」（默认落在**运行目录**的 `model_build_cache_<rank>/`）。
+
+**免拷贝原理**：每个 rank worker **同进程** build prefix + suffix 两张图；
+prefix `predict(feeds, outputs=[t_k, t_v])` 把 K/V 写进预分配的
+`mslite.Tensor(device="ascend:N")` 设备张量；suffix `predict(...)` 把这**同一对
+device 张量**当输入直接喂进去（`_zc_feed()` 里 `i>=3` 槽位）——全程零 H2D/D2H。
+
+### 参数说明
 
 | 参数 | 说明 | 默认值 |
 |---|---|---|
-| `--model` | MindIR 模型路径（`*_graph.mindir`） | 必填 |
-| `--tokenizer` | Tokenizer 路径或 ID | `Qwen/Qwen3-Reranker-8B` |
-| `--max-length` | 最大序列长度 | `8192` |
-| `--device` | 推理设备（ascend/cpu） | `ascend` |
-| `--device-id` | Ascend device ID | `0` |
+| `--device-ids` | 双 rank 设备（逗号分隔） | `2,3` |
+| `--model-id` | 权重/tokenizer 路径 | 必填 |
+| `--mindir-root` | `export_and_convert.sh` 的 mindir 根目录 | 必填 |
+| `--cfg-dir` | 含 `{prefix,suffix}.config` 的目录 | 必填 |
+| `--prefix-bucket` | 前缀桶 | `512` |
+| `--prefix-text` | 共享前缀文本（字符串；注意 shell `$(cat)` 会吃掉尾随换行） | 二选一 |
+| `--prefix-text-file` | 共享前缀文本**文件**（逐字节读入，推荐） | 二选一 |
+| `--suffix-buckets` | 4 档桶 | `512,1024,1536,2048` |
+| `--queries` | `query<tab>doc` 每行一对（T2Reranking 打分输入） | 必填 |
+| `--warmup` | 每档桶首次进入时的 warmup 次数 | `1` |
+| `--json-out` | 结果 JSON | 必填 |
 
-### 推理结果示例
+### 推理示例输出
+
+以下为 T2Reranking 官方模板（40 对）实跑输出（省略中间日志，本仓库只包含了mindir推理脚本，不包含torch CPU推理与输出对比脚本）：
 
 ```text
-Token IDs - yes: 9693, no: 2152
-
-Running reranking inference...
-Pair 1: seq_len=100, latency=215.281ms
-Pair 2: seq_len=100, latency=163.619ms
-
-Reranking scores:
-
-[1] Score: 0.6123
-Query: What is the capital of China?
-Document: The capital of China is Beijing.
-
-[2] Score: 0.6885
-Query: Explain gravity
-Document: Gravity is a force that attracts two bodies towards each other. It gives weight to physical objects and is responsible for the movement of planets around the sun.
+{"scores": [... 40 个 P(yes) ...], "suffix_latency_ms": [...],
+ "prefix_real_len": 56, "prefix_bucket": 512}
+CPU eager score(首对): 0.1306
+GE score(首对):        0.1322
+max|ge-eager|:  全局 0.4800  逐对均值 0.1681  (good<=0.7, bad~16.8)
+≤0.7 的对数:    40/40
+✓ precision OK
 ```
 
 ---
 
-## 7. 性能数据（Atlas 300I Duo，单卡）
+## 5. 精度验证与性能参考
 
-| 指标 | 值 |
+### 测试环境
+
+| 项目 | 说明 |
 |---|---|
-| 首条延迟（含 ACL kernel 编译预热） | ~215ms |
-| 稳态延迟（seq_len=100） | ~164ms |
-| 稳态延迟（seq_len=81，10 次平均） | **152.05ms**（min 151.20 / max 156.50 / std 1.52） |
-| 输入 logits 输出 | `(1, seq_len, 151669)` |
+| 硬件 | Atlas 300I Duo |
+| 软件 | CANN 9.1.0 + MindSpore Lite 2.11.0（aarch64）+ py311 |
+| 模型 | Qwen3-Reranker-8B，fp16（非量化默认路径） |
+| 数据 | T2Reranking 20 条 = 40 对（官方模板，自备，见 §4） |
 
-> 8B 模型规模较大，延迟随 `seq_len` 线性增长；上表为单条 Rerank（batch=1）的端到端 `predict` 耗时。首条 predict 会触发 ACL kernel 编译，故明显高于稳态。
+### 精度（T2Reranking 20 条 = 40 对，官方模板）
 
-### 模型体积
+输入按 **Qwen3-Reranker 官方模板**构造（`<Instruct>/<Query>/<Document>` + assistant 后缀，
+文档取 `title + text`），共享前缀由 `PREFIX_TEXT` 指定（T2 为 `prefix_official.txt`）。
 
-| 组件 | 大小 |
-|---|---|
-| ONNX 图 | ~1.9MB |
-| ONNX 外部数据（fp16） | ~16GB |
-| MindIR Variables（fp16，本流程） | ~31GB |
-| MindIR Variables（force_fp32，对比） | ~45GB（300I Duo 不可用） |
+| 指标 | mindir (GE) | CPU eager（fp32 参考） |
+|---|---|---|
+| 成对排序（每 query 正例 > 负例） | **16/20 = 80%** | 16/20 = 80% |
+| AUC | **0.7675** | 0.7650 |
+| pos 均分 / neg 均分 | 0.4917 / 0.2570 | 0.4889 / 0.2577 |
+| max\|logit−eager\|（40 对） | **40/40 ≤ 0.7**（最大 0.48，均值 0.168） | — |
+| 与 eager 的分数相关 / 最大分差 | 0.9997 / 0.022 | — |
+
+> **mindir 无损**：4 个错判 query（q2/q5/q16/q18）与 eager 完全一致 —— 80% 是模型本身
+> 在该 prompt/数据上的水位，GE 相对 eager **未引入任何额外错判**。
+> 注意 `P(yes)` 未做校准（正例均分仅 0.49），跨 query 比较请用排序类指标，
+> 不要用 0.5 硬阈值。
+> 表中的 CPU eager 参考与 `max|logit−eager|` 为**离线比对**结果：本示例只交付推理链路，
+> 校验脚本与 eager 参考文件不随示例交付。
+
+### 性能参考（实测）
+
+非量化 fp16 + 零拷贝路径下 suffix 各档延迟（Atlas 300I Duo 双 rank；每档 warmup 1 次 +
+重复 5 次、双 rank 各 5 次共 10 次统计；suffix 输入为脚本内合成的等长填充，
+共享前缀真实长 254 token，pad到512长度）：
+
+| prefix (token) | suffix (token) | mean (ms) |
+|---:|---:|---:|
+| 512| 512 | 200.1 |
+| 512| 1024 | 409.7 |
+| 512| 1536 | 674.7 |
+| 512| 2048 | 911.3 |
+
+> 上表为稳态延迟参考值：首次运行需先完成 GE 特化编译，之后命中编译缓存即可。
+> **延迟扫描入口未随示例交付**（推理脚本只做 T2Reranking 打分）；如需复测，请在与上表
+> 相同的环境下自行压测（同款运行时包、相同 `DEVICES`、warmup/repeats），数值仅供量级参考。
 
 ---
 
-## 8. 常见问题
+## 6. A8W8 量化开关（默认关闭）
 
-### 1) 导出报错 `axes_input_to_attribute ... No initializer or constant input`（或 `.onnx` 高达 ~16GB 无法解析）
+导出脚本内置 A8W8 量化开关，**默认关闭（非量化 fp16）**；推理入口不感知量化
+（量化只体现在导出的 MindIR 权重里，推理命令与 §4 完全一致）：
 
-这是 **torch ≥ 2.9** 默认改用 dynamo ONNX exporter 导致的：dynamo 导出 opset 18 后无法降级到 opset 17，会抛出该 `RuntimeError`；若侥幸完成，产出的 `.onnx` 会把 ~16GB 权重内联进 protobuf（>2GB 非法），转换/加载都会失败。
+| 开关（导出脚本入参） | 默认 | 说明 |
+|---|---|---|
+| `--quant-dir`（一键脚本用环境变量 `QUANT` 转发） | 空 | A8W8 权重包目录；空 = 非量化 fp16 |
+| `--quant-mode`（一键脚本用环境变量 `DSH_QUANT_MODE` 转发） | `off` | `dyn` = 动态 per-token A8W8，`static` = 静态 per-tensor A8W8 |
+| `DSH_QUANT_DOWN_PROJ` | `auto` | down_proj 是否量化（auto = 包里有就量化） |
+| `DSH_FUSE_SWIGLU` | `0` | SwigluDual 融合。默认 0（内置 SwiGlu，任意环境可跑）；`1` **仅量化路径**可用，非量化 fp16 下 SwigluDual 执行有偏差、精度会坏 |
 
-本目录导出脚本已强制 `dynamo=False`（legacy TorchScript exporter，直接产出 opset 17 图），可避免该问题。若你自行修改脚本，请勿去掉 `dynamo=False`。
+```bash
+# 一键脚本：环境变量只是入口，内部会转成 --quant-mode 传给导出脚本
+QUANT=/path/to/w8a8_pack DSH_QUANT_MODE=dyn bash export_and_convert.sh
 
-### 2) `build_from_file failed! ... aclmdlLoadFromMem failed, ret=500002`
+# 直接调用导出脚本：量化模式是脚本入参
+python3 export_qwen3_reranker_8b_onnx_cp.py \
+  --model-id /path/to/Qwen3-Reranker-8B --output-dir ./output/export \
+  --device cpu --dtype fp16 --cp-size 2 --mode both \
+  --quant-dir /path/to/w8a8_pack --quant-mode dyn
 
-`ret=500002` 为 ACL 显存不足（OOM）。8B 模型 `force_fp32` 产物约 45GB，超过 300I Duo 单卡 44GB。请改用本目录默认的 `allow_fp32_to_fp16` 配置（产物约 31GB，可正常运行），见第 5 节。
+# 推理命令不变：见 §4「运行推理」（量化只影响导出的 MindIR 权重）
+```
 
-### 3) 转换时出现 `ge.proto.ModelDef exceeded maximum protobuf size of 2GB`
+量化路径的算子约束（`input_names`/`output_names` 属性名、per-token `scale`
+必须 float32、`bias` 补 `zeros(int32)` 占位防段错误。
 
-8B 权重约 16GB（fp16），`ascend_oriented` 转换过程中会打印此信息。该日志**不影响最终转换结果**——只要结尾出现 `CONVERT RESULT SUCCESS:0` 即成功，工具链会正常写出 `*_graph.mindir` + `*_variables/data_0`。
-
-### 4) 转换时出现 `ConstantOfShape infershape failed` Warning
-
-常量折叠阶段对动态 shape 节点的告警，可忽略，不影响最终产物。
-
-### 5) 导出时内存不足
-
-8B 模型导出峰值约占 32GB 内存。若内存不足，可减小 `--max-length` 或关闭其他程序；导出本身只需 CPU。
-
-### 6) 精度对齐建议
-
-- 确认 tokenizer 与权重目录一致（`./Qwen/Qwen3-Reranker-8B`）。
-- mslite fp16 与 PyTorch **fp16** 对齐最紧；与 bf16 原始分数存在 ~0.02 量级表示差异，属正常。
-- 若对极长序列精度有更高要求且卡型显存 ≥ 48GB，可改用 `force_fp32` 转换。
-
----
-
-## 9. 参考链接
+## 7. 参考资源
 
 - [MindSpore Lite Ascend 推理](https://www.mindspore.cn/lite/)
 - [Qwen3-Reranker-8B ModelScope](https://modelscope.cn/models/Qwen/Qwen3-Reranker-8B)
 - [Qwen3-Reranker-8B HuggingFace](https://huggingface.co/Qwen/Qwen3-Reranker-8B)
+- [T2Reranking（中文重排基准，精度回归用）](https://huggingface.co/datasets/mteb/T2Reranking)
 
-## 10. 许可证
+## 8. 许可证
 
 本工具遵循 Qwen3 模型的许可证要求。
