@@ -303,6 +303,10 @@ function Run_quant_codegen() {
       fi
       model_info=`echo ${line} | awk -F ' ' '{print $1}'`
       cosine_threshold=`echo ${line} | awk -F ' ' '{print $2}'`
+      # Optional 3rd field: converter --inputDataFormat for this model (e.g. NCHW for 4D
+      # ONNX inputs). Without it 4D data gets the NHWC default, the output goes through a
+      # PackNHWCToNCHW permutation and the accuracy check compares against misaligned data.
+      input_data_format=`echo ${line} | awk -F ' ' '{print $3}'`
       model_name=`echo ${model_info} | awk -F ';' '{print $1}'`
       input_info=`echo ${model_info} | awk -F ';' '{print $2}'`
       input_shapes=`echo ${model_info} | awk -F ';' '{print $3}'`
@@ -374,17 +378,21 @@ function Run_quant_codegen() {
       train_model="false"
       in_dtype="DEFAULT"
       out_dtype="DEFAULT"
+      format_flag=""
+      if [[ ${input_data_format} != "" ]]; then
+        format_flag="--inputDataFormat=${input_data_format}"
+      fi
 
       # start running converter
       cd ${x86_path}/mindspore-lite-${version}-linux-x64/ || exit 1
       echo "model:"${model_name}
       echo ${model_name} >> "$4"
       echo './converter_lite  --fmk='${model_fmk}' --modelFile='${model_file}' --weightFile='${weight_file}' --outputFile='${output_file}\
-        ' --inputDataType='${in_dtype}' --outputDataType='${out_dtype}' --inputShape='\"${spec_shapes}\"\
+        ' --inputDataType='${in_dtype}' --outputDataType='${out_dtype}' --inputShape='\"${spec_shapes}\" ${format_flag}\
         ' --configFile='${config_file}' --trainModel='${train_model} >> "$4"
       elapsed_time=$(date +%s.%N)
       ./converter_lite  --fmk=${model_fmk} --modelFile=${model_file} --weightFile=${weight_file} --outputFile=${output_file}\
-        --inputDataType=${in_dtype} --outputDataType=${out_dtype} --inputShape="${spec_shapes}"\
+        --inputDataType=${in_dtype} --outputDataType=${out_dtype} --inputShape="${spec_shapes}" ${format_flag}\
         --configFile=${config_file} --trainModel=${train_model} >> "$4"
       ret=$?
       elapsed_time=$(printf %.2f "$(echo "$(date +%s.%N) - $elapsed_time" | bc)")
@@ -671,6 +679,7 @@ models_codegen_config=${basepath}/../${config_folder}/models_codegen.cfg
 models_cortex_codegen_config=${basepath}/../${config_folder}/models_codegen_cortex.cfg
 models_codegen_parallel_config=${basepath}/../${config_folder}/models_codegen.cfg
 models_quant_codegen_config=${basepath}/../${config_folder}/models_codegen_quant.cfg
+models_quant_allops_codegen_config=${basepath}/../${config_folder}/models_codegen_quant_allops.cfg
 
 #micro config
 micro_x86_config=${basepath}/../${config_folder}/micro/micro_x86.cfg
@@ -679,6 +688,7 @@ micro_arm64_config=${basepath}/../${config_folder}/micro/micro_arm64.cfg
 micro_ARM32_config=${basepath}/../${config_folder}/micro/micro_arm32A.cfg
 micro_cortex_config=${basepath}/../${config_folder}/micro/micro_cortex_m.cfg
 micro_quant_config=${basepath}/../${config_folder}/micro/micro_x86_quant.cfg
+micro_quant_allops_config=${basepath}/../${config_folder}/micro/micro_x86_quant_allops.cfg
 
 # Set models and build path
 build_path_x86=${basepath}/codegen_build_x86
@@ -687,6 +697,7 @@ build_path_arm64=${basepath}/codegen_build_arm64
 build_path_arm32=${basepath}/codegen_build_arm32
 build_path_cortex=${basepath}/codegen_build_cortex
 build_path_quant=${basepath}/codegen_build_quant
+build_path_quant_allops=${basepath}/codegen_build_quant_allops
 
 # Write converter result to temp file
 run_converter_log_file=${basepath}/run_converter_log.txt
@@ -710,6 +721,8 @@ run_cortex_codegen_log_file=${basepath}/run_cortex_codegen_log.txt
 echo 'run cortex_codegen logs: ' > ${run_cortex_codegen_log_file}
 run_quant_codegen_log_file=${basepath}/run_quant_codegen_log.txt
 echo 'run x86_quant_codegen logs: ' > ${run_quant_codegen_log_file}
+run_quant_allops_codegen_log_file=${basepath}/run_quant_allops_codegen_log.txt
+echo 'run x86_quant_allops_codegen logs: ' > ${run_quant_allops_codegen_log_file}
 
 echo "input backend is ${backend}"
 backend=${backend:-"all"}
@@ -763,6 +776,14 @@ if [[ $backend == "all" || $backend == "codegen" || $backend == "quant_codegen" 
 #    Run_arm64_codegen_PID=$!
 #    sleep 1
 fi
+if [[ $backend == "all" || $backend == "codegen" || $backend == "quant_codegen" || $backend == "quant_allops_codegen" ]]; then
+    # Run FULL_QUANT with enable_all_ops so arithmetic ops (AddFusion broadcast, etc.)
+    # actually quantize; guards #43523-style coder regressions the base whitelist
+    # suite can never hit.
+    echo "start Run quant allops codegen ..."
+    Run_quant_codegen ${build_path_quant_allops} ${models_path} ${models_quant_allops_codegen_config} ${run_quant_allops_codegen_log_file} ${run_benchmark_result_file} ${micro_quant_allops_config}
+    Run_quant_allops_codegen_status=$?
+fi
 
 if [[ $backend == "all" || $backend == "codegen" || $backend == "x86_codegen" ]]; then
 #    wait ${Run_x86_codegen_PID}
@@ -815,6 +836,13 @@ if [[ $backend == "all" || $backend == "codegen" || $backend == "quant_codegen" 
     if [[ ${Run_quant_codegen_status} != 0 ]];then
         echo "Run_quant_codegen failed"
         cat ${run_quant_codegen_log_file}
+        isFailed=1
+    fi
+fi
+if [[ $backend == "all" || $backend == "codegen" || $backend == "quant_codegen" || $backend == "quant_allops_codegen" ]]; then
+    if [[ ${Run_quant_allops_codegen_status} != 0 ]];then
+        echo "Run_quant_allops_codegen failed"
+        cat ${run_quant_allops_codegen_log_file}
         isFailed=1
     fi
 fi

@@ -173,6 +173,15 @@ if [ "$ENABLE_CONVERTER_TEST" = true ]; then
   ./lite-test-converter --gtest_filter="OnnxPoolParserTest*"
   ./lite-test-converter --gtest_filter="OnnxInputsAdjustTest*"
   ./lite-test-converter --gtest_filter="QuantStrategyTest*"
+  # Micro coder regression guards (#43523 and predecessors): these drive the real coders
+  # and pin the generated kernel selection / emitted names. They fail if DoCode picks a
+  # kernel the runtime contract does not support (AddBroadcastInt8Run only handles the
+  # bias-add-like broadcast, so general broadcast shapes must tile) or if the MSDataType
+  # name mapping drifts from the TypeId values that MSModelPredict compares against.
+  ./lite-test-converter --gtest_filter="AddInt8CoderBroadcastPatternTest*"
+  ./lite-test-converter --gtest_filter="ReduceInt8CoderHWPatternTest*"
+  ./lite-test-converter --gtest_filter="TestSoftmaxInt8Coder*"
+  ./lite-test-converter --gtest_filter="TestMicroTypeCast*"
   ./lite-test-converter --gtest_filter="ConstantFoldingFusionTest*"
   ./lite-test-converter --gtest_filter="ConvActivationFusionTest*"
   ./lite-test-converter --gtest_filter="ConvBiasAddFusionTest*"

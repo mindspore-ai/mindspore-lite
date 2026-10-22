@@ -23,6 +23,7 @@
 #include "include/errorcode.h"
 #include "src/tensor.h"
 #include "tools/converter/micro/coder/context.h"
+#include "tools/converter/micro/coder/generator/component/component.h"
 #include "tools/converter/micro/coder/opcoders/nnacl/int8/reduce_int8_coder.h"
 #include "nnacl_c/reduce_parameter.h"
 
@@ -55,6 +56,14 @@ std::string JoinCodeBlocks(const CoderContext &context) {
 class ReduceInt8CoderHWPatternTest : public mindspore::CommonTest {
  public:
   ReduceInt8CoderHWPatternTest() = default;
+
+  static void SetUpTestCase() {
+    // CoderContext and the memory allocator build std::strings from the component prefix
+    // globals (kInputPrefixName, kBufferPrefixNameAdd, ...). In lite-test-converter these
+    // default to nullptr until InitGlobalVariable runs, and assigning std::string from a
+    // null char* segfaults. Same setup as TestSoftmaxInt8Coder.
+    InitGlobalVariable(0);
+  }
 
   // Drives the real ReduceInt8Coder Prepare+DoCode on an int8 1x16x16x3-shaped graph
   // with the given axes and returns the generated net code.

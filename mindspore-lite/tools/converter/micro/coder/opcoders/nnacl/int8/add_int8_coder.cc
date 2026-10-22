@@ -182,26 +182,57 @@ int AddInt8Coder::DoCode(CoderContext *const context) {
 
   code.CodeStruct("para", para_);
   code.CodeStruct("arith_para", *arith_para_);
+
+  // AddBroadcastInt8Run only implements the bias-add-like pattern: one operand covers the whole
+  // output and the other holds exactly one chunk of in_size_ elements. Any other broadcast shape
+  // (e.g. (4,1)x(1,8) or (2,3,4,5)x(2,1,1,1)) makes it apply the wrong broadcast index and read
+  // past the smaller operand; those shapes must go through TileDimensionsInt8, the same strategy
+  // as the litert QuantizedAddCPUKernel.
+  bool in0_full = arith_para_->in_elements_num0_ == arith_para_->out_elements_num_;
+  bool in1_full = arith_para_->in_elements_num1_ == arith_para_->out_elements_num_;
+  bool in0_single_chunk = arith_para_->in_elements_num0_ == in_size_;
+  bool in1_single_chunk = arith_para_->in_elements_num1_ == in_size_;
+  bool broadcast_fast_path =
+    arith_para_->broadcasting_ && ((in0_full && in1_single_chunk) || (in1_full && in0_single_chunk));
+
   if (support_parallel_) {
-    code.CodeBaseStruct("AddInt8Args", kRunArgs, "&para", "&arith_para", in_size_, out_size_, gThreadNum, elements_num_,
-                        support_opt_add_, input0, input1, output_tensor_);
-    if (arith_para_->broadcasting_) {
-      code.CodeFunction(kParallelLaunch, "AddBroadcastInt8Run", kRunArgsAddr, gThreadNum);
-    } else {
+    if (arith_para_->broadcasting_ && !broadcast_fast_path) {
+      tile0_data_ = static_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, output_tensor_->Size(), kWorkspace));
+      MS_CHECK_PTR(tile0_data_);
+      tile1_data_ = static_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, output_tensor_->Size(), kWorkspace));
+      MS_CHECK_PTR(tile1_data_);
+      code.CodeFunction("TileDimensionsInt8", input0, input1, tile0_data_, tile1_data_, "&arith_para");
+      code.CodeBaseStruct("AddInt8Args", kRunArgs, "&para", "&arith_para", in_size_, out_size_, gThreadNum,
+                          elements_num_, support_opt_add_, tile0_data_, tile1_data_, output_tensor_);
       code.CodeFunction(kParallelLaunch, "AddInt8Run", kRunArgsAddr, gThreadNum);
+    } else {
+      code.CodeBaseStruct("AddInt8Args", kRunArgs, "&para", "&arith_para", in_size_, out_size_, gThreadNum,
+                          elements_num_, support_opt_add_, input0, input1, output_tensor_);
+      if (arith_para_->broadcasting_) {
+        code.CodeFunction(kParallelLaunch, "AddBroadcastInt8Run", kRunArgsAddr, gThreadNum);
+      } else {
+        code.CodeFunction(kParallelLaunch, "AddInt8Run", kRunArgsAddr, gThreadNum);
+      }
     }
   } else {
-    if (arith_para_->broadcasting_) {
-      // Broadcast in place via the broadcast runner instead of tiling both operands up to the
-      // output shape: single thread (task 0) covers the whole output, and the smaller operand
-      // workspace is not needed, which is critical for heap-limited MCUs.
-      code.CodeBaseStruct("AddInt8Args", kRunArgs, "&para", "&arith_para", in_size_, out_size_, gThreadNum,
-                          elements_num_, support_opt_add_, input0, input1, output_tensor_);
-      code.CodeFunction("AddBroadcastInt8Run", kRunArgsAddr, kDefaultTaskId, kLhsScale, kRhsScale);
+    if (arith_para_->broadcasting_ && !broadcast_fast_path) {
+      tile0_data_ = static_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, output_tensor_->Size(), kWorkspace));
+      MS_CHECK_PTR(tile0_data_);
+      tile1_data_ = static_cast<int8_t *>(allocator_->Malloc(kNumberTypeInt8, output_tensor_->Size(), kWorkspace));
+      MS_CHECK_PTR(tile1_data_);
+      code.CodeFunction("TileDimensionsInt8", input0, input1, tile0_data_, tile1_data_, "&arith_para");
+      code.CodeFunction("AddInt8", tile0_data_, tile1_data_, output_tensor_, elements_num_, "&para");
     } else {
       code.CodeBaseStruct("AddInt8Args", kRunArgs, "&para", "&arith_para", in_size_, out_size_, gThreadNum,
                           elements_num_, support_opt_add_, input0, input1, output_tensor_);
-      code.CodeFunction("AddInt8Run", kRunArgsAddr, kDefaultTaskId, kLhsScale, kRhsScale);
+      if (arith_para_->broadcasting_) {
+        // Broadcast in place via the broadcast runner instead of tiling both operands up to the
+        // output shape: single thread (task 0) covers the whole output, and the smaller operand
+        // workspace is not needed, which is critical for heap-limited MCUs.
+        code.CodeFunction("AddBroadcastInt8Run", kRunArgsAddr, kDefaultTaskId, kLhsScale, kRhsScale);
+      } else {
+        code.CodeFunction("AddInt8Run", kRunArgsAddr, kDefaultTaskId, kLhsScale, kRhsScale);
+      }
     }
   }
   context->AppendCode(code.str());
