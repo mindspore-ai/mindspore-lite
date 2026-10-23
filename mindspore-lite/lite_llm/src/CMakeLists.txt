@@ -63,6 +63,27 @@ target_include_directories(mslite_llm PRIVATE
     ${MSLITE_LLM_ROOT}/include
 )
 
+# Archive securec objects into the static engine so the released .a is
+# self-contained (downstream links lib/libmindspore-lite-llm.a from the
+# release tarball, where no libsecurec.a is shipped) — mirrors the main-repo
+# fix in mindspore-lite/src/CMakeLists.txt.
+if(NOT MSVC AND securec_LIB)
+    set(SECUREC_OBJ_DIR ${CMAKE_BINARY_DIR}/securec_obj)
+    file(REMOVE_RECURSE "${SECUREC_OBJ_DIR}")
+    file(MAKE_DIRECTORY "${SECUREC_OBJ_DIR}")
+    execute_process(COMMAND "${CMAKE_AR}" -x "${securec_LIB}"
+            WORKING_DIRECTORY "${SECUREC_OBJ_DIR}"
+            RESULT_VARIABLE _securec_extract_ret)
+    if(NOT _securec_extract_ret EQUAL 0)
+        message(FATAL_ERROR "Failed to extract objects from ${securec_LIB}")
+    endif()
+    file(GLOB SECUREC_OBJS "${SECUREC_OBJ_DIR}/*.o")
+    if(NOT SECUREC_OBJS)
+        message(FATAL_ERROR "No object files extracted from ${securec_LIB}; "
+                "the static engine would miss securec symbols")
+    endif()
+endif()
+
 # Static engine library: the device example links it statically so the
 # packaged mslite-chat has no runtime .so dependency on the engine (the
 # BinRunner memory loader on HarmonyOS cannot dlopen engine deps).
@@ -73,6 +94,7 @@ set_target_properties(mslite_llm_static PROPERTIES
 target_compile_features(mslite_llm_static PUBLIC cxx_std_17)
 
 target_link_libraries(mslite_llm_static PRIVATE ${MSLITE_LLM_BACKENDS} securec::securec)
+target_sources(mslite_llm_static PRIVATE ${SECUREC_OBJS})
 
 target_include_directories(mslite_llm_static PUBLIC
     ${MSLITE_LLM_ROOT}/include
