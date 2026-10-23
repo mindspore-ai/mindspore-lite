@@ -133,6 +133,29 @@ void *PackWeight::ReplaceFp16Data(void *origin_fp16_data, size_t size) {
   return nullptr;
 }
 
+STATUS PackWeight::ReplaceDequantData(const void *origin_data, void *new_data) {
+  std::lock_guard<std::mutex> lock(mtx_weight_);
+  if (origin_data == nullptr || new_data == nullptr) {
+    MS_LOG(ERROR) << "origin data or new data is nullptr in pack weight manager.";
+    return RET_ERROR;
+  }
+  for (auto &numa_item : model_weights_) {
+    for (auto &item : numa_item.second) {
+      auto &origin_and_packed_pair = item.second->origin_and_packed_pair;
+      auto iter = origin_and_packed_pair.find(origin_data);
+      if (iter == origin_and_packed_pair.end()) {
+        continue;
+      }
+      auto packed_data = iter->second;
+      origin_and_packed_pair.erase(iter);
+      origin_and_packed_pair.insert(std::make_pair(new_data, packed_data));
+      return RET_OK;
+    }
+  }
+  MS_LOG(DEBUG) << "origin tensor data is not recorded in pack weight, no need to replace.";
+  return RET_OK;
+}
+
 STATUS PackWeight::ReplaceOriginTensorData(const void *model_buf, std::vector<Tensor *> *tensors, int tensor_index) {
   std::lock_guard<std::mutex> lock(mtx_weight_);
   for (auto &item : shared_bufs_) {
