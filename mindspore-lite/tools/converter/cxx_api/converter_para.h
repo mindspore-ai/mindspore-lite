@@ -84,6 +84,7 @@ struct ConverterPara {
   bool optimize_transformer = false;
   bool is_runtime_converter = false;
   bool enable_memory_offload = false;
+  bool enable_const_fold = true;
   std::set<std::string> fusion_blacklists;
 
   // inner

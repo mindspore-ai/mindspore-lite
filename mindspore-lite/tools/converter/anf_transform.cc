@@ -346,6 +346,8 @@ STATUS AnfTransform::MarkVariableConstNode(const FuncGraphPtr &func_graph,
 std::vector<opt::PassPtr> InitFusions(const std::shared_ptr<ConverterPara> &param) {
   // The training model only does the fusion of the inference part
   // remove quantdtype when awaretraining
+  auto const_fold_pass =
+    std::make_shared<opt::ConstFoldPass>(param->fmk_type, param->train_model, param->enable_const_fold);
   std::vector<opt::PassPtr> fusions{std::make_shared<opt::AddConcatActivationFusion>(),
                                     std::make_shared<opt::HardSwishFusion>(),
                                     std::make_shared<opt::PReluFusion>(),
@@ -377,7 +379,7 @@ std::vector<opt::PassPtr> InitFusions(const std::shared_ptr<ConverterPara> &para
                                     std::make_shared<opt::GLUFusion>(),
                                     std::make_shared<opt::ResizeFusion1>(),
                                     std::make_shared<opt::ResizeFusion2>(),
-                                    std::make_shared<opt::ConstFoldPass>(param->fmk_type, param->train_model),
+                                    const_fold_pass,
                                     std::make_shared<opt::AffineFusion>(),
                                     std::make_shared<opt::AffineActivationFusion>(),
                                     std::make_shared<opt::ConvConvFusion>(),
@@ -616,7 +618,8 @@ int AnfTransform::RunConstFoldPass(const FuncGraphPtr &old_graph, const std::sha
   }
   const_fold_pm->AddPass(std::make_shared<opt::InferShapePass>(param->fmk_type, param->train_model));
   if (!param->train_model) {
-    const_fold_pm->AddPass(std::make_shared<opt::ConstFoldPass>(param->fmk_type, param->train_model));
+    const_fold_pm->AddPass(
+      std::make_shared<opt::ConstFoldPass>(param->fmk_type, param->train_model, param->enable_const_fold));
   }
   const_fold_pm->AddPass(std::make_shared<opt::UpdateConv2DParamPass>());
   const_fold_pm->AddPass(std::make_shared<opt::ClipConvertActivationPass>());
@@ -913,7 +916,7 @@ bool AnfTransform::StoreBuiltinPass(const std::shared_ptr<ConverterPara> &param)
     {"RemoveRedundantOpPass", std::make_shared<opt::RemoveRedundantOpPass>(param->train_model), false},
     {"ToNCHWFormat", std::make_shared<opt::ToNCHWFormat>(fmk, is_train, param->save_type), true},
     {"ToNHWCFormat", std::make_shared<opt::ToNHWCFormat>(fmk, is_train, param->save_type), true},
-    {"ConstFoldPass", std::make_shared<opt::ConstFoldPass>(fmk, is_train), true},
+    {"ConstFoldPass", std::make_shared<opt::ConstFoldPass>(fmk, is_train, param->enable_const_fold), true},
     {"InferShapePass", std::make_shared<opt::InferShapePass>(fmk, is_train), false},
     {"DeleteRedundantTranspose", std::make_shared<opt::DeleteRedundantTranspose>(), false},
     {"SpecialNodePostProcess", std::make_shared<opt::SpecialNodePostProcess>(), false},
