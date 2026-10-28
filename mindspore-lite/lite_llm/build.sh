@@ -232,12 +232,16 @@ assemble_archive()
   tar -C "${BUILD_DIR}/staging" -czf "${OUTPUT_DIR}/${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}"
 }
 
-build_wheel
-# Both host and device-backend builds produce the full deployable archive
-# (runtime .so + headers + export wheel + CI .run packages); -b nnrt
-# cross-compiles the .so for the Kirin NPU target while host produces the x64
-# build.
-assemble_archive
+main() {
+  build_wheel
+  # Both host and device-backend builds produce the full deployable archive
+  # (runtime .so + headers + export wheel + CI .run packages); -b nnrt
+  # cross-compiles the .so for the Kirin NPU target while host produces the x64
+  # build.
+  assemble_archive
 
-echo "---------------- lite_llm: build end   ----------------"
-echo "  OUTPUT     : ${OUTPUT_DIR}"
+  echo "---------------- lite_llm: build end   ----------------"
+  echo "  OUTPUT     : ${OUTPUT_DIR}"
+}
+
+main "$@"
