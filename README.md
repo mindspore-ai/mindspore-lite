@@ -26,7 +26,7 @@ MindSpore Lite achieves double the inference performance for AIGC, speech algori
 
     MindSpore Lite supports the conversion of models serialized from various AI frameworks such as MindSpore, ONNX, TF, etc. into MindSpore Lite format IR. In order to achieve more efficient model inference, MindSpore Lite supports the conversion of models into `.ms` format or `.mindir` format, where:
 
-    - The `.mindir` model is used for inference on service side devices and is more compatible with the model structure exported by the MindSpore training framework. It is mainly suitable for Ascend cards and X86/Arm architecture CPU hardware. For detailed conversion methods, please refer to [the Conversion Tool Tutorial](https://www.mindspore.cn/lite/cloud_docs/en/master/mindir/converter_tool.html).
+    - The `.mindir` model is used for inference on service side devices and is more compatible with the model structure exported by the MindSpore training framework. It is mainly suitable for Huawei Ascend cards and X86/Arm architecture CPU hardware. For detailed conversion methods, please refer to [the Conversion Tool Tutorial](https://www.mindspore.cn/lite/cloud_docs/en/master/mindir/converter_tool.html).
 
     - The `.ms` model is mainly used for inference of end and edge devices, and is mainly suitable for terminal hardware such as Kirin NPU and Arm architecture CPU. In order to better reduce the size of the model file, the `.ms` model is serialized and deserialized through protobuffer. For detailed instructions on how to use the conversion tool, please refer to [the Conversion Tool](https://www.mindspore.cn/lite/docs/en/master/converter/converter_tool.html)
 
@@ -54,7 +54,7 @@ MindSpore Lite achieves double the inference performance for AIGC, speech algori
 
 <img src="docs/img/MindSpore-Lite-architecture-en.png" alt="MindSpore Lite Architecture" width="800"/>
 
-- MindSpore Lite exports `.mindir` models for cloud-side inference on Atlas 300I Duo, Atlas 800IA3 Ascend accelerators and X86/ARM CPUs, and `.ms` models for device-side inference on general-purpose CPUs and Kirin NPUs.
+- MindSpore Lite exports `.mindir` models for cloud-side inference on Atlas 300I Duo, Atlas 800IA3 Huawei Ascend accelerators and X86/ARM CPUs, and `.ms` models for device-side inference on general-purpose CPUs and Kirin NPUs.
 
 1. Device and Cloud one-stop inference deployment
 
@@ -70,13 +70,13 @@ MindSpore Lite achieves double the inference performance for AIGC, speech algori
 
 3. High-performance
 
-    - The built-in kernel computing library NNACL supports high-performance inference for dedicated chips such as CPU, NNRt, and Ascend, maximizing hardware computing power while minimizing inference latency and power consumption.
+    - The built-in kernel computing library NNACL supports high-performance inference for dedicated chips such as CPU, NNRt, and Huawei Ascend, maximizing hardware computing power while minimizing inference latency and power consumption.
 
     - Use assembly instructions to improve performance of kernels.
 
 4. Versatility
 
-    - Supports deployment of multiple hardware such as server-side Ascend and CPU.
+    - Supports deployment of multiple hardware such as server-side Huawei Ascend and CPU.
 
     - Supports HarmonyOS and Android mobile operating systems.
 
@@ -131,7 +131,7 @@ If you wish to further learn and use MindSpore Lite, please refer to the followi
 
 ### Key characteristic capability
 
-- [Support Ascend hardware inference](https://www.mindspore.cn/lite/cloud_docs/en/master/mindir/runtime_python.html)
+- [Support Huawei Ascend hardware inference](https://www.mindspore.cn/lite/cloud_docs/en/master/mindir/runtime_python.html)
 
 - [Supporting HarmonyOS](https://developer.huawei.com/consumer/cn/sdk/mindspore-lite-kit)
 
