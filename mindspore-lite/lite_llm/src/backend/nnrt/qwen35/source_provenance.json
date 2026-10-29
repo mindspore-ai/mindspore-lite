@@ -1,0 +1,92 @@
+{
+  "repository": "HMOS-Device-AI",
+  "base_commit": "0124c31a98175f60d8d5c8c4bec8854df59ec0e2",
+  "source": "verified working tree including resident LM-head and packed expert allocation fallbacks",
+  "files": [
+    {
+      "source": "include/llm_engine/embedding.h",
+      "sha256": "cb4f258d9c6a3028bdeab97ec6fee0dc98a345cf8432e87ccf0a55aafe4744d0",
+      "destination": "embedding.h"
+    },
+    {
+      "source": "src/embedding.cpp",
+      "sha256": "2484d0746c2c681b5cecceb8f8f0b328e20634b225f4d19e6c1975eea976284a",
+      "destination": "embedding.cc"
+    },
+    {
+      "source": "include/llm_engine/nnrt_session.h",
+      "sha256": "8d9f6b2ed4fbebc76282c05e5fd4a7210f51c13c55d97aa249db6483e3913a44",
+      "destination": "nnrt_session.h"
+    },
+    {
+      "source": "src/nnrt_session.cpp",
+      "sha256": "49ba1260f028caf26bca0e715b19929c929aba014fb7dee497f4c12298131eb1",
+      "destination": "nnrt_session.cc"
+    },
+    {
+      "source": "include/llm_engine/moe_expert_cache.h",
+      "sha256": "02657c205e3fcf66d6f88ef84800ca539da29c15a0b6d5e0b4af3682d267ea9e",
+      "destination": "moe_expert_cache.h"
+    },
+    {
+      "source": "src/moe_expert_cache.cpp",
+      "sha256": "b763e9ec0266941a4d7bf0207218c6629dd21914de604e2eca017e117e2bdb7d",
+      "destination": "moe_expert_cache.cc"
+    },
+    {
+      "source": "include/llm_engine/qwen35_resident_runtime.h",
+      "sha256": "b8caa1c372dbe7e0eef4002105286509b38bd9045d6ef7c24965f91a2d3705c7",
+      "destination": "qwen35_resident_runtime.h"
+    },
+    {
+      "source": "src/qwen35_resident_runtime.cpp",
+      "sha256": "5e1cf4b7e32230618b1f1461406d48d2ae28e0eaa289f3dcb8988b8d554058d1",
+      "destination": "qwen35_resident_runtime.cc"
+    },
+    {
+      "source": "include/llm_engine/qwen35_expert_runtime.h",
+      "sha256": "98e8e734ecdce90940e05285a57f899998f2af1baaa502002682a80359f2a918",
+      "destination": "qwen35_expert_runtime.h"
+    },
+    {
+      "source": "src/qwen35_expert_runtime.cpp",
+      "sha256": "6e78c875c2ff2eae347825648fe39ece75a3f34c7d3d987dfe4228ee3d6bb80b",
+      "destination": "qwen35_expert_runtime.cc"
+    },
+    {
+      "source": "include/llm_engine/qwen35_fused_decode_runtime.h",
+      "sha256": "5395a95813333aa5ecaa5c2bb75ddaff034cc4bada10274c4088b40c427cce3f",
+      "destination": "qwen35_fused_decode_runtime.h"
+    },
+    {
+      "source": "src/qwen35_fused_decode_runtime.cpp",
+      "sha256": "0501277fcec0fe271e43c279427b4ff02e3dec1568f8765c1b42d19ec82a1ac6",
+      "destination": "qwen35_fused_decode_runtime.cc"
+    },
+    {
+      "source": "include/llm_engine/qwen35_lm_head.h",
+      "sha256": "3e60362c98916c0c6c487efe88ed744ef47ec1a16f5c4069415df31749db4410",
+      "destination": "qwen35_lm_head.h"
+    },
+    {
+      "source": "src/qwen35_lm_head.cpp",
+      "sha256": "ebf8a88f91ad7959b6995c5492ae1297b456d50fea2ecf798eeedd1945c0a70d",
+      "destination": "qwen35_lm_head.cc"
+    },
+    {
+      "source": "include/llm_engine/qwen35_moe_model.h",
+      "sha256": "a97bc13153a0578497b502655596ebd0f0652a002b074a111cc74f43dbbfce68",
+      "destination": "qwen35_moe_model.h"
+    },
+    {
+      "source": "src/qwen35_moe_model.cpp",
+      "sha256": "7e4a17d26d78dceb66b7076420122610fff71c00f139b2c23b4cd816f9939d96",
+      "destination": "qwen35_moe_model.cc"
+    },
+    {
+      "source": "include/llm_engine/model_runtime.h",
+      "sha256": "ff7d51279fe804a34c741ad8c4c16b0c2eb573f009705657a5b15da7f9de6090",
+      "destination": "model_runtime.h"
+    }
+  ]
+}

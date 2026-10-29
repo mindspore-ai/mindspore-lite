@@ -15,15 +15,19 @@
  */
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
-#include <filesystem>  // NOLINT(build/c++17)
+#include <filesystem>  // NOLINT(build/c++17)  // NOLINT(build/c++17): lite_llm requires C++17.
 #include <fstream>
 #include <string>
-#include <vector>
 #include <utility>
+#include <vector>
 
+#include "backend/nnrt/qwen35/embedding.h"
+#include "backend/nnrt/qwen35/moe_expert_cache.h"
+#include "manifest/artifact_file.h"
 #include "manifest/model_manifest.h"
 #include "manifest/msl_package_reader.h"
 
@@ -119,6 +123,15 @@ std::filesystem::path MakePackage(const std::string &suffix = "") {
 // Path Safety Tests
 
 TEST(PathSafety, RejectsEmptyPath) { EXPECT_FALSE(IsPackageRelativePath("")); }
+
+TEST(PathSafety, ResolvesPackageRoot) {
+  auto root = MakePackage("_root");
+  std::string resolved;
+  EXPECT_TRUE(ResolvePackagePath(root.string(), ".", &resolved));
+  EXPECT_EQ(resolved, std::filesystem::canonical(root).string());
+  EXPECT_FALSE(ResolvePackagePath(root.string(), "..", &resolved));
+  std::filesystem::remove_all(root);
+}
 
 TEST(PathSafety, RejectsAbsolutePath) {
   EXPECT_FALSE(IsPackageRelativePath("/etc/passwd"));
@@ -585,6 +598,191 @@ TEST(ModelResourceLoader, RejectsSingleFileMissingNpuConfig) {
   auto status = LoadModelResources(path.string(), &resources, MSLLM_BACKEND_NNRT, &err);
   EXPECT_EQ(status, MSLLM_ERROR_MODEL_LOAD);
   EXPECT_FALSE(err.empty());
+  std::filesystem::remove(path);
+}
+
+TEST(PagedMsl, ReadsExpertAtContainerOffsetAndEvicts) {
+  const auto path = std::filesystem::temp_directory_path() / ("paged_" + MakeStamp() + ".msl");
+  std::vector<uint8_t> shard(4096 + 4, 0);
+  const char magic[8] = {'Q', '3', '5', 'S', '1', '6', 0, 0};
+  std::copy(magic, magic + 8, shard.begin());
+  auto u32 = [&shard](size_t offset, uint32_t value) {
+    for (size_t i = 0; i < 4; ++i) shard[offset + i] = (value >> (i * 8)) & 255;
+  };
+  auto u64 = [&shard](size_t offset, uint64_t value) {
+    for (size_t i = 0; i < 8; ++i) shard[offset + i] = (value >> (i * 8)) & 255;
+  };
+  u32(8, 1);
+  u32(12, 1);
+  u64(24, 4096);
+  shard[64] = 'w';
+  u32(128, 1);
+  u32(132, 1);
+  u64(136, 4);
+  u64(168, 4096);
+  u64(176, 4);
+  std::copy_n("abcd", 4, shard.begin() + 4096);
+  const std::string payload(shard.begin(), shard.end());
+  WriteSingleFileMslV1(path, {},
+                       {{"experts/layer_00/expert_000.s4", payload},
+                        {"experts/layer_00/expert_001.s4", payload},
+                        {"global/embedding_fp16.bin", "abcd"}});
+  auto reader = std::make_shared<MslPackageReader>();
+  std::string error;
+  ASSERT_TRUE(reader->Open(path.string(), &error)) << error;
+  RegisterArtifactPackage(path.string(), reader);
+  qwen35::ExpertCache cache;
+  ASSERT_TRUE(cache.Load(path.string() + "/experts", 1, &error, ".s4"));
+  auto first = cache.Acquire(0, 0, &error);
+  ASSERT_NE(first, nullptr) << error;
+  EXPECT_GT(first->FileOffset(), 0U);
+  EXPECT_EQ(first->FileSize(), payload.size());
+  EXPECT_EQ(first->BindingSize(), first->FileOffset() + first->FileSize());
+  char output[4]{};
+  ASSERT_TRUE(first->ReadPayload(output, sizeof(output)));
+  EXPECT_EQ(std::string(output, 4), "abcd");
+  EXPECT_FALSE(first->ReadPayload(output, 5));
+  ASSERT_NE(first->Tensor("w").data, nullptr);
+  EXPECT_EQ(std::string(static_cast<const char *>(first->Tensor("w").data), 4), "abcd");
+  ASSERT_NE(cache.Acquire(0, 1, &error), nullptr);
+  EXPECT_EQ(cache.Size(), 1U);
+  ASSERT_TRUE(first->ReadPayload(output, 4));  // An in-flight shard survives eviction.
+  EXPECT_EQ(cache.Acquire(0, 2, &error), nullptr);
+  qwen35::EmbeddingTable embedding;
+  ASSERT_TRUE(embedding.Load(path.string() + "/global/embedding_fp16.bin", 1, 2, &error));
+  EXPECT_EQ(std::string(reinterpret_cast<const char *>(embedding.Lookup(0)), 4), "abcd");
+  EXPECT_EQ(embedding.Lookup(1), nullptr);
+  std::filesystem::remove(path);
+}
+
+TEST(PagedMsl, LoadsPagedManifestWithoutDenseAssets) {
+  const auto path = std::filesystem::temp_directory_path() / ("paged_manifest_" + MakeStamp() + ".msl");
+  const auto str = msl_format::kTypeString;
+  const auto u32 = msl_format::kTypeUint32;
+  WriteSingleFileMslV1(path,
+                       {{"arch.name", {str, StrVal("qwen3.5")}},
+                        {"arch.num_layers", {u32, U32Val(40)}},
+                        {"arch.hidden_size", {u32, U32Val(2048)}},
+                        {"arch.vocab_size", {u32, U32Val(248320)}},
+                        {"npu.max_length", {u32, U32Val(8192)}},
+                        {"npu.chunk_size", {u32, U32Val(64)}},
+                        {"asset.tokenizer", {str, StrVal("tokenizer/vocab.bin")}}},
+                       {{"tokenizer/vocab.bin", "v"},
+                        {"tokenizer/qwen35.bin", "q"},
+                        {"model.json", "{}"},
+                        {"global/embedding_fp16.bin", "e"},
+                        {"experts/manifest.json", "{}"},
+                        {"experts_s16s4/manifest.json", "{}"},
+                        {"experts_s16s4/READY", "ready"}});
+  ModelResources resources;
+  std::string error;
+  ASSERT_EQ(LoadModelResources(path.string(), &resources, MSLLM_BACKEND_NNRT, &error), MSLLM_SUCCESS) << error;
+  EXPECT_EQ(resources.package_root, path.string());
+  EXPECT_TRUE(resources.single_file);
+  EXPECT_TRUE(resources.prefill_path.empty());
+  ModelManifest manifest;
+  ASSERT_EQ(BuildModelManifestFromKv(*resources.package_reader, &manifest, &error), MSLLM_SUCCESS) << error;
+  EXPECT_EQ(manifest.architecture.name, "qwen3.5");
+  EXPECT_TRUE(ArtifactExists(path / "model.json"));
+  std::filesystem::remove(path);
+}
+
+TEST(PagedMsl, ParsesArchitectureNameFromJson) {
+  ModelManifest manifest;
+  std::string error;
+  ASSERT_EQ(ParseManifest(R"({"model_name":"Qwen3.5-35B-A3B",
+    "architecture":{"name":"qwen3.5","num_layers":40,"hidden_size":2048,"vocab_size":248320}})",
+                          &manifest, &error),
+            MSLLM_SUCCESS)
+    << error;
+  EXPECT_EQ(manifest.architecture.name, "qwen3.5");
+}
+
+TEST(PagedMsl, RejectsDirectoryPackage) {
+  const auto root = std::filesystem::temp_directory_path() / ("paged_directory_" + MakeStamp());
+  std::filesystem::create_directories(root);
+  {
+    std::ofstream manifest(root / "manifest.json");
+    manifest << R"({"model_name":"Qwen3.5-35B-A3B",
+      "architecture":{"name":"qwen3.5","num_layers":40,"hidden_size":2048,"vocab_size":248320},
+      "npu":{"max_length":8192,"chunk_size":64}})";
+  }
+  ModelResources resources;
+  std::string error;
+  EXPECT_EQ(LoadModelResources(root.string(), &resources, MSLLM_BACKEND_NNRT, &error), MSLLM_ERROR_MODEL_LOAD);
+  EXPECT_NE(error.find("directory packages are unsupported"), std::string::npos);
+  std::filesystem::remove_all(root);
+}
+
+TEST(PagedMsl, RejectsStandaloneArtifact) {
+  const auto path = std::filesystem::temp_directory_path() / ("standalone_artifact_" + MakeStamp());
+  {
+    std::ofstream file(path);
+    file << "weight";
+  }
+  EXPECT_FALSE(ArtifactExists(path));
+  size_t size = 0, offset = 0;
+  std::string error;
+  EXPECT_EQ(OpenArtifact(path.string(), &size, &offset, &error), -1);
+  std::vector<uint8_t> bytes;
+  EXPECT_FALSE(ReadArtifactBytes(path.string(), &bytes, &error));
+  std::filesystem::remove(path);
+}
+
+TEST(PagedMsl, MaterializesOnlyExternalGraphWeightsAndCleansUp) {
+  const auto path = std::filesystem::temp_directory_path() / ("paged_weight_" + MakeStamp() + ".msl");
+  const std::string relative = "omc/resident/qwen35_resident_linear_s1_s64/qwen35_resident_linear_s1_s64.omc";
+  EXPECT_EQ(ArtifactResourceName(relative), "r/2fc75cb570689390");
+  WriteSingleFileMslV1(path, {},
+                       {{ArtifactResourceName(relative), "graph"}, {"omc/resident/SubGraph_0.weight", "weight"}});
+  auto reader = std::make_shared<MslPackageReader>();
+  std::string error, directory;
+  ASSERT_TRUE(reader->Open(path.string(), &error));
+  RegisterArtifactPackage(path.string(), reader);
+  EXPECT_TRUE(ArtifactExists(path / relative));
+  {
+    auto second_reader = std::make_shared<MslPackageReader>();
+    ASSERT_TRUE(second_reader->Open(path.string(), &error));
+    RegisterArtifactPackage(path.string(), second_reader);
+  }  // Destroying one engine must not unregister the other engine's package.
+  char graph[5];
+  EXPECT_TRUE(ReadArtifact(path / relative, graph, sizeof(graph), &error));
+  EXPECT_EQ(std::string(graph, 5), "graph");
+  {
+    ArtifactWeightDirectory weights;
+    ASSERT_TRUE(weights.Materialize((path / "omc/resident/SubGraph_0.weight").string(), &directory, &error));
+    std::ifstream extracted(directory + "/SubGraph_0.weight", std::ios::binary);
+    ASSERT_TRUE(extracted.good());
+    std::string bytes(6, '\0');
+    extracted.read(bytes.data(), bytes.size());
+    EXPECT_EQ(extracted.gcount(), 6);
+    EXPECT_EQ(bytes, "weight");
+  }
+  EXPECT_FALSE(std::filesystem::exists(directory));
+  std::filesystem::remove(path);
+}
+
+TEST(PagedMsl, ReadsResourceBeyondFourGiB) {
+  const auto path = std::filesystem::temp_directory_path() / ("paged_large_" + MakeStamp() + ".msl");
+  WriteSingleFileMslV1(path, {}, {{"expert.s4", "data"}});
+  const uint64_t offset = (uint64_t{1} << 32) + 65536;
+  std::vector<uint8_t> encoded;
+  WriteU64(&encoded, offset);
+  {
+    std::fstream file(path, std::ios::in | std::ios::out | std::ios::binary);
+    file.seekp(24 + 64);  // Resource table starts immediately after the header.
+    file.write(reinterpret_cast<const char *>(encoded.data()), encoded.size());
+    file.seekp(static_cast<std::streamoff>(offset));
+    file.write("data", 4);  // Sparse fixture: no multi-GiB allocation or write.
+    ASSERT_TRUE(file.good());
+  }
+  auto reader = std::make_shared<MslPackageReader>();
+  std::string error;
+  ASSERT_TRUE(reader->Open(path.string(), &error)) << error;
+  RegisterArtifactPackage(path.string(), reader);
+  char output[4];
+  ASSERT_TRUE(ReadArtifact(path / "expert.s4", output, sizeof(output), &error)) << error;
+  EXPECT_EQ(std::string(output, 4), "data");
   std::filesystem::remove(path);
 }
 

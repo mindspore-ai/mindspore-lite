@@ -48,6 +48,37 @@ bash tests/run_llm_ut.sh --output-dir ./ut_results --jobs 8
 
 lite_llm 是独立构建模块（不依赖主仓 `MSLITE_ENABLE_LLM`）。
 
+## Qwen3.5-35B-A3B（Kirin 9030）
+
+支持完整 40 层文本模型，输入为官方 GPTQ-Int4 checkpoint（对称 INT4、group size 128）。
+运行时保留混合注意力状态，按需加载 256 个专家中的 Top-8，使用 S1/S64 档位、8192-token
+物理缓存和分块 LM head。此路径不包含视觉编码器或 MTP，也不支持 Kirin 9020。
+
+Qwen3.5 自定义算子位于独立的 `mslite_internal` 算子仓库。先在该仓库构建并安装到专用 DDK，再从本目录导出：
+
+```bash
+export DDK_PATH=/path/to/qwen35_ddk
+source "$DDK_PATH/tools/tools_ascendc/set_ascendc_env.sh" matmul_fp16
+ASCEND_COMPUTE_UNIT=kirin9030 bash /path/to/mslite_internal/build.sh --all --install "$DDK_PATH"
+pip install ./export
+mslite-llm-export --target kirin9030 --model /path/to/Qwen3.5-35B-A3B-GPTQ-Int4 \
+  --max-length 8192 --chunk-size 64 --output /path/to/qwen35.msl
+```
+
+输出路径必须以 `.msl` 结尾，将 tokenizer、15 个 OMC、驻留权重及两套专家分片流式打包为
+单个 v1 文件。运行时直接按文件偏移映射和读取专家分片，保持 Top-8 路由及有界专家缓存，
+无需解包专家权重。NNRT 外部权重接口要求目录，因此仅 OMC 的 `SubGraph_0.weight` 在
+运行时写入临时目录，并在模型释放后清理；优先使用 `TMPDIR`，否则使用模型文件所在的
+可写目录，再回退到系统临时目录。
+包元数据通过 `arch.name = "qwen3.5"` 选择对应运行时，资源位置统一使用包路径。
+通过标准 `MSLLMBuildModel` 或 `mslite-chat MODEL.msl PROMPT MAX_TOKENS` 加载。
+导出时固定使用关闭 thinking 的 ChatML 模板。
+单文件包使用已验证的有界 DMA 暂存路径，不支持目录包。
+
+设置 `OHOS_NDK` 后执行 `bash build.sh -b nnrt` 构建引擎。可设置
+`MSLITE_LLM_OPS_PACKAGE=/path/to/mslite_llm_ops_kirin_ubuntu_x86_64.run`，
+将算子仓库发布的安装包收入 `ascendc_ops/`。设备验证应在 HarmonyOS 应用上下文中运行。
+
 ## 文档索引
 
 | 文档 | 内容 |
@@ -60,7 +91,7 @@ lite_llm 是独立构建模块（不依赖主仓 `MSLITE_ENABLE_LLM`）。
 
 ## 目录结构
 
-```
+```text
 
 lite_llm/
 ├── include/llm/       # 公共 C API 头（llm.h, llm_types.h）

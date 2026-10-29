@@ -444,13 +444,20 @@ def _write_qwen_bpe_rules(stream, backend):
         stream.write(struct.pack("<I", token["id"]))
 
 
-def _export_bpe(tokenizer, vocab_path):
+def _export_bpe(tokenizer, vocab_path, native_encoding=False):
     """Export vocab.json + merges.txt BPE tokenizer (Qwen2.5)."""
     vocab = tokenizer.get_vocab()
     sorted_vocab = sorted(vocab.items(), key=lambda x: x[1])
 
     merges = _bpe_merges(tokenizer)
-    qwen_backend = _qwen_bpe_backend(tokenizer)
+    qwen_backend = None if native_encoding else _qwen_bpe_backend(tokenizer)
+
+    # Fast tokenizers may ship only tokenizer.json, with no merges_file or
+    # public merges attribute. Preserve their backend's ranked merge table.
+    if not merges and getattr(tokenizer, "backend_tokenizer", None) is not None:
+        backend = json.loads(tokenizer.backend_tokenizer.to_str())
+        for merge in backend.get("model", {}).get("merges", []):
+            merges.append(" ".join(merge) if isinstance(merge, list) else merge)
 
     with open(vocab_path, "wb") as f:
         _write_header(f, CODEC_QWEN_BPE if qwen_backend else CODEC_BPE, len(sorted_vocab), tokenizer)
@@ -590,11 +597,13 @@ class _GGUFTokenizerAdapter:
         return dict(self._vocab)
 
 
-def export_tokenizer(model_dir, output_dir, chat_template=None):
+def export_tokenizer(model_dir, output_dir, chat_template=None, native_encoding=False):
     """Export ``vocab.bin`` + ``generation_policy.json`` for a Qwen2.5 model.
 
     ``model_dir`` may be a HF directory or a ``.gguf`` file. GGUF token IDs
     and pre-tokenization rules come directly from its metadata.
+    ``native_encoding`` exports decoding and policy data for runtimes that
+    delegate encoding to a separately exported native tokenizer.
     Returns the ``vocab.bin`` path.
     """
     output_dir = Path(output_dir)
@@ -611,7 +620,7 @@ def export_tokenizer(model_dir, output_dir, chat_template=None):
                 "at export time and the runtime rejects template-less packages"
             )
         vocab_path = output_dir / "vocab.bin"
-        _export_bpe(tokenizer, vocab_path)
+        _export_bpe(tokenizer, vocab_path, native_encoding)
     else:
         from transformers import AutoTokenizer
 
@@ -630,14 +639,14 @@ def export_tokenizer(model_dir, output_dir, chat_template=None):
         if hasattr(tokenizer, "vocab_file") and tokenizer.vocab_file is not None:
             vocab_file = Path(tokenizer.vocab_file)
             if vocab_file.suffix == ".json":
-                _export_bpe(tokenizer, vocab_path)
+                _export_bpe(tokenizer, vocab_path, native_encoding)
             elif vocab_file.suffix == ".model":
                 _export_sentencepiece(tokenizer, vocab_path)
             else:
                 logger.warning("Unknown vocab file format %s; assuming BPE", vocab_file.suffix)
-                _export_bpe(tokenizer, vocab_path)
+                _export_bpe(tokenizer, vocab_path, native_encoding)
         elif hasattr(tokenizer, "get_vocab"):
-            _export_bpe(tokenizer, vocab_path)
+            _export_bpe(tokenizer, vocab_path, native_encoding)
         else:
             raise ValueError("Tokenizer has no recognizable vocab format")
 

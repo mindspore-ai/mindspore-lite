@@ -265,6 +265,9 @@ class JsonParser {
     out->clear();
 
     while (pos_ < text_.size()) {
+      // cppcheck 2.7 carries clear()'s zero size across the append loop and
+      // incorrectly reduces this bound check to kMaxTokenLen < 0.
+      // cppcheck-suppress unsignedLessThanZero
       if (out->size() > kMaxTokenLen) {
         SetError(error, "string too long");
         return false;
@@ -481,6 +484,7 @@ void ReadIntAlias(const JsonValue &object, const std::string &first, const std::
 }
 
 void ParseArchitectureFrom(const JsonValue &source, ModelArchitecture *arch) {
+  arch->name = GetString(source, "name");
   ReadIntAlias(source, "num_layers", "num_hidden_layers", &arch->num_layers);
   GetInt(source, "hidden_size", &arch->hidden_size);
   GetInt(source, "intermediate_size", &arch->intermediate_size);
@@ -1007,6 +1011,9 @@ bool ResolvePackagePath(const std::string &package_root, const std::string &cand
   if (root_real != nullptr) {
     std::string root_str(root_real);
     std::free(root_real);
+    if (*resolved == root_str) {
+      return true;
+    }
     if (!root_str.empty() && root_str.back() != '/') {
       root_str.push_back('/');
     }
@@ -1021,6 +1028,7 @@ namespace {
 
 void ReadKvArchitecture(const MslPackageReader &reader, ModelManifest &m) {
   uint32_t u32 = 0;
+  reader.GetKvString(msl_format::key::kArchName, &m.architecture.name);
   if (reader.GetKvUint32(msl_format::key::kArchNumLayers, &u32)) m.architecture.num_layers = u32;
   if (reader.GetKvUint32(msl_format::key::kArchHiddenSize, &u32)) m.architecture.hidden_size = u32;
   if (reader.GetKvUint32(msl_format::key::kArchIntermediateSize, &u32)) m.architecture.intermediate_size = u32;

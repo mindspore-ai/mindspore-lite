@@ -41,6 +41,17 @@ def export_module_fixture():
     return module
 
 
+def test_detect_qwen35_nested_text_config(export_module, tmp_path):
+    """Qwen3.5 stores its text architecture inside a multimodal HF config."""
+    config = {"model_type": "qwen3_5_moe", "text_config": {"num_hidden_layers": 40}}
+    (tmp_path / "config.json").write_text(json.dumps(config))
+    assert export_module.detect_model_type(str(tmp_path)) == ("qwen3_5", 40)
+    config["text_config"]["num_hidden_layers"] = 48
+    (tmp_path / "config.json").write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="unsupported model size"):
+        export_module.detect_model_type(str(tmp_path))
+
+
 def test_detect_model_kind(export_module,  # pylint: disable=redefined-outer-name
     tmp_path):
     """Model-kind detection: HF dir, GGUF file and unknown are distinct."""

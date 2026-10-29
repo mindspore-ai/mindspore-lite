@@ -244,6 +244,7 @@ bool MslPackageReader::ParseKvRegion(uint32_t count, size_t *pos, std::string *e
 bool MslPackageReader::ParseResourceTable(uint32_t resource_count, uint32_t alignment, size_t *pos,
                                           std::string *error_message) {
   entries_.clear();
+  entry_index_.clear();
   if (resource_count > mapped_size_ / msl_format::kEntrySize) {
     if (error_message != nullptr) {
       *error_message = "resource count exceeds file size";
@@ -271,6 +272,10 @@ bool MslPackageReader::ParseResourceTable(uint32_t resource_count, uint32_t alig
     entry.access = ReadU32(raw + msl_format::kEntryAccessPos);
 
     if (!ValidateResourceEntry(entry, alignment, i, error_message)) {
+      return false;
+    }
+    if (!entry_index_.emplace(entry.name, entries_.size()).second) {
+      if (error_message) *error_message = "duplicate resource name: " + entry.name;
       return false;
     }
     entries_.push_back(std::move(entry));
@@ -312,8 +317,8 @@ bool MslPackageReader::ValidateResourceEntry(const MslEntry &entry, uint32_t ali
 }
 
 const MslEntry *MslPackageReader::Lookup(const std::string &name) const {
-  auto it = std::find_if(entries_.begin(), entries_.end(), [&name](const auto &entry) { return entry.name == name; });
-  return it == entries_.end() ? nullptr : &*it;
+  const auto it = entry_index_.find(name);
+  return it == entry_index_.end() ? nullptr : &entries_[it->second];
 }
 
 bool MslPackageReader::Read(const std::string &name, std::vector<uint8_t> *out) const {

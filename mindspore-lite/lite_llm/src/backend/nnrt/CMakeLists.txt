@@ -23,6 +23,11 @@ file(GLOB MSLITE_LLM_NNRT_SOURCES CONFIGURE_DEPENDS
 
 add_library(mslite_llm_nnrt_backend OBJECT ${MSLITE_LLM_NNRT_SOURCES})
 target_compile_features(mslite_llm_nnrt_backend PUBLIC cxx_std_17)
+file(GLOB QWEN35_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/qwen35/*.cc)
+target_sources(mslite_llm_nnrt_backend PRIVATE ${QWEN35_SOURCES})
+if(CMAKE_SYSTEM_NAME STREQUAL "OHOS")
+    target_link_libraries(mslite_llm_nnrt_backend PUBLIC neural_network_core neural_network_runtime)
+endif()
 # The objects are merged into the shared engine (mslite_llm), so compile PIC.
 set_target_properties(mslite_llm_nnrt_backend
     PROPERTIES POSITION_INDEPENDENT_CODE ON)

@@ -35,6 +35,7 @@ file(GLOB LLM_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/pipeline/*.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/manifest/*.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/tokenizer/*.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/tokenizer/qwen35/*.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/sampler/*.cc
 )
 

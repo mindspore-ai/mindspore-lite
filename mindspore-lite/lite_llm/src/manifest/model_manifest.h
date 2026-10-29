@@ -50,6 +50,7 @@ struct LiteRtManifest {
 };
 
 struct ModelArchitecture {
+  std::string name;
   int32_t num_layers = 0;
   int32_t hidden_size = 0;
   int32_t intermediate_size = 0;
@@ -128,6 +129,7 @@ MSLlmStatus BuildModelManifestFromKv(const MslPackageReader &reader, ModelManife
 // ─── Resource Descriptor and Loader ─────────────────────────────────────────
 
 struct ModelResources {
+  // Filesystem package directory, or the .msl file path in single-file mode.
   std::string package_root;
   // Single-file .msl reader (nullptr when loaded from a directory package).
   std::shared_ptr<MslPackageReader> package_reader;
