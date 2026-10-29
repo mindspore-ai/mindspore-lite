@@ -42,6 +42,7 @@ class PackWeightManager {
   void Free(void *tensor_data);
   bool IsCopyTensor(int op_type);
   void *ReplaceFp16Data(void *origin_fp16_data, size_t size, bool *replace);
+  STATUS ReplaceDequantData(const void *origin_data, void *new_data);
   void FreePackWeight(std::string runner_id, std::string model_id);
   std::string GenModelID();
 

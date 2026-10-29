@@ -209,6 +209,21 @@ int WhereBroadCastForInput(WhereStruct *where, TensorC *condition, TensorC *x, T
   return NNACL_OK;
 }
 
+static bool WhereCanBroadcast(const TensorC *input, const TensorC *output) {
+  if (input->shape_size_ > output->shape_size_) {
+    return false;
+  }
+  const size_t offset = output->shape_size_ - input->shape_size_;
+  for (size_t i = 0; i < input->shape_size_; ++i) {
+    const int in_dim = input->shape_[i];
+    const int out_dim = output->shape_[i + offset];
+    if (in_dim != out_dim && in_dim != 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
 int WhereRunWithTripleInputs(WhereStruct *where) {
   TensorC *condition = where->base_.in_[Index0];
   NNACL_CHECK_NULL_RETURN_ERR(condition);
@@ -245,25 +260,23 @@ int WhereRunWithTripleInputs(WhereStruct *where) {
   }
   if (((condition_nums != 1) && (condition_nums != num_max)) || ((x_num != 1) && (x_num != num_max)) ||
       ((y_num != 1) && (y_num != num_max))) {
-    if (condition_nums != NNACLGetElementNum(y) && condition->shape_size_ != y->shape_size_) {
-      int ret = WhereBroadCastForInput(where, condition, x, y, &condition_broadcast_buf, &x_broadcast_buf,
-                                       &y_broadcast_buf, output);
-      if (ret != NNACL_OK) {
-        return NNACL_WHERE_BROAD_CAST_FAILED;
-      }
-      int max_num = NNACLGetElementNum(output);
-      args->condition_ = (bool *)condition_broadcast_buf;
-      where->x_ = x_broadcast_buf;
-      where->y_ = y_broadcast_buf;
-      where->output_ = output->data_;
-      args->condition_num_ = max_num;
-      args->x_num_ = max_num;
-      args->y_num_ = max_num;
-      args->max_num_ = max_num;
-    } else {
-      /* The length of three inputs are not equal to 1 or length of output, which is unacceptable */
+    if (!WhereCanBroadcast(condition, output) || !WhereCanBroadcast(x, output) || !WhereCanBroadcast(y, output)) {
       return NNACL_WHERE_CONDITION_NUM_INVALID;
     }
+    int ret = WhereBroadCastForInput(where, condition, x, y, &condition_broadcast_buf, &x_broadcast_buf,
+                                     &y_broadcast_buf, output);
+    if (ret != NNACL_OK) {
+      return NNACL_WHERE_BROAD_CAST_FAILED;
+    }
+    int max_num = NNACLGetElementNum(output);
+    args->condition_ = (bool *)condition_broadcast_buf;
+    where->x_ = x_broadcast_buf;
+    where->y_ = y_broadcast_buf;
+    where->output_ = output->data_;
+    args->condition_num_ = max_num;
+    args->x_num_ = max_num;
+    args->y_num_ = max_num;
+    args->max_num_ = max_num;
   }
   if (num_max <= 0) {
     /* Error, inputs' length are zero */
