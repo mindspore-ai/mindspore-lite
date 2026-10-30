@@ -2,6 +2,47 @@
 
 [View English](./RELEASE.md)
 
+## MindSpore Lite 2.11.0 Release Notes
+
+### 主要特性及增强
+
+#### 云侧推理
+
+- 在 `mindspore-lite/tools/custom_kernels/ascend_ops` 下新增 Ascend 自定义算子打包能力，将自研 Ascend C 自定义算子打包为 `mslite_custom_ops` vendor 包并随 MindSpore Lite 发布包交付；支持通过 `build_all_ops.sh` 独立编译、`install.sh` 安装，模型转换和推理时可自动使能自定义算子。
+
+- 新增开源模型支持：PI0.5 Base 视觉-语言-动作（VLA）模型、Qwen3-0.6B 对话模型、Jina Reranker V3.5 模型，均提供 ONNX 导出与 MindSpore Lite Ascend 端到端推理部署示例。
+
+- 新增 LiteBoost 开源模型支持：Wan2.2-TI2V-5B（DiffSynth-Studio 格式）、Qwen-Image-Edit。
+
+- 新增 LiteBoost layers 层接口支持：FlashAttention、RoPE、RMSNorm、NearestExactUpsample。
+
+- 新增 LiteBoost ops 层接口支持：CGDR（A2）。
+
+#### 端侧推理
+
+- MindSpore Lite Micro 新增 9 类算子支持，均覆盖 FP32 与 INT8 全量化推理：
+
+  - 数学与规约类：Sum（ONNX ReduceSum）、ReduceProd、Max / Min（ONNX / TFLite）；
+  - 激活类：Celu、HardSigmoid、Gelu（ONNX / TFLite）；
+  - 张量操作类：Trilu、Pack / Unpack（TFLite）、Constant / ConstantOfShape。
+
+- 端侧 INT8 算子性能优化（CPU 推理与 Micro 生成代码均受益）：
+
+  - MatMul INT8 新增低内存在线重量化内核与权重重排接口，降低推理期内存占用；
+  - 重写优化 INT8 Pooling 与 SoftMax 内核，提升推理性能。
+
+- 修复 Micro INT8 量化推理在 SoftMax、ReduceMean 等算子上的精度问题和缓冲区溢出安全漏洞。
+
+### API 变更
+
+- 下架控制流相关 parser，MindSpore Lite 不再支持 ONNX、TensorFlow、TFLite 等模型中 if、loop 等控制流算子的转换。
+
+- LiteBoost ParallelManager 接口变更为 BoostManager，以适配后续更多的模型优化手段。
+
+### 贡献者
+
+LinHaier, lilinjie12, xiong-pan, liuchengji3, liujie, yuuray, liuf9, chenyihang5, YeFeng_24, zhuguodong, qiuleilei, qll1998, wujueying, panzhihui, aldq, cheng_xiaoli, gupengcheng0401, m0_51742343, liujiacai, gaoshuanglong, mc2gao, jjfeing, wanghao-dev, nepdada, qq_44643155, wuyue0371, 徐子康, Vincent Zhu, lizhixuan, m0_74284884, nicholas_yhr, yanghaoran
+
 ## MindSpore Lite 2.10.0 Release Notes
 
 ### 主要特性及增强
