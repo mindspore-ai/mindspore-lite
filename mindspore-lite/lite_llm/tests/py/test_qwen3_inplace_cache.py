@@ -91,12 +91,17 @@ def test_lowering_accepts_traced_qwen3_graph(tmp_path, chunk_size):
     # Quantization also runs slimming after RMSNorm fusion to restore node order.
     model = slim(onnx.load(path), no_shape_infer=True)
     model = infer_shape(model, chunk_size, 64, 2, 4, 32)
+    fused_before = [node for node in model.graph.node
+                    if node.op_type == "MsTransRopeScatterNDUpdate"]
+    assert all(len(node.output) == 1 for node in fused_before)
+    assert sum(node.op_type == "ScatterND" for node in model.graph.node) == 4
+    assert len(model.graph.output) == 5
     lower_inplace_cache(model, 2)
     onnx.checker.check_model(model)
     assert [output.name for output in model.graph.output] == ["logits"]
     assert len([node for node in model.graph.node if node.op_type == "MsTransRopeScatterNDUpdate"]) == 2
     assert len([node for node in model.graph.node if node.op_type == "MsAttention"]) == 2
-    assert not any(node.op_type in ("MsGroupMatmul", "MsAddSoftmax") for node in model.graph.node)
+    assert not any(node.op_type in ("MsGroupMatmul", "MsAddSoftmax", "ScatterND") for node in model.graph.node)
     for node in model.graph.node:
         if node.op_type == "MsTransRopeScatterNDUpdate":
             attrs = {attr.name: onnx.helper.get_attribute_value(attr) for attr in node.attribute}

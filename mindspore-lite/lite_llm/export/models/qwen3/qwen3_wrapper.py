@@ -47,10 +47,11 @@ class Qwen3OpSet(NnrtOpSet):
 
     def prepare_qkv(self, states, position_embeddings, past_key_value, valid_seq_len):
         """Keep Q/K normalization before the BSND fused operator boundary."""
-        return MsTransRopeScatterNDUpdate.apply(
+        query = MsTransRopeScatterNDUpdate.apply(
             *states, *position_embeddings, *past_key_value, valid_seq_len,
             self.num_heads, self.head_dim,
         )
+        return query, *past_key_value
 
     def attention(self, states, mask, valid_seq_len, dropout_p=0.0):
         """Fuse inference attention; cache lowering selects packed NZ storage."""
