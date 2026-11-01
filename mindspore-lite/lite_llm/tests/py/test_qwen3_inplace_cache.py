@@ -23,7 +23,9 @@ import pytest
 onnx = pytest.importorskip("onnx")
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "export"))
 
-lower_inplace_cache = importlib.import_module("models.qwen3.inplace_cache").lower_inplace_cache
+_inplace_cache = importlib.import_module("models.qwen3.inplace_cache")
+lower_inplace_cache = _inplace_cache.lower_inplace_cache
+SHADOW_OPS = _inplace_cache.SHADOW_OPS
 
 
 def _graph():
@@ -122,3 +124,79 @@ def test_extra_packed_query_consumer_is_rejected():
     with pytest.raises(ValueError, match="packed query consumers"):
         lower_inplace_cache(model, 1)
     assert model.SerializeToString() == before
+
+
+def _traced_cache_module(torch, num_heads, head_dim):
+    """Build the smallest Torch module that writes a KV cache with ``index_put``."""
+    from mslite_llm_ops import MsAttention, MsTransRopeScatterNDUpdate
+
+    class TinyCacheLayer(torch.nn.Module):
+        """One fused RoPE + in-place cache write feeding fused attention."""
+
+        def forward(self, q, k, v, cos, sin, past_key_0, past_val_0, valid_seq_len, mask):
+            """Mirror the Qwen3 wrapper: fused write, then attention on the caches."""
+            query = MsTransRopeScatterNDUpdate.apply(
+                q, k, v, cos, sin, past_key_0, past_val_0, valid_seq_len,
+                num_heads, head_dim,
+            )
+            scale = query.new_full((1,), head_dim ** -0.5)
+            logits = MsAttention.apply(
+                query, past_key_0, past_val_0, mask, scale, valid_seq_len,
+            )
+            return logits, past_key_0, past_val_0
+
+    return TinyCacheLayer()
+
+
+def test_traced_index_put_cache_update_is_lowered(tmp_path):
+    """Lower a cache update whose ScatterND indices come from Torch ``index_put``.
+
+    Exporting ``cache[:, :, idx:idx + seq, :].copy_(...)`` makes Torch build the
+    ScatterND indices with its constant broadcast idiom
+    (``ConstantOfShape``/``Equal``/``Where``/``Expand``).  The hand-built ONNX
+    fixtures above only use plain shape arithmetic, so they cannot catch a
+    ``SHADOW_OPS`` set that omits those operators; such a gap rejected every
+    real Qwen3 export with ``Unexpected cache update operator: Where``.
+    """
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("mslite_llm_ops")
+
+    batch, seq_len, kv_len = 1, 4, 16
+    num_heads, num_kv_heads, head_dim = 4, 2, 32
+    module = _traced_cache_module(torch, num_heads, head_dim)
+    args = (
+        torch.zeros(batch, seq_len, num_heads, head_dim, dtype=torch.float16),
+        torch.zeros(batch, seq_len, num_kv_heads, head_dim, dtype=torch.float16),
+        torch.zeros(batch, seq_len, num_kv_heads, head_dim, dtype=torch.float16),
+        torch.zeros(1, seq_len, head_dim, dtype=torch.float16),
+        torch.zeros(1, seq_len, head_dim, dtype=torch.float16),
+        torch.zeros(batch, num_kv_heads, kv_len, head_dim, dtype=torch.float16),
+        torch.zeros(batch, num_kv_heads, kv_len, head_dim, dtype=torch.float16),
+        torch.zeros(1, dtype=torch.int32),
+        torch.zeros(seq_len, kv_len, dtype=torch.float16),
+    )
+    path = tmp_path / "traced_cache.onnx"
+    torch.onnx.export(
+        module, args, str(path), opset_version=18, dynamo=False,
+        input_names=["q", "k", "v", "rope_cos", "rope_sin",
+                     "past_key_0", "past_val_0", "valid_seq_len", "mask"],
+        output_names=["logits", "out_key_0", "out_val_0"],
+    )
+    model = onnx.load(path)
+    scatters = [node for node in model.graph.node if node.op_type == "ScatterND"]
+    assert scatters, "Torch no longer lowers the cache write to ScatterND"
+
+    lower_inplace_cache(model, 1)
+
+    assert [value.name for value in model.graph.output] == ["logits"]
+    assert not any(node.op_type == "ScatterND" for node in model.graph.node)
+    fused = [node for node in model.graph.node
+             if node.op_type == "MsTransRopeScatterNDUpdate"]
+    attention = [node for node in model.graph.node if node.op_type == "MsAttention"]
+    assert len(fused) == 1 and len(attention) == 1
+    assert list(attention[0].input[1:3]) == ["past_key_0", "past_val_0"]
+
+
+def test_shadow_ops_cover_the_torch_index_put_index_idiom():
+    """Pin the operator set Torch emits for the ScatterND indices of a cache write."""
+    assert {"ConstantOfShape", "Equal", "Where", "Expand"} <= SHADOW_OPS

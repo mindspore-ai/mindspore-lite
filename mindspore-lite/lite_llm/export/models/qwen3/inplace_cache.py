@@ -17,9 +17,16 @@
 from onnx import helper
 
 
+# Side-effect-free shape/index arithmetic that may appear inside a traced cache
+# update expression and is therefore safe to prune once the device operator
+# takes over the write.  ``ConstantOfShape``/``Equal``/``Where`` come from the
+# constant broadcast idiom Torch emits when exporting ``index_put`` (the
+# ScatterND indices are built as Where(Equal(Mul(ConstantOfShape(...)))) then
+# broadcast with Expand), so omitting them rejects every real traced graph.
 SHADOW_OPS = frozenset({
-    "Identity", "Constant", "Cast", "Transpose", "Reshape", "Expand", "Shape",
-    "Slice", "Concat", "Add", "Mul", "Unsqueeze", "Squeeze", "Neg",
+    "Identity", "Constant", "ConstantOfShape", "Cast", "Transpose", "Reshape",
+    "Expand", "Shape", "Slice", "Concat", "Add", "Mul", "Equal", "Where",
+    "Unsqueeze", "Squeeze", "Neg",
 })
 
 
