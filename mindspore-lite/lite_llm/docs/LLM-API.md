@@ -694,7 +694,7 @@ MSLLMAbort(llm_model);  // 请求中止，非阻塞
 
 #### **接口边界：不对外开放的能力**
 
-**决策：第 3层级（Model/Tokenizer/Sampler 三要素）不对外开放，Tokenize/Detokenize 不进入公开 API。**
+决策：第 3层级（Model/Tokenizer/Sampler 三要素）不对外开放，Tokenize/Detokenize 不进入公开 API。
 
 理由与影响：
 
@@ -719,7 +719,7 @@ Chat template 的应用位置是此边界的直接推论：由于 tokenizer 不�
 - **方案 B（库拥有循环，调用方拥有线程）**：`MSLLMStreamGenerate` **阻塞**，解码循环直接跑在发起调用的线程上，每吐一个 token 回调一次，全部生成完毕后才返回。返回即完成，无需任何等待原语。
 - **方案 C（调用方拥有循环与线程）**：库只提供单步推进接口（形如 `MSLLMGenerateNext`），调用方自建循环与线程。
 
-**决策：采用方案 B —— 阻塞式回调。**
+决策：采用方案 B —— 阻塞式回调。
 
 - 方案 C 不可实现：第 3 层级不对外开放（见「接口边界」），调用方没有自行组装解码循环的原料（tokenize 不在公开 API 中）。
 - 方案 A 的"库自建线程"并非方案 A 的优点，而是其风险的来源：回调跨线程、参数生命周期悬垂、完成屏障缺失、绑定层线程附着、测试非确定 —— 这些风险全部集中在"库拥有线程"这一属性上。**把线程还给调用方后，这些风险系统性消失**（见下两表）。
@@ -780,7 +780,7 @@ Chat template 的应用位置是此边界的直接推论：由于 tokenizer 不�
 
 #### **设计取舍：会话与多轮对话**
 
-**决策：Generate 系列接口本身不直接支持多轮对话，其定位对齐 Transformers 的 `generate()` 接口 —— 每次调用独立完成一次生成。**
+决策：Generate 系列接口本身不直接支持多轮对话，其定位对齐 Transformers 的 `generate()` 接口 —— 每次调用独立完成一次生成。
 
 具体语义：
 
@@ -789,7 +789,7 @@ Chat template 的应用位置是此边界的直接推论：由于 tokenizer 不�
 - **KV cache 语义**：每次生成独立分配/复位 KV cache，调用返回后即释放，不存在"跨调用续用 KV cache"的场景。历史 KV 的**缓存**（而非续用）是另一回事，见「多轮对话的高效性」—— 缓存是纯优化，可逐出，不改变"每次调用独立"的语义。
 - **会话（Session）是资源容器，不是对话上下文**：`MSLLMModelHandle` 封装的是模型加载、后端、配置等运行时资源；它不代表一段对话，也不持有对话历史。
 
-**由此直接得出的结论：**
+由此直接得出的结论：
 
 | 曾待定项                     | 结论                                                                                                                                                   |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -812,7 +812,7 @@ Chat template 的应用位置是此边界的直接推论：由于 tokenizer 不�
 
 第 N 轮的完整 prompt（历史 + 本轮输入）与第 N-1 轮共享前 ~N-1 轮的全部 token，因此**前缀缓存天然就是多轮对话的加速器** —— Transformers/vLLM 生态均以此实现无状态 `generate()` 的多轮高效。
 
-**层 1：前缀缓存（Prefix Caching）—— 库内部透明，接口不变**
+层 1：前缀缓存（Prefix Caching）—— 库内部透明，接口不变
 
 - 库内部缓存历史前缀的 KV cache，命中时从命中点续算，只 prefill 新增部分（历史越长的轮次，加速越明显）。
 - 接口完全不变，调用方无需任何动作；多轮对话自动获得加速。
@@ -820,7 +820,7 @@ Chat template 的应用位置是此边界的直接推论：由于 tokenizer 不�
 - 缓存生命周期与逐出由库管理（容量配额 / LRU），调用方无感知也无控制。
 - **层 1 与层 2 在热多轮场景的常驻内存相当**：命中历史前缀的前提就是历史 KV 常驻（在缓存池或会话中，占用相近）。层 1 的优势不在内存占用更低，而在可控性——配额/LRU 逐出（内存压力下自动腾挪，代价是重算）、跨会话前缀去重共享（如多个会话共用同一系统提示时只存一份）、切换对话后自然老化。内存压力下层 1 会主动让位，层 2 的常驻 KV 则不会自动释放。
 
-**层 2：session 级 KV 复用（显式保活）—— 预留，走路径 a**
+层 2：session 级 KV 复用（显式保活）—— 预留，走路径 a
 
 若要求"多轮之间 KV 必须常驻、从第 2 轮起近乎零重算"（性能目标明确时），以配置项方式提供，**不新增接口**：
 
@@ -830,14 +830,14 @@ Chat template 的应用位置是此边界的直接推论：由于 tokenizer 不�
 
 #### **设计取舍：Chat template 的应用位置**
 
-**决策：模板渲染在库内完成，经独立的 `MSLLMApplyChatTemplate` 接口暴露；`MSLLMGenerate` / `MSLLMStreamGenerate` 保持接收裸 prompt 字符串。**
+决策：模板渲染在库内完成，经独立的 `MSLLMApplyChatTemplate` 接口暴露；`MSLLMGenerate` / `MSLLMStreamGenerate` 保持接收裸 prompt 字符串。
 
 **模板渲染不依赖 tokenizer，但模板配置由 tokenizer 从模型包加载。** 这是对 HF 生态惯例的对齐，而非本仓库独有：
 
 - **渲染是纯文本拼接**。`Apply()` 只做 `{{role}}` / `{{content}}` 的字符串替换与拼接，不涉及任何 token id、词表或特殊 token。
 - **模板配置随 tokenizer 走**。HF 将 chat template 存在 `tokenizer_config.json`（挂在 tokenizer 名下，可被 `apply_chat_template(messages, chat_template=...)` 覆盖）；vLLM、TGI、llama.cpp（GGUF 元数据）均遵循此约定。本仓库从模型包的 tokenizer 资源读取模板类型与自定义模板字符串，与之一致。
 
-**由此得出：**
+由此得出：
 
 - `MSLLMGenerate` 接收裸字符串 —— 对齐 HF 的 `generate()` 定位（已定决策），模板能力与生成能力分离。
 - **新增 `MSLLMApplyChatTemplate(model, messages, num_messages, buffer, buffer_size)`**：把消息数组渲染为完整 prompt 文本（不追加尾部 assistant 起始符）。它不属于「接口边界」禁止的 Tokenize —— 输入输出都是文本，不产生 token id、不暴露词表；开放的是模板渲染能力。角色序列不校验（#8/#9）；`content==NULL` → INVALID_ARGS（#10）。
@@ -867,7 +867,7 @@ history.emplace_back(MSLLM_ROLE_ASSISTANT, result);
 
 #### **设计取舍：配置接口形态**
 
-**决策：`MSLLMSetGenerationConfig` 采用结构体，而非 JSON 字符串。**
+决策：`MSLLMSetGenerationConfig` 采用结构体，而非 JSON 字符串。
 
 理由：
 
@@ -876,7 +876,7 @@ history.emplace_back(MSLLM_ROLE_ASSISTANT, result);
 
 #### **设计取舍：buffer 契约**
 
-**决策（#1）：调用方一次性预分配缓冲；缓冲过小时返回 `kMSLLM_ERROR_BUFFER_TOO_SMALL` 且不写入任何内容，不回填所需尺寸。库不分配内存，不引入配对的释放接口。`MSLLMGenerate` 与 `MSLLMApplyChatTemplate` 共用同一契约。**
+决策（#1）：调用方一次性预分配缓冲；缓冲过小时返回 `kMSLLM_ERROR_BUFFER_TOO_SMALL` 且不写入任何内容，不回填所需尺寸。库不分配内存，不引入配对的释放接口。`MSLLMGenerate` 与 `MSLLMApplyChatTemplate` 共用同一契约。
 
 端侧输出长度可预期（最大上下文 32k），调用方自行分配足量缓冲即可，无需 `required_size` 回填。
 
