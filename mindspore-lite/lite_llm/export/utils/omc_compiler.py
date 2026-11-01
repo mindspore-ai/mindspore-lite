@@ -28,6 +28,7 @@ import os
 import subprocess
 from typing import Optional
 
+from utils.omc_kernel_bins import sanitize_omc_kernel_pads
 from utils.quantization import QuantType, get_quant_preset
 
 from utils import load_custom_op
@@ -170,5 +171,25 @@ def compile_omc(onnx_path, config, max_seq_len=1024, chunk_sizes=(128,), embeddi
     if save_external_weights:
         # In external-data mode omg treats --output as a directory and writes
         # <output>/<basename(output)>.omc plus SubGraph_0.weight.
-        return os.path.join(omc_path, os.path.basename(omc_path) + ".omc")
-    return omc_path + ".omc"
+        result = os.path.join(omc_path, os.path.basename(omc_path) + ".omc")
+    else:
+        result = omc_path + ".omc"
+    # OH 6.1+ CheckISALimitForCustomOP scans the 256-byte alignment padding of
+    # every CUBE kernel-bin as if it were code, and fused OMG leaves that
+    # padding uninitialized.  The risk is computed from the padding word count
+    # and the mask, not measured on real devices: a typical 0.5B W4A16 artifact
+    # has about 464 padding words (26 CUBE kernels, 1856 B of alignment padding
+    # in total), each word matches the rule with probability 1/4096 under
+    # random data, i.e. about 11% probability of being refused on device.  Zero
+    # it here.  This is the only caller of sanitize_omc_kernel_pads and it runs
+    # on omg output for a graph whose platform defaults to kirin9020, so
+    # non-Kirin export paths are unaffected.  The OMC layout is only verified
+    # for DDK 6.1.1 / kirin9020: if the layout assumption does not hold, the
+    # whole export fails.  Deliberately not best-effort and deliberately no
+    # skip switch - an unparsable OMC means the padding interval is unknown,
+    # and shipping a model that may be refused (or, worse, one whose live
+    # bytes were overwritten) is the bad outcome.  When that happens, upgrade
+    # the export tooling or contact the lite_llm export maintainers to confirm
+    # the new DDK layout.
+    sanitize_omc_kernel_pads(result)
+    return result
