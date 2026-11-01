@@ -20,19 +20,21 @@ and adapted to the graph I/O contract consumed by the mslite-llm NNRT executor
 
     inputs:  [valid_seq_len, lmhead_idx, rope_cos, rope_sin, inputs_embeds,
               attention_mask, embedding_weight] + past_key_i/past_val_i (per layer)
-    outputs: [logits, out_key_i/out_val_i]   (KV updated in place on device)
+    outputs: [logits]   (past_key_i/past_val_i are writable inputs updated in place)
 
 Contract differences vs the reference exporter:
 
-* ``kvcache_mask`` input removed.  KV update is a pure ``MsScatterND`` at
-  ``pos=valid_seq_len`` (executor: "device: past[:,:,pos:pos+L]=state").
+* ``kvcache_mask`` input removed.  KV update happens inside the fused
+  ``MsTransRopeScatterNDUpdate`` operator at ``pos=valid_seq_len``.
 * ``embedding_weight`` (tied lm_head weight) is inserted as a graph input at
   index 6 by ``apply_shared_weight`` (see ``utils/quant/quantize.py``), which
   matches the executor's 7-input shape check.
-* Custom ops stay unchanged: ``MsRotaryPosEmb``, ``MsGroupMatmul``,
-  ``MsAddSoftmax``, ``MsRmsNorm``, ``MsAddRmsNorm`` (post-export fusion),
-  ``MsScatterND``, plus ``MsQuant4N0Group32`` / ``MsQuant4N0Group128`` /
-  ``MsQuant2N0Group32`` when weight quantization is enabled.
+* Fused inference ops (same contract as Qwen3): ``MsTransRopeScatterNDUpdate``
+  performs BSND->BNSD, RoPE and the in-place packed-NZ cache update and returns
+  only ``rope_q``; ``MsAttention`` fuses scores + mask + softmax + value.  The
+  graph exposes ``logits`` as its sole output and keeps ``past_key_i`` /
+  ``past_val_i`` as writable inputs.  ``MsRmsNorm`` / ``MsAddRmsNorm`` (post-
+  export fusion) and the quantization ops are unchanged.
 
 External step (not part of this package): compile the exported ONNX to a
 Kirin ``.omc`` offline model, e.g. with ``omg --model=... --framework=5
@@ -68,11 +70,15 @@ from utils.export_quant import (
 
 from utils.quantization import QuantType
 
-from .qwen2_5_wrapper import Qwen2NnrtWrapper
+from .qwen2_5_wrapper import Qwen2NnrtWrapper, resolve_head_dim
 
 logger = logging.getLogger(__name__)
 
 DEVICE = "cpu"
+
+# MsAttention cache/tile alignment (same values as ``qwen3_exporter.py:75-76``).
+ATTENTION_CACHE_ALIGNMENT = 64
+ATTENTION_TILE_ALIGNMENT = 16
 dtype = torch.float16
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -152,8 +158,15 @@ class Qwen2Onnx:
         logger.info("model loaded: %s", model_path)
 
     def export(self, model_path, max_seq_len=1024, chunk_size=128):
-        """Export the ONNX graph (NNRT 7-input + interleaved KV contract)."""
-        head_dim = self.model.config.hidden_size // self.model.config.num_attention_heads
+        """Trace the logits-only graph; KV caches are updated in place."""
+        # Same resolution rule as ``Qwen2OpSet`` so the traced rope/cache shapes and
+        # the operator attribute cannot drift when the config sets ``head_dim`` explicitly.
+        head_dim = resolve_head_dim(self.model.config)
+        if max_seq_len <= 0 or max_seq_len % ATTENTION_CACHE_ALIGNMENT or head_dim % ATTENTION_TILE_ALIGNMENT:
+            raise ValueError("MsAttention requires KV capacity divisible by 64 and head_dim divisible by 16")
+        if chunk_size <= 0 or chunk_size > max_seq_len or (
+                chunk_size != 1 and chunk_size % ATTENTION_TILE_ALIGNMENT):
+            raise ValueError("MsAttention requires a prefill chunk divisible by 16, or decode chunk 1")
 
         input_names = [
             "valid_seq_len",
@@ -197,17 +210,36 @@ class Qwen2Onnx:
         # model — the wrapper's forward emits ``custom::`` ONNX nodes directly,
         # so no transformers monkey-patch is needed.
         wrapper = Qwen2NnrtWrapper(self.model, self.config)
-        torch.onnx.export(
-            wrapper,
-            inputs,
-            model_path,
-            input_names=input_names,
-            do_constant_folding=True,
-            output_names=["logits", *out_kv_names],
-            opset_version=18,
-            operator_export_type=OperatorExportTypes.ONNX_FALLTHROUGH,
-            dynamo=False,  # legacy TorchScript exporter: required for Ms* custom symbolic ops
-        )
+        # The fused cache op is inference-only and rejects grad-carrying inputs;
+        # eval() does not disable autograd and the legacy exporter traces with
+        # grad enabled, so disable grad at the export boundary.
+        with torch.no_grad():
+            torch.onnx.export(
+                wrapper,
+                inputs,
+                model_path,
+                input_names=input_names,
+                do_constant_folding=True,
+                output_names=["logits", *out_kv_names],
+                opset_version=18,
+                operator_export_type=OperatorExportTypes.ONNX_FALLTHROUGH,
+                dynamo=False,  # legacy TorchScript exporter: required for Ms* custom symbolic ops
+            )
+
+        # MsTransRopeScatterNDUpdate writes past_key_i/past_val_i in place, so the
+        # KV outputs returned by the wrapper only alias those writable inputs.
+        # Drop them before slimming/quantizing: the NNRT runtime reuses the input
+        # buffers and expects logits as the sole graph output.
+        traced = onnx.load(model_path)
+        traced_outputs = [out.name for out in traced.graph.output]
+        expected_outputs = ["logits", *out_kv_names]
+        if traced_outputs != expected_outputs:
+            raise ValueError(
+                f"traced graph outputs {traced_outputs} do not match the expected "
+                f"logits + per-layer KV aliases {expected_outputs}; refusing to drop outputs"
+            )
+        del traced.graph.output[1:]
+        _save_onnx(traced, model_path)
 
         new_model = slim(model_path, skip_fusion_patterns=["FusionGemm"])
         _save_onnx(new_model, model_path)
@@ -270,7 +302,7 @@ class Qwen2Onnx:
                 "intermediate_size": int(arch.intermediate_size),
                 "num_heads": int(arch.num_attention_heads),
                 "num_kv_heads": int(arch.num_key_value_heads),
-                "head_dim": int(arch.hidden_size // arch.num_attention_heads),
+                "head_dim": resolve_head_dim(arch),
                 "vocab_size": int(arch.vocab_size),
                 "max_position_embeddings": int(arch.max_position_embeddings),
                 "rope_theta": float(getattr(arch, "rope_theta", 10000.0)),
@@ -347,7 +379,6 @@ def export_qwen2_5(
     onnx_path = os.path.join(output_dir, onnx_name)
     exporter.export(onnx_path, max_seq_len=max_length, chunk_size=chunk_size)
 
-
     if embedding_quant_config.is_quant or decoder_quant_config.is_quant:
         model_config = ModelConfig(
             max_length=max_length,
@@ -371,7 +402,13 @@ def export_qwen2_5(
     embedding_asset = apply_shared_weight(model)
     _save_onnx(model, onnx_path)
 
-    validate_contract(onnx_path, exporter.num_layers, embedding_quant=embedding_quant_config.is_quant)
+    validate_contract(
+        onnx_path,
+        exporter.num_layers,
+        embedding_quant=embedding_quant_config.is_quant,
+        embedding_format=embedding_quant_config.embedding_format,
+        inplace_cache=True,
+    )
 
     config = exporter.build_config(max_length, chunk_size, embedding_quant_config, decoder_quant_config)
 

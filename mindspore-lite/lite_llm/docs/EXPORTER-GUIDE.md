@@ -83,10 +83,11 @@ NnrtOpSet                      # 算子集策略：rope / kv_scatter / qk_matmul
 | 输入 3 | `rope_sin` | 同上 | |
 | 输入 4 | `inputs_embeds` | `[1, chunk, hidden]` fp16 | embedding lookup 在 CPU 侧，`input_ids` 不是图输入 |
 | 输入 5 | `attention_mask` | `[1,1,chunk,max_len]` fp16 | 面向**全量 KV cache** 的 causal mask |
-| 输入 6 | `embedding_weight` | `[hidden, vocab]` | 仅共享权重路径；W4A16 量化路径无此项 |
-| 输入 7+ | `past_key_{i}` / `past_val_{i}` | `[1, num_kv_heads, max_len, head_dim]` fp16 | 逐层交错排列（BNSD） |
+| 输入 6 | `embedding_weight` | fp16 / uint8 / int8 | 共享 embedding 权重；类型取决于量化格式 |
+| 输入 7 | `embedding_scale` | int8 | 仅 S16S4 格式 |
+| KV 输入 | `past_key_{i}` / `past_val_{i}` | `[1, num_kv_heads, max_len, head_dim]` fp16 | 逐层交错；逻辑形状为 BNSD，Qwen2.5/Qwen3 的物理存储为 packed NZ |
 | 输出 0 | `logits` | `[1, vocab]` | |
-| 输出 1+ | `out_key_{i}` / `out_val_{i}` | 同 past | KV 设备侧原地写回 |
+| 输出 1+ | `out_key_{i}` / `out_val_{i}` | 同 past | MiniCPM 的函数式 cache 输出；Qwen2.5/Qwen3 原地更新 `past_*`，仅输出 `logits` |
 
 契约由 `utils/onnx_postprocess.py::validate_contract` 强制校验，任何后处理改动后必须过它。约束：`max_length` 必须是 `chunk_size` 的正整数倍（NPU chunked prefill 要求）。
 
@@ -107,10 +108,11 @@ wheel 从包顶层导出各 `Ms<Op>` 适配类；forward 链路中的算子由
 |---|---|---|
 | `MsRotaryPosEmb` | `rope` | RoPE 旋转 |
 | `MsScatterND` | `kv_scatter` | `past[:,:,pos:pos+seq,:] = state`，layout `"BNSD"`，状态 cast fp16 |
-| `MsGroupMatmul` | `qk_matmul` / `pv_matmul` | GQA 分组 matmul |
-| `MsAddSoftmax` | `mask_softmax` | `(w+mask).softmax()` 融合 |
+| `MsGroupMatmul` | `qk_matmul` / `pv_matmul` | GQA 分组 matmul（默认/未融合算子集，MiniCPM） |
+| `MsAddSoftmax` | `mask_softmax` | `(w+mask).softmax()` 融合（默认/未融合算子集，MiniCPM） |
+| `MsAttention` | `attention`（Qwen2.5/Qwen3） | 融合 GQA 打分 + mask + softmax + value，读取 packed NZ cache |
 | `MsRmsNorm` | `rmsnorm` | RMSNorm |
-| `MsTransRopeScatterNDUpdate` | `prepare_qkv`（Qwen3） | BSND/BNSD 转换、RoPE 和 KV cache 更新融合 |
+| `MsTransRopeScatterNDUpdate` | `prepare_qkv`（Qwen2.5/Qwen3） | BSND→BNSD、RoPE 和 KV cache 更新；八输入/一输出，按 NZ 布局原地更新 cache |
 | `MsAddRmsNorm` | —（图后融合） | `fuse_add_rmsnorm` pass 把 `Add+MsRmsNorm` 模式融合为单节点 |
 | `MsQuant4N0Group32` | —（量化） | W4A16 反量化核 |
 | `MsFloatCastInt` | —（量化） | W4A8 激活量化：FP16 截断饱和到 INT8 |
@@ -235,7 +237,7 @@ NNRT 在 `SetDevice` 后、`Compilation_Build` 前设置 `EXTREME=4`；缺少接
 
 | 模型 | 目录 | wrapper 改动量 | 特殊点 |
 |---|---|---|---|
-| Qwen2.5-0.5B | `models/qwen2_5/` | 空子类 | 基准实现 |
+| Qwen2.5-0.5B | `models/qwen2_5/` | `Qwen2OpSet` | `MsTransRopeScatterNDUpdate` + `MsAttention` 融合；图输出仅 `logits` |
 | MiniMind-3 (Qwen3 dense) | `models/qwen3/` | `Qwen3Attention` + `Qwen3OpSet` | per-head `q_norm/k_norm`；`MsTransRopeScatterNDUpdate` 融合布局转换、RoPE 和 KV cache 更新；GGUF head_dim 修复 |
 | MiniCPM-2B | `models/minicpm/` | 薄子类（~15 行）+ exporter rotary fallback | `scale_emb=12` 图入口 Mul；rotary 挂 per-attention；**加载层卡点**：transformers 无内置 minicpm，需 `trust_remote_code` 且社区 custom code 在 5.x 下 KV-cache 崩溃（导出链路本身已验证全通：数值 rel_err 2.2e-4、GGUF key 14/14，回归固化于 `tests/py/test_minicpm_wrapper.py`） |
 
