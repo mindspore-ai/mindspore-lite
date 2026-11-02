@@ -1,0 +1,18 @@
+# BooguImage transfer-test config, two-card form: the master branch's fastest
+# two-card combination -- SP (= CP-2, Ulysses sequence parallel) on both
+# transformer regions with cc_overlap everywhere ("cc_overlap_full").
+#
+# bsnd stays OFF on purpose: composing bsnd with SP fails on the master branch
+# (the double-stream GQA 28:7 head split is non-integral per rank and
+# npu_fusion_attention raises aclnn EZ1001), so BSND is a 1P-only optimization
+# for now -- see the BSND section of the model README.
+Parallel:
+  dit:
+    double:          # double-stream blocks
+      alg: SP
+      cc_overlap: true
+    single:          # single-stream blocks
+      alg: SP
+      cc_overlap: true
+    world_size: 2    # must match the torchrun world size
+bsnd: false

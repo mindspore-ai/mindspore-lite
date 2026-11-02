@@ -1,0 +1,14 @@
+# BooguImage transfer-test config, two-card tensor-parallel form: transformer
+# weights sharded by tensor dimension across the ranks (colwise/rowwise with
+# the fused matmul-all-reduce), sequence untouched.
+#
+# bsnd stays OFF: bsnd composes with neither TP nor SP (see the 2p yaml and
+# the BSND section of the model README).
+Parallel:
+  dit:
+    double:          # double-stream blocks
+      alg: TP
+    single:          # single-stream blocks
+      alg: TP
+    world_size: 2    # must match the torchrun world size
+bsnd: false
