@@ -82,6 +82,10 @@ def test_compile_omc_sets_soc_version(monkeypatch):
     monkeypatch.delenv("SOC_VERSION", raising=False)
     monkeypatch.setattr(omc_compiler, "resolve_omg", lambda: "omg")
     monkeypatch.setattr(omc_compiler.subprocess, "run", fake_run)
+    # omg is mocked, so no .omc exists; the padding cleanup has its own tests
+    # (test_omc_kernel_pads.py).  Here only check it is applied to the output.
+    monkeypatch.setattr(omc_compiler, "sanitize_omc_kernel_pads",
+                        lambda path: invocation.setdefault("sanitized", path))
 
     output = omc_compiler.compile_omc(
         "input.onnx", _architecture(), max_seq_len=128,
@@ -89,6 +93,7 @@ def test_compile_omc_sets_soc_version(monkeypatch):
     )
 
     assert output == "input.omc"
+    assert invocation["sanitized"] == "input.omc"
     assert invocation["check"] is True
     assert invocation["env"]["SOC_VERSION"] == "kirin9020"
     assert "--platform=kirin9020" in invocation["command"]
