@@ -38,7 +38,9 @@ constexpr int32_t kEosTokenId = 2;  // "</s>" in BuildMinimalVocabBin
 ///   vocab_size x (u32 len + token bytes + i32 id)
 ///   u32 num_merges(0) | u32 template_len(0)
 ///   u32 stop_count + stop tokens | u32 suppress_count + suppress tokens
-inline std::vector<uint8_t> BuildMinimalVocabBin(bool include_whitespace_tokens = false) {
+/// `id4_token` swaps the token stored at id 4 ('b' by default) so two models
+/// can carry distinguishable vocabularies.
+inline std::vector<uint8_t> BuildMinimalVocabBin(bool include_whitespace_tokens = false, char id4_token = 'b') {
   constexpr uint32_t kMagic = 0x4D534C54;
   constexpr uint32_t kVersion = 2;
   constexpr uint32_t kCodecBPE = 0;
@@ -46,7 +48,8 @@ inline std::vector<uint8_t> BuildMinimalVocabBin(bool include_whitespace_tokens 
   // Sorted by token id. Ids 5/6/7 are the byte-encoder tokens for the three
   // UTF-8 bytes of '你' (0xE4 0xBD 0xA0), used by the incremental-decode test.
   std::vector<std::pair<std::string, int32_t>> vocab = {
-    {"<unk>", 0}, {"<s>", 1}, {"</s>", kEosTokenId}, {"a", 3}, {"b", 4}, {"ä", 5}, {"½", 6}, {"ł", 7},
+    {"<unk>", 0}, {"<s>", 1}, {"</s>", kEosTokenId}, {"a", 3}, {std::string(1, id4_token), 4}, {"ä", 5},
+    {"½", 6},     {"ł", 7},
   };
   if (include_whitespace_tokens) {
     vocab.insert(vocab.end(), {{"ĉ", 8}, {"Ċ", 9}, {"č", 10}});
@@ -154,6 +157,7 @@ struct ModelFixture {
     if (dir.empty()) return;
     RemoveFile(dir + "/manifest.json");
     RemoveFile(dir + "/vocab.bin");
+    RemoveFile(dir + "/tokenizer.model");
     RemoveFile(dir + "/embedding.bin");
     RemoveFile(dir + "/rope_sin.bin");
     RemoveFile(dir + "/rope_cos.bin");

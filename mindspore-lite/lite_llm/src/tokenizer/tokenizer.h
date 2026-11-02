@@ -16,6 +16,7 @@
 #ifndef MSLLM_TOKENIZER_H
 #define MSLLM_TOKENIZER_H
 
+#include <future>
 #include <memory>
 #include <string>
 #include <vector>
@@ -27,8 +28,15 @@ namespace mslite_llm {
 
 std::unique_ptr<TokenizerBase> CreateTokenizer(const std::string &vocab_path);
 
+/// Async variant: parse on a background thread; the future yields nullptr on
+/// failure. Falls back to synchronous parsing if no thread can be created.
+std::future<std::unique_ptr<TokenizerBase>> CreateTokenizerAsync(const std::string &vocab_path);
+
 /// Create a tokenizer from an in-memory vocab image (single-file .msl entry).
 std::unique_ptr<TokenizerBase> CreateTokenizerFromBuffer(const uint8_t *data, size_t size);
+
+/// Async buffer variant: the buffer moves into the background task.
+std::future<std::unique_ptr<TokenizerBase>> CreateTokenizerFromBufferAsync(std::vector<uint8_t> vocab_buffer);
 
 }  // namespace mslite_llm
 

@@ -298,6 +298,169 @@ void SetConfig(MSLLMModelHandle h, int32_t max_new_tokens) {
   ASSERT_EQ(MSLLMSetGenerationConfig(h, cfg), kMSLLM_SUCCESS);
 }
 
+// ─── BuildModel tokenizer async load paths ──────────────────────────────────
+
+TEST(BuildModel, CorruptVocabFailsBuild) {
+  mslite_llm::SetBackendFactory([] { return std::make_unique<mslite_llm_test::FakeBackend>(); });
+
+  auto fixture = mslite_llm_test::WriteMinimalModelDir();
+  ASSERT_FALSE(fixture.dir.empty());
+  auto corrupt = mslite_llm_test::BuildMinimalVocabBin();
+  for (size_t i = 0; i < 4; ++i) corrupt[i] = 0xff;  // break the magic
+  ASSERT_TRUE(mslite_llm_test::WriteFile(fixture.dir + "/vocab.bin", corrupt.data(), corrupt.size()));
+
+  auto *h = MSLLMCreateModel();
+  ASSERT_NE(h, nullptr);
+  EXPECT_EQ(MSLLMBuildModel(h, fixture.dir.c_str()), kMSLLM_ERROR_MODEL_LOAD);
+  MSLLMDestroyModel(&h);
+
+  mslite_llm::SetBackendFactory(nullptr);
+}
+
+TEST(BuildModel, MissingVocabFailsBuild) {
+  mslite_llm::SetBackendFactory([] { return std::make_unique<mslite_llm_test::FakeBackend>(); });
+
+  auto fixture = mslite_llm_test::WriteMinimalModelDir();
+  ASSERT_FALSE(fixture.dir.empty());
+  ::unlink((fixture.dir + "/vocab.bin").c_str());  // neither vocab.bin nor the tokenizer.model fallback exists
+
+  auto *h = MSLLMCreateModel();
+  ASSERT_NE(h, nullptr);
+  EXPECT_EQ(MSLLMBuildModel(h, fixture.dir.c_str()), kMSLLM_ERROR_MODEL_LOAD);
+  MSLLMDestroyModel(&h);
+
+  mslite_llm::SetBackendFactory(nullptr);
+}
+
+TEST(BuildModel, ModelFailureJoinsTokenizerTask) {
+  // InitBackend fails while the background tokenizer parse is in flight;
+  // Build must still join the task before returning (a hang fails via ctest).
+  mslite_llm::SetBackendFactory([] {
+    auto *b = new mslite_llm_test::FakeBackend();
+    b->ScriptInit(MSLLM_ERROR_INFERENCE);
+    return std::unique_ptr<mslite_llm::Backend>(b);
+  });
+
+  auto fixture = mslite_llm_test::WriteMinimalModelDir();
+  ASSERT_FALSE(fixture.dir.empty());
+
+  auto *h = MSLLMCreateModel();
+  ASSERT_NE(h, nullptr);
+  EXPECT_EQ(MSLLMBuildModel(h, fixture.dir.c_str()), kMSLLM_ERROR_MODEL_LOAD);
+  EXPECT_EQ(MSLLMDestroyModel(&h), kMSLLM_SUCCESS);
+
+  mslite_llm::SetBackendFactory(nullptr);
+}
+
+TEST(BuildModel, RetryAfterFailedBuildSucceeds) {
+  mslite_llm_test::FakeBackend *raw = nullptr;
+  mslite_llm::SetBackendFactory([&raw] {
+    auto *b = new mslite_llm_test::FakeBackend();
+    raw = b;
+    return std::unique_ptr<mslite_llm::Backend>(b);
+  });
+
+  auto fixture = mslite_llm_test::WriteMinimalModelDir();
+  ASSERT_FALSE(fixture.dir.empty());
+
+  auto corrupt = mslite_llm_test::BuildMinimalVocabBin();
+  for (size_t i = 0; i < 4; ++i) corrupt[i] = 0xff;
+  ASSERT_TRUE(mslite_llm_test::WriteFile(fixture.dir + "/vocab.bin", corrupt.data(), corrupt.size()));
+
+  auto *h = MSLLMCreateModel();
+  ASSERT_NE(h, nullptr);
+  EXPECT_EQ(MSLLMBuildModel(h, fixture.dir.c_str()), kMSLLM_ERROR_MODEL_LOAD);
+
+  // The failed build consumed its async result and left the state re-buildable.
+  auto good = mslite_llm_test::BuildMinimalVocabBin();
+  ASSERT_TRUE(mslite_llm_test::WriteFile(fixture.dir + "/vocab.bin", good.data(), good.size()));
+  EXPECT_EQ(MSLLMBuildModel(h, fixture.dir.c_str()), kMSLLM_SUCCESS);
+
+  SetConfig(h, 4);
+  raw->QueueLogits(LogitsFor(kNonEosTokenId));
+  raw->QueueLogits(LogitsFor(mslite_llm_test::kEosTokenId));
+  char buf[4096] = {};
+  EXPECT_EQ(MSLLMGenerate(h, "a", buf, sizeof(buf)), kMSLLM_SUCCESS);
+  EXPECT_STREQ(buf, "a");
+  MSLLMDestroyModel(&h);
+
+  mslite_llm::SetBackendFactory(nullptr);
+}
+
+TEST(BuildModel, TwoHandlesConcurrentBuildUseOwnTokenizers) {
+  // Each Build owns its background tokenizer result: two handles built
+  // concurrently with distinguishable vocabularies must each end up with
+  // their own tokenizer. A process-global result slot would let one build
+  // silently grab the other's tokenizer (wrong-vocab encode/decode) while
+  // the other build fails.
+  std::vector<mslite_llm_test::FakeBackend *> backends;
+  std::mutex backends_mu;
+  mslite_llm::SetBackendFactory([&backends, &backends_mu] {
+    auto *b = new mslite_llm_test::FakeBackend();
+    {
+      std::lock_guard<std::mutex> lock(backends_mu);
+      backends.push_back(b);
+    }
+    return std::unique_ptr<mslite_llm::Backend>(b);
+  });
+
+  auto fixture_a = mslite_llm_test::WriteMinimalModelDir();
+  auto fixture_b = mslite_llm_test::WriteMinimalModelDir();
+  ASSERT_FALSE(fixture_a.dir.empty());
+  ASSERT_FALSE(fixture_b.dir.empty());
+  // Model B stores 'q' at id 4 where model A stores 'b'.
+  const auto vocab_q = mslite_llm_test::BuildMinimalVocabBin(false, 'q');
+  ASSERT_TRUE(mslite_llm_test::WriteFile(fixture_b.dir + "/vocab.bin", vocab_q.data(), vocab_q.size()));
+  // Bulk embeddings widen the model-load window so both background tokenizer
+  // parses are in flight together; the race is repeated for reliability.
+  const std::vector<char> bulk(32 << 20, 0);
+  ASSERT_TRUE(mslite_llm_test::WriteFile(fixture_a.dir + "/embedding.bin", bulk.data(), bulk.size()));
+  ASSERT_TRUE(mslite_llm_test::WriteFile(fixture_b.dir + "/embedding.bin", bulk.data(), bulk.size()));
+
+  for (int round = 0; round < 4; ++round) {
+    SCOPED_TRACE("round " + std::to_string(round));
+    backends.clear();  // previous round's instances were deleted by Destroy
+
+    auto *ha = MSLLMCreateModel();
+    auto *hb = MSLLMCreateModel();
+    ASSERT_NE(ha, nullptr);
+    ASSERT_NE(hb, nullptr);
+
+    std::atomic<int> at_start{0};
+    auto build = [&](MSLLMModelHandle h, const std::string &dir) {
+      ++at_start;
+      while (at_start.load() < 2) std::this_thread::yield();
+      return MSLLMBuildModel(h, dir.c_str());
+    };
+    MSLLMStatus status_a = kMSLLM_ERROR_INFERENCE;
+    MSLLMStatus status_b = kMSLLM_ERROR_INFERENCE;
+    std::thread thread_a([&] { status_a = build(ha, fixture_a.dir); });
+    std::thread thread_b([&] { status_b = build(hb, fixture_b.dir); });
+    thread_a.join();
+    thread_b.join();
+    ASSERT_EQ(status_a, kMSLLM_SUCCESS);
+    ASSERT_EQ(status_b, kMSLLM_SUCCESS);
+
+    for (auto *b : backends) {
+      b->QueueLogits(LogitsFor(4));  // id 4 decodes to 'b' (A) vs 'q' (B)
+      b->QueueLogits(LogitsFor(mslite_llm_test::kEosTokenId));
+    }
+    SetConfig(ha, 4);
+    SetConfig(hb, 4);
+    char buf_a[4096] = {};
+    char buf_b[4096] = {};
+    EXPECT_EQ(MSLLMGenerate(ha, "a", buf_a, sizeof(buf_a)), kMSLLM_SUCCESS);
+    EXPECT_EQ(MSLLMGenerate(hb, "a", buf_b, sizeof(buf_b)), kMSLLM_SUCCESS);
+    EXPECT_STREQ(buf_a, "b") << "handle A ended up with B's tokenizer";
+    EXPECT_STREQ(buf_b, "q") << "handle B ended up with A's tokenizer";
+
+    ASSERT_EQ(MSLLMDestroyModel(&ha), kMSLLM_SUCCESS);
+    ASSERT_EQ(MSLLMDestroyModel(&hb), kMSLLM_SUCCESS);
+  }
+
+  mslite_llm::SetBackendFactory(nullptr);
+}
+
 TEST(Generate, EmptyPromptStartsFromBos) {
   auto tm = BuildTestModel();
   ASSERT_NE(tm.handle, nullptr);
@@ -681,6 +844,45 @@ TEST(TokenizerEncode, SentencePieceRetainsImplicitBos) {
   const auto ids = tok->Encode("a");
   ASSERT_FALSE(ids.empty());
   EXPECT_EQ(ids.front(), 1);
+}
+
+// ─── Tokenizer async load (CreateTokenizerAsync / CreateTokenizerFromBufferAsync) ──
+
+TEST(TokenizerAsync, FromBufferMatchesSync) {
+  auto vocab = mslite_llm_test::BuildMinimalVocabBin();
+  auto sync_tok = mslite_llm::CreateTokenizerFromBuffer(vocab.data(), vocab.size());
+  auto async_tok = mslite_llm::CreateTokenizerFromBufferAsync(std::move(vocab)).get();
+  ASSERT_NE(sync_tok, nullptr);
+  ASSERT_NE(async_tok, nullptr);
+  EXPECT_EQ(async_tok->Encode("ab"), sync_tok->Encode("ab"));
+  EXPECT_EQ(async_tok->Decode({3, 4}), sync_tok->Decode({3, 4}));
+}
+
+TEST(TokenizerAsync, BadPayloadYieldsNull) {
+  auto corrupt = mslite_llm_test::BuildMinimalVocabBin();
+  for (size_t i = 0; i < 4; ++i) corrupt[i] = 0xff;  // break the magic
+  auto fut = mslite_llm::CreateTokenizerFromBufferAsync(std::move(corrupt));
+  EXPECT_EQ(fut.get(), nullptr);
+}
+
+TEST(TokenizerAsync, PathLoadMatchesSync) {
+  const auto vocab_path =
+    (std::filesystem::temp_directory_path() /
+     ("msllm_tok_path_async_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())))
+      .string();
+  const auto vocab = mslite_llm_test::BuildMinimalVocabBin();
+  ASSERT_TRUE(mslite_llm_test::WriteFile(vocab_path, vocab.data(), vocab.size()));
+
+  auto sync_tok = mslite_llm::CreateTokenizer(vocab_path);
+  auto async_tok = mslite_llm::CreateTokenizerAsync(vocab_path).get();
+  ASSERT_NE(sync_tok, nullptr);
+  ASSERT_NE(async_tok, nullptr);
+  EXPECT_EQ(async_tok->Encode("ab"), sync_tok->Encode("ab"));
+  EXPECT_EQ(async_tok->Decode({3, 4}), sync_tok->Decode({3, 4}));
+  std::filesystem::remove(vocab_path);
+
+  // Missing path: background read fails -> nullptr result.
+  EXPECT_EQ(mslite_llm::CreateTokenizerAsync("/nonexistent/msllm_vocab.bin").get(), nullptr);
 }
 
 TEST(TokenizerIncremental, SplitsMultibyteUtf8) {
