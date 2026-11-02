@@ -52,7 +52,8 @@ NNRT graph I/O contract (matches ``lite_llm/src/executor/nnrt/nnrt_executor.cc``
 
     inputs:  [valid_seq_len, lmhead_idx, rope_cos, rope_sin, inputs_embeds,
               attention_mask, embedding_weight] + past_key_i/past_val_i (per layer)
-    outputs: [logits, out_key_i/out_val_i]   (KV updated in place on device)
+    outputs: [logits] for in-place cache exporters (Qwen2.5/Qwen3);
+              MiniCPM also exposes out_key_i/out_val_i
 
 The I/O contract is op-set independent (fixed by the NPU runtime), so
 swapping an op set never breaks the runtime contract — only the internal
@@ -323,8 +324,8 @@ class NnrtDecoderWrapper(nn.Module):
                 attention_mask=None, past_key_values=None):
         """NNRT-contract forward: embedding lookup stays CPU-side (graph input).
 
-        Returns ``(logits, out_key_0, out_val_0, …)`` matching the exporter's
-        ``output_names``.
+        Returns ``(logits, out_key_0, out_val_0, …)`` for tracing. Qwen2.5
+        drops cache aliases after tracing; Qwen3 lowers traced cache updates.
         """
         del input_ids  # NNRT: embedding lookup is CPU-side; inputs_embeds is required.
         hidden_states, presents = self.model(
