@@ -239,7 +239,7 @@ TEST(NnrtEmbeddingDequant, DecodesSignedNibblesAndPerRowGroupScalesAcrossTiles) 
     const auto blob = MakeNzfBlob(shape.rows, shape.hidden);
     ASSERT_EQ(blob.size(), static_cast<size_t>(shape.rows) * (shape.hidden / 32) * 18);
     // Full rows include every g32 boundary, K1024 and the final compact group.
-    // Rows straddle n16 subtiles and N64, including both logical edge rows.
+    // Rows straddle n16 sub-tiles and N64, including both logical edge rows.
     for (int row : {0, 1, 15, 16, 31, 32, 47, 48, 63, 64, shape.rows - 1}) {
       SCOPED_TRACE(row);
       std::vector<uint16_t> output(shape.hidden + 2, 0x7bff);

@@ -13,7 +13,6 @@ model conversion, but not reusable pytest infrastructure.
 | `base_test.py` | Standard HDC lifecycle, transfer, cleanup, and profiling |
 | `binrunner_test.py` | BinRunner application-sandbox transport + app restart robustness |
 | `ut/` | Per-operator device test cases: `test_<op>_op.py` |
-| `perf/operator_baseline.py` | Precision-gated wall-clock + NPU profiling baseline collector |
 
 ## Run
 
@@ -36,16 +35,10 @@ model generation, execution, and validation logic in `test_<op>_op.py`.
 ### 性能基线
 
 性能采集不直接把设备 UT 的一次 stdout 当作结论。统一入口复用 UT 的确定性数据、
-OMC 和 golden，先做精度门禁，再保存多批原始 wall 样本与独立 NPU profiling：
+OMC 和 golden，先做精度门禁，再保存多批原始 wall 样本与独立 NPU profiling。
 
-```bash
-python tests/perf/operator_baseline.py \
-  --warmup 10 --iterations 50 --repeats 3 --profiling
-```
-
-协议、正式 case 矩阵、快照位置和前后比较方法见
-[`docs/performance/operator-baseline.md`](../docs/performance/operator-baseline.md)；后续性能相关测试应同步更新
-[`benchmark-ascendc-operators`](../.claude/skills/benchmark-ascendc-operators/SKILL.md) skill。
+采集脚本连同协议、正式 case 矩阵、快照位置和前后比较方法一起维护在本仓之外，
+`tests/perf/` 当前不在本仓内；后续性能相关测试应同步遵循 `benchmark-ascendc-operators` 规范。
 
 ### BinRunner 真机完整配方（本机实测，2026-08-14）
 
