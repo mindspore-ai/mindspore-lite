@@ -25,6 +25,7 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/nn_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "infer/custom.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
@@ -390,6 +391,7 @@ AnfNodePtr FlashAttentionFusionForCustom::Process(const std::string &patten_name
       MS_LOG(INFO) << "flash attention op not fusion.";
       return node;
     }
+    opt::TraceNewFusionNode(flash_attention_node, {node});
     manager->Replace(node, flash_attention_node);
     MS_LOG(INFO) << "flash attention fusion node name: " << node->fullname_with_scope();
     return flash_attention_node;

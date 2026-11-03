@@ -28,6 +28,7 @@
 #include "tools/converter/ms_depend/utils.h"
 #include "tools/converter/ms_depend/anfalgo.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "tools/optimizer/graph/node_infershape.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
@@ -167,6 +168,7 @@ AnfNodePtr LayerNormV3Fusion::CreateLayerNormV3Node(const FuncGraphPtr &func_gra
   auto get_item_result = func_graph->NewCNode(prim_getitem, {ln_cnode, NewValueNode(static_cast<int64_t>(0))});
   constexpr const size_t kNumZero = 0;
   get_item_result->set_abstract(infer_abs_tuple->elements()[kNumZero]);
+  get_item_result->set_fullname_with_scope(node->fullname_with_scope() + "_layernormv3_fusion");
   return get_item_result;
 }
 
@@ -301,6 +303,7 @@ AnfNodePtr LayerNormV3Fusion::Process(const std::string &pattern_name, const min
     return nullptr;
   }
   MS_LOG(INFO) << pattern_name << " fusion success, fusion node name: " << cnode->fullname_with_scope();
+  opt::TraceNewFusionNode(cnode->cast<CNodePtr>(), {node});
   return cnode;
 }
 
@@ -387,6 +390,7 @@ const AnfNodePtr FuseAddAndLayernorm::Process(const FuncGraphPtr &graph, const A
   }
 
   MS_LOG(INFO) << "FuseAddAndLayernorm process success";
+  opt::TraceNewFusionNode(add_layernorm, {tensor_add, node});
   return add_layernorm;
 }
 

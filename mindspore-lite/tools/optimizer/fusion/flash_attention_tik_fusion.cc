@@ -18,6 +18,7 @@
 #include "tools/optimizer/fusion/flash_attention_tik_fusion.h"
 #include "op_def/auto_generate/gen_lite_ops.h"
 #include "mindspore/ops/op_def/nn_ops.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "infer/custom.h"
 #include "nnacl_c/base/cast_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_p.h"
@@ -141,6 +142,7 @@ bool FlashAttentionTikPass::Run(const FuncGraphPtr &func_graph) {
     if (fa_cnode->abstract() != nullptr) {
       fa_tik_cnode->set_abstract(fa_cnode->abstract()->Clone());
     }
+    opt::TraceNewFusionNode(fa_tik_cnode, {fa_cnode});
     (void)manager->Replace(fa_cnode, fa_tik_cnode);
     MS_LOG(INFO) << "create FlashAttentionTik node end.";
   }

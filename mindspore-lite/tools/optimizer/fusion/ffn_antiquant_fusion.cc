@@ -20,6 +20,7 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "ir/func_graph.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/op_name.h"
 #include "mindspore/ops/op_def/other_ops.h"
 #include "tools/converter/quantizer/quantize_util.h"
@@ -320,6 +321,7 @@ int FFNAntiquantFusion::Process(const FuncGraphPtr &func_graph, const CNodePtr &
 
   auto manager = Manage(func_graph);
   CHECK_NULL_RETURN(manager);
+  opt::TraceNewFusionNode(ffn_fusion_cnode, {cnode});
   (void)manager->Replace(cnode, ffn_fusion_cnode);
   MS_LOG(INFO) << "FFN Antiquant Fusion success, the cnode is " << ffn_fusion_cnode->fullname_with_scope();
   return RET_OK;

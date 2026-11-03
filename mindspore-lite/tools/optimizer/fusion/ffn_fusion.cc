@@ -19,6 +19,7 @@
 #include <vector>
 #include <unordered_map>
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/infer/custom.h"
 #include "infer/f_f_n.h"
@@ -308,6 +309,7 @@ AnfNodePtr FFNFusion::Process(const std::string &pattern_name, const mindspore::
     return nullptr;
   }
   MS_LOG(INFO) << "FFN fusion success, fusion node name: " << cnode->fullname_with_scope();
+  opt::TraceNewFusionNode(cnode, {node});
   return cnode;
 }
 }  // namespace opt

@@ -30,6 +30,7 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "infer/tuple_get_item.h"
 #include "tools/common/tensor_util.h"
@@ -992,7 +993,8 @@ STATUS EncoderLayerFusion::CheckPattern(const FuncGraphPtr &func_graph, const Eq
     }
   }
   act_type_ = (is_position_bias_) ? (ActType::ActType_Relu)
-                                  : (is_fast_gelu_) ? (ActType::ActType_FastGelu) : (ActType::ActType_Gelu);
+              : (is_fast_gelu_)   ? (ActType::ActType_FastGelu)
+                                  : (ActType::ActType_Gelu);
   if (!is_position_bias_ && !is_use_past_ && !is_query_layer_) {
     if (!IsActGELU(func_graph, equiv, is_act_)) {
       return RET_ERROR;
@@ -1154,6 +1156,7 @@ CNodePtr EncoderLayerFusion::CreateMaskedEncoderLayerFusionNode(const FuncGraphP
   MS_CHECK_TRUE_RET(old_node->abstract() != nullptr, nullptr);
   new_node->set_abstract(old_node->abstract()->Clone());
   new_node->set_fullname_with_scope(node->fullname_with_scope() + "/encoder_layer");
+  opt::TraceNewFusionNode(new_node, {node});
   return new_node;
 }
 }  // namespace mindspore::opt

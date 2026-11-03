@@ -27,6 +27,7 @@
 #include "nnacl_c/op_base.h"
 #include "src/common/log_adapter.h"
 #include "tools/converter/optimizer_manager.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/common/pass_manager_extends.h"
 #include "ir/primitive.h"
@@ -988,6 +989,9 @@ STATUS AnfTransform::Transform(const FuncGraphPtr &main_graph, const std::shared
     MS_LOG(ERROR) << "optimizer failed.";
     return RET_NULL_PTR;
   }
+  // Fusion tracing records live only in converter memory. Strip them unconditionally before export:
+  // fusion happens even without quantization, so this must not hang off the quant branch.
+  opt::StripOriginNames(main_graph);
 
   return RET_OK;
 }

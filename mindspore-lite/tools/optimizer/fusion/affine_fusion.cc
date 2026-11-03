@@ -25,6 +25,7 @@
 #include "infer/splice.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
@@ -128,6 +129,7 @@ const AnfNodePtr AffineFusion::Process(const FuncGraphPtr &func_graph, const Anf
   affine_node->set_abstract(matmul_node->abstract()->Clone());
 
   MS_LOG(INFO) << "splice + matmul fused to affine node: " << affine_node->fullname_with_scope() << "success.";
+  opt::TraceNewFusionNode(affine_node, {node});
   return affine_node;
 }
 }  // namespace mindspore::opt

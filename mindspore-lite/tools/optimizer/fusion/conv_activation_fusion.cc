@@ -22,6 +22,7 @@
 #include "nnacl_c/op_base.h"
 #include "src/common/ops/primitive/activation.h"
 #include "ops_utils/op_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/converter/quantizer/quant_params.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
@@ -78,6 +79,7 @@ const AnfNodePtr ConvActivationFusion::Process(const FuncGraphPtr &func_graph, c
             mindspore::NO_ACTIVATION) {
         auto type = act_prim->get_activation_type() == mindspore::RELU ? mindspore::RELU : mindspore::RELU6;
         prim->AddAttr(ops::kActivationType, MakeValue<int64_t>(type));
+        opt::TraceAbsorbNames(conv_node, act_node);
         return pre_node;
       }
     } else {

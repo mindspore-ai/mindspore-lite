@@ -22,6 +22,7 @@
 #include "src/common/ops/primitive/activation.h"
 #include "src/common/ops/primitive/mul_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "infer/leaky_relu.h"
@@ -137,6 +138,7 @@ const AnfNodePtr LeakyReluFusion::Process(const FuncGraphPtr &func_graph, const 
   if (node->abstract() != nullptr) {
     activate_node->set_abstract(node->abstract()->Clone());
   }
+  opt::TraceNewFusionNode(activate_node, {node});
 
   return activate_node;
 }

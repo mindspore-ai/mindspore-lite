@@ -19,6 +19,7 @@
 #include <memory>
 #include <vector>
 #include "mindspore/ops/op_def/lite_ops.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "src/common/ops/primitive/mat_mul_fusion.h"
 #include "src/common/ops/primitive/mul_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
@@ -242,6 +243,7 @@ const AnfNodePtr MatMulMulFusion::Process(const FuncGraphPtr &func_graph, const 
   // delete mul node
   auto manager = func_graph->manager();
   MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
+  opt::TraceAbsorbNames(matmul_cnode, mul_cnode);
   (void)manager->Replace(mul_cnode, mul_cnode->input(1));
   return nullptr;
 }

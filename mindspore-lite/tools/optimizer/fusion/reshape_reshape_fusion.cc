@@ -24,6 +24,7 @@
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
@@ -209,6 +210,7 @@ AnfNodePtr ReshapeReshapeFusion::Process(const std::string &pattern_name, const 
   auto new_reshape = func_graph->NewCNode({value_node, input_node, shape_node});
   MS_CHECK_TRUE_RET(new_reshape != nullptr, nullptr);
   new_reshape->set_fullname_with_scope(cnode->fullname_with_scope());
+  opt::TraceNewFusionNode(new_reshape, {node});
   return new_reshape;
 }
 }  // namespace mindspore::opt

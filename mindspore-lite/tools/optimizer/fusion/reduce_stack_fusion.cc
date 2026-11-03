@@ -20,6 +20,7 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "mindspore/ops/op_def/op_name.h"
 #include "nnacl_c/op_base.h"
@@ -59,6 +60,7 @@ int ReduceStackFusion::Process(const FuncGraphPtr &func_graph, const CNodePtr &s
     MS_LOG(ERROR) << "Manager is a nullptr.";
     return lite::RET_NULL_PTR;
   }
+  opt::TraceAbsorbNames(stack->input(1)->cast<CNodePtr>(), stack);
   if (!manager->Replace(stack, stack->input(1))) {
     MS_LOG(ERROR) << "do Manager-Replace failed.";
     return lite::RET_ERROR;

@@ -22,6 +22,7 @@
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "include/registry/converter_context.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_e.h"
@@ -114,6 +115,7 @@ const AnfNodePtr SqueezeExpandDimsFusion::Process(const FuncGraphPtr &func_graph
   auto squeeze_cnode = expanddims_cnode->input(SECOND_INPUT)->cast<CNodePtr>();
   auto manage = Manage(func_graph);
   MS_CHECK_TRUE_RET(manage != nullptr, nullptr);
+  opt::TraceAbsorbNames(squeeze_cnode->input(SECOND_INPUT)->cast<CNodePtr>(), expanddims_cnode);
   (void)manage->Replace(expanddims_cnode, squeeze_cnode->input(SECOND_INPUT));
   return nullptr;
 }

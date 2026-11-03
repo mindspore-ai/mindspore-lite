@@ -21,6 +21,7 @@
 #include "mindspore/ops/op_def/nn_ops.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/lite_exporter/fetch_content.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "include/securec.h"
 #include "nnacl_c/op_base.h"
@@ -218,6 +219,7 @@ int ConvBiasaddFusion::DoFuison(const FuncGraphPtr &func_graph, const AnfNodePtr
   } else {
     manager->AddEdge(conv_cnode, conv_new_bias);
   }
+  opt::TraceAbsorbNames(conv_cnode, add_cnode);
   return lite::RET_OK;
 }
 

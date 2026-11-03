@@ -21,6 +21,7 @@
 #include "src/common/ops/primitive/activation.h"
 #include "src/common/ops/primitive/mat_mul_fusion.h"
 #include "tools/converter/ms_depend/utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
@@ -86,6 +87,7 @@ const AnfNodePtr MatMulActivationFusion::Process(const FuncGraphPtr &func_graph,
     MS_LOG(ERROR) << "manage is nullptr.";
     return nullptr;
   }
+  opt::TraceAbsorbNames(matmul_cnode, act_cnode);
   manage->Replace(act_cnode, matmul_cnode);
   return matmul_cnode;
 }

@@ -17,6 +17,7 @@
 #include "tools/optimizer/fusion/hard_swish_fusion.h"
 #include <vector>
 #include "mindspore/ops/op_def/lite_ops.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "src/common/ops/primitive/activation.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
@@ -91,6 +92,7 @@ const AnfNodePtr HardSwishFusion::Process(const FuncGraphPtr &func_graph, const 
 
   new_node->set_abstract(div_cnode->abstract()->Clone());
   new_node->set_fullname_with_scope("hard_swish_" + div_cnode->fullname_with_scope());
+  opt::TraceNewFusionNode(new_node, {div_cnode, node});
   return new_node;
 }
 

@@ -20,6 +20,7 @@
 #include <vector>
 #include <unordered_map>
 #include "mindspore/ops/op_def/array_ops.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "tools/lite_exporter/fetch_content.h"
@@ -211,6 +212,7 @@ AnfNodePtr ReshapeTransposeFusion::TransReshapeFusion(const FuncGraphPtr &func_g
   MS_CHECK_TRUE_RET(transpose_cnode->size() == kInputSizeThree, nullptr);
   manager->SetEdge(reshape_cnode, 1, transpose_cnode->input(1));
 
+  opt::TraceAbsorbNames(reshape_cnode, transpose_cnode);
   return reshape_cnode;
 }
 

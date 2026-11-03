@@ -21,6 +21,7 @@
 #include "tools/converter/ms_depend/utils.h"
 #include "src/common/ops/primitive/activation.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {
@@ -87,6 +88,7 @@ AnfNodePtr GeLUFusion::Process(const std::string &pattern_name, const mindspore:
     MS_LOG(DEBUG) << "new gelu node failed.";
     return nullptr;
   }
+  opt::TraceNewFusionNode(cnode, {node});
   return cnode;
 }
 }  // namespace opt

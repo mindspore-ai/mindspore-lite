@@ -26,6 +26,7 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "tools/optimizer/common/helper.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "infer/gru.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/stack.h"
@@ -852,6 +853,7 @@ const AnfNodePtr TfBidirectionGruFusion::Process(const FuncGraphPtr &func_graph,
 
   auto output_node = GetPostProcessNode(func_graph, get_item_node, gru_node->fullname_with_scope());
   MS_LOG(INFO) << "gru node:" << gru_node->fullname_with_scope() << " fusion success";
+  opt::TraceNewFusionNode(output_node, {concat_node});
   return output_node;
 }
 }  // namespace opt

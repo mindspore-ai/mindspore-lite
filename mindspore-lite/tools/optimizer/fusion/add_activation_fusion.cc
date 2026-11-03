@@ -23,6 +23,7 @@
 #include "src/common/ops/primitive/add_fusion.h"
 #include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
@@ -71,6 +72,7 @@ const AnfNodePtr AddActivationFusion::Process(const FuncGraphPtr &func_graph, co
   auto ret = CopyOutputQuantParams(act_primitive, add_primitive);
   MS_CHECK_TRUE_RET(ret != nullptr, nullptr);
 
+  opt::TraceAbsorbNames(add_cnode, node->cast<CNodePtr>());
   return add_cnode;
 }
 

@@ -22,6 +22,7 @@
 #include "src/common/ops/primitive/scale_fusion.h"
 #include "ops_utils/op_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
@@ -73,6 +74,7 @@ const AnfNodePtr ScaleActivationFusion::Process(const FuncGraphPtr &func_graph, 
     act_type = scale_act == RELU6 ? RELU6 : act_type;
   }
   (void)scale_prim_c->AddAttr(ops::kActivationType, MakeValue<int64_t>(static_cast<int64_t>(act_type)));
+  opt::TraceAbsorbNames(scale_node->cast<CNodePtr>(), node->cast<CNodePtr>());
   return scale_node;
 }
 }  // namespace mindspore::opt

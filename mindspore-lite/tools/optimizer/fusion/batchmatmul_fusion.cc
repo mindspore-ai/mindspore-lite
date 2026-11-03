@@ -20,6 +20,7 @@
 #include <vector>
 #include <algorithm>
 #include "mindspore/ops/op_def/nn_ops.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "src/common/ops/primitive/mat_mul_fusion.h"
 #include "tools/common/tensor_util.h"
@@ -481,6 +482,7 @@ const AnfNodePtr BatchMatMulFusion::Process(const FuncGraphPtr &func_graph, cons
     auto matmul_primitive = ops::GetOperator<ops::MatMulFusion>(matmul_cnode->input(0));
     matmul_primitive->set_transpose_b(true);
   }
+  opt::TraceNewFusionNode(matmul_cnode, {stack_cnode, fullconnect_cnode});
   MS_LOG(INFO) << "stack node:" << stack_cnode->fullname_with_scope() << " batchmatmul fusion success";
   return matmul_cnode;
 }

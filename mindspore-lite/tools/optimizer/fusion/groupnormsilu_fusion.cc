@@ -19,6 +19,7 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/nn_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/custom.h"
@@ -297,6 +298,7 @@ CNodePtr GroupNormSiluFusion::CreateGroupNormSiluNode(const FuncGraphPtr &func_g
   if (node->abstract() != nullptr) {
     groupnorm_silu_cnode->set_abstract(node->abstract()->Clone());
   }
+  opt::TraceNewFusionNode(groupnorm_silu_cnode, {node});
   return groupnorm_silu_cnode;
 }
 
@@ -342,6 +344,7 @@ CNodePtr GroupNormSiluFusion::CreateGroupNormSiluNodeForSD15(const std::string &
   }
 
   auto manager = Manage(func_graph);
+  opt::TraceNewFusionNode(groupnorm_silu_cnode, {cnode, node});
   (void)manager->Replace(cnode, groupnorm_silu_cnode);
   MS_LOG(INFO) << "create GroupNormSilu for SD15 success.";
   return groupnorm_silu_cnode;
@@ -396,6 +399,7 @@ CNodePtr GroupNormSiluFusion::CreateGroupNormSiluNodeForSDWithCast(const std::st
   }
 
   auto manager = Manage(func_graph);
+  opt::TraceNewFusionNode(groupnorm_silu_cnode, {cnode, node});
   (void)manager->Replace(cnode, groupnorm_silu_cnode);
   MS_LOG(INFO) << "create GroupNormSilu with cast success.";
   return groupnorm_silu_cnode;
@@ -445,6 +449,7 @@ CNodePtr GroupNormSiluFusion::CreateGroupNormSiluNodeForSDWithoutSilu(const std:
   }
 
   auto manager = Manage(func_graph);
+  opt::TraceNewFusionNode(groupnorm_silu_cnode, {cnode, node});
   (void)manager->Replace(cnode, groupnorm_silu_cnode);
   MS_LOG(INFO) << "create GroupNormSilu with cast success.";
   return groupnorm_silu_cnode;
@@ -578,6 +583,7 @@ CNodePtr GroupNormSiluFusion::CreateGroupNormSiluNodeForGroupNorm(const std::str
   }
 
   auto manager = Manage(func_graph);
+  opt::TraceNewFusionNode(groupnorm_silu_cnode, {cnode, node});
   (void)manager->Replace(cnode, groupnorm_silu_cnode);
   MS_LOG(INFO) << "create GroupNormSilu with cast success.";
   return groupnorm_silu_cnode;

@@ -19,6 +19,7 @@
 #include <memory>
 #include <vector>
 #include "mindspore/ops/op_def/lite_ops.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/common/format_utils.h"
@@ -92,6 +93,7 @@ bool TransposeMatMulFusion::FuseTransposeInput(const FuncGraphPtr &func_graph, c
   MS_CHECK_TRUE_RET(trans_cnode->size() == kInputSizeThree, false);
   auto pre_node = trans_cnode->input(SECOND_INPUT);
   (void)manager->SetEdge(cnode, cnode_input_index, pre_node);
+  opt::TraceAbsorbNames(cnode, trans_cnode);
   return true;
 }
 

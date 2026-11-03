@@ -22,6 +22,7 @@
 #include "ops_utils/op_utils.h"
 #include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
@@ -81,6 +82,7 @@ AnfNodePtr SigmoidMulFusion::Process(const std::string &pattern_name, const mind
   auto activation_prim = ops::GetOperator<mindspore::ops::Activation>(activation_cnode->input(0));
   MS_CHECK_TRUE_RET(activation_prim != nullptr, nullptr);
   activation_prim->set_activation_type(mindspore::SWISH);
+  opt::TraceAbsorbNames(activation_cnode, node->cast<CNodePtr>());
   return activation_cnode;
 }
 

@@ -23,6 +23,7 @@
 #include "src/common/log_adapter.h"
 #include "infer/splice.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/array_ops.h"
@@ -133,6 +134,7 @@ CNodePtr KVCacheMgrOneBranchFusion::CreateConcatNode(const FuncGraphPtr &func_gr
   concat_cnode->set_abstract(padding_value_node->abstract()->Clone());
   concat_cnode->abstract()->set_shape(shape_ptr);
 
+  opt::TraceNewFusionNode(concat_cnode, {node});
   return concat_cnode;
 }
 
@@ -178,6 +180,7 @@ const AnfNodePtr KVCacheMgrOneBranchFusion::Process(const FuncGraphPtr &func_gra
   auto kv_cache_cnode = func_graph->NewCNode(kv_cache_prim_c, {input_2_past_node, input_1_cur_node, cnode});
   kv_cache_cnode->set_abstract(input_2_past_node->abstract()->Clone());
 
+  opt::TraceNewFusionNode(kv_cache_cnode, {node});
   return kv_cache_cnode;
 }
 }  // namespace mindspore::opt

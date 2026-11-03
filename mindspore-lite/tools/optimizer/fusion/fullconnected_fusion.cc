@@ -22,6 +22,7 @@
 #include "tools/common/tensor_util.h"
 #include "src/common/ops/primitive/full_connection.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
@@ -280,6 +281,7 @@ const AnfNodePtr FullConnectedFusion::Process(const FuncGraphPtr &func_graph, co
 
   // delete prev_fc_cnode
   auto manager = func_graph->manager();
+  opt::TraceAbsorbNames(prev_fc_cnode->input(1)->cast<CNodePtr>(), prev_fc_cnode);
   (void)manager->Replace(prev_fc_cnode, prev_fc_cnode->input(1));
   MS_LOG(INFO) << curr_cnode->fullname_with_scope() << " fusion success";
   return nullptr;

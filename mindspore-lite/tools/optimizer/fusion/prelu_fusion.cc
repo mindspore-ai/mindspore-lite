@@ -16,6 +16,7 @@
 
 #include "tools/optimizer/fusion/prelu_fusion.h"
 #include "mindspore/ops/op_def/math_ops.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "nnacl_c/op_base.h"
 #include "src/common/ops/primitive/prelu_fusion.h"
@@ -96,6 +97,7 @@ const AnfNodePtr PReluFusion::Process(const FuncGraphPtr &func_graph, const AnfN
 
   new_node->set_abstract(maximum_cnode->abstract()->Clone());
   new_node->set_fullname_with_scope("prelu_" + maximum_cnode->fullname_with_scope());
+  opt::TraceNewFusionNode(new_node, {maximum_cnode, node});
   return new_node;
 }
 

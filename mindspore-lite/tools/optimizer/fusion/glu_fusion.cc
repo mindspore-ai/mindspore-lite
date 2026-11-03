@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 #include "mindspore/ops/op_def/sequence_ops.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "tools/converter/ms_depend/utils.h"
@@ -101,6 +102,7 @@ const AnfNodePtr GLUFusion::Process(const FuncGraphPtr &func_graph, const AnfNod
     MS_LOG(DEBUG) << "new glu node failed.";
     return nullptr;
   }
+  opt::TraceNewFusionNode(cnode, {node});
   return cnode;
 }
 }  // namespace opt

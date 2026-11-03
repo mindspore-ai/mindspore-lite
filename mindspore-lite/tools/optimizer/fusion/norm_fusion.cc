@@ -26,6 +26,7 @@
 #include "mindspore/ops/infer/instance_norm.h"
 #include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "include/securec.h"
 #include "nnacl_c/op_base.h"
 #include "src/common/ops/anf_utils.h"
@@ -536,6 +537,7 @@ const AnfNodePtr NormFusion::Process(const FuncGraphPtr &func_graph, const AnfNo
     norm_cnode->set_fullname_with_scope("instance_norm_" + add2_cnode->fullname_with_scope());
     MS_LOG(DEBUG) << "instance_norm node:" << norm_cnode->fullname_with_scope() << " fusion success";
   }
+  opt::TraceNewFusionNode(norm_cnode, {add2_cnode, node});
   // insert relu node
   if (add_act_type_ != ActivationType::NO_ACTIVATION) {
     auto new_act_node = CreateActivationNode(func_graph, node);

@@ -24,6 +24,7 @@
 #include "mindspore/ops/infer/ops_func_impl/communication/all_reduce.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "ir/anf.h"
@@ -204,6 +205,7 @@ AnfNodePtr AntiquantAddMulMatMulAllReduceFusion::Process(const std::string &patt
   MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
 
   // replace allreduce to MatMulAllReduce
+  opt::TraceNewFusionNode(matmul_allreduce_cnode, {allreduce_cnode});
   (void)manager->Replace(allreduce_cnode, matmul_allreduce_cnode);
   MS_LOG(INFO) << "MatMulAllReduce replace AntiquantAddMulMatMulAllReduce success";
   return matmul_allreduce_cnode;

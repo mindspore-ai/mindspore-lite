@@ -25,6 +25,7 @@
 #include "src/common/ops/primitive/pad_fusion.h"
 #include "src/common/ops/primitive/conv2d_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops/primitive_c.h"
 #include "ops_utils/op_utils.h"
@@ -123,6 +124,7 @@ void ReplaceParamsAndNodes(const FuncGraphPtr &func_graph, const CNodePtr &conv_
   // delete padFusion
   auto manager = func_graph->manager();
   MS_ASSERT(manager != nullptr);
+  opt::TraceAbsorbNames(pad_cnode->input(1)->cast<CNodePtr>(), pad_cnode);
   (void)manager->Replace(pad_cnode, pad_cnode->input(1));
 }
 

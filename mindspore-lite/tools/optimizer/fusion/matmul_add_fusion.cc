@@ -23,6 +23,7 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "src/common/ops/primitive/add_fusion.h"
 #include "src/common/ops/primitive/mat_mul_fusion.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
@@ -188,6 +189,7 @@ bool MatMulAddFusion::Run(const FuncGraphPtr &func_graph) {
         matmul_primc->set_activation_type(add_primc->get_activation_type());
       }
     }
+    opt::TraceAbsorbNames(matmul_cnode, add_cnode);
     (void)manager->Replace(node, matmul_cnode);
   }
   return false;

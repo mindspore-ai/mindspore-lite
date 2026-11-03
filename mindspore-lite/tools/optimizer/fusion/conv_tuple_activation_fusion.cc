@@ -22,6 +22,7 @@
 #include "src/common/ops/primitive/activation.h"
 #include "src/common/ops/primitive/conv2d_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
@@ -91,6 +92,7 @@ const AnfNodePtr ConvTupleActivationFusion::Process(const FuncGraphPtr &func_gra
           conv_prim->get_activation_type() == mindspore::NO_ACTIVATION) {
         conv_prim->set_activation_type(act_prim->get_activation_type());
         conv_node->set_abstract(act_node->abstract());
+        opt::TraceAbsorbNames(conv_node->cast<CNodePtr>(), act_node);
         return conv_node;
       }
     } else {

@@ -22,6 +22,7 @@
 #include "mindspore/ops/op_def/nn_ops.h"
 #include "infer/cxx_api/gegluv2.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
@@ -135,6 +136,7 @@ AnfNodePtr GeGluV2Fusion::Process(const std::string &patten_name, const FuncGrap
       MS_LOG(ERROR) << "new_node is nullptr.";
       return nullptr;
     }
+    opt::TraceNewFusionNode(GeGluV2_node, {node, add_node});
     manager->Replace(node, GeGluV2_node);
   } else {
     MS_LOG(INFO) << " not pattern.";

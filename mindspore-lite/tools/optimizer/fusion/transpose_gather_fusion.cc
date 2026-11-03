@@ -20,6 +20,7 @@
 #include <set>
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/format_utils.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "nnacl_c/op_base.h"
@@ -72,6 +73,7 @@ int TransposeGatherFusion::Process(const FuncGraphPtr &func_graph, const CNodePt
     manager->SetEdge(gather_nodes_[i], 1, transpose->input(1));
     *gather_axes_data_ptr_[i] = gather_updated_axes_[i];
     for (const auto &post_transpose : transpose_nodes_[i]) {
+      opt::TraceAbsorbNames(gather_nodes_[i], post_transpose);
       if (!manager->Replace(post_transpose, gather_nodes_[i])) {
         MS_LOG(ERROR) << "do Manager-Replace failed.";
         return lite::RET_ERROR;

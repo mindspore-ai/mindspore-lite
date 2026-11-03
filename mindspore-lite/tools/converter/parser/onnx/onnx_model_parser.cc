@@ -50,6 +50,7 @@
 #include "tools/converter/parser/parser_utils.h"
 #include "tools/converter/parser/unify_format.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/converter/parser/onnx/onnx_dtype_adjust.h"
 #include "tools/converter/parser/einsum_adjust.h"
@@ -1245,6 +1246,14 @@ STATUS OnnxModelParser::BuildCNode(const onnx::NodeProto &onnx_node, const FuncG
     return RET_ERROR;
   }
   new_cnode->set_fullname_with_scope(onnx_node.name());
+  // Fusion tracing: record the original model's op name / op type for per-layer quant matching.
+  // onnx_node.name() is optional and often empty in third-party exports; fall back to a stable
+  // op_type-index anchor so the OriginNames column is never blank (empty names can never match).
+  auto origin_name = onnx_node.name();
+  if (origin_name.empty() && onnx_node.output_size() > 0) {
+    origin_name = onnx_node.op_type() + "_out_" + onnx_node.output(0);
+  }
+  opt::TraceOriginInfo(new_cnode, origin_name, onnx_node.op_type());
   auto status = BuildOpOutputs(onnx_node, anf_graph, anf_nodes_map, new_cnode);
   return status;
 }

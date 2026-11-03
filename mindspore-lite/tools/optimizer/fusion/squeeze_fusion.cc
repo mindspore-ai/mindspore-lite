@@ -24,6 +24,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/unsqueeze.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
@@ -107,6 +108,11 @@ const AnfNodePtr SqueezeFusion::Process(const FuncGraphPtr &func_graph, const An
   if (squeeze_prim->get_axis() == unsqueeze_prim->get_axis()) {
     auto manager = func_graph->manager();
     MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
+    // The whole act+unsqueeze+squeeze chain collapses into pre_node: move every absorbed
+    // node's records to the final survivor before Replace detaches them from the graph.
+    opt::TraceAbsorbNames(pre_node->cast<CNodePtr>(), act_node);
+    opt::TraceAbsorbNames(pre_node->cast<CNodePtr>(), squeeze_node);
+    opt::TraceAbsorbNames(pre_node->cast<CNodePtr>(), unsqueeze_node);
     (void)manager->Replace(unsqueeze_node, act_node);
     (void)manager->Replace(squeeze_node, pre_node);
     return pre_node;

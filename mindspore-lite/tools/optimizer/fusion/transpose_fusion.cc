@@ -20,6 +20,7 @@
 #include <memory>
 #include <vector>
 #include "mindspore/ops/op_def/nn_ops.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
@@ -366,6 +367,7 @@ AnfNodePtr TransposeFusion::Process(const std::string &pattern_name, const minds
   auto manager = func_graph->manager();
   MS_ASSERT(manager != nullptr);
   manager->SetEdge(any_cnode, 1, transpose_cnode->input(1));
+  opt::TraceNewFusionNode(trans_post_node, {node});
   return trans_post_node;
 }
 }  // namespace mindspore::opt

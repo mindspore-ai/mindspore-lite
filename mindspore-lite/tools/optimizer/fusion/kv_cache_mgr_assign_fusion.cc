@@ -22,6 +22,7 @@
 #include "mindspore/ops/op_def/math_ops.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/nn_optimizer_ops.h"
@@ -47,6 +48,7 @@ int KVCacheMgrAssignFusion::RemoveAssignOp(const AnfNodePtr &anf_node, const Fun
     return lite::RET_NO_CHANGE;
   }
   (void)this->remove_cnode_.insert(anf_node);
+  opt::TraceNewFusionNode(kv_cache_cnode, {anf_node->cast<CNodePtr>()});
   return manager->Replace(anf_node, kv_cache_cnode) ? RET_OK : RET_ERROR;
 }
 

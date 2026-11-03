@@ -24,6 +24,7 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/nn_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "infer/ops_func_impl/incre_flash_attention.h"
 #include "infer/ops_func_impl/prompt_flash_attention.h"
@@ -2538,6 +2539,7 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForSDWithoutCast(
   if (actual_BSH) {
     (void)manager->Replace(node, fa_node);
   } else {
+    opt::TraceNewFusionNode(fa_node, {cnode});
     (void)manager->Replace(cnode, fa_node);
   }
   MS_LOG(INFO) << "create prompt flash attention success for without cast, BSH: " << actual_BSH;
@@ -2933,6 +2935,7 @@ AnfNodePtr FlashAttentionFusion::Process(const std::string &patten_name, const F
     MS_LOG(INFO) << "flash attention op not fusion.";
     return nullptr;
   }
+  opt::TraceNewFusionNode(flash_attention_node, {node});
   manager->Replace(node, flash_attention_node);
   MS_LOG(INFO) << "flash attention node fusion success, fusion node name: "
                << flash_attention_node->fullname_with_scope();

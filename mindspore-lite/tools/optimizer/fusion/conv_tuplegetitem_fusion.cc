@@ -19,6 +19,7 @@
 #include <memory>
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 
@@ -71,6 +72,7 @@ const AnfNodePtr ConvTupleGetItemFusion::Process(const FuncGraphPtr &func_graph,
     }
     conv_node->set_abstract(elements[0]);
   }
+  opt::TraceAbsorbNames(conv_node->cast<CNodePtr>(), node->cast<CNodePtr>());
   return conv_node;
 }
 }  // namespace mindspore::opt

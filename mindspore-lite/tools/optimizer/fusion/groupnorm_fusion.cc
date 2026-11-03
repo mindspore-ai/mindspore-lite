@@ -27,6 +27,7 @@
 #include "src/common/ops/primitive/groupnorm_fusion.h"
 #include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 
@@ -249,6 +250,7 @@ const AnfNodePtr GroupNormFusion::Process(const FuncGraphPtr &func_graph, const 
   norm_cnode->set_abstract(add2_cnode->abstract()->Clone());
   norm_cnode->set_fullname_with_scope("group_norm_" + add2_cnode->fullname_with_scope());
   MS_LOG(DEBUG) << "group_norm_ node:" << norm_cnode->fullname_with_scope() << " fusion success";
+  opt::TraceNewFusionNode(norm_cnode, {add2_cnode, node});
   return norm_cnode;
 }
 

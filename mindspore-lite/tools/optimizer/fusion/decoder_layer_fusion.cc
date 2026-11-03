@@ -26,6 +26,7 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "infer/tuple_get_item.h"
 #include "tools/common/tensor_util.h"
@@ -522,6 +523,7 @@ CNodePtr DecoderLayerFusion::CreateMaskedDecoderLayerFusionNode(const FuncGraphP
   MS_CHECK_TRUE_RET(old_node->abstract() != nullptr, nullptr);
   new_node->set_abstract(old_node->abstract()->Clone());
   new_node->set_fullname_with_scope(node->fullname_with_scope() + "/decoder_layer");
+  opt::TraceNewFusionNode(new_node, {node});
   return new_node;
 }
 }  // namespace mindspore::opt

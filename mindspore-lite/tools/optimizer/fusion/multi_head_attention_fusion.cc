@@ -30,6 +30,7 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "infer/tuple_get_item.h"
 #include "tools/common/tensor_util.h"
@@ -1099,7 +1100,9 @@ CNodePtr MultiHeadAttentionFusion::CreateMaskedMultiHeadAttentionNode(const Func
     new_node->set_abstract(old_node->abstract()->Clone());
     ret_node = new_node;
   }
+  MS_CHECK_TRUE_RET(ret_node != nullptr, nullptr);
   (void)RemoveRedundantInput(func_graph, redundant);
+  opt::TraceNewFusionNode(ret_node->cast<CNodePtr>(), {node});
   return ret_node;
 }
 }  // namespace mindspore::opt

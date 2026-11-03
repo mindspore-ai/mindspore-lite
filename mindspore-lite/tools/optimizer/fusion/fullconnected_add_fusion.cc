@@ -23,6 +23,7 @@
 #include "src/common/ops/primitive/add_fusion.h"
 #include "src/common/ops/primitive/full_connection.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
@@ -198,6 +199,7 @@ AnfNodePtr FullconnectedAddFusion::Process(const std::string &pattern_name, cons
       fc_primc->set_activation_type(add_primc->get_activation_type());
     }
   }
+  opt::TraceNewFusionNode(fc_cnode, {node});
   (void)manager->Replace(node, fc_cnode);
   return nullptr;
 }

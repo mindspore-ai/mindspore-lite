@@ -19,6 +19,7 @@
 #include <memory>
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
@@ -107,6 +108,7 @@ bool TileMatMulFusion::Run(const FuncGraphPtr &func_graph) {
     auto left_pre_node = tile_cnode->input(SECOND_INPUT);
     auto manage = func_graph->manager();
     MS_CHECK_TRUE_RET(manage != nullptr, false);
+    opt::TraceAbsorbNames(left_pre_node->cast<CNodePtr>(), tile_cnode);
     auto success = manage->Replace(tile_cnode, left_pre_node);
     MS_CHECK_TRUE_MSG(success, false, "Replace old node failed.");
   }

@@ -23,6 +23,7 @@
 #include "src/common/ops/primitive/activation.h"
 #include "src/common/ops/primitive/add_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
@@ -103,6 +104,7 @@ const AnfNodePtr AddConcatActivationFusion::Process(const FuncGraphPtr &func_gra
   // delete activation node
   auto manager = func_graph->manager();
   MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
+  opt::TraceAbsorbNames(act_cnode->input(1)->cast<CNodePtr>(), act_cnode);
   (void)manager->Replace(act_cnode, act_cnode->input(1));
 
   return nullptr;

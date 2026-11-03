@@ -19,6 +19,7 @@
 #include <memory>
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "src/common/ops/primitive/activation.h"
 #include "infer/affine.h"
 #include "nnacl_c/op_base.h"
@@ -83,6 +84,7 @@ const AnfNodePtr AffineActivationFusion::Process(const FuncGraphPtr &func_graph,
   }
   affine_prim->set_activation_type(activation_prim->get_activation_type());
 
+  opt::TraceAbsorbNames(affine_node->cast<CNodePtr>(), node->cast<CNodePtr>());
   return affine_node;
 }
 }  // namespace mindspore::opt

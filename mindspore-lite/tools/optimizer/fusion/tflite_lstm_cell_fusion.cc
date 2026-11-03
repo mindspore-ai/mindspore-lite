@@ -30,6 +30,7 @@
 #include "tools/common/tensor_util.h"
 #include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/helper.h"
 #include "include/securec.h"
 #include "nnacl_c/op_base.h"
@@ -834,6 +835,7 @@ const AnfNodePtr TfliteLstmCellFusion::Process(const FuncGraphPtr &func_graph, c
   MS_CHECK_TRUE_RET(body_cnode_index_pair != nullptr, nullptr);
   func_graph->DropFuncGraphCNodeIndex(body_cnode_index_pair);
   MS_LOG(INFO) << "lstm node:" << lstm_node->fullname_with_scope() << " fusion success";
+  opt::TraceNewFusionNode(squeeze_node, {node});
   return squeeze_node;
 }
 }  // namespace opt

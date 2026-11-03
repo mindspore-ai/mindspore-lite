@@ -22,6 +22,7 @@
 #include "mindspore/ops/op_def/math_ops.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
@@ -81,6 +82,7 @@ bool KVCacheMgrConcatFusion::Run(const FuncGraphPtr &func_graph) {
     }
     MS_CHECK_TRUE_RET(manager != nullptr, false);
 
+    opt::TraceAbsorbNames(first_concat_cnode, concat_cnode);
     (void)manager->Replace(concat_cnode, first_concat_cnode);
   }
   return true;
