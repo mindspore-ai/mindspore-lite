@@ -108,11 +108,12 @@ const AnfNodePtr SqueezeFusion::Process(const FuncGraphPtr &func_graph, const An
   if (squeeze_prim->get_axis() == unsqueeze_prim->get_axis()) {
     auto manager = func_graph->manager();
     MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
-    // The whole act+unsqueeze+squeeze chain collapses into pre_node: move every absorbed
-    // node's records to the final survivor before Replace detaches them from the graph.
-    opt::TraceAbsorbNames(pre_node->cast<CNodePtr>(), act_node);
-    opt::TraceAbsorbNames(pre_node->cast<CNodePtr>(), squeeze_node);
-    opt::TraceAbsorbNames(pre_node->cast<CNodePtr>(), unsqueeze_node);
+    // squeeze and unsqueeze cancel out and are removed; BN and act survive the fusion. Each
+    // removed node's identity follows the live node that takes over its graph position: squeeze
+    // -> BN (BN now consumes pre_node directly), unsqueeze -> act (act feeds unsqueeze's
+    // consumers). act and BN keep their own records — they must not be moved onto pre_node.
+    opt::TraceAbsorbNames(bn_cnode, squeeze_node);
+    opt::TraceAbsorbNames(act_cnode, unsqueeze_node);
     (void)manager->Replace(unsqueeze_node, act_node);
     (void)manager->Replace(squeeze_node, pre_node);
     return pre_node;

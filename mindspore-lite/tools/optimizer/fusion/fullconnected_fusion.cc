@@ -279,9 +279,10 @@ const AnfNodePtr FullConnectedFusion::Process(const FuncGraphPtr &func_graph, co
     return nullptr;
   }
 
-  // delete prev_fc_cnode
+  // delete prev_fc_cnode: its math is folded into curr_cnode's merged weight, so curr_cnode is the
+  // real survivor that must carry prev_fc's identity.
   auto manager = func_graph->manager();
-  opt::TraceAbsorbNames(prev_fc_cnode->input(1)->cast<CNodePtr>(), prev_fc_cnode);
+  opt::TraceAbsorbNames(curr_cnode, prev_fc_cnode);
   (void)manager->Replace(prev_fc_cnode, prev_fc_cnode->input(1));
   MS_LOG(INFO) << curr_cnode->fullname_with_scope() << " fusion success";
   return nullptr;

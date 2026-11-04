@@ -108,7 +108,15 @@ bool TileMatMulFusion::Run(const FuncGraphPtr &func_graph) {
     auto left_pre_node = tile_cnode->input(SECOND_INPUT);
     auto manage = func_graph->manager();
     MS_CHECK_TRUE_RET(manage != nullptr, false);
-    opt::TraceAbsorbNames(left_pre_node->cast<CNodePtr>(), tile_cnode);
+    // CheckCanFuse guarantees every tile user is a MatMul using tile as matrixB; the matmul
+    // absorbs the tile's broadcast semantics, so it is the real survivor carrying tile's identity.
+    auto tile_users = manage->node_users()[tile_cnode];
+    for (auto &tile_user : tile_users) {
+      auto matmul_cnode = tile_user.first->cast<CNodePtr>();
+      if (matmul_cnode != nullptr) {
+        opt::TraceAbsorbNames(matmul_cnode, tile_cnode);
+      }
+    }
     auto success = manage->Replace(tile_cnode, left_pre_node);
     MS_CHECK_TRUE_MSG(success, false, "Replace old node failed.");
   }
