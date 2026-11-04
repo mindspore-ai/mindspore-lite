@@ -99,7 +99,7 @@ MindSpore Lite针对AIGC、语音类算法以及CV类模型推理，实现推理
 | [GLM-OCR](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/glm_ocr) &#9989; | HiDream-I1 | WeNet | gte-Qwen2-7B-instruct | [FlashOCC](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/flashocc) &#9989; | OpenVLA-OFT |
 | [Qwen3Guard-Gen-0.6B](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/qwen3guard_gen_0_6b) &#9989; | CogView4 | F5-TTS | Nemotron-3-Embed-8B | [SAM2](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/sam2) &#9989; | HPT |
 | [bert-base-chinese](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/bert_base_chinese) &#9989; | Kolors | IndexTTS | stella | [SAM3](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/sam3) &#9989; |  |
-|  | Wan2.2 (A14B) | Spark-TTS | nomic-embed | [UPerNet](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/upernet) &#9989; |  |
+| [Kev-4B](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/kev_4b) &#9989; | Wan2.2 (A14B) | Spark-TTS | nomic-embed | [UPerNet](https://atomgit.com/mindspore/mindspore-lite/tree/master/mindspore-lite/examples/base_models/upernet) &#9989; |  |
 |  | HunyuanVideo | MaskGCT | BGE-VL | D-FINE |  |
 |  | CogVideoX-5B | GPT-SoVITS | jina-clip-v2 | BEVFormer-v2 |  |
 |  | Stable-Video-Diffusion |  | bge-reranker-v2.5-gemma2 | Far3D |  |
