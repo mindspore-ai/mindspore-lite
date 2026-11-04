@@ -16,6 +16,9 @@
 
 #include "extendrt/delegate/ascend_ge/ge_graph_executor.h"
 
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <fstream>
 #include <future>
@@ -134,6 +137,27 @@ bool UpdateOmCacheIdxFile(const std::string &idx_file_name) {
                     << ", skip create small ge graph";
     return false;
   }
+}
+
+// GE requires the compile-cache directory to exist and be writable: it writes the compiled model,
+// index and weight files into it, and a missing directory is a hard error on the GE side. A
+// user-configured [ascend_context] model_cache_dir is used as-is, so validate it up front and let a
+// bad path only disable the cache instead of failing the whole build.
+bool IsUsableCompileCacheDir(const std::string &cache_dir) {
+  struct stat stat_info = {};
+  if (stat(cache_dir.c_str(), &stat_info) != 0) {
+    MS_LOG(WARNING) << "Compile cache dir '" << cache_dir << "' does not exist";
+    return false;
+  }
+  if (!S_ISDIR(stat_info.st_mode)) {
+    MS_LOG(WARNING) << "Compile cache dir '" << cache_dir << "' is not a directory";
+    return false;
+  }
+  if (access(cache_dir.c_str(), W_OK | X_OK) != 0) {
+    MS_LOG(WARNING) << "Compile cache dir '" << cache_dir << "' is not writable";
+    return false;
+  }
+  return true;
 }
 }  // namespace
 
@@ -431,7 +455,7 @@ bool GeGraphExecutor::Init() {
   (void)GetConfigOption(lite::kAscendContextSection, lite::kModelCacheMode, &model_cache_mode);
   if (!model_cache_mode.empty()) {
     cache_mode_ = model_cache_mode;
-    MS_LOG(INFO) << "Set set model cache mode " << model_cache_mode;
+    MS_LOG(INFO) << "Set model cache mode " << model_cache_mode;
   }
   return true;
 }
@@ -485,6 +509,26 @@ void GeGraphExecutor::GetGeSessionOptions(std::map<std::string, std::string> *ge
 bool GeGraphExecutor::SetModelCacheDir(std::map<std::string, std::string> *session_options_ptr) {
   MS_CHECK_TRUE_RET(session_options_ptr != nullptr, false);
   auto &ge_options = *session_options_ptr;
+  // A cache dir configured through either entry takes precedence over the default one:
+  // [ascend_context] model_cache_dir is mapped to ge.graph_compiler_cache_dir by
+  // GetGeSessionOptionsFromAscendContext, while [ge_session_options] ge.graph_compiler_cache_dir is
+  // passed through by GetGeSessionOptions. Creating the default per-rank directory in that case would
+  // leave an unused empty directory behind and, worse, fail the whole build when the current working
+  // directory is not writable.
+  std::string user_cache_dir;
+  bool ascend_dir_configured =
+    GetConfigOption(lite::kAscendContextSection, lite::kGraphCompilerCacheDirKey, &user_cache_dir) &&
+    !user_cache_dir.empty();
+  std::string session_cache_dir;
+  bool session_dir_configured =
+    GetConfigOption(lite::kGeSessionOptionsSection, lite::kGeGraphCompilerCacheDir, &session_cache_dir) &&
+    !session_cache_dir.empty();
+  if (ascend_dir_configured || session_dir_configured) {
+    MS_LOG(INFO) << "GE compile cache dir is already configured ("
+                 << (ascend_dir_configured ? lite::kGraphCompilerCacheDirKey : lite::kGeGraphCompilerCacheDir)
+                 << "), skip creating the default build cache dir";
+    return true;
+  }
   auto build_cache_dir = "model_build_cache_" + std::to_string(GetRankID());
   if (lite::CreateDir(build_cache_dir) != RET_OK) {
     MS_LOG(ERROR) << "Failed to create build cache dir " << build_cache_dir;
@@ -606,8 +650,25 @@ void GeGraphExecutor::GetGeSessionOptionsFromAscendContext(const std::map<std::s
     ge_options["ge.graphMemoryMaxSize"] = option_id->second;
   }
   option_id = config.find(lite::kGraphCompilerCacheDirKey);
-  if (option_id != config.end()) {
-    ge_options[lite::kGeGraphCompilerCacheDir] = option_id->second;
+  if (option_id != config.end() && !option_id->second.empty()) {
+    // A bad user-configured directory must not fail the build: report it and keep whatever cache dir
+    // is already effective (or no cache at all), so the model still runs.
+    if (IsUsableCompileCacheDir(option_id->second)) {
+      ge_options[lite::kGeGraphCompilerCacheDir] = option_id->second;
+      MS_LOG(INFO) << "Update session attr " << lite::kGeGraphCompilerCacheDir << " to " << option_id->second;
+    } else {
+      // Do not erase an already effective cache dir: it may come from [ge_session_options]
+      // ge.graph_compiler_cache_dir or from the offline build directory, and the offline path needs it
+      // to locate the compiled .om afterwards. Only report that model_cache_dir itself is ignored.
+      auto existing = ge_options.find(lite::kGeGraphCompilerCacheDir);
+      if (existing != ge_options.end() && !existing->second.empty()) {
+        MS_LOG(WARNING) << "Invalid " << lite::kGraphCompilerCacheDirKey << " '" << option_id->second
+                        << "', keep using " << lite::kGeGraphCompilerCacheDir << " '" << existing->second << "'";
+      } else {
+        MS_LOG(WARNING) << "Invalid " << lite::kGraphCompilerCacheDirKey << " '" << option_id->second
+                        << "', GE compile cache is disabled for this model";
+      }
+    }
   }
 }
 
