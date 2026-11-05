@@ -173,13 +173,19 @@ void TraceAbsorbNames(const CNodePtr &survivor, const AnfNodePtr &absorbed) {
     types.insert(types.end(), absorbed_types.begin(), absorbed_types.end());
     // Keep the TFLite anchor: the survivor keeps its input side and always takes the absorbed
     // output side (absorbed is downstream, so its outputs are the fusion's external outputs).
+    // A survivor with no anchor of its own (e.g. ONNX nodes never record one) adopts the
+    // absorbed anchor whole instead of splicing onto an empty in-side.
     {
       auto absorbed_anchor = GetAttrString(absorbed_cnode, kOriginTensorsAttr);
       if (!absorbed_anchor.empty()) {
         auto survivor_anchor = GetAttrString(survivor, kOriginTensorsAttr);
-        auto in_side = survivor_anchor.substr(0, survivor_anchor.find(" -> out:"));
-        auto out_side = absorbed_anchor.substr(absorbed_anchor.find(" -> out:"));
-        survivor_prim->AddAttr(kOriginTensorsAttr, MakeValue(in_side + out_side));
+        if (survivor_anchor.empty()) {
+          survivor_prim->AddAttr(kOriginTensorsAttr, MakeValue(absorbed_anchor));
+        } else {
+          auto in_side = survivor_anchor.substr(0, survivor_anchor.find(" -> out:"));
+          auto out_side = absorbed_anchor.substr(absorbed_anchor.find(" -> out:"));
+          survivor_prim->AddAttr(kOriginTensorsAttr, MakeValue(in_side + out_side));
+        }
       }
     }
   }
