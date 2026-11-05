@@ -284,4 +284,3 @@ mindspore-lite/mindspore-lite/lite_llm/src/backend/nnrt/nnrt_executor.cc:mslite:
 # lite_llm: CLI main - setup checks + streaming pipeline (NLOC 101, threshold 100)
 mindspore-lite/mindspore-lite/lite_llm/examples/mslite-chat.cc:main
 mindspore-lite/mindspore-lite/tools/optimizer/fusion/encoder_layer_fusion.cc:mindspore::opt::EncoderLayerFusion::CreateMaskedEncoderLayerFusionNode
-# entry: encoder_layer_fusion CreateMaskedEncoderLayerFusionNode NLOC 101->102, upstream legacy long function (trace call +1 line), 2026-10-30
