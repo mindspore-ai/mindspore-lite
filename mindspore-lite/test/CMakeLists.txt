@@ -19,6 +19,7 @@ if(MSLITE_ENABLE_CLOUD_FUSION_INFERENCE OR MSLITE_ENABLE_CLOUD_INFERENCE)
     file(GLOB_RECURSE TEST_UT_SRC
             ${TEST_DIR}/main.cc
             ${TEST_DIR}/common/common_test.cc
+            ${TEST_DIR}/ut/src/runtime/pack_weight_replace_dequant_test.cc
         )
 else()
     file(GLOB_RECURSE TEST_UT_SRC
@@ -28,6 +29,7 @@ else()
             ${TEST_DIR}/ut/src/flatbuffers_verifier_test.cc
             ${TEST_DIR}/ut/src/utils_test.cc
             ${TEST_DIR}/ut/src/scheduler_test.cc
+            ${TEST_DIR}/ut/src/runtime/pack_weight_replace_dequant_test.cc
             ${TEST_DIR}/ut/src/model_obfuscation_deprecated_test.cc
             ${TEST_DIR}/ut/src/runtime/dynamic_mem_manager_test.cc
             ${TEST_DIR}/ut/src/registry/registry_test.cc
@@ -157,6 +159,7 @@ if(MSLITE_ENABLE_CONVERTER)
             ${TEST_DIR}/ut/tools/converter/preprocess/*.cc
             ${TEST_DIR}/ut/tools/converter/quantizer/*.cc
             ${TEST_DIR}/ut/tools/converter/api/*.cc
+            ${TEST_DIR}/ut/tools/converter/config_parser/*.cc
             ${TEST_DIR}/st/converter_test.cc
             ${TEST_DIR}/st/delegate_test.cc
             ${TEST_DIR}/st/mindrt_parallel_test.cc

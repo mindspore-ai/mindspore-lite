@@ -2,6 +2,47 @@
 
 [查看中文](./RELEASE_CN.md)
 
+## MindSpore Lite 2.11.0 Release Notes
+
+### Key Features and Enhancements
+
+#### Cloud-side inference
+
+- Added the Ascend custom operator packaging capability under `mindspore-lite/tools/custom_kernels/ascend_ops`. Self-developed Ascend C custom operators are packaged into the `mslite_custom_ops` vendor package and delivered with the MindSpore Lite release package. The package can be built independently with `build_all_ops.sh` and installed with `install.sh`, and custom operators are automatically enabled during model conversion and inference.
+
+- Added support for open-source models: the PI0.5 Base vision-language-action (VLA) model, the Qwen3-0.6B dialogue model, and the Jina Reranker V3.5 model. ONNX export and end-to-end MindSpore Lite Ascend inference deployment examples are provided for all of them.
+
+- Added LiteBoost support for the open-source models Wan2.2-TI2V-5B (DiffSynth-Studio format) and Qwen-Image-Edit.
+
+- Added LiteBoost layers-level interface support: FlashAttention, RoPE, RMSNorm, and NearestExactUpsample.
+
+- Added LiteBoost ops-level interface support: CGDR (A2).
+
+#### Device-side inference
+
+- MindSpore Lite Micro added 9 categories of operators, all covering FP32 and INT8 full-quantization inference:
+
+  - Math and reduction: Sum (ONNX ReduceSum), ReduceProd, Max / Min (ONNX / TFLite);
+  - Activation: Celu, HardSigmoid, Gelu (ONNX / TFLite);
+  - Tensor manipulation: Trilu, Pack / Unpack (TFLite), Constant / ConstantOfShape.
+
+- Optimized INT8 operator performance on the device side (both CPU inference and Micro-generated code benefit):
+
+  - MatMul INT8 added a low-memory online requantization kernel and a weight reordering interface, reducing the memory footprint during inference;
+  - Rewrote and optimized the INT8 Pooling and SoftMax kernels to improve performance.
+
+- Fixed accuracy issues and buffer overflow security vulnerabilities in Micro INT8 quantized inference on operators such as SoftMax and ReduceMean.
+
+### API Changes
+
+- Removed the control-flow related parsers. MindSpore Lite no longer supports converting control-flow operators such as if and loop in ONNX, TensorFlow, and TFLite models.
+
+- The LiteBoost ParallelManager interface has been renamed to BoostManager to support more model optimization methods in the future.
+
+### Contributors
+
+LinHaier, lilinjie12, xiong-pan, liuchengji3, liujie, yuuray, liuf9, chenyihang5, YeFeng_24, zhuguodong, qiuleilei, qll1998, wujueying, panzhihui, aldq, cheng_xiaoli, gupengcheng0401, m0_51742343, liujiacai, gaoshuanglong, mc2gao, jjfeing, wanghao-dev, nepdada, qq_44643155, wuyue0371, 徐子康, Vincent Zhu, lizhixuan, m0_74284884, nicholas_yhr, yanghaoran
+
 ## MindSpore Lite 2.10.0 Release Notes
 
 ### Key Features and Enhancements

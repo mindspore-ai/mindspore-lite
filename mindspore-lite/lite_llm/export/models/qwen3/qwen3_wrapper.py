@@ -47,10 +47,11 @@ class Qwen3OpSet(NnrtOpSet):
 
     def prepare_qkv(self, states, position_embeddings, past_key_value, valid_seq_len):
         """Keep Q/K normalization before the BSND fused operator boundary."""
-        return MsTransRopeScatterNDUpdate.apply(
+        query = MsTransRopeScatterNDUpdate.apply(
             *states, *position_embeddings, *past_key_value, valid_seq_len,
             self.num_heads, self.head_dim,
         )
+        return query, *past_key_value
 
     def attention(self, states, mask, valid_seq_len, dropout_p=0.0):
         """Fuse inference attention; cache lowering selects packed NZ storage."""
@@ -58,9 +59,10 @@ class Qwen3OpSet(NnrtOpSet):
             return super().attention(states, mask, valid_seq_len, dropout_p)
         query, key, value = states
         scale = query.new_full((1,), self.head_dim ** -0.5)
+        # The eager reference computes in fp32; the device kernel outputs fp16.
         return MsAttention.apply(
             query, key, value, mask.squeeze(0).squeeze(0), scale, valid_seq_len,
-        )
+        ).to(query.dtype)
 
 
 class Qwen3Attention(NnrtAttention):

@@ -106,7 +106,7 @@ host 侧 `ChunkGatedDeltaRuleTilingData` 与 device 侧镜像结构体（`op_hos
 | 头数关系 | 支持 GQA：`Hv` 可小于 `Hqk`，`nvPerNk = max(NV_/NK_, 1)`（`NV_≥NK_` 时取 `NV_/NK_`，否则按 1 复用同一 Q/K 头） | Q/K 头与 V 头通过 `head_i / nvPerNk` 映射。 |
 | batch | ≥ 1，由 `initial_state` 的第 0 维推导 | 多 batch 在核间切分；`actual_seq_lengths` 控制每 batch 真实长度，padding 跳过。 |
 | 动态 shape | 支持 | `DynamicCompileStaticFlag(true)` + `DynamicShapeSupportFlag(true)`；tiling 运行时按实际 shape 反解 `vStep`/`blockDim`/`tilingKey`。 |
-| workspace | ≥ 32 MiB | `kWorkspaceBytes=32MB` 下限；实际取 `max(32MB, state_workspace + blockDim*raw_matmul_stage)`。`state_workspace = B*Hv*Dk*ceil(Dv,8)*4B` 用于跨 chunk FP32 state 暂存；`raw_matmul_stage` 为 Cube 暂存 A_hi/A_lo/B_hi 的 GM 暂存区（每核 2 slot × 64KB）。 |
+| workspace | ≥ 32 MiB | `kWorkspaceBytes=32MB` 下限；实际取 `max(32MB, state_workspace + blockDim*raw_matmul_stage + blockDim*16KB)`。`state_workspace = B*Hv*Dk*ceil(Dv,8)*4B` 用于跨 chunk FP32 state 暂存；`raw_matmul_stage` 为 Cube 暂存 A_hi/A_lo/B_hi 的 GM 暂存区（每核 2 slot × 64KB）；每核另有 16KB 的 Kᵀ cache（状态更新复用）。 |
 
 ### 3.2 不支持的场景
 
@@ -121,14 +121,10 @@ host 侧 `ChunkGatedDeltaRuleTilingData` 与 device 侧镜像结构体（`op_hos
 
 ### 3.3 数值约束与精度说明
 
-- **FP16 拆分补偿的精确性**：`K`、`Q`、`V`、`state` 原始即为 FP16，`StageHalfWithResidual` 取 `hi=cast_fp16(x)`、`lo=x-hi`，二者 cast 回 FP16 再入 Cube；由于源是 FP16，`hi` 精确、`lo` 为残差，四个交叉项 `A_hi·B_hi + A_lo·B_hi + A_hi·B_lo + A_lo·B_lo` 在 FP32 L0C 累加，逼近原始 FP32 递推。
+- **FP16 拆分补偿的精确性**：`K`、`Q`、`V`、`state` 原始即为 FP16，`StageHalfWithResidual` 取 `hi=cast_fp16(x)`、`lo=x-hi`，二者 cast 回 FP16 再入 Cube；由于源是 FP16，`hi` 精确、`lo` 为残差。按误差容限使用 `A_hi·B_hi + A_lo·B_hi + A_hi·B_lo` 等 2~3 个交叉项在 FP32 L0C 累加（`lo·lo` 量级约 2⁻²²，低于输出分辨率，可省略），逼近原始 FP32 递推。
 - **`exp(g)` 数值范围**：`g` 为 log 衰减，其前缀和真实 Qwen 激活下常低于 -100。算子刻意避免 `exp(g_i - g_j) = exp(g_i)·exp(-g_j)` 的因子分解（会溢出），改为先按行广播构造完整因果矩阵、清上三角、再统一 `Exp`，并用 host/Vector 原语保证稳定。
 - **state 跨 chunk 精度**：chunk 间 state 以 FP32 保存在 workspace，仅末 chunk cast FP16，避免逐 chunk 量化误差使结果依赖 `chunkSize`。
 - **`g_cumsum` 前缀和**：单 chunk（≤64）内用 UB 双缓冲 ping-pong 的 `Add(offset)` 并行前缀和替代逐元素标量链。
-
-### 3.4 调试
-
-- 设环境变量 `CGDR_DEBUG_LOG=1` 可在 host tiling 阶段向 stderr 打印一行 tiling 摘要（`T/chunkSize/numChunks/hqk/dk/hv/dv/scaleValue/ubSize/vStep/blockDim/...`），便于定位核切分与 UB 规划。默认关闭。
 
 ## 4 参考资源
 

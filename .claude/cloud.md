@@ -25,6 +25,7 @@ MindSpore Lite 是以 C++ 为主的推理框架项目，包含 Python/C++/Java �
 | ② 转换与部署推理 | ONNX→MindIR（固定 shape / 动态分档 / 纯动态 shape）+ Ascend 离线优化；MindIR 加载、Ascend 推理验证与部署注意事项 | [onnx-model-conversion-and-deployment](.claude/skills/cloud/onnx-model-conversion-and-deployment/SKILL.md) |
 | ③ 性能优化 | 基线/profiling、融合算子改写、推理免拷贝、PTQ int8 量化、精度对齐与归档 | [performance-optimization](.claude/skills/cloud/performance-optimization/SKILL.md) |
 | ④ 精度问题定位 | Torch→ONNX→MindIR 三阶段精度对齐、fp32/混合精度配置、Custom 融合算子对接排查；跨 CANN 版本 Profiling 对比定位可疑算子、配置算子 Dump、对比 Dump 数据确定精度差异根因 | [precision_troubleshooting](.claude/skills/cloud/precision_troubleshooting/SKILL.md) |
+| ⑥ 部署时延优化 | GE 在线推理部署/加载/首推时延：并行编译（TE_PARALLEL_COMPILER）、双图并发首推编译、图级/算子级编译缓存（指纹守卫+自动判定）、预热编排与竞态防护；可用性/误用后果总表 | [ge-deploy-latency-optimization](.claude/skills/cloud/ge-deploy-latency-optimization/SKILL.md) |
 
 > 典型顺序：①→② 跑通后，再用 ③ 做性能优化；若发现精度问题则进入 ④ 定位（每步都需精度+性能验证，见各 Skill）。
 
@@ -93,6 +94,7 @@ bash scripts/format_source_code.sh -l
 - [onnx-model-conversion-and-deployment](.claude/skills/cloud/onnx-model-conversion-and-deployment/SKILL.md)：ONNX→MindIR 转换（固定 shape / 动态分档 / 纯动态 shape）与推理部署
 - [open-source-model-migration](.claude/skills/cloud/open-source-model-migration/SKILL.md)：开源模型迁移到 MindSpore Lite 部署管线（按结构拆分导出 ONNX、精度对齐、生成推理脚本与 README）
 - [performance-optimization](.claude/skills/cloud/performance-optimization/SKILL.md)：模型性能优化总攻略——基线/profiling、融合算子改写、推理免拷贝、PTQ int8 量化、精度对齐与归档（细化策略见 references/）
+- [ge-deploy-latency-optimization](.claude/skills/cloud/ge-deploy-latency-optimization/SKILL.md)：GE 在线推理部署时延优化总攻略——并行编译、双图并发首推、图级/算子级缓存（指纹守卫）、预热编排、可用性/误用后果总表
 - [precision_troubleshooting](.claude/skills/cloud/precision_troubleshooting/SKILL.md)：精度保障总攻略——Torch→ONNX→MindIR 三阶段对齐、fp32/混合精度配置、Custom 融合算子对接排查（场景 A）；跨 CANN 版本 Profiling 对比定位可疑算子、配置算子 Dump、对比 Dump 数据确定精度差异根因（场景 B）。细化流程见 references/
   - **精度指标**：默认阈值 max_abs < 1e-3 / cosine > 0.999；图/视频/LLM 场景以端到端效果为准，数值略超阈值时交用户判定 MindIR vs Torch CPU 结果
   - **能力边界**：负责定位到根因算子；修复视情况——混合精度配置自助、单算子实现交 MindSpore Lite 开发者、CANN 算子交 CANN 侧责任人

@@ -570,6 +570,17 @@ int ConverterImpl::InitExtendedIntegrationInfo(const std::shared_ptr<ConverterPa
     }
   }
 
+  if (!extended_info.enable_const_fold.empty()) {
+    if (extended_info.enable_const_fold == "on") {
+      param->enable_const_fold = true;
+    } else if (extended_info.enable_const_fold == "off") {
+      param->enable_const_fold = false;
+    } else {
+      std::cerr << "CONFIG SETTING ILLEGAL: enable_const_fold should be on/off" << std::endl;
+      return RET_INPUT_PARAM_INVALID;
+    }
+  }
+
   if (!extended_info.fusion_blacklists.empty()) {
     std::vector<std::string> fusions = SplitStringToVector(extended_info.fusion_blacklists, ",");
     for (const auto &fusion : fusions) {

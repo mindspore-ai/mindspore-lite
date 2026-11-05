@@ -16,6 +16,7 @@
 #include <cmath>
 #include <string>
 #include "src/litert/weight_decoder.h"
+#include "src/litert/pack_weight_manager.h"
 #include "src/litert/huffman_decode.h"
 #include "tools/converter/quantizer/fse_decoder.h"
 #include "nnacl_c/conv_parameter.h"
@@ -24,10 +25,14 @@ namespace mindspore::lite {
 #ifndef WEIGHT_DECODE_CLIP
 int WeightDecoder::SetDequantDataToTensor(lite::Tensor *input_tensor, void *new_const_data, TypeId dst_data_type) {
   CHECK_NULL_RETURN(new_const_data);
+  auto origin_tensor_data = input_tensor->data();
   input_tensor->FreeData();
   input_tensor->set_data(new_const_data);
   input_tensor->set_own_data(true);
   input_tensor->set_data_type(dst_data_type);
+  if (origin_tensor_data != nullptr && origin_tensor_data != new_const_data) {
+    (void)PackWeightManager::GetInstance()->ReplaceDequantData(origin_tensor_data, new_const_data);
+  }
   return RET_OK;
 }
 
@@ -91,10 +96,14 @@ int WeightDecoder::DecodeKMeansWeight(lite::Tensor *tensor, TypeId dst_data_type
     MS_LOG(ERROR) << dst_data_type << " data type is not support KMeans.";
     return RET_ERROR;
   }
+  auto origin_tensor_data = tensor->data();
   tensor->FreeData();
   tensor->set_data(dequant_data);
   tensor->set_own_data(true);
   tensor->set_data_type(dst_data_type);
+  if (origin_tensor_data != nullptr && origin_tensor_data != dequant_data) {
+    (void)PackWeightManager::GetInstance()->ReplaceDequantData(origin_tensor_data, dequant_data);
+  }
   return RET_OK;
 }
 

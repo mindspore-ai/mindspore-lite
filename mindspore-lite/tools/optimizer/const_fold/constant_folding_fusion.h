@@ -27,27 +27,32 @@ namespace mindspore {
 namespace opt {
 class ConstFoldPass : public Pass {
  public:
-  explicit ConstFoldPass(converter::FmkType fmk_type = converter::kFmkTypeMs, bool train_flag = false)
-      : Pass("ConstFoldPass"), fmk_type_(fmk_type), train_flag_(train_flag) {}
+  explicit ConstFoldPass(converter::FmkType fmk_type = converter::kFmkTypeMs, bool train_flag = false,
+                         bool enable_const_fold = true)
+      : Pass("ConstFoldPass"), fmk_type_(fmk_type), train_flag_(train_flag), enable_const_fold_(enable_const_fold) {}
   ~ConstFoldPass() override = default;
   bool Run(const FuncGraphPtr &func_graph) override {
     if (func_graph == nullptr) {
       MS_LOG(ERROR) << "func_graph is nullptr, do constant fold failed.";
       return false;
     }
-    // current infer-shape cannot support the control-flow model of Mindir.
-    if (fmk_type_ == converter::kFmkTypeMs) {
-      auto fold_schedule = ConstFoldWithInferShape(fmk_type_, train_flag_);
-      if (!fold_schedule.Run(func_graph)) {
-        MS_LOG(WARNING) << "Do constant fold failed.";
-        return false;
+    if (enable_const_fold_) {
+      // current infer-shape cannot support the control-flow model of Mindir.
+      if (fmk_type_ == converter::kFmkTypeMs) {
+        auto fold_schedule = ConstFoldWithInferShape(fmk_type_, train_flag_);
+        if (!fold_schedule.Run(func_graph)) {
+          MS_LOG(WARNING) << "Do constant fold failed.";
+          return false;
+        }
+      } else {
+        auto fold_schedule = ConstFoldAlongInferShape(fmk_type_, train_flag_);
+        if (!fold_schedule.Run(func_graph)) {
+          MS_LOG(WARNING) << "Do constant fold failed.";
+          return false;
+        }
       }
     } else {
-      auto fold_schedule = ConstFoldAlongInferShape(fmk_type_, train_flag_);
-      if (!fold_schedule.Run(func_graph)) {
-        MS_LOG(WARNING) << "Do constant fold failed.";
-        return false;
-      }
+      MS_LOG(INFO) << "constant fold is disabled by config, skip ConstFoldPass.";
     }
 
     // the attrs of convolution only can be update after constant fold.
@@ -62,6 +67,7 @@ class ConstFoldPass : public Pass {
  private:
   FmkType fmk_type_{converter::kFmkTypeMs};
   bool train_flag_{false};
+  bool enable_const_fold_{true};
 };
 }  // namespace opt
 }  // namespace mindspore

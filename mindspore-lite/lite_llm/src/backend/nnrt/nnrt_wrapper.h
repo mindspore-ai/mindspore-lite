@@ -59,6 +59,10 @@ struct NNRTFunctions {
   NnrtReturnCode (*Executor_RunSync)(OH_NNExecutor *executor, NN_Tensor *inputTensor[], size_t inputCount,
                                      NN_Tensor *outputTensor[], size_t outputCount);
 
+  // === OH_NNDevice (core.so) ===
+  NnrtReturnCode (*NNDevice_GetAllDevicesID)(const size_t **device_list, uint32_t *device_count);
+  NnrtReturnCode (*NNDevice_GetName)(size_t device_id, const char **name);
+
   // === OH_NNExecutor tensor desc (core.so) ===
   NN_TensorDesc *(*Executor_CreateInputTensorDesc)(const OH_NNExecutor *executor, size_t index);
   NN_TensorDesc *(*Executor_CreateOutputTensorDesc)(const OH_NNExecutor *executor, size_t index);

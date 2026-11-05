@@ -49,6 +49,7 @@ class PackWeight {
   void *GetPackData(const void *tensor_data, const size_t size, bool *is_packed);
   STATUS ReplaceOriginTensorData(const void *model_buf, std::vector<Tensor *> *tensors, int tensor_index);
   void *ReplaceFp16Data(void *origin_fp16_data, size_t size);
+  STATUS ReplaceDequantData(const void *origin_data, void *new_data);
   void FreePackWeight(std::string id, bool free_all = false);
 
  private:

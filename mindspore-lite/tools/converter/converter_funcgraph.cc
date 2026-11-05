@@ -21,8 +21,10 @@
 #include <set>
 #include <tuple>
 #include <algorithm>
+#include <cstdlib>
 #include <utility>
 #include "src/common/log_adapter.h"
+#include "src/common/common.h"
 #include "tools/common/meta_graph_serializer.h"
 #include "tools/lite_exporter/anf_exporter.h"
 #ifdef SUPPORT_TRAIN
@@ -78,6 +80,44 @@
 namespace mindspore {
 namespace lite {
 namespace {
+// Compile-related envs (e.g. TE_PARALLEL_COMPILER) must be in the process env before the
+// ACL provider's in-process GE/TBE compilation (AclPassImpl::BuildGraph ->
+// ge::aclgrphBuildModel) and before AOE tuning subprocesses are spawned (popen("aoe")
+// inherits the env). Whitelisted keys in [ascend_context] are exported here (never
+// overriding a value the user already exported) — same key convention as the runtime-side
+// SetGeCompileEnvOptions in ge_graph_executor.cc, which does not run on this path. The
+// converter binary does not link the runtime library, so the whitelist is mirrored here;
+// keep it in sync with kCompileEnvWhitelist in ge_graph_executor.cc.
+const std::map<std::string, std::string> kCompileEnvWhitelist = {
+  {"TE_PARALLEL_COMPILER", "TBE parallel compile pool size (1~32)"},
+};
+
+void ExportCompileEnvsFromAscendContext(const std::shared_ptr<ConverterPara> &param) {
+  if (param == nullptr) {
+    return;
+  }
+  auto sec_it = param->config_infos.find(kAscendContextSection);
+  if (sec_it == param->config_infos.end()) {
+    return;
+  }
+  for (const auto &item : sec_it->second) {
+    auto whitelist_it = kCompileEnvWhitelist.find(item.first);
+    if (whitelist_it == kCompileEnvWhitelist.end()) {
+      continue;
+    }
+#if defined(_WIN32) || defined(_WIN64)
+    // setenv is POSIX-only. The whitelisted envs only affect the Ascend/TBE compiler, which
+    // is not available in Windows builds (the ACL pass plugin is compiled out there), so the
+    // export is intentionally skipped instead of pulling in Windows-only CRT env APIs.
+    MS_LOG(INFO) << "Skip exporting compile env " << item.first << " on Windows, it only affects Ascend compilation";
+#else
+    (void)setenv(item.first.c_str(), item.second.c_str(), 0);
+    MS_LOG(INFO) << "Set compile env " << item.first << "=" << item.second << " (" << whitelist_it->second
+                 << ", from ascend_context config)";
+#endif
+  }
+}
+
 Status AdjustNodeInput(const CNodePtr &cnode) {
   MS_CHECK_FALSE_MSG(cnode == nullptr, kLiteNullptr, "cnode is nullptr!");
   auto inputs = cnode->inputs();
@@ -597,6 +637,10 @@ STATUS ConverterFuncGraph::Optimize(const std::shared_ptr<ConverterPara> &param,
     MS_LOG(ERROR) << "funcGraph is nullptr";
     return RET_ERROR;
   }
+
+  // Export [ascend_context] compile envs before any graph transform runs: the ACL
+  // provider's offline compile (aclgrphBuildModel) and AOE tuning below consume them.
+  ExportCompileEnvsFromAscendContext(param);
 
   if (CheckFuncGraph(param, func_graph) != RET_OK) {
     MS_LOG(ERROR) << "args to attr failed";

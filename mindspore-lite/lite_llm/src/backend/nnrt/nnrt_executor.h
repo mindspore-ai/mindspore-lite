@@ -52,6 +52,7 @@ class NnrtExecutor {
 
  private:
   bool InitConfig(const NnrtConfig &config);
+  void InitDeviceId();
   bool BuildModel();
   bool ConstructCompilation();
   bool MapOfflineModelFile(const std::string &path);

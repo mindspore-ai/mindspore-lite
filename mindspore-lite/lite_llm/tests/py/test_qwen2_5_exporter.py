@@ -295,6 +295,48 @@ def _make_contract_model(num_layers=2, embedding_quant=False):
     return model, input_names
 
 
+def test_fused_export_uses_inplace_cache_and_attention(tmp_path):
+    """Qwen2.5 traces a logits-only graph with the fused cache/attention ops."""
+    torch = pytest.importorskip("torch")
+    transformers = pytest.importorskip("transformers")
+    from models.qwen2_5.qwen2_5_exporter import Qwen2Onnx
+
+    config = transformers.Qwen2Config(
+        vocab_size=256, hidden_size=128, intermediate_size=256,
+        num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
+        tie_word_embeddings=True, max_position_embeddings=128,
+    )
+    torch.manual_seed(11)
+    model = transformers.Qwen2ForCausalLM(config).half().eval()
+    exporter = Qwen2Onnx()
+    exporter.config = config
+    exporter.model = model
+    exporter.num_layers, exporter.hidden_size, exporter.num_kv_heads = 2, 128, 2
+
+    path = tmp_path / "tiny.onnx"
+    exporter.export(str(path), max_seq_len=64, chunk_size=16)
+
+    traced = onnx.load(str(path))
+    assert [output.name for output in traced.graph.output] == ["logits"]
+    assert [value.name for value in traced.graph.input] == [
+        "valid_seq_len", "lmhead_idx", "rope_cos", "rope_sin", "inputs_embeds",
+        "attention_mask", "past_key_0", "past_val_0", "past_key_1", "past_val_1",
+    ]
+    fused = [node for node in traced.graph.node if node.op_type == "MsTransRopeScatterNDUpdate"]
+    assert len(fused) == 2
+    for layer, node in enumerate(fused):
+        assert list(node.input[5:7]) == [f"past_key_{layer}", f"past_val_{layer}"]
+        assert len(node.output) == 1
+        attrs = {attr.name: onnx.helper.get_attribute_value(attr) for attr in node.attribute}
+        assert attrs["storage_layout"] == b"NZ"
+    attention = [node for node in traced.graph.node if node.op_type == "MsAttention"]
+    assert len(attention) == 2
+    for layer, node in enumerate(attention):
+        assert list(node.input[1:3]) == [f"past_key_{layer}", f"past_val_{layer}"]
+    unfused = {"MsGroupMatmul", "MsAddSoftmax", "MsScatterND", "MsRotaryPosEmb"}
+    assert not any(node.op_type in unfused for node in traced.graph.node)
+
+
 def test_validate_contract_ok():
     """Test that a synthetic contract-conforming model passes validation."""
     from utils.onnx_postprocess import validate_contract

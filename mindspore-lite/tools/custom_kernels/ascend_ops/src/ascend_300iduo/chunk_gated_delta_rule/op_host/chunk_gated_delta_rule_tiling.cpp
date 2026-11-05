@@ -50,6 +50,8 @@ constexpr uint32_t kTilingKeyDk80 = 1;
 constexpr uint32_t kTilingKeyDk96 = 2;
 constexpr uint32_t kTilingKeyDk128 = 3;
 constexpr uint32_t kCubeStageSlotCount = 2;
+// Per-core GM cache for the exact FP16 K^T tile (max Dk bucket 128 x 64 half).
+constexpr uint64_t kKeyCacheBytesPerCore = 128 * 64 * sizeof(uint16_t);
 constexpr uint64_t kRawMatmulStageBytesPerCore =
   kCubeStageSlotCount * static_cast<uint64_t>(2 * kMatmulM * kMatmulK + kMatmulK * kMatmulN) * sizeof(uint16_t);
 // Input indices for the CGDR operator.
@@ -99,7 +101,7 @@ bool GetPlatformInfo(TilingContext *context, uint32_t &aivNum, int64_t &ubSize) 
 }
 
 // Extract the [T, Hqk, Dk] query and [*, Hv, Dv] value dims. Returns false on a null shape handle.
-bool ParseShapeDims(TilingContext *context, ShapeDims &dims) {
+bool ParseShapeDims(const TilingContext *context, ShapeDims &dims) {
   auto queryShape = context->GetInputShape(kQueryInput);
   auto valueShape = context->GetInputShape(kValueInput);
   auto initialStateShape = context->GetInputShape(kInitialStateInput);
@@ -119,7 +121,7 @@ bool ParseShapeDims(TilingContext *context, ShapeDims &dims) {
 }
 
 // Read the optional scale_value attr (idx 0), falling back to the public default.
-void ParseAttrs(TilingContext *context, float &scaleValueAttr) {
+void ParseAttrs(const TilingContext *context, float &scaleValueAttr) {
   scaleValueAttr = 1.0f;
   auto attrs = context->GetAttrs();
   if (attrs == nullptr || attrs->GetAttrNum() == 0) {
@@ -131,7 +133,7 @@ void ParseAttrs(TilingContext *context, float &scaleValueAttr) {
   }
 }
 
-bool HasGamma(TilingContext *context) {
+bool HasGamma(const TilingContext *context) {
   return context->GetOptionalInputDesc(kGammaInput) != nullptr &&
          context->GetOptionalInputTensor(kGammaInput) != nullptr &&
          context->GetOptionalInputShape(kGammaInput) != nullptr;
@@ -344,7 +346,8 @@ static uint32_t ChunkGatedDeltaRuleTilingFunc(TilingContext *context) {
     uint64_t workspaceStrideV = CeilAlign(dims.dv, FP32_NUM_PER_BLOCK);
     uint64_t stateWorkspaceBytes =
       static_cast<uint64_t>(dims.batch) * dims.hv * dims.dk * workspaceStrideV * sizeof(float);
-    uint64_t requiredWorkspace = stateWorkspaceBytes + static_cast<uint64_t>(blockDim) * kRawMatmulStageBytesPerCore;
+    uint64_t requiredWorkspace = stateWorkspaceBytes + static_cast<uint64_t>(blockDim) * kRawMatmulStageBytesPerCore +
+                                 static_cast<uint64_t>(blockDim) * kKeyCacheBytesPerCore;
     ws[0] = (requiredWorkspace > kWorkspaceBytes) ? requiredWorkspace : kWorkspaceBytes;
   }
   return GRAPH_SUCCESS;

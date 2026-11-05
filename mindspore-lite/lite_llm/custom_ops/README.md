@@ -19,8 +19,8 @@
 > 同步；`NPU` 是独立 profiling 运行中采集的算子执行时间，更接近 Kernel 本体。
 > 二者来自独立运行，不能逐样本相减，长耗时 case 的 NPU median 也可能因批次波动
 > 略高于 wall median。九算子标准 wall 协议为 `10` 次 warmup、`50×3` 次正式迭代，
-> 共包含 5,400 个 wall 样本和 350 个 NPU 样本，详见
-> [九算子标准基线](docs/performance/baselines/2026-08-17-36a9ddf-kirin9020/README.md)。
+> 共包含 5,400 个 wall 样本和 350 个 NPU 样本；九算子标准基线报告随性能台账
+> 维护在本仓之外，不在 `custom_ops/` 目录内。
 > RmsNorm、AddSoftmax 和当前 GroupMatmul 的 before/after 均采用各自相同的标准协议，
 > 可以直接计算同算子提升；GroupMatmul 的最新对比以 upstream `d257165` 为 before，
 > 详细协议和同设备状态复核见其性能报告。
@@ -50,13 +50,13 @@
 source .venv/bin/activate
 source ./ddk_env/tools/tools_ascendc/set_ascendc_env.sh
 
-```text
+```
 
 `set_ascendc_env.sh` 为官方激活脚本，设置 `DDK_PATH`、`TOOLCHAIN_HOME`、`HIAI_VERSION` 等关键变量。
 
-- **首次安装 DDK**：将 DDK 包放入 `package/`，执行 `./.claude/skills/setting-up-kirin-ai-ddk/install_ddk.sh`
-- **Ubuntu 22.04 注意**：omg/ccec 需要本地 `libtinfo.so.5` shim（见 setting-up-kirin-ai-ddk 技能的 Known Local Pitfall）
-- **Apple Silicon**：x86_64 工具链在 Lima VM 中运行，见 `scripts/lima/README.md`
+- **首次安装 DDK**：执行仓内脚本 `bash scripts/install_ddk.sh <DDK 目录或 tar 包> <安装目标目录>`，装完即可用，无需再跑额外的修复步骤
+- **Ubuntu 22.04 注意**：omg/ccec 依赖 `libtinfo.so.5`，系统未自带时需自行准备本地 shim
+- **Apple Silicon**：x86_64 工具链需在 Lima VM 中运行，Lima 配置与使用说明维护在本仓之外
 
 ## 构建算子
 
@@ -67,7 +67,7 @@ source ./ddk_env/tools/tools_ascendc/set_ascendc_env.sh
 ./build.py MsRmsNorm               # 兼容的单算子简写
 ./build.py --ops <op> --install "$DDK_PATH"  # 打包后安装到 DDK
 
-```text
+```
 
 根目录只保留 `build.py` 这个公开构建入口。它把所选算子的 host、kernel、framework
 及二进制实现配置汇总到只读 `workspace/` 模板的副本 `build/ms_ops_pack/`，再调用其中的
@@ -94,17 +94,17 @@ python -m pytest tests/ -m device -k rms_norm
 DEVICE_TRANSPORT=binapp HDC_TARGET_OPTION=-t \
   python -m pytest tests/ -m device -k group_matmul
 
-```text
+```
 
 设备用例的完整环境搭建、运行方法、用例闭环和已知限制（kernel 缓存、xdist 并行、耗时构成）
-见 [`run-ascendc-op-device-ut`](.claude/skills/run-ascendc-op-device-ut/SKILL.md) skill。
+见 `tests/README.md`；具体实现可参考 `tests/base_test.py`、`tests/binrunner_test.py`
+与 `tests/ut/` 下的设备用例。
 
-优化前/后的标准化性能采集使用 `tests/perf/operator_baseline.py`；协议、数据格式和
-比较方法见 [`docs/performance/operator-baseline.md`](docs/performance/operator-baseline.md)。
-后续性能采集、回归判断和台账更新统一遵循项目内
-[`benchmark-ascendc-operators`](.claude/skills/benchmark-ascendc-operators/SKILL.md) skill；
-瓶颈定位、优化方法选择、受控实验和成功/失败尝试记录遵循
-[`optimize-ascendc-operators`](.claude/skills/optimize-ascendc-operators/SKILL.md) skill。
+优化前/后的标准化性能采集工具及其协议、数据格式和比较方法维护在本仓之外，
+`custom_ops/` 下当前不提供性能采集脚本。
+后续性能采集、回归判断和台账更新遵循 `benchmark-ascendc-operators` 规范，
+瓶颈定位、优化方法选择、受控实验和成功/失败尝试记录遵循 `optimize-ascendc-operators` 规范；
+这两份规范同样维护在本仓之外，获取方式请联系 `CODEOWNERS` 中的 lite_llm 维护者。
 
 ## 算子开发
 

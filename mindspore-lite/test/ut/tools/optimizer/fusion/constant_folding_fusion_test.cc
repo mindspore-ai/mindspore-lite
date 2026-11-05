@@ -16,6 +16,7 @@
 
 #define USE_DEPRECATED_API
 #include <memory>
+#include <numeric>
 #include "schema/inner/model_generated.h"
 #include "common/common_test.h"
 #include "include/errorcode.h"
@@ -25,6 +26,12 @@
 #include "tools/optimizer/const_fold/constant_folding_fusion.h"
 #include "tools/lite_exporter/anf_exporter.h"
 #include "test/common/import_from_meta_graphT.h"
+#include "ir/func_graph.h"
+#include "mindspore/core/include/ir/graph_utils.h"
+#include "src/common/ops/primitive/add_fusion.h"
+#include "tools/common/tensor_util.h"
+#include "tools/optimizer/common/gllo_utils.h"
+#include "test/ut/utils/build_func_graph.h"
 
 namespace mindspore {
 class ConstantFoldingFusionTest : public mindspore::CommonTest {
@@ -640,5 +647,72 @@ TEST_F(ConstantFoldingFusionTest, TestSplitConstantFold) {
   ASSERT_NE(nullptr, new_graph);
   auto new_meta_graph = lite::Export(new_graph);
   ASSERT_EQ(new_meta_graph->nodes.size(), 0);
+}
+
+namespace {
+ParameterPtr AddConstParameter(const FuncGraphPtr &graph, const std::vector<int64_t> &shape, float value,
+                               const std::string &name) {
+  MS_ASSERT(graph != nullptr);
+  size_t data_size = static_cast<size_t>(std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<int64_t>()));
+  std::vector<float> data(data_size, value);
+  auto tensor_info = lite::CreateTensorInfo(data.data(), data_size * sizeof(float), shape, kNumberTypeFloat32);
+  MS_CHECK_TRUE_MSG(tensor_info != nullptr, nullptr, "CreateTensorInfo failed");
+  auto parameter = graph->add_parameter();
+  MS_CHECK_TRUE_MSG(parameter != nullptr, nullptr, "CreateParameter failed");
+  parameter->set_name(name);
+  parameter->set_abstract(tensor_info->ToAbstract());
+  parameter->set_default_param(tensor_info);
+  return parameter;
+}
+
+FuncGraphPtr BuildConstFoldGraph() {
+  auto graph = std::make_shared<FuncGraph>();
+  auto input1 = AddConstParameter(graph, {1, 2, 2, 3}, 1.0f, "const1");
+  auto input2 = AddConstParameter(graph, {1, 2, 2, 3}, 2.0f, "const2");
+  MS_CHECK_TRUE_MSG(input1 != nullptr && input2 != nullptr, nullptr, "build const parameters failed");
+  auto prim = std::make_shared<ops::AddFusion>();
+  MS_CHECK_TRUE_MSG(prim != nullptr, nullptr, "create AddFusion primitive failed");
+  auto add = graph->NewCNode({NewValueNode(prim->GetPrim()), input1, input2});
+  MS_CHECK_TRUE_MSG(add != nullptr, nullptr, "create Add cnode failed");
+  add->set_fullname_with_scope("Add");
+  MS_CHECK_TRUE_MSG(lite::AddReturn(graph, {add}) != nullptr, nullptr, "create Return failed");
+  return graph;
+}
+
+bool HasAddFusionNode(const FuncGraphPtr &graph) {
+  auto node_list = TopoSort(graph->get_return());
+  for (const auto &node : node_list) {
+    if (utils::isa<CNodePtr>(node) && opt::CheckPrimitiveType(node, prim::kPrimAddFusion)) {
+      return true;
+    }
+  }
+  return false;
+}
+}  // namespace
+
+TEST_F(ConstantFoldingFusionTest, TestDisableConstFold) {
+  auto func_graph = BuildConstFoldGraph();
+  ASSERT_NE(nullptr, func_graph);
+  auto optimizer = std::make_shared<opt::GraphOptimizer>();
+  auto pm = std::make_shared<opt::LitePassManager>();
+  // enable_const_fold=false: the foldable Add node should be kept after the pass.
+  pm->AddPass(std::make_shared<opt::ConstFoldPass>(converter::kFmkTypeMs, false, false));
+  optimizer->AddPassManager(pm);
+  FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
+  ASSERT_NE(nullptr, new_graph);
+  ASSERT_TRUE(HasAddFusionNode(new_graph));
+}
+
+TEST_F(ConstantFoldingFusionTest, TestEnableConstFoldByDefault) {
+  auto func_graph = BuildConstFoldGraph();
+  ASSERT_NE(nullptr, func_graph);
+  auto optimizer = std::make_shared<opt::GraphOptimizer>();
+  auto pm = std::make_shared<opt::LitePassManager>();
+  // default enable_const_fold=true: the foldable Add node should be folded into a const.
+  pm->AddPass(std::make_shared<opt::ConstFoldPass>());
+  optimizer->AddPassManager(pm);
+  FuncGraphPtr new_graph = optimizer->Optimize(func_graph);
+  ASSERT_NE(nullptr, new_graph);
+  ASSERT_FALSE(HasAddFusionNode(new_graph));
 }
 }  // namespace mindspore

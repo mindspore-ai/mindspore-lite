@@ -178,6 +178,7 @@ class Qwen3Onnx:
         if not getattr(config, "tie_word_embeddings", False):
             raise ValueError("The Qwen3 runtime contract requires tied input and output embeddings")
 
+    @torch.no_grad()
     def export(self, model_path, max_seq_len=1024, chunk_size=128):
         """Trace functional KV outputs; export_qwen3 lowers them after quantization."""
         head_dim = getattr(self.model.config, "head_dim", None) or (
@@ -209,10 +210,11 @@ class Qwen3Onnx:
         rope_cos = torch.zeros((1, chunk_size, head_dim), device=DEVICE, dtype=dtype)
         rope_sin = torch.zeros((1, chunk_size, head_dim), device=DEVICE, dtype=dtype)
 
-        past_key_or_value = torch.zeros(
-            (1, self.num_kv_heads, max_seq_len, head_dim), device=DEVICE, dtype=dtype
-        )
-        past_key_values = [[past_key_or_value] * 2] * self.num_layers
+        cache_shape = (1, self.num_kv_heads, max_seq_len, head_dim)
+        past_key_values = [
+            [torch.zeros(cache_shape, device=DEVICE, dtype=dtype) for _ in range(2)]
+            for _ in range(self.num_layers)
+        ]
 
         inputs_embeds = torch.zeros((1, chunk_size, self.hidden_size), device=DEVICE, dtype=dtype)
         attention_mask = torch.zeros(1, 1, chunk_size, max_seq_len, dtype=dtype)

@@ -26,7 +26,7 @@ _EXPORT_DIR = Path(__file__).resolve().parents[2] / "export"
 sys.path.insert(0, str(_EXPORT_DIR))
 
 from models._base.nnrt_decoder_wrapper import NnrtAttention  # pylint: disable=wrong-import-position
-from models.qwen3.qwen3_wrapper import Qwen3OpSet, MsTransRopeScatterNDUpdate  # pylint: disable=wrong-import-position
+from models.qwen3.qwen3_wrapper import Qwen3OpSet  # pylint: disable=wrong-import-position
 
 
 class _Projection:
@@ -118,15 +118,18 @@ def test_attention_uses_projected_head_width(monkeypatch):
 
 @pytest.mark.parametrize("seq,offset", [(1, 7), (3, 2)])
 def test_fused_adapter_preserves_cache_and_transposes(seq, offset):
-    """Preserve untouched cache entries and expose BNSD outputs."""
+    """Return BNSD queries and the same, updated cache objects."""
     q = torch.arange(seq * 4 * 16, dtype=torch.float16).reshape(1, seq, 4, 16)
     k = q[:, :, :2, :].contiguous()
     v = -k
     cache = torch.ones((1, 2, 8, 16), dtype=torch.float16)
-    qout, kout, vout = MsTransRopeScatterNDUpdate.apply(
-        q, k, v, torch.ones((1, seq, 16), dtype=torch.float16),
-        torch.zeros((1, seq, 16), dtype=torch.float16), cache, cache,
-        torch.tensor([offset], dtype=torch.int32), 4, 16)
+    key_cache, value_cache = cache.clone(), cache.clone()
+    ops = Qwen3OpSet(SimpleNamespace(num_attention_heads=4, head_dim=16))
+    qout, kout, vout = ops.prepare_qkv(
+        (q, k, v), (torch.ones((1, seq, 16), dtype=torch.float16),
+                    torch.zeros((1, seq, 16), dtype=torch.float16)),
+        (key_cache, value_cache), torch.tensor([offset], dtype=torch.int32))
+    assert kout is key_cache and vout is value_cache
     torch.testing.assert_close(qout, q.transpose(1, 2))
     expected_k = cache.clone()
     expected_v = cache.clone()
@@ -168,9 +171,10 @@ def test_fused_wrapper_matches_unfused_reference(sequence, offset):
         inputs_embeds=torch.randn(1, sequence, 128).half(),
         attention_mask=mask, past_key_values=caches,
     )
+    reference_caches = tuple(tuple(cache.clone() for cache in pair) for pair in caches)
     with torch.no_grad():
         actual = fused(**inputs)
-        expected = reference(**inputs)
+        expected = reference(**{**inputs, "past_key_values": reference_caches})
     for output, golden in zip(actual, expected):
         torch.testing.assert_close(output, golden, atol=0.002, rtol=0.002)
 

@@ -28,6 +28,13 @@ if(MSLITE_LLM_CROSS_COMPILE_HARMONYOS)
   target_link_libraries(mslite-chat PRIVATE
     -Wl,--whole-archive mslite_llm_static -Wl,--no-whole-archive securec::securec)
   target_link_options(mslite-chat PRIVATE -static-libstdc++)
+elseif(APPLE)
+  # ld64 (macOS) has no --whole-archive; -force_load <archive> is its scoped
+  # equivalent (load every member of this one archive).  Avoid -all_load: it
+  # would also bloat securec::securec and any other archive on the link line.
+  target_link_libraries(mslite-chat PRIVATE
+    -Wl,-force_load,$<TARGET_FILE:mslite_llm_static>
+    mslite_llm_static securec::securec)
 else()
   target_link_libraries(mslite-chat PRIVATE
     -Wl,--whole-archive mslite_llm_static -Wl,--no-whole-archive securec::securec)

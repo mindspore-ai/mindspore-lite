@@ -191,6 +191,16 @@ void *PackWeightManager::ReplaceFp16Data(void *origin_fp16_data, size_t size, bo
   return nullptr;
 }
 
+STATUS PackWeightManager::ReplaceDequantData(const void *origin_data, void *new_data) {
+#ifdef SHARING_MODEL_WEIGHT
+  if (pack_weight_ == nullptr) {
+    return RET_OK;
+  }
+  return pack_weight_->ReplaceDequantData(origin_data, new_data);
+#endif
+  return RET_OK;
+}
+
 void *PackWeightManager::MallocData(size_t size) {
   if (size > MAX_MALLOC_SIZE || size == 0) {
     MS_LOG(ERROR) << "malloc size is wrong.";

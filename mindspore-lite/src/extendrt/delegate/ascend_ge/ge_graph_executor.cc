@@ -16,6 +16,9 @@
 
 #include "extendrt/delegate/ascend_ge/ge_graph_executor.h"
 
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <fstream>
 #include <future>
@@ -56,10 +59,25 @@ constexpr auto kRefModeAll = "all";
 constexpr auto kIsAdapted = "is_adapted";
 constexpr size_t kAlignRefData = 32;
 constexpr size_t kErrorSize = 0;
+constexpr auto kGeOpCompilerCacheDir = "ge.op_compiler_cache_dir";
 std::mutex g_compile_graph_mutex;
 size_t ALIGN_UP_REF_DATA(size_t size) {
   return ((size + kMemAlignSize + kAlignRefData - 1) / kMemAlignSize) * kMemAlignSize;
 }
+
+// Whitelist of compile-related process envs that may be configured through the
+// [ascend_context] section: only these keys are exported to the process env (setenv,
+// never overriding a value the user already exported) before the first GE/TBE
+// compilation. Any other config key is ignored, matching how mslite treats unknown
+// config keys everywhere else. Extend the map when a new CANN compile knob needs config
+// support. The compile-cache fingerprint below shares this whitelist; the converter-side
+// injection (converter_funcgraph.cc) mirrors it because the converter binary does not
+// link this library.
+const std::map<std::string, std::string> kCompileEnvWhitelist = {
+  {"TE_PARALLEL_COMPILER", "TBE parallel compile pool size (1~32)"},
+};
+
+bool IsCompileEnvKey(const std::string &key) { return kCompileEnvWhitelist.find(key) != kCompileEnvWhitelist.end(); }
 
 backend::ge_backend::DfGraphPtr GenExampleGraph(const std::string &name) {
   MS_LOG(INFO) << "Gen fake graph name is " << name;
@@ -119,6 +137,27 @@ bool UpdateOmCacheIdxFile(const std::string &idx_file_name) {
                     << ", skip create small ge graph";
     return false;
   }
+}
+
+// GE requires the compile-cache directory to exist and be writable: it writes the compiled model,
+// index and weight files into it, and a missing directory is a hard error on the GE side. A
+// user-configured [ascend_context] model_cache_dir is used as-is, so validate it up front and let a
+// bad path only disable the cache instead of failing the whole build.
+bool IsUsableCompileCacheDir(const std::string &cache_dir) {
+  struct stat stat_info = {};
+  if (stat(cache_dir.c_str(), &stat_info) != 0) {
+    MS_LOG(WARNING) << "Compile cache dir '" << cache_dir << "' does not exist";
+    return false;
+  }
+  if (!S_ISDIR(stat_info.st_mode)) {
+    MS_LOG(WARNING) << "Compile cache dir '" << cache_dir << "' is not a directory";
+    return false;
+  }
+  if (access(cache_dir.c_str(), W_OK | X_OK) != 0) {
+    MS_LOG(WARNING) << "Compile cache dir '" << cache_dir << "' is not writable";
+    return false;
+  }
+  return true;
 }
 }  // namespace
 
@@ -416,7 +455,7 @@ bool GeGraphExecutor::Init() {
   (void)GetConfigOption(lite::kAscendContextSection, lite::kModelCacheMode, &model_cache_mode);
   if (!model_cache_mode.empty()) {
     cache_mode_ = model_cache_mode;
-    MS_LOG(INFO) << "Set set model cache mode " << model_cache_mode;
+    MS_LOG(INFO) << "Set model cache mode " << model_cache_mode;
   }
   return true;
 }
@@ -470,6 +509,26 @@ void GeGraphExecutor::GetGeSessionOptions(std::map<std::string, std::string> *ge
 bool GeGraphExecutor::SetModelCacheDir(std::map<std::string, std::string> *session_options_ptr) {
   MS_CHECK_TRUE_RET(session_options_ptr != nullptr, false);
   auto &ge_options = *session_options_ptr;
+  // A cache dir configured through either entry takes precedence over the default one:
+  // [ascend_context] model_cache_dir is mapped to ge.graph_compiler_cache_dir by
+  // GetGeSessionOptionsFromAscendContext, while [ge_session_options] ge.graph_compiler_cache_dir is
+  // passed through by GetGeSessionOptions. Creating the default per-rank directory in that case would
+  // leave an unused empty directory behind and, worse, fail the whole build when the current working
+  // directory is not writable.
+  std::string user_cache_dir;
+  bool ascend_dir_configured =
+    GetConfigOption(lite::kAscendContextSection, lite::kGraphCompilerCacheDirKey, &user_cache_dir) &&
+    !user_cache_dir.empty();
+  std::string session_cache_dir;
+  bool session_dir_configured =
+    GetConfigOption(lite::kGeSessionOptionsSection, lite::kGeGraphCompilerCacheDir, &session_cache_dir) &&
+    !session_cache_dir.empty();
+  if (ascend_dir_configured || session_dir_configured) {
+    MS_LOG(INFO) << "GE compile cache dir is already configured ("
+                 << (ascend_dir_configured ? lite::kGraphCompilerCacheDirKey : lite::kGeGraphCompilerCacheDir)
+                 << "), skip creating the default build cache dir";
+    return true;
+  }
   auto build_cache_dir = "model_build_cache_" + std::to_string(GetRankID());
   if (lite::CreateDir(build_cache_dir) != RET_OK) {
     MS_LOG(ERROR) << "Failed to create build cache dir " << build_cache_dir;
@@ -591,9 +650,132 @@ void GeGraphExecutor::GetGeSessionOptionsFromAscendContext(const std::map<std::s
     ge_options["ge.graphMemoryMaxSize"] = option_id->second;
   }
   option_id = config.find(lite::kGraphCompilerCacheDirKey);
-  if (option_id != config.end()) {
-    ge_options[lite::kGeGraphCompilerCacheDir] = option_id->second;
+  if (option_id != config.end() && !option_id->second.empty()) {
+    // A bad user-configured directory must not fail the build: report it and keep whatever cache dir
+    // is already effective (or no cache at all), so the model still runs.
+    if (IsUsableCompileCacheDir(option_id->second)) {
+      ge_options[lite::kGeGraphCompilerCacheDir] = option_id->second;
+      MS_LOG(INFO) << "Update session attr " << lite::kGeGraphCompilerCacheDir << " to " << option_id->second;
+    } else {
+      // Do not erase an already effective cache dir: it may come from [ge_session_options]
+      // ge.graph_compiler_cache_dir or from the offline build directory, and the offline path needs it
+      // to locate the compiled .om afterwards. Only report that model_cache_dir itself is ignored.
+      auto existing = ge_options.find(lite::kGeGraphCompilerCacheDir);
+      if (existing != ge_options.end() && !existing->second.empty()) {
+        MS_LOG(WARNING) << "Invalid " << lite::kGraphCompilerCacheDirKey << " '" << option_id->second
+                        << "', keep using " << lite::kGeGraphCompilerCacheDir << " '" << existing->second << "'";
+      } else {
+        MS_LOG(WARNING) << "Invalid " << lite::kGraphCompilerCacheDirKey << " '" << option_id->second
+                        << "', GE compile cache is disabled for this model";
+      }
+    }
   }
+}
+
+void GeGraphExecutor::SetGeCompileEnvOptions() {
+  // GE is used for inference only; GE_TRAIN must be in place before the GE session is
+  // created. All process-env settings of the GE executor live in this function so the
+  // full env footprint stays visible in one place.
+  (void)setenv("GE_TRAIN", "0", 1);
+  // Compile-related envs (e.g. TE_PARALLEL_COMPILER) must be set before the first GE/TBE
+  // op compilation to take effect; mslite itself sets none of them. Whitelisted keys
+  // (kCompileEnvWhitelist, currently TE_PARALLEL_COMPILER) in [ascend_context] are
+  // exported to the process env (never overriding a value the user already exported),
+  // making the TBE parallel compile pool size a first-class config knob for cloud-side
+  // online-GE inference:
+  //   [ascend_context]
+  //   TE_PARALLEL_COMPILER=32
+  // Users who control the launch environment can equally just `export` the variable.
+  auto config_it = config_infos_.find(lite::kAscendContextSection);
+  if (config_it == config_infos_.end()) {
+    return;
+  }
+  for (const auto &item : config_it->second) {
+    auto whitelist_it = kCompileEnvWhitelist.find(item.first);
+    if (whitelist_it == kCompileEnvWhitelist.end()) {
+      continue;
+    }
+    if (setenv(item.first.c_str(), item.second.c_str(), 0) != 0) {
+      MS_LOG(ERROR) << "Failed to set compile env " << item.first << "=" << item.second;
+      continue;
+    }
+    MS_LOG(INFO) << "Set compile env " << item.first << "=" << item.second << " (" << whitelist_it->second
+                 << ", from ascend_context config)";
+  }
+}
+
+std::string GeGraphExecutor::GetCompileCacheFingerprint(const FuncGraphPtr &anf_graph) {
+  MS_EXCEPTION_IF_NULL(anf_graph);
+  // ---- Cache-condition fingerprint (see opt_ge.md "缓存限定条件") ----
+  // Encode EVERY condition the compiled binaries depend on into the key, so
+  // that any drift misses the cache and falls back to online compilation
+  // automatically (never reusing a binary compiled under different conditions
+  // — protects precision & function):
+  //   * anf_graph->ToString()                   — graph structure & op attrs
+  //   * [ge_session_options]+[ge_graph_options] — precision_mode / dynamicDims / jit_compile / ...
+  //                                               (*_cache_dir paths excluded)
+  //   * [ascend_context] whitelist env keys     — compile-related process env (IsCompileEnvKey)
+  //   * CANN toolkit install info               — compiler & built-in bank build
+  //   * SoC version                             — device binary compatibility
+  // Same conditions -> same key -> cache hit across deployments; any change ->
+  // different key -> miss -> online compile. The old rank_id prefix is dropped
+  // for the same reason (TP ranks share one cache entry).
+  // Known blind spot: custom-op vendor binaries (opp/vendors) are NOT part of
+  // the key — a vendor rebuild changes neither the graph nor the config. After
+  // reinstalling custom-op implementations, the graph & op compiler cache
+  // directories must be cleared manually, or stale kernels are reused silently.
+  std::string src = anf_graph->ToString();
+  for (const char *section : {lite::kGeSessionOptionsSection, lite::kGeGraphOptionsSection}) {
+    auto cit = config_infos_.find(section);
+    if (cit == config_infos_.end()) {
+      continue;
+    }
+    for (const auto &item : cit->second) {
+      // Cache LOCATIONS are not compile conditions: exclude them so a cache
+      // directory moved between machines/paths (build-time warmup -> deploy)
+      // still hits. Their integrity is guarded by all the other conditions.
+      if (item.first == lite::kGeGraphCompilerCacheDir || item.first == kGeOpCompilerCacheDir) {
+        continue;
+      }
+      src += item.first + "=" + item.second + ";";
+    }
+  }
+  // Whitelisted env keys in [ascend_context] (IsCompileEnvKey) are compile conditions
+  // as well. Record the EFFECTIVE env value (CreateSession has exported the config
+  // values by now, and a user-exported value wins over the config one), so runs with
+  // the same config but different effective env never share a cache entry.
+  auto env_it = config_infos_.find(lite::kAscendContextSection);
+  if (env_it != config_infos_.end()) {
+    for (const auto &item : env_it->second) {
+      if (!IsCompileEnvKey(item.first)) {
+        continue;
+      }
+      const char *effective = getenv(item.first.c_str());
+      src += item.first + "=" + (effective != nullptr ? std::string(effective) : item.second) + ";";
+    }
+  }
+  const char *ascend_home = getenv("ASCEND_HOME_PATH");
+  if (ascend_home != nullptr) {
+    static const char *kInstallInfoCandidates[] = {"aarch64-linux/ascend_toolkit_install.info",
+                                                   "x86_64-linux/ascend_toolkit_install.info"};
+    for (const char *candidate : kInstallInfoCandidates) {
+      std::string info_path = std::string(ascend_home) + "/" + candidate;
+      std::ifstream info_file(info_path, std::ios::binary);
+      if (info_file.is_open()) {
+        src += std::string((std::istreambuf_iterator<char>(info_file)), std::istreambuf_iterator<char>());
+        break;
+      }
+    }
+  }
+  src += GetSocVersion();
+  // FNV-1a 64-bit: stable for identical input bytes; used to fingerprint
+  // cache-scope conditions only (not a cryptographic checksum).
+  uint64_t hash = 14695981039346656037ULL;
+  for (unsigned char c : src) {
+    hash ^= c;
+    hash *= 1099511628211ULL;
+  }
+  return std::to_string(hash);
 }
 
 void GeGraphExecutor::GetGeGraphOptions(const FuncGraphPtr &anf_graph,
@@ -605,8 +787,14 @@ void GeGraphExecutor::GetGeGraphOptions(const FuncGraphPtr &anf_graph,
   if (ascend_device_info == nullptr) {
     MS_LOG(EXCEPTION) << "Failed to get graph session options, can not find ascend device context.";
   }
-  uint32_t rank_id = ascend_device_info->GetRankID();
-  graph_name_ = std::to_string(rank_id) + "_" + std::to_string(global_graph_idx_) + "_" + anf_graph->ToString();
+  // Graph key must be rank-independent: TP ranks shard the SAME graph structure
+  // (symmetric slicing, weights are external variables with externalWeight=2),
+  // so an identical key lets every rank after the first one hit the GE graph
+  // compiler cache shared via ge.graph_compiler_cache_dir, and the duplicated
+  // compilation (minutes per rank) collapses into a cache load. Keep the
+  // global graph index to separate prefill/decode graphs of one rank.
+  graph_name_ =
+    std::to_string(global_graph_idx_) + "_" + anf_graph->ToString() + "_" + GetCompileCacheFingerprint(anf_graph);
   for (auto &c : graph_name_) {
     if (c == '.') {
       c = '_';
@@ -655,7 +843,9 @@ bool GeGraphExecutor::CreateSession(const std::map<std::string, std::string> &ex
     return true;
   }
   session_id_ = GetSessionId();
-  (void)setenv("GE_TRAIN", "0", 1);
+  // All process-env settings (GE_TRAIN + whitelisted compile envs, see
+  // SetGeCompileEnvOptions) must be in place before the GE session is created.
+  SetGeCompileEnvOptions();
   std::map<std::string, std::string> session_options = extra_options;
   GetGeSessionOptions(&session_options);
   if (auto option_id = session_options.find(lite::kGeGraphCompilerCacheDir); option_id != session_options.end()) {
@@ -735,24 +925,42 @@ bool GeGraphExecutor::UpdateGraphInputs(const FuncGraphPtr &graph) {
                   << " in AscendDeviceInfo or config file " << input_shapes.size();
     return false;
   }
+  // The model's own input names are the single source of truth for matching:
+  // GetTensorName prefers the abstract name (the original ONNX input name,
+  // e.g. "input_ids") and falls back to the node scope name. Config names must
+  // match these model input names exactly — any mismatch (including internal
+  // placeholder names like "U292" leaked from a previous export) is rejected
+  // with the valid names listed, so a stale config can never silently pass.
+  std::vector<std::string> model_input_names;
+  model_input_names.reserve(inputs.size());
+  for (const auto &node : inputs) {
+    MS_CHECK_TRUE_RET(node != nullptr, false);
+    model_input_names.push_back(FuncGraphUtils::GetTensorName({node, 0}));
+  }
   for (size_t i = 0; i < input_shapes.size(); i++) {
     auto node = inputs[i];
     MS_CHECK_TRUE_RET(node != nullptr, false);
-    auto input_shape = input_shapes[i];
     auto para = node->cast<ParameterPtr>();
     if (para == nullptr) {
       MS_LOG(ERROR) << "Cast input to Parameter failed";
       return false;
     }
-    MS_LOG(INFO) << "Func graph input_" << i << " " << para->name()
-                 << ", shape: " << FuncGraphUtils::GetTensorShape({node, 0});
-
     auto it = std::find_if(input_shapes.begin(), input_shapes.end(),
-                           [&para](const auto &item) { return item.name == para->name(); });
+                           [&model_input_names, i](const auto &item) { return item.name == model_input_names[i]; });
     if (it == input_shapes.end()) {
-      MS_LOG(ERROR) << "Failed to find input " << para->name() << " in input_shape " << input_shape_str;
+      std::string valid_names;
+      for (const auto &n : model_input_names) {
+        valid_names += (valid_names.empty() ? "" : ", ") + n;
+      }
+      MS_LOG(ERROR) << "Invalid input name '" << input_shapes[i].name << "' at position " << i << " in input_shape "
+                    << input_shape_str << ": the model input names are [" << valid_names
+                    << "]. Use the model's input names (as returned by model.get_inputs(), matching the "
+                       "original ONNX input names); placeholder names like 'U<number>' change on every "
+                       "re-export and are rejected.";
       return false;
     }
+    MS_LOG(INFO) << "Func graph input_" << i << " " << para->name()
+                 << ", shape: " << FuncGraphUtils::GetTensorShape({node, 0});
     auto abstract = para->abstract();
     if (abstract == nullptr) {
       MS_LOG(ERROR) << "Get input abstract failed";
