@@ -64,14 +64,12 @@ def tiny_hf_fixture(tmp_path):
 
 
 @pytest.mark.parametrize("quant_type,wire_type,block_bytes", [("q4_0", 2, 18), ("q3_0", 41, 14)])
-def test_full_hf_to_pure_gguf_and_loader(tiny_hf, monkeypatch, quant_type, wire_type, block_bytes):
+def test_full_hf_to_pure_gguf_and_loader(tiny_hf, quant_type, wire_type, block_bytes):
     """Real HF files -> CLI -> real GGUF -> type detection and runtime packing."""
     model, config, tensors = tiny_hf
-    # Keep the production Q3 architecture guard; scale its supported fixture
-    # down to a complete tiny layer so this test does not allocate 0.5B weights.
-    monkeypatch.setattr(gguf_quant, "SUPPORTED_MODEL", {
-        name: getattr(config, name) for name in gguf_quant.SUPPORTED_MODEL
-    })
+    # The production guard checks operator capability on the derived geometry,
+    # so a complete tiny layer passes without patching any size table.
+    assert config.hidden_size % 32 == 0 and config.intermediate_size % 16 == 0
     output = model / f"pure-{quant_type}.gguf"
     assert gguf_quant.main(["--model", str(model), "--output", str(output),
                            "--quant-type", quant_type]) == 0

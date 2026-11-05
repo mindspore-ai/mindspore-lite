@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Inject GGUF Q4_0 or private Q3_0 decoder weights into a Qwen2.5-0.5B skeleton.
+"""Inject GGUF Q4_0 or private Q3_0 decoder weights into a Qwen2.5 skeleton.
+
+No model size is hard-coded here: the expected decoder geometry is derived from
+the GGUF file's own architecture metadata (``<arch>.block_count``,
+``embedding_length``, ``feed_forward_length``, ``attention.head_count[_kv]``,
+``attention.key_length``), and every tensor is checked against it.
 
 Q4_0 embedding/lm_head payloads retain the compact phase4 NZF layout.
 Q3_0 decoder payloads use the source MsQuant3N0Group32 adapter's planes.
@@ -38,17 +43,6 @@ from utils.quantization import QuantType
 
 logger = logging.getLogger(__name__)
 
-# Shared by the metadata-only skeleton and the tensor-shape checks below.
-QWEN2_5_ARCH = {
-    "num_hidden_layers": 24,
-    "intermediate_size": 4864,
-    "max_position_embeddings": 32768,
-    "hidden_size": 896,
-    "num_attention_heads": 14,
-    "num_key_value_heads": 2,
-    "vocab_size": 151936,
-}
-
 # ONNX node name -> GGUF tensor name (quantized decoder matmuls).
 QUANT_MATMUL_MAP = {
     "/model/layers.{}/self_attn/q_proj/MatMul_quant": "blk.{}.attn_q.weight",
@@ -73,23 +67,83 @@ FP16_WEIGHT_MAP = {
 MODEL_WEIGHT_MAP = {"/model/norm/MsRmsNorm": "output_norm.weight"}
 
 
-def _validate_tensor_shapes(tensors, layers):
-    """Check logical GGUF dimensions without loading or dequantizing payloads."""
-    hidden = QWEN2_5_ARCH["hidden_size"]
-    intermediate = QWEN2_5_ARCH["intermediate_size"]
-    head_dim = hidden // QWEN2_5_ARCH["num_attention_heads"]
-    kv_width = head_dim * QWEN2_5_ARCH["num_key_value_heads"]
-    embedding_shape = (hidden, QWEN2_5_ARCH["vocab_size"])
+def _metadata_int(fields, key):
+    """Read one scalar integer GGUF metadata field, or None when absent."""
+    field = fields.get(key)
+    return None if field is None else int(field.parts[-1][0])
+
+
+def read_gguf_geometry(fields):
+    """Derive the decoder geometry from the GGUF's own architecture metadata.
+
+    Adapted from MSLQuant's local commit c900f382 (``read_gguf_geometry``) and
+    extended with the block count, so neither the layer count nor any other
+    size hyper-parameter is hard-coded for a specific Qwen2.5 size.
+    """
+    try:
+        arch = bytes(fields["general.architecture"].parts[-1]).decode("utf-8")
+    except KeyError as exc:
+        raise ValueError("GGUF metadata lacks general.architecture") from exc
+    geometry = {}
+    for name, key in (("num_hidden_layers", "block_count"),
+                      ("hidden_size", "embedding_length"),
+                      ("intermediate_size", "feed_forward_length"),
+                      ("num_attention_heads", "attention.head_count"),
+                      ("num_key_value_heads", "attention.head_count_kv")):
+        value = _metadata_int(fields, f"{arch}.{key}")
+        if value is None or value <= 0:
+            raise ValueError(f"GGUF metadata {arch}.{key} must be a positive integer, got {value}")
+        geometry[name] = value
+    head_dim = _metadata_int(fields, f"{arch}.attention.key_length")
+    if head_dim is None:
+        if geometry["hidden_size"] % geometry["num_attention_heads"]:
+            raise ValueError(f"GGUF metadata {arch}.embedding_length={geometry['hidden_size']} is not divisible "
+                             f"by {arch}.attention.head_count={geometry['num_attention_heads']}")
+        head_dim = geometry["hidden_size"] // geometry["num_attention_heads"]
+    if head_dim <= 0:
+        raise ValueError(f"GGUF metadata {arch}.attention.key_length must be positive, got {head_dim}")
+    geometry["head_dim"] = head_dim
+    # Prefer an explicit vocabulary size, then the tokenizer list; token_embd
+    # defines it when the file carries neither.
+    tokens = fields.get("tokenizer.ggml.tokens")
+    vocab = _metadata_int(fields, f"{arch}.vocab_size")
+    geometry["vocab_size"] = vocab if vocab is not None else (len(tokens.data) if tokens is not None else None)
+    return geometry
+
+
+def resolve_gguf_layers(geometry, layers=None):
+    """Return the metadata layer count, cross-checking an explicit request."""
+    derived = int(geometry["num_hidden_layers"])
+    if layers is not None and int(layers) != derived:
+        raise ValueError(f"requested layers={int(layers)}, GGUF metadata block_count={derived}")
+    return derived
+
+
+def _validate_tensor_shapes(tensors, layers, geometry):
+    """Check logical GGUF dimensions against the metadata-derived geometry.
+
+    No payload is loaded or dequantized. The expected shapes come from
+    ``geometry`` (see ``read_gguf_geometry``), never from a size table.
+    """
+    hidden = geometry["hidden_size"]
+    intermediate = geometry["intermediate_size"]
+    q_width = geometry["head_dim"] * geometry["num_attention_heads"]
+    kv_width = geometry["head_dim"] * geometry["num_key_value_heads"]
+    tensor_shapes = {tensor.name: tuple(tensor.shape) for tensor in tensors}
+    vocab = geometry.get("vocab_size")
+    if vocab is None:
+        vocab = tensor_shapes.get("token_embd.weight", (None, None))[-1]
+    embedding_shape = (hidden, vocab)
     # GGUF matrices declare [input, output], not the stored numpy row order.
     layer_shapes = {
-        "attn_q.weight": (hidden, hidden),
+        "attn_q.weight": (hidden, q_width),
         "attn_k.weight": (hidden, kv_width),
         "attn_v.weight": (hidden, kv_width),
-        "attn_output.weight": (hidden, hidden),
+        "attn_output.weight": (q_width, hidden),
         "ffn_gate.weight": (hidden, intermediate),
         "ffn_up.weight": (hidden, intermediate),
         "ffn_down.weight": (intermediate, hidden),
-        "attn_q.bias": (hidden,),
+        "attn_q.bias": (q_width,),
         "attn_k.bias": (kv_width,),
         "attn_v.bias": (kv_width,),
         "attn_norm.weight": (hidden,),
@@ -103,7 +157,6 @@ def _validate_tensor_shapes(tensors, layers):
         "token_embd.weight": embedding_shape,
         "output_norm.weight": (hidden,),
     })
-    tensor_shapes = {tensor.name: tuple(tensor.shape) for tensor in tensors}
     # Tied models omit output.weight; validate it too when a GGUF includes it.
     if "output.weight" in tensor_shapes:
         required_shapes["output.weight"] = embedding_shape
@@ -117,7 +170,7 @@ def _validate_tensor_shapes(tensors, layers):
             )
 
 
-def load_quantized_weight(model, weights, layers=24):
+def load_quantized_weight(model, weights, layers):
     """Replace each quantized MatMul weight with its packed GGUF payload."""
     nodes = {node.name: node for node in model.graph.node}
 
@@ -134,7 +187,7 @@ def load_quantized_weight(model, weights, layers=24):
     return new_initializers
 
 
-def load_decode_fp16_weight(model, weights, layers=24):
+def load_decode_fp16_weight(model, weights, layers):
     """Inject fp16 biases and layer-norm weights into the decoder."""
     nodes = {node.name: node for node in model.graph.node}
 
@@ -179,7 +232,7 @@ def load_model_fp16_weight(model, weights):
 
 
 
-def load_weight(model, weights, layers=24, decoder_quantize_config: Optional[QuantType] = QuantType.Q4_0):
+def load_weight(model, weights, layers, decoder_quantize_config: Optional[QuantType] = QuantType.Q4_0):
     """Inject decoder quantized weights + fp16 norm/bias + model norm into the skeleton."""
     if decoder_quantize_config in (QuantType.Q4_0, QuantType.Q3_0):
         quant_weight = load_quantized_weight(model, weights, layers)
@@ -214,15 +267,21 @@ def gguf_loader(
     onnx_input_path,
     onnx_output_path,
     embedding_weight_save_path,
-    layers=24,
+    layers=None,
     embedding_quantize_config=QuantType.Q4_0,
     decoder_quantize_config=QuantType.Q4_0,
 ):
-    """Load GGUF decoder weights into the skeleton and save the result."""
+    """Load GGUF decoder weights into the skeleton and save the result.
+
+    ``layers`` defaults to the metadata block count; an explicit value is
+    cross-checked against it instead of overriding it.
+    """
     embedding_quantize_config = QuantType.parse(embedding_quantize_config)
     decoder_quantize_config = QuantType.parse(decoder_quantize_config)
     reader = open_gguf_reader(gguf_path)
-    _validate_tensor_shapes(reader.tensors, layers)
+    geometry = read_gguf_geometry(reader.fields)
+    layers = resolve_gguf_layers(geometry, layers)
+    _validate_tensor_shapes(reader.tensors, layers, geometry)
     name2weight = load_file_from_tensors(
         reader.tensors, embedding_weight_save_path, decoder_quantize_config, embedding_quantize_config
     )

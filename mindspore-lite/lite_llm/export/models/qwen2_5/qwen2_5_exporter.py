@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Qwen2.5-0.5B ONNX exporter for the mslite-llm NNRT (Kirin NPU) runtime.
+"""Qwen2.5 ONNX exporter for the mslite-llm NNRT (Kirin NPU) runtime.
+
+Geometry (layers, hidden/intermediate size, head counts, head_dim, vocabulary,
+tied embeddings) is derived from config.json or GGUF metadata; no size-related
+hyper-parameter is hard-coded. Only operator capability constraints
+(MsAttention alignment, weight-quantization grouping) restrict supported
+shapes, and each is a named constant below.
 
 Ported from ``mindspore-lite-llm/llm_converter/qwen2.5/qwen_2_5_exporter.py``
 and adapted to the graph I/O contract consumed by the mslite-llm NNRT executor
@@ -46,6 +52,8 @@ Kirin ``.omc`` offline model, e.g. with ``omg --model=... --framework=5
 import json
 import logging
 import os
+import re
+from glob import glob
 from typing import Optional
 
 import numpy as np
@@ -55,7 +63,9 @@ from onnxslim import slim
 from torch.onnx import OperatorExportTypes
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-from mslite_llm_quant.q3_0 import register_private_q3_0_type
+from mslite_llm_quant.q3_0 import (
+    decoder_matmul_shapes, register_private_q3_0_type, validate_q3_0_geometry,
+)
 from utils.onnx_postprocess import (
     _save_onnx,
     duplicate_shared_initializers,
@@ -72,15 +82,20 @@ from utils.export_quant import (
 from utils.quantization import QuantType
 
 from .qwen2_5_wrapper import Qwen2NnrtWrapper, resolve_head_dim
-from .qwen2_5_gguf_loader import QWEN2_5_ARCH
 
 logger = logging.getLogger(__name__)
 
 DEVICE = "cpu"
 
+# Operator capability constraints (named constants, never model sizes).
 # MsAttention cache/tile alignment (same values as ``qwen3_exporter.py:75-76``).
 ATTENTION_CACHE_ALIGNMENT = 64
 ATTENTION_TILE_ALIGNMENT = 16
+# Weight-quantization capability: Q4_0/Q3_0 group the reduction axis by 32 and
+# need the output axis fractal-aligned; s16s4 blocks the reduction axis by 512.
+QUANT_GROUP_SIZE = 32
+QUANT_OUTPUT_ALIGNMENT = 16
+S16S4_K_ALIGNMENT = 512
 dtype = torch.float16
 
 
@@ -98,17 +113,168 @@ def _preserve_gguf_bias_slots(model):
                 parameter.fill_(1)
 
 
+def validate_qwen2_5_geometry(config) -> dict:
+    """Validate config-derived geometry against the supported attention contract."""
+    model_type = getattr(config, "model_type", None)
+    if model_type != "qwen2":
+        raise ValueError(f"model_type={model_type!r}, expected qwen2")
+    fields = ("num_hidden_layers", "hidden_size", "intermediate_size", "num_attention_heads",
+              "num_key_value_heads", "vocab_size", "max_position_embeddings")
+    geometry = {name: getattr(config, name, None) for name in fields}
+    for name, value in geometry.items():
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ValueError(f"{name}={value!r} must be a positive integer")
+    head_dim = getattr(config, "head_dim", None)
+    if head_dim is None:
+        if geometry["hidden_size"] % geometry["num_attention_heads"]:
+            raise ValueError(f"hidden_size={geometry['hidden_size']} is not divisible by "
+                             f"num_attention_heads={geometry['num_attention_heads']}")
+        head_dim = geometry["hidden_size"] // geometry["num_attention_heads"]
+    if not isinstance(head_dim, int) or isinstance(head_dim, bool) or head_dim <= 0:
+        raise ValueError(f"head_dim={head_dim!r} must be a positive integer")
+    if geometry["num_attention_heads"] % geometry["num_key_value_heads"]:
+        raise ValueError(f"num_attention_heads={geometry['num_attention_heads']} is not divisible by "
+                         f"num_key_value_heads={geometry['num_key_value_heads']}")
+    if head_dim % ATTENTION_TILE_ALIGNMENT:
+        raise ValueError(f"head_dim={head_dim} must be divisible by "
+                         f"{ATTENTION_TILE_ALIGNMENT} (ATTENTION_TILE_ALIGNMENT)")
+    geometry["head_dim"] = head_dim
+    return geometry
+
+
+def validate_attention_shapes(max_seq_len, chunk_size, head_dim):
+    """Validate MsAttention cache and prefill/decode alignment."""
+    if max_seq_len <= 0 or max_seq_len % ATTENTION_CACHE_ALIGNMENT:
+        raise ValueError(f"max_seq_len={max_seq_len} must be positive and divisible by {ATTENTION_CACHE_ALIGNMENT}")
+    if head_dim <= 0 or head_dim % ATTENTION_TILE_ALIGNMENT:
+        raise ValueError(f"head_dim={head_dim} must be positive and divisible by {ATTENTION_TILE_ALIGNMENT}")
+    if chunk_size <= 0 or chunk_size > max_seq_len or (chunk_size != 1 and chunk_size % ATTENTION_TILE_ALIGNMENT):
+        raise ValueError(f"chunk_size={chunk_size} must fit max_seq_len={max_seq_len} and be 1 or divisible by 16")
+
+
+def validate_quant_capability(geometry, quant_type):
+    """Validate every quantized decoder matmul against operator capability.
+
+    ``geometry`` comes from config.json / GGUF metadata (see
+    ``validate_qwen2_5_geometry``); only operator capability is checked here, so
+    any model size whose derived dimensions satisfy the constraints is allowed.
+    Errors name the tensor role, the actual K/N and the required divisor.
+    """
+    if quant_type is None:
+        return
+    quant_type = QuantType.parse(quant_type)
+    if quant_type is QuantType.Q3_0:
+        validate_q3_0_geometry(geometry)
+        return
+    if quant_type is QuantType.Q4_0:
+        k_align, n_align = QUANT_GROUP_SIZE, QUANT_OUTPUT_ALIGNMENT
+        k_name, n_name = "QUANT_GROUP_SIZE", "QUANT_OUTPUT_ALIGNMENT"
+    elif quant_type is QuantType.S16S4:
+        k_align, n_align = S16S4_K_ALIGNMENT, QUANT_OUTPUT_ALIGNMENT
+        k_name, n_name = "S16S4_K_ALIGNMENT", "QUANT_OUTPUT_ALIGNMENT"
+    else:
+        raise ValueError(f"decoder quantization {quant_type} is not supported for qwen2.5; "
+                         f"supported: {[QuantType.Q4_0.value, QuantType.Q3_0.value]}")
+    for role, k_dim, n_dim in decoder_matmul_shapes(geometry):
+        if k_dim % k_align:
+            raise ValueError(f"quant_type {quant_type.value}: {role}.weight K={k_dim} must be divisible by "
+                             f"{k_align} ({k_name}); derived from hidden_size="
+                             f"{geometry['hidden_size']} / intermediate_size={geometry['intermediate_size']}")
+        if n_dim % n_align:
+            raise ValueError(f"quant_type {quant_type.value}: {role}.weight N={n_dim} must be divisible by "
+                             f"{n_align} ({n_name}); derived from hidden_size="
+                             f"{geometry['hidden_size']} / intermediate_size={geometry['intermediate_size']}")
+
+
+def _canonical_model_scale(label) -> Optional[str]:
+    """Normalize an exact model size tag such as 0.5B or 1.5B, or return None."""
+    if not isinstance(label, str):
+        return None
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)[bB]", label.strip())
+    return match.group(1) + "b" if match else None
+
+
+def qwen2_5_artifact_stem(label) -> str:
+    """Convert a model size tag to the historical ONNX filename stem."""
+    normalized = _canonical_model_scale(label)
+    if normalized is None:
+        raise ValueError(f"invalid model size: {label!r}")
+    size = normalized[:-1].replace(".", "b") if "." in normalized else normalized
+    return f"qwen2_5_{size}"
+
+
+QWEN2_5_NEUTRAL_NAMES = {"onnx_name": "qwen2_5.onnx", "quant_name": "qwen2_5_quant.onnx",
+                         "gguf_name": "qwen2_5_gguf.onnx", "model_name": "qwen2.5"}
+
+
+def resolve_qwen2_5_artifact_names(model_path) -> dict:
+    """Resolve names from GGUF metadata or the source path name."""
+    label = None
+    if os.path.isfile(model_path) and str(model_path).endswith(".gguf"):
+        from gguf import GGUFReader
+
+        field = GGUFReader(model_path).fields.get("general.size_label")
+        try:
+            label = _canonical_model_scale(field.parts[-1].tobytes().decode("utf-8")) if field else None
+        except (AttributeError, IndexError, UnicodeDecodeError):
+            label = None
+    if not label:
+        basename = os.path.basename(os.path.normpath(model_path))
+        if basename.endswith(".gguf") and os.path.isfile(model_path):
+            basename = basename[:-5]
+        match = re.search(r"(?<![\w.])(\d+(?:\.\d+)?)[bB](?![\w.])", basename)
+        label = _canonical_model_scale(match.group()) if match else None
+    if not label:
+        logger.warning("Cannot determine model size for %s; using neutral names", model_path)
+        return dict(QWEN2_5_NEUTRAL_NAMES)
+    stem = qwen2_5_artifact_stem(label)
+    return {"onnx_name": f"{stem}.onnx", "quant_name": f"{stem}_quant.onnx",
+            "gguf_name": f"{stem}_gguf.onnx", "model_name": f"qwen2.5-{label}"}
+
+
+def validate_qwen2_5_source_layers(model_path, layers):
+    """Cross-check layers against GGUF, a safetensors index or all safetensors headers.
+
+    Raise ValueError if no supported source exists or the layer indices do not match.
+    """
+    if os.path.isfile(model_path) and str(model_path).endswith(".gguf"):
+        from gguf import GGUFReader
+
+        names = (tensor.name for tensor in GGUFReader(model_path).tensors)
+        pattern = r"^blk\.(\d+)\."
+    else:
+        index_path = os.path.join(model_path, "model.safetensors.index.json")
+        if os.path.isfile(index_path):
+            with open(index_path, encoding="utf-8") as stream:
+                names = json.load(stream)["weight_map"]
+        else:
+            files = sorted(glob(os.path.join(model_path, "*.safetensors")))
+            if not files:
+                raise ValueError(f"cannot determine weight layer count for {model_path}: expected GGUF, "
+                                 "model.safetensors.index.json or *.safetensors")
+            from safetensors import safe_open
+
+            names = []
+            for path in files:
+                with safe_open(path, framework="numpy") as stream:
+                    names.extend(stream.keys())
+        pattern = r"^model\.layers\.(\d+)\."
+    found = {int(match.group(1)) for name in names if (match := re.match(pattern, name))}
+    expected = set(range(layers))
+    if found != expected:
+        missing = sorted(expected - found)[:8]
+        extra = sorted(found - expected)[:8]
+        raise ValueError(f"config layers={layers}, weight layers={len(found)}, "
+                         f"missing indices={missing}, extra indices={extra}")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Part 3: exporter
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 class Qwen2Onnx:
-    """Export a Qwen2.5-0.5B HF model to the mslite-llm NNRT ONNX contract."""
-
-    #: Only the Qwen2.5-0.5B architecture is validated (matches the NNRT gear
-    #: shapes and the proven omc contract).
-    REQUIRED_ARCH = QWEN2_5_ARCH
+    """Export config-derived Qwen2.5 geometry subject to MsAttention constraints."""
 
     def __init__(self):
         self.model = None
@@ -117,10 +283,12 @@ class Qwen2Onnx:
         self.num_layers = 0
         self.hidden_size = 0
         self.num_kv_heads = 0
-        self.model_name = "qwen2.5-0.5b"
+        self.model_name = "qwen2.5"
 
-    def load(self, model_path, layers=24):
-        """Load HF weights, or build a GGUF skeleton from its own metadata.
+    def load(self, model_path, layers=None):
+        """Load in fp16 and validate the size selected by the model config.
+
+        Only an explicit ``layers`` overrides the HF config layer count.
 
         GGUF payloads are injected after quantization; loading/dequantizing the
         full checkpoint via transformers is unnecessary and cannot handle the
@@ -135,13 +303,14 @@ class Qwen2Onnx:
             self.config = AutoConfig.for_model(**metadata)
             self.config.tie_word_embeddings = True
             self.config._attn_implementation = "eager"  # pylint: disable=W0212
-            self._validate_config(model_path)
+            validate_qwen2_5_geometry(self.config)
             self.model = AutoModelForCausalLM.from_config(self.config, torch_dtype=dtype)
             _preserve_gguf_bias_slots(self.model)
         else:
             self.config = AutoConfig.from_pretrained(model_path)
             self.config._attn_implementation = "eager"  # pylint: disable=W0212
-            self.config.num_hidden_layers = layers
+            if layers is not None:
+                self.config.num_hidden_layers = layers
             self.model = AutoModelForCausalLM.from_pretrained(
                 model_path,
                 trust_remote_code=True,
@@ -152,7 +321,9 @@ class Qwen2Onnx:
             )
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
 
-        self._validate_config(model_path)
+        if is_gguf and layers is not None and layers != self.config.num_hidden_layers:
+            raise ValueError(f"requested layers={layers}, GGUF config layers={self.config.num_hidden_layers}")
+        validate_qwen2_5_geometry(self.config)
         self.model = self.model.eval()
 
         self.num_layers = self.model.config.num_hidden_layers
@@ -160,27 +331,15 @@ class Qwen2Onnx:
         self.num_kv_heads = self.model.config.num_key_value_heads
         logger.info("model loaded: %s", model_path)
 
-    def _validate_config(self, model_path):
-        """Validate architecture before allocating a GGUF skeleton."""
-        if self.config.model_type != "qwen2":
-            raise ValueError(f"Model type must be qwen2, got {self.config.model_type}")
-        for key, expected in self.REQUIRED_ARCH.items():
-            if getattr(self.config, key, None) != expected:
-                raise ValueError(
-                    f"Error: the model at '{model_path}' is not a Qwen2.5-0.5B model "
-                    f"({key}={getattr(self.config, key, None)}, expected {expected})."
-                )
-
     def export(self, model_path, max_seq_len=1024, chunk_size=128):
         """Trace the logits-only graph; KV caches are updated in place."""
         # Same resolution rule as ``Qwen2OpSet`` so the traced rope/cache shapes and
         # the operator attribute cannot drift when the config sets ``head_dim`` explicitly.
         head_dim = resolve_head_dim(self.model.config)
-        if max_seq_len <= 0 or max_seq_len % ATTENTION_CACHE_ALIGNMENT or head_dim % ATTENTION_TILE_ALIGNMENT:
-            raise ValueError("MsAttention requires KV capacity divisible by 64 and head_dim divisible by 16")
-        if chunk_size <= 0 or chunk_size > max_seq_len or (
-                chunk_size != 1 and chunk_size % ATTENTION_TILE_ALIGNMENT):
-            raise ValueError("MsAttention requires a prefill chunk divisible by 16, or decode chunk 1")
+        validate_attention_shapes(max_seq_len, chunk_size, head_dim)
+        if max_seq_len > self.model.config.max_position_embeddings:
+            raise ValueError(f"max_seq_len={max_seq_len} exceeds "
+                             f"max_position_embeddings={self.model.config.max_position_embeddings}")
 
         input_names = [
             "valid_seq_len",
@@ -305,9 +464,7 @@ class Qwen2Onnx:
     def build_config(self, max_length, chunk_size, embedding_quant_config, decoder_quant_config):
         """Build the packager-consumable model config (architecture/generation/assets/npu)."""
         arch = self.model.config
-        model_name = os.path.basename(getattr(arch, "_name_or_path", "") or "") or getattr(
-            self, "model_name", "qwen2.5-0.5b"
-        )
+        model_name = os.path.basename(getattr(arch, "_name_or_path", "") or "") or self.model_name or "qwen2.5"
         return {
             "model_name": model_name,
             "architecture": {
@@ -360,14 +517,14 @@ def export_qwen2_5(
     chunk_size: int = 128,
     embedding_quant: Optional[str] = None,
     decoder_quant: Optional[str] = None,
-    layers: int = 24,
-    model_name: str = "qwen2.5-0b5",
-    onnx_name: str = "qwen2_5_0b5.onnx",
+    layers: Optional[int] = None,
+    model_name: Optional[str] = None,
+    onnx_name: str = QWEN2_5_NEUTRAL_NAMES["onnx_name"],
 ):
-    """Export a Qwen2.5-0.5B model to the mslite-llm NNRT contract.
+    """Export a supported Qwen2.5 model to the mslite-llm NNRT contract.
 
     Produces, under ``output_dir``:
-      * ``<onnx_name>`` — the ONNX graph (custom Ms* ops, 7-input contract)
+      * ``<onnx_name>`` — the ONNX graph (default: qwen2_5.onnx; custom Ms* ops, 7-input contract)
       * ``embedding.bin`` / ``embedding_quant.bin`` — embedding weight
       * ``rope_cos.bin`` / ``rope_sin.bin`` — RoPE constants
       * ``attention_mask.bin`` — precomputed causal mask
@@ -390,7 +547,10 @@ def export_qwen2_5(
 
     exporter = Qwen2Onnx()
     exporter.load(model_dir, layers)
-    exporter.model_name = model_name
+    exporter.model_name = model_name if model_name is not None else exporter.model_name
+    # Capability check on the metadata-derived geometry (no size table).
+    geometry = validate_qwen2_5_geometry(exporter.config)
+    validate_quant_capability(geometry, decoder_quant)
 
     onnx_path = os.path.join(output_dir, onnx_name)
     exporter.export(onnx_path, max_seq_len=max_length, chunk_size=chunk_size)

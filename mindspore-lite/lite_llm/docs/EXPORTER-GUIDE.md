@@ -185,6 +185,23 @@ MODEL_TYPES["<name>"] = {
 }
 ```
 
+可选键 `layers: None` 表示不设层数白名单；`resolve_names`（签名 `resolve_names(model_path)`）按源元数据或路径名返回四键产物名覆盖默认值，取不到尺寸时返回中性名，`validate_source` 将层数与权重源交叉校验。`resolve_names` 必须返回恰好包含四个名称键、值为非空字符串的 dict；缺键、多余键、非 dict、空值或钩子抛异常都会在导出前以带模型族名的 ValueError 终止。
+
+### 尺寸无关约定（Qwen2.5）
+
+Qwen2.5 全链路不写死任何尺寸相关超参：层数、hidden、intermediate、heads、kv_heads、head_dim、vocab、tie_embeddings 全部从 `config.json`（HF 输入）或 GGUF 元数据（`<arch>.block_count` / `embedding_length` / `feed_forward_length` / `attention.head_count[_kv]` / `attention.key_length`）推导，同一份推导几何同时用于骨架搭建、GGUF 张量形状校验与产物命名。已验证 0.5B / 1.5B / 3B。
+
+仅保留**算子能力约束**，全部是具名常量，报错会写明张量角色、实际 K/N 与要求的整除数：
+
+| 常量 | 值 | 约束对象 |
+|---|---|---|
+| `ATTENTION_CACHE_ALIGNMENT` | 64 | `max_length` |
+| `ATTENTION_TILE_ALIGNMENT` | 16 | `head_dim`、`chunk_size`（或 1） |
+| `QUANT_GROUP_SIZE` | 32 | Q4_0/Q3_0 量化矩阵的 K |
+| `QUANT_OUTPUT_ALIGNMENT` | 16 | 量化矩阵的 N |
+| `S16S4_K_ALIGNMENT` | 512 | s16s4 的 K（Qwen2.5 的 intermediate 多不满足，会明确报错） |
+| `mslite_llm_quant.q3_0.MAX_K` / `N_ALIGN` | 16384 / 16 | MsQuant3N0Group32 能力上限 |
+
 chat template 被限制在 v1 IR 子集（消息循环 + `add_generation_prompt`），工具调用类 Jinja 不支持。
 
 ### Step 5 验证（不可跳过）

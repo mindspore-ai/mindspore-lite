@@ -390,7 +390,9 @@ def test_gguf_skeleton_uses_own_metadata_without_loading_weights(monkeypatch, tm
 
     path = tmp_path / "model.gguf"
     path.touch()
-    metadata = dict(qwen2_5_exporter.Qwen2Onnx.REQUIRED_ARCH, model_type="qwen2")
+    metadata = {"model_type": "qwen2", "num_hidden_layers": 24, "intermediate_size": 4864,
+                "max_position_embeddings": 32768, "hidden_size": 896,
+                "num_attention_heads": 14, "num_key_value_heads": 2, "vocab_size": 151936}
     metadata["hidden_size"] = hidden_size
     calls = []
 
@@ -412,7 +414,7 @@ def test_gguf_skeleton_uses_own_metadata_without_loading_weights(monkeypatch, tm
                         lambda *_args, **_kwargs: pytest.fail("GGUF skeleton must not load full weights"))
     exporter = qwen2_5_exporter.Qwen2Onnx()
     if hidden_size != 896:
-        with pytest.raises(ValueError, match="not a Qwen2.5-0.5B"):
+        with pytest.raises(ValueError, match="hidden_size=1024 is not divisible"):
             exporter.load(str(path))
         assert not calls
     else:

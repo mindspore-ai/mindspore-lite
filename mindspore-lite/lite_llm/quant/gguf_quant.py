@@ -14,9 +14,11 @@
 # ============================================================================
 """Local HF -> pure Q4_0 or Q3_0 GGUF, independent of the export CLI.
 
-Q4_0 supports dense Qwen2/Qwen3 checkpoints. Q3_0 keeps the existing tied
-Qwen2.5-0.5B contract (private GGUF type 41). Embeddings remain Q4_0;
-normalization weights and biases are F32. No importance-based type promotion.
+Q4_0 supports dense Qwen2/Qwen3 checkpoints. Q3_0 keeps the tied Qwen2
+contract (private GGUF type 41) and accepts any size whose config-derived
+geometry satisfies the MsQuant3N0Group32 capability limits. Embeddings remain
+Q4_0; normalization weights and biases are F32. No importance-based type
+promotion.
 """
 
 import argparse
@@ -28,27 +30,42 @@ import numpy as np
 
 from .generation_policy import GGUF_GENERATION_CONFIG_KEY, load_generation_policy
 from .q3_0 import BLOCK_BYTES as Q3_0_BLOCK_BYTES, BLOCK_SIZE as Q3_0_BLOCK_SIZE
-from .q3_0 import quantize_q3_0_blocks, register_private_q3_0_type
+from .q3_0 import quantize_q3_0_blocks, register_private_q3_0_type, validate_q3_0_geometry
 
-SUPPORTED_MODEL = {
-    "model_type": "qwen2", "num_hidden_layers": 24, "hidden_size": 896,
-    "intermediate_size": 4864, "num_attention_heads": 14,
-    "num_key_value_heads": 2, "vocab_size": 151936,
-}
+
+def config_geometry(config):
+    """Derive the decoder geometry from an HF config, with no size table."""
+    fields = ("hidden_size", "intermediate_size", "num_attention_heads", "num_key_value_heads")
+    geometry = {}
+    for name in fields:
+        value = getattr(config, name, None)
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ValueError(f"HF config {name}={value!r} must be a positive integer")
+        geometry[name] = value
+    head_dim = getattr(config, "head_dim", None)
+    if head_dim is None:
+        if geometry["hidden_size"] % geometry["num_attention_heads"]:
+            raise ValueError(f"HF config hidden_size={geometry['hidden_size']} is not divisible by "
+                             f"num_attention_heads={geometry['num_attention_heads']}")
+        head_dim = geometry["hidden_size"] // geometry["num_attention_heads"]
+    geometry["head_dim"] = int(head_dim)
+    return geometry
 
 
 def validate_config(config, quant_type="q4_0"):
-    """Validate the explicitly supported HF model families before conversion."""
+    """Validate the HF family and the operator capability, never a model size."""
     if quant_type not in ("q4_0", "q3_0"):
         raise ValueError("quant_type must be q4_0 or q3_0")
     if quant_type == "q4_0":
         if getattr(config, "model_type", None) not in ("qwen2", "qwen3"):
             raise ValueError("q4_0 supports dense Qwen2/Qwen3 HF checkpoints only")
         return
-    mismatches = [name for name, expected in SUPPORTED_MODEL.items()
-                  if getattr(config, name, None) != expected]
-    if mismatches or not getattr(config, "tie_word_embeddings", False):
-        raise ValueError("only tied Qwen2.5-0.5B is supported; invalid fields: " + ", ".join(mismatches))
+    model_type = getattr(config, "model_type", None)
+    if model_type != "qwen2":
+        raise ValueError(f"q3_0 supports tied Qwen2 HF checkpoints only; model_type={model_type!r}")
+    if not getattr(config, "tie_word_embeddings", False):
+        raise ValueError("q3_0 requires tie_word_embeddings=True: the Q4_0 embedding is shared with lm_head")
+    validate_q3_0_geometry(config_geometry(config))
 
 
 def _gguf_name(name):
@@ -185,8 +202,8 @@ def _add_weights(writer, model_dir, quant_type="q4_0", tie_word_embeddings=True)
         if not np.isfinite(array).all():
             raise ValueError(f"HF tensor {name} contains non-finite values")
         if array.ndim == 2:
-            if array.shape[1] % 32:
-                raise ValueError(f"HF tensor {name} requires K divisible by 32")
+            if array.shape[1] % Q3_0_BLOCK_SIZE:
+                raise ValueError(f"HF tensor {name} requires K divisible by {Q3_0_BLOCK_SIZE}")
             if quant_type == "q4_0" or name == "token_embd.weight":
                 data = quantize(np.ascontiguousarray(array), GGMLQuantizationType.Q4_0)
                 wire_type = GGMLQuantizationType.Q4_0
@@ -232,7 +249,7 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="mslite-llm-quantize-gguf",
         description="Quantize a local HF model to pure Q4_0/Q3_0 GGUF (no DDK required).",
-        epilog="Q4_0: dense Qwen2/Qwen3. Q3_0: tied Qwen2.5-0.5B (private GGUF type 41).",
+        epilog="Q4_0: dense Qwen2/Qwen3. Q3_0: tied Qwen2 (private GGUF type 41).",
     )
     parser.add_argument("--model", required=True, help="Local HF model directory")
     parser.add_argument("--output", required=True, help="Output GGUF path")

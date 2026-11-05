@@ -36,6 +36,10 @@ BLOCK_BYTES = SCALE_BYTES + QH_BYTES + QS_BYTES  # bytes per block (==14)
 QH_OFFSET = SCALE_BYTES
 QS_OFFSET = SCALE_BYTES + QH_BYTES
 
+# MsQuant3N0Group32 operator capability limits (not model sizes).
+MAX_K = 16384  # largest supported reduction axis
+N_ALIGN = 16  # output-axis fractal alignment
+
 
 def register_private_q3_0_type():
     """Extend the GGUF enum without overwriting an upstream wire type.
@@ -76,11 +80,49 @@ def _shape(input1_shape):
            for v in input1_shape):
         raise ValueError("input1_shape must contain integers")
     k_dim, n_dim = map(int, input1_shape)
-    if k_dim <= 0 or k_dim > 16384 or k_dim % BLOCK_SIZE or n_dim <= 0 or n_dim % 16:
+    if k_dim <= 0 or k_dim > MAX_K or k_dim % BLOCK_SIZE or n_dim <= 0 or n_dim % N_ALIGN:
         raise ValueError("input1_shape requires 0<K<=16384, K%32==0 and positive N%16==0")
     if n_dim * k_dim // BLOCK_SIZE * BLOCK_BYTES > np.iinfo(np.uint32).max:
         raise ValueError("weight exceeds kernel address limits")
     return k_dim, n_dim
+
+
+def decoder_matmul_shapes(geometry):
+    """Enumerate the quantized decoder matmuls as ``(role, K, N)`` triples.
+
+    ``geometry`` is a derived mapping (config.json or GGUF metadata), never a
+    hard-coded size table: ``hidden_size``, ``intermediate_size``, ``head_dim``,
+    ``num_attention_heads`` and ``num_key_value_heads``.
+    """
+    hidden = int(geometry["hidden_size"])
+    intermediate = int(geometry["intermediate_size"])
+    q_width = int(geometry["head_dim"]) * int(geometry["num_attention_heads"])
+    kv_width = int(geometry["head_dim"]) * int(geometry["num_key_value_heads"])
+    return (
+        ("attn_q", hidden, q_width),
+        ("attn_k", hidden, kv_width),
+        ("attn_v", hidden, kv_width),
+        ("attn_output", q_width, hidden),
+        ("ffn_gate", hidden, intermediate),
+        ("ffn_up", hidden, intermediate),
+        ("ffn_down", intermediate, hidden),
+    )
+
+
+def validate_q3_0_geometry(geometry):
+    """Check a derived geometry against MsQuant3N0Group32 capability only.
+
+    No model size is enumerated: every decoder matmul derived from the model's
+    own metadata must satisfy the reduction-axis grouping/limit and the
+    output-axis fractal alignment.
+    """
+    for role, k_dim, n_dim in decoder_matmul_shapes(geometry):
+        if k_dim % BLOCK_SIZE:
+            raise ValueError(f"q3_0 {role}.weight: K={k_dim} must be divisible by BLOCK_SIZE={BLOCK_SIZE}")
+        if k_dim > MAX_K:
+            raise ValueError(f"q3_0 {role}.weight: K={k_dim} exceeds MsQuant3N0Group32 MAX_K={MAX_K}")
+        if n_dim % N_ALIGN:
+            raise ValueError(f"q3_0 {role}.weight: N={n_dim} must be divisible by N_ALIGN={N_ALIGN}")
 
 
 def quantize_q3_0_blocks(weight: np.ndarray) -> np.ndarray:

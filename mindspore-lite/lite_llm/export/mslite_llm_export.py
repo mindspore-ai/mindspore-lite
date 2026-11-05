@@ -16,7 +16,7 @@
 
 Orchestrates the internal pipeline modules (all internal API, no CLI):
 
-    models/qwen2_5/qwen2_5_exporter.py     Qwen2.5-0.5B HF/GGUF -> ONNX skeleton
+    models/qwen2_5/qwen2_5_exporter.py     Qwen2.5 (any size) HF/GGUF -> ONNX skeleton
     models/qwen2_5/qwen2_5_gguf_loader.py  Qwen2.5 GGUF Q4_0/Q3_0 raw weight injection
     models/qwen3/qwen3_exporter.py         Qwen3 dense HF/GGUF -> ONNX skeleton
     models/qwen3/qwen3_gguf_loader.py      Qwen3 dense GGUF Q4_0 raw weight injection
@@ -65,7 +65,9 @@ _bootstrap_package("models")
 _bootstrap_package("utils")
 
 # pylint: disable=wrong-import-position  # packages bootstrapped above, not via sys.path
-from models.qwen2_5.qwen2_5_exporter import export_qwen2_5  # noqa: E402
+from models.qwen2_5.qwen2_5_exporter import (  # noqa: E402
+    QWEN2_5_NEUTRAL_NAMES, export_qwen2_5, resolve_qwen2_5_artifact_names, validate_qwen2_5_source_layers,
+)
 from models.qwen2_5.qwen2_5_gguf_loader import gguf_loader as qwen2_5_gguf_loader  # noqa: E402
 from models.qwen3.qwen3_exporter import Qwen3Onnx, export_qwen3  # noqa: E402
 from models.qwen3.qwen3_gguf_loader import gguf_loader as qwen3_gguf_loader  # noqa: E402
@@ -114,12 +116,14 @@ MODEL_TYPES = {
     "qwen2_5": {
         "exporter": export_qwen2_5,
         "gguf_loader": qwen2_5_gguf_loader,
-        "layers": 24,
+        "layers": None,
+        "onnx_name": QWEN2_5_NEUTRAL_NAMES["onnx_name"],
+        "quant_name": QWEN2_5_NEUTRAL_NAMES["quant_name"],
+        "gguf_name": QWEN2_5_NEUTRAL_NAMES["gguf_name"],
+        "model_name": QWEN2_5_NEUTRAL_NAMES["model_name"],
+        "resolve_names": resolve_qwen2_5_artifact_names,
+        "validate_source": validate_qwen2_5_source_layers,
         "quant_types": (QuantType.Q4_0, QuantType.Q3_0),
-        "onnx_name": "qwen2_5_0b5.onnx",
-        "quant_name": "qwen2_5_0b5_quant.onnx",
-        "gguf_name": "qwen2_5_0b5_gguf.onnx",
-        "model_name": "qwen2.5-0.5b",
         # Keep the compact NZF decoder payload outside the executable OMC.
         # Both resources remain bundled in the single-file .msl package.
         "external_weights": True,
@@ -177,9 +181,8 @@ def detect_model_kind(model):
 def detect_model_type(model):
     """Detect the MODEL_TYPES key from model metadata (config.json / GGUF).
 
-    Validates the layer count against the reference model too: the pipeline
-    only supports the two pre-validated sizes, and a wrong layer count would
-    silently produce a corrupt skeleton/weight mix otherwise.
+    A None layer whitelist allows any size; family validate_source hooks can
+    cross-check the detected count against the weight source.
     """
     if os.path.isfile(model) and model.endswith(".gguf"):
         reader = open_gguf_reader(model)
@@ -200,10 +203,10 @@ def detect_model_type(model):
     if key is None:
         raise ValueError(f"unsupported model architecture: {arch}")
     allowed = MODEL_TYPES[key]["layers"]
-    if not isinstance(allowed, (tuple, list)):
+    if allowed is not None and not isinstance(allowed, (tuple, list)):
         allowed = (allowed,)
     layers = int(layers)
-    if layers not in allowed:
+    if allowed is not None and layers not in allowed:
         raise ValueError(
             f"unsupported model size: {arch} with {layers} layers "
             f"(supported: {list(allowed)})"
@@ -243,12 +246,39 @@ def validate_s16s4_source(model, layers):
         )
 
 
+ARTIFACT_NAME_KEYS = ("onnx_name", "quant_name", "gguf_name", "model_name")
+
+
+def _apply_resolved_names(model_type, mt, resolve_names, model_path):
+    """Validate family artifact names before applying them to the pipeline."""
+    try:
+        names = resolve_names(model_path)
+    except Exception as exc:
+        raise ValueError(f"model type {model_type}: resolve_names hook failed: {exc}") from exc
+    if not isinstance(names, dict):
+        raise ValueError(f"model type {model_type}: resolve_names returned {type(names).__name__}, expected dict")
+    missing = sorted(set(ARTIFACT_NAME_KEYS) - names.keys())
+    unexpected = sorted(names.keys() - set(ARTIFACT_NAME_KEYS), key=str)
+    if missing or unexpected:
+        raise ValueError(f"model type {model_type}: resolve_names missing={missing}, unexpected={unexpected}")
+    for key in ARTIFACT_NAME_KEYS:
+        if not isinstance(names[key], str) or not names[key]:
+            raise ValueError(f"model type {model_type}: resolve_names invalid value for {key}")
+    return dict(mt, **names)
+
+
 def run_pipeline(args, work_dir):
     """Execute the full export pipeline inside ``work_dir``. Returns the .msl path."""
     model_kind = detect_model_kind(args.model)
     model_type, model_layers = detect_model_type(args.model)
     logger.info("model kind: %s (%s), type: %s layers: %d", model_kind, args.model, model_type, model_layers)
     mt = MODEL_TYPES[model_type]
+    validate_source = mt.get("validate_source")
+    if validate_source:
+        validate_source(args.model, model_layers)
+    resolve_names = mt.get("resolve_names")
+    if resolve_names:
+        mt = _apply_resolved_names(model_type, mt, resolve_names, args.model)
     use_external_weights = bool(mt.get("external_weights", False))
 
     # ── Step 1: skeleton export (HF/GGUF -> ONNX + assets) ────────────────
@@ -256,7 +286,8 @@ def run_pipeline(args, work_dir):
     if quant_type not in EXPORT_QUANT_TYPES:
         raise ValueError(f"unsupported quant_type: {quant_type}; choose from {list(EXPORT_QUANT_TYPES)}")
     if quant_type not in mt["quant_types"]:
-        raise ValueError(f"quant_type {quant_type} is not supported by {model_type}")
+        raise ValueError(f"quant_type {quant_type.value} is not supported by {model_type}; "
+                         f"supported: {[supported.value for supported in mt['quant_types']]}")
     preset = get_quant_preset(quant_type)
     preset.validate_target(args.target)
     embedding_quant = QuantType.Q4_0 if quant_type is QuantType.Q3_0 else quant_type
@@ -278,6 +309,7 @@ def run_pipeline(args, work_dir):
         decoder_quant=quant_type,
         layers=model_layers,
         model_name=mt["model_name"],
+        onnx_name=mt["onnx_name"],
     )
     with open(export_config_path, encoding="utf-8") as stream:
         export_config = json.load(stream)
@@ -383,7 +415,7 @@ def build_parser():
     """Build the CLI argument parser for mslite-llm-export."""
     parser = argparse.ArgumentParser(
         prog="mslite-llm-export",
-        description="One-click LLM (Qwen2.5-0.5B / dense Qwen3, GGUF or HF) -> .msl",
+        description="One-click LLM (Qwen2.5 / dense Qwen3, GGUF or HF) -> .msl",
     )
     parser.add_argument("--target", default="kirin9020",
                         help=f"Deployment chip (default: kirin9020), one of {list(SUPPORTED_TARGETS)}")
