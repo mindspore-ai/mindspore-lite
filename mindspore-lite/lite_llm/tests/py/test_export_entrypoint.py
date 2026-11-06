@@ -202,7 +202,7 @@ def test_qwen3_hf_load_disables_remote_code(export_module, monkeypatch, tmp_path
     for family, layers, quant_types in [
         ("qwen3", 8, ("q4_0", "s16s4")),
         ("qwen3", 36, ("q4_0", "s16s4")),
-        ("qwen2_5", 24, ("q4_0",)),
+        ("qwen2_5", 24, ("q4_0", "q3_0")),
         ("minicpm", 40, ("q4_0",)),
     ]
     for kind in ("gguf", "hf")
@@ -212,6 +212,7 @@ def test_model_quantization_pipeline(export_module, monkeypatch, tmp_path, case)
     """The selected mode controls export, weight injection and package metadata."""
     family, layers, kind, quant_type = case
     quant = export_module.QuantType(quant_type)
+    embedding_quant = export_module.QuantType.Q4_0 if quant_type == "q3_0" else quant
     model_info = export_module.MODEL_TYPES[family]
     calls = {}
     work_dir = tmp_path / "work"
@@ -253,6 +254,8 @@ def test_model_quantization_pipeline(export_module, monkeypatch, tmp_path, case)
 
     monkeypatch.setattr(export_module, "detect_model_kind", lambda _model: kind)
     monkeypatch.setattr(export_module, "detect_model_type", lambda _model: (family, layers))
+    monkeypatch.setattr(export_module, "open_gguf_reader", lambda _model: object())
+    monkeypatch.setattr(export_module, "detect_gguf_quantization", lambda _reader: (quant, embedding_quant))
     monkeypatch.setitem(model_info, "exporter", fake_exporter)
     monkeypatch.setitem(model_info, "gguf_loader", fake_loader)
     monkeypatch.setattr(export_module, "compile_omc", fake_compile)
@@ -278,10 +281,10 @@ def test_model_quantization_pipeline(export_module, monkeypatch, tmp_path, case)
     assert export_module.run_pipeline(args, str(work_dir)) == args.output
     assert calls["export_layers"] == layers
     assert calls["decoder_quant"] == quant
-    assert calls["embedding_quant"] == quant
-    inject_gguf = quant_type == "q4_0" and kind == "gguf"
+    assert calls["embedding_quant"] == embedding_quant
+    inject_gguf = quant_type in ("q4_0", "q3_0") and kind == "gguf"
     assert calls.get("loader_layers") == (layers if inject_gguf else None)
-    assert calls["compile_quant"] == quant
+    assert calls["compile_quant"] == embedding_quant
     assert calls["onnx_path"] == str(work_dir / model_info["gguf_name" if inject_gguf else "quant_name"])
     assert calls["embedding_path"] == str(work_dir / ("embedding_weight.bin" if inject_gguf else "embedding_quant.bin"))
     assert calls["npu_config"]["embedding_format"] == ("S16S4" if quant_type == "s16s4" else "W4A16")
@@ -290,7 +293,7 @@ def test_model_quantization_pipeline(export_module, monkeypatch, tmp_path, case)
     assert calls["package_name"] == "custom-output"
     assert calls["architecture"]["name"] == model_info["model_name"]
     assert calls["npu_config"].get("q4_0_weight_layout") == (
-        "q4_0_nzf_compact_phase4" if quant_type == "q4_0" else None
+        "q4_0_nzf_compact_phase4" if quant_type in ("q4_0", "q3_0") else None
     )
     assert calls["platform"] == args.target
     assert calls["save_external_weights"] == (family in ("qwen3", "qwen2_5"))
@@ -401,6 +404,20 @@ def test_unknown_quant_type_rejected(export_module):
         )
 
 
+@pytest.mark.parametrize("value", ["q3_0", "W3A16"])
+def test_cli_accepts_q3_aliases(export_module, value):
+    """Canonical name and legacy precision alias select the same preset."""
+    args = export_module.build_parser().parse_args(["--model", "model", "--output", "out", "--quant-type", value])
+    assert args.quant_type is export_module.QuantType.Q3_0
+
+
+def test_cli_rejects_old_q3_name(export_module, capsys):
+    """The old CLI spelling is not an alias and the replacement is suggested."""
+    with pytest.raises(SystemExit):
+        export_module.build_parser().parse_args(["--model", "model", "--output", "out", "--quant-type", "msl_q3_0"])
+    assert "use q3_0 for 3-bit" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("family,layers", [("qwen2_5", 24), ("minicpm", 40)])
 def test_unsupported_model_quant_type(export_module, monkeypatch, tmp_path, family, layers):
     """Reject S16S4 when the model exporter lacks the shared-weight contract."""
@@ -409,3 +426,22 @@ def test_unsupported_model_quant_type(export_module, monkeypatch, tmp_path, fami
     args = SimpleNamespace(model="unused", target="kirin9030", quant_type="s16s4")
     with pytest.raises(ValueError, match="not supported by"):
         export_module.run_pipeline(args, str(tmp_path))
+
+
+@pytest.mark.parametrize("family,target", [("qwen2_5", "kirin9030"), ("qwen3", "kirin9020")])
+def test_q3_rejects_unsupported_target_and_model(export_module, monkeypatch, tmp_path, family, target):
+    """Reject unsupported Q3 combinations before running the exporter."""
+    monkeypatch.setattr(export_module, "detect_model_kind", lambda _: "hf")
+    monkeypatch.setattr(export_module, "detect_model_type", lambda _: (family, 24))
+    args = SimpleNamespace(model="model", quant_type="q3_0", target=target)
+    with pytest.raises(ValueError, match="supported"):
+        export_module.run_pipeline(args, str(tmp_path))
+
+
+def test_export_cli_has_no_gguf_output_mode(export_module):
+    """GGUF production is upstream quantization, not part of model export."""
+    parser = export_module.build_parser()
+    assert "--output-format" not in parser.format_help()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--model", "model", "--output", "out",
+                           "--output-format", "gguf"])

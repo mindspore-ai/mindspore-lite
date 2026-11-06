@@ -379,3 +379,92 @@ def test_validate_contract_rejects_bad_order():
             validate_contract(path, num_layers=1, embedding_quant=False)
     finally:
         os.remove(path)
+
+
+@pytest.mark.parametrize("hidden_size", [896, 1024])
+def test_gguf_skeleton_uses_own_metadata_without_loading_weights(monkeypatch, tmp_path, hidden_size):
+    """Q3 needs neither HF weights nor a second, potentially mismatched config."""
+    from types import SimpleNamespace
+    from transformers import modeling_gguf_pytorch_utils
+    from models.qwen2_5 import qwen2_5_exporter
+
+    path = tmp_path / "model.gguf"
+    path.touch()
+    metadata = dict(qwen2_5_exporter.Qwen2Onnx.REQUIRED_ARCH, model_type="qwen2")
+    metadata["hidden_size"] = hidden_size
+    calls = []
+
+    def read_metadata(source, return_tensors):
+        assert source == str(path)
+        assert return_tensors is False
+        return {"config": metadata}
+
+    def make_model(config, **_kwargs):
+        calls.append(config)
+        return SimpleNamespace(config=config, named_parameters=lambda: (),
+                               eval=lambda: SimpleNamespace(config=config))
+
+    monkeypatch.setattr(modeling_gguf_pytorch_utils, "load_gguf_checkpoint", read_metadata)
+    monkeypatch.setattr(qwen2_5_exporter, "register_private_q3_0_type", lambda: None)
+    monkeypatch.setattr(qwen2_5_exporter.AutoConfig, "for_model", SimpleNamespace)
+    monkeypatch.setattr(qwen2_5_exporter.AutoModelForCausalLM, "from_config", make_model)
+    monkeypatch.setattr(qwen2_5_exporter.AutoModelForCausalLM, "from_pretrained",
+                        lambda *_args, **_kwargs: pytest.fail("GGUF skeleton must not load full weights"))
+    exporter = qwen2_5_exporter.Qwen2Onnx()
+    if hidden_size != 896:
+        with pytest.raises(ValueError, match="not a Qwen2.5-0.5B"):
+            exporter.load(str(path))
+        assert not calls
+    else:
+        exporter.load(str(path))
+        assert len(calls) == 1
+        assert exporter.config.tie_word_embeddings
+        assert exporter.hidden_size == 896
+
+
+@pytest.mark.parametrize("zero_bias", [False, True])
+def test_gguf_bias_survives_trace_slim_and_real_weight_injection(tmp_path, monkeypatch, zero_bias):
+    """A real Linear keeps its Add slot, then receives the actual GGUF bias."""
+    import torch
+    from onnx.reference import ReferenceEvaluator
+    from onnxslim import slim
+    from models.qwen2_5.qwen2_5_exporter import _preserve_gguf_bias_slots
+    from models.qwen2_5 import qwen2_5_gguf_loader
+    from utils.onnx_postprocess import duplicate_shared_initializers
+
+    class Projection(torch.nn.Module):
+        """Exercise the same named, biased projection emitted by the decoder."""
+
+        def __init__(self):
+            super().__init__()
+            self.q_proj = torch.nn.Linear(32, 16, bias=True).half()
+            with torch.no_grad():
+                self.q_proj.weight.fill_(0.25)
+                self.q_proj.bias.zero_()
+
+        def forward(self, hidden):
+            return self.q_proj(hidden)
+
+    projection = Projection().eval()
+    _preserve_gguf_bias_slots(projection)
+    path = tmp_path / "projection.onnx"
+    sample = torch.ones((1, 2, 32), dtype=torch.float16)
+    torch.onnx.export(projection, sample, str(path), input_names=["hidden"], output_names=["output"],
+                      opset_version=18, do_constant_folding=True, dynamo=False)
+    graph = slim(str(path), skip_fusion_patterns=["FusionGemm"])
+    duplicate_shared_initializers(graph)
+    assert any(node.name == "/q_proj/Add" for node in graph.graph.node)
+    real_bias = np.zeros(16, dtype=np.float16) if zero_bias else np.arange(16, dtype=np.float16) / 16
+    monkeypatch.setattr(qwen2_5_gguf_loader, "FP16_WEIGHT_MAP", {"/q_proj/Add": "blk.0.attn_q.bias"})
+    replacements = qwen2_5_gguf_loader.load_decode_fp16_weight(
+        graph, {"blk.0.attn_q.bias": real_bias}, layers=1
+    )
+    assert len(replacements) == 1
+    for initializer in graph.graph.initializer:
+        if initializer.name == replacements[0].name:
+            initializer.CopyFrom(replacements[0])
+    actual = ReferenceEvaluator(graph).run(None, {"hidden": sample.numpy()})[0]
+    expected = np.full((1, 2, 16), 8, dtype=np.float16) + real_bias
+    np.testing.assert_array_equal(actual, expected)
+    with pytest.raises(ValueError, match="Missing required GGUF tensor"):
+        qwen2_5_gguf_loader.load_decode_fp16_weight(graph, {}, layers=1)

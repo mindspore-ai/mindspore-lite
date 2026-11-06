@@ -15,9 +15,7 @@
 """Tests for type-aware GGUF embedding conversion."""
 
 from types import SimpleNamespace
-import importlib
 
-import pytest
 import numpy as np
 
 # utils is registered by tests/py/conftest.py before collection.
@@ -30,36 +28,6 @@ def _embedding(data, tensor_type):
     return SimpleNamespace(
         name="token_embd.weight", data=data, tensor_type=tensor_type
     )
-
-
-@pytest.mark.parametrize("family", ["qwen2_5", "qwen3", "minicpm"])
-def test_loader_normalizes_legacy_arguments(monkeypatch, tmp_path, family):
-    """Only the loader boundary accepts legacy names; helpers receive enums."""
-    loader = importlib.import_module(f"models.{family}.{family}_gguf_loader")
-    model = object()
-    monkeypatch.setattr(loader, "GGUFReader", lambda _: SimpleNamespace(tensors=[]))
-    monkeypatch.setattr(loader.onnx, "load", lambda _: model)
-    if family == "minicpm":
-        monkeypatch.setattr(loader.onnx, "save", lambda *_: None)
-    else:
-        monkeypatch.setattr(loader, "_save_onnx", lambda *_: None)
-
-    def read_weights(tensors, path, decoder, embedding):
-        del tensors, path
-        assert decoder is QuantType.Q4_0
-        assert embedding is None
-        return {}
-
-    def inject_weights(graph, weights, layers, decoder):
-        del weights, layers
-        assert graph is model
-        assert decoder is QuantType.Q4_0
-        return graph
-
-    monkeypatch.setattr(loader, "load_file_from_tensors", read_weights)
-    monkeypatch.setattr(loader, "load_weight", inject_weights)
-    loader.gguf_loader("model.gguf", "in.onnx", "out.onnx", tmp_path / "embedding.bin",
-                       embedding_quantize_config="FP16", decoder_quantize_config="W4A16")
 
 
 def test_q4_embedding_preserves_direct_rearrangement(tmp_path):

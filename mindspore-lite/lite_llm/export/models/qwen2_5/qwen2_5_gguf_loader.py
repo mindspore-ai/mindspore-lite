@@ -12,17 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Inject GGUF Q4_0 weights into a Qwen2.5-0.5B ONNX skeleton.
+"""Inject GGUF Q4_0 or private Q3_0 decoder weights into a Qwen2.5-0.5B skeleton.
 
-Model-specific half of the GGUF weight injection: the ONNX node name -> GGUF
-tensor name maps and the replacement orchestration.  The model-agnostic
-Q4_0 block rearrangement lives in ``utils.gguf_mapping``.
-
-The ONNX skeleton must already carry the quantized ``MatMul_quant`` nodes
-(exported with ``--quant-type q4_0`` from ``qwen2_5_exporter``); this
-module replaces their placeholder quantized weights with the real Q4_0 weights
-read from the GGUF file, rearranged into the g32 NZF layout expected by
-``MsQuant4N0Group32``.
+Q4_0 embedding/lm_head payloads retain the compact phase4 NZF layout.
+Q3_0 decoder payloads use the source MsQuant3N0Group32 adapter's planes.
 
 Example:
     from models.qwen2_5.qwen2_5_gguf_loader import gguf_loader
@@ -36,15 +29,25 @@ import logging
 
 import numpy as np
 import onnx
-from gguf import GGUFReader
 from onnxslim import slim
 
 from utils.onnx_postprocess import _save_onnx, duplicate_shared_initializers
-from utils.gguf_mapping import create_new_initializer, load_file_from_tensors
+from utils.gguf_mapping import create_new_initializer, load_file_from_tensors, open_gguf_reader
 
 from utils.quantization import QuantType
 
 logger = logging.getLogger(__name__)
+
+# Shared by the metadata-only skeleton and the tensor-shape checks below.
+QWEN2_5_ARCH = {
+    "num_hidden_layers": 24,
+    "intermediate_size": 4864,
+    "max_position_embeddings": 32768,
+    "hidden_size": 896,
+    "num_attention_heads": 14,
+    "num_key_value_heads": 2,
+    "vocab_size": 151936,
+}
 
 # ONNX node name -> GGUF tensor name (quantized decoder matmuls).
 QUANT_MATMUL_MAP = {
@@ -70,8 +73,52 @@ FP16_WEIGHT_MAP = {
 MODEL_WEIGHT_MAP = {"/model/norm/MsRmsNorm": "output_norm.weight"}
 
 
-def load_q4_weight(model, weights, layers=24):
-    """Replace each ``MatMul_quant`` weight with the rearranged GGUF Q4_0 weight."""
+def _validate_tensor_shapes(tensors, layers):
+    """Check logical GGUF dimensions without loading or dequantizing payloads."""
+    hidden = QWEN2_5_ARCH["hidden_size"]
+    intermediate = QWEN2_5_ARCH["intermediate_size"]
+    head_dim = hidden // QWEN2_5_ARCH["num_attention_heads"]
+    kv_width = head_dim * QWEN2_5_ARCH["num_key_value_heads"]
+    embedding_shape = (hidden, QWEN2_5_ARCH["vocab_size"])
+    # GGUF matrices declare [input, output], not the stored numpy row order.
+    layer_shapes = {
+        "attn_q.weight": (hidden, hidden),
+        "attn_k.weight": (hidden, kv_width),
+        "attn_v.weight": (hidden, kv_width),
+        "attn_output.weight": (hidden, hidden),
+        "ffn_gate.weight": (hidden, intermediate),
+        "ffn_up.weight": (hidden, intermediate),
+        "ffn_down.weight": (intermediate, hidden),
+        "attn_q.bias": (hidden,),
+        "attn_k.bias": (kv_width,),
+        "attn_v.bias": (kv_width,),
+        "attn_norm.weight": (hidden,),
+        "ffn_norm.weight": (hidden,),
+    }
+    required_shapes = {
+        f"blk.{layer}.{name}": shape
+        for layer in range(layers) for name, shape in layer_shapes.items()
+    }
+    required_shapes.update({
+        "token_embd.weight": embedding_shape,
+        "output_norm.weight": (hidden,),
+    })
+    tensor_shapes = {tensor.name: tuple(tensor.shape) for tensor in tensors}
+    # Tied models omit output.weight; validate it too when a GGUF includes it.
+    if "output.weight" in tensor_shapes:
+        required_shapes["output.weight"] = embedding_shape
+    for name, expected in required_shapes.items():
+        actual = tensor_shapes.get(name)
+        if actual is None:
+            raise ValueError(f"Missing required GGUF tensor {name}")
+        if actual != expected:
+            raise ValueError(
+                f"GGUF tensor {name} has logical shape {actual}, expected {expected}"
+            )
+
+
+def load_quantized_weight(model, weights, layers=24):
+    """Replace each quantized MatMul weight with its packed GGUF payload."""
     nodes = {node.name: node for node in model.graph.node}
 
     new_initializers = []
@@ -103,14 +150,12 @@ def load_decode_fp16_weight(model, weights, layers=24):
             elif node.op_type in ("MsAddRmsNorm",):
                 onnx_weight_name = node.input[2]
             else:
-                logger.warning("%s not supported (%s)", onnx_layer_name, node.op_type)
-                continue
+                raise ValueError(f"Unsupported GGUF bias/norm node {onnx_layer_name}: {node.op_type}")
 
             gguf_weight_name = gguf_weight_name.format(i)
             gguf_weight = weights.get(gguf_weight_name)
             if gguf_weight is None:
-                logger.warning("Missing GGUF tensor %s", gguf_weight_name)
-                continue
+                raise ValueError(f"Missing required GGUF tensor {gguf_weight_name}")
             new_initializers.append(create_new_initializer(onnx_weight_name, gguf_weight))
             logger.debug("Load %s -> %s", gguf_weight_name, onnx_weight_name)
     return new_initializers
@@ -124,13 +169,11 @@ def load_model_fp16_weight(model, weights):
     for onnx_layer_name, gguf_weight_name in MODEL_WEIGHT_MAP.items():
         node = nodes[onnx_layer_name]
         if node.op_type not in ("MsAddRmsNorm", "MsRmsNorm"):
-            logger.warning("%s not supported (%s)", onnx_layer_name, node.op_type)
-            continue
+            raise ValueError(f"Unsupported GGUF model norm node {onnx_layer_name}: {node.op_type}")
         onnx_weight_name = node.input[2] if node.op_type == "MsAddRmsNorm" else node.input[1]
         gguf_weight = weights.get(gguf_weight_name)
         if gguf_weight is None:
-            logger.warning("Missing GGUF tensor %s", gguf_weight_name)
-            continue
+            raise ValueError(f"Missing required GGUF tensor {gguf_weight_name}")
         new_initializers.append(create_new_initializer(onnx_weight_name, gguf_weight))
     return new_initializers
 
@@ -138,8 +181,8 @@ def load_model_fp16_weight(model, weights):
 
 def load_weight(model, weights, layers=24, decoder_quantize_config: Optional[QuantType] = QuantType.Q4_0):
     """Inject decoder quantized weights + fp16 norm/bias + model norm into the skeleton."""
-    if decoder_quantize_config == QuantType.Q4_0:
-        quant_weight = load_q4_weight(model, weights, layers)
+    if decoder_quantize_config in (QuantType.Q4_0, QuantType.Q3_0):
+        quant_weight = load_quantized_weight(model, weights, layers)
     elif decoder_quantize_config is None:
         quant_weight = load_decode_fp16_weight(model, weights, layers)
     else:
@@ -175,10 +218,11 @@ def gguf_loader(
     embedding_quantize_config=QuantType.Q4_0,
     decoder_quantize_config=QuantType.Q4_0,
 ):
-    """Load GGUF Q4_0 weights into the ONNX skeleton and save the result."""
+    """Load GGUF decoder weights into the skeleton and save the result."""
     embedding_quantize_config = QuantType.parse(embedding_quantize_config)
     decoder_quantize_config = QuantType.parse(decoder_quantize_config)
-    reader = GGUFReader(gguf_path)
+    reader = open_gguf_reader(gguf_path)
+    _validate_tensor_shapes(reader.tensors, layers)
     name2weight = load_file_from_tensors(
         reader.tensors, embedding_weight_save_path, decoder_quantize_config, embedding_quantize_config
     )

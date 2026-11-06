@@ -35,6 +35,7 @@ from onnx import TensorProto, helper, shape_inference
 from utils import load_custom_op
 from utils.onnx_postprocess import _save_onnx, duplicate_shared_initializers
 from utils.quantization import EmbeddingFormat, QuantType, get_quant_preset
+from mslite_llm_quant.q3_0 import quantize_q3_0_blocks
 
 S16S4_ACTIVATION_SCALE = 1024.0
 
@@ -446,6 +447,28 @@ def quant_node_4bit_gp32(shape_info, origin_node, initializers):
     return new_node_list, new_initializer_list
 
 
+def quant_node_3bit_gp32(shape_info, origin_node, initializers):
+    """Quantize decoder weights via lite_llm Q3_0 + op offline_reorder."""
+    weight_name = origin_node.input[1]
+    weight = onnx.numpy_helper.to_array(initializers[weight_name])
+    if origin_node.input[0] not in shape_info:
+        raise ValueError(f"Can not get input shape of {origin_node.name}.")
+    blocks = quantize_q3_0_blocks(weight)
+    adapter = load_custom_op(get_quant_preset(QuantType.Q3_0).operator)
+    _, packed = adapter.offline_reorder([None, blocks], list(weight.shape))
+    packed = np.ascontiguousarray(packed.detach().cpu().numpy() if hasattr(packed, "detach") else packed)
+    packed_name = weight_name + "_quant"
+    node = helper.make_node(
+        get_quant_preset(QuantType.Q3_0).operator,
+        inputs=[origin_node.input[0], packed_name],
+        outputs=[origin_node.output[0]],
+        input1_shape=list(weight.shape),
+        name=origin_node.name + "_quant",
+        domain="custom",
+    )
+    return [node], [onnx.numpy_helper.from_array(packed, packed_name)]
+
+
 def quant_node_4bit(shape_info, origin_node, initializers):
     """W4A8 quantization (MsQuant4N0Group128)."""
     new_node_list = []
@@ -712,6 +735,8 @@ def quantize_linear_ops(model, embedding_quant_config, decoder_quant_config):
             new_node_list, new_initializer_list = quant_node_2bit(shape_info, node, initializers, q2_v)
         elif decoder_quant_config.quant_method == QuantType.Q4_0:
             new_node_list, new_initializer_list = quant_node_4bit_gp32(shape_info, node, initializers)
+        elif decoder_quant_config.quant_method == QuantType.Q3_0:
+            new_node_list, new_initializer_list = quant_node_3bit_gp32(shape_info, node, initializers)
         elif decoder_quant_config.quant_method == QuantType.S16S4:
             new_node_list, new_initializer_list = quant_node_s16s4(
                 node, initializers, decoder_quant_config.activation_scale

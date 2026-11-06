@@ -26,6 +26,7 @@ dependencies = [
 ]
 
 [project.scripts]
+mslite-llm-quantize-gguf = "mslite_llm_quant.gguf_quant:main"
 mslite-llm-export = "mslite_llm_export:main"
 
 [tool.setuptools]
@@ -36,11 +37,13 @@ packages = [
     "models.qwen2_5",
     "models.qwen3",
     "models.minicpm",
+    "mslite_llm_quant",
 ]
 py-modules = ["mslite_llm_export"]
 
 [tool.setuptools.package-dir]
 "" = "."
+mslite_llm_quant = "../quant"
 
 [tool.setuptools.dynamic]
 version = {file = ["version.txt"]}
