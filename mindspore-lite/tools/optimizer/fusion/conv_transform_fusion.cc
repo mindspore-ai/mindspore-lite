@@ -174,8 +174,6 @@ const AnfNodePtr ConvTransformFusion::Process(const FuncGraphPtr &func_graph, co
   }
   delete[] trans_bias;
   delete[] trans_scale;
-  // Fusion tracing: the conv survivor absorbs the transform (BN/Scale) node's records.
-  opt::TraceAbsorbNames(conv_node, transform_node);
   pre_node->set_abstract(abstr);
   return pre_node;
 }
