@@ -276,36 +276,6 @@ std::string GetTensorName(size_t index, const tflite::BuiltinOperator &op_type, 
   }
   return tensor_name;
 }
-
-// Fusion tracing: TFLite operators are nameless, so besides the generated "TYPE-INDEX" name and the
-// enum op type we record the boundary tensor names as an anchor users can see in Netron.
-std::string BuildOriginTensorsAnchor(const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph,
-                                     const std::unique_ptr<tflite::OperatorT> &op) {
-  std::vector<std::string> in_tensors;
-  std::vector<std::string> out_tensors;
-  for (auto input_index : op->inputs) {
-    if (input_index >= 0 && input_index < static_cast<int>(tflite_subgraph->tensors.size())) {
-      in_tensors.push_back(tflite_subgraph->tensors[input_index]->name);
-    }
-  }
-  for (auto output_index : op->outputs) {
-    if (output_index >= 0 && output_index < static_cast<int>(tflite_subgraph->tensors.size())) {
-      out_tensors.push_back(tflite_subgraph->tensors[output_index]->name);
-    }
-  }
-  std::string anchor = "in:";
-  for (size_t i = 0; i < in_tensors.size(); ++i) {
-    if (i != 0) anchor += ";";
-    anchor += in_tensors[i];
-  }
-  anchor += " -> out:";
-  for (size_t i = 0; i < out_tensors.size(); ++i) {
-    if (i != 0) anchor += ";";
-    anchor += out_tensors[i];
-  }
-  return anchor;
-}
-
 STATUS TfliteModelParser::ConvertOps(const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph,
                                      const FuncGraphPtr &func_graph,
                                      std::unordered_map<int, AnfNodePtr> *anf_node_map) {
@@ -367,9 +337,8 @@ STATUS TfliteModelParser::ConvertOps(const std::unique_ptr<tflite::SubGraphT> &t
     // Origin name "type_identifier": Netron shows the operators-array index as the node's
     // identifier property, so users read the number straight from the original graph and spell
     // the config value as TYPE_identifier (e.g. CONV_2D_12). Underscore keeps it distinct from
-    // the TYPE-INDEX current name; the boundary-tensor anchor above still locates the row.
-    opt::TraceOriginInfo(new_cnode, op_type + "_" + std::to_string(op_idx), op_type,
-                         BuildOriginTensorsAnchor(tflite_subgraph, op));
+    // the TYPE-INDEX current name.
+    opt::TraceOriginInfo(new_cnode, op_type + "_" + std::to_string(op_idx), op_type);
 
     // parse outputs
     status = ConvertOutputTensor(tflite_subgraph, func_graph, op, new_cnode, anf_node_map);

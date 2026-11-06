@@ -74,13 +74,12 @@ TEST_F(FusionTraceUtilsTest, RecordAndQueryOriginInfo) {
   auto types = opt::GetOriginOpTypes(conv_);
   ASSERT_EQ(types.size(), 1);
   EXPECT_EQ(types[0], "Conv");
-  EXPECT_EQ(opt::GetOriginTensors(conv_), "");
 }
 
 // TC-TRC-02/05: absorbing a component carries its records; chained absorbs accumulate.
 TEST_F(FusionTraceUtilsTest, AbsorbAccumulatesRecords) {
   opt::TraceOriginInfo(conv_, "Conv_3", "Conv");
-  opt::TraceOriginInfo(bn_, "BN_3", "BatchNormalization", "in:x -> out:y");
+  opt::TraceOriginInfo(bn_, "BN_3", "BatchNormalization");
   opt::TraceAbsorbNames(conv_, bn_);
   // Conv absorbs activation next: records accumulate along the fusion chain.
   opt::TraceOriginInfo(act_, "Relu_3", "Relu");
@@ -90,8 +89,6 @@ TEST_F(FusionTraceUtilsTest, AbsorbAccumulatesRecords) {
   EXPECT_EQ(names, (std::vector<std::string>{"Conv2DFusion-3", "Conv_3", "BN_3", "Relu_3"}));
   auto types = opt::GetOriginOpTypes(conv_);
   EXPECT_EQ(types, (std::vector<std::string>{"Conv", "BatchNormalization", "Relu"}));
-  // TFLite anchor falls back to the absorbed node's anchor when the survivor has none.
-  EXPECT_EQ(opt::GetOriginTensors(conv_), "in:x -> out:y");
 
   // Dedup: absorbing twice must not duplicate entries.
   opt::TraceAbsorbNames(conv_, bn_);
@@ -110,16 +107,14 @@ TEST_F(FusionTraceUtilsTest, NewFusionNodeCollectsParts) {
 
 // TC-TRC-09/10: stripping removes every tracing attribute so the exported .ms is unchanged.
 TEST_F(FusionTraceUtilsTest, StripRemovesAllRecords) {
-  opt::TraceOriginInfo(conv_, "Conv_3", "Conv", "in:a -> out:b");
+  opt::TraceOriginInfo(conv_, "Conv_3", "Conv");
   opt::StripOriginNames(graph_);
   EXPECT_EQ(opt::GetSelfAndOriginNames(conv_).size(), 1);  // only the current name remains
   EXPECT_TRUE(opt::GetOriginOpTypes(conv_).empty());
-  EXPECT_TRUE(opt::GetOriginTensors(conv_).empty());
   auto prim = GetValueNode<PrimitivePtr>(conv_->input(0));
   ASSERT_NE(prim, nullptr);
   EXPECT_EQ(prim->GetAttr(opt::kOriginNamesAttr), nullptr);
   EXPECT_EQ(prim->GetAttr(opt::kOriginOpTypesAttr), nullptr);
-  EXPECT_EQ(prim->GetAttr(opt::kOriginTensorsAttr), nullptr);
 }
 }  // namespace lite
 }  // namespace mindspore

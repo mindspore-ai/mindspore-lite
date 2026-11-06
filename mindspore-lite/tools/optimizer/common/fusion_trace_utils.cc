@@ -128,8 +128,7 @@ void CollectAllGraphs(const FuncGraphPtr &root, std::set<FuncGraphPtr> *all_grap
 }
 }  // namespace
 
-void TraceOriginInfo(const CNodePtr &node, const std::string &origin_name, const std::string &origin_type,
-                     const std::string &origin_tensors) {
+void TraceOriginInfo(const CNodePtr &node, const std::string &origin_name, const std::string &origin_type) {
   auto prim = GetPrimitiveFromCNode(node);
   if (prim == nullptr) {
     return;
@@ -139,9 +138,6 @@ void TraceOriginInfo(const CNodePtr &node, const std::string &origin_name, const
   }
   if (!origin_type.empty()) {
     MergeAttr(prim, kOriginOpTypesAttr, {origin_type});
-  }
-  if (!origin_tensors.empty() && prim->GetAttr(kOriginTensorsAttr) == nullptr) {
-    prim->AddAttr(kOriginTensorsAttr, MakeValue(origin_tensors));
   }
 }
 
@@ -171,23 +167,6 @@ void TraceAbsorbNames(const CNodePtr &survivor, const AnfNodePtr &absorbed) {
     }
     auto absorbed_types = SplitSemicolon(GetAttrString(absorbed_cnode, kOriginOpTypesAttr));
     types.insert(types.end(), absorbed_types.begin(), absorbed_types.end());
-    // Keep the TFLite anchor: the survivor keeps its input side and always takes the absorbed
-    // output side (absorbed is downstream, so its outputs are the fusion's external outputs).
-    // A survivor with no anchor of its own (e.g. ONNX nodes never record one) adopts the
-    // absorbed anchor whole instead of splicing onto an empty in-side.
-    {
-      auto absorbed_anchor = GetAttrString(absorbed_cnode, kOriginTensorsAttr);
-      if (!absorbed_anchor.empty()) {
-        auto survivor_anchor = GetAttrString(survivor, kOriginTensorsAttr);
-        if (survivor_anchor.empty()) {
-          survivor_prim->AddAttr(kOriginTensorsAttr, MakeValue(absorbed_anchor));
-        } else {
-          auto in_side = survivor_anchor.substr(0, survivor_anchor.find(" -> out:"));
-          auto out_side = absorbed_anchor.substr(absorbed_anchor.find(" -> out:"));
-          survivor_prim->AddAttr(kOriginTensorsAttr, MakeValue(in_side + out_side));
-        }
-      }
-    }
   }
   MergeAttr(survivor_prim, kOriginNamesAttr, names);
   MergeAttr(survivor_prim, kOriginOpTypesAttr, types);
@@ -221,8 +200,6 @@ std::vector<std::string> GetOriginOpTypes(const AnfNodePtr &node) {
   return SplitSemicolon(GetAttrString(node, kOriginOpTypesAttr));
 }
 
-std::string GetOriginTensors(const AnfNodePtr &node) { return GetAttrString(node, kOriginTensorsAttr); }
-
 void StripOriginNames(const FuncGraphPtr &func_graph) {
   if (func_graph == nullptr) {
     return;
@@ -245,7 +222,6 @@ void StripOriginNames(const FuncGraphPtr &func_graph) {
       }
       prim->EraseAttr(kOriginNamesAttr);
       prim->EraseAttr(kOriginOpTypesAttr);
-      prim->EraseAttr(kOriginTensorsAttr);
     }
   }
 }

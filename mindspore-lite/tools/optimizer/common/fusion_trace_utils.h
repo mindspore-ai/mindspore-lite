@@ -27,11 +27,9 @@ namespace mindspore::opt {
 // (see StripOriginNames), so the exported .ms keeps byte-for-byte compatibility.
 constexpr char kOriginNamesAttr[] = "origin_names";       // semicolon separated original op names
 constexpr char kOriginOpTypesAttr[] = "origin_op_types";  // semicolon separated original op types
-constexpr char kOriginTensorsAttr[] = "origin_tensors";   // TFLite anchor: "in:t1;t2 -> out:t3"
 
 // Record origin info right after a frontend parser creates a node. Called once per node at import.
-void TraceOriginInfo(const CNodePtr &node, const std::string &origin_name, const std::string &origin_type,
-                     const std::string &origin_tensors = "");
+void TraceOriginInfo(const CNodePtr &node, const std::string &origin_name, const std::string &origin_type);
 
 // In-place fusion: `survivor` absorbs `absorbed` (the node being removed).
 // MUST be called before the absorbed node is replaced/dropped, after the survivor's primitive type
@@ -46,9 +44,6 @@ std::vector<std::string> GetSelfAndOriginNames(const AnfNodePtr &node);
 
 // Every original op type the node carries (its own plus absorbed ones). May be empty (e.g. MindIR).
 std::vector<std::string> GetOriginOpTypes(const AnfNodePtr &node);
-
-// TFLite tensor-name anchor, empty for frontends whose operators have names.
-std::string GetOriginTensors(const AnfNodePtr &node);
 
 // Remove all tracing attributes from every node of the graph (including subgraphs).
 // Unconditional: fusion happens even without quantization, so this must not hang off the quant branch.
