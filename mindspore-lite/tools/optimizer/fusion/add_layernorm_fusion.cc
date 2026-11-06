@@ -302,7 +302,7 @@ AnfNodePtr LayerNormV3Fusion::Process(const std::string &pattern_name, const min
     return nullptr;
   }
   MS_LOG(INFO) << pattern_name << " fusion success, fusion node name: " << cnode->fullname_with_scope();
-  opt::TraceNewFusionNode(cnode->cast<CNodePtr>(), {node});
+
   return cnode;
 }
 

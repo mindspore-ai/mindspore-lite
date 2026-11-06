@@ -179,7 +179,6 @@ const AnfNodePtr KVCacheMgrOneBranchFusion::Process(const FuncGraphPtr &func_gra
   auto kv_cache_cnode = func_graph->NewCNode(kv_cache_prim_c, {input_2_past_node, input_1_cur_node, cnode});
   kv_cache_cnode->set_abstract(input_2_past_node->abstract()->Clone());
 
-  opt::TraceNewFusionNode(kv_cache_cnode, {node});
   return kv_cache_cnode;
 }
 }  // namespace mindspore::opt

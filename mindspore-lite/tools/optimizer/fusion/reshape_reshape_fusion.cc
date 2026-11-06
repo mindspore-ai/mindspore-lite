@@ -209,7 +209,7 @@ AnfNodePtr ReshapeReshapeFusion::Process(const std::string &pattern_name, const 
   auto new_reshape = func_graph->NewCNode({value_node, input_node, shape_node});
   MS_CHECK_TRUE_RET(new_reshape != nullptr, nullptr);
   new_reshape->set_fullname_with_scope(cnode->fullname_with_scope());
-  opt::TraceNewFusionNode(new_reshape, {node});
+
   return new_reshape;
 }
 }  // namespace mindspore::opt

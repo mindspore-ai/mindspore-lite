@@ -2934,7 +2934,6 @@ AnfNodePtr FlashAttentionFusion::Process(const std::string &patten_name, const F
     MS_LOG(INFO) << "flash attention op not fusion.";
     return nullptr;
   }
-  opt::TraceNewFusionNode(flash_attention_node, {node});
   manager->Replace(node, flash_attention_node);
   MS_LOG(INFO) << "flash attention node fusion success, fusion node name: "
                << flash_attention_node->fullname_with_scope();

@@ -308,7 +308,7 @@ AnfNodePtr FFNFusion::Process(const std::string &pattern_name, const mindspore::
     return nullptr;
   }
   MS_LOG(INFO) << "FFN fusion success, fusion node name: " << cnode->fullname_with_scope();
-  opt::TraceNewFusionNode(cnode, {node});
+
   return cnode;
 }
 }  // namespace opt

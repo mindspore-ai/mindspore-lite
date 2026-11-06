@@ -137,7 +137,6 @@ const AnfNodePtr LeakyReluFusion::Process(const FuncGraphPtr &func_graph, const 
   if (node->abstract() != nullptr) {
     activate_node->set_abstract(node->abstract()->Clone());
   }
-  opt::TraceNewFusionNode(activate_node, {node});
 
   return activate_node;
 }

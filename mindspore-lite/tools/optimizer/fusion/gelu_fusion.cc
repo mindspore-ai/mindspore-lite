@@ -87,7 +87,7 @@ AnfNodePtr GeLUFusion::Process(const std::string &pattern_name, const mindspore:
     MS_LOG(DEBUG) << "new gelu node failed.";
     return nullptr;
   }
-  opt::TraceNewFusionNode(cnode, {node});
+
   return cnode;
 }
 }  // namespace opt
