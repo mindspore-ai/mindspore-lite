@@ -27,7 +27,6 @@
 #include "ops_utils/op_utils.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 

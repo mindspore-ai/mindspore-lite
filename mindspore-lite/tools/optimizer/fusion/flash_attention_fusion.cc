@@ -24,7 +24,6 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/nn_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "infer/ops_func_impl/incre_flash_attention.h"
 #include "infer/ops_func_impl/prompt_flash_attention.h"

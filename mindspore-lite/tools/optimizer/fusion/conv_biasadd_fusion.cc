@@ -21,7 +21,6 @@
 #include "mindspore/ops/op_def/nn_ops.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/lite_exporter/fetch_content.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "include/securec.h"
 #include "nnacl_c/op_base.h"

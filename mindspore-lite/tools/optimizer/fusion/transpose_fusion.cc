@@ -20,7 +20,6 @@
 #include <memory>
 #include <vector>
 #include "mindspore/ops/op_def/nn_ops.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/converter/quantizer/quant_param_holder.h"

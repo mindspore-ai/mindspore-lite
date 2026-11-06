@@ -17,7 +17,6 @@
 #include "tools/optimizer/fusion/hard_swish_fusion.h"
 #include <vector>
 #include "mindspore/ops/op_def/lite_ops.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "src/common/ops/primitive/activation.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"

@@ -20,7 +20,6 @@
 #include <vector>
 #include <algorithm>
 #include "mindspore/ops/op_def/nn_ops.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "src/common/ops/primitive/mat_mul_fusion.h"
 #include "tools/common/tensor_util.h"

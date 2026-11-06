@@ -19,7 +19,6 @@
 #include <memory>
 #include <vector>
 #include "mindspore/ops/op_def/lite_ops.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "src/common/ops/primitive/mat_mul_fusion.h"
 #include "src/common/ops/primitive/mul_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"

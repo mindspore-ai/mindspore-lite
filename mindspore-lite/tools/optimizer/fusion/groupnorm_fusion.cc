@@ -27,7 +27,6 @@
 #include "src/common/ops/primitive/groupnorm_fusion.h"
 #include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 

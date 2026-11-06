@@ -21,7 +21,6 @@
 #include <algorithm>
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "src/common/ops/primitive/activation.h"
 #include "ops_utils/op_utils.h"

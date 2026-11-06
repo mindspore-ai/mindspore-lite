@@ -22,7 +22,6 @@
 #include "src/common/ops/primitive/activation.h"
 #include "src/common/ops/primitive/mul_fusion.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
 #include "infer/leaky_relu.h"

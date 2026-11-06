@@ -19,7 +19,6 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "ir/func_graph.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/op_name.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/core/include/ir/graph_utils.h"

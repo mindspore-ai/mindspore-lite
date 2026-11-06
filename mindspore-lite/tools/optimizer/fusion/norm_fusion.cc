@@ -26,7 +26,6 @@
 #include "mindspore/ops/infer/instance_norm.h"
 #include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "include/securec.h"
 #include "nnacl_c/op_base.h"
 #include "src/common/ops/anf_utils.h"

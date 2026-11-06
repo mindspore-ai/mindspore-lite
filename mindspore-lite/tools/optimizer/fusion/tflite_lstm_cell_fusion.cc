@@ -30,7 +30,6 @@
 #include "tools/common/tensor_util.h"
 #include "tools/converter/ms_depend/utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/helper.h"
 #include "include/securec.h"
 #include "nnacl_c/op_base.h"

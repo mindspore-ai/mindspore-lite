@@ -18,7 +18,6 @@
 #include "tools/optimizer/fusion/scale_base_fusion.h"
 #include <memory>
 #include "mindspore/ops/op_def/lite_ops.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/common/tensor_util.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/converter/quantizer/quant_param_holder.h"

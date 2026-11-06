@@ -26,7 +26,6 @@
 #include "mindspore/ops/op_def/array_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "tools/optimizer/common/helper.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "infer/gru.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "infer/stack.h"

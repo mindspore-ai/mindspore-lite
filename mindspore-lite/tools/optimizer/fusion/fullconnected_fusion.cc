@@ -22,7 +22,6 @@
 #include "tools/common/tensor_util.h"
 #include "src/common/ops/primitive/full_connection.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"

@@ -22,7 +22,6 @@
 #include "src/common/ops/primitive/scale_fusion.h"
 #include "ops_utils/op_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"

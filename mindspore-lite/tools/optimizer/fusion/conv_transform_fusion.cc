@@ -23,7 +23,6 @@
 #include "src/common/ops/primitive/conv2d_fusion.h"
 #include "src/common/ops/primitive/conv2d_transpose_fusion.h"
 #include "tools/common/tensor_util.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
 #include "include/securec.h"

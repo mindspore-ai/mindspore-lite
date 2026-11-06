@@ -21,7 +21,6 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/common/tensor_util.h"
 #include "src/common/ops/primitive/scale_fusion.h"
 #include "include/securec.h"

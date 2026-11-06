@@ -23,7 +23,6 @@
 #include "mindspore/ops/op_def/op_name.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/core/include/ir/graph_utils.h"

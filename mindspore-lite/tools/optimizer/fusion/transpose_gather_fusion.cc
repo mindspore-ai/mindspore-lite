@@ -20,7 +20,6 @@
 #include <set>
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/format_utils.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "nnacl_c/op_base.h"

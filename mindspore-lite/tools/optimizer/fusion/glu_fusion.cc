@@ -18,7 +18,6 @@
 #include <memory>
 #include <string>
 #include "mindspore/ops/op_def/sequence_ops.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/auto_generate/gen_lite_ops.h"
 #include "tools/converter/ms_depend/utils.h"

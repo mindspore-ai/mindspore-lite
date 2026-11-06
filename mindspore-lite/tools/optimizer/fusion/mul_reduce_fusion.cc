@@ -24,7 +24,6 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "src/common/ops/primitive/mat_mul_fusion.h"
 #include "src/common/ops/primitive/mul_fusion.h"
