@@ -33,6 +33,7 @@
 #include <cerrno>
 #include <cstring>
 #include <fstream>
+#include <future>
 #include <mutex>
 #include <memory>
 #include <string>
@@ -221,15 +222,16 @@ MSLLMStatus LoadEngineModel(InternalEngine *e, const std::string &path) {
   return kMSLLM_SUCCESS;
 }
 
-MSLLMStatus LoadEngineTokenizer(InternalEngine *e, const std::string &path) {
+// Starts the background tokenizer parse; the pending future is owned by this Build call.
+MSLLMStatus LoadEngineTokenizer(InternalEngine *e, const std::string &path,
+                                std::future<std::unique_ptr<mslite_llm::TokenizerBase>> *out_future) {
   if (e->resources.single_file) {
     std::vector<uint8_t> vocab;
     if (!e->resources.package_reader || !e->resources.package_reader->Read(e->resources.tokenizer_path, &vocab)) {
       SetError(e, "tokenizer entry not found in .msl");
-      e->model.reset();
       return kMSLLM_ERROR_MODEL_LOAD;
     }
-    e->tokenizer = mslite_llm::CreateTokenizerFromBuffer(vocab.data(), vocab.size());
+    *out_future = mslite_llm::CreateTokenizerFromBufferAsync(std::move(vocab));
   } else {
     std::string vocab_path = e->resources.tokenizer_path;
     if (vocab_path.empty()) {
@@ -242,12 +244,7 @@ MSLLMStatus LoadEngineTokenizer(InternalEngine *e, const std::string &path) {
         vocab_path = path + "/tokenizer.model";
       }
     }
-    e->tokenizer = mslite_llm::CreateTokenizer(vocab_path);
-  }
-  if (!e->tokenizer) {
-    SetError(e, "tokenizer creation failed");
-    e->model.reset();
-    return kMSLLM_ERROR_MODEL_LOAD;
+    *out_future = mslite_llm::CreateTokenizerAsync(vocab_path);
   }
   return kMSLLM_SUCCESS;
 }
@@ -409,10 +406,21 @@ MSLLMStatus MSLLMBuildModel(MSLLMModelHandle llm_model, const char *model_path) 
 
   auto status = LoadEngineResources(e, path);
   if (status != kMSLLM_SUCCESS) return status;
+  // The tokenizer parse overlaps the model load; consumed below.
+  std::future<std::unique_ptr<mslite_llm::TokenizerBase>> tokenizer_future;
+  status = LoadEngineTokenizer(e, path, &tokenizer_future);
+  if (status != kMSLLM_SUCCESS) return status;
   status = LoadEngineModel(e, path);
   if (status != kMSLLM_SUCCESS) return status;
-  status = LoadEngineTokenizer(e, path);
-  if (status != kMSLLM_SUCCESS) return status;
+  // Join the background tokenizer parse and move the result into e->tokenizer.
+  auto async_tokenizer = tokenizer_future.get();
+  if (async_tokenizer != nullptr) {
+    e->tokenizer = std::move(async_tokenizer);
+  } else {
+    SetError(e, "tokenizer creation failed");
+    e->model.reset();
+    return kMSLLM_ERROR_MODEL_LOAD;
+  }
   e->sampler = std::make_unique<mslite_llm::Sampler>(DefaultGenConfig());
 
   e->state.store(EngineState::Value::kReady);

@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 #include "tokenizer/tokenizer.h"
-
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <future>
 #include <limits>
 #include <memory>
 #include <string_view>
@@ -30,6 +31,7 @@
 #include "tokenizer/chat_template.h"
 #include "tokenizer/vocabulary.h"
 #include "include/securec.h"
+
 namespace mslite_llm {
 
 namespace {
@@ -557,6 +559,39 @@ std::unique_ptr<TokenizerBase> CreateTokenizerFromBuffer(const uint8_t *data, si
     return nullptr;
   }
   return impl;
+}
+
+namespace {
+
+// Background-thread parse with a synchronous fallback: std::async throws on
+// thread exhaustion, and that exception must not cross the extern "C"
+// boundary. The task is taken by value so the fallback keeps a usable copy.
+template <typename Task>
+std::future<std::unique_ptr<TokenizerBase>> LaunchTokenizerTask(Task task) {
+  try {
+    return std::async(std::launch::async, task);
+  } catch (...) {
+    // Rare: the parse loses its overlap with the model load.
+    std::fprintf(stderr,
+                 "[WARN]  tokenizer: background thread unavailable, "
+                 "tokenizer parse degraded to synchronous execution\n");
+    std::promise<std::unique_ptr<TokenizerBase>> ready;
+    ready.set_value(task());
+    return ready.get_future();
+  }
+}
+
+}  // namespace
+
+// Sink parameter: the vocab buffer is moved into the background parse task.
+// cppcheck-suppress passedByValue
+std::future<std::unique_ptr<TokenizerBase>> CreateTokenizerFromBufferAsync(std::vector<uint8_t> vocab_buffer) {
+  auto buf = std::make_shared<std::vector<uint8_t>>(std::move(vocab_buffer));
+  return LaunchTokenizerTask([buf] { return CreateTokenizerFromBuffer(buf->data(), buf->size()); });
+}
+
+std::future<std::unique_ptr<TokenizerBase>> CreateTokenizerAsync(const std::string &vocab_path) {
+  return LaunchTokenizerTask([p = vocab_path] { return CreateTokenizer(p); });
 }
 
 }  // namespace mslite_llm

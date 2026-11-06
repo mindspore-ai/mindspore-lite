@@ -174,6 +174,10 @@ MSLLMStatus MSLLMDestroyModel(MSLLMModelHandle *llm_model);
  * kMSLLM_ERROR_NOT_SUPPORTED，生成中返回 kMSLLM_ERROR_BUSY。
  * 换模型需 Destroy → Create → Build 重走。
  *
+ * 实现说明：Build 阶段 tokenizer 解析在一次性有界后台线程上与模型加载
+ * 并行执行，Build 返回前必然汇合（join）；对外语义、错误码与返回时点
+ * 不变（见「库零线程」决策的例外说明）。
+ *
  * @param llm_model LLM model object handle.
  * @param model_path Define the LLM model(.msl) file path.
  * @return kMSLLM_SUCCESS on success; kMSLLM_ERROR_INVALID_ARGS if llm_model
@@ -750,11 +754,21 @@ Chat template 的应用位置是此边界的直接推论：由于 tokenizer 不�
 | 4    | Token 边界责任留在库内 | 逐 token 解码对 CJK/emoji 会产生不完整 UTF-8 字节序列。拼接缓冲若交给调用方，等于要求每个调用方都自己处理一遍多字节截断 |
 | 5    | 生成状态生命周期闭环   | 解码循环退出即复位生成状态；调用方无法中途脱离循环，状态必然收敛 |
 | 6    | 取消语义单点           | 中止只需翻转一个标志位，由库在解码循环内检查；`MSLLMAbort` 由其他线程调用 |
-| 7    | 库零线程               | 无线程池、无每请求建线程的开销、无 worker 生命周期管理，端侧内存敏感场景友好 |
+| 7    | 库零线程               | 无线程池、无每请求建线程的开销、无 worker 生命周期管理，端侧内存敏感场景友好（生成路径零线程；Build 阶段存在一次性有界加载线程，见下文例外说明） |
 
 ##### 方案 B 的代价
 
 仅一条，需要正视：**库不再提供 fire-and-forget 异步**。调用方想要"发起后立即返回"，必须自己在 Task/Worker 中发起阻塞调用。这是把"谁开线程"的决定权交给调用方的必然结果，也是方案 B 换走方案 A 全部风险所付的代价。
+
+##### 例外：Build 阶段的一次性有界加载线程
+
+决策 #7（库零线程）否决的是**生成回调的常驻/每请求 worker 线程**——上表的风险（回调跨线程、参数悬垂、完成屏障缺失、绑定层线程附着、测试非确定）全部源于"回调在库线程上执行"。`MSLLMBuildModel` 中的 tokenizer 后台解析线程不触碰上述任何风险面：
+
+- **无回调**：后台线程只解析词表数据，不向调用方递送任何内容；结果经该次 Build 调用私有的 future 在 Build 内部汇合。
+- **无调用方参数进入线程**：后台任务按值持有自有数据（vocab 字节或路径），不引用引擎、包读取器或调用方缓冲。
+- **无共享状态、有界**：每次 Build 恰好一个线程、一个 future，不同会话并发 Build 互不可见（满足"不同会话之间线程安全"规约）；Build 返回前必然汇合（成功路径 `get()`，失败路径由 std::async future 的析构阻塞兜底）。
+- **线程创建失败不外抛**：`std::async` 启动失败（线程资源不足）被捕获并降级为 Build 线程内同步执行，异常不会穿过 `extern "C"` 边界。
+- **调用方观察面完全同步**：Build 仍是阻塞调用，成功返回即一切就绪，错误（含 tokenizer 解析失败）仍在 Build 时点同步上报——R1…R7 逐条不受影响。
 
 ##### 规范要求
 
