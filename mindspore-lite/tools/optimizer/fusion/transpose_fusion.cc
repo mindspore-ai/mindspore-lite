@@ -366,7 +366,6 @@ AnfNodePtr TransposeFusion::Process(const std::string &pattern_name, const minds
   auto manager = func_graph->manager();
   MS_ASSERT(manager != nullptr);
   manager->SetEdge(any_cnode, 1, transpose_cnode->input(1));
-
   return trans_post_node;
 }
 }  // namespace mindspore::opt

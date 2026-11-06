@@ -834,7 +834,6 @@ const AnfNodePtr TfliteLstmCellFusion::Process(const FuncGraphPtr &func_graph, c
   MS_CHECK_TRUE_RET(body_cnode_index_pair != nullptr, nullptr);
   func_graph->DropFuncGraphCNodeIndex(body_cnode_index_pair);
   MS_LOG(INFO) << "lstm node:" << lstm_node->fullname_with_scope() << " fusion success";
-
   return squeeze_node;
 }
 }  // namespace opt

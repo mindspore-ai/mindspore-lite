@@ -128,7 +128,6 @@ const AnfNodePtr AffineFusion::Process(const FuncGraphPtr &func_graph, const Anf
   affine_node->set_abstract(matmul_node->abstract()->Clone());
 
   MS_LOG(INFO) << "splice + matmul fused to affine node: " << affine_node->fullname_with_scope() << "success.";
-
   return affine_node;
 }
 }  // namespace mindspore::opt

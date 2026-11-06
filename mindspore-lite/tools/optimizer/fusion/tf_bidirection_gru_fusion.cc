@@ -852,7 +852,6 @@ const AnfNodePtr TfBidirectionGruFusion::Process(const FuncGraphPtr &func_graph,
 
   auto output_node = GetPostProcessNode(func_graph, get_item_node, gru_node->fullname_with_scope());
   MS_LOG(INFO) << "gru node:" << gru_node->fullname_with_scope() << " fusion success";
-
   return output_node;
 }
 }  // namespace opt

@@ -101,7 +101,6 @@ const AnfNodePtr GLUFusion::Process(const FuncGraphPtr &func_graph, const AnfNod
     MS_LOG(DEBUG) << "new glu node failed.";
     return nullptr;
   }
-
   return cnode;
 }
 }  // namespace opt
