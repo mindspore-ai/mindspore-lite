@@ -24,6 +24,7 @@
 #include "tools/converter/ms_depend/anfalgo.h"
 #include "ir/manager.h"
 #include "tools/optimizer/common/helper.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/converter/ms_depend/visitor.h"
 
 namespace mindspore {
@@ -52,7 +53,15 @@ AnfNodePtr LitePatternProcessPass::Run(const FuncGraphPtr &func_graph, const Anf
     equiv_->clear();
     EquivPtr equiv = pattern_engine_.Match(pattern_, node, *primitive_vars_, equiv_);
     if (equiv != nullptr && !equiv->empty()) {
-      return Process(func_graph, node, equiv);
+      auto ret = Process(func_graph, node, equiv);
+      // Framework-level fusion tracing: the returned node is the replacement the caller replaces
+      // `node` with, so it absorbs the matched root's origin identity. Passes whose fusion is a
+      // multi-survivor / multi-part reshape (e.g. squeeze_fusion, groupnormsilu) opt out and do
+      // their own explicit tracing; see the per-pass feasibility analysis linked in the PR.
+      if (ret != nullptr && ret != node && NeedAutoFusionTrace()) {
+        TraceNewFusionNode(ret->cast<CNodePtr>(), {node});
+      }
+      return ret;
     }
   }
   return nullptr;

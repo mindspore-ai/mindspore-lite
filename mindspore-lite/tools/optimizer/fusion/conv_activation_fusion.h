@@ -31,6 +31,9 @@ class ConvActivationFusion : public LitePatternProcessPass {
       : LitePatternProcessPass(name, multigraph), param_(param) {}
 
   ~ConvActivationFusion() override = default;
+  // The Process return value is a topological stand-in, not the fusion survivor(s);
+  // tracing happens explicitly inside Process (see the per-pass feasibility analysis).
+  bool NeedAutoFusionTrace() const override { return false; }
 
   const BaseRef DefinePattern() const override;
 

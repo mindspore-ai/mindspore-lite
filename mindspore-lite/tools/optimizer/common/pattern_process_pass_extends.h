@@ -29,6 +29,9 @@ class LitePatternProcessPass : public LiteNodePass {
   explicit LitePatternProcessPass(const std::string &name = "", bool multigraph = true);
   ~LitePatternProcessPass() override = default;
   virtual const AnfNodePtr Process(const FuncGraphPtr &, const AnfNodePtr &, const EquivPtr &) const = 0;
+  // Whether Run() auto-traces the returned node as absorbing the matched root (default true).
+  // Override to false only for multi-survivor / multi-part fusions that trace explicitly.
+  virtual bool NeedAutoFusionTrace() const { return true; }
   virtual const BaseRef DefinePattern() const = 0;
   AnfNodePtr Run(const FuncGraphPtr &func_graph, const AnfNodePtr &node) override;
 
