@@ -49,7 +49,7 @@ constexpr uint32_t kTilingKeyDk64 = 0;
 constexpr uint32_t kTilingKeyDk80 = 1;
 constexpr uint32_t kTilingKeyDk96 = 2;
 constexpr uint32_t kTilingKeyDk128 = 3;
-constexpr uint32_t kCubeStageSlotCount = 2;
+constexpr uint32_t kCubeStageSlotCount = 4;
 // Per-core GM cache for the exact FP16 K^T tile (max Dk bucket 128 x 64 half).
 constexpr uint64_t kKeyCacheBytesPerCore = 128 * 64 * sizeof(uint16_t);
 constexpr uint64_t kRawMatmulStageBytesPerCore =
