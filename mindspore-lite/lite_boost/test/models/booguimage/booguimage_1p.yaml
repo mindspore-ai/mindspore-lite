@@ -1,0 +1,7 @@
+# BooguImage transfer-test config, single-card form: the master branch's
+# fastest single-card combination -- plain 1P plus the BSND fused attention
+# (npu_fusion_attention in BSND layout, no BNSD transposes).
+#
+# No Parallel section: with world_size 1 the boost keeps the pipeline as-is
+# and only applies the requested optimizations.
+bsnd: true
