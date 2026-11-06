@@ -364,7 +364,12 @@ STATUS TfliteModelParser::ConvertOps(const std::unique_ptr<tflite::SubGraphT> &t
     auto new_cnode = func_graph->NewCNode(op_inputs);
     MSLITE_CHECK_PTR(new_cnode);
     new_cnode->set_fullname_with_scope(op_name);
-    opt::TraceOriginInfo(new_cnode, op_name, op_type, BuildOriginTensorsAnchor(tflite_subgraph, op));
+    // Origin name "type_identifier": Netron shows the operators-array index as the node's
+    // identifier property, so users read the number straight from the original graph and spell
+    // the config value as TYPE_identifier (e.g. CONV_2D_12). Underscore keeps it distinct from
+    // the TYPE-INDEX current name; the boundary-tensor anchor above still locates the row.
+    opt::TraceOriginInfo(new_cnode, op_type + "_" + std::to_string(op_idx), op_type,
+                         BuildOriginTensorsAnchor(tflite_subgraph, op));
 
     // parse outputs
     status = ConvertOutputTensor(tflite_subgraph, func_graph, op, new_cnode, anf_node_map);
