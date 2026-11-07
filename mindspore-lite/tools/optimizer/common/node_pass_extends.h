@@ -29,6 +29,10 @@ class LiteNodePass : public NodePass {
   ~LiteNodePass() override = default;
   bool Run(const FuncGraphPtr &func_graph) override;
   virtual AnfNodePtr Run(const FuncGraphPtr &func_graph, const AnfNodePtr &node) = 0;
+  // Whether Run() auto-traces the returned node as absorbing the matched root (default true).
+  // Shared by both pattern-pass families (LitePatternProcessPass / MultiplePatternProcessPass);
+  // override to false only for multi-survivor / multi-part fusions that trace explicitly.
+  virtual bool NeedAutoFusionTrace() const { return true; }
 };
 }  // namespace opt
 }  // namespace mindspore

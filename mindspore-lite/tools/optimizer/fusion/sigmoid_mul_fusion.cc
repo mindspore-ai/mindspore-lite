@@ -81,7 +81,6 @@ AnfNodePtr SigmoidMulFusion::Process(const std::string &pattern_name, const mind
   auto activation_prim = ops::GetOperator<mindspore::ops::Activation>(activation_cnode->input(0));
   MS_CHECK_TRUE_RET(activation_prim != nullptr, nullptr);
   activation_prim->set_activation_type(mindspore::SWISH);
-  opt::TraceAbsorbNames(activation_cnode, node->cast<CNodePtr>());
   return activation_cnode;
 }
 

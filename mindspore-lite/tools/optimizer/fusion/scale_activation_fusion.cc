@@ -73,7 +73,6 @@ const AnfNodePtr ScaleActivationFusion::Process(const FuncGraphPtr &func_graph, 
     act_type = scale_act == RELU6 ? RELU6 : act_type;
   }
   (void)scale_prim_c->AddAttr(ops::kActivationType, MakeValue<int64_t>(static_cast<int64_t>(act_type)));
-  opt::TraceAbsorbNames(scale_node->cast<CNodePtr>(), node->cast<CNodePtr>());
   return scale_node;
 }
 }  // namespace mindspore::opt

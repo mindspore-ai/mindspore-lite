@@ -1461,6 +1461,19 @@ CNodePtr FlashAttentionFusion::CreatePromptFlashAttentionCnodeForBNSD(
   return prompt_flash_attention_cnode;
 }
 
+// The FlashAttention Create* helpers fold their pattern region into fa_node and then return
+// nullptr, so the base-class hook never sees the absorb: whoever they replace (`absorbed`, the
+// matched root or an inner wrapper node) must land its origin records on fa_node right here.
+static void ReplaceWithFaNode(const FuncGraphPtr &func_graph, const AnfNodePtr &absorbed, const CNodePtr &fa_node) {
+  auto manager = Manage(func_graph);
+  if (manager == nullptr) {
+    MS_LOG(ERROR) << "manager is nullptr.";
+    return;
+  }
+  opt::TraceNewFusionNode(fa_node, {absorbed});
+  (void)manager->Replace(absorbed, fa_node);
+}
+
 CNodePtr FlashAttentionFusion::PreMulBSH(const FuncGraphPtr &func_graph, const AnfNodePtr &node,
                                          const CNodePtr &q_trans_BNSD, const CNodePtr &k_trans_BNDS,
                                          const CNodePtr &v_trans_BNSD, const AnfNodePtr &atten_mask, int64_t num_head,
@@ -1468,8 +1481,6 @@ CNodePtr FlashAttentionFusion::PreMulBSH(const FuncGraphPtr &func_graph, const A
                                          const std::shared_ptr<FlashAttentionParm> &fa_parm) const {
   MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
   MS_CHECK_TRUE_RET(node != nullptr, nullptr);
-  auto manager = Manage(func_graph);
-  MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
   auto output_reshape = node->cast<CNodePtr>();
   MS_CHECK_TRUE_RET(output_reshape != nullptr, nullptr);
   auto q_reshape_BSND = q_trans_BNSD->input(kNumIndex1)->cast<CNodePtr>();
@@ -1489,7 +1500,7 @@ CNodePtr FlashAttentionFusion::PreMulBSH(const FuncGraphPtr &func_graph, const A
   MS_CHECK_TRUE_RET(v_BSH != nullptr, nullptr);
   auto fa_node = CreatePromptFlashAttentionCnodeForBSH(func_graph, node, q_BSH, k_BSH, v_BSH, atten_mask, num_head,
                                                        next_tokens, scale_value, fa_parm);
-  (void)manager->Replace(output_reshape, fa_node);
+  ReplaceWithFaNode(func_graph, output_reshape, fa_node);
   MS_LOG(ERROR) << "Create prompt BSH PFA success for pre-mul pattern.";
   return nullptr;
 }
@@ -1501,8 +1512,6 @@ CNodePtr FlashAttentionFusion::PreMulInBNSDOutBSND(const FuncGraphPtr &func_grap
                                                    const std::shared_ptr<FlashAttentionParm> &fa_parm) const {
   MS_CHECK_TRUE_RET(func_graph != nullptr, nullptr);
   MS_CHECK_TRUE_RET(node != nullptr, nullptr);
-  auto manager = Manage(func_graph);
-  MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
   std::vector<int32_t> new_perm = {kNumIndex0, kNumIndex2, kNumIndex1, kNumIndex3};
   MS_CHECK_TRUE_RET(k_trans_BNDS != nullptr, nullptr);
   auto perm_node = BuildIntVecParameterNode(func_graph, new_perm, k_trans_BNDS->fullname_with_scope() + "_new_perm");
@@ -1514,7 +1523,7 @@ CNodePtr FlashAttentionFusion::PreMulInBNSDOutBSND(const FuncGraphPtr &func_grap
   MS_CHECK_TRUE_RET(output_trans != nullptr, nullptr);
   auto fa_node = CreatePromptFlashAttentionCnodeForBNSDBSND(func_graph, node, q_trans_BNSD, k_trans_BNDS, v_trans_BNSD,
                                                             atten_mask, num_head, next_tokens, scale_value, fa_parm);
-  (void)manager->Replace(output_trans, fa_node);
+  ReplaceWithFaNode(func_graph, output_trans, fa_node);
   MS_LOG(INFO) << "Create prompt BNSDBSND PFA success for pre-mul pattern.";
   return nullptr;
 }
@@ -1984,8 +1993,7 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForMsSDXL(
   auto fa_node = CreateFlashAttentionCnodeForBNSD(func_graph, node, q, k, v, nullptr, num_head, next_tokens,
                                                   scale_value, fa_parm, num_head);
   MS_CHECK_TRUE_MSG(fa_node != nullptr, nullptr, "create FA failed, fa_node is nullptr.");
-  auto manager = Manage(func_graph);
-  (void)manager->Replace(matmul_2, fa_node);
+  ReplaceWithFaNode(func_graph, matmul_2, fa_node);
   MS_LOG(INFO) << "create prompt flash attention success for stable diffusion.";
   return nullptr;
 }
@@ -2060,9 +2068,6 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForMsSDPseShift(
   int64_t d_value = input_tensor_q_shape[kNumIndex3];
 
   // reshape add input2 from (B*N)SS to BNSS
-  auto manager = Manage(func_graph);
-  MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
-
   std::vector<int32_t> BNSS_shape = {
     static_cast<int32_t>(input_tensor_q_shape[0]), static_cast<int32_t>(input_tensor_q_shape[1]),
     static_cast<int32_t>(input_tensor_q_shape[2]), static_cast<int32_t>(input_tensor_k_shape[2])};
@@ -2107,7 +2112,7 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForMsSDPseShift(
                                                     num_head, next_tokens, scale_value, fa_parm, num_head);
   }
   MS_CHECK_TRUE_RET(fa_node != nullptr, nullptr);
-  (void)manager->Replace(node, fa_node);
+  ReplaceWithFaNode(func_graph, node, fa_node);
   MS_LOG(INFO) << "create prompt flash attention success for stable diffusion pse shift.";
   return nullptr;
 }
@@ -2168,8 +2173,7 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForMsSD21(
   auto fa_node = CreateFlashAttentionCnodeForBNSD(func_graph, node, q_trans, k_trans, v_trans, nullptr, num_head,
                                                   next_tokens, scale_value, fa_parm, num_head);
   MS_CHECK_TRUE_MSG(fa_node != nullptr, nullptr, "create FA failed, fa_node is nullptr.");
-  auto manager = Manage(func_graph);
-  (void)manager->Replace(matmul_2, fa_node);
+  ReplaceWithFaNode(func_graph, matmul_2, fa_node);
   MS_LOG(INFO) << "create prompt flash attention success for stable diffusion.";
   return nullptr;
 }
@@ -2277,8 +2281,7 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForVideoComposer(
   if (fa_node == nullptr) {
     return nullptr;
   }
-  auto manager = Manage(func_graph);
-  (void)manager->Replace(matmul_2, fa_node);
+  ReplaceWithFaNode(func_graph, matmul_2, fa_node);
   MS_LOG(INFO) << "create prompt flash attention success for stable diffusion.";
   return nullptr;
 }
@@ -2332,8 +2335,7 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForSD(const std::string &
   if (fa_node == nullptr) {
     return nullptr;
   }
-  auto manager = Manage(func_graph);
-  (void)manager->Replace(cnode, fa_node);
+  ReplaceWithFaNode(func_graph, cnode, fa_node);
   MS_LOG(INFO) << "create prompt flash attention success for stable diffusion.";
   return nullptr;
 }
@@ -2430,9 +2432,7 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForSDPreMul(
   auto perm_node = BuildIntVecParameterNode(func_graph, new_perm, k_trans_BNDS->fullname_with_scope() + "_new_perm");
   MS_CHECK_TRUE_RET(perm_node != nullptr, nullptr);
   k_trans_BNDS->cast<CNodePtr>()->set_input(kNumIndex2, perm_node);
-  auto manager = Manage(func_graph);
-  MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
-  (void)manager->Replace(matmul_2, fa_node);
+  ReplaceWithFaNode(func_graph, matmul_2, fa_node);
   MS_LOG(INFO) << "create prompt flash attention success for pre-mul pattern.";
   return nullptr;
 }
@@ -2533,13 +2533,10 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForSDWithoutCast(
                                                next_tokens, scale_value, fa_parm, num_head);
   }
   MS_CHECK_TRUE_RET(fa_node != nullptr, nullptr);
-  auto manager = Manage(func_graph);
-  MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
   if (actual_BSH) {
-    (void)manager->Replace(node, fa_node);
+    ReplaceWithFaNode(func_graph, node, fa_node);
   } else {
-    opt::TraceNewFusionNode(fa_node, {cnode});
-    (void)manager->Replace(cnode, fa_node);
+    ReplaceWithFaNode(func_graph, cnode, fa_node);
   }
   MS_LOG(INFO) << "create prompt flash attention success for without cast, BSH: " << actual_BSH;
   return nullptr;
@@ -2755,8 +2752,7 @@ CNodePtr FlashAttentionFusion::CreateFlashAttentionNodeForSDEinsum(
   if (fa_node == nullptr) {
     return nullptr;
   }
-  auto manager = Manage(func_graph);
-  (void)manager->Replace(cnode, fa_node);
+  ReplaceWithFaNode(func_graph, cnode, fa_node);
   MS_LOG(INFO) << "create prompt flash attention success for stable diffusion.";
   return nullptr;
 }

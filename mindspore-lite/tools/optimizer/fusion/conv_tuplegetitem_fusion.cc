@@ -71,7 +71,6 @@ const AnfNodePtr ConvTupleGetItemFusion::Process(const FuncGraphPtr &func_graph,
     }
     conv_node->set_abstract(elements[0]);
   }
-  opt::TraceAbsorbNames(conv_node->cast<CNodePtr>(), node->cast<CNodePtr>());
   return conv_node;
 }
 }  // namespace mindspore::opt

@@ -91,7 +91,6 @@ const AnfNodePtr ConvTupleActivationFusion::Process(const FuncGraphPtr &func_gra
           conv_prim->get_activation_type() == mindspore::NO_ACTIVATION) {
         conv_prim->set_activation_type(act_prim->get_activation_type());
         conv_node->set_abstract(act_node->abstract());
-        opt::TraceAbsorbNames(conv_node->cast<CNodePtr>(), act_node);
         return conv_node;
       }
     } else {

@@ -15,8 +15,10 @@
  */
 #define USE_DEPRECATED_API
 #include <gtest/gtest.h>
+#include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include "common/common_test.h"
 #include "ir/func_graph.h"
@@ -25,6 +27,8 @@
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
 #include "tools/optimizer/common/fusion_trace_utils.h"
+#include "tools/optimizer/common/multiple_pattern_process_pass.h"
+#include "tools/optimizer/common/gllo_utils.h"
 
 namespace mindspore {
 namespace lite {
@@ -115,6 +119,45 @@ TEST_F(FusionTraceUtilsTest, StripRemovesAllRecords) {
   ASSERT_NE(prim, nullptr);
   EXPECT_EQ(prim->GetAttr(opt::kOriginNamesAttr), nullptr);
   EXPECT_EQ(prim->GetAttr(opt::kOriginOpTypesAttr), nullptr);
+}
+
+namespace {
+// Fake fusion: Process returns a preset survivor, so only the Run() exit hook is under test.
+// Regression lock: the hook used to live only in LitePatternProcessPass::Run while its
+// MultiplePatternProcessPass sibling silently dropped every multi-pattern fusion's root identity.
+class HookMultiPatternPass : public opt::MultiplePatternProcessPass {
+ public:
+  explicit HookMultiPatternPass(const AnfNodePtr &survivor, bool auto_trace = true)
+      : MultiplePatternProcessPass("hook_multi_pattern_test"), survivor_(survivor), auto_trace_(auto_trace) {}
+  std::unordered_map<std::string, VectorRef> DefinePatterns() const override {
+    auto is_act =
+      std::make_shared<CondVar>(std::bind(opt::IsSpecifiedNode<&prim::kPrimActivation>, std::placeholders::_1));
+    return {{"hook_pattern", VectorRef({is_act, std::make_shared<Var>(), std::make_shared<SeqVar>()})}};
+  }
+  AnfNodePtr Process(const std::string &, const FuncGraphPtr &, const AnfNodePtr &, const EquivPtr &) const override {
+    return survivor_;
+  }
+  bool NeedAutoFusionTrace() const override { return auto_trace_; }
+
+ private:
+  AnfNodePtr survivor_;
+  bool auto_trace_;
+};
+}  // namespace
+
+// TC-TRC-11: the multi-pattern Run() exit carries the matched root's records onto the survivor,
+// and the NeedAutoFusionTrace opt-out (squeeze_fusion-style multi-survivor passes) keeps it silent.
+TEST_F(FusionTraceUtilsTest, MultiPatternPassRunHookCarriesRootRecords) {
+  opt::TraceOriginInfo(act_, "Relu_3", "Relu");
+  auto survivor = NewNode(graph_, "Activation", "Relu_3-fused", conv_);
+  HookMultiPatternPass tracer(survivor);
+  ASSERT_EQ(tracer.Run(graph_, act_), survivor);
+  EXPECT_EQ(opt::GetSelfAndOriginNames(survivor), (std::vector<std::string>{"Relu_3-fused", "Relu_3"}));
+
+  auto survivor2 = NewNode(graph_, "Activation", "Relu_3-fused2", conv_);
+  HookMultiPatternPass optout(survivor2, false);
+  ASSERT_EQ(optout.Run(graph_, act_), survivor2);
+  EXPECT_EQ(opt::GetSelfAndOriginNames(survivor2).size(), 1);  // only its own current name
 }
 }  // namespace lite
 }  // namespace mindspore

@@ -432,6 +432,7 @@ AnfNodePtr ReshapeTransposeFusion::TransReshapeTransFusion(const FuncGraphPtr &f
   MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
   manager->SetEdge(reshape, 1, pre_trans_cnode->input(1));
   manager->SetEdge(reshape, kInputIndexTwo, new_shape_param);
+  opt::TraceAbsorbNames(reshape_cnode, pre_trans_cnode);
   return reshape;
 }
 

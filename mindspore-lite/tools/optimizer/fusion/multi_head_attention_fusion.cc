@@ -1101,7 +1101,6 @@ CNodePtr MultiHeadAttentionFusion::CreateMaskedMultiHeadAttentionNode(const Func
   }
   MS_CHECK_TRUE_RET(ret_node != nullptr, nullptr);
   (void)RemoveRedundantInput(func_graph, redundant);
-  opt::TraceNewFusionNode(ret_node->cast<CNodePtr>(), {node});
   return ret_node;
 }
 }  // namespace mindspore::opt

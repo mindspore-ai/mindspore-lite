@@ -71,7 +71,6 @@ const AnfNodePtr AddActivationFusion::Process(const FuncGraphPtr &func_graph, co
   auto ret = CopyOutputQuantParams(act_primitive, add_primitive);
   MS_CHECK_TRUE_RET(ret != nullptr, nullptr);
 
-  opt::TraceAbsorbNames(add_cnode, act_cnode);
   return add_cnode;
 }
 

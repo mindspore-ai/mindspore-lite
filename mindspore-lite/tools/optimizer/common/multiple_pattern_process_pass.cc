@@ -18,6 +18,7 @@
 #include "tools/optimizer/common/helper.h"
 #include "nnacl_c/op_base.h"
 #include "tools/converter/ms_depend/visitor.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore::opt {
 MultiplePatternProcessPass::MultiplePatternProcessPass(const std::string &name, bool multigraph)
@@ -47,7 +48,15 @@ AnfNodePtr MultiplePatternProcessPass::Run(const FuncGraphPtr &func_graph, const
     MS_CHECK_TRUE_RET(pattern != nullptr, nullptr);
     EquivPtr equiv = pattern_engine_.Match(pattern, node, *primitive_var, empty_equiv);
     if (equiv != nullptr && !equiv->empty()) {
-      return Process(name, func_graph, node, equiv);
+      auto ret = Process(name, func_graph, node, equiv);
+      // Framework-level fusion tracing, same contract as LitePatternProcessPass::Run: the returned
+      // node is the replacement the caller replaces `node` with, so it absorbs the matched root's
+      // origin identity. Passes whose fusion is a multi-survivor / multi-part reshape opt out and
+      // do their own explicit tracing; see the per-pass feasibility analysis linked in the PR.
+      if (ret != nullptr && ret != node && NeedAutoFusionTrace()) {
+        TraceNewFusionNode(ret->cast<CNodePtr>(), {node});
+      }
+      return ret;
     }
   }
   return nullptr;

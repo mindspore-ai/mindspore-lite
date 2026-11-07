@@ -1155,7 +1155,6 @@ CNodePtr EncoderLayerFusion::CreateMaskedEncoderLayerFusionNode(const FuncGraphP
   MS_CHECK_TRUE_RET(old_node->abstract() != nullptr, nullptr);
   new_node->set_abstract(old_node->abstract()->Clone());
   new_node->set_fullname_with_scope(node->fullname_with_scope() + "/encoder_layer");
-  opt::TraceNewFusionNode(new_node, {node});
   return new_node;
 }
 }  // namespace mindspore::opt

@@ -218,7 +218,6 @@ int ConvBiasaddFusion::DoFuison(const FuncGraphPtr &func_graph, const AnfNodePtr
   } else {
     manager->AddEdge(conv_cnode, conv_new_bias);
   }
-  opt::TraceAbsorbNames(conv_cnode, add_cnode);
   return lite::RET_OK;
 }
 

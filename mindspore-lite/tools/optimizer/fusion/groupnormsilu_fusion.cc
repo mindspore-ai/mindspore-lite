@@ -297,7 +297,6 @@ CNodePtr GroupNormSiluFusion::CreateGroupNormSiluNode(const FuncGraphPtr &func_g
   if (node->abstract() != nullptr) {
     groupnorm_silu_cnode->set_abstract(node->abstract()->Clone());
   }
-  opt::TraceNewFusionNode(groupnorm_silu_cnode, {node});
   return groupnorm_silu_cnode;
 }
 
