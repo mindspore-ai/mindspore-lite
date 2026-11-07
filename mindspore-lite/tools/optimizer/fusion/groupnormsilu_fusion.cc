@@ -342,7 +342,6 @@ CNodePtr GroupNormSiluFusion::CreateGroupNormSiluNodeForSD15(const std::string &
   }
 
   auto manager = Manage(func_graph);
-  opt::TraceNewFusionNode(groupnorm_silu_cnode, {cnode, node});
   (void)manager->Replace(cnode, groupnorm_silu_cnode);
   MS_LOG(INFO) << "create GroupNormSilu for SD15 success.";
   return groupnorm_silu_cnode;
@@ -397,7 +396,6 @@ CNodePtr GroupNormSiluFusion::CreateGroupNormSiluNodeForSDWithCast(const std::st
   }
 
   auto manager = Manage(func_graph);
-  opt::TraceNewFusionNode(groupnorm_silu_cnode, {cnode, node});
   (void)manager->Replace(cnode, groupnorm_silu_cnode);
   MS_LOG(INFO) << "create GroupNormSilu with cast success.";
   return groupnorm_silu_cnode;
@@ -447,7 +445,6 @@ CNodePtr GroupNormSiluFusion::CreateGroupNormSiluNodeForSDWithoutSilu(const std:
   }
 
   auto manager = Manage(func_graph);
-  opt::TraceNewFusionNode(groupnorm_silu_cnode, {cnode, node});
   (void)manager->Replace(cnode, groupnorm_silu_cnode);
   MS_LOG(INFO) << "create GroupNormSilu with cast success.";
   return groupnorm_silu_cnode;
@@ -581,7 +578,6 @@ CNodePtr GroupNormSiluFusion::CreateGroupNormSiluNodeForGroupNorm(const std::str
   }
 
   auto manager = Manage(func_graph);
-  opt::TraceNewFusionNode(groupnorm_silu_cnode, {cnode, node});
   (void)manager->Replace(cnode, groupnorm_silu_cnode);
   MS_LOG(INFO) << "create GroupNormSilu with cast success.";
   return groupnorm_silu_cnode;

@@ -317,7 +317,6 @@ const AnfNodePtr ScaleScaleFusion::Process(const FuncGraphPtr &func_graph, const
 
   auto manager = func_graph->manager();
   MS_ASSERT(manager != nullptr);
-  opt::TraceAbsorbNames(down_scale_cnode, up_scale_cnode);
   manager->SetEdge(down_scale_cnode, 1, up_scale_cnode->input(SECOND_INPUT));
   manager->SetEdge(down_scale_cnode, kInputIndexTwo, new_weight_param);
   if (up_scale_cnode->size() == kScaleWithBiasLen) {
@@ -333,6 +332,6 @@ const AnfNodePtr ScaleScaleFusion::Process(const FuncGraphPtr &func_graph, const
     }
   }
 
-  return nullptr;
+  return node;
 }
 }  // namespace mindspore::opt

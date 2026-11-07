@@ -29,7 +29,9 @@ namespace opt {
 class HardSwishFusion : public LitePatternProcessPass {
  public:
   explicit HardSwishFusion(const std::string &name = "HardSwishFusion", bool multigraph = true)
-      : LitePatternProcessPass(name, multigraph) {}
+      : LitePatternProcessPass(name, multigraph) {
+    SetTracePolicy(TracePolicy::kAutoRegion);
+  }
 
   ~HardSwishFusion() override = default;
 

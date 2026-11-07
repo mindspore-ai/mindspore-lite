@@ -26,6 +26,7 @@
 #include "include/registry/converter_context.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_e.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore::opt {
 const BaseRef SqueezeExpandDimsFusion::DefinePattern() const {

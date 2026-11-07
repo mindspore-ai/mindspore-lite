@@ -389,7 +389,6 @@ const AnfNodePtr FuseAddAndLayernorm::Process(const FuncGraphPtr &graph, const A
   }
 
   MS_LOG(INFO) << "FuseAddAndLayernorm process success";
-  opt::TraceNewFusionNode(add_layernorm, {tensor_add, node});
   return add_layernorm;
 }
 

@@ -25,7 +25,9 @@ namespace mindspore {
 namespace opt {
 class ConvConvFusion : public LitePatternProcessPass {
  public:
-  explicit ConvConvFusion(bool multigraph = true) : LitePatternProcessPass("ConvConvFusion", multigraph) {}
+  explicit ConvConvFusion(bool multigraph = true) : LitePatternProcessPass("ConvConvFusion", multigraph) {
+    SetTracePolicy(TracePolicy::kAutoRegion);
+  }
   ~ConvConvFusion() override = default;
   const AnfNodePtr Process(const FuncGraphPtr &, const AnfNodePtr &, const EquivPtr &) const override;
   const BaseRef DefinePattern() const override;

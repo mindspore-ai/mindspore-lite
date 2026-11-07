@@ -24,7 +24,9 @@ namespace mindspore {
 namespace opt {
 class BatchMatMulFusion : public LitePatternProcessPass {
  public:
-  explicit BatchMatMulFusion(bool multigraph = true) : LitePatternProcessPass("BatchMatMulFusion", multigraph) {}
+  explicit BatchMatMulFusion(bool multigraph = true) : LitePatternProcessPass("BatchMatMulFusion", multigraph) {
+    SetTracePolicy(TracePolicy::kAutoRegion);
+  }
   ~BatchMatMulFusion() override = default;
   const BaseRef DefinePattern() const override;
   const AnfNodePtr Process(const FuncGraphPtr &, const AnfNodePtr &, const EquivPtr &) const override;

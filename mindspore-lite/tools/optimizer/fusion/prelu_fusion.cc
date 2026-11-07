@@ -96,7 +96,6 @@ const AnfNodePtr PReluFusion::Process(const FuncGraphPtr &func_graph, const AnfN
 
   new_node->set_abstract(maximum_cnode->abstract()->Clone());
   new_node->set_fullname_with_scope("prelu_" + maximum_cnode->fullname_with_scope());
-  opt::TraceNewFusionNode(new_node, {maximum_cnode, node});
   return new_node;
 }
 

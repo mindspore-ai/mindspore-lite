@@ -242,7 +242,6 @@ const AnfNodePtr ScaleBaseFusion::Process(const FuncGraphPtr &func_graph, const 
   fusion_cnode->set_fullname_with_scope(prev_cnode->fullname_with_scope() + "scale");
   MS_CHECK_TRUE_RET(prev_cnode->abstract() != nullptr, nullptr);
   fusion_cnode->set_abstract(prev_cnode->abstract()->Clone());
-  opt::TraceNewFusionNode(fusion_cnode, {prev_cnode, curr_cnode});
   MS_LOG(INFO) << curr_cnode->fullname_with_scope() << " fusion success";
   return fusion_cnode;
 }

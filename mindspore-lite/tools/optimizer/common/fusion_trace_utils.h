@@ -42,6 +42,10 @@ void TraceNewFusionNode(const CNodePtr &new_node, const std::vector<AnfNodePtr> 
 // The node's current name plus every original name it carries (deduplicated, current name first).
 std::vector<std::string> GetSelfAndOriginNames(const AnfNodePtr &node);
 
+// Every ORIGINAL op name the node carries (its own plus absorbed ones), without the current name.
+// The whitelist's name domain: converted (framework) names must not whitelist a layer.
+std::vector<std::string> GetOriginNames(const AnfNodePtr &node);
+
 // Every original op type the node carries (its own plus absorbed ones). May be empty (e.g. MindIR).
 std::vector<std::string> GetOriginOpTypes(const AnfNodePtr &node);
 

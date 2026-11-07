@@ -20,9 +20,6 @@
 
 #include "ir/anf.h"
 #include "utils/trace_base.h"
-// Fusion tracing primitives: aggregated in the pass base so every fusion pass sees them
-// without each .cc carrying its own include (passes call one right at their fusion point).
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {

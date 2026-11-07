@@ -120,11 +120,8 @@ void ReplaceParamsAndNodes(const FuncGraphPtr &func_graph, const CNodePtr &conv_
   }
   conv_primitive->set_pad_list(pad_list_data);
 
-  // delete padFusion: its paddings are folded into conv's pad attributes, so conv_cnode is the
-  // real survivor that must carry pad's identity.
   auto manager = func_graph->manager();
   MS_ASSERT(manager != nullptr);
-  opt::TraceAbsorbNames(conv_cnode, pad_cnode);
   (void)manager->Replace(pad_cnode, pad_cnode->input(1));
 }
 
@@ -285,7 +282,7 @@ AnfNodePtr ConvPadFusion::Process(const std::string &pattern_name, const FuncGra
   }
 
   ReplaceParamsAndNodes(func_graph, conv_cnode, pad_cnode, pattern_name);
-  return nullptr;
+  return conv_cnode;
 }
 }  // namespace opt
 }  // namespace mindspore

@@ -214,9 +214,6 @@ STATUS ReplaceParametersAndNodes(const FuncGraphPtr &func_graph, const CNodePtr 
     MS_LOG(INFO) << "up conv node has no bias,no need to replace bias.";
   }
   MS_LOG(INFO) << "fusion node success:" << down_conv_cnode->fullname_with_scope();
-  // delete up conv node: its math is folded into down_conv's merged weight, so down_conv is the
-  // real survivor that must carry up_conv's identity.
-  opt::TraceAbsorbNames(down_conv_cnode, up_conv_cnode);
   (void)manager->Replace(up_conv_cnode, up_conv_cnode->input(1));
   return lite::RET_OK;
 }
@@ -322,6 +319,6 @@ const AnfNodePtr ConvConvFusion::Process(const FuncGraphPtr &func_graph, const A
     return nullptr;
   }
   (void)ReplaceParametersAndNodes(func_graph, up_conv_cnode, down_conv_cnode);
-  return nullptr;
+  return node;
 }
 }  // namespace mindspore::opt

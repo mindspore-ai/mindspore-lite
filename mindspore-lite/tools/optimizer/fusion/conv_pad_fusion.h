@@ -27,7 +27,9 @@ namespace opt {
 class ConvPadFusion : public MultiplePatternProcessPass {
  public:
   explicit ConvPadFusion(const std::string &name = "ConvPadFusion", bool multigraph = true)
-      : MultiplePatternProcessPass(name, multigraph) {}
+      : MultiplePatternProcessPass(name, multigraph) {
+    SetTracePolicy(TracePolicy::kAutoRegion);
+  }
   ~ConvPadFusion() override = default;
   AnfNodePtr Process(const std::string &pattern_name, const FuncGraphPtr &func_graph, const AnfNodePtr &,
                      const EquivPtr &) const override;

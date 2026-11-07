@@ -28,7 +28,9 @@ namespace opt {
 class GeGluV2Fusion : public MultiplePatternProcessPass {
  public:
   explicit GeGluV2Fusion(const std::string &name = "GeGluV2Fusion", bool multigraph = true)
-      : MultiplePatternProcessPass(name, multigraph) {}
+      : MultiplePatternProcessPass(name, multigraph) {
+    SetTracePolicy(TracePolicy::kAutoRegion);
+  }
 
   ~GeGluV2Fusion() override = default;
 

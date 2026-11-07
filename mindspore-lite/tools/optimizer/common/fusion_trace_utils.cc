@@ -196,6 +196,10 @@ std::vector<std::string> GetSelfAndOriginNames(const AnfNodePtr &node) {
   return names;
 }
 
+std::vector<std::string> GetOriginNames(const AnfNodePtr &node) {
+  return SplitSemicolon(GetAttrString(node, kOriginNamesAttr));
+}
+
 std::vector<std::string> GetOriginOpTypes(const AnfNodePtr &node) {
   return SplitSemicolon(GetAttrString(node, kOriginOpTypesAttr));
 }

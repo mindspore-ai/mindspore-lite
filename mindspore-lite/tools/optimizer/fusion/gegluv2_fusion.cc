@@ -135,7 +135,6 @@ AnfNodePtr GeGluV2Fusion::Process(const std::string &patten_name, const FuncGrap
       MS_LOG(ERROR) << "new_node is nullptr.";
       return nullptr;
     }
-    opt::TraceNewFusionNode(GeGluV2_node, {node, add_node});
     manager->Replace(node, GeGluV2_node);
   } else {
     MS_LOG(INFO) << " not pattern.";

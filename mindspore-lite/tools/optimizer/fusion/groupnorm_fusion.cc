@@ -249,7 +249,6 @@ const AnfNodePtr GroupNormFusion::Process(const FuncGraphPtr &func_graph, const 
   norm_cnode->set_abstract(add2_cnode->abstract()->Clone());
   norm_cnode->set_fullname_with_scope("group_norm_" + add2_cnode->fullname_with_scope());
   MS_LOG(DEBUG) << "group_norm_ node:" << norm_cnode->fullname_with_scope() << " fusion success";
-  opt::TraceNewFusionNode(norm_cnode, {add2_cnode, node});
   return norm_cnode;
 }
 

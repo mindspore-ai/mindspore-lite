@@ -29,7 +29,9 @@ namespace opt {
 class ReshapeTransposeFusion : public MultiplePatternProcessPass {
  public:
   explicit ReshapeTransposeFusion(const std::string &name = "ReshapeTransposeFusion", bool multigraph = true)
-      : MultiplePatternProcessPass(name, multigraph) {}
+      : MultiplePatternProcessPass(name, multigraph) {
+    SetTracePolicy(TracePolicy::kAutoRegion);
+  }
   ~ReshapeTransposeFusion() override = default;
 
  private:

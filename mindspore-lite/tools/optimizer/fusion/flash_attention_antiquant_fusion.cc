@@ -27,6 +27,7 @@
 #include "tools/converter/ms_depend/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_i.h"
 #include "mindspore/core/include/ir/graph_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace {

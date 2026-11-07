@@ -31,7 +31,9 @@ namespace opt {
 class MulAddFusion : public MultiplePatternProcessPass {
  public:
   explicit MulAddFusion(const std::string &name = "MulAddFusion", bool multigraph = true)
-      : MultiplePatternProcessPass(name, multigraph) {}
+      : MultiplePatternProcessPass(name, multigraph) {
+    SetTracePolicy(TracePolicy::kAutoRegion);
+  }
 
   ~MulAddFusion() override = default;
 

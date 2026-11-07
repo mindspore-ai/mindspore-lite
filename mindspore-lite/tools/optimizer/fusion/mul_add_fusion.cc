@@ -301,7 +301,6 @@ AnfNodePtr MulAddFusion::Process(const std::string &pattern_name, const mindspor
   // create scale op
   auto scale_node = func_graph->NewCNode(scale_primitive_c, {mul_input_anode, mul_const_anode_, add_const_anode_});
   scale_node->set_abstract(add_cnode->abstract());
-  opt::TraceNewFusionNode(scale_node, {node, add_cnode});
   return scale_node;
 }
 }  // namespace mindspore::opt

@@ -91,7 +91,6 @@ const AnfNodePtr HardSwishFusion::Process(const FuncGraphPtr &func_graph, const 
 
   new_node->set_abstract(div_cnode->abstract()->Clone());
   new_node->set_fullname_with_scope("hard_swish_" + div_cnode->fullname_with_scope());
-  opt::TraceNewFusionNode(new_node, {div_cnode, node});
   return new_node;
 }
 

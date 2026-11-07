@@ -32,7 +32,9 @@ namespace opt {
 class LayerNormV3Fusion : public MultiplePatternProcessPass {
  public:
   explicit LayerNormV3Fusion(const std::string &name = "LayerNormV3Fusion", bool multigraph = true)
-      : MultiplePatternProcessPass(name, multigraph) {}
+      : MultiplePatternProcessPass(name, multigraph) {
+    SetTracePolicy(TracePolicy::kAutoRegion);
+  }
 
   ~LayerNormV3Fusion() override = default;
 

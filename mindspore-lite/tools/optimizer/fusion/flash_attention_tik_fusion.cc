@@ -22,6 +22,7 @@
 #include "nnacl_c/base/cast_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_p.h"
 #include "mindspore/core/include/ir/graph_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {

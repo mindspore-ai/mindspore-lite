@@ -133,7 +133,9 @@ CNodePtr KVCacheMgrOneBranchFusion::CreateConcatNode(const FuncGraphPtr &func_gr
   concat_cnode->set_abstract(padding_value_node->abstract()->Clone());
   concat_cnode->abstract()->set_shape(shape_ptr);
 
-  opt::TraceNewFusionNode(concat_cnode, {node});
+  // Tracing contract: only the Process return value (the KVCache node) inherits the matched
+  // root's identity - this concat is freshly-built auxiliary computation (padding the batch
+  // valid length), not a mathematical continuation of the root, so it carries no records.
   return concat_cnode;
 }
 

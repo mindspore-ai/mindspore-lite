@@ -481,7 +481,6 @@ const AnfNodePtr BatchMatMulFusion::Process(const FuncGraphPtr &func_graph, cons
     auto matmul_primitive = ops::GetOperator<ops::MatMulFusion>(matmul_cnode->input(0));
     matmul_primitive->set_transpose_b(true);
   }
-  opt::TraceNewFusionNode(matmul_cnode, {stack_cnode, fullconnect_cnode});
   MS_LOG(INFO) << "stack node:" << stack_cnode->fullname_with_scope() << " batchmatmul fusion success";
   return matmul_cnode;
 }
