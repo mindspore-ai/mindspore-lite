@@ -14,13 +14,138 @@
  * limitations under the License.
  */
 
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <cfenv>
 #include <cstring>
+#include <limits>
 #include <vector>
 #include "backend/nnrt/nnrt_embedding.h"
-#include "gtest/gtest.h"
 
 using mslite::backend::nnrt::DequantizeS16S4EmbeddingRow;
+using mslite::backend::nnrt::Fp32ToFp16Bits;
 using mslite::backend::nnrt::S16S4EmbeddingView;
+
+class S16S4RoundingTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    restore_environment_ = std::feholdexcept(&original_environment_) == 0;
+    ASSERT_TRUE(restore_environment_);
+  }
+  void TearDown() override {
+    if (restore_environment_) {
+      EXPECT_EQ(std::fesetenv(&original_environment_), 0);
+    }
+  }
+  std::fenv_t original_environment_{};
+  bool restore_environment_{false};
+};
+
+TEST_F(S16S4RoundingTest, UnusedValuesDoNotRaiseOverflow) {
+  constexpr int kSize = 128;
+  std::vector<uint8_t> weights(kSize * kSize / 2);
+  std::vector<uint8_t> scales(kSize * 8, 0);
+  S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kSize, kSize, 1.0f};
+  std::vector<uint16_t> output(kSize);
+  ASSERT_EQ(std::fesetround(FE_TONEAREST), 0);
+  for (uint8_t packed : {0x00, 0x11, 0xff}) {
+    std::fill(weights.begin(), weights.end(), packed);
+    const int nibble = packed & 15;
+    const int value = nibble < 8 ? nibble : nibble - 16;
+    for (float scale : {8188.0f, 8192.0f, 16384.0f, -16384.0f, std::numeric_limits<float>::max()}) {
+      const uint16_t expected = Fp32ToFp16Bits(value * scale);
+      std::memcpy(scales.data(), &scale, sizeof(scale));
+      ASSERT_EQ(std::feclearexcept(FE_ALL_EXCEPT), 0);
+      ASSERT_TRUE(DequantizeS16S4EmbeddingRow(view, 0, output.data()));
+      EXPECT_EQ(std::fetestexcept(FE_OVERFLOW), 0) << "packed=" << static_cast<int>(packed) << ", scale=" << scale;
+      EXPECT_TRUE(std::all_of(output.begin(), output.end(), [expected](uint16_t bits) { return bits == expected; }));
+    }
+  }
+}
+
+TEST_F(S16S4RoundingTest, UsedValuesRetainScalarOverflow) {
+  constexpr int kSize = 128;
+  std::vector<uint8_t> weights(kSize * kSize / 2, 0x22);
+  std::vector<uint8_t> scales(kSize * 8, 0);
+  const float scale = std::numeric_limits<float>::max();
+  std::memcpy(scales.data(), &scale, sizeof(scale));
+  S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kSize, kSize, 1.0f};
+  std::vector<uint16_t> output(kSize);
+  ASSERT_EQ(std::fesetround(FE_TONEAREST), 0);
+  ASSERT_EQ(std::feclearexcept(FE_ALL_EXCEPT), 0);
+  ASSERT_TRUE(DequantizeS16S4EmbeddingRow(view, 0, output.data()));
+  EXPECT_NE(std::fetestexcept(FE_OVERFLOW), 0);
+  EXPECT_TRUE(std::all_of(output.begin(), output.end(), [](uint16_t bits) { return bits == 0x7c00; }));
+}
+
+TEST_F(S16S4RoundingTest, UnusedValuesDoNotRaiseUnderflowOrInexact) {
+  constexpr int kSize = 128;
+  std::vector<uint8_t> weights(kSize * kSize / 2, 0);
+  std::vector<uint8_t> scales(kSize * 8, 0);
+  S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kSize, kSize, 1.0f};
+  std::vector<uint16_t> output(kSize);
+  ASSERT_EQ(std::fesetround(FE_TONEAREST), 0);
+  for (float scale : {0x1p-25f, 0x1p-149f, 1.0f / 3}) {
+    std::memcpy(scales.data(), &scale, sizeof(scale));
+    ASSERT_EQ(std::feclearexcept(FE_ALL_EXCEPT), 0);
+    ASSERT_TRUE(DequantizeS16S4EmbeddingRow(view, 0, output.data()));
+    EXPECT_EQ(std::fetestexcept(FE_ALL_EXCEPT), 0) << "scale=" << scale;
+    EXPECT_TRUE(std::all_of(output.begin(), output.end(), [](uint16_t bits) { return bits == 0; }));
+  }
+}
+
+TEST_F(S16S4RoundingTest, LookupPreservesScalarRoundingModes) {
+  constexpr int kSize = 128;
+  std::vector<uint8_t> weights(kSize * kSize / 2, 0);
+  for (int k = 0; k < kSize; k += 2) {
+    const size_t offset = (k / 64 * kSize) * 32 + k % 64 / 2;
+    weights[offset] = static_cast<uint8_t>((k % 16) | (((k + 1) % 16) << 4));
+  }
+  std::vector<uint8_t> scales(kSize * 8, 0);
+  S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kSize, kSize, 1.0f};
+  std::vector<uint16_t> output(kSize);
+  for (int mode : {FE_TONEAREST, FE_UPWARD, FE_DOWNWARD, FE_TOWARDZERO}) {
+    ASSERT_EQ(std::fesetround(mode), 0);
+    for (float scale : {1.0f + 0x1p-11f, 0x1p-25f}) {
+      std::memcpy(scales.data(), &scale, sizeof(scale));
+      ASSERT_TRUE(DequantizeS16S4EmbeddingRow(view, 0, output.data()));
+      for (int k = 0; k < kSize; ++k) {
+        const int nibble = k % 16;
+        const int value = nibble < 8 ? nibble : nibble - 16;
+        EXPECT_EQ(output[k], Fp32ToFp16Bits(value * scale)) << "mode=" << mode << ", k=" << k;
+      }
+      if (mode == FE_UPWARD && scale > 1.0f) {
+        EXPECT_EQ(output[15], 0xbc01);
+      }
+    }
+  }
+}
+
+TEST(S16S4Embedding, LookupMatchesScalarForRoundingAndSpecialScales) {
+  constexpr int kSize = 128;
+  std::vector<uint8_t> weights(kSize * kSize / 2, 0);
+  for (int k = 0; k < kSize; k += 2) {
+    const size_t offset = (k / 64 * kSize) * 32 + k % 64 / 2;
+    weights[offset] = static_cast<uint8_t>((k % 16) | (((k + 1) % 16) << 4));
+  }
+  std::vector<uint8_t> scales(kSize * 8, 0);
+  S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kSize, kSize, 1.0f};
+  std::vector<uint16_t> output(kSize);
+  for (float scale : {1.0f / 3, -1.0f / 3, 0x1p-24f, 1.0e-8f, 65504.0f, 0.0f, -0.0f}) {
+    std::memcpy(scales.data(), &scale, sizeof(scale));
+    ASSERT_TRUE(DequantizeS16S4EmbeddingRow(view, 0, output.data()));
+    for (int k = 0; k < kSize; ++k) {
+      const int nibble = k % 16;
+      const int value = nibble < 8 ? nibble : nibble - 16;
+      EXPECT_EQ(output[k], Fp32ToFp16Bits(value * scale)) << "scale=" << scale << ", k=" << k;
+    }
+  }
+  for (float invalid : {std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+    std::memcpy(scales.data(), &invalid, sizeof(invalid));
+    EXPECT_FALSE(DequantizeS16S4EmbeddingRow(view, 0, output.data()));
+  }
+}
 
 TEST(S16S4Embedding, TileBoundariesAndSignedNibbles) {
   constexpr int kHidden = 256;

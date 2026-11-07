@@ -22,7 +22,10 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cstring>
 #include <vector>
+#include <limits>
 
 #include "sampler/sampler.h"
 
@@ -76,6 +79,39 @@ TEST(Sampler, GreedyArgmaxVectorBoundaries) {
   logits[7] = 5.0f;
   logits[15] = 5.0f;
   EXPECT_EQ(tied_sampler.Sample(logits), 7);
+}
+
+TEST(Sampler, GreedyNonFiniteAndTailValues) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float infinity = std::numeric_limits<float>::infinity();
+  for (size_t length : {4, 15, 16, 17, 31, 33}) {
+    for (size_t winner = 1; winner < length; ++winner) {
+      auto sampler = MakeSampler(0.0f);
+      std::vector<float> logits(length, -infinity);
+      logits[winner] = infinity;
+      logits[length - 1] = infinity;
+      EXPECT_EQ(sampler.Sample(logits), static_cast<int32_t>(winner));
+      logits[0] = nan;
+      EXPECT_EQ(sampler.Sample(logits), 0);
+      logits[0] = -infinity;
+      logits[winner] = nan;
+      const int expected = winner == length - 1 ? 0 : static_cast<int>(length - 1);
+      EXPECT_EQ(sampler.Sample(logits), expected);
+    }
+    auto sampler = MakeSampler(0.0f);
+    std::vector<float> zeros(length, -0.0f);
+    zeros[length - 1] = 0.0f;
+    EXPECT_EQ(sampler.Sample(zeros), 0);
+  }
+}
+
+TEST(Sampler, SignalingNanDoesNotEraseEarlierLaneMaximum) {
+  auto sampler = MakeSampler(0.0f);
+  std::vector<float> logits(33, -1.0f);
+  logits[4] = 10.0f;
+  const uint32_t signaling_nan = 0x7f800001U;
+  std::memcpy(&logits[20], &signaling_nan, sizeof(signaling_nan));
+  EXPECT_EQ(sampler.Sample(logits), 4);
 }
 
 TEST(Sampler, TemperatureDeterminism) {
