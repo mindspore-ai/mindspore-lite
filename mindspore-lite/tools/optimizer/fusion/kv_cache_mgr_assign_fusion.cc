@@ -28,7 +28,6 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_k.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {
@@ -48,7 +47,6 @@ int KVCacheMgrAssignFusion::RemoveAssignOp(const AnfNodePtr &anf_node, const Fun
     return lite::RET_NO_CHANGE;
   }
   (void)this->remove_cnode_.insert(anf_node);
-  opt::TraceNewFusionNode(kv_cache_cnode, {anf_node->cast<CNodePtr>()});
   return manager->Replace(anf_node, kv_cache_cnode) ? RET_OK : RET_ERROR;
 }
 

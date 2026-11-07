@@ -22,7 +22,6 @@
 #include "nnacl_c/base/cast_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_p.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {
@@ -142,7 +141,6 @@ bool FlashAttentionTikPass::Run(const FuncGraphPtr &func_graph) {
     if (fa_cnode->abstract() != nullptr) {
       fa_tik_cnode->set_abstract(fa_cnode->abstract()->Clone());
     }
-    opt::TraceNewFusionNode(fa_tik_cnode, {fa_cnode});
     (void)manager->Replace(fa_cnode, fa_tik_cnode);
     MS_LOG(INFO) << "create FlashAttentionTik node end.";
   }

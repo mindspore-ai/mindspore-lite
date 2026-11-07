@@ -26,7 +26,6 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_g.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {
@@ -73,7 +72,6 @@ int TransposeGatherFusion::Process(const FuncGraphPtr &func_graph, const CNodePt
     manager->SetEdge(gather_nodes_[i], 1, transpose->input(1));
     *gather_axes_data_ptr_[i] = gather_updated_axes_[i];
     for (const auto &post_transpose : transpose_nodes_[i]) {
-      opt::TraceAbsorbNames(gather_nodes_[i], post_transpose);
       if (!manager->Replace(post_transpose, gather_nodes_[i])) {
         MS_LOG(ERROR) << "do Manager-Replace failed.";
         return lite::RET_ERROR;

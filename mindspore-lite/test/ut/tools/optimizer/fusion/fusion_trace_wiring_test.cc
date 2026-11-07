@@ -378,19 +378,36 @@ CNodePtr FindNodeByCarriedName(const FuncGraphPtr &func_graph, const std::string
 
 class FusionTraceWiringTest : public mindspore::CommonTest {
  public:
-  FusionTraceWiringTest() = default;
+  FusionTraceWiringTest() { opt::SetFusionTraceEnabled(true); }
 };
 
 // MatMul+Add (in-place absorb): after the real fusion runs, the surviving MatMul must carry the
 // Add node's name, so a per-layer list entry naming the absorbed Add still hits the layer.
+namespace {
+// Seed origin records like a frontend parser would: the diff transport only carries recorded
+// nodes (no current-name fallback), and the wiring assertions match these seeded names.
+void SeedOriginRecords(const FuncGraphPtr &fg) {
+  for (auto &cnode : fg->GetOrderedCnodes()) {
+    auto prim = GetValueNode<PrimitivePtr>(cnode->input(0));
+    if (prim != nullptr) {
+      opt::TraceOriginInfo(cnode, cnode->fullname_with_scope(), prim->name());
+    }
+  }
+}
+}  // namespace
+
 TEST_F(FusionTraceWiringTest, MatMulAddCarriesAbsorbedName) {
   auto meta_graph = BuildMatMulAddGraph();
   auto func_graph = lite::AnfImporterFromMetaGraphT::Fb2Anf(meta_graph.get());
   ASSERT_NE(func_graph, nullptr);
   auto manager = Manage(func_graph, true);
   ASSERT_NE(manager, nullptr);
-  opt::MatMulAddFusion fusion;
-  (void)fusion.Run(func_graph);
+  SeedOriginRecords(func_graph);
+  auto pm = std::make_shared<opt::LitePassManager>("matmul_add_wiring", false);
+  pm->AddPass(std::make_shared<opt::MatMulAddFusion>());
+  auto optimizer = std::make_shared<opt::GraphOptimizer>();
+  optimizer->AddPassManager(pm);
+  ASSERT_NE(optimizer->Optimize(func_graph), nullptr);
 
   // The Add is folded: exactly one compute cnode (the MatMul survivor) remains.
   size_t compute_nodes = 0;
@@ -419,6 +436,7 @@ TEST_F(FusionTraceWiringTest, ConvBiasCarriesAbsorbedName) {
   ASSERT_NE(func_graph, nullptr);
   auto manager = Manage(func_graph, true);
   ASSERT_NE(manager, nullptr);
+  SeedOriginRecords(func_graph);
   auto fusion_pm = std::make_shared<opt::LitePassManager>("conv_bias_wiring", false);
   ASSERT_NE(fusion_pm, nullptr);
   fusion_pm->AddPass(std::make_shared<opt::ConvBiasaddFusion>());
@@ -445,6 +463,7 @@ TEST_F(FusionTraceWiringTest, ConvActivationCarriesAbsorbedName) {
   ASSERT_NE(func_graph, nullptr);
   auto manager = Manage(func_graph, true);
   ASSERT_NE(manager, nullptr);
+  SeedOriginRecords(func_graph);
   auto fusion_pm = std::make_shared<opt::LitePassManager>("conv_act_wiring", false);
   ASSERT_NE(fusion_pm, nullptr);
   fusion_pm->AddPass(std::make_shared<opt::ConvActivationFusion>(std::make_shared<ConverterPara>()));
@@ -473,6 +492,7 @@ TEST_F(FusionTraceWiringTest, ConvScaleCarriesAbsorbedName) {
   ASSERT_NE(func_graph, nullptr);
   auto manager = Manage(func_graph, true);
   ASSERT_NE(manager, nullptr);
+  SeedOriginRecords(func_graph);
   // Drive the fusion exactly like AnfTransform does: GraphOptimizer + LitePassManager, whose
   // per-node traversal routes PrimitiveC nodes through the name-matching pattern engine.
   auto fusion_pm = std::make_shared<opt::LitePassManager>("conv_scale_wiring", false);
@@ -511,6 +531,7 @@ TEST_F(FusionTraceWiringTest, ConvConvCarriesAbsorbedName) {
   ASSERT_NE(func_graph, nullptr);
   auto manager = Manage(func_graph, true);
   ASSERT_NE(manager, nullptr);
+  SeedOriginRecords(func_graph);
   // Drive the fusion exactly like AnfTransform does: GraphOptimizer + LitePassManager.
   auto fusion_pm = std::make_shared<opt::LitePassManager>("conv_conv_wiring", false);
   ASSERT_NE(fusion_pm, nullptr);
@@ -547,8 +568,12 @@ TEST_F(FusionTraceWiringTest, TileMatMulCarriesAbsorbedName) {
   ASSERT_NE(func_graph, nullptr);
   auto manager = Manage(func_graph, true);
   ASSERT_NE(manager, nullptr);
-  opt::TileMatMulFusion fusion;
-  EXPECT_TRUE(fusion.Run(func_graph));
+  SeedOriginRecords(func_graph);
+  auto pm = std::make_shared<opt::LitePassManager>("tile_matmul_wiring", false);
+  pm->AddPass(std::make_shared<opt::TileMatMulFusion>());
+  auto optimizer = std::make_shared<opt::GraphOptimizer>();
+  optimizer->AddPassManager(pm);
+  ASSERT_NE(optimizer->Optimize(func_graph), nullptr);
 
   size_t compute_nodes = 0;
   for (auto &cnode : func_graph->GetOrderedCnodes()) {
@@ -577,6 +602,7 @@ TEST_F(FusionTraceWiringTest, AddConcatActivationCarriesAbsorbedName) {
   ASSERT_NE(func_graph, nullptr);
   auto manager = Manage(func_graph, true);
   ASSERT_NE(manager, nullptr);
+  SeedOriginRecords(func_graph);
   auto fusion_pm = std::make_shared<opt::LitePassManager>("add_concat_act_wiring", false);
   ASSERT_NE(fusion_pm, nullptr);
   fusion_pm->AddPass(std::make_shared<opt::AddConcatActivationFusion>());

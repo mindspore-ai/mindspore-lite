@@ -27,9 +27,7 @@
 namespace mindspore::opt {
 class ScaleBaseFusion : public LitePatternProcessPass {
  public:
-  explicit ScaleBaseFusion(std::string name, bool multigraph = true) : LitePatternProcessPass(name, multigraph) {
-    SetTracePolicy(TracePolicy::kAutoRegion);
-  }
+  explicit ScaleBaseFusion(std::string name, bool multigraph = true) : LitePatternProcessPass(name, multigraph) {}
   ~ScaleBaseFusion() override = default;
   const AnfNodePtr Process(const FuncGraphPtr &, const AnfNodePtr &, const EquivPtr &) const override;
 

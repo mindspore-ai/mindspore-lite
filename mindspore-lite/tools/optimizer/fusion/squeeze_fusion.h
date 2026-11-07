@@ -26,11 +26,7 @@ namespace opt {
 class SqueezeFusion : public LitePatternProcessPass {
  public:
   explicit SqueezeFusion(bool multigraph = true, const std::string &name = "SqueezeFusion")
-      : LitePatternProcessPass(name, multigraph) {
-    // Two survivors (BN and activation): the Process return value is a topological stand-in, so
-    // tracing happens explicitly inside Process (see the per-pass feasibility analysis).
-    SetTracePolicy(TracePolicy::kManual);
-  }
+      : LitePatternProcessPass(name, multigraph) {}
   ~SqueezeFusion() override = default;
   const BaseRef DefinePattern() const override;
   const AnfNodePtr Process(const FuncGraphPtr &, const AnfNodePtr &, const EquivPtr &) const override;

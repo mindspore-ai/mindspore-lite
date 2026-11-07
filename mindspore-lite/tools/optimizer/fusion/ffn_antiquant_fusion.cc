@@ -29,7 +29,6 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_l.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace {
@@ -321,7 +320,6 @@ int FFNAntiquantFusion::Process(const FuncGraphPtr &func_graph, const CNodePtr &
 
   auto manager = Manage(func_graph);
   CHECK_NULL_RETURN(manager);
-  opt::TraceNewFusionNode(ffn_fusion_cnode, {cnode});
   (void)manager->Replace(cnode, ffn_fusion_cnode);
   MS_LOG(INFO) << "FFN Antiquant Fusion success, the cnode is " << ffn_fusion_cnode->fullname_with_scope();
   return RET_OK;

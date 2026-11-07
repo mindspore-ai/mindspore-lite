@@ -28,9 +28,7 @@ namespace opt {
 class GroupNormSiluFusion : public MultiplePatternProcessPass {
  public:
   explicit GroupNormSiluFusion(const std::string &name = "GroupNormSiluFusion", bool multigraph = true)
-      : MultiplePatternProcessPass(name, multigraph) {
-    SetTracePolicy(TracePolicy::kAutoRegion);
-  }
+      : MultiplePatternProcessPass(name, multigraph) {}
 
   ~GroupNormSiluFusion() override = default;
 

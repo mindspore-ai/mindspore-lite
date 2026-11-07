@@ -25,9 +25,7 @@
 namespace mindspore::opt {
 class FullConnectedFusion : public LitePatternProcessPass {
  public:
-  explicit FullConnectedFusion(bool multigraph = true) : LitePatternProcessPass("FullConnectedFusion", multigraph) {
-    SetTracePolicy(TracePolicy::kAutoRegion);
-  }
+  explicit FullConnectedFusion(bool multigraph = true) : LitePatternProcessPass("FullConnectedFusion", multigraph) {}
   ~FullConnectedFusion() override = default;
   const BaseRef DefinePattern() const override;
   const AnfNodePtr Process(const FuncGraphPtr &, const AnfNodePtr &, const EquivPtr &) const override;

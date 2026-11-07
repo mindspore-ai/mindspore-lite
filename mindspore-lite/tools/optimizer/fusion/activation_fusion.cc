@@ -27,7 +27,6 @@
 #include "src/common/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {
@@ -109,8 +108,6 @@ bool ActivationFusion::Run(const FuncGraphPtr &func_graph) {
     MS_ASSERT(manager != nullptr);
     MS_CHECK_TRUE_RET(pre_act_cnode->size() == kInputSizeTwo, false);
     auto pre_node = pre_act_cnode->input(SECOND_INPUT);
-    // The merged cur activation (cnode) survives and absorbs the pre activation's records.
-    opt::TraceAbsorbNames(cnode, pre_act_cnode);
     (void)manager->Replace(pre_act_cnode, pre_node);
   }
   return false;

@@ -27,7 +27,6 @@
 #include "tools/converter/ms_depend/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_i.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace {
@@ -225,7 +224,6 @@ int FlashAttentionAntiquantFusion::Process(const FuncGraphPtr &func_graph, const
   }
   auto manager = Manage(func_graph);
   CHECK_NULL_RETURN(manager);
-  opt::TraceNewFusionNode(fa_fusion_cnode, {cnode});
   (void)manager->Replace(cnode, fa_fusion_cnode);
   MS_LOG(INFO) << "FlashAttention Antiquant Fusion success, the cnode is " << fa_fusion_cnode->fullname_with_scope();
 

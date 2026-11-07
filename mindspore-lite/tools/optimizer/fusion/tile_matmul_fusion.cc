@@ -24,7 +24,6 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {
@@ -110,13 +109,6 @@ bool TileMatMulFusion::Run(const FuncGraphPtr &func_graph) {
     MS_CHECK_TRUE_RET(manage != nullptr, false);
     // CheckCanFuse guarantees every tile user is a MatMul using tile as matrixB; the matmul
     // absorbs the tile's broadcast semantics, so it is the real survivor carrying tile's identity.
-    auto tile_users = manage->node_users()[tile_cnode];
-    for (auto &tile_user : tile_users) {
-      auto matmul_cnode = tile_user.first->cast<CNodePtr>();
-      if (matmul_cnode != nullptr) {
-        opt::TraceAbsorbNames(matmul_cnode, tile_cnode);
-      }
-    }
     auto success = manage->Replace(tile_cnode, left_pre_node);
     MS_CHECK_TRUE_MSG(success, false, "Replace old node failed.");
   }

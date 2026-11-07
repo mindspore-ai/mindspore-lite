@@ -35,7 +35,6 @@ class NormFusion : public LitePatternProcessPass {
   explicit NormFusion(const std::string &name = "NormFusion", bool multigraph = true)
       : LitePatternProcessPass(name, multigraph) {
     InitShapeSizeInferFuncMap();
-    SetTracePolicy(TracePolicy::kAutoRegion);
   }
 
   ~NormFusion() override = default;

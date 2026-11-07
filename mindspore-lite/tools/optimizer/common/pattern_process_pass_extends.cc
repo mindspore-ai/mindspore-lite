@@ -52,14 +52,7 @@ AnfNodePtr LitePatternProcessPass::Run(const FuncGraphPtr &func_graph, const Anf
     equiv_->clear();
     EquivPtr equiv = pattern_engine_.Match(pattern_, node, *primitive_vars_, equiv_);
     if (equiv != nullptr && !equiv->empty()) {
-      std::vector<AnfNodePtr> matched_parts;
-      matched_parts.reserve(equiv->size());
-      for (const auto &entry : *equiv) {
-        if (utils::isa<AnfNodePtr>(entry.second)) {
-          matched_parts.push_back(utils::cast<AnfNodePtr>(entry.second));
-        }
-      }
-      return FinishFusionProcess(func_graph, node, Process(func_graph, node, equiv), matched_parts);
+      return Process(func_graph, node, equiv);
     }
   }
   return nullptr;

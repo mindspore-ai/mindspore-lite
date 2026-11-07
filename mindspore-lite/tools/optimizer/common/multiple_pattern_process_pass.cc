@@ -47,14 +47,7 @@ AnfNodePtr MultiplePatternProcessPass::Run(const FuncGraphPtr &func_graph, const
     MS_CHECK_TRUE_RET(pattern != nullptr, nullptr);
     EquivPtr equiv = pattern_engine_.Match(pattern, node, *primitive_var, empty_equiv);
     if (equiv != nullptr && !equiv->empty()) {
-      std::vector<AnfNodePtr> matched_parts;
-      matched_parts.reserve(equiv->size());
-      for (const auto &entry : *equiv) {
-        if (utils::isa<AnfNodePtr>(entry.second)) {
-          matched_parts.push_back(utils::cast<AnfNodePtr>(entry.second));
-        }
-      }
-      return FinishFusionProcess(func_graph, node, Process(name, func_graph, node, equiv), matched_parts);
+      return Process(name, func_graph, node, equiv);
     }
   }
   return nullptr;

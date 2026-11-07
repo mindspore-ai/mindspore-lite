@@ -129,6 +129,9 @@ void CollectAllGraphs(const FuncGraphPtr &root, std::set<FuncGraphPtr> *all_grap
 }  // namespace
 
 void TraceOriginInfo(const CNodePtr &node, const std::string &origin_name, const std::string &origin_type) {
+  if (!IsFusionTraceEnabled()) {
+    return;
+  }
   auto prim = GetPrimitiveFromCNode(node);
   if (prim == nullptr) {
     return;
@@ -142,6 +145,9 @@ void TraceOriginInfo(const CNodePtr &node, const std::string &origin_name, const
 }
 
 void TraceAbsorbNames(const CNodePtr &survivor, const AnfNodePtr &absorbed) {
+  if (!IsFusionTraceEnabled()) {
+    return;
+  }
   if (survivor == nullptr || absorbed == nullptr) {
     return;
   }
@@ -173,6 +179,9 @@ void TraceAbsorbNames(const CNodePtr &survivor, const AnfNodePtr &absorbed) {
 }
 
 void TraceNewFusionNode(const CNodePtr &new_node, const std::vector<AnfNodePtr> &parts) {
+  if (!IsFusionTraceEnabled()) {
+    return;
+  }
   for (const auto &part : parts) {
     TraceAbsorbNames(new_node, part);
   }
@@ -228,5 +237,41 @@ void StripOriginNames(const FuncGraphPtr &func_graph) {
       prim->EraseAttr(kOriginOpTypesAttr);
     }
   }
+}
+
+namespace {
+bool g_fusion_trace_enabled = true;
+}  // namespace
+
+void SetFusionTraceEnabled(bool enabled) { g_fusion_trace_enabled = enabled; }
+bool IsFusionTraceEnabled() { return g_fusion_trace_enabled; }
+
+bool HasOriginRecords(const AnfNodePtr &node) {
+  return !GetAttrString(node, kOriginNamesAttr).empty() || !GetAttrString(node, kOriginOpTypesAttr).empty();
+}
+
+void CarryOriginRecords(const CNodePtr &survivor, const AnfNodePtr &absorbed) {
+  auto survivor_prim = GetPrimitiveFromCNode(survivor);
+  auto absorbed_cnode = dyn_cast<CNode>(absorbed);
+  if (survivor_prim == nullptr || absorbed_cnode == nullptr) {
+    return;
+  }
+  auto names = SplitSemicolon(GetAttrString(absorbed_cnode, kOriginNamesAttr));
+  auto types = SplitSemicolon(GetAttrString(absorbed_cnode, kOriginOpTypesAttr));
+  MergeAttr(survivor_prim, kOriginNamesAttr, names);
+  MergeAttr(survivor_prim, kOriginOpTypesAttr, types);
+}
+
+std::set<CNodePtr> SnapshotRecordedCnodes(const FuncGraphPtr &func_graph) {
+  std::set<CNodePtr> snap;
+  if (func_graph == nullptr) {
+    return snap;
+  }
+  for (const auto &cnode : func_graph->GetOrderedCnodes()) {
+    if (HasOriginRecords(cnode)) {
+      snap.insert(cnode);
+    }
+  }
+  return snap;
 }
 }  // namespace mindspore::opt

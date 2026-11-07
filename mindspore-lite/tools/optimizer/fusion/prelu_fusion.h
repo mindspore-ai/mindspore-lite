@@ -30,9 +30,7 @@ namespace opt {
 class PReluFusion : public LitePatternProcessPass {
  public:
   explicit PReluFusion(const std::string &name = "PReluFusion", bool multigraph = true)
-      : LitePatternProcessPass(name, multigraph) {
-    SetTracePolicy(TracePolicy::kAutoRegion);
-  }
+      : LitePatternProcessPass(name, multigraph) {}
 
   ~PReluFusion() override = default;
 

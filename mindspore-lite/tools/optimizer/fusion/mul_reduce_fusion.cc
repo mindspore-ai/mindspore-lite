@@ -34,7 +34,6 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_g.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {
@@ -246,7 +245,6 @@ int MulReduceFusion::GenerateSqueeze(const FuncGraphPtr &func_graph, const CNode
   auto mul_op = cnode->input(1);
   MS_ASSERT(mul_op != nullptr);
   squeeze_cnode->set_fullname_with_scope(mul_op->fullname_with_scope() + "/Squeeze");
-  opt::TraceNewFusionNode(squeeze_cnode, {cnode});
   auto success = manager->Replace(cnode, squeeze_cnode);
   MS_CHECK_TRUE_MSG(success, lite::RET_ERROR, "Replace old node failed.");
   auto &shape_infos = preprocessor_.GetShapeContainer();
@@ -277,7 +275,6 @@ int MulReduceFusion::GenerateMul(const FuncGraphPtr &func_graph, const CNodePtr 
   auto mul_cnode = func_graph->NewCNode(mul_prim, {cnode, second_input_node});
   MS_CHECK_TRUE_MSG(mul_cnode != nullptr, lite::RET_ERROR, "Mul-cnode create failed.");
   mul_cnode->set_fullname_with_scope(old_mul_op->fullname_with_scope());
-  opt::TraceNewFusionNode(mul_cnode, {cnode});
   auto success = manager->Replace(cnode, mul_cnode);
   MS_CHECK_TRUE_MSG(success, lite::RET_ERROR, "Replace old node failed.");
   return lite::RET_OK;

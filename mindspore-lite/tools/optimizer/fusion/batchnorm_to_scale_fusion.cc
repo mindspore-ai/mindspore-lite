@@ -30,7 +30,6 @@
 #include "src/common/utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_b.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore::opt {
 namespace {
@@ -348,7 +347,6 @@ bool BatchNormToScaleFusion::Run(const FuncGraphPtr &func_graph) {
     auto scale_node = func_graph->NewCNode(scale_primitive_c, {cnode->input(1), new_weight_param, new_bias_param});
     scale_node->set_fullname_with_scope(cnode->fullname_with_scope());
     scale_node->set_abstract(cnode->abstract());
-    opt::TraceNewFusionNode(scale_node, {cnode});
     (void)manager->Replace(cnode, scale_node);
   }
   return false;

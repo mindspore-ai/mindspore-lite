@@ -28,7 +28,6 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {
@@ -93,7 +92,6 @@ bool TransposeMatMulFusion::FuseTransposeInput(const FuncGraphPtr &func_graph, c
   MS_CHECK_TRUE_RET(trans_cnode->size() == kInputSizeThree, false);
   auto pre_node = trans_cnode->input(SECOND_INPUT);
   (void)manager->SetEdge(cnode, cnode_input_index, pre_node);
-  opt::TraceAbsorbNames(cnode, trans_cnode);
   return true;
 }
 

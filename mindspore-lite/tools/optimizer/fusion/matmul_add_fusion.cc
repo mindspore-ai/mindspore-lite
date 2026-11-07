@@ -30,7 +30,6 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_b.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {
@@ -189,7 +188,6 @@ bool MatMulAddFusion::Run(const FuncGraphPtr &func_graph) {
         matmul_primc->set_activation_type(add_primc->get_activation_type());
       }
     }
-    opt::TraceAbsorbNames(matmul_cnode, add_cnode);
     (void)manager->Replace(node, matmul_cnode);
   }
   return false;

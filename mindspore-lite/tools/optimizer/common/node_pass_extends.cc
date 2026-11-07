@@ -23,53 +23,12 @@
 #include "ir/func_graph.h"
 #include "ir/manager.h"
 #include "tools/optimizer/common/gllo_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {
 bool NodePass::Run(const FuncGraphPtr &func_graph) {
   MS_LOG(ERROR) << "stub func";
   return false;
-}
-
-AnfNodePtr LiteNodePass::FinishFusionProcess(const FuncGraphPtr &func_graph, const AnfNodePtr &root,
-                                             const AnfNodePtr &ret,
-                                             const std::vector<AnfNodePtr> &matched_parts) const {
-  if (func_graph == nullptr || ret == nullptr || trace_policy_ == TracePolicy::kManual) {
-    return ret;
-  }
-  auto survivor = ret->cast<CNodePtr>();
-  if (survivor == nullptr) {
-    return ret;
-  }
-  // The returned node is the replacement the caller replaces `root` with, so it absorbs the
-  // matched root's origin identity.
-  if (ret != root) {
-    TraceNewFusionNode(survivor, {root});
-  }
-  if (trace_policy_ != TracePolicy::kAutoRegion) {
-    return ret;
-  }
-  // Absorb-by-disappearance scoped to THIS match: equiv-listed CNode parts that lost their last
-  // user during Process were consumed by the fusion, so their identity moves to the survivor.
-  // Fusions that fan identity out to several survivors must stay kManual and trace explicitly.
-  auto manager = func_graph->manager();
-  if (manager == nullptr) {
-    return ret;
-  }
-  const auto &users = manager->node_users();
-  for (const auto &part : matched_parts) {
-    auto cnode = dyn_cast<CNode>(part);
-    if (cnode == nullptr || cnode == survivor || cnode == root) {
-      continue;
-    }
-    // Losing the last user either empties the entry or erases it from the map.
-    auto it = users.find(cnode);
-    if (it == users.end() || it->second.empty()) {
-      TraceAbsorbNames(survivor, cnode);
-    }
-  }
-  return ret;
 }
 
 bool LiteNodePass::Run(const FuncGraphPtr &func_graph) {

@@ -26,7 +26,6 @@
 #include "nnacl_c/op_base.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {
@@ -261,7 +260,6 @@ void ReshapeReduceFusion::FuseReshapeWithReduce(const FuncGraphPtr &func_graph, 
   auto manager = func_graph->manager();
   MS_ASSERT(manager != nullptr);
   manager->SetEdge(reshape_, C2NUM, param_node);
-  opt::TraceAbsorbNames(reshape_, reduce);
   (void)manager->Replace(reduce, reshape_);
 }
 
@@ -275,7 +273,6 @@ void ReshapeReduceFusion::FuseReduceWithReshape(const FuncGraphPtr &func_graph, 
   }
   auto manager = func_graph->manager();
   MS_CHECK_TRUE_RET_VOID(manager != nullptr);
-  opt::TraceAbsorbNames(reduce, reshape_);
   (void)manager->Replace(reshape_, reduce);
 }
 }  // namespace opt

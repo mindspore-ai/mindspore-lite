@@ -22,7 +22,6 @@
 #include "mindspore/ops/op_def/op_name.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/core/include/ir/graph_utils.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {
@@ -90,7 +89,6 @@ int ConcatConcatFusion::Process(const FuncGraphPtr &func_graph, const CNodePtr &
     }
     auto pre_inputs = pre_concat->inputs();
     new_inputs.insert(new_inputs.end(), pre_inputs.begin() + 1, pre_inputs.end());
-    opt::TraceAbsorbNames(cnode, pre_concat);
   }
   cnode->set_inputs(new_inputs);
   return lite::RET_OK;

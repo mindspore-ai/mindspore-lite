@@ -31,9 +31,7 @@ namespace opt {
 class GroupNormFusion : public LitePatternProcessPass {
  public:
   explicit GroupNormFusion(const std::string &name = "GroupNormFusion", bool multigraph = true)
-      : LitePatternProcessPass(name, multigraph) {
-    SetTracePolicy(TracePolicy::kAutoRegion);
-  }
+      : LitePatternProcessPass(name, multigraph) {}
   ~GroupNormFusion() override = default;
   const AnfNodePtr Process(const FuncGraphPtr &, const AnfNodePtr &, const EquivPtr &) const override;
   const BaseRef DefinePattern() const override;

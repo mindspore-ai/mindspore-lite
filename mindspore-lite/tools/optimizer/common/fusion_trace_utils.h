@@ -52,6 +52,19 @@ std::vector<std::string> GetOriginOpTypes(const AnfNodePtr &node);
 // Remove all tracing attributes from every node of the graph (including subgraphs).
 // Unconditional: fusion happens even without quantization, so this must not hang off the quant branch.
 void StripOriginNames(const FuncGraphPtr &func_graph);
+
+// ---- tracing switch (refined plan-2) ----
+// Tracing (parser recording + every transport) is meaningful only when a per-layer list or the
+// decision report needs the origin domain; the converter turns it off otherwise so plain
+// conversions carry zero overhead. Default on for unit tests and direct API users.
+void SetFusionTraceEnabled(bool enabled);
+bool IsFusionTraceEnabled();
+
+// ---- pass-level graph-diff transport (for the Pass-framework fusion passes) ----
+// Ungated primitives used by the diff transport in LitePassManager::Run.
+std::set<CNodePtr> SnapshotRecordedCnodes(const FuncGraphPtr &func_graph);
+void CarryOriginRecords(const CNodePtr &survivor, const AnfNodePtr &absorbed);
+bool HasOriginRecords(const AnfNodePtr &node);
 }  // namespace mindspore::opt
 
 #endif  // MINDSPORE_LITE_TOOLS_OPTIMIZER_COMMON_FUSION_TRACE_UTILS_H_

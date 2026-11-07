@@ -27,9 +27,7 @@ namespace opt {
 class ExpandDimsReshapeFusion : public LitePatternProcessPass {
  public:
   explicit ExpandDimsReshapeFusion(bool multigraph = true, const std::string &name = "ExpandDimsReshapeFusion")
-      : LitePatternProcessPass(name, multigraph) {
-    SetTracePolicy(TracePolicy::kAutoRegion);
-  }
+      : LitePatternProcessPass(name, multigraph) {}
   ~ExpandDimsReshapeFusion() override = default;
   const AnfNodePtr Process(const FuncGraphPtr &, const AnfNodePtr &, const EquivPtr &) const override;
   const BaseRef DefinePattern() const override;
