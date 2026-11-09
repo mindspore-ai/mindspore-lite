@@ -91,6 +91,77 @@ int ConvDw(float *output_data, const float *input_data, const float *weight_data
   return NNACL_OK;
 }
 
+int DepthwiseConvFp32(float *output_data, const float *input_data, const float *filter_data, const float *bias_data,
+                      const ConvParameter *conv_param) {
+  if (conv_param->thread_num_ == 0 || conv_param->dilation_h_ == 0 || conv_param->stride_w_ == 0) {
+    return NNACL_ERR;
+  }
+  int N = conv_param->input_batch_;
+  int H = conv_param->input_h_;
+  int W = conv_param->input_w_;
+  int C_in = conv_param->input_channel_;
+
+  int KH = conv_param->kernel_h_;
+  int KW = conv_param->kernel_w_;
+
+  int OH = conv_param->output_h_;
+  int OW = conv_param->output_w_;
+  bool relu = conv_param->act_type_ == ActType_Relu;
+  bool relu6 = conv_param->act_type_ == ActType_Relu6;
+  int depth_multiplier = conv_param->output_channel_ / conv_param->input_channel_;
+  int C_out = conv_param->output_channel_;
+
+  /*
+  input:[N,Hin,Win,Cin]
+  filter:[Kh,Kw,Cin,Depth]
+  output[Ni,Hi,Wi,CiniDepth+Depthi] = input[Ni,Hi*strideH+Khi,W*strideW+Kwi,Cini]*filter[Khi,Kwi,Cini,Depthi]
+  kernel calculate loop order:output_batch->output_H->output_W->input_channel->depth_multiplier->kernel_H->kernel_W
+  */
+  for (int n = 0; n < N; n++) {
+    for (int oh = 0; oh < OH; oh++) {
+      for (int ow = 0; ow < OW; ow++) {
+        int in_h_origin = oh * conv_param->stride_h_ - conv_param->pad_u_;
+        int in_w_origin = ow * conv_param->stride_w_ - conv_param->pad_l_;
+
+        for (int ic = 0; ic < C_in; ic++) {
+          for (int dm = 0; dm < depth_multiplier; dm++) {
+            int oc = ic * depth_multiplier + dm;
+            float sum = 0.0f;
+
+            // Kernel loop
+            for (int kh = 0; kh < KH; kh++) {
+              int ih = in_h_origin + kh * conv_param->dilation_h_;
+              if (ih < 0 || ih >= H) continue;
+              for (int kw = 0; kw < KW; ++kw) {
+                int iw = in_w_origin + kw * conv_param->dilation_w_;
+                if (iw < 0 || iw >= W) continue;
+                int input_idx = (n * H * W * C_in) + (ih * W * C_in) + (iw * C_in) + ic;
+                int filter_idx =
+                  (kh * KW * C_in * depth_multiplier) + (kw * C_in * depth_multiplier) + (ic * depth_multiplier) + dm;
+                sum += input_data[input_idx] * filter_data[filter_idx];
+              }
+            }
+
+            if (bias_data) {
+              sum += bias_data[oc];
+            }
+            int out_idx = (n * OH * OW * C_out) + (oh * OW * C_out) + (ow * C_out) + oc;
+            output_data[out_idx] = sum;
+          }
+        }
+      }
+      if (relu) {
+        Fp32Relu(output_data, N * OH * OW * C_out, output_data);
+      }
+      if (relu6) {
+        Fp32Relu6(output_data, N * OH * OW * C_out, output_data);
+      }
+    }
+  }
+
+  return NNACL_OK;
+}
+
 #ifdef ENABLE_AVX512
 int ConvDwAVX512(float *output_data, const float *input_data, const float *weight_data, const float *bias_data,
                  const ConvParameter *conv_param, int task_id, ConvDwCalcParam *conv_dw_calc_param) {
