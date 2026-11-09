@@ -352,6 +352,8 @@ bool DequantizeS16S4EmbeddingRow(const S16S4EmbeddingView &view, int token, uint
     if (!std::isfinite(scale)) {
       return false;
     }
+    uint16_t dequantized[kWeightValueCount];
+    uint32_t initialized = 0;
     for (size_t lane = 0; lane < kS16S4GroupSize; ++lane) {
       const size_t k = group * kS16S4GroupSize + lane;
       const size_t offset = ((row_tile * column_tiles + k / kS16S4ColumnsPerTile) * kS16S4RowsPerTile + row_in_tile) *
@@ -359,8 +361,15 @@ bool DequantizeS16S4EmbeddingRow(const S16S4EmbeddingView &view, int token, uint
                             k % kS16S4ColumnsPerTile / kWeightsPerByte;
       const uint8_t packed = view.weights[offset];
       const int nibble = (packed >> ((k % kWeightsPerByte) * kWeightBits)) & kWeightMask;
-      const int signed_weight = nibble >= kWeightSignBit ? nibble - kWeightValueCount : nibble;
-      output[k] = Fp32ToFp16Bits(static_cast<float>(signed_weight) * scale);
+      const uint32_t bit = 1U << nibble;
+      if ((initialized & bit) == 0) {
+        // Convert only values present in this group, using the original converter
+        // to preserve rounding and avoid extra floating-point exceptions.
+        const int weight = nibble >= kWeightSignBit ? nibble - kWeightValueCount : nibble;
+        dequantized[nibble] = Fp32ToFp16Bits(static_cast<float>(weight) * scale);
+        initialized |= bit;
+      }
+      output[k] = dequantized[nibble];
     }
   }
   return true;

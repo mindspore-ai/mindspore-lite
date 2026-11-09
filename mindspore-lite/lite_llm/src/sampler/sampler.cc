@@ -39,35 +39,56 @@ void Softmax(std::vector<float> &logits) {
   }
 }
 
-int32_t GreedyArgMax(const float *logits, size_t size) {
-  size_t best_index = 0;
-  float best_value = logits[0];
-  size_t index = 1;
 #if defined(__aarch64__)
-  // float32x4_t lane count, fixed by the vld1q_f32/vdupq_n_f32 intrinsic types.
-  constexpr size_t kNeonLaneCount = 4;
-  for (; index + kNeonLaneCount <= size; index += kNeonLaneCount) {
-    const float32x4_t values = vld1q_f32(logits + index);
-    const uint32x4_t exceeds_best = vcgtq_f32(values, vdupq_n_f32(best_value));
-    if (vmaxvq_u32(exceeds_best) == 0) {
-      continue;
-    }
-    for (size_t lane = 0; lane < kNeonLaneCount; ++lane) {
-      const float value = logits[index + lane];
-      if (value > best_value) {
-        best_value = value;
-        best_index = index + lane;
-      }
-    }
-  }
+float32x4_t MaxIgnoringNaN(float32x4_t maximum, float32x4_t values) {
+  // FMAXNM propagates signaling NaNs and can erase an earlier lane maximum.
+  // Select by ordered comparison instead, matching scalar `value > best`.
+  return vbslq_f32(vcgtq_f32(values, maximum), values, maximum);
+}
 #endif
+
+int32_t GreedyArgMax(const float *logits, size_t size) {
+  float best_value = logits[0];
+#if defined(__aarch64__)
+  // Match scalar argmax: a leading NaN wins, later NaNs are ignored,
+  // and equal maxima select the first index.
+  if (std::isnan(best_value)) return 0;
+  size_t index = 0;
+  float32x4_t maximum0 = vdupq_n_f32(best_value);
+  float32x4_t maximum1 = maximum0, maximum2 = maximum0, maximum3 = maximum0;
+  for (; index + 16 <= size; index += 16) {
+    maximum0 = MaxIgnoringNaN(maximum0, vld1q_f32(logits + index));
+    maximum1 = MaxIgnoringNaN(maximum1, vld1q_f32(logits + index + 4));
+    maximum2 = MaxIgnoringNaN(maximum2, vld1q_f32(logits + index + 8));
+    maximum3 = MaxIgnoringNaN(maximum3, vld1q_f32(logits + index + 12));
+  }
+  maximum0 = vmaxnmq_f32(vmaxnmq_f32(maximum0, maximum1), vmaxnmq_f32(maximum2, maximum3));
+  for (; index + 4 <= size; index += 4) {
+    maximum0 = MaxIgnoringNaN(maximum0, vld1q_f32(logits + index));
+  }
+  best_value = vmaxvq_f32(maximum0);
   for (; index < size; ++index) {
+    if (logits[index] > best_value) best_value = logits[index];
+  }
+  index = 0;
+  const float32x4_t maximum = vdupq_n_f32(best_value);
+  for (; index + 4 <= size; index += 4) {
+    if (vmaxvq_u32(vceqq_f32(vld1q_f32(logits + index), maximum)) != 0) break;
+  }
+  for (; index < size; ++index) {
+    if (logits[index] == best_value) return static_cast<int32_t>(index);
+  }
+  return 0;
+#else
+  size_t best_index = 0;
+  for (size_t index = 1; index < size; ++index) {
     if (logits[index] > best_value) {
       best_value = logits[index];
       best_index = index;
     }
   }
   return static_cast<int32_t>(best_index);
+#endif
 }
 
 }  // namespace
