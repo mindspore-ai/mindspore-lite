@@ -332,6 +332,6 @@ const AnfNodePtr ScaleScaleFusion::Process(const FuncGraphPtr &func_graph, const
     }
   }
 
-  return nullptr;
+  return node;
 }
 }  // namespace mindspore::opt

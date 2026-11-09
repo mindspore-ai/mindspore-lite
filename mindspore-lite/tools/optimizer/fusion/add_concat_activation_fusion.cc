@@ -27,6 +27,7 @@
 #include "ops_utils/op_utils.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore::opt {
 const BaseRef AddConcatActivationFusion::DefinePattern() const {
@@ -100,9 +101,13 @@ const AnfNodePtr AddConcatActivationFusion::Process(const FuncGraphPtr &func_gra
     left_add_prim->set_activation_type(act_prim->get_activation_type());
   }
 
-  // delete activation node
+  // delete activation node: its activation semantics are folded into BOTH adds' activation_type,
+  // so the two adds are the real survivors carrying act's identity (concat only takes act's graph
+  // position and must not carry it).
   auto manager = func_graph->manager();
   MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
+  opt::TraceAbsorbNames(right_add_cnode, act_cnode);
+  opt::TraceAbsorbNames(left_add_cnode, act_cnode);
   (void)manager->Replace(act_cnode, act_cnode->input(1));
 
   return nullptr;

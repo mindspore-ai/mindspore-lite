@@ -992,7 +992,8 @@ STATUS EncoderLayerFusion::CheckPattern(const FuncGraphPtr &func_graph, const Eq
     }
   }
   act_type_ = (is_position_bias_) ? (ActType::ActType_Relu)
-                                  : (is_fast_gelu_) ? (ActType::ActType_FastGelu) : (ActType::ActType_Gelu);
+              : (is_fast_gelu_)   ? (ActType::ActType_FastGelu)
+                                  : (ActType::ActType_Gelu);
   if (!is_position_bias_ && !is_use_past_ && !is_query_layer_) {
     if (!IsActGELU(func_graph, equiv, is_act_)) {
       return RET_ERROR;

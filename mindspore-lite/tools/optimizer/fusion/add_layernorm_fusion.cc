@@ -167,6 +167,7 @@ AnfNodePtr LayerNormV3Fusion::CreateLayerNormV3Node(const FuncGraphPtr &func_gra
   auto get_item_result = func_graph->NewCNode(prim_getitem, {ln_cnode, NewValueNode(static_cast<int64_t>(0))});
   constexpr const size_t kNumZero = 0;
   get_item_result->set_abstract(infer_abs_tuple->elements()[kNumZero]);
+  get_item_result->set_fullname_with_scope(node->fullname_with_scope() + "_layernormv3_fusion");
   return get_item_result;
 }
 
@@ -301,6 +302,7 @@ AnfNodePtr LayerNormV3Fusion::Process(const std::string &pattern_name, const min
     return nullptr;
   }
   MS_LOG(INFO) << pattern_name << " fusion success, fusion node name: " << cnode->fullname_with_scope();
+
   return cnode;
 }
 

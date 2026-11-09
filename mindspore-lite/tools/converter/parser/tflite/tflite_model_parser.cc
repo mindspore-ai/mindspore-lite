@@ -22,6 +22,7 @@
 #include <utility>
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "utils/convert_utils_base.h"
 #include "include/registry/node_parser_registry.h"
 #include "ops/primitive_c.h"
@@ -275,7 +276,6 @@ std::string GetTensorName(size_t index, const tflite::BuiltinOperator &op_type, 
   }
   return tensor_name;
 }
-
 STATUS TfliteModelParser::ConvertOps(const std::unique_ptr<tflite::SubGraphT> &tflite_subgraph,
                                      const FuncGraphPtr &func_graph,
                                      std::unordered_map<int, AnfNodePtr> *anf_node_map) {
@@ -334,6 +334,11 @@ STATUS TfliteModelParser::ConvertOps(const std::unique_ptr<tflite::SubGraphT> &t
     auto new_cnode = func_graph->NewCNode(op_inputs);
     MSLITE_CHECK_PTR(new_cnode);
     new_cnode->set_fullname_with_scope(op_name);
+    // Origin name "type_identifier": Netron shows the operators-array index as the node's
+    // identifier property, so users read the number straight from the original graph and spell
+    // the config value as TYPE_identifier (e.g. CONV_2D_12). Underscore keeps it distinct from
+    // the TYPE-INDEX current name.
+    opt::TraceOriginInfo(new_cnode, op_type + "_" + std::to_string(op_idx), op_type);
 
     // parse outputs
     status = ConvertOutputTensor(tflite_subgraph, func_graph, op, new_cnode, anf_node_map);

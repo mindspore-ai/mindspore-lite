@@ -1099,6 +1099,7 @@ CNodePtr MultiHeadAttentionFusion::CreateMaskedMultiHeadAttentionNode(const Func
     new_node->set_abstract(old_node->abstract()->Clone());
     ret_node = new_node;
   }
+  MS_CHECK_TRUE_RET(ret_node != nullptr, nullptr);
   (void)RemoveRedundantInput(func_graph, redundant);
   return ret_node;
 }

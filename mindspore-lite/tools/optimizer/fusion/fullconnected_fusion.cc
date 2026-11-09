@@ -278,10 +278,9 @@ const AnfNodePtr FullConnectedFusion::Process(const FuncGraphPtr &func_graph, co
     return nullptr;
   }
 
-  // delete prev_fc_cnode
   auto manager = func_graph->manager();
   (void)manager->Replace(prev_fc_cnode, prev_fc_cnode->input(1));
   MS_LOG(INFO) << curr_cnode->fullname_with_scope() << " fusion success";
-  return nullptr;
+  return curr_cnode;
 }
 }  // namespace mindspore::opt

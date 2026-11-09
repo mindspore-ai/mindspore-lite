@@ -397,11 +397,6 @@ AnfNodePtr MatMulAllReduceFusion::Process(const std::string &pattern_name, const
   }
   MS_CHECK_TRUE_RET(matmul_allreduce_cnode != nullptr, nullptr);
 
-  auto manager = func_graph->manager();
-  MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
-
-  // replace allreduce to MatMulAllReduce
-  (void)manager->Replace(allreduce_cnode, matmul_allreduce_cnode);
   MS_LOG(DEBUG) << "MatMulAllReduce replace success";
   return matmul_allreduce_cnode;
 }

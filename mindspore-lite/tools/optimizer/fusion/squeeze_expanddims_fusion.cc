@@ -26,6 +26,7 @@
 #include "include/registry/converter_context.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_e.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore::opt {
 const BaseRef SqueezeExpandDimsFusion::DefinePattern() const {
@@ -114,6 +115,16 @@ const AnfNodePtr SqueezeExpandDimsFusion::Process(const FuncGraphPtr &func_graph
   auto squeeze_cnode = expanddims_cnode->input(SECOND_INPUT)->cast<CNodePtr>();
   auto manage = Manage(func_graph);
   MS_CHECK_TRUE_RET(manage != nullptr, nullptr);
+  // Squeeze and expanddims cancel out and both vanish; their identities follow the live nodes
+  // that take over expanddims' graph position — its consumers, which now consume x directly.
+  auto expanddims_users = manage->node_users()[expanddims_cnode];
+  for (auto &expanddims_user : expanddims_users) {
+    auto user_cnode = expanddims_user.first->cast<CNodePtr>();
+    if (user_cnode != nullptr) {
+      opt::TraceAbsorbNames(user_cnode, expanddims_cnode);
+      opt::TraceAbsorbNames(user_cnode, squeeze_cnode);
+    }
+  }
   (void)manage->Replace(expanddims_cnode, squeeze_cnode->input(SECOND_INPUT));
   return nullptr;
 }

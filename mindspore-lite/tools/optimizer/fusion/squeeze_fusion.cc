@@ -30,6 +30,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_f.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_u.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore::opt {
 const BaseRef SqueezeFusion::DefinePattern() const {
@@ -107,6 +108,12 @@ const AnfNodePtr SqueezeFusion::Process(const FuncGraphPtr &func_graph, const An
   if (squeeze_prim->get_axis() == unsqueeze_prim->get_axis()) {
     auto manager = func_graph->manager();
     MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
+    // squeeze and unsqueeze cancel out and are removed; BN and act survive the fusion. Each
+    // removed node's identity follows the live node that takes over its graph position: squeeze
+    // -> BN (BN now consumes pre_node directly), unsqueeze -> act (act feeds unsqueeze's
+    // consumers). act and BN keep their own records — they must not be moved onto pre_node.
+    opt::TraceAbsorbNames(bn_cnode, squeeze_node);
+    opt::TraceAbsorbNames(act_cnode, unsqueeze_node);
     (void)manager->Replace(unsqueeze_node, act_node);
     (void)manager->Replace(squeeze_node, pre_node);
     return pre_node;

@@ -81,12 +81,6 @@ const AnfNodePtr MatMulActivationFusion::Process(const FuncGraphPtr &func_graph,
     return nullptr;
   }
   (void)matmul_prim->AddAttr(ops::kActivationType, api::MakeValue<int64_t>(static_cast<int64_t>(type)));
-  auto manage = Manage(func_graph);
-  if (manage == nullptr) {
-    MS_LOG(ERROR) << "manage is nullptr.";
-    return nullptr;
-  }
-  manage->Replace(act_cnode, matmul_cnode);
   return matmul_cnode;
 }
 }  // namespace mindspore::opt

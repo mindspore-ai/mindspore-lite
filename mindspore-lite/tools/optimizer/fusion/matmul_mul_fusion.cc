@@ -239,10 +239,6 @@ const AnfNodePtr MatMulMulFusion::Process(const FuncGraphPtr &func_graph, const 
       mul_primc->get_activation_type() != ActivationType::NO_ACTIVATION) {
     matmul_primc->set_activation_type(mul_primc->get_activation_type());
   }
-  // delete mul node
-  auto manager = func_graph->manager();
-  MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
-  (void)manager->Replace(mul_cnode, mul_cnode->input(1));
-  return nullptr;
+  return matmul_cnode;
 }
 }  // namespace mindspore::opt

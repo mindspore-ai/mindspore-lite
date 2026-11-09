@@ -31,6 +31,7 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore::opt {
 namespace {
@@ -199,12 +200,14 @@ const AnfNodePtr TensorDotFusion::Process(const FuncGraphPtr &func_graph, const 
   // For special shapes, it can be directly converted into matmul operator and reshape operator.
   if (gather_1_index.size() == 1 && gather_2_index.size() == 1 && concat_value.size() == 0) {
     manage->SetEdge(matmul_cnode, 1, shape_cnode->input(1));
+    opt::TraceAbsorbNames(gather_1_cnode, concat_cnode);
     manage->Replace(concat_cnode, gather_1_cnode);
     return nullptr;
   }
   // For special shapes, it can be directly converted into matmul operator
   if (gather_1_index.size() == 1 && gather_2_index.size() == 1 && concat_value.size() == 1) {
     manage->SetEdge(matmul_cnode, 1, shape_cnode->input(1));
+    opt::TraceAbsorbNames(matmul_cnode, reshape_1_cnode);
     manage->Replace(reshape_1_cnode, matmul_cnode);
     return nullptr;
   }

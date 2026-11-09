@@ -79,10 +79,6 @@ const AnfNodePtr MulActivationFusion::Process(const FuncGraphPtr &func_graph, co
   }
   mul_prim->set_activation_type(act_prim->get_activation_type());
 
-  // delete activation node
-  auto manager = func_graph->manager();
-  MS_CHECK_TRUE_RET(manager != nullptr, nullptr);
-  (void)manager->Replace(act_cnode, mul_node);
-  return nullptr;
+  return mul_cnode;
 }
 }  // namespace mindspore::opt

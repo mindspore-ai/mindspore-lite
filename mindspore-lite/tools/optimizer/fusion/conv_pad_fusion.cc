@@ -120,7 +120,6 @@ void ReplaceParamsAndNodes(const FuncGraphPtr &func_graph, const CNodePtr &conv_
   }
   conv_primitive->set_pad_list(pad_list_data);
 
-  // delete padFusion
   auto manager = func_graph->manager();
   MS_ASSERT(manager != nullptr);
   (void)manager->Replace(pad_cnode, pad_cnode->input(1));
@@ -283,7 +282,7 @@ AnfNodePtr ConvPadFusion::Process(const std::string &pattern_name, const FuncGra
   }
 
   ReplaceParamsAndNodes(func_graph, conv_cnode, pad_cnode, pattern_name);
-  return nullptr;
+  return conv_cnode;
 }
 }  // namespace opt
 }  // namespace mindspore

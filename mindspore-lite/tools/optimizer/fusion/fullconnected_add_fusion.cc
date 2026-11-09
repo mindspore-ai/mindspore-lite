@@ -198,8 +198,7 @@ AnfNodePtr FullconnectedAddFusion::Process(const std::string &pattern_name, cons
       fc_primc->set_activation_type(add_primc->get_activation_type());
     }
   }
-  (void)manager->Replace(node, fc_cnode);
-  return nullptr;
+  return fc_cnode;
 }
 }  // namespace opt
 }  // namespace mindspore

@@ -58,6 +58,7 @@
 #include "tools/converter/config_parser/cpu_option_param_parser.h"
 #include "tools/converter/export_model.h"
 #include "tools/converter/config_parser/graph_split_param_parser.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 std::map<std::string, Format> StrToEnumFormatMap = {{"NHWC", Format::NHWC}, {"NCHW", Format::NCHW}};
@@ -467,6 +468,9 @@ int ConverterImpl::ParseParam(lite::ConfigFileParser *config_parser, const std::
       MS_LOG(ERROR) << "Parse mixed bit weight quant param failed.";
       return ret;
     }
+    // Fusion tracing pays off only when a per-layer list (or, in the follow-up batch, the
+    // decision report) needs the origin domain; keep plain conversions record-free.
+    opt::SetFusionTraceEnabled(!param->commonQuantParam.skip_quant_node.empty());
     ret = InitExtendedIntegrationInfo(param, *config_parser);
     if (ret != RET_OK) {
       MS_LOG(ERROR) << "Parse extended integration info failed.";

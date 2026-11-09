@@ -28,6 +28,7 @@
 #include "ir/primitive.h"
 #include "src/common/ops/primitive/activation.h"
 #include "src/common/ops/primitive/add_fusion.h"
+#include "src/common/ops/primitive/tile_fusion.h"
 #include "src/common/ops/primitive/sub_fusion.h"
 #include "src/common/ops/primitive/mul_fusion.h"
 #include "src/common/ops/primitive/mat_mul_fusion.h"
@@ -122,6 +123,12 @@ ValueNodePtr AnfImporterFromMetaGraphT::ConvertPrimitive(const std::unique_ptr<s
       op->set_max_val(attr->max_val);
       op->set_approximate(attr->approximate);
       op->set_beta(attr->beta);
+      prim = op->GetPrim();
+      break;
+    }
+    case schema::PrimitiveType_TileFusion: {
+      // attr-less op: the multiples ride in as a const input tensor, no schema attrs to copy
+      auto op = std::make_shared<ops::TileFusion>();
       prim = op->GetPrim();
       break;
     }

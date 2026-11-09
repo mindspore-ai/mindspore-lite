@@ -20,11 +20,140 @@
 #include <deque>
 #include <string>
 #include <algorithm>
+#include <map>
+#include <set>
 #include "ir/anf.h"
 #include "tools/converter/ir_dump.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore {
 namespace opt {
+namespace {
+// Plan-B: the graph-diff transport is the ONLY automatic carrier. It runs for every pass
+// while tracing is enabled, EXCEPT the passes below - the fan-out / split fusions that trace
+// explicitly inside Process (a single replacement target cannot express their mapping) and the
+// cleanup passes whose deletions nullify identity by design (records must die with the node).
+const std::set<std::string> &NoDiffTransportPasses() {
+  static const std::set<std::string> passes = {"SqueezeFusion",           "AddConcatActivationFusion",
+                                               "SqueezeExpandDimsFusion", "TensorDotFusion",
+                                               "ConstFoldPass",           "RemoveTransitivityOp"};
+  return passes;
+}
+
+struct GraphSnapshot {
+  std::vector<AnfNodePtr> order;  // topo-ordered reachable CNodes
+  std::set<AnfNodePtr> cnodes;
+  std::map<AnfNodePtr, std::set<AnfNodePtr>> users;   // cnode -> its user cnodes
+  std::map<AnfNodePtr, std::set<AnfNodePtr>> inputs;  // cnode -> its input nodes
+};
+
+GraphSnapshot SnapshotGraph(const FuncGraphPtr &func_graph) {
+  GraphSnapshot snap;
+  for (const auto &cnode : func_graph->GetOrderedCnodes()) {
+    snap.order.push_back(cnode);
+    snap.cnodes.insert(cnode);
+    for (const auto &input : cnode->inputs()) {
+      if (input == nullptr) {
+        continue;
+      }
+      snap.inputs[cnode].insert(input);
+      if (input->isa<CNode>()) {
+        snap.users[input].insert(cnode);
+      }
+    }
+  }
+  return snap;
+}
+
+// Consumers of the vanished node that can still resolve: surviving former users, or vanished
+// users' already-resolved receivers (the memo - the whole chain folds into one absorber).
+void CollectEffectiveConsumers(const AnfNodePtr &vanished, const GraphSnapshot &before, const GraphSnapshot &after,
+                               const std::map<AnfNodePtr, AnfNodePtr> &receiver_of, std::set<AnfNodePtr> *consumers) {
+  auto it = before.users.find(vanished);
+  if (it == before.users.end()) {
+    return;
+  }
+  for (const auto &user : it->second) {
+    if (after.cnodes.count(user) != 0) {
+      consumers->insert(user);
+    } else {
+      auto mit = receiver_of.find(user);
+      if (mit != receiver_of.end()) {
+        consumers->insert(mit->second);
+      }
+    }
+  }
+}
+
+// Resolve who absorbed the vanished node. A consumer that appeared inside this pass IS the
+// fusion product - it absorbs directly (its own inputs are how it was built, not a rewire).
+// For pre-existing consumers, the receiver is the single new CNode input they were rewired to;
+// if they were rewired to a non-CNode (conv_conv bypasses to a plain input), the surviving
+// consumers absorbed the vanished node themselves. Returns nullptr when unresolved (fan-out /
+// split shapes stay with their explicit calls).
+AnfNodePtr ResolveDiffReceiver(const AnfNodePtr &vanished, const GraphSnapshot &before, const GraphSnapshot &after,
+                               const std::set<AnfNodePtr> &consumers, std::set<AnfNodePtr> *self_consumers) {
+  std::set<AnfNodePtr> appeared_consumers;
+  std::set<AnfNodePtr> replacements;
+  for (const auto &consumer : consumers) {
+    if (before.cnodes.count(consumer) == 0) {
+      appeared_consumers.insert(consumer);
+      continue;
+    }
+    auto after_it = after.inputs.find(consumer);
+    auto before_it = before.inputs.find(consumer);
+    if (after_it == after.inputs.end()) {
+      continue;
+    }
+    for (const auto &input : after_it->second) {
+      bool is_new = before_it == before.inputs.end() || before_it->second.count(input) == 0;
+      if (is_new && input->isa<CNode>()) {
+        replacements.insert(input);
+      }
+    }
+  }
+  if (appeared_consumers.size() == 1) {
+    return *appeared_consumers.begin();
+  }
+  if (appeared_consumers.empty() && replacements.size() == 1) {
+    return *replacements.begin();
+  }
+  if (appeared_consumers.empty() && replacements.empty()) {
+    *self_consumers = consumers;
+  }
+  return nullptr;
+}
+
+// The pass-level graph-diff transport: carry the records of pass-vanished recorded nodes onto
+// their receivers, resolved in REVERSE topo order (consumers first) with memoization so a
+// collapsed chain resolves to the final fusion node.
+void DiffCarryRecords(const GraphSnapshot &before, const FuncGraphPtr &func_graph) {
+  GraphSnapshot after = SnapshotGraph(func_graph);
+  std::map<AnfNodePtr, AnfNodePtr> receiver_of;
+  for (auto it = before.order.rbegin(); it != before.order.rend(); ++it) {
+    const auto &vanished = *it;
+    if (after.cnodes.count(vanished) != 0 || !HasOriginRecords(vanished)) {
+      continue;
+    }
+    std::set<AnfNodePtr> consumers;
+    CollectEffectiveConsumers(vanished, before, after, receiver_of, &consumers);
+    if (consumers.empty()) {
+      continue;
+    }
+    std::set<AnfNodePtr> self_consumers;
+    auto receiver = ResolveDiffReceiver(vanished, before, after, consumers, &self_consumers);
+    if (receiver != nullptr) {
+      CarryOriginRecords(receiver->cast<CNodePtr>(), vanished);
+    } else if (!self_consumers.empty()) {
+      for (const auto &consumer : self_consumers) {
+        CarryOriginRecords(consumer->cast<CNodePtr>(), vanished);
+      }
+      receiver = self_consumers.size() == 1 ? *self_consumers.begin() : nullptr;
+    }
+    receiver_of[vanished] = receiver;
+  }
+}
+}  // namespace
 constexpr size_t kMaxRepassTimes = 12;
 constexpr uint64_t kUSecondInSecond = 1000000;
 
@@ -106,7 +235,15 @@ bool LitePassManager::Run(const FuncGraphPtr &func_graph, const std::vector<Pass
   size_t num = 0;
   for (const auto &pass : passes) {
     if (pass != nullptr) {
+      const bool diff_transport = IsFusionTraceEnabled() && NoDiffTransportPasses().count(pass->name()) == 0;
+      GraphSnapshot snapshot_before;
+      if (diff_transport) {
+        snapshot_before = SnapshotGraph(func_graph);
+      }
       auto ret = RunPass(func_graph, num, pass);
+      if (diff_transport) {
+        DiffCarryRecords(snapshot_before, func_graph);
+      }
       if (ret) {
         auto status = lite::DumpGraph(pass->name(), func_graph);
         if (status != kSuccess) {

@@ -169,6 +169,8 @@ echo 'run flatbuffers verifier ut test'
 # in other builds these filters match 0 tests and are harmless no-ops.
 if [ "$ENABLE_CONVERTER_TEST" = true ]; then
   ./lite-test-converter --gtest_filter="TestTfliteParser*"
+./lite-test-converter --gtest_filter="FusionTraceUtilsTest*"
+./lite-test-converter --gtest_filter="FusionTraceWiringTest*"
   ./lite-test-converter --gtest_filter="OnnxLayerNormParserTest*"
   ./lite-test-converter --gtest_filter="OnnxPoolParserTest*"
   ./lite-test-converter --gtest_filter="OnnxInputsAdjustTest*"
