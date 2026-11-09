@@ -48,7 +48,31 @@ class InnerPromptFlashAttentionS1s2Bns1X310 : public InnerPromptFlashAttentionS1
 
   __aicore__ inline void ComputeEachCore(uint32_t coreIdx);
 
+  __aicore__ inline bool ResolveBandFastPath();
+
+  __aicore__ inline bool BandMaskMatches(int32_t past);
+
+  __aicore__ inline void ProcessOuterLoop(int sIdx, int32_t actualSeqLengthsIdx, int sOuterBlockNum,
+                                          int32_t outerLoopEnd, int outerLoopStart, uint32_t origTail,
+                                          uint32_t origTailAlign);
+
+  __aicore__ inline void ComputeSInnerLoopRange(int32_t actualSeqLengthsIdx, int32_t preTokens, int32_t nextTokens,
+                                                int32_t &startIdx, int32_t &endIdx);
+
+  __aicore__ inline void ApplyBandTailOverride(bool bandFastPath, int32_t endIdx, uint32_t origTail,
+                                               uint32_t origTailAlign);
+
   __aicore__ inline void ComputeSoftmax(LocalTensor<mm1OutputType> &mmResUb, bool isInnerLoopStart);
+
+ private:
+  // Attention window declared by tiling and the causal+prefix band the shape
+  // fingerprint maps it to (see ResolveBandFastPath).
+  int32_t preTokens_ = 0;
+  int32_t nextTokens_ = 0;
+  int32_t bandPreTokens_ = 0;
+  int32_t bandNextTokens_ = 0;
+  int32_t bandPast_ = 0;
+  bool bandFastPath_ = false;
 };
 
 template <typename PFAT>
@@ -243,6 +267,167 @@ __aicore__ inline void InnerPromptFlashAttentionS1s2Bns1X310<PFAT>::ComputeEachC
 }
 
 template <typename PFAT>
+__aicore__ inline bool InnerPromptFlashAttentionS1s2Bns1X310<PFAT>::ResolveBandFastPath() {
+  const int32_t preTokens = preTokens_;
+  const int32_t nextTokens = nextTokens_;
+  // [chunked-prefill causal+prefix band fast-path, ip4] The exported graph
+  // declares the full window (preTokens/nextTokens sentinels, forced by the
+  // 300IDUO tiling checks), but the bool mask actually encodes causal+prefix:
+  // Q row r only sees KV col <= past+r (past=S2-S1 is the KV prefix length).
+  // A shape fingerprint restores the declared window to the real band on the
+  // kernel side, so the inner loop can skip whole masked KV tail blocks
+  // (block-pair reduction ~32% for case A, ~29% for case B):
+  //   start: preTokens=INT32_MAX(2147483647) -> start_idx underflows and is
+  //          clamped to 0, so every row block starts at col 0 (the prefix is
+  //          visible to all rows, which is correct).
+  //   end:   nextTokens=past -> end_idx = floor((past+r_max)/sInner)+1, exact
+  //          down to the diagonal block (holds for any past); when S1==S2,
+  //          past=0 and nextTokens=-1 avoids the fullAttenWindow
+  //          nextTokens==0 branch, and sOuter/sInner are both 16-aligned
+  //          => r_max%sInner==15(mod16)!=0, so the block boundary is exact.
+  // A skipped block pair contributes exp(-10000-max) to max/sum/bmm2, which
+  // underflows to 0 in fp16 and is bit-identical to the online softmax with
+  // -10000 added per block. When S2%sInner!=0 the band end lands on a full
+  // block before the global tail block, and the isInnerLoopLast_/
+  // isNextInnerLoopLast_ size paths would truncate that block to the global
+  // tail width (losing columns) -- ApplyBandTailOverride corrects this.
+  // Scenarios outside the fingerprint take the original path. A fingerprint
+  // hit only means "possibly" this band: the caller must still verify with
+  // BandMaskMatches that the mask really encodes this window, and fall back
+  // to the full window if the verification fails.
+  if (!(this->needCalMask_ && this->isActualLenDimsNull &&
+        this->tilingData->promptAttentionBaseParams.sparseMode == 99U &&
+        this->tilingData->promptAttentionBaseParams.headSize == 128U && this->headNumRatio == 4U)) {
+    return false;
+  }
+  const int32_t bandS1 = (int32_t)this->tilingData->promptAttentionBaseParams.seqSize;
+  const int32_t bandS2 = (int32_t)this->tilingData->promptAttentionBaseParams.seqInnerSize;
+  if (!(bandS2 >= bandS1 && nextTokens >= bandS2 && preTokens >= bandS1)) {
+    return false;
+  }
+  bandPast_ = bandS2 - bandS1;
+  bandNextTokens_ = (bandS2 == bandS1) ? -1 : bandPast_;
+  bandPreTokens_ = 2147483647;  // INT32_MAX, avoids a climits dependency
+  return true;
+}
+
+template <typename PFAT>
+__aicore__ inline bool InnerPromptFlashAttentionS1s2Bns1X310<PFAT>::BandMaskMatches(int32_t past) {
+  // [band semantic check] The fast path skips KV blocks on the assumption that the
+  // mask encodes "row r keeps col <= past + r" (kernel convention: nonzero == masked,
+  // scaled to -10000). Verify that on the first and last row of this outer block
+  // before skipping anything: the row prefix must be visible, the diagonal column
+  // visible and the first column past the diagonal masked. An all-visible /
+  // padding-only / bidirectional mask, or a sliding window of a different width,
+  // fails the probe; the caller then falls back to the full window, so a wrong
+  // fingerprint costs speed but never accuracy.
+  const uint32_t kvSize = this->tilingData->promptAttentionBaseParams.maskKVsSize;
+  const uint32_t blockRows = this->isOuterTail_ ? this->singleProcessSOuterSizeTail : this->singleProcessSOuterSize;
+  if (blockRows == 0U || kvSize == 0U) {
+    return false;
+  }
+  const uint32_t firstRow = static_cast<uint32_t>(this->sOuterOffset);
+  for (uint32_t i = 0; i < 2U; i++) {
+    const uint32_t localRow = (i == 0U) ? 0U : blockRows - 1U;
+    const uint32_t diagCol = static_cast<uint32_t>(past) + firstRow + localRow;
+    if (diagCol >= kvSize) {
+      return false;
+    }
+    const uint64_t rowBase =
+      this->attenMaskCoreOffset + static_cast<uint64_t>(localRow) * static_cast<uint64_t>(kvSize);
+    if (this->attenMaskGm.GetValue(rowBase) != 0) {
+      return false;  // the prefix must stay visible for every row
+    }
+    if (this->attenMaskGm.GetValue(rowBase + diagCol) != 0) {
+      return false;  // the diagonal (last visible column for this row) must be visible
+    }
+    if (diagCol + 1U < kvSize && this->attenMaskGm.GetValue(rowBase + diagCol + 1U) == 0) {
+      return false;  // the first column past the band must be masked
+    }
+  }
+  return true;
+}
+
+template <typename PFAT>
+__aicore__ inline void InnerPromptFlashAttentionS1s2Bns1X310<PFAT>::ComputeSInnerLoopRange(
+  int32_t actualSeqLengthsIdx, int32_t preTokens, int32_t nextTokens, int32_t &startIdx, int32_t &endIdx) {
+  // [S1!=S2 change ②] The band mapping below divides a Q-row position
+  // (S1 domain) by the S2 block length to derive a KV column index. That
+  // implicitly assumes "Q row r aligns to KV col r" (true only when S1==S2).
+  // With S1<S2 and nextTokens==0 it would compute end_idx < maxInnerLoopTimes
+  // and SILENTLY skip KV tail blocks (wrong result, no error). Under the
+  // full-attention window (preTokens>=S1 and nextTokens==0 or >=S2) the loop
+  // must cover every KV block, so short-circuit to the full range and keep the
+  // band arithmetic only for the genuine sparse/window case.
+  bool fullAttenWindow =
+    (preTokens >= actualSeqLengthsIdx) &&
+    (nextTokens == 0 || nextTokens >= (int32_t)this->tilingData->promptAttentionBaseParams.seqInnerSize);
+  if (fullAttenWindow) {
+    startIdx = 0;
+    endIdx = this->maxInnerLoopTimes;
+  } else {
+    startIdx = (this->sOuterOffset - preTokens) / (int32_t)(this->singleProcessSInnerSize);
+    endIdx =
+      (this->sOuterOffset + nextTokens + this->singleProcessSOuterSize + (int32_t)(this->singleProcessSInnerSize) - 1) /
+      (int32_t)(this->singleProcessSInnerSize);
+  }
+}
+
+template <typename PFAT>
+__aicore__ inline void InnerPromptFlashAttentionS1s2Bns1X310<PFAT>::ApplyBandTailOverride(bool bandFastPath,
+                                                                                          int32_t endIdx,
+                                                                                          uint32_t origTail,
+                                                                                          uint32_t origTailAlign) {
+  // [band tail-override] The band end (end_idx) is before the global tail
+  // block => the band tail block of this outer (including the single-block
+  // band and the prefetched first block of the next outer) is a full-width
+  // block: temporarily override the tail size group with full-block sizes so
+  // that every size consumer of isInnerLoopLast_/isNextInnerLoopLast_ (b1/v
+  // copy width, softmax srcK/oriSrcK, bmm2 K) consistently uses full-block
+  // width; restore the original values when the band includes the global tail
+  // block (end_idx==maxInnerLoopTimes). The override values are exactly what
+  // GetSingleCoreParam produces when S2%sInner==0; full-window/non-band paths
+  // always take the restore branch, so the behavior is unchanged.
+  if (bandFastPath && endIdx < (int32_t)this->maxInnerLoopTimes) {
+    this->singleProcessSInnerSizeTail = this->singleProcessSInnerSize;
+    this->singleProcessSInnerSizeTailAlign = this->singleProcessSInnerSize;
+  } else {
+    this->singleProcessSInnerSizeTail = origTail;
+    this->singleProcessSInnerSizeTailAlign = origTailAlign;
+  }
+}
+
+template <typename PFAT>
+__aicore__ inline void InnerPromptFlashAttentionS1s2Bns1X310<PFAT>::ProcessOuterLoop(
+  int sIdx, int32_t actualSeqLengthsIdx, int sOuterBlockNum, int32_t outerLoopEnd, int outerLoopStart,
+  uint32_t origTail, uint32_t origTailAlign) {
+  for (uint32_t sOuterLoopIdx = outerLoopStart; sOuterLoopIdx < (uint32_t)outerLoopEnd; sOuterLoopIdx++) {
+    this->isOuterLoopLast_ = sOuterLoopIdx == (uint32_t)(outerLoopEnd - 1);
+    // start outer loop calculate in one core
+    this->isOuterLoopStart_ = sOuterLoopIdx == (uint32_t)outerLoopStart;
+    this->isOuterTail_ = sOuterLoopIdx == (uint32_t)(sOuterBlockNum - 1);
+    // record second last outer loop
+    this->isNextOuterLoopLast_ =
+      (outerLoopEnd - outerLoopStart) > 1 && (sOuterLoopIdx == (uint32_t)(sOuterBlockNum - 2));
+    this->sOuterOffset = sOuterLoopIdx * this->singleProcessSOuterSize;
+    int32_t start_idx = 0;
+    int32_t end_idx = 0;
+    // bandPreTokens_/bandNextTokens_ are only valid once the fingerprint matched.
+    const int32_t preTokens = bandFastPath_ ? bandPreTokens_ : preTokens_;
+    const int32_t nextTokens = bandFastPath_ ? bandNextTokens_ : nextTokens_;
+    ComputeSInnerLoopRange(actualSeqLengthsIdx, preTokens, nextTokens, start_idx, end_idx);
+    this->LoopSOuterOffsetInit(this->actualSeqOffsets[sIdx], sIdx);
+    bool useBand = bandFastPath_ && end_idx < (int32_t)this->maxInnerLoopTimes && BandMaskMatches(bandPast_);
+    if (bandFastPath_ && !useBand) {
+      // the mask does not encode the assumed causal+prefix band: keep the declared window
+      ComputeSInnerLoopRange(actualSeqLengthsIdx, preTokens_, nextTokens_, start_idx, end_idx);
+    }
+    ApplyBandTailOverride(useBand, end_idx, origTail, origTailAlign);
+    SInnerLoopFunc(start_idx, end_idx);
+  }
+}
+
+template <typename PFAT>
 __aicore__ inline void InnerPromptFlashAttentionS1s2Bns1X310<PFAT>::ComputeEachCore(uint32_t coreIdx) {
   this->spmTmpSize = this->tilingData->promptAttentionTensorSizeRect.spmTmpSize;
   this->mmResUbSize = this->tilingData->promptAttentionTensorSizeRect.mmResUbSize;
@@ -265,8 +450,9 @@ __aicore__ inline void InnerPromptFlashAttentionS1s2Bns1X310<PFAT>::ComputeEachC
   int outerLoopEnd = this->tilingData->promptAttentionSeqParams.coreSeqPosEnd[coreIdx];
   uint32_t nLoopStart = this->tilingData->promptAttentionSeqParams.CoreHeadNumTail[coreIdx];
   uint32_t nLoopEnd = this->tilingData->promptAttentionSeqParams.actualS1[coreIdx];
-  int32_t preTokens = (int32_t)(this->tilingData->promptAttentionBaseParams.preTokens);
-  int32_t nextTokens = (int32_t)(this->tilingData->promptAttentionBaseParams.nextTokens);
+  preTokens_ = (int32_t)(this->tilingData->promptAttentionBaseParams.preTokens);
+  nextTokens_ = (int32_t)(this->tilingData->promptAttentionBaseParams.nextTokens);
+  bandFastPath_ = ResolveBandFastPath();
 
   uint32_t actualSeqLengthsIdx = 0;
 
@@ -282,6 +468,12 @@ __aicore__ inline void InnerPromptFlashAttentionS1s2Bns1X310<PFAT>::ComputeEachC
     }
     for (int sIdx = sIdStart; sIdx < sLoopEndIdx; sIdx++) {
       this->GetSingleCoreParam(sIdx);
+      // [band tail-override] GetSingleCoreParam is called only once at the sIdx
+      // level, and the tail size group below describes the global tail block
+      // (the remainder block of S2%sInner). When the band is active it must be
+      // overridden/restored per sOuter, so the original values are saved here.
+      const uint32_t bandOrigTail = this->singleProcessSInnerSizeTail;
+      const uint32_t bandOrigTailAlign = this->singleProcessSInnerSizeTailAlign;
       actualSeqLengthsIdx = this->isActualLenDimsNull ? this->tilingData->promptAttentionBaseParams.seqSize
                                                       : this->actualSeqLengthsGm.GetValue(sIdx);
       actualSeqLengthsIdx =
@@ -303,39 +495,8 @@ __aicore__ inline void InnerPromptFlashAttentionS1s2Bns1X310<PFAT>::ComputeEachC
       } else {
         tmpOuterLoopEnd = sOuterBlockNum;
       }
-      for (uint32_t sOuterLoopIdx = outerLoopStart; sOuterLoopIdx < tmpOuterLoopEnd; sOuterLoopIdx++) {
-        this->isOuterLoopLast_ = sOuterLoopIdx == tmpOuterLoopEnd - 1;
-        // start outer loop calculate in one core
-        this->isOuterLoopStart_ = sOuterLoopIdx == outerLoopStart;
-        this->isOuterTail_ = sOuterLoopIdx == sOuterBlockNum - 1;
-        // record second last outer loop
-        this->isNextOuterLoopLast_ = (tmpOuterLoopEnd - outerLoopStart) > 1 && (sOuterLoopIdx == sOuterBlockNum - 2);
-        this->sOuterOffset = sOuterLoopIdx * this->singleProcessSOuterSize;
-        // [S1!=S2 change ②] The band mapping below divides a Q-row position
-        // (S1 domain) by the S2 block length to derive a KV column index. That
-        // implicitly assumes "Q row r aligns to KV col r" (true only when S1==S2).
-        // With S1<S2 and nextTokens==0 it would compute end_idx < maxInnerLoopTimes
-        // and SILENTLY skip KV tail blocks (wrong result, no error). Under the
-        // full-attention window (preTokens>=S1 and nextTokens==0 or >=S2) the loop
-        // must cover every KV block, so short-circuit to the full range and keep the
-        // band arithmetic only for the genuine sparse/window case.
-        int32_t start_idx;
-        int32_t end_idx;
-        bool fullAttenWindow =
-          (preTokens >= (int32_t)actualSeqLengthsIdx) &&
-          (nextTokens == 0 || nextTokens >= (int32_t)this->tilingData->promptAttentionBaseParams.seqInnerSize);
-        if (fullAttenWindow) {
-          start_idx = 0;
-          end_idx = this->maxInnerLoopTimes;
-        } else {
-          start_idx = (this->sOuterOffset - preTokens) / (int32_t)(this->singleProcessSInnerSize);
-          end_idx = (this->sOuterOffset + nextTokens + this->singleProcessSOuterSize +
-                     (int32_t)(this->singleProcessSInnerSize) - 1) /
-                    (int32_t)(this->singleProcessSInnerSize);
-        }
-        this->LoopSOuterOffsetInit(this->actualSeqOffsets[sIdx], sIdx);
-        SInnerLoopFunc(start_idx, end_idx);
-      }
+      ProcessOuterLoop(sIdx, (int32_t)actualSeqLengthsIdx, sOuterBlockNum, tmpOuterLoopEnd, outerLoopStart,
+                       bandOrigTail, bandOrigTailAlign);
       outerLoopStart = 0;
     }
     sIdStart = 0;

@@ -549,6 +549,19 @@ __aicore__ inline void InnerPromptFlashAttentionS1s2Bns1X310Base<PFAT>::AttenMas
     (this->tilingData->promptAttentionBaseParams.maskKVsSize - sinnerSize) / this->maskTypeByteNum;
   intriParams.dstStride = 0;
 
+  // [300IDUO bool-mask 32B copy constraint] srcStride/blockLen above are 32-byte-block
+  // units: for 1-byte mask elems (maskTypeByteNum 32) both maskKVsSize and sinnerSize
+  // must be 32-elem multiples, else the divisions silently truncate and every row's
+  // source drifts -- rows attend past their true window boundary (uniform degradation,
+  // no NaN; measured (32,2864) cos 0.9949 -> (128,2864) 0.978). Kernel-side workarounds
+  // were tried and rejected on 300IDUO: a byte-granular multi-burst DataCopyPad yields
+  // all-NaN, and a row-parity split (even rows via one 2D classic DataCopy -- exact --
+  // plus odd rows via single-burst DataCopyPad from their 16B-misaligned GM bases)
+  // reads garbage for every odd row. The constraint is therefore enforced host-side:
+  // the GetBasicShape310P tiling gate rejects 1-byte masks whose last dim / inner
+  // factor is not 32-aligned (advises padding the mask last dim and Kvs to a 32
+  // multiple and masking the extra KV columns). 2-byte masks are inherently safe
+  // (S2 % 16 gate; 16 halves = 32 B).
   DataCopy(attenMaskUb, this->attenMaskGm[offset], intriParams);
   SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
   WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
@@ -565,7 +578,17 @@ __aicore__ inline void InnerPromptFlashAttentionS1s2Bns1X310Base<PFAT>::AttenMas
   WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
   Cast(tmpUb, tmpUb2, RoundMode::CAST_NONE, tmpUb.GetSize());
   PipeBarrier<PIPE_V>();
-  int32_t calHigh = (SOuterSize + BLOCK_CUBE - 1) / BLOCK_CUBE;
+  // [S1=32/64 fix] i is the K-block index: dst base i*BLOCK_CUBE*SOuterSize is
+  // k-block i's NZ region and src tmpUb[i*BLOCK_CUBE] is each ND row's 16-col
+  // block i, so the loop must cover SInnerSize/BLOCK_CUBE blocks. The old
+  // ceil(SOuterSize/16) bound coincides with it iff SOuterSize == SInnerSize
+  // (true for every 128x128 production tile and the small pure-causal tiles
+  // S1==S2), which hid the bug: for sOuter 32/64 x sInner 128 the k-blocks
+  // [2..8)/[4..8) were never written -- stale UB garbage, scaled by the Muls
+  // below, was then added to the scores over the full tile width by
+  // ElewiseCompute310P -> all-NaN softmax. It also over-ran the buffer
+  // (OOB dst writes) whenever SOuterSize > SInnerSize.
+  int32_t calHigh = SInnerSize / BLOCK_CUBE;
   dataCopyParams.blockCount = SOuterSize;
   dataCopyParams.blockLen = 1;
   dataCopyParams.srcStride = SInnerSize / BLOCK_CUBE - 1;
