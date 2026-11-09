@@ -33,6 +33,9 @@ void FusedBatchNormFp32(const float *input, const float *scale, const float *off
                         float *output);
 void FusedBatchNormFp32MeanVar(const float *input, float *run_mean, float *run_var, const BatchNormStruct *param,
                                float *save_mean, float *save_var, bool isBatchNorm2d);
+void FusedBatchNormFp32MeanPartial(const float *input, int start, int count, int channel, float *sum_priv);
+void FusedBatchNormFp32VarPartial(const float *input, const float *run_mean, int start, int count, int channel,
+                                  float *var_priv);
 #ifdef __cplusplus
 }
 #endif

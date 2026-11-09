@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -839,6 +840,148 @@ TEST_F(TestConvolutionGradFp32, ConvGroup2Dilation2Stride2) {
   w_tensor.set_data(nullptr);
   delete kernel;
   MS_LOG(INFO) << "TestConvolutionGradFp32 Filter Grad passed";
+}
+
+namespace {
+constexpr int kGradInH = 8;
+constexpr int kGradInW = 8;
+constexpr int kGradInCh = 3;
+constexpr int kGradOutCh = 8;
+
+void MakeGradInputs(int batch, std::vector<float> *x_data, std::vector<float> *dy_data) {
+  x_data->resize(static_cast<size_t>(batch) * kGradInH * kGradInW * kGradInCh);
+  dy_data->resize(static_cast<size_t>(batch) * kGradInH * kGradInW * kGradOutCh);
+  for (size_t i = 0; i < x_data->size(); ++i) {
+    (*x_data)[i] = std::sin(0.1f * static_cast<float>(i));
+  }
+  for (size_t i = 0; i < dy_data->size(); ++i) {
+    (*dy_data)[i] = std::cos(0.05f * static_cast<float>(i));
+  }
+}
+
+// Runs Conv2DBackpropFilter on synthetic data and returns the full dW.
+bool RunConvFilterGrad(int thread_num, int batch, const std::vector<float> &x_data, const std::vector<float> &dy_data,
+                       std::vector<float> *dw_data) {
+  constexpr int kKernel = 3;
+  constexpr int kDwSize = kGradOutCh * kKernel * kKernel * kGradInCh;
+
+  auto *conv_param = static_cast<ConvParameter *>(malloc(sizeof(ConvParameter)));
+  if (conv_param == nullptr) {
+    return false;
+  }
+  memset(conv_param, 0, sizeof(ConvParameter));
+  InitConvParamGroup1FP32(conv_param);
+  conv_param->input_channel_ = kGradInCh;
+  conv_param->output_channel_ = kGradOutCh;
+  conv_param->input_h_ = kGradInH;
+  conv_param->input_w_ = kGradInW;
+  conv_param->output_h_ = kGradInH;
+  conv_param->output_w_ = kGradInW;
+  conv_param->kernel_h_ = kKernel;
+  conv_param->kernel_w_ = kKernel;
+  conv_param->pad_u_ = 1;
+  conv_param->pad_d_ = 1;
+  conv_param->pad_l_ = 1;
+  conv_param->pad_r_ = 1;
+  conv_param->op_parameter_.thread_num_ = thread_num;
+
+  std::vector<int> dim_dy({batch, kGradInH, kGradInW, kGradOutCh});
+  std::vector<int> dim_x({batch, kGradInH, kGradInW, kGradInCh});
+  std::vector<int> dim_dw({kGradOutCh, kKernel, kKernel, kGradInCh});
+  lite::Tensor dy_tensor(TypeId::kNumberTypeFloat32, dim_dy);
+  dy_tensor.set_data(const_cast<float *>(dy_data.data()), false);
+  lite::Tensor x_tensor(TypeId::kNumberTypeFloat32, dim_x);
+  x_tensor.set_data(const_cast<float *>(x_data.data()), false);
+  dw_data->assign(kDwSize, 0.0f);
+  lite::Tensor dw_tensor(TypeId::kNumberTypeFloat32, dim_dw);
+  dw_tensor.set_data(dw_data->data(), false);
+
+  std::vector<lite::Tensor *> inputs = {&dy_tensor, &x_tensor};
+  std::vector<lite::Tensor *> outputs = {&dw_tensor};
+
+  lite::InnerContext context;
+  context.thread_num_ = thread_num;
+  if (context.Init() != lite::RET_OK) {
+    free(conv_param);
+    return false;
+  }
+  kernel::KernelKey desc = {kernel::kCPU, TypeId::kNumberTypeFloat32, NHWC,
+                            schema::PrimitiveType_Conv2DBackpropFilterFusion};
+  auto creator = lite::KernelRegistry::GetInstance()->GetCreator(desc);
+  if (creator == nullptr) {
+    free(conv_param);
+    return false;
+  }
+  // The creator takes ownership of conv_param (frees it on failure); the kernel frees it later.
+  auto *kernel = creator(inputs, outputs, reinterpret_cast<OpParameter *>(conv_param), &context, desc);
+  if (kernel == nullptr) {
+    return false;
+  }
+  if (kernel->Prepare() != 0) {
+    delete kernel;
+    return false;
+  }
+  kernel->AllocWorkspace();
+  auto ret = kernel->Run();
+  delete kernel;
+  return ret == 0;
+}
+
+void ExpectSameDw(const std::vector<float> &reference, const std::vector<float> &actual) {
+  ASSERT_EQ(reference.size(), actual.size());
+  double diff = 0.0;
+  double sum = 0.0;
+  for (size_t i = 0; i < reference.size(); ++i) {
+    diff += std::fabs(reference[i] - actual[i]);
+    sum += std::fabs(reference[i]);
+  }
+  EXPECT_LT(diff / (sum + 1e-6), 1e-4);
+}
+}  // namespace
+
+TEST_F(TestConvolutionGradFp32, ConvFp32FilterGradMultiThread) {
+  // Batch > 1 so the multi-thread path accumulates into per-thread private dW
+  // buffers and reduces them; T=1 is the reference implementation.
+  constexpr int kBatch = 2;
+  std::vector<float> x_data;
+  std::vector<float> dy_data;
+  MakeGradInputs(kBatch, &x_data, &dy_data);
+
+  std::vector<float> dw_single;
+  std::vector<float> dw_multi;
+  ASSERT_TRUE(RunConvFilterGrad(1, kBatch, x_data, dy_data, &dw_single));
+  ASSERT_TRUE(RunConvFilterGrad(4, kBatch, x_data, dy_data, &dw_multi));
+  ExpectSameDw(dw_single, dw_multi);
+}
+
+TEST_F(TestConvolutionGradFp32, ConvFp32FilterGradMoreThreadsThanTask) {
+  // More threads than batch slices: idle workers still zero their private dW buffers,
+  // so the reduction must match the single-thread result.
+  constexpr int kBatch = 2;
+  std::vector<float> x_data;
+  std::vector<float> dy_data;
+  MakeGradInputs(kBatch, &x_data, &dy_data);
+
+  std::vector<float> dw_single;
+  std::vector<float> dw_multi;
+  ASSERT_TRUE(RunConvFilterGrad(1, kBatch, x_data, dy_data, &dw_single));
+  ASSERT_TRUE(RunConvFilterGrad(8, kBatch, x_data, dy_data, &dw_multi));
+  ExpectSameDw(dw_single, dw_multi);
+}
+
+TEST_F(TestConvolutionGradFp32, ConvFp32FilterGradSingleBatchFallback) {
+  // batch == 1 disables the private-dW path; multi-thread must still match the
+  // single-thread result through the locked shared-accumulation path.
+  constexpr int kBatch = 1;
+  std::vector<float> x_data;
+  std::vector<float> dy_data;
+  MakeGradInputs(kBatch, &x_data, &dy_data);
+
+  std::vector<float> dw_single;
+  std::vector<float> dw_multi;
+  ASSERT_TRUE(RunConvFilterGrad(1, kBatch, x_data, dy_data, &dw_single));
+  ASSERT_TRUE(RunConvFilterGrad(4, kBatch, x_data, dy_data, &dw_multi));
+  ExpectSameDw(dw_single, dw_multi);
 }
 
 }  // namespace mindspore

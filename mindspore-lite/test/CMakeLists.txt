@@ -68,6 +68,7 @@ if(MSLITE_ENABLE_TRAIN)
     file(GLOB_RECURSE TEST_TRAIN_UT_SRC
             ${TEST_DIR}/ut/src/runtime/kernel/arm/fp32_grad/*.cc
             ${TEST_DIR}/ut/src/runtime/kernel/arm/cxx_api/*.cc
+            ${TEST_DIR}/ut/src/train/*.cc
             )
     list(APPEND TEST_UT_SRC ${TEST_TRAIN_UT_SRC})
 endif()

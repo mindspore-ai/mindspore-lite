@@ -28,6 +28,8 @@ void backwardAll(const float *in, const float *yt, const float *mean, const floa
                  int ch, float *dbias, float *dscale, float *dx, bool is_train);
 void backwardP1(const float *in, const float *yt, const float *mean, const float *invar, const float *scale, int size,
                 int ch, float *dbias, float *dscale);
+void backwardP1Partial(const float *in, const float *yt, const float *mean, int start, int count, int ch, float *dbias,
+                       float *dscale);
 void backwardP2(const float *in, const float *yt, const float *mean, const float *invar, const float *dscale,
                 const float *dbias, const float *scale, int size, int total_size, int ch, float *dx, bool is_train);
 #ifdef __cplusplus

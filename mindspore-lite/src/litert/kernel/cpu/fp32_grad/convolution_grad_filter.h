@@ -33,6 +33,10 @@ class ConvolutionGradFilterCPUKernel : public LiteKernel {
   int ReSize() override;
   int Run() override;
   int DoExecute(int task_id);
+  int DoReduce(int task_id);
+  // Accumulate one GEMM partial into the dW target (private slice lock-free, or
+  // shared dw under lock_); kept out of DoExecute to bound its nesting depth.
+  void AccumulateDw(float *mat_tmp, float *mat_c, int k, int n);
 
  private:
   size_t ws_size_ = 0;
@@ -40,6 +44,14 @@ class ConvolutionGradFilterCPUKernel : public LiteKernel {
   bool do_dw_ = false;
   std::mutex lock_;
   size_t mat_alloc_ = 0;
+  // Per-thread private dW buffer plus a single end-of-Run reduction, avoiding
+  // global-mutex contention. When use_private_dw_ is false (single thread, batch 1,
+  // depthwise, or buffer too large), the original locked AddMatrix-into-shared-dw
+  // path is used and stays bit-identical.
+  size_t dw_size_ = 0;            // floats per private dW buffer
+  size_t dw_private_offset_ = 0;  // float offset of the private-dW region in workspace
+  bool use_private_dw_ = false;
+  size_t ws_thread_num_ = 1;  // thread count the workspace was sized for at ReSize
 #ifdef ENABLE_ARM32
   const int chunk_ = C4NUM * 2;
 #else
