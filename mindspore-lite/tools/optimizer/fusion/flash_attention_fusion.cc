@@ -39,7 +39,6 @@
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_r.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_s.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_t.h"
-#include "tools/optimizer/common/fusion_trace_utils.h"
 
 namespace mindspore::opt {
 namespace {
@@ -1465,13 +1464,15 @@ CNodePtr FlashAttentionFusion::CreatePromptFlashAttentionCnodeForBNSD(
 // The FlashAttention Create* helpers fold their pattern region into fa_node and then return
 // nullptr, so the base-class hook never sees the absorb: whoever they replace (`absorbed`, the
 // matched root or an inner wrapper node) must land its origin records on fa_node right here.
+// Plain replace: the pass-level graph-diff transport owns the tracing - the whole collapsed
+// region's records land on fa_node via the unified receiver rule (verified shape by shape in
+// DiffTransportCoversFlashAttentionSurgeryShapes).
 static void ReplaceWithFaNode(const FuncGraphPtr &func_graph, const AnfNodePtr &absorbed, const CNodePtr &fa_node) {
   auto manager = Manage(func_graph);
   if (manager == nullptr) {
     MS_LOG(ERROR) << "manager is nullptr.";
     return;
   }
-  opt::TraceNewFusionNode(fa_node, {absorbed});
   (void)manager->Replace(absorbed, fa_node);
 }
 

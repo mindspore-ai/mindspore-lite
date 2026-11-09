@@ -174,8 +174,11 @@ TEST_F(FusionTraceUtilsTest, DiffTransportCarriesVanishedRecords) {
   ASSERT_TRUE(optimizer->Optimize(graph_) != nullptr);
   EXPECT_EQ(graph_->output(), survivor);
   // Unified receiver rule: bn_ -> its replacement conv_, act_ -> its replacement survivor.
-  EXPECT_EQ(opt::GetSelfAndOriginNames(survivor), (std::vector<std::string>{"Relu_3-fused", "Relu_3"}));
-  EXPECT_EQ(opt::GetSelfAndOriginNames(conv_), (std::vector<std::string>{"Conv2DFusion-3", "BN_3"}));
+  // Chained collapse: the whole folded chain's identity lands on the FINAL fusion node - the
+  // bypassed bn_ resolves through the memoized chain (its consumer act_ vanished into survivor)
+  // rather than to the intermediate conv_, keeping "one region, one absorber" semantics.
+  EXPECT_EQ(opt::GetSelfAndOriginNames(survivor), (std::vector<std::string>{"Relu_3-fused", "Relu_3", "BN_3"}));
+  EXPECT_EQ(opt::GetSelfAndOriginNames(conv_), (std::vector<std::string>{"Conv2DFusion-3"}));
 
   // Tracing disabled: the same fusion carries nothing.
   opt::TraceOriginInfo(bn_, "BN_3", "BatchNormalization");
@@ -210,6 +213,168 @@ TEST_F(FusionTraceUtilsTest, StripReachesSubgraphs) {
   graph_->set_output(holder);
   opt::StripOriginNames(graph_);
   EXPECT_TRUE(opt::GetOriginNames(sub_act).empty());
+}
+
+// ---- flash_attention surgery replay: the 10 ReplaceWithFaNode sites reduce to two graph
+// shapes (ROOT replaced by the new fa node; INNER replaced while the matched root survives as
+// a wrapper), plus two aggravations (extra new helper CNodes; a dead region chain whose
+// records must propagate through the memoized resolution). Replay each shape through
+// LitePassManager and verify the diff transport lands records where the explicit
+// ReplaceWithFaNode would - the empirical answer to "can diff take over flash_attention".
+namespace {
+class FAReplayPass : public opt::Pass {
+ public:
+  explicit FAReplayPass(int shape) : Pass("FAReplayPass"), shape_(shape) {}
+  bool Run(const FuncGraphPtr &fg) override {
+    auto manager = fg->manager();
+    auto make = [&fg](const std::string &prim, const AnfNodePtr &in) {
+      return fg->NewCNode({NewValueNode(std::make_shared<Primitive>(prim)), in});
+    };
+    auto root = fg->output()->cast<CNodePtr>();
+    switch (shape_) {
+      case 0: {  // ROOT shape: Replace(root, fa), fa takes root's input
+        auto fa = make("PromptFlashAttention", root->input(1));
+        (void)manager->Replace(root, fa);
+        break;
+      }
+      case 1: {  // INNER shape: root survives as wrapper, its input (inner) replaced by fa
+        auto inner = root->input(1)->cast<CNodePtr>();
+        auto fa = make("PromptFlashAttention", inner->input(1));
+        (void)manager->Replace(inner, fa);
+        break;
+      }
+      case 2: {  // INNER + extra new helper CNodes (q/k trans style) consumed by fa
+        auto inner = root->input(1)->cast<CNodePtr>();
+        auto q_trans = make("Transpose", inner->input(1));
+        auto k_trans = make("Transpose", inner->input(1));
+        auto fa = fg->NewCNode({NewValueNode(std::make_shared<Primitive>("PromptFlashAttention")), q_trans, k_trans});
+        (void)manager->Replace(inner, fa);
+        break;
+      }
+      case 3: {  // ROOT + dead region chain: fa bypasses the dead middle node to the source
+        auto inner = root->input(1)->cast<CNodePtr>();
+        auto src = inner->input(1)->cast<CNodePtr>();
+        auto fa = make("PromptFlashAttention", src->input(1));
+        (void)manager->Replace(root, fa);  // inner AND src die with the root
+        break;
+      }
+      case 4: {  // INNER replaced + direct set_input bypass on another node's param slot
+                 // (PreMulInBNSDOutBSND: k_trans->set_input(2, perm) then Replace(output_trans, fa))
+        auto inner = root->input(1)->cast<CNodePtr>();
+        auto conv_node = inner->input(1)->cast<CNodePtr>();
+        auto perm = fg->add_parameter();                  // new param swapped in via direct set_input
+        conv_node->cast<CNodePtr>()->set_input(1, perm);  // bypass the manager on purpose
+        auto fa = make("PromptFlashAttention", perm);
+        (void)manager->Replace(inner, fa);
+        break;
+      }
+      case 5: {  // INNER replaced (wrapper root survives) + a dead region sibling dies with it
+        auto inner = root->input(1)->cast<CNodePtr>();
+        auto src = inner->input(1)->cast<CNodePtr>();
+        auto fa = make("PromptFlashAttention", src->input(1));
+        (void)manager->Replace(inner, fa);  // inner AND src die; root survives wrapping fa
+        break;
+      }
+      default:
+        break;
+    }
+    return false;  // MatMulAddFusion-style: changed but not reported
+  }
+
+ private:
+  int shape_;
+};
+
+CNodePtr BuildChainForReplay(const FuncGraphPtr &fg, const std::vector<std::string> &prims) {
+  CNodePtr prev = nullptr;
+  for (const auto &prim : prims) {
+    AnfNodePtr input = prev;
+    if (input == nullptr) {
+      input = fg->add_parameter();
+    }
+    prev = fg->NewCNode({NewValueNode(std::make_shared<Primitive>(prim)), input});
+    prev->set_fullname_with_scope(prim);
+  }
+  fg->set_output(prev);
+  return prev;
+}
+}  // namespace
+
+TEST_F(FusionTraceUtilsTest, DiffTransportCoversFlashAttentionSurgeryShapes) {
+  auto run = [](int shape) {
+    auto fg = std::make_shared<FuncGraph>();
+    (void)Manage(fg, true);
+    opt::SetFusionTraceEnabled(true);
+    // Shape 3 uses a 4-node chain (conv -> softmax -> inner -> root) so the softmax branch is
+    // REACHABLE before the pass and dies only because the pass rewires the root - the real
+    // flash-attention region-collapse shape. Other shapes use the 3-node chain.
+    auto root = BuildChainForReplay(
+      fg, shape >= 3 ? std::vector<std::string>{"Conv2DFusion", "Softmax", "AddFusion", "Activation"}
+                     : std::vector<std::string>{"Conv2DFusion", "AddFusion", "Activation"});
+    opt::TraceOriginInfo(root, "Act_root", "Activation");
+    auto inner = root->input(1)->cast<CNodePtr>();
+    opt::TraceOriginInfo(inner, "Inner_node", "AddFusion");
+    auto conv = inner->input(1)->cast<CNodePtr>();
+    if (shape >= 3) {
+      opt::TraceOriginInfo(conv->cast<CNodePtr>(), "Softmax_src", "Softmax");  // conv node plays the softmax role
+      auto src = conv->input(1)->cast<CNodePtr>();
+      opt::TraceOriginInfo(src, "Conv_src", "Conv2DFusion");
+    } else {
+      opt::TraceOriginInfo(conv, "Conv_src", "Conv2DFusion");
+    }
+    auto pm = std::make_shared<opt::LitePassManager>("fa_replay", false);
+    pm->AddPass(std::make_shared<FAReplayPass>(shape));
+    auto optimizer = std::make_shared<opt::GraphOptimizer>();
+    optimizer->AddPassManager(pm);
+    (void)optimizer->Optimize(fg);
+    std::map<std::string, std::vector<std::string>> out;
+    for (auto &cnode : fg->GetOrderedCnodes()) {
+      auto prim = GetValueNode<PrimitivePtr>(cnode->input(0));
+      out[prim != nullptr ? prim->name() : "return"] = opt::GetOriginNames(cnode);
+    }
+    return out;
+  };
+
+  // Shape 0 (ROOT): fa carries the root's records; conv/inner keep their own.
+  auto r0 = run(0);
+  EXPECT_EQ(r0["PromptFlashAttention"], (std::vector<std::string>{"Act_root"}));
+  EXPECT_EQ(r0["Conv2DFusion"], (std::vector<std::string>{"Conv_src"}));
+  EXPECT_EQ(r0["AddFusion"], (std::vector<std::string>{"Inner_node"}));
+
+  // Shape 1 (INNER, root survives as wrapper): fa carries inner's records; root/conv keep own.
+  auto r1 = run(1);
+  EXPECT_EQ(r1["PromptFlashAttention"], (std::vector<std::string>{"Inner_node"}));
+  EXPECT_EQ(r1["Activation"], (std::vector<std::string>{"Act_root"}));
+  EXPECT_EQ(r1["Conv2DFusion"], (std::vector<std::string>{"Conv_src"}));
+
+  // Shape 2 (INNER + extra new helper nodes): helpers carry nothing, fa still gets inner's.
+  auto r2 = run(2);
+  EXPECT_EQ(r2["PromptFlashAttention"], (std::vector<std::string>{"Inner_node"}));
+  EXPECT_TRUE(r2["Transpose"].empty());
+  EXPECT_EQ(r2["Activation"], (std::vector<std::string>{"Act_root"}));
+
+  // Shape 3 (ROOT + dead sibling chain created inside the pass): the sibling's records
+  // propagate to fa via the memoized chain (fa absorbed the region) - a superset of the
+  // explicit behavior, never a loss.
+  auto r3 = run(3);
+  // Act_root via h-replace; Softmax_src via the memoized chain (its user - the inner Add -
+  // also vanished and resolved to fa); the source conv keeps its own record.
+  EXPECT_EQ(r3["PromptFlashAttention"], (std::vector<std::string>{"Act_root", "Inner_node", "Softmax_src"}));
+  EXPECT_EQ(r3["Conv2DFusion"], (std::vector<std::string>{"Conv_src"}));
+
+  // Shape 4 (set_input bypass): the direct input swap must not confuse the transport - fa
+  // still absorbs the inner chain, the swapped-in param carries nothing.
+  auto r4 = run(4);
+  // The set_input bypass drops the conv out of the graph - it is part of the collapsed region,
+  // so its record lands on fa too (a user naming that conv must still hit the fused layer).
+  EXPECT_EQ(r4["PromptFlashAttention"], (std::vector<std::string>{"Inner_node", "Softmax_src", "Conv_src"}));
+  EXPECT_EQ(r4["Activation"], (std::vector<std::string>{"Act_root"}));
+
+  // Shape 5 (wrapper survives + dead region): root keeps its own, fa absorbs inner + dead src.
+  auto r5 = run(5);
+  EXPECT_EQ(r5["PromptFlashAttention"], (std::vector<std::string>{"Inner_node", "Softmax_src"}));
+  EXPECT_EQ(r5["Activation"], (std::vector<std::string>{"Act_root"}));
+  EXPECT_EQ(r5["Conv2DFusion"], (std::vector<std::string>{"Conv_src"}));
 }
 
 }  // namespace lite
