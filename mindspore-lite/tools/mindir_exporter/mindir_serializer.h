@@ -22,6 +22,7 @@
 #include <vector>
 #include <unordered_map>
 #include <fstream>
+#include <cstdint>
 #include <set>
 #include "ir/func_graph.h"
 #include "tools/converter/converter_context.h"
@@ -29,6 +30,7 @@
 #include "utils/system/env.h"
 #include "tools/converter/cxx_api/converter_para.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
+#include "tools/mindir_exporter/shared_weight_store.h"
 
 namespace mindspore::lite {
 class MindIRSerializer {
@@ -51,6 +53,7 @@ class MindIRSerializer {
   int IfSaveTogether(bool *save_together);
   int SaveMindIRTogether(const std::shared_ptr<ConverterPara> &param);
   int SplitSave(const std::shared_ptr<ConverterPara> &param);
+  int SharedWeightSave(const std::shared_ptr<ConverterPara> &param);
   int SaveProtoToFile(mind_ir::ModelProto *model_proto, const std::string &output_file,
                       const std::shared_ptr<ConverterPara> &param);
   int ConvertQuantHolderToQuantizationParam(const FuncGraphPtr &func_graph);

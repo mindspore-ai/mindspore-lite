@@ -16,12 +16,25 @@
 
 #define USE_DEPRECATED_API
 #include "tools/converter/converter.h"
+#include <dirent.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define RMDIR _rmdir
+#else
+#include <unistd.h>
+#define RMDIR rmdir
+#endif
+#include <cstdio>
+#include <cstring>
+#include <fstream>
 #include <memory>
 #include <vector>
 #include <set>
 #include <map>
 #include <tuple>
 #include <algorithm>
+#include <numeric>
 #include <utility>
 #include "src/common/log_adapter.h"
 #include "tools/common/meta_graph_serializer.h"
@@ -52,6 +65,7 @@
 #include "tools/converter/converter_metagraph.h"
 #include "tools/common/string_util.h"
 #include "src/common/file_utils.h"
+#include "utils/file_utils.h"
 #include "infer/dynamic_shape.h"
 #include "tools/common/parse_config_utils.h"
 #include "tools/converter/converter_packed_node.h"
@@ -1114,6 +1128,286 @@ int ConverterImpl::LoadPluginLib(const std::shared_ptr<ConverterPara> &param) {
   return RET_OK;
 }
 
+namespace {
+bool IsDirectoryPath(const std::string &path) {
+  struct stat st = {};
+  if (stat(path.c_str(), &st) != 0) {
+    return false;
+  }
+  return S_ISDIR(st.st_mode);
+}
+
+constexpr const char *kOnnxSuffix = ".onnx";
+constexpr const char *kRankDirPrefix = "rank";
+
+// Multi-model directory conversion is only supported for ONNX -> MindIR with --optimize=none. Every
+// model of the batch brings its own shape, and a config file describes a single model, so neither
+// inputShape nor a config file is accepted together with a directory either.
+int CheckDirectoryConvertParam(const std::shared_ptr<ConverterPara> &param) {
+  if (param->fmk_type != FmkType::kFmkTypeOnnx || param->save_type != kMindIR || !param->no_fusion) {
+    MS_LOG(ERROR) << "Directory modelFile only supports ONNX to MindIR conversion with --optimize=none currently.";
+    return RET_INPUT_PARAM_INVALID;
+  }
+  if (!param->input_shape.empty()) {
+    MS_LOG(ERROR) << "inputShape is not supported when modelFile is a directory.";
+    return RET_INPUT_PARAM_INVALID;
+  }
+  if (!param->config_file.empty() || !param->config_param.empty()) {
+    MS_LOG(ERROR) << "configFile is not supported when modelFile is a directory.";
+    return RET_INPUT_PARAM_INVALID;
+  }
+  return RET_OK;
+}
+
+bool HasOnnxSuffix(const char *name) {
+  auto name_len = strlen(name);
+  auto suffix_len = strlen(kOnnxSuffix);
+  return name_len > suffix_len && strcmp(name + name_len - suffix_len, kOnnxSuffix) == 0;
+}
+
+// Parse "rank<N>", where N is a plain non-negative integer without leading zeros.
+bool ParseRankIndex(const std::string &name, int *rank_index) {
+  size_t prefix_len = strlen(kRankDirPrefix);
+  if (name.size() <= prefix_len || name.compare(0, prefix_len, kRankDirPrefix) != 0) {
+    return false;
+  }
+  auto digits = name.substr(prefix_len);
+  if (digits.size() > 1 && digits.front() == '0') {
+    return false;
+  }
+  if (!std::all_of(digits.begin(), digits.end(), [](char digit) { return digit >= '0' && digit <= '9'; })) {
+    return false;
+  }
+  try {
+    *rank_index = std::stoi(digits);
+  } catch (const std::exception &) {
+    return false;
+  }
+  return true;
+}
+
+// Collect the direct child directories named rank0..rankn; they have to be consecutive.
+int CollectRankDirs(const std::string &input_dir, std::vector<std::pair<int, std::string>> *rank_dirs) {
+  DIR *dir = opendir(input_dir.c_str());
+  if (dir == nullptr) {
+    MS_LOG(ERROR) << "Open dir " << input_dir << " failed.";
+    return RET_ERROR;
+  }
+  std::vector<std::string> ignored_entries;
+  dirent *entry = nullptr;
+  while ((entry = readdir(dir)) != nullptr) {
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+      continue;
+    }
+    auto entry_path = input_dir + "/" + entry->d_name;
+    struct stat st = {};
+    if (stat(entry_path.c_str(), &st) != 0) {
+      continue;
+    }
+    int rank_index = 0;
+    if (ParseRankIndex(entry->d_name, &rank_index) && S_ISDIR(st.st_mode)) {
+      rank_dirs->emplace_back(rank_index, entry_path);
+      continue;
+    }
+    // Everything that is not a rankN directory is ignored. Report the entries that could be models
+    // (a directory, or a stray *.onnx) so that a naming mistake does not silently drop models.
+    if (S_ISDIR(st.st_mode) || (S_ISREG(st.st_mode) && HasOnnxSuffix(entry->d_name))) {
+      ignored_entries.emplace_back(entry->d_name);
+    }
+  }
+  (void)closedir(dir);
+  if (!ignored_entries.empty()) {
+    std::sort(ignored_entries.begin(), ignored_entries.end());
+    auto ignored =
+      std::accumulate(ignored_entries.begin(), ignored_entries.end(), std::string(),
+                      [](const std::string &names, const std::string &name) { return names + name + " "; });
+    MS_LOG(WARNING) << "Entries under " << input_dir << " that are not rankN directories are ignored: " << ignored;
+  }
+  if (rank_dirs->empty()) {
+    MS_LOG(ERROR) << "No rank directory named rankN found under " << input_dir;
+    return RET_INPUT_PARAM_INVALID;
+  }
+  std::sort(rank_dirs->begin(), rank_dirs->end());
+  for (size_t i = 0; i < rank_dirs->size(); ++i) {
+    if (rank_dirs->at(i).first != static_cast<int>(i)) {
+      MS_LOG(ERROR) << "Rank directories under " << input_dir << " must be named rank0..rankn consecutively, but got "
+                    << rank_dirs->at(i).second;
+      return RET_INPUT_PARAM_INVALID;
+    }
+  }
+  return RET_OK;
+}
+
+// Remove the files produced by a failed batch and the directories that became empty, so the output
+// tree is left as it was. rmdir() refuses non-empty directories, so pre-existing content is kept.
+void RemoveProducedOutput(const std::string &output_root, const std::vector<std::string> &files) {
+  std::vector<std::string> dirs;
+  for (const auto &file : files) {
+    (void)std::remove(file.c_str());
+    auto sep = file.find_last_of('/');
+    if (sep != std::string::npos) {
+      dirs.push_back(file.substr(0, sep));
+    }
+  }
+  // A child path is always longer than its ancestors, so removing by descending length handles the
+  // deepest directory first and lets its parents become empty.
+  std::sort(dirs.begin(), dirs.end(),
+            [](const std::string &lhs, const std::string &rhs) { return lhs.size() > rhs.size(); });
+  const std::string root_prefix = output_root + "/";
+  for (const auto &dir : dirs) {
+    auto current = dir;
+    while (current == output_root || current.compare(0, root_prefix.size(), root_prefix) == 0) {
+      if (RMDIR(current.c_str()) != 0) {
+        break;
+      }
+      auto sep = current.find_last_of('/');
+      if (sep == std::string::npos) {
+        break;
+      }
+      current = current.substr(0, sep);
+    }
+  }
+}
+
+}  // namespace
+
+int ConverterImpl::CollectOnnxFiles(const std::string &input_dir, std::vector<std::string> *onnx_files) {
+  MS_CHECK_TRUE_MSG(onnx_files != nullptr, RET_ERROR, "onnx_files is nullptr.");
+  DIR *dir = opendir(input_dir.c_str());
+  MS_CHECK_TRUE_MSG(dir != nullptr, RET_ERROR, "Open dir " + input_dir + " failed.");
+  dirent *entry = nullptr;
+  while ((entry = readdir(dir)) != nullptr) {
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+      continue;
+    }
+    auto file_path = input_dir + "/" + entry->d_name;
+    struct stat st = {};
+    if (stat(file_path.c_str(), &st) != 0) {
+      continue;
+    }
+    if (S_ISDIR(st.st_mode)) {
+      auto ret = CollectOnnxFiles(file_path, onnx_files);
+      if (ret != RET_OK) {
+        (void)closedir(dir);
+        return ret;
+      }
+      continue;
+    }
+    if (S_ISREG(st.st_mode) && HasOnnxSuffix(entry->d_name)) {
+      onnx_files->push_back(file_path);
+    }
+  }
+  (void)closedir(dir);
+  return RET_OK;
+}
+
+int ConverterImpl::ConvertSharedWeightDir(const std::shared_ptr<ConverterPara> &param, void **model_data,
+                                          size_t *data_size, bool not_save) {
+  MS_CHECK_TRUE_MSG(!not_save, RET_INPUT_PARAM_INVALID, "Directory modelFile does not support buffer output.");
+  auto ret = CheckDirectoryConvertParam(param);
+  if (ret != RET_OK) {
+    return ret;
+  }
+  auto input_dir = RealPath(param->model_file.c_str());
+  MS_CHECK_TRUE_MSG(!input_dir.empty(), RET_INPUT_PARAM_INVALID, "Get real path of " + param->model_file + " failed.");
+
+  // Only the models under the consecutive rank0..rankn directories are converted, everything else
+  // under input_dir (e.g. a stray *.onnx or a non rankN directory) is ignored.
+  std::vector<std::pair<int, std::string>> rank_dirs;
+  ret = CollectRankDirs(input_dir, &rank_dirs);
+  if (ret != RET_OK) {
+    return ret;
+  }
+  std::vector<std::string> onnx_files;
+  std::vector<std::string> output_relative_stems;
+  for (const auto &rank_dir : rank_dirs) {
+    std::vector<std::string> rank_onnx_files;
+    ret = CollectOnnxFiles(rank_dir.second, &rank_onnx_files);
+    if (ret != RET_OK) {
+      MS_LOG(ERROR) << "Collect onnx files under " << rank_dir.second << " failed.";
+      return ret;
+    }
+    // A rank without any model is a broken batch (the deployment would silently miss a rank),
+    // so reject it instead of skipping it.
+    if (rank_onnx_files.empty()) {
+      MS_LOG(ERROR) << "No onnx model found under rank directory " << rank_dir.second
+                    << ", every rank0..rankn directory must contain at least one onnx model.";
+      return RET_INPUT_PARAM_INVALID;
+    }
+    std::sort(rank_onnx_files.begin(), rank_onnx_files.end());
+    for (const auto &onnx_file : rank_onnx_files) {
+      // Keep the layout under rankN, so the mindir mirrors the input tree.
+      auto relative_stem = onnx_file.substr(rank_dir.second.size() + 1);
+      relative_stem = relative_stem.substr(0, relative_stem.size() - strlen(kOnnxSuffix));
+      onnx_files.push_back(onnx_file);
+      output_relative_stems.push_back("rank" + std::to_string(rank_dir.first) + "/" + relative_stem);
+    }
+  }
+  if (onnx_files.empty()) {
+    MS_LOG(ERROR) << "No onnx model found under the rank directories of " << input_dir;
+    return RET_INPUT_PARAM_INVALID;
+  }
+  MS_LOG(INFO) << "Shared-weight conversion: " << onnx_files.size() << " onnx models under " << input_dir;
+
+  auto output_root = param->output_file;
+  MS_CHECK_TRUE_MSG(!output_root.empty() && output_root.back() != '/', RET_INPUT_PARAM_INVALID,
+                    "outputFile should be the output root directory path in shared-weight conversion.");
+
+  // Every mindir is written to the output tree as soon as its model converts, so a failure only
+  // has to delete what this batch produced. The weight store keeps the tensors in memory and writes
+  // the single shared weight file after the last model, so no weight data is on disk before that.
+  auto shared_store = std::make_shared<lite::SharedWeightStore>(output_root);
+  std::vector<std::string> produced_files;
+  auto clean_failed_output = [](const std::string &root, const std::vector<std::string> &files) {
+    RemoveProducedOutput(root, files);
+  };
+
+  for (size_t i = 0; i < onnx_files.size(); ++i) {
+    const auto &onnx_file = onnx_files[i];
+    auto output_file = output_root + "/" + output_relative_stems[i];
+    produced_files.push_back(output_file + ".mindir");
+    // The serializer requires the output directory to exist before it derives the model path.
+    auto parent_dir = output_file.substr(0, output_file.find_last_of('/'));
+    if (!FileUtils::CreateNotExistDirs(parent_dir, true).has_value()) {
+      MS_LOG(ERROR) << "Create output directory " << parent_dir << " failed.";
+      clean_failed_output(output_root, produced_files);
+      return RET_ERROR;
+    }
+
+    auto convert_param = std::make_shared<ConverterPara>(*param);
+    convert_param->model_file = onnx_file;
+    convert_param->output_file = output_file;
+    convert_param->shared_weight_store = shared_store;
+    ret = CheckValueParam(convert_param, true);
+    if (ret != RET_OK) {
+      MS_LOG(ERROR) << "Check parameters for " << onnx_file << " failed.";
+      clean_failed_output(output_root, produced_files);
+      return ret;
+    }
+    // Every model is converted by its own ConverterImpl, so no converter state is carried over from
+    // one model to the next; the weight store is the only thing shared on purpose.
+    ConverterImpl model_converter;
+    ret = model_converter.HandleGraphCommon(convert_param, model_data, data_size, not_save, false);
+    if (ret != RET_OK) {
+      MS_LOG(ERROR) << "Convert " << onnx_file << " failed, [" << (i + 1) << "/" << onnx_files.size() << "]";
+      clean_failed_output(output_root, produced_files);
+      return ret;
+    }
+    MS_LOG(INFO) << "Converted [" << (i + 1) << "/" << onnx_files.size() << "] " << onnx_file << " -> " << output_file
+                 << ".mindir";
+  }
+
+  // Every model is on disk now: write the shared weight file that all of them reference.
+  auto weight_dst = output_root + "/" + lite::SharedWeightStore::kSharedWeightLocation;
+  if (shared_store->Save(weight_dst) != RET_OK) {
+    MS_LOG(ERROR) << "Save the shared weight file " << weight_dst << " failed.";
+    produced_files.push_back(weight_dst);
+    clean_failed_output(output_root, produced_files);
+    return RET_ERROR;
+  }
+  return RET_OK;
+}
+
 int ConverterImpl::Convert(const std::shared_ptr<ConverterPara> &param, void **model_data, size_t *data_size,
                            bool not_save) {
   if (param == nullptr) {
@@ -1141,6 +1435,13 @@ int ConverterImpl::Convert(const std::shared_ptr<ConverterPara> &param, void **m
   if (ret != RET_OK) {
     MS_LOG(ERROR) << "Load plugin lib failed: " << ret << " " << GetErrorInfo(ret);
     return ret;
+  }
+
+  // Multi-model directory conversion: every onnx under the directory is converted to one mindir,
+  // and all models share one deduplicated external weight file (issue #483).
+  // Currently only enabled for ONNX->MindIR with --optimize=none.
+  if (IsDirectoryPath(param->model_file)) {
+    return ConvertSharedWeightDir(param, model_data, data_size, not_save);
   }
 
   if (model_param_infos.empty()) {
