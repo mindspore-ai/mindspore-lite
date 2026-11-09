@@ -599,3 +599,209 @@ class TestChunkGatedDeltaRule:
             f"performance regression: {latency_ms:.3f} ms exceeds "
             f"{limit_ms:.3f} ms (baseline {baseline_ms:.3f} ms + 50%)"
         )
+
+
+@pytest.mark.ascend_300iduo
+class TestChunkGatedDeltaRule300IDuo:
+    """300I Duo-only coverage for the chunked Cube fast path and its variants.
+
+    These cases target the 300I Duo kernel specifically (grouped Cube tiles,
+    value-head pairing, fused value/output stage and the short tail chunk), so
+    they carry only the ascend_300iduo hardware marker: the default
+    ``-m "L0 and ascend_a2"`` run does not select them.
+    """
+
+    def setup_method(self):
+        """Set up the device used by the 300I Duo-specific cases."""
+        self.device = torch.device("npu:0")
+        torch.npu.set_device(self.device)
+
+    @pytest.mark.L0
+    def test_fast_path_tail_chunk_reference(self):
+        """Full chunks plus a short tail chunk in one call match the CPU recurrence.
+
+        T=200 = 3 x 64 + 8 makes the 300I Duo kernel run the 64-token Cube fast
+        path for the first chunks and the shorter generic path for the tail, so
+        both attention code paths are covered by a single accuracy check.
+        """
+        if not _is_300iduo():
+            pytest.skip("300I Duo fast-path chunk coverage")
+        torch.manual_seed(7)
+        data = _generate_test_data(1, 2, 200, 128, 128, self.device)
+        out, final_state = _run_op(data, torch.float16)
+        torch.npu.synchronize()
+
+        def cpu_low(tensor):
+            return tensor.to(torch.float16).float().cpu()
+
+        out_ref, state_ref = _pytorch_recurrent_baseline(
+            cpu_low(data["query"]),
+            cpu_low(data["key"]),
+            cpu_low(data["value"]),
+            data["g"].float().cpu(),
+            cpu_low(data["beta"]),
+            cpu_low(data["state"]),
+            scale=data["scale"],
+        )
+        out_metrics = _accuracy_metrics(out.float().cpu(), out_ref)
+        state_metrics = _accuracy_metrics(final_state.float().cpu(), state_ref)
+        logging.info(
+            "[fast path tail chunk] out(max=%.6f cos=%.9f nrmse=%.6f), "
+            "state(max=%.6f cos=%.9f nrmse=%.6f)",
+            *out_metrics,
+            *state_metrics,
+        )
+        assert out_metrics[1] >= 0.999 and out_metrics[2] <= 0.02, (
+            "tail-chunk output diverges from CPU recurrence: "
+            f"cosine={out_metrics[1]}, nrmse={out_metrics[2]}"
+        )
+        assert state_metrics[1] >= 0.999 and state_metrics[2] <= 0.02, (
+            "tail-chunk final_state diverges from CPU recurrence: "
+            f"cosine={state_metrics[1]}, nrmse={state_metrics[2]}"
+        )
+
+    @pytest.mark.L0
+    def test_fast_path_bucket_dimensions(self):
+        """The 64/96/128 Cube tile buckets stay accurate on the 64-token fast path.
+
+        Each bucket instantiates its own tiling key, recursive-inverse block
+        sizes and fused value/output tile, so all three are checked against the
+        same FP32 CPU recurrence with a full 128-token sequence (two chunks).
+        """
+        if not _is_300iduo():
+            pytest.skip("300I Duo grouped-Cube bucket coverage")
+        torch.manual_seed(11)
+        for dk, dv, num_heads in ((64, 64, 4), (96, 96, 2), (128, 128, 2)):
+            data = _generate_test_data(1, num_heads, 128, dk, dv, self.device)
+            out, final_state = _run_op(data, torch.float16)
+            torch.npu.synchronize()
+
+            def cpu_low(tensor):
+                return tensor.to(torch.float16).float().cpu()
+
+            out_ref, state_ref = _pytorch_recurrent_baseline(
+                cpu_low(data["query"]),
+                cpu_low(data["key"]),
+                cpu_low(data["value"]),
+                data["g"].float().cpu(),
+                cpu_low(data["beta"]),
+                cpu_low(data["state"]),
+                scale=data["scale"],
+            )
+            out_metrics = _accuracy_metrics(out.float().cpu(), out_ref)
+            state_metrics = _accuracy_metrics(final_state.float().cpu(), state_ref)
+            logging.info(
+                "[fast path bucket dk=%d dv=%d] out(max=%.6f cos=%.9f nrmse=%.6f), "
+                "state(max=%.6f cos=%.9f nrmse=%.6f)",
+                dk,
+                dv,
+                *out_metrics,
+                *state_metrics,
+            )
+            assert out_metrics[1] >= 0.999 and out_metrics[2] <= 0.02, (
+                f"bucket output diverges from CPU recurrence (dk={dk}, dv={dv}): "
+                f"cosine={out_metrics[1]}, nrmse={out_metrics[2]}"
+            )
+            assert state_metrics[1] >= 0.999 and state_metrics[2] <= 0.02, (
+                f"bucket final_state diverges from CPU recurrence (dk={dk}, dv={dv}): "
+                f"cosine={state_metrics[1]}, nrmse={state_metrics[2]}"
+            )
+
+    @pytest.mark.L0
+    def test_gqa_pairing_accuracy_multichunk(self):
+        """Paired value heads (Nv/Nk=2) stay accurate across chunks and batches.
+
+        The 300I Duo kernel processes two value heads that share one qk head as
+        a pair and reuses the raw K@K^T / Q@K^T tiles through a per-core GM
+        slot. A non-zero initial state and two batches make the pairing, the
+        slot reuse and the per-head state offsets all observable.
+        """
+        if not _is_300iduo():
+            pytest.skip("300I Duo GQA pairing coverage")
+        data = _generate_gqa_test_data(2, 4, 8, 128, 128, 128, self.device)
+        generator = torch.Generator().manual_seed(13)
+        data["state"] = torch.randn(
+            data["state"].shape, generator=generator
+        ).to(self.device)
+        out, final_state = _run_op(data, torch.float16)
+        torch.npu.synchronize()
+        assert torch.isfinite(out).all(), "GQA pairing output has NaN/Inf"
+        assert torch.isfinite(final_state).all(), "GQA pairing state has NaN/Inf"
+
+        repeat_factor = 8 // 4
+
+        def cpu_low(tensor):
+            return tensor.to(torch.float16).float().cpu()
+
+        out_ref, state_ref = _pytorch_recurrent_baseline(
+            cpu_low(data["query"]).repeat_interleave(repeat_factor, dim=1),
+            cpu_low(data["key"]).repeat_interleave(repeat_factor, dim=1),
+            cpu_low(data["value"]),
+            data["g"].float().cpu(),
+            cpu_low(data["beta"]),
+            cpu_low(data["state"]),
+            scale=data["scale"],
+        )
+        out_metrics = _accuracy_metrics(out.float().cpu(), out_ref)
+        state_metrics = _accuracy_metrics(final_state.float().cpu(), state_ref)
+        logging.info(
+            "[GQA pairing 2x4/8 T=128] out(max=%.6f cos=%.9f nrmse=%.6f), "
+            "state(max=%.6f cos=%.9f nrmse=%.6f)",
+            *out_metrics,
+            *state_metrics,
+        )
+        assert out_metrics[1] >= 0.999 and out_metrics[2] <= 0.02, (
+            "paired GQA output diverges from CPU recurrence: "
+            f"cosine={out_metrics[1]}, nrmse={out_metrics[2]}"
+        )
+        assert state_metrics[1] >= 0.999 and state_metrics[2] <= 0.02, (
+            "paired GQA final_state diverges from CPU recurrence: "
+            f"cosine={state_metrics[1]}, nrmse={state_metrics[2]}"
+        )
+
+    @pytest.mark.L0
+    def test_recursive_inverse_high_beta(self):
+        """A stiff chunk (beta close to 1, constant decay) stays accurate.
+
+        beta close to one makes (I - A) ill-conditioned and a constant log-decay
+        keeps every off-diagonal term of the 64x64 chunk matrix significant, so
+        the chunked factorization (block inverse + cross-block products) is
+        exercised at the edge of its conditioning on the 300I Duo fast path.
+        """
+        if not _is_300iduo():
+            pytest.skip("300I Duo fast-path inverse coverage")
+        torch.manual_seed(17)
+        data = _generate_test_data(1, 2, 128, 128, 128, self.device)
+        data["beta"] = torch.full_like(data["beta"], 0.99)
+        data["g"] = torch.full_like(data["g"], -0.5)
+        out, final_state = _run_op(data, torch.float16)
+        torch.npu.synchronize()
+
+        def cpu_low(tensor):
+            return tensor.to(torch.float16).float().cpu()
+
+        out_ref, state_ref = _pytorch_recurrent_baseline(
+            cpu_low(data["query"]),
+            cpu_low(data["key"]),
+            cpu_low(data["value"]),
+            data["g"].float().cpu(),
+            cpu_low(data["beta"]),
+            cpu_low(data["state"]),
+            scale=data["scale"],
+        )
+        out_metrics = _accuracy_metrics(out.float().cpu(), out_ref)
+        state_metrics = _accuracy_metrics(final_state.float().cpu(), state_ref)
+        logging.info(
+            "[stiff inverse beta=0.99] out(max=%.6f cos=%.9f nrmse=%.6f), "
+            "state(max=%.6f cos=%.9f nrmse=%.6f)",
+            *out_metrics,
+            *state_metrics,
+        )
+        assert out_metrics[1] >= 0.999 and out_metrics[2] <= 0.02, (
+            "stiff-inverse output diverges from CPU recurrence: "
+            f"cosine={out_metrics[1]}, nrmse={out_metrics[2]}"
+        )
+        assert state_metrics[1] >= 0.999 and state_metrics[2] <= 0.02, (
+            "stiff-inverse final_state diverges from CPU recurrence: "
+            f"cosine={state_metrics[1]}, nrmse={state_metrics[2]}"
+        )
