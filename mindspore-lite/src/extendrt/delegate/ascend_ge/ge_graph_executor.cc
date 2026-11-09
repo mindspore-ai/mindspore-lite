@@ -530,9 +530,13 @@ bool GeGraphExecutor::SetModelCacheDir(std::map<std::string, std::string> *sessi
     return true;
   }
   auto build_cache_dir = "model_build_cache_" + std::to_string(GetRankID());
-  if (lite::CreateDir(build_cache_dir) != RET_OK) {
-    MS_LOG(ERROR) << "Failed to create build cache dir " << build_cache_dir;
-    return false;
+  // A missing or unwritable default directory must not fail the model build: disable the cache for
+  // this model and fall back to online compilation. Users can still point model_cache_dir at a
+  // writable directory when they want the cache.
+  if (lite::CreateDir(build_cache_dir) != RET_OK || !IsUsableCompileCacheDir(build_cache_dir)) {
+    MS_LOG(WARNING) << "Cannot use the default build cache dir '" << build_cache_dir
+                    << "', GE compile cache is disabled for this model";
+    return true;
   }
   ge_options[lite::kGeGraphCompilerCacheDir] = build_cache_dir;
   MS_LOG(INFO) << "Update session attr " << lite::kGeGraphCompilerCacheDir << " to " << build_cache_dir;
@@ -715,7 +719,6 @@ std::string GeGraphExecutor::GetCompileCacheFingerprint(const FuncGraphPtr &anf_
   //   * [ge_session_options]+[ge_graph_options] — precision_mode / dynamicDims / jit_compile / ...
   //                                               (*_cache_dir paths excluded)
   //   * [ascend_context] whitelist env keys     — compile-related process env (IsCompileEnvKey)
-  //   * CANN toolkit install info               — compiler & built-in bank build
   //   * SoC version                             — device binary compatibility
   // Same conditions -> same key -> cache hit across deployments; any change ->
   // different key -> miss -> online compile. The old rank_id prefix is dropped
@@ -752,19 +755,6 @@ std::string GeGraphExecutor::GetCompileCacheFingerprint(const FuncGraphPtr &anf_
       }
       const char *effective = getenv(item.first.c_str());
       src += item.first + "=" + (effective != nullptr ? std::string(effective) : item.second) + ";";
-    }
-  }
-  const char *ascend_home = getenv("ASCEND_HOME_PATH");
-  if (ascend_home != nullptr) {
-    static const char *kInstallInfoCandidates[] = {"aarch64-linux/ascend_toolkit_install.info",
-                                                   "x86_64-linux/ascend_toolkit_install.info"};
-    for (const char *candidate : kInstallInfoCandidates) {
-      std::string info_path = std::string(ascend_home) + "/" + candidate;
-      std::ifstream info_file(info_path, std::ios::binary);
-      if (info_file.is_open()) {
-        src += std::string((std::istreambuf_iterator<char>(info_file)), std::istreambuf_iterator<char>());
-        break;
-      }
     }
   }
   src += GetSocVersion();

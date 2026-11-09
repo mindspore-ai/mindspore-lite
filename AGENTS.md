@@ -44,7 +44,7 @@ MindSpore Lite推理框架主要包含两种推理形式，分别为：
 | ① 模型迁移/导出 | 开源模型按网络结构拆分导出 ONNX、ONNX Runtime 精度对齐、生成推理脚本与 README | [open-source-model-migration](.claude/skills/cloud/open-source-model-migration/SKILL.md) |
 | ② 转换与部署推理 | ONNX→MindIR（固定 shape / 动态分档 / 纯动态 shape）+ Ascend 离线优化；MindIR 加载、Ascend 推理验证与部署注意事项 | [onnx-model-conversion-and-deployment](.claude/skills/cloud/onnx-model-conversion-and-deployment/SKILL.md) |
 | ③ 性能优化    | 基线/profiling、融合算子改写、推理免拷贝、PTQ int8 量化、精度对齐与归档 | [performance-optimization](.claude/skills/cloud/performance-optimization/SKILL.md) |
-| ④ 多卡张量并行  | Megatron 权重分片导出、Custom(AllReduce) 通信算子、多进程 HCCL 推理（1p/2p/4p）、300I Duo vs 800I A2 差异 | [tensor-parallel-deployment](.claude/skills/cloud/tensor-parallel-deployment/SKILL.md) |
+| ④ 多卡并行部署  | 模型并行两条路线：TP（Megatron 权重分片 + Custom(AllReduce)，1p/2p/4p，300I Duo vs 800I A2 差异）与 CP（Ulysses 序列并行 + AllGather，单卡双芯、公共前缀、零拷贝 KV） | [parallel-deployment](.claude/skills/cloud/parallel-deployment/SKILL.md) |
 | ⑥ 部署时延优化  | GE 在线推理部署/加载/首推时延优化：并行编译、双图并发首推、图级/算子级缓存（指纹守卫）、预热编排；已证伪方案清单 | [ge-deploy-latency-optimization](.claude/skills/cloud/ge-deploy-latency-optimization/SKILL.md) |
 | ⑤ 精度问题定位  | CANN Profiling 对比分析定位可疑算子、配置算子 Dump、对比 Dump 数据确定精度差异根因 | [precision-troubleshooting](.claude/skills/cloud/precision-troubleshooting/SKILL.md) |
 
