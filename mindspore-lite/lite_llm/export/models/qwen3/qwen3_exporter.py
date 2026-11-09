@@ -136,6 +136,7 @@ class Qwen3Onnx:
                 attn_implementation="eager",
             )
             self.config = self.model.config
+            self._normalize_gguf_tied_embeddings()
         else:
             self.config = AutoConfig.from_pretrained(model_path, trust_remote_code=False)
             self.config._attn_implementation = "eager"  # pylint: disable=W0212
@@ -158,6 +159,34 @@ class Qwen3Onnx:
         self.hidden_size = self.model.config.hidden_size
         self.num_kv_heads = self.model.config.num_key_value_heads
         logger.info("model loaded: %s", model_path)
+
+    def _normalize_gguf_tied_embeddings(self):
+        """Accept a GGUF's duplicate output embedding as a tied checkpoint.
+
+        Some GGUF exporters keep ``output.weight`` even when it is byte-for-byte
+        equivalent to ``token_embd.weight`` and consequently report
+        ``tie_word_embeddings=False``.  The runtime can represent that case by
+        sharing the identical weight, but must still reject genuinely distinct
+        input and output embeddings.
+        """
+        if getattr(self.config, "tie_word_embeddings", False):
+            return
+
+        input_embeddings = self.model.get_input_embeddings()
+        output_embeddings = self.model.get_output_embeddings()
+        input_weight = getattr(input_embeddings, "weight", None)
+        output_weight = getattr(output_embeddings, "weight", None)
+        if (input_weight is None or output_weight is None
+                or input_weight.shape != output_weight.shape
+                or not torch.equal(input_weight.detach(), output_weight.detach())):
+            return
+
+        self.config.tie_word_embeddings = True
+        self.model.tie_weights()
+        logger.info(
+            "GGUF output embedding is identical to the input embedding; "
+            "using the runtime's tied-weight contract"
+        )
 
     def _validate_config(self):
         """Reject checkpoints outside the supported dense Qwen3 contract."""

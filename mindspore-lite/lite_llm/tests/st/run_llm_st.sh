@@ -15,7 +15,8 @@
 
 set -eo pipefail
 ST_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PACKAGE="" MODEL_DIR="" DEVICE="" BR_PORT="8888" OUTPUT_DIR="$PWD/st_results"
+PACKAGE="" MODEL_DIR="" DEVICE="" PLATFORM="" OUTPUT_DIR="$PWD/st_results"
+BR_PORT=8888
 REQUIRED_KERNELS=(
   ms_add_rms_norm.o
   ms_add_softmax.o
@@ -29,17 +30,18 @@ REQUIRED_KERNELS=(
 while (( $# )); do
   case "$1" in
     -h|--help)
-      echo "Usage: bash run_llm_st.sh --package FILE --model-dir DIR --device ID [--br-port PORT] [--output-dir DIR]"
-      echo "Device: device serial number listed by br devices; passed unchanged to BinRunner"
-      echo "BinRunner port: local hdc forwarding port; 8888 by default"
+      echo "Usage: bash run_llm_st.sh --package FILE --model-dir DIR --device ID --platform PLATFORM [--br-port PORT] [--output-dir DIR]"
+      echo "Platform: kirin9020 or kirin9030; only tests marked for that platform are executed"
+      echo "BinRunner port: 8888 by default"
       echo "Output directory: ./st_results by default; DDK and Python must already be activated"
       exit 0 ;;
-    --package|--model-dir|--device|--br-port|--output-dir)
+    --package|--model-dir|--device|--platform|--br-port|--output-dir)
       [[ $# -ge 2 && -n "$2" && "$2" != --* ]] || { echo "Missing value: $1" >&2; exit 1; }
       case "$1" in
         --package) PACKAGE="$2" ;;
         --model-dir) MODEL_DIR="$2" ;;
         --device) DEVICE="$2" ;;
+        --platform) PLATFORM="$2" ;;
         --br-port) BR_PORT="$2" ;;
         --output-dir) OUTPUT_DIR="$2" ;;
       esac
@@ -47,11 +49,22 @@ while (( $# )); do
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
-[[ -n "$PACKAGE" && -n "$MODEL_DIR" && -n "$DEVICE" ]] || {
-  echo "Required: --package, --model-dir, --device (see --help)" >&2; exit 1;
+[[ -n "$PACKAGE" && -n "$MODEL_DIR" && -n "$DEVICE" && -n "$PLATFORM" ]] || {
+  echo "Required: --package, --model-dir, --device, --platform (see --help)" >&2; exit 1;
 }
-[[ "$BR_PORT" =~ ^[0-9]+$ ]] && (( BR_PORT >= 1 && BR_PORT <= 65535 )) || {
-  echo "Invalid --br-port: $BR_PORT (expected 1-65535)" >&2; exit 1;
+case "$PLATFORM" in
+  kirin9020|kirin9030) ;;
+  *) echo "Invalid --platform: $PLATFORM (expected kirin9020 or kirin9030)" >&2; exit 1 ;;
+esac
+[[ "$DEVICE" != *$'\t'* && "$DEVICE" != *$'\r'* && "$DEVICE" != *$'\n'* ]] || {
+  echo "Invalid --device: control characters are not allowed" >&2; exit 1;
+}
+[[ "$BR_PORT" =~ ^[0-9]{1,5}$ ]] || {
+  echo "Invalid --br-port: expected 1-65535" >&2; exit 1;
+}
+BR_PORT=$((10#$BR_PORT))
+(( BR_PORT >= 1 && BR_PORT <= 65535 )) || {
+  echo "Invalid --br-port: expected 1-65535" >&2; exit 1;
 }
 : "${DDK_PATH:?Activate the DDK before running ST}"
 PACKAGE=$(realpath -e -- "$PACKAGE")
@@ -64,19 +77,46 @@ OUTPUT_DIR=$(realpath -e -- "$OUTPUT_DIR")
   echo "Result path must use only letters, digits, /, _ and -" >&2; exit 1;
 }
 RUN_DIR=$(mktemp -d "$OUTPUT_DIR/run_XXXXXXXX")
-mkdir -p "$RUN_DIR/tmp" "$RUN_DIR/work"
 echo "[ST] Results: $RUN_DIR"
+export PYTEST_ADDOPTS="" PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 
-check_custom_ops() (
+collect_platform() {
+  local platform="$1" collect_dir="$RUN_DIR/collect" status
+  mkdir -p "$collect_dir"
+  set +e
+  python -m pytest --collect-only --strict-markers -q -o addopts= \
+    -o "cache_dir=$collect_dir/cache/pytest" "$ST_DIR/" \
+    -m "$platform" --platform="$platform" > "$collect_dir/collect.log" 2>&1
+  status=$?
   set -e
-  local ddk_root platform_root kernel
-  local -a missing=()
+  case "$status" in
+    0) return 0 ;;
+    5) return 1 ;;
+    *)
+      echo "[ST] ERROR: failed to collect $platform tests" >&2
+      tail -100 "$collect_dir/collect.log" >&2
+      return 2
+      ;;
+  esac
+}
 
-  ddk_root=$(realpath -e -- "$DDK_PATH") || {
-    echo "[ST] ERROR: DDK_PATH does not point to an existing directory: $DDK_PATH" >&2
-    return 1
-  }
-  platform_root="$ddk_root/tools/platform/kirin9020"
+if collect_platform "$PLATFORM"; then
+  status=0
+else
+  status=$?
+fi
+if (( status == 1 )); then
+  echo "[ST] SKIP: no tests marked for $PLATFORM"
+  exit 0
+fi
+if (( status != 0 )); then
+  exit "$status"
+fi
+
+check_custom_ops() {
+  local ddk_root="$1" platform="$2" platform_root kernel
+  local -a missing=()
+  platform_root="$ddk_root/tools/platform/$platform"
   [[ -f "$platform_root/lib64/libcustom_op.so" ]] || \
     missing+=("$platform_root/lib64/libcustom_op.so")
   for kernel in "${REQUIRED_KERNELS[@]}"; do
@@ -84,23 +124,36 @@ check_custom_ops() (
       missing+=("$platform_root/ops/impl/custom/$kernel")
   done
   if (( ${#missing[@]} )); then
-    printf '[ST] ERROR: gate environment has not installed required custom operators:\n' >&2
+    printf '[ST] ERROR: gate environment has not installed required custom operators for %s:\n' \
+      "$platform" >&2
     printf '  %s\n' "${missing[@]}" >&2
     return 1
   fi
-)
+}
 
-run_tests() (
+run_platform() (
   set -e
-  export TMPDIR="$RUN_DIR/tmp" TMP="$RUN_DIR/tmp" TEMP="$RUN_DIR/tmp"
-  export XDG_CACHE_HOME="$RUN_DIR/cache" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+  local platform="$1" device="$2" br_port="$3"
+  local platform_dir="$RUN_DIR" ddk_root platform_root
+  mkdir -p "$platform_dir/tmp" "$platform_dir/work"
+  ddk_root=$(realpath -e -- "$DDK_PATH") || {
+    echo "[ST] ERROR: DDK_PATH does not point to an existing directory: $DDK_PATH" >&2
+    return 1
+  }
+  platform_root="$ddk_root/tools/platform/$platform"
+  # DDK activation may default to one SoC. Put this run's platform first so
+  # Python custom-op wrappers and runtime libraries cannot come from another SoC.
+  export PYTHONPATH="$platform_root/ops/impl${PYTHONPATH:+:$PYTHONPATH}"
+  export LD_LIBRARY_PATH="$platform_root/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  check_custom_ops "$ddk_root" "$platform"
+
+  export TMPDIR="$platform_dir/tmp" TMP="$platform_dir/tmp" TEMP="$platform_dir/tmp"
+  export XDG_CACHE_HOME="$platform_dir/cache" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
   # Keep model compilation reproducible; parallel TeFusion can produce an OMC
   # that NNRT rejects at load time.
   export TE_PARALLEL_COMPILER=1
-  # Accept the device ID as listed by br devices (normally a serial number).
-  export MSLITE_LLM_ST_DEVICE=1 BR_UDID="$DEVICE"
-  export PYTEST_ADDOPTS="" PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
-  cd "$RUN_DIR/work"
+  export MSLITE_LLM_ST_DEVICE=1 BR_UDID="$device"
+  cd "$platform_dir/work"
 
   python - <<'PY'
 import ctypes
@@ -136,12 +189,14 @@ if missing:
 from transformers import Qwen2ForCausalLM  # noqa: F401,E402
 PY
 
-  # Discover every ST in the directory, including tests added by subsequent PRs.
-  python -m pytest -v -s -rA -o addopts= -o "cache_dir=$RUN_DIR/cache/pytest" \
-    "$ST_DIR/" --package="$PACKAGE" --model-dir="$MODEL_DIR" --br-port="$BR_PORT" \
-    --basetemp="$RUN_DIR/pytest" --junitxml="$RUN_DIR/results.xml"
+  echo "[ST] Running $platform tests"
+  python -m pytest -v -s -rA -o addopts= -o "cache_dir=$platform_dir/cache/pytest" \
+    "$ST_DIR/" -m "$platform" \
+    --package="$PACKAGE" --model-dir="$MODEL_DIR" --platform="$platform" \
+    --br-port="$br_port" \
+    --basetemp="$platform_dir/pytest" --junitxml="$platform_dir/results.xml"
   # pytest may return 0 when tests are skipped; the gate requires actual passes.
-  python - "$RUN_DIR/results.xml" <<'PY'
+  python - "$platform_dir/results.xml" "$platform" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 
@@ -149,21 +204,17 @@ cases = list(ET.parse(sys.argv[1]).getroot().iter("testcase"))
 if not cases or any(case.find(tag) is not None for case in cases
                     for tag in ("failure", "error", "skipped")):
     sys.exit("ST failed: no executed tests, or failures/errors/skips in the report")
-print(f"[ST] PASS: {len(cases)} test(s)")
+print(f"[ST] PASS ({sys.argv[2]}): {len(cases)} test(s)")
 PY
 )
 
 set +e
-check_custom_ops
+run_platform "$PLATFORM" "$DEVICE" "$BR_PORT"
 status=$?
-if (( status != 0 )); then
-  echo "[ST] FAILED; results: $RUN_DIR"
-  exit "$status"
+set -e
+if (( status == 0 )); then
+  echo "[ST] PASS ($PLATFORM); results: $RUN_DIR"
+  exit 0
 fi
-
-run_tests
-status=$?
-if (( status != 0 )); then
-  echo "[ST] FAILED; results: $RUN_DIR"
-fi
+echo "[ST] FAILED ($PLATFORM); results: $RUN_DIR"
 exit "$status"

@@ -58,6 +58,23 @@ QWEN2_5_0B5 = {
     "vocab_size": 151936,
 }
 
+# Qwen3-0.6B geometry, same source of truth as the exporter unit tests
+# (tests/py/test_qwen3_config.py): 28 layers, hidden 1024, vocab 151936.
+QWEN3_0B6 = {
+    "num_layers": 28,
+    "hidden_size": 1024,
+    "vocab_size": 151936,
+}
+
+# Package entries every exported model must carry; shared by the model cases.
+REQUIRED_PACKAGE_ENTRIES = (
+    "vocab/vocab.bin",
+    "assets/embedding_quant.bin",
+    "assets/rope_cos.bin",
+    "assets/rope_sin.bin",
+    "assets/attention_mask.bin",
+)
+
 
 def _sanitize_device_log(text, udid):
     """Remove device identifiers, paths and non-ASCII payload text from logs."""
@@ -129,47 +146,26 @@ def _collect_device_diagnostics(br_cmd, udid, model_name):
     return "\n".join(sections)
 
 
-@pytest.mark.parametrize("model_id", ["qwen2.5-0.5b"], indirect=True)
-def test_qwen2_5_0b5_full_chain(
-    model_id, model_cfg, msl_package, mslite_chat, device_ready, msl_pack
-):
-    """qwen2.5-0.5b: export (or reuse --msl) -> real-device inference.
-
-    ``msl_pack`` is imported from the installed wheel (guards the artifact);
-    ``device_ready`` fails up front when the DDK/BinRunner setup is missing or
-    the packaged binary is not an AArch64 build.
-    """
-    # Fixture side effects gate the case (skip/fail on missing prerequisites);
-    # re-assert the device contract here so it is exercised explicitly.
-    assert model_id == "qwen2.5-0.5b"
-    assert device_ready
-
-    # ── Stage 1: package sanity (conversion stage already ran in msl_package) ──
+def _assert_package_contents(msl_pack, msl_package, model_cfg, arch):
+    """Unpack the .msl and assert the architecture KV and the bundled resources."""
     with tempfile.TemporaryDirectory(prefix="st_unpack_") as tmp:
         kv = msl_pack.unpack(msl_package, tmp)
-        assert kv.get("arch.num_layers") == QWEN2_5_0B5["num_layers"], kv
-        assert kv.get("arch.hidden_size") == QWEN2_5_0B5["hidden_size"], kv
-        assert kv.get("arch.vocab_size") == QWEN2_5_0B5["vocab_size"], kv
+        assert kv.get("arch.num_layers") == arch["num_layers"], kv
+        assert kv.get("arch.hidden_size") == arch["hidden_size"], kv
+        assert kv.get("arch.vocab_size") == arch["vocab_size"], kv
         assert kv.get("npu.max_length") == model_cfg["max_length"], kv
         # The .omc entry name is whatever the exporter wrote into the manifest
         # (fixed basename "model" in the pipeline), not derived from the .msl
         # filename — read it from the manifest path to stay contract-faithful.
         omc_entry = kv.get("litert.prefill.path")
         assert omc_entry, f"litert.prefill.path missing: {kv}"
-        required = [
-            omc_entry,
-            "vocab/vocab.bin",
-            "assets/embedding_quant.bin",
-            "assets/rope_cos.bin",
-            "assets/rope_sin.bin",
-            "assets/attention_mask.bin",
-        ]
+        required = [omc_entry, *REQUIRED_PACKAGE_ENTRIES]
         missing = [name for name in required if not os.path.isfile(os.path.join(tmp, name))]
         assert not missing, f"missing resources in package: {missing}"
 
-    # ── Stage 2: device inference via BinRunner (memory loader, no root) ────
-    # The packaged OHOS binary and the .msl are pushed to the phone; `br run`
-    # executes mslite-chat in the app sandbox and streams stdout/stderr back.
+
+def _run_on_device(device_ready, mslite_chat, msl_package):
+    """Push the packaged binary and model, generate on the NPU, check the output."""
     br, udid, local_port = device_ready
     br_cmd = [br, "-t", udid, "-p", str(local_port)]
     model_name = os.path.basename(msl_package)
@@ -201,3 +197,53 @@ def test_qwen2_5_0b5_full_chain(
     assert "[finish reason]" in result.stdout, "no finish reason in output"
     assert "[stats]" in result.stdout, "no stats line in output"
     assert len(result.stdout) > 0, "empty generation output"
+
+
+@pytest.mark.kirin9020
+@pytest.mark.parametrize("model_id", ["qwen2.5-0.5b"], indirect=True)
+def test_qwen2_5_0b5_full_chain(
+    model_id, model_cfg, msl_package, mslite_chat, device_ready, msl_pack
+):
+    """qwen2.5-0.5b on kirin9020: export (or reuse --msl) -> real-device inference.
+
+    ``msl_pack`` is imported from the installed wheel (guards the artifact);
+    ``device_ready`` fails up front when the DDK/BinRunner setup is missing or
+    the packaged binary is not an AArch64 build.
+    """
+    # Fixture side effects gate the case (skip/fail on missing prerequisites);
+    # re-assert the device contract here so it is exercised explicitly.
+    assert model_id == "qwen2.5-0.5b"
+    assert model_cfg["target"] == "kirin9020"
+    assert device_ready
+
+    # ── Stage 1: package sanity (conversion stage already ran in msl_package) ──
+    _assert_package_contents(msl_pack, msl_package, model_cfg, QWEN2_5_0B5)
+
+    # ── Stage 2: device inference via BinRunner (memory loader, no root) ────
+    # The packaged OHOS binary and the .msl are pushed to the phone; `br run`
+    # executes mslite-chat in the app sandbox and streams stdout/stderr back.
+    _run_on_device(device_ready, mslite_chat, msl_package)
+
+
+@pytest.mark.kirin9030
+@pytest.mark.parametrize("model_id", ["qwen3-0.6b"], indirect=True)
+def test_qwen3_0b6_full_chain(
+    model_id, model_cfg, msl_package, mslite_chat, device_ready, msl_pack
+):
+    """qwen3-0.6b on kirin9030: export (or reuse --msl) -> real-device inference.
+
+    Structurally identical to the kirin9020 / qwen2.5-0.5b case: the chip, the
+    model and its geometry come from ``conftest.MODELS`` and ``QWEN3_0B6``,
+    everything else (package contract, BinRunner push, generation assertions)
+    is shared.  The gate runner selects this case with
+    ``--platform kirin9030`` and an attached kirin9030 device.
+    """
+    assert model_id == "qwen3-0.6b"
+    assert model_cfg["target"] == "kirin9030"
+    assert device_ready
+
+    # ── Stage 1: package sanity (conversion stage already ran in msl_package) ──
+    _assert_package_contents(msl_pack, msl_package, model_cfg, QWEN3_0B6)
+
+    # ── Stage 2: device inference via BinRunner (memory loader, no root) ────
+    _run_on_device(device_ready, mslite_chat, msl_package)
