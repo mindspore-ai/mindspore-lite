@@ -129,6 +129,7 @@ def _collect_device_diagnostics(br_cmd, udid, model_name):
     return "\n".join(sections)
 
 
+@pytest.mark.kirin9020
 @pytest.mark.parametrize("model_id", ["qwen2.5-0.5b"], indirect=True)
 def test_qwen2_5_0b5_full_chain(
     model_id, model_cfg, msl_package, mslite_chat, device_ready, msl_pack

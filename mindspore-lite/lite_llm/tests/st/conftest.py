@@ -55,11 +55,11 @@ import pytest
 MODELS = {
     "qwen2.5-0.5b": {
         "path": "qwen2.5-0.5b-instruct-q4_0.gguf",
-        "target": "kirin9020",
         "max_length": 1024,
         "chunk_size": 64,
     },
 }
+SUPPORTED_PLATFORMS = ("kirin9020", "kirin9030")
 
 EXPORT_TIMEOUT_SECONDS = 7200
 EXPORT_HEARTBEAT_SECONDS = 60
@@ -179,10 +179,51 @@ def pytest_addoption(parser):
                      help="release package path (.tar.gz or extracted dir); ST runs against it")
     parser.addoption("--model-dir", default=None,
                      help="root directory containing raw inputs registered in conftest.MODELS")
+    parser.addoption("--platform", default="kirin9020", choices=SUPPORTED_PLATFORMS,
+                     help="target SoC used for export and DDK checks (default: kirin9020)")
     parser.addoption("--br-port", default="8888",
                      help="local hdc forwarding port used by BinRunner (default: 8888)")
     parser.addoption("--msl", default=None,
                      help="pre-built .msl package; when given the export stage is skipped")
+
+
+def pytest_configure(config):
+    """Register the real-device platforms used to select ST cases."""
+    for platform in SUPPORTED_PLATFORMS:
+        config.addinivalue_line("markers", f"{platform}: runs on a {platform} device")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Collect only cases marked for the platform selected by the gate job."""
+    platform = config.getoption("--platform")
+    selected = []
+    deselected = []
+    unmarked = []
+    for item in items:
+        supported = {
+            name for name in SUPPORTED_PLATFORMS
+            if item.get_closest_marker(name) is not None
+        }
+        if not supported:
+            unmarked.append(item.nodeid)
+        elif platform in supported:
+            selected.append(item)
+        else:
+            deselected.append(item)
+    if unmarked:
+        raise pytest.UsageError(
+            "ST cases must declare at least one platform marker: " + ", ".join(unmarked)
+        )
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+    items[:] = selected
+
+
+def pytest_generate_tests(metafunc):
+    """Expose the selected SoC in the test id and JUnit report."""
+    if "platform" in metafunc.fixturenames:
+        platform = metafunc.config.getoption("--platform")
+        metafunc.parametrize("platform", [platform], ids=[platform], scope="session")
 
 
 @pytest.fixture(scope="session")
@@ -197,9 +238,11 @@ def model_id(request):
 
 
 @pytest.fixture(scope="session")
-def model_cfg(model_id):
+def model_cfg(model_id, platform):
     """Export option table for the selected model id."""
-    return MODELS[model_id]
+    config = dict(MODELS[model_id])
+    config["target"] = platform
+    return config
 
 
 @pytest.fixture(scope="session")
