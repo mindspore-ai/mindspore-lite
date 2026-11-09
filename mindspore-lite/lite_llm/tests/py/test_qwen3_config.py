@@ -20,7 +20,7 @@ from types import SimpleNamespace
 
 import pytest
 
-pytest.importorskip("torch")
+torch = pytest.importorskip("torch")
 pytest.importorskip("onnx")
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "export"))
 
@@ -37,6 +37,58 @@ def _qwen3_06b_config():
         vocab_size=151936, max_position_embeddings=40960, rope_theta=1000000,
         rms_norm_eps=1e-6, tie_word_embeddings=True, eos_token_id=151645,
     )
+
+
+class _EmbeddingModel:
+    """Minimal model surface used by the GGUF tied-weight compatibility tests."""
+
+    def __init__(self, input_weight, output_weight):
+        self.input_embeddings = SimpleNamespace(weight=input_weight)
+        self.output_embeddings = SimpleNamespace(weight=output_weight)
+        self.tie_called = False
+
+    def get_input_embeddings(self):
+        return self.input_embeddings
+
+    def get_output_embeddings(self):
+        return self.output_embeddings
+
+    def tie_weights(self):
+        self.tie_called = True
+        self.output_embeddings.weight = self.input_embeddings.weight
+
+
+def test_accept_duplicate_gguf_output_embedding():
+    """An untied GGUF flag is harmless when both embedding tensors are identical."""
+    exporter = Qwen3Onnx()
+    exporter.config = _qwen3_06b_config()
+    exporter.config.tie_word_embeddings = False
+    weight = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+    exporter.model = _EmbeddingModel(weight, weight.clone())
+
+    exporter._normalize_gguf_tied_embeddings()  # pylint: disable=protected-access
+
+    assert exporter.config.tie_word_embeddings is True
+    assert exporter.model.tie_called
+    assert exporter.model.get_output_embeddings().weight is weight
+
+
+def test_reject_distinct_gguf_output_embedding():
+    """Keep rejecting a genuinely untied checkpoint that the runtime cannot represent."""
+    exporter = Qwen3Onnx()
+    exporter.config = _qwen3_06b_config()
+    exporter.config.tie_word_embeddings = False
+    exporter.model = _EmbeddingModel(
+        torch.tensor([[1.0, 2.0]]),
+        torch.tensor([[1.0, 3.0]]),
+    )
+
+    exporter._normalize_gguf_tied_embeddings()  # pylint: disable=protected-access
+
+    assert exporter.config.tie_word_embeddings is False
+    assert not exporter.model.tie_called
+    with pytest.raises(ValueError, match="tied"):
+        exporter._validate_config()  # pylint: disable=protected-access
 
 
 def test_qwen3_06b_architecture():

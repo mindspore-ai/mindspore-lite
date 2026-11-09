@@ -25,6 +25,11 @@ operator adapter package ``mslite_llm_ops`` must be installed by CI beforehand.
         --package=output/mindspore-lite-llm-linux-x64-0.1.0.tar.gz \
         --model-dir=/path/to/models
 
+    # kirin9030 runner: collect only the cases marked for that platform
+    MSLITE_LLM_ST_DEVICE=1 pytest tests/st \
+        --package=output/mindspore-lite-llm-linux-x64-0.1.0.tar.gz \
+        --model-dir=/path/to/models --platform=kirin9030
+
     # Reuse an already-built .msl (skips the export stage)
     MSLITE_LLM_ST_DEVICE=1 pytest tests/st \
         --package=output/mindspore-lite-llm-linux-x64-0.1.0.tar.gz --msl=/path/model.msl
@@ -55,6 +60,11 @@ import pytest
 MODELS = {
     "qwen2.5-0.5b": {
         "path": "qwen2.5-0.5b-instruct-q4_0.gguf",
+        "max_length": 1024,
+        "chunk_size": 64,
+    },
+    "qwen3-0.6b": {
+        "path": "qwen3-0.6b-q4_0.gguf",
         "max_length": 1024,
         "chunk_size": 64,
     },

@@ -18,10 +18,18 @@
 
 ```text
 <model-dir>/
-└── qwen2.5-0.5b-instruct-q4_0.gguf
+├── qwen2.5-0.5b-instruct-q4_0.gguf  # kirin9020
+└── qwen3-0.6b-q4_0.gguf             # kirin9030
 ```
 
-后续增加 4B 等模型时，将模型放入同一根目录，在 `conftest.py` 的 `MODELS` 中登记相对路径和导出参数，并在测试函数上声明对应的 `model_id`。入口脚本无需增加模型参数。
+当前用例与平台对应关系：
+
+| 用例 | `model_id` | 平台 |
+| --- | --- | --- |
+| `test_qwen2_5_0b5_full_chain` | `qwen2.5-0.5b` | `kirin9020` |
+| `test_qwen3_0b6_full_chain` | `qwen3-0.6b` | `kirin9030` |
+
+后续增加模型时，将模型放入同一根目录，在 `conftest.py` 的 `MODELS` 中登记相对路径和导出参数，并在测试函数上声明 `model_id` 及平台 marker。入口脚本无需增加模型参数。
 
 每个 ST 必须声明运行平台。只支持一个平台时添加对应 marker；两个平台都支持时叠加两个：
 
