@@ -170,6 +170,7 @@ setup(
         "lite_boost.model.qwenimage",
         "lite_boost.model.qwen_image_edit",
         "lite_boost.model.booguimage",
+        "lite_boost.model.qwen3_30B_A3B",
     ],
     package_dir={
         "lite_boost": ".",
@@ -182,6 +183,7 @@ setup(
         "lite_boost.model.qwenimage": "model/qwenimage",
         "lite_boost.model.qwen_image_edit": "model/qwen_image_edit",
         "lite_boost.model.booguimage": "model/booguimage",
+        "lite_boost.model.qwen3_30B_A3B": "model/qwen3_30B_A3B",
     },
     package_data={"lite_boost": _get_package_data()},
     include_package_data=True,

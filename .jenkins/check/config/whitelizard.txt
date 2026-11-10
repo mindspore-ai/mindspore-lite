@@ -283,3 +283,7 @@ mindspore-lite/mindspore-lite/lite_llm/src/tokenizer/bpe_codec.cc:mslite_llm::BP
 mindspore-lite/mindspore-lite/lite_llm/src/backend/nnrt/nnrt_executor.cc:mslite::backend::nnrt::NnrtExecutor::ValidateModelContract
 # lite_llm: CLI main - setup checks + streaming pipeline (NLOC 101, threshold 100)
 mindspore-lite/mindspore-lite/lite_llm/examples/mslite-chat.cc:main
+# lite_boost/qwen3_30B_A3B: graph-capture/data-driven control flow ported verbatim
+# from the Qwen3.5-30B-A3B bundle (single capture routine per bucket).
+mindspore-lite/mindspore-lite/lite_boost/python/model/qwen3_30B_A3B/graph_decode.py:qwen3_30B_full_attn_forward_graph, graph_generate
+mindspore-lite/mindspore-lite/lite_boost/python/model/qwen3_30B_A3B/boost.py:boost_qwen3_30B_A3B
