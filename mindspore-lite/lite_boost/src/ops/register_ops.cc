@@ -18,6 +18,8 @@
 #include "plugin/rain_fusion_attention.h"
 #include "plugin/recurrent_gated_delta_rule.h"
 #include "plugin/chunk_gated_delta_rule.h"
+#include "plugin/fused_qk_l2norm_chunk_gated_delta_rule.h"
+#include "plugin/fused_causal_conv_silu.h"
 #include "plugin/quant_matmul_w4a8.h"
 #include "plugin/qkv_rms_norm_rope_cache.h"
 
@@ -77,6 +79,36 @@ TORCH_LIBRARY(lite_boost, m) {
     ) -> (Tensor, Tensor)
   )str");
 
+  // FusedQkL2NormChunkGatedDeltaRule — ChunkGatedDeltaRule with the host-side q/k row L2
+  // normalization fused in (query/key are RAW) and optional in-kernel pad-row zeroing.
+  // Same TND layout / dtypes as chunk_gated_delta_rule; ascend_a2 (ascend910b) op spec.
+  m.def(R"str(
+    fused_qk_l2norm_chunk_gated_delta_rule(
+      Tensor query,
+      Tensor key,
+      Tensor value,
+      Tensor beta,
+      Tensor initial_state,
+      Tensor actual_seq_lengths,
+      Tensor? g=None,
+      float scale_value=1.0,
+      bool out_zero_pad_rows=False
+    ) -> (Tensor, Tensor)
+  )str");
+
+  // FusedCausalConvSilu: Qwen3.5 gated-DeltaNet short-conv + SiLU, fixed 4 taps.
+  // BTS layout: x [B, T, S], weight [K=4, S], bias [S], int32 seq_len [1..8].
+  // Returns (y [B, T, S], conv_state [B, K, S]) — the trailing K rows are the
+  // recurrent-state cache the decode path consumes.
+  m.def(R"str(
+    fused_causal_conv_silu(
+      Tensor x,
+      Tensor weight,
+      Tensor bias,
+      Tensor seq_len
+    ) -> (Tensor, Tensor)
+  )str");
+
   // QuantMatmulW4a8: INT4×INT8→BF16 matmul
   m.def(R"str(quant_matmul_w4a8(
     Tensor act, Tensor weight, Tensor scale,
@@ -101,6 +133,8 @@ TORCH_LIBRARY_IMPL(lite_boost, PrivateUse1, m) {
   m.impl("rain_fusion_attention", &RainFusionAttentionLiteBoostImplNPU);
   m.impl("recurrent_gated_delta_rule", &RecurrentGatedDeltaRuleLiteBoostImplNPU);
   m.impl("chunk_gated_delta_rule", &lite_boost::ChunkGatedDeltaRuleLiteBoostImplNPU);
+  m.impl("fused_qk_l2norm_chunk_gated_delta_rule", &lite_boost::FusedQkL2NormChunkGatedDeltaRuleLiteBoostImplNPU);
+  m.impl("fused_causal_conv_silu", &lite_boost::FusedCausalConvSiluLiteBoostImplNPU);
   m.impl("quant_matmul_w4a8", &lite_boost::QuantMatmulW4a8LiteBoostImplNPU);
   m.impl("qkv_rms_norm_rope_cache", &QkvRmsNormRopeCacheLiteBoostImplNPU);
 }

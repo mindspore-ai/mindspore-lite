@@ -39,6 +39,7 @@ _BOOGUIMAGE_CLASSES = frozenset({'BooguImagePipeline', 'BooguImageTurboPipeline'
 # Entries are checked in order; the first hit wins, so specific entries
 # (e.g. wan2_2, booguimage) must precede their generic fallback (e.g. wan2_1).
 _MODEL_MATCH_TABLE = (
+    ('qwen3_5_9b', ('Qwen3_5',), frozenset(), None),
     ('booguimage', ('BooguImage',), _BOOGUIMAGE_CLASSES, None),
     ('qwen_image_edit', ('QwenImageEdit',), frozenset(), None),
     ('wan2_2', ('Wan',), _WAN22_CLASSES, _WAN22_MARKER_ATTR),
@@ -46,6 +47,7 @@ _MODEL_MATCH_TABLE = (
 )
 
 _BOOST_REGISTRY = {
+    'qwen3_5_9b': ('.qwen3_5_9b.boost', 'boost_qwen3_5_9b'),
     'wan2_1': ('.wan2_1.boost', 'boost_wan2_1'),
     'wan2_2': ('.wan2_2.boost', 'boost_wan2_2'),
     'qwen_image_edit': ('.qwen_image_edit.boost', 'boost_qwen_image_edit'),
@@ -63,7 +65,8 @@ def detect_model_type(model) -> str:
             return key
     raise ValueError(
         f"Unsupported model type: {cls_name}. "
-        f"Expected a Wan-series, Qwen-Image-Edit or Boogu-series pipeline or model."
+        f"Expected a Qwen3.5-, Wan-series, Qwen-Image-Edit or Boogu-series "
+        f"pipeline or model."
     )
 
 
