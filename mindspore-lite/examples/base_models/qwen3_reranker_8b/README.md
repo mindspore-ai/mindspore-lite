@@ -53,7 +53,8 @@ lm_head:   全权重；host 取拥有全局最后 token 的 rank（左 padding �
 
 ### 公共前缀分桶设计
 
-**Prefix（固定 1 桶，静态 shape）** — 转换时用 `--inputShape` 固定：
+**Prefix（推理时固定 shape）** — 转换时用 `--inputShape`，或在目录级动态转换后用
+prefix 配置的 `ge.inputShape` 固定：
 
 | 项 | 值 |
 |---|---|
@@ -139,7 +140,7 @@ bash export_and_convert.sh ./Qwen3-Reranker-8B fp16 512 384 ./output
 `export_and_convert.sh` 自动执行：
 
 1. `export_qwen3_reranker_8b_onnx_cp.py --mode prefix/suffix` 导出双 rank 的 prefix + suffix ONNX（同一脚本也支持 `--mode whole` 全图 CP，历史入口）；
-2. `converter_lite --optimize=none --saveType=MINDIR` 转换：**prefix 静态**（`--inputShape` 固定）、**suffix 动态**（不带 inputShape）；
+2. `converter_lite --optimize=none --saveType=MINDIR` 转换：**prefix**、**suffix**；
 3. 放置配置：把随示例交付的 `configs/{prefix,suffix}.config` 复制到产物目录（prefix 静态、suffix 4 档动态）。
 
 > 首次跑约 25–40 分钟（大头是推理阶段的 GE 双 rank 特化编译）；之后命中
@@ -191,18 +192,22 @@ output/export/rank{r}/{prefix,suffix}/qwen3_reranker_8b_{prefix,suffix}_rank{r}.
 
 ## 3. ONNX 转 MindIR
 
-### 转换命令
+### 当前脚本的转换方式（目录级、动态）
+
+`export_and_convert.sh` 用**一次目录级调用**转换 `export/` 下的全部四张 ONNX，且**不带**
+`--inputShape`，因此 prefix / suffix 都保留动态序列轴：
 
 ```bash
-# prefix：静态（固定 512，部署时绝不 resize）
-$CONV --fmk=ONNX --modelFile=…/prefix/…_rank0.onnx --outputFile=…_rank0 \
-      --optimize=none --saveType=MINDIR \
-      --inputShape="input_ids:1,512;attention_mask:1,512;position_ids:1,512"
-
-# suffix：动态（不带 --inputShape，运行时按桶 resize）
-$CONV --fmk=ONNX --modelFile=…/suffix/…_rank0.onnx --outputFile=…_rank0 \
-      --optimize=none --saveType=MINDIR
+"$CONV" --fmk=ONNX \
+  --modelFile="$OUT/export/" \
+  --outputFile="$OUT/mindir/" \
+  --optimize=none --saveType=MINDIR
 ```
+
+- 四个图（`rank{0,1}/{prefix,suffix}`）递归转换到 `mindir/rank{r}/...`；
+- 外部权重合并成一个共享文件 `mindir/variables/data_0`（约 16 GB）；
+- prefix 的输入 shape 在 MindIR 中是 `[1, -1]`（`model.get_inputs()` 也会显示 `[1,-1]`），
+  **必须在推理配置里固定**，见下。
 
 ### 运行时动态分档配置（随示例预生成）
 
@@ -222,14 +227,25 @@ ge.dynamicNodeType=1
 - `ge.dynamicDims` 每档五元组，列次序与 `inputShape` 一致：
   `input_ids`(suffix 桶)、`attention_mask`(prefix 桶 + suffix 桶)、`position_ids`(suffix 桶)、
   `past_key_cache`/`past_value_cache`(prefix 桶)；
-- prefix 配置（`configs/qwen3_reranker_8b_prefix.config`）静态构建，**不含** `ge.inputShape`；
+- prefix 配置（`configs/qwen3_reranker_8b_prefix.config`）：`[ge_graph_options]` 里写死 512 的 `ge.inputShape`；
 - ⚠ 若改模型结构或导出契约（层数 / KV 头数 / `head_dim` / 桶大小），需同步修改这两个配置。
 
 ### 产出（MindIR）
 
 ```text
-output/mindir/rank{r}/{prefix,suffix}/qwen3_reranker_8b_{prefix,suffix}_rank{r}_graph.mindir
-output/mindir/rank{r}/{prefix,suffix}/…_variables/data_0   # 编译后的权重（fp16）
+output/mindir/
+├── rank0/
+│   ├── prefix/
+│   │   └── qwen3_reranker_8b_prefix_rank0_graph.mindir
+│   └── suffix/
+│       └── qwen3_reranker_8b_suffix_rank0_graph.mindir
+├── rank1/
+│   ├── prefix/
+│   │   └── qwen3_reranker_8b_prefix_rank1_graph.mindir
+│   └── suffix/
+│       └── qwen3_reranker_8b_suffix_rank1_graph.mindir
+└── variables/
+    └── data_0        # 四个图共享的外部权重（fp16，约 16 GB）
 ```
 
 ### GE 缓存说明（模型缓存 / 编译缓存）

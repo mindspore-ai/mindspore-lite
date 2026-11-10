@@ -104,33 +104,26 @@ for MODE in prefix suffix; do
     --prefix-len $PREFIX_BUCKET --suffix-len $SUFFIX_LEN --mode $MODE 2>&1 | tail -2
 done
 
-# ---------- 2) convert to MindIR (prefix static / suffix dynamic) ----------
+# ---------- 2) convert to MindIR (prefix / suffix dynamic) ----------
 echo ""; echo "=== [2/3] 转换 mindir  $(date +%T) ==="
 for R in 0 1; do mkdir -p "$OUT/mindir/rank$R/prefix" "$OUT/mindir/rank$R/suffix"; done
-echo "--- prefix：静态转换（固定 $PREFIX_BUCKET，部署时绝不 resize） ---"
-for R in 0 1; do
-  "$CONV" --fmk=ONNX \
-    --modelFile="$OUT/export/rank$R/prefix/qwen3_reranker_8b_prefix_rank$R.onnx" \
-    --outputFile="$OUT/mindir/rank$R/prefix/qwen3_reranker_8b_prefix_rank$R" \
-    --optimize=none --saveType=MINDIR \
-    --inputShape="input_ids:1,$PREFIX_BUCKET;attention_mask:1,$PREFIX_BUCKET;position_ids:1,$PREFIX_BUCKET" \
-    2>&1 | tail -1
-done
-echo "--- suffix：动态转换（不带 --inputShape，运行时按桶 resize） ---"
-for R in 0 1; do
-  "$CONV" --fmk=ONNX \
-    --modelFile="$OUT/export/rank$R/suffix/qwen3_reranker_8b_suffix_rank$R.onnx" \
-    --outputFile="$OUT/mindir/rank$R/suffix/qwen3_reranker_8b_suffix_rank$R" \
-    --optimize=none --saveType=MINDIR 2>&1 | tail -1
-done
+
+"$CONV" --fmk=ONNX \
+  --modelFile="$OUT/export/" \
+  --outputFile="$OUT/mindir/" \
+  --optimize=none --saveType=MINDIR
 
 # ---------- 3) install configs ----------
 echo ""; echo "=== [3/3] 放置配置  $(date +%T) ==="
 mkdir -p "$OUT/configs"
 # Both configs are pre-generated and shipped with the example (see configs/):
-#   * prefix: the statically converted mindir has fixed shapes, so ge.inputShape is not
-#     needed there, and model.resize() must never be called (it would switch the graph
-#     back to the GE dynamic path and change the numerics).
+#   * prefix: the directory-level conversion above leaves the prefix graph dynamic
+#     ([1,-1]), so the config fixes it via ge.inputShape=<...1,512...> under
+#     [ge_graph_options] — [ge_session_options] is ignored by the runtime and the
+#     first predict then fails in ReshapeRecoveryPass. model.resize() must never be
+#     called on the prefix (it would switch the graph back to the GE dynamic path
+#     and change the numerics). If you re-enable the per-rank static prefix
+#     conversion commented out above, drop ge.inputShape from this config instead.
 #   * suffix: 4 dynamic buckets (ONNX input names + dynamicDims + dynamicNodeType=1).
 # Keep both files in sync when the model structure or the export contract changes
 # (layer count / KV heads / head_dim / bucket sizes).
