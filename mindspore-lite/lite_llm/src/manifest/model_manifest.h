@@ -83,7 +83,7 @@ struct ModelManifestAssets {
   std::string attention_mask;
 };
 
-// S16S4 stores FixPipe records containing group scales / activation_scale.
+// S16S4 stores FP16 effective group scales.
 enum class EmbeddingFormat { kUnknown, kW4A16, kS16S4, kFP16 };
 
 inline bool IsS16S4Embedding(EmbeddingFormat format) { return format == EmbeddingFormat::kS16S4; }

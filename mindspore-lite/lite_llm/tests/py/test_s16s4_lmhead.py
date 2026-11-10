@@ -191,7 +191,7 @@ def test_shared_s16s4_compiler_shapes():
     cmd = build_omg_command("in", "out", config, 1024, (1, 64), "S16S4",
                             platform="kirin9030", omg="/omg")
     shapes = next(arg for arg in cmd if arg.startswith("--input_shape="))
-    assert "embedding_weight:151936,1280;embedding_scale:1187,20,128,8;past_key_0" in shapes
+    assert "embedding_weight:151936,1280;embedding_scale:1187,20,128,2;past_key_0" in shapes
 
 
 def test_compiler_rejects_unsupported_quant_target():

@@ -144,7 +144,7 @@ QUANT_PRESETS = MappingProxyType({
     QuantType.S16S4: QuantPreset(
         quant_type=QuantType.S16S4, bits=4, group_size=128,
         weight_dtype=QuantDType.INT4, activation_dtype=QuantDType.INT16,
-        scale_encoding=ScaleEncoding.FIXPIPE, packing_layout=PackingLayout.S16S4_NZ,
+        scale_encoding=ScaleEncoding.FLOAT16, packing_layout=PackingLayout.S16S4_NZ,
         operator="MsMatmulS16S4", embedding_format=EmbeddingFormat.S16S4,
         export_targets=("kirin9030",),
     ),

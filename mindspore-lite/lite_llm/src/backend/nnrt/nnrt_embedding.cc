@@ -43,12 +43,12 @@ constexpr float kQwen3SharedHeadScale = 128.0f;
 constexpr float kDefaultActivationScale = 1024.0f;
 
 // S16S4 uses [N/128, K/64, 128, 32] packed weights and
-// [N/128, K/128, 128, 8] FixPipe scale records.
+// [N/128, K/128, 128, 2] FP16 effective-scale records.
 constexpr int kS16S4RowsPerTile = 128;
 constexpr int kS16S4ColumnsPerTile = 64;
 constexpr int kS16S4GroupSize = 128;
 constexpr int kS16S4PackedRowBytes = kS16S4ColumnsPerTile / kWeightsPerByte;
-constexpr int kS16S4ScaleRecordBytes = 8;
+constexpr int kS16S4ScaleRecordBytes = 2;
 
 // Q4 NZF stores one FP16 scale per Group32 and phase-interleaved 16x16 tiles.
 constexpr int kQ4ElementsPerScaleByte = kQ4GroupElems / kQ4ScaleBytesPerGroup;
@@ -342,13 +342,12 @@ bool DequantizeS16S4EmbeddingRow(const S16S4EmbeddingView &view, int token, uint
   for (size_t group = 0; group < groups_per_row; ++group) {
     const size_t scale_offset =
       ((row_tile * groups_per_row + group) * kS16S4RowsPerTile + row_in_tile) * kS16S4ScaleRecordBytes;
-    float effective_scale = 0.0f;
-    if (memcpy_s(&effective_scale, sizeof(effective_scale), view.scales + scale_offset, sizeof(effective_scale)) !=
-        EOK) {
+    uint16_t scale_bits = 0;
+    if (memcpy_s(&scale_bits, sizeof(scale_bits), view.scales + scale_offset, sizeof(scale_bits)) != EOK) {
       return false;
     }
-    // Recover the group scale from the activation-scaled FixPipe encoding.
-    const float scale = effective_scale * view.activation_scale;
+    // Recover the group scale from the activation-scaled FP16 encoding.
+    const float scale = Fp16BitsToFp32(scale_bits) * view.activation_scale;
     if (!std::isfinite(scale)) {
       return false;
     }

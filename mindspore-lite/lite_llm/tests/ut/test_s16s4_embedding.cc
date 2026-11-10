@@ -18,12 +18,14 @@
 
 #include <algorithm>
 #include <cfenv>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <vector>
 #include "backend/nnrt/nnrt_embedding.h"
 
 using mslite::backend::nnrt::DequantizeS16S4EmbeddingRow;
+using mslite::backend::nnrt::Fp16BitsToFp32;
 using mslite::backend::nnrt::Fp32ToFp16Bits;
 using mslite::backend::nnrt::S16S4EmbeddingView;
 
@@ -45,7 +47,7 @@ class S16S4RoundingTest : public ::testing::Test {
 TEST_F(S16S4RoundingTest, UnusedValuesDoNotRaiseOverflow) {
   constexpr int kSize = 128;
   std::vector<uint8_t> weights(kSize * kSize / 2);
-  std::vector<uint8_t> scales(kSize * 8, 0);
+  std::vector<uint8_t> scales(kSize * 2, 0);
   S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kSize, kSize, 1.0f};
   std::vector<uint16_t> output(kSize);
   ASSERT_EQ(std::fesetround(FE_TONEAREST), 0);
@@ -55,7 +57,9 @@ TEST_F(S16S4RoundingTest, UnusedValuesDoNotRaiseOverflow) {
     const int value = nibble < 8 ? nibble : nibble - 16;
     for (float scale : {8188.0f, 8192.0f, 16384.0f, -16384.0f, std::numeric_limits<float>::max()}) {
       const uint16_t expected = Fp32ToFp16Bits(value * scale);
-      std::memcpy(scales.data(), &scale, sizeof(scale));
+      const uint16_t bits = Fp32ToFp16Bits(scale < 0 ? -1.0f : 1.0f);
+      std::memcpy(scales.data(), &bits, sizeof(bits));
+      view.activation_scale = std::fabs(scale);
       ASSERT_EQ(std::feclearexcept(FE_ALL_EXCEPT), 0);
       ASSERT_TRUE(DequantizeS16S4EmbeddingRow(view, 0, output.data()));
       EXPECT_EQ(std::fetestexcept(FE_OVERFLOW), 0) << "packed=" << static_cast<int>(packed) << ", scale=" << scale;
@@ -67,10 +71,11 @@ TEST_F(S16S4RoundingTest, UnusedValuesDoNotRaiseOverflow) {
 TEST_F(S16S4RoundingTest, UsedValuesRetainScalarOverflow) {
   constexpr int kSize = 128;
   std::vector<uint8_t> weights(kSize * kSize / 2, 0x22);
-  std::vector<uint8_t> scales(kSize * 8, 0);
+  std::vector<uint8_t> scales(kSize * 2, 0);
   const float scale = std::numeric_limits<float>::max();
-  std::memcpy(scales.data(), &scale, sizeof(scale));
-  S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kSize, kSize, 1.0f};
+  const uint16_t bits = 0x3c00;  // effective scale 1
+  std::memcpy(scales.data(), &bits, sizeof(bits));
+  S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kSize, kSize, scale};
   std::vector<uint16_t> output(kSize);
   ASSERT_EQ(std::fesetround(FE_TONEAREST), 0);
   ASSERT_EQ(std::feclearexcept(FE_ALL_EXCEPT), 0);
@@ -82,12 +87,14 @@ TEST_F(S16S4RoundingTest, UsedValuesRetainScalarOverflow) {
 TEST_F(S16S4RoundingTest, UnusedValuesDoNotRaiseUnderflowOrInexact) {
   constexpr int kSize = 128;
   std::vector<uint8_t> weights(kSize * kSize / 2, 0);
-  std::vector<uint8_t> scales(kSize * 8, 0);
+  std::vector<uint8_t> scales(kSize * 2, 0);
   S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kSize, kSize, 1.0f};
   std::vector<uint16_t> output(kSize);
   ASSERT_EQ(std::fesetround(FE_TONEAREST), 0);
   for (float scale : {0x1p-25f, 0x1p-149f, 1.0f / 3}) {
-    std::memcpy(scales.data(), &scale, sizeof(scale));
+    const uint16_t bits = 0x3c00;
+    std::memcpy(scales.data(), &bits, sizeof(bits));
+    view.activation_scale = scale;
     ASSERT_EQ(std::feclearexcept(FE_ALL_EXCEPT), 0);
     ASSERT_TRUE(DequantizeS16S4EmbeddingRow(view, 0, output.data()));
     EXPECT_EQ(std::fetestexcept(FE_ALL_EXCEPT), 0) << "scale=" << scale;
@@ -102,13 +109,15 @@ TEST_F(S16S4RoundingTest, LookupPreservesScalarRoundingModes) {
     const size_t offset = (k / 64 * kSize) * 32 + k % 64 / 2;
     weights[offset] = static_cast<uint8_t>((k % 16) | (((k + 1) % 16) << 4));
   }
-  std::vector<uint8_t> scales(kSize * 8, 0);
+  std::vector<uint8_t> scales(kSize * 2, 0);
   S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kSize, kSize, 1.0f};
   std::vector<uint16_t> output(kSize);
   for (int mode : {FE_TONEAREST, FE_UPWARD, FE_DOWNWARD, FE_TOWARDZERO}) {
     ASSERT_EQ(std::fesetround(mode), 0);
     for (float scale : {1.0f + 0x1p-11f, 0x1p-25f}) {
-      std::memcpy(scales.data(), &scale, sizeof(scale));
+      const uint16_t bits = 0x3c00;
+      std::memcpy(scales.data(), &bits, sizeof(bits));
+      view.activation_scale = scale;
       ASSERT_TRUE(DequantizeS16S4EmbeddingRow(view, 0, output.data()));
       for (int k = 0; k < kSize; ++k) {
         const int nibble = k % 16;
@@ -129,20 +138,23 @@ TEST(S16S4Embedding, LookupMatchesScalarForRoundingAndSpecialScales) {
     const size_t offset = (k / 64 * kSize) * 32 + k % 64 / 2;
     weights[offset] = static_cast<uint8_t>((k % 16) | (((k + 1) % 16) << 4));
   }
-  std::vector<uint8_t> scales(kSize * 8, 0);
+  std::vector<uint8_t> scales(kSize * 2, 0);
   S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kSize, kSize, 1.0f};
   std::vector<uint16_t> output(kSize);
   for (float scale : {1.0f / 3, -1.0f / 3, 0x1p-24f, 1.0e-8f, 65504.0f, 0.0f, -0.0f}) {
-    std::memcpy(scales.data(), &scale, sizeof(scale));
+    const uint16_t bits = Fp32ToFp16Bits(scale);
+    std::memcpy(scales.data(), &bits, sizeof(bits));
+    const float encoded_scale = Fp16BitsToFp32(bits);
     ASSERT_TRUE(DequantizeS16S4EmbeddingRow(view, 0, output.data()));
     for (int k = 0; k < kSize; ++k) {
       const int nibble = k % 16;
       const int value = nibble < 8 ? nibble : nibble - 16;
-      EXPECT_EQ(output[k], Fp32ToFp16Bits(value * scale)) << "scale=" << scale << ", k=" << k;
+      EXPECT_EQ(output[k], Fp32ToFp16Bits(value * encoded_scale)) << "scale=" << scale << ", k=" << k;
     }
   }
   for (float invalid : {std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
-    std::memcpy(scales.data(), &invalid, sizeof(invalid));
+    const uint16_t bits = Fp32ToFp16Bits(invalid);
+    std::memcpy(scales.data(), &bits, sizeof(bits));
     EXPECT_FALSE(DequantizeS16S4EmbeddingRow(view, 0, output.data()));
   }
 }
@@ -164,9 +176,9 @@ TEST(S16S4Embedding, TileBoundariesAndSignedNibbles) {
       }
     }
   }
-  std::vector<uint8_t> scales(kVocab * kHidden / 16, 0);
-  for (size_t i = 0; i < scales.size(); i += 8) {
-    const float scale = 1.0f / 1024.0f;
+  std::vector<uint8_t> scales(kVocab * kHidden / 64, 0);
+  for (size_t i = 0; i < scales.size(); i += 2) {
+    const uint16_t scale = 0x1400;  // FP16 1/1024
     std::memcpy(scales.data() + i, &scale, sizeof(scale));
   }
   S16S4EmbeddingView view{weights.data(), weights.size(), scales.data(), scales.size(), kHidden, kVocab, 1024.0f};
@@ -185,8 +197,8 @@ TEST(S16S4Embedding, TileBoundariesAndSignedNibbles) {
   EXPECT_FALSE(DequantizeS16S4EmbeddingRow(view, kVocab, output.data()));
   // A128 scales encode the same embedding values with activation scale 128.
   view.activation_scale = 128.0f;
-  for (size_t i = 0; i < scales.size(); i += 8) {
-    const float scale = 1.0f / view.activation_scale;
+  for (size_t i = 0; i < scales.size(); i += 2) {
+    const uint16_t scale = Fp32ToFp16Bits(1.0f / view.activation_scale);
     std::memcpy(scales.data() + i, &scale, sizeof(scale));
   }
   ASSERT_TRUE(DequantizeS16S4EmbeddingRow(view, 128, output.data()));
