@@ -23,12 +23,26 @@ device, so a question costs exactly one branch pass.
 
   python -I infer_kev_4b_mslite.py --state-mindir DIR/kev_state_graph.mindir \\
          --branch-mindir DIR/kev_branch_graph.mindir --head-npz head.npz \\
-         --tokenizer MERGED [--record-json record.json]
+         --tokenizer MERGED [--record-json record.json] \\
+         --branch-gears 128 256 512 1024 1536 2048 --past-capacity 3072
 
   # length sweep; needs only the two graphs
   python -I infer_kev_4b_mslite.py --state-mindir DIR/kev_state_graph.mindir \\
          --branch-mindir DIR/kev_branch_graph.mindir --perf \\
+         --branch-gears 128 256 512 1024 1536 2048 --past-capacity 3072 \\
          --state-lengths 128 256 512 1024 2048 --branch-lengths 128 256 512 1024 2048
+
+Every request is one branch pass on top of a state the script already holds. Two deployment
+optimizations keep that pass cheap and are on unless turned off:
+
+* the state pass is cached by its token ids (``--score-all`` streams a JSONL and reuses the state
+  whenever the next record repeats it; ``--no-prefix-cache`` recomputes it, for an A/B) and the
+  branch inputs / mask / output buffers stay on the device between passes (``--no-zero-copy``
+  rebuilds them per call, for the same reason);
+* a gear-converted branch graph (``--branch-gears``) only takes the row lengths it was compiled
+  for, so a row is right-padded to its bucket and the output sliced back; the same graph pins
+  the KV length to ``--past-capacity``, which makes the branch static in the state length. Both
+  flags describe one converted graph and are required together.
 """
 
 import argparse
@@ -128,11 +142,19 @@ def rows_of(enc):
     return enc["ids"][:state_len], enc["pos"][:state_len], rows
 
 
-def additive_mask(rows, past):
-    """[1, 1, rows, past + rows]: the cached prefix is visible, the new row is causal."""
-    column = np.arange(past + rows)[None, :]
+def additive_mask(rows, past, capacity=None):
+    """[1, 1, rows, width + rows]: cached prefix visible, new row causal, pad slots hidden.
+
+    ``width`` is ``past`` when every cached column holds a real token. When the KV cache is
+    zero-padded to a fixed ``capacity`` (see ``--past-capacity``) the columns between the real
+    prefix and the new row are fillers that must never be attended.
+    """
+    width = past if capacity is None else capacity
+    column = np.arange(width + rows)[None, :]
     row = np.arange(rows)[:, None]
-    allowed = column <= (past + row)
+    allowed = column <= (width + row)
+    if width > past:
+        allowed &= (column < past) | (column >= width)
     return np.where(allowed, 0.0, MASK_FILL)[None, None].astype(np.float16)
 
 
@@ -188,6 +210,50 @@ def _resize(model, feed):
         model.resize(inputs, target)
 
 
+def _input_dtype(model, name):
+    """The dtype the converted graph declares for an input (int64 is rewritten to int32)."""
+    for tensor in model.get_inputs():
+        if getattr(tensor, "name", None) == name:
+            return tensor.dtype
+    return None
+
+
+class BranchBuffers:
+    """Device input / output buffers of one branch row shape, rewritten in place every call.
+
+    Zero-copy path: the mask never changes for a shape, and the ids / positions are written into
+    the same device tensors, so a request pays one ``set_data_from_numpy`` per input and one
+    ``predict`` instead of allocating five tensors and a fresh mask each time. The output tensor is
+    preallocated too, which leaves the hidden states as the only array that comes back to the host
+    (the pointer head reads them in numpy).
+    """
+
+    def __init__(self, model, device, rows, past, capacity):
+        width = past if capacity is None else capacity
+        self.ids = self._tensor(model, "input_ids", [1, rows], device, np.int32)
+        self.pos = self._tensor(model, "position_ids", [1, rows], device, np.int32)
+        self.mask = self._tensor(model, "attention_mask", [1, 1, rows, width + rows], device,
+                                 np.float16)
+        self.mask.set_data_from_numpy(additive_mask(rows, past, capacity))
+        hidden = int(list(model.get_outputs()[0].shape)[-1])
+        if hidden <= 0:
+            raise RuntimeError("branch graph does not declare a static hidden size, so the "
+                               "preallocated output buffer cannot be built")
+        self.out = mslite.Tensor(shape=[1, rows, hidden],
+                                 dtype=model.get_outputs()[0].dtype, device=device)
+
+    @staticmethod
+    def _tensor(model, name, shape, device, default_dtype):
+        """A device tensor in the dtype the graph declares for ``name``."""
+        dtype = _input_dtype(model, name) or default_dtype
+        return mslite.Tensor(shape=shape, dtype=dtype, device=device)
+
+    def write(self, model, ids, pos):
+        """Overwrite the padded ids / positions with this request's row."""
+        self.ids.set_data_from_numpy(_cast_for(model, "input_ids", ids[None]))
+        self.pos.set_data_from_numpy(_cast_for(model, "position_ids", pos[None]))
+
+
 class Kev4BInferencer:
     """The two graphs plus the pointer head, with the state caches kept on the device."""
 
@@ -203,6 +269,19 @@ class Kev4BInferencer:
         self.tokenizer = AutoTokenizer.from_pretrained(str(args.tokenizer)) if args.tokenizer else None
         self.max_state = args.max_state
         self.max_branch = args.max_branch
+        # A gear-mode branch graph only accepts the row lengths it was compiled for; the row is
+        # right-padded to the smallest one that fits and the output sliced back to the real row.
+        self.branch_gears = sorted(set(getattr(args, "branch_gears", None) or []))
+        self.pad_id = self._pad_id()
+        # Capacity mode pins the KV length in the branch graph: the state KV is zero-padded once
+        # per state pass and the mask hides the tail, so the graph is static in the state length.
+        self.past_capacity = getattr(args, "past_capacity", None)
+        self.zero_copy = getattr(args, "zero_copy", True)
+        self.use_prefix = getattr(args, "prefix_cache", True)
+        self.device = f"ascend:{args.device_id}"
+        self._buffers = {}
+        self._prefix_key = None
+        self._caches = None
 
     def _build(self, path):
         """Load one MindIR graph."""
@@ -233,22 +312,120 @@ class Kev4BInferencer:
                                                   (self.conv_width - width, 0)))
         return mslite.Tensor(array)
 
+    def _pad_kv(self, kv):
+        """Zero-pad the state KV to the branch graph's fixed capacity, once per state pass.
+
+        The padded columns are never attended (the branch mask hides them), so this only changes
+        the tensor's shape. Only the KV is padded: the conv / recurrent caches are recurrent end
+        states, and appending padding tokens to the state row would change their values.
+        """
+        if not self.past_capacity:
+            return kv
+        past_len = list(kv.shape)[3]
+        if past_len > self.past_capacity:
+            raise ValueError(f"state of {past_len} tokens overflows the branch graph's KV "
+                             f"capacity {self.past_capacity}")
+        if past_len == self.past_capacity:
+            return kv
+        array = np.pad(kv.get_data_to_numpy(),
+                       ((0, 0), (0, 0), (0, 0), (0, self.past_capacity - past_len), (0, 0)))
+        buffer = mslite.Tensor(shape=list(array.shape), dtype=kv.dtype, device=self.device)
+        buffer.set_data_from_numpy(array)
+        return buffer
+
     def state_pass(self, ids, pos):
         """Read the state row and leave its three caches on the device."""
         feed = {"input_ids": np.asarray(ids)[None], "position_ids": np.asarray(pos)[None],
                 "attention_mask": additive_mask(len(ids), 0)}
         _resize(self.state_model, feed)
-        return self.state_model.predict(_feed(self.state_model, feed))
+        caches = self.state_model.predict(_feed(self.state_model, feed))
+        caches[2] = self._pad_kv(caches[2])
+        return caches
+
+    def prefix_caches(self, ids, pos):
+        """The state caches for this exact state row, computed again only when the state changes.
+
+        Every question of a record runs on the same caches; a JSONL stream usually repeats one
+        public state as well, and then only the first record pays the state pass. The branch
+        buffers are tied to a state's length, so they are dropped whenever the state changes
+        (not when ``--no-prefix-cache`` merely recomputes the same row).
+        """
+        key = tuple(ids)
+        changed = self._caches is None or key != self._prefix_key
+        if changed:
+            self._buffers.clear()
+        if changed or not self.use_prefix:
+            self._caches = self.state_pass(ids, pos)
+            self._prefix_key = key
+        return self._caches
+
+    def _pad_id(self):
+        """Token id used to right-pad a gear-mode row: the eos id when defined, else 0.
+
+        The padding columns are hidden by the causal mask and their outputs are dropped, so
+        their value cannot change the result; eos only keeps the padded row legitimate text.
+        Tokenizers may leave ``eos_token_id`` unset or hold a list of them, and ``int(None)``
+        would fail where the row is built rather than where the tokenizer was chosen.
+        """
+        if not self.branch_gears:
+            return 0
+        eos = getattr(self.tokenizer, "eos_token_id", None)
+        if isinstance(eos, (list, tuple)):
+            eos = eos[0] if eos else None
+        return 0 if eos is None else int(eos)
+
+    def _gear_rows(self, rows):
+        """The row length the branch graph is compiled for: the smallest gear that fits ``rows``."""
+        if not self.branch_gears:
+            return rows
+        for gear in self.branch_gears:
+            if rows <= gear:
+                return gear
+        raise ValueError(f"branch row of {rows} tokens overflows the largest gear "
+                         f"{self.branch_gears[-1]}")
+
+    def _device_feed(self, buffers, caches, conv):
+        """The feed of one branch call, with the device buffers standing in for host arrays."""
+        return {"input_ids": buffers.ids, "position_ids": buffers.pos,
+                "attention_mask": buffers.mask, "past_conv_states": conv,
+                "past_recurrent_states": caches[1], "past_kv_cache": caches[2]}
+
+    def _run_branch(self, ids, pos, caches, conv, rows, past_len):
+        """One branch pass: reuse the device buffers of this shape, or build a fresh feed."""
+        if not self.zero_copy:
+            feed = {"input_ids": ids[None], "position_ids": pos[None],
+                    "attention_mask": additive_mask(rows, past_len, self.past_capacity),
+                    "past_conv_states": conv, "past_recurrent_states": caches[1],
+                    "past_kv_cache": caches[2]}
+            _resize(self.branch_model, feed)
+            return self.branch_model.predict(_feed(self.branch_model, feed))[0].get_data_to_numpy()
+        buffers = self._buffers.get((rows, past_len))
+        if buffers is None:
+            buffers = BranchBuffers(self.branch_model, self.device, rows, past_len,
+                                    self.past_capacity)
+            self._buffers[(rows, past_len)] = buffers
+        buffers.write(self.branch_model, ids, pos)
+        feed = self._device_feed(buffers, caches, conv)
+        # Alternate bucket sizes must resize back and forth: the check is a shape-list compare,
+        # and the actual resize only runs when the graph is not already at this shape.
+        _resize(self.branch_model, feed)
+        tensors = [feed[name] for name in _ordered(self.branch_model, feed)]
+        return self.branch_model.predict(tensors, outputs=[buffers.out])[0].get_data_to_numpy()
 
     def branch_pass(self, row, caches, past_len):
-        """Read one question row over the cached state and return its hidden states."""
-        feed = {"input_ids": np.asarray(row["ids"])[None],
-                "position_ids": np.asarray(row["pos"])[None],
-                "attention_mask": additive_mask(len(row["ids"]), past_len),
-                "past_conv_states": self._pad_conv(caches[0]),
-                "past_recurrent_states": caches[1], "past_kv_cache": caches[2]}
-        _resize(self.branch_model, feed)
-        return self.branch_model.predict(_feed(self.branch_model, feed))[0].get_data_to_numpy()
+        """Read one question row over the cached state and return its real hidden states.
+
+        With ``--branch-gears`` the row is right-padded to its bucket: padding ids are the eos
+        token, padding positions continue the real ones, and the causal mask already hides the
+        padding from every real row. Only the real rows of the output are returned.
+        """
+        rows = self._gear_rows(len(row["ids"]))
+        ids = np.full(rows, self.pad_id, dtype=np.int32)
+        ids[:len(row["ids"])] = row["ids"]
+        pos = np.arange(past_len, past_len + rows, dtype=np.int32)
+        pos[:len(row["pos"])] = row["pos"]
+        hidden = self._run_branch(ids, pos, caches, self._pad_conv(caches[0]), rows, past_len)
+        return hidden[:, :len(row["ids"])]
 
     def _timed(self, model, feed, iters):
         """Mean predict time after two warm-up calls; the second one performs the real resize."""
@@ -269,10 +446,15 @@ class Kev4BInferencer:
                 "attention_mask": additive_mask(length, 0)}
 
     def _branch_feed(self, rng, past, length, caches):
-        """Synthetic question row of ``length`` tokens continuing the cached state."""
+        """Synthetic question row of ``length`` tokens continuing the cached state.
+
+        With gears the graph only takes the compiled lengths, so the sweep measures the bucket
+        the row actually lands in rather than an unattainable exact shape.
+        """
+        length = self._gear_rows(length)
         return {"input_ids": rng.integers(0, PERF_VOCAB, (1, length), dtype=np.int32),
                 "position_ids": np.arange(past, past + length, dtype=np.int32)[None],
-                "attention_mask": additive_mask(length, past),
+                "attention_mask": additive_mask(length, past, self.past_capacity),
                 "past_conv_states": self._pad_conv(caches[0]),
                 "past_recurrent_states": caches[1], "past_kv_cache": caches[2]}
 
@@ -281,6 +463,7 @@ class Kev4BInferencer:
         rng = np.random.default_rng(PERF_SEED)
         for state_length in state_lengths:
             elapsed, caches = self._timed(self.state_model, self._state_feed(rng, state_length), iters)
+            caches[2] = self._pad_kv(caches[2])
             print(f"state  S={state_length:5d}                 {elapsed:8.1f} ms", flush=True)
             for branch_length in branch_lengths:
                 feed = self._branch_feed(rng, state_length, branch_length, caches)
@@ -292,7 +475,7 @@ class Kev4BInferencer:
         """Score every question of a record, returning the option probabilities per question."""
         state_ids, state_pos, rows = rows_of(encode(self.tokenizer, rec, self.max_state,
                                                    self.max_branch))
-        caches = self.state_pass(state_ids, state_pos)
+        caches = self.prefix_caches(state_ids, state_pos)
         answers = []
         for row in rows:
             hidden = self.branch_pass(row, caches, len(state_ids))[0]
@@ -312,6 +495,14 @@ def record_from_args(args):
         raise SystemExit(f"record index {args.record_index} is past the end of the file")
     with open(args.record_json, encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def records_from_jsonl(path):
+    """Every record of a JSONL file, in order, for the streaming mode."""
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                yield json.loads(line)
 
 
 def print_answers(rec, answers):
@@ -337,8 +528,25 @@ def parse_args(argv=None):
                         help="one Kev record (JSON, or JSONL with --record-index); "
                              "defaults to the built-in demo record")
     parser.add_argument("--record-index", type=int, default=0)
+    parser.add_argument("--score-all", action="store_true",
+                        help="score every line of a JSONL --record-json, reusing the state pass "
+                             "when consecutive records share the same state")
+    parser.add_argument("--no-prefix-cache", dest="prefix_cache", action="store_false",
+                        help="recompute the state pass for every record instead of keeping it "
+                             "when the state row repeats")
     parser.add_argument("--max-state", type=int, default=8192)
     parser.add_argument("--max-branch", type=int, default=16384)
+    parser.add_argument("--branch-gears", type=int, nargs="+", default=None,
+                        help="bucket lengths a gear-mode branch MindIR was converted for; rows are "
+                             "padded to the smallest one and the output sliced back to the real "
+                             "row (needs --past-capacity: the same graph pins the KV length)")
+    parser.add_argument("--past-capacity", type=int, default=None,
+                        help="KV capacity the gear-mode branch MindIR was converted for; the state "
+                             "KV is zero-padded to it once and the mask hides the padding "
+                             "(needs --branch-gears)")
+    parser.add_argument("--no-zero-copy", dest="zero_copy", action="store_false",
+                        help="rebuild the mask and the input tensors on every branch pass instead "
+                             "of rewriting the device buffers")
     parser.add_argument("--device-id", type=int, default=0)
     parser.add_argument("--perf", action="store_true",
                         help="sweep synthetic lengths; only the two MindIR files are needed")
@@ -354,6 +562,17 @@ def parse_args(argv=None):
         parser.error("--state-lengths/--branch-lengths must be positive")
     if not args.perf and (args.head_npz is None or args.tokenizer is None):
         parser.error("--head-npz and --tokenizer are required unless --perf is given")
+    if (args.branch_gears is None) != (args.past_capacity is None):
+        parser.error("--branch-gears and --past-capacity go together: the gear-mode graph compiles "
+                     "both the row buckets and the KV capacity in one ge.dynamicDims list, so "
+                     "padding rows without pinning the cache feeds lengths it never compiled")
+    if args.branch_gears is not None:
+        if any(gear < 1 for gear in args.branch_gears):
+            parser.error("--branch-gears must be positive")
+        if args.past_capacity < 1:
+            parser.error("--past-capacity must be at least 1")
+    if args.score_all and (args.record_json is None or args.record_json.suffix != ".jsonl"):
+        parser.error("--score-all needs a .jsonl --record-json")
     return args
 
 
@@ -363,6 +582,11 @@ def main(argv=None):
     inferencer = Kev4BInferencer(args)
     if args.perf:
         inferencer.perf(args.state_lengths, args.branch_lengths, args.iters)
+        return 0
+    if args.score_all:
+        for index, record in enumerate(records_from_jsonl(args.record_json)):
+            print(f"=== record {index}")
+            print_answers(record, inferencer.answer(record))
         return 0
     rec = record_from_args(args)
     print_answers(rec, inferencer.answer(rec))
