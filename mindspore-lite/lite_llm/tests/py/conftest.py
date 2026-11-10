@@ -44,9 +44,9 @@ GOLDEN_MSL = os.path.join(DATA_DIR, "golden_v1.msl")
 EXPORT_DIR = os.path.join(TESTS_DIR, "..", "..", "export")
 
 
-def _register_package(name):
+def _register_package(name, pkg_dir=None):
     """Register an export-tree top-level package without touching sys.path."""
-    pkg_dir = os.path.join(EXPORT_DIR, name)
+    pkg_dir = pkg_dir or os.path.join(EXPORT_DIR, name)
     spec = importlib.util.spec_from_file_location(name, os.path.join(pkg_dir, "__init__.py"),
                                                   submodule_search_locations=[pkg_dir])
     module = importlib.util.module_from_spec(spec)
@@ -56,6 +56,7 @@ def _register_package(name):
 
 _register_package("utils")
 _register_package("models")
+_register_package("mslite_llm_quant", os.path.join(EXPORT_DIR, "..", "quant"))
 
 
 def pytest_sessionstart(session):

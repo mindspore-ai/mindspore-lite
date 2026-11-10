@@ -32,6 +32,8 @@ from pathlib import Path
 
 from jinja2 import Environment, nodes
 
+from mslite_llm_quant.generation_policy import GGUF_GENERATION_CONFIG_KEY, load_generation_policy
+
 logger = logging.getLogger(__name__)
 
 MSLT_MAGIC = 0x4D534C54
@@ -283,27 +285,6 @@ def _compile_if(node, out):
 
 # ─── tokenizer export ──────────────────────────────────────────────────────
 
-def _read_optional_json(path):
-    if not path.exists():
-        return {}
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _normalize_token_ids(value, field):
-    """Normalise a token-id value into a sorted de-duplicated list."""
-    if value is None:
-        return []
-    values = value if isinstance(value, list) else [value]
-    token_ids = []
-    for token_id in values:
-        if not isinstance(token_id, int) or token_id < 0:
-            raise ValueError(f"{field} must contain non-negative integer token IDs")
-        if token_id not in token_ids:
-            token_ids.append(token_id)
-    return token_ids
-
-
 def _policy_tokens_present(tokenizer, candidates):
     if not hasattr(tokenizer, "get_vocab"):
         return list(candidates)
@@ -514,23 +495,7 @@ def _export_sentencepiece(tokenizer, vocab_path):
 
 def export_generation_policy(tokenizer, model_dir, output_path):
     """Export ``generation_policy.json`` (stop/suppress token IDs)."""
-    generation_config = _read_optional_json(Path(model_dir) / "generation_config.json")
-    model_config = _read_optional_json(Path(model_dir) / "config.json")
-
-    eos_token_ids = generation_config.get("eos_token_id")
-    if eos_token_ids is None:
-        eos_token_ids = model_config.get("eos_token_id")
-    if eos_token_ids is None:
-        eos_token_ids = getattr(tokenizer, "eos_token_id", None)
-
-    stop_token_ids = _normalize_token_ids(eos_token_ids, "eos_token_id")
-    suppress_token_ids = _normalize_token_ids(generation_config.get("suppress_tokens"), "suppress_tokens")
-
-    conflict = sorted(set(stop_token_ids) & set(suppress_token_ids))
-    if conflict:
-        raise ValueError(f"Stop and suppress token IDs must not overlap: {conflict}")
-
-    policy = {"stop_token_ids": stop_token_ids, "suppress_token_ids": suppress_token_ids}
+    policy = load_generation_policy(tokenizer, model_dir)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
@@ -548,9 +513,9 @@ class _GGUFTokenizerAdapter:
     """
 
     def __init__(self, gguf_path):
-        from gguf import GGUFReader
+        from utils.gguf_mapping import open_gguf_reader
 
-        reader = GGUFReader(gguf_path)
+        reader = open_gguf_reader(gguf_path)
 
         def field(name, default=None):
             value = reader.get_field(name)
@@ -563,6 +528,7 @@ class _GGUFTokenizerAdapter:
         self.pad_token_id = field("tokenizer.ggml.padding_token_id")
         self.unk_token_id = field("tokenizer.ggml.unknown_token_id")
         self.chat_template = field("tokenizer.chat_template")
+        self.generation_config = json.loads(field(GGUF_GENERATION_CONFIG_KEY, "{}"))
         self._vocab = {token: i for i, token in enumerate(self.tokens)}
         self.qwen_bpe_rules = self._qwen_rules(field)
 

@@ -21,8 +21,12 @@ bytes embedded in a fixed program.
 """
 
 import json
+from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 
+import mslite_llm_quant
 import pytest
 
 jinja2 = pytest.importorskip("jinja2")
@@ -168,3 +172,104 @@ def test_invalid_bpe_merges_rejected(merges):
     """Malformed rules must fail during export instead of corrupting vocab.bin."""
     with pytest.raises(ValueError, match="BPE merge"):
         _bpe_merges(SimpleNamespace(merges=merges))
+
+
+@pytest.fixture(name="hf_policy_tokenizer")
+def hf_policy_tokenizer_fixture(tmp_path):
+    """Tiny HF metadata using the existing Qwen chat-template fixture."""
+    vocab = {"a": 0, "b": 1, "<eos>": 2, "<end>": 3, "<suppress>": 4}
+    tokenizer = SimpleNamespace(
+        get_vocab=lambda: vocab,
+        get_added_vocab=lambda: {token: index for token, index in vocab.items() if index >= 2},
+        all_special_tokens=["<eos>", "<end>", "<suppress>"],
+        bos_token_id=None, eos_token_id=2, pad_token_id=2, chat_template=QWEN_TEMPLATE,
+    )
+    (tmp_path / "tokenizer.json").write_text(json.dumps({"model": {"merges": []}}), encoding="utf-8")
+    (tmp_path / "config.json").write_text(json.dumps({"eos_token_id": 1}), encoding="utf-8")
+    (tmp_path / "generation_config.json").write_text(
+        json.dumps({"eos_token_id": [2, 3, 2], "suppress_tokens": [4, 4]}), encoding="utf-8"
+    )
+    return tokenizer
+
+
+def _write_policy_gguf(path, tokenizer):
+    """Exercise the HF metadata writer with a real canonical type41 tensor."""
+    gguf = pytest.importorskip("gguf")
+    import numpy as np
+    from mslite_llm_quant.gguf_quant import _add_tokenizer
+    from mslite_llm_quant.q3_0 import register_private_q3_0_type
+
+    q3_type = register_private_q3_0_type()
+    writer = gguf.GGUFWriter(str(path), "qwen2")
+    try:
+        _add_tokenizer(writer, SimpleNamespace(vocab_size=5), tokenizer, path.parent)
+        writer.add_tensor("blk.0.attn_q.weight", np.zeros((16, 14), dtype=np.uint8), raw_dtype=q3_type)
+        writer.write_header_to_file()
+        writer.write_kv_data_to_file()
+        writer.write_tensors_to_file()
+    finally:
+        writer.close()
+
+
+@pytest.mark.parametrize("eos_ids,suppress_ids", [([2, 3, 2], [4, 4]), ([], [])])
+def test_gguf_generation_policy_roundtrip(tmp_path, hf_policy_tokenizer, eos_ids, suppress_ids):
+    """GGUF->MSL's exported policy preserves all EOS/suppress IDs, including empty lists."""
+    from utils.export_tokenizer import export_generation_policy, export_tokenizer
+
+    (tmp_path / "generation_config.json").write_text(
+        json.dumps({"eos_token_id": eos_ids, "suppress_tokens": suppress_ids}), encoding="utf-8"
+    )
+    hf_policy = export_generation_policy(hf_policy_tokenizer, tmp_path, tmp_path / "hf-policy.json")
+    path = tmp_path / "policy.gguf"
+    _write_policy_gguf(path, hf_policy_tokenizer)
+    output_dir = tmp_path / "msl-tokenizer"
+    vocab = export_tokenizer(path, output_dir)
+    expected = {"stop_token_ids": list(dict.fromkeys(eos_ids)),
+                "suppress_token_ids": list(dict.fromkeys(suppress_ids))}
+    assert json.loads(hf_policy.read_text(encoding="utf-8")) == expected
+    assert json.loads((output_dir / "generation_policy.json").read_text(encoding="utf-8")) == expected
+    assert Path(vocab).is_file()
+
+
+@pytest.mark.parametrize("generation_config,match", [
+    ({"eos_token_id": [2, -1]}, "non-negative integer"),
+    ({"eos_token_id": [2], "suppress_tokens": ["4"]}, "non-negative integer"),
+    ({"eos_token_id": [2, 3], "suppress_tokens": [3]}, "must not overlap"),
+])
+def test_gguf_writer_validates_generation_policy(tmp_path, hf_policy_tokenizer, generation_config, match):
+    """The GGUF writer uses the same normalization and conflict checks as direct HF export."""
+    (tmp_path / "generation_config.json").write_text(json.dumps(generation_config), encoding="utf-8")
+    with pytest.raises(ValueError, match=match):
+        _write_policy_gguf(tmp_path / "invalid.gguf", hf_policy_tokenizer)
+
+
+def test_type41_tokenizer_export_in_fresh_process(tmp_path, hf_policy_tokenizer):
+    """Standalone tokenizer export registers private Q3 before parsing a tensor-bearing file."""
+    path = tmp_path / "fresh-process.gguf"
+    _write_policy_gguf(path, hf_policy_tokenizer)
+    output_dir = tmp_path / "standalone"
+    # The source tree's quant/ directory installs as mslite_llm_quant; register it
+    # by location in the child, as tests/py/conftest.py does for this process.
+    package = mslite_llm_quant.__name__
+    script = (
+        "import importlib.util\n"
+        "import sys\n"
+        "import gguf\n"
+        "assert 41 not in {int(value) for value in gguf.GGMLQuantizationType}\n"
+        "spec = importlib.util.spec_from_file_location(sys.argv[3], sys.argv[4] + '/__init__.py',"
+        " submodule_search_locations=[sys.argv[4]])\n"
+        "sys.modules[sys.argv[3]] = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(sys.modules[sys.argv[3]])\n"
+        "from utils.export_tokenizer import export_tokenizer\n"
+        "export_tokenizer(sys.argv[1], sys.argv[2])\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(path), str(output_dir), package, mslite_llm_quant.__path__[0]],
+        cwd=Path(__file__).resolve().parents[2] / "export",
+        capture_output=True, text=True, check=False, timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (output_dir / "vocab.bin").is_file()
+    assert json.loads((output_dir / "generation_policy.json").read_text(encoding="utf-8")) == {
+        "stop_token_ids": [2, 3], "suppress_token_ids": [4],
+    }

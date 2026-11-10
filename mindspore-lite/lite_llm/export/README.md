@@ -17,7 +17,7 @@ export/
 │   ├── qwen2_5/              # 模型专属（纯内部 API，无 CLI）
 │   │   ├── qwen2_5_wrapper.py     # Qwen2NnrtWrapper（继承基类，无 per-head norm）
 │   │   ├── qwen2_5_exporter.py    # Qwen2Onnx 类 + export_qwen2_5 编排
-│   │   └── qwen2_5_gguf_loader.py # GGUF Q4_0 权重注入（qwen2 层名映射）
+│   │   └── qwen2_5_gguf_loader.py # GGUF Q4_0 / Q3_0 权重注入
 │   ├── qwen3/                # Dense Qwen3（MiniMind-3 / Qwen3-4B），结构同 qwen2_5/
 │   │   ├── qwen3_wrapper.py      # Qwen3NnrtWrapper（per-head q_norm/k_norm）
 │   │   ├── qwen3_exporter.py     # Qwen3Onnx 类 + export_qwen3 编排
@@ -35,7 +35,8 @@ export/
     └── msl_pack.py           # .msl v1 单文件容器 pack/unpack + 资源组装（内置工具）
 ```
 
-对外接口只有一个：`mslite_llm_export.py`（一键导出）。
+`export/` 的一键导出接口为 `mslite_llm_export.py`，只负责模型 -> `.omc` / `.msl`，
+可以消费 GGUF，但不生产 GGUF。HF -> GGUF 由同级 `../quant/gguf_quant.py` 独立处理。
 `models/`、`utils/` 下其余模块均为内部 API
 （不承诺兼容，签名见各模块 docstring）。新增模型时在
 `models/<model>/` 下建目录（文件以 `<model>_` 前缀命名），复用 `utils/` 通用件。
@@ -90,10 +91,10 @@ python mslite_llm_export.py --target kirin9020 \
 ```text
 必需：
   --model MODEL     输入：GGUF 文件(.gguf) 或 HF 模型目录（自动识别）
-  --output OUTPUT   输出单文件 .msl 路径
+  --output OUTPUT   输出文件路径（默认 .msl）
 可选（均带默认值）：
   --target TARGET   部署目标芯片（默认 kirin9020），支持 kirin9020 / kirin9030
-  --quant-type TYPE 量化方式：q4_0 / s16s4（默认 q4_0，也可写作 --quant_type）
+  --quant-type TYPE 量化方式：q4_0 / q3_0 / s16s4（默认 q4_0，也可写作 --quant_type）
   --max-length N    最大序列长度（默认 1024）
   --chunk-size N    prefill chunk 大小（默认 64）
   --verbose         详细日志
@@ -103,6 +104,37 @@ python mslite_llm_export.py --target kirin9020 \
 前置：`pip install -r ../requirements.txt`、DDK 已 source（omg 可用）。
 打包由内置 `msl_pack.py` 完成（无外部工具依赖）。中间产物落在输出同目录的
 临时目录，打包成功后自动清理。
+
+---
+
+## 独立 HF -> 纯量化 GGUF 工具
+
+安装本 wheel 后使用 `mslite-llm-quantize-gguf`，无需 DDK、omg 或构建 HF model。
+工具只读取本地 HF 配置、tokenizer 和 safetensors / pytorch_model.bin 权重。
+
+```bash
+mslite-llm-quantize-gguf --model ./Qwen3-0.6B \
+    --quant-type q4_0 --output ./qwen3-0.6b-pure-q4_0.gguf
+mslite-llm-quantize-gguf --model ./Qwen2.5-0.5B-Instruct \
+    --quant-type q3_0 --output ./qwen2.5-0.5b-pure-q3_0.gguf
+```
+
+工具位于 `lite_llm/quant/`，wheel 把它装成 `mslite_llm_quant` 包（`package-dir` 映射），
+该包不依赖 `export`，不包含工作区未跟踪的 `export/quant/` 校准代码。
+
+参数：`--model`（本地 HF 目录）、`--output`（GGUF 路径）、
+`--quant-type {q4_0,q3_0}`（默认 q4_0）、`--verbose`。
+Q4_0 支持 dense Qwen2/Qwen3；Q3_0 保持 tied Qwen2.5-0.5B 的已有契约。
+Q4_0 使用标准 32 值 / 18 字节块；Q3_0 使用 lite_llm 私有 type 41 的
+32 值 / 14 字节块。所有 decoder 矩阵统一使用所选类型，embedding 始终为 Q4_0；
+norm / bias 为 F32。tied output 省略，untied Q4_0 output 也采用 Q4_0。
+不做 Q4_1 / Q6_K 提升，等价于 `llama-quantize --pure` 的纯类型策略。
+
+**不支持直接使用社区混合类型 GGUF。** 文件名里的 Q4_0 不保证所有 decoder
+都是 Q4_0；社区文件可能夹有 Q4_1 / Q6_K。请从原始 HF 权重生成纯版后再交给
+`mslite-llm-export` 消费；Q3_0 导出时选择 `--quant-type q3_0`。
+“纯 Q3_0” 指 decoder 纯 Q3_0，按 runtime 契约 embedding 仍为 Q4_0，
+不代表标准 llama.cpp 能识别私有 type 41。
 
 ---
 
@@ -131,8 +163,10 @@ export PATH=$DDK/tools/tools_omg:$PATH
 
 ```
 
-Internal Python APIs use `QuantType.Q4_0` and `QuantType.S16S4`, serialized as
-`q4_0` and `s16s4`. Legacy `W4A16` and `S16S4` arguments remain accepted.
+Internal Python APIs use `QuantType.Q4_0`, `QuantType.Q3_0`, and `QuantType.S16S4`,
+serialized as `q4_0`, `q3_0`, and `s16s4`. GGUF `Q3_0` is a lite_llm-private
+type-41 extension (32 values / 14 bytes). Legacy `W4A16`, `W3A16`, and `S16S4`
+arguments remain accepted.
 Runtime embedding identifiers are `FP16` (unquantized), `W4A16`, and `S16S4`.
 `FP16` requires `embedding_quant=false`; `W4A16` and `S16S4` require
 `embedding_quant=true`.
@@ -141,7 +175,7 @@ Each name resolves to an immutable `QuantPreset` in `utils/quantization.py`.
 The preset specifies weight and activation types, group size, scale encoding,
 packing layout, custom operator, and supported export targets. Packing, graph
 generation, compiler input sizing, and package metadata use this shared contract.
-Group size is fixed at 32 for `q4_0` and 128 for `s16s4`; there is no
+Group size is fixed at 32 for `q4_0` / `q3_0` and 128 for `s16s4`; there is no
 `--group-size` override. Supporting another group size requires a matching
 packing implementation and kernel. Legacy `w4a8` and `w2a16` presets remain
 internal and are not exposed by the one-click exporter.

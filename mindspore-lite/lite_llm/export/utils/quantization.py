@@ -24,6 +24,7 @@ class QuantType(str, Enum):
     """Quantization algorithms; legacy precision names remain input aliases."""
 
     Q4_0 = "q4_0"
+    Q3_0 = "q3_0"
     S16S4 = "s16s4"
     W4A8 = "w4a8"
     W2A16 = "w2a16"
@@ -37,6 +38,8 @@ class QuantType(str, Enum):
             name = value.lower()
             if name == "w4a16":
                 return cls.Q4_0
+            if name == "w3a16":
+                return cls.Q3_0
             return cls._value2member_map_.get(name)
         return None
 
@@ -68,6 +71,7 @@ class QuantDType(str, Enum):
     """Logical arithmetic types, independent of packed byte storage."""
 
     INT2 = "int2"
+    INT3 = "int3"
     INT4 = "int4"
     INT8 = "int8"
     INT16 = "int16"
@@ -80,6 +84,7 @@ class PackingLayout(str, Enum):
     Q4_0_NZF_COMPACT_PHASE4 = "q4_0_nzf_compact_phase4"
     Q4_NZ = "q4_nz"
     Q2_PLANAR = "q2_planar"
+    Q3_PLANAR = "q3_planar"
     S16S4_NZ = "s16s4_nz"
 
 
@@ -129,6 +134,12 @@ QUANT_PRESETS = MappingProxyType({
         scale_encoding=ScaleEncoding.FLOAT16, packing_layout=PackingLayout.Q4_0_NZF_COMPACT_PHASE4,
         operator="MsQuant4N0Group32", embedding_format=EmbeddingFormat.W4A16,
         export_targets=("kirin9020", "kirin9030"),
+    ),
+    QuantType.Q3_0: QuantPreset(
+        quant_type=QuantType.Q3_0, bits=3, group_size=32,
+        weight_dtype=QuantDType.INT3, activation_dtype=QuantDType.FLOAT16,
+        scale_encoding=ScaleEncoding.FLOAT16, packing_layout=PackingLayout.Q3_PLANAR,
+        operator="MsQuant3N0Group32", export_targets=("kirin9020",),
     ),
     QuantType.S16S4: QuantPreset(
         quant_type=QuantType.S16S4, bits=4, group_size=128,

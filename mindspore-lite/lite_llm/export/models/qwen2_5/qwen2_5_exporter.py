@@ -55,6 +55,7 @@ from onnxslim import slim
 from torch.onnx import OperatorExportTypes
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
+from mslite_llm_quant.q3_0 import register_private_q3_0_type
 from utils.onnx_postprocess import (
     _save_onnx,
     duplicate_shared_initializers,
@@ -71,6 +72,7 @@ from utils.export_quant import (
 from utils.quantization import QuantType
 
 from .qwen2_5_wrapper import Qwen2NnrtWrapper, resolve_head_dim
+from .qwen2_5_gguf_loader import QWEN2_5_ARCH
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +82,21 @@ DEVICE = "cpu"
 ATTENTION_CACHE_ALIGNMENT = 64
 ATTENTION_TILE_ALIGNMENT = 16
 dtype = torch.float16
+
+
+def _preserve_gguf_bias_slots(model):
+    """Keep bias Add nodes until their real GGUF values are injected.
+
+    Transformers initializes projection biases to zero in a metadata-only
+    skeleton. Simplification would remove those Add nodes, making later weight
+    injection impossible. Nonzero placeholders preserve the graph slots; the
+    GGUF loader must replace every bias, including real all-zero bias tensors.
+    """
+    with torch.no_grad():
+        for name, parameter in model.named_parameters():
+            if name.endswith(".bias"):
+                parameter.fill_(1)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Part 3: exporter
@@ -91,12 +108,7 @@ class Qwen2Onnx:
 
     #: Only the Qwen2.5-0.5B architecture is validated (matches the NNRT gear
     #: shapes and the proven omc contract).
-    REQUIRED_ARCH = {
-        "num_hidden_layers": 24,
-        "intermediate_size": 4864,
-        "max_position_embeddings": 32768,
-        "hidden_size": 896,
-    }
+    REQUIRED_ARCH = QWEN2_5_ARCH
 
     def __init__(self):
         self.model = None
@@ -108,26 +120,24 @@ class Qwen2Onnx:
         self.model_name = "qwen2.5-0.5b"
 
     def load(self, model_path, layers=24):
-        """Load the HF model in fp16 and validate the Qwen2.5-0.5B architecture.
+        """Load HF weights, or build a GGUF skeleton from its own metadata.
 
-        ``model_path`` may be a HF directory or a ``.gguf`` file.  GGUF
-        skeletons are dequantized by transformers via the ``gguf_file=`` kwarg
-        (requires transformers >= 4.57); the real Q4_0 weights are injected
-        afterwards by ``gguf_loader`` -- but the q/k/v attention biases and
-        layer norms are REAL and stay in the exported graph.
+        GGUF payloads are injected after quantization; loading/dequantizing the
+        full checkpoint via transformers is unnecessary and cannot handle the
+        private Q3_0 wire type. No second HF model/config is involved.
         """
         is_gguf = os.path.isfile(model_path) and model_path.endswith(".gguf")
         if is_gguf:
-            # transformers routes GGUF loading by (directory, gguf_file=) pairs.
-            self.model = AutoModelForCausalLM.from_pretrained(
-                os.path.dirname(os.path.abspath(model_path)),
-                gguf_file=os.path.basename(model_path),
-                trust_remote_code=True,
-                device_map=DEVICE,
-                dtype=dtype,
-                attn_implementation="eager",
-            )
-            self.config = self.model.config
+            from transformers.modeling_gguf_pytorch_utils import load_gguf_checkpoint
+
+            register_private_q3_0_type()
+            metadata = load_gguf_checkpoint(model_path, return_tensors=False)["config"]
+            self.config = AutoConfig.for_model(**metadata)
+            self.config.tie_word_embeddings = True
+            self.config._attn_implementation = "eager"  # pylint: disable=W0212
+            self._validate_config(model_path)
+            self.model = AutoModelForCausalLM.from_config(self.config, torch_dtype=dtype)
+            _preserve_gguf_bias_slots(self.model)
         else:
             self.config = AutoConfig.from_pretrained(model_path)
             self.config._attn_implementation = "eager"  # pylint: disable=W0212
@@ -142,6 +152,16 @@ class Qwen2Onnx:
             )
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
 
+        self._validate_config(model_path)
+        self.model = self.model.eval()
+
+        self.num_layers = self.model.config.num_hidden_layers
+        self.hidden_size = self.model.config.hidden_size
+        self.num_kv_heads = self.model.config.num_key_value_heads
+        logger.info("model loaded: %s", model_path)
+
+    def _validate_config(self, model_path):
+        """Validate architecture before allocating a GGUF skeleton."""
         if self.config.model_type != "qwen2":
             raise ValueError(f"Model type must be qwen2, got {self.config.model_type}")
         for key, expected in self.REQUIRED_ARCH.items():
@@ -150,12 +170,6 @@ class Qwen2Onnx:
                     f"Error: the model at '{model_path}' is not a Qwen2.5-0.5B model "
                     f"({key}={getattr(self.config, key, None)}, expected {expected})."
                 )
-        self.model = self.model.eval()
-
-        self.num_layers = self.model.config.num_hidden_layers
-        self.hidden_size = self.model.config.hidden_size
-        self.num_kv_heads = self.model.config.num_key_value_heads
-        logger.info("model loaded: %s", model_path)
 
     def export(self, model_path, max_seq_len=1024, chunk_size=128):
         """Trace the logits-only graph; KV caches are updated in place."""
@@ -365,6 +379,8 @@ def export_qwen2_5(
     decoder_quant_config = QuantizationConfig(decoder_quant)
     embedding_quant = embedding_quant_config.quant_method
     decoder_quant = decoder_quant_config.quant_method
+    if embedding_quant == QuantType.Q3_0:
+        raise ValueError("q3_0 is decoder-only; use q4_0 for embedding/lm_head")
     if max_length <= 0 or chunk_size <= 0 or max_length % chunk_size != 0:
         raise ValueError(f"max_length {max_length} must be a positive multiple of chunk_size {chunk_size}")
     if max_length % chunk_size != 0:

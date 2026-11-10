@@ -17,7 +17,7 @@
 Orchestrates the internal pipeline modules (all internal API, no CLI):
 
     models/qwen2_5/qwen2_5_exporter.py     Qwen2.5-0.5B HF/GGUF -> ONNX skeleton
-    models/qwen2_5/qwen2_5_gguf_loader.py  Qwen2.5 GGUF Q4_0 raw weight injection
+    models/qwen2_5/qwen2_5_gguf_loader.py  Qwen2.5 GGUF Q4_0/Q3_0 raw weight injection
     models/qwen3/qwen3_exporter.py         Qwen3 dense HF/GGUF -> ONNX skeleton
     models/qwen3/qwen3_gguf_loader.py      Qwen3 dense GGUF Q4_0 raw weight injection
     utils/omc_compiler.py                  DDK omg -> .omc (unconditional)
@@ -75,6 +75,7 @@ from utils.omc_compiler import compile_omc, resolve_omg  # noqa: E402
 from utils.msl_pack import SingleFileMslRequest, build_single_file_msl  # noqa: E402
 from utils.quantization import EXPORT_QUANT_TYPES, EmbeddingFormat, QuantType, get_quant_preset  # noqa: E402
 from utils.export_tokenizer import export_tokenizer  # noqa: E402
+from utils.gguf_mapping import detect_gguf_quantization, open_gguf_reader  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ MODEL_TYPES = {
         "exporter": export_qwen2_5,
         "gguf_loader": qwen2_5_gguf_loader,
         "layers": 24,
-        "quant_types": (QuantType.Q4_0,),
+        "quant_types": (QuantType.Q4_0, QuantType.Q3_0),
         "onnx_name": "qwen2_5_0b5.onnx",
         "quant_name": "qwen2_5_0b5_quant.onnx",
         "gguf_name": "qwen2_5_0b5_gguf.onnx",
@@ -181,9 +182,7 @@ def detect_model_type(model):
     silently produce a corrupt skeleton/weight mix otherwise.
     """
     if os.path.isfile(model) and model.endswith(".gguf"):
-        from gguf import GGUFReader
-
-        reader = GGUFReader(model)
+        reader = open_gguf_reader(model)
         try:
             arch = reader.fields["general.architecture"].parts[-1].tobytes().decode("utf-8")
             layers = int(reader.fields[f"{arch}.block_count"].parts[-1].item())
@@ -260,7 +259,12 @@ def run_pipeline(args, work_dir):
         raise ValueError(f"quant_type {quant_type} is not supported by {model_type}")
     preset = get_quant_preset(quant_type)
     preset.validate_target(args.target)
-    embedding_quant = quant_type
+    embedding_quant = QuantType.Q4_0 if quant_type is QuantType.Q3_0 else quant_type
+    embedding_preset = get_quant_preset(embedding_quant)
+    if model_kind == "gguf" and model_type == "qwen2_5":
+        decoder, _ = detect_gguf_quantization(open_gguf_reader(args.model))
+        if decoder != quant_type:
+            raise ValueError(f"GGUF decoder uses {decoder}; select --quant-type {decoder}")
     if quant_type is QuantType.S16S4:
         validate_s16s4_source(args.model, model_layers)
 
@@ -271,7 +275,7 @@ def run_pipeline(args, work_dir):
         max_length=args.max_length,
         chunk_size=args.chunk_size,
         embedding_quant=embedding_quant,
-        decoder_quant=embedding_quant,
+        decoder_quant=quant_type,
         layers=model_layers,
         model_name=mt["model_name"],
     )
@@ -281,8 +285,8 @@ def run_pipeline(args, work_dir):
     if not os.path.exists(onnx_path):
         raise RuntimeError(f"expected {quant_type} model not produced: {onnx_path}")
     embedding_bin = os.path.join(work_dir, "embedding_quant.bin")
-    if quant_type is QuantType.Q4_0 and model_kind == "gguf":
-        # Preserve the original GGUF Q4_0 weights instead of requantizing them.
+    if quant_type in (QuantType.Q4_0, QuantType.Q3_0) and model_kind == "gguf":
+        # Preserve original GGUF blocks and scales instead of requantizing them.
         quant_onnx = onnx_path
         onnx_path = os.path.join(work_dir, mt["gguf_name"])
         embedding_bin = os.path.join(work_dir, "embedding_weight.bin")
@@ -293,7 +297,7 @@ def run_pipeline(args, work_dir):
             embedding_weight_save_path=embedding_bin,
             layers=model_layers,
             embedding_quantize_config=QuantType.Q4_0,
-            decoder_quantize_config=QuantType.Q4_0,
+            decoder_quantize_config=quant_type,
         )
 
     # ── Step 2: omg compile (ONNX -> .omc, unconditional) ─────────────────
@@ -335,12 +339,12 @@ def run_pipeline(args, work_dir):
         "chunk_size": args.chunk_size,
         "embedding_quant": embedding_quant is not None,
         # Group size and runtime layout follow the selected quantization.
-        "scale_gp_size": preset.group_size,
-        "embedding_format": (export_config["npu"].get("embedding_format", preset.embedding_format)
+        "scale_gp_size": embedding_preset.group_size,
+        "embedding_format": (export_config["npu"].get("embedding_format", embedding_preset.embedding_format)
                              if embedding_quant is not None else EmbeddingFormat.FP16),
     }
     if embedding_quant == QuantType.Q4_0:
-        npu_config["q4_0_weight_layout"] = preset.packing_layout.value
+        npu_config["q4_0_weight_layout"] = embedding_preset.packing_layout.value
     external_weight_path = None
     if use_external_weights:
         external_weight_path = os.path.join(os.path.dirname(omc_path), EXTERNAL_WEIGHT_FILE)
@@ -367,19 +371,28 @@ def run_pipeline(args, work_dir):
     return result
 
 
+def _parse_quant_type(value):
+    """Accept canonical quantization names and supported precision aliases."""
+    try:
+        return QuantType(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"invalid quantization {value!r}; use q3_0 for 3-bit") from exc
+
+
 def build_parser():
     """Build the CLI argument parser for mslite-llm-export."""
     parser = argparse.ArgumentParser(
         prog="mslite-llm-export",
-        description="One-click LLM (Qwen2.5-0.5B / dense Qwen3, GGUF Q4_0 or HF) -> single-file .msl",
+        description="One-click LLM (Qwen2.5-0.5B / dense Qwen3, GGUF or HF) -> .msl",
     )
     parser.add_argument("--target", default="kirin9020",
                         help=f"Deployment chip (default: kirin9020), one of {list(SUPPORTED_TARGETS)}")
     parser.add_argument("--model", required=True, help="GGUF file (.gguf) or HF model directory")
-    parser.add_argument("--output", required=True, help="Output single-file .msl path")
-    parser.add_argument("--quant-type", "--quant_type", dest="quant_type", choices=EXPORT_QUANT_TYPES,
+    parser.add_argument("--output", required=True, help="Output .msl path")
+    parser.add_argument("--quant-type", "--quant_type", dest="quant_type",
+                        type=_parse_quant_type, choices=EXPORT_QUANT_TYPES,
                         default=QuantType.Q4_0.value,
-                        help="Quantization for decoder and embedding/head (default: q4_0)")
+                        help="Decoder quantization (default: q4_0); q3_0 keeps Q4 embedding/head")
     parser.add_argument("--max-length", type=int, default=1024, help="Max sequence length (default: 1024)")
     parser.add_argument("--chunk-size", type=int, default=64, help="Prefill chunk size (default: 64)")
     parser.add_argument("--keep-artifacts", action="store_true", help="Retain ONNX and OMC for verification")
@@ -476,6 +489,7 @@ def main(argv=None):
 
     if args.target not in SUPPORTED_TARGETS:
         raise ValueError(f"--target {args.target} not supported; choose from {list(SUPPORTED_TARGETS)}")
+    get_quant_preset(args.quant_type).validate_target(args.target)
     if args.max_length <= 0:
         raise ValueError("--max-length must be positive")
     if args.max_length % args.chunk_size != 0:
