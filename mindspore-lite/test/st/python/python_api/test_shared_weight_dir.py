@@ -16,9 +16,10 @@
 Test directory conversion with a shared deduplicated external weight file.
 
 Passing a directory as modelFile converts the *.onnx under its rank sub directories into one
-*.mindir each, mirroring the relative layout below the rank directory, and the whole batch shares
-a single external weight file ("<outputFile>/variables/data_0") in which byte-identical tensors
-are stored once.
+*_graph.mindir each (graph only, the "_graph" suffix matching the single-model SplitSave naming),
+mirroring the relative layout below the rank directory, and the whole batch shares a single
+external weight file ("<outputFile>/variables/data_0") in which byte-identical tensors are stored
+once.
 
 The main model set is the context-parallel Qwen3-0.6B export:
 
@@ -57,6 +58,13 @@ MODEL_GLOB = "rank*/**/*.onnx"
 # of collective ops its mindirs can be built on a single card.
 SMALL_MODEL = "single_matmul_model.onnx"
 SMALL_MODEL_INPUT = ("input", (1, 4))
+
+
+def mindir_rel(onnx_rel):
+    """Output path mirrored from an input onnx: same relative path, "<stem>_graph.mindir"."""
+    return onnx_rel.with_name(onnx_rel.stem + "_graph.mindir")
+
+
 BACKENDS = ("mslite_large_model_inference_arm_ascend910B",)
 DEVICE_ID = int(os.environ.get("ASCEND_DEVICE_ID", "0"))
 # The rank graphs hold the same weights, so converting the whole batch must not cost much more
@@ -194,10 +202,10 @@ def shared_weight_dir_fixture(so_path, mindir_dir, output_dir):
         result_file.write_text(json.dumps(results))
 
     out_dir = Path(results["batch"]["output"])
-    # Required output (relative to --outputFile): one "<same relative path>.mindir" per input
-    # onnx, plus the single shared external weight file. See the layout comment in
+    # Required output (relative to --outputFile): one "<same relative path>_graph.mindir" per
+    # input onnx, plus the single shared external weight file. See the layout comment in
     # test_shared_weight_dir_mirrors_layout_and_shared_weight_file for the exact rules.
-    expected_files = {rel.with_suffix(".mindir").as_posix() for rel in rels}
+    expected_files = {mindir_rel(rel).as_posix() for rel in rels}
     expected_files.add(SHARED_WEIGHT_REL.as_posix())
     yield {
         "returncode": results["batch"]["returncode"],
@@ -205,8 +213,8 @@ def shared_weight_dir_fixture(so_path, mindir_dir, output_dir):
         "output": out_dir,
         "expected_files": expected_files,
         # The layout below the rank directory is mirrored:
-        # "rank0/prefill/x.onnx" -> "rank0/prefill/x.mindir".
-        "mindirs": [out_dir / rel.with_suffix(".mindir") for rel in rels],
+        # "rank0/prefill/x.onnx" -> "rank0/prefill/x_graph.mindir".
+        "mindirs": [out_dir / mindir_rel(rel) for rel in rels],
         "single_returncode": results["single"]["returncode"],
         "single_shared_weight": Path(results["single"]["output"]) / SHARED_WEIGHT_REL,
     }
@@ -227,19 +235,19 @@ def test_shared_weight_dir_mirrors_layout_and_shared_weight_file(shared_weight_c
 
     # Required output layout (paths below are relative to the --outputFile directory).
     # Every file below a rank directory is mirrored 1:1, only the suffix changes
-    # (".onnx" -> ".mindir"); the weights collapse into one shared file:
+    # (".onnx" -> "_graph.mindir"); the weights collapse into one shared file:
     #
     #   --modelFile=<input_dir>/                       --outputFile=<output_dir>/
     #   +-- rank0/                                     +-- rank0/
     #   |   +-- prefill/                               |   +-- prefill/
-    #   |   |   +-- qwen3_llm_prefill.onnx    ------>  |   |   +-- qwen3_llm_prefill.mindir
+    #   |   |   +-- qwen3_llm_prefill.onnx    ------>  |   |   +-- qwen3_llm_prefill_graph.mindir
     #   |   +-- decode/                                |   +-- decode/
-    #   |       +-- qwen3_llm_decode.onnx     ------>  |       +-- qwen3_llm_decode.mindir
+    #   |       +-- qwen3_llm_decode.onnx     ------>  |       +-- qwen3_llm_decode_graph.mindir
     #   +-- rank1/                                     +-- rank1/
     #   |   +-- prefill/                               |   +-- prefill/
-    #   |   |   +-- qwen3_llm_prefill.onnx    ------>  |   |   +-- qwen3_llm_prefill.mindir
+    #   |   |   +-- qwen3_llm_prefill.onnx    ------>  |   |   +-- qwen3_llm_prefill_graph.mindir
     #   |   +-- decode/                                |   +-- decode/
-    #   |       +-- qwen3_llm_decode.onnx     ------>  |       +-- qwen3_llm_decode.mindir
+    #   |       +-- qwen3_llm_decode.onnx     ------>  |       +-- qwen3_llm_decode_graph.mindir
     #                                                  +-- variables/
     #                                                      +-- data_0  (the one shared weight file)
     #
@@ -302,8 +310,8 @@ def test_shared_weight_dir_small_model_still_shares_weights(so_path, mindir_dir,
     produced = {path.relative_to(out_dir).as_posix() for path in out_dir.rglob("*") if path.is_file()}
     # One graph-only mindir per input onnx, plus the shared weight file the batch always produces.
     assert produced == {
-        f"rank0/prefill/{stem}.mindir",
-        f"rank1/prefill/{stem}.mindir",
+        f"rank0/prefill/{stem}_graph.mindir",
+        f"rank1/prefill/{stem}_graph.mindir",
         SHARED_WEIGHT_REL.as_posix(),
     }
 
@@ -313,7 +321,7 @@ def test_shared_weight_dir_small_model_still_shares_weights(so_path, mindir_dir,
     # Both ranks resolve the weights through the shared file and infer to the same result.
     # Compared flattened: the runtime sometimes reports the same [1, 4] output with an extra rank.
     values = [
-        np.asarray(build_and_predict(out_dir / rel / f"{stem}.mindir")[0]).reshape(-1)
+        np.asarray(build_and_predict(out_dir / rel / f"{stem}_graph.mindir")[0]).reshape(-1)
         for rel in ("rank0/prefill", "rank1/prefill")
     ]
     assert values[0].size == 4, f"unexpected output size {values[0].size}"
@@ -352,7 +360,7 @@ def test_shared_weight_dir_small_model_matches_single_conversion(so_path, mindir
     # Both ranks of the batch must match the reference, i.e. the shared weights were resolved to
     # the same values as the inline copy.
     for rel in ("rank0/prefill", "rank1/prefill"):
-        actual = np.asarray(build_and_predict(out_dir / rel / f"{stem}.mindir")[0]).reshape(-1)
+        actual = np.asarray(build_and_predict(out_dir / rel / f"{stem}_graph.mindir")[0]).reshape(-1)
         np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=1e-6,
                                    err_msg=f"{rel} differs from the single conversion")
 
@@ -368,8 +376,33 @@ def test_shared_weight_dir_accepts_renamed_sub_dir(so_path, mindir_dir, output_d
     stem = Path(SMALL_MODEL).stem
     produced = {path.relative_to(out_dir).as_posix() for path in out_dir.rglob("*") if path.is_file()}
     assert produced == {
-        f"rank0/prefix/{stem}.mindir",
-        f"rank1/prefix/{stem}.mindir",
+        f"rank0/prefix/{stem}_graph.mindir",
+        f"rank1/prefix/{stem}_graph.mindir",
+        SHARED_WEIGHT_REL.as_posix(),
+    }
+
+
+@pytest.mark.backend(*BACKENDS)
+def test_shared_weight_dir_accepts_trailing_slash(so_path, mindir_dir, output_dir):
+    """--outputFile may end with "/"; the trailing separator is normalized away."""
+    base_dir = Path(output_dir) / "shared_weight_dir" / "trailing_slash"
+    model_file = small_model_file(mindir_dir)
+    input_dir = base_dir / "in"
+    for rank in ("rank0", "rank1"):
+        link_or_copy(model_file, input_dir / rank / "prefill" / SMALL_MODEL)
+
+    out_dir = base_dir / "out"
+    shutil.rmtree(out_dir, ignore_errors=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    process = run_converter_lite(so_path, input_dir, str(out_dir) + "/")
+
+    assert process.returncode == 0, f"conversion with a trailing slash failed:\n{process.stderr[-8000:]}"
+    stem = Path(SMALL_MODEL).stem
+    produced = {path.relative_to(out_dir).as_posix() for path in out_dir.rglob("*") if path.is_file()}
+    assert produced == {
+        f"rank0/prefill/{stem}_graph.mindir",
+        f"rank1/prefill/{stem}_graph.mindir",
         SHARED_WEIGHT_REL.as_posix(),
     }
 
@@ -381,7 +414,7 @@ def test_shared_weight_dir_load_fails_when_depth_changed(so_path, mindir_dir, ou
     result = convert_small_batch(so_path, mindir_dir, base_dir, ("rank0/prefill",))
     assert result["returncode"] == 0, f"small-model conversion failed:\n{result['stderr']}"
 
-    mindir = Path(result["output"]) / "rank0" / "prefill" / f"{Path(SMALL_MODEL).stem}.mindir"
+    mindir = Path(result["output"]) / "rank0" / "prefill" / f"{Path(SMALL_MODEL).stem}_graph.mindir"
     assert mindir.is_file()
     # One directory deeper: the recorded "../.." now resolves below rank0/prefill, where no
     # weight file exists.
@@ -400,7 +433,7 @@ def test_shared_weight_dir_loads_renamed_mindir(so_path, mindir_dir, output_dir)
     result = convert_small_batch(so_path, mindir_dir, base_dir, ("rank0/prefill",))
     assert result["returncode"] == 0, f"small-model conversion failed:\n{result['stderr']}"
 
-    mindir = Path(result["output"]) / "rank0" / "prefill" / f"{Path(SMALL_MODEL).stem}.mindir"
+    mindir = Path(result["output"]) / "rank0" / "prefill" / f"{Path(SMALL_MODEL).stem}_graph.mindir"
     renamed = mindir.with_name("renamed.mindir")
     shutil.copy2(mindir, renamed)
 

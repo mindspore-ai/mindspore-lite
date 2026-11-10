@@ -1139,6 +1139,9 @@ bool IsDirectoryPath(const std::string &path) {
 
 constexpr const char *kOnnxSuffix = ".onnx";
 constexpr const char *kRankDirPrefix = "rank";
+// Every mindir of the batch is graph-only (the weights live in the batch-wide shared file), so it
+// gets the same "_graph" suffix the single-model SplitSave path uses for a graph-only mindir.
+constexpr const char *kGraphOnlySuffix = "_graph";
 
 // Multi-model directory conversion is only supported for ONNX -> MindIR with --optimize=none. Every
 // model of the batch brings its own shape, and a config file describes a single model, so neither
@@ -1349,7 +1352,14 @@ int ConverterImpl::ConvertSharedWeightDir(const std::shared_ptr<ConverterPara> &
   }
   MS_LOG(INFO) << "Shared-weight conversion: " << onnx_files.size() << " onnx models under " << input_dir;
 
+  // Accept both "a/b/c" and "a/b/c/": building the output tree, the weight path and the failure
+  // cleanup all concatenate and prefix-match on the root, which requires it without a trailing
+  // separator. The filesystem root "/" stays rejected below (writing "<root>/variables/data_0"
+  // there is not a valid deployment layout).
   auto output_root = param->output_file;
+  while (output_root.size() > 1 && output_root.back() == '/') {
+    output_root.pop_back();
+  }
   MS_CHECK_TRUE_MSG(!output_root.empty() && output_root.back() != '/', RET_INPUT_PARAM_INVALID,
                     "outputFile should be the output root directory path in shared-weight conversion.");
 
@@ -1364,7 +1374,7 @@ int ConverterImpl::ConvertSharedWeightDir(const std::shared_ptr<ConverterPara> &
 
   for (size_t i = 0; i < onnx_files.size(); ++i) {
     const auto &onnx_file = onnx_files[i];
-    auto output_file = output_root + "/" + output_relative_stems[i];
+    auto output_file = output_root + "/" + output_relative_stems[i] + kGraphOnlySuffix;
     produced_files.push_back(output_file + ".mindir");
     // The serializer requires the output directory to exist before it derives the model path.
     auto parent_dir = output_file.substr(0, output_file.find_last_of('/'));
