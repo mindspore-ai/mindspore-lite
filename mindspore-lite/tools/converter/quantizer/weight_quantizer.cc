@@ -28,6 +28,7 @@
 #include "mindspore/ops/op_def/math_ops.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/array_ops.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "src/common/log_util.h"
 #include "tools/converter/quantizer/fse_encoder.h"
@@ -77,6 +78,20 @@ tensor::TensorPtr ConvertParameterFp16TensorToFp32(const ParameterPtr &parameter
   }
   return tensor_info;
 }
+
+// Origin-domain name matching (see fusion_trace_utils): the node's current name plus every
+// original name it carries. An empty set skips the per-node name construction entirely.
+bool NodeCarriesListedName(const CNodePtr &cnode, const std::set<std::string> &names) {
+  if (names.empty()) {
+    return false;
+  }
+  for (const auto &name : opt::GetSelfAndOriginNames(cnode)) {
+    if (names.find(name) != names.end()) {
+      return true;
+    }
+  }
+  return false;
+}
 }  // namespace
 int WeightQuantizer::WeightQuant(const FuncGraphPtr &func_graph,
                                  const std::set<PrimitivePtr> &support_weight_quant_types,
@@ -103,8 +118,9 @@ int WeightQuantizer::WeightQuantPerCNode(const FuncGraphPtr &func_graph, const C
     return RET_OK;
   }
   auto op_name = cnode->fullname_with_scope();
-  if (skip_quant_node_.find(op_name) != skip_quant_node_.end()) {
-    MS_LOG(INFO) << op_name << " is skip dynamic quant.";
+  // Origin-domain name matching: the current name plus every original name the node carries.
+  if (NodeCarriesListedName(cnode, skip_quant_node_)) {
+    MS_LOG(INFO) << op_name << " is skip weight quant.";
     return RET_OK;
   }
   if (!CheckNodeInSet(cnode, support_weight_quant_types)) {

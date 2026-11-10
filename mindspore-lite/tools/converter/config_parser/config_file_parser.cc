@@ -651,7 +651,8 @@ int ConfigFileParser::SetMapData(const std::map<std::string, std::string> &input
       continue;
     }
     if (parse_map.find(map.first) == parse_map.end()) {
-      MS_LOG(ERROR) << "INPUT ILLEGAL: `" << map.first << "` is not supported in " << "[" << section << "]";
+      MS_LOG(ERROR) << "INPUT ILLEGAL: `" << map.first << "` is not supported in "
+                    << "[" << section << "]";
       return RET_INPUT_PARAM_INVALID;
     } else {
       parse_map.at(map.first) = map.second;
@@ -690,6 +691,11 @@ int ConfigFileParser::ParseCommonQuantString(const std::map<std::string, std::ma
       {"min_quant_weight_size", common_quant_string_.min_quant_weight_size},
       {"min_quant_weight_channel", common_quant_string_.min_quant_weight_channel},
       {"skip_quant_node", common_quant_string_.skip_quant_node},
+      {"quant_node", common_quant_string_.quant_node},
+      {"quant_op_type", common_quant_string_.quant_op_type},
+      {"skip_quant_op_type", common_quant_string_.skip_quant_op_type},
+      {"layer_decision_report", common_quant_string_.layer_decision_report},
+      {"layer_decision_strict", common_quant_string_.layer_decision_strict},
       {"debug_info_save_path", common_quant_string_.debug_info_save_path},
       {"enable_encode", common_quant_string_.enable_encode},
       {"workspace", common_quant_string_.workspace},

@@ -15,6 +15,7 @@
  */
 
 #include "tools/converter/config_parser/quant_param_parser.h"
+#include <algorithm>
 #include <vector>
 #include "src/common/log_adapter.h"
 #include "tools/common/string_util.h"
@@ -27,6 +28,68 @@ constexpr int kQuantBitNumInt16 = 16;
 constexpr int kQuantBitNumInt8 = 8;
 constexpr int kMinSize = 0;
 constexpr int kMaxSize = 65535;
+constexpr size_t kMaxNodeListEntries = 200;    // name lists: quant_node / skip_quant_node
+constexpr size_t kMaxOpTypeListEntries = 100;  // op-type lists: quant_op_type / skip_quant_op_type
+
+void InsertSplitEntries(const std::string &entries, std::set<std::string> *target) {
+  for (const auto &item : SplitStringToVector(entries, ',')) {
+    if (!item.empty()) {  // "a,,b" style lists must not put an empty entry into the list
+      target->insert(item);
+    }
+  }
+}
+
+// Entry-count guards (test feedback): name lists cap at 200 entries, op-type lists at 100 —
+// oversized lists are almost always paste/generation mistakes, reject them up front.
+bool EntryCountWithinLimits(const quant::CommonQuantParam &common_quant) {
+  if (common_quant.quant_node.size() > kMaxNodeListEntries ||
+      common_quant.skip_quant_node.size() > kMaxNodeListEntries) {
+    MS_LOG(ERROR) << "INPUT ILLEGAL: quant_node/skip_quant_node accept at most " << kMaxNodeListEntries
+                  << " entries each, got "
+                  << std::max(common_quant.quant_node.size(), common_quant.skip_quant_node.size()) << ".";
+    return false;
+  }
+  if (common_quant.quant_op_type.size() > kMaxOpTypeListEntries ||
+      common_quant.skip_quant_op_type.size() > kMaxOpTypeListEntries) {
+    MS_LOG(ERROR) << "INPUT ILLEGAL: quant_op_type/skip_quant_op_type accept at most " << kMaxOpTypeListEntries
+                  << " entries each, got "
+                  << std::max(common_quant.quant_op_type.size(), common_quant.skip_quant_op_type.size()) << ".";
+    return false;
+  }
+  return true;
+}
+
+// Whitelist (quant_node/quant_op_type) and blacklist (skip_quant_node/skip_quant_op_type) are
+// mutually exclusive: any entry on both sides is an invalid config, fail fast instead of partial.
+bool ListsNotBothActive(const quant::CommonQuantParam &common_quant) {
+  bool whitelist_active = !common_quant.quant_node.empty() || !common_quant.quant_op_type.empty();
+  bool blacklist_active = !common_quant.skip_quant_node.empty() || !common_quant.skip_quant_op_type.empty();
+  if (whitelist_active && blacklist_active) {
+    MS_LOG(ERROR) << "INPUT ILLEGAL: quant_node/quant_op_type (whitelist) and "
+                     "skip_quant_node/skip_quant_op_type (blacklist) are mutually exclusive. "
+                     "Please keep only one side.";
+    return false;
+  }
+  return true;
+}
+
+// New list keys are scoped to the full-quant path this release (frozen by the design): the
+// whitelist pair and the type blacklist key. Only the legacy name blacklist (skip_quant_node)
+// keeps its three-path behavior. Pairing any new key with another quant_type would silently
+// ignore the config, so reject it up front (same fail-fast contract as the mutual-exclusion
+// check — one aligned strategy for every new key).
+bool NewKeysRequireFullQuant(const quant::CommonQuantParam &common_quant) {
+  if (common_quant.quant_type == quant::QUANT_ALL) {
+    return true;
+  }
+  if (!common_quant.quant_node.empty() || !common_quant.quant_op_type.empty() ||
+      !common_quant.skip_quant_op_type.empty()) {
+    MS_LOG(ERROR) << "INPUT ILLEGAL: quant_node/quant_op_type/skip_quant_op_type only take effect "
+                     "with quant_type=FULL_QUANT.";
+    return false;
+  }
+  return true;
+}
 }  // namespace
 int QuantParamParser::ParseFilter(const CommonQuantString &common_quant_string, quant::CommonQuantParam *common_quant) {
   MS_ASSERT(common_quant != nullptr);
@@ -52,10 +115,31 @@ int QuantParamParser::ParseFilter(const CommonQuantString &common_quant_string, 
     }
   }
   if (!common_quant_string.skip_quant_node.empty()) {
-    std::vector<std::string> nodes = SplitStringToVector(common_quant_string.skip_quant_node, ',');
-    for (const auto &node : nodes) {
-      common_quant->skip_quant_node.insert(node);
-    }
+    InsertSplitEntries(common_quant_string.skip_quant_node, &common_quant->skip_quant_node);
+  }
+  if (!common_quant_string.quant_node.empty()) {
+    InsertSplitEntries(common_quant_string.quant_node, &common_quant->quant_node);
+  }
+  if (!common_quant_string.quant_op_type.empty()) {
+    InsertSplitEntries(common_quant_string.quant_op_type, &common_quant->quant_op_type);
+  }
+  if (!common_quant_string.skip_quant_op_type.empty()) {
+    InsertSplitEntries(common_quant_string.skip_quant_op_type, &common_quant->skip_quant_op_type);
+  }
+  if (!EntryCountWithinLimits(*common_quant)) {
+    return RET_INPUT_PARAM_INVALID;
+  }
+  common_quant->layer_decision_report = common_quant_string.layer_decision_report;
+  if (!common_quant_string.layer_decision_strict.empty() &&
+      !ConvertBool(common_quant_string.layer_decision_strict, &common_quant->layer_decision_strict)) {
+    MS_LOG(ERROR) << "INPUT ILLEGAL: layer_decision_strict should be true or false.";
+    return RET_INPUT_PARAM_INVALID;
+  }
+  if (!ListsNotBothActive(*common_quant)) {
+    return RET_INPUT_PARAM_INVALID;
+  }
+  if (!NewKeysRequireFullQuant(*common_quant)) {
+    return RET_INPUT_PARAM_INVALID;
   }
   return RET_OK;
 }

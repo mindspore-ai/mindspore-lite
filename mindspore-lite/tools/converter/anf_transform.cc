@@ -27,6 +27,7 @@
 #include "nnacl_c/op_base.h"
 #include "src/common/log_adapter.h"
 #include "tools/converter/optimizer_manager.h"
+#include "tools/converter/quantizer/layer_decision_reporter.h"
 #include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/common/pass_manager_extends.h"
@@ -234,6 +235,50 @@ std::set<std::string> GetVariableNodeNames(const std::shared_ptr<ConverterPara> 
   return variable_nodes;
 }
 
+}  // namespace
+
+namespace {
+// BFS through subgraphs referenced by ValueNode<FuncGraphPtr>, collecting every cnode name.
+void CollectGraphsAndNames(const FuncGraphPtr &root, std::set<FuncGraphPtr> *all_graphs, std::set<std::string> *names,
+                           std::set<std::string> *types) {
+  if (root == nullptr || all_graphs == nullptr || names == nullptr || all_graphs->count(root) != 0) {
+    return;
+  }
+  all_graphs->insert(root);
+  for (auto &cnode : root->GetOrderedCnodes()) {
+    names->insert(cnode->fullname_with_scope());
+    for (const auto &type : opt::GetOriginOpTypes(cnode)) {
+      types->insert(type);
+    }
+    for (auto &input : cnode->inputs()) {
+      auto sub_graph = (input == nullptr) ? nullptr : GetValueNode<FuncGraphPtr>(input);
+      if (sub_graph != nullptr) {
+        CollectGraphsAndNames(sub_graph, all_graphs, names, types);
+      }
+    }
+  }
+}
+
+// Pre-optimization snapshot, taken before ANY pass (constant folding also deletes nodes). Used
+// by the layer decision report to tell CONFIG_UNMATCHED from FUSED_INVALID, and by the per-layer
+// config validation to reject entries naming no node of the original model.
+bool PrepareLayerDecisionSnapshot(const FuncGraphPtr &old_graph, const std::shared_ptr<ConverterPara> &param) {
+  const auto &common = param->commonQuantParam;
+  const bool per_layer_active = !common.quant_node.empty() || !common.quant_op_type.empty() ||
+                                !common.skip_quant_node.empty() || !common.skip_quant_op_type.empty();
+  if (common.layer_decision_report.empty() && !per_layer_active) {
+    return true;
+  }
+  std::set<FuncGraphPtr> all_graphs;
+  std::set<std::string> snapshot;
+  std::set<std::string> origin_types;
+  CollectGraphsAndNames(old_graph, &all_graphs, &snapshot, &origin_types);
+  quant::LayerDecisionRecorder::GetInstance().SetPreOptSnapshot(snapshot);
+  if (per_layer_active && !quant::LayerDecisionReporter::ValidatePerLayerConfig(*param, snapshot, origin_types)) {
+    return false;
+  }
+  return true;
+}
 }  // namespace
 
 AnfTransform::AnfTransform() = default;
@@ -853,6 +898,12 @@ int AnfTransform::RunPass(const FuncGraphPtr &old_graph, const std::shared_ptr<C
 }
 
 STATUS AnfTransform::TransformFuncGraph(const FuncGraphPtr &old_graph, const std::shared_ptr<ConverterPara> &param) {
+  // Both the online branch and RunPass consume the layer decision machinery, so the snapshot
+  // must be taken before the split - otherwise the online path reports every entry as
+  // CONFIG_UNMATCHED (no pre-optimization snapshot) and skips strict validation.
+  if (!PrepareLayerDecisionSnapshot(old_graph, param)) {
+    return RET_ERROR;
+  }
   if (param->no_fusion && param->save_type == kMindIR) {  // converter, online
     if (ProcOnlineTransform(old_graph, param) != lite::RET_OK) {
       MS_LOG(ERROR) << "Proc online transform failed.";

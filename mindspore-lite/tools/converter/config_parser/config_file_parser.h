@@ -45,6 +45,11 @@ struct CommonQuantString {
   std::string min_quant_weight_size;
   std::string min_quant_weight_channel;
   std::string skip_quant_node;
+  std::string skip_quant_op_type;
+  std::string quant_node;
+  std::string quant_op_type;
+  std::string layer_decision_report;
+  std::string layer_decision_strict;
   std::string debug_info_save_path;
   std::string enable_encode;
   std::string workspace;  // support for over 2G model.

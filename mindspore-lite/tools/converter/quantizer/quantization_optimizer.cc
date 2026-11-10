@@ -22,6 +22,7 @@
 #include <deque>
 #include <map>
 #include <set>
+#include "tools/converter/quantizer/layer_decision_reporter.h"
 #include "tools/optimizer/graph/redundant_op_remove_pass.h"
 #include "tools/lite_exporter/fetch_content.h"
 #include "base/base.h"
@@ -335,6 +336,19 @@ int QuantizationOptimizer::DoSingleGraphQuantize(const FuncGraphPtr &func_graph,
 }
 
 int QuantizationOptimizer::Run(const mindspore::FuncGraphPtr &func_graph) {
+  LayerDecisionRecorder::GetInstance().Clear();
+  // Dry-run: report-only mode maps every layer (origin -> converted -> decision) without
+  // quantizing. No decisions are recorded here, so the report skips its config status rows.
+  if (param_->commonQuantParam.quant_type == quant::QUANT_NONE &&
+      !param_->commonQuantParam.layer_decision_report.empty() && param_->fullQuantParam.target_device != ASCEND) {
+    MS_LOG(INFO) << "layer decision report dry-run: generating the report without quantization.";
+    LayerDecisionReporter reporter(param_);
+    auto status = reporter.Generate(func_graph, false);
+    if (status != RET_OK) {
+      MS_LOG(WARNING) << "generate layer decision report failed, conversion continues.";
+    }
+    return RET_OK;
+  }
   if (param_->commonQuantParam.quant_type == quant::QUANT_NONE || param_->fullQuantParam.target_device == ASCEND) {
     return RET_OK;
   }
@@ -368,6 +382,15 @@ int QuantizationOptimizer::Run(const mindspore::FuncGraphPtr &func_graph) {
     if (optimizer->Optimize(func_graph) == nullptr) {
       MS_LOG(ERROR) << "run infershape failed.";
       return RET_ERROR;
+    }
+  }
+  // Layer decision report: generated once after all quant transforms, FULL_QUANT only this release.
+  if (param_->commonQuantParam.quant_type == quant::QUANT_ALL &&
+      !param_->commonQuantParam.layer_decision_report.empty()) {
+    LayerDecisionReporter reporter(param_);
+    auto status = reporter.Generate(func_graph);
+    if (status != RET_OK) {
+      MS_LOG(WARNING) << "generate layer decision report failed, conversion continues.";
     }
   }
   return RET_OK;

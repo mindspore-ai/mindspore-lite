@@ -168,7 +168,8 @@ MSKernelCallBack BiasCorrectionStrategy::GetCPUFloatBeforeCallBack() {
                                  const std::vector<mindspore::MSTensor> &before_outputs,
                                  const MSCallBackParam &call_param) -> bool {
     MS_CHECK_TRUE_RET(quant_strategy_ != nullptr, false);
-    auto is_skip_op = quant_strategy_->IsSkipOp(call_param.node_name);
+    auto is_skip_op = quant_strategy_->IsSkipOp(call_param.node_name) ||
+                      per_layer_skipped_names_.find(call_param.node_name) != per_layer_skipped_names_.end();
     if (kSupportBiasCorrectionNode.find(call_param.node_type) == kSupportBiasCorrectionNode.end() || is_skip_op) {
       return true;
     }
@@ -202,7 +203,8 @@ MSKernelCallBack BiasCorrectionStrategy::GetCPUInt8BeforeCallBack() {
                                  const std::vector<mindspore::MSTensor> &before_outputs,
                                  const MSCallBackParam &call_param) -> bool {
     MS_CHECK_TRUE_RET(quant_strategy_ != nullptr, false);
-    auto is_skip_op = quant_strategy_->IsSkipOp(call_param.node_name);
+    auto is_skip_op = quant_strategy_->IsSkipOp(call_param.node_name) ||
+                      per_layer_skipped_names_.find(call_param.node_name) != per_layer_skipped_names_.end();
     if (kSupportBiasCorrectionNode.find(call_param.node_type) == kSupportBiasCorrectionNode.end() || is_skip_op) {
       return true;
     }
@@ -244,7 +246,8 @@ MSKernelCallBack BiasCorrectionStrategy::GetCPUInt8AfterCallBack() {
                                 const std::vector<mindspore::MSTensor> &after_outputs,
                                 const MSCallBackParam &call_param) -> bool {
     MS_CHECK_TRUE_RET(quant_strategy_ != nullptr, false);
-    auto is_skip_op = quant_strategy_->IsSkipOp(call_param.node_name);
+    auto is_skip_op = quant_strategy_->IsSkipOp(call_param.node_name) ||
+                      per_layer_skipped_names_.find(call_param.node_name) != per_layer_skipped_names_.end();
     if (kSupportBiasCorrectionNode.find(call_param.node_type) == kSupportBiasCorrectionNode.end() || is_skip_op) {
       return true;
     }
@@ -289,7 +292,8 @@ MSKernelCallBack BiasCorrectionStrategy::GetCPUFloatAfterCallBack() {
                                 const std::vector<mindspore::MSTensor> &after_outputs,
                                 const MSCallBackParam &call_param) -> bool {
     MS_CHECK_TRUE_RET(quant_strategy_ != nullptr, false);
-    auto is_skip_op = quant_strategy_->IsSkipOp(call_param.node_name);
+    auto is_skip_op = quant_strategy_->IsSkipOp(call_param.node_name) ||
+                      per_layer_skipped_names_.find(call_param.node_name) != per_layer_skipped_names_.end();
     if (kSupportBiasCorrectionNode.find(call_param.node_type) == kSupportBiasCorrectionNode.end() || is_skip_op) {
       return true;
     }
@@ -601,7 +605,8 @@ MSKernelCallBack BiasCorrectionStrategy::GetNVGPUInt8BeforeCallBack() {
                                  const std::vector<mindspore::MSTensor> &before_outputs,
                                  const MSCallBackParam &call_param) -> bool {
     MS_CHECK_TRUE_RET(quant_strategy_ != nullptr, false);
-    auto is_skip_op = quant_strategy_->IsSkipOp(call_param.node_name);
+    auto is_skip_op = quant_strategy_->IsSkipOp(call_param.node_name) ||
+                      per_layer_skipped_names_.find(call_param.node_name) != per_layer_skipped_names_.end();
     if (kSupportBiasCorrectionNode.find(call_param.node_type) == kSupportBiasCorrectionNode.end() || is_skip_op) {
       return true;
     }
@@ -650,7 +655,8 @@ MSKernelCallBack BiasCorrectionStrategy::GetNVGPUInt8AfterCallBack() {
                                 const std::vector<mindspore::MSTensor> &after_outputs,
                                 const MSCallBackParam &call_param) -> bool {
     MS_CHECK_TRUE_RET(quant_strategy_ != nullptr, false);
-    auto is_skip_op = quant_strategy_->IsSkipOp(call_param.node_name);
+    auto is_skip_op = quant_strategy_->IsSkipOp(call_param.node_name) ||
+                      per_layer_skipped_names_.find(call_param.node_name) != per_layer_skipped_names_.end();
     if (kSupportBiasCorrectionNode.find(call_param.node_type) == kSupportBiasCorrectionNode.end() || is_skip_op) {
       return true;
     }

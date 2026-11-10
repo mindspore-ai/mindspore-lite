@@ -44,6 +44,7 @@
 #include "tools/converter/parser/unify_format.h"
 #include "tools/converter/quantizer/quant_param_holder.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/converter/parser/unused_node_remove_pass.h"
 #include "tools/converter/parser/einsum_adjust.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
@@ -872,6 +873,9 @@ STATUS TFModelParser::ConvertOps(const tensorflow::NodeDef &node_def,
   auto anf_node = func_graph_ptr->NewCNode(inputs);
   CHECK_NULL_RETURN(anf_node);
   anf_node->set_fullname_with_scope(node_def.name());
+  // Fusion tracing: NodeDef.name is the original TF name (unique in the graph); record it
+  // explicitly so per-layer matching does not rely on the absorbed-name fallback.
+  opt::TraceOriginInfo(anf_node, node_def.name(), node_def.op());
 
   if (!input_name_not_found.empty()) {
     status = RecordNullInput(anf_node, input_name_not_found);

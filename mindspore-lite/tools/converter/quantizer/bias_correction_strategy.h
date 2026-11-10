@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 #include "base/base.h"
@@ -37,18 +38,28 @@ enum CallBackType {
   NVGPUInt8,
 };
 
+// Construction dependencies in one struct: the clean-code checks cap constructors at five
+// positional parameters.
+struct BiasCorrectionContext {
+  std::shared_ptr<ConverterPara> param;
+  std::shared_ptr<Calibrator> calibrator;
+  std::shared_ptr<QuantStrategy> quant_strategy;
+  std::shared_ptr<mindspore::Model> fp32_ms_model;
+  int activation_q_min;
+  int activation_q_max;
+  std::set<std::string> per_layer_skipped_names;
+};
+
 class BiasCorrectionStrategy {
  public:
-  BiasCorrectionStrategy(const std::shared_ptr<ConverterPara> &param, const std::shared_ptr<Calibrator> &calibrator,
-                         const std::shared_ptr<QuantStrategy> &quant_strategy,
-                         const std::shared_ptr<mindspore::Model> &fp32_ms_model, int activation_q_min,
-                         int activation_q_max)
-      : param_(param),
-        calibrator_(calibrator),
-        quant_strategy_(quant_strategy),
-        fp32_ms_model_(fp32_ms_model),
-        activation_q_min_(activation_q_min),
-        activation_q_max_(activation_q_max) {}
+  explicit BiasCorrectionStrategy(const BiasCorrectionContext &ctx)
+      : param_(ctx.param),
+        calibrator_(ctx.calibrator),
+        quant_strategy_(ctx.quant_strategy),
+        fp32_ms_model_(ctx.fp32_ms_model),
+        activation_q_min_(ctx.activation_q_min),
+        activation_q_max_(ctx.activation_q_max),
+        per_layer_skipped_names_(ctx.per_layer_skipped_names) {}
 
   ~BiasCorrectionStrategy() = default;
 
@@ -147,6 +158,9 @@ class BiasCorrectionStrategy {
   std::shared_ptr<mindspore::Model> fp32_ms_model_{nullptr};
   int activation_q_min_{INT8_MIN};
   int activation_q_max_{INT8_MAX};
+  // Converted names of layers skipped by the per-layer blacklist: origin attributes are stripped
+  // before this stage's runtime callbacks run, so they are carried in explicitly.
+  std::set<std::string> per_layer_skipped_names_;
 
   MSKernelCallBack int8_before_call_back_;
   MSKernelCallBack int8_after_call_back_;

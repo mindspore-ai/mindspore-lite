@@ -25,6 +25,7 @@
 #include "mindspore/ops/op_def/math_ops.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "tools/optimizer/graph/node_infershape.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "tools/optimizer/common/format_utils.h"
@@ -227,7 +228,18 @@ int InsertQuantNodeManager::InsertDynamicQuantNode(const FuncGraphPtr &graph,
   auto cnodes = graph->GetOrderedCnodes();
   for (auto &cnode : cnodes) {
     auto op_name = cnode->fullname_with_scope();
-    if (skip_quant_node.find(op_name) != skip_quant_node.end()) {
+    bool skip_quant = false;
+    // Origin-domain name matching: the current name plus every original name the node carries.
+    // The name vector is built per node, so an empty skip set must not pay that cost.
+    if (!skip_quant_node.empty()) {
+      for (const auto &name : opt::GetSelfAndOriginNames(cnode)) {
+        if (skip_quant_node.find(name) != skip_quant_node.end()) {
+          skip_quant = true;
+          break;
+        }
+      }
+    }
+    if (skip_quant) {
       MS_LOG(INFO) << op_name << " is skip dynamic quant.";
       continue;
     }
