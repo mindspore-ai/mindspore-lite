@@ -95,7 +95,10 @@ def _make_flash_attn_mask(attention_mask, q_len, k_len, past_len):
     ar_k = torch.arange(k_len, device=attention_mask.device)
     causal = ar_k[None, :] > (past_len + ar_q[:, None])
     causal = causal[None, None, :, :].expand(attention_mask.shape[0], 1, q_len, k_len)
-    padding = attention_mask[:, None, None, :] == 0
+    # compare against a 1-D zero tensor: a 0-dim int64 Constant gets downcast to
+    # int32 by GE infershape, which fails Equal with an int64 input
+    zero = torch.zeros(1, dtype=attention_mask.dtype, device=attention_mask.device)
+    padding = attention_mask[:, None, None, :] == zero
     return causal | padding
 
 
