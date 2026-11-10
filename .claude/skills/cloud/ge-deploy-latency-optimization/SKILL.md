@@ -23,11 +23,11 @@ description: MindSpore Lite 云侧 GE 在线推理（provider=ge、optimize=none
 | 并行编译池（方案 1） | 任何时候；必须在第一次算子编译发生前设置 | 无 | 值 >32 或 <1 时被静默回退为 8；rank 数×N > CPU 核数×80%：机器负载过高、整体变慢甚至卡死 |
 | 双 rank 并行 build（方案 2） | 两 rank 均为 GE provider 的独立 Model 实例 | — | 无（build 阶段不涉及集合通信） |
 | 双图并发首推编译（方案 3） | config 已设置 `ge.AllowMultiGraphParallelCompile=1`；两 rank 预热在 barrier 内同步开始 | 未设置该开关；与 `ge.exec.variable_acc=True` 同时设置 | 未加开关强行并发：编译结果不可信（变量优化共享状态竞争）；已加开关但不同步：HCCL EI0005/EI0006 报错；与 variable_acc 同设：GE 直接拒绝 |
-| 图级编译缓存（方案 4） | 同 MindIR + 同 config + 同 CANN 版本/架构 + 同 SoC + 同 mslite 构建版本；缓存目录已预创建 | 任一条件变化时指望命中（会自动 miss 回退在线编译，功能安全但无加速）；重装自定义算子 vendor 后指望缓存自动失效（**不会**——算子代码不进指纹） | 重装 vendor 后未清缓存：**静默误用旧算子二进制**（精度/行为错误且无报错）；cache 目录放 /tmp：容量/清理风险 |
-| 构建期预热+制品化（方案 5） | 构建机与生产机：同 SoC、同 CANN 版本、同 mslite 构建版本、同 config（cache_dir 路径可不同） | 跨 SoC / 跨 CANN 大版本分发 | 指纹不一致自动 miss（安全），但分发无效、白占磁盘；分发不完整（缺 .rdcpkt/.idx 附属文件）→ 命中失败 |
+| 图级编译缓存（方案 4） | 同 MindIR + 同 config + 同 SoC；CANN 版本/架构与 mslite 构建版本需人工保持一致（**均不在缓存键中**）；缓存目录已预创建 | 任一条件变化时指望命中（会自动 miss 回退在线编译，功能安全但无加速）；重装自定义算子 vendor 后指望缓存自动失效（**不会**——算子代码不进指纹）；升级 CANN 后指望缓存自动失效（**不会**——CANN 安装信息不进指纹） | 重装 vendor 后未清缓存：**静默误用旧算子二进制**（精度/行为错误且无报错）；升级 CANN 后未清缓存：可能复用旧版本编译的产物；cache 目录放 /tmp：容量/清理风险 |
+| 构建期预热+制品化（方案 5） | 构建机与生产机：同 SoC、同 config（cache_dir 路径可不同）；CANN 版本/架构与 mslite 构建版本需人工保持一致（均不在缓存键中） | 跨 SoC 分发；跨 CANN 版本分发（不会自动 miss，需先清理缓存） | 指纹不一致自动 miss（安全），但分发无效、白占磁盘；跨 CANN 版本分发且未清缓存 → 可能复用旧产物；分发不完整（缺 .rdcpkt/.idx 附属文件）→ 命中失败 |
 | 算子级编译缓存（方案 6） | `ge.opDebugLevel` 未设置或为 0；`mode=enable`；cache 目录在持久文件系统 | `ge.opDebugLevel≠0`（算子级缓存被强制禁用）；`mode=force` 且存在其他实例共用该目录 | `opDebugLevel≠0` + 期望命中 → 静默不命中（白配）；`force` 共用目录 → **删除他人缓存**；cache 目录磁盘满 → 编译失败 |
 | 串行预热编排（方案 7） | 任何时候（推荐默认形态） | — | 两 rank 预热顺序/档位不一致：HCCL EI0005；单 rank 独自预热：HCCL 死锁（等对端） |
-| ONNX 原名 inputShape（方案 8） | mslite 含位置 fallback 修复（本仓库版本）；输入数与顺序与 ONNX 一致 | ① 旧版本 mslite（无修复）→ 必须用图参数名（U 名，每次导出会变化）；② **config 写 U 名（U<数字>）在新版本直接报错**：`Invalid input name 'U292' ... Use the original ONNX input names instead`（U 名每次导出变化，属脆弱写法，已被主动拒绝） | config 输入个数与图输入个数不一致 → build 失败 `FuncGraph input size != input size`（报错明确，易排查） |
+| ONNX 原名 inputShape（方案 8） | 新版本 mslite **仅接受模型输入名（ONNX 原名）**；输入数与顺序与 ONNX 一致 | ① 旧版本 mslite → 必须用图参数名（U 名，每次导出会变化）；② **config 写 U 名（U<数字>）在本版本直接报错**：`Invalid input name 'U292' ... Use the original ONNX input names instead`（**没有位置回退/兼容**；U 名每次导出变化，属脆弱写法） | config 输入个数与图输入个数不一致 → build 失败 `FuncGraph input size != input size`（报错明确，易排查） |
 
 **通用红线（任何方案都不允许）**：
 - `ge.tiling_schedule_optimize=1`：实测编译窗口劣化 +143%，禁止设置；
@@ -117,7 +117,7 @@ th_pf.join()
 
 ### 4. 图级编译缓存（graph_compiler_cache_dir）
 
-**原理**：GE 支持把整图编译结果序列化落盘；下次相同条件的 build 直接加载，跳过全部编译（pass 链 + 算子编译）。命中 key 是 mslite 传入的 graphKey——本仓库已把**全部可自动判定的条件**（图结构、config 全部键值、CANN 版本、SoC）编进该 key：任何条件漂移 → key 变化 → 自动 miss → 回退在线编译，不会误用旧缓存。
+**原理**：GE 支持把整图编译结果序列化落盘；下次相同条件的 build 直接加载，跳过全部编译（pass 链 + 算子编译）。命中 key 是 mslite 传入的 graphKey——本仓库已把**可自动判定的条件**（图结构、config 全部键值、SoC）编进该 key：这些条件漂移 → key 变化 → 自动 miss → 回退在线编译，不会误用旧缓存；CANN 版本/架构与 mslite 构建版本不在 key 中，需按下方约束人工保持一致。
 
 **实现（config 样例，`[ge_session_options]` 段）**：
 
@@ -125,17 +125,21 @@ th_pf.join()
 ge.graph_compiler_cache_dir=/部署目录/cache/graph
 ```
 
-（cache 目录需预先创建。）
+（**cache 目录需预先创建**。目录不存在 / 是普通文件 / 不可写时，新版不会替你创建，而是把缓存**降级为"不启用"**并继续运行——功能正常，但每次启动都全量重编，等于没开缓存。只配 `model_cache_mode`、默认目录 `./model_build_cache_<rank>` 不可写时同样降级为不启用（WARNING），不再让 build 失败）
 
-**约束（命中需全部满足，任一不满足自动 miss，功能安全）**：
+**约束（除标注"人工"的项外，命中需全部满足，不满足会自动 miss 回退在线编译）**：
 - MindIR 图结构与算子 attrs 完全一致；
 - config 所有键值完全一致（precision_mode/dynamicDims/环境注入等；两个 `*_cache_dir` 路径键除外，不参与指纹）；
-- CANN 版本与架构一致；SoC 型号一致；
-- **与 rank 无关**（TP 各 rank 共享同一缓存条目）；
-- **mslite 构建版本一致**（指纹算法随 mslite 代码演进，升级后旧缓存一次性失效，属预期安全行为）。
+- SoC 型号一致；
+- **CANN 版本/架构需人工保持一致**（CANN 安装信息已不参与缓存键）：升级或更换 CANN 后不会自动 miss，需手工清理缓存目录；
+- **key 不含 rank**（同一张图在两个 rank 上的 key 完全相同）——因此**多卡必须按 rank 分缓存目录**：
+  `model_cache_dir=<dir>/rank{r}`、`ge.graph_compiler_cache_dir=<dir>_rank{r}`，或直接用 mem_opt 默认的
+  `./model_build_cache_<rank>/`；**两 rank 共用一个目录会互相覆盖，不报错但数值全错**
+  （实测：首对 P(yes) 0.1322 → 0.0168，40 对相关系数 0.17）；
+- **mslite 构建版本建议保持一致**（构建版本不在缓存键中，升级后旧缓存**不会**自动失效；需要按新版本重建时，请手工清理缓存目录）。
 
 **指纹盲区（唯一需要人工干预的场景）**：
-- **自定义算子 vendor 二进制（opp/vendors）不在指纹内**——重装/更新算子实现后，图结构、config、CANN、SoC 全部不变，图级缓存会静默命中旧算子产物；算子级缓存（方案 6）的 key 同样不含算子代码，行为相同。**重装 vendor 后必须手动清空两个缓存目录**（见通用红线），除此之外缓存全自动判定、无误用风险。
+- **自定义算子 vendor 二进制（opp/vendors）不在指纹内**——重装/更新算子实现后，图结构、config、SoC 均不变（CANN 版本同样不在键中），图级缓存会静默命中旧算子产物；算子级缓存（方案 6）的 key 同样不含算子代码，行为相同。**重装 vendor 后必须手动清空两个缓存目录**（见通用红线），除此之外缓存全自动判定、无误用风险。
 
 **风险**：
 - 缓存目录磁盘占用大（本例 ~16GB/轮）——放在容量充足的文件系统并定期清理；
@@ -153,7 +157,7 @@ ge.graph_compiler_cache_dir=/部署目录/cache/graph
 4. 正常启动服务。
 
 **约束**：
-- 构建机与生产机：同 SoC、同 CANN 版本、同 mslite 构建版本、同 config 内容（指纹自动校验，不一致自动 miss 回退全量编译）；
+- 构建机与生产机：同 SoC、同 config 内容（指纹自动校验，不一致自动 miss 回退全量编译）；CANN 版本/架构与 mslite 构建版本需人工保持一致（均不在缓存键中，跨版本分发前先清理缓存）；
 - cache 目录中除产物外还有权重等附属文件，需整体分发。
 
 **风险**：分发不完整（缺 `.rdcpkt/.idx` 附属文件）会导致命中失败——整体目录分发即可。
@@ -255,7 +259,7 @@ ge.dynamicNodeType=1
 decode 图差异：`ge.inputShape=input_ids:1,1;attention_mask:1,-1;position_ids:1,1;past_key_cache:36,1,4,-1,128;past_value_cache:36,1,4,-1,128`，`ge.dynamicDims=768,768,768;1024,1024,1024`。
 
 说明：
-- `inputShape` 使用 **ONNX 原名**（需要本仓库版本 mslite 的位置 fallback 修复；旧版本 mslite 必须改用图参数名，即每次导出后从报错信息中获取的 U 名）；
+- `inputShape` 使用 **ONNX 原名**（新版本 mslite 仅接受模型输入名，写 U 名会直接报 `Invalid input name 'U292' ...` 并列出合法输入名，**无位置回退**；仅当旧版本 mslite 或模型未记录张量名时，才需要改用每次导出都会变化的图参数名）；
 - `rank_table_file` 每次部署由脚本生成（TP 场景必须包含，否则 HCCL 初始化失败）；
 - 缓存两个目录需预先创建。
 
@@ -303,11 +307,112 @@ if __name__ == "__main__":
 
 per-rank config 生成：TP 场景必须由脚本把 `rank_table_file` 合并进源 config（TP 场景 config 不含 rank_table_file 会在 HCCL 初始化时报 `hccl_graph_optimizer Subgraph pre proc failed`）。
 
+## 实战补充：GE 缓存的实际使用方式（Qwen3-Reranker-8B CP2 实测）
+
+> 实测环境：**Atlas 300I Duo ×2 + CANN 9.1.0 + mslite 2.11.0（wheel 2026-10-21，commit 3c0217cb）**，
+> 场景为 **CP2 双 rank：prefix 静态 + suffix 4 档动态**。结论可类推到其它「每 rank 图不同」的多卡推理。
+>
+> 注意有两处行为在本仓库 `!1395 fix ge cache dir issue`（2026-11-04）之后发生了变化，
+> 下文凡涉及处都标注了【旧版】/【新版】，落地前先确认运行时包的版本。
+
+### 两类缓存与最小配置
+
+```ini
+[ascend_context]
+model_cache_mode=mem_opt            ; 打开图级缓存；未配置目录时默认 ./model_build_cache_<rank>
+; model_cache_dir=<dir>/rank{r}     ; 可选：显式目录（必须按 rank 分开，见下文）
+
+[ge_session_options]
+ge.op_compiler_cache_dir=<dir>/op   ; 算子级缓存（可选）
+ge.op_compiler_cache_mode=enable
+```
+
+- 图级缓存：命中则**整图跳过编译**，落盘 `<dir>/<key>.idx | .om | .rdcpkt` + `weight/`；
+- 算子级缓存：落盘 `kernel_cache/op_cache.ini` 与 `kernel_cache/<SoC>/te_<算子名>_<sha256>.json`；
+- 目录来源优先级（实测）：
+  1. `[ascend_context] model_cache_dir`（会被映射成 `ge.graph_compiler_cache_dir`）**优先**：两者都配且都有效时，
+     日志为 `Update session attr ge.graph_compiler_cache_dir to <model_cache_dir>`，产物只写该目录，
+     `ge.graph_compiler_cache_dir` 目录保持为空；
+  2. `model_cache_dir` 无效（不存在 / 是文件 / 不可写）而 `[ge_session_options] ge.graph_compiler_cache_dir` 有效时
+     **回退**到后者，日志为 `Invalid model_cache_dir '<dir>', keep using ge.graph_compiler_cache_dir '<dir2>'`；
+  3. 两者都未配置时才用默认的 `./model_build_cache_<rank>`（需 `model_cache_mode=mem_opt`）。
+
+### 指纹（缓存 key）规则
+
+| 参与指纹 | 不参与指纹 |
+|---|---|
+| 图结构/算子 attrs、**config 全部键值**、SoC、图序号 | **rank**、CANN 版本与架构、mslite 构建版本、`*_cache_dir` 路径键、非 config 来源的 session 参数（如经 `AscendDeviceInfo` 设置的 `precision_mode`） |
+
+实测要点：
+
+1. config 里**任何键值变化都会 miss**：加一行 `ge.AllowMultiGraphParallelCompile=1`，或删掉
+   op cache 的两行，都会换 key 重编（本用例冷编 447~609s，热跑 285~295s）；
+2. **`*_cache_dir` 路径不入指纹**：把整份缓存目录复制到新路径、只改路径键，仍然命中
+   （实测 285s ≈ 热跑 295s，且副本目录**无新增 `.om`**）→ 制品化可换盘/换机（需同 SoC、同 CANN、同 mslite 构建）；
+3. session 参数一变就要**手工清缓存**，否则复用旧产物。
+
+### ⚠ 最关键：缓存 key 不含 rank → 两个 rank 必须分开目录
+
+- 证据：rank0/rank1 各自目录里的条目名**完全相同**（`1_U0_1_39_15028296068670656355.idx`），
+  但 `.om` 大小不同（45974714 vs 45975740 字节）→ **key 不区分 rank，产物却不同**；
+- 后果：两 rank 共用一个缓存目录 → 互相覆盖/复用对方的图，**不报任何错，但数值全错**
+  （实测 GE 与 eager 的分数相关从 **0.9997 掉到 0.13~0.17**，成对排序从 **16/20 掉到 4/20 / 9/20**）；
+- 正确做法（二选一）：
+
+  1. **每 rank 独立目录**：用 mem_opt 默认的 `./model_build_cache_<rank>/`，或
+     `model_cache_dir=<dir>/rank{r}`、`ge.graph_compiler_cache_dir=<dir>_rank{r}`；
+  2. **每 rank 独立 graph_key**：`ge.graph_key=<tag>_r{r}`，且**必须写在 `[ge_graph_options]` 段**
+     （写在 `[ge_session_options]` 会被 mslite 的自动 key 覆盖，实测无效）。共用目录下实测条目名
+     变成 `suffix_r0.*` / `suffix_r1.*`，两份互不覆盖、数值正确（与基线逐位一致）。
+
+- **前缀图不需要 per-rank key**：两张 per-rank 前缀图完全相同（full-head、无集合通信），
+  共用目录下只有一个条目、不会冲突；只有「每 rank 图不同」的 suffix 图需要隔离。
+
+### ⚠ 缓存目录必须预先创建（行为随版本不同）
+
+| 版本 | 目录不存在 / 不可用时 |
+|---|---|
+| 【旧版】≤ 2.11.0-3c0217cb（实测） | build 阶段**不报错**，第一次 `predict` 才报 `File_Operation_Error_Invalid_Path(E13026) ... The cache directory does not exist`；rank worker 抛 `RuntimeError: predict failed!` 退出后，**编排父进程会永久阻塞**（实测挂住 914s 后才人工 kill） |
+| 【过渡版】`f8e9c866`（2026-11-02 实测） | 启动时用 `IsUsableCompileCacheDir()` 校验（存在 / 是目录 / 可写）；不满足时打 **`ERROR`**，随后**把缓存降级为"不启用"并继续跑**，不再让 build 失败 |
+| 【新版】含 `!1395`（`8d42c12a` 实测） | 同上，但该行日志级别为 **`WARNING`**（`Compile cache dir '<dir>' does not exist` → `Invalid model_cache_dir '…', GE compile cache is disabled for this model`）；若 `[ge_session_options]` 里另有有效目录，则保留那个（见上文"目录来源优先级"） |
+
+不论版本：**目录一定要预建**（否则缓存白配、等于没开），预热/服务脚本仍应做子进程死亡与超时检测
+（旧版本会挂死，新版本虽不挂但也失去了缓存收益）。
+
+### 收益与观测
+
+- 收益（同一 config）：冷编 **609s** → 热跑 **295s**（−52%）；冷启动整程约 9 分钟，命中缓存约 5 分钟；
+- 是否命中：看 `<dir>` 下 `.idx` / `.om` 的**文件名与 mtime**——`.om` 名字里带编译时间戳，
+  出现新的 `<key>_<时间戳>.om` 就是重编了：
+
+  ```bash
+  ls -la <cache_dir> | grep -E '\.(idx|om)$'
+  find <op_cache_dir>/kernel_cache -type f | wc -l   # 图缓存命中后不再增长
+  ```
+
+- 算子级缓存：`ge.opDebugLevel != 0` 时该目录**不会有任何产物**（算子缓存被禁用）；
+- 观测编译进程：本机 CANN 下 `ps -ef | grep bisheng` **恒为 0**，真正的 TBE 并行编译池是
+  `python3.11 -c from multiprocessing...`（按它计数才与 `TE_PARALLEL_COMPILER` 对得上）。
+
+### 清缓存的时机（任一变化都要清）
+
+重装/更新自定义算子 vendor（指纹不含算子代码）、改 `precision_mode` / `externalWeight` 等
+session 参数、换 SoC / CANN 大版本 / mslite 构建、改 config 想强制重编、把别的模型的缓存目录
+挪给本模型用。
+
+### 副作用
+
+- 【旧版】`model_cache_mode=mem_opt` 即使已被显式目录覆盖，**仍会创建**空的
+  `./model_build_cache_<rank>/`；【新版】配置了目录就**不再创建**（避免残留空目录、
+  也避免 CWD 不可写时 build 失败）；
+- GE 会在**当前工作目录**留下 `kernel_meta/`、`fusion_result.json` 与 16GB 级缓存目录 →
+  用独立工作目录跑，避免污染示例/仓库目录。
+
 ## 缓存使用限制汇总
 
 | 缓存 | 命中条件（全部满足） | 自动失效条件（任一出现） | 禁止事项 |
 |---|---|---|---|
-| 图级（方案 4） | 图结构、config 全部键值（`*_cache_dir` 路径键除外）、CANN 版本/架构、SoC、mslite 构建版本完全一致 | 任一变化（自动 miss 回退在线编译） | 不要把 A 条件的缓存目录指给 B 条件的模型当"加速"（指纹不同不会命中，不会误用）；重装自定义算子 vendor 后不清缓存目录（指纹不含算子代码，会静默误用旧产物） |
+| 图级（方案 4） | 图结构、config 全部键值（`*_cache_dir` 路径键除外）、SoC 完全一致；CANN 版本/架构与 mslite 构建版本需人工保持一致（均不在键中） | 上述自动判定条件任一变化（自动 miss 回退在线编译）；CANN 版本/架构、mslite 构建版本变化**不会**自动失效 | 不要把 A 条件的缓存目录指给 B 条件的模型当"加速"（指纹不同不会命中，不会误用）；重装自定义算子 vendor 后不清缓存目录（指纹不含算子代码，会静默误用旧产物）；升级 CANN / mslite 后不清缓存（可能复用旧产物） |
 | 算子级（方案 6） | 单算子的 (类型+输入输出 desc+attrs+编译选项) 一致（key 抹除图名/节点名/device_id，跨图跨部署有效） | 对应算子签名变化（仅该算子重编） | `ge.opDebugLevel≠0`（禁用 op cache）；`mode=force` 共用目录（清空他人缓存）；把 cache 目录放 /tmp（容量/清理风险） |
 
 两个缓存可以同时开启：图级命中 = 全部跳过（最优）；图级 miss（条件变化）时算子级缓存仍可复用未变化算子的 kernel。
@@ -329,12 +434,14 @@ per-rank config 生成：TP 场景必须由脚本把 `rank_table_file` 合并进
 
 以下方法不依赖先验知识，按步骤即可确认每个优化是否生效：
 
+> **日志级别**：缓存相关的 mslite 消息（`skip creating the default build cache dir`、`Update session attr ge.graph_compiler_cache_dir to …`、`Invalid model_cache_dir … keep using …`、`… is not writable`）都是 **INFO**，默认不输出到 stdout；想直接看到它们需要 `GLOG_v=1`（mslite）+ `ASCEND_GLOBAL_LOG_LEVEL=1` + `ASCEND_SLOG_PRINT_TO_STDOUT=1`（GE）。不打开时只能靠本节的文件/耗时方法判断。
+
 1. **确认并行编译池生效**：编译期间另开终端执行 `ps -ef | grep bisheng | wc -l`，进程数 ≈ 设定的 TE_PARALLEL_COMPILER 值即生效。
 2. **确认环境变量注入生效**（config 注入与 export 两种方式均可用此法验证）：部署脚本运行后，在脚本内执行 `python3 -c "import ctypes; print(ctypes.CDLL(None).getenv(b'TE_PARALLEL_COMPILER'))"`。注意：`os.environ` 和 `/proc/self/environ` 都是进程启动时的快照，看不到运行期 C 层 `setenv` 的结果，必须用 ctypes 方式验证。
 3. **确认双图并发预热生效**：预热期间观察 prefill 与 decode 两个线程是否同时处于编译状态（串行时 prefill 完成前 decode 不会开始）；或比较并发与串行两次预热的总时长（并发应接近两者中较大值而非之和）。
 4. **确认图级缓存命中**：cache 目录下出现 `.om/.rdcpkt/.idx` 文件；第二次部署预热时长从分钟级降到秒级，且这些文件集合不变化。未命中时不会报错，只是重新走全量编译——通过预热时长即可区分。
 5. **确认算子级缓存命中**：`<op_cache_dir>/kernel_cache/<SoC型号>/` 下出现按"算子名+hash"命名的 `.o/.json` 文件；第二次部署文件数量不增加（纯复用）。注意 `ge.opDebugLevel≠0` 时该目录不会有任何产物（算子级缓存被禁用）。
-6. **确认 U 名 fallback 生效**：config 使用 ONNX 原名且 build 成功，日志出现 `fall back to positional mapping` 的 WARNING；若 build 报 `Failed to find input Uxxx`，说明当前 mslite 未包含该修复。
+6. **确认输入名匹配生效**：config 使用 ONNX 原名且 build 成功、日志无 `Invalid input name` 报错；若 config 仍写 U 名，会直接报 `Invalid input name 'U...'` 并列出全部合法输入名，按提示改成 ONNX 原名即可（**没有位置回退/兼容**）。
 7. **时延测量口径**：部署总等待 = 进程启动 → 最后一个预热完成的时刻（`time.perf_counter()` 差值）；预热窗口 = barrier 释放 → 预热完成。
 8. **对照纪律**：任何 A/B 时延比较必须在同一批次内交替进行（A/B/A/B），因为连续编译后机器性能会漂移（实测同条件三轮 404s→1322s）；跨批次的绝对数值不可直接比较。
 9. **精度判据**：预热与推理输出的 logits 需满足 max/min/finite 与基线一致（Qwen3-8B 参考值 max≈19.453、min≈-6.098、finite=True）；任何优化方案不允许改变该数值。
