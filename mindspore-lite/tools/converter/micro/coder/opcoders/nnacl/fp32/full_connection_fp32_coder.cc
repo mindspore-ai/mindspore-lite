@@ -17,6 +17,7 @@
 #include "coder/opcoders/nnacl/fp32/full_connection_fp32_coder.h"
 #include "coder/log.h"
 #include "coder/opcoders/file_collector.h"
+#include "coder/opcoders/nnacl/dequant/de_quant.h"
 
 using mindspore::schema::PrimitiveType_FullConnection;
 
@@ -59,6 +60,10 @@ int FullConnectionFP32Coder::Init() {
     std::vector<int> b_shape = filter_tensor_->shape();
     params_.col_ = b_shape.at(0);
     params_.deep_ = b_shape.at(1);
+    // Weight-quant models carry int8 weights with fp32 activations; the base coder only emits the
+    // runtime int8->fp32 dequant when this flag is set (as MatMulFP32Coder::Init does). Without it
+    // the packed fp32 buffer is filled from raw int8 bytes and the layer computes garbage.
+    de_quant_flag_ = Dequant::GetInstance()->CheckDequantFlag(filter_tensor_);
   }
   params_.batch = 1;
   params_.a_batch_ = 1;

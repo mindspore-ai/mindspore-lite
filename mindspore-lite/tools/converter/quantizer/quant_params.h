@@ -138,6 +138,13 @@ struct CommonQuantParam {
   std::string debug_info_save_path;
   DebugMode debug_mode = DETAIL;
   std::set<std::string> skip_quant_node;
+  // Per-layer quant control. The lists are matched in the ORIGIN domain only (original model op
+  // names / op types, see fusion_trace_utils); fused framework names/types are not config entries.
+  std::set<std::string> quant_node;          // whitelist: only these layers quantize
+  std::set<std::string> quant_op_type;       // whitelist: only these op types quantize
+  std::set<std::string> skip_quant_op_type;  // blacklist: these op types stay fp32
+  std::string layer_decision_report;         // layer decision report output path (empty = disabled)
+  bool layer_decision_strict = false;        // true: per-layer entries matching no node fail the conversion
   int thread_num = 4;
   bool enable_encode = true;
   std::string workspace;  // support for model larger than 2G

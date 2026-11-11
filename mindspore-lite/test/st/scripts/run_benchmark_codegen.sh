@@ -680,6 +680,7 @@ models_cortex_codegen_config=${basepath}/../${config_folder}/models_codegen_cort
 models_codegen_parallel_config=${basepath}/../${config_folder}/models_codegen.cfg
 models_quant_codegen_config=${basepath}/../${config_folder}/models_codegen_quant.cfg
 models_quant_allops_codegen_config=${basepath}/../${config_folder}/models_codegen_quant_allops.cfg
+models_quant_skip_codegen_config=${basepath}/../${config_folder}/models_codegen_quant_skip.cfg
 
 #micro config
 micro_x86_config=${basepath}/../${config_folder}/micro/micro_x86.cfg
@@ -689,6 +690,7 @@ micro_ARM32_config=${basepath}/../${config_folder}/micro/micro_arm32A.cfg
 micro_cortex_config=${basepath}/../${config_folder}/micro/micro_cortex_m.cfg
 micro_quant_config=${basepath}/../${config_folder}/micro/micro_x86_quant.cfg
 micro_quant_allops_config=${basepath}/../${config_folder}/micro/micro_x86_quant_allops.cfg
+micro_quant_skip_config=${basepath}/../${config_folder}/micro/micro_x86_quant_skip.cfg
 
 # Set models and build path
 build_path_x86=${basepath}/codegen_build_x86
@@ -698,6 +700,7 @@ build_path_arm32=${basepath}/codegen_build_arm32
 build_path_cortex=${basepath}/codegen_build_cortex
 build_path_quant=${basepath}/codegen_build_quant
 build_path_quant_allops=${basepath}/codegen_build_quant_allops
+build_path_quant_skip=${basepath}/codegen_build_quant_skip
 
 # Write converter result to temp file
 run_converter_log_file=${basepath}/run_converter_log.txt
@@ -723,6 +726,8 @@ run_quant_codegen_log_file=${basepath}/run_quant_codegen_log.txt
 echo 'run x86_quant_codegen logs: ' > ${run_quant_codegen_log_file}
 run_quant_allops_codegen_log_file=${basepath}/run_quant_allops_codegen_log.txt
 echo 'run x86_quant_allops_codegen logs: ' > ${run_quant_allops_codegen_log_file}
+run_quant_skip_codegen_log_file=${basepath}/run_quant_skip_codegen_log.txt
+echo 'run x86_quant_skip_codegen logs: ' > ${run_quant_skip_codegen_log_file}
 
 echo "input backend is ${backend}"
 backend=${backend:-"all"}
@@ -785,6 +790,24 @@ if [[ $backend == "all" || $backend == "codegen" || $backend == "quant_codegen" 
     Run_quant_allops_codegen_status=$?
 fi
 
+# Per-layer origin-domain blacklist (fusion tracing): mixed int8/fp32 graph must
+# codegen+benchmark fine, and the layer decision report must show both the hit
+# (SKIP_OP_TYPE) and the unmatched entry (CONFIG_UNMATCHED).
+if [[ $backend == "all" || $backend == "codegen" || $backend == "quant_skip_codegen" ]] \
+    && [[ -f ${models_quant_skip_codegen_config} && -f ${micro_quant_skip_config} ]]; then
+    echo "start Run quant skip codegen ..."
+    rm -f ${x86_path}/mindspore-lite-${version}-linux-x64/layer_decision_*.csv
+    Run_quant_codegen ${build_path_quant_skip} ${models_path} ${models_quant_skip_codegen_config} ${run_quant_skip_codegen_log_file} ${run_benchmark_result_file} ${micro_quant_skip_config}
+    Run_quant_skip_codegen_status=$?
+    report_file=$(find ${x86_path}/mindspore-lite-${version}-linux-x64/ -maxdepth 1 -name 'layer_decision_*.csv' | head -n1)
+    if [[ "${report_file}" == "" ]] || ! grep -q 'SKIP_OP_TYPE' "${report_file}" || ! grep -q 'CONFIG_UNMATCHED' "${report_file}"; then
+        echo "Run_quant_skip_codegen report check failed, report: ${report_file}"
+        Run_quant_skip_codegen_status=1
+    else
+        echo "layer decision report verified: ${report_file}"
+    fi
+fi
+
 if [[ $backend == "all" || $backend == "codegen" || $backend == "x86_codegen" ]]; then
 #    wait ${Run_x86_codegen_PID}
 #    Run_x86_codegen_status=$?
@@ -843,6 +866,13 @@ if [[ $backend == "all" || $backend == "codegen" || $backend == "quant_codegen" 
     if [[ ${Run_quant_allops_codegen_status} != 0 ]];then
         echo "Run_quant_allops_codegen failed"
         cat ${run_quant_allops_codegen_log_file}
+        isFailed=1
+    fi
+fi
+if [[ $backend == "all" || $backend == "codegen" || $backend == "quant_skip_codegen" ]]; then
+    if [[ ${Run_quant_skip_codegen_status} != 0 ]];then
+        echo "Run_quant_skip_codegen failed"
+        cat ${run_quant_skip_codegen_log_file}
         isFailed=1
     fi
 fi

@@ -31,6 +31,7 @@
 #include "infer/tuple_get_item.h"
 #include "src/tensor.h"
 #include "tools/converter/quantizer/insert_quant_node_manager.h"
+#include "tools/converter/quantizer/layer_decision_reporter.h"
 #include "tools/converter/quantizer/quantize_util.h"
 #include "tools/optimizer/common/gllo_utils.h"
 #include "src/common/log_adapter.h"
@@ -651,26 +652,97 @@ void FullQuantQuantizer::InitQMinMax() {
   }
 }
 
-int FullQuantQuantizer::MarkQuantNode(const FuncGraphPtr &func_graph) {
-  auto cnodes = func_graph->GetOrderedCnodes();
-  for (auto &cnode : cnodes) {
-    auto is_skip_op = quant_strategy_->IsSkipOp(cnode->fullname_with_scope());
-    if (is_skip_op) {
-      MS_LOG(INFO) << cnode->fullname_with_scope() << " is skip quant.";
-      continue;
-    }
-    //  Mark quantifiable nodes
-    auto is_support_op = quant_strategy_->CanOpFullQuantized(func_graph->manager(), cnode, support_int8_ops_,
-                                                             skip_check_dtype_ops_, support_activation_);
-    if (is_support_op) {
-      MS_LOG(INFO) << cnode->fullname_with_scope() << " mark quant.";
-      auto ret = calibrator_->AddQuantizedOp(cnode);
-      if (ret != RET_OK) {
-        MS_LOG(ERROR) << cnode->fullname_with_scope() << " add quantized op failed.";
-        return ret;
+namespace {
+// Unconsumed per-layer entries must be visible even without the decision report configured:
+// log-only here — the report accounts for them with status rows, strict mode fails the run.
+void LogUnconsumedPerLayerEntries(const std::shared_ptr<ConverterPara> &param) {
+  const auto consumed = quant::LayerDecisionRecorder::GetInstance().ConsumedEntries();
+  const std::vector<std::pair<std::string, const std::set<std::string> &>> lists = {
+    {"quant_node", param->commonQuantParam.quant_node},
+    {"quant_op_type", param->commonQuantParam.quant_op_type},
+    {"skip_quant_node", param->commonQuantParam.skip_quant_node},
+    {"skip_quant_op_type", param->commonQuantParam.skip_quant_op_type}};
+  for (const auto &list : lists) {
+    for (const auto &entry : list.second) {
+      if (consumed.find(list.first + "=" + entry) == consumed.end()) {
+        MS_LOG(WARNING) << "per-layer quant config entry not effective: " << list.first << "=" << entry;
       }
     }
   }
+}
+}  // namespace
+
+int FullQuantQuantizer::MarkQuantNode(const FuncGraphPtr &func_graph) {
+  auto cnodes = func_graph->GetOrderedCnodes();
+  for (auto &cnode : cnodes) {
+    const auto node_name = cnode->fullname_with_scope();
+    LayerDecisionInfo info;
+    auto match = quant_strategy_->MatchPerLayerList(cnode);
+    // A layer may hit several entries at once (name domain and type domain); ALL of them are
+    // consumed (no false CONFIG_UNMATCHED status row) and ALL are listed in MatchedConfig,
+    // while matched_config keeps the joined hits's priority order.
+    std::set<std::string> matched_entries;
+    if (!param_->commonQuantParam.skip_quant_node.empty() || !param_->commonQuantParam.skip_quant_op_type.empty() ||
+        !param_->commonQuantParam.quant_node.empty() || !param_->commonQuantParam.quant_op_type.empty()) {
+      matched_entries = quant_strategy_->CollectMatchedEntries(cnode);
+      LayerDecisionRecorder::GetInstance().RecordConsumed(matched_entries);
+    }
+    std::string matched_config_all;
+    for (const auto &entry : matched_entries) {
+      if (!matched_config_all.empty()) {
+        matched_config_all += ";";
+      }
+      matched_config_all += entry;
+    }
+    if (match.hit == ListHitType::kSkipNode || match.hit == ListHitType::kSkipOpType) {
+      info.quantized = false;
+      info.reason = match.hit == ListHitType::kSkipNode ? QuantReportReason::kSkipNode : QuantReportReason::kSkipOpType;
+      info.matched_config = matched_config_all;
+      LayerDecisionRecorder::GetInstance().Record(node_name, info);
+      MS_LOG(INFO) << node_name << " is skip quant, matched " << info.matched_config << ".";
+      continue;
+    }
+    if (match.hit != ListHitType::kNone) {
+      info.matched_config = matched_config_all;
+    }
+    // Whitelist is a candidate condition: a hit still has to pass the quantizer's own checks.
+    if (quant_strategy_->WhiteListActive() && match.hit == ListHitType::kNone) {
+      info.quantized = false;
+      info.reason = QuantReportReason::kWhitelistNotMatched;
+      LayerDecisionRecorder::GetInstance().Record(node_name, info);
+      continue;
+    }
+    //  Mark quantifiable nodes
+    std::string reason;
+    auto is_support_op = quant_strategy_->CanOpFullQuantizedWithReason(
+      func_graph->manager(), cnode, support_int8_ops_, skip_check_dtype_ops_, support_activation_, &reason);
+    if (!is_support_op) {
+      info.quantized = false;
+      info.reason = reason.empty() ? QuantReportReason::kOpNotInSupportSet : reason;
+      LayerDecisionRecorder::GetInstance().Record(node_name, info);
+      if (match.hit != ListHitType::kNone) {
+        MS_LOG(WARNING) << node_name << " hits whitelist " << info.matched_config
+                        << " but is not quantizable, reason: " << info.reason;
+      }
+      continue;
+    }
+    info.quantized = true;
+    // Every layer row carries a reason: the default full-quant path reports QUANT_ALL instead of
+    // leaving Reason empty.
+    if (info.reason.empty()) {
+      info.reason = QuantReportReason::kQuantAll;
+    }
+    auto ret = calibrator_->AddQuantizedOp(cnode);
+    if (ret != RET_OK) {
+      MS_LOG(ERROR) << node_name << " add quantized op failed.";
+      return ret;
+    }
+    // Recorded only after AddQuantizedOp succeeds: a failed op must not surface as a quantized
+    // layer in the report.
+    LayerDecisionRecorder::GetInstance().Record(node_name, info);
+    MS_LOG(INFO) << node_name << " mark quant.";
+  }
+  LogUnconsumedPerLayerEntries(param_);
   return RET_OK;
 }
 
@@ -708,8 +780,9 @@ int FullQuantQuantizer::InitDeviceConfig(const FuncGraphPtr &func_graph) {
   } else {
     quant_strategy_ = std::make_unique<QuantStrategy>(0, 0, param_->commonQuantParam.skip_quant_node);
   }
-
   CHECK_NULL_RETURN(quant_strategy_);
+  quant_strategy_->SetPerLayerConfig(param_->commonQuantParam.quant_node, param_->commonQuantParam.quant_op_type,
+                                     param_->commonQuantParam.skip_quant_op_type);
   auto ret = MarkQuantNode(func_graph);
   if (ret != RET_OK) {
     MS_LOG(ERROR) << "Mark quant node failed.";
@@ -849,8 +922,14 @@ int FullQuantQuantizer::DoQuantize(FuncGraphPtr func_graph) {
 
   if (this->param_->fullQuantParam.bias_correction) {
     MS_LOG(INFO) << "do bias correction";
-    BiasCorrectionStrategy strategy(param_, calibrator_, quant_strategy_, fp32_ms_model_, init_param_.activation_q_min_,
-                                    init_param_.activation_q_max_);
+    BiasCorrectionContext bc_context{param_,
+                                     calibrator_,
+                                     quant_strategy_,
+                                     fp32_ms_model_,
+                                     init_param_.activation_q_min_,
+                                     init_param_.activation_q_max_,
+                                     LayerDecisionRecorder::GetInstance().SkippedNodeNames()};
+    BiasCorrectionStrategy strategy(bc_context);
     status = strategy.DoBiasCorrection(func_graph);
     if (status != RET_OK) {
       MS_LOG(ERROR) << "Do bias correction failed.";

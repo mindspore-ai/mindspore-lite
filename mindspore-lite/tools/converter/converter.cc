@@ -449,6 +449,36 @@ int ConverterImpl::InitConfigParam(const std::shared_ptr<ConverterPara> &param,
   return RET_OK;
 }
 
+// The trailing ParseParam steps (transform/dynamic quant, graph kernel, graph split) live here to
+// keep ParseParam itself under the lizard CCN/NLOC ceilings.
+int ConverterImpl::ParseRemainingParams(lite::ConfigFileParser *config_parser,
+                                        const std::shared_ptr<ConverterPara> &param) {
+  auto ret =
+    lite::QuantParamParser::ParseTransformQuant(config_parser->GetTransformQuantString(), &param->transformQuantParam);
+  if (ret != RET_OK) {
+    MS_LOG(ERROR) << "Parse transform quant param failed.";
+    return ret;
+  }
+  ret = lite::QuantParamParser::ParseDynamicQuant(config_parser->GetDynamicQuantString(), &param->dynamicQuantParam);
+  if (ret != RET_OK) {
+    MS_LOG(ERROR) << "Parse dynamic quant param failed.";
+    return ret;
+  }
+  lite::GraphKernelParamParser graph_kernel_parser;
+  ret = graph_kernel_parser.ParseGraphKernelCfg(config_parser->GetGraphKernelString(), &param->graphKernelParam);
+  if (ret != RET_OK) {
+    MS_LOG(ERROR) << "Parse graph kernel param failed.";
+    return ret;
+  }
+  lite::GraphSplitParamParser graph_split_parser;
+  ret = graph_split_parser.ParseGraphSplitCfg(param);
+  if (ret != RET_OK) {
+    MS_LOG(ERROR) << "Parse split graph param failed!";
+    return ret;
+  }
+  return RET_OK;
+}
+
 int ConverterImpl::ParseParam(lite::ConfigFileParser *config_parser, const std::shared_ptr<ConverterPara> &param,
                               const std::map<int, std::map<std::string, std::string>> *model_param_infos,
                               const std::map<std::string, std::map<std::string, std::string>> maps) {
@@ -482,9 +512,13 @@ int ConverterImpl::ParseParam(lite::ConfigFileParser *config_parser, const std::
       MS_LOG(ERROR) << "Parse mixed bit weight quant param failed.";
       return ret;
     }
-    // Fusion tracing pays off only when a per-layer list (or, in the follow-up batch, the
-    // decision report) needs the origin domain; keep plain conversions record-free.
-    opt::SetFusionTraceEnabled(!param->commonQuantParam.skip_quant_node.empty());
+    // Fusion tracing pays off only when a per-layer list or the decision report needs the
+    // origin domain; keep plain conversions record-free.
+    const auto &common_quant = param->commonQuantParam;
+    const bool per_layer_active = !common_quant.quant_node.empty() || !common_quant.quant_op_type.empty() ||
+                                  !common_quant.skip_quant_node.empty() || !common_quant.skip_quant_op_type.empty() ||
+                                  !common_quant.layer_decision_report.empty();
+    opt::SetFusionTraceEnabled(per_layer_active);
     ret = InitExtendedIntegrationInfo(param, *config_parser);
     if (ret != RET_OK) {
       MS_LOG(ERROR) << "Parse extended integration info failed.";
@@ -529,32 +563,7 @@ int ConverterImpl::ParseParam(lite::ConfigFileParser *config_parser, const std::
     MS_LOG(ERROR) << "Parse micro param failed.";
     return ret;
   }
-  ret =
-    lite::QuantParamParser::ParseTransformQuant(config_parser->GetTransformQuantString(), &param->transformQuantParam);
-  if (ret != RET_OK) {
-    MS_LOG(ERROR) << "Parse transform quant param failed.";
-    return ret;
-  }
-  ret = lite::QuantParamParser::ParseDynamicQuant(config_parser->GetDynamicQuantString(), &param->dynamicQuantParam);
-  if (ret != RET_OK) {
-    MS_LOG(ERROR) << "Parse dynamic quant param failed.";
-    return ret;
-  }
-  lite::GraphKernelParamParser graph_kernel_parser;
-  ret = graph_kernel_parser.ParseGraphKernelCfg(config_parser->GetGraphKernelString(), &param->graphKernelParam);
-  if (ret != RET_OK) {
-    MS_LOG(ERROR) << "Parse graph kernel param failed.";
-    return ret;
-  }
-
-  lite::GraphSplitParamParser graph_split_parser;
-
-  ret = graph_split_parser.ParseGraphSplitCfg(param);
-  if (ret != RET_OK) {
-    MS_LOG(ERROR) << "Parse split graph param failed!";
-    return ret;
-  }
-  return RET_OK;
+  return ParseRemainingParams(config_parser, param);
 }
 
 int ConverterImpl::InitExtendedIntegrationInfo(const std::shared_ptr<ConverterPara> &param,

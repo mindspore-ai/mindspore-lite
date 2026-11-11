@@ -22,13 +22,14 @@
 #include "mindspore/ops/op_def/sequence_ops.h"
 #include "mindspore/ops/op_def/lite_ops.h"
 #include "mindspore/ops/op_def/framework_ops.h"
+#include "tools/converter/quantizer/layer_decision_reporter.h"
 #include "tools/converter/quantizer/quantize_util.h"
 #include "tools/optimizer/common/gllo_utils.h"
+#include "tools/optimizer/common/fusion_trace_utils.h"
 #include "src/common/log_adapter.h"
 #include "src/common/log_util.h"
 #include "nnacl_c/op_base.h"
 #include "ops_utils/op_utils.h"
-#include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_a.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_c.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_m.h"
 #include "mindspore/ops/op_def/auto_generate/gen_ops_primitive_o.h"
@@ -173,16 +174,31 @@ bool QuantStrategy::CanOpFullQuantized(const FuncGraphManagerPtr &manager, const
                                        const std::set<PrimitivePtr> &support_int8_ops,
                                        const std::set<PrimitivePtr> &skip_check_dtype_ops,
                                        const std::set<mindspore::ActivationType> &support_activation) {
+  return CanOpFullQuantizedWithReason(manager, cnode, support_int8_ops, skip_check_dtype_ops, support_activation,
+                                      nullptr);
+}
+
+bool QuantStrategy::CanOpFullQuantizedWithReason(const FuncGraphManagerPtr &manager, const CNodePtr &cnode,
+                                                 const std::set<PrimitivePtr> &support_int8_ops,
+                                                 const std::set<PrimitivePtr> &skip_check_dtype_ops,
+                                                 const std::set<mindspore::ActivationType> &support_activation,
+                                                 std::string *reason) {
+  auto set_reason = [reason](const std::string &why) {
+    if (reason != nullptr) {
+      *reason = why;
+    }
+    return false;
+  };
   MS_CHECK_TRUE_RET(cnode != nullptr, false);
   MS_CHECK_TRUE_RET(manager != nullptr, false);
   // The return node does not need to be quantified.
   if (opt::CheckPrimitiveType(cnode, prim::kPrimReturn) || opt::CheckPrimitiveType(cnode, prim::kPrimMakeTuple)) {
-    return false;
+    return set_reason(QuantReportReason::kStructural);
   }
   auto type = NodePrimitiveType(cnode);
   if (!support_int8_ops.empty() && !CheckNodeInSet(cnode, support_int8_ops)) {
     MS_LOG(WARNING) << "node:" << cnode->fullname_with_scope() << " type:" << type << " will not quantify.";
-    return false;
+    return set_reason(QuantReportReason::kOpNotInSupportSet);
   }
   if (CheckNodeInSet(cnode, skip_check_dtype_ops)) {
     MS_LOG(INFO) << " type:" << type << " node name is" << cnode->fullname_with_scope()
@@ -194,11 +210,11 @@ bool QuantStrategy::CanOpFullQuantized(const FuncGraphManagerPtr &manager, const
   if (!support_activation.empty() && opt::CheckPrimitiveType(cnode, prim::kPrimActivation)) {
     auto value_ptr = GetValueNode<PrimitivePtr>(cnode->input(0))->GetAttr(ops::kActivationType);
     if (value_ptr == nullptr) {
-      return false;
+      return set_reason(QuantReportReason::kActivationNotSupported);
     }
     auto activation = mindspore::ActivationType(GetValue<int64_t>(value_ptr));
     if (support_activation.find(activation) == support_activation.end()) {
-      return false;
+      return set_reason(QuantReportReason::kActivationNotSupported);
     }
   }
 
@@ -206,21 +222,93 @@ bool QuantStrategy::CanOpFullQuantized(const FuncGraphManagerPtr &manager, const
   auto ret = opt::GetDataTypeFromAnfNode(cnode, &type_id);
   if (ret != RET_OK) {
     MS_LOG(ERROR) << "Fetch DataType from cnode failed.";
-    return false;
+    return set_reason(QuantReportReason::kFetchDtypeFailed);
   }
 
   // CheckAscendSpec
   if (target_device_ == ASCEND) {
-    return CheckAscendSpec(manager, cnode, type_id, min_quant_weight_channel_);
+    if (!CheckAscendSpec(manager, cnode, type_id, min_quant_weight_channel_)) {
+      return set_reason(QuantReportReason::kAscendSpec);
+    }
+    return true;
   } else {
     bool is_data_type_fp32 = type_id == kNumberTypeFloat32;
     if (!is_data_type_fp32) {
       MS_LOG(WARNING) << " type:" << type << " node name is " << cnode->fullname_with_scope() << ", type_id " << type_id
                       << " is not float32 and will not be quantified.";
-      return false;
+      return set_reason(QuantReportReason::kNotFp32);
     }
   }
   return true;
+}
+
+ListMatchResult QuantStrategy::MatchPerLayerList(const CNodePtr &cnode) const {
+  ListMatchResult result;
+  if (cnode == nullptr) {
+    return result;
+  }
+  // No list configured: matching can never hit, so the per-node origin-name vectors are skipped.
+  if (!PerLayerListsActive()) {
+    return result;
+  }
+  // Blacklist name domain: the node's current name (legacy compatibility, equal to the origin
+  // name of un-fused survivors) plus every original name it carries; whitelist name domain:
+  // original names only — converted (framework) names must not whitelist a layer.
+  const auto names = opt::GetSelfAndOriginNames(cnode);
+  const auto origin_names = opt::GetOriginNames(cnode);
+  const auto types = opt::GetOriginOpTypes(cnode);
+  for (const auto &name : names) {
+    if (skip_node_.find(name) != skip_node_.end()) {
+      result.hit = ListHitType::kSkipNode;
+      result.matched_entry = name;
+      return result;
+    }
+  }
+  for (const auto &type : types) {
+    if (skip_op_type_.find(type) != skip_op_type_.end()) {
+      result.hit = ListHitType::kSkipOpType;
+      result.matched_entry = type;
+      return result;
+    }
+  }
+  for (const auto &name : origin_names) {
+    if (quant_node_.find(name) != quant_node_.end()) {
+      result.hit = ListHitType::kQuantNode;
+      result.matched_entry = name;
+      return result;
+    }
+  }
+  for (const auto &type : types) {
+    if (quant_op_type_.find(type) != quant_op_type_.end()) {
+      result.hit = ListHitType::kQuantOpType;
+      result.matched_entry = type;
+      return result;
+    }
+  }
+  return result;
+}
+
+std::set<std::string> QuantStrategy::CollectMatchedEntries(const CNodePtr &cnode) const {
+  // Entries are qualified as "config_key=entry" so that an identical raw string under two keys
+  // (e.g. a node literally named "Conv") consumes independently per key.
+  std::set<std::string> entries;
+  if (cnode == nullptr) {
+    return entries;
+  }
+  const auto names = opt::GetSelfAndOriginNames(cnode);
+  const auto origin_names = opt::GetOriginNames(cnode);
+  const auto types = opt::GetOriginOpTypes(cnode);
+  for (const auto &name : names) {
+    if (skip_node_.count(name) != 0) entries.insert("skip_quant_node=" + name);
+  }
+  for (const auto &name : origin_names) {
+    if (quant_node_.count(name) != 0) entries.insert("quant_node=" + name);
+  }
+  for (const auto &type : types) {
+    if (skip_op_type_.count(type) != 0) entries.insert("skip_quant_op_type=" + type);
+    if (quant_op_type_.count(type) != 0) entries.insert("quant_op_type=" + type);
+  }
+  return entries;
 }
 
 bool QuantStrategy::IsSkipOp(const std::string &skip_node_name) {

@@ -286,6 +286,7 @@ void ConvolutionWinogradFP32Coder::CollectFilesForFunc(CoderContext *const conte
             "common_func.c",
             "conv_int8.c",
             "matmul_int8.c",
+            "matmul_fp32.c",
             "pack_fp32.c",
             "conv_winograd_fp32.c",
             "winograd_transform.c",

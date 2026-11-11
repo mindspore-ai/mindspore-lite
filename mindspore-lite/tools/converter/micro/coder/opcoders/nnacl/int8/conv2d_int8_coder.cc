@@ -65,6 +65,7 @@ void Conv2DINT8Coder::CheckSupportOptimize() {
 
   switch (target_) {
     case kARM32:
+    case kRiscV:  // plain C path, no target-specific assembly
       support_optimize_ = false;
       tile_num_ = kFour;
       matmul_func_ = "NULL";
@@ -117,6 +118,7 @@ int Conv2DINT8Coder::InitWeightBias(CoderContext *const context) {
   int up_round_oc;
   switch (target_) {
     case kARM32:
+    case kRiscV:
       up_round_oc = UP_ROUND(output_channel, C2NUM);
       break;
     case kARM64:
@@ -287,6 +289,12 @@ std::unique_ptr<OperatorCoder> CPUConv2DINT8CoderCreator(const std::vector<Tenso
       dilation_w == 1) {
     coder = CPUOpCoderCreator<Conv2D3x3Int8Coder>(in_tensors, out_tensors, node, node_index, target, schema_version);
   } else if (kernel_h == 1 && kernel_w == 1) {
+    // RISCV int8 codegen covers the generic and 3x3 conv kernels only: the 1x1 coder emits the
+    // packed-weight layout RISCV does not implement, so refuse it instead of generating broken code.
+    if (target == kRiscV) {
+      MS_LOG(ERROR) << "RISCV int8 conv2d codegen does not support the 1x1 kernel";
+      return nullptr;
+    }
     coder = CPUOpCoderCreator<Conv2D1x1Int8Coder>(in_tensors, out_tensors, node, node_index, target, schema_version);
   } else {
     coder = CPUOpCoderCreator<Conv2DINT8Coder>(in_tensors, out_tensors, node, node_index, target, schema_version);
@@ -317,8 +325,14 @@ std::unique_ptr<OperatorCoder> CPUConv2DFusionINT8CoderCreator(const std::vector
   if (conv_param->group_ == 1) {
     coder = CPUConv2DINT8CoderCreator(in_tensors, out_tensors, node, node_index, target, schema_version);
   } else if (conv_param->group_ == conv_param->input_channel_ && conv_param->group_ == conv_param->output_channel_) {
-    coder = CPUOpCoderCreator<ConvolutionDepthwiseINT8Coder>(in_tensors, out_tensors, node, node_index, target,
-                                                             schema_version);
+    // RISCV int8 codegen covers the generic and 3x3 conv kernels only: the depthwise coder emits
+    // the packed-weight layout RISCV does not implement, so refuse it instead of broken code.
+    if (target != kRiscV) {
+      coder = CPUOpCoderCreator<ConvolutionDepthwiseINT8Coder>(in_tensors, out_tensors, node, node_index, target,
+                                                               schema_version);
+    } else {
+      MS_LOG(ERROR) << "RISCV int8 conv2d codegen does not support the depthwise kernel";
+    }
   } else {
     // group conv
   }
@@ -332,6 +346,7 @@ std::unique_ptr<OperatorCoder> CPUConv2DFusionINT8CoderCreator(const std::vector
 }
 
 REG_OPERATOR_CODER(kX86, kNumberTypeInt8, PrimitiveType_Conv2DFusion, CPUConv2DFusionINT8CoderCreator)
+REG_OPERATOR_CODER(kRiscV, kNumberTypeInt8, PrimitiveType_Conv2DFusion, CPUConv2DFusionINT8CoderCreator)
 REG_OPERATOR_CODER(kARM32, kNumberTypeInt8, PrimitiveType_Conv2DFusion, CPUConv2DFusionINT8CoderCreator)
 REG_OPERATOR_CODER(kARM64, kNumberTypeInt8, PrimitiveType_Conv2DFusion, CPUConv2DFusionINT8CoderCreator)
 }  // namespace mindspore::lite::micro::nnacl

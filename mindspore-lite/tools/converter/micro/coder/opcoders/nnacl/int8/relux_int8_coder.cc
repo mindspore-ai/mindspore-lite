@@ -45,6 +45,7 @@ int ReluxInt8Coder::DoCode(CoderContext *const context) {
           },
           {
             "relux_int8.c",
+            "fixed_point.c",
           });
 
   NNaclInt8Serializer code;

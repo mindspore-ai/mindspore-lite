@@ -27,6 +27,19 @@
 #include "tools/converter/quantizer/quant_params.h"
 
 namespace mindspore::lite::quant {
+enum class ListHitType {
+  kNone = 0,
+  kQuantNode,    // whitelist hit by op name
+  kQuantOpType,  // whitelist hit by op type
+  kSkipNode,     // blacklist hit by op name
+  kSkipOpType,   // blacklist hit by op type
+};
+
+struct ListMatchResult {
+  ListHitType hit = ListHitType::kNone;
+  std::string matched_entry;  // the configured entry that hit, empty when hit == kNone
+};
+
 class QuantStrategy {
  public:
   QuantStrategy(size_t min_quant_weight_size, size_t min_quant_weight_channel, std::set<std::string> skip_node,
@@ -43,9 +56,36 @@ class QuantStrategy {
                           const std::set<PrimitivePtr> &skip_check_dtype_ops,
                           const std::set<mindspore::ActivationType> &support_activation);
 
+  // Same checks as CanOpFullQuantized, plus a coarse reason code for the layer decision report
+  // (STRUCTURAL / OP_NOT_IN_SUPPORT_SET / ACTIVATION_NOT_SUPPORTED / NOT_FP32 / ASCEND_SPEC).
+  bool CanOpFullQuantizedWithReason(const FuncGraphManagerPtr &manager, const CNodePtr &cnode,
+                                    const std::set<PrimitivePtr> &support_int8_ops,
+                                    const std::set<PrimitivePtr> &skip_check_dtype_ops,
+                                    const std::set<mindspore::ActivationType> &support_activation, std::string *reason);
+
   bool CanTensorQuantized(const CNodePtr &cnode, const AnfNodePtr &input_node, int preferred_dim);
 
   bool IsSkipOp(const std::string &skip_node_name);
+
+  // ---- per-layer quant lists (matched in the ORIGIN domain, see fusion_trace_utils) ----
+  void SetPerLayerConfig(const std::set<std::string> &quant_node, const std::set<std::string> &quant_op_type,
+                         const std::set<std::string> &skip_quant_op_type) {
+    quant_node_ = quant_node;
+    quant_op_type_ = quant_op_type;
+    skip_op_type_ = skip_quant_op_type;
+  }
+
+  bool WhiteListActive() const { return !quant_node_.empty() || !quant_op_type_.empty(); }
+
+  bool PerLayerListsActive() const {
+    return !skip_node_.empty() || !quant_node_.empty() || !quant_op_type_.empty() || !skip_op_type_.empty();
+  }
+
+  ListMatchResult MatchPerLayerList(const CNodePtr &cnode) const;
+
+  // Every raw list entry that hits this layer across all four lists (name + type domains); used to
+  // mark multi-hit entries as consumed so they never surface as false CONFIG_UNMATCHED rows.
+  std::set<std::string> CollectMatchedEntries(const CNodePtr &cnode) const;
 
  private:
   bool CheckAscendSpec(const FuncGraphManagerPtr &manager, const CNodePtr &cnode, TypeId type_id,
@@ -54,6 +94,9 @@ class QuantStrategy {
   size_t min_quant_weight_size_ = 0;
   size_t min_quant_weight_channel_ = 0;
   std::set<std::string> skip_node_;
+  std::set<std::string> quant_node_;
+  std::set<std::string> quant_op_type_;
+  std::set<std::string> skip_op_type_;
   TargetDevice target_device_ = CPU;
 };
 }  // namespace mindspore::lite::quant
