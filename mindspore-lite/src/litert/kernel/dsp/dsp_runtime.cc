@@ -101,12 +101,15 @@ int DSPRuntime::Uninit() {
   if (init_state_ != InitSuccess) {
     return RET_OK;
   }
+  if (allocator_ != nullptr) {
+    allocator_->Clear();
+    allocator_ = nullptr;
+  }
   auto ret = DeviceClose(device_id_);
   if (ret != RET_OK) {
     MS_LOG(ERROR) << "Close DSP Device failed!";
     return RET_ERROR;
   }
-  allocator_ = nullptr;
   init_state_ = UnInit;
   MS_LOG(INFO) << "DSPRuntime uninit done!";
   return RET_OK;
