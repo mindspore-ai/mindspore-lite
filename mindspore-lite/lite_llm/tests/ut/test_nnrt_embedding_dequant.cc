@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -52,7 +53,8 @@ TEST(NnrtEmbedding, UploadsSharedInputsAndUsesTheirBuffersForLookup) {
                              static_scale_config, other_model_config}) {
     NnrtEmbedding embedding;
     ASSERT_TRUE(embedding.Configure(config));
-    std::vector<uint8_t> source(config.embedding_quant ? 9216 : 32768, 0);
+    std::vector<uint8_t> source(
+      config.embedding_format == EmbeddingFormat::kS16S4 ? 8448 : (config.embedding_quant ? 9216 : 32768), 0);
     ASSERT_TRUE(embedding.Load([&source](const std::string &, std::vector<uint8_t> *bytes) {
       *bytes = source;
       return true;
@@ -63,7 +65,7 @@ TEST(NnrtEmbedding, UploadsSharedInputsAndUsesTheirBuffersForLookup) {
     auto create = [&buffers, &config](size_t index, const std::vector<int32_t> &shape, int32_t dtype, size_t bytes) {
       EXPECT_EQ(dtype, !config.embedding_quant ? kOhNnFloat16 : (buffers.size() == 2 ? kOhNnInt8 : kOhNnUint8));
       const std::vector<int32_t> expected =
-        buffers.size() == 2 ? (index == 6 ? std::vector<int32_t>{128, 64} : std::vector<int32_t>{1, 1, 128, 8})
+        buffers.size() == 2 ? (index == 6 ? std::vector<int32_t>{128, 64} : std::vector<int32_t>{1, 1, 128, 2})
                             : std::vector<int32_t>{config.embedding_quant ? 9216 : 16384};
       EXPECT_EQ(shape, expected);
       buffers[index - 6].resize(bytes);
@@ -86,8 +88,8 @@ TEST(NnrtEmbedding, UploadsSharedInputsAndUsesTheirBuffersForLookup) {
       buffers[0][0] = 1;
       if (buffers.size() == 2) {
         const bool static128 = config.architecture_name == "qwen3" && config.num_layers == 36;
-        buffers[1][2] = static128 ? 0x00 : 0x80;
-        buffers[1][3] = static128 ? 0x3c : 0x3a;  // fp32 1/128 or 1/1024
+        const uint16_t scale = static128 ? 0x2000 : 0x1400;  // FP16 1/128 or 1/1024
+        std::memcpy(buffers[1].data(), &scale, sizeof(scale));
       } else {
         buffers[0][8193] = 0x3c;  // first fp16 scale = 1
       }
@@ -142,7 +144,7 @@ TEST(NnrtEmbedding, KeepsCreatedInputsVisibleWhenUploadFails) {
   NnrtEmbedding embedding;
   ASSERT_TRUE(embedding.Configure(EmbeddingConfig(true, true)));
   ASSERT_TRUE(embedding.Load([](const std::string &, std::vector<uint8_t> *bytes) {
-    bytes->resize(9216);
+    bytes->resize(8448);
     return true;
   }));
   std::vector<NN_Tensor *> inputs(8);

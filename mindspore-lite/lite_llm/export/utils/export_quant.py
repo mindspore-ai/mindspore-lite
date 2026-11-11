@@ -566,7 +566,7 @@ def _validate_shared_s16s4_weight(head, initializers):
         raise ValueError("Shared S16S4 embedding requires Group128 and aligned dimensions")
     if list(initializers[head.input[2]].dims) != [vocab, hidden // 2]:
         raise ValueError("Unexpected packed S16S4 weight shape")
-    if list(initializers[head.input[4]].dims) != [vocab // S16S4_N_TILE, hidden // S16S4_GROUP_SIZE, S16S4_N_TILE, 8]:
+    if list(initializers[head.input[4]].dims) != [vocab // S16S4_N_TILE, hidden // S16S4_GROUP_SIZE, S16S4_N_TILE, 2]:
         raise ValueError("Unexpected S16S4 scale record shape")
 
 
@@ -828,38 +828,8 @@ S16S4_N_TILE = 128
 S16S4_K_TILE = 64
 
 
-def pack_s16s4_nz(weight_kn):
-    """Pack logical signed-S4 [K,N] into the L311 [N,K/2] byte layout."""
-    weight_kn = np.ascontiguousarray(weight_kn, dtype=np.int8)
-    if weight_kn.ndim != 2:
-        raise ValueError("weight must be rank-2 [K,N]")
-    k, n = weight_kn.shape
-    if k % S16S4_K_TILE or n % S16S4_N_TILE:
-        raise ValueError(
-            f"S16S4 requires K%{S16S4_K_TILE}=0 and N%{S16S4_N_TILE}=0: {(k, n)}"
-        )
-    if np.any(weight_kn < -8) or np.any(weight_kn > 7):
-        raise ValueError("weight contains values outside signed int4")
-
-    reordered = (
-        weight_kn.T.reshape(
-            n // S16S4_N_TILE,
-            S16S4_N_TILE // 16,
-            16,
-            k // S16S4_K_TILE,
-            S16S4_K_TILE,
-        )
-        .transpose(0, 3, 1, 2, 4)
-        .copy()
-        .reshape(-1)
-    )
-    low = reordered[0::2].astype(np.uint8) & np.uint8(0x0F)
-    high = (reordered[1::2].astype(np.uint8) & np.uint8(0x0F)) << 4
-    return np.ascontiguousarray((low | high).view(np.int8).reshape(n, k // 2))
-
-
 def unpack_s16s4_nz(packed, k, n):
-    """Inverse of pack_s16s4_nz; returns signed-S4 [K,N]."""
+    """Decode the physical NZ bytes into signed-S4 [K,N] values."""
     packed = np.ascontiguousarray(packed, dtype=np.int8)
     if packed.size != n * k // 2:
         raise ValueError(f"packed size {packed.size} does not match K={k}, N={n}")
@@ -877,41 +847,6 @@ def unpack_s16s4_nz(packed, k, n):
     return np.ascontiguousarray(
         signed.transpose(0, 2, 3, 1, 4).reshape(n, k).T
     )
-
-
-def _s16s4_fixpipe_parameters(scales_gn, activation_scale):
-    """Encode grouped scales as [N/128,K/128,128,8] FixPipe records."""
-    groups, n = scales_gn.shape
-    if n % S16S4_N_TILE:
-        raise ValueError(f"N must be a multiple of {S16S4_N_TILE}: {n}")
-    effective = scales_gn.astype(np.float32) / np.float32(activation_scale)
-    ordered = effective.T.reshape((
-        n // S16S4_N_TILE, S16S4_N_TILE, groups
-    )).transpose((0, 2, 1))
-    records = np.zeros((*ordered.shape, 2), dtype=np.float32)
-    records[..., 0] = ordered
-    return np.ascontiguousarray(
-        records.view(np.int8).reshape((
-            n // S16S4_N_TILE, groups, S16S4_N_TILE, 8
-        ))
-    )
-
-
-def _s16s4_corrected_bias(weight_nk, scales_gn, activation_scale):
-    """Compensate the low-byte XOR used by the L311 S16 activation path."""
-    n, k = weight_nk.shape
-    groups = k // S16S4_GROUP_SIZE
-    grouped = weight_nk.reshape(n, groups, S16S4_GROUP_SIZE)
-    correction = (
-        grouped.sum(axis=2, dtype=np.int64).astype(np.float64)
-        * scales_gn.T.astype(np.float64)
-        / float(activation_scale)
-    ).sum(axis=1)
-    with np.errstate(over="ignore"):
-        bias = (128.0 * correction).astype(np.float16)
-    if not np.isfinite(bias).all():
-        raise ValueError("S16S4 activation scale causes FP16 correction bias overflow")
-    return np.ascontiguousarray(bias)
 
 
 def quantize_weight_s16s4_rtn128(weight, activation_scale=S16S4_ACTIVATION_SCALE):
@@ -942,14 +877,39 @@ def quantize_weight_s16s4_rtn128(weight, activation_scale=S16S4_ACTIVATION_SCALE
     ) - 8
     weight_nk_s4 = np.ascontiguousarray(quantized.reshape(n, k), dtype=np.int8)
     scales_gn = np.ascontiguousarray(scales_ng.T, dtype=np.float16)
-    packed = pack_s16s4_nz(weight_nk_s4.T)
+    # FP16 is the kernel's external scale representation. Bias must compensate
+    # the same rounded values, including subnormal rounding, rather than FP32 originals.
+    with np.errstate(over="ignore", under="ignore"):
+        effective_scales = (scales_gn.astype(np.float32) / np.float32(scale_fp16)).astype(np.float16)
+    if not np.isfinite(effective_scales).all():
+        raise ValueError("S16S4 effective scales overflow FP16")
+    adapter = load_custom_op("MsMatmulS16S4")
+    x_scale = np.array([scale_fp16], dtype=np.float16)
+    packed = np.empty((n, k // 2), dtype=np.int8)
+    bias = np.empty(n, dtype=np.float16)
+    scale_records = np.empty((n // S16S4_N_TILE, groups, S16S4_N_TILE, 2), dtype=np.int8)
+    # Bound the plugin's FP64 bias scratch while producing one complete head.
+    reorder_rows = 8192
+    for start in range(0, n, reorder_rows):
+        end = min(start + reorder_rows, n)
+        with np.errstate(over="ignore"):
+            _, _, block_weight, block_bias, block_scale = adapter.offline_reorder(
+                [None, x_scale, weight_nk_s4[start:end].T,
+                 np.zeros(end - start, dtype=np.float16), effective_scales[:, start:end]],
+                (k, end - start), S16S4_GROUP_SIZE,
+            )
+        packed[start:end] = block_weight
+        bias[start:end] = block_bias
+        scale_records[start // S16S4_N_TILE:end // S16S4_N_TILE] = block_scale
+    if not np.isfinite(bias).all():
+        raise ValueError("S16S4 activation scale causes FP16 correction bias overflow")
     if not np.array_equal(unpack_s16s4_nz(packed, k, n).T, weight_nk_s4):
         raise RuntimeError("internal S16S4 pack/unpack verification failed")
     return {
         "w": packed,
-        "bias": _s16s4_corrected_bias(weight_nk_s4, scales_gn, scale_fp16),
-        "w_scale": _s16s4_fixpipe_parameters(scales_gn, scale_fp16),
-        "x_scale": np.array([scale_fp16], dtype=np.float16),
+        "bias": np.ascontiguousarray(bias),
+        "w_scale": scale_records,
+        "x_scale": x_scale,
         "weight_s4": weight_nk_s4,
         "scales": scales_gn,
     }

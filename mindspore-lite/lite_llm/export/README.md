@@ -205,15 +205,14 @@ python mslite_llm_export.py --target kirin9030 \
 ```
 
 The `S16S4` embedding assets contain the signed-S4 NZ packed head
-weights followed by its FixPipe Group128 scale records. Both are runtime
+weights followed by two-byte FP16 effective Group128 scales. Both are runtime
 inputs (`embedding_weight` and `embedding_scale`) backed by CPU-accessible
 ION tensors shared between prefill, decode, and CPU lookup. Packages declare
 `npu.embedding_format=S16S4`, `embedding_quant=true`, and
 `scale_gp_size=128`; the Q4 layout marker is not required. CPU lookup reconstructs group scales
-from the records and does not apply the head correction bias. The exporter and
+from the rounded effective scales. The head correction bias uses the same rounded scales
+and applies only to the matrix multiplication. The exporter and
 runtime select shared-head activation scale 128 for `arch.name=qwen3` with 36
-layers, and 1024 otherwise. Legacy `S16S4_NZ_V1`, `S16S4_NZ_A1024`, and
-`S16S4_NZ_A128` packages must be re-exported with the unified format. The two small
+layers, and 1024 otherwise. The two small
 head constants remain compiled. Qwen3 has eight fixed inputs before KV
-caches (80 total for Qwen3-4B). W4A16 keeps seven fixed inputs. Shared
-embedding inputs are required; six-input packages are not supported.
+caches (80 total for Qwen3-4B). W4A16 keeps seven fixed inputs. Shared embedding inputs are required.
