@@ -301,3 +301,4 @@ mindspore-lite/mindspore-lite/lite_boost/python/model/qwen3_5_9b/graph_decode.py
 # one straight-line sequence of cube/vector steps.
 mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/fused_causal_conv_silu/op_host/fused_causal_conv_silu_tiling.cpp:optiling::TilingFunc
 mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/fused_causal_conv_silu/op_kernel/fused_causal_conv_silu.cpp:fused_causal_conv_silu
+mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_300iduo/fused_add_rms_norm_smooth_quant/op_kernel/fused_add_rms_norm_smooth_quant.h:FusedAddRmsNormSmoothQuant::FusedAddRmsNormSmoothQuant::ProcessBlock
