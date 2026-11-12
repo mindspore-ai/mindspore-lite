@@ -19,6 +19,7 @@
 #include "plugin/recurrent_gated_delta_rule.h"
 #include "plugin/chunk_gated_delta_rule.h"
 #include "plugin/quant_matmul_w4a8.h"
+#include "plugin/qkv_rms_norm_rope_cache.h"
 
 // RainFusionAttention
 TORCH_LIBRARY(lite_boost, m) {
@@ -80,6 +81,20 @@ TORCH_LIBRARY(lite_boost, m) {
   m.def(R"str(quant_matmul_w4a8(
     Tensor act, Tensor weight, Tensor scale,
     Tensor bias, Tensor x_scale, Tensor output_bias) -> (Tensor))str");
+
+  // QkvRmsNormRopeCache: fused q/k RMSNorm + rotate-half RoPE + paged KV cache
+  m.def(R"str(qkv_rms_norm_rope_cache(
+    Tensor qkv,
+    Tensor q_gamma,
+    Tensor k_gamma,
+    Tensor cos,
+    Tensor sin,
+    Tensor index,
+    int[] qkv_size,
+    int[] head_nums,
+    float epsilon=0.000001,
+    str cache_mode="PA_NZ"
+  ) -> (Tensor, Tensor, Tensor))str");
 }
 
 TORCH_LIBRARY_IMPL(lite_boost, PrivateUse1, m) {
@@ -87,4 +102,5 @@ TORCH_LIBRARY_IMPL(lite_boost, PrivateUse1, m) {
   m.impl("recurrent_gated_delta_rule", &RecurrentGatedDeltaRuleLiteBoostImplNPU);
   m.impl("chunk_gated_delta_rule", &lite_boost::ChunkGatedDeltaRuleLiteBoostImplNPU);
   m.impl("quant_matmul_w4a8", &lite_boost::QuantMatmulW4a8LiteBoostImplNPU);
+  m.impl("qkv_rms_norm_rope_cache", &QkvRmsNormRopeCacheLiteBoostImplNPU);
 }

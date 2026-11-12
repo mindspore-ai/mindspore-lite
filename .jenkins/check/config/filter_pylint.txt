@@ -69,3 +69,13 @@
 
 # Boogu attention passes structure_transform to replacement Linear modules.
 "mindspore-lite/mindspore-lite/lite_boost/python/model/booguimage/quant/w8a8_quant_linear.py" "unused-argument"
+
+# lite_boost/qwen3_30B_A3B: the adapter patches HF modules in place
+# (protected-access) and keeps the upstream model/tensor naming (invalid-name).
+"mindspore-lite/mindspore-lite/lite_boost/python/model/qwen3_30B_A3B" "invalid-name"
+"mindspore-lite/mindspore-lite/lite_boost/python/model/qwen3_30B_A3B" "protected-access"
+"mindspore-lite/mindspore-lite/lite_boost/python/layers/moe.py" "protected-access"
+
+# lite_boost/qwen3_30b_a3b tests: pytest fixtures are injected as arguments, so
+# the fixture function name is intentionally reused (redefined-outer-name).
+"mindspore-lite/mindspore-lite/lite_boost/test/models/qwen3_30b_a3b" "redefined-outer-name"
