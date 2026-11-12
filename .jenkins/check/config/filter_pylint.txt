@@ -41,6 +41,13 @@
 "mindspore-lite/mindspore-lite/lite_boost/python/ops/quant_matmul_w4a8.py"                                    "unsupported-binary-operation"
 "mindspore-lite/mindspore-lite/lite_boost/python/ops/quant_matmul_w4a8.py"                                    "too-many-arguments"
 
+# lite_boost/qwen3_5_9b — the service runner reads the pooled buffers captured
+# by init_bucket_pipelines.
+"mindspore-lite/mindspore-lite/lite_boost/python/model/qwen3_5_9b/runner.py"                                  "protected-access"
+# pytest injects fixtures by parameter name, which pylint reads as each test
+# redefining the module-level ``perf_rows`` fixture.
+"mindspore-lite/mindspore-lite/lite_boost/test/models/qwen3_5_9b/test_qwen3_5_9b.py"                          "redefined-outer-name"
+
 # lite_boost/parallel
 "mindspore-lite/mindspore-lite/lite_boost/python/parallel/tensor_parallel.py"                                 "not-callable"
 "mindspore-lite/mindspore-lite/lite_boost/python/parallel/tensor_parallel.py"                                 "protected-access"

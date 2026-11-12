@@ -14,10 +14,12 @@
 # ============================================================================
 """Options shared by the whole lite_boost test tree.
 
-``--mode`` lets the model test files put accuracy and performance cases in one
+``--mode`` lets the model test files keep accuracy and performance cases in one
 module while still running them separately (the end-to-end cases load a
 multi-GB checkpoint, so nobody wants to pay that twice):
 
+    python -m pytest models/qwen3_5_9b/test_qwen3_5_9b.py --mode accuracy
+    python -m pytest models/qwen3_5_9b/test_qwen3_5_9b.py --mode perf
     python -m pytest models/qwen3_30b_a3b/test_qwen3_30b_a3b.py --mode accuracy
     python -m pytest models/qwen3_30b_a3b/test_qwen3_30b_a3b.py --mode perf
 
@@ -42,7 +44,7 @@ expected to use these names.
 MODE_OPTION = "--mode"
 MODE_CHOICES = ("all", "accuracy", "perf")
 MODE_HELP = (
-    "Select which Qwen3-30B-A3B cases to run: 'accuracy', 'perf', or 'all' "
+    "Select which model cases to run: 'accuracy', 'perf', or 'all' "
     "(default). Cases without either marker are always kept."
 )
 

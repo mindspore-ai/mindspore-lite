@@ -55,6 +55,18 @@ def mm_all_reduce(x, weight, bias=None, *, hcom=None, reduce_op="sum"):
     """Fused matmul + all-reduce via ``npu_mm_all_reduce_base``; falls back to plain linear."""
     import torch_npu
 
+    # The env overrides below reduce straight through ``dist.all_reduce``, which
+    # cannot be captured into an NPU graph. Refuse them while capturing instead
+    # of failing later inside the capture with an opaque HCCL error.
+    if torch_npu.npu.is_current_stream_capturing() and (
+        os.environ.get("LB_TP_FP32_REDUCE") == "1"
+        or os.environ.get("LB_TP_BF16_SEPARATE") == "1"
+    ):
+        raise RuntimeError(
+            "mm_all_reduce: LB_TP_FP32_REDUCE / LB_TP_BF16_SEPARATE fall back to "
+            "dist.all_reduce, which is not graph-capturable. Unset them when "
+            "capturing a decode graph.")
+
     if os.environ.get("LB_TP_FP32_REDUCE")=="1":
         out_dtype = x.dtype
         partial = torch.nn.functional.linear(x.float(), weight.float(), bias.float() if bias is not None else None)

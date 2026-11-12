@@ -261,6 +261,9 @@ mindspore-lite/mindspore-lite/lite_boost/python/model/qwenimage/autoencoder_kl_q
 mindspore-lite/mindspore-lite/lite_boost/python/layers/attention.py:flash_attention
 mindspore-lite/mindspore-lite/lite_boost/python/ops/chunk_gated_delta_rule.py:chunk_gated_delta_rule
 mindspore-lite/mindspore-lite/lite_boost/python/layers/rope.py:rope_apply
+# lite_boost: one replay loop per (sync/async) x (stop/no-stop) mode; splitting
+# would duplicate the graph-replay bookkeeping.
+mindspore-lite/mindspore-lite/lite_boost/python/model/qwen3_5_9b/graph_decode.py:pooled_decode
 
 # lite_llm
 mindspore-lite/mindspore-lite/lite_llm/export/utils/msl_pack.py:encode_value, manifest_to_kv
@@ -287,3 +290,14 @@ mindspore-lite/mindspore-lite/lite_llm/examples/mslite-chat.cc:main
 # from the Qwen3.5-30B-A3B bundle (single capture routine per bucket).
 mindspore-lite/mindspore-lite/lite_boost/python/model/qwen3_30B_A3B/graph_decode.py:qwen3_30B_full_attn_forward_graph, graph_generate
 mindspore-lite/mindspore-lite/lite_boost/python/model/qwen3_30B_A3B/boost.py:boost_qwen3_30B_A3B
+# qwen3.5-9b LiteBoost: the adapter and its CLI are flat glue - per-layer patch
+# switches, graph capture pipelines and arg parsing - long but with no nesting
+# worth splitting further.
+mindspore-lite/mindspore-lite/lite_boost/python/model/qwen3_5_9b/boost.py:boost_qwen3_5_9b
+mindspore-lite/mindspore-lite/lite_boost/python/model/qwen3_5_9b/infer_qwen3_5_9b_liteboost.py:main
+mindspore-lite/mindspore-lite/lite_boost/python/model/qwen3_5_9b/model.py:_fused_inproj_ba_forward, qwen3_5_full_attn_forward_static
+mindspore-lite/mindspore-lite/lite_boost/python/model/qwen3_5_9b/graph_decode.py:graph_generate, bucketed_graph_generate, init_bucket_pipelines, _multi_round_chunk_generate, _multi_round_prefill_as_decode, _reset_cache_for_prefill, _reset_cache_for_multi_round_prefill
+# qwen3.5-9b AscendC kernels: tiling setup and the multi-stage kernel body are
+# one straight-line sequence of cube/vector steps.
+mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/fused_causal_conv_silu/op_host/fused_causal_conv_silu_tiling.cpp:optiling::TilingFunc
+mindspore-lite/mindspore-lite/tools/custom_kernels/ascend_ops/src/ascend_a2/fused_causal_conv_silu/op_kernel/fused_causal_conv_silu.cpp:fused_causal_conv_silu
