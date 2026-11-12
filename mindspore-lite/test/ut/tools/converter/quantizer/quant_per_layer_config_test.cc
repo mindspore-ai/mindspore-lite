@@ -153,15 +153,26 @@ TEST_F(QuantPerLayerConfigTest, NewKeysRequireFullQuant) {
   EXPECT_EQ(parse_fresh(full_type_blacklist).first, lite::RET_OK);
 }
 
-// TC-CFG: entry-count guards (test feedback) — name lists cap at 200, op-type lists at 100.
-// Every sub-case parses into a FRESH param object: a rejected oversized list still leaves its
-// entries inserted, and a shared fixture param would leak them into the boundary sub-cases.
+// TC-CFG: entry-count guards — name lists cap at 1000 raw fields, op-type lists at 200, single
+// entry length at 1024. The count is the raw comma-separated field count checked BEFORE set
+// deduplication, so a list of duplicates can still be rejected. Every failure path leaves the
+// parsed set untouched (all checks run before any insert), asserted on the too-long case below.
+// Every sub-case still parses into a FRESH param object so the boundary sub-cases stay
+// independent.
 TEST_F(QuantPerLayerConfigTest, EntryCountLimits) {
   auto join_n = [](size_t n, const std::string &prefix) {
     std::string list;
     for (size_t i = 0; i < n; ++i) {
       if (i != 0) list += ",";
       list += prefix + std::to_string(i);
+    }
+    return list;
+  };
+  auto join_n_dup = [](size_t n, const std::string &entry) {
+    std::string list;
+    for (size_t i = 0; i < n; ++i) {
+      if (i != 0) list += ",";
+      list += entry;
     }
     return list;
   };
@@ -173,29 +184,86 @@ TEST_F(QuantPerLayerConfigTest, EntryCountLimits) {
 
   CommonQuantString over_names;
   over_names.quant_type = "FULL_QUANT";
-  over_names.quant_node = join_n(201, "Conv_");
+  over_names.quant_node = join_n(1001, "Conv_");
   auto names_over = parse_fresh(over_names);
   EXPECT_EQ(names_over.first, lite::RET_INPUT_PARAM_INVALID);
 
   CommonQuantString over_types;
   over_types.quant_type = "FULL_QUANT";
-  over_types.skip_quant_op_type = join_n(101, "Type");
+  over_types.skip_quant_op_type = join_n(201, "Type");
   auto types_over = parse_fresh(over_types);
   EXPECT_EQ(types_over.first, lite::RET_INPUT_PARAM_INVALID);
 
   CommonQuantString ok_names;  // exactly at the cap passes
   ok_names.quant_type = "FULL_QUANT";
-  ok_names.quant_node = join_n(200, "Conv_");
+  ok_names.quant_node = join_n(1000, "Conv_");
   auto names_ok = parse_fresh(ok_names);
   EXPECT_EQ(names_ok.first, lite::RET_OK);
-  EXPECT_EQ(names_ok.second.quant_node.size(), 200u);
+  EXPECT_EQ(names_ok.second.quant_node.size(), 1000u);
 
   CommonQuantString ok_types;
   ok_types.quant_type = "FULL_QUANT";
-  ok_types.skip_quant_op_type = join_n(100, "Type");
+  ok_types.skip_quant_op_type = join_n(200, "Type");
   auto types_ok = parse_fresh(ok_types);
   EXPECT_EQ(types_ok.first, lite::RET_OK);
-  EXPECT_EQ(types_ok.second.skip_quant_op_type.size(), 100u);
+  EXPECT_EQ(types_ok.second.skip_quant_op_type.size(), 200u);
+
+  // The other two keys carry their own cap constants: legacy name blacklist 1000/1001,
+  // whitelist op types 200/201.
+  CommonQuantString over_skip_names;
+  over_skip_names.quant_type = "FULL_QUANT";
+  over_skip_names.skip_quant_node = join_n(1001, "Skip_");
+  EXPECT_EQ(parse_fresh(over_skip_names).first, lite::RET_INPUT_PARAM_INVALID);
+
+  CommonQuantString ok_skip_names;
+  ok_skip_names.quant_type = "FULL_QUANT";
+  ok_skip_names.skip_quant_node = join_n(1000, "Skip_");
+  auto skip_names_ok = parse_fresh(ok_skip_names);
+  EXPECT_EQ(skip_names_ok.first, lite::RET_OK);
+  EXPECT_EQ(skip_names_ok.second.skip_quant_node.size(), 1000u);
+
+  CommonQuantString over_quant_types;
+  over_quant_types.quant_type = "FULL_QUANT";
+  over_quant_types.quant_op_type = join_n(201, "QType");
+  EXPECT_EQ(parse_fresh(over_quant_types).first, lite::RET_INPUT_PARAM_INVALID);
+
+  CommonQuantString ok_quant_types;
+  ok_quant_types.quant_type = "FULL_QUANT";
+  ok_quant_types.quant_op_type = join_n(200, "QType");
+  auto quant_types_ok = parse_fresh(ok_quant_types);
+  EXPECT_EQ(quant_types_ok.first, lite::RET_OK);
+  EXPECT_EQ(quant_types_ok.second.quant_op_type.size(), 200u);
+
+  // Pre-dedup counting: 1001 duplicated entries deduplicate to one, but the raw field count
+  // still breaks the name-list cap; 1000 duplicates stay legal.
+  CommonQuantString dup_over;
+  dup_over.quant_type = "FULL_QUANT";
+  dup_over.quant_node = join_n_dup(1001, "Conv_0");
+  auto dup_over_ret = parse_fresh(dup_over);
+  EXPECT_EQ(dup_over_ret.first, lite::RET_INPUT_PARAM_INVALID);
+
+  CommonQuantString dup_ok;
+  dup_ok.quant_type = "FULL_QUANT";
+  dup_ok.quant_node = join_n_dup(1000, "Conv_0");
+  auto dup_ok_ret = parse_fresh(dup_ok);
+  EXPECT_EQ(dup_ok_ret.first, lite::RET_OK);
+  EXPECT_EQ(dup_ok_ret.second.quant_node.size(), 1u);
+
+  // Single-entry length cap: 1025 characters rejected, 1024 accepted.
+  CommonQuantString long_over;
+  long_over.quant_type = "FULL_QUANT";
+  long_over.skip_quant_node = join_n(2, "ok_") + "," + std::string(1025, 'x');
+  auto long_over_ret = parse_fresh(long_over);
+  EXPECT_EQ(long_over_ret.first, lite::RET_INPUT_PARAM_INVALID);
+  // Atomic failure: the valid entries before the too-long one must not be left behind.
+  EXPECT_TRUE(long_over_ret.second.skip_quant_node.empty());
+
+  CommonQuantString long_ok;
+  long_ok.quant_type = "FULL_QUANT";
+  long_ok.skip_quant_node = std::string(1024, 'x');
+  auto long_ok_ret = parse_fresh(long_ok);
+  EXPECT_EQ(long_ok_ret.first, lite::RET_OK);
+  EXPECT_EQ(long_ok_ret.second.skip_quant_node.size(), 1u);
 }
 
 TEST_F(QuantPerLayerConfigTest, ParseStrictFlag) {

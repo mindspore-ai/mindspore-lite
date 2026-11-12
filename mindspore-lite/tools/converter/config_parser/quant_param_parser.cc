@@ -15,7 +15,7 @@
  */
 
 #include "tools/converter/config_parser/quant_param_parser.h"
-#include <algorithm>
+#include <tuple>
 #include <vector>
 #include "src/common/log_adapter.h"
 #include "tools/common/string_util.h"
@@ -28,34 +28,39 @@ constexpr int kQuantBitNumInt16 = 16;
 constexpr int kQuantBitNumInt8 = 8;
 constexpr int kMinSize = 0;
 constexpr int kMaxSize = 65535;
-constexpr size_t kMaxNodeListEntries = 200;    // name lists: quant_node / skip_quant_node
-constexpr size_t kMaxOpTypeListEntries = 100;  // op-type lists: quant_op_type / skip_quant_op_type
+constexpr size_t kMaxNodeListEntries = 1000;    // name lists: quant_node / skip_quant_node
+constexpr size_t kMaxOpTypeListEntries = 200;   // op-type lists: quant_op_type / skip_quant_op_type
+constexpr size_t kMaxEntryStringLength = 1024;  // single list entry length cap
 
-void InsertSplitEntries(const std::string &entries, std::set<std::string> *target) {
-  for (const auto &item : SplitStringToVector(entries, ',')) {
+// Split one list key, validate it, and insert the entries. The entry count is the raw
+// comma-separated field count checked BEFORE set deduplication (a list of 1001 duplicates stays
+// illegal even though it deduplicates to one entry) and every entry is length-capped; oversized
+// lists are almost always paste/generation mistakes, reject them up front. Empty fields
+// ("a,,b" style) stay tolerated as before — they are not inserted — but still count toward the
+// field limit.
+bool InsertSplitEntries(const std::string &key, const std::string &entries, size_t max_entries,
+                        std::set<std::string> *target) {
+  const auto items = SplitStringToVector(entries, ',');
+  if (items.size() > max_entries) {
+    MS_LOG(ERROR) << "INPUT ILLEGAL: " << key << " accepts at most " << max_entries << " entries, got " << items.size()
+                  << ".";
+    return false;
+  }
+  // Validate every entry BEFORE touching the target: both failure paths (count over, entry too
+  // long) then leave the target set untouched, so a rejected key never leaves a half-filled list
+  // behind for callers that still inspect the parsed param.
+  std::set<std::string> validated;
+  for (const auto &item : items) {
+    if (item.size() > kMaxEntryStringLength) {
+      MS_LOG(ERROR) << "INPUT ILLEGAL: " << key << " has an entry longer than " << kMaxEntryStringLength
+                    << " characters.";
+      return false;
+    }
     if (!item.empty()) {  // "a,,b" style lists must not put an empty entry into the list
-      target->insert(item);
+      validated.insert(item);
     }
   }
-}
-
-// Entry-count guards (test feedback): name lists cap at 200 entries, op-type lists at 100 —
-// oversized lists are almost always paste/generation mistakes, reject them up front.
-bool EntryCountWithinLimits(const quant::CommonQuantParam &common_quant) {
-  if (common_quant.quant_node.size() > kMaxNodeListEntries ||
-      common_quant.skip_quant_node.size() > kMaxNodeListEntries) {
-    MS_LOG(ERROR) << "INPUT ILLEGAL: quant_node/skip_quant_node accept at most " << kMaxNodeListEntries
-                  << " entries each, got "
-                  << std::max(common_quant.quant_node.size(), common_quant.skip_quant_node.size()) << ".";
-    return false;
-  }
-  if (common_quant.quant_op_type.size() > kMaxOpTypeListEntries ||
-      common_quant.skip_quant_op_type.size() > kMaxOpTypeListEntries) {
-    MS_LOG(ERROR) << "INPUT ILLEGAL: quant_op_type/skip_quant_op_type accept at most " << kMaxOpTypeListEntries
-                  << " entries each, got "
-                  << std::max(common_quant.quant_op_type.size(), common_quant.skip_quant_op_type.size()) << ".";
-    return false;
-  }
+  target->insert(validated.begin(), validated.end());
   return true;
 }
 
@@ -114,20 +119,18 @@ int QuantParamParser::ParseFilter(const CommonQuantString &common_quant_string, 
       return RET_INPUT_PARAM_INVALID;
     }
   }
-  if (!common_quant_string.skip_quant_node.empty()) {
-    InsertSplitEntries(common_quant_string.skip_quant_node, &common_quant->skip_quant_node);
-  }
-  if (!common_quant_string.quant_node.empty()) {
-    InsertSplitEntries(common_quant_string.quant_node, &common_quant->quant_node);
-  }
-  if (!common_quant_string.quant_op_type.empty()) {
-    InsertSplitEntries(common_quant_string.quant_op_type, &common_quant->quant_op_type);
-  }
-  if (!common_quant_string.skip_quant_op_type.empty()) {
-    InsertSplitEntries(common_quant_string.skip_quant_op_type, &common_quant->skip_quant_op_type);
-  }
-  if (!EntryCountWithinLimits(*common_quant)) {
-    return RET_INPUT_PARAM_INVALID;
+  // Table-driven so ParseFilter stays well under the lizard CCN ceiling; the per-key blocks
+  // only differ in source string, key name, cap and target set.
+  const std::vector<std::tuple<const std::string &, const char *, size_t, std::set<std::string> *>> list_keys = {
+    {common_quant_string.skip_quant_node, "skip_quant_node", kMaxNodeListEntries, &common_quant->skip_quant_node},
+    {common_quant_string.quant_node, "quant_node", kMaxNodeListEntries, &common_quant->quant_node},
+    {common_quant_string.quant_op_type, "quant_op_type", kMaxOpTypeListEntries, &common_quant->quant_op_type},
+    {common_quant_string.skip_quant_op_type, "skip_quant_op_type", kMaxOpTypeListEntries,
+     &common_quant->skip_quant_op_type}};
+  for (const auto &[entries, key, max_entries, target] : list_keys) {
+    if (!entries.empty() && !InsertSplitEntries(key, entries, max_entries, target)) {
+      return RET_INPUT_PARAM_INVALID;
+    }
   }
   common_quant->layer_decision_report = common_quant_string.layer_decision_report;
   if (!common_quant_string.layer_decision_strict.empty() &&
