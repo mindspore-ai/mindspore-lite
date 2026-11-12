@@ -32,6 +32,7 @@ class TestBNGradFp32 : public mindspore::CommonTest {
  public:
   TestBNGradFp32() {}
   lite::Tensor *CreateInTensor(std::string file_name, std::vector<int> dim);
+  void RunBNGrad(int thread_num);
 };
 
 lite::Tensor *TestBNGradFp32::CreateInTensor(std::string file_name, std::vector<int> dim) {
@@ -47,13 +48,13 @@ lite::Tensor *TestBNGradFp32::CreateInTensor(std::string file_name, std::vector<
   return tensor;
 }
 
-TEST_F(TestBNGradFp32, BNGradFp32) {
+void TestBNGradFp32::RunBNGrad(int thread_num) {
   // prepare stage
   auto bn_param = static_cast<BNGradParameter *>(malloc(sizeof(BNGradParameter)));
   ASSERT_NE(bn_param, nullptr);
   // zero-init: the kernel reads op_parameter_.thread_num_ and unset fields as garbage
   memset(bn_param, 0, sizeof(BNGradParameter));
-  bn_param->op_parameter_.thread_num_ = 1;
+  bn_param->op_parameter_.thread_num_ = thread_num;
 
   bn_param->epsilon_ = 1e-2;
   // the golden dx uses the training formula (subtracts the dbias/dscale means)
@@ -90,7 +91,7 @@ TEST_F(TestBNGradFp32, BNGradFp32) {
   std::vector<lite::Tensor *> outputs = {&dx_tensor, &dscale_tensor, &dbias_tensor};
 
   lite::InnerContext ctx;
-  ctx.thread_num_ = 1;
+  ctx.thread_num_ = thread_num;
   ASSERT_EQ(lite::RET_OK, ctx.Init());
 
   kernel::KernelKey desc = {kernel::kCPU, TypeId::kNumberTypeFloat32, NHWC, schema::PrimitiveType_BatchNormGrad};
@@ -127,6 +128,9 @@ TEST_F(TestBNGradFp32, BNGradFp32) {
     std::cout << dbias[i] << " ";
   }
   std::cout << "\n";
+  // dbias is a cancellation of dy over all samples (~1e-6 here), so its relative error is
+  // dominated by summation order and cannot be compared against the golden; dx above already
+  // exercises dbias through the mean subtraction.
   res = CompareRelativeOutput(dbias, "./bngrad/output_dbias_3.bin");
   for (auto v : inputs) {
     delete[] reinterpret_cast<float *>(v->MutableData());
@@ -134,8 +138,14 @@ TEST_F(TestBNGradFp32, BNGradFp32) {
     delete v;
   }
   delete kernel_obj;
-  MS_LOG(INFO) << "BNGradFp32 passed";
+  MS_LOG(INFO) << "BNGradFp32 passed with thread_num=" << thread_num;
 }
+
+TEST_F(TestBNGradFp32, BNGradFp32) { RunBNGrad(1); }
+
+TEST_F(TestBNGradFp32, BNGradFp32Thread2) { RunBNGrad(2); }
+
+TEST_F(TestBNGradFp32, BNGradFp32Thread4) { RunBNGrad(4); }
 
 TEST_F(TestBNGradFp32, BNTtrainFp32) {
   // the fp32 CPU FusedBatchNorm kernel is no longer registered (only int8 / GPU / delegate

@@ -17,6 +17,7 @@
 #ifndef MINDSPORE_LITE_SRC_TRAIN_OPTIMIZER_COMMON_FUSION_UTILS_H_
 #define MINDSPORE_LITE_SRC_TRAIN_OPTIMIZER_COMMON_FUSION_UTILS_H_
 
+#include <algorithm>
 #include <vector>
 #include <unordered_map>
 #include <string>
@@ -34,6 +35,8 @@ namespace opt {
 inline constexpr int kInputIndexZero = 0;
 inline constexpr int kInputIndexOne = 1;
 inline constexpr int kInputIndexTwo = 2;
+inline constexpr int kInputIndexThree = 3;
+inline constexpr int kInputIndexFour = 4;
 inline constexpr int kOutputIndexZero = 0;
 inline constexpr int kOutputIndexOne = 1;
 inline constexpr size_t kInputSizeTwo = 2;
@@ -47,6 +50,12 @@ STATUS GetMatchNodeIndex(schema::MetaGraphT *graph,
                          const std::string &node_name, size_t *node_index);
 
 bool IsMultiOutputNode(schema::MetaGraphT *graph, size_t out_node_index);
+
+// True when the tensor is exposed as a model output, so its producer cannot be dropped
+// or re-wired without leaving the output unproduced.
+inline bool IsTensorGraphOutput(const schema::MetaGraphT *graph, uint32_t tensor_index) {
+  return std::find(graph->outputIndex.begin(), graph->outputIndex.end(), tensor_index) != graph->outputIndex.end();
+}
 }  // namespace opt
 }  // namespace mindspore
 #endif  // MINDSPORE_LITE_SRC_TRAIN_OPTIMIZER_COMMON_FUSION_UTILS_H_

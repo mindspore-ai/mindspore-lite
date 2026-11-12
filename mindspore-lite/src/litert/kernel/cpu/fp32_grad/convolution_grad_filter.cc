@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <algorithm>
 #include "src/litert/kernel/cpu/fp32_grad/convolution_grad_filter.h"
 #include "src/litert/kernel_registry.h"
 #include "nnacl_c/pack.h"
@@ -33,6 +34,15 @@ namespace mindspore::kernel {
 constexpr static int kDyIdx = 0;
 constexpr static int kXIdx = 1;
 constexpr static int kDwIdx = 0;
+
+namespace {
+bool NeedImg2Col(const ConvParameter *conv_param) {
+  return !((conv_param->kernel_h_ == 1) && (conv_param->kernel_w_ == 1) && (conv_param->pad_d_ == 0) &&
+           (conv_param->pad_u_ == 0) && (conv_param->pad_l_ == 0) && (conv_param->pad_r_ == 0) &&
+           (conv_param->dilation_h_ == 1) && (conv_param->dilation_w_ == 1) && (conv_param->stride_h_ == 1) &&
+           (conv_param->stride_w_ == 1) && (conv_param->group_ == 1));
+}
+}  // namespace
 
 int ConvolutionGradFilterCPUKernel::ReSize() {
   // dy is in input 0
@@ -61,10 +71,7 @@ int ConvolutionGradFilterCPUKernel::ReSize() {
   conv_param->output_w_ = dy_tensor->shape()[kNHWC_W];
 
   NNACL_CHECK_ZERO_RETURN_ERR(conv_param->group_);
-  do_img2col_ = !((conv_param->kernel_h_ == 1) && (conv_param->kernel_w_ == 1) && (conv_param->pad_d_ == 0) &&
-                  (conv_param->pad_u_ == 0) && (conv_param->pad_l_ == 0) && (conv_param->pad_r_ == 0) &&
-                  (conv_param->dilation_h_ == 1) && (conv_param->dilation_w_ == 1) && (conv_param->stride_h_ == 1) &&
-                  (conv_param->stride_w_ == 1) && (conv_param->group_ == 1));
+  do_img2col_ = NeedImg2Col(conv_param);
   do_dw_ = (conv_param->output_channel_ == conv_param->group_) &&
            (conv_param->input_channel_ == conv_param->output_channel_) && (conv_param->dilation_h_ == 1) &&
            (conv_param->dilation_w_ == 1);
@@ -73,13 +80,46 @@ int ConvolutionGradFilterCPUKernel::ReSize() {
   ws_size_ = do_dw_ ? ws_size_ : ws_size_ / static_cast<size_t>(conv_param->group_);
   int n = conv_param->kernel_h_ * conv_param->kernel_w_ * conv_param->input_channel_ / conv_param->group_;
   int k = conv_param->output_channel_ / conv_param->group_;
-  auto thread_num = static_cast<size_t>(op_parameter_->thread_num_);
+  auto thread_num = static_cast<size_t>(MSMAX(1, op_parameter_->thread_num_));
+  ws_thread_num_ = thread_num;
   mat_alloc_ = static_cast<size_t>(MatSizeTotal(k, n, chunk_, 0));
-  set_workspace_size((ws_size_ + mat_alloc_ + static_cast<size_t>(k * n)) * thread_num * sizeof(float));
+  size_t gemm_region = (ws_size_ + mat_alloc_ + static_cast<size_t>(k * n)) * thread_num;
+  // dW is the full filter: out_ch * k_h * k_w * in_ch / group. Each thread gets its
+  // own private copy to accumulate into (lock-free), then Run() reduces them once.
+  dw_size_ = static_cast<size_t>(conv_param->output_channel_) * static_cast<size_t>(conv_param->kernel_h_) *
+             static_cast<size_t>(conv_param->kernel_w_) * static_cast<size_t>(conv_param->input_channel_) /
+             static_cast<size_t>(conv_param->group_);
+  dw_private_offset_ = gemm_region;
+  // Guard: skip the private buffer for single thread or batch 1 (only one worker
+  // accumulates, so there is no contention), depthwise (already lock-free, writes
+  // disjoint dw slices directly into dw_addr), or when the per-thread or total
+  // private buffers would exceed the memory caps; in those cases keep the original
+  // locked path (bit-identical to baseline).
+  constexpr size_t kMaxPrivateDwPerThreadBytes = 16 * 1024 * 1024;  // 16 MB
+  constexpr size_t kMaxPrivateDwBytes = 64 * 1024 * 1024;           // 64 MB
+  use_private_dw_ = (thread_num > 1) && (conv_param->output_batch_ > 1) && (!do_dw_) &&
+                    (dw_size_ * sizeof(float) <= kMaxPrivateDwPerThreadBytes) &&
+                    (dw_size_ * thread_num * sizeof(float) <= kMaxPrivateDwBytes);
+  size_t total_workspace = gemm_region * sizeof(float);
+  if (use_private_dw_) {
+    total_workspace += dw_size_ * thread_num * sizeof(float);
+  }
+  set_workspace_size(total_workspace);
   return RET_OK;
 }
 
 int ConvolutionGradFilterCPUKernel::Prepare() { return ReSize(); }
+
+// Accumulate one GEMM partial product into the dW target: lock-free into the
+// caller's private slice, or under lock_ into the shared dw (original path).
+void ConvolutionGradFilterCPUKernel::AccumulateDw(float *mat_tmp, float *mat_c, int k, int n) {
+  if (use_private_dw_) {
+    AddMatrix(mat_tmp, mat_c, 1, k, n, n);
+    return;
+  }
+  std::unique_lock<std::mutex> merge_lock(lock_);
+  AddMatrix(mat_tmp, mat_c, 1, k, n, n);
+}
 
 int ConvolutionGradFilterCPUKernel::DoExecute(int task_id) {
   auto conv_param = reinterpret_cast<ConvParameter *>(op_parameter_);
@@ -111,13 +151,15 @@ int ConvolutionGradFilterCPUKernel::DoExecute(int task_id) {
   int stride = UP_DIV(conv_param->output_batch_, thread_num);
   int count = MSMIN(stride, conv_param->output_batch_ - stride * task_id);
   count = (count < 0) ? 0 : count;
-  int start = stride * task_id;
-  int end = start + count;
+  int start = stride * task_id, end = start + count;
   int real_chunk;
-  float *mat_a = nullptr;
-  float *mat_b = nullptr;
-  float *mat_c = nullptr;
-  float *im = nullptr;
+  float *mat_a = nullptr, *mat_b = nullptr, *mat_c = nullptr, *im = nullptr;
+  // Accumulate into a per-thread private dW buffer (lock-free); falls back to the
+  // shared dw_addr under lock_ when use_private_dw_ is false.
+  float *dw_target = dw_addr;
+  if (use_private_dw_) {
+    dw_target = workspace_temp + static_cast<int>(dw_private_offset_) + task_id * static_cast<int>(dw_size_);
+  }
   if (do_dw_) {
 #ifdef ENABLE_ARM
     stride = UP_DIV(k_h * k_w, thread_num);
@@ -148,24 +190,29 @@ int ConvolutionGradFilterCPUKernel::DoExecute(int task_id) {
     }
 #endif
   } else if (do_img2col_) {
+    if (use_private_dw_) {
+      std::fill(dw_target, dw_target + dw_size_, 0.f);
+    }
     for (int i = start; i < end; ++i) {
       for (int ci = 0; ci < m; ci += chunk_) {
         for (int j = 0; j < groups; ++j) {
           real_chunk = MSMIN(m - ci, chunk_);
           mat_a = dy_addr + (i * groups) * m * k + j * (out_ch / groups) + ci * out_ch;
           mat_b = workspace_temp + task_id * static_cast<int>(ws_size_);
-          mat_c = dw_addr + j * out_dw->ElementsNum() / groups;
+          mat_c = dw_target + j * static_cast<int>(dw_size_) / groups;
           im = x_addr + (i * in_ch * in_h * in_w) + j * (in_ch / groups);
           RollingIm2ColPackUnitFp32(im, conv_param, mat_b, real_chunk, ci);
           GemmMatmul(1, 0, k, n, real_chunk, 1, mat_a, out_ch, mat_b, n, 0, mat_tmp, n, mat_workspace);
-          std::unique_lock<std::mutex> merge_lock(lock_);
-          AddMatrix(mat_tmp, mat_c, 1, k, n, n);
+          AccumulateDw(mat_tmp, mat_c, k, n);
         }
       }
     }
   } else {
     NNACL_CHECK_ZERO_RETURN_ERR(conv_param->output_w_);
-    mat_c = dw_addr;
+    if (use_private_dw_) {
+      std::fill(dw_target, dw_target + dw_size_, 0.f);
+    }
+    mat_c = dw_target;
     auto in_plane_size = in_ch * in_h * in_w;
     for (int i = start; i < end; ++i) {
       for (int ci = 0; ci < m; ci += chunk_) {
@@ -176,8 +223,7 @@ int ConvolutionGradFilterCPUKernel::DoExecute(int task_id) {
         int input_w = ci % conv_param->output_w_ * conv_param->stride_w_;
         int offset = (input_h * in_w + input_w) * in_ch;
         GemmMatmul(1, 0, k, n, real_chunk, 1, mat_a, out_ch, im + offset, n, 0, mat_tmp, n, mat_workspace);
-        std::unique_lock<std::mutex> merge_lock(lock_);
-        AddMatrix(mat_tmp, mat_c, 1, k, n, n);
+        AccumulateDw(mat_tmp, mat_c, k, n);
       }
     }
   }
@@ -195,7 +241,54 @@ int ConvolutionGradFilterRun(void *cdata, int task_id, float lhs_scale, float rh
   return RET_OK;
 }
 
+int ConvolutionGradFilterReduceRun(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
+  auto convfilter_kernel = reinterpret_cast<ConvolutionGradFilterCPUKernel *>(cdata);
+  CHECK_NULL_RETURN(convfilter_kernel);
+  auto error_code = convfilter_kernel->DoReduce(task_id);
+  if (error_code != RET_OK) {
+    MS_LOG(ERROR) << "ConvolutionGradFilterReduceRun error task_id[" << task_id << "] error_code[" << error_code << "]";
+    return RET_ERROR;
+  }
+  return RET_OK;
+}
+
+int ConvolutionGradFilterCPUKernel::DoReduce(int task_id) {
+  int thread_num = op_parameter_->thread_num_;
+  int total = static_cast<int>(dw_size_);
+  int stride = UP_DIV(total, thread_num);
+  int start = stride * task_id;
+  int count = MSMIN(stride, total - start);
+  if (count <= 0) {
+    return RET_OK;
+  }
+  auto *out_dw = out_tensors_.at(kDwIdx);
+  CHECK_NULL_RETURN(out_dw);
+  auto *dw_addr = reinterpret_cast<float *>(out_dw->MutableData());
+  CHECK_NULL_RETURN(dw_addr);
+  auto *workspace_temp = reinterpret_cast<float *>(workspace());
+  float *dw_private_base = workspace_temp + static_cast<int>(dw_private_offset_);
+  // dw_addr was zeroed in Run(); sum each thread's private partial into it.
+  // Disjoint write ranges per reduce-task -> no lock needed.
+  for (int i = 0; i < count; i++) {
+    float sum = 0.f;
+    for (int t = 0; t < thread_num; t++) {
+      sum += dw_private_base[t * static_cast<int>(dw_size_) + start + i];
+    }
+    dw_addr[start + i] = sum;
+  }
+  return RET_OK;
+}
+
 int ConvolutionGradFilterCPUKernel::Run() {
+  // Workspace (per-thread GEMM scratch and private dW partials) was sized for the thread
+  // count seen at ReSize; refuse to run if that count grew, or per-thread buffers would
+  // overrun their allocation.
+  const int thread_num = MSMAX(1, op_parameter_->thread_num_);
+  if (static_cast<int>(ws_thread_num_) < thread_num) {
+    MS_LOG(ERROR) << "ConvGradFilter workspace sized for " << ws_thread_num_ << " threads, but " << thread_num
+                  << " requested.";
+    return RET_ERROR;
+  }
   auto *out_dw = out_tensors_.at(kDwIdx);
   CHECK_NULL_RETURN(out_dw);
   auto dw_addr = reinterpret_cast<float *>(out_dw->MutableData());
@@ -205,6 +298,13 @@ int ConvolutionGradFilterCPUKernel::Run() {
   if (error_code != RET_OK) {
     MS_LOG(ERROR) << "conv filter function error error_code[" << error_code << "]";
     return RET_ERROR;
+  }
+  if (use_private_dw_) {
+    error_code = ParallelLaunch(this->ms_context_, ConvolutionGradFilterReduceRun, this, op_parameter_->thread_num_);
+    if (error_code != RET_OK) {
+      MS_LOG(ERROR) << "conv filter reduce error error_code[" << error_code << "]";
+      return RET_ERROR;
+    }
   }
   return RET_OK;
 }

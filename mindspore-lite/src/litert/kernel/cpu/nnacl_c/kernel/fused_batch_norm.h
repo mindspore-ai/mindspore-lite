@@ -30,6 +30,15 @@ typedef struct FusedBatchNormStruct {
   bool is_scale_;
   bool trained_;
   bool train_mode_;
+  // P0: parallel mean/var computation (two-pass, same math as the serial
+  // FusedBatchNormFp32MeanVar, only FP reduction order differs). Per-thread
+  // private sum partials (pass 1) and var partials (pass 2), each `channel`
+  // floats, accumulated over disjoint unit slices and reduced. Single-thread
+  // keeps the original FusedBatchNormFp32MeanVar path (bit-identical, no alloc).
+  float *mv_sum_priv_;
+  float *mv_var_priv_;
+  float mv_n_;
+  float mv_vnub_;
 } FusedBatchNormStruct;
 
 KernelBase *CreateFusedBatchNorm(OpParameter *param, int data_type);

@@ -273,6 +273,8 @@ file(GLOB TRAIN_SRC
         ${CMAKE_CURRENT_SOURCE_DIR}/train/optimizer/fusion/reshape_gather_reshape_fusion_pass.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/train/optimizer/fusion/matmul_matmul_add_fusion_pass.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/train/optimizer/fusion/matmul_add_fusion_pass.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/train/optimizer/fusion/conv_batchnorm_fusion_pass.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/train/optimizer/fusion/conv_activation_fusion_pass.cc
         ${TOOLS_DIR}/converter/optimizer.cc
         ${TOOLS_DIR}/converter/legacy_optimizer/fusion/fusion_pass.cc
         ${TOOLS_DIR}/converter/legacy_optimizer/fusion/fusion_pattern.cc

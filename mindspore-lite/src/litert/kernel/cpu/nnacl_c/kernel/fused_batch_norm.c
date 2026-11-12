@@ -189,6 +189,169 @@ int FusedBatchNormRun(void *cdata, int task_id, float l, float r) {
   return NNACL_OK;
 }
 
+// Pass 1 partials: each thread zeros its sum partial and accumulates the input over
+// a disjoint unit slice (reads the input once).
+static int FusedBatchNormMeanPartialRun(void *cdata, int task_id, float l, float r) {
+  FusedBatchNormStruct *fbn = (FusedBatchNormStruct *)cdata;
+  NNACL_CHECK_NULL_RETURN_ERR(fbn);
+  int unit = fbn->bn_.unit_;
+  int channel = fbn->bn_.channel_;
+  int thread_nr = fbn->bn_.base_.thread_nr_;
+  if (thread_nr <= 0) {
+    return NNACL_ERR;
+  }
+  int stride = UP_DIV(unit, thread_nr);
+  int start = stride * task_id;
+  int count = MSMIN(stride, unit - start);
+  float *sum_priv = fbn->mv_sum_priv_ + task_id * channel;
+  for (int c = 0; c < channel; c++) {
+    sum_priv[c] = 0.0f;
+  }
+  if (count <= 0) {
+    return NNACL_OK;
+  }
+  const float *input = (const float *)(fbn->bn_.base_.in_[FIRST_INPUT]->data_);
+  FusedBatchNormFp32MeanPartial(input, start, count, channel, sum_priv);
+  return NNACL_OK;
+}
+
+// Pass 1 reduction: splits channels across threads (disjoint writes) and reduces the
+// per-thread sum partials into run_mean = sum/N (stored in bn_.mean_).
+static int FusedBatchNormMeanReduceRun(void *cdata, int task_id, float l, float r) {
+  FusedBatchNormStruct *fbn = (FusedBatchNormStruct *)cdata;
+  NNACL_CHECK_NULL_RETURN_ERR(fbn);
+  int channel = fbn->bn_.channel_;
+  int thread_nr = fbn->bn_.base_.thread_nr_;
+  if (thread_nr <= 0) {
+    return NNACL_ERR;
+  }
+  int stride = UP_DIV(channel, thread_nr);
+  int start = stride * task_id;
+  int count = MSMIN(stride, channel - start);
+  if (count <= 0) {
+    return NNACL_OK;
+  }
+  float *run_mean = (float *)(fbn->bn_.mean_);
+  const float N = fbn->mv_n_;
+  for (int c = start; c < start + count; c++) {
+    float sum = 0.0f;
+    for (int t = 0; t < thread_nr; t++) {
+      sum += fbn->mv_sum_priv_[t * channel + c];
+    }
+    run_mean[c] = sum / N;
+  }
+  return NNACL_OK;
+}
+
+// Pass 2 partials: uses the now-reduced run_mean (bn_.mean_) to accumulate
+// (input - run_mean)^2 over a disjoint unit slice.
+static int FusedBatchNormVarPartialRun(void *cdata, int task_id, float l, float r) {
+  FusedBatchNormStruct *fbn = (FusedBatchNormStruct *)cdata;
+  NNACL_CHECK_NULL_RETURN_ERR(fbn);
+  int unit = fbn->bn_.unit_;
+  int channel = fbn->bn_.channel_;
+  int thread_nr = fbn->bn_.base_.thread_nr_;
+  if (thread_nr <= 0) {
+    return NNACL_ERR;
+  }
+  int stride = UP_DIV(unit, thread_nr);
+  int start = stride * task_id;
+  int count = MSMIN(stride, unit - start);
+  float *var_priv = fbn->mv_var_priv_ + task_id * channel;
+  for (int c = 0; c < channel; c++) {
+    var_priv[c] = 0.0f;
+  }
+  if (count <= 0) {
+    return NNACL_OK;
+  }
+  const float *input = (const float *)(fbn->bn_.base_.in_[FIRST_INPUT]->data_);
+  const float *run_mean = (const float *)(fbn->bn_.mean_);
+  FusedBatchNormFp32VarPartial(input, run_mean, start, count, channel, var_priv);
+  return NNACL_OK;
+}
+
+// Pass 2 reduction and finalization: splits channels across threads (disjoint writes),
+// reduces the per-thread var partials into run_var, then applies the unbiased and
+// momentum update per channel (same as the serial FusedBatchNormFp32MeanVar).
+static int FusedBatchNormVarReduceRun(void *cdata, int task_id, float l, float r) {
+  FusedBatchNormStruct *fbn = (FusedBatchNormStruct *)cdata;
+  NNACL_CHECK_NULL_RETURN_ERR(fbn);
+  int channel = fbn->bn_.channel_;
+  int thread_nr = fbn->bn_.base_.thread_nr_;
+  if (thread_nr <= 0) {
+    return NNACL_ERR;
+  }
+  int stride = UP_DIV(channel, thread_nr);
+  int start = stride * task_id;
+  int count = MSMIN(stride, channel - start);
+  if (count <= 0) {
+    return NNACL_OK;
+  }
+  float *run_mean = (float *)(fbn->bn_.mean_);
+  float *current_var = (float *)(fbn->bn_.variance_);
+  float *save_mean = (float *)(fbn->bn_.base_.in_[FOURTH_INPUT]->data_);
+  float *save_var = (float *)(fbn->bn_.base_.in_[FIFTH_INPUT]->data_);
+  const float N = fbn->mv_n_;
+  const float VN = N;
+  const float VNUB = fbn->mv_vnub_;
+  // momentum_ weights the incoming statistic, so the previous statistic keeps 1 - momentum_
+  // (same update as the serial FusedBatchNormFp32MeanVar).
+  const float old_weight = 1.0f - fbn->bn_.momentum_;
+  for (int c = start; c < start + count; c++) {
+    float var = 0.0f;
+    for (int t = 0; t < thread_nr; t++) {
+      var += fbn->mv_var_priv_[t * channel + c];
+    }
+    float unbiased_var = var / VNUB;
+    current_var[c] = var / VN;  // run_var (biased) -> out_var
+    save_mean[c] = old_weight * save_mean[c] + (1.0f - old_weight) * run_mean[c];
+    save_var[c] = old_weight * save_var[c] + (1.0f - old_weight) * unbiased_var;
+  }
+  return NNACL_OK;
+}
+
+static int FusedBatchNormMeanVarFp32(FusedBatchNormStruct *fbn, bool isBatch2d) {
+  TensorC *in_tensor = fbn->bn_.base_.in_[FIRST_INPUT];
+  void *current_mean = fbn->bn_.mean_;
+  void *current_var = fbn->bn_.variance_;
+  int thread_nr = fbn->bn_.base_.thread_nr_;
+  if (thread_nr <= 1) {
+    FusedBatchNormFp32MeanVar((float *)in_tensor->data_, (float *)current_mean, current_var, &fbn->bn_,
+                              (float *)fbn->bn_.base_.in_[FOURTH_INPUT]->data_,
+                              (float *)fbn->bn_.base_.in_[FIFTH_INPUT]->data_, isBatch2d);
+    return NNACL_OK;
+  }
+  // Parallel two-pass mean/var; same math as the serial path, only FP summation order differs.
+  int channel = fbn->bn_.channel_;
+  size_t priv_size = (size_t)channel * (size_t)thread_nr * sizeof(float);
+  ExecEnv *env = fbn->bn_.base_.env_;
+  // Allocate once and reuse across training steps; freed in Release (also called from ReSize).
+  if (fbn->mv_sum_priv_ == NULL) {
+    fbn->mv_sum_priv_ = (float *)(env->Alloc(env->allocator_, priv_size));
+    NNACL_MALLOC_CHECK_NULL_RETURN_ERR(fbn->mv_sum_priv_);
+  }
+  if (fbn->mv_var_priv_ == NULL) {
+    fbn->mv_var_priv_ = (float *)(env->Alloc(env->allocator_, priv_size));
+    NNACL_MALLOC_CHECK_NULL_RETURN_ERR(fbn->mv_var_priv_);
+  }
+  float N = (float)fbn->bn_.unit_;
+  fbn->mv_n_ = N;
+  fbn->mv_vnub_ = (isBatch2d == false) ? N : ((N > 1.0f) ? (N - 1.0f) : 1.0f);
+  // current_mean (bn_.mean_) holds run_mean after pass 1 reduce; zero it first
+  // so the reduce task's assignment (not +=) is clean. current_var finalized in pass 2.
+  int ret = env->ParallelLaunch(env->thread_pool_, FusedBatchNormMeanPartialRun, fbn, thread_nr);
+  if (ret == NNACL_OK) {
+    ret = env->ParallelLaunch(env->thread_pool_, FusedBatchNormMeanReduceRun, fbn, thread_nr);
+  }
+  if (ret == NNACL_OK) {
+    ret = env->ParallelLaunch(env->thread_pool_, FusedBatchNormVarPartialRun, fbn, thread_nr);
+  }
+  if (ret == NNACL_OK) {
+    ret = env->ParallelLaunch(env->thread_pool_, FusedBatchNormVarReduceRun, fbn, thread_nr);
+  }
+  return ret;
+}
+
 int FusedBatchNormTrainComputeInit(FusedBatchNormStruct *fbn) {
   if (fbn->bn_.base_.out_size_ < Num5) {
     return NNACL_OK;
@@ -226,8 +389,10 @@ int FusedBatchNormTrainComputeInit(FusedBatchNormStruct *fbn) {
                                 (float16_t *)mean_tensor->data_, (float16_t *)var_tensor->data_);
 #endif
     } else {
-      FusedBatchNormFp32MeanVar((float *)in_tensor->data_, (float *)current_mean, current_var, &fbn->bn_,
-                                (float *)mean_tensor->data_, (float *)var_tensor->data_, isBatch2d);
+      int ret = FusedBatchNormMeanVarFp32(fbn, isBatch2d);
+      if (ret != NNACL_OK) {
+        return ret;
+      }
     }
 
     (void)memcpy(out_scale->data_, scale_tensor->data_, NNACLGetSize(out_scale));
@@ -307,6 +472,14 @@ int FusedBatchNormRelease(KernelBase *self) {
   if (fused_batch_norm->offset_ != NULL) {
     self->env_->Free(self->env_->allocator_, fused_batch_norm->offset_);
     fused_batch_norm->offset_ = NULL;
+  }
+  if (fused_batch_norm->mv_sum_priv_ != NULL) {
+    self->env_->Free(self->env_->allocator_, fused_batch_norm->mv_sum_priv_);
+    fused_batch_norm->mv_sum_priv_ = NULL;
+  }
+  if (fused_batch_norm->mv_var_priv_ != NULL) {
+    self->env_->Free(self->env_->allocator_, fused_batch_norm->mv_var_priv_);
+    fused_batch_norm->mv_var_priv_ = NULL;
   }
   return NNACL_OK;
 }

@@ -86,6 +86,29 @@ void backwardP1(const float *restrict in, const float *restrict yt, const float 
   }
 }
 
+// Parallel-friendly variant of backwardP1: accumulates dbias/dscale over the
+// unit slice [start, start+count) into caller-provided buffers (NOT the final
+// shared dbias/dscale), and omits the trailing dscale *= invar (the caller does
+// that once after reducing all per-thread partials). Each thread reads only its
+// own unit slice -> 1x input traffic (do NOT channel-split, see memory note).
+#ifdef _MSC_VER
+void backwardP1Partial(const float *in, const float *yt, const float *mean, int start, int count, int ch, float *dbias,
+                       float *dscale) {
+#else
+void backwardP1Partial(const float *restrict in, const float *restrict yt, const float *restrict mean, int start,
+                       int count, int ch, float *restrict dbias, float *restrict dscale) {
+#endif
+  int end = start + count;
+  for (int i = start; i < end; i++) {
+    for (int c = 0; c < ch; c++) {
+      int ix = i * ch + c;
+      dbias[c] += yt[ix];
+      float x_hat = in[ix] - mean[c];
+      dscale[c] += (yt[ix] * x_hat);
+    }
+  }
+}
+
 #ifdef _MSC_VER
 void backwardP2(const float *in, const float *yt, const float *mean, const float *invar, const float *dscale,
                 const float *dbias, const float *scale, int size, int total_size, int ch, float *dx, bool is_train) {

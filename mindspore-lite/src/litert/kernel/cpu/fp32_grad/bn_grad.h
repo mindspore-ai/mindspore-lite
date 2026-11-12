@@ -32,9 +32,17 @@ class BNGradCPUKernel : public LiteKernel {
   int ReSize() override;
   int Run() override;
   int DoExecute(int task_id);
+  int DoReduce(int task_id);
 
  private:
+  void DoParamGradPartial(int task_id, const float *x, const float *yt, const float *save_mean);
   int stage_ = 0;
+  // Multi-thread param-grad stage: per-thread private dbias/dscale partials plus a
+  // reduction. thread_num_==1 keeps the original backwardAll path (bit-identical, no
+  // workspace).
+  int channels_ = 0;
+  int total_ = 0;
+  bool use_partial_ = false;  // true when using per-thread partials + reduction
 };
 }  // namespace mindspore::kernel
 #endif  // MINDSPORE_LITE_SRC_RUNTIME_KERNEL_CPU_FP32_GRAD_BN_GRAD_H_

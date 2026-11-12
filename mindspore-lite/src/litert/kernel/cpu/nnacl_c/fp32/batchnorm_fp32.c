@@ -127,3 +127,32 @@ void FusedBatchNormFp32MeanVar(const float *input, float *run_mean, float *run_v
     save_var[c] = momentum * save_var[c] + (1.0f - momentum) * unbiased_var;
   }
 }
+
+// Parallel-friendly two-pass helpers (same math as FusedBatchNormFp32MeanVar,
+// only FP reduction order differs). Pass 1: each thread accumulates sum[c] over
+// its disjoint unit slice; the caller reduces to run_mean = sum/N. Pass 2: each
+// thread accumulates (input - run_mean)^2 into var_priv[c] using the now-known
+// run_mean; the caller reduces to run_var and finalizes. Two-pass (not single-
+// pass sumsq) avoids the E[x^2]-E[x]^2 cancellation. 1x input traffic per pass,
+// same as the serial version; do NOT channel-split (inverts scaling, see notes).
+void FusedBatchNormFp32MeanPartial(const float *input, int start, int count, int channel, float *sum_priv) {
+  int end = start + count;
+  for (int i = start; i < end; i++) {
+    int base = i * channel;
+    for (int c = 0; c < channel; c++) {
+      sum_priv[c] += input[base + c];
+    }
+  }
+}
+
+void FusedBatchNormFp32VarPartial(const float *input, const float *run_mean, int start, int count, int channel,
+                                  float *var_priv) {
+  int end = start + count;
+  for (int i = start; i < end; i++) {
+    int base = i * channel;
+    for (int c = 0; c < channel; c++) {
+      float diff = input[base + c] - run_mean[c];
+      var_priv[c] += diff * diff;
+    }
+  }
+}
