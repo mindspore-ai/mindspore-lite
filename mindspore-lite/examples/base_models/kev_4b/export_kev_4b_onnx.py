@@ -26,11 +26,30 @@ prefill/decode:
 The pointer head itself stays in numpy on the host (``head.npz``); both graphs end at the
 last hidden state the head reads, so the exported graphs contain no head weights.
 
-Both graphs are batch-1 and fully dynamic in their sequence dimensions. That is only possible
-with the ``ChunkGatedDeltaRule`` Ascend Custom operator: the reference chunked delta rule
-unrolls ``seq_len // 64`` chunks at trace time and would freeze the dummy length into the
-graph. ``--no-enable-cgdr-custom`` keeps the reference implementation for single-shape
-debugging and then exports fixed shapes on purpose.
+Both graphs are batch-1 and fully dynamic in their sequence dimensions, which holds because
+every expensive subgraph is exported as the CANN operator that does the same arithmetic:
+
+* linear attention -> ``ChunkGatedDeltaRule``. The reference chunked delta rule unrolls
+  ``seq_len // 64`` chunks at trace time and would freeze the dummy length into the graph, so it
+  cannot be used for the deployed graph. This operator additionally needs the mslite vendor
+  package; the ones below are CANN built-ins.
+* norms -> ``GemmaRmsNorm`` for the zero-centred form, ``RmsNorm`` plus the silu(gate) multiply
+  for the gated one, instead of the eight elementwise kernels of the eager chain.
+* the MLP's silu -> ``Swish``. The gate and up projections stay two separate MatMuls on purpose:
+  merging them into one 18432-wide matmul makes GE fall back from MatMulV3 to MatMulV2, which
+  costs more than the elementwise kernels it saves.
+* full attention -> ``PromptFlashAttention`` on both graphs, replacing the eager
+  mask-add / softmax / matmul chain. The operator has to be given ``pre_tokens`` /
+  ``next_tokens`` explicitly: without them a cross-attention call (branch: query length ``Lb``
+  against key length ``Ls + Lb``) only matches the reference while the key length is at most 64,
+  and computes something else above that. With both windows open the bool mask alone decides
+  what is visible, which is what the branch needs (see the class docstring).
+* the delta rule's q/k normalization -> ``L2Normalize``, one kernel instead of ``Square`` plus a
+  fused reduce/rsqrt/multiply.
+
+Every fusion is unconditional: each one is checked against Kev's own torch implementation along
+the whole state -> branch path, so a fusion that changed the result is a bug rather than a
+configuration choice.
 """
 
 import argparse
@@ -52,7 +71,9 @@ except ImportError:
 from transformers import AutoModelForCausalLM
 
 try:
-    from transformers.models.qwen3_5.modeling_qwen3_5 import apply_rotary_pos_emb
+    from transformers.models.qwen3_5.modeling_qwen3_5 import (
+        Qwen3_5MLP, Qwen3_5RMSNorm, Qwen3_5RMSNormGated, apply_rotary_pos_emb,
+    )
 except ImportError:
     print("Error: transformers with the qwen3_5 architecture is required (>= 5.19).")
     sys.exit(1)
@@ -65,7 +86,25 @@ _SOFTPLUS = torch.nn.Softplus()
 # Checksum of the masking value: additive masks are built on the host, and -10000 stays finite in
 # fp16 (finfo(fp16).min is -65504, and two of those add up to -inf after a matmul).
 MASK_FILL = -10000.0
-USE_CUSTOM_CGDR = True
+# Custom-operator integration follows one shape for every operator:
+#   <OP>_OP                 the operator name the Custom node carries
+#   <Op>Function            a torch.autograd.Function whose symbolic() emits exactly that node
+#   _<op>_custom(...)       adapter used by the traced model when the layouts differ
+#   _install_<group>_ops()  class-level monkey patch, paired with _patched_<module>_forward()
+CHUNK_GATED_DELTA_RULE_OP = "ChunkGatedDeltaRule"
+GEMMA_RMS_NORM_OP = "GemmaRmsNorm"
+RMS_NORM_OP = "RmsNorm"
+# CANN Swish is y = x * sigmoid(scale * x); silu is the scale = 1 case.
+SWISH_OP = "Swish"
+PROMPT_FLASH_ATTENTION_OP = "PromptFlashAttention"
+# The delta rule's q/k normalization. The operator clamps the squared sum at its own default
+# (1e-4, a norm floor of 1e-2) and ignores the eps attribute, which is far below the norm of any
+# real activation row.
+L2_NORMALIZE_OP = "L2Normalize"
+# "No window limit" for PromptFlashAttention's pre_tokens / next_tokens. The operator's defaults
+# truncate cross-attention past 64 key columns; at or below 64 both settings agree, which is why
+# only the branch graph can tell them apart.
+INT_MAX = 2147483647
 # Linear-attention key head dim, set from the loaded config; the Custom op scales q by 1/sqrt(d).
 KEY_HEAD_DIM = 128
 
@@ -79,8 +118,9 @@ def _chunk_gated_delta_rule(query, key, value, g, beta, initial_state, output_fi
     """
     Reference chunked Gated DeltaNet rule (fp32 math).
 
-    Trace-time ``range()`` loops make its graph shape-specific: it is only used with
-    ``--no-enable-cgdr-custom``, where the fixed-shape dummy length is the graph length.
+    Trace-time ``range()`` loops make its graph shape-specific: it only runs inside
+    ``ChunkGatedDeltaRuleFunction.forward`` during tracing, where the graph length is the
+    exported dummy length.
     """
     initial_dtype = query.dtype
     query, key, value, beta, g = [
@@ -159,8 +199,8 @@ class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
             initial_state=state.transpose(-2, -1).contiguous().float(),
             output_final_state=True,
         )
-        out = out.reshape(-1, num_value_heads, value_dim).to(torch.float16)
-        final_state = final_state.transpose(-2, -1).contiguous().to(torch.float16)
+        out = out.reshape(-1, num_value_heads, value_dim).half()
+        final_state = final_state.transpose(-2, -1).contiguous().half()
         return out, final_state
 
     @staticmethod
@@ -169,7 +209,7 @@ class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
         out, final_state = graph.op(
             "Custom",
             query, key, value, beta, state, actual_seq_lengths, g_decay,
-            type_s="ChunkGatedDeltaRule",
+            type_s=CHUNK_GATED_DELTA_RULE_OP,
             input_names_s=["query", "key", "value", "beta", "initial_state",
                            "actual_seq_lengths", "g"],
             optional_input_names_s=["g"],
@@ -185,13 +225,209 @@ class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
         return out, final_state
 
 
+def _norm_op_node(graph, op_type, x, gamma, eps):
+    """Emit a Custom node carrying a CANN built-in norm op, returning its y output.
+
+    The Custom primitive is only the transport: GE resolves ``op_type`` in the CANN operator
+    library, so both ops keep their own shape inference and no vendor kernel is involved. Each
+    declares a second ``rstd`` output that nothing consumes; leaving it untyped lets the built-in
+    infer-shape function fill it in, which is why this beats a hand-written op here.
+    """
+    y, _ = graph.op(  # rstd is left untyped; GE's infer-shape supplies it
+        "Custom", x, gamma, outputs=2,
+        type_s=op_type,
+        input_names_s=["x", "gamma"],
+        output_names_s=["y", "rstd"],
+        output_num_i=2,
+        epsilon_f=float(eps),
+    )
+    y.setType(x.type())
+    return y
+
+
+class GemmaRmsNormFunction(torch.autograd.Function):
+    """Export Qwen3.5's zero-centred RMSNorm as the CANN built-in ``GemmaRmsNorm``.
+
+    GemmaRmsNorm is y = rmsnorm(x, eps) * (1 + gamma) computed in fp32 and rounded once -- the
+    same expression as ``Qwen3_5RMSNorm.forward``, which stores its weight as a deviation from 1.
+    """
+
+    @staticmethod
+    def forward(ctx, x, weight, eps):
+        del ctx
+        norm = x.float() * torch.rsqrt(x.float().pow(2).mean(-1, keepdim=True) + eps)
+        return (norm * (1.0 + weight.float())).type_as(x)
+
+    @staticmethod
+    def symbolic(graph, x, weight, eps):
+        return _norm_op_node(graph, GEMMA_RMS_NORM_OP, x, weight, eps)
+
+
+class RmsNormFunction(torch.autograd.Function):
+    """Export the gated RMSNorm as CANN ``RmsNorm`` plus the silu(gate) multiply.
+
+    RmsNorm covers norm(x) * weight in one kernel; this CANN version has no gated-norm variant,
+    so the gate factor stays three elementwise nodes on a [rows, head_dim] tensor.
+    """
+
+    @staticmethod
+    def forward(ctx, x, weight, gate, eps):
+        del ctx
+        input_dtype = x.dtype
+        norm = x.float() * torch.rsqrt(x.float().pow(2).mean(-1, keepdim=True) + eps)
+        # Replicates the module: the normalized value is rounded to the input dtype before the
+        # weight, and the silu factor stays fp32 until the closing cast.
+        norm = weight * norm.to(input_dtype)
+        return (norm * F.silu(gate.float())).to(input_dtype)
+
+    @staticmethod
+    def symbolic(graph, x, weight, gate, eps):
+        y = _norm_op_node(graph, RMS_NORM_OP, x, weight, eps)
+        sigmoid = graph.op("Sigmoid", gate)
+        sigmoid.setType(gate.type())
+        silu_gate = graph.op("Mul", gate, sigmoid)
+        silu_gate.setType(gate.type())
+        out = graph.op("Mul", y, silu_gate)
+        out.setType(x.type())
+        return out
+
+
+def _patched_rms_norm_forward(self, x):
+    """Drop-in replacement for ``Qwen3_5RMSNorm.forward``."""
+    return GemmaRmsNormFunction.apply(x, self.weight, self.eps)
+
+
+def _patched_rms_norm_gated_forward(self, x, gate):
+    """Drop-in replacement for ``Qwen3_5RMSNormGated.forward``."""
+    return RmsNormFunction.apply(x, self.weight, gate, self.variance_epsilon)
+
+
+def _install_norm_ops():
+    """Patch the two norm modules at class level; every instance is ours in this exporter."""
+    Qwen3_5RMSNorm.forward = _patched_rms_norm_forward
+    Qwen3_5RMSNormGated.forward = _patched_rms_norm_gated_forward
+
+
+class SwishFunction(torch.autograd.Function):
+    """Export the MLP's silu as the CANN built-in ``Swish``.
+
+    ``Qwen3_5MLP`` writes silu as Sigmoid followed by Mul on a [tokens, intermediate] tensor.
+    GE leaves that pair as two full-size elementwise kernels here, so the fused form saves one
+    round trip of the whole activation through HBM.
+    """
+
+    @staticmethod
+    def forward(ctx, x):
+        del ctx
+        return F.silu(x)
+
+    @staticmethod
+    def symbolic(graph, x):
+        y = graph.op("Custom", x, outputs=1, type_s=SWISH_OP,
+                     input_names_s=["x"], output_names_s=["y"], output_num_i=1, scale_f=1.0)
+        y.setType(x.type())
+        return y
+
+
+def _patched_mlp_forward(self, x):
+    """Drop-in replacement for ``Qwen3_5MLP.forward`` with the activation routed to Swish."""
+    return self.down_proj(SwishFunction.apply(self.gate_proj(x)) * self.up_proj(x))
+
+
+def _install_mlp_ops(text_model):
+    """Patch the MLP class after checking every layer shares the activation this assumes."""
+    for layer in text_model.layers:
+        if type(layer.mlp.act_fn).__name__ != "SiLUActivation":
+            raise SystemExit(
+                f"MLP activation is {type(layer.mlp.act_fn).__name__}, not SiLU; "
+                "exporting it as Swish would change the model")
+    Qwen3_5MLP.forward = _patched_mlp_forward
+
+
+class PromptFlashAttentionFunction(torch.autograd.Function):
+    """Export full attention as the CANN built-in ``PromptFlashAttention``.
+
+    Both graphs use it: the state graph's causal self-attention (query and key length ``S``) and
+    the branch graph's cross-attention (query ``Lb`` against key ``Ls + Lb``). ``pre_tokens`` and
+    ``next_tokens`` must be exported explicitly; with the operator's defaults a branch-shaped call
+    only agrees with the reference up to 64 key columns and computes something else above that
+    (measured: key 128 with an all-visible mask still misses a numpy reference by 0.18). With both
+    windows open the bool mask alone decides visibility, so the state graph's causal mask and the
+    branch's "prefix visible, row causal" mask are both honoured at every length probed (key up to
+    2304).
+    """
+
+    @staticmethod
+    def forward(ctx, query, key, value, atten_mask, num_heads, num_kv_heads, scale):
+        del ctx
+        repeat = num_heads // num_kv_heads
+        key = key.repeat_interleave(repeat, dim=1)
+        value = value.repeat_interleave(repeat, dim=1)
+        weights = torch.matmul(query, key.transpose(2, 3)) * scale
+        weights = weights.masked_fill(atten_mask, MASK_FILL)
+        weights = F.softmax(weights, dim=-1, dtype=torch.float32).to(query.dtype)
+        return torch.matmul(weights, value)
+
+    @staticmethod
+    def symbolic(graph, query, key, value, atten_mask, num_heads, num_kv_heads, scale):
+        """Export one Custom node; ``sparse_mode=0`` takes the mask as passed, True = masked."""
+        out = graph.op(
+            "Custom", query, key, value, atten_mask, outputs=1,
+            type_s=PROMPT_FLASH_ATTENTION_OP,
+            input_names_s=["query", "key", "value", "atten_mask"],
+            output_names_s=["attention_out"],
+            output_num_i=1,
+            num_heads_i=int(num_heads),
+            num_key_value_heads_i=int(num_kv_heads),
+            scale_value_f=float(scale),
+            input_layout_s="BNSD",
+            sparse_mode_i=0,
+            # Both windows open, otherwise the operator's own sparse window (not the exported
+            # mask) decides what a cross-attention call may see once the key length exceeds 64.
+            pre_tokens_i=INT_MAX,
+            next_tokens_i=INT_MAX,
+        )
+        out.setType(query.type())
+        return out
+
+
+class L2NormalizeFunction(torch.autograd.Function):
+    """Export the delta rule's q/k normalization as the CANN built-in ``L2Normalize``.
+
+    The eager form costs two kernels (a ``Square`` and one fused reduce/rsqrt/multiply) over the
+    whole q and k tensors; the built-in does it in one, 0.026 ms against 0.066 ms per call at
+    S=2048.
+    """
+
+    @staticmethod
+    def forward(ctx, x, eps):
+        del ctx
+        return _l2norm(x, dim=-1, eps=eps)
+
+    @staticmethod
+    def symbolic(graph, x, eps):
+        """Export one Custom node; the axis is the last dimension, as in ``_l2norm``."""
+        y = graph.op("Custom", x, outputs=1, type_s=L2_NORMALIZE_OP,
+                     input_names_s=["x"], output_names_s=["y"], output_num_i=1,
+                     axis_i=[-1], eps_f=float(eps))
+        y.setType(x.type())
+        return y
+
+
+def _l2_normalize_custom(x):
+    """q/k normalization of the delta rule on the CANN ``L2Normalize`` operator."""
+    return L2NormalizeFunction.apply(x, 1e-6)
+
+
 def _chunk_gated_delta_rule_custom(query, key, value, g, beta, initial_state):
     """Adapt the model's [B, L, H, D] layout to the flat [tokens, H, D] Custom-op layout."""
     batch_size, sequence_length = query.shape[0], query.shape[1]
     token_count = batch_size * sequence_length
     num_value_heads, value_dim = value.shape[2], value.shape[3]
-    query_flat = _l2norm(query, dim=-1).reshape(token_count, query.shape[2], query.shape[3]).half()
-    key_flat = _l2norm(key, dim=-1).reshape(token_count, key.shape[2], key.shape[3]).half()
+    query_flat = _l2_normalize_custom(query).reshape(
+        token_count, query.shape[2], query.shape[3]).half()
+    key_flat = _l2_normalize_custom(key).reshape(
+        token_count, key.shape[2], key.shape[3]).half()
     value_flat = value.reshape(token_count, num_value_heads, value_dim).half()
     beta_flat = beta.reshape(token_count, num_value_heads).half()
     g_flat = g.reshape(token_count, num_value_heads).float()
@@ -223,17 +459,7 @@ def _delta_rule(layer, mixed_qkv, z, gates, initial_state=None):
     key = key.reshape(batch_size, seq_len, -1, layer.head_k_dim)
     value = value.reshape(batch_size, seq_len, -1, layer.head_v_dim)
     beta, g = gates
-    if USE_CUSTOM_CGDR:
-        core_attn_out, state = _chunk_gated_delta_rule_custom(
-            query, key, value, g, beta, initial_state
-        )
-    else:
-        repeat = layer.num_v_heads // layer.num_k_heads
-        query, key = _l2norm(query, dim=-1), _l2norm(key, dim=-1)
-        core_attn_out, state = _chunk_gated_delta_rule(
-            query.repeat_interleave(repeat, dim=2), key.repeat_interleave(repeat, dim=2),
-            value, g, beta, initial_state, True,
-        )
+    core_attn_out, state = _chunk_gated_delta_rule_custom(query, key, value, g, beta, initial_state)
     state = state.float() if state is not None else None
     core_attn_out = layer.norm(core_attn_out.reshape(-1, layer.head_v_dim),
                                z.reshape(-1, layer.head_v_dim))
@@ -262,9 +488,12 @@ def _causal_conv(layer, full_qkv, left_context):
 def _linear_attn_state(layer, hidden_states):
     """State graph: one Gated DeltaNet layer from scratch, returning its output and both caches."""
     batch_size, seq_len = hidden_states.shape[0], hidden_states.shape[1]
-    mixed_qkv = layer.in_proj_qkv(hidden_states).transpose(1, 2)
+    projected = layer.in_proj_qkv(hidden_states)
     # The conv state is the pre-convolution tail: the k columns the next row needs as left context.
-    conv_state = mixed_qkv[:, :, -layer.conv_kernel_size:]
+    # Taking them before the transpose keeps the slice on a contiguous [batch, k, channels] block;
+    # after it, the same columns are a k-element gather per channel over the whole [C, seq] tensor.
+    conv_state = projected[:, -layer.conv_kernel_size:, :].transpose(1, 2)
+    mixed_qkv = projected.transpose(1, 2)
     z = layer.in_proj_z(hidden_states).reshape(batch_size, seq_len, -1, layer.head_v_dim)
     gates = _linear_attn_gates(layer, hidden_states)
     mixed_qkv = F.silu(_causal_conv(layer, mixed_qkv, 0))
@@ -308,14 +537,13 @@ def _full_attn_forward(layer, hidden_states, position_embeddings, attention_mask
     if past is not None:
         key_states = torch.cat([past[0], key_states], dim=2)
         value_states = torch.cat([past[1], value_states], dim=2)
-    repeat = num_heads // num_kv_heads
-    key_full = key_states.repeat_interleave(repeat, dim=1)
-    value_full = value_states.repeat_interleave(repeat, dim=1)
     scaling = getattr(layer, "scaling", 1.0 / (head_dim ** 0.5))
-    attn_weights = torch.matmul(query_states, key_full.transpose(2, 3)) * scaling
-    attn_weights = attn_weights + attention_mask
-    attn_weights = F.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-    attn_output = torch.matmul(attn_weights, value_full)
+    # The additive mask turns into the operator's bool form; -10000 is the only value the mask
+    # builder writes, so any negative entry means masked. ``past`` only decides how long the key
+    # axis is: the operator takes the concatenated caches like the eager path.
+    attn_output = PromptFlashAttentionFunction.apply(
+        query_states, key_states, value_states, attention_mask < -1,
+        num_heads, num_kv_heads, scaling)
     attn_output = attn_output.transpose(1, 2).reshape(batch_size, seq_len, -1).contiguous()
     attn_output = attn_output * torch.sigmoid(gate)
     return layer.o_proj(attn_output), key_states, value_states
@@ -454,27 +682,42 @@ def _export(graph, path, spec, dynamic_axes):
         )
 
 
-def _custom_node_count(path):
-    """Count the nodes that actually call ChunkGatedDeltaRule.
+def _check_custom_nodes(path, expected):
+    """Fail the export when a Custom operator is missing, duplicated, or left half-fused.
 
-    Every Ascend Custom op is exported with ``op_type == "Custom"``; the operator identity is the
-    node's ``type`` string attribute. Counting bare ``Custom`` nodes would also accept 24
-    unrelated custom ops.
+    ``expected`` is exact for the operators whose count is structural: CGDR is one per
+    linear-attention layer, ``L2Normalize`` two per linear-attention layer, ``Swish`` one per
+    live MLP, and the gated ``RmsNorm`` one per live linear-attention layer (the state graph
+    drops the norm of a last layer that is a linear one: only its recurrent state is used, and
+    the norm plus ``out_proj`` after the rule feed nothing). ``GemmaRmsNorm``
+    is not -- the exporter drops nodes that never reach an output, so the state graph keeps 102
+    of the model's 105 norms (the closing norm and the last layer's dead q_norm and
+    post-attention norm disappear). What must hold instead is that every norm was fused: no
+    eager chain is left, and ``Pow`` / ``ReduceMean`` do not appear at all.
     """
     import onnx
 
     model = onnx.load(str(path), load_external_data=False)
-    return sum(1 for node in model.graph.node
-               if node.op_type == "Custom"
-               and any(attr.name == "type" and attr.s == b"ChunkGatedDeltaRule"
-                       for attr in node.attribute))
+    counts, leftover = {}, {}
+    for node in model.graph.node:
+        if node.op_type == "Custom":
+            for attr in node.attribute:
+                if attr.name == "type":
+                    name = attr.s.decode()
+                    counts[name] = counts.get(name, 0) + 1
+        elif node.op_type in ("Pow", "ReduceMean"):
+            leftover[node.op_type] = leftover.get(node.op_type, 0) + 1
+    print(f"    {path.name}: {counts}, eager norm ops left: {leftover or '{}'}")
+    wanted = {name: count for name, count in expected.items() if count}
+    found = {name: count for name, count in counts.items() if name != GEMMA_RMS_NORM_OP}
+    if found != wanted or leftover or counts.get(GEMMA_RMS_NORM_OP, 0) == 0:
+        raise SystemExit(
+            f"{path.name}: expected every RMSNorm fused with Custom nodes {wanted},"
+            f" found {counts}, leftover norm ops {leftover}")
 
 
 def _dynamic_axes():
-    """Dynamic axes per graph; empty for the fixed-shape reference export."""
-    if not USE_CUSTOM_CGDR:
-        print("WARNING: the reference delta rule freezes the dummy lengths into the graph")
-        return {}, {}
+    """Symbolic sequence axes of both graphs."""
     state = {"input_ids": {1: "seq_len"}, "position_ids": {1: "seq_len"},
              "attention_mask": {2: "seq_len", 3: "seq_len"},
              "present_kv_cache": {3: "seq_len"}}
@@ -510,19 +753,31 @@ def export_graphs(models, dummies, args):
     }
     _export(models["state"], state_path, state_spec, state_dynamic)
     _export(models["branch"], branch_path, branch_spec, branch_dynamic)
-    expected = args.num_linear if USE_CUSTOM_CGDR else 0
-    for path in (state_path, branch_path):
-        found = _custom_node_count(path)
-        print(f"    {path.name}: {found} ChunkGatedDeltaRule nodes")
-        if found != expected:
-            raise SystemExit(f"{path.name}: expected {expected} Custom nodes, found {found}")
+    # The state graph outputs caches, not hidden states, so its last layer's MLP is dead code --
+    # and so is that layer's attention when it is a full-attention one, whose KV cache comes from
+    # the projections before the attention itself. The branch graph keeps every layer.
+    mlp_counts = {"state": args.num_layers - 1, "branch": args.num_layers}
+    pfa_counts = {"state": args.num_full - args.last_full, "branch": args.num_full}
+    # When that dead last layer is a linear one, the gated norm after the delta rule goes with
+    # it: the rule still runs for the recurrent cache, but nothing reads its output.
+    gated_counts = {"state": args.num_linear - args.last_linear, "branch": args.num_linear}
+    for kind, path in (("state", state_path), ("branch", branch_path)):
+        expected = {CHUNK_GATED_DELTA_RULE_OP: args.num_linear,
+                    RMS_NORM_OP: gated_counts[kind],
+                    SWISH_OP: mlp_counts[kind],
+                    PROMPT_FLASH_ATTENTION_OP: pfa_counts[kind],
+                    L2_NORMALIZE_OP: 2 * args.num_linear}
+        _check_custom_nodes(path, expected)
 
 
 def _model_meta(text_model, args):
     """Fill the shape constants the dummy caches need from the loaded config."""
     config = text_model.config
+    args.num_layers = len(config.layer_types)
     args.num_linear = sum(1 for kind in config.layer_types if kind == LINEAR_ATTENTION)
-    args.num_full = len(config.layer_types) - args.num_linear
+    args.num_full = args.num_layers - args.num_linear
+    args.last_full = int(config.layer_types[-1] != LINEAR_ATTENTION)
+    args.last_linear = int(config.layer_types[-1] == LINEAR_ATTENTION)
     linear = next(layer.linear_attn for layer in text_model.layers
                   if layer.block_type == LINEAR_ATTENTION)
     args.conv_dim = linear.conv_dim
@@ -549,16 +804,13 @@ def parse_args(argv=None):
     parser.add_argument("--dummy-branch-len", type=int, default=16)
     parser.add_argument("--dummy-past-len", type=int, default=None,
                         help="cache length for the branch trace (default: --dummy-state-len)")
-    parser.add_argument("--enable-cgdr-custom", action=argparse.BooleanOptionalAction,
-                        default=True, help="use the Ascend ChunkGatedDeltaRule Custom operator")
     return parser.parse_args(argv)
 
 
 def main(argv=None):
     """Load the merged checkpoint in fp16 and export both graphs."""
-    global USE_CUSTOM_CGDR
     args = parse_args(argv)
-    USE_CUSTOM_CGDR = args.enable_cgdr_custom
+    _install_norm_ops()
     merged = args.merged.expanduser().resolve()
     if not (merged / "config.json").is_file():
         raise SystemExit(
@@ -567,11 +819,12 @@ def main(argv=None):
             "  pass the directory written by scripts/merge_lora.py; a path that does not\n"
             "  exist is treated by transformers as a Hub repo id, and loading then fails\n"
             "  with a network error against huggingface.co")
-    print(f"--- loading merged checkpoint in fp16: {merged}")
+    print(f"--- loading merged checkpoint: {merged}")
     text_model = AutoModelForCausalLM.from_pretrained(
         str(merged), dtype=torch.float16, local_files_only=True).model
     text_model.eval().to(args.device)
     _model_meta(text_model, args)
+    _install_mlp_ops(text_model)
     models = {"state": KevStateModel(text_model).to(args.device).eval(),
               "branch": KevBranchModel(text_model).to(args.device).eval()}
     export_graphs(models, _dummies(args), args)
