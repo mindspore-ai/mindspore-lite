@@ -366,7 +366,11 @@ std::vector<std::string> LayerDecisionReporter::BuildLayerRow(const CNodePtr &cn
   auto node_name = cnode->fullname_with_scope();
   ReportRow row;
 
-  row.origin_names = JoinVector(opt::GetSelfAndOriginNames(cnode), ";");
+  // Pure origin domain, matching the documented column definition (pre-fusion op names: the
+  // node's own original name plus the absorbed components'). The fused current name lives in
+  // the NodeName column only - echoing it here used to present converter-generated spellings
+  // (TFLite TYPE-N dash names, format transposes, quant dtype casts) as configurable values.
+  row.origin_names = JoinVector(opt::GetOriginNames(cnode), ";");
   row.origin_op_types = JoinVector(opt::GetOriginOpTypes(cnode), ";");
   row.node_name = node_name;
   row.node_type = NodePrimitiveType(cnode);
