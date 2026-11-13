@@ -22,8 +22,14 @@
  *
  * Changes from V5:
  *   - Added output_bias parameter (float[N], added after ×x_scale in ComputeDequant).
+ *   - Per-channel w_scale is consumed by the Cube via SetQuantVector
+ *     (VDEQF16): input scale is uint64[N] (fp32 bit pattern in the low 32
+ *     bits, high 32 bits zero), and the matmul workspace is half — the Cube
+ *     dequantises s32→f16 with ×w_scale on the way out, halving the workspace
+ *     bandwidth vs the earlier int32/full-precision variant.
+ *   - y_offset therefore carries the host pre-multiplied bias × w_scale
+ *     (V5 semantics), and no VEC-side ×w_scale is needed.
  *   - Includes adapted for w4a8 directory layout.
- * Everything else is identical to V5 MSD.
  */
 
 #ifndef QUANT_MATMUL_W4A8_MSD_H
@@ -241,7 +247,6 @@ class QuantBatchMatmulV4Msd {
                                         uint32_t offsetM);
   __aicore__ inline void DataCopyYOffset(uint32_t curBaseN, uint32_t alignBaseN, uint64_t yOffset);
   __aicore__ inline void DataCopyOutputBias(uint32_t curBaseN, uint32_t alignBaseN, uint64_t obOffset);
-  __aicore__ inline void DataCopyWScale(uint32_t curBaseN, uint32_t alignBaseN, uint64_t wsOffset);  // w4a8: w_scale
   __aicore__ inline void DataCopyX1ScaleAndBrcb(uint32_t mIdx, uint32_t curBaseM, uint32_t alignBaseN,
                                                 uint32_t offsetM);
 
@@ -249,9 +254,9 @@ class QuantBatchMatmulV4Msd {
   const uint32_t HALF_ALIGN = 16;
   GlobalTensor<xType> x1Global_;
   GlobalTensor<wType> x2Global_;
-  GlobalTensor<half> mmOutGlobal_;
+  GlobalTensor<half> mmOutGlobal_;  // Cube-side dequant result (s32→f16 with ×w_scale)
   GlobalTensor<scaleType> x1ScaleGlobal_;
-  GlobalTensor<float> x2ScaleGlobal_;  // w4a8: float w_scale, not V5 uint64_t
+  GlobalTensor<uint64_t> x2ScaleGlobal_;  // V5: per-channel deqScale, uint64[N] (fp32 bits in low 32)
   GlobalTensor<float> yOffsetGlobal_;
   GlobalTensor<float> outputBiasGlobal_;  // w4a8 addition
   GlobalTensor<yType> yGlobal_;
@@ -261,11 +266,9 @@ class QuantBatchMatmulV4Msd {
   TQue<QuePosition::VECOUT, 1> vecOutQueue_;
   TQue<QuePosition::VECIN, 1> x1ScaleInQueue_;
   TQue<QuePosition::VECIN, 1> yOffsetInQueue_;
-  TQue<QuePosition::VECIN, 1> wScaleInQueue_;      // w4a8: per-channel w_scale
   TQue<QuePosition::VECIN, 1> outputBiasInQueue_;  // w4a8 addition
   TBuf<TPosition::VECCALC> tmpBuff_;
   LocalTensor<float> yOffsetInUb_;
-  LocalTensor<float> wScaleInUb_;      // w4a8: per-channel w_scale
   LocalTensor<float> outputBiasInUb_;  // w4a8 addition
   LocalTensor<float> buffer1_;
   LocalTensor<float> buffer2_;
@@ -300,6 +303,9 @@ class QuantBatchMatmulV4Msd {
   using inputX1Type = MatmulType<TPosition::GM, CubeFormat::ND, int4b_t, false>;
   using inputX2Type = MatmulType<TPosition::GM, wFormat_, int4b_t, bTrans>;
   using inputBiasType = MatmulType<TPosition::GM, CubeFormat::ND, int32_t, false>;
+  // half output: Cube dequantises s32→f16 with ×w_scale via SetQuantVector
+  // (VDEQF16), the same as V5.  y_offset carries bias × w_scale (host
+  // pre-multiplied), so no VEC-side ×w_scale is needed.
   using outputYType = MatmulType<TPosition::GM, CubeFormat::ND, half, false>;
   MatmulImpl<inputX1Type, inputX2Type, outputYType, inputBiasType, CFG_MDL> mmObj_;
 };
@@ -315,7 +321,7 @@ __aicore__ inline void QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, qua
   x2Global_.SetGlobalBuffer(reinterpret_cast<__gm__ wType *>(x2));
   mmOutGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(workspace));
   x1ScaleGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ scaleType *>(x1_scale));
-  x2ScaleGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(x2_scale));  // w4a8: float w_scale
+  x2ScaleGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(x2_scale));  // V5: uint64 deqScale
   yOffsetGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(y_offset));
   outputBiasGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(outputBias));  // w4a8
   yGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ yType *>(y));
@@ -354,9 +360,9 @@ QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, quantType, bTrans, weightN
   }
   pipe_->InitBuffer(yOffsetInQueue_, 1, baseN_ * sizeof(scaleType));
   pipe_->InitBuffer(outputBiasInQueue_, 1, baseN_ * sizeof(float));  // w4a8
-  pipe_->InitBuffer(wScaleInQueue_, 1, baseN_ * sizeof(float));      // w4a8: w_scale per N-tile
   pipe_->InitBuffer(x1ScaleInQueue_, 1,
                     ops::CeilDiv(tilingData_->vBaseM * sizeof(scaleType), static_cast<uint64_t>(32)) * 32);
+  // half double-buffer: E row + O row in one tile (V5 layout, 2×ubCalSize halves)
   pipe_->InitBuffer(vecInQueue_, 1, tilingData_->ubCalSize * 2 * sizeof(half));
   pipe_->InitBuffer(vecOutQueue_, 1, tilingData_->ubCalSize * sizeof(yType));
   pipe_->InitBuffer(tmpBuff_, tilingData_->ubRestBytes);
@@ -438,7 +444,8 @@ __aicore__ inline void QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, qua
         weightSlice.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
       }
       mmObj_.SetTensorB(weightSlice, bTrans);
-      mmObj_.SetQuantScalar(0x000000003F800000ULL);  // w4a8: identity (w_scale applied in VEC)
+      // V5: per-channel deqScale fed to the Cube (VDEQF16, s32→f16 with ×w_scale)
+      mmObj_.SetQuantVector(x2ScaleGlobal_[nIdx * baseN_]);
       mmObj_.Iterate();
       mmObj_.GetTensorC(mmOutGlobal_[workSpaceOffset], 0, true);
     } else {
@@ -451,7 +458,7 @@ __aicore__ inline void QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, qua
           weightSlice.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
         }
         mmObj_.SetTensorB(weightSlice);
-        mmObj_.SetQuantScalar(0x000000003F800000ULL);  // w4a8: K_G path (identity)
+        mmObj_.SetQuantVector(x2ScaleGlobal_[static_cast<uint64_t>(loopK) * nSize_ + x2Offset]);
         mmObj_.Iterate();
         mmObj_.GetTensorC(mmOutGlobal_[workSpaceOffset], loopK == 0 ? 0 : 1, true);
       }
@@ -490,7 +497,6 @@ __aicore__ inline void QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, qua
     uint32_t alignBaseN = ops::CeilDiv(curVecBaseN, static_cast<uint32_t>(16)) * 16;  //  16: num half in 32B ub block
     DataCopyYOffset(curVecBaseN, alignBaseN, yOffset + offsetN);
     DataCopyOutputBias(curVecBaseN, alignBaseN, yOffset + offsetN);  // w4a8: load output_bias
-    DataCopyWScale(curVecBaseN, alignBaseN, yOffset + offsetN);      // w4a8: load w_scale
     uint32_t curVecBaseM = vecBaseM;
     uint64_t mmOutOffset = workSpaceOffset + offsetN * baseM_;
     for (uint32_t offsetM = 0; offsetM < curCubeSingleM; offsetM += vecBaseM) {
@@ -501,6 +507,8 @@ __aicore__ inline void QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, qua
       if (offsetM + vecBaseM >= curCubeSingleM) {
         curVecBaseM = curCubeSingleM - offsetM;
       }
+      // E row + O row into one half tile: [0, curVecBaseM*alignBaseN) then
+      // [curVecBaseM*alignBaseN, ...) — merged by 16×E + O in ComputeDequant
       LocalTensor<half> mmOutLocal = vecInQueue_.AllocTensor<half>();
       DataCopyPad2DW4A8(mmOutLocal, mmOutGlobal_[mmOutOffset + offsetM * 2 * curVecBaseN], curVecBaseM, curVecBaseN,
                         curVecBaseN * 2);  // 2: 2 lines int4 to 1 line int8
@@ -516,12 +524,11 @@ __aicore__ inline void QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, qua
     }
     yOffsetInQueue_.FreeTensor(yOffsetInUb_);
     outputBiasInQueue_.FreeTensor(outputBiasInUb_);  // w4a8
-    wScaleInQueue_.FreeTensor(wScaleInUb_);          // w4a8
   }
   CrossCoreSetFlag<2, PIPE_MTE2>(SYNC_AIV_TO_AIC);
 }
 
-// ── ComputeDequant (V5, +output_bias step after ×x_scale) ──
+// ── ComputeDequant (V5 exact, +output_bias) ──
 template <typename xType, typename wType, typename scaleType, typename yType, QuantType quantType, bool bTrans,
           bool weightNz>
 __aicore__ inline void QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, quantType, bTrans,
@@ -529,9 +536,12 @@ __aicore__ inline void QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, qua
                                                                        uint32_t alignBaseN, uint32_t curVecBaseN,
                                                                        uint32_t offsetM) {
   uint32_t computeSize = curVecBaseM * alignBaseN;
+  // E/O rows already ×w_scale by the Cube (SetQuantVector); rebuild int8 as
+  // 16×E + O.  computeSize is a multiple of 16 (alignBaseN is 16-aligned),
+  // so one Cast covers both rows: castSize == 2 × computeSize.
   LocalTensor<half> mmOutInUb = vecInQueue_.DeQue<half>();
   uint32_t castSize = computeSize + ops::CeilDiv(computeSize, HALF_ALIGN) * HALF_ALIGN;
-  Cast(buffer1_, mmOutInUb, RoundMode::CAST_NONE, castSize);
+  Cast(buffer1_, mmOutInUb, RoundMode::CAST_NONE, castSize);  // 2: in pre process, x has been splited to [2m,n]
   PipeBarrier<PIPE_V>();
   vecInQueue_.FreeTensor(mmOutInUb);
   const float RIGHT_MOVE = 16.0f;  // right move int4 to int8
@@ -553,18 +563,6 @@ __aicore__ inline void QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, qua
   if (last > 0) {
     uint32_t offset = loop * 64;
     Add(buffer2_[offset], buffer3_[offset], yOffsetInUb_[offset], last, curVecBaseM, param);
-  }
-  PipeBarrier<PIPE_V>();
-
-  // ── w4a8: ×w_scale (VEC, since Cube uses SetQuantScalar(1.0)) ──
-  for (uint32_t i = 0; i < loop; i++) {
-    uint32_t offset = i * 64;
-    Mul(buffer2_[offset], buffer2_[offset], wScaleInUb_[offset], mask, curVecBaseM, param);
-  }
-  PipeBarrier<PIPE_V>();
-  if (last > 0) {
-    uint32_t offset = loop * 64;
-    Mul(buffer2_[offset], buffer2_[offset], wScaleInUb_[offset], last, curVecBaseM, param);
   }
   PipeBarrier<PIPE_V>();
 
@@ -618,21 +616,6 @@ __aicore__ inline void QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, qua
   DataCopyPad(obLocal, outputBiasGlobal_[obOffset], obParams, padParams);
   outputBiasInQueue_.EnQue(obLocal);
   outputBiasInUb_ = outputBiasInQueue_.DeQue<float>();
-}
-
-// ── DataCopyWScale (w4a8: per-channel float w_scale, same pattern as DataCopyYOffset) ──
-template <typename xType, typename wType, typename scaleType, typename yType, QuantType quantType, bool bTrans,
-          bool weightNz>
-__aicore__ inline void
-QuantBatchMatmulV4Msd<xType, wType, scaleType, yType, quantType, bTrans, weightNz>::DataCopyWScale(uint32_t curBaseN,
-                                                                                                   uint32_t alignBaseN,
-                                                                                                   uint64_t wsOffset) {
-  DataCopyPadExtParams<float> padParams;
-  DataCopyExtParams wsParams{1, static_cast<uint32_t>(curBaseN * sizeof(float)), 1, 1, 0};
-  LocalTensor<float> wsLocal = wScaleInQueue_.AllocTensor<float>();
-  DataCopyPad(wsLocal, x2ScaleGlobal_[wsOffset], wsParams, padParams);
-  wScaleInQueue_.EnQue(wsLocal);
-  wScaleInUb_ = wScaleInQueue_.DeQue<float>();
 }
 
 // ── DataCopyX1ScaleAndBrcb (V5 exact) ──

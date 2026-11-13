@@ -49,9 +49,14 @@ def quant_matmul_w4a8(
         x1 (Tensor): INT8 activation of shape ``[M, K]``.
         x2 (Tensor): Packed INT4 weight of shape ``[N, K//8]``, dtype=int32.
             Each int32 packs 8 consecutive int4 along the K dimension.
-        scale (Tensor): Per-channel dequant scale of shape ``[N]``, dtype=float32.
-        bias (Tensor): Per-channel bias (host pre-multiplied by scale).
-            Shape ``[N]``, dtype=float32.  Required.
+        scale (Tensor): Per-channel dequant scale of shape ``[N]``,
+            dtype=uint64.  Each element packs the fp32 scale bit pattern in
+            its low 32 bits (high 32 bits zero), the format consumed by the
+            Cube-side SetQuantVector (VDEQF16).
+        bias (Tensor): Per-channel bias of shape ``[N]``, dtype=float32.
+            Required.  Pre-multiplied by the (truncated) w_scale at weight
+            pack time — the kernel adds it to the dequantised matmul result
+            (matching the Cube-side ``×w_scale`` applied to the matmul).
         pertoken_scale (Tensor): Per-token activation scale of shape
             ``[M]``, dtype=float32.  Required.
         output_bias (Tensor, optional): Output bias of shape ``[N]``,
