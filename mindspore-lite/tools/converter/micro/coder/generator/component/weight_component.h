@@ -27,7 +27,7 @@
 #include "tools/converter/micro/coder/context.h"
 
 namespace mindspore::lite::micro {
-void CodeWeightFileHeader(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx);
+void CodeWeightFileHeader(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config);
 void CodeModelParamsState(std::ofstream &ofs, const std::map<std::string, Tensor *> &weights);
 void CodeModelParamsData(std::ofstream &ofs, const std::map<std::string, Tensor *> &weights);
 

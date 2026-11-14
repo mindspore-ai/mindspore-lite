@@ -36,12 +36,29 @@ constexpr _mode_t kMicroDirMode = 0777;
 constexpr __mode_t kMicroDirMode = 0777;
 #endif
 
-const int kUnitDirsNum = 3;
-static std::array<std::string, kUnitDirsNum> kUnitDirs = {"src", "benchmark", "include"};
+const int kUnitDirsNum = 4;
+const int kWinPathLen = 2;
+static std::array<std::string, kUnitDirsNum> kUnitDirs = {"src", "benchmark", "include", "asm"};
 
 bool DirExists(const std::string &dir_path) {
+  if (dir_path.empty()) {
+    return false;
+  }
+
+  // Windows stat() may fail if path ends with separator
+  // Remove trailing slashes for consistent behavior
+  std::string path = dir_path;
+  while (!path.empty() && (path.back() == '\\' || path.back() == '/')) {
+    path.pop_back();
+  }
+
+  // Handle root paths like "C:\" or "/"
+  if (path.empty() || (path.length() == kWinPathLen && path[1] == ':')) {
+    path = dir_path.substr(0, dir_path.find_first_of("\\/") + 1);
+  }
+
   struct stat file_info;
-  if (stat(dir_path.c_str(), &file_info) != 0) {
+  if (stat(path.c_str(), &file_info) != 0) {
     return false;
   }
   return (file_info.st_mode & S_IFDIR) != 0;

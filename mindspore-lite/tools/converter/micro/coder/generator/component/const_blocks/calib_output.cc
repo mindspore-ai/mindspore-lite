@@ -87,6 +87,7 @@ const char *calib_source = R"RAW(/**
 #define kToleranceVal 0.0001f
 #define kMaxOutput 5
 #define kMaxTensorSize 400 * 400 * 4
+#define kInt32Max 2147483647
 
 int ReadCalibData(const char *calib_data_path, CalibTensor **calib_tensor_pointers, int *calib_num) {
   FILE *file = fopen(calib_data_path, "r");
@@ -124,20 +125,17 @@ int ReadCalibData(const char *calib_data_path, CalibTensor **calib_tensor_pointe
       int dims = 0;
       p = strtok(line, " ");
       if (p == NULL) {
-        printf("Invalid calibration data: empty tensor name.\n");
-        FreeCalibTensors(&calib_tensors, *calib_num);
-        fclose(file);
+        printf("Parse tensor name failed.");
         return kMSStatusLiteError;
       }
-      size_t tensor_name_len = strlen(p) + 1;
-      char* tensor_name = (char *)malloc(tensor_name_len);
+      char* tensor_name = (char *)malloc(strlen(p)+1);
       if(tensor_name == NULL) {
         printf("Malloc tensor name failed.");
         FreeCalibTensors(&calib_tensors, *calib_num);
         fclose(file);
         return kMSStatusLiteError;
       }
-      memcpy(tensor_name, p, tensor_name_len);
+      memcpy(tensor_name, p, strlen(p) + 1);
       calib_tensors[*calib_num].tensor_name = tensor_name;
       calib_tensors[*calib_num].elemets_num_ = elements;
       while (p != NULL) {
@@ -145,6 +143,10 @@ int ReadCalibData(const char *calib_data_path, CalibTensor **calib_tensor_pointe
           dims = atoi(p);
         }
         if (j >= 2 && j - 2 < dims) {
+          if (elements > kInt32Max / atoi(p)) {
+            printf("Elements calculation overflow.");
+            return kMSStatusLiteError;
+          }
           elements *= atoi(p);
           if (j - 2 == dims - 1) {
             calib_tensors[*calib_num].elemets_num_ = elements;
@@ -249,6 +251,7 @@ int CompareOutputs(MSTensorHandleArray outputs, CalibTensor **calib_tensors, int
         }
         break;
       }
+      case kMSDataTypeNumberTypeBool:
       case kMSDataTypeNumberTypeUInt8: {
         uint8_t *int_output = (uint8_t *)output->data;
         for (size_t j = 0; j < elements; ++j) {
@@ -428,6 +431,7 @@ int LoadCalibInputs(MSTensorHandleArray *inputs, TensorArray *tensor_array) {
         }
         break;
       }
+      case kMSDataTypeNumberTypeBool:
       case kMSDataTypeNumberTypeUInt8: {
         uint8_t *int_input = (uint8_t *)MSTensorGetMutableData(input);;
         for (size_t j = 0; j < elements; ++j) {
@@ -523,6 +527,7 @@ int CompareOutputs(MSTensorHandleArray *outputs, TensorArray *tensor_array) {
         }
         break;
       }
+      case kMSDataTypeNumberTypeBool:
       case kMSDataTypeNumberTypeUInt8: {
         uint8_t *int_output = (uint8_t *)output->data;
         for (size_t j = 0; j < elements; ++j) {

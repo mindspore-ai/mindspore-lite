@@ -22,11 +22,11 @@
 #include <utility>
 #include <string>
 #include "tools/converter/micro/coder/allocator/memory_manager.h"
+#include "tools/converter/micro/coder/config.h"
 #include "tools/converter/micro/coder/log.h"
 #include "tools/converter/micro/coder/utils/type_cast.h"
 #include "src/tensor.h"
 #include "src/common/log_adapter.h"
-#include "tools/converter/micro/coder/generator/component/component.h"
 
 namespace mindspore::lite::micro {
 /*
@@ -85,6 +85,8 @@ class MemoryAllocator {
   }
 
   Tensor *MallocTensor(TypeId data_type, const std::vector<int> &shape);
+  // Assign a workspace address for a synthetic tensor that is not owned by the original graph op list.
+  int AssignWorkspaceTensor(Tensor *tensor);
   void FreeTensor(Tensor *t);
   /*
    * get the actual runtime address with it's type,
@@ -124,7 +126,12 @@ class MemoryAllocator {
 
     it = origin_weights_addr_.find(tensor);
     if (it != origin_weights_addr_.end()) {
-      saved_weights_addr_.insert(std::make_pair(it->second, tensor));
+      // Mark origin weights as used when a coder requests their runtime address.
+      // Train mode emits immutable default data as "runtime_name_const" and uses
+      // "runtime_name" as the mutable RAM weight pointer.
+      auto save_addr =
+        Configurator::GetInstance()->code_mode() == CodeMode::Train ? it->second + kWeightSuffixName : it->second;
+      saved_weights_addr_.insert(std::make_pair(save_addr, tensor));
       if (immutable) {
         malloc_weights_addr_.insert(std::make_pair(tensor, it->second));
       }

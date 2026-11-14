@@ -21,6 +21,7 @@
 #include "coder/context.h"
 #include "coder/allocator/allocator.h"
 #include "coder/generator/inference/inference_generator.h"
+#include "coder/generator/component/component.h"
 #include "coder/opcoders/op_coder_builder.h"
 #include "coder/opcoders/kernel_registry.h"
 #include "coder/utils/coder_utils.h"
@@ -99,6 +100,10 @@ int CoderSession::PassArgsToContext(const std::string &model_name) {
 int CoderSession::Preprocess() {
   // assign memory
   std::vector<lite::Tensor *> inputs = coder_graph_->input_tensors();
+  if (Configurator::GetInstance()->code_mode() == CodeMode::Train) {
+    auto labels = coder_graph_->label_tensors();
+    inputs.insert(inputs.end(), labels.begin(), labels.end());
+  }
   int ret = allocator_->Assign(inputs, coder_graph_->output_tensors(), op_coders_, coder_graph_->all_tensors(),
                                Configurator::GetInstance()->changeable_weights_name());
   MS_CHECK_RET_CODE(ret, "assign memory failed");

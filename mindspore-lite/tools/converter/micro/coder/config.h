@@ -32,6 +32,22 @@ enum class Target {
   kTargetUnknown = 99
 };
 enum CodeMode { Inference = 0, Train = 1, Code_Unknown = 99 };
+enum class AllocateMemoryType { kDynamic = 0, kStatic = 1, kAllocUnknown = 99 };
+enum TrainMode { TrainMode_None = 0, TrainMode_Quant = 1 };
+enum LossType { LossType_None = 0, LossType_SoftmaxCrossEntropy = 1 };
+enum OptimizerType { Optimizer_SGDWithMomentum = 0 };
+// Suffix appended to immutable weight symbols in train mode; see allocator / weight_component.
+constexpr auto kWeightSuffixName = "_const";
+
+struct MicroTrainParam {
+  TrainMode train_mode = TrainMode_None;
+  LossType loss = LossType_None;
+  std::string label_tensor_name;
+  OptimizerType optimizer = Optimizer_SGDWithMomentum;
+  float learning_rate = 0.0f;
+  float momentum = 0.0f;
+  int batch_size = 1;
+};
 
 struct MicroParam {
   std::string codegen_mode = "Inference";
@@ -51,6 +67,9 @@ struct MicroParam {
   std::map<std::string, std::vector<int>> dynamic_symbols_map;
   std::vector<std::vector<std::vector<int>>> graph_inputs_shape_infos;
   std::map<std::string, std::vector<std::vector<int>>> inputs_shape_by_scenes;
+  std::string allocate_memory_type = "dynamic";
+  MicroTrainParam train_param;
+  bool riscv_optimize{false};
 };
 
 class Configurator {
@@ -87,6 +106,9 @@ class Configurator {
   void set_dynamic_shape(bool dynamic_shape) { dynamic_shape_ = dynamic_shape; }
   bool dynamic_shape() const { return dynamic_shape_; }
 
+  void set_riscv_optimize(bool riscv_optimize) { riscv_optimize_ = riscv_optimize; }
+  bool riscv_optimize() const { return riscv_optimize_; }
+
   void set_dynamic_symbols(const std::vector<std::string> &dynamic_symbols) { dynamic_symbols_ = dynamic_symbols; }
   const std::vector<std::string> &dynamic_symbols() const { return dynamic_symbols_; }
 
@@ -112,6 +134,14 @@ class Configurator {
   }
   const std::vector<std::vector<std::vector<int>>> &graph_inputs_shape_infos() { return graph_inputs_shape_infos_; }
 
+  void set_allocate_memory_type(AllocateMemoryType allocate_memory_type) {
+    allocate_memory_type_ = allocate_memory_type;
+  }
+  AllocateMemoryType allocate_memory_type() const { return allocate_memory_type_; }
+
+  void set_train_param(const MicroTrainParam &train_param) { train_param_ = train_param; }
+  const MicroTrainParam &train_param() const { return train_param_; }
+
  private:
   Configurator() = default;
   ~Configurator() = default;
@@ -129,6 +159,9 @@ class Configurator {
   std::map<std::string, std::vector<int>> dynamic_symbols_map_;
   std::vector<std::vector<std::vector<int>>> graph_inputs_shape_infos_;
   std::vector<std::vector<std::string>> user_graph_inputs_template_;
+  bool riscv_optimize_{false};
+  AllocateMemoryType allocate_memory_type_{AllocateMemoryType::kDynamic};
+  MicroTrainParam train_param_;
 };
 }  // namespace mindspore::lite::micro
 using mindspore::lite::micro::Target;

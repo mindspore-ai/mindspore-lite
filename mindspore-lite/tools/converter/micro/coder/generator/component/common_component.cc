@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "coder/generator/component/common_component.h"
 #include <memory>
+
 #include "coder/generator/component/component.h"
 #include "coder/utils/type_cast.h"
 #include "coder/utils/coder_utils.h"
@@ -25,8 +25,95 @@
 #include "include/c_api/model_c.h"
 #include "coder/generator/component/const_blocks/license.h"
 #include "tools/common/string_util.h"
+#include "tools/converter/micro/coder/config.h"
+#include "tools/converter/micro/coder/context.h"
+#include "coder/generator/component/common_component.h"
 
 namespace mindspore::lite::micro {
+namespace {
+void CodeFreeResourceBody(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, bool is_commented,
+                          CodeMode mode) {
+  std::string prefix = is_commented ? "// " : "";
+  std::string indent = is_commented ? "//   " : "  ";
+  ofs << prefix << ctx->buffer_name() << "= NULL;\n";
+  std::vector<Tensor *> inputs = ctx->graph_inputs();
+  size_t size = inputs.size();
+  for (size_t i = 0; i < size; ++i) {
+    ofs << prefix << ctx->input_name() + std::to_string(i) << " = NULL;\n";
+  }
+  ofs << prefix << "void **allocated[] = {\n";
+  size_t num = 0;
+  auto &w_auxiliary = ctx->auxiliary_weights();
+  for (const auto &item : ctx->tensors_map()) {
+    Tensor *tensor = item.first;
+    std::string name = item.second;
+    if (tensor->data() != nullptr &&
+        (!(CheckConstantTensor(tensor)) || w_auxiliary.find(tensor) != w_auxiliary.end())) {
+      ofs << indent << "(void**)&" << name << ",\n";
+      num++;
+    }
+  }
+
+  ofs << prefix << "\n" << indent << "};\n";
+
+  // In train mode m*_weight points into m*_buffer, which is owned by runtime_buffer.
+  if (mode == CodeMode::Train) {
+    ofs << indent << "/* m*_weight aliases m*_buffer in train mode; runtime_buffer owns the memory. */\n";
+    ofs << indent << ctx->weight_name() << " = NULL;\n";
+  } else {
+    ofs << prefix << "for (int i = 0; i < " << num << "; ++i) {\n"
+        << indent << "*(allocated[i]) = NULL;\n"
+        << prefix << "}\n";
+    ofs << prefix << "if (" << ctx->weight_name() << " != NULL) {\n";
+    ofs << indent << "free(" << ctx->weight_name() << ");\n";
+    ofs << indent << ctx->weight_name() << " = NULL;\n" << prefix << "}\n";
+  }
+}
+void CodeMSModelResizeSymbolCheck(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx,
+                                  const std::map<std::string, std::vector<int>> &symbol_to_indexes) {
+  std::string condition;
+  int index = 0;
+  for (; index < static_cast<int>(symbol_to_indexes.size()) - 1; ++index) {
+    condition += "store" + std::to_string(ctx->GetCurModelIndex()) + "_" + std::to_string(index) + " == dim" +
+                 std::to_string(index) + " && ";
+  }
+  condition +=
+    "store" + std::to_string(ctx->GetCurModelIndex()) + "_" + std::to_string(index) + " == dim" + std::to_string(index);
+  ofs << "  if (" << condition << ") {\n"
+      << "    return kMSStatusSuccess;\n"
+      << "  }\n";
+  for (size_t i = 0; i < symbol_to_indexes.size(); ++i) {
+    ofs << "  store" + std::to_string(ctx->GetCurModelIndex()) + "_" << i << " = dim" << i << ";\n";
+  }
+}
+
+void CodeMSModelPredictOutputTypes(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, size_t outputs_num) {
+  ofs << "  int cur_out_types[" << outputs_num << "] = {";
+  for (size_t i = 0; i < outputs_num; ++i) {
+    ofs << ctx->graph_outputs().at(i)->data_type() << ", ";
+  }
+  ofs << "};\n";
+  ofs << "  bool out_type_changed[" << outputs_num << "] = {";
+  for (size_t i = 0; i < outputs_num; ++i) {
+    ofs << "false, ";
+  }
+  ofs << "};\n";
+}
+
+}  // namespace
+
+std::vector<Tensor *> PredictGraphInputs(const std::vector<Tensor *> &graph_inputs, const Configurator &config) {
+  std::vector<Tensor *> predict_inputs;
+  for (auto *input : graph_inputs) {
+    // The synthetic label input is only consumed by loss during RunStep. Predict must keep the original inference ABI.
+    if (config.code_mode() == CodeMode::Train && input->tensor_name() == config.train_param().label_tensor_name) {
+      continue;
+    }
+    predict_inputs.emplace_back(input);
+  }
+  return predict_inputs;
+}
+
 const char handle_array_destroy_state[] = R"RAW(
 void MSTensorHandleArrayDestroy(MSTensorHandleArray inputs);
 )RAW";
@@ -54,6 +141,31 @@ void MSTensorHandleArrayDestroy(MSTensorHandleArray inputs) {
    micro_tensor = NULL;
  }
  free(inputs.handle_list);
+ inputs.handle_list = NULL;
+}
+
+)RAW";
+
+const char HANDLE_ARRAY_DESTROY_STATIC[] = R"RAW(
+void MSTensorHandleArrayDestroy(MSTensorHandleArray inputs) {
+ if (inputs.handle_list == NULL) {
+   return;
+ }
+ for (size_t i = 0; i < inputs.handle_num; i++) {
+   MicroTensor *micro_tensor = inputs.handle_list[i];
+   if (micro_tensor == NULL) {
+     continue;
+   }
+   if (micro_tensor->data != NULL && micro_tensor->owned) {
+     micro_tensor->data = NULL;
+     micro_tensor->owned = false;
+   }
+   if (micro_tensor->shape) {
+     micro_tensor->shape = NULL;
+   }
+   inputs.handle_list[i] = NULL;
+ }
+ inputs.handle_num = 0;
  inputs.handle_list = NULL;
 }
 
@@ -106,6 +218,10 @@ const char free_resource_state[] = R"RAW(
 typedef void (*FreeResource)();
 )RAW";
 
+const char FREE_RESOURCE_STATE_STATIC[] = R"RAW(
+typedef void (*FreeResource)(void);
+)RAW";
+
 void CodeMSModelCalcWorkspaceSize(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx,
                                   const Configurator &config) {
   if (config.target() == kCortex_M) {
@@ -120,7 +236,11 @@ void CodeMSModelCalcWorkspaceSize(std::ofstream &ofs, const std::unique_ptr<Code
         << "  return micro_model->calc_work_space(model);\n"
         << "}\n";
   } else {
-    ofs << "size_t MSModelCalcWorkspaceSize(MSModelHandle model) {\n  return 0;\n}\n";
+    if (config.allocate_memory_type() == AllocateMemoryType::kStatic) {
+      ofs << "size_t MSModelCalcWorkspaceSize(MSModelHandle model) {\n  (void)model;\n  return 0;\n}\n";
+    } else {
+      ofs << "size_t MSModelCalcWorkspaceSize(MSModelHandle model) {\n  return 0;\n}\n";
+    }
   }
   ofs << "\n";
 }
@@ -153,6 +273,10 @@ void CodeMSModelSetWorkspace(std::ofstream &ofs, const std::unique_ptr<CoderCont
         << "    return;\n"
         << "  }\n"
         << "  micro_model->set_work_space(model, workspace, workspace_size);\n";
+  } else {
+    ofs << "\n  (void)model;\n"
+        << "  (void)workspace;\n"
+        << "  (void)workspace_size;\n";
   }
   ofs << "}\n\n";
 }
@@ -172,19 +296,19 @@ void CodeCortexSetWorkspace(std::ofstream &ofs, const std::unique_ptr<CoderConte
          "  buffer_size = UP_ROUND(buffer_size, 4);\n";
   ofs << "  " << ctx->weight_name() << " = (uint8_t *)&buf[buffer_size];\n";
   ofs << R"RAW(
-  buffer_size += WEIGHT_BUF_SIZE;
-  buffer_size = UP_ROUND(buffer_size,4);
+    buffer_size += WEIGHT_BUF_SIZE;
+    buffer_size = UP_ROUND(buffer_size,4);
 
-  micro_model->inputs.handle_list = (MSTensorHandle *)&buf[buffer_size];
-  buffer_size +=  GRAPH_INPUTS_SIZE * sizeof(MicroTensor *);
-  buffer_size = UP_ROUND(buffer_size,4);
-  MicroTensor **input_tensors = (MicroTensor **)micro_model->inputs.handle_list;
+    micro_model->inputs.handle_list = (MSTensorHandle *)&buf[buffer_size];
+    buffer_size +=  GRAPH_INPUTS_SIZE * sizeof(MicroTensor *);
+    buffer_size = UP_ROUND(buffer_size,4);
+    MicroTensor **input_tensors = (MicroTensor **)micro_model->inputs.handle_list;
 
-  micro_model->outputs.handle_list = (MSTensorHandle *)&buf[buffer_size];
-  buffer_size +=  GRAPH_OUTPUTS_SIZE * sizeof(MicroTensor *);
-  buffer_size = UP_ROUND(buffer_size,4);
-  MicroTensor **output_tensors = (MicroTensor **)micro_model->outputs.handle_list;
-)RAW";
+    micro_model->outputs.handle_list = (MSTensorHandle *)&buf[buffer_size];
+    buffer_size +=  GRAPH_OUTPUTS_SIZE * sizeof(MicroTensor *);
+    buffer_size = UP_ROUND(buffer_size,4);
+    MicroTensor **output_tensors = (MicroTensor **)micro_model->outputs.handle_list;
+  )RAW";
   ofs << "  int i;\n"
       << "  for (i = 0; i < GRAPH_INPUTS_SIZE; i++) {\n";
   std::vector<Tensor *> inputs = ctx->graph_inputs();
@@ -236,79 +360,137 @@ void CodeCortexSetWorkspace(std::ofstream &ofs, const std::unique_ptr<CoderConte
   ofs << "}\n";
 }
 
-void CodeMSModelCreateDefault(std::ofstream &ofs) { ofs << "MSModelHandle MSModelCreate() { return model0; }\n"; }
+void CodeMSModelCreateDefault(std::ofstream &ofs, bool isStaticAlloc) {
+  if (isStaticAlloc) {
+    ofs << "MSModelHandle MSModelCreate(void) { return model0; }\n";
+  } else {
+    ofs << "MSModelHandle MSModelCreate() { return model0; }\n";
+  }
+}
 
-void CodeMSModelCreate(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config) {
-  if (config.target() != kCortex_M) {
+static void CodeStaticAllocDeclarations(std::ofstream &ofs, const std::vector<Tensor *> &inputs,
+                                        const std::vector<Tensor *> &outputs) {
+  size_t inputs_size = inputs.size();
+  size_t outputs_size = outputs.size();
+  for (size_t i = 0; i < inputs_size; ++i) {
+    ofs << "static MicroTensor g_input_tensor" << i << ";\n";
+  }
+  for (size_t i = 0; i < outputs_size; ++i) {
+    ofs << "static MicroTensor g_output_tensor" << i << ";\n";
+  }
+  ofs << "static MicroTensor *g_input_ptrs[" << inputs_size << "];\n";
+  ofs << "static MicroTensor *g_output_ptrs[" << outputs_size << "];\n";
+  for (size_t i = 0; i < inputs_size; ++i) {
+    ofs << "static int64_t g_input" << i << "_shape[" << inputs[i]->shape().size() << "];\n";
+  }
+  for (size_t i = 0; i < outputs_size; ++i) {
+    ofs << "static int64_t g_output" << i << "_shape[" << outputs[i]->shape().size() << "];\n";
+  }
+  ofs << "\n";
+}
+
+static void CodeRuntimeBufferInit(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx,
+                                  const Configurator &config) {
+  if (!config.dynamic_shape()) {
+    ofs << "void *runtime_buffer = GlobalMemory();\n"
+        << "if (runtime_buffer == NULL) {\n"
+        << "    return kMSStatusLiteNullptr;\n"
+        << "  }\n"
+        << "  micro_model->runtime_buffer = runtime_buffer;\n";
+    ofs << "  int ret = SetBuffer" << ctx->GetCurModelIndex() << "(((MemBlock *)runtime_buffer)->addr);\n"
+        << "  if (ret != kMSStatusSuccess) {\n"
+        << "    return kMSStatusLiteMemoryFailed;\n"
+        << "  }\n\n";
+  } else {
+    ofs << "  micro_model->runtime_buffer = NULL;\n";
+  }
+}
+
+static void CodeTensorDynamicInit(std::ofstream &ofs, Tensor *tensor, const std::string &prefix, size_t index) {
+  ofs << kAlignedString << prefix << "_tensors[" << index << "] = malloc(sizeof(MicroTensor));\n";
+  ofs << kAlignedString << prefix << "_tensors[" << index << "]->type = " << EnumNameMSDataType(tensor->data_type())
+      << ";\n";
+  ofs << kAlignedString << prefix << "_tensors[" << index << "]->format = kMSFormatNHWC;\n";
+  ofs << kAlignedString << prefix << "_tensors[" << index << "]->ndim = " << tensor->shape().size() << ";\n";
+  size_t shape_size = tensor->shape().size();
+  ofs << kAlignedString << prefix << "_tensors[" << index << "]->shape = "
+      << "malloc(" << shape_size << " * sizeof(int64_t));\n";
+  for (size_t i = 0; i < shape_size; i++) {
+    ofs << kAlignedString << prefix << "_tensors[" << index << "]->shape[" << i << "]= " << tensor->shape()[i] << ";\n";
+  }
+  ofs << kAlignedString << prefix << "_tensors[" << index << "]->name = \"" << tensor->tensor_name() << "\";\n";
+  ofs << kAlignedString << prefix << "_tensors[" << index << "]->data = NULL;\n";
+  ofs << kAlignedString << prefix << "_tensors[" << index << "]->owned = false;\n";
+}
+
+static void CodeTensorStaticInit(std::ofstream &ofs, Tensor *tensor, const std::string &prefix, size_t index) {
+  ofs << kAlignedString << "g_" << prefix << "_ptrs[" << index << "] = &g_" << prefix << "_tensor" << index << ";\n";
+  ofs << kAlignedString << "g_" << prefix << "_tensor" << index << ".type = " << EnumNameMSDataType(tensor->data_type())
+      << ";\n";
+  ofs << kAlignedString << "g_" << prefix << "_tensor" << index << ".format = kMSFormatNHWC;\n";
+  ofs << kAlignedString << "g_" << prefix << "_tensor" << index << ".ndim = " << tensor->shape().size() << ";\n";
+  ofs << kAlignedString << "g_" << prefix << "_tensor" << index << ".shape = g_" << prefix << index << "_shape;\n";
+  size_t shape_size = tensor->shape().size();
+  for (size_t i = 0; i < shape_size; i++) {
+    ofs << kAlignedString << "g_" << prefix << index << "_shape[" << i << "]= " << tensor->shape()[i] << ";\n";
+  }
+  ofs << kAlignedString << "g_" << prefix << "_tensor" << index << ".name = \"" << tensor->tensor_name() << "\";\n";
+  ofs << kAlignedString << "g_" << prefix << "_tensor" << index << ".data = NULL;\n";
+  ofs << kAlignedString << "g_" << prefix << "_tensor" << index << ".owned = false;\n";
+}
+
+static void CodeTensorArrayInit(std::ofstream &ofs, const std::vector<Tensor *> &tensors, const std::string &prefix,
+                                bool isStaticAlloc) {
+  size_t tensors_size = tensors.size();
+  ofs << "  MSTensorHandleArray model_" << prefix << "s;\n";
+  ofs << "  model_" << prefix << "s.handle_num = " << tensors_size << ";\n";
+  if (isStaticAlloc) {
+    ofs << "  model_" << prefix << "s.handle_list = (MSTensorHandle *)(g_" << prefix << "_ptrs);\n";
+  } else {
+    ofs << "  MicroTensor **" << prefix << "_tensors = malloc(" << tensors_size << " * sizeof(MicroTensor *));\n";
+    ofs << "  model_" << prefix << "s.handle_list = (MSTensorHandle *)(" << prefix << "_tensors);\n";
+  }
+  ofs << "  micro_model->" << prefix << "s = model_" << prefix << "s;\n";
+  for (size_t i = 0; i < tensors_size; ++i) {
+    if (isStaticAlloc) {
+      CodeTensorStaticInit(ofs, tensors[i], prefix, i);
+    } else {
+      CodeTensorDynamicInit(ofs, tensors[i], prefix, i);
+    }
+  }
+}
+
+static void CodeMSModelCreateNonCortex(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx,
+                                       const Configurator &config) {
+  std::vector<Tensor *> inputs = ctx->graph_inputs();
+  std::vector<Tensor *> outputs =
+    (config.code_mode() == CodeMode::Train) ? ctx->graph_train_outputs() : ctx->graph_outputs();
+  bool isStaticAlloc = (config.allocate_memory_type() == AllocateMemoryType::kStatic);
+  if (isStaticAlloc) {
+    CodeStaticAllocDeclarations(ofs, inputs, outputs);
+    ofs << "static MSStatus MSModelCreate" << ctx->GetCurModelIndex() << "(MicroModel *micro_model) {";
+  } else {
     ofs << "MSStatus MSModelCreate" << ctx->GetCurModelIndex() << "(MicroModel *micro_model) {";
-    ofs << R"RAW(
+  }
+  ofs << R"RAW(
   if (micro_model == NULL) {
     return kMSStatusLiteNullptr;
   }
 )RAW";
-    if (!config.dynamic_shape()) {
-      ofs << "void *runtime_buffer = GlobalMemory();\n"
-          << "if (runtime_buffer == NULL) {\n"
-          << "    return kMSStatusLiteNullptr;\n"
-          << "  }\n"
-          << "  micro_model->runtime_buffer = runtime_buffer;\n";
-      ofs << "  int ret = SetBuffer" << ctx->GetCurModelIndex() << "(((MemBlock *)runtime_buffer)->addr);\n"
-          << "  if (ret != kMSStatusSuccess) {\n"
-          << "    return kMSStatusLiteMemoryFailed;\n"
-          << "  }\n\n";
-    } else {
-      ofs << "  micro_model->runtime_buffer = NULL;\n";
-    }
-    if (config.code_mode() == CodeMode::Inference) {
-      ofs << "  micro_model->train_mode = false;\n";
-    } else if (config.code_mode() == CodeMode::Train) {
-      ofs << "  micro_model->train_mode = true;\n";
-    }
-    auto array_tostring = [&ofs](Tensor *tensor, const std::string &prefix, size_t index) {
-      ofs << kAlignedString << prefix << "_tensors[" << index << "] = malloc(sizeof(MicroTensor));\n";
-      ofs << kAlignedString << prefix << "_tensors[" << index << "]->type = " << EnumNameMSDataType(tensor->data_type())
-          << ";\n";
-      ofs << kAlignedString << prefix << "_tensors[" << index << "]->format = kMSFormatNHWC;\n";
-      ofs << kAlignedString << prefix << "_tensors[" << index << "]->ndim = " << tensor->shape().size() << ";\n";
-      size_t shape_size = tensor->shape().size();
-      ofs << kAlignedString << prefix << "_tensors[" << index << "]->shape = "
-          << "malloc(" << shape_size << " * sizeof(int64_t));\n";
-      for (size_t i = 0; i < shape_size; i++) {
-        ofs << kAlignedString << prefix << "_tensors[" << index << "]->shape[" << i << "]= " << tensor->shape()[i]
-            << ";\n";
-      }
-      ofs << kAlignedString << prefix << "_tensors[" << index << "]->name = \"" << tensor->tensor_name() << "\";\n";
-      ofs << kAlignedString << prefix << "_tensors[" << index << "]->data = NULL;\n";
-      ofs << kAlignedString << prefix << "_tensors[" << index << "]->owned = false;\n";
-    };
-    std::vector<Tensor *> inputs = ctx->graph_inputs();
-    std::vector<Tensor *> outputs = ctx->graph_outputs();
-    if (config.code_mode() == CodeMode::Inference) {
-      outputs = ctx->graph_outputs();
-    } else if (config.code_mode() == CodeMode::Train) {
-      outputs = ctx->graph_train_outputs();
-    }
-    size_t inputs_size = inputs.size();
-    ofs << "  MSTensorHandleArray model_inputs;\n";
-    ofs << "  model_inputs.handle_num = " << inputs_size << ";\n";
-    ofs << "  MicroTensor **input_tensors = malloc(" << inputs_size << " * sizeof(MicroTensor *));\n";
-    ofs << "  model_inputs.handle_list = (MSTensorHandle *)(input_tensors);\n";
-    ofs << "  micro_model->inputs = model_inputs;\n";
-    for (size_t i = 0; i < inputs_size; ++i) {
-      Tensor *input = inputs[i];
-      array_tostring(input, "input", i);
-    }
-    size_t outputs_size = outputs.size();
-    ofs << "  MSTensorHandleArray model_outputs;\n";
-    ofs << "  model_outputs.handle_num = " << outputs_size << ";\n";
-    ofs << "  MicroTensor **output_tensors = malloc(" << outputs_size << " * sizeof(MicroTensor *));\n";
-    ofs << "  model_outputs.handle_list = (MSTensorHandle *)(output_tensors);\n";
-    ofs << "  micro_model->outputs = model_outputs;\n";
-    for (size_t i = 0; i < outputs_size; ++i) {
-      Tensor *output = outputs[i];
-      array_tostring(output, "output", i);
-    }
-    ofs << "  return kMSStatusSuccess;\n";
+  CodeRuntimeBufferInit(ofs, ctx, config);
+  if (config.code_mode() == CodeMode::Inference) {
+    ofs << "  micro_model->train_mode = false;\n";
+  } else if (config.code_mode() == CodeMode::Train) {
+    ofs << "  micro_model->train_mode = true;\n";
+  }
+  CodeTensorArrayInit(ofs, inputs, "input", isStaticAlloc);
+  CodeTensorArrayInit(ofs, outputs, "output", isStaticAlloc);
+  ofs << "  return kMSStatusSuccess;\n";
+}
+
+void CodeMSModelCreate(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config) {
+  if (config.target() != kCortex_M) {
+    CodeMSModelCreateNonCortex(ofs, ctx, config);
   } else {
     ofs << "MSStatus MSModelCreate" << ctx->GetCurModelIndex() << "(MicroModel *micro_model) {\n";
     ofs << "  micro_model->train_mode = false;\n";
@@ -344,8 +526,9 @@ void CodeMSModelBuildCommon(std::ofstream &ofs, const Configurator &config) {
 )RAW";
 }
 
-void CodeMSModelBuild(std::ofstream &ofs, const int model_index, const size_t weight_size, const Configurator &config) {
-  ofs << "MSStatus MSModelBuild" << model_index
+void CodeMSModelBuild(std::ofstream &ofs, const int modelIndex, const size_t weightSize, const Configurator &config) {
+  bool isStaticAlloc = (config.allocate_memory_type() == AllocateMemoryType::kStatic);
+  ofs << "MSStatus MSModelBuild" << modelIndex
       << "(MSModelHandle model, const void *model_data, size_t data_size,\n"
          "                      const MSContextHandle model_context) {\n"
          "  if (model == NULL || model_context == NULL) {\n"
@@ -355,22 +538,26 @@ void CodeMSModelBuild(std::ofstream &ofs, const int model_index, const size_t we
          "    return kMSStatusLiteParamInvalid;\n"
          "  }\n";
   if (config.changeable_weights_name().empty()) {
-    ofs << "  if (data_size != " << weight_size
+    ofs << "  if (data_size != " << weightSize
         << ") {\n"
            "    return kMSStatusLiteInputParamInvalid;\n"
            "  }\n";
   }
   ofs << "  MicroModel *micro_model = (MicroModel *)model;\n"
          "  int ret = MSModelCreate"
-      << model_index
+      << modelIndex
       << "(micro_model);\n"
          "  if (ret != kMSStatusSuccess) {\n"
          "    return ret;\n"
          "  }\n";
   if (config.target() != kCortex_M && config.target() != kRiscV) {
-    ofs << "  ret = Init" << model_index << "((void*)model_data, data_size);\n";
+    if (!isStaticAlloc) {
+      ofs << "  ret = Init" << modelIndex << "((void*)model_data, data_size);\n";
+    }
   } else {
-    ofs << "  ret = Init" << model_index << "(NULL, 0);\n";
+    if (!isStaticAlloc) {
+      ofs << "  ret = Init" << modelIndex << "(NULL, 0);\n";
+    }
   }
   if (config.support_parallel()) {
     ofs << "  MicroContext *micro_context = (MicroContext *)model_context;\n"
@@ -463,14 +650,6 @@ void CodeRealDimImplement(std::ofstream &ofs, const Configurator &config,
   }
 }
 
-void CodeMSModelResizeHead(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx) {
-  ofs << "MSStatus MSModelResize" << ctx->GetCurModelIndex()
-      << "(MSModelHandle model, const MSTensorHandleArray inputs, MSShapeInfo *shape_infos, size_t shape_info_num) {\n"
-         "  if (model == NULL) {\n"
-         "    return kMSStatusLiteParamInvalid;\n"
-         "  }\n";
-}
-
 void CodeMSModelResizeDynanmicSymbol(const Configurator &config, std::map<std::string, std::string> *inner_to_outer,
                                      std::map<std::string, std::string> *user_to_inner, std::ofstream &ofs) {
   const auto &dynamic_symbols = config.dynamic_symbols();
@@ -494,8 +673,32 @@ void CodeMSModelResizeDynanmicSymbol(const Configurator &config, std::map<std::s
 }
 
 void CodeMSModelResize(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config) {
+  bool isStaticAlloc = (config.allocate_memory_type() == AllocateMemoryType::kStatic);
+  if (isStaticAlloc) {
+    ofs
+      << "MSStatus MSModelResize" << ctx->GetCurModelIndex()
+      << "(MSModelHandle model, const MSTensorHandleArray inputs, MSShapeInfo *shape_infos, size_t shape_info_num) {\n"
+         "  (void)inputs;\n"
+         "  (void)shape_infos;\n"
+         "  (void)shape_info_num;\n"
+         "  if (model == NULL) {\n"
+         "    return kMSStatusLiteParamInvalid;\n"
+         "  }\n";
+  } else {
+    ofs
+      << "MSStatus MSModelResize" << ctx->GetCurModelIndex()
+      << "(MSModelHandle model, const MSTensorHandleArray inputs, MSShapeInfo *shape_infos, size_t shape_info_num) {\n"
+         "  if (model == NULL) {\n"
+         "    return kMSStatusLiteParamInvalid;\n"
+         "  }\n";
+  }
   auto &shape_templates = ctx->shape_templates();
-  CodeMSModelResizeHead(ofs, ctx);
+  if (shape_templates.empty()) {
+    MS_LOG(ERROR) << "shape_templates is empty";
+    ofs << "  return kMSStatusLiteNotSupport;\n"
+        << "}\n";
+    return;
+  }
   if (!config.dynamic_shape()) {
     ofs << "  return kMSStatusLiteNotSupport;\n";
   } else {
@@ -532,20 +735,7 @@ void CodeMSModelResize(std::ofstream &ofs, const std::unique_ptr<CoderContext> &
     }
     std::map<std::string, std::string> inner_to_outer;
     CodeRealDimImplement(ofs, config, symbol_to_indexes, user_to_inner, &inner_to_outer);
-    std::string condition;
-    int index = 0;
-    for (; index < static_cast<int>(symbol_to_indexes.size()) - 1; ++index) {
-      condition += "store" + std::to_string(ctx->GetCurModelIndex()) + "_" + std::to_string(index) + " == dim" +
-                   std::to_string(index) + " && ";
-    }
-    condition += "store" + std::to_string(ctx->GetCurModelIndex()) + "_" + std::to_string(index) + " == dim" +
-                 std::to_string(index);
-    ofs << "  if (" << condition << ") {\n"
-        << "    return kMSStatusSuccess;\n"
-        << "  }\n";
-    for (size_t i = 0; i < symbol_to_indexes.size(); ++i) {
-      ofs << "  store" + std::to_string(ctx->GetCurModelIndex()) + "_" << i << " = dim" << i << ";\n";
-    }
+    CodeMSModelResizeSymbolCheck(ofs, ctx, symbol_to_indexes);
     CodeMSModelResizeDynanmicSymbol(config, &inner_to_outer, &user_to_inner, ofs);
     std::string array_index_str;
     const auto &dynamic_symbols = config.dynamic_symbols();
@@ -580,7 +770,11 @@ void CodeMSModelResize(std::ofstream &ofs, const std::unique_ptr<CoderContext> &
 
 void CodeMSModelDestory(std::ofstream &ofs, const Configurator *config) {
   if (config->target() != kCortex_M) {
-    ofs << handle_array_destroy;
+    if (config->allocate_memory_type() == AllocateMemoryType::kStatic) {
+      ofs << HANDLE_ARRAY_DESTROY_STATIC;
+    } else {
+      ofs << handle_array_destroy;
+    }
   }
   ofs << "void MSModelDestroy(MSModelHandle *model) {\n";
   ofs << "  if (model == NULL || *model == NULL) {\n"
@@ -596,11 +790,19 @@ void CodeMSModelDestory(std::ofstream &ofs, const Configurator *config) {
       ofs << "      micro_model->runtime_buffer = NULL;\n";
     }
     ofs << "    }\n";
-    ofs << "    MSTensorHandleArrayDestroy(micro_model->inputs);\n"
-           "    MSTensorHandleArrayDestroy(micro_model->outputs);\n"
-           "    micro_model->inputs.handle_list = NULL;\n"
-           "    micro_model->outputs.handle_list = NULL;\n"
-           "    micro_model->free_resource();\n";
+    ofs << "    MSTensorHandleArrayDestroy(micro_model->inputs);\n";
+    if (config->code_mode() == CodeMode::Train) {
+      ofs << "    MSTensorHandleArrayDestroy(micro_model->labels);\n";
+    }
+    ofs << "    MSTensorHandleArrayDestroy(micro_model->outputs);\n"
+           "    micro_model->inputs.handle_list = NULL;\n";
+    if (config->code_mode() == CodeMode::Train) {
+      ofs << "    micro_model->labels.handle_list = NULL;\n";
+    }
+    ofs << "    micro_model->outputs.handle_list = NULL;\n"
+           "    if (micro_model->free_resource != NULL) {\n"
+           "      micro_model->free_resource();\n"
+           "    }\n";
     if (!config->dynamic_shape()) {
       ofs << "    DecRefCount();\n";
     }
@@ -637,11 +839,21 @@ MSStatus MSModelPredict(MSModelHandle model, const MSTensorHandleArray inputs, M
 }
 
 void CodeMSModelPredict(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config) {
-  auto inputs_num = ctx->graph_inputs().size();
+  auto predict_inputs = PredictGraphInputs(ctx->graph_inputs(), config);
+  auto inputs_num = predict_inputs.size();
   auto outputs_num = ctx->graph_outputs().size();
-  ofs << "MSStatus MSModelPredict" << ctx->GetCurModelIndex()
-      << "(MSModelHandle model, const MSTensorHandleArray inputs, MSTensorHandleArray *outputs,\n"
-      << "                         const MSKernelCallBackC before, const MSKernelCallBackC after) {\n";
+  bool isStaticAlloc = (config.allocate_memory_type() == AllocateMemoryType::kStatic);
+  if (isStaticAlloc) {
+    ofs << "MSStatus MSModelPredict" << ctx->GetCurModelIndex()
+        << "(MSModelHandle model, const MSTensorHandleArray inputs, MSTensorHandleArray *outputs,\n"
+        << "                         const MSKernelCallBackC before, const MSKernelCallBackC after) {\n"
+        << "  (void)before;\n"
+        << "  (void)after;\n";
+  } else {
+    ofs << "MSStatus MSModelPredict" << ctx->GetCurModelIndex()
+        << "(MSModelHandle model, const MSTensorHandleArray inputs, MSTensorHandleArray *outputs,\n"
+        << "                         const MSKernelCallBackC before, const MSKernelCallBackC after) {\n";
+  }
   ofs << R"RAW(
   MicroModel *micro_model = (MicroModel *)model;
   if (micro_model == NULL) {
@@ -657,7 +869,7 @@ void CodeMSModelPredict(std::ofstream &ofs, const std::unique_ptr<CoderContext> 
   ofs << "  if (inputs.handle_num != " << inputs_num << ") {\n";
   ofs << "    return kMSStatusLiteParamInvalid;\n";
   ofs << "  }\n";
-  ofs << "  if (outputs->handle_num != " << outputs_num << ") {\n";
+  ofs << "  if (outputs->handle_num < " << outputs_num << ") {\n";
   ofs << "    return kMSStatusLiteParamInvalid;\n";
   ofs << "  }\n";
   if (config.target() != kCortex_M && config.target() != kRiscV && !config.dynamic_shape()) {
@@ -678,7 +890,7 @@ void CodeMSModelPredict(std::ofstream &ofs, const std::unique_ptr<CoderContext> 
   ofs << "  const void *inputs_data_array[" << inputs_num << "];\n";
   ofs << "  int expect_types[" << inputs_num << "] = {";
   for (size_t i = 0; i < inputs_num; ++i) {
-    ofs << ctx->graph_inputs().at(i)->data_type() << ", ";
+    ofs << predict_inputs.at(i)->data_type() << ", ";
   }
   ofs << "};\n";
   ofs << "  bool type_changed[" << inputs_num << "] = {";
@@ -700,24 +912,18 @@ void CodeMSModelPredict(std::ofstream &ofs, const std::unique_ptr<CoderContext> 
   ofs << "    }\n";
   ofs << "  }\n";
   ofs << "  SetInputs" << ctx->GetCurModelIndex() << "(inputs_data_array, " << inputs_num << ");\n";
-  ofs << "  Execute" << ctx->GetCurModelIndex() << "(micro_model->train_mode);\n";
+  ofs << "  /* Predict is pure inference, so loss/backward inputs are ignored. */\n";
+  ofs << "  Execute" << ctx->GetCurModelIndex() << "(false);\n";
   ofs << "\n";
-  ofs << "  for (int i = 0; i < " << inputs_num << "; i++) {\n";
-  ofs << "    if (type_changed[i]) {\n";
-  ofs << "      free((void *)inputs_data_array[i]);\n";
-  ofs << "    }\n";
-  ofs << "  }\n";
+  if (!isStaticAlloc) {
+    ofs << "  for (int i = 0; i < " << inputs_num << "; i++) {\n";
+    ofs << "    if (type_changed[i]) {\n";
+    ofs << "      free((void *)inputs_data_array[i]);\n";
+    ofs << "    }\n";
+    ofs << "  }\n";
+  }
   ofs << "\n";
-  ofs << "  int cur_out_types[" << outputs_num << "] = {";
-  for (size_t i = 0; i < outputs_num; ++i) {
-    ofs << ctx->graph_outputs().at(i)->data_type() << ", ";
-  }
-  ofs << "};\n";
-  ofs << "  bool out_type_changed[" << outputs_num << "] = {";
-  for (size_t i = 0; i < outputs_num; ++i) {
-    ofs << "false, ";
-  }
-  ofs << "};\n";
+  CodeMSModelPredictOutputTypes(ofs, ctx, outputs_num);
   ofs << "  MSStatus ret = CopyOutputsData" << ctx->GetCurModelIndex()
       << "(outputs, cur_out_types, out_type_changed);\n";
   if (config.target() != kCortex_M && config.target() != kRiscV && !config.dynamic_shape()) {
@@ -732,16 +938,26 @@ void CodeCopyOutputsState(std::ofstream &ofs, const int model_index) {
       << "(MSTensorHandleArray *outputs_ori, void **outputs, int *cur_types, bool *type_changed);\n\n";
 }
 
-void CodeCopyOutputsImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx) {
+void CodeCopyOutputsImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx,
+                              const Configurator &config) {
+  bool isStaticAlloc = (config.allocate_memory_type() == AllocateMemoryType::kStatic);
   auto tensor_map = ctx->tensors_map();
   std::vector<Tensor *> outputs = ctx->graph_outputs();
   size_t outputs_size = outputs.size();
 
-  ofs << "int CopyOutputsData" << ctx->GetCurModelIndex()
-      << "(MSTensorHandleArray *outputs_ori, int *cur_out_types, bool *type_changed) {\n"
-         "  if (outputs_ori == NULL || cur_out_types == NULL || type_changed == NULL) {\n"
-         "    return kMSStatusLiteNullptr;\n"
-         "  }\n";
+  if (isStaticAlloc) {
+    ofs << "static int CopyOutputsData" << ctx->GetCurModelIndex()
+        << "(MSTensorHandleArray *outputs_ori, int *cur_out_types, bool *type_changed) {\n"
+           "  if (outputs_ori == NULL || cur_out_types == NULL || type_changed == NULL) {\n"
+           "    return kMSStatusLiteNullptr;\n"
+           "  }\n";
+  } else {
+    ofs << "int CopyOutputsData" << ctx->GetCurModelIndex()
+        << "(MSTensorHandleArray *outputs_ori, int *cur_out_types, bool *type_changed) {\n"
+           "  if (outputs_ori == NULL || cur_out_types == NULL || type_changed == NULL) {\n"
+           "    return kMSStatusLiteNullptr;\n"
+           "  }\n";
+  }
   ofs << "  unsigned char *buffer[" << outputs_size << "] = {";
   for (size_t i = 0; i < outputs_size; ++i) {
     auto out_str = ctx->tensor_addr(outputs[i]);
@@ -808,22 +1024,24 @@ void CodeInputState(std::ofstream &ofs, const int model_index) {
 }
 
 void CodeInputImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx) {
-  // input tensors
-  std::vector<Tensor *> inputs = ctx->graph_inputs();
+  // SetInputs is used by Predict with public inputs and by RunStep with public inputs plus train labels.
+  std::vector<Tensor *> inputs = ctx->graph_run_inputs();
+  std::vector<Tensor *> predict_inputs = ctx->graph_inputs();
   for (size_t i = 0; i < inputs.size(); ++i) {
     ofs << "const unsigned char *" << ctx->input_name() + std::to_string(i) << " = 0;\n";
   }
   size_t size = inputs.size();
+  size_t predict_size = predict_inputs.size();
   ofs << "int "
       << "SetInputs" << ctx->GetCurModelIndex() << "(const void **inputs, int num) {\n"
       << "  if (inputs == NULL) {\n"
          "    return RET_ERROR;\n"
          "  }\n"
-      << "  if (num !=" << size << ") {\n"
+      << "  if (num != " << size << " && num != " << predict_size << ") {\n"
       << "    return RET_ERROR;\n"
          "  }\n";
   for (size_t i = 0; i < size; ++i) {
-    ofs << "\t" << ctx->input_name() << i << " = (unsigned char *)inputs[" << i << "];\n";
+    ofs << "  " << ctx->input_name() << i << " = (num > " << i << ") ? (unsigned char *)inputs[" << i << "] : 0;\n";
   }
   ofs << "  return RET_OK;\n}\n";
 }
@@ -865,12 +1083,21 @@ void CodeGraphQuantArgsImplement(std::ofstream &ofs, const std::unique_ptr<Coder
       << "}\n";
 }
 
-void CodeManageResourceState(std::ofstream &ofs, const int model_index) {
-  ofs << "/**\n"
-      << "  * get the memory space size of the inference.\n"
-      << "  **/\n"
-      << "int "
-      << "GetBufferSize" << model_index << "();\n";
+void CodeManageResourceState(std::ofstream &ofs, const int model_index, const Configurator &config) {
+  bool isStaticAlloc = (config.allocate_memory_type() == AllocateMemoryType::kStatic);
+  if (isStaticAlloc) {
+    ofs << "/**\n"
+        << "  * get the memory space size of the inference.\n"
+        << "  **/\n"
+        << "int "
+        << "GetBufferSize" << model_index << "(void);\n";
+  } else {
+    ofs << "/**\n"
+        << "  * get the memory space size of the inference.\n"
+        << "  **/\n"
+        << "int "
+        << "GetBufferSize" << model_index << "();\n";
+  }
 
   ofs << "/**\n"
       << "  * set the memory space for the inference\n"
@@ -878,27 +1105,49 @@ void CodeManageResourceState(std::ofstream &ofs, const int model_index) {
       << "int "
       << "SetBuffer" << model_index << "(void *buffer);\n\n";
 
-  ofs << "/**\n"
-      << "  * free the memory of packed weights, and set the membuf buffer and input address to NULL\n"
-      << "  **/\n"
-      << "void "
-      << "FreeResource" << model_index << "();\n";
+  if (isStaticAlloc) {
+    ofs << "/**\n"
+        << "  * free the memory of packed weights, and set the membuf buffer and input address to NULL\n"
+        << "  **/\n"
+        << "void "
+        << "FreeResource" << model_index << "(void);\n";
+  } else {
+    ofs << "/**\n"
+        << "  * free the memory of packed weights, and set the membuf buffer and input address to NULL\n"
+        << "  **/\n"
+        << "void "
+        << "FreeResource" << model_index << "();\n";
+  }
 }
 
-void CodeInitResourceImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx) {
+void CodeInitResourceImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx,
+                               const Configurator &config) {
+  bool isStaticAlloc = (config.allocate_memory_type() == AllocateMemoryType::kStatic);
+  if (isStaticAlloc) {
+    ofs << "int "
+        << "GetBufferSize" << ctx->GetCurModelIndex() << "(void) {\n"
+        << "  return " << ctx->total_buffer_size() << ";\n"
+        << "}\n";
+  } else {
+    ofs << "int "
+        << "GetBufferSize" << ctx->GetCurModelIndex() << "() {\n"
+        << "  return " << ctx->total_buffer_size() << ";\n"
+        << "}\n";
+  }
   ofs << "int "
-      << "GetBufferSize" << ctx->GetCurModelIndex() << "() {\n"
-      << "  return " << ctx->total_buffer_size() << ";\n"
-      << "}\n";
-  ofs << "int "
-      << "SetBuffer" << ctx->GetCurModelIndex() << "( void *buffer) {\n";
+      << "SetBuffer" << ctx->GetCurModelIndex() << "(void *buffer) {\n";
   ofs << "  " << ctx->buffer_name() << " = (unsigned char *)buffer;\n"
       << "  return RET_OK;\n"
          "}\n";
 }
 
 void CodeResetImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config) {
-  ofs << "void Reset" << ctx->GetCurModelIndex() << "() {\n";
+  bool isStaticAlloc = (config.allocate_memory_type() == AllocateMemoryType::kStatic);
+  if (isStaticAlloc) {
+    ofs << "void Reset" << ctx->GetCurModelIndex() << "(void) {\n";
+  } else {
+    ofs << "void Reset" << ctx->GetCurModelIndex() << "() {\n";
+  }
   auto &dynamic_symbols = config.dynamic_symbols();
   for (size_t i = 0; i < dynamic_symbols.size(); ++i) {
     ofs << "  store" << ctx->GetCurModelIndex() << "_" << i << " = -1;\n";
@@ -907,47 +1156,34 @@ void CodeResetImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> 
   ofs << "}\n";
 }
 
-void CodeFreeResourceState(std::ofstream &ofs) { ofs << free_resource_state; }
+void CodeFreeResourceState(std::ofstream &ofs, bool isStaticAlloc) {
+  if (isStaticAlloc) {
+    ofs << FREE_RESOURCE_STATE_STATIC;
+  } else {
+    ofs << free_resource_state;
+  }
+}
 
 void CodeFreeResourceImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx,
                                const Configurator &config) {
-  ofs << "void "
-      << "FreeResource" << ctx->GetCurModelIndex() << "() {\n";
+  bool isStaticAlloc = (config.allocate_memory_type() == AllocateMemoryType::kStatic);
+  if (isStaticAlloc) {
+    ofs << "void " << "FreeResource" << ctx->GetCurModelIndex() << "(void) {\n";
+  } else {
+    ofs << "void " << "FreeResource" << ctx->GetCurModelIndex() << "() {\n";
+  }
   if (config.target() != kCortex_M) {
-    ofs << "  " << ctx->buffer_name() << "= NULL;\n";
-    std::vector<Tensor *> inputs = ctx->graph_inputs();
-    size_t size = inputs.size();
-    for (size_t i = 0; i < size; ++i) {
-      ofs << "  " << ctx->input_name() + std::to_string(i) << " = NULL;\n";
-    }
-    ofs << "  void **allocated[] = {\n";
-    size_t num = 0;
-    auto &w_auxiliary = ctx->auxiliary_weights();
-    for (const auto &item : ctx->tensors_map()) {
-      Tensor *tensor = item.first;
-      std::string name = item.second;
-      if (tensor->data() != nullptr &&
-          (!(CheckConstantTensor(tensor)) || w_auxiliary.find(tensor) != w_auxiliary.end())) {
-        ofs << "    (void**)&" << name << ",\n";
-        num++;
-      }
-    }
-    ofs << "\n  };\n";
-    ofs << "  for (int i = 0; i < " << num << "; ++i) {\n"
-        << "    *(allocated[i]) = NULL;\n"
-        << "  }\n";
-    ofs << "  if (" << ctx->weight_name() << " != NULL) {\n";
-    ofs << "    free(" << ctx->weight_name() << ");\n";
-    ofs << "    " << ctx->weight_name() << " = NULL;\n  }\n";
+    CodeFreeResourceBody(ofs, ctx, isStaticAlloc, config.code_mode());
   }
   ofs << "}\n";
 }
 
-void CodeExecuteState(std::ofstream &ofs, const int model_index) {
+void CodeExecuteState(std::ofstream &ofs, const int model_index, const Configurator &config,
+                      const std::string &execute_param_name) {
+  const std::string bool_type = config.allocate_memory_type() == AllocateMemoryType::kStatic ? "_Bool " : "bool ";
   ofs << "/**\n"
       << "  * net execute function\n"
       << "  **/\n"
-      << "void "
-      << "Execute" << model_index << "(bool train_mode);\n\n";
+      << "void Execute" << model_index << "(" << bool_type << execute_param_name << ");\n\n";
 }
 }  // namespace mindspore::lite::micro

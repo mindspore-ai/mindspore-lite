@@ -24,8 +24,8 @@ int AddBroadcastInt8Run(void *cdata, int task_id, float lhs_scale, float rhs_sca
   if (real_out_count <= 0) {
     return NNACL_OK;
   }
-  int8_t *cur_in0 = NULL;
-  int8_t *cur_in1 = NULL;
+  const int8_t *cur_in0 = NULL;
+  const int8_t *cur_in1 = NULL;
   int8_t *cur_out = NULL;
   for (int i = 0; i < real_out_count; i++) {
     if (args->arith_para_->in_elements_num0_ == args->arith_para_->out_elements_num_) {
@@ -51,11 +51,13 @@ int AddInt8Run(void *cdata, int task_id, float lhs_scale, float rhs_scale) {
   if (real_count <= 0) {
     return NNACL_OK;
   }
-  int8_t *cur_in0 = args->input0_data_ + stride * task_id;
-  int8_t *cur_in1 = args->input1_data_ + stride * task_id;
+  const int8_t *cur_in0 = args->input0_data_ + stride * task_id;
+  const int8_t *cur_in1 = args->input1_data_ + stride * task_id;
   int8_t *cur_out = args->output_data_ + stride * task_id;
   if (args->support_opt_add_) {
-    int8_t *ptr_in = args->arith_para_->in_elements_num0_ == 1 ? cur_in1 : cur_in0;
+    NNACL_CHECK_NULL_RETURN_ERR(args->arith_para_);
+    NNACL_CHECK_NULL_RETURN_ERR(args->para_);
+    const int8_t *ptr_in = args->arith_para_->in_elements_num0_ == 1 ? cur_in1 : cur_in0;
     int8_t element_in = args->arith_para_->in_elements_num0_ == 1 ? args->input0_data_[0] : args->input1_data_[0];
     AddQuantQrgs *ptr_args =
       args->arith_para_->in_elements_num0_ == 1 ? &args->para_->in1_args_ : &args->para_->in0_args_;

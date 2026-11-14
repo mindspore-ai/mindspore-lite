@@ -44,6 +44,8 @@ std::string EnumNameDataType(TypeId type) {
       return "kNumberTypeFloat16";
     case kNumberTypeFloat64:
       return "kNumberTypeFloat64";
+    case kNumberTypeBool:
+      return "kNumberTypeBool";
     case kTypeUnknown:
       return "kTypeUnknown";
     default:
@@ -78,6 +80,8 @@ std::string EnumNameMSDataType(TypeId type) {
       return "kMSDataTypeNumberTypeFloat16";
     case kNumberTypeFloat64:
       return "kMSDataTypeNumberTypeFloat64";
+    case kNumberTypeBool:
+      return "kMSDataTypeNumberTypeBool";
     case kTypeUnknown:
       return "kMSDataTypeUnknown";
     default:
@@ -99,6 +103,8 @@ std::string GetTensorDataType(TypeId type) {
     case kNumberTypeInt:
     case kNumberTypeInt32:
       return "int32_t ";
+    case kNumberTypeBool:
+      return "bool ";
     case kNumberTypeUInt8:
       return "uint8_t ";
     case kNumberTypeUInt32:

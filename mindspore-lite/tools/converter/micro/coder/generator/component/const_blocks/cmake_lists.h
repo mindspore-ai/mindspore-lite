@@ -24,5 +24,7 @@ extern const char *src_cmake_lists;
 extern const char *src_cmake_lists_riscv;
 extern const char *bench_cmake_lists_riscv;
 extern const char *bench_cmake_lists_riscv_debug;
+extern const char *bench_cmake_lists_riscv_static;
+extern const char *bench_cmake_lists_riscv_static_debug;
 }  // namespace mindspore::lite::micro
 #endif  // MINDSPORE_LITE_TOOLS_CONVERTER_MICRO_CODER_GENERATOR_COMPONENT_CONST_BLOCKS_CMAKE_LISTS_H_

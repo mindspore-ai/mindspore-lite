@@ -452,7 +452,7 @@ int ArithmeticFP32Coder::BroadcastRun(const std::string &input0, const std::stri
   code->CodeStruct("arithmetic_parameter", *arithmetic_parameter_);
   code->CodeFunction("BroadcastRun", wrap_uint8(input0_ptr_str_), wrap_uint8(input1_ptr_str_),
                      wrap_uint8(output_ptr_str_), dim, out_count, out_thread_stride, break_pos_, data_type_len_,
-                     arithmetic_func_type_, arithmetic_func_str_, "&arithmetic_parameter");
+                     data_type_len_, arithmetic_func_type_, arithmetic_func_str_, "&arithmetic_parameter");
   context->AppendCode(code->str());
   return RET_OK;
 }

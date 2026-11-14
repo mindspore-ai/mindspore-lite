@@ -32,18 +32,18 @@ void CodeMSModelCalcWorkspaceSize(std::ofstream &ofs, const std::unique_ptr<Code
 void CodeCortexCalcWorkspaceSize(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx);
 void CodeMSModelSetWorkspace(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config);
 void CodeCortexSetWorkspace(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx);
-void CodeMSModelCreateDefault(std::ofstream &ofs);
+void CodeMSModelCreateDefault(std::ofstream &ofs, bool isStaticAlloc);
 void CodeMSModelCreate(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config);
 void CodeMSModelBuildState(std::ofstream &ofs);
 void CodeMSModelBuildCommon(std::ofstream &ofs, const Configurator &config);
-void CodeMSModelBuild(std::ofstream &ofs, const int model_index, const size_t weight_size, const Configurator &config);
+void CodeMSModelBuild(std::ofstream &ofs, const int modelIndex, const size_t weightSize, const Configurator &config);
 void CodeMSModelDestory(std::ofstream &ofs, const Configurator *config);
 void CodeMSModelPredictState(std::ofstream &ofs);
 void CodeMSModelPredictCommon(std::ofstream &ofs);
 void CodeMSModelPredict(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config);
 
 void CodeCopyOutputsState(std::ofstream &ofs, const int model_index);
-void CodeCopyOutputsImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx);
+void CodeCopyOutputsImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config);
 
 void CodeGlobalCodeBlocks(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx);
 void CodeInputState(std::ofstream &ofs, const int model_index);
@@ -52,14 +52,16 @@ void CodeInputImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> 
 void CodeGraphQuantArgsState(std::ofstream &ofs, const int model_index);
 void CodeGraphQuantArgsImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx);
 
-void CodeManageResourceState(std::ofstream &ofs, const int model_index);
-void CodeInitResourceImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx);
+void CodeManageResourceState(std::ofstream &ofs, const int model_index, const Configurator &config);
+void CodeInitResourceImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx,
+                               const Configurator &config);
 
-void CodeFreeResourceState(std::ofstream &ofs);
+void CodeFreeResourceState(std::ofstream &ofs, bool isStaticAlloc);
 void CodeFreeResourceImplement(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx,
                                const Configurator &config);
 
-void CodeExecuteState(std::ofstream &ofs, const int model_index);
+void CodeExecuteState(std::ofstream &ofs, const int model_index, const Configurator &config,
+                      const std::string &execute_param_name = "train_mode");
 
 void CodeMSModelResizeInit(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config);
 void CodeMSModelResize(std::ofstream &ofs, const std::unique_ptr<CoderContext> &ctx, const Configurator &config);

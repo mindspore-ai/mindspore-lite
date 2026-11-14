@@ -18,6 +18,7 @@
 #include <string>
 #include <map>
 #include "tools/converter/micro/coder/allocator/memory_manager.h"
+#include "tools/converter/micro/coder/generator/component/component.h"
 #include "tools/converter/micro/coder/opcoders/op_coder.h"
 
 namespace mindspore::lite::micro {
@@ -42,7 +43,11 @@ void *MemoryAllocator::MallocWeightTensor(TypeId type_id, size_t size, MallocTyp
   std::string runtime_addr = kWeightPrefixName + std::to_string(weight_index_++);
   malloc_weights_addr_.insert(std::make_pair(weight, runtime_addr));
   if (type == kOfflinePackWeight) {
-    saved_weights_addr_.insert(std::make_pair(runtime_addr, weight));
+    // Training updates must not write generated const arrays directly. Offline weights keep a
+    // separate *_const symbol as the default data source for the generated RAM weight copy.
+    auto save_addr =
+      Configurator::GetInstance()->code_mode() == CodeMode::Train ? runtime_addr + kWeightSuffixName : runtime_addr;
+    saved_weights_addr_.insert(std::make_pair(save_addr, weight));
   }
   MS_CHECK_RET_CODE_RET_NULL(weight->MallocData(), "weight malloc data failed!");
   return weight->data();
@@ -55,6 +60,18 @@ Tensor *MemoryAllocator::MallocTensor(TypeId data_type, const std::vector<int> &
   std::string addr = workspaces_addr_.at(result);
   malloc_weights_addr_.insert(std::make_pair(result, addr));
   return result;
+}
+
+int MemoryAllocator::AssignWorkspaceTensor(Tensor *tensor) {
+  MS_CHECK_TRUE_MSG(tensor != nullptr, RET_NULL_PTR, "tensor is nullptr.");
+  if (tensors_addr_.find(tensor) != tensors_addr_.end() || workspaces_addr_.find(tensor) != workspaces_addr_.end()) {
+    return RET_OK;
+  }
+  AssignWorkspaces(tensor, tensor->Size());
+  // Synthetic tensor outputs must be visible through tensors_map(), because output-copy generators use that map
+  // instead of querying workspace addresses directly.
+  tensors_addr_.insert(std::make_pair(tensor, workspaces_addr_.at(tensor)));
+  return RET_OK;
 }
 
 void MemoryAllocator::FreeTensor(Tensor *t) {
@@ -104,16 +121,14 @@ void MemoryAllocator::Free() {
 std::map<Tensor *, std::string> MemoryAllocator::tensors_map() const {
   std::map<Tensor *, std::string> res;
   res.insert(tensors_addr_.begin(), tensors_addr_.end());
+  if (Configurator::GetInstance()->code_mode() == CodeMode::Train) {
+    // Runtime code should see mutable RAM weight symbols for original graph weights.
+    res.insert(origin_weights_addr_.begin(), origin_weights_addr_.end());
+  }
   res.insert(malloc_weights_addr_.begin(), malloc_weights_addr_.end());
   (void)std::for_each(
     auxiliary_weights_.begin(), auxiliary_weights_.end(),
     [&res](const std::pair<Tensor *, std::pair<Tensor *, std::string>> &item) { res.insert(item.second); });
-  if (Configurator::GetInstance()->code_mode() == CodeMode::Train) {
-    // in order to put all weights into struct ModelParameter model_params
-    for (const auto &iter : saved_weights_addr_) {
-      res.insert({iter.second, iter.first});
-    }
-  }
   return res;
 }
 

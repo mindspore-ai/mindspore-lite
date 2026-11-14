@@ -39,6 +39,10 @@ void CoderContext::AppendInitWeightSizeCode(const std::string &codeBlock) {
   this->weight_buffer_size_code_blocks_.push_back(codeBlock);
 }
 
+void CoderContext::AppendAsmCode(const std::string &fileName, const std::string &codeBlock) {
+  this->asm_code_blocks_.insert({fileName, codeBlock});
+}
+
 std::vector<std::string> CoderContext::GetInitWeightSizeCode() const {
   std::vector<std::string> ret(weight_buffer_size_code_blocks_);
   if (weight_buffer_size_ > 0) {

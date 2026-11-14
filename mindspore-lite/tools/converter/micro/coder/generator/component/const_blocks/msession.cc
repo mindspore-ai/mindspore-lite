@@ -70,17 +70,5 @@ MSTensorHandle MSModelGetOutputByTensorName(const MSModelHandle model, const cha
   return NULL;
 }
 
-MSStatus MSModelResize(MSModelHandle model, const MSTensorHandleArray inputs, MSShapeInfo *shape_infos,
-                       size_t shape_info_num) {
-  MicroModel *micro_model = (MicroModel *)model;
-  if (micro_model == NULL) {
-    return kMSStatusLiteNullptr;
-  }
-  if (micro_model->resize == NULL) {
-    return kMSStatusLiteNullptr;
-  }
-  return micro_model->resize(model, inputs, shape_infos, shape_info_num);
-}
-
 )RAW";
 }  // namespace mindspore::lite::micro

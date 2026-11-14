@@ -71,6 +71,7 @@ void PrintTensorData(const lite::Tensor *tensor, std::ofstream &ofs) {
     case kNumberTypeInt64:
       TensorDataToFile<int64_t>(tensor, ofs);
       break;
+    case kNumberTypeBool:
     case kNumberTypeUInt8:
       TensorDataToFile<uint8_t>(tensor, ofs);
       break;

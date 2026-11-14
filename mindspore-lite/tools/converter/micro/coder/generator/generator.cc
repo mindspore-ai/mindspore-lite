@@ -46,6 +46,9 @@ typedef struct {
   bool train_mode;  // true: train mode, false: eval mode
   MSTensorHandleArray inputs;
   MSTensorHandleArray outputs;
+)RAW";
+
+const char micro_model_method_source[] = R"RAW(
   ModelBuild build;
   ModelResize resize;
   ModelSetWorkspace set_work_space;
@@ -243,47 +246,110 @@ int benchmark();
   return RET_OK;
 }
 
-int Generator::CodeStaticContent() {
-  std::string bench_cmake_lists_txt = bench_cmake_lists;
-  std::string calib_header_txt = calib_header;
-  std::string calib_source_txt = calib_source;
-  std::string load_input_h_txt = load_input_h;
-  std::string load_input_c_txt = load_input_c;
-  std::string benchmark_source_txt = GetBenchmarkSource();
-  std::string src_cmake_lists_txt = src_cmake_lists;
+void Generator::SelectCMakeListsContent(bool isStaticAlloc, std::string *bench_cmake_lists_txt,
+                                        std::string *src_cmake_lists_txt) {
+  *bench_cmake_lists_txt = bench_cmake_lists;
+  *src_cmake_lists_txt = src_cmake_lists;
   if (config_->target() == kRiscV) {
     if (config_->debug_mode()) {
-      bench_cmake_lists_txt = bench_cmake_lists_riscv_debug;
+      *bench_cmake_lists_txt = isStaticAlloc ? bench_cmake_lists_riscv_static_debug : bench_cmake_lists_riscv_debug;
     } else {
-      bench_cmake_lists_txt = bench_cmake_lists_riscv;
+      *bench_cmake_lists_txt = isStaticAlloc ? bench_cmake_lists_riscv_static : bench_cmake_lists_riscv;
     }
-    src_cmake_lists_txt = src_cmake_lists_riscv;
+    *src_cmake_lists_txt = src_cmake_lists_riscv;
   }
-  std::string context_header_txt = context_header;
-  std::string context_source_txt = context_source;
-  std::string tensor_header_txt = tensor_header;
-  std::string tensor_source_txt = tensor_source;
-  std::string log_header_txt;
-  std::string log_source_txt;
+}
+
+void Generator::SelectContextAndTensorContent(bool isStaticAlloc, std::string *context_header_txt,
+                                              std::string *context_source_txt, std::string *tensor_header_txt,
+                                              std::string *tensor_source_txt) {
+  if (isStaticAlloc) {
+    *context_header_txt = CONTEXT_HEADER_STATIC;
+    *context_source_txt = CONTEXT_SOURCE_STATIC;
+    *tensor_header_txt = TENSOR_HEADER_STATIC;
+    *tensor_source_txt = TENSOR_SOURCE_STATIC;
+  } else {
+    *context_header_txt = context_header;
+    *context_source_txt = context_source;
+    *tensor_header_txt = tensor_header;
+    *tensor_source_txt = tensor_source;
+  }
+}
+
+void Generator::ReplaceAllPlaceholders(const std::string &placeholder, const std::string &replacement,
+                                       std::string *content) {
+  auto pos = content->find(placeholder);
+  while (pos != std::string::npos) {
+    content->replace(pos, placeholder.length(), replacement);
+    pos = content->find(placeholder, pos);
+  }
+}
+
+void Generator::ApplyStaticAllocPlaceholders(std::string *tensor_source_txt) {
+  size_t max_tensor_data_size = 0;
+  size_t max_name_len = 0;
+  size_t max_shape_dim = 0;
+  for (auto *tensor : ctx_->graph_inputs()) {
+    if (tensor != nullptr) {
+      max_tensor_data_size = std::max(max_tensor_data_size, tensor->Size());
+      max_name_len = std::max(max_name_len, tensor->tensor_name().length());
+      max_shape_dim = std::max(max_shape_dim, tensor->shape().size());
+    }
+  }
+  for (auto *tensor : ctx_->graph_outputs()) {
+    if (tensor != nullptr) {
+      max_tensor_data_size = std::max(max_tensor_data_size, tensor->Size());
+      max_name_len = std::max(max_name_len, tensor->tensor_name().length());
+      max_shape_dim = std::max(max_shape_dim, tensor->shape().size());
+    }
+  }
+  if (max_tensor_data_size == 0) {
+    max_tensor_data_size = 1;
+  }
+  if (max_name_len == 0) {
+    max_name_len = 1;
+  }
+  if (max_shape_dim == 0) {
+    max_shape_dim = 1;
+  }
+  ReplaceAllPlaceholders("__MICRO_TENSOR_STATIC_BUF_SIZE__", std::to_string(max_tensor_data_size), tensor_source_txt);
+  ReplaceAllPlaceholders("__MICRO_TENSOR_NAME_MAX_SIZE__", std::to_string(max_name_len + 1), tensor_source_txt);
+  ReplaceAllPlaceholders("__MICRO_TENSOR_SHAPE_MAX_SIZE__", std::to_string(max_shape_dim), tensor_source_txt);
+}
+
+void Generator::SelectTargetSpecificContent(bool isStaticAlloc, std::string *bench_cmake_lists_txt,
+                                            std::string *calib_header_txt, std::string *calib_source_txt,
+                                            std::string *load_input_h_txt, std::string *load_input_c_txt,
+                                            std::string *benchmark_source_txt, std::string *context_source_txt,
+                                            std::string *log_header_txt, std::string *log_source_txt) {
   if (config_->target() == kRiscV && config_->debug_mode()) {
-    log_header_txt = log_header;
-    log_source_txt = log_source;
+    *log_header_txt = log_header;
+    *log_source_txt = log_source;
   }
   if (config_->code_mode() == CodeMode::Train) {
-    benchmark_source_txt = GetBenchmarkTrainSource();
+    *benchmark_source_txt = GetBenchmarkTrainSource();
   }
   if (config_->target() == kCortex_M) {
-    bench_cmake_lists_txt = bench_cmake_lists_cortex;
-    calib_header_txt = calib_header_cortex;
-    calib_source_txt = calib_source_cortex;
-    load_input_h_txt = load_input_h_cortex;
-    load_input_c_txt = load_input_c_cortex;
-    benchmark_source_txt = GetBenchmarkSourceCortex();
-    context_source_txt = context_source_cortex;
-  } else if (config_->support_parallel() == false) {
-    context_source_txt = context_source_no_parallel;
+    *bench_cmake_lists_txt = bench_cmake_lists_cortex;
+    *calib_header_txt = calib_header_cortex;
+    *calib_source_txt = calib_source_cortex;
+    *load_input_h_txt = load_input_h_cortex;
+    *load_input_c_txt = load_input_c_cortex;
+    *benchmark_source_txt = GetBenchmarkSourceCortex();
+    *context_source_txt = context_source_cortex;
+  } else if (!config_->support_parallel()) {
+    *context_source_txt = isStaticAlloc ? CONTEXT_SOURCE_NO_PARALLEL_STATIC : context_source_no_parallel;
   }
+}
 
+int Generator::CollectAndWriteConstBlocks(bool isStaticAlloc, const std::string &bench_cmake_lists_txt,
+                                          const std::string &calib_header_txt, const std::string &calib_source_txt,
+                                          const std::string &load_input_h_txt, const std::string &load_input_c_txt,
+                                          const std::string &benchmark_source_txt,
+                                          const std::string &src_cmake_lists_txt, const std::string &context_header_txt,
+                                          const std::string &context_source_txt, const std::string &tensor_header_txt,
+                                          const std::string &tensor_source_txt, const std::string &log_header_txt,
+                                          const std::string &log_source_txt) {
   std::vector<std::pair<std::string, std::string>> const_blocks = {
     {config_->code_path() + "/" + "CMakeLists.txt", bench_cmake_lists_txt},
     {net_main_file_path_ + "calib_output.h", calib_header_txt},
@@ -300,7 +366,7 @@ int Generator::CodeStaticContent() {
     const_blocks.emplace_back(std::make_pair(net_src_file_path_ + "log.h", log_header_txt));
     const_blocks.emplace_back(std::make_pair(net_src_file_path_ + "log.c", log_source_txt));
   }
-  if (config_->target() != kRiscV && config_->debug_mode()) {
+  if (config_->target() == kRiscV && config_->debug_mode()) {
     const_blocks.emplace_back(std::make_pair(net_src_file_path_ + "debug_utils.h", debug_utils_h));
     const_blocks.emplace_back(std::make_pair(net_src_file_path_ + "debug_utils.c", debug_utils_c));
   }
@@ -313,47 +379,99 @@ int Generator::CodeStaticContent() {
     MS_CHECK_RET_CODE(CodeDataCFile(), "code data c file failed.");
   }
   for (const auto &static_block : const_blocks) {
-    std::string file_name = static_block.first;
-    std::string content = static_block.second;
-    MS_CHECK_RET_CODE(WriteContentToFile(file_name, content), "write file failed");
+    MS_CHECK_RET_CODE(WriteContentToFile(static_block.first, static_block.second), "write file failed");
   }
   return RET_OK;
 }
 
+int Generator::CodeStaticContent() {
+  bool isStaticAlloc = (config_->allocate_memory_type() == AllocateMemoryType::kStatic);
+
+  std::string bench_cmake_lists_txt;
+  std::string src_cmake_lists_txt;
+  SelectCMakeListsContent(isStaticAlloc, &bench_cmake_lists_txt, &src_cmake_lists_txt);
+
+  std::string context_header_txt;
+  std::string context_source_txt;
+  std::string tensor_header_txt;
+  std::string tensor_source_txt;
+  SelectContextAndTensorContent(isStaticAlloc, &context_header_txt, &context_source_txt, &tensor_header_txt,
+                                &tensor_source_txt);
+
+  if (isStaticAlloc) {
+    ApplyStaticAllocPlaceholders(&tensor_source_txt);
+  }
+
+  std::string calib_header_txt = calib_header;
+  std::string calib_source_txt = calib_source;
+  std::string load_input_h_txt = load_input_h;
+  std::string load_input_c_txt = load_input_c;
+  std::string benchmark_source_txt = GetBenchmarkSource();
+  std::string log_header_txt;
+  std::string log_source_txt;
+  SelectTargetSpecificContent(isStaticAlloc, &bench_cmake_lists_txt, &calib_header_txt, &calib_source_txt,
+                              &load_input_h_txt, &load_input_c_txt, &benchmark_source_txt, &context_source_txt,
+                              &log_header_txt, &log_source_txt);
+
+  return CollectAndWriteConstBlocks(isStaticAlloc, bench_cmake_lists_txt, calib_header_txt, calib_source_txt,
+                                    load_input_h_txt, load_input_c_txt, benchmark_source_txt, src_cmake_lists_txt,
+                                    context_header_txt, context_source_txt, tensor_header_txt, tensor_source_txt,
+                                    log_header_txt, log_source_txt);
+}
+
 int Generator::CodeCommonModelFile() {
   // model header file
+  bool isStaticAlloc = (config_->allocate_memory_type() == AllocateMemoryType::kStatic);
   std::string hfile = net_src_file_path_ + "model.h";
   std::ofstream hofs(hfile);
   MS_CHECK_TRUE(!hofs.bad(), "filed to open file");
   MS_LOG(INFO) << "write " << hfile;
   hofs << g_hwLicense;
   hofs << "#ifndef MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_MODEL_H_\n"
-       << "#define MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_MODEL_H_\n\n"
-       << "#include \"c_api/model_c.h\"\n";
+       << "#define MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_MODEL_H_\n\n";
+  if (isStaticAlloc) {
+    hofs << "#include \"ai_mcu.h\"\n";
+  } else {
+    hofs << "#include \"c_api/model_c.h\"\n";
+  }
   CodeMSModelBuildState(hofs);
   MS_CHECK_PTR(config_);
-  if (config_->code_mode() == CodeMode::Inference) {
-    CodeMSModelPredictState(hofs);
-  } else {
-    CodeMSModelRunStepState(hofs);
-    CodeMSModelSetTrainModeState(hofs);
-    CodeMSModelExportWeightState(hofs);
-  }
-  CodeFreeResourceState(hofs);
+  CodeMSModelPredictState(hofs);
+  CodeMSModelRunStepState(hofs);
+  CodeMSModelSetTrainModeState(hofs);
+  CodeMSModelExportWeightState(hofs);
+  CodeFreeResourceState(hofs, false);
   hofs << set_workspace_state;
   hofs << calc_workspace_state;
   hofs << model_resize;
   hofs << micro_model_define_source;
-  if (config_->code_mode() == CodeMode::Inference) {
-    hofs << "  ModelPredict predict;\n";
-  } else {
-    hofs << "  ModelRunStep run_step;\n";
-    hofs << "  ModelSetTrainMode set_train_mode;\n";
-    hofs << "  ModelExportWeight export_weight;\n";
-  }
+  hofs << micro_model_method_source;
+  hofs << "  ModelPredict predict;\n";
+  hofs << "  ModelRunStep run_step;\n";
+  hofs << "  ModelSetTrainMode set_train_mode;\n";
+  hofs << "  ModelExportWeight export_weight;\n";
   hofs << "} MicroModel;\n";
 
   hofs << "void MSTensorHandleArrayDestroy(MSTensorHandleArray inputs);\n";
+  if (isStaticAlloc) {
+    hofs << "size_t MSModelCalcWorkspaceSize(MSModelHandle model);\n";
+    hofs << "void MSModelSetWorkspace(MSModelHandle model, void *workspace, size_t workspace_size);\n";
+    hofs << "MSModelHandle MSModelCreate(void);\n";
+    hofs << "MSStatus MSModelResize(MSModelHandle model, const MSTensorHandleArray inputs,"
+         << " MSShapeInfo *shape_infos,\n"
+         << "                       size_t shape_info_num);\n"
+         << "MSStatus MSModelBuild(MSModelHandle model, const void *model_data,\n"
+         << "                      size_t data_size, MSModelType model_type,\n"
+         << "                      const MSContextHandle model_context);\n"
+         << "MSTensorHandleArray MSModelGetInputs(const MSModelHandle model);\n"
+         << "MSTensorHandleArray MSModelGetOutputs(const MSModelHandle model);\n"
+         << "MSTensorHandle MSModelGetInputByTensorName(const MSModelHandle model, const char *tensor_name);\n"
+         << "MSTensorHandle MSModelGetOutputByTensorName(const MSModelHandle model, const char *tensor_name);\n"
+         << "MSStatus MSModelPredict(MSModelHandle model, const MSTensorHandleArray inputs,"
+         << " MSTensorHandleArray *outputs,\n"
+         << "                        const MSKernelCallBackC before, const MSKernelCallBackC after);\n"
+         << "void MSModelDestroy(MSModelHandle *model);\n";
+  }
   hofs << "#endif // MINDSPORE_LITE_MICRO_LIBRARY_SOURCE_MODEL_H_\n\n";
 
   // model source file
@@ -362,44 +480,57 @@ int Generator::CodeCommonModelFile() {
   MS_CHECK_TRUE(!cofs.bad(), "filed to open file");
   MS_LOG(INFO) << "write " << cfile;
   cofs << g_hwLicense;
-  cofs << "#include \"src/model.h\"\n"
-       << "#include \"c_api/model_c.h\"\n"
-       << "#include \"include/model_handle.h\"\n"
-       << "#include \"malloc.h\"\n"
-       << "#include \"src/context.h\"\n"
-       << "#include \"src/tensor.h\"\n"
-       << "#include \"string.h\"\n";
+  if (isStaticAlloc) {
+    cofs << "#include \"model.h\"\n"
+         << "#include \"model_handle.h\"\n"
+         << "#include \"context.h\"\n"
+         << "#include \"tensor.h\"\n"
+         << "#include \"string.h\"\n"
+         << "#include \"ai_mcu.h\"\n";
+  } else {
+    cofs << "#include \"src/model.h\"\n"
+         << "#include \"c_api/model_c.h\"\n"
+         << "#include \"include/model_handle.h\"\n"
+         << "#include \"malloc.h\"\n"
+         << "#include \"src/context.h\"\n"
+         << "#include \"src/tensor.h\"\n"
+         << "#include \"string.h\"\n";
+  }
   if (config_->support_parallel()) {
     cofs << "#include \"" << kThreadWrapper << "\"\n";
   }
   if (config_->target() != kCortex_M && !config_->dynamic_shape()) {
-    cofs << "#include \"src/allocator.h\"\n";
+    if (isStaticAlloc) {
+      cofs << "#include \"allocator.h\"\n";
+    } else {
+      cofs << "#include \"src/allocator.h\"\n";
+    }
   }
   CodeMSModelCalcWorkspaceSize(cofs, ctx_, *config_);
   CodeMSModelSetWorkspace(cofs, ctx_, *config_);
-  CodeMSModelCreateDefault(cofs);
+  CodeMSModelCreateDefault(cofs, isStaticAlloc);
   CodeMSModelBuildCommon(cofs, *config_);
   cofs << model_runtime_other_source;
-  if (config_->code_mode() == CodeMode::Train) {
-    CodeMSModelRunStepCommon(cofs);
-    CodeMSModelSetTrainModeCommon(cofs);
-    CodeMSModelExportWeightCommon(cofs);
-  } else {
-    CodeMSModelPredictCommon(cofs);
-  }
+  CodeMSModelPredictCommon(cofs);
+  CodeMSModelRunStepCommon(cofs);
+  CodeMSModelSetTrainModeCommon(cofs);
+  CodeMSModelExportWeightCommon(cofs);
   CodeMSModelDestory(cofs, config_);
   return RET_OK;
 }
 
 int Generator::CodeModelHandleHFile() {
+  bool isStaticAlloc = (config_->allocate_memory_type() == AllocateMemoryType::kStatic);
   std::string handle_file = net_include_file_path_ + "model_handle.h";
   std::ofstream ofs(handle_file);
   MS_CHECK_TRUE(!ofs.bad(), "failed to open file");
   MS_LOG(INFO) << "write " << handle_file;
   ofs << g_hwLicense;
   ofs << "#ifndef MINDSPORE_LITE_MICRO_LIBRARY_INCLUDE_MODEL_HANDLE_H_\n"
-         "#define MINDSPORE_LITE_MICRO_LIBRARY_INCLUDE_MODEL_HANDLE_H_\n\n"
-      << "#include \"c_api/model_c.h\"\n\n";
+         "#define MINDSPORE_LITE_MICRO_LIBRARY_INCLUDE_MODEL_HANDLE_H_\n\n";
+  if (!isStaticAlloc) {
+    ofs << "#include \"c_api/model_c.h\"\n\n";
+  }
   for (int i = 0; i <= ctx_->GetCurModelIndex(); ++i) {
     ofs << "extern MSModelHandle model" << std::to_string(i) << "; // " << ctx_->model_name() << "\n";
   }
@@ -421,30 +552,7 @@ int Generator::CodeLogRegFile() {
   return RET_OK;
 }
 
-int Generator::CodeMSModelImplement() {
-  std::string cfile = model_dir_ + net_model_cfile_;
-  std::ofstream ofs(cfile);
-  MS_CHECK_TRUE(!ofs.bad(), "failed to open file");
-  MS_LOG(INFO) << "write " << cfile;
-  ofs << g_hwLicense;
-  ofs << "#include \"src/tensor.h\"\n";
-  ofs << "#include \"src/context.h\"\n";
-  ofs << "#include \"c_api/model_c.h\"\n";
-  ofs << "#include \"src/model.h\"\n";
-  ofs << "#include \"src/model" << ctx_->GetCurModelIndex() << "/" << net_inc_hfile_ << "\"\n";
-  if (config_->target() != kCortex_M && !config_->dynamic_shape()) {
-    ofs << "#include \"src/allocator.h\"\n";
-  }
-  if (config_->support_parallel()) {
-    ofs << "#include \"" << kThreadWrapper << "\"\n";
-  }
-  ofs << "#include \"src/model" << ctx_->GetCurModelIndex() << "/" << net_weight_hfile_ << "\"\n\n";
-
-  if (config_->target() == kCortex_M) {
-    ofs << "#define GRAPH_INPUTS_SIZE " << ctx_->graph_inputs().size() << "\n";
-    ofs << "#define GRAPH_OUTPUTS_SIZE " << ctx_->graph_outputs().size() << "\n";
-    ofs << "#define WEIGHT_BUF_SIZE " << ctx_->weight_buffer_size() << "\n";
-  }
+void Generator::CodeMSModelDeclarations(std::ofstream &ofs, bool isStaticAlloc) {
   ofs << "MSStatus MSModelBuild" << ctx_->GetCurModelIndex() << "(MSModelHandle model, const void *model_data,\n"
       << "                       size_t data_size, const MSContextHandle model_context);\n";
   ofs << "MSStatus MSModelResize" << ctx_->GetCurModelIndex() << "(MSModelHandle model, \n"
@@ -464,15 +572,58 @@ int Generator::CodeMSModelImplement() {
     ofs << "MSStatus MSModelExportWeight" << ctx_->GetCurModelIndex()
         << "(MSModelHandle model, const char *export_path);\n";
   }
-  ofs << "void Reset" << ctx_->GetCurModelIndex() << "();\n";
+  if (isStaticAlloc) {
+    ofs << "void Reset" << ctx_->GetCurModelIndex() << "(void);\n";
+  } else {
+    ofs << "void Reset" << ctx_->GetCurModelIndex() << "();\n";
+  }
   ofs << "void MSModelSetWorkspace" << ctx_->GetCurModelIndex()
       << "(MSModelHandle model, void *workspace, size_t workspace_size);\n";
   ofs << "size_t MSModelCalcWorkspaceSize" << ctx_->GetCurModelIndex() << "(MSModelHandle model);\n";
+}
+
+int Generator::CodeMSModelImplement() {
+  std::string cfile = model_dir_ + net_model_cfile_;
+  std::ofstream ofs(cfile);
+  bool isStaticAlloc = (config_->allocate_memory_type() == AllocateMemoryType::kStatic);
+  MS_CHECK_TRUE(!ofs.bad(), "failed to open file");
+  MS_LOG(INFO) << "write " << cfile;
+  ofs << g_hwLicense;
+  if (isStaticAlloc) {
+    ofs << "#include \"tensor.h\"\n";
+    ofs << "#include \"context.h\"\n";
+    ofs << "#include \"model.h\"\n";
+    ofs << "#include \"" << net_inc_hfile_ << "\"\n";
+    if (config_->target() != kCortex_M && !config_->dynamic_shape()) {
+      ofs << "#include \"allocator.h\"\n";
+    }
+    ofs << "#include \"" << net_weight_hfile_ << "\"\n\n";
+  } else {
+    ofs << "#include \"src/tensor.h\"\n";
+    ofs << "#include \"src/context.h\"\n";
+    ofs << "#include \"c_api/model_c.h\"\n";
+    ofs << "#include \"src/model.h\"\n";
+    ofs << "#include \"src/model" << ctx_->GetCurModelIndex() << "/" << net_inc_hfile_ << "\"\n";
+    if (config_->target() != kCortex_M && !config_->dynamic_shape()) {
+      ofs << "#include \"src/allocator.h\"\n";
+    }
+    if (config_->support_parallel()) {
+      ofs << "#include \"" << kThreadWrapper << "\"\n";
+    }
+    ofs << "#include \"src/model" << ctx_->GetCurModelIndex() << "/" << net_weight_hfile_ << "\"\n\n";
+  }
+
+  if (config_->target() == kCortex_M) {
+    ofs << "#define GRAPH_INPUTS_SIZE " << ctx_->graph_inputs().size() << "\n";
+    ofs << "#define GRAPH_OUTPUTS_SIZE " << ctx_->graph_outputs().size() << "\n";
+    ofs << "#define WEIGHT_BUF_SIZE " << ctx_->weight_buffer_size() << "\n";
+  }
+  CodeMSModelDeclarations(ofs, isStaticAlloc);
   ofs << "static MicroModel gModel" << ctx_->GetCurModelIndex() << " = {.runtime_buffer = NULL,\n"
       << "                             .train_mode = false,\n"
       << "                             .inputs = {" << ctx_->graph_inputs().size() << ", NULL},\n"
-      << "                             .outputs = {" << ctx_->graph_outputs().size() << ", NULL},\n"
-      << "                             .build = MSModelBuild" << ctx_->GetCurModelIndex() << ",\n"
+      << "                             .outputs = {" << ctx_->graph_outputs().size() << ", NULL},\n";
+  ofs << "                             .build = MSModelBuild" << ctx_->GetCurModelIndex() << ",\n"
       << "                             .resize = MSModelResize" << ctx_->GetCurModelIndex() << ",\n";
   if (config_->code_mode() == CodeMode::Inference) {
     ofs << "                             .predict = MSModelPredict" << ctx_->GetCurModelIndex() << ",\n";
@@ -489,7 +640,11 @@ int Generator::CodeMSModelImplement() {
     ofs << "                             .set_work_space = NULL,\n"
         << "                             .calc_work_space = NULL,\n";
   }
-  ofs << "                             .free_resource = Reset" << ctx_->GetCurModelIndex() << "};\n";
+  if (config_->allocate_memory_type() == AllocateMemoryType::kStatic) {
+    ofs << "                             .free_resource = NULL};\n";
+  } else {
+    ofs << "                             .free_resource = Reset" << ctx_->GetCurModelIndex() << "};\n";
+  }
   ofs << "MSModelHandle model" << ctx_->GetCurModelIndex() << " = &gModel" << ctx_->GetCurModelIndex() << ";\n\n";
   auto &dynamic_symbols = config_->dynamic_symbols();
   for (size_t i = 0; i < dynamic_symbols.size(); ++i) {
@@ -499,7 +654,7 @@ int Generator::CodeMSModelImplement() {
   CodeMSModelCreate(ofs, ctx_, *config_);
   CodeMSModelBuild(ofs, ctx_->GetCurModelIndex(), weight_size_, *config_);
   CodeMSModelResize(ofs, ctx_, *config_);
-  CodeCopyOutputsImplement(ofs, ctx_);
+  CodeCopyOutputsImplement(ofs, ctx_, *config_);
   if (config_->target() == kCortex_M) {
     CodeCortexCalcWorkspaceSize(ofs, ctx_);
     CodeCortexSetWorkspace(ofs, ctx_);
@@ -520,7 +675,7 @@ int Generator::CodeWeightFile() {
   std::ofstream hofs(hfile);
   MS_CHECK_TRUE(!hofs.bad(), "filed to open file");
   MS_LOG(INFO) << "write " << hfile;
-  CodeWeightFileHeader(hofs, ctx_);
+  CodeWeightFileHeader(hofs, ctx_, *config_);
 
   // weight source file
   std::string cfile = model_dir_ + net_weight_cfile_;
@@ -528,7 +683,11 @@ int Generator::CodeWeightFile() {
   MS_CHECK_TRUE(!cofs.bad(), "filed to open file");
   MS_LOG(INFO) << "write " << cfile;
   cofs << g_hwLicense;
-  cofs << "#include \"src/model" << ctx_->GetCurModelIndex() << "/" << net_weight_hfile_ << "\"\n";
+  if (config_->allocate_memory_type() == AllocateMemoryType::kStatic) {
+    cofs << "#include \"" << net_weight_hfile_ << "\"\n";
+  } else {
+    cofs << "#include \"src/model" << ctx_->GetCurModelIndex() << "/" << net_weight_hfile_ << "\"\n";
+  }
   cofs << "#include <stdio.h>\n\n";
   cofs << "int  " << gThreadNum << " = 1; \n";
   std::vector<Tensor *> inputs = ctx_->graph_inputs();
@@ -566,7 +725,7 @@ int Generator::CodeWeightFile() {
   return RET_OK;
 }
 
-void Generator::CodeCommonNetH(std::ofstream &ofs) {
+void Generator::CodeCommonNetH(std::ofstream &ofs, const std::string &execute_param_name) {
   ofs << g_hwLicense;
   // Execute() prototypes use bool; a minimal graph (e.g. a lone Reshape) collects no nnacl
   // header that pulls stdbool in, so include it explicitly.
@@ -576,15 +735,20 @@ void Generator::CodeCommonNetH(std::ofstream &ofs) {
   if (is_get_quant_args_) {
     CodeGraphQuantArgsState(ofs, ctx_->GetCurModelIndex());
   }
-  CodeManageResourceState(ofs, ctx_->GetCurModelIndex());
-  CodeExecuteState(ofs, ctx_->GetCurModelIndex());
+  CodeManageResourceState(ofs, ctx_->GetCurModelIndex(), *config_);
+  CodeExecuteState(ofs, ctx_->GetCurModelIndex(), *config_, execute_param_name);
 }
 
 void Generator::CodeCommonNetC(std::ofstream &ofs) {
-  ofs << g_hwLicense << "\n"
-      << "#include \"src/model" << ctx_->GetCurModelIndex() << "/" << net_weight_hfile_ << "\"\n"  //
-      << "#include \"src/model" << ctx_->GetCurModelIndex() << "/" << net_inc_hfile_ << "\"\n\n";
-  if (config_->target() == kRiscV && config_->debug_mode()) {
+  ofs << g_hwLicense << "\n";
+  if (config_->allocate_memory_type() == AllocateMemoryType::kStatic) {
+    ofs << "#include \"" << net_weight_hfile_ << "\"\n"
+        << "#include \"" << net_inc_hfile_ << "\"\n\n";
+  } else {
+    ofs << "#include \"src/model" << ctx_->GetCurModelIndex() << "/" << net_weight_hfile_ << "\"\n"
+        << "#include \"src/model" << ctx_->GetCurModelIndex() << "/" << net_inc_hfile_ << "\"\n\n";
+  }
+  if ((config_->target() == kRiscV) && config_->debug_mode()) {
     ofs << "#include \"src/log.h"
         << "\"\n\n";
   }
@@ -596,7 +760,7 @@ void Generator::CodeCommonNetC(std::ofstream &ofs) {
   }
   CodeGlobalCodeBlocks(ofs, ctx_);
   CodeInputImplement(ofs, ctx_);
-  CodeInitResourceImplement(ofs, ctx_);
+  CodeInitResourceImplement(ofs, ctx_, *config_);
   CodeFreeResourceImplement(ofs, ctx_, *config_);
   if (is_get_quant_args_) {
     CodeGraphQuantArgsImplement(ofs, ctx_);
@@ -621,46 +785,77 @@ int Generator::CodeRegKernelHFile() {
   return RET_OK;
 }
 
+void Generator::CodeAllocatorSourceContent(std::ofstream &cofs, bool isStaticAlloc) {
+  if (config_->target() != kRiscV) {
+    if (isStaticAlloc) {
+      cofs << "#include \"allocator.h\"\n"
+           << "#include \"stdatomic.h\"\n"
+           << "#include \"stdlib.h\"\n"
+           << "#include \"string.h\"\n"
+           << "#include <stdbool.h>\n\n";
+      cofs << "static char g_memory_pool[sizeof(MemBlock) + " << ctx_->max_buffer_size() << "];\n";
+      cofs << "static MemBlock g_mem_block;\n";
+      cofs << "MemBlock *mem_block = NULL;\n"
+           << "atomic_int kReferenceCount = 0;\n"
+           << "#ifdef __clang__\n"
+           << "  bool kLock = false;\n"
+           << "#else\n"
+           << "  bool kLock = false;\n"
+           << "#endif\n";
+    } else {
+      cofs << "#include \"src/allocator.h\"\n"
+           << "#include \"stdatomic.h\"\n"
+           << "#include \"stdlib.h\"\n"
+           << "#include <stdbool.h>\n\n";
+      cofs << "MemBlock *mem_block = NULL;\n"
+           << "atomic_int kReferenceCount = 0;\n"
+           << "#ifdef __clang__\n"
+           << "  atomic_bool kLock = false;\n"
+           << "#else\n"
+           << "  bool kLock = false;\n"
+           << "#endif\n";
+    }
+  } else {
+    if (isStaticAlloc) {
+      cofs << "#include \"allocator.h\"\n"
+           << "#include \"stdatomic.h\"\n"
+           << "#include \"stdlib.h\"\n"
+           << "#include \"string.h\"\n"
+           << "#include <stdbool.h>\n\n";
+      cofs << "static char g_memory_pool[sizeof(MemBlock) + " << ctx_->max_buffer_size() << "];\n";
+      cofs << "static MemBlock g_mem_block;\n";
+    } else {
+      cofs << "#include \"src/allocator.h\"\n"
+           << "#include \"stdatomic.h\"\n"
+           << "#include \"stdlib.h\"\n"
+           << "#include <stdbool.h>\n\n";
+    }
+    cofs << "MemBlock *mem_block = NULL;\n";
+  }
+}
+
 int Generator::CodeAllocatorFile() {
   if (config_->target() == kCortex_M || config_->dynamic_shape()) {
     return RET_OK;
   }
-  // allocator header file
+  bool isStaticAlloc = (config_->allocate_memory_type() == AllocateMemoryType::kStatic);
+
   std::string hfile = net_src_file_path_ + "allocator.h";
   std::ofstream hofs(hfile);
   MS_CHECK_TRUE(!hofs.bad(), "failed to open file");
   MS_LOG(INFO) << "write " << hfile;
   CodeAllocatorFileHeader(hofs);
 
-  // allocator source file
   std::string cfile = net_src_file_path_ + "allocator.c";
   std::ofstream cofs(cfile);
   MS_CHECK_TRUE(!cofs.bad(), "failed to open file");
   MS_LOG(INFO) << "write " << cfile;
   cofs << g_hwLicense;
-  if (config_->target() != kRiscV) {
-    cofs << "#include \"src/allocator.h\"\n"
-         << "#include \"stdatomic.h\"\n"
-         << "#include \"stdlib.h\"\n"
-         << "#include <stdbool.h>\n\n";
-    cofs << "MemBlock *mem_block = NULL;\n"
-         << "atomic_int kReferenceCount = 0;\n"
-         << "#ifdef __clang__\n"
-         << "  atomic_bool kLock = false;\n"
-         << "#else\n"
-         << "  bool kLock = false;\n"
-         << "#endif\n";
-  } else {
-    cofs << "#include \"src/allocator.h\"\n"
-         << "#include \"stdatomic.h\"\n"
-         << "#include \"stdlib.h\"\n"
-         << "#include <stdbool.h>\n\n";
-    cofs << "MemBlock *mem_block = NULL;\n";
-  }
+  CodeAllocatorSourceContent(cofs, isStaticAlloc);
   CodeCalcRefCount(cofs);
   CodeGlobalMemory(cofs, ctx_->max_buffer_size());
   CodeMemoryOccupied(cofs);
-  CodeLockOccupied(cofs);
+  CodeLockOccupied(cofs, isStaticAlloc);
   hofs.close();
   cofs.close();
   return RET_OK;

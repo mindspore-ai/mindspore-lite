@@ -142,6 +142,10 @@ int ReadInputsFile(char *path, void **buffers, const int *inputs_size, int input
     printf("input %d: %s\n", i, inputs_path[i]);
     i++;
   }
+  if (i != inputs_num) {
+    printf("inputs num is error, need: %d, actual: %d\n", inputs_num, i);
+    return kMSStatusLiteParamInvalid;
+  }
 
   for (i = 0; i < inputs_num; ++i) {
     int size = 0;

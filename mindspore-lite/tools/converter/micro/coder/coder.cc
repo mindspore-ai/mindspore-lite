@@ -24,6 +24,7 @@
 #include "src/common/file_utils.h"
 #include "src/common/utils.h"
 #include "tools/converter/micro/coder/config.h"
+#include "tools/converter/micro/coder/generator/component/component.h"
 #include "tools/converter/micro/coder/opcoders/parallel.h"
 
 namespace mindspore::lite::micro {
@@ -150,7 +151,6 @@ int Coder::MicroSourceCodeGeneration(const schema::MetaGraphT &graph, const std:
                                      bool enable_fp16) {
   flatbuffers::FlatBufferBuilder builder(kFlatbuffersBuilderInitSize);
   auto offset = schema::MetaGraph::Pack(builder, &graph);
-  builder.Finish(offset);
   schema::FinishMetaGraphBuffer(builder, offset);
   size_t size = builder.GetSize();
   if (!param->dynamic_symbols.empty()) {
@@ -214,37 +214,10 @@ int Coder::ExecuteMicroGeneration(const void *model_buf, size_t size, const std:
   return RET_OK;
 }
 
-int Coder::Init(const MicroParam &param) const {
-  static const std::map<std::string, Target> kTargetMap = {{"x86", kX86},     {"ARM64", kARM64},
-                                                           {"ARM32", kARM32}, {"Cortex-M", kCortex_M},
-                                                           {"RISCV", kRiscV}, {"All", kAllTargets}};
-  static const std::map<std::string, CodeMode> kCodeModeMap = {{"Inference", CodeMode::Inference},
-                                                               {"Train", CodeMode::Train}};
+void Coder::SetConfigFromParam(const MicroParam &param) const {
   Configurator *config = Configurator::GetInstance();
-
-  auto target_item = kTargetMap.find(param.target);
-  MS_CHECK_TRUE_MSG(target_item != kTargetMap.end(), RET_ERROR, "unsupported target: " + target);
-  config->set_target(target_item->second);
-
-  auto code_item = kCodeModeMap.find(param.codegen_mode);
-  MS_CHECK_TRUE_MSG(code_item != kCodeModeMap.end(), RET_ERROR, "unsupported code mode: " + code_mode);
-  config->set_code_mode(code_item->second);
-
-  if ((config->target() == kCortex_M) || (config->target() == kRiscV)) {
-    if (code_item->second == CodeMode::Train) {
-      MS_LOG(ERROR) << "Cortex-M and RISC-V do not support train.";
-      return RET_ERROR;
-    }
-
-    if (param.support_parallel) {
-      MS_LOG(ERROR) << "Cortex-M and RISC-V do not support parallel.";
-      return RET_ERROR;
-    }
-  }
-
   config->set_support_parallel(param.support_parallel);
   config->set_debug_mode(param.debug_mode);
-
   config->set_proj_dir(DirectoryGenerator::GetInstance()->project_name());
   config->set_code_path(DirectoryGenerator::GetInstance()->work_dir() +
                         DirectoryGenerator::GetInstance()->project_name());
@@ -255,16 +228,56 @@ int Coder::Init(const MicroParam &param) const {
   config->set_dynamic_symbols_num(param.dynamic_symbols_num);
   config->set_dynamic_symbols_map(param.dynamic_symbols_map);
   config->set_user_graph_inputs_template(param.graph_inputs_template);
+  config->set_train_param(param.train_param);
+
+  static const std::map<std::string, AllocateMemoryType> kAllocMemTypeMap = {{"dynamic", AllocateMemoryType::kDynamic},
+                                                                             {"static", AllocateMemoryType::kStatic}};
+  auto alloc_mem_type_item = kAllocMemTypeMap.find(param.allocate_memory_type);
+  if (alloc_mem_type_item != kAllocMemTypeMap.end()) {
+    config->set_allocate_memory_type(alloc_mem_type_item->second);
+  } else {
+    config->set_allocate_memory_type(AllocateMemoryType::kDynamic);
+  }
 
   auto print_parameter = [](auto name, auto value) {
     MS_LOG(INFO) << std::setw(20) << std::left << name << "= " << value;
   };
-
   print_parameter("projectName", config->proj_dir());
   print_parameter("target", config->target());
   print_parameter("codePath", config->code_path());
   print_parameter("codeMode", config->code_mode());
   print_parameter("debugMode", config->debug_mode());
+  print_parameter("allocateMemoryType", config->allocate_memory_type());
+  print_parameter("trainMode", config->train_param().train_mode);
+}
+
+int Coder::Init(const MicroParam &param) const {
+  static const std::map<std::string, Target> kTargetMap = {{"x86", kX86},     {"ARM64", kARM64},
+                                                           {"ARM32", kARM32}, {"Cortex-M", kCortex_M},
+                                                           {"RISCV", kRiscV}, {"All", kAllTargets}};
+  static const std::map<std::string, CodeMode> kCodeModeMap = {{"Inference", CodeMode::Inference},
+                                                               {"Train", CodeMode::Train}};
+  Configurator *config = Configurator::GetInstance();
+
+  auto target_item = kTargetMap.find(param.target);
+  MS_CHECK_TRUE_MSG(target_item != kTargetMap.end(), RET_ERROR, "unsupported target: " + param.target);
+  config->set_target(target_item->second);
+  config->set_riscv_optimize(param.riscv_optimize);
+
+  auto code_item = kCodeModeMap.find(param.codegen_mode);
+  MS_CHECK_TRUE_MSG(code_item != kCodeModeMap.end(), RET_ERROR, "unsupported code mode: " + param.codegen_mode);
+  config->set_code_mode(code_item->second);
+
+  if ((config->target() == kCortex_M) && (code_item->second == CodeMode::Train)) {
+    MS_LOG(ERROR) << "Cortex-M do not support train.";
+    return RET_ERROR;
+  }
+  if (((config->target() == kCortex_M) || (config->target() == kRiscV)) && param.support_parallel) {
+    MS_LOG(ERROR) << "Cortex-M and RISC-V do not support parallel.";
+    return RET_ERROR;
+  }
+
+  SetConfigFromParam(param);
   return RET_OK;
 }
 }  // namespace mindspore::lite::micro

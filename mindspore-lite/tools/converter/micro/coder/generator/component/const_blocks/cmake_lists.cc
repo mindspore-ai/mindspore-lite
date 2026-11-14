@@ -149,12 +149,101 @@ target_link_libraries(benchmark net -lm -pthread)
 
 const char *bench_cmake_lists_riscv = R"RAW(
 cmake_minimum_required(VERSION 3.14)
+enable_language(ASM)
 project(micro_lib)
 
+set(CMAKE_ASM_COMPILER "${RISCV_TOOLCHAIN_PATH}/riscv32-linux-musl-gcc")
 set(CMAKE_C_COMPILER "${RISCV_TOOLCHAIN_PATH}/riscv32-linux-musl-gcc")
 set(CMAKE_CXX_COMPILER "${RISCV_TOOLCHAIN_PATH}/riscv32-linux-musl-g++")
 set(CMAKE_C_FLAGS "-march=rv32imafc -mabi=ilp32f ${CMAKE_C_FLAGS}")
 set(CMAKE_CXX_FLAGS "-march=rv32imafc -mabi=ilp32f ${CMAKE_CXX_FLAGS}")
+set(CMAKE_ASM_FLAGS "-march=rv32imfc -mabi=ilp32f ${CMAKE_ASM_FLAGS}")
+message("CMAKE_C_COMPILER: ${CMAKE_C_COMPILER}, CMAKE_CXX_COMPILER: ${CMAKE_CXX_COMPILER}")
+message("OP_LIB: ${OP_LIB}")
+message("WRAPPER_LIB: ${WRAPPER_LIB}")
+message("MS_ROOT_DIR: ${MS_ROOT_DIR}")
+
+set(HEADER_PATH ${PKG_PATH}/runtime)
+set(OP_HEADER_PATH ${PKG_PATH}/tools/codegen/include)
+
+add_subdirectory(src)
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${HEADER_PATH})
+include_directories(${HEADER_PATH}/include)
+include_directories(${MS_ROOT_DIR}/include)
+include_directories(${MS_ROOT_DIR})
+include_directories(${OP_HEADER_PATH})
+file(GLOB ASM_SOURCES asm/*.S)
+set(
+    SOURCE_FILE
+    src/model.c
+    src/tensor.c
+    src/allocator.c
+    src/context.c
+    src/model0/model0.c
+    src/model0/net0.c
+    src/model0/weight0.c
+    ${ASM_SOURCES}
+)
+add_library(micro_runtime STATIC ${SOURCE_FILE})
+target_link_libraries(micro_runtime net -lm -pthread)
+)RAW";
+
+const char *bench_cmake_lists_riscv_debug = R"RAW(
+cmake_minimum_required(VERSION 3.14)
+enable_language(ASM)
+project(micro_lib)
+
+set(CMAKE_ASM_COMPILER "${RISCV_TOOLCHAIN_PATH}/riscv32-linux-musl-gcc")
+set(CMAKE_C_COMPILER "${RISCV_TOOLCHAIN_PATH}/riscv32-linux-musl-gcc")
+set(CMAKE_CXX_COMPILER "${RISCV_TOOLCHAIN_PATH}/riscv32-linux-musl-g++")
+set(CMAKE_C_FLAGS "-march=rv32imafc -mabi=ilp32f ${CMAKE_C_FLAGS}")
+set(CMAKE_CXX_FLAGS "-march=rv32imafc -mabi=ilp32f ${CMAKE_CXX_FLAGS}")
+set(CMAKE_ASM_FLAGS "-march=rv32imfc -mabi=ilp32f ${CMAKE_ASM_FLAGS}")
+message("CMAKE_C_COMPILER: ${CMAKE_C_COMPILER}, CMAKE_CXX_COMPILER: ${CMAKE_CXX_COMPILER}")
+message("OP_LIB: ${OP_LIB}")
+message("WRAPPER_LIB: ${WRAPPER_LIB}")
+message("MS_ROOT_DIR: ${MS_ROOT_DIR}")
+
+set(HEADER_PATH ${PKG_PATH}/runtime)
+set(OP_HEADER_PATH ${PKG_PATH}/tools/codegen/include)
+
+add_subdirectory(src)
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${HEADER_PATH})
+include_directories(${HEADER_PATH}/include)
+include_directories(${MS_ROOT_DIR}/include)
+include_directories(${MS_ROOT_DIR})
+include_directories(${OP_HEADER_PATH})
+file(GLOB ASM_SOURCES asm/*.S)
+set(
+    SOURCE_FILE
+    src/model.c
+    src/tensor.c
+    src/log.c
+    src/allocator.c
+    src/context.c
+    src/model0/model0.c
+    src/model0/net0.c
+    src/model0/weight0.c
+    ${ASM_SOURCES}
+)
+add_library(micro_runtime STATIC ${SOURCE_FILE})
+target_link_libraries(micro_runtime net -lm -pthread)
+)RAW";
+
+const char *bench_cmake_lists_riscv_static = R"RAW(
+cmake_minimum_required(VERSION 3.14)
+project(micro_lib)
+
+set(CMAKE_C_COMPILER "${RISCV_TOOLCHAIN_PATH}/clang-15")
+set(CMAKE_CXX_COMPILER "${RISCV_TOOLCHAIN_PATH}/clang++")
+set(CMAKE_C_FLAGS "-march=${RISCV_STATIC_MARCH} -mabi=ilp32f ${CMAKE_C_FLAGS}")
+set(CMAKE_CXX_FLAGS "-march=${RISCV_STATIC_MARCH} -mabi=ilp32f ${CMAKE_CXX_FLAGS}")
 message("CMAKE_C_COMPILER: ${CMAKE_C_COMPILER}, CMAKE_CXX_COMPILER: ${CMAKE_CXX_COMPILER}")
 message("OP_LIB: ${OP_LIB}")
 message("WRAPPER_LIB: ${WRAPPER_LIB}")
@@ -186,14 +275,14 @@ add_library(micro_runtime STATIC ${SOURCE_FILE})
 target_link_libraries(micro_runtime net -lm -pthread)
 )RAW";
 
-const char *bench_cmake_lists_riscv_debug = R"RAW(
+const char *bench_cmake_lists_riscv_static_debug = R"RAW(
 cmake_minimum_required(VERSION 3.14)
 project(micro_lib)
 
-set(CMAKE_C_COMPILER "${RISCV_TOOLCHAIN_PATH}/riscv32-linux-musl-gcc")
-set(CMAKE_CXX_COMPILER "${RISCV_TOOLCHAIN_PATH}/riscv32-linux-musl-g++")
-set(CMAKE_C_FLAGS "-march=rv32imafc -mabi=ilp32f ${CMAKE_C_FLAGS}")
-set(CMAKE_CXX_FLAGS "-march=rv32imafc -mabi=ilp32f ${CMAKE_CXX_FLAGS}")
+set(CMAKE_C_COMPILER "${RISCV_TOOLCHAIN_PATH}/clang-15")
+set(CMAKE_CXX_COMPILER "${RISCV_TOOLCHAIN_PATH}/clang++")
+set(CMAKE_C_FLAGS "-march=${RISCV_STATIC_MARCH} -mabi=ilp32f ${CMAKE_C_FLAGS}")
+set(CMAKE_CXX_FLAGS "-march=${RISCV_STATIC_MARCH} -mabi=ilp32f ${CMAKE_CXX_FLAGS}")
 message("CMAKE_C_COMPILER: ${CMAKE_C_COMPILER}, CMAKE_CXX_COMPILER: ${CMAKE_CXX_COMPILER}")
 message("OP_LIB: ${OP_LIB}")
 message("WRAPPER_LIB: ${WRAPPER_LIB}")
@@ -345,37 +434,45 @@ include_directories(${MS_ROOT_DIR}/include)
 
 include(net.cmake)
 function(create_library)
-    if ("${OP_SRC}" STREQUAL "")
-        return()
-    endif()
-    add_custom_command(TARGET net
-            POST_BUILD
-            COMMAND rm -rf tmp
-            COMMAND mkdir tmp
-            COMMAND cd tmp && ar -x ${OP_LIB}
-            COMMAND cd tmp && ar -x ${WRAPPER_LIB}
-            COMMAND echo "raw static library ${library_name} size:"
-            COMMAND ls -lh ${library_name}
-            COMMAND mv ${library_name} ./tmp && cd tmp && ar -x ${library_name}
-            COMMENT "unzip raw static library ${library_name}"
-            )
+    if (OP_SRC)
+        add_custom_command(TARGET net
+                POST_BUILD
+                COMMAND rm -rf tmp
+                COMMAND mkdir tmp
+                COMMAND cd tmp && ar -x ${OP_LIB}
+                COMMAND cd tmp && ar -x ${WRAPPER_LIB}
+                COMMAND echo "raw static library ${library_name} size:"
+                COMMAND ls -lh ${library_name}
+                COMMAND mv ${library_name} ./tmp && cd tmp && ar -x ${library_name}
+                COMMENT "unzip raw static library ${library_name}"
+                )
 
-    foreach(object_file ${OP_SRC})
-        add_custom_command(TARGET net POST_BUILD COMMAND mv ./tmp/${object_file} .)
-    endforeach()
-    add_custom_command(TARGET net
-            POST_BUILD
-            COMMAND ar cr ${library_name} *.o
-            COMMAND ranlib ${library_name}
-            COMMAND echo "new static library ${library_name} size:"
-            COMMAND ls -lh ${library_name}
-            COMMAND rm -rf tmp && rm -rf *.o
-            COMMENT "generate specified static library ${library_name}"
-            )
+        foreach(object_file ${OP_SRC})
+            add_custom_command(TARGET net POST_BUILD COMMAND mv ./tmp/${object_file} .)
+        endforeach()
+        add_custom_command(TARGET net
+                POST_BUILD
+                COMMAND ar cr ${library_name} *.o
+                COMMAND ranlib ${library_name}
+                COMMAND echo "new static library ${library_name} size:"
+                COMMAND ls -lh ${library_name}
+                COMMAND rm -rf tmp && rm -rf *.o
+                COMMENT "generate specified static library ${library_name}"
+                )
+    else()
+        add_custom_command(TARGET net
+                POST_BUILD
+                COMMAND rm -f ${library_name}
+                COMMAND ar cr ${library_name}
+                COMMAND ranlib ${library_name}
+                COMMAND echo "generate empty static library ${library_name}"
+                COMMAND ls -lh ${library_name}
+                COMMENT "generate empty static library ${library_name}"
+                )
+    endif()
 endfunction(create_library)
 string(CONCAT library_name "lib" net ".a")
 create_library()
 
 )RAW";
-
 }  // namespace mindspore::lite::micro

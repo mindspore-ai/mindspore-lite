@@ -39,6 +39,7 @@ class Coder final {
   static int ExecuteMicroGeneration(const void *model_buf, size_t size, const std::string &output_path,
                                     const MicroParam &param, bool enable_fp16);
   int Init(const MicroParam &param) const;
+  void SetConfigFromParam(const MicroParam &param) const;
   int Run(const void *model_buff, size_t size, const std::string &model_name, bool end_flag, bool enable_fp16);
   bool InitPath(const std::string &output_path);
   std::shared_ptr<CoderSession> session_{nullptr};

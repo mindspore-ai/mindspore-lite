@@ -22,7 +22,11 @@
 
 namespace mindspore::lite::micro {
 void InferenceGenerator::CodeNetExecuteFunc(std::ofstream &ofs) {
-  ofs << "void Execute" << ctx_->GetCurModelIndex() << "(bool train_mode) {\n";
+  if ((config_->allocate_memory_type() == AllocateMemoryType::kStatic)) {
+    ofs << "void Execute" << ctx_->GetCurModelIndex() << "(_Bool train_mode) {\n  (void)train_mode;\n";
+  } else {
+    ofs << "void Execute" << ctx_->GetCurModelIndex() << "(bool train_mode) {\n";
+  }
   if (config_->support_parallel()) {
     ofs << "  " << gThreadNum << " = GetCurrentThreadNum();\n";
     ofs << "  SetSpinCountMaxValue();\n";

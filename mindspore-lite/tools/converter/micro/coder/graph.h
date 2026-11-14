@@ -39,6 +39,10 @@ class CoderGraph {
   int InitGraphInOutTensors();
 
   void SetAllTensors(const std::vector<Tensor *> &all_tensors);
+  // Add a graph input to the public input list.
+  void AddInputTensor(Tensor *input_tensor);
+  // Add a synthetic train label tensor. Labels are separate from public graph inputs.
+  void AddLabelTensor(Tensor *label_tensor);
 
   int RemoveCast();
 
@@ -62,6 +66,7 @@ class CoderGraph {
   std::vector<uint32_t> output_indices() const;
 
   std::vector<Tensor *> input_tensors() const;
+  std::vector<Tensor *> label_tensors() const;
 
   std::vector<Tensor *> output_tensors() const;
 
@@ -83,6 +88,8 @@ class CoderGraph {
   std::vector<Tensor *> all_tensors_;
 
   std::vector<Tensor *> input_tensors_;  // graph origin inputs
+
+  std::vector<Tensor *> label_tensors_;  // synthetic train labels
 
   std::vector<Tensor *> output_tensors_;  // graph origin outputs
 
