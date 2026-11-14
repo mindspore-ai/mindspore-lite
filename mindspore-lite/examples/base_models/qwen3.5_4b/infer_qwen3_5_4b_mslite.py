@@ -262,7 +262,7 @@ class Qwen354BInferencer:
 
     def __init__(self, vision_model_path, prefill_model_path, decode_model_path,
                  processor_id, device="ascend", device_id=0, image_size=128,
-                 device_resident_states=True):
+                 device_resident_states=True, no_image=False):
         """
         Initialize the inferencer.
         """
@@ -281,6 +281,7 @@ class Qwen354BInferencer:
         self.device = device
         self.device_id = device_id
         self.device_resident_states = bool(device_resident_states and device == "ascend")
+        self.no_image = bool(no_image)
 
         # These three large models can exceed host memory when they are built
         # concurrently on a shared server.  Keep only one model alive at a
@@ -302,13 +303,17 @@ class Qwen354BInferencer:
         """
         Prepare inputs for the inferencer.
         """
-        image = _pad_to_square(_load_image(image_path_or_url))
-        messages = [
-            {"role": "user", "content": [
-                {"type": "image", "image": image},
-                {"type": "text", "text": prompt},
-            ]}
-        ]
+        if self.no_image:
+            messages = [{"role": "user", "content": [
+                {"type": "text", "text": prompt}]}]
+        else:
+            image = _pad_to_square(_load_image(image_path_or_url))
+            messages = [
+                {"role": "user", "content": [
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": prompt},
+                ]}
+            ]
         inputs = self.processor.apply_chat_template(
             messages, tokenize=True, add_generation_prompt=True,
             return_dict=True, return_tensors="pt",
@@ -316,6 +321,8 @@ class Qwen354BInferencer:
         input_ids = inputs.input_ids.numpy().astype(np.int64)
         attention_mask = inputs.attention_mask.numpy().astype(np.int64)
         mm_token_type_ids = inputs.mm_token_type_ids.numpy().astype(np.int64)
+        if self.no_image:
+            return input_ids, attention_mask, mm_token_type_ids, None, None
         pixel_values = inputs.pixel_values.numpy().astype(np.float16)
         image_grid_thw = inputs.image_grid_thw.numpy().astype(np.int64)
         return input_ids, attention_mask, mm_token_type_ids, pixel_values, image_grid_thw
@@ -570,33 +577,40 @@ class Qwen354BInferencer:
             self.cfg, input_ids, attention_mask, mm_token_type_ids, image_grid_thw
         )
 
-        print(f"Loading vision model from {self.vision_model_path}...")
-        self.vision_model = mslite.Model()
-        try:
-            self.vision_model.build_from_file(
-                self.vision_model_path, mslite.ModelType.MINDIR, self.context
-            )
-            print("Running vision tower...")
-            t0 = time.time()
-            vision_feed = {"pixel_values": pixel_values}
-            vision_out = self.vision_model.predict(
-                _build_mslite_inputs(self.vision_model, vision_feed,
-                                     preferred_order=["pixel_values"])
-            )
-            image_embeds = vision_out[0].get_data_to_numpy()
-            vision_ms = (time.time() - t0) * 1000
-            print(f"Vision time: {vision_ms:.2f} ms")
-            del vision_out
-        finally:
-            self.vision_model = None
-            gc.collect()
+        if self.no_image:
+            # Text-only: skip vision, feed 16 rows of dummy image embeds (the
+            # prefill graph keeps a fixed dummy image input).
+            image_embeds = np.zeros((16, 2560), dtype=np.float16)
+            vision_ms = 0.0
+            print("No image input: skipping vision tower.")
+        else:
+            print(f"Loading vision model from {self.vision_model_path}...")
+            self.vision_model = mslite.Model()
+            try:
+                self.vision_model.build_from_file(
+                    self.vision_model_path, mslite.ModelType.MINDIR, self.context
+                )
+                print("Running vision tower...")
+                t0 = time.time()
+                vision_feed = {"pixel_values": pixel_values}
+                vision_out = self.vision_model.predict(
+                    _build_mslite_inputs(self.vision_model, vision_feed,
+                                         preferred_order=["pixel_values"])
+                )
+                image_embeds = vision_out[0].get_data_to_numpy()
+                vision_ms = (time.time() - t0) * 1000
+                print(f"Vision time: {vision_ms:.2f} ms")
+                del vision_out
+            finally:
+                self.vision_model = None
+                gc.collect()
 
-        image_token_cnt = int((input_ids == int(self.cfg.image_token_id)).sum())
-        if int(image_embeds.shape[0]) != image_token_cnt:
-            raise RuntimeError(
-                f"image_embeds length mismatch: embeds={image_embeds.shape[0]} "
-                f"vs image_token_cnt={image_token_cnt}"
-            )
+            image_token_cnt = int((input_ids == int(self.cfg.image_token_id)).sum())
+            if int(image_embeds.shape[0]) != image_token_cnt:
+                raise RuntimeError(
+                    f"image_embeds length mismatch: embeds={image_embeds.shape[0]} "
+                    f"vs image_token_cnt={image_token_cnt}"
+                )
 
         print(f"Loading prefill model from {self.prefill_model_path}...")
         self.prefill_model = mslite.Model()
@@ -670,8 +684,8 @@ def main():
     parser = argparse.ArgumentParser(
         description="Qwen3.5-4B MindSpore Lite inference (vision + prefill + decode)"
     )
-    parser.add_argument("--vision-model", type=str, required=True,
-                        help="Path to qwen3_5_vision.mindir")
+    parser.add_argument("--vision-model", type=str, default="",
+                        help="Path to qwen3_5_vision.mindir (unused with --no-image)")
     parser.add_argument("--prefill-model", type=str, required=True,
                         help="Path to qwen3_5_llm_prefill.mindir")
     parser.add_argument("--decode-model", type=str, required=True,
@@ -682,6 +696,8 @@ def main():
     parser.add_argument("--image", type=str,
                         default="./demo.jpeg",
                         help="Image path or URL")
+    parser.add_argument("--no-image", action="store_true",
+                        help="Text-only: skip the vision tower and feed dummy image embeds")
     parser.add_argument("--prompt", type=str, default="Describe this image.", help="Text prompt")
     parser.add_argument("--max-new-tokens", type=int, default=128)
     parser.add_argument("--image-size", type=int, default=128,
@@ -705,6 +721,7 @@ def main():
         device_id=args.device_id,
         image_size=args.image_size,
         device_resident_states=not args.host_state_roundtrip,
+        no_image=args.no_image,
     )
     result = inferencer.infer(args.image, args.prompt, max_new_tokens=args.max_new_tokens)
 
