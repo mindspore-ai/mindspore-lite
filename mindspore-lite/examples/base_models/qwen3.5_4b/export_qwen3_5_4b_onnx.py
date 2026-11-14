@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+# torch.nn.functional members are callable; pylint mis-reports them.
+# pylint: disable=not-callable
 """
 Export Qwen3.5-4B model to ONNX format.
 
@@ -51,6 +53,13 @@ except ImportError:
 # operators explicitly when exporting for Ascend 310P.
 USE_CUSTOM_RGDR = False
 USE_CUSTOM_CGDR = False
+# Replace prefill Linear/BatchMatMul with the 310P handwritten InnerBatchMatMulCube
+# custom operator. Decode (M=1) keeps the built-in matmul because the custom op
+# requires M/K/N to be 16-aligned.
+USE_INNER_BMM = False
+# Export a fully static prefill graph (no dynamic axes) for large-image cases
+# where GE's dynamic-shape fusion fails topological sorting.
+STATIC_PREFILL = False
 
 
 def _l2norm(x, dim=-1, eps=1e-6):
@@ -156,8 +165,12 @@ class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, query, key, value, beta, state, actual_seq_lengths, g_decay):
-        """Run the PyTorch reference implementation used during ONNX export."""
+        """Run the PyTorch reference implementation used while tracing."""
         del ctx, actual_seq_lengths
+        if torch.onnx.is_in_onnx_export():
+            token_count, num_v_heads, value_dim = (int(v) for v in value.shape)
+            return (value.new_empty((token_count, num_v_heads, value_dim)),
+                    state.new_empty(tuple(state.shape)))
         batch_size = state.shape[0]
         sequence_length = query.shape[0] // batch_size
         num_key_heads = query.shape[1]
@@ -458,6 +471,111 @@ def _recurrent_gated_delta_rule_custom(query, key, value, g, beta, initial_state
     return core_attn_out, state_out
 
 
+class InnerBatchMatMulFunction(torch.autograd.Function):
+    """Export y = x1 @ x2 as the 310P InnerBatchMatMulCube Custom operator."""
+
+    @staticmethod
+    def forward(ctx, x1, x2):
+        """Reference implementation used while tracing.
+
+        During ONNX tracing only the output shape/dtype is consumed (the graph
+        comes from ``symbolic``), and fp16 CPU matmul is very slow.  Return an
+        uninitialized tensor of the right shape to keep tracing fast.
+        """
+        del ctx
+        if torch.onnx.is_in_onnx_export():
+            batch_shape = torch.broadcast_shapes(x1.shape[:-2], x2.shape[:-2])
+            return x1.new_empty(
+                tuple(batch_shape) + (x1.shape[-2], x2.shape[-1])
+            )
+        return torch.matmul(x1, x2)
+
+    @staticmethod
+    def symbolic(graph, x1, x2):
+        """Export the Custom node consumed by the mslite Ascend backend."""
+        x1_sizes = x1.type().sizes()
+        x2_sizes = x2.type().sizes()
+        x1_dim = x1.type().dim()
+        x2_dim = x2.type().dim()
+        if x1_dim is None or x2_dim is None or x1_dim < 2 or x2_dim < 2:
+            raise ValueError("InnerBatchMatMulCube requires rank >= 2 tensors")
+        batch_rank = max(x1_dim, x2_dim) - 2
+        # The prefill graph is compiled per sequence gear; keep M dynamic so the
+        # same Custom node is valid for 32/512/1024/2048.  Some activations only
+        # have a known rank during tracing, so unknown dims fall back to -1.
+        if x1_sizes is not None and len(x1_sizes) == x1_dim:
+            batch_dims = list(x1_sizes[:-2])
+            m_dim = x1_sizes[-2]
+        else:
+            batch_dims = [-1] * batch_rank
+            m_dim = -1
+        n_dim = x2_sizes[-1] if (x2_sizes is not None and len(x2_sizes) == x2_dim) else -1
+        out_sizes = batch_dims + [m_dim, n_dim]
+        attr_dims = batch_dims + [-1, n_dim]
+        out = graph.op(
+            "Custom",
+            x1,
+            x2,
+            type_s="InnerBatchMatMulCube",
+            # 单算子 + OPTIONAL bias：input_names 固定列满 3 个槽，
+            # input_index=[0,1] 表示 bias 槽不接（attr_to_args_pass 会补 None）。
+            # 若以后要把残差/偏置作为第 3 个输入喂进来，只需接上 bias 并改成 [0,1,2]。
+            input_names_s=["x1", "x2", "bias"],
+            optional_input_names_s=["bias"],
+            input_index_i=[0, 1],
+            output_names_s=["y"],
+            outputs_shape_s=",".join(str(v) for v in [len(attr_dims)] + attr_dims),
+            output_num_i=1,
+            # Lite's Ascend Custom mapper picks the first input dtype when a graph
+            # has several Custom types; pin the output dtype to FP16.
+            dtype_i=10,
+        )
+        out.setType(x1.type().with_sizes(out_sizes))
+        if m_dim < 0 or n_dim < 0:
+            print(
+                "[InnerBatchMatMulCube] dynamic trace dims: "
+                f"x1={x1_sizes} x2={x2_sizes} -> out={out_sizes}",
+                flush=True,
+            )
+        return out
+
+
+def _attach_inner_bmm_weights(module):
+    """Attach transposed fp16 Linear weights as constants for the Custom op."""
+    if not USE_INNER_BMM:
+        return
+    for sub in module.modules():
+        if not isinstance(sub, torch.nn.Linear):
+            continue
+        if sub.weight.dtype != torch.float16 or hasattr(sub, "_inner_bmm_weight"):
+            continue
+        sub.register_buffer(
+            "_inner_bmm_weight",
+            sub.weight.detach().t().contiguous(),
+            persistent=False,
+        )
+
+
+def _bmm_linear(layer, x):
+    """Linear projection through InnerBatchMatMulCube when enabled and shardable."""
+    if (
+        not USE_INNER_BMM
+        or not hasattr(layer, "_inner_bmm_weight")
+        or x.dtype != torch.float16
+    ):
+        return layer(x)
+    return InnerBatchMatMulFunction.apply(x, layer._inner_bmm_weight)
+
+
+def _mlp_forward(mlp, hidden_states):
+    """MLP forward; prefill may route the three GEMMs through the Custom op."""
+    if not USE_INNER_BMM:
+        return mlp(hidden_states)
+    gate = _bmm_linear(mlp.gate_proj, hidden_states)
+    up = _bmm_linear(mlp.up_proj, hidden_states)
+    return _bmm_linear(mlp.down_proj, mlp.act_fn(gate) * up)
+
+
 def _linear_attn_prefill(layer, hidden_states, attention_mask):
     """
     Linear attention prefill for the attention layer.
@@ -467,15 +585,15 @@ def _linear_attn_prefill(layer, hidden_states, attention_mask):
     if attention_mask is not None and attention_mask.shape[1] > 1 and attention_mask.shape[0] > 1:
         hidden_states_input = hidden_states * attention_mask[:, :, None]
 
-    mixed_qkv = layer.in_proj_qkv(hidden_states_input)
+    mixed_qkv = _bmm_linear(layer.in_proj_qkv, hidden_states_input)
     mixed_qkv = mixed_qkv.transpose(1, 2)
     conv_state = mixed_qkv[:, :, -(layer.conv_kernel_size - 1):]
 
-    z = layer.in_proj_z(hidden_states)
+    z = _bmm_linear(layer.in_proj_z, hidden_states)
     z = z.reshape(batch_size, seq_len, -1, layer.head_v_dim)
 
-    b = layer.in_proj_b(hidden_states)
-    a = layer.in_proj_a(hidden_states)
+    b = _bmm_linear(layer.in_proj_b, hidden_states)
+    a = _bmm_linear(layer.in_proj_a, hidden_states)
 
     if layer.causal_conv1d_fn is not None:
         mixed_qkv = layer.causal_conv1d_fn(
@@ -522,7 +640,7 @@ def _linear_attn_prefill(layer, hidden_states, attention_mask):
     core_attn_out = layer.norm(core_attn_out, z)
     core_attn_out = core_attn_out.reshape(batch_size, seq_len, -1)
 
-    output = layer.out_proj(core_attn_out)
+    output = _bmm_linear(layer.out_proj, core_attn_out)
     return output, conv_state, last_recurrent_state
 
 
@@ -590,7 +708,7 @@ def _linear_attn_decode(layer, hidden_states, conv_state_in, recurrent_state_in)
 
 
 def _full_attn_forward(layer, hidden_states, position_embeddings, attention_mask,
-                       past_key=None, past_value=None):
+                       past_key=None, past_value=None, use_bmm=False):
     """
     Full attention forward for the attention layer.
     """
@@ -600,13 +718,16 @@ def _full_attn_forward(layer, hidden_states, position_embeddings, attention_mask
     num_kv_heads = layer.config.num_key_value_heads
     hidden_shape = (*input_shape, -1, head_dim)
 
-    qkv = layer.q_proj(hidden_states).view(*input_shape, -1, head_dim * 2)
+    def _proj(proj_layer, x):
+        return _bmm_linear(proj_layer, x) if use_bmm else proj_layer(x)
+
+    qkv = _proj(layer.q_proj, hidden_states).view(*input_shape, -1, head_dim * 2)
     query_states, gate = torch.chunk(qkv, 2, dim=-1)
     gate = gate.reshape(*input_shape, -1)
 
     query_states = layer.q_norm(query_states.view(hidden_shape)).transpose(1, 2)
-    key_states = layer.k_norm(layer.k_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
-    value_states = layer.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+    key_states = layer.k_norm(_proj(layer.k_proj, hidden_states).view(hidden_shape)).transpose(1, 2)
+    value_states = _proj(layer.v_proj, hidden_states).view(hidden_shape).transpose(1, 2)
 
     cos, sin = position_embeddings
     from transformers.models.qwen3_5.modeling_qwen3_5 import apply_rotary_pos_emb
@@ -630,7 +751,7 @@ def _full_attn_forward(layer, hidden_states, position_embeddings, attention_mask
     attn_output = torch.matmul(attn_weights, value_states_for_attn)
     attn_output = attn_output.transpose(1, 2).reshape(*input_shape, -1).contiguous()
     attn_output = attn_output * torch.sigmoid(gate)
-    attn_output = layer.o_proj(attn_output)
+    attn_output = _proj(layer.o_proj, attn_output)
     return attn_output, key_states, value_states
 
 
@@ -930,6 +1051,9 @@ class Qwen35LlmPrefill(torch.nn.Module):
         self.image_token_id = int(image_token_id)
         self.config = text_model.config
         self.max_seq_len = None if max_seq_len is None else int(max_seq_len)
+        # Keep transposed fp16 weight constants on the decoder linears so the
+        # InnerBatchMatMulCube node can consume them without graph Transpose ops.
+        _attach_inner_bmm_weights(text_model)
 
     def forward(self, input_ids, attention_mask, position_ids, image_embeds):
         """
@@ -974,7 +1098,8 @@ class Qwen35LlmPrefill(torch.nn.Module):
             residual = hidden_states
             hidden_states = layer.input_layernorm(hidden_states)
 
-            if layer.layer_type == "linear_attention":
+            layer_type = getattr(layer, "block_type", None) or getattr(layer, "layer_type", None)
+            if layer_type == "linear_attention":
                 attn_out, conv_s, rec_s = _linear_attn_prefill(
                     layer.linear_attn, hidden_states, linear_attn_mask
                 )
@@ -984,6 +1109,7 @@ class Qwen35LlmPrefill(torch.nn.Module):
             else:
                 attn_out, pk, pv = _full_attn_forward(
                     layer.self_attn, hidden_states, position_embeddings, attn_mask,
+                    use_bmm=USE_INNER_BMM,
                 )
                 hidden_states = residual + attn_out
                 present_kv.append(pk)
@@ -991,7 +1117,7 @@ class Qwen35LlmPrefill(torch.nn.Module):
 
             residual = hidden_states
             hidden_states = layer.post_attention_layernorm(hidden_states)
-            hidden_states = residual + layer.mlp(hidden_states)
+            hidden_states = residual + _mlp_forward(layer.mlp, hidden_states)
 
         hidden_states = self.text_model.norm(hidden_states)
         logits = self.lm_head(hidden_states)
@@ -1070,7 +1196,8 @@ class Qwen35LlmDecode(torch.nn.Module):
             residual = hidden_states
             hidden_states = layer.input_layernorm(hidden_states)
 
-            if layer.layer_type == "linear_attention":
+            layer_type = getattr(layer, "block_type", None) or getattr(layer, "layer_type", None)
+            if layer_type == "linear_attention":
                 conv_s_in = past_conv_states[linear_idx]
                 rec_s_in = past_recurrent_states[linear_idx]
                 attn_out, conv_s_out, rec_s_out = _linear_attn_decode(
@@ -1213,6 +1340,8 @@ def _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_to
             f"dummy_seq must be in [1, {prefill.max_seq_len}], but got {dummy_seq}"
         )
     dummy_input_ids = torch.randint(0, 1000, (1, dummy_seq), dtype=torch.int64, device=device)
+    if 0 < dummy_num_img_tokens <= dummy_seq:
+        dummy_input_ids[0, :dummy_num_img_tokens] = int(prefill.image_token_id)
     dummy_attention_mask = torch.ones(1, dummy_seq, dtype=torch.int64, device=device)
     base_pos = torch.arange(dummy_seq, device=device, dtype=torch.int64).view(1, -1)
     dummy_position_ids = base_pos.unsqueeze(0).expand(4, 1, dummy_seq)
@@ -1223,7 +1352,9 @@ def _export_llm_prefill(prefill, output_dir, device, dummy_seq, dummy_num_img_to
     input_names = ["input_ids", "attention_mask", "position_ids", "image_embeds"]
     output_names = ["logits", "present_conv_states", "present_recurrent_states",
                     "present_kv_cache"]
-    if USE_CUSTOM_CGDR or prefill.max_seq_len is not None:
+    if STATIC_PREFILL:
+        dynamic_axes = None
+    elif USE_CUSTOM_CGDR or prefill.max_seq_len is not None:
         # Both the fused Prefill and fixed-cache Decode paths target batch one.
         dynamic_axes = {
             "input_ids": {1: "seq_len"},
@@ -1393,10 +1524,8 @@ def export_llm_prefill_decode(model, output_dir, device="cpu", dummy_seq=8,
     )
 
 
-def main():
-    """
-    Main function for exporting Qwen3.5-4B model to ONNX format.
-    """
+def _parse_args():
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Export Qwen3.5-4B to ONNX")
     parser.add_argument(
         "--model-id", type=str,
@@ -1415,19 +1544,27 @@ def main():
         "--vision-image-size", type=int, default=128,
         help="Image size for vision tower export",
     )
-    parser.add_argument("--dummy-seq-len", type=int, default=8,
+    parser.add_argument(
+        "--dummy-seq-len", type=int, default=8,
         help="Dummy sequence length for LLM export",
     )
-    parser.add_argument("--max-seq-len", type=int, default=2048,
-        help="Maximum sequence length for the fixed Decode mask and KV cache",
+    parser.add_argument(
+        "--max-seq-len", type=int, default=4608,
+        help="Maximum sequence length for the fixed Decode mask and KV cache "
+             "(must exceed 4096 to decode at 4096 context)",
     )
     parser.add_argument(
         "--dtype", type=str, default="fp16", choices=["fp16", "fp32"],
         help="Export dtype",
     )
     parser.add_argument(
-        "--component", type=str, default="all", choices=["all", "prefill", "decode"],
-        help="Export all components, the LLM prefill graph, or the LLM decode graph",
+        "--component", type=str, default="all",
+        choices=["all", "vision", "prefill", "decode"],
+        help="Export all components, or only vision / prefill / decode",
+    )
+    parser.add_argument(
+        "--no-vision", action="store_true",
+        help="No-image deployment: skip the vision tower and export only prefill+decode",
     )
     parser.add_argument(
         "--enable-rgdr-custom", action="store_true",
@@ -1437,15 +1574,86 @@ def main():
         "--enable-cgdr-custom", action="store_true",
         help="Replace the expanded prefill chunk rule with the 310P Custom CGDR op",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--static-prefill", action="store_true",
+        help="Export a static seq prefill graph (no dynamic axes)",
+    )
+    parser.add_argument(
+        "--enable-inner-bmm", action="store_true",
+        help="Replace prefill Linear projections with the 310P InnerBatchMatMulCube op",
+    )
+    return parser.parse_args()
 
-    global USE_CUSTOM_RGDR, USE_CUSTOM_CGDR
+
+def _resolve_image_tokens(model, args):
+    """Return the number of image tokens for the configured vision size."""
+    patch = int(model.config.vision_config.patch_size)
+    merge = int(model.config.vision_config.spatial_merge_size)
+    grid = max(int(args.vision_image_size) // patch, 1)
+    image_tokens = (grid // merge) ** 2
+    if args.no_vision:
+        # Text-only deployment: keep the 16-row dummy image input used by the
+        # prefill graph, but never export/load the vision tower.
+        image_tokens = 16
+    print(f"image_tokens={image_tokens} (vision_image_size={args.vision_image_size}, "
+          f"no_vision={args.no_vision})")
+    return image_tokens
+
+
+def _export_components(model, args, output_dir, torch_dtype, image_tokens):
+    """Export the selected model components to ONNX."""
+    if args.component == "vision":
+        export_vision_tower(
+            model, output_dir / "vision", args.device, args.vision_image_size
+        )
+        return
+    if args.component == "all":
+        if not args.no_vision:
+            export_vision_tower(
+                model, output_dir / "vision", args.device, args.vision_image_size
+            )
+        export_llm_prefill_decode(
+            model, output_dir, args.device, args.dummy_seq_len,
+            dummy_num_img_tokens=image_tokens,
+            dtype=torch_dtype, max_seq_len=args.max_seq_len)
+        return
+    meta = _get_model_meta(model)
+    text_model = meta["text_model"].to(args.device).eval()
+    lm_head = meta["lm_head"].to(args.device).eval()
+    if args.component == "prefill":
+        prefill = Qwen35LlmPrefill(
+            text_model, lm_head, meta["image_token_id"],
+            max_seq_len=args.max_seq_len if USE_CUSTOM_RGDR else None,
+        ).to(args.device).eval()
+        _export_llm_prefill(
+            prefill, output_dir / "prefill", args.device, args.dummy_seq_len,
+            image_tokens, dtype=torch_dtype,
+        )
+        return
+    decode = Qwen35LlmDecode(
+        text_model, lm_head, fixed_kv_cache=USE_CUSTOM_RGDR
+    ).to(args.device).eval()
+    _export_llm_decode(
+        decode, meta, output_dir / "decode", args.device, args.dummy_seq_len,
+        max_seq_len=args.max_seq_len,
+    )
+
+
+def main():
+    """Export Qwen3.5-4B model to ONNX format."""
+    args = _parse_args()
+
+    global USE_CUSTOM_RGDR, USE_CUSTOM_CGDR, USE_INNER_BMM, STATIC_PREFILL
     USE_CUSTOM_RGDR = args.enable_rgdr_custom
     USE_CUSTOM_CGDR = args.enable_cgdr_custom
+    USE_INNER_BMM = args.enable_inner_bmm
+    STATIC_PREFILL = args.static_prefill
+    if USE_INNER_BMM and args.dtype != "fp16":
+        print("InnerBatchMatMulCube requires fp16; disabling --enable-inner-bmm.")
+        USE_INNER_BMM = False
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-
     torch_dtype = torch.float16 if args.dtype == "fp16" else torch.float32
     print(f"\nLoading model {args.model_id} in {args.dtype} for export...")
     model = Qwen3_5ForConditionalGeneration.from_pretrained(
@@ -1455,43 +1663,14 @@ def main():
         low_cpu_mem_usage=True,
         attn_implementation="eager",
     )
-
-    if args.component == "all":
-        export_vision_tower(
-            model, output_dir / "vision", args.device, args.vision_image_size
-        )
-        export_llm_prefill_decode(model, output_dir, args.device, args.dummy_seq_len,
-                                  dtype=torch_dtype, max_seq_len=args.max_seq_len)
-    elif args.component == "prefill":
-        meta = _get_model_meta(model)
-        text_model = meta["text_model"].to(args.device).eval()
-        lm_head = meta["lm_head"].to(args.device).eval()
-        prefill = Qwen35LlmPrefill(
-            text_model, lm_head, meta["image_token_id"],
-            max_seq_len=args.max_seq_len if USE_CUSTOM_RGDR else None,
-        ).to(args.device).eval()
-        _export_llm_prefill(
-            prefill, output_dir / "prefill", args.device, args.dummy_seq_len, 16,
-            dtype=torch_dtype,
-        )
-    else:
-        meta = _get_model_meta(model)
-        text_model = meta["text_model"].to(args.device).eval()
-        lm_head = meta["lm_head"].to(args.device).eval()
-        decode = Qwen35LlmDecode(
-            text_model, lm_head, fixed_kv_cache=USE_CUSTOM_RGDR
-        ).to(args.device).eval()
-        _export_llm_decode(
-            decode, meta, output_dir / "decode", args.device, args.dummy_seq_len,
-            max_seq_len=args.max_seq_len,
-        )
+    image_tokens = _resolve_image_tokens(model, args)
+    _export_components(model, args, output_dir, torch_dtype, image_tokens)
 
     print("Clearing memory after export...")
     del model
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-
     print(f"\nExport finished. Files saved in {args.output_dir}")
 
 
