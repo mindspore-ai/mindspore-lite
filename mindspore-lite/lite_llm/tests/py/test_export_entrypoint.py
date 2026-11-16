@@ -73,8 +73,7 @@ def test_detect_model_type_hf(export_module,  # pylint: disable=redefined-outer-
     (hf_dir / "config.json").write_text(
         '{"model_type": "qwen2", "num_hidden_layers": 36}'
     )
-    with pytest.raises(ValueError, match="unsupported model size"):
-        export_module.detect_model_type(str(hf_dir))
+    assert export_module.detect_model_type(str(hf_dir)) == ("qwen2_5", 36)
 
     (hf_dir / "config.json").write_text(
         '{"model_type": "llama", "num_hidden_layers": 24}'
@@ -257,6 +256,8 @@ def test_model_quantization_pipeline(export_module, monkeypatch, tmp_path, case)
     monkeypatch.setattr(export_module, "open_gguf_reader", lambda _model: object())
     monkeypatch.setattr(export_module, "detect_gguf_quantization", lambda _reader: (quant, embedding_quant))
     monkeypatch.setitem(model_info, "exporter", fake_exporter)
+    if family == "qwen2_5":
+        monkeypatch.setitem(model_info, "validate_source", lambda *_: None)
     monkeypatch.setitem(model_info, "gguf_loader", fake_loader)
     monkeypatch.setattr(export_module, "compile_omc", fake_compile)
     monkeypatch.setattr(export_module, "export_tokenizer", fake_tokenizer)
@@ -300,6 +301,150 @@ def test_model_quantization_pipeline(export_module, monkeypatch, tmp_path, case)
 
 
 
+@pytest.mark.parametrize("names,detail", [
+    ({"model_name": "model"}, "missing=['gguf_name', 'onnx_name', 'quant_name'], unexpected=[]"),
+    ({"onnx_name": "a", "quant_name": "b", "gguf_name": "c", "model_name": "d", "exporter": "e"},
+     "missing=[], unexpected=['exporter']"),
+    (None, "NoneType"),
+    ({"onnx_name": None, "quant_name": "b", "gguf_name": "c", "model_name": "d"}, "onnx_name"),
+    ({"onnx_name": "a", "quant_name": "", "gguf_name": "c", "model_name": "d"}, "quant_name"),
+])
+def test_qwen2_invalid_resolved_names(export_module, monkeypatch, tmp_path, names, detail):
+    """Reject invalid hook results before invoking the exporter."""
+    mt = export_module.MODEL_TYPES["qwen2_5"]
+    calls = []
+    monkeypatch.setattr(export_module, "detect_model_kind", lambda _: "hf")
+    monkeypatch.setattr(export_module, "detect_model_type", lambda _: ("qwen2_5", 28))
+    monkeypatch.setitem(mt, "validate_source", lambda *_: None)
+    monkeypatch.setitem(mt, "resolve_names", lambda _: names)
+    monkeypatch.setitem(mt, "exporter", lambda **kwargs: calls.append(kwargs))
+    with pytest.raises(ValueError) as error:
+        export_module.run_pipeline(SimpleNamespace(model="model"), str(tmp_path))
+    assert "qwen2_5" in str(error.value) and "resolve_names" in str(error.value)
+    assert detail in str(error.value)
+    assert not calls
+
+
+def test_qwen2_resolve_names_exception(export_module, monkeypatch, tmp_path):
+    """Preserve hook exceptions as causes before invoking the exporter."""
+    mt = export_module.MODEL_TYPES["qwen2_5"]
+    calls = []
+    original = RuntimeError("hook error")
+
+    def fail_hook(path):
+        raise original
+
+    monkeypatch.setattr(export_module, "detect_model_kind", lambda _: "hf")
+    monkeypatch.setattr(export_module, "detect_model_type", lambda _: ("qwen2_5", 28))
+    monkeypatch.setitem(mt, "validate_source", lambda *_: None)
+    monkeypatch.setitem(mt, "resolve_names", fail_hook)
+    monkeypatch.setitem(mt, "exporter", lambda **kwargs: calls.append(kwargs))
+    with pytest.raises(ValueError) as error:
+        export_module.run_pipeline(SimpleNamespace(model="model"), str(tmp_path))
+    assert "qwen2_5" in str(error.value) and "resolve_names" in str(error.value)
+    assert error.value.__cause__ is original
+    assert not calls
+
+
+@pytest.mark.parametrize("layers", [1, 28])
+def test_qwen2_resolved_names_pipeline(export_module, monkeypatch, tmp_path, layers):
+    """Hooks override names per invocation without changing the family defaults."""
+    mt = export_module.MODEL_TYPES["qwen2_5"]
+    names = {"onnx_name": "qwen2_5_1b5.onnx", "quant_name": "qwen2_5_1b5_quant.onnx",
+             "gguf_name": "qwen2_5_1b5_gguf.onnx", "model_name": "qwen2.5-1.5b"}
+    calls = {}
+
+    def fake_exporter(**kwargs):
+        calls.update(kwargs)
+        (tmp_path / names["quant_name"]).touch()
+        (tmp_path / "architecture.json").write_text("{}")
+        config = tmp_path / "config.json"
+        config.write_text('{"npu": {}}')
+        return str(config)
+
+    def fake_compile(**kwargs):
+        calls["compiled"] = kwargs["onnx_path"]
+        (tmp_path / "SubGraph_0.weight").touch()
+        return str(tmp_path / "model.omc")
+
+    def fake_tokenizer(**kwargs):
+        path = Path(kwargs["output_dir"])
+        path.mkdir()
+        (path / "generation_policy.json").write_text("{}")
+        return str(path / "vocab.bin")
+
+    monkeypatch.setattr(export_module, "detect_model_kind", lambda _: "hf")
+    monkeypatch.setattr(export_module, "detect_model_type", lambda _: ("qwen2_5", layers))
+    monkeypatch.setitem(mt, "exporter", fake_exporter)
+    monkeypatch.setitem(mt, "validate_source", lambda path, count: calls.update(source=(path, count)))
+    monkeypatch.setitem(mt, "resolve_names", lambda _: names)
+    original = dict(mt)
+    monkeypatch.setattr(export_module, "compile_omc", fake_compile)
+    monkeypatch.setattr(export_module, "export_tokenizer", fake_tokenizer)
+    monkeypatch.setattr(export_module, "build_single_file_msl", lambda request: request.output_path)
+    args = SimpleNamespace(model="model", output=str(tmp_path / "out.msl"), max_length=1024,
+                           chunk_size=64, target="kirin9020", quant_type="q4_0")
+    assert export_module.run_pipeline(args, str(tmp_path)) == args.output
+    assert calls["source"] == ("model", layers)
+    assert calls["layers"] == layers
+    assert calls["onnx_name"] == names["onnx_name"]
+    assert calls["model_name"] == names["model_name"]
+    assert calls["compiled"] == str(tmp_path / names["quant_name"])
+    assert mt == original
+
+
+@pytest.mark.parametrize("dirname,onnx_name,model_name,quant_name", [
+    ("ms-model", "qwen2_5.onnx", "qwen2.5", "qwen2_5_quant.onnx"),
+    ("Qwen2.5-1.5B-Instruct", "qwen2_5_1b5.onnx", "qwen2.5-1.5b", "qwen2_5_1b5_quant.onnx"),
+])
+def test_qwen2_real_names_pipeline(export_module, monkeypatch, tmp_path, dirname, onnx_name, model_name, quant_name):
+    """The real name resolver drives exporter and compiler names from the path."""
+    model = tmp_path / dirname
+    model.mkdir()
+    calls = {}
+    mt = export_module.MODEL_TYPES["qwen2_5"]
+
+    def fake_exporter(**kwargs):
+        calls.update(kwargs)
+        (tmp_path / (Path(kwargs["onnx_name"]).stem + "_quant.onnx")).touch()
+        (tmp_path / "architecture.json").write_text("{}")
+        config = tmp_path / "config.json"
+        config.write_text('{"npu": {}}')
+        return str(config)
+
+    def fake_compile(**kwargs):
+        calls["compiled"] = kwargs["onnx_path"]
+        (tmp_path / "SubGraph_0.weight").touch()
+        return str(tmp_path / "model.omc")
+
+    def fake_tokenizer(**kwargs):
+        path = Path(kwargs["output_dir"])
+        path.mkdir()
+        (path / "generation_policy.json").write_text("{}")
+        return str(path / "vocab.bin")
+
+    monkeypatch.setattr(export_module, "detect_model_kind", lambda _: "hf")
+    monkeypatch.setattr(export_module, "detect_model_type", lambda _: ("qwen2_5", 1))
+    monkeypatch.setitem(mt, "exporter", fake_exporter)
+    monkeypatch.setitem(mt, "validate_source", lambda *_: None)
+    monkeypatch.setattr(export_module, "compile_omc", fake_compile)
+    monkeypatch.setattr(export_module, "export_tokenizer", fake_tokenizer)
+    monkeypatch.setattr(export_module, "build_single_file_msl", lambda request: request.output_path)
+    args = SimpleNamespace(model=str(model), output=str(tmp_path / "out.msl"), max_length=1024,
+                           chunk_size=64, target="kirin9020", quant_type="q4_0")
+    assert export_module.run_pipeline(args, str(tmp_path)) == args.output
+    assert calls["onnx_name"] == onnx_name
+    assert calls["model_name"] == model_name
+    assert calls["compiled"] == str(tmp_path / quant_name)
+
+
+@pytest.mark.parametrize("layers", [28, 30])
+def test_qwen2_arbitrary_layers(export_module, tmp_path, layers):
+    """Qwen2 layer counts are checked against weights rather than a whitelist."""
+    (tmp_path / "config.json").write_text(json.dumps({"model_type": "qwen2", "num_hidden_layers": layers}))
+    assert export_module.detect_model_type(str(tmp_path)) == ("qwen2_5", layers)
+
+
 def test_external_weight_policy_preserves_qwen_families(export_module):  # pylint: disable=redefined-outer-name
     """Every supported Qwen size preserves external decoder weights."""
     qwen3 = export_module.MODEL_TYPES["qwen3"]
@@ -307,6 +452,14 @@ def test_external_weight_policy_preserves_qwen_families(export_module):  # pylin
 
     assert qwen3["external_weights"] is True
     assert qwen2_5["external_weights"] is True
+
+
+def test_qwen2_neutral_artifact_names(export_module):
+    """The registry exposes all four neutral defaults."""
+    from models.qwen2_5.qwen2_5_exporter import QWEN2_5_NEUTRAL_NAMES
+
+    mt = export_module.MODEL_TYPES["qwen2_5"]
+    assert {key: mt[key] for key in QWEN2_5_NEUTRAL_NAMES} == QWEN2_5_NEUTRAL_NAMES
 
 
 def test_qwen3_family_artifact_names(export_module):  # pylint: disable=redefined-outer-name
@@ -331,7 +484,6 @@ def test_parser_interface(export_module,  # pylint: disable=redefined-outer-name
     assert args.max_length == 1024
     assert args.chunk_size == 64
     assert args.quant_type == "q4_0"
-
     # --target has a default; the one-click invocation needs only model+output.
     args = export_module.build_parser().parse_args(
         ["--model", str(gguf), "--output", "out.msl"]
@@ -423,6 +575,8 @@ def test_unsupported_model_quant_type(export_module, monkeypatch, tmp_path, fami
     """Reject S16S4 when the model exporter lacks the shared-weight contract."""
     monkeypatch.setattr(export_module, "detect_model_kind", lambda _: "hf")
     monkeypatch.setattr(export_module, "detect_model_type", lambda _: (family, layers))
+    if family == "qwen2_5":
+        monkeypatch.setitem(export_module.MODEL_TYPES[family], "validate_source", lambda *_: None)
     args = SimpleNamespace(model="unused", target="kirin9030", quant_type="s16s4")
     with pytest.raises(ValueError, match="not supported by"):
         export_module.run_pipeline(args, str(tmp_path))
@@ -433,6 +587,7 @@ def test_q3_rejects_unsupported_target_and_model(export_module, monkeypatch, tmp
     """Reject unsupported Q3 combinations before running the exporter."""
     monkeypatch.setattr(export_module, "detect_model_kind", lambda _: "hf")
     monkeypatch.setattr(export_module, "detect_model_type", lambda _: (family, 24))
+    monkeypatch.setitem(export_module.MODEL_TYPES[family], "validate_source", lambda *_: None)
     args = SimpleNamespace(model="model", quant_type="q3_0", target=target)
     with pytest.raises(ValueError, match="supported"):
         export_module.run_pipeline(args, str(tmp_path))

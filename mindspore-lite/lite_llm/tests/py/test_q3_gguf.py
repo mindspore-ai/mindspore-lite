@@ -324,14 +324,38 @@ def test_hf_checkpoint_index_rejects_outside_shard(tmp_path):
         _checkpoint_files(model)
 
 
-@pytest.mark.parametrize("override", [{"hidden_size": 1024}, {"tie_word_embeddings": False}])
-def test_hf_gguf_export_rejects_unsupported_architecture(override):
-    """HF GGUF conversion is restricted to the supported tied architecture."""
-    from mslite_llm_quant.gguf_quant import SUPPORTED_MODEL, validate_config
+_Q3_BASE_CONFIG = {
+    "model_type": "qwen2", "num_hidden_layers": 24, "hidden_size": 896, "intermediate_size": 4864,
+    "num_attention_heads": 14, "num_key_value_heads": 2, "vocab_size": 151936,
+}
 
-    config = SimpleNamespace(**{**SUPPORTED_MODEL, "tie_word_embeddings": True, **override})
-    with pytest.raises(ValueError, match="Qwen2.5-0.5B"):
+
+@pytest.mark.parametrize("override,match", [
+    ({"tie_word_embeddings": False}, "tie_word_embeddings"),
+    ({"model_type": "llama"}, "model_type"),
+    ({"intermediate_size": 4872}, r"ffn_gate.weight: N=4872 must be divisible by N_ALIGN=16"),
+    ({"hidden_size": 1008, "num_attention_heads": 14}, r"attn_q.weight: K=1008 must be divisible"),
+])
+def test_hf_gguf_export_rejects_unsupported_architecture(override, match):
+    """Q3_0 rejects only capability violations, never a specific model size."""
+    from mslite_llm_quant.gguf_quant import validate_config
+
+    config = SimpleNamespace(**{**_Q3_BASE_CONFIG, "tie_word_embeddings": True, **override})
+    with pytest.raises(ValueError, match=match):
         validate_config(config, "q3_0")
+
+
+@pytest.mark.parametrize("size,geometry", [
+    ("1.5b", {"hidden_size": 1536, "intermediate_size": 8960, "num_attention_heads": 12}),
+    ("3b", {"hidden_size": 2048, "intermediate_size": 11008, "num_attention_heads": 16}),
+])
+def test_hf_gguf_export_accepts_larger_tied_qwen2(size, geometry):
+    """Larger tied Qwen2 checkpoints pass the Q3_0 capability guard."""
+    from mslite_llm_quant.gguf_quant import validate_config
+
+    config = SimpleNamespace(**{**_Q3_BASE_CONFIG, "tie_word_embeddings": True, **geometry})
+    validate_config(config, "q3_0")
+    assert size
 
 
 def test_hf_gguf_tokenizer_preserves_nonspecial_added_tokens_and_absent_bos(tmp_path):
@@ -366,46 +390,67 @@ def test_hf_gguf_tokenizer_preserves_nonspecial_added_tokens_and_absent_bos(tmp_
     assert [item["id"] for item in _qwen_bpe_backend(actual)["added_tokens"]] == [2, 3]
 
 
-def _qwen_tensor_metadata(decoder_type=41):
-    """Describe all 24 layers without allocating any checkpoint payload."""
+# Derived geometries used by the metadata-only shape checks: nothing in the
+# product code enumerates these; each one mimics what read_gguf_geometry()
+# returns for a real file of that size.
+QWEN2_5_GEOMETRIES = {
+    "0.5b": {"num_hidden_layers": 24, "hidden_size": 896, "intermediate_size": 4864,
+             "num_attention_heads": 14, "num_key_value_heads": 2, "head_dim": 64, "vocab_size": 151936},
+    "1.5b": {"num_hidden_layers": 28, "hidden_size": 1536, "intermediate_size": 8960,
+             "num_attention_heads": 12, "num_key_value_heads": 2, "head_dim": 128, "vocab_size": 151936},
+    "3b": {"num_hidden_layers": 36, "hidden_size": 2048, "intermediate_size": 11008,
+           "num_attention_heads": 16, "num_key_value_heads": 2, "head_dim": 128, "vocab_size": 151936},
+}
+
+
+def _qwen_tensor_metadata(decoder_type=41, geometry=None):
+    """Describe every layer of a geometry without allocating any payload."""
+    geometry = QWEN2_5_GEOMETRIES["0.5b"] if geometry is None else geometry
+    hidden = geometry["hidden_size"]
+    intermediate = geometry["intermediate_size"]
+    q_width = geometry["head_dim"] * geometry["num_attention_heads"]
+    kv_width = geometry["head_dim"] * geometry["num_key_value_heads"]
     layer_shapes = {
-        "attn_q.weight": (896, 896),
-        "attn_k.weight": (896, 128),
-        "attn_v.weight": (896, 128),
-        "attn_output.weight": (896, 896),
-        "ffn_gate.weight": (896, 4864),
-        "ffn_up.weight": (896, 4864),
-        "ffn_down.weight": (4864, 896),
-        "attn_q.bias": (896,),
-        "attn_k.bias": (128,),
-        "attn_v.bias": (128,),
-        "attn_norm.weight": (896,),
-        "ffn_norm.weight": (896,),
+        "attn_q.weight": (hidden, q_width),
+        "attn_k.weight": (hidden, kv_width),
+        "attn_v.weight": (hidden, kv_width),
+        "attn_output.weight": (q_width, hidden),
+        "ffn_gate.weight": (hidden, intermediate),
+        "ffn_up.weight": (hidden, intermediate),
+        "ffn_down.weight": (intermediate, hidden),
+        "attn_q.bias": (q_width,),
+        "attn_k.bias": (kv_width,),
+        "attn_v.bias": (kv_width,),
+        "attn_norm.weight": (hidden,),
+        "ffn_norm.weight": (hidden,),
     }
     tensors = [
         SimpleNamespace(
             name=f"blk.{layer}.{name}", shape=shape,
             tensor_type=decoder_type if len(shape) == 2 else 0,
         )
-        for layer in range(24) for name, shape in layer_shapes.items()
+        for layer in range(geometry["num_hidden_layers"]) for name, shape in layer_shapes.items()
     ]
     tensors.extend([
-        SimpleNamespace(name="token_embd.weight", shape=(896, 151936), tensor_type=2),
-        SimpleNamespace(name="output_norm.weight", shape=(896,), tensor_type=0),
+        SimpleNamespace(name="token_embd.weight", shape=(hidden, geometry["vocab_size"]), tensor_type=2),
+        SimpleNamespace(name="output_norm.weight", shape=(hidden,), tensor_type=0),
     ])
     return tensors
 
 
+@pytest.mark.parametrize("size", ["0.5b", "1.5b", "3b"])
 @pytest.mark.parametrize("decoder_type", [41, 2])
 @pytest.mark.parametrize("include_output", [False, True])
-def test_qwen_gguf_valid_logical_shapes_without_payloads(decoder_type, include_output):
-    """Mixed Q3/Q4 and all-Q4 metadata validate without accessing tensor data."""
+def test_qwen_gguf_valid_logical_shapes_without_payloads(size, decoder_type, include_output):
+    """Every supported size validates against its own derived geometry."""
     from models.qwen2_5.qwen2_5_gguf_loader import _validate_tensor_shapes
 
-    tensors = _qwen_tensor_metadata(decoder_type)
+    geometry = QWEN2_5_GEOMETRIES[size]
+    tensors = _qwen_tensor_metadata(decoder_type, geometry)
     if include_output:
-        tensors.append(SimpleNamespace(name="output.weight", shape=(896, 151936), tensor_type=8))
-    _validate_tensor_shapes(tensors, 24)
+        tensors.append(SimpleNamespace(name="output.weight", tensor_type=8,
+                                       shape=(geometry["hidden_size"], geometry["vocab_size"])))
+    _validate_tensor_shapes(tensors, geometry["num_hidden_layers"], geometry)
 
 
 @pytest.mark.parametrize("name,shape", [
@@ -432,13 +477,14 @@ def test_qwen_gguf_rejects_logical_shape_mismatches(name, shape):
     """Check axes and rank, every required tensor role, and both layer edges."""
     from models.qwen2_5.qwen2_5_gguf_loader import _validate_tensor_shapes
 
-    tensors = _qwen_tensor_metadata()
+    geometry = QWEN2_5_GEOMETRIES["0.5b"]
+    tensors = _qwen_tensor_metadata(geometry=geometry)
     if name == "output.weight":
         tensors.append(SimpleNamespace(name=name, shape=shape, tensor_type=8))
     else:
         next(tensor for tensor in tensors if tensor.name == name).shape = shape
     with pytest.raises(ValueError, match=rf"{name} has logical shape .*expected"):
-        _validate_tensor_shapes(tensors, 24)
+        _validate_tensor_shapes(tensors, geometry["num_hidden_layers"], geometry)
 
 
 @pytest.mark.parametrize("name", [
@@ -449,9 +495,10 @@ def test_qwen_gguf_rejects_missing_required_tensor(name):
     """Missing tensors fail metadata validation before any payload is packed."""
     from models.qwen2_5.qwen2_5_gguf_loader import _validate_tensor_shapes
 
-    tensors = [tensor for tensor in _qwen_tensor_metadata() if tensor.name != name]
+    geometry = QWEN2_5_GEOMETRIES["0.5b"]
+    tensors = [tensor for tensor in _qwen_tensor_metadata(geometry=geometry) if tensor.name != name]
     with pytest.raises(ValueError, match=f"Missing required GGUF tensor {name}"):
-        _validate_tensor_shapes(tensors, 24)
+        _validate_tensor_shapes(tensors, geometry["num_hidden_layers"], geometry)
 
 
 @pytest.mark.parametrize("decoder_type,block_bytes", [(41, 14), (2, 18)])
@@ -464,6 +511,12 @@ def test_qwen_loader_rejects_aligned_same_byte_count_tensor(tmp_path, decoder_ty
     blocks = np.zeros((1792, 448 // 32 * block_bytes), dtype=np.uint8)
     writer = gguf.GGUFWriter(str(path), "qwen2")
     try:
+        # Geometry is read from the file itself, so the header must carry it.
+        writer.add_block_count(1)
+        writer.add_embedding_length(896)
+        writer.add_feed_forward_length(4864)
+        writer.add_head_count(14)
+        writer.add_head_count_kv(2)
         writer.add_tensor("blk.0.attn_q.weight", blocks,
                           raw_dtype=gguf.GGMLQuantizationType(decoder_type))
         writer.write_header_to_file()
