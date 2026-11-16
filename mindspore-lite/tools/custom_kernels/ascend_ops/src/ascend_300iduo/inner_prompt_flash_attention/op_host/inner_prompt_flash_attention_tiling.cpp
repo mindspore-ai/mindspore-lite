@@ -1,4 +1,5 @@
 /**
+ * adapted from https://github.com/hicann/ops-transformer/blob/master/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling.cpp
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -2306,9 +2307,8 @@ bool InnerPromptFlashAttentionTiling::CheckPASparseMode(const ContextParamsForIn
   const int32_t *sparseMode = contextKeyParams.sparseMode;
   const gert::StorageShape *attenMaskShape = contextKeyParams.attentionMaskShape;
   OP_CHECK_IF(sparseMode == nullptr,
-              OPS_REPORT_VECTOR_INNER_ERR(
-                contextKeyParams.opName,
-                "When Layout is TND/NTD_TND and PA enabled, sparseMode must not be null"),
+              OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+                                          "When Layout is TND/NTD_TND and PA enabled, sparseMode must not be null"),
               return false);
   int32_t sparseModeVal = *sparseMode;
   OP_CHECK_IF((sparseModeVal != SPARSE_MODE_NO_MASK && sparseModeVal != SPARSE_MODE_RIGHT_DOWN &&
@@ -4575,7 +4575,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
     InputLayoutIsTNDLike() && ((actualLenDims > MAX_VAR_LEN_SEQ_LEN) || (actualLenDimsKV > MAX_VAR_LEN_SEQ_LEN)),
     OPS_REPORT_VECTOR_INNER_ERR(
       contextKeyParams.opName,
-      "Array length of the query's actual sequence lengths(%lu) and the key/value's actual sequence lengths(%lu) must "
+      "Array length of the query's actual sequence lengths(%zu) and the key/value's actual sequence lengths(%zu) must "
       "be less than or equal to %ld when input layout is TND or NTD_TND.",
       actualLenDims, actualLenDimsKV, MAX_VAR_LEN_SEQ_LEN),
     return ge::GRAPH_FAILED);
@@ -4602,21 +4602,53 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
                   "GetBasicShape310P", "attention mask must be NULL, when Qs or Kvs is 16-unaligned, Qs = %u, Kvs = %u",
                   s, seqInnerSize),
                 return ge::GRAPH_FAILED);
-    // [310P S1 tail-block constraint] The kernel's tail-block paths (bmm2 M-tail / softmax
+    // [300IDUO mask copy-stride gate] AttenMaskCopyIn moves the mask GM->UB with a 2D
+    // DataCopy whose lengths/strides are in 32-byte blocks, i.e. in units of
+    // maskTypeByteNum = BYTE_BLOCK / maskElemSize (32 for 1-byte bool/int8/uint8 masks,
+    // 16 for 2-byte fp16 masks). That pins two values to multiples of maskTypeByteNum:
+    // the GM row stride (maskKVsSize, the mask's own last dim -- a padded mask may exceed
+    // Kvs) and the copy width (the 300IDUO inner factor = min(128, roundUp16(Kvs)); the
+    // AdjustCVTiling legality pop loop never changes it). Anything else makes the
+    // block-unit division silently truncate: rows then read shifted/partial mask data
+    // and attend past their true window boundary -- uniform degradation, no NaN
+    // (measured (32,2864) cos 0.9949, (64,2864) 0.989, (128,2864) 0.978; kernel-side
+    // per-row parity copies were tried and the odd rows' 16B-misaligned GM bases read
+    // garbage on 300IDUO). The 16-element gate above covers the copy width of 2-byte
+    // masks but neither axis of a 1-byte mask and never the padded row stride, so both
+    // are checked here against the element-width-dependent alignment. Fail fast instead
+    // of silent corruption; workaround: pad the mask last dim (and Kvs) to a
+    // maskTypeByteNum-multiple and mask the extra KV columns. Zero production impact:
+    // suffix S2 is always 2816+128k (mod 32 == 0).
+    if (tilingData.promptAttentionBaseParams.get_useMask() != 0) {
+      const uint32_t maskAlign = BYTE_BLOCK / maskElemSize;
+      const uint32_t maskKVsSizeVal = tilingData.promptAttentionBaseParams.get_maskKVsSize();
+      const uint32_t sInnerFactorVal =
+        std::min(128U, (seqInnerSize + SIXTEEN_HOST_TILING - 1) / SIXTEEN_HOST_TILING * SIXTEEN_HOST_TILING);
+      OP_CHECK_IF(maskKVsSizeVal % maskAlign != 0U || sInnerFactorVal % maskAlign != 0U,
+                  OPS_REPORT_VECTOR_INNER_ERR(
+                    "GetBasicShape310P",
+                    "300IDUO attention mask: the %u-element-block mask copy needs the mask last dim(%u) "
+                    "and the inner tile factor(%u, from Kvs %u) to be %u-aligned, else rows silently read "
+                    "shifted mask data. Pad the mask last dim (and Kvs) to a %u-multiple and mask the extra "
+                    "KV columns.",
+                    maskAlign, maskKVsSizeVal, sInnerFactorVal, seqInnerSize, maskAlign, maskAlign),
+                  return ge::GRAPH_FAILED);
+    }
+    // [300IDUO S1 tail-block constraint] The kernel's tail-block paths (bmm2 M-tail / softmax
     // sum broadcast) produce invalid results for the padded tail rows when S1 is not a
-    // multiple of the outer block size (singleProcessSOuterSize = 128). Restrict S1 to
-    // 128-aligned shapes: fail fast with a clear message instead of silent corruption.
-    OP_CHECK_IF(s % 128 != 0,
-                OPS_REPORT_VECTOR_INNER_ERR("GetBasicShape310P",
-                                            "Qs(S1) must be 128-aligned on 310P, otherwise tail-block output is "
-                                            "invalid. Pad the query sequence length to a multiple of 128. Qs = %u",
+    // multiple of the chosen outer block size. For S1 % 128 != 0 the default block size is
+    // 128, so those shapes stay rejected. Exception: S1 = 32/64 — AdjustCVTiling's 300IDUO
+    // clamp (seqSize round-up-16 min 128) selects sOuterFactor = S1 there, i.e. one full
+    // outer block with no partial tail, so the hazard does not apply. Fail fast on
+    // everything else instead of silent corruption. S2 has no such constraint (inner
+    // blocks are fully covered by the softmax loop).
+    OP_CHECK_IF(s % 128 != 0 && s != 32U && s != 64U,
+                OPS_REPORT_VECTOR_INNER_ERR("GetBasicShape310IDUO",
+                                            "Qs(S1) must be 128-aligned on 300IDUO (or exactly 32/64, which tile as a "
+                                            "single full outer block), otherwise tail-block output is invalid. "
+                                            "Pad the query sequence length to a multiple of 128. Qs = %u",
                                             s),
                 return ge::GRAPH_FAILED);
-    // [310P S1!=S2 tail-block constraint] The kernel's tail-block output path writes NaN for
-    // the padded tail rows when S1 is not a multiple of the outer block size (singleProcess-
-    // SOuterSize = 128), so restrict S1 to 128-aligned shapes here (fail fast with a clear
-    // message instead of silent NaN output). S2 has no such constraint (inner blocks are
-    // fully covered by the softmax loop).
 
     OP_CHECK_IF(((*preTokens < static_cast<int32_t>(s)) ||
                  (*nextTokens < static_cast<int32_t>(seqInnerSize) && *nextTokens != 0)),
@@ -4797,7 +4829,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
     } else {
       OP_CHECK_IF((nPreifx != (*n) / tilingData.promptAttentionBaseParams.get_headNumRatio()) || (dPreifx != h / (*n)),
                   OPS_REPORT_VECTOR_INNER_ERR(
-                    contextKeyParams.opName, "prefix N(%u) and D(%u) should be same with KV N(%u) and D(%u)!", nPreifx,
+                    contextKeyParams.opName, "prefix N(%u) and D(%u) should be same with KV N(%u) and D(%lu)!", nPreifx,
                     dPreifx, (*n) / tilingData.promptAttentionBaseParams.get_headNumRatio(), h / (*n)),
                   return ge::GRAPH_FAILED);
     }
@@ -5146,7 +5178,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
     BYTE_BLOCK / FLOAT16SIZE;  // High-precision currently only supports FP16, aligned at 32/2=16.
   OP_CHECK_IF((hDivN > DLIMIT),
               OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-                                          "d should <= 512, but d = %u. When layout is BNSD, "
+                                          "d should <= 512, but d = %lu. When layout is BNSD, "
                                           "d is query shape in dim 3, and layout is BSH, d = h / n",
                                           hDivN),
               return ge::GRAPH_FAILED);  // Both high-precision and high-performance d cannot exceed 512.
@@ -5159,7 +5191,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
     return ge::GRAPH_FAILED);
   OP_CHECK_IF(
     ((inputType == ge::DT_FLOAT16) && (innerPrecise == HIGH_PRECISION) && (hDivN % precisionBlockEleCut) != 0),
-    OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "d should be align when high precision, d = %u", hDivN),
+    OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "d should be align when high precision, d = %lu", hDivN),
     return ge::GRAPH_FAILED);  // d will be padded here and the original value cannot be obtained, so it will not be
                                // printed
   if ((inputType == ge::DT_FLOAT16) && (outputType == ge::DT_INT8)) {
@@ -5499,7 +5531,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
     OP_CHECK_IF(lenDims > batchLimit,
                 OPS_REPORT_VECTOR_INNER_ERR(
                   contextKeyParams.opName,
-                  "when D axis size(%u) is unaligend with 32 bytes, batch size(%zu) can not larger than %zu.", hDivN,
+                  "when D axis size(%lu) is unaligend with 32 bytes, batch size(%zu) can not larger than %zu.", hDivN,
                   lenDims, batchLimit),
                 return ge::GRAPH_FAILED);
     auto ret = AdjustCVTiling(hDivN, *n, middleActualSeqLengths, ubSize, l1Size, l0CSize, maskElemSize, sOuterFactor,
@@ -5550,7 +5582,6 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
       InnerPromptFlashAttentionSplitNS(contextKeyParams, tilingData, coreNum, actualSeqLengths);
     }
   }
-
   if (needInit == 1U) {
     InnerPromptFlashAttentionInitOutputSplit(outShape->GetStorageShape().GetShapeSize(), tilingData, coreNum);
   }
@@ -5714,7 +5745,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
                      (contextKeyParams.KeyAntiquantScaleShape->GetStorageShape().GetDim(1) != hKV / nKV)),
                     OPS_REPORT_VECTOR_INNER_ERR(
                       contextKeyParams.opName,
-                      "shape of the key's dequant scale(%ld, %ld)  is not same with ND(%u, %u) in perChannel mode",
+                      "shape of the key's dequant scale(%ld, %ld)  is not same with ND(%lu, %lu) in perChannel mode",
                       contextKeyParams.KeyAntiquantScaleShape->GetStorageShape().GetDim(0),
                       contextKeyParams.KeyAntiquantScaleShape->GetStorageShape().GetDim(1), nKV, hKV / nKV),
                     return ge::GRAPH_FAILED);
@@ -5723,7 +5754,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
            (contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(1) != hKV / nKV)),
           OPS_REPORT_VECTOR_INNER_ERR(
             contextKeyParams.opName,
-            "The shape of the value's dequant scale(%ld, %ld)  is not same with ND(%u, %u) in perChannel mode",
+            "The shape of the value's dequant scale(%ld, %ld)  is not same with ND(%lu, %lu) in perChannel mode",
             contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(0),
             contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(1), nKV, hKV / nKV),
           return ge::GRAPH_FAILED);
@@ -5732,7 +5763,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
                       (contextKeyParams.KeyAntiquantOffsetShape->GetStorageShape().GetDim(1) != hKV / nKV))),
                     OPS_REPORT_VECTOR_INNER_ERR(
                       contextKeyParams.opName,
-                      "shape of the key's dequant offset(%ld, %ld)  is not same with ND(%u, %u) in perChannel mode",
+                      "shape of the key's dequant offset(%ld, %ld)  is not same with ND(%lu, %lu) in perChannel mode",
                       contextKeyParams.KeyAntiquantOffsetShape->GetStorageShape().GetDim(0),
                       contextKeyParams.KeyAntiquantOffsetShape->GetStorageShape().GetDim(1), nKV, hKV / nKV),
                     return ge::GRAPH_FAILED);
@@ -5741,7 +5772,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
                       (contextKeyParams.valueAntiquantOffsetShape->GetStorageShape().GetDim(1) != hKV / nKV))),
                     OPS_REPORT_VECTOR_INNER_ERR(
                       contextKeyParams.opName,
-                      "shape of the value's dequant offset(%ld, %ld)  is not same with ND(%u, %u) in perChannel mode",
+                      "shape of the value's dequant offset(%ld, %ld)  is not same with ND(%lu, %lu) in perChannel mode",
                       contextKeyParams.valueAntiquantOffsetShape->GetStorageShape().GetDim(0),
                       contextKeyParams.valueAntiquantOffsetShape->GetStorageShape().GetDim(1), nKV, hKV / nKV),
                     return ge::GRAPH_FAILED);
@@ -5771,22 +5802,22 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
            (contextKeyParams.KeyAntiquantScaleShape->GetStorageShape().GetDim(2) != hKV / nKV)),
           OPS_REPORT_VECTOR_INNER_ERR(
             contextKeyParams.opName,
-            "shape of the key's dequant scale(%ld, %ld, %ld)  is not same with N1D(%u, 1, %u) in perChannel mode",
+            "shape of the key's dequant scale(%ld, %ld, %ld)  is not same with N1D(%lu, 1, %lu) in perChannel mode",
             contextKeyParams.KeyAntiquantScaleShape->GetStorageShape().GetDim(0),
             contextKeyParams.KeyAntiquantScaleShape->GetStorageShape().GetDim(1),
             contextKeyParams.KeyAntiquantScaleShape->GetStorageShape().GetDim(2), nKV, hKV / nKV),
           return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-          ((contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(0) != nKV) ||
-           (contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(1) != 1) ||
-           (contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(2) != hKV / nKV)),
-          OPS_REPORT_VECTOR_INNER_ERR(
-            contextKeyParams.opName,
-            "The shape of the value's dequant scale(%ld, %ld, %ld)  is not same with N1D(%u, 1, %u) in perChannel mode",
-            contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(0),
-            contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(1),
-            contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(2), nKV, hKV / nKV),
-          return ge::GRAPH_FAILED);
+        OP_CHECK_IF(((contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(0) != nKV) ||
+                     (contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(1) != 1) ||
+                     (contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(2) != hKV / nKV)),
+                    OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+                                                "The shape of the value's dequant scale(%ld, %ld, %ld)  is not same "
+                                                "with N1D(%lu, 1, %lu) in perChannel mode",
+                                                contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(0),
+                                                contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(1),
+                                                contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(2),
+                                                nKV, hKV / nKV),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(
           ((contextKeyParams.KeyAntiquantOffsetShape != nullptr) &&
            ((contextKeyParams.KeyAntiquantOffsetShape->GetStorageShape().GetDim(0) != nKV) ||
@@ -5794,7 +5825,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
             (contextKeyParams.KeyAntiquantOffsetShape->GetStorageShape().GetDim(2) != hKV / nKV))),
           OPS_REPORT_VECTOR_INNER_ERR(
             contextKeyParams.opName,
-            "shape of the key's dequant offset(%ld, %ld, %ld)  is not same with N1D(%u, 1, %u) in perChannel mode",
+            "shape of the key's dequant offset(%ld, %ld, %ld)  is not same with N1D(%lu, 1, %lu) in perChannel mode",
             contextKeyParams.KeyAntiquantOffsetShape->GetStorageShape().GetDim(0),
             contextKeyParams.KeyAntiquantOffsetShape->GetStorageShape().GetDim(1),
             contextKeyParams.KeyAntiquantOffsetShape->GetStorageShape().GetDim(2), nKV, hKV / nKV),
@@ -5806,7 +5837,7 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
             (contextKeyParams.valueAntiquantOffsetShape->GetStorageShape().GetDim(2) != hKV / nKV))),
           OPS_REPORT_VECTOR_INNER_ERR(
             contextKeyParams.opName,
-            "shape of the value's dequant offset(%ld, %ld, %ld)  is not same with N1D(%u, 1, %u) in perChannel mode",
+            "shape of the value's dequant offset(%ld, %ld, %ld)  is not same with N1D(%lu, 1, %lu) in perChannel mode",
             contextKeyParams.valueAntiquantOffsetShape->GetStorageShape().GetDim(0),
             contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(1),
             contextKeyParams.valueAntiquantOffsetShape->GetStorageShape().GetDim(2), nKV, hKV / nKV),
@@ -5831,30 +5862,30 @@ ge::graphStatus InnerPromptFlashAttentionTiling::RunBigKernelTilingWithParams(
                                         : 0),
           return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(
-          (contextKeyParams.KeyAntiquantScaleShape->GetStorageShape().GetDim(0) != hKV),
-          OPS_REPORT_VECTOR_INNER_ERR(
-            contextKeyParams.opName, "shape of the key's dequant scale(%ld)  is not same with H(%u) in perChannel mode",
-            contextKeyParams.KeyAntiquantScaleShape->GetStorageShape().GetDim(0), hKV),
-          return ge::GRAPH_FAILED);
+        OP_CHECK_IF((contextKeyParams.KeyAntiquantScaleShape->GetStorageShape().GetDim(0) != hKV),
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                      contextKeyParams.opName,
+                      "shape of the key's dequant scale(%ld)  is not same with H(%lu) in perChannel mode",
+                      contextKeyParams.KeyAntiquantScaleShape->GetStorageShape().GetDim(0), hKV),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(((contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(0) != hKV)),
                     OPS_REPORT_VECTOR_INNER_ERR(
                       contextKeyParams.opName,
-                      "The shape of the value's dequant scale(%ld)  is not same with H(%u) in perChannel mode",
+                      "The shape of the value's dequant scale(%ld)  is not same with H(%lu) in perChannel mode",
                       contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(0), hKV),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(((contextKeyParams.KeyAntiquantOffsetShape != nullptr) &&
                      ((contextKeyParams.KeyAntiquantOffsetShape->GetStorageShape().GetDim(0) != hKV))),
                     OPS_REPORT_VECTOR_INNER_ERR(
                       contextKeyParams.opName,
-                      "shape of the key's dequant offset(%ld)  is not same with H(%u) in perChannel mode",
+                      "shape of the key's dequant offset(%ld)  is not same with H(%lu) in perChannel mode",
                       contextKeyParams.KeyAntiquantOffsetShape->GetStorageShape().GetDim(0), hKV),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(((contextKeyParams.valueAntiquantOffsetShape != nullptr) &&
                      ((contextKeyParams.valueAntiquantOffsetShape->GetStorageShape().GetDim(0) != hKV))),
                     OPS_REPORT_VECTOR_INNER_ERR(
                       contextKeyParams.opName,
-                      "shape of the value's dequant offset(%ld)  is not same with H(%u) in perChannel mode",
+                      "shape of the value's dequant offset(%ld)  is not same with H(%lu) in perChannel mode",
                       contextKeyParams.valueAntiquantOffsetShape->GetStorageShape().GetDim(0), hKV),
                     return ge::GRAPH_FAILED);
       } else {
@@ -6583,15 +6614,15 @@ ge::graphStatus InnerPromptFlashAttentionTiling::CheckBaseApiRequiredInput(Conte
     static const size_t Q_CACHE_DIM_NUM = 4;
     static const size_t KV_CACHE_DIM_NUM = 4;
     OP_CHECK_IF((queryShape->GetStorageShape().GetDimNum() != Q_CACHE_DIM_NUM),
-                OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "query dim num %lu, invalid, should be %lu",
+                OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "query dim num %zu, invalid, should be %zu",
                                             queryShape->GetStorageShape().GetDimNum(), Q_CACHE_DIM_NUM),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((keyShape->GetStorageShape().GetDimNum() != KV_CACHE_DIM_NUM),
-                OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "key dim num %lu, invalid, should be %lu",
+                OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "key dim num %zu, invalid, should be %zu",
                                             keyShape->GetStorageShape().GetDimNum(), KV_CACHE_DIM_NUM),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((valueShape->GetStorageShape().GetDimNum() != KV_CACHE_DIM_NUM),
-                OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "value dim num %lu, invalid, should be %lu",
+                OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "value dim num %zu, invalid, should be %zu",
                                             valueShape->GetStorageShape().GetDimNum(), KV_CACHE_DIM_NUM),
                 return ge::GRAPH_FAILED);
     // 2、校验 scaleValue
@@ -6819,6 +6850,21 @@ ge::graphStatus InnerPromptFlashAttentionTiling::AdjustCVTiling(uint64_t hDivN, 
   }
   sOuterFactor = minFactor;
   sInnerFactor = rectangleFactor;
+  // [300IDUO small-S1 single-block tiling] S1 = 32/64 (admitted by the gate in GetBasic-
+  // Shape310P) must get an sOuterFactor that divides S1 exactly, so the whole query is
+  // one full outer block (tail == block). The legality pop loop above promotes the next
+  // ladder candidate (128, 112, ...) without re-applying the seqSize clamp, which would
+  // exceed S1 and re-create the partial-tail hazard — fail fast instead. Unreachable in
+  // practice (every UB/L1 term shrinks with sOuterFactor); defense-in-depth.
+  if (curShortSocName == platform_ascendc::SocVersion::ASCEND310P) {
+    const uint32_t seqSize = tilingData.promptAttentionBaseParams.get_seqSize();
+    OP_CHECK_IF((seqSize == 32U || seqSize == 64U) && seqSize % sOuterFactor != 0U,
+                OPS_REPORT_VECTOR_INNER_ERR("AdjustCVTiling",
+                                            "300IDUO small-S1 tiling: sOuterFactor(%u) must divide Qs(%u) exactly, "
+                                            "refuse partial-tail tiling.",
+                                            sOuterFactor, seqSize),
+                return ge::GRAPH_FAILED);
+  }
   return ge::GRAPH_SUCCESS;
 }
 

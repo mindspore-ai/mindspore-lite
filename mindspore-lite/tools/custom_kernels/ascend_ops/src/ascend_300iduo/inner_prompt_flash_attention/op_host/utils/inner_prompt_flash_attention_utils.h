@@ -13,6 +13,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 /*!
  * \file inner_prompt_flash_attention_utils.h
@@ -24,8 +25,10 @@
  *        include path (only ${ASCEND_CANN_PACKAGE_PATH}/include is). This stub
  *        therefore provides the minimum macro surface the tiling/infershape
  *        sources use: OP_LOG* (fprintf to stderr), OP_CHECK_IF,
- *        OP_CHECK_NULL_WITH_CONTEXT, and the no-op OPS_REPORT_* error-report
- *        macros (mirroring ops-transformer's err/ops_err.h).
+ *        OP_CHECK_NULL_WITH_CONTEXT, and the OPS_REPORT_VECTOR_INNER_ERR
+ *        error-report macro wired to stderr (the ops-transformer err/ops_err.h
+ *        report channel is unavailable in standalone builds; see the macro
+ *        below for how the message reaches converter output).
  *
  *        opName passed to OP_LOG* may be a const char*, std::string or a gert
  *        context pointer, so it is deliberately discarded ((void)(opName))
@@ -39,6 +42,7 @@
 #define OP_CHECK_IF(condition, log, return_expr) \
   do {                                           \
     if (unlikely(condition)) {                   \
+      log;                                       \
       return_expr;                               \
     }                                            \
   } while (0)
@@ -75,10 +79,22 @@
     fprintf(stderr, "\n");                             \
   } while (0)
 
-// No-op error-report macros (mirror ops-transformer err/ops_err.h; the report
-// channel is not wired in standalone builds).
-#define OPS_REPORT_VECTOR_INNER_ERR(OPS_DESC, ...) \
-  do {                                             \
+// Error-report macro wired to stderr (mirror of ops-transformer err/ops_err.h;
+// that report channel is not available in standalone builds). Gate messages
+// print to the converter subprocess's stderr, which bench convert() captures
+// and surfaces in its exception -- tiling rejections stay diagnosable (e.g.
+// probe_tail.py matches gate markers in the reject matrix). OP_CHECK_IF above
+// executes this on the failing path before returning GRAPH_FAILED. The 2nd
+// argument must be a string literal (string-concat with the prefix; true at
+// every call site, compiler-enforced). The 1st argument may be a const char*
+// or a std::string (fia_tiling_templates_registry.h), so it is normalized to a
+// C string first: passing a std::string through '...' is not allowed.
+inline std::string InnerPfaOpsDesc(const char *desc) { return desc == nullptr ? std::string() : std::string(desc); }
+inline std::string InnerPfaOpsDesc(const std::string &desc) { return desc; }
+
+#define OPS_REPORT_VECTOR_INNER_ERR(OPS_DESC, fmt, ...)                                                    \
+  do {                                                                                                     \
+    fprintf(stderr, "[InnerPFA][ERROR] [%s] " fmt "\n", InnerPfaOpsDesc(OPS_DESC).c_str(), ##__VA_ARGS__); \
   } while (0)
 
 #endif  // INNER_INNER_PROMPT_FLASH_ATTENTION_UTILS_H

@@ -38,14 +38,15 @@ out    = attn @ V                            # [B, N, S1, D]
 
 - **s1s2_bns1 布局分块计算**：kernel 以 `(B, N, S1, S2)` 为逻辑计算轴，按 `singleProcessSOuterSize`（S1 外层切分，典型 128）× `singleProcessSInnerSize`（S2 内层切分，典型 128/512/1024）做矩形基本块。多核按 `(N, B, S1Block)` 三元组切分（`InnerPromptFlashAttentionSplitNS`），稀疏/窗口场景按真实计算量负载均衡（`InnerPromptFlashAttentionSplitNSNew`）。详见 [inner_prompt_flash_attention_s1s2_bns1_x310.h](op_kernel/inner_prompt_flash_attention_s1s2_bns1_x310.h) 与 [inner_prompt_flash_attention_s1s2_bns1_x310_base.h](op_kernel/inner_prompt_flash_attention_s1s2_bns1_x310_base.h)。
 - **tiling 模板注册机制**：通过 [fia_tiling_templates_registry.h](op_host/fia_tiling_templates_registry.h) 的 `FiaTilingRegistry` 单例按 `NpuArch`（`DAV_2201/2002/3003/3113`）与优先级（91）注册 `InnerPromptFlashAttentionTiling` 模板类；host 侧 `TilingInnerPromptFlashAttention` 入口调用 `FiaTilingRegistry::GetInstance().DoTilingImpl` 遍历已注册模板，第一个返回非 `GRAPH_PARAM_INVALID` 的模板生效。
-- **NZ 域 softmax**：因 Atlas 300I Duo Cube 输出为 NZ（Fractal）格式，`bmm1`（Q@K^T）结果直接落在 `VECCALC` 上的 NZ tensor，后续 softmax 在 NZ 域完成（[kernel_operator_softmax_compute_nz.h](op_kernel/kernel_operator_softmax_compute_nz.h)），通过 `BlockReduceMax` + `TransDataTo5HD` 做 NZ 块内 reduce，避免 NZ↔ND 反复转置。高精度模式（`inner_precise=0`）下 softmax/max/sum 用 FP32，高性模式用 FP16。
+- **NZ 域 softmax**：因 Atlas 300I Duo Cube 输出为 NZ（Fractal）格式，`bmm1`（Q@K^T）结果直接落在 `VECCALC` 上的 NZ tensor，后续 softmax 在 NZ 域完成（[kernel_operator_softmax_compute_nz.h](op_kernel/kernel_operator_softmax_compute_nz.h)），通过 `BlockReduceMax` + `TransDataTo5HD` 做 NZ 块内 reduce，避免 NZ↔ND 反复转置。精度随 `inner_precise` 变化：`0`（高精度）下 `bmm1` 输出、softmax、max/sum 均为 FP32；`1`（高性能，默认）下 `bmm1`/softmax 为 FP16、max/sum 仍为 FP32；`4`（近似）下 max/sum 也降为 FP16。
 - **data_copy_transpose**：`bmm2`（attn@V）结果为 NZ，输出需转回 ND 并按 `BNSD→BSH`/`BSND` 等 layout 排布，由 [kernel_data_copy_transpose.h](op_kernel/kernel_data_copy_transpose.h) 的 `DataCopyTransposeOut` 完成，支持 `NZ2ND_0213`、`NZ2ND_012_WITH_N` 等多种转置枚举（[data_copy_transpose_tiling_def.h](op_host/data_copy_transpose_tiling_def.h)）。
 - **多 tilingKey 特化**：Atlas 300I Duo 仅分发 4 个 FP16 tilingKey（见 [inner_prompt_flash_attention_tilingkey.h](op_kernel/inner_prompt_flash_attention_tilingkey.h)）：
   - `12288` → BNSD 高性能（`QINT8_KVFP16_OUTBF16_HIGHLEVELAPI_MDL_NOTAIL_CUBEVECTORDIFF_BNSD_310TILING`，注：名称虽含 QINT8 但 kernel 实际以 `PFATypeNZ<PFALayoutNZ::BNSD, half, int8_t, half>` 实例化，mask 用 int8_t 表示 bool）
   - `22288` → BSH 高性能
   - `12888` → BNSD 高精度（`QFP4E1M2_KVFP16_OUTBF16_..._310TILING`，额外传 `ModeNZ::HighPrecisionNZ`）
   - `22888` → BSH 高精度
-- **`S1 != S2` 增强**：[inner_prompt_flash_attention_s1s2_bns1_x310.h](op_kernel/inner_prompt_flash_attention_s1s2_bns1_x310.h) 的 `ComputeEachCore` 中，当 `preTokens >= S1` 且 `nextTokens == 0 || nextTokens >= S2`（全注意力窗口）时，短路 S2 内层循环 `[0, maxInnerLoopTimes)`，避免原 band-mapping 算术在 `S1 < S2` 时漏算 KV 尾块（代码注释 `[S1!=S2 change ②]`）；同时 host tiling 解除了原 `s == seqInnerSize` 的强约束（注释 `[S1!=S2 change ⑤]`），仅保留 `S1 % 128 == 0` 与 mask 下 `S1 % 16 == 0 && S2 % 16 == 0` 的硬件对齐约束。
+  - `inner_precise=4`（APPROXIMATE_COMPUTATION）复用 `12288/22288`，tiling 侧用内部 `sparseMode=99` 标记近似 softmax。
+- **`S1 != S2` 与 band 快路径**：[inner_prompt_flash_attention_s1s2_bns1_x310.h](op_kernel/inner_prompt_flash_attention_s1s2_bns1_x310.h) 的 `ComputeEachCore` 已拆为三个内联辅助函数：`ResolveBandFastPath` 在形状指纹命中（`needCalMask`、无 `actual_seq_lengths`、`sparseMode==99`（300IDUO 近似模式内部标记）、`headSize==128`、`headNumRatio==4`）且 `S2>=S1` 时，把声明为全窗口的 `preTokens/nextTokens` 还原为真实 causal+prefix band（`nextTokens=S2-S1`，`S1==S2` 时为 `-1`，`preTokens=INT32_MAX`），直接跳过整块被 mask 的 KV 尾块；`ComputeSInnerLoopRange` 在全注意力窗口（`preTokens >= S1` 且 `nextTokens == 0 || nextTokens >= S2`）时短路 S2 内层循环 `[0, maxInnerLoopTimes)`，避免原 band-mapping 算术在 `S1 < S2` 时漏算 KV 尾块（代码注释 `[S1!=S2 change ②]`）；`ApplyBandTailOverride` 在 band 终点落在全局尾块之前时把尾块尺寸组临时覆写为整块尺寸，修正尺寸路径截断（band 含全局尾块时恢复原值）。同时 host tiling 解除了原 `s == seqInnerSize` 的强约束（注释 `[S1!=S2 change ⑤]`），仅保留 `S1 % 128 == 0`（或 `S1` 恰为 32/64）与 mask 下 `S1 % 16 == 0 && S2 % 16 == 0` 的硬件对齐约束。
 - **混合核型**：kernel 声明 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2)`，Cube 与 Vector 协同，`Bmm1/Bmm2` 走 Cube（NZ format），softmax/elewise 走 Vector。
 
 ## 2 参数说明
@@ -86,7 +87,9 @@ out    = attn @ V                            # [B, N, S1, D]
 | input_layout | 可选 | string | "BSH" | 输入布局。`SetInputLayout` 支持取值：`SH`/`BSH`/`NSD`/`BSND`/`BNSD`/`BNSD_BSND`（复用 BNSD）/`TND`/`NTD_TND`。**Atlas 300I Duo kernel 实际仅分发 BSH 与 BNSD 两条路径**（tilingKey 12288/22288/12888/22888）；其它 layout 虽在 tiling/infershape 有校验逻辑，但 Atlas 300I Duo 上无对应 kernel 产物。 |
 | num_key_value_heads | 可选 | int | 0 | kv 头数 `N_kv`。`0` 表示等于 `num_heads`（MHA）。需满足 `N % N_kv == 0` 且 `N/N_kv <= 64`（GQA 分组上限 64）。 |
 | sparse_mode | 可选 | int | 0 | 稀疏模式：`0`=NO_MASK、`1`=ALL_MASK、`2`=LEFT_UP（左上三角，需 mask 为 `(2048,2048)`）、`3`=RIGHT_DOWN（右下三角）、`4`=BAND（带状）。Atlas 300I Duo BaseApi 路径仅支持 `sparse_mode ∈ {20,21,22}`（NONE/NORM/ALIBI 内部编码，见 `CheckBaseAPISupportScenarios`）。 |
-| inner_precise | 可选 | int | 1 | 精度模式：`0`=HIGH_PRECISION（高精度，softmax/bmm1 用 FP32）、`1`=HIGH_PERFORMANCE（高性能，全程 FP16）、`4`=APPROXIMATE_COMPUTATION（近似，仅 Atlas 300I Duo 支持，softmax 降为 FP16）。bit0 区分高精度/高性能，bit1 控制 invalid line 修正（`isRowInvalid`）。FP16 输入且 pse 非空时强制升为高精度（Atlas 300I Duo 不支持 pse 故不触发）。 |
+| inner_precise | 可选 | int | 1 | 精度模式：`0`=HIGH_PRECISION（高精度，`bmm1`/softmax/max/sum 全 FP32，tilingKey +600）、`1`=HIGH_PERFORMANCE（高性能，`bmm1`/softmax 为 FP16，max/sum 仍 FP32）、`4`=APPROXIMATE_COMPUTATION（近似，max/sum 也降为 FP16，仅 Atlas 300I Duo 支持；tiling 内部 `sparseMode` 置 `99` 作为近似标记）。bit0 区分高精度/高性能，bit1 控制 invalid line 修正（`isRowInvalid`）。FP16 输入且 pse 非空时强制升为高精度（Atlas 300I Duo 不支持 pse 故不触发）。 |
+
+> 默认值均取自 [inner_prompt_flash_attention_def.cpp](op_host/inner_prompt_flash_attention_def.cpp) 的 OpDef 注册：`num_heads` 为 `AttrType(REQUIRED)`（`Int(1)` 仅占位），其余 7 个属性为 `AttrType(OPTIONAL)`，缺省时按表中默认值参与 tiling 计算。
 
 ### 2.4 Tiling 数据结构
 
@@ -114,10 +117,10 @@ host 侧 `InnerPromptFlashAttentionTilingData`（[inner_prompt_flash_attention_t
 | 输出数据类型 | attention_out = float16（默认）；当 quant_scale2 非空时 = int8 | `InferDataType`：`quant_scale2` 非空 → `DT_INT8`。Atlas 300I Duo FP16 路径下输出为 FP16。 |
 | 输入格式 | `FORMAT_ND` | def 中 ND + `DynamicFormatFlag(true)` + `DynamicRankSupportFlag(true)`，支持动态 shape 与动态秩。 |
 | input_layout | **BSH / BNSD**（Atlas 300I Duo 实际分发） | `SetInputLayout` 解析支持 SH/BSH/NSD/BSND/BNSD/BNSD_BSND/TND/NTD_TND，但 Atlas 300I Duo kernel 仅注册 BSH(22288/22888) 与 BNSD(12288/12888) 四个 tilingKey。其它 layout 在 Atlas 300I Duo 上无编译产物。 |
-| S1（query 序列长） | **必须 128 对齐**；`S1 <= 65536` | Atlas 300I Duo 尾块约束：`s % 128 != 0` 直接 `GRAPH_FAILED`，因 kernel tail-block 路径在非 128 对齐时输出 NaN/无效。 |
-| S2（kv 序列长） | `S2 <= 65536`；mask 存在时需 `S2 % 16 == 0` | S2 无 128 对齐硬约束（内层 softmax 循环覆盖尾块）。mask 存在时 S1/S2 均需 16 对齐。 |
+| S1（query 序列长） | **必须 128 对齐，或为 32/64**；`S1 <= 65536` | Atlas 300I Duo 尾块约束：`s % 128 != 0 && s != 32 && s != 64` 直接 `GRAPH_FAILED`，因 kernel tail-block 路径在非 128 对齐时输出 NaN/无效；S1=32/64 时 `AdjustCVTiling` 选择单个完整 outer 块（无尾块），故放行。 |
+| S2（kv 序列长） | `S2 <= 65536`；mask 存在时需 `S2 % 16 == 0`；bool mask 还需 mask 自身最后一维 `% 32 == 0`，且 `S2 < 128` 时 `S2 % 32 == 0` | S2 无 128 对齐硬约束（内层 softmax 循环覆盖尾块）。mask 存在时 S1/S2 均需 16 对齐。 |
 | S1 != S2 | **支持**（本算子增强点） | host 解除 `s == seqInnerSize` 约束；kernel 全注意力窗口下短路 S2 循环。但 mask 存在时 S1/S2 仍需 16 对齐。 |
-| D（每头维度） | `D <= 512`；BSH 下 `H = N*D <= 512*256` | `GetAndCheckEmptyQueryShape`：`d > 512` 报错。BaseApi 高性能路径（`CheckBaseAPISupportScenarios` 置 `atbRunFlag_=true`）要求 query 为 4D（BSH/BNSD）且 `dim(3) == BLOCK_SIZE == 16`（即 `D == 16`）；不满足时退回常规 tiling 路径，不报错。 |
+| D（每头维度） | `D <= 512`；BSH 下 `H = N*D <= 512*256` | `GetAndCheckEmptyQueryShape`：`d > 512` 报错。BaseApi 路径（`CheckBaseAPISupportScenarios`）要求 `sparse_mode ∈ {20,21,22}` 且 query 为 4D（BSH/BNSD）、`dim(3) == BLOCK_SIZE == 16`（即 `D == 16`）时才置 `atbRunFlag_=true`；不满足时退回常规 tiling 路径，不报错。 |
 | N（query 头数） | `N <= 256` | `CheckInputDimAndHeadNum`：`nQ > 256` 报错。 |
 | GQA 头数关系 | `N % N_kv == 0` 且 `N/N_kv <= 64` | `SetTilingHeadNumRatio`：分组数 `G` 上限 64。`num_key_value_heads=0` 等价于 `=num_heads`（MHA）。 |
 | B（batch） | `B <= 65536` | `GetAndCheckEmptyQueryShape`：`b > BLIMIT(65536)` 报错。 |
@@ -125,7 +128,7 @@ host 侧 `InnerPromptFlashAttentionTilingData`（[inner_prompt_flash_attention_t
 | 稀疏窗口 | `preTokens >= S1` 且 `nextTokens == 0 || nextTokens >= S2` | Atlas 300I Duo 强制要求校验；即 Atlas 300I Duo 仅支持全注意力（无窗口）或右下三角（`sparse_mode=3`，`nextTokens = S2 - S1`）等满足该不等式的组合。 |
 | actual_seq_lengths | 元素 `∈ [0, S1]`，长度为 1 或 `>= B` | `CheckActualSeqLength`。TND layout 下要求单调不减且长度 `<= 4096`（`MAX_VAR_LEN_SEQ_LEN`）。 |
 | actual_seq_lengths_kv | 元素 `∈ [0, S2]`（PA 场景仅 `>= 0`） | 同上。 |
-| 精度模式 | `inner_precise ∈ {0,1,4}` | `0`=高精度（FP32 softmax）、`1`=高性能（FP16）、`4`=近似（仅 Atlas 300I Duo）。`> 4` 仅 warn 不报错。FP16+pse 非空强制升为 0（Atlas 300I Duo 不支持 pse）。 |
+| 精度模式 | `inner_precise ∈ {0,1,4}` | `0`=高精度（`bmm1`/softmax/max/sum 全 FP32，tilingKey +600）、`1`=高性能（`bmm1`/softmax 为 FP16，max/sum 仍 FP32）、`4`=近似（max/sum 也降为 FP16，仅 Atlas 300I Duo）。`> 4` 仅 warn 不报错。FP16+pse 非空强制升为 0（Atlas 300I Duo 不支持 pse）。 |
 | workspace | Atlas 300I Duo：系统 workspace（`GetLibApiWorkSpaceSize`） | Atlas 300I Duo 不额外申请 PFA workspace（`GetPFAWorkSpaceSize` 对 Atlas 300I Duo 直接返回 `defaultSysWorkspaceSize`）。空 KV 场景固定 `16 MiB`。 |
 
 ### 3.2 不支持的场景
@@ -137,8 +140,9 @@ host 侧 `InnerPromptFlashAttentionTilingData`（[inner_prompt_flash_attention_t
 - **KV prefix（shared_prefix 非空）**：与 PA 互斥逻辑中，prefix 路径仅在 Atlas 800I A2 走通，Atlas 300I Duo 无对应 kernel。
 - **非 BSH/BNSD layout（Atlas 300I Duo）**：SH/BSND/NSD/TND/NTD_TND 虽有 tiling 校验，但 Atlas 300I Duo 无 kernel tilingKey 注册。
 - **mask 类型非 bool（Atlas 300I Duo）**：`CheckMaskType` 在 Atlas 300I Duo 上要求 `maskDataType == DT_BOOL`，fp16/int8/uint8 mask 均报错。FP32 mask 任何平台都不支持。
-- **S1 非 128 对齐（Atlas 300I Duo）**：`s % 128 != 0` 直接 `GRAPH_FAILED`，因 tail-block 输出 NaN。
+- **S1 非 128 对齐且不为 32/64（Atlas 300I Duo）**：`s % 128 != 0 && s != 32 && s != 64` 直接 `GRAPH_FAILED`，因 tail-block 输出 NaN；S1=32/64 时按单个完整 outer 块处理，已支持。
 - **mask 存在且 S1/S2 非 16 对齐（Atlas 300I Duo）**：`useMask != 0 && (s % 16 != 0 || seqInnerSize % 16 != 0)` 报错。
+- **bool mask 的最后一维或 inner tile factor 非 32 对齐（Atlas 300I Duo）**：`maskKVsSize % 32 != 0 || min(128, roundUp16(S2)) % 32 != 0` 报错（kernel 侧 mask GM→UB 拷贝以 32B 块为单位，否则行会读到错位 mask、静默越过真实窗口；代码判断同时覆盖 bool/int8，但 300IDUO 上 int8 mask 已在 `CheckMaskType` 拒绝）；可将 mask 最后一维（及 S2）补齐到 32 的倍数并对多余 KV 列置屏蔽。
 - **S1 或 S2 > 65536（Atlas 300I Duo）**：校验报错。
 - **`preTokens < S1` 或 `nextTokens` 非 0 且 `< S2`（Atlas 300I Duo）**：报错，Atlas 300I Duo 仅支持满足全注意力窗口不等式的组合。
 - **GQA 分组 > 64**：`N/N_kv > 64` 报错。
@@ -152,9 +156,9 @@ host 侧 `InnerPromptFlashAttentionTilingData`（[inner_prompt_flash_attention_t
 
 - **PrecisionReduceFlag(true)**：def 中 `OpAICoreConfig.PrecisionReduceFlag(true)`，允许框架在精度无损前提下做 dtype 降维优化。
 - **inner_precise 行为**：
-  - `0`（HIGH_PRECISION）：`bmm1` 输出 FP32，softmax/max/sum 用 FP32（`softmaxDataTypeSize = FLOAT32SIZE`），`SoftmaxBasicComputeFirstTail` 走 `SoftmaxFlashV2<float>`；对应 tilingKey 加 600。
-  - `1`（HIGH_PERFORMANCE，默认）：全程 FP16，softmax 用 `SoftmaxFlashV2Tmp<half>`；tilingKey 不加 600。
-  - `4`（APPROXIMATE_COMPUTATION）：仅 Atlas 300I Duo 支持，`softmaxDataTypeNZ_ = FLOAT16SIZE`，Atlas 800I A2 报错。
+  - `0`（HIGH_PRECISION）：tilingKey 加 600 → `ModeNZ::HighPrecisionNZ`，`bmm1` 输出 FP32，softmax/max/sum 用 FP32，`SoftmaxBasicComputeFirstTail` 走 `SoftmaxFlashV2<float>`。
+  - `1`（HIGH_PERFORMANCE，默认）：tilingKey 不加 600 → `ModeNZ::HighPerformanceNZ`，`bmm1` 输出与 softmax exp 为 FP16，但 `isHighPrecision_` 仍为 `true`，max/sum 走 FP32，即 `SoftmaxFlashV2<half>`（非 `Tmp` 版本）。
+  - `4`（APPROXIMATE_COMPUTATION）：仅 Atlas 300I Duo 支持；tiling 置 `softmaxDataTypeNZ_ = FLOAT16SIZE` 并把内部 `sparseMode` 标记为 `99`，kernel 侧 `isHighPrecision_ = false`，max/sum 也降为 FP16（`SoftmaxFlashV2Tmp<half>`）；Atlas 800I A2 报错。
 - **mask 叠加语义**：bool mask 在 `AttenMaskTransND2NZ` 中先 cast 为 fp16，再 `Muls(..., -10000.0)`，即 `True→0`（保留）、`False→-10000`（屏蔽）。FP16 mask 不支持 invalid line 修正（`isRowInvalid`）。
 - **NZ 域 softmax 精度**：NZ 格式下 `BlockReduceMax` 按 16 元素块内 reduce，再 `TransDataTo5HD` 重排，等价于 ND 域行 reduce，无精度损失。
 - **bmm1/bmm2 矩阵类型**：Atlas 300I Duo 上 `bmm1` A/B 来自 GM ND，输出 `VECCALC` NZ；`bmm2` A 来自 `VECCALC` NZ，B 来自 GM ND，输出 `VECCALC` ND。高精度下 bmm1 输出 FP32，`ComputeEachCoreSInnerLoop` 中额外 `Cast` 回 FP16 再喂 bmm2。
